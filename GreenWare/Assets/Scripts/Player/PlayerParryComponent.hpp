@@ -15,8 +15,14 @@
 ///
 /// WHY 空振りに硬直を置くか:
 ///   硬直が無いと弾きを連打するのが最適になり、予兆を読む理由が消える。
-///   0.55 秒は踏みつけの «叩きつけ → 刺さり» と同じ長さで、1 回外したら
-///   その手は受けられない、という重さに置いてある。
+///   «外したらその手は受けられない» 重さは残しつつ、硬直は回避で打ち切れる
+///   (2026-09-11)。0.55 秒の «何もできない» は押すこと自体をためらわせていたので、
+///   0.40 秒へ縮め、代わりに «外したら転がって逃げる» という手を返した。
+///
+/// WHY 回避 > 弾き > 斬撃 の順か:
+///   3 つとも上半身の同じ Slot を使う。優先が決まっていないと、弾きの絵の裏で斬撃の
+///   判定が出る・転がりながら上半身だけ構える、が起きる。逃げる意思 (回避) が最も強く、
+///   受ける意思 (弾き) は振っている最中でも通す。
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
@@ -40,6 +46,7 @@
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Utils/InputActions.hpp>
 #include <Scripts/Utils/BladeColors.hpp>
+#include <Scripts/Utils/MotionTempo.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
@@ -65,7 +72,7 @@ public:
     FBZZ_FIELD(std::string, parryClipName, "Katana_Parry", "Parry Clip Name")
     // Katana_Parry は 27F / 0.90s。受け f4-9、弾き返し f12。
     FBZZ_FIELD_RANGE(float, parrySpeed, 1.35f, "Parry Speed", 0.5f, 3.0f)
-    FBZZ_TOOLTIP("受けの姿勢 (f4) を窓の頭へ寄せる再生速度。1 だと受け姿勢が 0.13 秒遅れる")
+    FBZZ_TOOLTIP("空振りの硬直の再生速度。構え・弾き返しは «緩急» の値で流れる")
     FBZZ_FIELD_FILE(executeClipFile,
         "guid:9881396f555b1ba645879af4182ab242|Library/Baked/9881396f555b1ba645879af4182ab242/anims/Katana_Iai.anim",
         "Execute Clip", ".anim,.fbx")
@@ -76,6 +83,25 @@ public:
     FBZZ_TOOLTIP("居合の再生速度。1 だと斬り下ろしまで 0.87 秒 ─ 倒れている 5 秒に対して重すぎる")
     FBZZ_FIELD_RANGE(float, fadeIn,  0.03f, "フェードイン",  0.0f, 0.5f)
     FBZZ_FIELD_RANGE(float, fadeOut, 0.15f, "フェードアウト", 0.0f, 0.5f)
+
+    // WHY 弾きを等速で流さないか: 受けの姿勢 (f4) まで等速だと、押してから «構えた» が
+    //     見えるまで 0.1 秒かかる。窓は押した瞬間から開いているので、絵が判定に遅れる。
+    //     構えまでは一気に、構えたら窓のあいだ留め、弾けたら鋭く返す。
+    FBZZ_GROUP("緩急")
+    FBZZ_FIELD_RANGE(float, parryGuardTime, 4.0f / 30.0f, "Guard Pose At [s]", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("Katana_Parry の受けの姿勢が始まるクリップ秒数 (f4)")
+    FBZZ_FIELD_RANGE(float, parrySnapSpeed, 2.4f, "Guard Snap", 0.5f, 5.0f)
+    FBZZ_TOOLTIP("押してから受けの姿勢までの再生速度。押した瞬間に «構えた» が見える速さ")
+    FBZZ_FIELD_RANGE(float, parryHoldSpeed, 0.55f, "Guard Hold", 0.05f, 2.0f)
+    FBZZ_TOOLTIP("受付時間のあいだの再生速度。受けの姿勢 (f4-9) を窓の終わりまで保つ")
+    FBZZ_FIELD_RANGE(float, parryRiposteSpeed, 1.8f, "Riposte Speed", 0.5f, 4.0f)
+    FBZZ_TOOLTIP("弾けた後の弾き返しの再生速度")
+    // WHY 居合を «溜めて一閃» にするか: 居合は抜くまでの静と抜いた瞬間の動の落差そのもの。
+    //     等速だと 0.58 秒かけてただ振り下ろす絵になる。斬り下ろしの時刻は変えない。
+    FBZZ_FIELD_RANGE(float, executeWindup, 0.55f, "Execute Windup", 0.1f, 1.0f)
+    FBZZ_FIELD_RANGE(float, executeWindupPower, 3.0f, "Execute Strike Curve", 0.5f, 6.0f)
+    FBZZ_FIELD_RANGE(float, executeFollowEnd, 0.4f, "Execute Zanshin Speed", 0.05f, 2.0f)
+    FBZZ_TOOLTIP("斬り下ろした後の残心の再生速度 [Execute Speed に対する比]。0.35 秒かけてここまで落とす")
 
     FBZZ_GROUP("タイミング")
     FBZZ_FIELD_RANGE(float, windowSeconds, 0.22f, "受付時間", 0.05f, 1.0f)
@@ -88,10 +114,15 @@ public:
     FBZZ_FIELD_RANGE(float, justParrySeconds, 0.08f, "Just Window", 0.0f, 0.3f)
     FBZZ_TOOLTIP("押してからこの秒数以内に受けた弾きは «Just»。崩しが多く溜まり、"
                  "スローと閃光が深くなる。0 で無効")
-    FBZZ_FIELD_RANGE(float, recoverySeconds, 0.55f, "Whiff Recovery", 0.05f, 2.0f)
-    FBZZ_TOOLTIP("外したときの硬直。連打を最適にしないための重さ")
+    FBZZ_FIELD_RANGE(float, recoverySeconds, 0.40f, "Whiff Recovery", 0.05f, 2.0f)
+    FBZZ_TOOLTIP("外したときの硬直。連打を最適にしないための重さ。回避で打ち切れる")
     FBZZ_FIELD_RANGE(float, successRecovery, 0.22f, "Hit Recovery", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("弾けたときの硬直。すぐ斬りに行けるよう短く")
+    FBZZ_TOOLTIP("弾けたときの硬直。攻撃ボタンで打ち切って斬り返せる")
+    // WHY 預かるか: 弾きは一番タイミングを狙って押すボタンなのに、硬直中・回避中の
+    //     押下を捨てていた。明ける直前に押して何も出ないのが、手触りを一番損ねる。
+    FBZZ_FIELD_RANGE(float, parryBufferSeconds, 0.12f, "Parry Buffer", 0.0f, 0.4f)
+    FBZZ_TOOLTIP("硬直中・回避中に押した弾きを預かる秒数。明けた瞬間に構える。"
+                 "長くすると «早押しの保険» になるので短く")
     FBZZ_FIELD_RANGE(float, executeLock, 1.05f, "Execute Lock", 0.2f, 3.0f)
     FBZZ_TOOLTIP("とどめの間、他の入力を受け付けない時間。斬り下ろしより少し長く")
     FBZZ_FIELD_RANGE(float, executeRange, 3.4f, "Execute Range", 0.5f, 10.0f)
@@ -140,6 +171,11 @@ public:
     [[nodiscard]] bool IsParryActive() const { return m_phase == Phase::Window; }
     /// 弾きかとどめの最中か。剣はこの間、攻撃を受け付けない。
     [[nodiscard]] bool IsBusy() const { return m_phase != Phase::Idle; }
+    /// 弾けた後の硬直中か。この間は攻撃ボタンで硬直を打ち切って斬り返せる。
+    [[nodiscard]] bool CanAttackCancel() const
+    { return m_phase == Phase::Recovery && m_succeeded; }
+    /// 構え・硬直を打ち切り、上半身のクリップも畳む。とどめは演出ごと預かっているので切らない。
+    void Cancel();
 
     // ── 出来事の回数 ────────────────────────────────────────────────────────
     // WHY «起きた» を伝える通知ではなく回数で返すか:
@@ -177,11 +213,17 @@ private:
     /// 今戦っているボスの本体。居なければ nullptr。
     [[nodiscard]] GameObject* Boss() const { return FindBossOnBoard(scene); }
     void SetPhase(Phase phase, float seconds);
+    /// 弾き・とどめのクリップの再生速度を位相ごとに決める (緩急)。
+    void DriveTempo(float dt);
 
     PlayerControllerComponent* m_controller = nullptr;
 
     Phase m_phase = Phase::Idle;
     float m_timer = 0.0f;
+    /// 預かっている弾き入力の残り [秒]。
+    float m_buffer = 0.0f;
+    /// 今の硬直が «弾けた» 後か (空振りの硬直と分ける)。
+    bool  m_succeeded = false;
     /// とどめの斬り下ろしを既に判定したか。1 回のとどめで 1 度だけ。
     bool      m_executeResolved = false;
     EntityRef m_executePart;
@@ -197,6 +239,8 @@ inline void PlayerParryComponent::OnStart()
 {
     m_phase = Phase::Idle;
     m_timer = 0.0f;
+    m_buffer    = 0.0f;
+    m_succeeded = false;
     m_executeResolved = false;
     m_executePart = {};
     m_executeRoot = {};
@@ -307,6 +351,7 @@ inline bool PlayerParryComponent::TryExecute()
 inline void PlayerParryComponent::BeginParry()
 {
     SetPhase(Phase::Window, std::max(windowSeconds, 0.05f));
+    m_succeeded = false;
 
     if (!parryClipFile.empty())
         animator.PlaySlot(layerName, parryClipFile, parryClipName, fadeIn, fadeOut,
@@ -391,6 +436,15 @@ inline void PlayerParryComponent::OnParried(int amount, const Vector3* from)
 
     // 弾けたら短い硬直で次へ。窓の残りは捨てる (1 回の構えで 2 発は受けない)。
     SetPhase(Phase::Recovery, successRecovery);
+    m_succeeded = true;
+}
+
+inline void PlayerParryComponent::Cancel()
+{
+    if (m_phase != Phase::Window && m_phase != Phase::Recovery) return;
+    SetPhase(Phase::Idle, 0.0f);
+    m_succeeded = false;
+    animator.StopSlot(layerName, fadeOut);
 }
 
 inline void PlayerParryComponent::ResolveExecute()
@@ -429,6 +483,43 @@ inline void PlayerParryComponent::ResolveExecute()
     se::Play(audio, se::BladeHitFinish(BladeSide::Left));
 }
 
+inline void PlayerParryComponent::DriveTempo(float dt)
+{
+    if (layerName.empty() || !animator.IsSlotPlaying(layerName)) return;
+
+    switch (m_phase) {
+    case Phase::Window:
+        animator.SetSlotSpeed(layerName, animator.GetSlotTime(layerName) < parryGuardTime
+                                             ? parrySnapSpeed : parryHoldSpeed);
+        break;
+
+    case Phase::Recovery:
+        animator.SetSlotSpeed(layerName, m_succeeded ? parryRiposteSpeed : parrySpeed);
+        break;
+
+    case Phase::Execute: {
+        const float lock    = std::max(executeLock, 0.2f);
+        const float speed   = std::max(executeSpeed, 0.1f);
+        const float hitAt   = std::max(executeHitTime, 0.01f) / speed;
+        const float elapsed = lock - m_timer;
+        if (elapsed < hitAt) {
+            // 斬り下ろしの時刻 (ResolveExecute) にクリップの斬り下ろしがちょうど来る。
+            const float target = executeHitTime
+                * tempo::WindupProgress(elapsed / hitAt, executeWindup, executeWindupPower);
+            animator.SetSlotSpeed(layerName, tempo::SpeedToReach(
+                target, animator.GetSlotTime(layerName), dt, speed));
+        } else {
+            animator.SetSlotSpeed(layerName, speed * tempo::FollowThrough(
+                elapsed - hitAt, 1.0f, executeFollowEnd, 0.35f));
+        }
+        break;
+    }
+
+    case Phase::Idle:
+        break;
+    }
+}
+
 inline void PlayerParryComponent::OnUpdate()
 {
     if (!enabled) return;
@@ -437,10 +528,21 @@ inline void PlayerParryComponent::OnUpdate()
     // 登攀のように数秒またぐ拘束は cutscene には乗らない (BladeComponent と同じ理由)。
     const bool held = cutscene::HoldsPlayer(Time::unscaledTime)
                    || (m_controller && m_controller->IsInputLocked());
-    if (!held && input.GetActionDown(actions::kParry) && !IsBusy()) {
+    const bool dodging = m_controller && m_controller->IsDodging();
+
+    // 回避は弾きより優先する。構えていても硬直中でも、転がった瞬間に畳む。
+    if (dodging) Cancel();
+
+    if (held) m_buffer = 0.0f;
+    else if (input.GetActionDown(actions::kParry))
+        m_buffer = std::max(parryBufferSeconds, 1.0e-4f);
+
+    if (m_buffer > 0.0f && !IsBusy() && !dodging) {
+        m_buffer = 0.0f;
         // 倒れている相手が届く所に居れば とどめ。居なければ弾き。
         if (!TryExecute()) BeginParry();
     }
+    m_buffer = std::max(0.0f, m_buffer - dt);
 
     if (m_phase == Phase::Idle) return;
 
@@ -482,6 +584,8 @@ inline void PlayerParryComponent::OnUpdate()
     case Phase::Idle:
         break;
     }
+
+    DriveTempo(dt);
 }
 
 } // namespace sandbox

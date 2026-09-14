@@ -212,7 +212,7 @@ inline void BladeChargeGlowComponent::OnUpdate()
     const float dt = Max(Time::deltaTime, 0.0f);
 
     // 抜刀で後から現れる。空のあいだだけ探しに行き、見つかったら止まる。
-    const HandSide hands[2] = { HandSide::Right, HandSide::Left };
+    const HandSide hands[] = { HandSide::Right };
     int found = 0;
     for (const HandSide hand : hands) {
         if (m_hands[HandIndex(hand)].slots.empty()) Collect(hand);

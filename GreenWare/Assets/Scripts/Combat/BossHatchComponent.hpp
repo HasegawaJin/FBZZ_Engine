@@ -160,12 +160,7 @@ inline void BossHatchComponent::OnUpdate()
 
 inline GameObject* BossHatchComponent::FindInSubtree(GameObject& root, const std::string& name)
 {
-    if (root.name == name) return &root;
-    const int count = root.GetChildCount();
-    for (int i = 0; i < count; ++i)
-        if (GameObject* child = root.GetChild(i))
-            if (GameObject* found = FindInSubtree(*child, name)) return found;
-    return nullptr;
+    return root.FindInSubtree(name);
 }
 
 inline void BossHatchComponent::ApplyHitbox()

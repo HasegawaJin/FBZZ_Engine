@@ -89,7 +89,7 @@ sphereRadius = 5.5
 sizeStart = 1.1
 sizeEnd = 3.9
 sizeCurvePower = 0.55
-lifetime = 1.25
+lifetime = 0.85
 lifetimeRandom = 0.35
 emitVelocity = [0.0, 2.0, 0.0]
 velocitySpread = 1.1
@@ -104,8 +104,8 @@ renderPriority = 30
 colorVariation = 0.09
 useColorGradient = true
 colorGradient = [[0.0, 0.7, 0.67, 0.61, 0.0], [0.08, 0.66, 0.63, 0.58, 0.55], [0.6, 0.6, 0.58, 0.54, 0.38], [1.0, 0.52, 0.5, 0.47, 0.0]]
-bursts = [{ time = 0.0, count = 22, cycles = 2, interval = 0.03, probability = 1.0 }]
-startDelay = 0.0
+bursts = [{ time = 0.0, count = 18, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.025
 
 # 帯の «脇» へ逃げる空気。左右で符号だけが違う ─ 同じ向きにすると «横へ滑った» になる。
 [[gameobjects]]
@@ -136,13 +136,13 @@ sphereRadius = 4.6
 sizeStart = 0.7
 sizeEnd = 3.1
 sizeCurvePower = 0.5
-lifetime = 0.95
+lifetime = 0.7
 lifetimeRandom = 0.35
 emitVelocity = [-5.5, 1.65, 0.0]
 velocitySpread = 0.8
 velocityDamping = 2.8
 gravity = [0.0, 0.0, 0.0]
-materialPath = "Assets/Materials/Particles/Smoke04_Premultiplied.mat"
+materialPath = "guid:5536328b5f3b553cb10094468418c70b"
 renderMode = 2
 sortMode = 1
 angularVelocityMin = -20.0
@@ -151,7 +151,7 @@ renderPriority = 26
 colorVariation = 0.07
 colorStart = [0.66, 0.63, 0.58, 0.55]
 colorEnd = [0.5, 0.48, 0.45, 0.0]
-bursts = [{ time = 0.0, count = 11, cycles = 1, interval = 0.03, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 7, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 [[gameobjects]]
@@ -182,13 +182,13 @@ sphereRadius = 4.6
 sizeStart = 0.7
 sizeEnd = 3.1
 sizeCurvePower = 0.5
-lifetime = 0.95
+lifetime = 0.7
 lifetimeRandom = 0.35
 emitVelocity = [5.5, 1.65, 0.0]
 velocitySpread = 0.8
 velocityDamping = 2.8
 gravity = [0.0, 0.0, 0.0]
-materialPath = "Assets/Materials/Particles/Smoke04_Premultiplied.mat"
+materialPath = "guid:5536328b5f3b553cb10094468418c70b"
 renderMode = 2
 sortMode = 1
 angularVelocityMin = -20.0
@@ -197,7 +197,7 @@ renderPriority = 26
 colorVariation = 0.07
 colorStart = [0.66, 0.63, 0.58, 0.55]
 colorEnd = [0.5, 0.48, 0.45, 0.0]
-bursts = [{ time = 0.0, count = 11, cycles = 1, interval = 0.03, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 7, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 # 砂粒。帯の全長へ撒く ─ 中心にだけ落とすと 11 m の胴が «1 点で» 落ちたことになる。
@@ -226,8 +226,8 @@ emitRate = 0.0
 maxParticles = 40
 shape = 1
 sphereRadius = 5.5
-sizeStart = 0.1
-sizeEnd = 0.035
+sizeStart = 0.16
+sizeEnd = 0.045
 sizeCurvePower = 1.4
 lifetime = 0.9
 lifetimeRandom = 0.5
@@ -235,7 +235,7 @@ emitVelocity = [0.0, 5.22, 0.0]
 velocitySpread = 1.8
 velocityDamping = 0.8
 gravity = [0.0, -9.8, 0.0]
-materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+materialPath = "guid:0035bd7a679f54fa90c30d3b9b5d2941"
 renderMode = 1
 stretchedVelocityScale = 0.08
 stretchedLengthScale = 1.5

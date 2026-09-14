@@ -411,12 +411,7 @@ inline GameObject* PlayerClimbComponent::Boss() const
 
 inline GameObject* PlayerClimbComponent::FindInSubtree(GameObject& root, const std::string& name)
 {
-    if (root.name == name) return &root;
-    const int count = root.GetChildCount();
-    for (int i = 0; i < count; ++i)
-        if (GameObject* child = root.GetChild(i))
-            if (GameObject* found = FindInSubtree(*child, name)) return found;
-    return nullptr;
+    return root.FindInSubtree(name);
 }
 
 inline void PlayerClimbComponent::RefreshFeet()
@@ -1005,8 +1000,6 @@ inline void PlayerClimbComponent::OnUpdate()
         // 刀を «実際に» 背へ移す。クリップを流すだけでは刀は手に握られたままで、
         // 両手で掴むはずの登攀で刀が壁を貫く。芝居・音・付け替えの時刻は
         // すべて WeaponRigComponent が持っているので、頼むだけにする。
-        if (auto* player = scene.GetScript<PlayerComponent>())
-            if (player->AreWeaponsDrawn()) player->RequestSheatheWeapons();
         m_step = 0; m_stepTime = 0.0f; m_rightHand = true;
         // OnStart がアニメーターより先に走ることがある。取り付く瞬間に積み直す
         // (既にあれば何もしない)。
@@ -1116,8 +1109,6 @@ inline void PlayerClimbComponent::OnUpdate()
             // 登攀のクリップはここで終わり。抜刀は WeaponRig が上半身へ流すので、
             // 全身レイヤーは手放して甲板の立ち姿 (ロコモーション) へ戻す。
             animator.StopSlot(layerName, 0.08f);
-            if (auto* player = scene.GetScript<PlayerComponent>())
-                if (!player->AreWeaponsDrawn()) player->RequestDrawWeapons();
         }
         break;
     }

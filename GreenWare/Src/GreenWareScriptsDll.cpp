@@ -128,8 +128,10 @@
 #include "Scripts/Vfx/SerpentRushVfxComponent.hpp"
 #include "Scripts/Vfx/SerpentSlamVfxComponent.hpp"
 #include "Scripts/Vfx/SerpentSnapVfxComponent.hpp"
+#include "Scripts/Vfx/SlashCutFxComponent.hpp"
 #include "Scripts/Vfx/SlashHitVfxComponent.hpp"
 #include "Scripts/Vfx/SlashScarComponent.hpp"
+#include "Scripts/Vfx/SpinSlashFxComponent.hpp"
 #include "Scripts/Vfx/ToppleVfxComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 

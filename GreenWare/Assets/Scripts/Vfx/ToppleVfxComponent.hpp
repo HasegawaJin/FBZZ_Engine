@@ -50,16 +50,16 @@ inline void ToppleVfxComponent::Apply()
 
     const float s = (std::max)(scale, 0.05f);
 
-    vfxbind::ParticleColor(root, "Dust Wall",   dustColor);
-    vfxbind::ParticleColor(root, "Dust Settle", dustColor);
+    vfxbind::ParticleColor(root, "Dust Wall", Vector4{ dustColor.x, dustColor.y, dustColor.z, dustColor.w * 0.65f });
+    vfxbind::ParticleColor(root, "Dust Settle", Vector4{ dustColor.x, dustColor.y, dustColor.z, dustColor.w * 0.4f });
     // 砂粒は «物» なので不透明のまま (RunDustVfxComponent と同じ理由)。
     vfxbind::ParticleColor(root, "Grit", Vector4{ dustColor.x, dustColor.y, dustColor.z, 1.0f });
 
     // 大きさに効く層だけ拡縮する。数 (bursts) は変えない ─ 枚数が増えると重なりで白く抜ける。
     vfxbind::ParticleSizeEnd(root, "Ground Ring", 14.0f * s);
-    vfxbind::ParticleSizeEnd(root, "Dust Wall",   5.5f * s);
-    vfxbind::ParticleSizeEnd(root, "Dust Column", 6.0f * s);
-    vfxbind::ParticleSizeEnd(root, "Dust Settle", 4.5f * s);
+    vfxbind::ParticleSizeEnd(root, "Dust Wall",   3.8f * s);
+    vfxbind::ParticleSizeEnd(root, "Dust Column", 3.2f * s);
+    vfxbind::ParticleSizeEnd(root, "Dust Settle", 3.6f * s);
     vfxbind::ParticleSphereRadius(root, "Dust Wall",   1.6f * s);
     vfxbind::ParticleSphereRadius(root, "Dust Settle", 3.5f * s);
     vfxbind::ParticleSphereRadius(root, "Grit",   1.4f * s);

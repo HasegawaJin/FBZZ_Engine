@@ -17,6 +17,7 @@
 #pragma once
 
 #include <Math/MathUtils.hpp>
+#include <Math/Segment.hpp>
 #include <Math/Vector3.hpp>
 #include <cmath>
 
@@ -30,16 +31,7 @@ using fbzz::math::Vector3;
                                              const Vector3& to,
                                              float& outAlong)
 {
-    const Vector3 segment  = to - from;
-    const float   lengthSq = segment.LengthSq();
-    if (lengthSq <= fbzz::math::EPSILON) {
-        outAlong = 0.0f;
-        return (point - from).Length();
-    }
-
-    const float t = fbzz::math::Clamp01(Vector3::Dot(point - from, segment) / lengthSq);
-    outAlong = t * std::sqrt(lengthSq);
-    return (point - (from + segment * t)).Length();
+    return fbzz::math::DistanceToSegment(point, from, to, outAlong);
 }
 
 /// ビームが体に触れているか。

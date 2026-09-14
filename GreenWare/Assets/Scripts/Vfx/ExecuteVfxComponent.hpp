@@ -48,13 +48,15 @@ inline void ExecuteVfxComponent::Apply()
     GameObject& root = *self;
 
     vfxbind::ParticleColor(root, "Cut Arc",   tint);
-    vfxbind::ParticleColor(root, "Cut Flash", tint);
+    vfxbind::ParticleColor(root, "Cut Flash", Vector4{ tint.x, tint.y, tint.z, 0.8f });
+    vfxbind::ParticleSizeStart(root, "Cut Flash", cutSize * 0.45f);
     vfxbind::ParticleSizeEnd(root,   "Cut Arc", cutSize);
     vfxbind::ParticleSizeStart(root, "Cut Arc", cutSize * 0.55f);
     // 縫い目の長さは弧に追従させる (sizeStart が基準寸法)。
     vfxbind::ParticleSizeStart(root, "Cut Seam", cutSize * 0.38f);
     vfxbind::ParticleSizeEnd(root,   "Cut Seam", cutSize * 0.44f);
-    vfxbind::ParticleVelocitySpread(root, "Molten Sparks", sparkPower);
+    vfxbind::ParticleEmitVelocity(root, "Molten Sparks", Vector3{ 0.0f, sparkPower * 0.15f, sparkPower * 0.65f });
+    vfxbind::ParticleVelocitySpread(root, "Molten Sparks", sparkPower * 0.4f);
 
     vfxbind::LightIntensity(root, "Cut Light", cutLight);
 }

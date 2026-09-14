@@ -114,9 +114,9 @@ public:
     //   持ち主を外から指せるようにしておけば、この 1 つの実装で両方が賄える。
     FBZZ_GROUP("Blade Trail — 持ち主")
     FBZZ_FIELD(std::string, trailOwnerA, "", "Owner A")
-    FBZZ_TOOLTIP("枠 A の刃を持つ GameObject 名。空なら WPN_Sword_R")
+    FBZZ_TOOLTIP("枠 A の刃を持つ GameObject 名。空なら Sword")
     FBZZ_FIELD(std::string, trailOwnerB, "", "Owner B")
-    FBZZ_TOOLTIP("枠 B の刃を持つ GameObject 名。空なら WPN_Sword_L")
+    FBZZ_TOOLTIP("汎用 VFX 用の第2枠。空なら未使用")
     FBZZ_FIELD(std::string, trailSocketBase, "SOCKET_Trail_Base", "Base Socket")
     FBZZ_TOOLTIP("持ち主の下から探す «鍔寄り» のソケット名")
     FBZZ_FIELD(std::string, trailSocketTip, "SOCKET_Trail_Tip", "Tip Socket")
@@ -130,9 +130,9 @@ public:
     // WHY 点ごとの寿命ではなく «一振りごと» の寿命か: 点ごとに消すと帯は刀に付いて
     //   回る尾になり、斬った形が空間に残らない (ファイルヘッダー)。一振りぶんは
     //   記録が止まるまで 1 点も捨てず、止まってから Hold → Fade で尾の側から消す。
-    FBZZ_FIELD_RANGE(float, trailHold, 0.05f, "保持", 0.0f, 0.5f)
+    FBZZ_FIELD_RANGE(float, trailHold, 0.06f, "保持", 0.0f, 0.5f)
     FBZZ_TOOLTIP("記録が止まってから消え始めるまで [秒]。振り抜いた形をそのまま見せる時間")
-    FBZZ_FIELD_RANGE(float, trailLifetime, 0.22f, "フェード", 0.05f, 1.5f)
+    FBZZ_FIELD_RANGE(float, trailLifetime, 0.26f, "フェード", 0.05f, 1.5f)
     FBZZ_TOOLTIP("消え始めてから消え切るまで [秒]。尾 (振り始め) の側から刃の側へ千切れていく")
     FBZZ_FIELD_RANGE(float, trailEraseSpread, 1.0f, "Erase Spread", 0.2f, 2.0f)
     FBZZ_TOOLTIP("消し込みの進み幅。1 で尾から刃まで順に消える。小さくすると尾だけ"
@@ -157,7 +157,7 @@ public:
     FBZZ_FIELD_RANGE(float, trailStartDelay, 0.30f, "Start Delay", 0.0f, 0.9f)
     FBZZ_TOOLTIP("発生に対する比。ここまでは記録しない (振りかぶり)。"
                  "上げるほど «斬り抜けだけ» の短い帯になる。0 で振り出しから全部記録")
-    FBZZ_FIELD_RANGE(float, trailFollowThrough, 0.10f, "Follow Through", 0.0f, 0.4f)
+    FBZZ_FIELD_RANGE(float, trailFollowThrough, 0.12f, "Follow Through", 0.0f, 0.4f)
     FBZZ_TOOLTIP("判定が出た後も記録を続ける長さ [秒]。0 にすると «振り抜き» が"
                  "絵に出ず、当たった瞬間で軌跡が止まる")
     // WHY 速さでも切るか:
@@ -172,7 +172,7 @@ public:
     FBZZ_TOOLTIP("遅くなってもこの間は繋ぐ [秒]。0 にすると、切り返しで一瞬速さが"
                  "落ちるたびに帯が切れて «点線» になる")
 
-    FBZZ_FIELD_RANGE(float, trailWidthScale, 1.12f, "幅", 0.2f, 3.0f)
+    FBZZ_FIELD_RANGE(float, trailWidthScale, 1.3f, "幅", 0.2f, 3.0f)
     FBZZ_TOOLTIP("刀身の長さに対する帯の幅。1 を少し超えさせると切っ先の «先» まで"
                  "光が伸びて、刃が空気を裂いた跡として読める")
     // ── 掃過方向の «太さの型» ───────────────────────────────────────────────
@@ -191,10 +191,10 @@ public:
     FBZZ_FIELD_RANGE(float, trailHeadTaper, 0.70f, "Head Width", 0.05f, 1.6f)
     FBZZ_TOOLTIP("刃に接している端の幅 [刀身比]。1 で刀身と同じ長さ。"
                  "頂点より細くすると «刃を離れてから膨らむ» 形になる")
-    FBZZ_FIELD_RANGE(float, trailMidWidth, 1.15f, "Mid Width", 0.1f, 2.0f)
+    FBZZ_FIELD_RANGE(float, trailMidWidth, 1.25f, "Mid Width", 0.1f, 2.0f)
     FBZZ_TOOLTIP("いちばん太いところの幅 [刀身比]。1 を超えると鍔より内側へはみ出す "
                  "(切っ先の縁は動かないので、膨らむのは内側だけ)")
-    FBZZ_FIELD_RANGE(float, trailTailTaper, 0.22f, "Tail Width", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, trailTailTaper, 0.15f, "Tail Width", 0.0f, 1.0f)
     FBZZ_TOOLTIP("寿命の端の幅 [刀身比]。0 で尾が 1 点に尖る")
     FBZZ_FIELD_RANGE(float, trailBulgeAt, 0.32f, "Bulge At", 0.05f, 0.95f)
     FBZZ_TOOLTIP("いちばん太いところが経過のどこに来るか [0,1]。"
@@ -221,8 +221,8 @@ public:
     FBZZ_FIELD_RANGE(float, trailSpeedRef, 9.0f, "Full Speed", 1.0f, 30.0f)
     FBZZ_TOOLTIP("型どおりの太さになる切っ先の速さ [m/s]。刀身 0.7m の薙ぎは "
                  "8〜10 m/s 出るので、9 前後だと «振り抜きだけが満幅» になる")
-    FBZZ_FIELD_RANGE(float, trailHaloScale, 1.9f, "Halo Width", 1.0f, 4.0f)
-    FBZZ_FIELD_RANGE(float, trailHaloGain, 0.20f, "Halo Gain", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, trailHaloScale, 1.6f, "Halo Width", 1.0f, 4.0f)
+    FBZZ_FIELD_RANGE(float, trailHaloGain, 0.12f, "Halo Gain", 0.0f, 1.0f)
     FBZZ_TOOLTIP("外側の暈の重み。0 で出さない。帯の中では作れない «広がり» は"
                  "ここでしか出せないが、上げすぎると背景を洗って «乳白色の板» になる")
 
@@ -235,7 +235,11 @@ public:
     //   面から浮かせた殻を前後へ置くと、カメラが動くたびに殻どうしが視差でずれ、
     //   «中身のある塊» として読めるようになる。
     FBZZ_GROUP("Blade Trail — 厚み")
-    FBZZ_FIELD_RANGE_INT(int, trailShells, 3, "Shells", 1, 5)
+    // WHY 既定を 1 枚にしたか (2026-09-12): 殻 3 枚 + 暈で 4 層を積むと、事前乗算の
+    //     «隠す量» が層の数だけ重なり、帯が乳白色の板に寄った。刃の鋭さは «暗い地に
+    //     細い筋» の差でしか作れないので、1 枚の面に筋 (railBoost) を立てる方が鋭い。
+    //     厚みが欲しい大きな一撃 (溜め斬り) は幅と寿命の格 (Heat Width / Lifetime) で出す。
+    FBZZ_FIELD_RANGE_INT(int, trailShells, 1, "Shells", 1, 5)
     FBZZ_TOOLTIP("重ねる殻の枚数。1 で «1 枚の板» (旧来の見え方)。"
                  "殻は芯を挟んで対称なので、偶数を入れても奇数として扱う")
     FBZZ_FIELD_RANGE(float, trailThickness, 0.075f, "Thickness", 0.0f, 0.5f)
@@ -267,7 +271,7 @@ public:
     //   要る (素材が 2 枚に割れているのと同じ負債)。1 枚に対する
     //   倍率なら、質は 1 か所のまま «締めと溜めがどれだけ大きいか» だけを触れる。
     FBZZ_GROUP("Blade Trail — 格 (締め / 溜め斬り)")
-    FBZZ_FIELD_RANGE(float, trailHeatWidth, 1.30f, "Heat Width", 1.0f, 3.0f)
+    FBZZ_FIELD_RANGE(float, trailHeatWidth, 1.45f, "Heat Width", 1.0f, 3.0f)
     FBZZ_TOOLTIP("heat = 1 のときの帯の幅の倍率")
     FBZZ_FIELD_RANGE(float, trailHeatLifetime, 1.35f, "Heat Lifetime", 1.0f, 3.0f)
     FBZZ_TOOLTIP("heat = 1 のときの寿命の倍率。全周を薙ぐ一撃は «輪が閉じるまで» "
@@ -292,10 +296,10 @@ public:
     FBZZ_FIELD_COLOR(trailLightColor, (Vector4{ 1.00f, 0.72f, 0.34f, 1.0f }), "Light Color")
     FBZZ_TOOLTIP("刃が通る点が放つ光。材質の主色 (edgeColor) と揃えること ─ "
                  "帯と光の色が違うと «2 つの別々のもの» に見える")
-    FBZZ_FIELD_RANGE(float, trailLightIntensity, 7.0f, "Light", 0.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, trailLightIntensity, 5.0f, "Light", 0.0f, 40.0f)
     FBZZ_TOOLTIP("0 で光源を出さない。強い色光を長く置くと盤面の赤青が塗り潰される "
                  "(企画書 12.2) ので、短く差してすぐ引くこと")
-    FBZZ_FIELD_RANGE(float, trailLightRange, 3.2f, "ライトの範囲", 0.5f, 20.0f)
+    FBZZ_FIELD_RANGE(float, trailLightRange, 4.0f, "ライトの範囲", 0.5f, 20.0f)
     FBZZ_TOOLTIP("光が届く距離 [m]")
     FBZZ_FIELD_RANGE(float, trailLightSeconds, 0.13f, "Light Time", 0.0f, 0.6f)
     FBZZ_TOOLTIP("記録が止まってから光が消えるまで [秒]。振り抜いた余韻ぶんだけ残す")
@@ -321,9 +325,9 @@ public:
     /// 持たせると、モーションを差し替えるたびに «刃はもう止まっているのに帯だけ
     /// 伸び続ける» が生まれる。heat は一振りの «格» [0,1] (締め / 溜め斬りで上がる)。
     void Play(TrailSlot slot, bool both, float swingSeconds, float heat);
-    /// HandSide で呼ぶ側 (双剣) 向けの薄い入口。
-    void Play(HandSide hand, bool both, float swingSeconds, float heat)
-    { Play(TrailSlotOf(hand), both, swingSeconds, heat); }
+    /// Playerの剣は枠Aだけを使う。
+    void Play(HandSide hand, bool, float swingSeconds, float heat)
+    { Play(TrailSlotOf(hand), false, swingSeconds, heat); }
 
     /// ソケットを持たない持ち主が «刃の 2 点» を毎フレーム押し込む。
     /// 押されたフレームはソケット探索より優先される。
@@ -347,7 +351,16 @@ public:
     ///     (判定は発生ぶん遅れて出る)。Play へ後から渡せる形にすると、呼ぶ側が
     ///     «どの一振りの結果か» を持ち回ることになる。今出ている帯へ乗せるだけでよい。
     void Hit(TrailSlot slot, bool both);
-    void Hit(HandSide hand, bool both) { Hit(TrailSlotOf(hand), both); }
+    void Hit(HandSide hand, bool) { Hit(TrailSlotOf(hand), false); }
+
+    /// 振りが打ち切られた (回避・弾き)。記録だけ止め、残っている跡はその場で消し込みへ回す。
+    ///
+    /// WHY 要るか: 記録の窓は «発生 + 振り抜き» で予約してある。打ち切られた後も窓が
+    ///     開いたままだと、転がりや弾きで振られた刀の動きまで帯として張られる。
+    void Cut()
+    {
+        for (Ribbon& ribbon : m_ribbons) ribbon.emitRemaining = 0.0f;
+    }
 
     void OnStart()      override;
     void OnLateUpdate() override;
@@ -438,7 +451,7 @@ private:
     {
         const std::string& owner = slot == TrailSlot::A ? trailOwnerA : trailOwnerB;
         if (!owner.empty()) return owner;
-        return SwordObjectName(slot == TrailSlot::A ? HandSide::Right : HandSide::Left);
+        return slot == TrailSlot::A ? kSwordObject : "";
     }
 
     /// その一振りが消え切るまでの長さ [秒]。«格» で伸びる。

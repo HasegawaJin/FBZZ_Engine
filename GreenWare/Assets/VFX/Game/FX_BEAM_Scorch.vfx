@@ -182,9 +182,9 @@ shape = 2
 coneAngleDegrees = 26.0
 coneRadius = 0.04
 sizeStart = 0.1
-sizeEnd = 0.7
+sizeEnd = 0.5
 sizeCurvePower = 0.7
-lifetime = 1.4
+lifetime = 0.95
 lifetimeRandom = 0.45
 emitVelocity = [0.0, 0.0, 0.5]
 velocitySpread = 0.16
@@ -199,7 +199,7 @@ renderPriority = 40
 colorVariation = 0.08
 colorStart = [0.17, 0.16, 0.16, 0.45]
 colorEnd = [0.1, 0.1, 0.1, 0.0]
-startDelay = 0.05
+startDelay = 0.08
 
 [[gameobjects]]
 name = "Sear Arc"
@@ -226,7 +226,7 @@ emitRate = 0.0
 maxParticles = 6
 shape = 1
 sphereRadius = 0.12
-sizeStart = 0.55
+sizeStart = 0.35
 sizeEnd = 0.1
 sizeCurvePower = 1.8
 lifetime = 0.13
@@ -241,5 +241,5 @@ angularVelocityMax = 22.0
 renderPriority = 58
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [0.0, 0.0, 0.0, 0.0]
-bursts = [{ time = 0.0, count = 4, cycles = 1, interval = 0.02, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0

@@ -7,19 +7,12 @@
 ///   頭上の体力バー・ロックオン枠・接触判定の 3 者が「この敵はどこからどこまでか」を
 ///   知る必要がある。各自がコライダーを読むと、スケールの掛け方が 1 箇所ずれただけで
 ///   「バーだけ頭にめり込む」「枠だけ小さい」という、絵を見ても原因が分からない差になる。
-///
-/// WHY スケールを自分で掛けるか:
-///   Inspector の radius / size は「スケールを掛ける前の寸法」で、実際の当たり判定は
-///   ColliderSync が worldScale を掛けたもの。ここは ColliderSync と同じ規則
-///   (球は最大軸 / カプセルは半径 = max(x,z)・半長 = y) を写している。
-///   規則を変えるときは両方を同時に直すこと。
 #pragma once
 
-#include <Engine/Scene/Components/ColliderComponent.hpp>
-#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptColliderProxy.hpp>
+#include <Engine/Scene/GameObject.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
-#include <cmath>
 
 namespace sandbox::bodybounds {
 
@@ -35,32 +28,14 @@ struct Extents {
 /// 体の寸法を測る。プリミティブコライダーが無ければ measured = false。
 [[nodiscard]] inline Extents Of(fbzz::scene::GameObject& object)
 {
-    using namespace fbzz::scene;
-    const fbzz::math::Vector3& s = object.transform.worldScale;
-    const float sx = std::abs(s.x), sy = std::abs(s.y), sz = std::abs(s.z);
-
     Extents out{};
-    float centerY = 0.0f;
-    float halfY   = 0.0f;
-
-    if (const auto* sphere = object.GetComponent<SphereColliderComponent>()) {
-        out.radius = sphere->radius * std::max({ sx, sy, sz });
-        halfY      = out.radius;
-        centerY    = sphere->center.y * sy;
-    } else if (const auto* capsule = object.GetComponent<CapsuleColliderComponent>()) {
-        out.radius = capsule->radius * std::max(sx, sz);
-        halfY      = capsule->halfHeight * sy + out.radius;
-        centerY    = capsule->center.y * sy;
-    } else if (const auto* box = object.GetComponent<BoxColliderComponent>()) {
-        out.radius = std::max(box->size.x * sx, box->size.z * sz) * 0.5f;
-        halfY      = box->size.y * 0.5f * sy;
-        centerY    = box->center.y * sy;
-    } else {
+    fbzz::math::Vector3 minimum, maximum;
+    if (!fbzz::scene::ScriptColliderProxy::TryGetPrimitiveWorldBounds(&object, minimum, maximum))
         return out;
-    }
-
-    out.top      = centerY + halfY;
-    out.bottom   = centerY - halfY;
+    out.top      = maximum.y - object.transform.worldPosition.y;
+    out.bottom   = minimum.y - object.transform.worldPosition.y;
+    // ビームの太さへ足す近似半径。厳密な衝突判定は物理クエリの責務。
+    out.radius   = std::max(maximum.x - minimum.x, maximum.z - minimum.z) * 0.5f;
     out.measured = true;
     return out;
 }
@@ -82,10 +57,11 @@ struct Extents {
 [[nodiscard]] inline fbzz::math::Vector3 CenterWorld(fbzz::scene::GameObject& object,
                                                      float fallbackHeight)
 {
-    const Extents extents = Of(object);
+    fbzz::math::Vector3 minimum, maximum;
+    if (fbzz::scene::ScriptColliderProxy::TryGetPrimitiveWorldBounds(&object, minimum, maximum))
+        return (minimum + maximum) * 0.5f;
     fbzz::math::Vector3 center = object.transform.worldPosition;
-    center.y += extents.measured ? (extents.top + extents.bottom) * 0.5f
-                                 : fallbackHeight * 0.5f;
+    center.y += fallbackHeight * 0.5f;
     return center;
 }
 

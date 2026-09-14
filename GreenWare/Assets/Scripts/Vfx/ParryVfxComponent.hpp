@@ -49,13 +49,15 @@ inline void ParryVfxComponent::Apply()
     if (self == nullptr) return;
     GameObject& root = *self;
 
-    vfxbind::ParticleColor(root, "Flash",     tint);
+    vfxbind::ParticleColor(root, "Flash", Vector4{ tint.x, tint.y, tint.z, 0.8f });
     vfxbind::ParticleColor(root, "Cross",     tint);
-    vfxbind::ParticleColor(root, "Ring",      tint);
+    vfxbind::ParticleColor(root, "Ring", Vector4{ tint.x, tint.y, tint.z, 0.55f });
     vfxbind::ParticleColor(root, "Glint Dots", tint);
 
-    vfxbind::ParticleVelocitySpread(root, "Shards", sparkPower);
+    vfxbind::ParticleEmitVelocity(root, "Shards", Vector3{ 0.0f, sparkPower * 0.12f, sparkPower * 0.6f });
+    vfxbind::ParticleVelocitySpread(root, "Shards", sparkPower * 0.45f);
     vfxbind::ParticleSizeEnd(root, "Ring", ringSize);
+    vfxbind::ParticleSizeEnd(root, "Ring Late", ringSize * 1.25f);
 
     const Vector3 lightColor{ tint.x, tint.y, tint.z };
     vfxbind::Light(root, "Flash Light", &lightColor, &flashLight);

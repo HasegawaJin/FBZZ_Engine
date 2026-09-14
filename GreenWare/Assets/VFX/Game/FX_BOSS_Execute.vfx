@@ -115,10 +115,10 @@ emitRate = 0.0
 duration = 0.12
 maxParticles = 4
 shape = 0
-sizeStart = 3.0
+sizeStart = 1.4
 sizeEnd = 0.3
 sizeCurvePower = 2.4
-lifetime = 0.09
+lifetime = 0.06
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
@@ -126,7 +126,7 @@ sortMode = 0
 renderPriority = 86
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [1.0, 1.0, 1.0, 0.0]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.01, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 
 [[gameobjects]]
 name = "Cut Seam"
@@ -157,7 +157,7 @@ shape = 0
 sizeStart = 1.0
 sizeEnd = 1.15
 sizeAxisScale = [2.6, 0.32, 1.0]
-lifetime = 0.9
+lifetime = 0.48
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_CutLine_Additive.mat"
@@ -171,8 +171,10 @@ blackbodyReferenceTemperature = 1800.0
 blackbodyIntensity = 1.3
 colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.35, 1.0, 1.0, 1.0, 0.9], [1.0, 1.0, 1.0, 1.0, 0.0]]
 temperatureCurve = { interp = 0, keys = [[0.0, 2600.0], [0.2, 1900.0], [0.6, 1300.0], [1.0, 950.0]] }
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.0, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 
+
+startDelay = 0.02
 [[gameobjects]]
 name = "Molten Sparks"
 instanceId = "7d688ab8-4ad0-4a63-9d00-6829b1a8fee8"
@@ -199,9 +201,9 @@ duration = 0.4
 maxParticles = 140
 shape = 1
 sphereRadius = 0.35
-sizeStart = 0.24
+sizeStart = 0.12
 sizeEnd = 0.03
-lifetime = 0.7
+lifetime = 0.48
 lifetimeRandom = 0.5
 velocitySpread = 18.0
 velocityDamping = 1.6
@@ -225,8 +227,10 @@ trailAlphaScale = 0.25
 colorVariation = 0.12
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 0.96, 0.85, 1.0], [0.3, 1.0, 0.7, 0.28, 1.0], [1.0, 0.65, 0.16, 0.02, 0.0]]
-bursts = [{ time = 0.0, count = 60, cycles = 2, interval = 0.02, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 36, cycles = 1, interval = 0.02, probability = 1.0 }]
 
+
+startDelay = 0.035
 [[gameobjects]]
 name = "Embers"
 instanceId = "2ffd0589-6390-46df-8e07-095b8eb76e4e"
@@ -256,7 +260,7 @@ sphereRadius = 0.5
 sizeStart = 0.09
 sizeEnd = 0.02
 sizeCurvePower = 0.8
-lifetime = 1.3
+lifetime = 0.85
 lifetimeRandom = 0.5
 emitVelocity = [0.0, 1.2, 0.0]
 velocitySpread = 2.4
@@ -273,8 +277,10 @@ blackbodyReferenceTemperature = 1800.0
 blackbodyIntensity = 1.1
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 1.0, 1.0, 0.0], [0.08, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]]
-bursts = [{ time = 0.0, count = 20, cycles = 2, interval = 0.03, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 16, cycles = 1, interval = 0.02, probability = 1.0 }]
 
+
+startDelay = 0.1
 [[gameobjects]]
 name = "Metal Shards"
 instanceId = "9ecdf21f-eaf5-45c4-9451-8959efe9f3cf"
@@ -322,8 +328,10 @@ simulationMode = 0
 colorVariation = 0.08
 colorStart = [0.72, 0.74, 0.77, 1.0]
 colorEnd = [0.5, 0.52, 0.55, 0.0]
-bursts = [{ time = 0.0, count = 14, cycles = 1, interval = 0.0, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 10, cycles = 1, interval = 0.02, probability = 1.0 }]
 
+
+startDelay = 0.05
 [[gameobjects]]
 name = "Smoke Wisps"
 instanceId = "5b6931a3-ac3a-469b-8764-364686a99685"
@@ -350,9 +358,9 @@ maxParticles = 8
 shape = 1
 sphereRadius = 0.35
 sizeStart = 0.5
-sizeEnd = 1.8
+sizeEnd = 1.15
 sizeCurvePower = 0.6
-lifetime = 1.3
+lifetime = 0.8
 lifetimeRandom = 0.3
 emitVelocity = [0.0, 1.6, 0.0]
 velocitySpread = 0.5
@@ -366,8 +374,8 @@ renderPriority = 14
 colorVariation = 0.1
 useColorGradient = true
 colorGradient = [[0.0, 0.5, 0.5, 0.52, 0.0], [0.15, 0.48, 0.48, 0.5, 0.5], [1.0, 0.4, 0.4, 0.42, 0.0]]
-bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.04, probability = 1.0 }]
-startDelay = 0.08
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.14
 
 [[gameobjects]]
 name = "Heat Haze"
@@ -394,9 +402,9 @@ duration = 0.4
 maxParticles = 4
 shape = 0
 sizeStart = 1.0
-sizeEnd = 4.0
+sizeEnd = 2.2
 sizeCurvePower = 0.35
-lifetime = 0.5
+lifetime = 0.22
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_HeatHaze_Distort.mat"
@@ -406,8 +414,10 @@ angularVelocityMax = 2.0
 renderPriority = 100
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.4, 1.0, 1.0, 1.0, 0.5], [1.0, 1.0, 1.0, 1.0, 0.0]]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 
+
+startDelay = 0.04
 [[gameobjects]]
 name = "Cut Light"
 instanceId = "ae666a12-2ea2-4836-a604-012ba7dc1ccd"

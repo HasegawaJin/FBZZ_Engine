@@ -141,6 +141,13 @@ public:
 
     /// 毎フレーム呼ぶ。端点はワールド座標。
     void Show(const Vector3& from, const Vector3& to, const BeamTrailStyle& style);
+    /// 折れ線をそのまま張る。点はワールド座標で、揺らぎ (wobble) は掛けない。
+    ///
+    /// WHY 形をこちらで作らないか: Show が振らせるのは «直線であるべき線» で、振れは
+    ///     両端を固定した «誤差» として乗る。弧や輪は形そのものが意味を持つので、
+    ///     組んだ側が正本を持たなければ «どこを通ったか» が絵と食い違う。
+    void ShowPath(const std::vector<Vector3>& points, const BeamTrailStyle& style,
+                  bool loop = false);
     /// 描画を止める。点列は残すので、再開しても形は連続する。
     void Hide();
 
@@ -153,6 +160,8 @@ public:
 private:
     /// 直線を折れ線へ開き、両端を残したまま途中を振らせる。
     void BuildPath(const Vector3& from, const Vector3& to, const BeamTrailStyle& style);
+    /// m_points を LineRenderer へ流す。length は模様の密度を出すための線長 [m]。
+    void Apply(const BeamTrailStyle& style, float length, bool loop);
     /// 断面と流れを .mat のシェーダーへ送る。
     void PushMaterial(const BeamTrailStyle& style, float length) const;
 
@@ -331,18 +340,14 @@ inline void BeamTrailRendererComponent::PushMaterial(const BeamTrailStyle& style
                       style.shape == LineShape::Tube ? Max(style.tubeRadius, 0.0f) : 0.0f);
 }
 
-inline void BeamTrailRendererComponent::Show(const Vector3& from, const Vector3& to,
-                                             const BeamTrailStyle& style)
+inline void BeamTrailRendererComponent::Apply(const BeamTrailStyle& style, float length,
+                                              bool loop)
 {
-    if (!m_ready) return;
-
     GameObject* self = scene.Self();
     if (!self) return;
 
     auto* line = self->GetComponent<LineRendererComponent>();
     if (!line) line = &self->AddComponent<LineRendererComponent>();
-
-    BuildPath(from, to, style);
 
     // 拾い直した個体にも毎回入れ直す。Inspector で触った直後に Play し直しても
     // 反映されないと、調整のたびにビームを消して回ることになる。
@@ -353,7 +358,7 @@ inline void BeamTrailRendererComponent::Show(const Vector3& from, const Vector3&
     line->billboard    = style.shape == LineShape::Ribbon;
     line->shape        = style.shape;
     line->radialSegments = style.radialSegments;
-    line->loop         = false;
+    line->loop         = loop;
     line->orderInLayer = style.orderInLayer;
     line->points       = m_points;
     line->startWidth   = style.width;
@@ -365,11 +370,37 @@ inline void BeamTrailRendererComponent::Show(const Vector3& from, const Vector3&
     line->enabled      = true;
     m_visible = true;
 
-    PushMaterial(style, (to - from).Length());
+    PushMaterial(style, length);
 
     if (drawDebugPath)
         for (std::size_t i = 1; i < m_points.size(); ++i)
             debug.DrawLine(m_points[i - 1], m_points[i], style.color);
+}
+
+inline void BeamTrailRendererComponent::Show(const Vector3& from, const Vector3& to,
+                                             const BeamTrailStyle& style)
+{
+    if (!m_ready) return;
+
+    BuildPath(from, to, style);
+    Apply(style, (to - from).Length(), /*loop=*/false);
+}
+
+inline void BeamTrailRendererComponent::ShowPath(const std::vector<Vector3>& points,
+                                                 const BeamTrailStyle& style, bool loop)
+{
+    if (!m_ready || points.size() < 2u) return;
+
+    m_points = points;
+
+    // 模様の密度は «実際に張った長さ» から出す。直線の弦で測ると、弧や輪ほど
+    // 実長より短く出て、曲がった線だけ模様が間延びする。
+    float length = 0.0f;
+    for (std::size_t i = 1; i < m_points.size(); ++i)
+        length += (m_points[i] - m_points[i - 1]).Length();
+    if (loop) length += (m_points.front() - m_points.back()).Length();
+
+    Apply(style, length, loop);
 }
 
 inline void BeamTrailRendererComponent::Hide()

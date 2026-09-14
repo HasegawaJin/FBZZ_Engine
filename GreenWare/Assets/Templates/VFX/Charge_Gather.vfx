@@ -1,0 +1,482 @@
+[prefab]
+format_version = 1
+root_count = 1
+
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = '34b76524-9d3f-46db-bfb6-8ad89fd30644'
+layer = 0
+name = 'Charge_Gather'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.VFXComponent]
+    autoDestroy = true
+    duration = 1.3
+    enabled = true
+    loop = false
+    playOnAwake = true
+    speed = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.2, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'dc81eaa3-161d-4e52-b642-4840af10c063'
+layer = 0
+name = 'Motes'
+parent = 'Charge_Gather'
+parentInstanceId = '34b76524-9d3f-46db-bfb6-8ad89fd30644'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    bursts = []
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 1.0, 0.1, 0.0, 0.0 ]
+    colorStart = [ 1.0, 0.7, 0.2, 1.0 ]
+    colorVariation = 0.1
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = false
+    deathSubEmitter = ''
+    duration = 1.1
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 40.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 2
+    inheritVelocity = 0.0
+    lifetime = 0.75
+    lifetimeRandom = 0.25
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    lodEnabled = false
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = false
+    materialPath = 'guid:01eed8bdd38696cb515ed44b2b48f51c|Assets/Materials/Effects/FX_GlowSoft_Additive.mat'
+    maxParticles = 220
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = false
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 56
+    screenCoverageThreshold = 0.0
+    shape = 1
+    simulationMode = 0
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.02
+    sizeStart = 0.09
+    sortMode = 0
+    speedRange = 10.0
+    sphereRadius = 1.7
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = true
+    useDragCurve = false
+    useEmitRateCurve = true
+    useRotationCurve = false
+    useSizeCurve = false
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.35
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [ [ 0.0, 0.25, 0.5, 1.0, 0.0 ], [ 0.25, 0.55, 0.8, 1.0, 1.0 ], [ 1.0, 0.95, 0.98, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.25 ], [ 0.55, 1.0 ], [ 1.0, 3.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 1.1
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '01f72775-6844-43a2-8f96-5690796b0ae8'
+layer = 0
+name = 'Pull'
+parent = 'Charge_Gather'
+parentInstanceId = '34b76524-9d3f-46db-bfb6-8ad89fd30644'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [[gameobjects.ForceField.forces]]
+    channels = 2
+    direction = [ 0.0, 1.0, 0.0 ]
+    enabled = true
+    falloffPower = 0.8
+    fieldType = 1
+    noiseFrequency = 0.5
+    noiseSpeed = 1.0
+    radius = 2.4
+    space = 0
+    strength = 11.0
+    vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+    vectorFieldPath = ''
+    vectorFieldTightness = 0.0
+
+    [[gameobjects.ForceField.forces]]
+    channels = 2
+    direction = [ 0.0, 1.0, 0.0 ]
+    enabled = true
+    falloffPower = 1.4
+    fieldType = 3
+    noiseFrequency = 0.5
+    noiseSpeed = 1.0
+    radius = 2.4
+    space = 0
+    strength = 3.2
+    vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+    vectorFieldPath = ''
+    vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '557f9d3b-b1d7-41ed-8977-05e44b659cd7'
+layer = 0
+name = 'Core'
+parent = 'Charge_Gather'
+parentInstanceId = '34b76524-9d3f-46db-bfb6-8ad89fd30644'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 1.0, 1.0, 1.0, 0.0 ]
+    colorStart = [ 0.7, 0.86, 1.0, 1.0 ]
+    colorVariation = 0.0
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = false
+    deathSubEmitter = ''
+    duration = 0.2
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 0.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 4294967295
+    inheritVelocity = 0.0
+    lifetime = 1.15
+    lifetimeRandom = 0.0
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    localForces = []
+    lodEnabled = false
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = false
+    materialPath = 'guid:fa25f7836ccab31765f7da9e0ef7550d|Assets/Materials/Effects/FX_GlowCore_Additive.mat'
+    maxParticles = 2
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = false
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = false
+    renderMode = 0
+    renderPriority = 66
+    screenCoverageThreshold = 0.0
+    shape = 0
+    simulationMode = 0
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.9
+    sizeStart = 0.12
+    sortMode = 0
+    speedRange = 10.0
+    sphereRadius = 1.0
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = false
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = true
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.0
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.0 ], [ 0.7, 0.55 ], [ 0.92, 1.0 ], [ 1.0, 0.35 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.bursts]]
+        count = 1
+        cycles = 1
+        interval = 0.02
+        probability = 1.0
+        time = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'f141cf55-6eb7-48ee-8822-8ce8d6bf7a93'
+layer = 0
+name = 'Gather Light'
+parent = 'Charge_Gather'
+parentInstanceId = '34b76524-9d3f-46db-bfb6-8ad89fd30644'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = false
+    color = [ 0.6, 0.8, 1.0 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 9.0
+    outerCone = 30.0
+    range = 5.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 1
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.VFXElement]
+    duration = 1.25
+    enabled = true
+    loop = false
+    startDelay = 0.0
+    trigger = ''
+
+        [gameobjects.VFXElement.weightCurve]
+        interp = 0
+        keys = [ [ 0.0, 1.0 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.VFXLightEnvelope]
+    enabled = true
+    useColorGradient = false
+    useIntensityCurve = true
+
+        [gameobjects.VFXLightEnvelope.colorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.VFXLightEnvelope.intensityCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.05 ], [ 0.6, 0.35 ], [ 0.9, 1.0 ], [ 1.0, 0.2 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

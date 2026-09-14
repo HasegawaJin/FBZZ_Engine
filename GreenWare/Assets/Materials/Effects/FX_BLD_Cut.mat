@@ -1,0 +1,33 @@
+# FX_BLD_Cut.mat — 斬撃が当たった瞬間の «一閃» (SlashCut.hlsl)
+# SlashCutFxComponent が BeamTrailRendererComponent 経由で張る帯に使う。
+# coreWidth / edgeFalloff / coreBoost / tiling / scroll / muzzleFade / tipFade は
+# スクリプトが毎フレーム上書きする。ここで効くのは taper / detail / intensity と素材。
+# 素材 T_Cut_Line (512x64 / X 方向シームレス) の揺らぎを裾へ薄く乗せる。
+version = 1
+name = 'FX_BLD_Cut'
+shader = 'guid:6b059fca913a0c59b20388abc71e7e86'
+blend_mode = 'Premultiplied'
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[textures]
+albedo = "guid:f33357a61cce4698b1a289ee8c06cdef"
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+
+coreWidth = 0.32
+edgeFalloff = 1.6
+coreBoost = 3.0
+intensity = 0.8
+
+tiling = 0.6
+scroll = 0.0
+muzzleFade = 0.06
+tipFade = 0.06
+
+taper = 0.9
+detail = 0.65

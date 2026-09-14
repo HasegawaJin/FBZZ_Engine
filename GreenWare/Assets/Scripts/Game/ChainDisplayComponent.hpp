@@ -52,6 +52,19 @@ public:
     FBZZ_TOOLTIP("数字が伸びた瞬間の明るさの上乗せ。0 で光らせない")
     FBZZ_FIELD_RANGE(float, popSeconds, 0.14f, "Pop Seconds", 0.0f, 1.0f)
 
+    // WHY 連鎖の隣で拍を見せるか: 拍に乗ったかどうかは音と刃の白みでも返しているが、
+    //     «いま何段乗っているか» (あと何発で揃うか) は瞬間の合図からは読めない。
+    //     連鎖の数字の後ろへ 1 段ずつ印を並べれば、目の端で数えられる。
+    FBZZ_GROUP("拍")
+    FBZZ_FIELD(std::string, beatMark, ">", "Beat Mark")
+    FBZZ_TOOLTIP("拍に乗って繋いだ段ごとに数字の後ろへ並べる印。空で出さない")
+    FBZZ_FIELD_COLOR(beatColor, (Vector4{ 0.55f, 1.0f, 0.95f, 1.0f }), "Beat Color")
+    FBZZ_TOOLTIP("拍に乗った瞬間だけ文字がこの色へ弾ける")
+    FBZZ_FIELD(std::string, perfectText, "  PERFECT", "Perfect Text")
+    FBZZ_FIELD_COLOR(perfectColor, (Vector4{ 1.0f, 0.85f, 0.35f, 1.0f }), "Perfect Color")
+    FBZZ_FIELD_RANGE(float, perfectSeconds, 0.8f, "Perfect Seconds", 0.0f, 3.0f)
+    FBZZ_TOOLTIP("全段を拍に乗せた締めが当たったとき、この秒数だけ文字を添えて色を変える")
+
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugShown, 0, "Shown Chain")
 
@@ -68,6 +81,11 @@ private:
     float m_popRemaining = 0.0f;
     /// 直前に出していたか。消えている間は毎フレーム同じ文字を書き直さない。
     bool  m_visible = false;
+    /// 前フレームまでの拍 / 揃えた締めの回数と、その合図の残り [秒, 実時間]。
+    int   m_lastBeat         = 0;
+    int   m_lastPerfect      = 0;
+    float m_beatPop          = 0.0f;
+    float m_perfectRemaining = 0.0f;
 };
 
 FBZZ_REFLECT(ChainDisplayComponent)
@@ -93,6 +111,10 @@ inline void ChainDisplayComponent::OnStart()
     m_lastChain    = 0;
     m_popRemaining = 0.0f;
     m_visible      = false;
+    m_lastBeat         = 0;
+    m_lastPerfect      = 0;
+    m_beatPop          = 0.0f;
+    m_perfectRemaining = 0.0f;
     if (GameObject* object = Count()) object->SetActive(false);
 }
 
@@ -108,6 +130,21 @@ inline void ChainDisplayComponent::OnLateUpdate()
 
     const auto* combat = CombatManagerComponent::Instance();
     const int chain = combat ? combat->ChainCount() : 0;
+
+    // 拍と揃えた締めは «回数の差» で取る。表示していない間も控えは進めておく ─
+    // 止めておくと、連鎖が 2 に届いて表示が出た瞬間に «溜まっていた合図» が弾ける。
+    m_beatPop          = std::max(0.0f, m_beatPop - dt);
+    m_perfectRemaining = std::max(0.0f, m_perfectRemaining - dt);
+    if (combat) {
+        if (combat->BeatSerial() != m_lastBeat) {
+            m_lastBeat = combat->BeatSerial();
+            m_beatPop  = std::max(popSeconds, 0.0f);
+        }
+        if (combat->PerfectSerial() != m_lastPerfect) {
+            m_lastPerfect      = combat->PerfectSerial();
+            m_perfectRemaining = std::max(perfectSeconds, 0.0f);
+        }
+    }
     const bool wanted = GameSettingsComponent::GameOrDefault().chain
                      && chain >= std::max(minimumChain, 1);
 
@@ -128,19 +165,35 @@ inline void ChainDisplayComponent::OnLateUpdate()
         text->SetActive(true);
         m_visible = true;
     }
-    ui.SetText(text, prefix + std::to_string(chain));
+    std::string label = prefix + std::to_string(chain);
+    const int cadence = combat ? std::min(combat->Cadence(), 6) : 0;
+    if (!beatMark.empty() && cadence > 0) {
+        label += ' ';
+        for (int i = 0; i < cadence; ++i) label += beatMark;
+    }
+    if (m_perfectRemaining > 0.0f) label += perfectText;
+    ui.SetText(text, label);
 
     // 猶予の残りが fadeBelow を切ってから薄くする。それまでは濃さを変えない。
     const float remaining = combat ? combat->ChainRemaining01() : 0.0f;
     const float fade = fadeBelow <= EPSILON ? 1.0f
                                             : Clamp01(remaining / std::max(fadeBelow, EPSILON));
 
-    float brightness = 1.0f;
-    if (popSeconds > EPSILON && m_popRemaining > 0.0f)
-        brightness += popBoost * Clamp01(m_popRemaining / popSeconds);
+    const float chainPop = popSeconds > EPSILON ? Clamp01(m_popRemaining / popSeconds) : 0.0f;
+    const float beatPop  = popSeconds > EPSILON ? Clamp01(m_beatPop / popSeconds) : 0.0f;
+    const float brightness = 1.0f + popBoost * std::max(chainPop, beatPop);
 
-    ui.SetTextColor(text, { color.x * brightness, color.y * brightness, color.z * brightness,
-                            color.w * fade });
+    // 揃えた締め > 拍 > 素の色。拍の色は弾けた瞬間だけ寄せて、すぐ素の色へ戻す。
+    Vector4 tint = color;
+    if (m_perfectRemaining > 0.0f) {
+        tint = perfectColor;
+    } else if (beatPop > 0.0f) {
+        tint = Vector4{ Lerp(color.x, beatColor.x, beatPop), Lerp(color.y, beatColor.y, beatPop),
+                        Lerp(color.z, beatColor.z, beatPop), color.w };
+    }
+
+    ui.SetTextColor(text, { tint.x * brightness, tint.y * brightness, tint.z * brightness,
+                            tint.w * fade });
     debugShown = chain;
 }
 

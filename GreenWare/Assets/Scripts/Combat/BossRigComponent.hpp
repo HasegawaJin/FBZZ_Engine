@@ -24,6 +24,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Utils/RagdollPresentation.hpp>
 #include <Scripts/Combat/BossAiComponent.hpp>
 #include <Scripts/Combat/BossAnimatorComponent.hpp>
 #include <Scripts/Combat/BossCollapsePostureComponent.hpp>
@@ -223,9 +224,7 @@ public:
     // 斬った脚が «効いている» を返す。当たった脚 1 本が揺れもので弾み、体は
     // BossCollapsePostureComponent の傾け (Stagger) で泳ぐ。
     //
-    // WHY 物理 (ラグドール) で押さないか: 2026-09-04 に BossRagdollComponent を撤去した。
-    //     21 クリップの予兆をフレーム単位で詰めてある体に物理を重ねると、押された姿勢が
-    //     予兆の絵を崩す。脚の揺れものと決まった角度の傾けなら、クリップは 1 コマも壊れない。
+    // 物理反応は姿勢維持の上限内へ制限する。脚の揺れものはその前段で重ねる。
     FBZZ_GROUP("Leg Flinch")
     FBZZ_FIELD(bool, flinchOnHit, true, "Flinch On Hit")
     FBZZ_TOOLTIP("斬った脚を弾ませる。切ると斬撃に対して脚が無反応になる")
@@ -313,7 +312,22 @@ public:
     /// WHY 組み立てを開始時に済ませるか: コンポーネントの追加は ECS の格納そのものを
     ///     動かす。毎フレーム走る OnUpdate から行うと、他のシステムが巡回している
     ///     最中に配列が動きうる (PlayerHeadLookComponent と同じ理由)。
-    void OnStart()  override { EnsureRuntime(); }
+    void OnStart() override
+    {
+        EnsureRuntime();
+        ragdoll.SetRoot("Body");
+        ConfigureStandingReaction(ragdoll, fbzz::scene::ScriptRagdollProfile::Mech,
+                                  0.22f, 12.0f, 8.0f, 0.05f);
+        ragdoll.SetExcludedBranches({ "Yaw_FR", "Yaw_FL", "Yaw_BR", "Yaw_BL" });
+        ragdoll.SetMuscle(1.25f, 0.96f, 0.80f);
+        ragdoll.SetRecovery(0.30f, 0.55f);
+        ragdoll.SetBlend(0.08f, 0.25f);
+        ragdoll.BeginActive();
+        if (auto* posture = scene.GetScript<BossCollapsePostureComponent>()) {
+            posture->collapse = false;
+            posture->stagger = false;
+        }
+    }
     void OnUpdate() override;
 
 private:
@@ -599,6 +613,10 @@ inline void BossRigComponent::Flinch(const std::string& legSuffix,
     //     «ガシャッ» が «爆発» に化ける。1 振りぶんを 1 つの出来事として返す。
     if (m_hitFeedbackFrame != Time::frameCount) {
         m_hitFeedbackFrame = Time::frameCount;
+
+        ragdoll.BeginActive();
+        PushRagdollReaction(ragdoll, direction.NormalizedOr(Vector3::FORWARD) *
+            (charged ? 3.0f : 1.35f), 1.5f, hitPoint, 3.0f);
 
         if (hitArmorVolume > 0.0f)
             se::Play(audio, se::kBossDamaged, hitArmorVolume * (charged ? 1.3f : 1.0f));

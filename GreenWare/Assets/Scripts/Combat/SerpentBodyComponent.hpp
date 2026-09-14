@@ -501,6 +501,25 @@ inline void SerpentBodyComponent::OnUpdate()
 {
     if (!m_meshesBuilt) CollectMeshes();
 
+    // 斬撃の列挙中に節を落とすと、残骸生成で後続の参照が無効になる。
+    // 耐久の消費はここで行い、とどめと同じ欠損・残骸・進行の経路へ渡す。
+    if (!m_finished && m_count > minSegments) {
+        if (auto* rig = Rig()) {
+            for (int i = 1; i <= serpent::kSegmentCount; ++i) {
+                if (!IsAlive(i)) continue;
+                GameObject* hitbox = rig->SegmentHitbox(i);
+                auto* part = hitbox ? hitbox->GetScript<BossPartComponent>() : nullptr;
+                if (!part || part->IsBroken() || !part->IsDepleted()) continue;
+                const Vector3 at = hitbox->transform.worldPosition;
+                if (Sever(i, 1) > 0) {
+                    if (auto* vfx = VfxManagerComponent::Instance())
+                        vfx->PlayExecute(at, Vector3::UP, 0.55f);
+                }
+                break;
+            }
+        }
+    }
+
     debugSegments = m_count;
     debugPhase    = Phase();
 

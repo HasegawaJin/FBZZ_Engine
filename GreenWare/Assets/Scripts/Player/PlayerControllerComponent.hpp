@@ -125,6 +125,33 @@ public:
     FBZZ_TOOLTIP("接地判定のしきい値を重力から決め直す。"
                  "切ると CharacterController に入っている値をそのまま使う")
 
+    // WHY 走りの再生を実速へ合わせるか: Katana_Run_F (25F) は 1.0 倍で 1 秒に 2.4 歩しか
+    //     踏まないのに、体は 10 m/s で進む。脚の運びと進む量がずれて地面の上を滑って
+    //     見えていた。足音は距離で刻んでいたので、耳には 1 秒 7 歩・目には 2.4 歩と
+    //     食い違ってもいた。再生を速さに比例させ、足音もその歩調から刻む。
+    FBZZ_GROUP("モーションの速さ")
+    FBZZ_FIELD(std::string, locomotionStateName, "Locomotion", "Locomotion State")
+    FBZZ_FIELD_RANGE(float, runClipSpeed, 6.0f, "Run Clip Speed [m/s]", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("走りのクリップを 1.0 倍で流したときに釣り合う速さ。これより速く走ると再生が "
+                 "比例して速くなる。下げるほど脚が速く回る。0 で従来 (常に 1.0 倍・足音は Run Stride)")
+    FBZZ_FIELD_RANGE(float, runPlaybackMax, 1.8f, "Run Playback Max", 1.0f, 3.0f)
+    FBZZ_TOOLTIP("走りの再生速度の上限。上げすぎると脚が «回転している» に見える")
+    FBZZ_FIELD_RANGE(float, runClipSeconds, 25.0f / 30.0f, "Run Clip Length [s]", 0.1f, 3.0f)
+    FBZZ_TOOLTIP("Katana_Run_F の 1 周の長さ。1 周 2 歩として足音の間隔を出す")
+    // WHY 転がりの再生を移動の減速に合わせるか: 回避は出だしで弾けて尻すぼみに落ちる
+    //     (Dodge End Speed x) のに、転がりは等速で回っていた。出だしは体が先へ飛んで
+    //     脚が置いていかれ、終わり際は止まりかけの体の上で転がりだけが回り続ける。
+    FBZZ_FIELD(std::string, dodgeStateName, "Dodge_Roll", "Dodge State")
+    FBZZ_FIELD_RANGE(float, dodgeAnimFollow, 0.7f, "Roll Follows Speed", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("転がりの再生をどれだけ移動の速さに沿わせるか。0 で等速。"
+                 "平均は変えないので、転がりが回避の尺で終わるのは変わらない")
+    // WHY 着地を高さで速めるか: 小さな段差を降りただけでも深く膝を折る 0.23 秒が
+    //     毎回入ると、走りが «つっかえる»。高く落ちたときだけ重く着く。
+    FBZZ_FIELD(std::string, landStateName, "Player_Land", "Land State")
+    FBZZ_FIELD_RANGE(float, landFastSpeed, 1.7f, "Light Land Speed", 1.0f, 3.0f)
+    FBZZ_TOOLTIP("低い着地の再生速度。Land Feedback At の落下速度で 1.0 倍 (重い着地) になる")
+    FBZZ_FIELD_READ_ONLY(float, debugRunPlayback, 1.0f, "Run Playback")
+
     FBZZ_GROUP("カメラの手応え")
     // WHY カメラ側ではなくここに置くか: 「跳ぶとどれくらい緩めたいか」は動作を持つ
     //     こちらの意図で、「緩んだときカメラがどう動くか」はカメラの作り。
@@ -137,10 +164,18 @@ public:
     FBZZ_FIELD_RANGE(float, dodgeBufferSeconds, 0.15f, "Dodge Buffer", 0.0f, 0.5f)
     FBZZ_TOOLTIP("回避入力を預かる秒数。クールダウンや回避中に押しても、明けた瞬間に出る。"
                  "0 で先行入力なし (押した瞬間しか受け付けない)")
-    FBZZ_FIELD_RANGE(float, dodgeCameraKick, 0.4f, "Dodge Camera Kick (m)", 0.0f, 2.0f)
+    // WHY 跳躍にも預かりと猶予を持つか: 押した固定ステップで接地していなければ捨てていたので、
+    //     着地の 1〜2 フレーム前・回避中・縁から踏み出した直後の押下がすべて
+    //     «押したのに跳ばない» になっていた。穴は落ちるとダメージなので、縁で跳べないのが
+    //     一番理不尽に感じる場面になる。
+    FBZZ_FIELD_RANGE(float, jumpBufferSeconds, 0.12f, "Jump Buffer", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("跳躍入力を預かる秒数。着地の直前や回避中に押しても、跳べるようになった瞬間に出る")
+    FBZZ_FIELD_RANGE(float, coyoteSeconds, 0.10f, "Coyote Time", 0.0f, 0.3f)
+    FBZZ_TOOLTIP("足場を離れてからまだ跳べる秒数。跳んだ後には効かない (二段跳びにはならない)")
+    FBZZ_FIELD_RANGE(float, dodgeCameraKick, 0.55f, "Dodge Camera Kick (m)", 0.0f, 2.0f)
     FBZZ_TOOLTIP("回避の出だしにカメラを後ろへ引く距離。揺れではなく 1 往復の押し込み。"
                  "画角が開くぶん、同じ速度でも速く見える")
-    FBZZ_FIELD_RANGE(float, dodgeCameraSlack, 0.7f, "Dodge Slack (Horizontal)", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, dodgeCameraSlack, 0.82f, "Dodge Slack (Horizontal)", 0.0f, 1.0f)
     FBZZ_TOOLTIP("回避中、カメラの横追従を緩める量")
     // WHY 走行中も緩めるか: 密着したままだと、走っていても画面の中でプレイヤーは
     //     止まって見え、動いているのは背景だけになる。緩めるとカメラが遅れ、
@@ -238,6 +273,13 @@ public:
     ///     (Dodge End Speed x)。見せる側 (残像) がこれを知らないと、減速し切った
     ///     終わり際まで出だしと同じ濃さで残り、«最後まで同じ速さで滑った» に見える。
     [[nodiscard]] float DodgeProgress01() const;
+    /// 回避の残りを捨てて抜ける。抜けた瞬間の後始末 (走りの速さまで落とす) は時間切れと同じ。
+    /// 回避中でなければ何もせず false。
+    ///
+    /// WHY 外から切れるようにするか: 転がりの後半に押した斬撃が、回避が明けるまで
+    ///     待たされていた。かわして踏み込む 1 続きの動きがそこで切れる。
+    ///     打ち切った瞬間に無敵も消えるので、早く斬れるぶんの代償は払われる。
+    bool EndDodgeEarly();
 
     void OnStart() override;
     void OnUpdate() override;
@@ -336,6 +378,10 @@ private:
     // 回避の開始判定と、回避中の速度上書き。
     void TickDodge(const Vector3& moveDirection, bool hasInput,
                    bool dodgeRequested, RigidBody& phy, float dt);
+    // 回避を抜けた瞬間の後始末。時間切れと打ち切り (EndDodgeEarly) が同じ 1 本を通る。
+    void FinishDodge(RigidBody& phy);
+    // 走り・転がりのステートの再生速度を今の速さから決める。毎フレーム呼ぶ。
+    void DriveMotionSpeeds(float planarSpeed);
     void UpdateIK();
     // 上り / 下り / 早離しで重力を切り替える。倍率は World の重力に対する比。
     void UpdateGravityScale(const CharacterControllerComponent& cc, const RigidBody& phy);
@@ -448,6 +494,11 @@ private:
     bool    m_dodgeRequested = false;
     /// 預かっている回避入力の残り [秒]。0 より大きい間は «押されている» として扱う。
     float   m_dodgeBuffer    = 0.0f;
+    /// 預かっている跳躍入力の残り [秒] と、足場を離れてからまだ跳べる残り [秒]。
+    float   m_jumpBuffer     = 0.0f;
+    float   m_coyote         = 0.0f;
+    /// 回避を外から打ち切った。速度の後始末は固定ステップ側でしか書けないので預ける。
+    bool    m_dodgeEndPending = false;
 
     // ジャンプキーを押している間だけ上りの重力を軽いままにする。
     bool  m_jumpHeld = false;
@@ -456,6 +507,8 @@ private:
     // 接地判定が立つ前に速度は 0 へ寄せられるため、着地の強さは
     // 空中で見ていた最大の落下速度から測る。
     float m_peakFallSpeed = 0.0f;
+    // 走りの再生速度。足音の歩幅はここから出す (目と耳の歩調を揃える)。
+    float m_runPlayback = 1.0f;
 };
 
 // Reflect() をフィールド宣言から自動生成する (旧 .generated.hpp は廃止)。
@@ -480,6 +533,9 @@ inline void PlayerControllerComponent::OnStart()
     m_dodgeRemaining = 0.0f;
     m_dodgeCooldown  = 0.0f;
     m_dodgeBuffer    = 0.0f;
+    m_jumpBuffer     = 0.0f;
+    m_coyote         = 0.0f;
+    m_dodgeEndPending = false;
     m_dodgeSerial    = 0;
     m_dodgeScuffed   = false;
     m_moveDirection  = Vector3::ZERO;
@@ -490,6 +546,7 @@ inline void PlayerControllerComponent::OnStart()
     m_jumpHeld       = false;
     m_wasGrounded    = true;
     m_peakFallSpeed  = 0.0f;
+    m_runPlayback    = 1.0f;
     m_stepDistance   = 0.0f;
     // 前フレームの向きは Play をまたいで持ち越さない。持ち越すと開始の 1 フレームで
     // «一気に回った» ことになり、立っているだけでサーボ音が鳴る。
@@ -562,16 +619,6 @@ inline void PlayerControllerComponent::OnUpdate()
     // 押しっぱなしかどうかは押した瞬間では分からない。上昇中の重力を決めるために
     // 保持状態そのものを持つ。可変フレーム側で採り、固定ステップ側で使う。
     m_jumpHeld = !held && input.GetAction(actions::kJump);
-    // 入力はここまで。抜く / 納める の中身は WeaponRigComponent の担当で、
-    // このスクリプトは刀の存在もソケットも知らない。
-    if (m_weaponRig && !held) {
-        if (input.GetActionDown(actions::kDrawWeapons))    m_weaponRig->RequestDraw();
-        if (input.GetActionDown(actions::kHolsterWeapons)) m_weaponRig->RequestSheathe();
-        // パッドはボタンが足りないので 1 つで往復させる。どちらへ動かすかは
-        // 押した側ではなく今の状態が決める。
-        if (input.GetActionDown(actions::kToggleWeapons))
-            m_weaponRig->RequestToggle();
-    }
 
     auto* cc = scene.GetComponent<CharacterControllerComponent>();
     auto* rb = scene.GetComponent<RigidBodyComponent>();
@@ -587,6 +634,7 @@ inline void PlayerControllerComponent::OnUpdate()
         ? DodgeSpeed()
         : std::sqrtf(velocity.x * velocity.x + velocity.z * velocity.z);
     animator.SetFloat(paramSpeed, planarSpeed);
+    DriveMotionSpeeds(planarSpeed);
     UpdateIK();
 
     // 手触りの出力は可変フレーム側で回す。固定ステップは 1 フレームに 0 回にも
@@ -640,6 +688,13 @@ inline void PlayerControllerComponent::TickLanding(const CharacterControllerComp
 
     // 空中から接地へ変わったフレームだけ鳴らす。接地している間ずっと鳴らすと、
     // 坂を降りるだけで揺れ続ける。
+    // 着地の芝居は落ちた高さで速める (landFastSpeed の WHY)。
+    if (!m_wasGrounded && !landStateName.empty()) {
+        const float weight = landFeedbackSpeed > 0.0f
+            ? Clamp01(m_peakFallSpeed / landFeedbackSpeed) : 1.0f;
+        animator.SetStateSpeed(landStateName, Lerp(std::max(landFastSpeed, 1.0f), 1.0f, weight));
+    }
+
     if (!m_wasGrounded && landFeedbackSpeed > 0.0f) {
         const float strength = Clamp01(m_peakFallSpeed / landFeedbackSpeed);
         if (auto* feedback = ImpactFeedbackManagerComponent::Instance())
@@ -714,7 +769,11 @@ inline void PlayerControllerComponent::TickFootsteps(const CharacterControllerCo
     }
 
     const bool  running = planarSpeed >= runSpeedThreshold;
-    const float stride  = running ? strideRun : strideWalk;
+    // 走りは «今の再生の歩調» から歩幅を出す (1 周 2 歩)。目に見える脚と耳の足音が揃う。
+    const bool  cadence = running && runClipSpeed > 0.0f && runClipSeconds > 0.0f;
+    const float stride  = cadence
+        ? planarSpeed * runClipSeconds / (2.0f * std::max(m_runPlayback, 0.1f))
+        : (running ? strideRun : strideWalk);
     if (stride <= 0.0f) {
         m_stepDistance = 0.0f;
         return;
@@ -907,8 +966,14 @@ inline void PlayerControllerComponent::OnFixedUpdate()
 
     cc->Tick(&phy, dt);
 
-    const bool jumpRequested = m_jumpRequested;
+    // 跳躍も回避と同じく «押した事実» を預かる。0 秒にしても押したステップでは出るよう、
+    // 預ける長さの下限はほぼ 0 の正の値にする。
+    if (m_jumpRequested) m_jumpBuffer = std::max(jumpBufferSeconds, 1.0e-4f);
     m_jumpRequested = false;
+    const bool jumpRequested = m_jumpBuffer > 0.0f;
+    m_jumpBuffer = std::max(0.0f, m_jumpBuffer - dt);
+    m_coyote = cc->isGrounded ? std::max(coyoteSeconds, 0.0f)
+                              : std::max(0.0f, m_coyote - dt);
 
     // 押した瞬間を «預かり» へ移し替える。TickDodge が実際に出したときだけ空にする。
     if (m_dodgeRequested) m_dodgeBuffer = std::max(dodgeBufferSeconds, 0.0f);
@@ -923,7 +988,10 @@ inline void PlayerControllerComponent::OnFixedUpdate()
     if (!IsDodging()) {
         // 接地中だけ目標上向き速度を与える。質量差と現在の落下速度は
         // CharacterController が吸収するため、調整値を m/s に統一できる。
-        if (jumpRequested && cc->enabled && cc->isGrounded) {
+        if (jumpRequested && cc->enabled && (cc->isGrounded || m_coyote > 0.0f)) {
+            // 猶予も空にする。残すと跳んだ直後の空中でもう 1 回跳べる。
+            m_jumpBuffer = 0.0f;
+            m_coyote     = 0.0f;
             cc->JumpAtVelocity(&phy, std::max(JumpSpeed(), 0.0f));
             animator.SetBool(paramIsGrounded, false);
             animator.SetTrigger(paramJumpTrigger);
@@ -1107,6 +1175,12 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
     if (m_dodgeCooldown > 0.0f)
         m_dodgeCooldown = std::max(0.0f, m_dodgeCooldown - dt);
 
+    if (m_dodgeEndPending) {
+        m_dodgeEndPending = false;
+        FinishDodge(phy);
+        return;
+    }
+
     // まだ回避していないなら、開始できるかを見る。
     if (m_dodgeRemaining <= 0.0f) {
         if (!dodgeRequested) return;
@@ -1167,31 +1241,7 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
     } else {
         m_dodgeRemaining = std::max(0.0f, m_dodgeRemaining - dt);
         if (m_dodgeRemaining <= 0.0f) {
-            // 終わり際の踏ん張り。開始音だけだと、回避がいつ終わって
-            // 次の入力を受け付けるのかが耳から分からない。
-            se::Play(audio, se::kPlayerDodgeEnd);
-            // 抜けた足元の «踏ん張り» の煙。出だしの煙だけだと、回避が «どこで
-            // 終わったか» が床に残らず、転がりの距離が絵から読めない。
-            if (runDust)
-                if (auto* vfx = VfxManagerComponent::Instance())
-                    vfx->PlayRunDust(PlantedFootWorld(), m_dodgeDirection, 0.6f);
-
-            // 抜けた «瞬間» に走りの速さまで落とす。
-            //
-            // WHY 通常移動の減速に任せないか: この後を引き継ぐのは Ground Decel で、
-            //     回避速度 (走りの 2.8 倍) から落とし切るまで時間が要る。100 m/s² でも
-            //     28 → 10 に 0.18 秒かかり、そのあいだ入力と無関係に滑り続ける。
-            //     回避の距離を伸ばすほどこの尾も伸びるので、速さで距離を作る設計とは
-            //     両立しない。向きは保ったまま «走っている状態» へ直接繋ぐ。
-            Vector3 vel = phy.GetVelocity();
-            const float planar = std::sqrt(vel.x * vel.x + vel.z * vel.z);
-            const float cap    = MoveSpeed();
-            if (planar > cap && planar > EPSILON) {
-                const float scale = cap / planar;
-                vel.x *= scale;
-                vel.z *= scale;
-                phy.SetVelocity(vel);
-            }
+            FinishDodge(phy);
             return;  // 今フレームで終了
         }
     }
@@ -1201,11 +1251,13 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
     //     速度を削るため、途中で失速して「跳んだのに動かない」になる。持続時間の
     //     あいだ毎フレーム入れ直すことで、移動距離が入力に対して安定する。
     //
-    // 速さは出だしが最大で、終わりに向けて Dodge End Speed x まで線形に落ちる。
-    // 等速で運ぶと «床を一定速度で滑っている» 絵になり、距離を伸ばすほど氷に見える。
+    // 速さは出だしが最大で、後半から Dodge End Speed x へ落ちる。
+    // 直線で落とすと入力直後から減速が見えて踏み切りが弱くなるため、進行度を 2 乗し、
+    // 前半の速度を長く保ってから抜け際だけ着地速度へ繋ぐ。
     const float total    = std::max(DodgeDuration(), 0.0001f);
     const float progress = Clamp01(1.0f - m_dodgeRemaining / total);
-    const float speed    = DodgeSpeed() * Lerp(1.0f, DodgeEndSpeedRatio(), progress);
+    const float speed    = DodgeSpeed() * Lerp(
+        1.0f, DodgeEndSpeedRatio(), progress * progress);
 
     // 転がっている最中に床を擦る 1 発。踏み切りと踏ん張りの «あいだ» を埋める。
     // 煙は体が通り過ぎた側へ流れるので、進行方向の逆へ吹かせる。
@@ -1219,6 +1271,74 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
     vel.x = m_dodgeDirection.x * speed;
     vel.z = m_dodgeDirection.z * speed;
     phy.SetVelocity(vel);
+}
+
+inline void PlayerControllerComponent::DriveMotionSpeeds(float planarSpeed)
+{
+    // 走り: 釣り合う速さを越えたぶんだけ再生を速める。回避中の planarSpeed は
+    // 転がりの速さ (DodgeSpeed) なので触らない。
+    if (!IsDodging()) {
+        m_runPlayback = runClipSpeed > 0.0f
+            ? std::clamp(planarSpeed / runClipSpeed, 1.0f, std::max(runPlaybackMax, 1.0f))
+            : 1.0f;
+        debugRunPlayback = m_runPlayback;
+        if (!locomotionStateName.empty())
+            animator.SetStateSpeed(locomotionStateName, m_runPlayback);
+    }
+
+    // 転がり: 平均は «クリップの尺 ÷ 回避の尺» のまま、形だけ移動の速さへ沿わせる。
+    // WHY 平均をコードで出すか: 以前は .animcontroller の speed (1.575) を手で合わせていて、
+    //     回避の尺を触るたびに 2 つのファイルがずれた。尺から毎フレーム出せばずれようがない。
+    if (dodgeStateName.empty()) return;
+    const float base = dodgeClipSeconds / std::max(DodgeDuration(), 1.0e-4f);
+    float shape = 1.0f;
+    if (IsDodging()) {
+        const float follow = Clamp01(dodgeAnimFollow);
+        const float end    = DodgeEndSpeedRatio();
+        const float motion = Lerp(1.0f, end, DodgeProgress01());
+        // ∫(1 − f(1 − m)) du = 1 − f(1 − end)/2 で割って、平均を 1 に保つ。
+        shape = (1.0f - follow * (1.0f - motion))
+              / std::max(1.0f - follow * (1.0f - end) * 0.5f, 0.05f);
+    }
+    animator.SetStateSpeed(dodgeStateName, base * shape);
+}
+
+inline bool PlayerControllerComponent::EndDodgeEarly()
+{
+    if (!IsDodging()) return false;
+    // 無敵と «回避中» はこの瞬間に落とす。速度の後始末は次の固定ステップ (TickDodge)。
+    m_dodgeRemaining  = 0.0f;
+    m_dodgeEndPending = true;
+    return true;
+}
+
+inline void PlayerControllerComponent::FinishDodge(RigidBody& phy)
+{
+    // 終わり際の踏ん張り。開始音だけだと、回避がいつ終わって
+    // 次の入力を受け付けるのかが耳から分からない。
+    se::Play(audio, se::kPlayerDodgeEnd);
+    // 抜けた足元の «踏ん張り» の煙。出だしの煙だけだと、回避が «どこで
+    // 終わったか» が床に残らず、転がりの距離が絵から読めない。
+    if (runDust)
+        if (auto* vfx = VfxManagerComponent::Instance())
+            vfx->PlayRunDust(PlantedFootWorld(), m_dodgeDirection, 0.6f);
+
+    // 抜けた «瞬間» に走りの速さまで落とす。
+    //
+    // WHY 通常移動の減速に任せないか: この後を引き継ぐのは Ground Decel で、
+    //     回避速度 (走りの 2.8 倍) から落とし切るまで時間が要る。100 m/s² でも
+    //     28 → 10 に 0.18 秒かかり、そのあいだ入力と無関係に滑り続ける。
+    //     回避の距離を伸ばすほどこの尾も伸びるので、速さで距離を作る設計とは
+    //     両立しない。向きは保ったまま «走っている状態» へ直接繋ぐ。
+    Vector3 vel = phy.GetVelocity();
+    const float planar = std::sqrt(vel.x * vel.x + vel.z * vel.z);
+    const float cap    = MoveSpeed();
+    if (planar > cap && planar > EPSILON) {
+        const float scale = cap / planar;
+        vel.x *= scale;
+        vel.z *= scale;
+        phy.SetVelocity(vel);
+    }
 }
 
 inline void PlayerControllerComponent::UpdateIK()

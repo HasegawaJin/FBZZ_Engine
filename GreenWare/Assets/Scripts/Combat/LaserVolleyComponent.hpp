@@ -29,6 +29,7 @@
 ///   LineRenderer の World 空間は、渡したワールド点を所有 GameObject のローカルへ
 ///   引き戻してからメッシュにする。動く胴の子に付けると、その変換ぶんだけ端点がずれる。
 #pragma once
+#include <Math/Segment.hpp>
 
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/EntityRef.hpp>
@@ -338,11 +339,7 @@ inline void LaserVolleyComponent::OnDestroy()
 inline float LaserVolleyComponent::DistanceToSegment(const Vector3& point, const Vector3& a,
                                                       const Vector3& b)
 {
-    const Vector3 ab = b - a;
-    const float   lengthSq = ab.LengthSq();
-    if (lengthSq < EPSILON) return (point - a).Length();
-    const float t = Clamp01(Vector3::Dot(point - a, ab) / lengthSq);
-    return (point - (a + ab * t)).Length();
+    return (point - fbzz::math::ClosestPointOnSegment(point, a, b)).Length();
 }
 
 inline std::string LaserVolleyComponent::LayerName(int index, const char* layer) const
