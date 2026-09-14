@@ -272,4 +272,80 @@ TEST_F(WorldSceneSyncTest, AddConstraintTakesOwnershipOfTheConstraint)
     EXPECT_EQ(world.GetConstraints()[0]->GetType(), physics::ConstraintType::DISTANCE);
 }
 
+TEST_F(WorldSceneSyncTest, AddConstraintSurvivesASceneSync)
+{
+    // AddConstraint は «置いたら消えない» 側。同期の掃除に巻き込まれると、
+    // Physics 単体で組んだ拘束 (Tests / ベンチ) が最初のフレームで全部消える。
+    physics::RigidBody a;
+    physics::RigidBody b;
+    world.AddConstraint(std::make_unique<physics::DistanceConstraint>(&a, &b, 1.0f));
+
+    world.BeginSceneSync();
+    world.EndSceneSync();
+
+    EXPECT_EQ(world.GetConstraints().size(), 1u);
+}
+
+TEST_F(WorldSceneSyncTest, SyncConstraintReusesTheSameSlotEveryFrame)
+{
+    physics::RigidBody a;
+    physics::RigidBody b;
+
+    world.BeginSceneSync();
+    const physics::ConstraintHandle first =
+        world.SyncConstraint({}, std::make_unique<physics::DistanceConstraint>(&a, &b, 1.0f));
+    world.EndSceneSync();
+    ASSERT_TRUE(first.IsValid());
+
+    // 2 フレーム目は «そのまま生かす» 申告だけ。作り直さないので基準姿勢を抱える
+    // Fixed / Hinge が効き続ける。
+    physics::Constraint* live = world.FindConstraint(first);
+    world.BeginSceneSync();
+    EXPECT_TRUE(world.KeepConstraint(first));
+    world.EndSceneSync();
+
+    ASSERT_EQ(world.GetConstraints().size(), 1u);
+    EXPECT_EQ(world.FindConstraint(first), live);
+}
+
+TEST_F(WorldSceneSyncTest, AnUnclaimedSyncedConstraintIsDropped)
+{
+    physics::RigidBody a;
+    physics::RigidBody b;
+
+    world.BeginSceneSync();
+    const physics::ConstraintHandle handle =
+        world.SyncConstraint({}, std::make_unique<physics::DistanceConstraint>(&a, &b, 1.0f));
+    world.EndSceneSync();
+    ASSERT_EQ(world.GetConstraints().size(), 1u);
+
+    // 申告しないフレームを 1 回挟むだけで解放される。Scene 側に «外す» 経路は要らない。
+    world.BeginSceneSync();
+    world.EndSceneSync();
+
+    EXPECT_TRUE(world.GetConstraints().empty());
+    EXPECT_EQ(world.FindConstraint(handle), nullptr);
+    // 世代が進むので、古いハンドルで生かし直すことはできない。
+    EXPECT_FALSE(world.KeepConstraint(handle));
+}
+
+TEST_F(WorldSceneSyncTest, RemoveConstraintFreesTheSlotForReuse)
+{
+    physics::RigidBody a;
+    physics::RigidBody b;
+
+    world.BeginSceneSync();
+    const physics::ConstraintHandle first =
+        world.SyncConstraint({}, std::make_unique<physics::DistanceConstraint>(&a, &b, 1.0f));
+    world.RemoveConstraint(first);
+    const physics::ConstraintHandle second =
+        world.SyncConstraint({}, std::make_unique<physics::DistanceConstraint>(&a, &b, 2.0f));
+    world.EndSceneSync();
+
+    EXPECT_EQ(second.slot, first.slot);
+    EXPECT_NE(second.generation, first.generation);
+    // 空いた枠を使い回す。フレームごとに増えるなら pool が肥大化している。
+    EXPECT_EQ(world.GetConstraints().size(), 1u);
+}
+
 } // namespace fbzz::tests

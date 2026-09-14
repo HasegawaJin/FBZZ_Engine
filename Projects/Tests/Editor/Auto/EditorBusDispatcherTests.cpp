@@ -9,7 +9,7 @@
 /// 一方 DrainRequests は毎フレーム走るので、その瞬間に届いた AI コマンドは
 /// nullptr のシーンを掴む。ここで «落ちずにエラーを返す» ことを 1 コマンドずつ固定する。
 ///
-/// WHY 網羅するか: ハンドラは 125 個あり、シーンを触るものと触らないものが混在している。
+/// WHY 網羅するか: ハンドラは 137 個あり、シーンを触るものと触らないものが混在している。
 ///     どれか 1 つでもガードを忘れると «Play 中に AI から操作するとエディターが落ちる» に
 ///     なるが、落ちるまでどれが穴かは分からない。1 つずつ投げて確かめるしかない。
 #include <TestKit/TestKit.hpp>
@@ -19,7 +19,12 @@
 #include <Editor/Ai/EditorBusProtocol.hpp>
 #include <Editor/Ai/Json.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/UndoStack.hpp>
+#include <Engine/Asset/FluidRecipe.hpp>
 
+#include <filesystem>
+#include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -68,7 +73,7 @@ void ExpectWellFormedResponse(const std::string& line, const std::string& what)
 }
 
 // Dispatcher が受け付ける payload.t の一覧。
-// NOTE: 実装の文字列リテラルから拾った 125 種。増えたらここへ足す。
+// NOTE: 実装の文字列リテラルから拾った 137 種。増えたらここへ足す。
 const std::vector<std::string>& AllCommandTypes()
 {
     static const std::vector<std::string> types = {
@@ -90,6 +95,9 @@ const std::vector<std::string>& AllCommandTypes()
         "edit.redo", "edit.undo", "editor.catalog", "editor.catalog.search",
         "editor.op.invoke", "editor.op.list", "editor.op.query", "editor.redo", "editor.state",
         "editor.transaction", "editor.undo", "editor.undoHistory", "environment.inspect",
+        "fluid.addOperator", "fluid.bake", "fluid.cancel", "fluid.create", "fluid.createEffect",
+        "fluid.get", "fluid.jobStatus", "fluid.moveOperator", "fluid.preview",
+        "fluid.removeOperator", "fluid.schema", "fluid.set",
         "input.inject", "material.asset.setShader", "material.assign", "material.inspect",
         "material.override", "navmesh.bake", "navmesh.path", "navmesh.sample", "navmesh.state",
         "node.components", "node.create", "node.delete", "node.duplicate", "node.rename",
@@ -282,6 +290,690 @@ TEST_F(EditorBusDispatcherTest, SurvivesACommandCarryingUnexpectedFields)
     root.Set("payload", std::move(payload));
 
     ExpectWellFormedResponse(dispatcher.Handle(SerializeJson(root)), "extra fields");
+}
+
+// ── 流体 (.fluid) ───────────────────────────────────────────────────────────
+// AI はファイルだけで流体を作って焼く。«作る → 読む → 部分更新 → Undo» の往復と、
+// 焼きの窓口が無い文脈 (テスト・単体ツール) で黙って成功しないことを縛る。
+namespace {
+
+std::string MakePayloadRequest(const JsonValue& payload, const std::string& kind)
+{
+    JsonValue root = JsonValue::MakeObject();
+    root.Set("protocol", JsonValue(editor::ai::kEditorProtocol));
+    root.Set("id", JsonValue("test-1"));
+    root.Set("kind", JsonValue(kind));
+    root.Set("dryRun", JsonValue(false));
+    root.Set("payload", payload);
+    return SerializeJson(root);
+}
+
+JsonValue FluidPayload(const std::string& type, const std::string& path)
+{
+    JsonValue payload = JsonValue::MakeObject();
+    payload.Set("t", JsonValue(type));
+    if (!path.empty()) payload.Set("path", JsonValue(path));
+    return payload;
+}
+
+bool IsOk(const JsonValue& response)
+{
+    const JsonValue* ok = response.Find("ok");
+    return ok != nullptr && ok->AsBool();
+}
+
+std::string ErrorCode(const JsonValue& response)
+{
+    const JsonValue* error = response.Find("error");
+    const JsonValue* code = error != nullptr ? error->Find("code") : nullptr;
+    return code != nullptr ? code->AsString() : std::string{};
+}
+
+std::string ErrorMessage(const JsonValue& response)
+{
+    const JsonValue* error = response.Find("error");
+    const JsonValue* message = error != nullptr ? error->Find("message") : nullptr;
+    return message != nullptr ? message->AsString() : std::string{};
+}
+
+constexpr const char* kSmokePath = "Assets/VFX/Smoke.fluid";
+
+} // namespace
+
+// projectRoot と UndoStack だけを繋ぐ。FluidBakeService は繋がない (焼きは GPU とフレームが要る)。
+class EditorBusFluidTest : public testkit::EditorFixture {
+protected:
+    void SetUp() override
+    {
+        EditorFixture::SetUp();
+        Context().projectRoot = ProjectRoot().generic_string();
+        Context().undoStack = &m_undo;
+        m_dispatcher = std::make_unique<EditorBusDispatcher>(Context());
+    }
+
+    void TearDown() override
+    {
+        m_dispatcher.reset();
+        Context().undoStack = nullptr;
+        EditorFixture::TearDown();
+    }
+
+    JsonValue Send(const JsonValue& payload, const std::string& kind = "command")
+    {
+        const std::string line = m_dispatcher->Handle(MakePayloadRequest(payload, kind));
+        std::optional<JsonValue> parsed = ParseJson(line, nullptr);
+        return parsed.has_value() ? *parsed : JsonValue::MakeObject();
+    }
+
+    asset::FluidRecipe LoadRecipe(const std::string& relative)
+    {
+        asset::FluidRecipe recipe;
+        EXPECT_TRUE(asset::LoadFluidRecipe(File(relative).generic_string(), recipe)) << relative;
+        return recipe;
+    }
+
+    editor::UndoStack                    m_undo;
+    std::unique_ptr<EditorBusDispatcher> m_dispatcher;
+};
+
+TEST_F(EditorBusFluidTest, CreatesARecipeAndReadsItBack)
+{
+    const JsonValue created = Send(FluidPayload("fluid.create", kSmokePath));
+    ASSERT_TRUE(IsOk(created)) << SerializeJson(created);
+    ASSERT_NE(created.Find("result"), nullptr);
+    EXPECT_EQ(created.Find("result")->Find("path")->AsString(), kSmokePath);
+    EXPECT_TRUE(std::filesystem::is_regular_file(File(kSmokePath)));
+
+    const JsonValue got = Send(FluidPayload("fluid.get", kSmokePath), "query");
+    ASSERT_TRUE(IsOk(got)) << SerializeJson(got);
+    const JsonValue* recipe = got.Find("result")->Find("recipe");
+    ASSERT_NE(recipe, nullptr);
+    const JsonValue* gas = recipe->Find("gas");
+    ASSERT_NE(gas, nullptr) << SerializeJson(*recipe);
+    ASSERT_NE(gas->Find("buoyancy"), nullptr);
+    EXPECT_NEAR(gas->Find("buoyancy")->AsNumber(),
+                asset::MakeFluidPreset(asset::FluidPreset::Smoke).gas.buoyancy, 1e-4);
+    const bool volume = asset::MakeFluidPreset(asset::FluidPreset::Smoke).bake.mode == asset::FluidBakeMode::Volume3D;
+    EXPECT_EQ(got.Find("result")->Find("bakeMode")->AsString(), volume ? "3d" : "2d");
+}
+
+TEST_F(EditorBusFluidTest, SetChangesANestedKeyAndUndoRestoresIt)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    const float original = LoadRecipe(kSmokePath).gas.buoyancy;
+
+    JsonValue gas = JsonValue::MakeObject();
+    gas.Set("buoyancy", JsonValue(3.25));
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("gas", std::move(gas));
+    // ドット区切りでも同じ場所を指す。
+    fields.Set("render.opacity", JsonValue(7.5));
+    JsonValue payload = FluidPayload("fluid.set", kSmokePath);
+    payload.Set("fields", std::move(fields));
+
+    const JsonValue response = Send(payload);
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* changed = response.Find("result")->Find("changed");
+    ASSERT_NE(changed, nullptr);
+    ASSERT_EQ(changed->AsArray().size(), 2u);
+    EXPECT_EQ(changed->AsArray()[0].AsString(), "gas.buoyancy");
+    EXPECT_EQ(changed->AsArray()[1].AsString(), "render.opacity");
+
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, 3.25f);
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).render.opacity, 7.5f);
+
+    m_undo.Undo();
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, original);
+
+    m_undo.Redo();
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, 3.25f);
+}
+
+TEST_F(EditorBusFluidTest, SetReportsUnknownKeysAndWritesNothing)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    const float original = LoadRecipe(kSmokePath).gas.buoyancy;
+
+    // 正しいキーが混ざっていても書かない。一部だけ効くと AI は効かなかった方を見落とす。
+    JsonValue gas = JsonValue::MakeObject();
+    gas.Set("buoyancy", JsonValue(9.0));
+    gas.Set("noSuchKey", JsonValue(1));
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("gas", std::move(gas));
+    JsonValue payload = FluidPayload("fluid.set", kSmokePath);
+    payload.Set("fields", std::move(fields));
+
+    const JsonValue response = Send(payload);
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "UNKNOWN_FIELD");
+    EXPECT_NE(ErrorMessage(response).find("gas.noSuchKey"), std::string::npos) << ErrorMessage(response);
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, original);
+}
+
+TEST_F(EditorBusFluidTest, CreateRefusesToOverwriteUnlessAsked)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+
+    const JsonValue again = Send(FluidPayload("fluid.create", kSmokePath));
+    EXPECT_FALSE(IsOk(again));
+    EXPECT_EQ(ErrorCode(again), "FLUID_EXISTS");
+
+    JsonValue overwrite = FluidPayload("fluid.create", kSmokePath);
+    overwrite.Set("preset", JsonValue("Fire"));
+    overwrite.Set("overwrite", JsonValue(true));
+    const JsonValue replaced = Send(overwrite);
+    ASSERT_TRUE(IsOk(replaced)) << SerializeJson(replaced);
+    EXPECT_TRUE(replaced.Find("result")->Find("overwrote")->AsBool());
+
+    // 上書きの Undo は消すのではなく前の中身へ戻す。
+    const float fireBuoyancy = asset::MakeFluidPreset(asset::FluidPreset::Fire).gas.buoyancy;
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, fireBuoyancy);
+    m_undo.Undo();
+    EXPECT_TRUE(std::filesystem::is_regular_file(File(kSmokePath)));
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy,
+                    asset::MakeFluidPreset(asset::FluidPreset::Smoke).gas.buoyancy);
+}
+
+TEST_F(EditorBusFluidTest, CreateUndoRemovesTheFileItCreated)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    ASSERT_TRUE(std::filesystem::is_regular_file(File(kSmokePath)));
+
+    m_undo.Undo();
+    EXPECT_FALSE(std::filesystem::exists(File(kSmokePath)));
+}
+
+TEST_F(EditorBusFluidTest, BakeAndPreviewNeedTheService)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+
+    EXPECT_EQ(ErrorCode(Send(FluidPayload("fluid.bake", kSmokePath))), "SERVICE_UNAVAILABLE");
+    EXPECT_EQ(ErrorCode(Send(FluidPayload("fluid.preview", kSmokePath))), "SERVICE_UNAVAILABLE");
+
+    // 焼けないと分かっているなら .fluid も書かない (成功に見えて何も出ないのを防ぐ)。
+    JsonValue effect = FluidPayload("fluid.createEffect", "");
+    effect.Set("name", JsonValue("Puff"));
+    EXPECT_EQ(ErrorCode(Send(effect)), "SERVICE_UNAVAILABLE");
+    EXPECT_FALSE(std::filesystem::exists(File("Assets/VFX/Fluid/Puff.fluid")));
+
+    // 焼かないなら窓口が無くても作れる。
+    effect.Set("bake", JsonValue(false));
+    const JsonValue created = Send(effect);
+    ASSERT_TRUE(IsOk(created)) << SerializeJson(created);
+    EXPECT_EQ(created.Find("result")->Find("fluidPath")->AsString(), "Assets/VFX/Fluid/Puff.fluid");
+    EXPECT_EQ(created.Find("result")->Find("job"), nullptr);
+    EXPECT_TRUE(std::filesystem::is_regular_file(File("Assets/VFX/Fluid/Puff.fluid")));
+}
+
+TEST_F(EditorBusFluidTest, JobStatusReportsAnUnknownJob)
+{
+    JsonValue payload = FluidPayload("fluid.jobStatus", "");
+    payload.Set("job", JsonValue(42));
+
+    const JsonValue response = Send(payload, "query");
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "FLUID_JOB_NOT_FOUND");
+}
+
+TEST_F(EditorBusFluidTest, TransactionRefusesBakeButAcceptsEdits)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+
+    // 焼きは Undo できないので、まとめて戻す transaction には入れさせない。
+    JsonValue bakeCmds = JsonValue::MakeArray();
+    bakeCmds.Push(FluidPayload("fluid.bake", kSmokePath));
+    JsonValue bakeTransaction = JsonValue::MakeObject();
+    bakeTransaction.Set("t", JsonValue("editor.transaction"));
+    bakeTransaction.Set("label", JsonValue("bake"));
+    bakeTransaction.Set("cmds", std::move(bakeCmds));
+    EXPECT_EQ(ErrorCode(Send(bakeTransaction)), "UNSUPPORTED");
+
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("gas.buoyancy", JsonValue(2.5));
+    JsonValue set = FluidPayload("fluid.set", kSmokePath);
+    set.Set("fields", std::move(fields));
+    JsonValue editCmds = JsonValue::MakeArray();
+    editCmds.Push(std::move(set));
+    JsonValue editTransaction = JsonValue::MakeObject();
+    editTransaction.Set("t", JsonValue("editor.transaction"));
+    editTransaction.Set("label", JsonValue("edit"));
+    editTransaction.Set("cmds", std::move(editCmds));
+    const JsonValue response = Send(editTransaction);
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, 2.5f);
+
+    // 部品の追加も Undo できるファイル書き込みなので transaction に入れられる。
+    JsonValue add = FluidPayload("fluid.addOperator", kSmokePath);
+    add.Set("list", JsonValue("force"));
+    JsonValue addCmds = JsonValue::MakeArray();
+    addCmds.Push(std::move(add));
+    JsonValue addTransaction = JsonValue::MakeObject();
+    addTransaction.Set("t", JsonValue("editor.transaction"));
+    addTransaction.Set("label", JsonValue("add"));
+    addTransaction.Set("cmds", std::move(addCmds));
+    const std::size_t forcesBefore = LoadRecipe(kSmokePath).forces.size();
+    const JsonValue added = Send(addTransaction);
+    ASSERT_TRUE(IsOk(added)) << SerializeJson(added);
+    EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), forcesBefore + 1);
+}
+
+// ── 部品 (発生源・力) ──
+namespace {
+
+JsonValue OperatorPayload(const std::string& type, const std::string& list)
+{
+    JsonValue payload = FluidPayload(type, kSmokePath);
+    payload.Set("list", JsonValue(list));
+    return payload;
+}
+
+bool ArrayHasString(const JsonValue* array, const std::string& wanted)
+{
+    if (array == nullptr || !array->IsArray()) return false;
+    for (const JsonValue& item : array->AsArray())
+        if (item.IsString() && item.AsString() == wanted) return true;
+    return false;
+}
+
+} // namespace
+
+TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    const std::size_t before = LoadRecipe(kSmokePath).sources.size();
+
+    // ラベルは大文字小文字を問わない。fields は新しい部品 1 つぶんの部分指定。
+    JsonValue payload = OperatorPayload("fluid.addOperator", "source");
+    payload.Set("type", JsonValue("Cone"));
+    payload.Set("index", JsonValue(0));
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("density", JsonValue(7.0));
+    fields.Set("name", JsonValue("Jet"));
+    payload.Set("fields", std::move(fields));
+
+    const JsonValue response = Send(payload);
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    EXPECT_EQ(result->Find("list")->AsString(), "source");
+    EXPECT_EQ(result->Find("index")->AsInt(), 0);
+    EXPECT_EQ(result->Find("count")->AsInt(), static_cast<int>(before + 1));
+    EXPECT_TRUE(ArrayHasString(result->Find("changed"), "source.0.density"));
+
+    asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    ASSERT_EQ(recipe.sources.size(), before + 1);
+    EXPECT_EQ(recipe.sources[0].shape, asset::FluidSourceShape::Cone);
+    EXPECT_FLOAT_EQ(recipe.sources[0].density, 7.0f);
+    EXPECT_EQ(recipe.sources[0].name, "Jet");
+
+    m_undo.Undo();
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources.size(), before);
+    m_undo.Redo();
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, asset::FluidSourceShape::Cone);
+
+    // 力の種類もラベルで選べる (TOML と同じ綴り)。
+    JsonValue force = OperatorPayload("fluid.addOperator", "force");
+    force.Set("type", JsonValue("VORTEX"));
+    ASSERT_TRUE(IsOk(Send(force)));
+    EXPECT_EQ(LoadRecipe(kSmokePath).forces.back().type, asset::FluidForceType::Vortex);
+}
+
+TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    for (const char* shape : { "box", "ring" }) {
+        JsonValue add = OperatorPayload("fluid.addOperator", "source");
+        add.Set("type", JsonValue(shape));
+        ASSERT_TRUE(IsOk(Send(add)));
+    }
+    const asset::FluidRecipe original = LoadRecipe(kSmokePath);
+    const std::size_t count = original.sources.size();
+    ASSERT_GE(count, 2u);
+
+    // 末尾 (ring) を先頭へ。
+    JsonValue move = OperatorPayload("fluid.moveOperator", "source");
+    move.Set("from", JsonValue(static_cast<int>(count - 1)));
+    move.Set("to", JsonValue(0));
+    const JsonValue moved = Send(move);
+    ASSERT_TRUE(IsOk(moved)) << SerializeJson(moved);
+    EXPECT_EQ(moved.Find("result")->Find("from")->AsInt(), static_cast<int>(count - 1));
+    EXPECT_EQ(moved.Find("result")->Find("to")->AsInt(), 0);
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, asset::FluidSourceShape::Ring);
+    m_undo.Undo();
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[count - 1].shape, asset::FluidSourceShape::Ring);
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, original.sources[0].shape);
+
+    JsonValue remove = OperatorPayload("fluid.removeOperator", "source");
+    remove.Set("index", JsonValue(static_cast<int>(count - 2)));
+    const JsonValue removed = Send(remove);
+    ASSERT_TRUE(IsOk(removed)) << SerializeJson(removed);
+    EXPECT_EQ(removed.Find("result")->Find("removed")->AsInt(), static_cast<int>(count - 2));
+    EXPECT_EQ(removed.Find("result")->Find("count")->AsInt(), static_cast<int>(count - 1));
+    asset::FluidRecipe afterRemove = LoadRecipe(kSmokePath);
+    ASSERT_EQ(afterRemove.sources.size(), count - 1);
+    EXPECT_EQ(afterRemove.sources.back().shape, asset::FluidSourceShape::Ring);
+    m_undo.Undo();
+    asset::FluidRecipe restored = LoadRecipe(kSmokePath);
+    ASSERT_EQ(restored.sources.size(), count);
+    EXPECT_EQ(restored.sources[count - 2].shape, asset::FluidSourceShape::Box);
+
+    // 範囲外は何も書かずに BAD_ARG。
+    remove.Set("index", JsonValue(static_cast<int>(count)));
+    EXPECT_EQ(ErrorCode(Send(remove)), "BAD_ARG");
+    move.Set("from", JsonValue(static_cast<int>(count)));
+    EXPECT_EQ(ErrorCode(Send(move)), "BAD_ARG");
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources.size(), count);
+}
+
+TEST_F(EditorBusFluidTest, AddOperatorRejectsUnknownListsTypesAndAFullList)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+
+    EXPECT_EQ(ErrorCode(Send(OperatorPayload("fluid.addOperator", "gas_source"))), "BAD_ARG");
+    JsonValue badType = OperatorPayload("fluid.addOperator", "force");
+    badType.Set("type", JsonValue("tornado"));
+    EXPECT_EQ(ErrorCode(Send(badType)), "BAD_ARG");
+
+    // 配列ごと渡すと上限で切り詰め、何を落としたかを返す。
+    JsonValue many = JsonValue::MakeArray();
+    for (int i = 0; i < asset::kMaxFluidForces + 2; ++i) many.Push(JsonValue::MakeObject());
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("force", std::move(many));
+    JsonValue set = FluidPayload("fluid.set", kSmokePath);
+    set.Set("fields", std::move(fields));
+    const JsonValue filled = Send(set);
+    ASSERT_TRUE(IsOk(filled)) << SerializeJson(filled);
+    EXPECT_NE(filled.Find("result")->Find("clamped"), nullptr) << SerializeJson(filled);
+    EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), static_cast<std::size_t>(asset::kMaxFluidForces));
+
+    const JsonValue full = Send(OperatorPayload("fluid.addOperator", "force"));
+    EXPECT_FALSE(IsOk(full));
+    EXPECT_EQ(ErrorCode(full), "OPERATOR_LIMIT");
+    EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), static_cast<std::size_t>(asset::kMaxFluidForces));
+}
+
+TEST_F(EditorBusFluidTest, SetAcceptsForceTypeLabelsAndMotionKeyArrays)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    ASSERT_TRUE(IsOk(Send(OperatorPayload("fluid.addOperator", "force"))));
+    ASSERT_TRUE(IsOk(Send(OperatorPayload("fluid.addOperator", "source"))));
+    const std::size_t forceIndex = LoadRecipe(kSmokePath).forces.size() - 1;
+
+    JsonValue key0 = JsonValue::MakeObject();
+    key0.Set("time", JsonValue(0.0));
+    JsonValue offset0 = JsonValue::MakeArray();
+    for (double v : { 0.0, 0.0, 0.0 }) offset0.Push(JsonValue(v));
+    key0.Set("offset", std::move(offset0));
+    JsonValue key1 = JsonValue::MakeObject();
+    key1.Set("time", JsonValue(1.0));
+    JsonValue offset1 = JsonValue::MakeArray();
+    for (double v : { 0.5, 0.25, 0.0 }) offset1.Push(JsonValue(v));
+    key1.Set("offset", std::move(offset1));
+    JsonValue keys = JsonValue::MakeArray();
+    keys.Push(std::move(key0));
+    keys.Push(std::move(key1));
+
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("force." + std::to_string(forceIndex) + ".type", JsonValue("vortex"));
+    fields.Set("source.0.motion.key", std::move(keys));
+    JsonValue payload = FluidPayload("fluid.set", kSmokePath);
+    payload.Set("fields", std::move(fields));
+
+    const JsonValue response = Send(payload);
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    EXPECT_EQ(recipe.forces[forceIndex].type, asset::FluidForceType::Vortex);
+    ASSERT_EQ(recipe.sources[0].motion.keys.size(), 2u);
+    EXPECT_FLOAT_EQ(recipe.sources[0].motion.keys[1].time, 1.0f);
+    EXPECT_FLOAT_EQ(recipe.sources[0].motion.keys[1].offset.x, 0.5f);
+    EXPECT_FLOAT_EQ(recipe.sources[0].motion.keys[1].offset.y, 0.25f);
+}
+
+TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
+{
+    const JsonValue response = Send(FluidPayload("fluid.schema", ""), "query");
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* operators = response.Find("result")->Find("operators");
+    ASSERT_NE(operators, nullptr);
+
+    const JsonValue* source = operators->Find("source");
+    ASSERT_NE(source, nullptr);
+    const JsonValue* shapes = source->Find("types");
+    ASSERT_NE(shapes, nullptr);
+    EXPECT_EQ(shapes->AsArray().size(), 7u);
+    EXPECT_TRUE(ArrayHasString(shapes, "cone"));
+    EXPECT_TRUE(ArrayHasString(shapes, "texture"));
+    EXPECT_TRUE(ArrayHasString(shapes, "capsule"));
+    EXPECT_TRUE(ArrayHasString(shapes, "cylinder"));
+    // カプセルは芯の軸を direction で持つ形。種類ごとの一覧にその項目が見えていること。
+    const JsonValue* capsule = source->Find("fields")->Find("capsule");
+    ASSERT_NE(capsule, nullptr);
+    EXPECT_TRUE(ArrayHasString(capsule, "direction")) << SerializeJson(*capsule);
+    const JsonValue* textureShape = source->Find("fields")->Find("texture");
+    ASSERT_NE(textureShape, nullptr);
+    EXPECT_TRUE(ArrayHasString(textureShape, "texture")) << SerializeJson(*textureShape);
+    // cone は向きを持つ形。種類ごとの一覧にその項目が見えていること。
+    const JsonValue* cone = source->Find("fields")->Find("cone");
+    ASSERT_NE(cone, nullptr);
+    EXPECT_FALSE(cone->AsArray().empty());
+    EXPECT_TRUE(ArrayHasString(cone, "direction")) << SerializeJson(*cone);
+
+    const JsonValue* force = operators->Find("force");
+    ASSERT_NE(force, nullptr);
+    const JsonValue* forceTypes = force->Find("types");
+    ASSERT_NE(forceTypes, nullptr);
+    EXPECT_EQ(forceTypes->AsArray().size(), 6u);
+    const JsonValue* vortex = force->Find("fields")->Find("vortex");
+    ASSERT_NE(vortex, nullptr);
+    EXPECT_TRUE(ArrayHasString(vortex, "strength")) << SerializeJson(*vortex);
+    EXPECT_TRUE(ArrayHasString(vortex, "direction")) << SerializeJson(*vortex);
+
+    const JsonValue* collider = operators->Find("collider");
+    ASSERT_NE(collider, nullptr);
+    EXPECT_EQ(collider->Find("typeField")->AsString(), "shape");
+    EXPECT_EQ(collider->Find("limit")->AsInt(), asset::kMaxFluidColliders);
+    const JsonValue* colliderShapes = collider->Find("types");
+    ASSERT_NE(colliderShapes, nullptr);
+    EXPECT_EQ(colliderShapes->AsArray().size(), 5u);
+    for (const char* shape : { "sphere", "box", "plane", "capsule", "cylinder" })
+        EXPECT_TRUE(ArrayHasString(colliderShapes, shape)) << shape;
+    // plane は法線 (direction) で向きが決まる形。
+    const JsonValue* plane = collider->Find("fields")->Find("plane");
+    ASSERT_NE(plane, nullptr);
+    EXPECT_TRUE(ArrayHasString(plane, "direction")) << SerializeJson(*plane);
+    // カプセルは芯の軸 (direction) と大きさ (size) の両方を持つ。
+    const JsonValue* capsuleCollider = collider->Find("fields")->Find("capsule");
+    ASSERT_NE(capsuleCollider, nullptr);
+    EXPECT_TRUE(ArrayHasString(capsuleCollider, "direction")) << SerializeJson(*capsuleCollider);
+    EXPECT_TRUE(ArrayHasString(capsuleCollider, "size")) << SerializeJson(*capsuleCollider);
+
+    const JsonValue* limits = response.Find("result")->Find("limits");
+    ASSERT_NE(limits, nullptr);
+    ASSERT_NE(limits->Find("collider"), nullptr);
+    EXPECT_EQ(limits->Find("collider")->AsInt(), asset::kMaxFluidColliders);
+}
+
+TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    const std::size_t before = LoadRecipe(kSmokePath).colliders.size();
+
+    JsonValue plane = OperatorPayload("fluid.addOperator", "collider");
+    plane.Set("type", JsonValue("Plane"));
+    JsonValue fields = JsonValue::MakeObject();
+    JsonValue direction = JsonValue::MakeArray();
+    for (double v : { 0.0, 0.0, 1.0 }) direction.Push(JsonValue(v));
+    fields.Set("direction", std::move(direction));
+    fields.Set("friction", JsonValue(0.75));
+    plane.Set("fields", std::move(fields));
+    const JsonValue added = Send(plane);
+    ASSERT_TRUE(IsOk(added)) << SerializeJson(added);
+    EXPECT_EQ(added.Find("result")->Find("list")->AsString(), "collider");
+    EXPECT_EQ(added.Find("result")->Find("index")->AsInt(), static_cast<int>(before));
+    EXPECT_EQ(added.Find("result")->Find("count")->AsInt(), static_cast<int>(before + 1));
+
+    asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    ASSERT_EQ(recipe.colliders.size(), before + 1);
+    EXPECT_EQ(recipe.colliders.back().shape, asset::FluidColliderShape::Plane);
+    EXPECT_FLOAT_EQ(recipe.colliders.back().direction.z, 1.0f);
+    EXPECT_FLOAT_EQ(recipe.colliders.back().friction, 0.75f);
+    m_undo.Undo();
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.size(), before);
+    m_undo.Redo();
+    ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), before + 1);
+
+    // 末尾に box を足して先頭へ回す。
+    JsonValue box = OperatorPayload("fluid.addOperator", "collider");
+    box.Set("type", JsonValue("box"));
+    ASSERT_TRUE(IsOk(Send(box)));
+    const std::size_t count = before + 2;
+    JsonValue move = OperatorPayload("fluid.moveOperator", "collider");
+    move.Set("from", JsonValue(static_cast<int>(count - 1)));
+    move.Set("to", JsonValue(0));
+    const JsonValue moved = Send(move);
+    ASSERT_TRUE(IsOk(moved)) << SerializeJson(moved);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[0].shape, asset::FluidColliderShape::Box);
+    m_undo.Undo();
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[count - 1].shape, asset::FluidColliderShape::Box);
+
+    JsonValue remove = OperatorPayload("fluid.removeOperator", "collider");
+    remove.Set("index", JsonValue(static_cast<int>(count - 1)));
+    const JsonValue removed = Send(remove);
+    ASSERT_TRUE(IsOk(removed)) << SerializeJson(removed);
+    ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), count - 1);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.back().shape, asset::FluidColliderShape::Plane);
+    m_undo.Undo();
+    ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), count);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.back().shape, asset::FluidColliderShape::Box);
+}
+
+TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    const std::size_t limit = static_cast<std::size_t>(asset::kMaxFluidColliders);
+    for (std::size_t i = LoadRecipe(kSmokePath).colliders.size(); i < limit; ++i)
+        ASSERT_TRUE(IsOk(Send(OperatorPayload("fluid.addOperator", "collider")))) << i;
+    ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), limit);
+
+    const JsonValue full = Send(OperatorPayload("fluid.addOperator", "collider"));
+    EXPECT_FALSE(IsOk(full));
+    EXPECT_EQ(ErrorCode(full), "OPERATOR_LIMIT");
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.size(), limit);
+
+    // 形のラベルは TOML と同じ綴りで、保存するときは添字になる。
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("collider.0.shape", JsonValue("plane"));
+    JsonValue set = FluidPayload("fluid.set", kSmokePath);
+    set.Set("fields", std::move(fields));
+    const JsonValue response = Send(set);
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    EXPECT_TRUE(ArrayHasString(response.Find("result")->Find("changed"), "collider.0.shape"));
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[0].shape, asset::FluidColliderShape::Plane);
+
+    // 配列ごと渡すと上限で切り詰めて clamped に載る。
+    JsonValue many = JsonValue::MakeArray();
+    for (std::size_t i = 0; i < limit + 3; ++i) many.Push(JsonValue::MakeObject());
+    JsonValue arrayFields = JsonValue::MakeObject();
+    arrayFields.Set("collider", std::move(many));
+    JsonValue arraySet = FluidPayload("fluid.set", kSmokePath);
+    arraySet.Set("fields", std::move(arrayFields));
+    const JsonValue clamped = Send(arraySet);
+    ASSERT_TRUE(IsOk(clamped)) << SerializeJson(clamped);
+    EXPECT_NE(clamped.Find("result")->Find("clamped"), nullptr) << SerializeJson(clamped);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.size(), limit);
+}
+
+TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+
+    // 画像は後から置くことがあるので、無くても書いて warnings で知らせる。
+    JsonValue payload = OperatorPayload("fluid.addOperator", "source");
+    payload.Set("type", JsonValue("texture"));
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("texture", JsonValue("Assets/Textures/Missing.png"));
+    payload.Set("fields", std::move(fields));
+    const JsonValue response = Send(payload);
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* warnings = response.Find("result")->Find("warnings");
+    ASSERT_NE(warnings, nullptr) << SerializeJson(response);
+    ASSERT_EQ(warnings->AsArray().size(), 1u) << SerializeJson(*warnings);
+    EXPECT_NE(warnings->AsArray()[0].AsString().find("texture not found"), std::string::npos)
+        << warnings->AsArray()[0].AsString();
+
+    asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    const std::size_t index = recipe.sources.size() - 1;
+    EXPECT_EQ(recipe.sources[index].shape, asset::FluidSourceShape::Texture);
+    EXPECT_EQ(recipe.sources[index].texture, "Assets/Textures/Missing.png");
+
+    // 置いた画像を指せば warnings は出ない (中身は見ず、在るかだけを見る)。
+    std::filesystem::create_directories(File("Assets/Textures"));
+    { std::ofstream(File("Assets/Textures/Logo.png"), std::ios::binary) << "png"; }
+    JsonValue found = JsonValue::MakeObject();
+    found.Set("source." + std::to_string(index) + ".texture", JsonValue("Assets/Textures/Logo.png"));
+    JsonValue set = FluidPayload("fluid.set", kSmokePath);
+    set.Set("fields", std::move(found));
+    const JsonValue updated = Send(set);
+    ASSERT_TRUE(IsOk(updated)) << SerializeJson(updated);
+    EXPECT_EQ(updated.Find("result")->Find("warnings"), nullptr) << SerializeJson(updated);
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[index].texture, "Assets/Textures/Logo.png");
+
+    // projectRoot の外は書かない。
+    JsonValue outside = JsonValue::MakeObject();
+    outside.Set("source." + std::to_string(index) + ".texture", JsonValue("../Outside.png"));
+    JsonValue escape = FluidPayload("fluid.set", kSmokePath);
+    escape.Set("fields", std::move(outside));
+    EXPECT_EQ(ErrorCode(Send(escape)), "BAD_PATH");
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[index].texture, "Assets/Textures/Logo.png");
+}
+
+TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
+{
+    ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
+    ASSERT_TRUE(IsOk(Send(OperatorPayload("fluid.addOperator", "source"))));
+
+    // Undo が «直前の状態» へ戻すことを見たいので、開始状態はテスト自身で決める。
+    // WHY: プリセットの既定に頼ると、絵を派手にした (煙を 2 色にした) だけでここが落ちる。
+    {
+        JsonValue off = JsonValue::MakeObject();
+        off.Set("render.use_albedo_ramp", JsonValue(false));
+        JsonValue reset = FluidPayload("fluid.set", kSmokePath);
+        reset.Set("fields", std::move(off));
+        ASSERT_TRUE(IsOk(Send(reset)));
+        ASSERT_FALSE(LoadRecipe(kSmokePath).render.useAlbedoRamp);
+    }
+
+    // 発生源ごとの色は «鍵 + ランプ» の 2 か所。どちらかが書けないと AI は色を塗り分けられない。
+    JsonValue red = JsonValue::MakeArray();
+    for (double v : { 1.0, 0.0, 0.0 }) red.Push(JsonValue(v));
+    JsonValue fields = JsonValue::MakeObject();
+    fields.Set("source.0.color_key", JsonValue(0.75));
+    fields.Set("render.use_albedo_ramp", JsonValue(true));
+    fields.Set("render.albedo_ramp.3.color", std::move(red));
+    JsonValue payload = FluidPayload("fluid.set", kSmokePath);
+    payload.Set("fields", std::move(fields));
+
+    const JsonValue response = Send(payload);
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* changed = response.Find("result")->Find("changed");
+    EXPECT_TRUE(ArrayHasString(changed, "source.0.color_key")) << SerializeJson(response);
+    EXPECT_TRUE(ArrayHasString(changed, "render.use_albedo_ramp")) << SerializeJson(response);
+
+    const asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    ASSERT_FALSE(recipe.sources.empty());
+    EXPECT_FLOAT_EQ(recipe.sources[0].colorKey, 0.75f);
+    EXPECT_TRUE(recipe.render.useAlbedoRamp);
+    EXPECT_FLOAT_EQ(recipe.render.albedoRamp.stops[3].color.x, 1.0f);
+    EXPECT_FLOAT_EQ(recipe.render.albedoRamp.stops[3].color.y, 0.0f);
+
+    m_undo.Undo();
+    EXPECT_FALSE(LoadRecipe(kSmokePath).render.useAlbedoRamp);
+
+    // color_key はどの形の発生源にも効く項目としてスキーマに載る。
+    const JsonValue schema = Send(FluidPayload("fluid.schema", ""), "query");
+    ASSERT_TRUE(IsOk(schema)) << SerializeJson(schema);
+    const JsonValue* sphere = schema.Find("result")->Find("operators")->Find("source")->Find("fields")->Find("sphere");
+    ASSERT_NE(sphere, nullptr);
+    EXPECT_TRUE(ArrayHasString(sphere, "color_key")) << SerializeJson(*sphere);
 }
 
 } // namespace fbzz::tests
