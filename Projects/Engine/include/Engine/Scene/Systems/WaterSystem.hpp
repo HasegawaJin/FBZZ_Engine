@@ -7,6 +7,7 @@
 #include <Engine/Core/Scheduler/ISystem.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Entity.hpp>
+#include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <cstdint>
 #include <unordered_map>
@@ -50,6 +51,11 @@ void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* materi
 
 /// water.materialPath の .mat を引く。未設定・読込失敗なら nullptr。
 [[nodiscard]] const asset::MaterialAsset* LoadWaterMaterial(const WaterComponent& water);
+
+/// 頂点グリッド 1 セルのワールド実寸 [m]。extent に Transform のスケールを掛けて解像度で割る。
+/// WHY 1 か所に置くか: 描画 (WaterCB) と浮力 (WaterComponent::GetSurfaceHeightAt) が
+///     «刻めない波» の判断に同じ値を使う必要がある。
+[[nodiscard]] math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform& transform);
 
 /// ワールド座標に着水の波紋を 1 つ置く。大きさはメートルで決め、水面の広さに依らず揃える。
 /// @param strength [0,1]

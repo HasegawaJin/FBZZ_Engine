@@ -13,6 +13,7 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
+#include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 
 namespace fbzz::scene {
@@ -24,6 +25,13 @@ struct VFXScreenEffect {
     // 全ての加算量にこの重みが掛かるため、weight=0 なら実質無効。
     float weight = 0.0f;
 
+    // 窓の進捗 0..1。VFXSystem が VFXElement からそのまま配る (weight と違い単調)。
+    //
+    // WHY weight で代用できないか: weight は «どれだけ効かせるか» で、weightCurve に
+    //     よって山なりに上がって下がる。輪が «どこまで進んだか» にそれを使うと、
+    //     衝撃波が外へ出てから中心へ戻ってくる。
+    float progress = 0.0f;
+
     math::Vector3 flashColor = { 1.0f, 1.0f, 1.0f };
     float flashIntensity = 0.0f;      // 最終合成の screenFadeAlpha へ加算
     float bloomBoost = 0.0f;          // bloom.intensity へ加算
@@ -31,6 +39,30 @@ struct VFXScreenEffect {
     float lensDistortion = 0.0f;      // lens.distortion へ加算
     float vignette = 0.0f;            // vignette.intensity へ加算
     float radialBlur = 0.0f;          // 画面中心から外へ引き伸ばす量 [0,1]
+
+    // ---- 衝撃波リング ----
+    // 同心円の «輪» が中心から外へ走り、輪の上だけ色を読む座標を半径方向へずらす。
+    //
+    // WHY lensDistortion で代用できないか: あちらは r^2 に比例する樽型で、中心が
+    //     動かないまま画面全体が一様に膨らむ。叩きつけや弾き成功の «効いた感» は
+    //     «縁が自分の前を通り過ぎる» ことで出るので、半径を持つ細い帯でないと
+    //     «押された» ようには見えない。radialBlur (引き伸ばし) でも輪にはならない。
+    // WHY 半径を progress で割り出すか: 輪が止まっていては衝撃波にならない。
+    //     .vfx に焼く以上、走らせるのは VFXElement の窓であるべきで、
+    //     書き手が毎フレーム半径を書き替える経路を前提にはできない。
+    float shockRingAmplitude = 0.0f; // 輪の上での UV ずらし量。0 (既定) で完全に無効
+    float shockRingRadius = 0.9f;    // progress=1 で輪が到達する半径 [画面 UV 距離]
+    float shockRingWidth = 0.12f;    // 輪の太さ [画面 UV 距離]
+    math::Vector2 shockRingCenter = { 0.5f, 0.5f }; // 輪の中心 (画面 UV)
+
+    // ---- 露出・彩度・コントラストの一時押し ----
+    // WHY 加算枠が要るか: 止めの瞬間だけ露出を落として彩度を抜く演出は、
+    //     PostProcessSettings を丸ごと組み直す破壊的な経路 (ScriptPostProcessProxy)
+    //     でしか作れなかった。丸ごと書く «唯一の書き手» が 1 人でも居ると、
+    //     ボリュームも他の .vfx も同じフレームに踏み潰される。
+    float exposureOffset = 0.0f;   // postProcess.exposure へ加算 (下限 0)
+    float saturationOffset = 0.0f; // colorGrading.saturation へ加算 (1=素、0=無彩色)
+    float contrastOffset = 0.0f;   // colorGrading.contrast へ加算 (0=素)
 
     const char* GetTypeName() const { return "VFX Screen Effect"; }
     void Reflect(IReflector& r)
@@ -43,6 +75,13 @@ struct VFXScreenEffect {
         r.Field("lensDistortion", lensDistortion);
         r.Field("vignette", vignette);
         r.Field("radialBlur", radialBlur);
+        r.Field("shockRingAmplitude", shockRingAmplitude);
+        r.Field("shockRingRadius", shockRingRadius);
+        r.Field("shockRingWidth", shockRingWidth);
+        r.Field("shockRingCenter", shockRingCenter);
+        r.Field("exposureOffset", exposureOffset);
+        r.Field("saturationOffset", saturationOffset);
+        r.Field("contrastOffset", contrastOffset);
     }
 };
 

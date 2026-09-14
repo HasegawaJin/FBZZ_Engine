@@ -39,21 +39,37 @@ bool DX12Texture::Init(DX12Context* context, const std::string& path)
         return false;
     }
 
-    const DirectX::Image* image = source.GetImage(0, 0, 0);
-    DirectX::ScratchImage converted;
-    if (image->format != DXGI_FORMAT_R8G8B8A8_UNORM) {
-        result = DirectX::IsCompressed(image->format)
-            ? DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, converted)
-            : DirectX::Convert(*image, DXGI_FORMAT_R8G8B8A8_UNORM,
-                               DirectX::TEX_FILTER_DEFAULT, 0.0f, converted);
-        if (FAILED(result)) {
-            FBZZ_LOG_ERROR("DX12Texture: RGBA8 変換に失敗しました: %s", path.c_str());
-            return false;
+    // DDS に入っているミップは全段転送する。フリップブックの «コマを跨がないミップ» は
+    // 焼く側でしか作れないので、ここで 0 段目だけにすると遠くの粒子がちらつく。
+    const std::size_t mipCount = (std::max)(source.GetMetadata().mipLevels, std::size_t{ 1 });
+    std::vector<DirectX::ScratchImage> converted(mipCount);
+    std::vector<DX12Context::TextureMip> mips;
+    mips.reserve(mipCount);
+    for (std::size_t level = 0; level < mipCount; ++level) {
+        const DirectX::Image* image = source.GetImage(level, 0, 0);
+        if (image == nullptr) break;
+        if (image->format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+            result = DirectX::IsCompressed(image->format)
+                ? DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, converted[level])
+                : DirectX::Convert(*image, DXGI_FORMAT_R8G8B8A8_UNORM,
+                                   DirectX::TEX_FILTER_DEFAULT, 0.0f, converted[level]);
+            if (FAILED(result)) {
+                FBZZ_LOG_ERROR("DX12Texture: RGBA8 変換に失敗しました: %s", path.c_str());
+                return false;
+            }
+            image = converted[level].GetImage(0, 0, 0);
         }
-        image = converted.GetImage(0, 0, 0);
+        mips.push_back({ image->pixels, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height),
+                         image->rowPitch });
     }
-    return InitFromData(context, image->pixels,
-                        static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height));
+    if (mips.empty() || !context->UploadTexture2DMips(mips, m_resource)) {
+        FBZZ_LOG_ERROR("DX12Texture: テクスチャ転送に失敗しました: %s", path.c_str());
+        return false;
+    }
+    m_width = mips[0].width;
+    m_height = mips[0].height;
+    m_mipLevels = static_cast<uint32_t>(mips.size());
+    return CreateSrv(context);
 }
 
 bool DX12Texture::InitFromData(
@@ -223,7 +239,7 @@ bool DX12Texture::CreateSrv(DX12Context* context, DXGI_FORMAT format)
     srvDesc.Format = format;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Texture2D.MipLevels = 1;
+    srvDesc.Texture2D.MipLevels = (std::max)(m_mipLevels, 1u);
     context->GetDevice()->CreateShaderResourceView(m_resource.Get(), &srvDesc, GetSrvCpu());
     return true;
 }

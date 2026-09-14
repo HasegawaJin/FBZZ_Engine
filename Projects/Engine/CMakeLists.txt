@@ -70,12 +70,14 @@ set(FBZZ_ENGINE_DEFINES
 # 統合してはいけない翻訳単位。
 #   StbFontImpl.cpp   STB_TRUETYPE_IMPLEMENTATION / STB_RECT_PACK_IMPLEMENTATION の展開場所
 #   Cursor.cpp        STB_IMAGE_IMPLEMENTATION の展開場所 (カーソル画像のデコード)
+#   FluidSourceMask.cpp  同上 (流体のテクスチャ発生源のマスク。STB_IMAGE_STATIC で Cursor.cpp とは別の実体)
 #   Window.cpp        DPI_AWARENESS_CONTEXT_* と WM_DPICHANGED を #undef せずに定義する
 #   Input.cpp         WIN32_LEAN_AND_MEAN を定義するため、同じバッチの後続ファイルの
 #                     Windows.h の中身が変わってしまう
 set(FBZZ_ENGINE_UNITY_EXCLUDE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/StbFontImpl.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Cursor.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Asset/FluidSourceMask.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Window.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Input/Input.cpp"
 )

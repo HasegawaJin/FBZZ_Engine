@@ -1,5 +1,5 @@
 /// @file    FxaaPass.cpp
-/// @brief   FXAA render pass implementation.
+/// @brief   ポストプロセスチェーンの最新画像を FXAA で最終出力へ描く。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "PostProcessPasses.hpp"
@@ -13,7 +13,8 @@ void ExecuteFxaaPass(RenderPassContext& ctx)
     auto& h = ctx.handles;
     const auto& rs = ctx.settings;
 
-    if (rs.postProcess.fxaaEnabled && h.fxaaShader.IsValid() && ctx.Res().Target("LDR").IsValid())
+    // CustomPP / Outline 後は LDR ではなく、グラフが申告した直前の出力を読む。
+    if (rs.postProcess.fxaaEnabled && h.fxaaShader.IsValid() && h.fxaaInput.IsValid())
     {
         ctx.renderer.SetRenderTarget(ctx.chainOutputRT, ctx.resources);
 

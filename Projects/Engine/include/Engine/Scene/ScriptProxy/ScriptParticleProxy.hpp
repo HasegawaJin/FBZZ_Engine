@@ -68,6 +68,12 @@ enum class ParticleGpuFallbackReason {
     // WHY 枠を残すか: この enum は Script DLL が数値で受け取る。詰めると、
     //     再ビルドしていないスクリプトが SpeedModule を «その次の理由» と読む。
     ReservedVectorField,
+    // Lights モジュール (light.lightEnabled)。粒子を点光源にするには CPU 側に位置が
+    // 要る (RenderSystem が runtime.particles を読んでライト配列へ積む)。
+    // GPU の粒子は位置が GPU にしか無いため、光らせるなら CPU へ縮退する。
+    // NOTE: 追加は必ず末尾へ。途中へ挿すと、再ビルドしていない Script DLL が
+    //       以降の理由を 1 つずれた値として読む (上の予約枠と同じ理由)。
+    Light,
 };
 
 enum class ParticleSimulationSpace : uint8_t {

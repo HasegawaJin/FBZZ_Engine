@@ -1403,6 +1403,7 @@ private:
     friend struct ScriptSequenceProxy;
     friend struct ScriptObjectMaskProxy;
     friend struct ScriptSpringBoneProxy;
+    friend struct ScriptJointProxy;
 
     struct InvokeEntry {
         std::function<void()> fn;

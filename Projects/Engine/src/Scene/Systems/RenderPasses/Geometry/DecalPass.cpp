@@ -319,6 +319,54 @@ struct PendingDecal {
     float           fade  = 1.0f;
 };
 
+bool DecalHasFlipbook(const DecalComponent& decal)
+{
+    return decal.frameCount > 1;
+}
+
+// age を進める必要があるか。
+//
+// WHY 常に進めないか: age はシーンへ保存されるフィールドで、永続デカール (lifetime < 0)
+//     では従来 0 のままだった。無条件に足すと、編集中にシーンを開いているだけで
+//     age が増え、保存するたびに «誰も触っていない差分» が出る。
+bool DecalNeedsAge(const DecalComponent& decal)
+{
+    return decal.lifetime >= 0.0f || decal.fadeInTime > 0.0f || DecalHasFlipbook(decal);
+}
+
+// アトラスの 1 コマぶんの UV スケールと、今のコマ番号を求める。
+// @return フリップブックが有効なら true (無効時は恒等な (1,1) / 0 を書く)
+bool ResolveDecalFlipbook(const DecalComponent& decal, float outScale[2], float& outIndex)
+{
+    outScale[0] = 1.0f;
+    outScale[1] = 1.0f;
+    outIndex    = 0.0f;
+    if (!DecalHasFlipbook(decal)) return false;
+
+    const int frames = decal.frameCount;
+    const int perRow = std::clamp(decal.framesPerRow, 1, frames);
+    const int rows   = (frames + perRow - 1) / perRow;
+
+    // frameRate 0 は「寿命いっぱいで 1 周」。血の乾きや焦げの定着は消えるまでに
+    // 終わるのが正しく、lifetime を触るたびに fps を計算し直させたくない。
+    float progress = 0.0f;
+    if (decal.frameRate > 0.0f)
+        progress = decal.age * decal.frameRate / static_cast<float>(frames);
+    else if (decal.lifetime > 0.0f)
+        progress = decal.age / decal.lifetime;
+
+    if (decal.frameLoop) progress -= std::floor(progress);
+    // 止める側は 1.0 を含めない。含めると frames 番目 (存在しないコマ) を指す。
+    else                 progress = std::clamp(progress, 0.0f, 0.9999f);
+
+    const int index = std::clamp(static_cast<int>(progress * static_cast<float>(frames)),
+                                 0, frames - 1);
+    outScale[0] = 1.0f / static_cast<float>(perRow);
+    outScale[1] = 1.0f / static_cast<float>(rows);
+    outIndex    = static_cast<float>(index);
+    return true;
+}
+
 } // namespace
 
 // WHY: キャッシュが持つシェーダー・テクスチャ・cbuffer のハンドルはデバイス世代に
@@ -368,18 +416,23 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         auto* decal = go.GetComponent<DecalComponent>();
         if (!decal || !decal->enabled) continue;
 
-        if (decal->lifetime >= 0.0f) {
-            decal->age += dt;
-            if (decal->age >= decal->lifetime) {
-                decal->enabled = false;
-                expiredDecals.push_back(go.GetID());
-                continue;
-            }
+        if (DecalNeedsAge(*decal)) decal->age += dt;
+        if (decal->lifetime >= 0.0f && decal->age >= decal->lifetime) {
+            decal->enabled = false;
+            expiredDecals.push_back(go.GetID());
+            continue;
         }
 
         float fade = 1.0f;
         if (decal->lifetime >= 0.0f && decal->fadeTime > 0.0f)
             fade = std::min(1.0f, (decal->lifetime - decal->age) / decal->fadeTime);
+        // 出現側のフェード。永続デカールでも効く。
+        // WHY 小さい方を採るか: 寿命が fadeInTime + fadeTime より短いデカールでは
+        //     両方の窓が重なる。掛けると «出きる前に消え始める» 山が二重に低くなり、
+        //     短命な痕が一度もはっきり見えないまま終わる。
+        if (decal->fadeInTime > 0.0f)
+            fade = std::min(fade, decal->age / decal->fadeInTime);
+        fade = std::clamp(fade, 0.0f, 1.0f);
         if (fade < 0.001f) continue;
 
         if (decal->receiverLayerMask != fbzz::Layer::Everything) {
@@ -388,6 +441,13 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         }
         pending.push_back({ &go, decal, fade });
     }
+
+    // 重なった痕の前後。デカールは深度を書かないので、合成する順番だけが前後を決める。
+    // stable_sort なので sortOrder が同じデカールは走査順 —— 従来の順序 —— のまま。
+    std::stable_sort(pending.begin(), pending.end(),
+                     [](const PendingDecal& a, const PendingDecal& b) {
+                         return a.decal->sortOrder < b.decal->sortOrder;
+                     });
 
     // 受信バッファは全デカールで共有する。RT の張り替えは DX12 でバリアを
     // 1 回発行するので、デカールごとに往復させない。
@@ -419,6 +479,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
                               d.receiverLayerMask != fbzz::Layer::Everything;
         decalData.flags             = filtered ? kDecalFlagReceiverFilter : 0u;
         decalData.receiverLayerMask = d.receiverLayerMask;
+        ResolveDecalFlipbook(d, decalData.frameScale, decalData.frameIndex);
         resources.Update(h.decalCB, &decalData, sizeof(DecalCB));
 
         renderer::DrawCall drawCall;

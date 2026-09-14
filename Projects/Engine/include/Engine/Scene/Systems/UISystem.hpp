@@ -6,6 +6,7 @@
 /// UICanvas / UIImage / UIText / UIButton を走査して DrawCall とヒット状態を作る。
 /// WorldSpace UI には viewProjection を渡して座標変換する。
 #pragma once
+#include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Renderer/FontAtlas.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -34,6 +35,12 @@ class GameObject;
 }
 
 namespace fbzz::scene {
+
+struct UICanvas;
+
+/// 描画と同じ規則で求める Canvas 全体の寸法。safeArea を差し引く前の Canvas 単位。
+[[nodiscard]] math::Vector2 GetCanvasRectSize(const UICanvas& canvas,
+    float viewportWidth, float viewportHeight);
 
 enum class UIRenderTargetView {
     GameViewport,  // 実ゲーム出力。ScreenSpace / WorldSpace の両方を最終合成として描く。
@@ -206,13 +213,12 @@ struct UISystemContext {
     //   頂点バッファだけが共有実体のまま残っていた。
     //   DX11 は即時描画なので 1 本でも成立していたが、記録型を前提に両バックエンドを
     //   同じ経路へ揃える。バッファは使い回すので、確保はウォームアップ中だけ起きる。
-    std::vector<renderer::ResourceHandle<renderer::BufferTag>> imageVertexBuffers;
-    std::vector<renderer::ResourceHandle<renderer::BufferTag>> textVertexBuffers;
-    std::size_t imageVertexCursor = 0;
-    std::size_t textVertexCursor  = 0;
-    // カーソルを戻すのはフレームが変わったときだけ。同じフレーム内で 1 つの Context が
-    // 複数回描く場合 (Scene と Canvas Editor) も、記録済み Draw と実体の 1 対 1 を保つ。
-    std::uint64_t lastResetFrame = ~std::uint64_t{ 0 };
+    //   前フレームの GPU がまだ読んでいる実体も貸さない (規則は DynamicBufferPool.hpp)。
+    //   1 フレームに同じ Context が複数回描く場合 (Scene と Canvas Editor、選択マスクと本描画) も、
+    //   プールはフレームが変わったときだけ巻き戻すので、記録済み Draw と実体の 1 対 1 が保たれる。
+    // WHY 下限を 1 にするか: 矩形 1 枚ごとに 1 本借りるので、既定の 1024 頂点を下限にすると
+    //     本数 × 1024 頂点が常駐する。要求そのもの (2 の冪へ切り上げ) で足りる。
+    renderer::DynamicVertexBufferPool vertexPool{ 1 };
 };
 
 // UIText.fontPath が空のときに使用するデフォルトフォントアトラスのベースパス (拡張子なし) を設定する。

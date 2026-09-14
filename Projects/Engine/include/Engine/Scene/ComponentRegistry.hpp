@@ -11,6 +11,7 @@
 #include "Components/WeatherComponent.hpp"
 #include "Components/ColliderComponent.hpp"
 #include "Components/RigidBodyComponent.hpp"
+#include "Components/JointComponent.hpp"
 #include "Components/VolumeComponent.hpp"
 #include "Components/LightComponent.hpp"
 #include "Components/CameraComponent.hpp"
@@ -50,6 +51,7 @@
 #include "Components/VFXComponent.hpp"
 #include "Components/VFXElement.hpp"
 #include "Components/VFXBeamComponent.hpp"
+#include "Components/VFXLineComponent.hpp"
 #include "Components/VFXAudioEnvelope.hpp"
 #include "Components/PresentationComponents.hpp"
 #include "Components/ConstraintComponents.hpp"
@@ -260,7 +262,14 @@ using ComponentRegistry = std::tuple<
     FBZZ_COMPONENT(UIDragSource, UI, "UI Drag Source"),
     FBZZ_COMPONENT(UIDropTarget, UI, "UI Drop Target"),
     // 実行状態 (質点・拘束・段階) は保存しないので保存は手動。設定は Reflect で足りる。
-    FBZZ_AUTO_INSPECTOR_COMPONENT(RagdollComponent, Animation, "Ragdoll")
+    FBZZ_AUTO_INSPECTOR_COMPONENT(RagdollComponent, Animation, "Ragdoll"),
+    // 雷・ビーム。保存は Reflect のまま、Inspector はプリセットと形のプレビューを持つ専用 UI。
+    ComponentRegistration<VFXLineComponent, ComponentCategory::Effects, "VFXLineComponent", "VFX Line",
+                          ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>,
+    // 剛体の関節 (ロープ・鎖・ヒンジ)。保存は Reflect のまま、Inspector は種別で出し分ける
+    // 専用 UI (張れているか / 実効距離は Reflect では表せない)。
+    ComponentRegistration<JointComponent, ComponentCategory::Physics, "JointComponent", "Joint",
+                          ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>
 >;
 
 template<typename Registry>

@@ -11,6 +11,7 @@
 namespace fbzz::scene {
 
 class Script;
+class GameObject;
 
 struct ScriptColliderProxy {
     Script* script = nullptr;
@@ -24,6 +25,12 @@ struct ScriptColliderProxy {
     [[nodiscard]] bool          IsEnabled() const;
     [[nodiscard]] bool          IsTrigger() const;
     [[nodiscard]] math::Vector3 GetCenter() const;
+
+    /// プリミティブ形状のワールド AABB。無効状態も含め、同一オブジェクトの形状を統合する。
+    /// 回転・中心・負スケールを反映する。対象不在・未対応は false、出力は未変更。
+    /// 物理実体は変更しない。Transform の world 値が更新済みであること。
+    [[nodiscard]] static bool TryGetPrimitiveWorldBounds(GameObject* object,
+        math::Vector3& outMin, math::Vector3& outMax);
 
     void SetBoxSize(const math::Vector3& size) const;
     void SetSphereRadius(float radius) const;

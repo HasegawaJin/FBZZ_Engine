@@ -61,6 +61,9 @@ void ExecuteTAAPass(RenderPassContext& ctx)
     //      シェーダー側は B=0 を読んで従来の深度再投影へフォールバックする。
     if (ctx.Res().Target("Velocity").IsValid())
         taaDC.textures[26]   = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
+    // t9: 粒子の反応マスク。粒子は速度を書かないので、覆われた画素は履歴を信じる割合を下げる。
+    if (h.particleReactiveValid && h.particleReactiveRT != nullptr && h.particleReactiveRT->IsValid())
+        taaDC.textures[9]    = resources.GetColorTexture(*h.particleReactiveRT, 0);
     r.Submit(taaDC, resources);
 
     // フレーム終了後に ping-pong フラグを反転

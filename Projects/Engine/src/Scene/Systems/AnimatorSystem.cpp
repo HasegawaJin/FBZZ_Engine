@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/SkinnedPoseBounds.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include <Engine/Scene/Scene.hpp>
@@ -882,32 +883,7 @@ void ApplyBindPoseToBones(Scene& scene,
 //   厚みは Renderer ごとに違うので、ここで一律に足すと必ず過大になる。
 void UpdateSkinnedBounds(AnimatorComponent& animator, const asset::Skeleton& skeleton)
 {
-    constexpr float kBig = 1.0e18f;
-    math::Vector3 lo{ kBig, kBig, kBig };
-    math::Vector3 hi{ -kBig, -kBig, -kBig };
-    bool any = false;
-
-    // nodeGlobal は rootTransform を含んでいる (PropagateBoneTransforms の規約)。
-    // boneMatrices と同じく rootInverseTransform を掛けて owner ローカルへ戻す。
-    for (const auto& bone : skeleton.bones) {
-        if (bone.nodeIndex < 0 ||
-            bone.nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
-            continue;
-        const math::Matrix4 m =
-            skeleton.rootInverseTransform *
-            animator.nodeGlobalTransforms[static_cast<size_t>(bone.nodeIndex)];
-        const math::Vector3 p{ m.m[0][3], m.m[1][3], m.m[2][3] };
-        lo = { (std::min)(lo.x, p.x), (std::min)(lo.y, p.y), (std::min)(lo.z, p.z) };
-        hi = { (std::max)(hi.x, p.x), (std::max)(hi.y, p.y), (std::max)(hi.z, p.z) };
-        any = true;
-    }
-
-    if (!any) {
-        animator.skinnedBoundsRadius = 0.0f;
-        return;
-    }
-    animator.skinnedBoundsCenter = (lo + hi) * 0.5f;
-    animator.skinnedBoundsRadius = (hi - lo).Length() * 0.5f;
+    UpdateSkinnedPoseBounds(animator, skeleton);
 }
 
 void RebuildSkinningFromBoneTransforms(Scene& scene,

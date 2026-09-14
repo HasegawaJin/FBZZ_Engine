@@ -19,7 +19,7 @@ enum class ProceduralFlipbookPreset : std::uint8_t {
 };
 
 // 1行を1本のアニメーションとして生成する。
-// WHY: ParticleEmitter::spriteRandomRow と一致させ、行ごとに見た目の異なる粒子を選べるようにする。
+// WHY: ParticleFlipbookSettings::spriteRandomRow と一致させ、行ごとに見た目の異なる粒子を選べるようにする。
 struct ProceduralFlipbookSettings {
     ProceduralFlipbookPreset preset = ProceduralFlipbookPreset::Smoke;
     int frameSize = 128;

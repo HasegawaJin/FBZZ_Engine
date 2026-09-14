@@ -7,10 +7,12 @@
 /// Scene から physics への依存方向を保つ。
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ColliderSync.hpp"
+#include "Engine/Scene/Systems/JointSync.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/CharacterControllerComponent.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"
+#include "Engine/Scene/Components/JointComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
@@ -442,7 +444,8 @@ ComponentAccess PhysicsSystem::GetAccess() const
 {
     return ComponentAccess{}
         .Reads<ColliderComponent, RigidBodyComponent>()
-        .Writes<RigidBodyComponent, CharacterControllerComponent, VolumeComponent, WaterComponent>();
+        .Writes<RigidBodyComponent, CharacterControllerComponent, VolumeComponent, WaterComponent,
+                JointComponent>();
 }
 
 void PhysicsSystem::Update(SystemContext& ctx) {
@@ -528,6 +531,10 @@ void PhysicsSystem::Update(SystemContext& ctx) {
                 std::make_unique<WaterBuoyancyVolume>(*water, go->transform, radii));
         }
     }
+
+    // 関節は剛体と同じ «毎フレーム申告» で寿命を持つ。申告が途切れた制約は
+    // EndSceneSync が破棄するので、Scene 側に «外す» 経路は要らない。
+    SyncJointComponents(scene, world);
 
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::ApplyDensityMass");

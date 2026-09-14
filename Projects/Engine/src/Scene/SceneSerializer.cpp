@@ -1076,7 +1076,13 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             decalTbl.insert("emissiveScale",     (double)decal->emissiveScale);
             decalTbl.insert("lifetime",          (double)decal->lifetime);
             decalTbl.insert("fadeTime",          (double)decal->fadeTime);
+            decalTbl.insert("fadeInTime",        (double)decal->fadeInTime);
             decalTbl.insert("age",               (double)decal->age);
+            decalTbl.insert("frameCount",        (int64_t)decal->frameCount);
+            decalTbl.insert("framesPerRow",      (int64_t)decal->framesPerRow);
+            decalTbl.insert("frameRate",         (double)decal->frameRate);
+            decalTbl.insert("frameLoop",         decal->frameLoop);
+            decalTbl.insert("sortOrder",         (int64_t)decal->sortOrder);
             decalTbl.insert("receiverLayerMask", (int64_t)decal->receiverLayerMask);
             goTbl.insert("DecalComponent", std::move(decalTbl));
         }
@@ -1936,7 +1942,13 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
             decal.lifetime          = (float)(*decalTbl)["lifetime"].value_or(-1.0);
             decal.fadeTime          = (float)(*decalTbl)["fadeTime"].value_or(1.0);
+            decal.fadeInTime        = (float)(*decalTbl)["fadeInTime"].value_or(0.0);
             decal.age               = (float)(*decalTbl)["age"].value_or(0.0);
+            decal.frameCount        = (int)(*decalTbl)["frameCount"].value_or((int64_t)0);
+            decal.framesPerRow      = (int)(*decalTbl)["framesPerRow"].value_or((int64_t)1);
+            decal.frameRate         = (float)(*decalTbl)["frameRate"].value_or(0.0);
+            decal.frameLoop         = (*decalTbl)["frameLoop"].value_or(false);
+            decal.sortOrder         = (int)(*decalTbl)["sortOrder"].value_or((int64_t)0);
             decal.receiverLayerMask = static_cast<fbzz::LayerMask>(
                 static_cast<uint32_t>((*decalTbl)["receiverLayerMask"].value_or((int64_t)fbzz::Layer::Everything)));
             go.AddComponent<DecalComponent>(std::move(decal));

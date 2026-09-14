@@ -34,6 +34,11 @@ class GameObject;
 // Collider 中心のワールド座標 (worldPosition + worldRotation * scaledCenter)。
 [[nodiscard]] math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent& col);
 
+/// プリミティブの現在の設定とワールド姿勢から境界を測る。物理実体を変更しない。
+/// 非アクティブ・無効の形状も含む。複数形状は統合し、未対応形状のみなら false。
+/// 失敗時 outBounds は未変更。Transform の world 値が更新済みであること。
+[[nodiscard]] bool TryGetPrimitiveColliderBounds(GameObject& go, physics::AABB& outBounds);
+
 // コンポーネントの形状パラメータ (size / radius / halfHeight) を physics::Collider へ反映する。
 // 実体の型が食い違っている場合は作り直す。基底版は「形状パラメータを持たない」ため何もしない。
 //

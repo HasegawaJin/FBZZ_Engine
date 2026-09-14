@@ -10,21 +10,53 @@
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Core/Logger.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <unordered_map>
 #include <vector>
 
 namespace fbzz::scene {
 namespace {
 
-// prefabAssetPath → 待機中インスタンス。Scene ごとに独立させる。
+// prefabAssetPath → 待機中インスタンスと貸し出し中インスタンス。
 // WHY Scene* で分けるか: エディタは編集用 Scene とプレイ用 Scene を同時に持ち得る。
 //     待機列を共有すると、片方の Scene の EntityID をもう片方で引いてしまう。
-using Buckets = std::unordered_map<std::string, std::vector<EntityID>>;
+struct Bucket {
+    // 待機列。末尾から貸し出す (一番最近返ってきたものが一番キャッシュに乗っている)。
+    std::vector<EntityID> idle;
+    // 貸し出し中。先頭が最古。追い出しはここの先頭から取る。
+    std::vector<EntityID> live;
+};
+using Buckets = std::unordered_map<std::string, Bucket>;
 
 std::unordered_map<const Scene*, Buckets>& Pools()
 {
     static std::unordered_map<const Scene*, Buckets> s_pools;
     return s_pools;
+}
+
+// 同時数の上限。Scene ではなくプレファブのパスで持つ。
+// WHY Scene で分けないか: 上限は «この演出は何発まで重なってよいか» という
+//     プレファブ側の性質で、シーンを開き直すたびに設定し直すものではない。
+std::unordered_map<std::string, int>& Limits()
+{
+    static std::unordered_map<std::string, int> s_limits;
+    return s_limits;
+}
+
+int LimitOf(const std::string& prefabPath)
+{
+    const auto it = Limits().find(prefabPath);
+    return it == Limits().end() ? 0 : it->second;
+}
+
+void EraseLive(Bucket& bucket, EntityID id)
+{
+    for (size_t i = 0; i < bucket.live.size(); ++i) {
+        if (bucket.live[i] != id) continue;
+        bucket.live.erase(bucket.live.begin() + static_cast<std::ptrdiff_t>(i));
+        return;
+    }
 }
 
 // GO とその子孫すべての Script へ通知する。
@@ -88,14 +120,30 @@ GameObject* PrefabPool::Spawn(Scene& scene,
     GameObject* instance = nullptr;
 
     auto& bucket = Pools()[&scene][prefabPath];
-    while (!bucket.empty()) {
-        const EntityID id = bucket.back();
-        bucket.pop_back();
+    while (!bucket.idle.empty()) {
+        const EntityID id = bucket.idle.back();
+        bucket.idle.pop_back();
         // 待機中に別経路で破棄されていることがあるため、必ず生存確認してから使う。
         if (GameObject* pooled = scene.GetGameObject(id)) {
             instance = pooled;
             break;
         }
+    }
+
+    // 待機列が空で、かつ上限に達しているなら «最古の 1 発» を畳んで奪う。
+    // 生存確認で落ちた枠は数に含めない (数えているのは実体ではなく ID なので、
+    // ここで詰めないと «居ない枠» が上限を食い続ける)。
+    const int limit = LimitOf(prefabPath);
+    while (!instance && limit > 0 && static_cast<int>(bucket.live.size()) >= limit) {
+        const EntityID oldest = bucket.live.front();
+        bucket.live.erase(bucket.live.begin());
+        GameObject* victim = scene.GetGameObject(oldest);
+        if (!victim) continue;
+        // 追い出しも «返却» と同じ手順を通す。OnDespawn を飛ばすと、前の一生の
+        // Invoke やコルーチンが次の貸し出し先で動き出す。
+        NotifyScripts(scene, *victim, /*spawned=*/false);
+        victim->SetActive(false);
+        instance = victim;
     }
 
     if (!instance) {
@@ -111,6 +159,11 @@ GameObject* PrefabPool::Spawn(Scene& scene,
     instance->transform.rotation = rotation;
     instance->SetActive(true);
     NotifyScripts(scene, *instance, /*spawned=*/true);
+    // bucket への参照はここで取り直す。OnSpawn の中で別のプレファブが Spawn されると
+    // バケットの連想配列が rehash され、上で掴んだ参照が無効になる。
+    Bucket& liveBucket = Pools()[&scene][prefabPath];
+    EraseLive(liveBucket, instance->GetID());
+    liveBucket.live.push_back(instance->GetID());
     return instance;
 }
 
@@ -123,18 +176,28 @@ bool PrefabPool::Despawn(Scene& scene, GameObject& gameObject)
     gameObject.SetActive(false);
 
     auto& bucket = Pools()[&scene][prefabPath];
-    // 二重 Despawn で同じ実体が 2 回配られるのを防ぐ。
     const EntityID id = gameObject.GetID();
-    for (const EntityID pooled : bucket)
+    EraseLive(bucket, id);
+    // 二重 Despawn で同じ実体が 2 回配られるのを防ぐ。
+    for (const EntityID pooled : bucket.idle)
         if (pooled == id) return true;
 
-    bucket.push_back(id);
+    bucket.idle.push_back(id);
     return true;
 }
 
 int PrefabPool::Prewarm(Scene& scene, const std::string& prefabPath, int count)
 {
     if (prefabPath.empty() || count <= 0) return 0;
+
+    // 上限を超えて温めても、貸し出された瞬間に追い出される枠が増えるだけ。
+    const int limit = LimitOf(prefabPath);
+    if (limit > 0) {
+        const Bucket& bucket = Pools()[&scene][prefabPath];
+        const int held = static_cast<int>(bucket.idle.size() + bucket.live.size());
+        count = (std::min)(count, limit - held);
+        if (count <= 0) return 0;
+    }
 
     int created = 0;
     for (int i = 0; i < count; ++i) {
@@ -144,10 +207,25 @@ int PrefabPool::Prewarm(Scene& scene, const std::string& prefabPath, int count)
             instance->prefabAssetPath = prefabPath;
         // OnSpawn を通さずに直接待機列へ入れる (まだ「出していない」ため)。
         instance->SetActive(false);
-        Pools()[&scene][prefabPath].push_back(instance->GetID());
+        Pools()[&scene][prefabPath].idle.push_back(instance->GetID());
         ++created;
     }
     return created;
+}
+
+void PrefabPool::SetLimit(const std::string& prefabPath, int maxLive)
+{
+    if (prefabPath.empty()) return;
+    if (maxLive <= 0) {
+        Limits().erase(prefabPath);
+        return;
+    }
+    Limits()[prefabPath] = maxLive;
+}
+
+int PrefabPool::GetLimit(const std::string& prefabPath)
+{
+    return LimitOf(prefabPath);
 }
 
 size_t PrefabPool::AvailableCount(const Scene& scene, const std::string& prefabPath)
@@ -155,7 +233,15 @@ size_t PrefabPool::AvailableCount(const Scene& scene, const std::string& prefabP
     const auto sceneIt = Pools().find(&scene);
     if (sceneIt == Pools().end()) return 0;
     const auto bucketIt = sceneIt->second.find(prefabPath);
-    return bucketIt == sceneIt->second.end() ? 0 : bucketIt->second.size();
+    return bucketIt == sceneIt->second.end() ? 0 : bucketIt->second.idle.size();
+}
+
+size_t PrefabPool::LiveCount(const Scene& scene, const std::string& prefabPath)
+{
+    const auto sceneIt = Pools().find(&scene);
+    if (sceneIt == Pools().end()) return 0;
+    const auto bucketIt = sceneIt->second.find(prefabPath);
+    return bucketIt == sceneIt->second.end() ? 0 : bucketIt->second.live.size();
 }
 
 void PrefabPool::Clear(const Scene& scene)
@@ -166,6 +252,7 @@ void PrefabPool::Clear(const Scene& scene)
 void PrefabPool::ClearAll()
 {
     Pools().clear();
+    Limits().clear();
 }
 
 } // namespace fbzz::scene

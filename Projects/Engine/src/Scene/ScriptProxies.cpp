@@ -64,6 +64,8 @@
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Systems/JointSync.hpp>
+#include <Engine/Scene/Systems/ColliderSync.hpp>
 #include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
@@ -71,6 +73,7 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/JointComponent.hpp>
 #include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
@@ -146,6 +149,34 @@ renderer::Camera BuildCameraFromComponent(const GameObject* gameObject, const Ca
     camera.m_backgroundColor = component->backgroundColor;
     camera.m_clearMode       = component->clearMode;
     return camera;
+}
+
+bool ResolveProjectionCamera(const Script* script, GameObject* object, renderer::Camera& out)
+{
+    if (!object && script) {
+        object = script->scene.Self();
+        if (!ObjectComponent<CameraComponent>(object)) object = script->scene.GetMainCameraObject();
+    }
+    const auto* component = ObjectComponent<CameraComponent>(object);
+    if (!component || !component->enabled || !object->activeInHierarchy()) return false;
+    if (!std::isfinite(component->fovY) || component->fovY <= 0.0f || component->fovY >= 180.0f ||
+        !std::isfinite(component->aspectRatio) || component->aspectRatio <= 0.0f ||
+        !std::isfinite(component->nearZ) || component->nearZ <= 0.0f ||
+        !std::isfinite(component->farZ) || component->farZ <= component->nearZ) return false;
+    out = BuildCameraFromComponent(object, component);
+    return true;
+}
+
+bool ProjectToViewport(const renderer::Camera& camera, const math::Vector3& worldPos,
+                       math::Vector3& outViewport)
+{
+    const math::Vector4 clip = camera.GetViewProjection() * math::Vector4(worldPos, 1.0f);
+    if (!std::isfinite(clip.w) || clip.w <= 0.000001f) return false;
+    const math::Vector3 result{0.5f + 0.5f * clip.x / clip.w,
+                              0.5f - 0.5f * clip.y / clip.w, clip.z / clip.w};
+    if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.z)) return false;
+    outViewport = result;
+    return true;
 }
 
 uint32_t ParseTextureSlot(std::string_view slot)
@@ -920,6 +951,16 @@ math::Vector3 ScriptColliderProxy::GetCenter() const
     return c ? c->center : math::Vector3::ZERO;
 }
 
+bool ScriptColliderProxy::TryGetPrimitiveWorldBounds(GameObject* object,
+    math::Vector3& outMin, math::Vector3& outMax)
+{
+    physics::AABB bounds;
+    if (!object || !TryGetPrimitiveColliderBounds(*object, bounds)) return false;
+    outMin = bounds.min;
+    outMax = bounds.max;
+    return true;
+}
+
 void ScriptColliderProxy::SetBoxSize(const math::Vector3& size) const
 {
     if (!script || !script->m_gameObject) return;
@@ -1106,6 +1147,21 @@ void PushOneShot(AudioSourceComponent& source, AudioSourceComponent::OneShotRequ
 }
 
 } // namespace
+
+bool ScriptAudioProxy::Preload(std::string_view clipPath) const
+{
+    auto* manager = ActiveAudioManager();
+    if (!manager || clipPath.empty()) {
+        FBZZ_LOG_WARN("Audio Preload: %s", manager ? "empty clip path" : "audio manager is unavailable");
+        return false;
+    }
+    return manager->AcquireClip(std::string(clipPath)) != 0;
+}
+
+bool ScriptAudioProxy::Preload(const AudioClipRef& clip) const
+{
+    return Preload(clip.ResolvePath());
+}
 
 void ScriptAudioProxy::Play() const
 {
@@ -1598,34 +1654,42 @@ void ScriptCameraProxy::SetClearMode(renderer::CameraClearMode mode) const
 
 math::Vector3 ScriptCameraProxy::WorldToScreenPoint(const math::Vector3& worldPos) const
 {
-    const auto* gameObject = script ? script->m_gameObject : nullptr;
-    const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
+    math::Vector3 viewport;
+    if (!TryWorldToViewportPoint(worldPos, viewport)) return math::Vector3::ZERO;
     const auto rt = ScriptRuntime::GetCurrent();
     const float width  = static_cast<float>((std::max)(rt.viewportWidth,  1u));
     const float height = static_cast<float>((std::max)(rt.viewportHeight, 1u));
+    return {viewport.x * width, viewport.y * height, viewport.z};
+}
 
-    const math::Vector4 clip = camera.GetViewProjection() * math::Vector4(worldPos, 1.0f);
-    if (std::abs(clip.w) <= 0.000001f) {
-        return { 0.0f, 0.0f, 0.0f };
-    }
+bool ScriptCameraProxy::TryWorldToViewportPoint(const math::Vector3& worldPos,
+    math::Vector3& outViewport, GameObject* cameraObject) const
+{
+    renderer::Camera camera;
+    return ResolveProjectionCamera(script, cameraObject, camera) &&
+           ProjectToViewport(camera, worldPos, outViewport);
+}
 
-    const float invW = 1.0f / clip.w;
-    const float ndcX = clip.x * invW;
-    const float ndcY = clip.y * invW;
-    const float ndcZ = clip.z * invW;
-
-    // WHAT: 左上原点の pixel 座標へ変換する。z は DirectX depth range の 0..1 を返す。
-    return {
-        (ndcX * 0.5f + 0.5f) * width,
-        (0.5f - ndcY * 0.5f) * height,
-        ndcZ
-    };
+bool ScriptCameraProxy::TryViewportToWorldPoint(const math::Vector2& uv, float depth,
+    math::Vector3& outWorld, GameObject* cameraObject) const
+{
+    if (!std::isfinite(depth) || depth <= 0.0f || !std::isfinite(uv.x) || !std::isfinite(uv.y))
+        return false;
+    renderer::Camera camera;
+    if (!ResolveProjectionCamera(script, cameraObject, camera)) return false;
+    const float halfHeight = std::tan(camera.m_fovY * DEG_TO_RAD * 0.5f) * depth;
+    const math::Vector3 result = camera.m_position + camera.GetForward() * depth
+        + camera.GetRight() * ((uv.x * 2.0f - 1.0f) * halfHeight * camera.m_aspect)
+        + camera.GetUp() * ((1.0f - uv.y * 2.0f) * halfHeight);
+    if (!std::isfinite(result.x) || !std::isfinite(result.y) || !std::isfinite(result.z)) return false;
+    outWorld = result;
+    return true;
 }
 
 math::Vector3 ScriptCameraProxy::ScreenToWorldPoint(const math::Vector3& screenPos) const
 {
-    const auto* gameObject = script ? script->m_gameObject : nullptr;
-    const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
+    renderer::Camera camera;
+    if (!ResolveProjectionCamera(script, nullptr, camera)) return math::Vector3::ZERO;
     const auto rt = ScriptRuntime::GetCurrent();
     const float width  = static_cast<float>((std::max)(rt.viewportWidth,  1u));
     const float height = static_cast<float>((std::max)(rt.viewportHeight, 1u));
@@ -1692,19 +1756,16 @@ bool ScriptCameraProxy::IsMain() const
 
 bool ScriptCameraProxy::IsVisible(const math::Vector3& worldPos) const
 {
-    const auto screen = WorldToScreenPoint(worldPos);
-    if (screen.z <= 0.0f) return false;
-    const auto rt = ScriptRuntime::GetCurrent();
-    const float w = static_cast<float>((std::max)(rt.viewportWidth,  1u));
-    const float h = static_cast<float>((std::max)(rt.viewportHeight, 1u));
-    return screen.x >= 0.0f && screen.x <= w && screen.y >= 0.0f && screen.y <= h;
+    math::Vector3 viewport;
+    return TryWorldToViewportPoint(worldPos, viewport) && viewport.z >= 0.0f && viewport.z <= 1.0f &&
+           viewport.x >= 0.0f && viewport.x <= 1.0f && viewport.y >= 0.0f && viewport.y <= 1.0f;
 }
 
 Ray ScriptCameraProxy::ScreenPointToRay(float screenX, float screenY) const
 {
     const math::Vector3 nearPt = ScreenToWorldPoint({ screenX, screenY, 0.0f });
     const math::Vector3 farPt  = ScreenToWorldPoint({ screenX, screenY, 1.0f });
-    const math::Vector3 dir    = (farPt - nearPt).Normalized();
+    const math::Vector3 dir    = (farPt - nearPt).NormalizedOr(math::Vector3::ZERO);
     return { nearPt, dir };
 }
 
@@ -3117,6 +3178,23 @@ bool ScriptUIProxy::IsPointerOverridden() const
     return UIPointer::IsActive();
 }
 
+bool ScriptUIProxy::TryGetCanvasSize(math::Vector2& outSize, GameObject* canvasObject) const
+{
+    if (!canvasObject) {
+        canvasObject = script ? script->m_gameObject : nullptr;
+        if (!ObjectComponent<UICanvas>(canvasObject))
+            canvasObject = ScriptSceneProxy{script}.FindObjectOfType<UICanvas>();
+    }
+    const auto* canvas = ObjectComponent<UICanvas>(canvasObject);
+    const auto runtime = ScriptRuntime::GetCurrent();
+    if (!canvas || runtime.viewportWidth == 0 || runtime.viewportHeight == 0) return false;
+    const auto size = GetCanvasRectSize(*canvas, static_cast<float>(runtime.viewportWidth),
+                                       static_cast<float>(runtime.viewportHeight));
+    if (!std::isfinite(size.x) || !std::isfinite(size.y) || size.x <= 0.0f || size.y <= 0.0f) return false;
+    outSize = size;
+    return true;
+}
+
 math::Vector2 ScriptUIProxy::GetCanvasMousePosition() const
 {
     // 自 GO が Canvas ならそれを、そうでなければシーンの最初の Canvas を使う。
@@ -3705,6 +3783,7 @@ GameObject* ScriptSceneProxy::GetMainCameraObject() const
 {
     if (!script || !script->m_scene) return nullptr;
     for (auto& go : script->m_scene->GameObjects()) {
+        if (!go.activeInHierarchy()) continue;
         auto* camera = go.GetComponent<CameraComponent>();
         if (camera && camera->enabled && camera->isMain) return &go;
     }
@@ -4182,6 +4261,39 @@ float ScriptAnimatorProxy::GetSlotWeight(std::string_view layerName) const
     if (const auto* animator = SelfComponent<AnimatorComponent>(script))
         return animator->GetSlotWeight(layerName);
     return 0.0f;
+}
+
+void ScriptAnimatorProxy::SetSlotSpeed(std::string_view layerName, float speed) const
+{
+    auto* animator = SelfComponent<AnimatorComponent>(script);
+    if (!animator) return;
+    AnimationLayer* layer = animator->FindLayer(layerName);
+    if (!layer) { ReportUnknownAnimationLayer("SetSlotSpeed", layerName, animator->layers); return; }
+    if (layer->slot.active) layer->slot.speed = speed;
+}
+
+float ScriptAnimatorProxy::GetSlotTime(std::string_view layerName) const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    if (!animator) return 0.0f;
+    const AnimationLayer* layer = animator->FindLayer(layerName);
+    return layer && layer->slot.active ? layer->slot.time : 0.0f;
+}
+
+void ScriptAnimatorProxy::SetStateSpeed(std::string_view stateName, float speed) const
+{
+    auto* animator = SelfComponent<AnimatorComponent>(script);
+    if (!animator) return;
+    for (AnimationState& state : animator->states)
+        if (state.name == stateName) { state.speed = speed; return; }
+}
+
+float ScriptAnimatorProxy::GetStateSpeed(std::string_view stateName) const
+{
+    if (const auto* animator = SelfComponent<AnimatorComponent>(script))
+        for (const AnimationState& state : animator->states)
+            if (state.name == stateName) return state.speed;
+    return 1.0f;
 }
 
 void ScriptAnimatorProxy::SetMorphWeight(std::string_view morphName, float weight) const
@@ -5398,6 +5510,64 @@ DecalComponent* SelfDecal(const Script* script)
 }
 } // namespace
 
+EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
+                                  const math::Vector3& normal,
+                                  std::string_view materialPath,
+                                  float size,
+                                  float lifetime,
+                                  float depth,
+                                  float rollDegrees) const
+{
+    if (!script || !script->m_scene) return EntityRef{};
+    Scene& scene = *script->m_scene;
+
+    // 投影軸はデカールのローカル +Y。法線をそのまま +Y へ向けるので、床への着弾は
+    // 無回転になる (BossShockwave / DecalScorch が置いている床デカールと同じ規約)。
+    const math::Vector3 axis = normal.NormalizedOr(math::Vector3::UP);
+
+    // ローカル +Z は投影 UV の V 軸。法線に直交していれば向きは何でもよいので、
+    // 軸に平行になりにくい 2 本から選ぶ (真上 / 真横の面で基底が潰れるのを避ける)。
+    math::Vector3 forward = math::Vector3::Cross(axis, math::Vector3::RIGHT);
+    if (forward.LengthSq() < 1.0e-6f)
+        forward = math::Vector3::Cross(axis, math::Vector3::FORWARD);
+    forward = forward.NormalizedOr(math::Vector3::FORWARD);
+
+    math::Quaternion rotation =
+        math::Quaternion::LookRotation(forward, axis).Normalized();
+    // roll はローカル +Y (= 投影軸) まわり。右から掛けてローカル回転として足す。
+    if (rollDegrees != 0.0f) {
+        rotation = (rotation * math::Quaternion::FromAxisAngle(
+                        math::Vector3::UP, rollDegrees * math::DEG2RAD)).Normalized();
+    }
+
+    // Create / AddComponent はシーンの配列を伸ばしうる。値は必ず ID から引き直した
+    // 個体へ入れる —— 作った直後の参照は、次の確保で無効になりうる。
+    const EntityID id = [&] {
+        GameObject& created = scene.CreateGameObject("Decal");
+        created.runtimeGenerated = true;
+        return created.GetID();
+    }();
+    scene.AddComponent<DecalComponent>(id, DecalComponent{});
+
+    GameObject* spawned = scene.GetGameObject(id);
+    if (!spawned) return EntityRef{};
+    DecalComponent* decal = spawned->GetComponent<DecalComponent>();
+    if (!decal) return EntityRef{};
+
+    const float extent = (std::max)(size, 0.001f);
+    // worldPosition だけでは動かない。PrePhysics が local から組み直すため position も書く。
+    spawned->transform.position      = point;
+    spawned->transform.worldPosition = point;
+    spawned->transform.rotation      = rotation;
+    spawned->transform.worldRotation = rotation;
+    spawned->transform.scale         = { extent, (std::max)(depth, 0.001f), extent };
+
+    decal->materialPath = std::string(materialPath);
+    decal->lifetime     = lifetime;
+
+    return EntityRef{ id };
+}
+
 void ScriptDecalProxy::SetEnabled(bool enabled) const
 {
     if (auto* d = SelfDecal(script)) d->enabled = enabled;
@@ -5409,6 +5579,24 @@ void ScriptDecalProxy::SetLifetime(float seconds) const
 void ScriptDecalProxy::SetFadeTime(float fadeTime) const
 {
     if (auto* d = SelfDecal(script)) d->fadeTime = fadeTime;
+}
+void ScriptDecalProxy::SetFadeInTime(float seconds) const
+{
+    if (auto* d = SelfDecal(script)) d->fadeInTime = (std::max)(seconds, 0.0f);
+}
+void ScriptDecalProxy::SetFlipbook(int frameCount, int framesPerRow,
+                                   float frameRate, bool loop) const
+{
+    auto* d = SelfDecal(script);
+    if (!d) return;
+    d->frameCount   = (std::max)(frameCount, 0);
+    d->framesPerRow = std::clamp(framesPerRow, 1, (std::max)(d->frameCount, 1));
+    d->frameRate    = (std::max)(frameRate, 0.0f);
+    d->frameLoop    = loop;
+}
+void ScriptDecalProxy::SetSortOrder(int order) const
+{
+    if (auto* d = SelfDecal(script)) d->sortOrder = order;
 }
 void ScriptDecalProxy::ResetAge() const
 {
@@ -5485,6 +5673,8 @@ float ScriptDecalProxy::GetEffectiveOpacity() const
     float fade = 1.0f;
     if (d->lifetime >= 0.0f && d->fadeTime > 0.0f)
         fade = (std::min)(1.0f, (d->lifetime - d->age) / d->fadeTime);
+    if (d->fadeInTime > 0.0f)
+        fade = (std::min)(fade, d->age / d->fadeInTime);
     return std::clamp(fade, 0.0f, 1.0f) * std::clamp(d->opacity, 0.0f, 1.0f);
 }
 void ScriptDecalProxy::SetAngleFade(float strength, float limitDegrees) const
@@ -7366,6 +7556,54 @@ void ScriptRagdollProxy::Begin(float holdSeconds, float maxWeight, float gravity
     ragdoll->activationGravity = gravityScale < 0.0f ? 0.0f : gravityScale;
 }
 
+void ScriptRagdollProxy::SetStandingGuard(bool enabled, float maxDistance, float maxDegrees) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+    ragdoll->standingGuard = enabled;
+    ragdoll->standingMaxDistance = std::max(maxDistance, 0.0f);
+    ragdoll->standingMaxDegrees = std::clamp(maxDegrees, 0.0f, 180.0f);
+}
+
+void ScriptRagdollProxy::SetProfile(ScriptRagdollProfile profile) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script))
+        ragdoll->profile = profile == ScriptRagdollProfile::Humanoid
+            ? RagdollProfileKind::Humanoid : RagdollProfileKind::Mech;
+}
+
+void ScriptRagdollProxy::SetExcludedBranches(const std::vector<std::string>& rootBoneNames) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script)) ragdoll->excludedRootBones = rootBoneNames;
+}
+
+void ScriptRagdollProxy::SetRootAnchor(float scale, float sag, float tiltDegrees) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script)) {
+        ragdoll->rootAnchor = std::max(scale, 0.0f);
+        ragdoll->rootAnchorSag = std::max(sag, 0.0f);
+        ragdoll->rootAnchorTilt = std::max(tiltDegrees, 0.0f) * math::PI / 180.0f;
+    }
+}
+
+void ScriptRagdollProxy::SetContacts(bool world, bool dynamic, bool self, bool whileActive) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script)) {
+        ragdoll->contactWorld = world;
+        ragdoll->contactDynamic = dynamic;
+        ragdoll->contactSelf = self;
+        ragdoll->contactWhileActive = whileActive;
+    }
+}
+
+void ScriptRagdollProxy::SetGroundPlane(bool enabled, float offset) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script)) {
+        ragdoll->groundPlane = enabled;
+        ragdoll->groundOffset = offset;
+    }
+}
+
 void ScriptRagdollProxy::BeginActive(float holdSeconds) const
 {
     auto* ragdoll = EnsureRagdoll(script);
@@ -7375,13 +7613,11 @@ void ScriptRagdollProxy::BeginActive(float holdSeconds) const
     if (ragdoll->IsStanding()) {
         ragdoll->endRequested  = false;
         ragdoll->holdRemaining = holdSeconds > 0.0f ? holdSeconds : 0.0f;
-        // 戻りかけで殴られた。Hold へ飛ばすと適用率が跳ねるので、今の適用率に
-        // 対応する時刻から BlendIn をやり直す ─ 連撃のたびに «また効き始める»。
+        // 戻りかけの適用率を始点にして、連撃でも姿勢が跳ねないようにする。
         if (ragdoll->phase == RagdollPhase::BlendOut) {
-            const float ceiling = std::max(ragdoll->activationWeight, math::EPSILON);
+            ragdoll->phaseStartWeight = math::Clamp01(ragdoll->weight);
             ragdoll->phase      = RagdollPhase::BlendIn;
-            ragdoll->phaseTimer =
-                math::Clamp01(ragdoll->weight / ceiling) * std::max(ragdoll->blendIn, 0.0f);
+            ragdoll->phaseTimer = 0.0f;
         }
         return;
     }
@@ -7397,7 +7633,14 @@ void ScriptRagdollProxy::BeginActive(float holdSeconds) const
 void ScriptRagdollProxy::End() const
 {
     auto* ragdoll = SelfComponent<RagdollComponent>(script);
-    if (!ragdoll || ragdoll->phase == RagdollPhase::Idle) return;
+    if (!ragdoll) return;
+    ragdoll->beginRequested = false;
+    ragdoll->activeRequested = false;
+    ragdoll->startTriggered = true;
+    if (ragdoll->phase == RagdollPhase::Idle) {
+        ragdoll->pendingImpulses.clear();
+        return;
+    }
     ragdoll->endRequested  = true;
     ragdoll->holdRemaining = 0.0f;
 }
@@ -7440,6 +7683,19 @@ void ScriptRagdollProxy::PushAt(const math::Vector3& origin,
     if (!ragdoll) return;
     ragdoll->pendingImpulses.push_back(
         RagdollImpulse{ origin, velocity, radius < 0.0f ? 0.0f : radius });
+}
+
+void ScriptRagdollProxy::PushAngular(const math::Vector3& angularVelocity) const
+{
+    PushAngularAt(math::Vector3::ZERO, angularVelocity, 0.0f);
+}
+
+void ScriptRagdollProxy::PushAngularAt(const math::Vector3& origin,
+                                      const math::Vector3& angularVelocity, float radius) const
+{
+    if (auto* ragdoll = SelfComponent<RagdollComponent>(script))
+        ragdoll->pendingImpulses.push_back(RagdollImpulse{
+            origin, math::Vector3::ZERO, std::max(radius, 0.0f), angularVelocity});
 }
 
 bool ScriptRagdollProxy::IsActive() const
@@ -7573,6 +7829,196 @@ bool ScriptRagdollProxy::IsEnabled() const
 {
     const auto* ragdoll = SelfComponent<RagdollComponent>(script);
     return ragdoll && ragdoll->enabled;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptJointProxy
+// ---------------------------------------------------------------------------
+namespace {
+
+JointComponent* EnsureJointComponent(const Script* script)
+{
+    if (script == nullptr) return nullptr;
+    if (auto* joint = SelfComponent<JointComponent>(script)) return joint;
+    GameObject* self = script->scene.Self();
+    if (self == nullptr || !self->IsValid()) return nullptr;
+    return &self->AddComponent<JointComponent>();
+}
+
+// Connect*() 共通の下ごしらえ。種別と相手を差し替え、残りは呼び出し側が詰める。
+// target が null / 無効なら関節は作らず nullptr を返す («黙って自分だけ» にしない)。
+JointComponent* BeginJointConnect(const Script* script, JointType type, GameObject* target)
+{
+    if (!target || !target->IsValid()) return nullptr;
+    JointComponent* joint = EnsureJointComponent(script);
+    if (!joint) return nullptr;
+    joint->enabled         = true;
+    joint->type            = type;
+    joint->connectedBody.id = target->GetID();
+    // 相手を名指しした以上、祖先へのフォールバックは切る。
+    // 残したままだと、相手が消えた瞬間に «別のものへ勝手に繋ぎ変わる»。
+    joint->connectToParent = false;
+    joint->chainBodies.clear();
+    return joint;
+}
+
+// 距離は «0 以下なら張った瞬間の間隔» という 1 つの規約で通す。
+void SetAuthoredJointDistance(JointComponent& joint, float distance)
+{
+    joint.autoDistance = distance <= 0.0f;
+    joint.distance     = joint.autoDistance ? 0.0f : distance;
+}
+
+} // namespace
+
+void ScriptJointProxy::ConnectFixed(GameObject* target) const
+{
+    BeginJointConnect(script, JointType::Fixed, target);
+}
+
+void ScriptJointProxy::ConnectDistance(GameObject* target, float distance) const
+{
+    if (auto* joint = BeginJointConnect(script, JointType::Distance, target))
+        SetAuthoredJointDistance(*joint, distance);
+}
+
+void ScriptJointProxy::ConnectRope(GameObject* target, float maxLength) const
+{
+    if (auto* joint = BeginJointConnect(script, JointType::Rope, target))
+        SetAuthoredJointDistance(*joint, maxLength);
+}
+
+void ScriptJointProxy::ConnectSpring(GameObject* target,
+                                     float restLength,
+                                     float stiffness,
+                                     float damping) const
+{
+    auto* joint = BeginJointConnect(script, JointType::Spring, target);
+    if (!joint) return;
+    SetAuthoredJointDistance(*joint, restLength);
+    joint->spring  = stiffness < 0.0f ? 0.0f : stiffness;
+    joint->damping = damping < 0.0f ? 0.0f : damping;
+}
+
+void ScriptJointProxy::ConnectHinge(GameObject* target,
+                                    const math::Vector3& axis,
+                                    const math::Vector3& anchor,
+                                    const math::Vector3& connectedAnchor) const
+{
+    auto* joint = BeginJointConnect(script, JointType::Hinge, target);
+    if (!joint) return;
+    joint->axis            = axis;
+    joint->anchor          = anchor;
+    joint->connectedAnchor = connectedAnchor;
+}
+
+void ScriptJointProxy::ConnectSlider(GameObject* target, const math::Vector3& axis) const
+{
+    if (auto* joint = BeginJointConnect(script, JointType::Slider, target))
+        joint->axis = axis;
+}
+
+void ScriptJointProxy::ConnectChain(const std::vector<GameObject*>& following,
+                                    float segmentLength,
+                                    int iterations) const
+{
+    JointComponent* joint = EnsureJointComponent(script);
+    if (!joint) return;
+    joint->enabled = true;
+    joint->type    = JointType::Chain;
+    joint->connectedBody.id = EntityID::INVALID;
+    joint->chainBodies.clear();
+    joint->chainBodies.reserve(following.size());
+    for (GameObject* go : following) {
+        // 1 つでも欠けると «どこから先が繋がっていないのか» が分からなくなる。
+        // 並びの穴を許さず、丸ごと張らないことで気付ける形にする。
+        if (!go || !go->IsValid()) { joint->chainBodies.clear(); return; }
+        joint->chainBodies.push_back(EntityRef{ go->GetID() });
+    }
+    SetAuthoredJointDistance(*joint, segmentLength);
+    joint->solverIterations = iterations < 1 ? 1 : iterations;
+}
+
+void ScriptJointProxy::Break() const
+{
+    if (!script || !script->m_gameObject) return;
+    if (script->m_gameObject->GetComponent<JointComponent>())
+        script->m_gameObject->RemoveComponent<JointComponent>();
+}
+
+bool ScriptJointProxy::HasJoint() const
+{
+    return SelfComponent<JointComponent>(script) != nullptr;
+}
+
+bool ScriptJointProxy::IsConnected() const
+{
+    const auto* joint = SelfComponent<JointComponent>(script);
+    return joint && joint->connected;
+}
+
+void ScriptJointProxy::SetEnabled(bool enabled) const
+{
+    if (auto* joint = SelfComponent<JointComponent>(script)) joint->enabled = enabled;
+}
+
+bool ScriptJointProxy::IsEnabled() const
+{
+    const auto* joint = SelfComponent<JointComponent>(script);
+    return joint && joint->enabled;
+}
+
+void ScriptJointProxy::SetLimits(float lower, float upper) const
+{
+    auto* joint = SelfComponent<JointComponent>(script);
+    if (!joint) return;
+    joint->useLimits  = true;
+    // 逆に渡されても入れ替えて受ける。Physics 側の SetLimits も min/max を並べ替えるが、
+    // Inspector に «下限 > 上限» のまま残ると «可動域が効かない» に見える。
+    joint->lowerLimit = std::min(lower, upper);
+    joint->upperLimit = std::max(lower, upper);
+}
+
+void ScriptJointProxy::ClearLimits() const
+{
+    if (auto* joint = SelfComponent<JointComponent>(script)) joint->useLimits = false;
+}
+
+void ScriptJointProxy::SetMotor(float targetSpeed, float maxTorque) const
+{
+    auto* joint = SelfComponent<JointComponent>(script);
+    if (!joint) return;
+    joint->useMotor       = true;
+    joint->motorSpeed     = targetSpeed;
+    joint->motorMaxTorque = maxTorque < 0.0f ? 0.0f : maxTorque;
+}
+
+void ScriptJointProxy::ClearMotor() const
+{
+    if (auto* joint = SelfComponent<JointComponent>(script)) joint->useMotor = false;
+}
+
+void ScriptJointProxy::SetDistance(float distance) const
+{
+    if (auto* joint = SelfComponent<JointComponent>(script))
+        SetAuthoredJointDistance(*joint, distance);
+}
+
+float ScriptJointProxy::GetDistance() const
+{
+    const auto* joint = SelfComponent<JointComponent>(script);
+    return joint ? joint->resolvedDistance : 0.0f;
+}
+
+float ScriptJointProxy::GetCurrentDistance() const
+{
+    auto* joint = SelfComponent<JointComponent>(script);
+    if (!joint || !script || !script->m_gameObject || !script->m_scene) return 0.0f;
+    const physics::RigidBody* self = SelfRigidBody(script);
+    const physics::RigidBody* other =
+        ResolveJointPartner(*script->m_scene, *script->m_gameObject, *joint);
+    if (!self || !other) return 0.0f;
+    return (other->GetPosition() - self->GetPosition()).Length();
 }
 
 } // namespace fbzz::scene

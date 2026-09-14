@@ -146,6 +146,14 @@ void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* materi
     water.current = flowLen > 1.0e-4f ? flow * (speed / flowLen) : math::Vector2::ZERO;
 }
 
+math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform& transform)
+{
+    return {
+        water.extentX * std::abs(transform.worldScale.x) / static_cast<float>((std::max)(water.resolutionX, 1u)),
+        water.extentZ * std::abs(transform.worldScale.z) / static_cast<float>((std::max)(water.resolutionZ, 1u)),
+    };
+}
+
 void EmitWaterRipple(EntityID waterEntity, const WaterComponent& water, const Transform& transform,
                      const math::Vector3& worldPos, float strength)
 {
@@ -163,7 +171,16 @@ void EmitWaterRipple(EntityID waterEntity, const WaterComponent& water, const Tr
     const float s      = math::Clamp01(strength);
     const float width  = (std::max)((0.25f + 0.35f * s) / size, texel * 1.5f);
     const float speed  = (std::max)((1.2f + 1.2f * s) / size, texel * 3.0f);
-    AddWaterRipple(waterEntity, uv, s, speed, 1.3f, width);
+
+    // テクセルで止めた «実際に出る輪の太さ» [m]。海サイズの水面では 1 テクセルが数十 m あり、
+    // 小石 1 個の着水が直径 100 m の輪として出てしまう。太くなったぶんだけ薄くし、
+    // «輪として読めない» ところで置くのをやめる。しぶきのパーティクルはそのまま残る。
+    const float worldWidth = width * size;
+    const float t = math::Clamp01((worldWidth - 3.0f) / 5.0f);
+    const float scaleFade = 1.0f - t * t * (3.0f - 2.0f * t);
+    if (scaleFade <= 0.01f) return;
+
+    AddWaterRipple(waterEntity, uv, s * scaleFade, speed, 1.3f, width);
 }
 
 ComponentAccess WaterSystem::GetAccess() const
@@ -185,6 +202,7 @@ void WaterSystem::Update(SystemContext& ctx)
         GameObject* go = scene.GetGameObject(id);
         if (!water || !go) continue;
         ResolveWaterWaves(*water, LoadWaterMaterial(*water), wind);
+        water->cellSize = ResolveWaterCellSize(*water, go->transform);
         if (water->enabled && water->splashEnabled && go->activeInHierarchy()) {
             targets.push_back({ id, water, &go->transform,
                                 water->extentX * 0.5f * std::abs(go->transform.worldScale.x),

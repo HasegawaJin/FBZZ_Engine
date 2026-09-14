@@ -164,6 +164,14 @@ struct LensSettings {
     // WHY ボリューム側に既定値を持たせないか: これは «その瞬間だけ» の演出で、
     //     常時掛かっていると画面端が always ぼける。供給源は VFXScreenEffect の加算だけ。
     float radialBlur = 0.0f;
+
+    // 衝撃波リング。輪の上だけ色を読む座標を半径方向へずらす。amplitude=0 で無効。
+    // WHY 加算せず «一番強い 1 枚» を採るか (RenderSystem): 中心と半径を足し合わせると、
+    //     2 つの爆発が «画面のどこにも無い中心を持つ 1 つの輪» に化ける。
+    float shockRingAmplitude = 0.0f;
+    float shockRingRadius = 0.0f;
+    float shockRingWidth = 0.12f;
+    float shockRingCenter[2] = { 0.5f, 0.5f };
 };
 
 // StylizedPostProcessSettings — 演出寄りの色・解像度変換をまとめた設定。
@@ -631,6 +639,34 @@ struct RenderSettings {
 
     bool IsWireframe() const { return viewMode == ViewMode::WireframeLit || viewMode == ViewMode::WireframeUnlit; }
     bool IsUnlit()     const { return viewMode == ViewMode::Unlit        || viewMode == ViewMode::WireframeUnlit; }
+
+    /// エディター用の診断表示 (ワイヤーフレーム・コライダー・NavMesh・ヒートマップ等) をすべて切る。
+    /// Game View へ渡す設定を作るときに使う。
+    /// WHY: Debug メニューの表示フラグはこの構造体 (ProjectSettings::render) へ書かれる。
+    ///      Game View がそのまま渡すと、Scene View で調べるために点けた表示が
+    ///      ゲーム画面にも乗り、ゲームの見た目を確かめられなくなる。
+    /// NOTE: showUIRects だけは残す。当たり判定を試すクリックは Game View で行うため。
+    ///       診断表示のフラグを足したら、ここと RenderSettingsTests にも足すこと。
+    void StripDebugVisualization()
+    {
+        viewMode                      = ViewMode::Lit;
+        showColliders                 = false;
+        showTerrainCollision          = false;
+        showDecalBounds               = false;
+        showNavMesh                   = false;
+        showNavSensors                = false;
+        showSkeleton                  = false;
+        showGrid                      = false;
+        showLightRange                = false;
+        showVFXGizmos                 = false;
+        showConstraints               = false;
+        showRagdoll                   = false;
+        passViewerEnabled             = false;
+        particleOverdrawView          = false;
+        particleOverdrawReadback      = false;
+        shadow.debugVisualizeCascades = false;
+        clustered.debugHeatmap        = false;
+    }
 
     PostProcessSettings postProcess;
 

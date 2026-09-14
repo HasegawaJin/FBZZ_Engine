@@ -72,3 +72,5 @@ FBZZ_PROXY_MEMBER(ScriptSequenceProxy,      sequence)
 FBZZ_PROXY_MEMBER(ScriptObjectMaskProxy,    objectMask)
 FBZZ_PROXY_MEMBER(ScriptSpringBoneProxy,    springBone)
 FBZZ_PROXY_MEMBER(ScriptRagdollProxy,       ragdoll)
+// 剛体の関節。制約の実体は World が持つので、ここからは宣言 (JointComponent) を触る。
+FBZZ_PROXY_MEMBER(ScriptJointProxy,         joint)

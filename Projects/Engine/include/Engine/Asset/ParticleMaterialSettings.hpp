@@ -23,23 +23,21 @@
 #pragma once
 
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp> // Particle* 列挙
+#include <Math/Vector3.hpp>
 #include <string>
 #include <string_view>
 
 namespace fbzz::asset {
 
-/// .mat の [particle] テーブル。既定値は «この機能を使っていない» 状態で、
-/// 旧 ParticleEmitter の既定と一致させてある (移行しても見た目が変わらないため)。
-struct ParticleMaterialSettings {
-    // ── 合成 ──
-    // NOTE: 実際のブレンドは .mat トップレベルの blend_mode が決める。
-    //       ここには持たない (同じ意味の値を 2 か所に置かない)。
-
-    // ── アルファの取り出し方 ──
-    /// テクスチャのどこを不透明度として読むか。値は Rendering/Mask.hlsli の FBZZ_MASK_*。
-    scene::ParticleAlphaSource alphaSource = scene::ParticleAlphaSource::TextureAlpha;
-
-    // ── フリップブック (テクスチャシートアニメーション) ──
+/// フリップブック (テクスチャシートアニメーション)。.mat の [particle] にはフラットな
+/// キー (sprite_columns ...) のまま保存する。
+///
+/// WHY 塊にするか:
+///   この 11 個は «アトラスのどのコマをいつ出すか» という 1 つの仕事にしか使われない。
+///   平たく並べていた頃は、再生範囲の丸め (end = 0 を «最後まで» と読む・範囲外を詰める) を
+///   CPU 経路と GPU 定数バッファがそれぞれ書いており、Inspector のプレビューを作ると
+///   3 本目になるところだった。型と評価関数を 1 つにして 3 者に同じ答えを出させる。
+struct ParticleFlipbookSettings {
     /// アトラスの分割数。1x1 なら 1 枚絵として扱う。
     int spriteColumns = 1;
     int spriteRows    = 1;
@@ -63,10 +61,72 @@ struct ParticleMaterialSettings {
     /// WHY 0 か: 旧既定の 1 は «Atlas 全幅ぶりずらす» 意味になり、MV を有効にした瞬間に絵が破綻する。
     float motionVectorStrength = 0.0f;
 
+    /// 分割数 0 以下を 1 として数えたコマ数。
+    [[nodiscard]] int FrameCount() const
+    {
+        return (spriteColumns > 1 ? spriteColumns : 1) * (spriteRows > 1 ? spriteRows : 1);
+    }
+};
+
+/// 丸め済みの再生範囲。first / last はアトラス全体の通し番号 (左上から行優先)。
+struct FlipbookFrameRange {
+    int columns = 1;
+    int rows    = 1;
+    int first   = 0;
+    int last    = 0;
+};
+
+/// ある粒子がいま出すコマ。blend は frame → nextFrame への補間率 (Frame Blending 無効なら 0)。
+struct FlipbookFrameSample {
+    int   frame     = 0;
+    int   nextFrame = 0;
+    float blend     = 0.0f;
+};
+
+/// 分割数 0 や範囲外の Start / End を丸め、spriteEndFrame = 0 を «最後まで» と読む。
+/// @note Random Row の «行で範囲を上書きする» 規則は粒子ごとなのでここでは適用しない。
+[[nodiscard]] FlipbookFrameRange ResolveFlipbookRange(const ParticleFlipbookSettings& flipbook);
+
+/// 1 粒子ぶんのコマを決める。CPU シミュレーションと Inspector プレビューの正本。
+/// @param normalizedAge 寿命に対する経過 [0,1] (Lifetime が使う)
+/// @param ageSeconds    生まれてからの秒数 (FPS / Ping Pong が使う)
+/// @param spriteSeed    粒子固有の乱数 [0,1] (Random Row / Random Start / Random が使う)
+/// @note GPU 経路 (ParticleGpuSim.cs.hlsl) は同じ規則を HLSL で持つ。変えるなら両方直すこと。
+[[nodiscard]] FlipbookFrameSample EvaluateFlipbookFrame(const ParticleFlipbookSettings& flipbook,
+                                                        float normalizedAge,
+                                                        float ageSeconds,
+                                                        float spriteSeed);
+
+/// .mat の [particle] テーブル。既定値は «この機能を使っていない» 状態で、
+/// 旧 ParticleEmitter の既定と一致させてある (移行しても見た目が変わらないため)。
+struct ParticleMaterialSettings {
+    // ── 合成 ──
+    // NOTE: 実際のブレンドは .mat トップレベルの blend_mode が決める。
+    //       ここには持たない (同じ意味の値を 2 か所に置かない)。
+
+    // ── アルファの取り出し方 ──
+    /// テクスチャのどこを不透明度として読むか。値は Rendering/Mask.hlsli の FBZZ_MASK_*。
+    scene::ParticleAlphaSource alphaSource = scene::ParticleAlphaSource::TextureAlpha;
+
+    ParticleFlipbookSettings flipbook;
+
     // ── ソフトパーティクル ──
     /// 背景との交差線を深度差でぼかす。板が地面へ突き刺さって見えるのを防ぐ。
     bool softParticles = false;
     float softParticleFadeDistance = 0.5f;
+
+    // ── カメラ距離フェード ──
+    /// カメラから cameraFadeNear より近い粒子を薄くする [ワールド単位]。
+    /// near で 0・far で 1 まで戻る。カメラが煙へ突っ込んだときに 1 枚の板で
+    /// 画面全体が埋まるのを防ぐ。
+    ///
+    /// near >= far (既定の 0 / 0 を含む) は «この素材は距離フェードを使わない» の意味。
+    /// WHY 有効フラグ (bool) を持たないか:
+    ///   ソフトパーティクルと違い、この 2 値はシェーダー内で分岐なしに «使わない» を
+    ///   表現できる (near >= far でフェードが常に 1)。フラグを足すと «有効なのに
+    ///   near == far» という無意味な組み合わせが Inspector に現れる。
+    float cameraFadeNear = 0.0f;
+    float cameraFadeFar  = 0.0f;
 
     // ── 歪み (熱陽炎) ──
     /// 背景を屈折させる。有効にするとパスがシーン色を退避し、合成はアルファへ倒れる。
@@ -85,6 +145,12 @@ struct ParticleMaterialSettings {
     /// 逆光透過 (前方散乱)。煙が「向こう側の光で縁から光る」効果。
     float smokeTransmission = 0.0f;
     float smokeBackScatterPower = 4.0f;
+    /// 6 方向ライトマップ (Volume Flipbook Baker の _6wayP / _6wayN) で陰影を付ける。
+    /// albedo が Positive (右, 上, 奥, α)、emissive スロットが Negative (左, 下, 手前, 発光マスク)。
+    /// sixWayLighting (疑似法線) より優先する。規約は SixWayLighting.hpp。
+    bool sixWayMaps = false;
+    /// Negative の A (発光マスク) に掛ける色 (リニア HDR)。炎の芯を影の中でも光らせる。
+    math::Vector3 sixWayEmissionColor = { 0.0f, 0.0f, 0.0f };
 
     // ── ボリュメトリック煙 ──
     /// ビルボード内で球状密度場をレイマーチして厚みを出す。
@@ -100,6 +166,11 @@ struct ParticleMaterialSettings {
     float shadowStrength = 1.0f;
     /// 自分自身の密度で減光する。0 で無効 (専用 RT を回さない)。
     float selfShadowStrength = 0.0f;
+
+    // ── 点光源 ──
+    /// Point / Spot / 面光源 (クラスタ) を粒子の中心で受ける。煙が近くの炎や松明に照らされる。
+    /// 1 画素ごとにライト一覧を走査するので、画面を覆う煙では重くなる。
+    bool punctualLighting = false;
 
     // ── 明るさ ──
     /// 粒子色に掛かる倍率。HDR (1 超) にするとブルームが拾う。

@@ -71,6 +71,10 @@ struct ScriptUIProxy {
     ///       (カーソルを動かす側が生の値を要るため)。
     [[nodiscard]] math::Vector2 GetCanvasMousePosition() const;
 
+    /// 実ビューポートに対応する Canvas 全体の寸法 (safeArea を引く前)。
+    /// 未指定時は自分、無ければシーン最初の Canvas。対象・viewport 不在は false、出力未変更。
+    [[nodiscard]] bool TryGetCanvasSize(math::Vector2& outSize, GameObject* canvasObject = nullptr) const;
+
     /// @name ゲーム内カーソル
     /// UI の当たり判定に使う座標と押下状態を、OS のマウスから差し替える。
     ///

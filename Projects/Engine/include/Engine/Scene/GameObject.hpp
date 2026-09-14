@@ -9,6 +9,7 @@
 #include "Entity.hpp"
 #include "Transform.hpp"
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::scene {
@@ -74,6 +75,10 @@ public:
     GameObject* GetParent()         const;
     int         GetChildCount()     const;
     GameObject* GetChild(int index) const;
+
+    /// 自分を含む部分木を子の表示順に深さ優先で検索する。非アクティブも含む。
+    /// 同名は最初の1件、未検出は nullptr。戻り値は Scene が所有する非所有参照。
+    [[nodiscard]] GameObject* FindInSubtree(std::string_view objectName);
 
     // Unity: transform.GetSiblingIndex / SetSiblingIndex
     // 兄弟内の表示順 (Hierarchy の並び)。親がいない場合はルート同士の並び順を指す。

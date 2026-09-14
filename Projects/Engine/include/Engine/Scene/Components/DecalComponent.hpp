@@ -61,6 +61,17 @@ struct DecalComponent {
     float fadeTime = 1.0f;   // 消える前のフェード時間 (秒)
     float age      = 0.0f;   // DecalPass が毎フレーム加算する
 
+    // 出現時のフェード時間 [秒]。0 で «いきなり全濃度» (既定 = 従来の挙動)。
+    //
+    // WHY 必要か: 血だまりが広がる・焦げが焼き付く・氷が張る、といった «痕が付く»
+    //     絵はどれも濃くなる過程を持つ。0 のままだと 1 フレームで完成した痕が
+    //     湧いて出るため、置いた瞬間だけ «貼り付けた紙» に見える。
+    //
+    // NOTE: 永続デカール (lifetime < 0) でも効く。age が要るのはこのときだけなので、
+    //       DecalPass は fadeInTime > 0 かフリップブックが有効な永続デカールに限り
+    //       age を進める (常に進めると、編集中に age がシーン差分として増え続ける)。
+    float fadeInTime = 0.0f;
+
     // 不透明度の倍率 [0, 1]。ライフタイムフェードと同じ場所 (DecalCB::alpha) へ掛かる。
     //
     // WHY albedoColor[3] と別に要るか:
@@ -73,6 +84,35 @@ struct DecalComponent {
     //   毎フレーム動く量で、保存すると Play を止めた瞬間の値がシーン差分として残る。
     //   オーサリング時の濃さは albedoColor / .mat の tint が正本。
     float opacity  = 1.0f;
+
+    // ── フリップブック (コマ送り) ─────────────────────────────────────────────
+    // 1 枚のアトラスへ横並びに詰めたコマを時間で進める。焦げの広がり・血の乾き・
+    // 亀裂の進行のような «痕そのものが変化する» 絵をテクスチャだけで作れるようにする。
+    //
+    // WHY UV を .mat (uvTiling/uvOffset) で動かさないか: .mat は参照する全デカールの
+    //     共有実体なので、そこへコマ番号を書くと同じ .mat の痕が全部同じコマになる。
+    //     コマは «この 1 枚がいつ付いたか» で決まる量なので、投影側 (DecalCB) に置く。
+    //
+    // frameCount <= 1 で無効 (UV は素通し = 従来と同じ絵)。
+    int   frameCount   = 0;
+    // アトラスの横方向のコマ数。縦の段数は frameCount から切り上げで決まる。
+    int   framesPerRow = 1;
+    // [fps]。0 なら «寿命いっぱいで 1 周» する (lifetime < 0 では進まない)。
+    //
+    // WHY 0 に意味を持たせるか: 血の乾きや焦げの定着は «消えるまでに終わる» のが
+    //     正しい。秒数を入れる運用だと lifetime を触るたびに fps を計算し直すことになる。
+    float frameRate    = 0.0f;
+    // 最後のコマまで行ったあと先頭へ戻る。false なら最後のコマで止まる (既定)。
+    // 焦げ・傷は «進んで止まる»、電気の走る痕は «回り続ける»。
+    bool  frameLoop    = false;
+
+    // ── 重なりの前後 ──────────────────────────────────────────────────────────
+    // 小さいほど先に描く (= 後ろになる)。同値なら GameObject の走査順のまま。
+    //
+    // WHY 要るか: デカールは深度を書かずに順番どおり合成するだけなので、重なった痕の
+    //     前後は走査順 —— つまり Hierarchy に並んだ順 —— でしか決まらなかった。
+    //     «血だまりの上に足跡» のような重ね方が、オブジェクトを並べ替えないと作れない。
+    int sortOrder = 0;
 
     // ── レイヤーフィルタ ──────────────────────────────────────────────────────
     // デカールを受け取るレイヤーマスク。このマスクに含まれない GameObject には投影しない。
@@ -114,9 +154,15 @@ struct DecalComponent {
         r.Field("emissiveG",       emissiveColor[1]);
         r.Field("emissiveB",       emissiveColor[2]);
         r.Field("emissiveScale",   emissiveScale);
-        r.Field("lifetime",  lifetime);
-        r.Field("fadeTime",  fadeTime);
-        r.Field("age",       age);
+        r.Field("lifetime",   lifetime);
+        r.Field("fadeTime",   fadeTime);
+        r.Field("fadeInTime", fadeInTime);
+        r.Field("age",        age);
+        r.Field("frameCount",   frameCount);
+        r.Field("framesPerRow", framesPerRow);
+        r.Field("frameRate",    frameRate);
+        r.Field("frameLoop",    frameLoop);
+        r.Field("sortOrder",    sortOrder);
         // IReflector は uint32_t 非対応のため int 経由でシリアライズする。
         // ~0u (-1) も含め正しくラウンドトリップする。
         { int v = static_cast<int>(receiverLayerMask);

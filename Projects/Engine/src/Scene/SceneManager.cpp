@@ -32,6 +32,8 @@
 #include "Engine/Scene/Systems/SequenceSystem.hpp"
 #include "Engine/Scene/Systems/VFXSystem.hpp"
 #include "Engine/Scene/Systems/VFXBeamSystem.hpp"
+#include "Engine/Scene/Systems/VFXLineSystem.hpp"
+#include "Engine/Scene/Systems/LightFlickerSystem.hpp"
 #include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include "Engine/Scene/Systems/RuntimeMeshSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -88,6 +90,10 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<SequenceSystem>();
     m_scheduler.AddSystem<VFXSystem>();
     m_scheduler.AddSystem<VFXBeamSystem>();
+    m_scheduler.AddSystem<VFXLineSystem>();
+    // 明滅は VFXLightEnvelope と同じ intensity を書くので、VFX の後に置く
+    // (実行順は LightFlickerSystem の OrderingHints が決める)。
+    m_scheduler.AddSystem<LightFlickerSystem>();
     // UI の効果音は AudioSystem より前に積む (OrderingHints が実際の順を決める)。
     m_scheduler.AddSystem<UIAudioSystem>();
     m_scheduler.AddSystem<AudioSystem>();
