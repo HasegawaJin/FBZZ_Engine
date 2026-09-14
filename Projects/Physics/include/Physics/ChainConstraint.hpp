@@ -21,9 +21,12 @@ namespace fbzz::physics
 
         const std::vector<RigidBody*>& GetBodies() const { return m_bodies; }
 
-    private:
-        std::vector<RigidBody*> m_bodies;
+        // WHY 公開するか: 他の制約 (m_distance / m_maxLength / m_stiffness) と同じく、
+        //     張ったあとに調整する値。連なりだけは並びの整合が要るので private に残す。
         float m_segmentLength = 1.0f;
         int m_solverIterations = 4;
+
+    private:
+        std::vector<RigidBody*> m_bodies;
     };
 } // namespace fbzz::physics

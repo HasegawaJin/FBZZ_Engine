@@ -1,5 +1,5 @@
 /// @file    RagdollSystem.hpp
-/// @brief   骨を質点系として落とし、確定済みポーズへブレンドして書き戻す
+/// @brief   XPBD 関節体を進め、最終ボーン階層・スキニング・描画境界を同期する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
 #pragma once

@@ -76,7 +76,28 @@ namespace fbzz::physics
         // WHY: Constraint は AddConstraint 呼び出し側が生成して World へ移譲する。
         //      World が唯一の所有者となり、World 破棄時に一括解放される。
         void AddConstraint(std::unique_ptr<Constraint> constraint);
-        const std::vector<std::unique_ptr<Constraint>>& GetConstraints() const;
+
+        // ── シーン同期で張る制約 ──────────────────────────────────────────────
+        // BeginSceneSync / EndSceneSync の窓の中で申告する。申告が途切れた制約は
+        // EndSceneSync が破棄するので、Scene 側は «外す» 処理を書かなくてよい。
+        //
+        // WHY AddConstraint と分けるか: AddConstraint は «置いたら消えない» 制約で、
+        //     Physics 単体利用 (Tests) の入口でもある。同じ入れ物へ混ぜると、
+        //     BeginSceneSync を一度呼んだ瞬間にそれらが全部消える。
+        //
+        // WHY Volume と違い毎フレーム作り直させないか: HingeConstraint / FixedConstraint は
+        //     構築時の相対姿勢を基準として抱えている。毎フレーム作り直すと基準が
+        //     «今の姿勢» へ書き換わり続け、可動域も溶接も効かなくなる。
+        ConstraintHandle SyncConstraint(ConstraintHandle handle, std::unique_ptr<Constraint> constraint);
+        // 既存の制約をそのまま今フレームも生かす申告。作り直しが要らないときに使う。
+        // 戻り値 false = そのハンドルは既に無効 (作り直しが必要)。
+        bool KeepConstraint(ConstraintHandle handle);
+        // 同期で張った制約への非所有参照。パラメーターだけを書き換えるために使う。
+        [[nodiscard]] Constraint* FindConstraint(ConstraintHandle handle) const;
+        void RemoveConstraint(ConstraintHandle handle);
+
+        // 今フレーム有効な制約すべて (AddConstraint 分 + 同期分)。
+        const std::vector<Constraint*>& GetConstraints() const;
 
         // サブステップ、Volume、制約、衝突検出、衝突解決、イベント分類をこの順で実行する。
         // layerFilter を渡すとその 1 回だけ使い、渡さなければ SetLayerFilter の値が効く。
@@ -175,6 +196,8 @@ namespace fbzz::physics
         void ApplyGravitationalAttraction();
         void IntegrateBodies(const std::vector<float>& effectiveDts);
         void SolveConstraintPositions(float dt);
+        // m_ownedConstraints と制約プールから m_activeConstraints を組み直す。
+        void RebuildConstraintViews();
         void UpdateColliders();
         void BroadPhase();
         void NarrowPhase(bool doWarmStart = false);
@@ -202,8 +225,10 @@ namespace fbzz::physics
         std::vector<RigidBody*>                 m_bodies;
         std::vector<ColliderInstance>           m_colliders;
         std::vector<Volume*>                    m_volumes;
-        // Constraint は World が唯一の所有者
-        std::vector<std::unique_ptr<Constraint>> m_constraints;
+        // Constraint は World が唯一の所有者。AddConstraint で置かれた «消えない» ぶん。
+        std::vector<std::unique_ptr<Constraint>> m_ownedConstraints;
+        // Step() が走らせる非所有ビュー (所有分 + 同期分。RebuildConstraintViews で再構築)
+        std::vector<Constraint*>                 m_activeConstraints;
         struct BodySlot {
             // WHY: 所有権は RigidBodyComponent が持つ。World は非所有参照のみ保持する。
             RigidBody* body = nullptr;
@@ -222,9 +247,17 @@ namespace fbzz::physics
             uint32_t generation = 1;
             bool touched = false;
         };
+        struct ConstraintSlot {
+            // WHY: SyncConstraint で渡された Constraint は World が所有する。
+            //      申告が途切れたら EndSceneSync がここで破棄する。
+            std::unique_ptr<Constraint> constraint;
+            uint32_t generation = 1;
+            bool touched = false;
+        };
         std::vector<BodySlot> m_bodyPool;
         std::vector<ColliderSlot> m_colliderPool;
         std::vector<VolumeSlot> m_volumePool;
+        std::vector<ConstraintSlot> m_constraintPool;
         bool m_sceneSyncChanged = false; // 追加・削除など接触集合が変わり得る同期変更があったか
         std::vector<CollisionPair>              m_collisionPairs;
         std::vector<ContactPoint>               m_contacts;

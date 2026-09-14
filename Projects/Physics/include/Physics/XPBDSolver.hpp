@@ -35,6 +35,8 @@ namespace fbzz::physics
     public:
         /// 1 フレームを substeps 回に割って解く。
         void Step(float dt);
+        /// 接触の位置解決後、速度を再計算する前に射影する。context はこの呼び出し中のみ参照する。
+        void Step(float dt, void (*projectPositions)(void*), void* context);
 
         /// 既定 8。増やすほど硬い拘束が安定するが、線形にコストが増える。
         void SetSubsteps(int substeps);

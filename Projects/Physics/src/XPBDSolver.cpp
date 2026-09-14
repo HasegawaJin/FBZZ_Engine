@@ -5,6 +5,7 @@
 #include <Physics/XPBDSolver.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace fbzz::physics
 {
@@ -68,7 +69,12 @@ namespace fbzz::physics
 
     void XPBDSolver::Step(float dt)
     {
-        if (dt <= 0.0f || m_bodies.empty()) return;
+        Step(dt, nullptr, nullptr);
+    }
+
+    void XPBDSolver::Step(float dt, void (*projectPositions)(void*), void* context)
+    {
+        if (!std::isfinite(dt) || dt <= 0.0f || m_bodies.empty()) return;
 
         const int   substeps = std::max(m_substeps, 1);
         const float h        = dt / static_cast<float>(substeps);
@@ -85,6 +91,7 @@ namespace fbzz::physics
                 constraint->SolvePosition(h);
             }
 
+            if (projectPositions) projectPositions(context);
             for (const BodyState& state : m_bodies) DeriveVelocity(state, h);
 
             for (auto& constraint : m_constraints) constraint->SolveVelocity(h);

@@ -83,6 +83,8 @@ struct RagdollProfile {
     ///     脚 1 本につき剛体が 8 個増える。ラグドールで足指が動いても絵には出ないので、
     ///     解く数だけが増えることになる。
     std::vector<std::string> excludePatterns;
+    /// 完全一致で枝ごと除外する骨名 (大文字小文字を無視)。短い略称を部分一致させないために使う。
+    std::vector<std::string> excludeNames;
     [[nodiscard]] bool IsExcluded(std::string_view boneName) const;
 
     /// この名前を含む骨には剛体を作らない (**枝は辿る**)。

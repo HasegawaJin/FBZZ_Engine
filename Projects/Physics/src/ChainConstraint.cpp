@@ -11,9 +11,9 @@ namespace fbzz::physics
                                      float segmentLength,
                                      int solverIterations)
         : Constraint(nullptr, nullptr),
-          m_bodies(std::move(bodies)),
           m_segmentLength(segmentLength),
-          m_solverIterations(solverIterations)
+          m_solverIterations(solverIterations),
+          m_bodies(std::move(bodies))
     {
     }
 

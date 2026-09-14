@@ -171,6 +171,8 @@ public:
     void ApplyImpulse(const math::Vector3& origin,
                       const math::Vector3& velocity,
                       float                radius);
+    /// ワールド空間の角速度 [rad/s]。radius > 0 なら距離で減衰する。
+    void ApplyAngularVelocity(const math::Vector3& origin, const math::Vector3& angularVelocity, float radius);
 
     /// 重力を変えるとサーボの実トルクも変わる ─ トルクは «自重を支えられるか» で
     /// 決めているので、重力が 2 倍になれば必要トルクも 2 倍になる。
@@ -183,7 +185,9 @@ public:
     /// 速度の減衰 [1/s]。空気抵抗ではなく «関節のこすれ» の代用。
     void SetDrag(float linear, float angular);
 
-    void Step(float dt) { m_solver.Step(dt); }
+    void Step(float dt);
+    /// アニメーションの根位置と骨長を保持する立位制限。距離は m、角度は rad。
+    void SetStandingGuard(bool enabled, float maxDistance, float maxRadians);
 
     /// 剛体の姿勢を骨のワールド姿勢へ戻す。
     /// 剛体を持たない骨 (葉など) は、fallback の «親からの相対» を保って埋める。
@@ -235,6 +239,8 @@ public:
     /// 腰を吊る演出、片持ち梁としての試験 ─ は、拘束を足すのではなく剛体側を
     /// 止める方が素直に書ける。
     [[nodiscard]] physics::RigidBody* GetBody(int bodyIndex) const;
+    /// 骨の添字から直接引く。剛体を持たない骨で nullptr。
+    [[nodiscard]] physics::RigidBody* BodyOfBone(int boneIndex) const;
 
     [[nodiscard]] physics::XPBDSolver& Solver() { return m_solver; }
 
@@ -278,12 +284,20 @@ private:
         float               holdMoment = 0.0f;
     };
 
-    [[nodiscard]] physics::RigidBody* BodyOfBone(int boneIndex) const;
     /// 骨 i の «剛体としての» ワールド姿勢を、与えられた骨の姿勢から作る。
     void BodyPoseFromBone(int bodyIndex, const RagdollBonePose& bone,
                           math::Vector3& outPosition, math::Quaternion& outRotation) const;
     /// 今の倍率を全関節のドライブへ反映する。
     void ApplyDrive();
+    void ProjectStandingPose();
+
+    bool m_standingGuard = false;
+    float m_standingMaxDistance = 0.15f;
+    float m_standingMaxRadians = 0.25f;
+    std::vector<RagdollBonePose> m_standingTargets;
+    std::vector<math::Vector3> m_standingPositions;
+    std::vector<math::Quaternion> m_standingRotations;
+    std::vector<math::Quaternion> m_standingLocalRotations;
     /// この剛体は自分のものか。NarrowPhase が返した接触の «どちら側» かを判定する。
     [[nodiscard]] int OwnBodyIndex(const physics::RigidBody* body) const;
     /// 自己衝突を許す組か。先祖–子孫の距離と、組んだ時点での重なりで決まる。
