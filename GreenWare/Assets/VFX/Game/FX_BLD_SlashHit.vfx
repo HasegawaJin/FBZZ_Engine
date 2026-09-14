@@ -1,12 +1,17 @@
 # FX_BLD_SlashHit.vfx — 刀が当たった瞬間 (presentation.md «斬撃»)
 # 弾き (FX_PLR_Parry) の流用をやめた理由: 輪と閃光は «弾いた» の印で、当たりに輪が
 # 出ると 1 秒に何度も弾いているように読める。ここにあるのは
-#   Slash Arc … 刃が通った «弧» 1 枚 (極性色)。0.12 秒 (トレイルと同じ寿命)
-#   Hit Flash … 芯の小さな閃光 (極性色)
-#   Sparks    … 熱色の火花 (無彩色側。極性色を乗せない)
-#   Glint     … 金属の «キラッ» 2 粒
-#   Hit Light … 当たった対象の輪郭を極の色で一瞬照らす点光源
+#   Impact Rays  … 放射の光条 1 枚 (刀の色)。食い込んだ点を 1 コマ焼く
+#   Impact Ring  … 衝撃の輪 (刀の色)。一瞬で広がって消える。強い当たりほど大きい
+#   Hit Flash    … 芯の小さな閃光 (刀の色)
+#   Sparks       … 熱色の火花。刃が抜けた向きへ噴く (向きは SlashHitVfxComponent が書く)
+#   Glint        … 金属の «キラッ» 1 粒
+#   Hit Light    … 当たった対象を刀の色で一瞬照らす点光源
 # 全部 0.35 秒で消える。煙・焦げ・輪は無い。毎秒出ても盤面に残らない。
+# 2026-09-11: 斬撃の絵を刀身の残像 (BladeSlashFx) へ替えたのに合わせて控えめにした
+#   (乱数で傾く弧 → 向きのある線 1 本、火花・キラッ・光を約半分)。
+# 2026-09-12: 斬った向きの線はパーティクルでは描けない (回転が乱数で入る) ので、
+#   一閃は SlashCutFxComponent が帯で張る。ここは光条と向きのある火花を受け持つ。
 
 [scene]
 format_version = 1
@@ -46,11 +51,13 @@ enabled = true
 [gameobjects.ScriptComponents.fields]
 tint = [1.0, 1.0, 1.0, 1.0]
 sparkPower = 10.0
-flashLight = 6.0
+flashLight = 3.0
 arcSize = 1.4
+sweepLateral = -1.0
+sweepTilt = 0.0
 
 [[gameobjects]]
-name = "Slash Arc"
+name = "Impact Rays"
 instanceId = "8aefb44d-91e8-432e-a01c-ba508717e2d3"
 tag = "Untagged"
 layer = 0
@@ -65,28 +72,69 @@ position = [0.0, 0.0, 0.0]
 rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
 
+# 放射の光条 1 枚。放射なので向きを持たず、回転が乱数で入っても崩れない。
+# 大きさは SlashHitVfxComponent が当たりの強さ (arcSize) から書き直す。
 [gameobjects.ParticleEmitter]
 cullingEnabled = false
 lodEnabled = false
 loop = false
 emitRate = 0.0
-duration = 0.15
+duration = 0.1
 maxParticles = 2
 shape = 0
 sizeStart = 0.7
-sizeEnd = 1.4
-sizeCurvePower = 0.45
-lifetime = 0.12
+sizeEnd = 0.12
+sizeCurvePower = 0.5
+lifetime = 0.055
 velocitySpread = 0.0
+emitVelocity = [0.0, 0.0, 0.0]
 gravity = [0.0, 0.0, 0.0]
-materialPath = "Assets/Materials/Effects/FX_SlashArc_Additive.mat"
+materialPath = "Assets/Materials/Effects/FX_BurstRays_Additive.mat"
 sortMode = 0
-angularVelocityMin = -4.0
-angularVelocityMax = 4.0
 renderPriority = 74
-useColorGradient = true
-colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.4, 1.0, 1.0, 1.0, 0.85], [1.0, 1.0, 1.0, 1.0, 0.0]]
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
 bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Impact Ring"
+instanceId = "b7e41c2a-5d93-4f1e-8a06-3c9d2e7f1a54"
+tag = "Untagged"
+layer = 0
+active = false
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_SlashHit"
+parentInstanceId = "6c2d3aa2-70fe-4bf4-a90e-6923a2e41367"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 衝撃の輪。弾き (FX_PLR_Parry の Ring) より速く小さく ─ 同じ大きさだと «弾いた» に読まれる。
+# 大きさと色は SlashHitVfxComponent が当たりの強さと刀の色から書く (ここは既定値)。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.2
+maxParticles = 2
+shape = 0
+sizeStart = 0.3
+sizeEnd = 2.4
+sizeCurvePower = 0.3
+lifetime = 0.14
+velocitySpread = 0.0
+emitVelocity = [0.0, 0.0, 0.0]
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
+sortMode = 0
+renderPriority = 70
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 
 [[gameobjects]]
 name = "Hit Flash"
@@ -112,10 +160,10 @@ emitRate = 0.0
 duration = 0.1
 maxParticles = 2
 shape = 0
-sizeStart = 1.1
+sizeStart = 0.5
 sizeEnd = 0.1
 sizeCurvePower = 2.2
-lifetime = 0.07
+lifetime = 0.045
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
@@ -151,9 +199,9 @@ duration = 0.3
 maxParticles = 30
 shape = 1
 sphereRadius = 0.08
-sizeStart = 0.13
-sizeEnd = 0.02
-lifetime = 0.26
+sizeStart = 0.085
+sizeEnd = 0.008
+lifetime = 0.23
 lifetimeRandom = 0.45
 velocitySpread = 10.0
 velocityDamping = 2.8
@@ -161,7 +209,7 @@ gravity = [0.0, -14.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
 renderMode = 1
 stretchedVelocityScale = 0.1
-stretchedLengthScale = 2.0
+stretchedLengthScale = 2.6
 collisionMode = 3
 collisionResponse = 0
 collisionRadius = 0.02
@@ -172,7 +220,7 @@ simulationMode = 0
 colorVariation = 0.12
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 0.96, 0.85, 1.0], [0.3, 1.0, 0.7, 0.28, 1.0], [1.0, 0.65, 0.16, 0.02, 0.0]]
-bursts = [{ time = 0.0, count = 14, cycles = 1, interval = 0.01, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 9, cycles = 1, interval = 0.02, probability = 1.0 }]
 
 [[gameobjects]]
 name = "Glint"
@@ -199,10 +247,10 @@ duration = 0.25
 maxParticles = 4
 shape = 1
 sphereRadius = 0.25
-sizeStart = 0.45
+sizeStart = 0.24
 sizeEnd = 0.0
 sizeCurvePower = 0.8
-lifetime = 0.18
+lifetime = 0.12
 lifetimeRandom = 0.3
 velocitySpread = 0.6
 gravity = [0.0, 0.0, 0.0]
@@ -213,8 +261,10 @@ angularVelocityMax = 0.5
 renderPriority = 78
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [1.0, 1.0, 1.0, 0.0]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 
+
+startDelay = 0.045
 [[gameobjects]]
 name = "Hit Light"
 instanceId = "921544ba-537d-46b1-8d1e-09c36357a09b"
@@ -235,9 +285,9 @@ scale = [1.0, 1.0, 1.0]
 [gameobjects.LightComponent]
 type = "Point"
 color = [1.0, 1.0, 1.0]
-intensity = 6.0
+intensity = 3.0
 enabled = true
-range = 4.5
+range = 3.5
 castShadows = false
 shadowBias = 1.0
 shadowStrength = 1.0

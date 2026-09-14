@@ -29,6 +29,7 @@
 ///   ボスが押し返される必要は無い (6m・400kg の重機が小型ロボに押されては困る)。
 ///   片側だけを動かせば、自己衝突も質量比の破綻も原理的に起きない。
 #pragma once
+#include <Math/Segment.hpp>
 
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -154,22 +155,13 @@ inline GameObject* PlayerBossBlockComponent::Boss() const
 inline GameObject* PlayerBossBlockComponent::FindInSubtree(GameObject& root,
                                                            const std::string& name)
 {
-    if (root.name == name) return &root;
-    const int count = root.GetChildCount();
-    for (int i = 0; i < count; ++i)
-        if (GameObject* child = root.GetChild(i))
-            if (GameObject* found = FindInSubtree(*child, name)) return found;
-    return nullptr;
+    return root.FindInSubtree(name);
 }
 
 inline Vector3 PlayerBossBlockComponent::ClosestOnSegment(const Vector3& a, const Vector3& b,
                                                           const Vector3& p)
 {
-    const Vector3 ab = b - a;
-    const float   len2 = Vector3::Dot(ab, ab);
-    if (len2 < EPSILON) return a;
-    const float t = Clamp01(Vector3::Dot(p - a, ab) / len2);
-    return a + ab * t;
+    return fbzz::math::ClosestPointOnSegment(p, a, b);
 }
 
 inline void PlayerBossBlockComponent::CollectLimbs(GameObject& boss)

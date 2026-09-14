@@ -146,7 +146,7 @@ inline void PlayerHealthComponent::OnStart()
     m_flash.clear();
     m_flashing = false;
     if (GameObject* self = scene.Self()) CollectFlashTargets(*self);
-    const HandSide hands[2] = { HandSide::Right, HandSide::Left };
+    const HandSide hands[] = { HandSide::Right };
     for (const HandSide hand : hands)
         if (GameObject* sword = scene.Find(SwordObjectName(hand)))
             CollectFlashTargets(*sword);

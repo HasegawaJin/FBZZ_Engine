@@ -22,9 +22,9 @@ type = 'ContactShadow'
 
 [[overrides]]
 active = true
-intensity = 0.10000000149011612
+intensity = 0.09999759495258331
 softKnee = 1.0
-threshold = 4.0
+threshold = 0.9501633048057556
 type = 'Bloom'
 
 [[overrides]]
@@ -34,19 +34,19 @@ type = 'Exposure'
 
 [[overrides]]
 active = true
-compensation = 0.0
-highPercent = 0.6505747437477112
-lowPercent = 0.6952107548713684
-maxEV = 14.71264362335205
+compensation = 1.719670295715332
+highPercent = 0.8754098415374756
+lowPercent = 0.6850900053977966
+maxEV = 20.0
 maxExposureEV = 9.808428764343262
-minEV = -7.1724138259887695
+minEV = 0.0
 minExposureEV = -8.0
-speedDown = 2.8604624271392822
-speedUp = 2.0465087890625
+speedDown = 20.0
+speedUp = 15.570488929748535
 type = 'AutoExposure'
 
 [[overrides]]
-active = true
+active = false
 samples = 8
 strength = 0.30000001192092896
 type = 'MotionBlur'
@@ -65,7 +65,7 @@ distortion = 0.0
 type = 'LensDistortion'
 
 [[overrides]]
-active = true
+active = false
 albedo = [ 1.0, 1.0, 1.0 ]
 ambient = 0.6976743936538696
 anisotropy = 0.949999988079071
@@ -78,7 +78,7 @@ nearDistance = 10.0
 type = 'FroxelFog'
 
 [[overrides]]
-active = true
+active = false
 distortion = 0.47906920313835144
 ghostCount = 16
 haloWidth = 0.3790694773197174
@@ -87,14 +87,14 @@ type = 'LensFlare'
 
 [[overrides]]
 active = true
-density = 0.01930229738354683
+density = 0.007826908491551876
 edgeFade = 1.0
 heightFalloff = 0.0
 heightStart = 500.0
-intensity = 1.0046499967575073
+intensity = 0.06557376682758331
 maxDistance = 2867.14404296875
 minDistance = 500.0
-scattering = 0.7651161551475525
+scattering = 1.0
 steps = 48
 tint = [ 1.0, 0.9700000286102295, 0.9200000166893005 ]
 type = 'VolumetricLight'

@@ -1,0 +1,23 @@
+# 地面の粉と粗い粒。既存の無彩色素材を使い、光源で床に馴染ませる。
+version = 1
+shader = ""
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+[textures]
+albedo = "guid:f9e05e34474942639e3e139ac6c31528"
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+[particle]
+sprite_columns = 1
+sprite_rows = 1
+six_way_lighting = true
+lighting_strength = 0.75
+emissive_scale = 0.0
+soft_particles = true
+soft_particle_fade_distance = 0.35
+receive_shadows = true
+shadow_strength = 0.6

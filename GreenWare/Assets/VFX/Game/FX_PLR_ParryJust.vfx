@@ -72,10 +72,10 @@ emitRate = 0.0
 duration = 0.12
 maxParticles = 4
 shape = 0
-sizeStart = 3.4
-sizeEnd = 0.3
+sizeStart = 1.9
+sizeEnd = 0.15
 sizeCurvePower = 2.6
-lifetime = 0.09
+lifetime = 0.065
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
@@ -83,7 +83,7 @@ sortMode = 0
 renderPriority = 84
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [1.0, 1.0, 1.0, 0.0]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.01, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 
 [[gameobjects]]
 name = "Burst Rays"
@@ -110,10 +110,10 @@ emitRate = 0.0
 duration = 0.2
 maxParticles = 2
 shape = 0
-sizeStart = 1.2
-sizeEnd = 7.5
+sizeStart = 2.5
+sizeEnd = 3.8
 sizeCurvePower = 0.22
-lifetime = 0.16
+lifetime = 0.1
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_BurstRays_Additive.mat"
@@ -150,9 +150,9 @@ duration = 0.2
 maxParticles = 4
 shape = 0
 sizeStart = 0.6
-sizeEnd = 5.2
+sizeEnd = 3.2
 sizeCurvePower = 0.2
-lifetime = 0.15
+lifetime = 0.11
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_SplashImpact_Additive.mat"
@@ -162,7 +162,7 @@ angularVelocityMax = 10.0
 renderPriority = 76
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [1.0, 1.0, 1.0, 0.0]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.0, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 
 [[gameobjects]]
 name = "Ring"
@@ -192,7 +192,7 @@ shape = 0
 sizeStart = 0.3
 sizeEnd = 4.6
 sizeCurvePower = 0.28
-lifetime = 0.2
+lifetime = 0.18
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
@@ -202,6 +202,8 @@ colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [1.0, 1.0, 1.0, 0.0]
 bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
 
+
+startDelay = 0.02
 [[gameobjects]]
 name = "Ring Late"
 instanceId = "202a750c-cba3-416e-bb6a-bf18fcb34af8"
@@ -230,7 +232,7 @@ shape = 0
 sizeStart = 0.4
 sizeEnd = 7.0
 sizeCurvePower = 0.32
-lifetime = 0.3
+lifetime = 0.24
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
@@ -239,8 +241,10 @@ renderPriority = 69
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 1.0, 1.0, 0.0], [0.15, 1.0, 1.0, 1.0, 0.8], [1.0, 1.0, 1.0, 1.0, 0.0]]
 bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
-startDelay = 0.05
+startDelay = 0.075
 
+
+colorStart = [0.65, 0.88, 1.0, 0.42]
 [[gameobjects]]
 name = "Glint Stars"
 instanceId = "ac60cef8-ecc7-4e37-aba8-d16ff92d9bda"
@@ -267,10 +271,10 @@ duration = 0.35
 maxParticles = 8
 shape = 1
 sphereRadius = 0.55
-sizeStart = 0.9
+sizeStart = 0.5
 sizeEnd = 0.0
 sizeCurvePower = 0.7
-lifetime = 0.26
+lifetime = 0.19
 lifetimeRandom = 0.35
 velocitySpread = 1.2
 velocityDamping = 3.0
@@ -282,8 +286,10 @@ angularVelocityMax = 0.6
 renderPriority = 79
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [1.0, 1.0, 1.0, 0.0]
-bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.015, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
 
+
+startDelay = 0.05
 [[gameobjects]]
 name = "Glint Dots"
 instanceId = "b8274763-0edd-4e44-ae43-126258657fd5"
@@ -350,9 +356,9 @@ duration = 0.5
 maxParticles = 90
 shape = 1
 sphereRadius = 0.12
-sizeStart = 0.18
+sizeStart = 0.11
 sizeEnd = 0.02
-lifetime = 0.34
+lifetime = 0.29
 lifetimeRandom = 0.4
 velocitySpread = 24.0
 velocityDamping = 3.4
@@ -376,7 +382,7 @@ trailAlphaScale = 0.2
 colorVariation = 0.05
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.3, 0.8, 0.93, 1.0, 1.0], [1.0, 0.5, 0.7, 1.0, 0.0]]
-bursts = [{ time = 0.0, count = 42, cycles = 1, interval = 0.01, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 28, cycles = 1, interval = 0.02, probability = 1.0 }]
 
 [[gameobjects]]
 name = "Chips"

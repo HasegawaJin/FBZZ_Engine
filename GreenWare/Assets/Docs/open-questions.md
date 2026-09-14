@@ -94,18 +94,10 @@
 
 コアの遊びから離れており、後から足せると判断したもの。
 
-### 空中攻撃
-
-`Katana_Slash_Air`（16F）と `Katana_JumpSlam`（56F）は**クリップだけあって未接続**。
-空中での連撃と着地の設計が丸ごと増えるので、地上だけで成立させる。
-
-> `Katana_JumpSlam` は切先が地面へ届くところまで作ってある。
-> 入れるとしたら「衝撃波の輪を跳んで越えた頂点から落とす」が素直。
-
 ### 溜めの専用クリップ
 
-`Katana_Charge_Hold`（29F）/ `Katana_Release`（22F）も**未接続**。
-今の溜め斬りは `Katana_Slash_Dual` 1 本で出している。
+`Katana_Charge_Hold`（29F）/ `Katana_Charge_Release`（22F）は接続済み。
+`Slash_Dual` は従来互換のフォールバックとして残す。
 
 ### 中央ハザード
 

@@ -56,7 +56,7 @@ shadowLift = 0.10000000149011612
 type = 'ShadowHighlight'
 
 [[overrides]]
-active = false
+active = true
 contrast = 0.14000000059604645
 hueShift = 0.0
 saturation = 0.9800000190734863
@@ -65,13 +65,13 @@ tint = 0.0
 type = 'ColorGrading'
 
 [[overrides]]
-active = false
+active = true
 radius = 2.0
 strength = 0.25999999046325684
 type = 'Clarity'
 
 [[overrides]]
-active = false
+active = true
 radius = 1.0
 strength = 0.30000001192092896
 type = 'Sharpen'
@@ -90,7 +90,7 @@ nearDistance = 0.5
 type = 'FroxelFog'
 
 [[overrides]]
-active = false
+active = true
 samples = 8
 strength = 0.30000001192092896
 type = 'MotionBlur'

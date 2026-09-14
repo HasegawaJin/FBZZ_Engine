@@ -131,7 +131,7 @@ shape = 0
 sizeStart = 2.4
 sizeEnd = 0.2
 sizeCurvePower = 2.6
-lifetime = 0.11
+lifetime = 0.065
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
@@ -141,7 +141,7 @@ angularVelocityMax = 0.0
 renderPriority = 70
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [0.0, 0.0, 0.0, 0.0]
-bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 [[gameobjects]]
@@ -224,7 +224,7 @@ angularVelocityMax = 2.0
 renderPriority = 60
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [0.0, 0.0, 0.0, 0.0]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.03, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 [[gameobjects]]
@@ -268,8 +268,8 @@ renderPriority = 20
 colorVariation = 0.1
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [0.0, 0.0, 0.0, 0.0]
-bursts = [{ time = 0.0, count = 4, cycles = 1, interval = 0.03, probability = 1.0 }]
-startDelay = 0.01
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.035
 
 [[gameobjects]]
 name = "Shock Ring"
@@ -379,7 +379,7 @@ emitRate = 0.0
 maxParticles = 260
 shape = 1
 sphereRadius = 0.15
-sizeStart = 0.22
+sizeStart = 0.12
 sizeEnd = 0.02
 lifetime = 0.65
 lifetimeRandom = 0.45
@@ -405,7 +405,7 @@ trailAlphaScale = 0.22
 colorVariation = 0.15
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 0.94, 0.78, 1.0], [0.35, 1.0, 0.66, 0.24, 1.0], [1.0, 0.7, 0.18, 0.03, 0.0]]
-bursts = [{ time = 0.0, count = 70, cycles = 1, interval = 0.01, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 36, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 [[gameobjects]]
@@ -436,7 +436,7 @@ sphereRadius = 0.8
 sizeStart = 1.4
 sizeEnd = 4.2
 sizeCurvePower = 0.7
-lifetime = 1.6
+lifetime = 1.2
 lifetimeRandom = 0.4
 velocitySpread = 1.8
 velocityDamping = 1.6
@@ -449,7 +449,7 @@ renderPriority = 0
 colorVariation = 0.1
 useColorGradient = true
 colorGradient = [[0.0, 0.58, 0.58, 0.6, 0.0], [0.12, 0.5, 0.5, 0.53, 0.72], [1.0, 0.42, 0.42, 0.45, 0.0]]
-bursts = [{ time = 0.0, count = 12, cycles = 1, interval = 0.03, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 6, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.05
 
 [[gameobjects]]
@@ -477,9 +477,9 @@ emitRate = 0.0
 maxParticles = 4
 shape = 0
 sizeStart = 1.2
-sizeEnd = 6.0
+sizeEnd = 3.8
 sizeCurvePower = 0.3
-lifetime = 0.3
+lifetime = 0.22
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_HeatHaze_Distort.mat"
@@ -489,7 +489,7 @@ angularVelocityMax = 3.0
 renderPriority = 100
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.4, 1.0, 1.0, 1.0, 0.55], [1.0, 1.0, 1.0, 1.0, 0.0]]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 [[gameobjects]]

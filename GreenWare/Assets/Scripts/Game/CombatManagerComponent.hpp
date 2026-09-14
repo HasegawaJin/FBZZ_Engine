@@ -73,6 +73,7 @@ public:
     FBZZ_FIELD_READ_ONLY(int, debugChainHits, 0, "Chain Hits")
     FBZZ_FIELD_READ_ONLY(int, debugBestChain, 0, "Best Chain")
     FBZZ_FIELD_READ_ONLY(int, debugPerfectDodges, 0, "Perfect Dodges")
+    FBZZ_FIELD_READ_ONLY(int, debugCadence, 0, "Cadence")
     FBZZ_FIELD_READ_ONLY(int, debugFaces, 0, "Faces")
     FBZZ_TOOLTIP("出来事を受け取れる目の数。想定より少なければ、そのキャラクターに "
                  "EyeSpriteComponent が付いていない")
@@ -110,6 +111,31 @@ public:
     /// ジャスト回避 (回避中に攻撃を弾いた) を 1 回数える。PlayerComponent が申告する。
     void AddPerfectDodge() { ++m_perfectDodges; debugPerfectDodges = m_perfectDodges; }
     [[nodiscard]] int PerfectDodges() const { return m_perfectDodges; }
+
+    // ── 拍 ──────────────────────────────────────────────────────────────────
+    /// 連撃がいま何段 «拍に乗って» 繋がっているか。剣が振り出しのたびに申告する (途切れたら 0)。
+    ///
+    /// WHY ここが持つか: 拍を数えるのは剣 (Player の内部モジュール) だが、見せるのは HUD。
+    ///     HUD がプレイヤーの内部を探しに行くと、表示の都合でプレイヤーの構成を知ることになる。
+    ///     連鎖の隣に置けば、HUD はここ 1 か所だけを読めばよい。
+    void ReportCadence(int cadence, bool onBeat)
+    {
+        m_cadence = std::max(cadence, 0);
+        if (onBeat) ++m_beatSerial;
+        debugCadence = m_cadence;
+    }
+    /// 締めまで全段を拍に乗せて当てた。
+    void ReportPerfectCadence()
+    {
+        ++m_perfectSerial;
+        ++m_perfectCadences;
+    }
+    [[nodiscard]] int Cadence() const { return m_cadence; }
+    /// 拍に乗った回数 / 揃えた締めの回数。HUD は前フレームとの差で «今起きた» を取る
+    /// (通知にすると、読む側の更新順で取り逃がす)。
+    [[nodiscard]] int BeatSerial() const { return m_beatSerial; }
+    [[nodiscard]] int PerfectSerial() const { return m_perfectSerial; }
+    [[nodiscard]] int PerfectCadences() const { return m_perfectCadences; }
 
     /// 連鎖が途切れるまでの残り (1 → 直後 / 0 → 途切れた)。表示の減衰に使う。
     [[nodiscard]] float ChainRemaining01() const
@@ -196,6 +222,10 @@ private:
     int m_chainHits = 0;
     int m_perfectDodges = 0;
     int m_parries = 0;
+    int m_cadence = 0;
+    int m_beatSerial = 0;
+    int m_perfectSerial = 0;
+    int m_perfectCadences = 0;
 };
 
 FBZZ_REFLECT(CombatManagerComponent)
@@ -221,6 +251,11 @@ inline void CombatManagerComponent::OnStart()
     m_perfectDodges = 0;
     debugPerfectDodges = 0;
     m_parries = 0;
+    m_cadence = 0;
+    m_beatSerial = 0;
+    m_perfectSerial = 0;
+    m_perfectCadences = 0;
+    debugCadence = 0;
 
     // 連鎖の読み上げは画面の出来事であって空間の出来事ではないので UI バスの 2D。
     se::EnsureSource(scene, "UI");

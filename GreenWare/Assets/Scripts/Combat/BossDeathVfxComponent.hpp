@@ -139,13 +139,7 @@ FBZZ_REFLECT(BossDeathVfxComponent)
 
 inline GameObject* BossDeathVfxComponent::FindInSubtree(GameObject& root, const char* name)
 {
-    if (root.name == name) return &root;
-    for (int i = 0; i < root.GetChildCount(); ++i) {
-        if (GameObject* child = root.GetChild(i)) {
-            if (GameObject* found = FindInSubtree(*child, name)) return found;
-        }
-    }
-    return nullptr;
+    return root.FindInSubtree(name);
 }
 
 inline Vector3 BossDeathVfxComponent::CorePoint() const

@@ -21,6 +21,7 @@
 
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/Vector2.hpp>
 #include <Scripts/Combat/BossAnimatorComponent.hpp>
 #include <Scripts/Combat/BossBreakComponent.hpp>
 #include <Scripts/Combat/BossHitboxRigComponent.hpp>
@@ -35,18 +36,23 @@
 #include <Scripts/Game/HitstopManagerComponent.hpp>
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
+#include <Scripts/Game/TimeManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Player/PlayerParryComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
+#include <Scripts/Utils/BeatVoice.hpp>
 #include <Scripts/Utils/BodyShake.hpp>
 #include <Scripts/Utils/InputActions.hpp>
 #include <Scripts/Utils/LoopVoice.hpp>
+#include <Scripts/Utils/MotionTempo.hpp>
 #include <Scripts/Utils/PlayerActionState.hpp>
 #include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Vfx/BladeTrailComponent.hpp>
+#include <Scripts/Vfx/SlashCutFxComponent.hpp>
+#include <Scripts/Vfx/SpinSlashFxComponent.hpp>
 #include <Scripts/Vfx/PartDamageHudComponent.hpp>
 #include <Scripts/Vfx/SlashScarComponent.hpp>
 #include <algorithm>
@@ -107,8 +113,8 @@ public:
                  "下げるとロコモーションが透けて残る (Override なので 1 より上は効かない)")
 
     //
-    // 5 連の段構成。1・2・5 段目は左右のクリップが対で存在するので «押した剣 = 出る絵»
-    // をそのまま出し、対が無い 3・4 段目は左右どちらの入力でも同じ 1 本を出す。
+    // 6 連の段構成。1・2・6 段目は左右のクリップが対で存在し、
+    // 対が無い 3〜5 段目は左右どちらの入力でも同じ 1 本を出す。
     //
     // WHY 段ごとに «別の技» を割り当てるか: 同じ袈裟を 5 回続けると、繋がっているのか
     //     押し直しているのかが絵から消える。段が進むほど動きが大きくなる並びにすると、
@@ -119,10 +125,6 @@ public:
         "guid:f4b66683b4b00dd2699acea0edb05d70|Library/Baked/eb4f77f1e5395fbec0a9271e4462e095/anims/Katana_Slash_R.anim",
         "1: Right Clip", ".anim,.fbx")
     FBZZ_FIELD(std::string, slashRightClipName, "Katana_Slash_R", "1: Right Name")
-    FBZZ_FIELD_FILE(slashLeftClipFile,
-        "guid:df86ad597c33fe11e376bde87f62a4bf|Library/Baked/3c44e89bba0ce00b16bfcc71d0d09089/anims/Katana_Slash_L.anim",
-        "1: Left Clip", ".anim,.fbx")
-    FBZZ_FIELD(std::string, slashLeftClipName, "Katana_Slash_L", "1: Left Name")
     // Katana_Slash_R は 17F / 0.567s (L は 15F)。斬り抜けが f8。
     FBZZ_FIELD_RANGE(float, slashHitTime, 8.0f / 30.0f, "1: Hit Time", 0.02f, 2.0f)
     FBZZ_TOOLTIP("1 段目のクリップの何秒目が «斬り抜け» か。**この 1 本だけは特別で、"
@@ -133,10 +135,6 @@ public:
         "guid:6220a353bc315208137abc9aca20ba56|Library/Baked/5b938533360f47839db044c9d17077c2/anims/Katana_Double_R.anim",
         "2: Right Clip", ".anim,.fbx")
     FBZZ_FIELD(std::string, doubleRightClipName, "Katana_Double_R", "2: Right Name")
-    FBZZ_FIELD_FILE(doubleLeftClipFile,
-        "guid:2b7dc697f5359a90d92338c0c2ce7816|Library/Baked/7e2e296234604d6d9c55035263555c61/anims/Katana_Double_L.anim",
-        "2: Left Clip", ".anim,.fbx")
-    FBZZ_FIELD(std::string, doubleLeftClipName, "Katana_Double_L", "2: Left Name")
     // Katana_Double_R / _L は 31F / 1.033s。
     FBZZ_FIELD_RANGE(float, doubleHitTime, 12.0f / 30.0f, "2: Hit Time", 0.02f, 2.0f)
 
@@ -156,15 +154,19 @@ public:
     // Katana_Slash_Spin は 25F / 0.833s。
     FBZZ_FIELD_RANGE(float, spinHitTime, 13.0f / 30.0f, "4: Hit Time", 0.02f, 2.0f)
 
-    // 5 段目 (締め) — 回転しながら斬り上げる。連撃の中で一番大きい動き。
+    // 5 段目 — 斬り上げ。水平の回転斬りから縦へ軌道を変え、締めを予告する。
+    FBZZ_FIELD_FILE(riseClipFile,
+        "guid:cd82c810fb06fcf8eea678816690dafe|Library/Baked/7c5c85ed26914f69bf9688a698c4c136/anims/Katana_Slash_Rise.anim",
+        "5: Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, riseClipName, "Katana_Slash_Rise", "5: Name")
+    // Katana_Slash_Rise は 19F / 0.633s。斬り抜けは f9。
+    FBZZ_FIELD_RANGE(float, riseHitTime, 9.0f / 30.0f, "5: Hit Time", 0.02f, 2.0f)
+
+    // 6 段目 (締め) — 回転しながら斬り上げる。連撃の中で一番大きい動き。
     FBZZ_FIELD_FILE(finisherRightClipFile,
         "guid:557fba6894c1dd1ebf1929b486947320|Library/Baked/68f613340c57451f9c09846f89840d2c/anims/Katana_SpinRise_R.anim",
         "5: Right Clip", ".anim,.fbx")
     FBZZ_FIELD(std::string, finisherRightClipName, "Katana_SpinRise_R", "5: Right Name")
-    FBZZ_FIELD_FILE(finisherLeftClipFile,
-        "guid:881d54453aa2227af14a7a58edf4c4b0|Library/Baked/9701e505639a484e95bf1664fdcef1f1/anims/Katana_SpinRise_L.anim",
-        "5: Left Clip", ".anim,.fbx")
-    FBZZ_FIELD(std::string, finisherLeftClipName, "Katana_SpinRise_L", "5: Left Name")
     // Katana_SpinRise_R / _L は 33F / 1.100s。
     FBZZ_FIELD_RANGE(float, finisherHitTime, 18.0f / 30.0f, "5: Hit Time", 0.02f, 2.0f)
     FBZZ_TOOLTIP("締めだけは Startup (finisher) と対で速さが決まる。"
@@ -181,9 +183,61 @@ public:
     // Katana_Slash_Dual は 45F / 1.500s。交差の瞬間が f17。
     FBZZ_FIELD_RANGE(float, chargedHitTime, 17.0f / 30.0f, "Charged Hit Time", 0.02f, 2.0f)
 
+    FBZZ_FIELD_FILE(chargeHoldClipFile,
+        "guid:7b83bf8b43bc7e821c08e0c0b60b4c74|Library/Baked/b9d09c79810145e4b8cf6d2dd0a6984a/anims/Katana_Charge_Hold.anim",
+        "Charge Hold Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, chargeHoldClipName, "Katana_Charge_Hold", "Charge Hold Name")
+    FBZZ_FIELD_FILE(chargeReleaseClipFile,
+        "guid:0fd655ff293ff4d04c970f291bc4298a|Library/Baked/9ba45121717f45c4a2f3380c4efd590f/anims/Katana_Charge_Release.anim",
+        "Charge Release Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, chargeReleaseClipName, "Katana_Charge_Release", "Charge Release Name")
+    // Charge_Hold は 30F のループ、Release は 23F。解放の斬り抜けは f8。
+    FBZZ_FIELD_RANGE(float, chargeReleaseHitTime, 8.0f / 30.0f,
+                     "Charge Release Hit Time", 0.02f, 2.0f)
+
+    FBZZ_FIELD_FILE(airSlashClipFile,
+        "guid:a90370aff20bcefde4e763c2d0e90e23|Library/Baked/a1b8456644404bf7834a6750140ab082/anims/Katana_Slash_Air.anim",
+        "Air Slash Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, airSlashClipName, "Katana_Slash_Air", "Air Slash Name")
+    FBZZ_FIELD(std::string, airSlashLayerName, "FullBody", "Full Body Slash Layer")
+    FBZZ_TOOLTIP("空中斬りと4段目以降は腰・脚まで含むため、上半身マスクの Attack ではなく "
+                 "FullBody Slot へ流す")
+    // Slash_Air は 17F、斬り抜けは f8。地上コンボと同じ判定時刻へ合わせる。
+    FBZZ_FIELD_RANGE(float, airSlashHitTime, 8.0f / 30.0f, "Air Slash Hit Time", 0.02f, 2.0f)
+
+    FBZZ_FIELD_FILE(jumpSlamClipFile,
+        "guid:4e361e81571f7e6ddecbd65b36fbc1e7|Library/Baked/c5e2ceda3142673a0f22a3124890dfec/anims/Katana_JumpSlam.anim",
+        "Air 2: Jump Slam Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, jumpSlamClipName, "Katana_JumpSlam", "Air 2: Jump Slam Name")
+    // JumpSlam は 56F。着地と同時の叩きつけが f32。
+    FBZZ_FIELD_RANGE(float, jumpSlamHitTime, 32.0f / 30.0f,
+                     "Air 2: Jump Slam Hit Time", 0.02f, 2.0f)
+
     FBZZ_FIELD_RANGE(float, slashFadeIn,  0.05f, "Slash Fade In",  0.0f, 0.5f)
     FBZZ_FIELD_RANGE(float, slashFadeOut, 0.12f, "Slash Fade Out", 0.0f, 0.5f)
     FBZZ_TOOLTIP("次の段が始まると前の段はこの秒数で引く。長いと連撃が «残像» になる")
+
+    // ── 緩急 ────────────────────────────────────────────────────────────────
+    //
+    // WHY 等速で流さないか: 発生から逆算した一定速度で流すと、どの瞬間も同じ速さの
+    //     «腕が回るだけ» の絵になり、判定の瞬間が動きの中で目立たない。斬撃の重さは
+    //     «溜め → 弾ける → 振り抜いて止まる» の 3 拍で出る。判定の時刻は変えずに、
+    //     発生の中の配分だけを偏らせる (tempo::WindupProgress)。
+    FBZZ_GROUP("緩急 (モーションの速さ)")
+    FBZZ_FIELD_RANGE(float, slashWindup, 0.65f, "Windup Speed", 0.1f, 1.0f)
+    FBZZ_TOOLTIP("振り出しの速さ [等速に対する比]。1 で等速 (従来)。下げるほど溜めて、"
+                 "判定の直前に速く斬り抜ける (判定の時刻は変わらない)")
+    FBZZ_FIELD_RANGE(float, slashWindupPower, 2.0f, "Strike Curve", 0.5f, 5.0f)
+    FBZZ_TOOLTIP("加速の曲がり具合。大きいほど判定の直前に速さが集まる")
+    FBZZ_FIELD_RANGE(float, slashFinisherWindup, 0.5f, "Windup (finisher)", 0.1f, 1.0f)
+    FBZZ_FIELD_RANGE(float, slashChargedWindup, 0.45f, "Windup (charged)", 0.1f, 1.0f)
+    FBZZ_TOOLTIP("締めと溜め斬りは大きく溜める。途中の段と同じ緩急だと «大きい一撃» に見えない")
+    FBZZ_FIELD_RANGE(float, slashFollowStart, 1.0f, "Follow Through Start", 0.1f, 2.0f)
+    FBZZ_FIELD_RANGE(float, slashFollowEnd, 0.45f, "Follow Through End", 0.05f, 2.0f)
+    FBZZ_FIELD_RANGE(float, slashFollowSeconds, 0.25f, "Follow Through [s]", 0.01f, 1.0f)
+    FBZZ_TOOLTIP("判定の後の振り抜きの速さ [等速に対する比]。Start から End へこの秒数で落とす。"
+                 "斬り抜けた刀が «止まる» ことで重さが出る")
+    FBZZ_FIELD_READ_ONLY(float, debugStrikeSpeed, 0.0f, "Strike Speed (x)")
 
     FBZZ_GROUP("手触り")
     FBZZ_FIELD_RANGE(float, hitStop, 0.22f, "ヒットストップ", 0.0f, 1.0f)
@@ -208,18 +262,92 @@ public:
     //     同じだと、連撃が «同じ入力の繰り返し» に見える。締めへ向かって帯が
     //     少しずつ育つと、画面を見ているだけで «あと何発で締めか» が読める。
     FBZZ_FIELD_RANGE(float, comboTrailHeat, 0.35f, "Trail Heat (4th step)", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("締めの 1 つ手前の段で軌跡に乗せる格。1 段目は 0、締めは 0.6、溜め斬りは 1")
-    FBZZ_FIELD_RANGE(float, swingMoveScale, 0.15f, "Move Scale (startup)", 0.05f, 1.0f)
+    FBZZ_TOOLTIP("締めの 1 つ手前の段で軌跡に乗せる格。1 段目は 0、締めは 0.6、溜め斬りは 1。"
+                 "拍に乗った一振りは +0.2")
+    FBZZ_FIELD_RANGE(float, swingMoveScale, 0.65f, "Move Scale (startup)", 0.05f, 1.0f)
     FBZZ_TOOLTIP("振り出しから斬り抜けまでの移動速度倍率。走りながら振ると体重が乗らず"
                  "«腕だけ» に見える。踏み込み (Dash To Target) はこの倍率を受けない")
     // WHY 硬直を別に持つか: 振り抜いた後まで 0.15 倍で縛ると、締めの一撃を出すたびに
     //     0.3 秒 «足が動かない» 時間ができる。硬直は «次の入力を待つ» 区間であって
     //     «止まっている» 区間ではない。回避は速度を直接上書きするのでここに縛られない。
-    FBZZ_FIELD_RANGE(float, recoveryMoveScale, 0.6f, "Move Scale (recovery)", 0.05f, 1.0f)
+    FBZZ_FIELD_RANGE(float, recoveryMoveScale, 0.85f, "Move Scale (recovery)", 0.05f, 1.0f)
     FBZZ_TOOLTIP("斬り抜けた後の硬直中の移動速度倍率。1 に近づけるほど «振りながら歩ける»")
     FBZZ_FIELD_RANGE(float, hitRumble, 0.35f, "Rumble (hit)", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, swingRumble, 0.12f, "Rumble (swing)", 0.0f, 1.0f)
     FBZZ_TOOLTIP("空振りにも返す軽い手応え。0 にすると «入力が拾われていない» に見える")
+    // WHY 重い一撃だけ画面を引き込むか: 閃光 (Flash) は画面全体を持ち上げるだけで、
+    //     «どこで» が無い。当たり点へ画面ごと吸い込むと、止めの 1 コマに «ここを斬った» の
+    //     中心が生まれる。毎段やると 1 秒に 3 回画面が波打つので、溜め斬りと全段を拍に
+    //     乗せた締めだけ。
+    FBZZ_FIELD_RANGE(float, heavyImplode, 0.3f, "Implode (heavy)", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("溜め斬りと、全段を拍に乗せた締めが当たった瞬間に画面を当たり点へ引き込む強さ。0 で出さない")
+
+    // ── 繋ぎ ────────────────────────────────────────────────────────────────
+    FBZZ_GROUP("繋ぎ")
+    // WHY 回避の «後半» だけ斬撃で切れるか: 回避中に押した斬撃は明けるまで待たされ、
+    //     かわして踏み込む 1 続きの動きが切れていた。頭から切れると回避が
+    //     «無敵の出だしだけ使う» 技になるので、転がりの後半に限る。
+    FBZZ_FIELD_RANGE(float, dodgeCancelAt, 0.65f, "Dodge -> Slash At", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("回避の進み [0,1] がここを越えたら、攻撃ボタンで回避の残りを捨てて斬る。"
+                 "前半に押した一撃もここで出る。打ち切った瞬間に無敵も消える。1 で無効")
+    // WHY 中盤だけ前へ出すか: 返し・回転・斬り上げは体ごと運ぶ大きな動きで、
+    //     動かないとその場で腕だけ回しているように見える。
+    FBZZ_FIELD_RANGE(float, comboLunge, 0.8f, "Step Lunge (3-5) [m]", 0.0f, 3.0f)
+    FBZZ_TOOLTIP("3〜5 段目の振り出しで前へ出る距離。当て先へ既に届いているなら "
+                 "«届く縁の少し内側» までしか出ない (脚へ体が埋まるのを避ける)。0 で無効")
+
+    // ── 拍 ──────────────────────────────────────────────────────────────────
+    //
+    // WHY 硬直を «拍» から逆算するか:
+    //   段ごとのクリップの長さが違うので、硬直を一定にすると当たりの間隔が
+    //   0.34 / 0.42 / 0.36 / 0.46 秒とばらけ、同じ入力を繰り返しても耳にリズムが残らない。
+    //   «次の段の当たり» が拍に乗るよう硬直を決めれば、1〜4 段目の «ガッ» が等間隔に並び、
+    //   締めだけ半拍ためてから落ちる ─ 連撃全体の長さはほぼ変わらない。
+    FBZZ_GROUP("拍 (リズム)")
+    // WHY 0.42 か (2026-09-13 に 0.36 から): 拍は «中間の段で一番長い発生» より
+    //     長くないと成立しない ─ 短いと硬直が下限 (0.02) に張り付き、その段だけ
+    //     当たりが遅れて拍が崩れる。返し斬り (33F) の発生は再生 1.40 倍で 0.38 秒
+    //     なので、0.42 が下限に余裕のある最小値。Startup を触ったらここも見直すこと。
+    FBZZ_FIELD_RANGE(float, comboBeatSeconds, 0.42f, "Beat [s]", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("連撃の当たりの間隔。次の段の当たりがこの間隔で来るよう硬直を決める。"
+                 "0 で従来 (Recovery (combo) 固定)")
+    FBZZ_FIELD_RANGE(float, finisherBeats, 1.5f, "Finisher Beats", 1.0f, 3.0f)
+    FBZZ_TOOLTIP("締めの当たりまでの拍数。1.5 で «タン・タン・タン・タン・ッダン»")
+    // WHY 回転斬りにだけ拍を足すか (2026-09-13):
+    //   4 段目は体ごと 1 周する段で、クリップも 25F と長い。1 拍で次へ渡すと、
+    //   回り切る前に次の段のクリップがフェードインしてきて «腕だけ半回転して
+    //   斬り上げに変わる» 絵になる ─ 連撃で一番大きいはずの動きが一番読めない。
+    //   締めが 1.5 拍を持っているのと同じ理由で、この段にも溜めを渡す。
+    //   1.0 にすれば従来どおり等間隔に戻る。
+    FBZZ_FIELD_RANGE(float, spinBeats, 1.3f, "Spin Beats", 1.0f, 3.0f)
+    FBZZ_TOOLTIP("回転斬り (4 段目) の後の拍数。1 周が絵として終わるまで次の段を待たせる。"
+                 "1.0 で他の段と同じ間隔")
+    // WHY 最初の 1 回だけを判定するか: 連打すれば必ず窓のどこかに入るので、
+    //     «押した回数» を見ると連打が最適になる。最初の押下が当たりの近くにあったか
+    //     だけを見れば、当たりの音に合わせて押す人だけが拍に乗る。
+    FBZZ_FIELD_RANGE(float, beatLead, 0.08f, "On Beat Lead [s]", 0.0f, 0.3f)
+    FBZZ_TOOLTIP("当たりのこれだけ前から «拍に乗った» 押下として数える。"
+                 "これより早い最初の押下は連打扱い (繋がるが拍には乗らない)")
+    FBZZ_FIELD_RANGE(float, beatLate, 0.12f, "On Beat Late [s]", 0.0f, 0.4f)
+    FBZZ_TOOLTIP("硬直が明けてからこれだけ後までの押下も拍に乗る")
+    FBZZ_FIELD_RANGE(float, beatDamageBonus, 0.10f, "On Beat Damage", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("拍に乗った一振りの部位ダメージの上乗せ [比]。崩しの量は変えない")
+    FBZZ_FIELD_RANGE(float, cadenceFinisherScale, 1.3f, "Cadence Finisher Damage", 1.0f, 3.0f)
+    FBZZ_TOOLTIP("締めまで全段を拍に乗せたとき、締めのダメージに掛ける倍率。"
+                 "止め・閃光・鐘も一段深くなる")
+    // WHY 拍に乗るたびに音階を上げるか: 乗ったかどうかがダメージの数字にしか出ないと、
+    //     «合わせる» 遊びが画面の外に消える。乗るたびに 1 音ずつ上がる旋律 (ド・レ・ミ・ソ) なら、
+    //     4 つ揃えた締めが «曲の終わり» として耳で分かり、途切れたことも音が止むことで分かる。
+    FBZZ_FIELD_RANGE(float, beatNoteVolume, 0.45f, "Beat Note", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("拍に乗った振り出しで鳴らす音の大きさ。0 で鳴らさない")
+    FBZZ_FIELD_RANGE(float, beatNotePitch, 1.0f, "Beat Note Pitch", 0.25f, 2.0f)
+    FBZZ_TOOLTIP("1 音目の音程。2 音目以降は五音音階で上がる")
+    FBZZ_FIELD_RANGE(float, beatCameraNudge, 0.06f, "Beat Camera Nudge [m]", 0.0f, 0.3f)
+    FBZZ_TOOLTIP("拍に乗った振り出しで、刃の抜ける向きへカメラを一瞬寄せる量。"
+                 "左右の刀が交互に出るので、画面が «タン・タン» と左右に振れる")
+    FBZZ_FIELD_RANGE(float, perfectSlowScale, 0.3f, "Perfect Slow", 0.05f, 1.0f)
+    FBZZ_FIELD_RANGE(float, perfectSlowSeconds, 0.3f, "Perfect Slow [s]", 0.0f, 1.5f)
+    FBZZ_TOOLTIP("全段を拍に乗せた締めが当たった直後のスロー。止めが明けた後の «余韻» になる")
 
     // ── 溜め ────────────────────────────────────────────────────────────────
     FBZZ_GROUP("チャージ")
@@ -250,6 +378,7 @@ public:
     FBZZ_FIELD_READ_ONLY(std::string, debugPhase, "Idle", "位相")
     FBZZ_FIELD_READ_ONLY(int, debugCombo, 0, "Combo")
     FBZZ_FIELD_READ_ONLY(int, debugLastHits, 0, "Last Hits")
+    FBZZ_FIELD_READ_ONLY(int, debugCadence, 0, "Cadence")
     FBZZ_FIELD(bool, drawDebugArc, false, "Draw Arc")
 
     // ── 参照する側の問い合わせ ───────────────────────────────────────────────
@@ -279,6 +408,15 @@ public:
     ///     外から読みたいのは常に «今の一振り» の方なので、そちらだけを出す
     ///     (BladeTrail へ渡している値と同じもの)。
     [[nodiscard]] bool IsFinisherSwing() const { return m_swingIsFinisher; }
+    /// 今の一振りが拍に乗って出たか。
+    [[nodiscard]] bool IsOnBeatSwing() const { return m_swingOnBeat; }
+    /// 拍に乗って繋いだ段数 (途切れると 0)。
+    [[nodiscard]] int  Cadence() const { return m_cadence; }
+    /// 振り出した回数。変わったフレームが «振った瞬間»。
+    ///
+    /// WHY IsSwinging の立ち上がりで足りないか: 連撃は硬直が明けたフレームのうちに
+    ///     次の段を振り出すので、IsSwinging は段の間で一度も false にならない。
+    [[nodiscard]] int  SwingSerial() const { return m_swingSerial; }
 
     /// ジャスト回避の報酬。seconds のあいだ、次に押した一振りが溜め無しで満溜めの
     /// 全周斬りになる。重ねて呼ぶと猶予が延びるだけで 2 回ぶんにはならない。
@@ -294,12 +432,17 @@ public:
 
     void SetAimComponent(PlayerAimComponent* aim) { m_aim = aim; }
     void SetController(PlayerControllerComponent* controller) { m_controller = controller; }
-    /// 刀身が通った跡。斬撃の «絵» はこれ 1 本で、判定とは切り離してある。
+    /// 刀身が通った跡 (帯)。斬撃の «絵» はこれ 1 本で、判定とは切り離してある。
     void SetBladeTrail(BladeTrailComponent* trail) { m_bladeTrail = trail; }
+    /// 当たった瞬間の一閃。当たったときだけ呼ぶ。
+    void SetSlashCut(SlashCutFxComponent* cut) { m_slashCut = cut; }
+    /// 回転斬りの «一周» の輪。回転の段を振り出したときだけ呼ぶ。
+    void SetSpinFx(SpinSlashFxComponent* spin) { m_spinFx = spin; }
     /// 斬った面へ残る痕。当たったときだけ 1 枚置く。
     void SetSlashScar(SlashScarComponent* scar) { m_slashScar = scar; }
     /// 弾き・とどめ。構えている間は攻撃を受け付けず、倒れた相手には攻撃ボタンでもとどめが出る。
     void SetParry(PlayerParryComponent* parry) { m_parry = parry; }
+    void SetGuarding(bool guarding) { m_guarding = guarding; }
 
     void OnStart()  override;
     void OnUpdate() override;
@@ -318,7 +461,16 @@ private:
     /// WHY 判定を «出さずに» 終わらせるか: 回避でキャンセルできる攻撃は、
     ///     «振り切る前に逃げる» ことに意味がある。切った後で判定が出ると、
     ///     逃げたはずの一撃が当たることになり、キャンセルが読めなくなる。
-    void CancelSwing();
+    /// stopSlot を落とすとクリップは畳まない (弾きが同じ Slot を上書きした直後に使う)。
+    void CancelSwing(bool stopSlot = true);
+    /// 溜めを捨てる。震え・唸りも止める。
+    void DropCharge();
+    /// Flux を持っていれば使い切って満溜めの全周を出す。出したら true。
+    bool TryReleaseFlux(BladeSide side);
+    /// 預かっていた一振りを出す。押した瞬間と同じく Flux を優先する。
+    void StartBuffered(BladeSide side);
+    /// 押下が拍に乗ったかを決める。1 振りにつき最初の 1 回だけ見る (beatLead の WHY)。
+    void JudgeLink();
 
     void ReadInput();
     void BeginSwing(BladeSide side);
@@ -332,8 +484,15 @@ private:
     void NotifyChargeFull();
     /// 今の段に対応する斬撃クリップを Slot へ差し込む。クリップが空なら何もしない。
     void PlaySlashMotion(BladeSide side);
+    [[nodiscard]] const std::string& ActiveSlashLayer() const
+    {
+        return (m_airAttack || m_fullBodyAttack) && !airSlashLayerName.empty()
+            ? airSlashLayerName : slashLayerName;
+    }
     /// Slot のフェード量をそのままレイヤー weight へ流す。毎フレーム呼ぶ。
     void DriveSlashLayerWeight();
+    /// 斬撃クリップの再生速度を毎フレーム決める (緩急)。判定の時刻にちょうど斬り抜ける。
+    void DriveSlashTempo(float dt);
     /// この振りが連撃の最終段か。段数は «これから振る» 段 (m_combo) で数える。
     [[nodiscard]] bool IsFinisher() const { return (m_combo + 1) >= ComboLength(); }
 
@@ -348,8 +507,7 @@ private:
     ///     «前の段の続き» の側が出る。同じ式で先に判っておく。
     [[nodiscard]] BladeSide NextSwingSide() const
     {
-        const int step = Time::time > m_comboExpire ? 0 : m_combo;
-        return (step % 2 == 0) ? BladeSide::Right : BladeSide::Left;
+        return BladeSide::Right;
     }
 
     /// 1 段ぶんのクリップ。左右の対が無い段は両方に同じ 1 本が入る。
@@ -370,18 +528,64 @@ private:
     /// 今の段の発生 [秒]。判定の時刻もモーションの速さもここ 1 つから引く。
     [[nodiscard]] float StartupSeconds() const
     {
-        if (m_charged)   return tuning->bladeChargedStartup;
-        if (IsFinisher()) return tuning->bladeFinisherStartup;
-        // 段ごとのクリップの長さの違いは、発生の側で吸収する (上の WHY を参照)。
-        return ClipForStep(m_combo, m_side).hitTime / Max(ComboPlaybackRate(), 0.01f);
+        if (m_charged) return tuning->bladeChargedStartup;
+        if (m_airAttack) {
+            const float hitTime = m_airSlam ? jumpSlamHitTime : airSlashHitTime;
+            return hitTime / Max(ComboPlaybackRate(), 0.01f);
+        }
+        return StepStartup(m_combo);
     }
+    /// step 段目 (0 起点) の発生 [秒]。締めは別テンポ。
+    [[nodiscard]] float StepStartup(int step) const
+    {
+        if (step + 1 >= ComboLength()) return tuning->bladeFinisherStartup;
+        // 段ごとのクリップの長さの違いは、発生の側で吸収する (上の WHY を参照)。
+        // Hit Time は左右で共通なので、どちらの刀で引いても同じ。
+        return ClipForStep(step, BladeSide::Right).hitTime / Max(ComboPlaybackRate(), 0.01f);
+    }
+    /// step 段目が回転斬りか。
+    ///
+    /// WHY 段番号を直に書かないか: ClipForStep は «用意した段数を越えた繋ぎ» も
+    ///     回転斬りへ寄せる。番号で見ると、Combo Length を 7 以上にした瞬間に
+    ///     «回転しているのに輪も溜めも出ない段» ができる。
+    [[nodiscard]] bool IsSpinStep(int step) const
+    {
+        if (step < 0 || step + 1 >= ComboLength()) return false;
+        return ClipForStep(step, BladeSide::Right).file == &spinClipFile;
+    }
+
+    /// 途中の段の硬直。m_combo は «次に振る段» を指している (判定の後で進めてから呼ぶ)。
+    /// 次の段の当たりが拍 (comboBeatSeconds) に乗る長さを返す。拍が 0 なら従来の固定値。
+    [[nodiscard]] float ComboRecoverySeconds() const
+    {
+        if (comboBeatSeconds <= 0.0f) return Max(tuning->bladeComboRecovery, 0.02f);
+        // 今振り終えたのは m_combo の 1 つ手前。回転斬りだけ拍を伸ばす (spinBeats の WHY)。
+        const float beats = IsFinisher()            ? Max(finisherBeats, 1.0f)
+                          : IsSpinStep(m_combo - 1) ? Max(spinBeats, 1.0f)
+                                                    : 1.0f;
+        return Max(comboBeatSeconds * beats - StepStartup(m_combo), 0.02f);
+    }
+    /// 締めまで全段を拍に乗せて繋いだか。
+    [[nodiscard]] bool IsPerfectCadence() const
+    { return m_swingIsFinisher && !m_charged && m_cadence >= ComboLength() - 1; }
+    /// 拍に乗った一振りの部位ダメージの倍率。
+    [[nodiscard]] float BeatDamageScale() const
+    {
+        if (m_charged || !m_swingOnBeat) return 1.0f;
+        const float scale = 1.0f + Max(beatDamageBonus, 0.0f);
+        return IsPerfectCadence() ? scale * Max(cadenceFinisherScale, 1.0f) : scale;
+    }
+    /// 当たり点を横切る線の向き。x が振った向きに対する横 (±1)、y が傾き。
+    [[nodiscard]] Vector2 SlashSweep() const;
     /// 扇の中に居る対象すべてを斬る。
     void ResolveHit();
 
     /// この一振りが与える量。溜め比で通常と溜め斬りの間を取る。
     [[nodiscard]] int SlashDamage() const;
-    /// ロック対象が射程の外なら、発生のあいだで詰める。届かない相手へは何もしない。
-    void DashToTarget();
+    /// ロック対象が射程の外なら、発生のあいだで詰める。届かない相手へは何もしない。詰めたら true。
+    bool DashToTarget();
+    /// 3〜5 段目の振り出しで少し前へ出る (comboLunge の WHY)。
+    void LungeForward();
     /// 斬る向き。狙っている相手が居ればそちらへ、居なければカメラの前方へ。
     [[nodiscard]] Vector3 SwingDirection() const;
     /// 今フレーム狙っている相手 (居なければ nullptr)。
@@ -423,6 +627,8 @@ private:
     PlayerAimComponent*        m_aim            = nullptr;
     PlayerControllerComponent* m_controller     = nullptr;
     BladeTrailComponent*       m_bladeTrail     = nullptr;
+    SlashCutFxComponent*       m_slashCut       = nullptr;
+    SpinSlashFxComponent*      m_spinFx         = nullptr;
     SlashScarComponent*        m_slashScar      = nullptr;
     PlayerParryComponent*      m_parry          = nullptr;
 
@@ -456,6 +662,17 @@ private:
     bool     m_chargeFeel = false;
     /// 今出している一撃が溜め斬りか。判定も絵も音もここで分岐する。
     bool     m_charged = false;
+    /// 空中入力を地上コンボから分離し、専用クリップを選ぶ。
+    bool     m_airAttack = false;
+    /// 腰から回る4段目以降を上半身マスクで削らず再生する。
+    bool     m_fullBodyAttack = false;
+    bool     m_guarding = false;
+    /// 空中連撃の 2 発目か。Slash_Air から JumpSlam へ左クリックだけで繋ぐ。
+    bool     m_airSlam = false;
+    /// 着地するまでに出した空中斬撃の数。接地したフレームで 0 へ戻る。
+    int      m_airCombo = 0;
+    /// 溜めループを重ねて再生しないための状態。
+    bool     m_chargeHoldPlaying = false;
     /// この一振りで «極の突き合わせ» の手応え (止め・弾き・音) を既に返したか。
     /// この一振りが最終段だったか。振り出しで決めて、硬直が明けるまで持つ。
     ///
@@ -469,8 +686,34 @@ private:
     float    m_flux        = 0.0f;
     float    m_fluxSeconds = 0.0f;
 
+    // ── 拍 ──
+    /// 今の一振りの判定が出る (出た) 時刻と、硬直が明けた時刻 [Time::time]。拍の窓の基準。
+    /// スケール時間で持つので、止め・スローの間は窓も同じだけ伸びる。
+    float    m_hitAt       = 0.0f;
+    float    m_recoveryEnd = -1.0f;
+    /// この一振りの間に押下を判定したか / その押下が拍に乗ったか。
+    bool     m_linkJudged  = false;
+    bool     m_linkOnBeat  = false;
+    /// 弾けた後の硬直を斬撃で打ち切った。弾き返しの一振りは拍に乗ったとして数える。
+    bool     m_counterLink = false;
+    /// 今の一振りが拍に乗って出たか / 拍に乗って繋いだ段数。
+    bool     m_swingOnBeat = false;
+    int      m_cadence     = 0;
+    int      m_swingSerial = 0;
+
+    // ── 緩急 ──
+    /// 今の一振りの発生 [秒]・判定までのクリップ秒数・等速の再生速度。
+    float    m_startupTotal = 0.0f;
+    float    m_clipHitTime  = 0.0f;
+    float    m_clipRate     = 1.0f;
+    /// 判定からの経過 [秒]。振り抜きの減速の時計。
+    float    m_sinceHit     = 0.0f;
+    /// こちらが Slot の速さを握っているか。弾き・回避に Slot を渡したら落とす。
+    bool     m_tempoActive  = false;
+
     shake::BodyShake m_shake;
     se::LoopVoice    m_chargeVoice;
+    se::BeatVoice    m_beatVoice;
 };
 
 FBZZ_REFLECT(BladeComponent)
@@ -500,8 +743,22 @@ inline void BladeComponent::OnStart()
     m_chargeFeel  = false;
     m_charged     = false;
     m_chargedRatio = 0.0f;
+    m_airAttack   = false;
+    m_fullBodyAttack = false;
+    m_airSlam     = false;
+    m_airCombo    = 0;
     m_flux        = 0.0f;
     m_fluxSeconds = 0.0f;
+    m_hitAt       = 0.0f;
+    m_recoveryEnd = -1.0f;
+    m_linkJudged  = false;
+    m_linkOnBeat  = false;
+    m_counterLink = false;
+    m_swingOnBeat = false;
+    m_cadence     = 0;
+    debugCadence  = 0;
+    m_sinceHit    = 0.0f;
+    m_tempoActive = false;
 
     // 震わせる描画ノードと、その素の大きさをここで覚える。
     m_shake.Ensure(*this);
@@ -510,6 +767,9 @@ inline void BladeComponent::OnStart()
     // 同じ体から出る斬撃音にもそのまま掛かる。
     m_chargeVoice.SetKey("BladeCharge");
     m_chargeVoice.SetOutput("SE", 0.0f);
+    // 拍の音階も別の口から。主の口で音程を上げると斬撃音まで高くなる。
+    m_beatVoice.SetKey("BladeBeat");
+    m_beatVoice.SetOutput("SE");
 
     // Override レイヤーは «置き換え» なので、振っていない状態は必ず 0 から始める。
     // Play 前に Inspector で weight を上げたまま入ると、上半身が構えで固まったまま
@@ -659,7 +919,7 @@ inline Vector3 BladeComponent::SwingDirection() const
 //   最も大事なのは «押したら斬れる» で、そこを溜めに明け渡すと全部の一撃が鈍る。
 //   押した瞬間は今までどおり斬り、«その手を離さずにいる» ことが溜めになる形にすると、
 //   斬ってからそのまま力を溜める 1 続きの動作として手に馴染む。
-inline void BladeComponent::CancelSwing()
+inline void BladeComponent::CancelSwing(bool stopSlot)
 {
     if (m_phase == Phase::Idle) return;
 
@@ -668,17 +928,92 @@ inline void BladeComponent::CancelSwing()
     m_side      = BladeSide::None;
     m_charged       = false;
     m_chargedRatio  = 0.0f;
+    if ((m_airAttack || m_fullBodyAttack) && !airSlashLayerName.empty())
+        animator.SetLayerWeight(airSlashLayerName, 0.0f);
+    m_airAttack     = false;
+    m_fullBodyAttack = false;
+    m_airSlam       = false;
+    m_airCombo      = 0;
     // 段は捨てる。転がって仕切り直した後に «締めの段» から始まると、
     // 一番重い一撃が最も出しやすい手になる。
     m_combo         = 0;
     debugPhase      = "Idle";
     debugCombo      = 0;
+    m_cadence       = 0;
+    debugCadence    = 0;
+    if (auto* combat = CombatManagerComponent::Instance()) combat->ReportCadence(0, false);
+    // 軌跡の記録も止める。打ち切った後の刀は回避や弾きの動きで振られていて、
+    // その跡まで «斬撃» として残ると、キャンセルした一振りが続いているように見える。
+    if (m_bladeTrail) m_bladeTrail->Cut();
+    // 輪も同じ。回っている途中で転がったのに輪だけ 1 周し切ると、打ち切ったことが
+    // 絵で否定される。
+    if (m_spinFx) m_spinFx->Cut();
+    // Slot は次の持ち主 (回避の後の斬撃・弾き) のもの。速さを握ったままだと奪い合う。
+    m_tempoActive   = false;
 
-    if (!slashLayerName.empty()) animator.StopSlot(slashLayerName, slashFadeOut);
+    if (stopSlot) {
+        if (!slashLayerName.empty()) animator.StopSlot(slashLayerName, slashFadeOut);
+        if (!airSlashLayerName.empty() && airSlashLayerName != slashLayerName)
+            animator.StopSlot(airSlashLayerName, slashFadeOut);
+    }
+}
+
+inline void BladeComponent::DropCharge()
+{
+    if (m_holding == BladeSide::None) return;
+    m_holding    = BladeSide::None;
+    m_hold       = 0.0f;
+    m_charge     = 0.0f;
+    m_chargeFull = false;
+    StopChargeFeel();
+}
+
+inline bool BladeComponent::TryReleaseFlux(BladeSide side)
+{
+    if (!HasFlux()) return false;
+    m_flux        = 0.0f;
+    m_fluxSeconds = 0.0f;
+    debugFlux     = 0.0f;
+    BeginCharged(side, 1.0f);
+    return true;
+}
+
+inline void BladeComponent::StartBuffered(BladeSide side)
+{
+    // 回避中に押した一撃も、Flux を持っていれば満溜めで出す。ここが BeginSwing だけだと、
+    // ジャスト回避の最中に押した一振りが通常斬りに化け、報酬が次の一振りへ持ち越される。
+    if (!TryReleaseFlux(side)) BeginSwing(side);
+}
+
+inline void BladeComponent::JudgeLink()
+{
+    if (m_linkJudged) return;
+    m_linkJudged = true;
+
+    const float now = Time::time;
+    switch (m_phase) {
+    case Phase::Startup:
+        // 当たりの少し手前から。それより早い最初の押下は連打として扱う。
+        m_linkOnBeat = now >= m_hitAt - Max(beatLead, 0.0f);
+        break;
+    case Phase::Recovery:
+        m_linkOnBeat = true;
+        break;
+    case Phase::Idle:
+        // 硬直が明けてから少し後まで。連鎖が切れていれば拍も無い。
+        m_linkOnBeat = m_combo != 0 && now <= m_comboExpire
+                    && now <= m_recoveryEnd + Max(beatLate, 0.0f);
+        break;
+    }
 }
 
 inline void BladeComponent::ReadInput()
 {
+    if (m_guarding) {
+        m_buffered = BladeSide::None;
+        DropCharge();
+        return;
+    }
     const float dt = Max(Time::deltaTime, 0.0f);
 
     // 斬るのはボタン 1 つ。どちらの刀が出るかは «連撃の何段目か» が決める。
@@ -706,23 +1041,31 @@ inline void BladeComponent::ReadInput()
     //     明けた瞬間に覚えのない溜め斬りが出る。回避は仕切り直しなので溜めも捨てる。
     if (Dodging()) {
         if (pressed != BladeSide::None) m_buffered = pressed;
-        if (m_holding != BladeSide::None) {
-            m_holding    = BladeSide::None;
-            m_hold       = 0.0f;
-            m_charge     = 0.0f;
-            m_chargeFull = false;
-            StopChargeFeel();
-        }
-        return;
+        DropCharge();
+        // 転がりの後半なら、回避の残りを捨てて斬りへ繋ぐ (dodgeCancelAt の WHY)。
+        // 前半に押した一撃も預かりからここで出る ─ «出せる最初の瞬間に出る»。
+        const bool late = dodgeCancelAt < 1.0f
+                       && m_controller->DodgeProgress01() >= Clamp01(dodgeCancelAt);
+        if (m_buffered == BladeSide::None || !late || !m_controller->EndDodgeEarly()) return;
+        pressed    = m_buffered;
+        m_buffered = BladeSide::None;
     }
 
     // 弾き・とどめの最中は剣が黙る。倒れた相手が届く所に居れば、攻撃ボタンも
     // とどめになる ─ «どのボタンだったか» を倒れている 5 秒に考えさせない。
+    // 弾けた後の硬直だけは斬撃で打ち切れる (弾き返し)。
     if (pressed != BladeSide::None && m_parry) {
-        if (m_parry->IsBusy() || m_parry->TryExecute()) pressed = BladeSide::None;
+        if (m_parry->CanAttackCancel()) {
+            m_parry->Cancel();
+            m_counterLink = true;
+        } else if (m_parry->IsBusy() || m_parry->TryExecute()) {
+            pressed = BladeSide::None;
+        }
     }
 
     if (pressed != BladeSide::None) {
+        JudgeLink();
+
         // 押し替えたら溜めはやり直し。2 本の剣ぶんの溜めを同時に持たない。
         m_holding    = pressed;
         m_hold       = 0.0f;
@@ -735,16 +1078,10 @@ inline void BladeComponent::ReadInput()
         // WHY 押した瞬間に使い切るか: 猶予の終わりまで «いつ使うか» を選ばせると、
         //     ジャスト回避の見返りが «溜めておける弾» に変わり、かわした勢いで
         //     踏み込むという 1 続きの動きが切れる。押したら出る、で足りる。
-        if (HasFlux()) {
-            m_flux        = 0.0f;
-            m_fluxSeconds = 0.0f;
-            debugFlux     = 0.0f;
-            BeginCharged(pressed, 1.0f);
-        } else if (m_phase == Phase::Idle) {
+        if (!TryReleaseFlux(pressed)) {
             // 振れるなら即座に、振れないなら溜めておく。
-            BeginSwing(pressed);
-        } else {
-            m_buffered = pressed;
+            if (m_phase == Phase::Idle) BeginSwing(pressed);
+            else                        m_buffered = pressed;
         }
     }
 
@@ -783,52 +1120,105 @@ inline void BladeComponent::BeginSwing(BladeSide side)
     // 連鎖が途切れていれば 1 段目から。
     if (Time::time > m_comboExpire) m_combo = 0;
 
+    // 拍: 繋いだ段 (2 段目以降) と弾き返しだけが拍に乗りうる。
+    m_swingOnBeat = m_counterLink || (m_combo != 0 && m_linkOnBeat);
+    m_cadence     = m_swingOnBeat ? m_cadence + 1 : 0;
+    m_linkJudged  = false;
+    m_linkOnBeat  = false;
+    m_counterLink = false;
+    debugCadence  = m_cadence;
+    ++m_swingSerial;
+    if (auto* combat = CombatManagerComponent::Instance())
+        combat->ReportCadence(m_cadence, m_swingOnBeat);
+
+    if (m_swingOnBeat) {
+        // 五音音階 (ド・レ・ミ・ソ・ラ・ド)。段が進むほど音程が上がる。
+        static constexpr float kScale[] = { 0.0f, 2.0f, 4.0f, 7.0f, 9.0f, 12.0f };
+        const int   note  = std::clamp(m_cadence - 1, 0, 5);
+        const float pitch = Max(beatNotePitch, 0.01f) * std::pow(2.0f, kScale[note] / 12.0f);
+        if (beatNoteVolume > 0.0f)
+            m_beatVoice.Play(*this, se::kUiCombo.First(), beatNoteVolume, pitch);
+        // 刃の抜ける向きへカメラを寄せる。右の刀は右から左へ抜けるので左へ。
+        if (beatCameraNudge > 0.0f)
+            if (auto* shake = CameraShakeManagerComponent::Instance()) {
+                const float lateral = side == BladeSide::Left ? beatCameraNudge : -beatCameraNudge;
+                shake->Punch(Vector3{ lateral, 0.0f, beatCameraNudge * 0.5f }, 0.1f);
+            }
+    }
+
     // 通常斬りへ戻す。溜め斬りの直後にここへ来ると、発生もクリップも溜めのままになる。
     m_charged      = false;
     m_chargedRatio = 0.0f;
+    if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
+        m_airAttack = !cc->isGrounded;
+    else
+        m_airAttack = false;
+    m_airSlam = m_airAttack && m_airCombo > 0;
+    if (m_airAttack) {
+        m_combo = 0;
+        m_airCombo = std::min(m_airCombo + 1, 2);
+    }
+    // 回転・斬り上げ・締めは腰と脚の踏み替えが動きの本体。Attack の上半身マスクへ
+    // 流すと、その差が削られて1段目と同じ腕振りに見える。
+    m_fullBodyAttack = !m_airAttack && m_combo >= 3;
 
     m_side = side;
     m_phase    = Phase::Startup;
     m_swingIsFinisher = IsFinisher();
     m_timer    = Max(StartupSeconds(), 0.0f);
+    m_hitAt    = Time::time + m_timer;
     m_buffered = BladeSide::None;
 
     m_swingDirection = SwingDirection();
 
-    // 振り出しで詰める。判定が出る頃には間合いの内側に居る。
-    DashToTarget();
+    // 振り出しで詰める。判定が出る頃には間合いの内側に居る。詰めなかった段は少しだけ前へ出る。
+    if (!DashToTarget()) LungeForward();
 
     // 振り «始めた» 瞬間から自分もその極を帯びる。当ててからでは、
     // 空振りした一振りだけ極が乗らず «どちらの剣を振ったか» が絵に出ない。
 
     PlaySlashMotion(side);
 
-    // 軌跡は振り «出し» から記録する。判定 (ResolveHit) から始めると、振りかぶりから
-    // 斬り抜けまでの半分が抜け落ち、帯が刃の途中から生えて見える。
+    // 軌跡は振り «出し» で予約する。判定 (ResolveHit) から始めると、斬り抜けの半分が抜け落ちる。
     //
     // WHY 発生をそのまま渡すか: 記録を止める時刻を軌跡側にもう 1 つ持たせると、
     //     モーションを差し替えるたびに «刃はもう止まっているのに帯だけ伸び続ける» が
-    //     生まれる。締めの一撃だけ両手 (交差斬り) になるのは弧と同じ条件。
+    //     生まれる。締めの一撃だけ両手 (交差斬り) になる。
     if (m_bladeTrail) {
         // 締めの 1 つ手前まで段で育てる。締めは固定の 0.6 (溜め斬りの 1.0 より下)。
+        // 拍に乗った一振りは一段濃い ─ 押し方が合っていたことを刃そのものが返す。
         const int   steps = ComboLength() - 1;
         const float ramp  = steps > 1
             ? static_cast<float>(m_combo) / static_cast<float>(steps - 1) : 0.0f;
+        const float heat  = m_swingIsFinisher ? 0.6f : Clamp01(comboTrailHeat) * Clamp01(ramp);
         m_bladeTrail->Play(HandOf(side), m_swingIsFinisher, m_timer,
-                           m_swingIsFinisher ? 0.6f
-                                             : Clamp01(comboTrailHeat) * Clamp01(ramp));
+                        Min(heat + (m_swingOnBeat ? 0.2f : 0.0f), 1.0f));
     }
+
+    // 回転の段だけ «一周» の輪を出す。
+    //
+    // WHY 判定 (ResolveHit) ではなく振り出しで呼ぶか: 輪は «回った» を言う層で、
+    //     当たったかどうかとは関係が無い。空を斬っても体は 1 周しているので、
+    //     当たりから始めると空振りの回転だけ絵が抜ける。
+    // WHY 射程をここから渡すか: 輪の半径は判定の届く先と同じでなければ、
+    //     «輪の中に居るのに斬れていない» が出る (SpinSlashFx のファイルヘッダー)。
+    if (m_spinFx && !m_charged && !m_airAttack && IsSpinStep(m_combo))
+        m_spinFx->Play(transform.worldPosition, m_swingDirection,
+                       Max(tuning->bladeRange, 0.1f), m_timer,
+                       m_swingOnBeat ? 1.0f : 0.0f, BladeColor(side));
 
     // 振り出しの «ヒュッ»。当たったかどうかとは別に、振ったこと自体を返す。
     //
     // WHY 段をそのまま渡さないか: 素材は 1st / 2nd / 3rd の 3 種類しか無い。5 連の
     //     段番号をそのまま渡すと 3 段目以降が全部 3rd になり、«締めの音» が
     //     3 回続いて連撃の終わりが耳から消える。入口・途中・締めの 3 つへ畳む。
-    se::Play(audio, se::BladeSwing(side, m_combo == 0 ? 0 : m_swingIsFinisher ? 2 : 1));
+    // 拍に乗った振り出しは少し立てる。
+    se::Play(audio, se::BladeSwing(side, m_combo == 0 ? 0 : m_swingIsFinisher ? 2 : 1),
+             m_swingOnBeat ? 1.15f : 1.0f);
 
     // 空振りにも軽い手応えを返す。無反応だと «入力が拾われていない» に見える。
     if (auto* pad = RumbleManagerComponent::Instance())
-        pad->Rumble(0.0f, swingRumble, 0.05f);
+        pad->Rumble(0.0f, swingRumble * (m_swingOnBeat ? 1.6f : 1.0f), 0.05f);
 
     debugPhase = "Startup";
     debugCombo = m_combo;
@@ -838,12 +1228,24 @@ inline void BladeComponent::BeginCharged(BladeSide side, float ratio)
 {
     m_charged      = true;
     m_chargedRatio = Clamp01(ratio);
+    m_airAttack    = false;
+    m_fullBodyAttack = false;
     m_side     = side;
     m_phase        = Phase::Startup;
     // 溜め斬りは段を持たない。«最終段» としては数えない。
     m_swingIsFinisher = false;
     m_timer        = Max(StartupSeconds(), 0.0f);
+    m_hitAt        = Time::time + m_timer;
     m_buffered     = BladeSide::None;
+    // 溜め斬りは拍の外。連撃の拍はここで途切れる。
+    m_swingOnBeat  = false;
+    m_cadence      = 0;
+    m_linkJudged   = false;
+    m_linkOnBeat   = false;
+    m_counterLink  = false;
+    debugCadence   = 0;
+    ++m_swingSerial;
+    if (auto* combat = CombatManagerComponent::Instance()) combat->ReportCadence(0, false);
     // 溜めで区切る。段を持ち越すと «溜めたのに 2 段目の絵» が出る。
     m_combo        = 0;
     // 溜め斬りはその場で全周を薙ぐ。向きは弧の絵と体の向きにだけ効く。
@@ -856,10 +1258,6 @@ inline void BladeComponent::BeginCharged(BladeSide side, float ratio)
     // 溜め斬りは両刀 (Katana_Slash_Dual) でその場の全周を薙ぐ。片手ぶんしか記録しないと、
     // 画面では 2 本の刀が回っているのに帯が 1 本しか出ず、«もう片方は何をしたのか» が
     // 絵から抜ける。
-    //
-    // WHY 極性で本数を変えないか: 軌跡は極を持たない層なので «赤と青が同時に出ると
-    //     どちらを乗せたか読めない» という問題が起きない。実際に何本の刃が通ったかを
-    //     そのまま出せる (極は自分の纏いと環が伝える)。
     if (m_bladeTrail)
         m_bladeTrail->Play(HandOf(side), true, m_timer, 1.0f);
 
@@ -887,6 +1285,18 @@ inline void BladeComponent::NotifyChargeFull()
 {
     m_chargeFull = true;
 
+    if (auto* vfx = VfxManagerComponent::Instance()) {
+        Vector3 point = transform.worldPosition + Vector3{ 0.0f, 1.4f, 0.0f };
+        if (GameObject* self = scene.Self()) {
+            if (GameObject* sword = FindInSubtree(*self,
+                    kSwordObject)) {
+                if (GameObject* tip = FindInSubtree(*sword, kSocketTip))
+                    point = tip->transform.worldPosition;
+            }
+        }
+        vfx->PlayChargeReady(point);
+    }
+
     // «もう溜まった» を耳と手に返す。画面を見ていなくても離す時が分かるようにする。
     se::Play(audio, se::kBladeChargeUpFull);
     if (auto* pad = RumbleManagerComponent::Instance())
@@ -907,6 +1317,15 @@ inline void BladeComponent::DriveCharge()
         return;
     }
     m_chargeFeel = true;
+
+    // 通常斬りが終わった後も押し続けている間だけ、専用の溜め姿勢をループする。
+    // 振り出し中に被せると「刀は溜めているのに判定だけ出る」ので Idle を待つ。
+    if (!m_chargeHoldPlaying && m_phase == Phase::Idle
+        && !slashLayerName.empty() && !chargeHoldClipFile.empty()) {
+        animator.PlaySlot(slashLayerName, chargeHoldClipFile, chargeHoldClipName,
+                          slashFadeIn, slashFadeOut, 1.0f, /*loop=*/true);
+        m_chargeHoldPlaying = true;
+    }
 
     const float weight = ratio * ratio;
 
@@ -937,6 +1356,10 @@ inline void BladeComponent::DriveCharge()
 
 inline void BladeComponent::StopChargeFeel()
 {
+    if (m_chargeHoldPlaying && !slashLayerName.empty()) {
+        animator.StopSlot(slashLayerName, slashFadeOut);
+        m_chargeHoldPlaying = false;
+    }
     if (!m_chargeFeel) return;
     m_chargeFeel = false;
 
@@ -949,36 +1372,41 @@ inline void BladeComponent::StopChargeFeel()
 }
 
 inline BladeComponent::SlashClip
-BladeComponent::ClipForStep(int step, BladeSide side) const
+BladeComponent::ClipForStep(int step, BladeSide) const
 {
-    const bool right = side != BladeSide::Left;
-
     if (step + 1 >= ComboLength()) {
-        return { right ? &finisherRightClipFile : &finisherLeftClipFile,
-                 right ? &finisherRightClipName : &finisherLeftClipName,
-                 finisherHitTime };
+        return { &finisherRightClipFile, &finisherRightClipName, finisherHitTime };
     }
     switch (step) {
     case 0:
-        return { right ? &slashRightClipFile : &slashLeftClipFile,
-                 right ? &slashRightClipName : &slashLeftClipName, slashHitTime };
+        return { &slashRightClipFile, &slashRightClipName, slashHitTime };
     case 1:
-        return { right ? &doubleRightClipFile : &doubleLeftClipFile,
-                 right ? &doubleRightClipName : &doubleLeftClipName, doubleHitTime };
+        return { &doubleRightClipFile, &doubleRightClipName, doubleHitTime };
     case 2:
         return { &returnClipFile, &returnClipName, returnHitTime };
+    case 4:
+        return { &riseClipFile, &riseClipName, riseHitTime };
     default:
-        // 3 段目以降で締めに届いていない段はすべて回転斬り。
+        // 4 段目と、用意した段数を越えた繋ぎは回転斬り。
         return { &spinClipFile, &spinClipName, spinHitTime };
     }
 }
 
 inline void BladeComponent::PlaySlashMotion(BladeSide side)
 {
-    const SlashClip clip = m_charged
-        ? SlashClip{ &chargedClipFile, &chargedClipName, chargedHitTime }
-        : ClipForStep(m_combo, side);
-    if (!clip.file || clip.file->empty()) return;
+    const SlashClip clip = m_charged && !chargeReleaseClipFile.empty()
+        ? SlashClip{ &chargeReleaseClipFile, &chargeReleaseClipName, chargeReleaseHitTime }
+        : m_charged
+            ? SlashClip{ &chargedClipFile, &chargedClipName, chargedHitTime }
+            : m_airAttack && !airSlashClipFile.empty()
+                ? (m_airSlam && !jumpSlamClipFile.empty()
+                    ? SlashClip{ &jumpSlamClipFile, &jumpSlamClipName, jumpSlamHitTime }
+                    : SlashClip{ &airSlashClipFile, &airSlashClipName, airSlashHitTime })
+                : ClipForStep(m_combo, side);
+    if (!clip.file || clip.file->empty()) {
+        m_tempoActive = false;
+        return;
+    }
 
     // 斬り抜けが判定の瞬間にちょうど来る速さ。発生を Inspector で縮めれば
     // モーションも同じだけ速くなるので、両者がずれる余地が無い。
@@ -987,8 +1415,29 @@ inline void BladeComponent::PlaySlashMotion(BladeSide side)
 
     // weight は DriveSlashLayerWeight が Slot のフェードから毎フレーム決める。
     // ここで立てると、フェードインが始まる前に上半身が 1 フレームだけ構えへ飛ぶ。
-    animator.PlaySlot(slashLayerName, *clip.file, *clip.name,
+    const std::string& layer = ActiveSlashLayer();
+    if (layer.empty()) {
+        m_tempoActive = false;
+        return;
+    }
+    // Slot を切り替えたフレームに前の Override weight を残さない。残ると上半身の
+    // 1段目と全身の回転斬りが重なり、結局いつもの腕振りに引き戻される。
+    if (layer != slashLayerName && !slashLayerName.empty())
+        animator.SetLayerWeight(slashLayerName, 0.0f);
+    if (layer != airSlashLayerName && !airSlashLayerName.empty())
+        animator.SetLayerWeight(airSlashLayerName, 0.0f);
+    animator.PlaySlot(layer, *clip.file, *clip.name,
                       slashFadeIn, slashFadeOut, speed, /*loop=*/false);
+
+    // ここからの速さは DriveSlashTempo が毎フレーム決める。speed は «等速» の基準として持つ。
+    m_startupTotal = Max(StartupSeconds(), 0.01f);
+    m_clipHitTime  = hitTime;
+    m_clipRate     = speed;
+    m_sinceHit     = 0.0f;
+    m_tempoActive  = true;
+    const float windup = m_charged         ? slashChargedWindup
+                       : m_swingIsFinisher ? slashFinisherWindup : slashWindup;
+    debugStrikeSpeed = speed * tempo::StrikeSpeedRatio(windup, slashWindupPower);
 }
 
 // WHY レイヤー weight を Slot の重みに追従させるか:
@@ -1003,9 +1452,39 @@ inline void BladeComponent::PlaySlashMotion(BladeSide side)
 //   Run_F の前傾もそのまま出る。
 inline void BladeComponent::DriveSlashLayerWeight()
 {
-    if (slashLayerName.empty()) return;
-    const float slot = Clamp01(animator.GetSlotWeight(slashLayerName));
-    animator.SetLayerWeight(slashLayerName, slot * Clamp01(slashLayerGain));
+    const std::string& layer = ActiveSlashLayer();
+    if (layer.empty()) return;
+    const float slot = Clamp01(animator.GetSlotWeight(layer));
+    animator.SetLayerWeight(layer, slot * Clamp01(slashLayerGain));
+}
+
+inline void BladeComponent::DriveSlashTempo(float dt)
+{
+    const std::string& layer = ActiveSlashLayer();
+    if (!m_tempoActive || layer.empty()) return;
+    // 弾き・とどめが同じ Slot を使っている間は触らない (あちらが自分の緩急を持つ)。
+    if ((m_parry && m_parry->IsBusy()) || !animator.IsSlotPlaying(layer)) {
+        m_tempoActive = false;
+        return;
+    }
+
+    if (m_phase == Phase::Startup) {
+        const float u      = 1.0f - m_timer / Max(m_startupTotal, 1.0e-3f);
+        const float windup = m_charged         ? slashChargedWindup
+                           : m_swingIsFinisher ? slashFinisherWindup : slashWindup;
+        const float target = m_clipHitTime * tempo::WindupProgress(u, windup, slashWindupPower);
+        animator.SetSlotSpeed(layer,
+            tempo::SpeedToReach(target, animator.GetSlotTime(layer), dt, m_clipRate));
+        return;
+    }
+
+    // 判定の後 (硬直と、連撃が途切れた後の振り終わり)。
+    // 凍結 (ヒットストップ) の間は刀も止まっているので、減速の時計も止める ─ 進めると
+    // 止めが明けた瞬間には既に減速し終わっていて、振り抜きが見えない。
+    m_sinceHit += dt * Clamp01(animator.GetSpeed());
+    animator.SetSlotSpeed(layer,
+        m_clipRate * tempo::FollowThrough(m_sinceHit, slashFollowStart, slashFollowEnd,
+                                          slashFollowSeconds));
 }
 
 inline void BladeComponent::ResolveHit()
@@ -1044,10 +1523,13 @@ inline void BladeComponent::ResolveHit()
     //   部位ループが空振りしたときだけこちらを採る。
     GameObject* fallbackStruck = nullptr;
     Vector3     fallbackPoint  = Vector3::ZERO;
+    std::vector<BossBreakComponent*> struckBreaks;
 
     int hits = 0;
     for (GameObject* object : scene.FindObjectsOfType<BossBreakComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
+        // 蛇の根は床下の経路原点。実際に露出している節だけで命中を判定する。
+        if (object->GetScript<SerpentHitboxRigComponent>()) continue;
 
         Vector3 delta = object->transform.worldPosition - origin;
         delta.y = 0.0f;
@@ -1072,6 +1554,7 @@ inline void BladeComponent::ResolveHit()
         }
 
         ++hits;
+        struckBreaks.push_back(object->GetScript<BossBreakComponent>());
     }
 
     // ボスの部位。本体とは別の当たり判定なので扇をもう一度通す。
@@ -1085,7 +1568,7 @@ inline void BladeComponent::ResolveHit()
     for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartComponent>(object);
-        if (!part) continue;
+        if (!part || part->IsBroken() || part->IsDepleted()) continue;
 
         Vector3 delta = object->transform.worldPosition - origin;
         delta.y = 0.0f;
@@ -1115,8 +1598,10 @@ inline void BladeComponent::ResolveHit()
         //     どの脚 (節) を削ったかが数字とバーで返り、輪郭のフラッシュと合わせて
         //     «今そこに入った» が画面に出る。削り切った部位は BreakDepletedLegs /
         //     SerpentBody が落とすので、落とす道は増えない。
-        if (auto* brk = root ? scene.GetScript<BossBreakComponent>(root) : nullptr)
-            brk->AddSlash(m_charged);
+        if (auto* brk = root ? scene.GetScript<BossBreakComponent>(root) : nullptr) {
+            if (std::find(struckBreaks.begin(), struckBreaks.end(), brk) == struckBreaks.end())
+                struckBreaks.push_back(brk);
+        }
 
         // どこに入ったかは必ず返す。輪郭が一瞬その部位へ寄る。
         part->Flash();
@@ -1124,7 +1609,7 @@ inline void BladeComponent::ResolveHit()
         // 転倒中の «叩き込み» だけ連鎖の倍率が乗る。
         const IBoss* boss      = IBoss::Of(root);
         const float  staggered = boss && boss->IsStaggered() ? rush : 1.0f;
-        const int    dealt     = static_cast<int>(SlashDamage() * staggered);
+        const int    dealt     = static_cast<int>(SlashDamage() * staggered * BeatDamageScale());
         (void)part->Damage(dealt);
 
         // コアだけ別の音を重ねる。**勝ち筋そのものなので、脚を斬ったのと同じ音では困る。**
@@ -1142,9 +1627,12 @@ inline void BladeComponent::ResolveHit()
 
         // 斬った脚が «効いている» を返す。押す向きはプレイヤーから部位への水平方向
         // ── 斬撃の扇の向きだと、横をすり抜けた一撃でも正面へ押すことになる。
-        if (auto* rig = scene.GetScript<BossRigComponent>())
+        if (auto* rig = root ? scene.GetScript<BossRigComponent>(root) : nullptr)
             rig->Flinch(part->legSuffix, object->transform.worldPosition,
                         delta / distance, m_charged);
+        if (auto* rig = root ? scene.GetScript<SerpentHitboxRigComponent>(root) : nullptr)
+            rig->ReactToHit(object->transform.worldPosition, delta / distance,
+                            m_charged || m_swingIsFinisher);
         ++parts;
         ++hits;
     }
@@ -1212,9 +1700,11 @@ inline void BladeComponent::ResolveHit()
             ? static_cast<float>(m_combo) / static_cast<float>(ComboLength() - 1)
             : 1.0f;
 
-        const float stopStrength = m_charged
+        float stopStrength = m_charged
             ? Lerp(Clamp01(finisherHitStop), Clamp01(chargedHitStop), m_chargedRatio)
             : Lerp(Clamp01(hitStop), Clamp01(finisherHitStop), ramp);
+        // 全段を拍に乗せた締めは一段深く止める。«揃えた» ことへの見返りは手応えで返す。
+        if (IsPerfectCadence()) stopStrength = Min(stopStrength + 0.15f, 1.0f);
         if (auto* stop = HitstopManagerComponent::Instance()) {
             stop->Hit(stopStrength);
             // 世界の止めとは別に、当事者の芝居だけを固める。振り抜いた腕と斬られた
@@ -1234,12 +1724,27 @@ inline void BladeComponent::ResolveHit()
         }
         // 当たった «点» に火花。
         if (struck) {
-            if (auto* vfx = VfxManagerComponent::Instance()) {
-                Vector3 hitPoint = struckPoint;
-                hitPoint.y = std::max(hitPoint.y, origin.y + 1.0f);
-                vfx->PlaySlashHit(hitPoint, direction,
-                                  m_charged ? 1.0f : Lerp(0.3f, 0.85f, ramp), m_side);
+            Vector3 hitPoint = struckPoint;
+            hitPoint.y = std::max(hitPoint.y, origin.y + 1.0f);
+            const float impact = m_charged ? 1.0f : Lerp(0.3f, 0.85f, ramp);
+            if (auto* vfx = VfxManagerComponent::Instance())
+                vfx->PlaySlashHit(hitPoint, direction, impact, m_side, SlashSweep(),
+                                 m_charged || m_swingIsFinisher);
+
+            // 一閃。火花と同じ «横 × 傾き» から、斬った向きの線をワールドで組む。
+            // 拍に乗った一振りは一段強く、全段を拍に乗せた締めと溜め斬りは交差させる。
+            if (m_slashCut) {
+                const Vector2 sweep = SlashSweep();
+                const Vector3 right = Vector3::Cross(Vector3::UP, direction).NormalizedOr(Vector3::RIGHT);
+                const Vector3 axis  = (right * sweep.x + Vector3::UP * sweep.y).NormalizedOr(right);
+                const float   power = IsPerfectCadence()
+                    ? 1.0f : Min(impact + (m_swingOnBeat ? 0.1f : 0.0f), 1.0f);
+                m_slashCut->Play(hitPoint, axis, power, BladeColor(m_side),
+                                 m_charged || IsPerfectCadence());
             }
+            if ((m_charged || IsPerfectCadence()) && heavyImplode > 0.0f)
+                if (auto* screen = ScreenEffectManagerComponent::Instance())
+                    screen->Implode(hitPoint, Clamp01(heavyImplode), 0.14f);
             // 斬られた側の芝居。全段で鳴らし、深さは段の坂 (軽い → 締め満額) で決める。
             //
             // WHY 締めだけにしていたのをやめたか (2026-09-06): 1〜4 段目は止めと火花しか
@@ -1252,7 +1757,8 @@ inline void BladeComponent::ResolveHit()
         if (heavy && finisherFlash > 0.0f)
             if (auto* screen = ScreenEffectManagerComponent::Instance())
                 screen->Flash(Vector4{ 1.0f, 1.0f, 1.0f, 1.0f },
-                              Clamp01(finisherFlash) * (m_charged ? 1.5f : 1.0f), 0.08f);
+                              Clamp01(finisherFlash)
+                                  * (m_charged || IsPerfectCadence() ? 1.5f : 1.0f), 0.08f);
         // 画角を一瞬開く。Punch (前へ沈む) と逆向きの動きなので、«食い込んで、弾けた»
         // の 2 拍になる。開いてから戻る余韻 (Release) は CameraFollowManager が持つ。
         if (heavy && finisherFov > 0.0f)
@@ -1274,7 +1780,18 @@ inline void BladeComponent::ResolveHit()
         //     «上がっていく» 線になる。上げ幅は半音ぶん (1.06) に留める ─
         //     これ以上動かすと «別の素材が鳴った» と読まれる。
         se::Play(audio, heavy ? se::BladeHitFinish(m_side) : se::BladeHit(m_side),
-                 m_charged ? 1.0f + 0.4f * m_chargedRatio : Lerp(1.0f, 1.06f, ramp));
+                 (m_charged ? 1.0f + 0.4f * m_chargedRatio : Lerp(1.0f, 1.06f, ramp))
+                     * (m_swingOnBeat ? 1.1f : 1.0f));
+        // 全段を拍に乗せた締めには «満ちた» の鐘を重ねる (溜め・ジャスト回避で覚えた音)。
+        if (IsPerfectCadence()) {
+            se::Play(audio, se::kBladeChargeUpFull, 0.7f);
+            // 止めが明けた後に少しだけ遅くする。«揃えた» を味わう余韻で、止めより長く
+            // 引くと «スローが掛かった» という別の出来事になるので短く。
+            if (perfectSlowSeconds > 0.0f && perfectSlowScale < 1.0f)
+                if (auto* timeManager = TimeManagerComponent::Instance())
+                    timeManager->SlowFor(perfectSlowScale, perfectSlowSeconds, 0.02f, 0.25f);
+            if (combat) combat->ReportPerfectCadence();
+        }
     }
 
     // 判定そのものを線で出す。軌跡と重ねて «影が一致しているか» を目で確かめるためで、
@@ -1307,25 +1824,30 @@ inline void BladeComponent::ResolveHit()
                 (direction * std::cos(half) - right * std::sin(half)) * range + origin, color);
         }
     }
+
+    // 一振りで複数節に触れても崩しは一度。転倒コールバックはVFXを生成するため、
+    // 部位の列挙と接点の利用を終えてから呼ぶ。
+    for (BossBreakComponent* brk : struckBreaks)
+        if (brk) brk->AddSlash(m_charged);
 }
 
-inline void BladeComponent::DashToTarget()
+inline bool BladeComponent::DashToTarget()
 {
     // 溜め斬りはその場で全周を薙ぐ手なので詰めない。踏み込むと «溜めて突っ込む»
     // という別の技になり、全周である意味が消える。
-    if (m_charged || !m_controller) return;
+    if (m_charged || !m_controller) return false;
 
     const float dashRange = Max(tuning->bladeDashRange, 0.0f);
-    if (dashRange <= 0.0f) return;
+    if (dashRange <= 0.0f) return false;
 
     Vector3 anchor{ Vector3::ZERO };
     float   radius = 0.0f;
-    if (!AimAnchor(anchor, radius)) return;
+    if (!AimAnchor(anchor, radius)) return false;
 
     Vector3 delta = anchor - transform.worldPosition;
     delta.y = 0.0f;
     const float distance = delta.Length();
-    if (distance < EPSILON) return;
+    if (distance < EPSILON) return false;
 
     // 届く距離の測り方は判定 (ResolveHit) とまったく同じにする。別々に持つと
     // «踏み込んだのに当たらない» / «届いているのに踏み込む» が両方起きる。
@@ -1336,24 +1858,65 @@ inline void BladeComponent::DashToTarget()
     //     «脚は射程の外・体は目の前» という本来の間合いが出る。
     const float reach = Max(tuning->bladeRange, 0.0f) + radius;
     const float gap   = distance - reach;
-    if (gap <= 0.0f || gap > dashRange) return;
+    if (gap <= 0.0f || gap > dashRange) return false;
 
     const float travel = gap + Max(tuning->bladeDashDepth, 0.0f);
     // 発生のあいだで払いきる速さ。上限で頭を打つので、遠いほど速く滑ることはない。
     const float seconds = Max(StartupSeconds(), 0.02f);
     const float speed   = std::min(travel / seconds, Max(tuning->bladeDashSpeed, 0.0f));
-    if (speed <= 0.0f) return;
+    if (speed <= 0.0f) return false;
 
     m_controller->Knockback(delta / distance, speed, seconds);
     // WHY 踏み込みだけ別の音か: 詰めるのは «届かない間合いから入った» ときだけで、
     //     振りの音と同じだと «自分が滑ったのか、ただ振ったのか» が区別できない。
     //     gap > 0 のときしか来ないので、毎回の斬撃に重なることはない。
     se::Play(audio, se::kBladeDash, 0.8f);
+    return true;
+}
+
+inline void BladeComponent::LungeForward()
+{
+    // 3・4 段目 (締めの手前 2 段) だけ。
+    if (m_charged || !m_controller || comboLunge <= 0.0f) return;
+    if (m_combo < 2 || m_combo + 1 >= ComboLength()) return;
+
+    float lunge = comboLunge;
+    Vector3 anchor{ Vector3::ZERO };
+    float   radius = 0.0f;
+    if (AimAnchor(anchor, radius)) {
+        Vector3 delta = anchor - transform.worldPosition;
+        delta.y = 0.0f;
+        // 測り方は DashToTarget / ResolveHit と同じ。届いているなら «届く縁の 0.4m 内側»
+        // までしか出ない ─ 脚の目の前で毎回 0.8m 押し出すと体が脚へ埋まる。
+        const float gap = delta.Length() - (Max(tuning->bladeRange, 0.0f) + radius);
+        lunge = Clamp(gap + 0.4f, 0.0f, comboLunge);
+    }
+    if (lunge <= 0.01f) return;
+
+    // Knockback は残り時間で線形に細るので、運ぶ距離は «速さ × 秒 ÷ 2»。
+    const float seconds = Max(StartupSeconds(), 0.02f);
+    m_controller->Knockback(m_swingDirection, lunge * 2.0f / seconds, seconds);
+}
+
+inline Vector2 BladeComponent::SlashSweep() const
+{
+    // 右の刀は右から左へ、左の刀は左から右へ抜ける。
+    const float lateral = m_side == BladeSide::Left ? 1.0f : -1.0f;
+    if (m_charged)         return Vector2{ lateral, 0.0f };
+    if (m_airSlam)         return Vector2{ lateral, -0.9f };
+    if (m_airAttack)       return Vector2{ lateral, 0.35f };
+    // 締めは回転しながらの斬り上げ。
+    if (m_swingIsFinisher) return Vector2{ lateral, 0.75f };
+    // 1 袈裟 (斬り下ろし) / 2 双斬り / 3 返し (振り戻し) / 4 回転 (水平)。判定の時点では
+    // m_combo はまだ今の段を指している。
+    constexpr float kTilt[] = { -0.45f, 0.35f, 0.25f, 0.0f, 0.8f };
+    return Vector2{ lateral, kTilt[std::clamp(m_combo, 0, 4)] };
 }
 
 inline int BladeComponent::SlashDamage() const
 {
     const int base = std::max(tuning->bladeDamage, 0);
+    if (m_airSlam) return base * 2;
     if (!m_charged) return base;
     return static_cast<int>(Lerp(static_cast<float>(base),
                                  static_cast<float>(std::max(tuning->bladeChargedDamage, 0)),
@@ -1365,6 +1928,11 @@ inline void BladeComponent::OnUpdate()
     if (!enabled || !tuning) return;
 
     const float dt = Max(Time::deltaTime, 0.0f);
+
+    if (auto* cc = scene.GetComponent<CharacterControllerComponent>(); cc && cc->isGrounded) {
+        m_airCombo = 0;
+        if (!m_airAttack) m_airSlam = false;
+    }
 
     // 硬直が明けてもクリップは振り抜きの途中に居る。段の状態機械とは切り離して、
     // Slot が畳まれるまで毎フレーム面倒を見る。
@@ -1385,6 +1953,14 @@ inline void BladeComponent::OnUpdate()
     // 回避は攻撃より常に優先する。振っている途中でも硬直中でも即座に切る。
     // 判定が出る前なら «振り切らずに逃げた» ことになり、キャンセルが手に返る。
     if (Dodging()) CancelSwing();
+    // 弾きは斬撃より優先する (回避 > 弾き > 斬撃)。構えた瞬間に振りも溜めも預かりも捨てる。
+    // クリップは弾きが同じ Slot を上書き済みなので畳まない ─ 畳むと弾きの構えが消える。
+    // 弾きは剣より先に回る (PlayerComponent::OnUpdate) ので、構えたフレームのうちに切れる。
+    if (m_parry && m_parry->IsBusy()) {
+        CancelSwing(/*stopSlot=*/false);
+        DropCharge();
+        m_buffered = BladeSide::None;
+    }
 
     ReadInput();
     // 溜めは段の状態機械とは別に走る。振っている最中でも硬直中でも溜まり続け、
@@ -1408,13 +1984,19 @@ inline void BladeComponent::OnUpdate()
         if (m_timer > 0.0f) break;
         ResolveHit();
         m_phase   = Phase::Recovery;
-        // 最終段だけ長い硬直。«止めた» ことが手に返らないと、繋げる意味が出ない。
-        m_timer   = m_charged      ? Max(tuning->bladeChargedRecovery, 0.02f)
-                  : IsFinisher()   ? Max(tuning->bladeRecovery, 0.02f)
-                                   : Max(tuning->bladeComboRecovery, 0.02f);
-        // 溜め斬りは段を進めない。溜めが «連撃の 4 段目» になると、
-        // 溜めるかどうかの判断が «繋がっているか» に飲み込まれる。
-        m_combo   = m_charged ? 0 : (m_combo + 1) % ComboLength();
+        m_sinceHit = 0.0f;
+        {
+            const bool finisher = !m_charged && IsFinisher();
+            const bool airAttack = m_airAttack;
+            // 溜め斬りは段を進めない。溜めが «連撃の 4 段目» になると、
+            // 溜めるかどうかの判断が «繋がっているか» に飲み込まれる。
+            m_combo = (m_charged || airAttack) ? 0 : (m_combo + 1) % ComboLength();
+            // 最終段だけ長い硬直。«止めた» ことが手に返らないと、繋げる意味が出ない。
+            // 途中の段は «次の段の当たりが拍に乗る» 長さ (ComboRecoverySeconds)。
+            m_timer = m_charged ? Max(tuning->bladeChargedRecovery, 0.02f)
+                    : finisher  ? Max(tuning->bladeRecovery, 0.02f)
+                                : ComboRecoverySeconds();
+        }
         // 硬直が明けてからも猶予がある。押しっぱなしで繋がらない長さに留める。
         m_comboExpire = Time::time + m_timer + Max(tuning->bladeComboWindow, 0.0f);
         debugPhase = "Recovery";
@@ -1427,16 +2009,22 @@ inline void BladeComponent::OnUpdate()
         m_side = BladeSide::None;
         m_charged  = false;
         m_chargedRatio = 0.0f;
+        if ((m_airAttack || m_fullBodyAttack) && !airSlashLayerName.empty())
+            animator.SetLayerWeight(airSlashLayerName, 0.0f);
+        m_airAttack = false;
+        m_fullBodyAttack = false;
+        m_airSlam = false;
         debugPhase = "Idle";
+        m_recoveryEnd = Time::time;
         // 溜めておいた入力をここで出す。捨てると繋げようとするほど手数が減る。
-        if (m_buffered != BladeSide::None) BeginSwing(m_buffered);
+        if (m_buffered != BladeSide::None) StartBuffered(m_buffered);
         break;
 
     case Phase::Idle:
         // 回避中に押された一撃はここで出る。Recovery からの復帰と違い、
         // «止まっている状態» からの復帰なので、この場所でしか拾えない。
         if (m_buffered != BladeSide::None && !Dodging()) {
-            BeginSwing(m_buffered);
+            StartBuffered(m_buffered);
             break;
         }
         if (Time::time > m_comboExpire && m_combo != 0) {
@@ -1445,6 +2033,9 @@ inline void BladeComponent::OnUpdate()
         }
         break;
     }
+
+    // 段の状態が決まってから速さを決める (発生の残りはこのフレームの分まで減っている)。
+    DriveSlashTempo(dt);
 
     // ボスが読む «今なにをしているか»。最終段の硬直が一番長いので、そこが差し込みどころ。
     playeraction::Publish(m_phase != Phase::Idle,

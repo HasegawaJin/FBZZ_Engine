@@ -30,7 +30,6 @@
 #include <Scripts/Game/HitstopManagerComponent.hpp>
 #include <Scripts/Game/TimeManagerComponent.hpp>
 #include <Scripts/Utils/SceneTransition.hpp>
-#include <Scripts/Utils/ScreenProjection.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -459,9 +458,10 @@ inline bool ScreenEffectManagerComponent::ResolveImplodeUv(Vector2& outUv)
 {
     GameObject* cameraObject = scene.GetMainCameraObject();
     if (!cameraObject) return false;
-    const auto* camera = scene.GetComponent<CameraComponent>(cameraObject);
-    if (!camera) return false;
-    return screenproj::WorldToUv(*cameraObject, *camera, m_implodePoint, outUv);
+    Vector3 viewport;
+    if (!camera.TryWorldToViewportPoint(m_implodePoint, viewport, cameraObject)) return false;
+    outUv = {viewport.x, viewport.y};
+    return true;
 }
 
 inline bool ScreenEffectManagerComponent::ResolveHurtAngle(float& outAngle)

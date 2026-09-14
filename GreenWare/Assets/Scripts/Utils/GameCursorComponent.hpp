@@ -91,12 +91,8 @@ public:
     void OnDestroy() override;
 
 private:
-    /// 画面に見えている Canvas の範囲 [px]。
-    /// UISystem::ResolveScreenSpaceCanvasArea と同じ値を viewport 寸法なしで解いた形で、
-    /// 倍率の式で viewport が約分され、基準解像度とアスペクト比だけが残る。
-    [[nodiscard]] static Vector2 VisibleCanvasSize(const UICanvas& canvas, float aspect);
     /// 画面 UI を載せている Canvas。MainCameraObject と同じく解決結果を控える。
-    [[nodiscard]] static UICanvas* ResolveCanvas(Script& script);
+    [[nodiscard]] static GameObject* ResolveCanvas(Script& script);
 
     /// マウスが動いたとみなす距離。手の震えで機器が揺れないだけの幅。
     static constexpr float kMouseWake = 2.0f;
@@ -272,24 +268,12 @@ inline void GameCursorComponent::OnUpdate()
     debugDevice = s_usingPad ? "Gamepad" : (showOsCursor ? "Mouse (OS cursor)" : "Mouse");
 }
 
-inline Vector2 GameCursorComponent::VisibleCanvasSize(const UICanvas& canvas, float aspect)
-{
-    if (canvas.scaleMode != UICanvasScaleMode::ScaleWithScreenSize)
-        return { canvas.canvasWidth, canvas.canvasHeight };
-
-    const float match = Clamp01(canvas.matchWidthOrHeight);
-    const float refW  = (std::max)(1.0f, canvas.referenceWidth);
-    const float refH  = (std::max)(1.0f, canvas.referenceHeight);
-    const float width = std::pow(refW, 1.0f - match) * std::pow(refH * aspect, match);
-    return { width, width / aspect };
-}
-
 inline GameObject* GameCursorComponent::MainCameraObject(Script& script)
 {
     if (s_cameraId.IsValid()) {
         if (GameObject* cached = script.scene.GetGameObject(s_cameraId)) {
             const auto* camera = cached->GetComponent<CameraComponent>();
-            if (camera && camera->enabled && camera->isMain) return cached;
+            if (camera && camera->enabled && camera->isMain && cached->activeInHierarchy()) return cached;
         }
     }
     GameObject* found = script.scene.GetMainCameraObject();
@@ -297,33 +281,24 @@ inline GameObject* GameCursorComponent::MainCameraObject(Script& script)
     return found;
 }
 
-inline UICanvas* GameCursorComponent::ResolveCanvas(Script& script)
+inline GameObject* GameCursorComponent::ResolveCanvas(Script& script)
 {
     if (s_canvasId.IsValid()) {
         if (GameObject* cached = script.scene.GetGameObject(s_canvasId))
-            if (auto* canvas = cached->GetComponent<UICanvas>()) return canvas;
+            if (cached->GetComponent<UICanvas>()) return cached;
     }
     GameObject* found = script.scene.FindObjectOfType<UICanvas>();
     s_canvasId = found ? found->GetID() : EntityID::INVALID;
-    return found ? found->GetComponent<UICanvas>() : nullptr;
+    return found;
 }
 
 inline bool GameCursorComponent::NormalizedPoint(Script& script, Vector2& outNormalized)
 {
     if (!s_live) return false;
 
-    GameObject* cameraObject = MainCameraObject(script);
-    if (!cameraObject) return false;
-    const auto* camera = cameraObject->GetComponent<CameraComponent>();
-    if (!camera) return false;
-
-    // aspectRatio は毎フレーム実 viewport から書き戻される (SceneUtils::ResolveGameCamera)。
-    // Editor の Game ビューのように viewport ≠ ウィンドウの場面でも、ここだけ見れば合う。
-    const float aspect = (std::max)(camera->aspectRatio, 0.0001f);
-
     Vector2 visible{ 1920.0f, 1080.0f };
-    if (const UICanvas* canvas = ResolveCanvas(script))
-        visible = VisibleCanvasSize(*canvas, aspect);
+    if (GameObject* canvasObject = ResolveCanvas(script))
+        if (!script.ui.TryGetCanvasSize(visible, canvasObject)) return false;
 
     outNormalized = { s_position.x / visible.x, s_position.y / visible.y };
     return true;
@@ -334,23 +309,8 @@ inline bool GameCursorComponent::WorldPointAtDepth(Script& script, float depth, 
     Vector2 normalized{};
     if (!NormalizedPoint(script, normalized)) return false;
 
-    // NormalizedPoint が通った時点でカメラは居る。控えが効くので引き直しても走査は起きない。
     GameObject* cameraObject = MainCameraObject(script);
-    const auto* camera = cameraObject ? cameraObject->GetComponent<CameraComponent>() : nullptr;
-    if (!camera) return false;
-
-    const float ndcX = normalized.x * 2.0f - 1.0f;
-    const float ndcY = 1.0f - normalized.y * 2.0f;
-
-    const float halfHeight = std::tan(ToRad(camera->fovY) * 0.5f) * depth;
-    const float halfWidth  = halfHeight * (std::max)(camera->aspectRatio, 0.0001f);
-
-    const Transform& view = cameraObject->transform;
-    outWorld = view.worldPosition
-             + view.forward * depth
-             + view.right   * (ndcX * halfWidth)
-             + view.up      * (ndcY * halfHeight);
-    return true;
+    return cameraObject && script.camera.TryViewportToWorldPoint(normalized, depth, outWorld, cameraObject);
 }
 
 } // namespace sandbox

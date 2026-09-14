@@ -22,7 +22,7 @@ type = 'ContactShadow'
 
 [[overrides]]
 active = true
-intensity = 0.03697595000267029
+intensity = 0.036976370960474014
 softKnee = 1.0
 threshold = 4.0
 type = 'Bloom'
@@ -60,7 +60,7 @@ tint = [ 1.0, 0.9700000286102295, 0.9200000166893005 ]
 type = 'VolumetricLight'
 
 [[overrides]]
-active = false
+active = true
 samples = 8
 strength = 0.30000001192092896
 type = 'MotionBlur'

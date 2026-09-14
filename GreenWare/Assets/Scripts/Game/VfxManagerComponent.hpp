@@ -24,6 +24,14 @@
 ///   1 本のリングを共有すると、4 秒残る爆発の焦げ跡が、その間に何度も鳴る斬撃の火花に
 ///   押し出されて途中で消える。寿命の桁が違うものを同じ順番待ちに入れてはいけない。
 ///
+/// WHY 枠を «要るだけその場で» 作らないか (2026-09-12):
+///   枠を 1 つ作ることは .vfx を展開すること ─ FX_IMP_Explosion なら GameObject 19 個ぶんで、
+///   toml の複製と guid の振り直しまで含む。衝撃波は 1 回で十数発撒くので、足りない枠を
+///   撒いた瞬間に全部作ると «演出が出たその 1 フレームだけ» が数百 ms 沈んでいた。
+///   いまは 1 フレームに作る数を buildsPerFrame で押さえ、間に合わないぶんは既に出ている
+///   枠を使い回す。足りない枠は暇なフレームに 1 つずつ埋まり (WarmPools)、鳴り終わった枠は
+///   畳んで VFXSystem の歩く対象から外れる (SleepFinishedSlots)。
+///
 /// WHY 画面演出 (ヒットストップ・カメラ揺れ・振動・フラッシュ) を持たないか:
 ///   それは ImpactFeedbackManagerComponent の担当で、1 つの出来事に対する配分を
 ///   そこが持っている。.vfx 側にも ScreenEffect / CameraShake / TimeScale ノードは
@@ -37,6 +45,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Quaternion.hpp>
+#include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
@@ -76,6 +85,8 @@ inline constexpr const char* kVfxGroundDustPath  = "Assets/VFX/Game/FX_BOSS_Shoc
 inline constexpr const char* kVfxParryPath       = "Assets/VFX/Game/FX_PLR_Parry.vfx";
 inline constexpr const char* kVfxParryJustPath   = "Assets/VFX/Game/FX_PLR_ParryJust.vfx";
 inline constexpr const char* kVfxSlashHitPath    = "Assets/VFX/Game/FX_BLD_SlashHit.vfx";
+inline constexpr const char* kVfxHeavyHitPath    = "guid:52ca3e2d259555fda0bce30b4f90f53a|Assets/VFX/Game/FX_BLD_HeavyHit.vfx";
+inline constexpr const char* kVfxChargeReadyPath = "guid:e71f1b8e117f5e86a81388ed564633ba|Assets/VFX/Game/FX_BLD_ChargeReady.vfx";
 inline constexpr const char* kVfxTopplePath      = "Assets/VFX/Game/FX_BOSS_Topple.vfx";
 inline constexpr const char* kVfxExecutePath     = "Assets/VFX/Game/FX_BOSS_Execute.vfx";
 
@@ -135,6 +146,10 @@ public:
     FBZZ_TOOLTIP("窓の頭で受けた弾き。未割り当てなら FX_PLR_ParryJust.vfx を使う")
     FBZZ_ASSET_FIELD(VFXRef, slashHitVfx, "Slash Hit")
     FBZZ_TOOLTIP("刀が当たった瞬間。未割り当てなら FX_BLD_SlashHit.vfx を使う")
+    FBZZ_ASSET_FIELD(VFXRef, heavyHitVfx, "Heavy Slash Hit")
+    FBZZ_TOOLTIP("連撃の締めと溜め攻撃の命中")
+    FBZZ_ASSET_FIELD(VFXRef, chargeReadyVfx, "Charge Ready")
+    FBZZ_TOOLTIP("満溜めが成立した刀先の合図")
     FBZZ_ASSET_FIELD(VFXRef, toppleVfx, "Topple")
     FBZZ_TOOLTIP("崩しが満ちてボスが倒れた瞬間。未割り当てなら FX_BOSS_Topple.vfx を使う")
     FBZZ_ASSET_FIELD(VFXRef, executeVfx, "とどめ")
@@ -166,37 +181,49 @@ public:
     // 弾きは «硬い物どうしが一瞬触れた» 出来事。煙も焦げも残さず、閃光と破片だけで
     // 0.4 秒に閉じる。重い手 (突進) を弾いたときだけ破片と輪を大きくする。
     FBZZ_GROUP("弾き")
-    FBZZ_FIELD_RANGE(float, parrySparkMin, 11.0f, "火花 (ライト)", 0.0f, 40.0f)
-    FBZZ_FIELD_RANGE(float, parrySparkMax, 24.0f, "Spark (heavy)", 0.0f, 40.0f)
-    FBZZ_FIELD_RANGE(float, parryLightMin, 12.0f, "ライト", 0.0f, 60.0f)
-    FBZZ_FIELD_RANGE(float, parryLightMax, 28.0f, "Light (heavy)", 0.0f, 60.0f)
-    FBZZ_FIELD_RANGE(float, parryRingMin, 2.4f, "Ring (light)", 0.5f, 10.0f)
-    FBZZ_FIELD_RANGE(float, parryRingMax, 4.4f, "Ring (heavy)", 0.5f, 10.0f)
+    FBZZ_FIELD_RANGE(float, parrySparkMin, 14.0f, "火花 (ライト)", 0.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, parrySparkMax, 30.0f, "Spark (heavy)", 0.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, parryLightMin, 8.0f, "ライト", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, parryLightMax, 18.0f, "Light (heavy)", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, parryRingMin, 1.8f, "Ring (light)", 0.5f, 10.0f)
+    FBZZ_FIELD_RANGE(float, parryRingMax, 3.0f, "Ring (heavy)", 0.5f, 10.0f)
 
+    // WHY 光を控えめに保つか (2026-09-11): 1 秒に 3 回出る当たりで光を盛ると、脚の輪郭
+    //     (狙いの合図) が白く洗われる。«斬れた» は一閃 (SlashCutFx) が言うので、ここは
+    //     光条と刃の向きへ噴く火花で足りる。大きさは 2026-09-12 に全体で 1.4 倍前後へ上げた。
     FBZZ_GROUP("Slash Hit")
-    FBZZ_FIELD_RANGE(float, slashSparkMin, 6.0f, "火花 (ライト)", 0.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, slashSparkMin, 7.0f, "火花 (ライト)", 0.0f, 40.0f)
     FBZZ_FIELD_RANGE(float, slashSparkMax, 16.0f, "Spark (finisher)", 0.0f, 40.0f)
-    FBZZ_FIELD_RANGE(float, slashLightMin, 4.0f, "ライト", 0.0f, 60.0f)
-    FBZZ_FIELD_RANGE(float, slashLightMax, 14.0f, "Light (finisher)", 0.0f, 60.0f)
-    FBZZ_FIELD_RANGE(float, slashArcMin, 1.1f, "Arc (light)", 0.3f, 5.0f)
-    FBZZ_FIELD_RANGE(float, slashArcMax, 2.2f, "Arc (finisher)", 0.3f, 5.0f)
-    FBZZ_TOOLTIP("刃が通った弧の大きさ。3 段目だけ太くしてノックバックの大きさを絵で予告する")
+    FBZZ_FIELD_RANGE(float, slashLightMin, 2.0f, "ライト", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, slashLightMax, 5.0f, "Light (finisher)", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, slashArcMin, 1.2f, "Impact (light)", 0.3f, 5.0f)
+    FBZZ_FIELD_RANGE(float, slashArcMax, 2.4f, "Impact (finisher)", 0.3f, 5.0f)
+    FBZZ_TOOLTIP("当たり点の光条の大きさ [m]。段が進むほど大きく、締めで最大。"
+                 "キー名は旧 «弧» のまま (保存済みシーンと合わせる)。斬った向きの線は SlashCutFx")
 
     // 転倒は «床の側» の出来事。土煙の色は走行と同じ床の色を使う (runDustColor)。
     FBZZ_GROUP("Topple")
     FBZZ_FIELD_RANGE(float, toppleCrack, 9.0f, "亀裂の大きさ", 2.0f, 20.0f)
     FBZZ_TOOLTIP("床のひびの直径 [m]。Scale 1.0 のときの値")
-    FBZZ_FIELD_RANGE(float, toppleLight, 8.0f, "着地音のライト", 0.0f, 30.0f)
+    FBZZ_FIELD_RANGE(float, toppleLight, 5.0f, "着地音のライト", 0.0f, 30.0f)
 
     FBZZ_GROUP("とどめ")
-    FBZZ_FIELD_RANGE(float, executeSpark, 18.0f, "火花の勢い", 2.0f, 40.0f)
-    FBZZ_FIELD_RANGE(float, executeLight, 30.0f, "切り口のライト", 0.0f, 60.0f)
-    FBZZ_FIELD_RANGE(float, executeCut, 2.6f, "切り口の大きさ", 0.5f, 8.0f)
+    FBZZ_FIELD_RANGE(float, executeSpark, 24.0f, "火花の勢い", 2.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, executeLight, 20.0f, "切り口のライト", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, executeCut, 3.4f, "切り口の大きさ", 0.5f, 8.0f)
     FBZZ_TOOLTIP("弧の大きさ [m]。Scale 1.0 のときの値 (コアの脚)。蛇の節は呼ぶ側が Scale で縮める")
 
     FBZZ_GROUP("Pool")
     FBZZ_FIELD_RANGE_INT(int, slotsPerEffect, 8, "Slots Per Effect", 1, 32)
     FBZZ_TOOLTIP("1 種類あたりの同時再生数。超えたら最も古い 1 発を頭出しし直して奪う")
+    FBZZ_FIELD_RANGE_INT(int, buildsPerFrame, 2, "Builds Per Frame", 1, 16)
+    FBZZ_TOOLTIP("1 フレームに «新しく» 作ってよい枠の数。枠を作ることは .vfx を展開すること "
+                 "(爆発なら 1 発で 19 個の GameObject) なので、衝撃波のように一度に十数発撒く手は "
+                 "ここで頭を押さえる。足りないぶんは既に出ている枠を使い回す")
+    FBZZ_FIELD_RANGE_INT(int, warmSlots, 4, "Warm Slots", 0, 16)
+    FBZZ_TOOLTIP("どのステージでも鳴る種類を、開幕のうちに何枠まで作っておくか (0 で先回りしない)。"
+                 "一度でも鳴った種類はこの数を越えて満量まで伸びる")
+    FBZZ_FIELD_READ_ONLY(int, debugWarmPending, 0, "Warm Pending")
 
     FBZZ_GROUP("着弾")
     // 同じフレームに何発も重なるほど 1 発ずつを弱めないと、光源が重なって画面が
@@ -320,12 +347,15 @@ public:
     /// (攻撃してきた側から離れる向き)。strength01 は弾いた手の重さ。
     /// just は窓の頭で受けた «読み切った» 弾き ─ 別の .vfx (放射の光条と二重の輪) を使う。
     void PlayParry(const Vector3& point, const Vector3& away, float strength01, bool just = false);
-    /// 刀が当たった瞬間。away は刃が抜けていく向き。side は振った刀 (弧と光の色)。
+    /// 刀が当たった瞬間。away は刃が抜けていく向き。side は振った刀 (線と光の色)。
+    /// sweep は当たり点を横切る線の向きで、x が away に対する横 (±1)・y が傾き。
     ///
     /// WHY 弾きの流用をやめたか: 輪と閃光は «弾いた» の印で、当たりのたびに輪が出ると
-    ///     1 秒に何度も弾いているように読める。当たりは «刃が通った弧» と火花だけで言う。
+    ///     1 秒に何度も弾いているように読める。当たりは «刃が通った線» と火花だけで言う。
     void PlaySlashHit(const Vector3& point, const Vector3& away, float strength01,
-                      BladeSide side = BladeSide::None);
+                      BladeSide side = BladeSide::None,
+                      const Vector2& sweep = Vector2{ -1.0f, 0.0f }, bool heavy = false);
+    void PlayChargeReady(const Vector3& point);
     /// 崩しが満ちてボスが倒れた瞬間。point は体が床に着いた所、scale は 1.0 でコア (6m 級)。
     ///
     /// WHY 床の爆発 (PlayGroundBlast) を使わないか: 爆発は閃光と熱が主役で、転倒は床が主役。
@@ -387,6 +417,12 @@ private:
         ///     決まる量で、衝突の爆発 (数発) と衝撃波の土煙 (数十発) では桁が違う。
         ///     全体を土煙に合わせて増やすと、一度も込み合わない演出まで枠を抱える。
         int capacity = 0;
+        /// 一度でも鳴らしたか。先回りで «満量まで» 作るのはここが立った種類だけ。
+        ///
+        /// WHY 分けるか: 枠は実体なので、作れば作っただけシーンに残る。そのステージで
+        ///     一度も出ない手 (蛇の噴き上がり) まで満量で並べると、出ない演出のために
+        ///     数百の GameObject を抱えることになる。
+        bool used = false;
     };
 
     static inline VfxManagerComponent* s_instance = nullptr;
@@ -397,6 +433,19 @@ private:
     void Blast(const Vector3& point, BladeSide side, float strength01, bool againstAnchor,
                const char* poolTag, int capacity, const char* debugName);
     [[nodiscard]] GameObject* AcquireSlot(Pool& pool);
+    [[nodiscard]] int CapacityOf(const Pool& pool) const;
+    /// この種類を «先回りで» 何枠まで作っておくか。
+    [[nodiscard]] int WarmTargetOf(const Pool& pool) const;
+    /// このフレームの生成枠を 1 つ使う。使い切っていたら false。
+    [[nodiscard]] bool TakeBuildBudget();
+    /// 枠を 1 つ作って畳んだ状態で返す。.vfx の展開が起きるのはここだけ。
+    [[nodiscard]] GameObject* BuildSlot(Pool& pool);
+    /// 足りていない枠を、暇なフレームに 1 つずつ埋める。
+    void WarmPools();
+    /// 鳴り終わった枠を畳む。
+    void SleepFinishedSlots();
+    /// どのステージでも鳴る種類を先に登録して、先回りの対象にする。
+    void DeclareCommonPools();
     /// 枠を 1 つ確保し、位置と回転を合わせて返す。まだ鳴らさない。
     ///
     /// WHY 鳴らす前に返すか: 1 発ぶんの値 (色・体の寸法・当たりの強さ) は
@@ -416,6 +465,10 @@ private:
     std::vector<Pool> m_pools;
     std::uint64_t m_impactFrame = 0;
     int           m_impactsThisFrame = 0;
+    std::uint64_t m_buildFrame = 0;
+    int           m_buildsThisFrame = 0;
+    /// 先回りで次に見る種類。1 種類ずつ順番に埋めて、どれかに偏らせない。
+    int           m_warmCursor = 0;
     /// 光が膨らんだことを 1 度だけ言うための札。
     bool          m_warnedLights = false;
 };
@@ -426,6 +479,9 @@ FBZZ_REFLECT(VfxManagerComponent)
 
 inline void VfxManagerComponent::OnUpdate()
 {
+    WarmPools();
+    SleepFinishedSlots();
+
     if (!censusLights) return;
 
     // 30 フレームに 1 回で足りる。光が «徐々に増える» 不具合を見つけるのが目的で、
@@ -491,9 +547,35 @@ inline void VfxManagerComponent::OnStart()
     m_pools.clear();
     m_impactFrame      = 0;
     m_impactsThisFrame = 0;
+    m_buildFrame       = 0;
+    m_buildsThisFrame  = 0;
+    m_warmCursor       = 0;
     debugSlots = 0;
+    debugWarmPending = 0;
     m_warnedLights = false;
     debugLast.clear();
+
+    DeclareCommonPools();
+}
+
+inline void VfxManagerComponent::DeclareCommonPools()
+{
+    // WHY «どのステージでも鳴る» ものだけ並べるか: ここに載せた種類は、まだ一度も
+    //     鳴っていなくても先回りで枠が作られる。ボス固有の手まで載せると、その手が
+    //     出ないステージでも枠だけがシーンに残る ─ 固有の手は «最初の 1 発» で
+    //     登録され、そこから背景で満量まで伸びる。
+    if (std::clamp(warmSlots, 0, 16) <= 0) return;
+
+    (void)PoolFor(PathOf(slashHitVfx, kVfxSlashHitPath), "", 0);
+    (void)PoolFor(PathOf(heavyHitVfx, kVfxHeavyHitPath), "", 2);
+    (void)PoolFor(PathOf(chargeReadyVfx, kVfxChargeReadyPath), "", 2);
+    (void)PoolFor(PathOf(parryVfx, kVfxParryPath), "", 0);
+    (void)PoolFor(PathOf(parryJustVfx, kVfxParryJustPath), "", 0);
+    (void)PoolFor(PathOf(runDustVfx, kVfxRunDustPath), "", 0);
+    (void)PoolFor(PathOf(impactVfx, kVfxImpactPath), "", 0);
+    // 床の 2 つは «最初の 1 発» が最も混む (衝撃波は 1 回で十数発撒く)。
+    (void)PoolFor(PathOf(impactVfx, kVfxImpactPath), kGroundPool, groundBlastSlots);
+    (void)PoolFor(PathOf(groundDustVfx, kVfxGroundDustPath), kGroundPool, groundDustSlots);
 }
 
 inline void VfxManagerComponent::OnDestroy()
@@ -518,7 +600,7 @@ inline void VfxManagerComponent::ReleaseSlots()
 inline std::string VfxManagerComponent::PathOf(const VFXRef& reference, const char* fallback) const
 {
     std::string path = reference.ResolvePath();
-    return path.empty() ? std::string(fallback) : path;
+    return path.empty() ? VFXRef(fallback).ResolvePath() : path;
 }
 
 inline VfxManagerComponent::Pool& VfxManagerComponent::PoolFor(const std::string& vfxPath,
@@ -537,55 +619,140 @@ inline VfxManagerComponent::Pool& VfxManagerComponent::PoolFor(const std::string
     return m_pools.back();
 }
 
+inline int VfxManagerComponent::CapacityOf(const Pool& pool) const
+{
+    return pool.capacity > 0 ? std::clamp(pool.capacity, 1, 96)
+                             : std::clamp(slotsPerEffect, 1, 32);
+}
+
+inline int VfxManagerComponent::WarmTargetOf(const Pool& pool) const
+{
+    const int capacity = CapacityOf(pool);
+    if (pool.used) return capacity;
+    return std::min(capacity, std::clamp(warmSlots, 0, 16));
+}
+
+inline bool VfxManagerComponent::TakeBuildBudget()
+{
+    if (m_buildFrame != Time::frameCount) {
+        m_buildFrame      = Time::frameCount;
+        m_buildsThisFrame = 0;
+    }
+    if (m_buildsThisFrame >= std::max(buildsPerFrame, 1)) return false;
+    ++m_buildsThisFrame;
+    return true;
+}
+
 inline GameObject* VfxManagerComponent::AcquireSlot(Pool& pool)
 {
-    const int capacity = pool.capacity > 0 ? std::clamp(pool.capacity, 1, 96)
-                                           : std::clamp(slotsPerEffect, 1, 32);
+    pool.used = true;
 
-    // 上限に届くまでは «使うときに 1 つ足す»。開幕に capacity 個並べると、一度も
-    // 鳴らない演出のぶんまで Hierarchy に空の枠が残り、シーンを覗いたときに邪魔になる。
-    if (static_cast<int>(pool.slots.size()) < capacity) {
-        // WHY 名前で拾い直すか: スクリプト DLL をリロードするとこの Script は作り直され、
-        //     EntityRef は空に戻る。一方で枠の GameObject は Scene 側に残っているため、
-        //     拾わずに作ると、リロードのたびに枠が capacity 個ずつ増えていく。
-        const std::size_t stemStart = pool.vfxPath.find_last_of("/\\") + 1;
-        const std::size_t stemEnd   = pool.vfxPath.find_last_of('.');
-        const std::string stem = pool.vfxPath.substr(
-            stemStart, stemEnd == std::string::npos ? std::string::npos : stemEnd - stemStart);
-        // 札の付いた枠は別の名前で置く。同名だと «同じ .vfx を 2 つのリングで回す»
-        // 構成で、片方が作った枠をもう片方が拾い上げて共有してしまう。
-        const std::string suffix = pool.tag.empty() ? std::string{} : "_" + pool.tag;
-        const std::string name = "VFX_" + stem + suffix + "_" +
-                                 std::to_string(pool.slots.size());
+    const int capacity = CapacityOf(pool);
+    const int live     = static_cast<int>(pool.slots.size());
 
-        GameObject* object = scene.Find(name);
-        if (!object) {
-            // .vfx はプレファブなので «展開して置く» のが生成そのもの。
-            // scene.Spawn は PrefabPool 経由なので、2 度目以降はファイル読み込みを通らない。
-            object = scene.Spawn(pool.vfxPath, Vector3::ZERO, Quaternion::Identity());
-            if (!object) return nullptr;
-            object->name = name;
-            object->runtimeGenerated = true;
-        }
-
-        // WHY autoDestroy を降ろすか: 枠の寿命はこのマネージャーが持つ。
-        //     VFXSystem に畳ませると、鳴り終わった枠がプールへ返ってしまい、
-        //     こちらが握っている EntityRef が «別の演出として貸し出された実体» を指す。
-        if (auto* vfx = object->GetComponent<VFXComponent>()) {
-            vfx->autoDestroy = false;
-            vfx->playOnAwake = false;
-            vfx->loop        = false;
-        }
-
-        pool.slots.push_back(EntityRef{ object->GetID() });
-        ++debugSlots;
-        return object;
+    // WHY 枠を «その場で足りるだけ» 作らないか: 1 枠は .vfx の展開そのもの
+    //     (FX_IMP_Explosion なら GameObject 19 個ぶん) で、衝撃波は 1 回で十数発撒く。
+    //     足りないぶんを撒いた瞬間に全部作ると、その 1 フレームだけが数百 ms 沈む
+    //     ─ 演出が «出た瞬間に» 引っかかる、いちばん目立つ形の重さになる。
+    //     作るのは 1 フレーム buildsPerFrame 個までにして、間に合わないぶんは
+    //     既に出ている枠を使い回す。絵は «輪が少し薄い» で済み、手触りは沈まない。
+    //     足りない枠は WarmPools が後続のフレームで埋めるので、2 回目からは満量で鳴る。
+    // WHY 1 枠も無いときだけ予算を無視するか: そこで見送ると «何も出ない»。
+    //     薄いことより、出ないことの方が遥かに目立つ。
+    if (live < capacity && (live == 0 || TakeBuildBudget())) {
+        if (GameObject* built = BuildSlot(pool)) return built;
     }
+    if (pool.slots.empty()) return nullptr;
 
     // 埋まっているので最も古い枠を奪う。next は常に «次に使う = 最も古い» を指す。
-    EntityRef& slot = pool.slots[static_cast<std::size_t>(pool.next)];
-    pool.next = (pool.next + 1) % static_cast<int>(pool.slots.size());
-    return slot.Resolve(scene);
+    const std::size_t index = static_cast<std::size_t>(pool.next) % pool.slots.size();
+    pool.next = static_cast<int>((index + 1) % pool.slots.size());
+    return pool.slots[index].Resolve(scene);
+}
+
+inline GameObject* VfxManagerComponent::BuildSlot(Pool& pool)
+{
+    // WHY 名前で拾い直すか: スクリプト DLL をリロードするとこの Script は作り直され、
+    //     EntityRef は空に戻る。一方で枠の GameObject は Scene 側に残っているため、
+    //     拾わずに作ると、リロードのたびに枠が capacity 個ずつ増えていく。
+    const std::size_t stemStart = pool.vfxPath.find_last_of("/\\") + 1;
+    const std::size_t stemEnd   = pool.vfxPath.find_last_of('.');
+    const std::string stem = pool.vfxPath.substr(
+        stemStart, stemEnd == std::string::npos ? std::string::npos : stemEnd - stemStart);
+    // 札の付いた枠は別の名前で置く。同名だと «同じ .vfx を 2 つのリングで回す»
+    // 構成で、片方が作った枠をもう片方が拾い上げて共有してしまう。
+    const std::string suffix = pool.tag.empty() ? std::string{} : "_" + pool.tag;
+    const std::string name = "VFX_" + stem + suffix + "_" +
+                             std::to_string(pool.slots.size());
+
+    GameObject* object = scene.Find(name);
+    if (!object) {
+        // .vfx はプレファブなので «展開して置く» のが生成そのもの。
+        // scene.Spawn は PrefabPool 経由なので、2 度目以降はファイル読み込みを通らない。
+        object = scene.Spawn(pool.vfxPath, Vector3::ZERO, Quaternion::Identity());
+        if (!object) return nullptr;
+        object->name = name;
+        object->runtimeGenerated = true;
+    }
+
+    // WHY autoDestroy を降ろすか: 枠の寿命はこのマネージャーが持つ。
+    //     VFXSystem に畳ませると、鳴り終わった枠がプールへ返ってしまい、
+    //     こちらが握っている EntityRef が «別の演出として貸し出された実体» を指す。
+    if (auto* vfx = object->GetComponent<VFXComponent>()) {
+        vfx->autoDestroy = false;
+        vfx->playOnAwake = false;
+        vfx->loop        = false;
+    }
+
+    // 貸し出すまでは畳んでおく。起こすのは Prepare。
+    object->SetActive(false);
+
+    pool.slots.push_back(EntityRef{ object->GetID() });
+    ++debugSlots;
+    return object;
+}
+
+inline void VfxManagerComponent::WarmPools()
+{
+    int pending = 0;
+    for (const Pool& pool : m_pools)
+        pending += std::max(WarmTargetOf(pool) - static_cast<int>(pool.slots.size()), 0);
+    debugWarmPending = pending;
+    if (pending <= 0 || m_pools.empty()) return;
+
+    // すでに落ちているフレームへ先回りの生成を足しても、落ち込みを深くするだけ。
+    // 30 fps を割っている間は何もしない (実時間で見るのは、止めの間も «重い» は重いため)。
+    if (Time::unscaledDeltaTime > 1.0f / 30.0f) return;
+
+    // WHY 1 フレームに 1 つだけか: 先回りは «いま出ている演出» より優先度が低い。
+    //     buildsPerFrame を先回りで使い切ると、その裏で鳴った手が枠を作れず薄くなる。
+    const int count = static_cast<int>(m_pools.size());
+    for (int step = 0; step < count; ++step) {
+        Pool& pool = m_pools[static_cast<std::size_t>((m_warmCursor + step) % count)];
+        if (static_cast<int>(pool.slots.size()) >= WarmTargetOf(pool)) continue;
+        m_warmCursor = (m_warmCursor + step + 1) % count;
+        if (TakeBuildBudget()) (void)BuildSlot(pool);
+        return;
+    }
+}
+
+inline void VfxManagerComponent::SleepFinishedSlots()
+{
+    // WHY 鳴り終わった枠を畳むか: VFXSystem は «起きているルート» を毎フレーム階層ごと
+    //     歩いて時刻を配る。鳴り終わった枠 (配下の要素は窓が閉じてすでに畳まれている)
+    //     を起こしたままにすると、枠が増えるほど «何も出していない時間» が重くなる。
+    //     畳めば、次に貸し出すまで 1 度も触られない。
+    for (Pool& pool : m_pools) {
+        for (EntityRef& slot : pool.slots) {
+            GameObject* object = slot.Resolve(scene);
+            if (!object || !object->activeSelf()) continue;
+            const auto* vfx = object->GetComponent<VFXComponent>();
+            // initialized は «VFXSystem が 1 度は見た» の印。立つ前に畳むと、
+            // 鳴らせと言った次のフレームで消すことになる。
+            if (!vfx || !vfx->initialized || vfx->playing) continue;
+            object->SetActive(false);
+        }
+    }
 }
 
 inline GameObject* VfxManagerComponent::Prepare(const std::string& vfxPath,
@@ -759,7 +926,8 @@ inline void VfxManagerComponent::PlayParry(const Vector3& point, const Vector3& 
 }
 
 inline void VfxManagerComponent::PlaySlashHit(const Vector3& point, const Vector3& away,
-                                              float strength01, BladeSide side)
+                                              float strength01, BladeSide side,
+                                              const Vector2& sweep, bool heavy)
 {
     const float strength = Clamp01(strength01);
 
@@ -767,8 +935,10 @@ inline void VfxManagerComponent::PlaySlashHit(const Vector3& point, const Vector
     flow = flow.NormalizedOr(Vector3::FORWARD);
     const Vector3 up = Abs(Vector3::Dot(flow, Vector3::UP)) > 0.99f ? Vector3::FORWARD : Vector3::UP;
 
-    GameObject* root = Prepare(PathOf(slashHitVfx, kVfxSlashHitPath), point,
-                               Quaternion::LookRotation(flow, up), "SlashHit");
+    const std::string path = heavy ? PathOf(heavyHitVfx, kVfxHeavyHitPath)
+                                   : PathOf(slashHitVfx, kVfxSlashHitPath);
+    GameObject* root = Prepare(path, point, Quaternion::LookRotation(flow, up),
+                               heavy ? "HeavySlashHit" : "SlashHit");
     if (!root) return;
 
     if (auto* params = root->GetScript<SlashHitVfxComponent>()) {
@@ -778,9 +948,18 @@ inline void VfxManagerComponent::PlaySlashHit(const Vector3& point, const Vector
         params->sparkPower = Lerp(slashSparkMin, slashSparkMax, strength);
         params->flashLight = Lerp(slashLightMin, slashLightMax, strength);
         params->arcSize    = Lerp(slashArcMin, slashArcMax, strength);
+        params->sweepLateral = sweep.x;
+        params->sweepTilt    = sweep.y;
         params->Apply();
     }
     Fire(*root);
+}
+
+inline void VfxManagerComponent::PlayChargeReady(const Vector3& point)
+{
+    GameObject* root = Prepare(PathOf(chargeReadyVfx, kVfxChargeReadyPath), point,
+                              Quaternion::Identity(), "ChargeReady", "", 2);
+    if (root) Fire(*root);
 }
 
 inline void VfxManagerComponent::PlayTopple(const Vector3& point, float scale)

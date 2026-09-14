@@ -24,6 +24,7 @@
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Utils/RagdollPresentation.hpp>
 #include <Scripts/Combat/BossAnimParams.hpp>
 #include <Scripts/Game/HitstopManagerComponent.hpp>
 #include <algorithm>
@@ -423,7 +424,10 @@ inline void BossAnimatorComponent::Crash()
     // 激突した時点で突進は終わっている。Charging を残すと Crash_Stun を抜けた直後に
     // Charge_Run へ戻る経路は無いが、AI 側が「まだ突進中」と読む余地を残さない。
     EndCharge();
-    animator.SetTrigger(bossanim::kCrash);
+    // スタンのゲーム状態はAIが保持する。見た目は立ったまま衝撃をこらえる。
+    ReactToHit(1.0f);
+    ragdoll.BeginActive();
+    PushRagdollReaction(ragdoll, -(transform.worldRotation * Vector3::FORWARD) * 3.0f, 1.5f);
 }
 
 inline void BossAnimatorComponent::BeginBeam()
@@ -459,7 +463,8 @@ inline void BossAnimatorComponent::SetDead(bool dead)
         EndBeam();
         EndCharge();
     }
-    animator.SetBool(bossanim::kIsDead, dead);
+    // 撃破後も倒れない演出。死亡と消滅の進行は m_dead とゲーム側に残す。
+    animator.SetBool(bossanim::kIsDead, false);
 }
 
 inline bool BossAnimatorComponent::IsBusy() const

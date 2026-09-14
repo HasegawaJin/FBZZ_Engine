@@ -17,7 +17,7 @@
 #                        Inspector ではなく .mat 側で決める (絵の調整はここだけを触る)。
 version = 1
 name = 'FX_BOSS_Beam'
-shader = 'Assets/Shaders/Material/Effects/BossBeam.hlsl'
+shader = 'guid:35114f9fc65bf0f8ff29c5c2294d81e8'
 blend_mode = 'Premultiplied'
 double_sided = true
 depth_write = false
@@ -64,8 +64,8 @@ charge = 1.0
 focusRings = 3.0
 focusRadius = 0.72
 focusWidth = 0.13
-focusBoost = 0.85
-dispersion = 0.06
+focusBoost = 0.65
+dispersion = 0.025
 
 # 接地側の膨らみ。VFX の火花へ受け渡すための «広がり» で、主役は奪わない。
 impactBloom = 0.22
@@ -74,7 +74,7 @@ muzzleFlare = 0.09
 
 # 熱のにじみ。線の外で空気が光る。隠さない (純加算) ので焦げが読める。
 heatWash = 0.85
-heatBoost = 0.5
+heatBoost = 0.32
 
 # 筒の半径 [m]。BossBeamComponent が層ごとの実寸を毎フレーム書き込むので、
 # ここの値は «板として描く» へ倒れたときのフォールバックでしかない。

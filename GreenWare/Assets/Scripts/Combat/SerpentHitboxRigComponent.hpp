@@ -24,9 +24,12 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Utils/RagdollPresentation.hpp>
+#include <Scripts/Combat/BossPartComponent.hpp>
 #include <Scripts/Combat/SerpentBones.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -47,6 +50,9 @@ public:
     FBZZ_TOOLTIP("一番太い所。モデルは頭の後ろ (S06〜S07) が直径 1.24 m")
     FBZZ_FIELD_RANGE(float, tailRadius, 0.12f, "Tail (S28)", 0.02f, 3.0f)
     FBZZ_FIELD_RANGE(float, radiusScale, 1.0f, "全体スケール", 0.1f, 3.0f)
+
+    FBZZ_GROUP("部位")
+    FBZZ_FIELD_RANGE_INT(int, segmentHealth, 45, "節の耐久", 1, 1000)
 
     FBZZ_GROUP("Rest Lengths")
     FBZZ_FIELD_RANGE(float, fallbackSegment, 0.80f, "Segment", 0.05f, 4.0f)
@@ -74,6 +80,14 @@ public:
     [[nodiscard]] bool IsBuilt() const { return m_built && debugMissingBones == 0; }
 
     void OnStart() override;
+    void ReactToHit(const Vector3& point, const Vector3& direction, bool heavy)
+    {
+        if (m_reactionFrame == fbzz::Time::frameCount) return;
+        m_reactionFrame = fbzz::Time::frameCount;
+        ragdoll.BeginActive();
+        PushRagdollReaction(ragdoll, direction.NormalizedOr(Vector3::FORWARD) *
+            (heavy ? 2.2f : 1.0f), 2.0f, point, 1.8f);
+    }
     void OnUpdate() override;
 
 private:
@@ -91,6 +105,7 @@ private:
     EntityRef m_hitboxes[serpent::kBoneCount];
     float     m_links[serpent::kBoneCount]{};
     bool      m_built = false;
+    std::uint64_t m_reactionFrame = ~std::uint64_t{0};
 };
 
 FBZZ_REFLECT(SerpentHitboxRigComponent)
@@ -158,6 +173,13 @@ inline void SerpentHitboxRigComponent::OnStart()
 
     if (!scene.Self()) return;
     Build();
+    ragdoll.SetRoot("Seg28");
+    ConfigureStandingReaction(ragdoll, fbzz::scene::ScriptRagdollProfile::Mech,
+                              0.12f, 8.0f, 8.0f, 0.05f);
+    ragdoll.SetMuscle(1.4f, 0.99f, 0.9f);
+    ragdoll.SetRecovery(0.2f, 0.4f);
+    ragdoll.SetBlend(0.08f, 0.25f);
+    ragdoll.BeginActive();
 }
 
 inline void SerpentHitboxRigComponent::Build()
@@ -200,7 +222,8 @@ inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
     if (!bone) return false;
 
     const float radius =
-        Max(serpent::SegmentRadius(headIndex, neckRadius, peakRadius, tailRadius) *
+        Max((headIndex == 0 ? headRadius :
+             serpent::SegmentRadius(headIndex, neckRadius, peakRadius, tailRadius)) *
                 Max(radiusScale, 0.01f),
             0.02f);
 
@@ -232,6 +255,16 @@ inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
     if (!collider) collider = &hitbox->AddComponent<CapsuleColliderComponent>();
     collider->SetCapsule(radius, Max(length * 0.5f - radius, 0.01f));
     collider->isTrigger = true;
+
+    // 斬撃・照準・とどめは BossPart を列挙する。コライダーだけでは対象にならない。
+    // 頭は切断対象でないため、胴の28節だけを登録する。
+    if (headIndex > 0) {
+        auto* part = hitbox->GetScript<BossPartComponent>();
+        if (!part) part = &hitbox->AddScript<BossPartComponent>();
+        part->legSuffix = serpent::PartSuffix(headIndex);
+        part->hitRadius = radius;
+        part->maxHealth = std::max(segmentHealth, 1);
+    }
     return true;
 }
 

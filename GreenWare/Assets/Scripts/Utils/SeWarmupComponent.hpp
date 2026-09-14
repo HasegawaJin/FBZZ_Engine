@@ -13,10 +13,6 @@
 ///   最初の十数発は毎回まだ読んでいないファイルに当たる。**斬った瞬間に固まる**のは
 ///   これで、素材を作り直してファイルが 1.7 倍になったぶん悪化していた。
 ///
-/// WHY 音量 0 で «鳴らす» という形を取るか:
-///   スクリプトから触れる音の入口は再生しかない (ScriptAudioProxy に Preload が無い)。
-///   音量 0 の一発ものを通せば AcquireClip だけが起きて、耳には何も残らない。
-///
 /// WHY 1 フレームで全部やらないか:
 ///   190 本を一度に読むと、その 1 フレームが数百 ms 伸びる。読み込み画面なら
 ///   許されるが、ここはステージが始まった直後で、プレイヤーはもう操作できる。
@@ -50,6 +46,7 @@ public:
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugTotal, 0, "対象")
     FBZZ_FIELD_READ_ONLY(int, debugDone, 0, "済み")
+    FBZZ_FIELD_READ_ONLY(int, debugFailed, 0, "読み込み失敗")
 
     void OnStart()  override;
     void OnUpdate() override;
@@ -73,9 +70,6 @@ inline void SeWarmupComponent::OnStart()
 {
     m_queue.clear();
     m_head = 0;
-
-    // 鳴らす口が要る。無ければここで足す (SeLibrary と同じ約束)。
-    se::EnsureSource(scene, "SE", 0.0f);
 
     if (warmBlades) {
         // 段ごとに束が別なので、左右 3 段ぶんを名指しで積む。
@@ -124,6 +118,7 @@ inline void SeWarmupComponent::OnStart()
 
     debugTotal = static_cast<int>(m_queue.size());
     debugDone  = 0;
+    debugFailed = 0;
 }
 
 inline void SeWarmupComponent::OnUpdate()
@@ -133,8 +128,7 @@ inline void SeWarmupComponent::OnUpdate()
     const std::size_t end =
         std::min(m_queue.size(), m_head + static_cast<std::size_t>(std::max(perFrame, 1)));
     for (; m_head < end; ++m_head) {
-        // 音量 0 の一発もの。AcquireClip だけを起こして、耳には何も残さない。
-        audio.PlayOneShot(m_queue[m_head], 0.0f);
+        if (!audio.Preload(m_queue[m_head])) ++debugFailed;
     }
     debugDone = static_cast<int>(m_head);
 

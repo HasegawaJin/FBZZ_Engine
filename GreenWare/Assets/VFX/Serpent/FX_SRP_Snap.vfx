@@ -86,7 +86,7 @@ sphereRadius = 1.3
 sizeStart = 1.0
 sizeEnd = 4.0
 sizeCurvePower = 0.55
-lifetime = 1.35
+lifetime = 0.9
 lifetimeRandom = 0.35
 emitVelocity = [0.0, 1.98, 0.0]
 velocitySpread = 1.4
@@ -102,8 +102,8 @@ renderPriority = 30
 colorVariation = 0.09
 useColorGradient = true
 colorGradient = [[0.0, 0.7, 0.67, 0.61, 0.0], [0.09, 0.66, 0.63, 0.58, 0.6], [0.58, 0.6, 0.58, 0.54, 0.4], [1.0, 0.52, 0.5, 0.47, 0.0]]
-bursts = [{ time = 0.0, count = 20, cycles = 2, interval = 0.03, probability = 1.0 }]
-startDelay = 0.0
+bursts = [{ time = 0.0, count = 16, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.035
 
 # 床すれすれを走る «掃き出し»。角から外へ抜ける向きをいちばん低い所で言う。
 [[gameobjects]]
@@ -134,14 +134,14 @@ sphereRadius = 0.9
 sizeStart = 1.2
 sizeEnd = 6.4
 sizeCurvePower = 0.5
-lifetime = 1.0
+lifetime = 0.65
 lifetimeRandom = 0.3
 emitVelocity = [0.0, 0.0, 0.0]
 velocitySpread = 0.5
 velocityDamping = 2.6
 radialVelocity = 30.6
 gravity = [0.0, 0.0, 0.0]
-materialPath = "Assets/Materials/Particles/Smoke04_Premultiplied.mat"
+materialPath = "guid:5536328b5f3b553cb10094468418c70b"
 renderMode = 2
 sortMode = 1
 angularVelocityMin = -18.0
@@ -150,7 +150,7 @@ renderPriority = 24
 colorVariation = 0.07
 colorStart = [0.66, 0.63, 0.58, 0.6]
 colorEnd = [0.5, 0.48, 0.45, 0.0]
-bursts = [{ time = 0.0, count = 10, cycles = 1, interval = 0.03, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 [[gameobjects]]
@@ -178,8 +178,8 @@ emitRate = 0.0
 maxParticles = 32
 shape = 1
 sphereRadius = 1.0
-sizeStart = 0.11
-sizeEnd = 0.04
+sizeStart = 0.16
+sizeEnd = 0.045
 sizeCurvePower = 1.4
 lifetime = 1.0
 lifetimeRandom = 0.5
@@ -188,7 +188,7 @@ velocitySpread = 1.6
 velocityDamping = 0.8
 radialVelocity = 18.0
 gravity = [0.0, -9.8, 0.0]
-materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+materialPath = "guid:0035bd7a679f54fa90c30d3b9b5d2941"
 renderMode = 1
 stretchedVelocityScale = 0.08
 stretchedLengthScale = 1.5
@@ -227,10 +227,10 @@ emitRate = 0.0
 maxParticles = 26
 shape = 1
 sphereRadius = 0.5
-sizeStart = 0.2
+sizeStart = 0.11
 sizeEnd = 0.02
 sizeCurvePower = 1.9
-lifetime = 0.55
+lifetime = 0.35
 lifetimeRandom = 0.5
 emitVelocity = [0.0, 6.0, 0.0]
 velocitySpread = 2.2

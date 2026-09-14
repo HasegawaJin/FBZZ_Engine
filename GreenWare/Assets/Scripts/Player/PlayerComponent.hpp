@@ -19,6 +19,7 @@
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
 #include <Scripts/Combat/IDamageable.hpp>
 #include <Scripts/Game/CameraFollowManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
@@ -39,11 +40,14 @@
 #include <Scripts/Vfx/BladeChargeGlowComponent.hpp>
 #include <Scripts/Vfx/BladeSteelComponent.hpp>
 #include <Scripts/Vfx/BladeTrailComponent.hpp>
+#include <Scripts/Vfx/SlashCutFxComponent.hpp>
+#include <Scripts/Vfx/SpinSlashFxComponent.hpp>
 #include <Scripts/Vfx/DodgeAfterimageComponent.hpp>
 #include <Scripts/Vfx/SlashScarComponent.hpp>
 #include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <utility>
 
@@ -75,6 +79,10 @@ public:
                                PlayerHitKind kind) override
     {
         if (amount <= 0 || !m_health.IsAlive()) return PlayerHitResult::Ignored;
+        if (m_blocking && kind == PlayerHitKind::Parryable) {
+            animator.SetTrigger("GuardHit");
+            return PlayerHitResult::Ignored;
+        }
         if (kind == PlayerHitKind::Parryable && m_parry.IsParryActive()) {
             m_parry.OnParried(amount, fromWorld);
             return PlayerHitResult::Parried;
@@ -151,32 +159,11 @@ public:
     ///     «刀がどのソケットに付いているか» の変更で、移し替える時刻も左右で違う
     ///     (WeaponRigComponent)。クリップだけ流すと、納刀の芝居をしながら刀は
     ///     手に握られたまま ── 両手で壁を掴むはずの登攀で刀が壁を貫く。
-    void RequestSheatheWeapons() { m_weaponRig.RequestSheathe(); }
-    void RequestDrawWeapons()    { m_weaponRig.RequestDraw(); }
     // 刀が手にあるかは AreWeaponsDrawn() が既に答える。
     /// 刀の入力まで止まっているか。
     [[nodiscard]] bool IsInputLocked() const { return m_controller.IsInputLocked(); }
 
     // ── 撃破された ──────────────────────────────────────────────────────────
-    //
-    // WHY ラグドールで倒すか (2026-09-11): 撃破は `onDeath` → GameFlow の
-    //   「音を鳴らして endDelay を待つ」だけで、**体は最後に再生していたクリップの
-    //   まま立っていた。**「SYSTEM DOWN」の文字が出ているのに本人は無傷に見えるので、
-    //   負けたことが画面の中で一度も起きていない。
-    //
-    // WHY 死亡クリップを焼かずに物理で倒すか: 倒れる向きは «何に殺されたか» で毎回
-    //   違う (踏みつけは真上から、突進は正面から、穴は真下)。クリップ 1 本だと
-    //   どの死に方でも同じ向きへ倒れ、**最後の一撃と倒れ方が繋がらない。**
-    //   ラグドールなら殺した一撃の向きがそのまま倒れる向きになる。
-    FBZZ_GROUP("撃破された")
-    FBZZ_FIELD(bool, deathRagdoll, true, "ラグドールで倒れる")
-    FBZZ_TOOLTIP("撃破されたら脱力して崩れる。切ると最後のクリップのまま立っている")
-    FBZZ_FIELD_RANGE(float, deathPush, 4.5f, "吹き飛び [m/s]", 0.0f, 20.0f)
-    FBZZ_TOOLTIP("殺した一撃から離れる向きへの速さ。0 でその場に崩れ落ちる")
-    FBZZ_FIELD_RANGE(float, deathLift, 2.2f, "浮き [m/s]", 0.0f, 20.0f)
-    FBZZ_TOOLTIP("上へ跳ねる速さ。少し入れないと «崩れた» ではなく «沈んだ» に見える")
-    FBZZ_FIELD_RANGE(float, deathBlendIn, 0.06f, "脱力までの時間 [s]", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("クリップから物理へ寄り切るまで。長いと «力が抜ける» が緩慢になる")
 
 private:
     // 内部 Script は通常の ScriptSystem から呼ばれないため、親と同じ実行コンテキストを渡す。
@@ -192,9 +179,6 @@ private:
     void OnDamaged(const fbzz::math::Vector3* fromWorld);
     /// 土壇場 (残り HP が Last Stand 以下) を画面とボスの崩しへ申告する。
     void DriveLastStand();
-    /// 撃破された。今の姿勢を捕獲して崩れ落ちる。1 回きり。
-    /// @param fromWorld 殺した一撃の出どころ。無ければ後ろへ倒れる。
-    void BeginDeathRagdoll(const fbzz::math::Vector3* fromWorld);
     [[nodiscard]] bool IsLastStand() const
     { return tuning && tuning->lastStandHealth > 0 && m_health.IsAlive()
           && m_health.Current() <= tuning->lastStandHealth; }
@@ -203,8 +187,8 @@ private:
     int m_lastFluxDodge = 0;
     /// 前フレームに申告した土壇場。変わったフレームだけボスを引き直す。
     bool m_lastStandSent = false;
-    /// 崩れ落ちる処理を通したか。撃破は «状態» として毎フレーム来るので、出来事は 1 度だけ。
-    bool m_deathRagdollDone = false;
+    bool m_blocking = false;
+    bool m_deathAnimationPlayed = false;
 
     PlayerControllerComponent m_controller;
     // 抜く / 収める はコントローラーから独立させる。入力の受け付け条件を触っても
@@ -223,7 +207,15 @@ private:
     PlayerParryComponent     m_parry;
     // 刀身が通った面。剣の «判定» から分ける ─ 軌跡の見た目を触っても射程や発生には
     // 波及しないし、丸ごと外しても «斬る → 崩す → 仕留める» の芯は全部成立する。
+    //
+    // WHY 刀身の残像 (MeshTrail) から戻したか (2026-09-12): 残像は «刀の形» を並べるので、
+    //     0.2 秒の振りでは刀が数本ばらばらに浮いて見え、«斬った弧» として繋がらなかった。
+    //     掃過面の帯なら切っ先の弧が 1 本の線として残る。
     BladeTrailComponent      m_bladeTrail;
+    // 当たった瞬間の一閃。«振った» (残像) と «斬れた» (線) を分ける ─ 空振りでは出ない。
+    SlashCutFxComponent      m_slashCut;
+    // 回転斬りの «一周»。刃が体の裏へ回る区間は帯が自分に隠れるので、そこを輪で補う。
+    SpinSlashFxComponent     m_spinFx;
     // 回避中の残像。無敵の «時間» を体の絵で伝える層で、回避そのものには触らない。
     DodgeAfterimageComponent m_dodgeGhost;
     // 溜めている量を «剣そのもの» で伝える発光。剣の挙動には触らない。
@@ -251,6 +243,8 @@ inline void PlayerComponent::Reflect(::fbzz::scene::IReflector& r_)
     m_blades.Reflect(r_);
     m_parry.Reflect(r_);
     m_bladeTrail.Reflect(r_);
+    m_slashCut.Reflect(r_);
+    m_spinFx.Reflect(r_);
     m_dodgeGhost.Reflect(r_);
     m_bladeGlow.Reflect(r_);
     m_bladeSteel.Reflect(r_);
@@ -268,6 +262,8 @@ inline void PlayerComponent::BindModules()
     m_blades.AdoptContext(*this);
     m_parry.AdoptContext(*this);
     m_bladeTrail.AdoptContext(*this);
+    m_slashCut.AdoptContext(*this);
+    m_spinFx.AdoptContext(*this);
     m_dodgeGhost.AdoptContext(*this);
     m_bladeGlow.AdoptContext(*this);
     m_bladeSteel.AdoptContext(*this);
@@ -287,8 +283,10 @@ inline void PlayerComponent::BindModules()
     m_blades.SetAimComponent(&m_aim);
     m_blades.SetController(&m_controller);
     m_blades.SetBladeTrail(&m_bladeTrail);
+    m_blades.SetSlashCut(&m_slashCut);
+    m_blades.SetSpinFx(&m_spinFx);
     // 剣は弾き・とどめの最中は黙る。倒れた相手へは攻撃ボタンからもとどめが出る。
-    m_blades.SetParry(&m_parry);
+    m_blades.SetParry(nullptr);
     m_parry.SetController(&m_controller);
     // 残像は «回避が出た / 終わった» を問い合わせるだけ。回避の側は残像を知らない。
     m_dodgeGhost.SetController(&m_controller);
@@ -333,30 +331,6 @@ inline void PlayerComponent::OnDamaged(const fbzz::math::Vector3* fromWorld)
     // 落ちた HP の赤と鼓動が 1 フレームずれて «別々の出来事» に見える。
     DriveLastStand();
 
-    // 撃破もこのフレームで返す。onDeath (GameFlow) は音と幕を出すだけで、
-    // 体をどうするかは持っていない。
-    if (!m_health.IsAlive()) BeginDeathRagdoll(fromWorld);
-}
-
-inline void PlayerComponent::BeginDeathRagdoll(const fbzz::math::Vector3* fromWorld)
-{
-    if (!deathRagdoll || m_deathRagdollDone) return;
-    m_deathRagdollDone = true;
-
-    // 根を空へ戻して全身を落とす。部位だけ落とす構成 (壊れた脚) が前に走っていても、
-    // ここで «骨格の根 1 本» へ畳み直される (ScriptRagdollProxy::SetRoots の約束)。
-    ragdoll.SetRoots({}, 0);
-    ragdoll.SetBlend((std::max)(deathBlendIn, 0.0f), 0.2f);
-    // holdSeconds 0 ＝ 起こさない。撃破からリザルトまで倒れたままでいてほしい。
-    ragdoll.Begin(0.0f, 1.0f, 1.0f);
-
-    // 倒れる向きは «殺した一撃から離れる» 側。出どころの無い経路 (落下・毒) では
-    // 後ろへ倒す ─ 前へ倒れると、最後に見ていた方へ踏み出したように見える。
-    fbzz::math::Vector3 away = fromWorld ? (transform.worldPosition - *fromWorld)
-                                         : -(transform.worldRotation * fbzz::math::Vector3::FORWARD);
-    away.y = 0.0f;
-    ragdoll.Push(away.NormalizedOr(fbzz::math::Vector3::FORWARD) * (std::max)(deathPush, 0.0f) +
-                 fbzz::math::Vector3::UP * (std::max)(deathLift, 0.0f));
 }
 
 inline void PlayerComponent::DriveLastStand()
@@ -436,7 +410,9 @@ inline void PlayerComponent::OnStart()
     BindModules();
     m_lastFluxDodge    = 0;
     m_lastStandSent    = false;
-    m_deathRagdollDone = false;
+    m_blocking = false;
+    m_deathAnimationPlayed = false;
+    m_parry.enabled = false;
     if (!HasRequiredAssets()) {
         enabled = false;
         return;
@@ -452,6 +428,7 @@ inline void PlayerComponent::OnStart()
     // 速度を書いているので自力で戻るが、プレイヤーは書き手が居ない。
     // 入口で 1 度戻せば、リロードでも Play でも必ず素から始まる。
     animator.SetSpeed(1.0f);
+    if (ragdoll.IsEnabled()) ragdoll.SetEnabled(false);
 
     // «殴られる側» として名乗る。CombatManager はこの名簿からしか引けない
     // (理由は IDamageable::Of のコメント)。
@@ -468,6 +445,8 @@ inline void PlayerComponent::OnStart()
     m_blades.OnStart();
     m_parry.OnStart();
     m_bladeTrail.OnStart();
+    m_slashCut.OnStart();
+    m_spinFx.OnStart();
     m_dodgeGhost.OnStart();
     m_bladeGlow.OnStart();
     m_bladeSteel.OnStart();
@@ -487,12 +466,34 @@ inline void PlayerComponent::OnUpdate()
             module.ExecuteCallback(&Script::OnUpdate, module.GetTypeName());
     };
 
-    // 崩れ落ちている間は操作を止め続ける。
+    // 撃破後は立ったまま結果画面を待つ。
     //
     // WHY 毎フレーム言い直すか: RequestSuspend は «1 フレームぶんの要求» で、
     //     押し続けている間だけ効く。1 度きりにすると、次のフレームには
-    //     コントローラーが重力と入力を当て直し、**倒れている体の下で足が走る。**
-    if (m_deathRagdollDone) m_controller.RequestSuspend(true);
+    //     コントローラーが入力を当て直し、結果画面の手前で移動できてしまう。
+    if (!m_health.IsAlive()) {
+        m_controller.RequestSuspend(true);
+        if (!m_deathAnimationPlayed) {
+            animator.StopSlot(m_blades.slashLayerName, 0.0f);
+            animator.StopSlot(m_blades.airSlashLayerName, 0.0f);
+            animator.StopSlot(m_controller.hitLayerName, 0.0f);
+            animator.Play("Death");
+            m_deathAnimationPlayed = true;
+        }
+    }
+    {
+        const auto* cc = scene.Self()->GetComponent<CharacterControllerComponent>();
+        m_blocking = m_health.IsAlive() && cc && cc->isGrounded
+            && !m_controller.IsDodging() && !m_controller.IsInputLocked()
+            && !cutscene::HoldsPlayer(Time::unscaledTime) && !m_blades.IsSwinging()
+            && input.GetAction(actions::kParry);
+        m_blades.SetGuarding(m_blocking || !m_health.IsAlive());
+        animator.SetBool("IsBlocking", m_blocking);
+        // Controller の AnyState は «倒れていない間だけ» 割り込みを通す門にこれを使う。
+        // 立てないと、撃破後に残っている Trigger が Death を蹴り出して起き上がる。
+        animator.SetBool("IsDead", !m_health.IsAlive());
+        if (m_blocking) m_controller.RequestMoveSpeedScale(0.0f);
+    }
 
     // 剣 → 纏い → コントローラー、の順で回す。
     //
@@ -506,6 +507,10 @@ inline void PlayerComponent::OnUpdate()
     // 放電は纏いの «結果» を読むだけなので、纏いより後。先に回すと 1 フレーム前の
     // 極で走り、左右を斬り分けた瞬間だけ色が前の剣のまま出る。
     updateModule(m_controller);
+    // 一閃は剣より後。当たったフレームのうちに 1 コマ目を張る。
+    updateModule(m_slashCut);
+    // 回転の輪も同じ理由で剣より後。振り出したフレームから開き始める。
+    updateModule(m_spinFx);
     // 残像は回避の «結果» を読むだけなので、操作より後。先に回すと出だしの 1 枚が
     // 前フレームの姿勢で置かれ、跳び出した瞬間だけ残像が体より後ろにずれる。
     updateModule(m_dodgeGhost);
@@ -564,6 +569,8 @@ inline void PlayerComponent::OnDestroy()
     m_aimMarker.OnDestroy();
     m_headLook.OnDestroy();
     m_bladeTrail.OnDestroy();
+    m_slashCut.OnDestroy();
+    m_spinFx.OnDestroy();
     m_dodgeGhost.OnDestroy();
     m_slashScar.OnDestroy();
     // 溜めの震え・唸り・パッドは «押している間» 続く。畳まずに消えると鳴りっぱなしになる。

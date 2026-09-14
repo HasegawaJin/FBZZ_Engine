@@ -59,6 +59,8 @@ public:
     //     1 本の速さしか無いと、どちらかを諦めることになる。
     FBZZ_FIELD_RANGE(float, followSpeed,         10.0f, "Follow Speed",     0.0f, 50.0f)
     FBZZ_FIELD_RANGE(float, verticalFollowSpeed, 10.0f, "縦の追従",  0.0f, 50.0f)
+    FBZZ_FIELD_RANGE(float, focusLagSeconds, 0.18f, "注視点の追従遅れ [秒]", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("移動でPlayerが画面中心からずれ、停止すると戻る。0で追加の遅れを無効化")
 
     FBZZ_GROUP("Follow Slack")
     // たるみ 1.0 のときに使う追従速度。CameraFollowManagerComponent が 0..1 を配る。
@@ -112,6 +114,7 @@ private:
     CursorRequest m_cursor;
     bool        m_hasCameraPosition = false;
     Vector3     m_unshakenPosition = Vector3::ZERO;
+    Vector3     m_followFocus = Vector3::ZERO;
 };
 
 FBZZ_REFLECT(TpsCameraComponent)
@@ -164,6 +167,7 @@ inline void TpsCameraComponent::ResumeFrom(const Vector3& position, const Quater
     // 真上・真下を向いていると水平成分が消えて yaw が不定になる。pitch だけは
     // 必ず取れるので、そちらは素直に asin で出す。
     pitch = Clamp(ToDeg(std::asin(Clamp(-forward.y, -1.0f, 1.0f))), minPitch, maxPitch);
+    m_followFocus = position + CurrentRotation() * Vector3::FORWARD * distance;
 }
 
 inline void TpsCameraComponent::OnUpdate()
@@ -240,17 +244,24 @@ inline void TpsCameraComponent::OnLateUpdate()
     //     Option で視野角を変えても遊びに戻るまで反映されない。
     if (auto* camera = scene.GetComponent<CameraComponent>())
         camera->fovY = GameSettingsComponent::GameOrDefault().fov + fovOffset;
-    const float horizontalRate = FollowRate(
-        BlendFollowSpeed(followSpeed, loosenedFollowSpeed, horizontalSlack), safeDt);
-    const float verticalRate = FollowRate(
-        BlendFollowSpeed(verticalFollowSpeed, loosenedVerticalFollowSpeed, verticalSlack), safeDt);
+    const auto focusRate = [&](float speed, float tightSpeed) {
+        if (!app.IsPlaying() || focusLagSeconds <= EPSILON) return FollowRate(speed, safeDt);
+        const float response = Max(focusLagSeconds, focusLagSeconds * Max(tightSpeed, EPSILON) / Max(speed, EPSILON));
+        return 1.0f - std::exp(-safeDt / response);
+    };
+    const float horizontalRate = focusRate(
+        BlendFollowSpeed(followSpeed, loosenedFollowSpeed, horizontalSlack), followSpeed);
+    const float verticalRate = focusRate(
+        BlendFollowSpeed(verticalFollowSpeed, loosenedVerticalFollowSpeed, verticalSlack), verticalFollowSpeed);
 
     Vector3 camPos = targetCamPos;
-    if (m_hasCameraPosition) {
+    if (m_hasCameraPosition && (focus - m_followFocus).LengthSq() < 400.0f) {
         // 軸ごとに別の率で寄せる。1 本の Lerp では縦だけ遅らせられない。
-        camPos.x = Lerp(m_unshakenPosition.x, targetCamPos.x, horizontalRate);
-        camPos.z = Lerp(m_unshakenPosition.z, targetCamPos.z, horizontalRate);
-        camPos.y = Lerp(m_unshakenPosition.y, targetCamPos.y, verticalRate);
+        // 旋回軌道は遅らせず、対象の移動だけを注視点で平滑化する。
+        m_followFocus.x = Lerp(m_followFocus.x, focus.x, horizontalRate);
+        m_followFocus.z = Lerp(m_followFocus.z, focus.z, horizontalRate);
+        m_followFocus.y = Lerp(m_followFocus.y, focus.y, verticalRate);
+        camPos = m_followFocus - (rotation * Vector3::FORWARD) * distance;
 
         // WHY 上限を設けるか: 緩みは「追い付かない」であって「置き去りにする」ではない。
         //     落下が長いと縦の遅れが積み上がり、対象が画面から出てしまう。
@@ -263,6 +274,7 @@ inline void TpsCameraComponent::OnLateUpdate()
     }
     // 前フレームの揺れを追従補間へ戻さない。戻すとランダムオフセットが積分されてカメラが漂う。
     m_unshakenPosition = camPos;
+    m_followFocus = camPos + (rotation * Vector3::FORWARD) * distance;
 
     // 合成済みの揺れをカメラのローカル軸へ乗せる。生成も減衰もマネージャー側の仕事。
     if (auto* shake = CameraShakeManagerComponent::Instance())
@@ -286,6 +298,7 @@ inline float TpsCameraComponent::FollowRate(float followSpeed, float dt)
 
 inline void TpsCameraComponent::FindTarget()
 {
+    m_hasCameraPosition = false;
     if (targetTag.empty()) {
         m_target = {};
         return;

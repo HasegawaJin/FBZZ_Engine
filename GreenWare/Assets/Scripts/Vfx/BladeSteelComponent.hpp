@@ -100,6 +100,10 @@ public:
     FBZZ_FIELD_RANGE(float, steelParryFlashSeconds, 0.22f, "弾きの残り [秒]", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, steelExecuteFlash, 8.4f, "とどめ", 0.0f, 24.0f)
     FBZZ_FIELD_RANGE(float, steelExecuteFlashSeconds, 0.45f, "とどめの残り [秒]", 0.0f, 2.0f)
+    // WHY 拍に乗った一振りでも刃を光らせるか: 拍の合図が音だけだと、音を切って遊ぶ人には
+    //     «今のは乗った» が届かない。目が向いている刃そのものが一瞬白むと、見るだけで分かる。
+    FBZZ_FIELD_RANGE(float, steelBeatFlash, 3.2f, "拍に乗った", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, steelBeatFlashSeconds, 0.12f, "拍の残り [秒]", 0.0f, 1.0f)
 
     FBZZ_GROUP("Blade Steel — 縁")
     FBZZ_FIELD_RANGE(float, steelRimReady, 1.4f, "臨戦の縁", 0.0f, 8.0f)
@@ -162,6 +166,8 @@ private:
     /// 前フレームの溜め比と «振っていたか»。立ち上がりの 1 フレームを取るため。
     float m_lastRatio   = 0.0f;
     bool  m_wasSwinging = false;
+    /// 前フレームまでに見た振り出しの番号。変わったフレームが «振った瞬間»。
+    int   m_lastSwingSerial = 0;
     /// 満溜めに届いた合図の残り [秒]。溜めているのは常に片手 (または Flux で両手)。
     float m_fullFlash   = 0.0f;
     /// 弾き / とどめの閃光の残り [秒] と、その強さ。
@@ -187,6 +193,7 @@ inline void BladeSteelComponent::OnStart()
     }
     m_lastRatio   = 0.0f;
     m_wasSwinging = false;
+    m_lastSwingSerial = m_blades ? m_blades->SwingSerial() : 0;
     m_fullFlash   = 0.0f;
     m_eventFlash  = 0.0f;
     m_eventLevel  = 0.0f;
@@ -282,7 +289,7 @@ inline void BladeSteelComponent::OnUpdate()
     const float dt = Max(Time::deltaTime, 0.0f);
 
     // 抜刀で後から現れる。空のあいだだけ探しに行き、見つかったら止まる。
-    const HandSide hands[2] = { HandSide::Right, HandSide::Left };
+    const HandSide hands[] = { HandSide::Right };
     int found = 0;
     for (const HandSide hand : hands) {
         if (m_hands[HandIndex(hand)].slots.empty()) Collect(hand);
@@ -293,8 +300,22 @@ inline void BladeSteelComponent::OnUpdate()
     // ── 振った瞬間 ──────────────────────────────────────────────────────────
     // 帯は一撃につき 1 本。振っている «あいだ» 流し続けると、硬直のあいだも
     // 走り続けて «次が振れる» と読み違える。
+    //
+    // WHY «振っているか» の立ち上がりではなく振り出しの番号で取るか (2026-09-12):
+    //     連撃では硬直が明けたフレームのうちに次の段が振り出されるので、IsSwinging は
+    //     一度も false にならない。立ち上がりで取っていた頃は、帯が 1 段目にしか走らず
+    //     2 段目以降の刃は冷たいままだった。
     const bool swinging = m_blades->IsSwinging();
-    if (swinging && !m_wasSwinging) {
+    const int  serial   = m_blades->SwingSerial();
+    if (serial != m_lastSwingSerial) {
+        m_lastSwingSerial = serial;
+        // 拍に乗った振り出しは刃が一瞬白む。弾き・とどめの閃光が走っている間はそちらに譲る。
+        if (m_blades->IsOnBeatSwing() && m_eventFlash <= 0.0f
+            && steelBeatFlash > 0.0f && steelBeatFlashSeconds > 0.0f) {
+            m_eventLevel        = steelBeatFlash;
+            m_eventFlashSeconds = steelBeatFlashSeconds;
+            m_eventFlash        = steelBeatFlashSeconds;
+        }
         const BladeSide swung = m_blades->SwingSide();
         // 溜め斬りは両刀 (Katana_Slash_Dual)。片方だけ走らせると、回っている
         // 2 本のうち 1 本だけ刃が冷たいままになる。

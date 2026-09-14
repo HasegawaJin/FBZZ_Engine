@@ -216,7 +216,7 @@ inline void DodgeAfterimageComponent::Collect()
     // 刀は Player の子ではなくルートに置かれている (WeaponRigComponent の WHY 参照)。
     // 名前で拾うしかないので、抜刀で後から現れる場合に備えて毎回数え直す。
     if (ghostIncludeBlades) {
-        const HandSide hands[2] = { HandSide::Right, HandSide::Left };
+        const HandSide hands[] = { HandSide::Right };
         for (const HandSide hand : hands)
             if (GameObject* sword = scene.Find(SwordObjectName(hand)))
                 note(*sword);

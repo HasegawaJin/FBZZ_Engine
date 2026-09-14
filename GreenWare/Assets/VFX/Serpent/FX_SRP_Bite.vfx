@@ -102,7 +102,7 @@ renderPriority = 48
 colorVariation = 0.0
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 0.72, 0.3, 0.0], [0.25, 1.0, 0.62, 0.16, 0.8], [0.85, 1.0, 0.78, 0.4, 1.0], [1.0, 1.0, 0.9, 0.6, 0.0]]
-bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.05, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
 startDelay = 0.0
 
 # 外から喉へ集まる火の粉。放射が負なので «吸い込み» になる。
@@ -226,7 +226,7 @@ coneRadius = 0.3
 sizeStart = 0.5
 sizeEnd = 2.2
 sizeCurvePower = 0.55
-lifetime = 0.85
+lifetime = 0.65
 lifetimeRandom = 0.3
 emitVelocity = [0.0, 3.15, 7.0]
 velocitySpread = 0.8
@@ -241,8 +241,8 @@ renderPriority = 30
 colorVariation = 0.08
 colorStart = [0.66, 0.63, 0.58, 0.5]
 colorEnd = [0.5, 0.48, 0.45, 0.0]
-bursts = [{ time = 0.0, count = 8, cycles = 1, interval = 0.03, probability = 1.0 }]
-startDelay = 0.0
+bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.025
 
 [[gameobjects]]
 name = "Impact Grit"
@@ -270,8 +270,8 @@ maxParticles = 24
 shape = 2
 coneAngleDegrees = 36.0
 coneRadius = 0.16
-sizeStart = 0.1
-sizeEnd = 0.035
+sizeStart = 0.16
+sizeEnd = 0.045
 sizeCurvePower = 1.4
 lifetime = 0.8
 lifetimeRandom = 0.5
@@ -279,7 +279,7 @@ emitVelocity = [0.0, 6.3, 7.7]
 velocitySpread = 1.5
 velocityDamping = 0.9
 gravity = [0.0, -9.8, 0.0]
-materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+materialPath = "guid:0035bd7a679f54fa90c30d3b9b5d2941"
 renderMode = 1
 stretchedVelocityScale = 0.08
 stretchedLengthScale = 1.5
@@ -317,10 +317,10 @@ maxParticles = 18
 shape = 2
 coneAngleDegrees = 52.0
 coneRadius = 0.2
-sizeStart = 0.18
+sizeStart = 0.1
 sizeEnd = 0.02
 sizeCurvePower = 1.9
-lifetime = 0.5
+lifetime = 0.3
 lifetimeRandom = 0.5
 emitVelocity = [0.0, 5.5, 10.0]
 velocitySpread = 2.0
