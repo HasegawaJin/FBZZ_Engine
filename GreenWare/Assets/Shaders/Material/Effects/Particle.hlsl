@@ -1,6 +1,8 @@
-// FBZZ Engine
-// Material/Effects/Particle.hlsl | Material
-// CPU パーティクル用ビルボードシェーダー
+/// @file    Particle.hlsl
+/// @brief   CPU パーティクル用ビルボードシェーダー
+/// @author  Hasegawa Jin
+/// @date    2026-05-19
+//
 // PSO: SOLID_NOCULL + ADDITIVE/ALPHA_BLEND + DEPTH_READ
 
 // ParticleCommon.hlsli を最初に include する (b11 の cbuffer / ParticleVSIn /
@@ -10,6 +12,7 @@
 #include "Rendering/ParticleNoise.hlsli"
 #include "Rendering/ParticleSelfShadow.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Rendering/ParticleLighting.hlsli"
 
 Texture2D    gParticleTex : register(TEX_ALBEDO);
 // 歪みベクトル専用ノーマルマップ。gEffectsFlags の FBZZ_PFX_DISTORTION_MAP で有効判定する。
@@ -59,6 +62,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         float stepLength = (2.0f * halfChord) / (float)steps;
         float3 lightDirection = normalize(-lightDir);
         float  phase = HenyeyGreenstein(dot(-viewDir, lightDirection), gVolumetricAnisotropy);
+        // 空の照度 (IBL) を受ける。定数の ambientColor だと、同じ場所の地面と煙で環境光が食い違う。
+        const float3 volumetricAmbient = ParticleAmbientIsotropic();
 
         float3 scattered = 0.0f;
         float  transmittance = 1.0f;
@@ -97,7 +102,7 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
 
             float extinction = density * gVolumetricDensity * stepLength;
             float stepTransmittance = exp(-extinction);
-            float3 inScatter = (ambientColor
+            float3 inScatter = (volumetricAmbient
                 + lightColor * (phase * lightTransmittance * mapShadow))
                 * p.color.rgb * gTintColor.rgb;
             // エネルギー保存に沿った積分 (解析的な 1 ステップ積分)
@@ -107,43 +112,38 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         }
 
         float alpha = (1.0f - transmittance) * p.color.a;
+        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
         if (gSoftParticles != 0)
         {
             float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
             float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
-            float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
             alpha *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
         }
+        // 割り戻し (下の PREMULTIPLIED 補正) より前に掛ける。後から掛けると
+        // RGB が減らないまま alpha だけ落ち、近づいた煙が «暗くならずに濃いまま» 残る。
+        alpha *= ParticleCameraFade(particleLinear);
         // 散乱光は積分の時点で alpha (= 1 - transmittance) の重みを含んだ «事前乗算» の値。
         // PREMULTIPLIED 以外のブレンドはブレンド側がもう一度 src.a を掛けるため、
         // ここで割り戻して非事前乗算へ揃える (方程式は RenderState.hpp の BlendMode)。
         float3 volumeRgb = scattered * gEmissiveScale;
         if ((gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) == 0u)
             volumeRgb /= max(alpha, 1.0e-4f);
-        return float4(volumeRgb, alpha);
+        return FinishParticleFog(float4(volumeRgb, alpha), p.svPosition.xy, p.svPosition.z,
+                                 gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r);
     }
-    float2 currentUv = p.uv;
-    float2 nextUv = p.nextUv;
-    if ((gEffectsFlags & FBZZ_PFX_MOTION_VECTOR) != 0u)
-    {
-        float2 motion = gMotionVectors.Sample(gSampler, p.uv).rg * 2.0f - 1.0f;
-        currentUv += motion * (p.spriteBlend * gMotionVectorStrength);
-        nextUv -= motion * ((1.0f - p.spriteBlend) * gMotionVectorStrength);
-    }
-    // アルファの取り出し方を素材に合わせて解決し、RGB をリニアへ揃えてから 2 コマを混ぜる。
-    // WHY: 先に lerp してから輝度を取ると、コマ境界で「合成後の輝度」を
-    //      マスクにすることになり、コマの重なった部分だけ濃く出てしまう。
-    //      リニア化も混合前に済ませる (混合はリニア空間で行うのが正しい)。
-    float4 tex = lerp(ResolveParticleAlbedo(gParticleTex.Sample(gSampler, currentUv), gEffectsFlags),
-                      ResolveParticleAlbedo(gParticleTex.Sample(gSampler, nextUv), gEffectsFlags),
-                      saturate(p.spriteBlend));
+    float2 currentUv;
+    float4 tex = SampleParticleFlipbook(gParticleTex, gMotionVectors, gSampler,
+                                        p.uv, p.nextUv, p.spriteBlend, gEffectsFlags, currentUv);
+    float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
     if (gSoftParticles != 0)
     {
         float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
         float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
-        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
+    // WHY fade へ掛けるか: PSMain 末尾の事前乗算補正が RGB にも fade を掛けるため、
+    //     ここに乗せれば PREMULTIPLIED でも RGB が一緒に減る (alpha だけでは白い縁が残る)。
+    fade *= ParticleCameraFade(particleLinear);
     // 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。
     float4 result = tex * float4(p.color.rgb * gTintColor.rgb, p.color.a * fade * gTintColor.a);
 
@@ -166,28 +166,16 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     shadow *= ComputeParticleSelfShadowFromMap(gParticleDensity, gSampler, p.worldPos,
                                                lightViewProjection, gSelfShadowStrength);
 
-    if ((gEffectsFlags & FBZZ_PFX_SIX_WAY) != 0u)
+    // 陰影 (6 方向マップ / 疑似法線 / 点光源) は GPU 経路と同じ ParticleLighting.hlsli で付ける。
+    float4 sixWayNegative = 0.0f;
+    if ((gEffectsFlags & FBZZ_PFX_SIX_WAY_MAPS) != 0u)
     {
-        // ビルボードには本物の法線が無いため、スプライト面を球とみなした疑似法線を作る。
-        float2 normalXY = p.localUv * 2.0f - 1.0f;
-        float3 normal = normalize(float3(normalXY, sqrt(saturate(1.0f - dot(normalXY, normalXY)))));
-        float3 lightDirection = normalize(-lightDir);
-        float3 viewDir = normalize(cameraPos - p.worldPos);
-        // 巻き込み拡散 + 前方散乱。素の N·L だけでは煙が「不透明な球」に見え、
-        // 背後の光を透かさないので炎の手前の煙が暗いまま残る。
-        float diffuse = ParticleWrappedDiffuse(dot(normal, lightDirection), saturate(gSmokeWrap));
-        float back = ParticleBackScatter(viewDir, lightDirection,
-                                         gSmokeBackScatterPower, gSmokeTransmission);
-        // 影は直接光成分だけに掛け、環境光は残す (影の中の煙が真っ黒に潰れない)。
-        float3 lit = ambientColor + lightColor * ((diffuse + back) * shadow);
-        result.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
+        // Negative はデータ (sRGB でもアルファ抽出でもない) なので MV の寄せだけ同じにする。
+        float2 negativeUv;
+        sixWayNegative = SampleParticleFlipbook(gSixWayNegative, gMotionVectors, gSampler, p.uv, p.nextUv,
+                                                p.spriteBlend, gEffectsFlags & FBZZ_PFX_MOTION_VECTOR, negativeUv);
     }
-    else
-    {
-        // 非ライティング時は色へ直接掛ける。発光体 (加算) では影が効きすぎないよう
-        // 完全な 0 にはせず、strength の範囲で減衰させる。
-        result.rgb *= shadow;
-    }
+    result.rgb = ShadeParticle(p, result.rgb, tex, sixWayNegative, shadow);
     result.rgb *= gEmissiveScale;
     if ((gEffectsFlags & FBZZ_PFX_DISTORTION) != 0u)
     {
@@ -223,5 +211,7 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     // NOTE: ボリュメトリック経路は scattered を alpha で重み付け済みのまま早期 return
     //       するので、ここは通らない (二重に掛からない)。
     if ((gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) != 0u) result.rgb *= p.color.a * fade;
-    return result;
+    // 霧は Composite が背景の奥行きで掛ける。粒子の奥行きで効くよう、ここで逆算しておく。
+    return FinishParticleFog(result, p.svPosition.xy, p.svPosition.z,
+                             gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r);
 }

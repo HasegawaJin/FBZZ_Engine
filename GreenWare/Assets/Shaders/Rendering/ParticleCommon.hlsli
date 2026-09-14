@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Rendering/ParticleCommon.hlsli
-// パーティクル描画シェーダーが共有する定数・頂点レイアウト・ビルボード展開
+/// @file    ParticleCommon.hlsli
+/// @brief   パーティクル描画シェーダーが共有する定数・頂点レイアウト・ビルボード展開
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 //
 // WHY: effectsFlags のビット・b11 の cbuffer・ParticleVSIn・ビルボード展開は、
 //      以前 Particle.hlsl / ParticleGPU.hlsl / ParticleGpuMesh.hlsl /
@@ -49,6 +50,10 @@
 #define FBZZ_PFX_SRGB_TEXTURE   64u
 // 歪み専用ノーマルマップ (t1) がバインドされている。無い場合は albedo の RG を使う。
 #define FBZZ_PFX_DISTORTION_MAP 128u
+// bit8-10 は下のアルファの取り出し方が使うので、以降の機能ビットは bit11 から。
+#define FBZZ_PFX_PUNCTUAL       2048u  // 点光源 (クラスタ) を粒子の中心で受ける
+#define FBZZ_PFX_SIX_WAY_MAPS   4096u  // 6 方向ライトマップ (t0 = Positive / t3 = Negative)
+#define FBZZ_PFX_ADDITIVE       8192u  // 加算合成 (霧の補正と TAA の反応マスクが合成式を知る必要がある)
 
 // アルファの取り出し方は effectsFlags の bit8-10 (3 ビット) に格納する。
 // 値は Rendering/Mask.hlsli の FBZZ_MASK_* をそのまま使う。
@@ -61,7 +66,7 @@
 //
 // LAYOUT: Engine/Scene/Systems/RenderPasses/Geometry/GeometryPasses.hpp の
 //         ParticleRenderCB と 1 バイトも違わずに一致させること
-//         (static_assert(sizeof(ParticleRenderCB) == 128) がある)。
+//         (static_assert(sizeof(ParticleRenderCB) == 144) がある)。
 //
 // WHY b2 (CB_MATERIAL) ではないか:
 //   シェーダーリフレクションは cbuffer 名 "MaterialConstants" を b2 に探す
@@ -108,8 +113,11 @@ cbuffer ParticleRenderConstants : register(CB_PARTICLE)
     float4 gTintColor;             // .mat の [params] albedo (リニア済み)
     float gSmokeBackScatterPower;
     float gDistortionChromatic;    // 歪みの色収差量 [画面 UV]
-    float gParticlePad1;
-    float gParticlePad2;
+    // カメラ距離フェード [ワールド単位]。near より近い粒子を薄くする。
+    // near >= far (既定の 0 / 0 を含む) は «この素材は距離フェードを使わない» の意味。
+    float gCameraFadeNear;
+    float gCameraFadeFar;
+    float4 gSixWayEmission;        // rgb = 6-way マップの発光色 (リニア HDR)
 };
 
 // ── 頂点入力 ──
@@ -209,6 +217,22 @@ ParticlePSIn ParticleBillboardVS(ParticleVSIn v)
     return o;
 }
 
+// ── カメラ距離フェード ──
+// カメラに寄った粒子を薄くする。煙へ突っ込んだときに 1 枚の板で画面全体が埋まるのを防ぐ。
+// 引数はソフトパーティクルが使うのと同じ «線形化した粒子の深度» (= カメラからの距離)。
+//
+// WHY 無効を «差の eps ガード» に任せないか:
+//   near >= far のまま割ると、eps で割った値が飽和して «near で 0 と 1 が入れ替わる
+//   硬いカットオフ» になる。far を入れ忘れた .mat が «近くの粒子だけ消える» 形で
+//   静かに壊れるので、near >= far は «この素材は距離フェードを使わない» と読む
+//   (既定の 0 / 0 もここに落ちるため、既存の .mat の見た目は変わらない)。
+float ParticleCameraFade(float particleViewDepth)
+{
+    if (gCameraFadeNear >= gCameraFadeFar) return 1.0f;
+    return saturate((particleViewDepth - gCameraFadeNear)
+                    / max(gCameraFadeFar - gCameraFadeNear, 1.0e-4f));
+}
+
 // パーティクル素材からアルファを取り出す。RGB は色としてそのまま残す。
 // (輝度をアルファにする素材でも、RGB は炎や煙の色として意味を持つため)
 float4 ResolveParticleTexel(float4 texel, uint effectsFlags)
@@ -228,6 +252,70 @@ float4 ResolveParticleAlbedo(float4 texel, uint effectsFlags)
     float4 resolved = ResolveParticleTexel(texel, effectsFlags);
     if ((effectsFlags & FBZZ_PFX_SRGB_TEXTURE) != 0u) resolved.rgb = SRGBToLinear(resolved.rgb);
     return resolved;
+}
+
+// フリップブックの 2 コマを Motion Vector で寄せてから混ぜる。CPU / GPU 経路の PS が共有する。
+// currentUv は «寄せた後の現コマの UV» で、歪みマップの参照に使う。
+// WHY 先に解決してから lerp するか: 合成後の輝度をマスクにするとコマの重なりだけ濃くなる。
+//     リニア化も混合前 (混合はリニア空間で行う)。
+// NOTE: 符号は FlipbookMotionVectorEncoding.hpp の規約 (保存値 m = −d/S)。
+float4 SampleParticleFlipbook(Texture2D albedo, Texture2D motionVectors, SamplerState samp,
+                              float2 uv, float2 nextUv, float blend, uint effectsFlags,
+                              out float2 currentUv)
+{
+    currentUv = uv;
+    if ((effectsFlags & FBZZ_PFX_MOTION_VECTOR) != 0u)
+    {
+        const float2 motion = motionVectors.Sample(samp, uv).rg * 2.0f - 1.0f;
+        currentUv += motion * (blend * gMotionVectorStrength);
+        nextUv    -= motion * ((1.0f - blend) * gMotionVectorStrength);
+    }
+    const float4 current = ResolveParticleAlbedo(albedo.Sample(samp, currentUv), effectsFlags);
+    if (blend <= 0.0f) return current;
+    return lerp(current, ResolveParticleAlbedo(albedo.Sample(samp, nextUv), effectsFlags),
+                saturate(blend));
+}
+
+// ── 6 方向ライトマップ (Six-way lighting) ──
+// 規約は Engine/Asset/SixWayLighting.hpp (C++ の写しとテストがある)。
+//   Positive = (右, 上, 奥, α) / Negative = (左, 下, 手前, 発光マスク)
+// L は «テクスチャの軸» で表した光源への向き (x = 右, y = 上, z = 奥)。
+// 重みは各成分の 2 乗 (単位ベクトルなら 6 つの和が 1)。
+float SixWayResponse(float3 positive, float3 negative, float3 L)
+{
+    const float3 p = max(L, 0.0f);
+    const float3 n = min(L, 0.0f);
+    return dot(p * p, positive) + dot(n * n, negative);
+}
+
+// 全方向から一様に来る光 (環境光) への応答。6 方向の平均。
+float SixWayAmbient(float3 positive, float3 negative)
+{
+    return (dot(positive, 1.0f) + dot(negative, 1.0f)) / 6.0f;
+}
+
+// テクスチャの右 (+u) と上 (-v) がワールドのどちらを向いているか。
+// WHY 微分から取るか: 回転・伸長・水平などの全描画モードを 1 つの式で扱える。軸を補間子で
+//     渡すと ParticlePSIn が太り、自前の VS を持つカスタムシェーダーが全部書き直しになる。
+// 板は平面なので三角形の中で微分は一定 (近似ではない)。
+void ParticleTextureAxes(float3 worldPos, float2 localUv, float3 fallbackRight, float3 fallbackUp,
+                         out float3 right, out float3 up)
+{
+    right = fallbackRight;
+    up    = fallbackUp;
+    const float3 dpx = ddx(worldPos);
+    const float3 dpy = ddy(worldPos);
+    const float2 dux = ddx(localUv);
+    const float2 duy = ddy(localUv);
+    const float det = dux.x * duy.y - dux.y * duy.x;
+    if (abs(det) < 1.0e-12f) return;
+    const float3 dpdu = (dpx * duy.y - dpy * dux.y) / det;
+    const float3 dpdv = (dpy * dux.x - dpx * duy.x) / det;
+    const float lengthU = length(dpdu);
+    const float lengthV = length(dpdv);
+    if (lengthU < 1.0e-8f || lengthV < 1.0e-8f) return;
+    right = dpdu / lengthU;
+    up    = -dpdv / lengthV;   // 画像の v は下向き
 }
 
 // ── ボリュメトリック煙 ──

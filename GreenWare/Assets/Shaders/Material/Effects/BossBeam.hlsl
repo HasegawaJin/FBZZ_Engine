@@ -346,7 +346,9 @@ float4 PSMain(BossBeamPSIn input) : SV_Target0
     const float bore      = max(coreWidth * thickness * lerp(0.12f, 1.0f, ignite), 1.0e-4f);
     // WHY smoothstep の幅を芯の 25% に絞るか: プレイヤー側は 0 から芯幅まで滑らかに
     //     落とすので «光の束» になる。こちらは縁を立てて «切っている棒» にする。
-    const float core = 1.0f - smoothstep(bore * 0.75f, bore, across);
+    const float coreAA = max(fwidth(across), 1.0e-4f);
+    const float core = (1.0f - smoothstep(max(bore - coreAA, 0.0f), bore + coreAA, across))
+                    * saturate(bore / coreAA);
 
     // ── 焦点環 ──────────────────────────────────────────────────────────────
     // R と B を逆へずらして縁へ色を割る。中央 (G) は必ず本来の半径で採るので、
