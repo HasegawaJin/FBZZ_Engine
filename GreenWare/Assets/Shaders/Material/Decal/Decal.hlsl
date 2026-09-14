@@ -43,7 +43,8 @@ float4 PSMain(DecalPixelInput input) : SV_Target
     if (!DecalResolve(input.screenUv, surface))
         discard;
 
-    float2 uv = surface.uv * uvTiling + uvOffset;
+    // コマ送りは最後に掛ける。タイリングでコマの外へ出ないよう、変換の中で frac を通す。
+    float2 uv = DecalApplyFlipbook(surface.uv * uvTiling + uvOffset);
 
     float4 albedoSample = (textureMask & 1u)
         ? texAlbedo.Sample(sampDecal, uv) * albedoTint

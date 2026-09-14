@@ -177,6 +177,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float2 uv = LensDistortUV(sourceUV, lensDistortion);
     if (any(uv < 0.0f) || any(uv > 1.0f))
         return float4(0.0f, 0.0f, 0.0f, 1.0f);
+    // 衝撃波リングは範囲判定の «後»。前に置くと、輪が画面端を抜ける最後の数フレームで
+    // ずらした先が範囲外になり、リングに沿って黒い帯が出る (端は sampLinearClamp が伸ばす)。
+    uv = ShockRingUV(uv, shockRingCenter, shockRingRadius, shockRingWidth, shockRingAmplitude);
 
     float3 hdr;
     [branch]

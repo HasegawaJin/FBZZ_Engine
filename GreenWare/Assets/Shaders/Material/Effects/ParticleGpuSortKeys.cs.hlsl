@@ -14,7 +14,7 @@
 #include "Common/Binding.hlsli"
 #include "Rendering/ParticleSortCommon.hlsli"
 
-// LAYOUT: ParticleGpuSim.cs.hlsl / ParticleGPU.hlsl の GpuParticle と完全に一致させること (96 bytes)。
+// LAYOUT: ParticleGpuSim.cs.hlsl / ParticleGPU.hlsl の GpuParticle と完全に一致させること (112 bytes)。
 struct GpuParticle
 {
     float3 position;
@@ -28,7 +28,8 @@ struct GpuParticle
     float  spriteSeed;
     float4 uvRect;
     float3 colorScale;
-    float  colorScalePad;
+    float  spriteBlend;
+    float4 nextUvRect;
 };
 
 StructuredBuffer<GpuParticle> gParticles : register(SB_GPU_PARTICLES);

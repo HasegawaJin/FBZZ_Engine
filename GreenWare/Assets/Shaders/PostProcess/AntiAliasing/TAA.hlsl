@@ -33,6 +33,8 @@ Texture2D        texCurrent  : register(TEX_GBUFFER0);    // 現フレームカ�
 Texture2D        texHistory  : register(TEX_TAA_HISTORY); // 前フレーム TAA 出力
 Texture2D<float> texDepth    : register(TEX_DEPTH);       // 深度バッファ
 Texture2D        texVelocity : register(TEX_VELOCITY);    // モーションベクター (RG=速度, B=有効)
+// 粒子が画素を覆う割合 (ParticleReactive パス)。束縛されないフレームは 0 が読まれて何もしない。
+Texture2D        texReactive : register(TEX_SSAO);
 
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP); // バイリニアクランプ (s0 は DX12 では WRAP)
 SamplerState sampPoint   : register(SAMPLER_POINT_CLAMP); // ポイントサンプル（再投影用）
@@ -126,6 +128,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     // taaFeedback = 0   : 現フレームのみ (TAA 無効相当)
     // taaFeedback = 0.9 : 標準的な時間的蓄積（ジッタリングと組み合わせて滑らかな AA）
     float  blend  = 1.0f - saturate(taaFeedback);
+    // 粒子は速度を書かないので、履歴は背景の動きで引かれている。粒子が覆う画素ほど今のフレームを採る。
+    const float reactive = saturate(texReactive.SampleLevel(sampPoint, uv, 0.0f).r);
+    blend = lerp(blend, 1.0f, reactive * 0.85f);
     float3 result = lerp(historyColor, currentColor, blend);
 
     return float4(result, 1.0f);

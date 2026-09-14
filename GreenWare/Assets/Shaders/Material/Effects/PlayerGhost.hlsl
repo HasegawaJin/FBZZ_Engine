@@ -61,8 +61,12 @@ float4 PSMain(MeshTrailPSIn input) : SV_Target0
     // 縞。輪郭は削らない ─ 形が欠けると «壊れたメッシュ» に見える。
     if (scanDensity > 0.0f)
     {
-        float band = saturate(0.5f + 0.5f * sin(input.worldPos.y * scanDensity * 6.2831853f));
+        const float phase = input.worldPos.y * scanDensity;
+        const float resolved = 1.0f - smoothstep(0.2f, 0.5f, fwidth(phase));
+        float band = 0.5f + 0.5f * sin(phase * 6.2831853f) * resolved;
         color.a *= lerp(1.0f, band, saturate(scanDepth) * (1.0f - rim));
     }
+    color.a = saturate(color.a);
+    clip(color.a - 0.002f);
     return color;
 }

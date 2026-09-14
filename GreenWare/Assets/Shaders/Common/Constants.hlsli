@@ -191,6 +191,12 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     // カスタムパスの «走り方» (書き手ではなくエンジンが埋める)。
     //   x = 入力 UV のスケール (downscale の逆数) / y = 何回目の反復 / z = 反復の総数
     float4 customPassInfo;
+    // 衝撃波リング (VFXScreenEffect)。C++ PostProcCB と一致。Amplitude=0 で無効。
+    float2 shockRingCenter;
+    float  shockRingRadius;
+    float  shockRingWidth;
+    float  shockRingAmplitude;
+    float3 _shockRingPad;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)

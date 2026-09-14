@@ -197,8 +197,11 @@ float TrailFbm2(float2 p)
 /// 筋を 1 本のガウスで作る。色収差は横断位置をずらして 3 回呼ぶ。
 float TrailRail(float lateral)
 {
-    const float d = lateral / max(railWidth, 1.0e-3f);
-    return exp(-d * d);
+    // 遠景の細線を1画素未満で点滅させず、広げた幅の分だけ光量を戻す。
+    const float width = max(railWidth, 1.0e-3f);
+    const float filtered = max(width, fwidth(lateral) * 0.65f);
+    const float d = lateral / filtered;
+    return exp(-d * d) * width / filtered;
 }
 
 TrailPSIn VSMain(VSInputColor v)
@@ -332,7 +335,9 @@ float4 PSMain(TrailPSIn input) : SV_Target0
                                                     max(dissolveBias, 0.01f)));
     const float tatter = 1.0f - smoothstep(noise - soft, noise + soft, cut);
 
-    const float presence = fade * ends * tatter;
+    const float tailWidth = lerp(0.0f, 0.55f, smoothstep(0.2f, 1.0f, age));
+    const float tail = smoothstep(tailWidth, tailWidth + 0.22f, across);
+    const float presence = fade * ends * tatter * tail;
     if (debugMode > 2.5f) return float4(presence.xxx, presence);
 
     // ── 掠める角 ────────────────────────────────────────────────────────────
