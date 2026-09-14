@@ -1,126 +1,208 @@
-baseLayerMaskPath = 'guid:328750624304cb9808548b4930d0e50a|Assets/Animation/Player/Player_Base.mask'
+baseLayerMaskPath = 'guid:e78bc9eb645c4df3856b5ec081b27a9d|Assets/Animation/Player/Player_Base.mask'
 defaultStateName = 'Locomotion'
 version = 6
 
 [editorLayout]
-anyStateX = -220.0
+anyStateX = -260.0
 anyStateY = 260.0
-entryX = -220.0
-entryY = 80.0
-
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 0
-    stateName = 'Locomotion'
-    x = 160.0
-    y = 60.0
-
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 1
-    stateName = 'Locomotion'
-    x = 160.0
-    y = 190.0
-
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 2
-    stateName = 'Locomotion'
-    x = 160.0
-    y = 320.0
+blendTreeMotions = []
+entryX = -260.0
+entryY = 60.0
+slotX = -220.0
+slotY = 440.0
 
     [[editorLayout.nodes]]
-    stateName = 'Player_Land'
-    x = 60.0
-    y = 240.0
+    stateName = 'Land'
+    x = 0.0
+    y = 800.0
 
     [[editorLayout.nodes]]
     stateName = 'Locomotion'
-    x = 420.0
-    y = 320.0
+    x = 14.049280166625977
+    y = -30.908416748046875
 
     [[editorLayout.nodes]]
-    stateName = 'Player_JumpUp'
-    x = 60.0
-    y = -60.0
-
-    [[editorLayout.nodes]]
-    stateName = 'Hit_Heavy'
-    x = 60.0
-    y = 550.0
-
-    [[editorLayout.nodes]]
-    stateName = 'Player_FallIdle'
-    x = 60.0
-    y = 90.0
-
-    [[editorLayout.nodes]]
-    stateName = 'Dodge_Roll'
-    x = 60.0
-    y = 400.0
-
-    [[editorLayout.nodes]]
-    stateName = 'PreloadKatanaSlash'
-    x = 440.79998779296875
-    y = 82.24000549316406
-
-    [[editorLayout.nodes]]
-    stateName = 'KatanaDraw'
-    x = 800.0
-    y = -60.0
-
-    [[editorLayout.nodes]]
-    stateName = 'KatanaSheathe'
-    x = 797.7599487304688
-    y = 90.00000762939453
-
-    [[editorLayout.nodes]]
-    stateName = 'KatanaIai'
-    x = 800.0
-    y = 240.0
-
-    [[editorLayout.nodes]]
-    stateName = 'KatanaJumpSlam'
-    x = 800.0
-    y = 390.0
-
-    [[editorLayout.nodes]]
-    stateName = 'KatanaParry'
-    x = 800.0
-    y = 540.0
-
-    [[editorLayout.nodes]]
-    stateName = 'KatanaVictory'
-    x = 800.0
-    y = 690.0
-
-    [[editorLayout.nodes]]
-    stateName = 'KatanaLose'
-    x = 800.0
-    y = 840.0
-
-    [[editorLayout.nodes]]
-    stateName = 'AttackStance'
-    x = 80.0
-    y = 78.88003540039062
-
-    [[editorLayout.nodes]]
-    stateName = 'HitSlot'
-    x = 80.0
-    y = 80.0
-
-    [[editorLayout.nodes]]
-    stateName = 'PreloadPlayerHit'
+    stateName = 'SlideAttack'
     x = 340.0
-    y = 80.0
+    y = 480.0
 
     [[editorLayout.nodes]]
-    stateName = 'Player_RunStop'
-    x = 420.0
-    y = 550.0
+    stateName = 'RunStop'
+    x = 0.0
+    y = 160.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Dodge'
+    x = 0.0
+    y = 320.0
+
+    [[editorLayout.nodes]]
+    stateName = 'JumpStart'
+    x = 0.0
+    y = 480.0
+
+    [[editorLayout.nodes]]
+    stateName = 'FallLoop'
+    x = 0.0
+    y = 640.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Death'
+    x = 1020.0
+    y = 160.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Slash01'
+    x = 340.0
+    y = 0.0
+
+    [[editorLayout.nodes]]
+    stateName = 'HighSpinAttack'
+    x = 340.0
+    y = 160.0
+
+    [[editorLayout.nodes]]
+    stateName = 'JumpAttack'
+    x = 340.0
+    y = 320.0
+
+    [[editorLayout.nodes]]
+    stateName = 'UnderSlash'
+    x = 340.0
+    y = 640.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Hit'
+    x = 1020.0
+    y = 0.0
+
+    [[editorLayout.nodes]]
+    stateName = 'UnderSlashandUpperSlash'
+    x = 340.0
+    y = 800.0
+
+    [[editorLayout.nodes]]
+    stateName = 'ToBlocking'
+    x = 680.0
+    y = 0.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Blocking'
+    x = 680.0
+    y = 160.0
+
+    [[editorLayout.nodes]]
+    stateName = 'GuardHit'
+    x = 680.0
+    y = 320.0
+
+    [[editorLayout.nodes]]
+    stateName = 'BlockingToIdle'
+    x = 680.0
+    y = 480.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Victory'
+    x = 1020.0
+    y = 320.0
+
+    [[editorLayout.nodes]]
+    stateName = 'DefeatIdle'
+    x = 1020.0
+    y = 480.0
 
 [[anyStateTransitions]]
 exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
-toStateName = 'Player_JumpUp'
+toStateName = 'Death'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Death'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'DefeatIdle'
+transitionDuration = 0.15000000596046448
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Defeat'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Victory'
+transitionDuration = 0.15000000596046448
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Victory'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'GuardHit'
+transitionDuration = 0.02500000037252903
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'GuardHit'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Hit'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Hit'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Dodge'
+transitionDuration = 0.03999999910593033
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Dodge'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'JumpStart'
 transitionDuration = 0.03999999910593033
 
     [[anyStateTransitions.conditions]]
@@ -128,86 +210,122 @@ transitionDuration = 0.03999999910593033
     paramName = 'Jump'
     threshold = 0.0
 
-[[anyStateTransitions]]
-exitTime = 1.0
-fixedDuration = true
-hasExitTime = false
-toStateName = 'Player_FallIdle'
-transitionDuration = 0.03999999910593033
-
     [[anyStateTransitions.conditions]]
     op = 5
-    paramName = 'IsGrounded'
+    paramName = 'IsDead'
     threshold = 0.0
-
-    [[anyStateTransitions.conditions]]
-    op = 1
-    paramName = 'VerticalSpeed'
-    threshold = -1.0
 
 [[anyStateTransitions]]
 exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
-toStateName = 'Dodge_Roll'
+toStateName = 'Slash01'
 transitionDuration = 0.05999999865889549
 
     [[anyStateTransitions.conditions]]
     op = 4
-    paramName = 'Dodge'
+    paramName = 'Slash01'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
     threshold = 0.0
 
 [[anyStateTransitions]]
 exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
-toStateName = 'KatanaDraw'
-transitionDuration = 0.15000000596046448
+toStateName = 'HighSpinAttack'
+transitionDuration = 0.05999999865889549
 
     [[anyStateTransitions.conditions]]
     op = 4
-    paramName = 'Draw'
+    paramName = 'HighSpinAttack'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
     threshold = 0.0
 
 [[anyStateTransitions]]
 exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
-toStateName = 'KatanaSheathe'
-transitionDuration = 0.15000000596046448
+toStateName = 'JumpAttack'
+transitionDuration = 0.05999999865889549
 
     [[anyStateTransitions.conditions]]
     op = 4
-    paramName = 'Sheathe'
+    paramName = 'JumpAttack'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'SlideAttack'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'SlideAttack'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'UnderSlash'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'UnderSlash'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'UnderSlashandUpperSlash'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'UnderSlashandUpperSlash'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
     threshold = 0.0
 
 [[layers]]
 anyStateTransitions = []
 defaultStateName = ''
 enabled = true
-maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
-mode = 0
-name = 'UpperBody'
-retargetMappings = []
-weight = 0.0
-
-    [layers.additiveReference]
-    clipName = ''
-    sourcePath = ''
-    time = 0.0
-
-    [layers.slot]
-    fadeInDuration = 0.07999999821186066
-    fadeOutDuration = 0.18000000715255737
-
-[[layers]]
-anyStateTransitions = []
-defaultStateName = 'AttackStance'
-enabled = true
-maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
+maskPath = 'guid:e78bc9eb645c4df3856b5ec081b27a9d|Assets/Animation/Player/Player_Base.mask'
 mode = 0
 name = 'Attack'
 retargetMappings = []
+states = []
 weight = 0.0
 
     [layers.additiveReference]
@@ -216,334 +334,28 @@ weight = 0.0
     time = 0.0
 
     [layers.slot]
-    fadeInDuration = 0.05999999865889549
-    fadeOutDuration = 0.11999999731779099
-
-    [[layers.states]]
-    clipIndex = -1
-    clipName = 'Katana_Stance'
-    ikWeight = 1.0
-    loop = true
-    mode = 0
-    name = 'AttackStance'
-    sourcePath = 'guid:e1fe26048e4d49d1529dc29ee167259b|Library/Baked/e0e96bf4d9140090be7774ccaaaeab58/anims/Katana_Stance.anim'
-    speed = 1.0
-    transitions = []
-
-        [layers.states.blendTree1D]
-        dampTime = 0.0
-        motions = []
-        paramName = ''
-        syncNormalizedTime = false
-
-        [layers.states.blendTree2D]
-        dampTime = 0.0
-        motions = []
-        paramX = ''
-        paramY = ''
-        syncNormalizedTime = false
-        type = 0
-
-    [[layers.states]]
-    clipIndex = -1
-    clipName = ''
-    ikWeight = 1.0
-    loop = true
-    mode = 0
-    name = 'PreloadKatanaSlash'
-    sourcePath = ''
-    speed = 1.0
-    transitions = []
-
-        [layers.states.blendTree1D]
-        dampTime = 0.0
-        paramName = ''
-        syncNormalizedTime = false
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Slash_R'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:f4b66683b4b00dd2699acea0edb05d70|Library/Baked/eb4f77f1e5395fbec0a9271e4462e095/anims/Katana_Slash_R.anim'
-            speed = 1.0
-            threshold = 0.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Slash_L'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:df86ad597c33fe11e376bde87f62a4bf|Library/Baked/3c44e89bba0ce00b16bfcc71d0d09089/anims/Katana_Slash_L.anim'
-            speed = 1.0
-            threshold = 1.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Slash_Return'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:031403d53b32beb206c6603405e67b50|Library/Baked/ef30f1ac34c640c5be0da6996a2604fa/anims/Katana_Slash_Return.anim'
-            speed = 1.0
-            threshold = 2.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Slash_Dual'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:12deb7da34415ea7eae58fcc71945ab1|Library/Baked/68621dfe4a66ccf3f74cfd49ba4c7075/anims/Katana_Slash_Dual.anim'
-            speed = 1.0
-            threshold = 3.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Double_R'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:6220a353bc315208137abc9aca20ba56|Library/Baked/5b938533360f47839db044c9d17077c2/anims/Katana_Double_R.anim'
-            speed = 1.0
-            threshold = 4.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Double_L'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:2b7dc697f5359a90d92338c0c2ce7816|Library/Baked/7e2e296234604d6d9c55035263555c61/anims/Katana_Double_L.anim'
-            speed = 1.0
-            threshold = 5.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_SpinRise_R'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:557fba6894c1dd1ebf1929b486947320|Library/Baked/68f613340c57451f9c09846f89840d2c/anims/Katana_SpinRise_R.anim'
-            speed = 1.0
-            threshold = 6.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_SpinRise_L'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:881d54453aa2227af14a7a58edf4c4b0|Library/Baked/9701e505639a484e95bf1664fdcef1f1/anims/Katana_SpinRise_L.anim'
-            speed = 1.0
-            threshold = 7.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Slash_Rise'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:cd82c810fb06fcf8eea678816690dafe|Library/Baked/7c5c85ed26914f69bf9688a698c4c136/anims/Katana_Slash_Rise.anim'
-            speed = 1.0
-            threshold = 8.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Slash_Spin'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:cdc3c41cd49cf41240935c800844f6f8|Library/Baked/c9fd905696df42988cba028825e275a2/anims/Katana_Slash_Spin.anim'
-            speed = 1.0
-            threshold = 9.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Slash_Air'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:a90370aff20bcefde4e763c2d0e90e23|Library/Baked/a1b8456644404bf7834a6750140ab082/anims/Katana_Slash_Air.anim'
-            speed = 1.0
-            threshold = 10.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Charge_Hold'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:7b83bf8b43bc7e821c08e0c0b60b4c74|Library/Baked/b9d09c79810145e4b8cf6d2dd0a6984a/anims/Katana_Charge_Hold.anim'
-            speed = 1.0
-            threshold = 11.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Charge_Release'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:0fd655ff293ff4d04c970f291bc4298a|Library/Baked/9ba45121717f45c4a2f3380c4efd590f/anims/Katana_Charge_Release.anim'
-            speed = 1.0
-            threshold = 12.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Dodge_Roll'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:57e9753f681702e5dfc34569ac60ff43|Library/Baked/aa7245441a507b79edfa071a10b383c8/anims/Katana_Dodge_Roll.anim'
-            speed = 1.0
-            threshold = 13.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Run_Stop'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:e420b76ba59a1907fd18db94bd6a512d|Library/Baked/d24a41b77ec24f8098fd105a63354a08/anims/Katana_Run_Stop.anim'
-            speed = 1.0
-            threshold = 14.0
-
-        [layers.states.blendTree2D]
-        dampTime = 0.0
-        motions = []
-        paramX = ''
-        paramY = ''
-        syncNormalizedTime = false
-        type = 0
+    fadeInDuration = 0.15000000596046448
+    fadeOutDuration = 0.15000000596046448
 
 [[layers]]
 anyStateTransitions = []
 defaultStateName = ''
-enabled = true
-maskPath = 'guid:328750624304cb9808548b4930d0e50a|Assets/Animation/Player/Player_Base.mask'
+enabled = false
+maskPath = 'guid:e78bc9eb645c4df3856b5ec081b27a9d|Assets/Animation/Player/Player_Base.mask'
 mode = 0
-name = 'FullBody'
+name = 'HitReaction'
 retargetMappings = []
-weight = 0.0
-
-    [layers.additiveReference]
-    clipName = ''
-    sourcePath = ''
-    time = 0.0
-
-    [layers.slot]
-    fadeInDuration = 0.10000000149011612
-    fadeOutDuration = 0.11999999731779099
-
-[[layers]]
-anyStateTransitions = []
-defaultStateName = 'HitSlot'
-enabled = true
-maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
-mode = 1
-name = 'Add_Hit'
-retargetMappings = []
+states = []
 weight = 1.0
 
     [layers.additiveReference]
-    clipName = 'Katana_Stance'
-    sourcePath = 'guid:e1fe26048e4d49d1529dc29ee167259b|Library/Baked/e0e96bf4d9140090be7774ccaaaeab58/anims/Katana_Stance.anim'
+    clipName = ''
+    sourcePath = ''
     time = 0.0
 
     [layers.slot]
-    fadeInDuration = 0.029999999329447746
-    fadeOutDuration = 0.10000000149011612
-
-    [[layers.states]]
-    clipIndex = -1
-    clipName = ''
-    ikWeight = 1.0
-    loop = true
-    mode = 0
-    name = 'HitSlot'
-    sourcePath = ''
-    speed = 1.0
-    transitions = []
-
-        [layers.states.blendTree1D]
-        dampTime = 0.0
-        motions = []
-        paramName = ''
-        syncNormalizedTime = false
-
-        [layers.states.blendTree2D]
-        dampTime = 0.0
-        motions = []
-        paramX = ''
-        paramY = ''
-        syncNormalizedTime = false
-        type = 0
-
-    [[layers.states]]
-    clipIndex = -1
-    clipName = ''
-    ikWeight = 1.0
-    loop = true
-    mode = 0
-    name = 'PreloadPlayerHit'
-    sourcePath = ''
-    speed = 1.0
-    transitions = []
-
-        [layers.states.blendTree1D]
-        dampTime = 0.0
-        paramName = ''
-        syncNormalizedTime = false
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Hit_F'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:2c12835bcbbf3de2fd9aae7f9a21f1f0|Library/Baked/7e522cd4a98c0a3c76d1facdf7b0ce59/anims/Katana_Hit_F.anim'
-            speed = 1.0
-            threshold = 0.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Hit_B'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:ecb92521aa163276772b31882c60d084|Library/Baked/58bc20138890ed4d4a5851014bb47ba6/anims/Katana_Hit_B.anim'
-            speed = 1.0
-            threshold = 1.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Hit_L'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:80ad64479ecf94c9b9805aa44810060f|Library/Baked/278b9d94d32949e595001931b4a13df7/anims/Katana_Hit_L.anim'
-            speed = 1.0
-            threshold = 2.0
-
-            [[layers.states.blendTree1D.motions]]
-            clipIndex = -1
-            clipName = 'Katana_Hit_R'
-            ikWeight = 1.0
-            posX = 0.0
-            posY = 0.0
-            sourcePath = 'guid:c2e1de9599a89a88734a69e65b66d3fa|Library/Baked/a0df985461b136404e7bce4e3021e661/anims/Katana_Hit_R.anim'
-            speed = 1.0
-            threshold = 3.0
-
-        [layers.states.blendTree2D]
-        dampTime = 0.0
-        motions = []
-        paramX = ''
-        paramY = ''
-        syncNormalizedTime = false
-        type = 0
+    fadeInDuration = 0.15000000596046448
+    fadeOutDuration = 0.15000000596046448
 
 [[parameters]]
 boolValue = false
@@ -570,6 +382,20 @@ type = 2
 boolValue = false
 floatValue = 0.0
 intValue = 0
+name = 'IsBlocking'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'IsDead'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
 name = 'Jump'
 type = 3
 
@@ -584,27 +410,97 @@ type = 3
 boolValue = false
 floatValue = 0.0
 intValue = 0
-name = 'Draw'
-type = 3
-
-[[parameters]]
-boolValue = false
-floatValue = 0.0
-intValue = 0
-name = 'Sheathe'
-type = 3
-
-[[parameters]]
-boolValue = false
-floatValue = 0.0
-intValue = 0
 name = 'Stop'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Slash01'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'HighSpinAttack'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'JumpAttack'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'SlideAttack'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'UnderSlash'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'UnderSlashandUpperSlash'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'GuardHit'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Hit'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Death'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Victory'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Defeat'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Reset'
 type = 3
 
 [[states]]
 clipIndex = -1
 clipName = ''
-ikWeight = 1.0
+ikWeight = 0.0
 loop = true
 mode = 1
 name = 'Locomotion'
@@ -618,33 +514,33 @@ speed = 1.0
 
         [[states.blendTree1D.motions]]
         clipIndex = -1
-        clipName = 'Katana_Idle'
-        ikWeight = 1.0
+        clipName = 'Idle'
+        ikWeight = 0.0
         posX = 0.0
         posY = 0.0
-        sourcePath = 'guid:fd0cd663e3ddc91d519bace6fd35938f|Library/Baked/f9afc042bf0ff57266eb135e1c6a347c/anims/Katana_Idle.anim'
+        sourcePath = 'guid:8013f1b0c65116d85912a864d3f1019e|Library/Baked/652cf49f63ec40a8b4e3e3f5c80072f8/anims/Idle.anim'
         speed = 1.0
         threshold = 0.0
 
         [[states.blendTree1D.motions]]
         clipIndex = -1
-        clipName = 'Katana_Walk_F'
-        ikWeight = 1.0
+        clipName = 'SwordWalk'
+        ikWeight = 0.0
         posX = 0.0
         posY = 0.0
-        sourcePath = 'guid:508fa864a51130ab310f00d2b1347da9|Library/Baked/d3dd8f4ed77c09cbabc0022078ee9b5f/anims/Katana_Walk_F.anim'
+        sourcePath = 'guid:031ebbd6e67261d9898f76cd06deb857|Library/Baked/1e6d7888971947ceb9e9ca9ded6dc5d4/anims/SwordWalk.anim'
         speed = 1.0
-        threshold = 3.0
+        threshold = 2.0
 
         [[states.blendTree1D.motions]]
         clipIndex = -1
-        clipName = 'Katana_Run_F'
-        ikWeight = 1.0
+        clipName = 'Run_F'
+        ikWeight = 0.0
         posX = 0.0
         posY = 0.0
-        sourcePath = 'guid:c9091552d7aadde0cdbf29b3d19126f6|Library/Baked/23b5fa779b9ea93d6a3d8784c91a1446/anims/Katana_Run_F.anim'
+        sourcePath = 'guid:065fc494401a7056539b78461eff78b8|Library/Baked/4cbaa73fa602496fa5d1951052ea34ef/anims/Run_F.anim'
         speed = 1.0
-        threshold = 7.5
+        threshold = 6.0
 
     [states.blendTree2D]
     dampTime = 0.0
@@ -658,7 +554,58 @@ speed = 1.0
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = false
-    toStateName = 'Player_RunStop'
+    toStateName = 'FallLoop'
+    transitionDuration = 0.07999999821186066
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+        [[states.transitions.conditions]]
+        op = 1
+        paramName = 'VerticalSpeed'
+        threshold = -0.10000000149011612
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Dodge'
+    transitionDuration = 0.03999999910593033
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Dodge'
+        threshold = 0.0
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsDead'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'JumpStart'
+    transitionDuration = 0.03999999910593033
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Jump'
+        threshold = 0.0
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsDead'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'RunStop'
     transitionDuration = 0.05999999865889549
 
         [[states.transitions.conditions]]
@@ -666,14 +613,26 @@ speed = 1.0
         paramName = 'Stop'
         threshold = 0.0
 
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'ToBlocking'
+    transitionDuration = 0.07999999821186066
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsBlocking'
+        threshold = 0.0
+
 [[states]]
 clipIndex = -1
-clipName = 'Katana_JumpUp'
-ikWeight = 1.0
+clipName = 'RunStop'
+ikWeight = 0.0
 loop = false
 mode = 0
-name = 'Player_JumpUp'
-sourcePath = 'guid:29f66689b5e64d39c53e9915bbbb7097|Library/Baked/5af1787bd9577a2151dacae49291b917/anims/Katana_JumpUp.anim'
+name = 'RunStop'
+sourcePath = 'guid:fdc9e903734823a643c3af3fbb8ec9bc|Library/Baked/8019a28b210c4723a25aca32b83c1c48/anims/RunStop.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -694,22 +653,114 @@ speed = 1.0
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
-    toStateName = 'Player_FallIdle'
-    transitionDuration = 0.20000000298023224
+    toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
 
         [[states.transitions.conditions]]
-        op = 1
-        paramName = 'VerticalSpeed'
-        threshold = -0.5
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
 
 [[states]]
 clipIndex = -1
-clipName = 'Katana_FallIdle'
-ikWeight = 1.0
+clipName = 'Dodge'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'Dodge'
+sourcePath = 'guid:2898422c2e8d7d3862acebc592360e46|Library/Baked/7a2095243a6f4deeab39ae9bf23642ac/anims/Dodge.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'JumpStart'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'JumpStart'
+sourcePath = 'guid:ece5f3d2e9c49da09b5182a0f16fb0f2|Library/Baked/e2f096101cd64638a10b99b106b7da5b/anims/JumpStart.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+[[states]]
+clipIndex = -1
+clipName = 'FallLoop'
+ikWeight = 0.0
 loop = true
 mode = 0
-name = 'Player_FallIdle'
-sourcePath = 'guid:01f1566f139f71aaa1081c876ae4d444|Library/Baked/e6c748ed6a832a4c20c164913e085478/anims/Katana_FallIdle.anim'
+name = 'FallLoop'
+sourcePath = 'guid:05168376dc33bc5fa682bf22ffc9e21d|Library/Baked/fe60dd636b4a4a239e6bfbb5b230f5f2/anims/FallLoop.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -730,8 +781,8 @@ speed = 1.0
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = false
-    toStateName = 'Player_Land'
-    transitionDuration = 0.10000000149011612
+    toStateName = 'Land'
+    transitionDuration = 0.03999999910593033
 
         [[states.transitions.conditions]]
         op = 4
@@ -740,76 +791,12 @@ speed = 1.0
 
 [[states]]
 clipIndex = -1
-clipName = 'Katana_Land'
-ikWeight = 1.0
-loop = false
-mode = 0
-name = 'Player_Land'
-sourcePath = 'guid:205d0510396c37c645f19bd30d86b388|Library/Baked/01e7d9237d6e60407ab80eae2ea6c8e6/anims/Katana_Land.anim'
-speed = 1.0
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    dampTime = 0.0
-    motions = []
-    paramX = ''
-    paramY = ''
-    syncNormalizedTime = false
-    type = 0
-
-    [[states.transitions]]
-    conditions = []
-    exitTime = 0.3499999940395355
-    fixedDuration = true
-    hasExitTime = true
-    toStateName = 'Locomotion'
-    transitionDuration = 0.18000000715255737
-
-[[states]]
-clipIndex = -1
-clipName = 'Katana_Dodge_Roll'
+clipName = 'Land'
 ikWeight = 0.0
 loop = false
 mode = 0
-name = 'Dodge_Roll'
-sourcePath = 'guid:57e9753f681702e5dfc34569ac60ff43|Library/Baked/aa7245441a507b79edfa071a10b383c8/anims/Katana_Dodge_Roll.anim'
-speed = 1.5749999284744263
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    dampTime = 0.0
-    motions = []
-    paramX = ''
-    paramY = ''
-    syncNormalizedTime = false
-    type = 0
-
-    [[states.transitions]]
-    conditions = []
-    exitTime = 0.949999988079071
-    fixedDuration = true
-    hasExitTime = true
-    toStateName = 'Locomotion'
-    transitionDuration = 0.11999999731779099
-
-[[states]]
-clipIndex = -1
-clipName = 'Katana_Hit_Heavy'
-ikWeight = 1.0
-loop = false
-mode = 0
-name = 'Hit_Heavy'
-sourcePath = 'guid:5424718d6c48d4287ef0d6f1d8279d76|Library/Baked/28077ad676cdbaf734a8dc25330f3848/anims/Katana_Hit_Heavy.anim'
+name = 'Land'
+sourcePath = 'guid:44fc15d1b0cdba6974f834ca79a20e2f|Library/Baked/901c8ab9230e44728ca4ff2a551fe397/anims/Land.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -827,117 +814,37 @@ speed = 1.0
     type = 0
 
     [[states.transitions]]
-    conditions = []
-    exitTime = 0.8999999761581421
+    exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.15000000596046448
+    transitionDuration = 0.10000000149011612
 
-[[states]]
-clipIndex = -1
-clipName = 'Katana_Draw'
-ikWeight = 1.0
-loop = false
-mode = 0
-name = 'KatanaDraw'
-sourcePath = 'guid:f95e9fb9af1aadd78aa62a353427cf7d|Library/Baked/9873c746d0c7f993161455bdcad44fd2/anims/Katana_Draw.anim'
-speed = 1.0
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    dampTime = 0.0
-    motions = []
-    paramX = ''
-    paramY = ''
-    syncNormalizedTime = false
-    type = 0
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
 
     [[states.transitions]]
-    conditions = []
-    exitTime = 0.9200000166893005
+    exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
-    toStateName = 'Locomotion'
-    transitionDuration = 0.15000000596046448
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
 
 [[states]]
 clipIndex = -1
-clipName = 'Katana_Sheathe'
-ikWeight = 1.0
-loop = false
-mode = 0
-name = 'KatanaSheathe'
-sourcePath = 'guid:0f86f25d3e776da5040d7badc8568677|Library/Baked/bf25e66cf0b7067fb10270753895d369/anims/Katana_Sheathe.anim'
-speed = 1.0
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    dampTime = 0.0
-    motions = []
-    paramX = ''
-    paramY = ''
-    syncNormalizedTime = false
-    type = 0
-
-    [[states.transitions]]
-    conditions = []
-    exitTime = 0.9200000166893005
-    fixedDuration = true
-    hasExitTime = true
-    toStateName = 'Locomotion'
-    transitionDuration = 0.15000000596046448
-
-[[states]]
-clipIndex = -1
-clipName = 'Katana_Iai'
-ikWeight = 1.0
-loop = false
-mode = 0
-name = 'KatanaIai'
-sourcePath = 'guid:a8e93adfc508a70f9f38920605a723b9|Library/Baked/9881396f555b1ba645879af4182ab242/anims/Katana_Iai.anim'
-speed = 1.0
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    dampTime = 0.0
-    motions = []
-    paramX = ''
-    paramY = ''
-    syncNormalizedTime = false
-    type = 0
-
-    [[states.transitions]]
-    conditions = []
-    exitTime = 0.9599999785423279
-    fixedDuration = true
-    hasExitTime = true
-    toStateName = 'Locomotion'
-    transitionDuration = 0.20000000298023224
-
-[[states]]
-clipIndex = -1
-clipName = 'Katana_JumpSlam'
+clipName = 'Slash01'
 ikWeight = 0.0
 loop = false
 mode = 0
-name = 'KatanaJumpSlam'
-sourcePath = 'guid:4e361e81571f7e6ddecbd65b36fbc1e7|Library/Baked/c5e2ceda3142673a0f22a3124890dfec/anims/Katana_JumpSlam.anim'
+name = 'Slash01'
+sourcePath = 'guid:44e3d16e380b5bbbbfb71aa23d1dbfad|Library/Baked/5504eddbbfc94223b1b818af16295b47/anims/Slash01.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -955,21 +862,37 @@ speed = 1.0
     type = 0
 
     [[states.transitions]]
-    conditions = []
-    exitTime = 0.949999988079071
+    exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.15000000596046448
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
 
 [[states]]
 clipIndex = -1
-clipName = 'Katana_Parry'
-ikWeight = 1.0
+clipName = 'HighSpinAttack'
+ikWeight = 0.0
 loop = false
 mode = 0
-name = 'KatanaParry'
-sourcePath = 'guid:b96af3932d2454abc972919df59e087d|Library/Baked/666b941eebe9b223466ebc40c8219f33/anims/Katana_Parry.anim'
+name = 'HighSpinAttack'
+sourcePath = 'guid:49fc2cee68d30b5adf135f2796e52930|Library/Baked/493d01bbd29d49f4a2127b8df5cf44f4/anims/HighSpinAttack.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -987,21 +910,37 @@ speed = 1.0
     type = 0
 
     [[states.transitions]]
-    conditions = []
-    exitTime = 0.8999999761581421
+    exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.14000000059604645
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
 
 [[states]]
 clipIndex = -1
-clipName = 'Katana_Victory'
-ikWeight = 1.0
+clipName = 'JumpAttack'
+ikWeight = 0.0
 loop = false
 mode = 0
-name = 'KatanaVictory'
-sourcePath = 'guid:013a6bb385e1ef3597d8268790fac267|Library/Baked/21a4869845853e10e1a4b33d8559026d/anims/Katana_Victory.anim'
+name = 'JumpAttack'
+sourcePath = 'guid:ff9fee0f8bb5f479414fa60eb5cbd80b|Library/Baked/3d6851dcdf3148799153f50a0016935a/anims/JumpAttack.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -1019,46 +958,229 @@ speed = 1.0
     type = 0
 
     [[states.transitions]]
-    conditions = []
-    exitTime = 0.949999988079071
+    exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.25
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
 
 [[states]]
 clipIndex = -1
-clipName = 'Katana_Lose'
-ikWeight = 1.0
+clipName = 'SlideAttack'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'SlideAttack'
+sourcePath = 'guid:f318903764723f31bc36144d69bd49cf|Library/Baked/5c122d77aced43388c7a0712f05e5587/anims/SlideAttack.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'UnderSlash'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'UnderSlash'
+sourcePath = 'guid:111c581a18e3ab54ae4f8a3489d4b3d2|Library/Baked/9e094b3c70654151bdec385b37ae9e78/anims/UnderSlash.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'UnderSlashandUpperSlash'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'UnderSlashandUpperSlash'
+sourcePath = 'guid:950e258ec5950c35b6ec8c0e362cdd1b|Library/Baked/60a126f7835d420ebb85eb89e38d0bc4/anims/UnderSlashandUpperSlash.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'ToBlocking'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'ToBlocking'
+sourcePath = 'guid:e868e45cccf53747bb47478207a97465|Library/Baked/57911fd51ce74fac920b7120996b5003/anims/ToBlocking.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Blocking'
+    transitionDuration = 0.03999999910593033
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsBlocking'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'BlockingToIdle'
+    transitionDuration = 0.03999999910593033
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsBlocking'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Blocking'
+ikWeight = 0.0
 loop = true
 mode = 0
-name = 'KatanaLose'
-sourcePath = 'guid:3cbbb14d53ac2afdc34a5d1460ce23e7|Library/Baked/a617b2aefc7de8d332e2e8c54fd8c277/anims/Katana_Lose.anim'
-speed = 1.0
-transitions = []
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    dampTime = 0.0
-    motions = []
-    paramX = ''
-    paramY = ''
-    syncNormalizedTime = false
-    type = 0
-
-[[states]]
-clipIndex = -1
-clipName = 'Katana_Run_Stop'
-ikWeight = 1.0
-loop = false
-mode = 0
-name = 'Player_RunStop'
-sourcePath = 'guid:e420b76ba59a1907fd18db94bd6a512d|Library/Baked/d24a41b77ec24f8098fd105a63354a08/anims/Katana_Run_Stop.anim'
+name = 'Blocking'
+sourcePath = 'guid:5c39623af4ff4c868a59f410d205f78c|Library/Baked/8d8448298b4942609c57470778c13c9a/anims/Blocking.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -1076,8 +1198,265 @@ speed = 1.0
     type = 0
 
     [[states.transitions]]
-    exitTime = 0.8999999761581421
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'BlockingToIdle'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsBlocking'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'GuardHit'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'GuardHit'
+sourcePath = 'guid:5ef8954912369033016d77197f2c9aed|Library/Baked/237865fc4ebd44ceafdf2dcaed33b848/anims/GuardHit.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Blocking'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsBlocking'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'BlockingToIdle'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsBlocking'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'BlockingToIdle'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'BlockingToIdle'
+sourcePath = 'guid:c55e17d2f4e684fe09033647649cdf2c|Library/Baked/f4205f13cfbc4cf1bb7fe14e63d366ad/anims/BlockingToIdle.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Hit'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'Hit'
+sourcePath = 'guid:a811fee1fde3556ba08c66eb375ee675|Library/Baked/a417880436274df4a656ac7cd43a45aa/anims/Hit.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallLoop'
+    transitionDuration = 0.05999999865889549
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Death'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'Death'
+sourcePath = 'guid:57827a91fe14128d54a1d51b985dc61b|Library/Baked/e72fa7c4248f4d5bb68e679073955c95/anims/Death.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
     transitionDuration = 0.15000000596046448
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Reset'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Victory'
+ikWeight = 0.0
+loop = true
+mode = 0
+name = 'Victory'
+sourcePath = 'guid:46fdc91bbd6d32ce18a1744fed716b68|Library/Baked/b4ee8c4a3d34479eb653b724fe5c9648/anims/Victory.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.15000000596046448
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Reset'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'DefeatIdle'
+ikWeight = 0.0
+loop = true
+mode = 0
+name = 'DefeatIdle'
+sourcePath = 'guid:7def61c1a29094ae57f8943565897c2c|Library/Baked/90176f8dee93410cadc776a2e7f64a7c/anims/DefeatIdle.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.15000000596046448
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Reset'
+        threshold = 0.0

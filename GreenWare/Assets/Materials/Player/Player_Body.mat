@@ -1,0 +1,36 @@
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'skinned'
+render_path = 'auto'
+render_queue = 2000
+shader = 'guid:192f4bf06a664016b7c0005485f14793|Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+alphaCutoff = 0.5
+anisotropy = 1.0
+clearcoat = 0.0
+clearcoatRoughness = 1.0
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.0
+metallic = 1.0
+normalStrength = 1.0
+occlusionStrength = 1.0
+roughness = 1.0
+sheen = 1.0
+sheenColor = [ 1.0, 1.0, 1.0 ]
+uvOffset = [ 0.0, 0.0 ]
+uvTiling = [ 1.0, 1.0 ]
+
+[textures]
+albedo = 'guid:0fa4ea6051024c6b8f17dcde0dbf5fb6|Assets/Models/Player/Textures/Player_BaseColor.jpg'
+ao = ''
+emissive = ''
+metallic = ''
+normal = 'guid:f34703e5d5f845858f51f9489d2d9cae|Assets/Models/Player/Textures/Player_LOD0_Normal.png'
+tex5 = ''
+tex6 = ''
+tex7 = ''
