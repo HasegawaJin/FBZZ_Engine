@@ -302,6 +302,9 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
 #define FBZZ_VFX_INT(name) table.insert(#name, static_cast<std::int64_t>(emitter.name))
 #define FBZZ_VFX_BOOL(name) table.insert(#name, emitter.name)
 #define FBZZ_VFX_STRING(name) table.insert(#name, emitter.name)
+#define FBZZ_VFX_FLOAT_IN(module, name) table.insert(#name, emitter.module.name)
+#define FBZZ_VFX_INT_IN(module, name) table.insert(#name, static_cast<std::int64_t>(emitter.module.name))
+#define FBZZ_VFX_BOOL_IN(module, name) table.insert(#name, emitter.module.name)
     table.insert("emitPosition", WriteVector3(emitter.emitPosition));
     table.insert("emitVelocity", WriteVector3(emitter.emitVelocity));
     table.insert("colorStart", WriteVector4(emitter.colorStart));
@@ -333,24 +336,33 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
     FBZZ_VFX_STRING(deathSubEmitter); FBZZ_VFX_STRING(collisionSubEmitter); FBZZ_VFX_INT(subEmitterBurstCount);
-    FBZZ_VFX_BOOL(trailEnabled); FBZZ_VFX_INT(trailPointCount);
-    FBZZ_VFX_FLOAT(trailSampleInterval); FBZZ_VFX_FLOAT(trailWidthScale);
-    FBZZ_VFX_FLOAT(trailAlphaScale);
-    FBZZ_VFX_BOOL(trailRibbon); FBZZ_VFX_FLOAT(trailRibbonWidth);
+    FBZZ_VFX_FLOAT(subEmitterInheritVelocity);
+    FBZZ_VFX_BOOL_IN(trail, trailEnabled); FBZZ_VFX_INT_IN(trail, trailPointCount);
+    FBZZ_VFX_FLOAT_IN(trail, trailSampleInterval); FBZZ_VFX_FLOAT_IN(trail, trailWidthScale);
+    FBZZ_VFX_FLOAT_IN(trail, trailAlphaScale);
+    FBZZ_VFX_BOOL_IN(trail, trailRibbon); FBZZ_VFX_FLOAT_IN(trail, trailRibbonWidth);
     FBZZ_VFX_BOOL(blackbodyEnabled); FBZZ_VFX_FLOAT(blackbodyReferenceTemperature);
     FBZZ_VFX_FLOAT(blackbodyIntensity);
-    FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
-    FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
-    FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
+    FBZZ_VFX_BOOL_IN(culling, cullingEnabled); FBZZ_VFX_FLOAT_IN(culling, cullingBoundsPadding); FBZZ_VFX_BOOL_IN(culling, lodEnabled);
+    FBZZ_VFX_FLOAT_IN(culling, lodNearDistance); FBZZ_VFX_FLOAT_IN(culling, lodFarDistance); FBZZ_VFX_FLOAT_IN(culling, lodNearRateScale);
+    FBZZ_VFX_FLOAT_IN(culling, lodFarRateScale); FBZZ_VFX_FLOAT_IN(culling, screenCoverageThreshold); FBZZ_VFX_BOOL_IN(culling, pauseWhenCulled);
+    FBZZ_VFX_BOOL_IN(light, lightEnabled); FBZZ_VFX_FLOAT_IN(light, lightRatio); FBZZ_VFX_INT_IN(light, lightMaxCount);
+    FBZZ_VFX_FLOAT_IN(light, lightRange); FBZZ_VFX_BOOL_IN(light, lightRangeFromSize); FBZZ_VFX_FLOAT_IN(light, lightIntensity);
+    FBZZ_VFX_BOOL_IN(light, lightUseParticleColor); FBZZ_VFX_BOOL_IN(light, lightFadeWithAlpha);
     FBZZ_VFX_BOOL(receiveForceFields);
 #undef FBZZ_VFX_FLOAT
 #undef FBZZ_VFX_INT
 #undef FBZZ_VFX_BOOL
 #undef FBZZ_VFX_STRING
+#undef FBZZ_VFX_FLOAT_IN
+#undef FBZZ_VFX_INT_IN
+#undef FBZZ_VFX_BOOL_IN
 
     // FBZZ_VFX_INT は int を経由するため 0xFFFFFFFF が符号付きで潰れる。マスクは別に書く。
     table.insert("forceFieldChannels", static_cast<std::int64_t>(emitter.forceFieldChannels));
-    table.insert("trailColorTint", WriteVector4(emitter.trailColorTint));
+    table.insert("collisionLayerMask", static_cast<std::int64_t>(emitter.collisionLayerMask));
+    table.insert("trailColorTint", WriteVector4(emitter.trail.trailColorTint));
+    table.insert("lightColor", WriteVector4(emitter.light.lightColor));
     WriteCurve(table, "sizeCurve", emitter.sizeCurve);
     WriteCurve(table, "velocityCurve", emitter.velocityCurve);
     WriteCurve(table, "rotationCurve", emitter.rotationCurve);
@@ -418,6 +430,9 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
 #define FBZZ_VFX_INT(name) emitter.name = ReadInt(table, #name, emitter.name)
 #define FBZZ_VFX_BOOL(name) emitter.name = table[#name].value_or(emitter.name)
 #define FBZZ_VFX_STRING(name) emitter.name = table[#name].value_or(emitter.name)
+#define FBZZ_VFX_FLOAT_IN(module, name) emitter.module.name = ReadFloat(table, #name, emitter.module.name)
+#define FBZZ_VFX_INT_IN(module, name) emitter.module.name = ReadInt(table, #name, emitter.module.name)
+#define FBZZ_VFX_BOOL_IN(module, name) emitter.module.name = table[#name].value_or(emitter.module.name)
     emitter.emitPosition = ReadVector3(table["emitPosition"], emitter.emitPosition);
     emitter.emitVelocity = ReadVector3(table["emitVelocity"], emitter.emitVelocity);
     emitter.colorStart = ReadVector4(table["colorStart"], emitter.colorStart);
@@ -456,25 +471,36 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
     FBZZ_VFX_STRING(deathSubEmitter); FBZZ_VFX_STRING(collisionSubEmitter); FBZZ_VFX_INT(subEmitterBurstCount);
-    FBZZ_VFX_BOOL(trailEnabled); FBZZ_VFX_INT(trailPointCount);
-    FBZZ_VFX_FLOAT(trailSampleInterval); FBZZ_VFX_FLOAT(trailWidthScale);
-    FBZZ_VFX_FLOAT(trailAlphaScale);
-    FBZZ_VFX_BOOL(trailRibbon); FBZZ_VFX_FLOAT(trailRibbonWidth);
+    FBZZ_VFX_FLOAT(subEmitterInheritVelocity);
+    FBZZ_VFX_BOOL_IN(trail, trailEnabled); FBZZ_VFX_INT_IN(trail, trailPointCount);
+    FBZZ_VFX_FLOAT_IN(trail, trailSampleInterval); FBZZ_VFX_FLOAT_IN(trail, trailWidthScale);
+    FBZZ_VFX_FLOAT_IN(trail, trailAlphaScale);
+    FBZZ_VFX_BOOL_IN(trail, trailRibbon); FBZZ_VFX_FLOAT_IN(trail, trailRibbonWidth);
     FBZZ_VFX_BOOL(blackbodyEnabled); FBZZ_VFX_FLOAT(blackbodyReferenceTemperature);
     FBZZ_VFX_FLOAT(blackbodyIntensity);
-    FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
-    FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
-    FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
+    FBZZ_VFX_BOOL_IN(culling, cullingEnabled); FBZZ_VFX_FLOAT_IN(culling, cullingBoundsPadding); FBZZ_VFX_BOOL_IN(culling, lodEnabled);
+    FBZZ_VFX_FLOAT_IN(culling, lodNearDistance); FBZZ_VFX_FLOAT_IN(culling, lodFarDistance); FBZZ_VFX_FLOAT_IN(culling, lodNearRateScale);
+    FBZZ_VFX_FLOAT_IN(culling, lodFarRateScale); FBZZ_VFX_FLOAT_IN(culling, screenCoverageThreshold); FBZZ_VFX_BOOL_IN(culling, pauseWhenCulled);
+    FBZZ_VFX_BOOL_IN(light, lightEnabled); FBZZ_VFX_FLOAT_IN(light, lightRatio); FBZZ_VFX_INT_IN(light, lightMaxCount);
+    FBZZ_VFX_FLOAT_IN(light, lightRange); FBZZ_VFX_BOOL_IN(light, lightRangeFromSize); FBZZ_VFX_FLOAT_IN(light, lightIntensity);
+    FBZZ_VFX_BOOL_IN(light, lightUseParticleColor); FBZZ_VFX_BOOL_IN(light, lightFadeWithAlpha);
     FBZZ_VFX_BOOL(receiveForceFields);
 #undef FBZZ_VFX_FLOAT
 #undef FBZZ_VFX_INT
 #undef FBZZ_VFX_BOOL
 #undef FBZZ_VFX_STRING
+#undef FBZZ_VFX_FLOAT_IN
+#undef FBZZ_VFX_INT_IN
+#undef FBZZ_VFX_BOOL_IN
 
     emitter.forceFieldChannels = static_cast<std::uint32_t>(
         table["forceFieldChannels"].value_or(
             static_cast<std::int64_t>(emitter.forceFieldChannels)));
-    emitter.trailColorTint = ReadVector4(table["trailColorTint"], emitter.trailColorTint);
+    emitter.collisionLayerMask = static_cast<std::uint32_t>(
+        table["collisionLayerMask"].value_or(
+            static_cast<std::int64_t>(emitter.collisionLayerMask)));
+    emitter.trail.trailColorTint = ReadVector4(table["trailColorTint"], emitter.trail.trailColorTint);
+    emitter.light.lightColor = ReadVector4(table["lightColor"], emitter.light.lightColor);
     ReadCurve(table, "sizeCurve", emitter.sizeCurve);
     ReadCurve(table, "velocityCurve", emitter.velocityCurve);
     ReadCurve(table, "rotationCurve", emitter.rotationCurve);

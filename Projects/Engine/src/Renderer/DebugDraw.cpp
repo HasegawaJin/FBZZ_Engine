@@ -7,7 +7,7 @@
 /// 物理・Scene の可視化から呼ばれるが、状態は描画フレーム内に閉じる。
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
-#include <Engine/Renderer/DynamicVertexBufferPool.hpp>
+#include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Math/MathUtils.hpp>
@@ -61,7 +61,7 @@ static std::vector<DebugVertex>         s_triBatch;
 // Flush 1 回ぶんの頂点バッファを貸し出すプール。バッチ種別ごとに 1 つ持つ。
 // Script の Gizmo (ScriptDebugDraw パス) とコライダー可視化 (DebugColliders パス) のように
 // 1 フレームで 2 回以上 Flush する組み合わせが壊れないための仕組み
-// (理由は DynamicVertexBufferPool.hpp を参照)。
+// (理由は DynamicBufferPool.hpp を参照)。
 static DynamicVertexBufferPool s_linePool;
 static DynamicVertexBufferPool s_depthLinePool;
 static DynamicVertexBufferPool s_triPool;

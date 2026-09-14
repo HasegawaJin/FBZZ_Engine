@@ -440,8 +440,14 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         WGetF(mat, "fresnelBias",   0.02f),
         WGetF(mat, "fresnelPower",  5.0f)
     };
-    cb.normalParams = { 0.0f, 0.0f, 0.0f, WGetF(mat, "normalStrength", 1.0f) };
-    cb.timeParams   = { 0.0f, 0.0f, 0.0f, time };
+    // 水面の «実寸» はローカル extent ではなくワールド実寸。拡大された水面でも、縁のフェードと
+    // 波のエイリアシング判定が、画面に出ているとおりの大きさで効くようにする。
+    const float worldExtentX = (std::max)(water.extentX * std::abs(transform.worldScale.x), 0.0001f);
+    const float worldExtentZ = (std::max)(water.extentZ * std::abs(transform.worldScale.z), 0.0001f);
+    cb.normalParams = { worldExtentX, worldExtentZ, 0.0f, WGetF(mat, "normalStrength", 1.0f) };
+    // 頂点グリッド 1 セルの実寸。«刻めない波» の判断を CPU (浮力) と揃えるため、
+    // 描画側で計算し直さず WaterSystem が解決した値をそのまま渡す。
+    cb.timeParams   = { water.cellSize.x, water.cellSize.y, 0.0f, time };
     cb.foamParams = {
         WGetF(mat, "foamThreshold",     0.3f),
         WGetF(mat, "foamFade",          0.5f),
@@ -456,8 +462,8 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     cb.refractionFlowParams = {
         WGetF(mat, "refractionStrength", 0.03f),
         WGetF(mat, "flowSpeed",          0.3f),
-        edgeFadeMeters / (std::max)(water.extentX, 0.0001f),
-        edgeFadeMeters / (std::max)(water.extentZ, 0.0001f)
+        edgeFadeMeters / worldExtentX,
+        edgeFadeMeters / worldExtentZ
     };
     cb.detailParams = {
         WGetF(mat, "detailScale",    0.35f),
@@ -654,14 +660,14 @@ std::string_view WaterRenderPass::Name() const { return "WaterForward"; }
 
 void WaterRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    // 水面は平行光の影しか読まない (t9)。点光源の影と Cookie は束縛していないので
-    // 申告しない ── 申告だけ残すと LightCookie パスが水面のためだけに生き続ける。
+    // 平行光の影 (t9) に加え、BindForwardShadingResources が Spot/Point の影 (t28) と
+    // Cookie (t31) を束縛する。申告しないと Shadow / LightCookie より先に走ってよいことになる。
     //
     // 屈折用のシーンカラー / 深度のコピーはこのパスの中で作って読み切る作業用で、
     // 他のパスからは見えない。元の HDR は下の ReadWrite で押さえてある。
     // SetAutoTarget は呼ばない。屈折用のコピーを作る間に束縛を 3 回切り替えるので、
     // 描き先は Execute の中で自分で張る。
-    builder.ReadWrite("HDR").Read("ShadowMap");
+    builder.ReadWrite("HDR").Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
 }
 
 void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)

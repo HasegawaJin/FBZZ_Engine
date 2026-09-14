@@ -21,6 +21,7 @@
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Renderer/Mesh.hpp"
 #include "Engine/Renderer/ComputeCall.hpp"
+#include "Engine/Renderer/DynamicBufferPool.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
@@ -88,11 +89,6 @@ struct SourceVertexCacheKeyHash {
     }
 };
 
-struct BonePaletteCacheEntry {
-    renderer::ResourceHandle<renderer::StructuredBufferTag> handle;
-    uint32_t boneCount = 0;
-};
-
 // 入力頂点の StructuredBuffer は Mesh 単位で共有する (ポーズに依存しない生データのため)。
 // WHY: 同じモデルを何体出しても入力は 1 本で足りる。ポインタだけを信頼すると Mesh の
 //      破棄・再生成で同じ Mesh アドレスが再利用されても古い頂点バッファを掴まないよう、
@@ -101,18 +97,23 @@ std::unordered_map<SourceVertexCacheKey,
                    renderer::ResourceHandle<renderer::StructuredBufferTag>,
                    SourceVertexCacheKeyHash> g_srcVertexCache;
 
-// ボーンパレットは Animator を所有する GameObject の EntityID ごとに保持する。
-// WHY: ComponentArray::Remove は末尾要素を swap するため、AnimatorComponent* は安定した
-//      識別子ではない。EntityID は generation を含むので、削除後の再利用も区別できる。
+// ボーンパレットはポーズが毎フレーム変わるので、Animator ごとに 1 本持たずフレームごとに借りる。
+// WHY: DX12 の読み取り専用 StructuredBuffer は Upload ヒープへの直 memcpy。1 本を毎フレーム
+//      書き直すと、GPU がまだ実行している前フレームのスキニングが今フレームのポーズを読む
+//      (詳細は DynamicBufferPool.hpp)。
+renderer::DynamicStructuredBufferPool g_bonePalettePool;
+
+// このフレームに借りたパレット。Animator の下に Renderer が何本あっても転送は 1 回で済ませる。
+// WHY EntityID で引くか: ComponentArray::Remove は末尾要素を swap するため、AnimatorComponent* は
+//      安定した識別子ではない。EntityID は generation を含むので、削除後の再利用も区別できる。
 std::unordered_map<EntityID,
-                    BonePaletteCacheEntry,
-                    EntityIDHash> g_bonePaletteCache;
+                   renderer::ResourceHandle<renderer::StructuredBufferTag>,
+                   EntityIDHash> g_framePalettes;
 
 // 使用集合はビュー単位ではなくエンジンフレーム全体で累積する。
 // WHY: Scene View にだけ見えるメッシュを Game View 末尾で「未使用」と判定すると、
 //      次フレームに immutable 入力 SRV を再アップロードすることになる。
 std::unordered_set<SourceVertexCacheKey, SourceVertexCacheKeyHash> g_usedSourceKeys;
-std::unordered_set<EntityID, EntityIDHash> g_usedAnimators;
 uint64_t g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
 
 // BeginSkinningCacheFrame — 前フレームの全ビューで未使用だったキャッシュだけを回収する。
@@ -129,18 +130,10 @@ void BeginSkinningCacheFrame(renderer::ResourceManager& resources, uint64_t fram
             if (it->second.IsValid()) resources.Release(it->second);
             it = g_srcVertexCache.erase(it);
         }
-        for (auto it = g_bonePaletteCache.begin(); it != g_bonePaletteCache.end();) {
-            if (g_usedAnimators.contains(it->first)) {
-                ++it;
-                continue;
-            }
-            if (it->second.handle.IsValid()) resources.Release(it->second.handle);
-            it = g_bonePaletteCache.erase(it);
-        }
     }
 
     g_usedSourceKeys.clear();
-    g_usedAnimators.clear();
+    g_framePalettes.clear();
     g_cacheUsageFrame = frameStamp;
 }
 
@@ -170,38 +163,25 @@ renderer::ResourceHandle<renderer::StructuredBufferTag> EnsureSourceVertexBuffer
     return handle;
 }
 
-// EnsureBonePalette — アニメーターのボーンパレットを StructuredBuffer へ転送する。
+// AcquireBonePalette — アニメーターのボーンパレットを今フレーム用に借りて転送する。
 // WHY cbuffer ではなく StructuredBuffer: 頂点あたり 4 回の動的インデックスアクセスが走る。
 //     128 要素の cbuffer 配列への動的アクセスは定数キャッシュの高速経路を外れやすい。
-renderer::ResourceHandle<renderer::StructuredBufferTag> EnsureBonePalette(
+renderer::ResourceHandle<renderer::StructuredBufferTag> AcquireBonePalette(
     renderer::ResourceManager& resources,
     EntityID animatorEntity,
     const AnimatorComponent& anim)
 {
     if (anim.boneMatrices.empty()) return {};
+    if (const auto it = g_framePalettes.find(animatorEntity); it != g_framePalettes.end())
+        return it->second;
 
-    const uint32_t count  = static_cast<uint32_t>(anim.boneMatrices.size());
-    const size_t   bytes  = count * sizeof(math::Matrix4);
-
-    auto it = g_bonePaletteCache.find(animatorEntity);
-    if (it == g_bonePaletteCache.end()) {
-        const auto handle = resources.CreateStructuredBuffer(
-            anim.boneMatrices.data(), count, static_cast<uint32_t>(sizeof(math::Matrix4)));
-        g_bonePaletteCache[animatorEntity] = BonePaletteCacheEntry{ handle, count };
-        return handle;
-    }
-
-    if (it->second.boneCount != count) {
-        if (it->second.handle.IsValid()) resources.Release(it->second.handle);
-        const auto handle = resources.CreateStructuredBuffer(
-            anim.boneMatrices.data(), count, static_cast<uint32_t>(sizeof(math::Matrix4)));
-        it->second = BonePaletteCacheEntry{ handle, count };
-        return handle;
-    }
-
-    // 毎フレームポーズが変わるので中身を更新する。
-    resources.Update(it->second.handle, anim.boneMatrices.data(), bytes);
-    return it->second.handle;
+    const size_t count  = anim.boneMatrices.size();
+    const auto   handle = g_bonePalettePool.Acquire(
+        resources, count, static_cast<uint32_t>(sizeof(math::Matrix4)));
+    if (handle.IsValid())
+        resources.Update(handle, anim.boneMatrices.data(), count * sizeof(math::Matrix4));
+    g_framePalettes[animatorEntity] = handle;
+    return handle;
 }
 
 } // namespace
@@ -215,7 +195,6 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
 
     BeginSkinningCacheFrame(resources, Time::frameCount);
     auto& usedSourceKeys = g_usedSourceKeys;
-    auto& usedAnimators = g_usedAnimators;
     // 各 submesh の Dispatch は別出力へ書き、相互依存しない。DX12 は UAV バリアを
     // Dispatch ごとに発行せず、このバッチを閉じる時点の 1 回へ集約する。
     ctx.renderer.BeginComputeBatch();
@@ -242,8 +221,6 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             smr->gpuSkinningDispatchCount = 0;
             continue;
         }
-
-        usedAnimators.insert(animatorEntity);
 
         // モデルが差し替わったら、旧モデルの頂点数で確保したバッファを捨てる。
         if (smr->skinnedBufferModel != smr->model) {
@@ -285,7 +262,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             continue;
         }
 
-        const auto bonePalette = EnsureBonePalette(resources, animatorEntity, *anim);
+        const auto bonePalette = AcquireBonePalette(resources, animatorEntity, *anim);
         if (!bonePalette.IsValid()) {
             smr->gpuSkinnedThisFrame = false;
             smr->gpuSkinningFrame = frameStamp;
@@ -376,9 +353,8 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
 void ReleaseSkinningComputeCaches()
 {
     g_srcVertexCache.clear();
-    g_bonePaletteCache.clear();
+    g_framePalettes.clear();
     g_usedSourceKeys.clear();
-    g_usedAnimators.clear();
     g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
 }
 

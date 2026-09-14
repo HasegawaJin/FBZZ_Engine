@@ -44,7 +44,10 @@ struct GpuParticle {
     //      スポーン時に配ったゆらぎがそのままでは翌フレームに消える。倍率として保持し、
     //      再計算した色へ毎フレーム掛け直すことで CPU 経路と同じ見た目になる。
     math::Vector3 colorScale;      // 12B
-    float         colorScalePad;   // 4B
+    /// 次のコマへの補間率 (Frame Blending)。0 なら nextUvRect は読まれない。
+    float         spriteBlend;     // 4B
+    /// 次のコマの UV 矩形。CS が EvaluateFlipbookFrame と同じ規則で書く。
+    math::Vector4 nextUvRect;      // 16B
 };
 
 // CPU → CS へのスポーンリクエスト 1 件 (96 bytes, 16-byte aligned)
@@ -66,7 +69,7 @@ struct GpuSpawnEntry {
     float         pad1;            // 4B
 };
 
-static_assert(sizeof(GpuParticle) == 96, "GpuParticle must match ParticleGpuSim.cs.hlsl (96 bytes)");
+static_assert(sizeof(GpuParticle) == 112, "GpuParticle must match ParticleGpuSim.cs.hlsl (112 bytes)");
 static_assert(sizeof(GpuSpawnEntry) == 96, "GpuSpawnEntry must match ParticleGpuSim.cs.hlsl (96 bytes)");
 
 // 1 粒子が保持するトレイル履歴の最大点数。
@@ -100,6 +103,19 @@ struct Particle {
     std::array<math::Vector3, kMaxParticleTrailPoints> trailPoints{};
     uint8_t trailCount = 0;
     float   trailSampleTimer = 0.0f;
+};
+
+/// 発火元から注入されたスポーン 1 件。SubEmitter が «どこで・どう動いていたか» を渡す口。
+///
+/// WHY 個数だけでは足りないか: burstPending は «何個出すか» しか運べないため、
+///     サブエミッターは自分の emitPosition からしか湧けなかった。«斬った位置で火花» や
+///     «粒子が消えた場所から煙» は、発火した粒子の位置がここを通らないと原理的に作れない。
+struct ParticleInjectedSpawn {
+    /// 発火元のワールド位置。発生原点として据える (Shape のばらつきはこの点を中心に乗る)。
+    math::Vector3 position;
+    /// 発火元のワールド速度 [m/s]。継ぐ割合は受け側の subEmitterInheritVelocity が決める。
+    math::Vector3 velocity;
+    int           count = 1;
 };
 
 // ParticleBurst — 再生時間上の繰り返しBurst設定。
@@ -211,12 +227,19 @@ struct ParticleRuntime {
     float                 playTime = 0.0f;
     float                 delayTime = 0.0f;
     int                   burstPending = 0;
+    // SubEmitter が積んだ «発火元つき» のスポーン。CPU スポーンがレート/バーストより先に
+    // 消費し、消費したら空にする。積み手 (QueueSubEmitter) が maxParticles 相当で打ち切るので、
+    // 受け側が一度も回らなくても (GPU / 非アクティブ) 無限には伸びない。
+    std::vector<ParticleInjectedSpawn> injectedSpawns;
     renderer::ResourceHandle<renderer::TextureTag> texture;
     std::string           loadedTexturePath;
     renderer::ResourceHandle<renderer::TextureTag> motionVectorTexture;
     std::string           loadedMotionVectorTexturePath;
     renderer::ResourceHandle<renderer::TextureTag> distortionTexture;
     std::string           loadedDistortionTexturePath;
+    // 6 方向ライトマップの Negative 側 (.mat の emissive スロット)。Positive は albedo。
+    renderer::ResourceHandle<renderer::TextureTag> sixWayNegativeTexture;
+    std::string           loadedSixWayNegativeTexturePath;
     std::string           loadedMaterialPath; // materialPath の変更検出用。シーン保存対象外。
 
     // .mat が shader を指定していたときの描画シェーダー。無効なら組み込み Particle.hlsl。
@@ -259,11 +282,12 @@ struct ParticleRuntime {
 
     // GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuParticleBuffer; // RWStructuredBuffer: CS が更新
-    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;    // DYNAMIC SRV: CPU がスポーンデータを書く
+    // 今フレームのスポーンデータ。ParticlePass のプールから借りているだけで、持ち主はプール
+    // (シミュレーションのたびに借り直す。Release しないこと)。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;
     // このエミッターに効く力場一式 (内蔵 + シーン)。定数バッファではなく SRV なので
-    // 本数に上限が無い。容量が足りなくなったときだけ作り直す。
+    // 本数に上限が無い。gpuSpawnBuffer と同じくプールから借りたもの。
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuForceBuffer;
-    uint32_t gpuForceCapacity = 0;
     renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuEmitterCB;      // CS 用エミッター定数バッファ
     renderer::ResourceHandle<renderer::ConstantBufferTag>   renderCB;          // VS/PS 描画モード・Soft Particle
     // GPU ソート。sortMode != None のときだけ確保する。並べ替えるのは (キー, 粒子 index)
@@ -334,6 +358,66 @@ struct ParticleRuntime {
     }
 };
 
+
+// ── ParticleEmitterSettings のモジュール ──
+// WHY 塊に分けるか:
+//   設定は 1 つの構造体に 100 以上の値が平たく並んでおり、«どの値が同じ仕事をするか» が
+//   名前の接頭辞でしか読めなかった。仕事ごとに型へ畳めば、関数が受け取るのも
+//   «尾の設定» や «カリングの設定» だけで済み、Inspector のモジュール欄とも一対一に揃う。
+// NOTE: TOML のキーはフラットのまま (葉の名前 = キー)。既存の .scene / .particle / .vfx を
+//       壊さないため、モジュール名は保存形式に出さない。葉の名前も変えない。
+
+/// 距離と画面占有によるカリングと、発生量の LOD。
+/// 粒子の現在 Bounds を使い、遠距離では発生数と描画数を段階的に削減する。
+struct ParticleCullingSettings {
+    bool  cullingEnabled          = true;
+    float cullingBoundsPadding    = 0.25f;
+    bool  lodEnabled              = true;
+    float lodNearDistance         = 12.0f;
+    float lodFarDistance          = 40.0f;
+    float lodNearRateScale        = 1.0f;
+    float lodFarRateScale         = 0.25f;
+    float screenCoverageThreshold = 0.0f;
+    bool  pauseWhenCulled         = false;
+};
+
+/// 粒子 1 つ 1 つに付ける尾 (per-particle Trail)。火の粉・魔法の軌跡のように «粒が線を引く» 表現用。
+/// 既定は履歴点へビルボードを連ねる方式で、既存の描画 (シェーダー・PSO・テクスチャ・ブレンド) を
+/// そのまま使えるので素材が揃う。太い帯が主役なら trailRibbon を使う。
+/// @note GPU シミュレーションでは履歴を保持できないため、有効時は CPU へ縮退する。
+struct ParticleTrailSettings {
+    bool  trailEnabled        = false;
+    int   trailPointCount     = 6;      // 使用する履歴点数 [1, kMaxParticleTrailPoints]
+    float trailSampleInterval = 0.03f;  // 履歴を刻む間隔 [秒]。短いほど滑らか
+    float trailWidthScale     = 0.6f;   // 尾の先端 (最古) 側のサイズ倍率
+    float trailAlphaScale     = 0.5f;   // 尾の先端側の不透明度倍率
+    math::Vector4 trailColorTint = { 1.0f, 1.0f, 1.0f, 1.0f };
+    bool  trailRibbon         = false;
+    // 帯の幅 [m]。0 以下なら粒子サイズをそのまま使う。
+    // WHY: 帯は粒子サイズと独立に太さを決めたいことが多い (小さな火の粉が太い軌跡を引く等)。
+    float trailRibbonWidth    = 0.0f;
+};
+
+/// 粒子を点光源にする (Niagara の Light Renderer 相当)。火の粉や魔法弾が地面・壁を照らす。
+/// @note CPU シミュレーションの粒子だけが対象 (GPU の粒子は CPU から位置を読めない)。
+///       光は RenderSystem のライト配列 (kMaxPunctualLights) を LightComponent と共有し、
+///       LightComponent を先に積んだ残りの枠だけを使う。
+struct ParticleLightSettings {
+    bool  lightEnabled          = false;
+    /// 光らせる粒子の割合 [0,1]。粒子ごとの固定乱数で決まるので寿命の間は変わらない。
+    float lightRatio            = 1.0f;
+    /// 1 エミッターから出す本数の上限。明るい順に選ぶ。
+    int   lightMaxCount         = 8;
+    float lightRange            = 2.0f;
+    /// true なら lightRange × 粒子サイズを届く距離にする (大きな火の玉ほど遠くまで照らす)。
+    bool  lightRangeFromSize    = false;
+    float lightIntensity        = 1.0f;
+    /// true なら lightColor × 粒子の色 (色のグラデーションに光の色も追従する)。
+    bool  lightUseParticleColor = true;
+    math::Vector4 lightColor    = { 1.0f, 1.0f, 1.0f, 1.0f };
+    /// true なら粒子のアルファで強さを落とす (消えかけの粒子が光り続けない)。
+    bool  lightFadeWithAlpha    = true;
+};
 
 /// エミッターのオーサリング設定。**GameObject に依存しない値の塊**。
 ///
@@ -427,7 +511,16 @@ struct ParticleEmitterSettings {
     // 同じ素材を複数のエミッターで共有するため .mat 側に持つ。
     // 空のときは PARTICLE_FALLBACK_MATERIAL が使われる (白い矩形にはならない)。
     std::string materialPath;
-    // 空でない場合はbillboardの代わりに静的Meshを各CPU粒子のTRSで描画する。
+    /// 空でなければビルボードの代わりに «メッシュ粒子» として描く (粒子 1 個 = 1 TRS)。
+    ///
+    /// @warning **このパスは一度もロードされない。** 実体の形は同じ GameObject の
+    ///   MeshRenderer が持つ (CPU 経路は MeshTrailRenderPass、GPU 経路は ParticlePass の
+    ///   インスタンス描画。どちらも MeshRenderer::mesh を読む)。ここへ別のモデルを
+    ///   書いても黙って無視される ─ 意味を持つのは «空か / 空でないか» だけ。
+    ///   本来は bool が正しい型だが、既存の .scene / .vfx / .particle にこのキーが
+    ///   文字列で保存されているため、互換のために型は変えない。
+    /// @note CPU 経路はさらに同じ GameObject の MeshTrailComponent を要求する
+    ///   (描くのが MeshTrailRenderPass なので、それが無いと粒子が 1 つも出ない)。
     std::string meshParticlePath;
     // 粒子ごとの色ゆらぎ [0,1]。発生時に RGB を各チャンネル独立で ±colorVariation 倍する。
     // 完全に同色だと群れが一枚のベタ塗りに見える。チャンネル独立にすると明度差と
@@ -490,16 +583,7 @@ struct ParticleEmitterSettings {
     // (粒子ごとの色ゆらぎを尾へ乗せたいならビルボード方式のまま)。
     // SubEmitterはGameObject名で参照し、各イベントで対象EmitterへBurstを積む。
 
-    // Culling/LOD — 粒子の現在Boundsを使い、遠距離では発生数と描画数を段階的に削減する。
-    bool cullingEnabled = true;
-    float cullingBoundsPadding = 0.25f;
-    bool lodEnabled = true;
-    float lodNearDistance = 12.0f;
-    float lodFarDistance = 40.0f;
-    float lodNearRateScale = 1.0f;
-    float lodFarRateScale = 0.25f;
-    float screenCoverageThreshold = 0.0f;
-    bool pauseWhenCulled = false;
+    ParticleCullingSettings culling;
 
     // 乱流 (Turbulence) と速度場 (VectorField) も localForces に入る。
     // シーン内の ForceField から力を受けるか。
@@ -520,6 +604,11 @@ struct ParticleEmitterSettings {
     float collisionBounciness = 0.5f;
     float collisionDamping = 0.0f;
     float collisionPlaneY = 0.0f;
+    /// Physics 衝突で «当たってよい» コライダーのレイヤー集合 (ビット n = レイヤー n)。
+    /// 既定は全ビット ON で従来どおり全レイヤーに当たる。
+    /// @note トリガーはマスクに関わらず常に素通しする。トリガーは «通過を検知する体積» で
+    ///       あって面ではないので、そこで跳ねると «見えない壁で火花が止まる» になる。
+    uint32_t collisionLayerMask = 0xFFFFFFFFu;
     // ── 黒体放射 (色温度オーサリング) ──
     // 有効にすると colorGradient の RGB を温度カーブから毎フレーム作り直す
     // (アルファはグラデーション側の値をそのまま使う)。
@@ -535,26 +624,21 @@ struct ParticleEmitterSettings {
         2, ParticleCurveInterpolation::Linear };
     float blackbodyReferenceTemperature = 1800.0f; // ここで intensity 倍の明るさになる
     float blackbodyIntensity = 1.0f;
-    // ── per-particle Trail ──
-    // 粒子 1 つ 1 つに尾を付ける。火の粉・魔法の軌跡のように「粒が線を引く」表現用。
-    // 実装は履歴点へビルボードを連ねる方式で、専用の ribbon シェーダーは持たない。
-    // 既存の描画 (シェーダー・PSO・テクスチャ・ブレンド) をそのまま使えるので素材が揃う。
-    // 太い帯が要るなら Trail ノードを使うこと。
-    // GPU シミュレーションでは履歴を保持できないため、有効時は CPU へ縮退する。
-    bool  trailEnabled = false;
-    int   trailPointCount = 6;          // 使用する履歴点数 [1, kMaxParticleTrailPoints]
-    float trailSampleInterval = 0.03f;  // 履歴を刻む間隔 [秒]。短いほど滑らか
-    float trailWidthScale = 0.6f;       // 尾の先端 (最古) 側のサイズ倍率
-    float trailAlphaScale = 0.5f;       // 尾の先端側の不透明度倍率
-    math::Vector4 trailColorTint = { 1.0f, 1.0f, 1.0f, 1.0f };
-    bool  trailRibbon = false;
-    // 帯の幅 [m]。0 以下なら粒子サイズをそのまま使う。
-    // WHY: 帯は粒子サイズと独立に太さを決めたいことが多い (小さな火の粉が太い軌跡を引く等)。
-    float trailRibbonWidth = 0.0f;
+    ParticleTrailSettings trail;
+    ParticleLightSettings light;
     int subEmitterBurstCount = 1;
+    /// 発火元の粒子の速度をこのエミッターの初速へ継ぐ割合 [0,1]。既定 0 = 継がない。
+    ///
+    /// WHY 既定を 0 にするか: 全部そのまま継ぐと、火花が発火元と同じ向きへ流れるだけの
+    ///     «二番煎じ» になって «弾けた» 感じが出ない。当たりの火花は 0.1〜0.3 程度、
+    ///     «崩れて散る» 煙のように流れを見せたいときだけ大きくする。
+    /// @note 効くのは注入されたスポーン (birth / death / collision) だけ。エミッター自身の
+    ///       移動を継ぐのは inheritVelocity で、別の値。
+    float subEmitterInheritVelocity = 0.0f;
     // 名前引きの探索範囲を限定するルート GameObject。INVALID でシーン全体。
     // 同じ .vfx を複数配置すると同名の GO が並ぶので、シーン全体で引くと隣のインスタンスを
-    // 吹かせてしまう。VFXGraphSystem がここへ owner を入れて参照をエフェクト内へ閉じる。
+    // 吹かせてしまう。VFXSystem が頭出し (ResetSubtree) のたびに配下へ VFX ルートを配る。
+    // シーンへ手で置いた Emitter は INVALID のままで、従来どおりシーン全体から引く。
     // ランタイム専用。シーン保存対象ではない。
     EntityID subEmitterScopeRoot = EntityID::INVALID;
     std::string birthSubEmitter;
@@ -706,15 +790,15 @@ struct ParticleEmitterSettings {
         r.Field("gradientColorSpace", gradientColorSpaceValue);
         colorGradient.colorSpace = static_cast<ParticleColorSpace>(
             gradientColorSpaceValue < 0 ? 0 : (gradientColorSpaceValue > 2 ? 2 : gradientColorSpaceValue));
-        r.Field("cullingEnabled", cullingEnabled);
-        r.Field("cullingBoundsPadding", cullingBoundsPadding);
-        r.Field("lodEnabled", lodEnabled);
-        r.Field("lodNearDistance", lodNearDistance);
-        r.Field("lodFarDistance", lodFarDistance);
-        r.Field("lodNearRateScale", lodNearRateScale);
-        r.Field("lodFarRateScale", lodFarRateScale);
-        r.Field("screenCoverageThreshold", screenCoverageThreshold);
-        r.Field("pauseWhenCulled", pauseWhenCulled);
+        r.Field("cullingEnabled", culling.cullingEnabled);
+        r.Field("cullingBoundsPadding", culling.cullingBoundsPadding);
+        r.Field("lodEnabled", culling.lodEnabled);
+        r.Field("lodNearDistance", culling.lodNearDistance);
+        r.Field("lodFarDistance", culling.lodFarDistance);
+        r.Field("lodNearRateScale", culling.lodNearRateScale);
+        r.Field("lodFarRateScale", culling.lodFarRateScale);
+        r.Field("screenCoverageThreshold", culling.screenCoverageThreshold);
+        r.Field("pauseWhenCulled", culling.pauseWhenCulled);
         r.Field("receiveForceFields", receiveForceFields);
         // IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
         int channelsValue = static_cast<int>(forceFieldChannels);
@@ -746,6 +830,10 @@ struct ParticleEmitterSettings {
         r.Field("collisionBounciness", collisionBounciness);
         r.Field("collisionDamping", collisionDamping);
         r.Field("collisionPlaneY", collisionPlaneY);
+        // forceFieldChannels と同じ理由で int 経由 (IReflector は符号なし整数を扱わない)。
+        int collisionLayersValue = static_cast<int>(collisionLayerMask);
+        r.Field("collisionLayerMask", collisionLayersValue);
+        collisionLayerMask = static_cast<uint32_t>(collisionLayersValue);
 
         // 黒体放射
         r.Field("blackbodyEnabled", blackbodyEnabled);
@@ -753,20 +841,32 @@ struct ParticleEmitterSettings {
         r.Field("blackbodyIntensity", blackbodyIntensity);
 
         // per-particle トレイル
-        r.Field("trailEnabled", trailEnabled);
-        r.Field("trailPointCount", trailPointCount);
-        r.Field("trailSampleInterval", trailSampleInterval);
-        r.Field("trailWidthScale", trailWidthScale);
-        r.Field("trailAlphaScale", trailAlphaScale);
-        r.ColorField("trailColorTint", trailColorTint);
-        r.Field("trailRibbon", trailRibbon);
-        r.Field("trailRibbonWidth", trailRibbonWidth);
+        r.Field("trailEnabled", trail.trailEnabled);
+        r.Field("trailPointCount", trail.trailPointCount);
+        r.Field("trailSampleInterval", trail.trailSampleInterval);
+        r.Field("trailWidthScale", trail.trailWidthScale);
+        r.Field("trailAlphaScale", trail.trailAlphaScale);
+        r.ColorField("trailColorTint", trail.trailColorTint);
+        r.Field("trailRibbon", trail.trailRibbon);
+        r.Field("trailRibbonWidth", trail.trailRibbonWidth);
+
+        // 粒子を点光源にする
+        r.Field("lightEnabled", light.lightEnabled);
+        r.Field("lightRatio", light.lightRatio);
+        r.Field("lightMaxCount", light.lightMaxCount);
+        r.Field("lightRange", light.lightRange);
+        r.Field("lightRangeFromSize", light.lightRangeFromSize);
+        r.Field("lightIntensity", light.lightIntensity);
+        r.Field("lightUseParticleColor", light.lightUseParticleColor);
+        r.ColorField("lightColor", light.lightColor);
+        r.Field("lightFadeWithAlpha", light.lightFadeWithAlpha);
 
         // サブエミッター (scopeRoot はランタイム専用なので出さない)
         r.Field("birthSubEmitter", birthSubEmitter);
         r.Field("deathSubEmitter", deathSubEmitter);
         r.Field("collisionSubEmitter", collisionSubEmitter);
         r.Field("subEmitterBurstCount", subEmitterBurstCount);
+        r.Field("subEmitterInheritVelocity", subEmitterInheritVelocity);
 
         // カーブとグラデーション。IReflector は専用の仮想関数を持っているので、
         // コーデックの手書きと同じ形をそのまま表現できる。
@@ -856,6 +956,7 @@ struct ParticleEmitter {
         runtime.delayTime              = 0.0f;
         runtime.emitAccum              = 0.0f;
         runtime.burstPending           = 0;
+        runtime.injectedSpawns.clear();
         runtime.burstCyclesFired.clear();
         runtime.prewarmed              = false;
         runtime.prewarmSpawnPending    = 0;
@@ -886,6 +987,7 @@ struct ParticleEmitter {
         settings.playing      = false;
         runtime.emitAccum     = 0.0f;
         runtime.burstPending  = 0;
+        runtime.injectedSpawns.clear();
         if (clear) ClearParticles();
     }
 
@@ -899,6 +1001,7 @@ struct ParticleEmitter {
         runtime.particles.clear();
         runtime.emitAccum = 0.0f;
         runtime.burstPending = 0;
+        runtime.injectedSpawns.clear();
         runtime.playTime = 0.0f;
         runtime.delayTime = 0.0f;
         runtime.gpuClearPending = true;

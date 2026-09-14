@@ -8,6 +8,7 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/RenderState.hpp>
+#include <Engine/Scene/ParticleCurve.hpp>
 #include "Engine/Scene/Transform.hpp"
 #include <Math/Frustum.hpp>
 #include <Math/MathUtils.hpp>
@@ -138,6 +139,13 @@ inline constexpr std::uint32_t kParticleFxPremultiplied = 32u;
 inline constexpr std::uint32_t kParticleFxSrgbTexture   = 64u;
 // 歪み専用ノーマルマップ (t1) がバインドされている。
 inline constexpr std::uint32_t kParticleFxDistortionMap = 128u;
+// bit8-10 は下のアルファの取り出し方が使うので、以降の機能ビットは bit11 から。
+// 点光源 (クラスタ) を粒子の中心で受ける。
+inline constexpr std::uint32_t kParticleFxPunctual      = 1u << 11;
+// 6 方向ライトマップ (t0 = Positive / t3 = Negative) で陰影を付ける。
+inline constexpr std::uint32_t kParticleFxSixWayMaps    = 1u << 12;
+// 加算合成。霧の補正 (ParticleLighting.hlsli) と TAA の反応マスクが合成式によって式を変える。
+inline constexpr std::uint32_t kParticleFxAdditive      = 1u << 13;
 // アルファの取り出し方は bit8-10 の 3 ビットに ParticleAlphaSource を格納する。
 // 値は Rendering/Mask.hlsli の FBZZ_MASK_* と共通 (全マテリアルで同じ語彙を使う)。
 inline constexpr std::uint32_t kParticleAlphaShift = 8u;
@@ -203,10 +211,15 @@ struct ParticleRenderCB {
     math::Vector4 tintColor = { 1.0f, 1.0f, 1.0f, 1.0f }; // .mat の albedo (リニア済み)
     float smokeBackScatterPower = 4.0f;
     float distortionChromatic = 0.0f;
-    float pad1 = 0.0f;
-    float pad2 = 0.0f;
+    // カメラ距離フェード [m]。near 未満で 0、far 以上で 1 の不透明度になる。
+    // 0 / 0 (既定) で無効。near == far も無効扱い (0 除算になる)。
+    // WHY 要るか: 一人称の近距離で粒子が «顔に張り付いて画面を覆う» のを、粒子側の
+    //      サイズや寿命をいじらずに消せる唯一の手段。pad 枠の転用なので CB のサイズは動かない。
+    float cameraFadeNear = 0.0f;
+    float cameraFadeFar = 0.0f;
+    math::Vector4 sixWayEmission = { 0.0f, 0.0f, 0.0f, 0.0f }; // rgb = 6-way マップの発光色 (リニア HDR)
 };
-static_assert(sizeof(ParticleRenderCB) == 128);
+static_assert(sizeof(ParticleRenderCB) == 144);
 
 // GPU パーティクルのソート用 CB (b0)。
 // LAYOUT: Rendering/ParticleSortCommon.hlsli の GpuParticleSortCB と一致させること。
@@ -244,10 +257,27 @@ struct TrailCB {
     float time = 0.0f;
     // bit0 = テクスチャが sRGB エンコード (シェーダー側でリニア化する)。
     std::uint32_t flags = 0;
+
+    // 多キー色 (TrailComponent::colorGradient)。gradientKeyCount = 0 で
+    // colorStart / colorEnd の 2 点へ落ちる。
+    //
+    // WHY 頂点に色を持たせないか: TrailVertex は per-particle リボン (ParticlePass) と
+    //     共有していて、1 要素足すと帯を描く全経路の入力レイアウトが変わる。
+    //     帯 1 本に 1 つしか要らない値を、頂点数ぶん運ぶ理由も無い。
+    // WHY 末尾へ足すか: ParticlePass は TrailCB を 0 初期化して sizeof で確保するので、
+    //     末尾に足したぶんは «キー無し» として素通りする (見た目は変わらない)。
+    math::Vector4 gradientColors[kMaxParticleCurveKeys]{}; // リニア化済み
+    // 8 個のキー時刻。float4 × 2 に詰めるのは、HLSL の cbuffer が float の配列を
+    // 1 要素 16 バイトへ膨らませるため (float times[8] は 128 バイトを食う)。
+    math::Vector4 gradientTimes[kMaxParticleCurveKeys / 4]{};
+    std::uint32_t gradientKeyCount = 0;
+    // ParticleCurveInterpolation の値 (0=Linear / 1=Step / 2=Smooth)。
+    std::uint32_t gradientInterpolation = 0;
+    std::uint32_t _gradientPad[2]{};
 };
 // Trail.hlsl の gTrailFlags と一致させること。
 inline constexpr std::uint32_t kTrailFlagSrgbTexture = 1u;
-static_assert(sizeof(TrailCB) == 48, "TrailCB layout mismatch");
+static_assert(sizeof(TrailCB) == 224, "TrailCB layout mismatch");
 
 // テクスチャが sRGB でエンコードされているかを .meta から引く。
 // WHY: このエンジンは _SRGB フォーマットの SRV を作らず、「シェーダーが自分で SRGBToLinear
@@ -338,6 +368,8 @@ void ExecuteParticlePass                   (RenderPassContext& ctx);
 //      Particle パスと同じジオメトリを計数シェーダーで描き直し、ヒートマップへ変換する。
 //      ctx.settings.particleOverdrawView が true のときだけ Particle パスの直後に走る。
 void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
+/// TAA の反応マスク (粒子が覆う割合) を particleReactiveRT へ描く。TAA が有効なフレームだけ呼ぶ。
+void ExecuteParticleReactivePass           (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
 // 不透明の深度をデカール専用の深度 RT へ写す。
 // WHY 写すか: 描き先 (hdrRT / gbufferRT) の深度を SRV として同時に読めないため。

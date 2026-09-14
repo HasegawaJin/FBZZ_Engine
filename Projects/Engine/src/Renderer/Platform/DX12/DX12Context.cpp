@@ -10,6 +10,7 @@
 #include <cstring>
 #include <algorithm>
 #include <iterator>
+#include <vector>
 #if defined(FBZZ_GPU_VALIDATION)
 #include <d3d12sdklayers.h>
 #endif
@@ -646,16 +647,24 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetNullUav(uint32_t slot) const
 bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
                                   Microsoft::WRL::ComPtr<ID3D12Resource>& texture)
 {
-    if (!rgba || width == 0 || height == 0 || !m_device || !m_commandQueue)
+    const TextureMip mip{ rgba, width, height, static_cast<std::size_t>(width) * 4 };
+    return UploadTexture2DMips(std::span<const TextureMip>(&mip, 1), texture);
+}
+
+bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
+                                      Microsoft::WRL::ComPtr<ID3D12Resource>& texture)
+{
+    if (mips.empty() || !mips[0].rgba || mips[0].width == 0 || mips[0].height == 0 || !m_device || !m_commandQueue)
         return false;
+    const UINT mipCount = static_cast<UINT>(mips.size());
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
     D3D12_RESOURCE_DESC textureDesc{};
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    textureDesc.Width = width;
-    textureDesc.Height = height;
+    textureDesc.Width = mips[0].width;
+    textureDesc.Height = mips[0].height;
     textureDesc.DepthOrArraySize = 1;
-    textureDesc.MipLevels = 1;
+    textureDesc.MipLevels = static_cast<UINT16>(mipCount);
     textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     textureDesc.SampleDesc.Count = 1;
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -663,11 +672,12 @@ bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t 
             D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&texture))))
         return false;
 
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-    UINT rowCount = 0;
-    UINT64 rowSize = 0;
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(mipCount);
+    std::vector<UINT> rowCounts(mipCount);
+    std::vector<UINT64> rowSizes(mipCount);
     UINT64 uploadSize = 0;
-    m_device->GetCopyableFootprints(&textureDesc, 0, 1, 0, &footprint, &rowCount, &rowSize, &uploadSize);
+    m_device->GetCopyableFootprints(&textureDesc, 0, mipCount, 0, footprints.data(), rowCounts.data(),
+                                    rowSizes.data(), &uploadSize);
     D3D12_HEAP_PROPERTIES uploadHeap{};
     uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC uploadDesc{};
@@ -685,11 +695,15 @@ bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t 
     void* mapped = nullptr;
     if (FAILED(upload->Map(0, nullptr, &mapped)))
         return false;
-    auto* destination = static_cast<uint8_t*>(mapped) + footprint.Offset;
-    const size_t sourcePitch = static_cast<size_t>(width) * 4;
-    for (UINT row = 0; row < rowCount; ++row)
-        std::memcpy(destination + static_cast<size_t>(row) * footprint.Footprint.RowPitch,
-                    rgba + static_cast<size_t>(row) * sourcePitch, sourcePitch);
+    for (UINT level = 0; level < mipCount; ++level) {
+        const TextureMip& mip = mips[level];
+        auto* destination = static_cast<uint8_t*>(mapped) + footprints[level].Offset;
+        const std::size_t rowBytes = (std::min)(static_cast<std::size_t>(rowSizes[level]),
+                                                static_cast<std::size_t>(mip.width) * 4);
+        for (UINT row = 0; row < rowCounts[level]; ++row)
+            std::memcpy(destination + static_cast<std::size_t>(row) * footprints[level].Footprint.RowPitch,
+                        mip.rgba + static_cast<std::size_t>(row) * mip.rowPitch, rowBytes);
+    }
     upload->Unmap(0, nullptr);
 
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
@@ -698,14 +712,17 @@ bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t 
         || FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
                                               IID_PPV_ARGS(&list))))
         return false;
-    D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
-    destinationLocation.pResource = texture.Get();
-    destinationLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    D3D12_TEXTURE_COPY_LOCATION sourceLocation{};
-    sourceLocation.pResource = upload.Get();
-    sourceLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    sourceLocation.PlacedFootprint = footprint;
-    list->CopyTextureRegion(&destinationLocation, 0, 0, 0, &sourceLocation, nullptr);
+    for (UINT level = 0; level < mipCount; ++level) {
+        D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
+        destinationLocation.pResource = texture.Get();
+        destinationLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        destinationLocation.SubresourceIndex = level;
+        D3D12_TEXTURE_COPY_LOCATION sourceLocation{};
+        sourceLocation.pResource = upload.Get();
+        sourceLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        sourceLocation.PlacedFootprint = footprints[level];
+        list->CopyTextureRegion(&destinationLocation, 0, 0, 0, &sourceLocation, nullptr);
+    }
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = texture.Get();

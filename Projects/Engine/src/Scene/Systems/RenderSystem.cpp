@@ -17,6 +17,10 @@
 #include "RenderPasses/Debug/DebugPasses.hpp"
 #include <Physics/World.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
+#include "RenderPasses/Geometry/ParticleEmitterSpace.hpp"
+#include "Engine/Scene/Components/ParticleEmitter.hpp"
+#include "Engine/Scene/Components/ParticleGpuSimulation.hpp"
+#include "Engine/Scene/Components/ParticleLightSelection.hpp"
 #include "RenderPasses/PostProcess/PostProcessPasses.hpp"
 #include "RenderPasses/PostProcess/CloudNoiseBake.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -51,6 +55,7 @@
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Renderer/DynamicBufferPool.hpp"
 #include "Engine/Asset/Skeleton.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Math/Frustum.hpp>
@@ -213,6 +218,7 @@ struct ViewRenderTargets {
     // 水面と同じくビュー単位。共有すると 2 ビューで寸法を取り合い、毎フレーム作り直す。
     renderer::SizedRenderTarget particleSceneColorRT;
     renderer::SizedRenderTarget particleOverdrawRT;
+    renderer::SizedRenderTarget particleReactiveRT;
     renderer::SizedRenderTarget causticsDepthRT;
     // ---- フロクセル霧 (ビュー単位・解像度非依存) ----
     // グリッドは視錐台に貼り付くので、共有すると互いの履歴を上書きして霧が明滅する。
@@ -304,6 +310,7 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     targets.waterSceneDepthRT.Release(resources);
     targets.particleSceneColorRT.Release(resources);
     targets.particleOverdrawRT.Release(resources);
+    targets.particleReactiveRT.Release(resources);
     targets.causticsDepthRT.Release(resources);
     targets.cloudDepthRT.Release(resources);
     targets = {};
@@ -660,6 +667,14 @@ void RenderSystem(Scene& scene,
     {
         renderer::PostProcessSettings& pp = effectiveSettings.postProcess;
         float strongestFlash = 0.0f;
+        // 輪だけは «一番強い 1 枚» を採る。中心と半径を足すと、2 つの爆発が
+        // «画面のどこにも無い中心を持つ 1 つの輪» に化ける。
+        float strongestRing = 0.0f;
+        // 露出・色は «押し» の合計。掛け算ではなく加算なので、同時に走った演出は
+        // それぞれのぶんだけ深くなる (0 が «素» になる設計)。
+        float exposureOffset = 0.0f;
+        float saturationOffset = 0.0f;
+        float contrastOffset = 0.0f;
         for (EntityID id : scene.GetEntities<VFXScreenEffect>()) {
             GameObject* go        = scene.GetGameObject(id);
             auto*       effectPtr = scene.GetComponent<VFXScreenEffect>(id);
@@ -687,6 +702,20 @@ void RenderSystem(Scene& scene,
             // 早期 return するので、加算するだけで «掛かっていない» が成立する。
             if (effect.radialBlur > 0.0f)
                 pp.lens.radialBlur += effect.radialBlur * weight;
+            // 輪は «進捗» で外へ走る。progress=0 (窓の頭 / 配り手が居ない) では
+            // 半径 0 の点になってしまうので、そのフレームは掛けない。
+            const float ring = effect.shockRingAmplitude * weight;
+            if (ring > strongestRing && effect.progress > 0.0f) {
+                strongestRing = ring;
+                pp.lens.shockRingAmplitude = ring;
+                pp.lens.shockRingRadius = effect.shockRingRadius * std::clamp(effect.progress, 0.0f, 1.0f);
+                pp.lens.shockRingWidth = effect.shockRingWidth;
+                pp.lens.shockRingCenter[0] = effect.shockRingCenter.x;
+                pp.lens.shockRingCenter[1] = effect.shockRingCenter.y;
+            }
+            exposureOffset += effect.exposureOffset * weight;
+            saturationOffset += effect.saturationOffset * weight;
+            contrastOffset += effect.contrastOffset * weight;
             const float flash = effect.flashIntensity * weight;
             if (flash > strongestFlash) {
                 strongestFlash = flash;
@@ -697,6 +726,19 @@ void RenderSystem(Scene& scene,
         }
         if (strongestFlash > 0.0f)
             pp.screenFadeAlpha = std::clamp(pp.screenFadeAlpha + strongestFlash, 0.0f, 1.0f);
+        if (exposureOffset != 0.0f)
+            pp.exposure = (std::max)(pp.exposure + exposureOffset, 0.0f);
+        if (saturationOffset != 0.0f || contrastOffset != 0.0f) {
+            // 切ってあったグレーディングを «押し» のために点けるときは、必ず素の値から
+            // 始める。プロファイルが書いた値がぶら下がったまま有効になると、
+            // 止めの一瞬だけ «誰も指示していない色» へ飛ぶ。
+            if (!pp.colorGrading.enabled) {
+                pp.colorGrading = renderer::ColorGradingSettings{};
+                pp.colorGrading.enabled = true;
+            }
+            pp.colorGrading.saturation = (std::max)(pp.colorGrading.saturation + saturationOffset, 0.0f);
+            pp.colorGrading.contrast += contrastOffset;
+        }
     }
     // NOTE: ReflectionProbeComponent は将来の局所反射ブレンド実装で使用予定。
     //       現時点は Inspector / Serializer のみ対応し、RenderSystem での適用は未実装。
@@ -815,11 +857,13 @@ void RenderSystem(Scene& scene,
 
     // クラスタライトカリング (Forward+ / Deferred+)。
     static auto clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
-    // 解像度非依存の固定長なので確保は初回の 1 回だけ。
-    // clusterIndexBuffer は CS が u2 へ書き PS が t30 から読むので RW、
-    // punctualLightBuffer は CPU が書いて GPU が読むだけなので読み取り専用。
-    static auto punctualLightBuffer = resources.CreateStructuredBuffer(
-        nullptr, kMaxPunctualLights, static_cast<uint32_t>(sizeof(PunctualLightGPU)));
+    // clusterIndexBuffer は解像度非依存の固定長なので確保は初回の 1 回だけ。
+    // CS が u2 へ書き PS が t30 から読むので RW。
+    // punctualLightBuffer (CPU が書いて GPU が読むだけ) は 1 枚を共有せず、描くたびに借りる。
+    // WHY: DX12 の読み取り専用 StructuredBuffer は Upload ヒープへの直 memcpy。1 枚だと
+    //      Scene View の Draw が Game View の書いた配列を読み、GPU がまだ読んでいる
+    //      前フレームの配列も上書きする (ライトが増減したフレームにだけ幽霊が出る)。
+    static renderer::DynamicStructuredBufferPool punctualLightPool;
     static auto clusterIndexBuffer = resources.CreateRWStructuredBuffer(
         nullptr, kClusterCount * kClusterStride, static_cast<uint32_t>(sizeof(uint32_t)));
 
@@ -1576,6 +1620,32 @@ void RenderSystem(Scene& scene,
         }
     }
 
+    // 粒子を点光源にする (ParticleEmitter の Lights モジュール)。LightComponent の後に積むので、
+    // 枠が足りないときに削られるのは粒子の光の方。Legacy (b3) には載せない。
+    // NOTE: GPU シミュレーションの粒子は位置が GPU にしか無いので対象外 (Inspector に注記がある)。
+    std::vector<ParticleLightEmission> particleLights;
+    for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
+        if (punctualLights.size() >= kMaxPunctualLights) break;
+        GameObject*      go      = scene.GetGameObject(id);
+        ParticleEmitter* emitter = scene.GetComponent<ParticleEmitter>(id);
+        if (!go || !emitter || !go->activeInHierarchy() || !emitter->settings.enabled
+            || !emitter->settings.light.lightEnabled
+            || CanUseGpuSimulation(emitter->settings, &emitter->runtime.material))
+            continue;
+        SelectParticleLights(emitter->settings.light, emitter->runtime.particles,
+                             kMaxPunctualLights - punctualLights.size(), particleLights);
+        const bool localSpace = emitter->settings.simulationSpace == ParticleSimulationSpace::Local;
+        for (const ParticleLightEmission& emission : particleLights) {
+            PunctualLightGPU& gpu = punctualLights.emplace_back();
+            gpu.position  = localSpace ? TransformEmitterPoint(go->transform, emission.position) : emission.position;
+            gpu.range     = emission.range;
+            gpu.color     = emission.color;
+            gpu.intensity = emission.intensity;
+            gpu.direction = { 0.0f, -1.0f, 0.0f };
+            gpu.type      = static_cast<uint32_t>(PunctualLightType::Point);
+        }
+    }
+
     // ── Spot / Point シャドウのスロット割り当てと行列の組み立て ────────────────────
     // カメラから近い順。遠いライトの影は数ピクセルにしかならず落としても気づかれにくい。
     // 距離キーは連続に変化するので、あふれの切り替わりも端から 1 つずつ起きる。
@@ -2161,6 +2231,7 @@ void RenderSystem(Scene& scene,
     passHandles.cloudDepthRT        = &viewTargets.cloudDepthRT;
     passHandles.particleSceneColorRT = &viewTargets.particleSceneColorRT;
     passHandles.particleOverdrawRT   = &viewTargets.particleOverdrawRT;
+    passHandles.particleReactiveRT   = &viewTargets.particleReactiveRT;
     passHandles.causticsDepthRT      = &viewTargets.causticsDepthRT;
     passHandles.exposureHistogramCS = exposureHistogramCS;
     passHandles.exposureAverageCS   = exposureAverageCS;
@@ -2276,7 +2347,8 @@ void RenderSystem(Scene& scene,
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
     passHandles.clusterCullCS        = clusterCullCS;
-    passHandles.punctualLightBuffer  = punctualLightBuffer;
+    passHandles.punctualLightBuffer  = punctualLightPool.Acquire(
+        resources, kMaxPunctualLights, static_cast<uint32_t>(sizeof(PunctualLightGPU)));
     passHandles.clusterIndexBuffer   = clusterIndexBuffer;
     passHandles.clusterCB            = clusterCB;
     passHandles.clusterLinearCB      = clusterLinearCB;
@@ -2480,7 +2552,7 @@ void RenderSystem(Scene& scene,
     // エディタのプレビュー経路)。
     // useGBufferOpaquePipeline はライトの供給方法と直交する軸なので触らない。
     const bool punctualBufferReady =
-        punctualLightBuffer.IsValid() && clusterCB.IsValid();
+        passHandles.punctualLightBuffer.IsValid() && clusterCB.IsValid();
     // クラスタで絞れるか。カリング CS とインデックスバッファが揃って初めて成立する。
     const bool canCullClusters = rs.UsesClusteredLighting()
         && clusterIndexBuffer.IsValid() && clusterCullCS.IsValid()
@@ -2502,7 +2574,7 @@ void RenderSystem(Scene& scene,
     if (punctualBufferReady) {
         // ライト配列は毎フレーム転送する。上限 256 本 × 96B = 24KB で、部分更新の価値はない。
         if (!passCtx.punctualLights.empty()) {
-            resources.Update(punctualLightBuffer, passCtx.punctualLights.data(),
+            resources.Update(passHandles.punctualLightBuffer, passCtx.punctualLights.data(),
                              passCtx.punctualLights.size() * sizeof(PunctualLightGPU));
         }
 
@@ -3078,7 +3150,15 @@ void RenderSystem(Scene& scene,
     pipeline.AddPass<TrailRenderPass>();
 
     // ShadowMap は粒子の自己影が読む (t8)。申告していないと影より前に走れてしまう。
-    pipeline.AddRawPass("Particle", { "HDR", "DecalDepth", "ShadowMap" }, { "HDR" }, [&]() {
+    // WHY Particle より前に登録するか: 粒子は同じフレームの霧を読んで «自分の奥行きの霧» を逆算する
+    //     (ParticleLighting.hlsli の ApplyParticleFog)。依存を申告しあわない 2 つのパスは登録順に並ぶ。
+    pipeline.AddRawPass("FroxelFog", { "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" }, {}, [&]() {
+        ExecuteFroxelFogPass(passCtx);
+    }, false);
+
+    // PunctualShadowMap / LightCookieAtlas は «点光源を受ける» .mat の粒子が読む (ParticleLighting.hlsli)。
+    pipeline.AddRawPass("Particle", { "HDR", "DecalDepth", "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
+                        { "HDR" }, [&]() {
         ExecuteParticlePass(passCtx);
     });
 
@@ -3087,6 +3167,14 @@ void RenderSystem(Scene& scene,
     if (rs.particleOverdrawView) {
         pipeline.AddRawPass("ParticleOverdraw", { "HDR" }, { "HDR" }, [&]() {
             ExecuteParticleOverdrawPass(passCtx);
+        });
+    }
+
+    // TAA の反応マスク。HDR へは書かないが、Particle の後・Composite (→ TAA) の前に並べるために
+    // HDR の書き手として申告する (Overdraw と同じ申告の仕方)。
+    if (rs.IsTaaActive()) {
+        pipeline.AddRawPass("ParticleReactive", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
+            ExecuteParticleReactivePass(passCtx);
         });
     }
 
@@ -3192,9 +3280,6 @@ void RenderSystem(Scene& scene,
     // 無効でも積むのは、パス側が b13 へ「無効」を書き戻さないと前フレームの定数が残り
     // 画面が真っ黒になるため (FroxelFogPass 参照)。
     // 出力先の 3D ボリュームは論理リソースに乗らないので、writes が空でもカリングさせない。
-    pipeline.AddRawPass("FroxelFog", { "ShadowMap", "PunctualShadowMap" }, {}, [&]() {
-        ExecuteFroxelFogPass(passCtx);
-    }, false);
 
     const bool customPostProcessEnabled =
         !customPostProcessIndices.empty() &&

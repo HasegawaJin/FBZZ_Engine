@@ -130,6 +130,7 @@ void RewindPlayback(GameObject& gameObject)
     if (auto* screen = gameObject.GetComponent<VFXScreenEffect>()) {
         screen->enabled = true;
         screen->weight = 0.0f; // 立ち上がりは weightCurve に任せる
+        screen->progress = 0.0f;
     }
     if (auto* shake = gameObject.GetComponent<VFXCameraShake>()) {
         shake->enabled = true;
@@ -231,6 +232,7 @@ void SetElementActive(GameObject& gameObject, bool active)
     if (auto* screen = gameObject.GetComponent<VFXScreenEffect>()) {
         screen->enabled = false;
         screen->weight = 0.0f;
+        screen->progress = 0.0f;
     }
     if (auto* shake = gameObject.GetComponent<VFXCameraShake>()) {
         shake->enabled = false;
@@ -244,13 +246,28 @@ void SetElementActive(GameObject& gameObject, bool active)
     gameObject.SetActive(false);
 }
 
+// 頭出しのついでに SubEmitter の探索範囲をこのルートへ閉じる。
+//
+// WHY ここで配るか: SubEmitter の参照は GameObject の «名前» で、範囲が無いと
+//     シーン全体から引く (ParticlePass::QueueSubEmitter)。同じ .vfx を 2 つ同時に
+//     鳴らすと、片方の 1 段目がもう片方の 2 段目を吹かせる ─ しかも «たまに多い»
+//     という形で出るので、量の設定ミスと見分けが付かない。自分の枝を知っているのは
+//     ルートだけで、頭出しは枝を丸ごと歩く唯一の場所。
+//     入れ子ルートはここで Restart() を積んで降りないので、その内側は入れ子側の
+//     ResetSubtree が自分を範囲として配り直す。
 void ResetSubtree(GameObject& root)
 {
-    ForEachDescendant(root, [](GameObject& child) {
+    const EntityID scope = root.GetID();
+    if (auto* emitter = root.GetComponent<ParticleEmitter>())
+        emitter->settings.subEmitterScopeRoot = scope;
+
+    ForEachDescendant(root, [scope](GameObject& child) {
         if (auto* nested = child.GetComponent<VFXComponent>()) {
             nested->Restart();
             return;
         }
+        if (auto* emitter = child.GetComponent<ParticleEmitter>())
+            emitter->settings.subEmitterScopeRoot = scope;
         RestoreEnvelopes(child);
         RewindPlayback(child);
     });
@@ -397,7 +414,10 @@ void ApplyElement(GameObject& gameObject, VFXElement& element, VFXComponent& vfx
     element.weight = inside ? (std::max)(element.weightCurve.Evaluate(element.progress), 0.0f) : 0.0f;
     if (!inside) return;
 
-    if (auto* screen = gameObject.GetComponent<VFXScreenEffect>()) screen->weight = element.weight;
+    if (auto* screen = gameObject.GetComponent<VFXScreenEffect>()) {
+        screen->weight = element.weight;
+        screen->progress = element.progress; // 衝撃波リングの半径はこちらで走る
+    }
     if (auto* shake = gameObject.GetComponent<VFXCameraShake>()) {
         shake->weight = element.weight;
         shake->elapsed = local; // 位相は窓内の経過秒。スクラブしても同じ揺れになる

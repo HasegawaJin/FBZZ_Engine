@@ -340,14 +340,14 @@ void BuildRecommendations(TextureAnalysis& out)
     const bool isFlipbook = !out.flipbookCandidates.empty();
     if (isFlipbook) {
         const FlipbookGridCandidate& best = out.flipbookCandidates.front();
-        add("material.particle.spriteColumns", std::to_string(best.columns),
+        add("material.particle.flipbook.spriteColumns", std::to_string(best.columns),
             "タイル境界の不連続からコマ割りを検出しました (境界比 "
                 + std::to_string(best.seamScore).substr(0, 4) + ")");
-        add("material.particle.spriteRows", std::to_string(best.rows),
+        add("material.particle.flipbook.spriteRows", std::to_string(best.rows),
             "同上。誤検出が疑われる場合は flipbookCandidates の他候補を試してください");
-        add("material.particle.spriteEndFrame", std::to_string(best.columns * best.rows - 1),
+        add("material.particle.flipbook.spriteEndFrame", std::to_string(best.columns * best.rows - 1),
             "全コマを再生する場合の終端フレーム");
-        add("material.particle.spriteRandomStartFrame", "true",
+        add("material.particle.flipbook.spriteRandomStartFrame", "true",
             "同時に湧いた粒子が全部同じコマで回るのを防ぎます");
     }
 
@@ -571,11 +571,11 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
         // flipbook のコマ割りも .mat の [particle]。
         if (!texture.flipbookCandidates.empty()) {
             const auto& best = texture.flipbookCandidates.front();
-            addRecommendation("material.particle.spriteColumns", std::to_string(best.columns),
+            addRecommendation("material.particle.flipbook.spriteColumns", std::to_string(best.columns),
                               "albedo テクスチャがアトラスです (コマ割りは .mat の [particle])");
-            addRecommendation("material.particle.spriteRows", std::to_string(best.rows),
+            addRecommendation("material.particle.flipbook.spriteRows", std::to_string(best.rows),
                               "同上");
-            addRecommendation("material.particle.spriteEndFrame",
+            addRecommendation("material.particle.flipbook.spriteEndFrame",
                               std::to_string(best.columns * best.rows - 1), "全コマを再生する終端");
         }
 

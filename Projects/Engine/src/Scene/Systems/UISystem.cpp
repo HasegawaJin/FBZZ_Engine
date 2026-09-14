@@ -544,32 +544,11 @@ void EnsureInit(UISystemContext& ctx, renderer::ResourceManager& resources)
     }
 }
 
-// 頂点バッファの貸し出しを巻き戻す。1 フレームに選択マスクと本描画の 2 回入るので、
-// フレームが変わったときだけ巻き戻して実体の衝突を防ぐ。
 void BeginUIFrame(UISystemContext& ctx)
 {
     // クリップは階層を降りるあいだだけ積むので、抜けれ切れば空になる。
     // それでも入口で均すのは、途中で return した経路が面を残さないため。
     ctx.clipPlanes.clear();
-    if (ctx.lastResetFrame == fbzz::Time::frameCount) return;
-    ctx.lastResetFrame    = fbzz::Time::frameCount;
-    ctx.imageVertexCursor = 0;
-    ctx.textVertexCursor  = 0;
-}
-
-// この DrawCall 専用の頂点バッファを 1 本借りる。足りなければ増やし、以降は使い回す。
-// 記録型バックエンドでは「Draw ごとに別実体」が正しさの条件 (UISystemContext 参照)。
-renderer::ResourceHandle<renderer::BufferTag> AcquireVertexBuffer(
-    std::vector<renderer::ResourceHandle<renderer::BufferTag>>& pool,
-    std::size_t& cursor,
-    uint32_t vertexCapacity,
-    renderer::ResourceManager& resources)
-{
-    if (cursor >= pool.size()) {
-        pool.push_back(resources.CreateVertexBuffer(
-            nullptr, vertexCapacity * sizeof(UIVertex), sizeof(UIVertex)));
-    }
-    return pool[cursor++];
 }
 
 // ── Canvas 収集 ──────────────────────────────────────────────────────────────
@@ -877,8 +856,9 @@ void SubmitUIGeometry(renderer::IRenderer& renderer,
 {
     if (vertexCount < 3 || vertexCount > kImageVBVertices) return;
 
-    const auto vertexBuffer = AcquireVertexBuffer(
-        ctx.imageVertexBuffers, ctx.imageVertexCursor, kImageVBVertices, resources);
+    // この DrawCall 専用の頂点バッファを借りる (UISystemContext::vertexPool 参照)。
+    const auto vertexBuffer = ctx.vertexPool.Acquire(
+        resources, kImageVBVertices, static_cast<uint32_t>(sizeof(UIVertex)));
     if (!vertexBuffer.IsValid()) return;
     resources.Update(vertexBuffer, vertices, vertexCount * sizeof(UIVertex));
 
@@ -2101,8 +2081,8 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
             const uint32_t chunk = (std::min)(total - offset, kTextChunkVertices);
             // チャンクごとに別実体を借りる。1 本を上書きすると、記録型バックエンドでは
             // 全チャンクが最後のグリフ群になる。
-            const auto vertexBuffer = AcquireVertexBuffer(
-                ctx.textVertexBuffers, ctx.textVertexCursor, kTextVBVertices, resources);
+            const auto vertexBuffer = ctx.vertexPool.Acquire(
+                resources, kTextVBVertices, static_cast<uint32_t>(sizeof(UIVertex)));
             if (!vertexBuffer.IsValid()) break;
             resources.Update(vertexBuffer, verts.data() + offset, chunk * sizeof(UIVertex));
             call.vertexBuffer = vertexBuffer;
@@ -3414,6 +3394,11 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
 
 } // namespace (anonymous)
 
+math::Vector2 GetCanvasRectSize(const UICanvas& canvas, float viewportWidth, float viewportHeight)
+{
+    return ResolveCanvasRectSize(canvas, viewportWidth, viewportHeight);
+}
+
 // ── 公開 API ──────────────────────────────────────────────────────────────────
 void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePath)
 {
@@ -3422,16 +3407,7 @@ void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePat
 
 void UISystemReleaseGpuResources(UISystemContext& ctx, renderer::ResourceManager& resources)
 {
-    const auto release = [&resources](auto& pool) {
-        for (auto& handle : pool)
-            if (handle.IsValid()) resources.Release(handle);
-        pool.clear();
-    };
-    release(ctx.imageVertexBuffers);
-    release(ctx.textVertexBuffers);
-    ctx.imageVertexCursor = 0;
-    ctx.textVertexCursor  = 0;
-    ctx.lastResetFrame    = ~std::uint64_t{ 0 };
+    ctx.vertexPool.ReleaseAll(resources);
 }
 
 bool UIPointerOverUI()

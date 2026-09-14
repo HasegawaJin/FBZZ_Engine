@@ -3,8 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2025-06-12
 #pragma once
+#include <Engine/Scene/ParticleCurve.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
+#include <cstdint>
 #include <string>
 
 namespace fbzz::scene {
@@ -95,6 +97,51 @@ struct LightComponent {
     // 模様だけを回す軸を別に持つ。
     float cookieRotation = 0.0f;
 
+    // ---- 明滅 (Flicker) ----
+    // たいまつのゆらぎ・破断面の放電・目の脈動。既定は Off で、既存シーンの絵は変わらない。
+    //
+    // WHY コンポーネントへ持たせるか: これまでは演出ごとに «LightComponent を取って
+    //     intensity を毎フレーム書く» スクリプトを起こしていた。揺れの形はオーサリングの
+    //     対象で、コードの対象ではない。
+    //
+    // 駆動は LightFlickerSystem。intensity を «オーサリング値 × 倍率» で毎フレーム
+    // 書き換え、Play を抜けるときにオーサリング値へ戻す (保存へ焼き付かない)。
+    //
+    // ⚠ 同じ GameObject に VFXLightEnvelope を付けないこと。どちらも intensity を
+    //   «捕まえて掛け直す» 作りなので、片方が書いた値をもう片方が基準として掴む。
+    enum class FlickerMode : std::uint8_t {
+        Off = 0,   // 無効
+        Sine,      // 正弦。呼吸するような滑らかな脈動
+        Noise,     // value noise。たいまつ・不安定な蛍光灯
+        Curve,     // flickerCurve を 1 周期として繰り返す。作り込んだ放電の形
+    };
+    FlickerMode flickerMode = FlickerMode::Off;
+    // 倍率の振れ幅。倍率 = 1 - flickerAmplitude * (1 - wave)、wave は [0, 1]。
+    // 0 で «常に 1 倍» = 無効、1 で消灯まで振れる。
+    // WHY 倍率の «減る側» だけを作るか: 上へ振ると白飛びの閾値を越えた瞬間から
+    //     Bloom が別物になり、オーサリングした intensity がピークを表さなくなる。
+    float    flickerAmplitude = 0.0f;
+    float    flickerFrequency = 6.0f;   // [Hz]。Curve では 1 周の速さ
+    // Sine / Curve の上へ混ぜるノイズの量 [0, 1]。1 で完全にノイズ。
+    float    flickerNoise     = 0.0f;
+    // 位相オフセット [0, 1)。同じ設定のライトを並べたときに揃って光らないようずらす。
+    float    flickerPhase     = 0.0f;
+    // ノイズ列の種。同じ seed と同じ位相なら、いつ何回走らせても同じ揺れになる。
+    std::uint32_t flickerSeed = 0;
+    // Curve モードの波形。横軸は 1 周期の正規化時間、縦軸は倍率 [0, 1] 想定。
+    ParticleCurve flickerCurve{
+        {{ {0.0f, 1.0f}, {0.5f, 0.25f}, {1.0f, 1.0f}, {1.0f, 1.0f},
+           {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f} }},
+        3, ParticleCurveInterpolation::Smooth };
+
+    // ---- 明滅のランタイム状態 (シリアライズしない) ----
+    // WHY コンポーネントに持たせるか: 適用は intensity の «書き換え» なので、元の値を
+    //     誰かが覚えていないとループのたびに暗くなっていく。System 側の別テーブルで
+    //     持つと GameObject の破棄と寿命が合わず、使い回した ID で前の値が蘇る。
+    float flickerBaseIntensity = 0.0f;
+    float flickerTime          = 0.0f;
+    bool  flickerCaptured      = false;
+
     const char* GetTypeName() const { return "Light"; }
     void Reflect(IReflector& r)
     {
@@ -123,6 +170,24 @@ struct LightComponent {
         r.Field("shadowNearPlane", shadowNearPlane);
         r.Field("cookiePath",     cookiePath);
         r.Field("cookieRotation", cookieRotation);
+        {
+            int mode = static_cast<int>(flickerMode);
+            r.Field("flickerMode", mode);
+            if (mode < 0) mode = 0;
+            if (mode > 3) mode = 3;
+            flickerMode = static_cast<FlickerMode>(mode);
+        }
+        r.Field("flickerAmplitude", flickerAmplitude);
+        r.Field("flickerFrequency", flickerFrequency);
+        r.Field("flickerNoise",     flickerNoise);
+        r.Field("flickerPhase",     flickerPhase);
+        {
+            // IReflector は uint32_t 非対応のため int 経由で往復させる。
+            int seed = static_cast<int>(flickerSeed);
+            r.Field("flickerSeed", seed);
+            flickerSeed = static_cast<std::uint32_t>(seed < 0 ? 0 : seed);
+        }
+        r.Field("flickerCurve", flickerCurve);
     }
     // Directional / Spot / Area の方向 → Transform::Forward()
     // Point / Spot / Area の位置      → Transform::position

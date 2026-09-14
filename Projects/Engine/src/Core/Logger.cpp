@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <mutex>
 #include <string>
 
 namespace fbzz::core {
@@ -21,6 +22,18 @@ LogLevel Logger::s_minLevel = LogLevel::INFO;
 std::vector<ILogSink*> Logger::s_sinks;
 
 namespace {
+
+// シンクの一覧と 1 行の出力を守る。
+//
+// WHY 要るか: ログはワーカースレッドからも出る (流体プレビューの解き・アセットの読み込み・焼き)。
+//     s_sinks の走査中にメインスレッドが AddSink/RemoveSink で vector を動かすと、消えた要素を
+//     呼びに行く。各シンク (Console パネル) も自前の行バッファへ積むので、同時に書けば壊れる。
+// WHY 再帰可能にするか: シンクの中から何かがログを出すと、非再帰の mutex では自分を待って固まる。
+std::recursive_mutex& LogMutex()
+{
+    static std::recursive_mutex mutex;
+    return mutex;
+}
 
 void BuildLocatedFormat(char* out, size_t outSize, const char* file, int line, const char* fmt)
 {
@@ -72,6 +85,8 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 
     const std::string body = FormatLogMessage(fmt, args);
 
+    // 書式化はロックの外で済ませてある (シンクを待たせる時間を短くする)。
+    const std::lock_guard lock(LogMutex());
     std::string line = prefix;
     line += body;
     line += '\n';
@@ -86,11 +101,13 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 
 void Logger::AddSink(ILogSink* sink)
 {
+    const std::lock_guard lock(LogMutex());
     if (sink) s_sinks.push_back(sink);
 }
 
 void Logger::RemoveSink(ILogSink* sink)
 {
+    const std::lock_guard lock(LogMutex());
     auto it = std::find(s_sinks.begin(), s_sinks.end(), sink);
     if (it != s_sinks.end()) s_sinks.erase(it);
 }

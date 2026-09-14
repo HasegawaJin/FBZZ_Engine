@@ -117,6 +117,12 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     // フォグ色の出どころ (0=Exponential, 1=Atmosphere)。Atmosphere は b3/b6 から大気散乱を計算する。
     postData.fogSource = static_cast<float>(pp.fog.source);
     postData.radialBlur = std::clamp(pp.lens.radialBlur, 0.0f, 1.0f);
+    // 衝撃波リング。幅 0 は «輪が無い» ではなく 0 除算なので、下限で止める。
+    postData.shockRingAmplitude = std::clamp(pp.lens.shockRingAmplitude, 0.0f, 1.0f);
+    postData.shockRingRadius    = (std::max)(pp.lens.shockRingRadius, 0.0f);
+    postData.shockRingWidth     = (std::max)(pp.lens.shockRingWidth, 0.001f);
+    postData.shockRingCenter[0] = pp.lens.shockRingCenter[0];
+    postData.shockRingCenter[1] = pp.lens.shockRingCenter[1];
     postData.contrast = pp.colorGrading.enabled ? pp.colorGrading.contrast : 0.0f;
     postData.saturation = pp.colorGrading.enabled ? pp.colorGrading.saturation : 1.0f;
     postData.hueShift = pp.colorGrading.enabled ? pp.colorGrading.hueShift : 0.0f;

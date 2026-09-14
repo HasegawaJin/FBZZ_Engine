@@ -80,6 +80,19 @@ struct ScriptAnimatorProxy {
     void  StopSlot(std::string_view layerName, float fadeOut = -1.0f) const;
     bool  IsSlotPlaying(std::string_view layerName) const;
     float GetSlotWeight(std::string_view layerName) const;
+    // 鳴っている Slot の再生速度を途中で書き換える (PlaySlot の speed を上書き)。
+    // WHY: 1 本のクリップの中に «溜めはゆっくり・斬り抜けは速く» の緩急を付けるには、
+    //      再生の途中で速度を変える必要がある。Slot が鳴っていなければ何もしない。
+    void  SetSlotSpeed(std::string_view layerName, float speed) const;
+    // Slot のクリップ内の再生秒数。鳴っていなければ 0。
+    float GetSlotTime(std::string_view layerName) const;
+    // Base Layer のステートの再生速度を実行時に書き換える (.animcontroller の speed を上書き)。
+    // WHY: SetSpeed は Animator 全体 (Slot も) に掛かる。走りを実速へ合わせる・転がりを
+    //      移動の減速に合わせる、のように «そのステートだけ» 速さを変える口が要る。
+    //      コントローラーを読み直すと .animcontroller の値へ戻る。
+    void  SetStateSpeed(std::string_view stateName, float speed) const;
+    // 見つからなければ 1。
+    float GetStateSpeed(std::string_view stateName) const;
     void        SetMorphWeight(std::string_view morphName, float weight) const;
     float       GetMorphWeight(std::string_view morphName) const;
 

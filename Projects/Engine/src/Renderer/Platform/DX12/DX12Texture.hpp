@@ -67,6 +67,8 @@ private:
     uint32_t m_bytesPerPixel = 0;
     DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
     uint32_t m_width = 0;
+    /// SRV が見せるミップ段数。ファイルから読んだ DDS だけが 1 を超える。
+    uint32_t m_mipLevels = 1;
     uint32_t m_height = 0;
     // 3D テクスチャの奥行き。2D では 1 のまま。
     uint32_t m_depth = 1;

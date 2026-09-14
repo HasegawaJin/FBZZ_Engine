@@ -247,21 +247,23 @@ void ReadParticleTable(const toml::table& table, ParticleMaterialSettings& out)
     out.alphaSource = AlphaSourceFromString(
         table["alpha_source"].value_or(std::string{ AlphaSourceToString(d.alphaSource) }));
 
-    out.spriteColumns          = integer("sprite_columns", d.spriteColumns);
-    out.spriteRows             = integer("sprite_rows", d.spriteRows);
-    out.spriteStartFrame       = integer("sprite_start_frame", d.spriteStartFrame);
-    out.spriteEndFrame         = integer("sprite_end_frame", d.spriteEndFrame);
-    out.flipbookMode           = FlipbookModeFromString(
-        table["flipbook_mode"].value_or(std::string{ FlipbookModeToString(d.flipbookMode) }));
-    out.flipbookFramesPerSecond = flt("flipbook_fps", d.flipbookFramesPerSecond);
-    out.flipbookFrameBlending  = table["flipbook_frame_blending"].value_or(d.flipbookFrameBlending);
-    out.spriteRandomStartFrame = table["sprite_random_start_frame"].value_or(d.spriteRandomStartFrame);
-    out.spriteRandomRow        = table["sprite_random_row"].value_or(d.spriteRandomRow);
-    out.motionVectorFlipbook   = table["motion_vector_flipbook"].value_or(d.motionVectorFlipbook);
-    out.motionVectorStrength   = flt("motion_vector_strength", d.motionVectorStrength);
+    out.flipbook.spriteColumns          = integer("sprite_columns", d.flipbook.spriteColumns);
+    out.flipbook.spriteRows             = integer("sprite_rows", d.flipbook.spriteRows);
+    out.flipbook.spriteStartFrame       = integer("sprite_start_frame", d.flipbook.spriteStartFrame);
+    out.flipbook.spriteEndFrame         = integer("sprite_end_frame", d.flipbook.spriteEndFrame);
+    out.flipbook.flipbookMode           = FlipbookModeFromString(
+        table["flipbook_mode"].value_or(std::string{ FlipbookModeToString(d.flipbook.flipbookMode) }));
+    out.flipbook.flipbookFramesPerSecond = flt("flipbook_fps", d.flipbook.flipbookFramesPerSecond);
+    out.flipbook.flipbookFrameBlending  = table["flipbook_frame_blending"].value_or(d.flipbook.flipbookFrameBlending);
+    out.flipbook.spriteRandomStartFrame = table["sprite_random_start_frame"].value_or(d.flipbook.spriteRandomStartFrame);
+    out.flipbook.spriteRandomRow        = table["sprite_random_row"].value_or(d.flipbook.spriteRandomRow);
+    out.flipbook.motionVectorFlipbook   = table["motion_vector_flipbook"].value_or(d.flipbook.motionVectorFlipbook);
+    out.flipbook.motionVectorStrength   = flt("motion_vector_strength", d.flipbook.motionVectorStrength);
 
     out.softParticles            = table["soft_particles"].value_or(d.softParticles);
     out.softParticleFadeDistance = flt("soft_particle_fade_distance", d.softParticleFadeDistance);
+    out.cameraFadeNear           = flt("camera_fade_near", d.cameraFadeNear);
+    out.cameraFadeFar            = flt("camera_fade_far", d.cameraFadeFar);
 
     out.distortion          = table["distortion"].value_or(d.distortion);
     out.distortionStrength  = flt("distortion_strength", d.distortionStrength);
@@ -272,6 +274,13 @@ void ReadParticleTable(const toml::table& table, ParticleMaterialSettings& out)
     out.smokeWrap             = flt("smoke_wrap", d.smokeWrap);
     out.smokeTransmission     = flt("smoke_transmission", d.smokeTransmission);
     out.smokeBackScatterPower = flt("smoke_back_scatter_power", d.smokeBackScatterPower);
+    out.sixWayMaps            = table["six_way_maps"].value_or(d.sixWayMaps);
+    if (const toml::array* color = table["six_way_emission_color"].as_array(); color != nullptr && color->size() >= 3) {
+        out.sixWayEmissionColor = { static_cast<float>((*color)[0].value_or(0.0)),
+                                    static_cast<float>((*color)[1].value_or(0.0)),
+                                    static_cast<float>((*color)[2].value_or(0.0)) };
+    }
+    out.punctualLighting      = table["punctual_lighting"].value_or(d.punctualLighting);
 
     out.volumetric           = table["volumetric"].value_or(d.volumetric);
     out.volumetricSteps      = integer("volumetric_steps", d.volumetricSteps);
@@ -305,21 +314,23 @@ void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
     if (value.alphaSource != d.alphaSource)
         out.insert("alpha_source", AlphaSourceToString(value.alphaSource));
 
-    putI("sprite_columns", value.spriteColumns, d.spriteColumns);
-    putI("sprite_rows", value.spriteRows, d.spriteRows);
-    putI("sprite_start_frame", value.spriteStartFrame, d.spriteStartFrame);
-    putI("sprite_end_frame", value.spriteEndFrame, d.spriteEndFrame);
-    if (value.flipbookMode != d.flipbookMode)
-        out.insert("flipbook_mode", FlipbookModeToString(value.flipbookMode));
-    putF("flipbook_fps", value.flipbookFramesPerSecond, d.flipbookFramesPerSecond);
-    putB("flipbook_frame_blending", value.flipbookFrameBlending, d.flipbookFrameBlending);
-    putB("sprite_random_start_frame", value.spriteRandomStartFrame, d.spriteRandomStartFrame);
-    putB("sprite_random_row", value.spriteRandomRow, d.spriteRandomRow);
-    putB("motion_vector_flipbook", value.motionVectorFlipbook, d.motionVectorFlipbook);
-    putF("motion_vector_strength", value.motionVectorStrength, d.motionVectorStrength);
+    putI("sprite_columns", value.flipbook.spriteColumns, d.flipbook.spriteColumns);
+    putI("sprite_rows", value.flipbook.spriteRows, d.flipbook.spriteRows);
+    putI("sprite_start_frame", value.flipbook.spriteStartFrame, d.flipbook.spriteStartFrame);
+    putI("sprite_end_frame", value.flipbook.spriteEndFrame, d.flipbook.spriteEndFrame);
+    if (value.flipbook.flipbookMode != d.flipbook.flipbookMode)
+        out.insert("flipbook_mode", FlipbookModeToString(value.flipbook.flipbookMode));
+    putF("flipbook_fps", value.flipbook.flipbookFramesPerSecond, d.flipbook.flipbookFramesPerSecond);
+    putB("flipbook_frame_blending", value.flipbook.flipbookFrameBlending, d.flipbook.flipbookFrameBlending);
+    putB("sprite_random_start_frame", value.flipbook.spriteRandomStartFrame, d.flipbook.spriteRandomStartFrame);
+    putB("sprite_random_row", value.flipbook.spriteRandomRow, d.flipbook.spriteRandomRow);
+    putB("motion_vector_flipbook", value.flipbook.motionVectorFlipbook, d.flipbook.motionVectorFlipbook);
+    putF("motion_vector_strength", value.flipbook.motionVectorStrength, d.flipbook.motionVectorStrength);
 
     putB("soft_particles", value.softParticles, d.softParticles);
     putF("soft_particle_fade_distance", value.softParticleFadeDistance, d.softParticleFadeDistance);
+    putF("camera_fade_near", value.cameraFadeNear, d.cameraFadeNear);
+    putF("camera_fade_far", value.cameraFadeFar, d.cameraFadeFar);
 
     putB("distortion", value.distortion, d.distortion);
     putF("distortion_strength", value.distortionStrength, d.distortionStrength);
@@ -330,6 +341,14 @@ void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
     putF("smoke_wrap", value.smokeWrap, d.smokeWrap);
     putF("smoke_transmission", value.smokeTransmission, d.smokeTransmission);
     putF("smoke_back_scatter_power", value.smokeBackScatterPower, d.smokeBackScatterPower);
+    putB("six_way_maps", value.sixWayMaps, d.sixWayMaps);
+    if (value.sixWayEmissionColor.x != d.sixWayEmissionColor.x || value.sixWayEmissionColor.y != d.sixWayEmissionColor.y
+        || value.sixWayEmissionColor.z != d.sixWayEmissionColor.z) {
+        out.insert("six_way_emission_color", toml::array{ static_cast<double>(value.sixWayEmissionColor.x),
+                                                          static_cast<double>(value.sixWayEmissionColor.y),
+                                                          static_cast<double>(value.sixWayEmissionColor.z) });
+    }
+    putB("punctual_lighting", value.punctualLighting, d.punctualLighting);
 
     putB("volumetric", value.volumetric, d.volumetric);
     putI("volumetric_steps", value.volumetricSteps, d.volumetricSteps);

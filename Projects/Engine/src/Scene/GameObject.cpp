@@ -150,6 +150,21 @@ GameObject* GameObject::GetChild(int index) const
     return m_scene->GetGameObject(m_children[index]);
 }
 
+GameObject* GameObject::FindInSubtree(std::string_view objectName)
+{
+    if (!IsValid()) return nullptr;
+    std::vector<GameObject*> pending{this};
+    while (!pending.empty()) {
+        GameObject* current = pending.back();
+        pending.pop_back();
+        if (current->name == objectName) return current;
+        for (int i = current->GetChildCount(); i > 0; --i) {
+            if (GameObject* child = current->GetChild(i - 1)) pending.push_back(child);
+        }
+    }
+    return nullptr;
+}
+
 namespace {
     inline Scene* GetActiveScene()
     {

@@ -8,7 +8,7 @@
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
-#include <Engine/Renderer/DynamicVertexBufferPool.hpp>
+#include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -59,7 +59,7 @@ math::Vector3 ParticleWorldVector(const Transform& transform, const math::Vector
 // エミッター 1 個ぶんのマスク頂点を貸し出すプール。
 // WHY 共有バッファを使わないか: 複数のエミッターを同時選択すると Update → Submit が
 //     エミッターの数だけ並ぶ。DX12 では後の Update が先に記録した Draw の中身まで
-//     差し替えてしまう (詳細は DynamicVertexBufferPool.hpp)。
+//     差し替えてしまう (詳細は DynamicBufferPool.hpp)。
 renderer::DynamicVertexBufferPool g_selectionMaskParticlePool;
 
 // 選択されたParticleEmitterの現在形状を、テクスチャAlpha込みでSelection Maskへ描く。
@@ -116,9 +116,9 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
     };
 
     const bool localSpace = emitter.settings.simulationSpace == ParticleSimulationSpace::Local;
-    const bool billboardTrails = emitter.settings.trailEnabled && !emitter.settings.trailRibbon;
+    const bool billboardTrails = emitter.settings.trail.trailEnabled && !emitter.settings.trail.trailRibbon;
     const int trailPoints = billboardTrails
-        ? std::clamp(emitter.settings.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
+        ? std::clamp(emitter.settings.trail.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
     for (int index = 0; index < particleCount; ++index) {
         const Particle& particle = emitter.runtime.particles[static_cast<std::size_t>(index)];
         const math::Vector3 position = localSpace
@@ -135,15 +135,15 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
                 ? ParticleWorldPoint(go.transform,
                     particle.trailPoints[static_cast<std::size_t>(trail)])
                 : particle.trailPoints[static_cast<std::size_t>(trail)];
-            const float width = emitter.settings.trailWidthScale
-                + (1.0f - emitter.settings.trailWidthScale) * fade;
-            const float alpha = emitter.settings.trailAlphaScale
-                + (1.0f - emitter.settings.trailAlphaScale) * fade;
+            const float width = emitter.settings.trail.trailWidthScale
+                + (1.0f - emitter.settings.trail.trailWidthScale) * fade;
+            const float alpha = emitter.settings.trail.trailAlphaScale
+                + (1.0f - emitter.settings.trail.trailAlphaScale) * fade;
             const math::Vector4 trailColor = {
-                particle.color.x * emitter.settings.trailColorTint.x,
-                particle.color.y * emitter.settings.trailColorTint.y,
-                particle.color.z * emitter.settings.trailColorTint.z,
-                particle.color.w * emitter.settings.trailColorTint.w * alpha
+                particle.color.x * emitter.settings.trail.trailColorTint.x,
+                particle.color.y * emitter.settings.trail.trailColorTint.y,
+                particle.color.z * emitter.settings.trail.trailColorTint.z,
+                particle.color.w * emitter.settings.trail.trailColorTint.w * alpha
             };
             emitQuad(trailPosition, velocity, particle.size * width, particle.rotation,
                      trailColor, particle);

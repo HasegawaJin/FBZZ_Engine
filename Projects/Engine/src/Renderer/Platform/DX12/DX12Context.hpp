@@ -4,6 +4,8 @@
 /// @date    2026-07-15
 #pragma once
 
+#include <span>
+
 #include <array>
 #include <cstdint>
 #include <d3d12.h>
@@ -56,6 +58,15 @@ public:
     DescriptorTableAllocation AllocateUavTable();
     D3D12_CPU_DESCRIPTOR_HANDLE GetNullBufferSrv(uint32_t slot) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetNullUav(uint32_t slot) const;
+    /// 転送する 1 段ぶん。rowPitch は rgba の 1 行のバイト数。
+    struct TextureMip {
+        const uint8_t* rgba = nullptr;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        std::size_t rowPitch = 0;
+    };
+    /// 0 段目から並べたミップの列を RGBA8 の 2D テクスチャとして同期転送する。
+    bool UploadTexture2DMips(std::span<const TextureMip> mips, Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
     bool UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
                          Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
     bool CreateDefaultBuffer(const void* data, size_t sizeBytes,

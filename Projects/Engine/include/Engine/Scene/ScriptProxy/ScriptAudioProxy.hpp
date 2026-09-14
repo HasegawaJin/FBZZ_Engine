@@ -47,6 +47,12 @@ struct SynthClip {
 struct ScriptAudioProxy {
     Script* script = nullptr;
 
+    /// 再生せず同期読み込みする。AudioSource 不要、voice 枠を消費しない。
+    /// パス由来の PCM は AudioManager 終了まで保持。失敗は false とログで通知する。
+    /// メインスレッド専用。読み込み対象とタイミングは呼び出し側が決める。
+    [[nodiscard]] bool Preload(std::string_view clipPath) const;
+    [[nodiscard]] bool Preload(const AudioClipRef& clip) const;
+
     /// @name クリップ再生 (自 GameObject の AudioSource 経由)
     ///
     /// AudioSource が付いていない GameObject では、これらは何もせず

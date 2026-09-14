@@ -61,10 +61,8 @@ void Drop(SkinnedMeshRenderer& smr, renderer::ResourceManager* resources)
 
 void Drop(TrailComponent& trail, renderer::ResourceManager* resources)
 {
-    Drop(resources, trail.vertexBuffer);
+    // 帯の頂点は TrailRenderPass のプールから借りているので、Component には持っていない。
     Drop(resources, trail.trailCB);
-    trail.allocatedMaxPoints = 0;
-    trail.allocatedSmoothSubdivisions = 0;
 }
 
 void Drop(MeshTrailComponent& trail, renderer::ResourceManager* resources)
@@ -81,7 +79,9 @@ void Drop(ParticleEmitter& emitter, renderer::ResourceManager* resources)
     // 返すと、同じ .mat を使う他のエミッターの b2 まで一緒に死ぬ。
     runtime.materialParamsCB = {};
     Drop(resources, runtime.gpuParticleBuffer);
-    Drop(resources, runtime.gpuSpawnBuffer);
+    // スポーン / 力場は ParticlePass のプールから借りているだけなので返さない。
+    runtime.gpuSpawnBuffer = {};
+    runtime.gpuForceBuffer = {};
     Drop(resources, runtime.gpuEmitterCB);
     Drop(resources, runtime.renderCB);
     Drop(resources, runtime.trailRibbonCB);

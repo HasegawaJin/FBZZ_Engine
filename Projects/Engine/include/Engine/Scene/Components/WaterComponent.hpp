@@ -75,9 +75,28 @@ struct WaterComponent {
     std::array<GerstnerWave, 4> waves = {};
     /// 水流の速度 [m/s] (ワールド XZ)。.mat の flowDirection × currentSpeed。
     math::Vector2 current = math::Vector2::ZERO;
+    /// WaterSystem が毎フレーム書く «頂点グリッド 1 セルのワールド実寸» [m]。
+    /// WHY: 刻めない波長の Gerstner 波を寝かせる判断に、描画 (GPU) と浮力 (CPU) が
+    ///      同じ値を使う必要がある。片方だけ寝かせると、平らな水面の上で物が揺れる。
+    math::Vector2 cellSize = math::Vector2::ZERO;
     physics::VolumeHandle volumeHandle;
 
     const char* GetTypeName() const { return "Water"; }
+
+    /// 頂点グリッドで «刻めない» 波を寝かせる係数 [0,1]。Water.hlsl の WaveMeshFade と同じ式。
+    ///
+    /// WHY: Gerstner 波は頂点でしか評価されないので、1 波長あたり数セルしか取れない波は
+    ///      山と谷がセル境界で入れ替わり、«もっと長い別の波» に化ける。海サイズの水面では
+    ///      これが全面で起きる。刻めない波は消し、細かさは手続きさざ波に任せる。
+    /// @param cell 頂点グリッド 1 セルのワールド実寸 [m]。0 のときはフェードしない。
+    static float WaveMeshFade(float wavelength, math::Vector2 cell)
+    {
+        const float c = (std::max)(cell.x, cell.y);
+        if (c <= 0.0f) return 1.0f;
+        // smoothstep(2, 3.5, 1 波長あたりのセル数)。下限 2.0 は Nyquist。
+        const float t = math::Clamp01((wavelength / c - 2.0f) / 1.5f);
+        return t * t * (3.0f - 2.0f * t);
+    }
 
     /// 水面の基準面からの高さ [m] を CPU で評価する。
     /// @param worldX, worldZ ワールド座標。
@@ -90,11 +109,15 @@ struct WaterComponent {
         float height = 0.0f;
         for (const GerstnerWave& wave : waves) {
             if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) continue;
+            // 描画が寝かせた波は水面の形にも出ない。同じ係数を掛けないと、平らに見える
+            // 遠くの海面の上で浮いている物だけが波に乗って上下する。
+            const float fade = WaveMeshFade(wave.wavelength, cellSize);
+            if (fade <= 0.0f) continue;
             const math::Vector2 dir = wave.direction.Normalized();
             const float k = math::TWO_PI / wave.wavelength;
             const float omega = std::sqrt(9.8f * k);
             const float phase = k * (dir.x * worldX + dir.y * worldZ) - omega * time;
-            height += wave.amplitude * std::sin(phase);
+            height += wave.amplitude * fade * std::sin(phase);
         }
         return height;
     }

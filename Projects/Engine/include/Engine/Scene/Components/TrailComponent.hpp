@@ -5,6 +5,7 @@
 #pragma once
 
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/ParticleCurve.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -56,6 +57,35 @@ struct TrailComponent {
 
     float widthStart = 0.20f;
     float widthEnd   = 0.02f;
+
+    // 1 フレームでこれ以上跳んだら点列を捨てて描き直す [ワールド]。0 で «切らない»。
+    //
+    // WHY 既定を 0 にするか: 閾値を «それらしい値» で入れると、今あるシーンの
+    //     速い剣閃や乗り物の軌跡が «たまに途切れる» ようになる。瞬間移動を
+    //     するのは作った本人が知っている実体だけなので、opt-in にする。
+    // WHY 手動 Clear() では足りないか: テレポートは «位置を書いた側» が知っていても、
+    //     トレイルを持つのは武器の子 GameObject だったりする。1 本の長い筋は
+    //     «誰が Clear を呼び忘れたか» を探す不具合になっていた。
+    float breakDistance = 0.0f;
+
+    // 幅の多キー化。無効 (既定) なら widthStart/widthEnd + widthEasing の 2 点のまま。
+    //
+    // WHY 新しいカーブ型を作らないか: ParticleCurve は Inspector のカーブエディタ・
+    //     .curve の読み書き・TOML シリアライズが既に通っている。帯のためだけに
+    //     もう 1 種類の «キーと補間» を持つと、editor 側も倍になる。
+    // WHY widthStart を残して倍率にするか: カーブは形だけを持たせ、実寸は
+    //     1 か所 (widthStart) で決められるようにする。太さの微調整でキーを
+    //     全部触り直すことにならない。
+    bool widthCurveEnabled = false;
+    ParticleCurve widthCurve; // age に対する倍率。実寸 = widthStart × この値
+
+    // 色の多キー化。無効 (既定) なら colorStart/colorEnd の 2 点のまま。
+    // 時刻 0 は帯の «先端» (colorStart 側)、1 が消え際 (colorEnd 側)。
+    //
+    // NOTE: 補間は GPU (Trail.hlsl) 側で行うため、キーの間はリニア空間で混ざる。
+    //       ParticleGradient::colorSpace は帯では効かない (キーの色そのものは一致する)。
+    bool colorGradientEnabled = false;
+    ParticleGradient colorGradient;
     // Beamは移動履歴ではなくローカル2端点を毎フレーム固定リボンとして描く。
     bool beamMode = false;
     math::Vector3 beamStart = math::Vector3::ZERO;
@@ -99,14 +129,12 @@ struct TrailComponent {
     int   ringCount      = 0;
     float lastSampleTime = -1.0f;
 
-    // GPU リソースは保存対象ではない。Component に持たせることで GameObject 単位の最大頂点数変更に追従する。
-    renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
+    // GPU リソースは保存対象ではない。帯の頂点は TrailRenderPass がビューごとにプールから借りる
+    // (Scene View と Game View で帯の形が違うため、Component に 1 本持たせると奪い合う)。
     renderer::ResourceHandle<renderer::TextureTag> texture;
     renderer::ResourceHandle<renderer::ConstantBufferTag> trailCB;
     std::string loadedTexturePath;
     std::string loadedMaterialPath; // materialPath の変更検出用。シーン保存対象外。
-    int allocatedMaxPoints = 0;
-    int allocatedSmoothSubdivisions = 0;
 
     const char* GetTypeName() const { return "Trail"; }
 
@@ -121,6 +149,11 @@ struct TrailComponent {
         r.Field("minVertexDist", minVertexDist);
         r.Field("widthStart", widthStart);
         r.Field("widthEnd", widthEnd);
+        r.Field("breakDistance", breakDistance);
+        r.Field("widthCurveEnabled", widthCurveEnabled);
+        r.Field("widthCurve", widthCurve);
+        r.Field("colorGradientEnabled", colorGradientEnabled);
+        r.Field("colorGradient", colorGradient);
         r.Field("beamMode", beamMode);
         r.Field("beamStart", beamStart);
         r.Field("beamEnd", beamEnd);
@@ -149,5 +182,38 @@ struct TrailComponent {
         r.Field("uvTiling", uvTiling);
     }
 };
+
+/// 多キーの幅を使うか。キーが 2 点に届かないカーブは «形になっていない» ので
+/// 従来の widthStart / widthEnd へ落とす。
+[[nodiscard]] inline bool TrailUsesWidthCurve(const TrailComponent& trail)
+{
+    return trail.widthCurveEnabled && trail.widthCurve.keyCount >= 2;
+}
+
+/// 多キーの色を使うか。判断基準は幅と同じ。
+[[nodiscard]] inline bool TrailUsesColorGradient(const TrailComponent& trail)
+{
+    return trail.colorGradientEnabled && trail.colorGradient.keyCount >= 2;
+}
+
+/// 前のサンプル位置から今の位置への移動を «瞬間移動» と見なすか。
+/// breakDistance <= 0 のときは常に false (切らない)。
+[[nodiscard]] inline bool TrailIsDiscontinuous(const TrailComponent& trail,
+                                               const math::Vector3& previous,
+                                               const math::Vector3& current)
+{
+    if (trail.breakDistance <= 0.0f) return false;
+    return (current - previous).LengthSq() > trail.breakDistance * trail.breakDistance;
+}
+
+/// age (0 = 最古の点, 1 = 最新の点) に対する帯の幅 [ワールド]。
+/// @param easedAge widthEasing を掛けた age。カーブが有効なときは使わない
+///                 (カーブ自身が形を持っているため、二重に曲げない)
+[[nodiscard]] inline float TrailWidthAt(const TrailComponent& trail, float age, float easedAge)
+{
+    if (TrailUsesWidthCurve(trail))
+        return trail.widthStart * trail.widthCurve.Evaluate(age);
+    return trail.widthEnd + (trail.widthStart - trail.widthEnd) * easedAge;
+}
 
 } // namespace fbzz::scene

@@ -667,6 +667,15 @@ struct PostProcCB {
     //   y = 今が何回目の反復か (0 起点) / z = 反復の総数
     //   w = 予約
     float customPassInfo[4];
+    // 衝撃波リング (VFXScreenEffect)。Amplitude=0 で無効。
+    // WHY 末尾へ足すか: 途中の padding (_fogPad 等) に散らして詰めると、
+    //     Constants.hlsli の 4 コピーのうち 1 つを直し忘れたときに «そのプロジェクトの
+    //     別の効果» が壊れる。末尾なら直し忘れは «リングが出ない» だけで済む。
+    float shockRingCenter[2];
+    float shockRingRadius;
+    float shockRingWidth;
+    float shockRingAmplitude;
+    float _shockRingPad[3];
 };
 
 /// 画面サイズ由来のフィールドだけを埋めた PostProcCB を返す。
@@ -722,7 +731,15 @@ struct DecalCB {
     float         angleFadeCos      = 0.34f; // この cos より寝た面では完全に消える (既定 70 度)
     uint32_t      flags             = 0;
     uint32_t      receiverLayerMask = ~0u;
-    float         _pad3[3] = { 0.0f, 0.0f, 0.0f };
+    // フリップブック。1 コマぶんの UV スケールと、今のコマ番号。
+    // 無効時は (1, 1) / 0 で、シェーダー側の変換が恒等になる。
+    //
+    // WHY オフセットを渡さず «スケール + 番号» にするか: 旧 _pad3 の 3 float に収まり、
+    //     cbuffer のサイズが変わらない。伸ばすと DecalCommon.hlsli の 4 つのコピーと
+    //     この static_assert を同時に直す話になり、直し忘れた側が黙って別の値を読む。
+    //     オフセットは 1 / スケールから段数を復元して画素側で求める (DecalApplyFlipbook)。
+    float         frameScale[2] = { 1.0f, 1.0f };
+    float         frameIndex    = 0.0f;
 };
 static_assert(sizeof(DecalCB) == 144, "DecalCB size mismatch");
 
@@ -882,6 +899,9 @@ struct RenderPassHandles {
     // 1 枚を取り合い、寸法の違うフレームごとに作り直しが走る。
     renderer::SizedRenderTarget* particleSceneColorRT = nullptr;
     renderer::SizedRenderTarget* particleOverdrawRT   = nullptr;
+    /// TAA の反応マスク。ParticleReactive パスが書き、TAA が t9 で読む。書いたフレームだけ valid。
+    renderer::SizedRenderTarget* particleReactiveRT   = nullptr;
+    bool                         particleReactiveValid = false;
     renderer::SizedRenderTarget* causticsDepthRT      = nullptr;
 
     // ---- フロクセル ボリューメトリック フォグ ----
