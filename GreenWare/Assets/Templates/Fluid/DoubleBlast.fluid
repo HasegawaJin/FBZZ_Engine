@@ -1,0 +1,151 @@
+# 二段の爆発 — start_time で部品を時間差に並べる見本。
+# 1 発目が膨らみ切る前に 2 発目が斜め上で爆ぜる。押し出す力も同じ時刻にずらして置く
+# (発生源だけずらすと «前の煙の中で静かに湧く» だけになり、二発目に見えない)。
+version = 2
+kind = "gas"
+seed = 79
+
+[gas]
+buoyancy = 1.2
+weight = 0.03
+vorticity = 0.7
+turbulence = 0.4
+turbulence_scale = 4.0
+density_dissipation = 0.28
+temperature_dissipation = 1.5
+ignition_temperature = 0.2
+burn_rate = 9.0
+burn_heat = 1.7
+burn_smoke = 0.9
+burn_expansion = 2.8
+
+[[source]]
+name = "Core 1"
+shape = "sphere"
+center = [-0.22, -0.3, 0.0]
+size = [0.18, 0.18, 0.18]
+density = 0.7
+temperature = 2.6
+fuel = 9.0
+noise = 0.7
+duration = 0.12
+
+[[source]]
+name = "Dust Ring 1"
+shape = "ring"
+center = [-0.22, -0.33, 0.0]
+size = [0.34, 0.1, 0.34]
+direction = [0.0, 0.0, 1.0]
+density = 3.0
+temperature = 0.35
+noise = 0.85
+duration = 0.22
+color_key = 1.0
+
+[[source]]
+name = "Core 2"
+shape = "sphere"
+center = [0.26, 0.02, 0.0]
+size = [0.16, 0.16, 0.16]
+density = 0.6
+temperature = 2.4
+fuel = 7.0
+noise = 0.75
+start_time = 0.35
+duration = 0.12
+
+[[source]]
+name = "Dust Ring 2"
+shape = "ring"
+center = [0.26, -0.01, 0.0]
+size = [0.3, 0.09, 0.3]
+direction = [0.0, 0.0, 1.0]
+density = 2.6
+temperature = 0.3
+noise = 0.9
+start_time = 0.35
+duration = 0.2
+color_key = 1.0
+
+[[force]]
+name = "Blast 1"
+type = "repulse"
+center = [-0.22, -0.3, 0.0]
+strength = 2.6
+radius = 0.8
+falloff_power = 1.2
+duration = 0.28
+
+[[force]]
+name = "Blast 2"
+type = "repulse"
+center = [0.26, 0.02, 0.0]
+strength = 2.3
+radius = 0.75
+falloff_power = 1.2
+start_time = 0.35
+duration = 0.28
+
+[[force]]
+name = "Churn"
+type = "vortex"
+direction = [0.0, 0.0, 1.0]
+strength = 1.1
+radius = 1.0
+
+[[force]]
+name = "Shred"
+type = "noise"
+strength = 1.4
+noise_frequency = 3.5
+noise_speed = 1.2
+
+[render]
+shading = "fire"
+smoke_color = [0.31, 0.28, 0.26, 1.0]
+shadow_color = [0.06, 0.05, 0.05, 1.0]
+opacity = 4.4
+self_shadow = 2.6
+detail_strength = 0.375
+detail_scale = 7.0
+fire_kelvin = 1700.0
+use_albedo_ramp = true
+
+    [[render.albedo_ramp]]
+    color = [0.05, 0.045, 0.04]
+    position = 0.0
+
+    [[render.albedo_ramp]]
+    color = [0.125, 0.105, 0.087]
+    position = 0.33
+
+    [[render.albedo_ramp]]
+    color = [0.2, 0.165, 0.133]
+    position = 0.66
+
+    [[render.albedo_ramp]]
+    color = [0.28, 0.23, 0.18]
+    position = 1.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 2.2
+warmup = 0.0
+substeps = 4
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "3d"
+volume_resolution = 128
+ray_steps = 256
+shadow_steps = 24
+solver = "gpu"
+six_way_lightmaps = true
+blackbody_emission = true
+blackbody_min_kelvin = 1000.0
+blackbody_max_kelvin = 2600.0
+scattering_octaves = 5

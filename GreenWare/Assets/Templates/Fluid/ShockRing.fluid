@@ -1,0 +1,59 @@
+# 衝撃波の輪 — 中心で一瞬だけ湧いた輪を repulse が外へ押し広げる。
+# 焼くのは色ではなく «速度» (distortion)。背景を歪ませる 2 コマ (RG) が出る。
+# 輪の向きは direction (= 輪の軸)。正面から見せたいので手前向きの [0,0,1] にしてある。
+version = 2
+kind = "gas"
+seed = 36
+
+[gas]
+buoyancy = 0.15
+weight = 0.0
+vorticity = 0.2
+turbulence = 0.12
+turbulence_scale = 6.0
+density_dissipation = 0.55
+temperature_dissipation = 1.8
+velocity_damping = 0.1
+sharp_advection = true
+
+[[source]]
+name = "Ring"
+shape = "ring"
+center = [0.0, 0.0, 0.0]
+size = [0.16, 0.07, 0.16]
+direction = [0.0, 0.0, 1.0]
+density = 3.4
+temperature = 1.6
+noise = 0.5
+velocity = [0.0, 0.0, 0.0]
+duration = 0.12
+
+[[force]]
+name = "Blast"
+type = "repulse"
+center = [0.0, 0.0, 0.0]
+strength = 7.5
+radius = 1.3
+falloff_power = 0.4
+duration = 0.6
+
+[render]
+shading = "distortion"
+smoke_color = [0.5, 0.5, 0.5, 1.0]
+opacity = 1.8
+detail_strength = 0.5
+detail_scale = 12.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 0.8
+warmup = 0.0
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "2d"
+scattering_octaves = 3

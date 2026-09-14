@@ -1,0 +1,75 @@
+# 斬り抜けた跡の霧 — capsule の湧き口の見本。刃の «棒» をそのまま湧き口の形にして、
+# motion のキーで左から右へ振り抜く。size.x = 太さ (半径)、size.y = 芯の半分の長さ、
+# direction = 刃の傾き。出すのは一振りぶん (duration 0.16) だけで、あとは drag が止める。
+version = 2
+kind = "gas"
+seed = 67
+
+[gas]
+buoyancy = 0.45
+weight = 0.05
+vorticity = 0.7
+turbulence = 0.35
+turbulence_scale = 6.0
+density_dissipation = 0.9
+temperature_dissipation = 2.0
+
+[[source]]
+name = "Blade"
+shape = "capsule"
+center = [-0.35, -0.05, 0.0]
+size = [0.045, 0.34, 0.045]
+direction = [0.38, 1.0, 0.0]
+density = 7.0
+temperature = 0.6
+noise = 0.55
+velocity = [2.2, 0.25, 0.0]
+duration = 0.16
+
+[source.motion]
+inherit_velocity = true
+
+[[source.motion.key]]
+time = 0.0
+offset = [0.0, 0.0, 0.0]
+
+[[source.motion.key]]
+time = 0.16
+offset = [0.75, 0.1, 0.0]
+
+[[force]]
+name = "Settle"
+type = "drag"
+strength = 1.4
+start_time = 0.18
+
+[[force]]
+name = "Fray"
+type = "noise"
+strength = 0.8
+noise_frequency = 4.5
+noise_speed = 1.2
+
+[render]
+shading = "smoke"
+smoke_color = [0.78, 0.82, 0.88, 1.0]
+shadow_color = [0.16, 0.18, 0.22, 1.0]
+opacity = 1.6
+self_shadow = 0.8
+detail_strength = 0.5
+detail_scale = 11.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 0.9
+warmup = 0.0
+substeps = 4
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "2d"
+scattering_octaves = 4
