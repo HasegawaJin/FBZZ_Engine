@@ -93,7 +93,9 @@ void FBZZ_PunctualRange(float2 svXY, float3 worldPos, out uint count, out uint b
 // 走査位置 i のライトを取り出す。
 PunctualLight FBZZ_PunctualAt(uint base, uint i)
 {
-    PunctualLight lt;
+    // WHY ゼロ初期化: 全分岐でフィールドを漏れなく埋めているが、FXC は
+    //     メンバー単位の代入を分岐をまたいで追跡しきれず X4000 を出す。
+    PunctualLight lt = (PunctualLight)0;
 
     if (clusterLightMode == FBZZ_LIGHT_MODE_CLUSTERED)
     {

@@ -132,49 +132,51 @@ PunctualLight FBZZ_PunctualAt(uint base, uint i)
             lt.cookieIndex = -1;
             lt.tangent     = r3.xyz;  lt.halfWidth  = r3.w;
             lt.bitangent   = r4.xyz;  lt.halfHeight = r4.w;
-            return lt;
         }
-
-        // b12 の legacyPunctualSlots は「点 8 本ぶんの後にスポット 4 本」という
-        // 固定の並びなので、走査位置 i (点→スポットの連結) とは添字がずれる。
-        uint slotIndex;
-        if (i < pointCount)
-        {
-            lt.position  = pointLights[i].position;
-            lt.range     = pointLights[i].range;
-            lt.color     = pointLights[i].color;
-            lt.intensity = pointLights[i].intensity;
-            lt.direction = float3(0.0f, -1.0f, 0.0f);
-            lt.innerCos  = 0.0f;
-            lt.outerCos  = 0.0f;
-            lt.type      = FBZZ_LIGHT_TYPE_POINT;
-            slotIndex    = i;
-        }
+        // WHY else で包むか: 分岐の途中で return すると、FXC は戻り値を X4000 で咎める。
         else
         {
-            const uint s = i - pointCount;
-            lt.position  = spotLights[s].position;
-            lt.range     = spotLights[s].range;
-            lt.color     = spotLights[s].color;
-            lt.intensity = spotLights[s].intensity;
-            lt.direction = spotLights[s].direction;
-            lt.innerCos  = spotLights[s].innerCos;
-            lt.outerCos  = spotLights[s].outerCos;
-            lt.type      = FBZZ_LIGHT_TYPE_SPOT;
-            slotIndex    = FBZZ_LEGACY_SPOT_SLOT_BASE + s;
+            // b12 の legacyPunctualSlots は「点 8 本ぶんの後にスポット 4 本」という
+            // 固定の並びなので、走査位置 i (点→スポットの連結) とは添字がずれる。
+            uint slotIndex;
+            if (i < pointCount)
+            {
+                lt.position  = pointLights[i].position;
+                lt.range     = pointLights[i].range;
+                lt.color     = pointLights[i].color;
+                lt.intensity = pointLights[i].intensity;
+                lt.direction = float3(0.0f, -1.0f, 0.0f);
+                lt.innerCos  = 0.0f;
+                lt.outerCos  = 0.0f;
+                lt.type      = FBZZ_LIGHT_TYPE_POINT;
+                slotIndex    = i;
+            }
+            else
+            {
+                const uint s = i - pointCount;
+                lt.position  = spotLights[s].position;
+                lt.range     = spotLights[s].range;
+                lt.color     = spotLights[s].color;
+                lt.intensity = spotLights[s].intensity;
+                lt.direction = spotLights[s].direction;
+                lt.innerCos  = spotLights[s].innerCos;
+                lt.outerCos  = spotLights[s].outerCos;
+                lt.type      = FBZZ_LIGHT_TYPE_SPOT;
+                slotIndex    = FBZZ_LEGACY_SPOT_SLOT_BASE + s;
+            }
+            // 影 / Cookie のスロット番号と光源半径は b3 に持てないので b12 から引く。
+            // b12 が束縛されていないパスでは全ゼロで読まれるが、それは
+            // 「スロット 0」ではなく punctualShadowCount == 0 が優先されるため影は出ない。
+            const float4 slots = (slotIndex < 12u)
+                               ? legacyPunctualSlots[slotIndex]
+                               : float4(-1.0f, -1.0f, 0.0f, 0.0f);
+            lt.shadowIndex = (int)slots.x;
+            lt.cookieIndex = (int)slots.y;
+            lt.tangent     = float3(1.0f, 0.0f, 0.0f);
+            lt.bitangent   = float3(0.0f, 1.0f, 0.0f);
+            lt.halfWidth   = slots.z;   // 光源半径。ハイライトの広がりにだけ効く
+            lt.halfHeight  = 0.0f;
         }
-        // 影 / Cookie のスロット番号と光源半径は b3 に持てないので b12 から引く。
-        // b12 が束縛されていないパスでは全ゼロで読まれるが、それは
-        // 「スロット 0」ではなく punctualShadowCount == 0 が優先されるため影は出ない。
-        const float4 slots = (slotIndex < 12u)
-                           ? legacyPunctualSlots[slotIndex]
-                           : float4(-1.0f, -1.0f, 0.0f, 0.0f);
-        lt.shadowIndex = (int)slots.x;
-        lt.cookieIndex = (int)slots.y;
-        lt.tangent     = float3(1.0f, 0.0f, 0.0f);
-        lt.bitangent   = float3(0.0f, 1.0f, 0.0f);
-        lt.halfWidth   = slots.z;   // 光源半径。ハイライトの広がりにだけ効く
-        lt.halfHeight  = 0.0f;
     }
     return lt;
 }
@@ -183,17 +185,8 @@ PunctualLight FBZZ_PunctualAt(uint base, uint i)
 // WHY 減衰式をここで再実装しないか: Lighting.hlsli の LightAttenuation / SpotConeWeight を
 //     そのまま呼ぶことが、「レガシー経路と見た目が完全一致する」ことの根拠そのものになる。
 //     式を書き写すと、片方だけ直したときに静かにズレる。
-PunctualSample FBZZ_EvalPunctual(PunctualLight lt, float3 worldPos, float3 N)
+PunctualSample FBZZ_EvalPointSpotLight(PunctualLight lt, float3 worldPos, float3 N)
 {
-    // 大きさを持つ光源は減衰も方向も別の作りなので、丸ごと専用の評価へ渡す。
-    // WHY V をここで作るか: 呼び出し側 (FBZZ_PUNCTUAL_BEGIN) は V を渡してこない。
-    //     cameraPos は b0 の CameraConstants にあり、この層へ到達する全シェーダー
-    //     (Terrain / Water が独自宣言する版も含む) が必ず持っている。
-    if (lt.type == FBZZ_LIGHT_TYPE_AREA)
-        return FBZZ_EvalAreaLight(lt, worldPos, N, SafeNormalize(cameraPos - worldPos, N));
-    if (lt.type == FBZZ_LIGHT_TYPE_SPHERE || lt.type == FBZZ_LIGHT_TYPE_TUBE)
-        return FBZZ_EvalSphereTubeLight(lt, worldPos, N, SafeNormalize(cameraPos - worldPos, N));
-
     const float3 toLight = lt.position - worldPos;
     const float  dist    = length(toLight);
 
@@ -224,6 +217,23 @@ PunctualSample FBZZ_EvalPunctual(PunctualLight lt, float3 worldPos, float3 N)
     // 点光源 / スポットは L が光源そのものへの方向なので、コサインの補正が要らない。
     // 影とコーンは畳み込んだ後の値を渡す (霧にも影を効かせる)。
     s.intensityNoCosine = s.intensity;
+    return s;
+}
+
+// 大きさを持つ光源は減衰も方向も別の作りなので、丸ごと専用の評価へ渡す。
+// WHY V をここで作るか: 呼び出し側 (FBZZ_PUNCTUAL_BEGIN) は V を渡してこない。
+//     cameraPos は b0 の CameraConstants にあり、この層へ到達する全シェーダー
+//     (Terrain / Water が独自宣言する版も含む) が必ず持っている。
+// WHY 出口を 1 つにするか: 種類ごとに早期 return すると、FXC は戻り値を X4000 で咎める。
+PunctualSample FBZZ_EvalPunctual(PunctualLight lt, float3 worldPos, float3 N)
+{
+    PunctualSample s;
+    if (lt.type == FBZZ_LIGHT_TYPE_AREA)
+        s = FBZZ_EvalAreaLight(lt, worldPos, N, SafeNormalize(cameraPos - worldPos, N));
+    else if (lt.type == FBZZ_LIGHT_TYPE_SPHERE || lt.type == FBZZ_LIGHT_TYPE_TUBE)
+        s = FBZZ_EvalSphereTubeLight(lt, worldPos, N, SafeNormalize(cameraPos - worldPos, N));
+    else
+        s = FBZZ_EvalPointSpotLight(lt, worldPos, N);
     return s;
 }
 

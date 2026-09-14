@@ -68,8 +68,8 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_shallowColorDepth;    // xyz=浅瀬色, w=浅瀬深度
     float4   g_deepColorDepth;       // xyz=深部色, w=深部深度
     float4   g_surfaceParams;        // x=opacity, y=reflectivity, z=fresnelBias, w=fresnelPower
-    float4   g_normalParams;         // w=normalStrength (xyz は旧 normalMap スクロール枠・未使用)
-    float4   g_timeParams;           // w=time (xyz は旧 normalMap スクロール枠・未使用)
+    float4   g_normalParams;         // xy=水面のワールド実寸 [m], w=normalStrength (z は未使用)
+    float4   g_timeParams;           // xy=頂点グリッド 1 セルのワールド実寸 [m], w=time (z は未使用)
     float4   g_foamParams;           // x=threshold, y=fade, z=strength, w=foamNoiseScale
     float4   g_refractionFlowParams; // x=refraction, y=flowSpeed, zw=外周フェード幅 (UV 単位, 0 で無効)
     float4   g_waveDir[4];           // xy=direction, z=steepness, w=enabled
@@ -150,16 +150,34 @@ struct WaterPSInput
     float  waveCrest  : TEXCOORD6; // 0=谷, 1=うねりの山。透過光の強さに使う
 };
 
-float3 GerstnerDisplace(float4 dirData, float4 params, float3 pos, float time, inout float3 tangent, inout float3 binormal)
+// 頂点グリッドで «刻めない» 波を寝かせる係数 [0,1]。C++ 側の WaveMeshFade と同じ式。
+//
+// WHY: Gerstner 波は頂点でしか評価されないので、1 波長あたり数セルしか取れない波は
+//      山と谷がセル境界で入れ替わり、«もっと長い別の波» に化ける (エイリアシング)。
+//      海サイズの水面 ── 湖と同じ頂点数で数 km を張る ── ではこれが全面で起き、
+//      水面が形の定まらない板として暴れる。刻めない波は素直に消し、細かさは
+//      手続きさざ波 (WaterDetailGradient) に任せる。
+// 下限 2.0 は Nyquist そのもの (1 波長 2 セル未満は «進む向きすら逆» になる)。
+// 上限 3.5 は «まだ波として読める» 側で、既存の水面から表現できている波を奪わない値。
+// @param cellSize 頂点グリッド 1 セルのワールド実寸 [m]。0 のときはフェードしない。
+float WaveMeshFade(float wavelength, float2 cellSize)
+{
+    float cell = max(cellSize.x, cellSize.y);
+    if (cell <= 0.0f) return 1.0f;
+    return smoothstep(2.0f, 3.5f, wavelength / cell);
+}
+
+float3 GerstnerDisplace(float4 dirData, float4 params, float3 pos, float time, float fade,
+                        inout float3 tangent, inout float3 binormal)
 {
     // WHAT: deep-water Gerstner 波を 1 本評価し、同時に解析微分で TBN を更新する。
     // WHY: CPU 頂点へ法線・接線を持たせず、波変位後の正しい法線を GPU で復元するため。
-    if (dirData.w <= 0.0f)
+    if (dirData.w <= 0.0f || fade <= 0.0f)
         return float3(0.0f, 0.0f, 0.0f);
 
     float2 D = normalize(dirData.xy);
     float  Q = saturate(dirData.z);
-    float  A = params.x;
+    float  A = params.x * fade;
     float  k = params.w;
     float  omega = params.z;
     float  phi = k * dot(D, pos.xz) - omega * time;
@@ -187,7 +205,8 @@ WaterPSInput VSMain(WaterVSInput v)
 
     [unroll]
     for (int i = 0; i < 4; ++i)
-        disp += GerstnerDisplace(g_waveDir[i], g_waveParams[i], worldPos, time, tangent, binormal);
+        disp += GerstnerDisplace(g_waveDir[i], g_waveParams[i], worldPos, time,
+                                 WaveMeshFade(g_waveParams[i].y, g_timeParams.xy), tangent, binormal);
 
     worldPos += disp;
     tangent = normalize(tangent);
@@ -305,12 +324,21 @@ float4 SampleWaterNormal(float2 worldXZ, float2 uv, float time, float footprint)
 // WHY 幅を UV で受け取るか: CPU 側が «メートル / extent» を軸ごとに割って渡す。
 //     こうすると extent が違う軸でも、縦横で帯の実寸が揃う。
 // 上限 0.15: 小さな水面で幅を大きく取ると、中央まで薄まって水が消える。
-float WaterEdgeFade(float2 uv, float2 widthUV)
+//
+// @param widthUV   CPU が «メートル / extent» で渡す帯幅 (UV 単位)。0 でフェード無効。
+// @param extent    水面のワールド実寸 [m]。帯をピクセル幅で下支えするのに使う。
+// @param footprint 1 ピクセルが覆うワールド距離 [m]。
+float WaterEdgeFade(float2 uv, float2 widthUV, float2 extent, float footprint)
 {
-    float2 w = min(max(widthUV, 0.0f), 0.15f);
+    // WHY ピクセル幅で下支えするか: 帯の幅はメートル固定なので、海サイズの水面では
+    //     縁が遠すぎて帯が 1 ピクセルに収まり、消したはずの «切り口の線» が戻ってくる。
+    //     画面上で数ピクセルぶんを確保すれば、どんな大きさでも縁は溶けたまま消える。
+    // 上限 0.05: ピクセル由来の幅が水面の何割も食うと、寝た視線で遠景の水がまとめて消える。
+    float2 minWidth = min(footprint * 4.0f / max(extent, 1.0e-4f), 0.05f);
+    float2 w = min(max(widthUV, minWidth), 0.15f);
     float2 d = min(uv, 1.0f - uv); // 最も近い縁までの距離 [0, 0.5]
-    float fx = w.x > 1.0e-5f ? smoothstep(0.0f, w.x, d.x) : 1.0f;
-    float fy = w.y > 1.0e-5f ? smoothstep(0.0f, w.y, d.y) : 1.0f;
+    float fx = widthUV.x > 1.0e-5f ? smoothstep(0.0f, w.x, d.x) : 1.0f;
+    float fy = widthUV.y > 1.0e-5f ? smoothstep(0.0f, w.y, d.y) : 1.0f;
     return fx * fy;
 }
 
@@ -440,28 +468,45 @@ float4 PSMain(WaterPSInput p) : SV_Target0
 
     // 空反射は空連動 IBL の事前フィルタ済みキューブから引く (専用の環境テクスチャは不要)。
     // smoothness が低いほど粗い mip を引き、ざらついた水面では反射がぼける。
+    //
+    // WHY 反射ベクトルを水平線より下へ向けないか: 遠い水面ほど視線が寝て R は水平線すれすれ
+    //     を向く。そこではさざ波が 1 つ揺れるだけで R が下半球 ── 環境キューブの «地面» 側、
+    //     ほぼ真っ黒 ── へ落ち、遠景の水面に黒い帯が出る。水面が映すのは空なので上へ返す。
     float3 R = reflect(-V, N);
+    R = normalize(float3(R.x, max(R.y, 0.02f), R.z));
     // 落とした細部はサブピクセルの法線ばらつきそのものなので、粗さへ移す (specular AA)。
     // WHY: 移さないと «消えた細部» が反射とハイライトからだけ抜け落ち、遠景の水面が
     //      磨いた金属板になる。粗さに戻せば «細かい波で反射がぼける» 側に着地する。
     float  roughness = saturate(1.0f - g_detailParams.w);
     float  roughnessAA = saturate(roughness + lostDetail * (1.0f - roughness) * 0.70f);
+    // 寝た視線では粗さを引き戻して環境キューブを鮮明な mip から引く。
+    // WHY: 粗い mip は上下 90 度ぶんを平均した色で、水平線際では空に地面が混ざって沈む。
+    //      実際の水面は入射が浅いほど反射ローブが細くなるので、引き戻すほうが正しく、
+    //      «明るい空が水平線まで伸びる» 見え方になる。ハイライト側 (specPower) は
+    //      1 ピクセルのちらつきを避けるため roughnessAA のまま据え置く。
+    float  horizonSharpen = lerp(0.35f, 1.0f, NdotV);
     float3 reflectColor = skyReflectTint;
     [branch]
     if (g_reflectParams.x > 0.001f)
     {
         float3 sky = g_skyReflection.SampleLevel(g_samplerClamp, R,
-                                                 roughnessAA * (float)max(iblMaxMipLevel, 0)).rgb;
+                                                 roughnessAA * horizonSharpen
+                                                     * (float)max(iblMaxMipLevel, 0)).rgb;
         reflectColor = lerp(skyReflectTint, sky, saturate(g_reflectParams.x));
     }
 
     // 反射ウェイト(フレネル)を先に求め、SSR は寄与が実際に見えるピクセルだけトレースする。
     // WHY: TraceWaterSSR は上限付きでも複数回レイマーチする WaterForward の主コスト。水面を見下ろす
     //      (NdotV 大 → 低フレネル) ピクセルは反射がほぼ見えないため、レイマーチを丸ごと省いても
-    //      結果はほぼ不変。背景ピクセルはヒット候補が薄く長い空走査になりやすいため環境反射へフォールバックする。
+    //      結果はほぼ不変。背景ピクセルは画面内にヒット候補が無く長い空走査になるため環境反射へフォールバックする。
     //      逆に浅い角度(高フレネル・反射が目立つ)では従来どおりトレースする。
     //      SSR は SampleLevel(明示 LOD) を使うため分岐内でも勾配の問題は起きない。
-    float reflectionWeight = saturate(fresnel) * lerp(1.0f, 0.45f, backgroundMask);
+    // WHY 背景ピクセルで反射を減らさないか: 以前はここで 0.45 倍していた。底が見えない水を
+    //     «水色» に寄せる意図だったが、掛かるのは «水面の向こうに何も無い» ピクセル ──
+    //     つまり遠景と水平線際そのもの。そこはフレネルが 1 に張り付き本来は鏡になる場所で、
+    //     半分以上が deepColor (Ocean.mat では ほぼ黒) のまま残り、遠い水面が黒く沈んでいた。
+    //     見下ろす角度で水色に見えるかはフレネル曲線が決める話で、ここで下駄を履かせない。
+    float reflectionWeight = saturate(fresnel);
     [branch]
     if (reflectionWeight > 0.04f && backgroundMask < 0.5f)
     {
@@ -541,7 +586,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
 
     // 外周フェードは «最後に» 掛ける。上の max 群より前だと、泡や背景マスクが
     // 縁のアルファを持ち上げ直してしまい、切り口の線がそのまま残る。
-    alpha *= WaterEdgeFade(p.uv, g_refractionFlowParams.zw);
+    alpha *= WaterEdgeFade(p.uv, g_refractionFlowParams.zw, g_normalParams.xy, footprint);
     // WHY 完全な透明を捨てるか: 水面は深度を書く (自分自身の重なりを解決するため)。
     //     フェードで見えなくなった縁がそのまま深度を書くと、その裏にある半透明や
     //     デカールを «見えない板» が遮る。絵に出ない画素は深度も残さない。
