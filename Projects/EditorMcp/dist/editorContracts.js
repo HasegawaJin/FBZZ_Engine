@@ -22,6 +22,25 @@ export const ScenePropertyFilterSchema = z.object({
     op: z.enum(['equals', 'notEquals', 'contains', 'greater', 'less']).default('equals'),
     value: JsonValueSchema,
 }).strict();
+// .fluid はレシピ本体。拡張子を先に弾くのは、.mat や .vfx を渡されても C++ 側では
+// FLUID_READ_FAILED としか言えず、AI が「中身が壊れている」と誤読するため。
+export const FluidPathSchema = z.string().min(1).max(1024).regex(/\.fluid$/i, '.fluid のパスを指定してください');
+// FluidBakeService のジョブ id は uint32 で 0 が「受け付けなかった」を意味する。
+export const FluidJobIdSchema = z.number().int().min(1).max(0xFFFFFFFF);
+// 既定値は C++ 側が持つ (MakeFluidPreset の識別子)。ここで enum に固定すると、
+// エンジンにプリセットを 1 つ足すたびに TypeScript も直すことになる。
+export const FluidPresetSchema = z.string().min(1).max(64);
+// fluid.set / fluid.createEffect の部分レシピ。形は fluid.schema が正本なので中身は見ない。
+export const FluidFieldsSchema = z.record(z.string().min(1).max(128), JsonValueSchema)
+    .refine((fields) => Object.keys(fields).length > 0, { message: 'fields に 1 つ以上の項目が必要です' });
+export const FluidEffectNameSchema = z.string().min(1).max(64)
+    .regex(/^[^\\/:*?"<>|.][^\\/:*?"<>|]*$/, 'name はファイル名 1 つ分 (区切り文字・先頭の . は不可)');
+// 部品リストの名前は .fluid の配列キー (recipe.source / recipe.force / recipe.collider) と同じ。
+export const FluidOperatorListSchema = z.enum(['source', 'force', 'collider']);
+export const FluidOperatorIndexSchema = z.number().int().min(0).max(15);
+// 形 (source: sphere / box / cone / ring / texture、collider: sphere / box / plane) か
+// 力の種類 (wind / attract / ...) のラベル。一覧は fluid.schema が正本。
+export const FluidOperatorTypeSchema = z.string().min(1).max(32);
 export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('editor.catalog') }).strict(),
     z.object({
@@ -161,6 +180,9 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('audio.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('ui.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('build.status'), limit: z.number().int().min(1).max(20).optional() }).strict(),
+    z.object({ t: z.literal('fluid.schema') }).strict(),
+    z.object({ t: z.literal('fluid.get'), path: FluidPathSchema }).strict(),
+    z.object({ t: z.literal('fluid.jobStatus'), job: FluidJobIdSchema, includeImage: z.boolean().optional() }).strict(),
 ]);
 const CommandNameSchema = z.string().min(1).max(128);
 const ComponentNameSchema = z.string().min(1).max(128);
@@ -238,7 +260,10 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     z.object({ t: z.literal('vfx.generateMotionVectors'), texturePath: z.string().min(1).max(1024),
         columns: z.number().int().min(1).max(64), rows: z.number().int().min(1).max(64),
         searchRadius: z.number().int().min(1).max(64).optional(),
-        loop: z.boolean().optional() }).strict(),
+        loop: z.boolean().optional(),
+        rowSequences: z.boolean().optional(),
+        // 推奨 strength は生成結果でしか決まらないため、渡されたら .mat へ直接書き込む。
+        materialPath: z.string().min(1).max(1024).optional() }).strict(),
     // ── Sprite ──
     z.object({ t: z.literal('sprite.rename'), path: z.string().min(1).max(1024),
         sprite: z.string().min(1).max(256), name: z.string().min(1).max(128) }).strict(),
@@ -578,6 +603,61 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     }).strict(),
     z.object({ t: z.literal('build.run'), target: z.literal('script').optional() }).strict(),
     z.object({
+        t: z.literal('fluid.create'),
+        path: FluidPathSchema,
+        preset: FluidPresetSchema.optional(),
+        overwrite: z.boolean().optional(),
+    }).strict(),
+    z.object({ t: z.literal('fluid.set'), path: FluidPathSchema, fields: FluidFieldsSchema }).strict(),
+    z.object({
+        t: z.literal('fluid.addOperator'),
+        path: FluidPathSchema,
+        list: FluidOperatorListSchema,
+        type: FluidOperatorTypeSchema.optional(),
+        index: FluidOperatorIndexSchema.optional(),
+        fields: FluidFieldsSchema.optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('fluid.removeOperator'),
+        path: FluidPathSchema,
+        list: FluidOperatorListSchema,
+        index: FluidOperatorIndexSchema,
+    }).strict(),
+    z.object({
+        t: z.literal('fluid.moveOperator'),
+        path: FluidPathSchema,
+        list: FluidOperatorListSchema,
+        from: FluidOperatorIndexSchema,
+        to: FluidOperatorIndexSchema,
+    }).strict(),
+    z.object({
+        t: z.literal('fluid.preview'),
+        path: FluidPathSchema,
+        // frame が第一級 (焼きの第 n コマ)。time は «一番近いコマ» へ吸着させる旧来の指定。
+        frame: z.number().int().min(0).max(1023).optional(),
+        time: z.number().finite().min(0).max(600).optional(),
+        size: z.number().int().min(32).max(2048).optional(),
+        contactSheet: z.boolean().optional(),
+        variants: z.number().int().min(1).max(16).optional(),
+        seed: z.number().int().min(0).max(4294967295).optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('fluid.bake'),
+        path: FluidPathSchema,
+        updateMaterial: z.boolean().optional(),
+        seed: z.number().int().min(0).max(4294967295).optional(),
+    }).strict(),
+    z.object({ t: z.literal('fluid.cancel'), job: FluidJobIdSchema }).strict(),
+    z.object({
+        t: z.literal('fluid.createEffect'),
+        // ファイル名の素になる。区切り文字を許すと dir の外へ書けてしまう。
+        name: FluidEffectNameSchema,
+        dir: z.string().min(1).max(1024).optional(),
+        preset: FluidPresetSchema.optional(),
+        fields: FluidFieldsSchema.optional(),
+        bake: z.boolean().optional(),
+    }).strict(),
+    z.object({
         t: z.literal('editor.transaction'),
         label: z.string().min(1).max(128),
         cmds: z.array(EditorCommandSchema).min(1).max(128),
@@ -625,6 +705,17 @@ export const AssetThumbnailResultSchema = z.object({
     base64: z.string().min(1),
     path: z.string().min(1),
 }).strict();
+// fluid.jobStatus の応答。C++ 側で項目が増えても MCP を壊さないよう未知キーは素通しする。
+// image は asset.thumbnail と同じ形で、MCP 側で image content へ移し替える。
+export const FluidJobImageSchema = z.looseObject({
+    mimeType: z.enum(['image/png', 'image/jpeg']),
+    base64: z.string().min(1),
+});
+export const FluidJobStatusResultSchema = z.looseObject({
+    job: z.number().int(),
+    state: z.enum(['queued', 'running', 'encoding', 'done', 'failed', 'cancelled']),
+    image: FluidJobImageSchema.optional(),
+});
 // 切り抜き 1 コマ。reference をそのまま component_set へ渡せる形で返す。
 export const SpriteThumbnailResultSchema = z.object({
     mimeType: z.literal('image/png'),

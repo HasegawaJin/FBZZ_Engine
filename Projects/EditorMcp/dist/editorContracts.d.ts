@@ -19,6 +19,19 @@ export declare const ScenePropertyFilterSchema: z.ZodObject<{
     value: z.ZodType<JsonValue, unknown, z.core.$ZodTypeInternals<JsonValue, unknown>>;
 }, z.core.$strict>;
 export type ScenePropertyFilter = z.infer<typeof ScenePropertyFilterSchema>;
+export declare const FluidPathSchema: z.ZodString;
+export declare const FluidJobIdSchema: z.ZodNumber;
+export declare const FluidPresetSchema: z.ZodString;
+export declare const FluidFieldsSchema: z.ZodRecord<z.ZodString, z.ZodType<JsonValue, unknown, z.core.$ZodTypeInternals<JsonValue, unknown>>>;
+export declare const FluidEffectNameSchema: z.ZodString;
+export declare const FluidOperatorListSchema: z.ZodEnum<{
+    collider: "collider";
+    force: "force";
+    source: "source";
+}>;
+export type FluidOperatorList = z.infer<typeof FluidOperatorListSchema>;
+export declare const FluidOperatorIndexSchema: z.ZodNumber;
+export declare const FluidOperatorTypeSchema: z.ZodString;
 export type EditorQuery = {
     t: 'editor.catalog';
 } | {
@@ -204,6 +217,15 @@ export type EditorQuery = {
 } | {
     t: 'build.status';
     limit?: number | undefined;
+} | {
+    t: 'fluid.schema';
+} | {
+    t: 'fluid.get';
+    path: string;
+} | {
+    t: 'fluid.jobStatus';
+    job: number;
+    includeImage?: boolean | undefined;
 };
 export declare const EditorQuerySchema: z.ZodType<EditorQuery>;
 export type EditorCommand = {
@@ -360,6 +382,8 @@ export type EditorCommand = {
     rows: number;
     searchRadius?: number | undefined;
     loop?: boolean | undefined;
+    rowSequences?: boolean | undefined;
+    materialPath?: string | undefined;
 } | {
     t: 'sprite.rename';
     path: string;
@@ -631,6 +655,57 @@ export type EditorCommand = {
     t: 'build.run';
     target?: 'script' | undefined;
 } | {
+    t: 'fluid.create';
+    path: string;
+    preset?: string | undefined;
+    overwrite?: boolean | undefined;
+} | {
+    t: 'fluid.set';
+    path: string;
+    fields: Record<string, JsonValue>;
+} | {
+    t: 'fluid.addOperator';
+    path: string;
+    list: FluidOperatorList;
+    type?: string | undefined;
+    index?: number | undefined;
+    fields?: Record<string, JsonValue> | undefined;
+} | {
+    t: 'fluid.removeOperator';
+    path: string;
+    list: FluidOperatorList;
+    index: number;
+} | {
+    t: 'fluid.moveOperator';
+    path: string;
+    list: FluidOperatorList;
+    from: number;
+    to: number;
+} | {
+    t: 'fluid.preview';
+    path: string;
+    frame?: number | undefined;
+    time?: number | undefined;
+    size?: number | undefined;
+    contactSheet?: boolean | undefined;
+    variants?: number | undefined;
+    seed?: number | undefined;
+} | {
+    t: 'fluid.bake';
+    path: string;
+    updateMaterial?: boolean | undefined;
+    seed?: number | undefined;
+} | {
+    t: 'fluid.cancel';
+    job: number;
+} | {
+    t: 'fluid.createEffect';
+    name: string;
+    dir?: string | undefined;
+    preset?: string | undefined;
+    fields?: Record<string, JsonValue> | undefined;
+    bake?: boolean | undefined;
+} | {
     t: 'editor.transaction';
     label: string;
     cmds: EditorCommand[];
@@ -697,6 +772,31 @@ export declare const AssetThumbnailResultSchema: z.ZodObject<{
     base64: z.ZodString;
     path: z.ZodString;
 }, z.core.$strict>;
+export declare const FluidJobImageSchema: z.ZodObject<{
+    mimeType: z.ZodEnum<{
+        "image/jpeg": "image/jpeg";
+        "image/png": "image/png";
+    }>;
+    base64: z.ZodString;
+}, z.core.$loose>;
+export declare const FluidJobStatusResultSchema: z.ZodObject<{
+    job: z.ZodNumber;
+    state: z.ZodEnum<{
+        cancelled: "cancelled";
+        done: "done";
+        encoding: "encoding";
+        failed: "failed";
+        queued: "queued";
+        running: "running";
+    }>;
+    image: z.ZodOptional<z.ZodObject<{
+        mimeType: z.ZodEnum<{
+            "image/jpeg": "image/jpeg";
+            "image/png": "image/png";
+        }>;
+        base64: z.ZodString;
+    }, z.core.$loose>>;
+}, z.core.$loose>;
 export declare const SpriteThumbnailResultSchema: z.ZodObject<{
     mimeType: z.ZodLiteral<"image/png">;
     base64: z.ZodString;

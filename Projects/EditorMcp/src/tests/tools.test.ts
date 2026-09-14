@@ -60,6 +60,17 @@ class FakeEditorBus implements EditorBus {
         if (query.t === 'physics.events') {
             return { enter: [], stay: [], exit: [] };
         }
+        if (query.t === 'fluid.jobStatus') {
+            // job 7 = 終わったプレビュー (画像あり)、それ以外 = 焼き途中 (画像なし)。
+            const done = query.job === 7 && query.includeImage !== false;
+            return {
+                job: query.job, kind: query.job === 7 ? 'preview' : 'bake',
+                state: query.job === 7 ? 'done' : 'running', progress: query.job === 7 ? 1 : 0.4,
+                fluidPath: 'Assets/VFX/Fluid/Smoke.fluid', message: '', outputs: [],
+                materialPath: '', vfxPath: '', previewPngPath: 'Library/FluidPreview/Smoke.png',
+                ...(done ? { image: { mimeType: 'image/png', base64: 'iVBORw0KGgo=', path: 'Library/FluidPreview/Smoke.png' } } : {}),
+            };
+        }
         return { query: query.t };
     }
 
@@ -172,6 +183,13 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('animation_remove_parameter'), false);
         assert.equal(names.includes('run_transaction'), false);
         assert.equal(names.includes('playtest_run'), false);
+        // 流体: 目録・現在値・ジョブ状態は読むだけなので read でも見える。
+        // 作成・編集・プレビュー・焼き・中止はファイルを書くか GPU を占有するので write 側。
+        for (const name of ['fluid_schema', 'fluid_get', 'fluid_job_status'])
+            assert.equal(names.includes(name), true, name);
+        for (const name of ['fluid_create', 'fluid_set', 'fluid_preview', 'fluid_bake', 'fluid_cancel', 'fluid_create_effect',
+            'fluid_add_operator', 'fluid_remove_operator', 'fluid_move_operator'])
+            assert.equal(names.includes(name), false, name);
     } finally {
         await harness.close();
     }
@@ -699,6 +717,157 @@ test('ワールドオーサリングの照会は引数の少ない Query 面へ�
             { t: 'audio.inspect' },
             { t: 'ui.inspect' },
             { t: 'build.status', limit: 5 },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+test('流体の照会は fluid.* Query へ写像し、省略引数は載せない', async () => {
+    const harness = await CreateHarness('read');
+    try {
+        const path = 'Assets/VFX/Fluid/Smoke.fluid';
+        await harness.client.callTool({ name: 'fluid_schema', arguments: {} });
+        await harness.client.callTool({ name: 'fluid_get', arguments: { path } });
+        await harness.client.callTool({ name: 'fluid_job_status', arguments: { job: 3 } });
+        await harness.client.callTool({ name: 'fluid_job_status', arguments: { job: 3, includeImage: false } });
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'fluid.schema' },
+            { t: 'fluid.get', path },
+            { t: 'fluid.jobStatus', job: 3 },
+            { t: 'fluid.jobStatus', job: 3, includeImage: false },
+        ]);
+        // .fluid 以外は bus へ流す前に弾く。
+        const wrong = CallToolResultSchema.parse(await harness.client.callTool({
+            name: 'fluid_get', arguments: { path: 'Assets/VFX/Fluid/Smoke.mat' },
+        }));
+        assert.equal(wrong.isError, true);
+        assert.equal(harness.bus.queries.length, 4);
+    } finally {
+        await harness.close();
+    }
+});
+
+test('fluid_job_status はプレビュー画像を MCP image content へ移し、text に base64 を残さない', async () => {
+    const harness = await CreateHarness('read');
+    try {
+        const withImage = CallToolResultSchema.parse(await harness.client.callTool({
+            name: 'fluid_job_status', arguments: { job: 7 },
+        }));
+        assert.equal(withImage.isError, undefined);
+        assert.equal(withImage.content.length, 2);
+        assert.equal(withImage.content[0]?.type, 'text');
+        if (withImage.content[0]?.type === 'text') {
+            const status = JSON.parse(withImage.content[0].text) as Record<string, unknown>;
+            assert.equal(status.state, 'done');
+            assert.equal(status.image, undefined);
+        }
+        assert.equal(withImage.content[1]?.type, 'image');
+        if (withImage.content[1]?.type === 'image') {
+            assert.equal(withImage.content[1].mimeType, 'image/png');
+            assert.equal(withImage.content[1].data, 'iVBORw0KGgo=');
+        }
+        assert.equal((withImage.structuredContent as Record<string, unknown>).image, undefined);
+
+        // 焼き途中は画像が無いので text だけ返る。
+        const running = CallToolResultSchema.parse(await harness.client.callTool({
+            name: 'fluid_job_status', arguments: { job: 9 },
+        }));
+        assert.equal(running.isError, undefined);
+        assert.deepEqual(running.content.map((item) => item.type), ['text']);
+        assert.equal((running.structuredContent as Record<string, unknown>).state, 'running');
+    } finally {
+        await harness.close();
+    }
+});
+
+test('流体の作成・編集・プレビュー・焼き・中止は fluid.* Command へ写像する', async () => {
+    const harness = await CreateHarness('write');
+    try {
+        const path = 'Assets/VFX/Fluid/Smoke.fluid';
+        await harness.client.callTool({ name: 'fluid_create', arguments: { path } });
+        await harness.client.callTool({ name: 'fluid_create', arguments: { path, preset: 'Fire', overwrite: true } });
+        await harness.client.callTool({
+            name: 'fluid_set', arguments: { path, fields: { gas: { buoyancy: 2 }, bake: { mode: '3d' } } },
+        });
+        await harness.client.callTool({ name: 'fluid_preview', arguments: { path } });
+        await harness.client.callTool({ name: 'fluid_preview', arguments: { path, time: 1.5, size: 512 } });
+        // コマ指定・コンタクトシート・seed 違いの並べ方はそのまま bus へ渡る (決定論的な反復の入口)。
+        await harness.client.callTool({ name: 'fluid_preview', arguments: { path, frame: 12, contactSheet: true } });
+        await harness.client.callTool({ name: 'fluid_preview', arguments: { path, variants: 4, seed: 77 } });
+        await harness.client.callTool({ name: 'fluid_bake', arguments: { path } });
+        await harness.client.callTool({ name: 'fluid_bake', arguments: { path, updateMaterial: false } });
+        await harness.client.callTool({ name: 'fluid_bake', arguments: { path, seed: 5 } });
+        await harness.client.callTool({ name: 'fluid_cancel', arguments: { job: 4 } });
+        await harness.client.callTool({ name: 'fluid_create_effect', arguments: { name: 'Campfire' } });
+        await harness.client.callTool({
+            name: 'fluid_create_effect',
+            arguments: {
+                name: 'Splash', dir: 'Assets/VFX/Water', preset: 'WaterSplash',
+                fields: { source: [{ shape: 'cone', count: 900 }] }, bake: false,
+            },
+        });
+        await harness.client.callTool({ name: 'fluid_add_operator', arguments: { path, list: 'source' } });
+        await harness.client.callTool({
+            name: 'fluid_add_operator',
+            arguments: { path, list: 'force', type: 'vortex', index: 0, fields: { strength: 4 } },
+        });
+        await harness.client.callTool({ name: 'fluid_remove_operator', arguments: { path, list: 'force', index: 1 } });
+        await harness.client.callTool({ name: 'fluid_move_operator', arguments: { path, list: 'source', from: 2, to: 0 } });
+        await harness.client.callTool({
+            name: 'fluid_add_operator',
+            arguments: { path, list: 'collider', type: 'plane', fields: { direction: [0, 1, 0] } },
+        });
+        await harness.client.callTool({ name: 'fluid_move_operator', arguments: { path, list: 'collider', from: 1, to: 0 } });
+        await harness.client.callTool({ name: 'fluid_remove_operator', arguments: { path, list: 'collider', index: 0 } });
+        // 旧名の list は bus へ流す前に弾く。
+        const oldName = CallToolResultSchema.parse(await harness.client.callTool({
+            name: 'fluid_add_operator', arguments: { path, list: 'gas_source' },
+        }));
+        assert.equal(oldName.isError, true);
+        assert.deepEqual(harness.bus.commands, [
+            { command: { t: 'fluid.create', path }, dryRun: false },
+            { command: { t: 'fluid.create', path, preset: 'Fire', overwrite: true }, dryRun: false },
+            { command: { t: 'fluid.set', path, fields: { gas: { buoyancy: 2 }, bake: { mode: '3d' } } }, dryRun: false },
+            { command: { t: 'fluid.preview', path }, dryRun: false },
+            { command: { t: 'fluid.preview', path, time: 1.5, size: 512 }, dryRun: false },
+            { command: { t: 'fluid.preview', path, frame: 12, contactSheet: true }, dryRun: false },
+            { command: { t: 'fluid.preview', path, variants: 4, seed: 77 }, dryRun: false },
+            { command: { t: 'fluid.bake', path }, dryRun: false },
+            { command: { t: 'fluid.bake', path, updateMaterial: false }, dryRun: false },
+            { command: { t: 'fluid.bake', path, seed: 5 }, dryRun: false },
+            { command: { t: 'fluid.cancel', job: 4 }, dryRun: false },
+            { command: { t: 'fluid.createEffect', name: 'Campfire' }, dryRun: false },
+            { command: {
+                t: 'fluid.createEffect', name: 'Splash', dir: 'Assets/VFX/Water', preset: 'WaterSplash',
+                fields: { source: [{ shape: 'cone', count: 900 }] }, bake: false,
+            }, dryRun: false },
+            { command: { t: 'fluid.addOperator', path, list: 'source' }, dryRun: false },
+            { command: {
+                t: 'fluid.addOperator', path, list: 'force', type: 'vortex', index: 0, fields: { strength: 4 },
+            }, dryRun: false },
+            { command: { t: 'fluid.removeOperator', path, list: 'force', index: 1 }, dryRun: false },
+            { command: { t: 'fluid.moveOperator', path, list: 'source', from: 2, to: 0 }, dryRun: false },
+            { command: {
+                t: 'fluid.addOperator', path, list: 'collider', type: 'plane', fields: { direction: [0, 1, 0] },
+            }, dryRun: false },
+            { command: { t: 'fluid.moveOperator', path, list: 'collider', from: 1, to: 0 }, dryRun: false },
+            { command: { t: 'fluid.removeOperator', path, list: 'collider', index: 0 }, dryRun: false },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+test('dry-run mode では流体の焼きも dryRun=true で送られ、実ファイルに触れない', async () => {
+    const harness = await CreateHarness('dry-run');
+    try {
+        const path = 'Assets/VFX/Fluid/Smoke.fluid';
+        await harness.client.callTool({ name: 'fluid_bake', arguments: { path } });
+        await harness.client.callTool({ name: 'fluid_create_effect', arguments: { name: 'Campfire' } });
+        assert.deepEqual(harness.bus.commands, [
+            { command: { t: 'fluid.bake', path }, dryRun: true },
+            { command: { t: 'fluid.createEffect', name: 'Campfire' }, dryRun: true },
         ]);
     } finally {
         await harness.close();

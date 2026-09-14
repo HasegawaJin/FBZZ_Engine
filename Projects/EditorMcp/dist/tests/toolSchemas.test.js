@@ -80,6 +80,31 @@ for (const permission of ['read', 'dry-run', 'write']) {
         assert.deepEqual(violations, [], `draft-07 固有の書き方が残っている:\n${violations.join('\n')}`);
     });
 }
+test('流体ツールは照会だけが readOnly で、残りは書き込みとして注釈される', async () => {
+    const tools = await ListToolSchemas('write');
+    const byName = new Map(tools.map((tool) => [tool.name, tool]));
+    for (const name of ['fluid_schema', 'fluid_get', 'fluid_job_status']) {
+        assert.equal(byName.get(name)?.annotations?.readOnlyHint, true, name);
+    }
+    for (const name of ['fluid_create', 'fluid_set', 'fluid_preview', 'fluid_bake', 'fluid_cancel', 'fluid_create_effect',
+        'fluid_add_operator', 'fluid_remove_operator', 'fluid_move_operator']) {
+        assert.equal(byName.get(name)?.annotations?.readOnlyHint, false, name);
+    }
+    // list は固定の enum として公開する。自由文字列だと AI が旧名 (gas_source) を書いてくる。
+    const addSchema = byName.get('fluid_add_operator')?.inputSchema;
+    assert.deepEqual(addSchema.properties.list?.enum, ['source', 'force', 'collider']);
+    for (const name of ['fluid_remove_operator', 'fluid_move_operator']) {
+        const schema = byName.get(name)?.inputSchema;
+        assert.deepEqual(schema.properties.list?.enum, ['source', 'force', 'collider'], name);
+    }
+    assert.deepEqual([...(addSchema.required ?? [])].sort(), ['list', 'path']);
+    const moveSchema = byName.get('fluid_move_operator')?.inputSchema;
+    assert.deepEqual([...(moveSchema.required ?? [])].sort(), ['from', 'list', 'path', 'to']);
+    // fields は任意 JSON の部分レシピ。object として公開されていないと AI が文字列で渡してくる。
+    const setSchema = byName.get('fluid_set')?.inputSchema;
+    assert.equal(setSchema.properties.fields?.type, 'object');
+    assert.deepEqual([...(setSchema.required ?? [])].sort(), ['fields', 'path']);
+});
 test('固定長タプルは prefixItems と要素数制約へ変換される', () => {
     const converted = ToDraft2020Schema({
         type: 'object',

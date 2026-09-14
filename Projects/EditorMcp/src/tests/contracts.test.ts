@@ -61,6 +61,61 @@ test('Operator ゲートウェイの契約を検証する', () => {
     assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: '' }).success, false);
 });
 
+test('fluid.* の Query / Command 契約を検証する', () => {
+    const path = 'Assets/VFX/Fluid/Smoke.fluid';
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.schema' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.get', path }).success, true);
+    // .fluid 以外の拡張子は C++ まで届けない。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.get', path: 'Assets/VFX/Fluid/Smoke.mat' }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1, includeImage: false }).success, true);
+    // job 0 は FluidBakeService が「受け付けなかった」に使う値。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 0 }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1.5 }).success, false);
+
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.create', path }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.create', path, preset: 'LavaBlob', overwrite: true }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.set', path, fields: { gas: { buoyancy: 2 } } }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.set', path, fields: { source: [{ shape: 'cone' }, { motion: { key: [{ time: 0, offset: [0, 0, 0] }] } }] },
+    }).success, true);
+    // 部品の追加・削除・並べ替え。list は 3 種だけで、type と index は省略できる。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'source' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.addOperator', path, list: 'collider', type: 'plane', fields: { direction: [1, 1, 0], friction: 0.5 },
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.addOperator', path, list: 'source', type: 'texture', fields: { texture: 'Assets/Textures/Logo.png' },
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.removeOperator', path, list: 'collider', index: 0 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'collider', from: 1, to: 0 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'obstacle' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.addOperator', path, list: 'force', type: 'vortex', index: 0, fields: { strength: 4 },
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'emitter' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'source', index: -1 }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.removeOperator', path, list: 'force', index: 2 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.removeOperator', path, list: 'force' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'source', from: 0, to: 3 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'source', from: 0 }).success, false);
+    // 空の部分レシピは「何も変えない」要求なので受けない。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.set', path, fields: {} }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.preview', path, time: 2, size: 256 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.preview', path, size: 4096 }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.bake', path, updateMaterial: false }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.cancel', job: 12 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.cancel' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: 'Campfire' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.createEffect', name: 'Campfire', dir: 'Assets/VFX/Fluid', preset: 'Fire',
+        fields: { bake: { mode: '3d' } }, bake: false,
+    }).success, true);
+    // name はファイル名 1 つ分。区切り文字で dir の外へ出られない。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: '../Escape' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: 'a/b' }).success, false);
+});
+
 test('viewport.capture は既定上限を超える要求を拒否する', () => {
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540 }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'game' }).success, true);
