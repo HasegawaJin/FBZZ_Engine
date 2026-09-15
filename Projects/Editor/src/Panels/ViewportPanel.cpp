@@ -493,8 +493,23 @@ ViewportPanel::ViewportPanel(Kind kind)
 void ViewportPanel::OnBeforeBegin(EditorContext& ctx)
 {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0.0f, 0.0f });
+    // WHY 掴ませないか: ゲームが Locked でカーソルを握っている間は、拘束範囲が窓を追い
+    //     (EditorApp::UpdatePlayCursorControls)、カーソルは拘束の中心へ戻される。この間に
+    //     窓を動かす / 広げる / タブを引き剥がすと両者が互いを追いかけて増幅し、パネルが
+    //     画面外まで飛ぶ。そもそもカーソルを取られている最中に枠を掴む操作は成立しないので、
+    //     握られている間だけ矩形を固定する。Escape で解放すればすぐ掴めるようになる。
+    m_pinWindowRect = m_kind == Kind::Game
+        && ctx.playMode != nullptr && !ctx.playMode->IsInEditor()
+        && !core::Cursor::IsSuppressed()
+        && core::Cursor::GetEffectivePolicy().CapturesCursor();
     if (m_kind == Kind::Game && ctx.requestGameViewportFocus)
         ImGui::SetNextWindowFocus();
+}
+
+ImGuiWindowFlags ViewportPanel::GetWindowFlags() const
+{
+    return m_pinWindowRect ? (ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)
+                           : ImGuiWindowFlags_None;
 }
 
 void ViewportPanel::OnAfterBegin(EditorContext& ctx)
