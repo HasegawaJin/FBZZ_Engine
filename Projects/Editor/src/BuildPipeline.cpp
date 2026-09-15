@@ -6,6 +6,7 @@
 /// 各ステップの詳細は BuildPipeline.hpp のコメントを参照。
 #include <Editor/BuildPipeline.hpp>
 #include <Editor/ToolchainLocator.hpp>
+#include <Editor/Util/AppIconWriter.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -259,7 +260,7 @@ void BuildPipeline::Tick()
     m_step = static_cast<Step>(static_cast<int>(m_step) + 1);
 
     static constexpr const char* kStepNames[] = {
-        "Compile", "PrepareTempDir", "CopyExecutable", "CopyDlls",
+        "Compile", "PrepareTempDir", "CopyExecutable", "ApplyIcon", "CopyDlls",
         "EnumerateFiles", "CopyFiles", "CopyProjectFiles", "WriteManifest", "CommitOutput", "Done"
     };
     const int stepIdx = static_cast<int>(m_step);
@@ -406,6 +407,31 @@ bool BuildPipeline::ExecuteStep()
             return false;
         }
         m_progress = 0.10f;
+        return true;
+    }
+
+    // ------------------------------------------------------------------
+    case Step::ApplyIcon: {
+        m_progress = 0.12f;
+        if (m_settings.iconPath.empty()) return true;
+
+        m_status = "Applying icon...";
+        const std::filesystem::path icon = m_settings.ResolveIconPath(m_projectRoot);
+        if (!util::FileSystem::Exists(icon)) {
+            SetFailed("Icon image not found: " + util::FileSystem::PathToUtf8(icon));
+            return false;
+        }
+
+        const std::filesystem::path exe = m_tmpDir / (m_settings.productName + ".exe");
+        std::string reason;
+        // WHY 警告で済ませないか: アイコンは «出来上がった exe を見て» しか確認できない。
+        //     黙って既定アイコンのまま配ると、配った後に気付くことになる。
+        if (!AppIconWriter::Apply(icon, exe, reason)) {
+            SetFailed("Failed to apply icon: " + reason);
+            return false;
+        }
+        FBZZ_LOG_INFO("BuildPipeline: icon applied from %s",
+                      util::FileSystem::PathToUtf8(icon).c_str());
         return true;
     }
 
