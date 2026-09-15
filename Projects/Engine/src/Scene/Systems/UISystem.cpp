@@ -478,10 +478,12 @@ void ReleaseMaterialCache(UISystemContext& ctx, renderer::ResourceManager* resou
 void SyncCacheGenerations(UISystemContext& ctx, renderer::ResourceManager& resources)
 {
     const std::uint64_t resetVersion    = resources.GetResetVersion();
+    const std::uint64_t shaderVersion   = resources.GetShaderVersion();
     const int           assetGeneration = asset::AssetManager::GetAssetGeneration();
 
     if (ctx.cachedResetVersion != resetVersion) {
         ctx.cachedResetVersion    = resetVersion;
+        ctx.cachedShaderVersion   = shaderVersion;
         ctx.cachedAssetGeneration = assetGeneration;
         // リセット後のハンドルは実体を失っている。返しにいかず控えだけ捨てる。
         UISystemFlushCache(ctx, nullptr);
@@ -491,8 +493,9 @@ void SyncCacheGenerations(UISystemContext& ctx, renderer::ResourceManager& resou
         return;
     }
 
-    if (ctx.cachedAssetGeneration != assetGeneration) {
+    if (ctx.cachedAssetGeneration != assetGeneration || ctx.cachedShaderVersion != shaderVersion) {
         ctx.cachedAssetGeneration = assetGeneration;
+        ctx.cachedShaderVersion = shaderVersion;
         // WHY マテリアルだけか: フォントアトラスは .ttf / .fnt を直接読んでおり
         //     AssetManager のストアに載っていない。どのアセットが変わっても版数は動くので、
         //     ここでアトラスまで捨てると «無関係な .png を保存しただけ» で

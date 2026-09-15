@@ -45,16 +45,13 @@ public:
 
     ResourceHandle<ShaderTag> LoadShader(std::string_view path);
 
-    // HLSL ホットリロード: 既にロード済みのシェーダーを CSO ファイルから再読み込みする。
-    // WHY: シェーダーを参照するすべての Material / PipelineState を更新せずに済むよう、
-    //      ResourcePool::Replace で同じハンドルのスロット内容だけを差し替える。
-    //      未ロードのパスは LoadShader() にフォールスルーする。
+    /// レンダースレッドのフレーム外で呼ぶ。失敗時は旧実体とハンドルを保持する。
     ResourceHandle<ShaderTag> ReloadShader(std::string_view path);
 
-    // HLSL ホットリロード: キャッシュ済みシェーダーをすべて再読み込みする。
-    // WHY: HLSL変更時にcompile_shaders.ps1が影響を受けたシェーダーを再コンパイルするため、
-    //      個別パスではなく一括で呼ぶ方が効率的。
-    void ReloadAllShaders();
+    /// 全候補を生成してから一括で差し替える。失敗時は旧状態を保持して false。
+    /// レンダースレッドのフレーム外で呼ぶ。
+    bool ReloadAllShaders();
+    [[nodiscard]] uint64_t GetShaderVersion() const { return m_shaderVersion; }
     // デバイスロスト復帰用に全 GPU リソースを破棄し、次フレームの遅延再生成を促す。
     // WHY: 旧 D3D デバイスに紐づく COM リソースは新デバイスで再利用できないため。
     void Reset();
@@ -210,6 +207,7 @@ private:
     std::unordered_map<uint64_t, ResourceHandle<TextureTag>> m_renderTargetDepths;
     ResourceHandle<TextureTag> m_whiteTexture;
     uint64_t m_resetVersion = 1;
+    uint64_t m_shaderVersion = 1;
 
     // リーク見張りの状態。前フレームの合計と «増え続けた連続フレーム数»。
     std::size_t m_watchdogLastBytes = 0;

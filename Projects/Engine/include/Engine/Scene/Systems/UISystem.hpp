@@ -169,6 +169,7 @@ struct UISystemContext {
     // WHY 初期値が 0 か: ResourceManager の版数は 1 始まり、AssetManager は 0 始まりで
     //     «1 度も同期していない» を表せる。初回は空のキャッシュを捨てるだけで無害。
     std::uint64_t cachedResetVersion    = 0;
+    std::uint64_t cachedShaderVersion   = 0;
     int           cachedAssetGeneration = -1;
 
     // 子要素を sortOrder 順に並べる作業領域。UI 階層の深さでインデックスする。

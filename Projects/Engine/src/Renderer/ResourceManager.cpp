@@ -98,7 +98,8 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 
 ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
 {
-    const std::string key(path);
+    std::string key(path);
+    std::replace(key.begin(), key.end(), '\\', '/');
     auto it = m_shaderCache.find(key);
     if (it == m_shaderCache.end())
         return LoadShader(path);
@@ -108,23 +109,37 @@ ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
         FBZZ_LOG_ERROR("ReloadShader failed: %s", key.c_str());
         return it->second;
     }
+    if (!m_renderer.PrepareShaderReload()) {
+        FBZZ_LOG_WARN("ReloadShader: renderer rejected reload of %s", key.c_str());
+        return it->second;
+    }
     m_shaders.Replace(it->second, std::move(newShader));
+    ++m_shaderVersion;
     return it->second;
 }
 
-void ResourceManager::ReloadAllShaders()
+bool ResourceManager::ReloadAllShaders()
 {
-    size_t count = 0;
-    for (auto& [path, handle] : m_shaderCache) {
+    std::vector<std::pair<ResourceHandle<ShaderTag>, std::unique_ptr<IShader>>> pending;
+    pending.reserve(m_shaderCache.size());
+    for (const auto& [path, handle] : m_shaderCache) {
         auto newShader = m_renderer.CreateNativeShader(path);
-        if (newShader) {
-            m_shaders.Replace(handle, std::move(newShader));
-            ++count;
-        } else {
-            FBZZ_LOG_WARN("ReloadAllShaders: failed to reload %s", path.c_str());
+        if (!newShader) {
+            FBZZ_LOG_WARN("ReloadAllShaders: failed to reload %s; keeping all previous shaders", path.c_str());
+            return false;
         }
+        pending.emplace_back(handle, std::move(newShader));
     }
-    FBZZ_LOG_INFO("ResourceManager: %zu shader(s) hot-reloaded", count);
+    if (pending.empty()) return true;
+    if (!m_renderer.PrepareShaderReload()) {
+        FBZZ_LOG_WARN("ReloadAllShaders: renderer rejected reload; keeping all previous shaders");
+        return false;
+    }
+    for (auto& [handle, shader] : pending)
+        m_shaders.Replace(handle, std::move(shader));
+    ++m_shaderVersion;
+    FBZZ_LOG_INFO("ResourceManager: %zu shader(s) hot-reloaded", pending.size());
+    return true;
 }
 
 void ResourceManager::Reset()

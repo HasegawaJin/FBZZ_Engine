@@ -17,6 +17,8 @@ class DX12PsoCache final {
 public:
     bool Initialize(ID3D12Device* device);
     void Shutdown();
+    /// このキャッシュを参照する GPU コマンドがすべて完了していること。
+    void ClearPipelines();
     ID3D12RootSignature* GetRootSignature() const { return m_rootSignature.Get(); }
     ID3D12RootSignature* GetComputeRootSignature() const { return m_computeRootSignature.Get(); }
     ID3D12PipelineState* GetOrCreate(const DX12Shader& shader, const PipelineStateDesc& state,
