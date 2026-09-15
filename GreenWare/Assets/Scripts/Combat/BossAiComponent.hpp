@@ -33,6 +33,7 @@
 #include <Scripts/Combat/BossCollapsePostureComponent.hpp>
 #include <Scripts/Combat/BossDeathVfxComponent.hpp>
 #include <Scripts/Combat/BossHitboxRigComponent.hpp>
+#include <Scripts/Combat/BossMoveGate.hpp>
 #include <Scripts/Combat/BossPartComponent.hpp>
 #include <Scripts/Combat/BossCoreComponent.hpp>
 #include <Scripts/Combat/BossShockwaveComponent.hpp>
@@ -521,7 +522,17 @@ public:
     ///     こちらから引き返すと include が循環する。申告の向きを 1 本に保つ。
     void SetLegBroken(int leg)
     {
-        if (leg >= 0 && leg < 4) m_legBroken[leg] = true;
+        // 決着そのものは BossRigComponent::ApplyLegLoss が出す。あちらが脚を
+        // 折った «直後» に本数を数えて HP を落とすので、ここで同じ判定を持つと
+        // 撃破経路が 2 本になる (BreakLegOnCoreDepleted のコメントと同じ理由)。
+        if (leg < 0 || leg >= 4) return;
+        m_legBroken[leg] = true;
+    }
+    /// 再生した脚を «また踏める» へ戻す (BossRigComponent::RestoreLeg)。
+    void SetLegBroken(int leg, bool broken)
+    {
+        if (leg < 0 || leg >= 4) return;
+        m_legBroken[leg] = broken;
     }
     [[nodiscard]] bool IsLegBroken(BossLeg leg) const
     {
@@ -556,6 +567,18 @@ public:
     /// WHY 公開するか: 部位発光は «どの脚が来るか» まで言えないと «何か来る» で
     ///     終わってしまう。四脚が同時に光ると、避ける向きを選べない。
     [[nodiscard]] BossLeg StompLeg() const { return m_stompLeg; }
+
+    /// これまでに出した手の数。差を見て «今 1 手出た» を知る。
+    /// WHY 通知ではなく数か: 見る側 (教える側・記録) は自分の更新順で読む。通知だと
+    ///     受け手ごとに «取り逃した / 二重に受けた» が出るが、数なら前フレームとの差で
+    ///     誰にでも同じ答えが出る (PlayerParryComponent の ParryCount と同じ形)。
+    [[nodiscard]] int MoveSerial() const { return m_moveSerial; }
+
+    /// 出してよい手を絞る (Scripts/Combat/BossMoveGate.hpp)。
+    /// 既定の門は «何も絞らない» なので、置かなければ挙動はこれまでと同じ。
+    void SetMoveGate(const BossMoveGate& gate) { m_gate = gate; }
+    void ClearMoveGate() { m_gate = {}; }
+    [[nodiscard]] const BossMoveGate& MoveGate() const { return m_gate; }
 
 private:
     /// 今出している行動。Idle 以外は途中で選び直さない。
@@ -617,6 +640,8 @@ private:
 
     /// 8 章の距離テーブル。出せる攻撃が無ければ false。
     [[nodiscard]] bool SelectAttack();
+    /// 門が絞っているときの選び方。許された手から間合いに合うものを 1 つ出す。
+    [[nodiscard]] bool SelectGatedAttack();
     /// プレイヤーの手を読んで割り込む。出したら true。距離の表より先に通す。
     [[nodiscard]] bool ReactToPlayer(float distance);
     /// 一番削れている脚。`ratio` に残りの割合を返す。1 本も見つからなければ -1。
@@ -716,6 +741,11 @@ private:
     /// 今フレームが拍だったか。予兆や SE から «今» を読めるように持つ。
     bool      m_onBeat  = false;
     /// 今の畳み掛けで «続けて出した» 手の数。0 なら 1 手目。
+    /// 教える側が絞っている手。既定は «何も絞らない»。
+    BossMoveGate m_gate;
+    /// 出した手の数と、それを数えるために覚えておく «前フレームの行動»。
+    int       m_moveSerial  = 0;
+    Act       m_lastTickAct = Act::Idle;
     int       m_chain   = 0;
     /// 直前に出し切った手。畳み掛けの 2 手目で同じ手を選ばないために持つ。
     Act       m_lastAct = Act::Idle;
@@ -786,6 +816,8 @@ inline void BossAiComponent::OnStart()
     m_stompExtra = 0.0f;
     m_chain    = 0;
     m_lastAct  = Act::Idle;
+    m_moveSerial  = 0;
+    m_lastTickAct = Act::Idle;
     debugChain = 0;
     m_preferPulse = false;
     m_tempoRelief = 0.0f;
@@ -874,6 +906,10 @@ inline void BossAiComponent::MoveHorizontal(const Vector3& direction, float spee
 
 inline float BossAiComponent::Tempo() const
 {
+    // 教える段はテンポごと預ける。増悪も止める ── 段の途中で脚が落ちたときに
+    // «教えている最中だけ速くなる» が起きると、覚えかけの拍が崩れる。
+    if (m_gate.tempo > 0.0f) return m_gate.tempo;
+
     const float base = std::max(tempo, 0.0f);
     if (!escalateOnLegLoss) return base;
 
@@ -1012,7 +1048,7 @@ inline void BossAiComponent::EndTopple()
     if (m_act != Act::CrashStun) return;
     EndAct();
     // 起き上がった直後に呼吸を挟まない (TickCrashStun と同じ理由)。
-    m_cooldown = 0.0f;
+    m_cooldown = std::max(m_gate.recoverySeconds, 0.0f);
 }
 
 inline void BossAiComponent::PlayShock(const Vector3& center, float strength01,
@@ -1085,6 +1121,7 @@ inline void BossAiComponent::OnFixedUpdate()
     RefreshPlayer();
     EnsureBreakHook();
     ApplyTempo();
+    if (auto* brk = Break()) brk->SetDecayPaused(cutscene::HoldsBoss(Time::unscaledTime));
 
     if (!IsAlive()) {
         if (m_act != Act::Idle) EndAct(/*completed=*/false);
@@ -1150,6 +1187,16 @@ inline void BossAiComponent::OnFixedUpdate()
     }
     debugBeat = m_beat;
 
+    // 手が «出た» を 1 つ数える。教える側が «2 回やり過ごせたか» を知る唯一の窓口で、
+    // 数えるのはここ 1 か所だけ ── Begin* の 6 箇所へ配ると、手を足すたびに
+    // 数え忘れが «その手だけ段が進まない» という形で出る。
+    //
+    // WHY 待機から出たときだけ数えるか: 大ジャンプは踏み切り → 滞空 → 着地、突進は
+    //     始動 → 走り → 激突と Act をまたぐ。Act が変わるたびに数えると、1 手が
+    //     3 回に化ける。«何もしていない所から動き出した» が 1 手の境になる。
+    if (m_act != Act::Idle && m_lastTickAct == Act::Idle) ++m_moveSerial;
+    m_lastTickAct = m_act;
+
     switch (m_act) {
     case Act::Stomp:        TickStomp(dt);        break;
     case Act::JumpUp:       TickJumpUp(dt);       break;
@@ -1157,7 +1204,8 @@ inline void BossAiComponent::OnFixedUpdate()
     case Act::JumpLand:     TickJumpLand(dt);     break;
     case Act::ChargeWindup: TickChargeWindup(dt); break;
     case Act::ChargeRun:    TickChargeRun(dt);    break;
-    case Act::CrashStun:    TickCrashStun(dt);    break;
+    // とどめの猶予は攻撃テンポで短縮せず、HUD と同じゲーム時間で数える。
+    case Act::CrashStun:    TickCrashStun(time.FixedDeltaTime()); break;
     case Act::Beam:         TickBeam(dt);         break;
     case Act::Pulse:        TickPulse(dt);        break;
     case Act::FanBeam:      TickFanBeam(dt);      break;
@@ -1177,6 +1225,7 @@ inline void BossAiComponent::UpdateTelegraph()
 
     switch (m_act) {
     case Act::Stomp:
+        if (m_dealt) break;
         // 着弾点は足に追従させる。振り上げの途中で相手が動くので、開始時に固定すると
         // «輪の外へ出たのに踏まれた» が起きる。
         m_telegraph.shape    = BossTelegraphShape::Circle;
@@ -1208,7 +1257,7 @@ inline void BossAiComponent::UpdateTelegraph()
         m_telegraph.shape     = BossTelegraphShape::Line;
         m_telegraph.kind      = BossAttackKind::Charge;
         m_telegraph.origin    = self;
-        m_telegraph.direction = Forward();
+        m_telegraph.direction = m_chargeDir;
         m_telegraph.length    = std::max(chargeSpeed * chargeMaxSeconds, 1.0f);
         m_telegraph.radius    = std::max(chargeHitRadius, 0.1f);
         m_telegraph.progress  = Clamp01(m_timer / std::max(chargeWindupTime, 0.01f));
@@ -1261,6 +1310,10 @@ inline void BossAiComponent::TickIdle(float dt)
 {
     debugAct = "Idle";
     m_cooldown = std::max(0.0f, m_cooldown - dt);
+    if (m_gate.holdPosition) {
+        StopHorizontal();
+        return;
+    }
 
     GameObject* player = Player();
     if (!player) {
@@ -1352,6 +1405,9 @@ inline int BossAiComponent::WeakestLeg(float& ratio)
 
 inline bool BossAiComponent::ReactToPlayer(float distance)
 {
+    // 教える段では咎めない。割り込みは «読めた» の先にある遊びで、まだ手を覚えて
+    // いない相手には «何をしても刺される» にしかならない (BossMoveGate.hpp)。
+    if (!m_gate.reactions) return false;
     if (!reactToPlayer || m_reactCooldown > 0.0f) return false;
 
     const auto player = playeraction::Read(Time::time);
@@ -1403,8 +1459,53 @@ inline bool BossAiComponent::ReactToPlayer(float distance)
     return false;
 }
 
+inline bool BossAiComponent::SelectGatedAttack()
+{
+    const float distance = debugDistance;
+
+    // WHY «同じ手が続く» を許すか: 畳み掛けの規則は読む対象を増やすためにあるが、
+    //     門が 1 種類しか許していない段では、狙いがまさに «同じ手を繰り返し見せる»
+    //     ことにある。踏みつけを 2 回見れば «2 つ数えたら来る» が体に入る。
+    //
+    // WHY 間合いに合わない手を出さないか: 許された手を間合いを無視して出すと、
+    //     遠くから踏みつけの脚だけが上がって空を踏む。教える段で見せたいのは
+    //     «予兆 → 来る» の対応なので、対応しない絵を出すと覚え方ごと壊れる。
+    //     合う手が無ければ何も出さず、TickIdle の «詰める» に任せる。
+    if (m_gate.Allows(BossMove::FanBeam) && BeginFanBeam()) return true;
+
+    if (distance <= std::max(stompMaxRange, 0.0f)) {
+        if (m_gate.Allows(BossMove::Stomp) && HasStompLeg()) { BeginStomp(); return true; }
+        if (m_gate.Allows(BossMove::Pulse))                  { BeginPulse(); return true; }
+        return false;
+    }
+
+    if (distance >= chargeMinRange && m_gate.Allows(BossMove::Charge) && !m_crippled) {
+        BeginCharge();
+        return true;
+    }
+    if (distance >= beamMinRange && m_gate.Allows(BossMove::Beam)) { BeginBeam(); return true; }
+    if (distance >= jumpMinRange && m_gate.Allows(BossMove::Jump) && !m_crippled) {
+        BeginJump();
+        return true;
+    }
+    // 中距離でパルスしか許されていない段。押し戻すだけの手だが、«近づけ» を言う手でもある。
+    if (m_gate.Allows(BossMove::Pulse) && distance <= std::max(pulseRadius, 0.0f)) {
+        BeginPulse();
+        return true;
+    }
+    return false;
+}
+
 inline bool BossAiComponent::SelectAttack()
 {
+    // 教える側が手を絞っているあいだは、距離の表を通さない。
+    //
+    // WHY 表の中へ «今それを出してよいか» を撒かないか: 表は «距離で役割を分ける»
+    //     という 1 つの規則で出来ていて、そこへ別の規則を混ぜると、どちらを直しても
+    //     もう片方が壊れる。絞る側は «許された手から間合いで選ぶ» という別の規則として
+    //     手前に置き、門が開いていれば 1 行も通らない。
+    if (m_gate.allow != kBossMoveAll) return SelectGatedAttack();
+
     const float distance = debugDistance;
 
     // 畳み掛けの 2 手目以降は «直前と違う手» を選ぶ。同じ手が並ぶと、連続にした
@@ -1730,6 +1831,8 @@ inline void BossAiComponent::TickStomp(float dt)
         // 踏みつけは弾ける手。弾かれた反応は OnParried が受ける (CombatManager が
         // 弾いた瞬間に IBoss::OnParried を呼ぶ)。ここは当たりを出すだけ。
         (void)HitPlayerInSphere(point, stompRadius, stompDamage, PlayerHitKind::Parryable);
+        // 弾きで崩しが満ちると、HitPlayer の中から Topple へ遷移する。
+        if (m_act != Act::Stomp) return;
         PlayShock(point, stompRumble);
     }
 
@@ -1742,6 +1845,7 @@ inline void BossAiComponent::TickStomp(float dt)
 
 inline void BossAiComponent::BeginCharge()
 {
+    m_chargeDir = Forward();
     m_act    = Act::ChargeWindup;
     m_timer  = 0.0f;
     m_dealt  = false;
@@ -1881,7 +1985,7 @@ inline void BossAiComponent::TickCrashStun(float dt)
     //     その «無防備な数秒» が既に反撃の時間そのものになっている。上から
     //     Attack Interval を足すと、自分で崩したときほど何も起きない時間が伸びる
     //     ── 一番うまく戦えたときに一番退屈になる。立ち上がったら即座に次を選ぶ。
-    m_cooldown = 0.0f;
+    m_cooldown = std::max(m_gate.recoverySeconds, 0.0f);
 }
 
 inline void BossAiComponent::HoldTopple(float seconds)
@@ -2299,7 +2403,8 @@ inline void BossAiComponent::EndAct(bool completed)
     // WHY 確率で切るか: 必ず最大まで続くと «3 手目で終わる» が読めてしまい、
     //     待つだけで安全になる。切れ目が毎回ずれると «まだ来るか» を読む遊びになる。
     const bool chainable = completed && ended != Act::Idle && ended != Act::CrashStun;
-    if (chainable && m_chain < std::max(chainMax, 0) &&
+    const int  chainCap  = m_gate.chainMax >= 0 ? m_gate.chainMax : chainMax;
+    if (chainable && m_chain < std::max(chainCap, 0) &&
         random.Range(0.0f, 1.0f) < Clamp01(chainChance)) {
         ++m_chain;
         m_cooldown = static_cast<float>(std::max(chainGapBeats, 0)) * Beat();
@@ -2313,6 +2418,7 @@ inline void BossAiComponent::EndAct(bool completed)
     }
     // 拍を跨いだ «その瞬間» に終わった手の次が同じフレームで出ないように、
     // 明けた直後の 1 フレームは拍待ちへ渡す (m_onBeat は下がっている)。
+    m_cooldown = std::max(m_cooldown, m_gate.recoverySeconds);
     if (chainable) m_lastAct = ended;
     debugChain = m_chain;
 

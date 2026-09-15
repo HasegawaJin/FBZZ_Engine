@@ -97,6 +97,8 @@ namespace fbzz::physics
         // 重力と減衰のゲーム向け調整値。World の重力ベクトルは共有し、剛体ごとに倍率だけ変える。
         bool  m_useGravity  = true;
         float m_gravityScale = 1.0f;
+        /// ワールドのステップに対する時計倍率。ランタイム専用。
+        float m_timeScale = 1.0f;
         float m_linearDrag   = 0.0f;
         float m_angularDrag  = 0.0f;
         bool  m_allowSleeping = true;

@@ -62,7 +62,10 @@ public:
                  "この間もバーと弾薬の供給は始まっているので、身構える時間になる")
 
     FBZZ_GROUP("デバッグ")
-    FBZZ_FIELD(bool, drawRoom, true, "Draw Room")
+    // 既定は消しておく。他のデバッグ表示 (drawDebugRanges / drawDebugFeet …) はどれも
+    // 既定 off なのに、ここだけ on だった ─ 半径を触った人が «見えるように» 立てたまま
+    // 保存すると、ゲーム画面に黄色い球が出たまま配布される。
+    FBZZ_FIELD(bool, drawRoom, false, "Draw Room")
     FBZZ_FIELD_READ_ONLY(bool, debugEngaged, false, "交戦中")
     FBZZ_FIELD_READ_ONLY(float, debugDistance, 0.0f, "距離")
 

@@ -1,0 +1,60 @@
+{
+  "path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\Models\\Boss_03\\Boss03.fbx",
+  "animation_exported": false,
+  "armature": "Boss03Rig",
+  "meshes": [
+    {
+      "name": "Boss03_Body",
+      "vertices": 8060,
+      "polygons": 7862
+    },
+    {
+      "name": "Boss03_Core",
+      "vertices": 2020,
+      "polygons": 2082
+    },
+    {
+      "name": "Boss03_Wing_L_Upper",
+      "vertices": 4082,
+      "polygons": 3910
+    },
+    {
+      "name": "Boss03_Wing_L_Middle",
+      "vertices": 4082,
+      "polygons": 3910
+    },
+    {
+      "name": "Boss03_Wing_L_Lower",
+      "vertices": 4082,
+      "polygons": 3910
+    },
+    {
+      "name": "Boss03_Wing_R_Upper",
+      "vertices": 4082,
+      "polygons": 3910
+    },
+    {
+      "name": "Boss03_Wing_R_Middle",
+      "vertices": 4082,
+      "polygons": 3910
+    },
+    {
+      "name": "Boss03_Wing_R_Lower",
+      "vertices": 4082,
+      "polygons": 3910
+    }
+  ],
+  "bones": [
+    "Root",
+    "Body",
+    "SOCKET_Eye",
+    "Core",
+    "SOCKET_Core",
+    "Wing_L_Upper",
+    "Wing_L_Middle",
+    "Wing_L_Lower",
+    "Wing_R_Upper",
+    "Wing_R_Middle",
+    "Wing_R_Lower"
+  ]
+}

@@ -32,12 +32,14 @@
 #include <Math/Segment.hpp>
 
 #include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/BossTelegraph.hpp>
+#include <Scripts/Combat/BossGroundFireComponent.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Game/RumbleManagerComponent.hpp>
@@ -154,6 +156,9 @@ public:
     void FireColumns(const std::vector<Vector3>& centers);
     /// 頭から槍を吐く。
     void FireLance(const Vector3& from, const Vector3& to);
+    void FireGroundLance(const Vector3& from, const Vector3& to,
+                         float burnSeconds, float radius, int burnDamage);
+    void ClearGroundFire();
     /// 1 点から放射状に扇を撃つ。水平面へ count 本、位相 phaseDegrees からの等間隔。
     ///
     /// WHY 向きの配列ではなく «本数と位相» で受けるか: 等間隔でないと «隙間がどこか» を
@@ -161,6 +166,9 @@ public:
     ///     ことになり、そこがずれた盤面は «避けられない扇» になる。
     void FireFan(const Vector3& origin, int count, float length, float phaseDegrees,
                  float heightAboveOrigin = 0.0f);
+    /// 1 点から地面上へ放射する。Core から床へ刺すレーザー用。
+    void FireGroundFan(const Vector3& origin, int count, float length, float phaseDegrees,
+                       float groundY);
     /// 1 点から、渡された向きへ 1 本ずつ撃つ。等間隔でない «並び» を撃つのはこちら。
     ///
     /// WHY 扇 (FireFan) と分けるか: あちらは «全周を等間隔で塞ぐ» 手で、隙間の位置は
@@ -228,6 +236,7 @@ public:
     void OnStart() override;
     void OnUpdate() override;
     void OnDestroy() override;
+    void OnDisable() override { Stop(); ClearGroundFire(); }
 
 private:
     enum class Stage { Idle, Charge, Fire, Fade };
@@ -245,6 +254,7 @@ private:
         std::vector<ElectricArcBundle> arcsAlong;
         std::vector<ElectricArcBundle> arcsTip;
         bool      dealt = false;
+        bool      igniteGround = false;
     };
 
     /// 今の 1 射で使う尺。撃っている間は撃ち始めに決めた値、待っている間は
@@ -286,6 +296,11 @@ private:
                                                  const Vector3& b);
 
     std::vector<Shot> m_shots;
+    std::vector<EntityRef> m_groundFire;
+    float m_burnSeconds = 5.0f;
+    float m_burnRadius = 1.6f;
+    int m_burnDamage = 1;
+    void IgniteGround(const Vector3& point);
     Stage m_stage    = Stage::Idle;
     float m_elapsed  = 0.0f;
     bool  m_column   = true;
@@ -326,6 +341,7 @@ inline void LaserVolleyComponent::OnStart()
 
 inline void LaserVolleyComponent::OnDestroy()
 {
+    ClearGroundFire();
     // ルートに置いた以上、蛇と一緒には消えない。持ち主が畳む。
     for (Shot& shot : m_shots) {
         for (ElectricArcBundle& arc : shot.arcsAlong) arc.Detach(*this);
@@ -428,6 +444,79 @@ inline void LaserVolleyComponent::FireLance(const Vector3& from, const Vector3& 
     Begin({ from }, { to }, /*column=*/false);
 }
 
+inline void LaserVolleyComponent::FireGroundLance(const Vector3& from, const Vector3& to,
+                                                  float burnSeconds, float radius, int burnDamage)
+{
+    const Vector3 delta = to - from;
+    const float reach = delta.Length();
+    Vector3 end = to;
+    bool ground = false;
+    float nearest = reach + 0.5f;
+    GameObject* self = scene.Self();
+    for (const auto& hit : physics.RaycastAll(from, delta.NormalizedOr(Vector3{0.0f, -1.0f, 0.0f}), nearest)) {
+        GameObject* object = hit.gameObject;
+        if (!object || object == self || (self && object->IsDescendantOf(*self))) continue;
+        if (object->tag == playerTag) continue;
+        // 基底型は ECS に登録されない。同じ物体にある別のトリガーで実体のヒットを除外しない。
+        const auto isHitTrigger = [&hit](const ColliderComponent* component) {
+            return component && component->collider.get() == hit.collider && component->isTrigger;
+        };
+        if (isHitTrigger(object->GetComponent<AabbColliderComponent>()) ||
+            isHitTrigger(object->GetComponent<BoxColliderComponent>()) ||
+            isHitTrigger(object->GetComponent<SphereColliderComponent>()) ||
+            isHitTrigger(object->GetComponent<CapsuleColliderComponent>()) ||
+            isHitTrigger(object->GetComponent<CylinderColliderComponent>()) ||
+            isHitTrigger(object->GetComponent<MeshColliderComponent>()) ||
+            isHitTrigger(object->GetComponent<ConvexHullColliderComponent>()) ||
+            isHitTrigger(object->GetComponent<TerrainColliderComponent>()))
+            continue;
+        if (hit.distance >= nearest) continue;
+        nearest = hit.distance;
+        end = hit.point;
+        ground = hit.normal.y >= 0.5f;
+    }
+    Begin({from}, {end}, false);
+    m_burnSeconds = std::max(burnSeconds, 0.1f);
+    m_burnRadius = std::max(radius, 0.1f);
+    m_burnDamage = std::max(burnDamage, 0);
+    if (!m_shots.empty()) m_shots.front().igniteGround = ground;
+}
+
+inline void LaserVolleyComponent::ClearGroundFire()
+{
+    for (const EntityRef& ref : m_groundFire) {
+        if (GameObject* object = ref.Resolve(scene)) {
+            if (auto* fire = object->GetScript<BossGroundFireComponent>()) fire->Extinguish();
+            scene.Destroy(*object);
+        }
+    }
+    m_groundFire.clear();
+}
+
+inline void LaserVolleyComponent::IgniteGround(const Vector3& point)
+{
+    std::erase_if(m_groundFire, [this](const EntityRef& ref) { return !ref.Resolve(scene); });
+    if (m_groundFire.size() >= 6) {
+        if (GameObject* old = m_groundFire.front().Resolve(scene)) {
+            if (auto* fire = old->GetScript<BossGroundFireComponent>()) fire->Extinguish();
+            scene.Destroy(*old);
+        }
+        m_groundFire.erase(m_groundFire.begin());
+    }
+    auto& object = scene.Create("Boss03_GroundFire");
+    object.runtimeGenerated = true;
+    object.transform.position = object.transform.worldPosition = point;
+    auto& emitter = object.AddComponent<ParticleEmitter>();
+    emitter.settings.materialPath = "guid:e134a84c306ae0689dddcc8a279fdb2f|Assets/Materials/Effects/FX_BOSS_GroundFire.mat";
+    auto& fire = object.AddScript<BossGroundFireComponent>();
+    fire.owner = EntityRef{scene.Self()->GetID()};
+    fire.radius = m_burnRadius;
+    fire.burnSeconds = m_burnSeconds;
+    fire.damage = m_burnDamage;
+    fire.playerTag = playerTag;
+    m_groundFire.emplace_back(object.GetID());
+}
+
 inline void LaserVolleyComponent::FireFan(const Vector3& origin, int count, float length,
                                           float phaseDegrees, float heightAboveOrigin)
 {
@@ -446,6 +535,25 @@ inline void LaserVolleyComponent::FireFan(const Vector3& origin, int count, floa
                        hub.z + std::sin(angle) * Max(length, 1.0f) });
     }
     // 扇は «槍が何本も出ている» もの。柱の輪ではなく芯を主役にする。
+    Begin(from, to, /*column=*/false);
+}
+
+inline void LaserVolleyComponent::FireGroundFan(const Vector3& origin, int count, float length,
+                                                float phaseDegrees, float groundY)
+{
+    const int beams = Max(count, 1);
+    const float reach = Max(length, 1.0f);
+    std::vector<Vector3> from;
+    std::vector<Vector3> to;
+    from.reserve(static_cast<std::size_t>(beams));
+    to.reserve(static_cast<std::size_t>(beams));
+    for (int i = 0; i < beams; ++i) {
+        const float angle = ToRad(phaseDegrees) +
+                            TWO_PI * static_cast<float>(i) / static_cast<float>(beams);
+        from.push_back(origin);
+        to.push_back({ origin.x + std::cos(angle) * reach, groundY,
+                       origin.z + std::sin(angle) * reach });
+    }
     Begin(from, to, /*column=*/false);
 }
 
@@ -807,6 +915,8 @@ inline void LaserVolleyComponent::OnUpdate()
     if (m_elapsed < charge + fire) {
         if (m_stage != Stage::Fire) {
             m_stage = Stage::Fire;
+            for (const Shot& shot : m_shots)
+                if (shot.igniteGround) IgniteGround(shot.to);
             debugStage = "Fire";
             se::Play(audio, se::kBossBeamLoop);
             // WHY 柱だけ本数ぶん出すか: 柱は 1 本ずつ別の口から立つが、槍と扇は

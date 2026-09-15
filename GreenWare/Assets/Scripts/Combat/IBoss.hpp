@@ -40,7 +40,9 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
+#include <algorithm>
 #include <unordered_map>
+#include <vector>
 
 using namespace fbzz::scene;
 
@@ -93,6 +95,10 @@ struct IBoss {
 
     /// 崩しゲージが満ちて倒れているか。この間だけ Execute() が通る。
     [[nodiscard]] virtual bool IsToppled() const { return false; }
+    [[nodiscard]] virtual bool CanExecute() const { return IsToppled(); }
+    [[nodiscard]] virtual bool UsesBodyHitbox() const { return false; }
+    [[nodiscard]] virtual bool CanTakeBodyDamage() const { return false; }
+    virtual bool ApplyBodyDamage(int amount) { (void)amount; return false; }
     /// プレイヤーに一撃を弾かれた。hitPoint は弾いた場所。攻撃を出しかけの脚が跳ねる等。
     virtual void OnParried(const fbzz::math::Vector3& hitPoint) { (void)hitPoint; }
     /// 倒れているボスの部位へ «とどめ» が入った。部位を落とせたら true。
@@ -103,6 +109,15 @@ struct IBoss {
     /// 進行の物差し。脚なら残り本数、蛇なら残り節数。持たないボスは負を返す。
     [[nodiscard]] virtual int PartsRemaining() const { return -1; }
     [[nodiscard]] virtual int PartsTotal() const { return 0; }
+
+    /// 画面で «その相手が居る» 場所。出せなければ false (ルートの位置が使われる)。
+    ///
+    /// WHY ルートの transform で足りないか: 蛇は経路に沿って «骨だけ» が動き、
+    ///     ルートはシーンに置いた座標に据え置かれる。ルートの位置で近さを測ると、
+    ///     胴が目の前に居ても «遠い» と出る ─ 2 体居る盤面では、狙う相手が
+    ///     盤面の動きと無関係に決まってしまう。
+    [[nodiscard]] virtual bool FocusPoint(fbzz::math::Vector3& out) const
+    { (void)out; return false; }
 
     // ── 名簿 (IDamageable と同じ形) ──────────────────────────────────────────
     // 実装側は OnStart で Bind、OnDestroy で Unbind すること。書き忘れると
@@ -174,6 +189,58 @@ struct IBoss {
     for (const auto& [object, boss] : IBoss::Registry())
         if (object && boss) return true;
     return false;
+}
+
+/// 盤面に立っているボスを全部。眠っている相手も含む。
+///
+/// WHY 1 体を返す口と分けるか: 名簿は unordered_map で順序を持たない。相手が 2 体
+///     以上の盤面で «どれか 1 体» を返す口をそのまま使うと、勝利判定・崩しゲージの
+///     加算・体力バーが毎フレーム別の相手を見ることになり、片方だけが育ったり、
+///     片方を倒しただけでステージが終わったりする。数える側は必ず全部を受け取る。
+inline void CollectBossesInStage(const ScriptSceneProxy& scene, std::vector<GameObject*>& out)
+{
+    (void)scene;
+    out.clear();
+    for (const auto& [object, boss] : IBoss::Registry()) {
+        if (!object || !boss) continue;
+        GameObject* self = const_cast<GameObject*>(object);
+        if (!self->activeInHierarchy()) continue;
+        out.push_back(self);
+    }
+}
+
+/// 盤面に出ていて、かつ交戦が始まっているボスを全部 (FindBossOnBoard の複数版)。
+inline void CollectBossesOnBoard(const ScriptSceneProxy& scene, std::vector<GameObject*>& out)
+{
+    CollectBossesInStage(scene, out);
+    out.erase(std::remove_if(out.begin(), out.end(),
+                             [](const GameObject* object) {
+                                 const IBoss* boss = IBoss::Of(object);
+                                 return !boss || !boss->IsEngaged();
+                             }),
+              out.end());
+}
+
+/// 戦っている相手のうち point に一番近い 1 体。居なければ nullptr。
+/// 近さは FocusPoint (蛇なら頭) で測る ─ ルートは据え置きのことがある。
+[[nodiscard]] inline GameObject* FindNearestBossOnBoard(const ScriptSceneProxy& scene,
+                                                        const fbzz::math::Vector3& point)
+{
+    GameObject* best     = nullptr;
+    float       bestDist = 0.0f;
+    for (const auto& [object, boss] : IBoss::Registry()) {
+        if (!object || !boss) continue;
+        GameObject* self = const_cast<GameObject*>(object);
+        if (!self->activeInHierarchy() || !boss->IsEngaged()) continue;
+
+        fbzz::math::Vector3 at = self->transform.worldPosition;
+        (void)boss->FocusPoint(at);
+        const float distance = (at - point).LengthSq();
+        if (best && distance >= bestDist) continue;
+        best     = self;
+        bestDist = distance;
+    }
+    return best;
 }
 
 } // namespace sandbox

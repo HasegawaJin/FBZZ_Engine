@@ -1,0 +1,24 @@
+blend_mode = 'AlphaBlend'
+depth_test = 'LessEqual'
+depth_write = false
+double_sided = true
+mesh_type = 'surface'
+render_path = 'particle'
+render_queue = 3000
+shader = ''
+version = 1
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+flipbook_fps = 40.0
+flipbook_mode = 'fps'
+sprite_columns = 8
+sprite_rows = 8
+sprite_end_frame = 63
+punctual_lighting = false
+six_way_maps = false
+
+[textures]
+albedo = 'guid:d6e563caa00f5c78451100802d790e27|Assets/VFX/Fluid/JetFlame.png'

@@ -36,7 +36,7 @@ class BossCoreComponent : public Script, public IBoss {
 
 public:
     FBZZ_GROUP("識別")
-    FBZZ_FIELD(std::string, bossName, "POLARITY CORE", "名前")
+    FBZZ_FIELD(std::string, bossName, "鉄骸の番人 IRON WARDEN", "名前")
 
     FBZZ_GROUP("Phases (10.6)")
     FBZZ_FIELD_RANGE(float, phase2HealthRatio, 0.5f, "P2 At Health", 0.0f, 1.0f)
@@ -125,6 +125,9 @@ private:
     void RefreshPhase();
     void ApplyGlow();
 
+    BossArmorMaterials m_armorMaterials;
+    int      m_glowHealth = -1;
+    float    m_glowHit   = 0.0f;
     int      m_phase     = 1;
     bool     m_staggered = false;
     bool     m_coreDark  = false;
@@ -148,6 +151,9 @@ inline void BossCoreComponent::OnStart()
     // ここを書き忘れると倒してもステージが終わらない (IBoss.hpp の WHY)。
     IBoss::Bind(scene.Self(), this);
 
+    m_armorMaterials.Reset();
+    m_glowHealth = -1;
+    m_glowHit = 0.0f;
     m_phase     = 1;
     m_staggered = false;
     m_coreDark  = false;
@@ -194,7 +200,15 @@ inline void BossCoreComponent::ApplyGlow()
 
     // WHY 警告色 1 本か: 赤と青は «どちらの刀か» に割り当ててある (BladeColors.hpp)。
     //     ボスがその 2 色を出すと、プレイヤーの刀の色と同じ語で喋ることになる。
-    const Vector4 color = kColorWarning;
+    const int hp = health ? health->CurrentHealth() : 0;
+    if (m_glowHealth >= 0 && hp < m_glowHealth && alive) m_glowHit = 1.0f;
+    m_glowHealth = hp;
+    m_glowHit = std::max(0.0f, m_glowHit - Time::deltaTime / 0.18f);
+    if (alive) m_armorMaterials.Apply(scene.Self(), material, m_telegraph ? 1.0f : 0.0f,
+        m_coreDark, m_glowHit, Time::deltaTime);
+    const float breath = 0.5f + 0.5f * std::sin(Time::time * 2.6f);
+    Vector4 color = m_telegraph ? kColorWarning
+        : Vector4{ 1.0f, 0.56f + breath * 0.12f, 0.2f + breath * 0.08f, 1.0f };
     float scale = (alive && !m_coreDark) ? std::max(emissiveScale, 0.0f) : 0.0f;
 
     // 磁力パルスの予兆。溜めの間だけ速く明滅させる。12.4 の «残り時間が減るほど
@@ -204,9 +218,16 @@ inline void BossCoreComponent::ApplyGlow()
         scale *= Lerp(1.0f - Clamp01(warnBlinkDepth), 1.0f, phase);
     }
 
+    if (!m_telegraph) scale *= 0.78f + 0.22f * breath;
+
+    if (alive && !m_coreDark && !m_telegraph && m_glowHit > 0.0f) {
+        color.y = Lerp(color.y, 0.95f, m_glowHit);
+        color.z = Lerp(color.z, 0.8f, m_glowHit);
+        scale += m_glowHit * 1.4f;
+    }
     const uint32_t slot = static_cast<uint32_t>(emissiveSlot);
     const auto write = [&](const MaterialInstance& instance) {
-        if (!instance.IsValid()) return;
+        if (!instance.IsValid() || instance.HasProperty(MaterialPropertyId{ "dissolveAmount" })) return;
         instance.SetVector3(kEmissiveColorId, { color.x, color.y, color.z });
         instance.SetFloat(kEmissiveScaleId, scale);
     };

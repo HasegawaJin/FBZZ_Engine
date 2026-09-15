@@ -12,9 +12,12 @@
 ///   光るのは «斬られた部位» であって脚 4 本ではない。リグ側に秒数を置くと、
 ///   どの部位が今光っているかをリグが別に覚えることになる。
 #pragma once
+#include <Scripts/Combat/EnemyHealthComponent.hpp>
 
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/EntityRef.hpp>
+#include <Scripts/Combat/IBoss.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
 #include <string>
@@ -67,8 +70,38 @@ public:
     // true なのに画面に何も無いなら BossRigComponent 以降 (脚の対応 / ポストプロセス)。
     FBZZ_FIELD_READ_ONLY(bool, debugAimed, false, "Aimed")
 
+    /// 切り離して飛ぶ部位だけが設定する。通常の部位は親階層から解決する。
+    EntityRef bossOwner;
+    bool bodyTarget = false;
+    [[nodiscard]] bool IsExecutable() const { return !bodyTarget; }
+    [[nodiscard]] bool CanBeHit() const
+    {
+        if (IsBroken() || IsDepleted()) return false;
+        const auto* boss = bodyTarget ? IBoss::Of(BossRoot()) : nullptr;
+        return !bodyTarget || (boss && boss->CanTakeBodyDamage());
+    }
+
+    [[nodiscard]] GameObject* BossRoot() const
+    {
+        if (GameObject* owner = bossOwner.Resolve(scene)) return owner;
+        for (GameObject* node = scene.Self(); node; node = node->GetParent())
+            if (IBoss::Of(node)) return node;
+        return nullptr;
+    }
+
     /// もぎ取られた。以後この部位は削れない。
     void Break();
+    /// 壊れた部位を «無かったこと» にして耐久を満たす (脚の再生)。
+    ///
+    /// WHY 耐久まで戻すか: 壊れた印だけ下ろすと、残り 0 の部位が的として戻ってくる。
+    ///     1 撃で再び落ちるので、再生したのに «触った瞬間また壊れる» になる。
+    void Restore()
+    {
+        m_broken     = false;
+        m_health     = std::max(maxHealth, 1);
+        debugBroken  = false;
+        debugHealth  = m_health;
+    }
 
     /// 斬られて削る。**削り切った呼び出しだけ** true を返す。
     ///
@@ -88,8 +121,15 @@ public:
     [[nodiscard]] float AimHighlight() const;
 
     [[nodiscard]] bool  IsBroken()    const { return m_broken; }
-    [[nodiscard]] int   Health()      const { return std::max(m_health, 0); }
-    [[nodiscard]] bool  IsDepleted()  const { return m_health == 0; }
+    [[nodiscard]] int Health() const
+    {
+        if (bodyTarget) {
+            const auto* health = scene.GetScript<EnemyHealthComponent>(BossRoot());
+            return health ? health->Current() : 0;
+        }
+        return std::max(m_health, 0);
+    }
+    [[nodiscard]] bool  IsDepleted()  const { return bodyTarget ? Health() == 0 : m_health == 0; }
     /// 1 = 無傷 / 0 = 削り切った。
     [[nodiscard]] float HealthNormalized() const;
 
@@ -119,6 +159,10 @@ inline void BossPartComponent::Break()
 inline bool BossPartComponent::Damage(int amount)
 {
     if (m_broken || amount <= 0) return false;
+    if (bodyTarget) {
+        if (auto* boss = IBoss::Of(BossRoot())) boss->ApplyBodyDamage(amount);
+        return false;
+    }
     if (m_health < 0) m_health = std::max(maxHealth, 1);
     if (m_health == 0) return false;
 
@@ -134,6 +178,10 @@ inline float BossPartComponent::DamageFlash() const
 
 inline float BossPartComponent::HealthNormalized() const
 {
+    if (bodyTarget) {
+        const auto* health = scene.GetScript<EnemyHealthComponent>(BossRoot());
+        return health ? health->Normalized() : 0.0f;
+    }
     if (m_health < 0) return 1.0f;
     return Clamp01(static_cast<float>(m_health) / static_cast<float>(std::max(maxHealth, 1)));
 }
