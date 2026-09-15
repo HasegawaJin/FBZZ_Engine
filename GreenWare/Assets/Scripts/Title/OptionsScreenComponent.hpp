@@ -38,7 +38,6 @@
 ///   Canvas Scaler や入れ子の変換が絡んだ場面でだけずれる。
 #pragma once
 
-#include <Engine/Scene/Components/UIControls.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -46,6 +45,7 @@
 #include <Scripts/Game/GameSettingsRegistry.hpp>
 #include <Scripts/UI/UiMotion.hpp>
 #include <Scripts/UI/UiTextFx.hpp>
+#include <Scripts/Utils/BgmLibrary.hpp>
 #include <Scripts/Utils/InputActions.hpp>
 #include <Scripts/Utils/SceneTransition.hpp>
 #include <algorithm>
@@ -76,6 +76,10 @@ public:
     FBZZ_GROUP("流れ")
     FBZZ_FIELD(std::string, backScene, "Title", "Back Scene")
     FBZZ_TOOLTIP("Esc / B で戻る先。戻る前に設定を保存する。空なら戻らない")
+    FBZZ_FIELD(bool, standalone, true, "単独の画面")
+    FBZZ_TOOLTIP("Options シーンの正本として使うか。切ると BGM を掛け替えず、扉 (ワイプ) も"
+                 "描かず、Esc / B も受けない ─ ポーズ画面の中に置くときはこちら "
+                 "(開け閉めと保存は PauseMenuComponent が持つ)")
 
     FBZZ_GROUP("見た目")
     FBZZ_FIELD_COLOR(navDimColor, (Vector4{ 0.435294f, 0.427451f, 0.407843f, 1.0f }), "Nav Dim")
@@ -194,7 +198,11 @@ private:
     ///
     /// WHY Setting* ではなく id を控えるか: 宣言が増えると宣言簿の vector が
     ///     再確保され、控えたポインタは無効になる。id なら宣言簿が伸びても指し続ける。
-    struct RowBinding { std::string id; GameObject* go; };
+    struct RowBinding {
+        std::string id;
+        GameObject* go;
+        float sliderValue = 0.0f;
+    };
     std::vector<RowBinding> m_bound;
     /// m_bound を作ったときの宣言簿の版。増えていたら行を引き直す。
     int m_boundRevision = -1;
@@ -310,6 +318,11 @@ inline std::string OptionsScreenComponent::PageOfTab(int tab) const
 
 inline void OptionsScreenComponent::OnStart()
 {
+    // 音量のつまみを触る画面なので、無音では «今いくつか» が耳で分からない。
+    // WHY ポーズの中では鳴らさないか: 盤面には既に曲が掛かっていて、掛け替えると
+    //     «音量を直しに来ただけ» で戦闘の曲が止まる。閉じても戻せない。
+    if (standalone) bgm::Play(audio, bgm::kOptions);
+
     for (int i = 0; i < kTabs; ++i) {
         m_navBars[i]   = scene.Find(std::string("Nav") + kTabNames[i] + "Bar");
         m_navLabels[i] = scene.Find(std::string("Nav") + kTabNames[i] + "Label");
@@ -355,8 +368,10 @@ inline void OptionsScreenComponent::BindSettings()
     // パッドが挿さっていて、まだ一度も選んでいないなら PAD 側で開く。
     // WHY 常に上書きしないか: Option で明示的にキーボードを選んだ設定を、
     //     パッドを挿しただけで奪わない。
-    if (s->Input().device == 0 && input.IsPadConnected() && !config.Has("input"))
+    if (s->Input().device == 0 && input.IsPadConnected() && !config.Has("input")) {
         s->MutableInput().device = 1;
+        s->Apply();
+    }
 
     ApplyDeviceGroups();
     SelectTab(m_tab);          // INPUT のページは device で変わるので引き直す
@@ -389,8 +404,17 @@ inline void OptionsScreenComponent::SelectTab(int tab)
     const std::string tag = page.substr(4);   // "Tab_VIDEO" -> "VIDEO"
     m_bound.clear();
     for (const settings::Setting& setting : settings::All()) {
-        if (GameObject* go = scene.Find(tag + "_Row_" + setting.id))
+        if (GameObject* go = scene.Find(tag + "_Row_" + setting.id)) {
             m_bound.push_back({ setting.id, go });
+            if (GameObject* slider = Child(go, "Slider")) {
+                const float value = settings::Get(setting.id);
+                const float ratio = setting.kind == settings::Kind::Percent ? value
+                    : (value - setting.min) / (std::max)(setting.max - setting.min, 1e-4f);
+                ui.SetSliderRange(slider, 0.0f, 1.0f);
+                ui.SetSliderValue(slider, std::clamp(ratio, 0.0f, 1.0f));
+                m_bound.back().sliderValue = ui.GetSliderValue(slider);
+            }
+        }
     }
     m_boundRevision = settings::Revision();
     ++m_bindGeneration;
@@ -488,7 +512,9 @@ inline void OptionsScreenComponent::OnUpdate()
     }
 
     // 扉 (ワイプ)。塗っている / 剥がしている最中は入力を受けない。
-    if (transition::Drive(dt, scene, postprocess, m_wipeWriting, false)) {
+    // 遊びのシーン (ポーズの中) では ScreenEffectManager が書き手なので、進めるだけにする
+    // ─ 2 人が PostProcessSettings を書くと互いを消す (SceneTransition.hpp)。
+    if (transition::Drive(dt, scene, postprocess, m_wipeWriting, !standalone)) {
         // 見た目だけは書き続ける (出現の途中で扉が閉まっても行が固まらない)。
         for (std::size_t i = 0; i < m_bound.size(); ++i) PaintRow(i, m_bound[i].go, false);
         RefreshNav(dt);
@@ -516,9 +542,12 @@ inline void OptionsScreenComponent::OnUpdate()
         if (m_navLabels[i] && ui.WasClicked(m_navLabels[i]) && i != m_tab) SelectTab(i);
 
     // 戻る。画面上に戻るボタンが無いのでカーソルとは別系統で受ける。
-    const bool cancel = input.GetKeyDown(fbzz::input::KeyCode::ESCAPE)
-                     || (input.IsPadConnected()
-                         && input.GetPadButtonDown(fbzz::input::GamepadButton::B));
+    // WHY ポーズの中では受けないか: 同じ Esc を «一段戻る» として使う相手が外に居る。
+    //     両方が受けると、閉じたのがページなのか画面なのかが押した人から見えなくなる。
+    const bool cancel = standalone
+                     && (input.GetKeyDown(fbzz::input::KeyCode::ESCAPE)
+                         || (input.IsPadConnected()
+                             && input.GetPadButtonDown(fbzz::input::GamepadButton::B)));
     if (cancel && !m_lastCancel && !backScene.empty()) {
         if (auto* s = GameSettingsComponent::Instance()) s->Save();
         (void)transition::Begin(backScene);
@@ -721,20 +750,19 @@ inline void OptionsScreenComponent::PollRows()
         float value = settings::Get(id);
 
         GameObject* sliderGO = Child(go, "Slider");
-        auto* slider = sliderGO ? sliderGO->GetComponent<UISlider>() : nullptr;
-        if (slider) {
-            if (slider->onValueChanged) {
-                // ドラッグの結果はウィジェットが持っている。0-1 を実値へ写すだけ。
-                value = percent ? slider->value
-                                : minimum + slider->value * (maximum - minimum);
+        if (sliderGO) {
+            const float ratio = ui.GetSliderValue(sliderGO);
+            // 描画パスの一時通知が次の Script 更新まで残らなくても、最後に同期した値との差は残る。
+            if (ratio != m_bound[index].sliderValue) {
+                value = percent ? ratio : minimum + ratio * (maximum - minimum);
                 SetValue(*found, value);
-            } else if (!slider->runtimeDragging) {
-                // 外から変わった値 (プリセット適用・初期化) をつまみへ戻す。
-                const float ratio = percent
-                    ? value
-                    : (value - minimum) / (std::max)(maximum - minimum, 1e-4f);
-                slider->value = std::clamp(ratio, 0.0f, 1.0f);
+                if (m_bindGeneration != generation) return;
+                value = settings::Get(id);
             }
+            const float appliedRatio = percent ? value
+                : (value - minimum) / (std::max)(maximum - minimum, 1e-4f);
+            ui.SetSliderValue(sliderGO, std::clamp(appliedRatio, 0.0f, 1.0f));
+            m_bound[index].sliderValue = ui.GetSliderValue(sliderGO);
         } else if (ui.WasClicked(go)) {
             // スライダーの無い行は、押すたびに次の値へ送る。
             if (found->kind == settings::Kind::Toggle) {
@@ -759,10 +787,10 @@ inline void OptionsScreenComponent::PollRows()
             ui.SetText(valueText, FormatValue(row, value));
         // 出現 (位置と α) とホバー (色) はまとめて 1 か所で書く。
         PaintRow(index, go, hovered);
-        if (slider) {
+        if (sliderGO) {
             // 素材は左右に 32px の余白を持つ。芯の ratio 割は (pad + ratio*芯幅) / PNG幅。
             constexpr float kTrackW = 230.0f, kPngW = 295.0f, kPad = 32.0f, kKnobHalfW = 1.5f;
-            const float ratio = std::clamp(slider->value, 0.0f, 1.0f);
+            const float ratio = std::clamp(ui.GetSliderValue(sliderGO), 0.0f, 1.0f);
             if (GameObject* fill = Child(go, "Fill"))
                 ui.SetImageFillAmount(fill, (kPad + ratio * kTrackW) / kPngW);
             if (GameObject* knob = Child(go, "Knob"))

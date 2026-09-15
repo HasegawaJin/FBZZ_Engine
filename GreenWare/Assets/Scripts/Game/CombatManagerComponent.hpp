@@ -100,6 +100,15 @@ public:
     /// 斬撃が当たった。弾きと同じ連鎖として数える (表示・ランク・猶予は共通)。
     /// @param hits この一振りで当たった数 (溜め斬りは複数)。
     void RegisterBladeChain(int hits);
+    void RegisterBladeHit(int hits, bool rush)
+    {
+        if (hits <= 0) return;
+        ++m_bladeHitSerial;
+        if (rush) ++m_rushHitSerial;
+        RegisterBladeChain(hits);
+    }
+    [[nodiscard]] int BladeHitSerial() const { return m_bladeHitSerial; }
+    [[nodiscard]] int RushHitSerial() const { return m_rushHitSerial; }
     /// 転倒中の斬撃に乗せる倍率。連鎖が続いているほど重い。転倒していなければ呼ばない。
     [[nodiscard]] float BladeRushMultiplier() const
     {
@@ -220,6 +229,8 @@ private:
     std::uint64_t m_chainFrame = 0;
     /// この連鎖で当たった回数。同じフレームでも 1 発ごとに進む (倍率の元)。
     int m_chainHits = 0;
+    int m_bladeHitSerial = 0;
+    int m_rushHitSerial = 0;
     int m_perfectDodges = 0;
     int m_parries = 0;
     int m_cadence = 0;
@@ -248,6 +259,8 @@ inline void CombatManagerComponent::OnStart()
     m_chainRemaining = 0.0f;
     m_chainFrame = 0;
     m_chainHits = 0;
+    m_bladeHitSerial = 0;
+    m_rushHitSerial = 0;
     m_perfectDodges = 0;
     debugPerfectDodges = 0;
     m_parries = 0;

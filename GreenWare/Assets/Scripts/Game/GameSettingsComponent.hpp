@@ -123,7 +123,7 @@ inline constexpr float kStickSensReference = 2.0f;
 /// ゲームプレイの好み。config の [game] テーブルへ往復する。
 ///
 /// 読む側: 視野角と点火・集束時の FOV 変化は TpsCameraComponent、揺れ・止め・振動は
-///         各マネージャーの要求受け口、チェイン表示は ChainDisplayComponent。
+///         各マネージャーの要求受け口。
 ///         いずれも Instance() が無い場面 (エディタでの単体再生など) では
 ///         既定値で動くよう、下の静的アクセサ越しに読む。
 struct GameConfig : IScriptSerializable {
@@ -131,13 +131,11 @@ struct GameConfig : IScriptSerializable {
     float shake     = 0.7f;   ///< 0 - 1
     float hitstop   = 1.0f;   ///< 0 - 1
     bool  fovBurst  = true;
-    bool  chain     = true;
 
     void Reflect(IReflector& r) override
     {
         r.Field("fov", fov);            r.Field("shake", shake);
         r.Field("hitstop", hitstop);    r.Field("fovBurst", fovBurst);
-        r.Field("chain", chain);
     }
 };
 
@@ -582,10 +580,6 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
             [] { return s_lastGame.fovBurst ? 1.0f : 0.0f; },
             [edit](float v) { edit([v](GameSettingsComponent& s) {
                 s.MutableGame().fovBurst = v >= 0.5f; }); });
-    declare("chain", "Tab_GAME", Kind::Toggle,
-            [] { return s_lastGame.chain ? 1.0f : 0.0f; },
-            [edit](float v) { edit([v](GameSettingsComponent& s) {
-                s.MutableGame().chain = v >= 0.5f; }); });
 
     // --- VIDEO ---
     declare("displayMode", "Tab_VIDEO", Kind::Choice,

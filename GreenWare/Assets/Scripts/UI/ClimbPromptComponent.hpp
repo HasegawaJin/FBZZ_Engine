@@ -44,6 +44,10 @@ using fbzz::Time;
 
 namespace sandbox {
 
+/// @note 2026-09-10 に登攀ごと取り下げ、2026-09-14 に案内の枠を
+///       TutorialPromptComponent へ譲った。既定が指す `HUD_ClimbIcon` /
+///       `HUD_ClimbLabel` は**もうシーンに無い** (`HUD_Tutorial*` へ改名済み)。
+///       戻すときは枠を別に足すこと ─ 同じ枠を 2 人で書くと取り合いになる。
 class ClimbPromptComponent : public Script {
     FBZZ_SCRIPT(ClimbPromptComponent)
 

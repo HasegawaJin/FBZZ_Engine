@@ -33,6 +33,7 @@
 #include <Scripts/UI/UiMotion.hpp>
 #include <Scripts/UI/UiNavSe.hpp>
 #include <Scripts/UI/UiTextFx.hpp>
+#include <Scripts/Utils/BgmLibrary.hpp>
 #include <Scripts/Utils/SceneTransition.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
@@ -151,6 +152,7 @@ inline void StageSelectComponent::OnStart()
         thumb->transform.scale.y = len + 96.0f;   // PNG は上下 48px ずつ余白を持つ
     }
     se::EnsureSource(scene, "UI");
+    bgm::Play(audio, bgm::kStageSelect);
     Refresh();
 
     // 出現のために «置いてあった位置と色» を控える。Refresh の後で控えるのは、
@@ -294,7 +296,7 @@ inline void StageSelectComponent::Refresh()
                                          : ::fbzz::math::Vector4{ 0.247f, 0.239f, 0.227f, 1.0f });
         }
         if (GameObject* t = ui.Find(row, "Rank"))
-            ui.SetText(t, r.cleared ? StageProgressState::RankLabel(r.bestScore) : "");
+            ui.SetText(t, r.HasCurrentScore() ? StageProgressState::RankLabel(r.bestScore) : "");
     }
     char cnt[16] = {};
     std::snprintf(cnt, sizeof(cnt), "%02d / %02d", m_cursor + 1, kRows);
@@ -316,20 +318,20 @@ inline void StageSelectComponent::RefreshPane()
 
     // 記録は «クリアしたことがある» ときだけ数字になる。
     const auto clock = [](float s) {
-        const int t = static_cast<int>(std::round((std::max)(s, 0.0f)));
+        const int t = static_cast<int>(std::ceil((std::max)(s, 0.0f)));
         return std::string(t / 60 < 10 ? "0" : "") + std::to_string(t / 60) + ":" +
                (t % 60 < 10 ? "0" : "") + std::to_string(t % 60);
     };
     const std::string val[3] = {
-        r.cleared ? clock(r.bestSeconds) : "--",
-        r.cleared ? GameResultState::ChainText(r.bestChain) : "--",
-        r.cleared && r.leastDamage >= 0 ? GameResultState::DamageText(r.leastDamage) : "--",
+        r.HasCurrentScore() ? clock(r.bestSeconds) : "--",
+        r.HasCurrentScore() ? GameResultState::TechniqueText(r.bestTechnique) : "--",
+        r.HasCurrentScore() && r.leastDamage >= 0 ? GameResultState::DamageText(r.leastDamage) : "--",
     };
     for (int i = 0; i < 3; ++i) {
         const std::string p = "Pane_Row" + std::to_string(i) + "_";
         // 見出しと達成ラインは採点表から引く。リザルトと別の文字を持つと片方だけ古くなる。
-        Text(p + "Name", GameResultState::kAxes[i].name);
-        Text(p + "Th",   GameResultState::kAxes[i].thresholds);
+        Text(p + "Name", GameResultState::Axis(m_cursor, i).name);
+        Text(p + "Th",   GameResultState::Axis(m_cursor, i).thresholds);
         Text(p + "Value", val[i]);
         Text(p + "Best",  val[i]);
         for (int k = 0; k < 3; ++k) {
@@ -337,19 +339,20 @@ inline void StageSelectComponent::RefreshPane()
                 ui.SetTextColor(dot, ::fbzz::math::Vector4{ 0.169f, 0.180f, 0.200f, 1.0f });
         }
     }
-    Text("Pane_Rank_Letter", r.cleared ? StageProgressState::RankLabel(r.bestScore) : "–");
-    Text("Pane_Rank_Pts",    r.cleared ? std::to_string(r.bestScore) + " / 9" : "– / 9");
+    Text("Pane_Rank_Letter", r.HasCurrentScore() ? StageProgressState::RankLabel(r.bestScore) : "–");
+    Text("Pane_Rank_Pts", r.HasCurrentScore() ? std::to_string(r.bestScore) + " / 9"
+                                             : r.cleared ? "新基準で未記録" : "– / 9");
 
     // ボスの構成は初回クリアまで伏せる。選択画面を «予習» ではなく «記録» にする。
-    // WHY «HP» ではなく «PARTS» か: ボスに HP は無い。進行はもぎ取った部位の数だけで
-    //     刻まれる (Docs/break-parry.md)。数字を HP と名乗ると «削れば勝てる» と読まれる。
-    static constexpr const char* kBossKey[5] = { "BOSS", "PARTS", "PHASE 1", "PHASE 2", "SOLUTION" };
+    // 3 段階のボスとチュートリアルを同じ欄へ収めるため、段階番号を見出しにしない。
+    static constexpr const char* kBossKey[5] = { "ボス", "部位", "戦い方", "変化", "攻略" };
     const char* bossVal[5] = { info.boss, info.parts, info.phase1, info.phase2, info.solution };
     const char* bossSub[5] = { "", "", info.phase1Sub, info.phase2Sub, "" };
     for (int i = 0; i < 5; ++i) {
         const std::string p = "Pane_Boss" + std::to_string(i) + "_";
         Text(p + "Key",   r.cleared ? kBossKey[i] : "");
-        Text(p + "Value", r.cleared ? bossVal[i] : (i == 0 ? "初回プレイ後に表示される" : ""));
+        Text(p + "Value", r.cleared ? bossVal[i] :
+             (i == 0 && StageExists(m_cursor) ? "初回クリア後に攻略情報を表示" : ""));
         Text(p + "Sub",   r.cleared ? bossSub[i] : "");
     }
     // «解放されているのに実体が無い» 枠は、その 1 行で言い切る ─ 押しても何も
@@ -357,7 +360,7 @@ inline void StageSelectComponent::RefreshPane()
     Text("Pane_Lbl_BossSub",
          r.cleared            ? "撃破でステージクリア"
          : !StageExists(m_cursor) ? "準備中"
-         : r.unlocked         ? "未プレイ"
+         : r.unlocked         ? "未クリア"
                               : "前のステージをクリアすると解放される");
 }
 
@@ -371,7 +374,7 @@ inline void StageSelectComponent::Play(int index)
     audio.PlayOneShot(uinav::kConfirm);
 
     const std::string target = StageAt(index).scene;
-    if (!transition::Begin(target))
+    if (!transition::Begin(target, true))
         debug.LogError("StageSelect: シーンへの扉を開けません -> " + target +
                        " (StageCatalog.hpp の scene 名と Assets/Scenes/ を突き合わせること)");
 }
