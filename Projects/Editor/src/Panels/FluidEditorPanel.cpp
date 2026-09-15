@@ -421,7 +421,7 @@ void FluidEditorPanel::CreateFromPreset(EditorContext& ctx, const std::string& r
 // 焼き
 // ─────────────────────────────────────────────────────────────────────────────
 
-void FluidEditorPanel::StartBake(EditorContext& ctx, bool makeVfx)
+void FluidEditorPanel::StartBake(EditorContext& ctx, bool makeMaterial, bool makeVfx)
 {
     fluideditor::State& state = *m_state;
     FluidDocument& document = state.document;
@@ -431,7 +431,7 @@ void FluidEditorPanel::StartBake(EditorContext& ctx, bool makeVfx)
 
     FluidBakeRequest request;
     request.fluidPath = document.Path();
-    request.updateMaterial = true;
+    request.updateMaterial = makeMaterial || makeVfx;
     if (makeVfx) {
         const std::filesystem::path fluidFile = util::FileSystem::PathFromUtf8(document.Path());
         std::filesystem::path vfxFile = fluidFile;
@@ -810,10 +810,13 @@ void FluidEditorPanel::DrawToolbar(EditorContext& ctx)
     NextToolbarItem("Bake");
     const bool busy = open && ctx.fluidBake != nullptr && ctx.fluidBake->IsBusy(document.Path());
     ImGui::BeginDisabled(!open || ctx.fluidBake == nullptr || busy);
-    if (ImGui::Button("Bake##fe_bake")) StartBake(ctx, false);
-    ImGui::SetItemTooltip("焼いて隣の .mat を作る / 更新する (未保存なら先に保存)");
+    if (ImGui::Button("Bake##fe_bake")) StartBake(ctx, false, false);
+    ImGui::SetItemTooltip("フリップブックテクスチャ群を焼く (未保存なら先に保存)");
+    NextToolbarItem("Bake & Make Material");
+    if (ImGui::Button("Bake & Make Material##fe_bake_material")) StartBake(ctx, true, false);
+    ImGui::SetItemTooltip("焼いたテクスチャを参照する隣の .mat を作る / 更新する");
     NextToolbarItem("Bake & Make VFX");
-    if (ImGui::Button("Bake & Make VFX##fe_bake_vfx")) StartBake(ctx, true);
+    if (ImGui::Button("Bake & Make VFX##fe_bake_vfx")) StartBake(ctx, true, true);
     ImGui::SetItemTooltip("焼いて .mat を貼った 1 層の .vfx を .fluid の隣に作り、Prefab 編集モードで開く");
     ImGui::EndDisabled();
 
