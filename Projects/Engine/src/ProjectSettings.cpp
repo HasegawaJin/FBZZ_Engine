@@ -393,7 +393,20 @@ bool ProjectSettings::Load(const std::string& path)
             settingsPath.has_parent_path()
                 ? settingsPath.parent_path() / "Input.inputactions"
                 : std::filesystem::path("Input.inputactions");
-        (void)input::InputActionMap::LoadFromFile(inputPath.string());
+        // WHY 無いことを言うか: 既定バインドが持っているのは Move / Look / Jump /
+        //     Attack / Dodge / Interact / Pause だけで、**メニューが使う Submit /
+        //     Cancel は入っていない**。このファイルが配布物から抜けると、遊びは
+        //     動くのに «UI だけ何を押しても反応しない» という形になり、しかも
+        //     どこにも記録が残らない。黙って既定へ落ちるのは正しいが、黙るのは違う。
+        std::error_code ec;
+        if (!std::filesystem::exists(inputPath, ec)) {
+            FBZZ_LOG_WARN("ProjectSettings: %s が見つかりません。"
+                          "入力は既定バインドへ落ちます (Submit / Cancel は既定に無いため、"
+                          "メニューの決定・戻るが効かなくなります)",
+                          inputPath.string().c_str());
+        } else {
+            (void)input::InputActionMap::LoadFromFile(inputPath.string());
+        }
     }
 
     return true;
