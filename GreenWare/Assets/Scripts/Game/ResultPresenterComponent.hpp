@@ -28,6 +28,7 @@
 #include <Scripts/Game/GameResultState.hpp>
 #include <Scripts/Game/ResultFieldGridComponent.hpp>
 #include <Scripts/Title/ScreenDressingComponent.hpp>
+#include <Scripts/Utils/BgmLibrary.hpp>
 #include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/UI/StageCatalog.hpp>
 #include <Scripts/UI/StageProgressState.hpp>
@@ -54,7 +55,7 @@ public:
     FBZZ_FIELD(std::string, selectScene, "StageSelect", "STAGE SELECT")
     FBZZ_FIELD(std::string, titleScene,  "Title",       "TITLE")
     FBZZ_FIELD(std::string, actorName,   "Player",      "Actor")
-    FBZZ_TOOLTIP("右側に出すキャラクター。Victory / Lose ステートを持つ Animator が要る")
+    FBZZ_TOOLTIP("右側に出すキャラクター。Victory / DefeatIdle ステートを持つ Animator が要る")
 
     FBZZ_GROUP("見た目")
     FBZZ_FIELD_COLOR(dotOnColor,  (::fbzz::math::Vector4{ 0.310f, 0.851f, 0.478f, 1.0f }), "Dot On")
@@ -117,6 +118,7 @@ private:
     int   m_cursor  = 0;
     float m_repeat  = 0.0f;
     bool  m_victory = false;
+    bool  m_actorStarted = false;
 
     // ---- 導入演出 ----
     void UpdateIntro(float dt);
@@ -145,13 +147,17 @@ FBZZ_REFLECT(ResultPresenterComponent)
 
 inline std::string ResultPresenterComponent::Clock(float seconds)
 {
-    const int t = static_cast<int>(std::round((std::max)(seconds, 0.0f)));
+    const int t = static_cast<int>(std::ceil((std::max)(seconds, 0.0f)));
     const int m = t / 60, s = t % 60;
     return (m < 10 ? "0" : "") + std::to_string(m) + ":" + (s < 10 ? "0" : "") + std::to_string(s);
 }
 
 inline void ResultPresenterComponent::OnStart()
 {
+    m_actorStarted = false;
+    time.SetTimeScale(1.0f);
+    StageProgressState::EnsureInit(save);
+    StageProgressState::cursor = std::clamp(GameResultState::stageIndex, 0, kStageCount - 1);
     // WHY 差し替えを OnStart の 1 か所に閉じるか: 以降のすべての分岐は m_victory を見る。
     //     ここだけを偽れば «勝った画面» が丸ごと再現でき、確認のために
     //     GameResultState を書き換えて戻し忘れる、という事故が起きない。
@@ -179,12 +185,8 @@ inline void ResultPresenterComponent::OnStart()
     if (auto* dressing = scene.GetScript<ScreenDressingComponent>())
         dressing->SetPoleBias(m_victory ? -0.65f : 0.75f);
 
-    // ---- 右側のキャラクター。勝敗でクリップを差し替えて、あとはループに任せる ----
-    // Animator の defaultStateName は Victory なので、負けたときだけ切り替えれば足りる。
-    // それでも両方明示するのは、Play を挟まない復帰 (シーン再入場) で
-    // 前回の状態が残っていることがあるため。
     if (GameObject* actor = N(actorName)) {
-        animator.Play(actor, m_victory ? "Victory" : "Lose");
+        animator.SetSpeed(actor, 0.0f);
     } else {
         debug.LogWarning("ResultPresenter: " + actorName + " が見つからない (キャラクターが出ない)");
     }
@@ -269,6 +271,12 @@ inline void ResultPresenterComponent::OnStart()
     m_ghostRow = -1;
 
     se::EnsureSource(scene, "UI");
+    // 勝ち負けで «締め» を鳴らし分ける。どちらも 1 度きり (PlayOnce)。
+    //
+    // WHY ここでも鳴らし直すか: 曲はシーンをまたいで鳴り続ける (LoadScene は voice を
+    //     止めない)。«前の画面の曲を持ち込まない» は画面ごとに保証する ─ BGM の枠は
+    //     1 本きりなので、ここで宣言することが前の曲を断つことでもある。
+    bgm::PlayOnce(audio, m_victory ? bgm::kResultClear : bgm::kResultFailed);
     se::Play(audio, se::kUiResult);
     // ランク音は «評価が出た» ことの合図。出していないときは鳴らさない。
     if (GameResultState::RankAvailable())
@@ -277,8 +285,7 @@ inline void ResultPresenterComponent::OnStart()
     // 自己ベストは表示した «後» に更新する。先に更新すると、今回の記録が
     // そのままベストとして併記され、更新できたかどうかが読めない。
     GameResultState::CommitBest();
-    if (m_victory) {
-        StageProgressState::EnsureInit(save);
+    if (m_victory && previewResult == 0) {
         if (!StageProgressState::Commit(StageProgressState::cursor, save))
             debug.LogWarning("Result: 進行データを保存できませんでした ("
                              + StageProgressState::ResolvePath() + ")");
@@ -290,33 +297,33 @@ inline void ResultPresenterComponent::FillClear()
     const int score = GameResultState::Score();
     const int pts[3] = {
         GameResultState::TimePoints(GameResultState::clearSeconds),
-        GameResultState::ChainPoints(GameResultState::bestChain),
+        GameResultState::TechniquePoints(),
         GameResultState::DamagePoints(GameResultState::damageTaken),
     };
     const std::string value[3] = {
         Clock(GameResultState::clearSeconds),
-        GameResultState::ChainText(GameResultState::bestChain),
+        GameResultState::TechniqueText(GameResultState::TechniquePoints()),
         GameResultState::DamageText(GameResultState::damageTaken),
     };
     const StageRecord& rec = StageProgressState::stages[StageProgressState::cursor];
     const std::string best[3] = {
-        rec.bestSeconds > 0.0f ? Clock(rec.bestSeconds) : "--",
-        rec.bestChain > 0 ? GameResultState::ChainText(rec.bestChain) : "--",
-        rec.leastDamage >= 0 ? GameResultState::DamageText(rec.leastDamage) : "--",
+        rec.HasCurrentScore() && rec.bestSeconds > 0.0f ? Clock(rec.bestSeconds) : "--",
+        rec.HasCurrentScore() ? GameResultState::TechniqueText(rec.bestTechnique) : "--",
+        rec.HasCurrentScore() && rec.leastDamage >= 0 ? GameResultState::DamageText(rec.leastDamage) : "--",
     };
     // 被ダメージは «少ない方» が更新。他の 2 軸と向きが逆。
     const bool isNew[3] = {
-        rec.bestSeconds <= 0.0f || GameResultState::clearSeconds < rec.bestSeconds,
-        GameResultState::bestChain > rec.bestChain,
-        rec.leastDamage < 0 || GameResultState::damageTaken < rec.leastDamage,
+        !rec.HasCurrentScore() || rec.bestSeconds <= 0.0f || GameResultState::clearSeconds < rec.bestSeconds,
+        !rec.HasCurrentScore() || GameResultState::TechniquePoints() > rec.bestTechnique,
+        !rec.HasCurrentScore() || rec.leastDamage < 0 || GameResultState::damageTaken < rec.leastDamage,
     };
 
     for (int r = 0; r < 3; ++r) {
         const std::string p = "Clear_Row" + std::to_string(r) + "_";
         // 見出しと達成ラインはシーンに焼かず採点表から流す。雑魚を畳んだ後も
         // «押し込み撃破» の行が残っていたのは、ここが固定文字だったため。
-        Text(p + "Name", GameResultState::kAxes[r].name);
-        Text(p + "Th",   GameResultState::kAxes[r].thresholds);
+        Text(p + "Name", GameResultState::Axis(r).name);
+        Text(p + "Th",   GameResultState::Axis(r).thresholds);
         Text(p + "Value", value[r]);
         Text(p + "Pts",   std::to_string(pts[r]));
         // 更新した行は BEST 欄を今回の値に置き換えて、NEW を出す。
@@ -328,7 +335,7 @@ inline void ResultPresenterComponent::FillClear()
         }
     }
 
-    // ランクはノーリトライで勝ったときだけ。付かない周は説明文に置き換える。
+    // クリアした挑戦を採点する。リトライ前の失敗は持ち越さない。
     const bool rated = GameResultState::RankAvailable();
     Show("Group_Rank",   rated);
     Show("Group_NoRank", !rated);
@@ -346,12 +353,12 @@ inline void ResultPresenterComponent::FillClear()
 inline void ResultPresenterComponent::FillFailed()
 {
     const int remain = static_cast<int>(std::round(GameResultState::bossHpRemain01 * 100.0f));
-    const int hp     = static_cast<int>(std::round(GameResultState::bossHpRemain01 * 800.0f));
+    const int hp = GameResultState::bossHealthRemaining;
     const int phase  = GameResultState::bossPhase >= 2 ? 2 : 1;
 
     Text("Fail_Lbl_Reach",  "到達  PHASE " + std::to_string(phase));
     Text("Fail_Boss_Value", "撃破まで 残り " + std::to_string(remain) + " %");
-    Text("Fail_Boss_Sub",   "800 中 " + std::to_string(hp));
+    Text("Fail_Boss_Sub", std::to_string(GameResultState::bossHealthTotal) + " 中 " + std::to_string(hp));
     // 倒れたフェーズだけ赤くする。突破したフェーズは «通った» 色へ落とす。
     const ::fbzz::math::Vector4 kHere { 1.0f, 0.416f, 0.361f, 1.0f };   // rgb(255,106,92)
     const ::fbzz::math::Vector4 kDone { 0.365f, 0.416f, 0.388f, 1.0f };
@@ -367,10 +374,10 @@ inline void ResultPresenterComponent::FillFailed()
         ui.SetImageFillAmount(fill, (pad + damaged) / (inner + pad * 2.0f));
     }
 
-    Text("Fail_Row1_Name",  GameResultState::kAxes[1].name);
-    Text("Fail_Row2_Name",  GameResultState::kAxes[2].name);
+    Text("Fail_Row1_Name",  GameResultState::Axis(1).name);
+    Text("Fail_Row2_Name",  GameResultState::Axis(2).name);
     Text("Fail_Row0_Value", Clock(GameResultState::clearSeconds));
-    Text("Fail_Row1_Value", GameResultState::ChainText(GameResultState::bestChain));
+    Text("Fail_Row1_Value", GameResultState::TechniqueText(GameResultState::TechniquePoints()));
     Text("Fail_Row2_Value", GameResultState::DamageText(GameResultState::damageTaken));
 }
 
@@ -525,6 +532,15 @@ inline void ResultPresenterComponent::OnUpdate()
 
     // 扉 (ワイプ)。塗っている / 剥がしている最中は入力を受けない。
     if (transition::Drive(dt, scene, postprocess, m_wipeWriting, false)) return;
+
+    // 初回Controllerロードはステートを初期化する。入場完了後に一度だけ頭出しする。
+    if (!m_actorStarted && !transition::Active()) {
+        if (GameObject* actor = N(actorName); actor && !animator.GetCurrentState(actor).empty()) {
+            animator.SetSpeed(actor, 1.0f);
+            animator.Play(actor, m_victory ? "Victory" : "DefeatIdle");
+            m_actorStarted = true;
+        }
+    }
 
     UpdateIntro(dt);
 

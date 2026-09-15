@@ -81,6 +81,10 @@ public:
     FBZZ_FIELD_RANGE(float, dangerDim, 0.42f, "Danger Dim", 0.0f, 1.0f)
     FBZZ_TOOLTIP("危機の間ずっと掛かる縁の暗さ。被弾の暗さより下に置く")
     FBZZ_FIELD_RANGE(float, dangerPulseHz, 1.4f, "Danger Pulse (Hz)", 0.2f, 5.0f)
+    FBZZ_FIELD_COLOR(dangerPatternColor, (Vector4{ 0.95f, 0.075f, 0.11f, 0.65f }), "ピンチの模様色")
+    FBZZ_FIELD_RANGE(float, dangerMaskReach, 0.16f, "危機マスクの侵入幅", 0.04f, 0.3f)
+    FBZZ_FIELD_RANGE(float, dangerMaskThreshold, 0.52f, "ひし形マスクのしきい値", 0.1f, 0.9f)
+    FBZZ_FIELD_RANGE(float, dangerMaskBlur, 3.0f, "危機マスクのにじみ [px]", 0.0f, 12.0f)
     FBZZ_TOOLTIP("鼓動の速さ。速いほど焦る")
 
     FBZZ_GROUP("Chromatic Aberration")
@@ -198,6 +202,7 @@ public:
     // --- フェード (シーン遷移が持ち続ける値。自動では減らない) ---
     void SetFade(float alpha, const Vector4& color = { 0.0f, 0.0f, 0.0f, 1.0f });
     void ClearFade() { m_fadeAlpha = 0.0f; }
+    void SetTutorialFocus(float amount) { m_tutorialFocus = Clamp01(amount); }
     [[nodiscard]] float FadeAlpha() const { return m_fadeAlpha; }
 
     // --- フラッシュ (時間で自動的に消える) ---
@@ -221,6 +226,7 @@ public:
     ///     解除されるのは回復か死のとき。申告側が毎フレーム書く形にすると、
     ///     解除の呼び忘れが «鼓動が止まらない» になる。値で持てば 0 を書けば消える。
     void SetDanger(float strength01) { m_danger = Clamp01(strength01); }
+    void SetDefeat(bool defeated) { m_defeated = defeated; }
 
     // --- サージ: 縁が色付きで光る一撃 (時間で自動的に消える) ---
     // color は «何が起きたか» を表す色をそのまま渡す。
@@ -276,6 +282,7 @@ private:
     bool    m_writing = false;
 
     float   m_fadeAlpha = 0.0f;
+    float m_tutorialFocus = 0.0f;
     Vector4 m_fadeColor{ 0.0f, 0.0f, 0.0f, 1.0f };
 
     Vector4 m_flashColor{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -305,6 +312,10 @@ private:
     Vector3 m_hurtPoint{ 0.0f, 0.0f, 0.0f };
     bool    m_hurtValid  = false;
     float   m_danger     = 0.0f;
+    float   m_dangerVisual = 0.0f;
+    float   m_defeatSeconds = 0.0f;
+    float   m_dangerClock = 0.0f;
+    bool    m_defeated = false;
     float   m_pulseClock = 0.0f;
 
     // 今フレーム輪郭マスクへ申告した対象が居たか。OnLateUpdate が読んで倒す。
@@ -324,6 +335,7 @@ inline void ScreenEffectManagerComponent::OnStart()
     m_hasBase = false;
     m_writing = false;
     m_fadeAlpha = 0.0f;
+    m_tutorialFocus = 0.0f;
     m_flashRemaining = 0.0f;
     m_distortRemaining = 0.0f;
     m_sustainedDistortion = 0.0f;
@@ -333,6 +345,10 @@ inline void ScreenEffectManagerComponent::OnStart()
     m_outlineRequested = false;
     m_hurtValid  = false;
     m_danger     = 0.0f;
+    m_dangerVisual = 0.0f;
+    m_defeatSeconds = 0.0f;
+    m_dangerClock = 0.0f;
+    m_defeated = false;
     m_pulseClock = 0.0f;
 }
 
@@ -485,6 +501,25 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     //     停止解除まで出ないので、当たった瞬間の情報が遅れて届く。
     const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
 
+    const auto* clock = TimeManagerComponent::Instance();
+    const float presentationDt = clock && clock->IsPaused() ? 0.0f : dt;
+    m_dangerVisual += (m_danger - m_dangerVisual) * (1.0f - std::exp(-6.0f * presentationDt));
+    if (m_dangerVisual < 0.001f && m_danger == 0.0f) m_dangerVisual = 0.0f;
+    if (m_defeated) m_defeatSeconds += presentationDt;
+    m_dangerClock += presentationDt;
+    const float defeat = Clamp01(m_defeatSeconds / 1.4f);
+    const float reveal = Clamp01((m_defeatSeconds - 0.55f) / 0.45f);
+    if (auto* word = scene.Find("HUD_FailedTitle")) {
+        ui.SetTextEnabled(word, m_defeated);
+        ui.SetTextColor(word, {0.95f, 0.045f, 0.085f, reveal * (1.0f - transition::Coverage())});
+        word->transform.position.y = 426.0f + (1.0f - reveal) * 16.0f;
+    }
+    if (auto* caption = scene.Find("HUD_FailedCaption")) {
+        ui.SetTextEnabled(caption, m_defeated);
+        ui.SetTextColor(caption, {0.72f, 0.65f, 0.66f,
+            Clamp01((m_defeatSeconds - 1.0f) / 0.5f) * (1.0f - transition::Coverage())});
+    }
+
     // シーン遷移の扉は実時間で進める (スローやヒットストップの最中に切り替わっても止まらない)。
     transition::Tick(dt, scene);
     const float wipe = transition::Coverage();
@@ -514,11 +549,11 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
 
     // 危機の鼓動。心拍のように «ドッ» と縮んで、ゆっくり戻る (sin の 3 乗)。
     float pulse = 0.0f;
-    if (m_danger > 0.0f) {
-        m_pulseClock += dt * std::max(dangerPulseHz, 0.2f);
+    if (m_dangerVisual > 0.0f && !m_defeated) {
+        m_pulseClock += presentationDt * std::max(dangerPulseHz, 0.2f);
         if (m_pulseClock > 64.0f) m_pulseClock -= 64.0f;
         const float wave = 0.5f + 0.5f * std::sin(m_pulseClock * TWO_PI);
-        pulse = wave * wave * wave * m_danger;
+        pulse = wave * wave * wave * m_dangerVisual;
     } else {
         m_pulseClock = 0.0f;
     }
@@ -589,9 +624,9 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     debugSlow       = slow;
     debugWipe       = wipe;
 
-    const bool active = m_fadeAlpha > 0.0f || flash > 0.0f || distortion > 0.0f
+    const bool active = m_tutorialFocus > 0.0f || m_fadeAlpha > 0.0f || flash > 0.0f || distortion > 0.0f
                      || surge > 0.0f || implode > 0.0f || m_freeze > 0.0f || outlineOn
-                     || m_danger > 0.0f || slow > 0.0f || wipe > 0.0f;
+                     || m_dangerVisual > 0.0f || m_defeated || slow > 0.0f || wipe > 0.0f;
     if (!active) {
         // 何も掛かっていない間はランタイム上書きを外す。載せっぱなしにすると
         // シーンの PostProcessVolume が効かなくなる。
@@ -605,6 +640,18 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
 
     CaptureBase();
     fbzz::renderer::PostProcessSettings pp = m_base;
+    if (m_dangerVisual > 0.0f || m_defeated) {
+        pp.colorGrading.enabled = true;
+        pp.colorGrading.saturation *= 1.0f - std::max(m_dangerVisual * 0.28f, defeat);
+        pp.vignette.enabled = true;
+        pp.vignette.intensity = std::max(pp.vignette.intensity, 0.52f * defeat);
+        pp.vignette.smoothness = 0.72f;
+        pp.vignette.color[0] = pp.vignette.color[1] = pp.vignette.color[2] = 0.0f;
+    }
+    if (m_tutorialFocus > 0.0f) {
+        pp.colorGrading.enabled = true;
+        pp.colorGrading.saturation *= 1.0f - m_tutorialFocus * 0.95f;
+    }
 
     // 縁は «暗く締める側» (被弾・スロー・危機) と «極の色で光る側» (照射) で器を分ける。
     // 暗く締める側は GameVignette.hlsl (下の専用パス) が描き、エンジンのビネットは
@@ -701,7 +748,7 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     // WHY 渦より後・止めより前か: 渦は画素を動かすので、縁を先に描くと縁ごと
     //     引き込まれて楕円が歪む。止めは «染める» だけなので、縁の上から掛かっても
     //     形は崩れない (むしろ止めの粒が縁にも乗って 1 枚の絵になる)。
-    const float dim = std::max(vignetteIntensity * distortion, dangerDim * m_danger);
+    const float dim = vignetteIntensity * distortion;
     if (dim > 0.0f) {
         float angle = -10.0f;
         if (distortion > 0.0f && !ResolveHurtAngle(angle)) angle = -10.0f;
@@ -715,6 +762,16 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     if (m_freeze > 0.0f) {
         PushCustomEffect(pp, kFreezeEffectName, kFreezeShaderPath, m_freeze,
                          { freezeLevels, freezeAberration, freezeGrain, freezeContrast });
+    }
+    const float dangerStrength = m_defeated ? Lerp(0.65f, 0.2f, defeat) : m_dangerVisual;
+    if (dangerStrength > 0.001f) {
+        PushCustomEffect(pp, "DangerMask", "Assets/Shaders/PostProcess/Custom/DangerMask.hlsl",
+            dangerStrength * dangerPatternColor.w,
+            {dangerMaskReach, dangerMaskThreshold, dangerMaskBlur, m_dangerClock},
+            fbzz::renderer::CustomPassStage::PostProcess,
+            fbzz::renderer::BlendMode::OPAQUE_BLEND,
+            {dangerPatternColor.x, dangerPatternColor.y, dangerPatternColor.z, pulse});
+        pp.customEffects.back().materialPath = "Assets/Materials/PostProcess/PP_DangerMask.mat";
     }
     // 扉は最後。塗られた上に何かが乗ると «扉の向こうで何かが起きている» に見える。
     transition::PushWipe(pp);

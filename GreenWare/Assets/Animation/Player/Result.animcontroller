@@ -1,0 +1,23 @@
+version = 6
+baseLayerMaskPath = ''
+defaultStateName = 'DefeatIdle'
+
+[[states]]
+name = 'Victory'
+clipName = 'Victory'
+sourcePath = 'guid:46fdc91bbd6d32ce18a1744fed716b68|Library/Baked/b4ee8c4a3d34479eb653b724fe5c9648/anims/Victory.anim'
+clipIndex = -1
+mode = 0
+loop = true
+speed = 1.0
+ikWeight = 0.0
+
+[[states]]
+name = 'DefeatIdle'
+clipName = 'DefeatIdle'
+sourcePath = 'guid:7def61c1a29094ae57f8943565897c2c|Library/Baked/90176f8dee93410cadc776a2e7f64a7c/anims/DefeatIdle.anim'
+clipIndex = -1
+mode = 0
+loop = true
+speed = 1.0
+ikWeight = 0.0

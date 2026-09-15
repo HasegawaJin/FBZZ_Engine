@@ -97,6 +97,8 @@ private:
     EntityRef m_background;
     EntityRef m_label;
     EntityRef m_value;
+    EntityRef m_breathValue;
+    EntityRef m_condition;
 };
 
 FBZZ_REFLECT(PlayerHealthBarComponent)
@@ -134,7 +136,9 @@ inline void PlayerHealthBarComponent::OnStart()
     if (GameObject* value = Resolve(healthValue, kValueName))
         m_value = EntityRef{ value->GetID() };
 
-    ui.SetText(m_label.Resolve(scene), "HP");
+    ui.SetText(m_label.Resolve(scene), "体力");
+    if (auto* object = scene.Find("HUD_BreathValue")) m_breathValue = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_PlayerCondition")) m_condition = EntityRef{ object->GetID() };
 }
 
 inline float PlayerHealthBarComponent::LowHealthPulse(float ratio) const
@@ -184,6 +188,21 @@ inline void PlayerHealthBarComponent::OnLateUpdate()
                std::to_string(player->Current()) + " / " + std::to_string(player->MaxHealth()));
     ui.SetTextColor(m_value.Resolve(scene), color);
 
+    if (auto* object = m_breathValue.Resolve(scene)) {
+        const int percent = static_cast<int>(Clamp01(player->NormalizedBreath()) * 100.0f);
+        ui.SetText(object, std::to_string(percent) + "%");
+        ui.SetTextColor(object, player->IsBreathExhausted() ? emptyColor : fullColor);
+    }
+    if (auto* object = m_condition.Resolve(scene)) {
+        const bool low = ratio > 0.0f && ratio <= lowHealthThreshold;
+        std::string condition = ratio <= 0.0f ? "戦闘不能" : low ? "体力低下" : "";
+        if (player->IsBreathExhausted()) {
+            if (!condition.empty()) condition += "  /  ";
+            condition += "スタミナ切れ";
+        }
+        ui.SetText(object, condition);
+        ui.SetTextColor(object, emptyColor);
+    }
     const float labelScale = Clamp01(labelBrightness);
     ui.SetTextColor(m_label.Resolve(scene),
                     Vector4{ color.x * labelScale, color.y * labelScale,

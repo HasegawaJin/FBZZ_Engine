@@ -4,6 +4,7 @@
 /// @date    2026-08-19
 
 #pragma once
+#include <Scripts/Game/TimeManagerComponent.hpp>
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -68,6 +69,23 @@ public:
 
     // 敵の攻撃から呼ばれる唯一の入口。無敵中や死亡後は無視して false を返す。
     bool TakeDamage(int amount);
+
+    /// «ここより下へは減らない» を 1 フレームぶん要求する。0 で解除。
+    ///
+    /// WHY 無敵ではなく «下限» か (チュートリアルの幕 1〜3):
+    ///   無敵にすると被弾そのものが無かったことになり、踏まれても何も起きない
+    ///   ─ 教える段でこそ «食らった» は返さないといけない。下限なら痛みも
+    ///   のけぞりも赤い縁もそのまま出て、リザルトへ落ちるところだけが止まる。
+    ///
+    /// WHY 残り 1 を想定するか: 土壇場 (残り HP 1) の演出は既にあり、崩しが ×1.25、
+    ///   Flux の窓が ×1.5、画面の縁が鼓動する。下限を 1 に置くと、教えている間は
+    ///   «一番緊張する状態» で足踏みすることになり、安全のはずが手応えを失わない。
+    ///
+    /// WHY 押し続ける形か: RequestSuspend と同じ «1 フレームぶんの要求»。
+    ///   掛けっぱなしにできると、段が進んだ後も外し忘れたまま «死なないゲーム» に
+    ///   なり、しかもその壊れ方は画面のどこにも出ない。
+    void RequestDamageFloor(int minHealth)
+    { m_requestedFloor = m_requestedFloor > minHealth ? m_requestedFloor : minHealth; }
     void Heal(int amount);
     void ResetHealth();
 
@@ -97,6 +115,9 @@ private:
 
     int   m_health       = 0;
     float m_invulnerable = 0.0f;
+    /// 今フレーム効いている体力の下限と、次フレームぶんの要求 (0 で無し)。
+    int   m_damageFloor    = 0;
+    int   m_requestedFloor = 0;
     PlayerControllerComponent* m_controllerOverride = nullptr;
 
     std::vector<FlashSlot> m_flash;
@@ -204,7 +225,11 @@ inline void PlayerHealthComponent::ResetHealth()
 inline void PlayerHealthComponent::OnUpdate()
 {
     if (m_invulnerable > 0.0f)
-        m_invulnerable = fbzz::math::Max(0.0f, m_invulnerable - Time::deltaTime);
+        m_invulnerable = fbzz::math::Max(0.0f, m_invulnerable - TimeManagerComponent::PlayerDeltaTime());
+    // 下限は «押し続けている間だけ» 効く。要求を受け取って空にするのはここ 1 か所
+    // (RequestSuspend と同じ形。掛けっぱなしにできると外し忘れが死なないゲームになる)。
+    m_damageFloor    = m_requestedFloor;
+    m_requestedFloor = 0;
     DriveFlash();
 }
 
@@ -213,6 +238,8 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
     if (amount <= 0 || !IsAlive() || IsInvulnerable()) return false;
 
     m_health = m_health > amount ? m_health - amount : 0;
+    // 下限が要求されているあいだは、そこで止める (RequestDamageFloor の WHY)。
+    if (m_damageFloor > 0 && m_health < m_damageFloor) m_health = m_damageFloor;
     debugHealth = m_health;
     m_invulnerable = tuning ? tuning->hitInvulnerable : 0.0f;
 
