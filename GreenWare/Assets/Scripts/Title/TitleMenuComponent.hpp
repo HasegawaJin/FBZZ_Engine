@@ -47,6 +47,7 @@
 #include <Scripts/UI/UiMotion.hpp>
 #include <Scripts/UI/UiNavSe.hpp>
 #include <Scripts/UI/UiTextFx.hpp>
+#include <Scripts/Utils/BgmLibrary.hpp>
 #include <Scripts/Utils/SceneTransition.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
@@ -138,6 +139,7 @@ inline GameObject* TitleMenuComponent::Child(GameObject* parent, std::string_vie
 inline void TitleMenuComponent::OnStart()
 {
     se::EnsureSource(scene, "UI");
+    bgm::Play(audio, bgm::kTitle);
     for (int i = 0; i < kCount; ++i) {
         m_rows[i]   = scene.Find(std::string("MenuRow_") + kNames[i]);
         m_bands[i]  = Child(m_rows[i], "Band");

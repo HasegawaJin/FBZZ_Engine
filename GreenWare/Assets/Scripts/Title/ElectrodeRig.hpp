@@ -106,6 +106,8 @@ struct ElectrodeTuning {
     float motionDamping = 1.4f;
     /// これ以上は近づかない距離 [m]。逆極どうしが重なって 1 点に潰れるのを防ぐ。
     float minSeparation = 1.6f;
+    /// 逆極が接近したとき、芯を合成色へ寄せる強さ [0,1]。0 で通常色。
+    float collisionGlow = 0.0f;
     /// 中心のまわりをゆっくり回す角速度 [deg/s]。釣り合った後も画面が止まらないようにする。
     float orbitSpeed    = 8.0f;
 
@@ -147,6 +149,31 @@ struct ElectrodeTuning {
 ///   Swirl — Vortex,  両チャンネル。吸い込まれる線を弧に曲げる
 class ElectrodeRig {
 public:
+    static void BeginFusion(const Vector3& position)
+    {
+        s_fusionApproach = false;
+        s_fusionPosition = position;
+        s_fusionActive = true;
+    }
+
+    static void SetFusionApproach(const Vector3& center, float radius)
+    {
+        s_fusionApproach = true;
+        s_fusionCenter = center;
+        s_fusionRadius = Max(radius, 0.01f);
+    }
+
+    static void ResetFusion()
+    {
+        s_fusionActive = false;
+        s_fusionApproach = false;
+        s_fusionPosition = Vector3::ZERO;
+    }
+
+    [[nodiscard]] static bool IsFusionActive() { return s_fusionActive; }
+    [[nodiscard]] static bool IsFusionApproaching() { return s_fusionApproach; }
+    [[nodiscard]] static Vector3 FusionPosition() { return s_fusionPosition; }
+
     /// OnStart から呼ぶ。エミッターが無ければ作り、力場の子を組み、登録簿へ載せる。
     void Attach(Script& owner, Pole pole, const ElectrodeTuning& tuning);
     /// OnUpdate から呼ぶ。調整値を流し込み、極どうしの運動を 1 ステップ進める。
@@ -199,6 +226,11 @@ private:
     static constexpr float kFollowHysteresis = 0.02f;
 
     static inline std::vector<ElectrodeRig*> s_rigs;
+    static inline bool s_fusionActive = false;
+    static inline bool s_fusionApproach = false;
+    static inline Vector3 s_fusionCenter = Vector3::ZERO;
+    static inline float s_fusionRadius = 0.01f;
+    static inline Vector3 s_fusionPosition = Vector3::ZERO;
 
     /// 逆極の相手ごとに 1 束。＋極の rig だけが持つ (UpdateArcs の WHY を参照)。
     std::vector<ElectricArcBundle> m_arcs;
@@ -513,6 +545,18 @@ inline bool ElectrodeRig::CursorTarget(Script& owner, const ElectrodeTuning& tun
 
 inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning, float dt)
 {
+    // 収束の時間軸に反発・周回を加えると、接触する前に融合の時刻だけが来る。
+    if ((s_fusionApproach || s_fusionActive) && tuning.collisionGlow > 0.0f) {
+        const Vector3 offset = m_anchor - s_fusionCenter;
+        const float length = offset.Length();
+        const Vector3 direction = length > EPSILON ? offset * (1.0f / length)
+            : (m_pole == Pole::Plus ? Vector3::RIGHT : -Vector3::RIGHT);
+        m_position = s_fusionActive ? s_fusionPosition
+            : s_fusionCenter + direction * s_fusionRadius;
+        m_velocity = Vector3::ZERO;
+        owner.transform.position = m_position;
+        return;
+    }
     // 行き先はカーソルか元の配置かのどちらか。
     //
     // WHY 追従には別のばねを立てるか:
@@ -627,10 +671,56 @@ inline void ElectrodeRig::Tick(Script& owner, const ElectrodeTuning& tuning, flo
 
 inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tuning, float dt)
 {
+    if (s_fusionActive && tuning.collisionGlow > 0.0f) {
+        if (auto* emitter = owner.scene.GetComponent<ParticleEmitter>()) {
+            emitter->settings.emitRate = 0.0f;
+            emitter->settings.clearOnStop = true;
+            emitter->settings.playing = false;
+        }
+
+        ElectrodeCoreStyle hiddenCore = tuning.core;
+        hiddenCore.size = 0.0f;
+        m_core.Update(owner, m_pole, m_position, hiddenCore, dt);
+
+        ElectrodeFieldStyle hiddenField = tuning.field;
+        hiddenField.lineCount = 0;
+        m_fieldLines.Update(owner, m_pole, m_position, {}, hiddenField, dt);
+        return;
+    }
+
     // 色の対応は ElectrodePole が唯一の正本。ここで赤青を書き直さない。
     ElectrodeCoreStyle core = tuning.core;
-    core.color = PoleColor(m_pole);
+    const Vector4 poleColor = PoleColor(m_pole);
+    float collision = 0.0f;
+    if (tuning.collisionGlow > 0.0f) {
+        const float contact = Max(tuning.minSeparation, 0.01f);
+        const float radius = contact * 2.0f;
+        for (const ElectrodeRig* other : s_rigs) {
+            if (other == this || other->m_pole == m_pole) continue;
+            const float distance = (other->m_position - m_position).Length();
+            collision = Max(collision, Clamp01((radius - distance)
+                                               / Max(radius - contact, 0.01f)));
+        }
+        collision *= Clamp01(tuning.collisionGlow);
+    }
+    const Vector4 collisionColor{ 0.12f, 1.0f, 0.38f, 1.0f };
+    const Vector4 collisionCore{ 1.8f, 6.0f, 2.4f, 1.0f };
+    core.color = poleColor * (1.0f - collision) + collisionColor * collision;
+    core.coreColor = core.coreColor * (1.0f - collision) + collisionCore * collision;
     m_core.Update(owner, m_pole, m_position, core, dt);
+
+    if (auto* emitter = owner.scene.GetComponent<ParticleEmitter>()) {
+        emitter->settings.colorStart = core.color;
+        emitter->settings.colorEnd = { core.color.x, core.color.y, core.color.z, 0.0f };
+        // 有効なグラデーションは colorStart/End より優先される。
+        auto& gradient = emitter->settings.colorGradient;
+        for (uint32_t index = 0; index < gradient.keyCount; ++index) {
+            auto& color = gradient.keys[index].color;
+            color.x = color.x * (1.0f - collision) + collisionColor.x * collision;
+            color.y = color.y * (1.0f - collision) + collisionColor.y * collision;
+            color.z = color.z * (1.0f - collision) + collisionColor.z * collision;
+        }
+    }
 
     // 力線は盤面の全電荷が作る場をなぞる。相手の型を知らずに済むよう、
     // 登録簿から «位置と符号» だけを写して渡す。
@@ -651,6 +741,12 @@ inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tun
 
 inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tuning, float dt)
 {
+    if (s_fusionActive && tuning.collisionGlow > 0.0f) {
+        for (ElectricArcBundle& bundle : m_arcs) bundle.Detach(owner);
+        m_arcs.clear();
+        return;
+    }
+
     // WHY ＋極だけが持つか:
     //   放電は対の持ち物で、両極が張ると同じ 2 点に 2 束が重なる。見た目は
     //   «明るさだけ倍の 1 本» になり、本数を増やした意味が消えたうえに負荷だけ倍になる。
