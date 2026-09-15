@@ -396,6 +396,8 @@ struct AnimatorComponent {
     // ランタイム専用。参照変更時だけ Controller を再読み込みする。
     std::string loadedControllerPath;
     float       speed      = 1.0f;
+    /// speed による凍結と独立した時計倍率。ランタイム専用。
+    float       localTimeScale = 1.0f;
     bool        playing    = true;
     // クリップの代わりに Script が骨のローカルを書く構成。
     //

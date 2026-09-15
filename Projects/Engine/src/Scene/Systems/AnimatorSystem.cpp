@@ -2892,7 +2892,6 @@ void AnimatorSystem::Update(SystemContext& ctx)
     if (!ctx.resources) return;
     Scene& scene = ctx.scene;
     renderer::ResourceManager& resources = *ctx.resources;
-    const float dt = ctx.dt;
     const auto animatorSpan = scene.GetEntities<AnimatorComponent>();
     const auto animatorEntities = std::vector<EntityID>(
         animatorSpan.begin(),
@@ -2905,6 +2904,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
+        const float dt = ctx.dt * std::clamp(animator->localTimeScale, 0.0f, 8.0f);
         animator->firedEvents.clear();
         // 骨から作るカリング球は «今フレーム確定した» ときだけ有効。ここで一度捨てて、
         // ポーズを組み終えた経路だけが入れ直す。停止中やスケルトンを持たない Animator は
