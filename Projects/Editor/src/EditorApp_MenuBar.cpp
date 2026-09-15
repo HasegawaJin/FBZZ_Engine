@@ -195,6 +195,7 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t STEP            = 303;
     constexpr uint16_t RELOAD_SCRIPTS  = 304;
     constexpr uint16_t OPEN_ANALYSIS   = 400;
+    constexpr uint16_t TOGGLE_PASS_VIEWER = 423;
     constexpr uint16_t TOGGLE_GRID     = 401;
     constexpr uint16_t TOGGLE_LIGHTS   = 402;
     constexpr uint16_t TOGGLE_VFX      = 403;
@@ -267,7 +268,7 @@ void EditorApp::InstallNativeMenuBar()
         command("Reset UI Scale", 700)
     }));
     menus.push_back(submenu("Debug", {
-        command("Analysis", OPEN_ANALYSIS), separator(),
+        command("Analysis", OPEN_ANALYSIS), command("Render Pass Viewer", TOGGLE_PASS_VIEWER), separator(),
         command("Grid", TOGGLE_GRID), command("Light Range", TOGGLE_LIGHTS),
         command("VFX Force Fields / Emitters", TOGGLE_VFX),
         command("Skeleton", TOGGLE_SKELETON), command("Stats", TOGGLE_STATS),
@@ -314,6 +315,12 @@ void EditorApp::InstallNativeMenuBar()
         case STEP:            InvokeOperator("play.step"); break;
         case RELOAD_SCRIPTS:  InvokeOperator("script.reload"); break;
         case OPEN_ANALYSIS:   InvokeOperator("tools.analysis"); break;
+        case TOGGLE_PASS_VIEWER: {
+            OpArgs args;
+            args.Set("panel", std::string("Render Pass Viewer"));
+            InvokeOperator("panel.set_visible", args);
+            break;
+        }
         // 表示トグルとビューモードは Operator を通す。同じ切り替えを 3 面が持つので、
         // 書き込み先 (EditorContext か ProjectSettings か) を各面が覚えていると必ずずれる。
         case TOGGLE_GRID:      InvokeOperator("render.show_grid"); break;
@@ -468,6 +475,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         // WHY: Godot は表示パネル操作とデバッグ描画切替を別メニューに分けている。
         //      FBZZ でも View はレイアウト・パネル、Debug は実行/描画診断に寄せることで項目の意味を読み取りやすくする。
         MenuItemOp("tools.analysis", "Analysis");
+        {
+            OpArgs args;
+            args.Set("panel", std::string("Render Pass Viewer"));
+            MenuItemOpArgs("panel.set_visible", args, "Render Pass Viewer");
+        }
         ImGui::Separator();
         // 全項目を operator の投影にする。フラグのアドレスを直接渡すと、同じフラグを
         // 切り替える operator と表示が別経路になり、AI からも見えない。

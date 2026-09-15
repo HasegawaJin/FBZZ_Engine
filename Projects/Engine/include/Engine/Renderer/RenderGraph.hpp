@@ -268,6 +268,8 @@ public:
                 const auto end = std::chrono::steady_clock::now();
                 const std::chrono::duration<double, std::milli> elapsed = end - start;
                 m_report.profiles.push_back({ pass.name, elapsed.count() });
+                if (m_passCompleted)
+                    m_passCompleted(passIndex);
             }
         }
 
@@ -290,6 +292,10 @@ public:
         m_profilerBegin = std::move(begin);
         m_profilerEnd = std::move(end);
     }
+
+    /// 計測終了後、次のパスによる上書き前に呼ぶ。カリングされたパスでは呼ばれない。
+    /// コールバックからグラフを変更しないこと。
+    void SetPassCompletedHook(std::function<void(size_t)> hook) { m_passCompleted = std::move(hook); }
 
     // WHY: CPU フックとは独立した GPU 専用フック。旧実装は SetProfilerHooks を上書きしていた。
     void SetGpuProfilerHooks(std::function<void(std::string_view)> begin,
@@ -760,6 +766,7 @@ private:
     std::unordered_map<std::string, ResourceDesc> m_resources;
     ExecutionReport m_report;
     std::function<void(std::string_view)> m_profilerBegin;
+    std::function<void(size_t)> m_passCompleted;
     std::function<void(std::string_view)> m_profilerEnd;
     std::function<void(std::string_view)> m_gpuProfilerBegin;
     std::function<void(std::string_view)> m_gpuProfilerEnd;

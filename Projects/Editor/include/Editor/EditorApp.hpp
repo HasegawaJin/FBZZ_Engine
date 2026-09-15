@@ -51,6 +51,7 @@ class BuildSettingsPanel;
 class AssetBrowserPanel;
 class ConsolePanel;
 class AnalysisPanel;
+class RenderPassViewerPanel;
 class MapEditorPanel;
 class IblBakePanel;
 class VolumeFlipbookBakePanel;
@@ -447,6 +448,7 @@ private:
     // StatusBar から Asset Browser と同じ操作感で開閉するため、専用ポインタで保持する。
     ConsolePanel*                            m_consolePanel           = nullptr;
     AnalysisPanel*                           m_analysisPanel          = nullptr;
+    RenderPassViewerPanel*                   m_renderPassViewerPanel  = nullptr;
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
     IblBakePanel*                            m_iblBakePanel           = nullptr;
     VolumeFlipbookBakePanel*                 m_volumeFlipbookBakePanel = nullptr;

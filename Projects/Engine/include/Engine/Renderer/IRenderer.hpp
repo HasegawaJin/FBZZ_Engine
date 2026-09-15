@@ -64,6 +64,12 @@ public:
     virtual void Clear(const math::Vector4& color) = 0;
 
     virtual void Submit(const DrawCall& call, ResourceManager& resources) = 0;
+    /// 診断画像を描き、呼び出し前の描画先・ビューポート・シザーへ戻す。
+    /// パス境界でのみ呼ぶ。後続の Submit は自身の描画状態を束縛すること。
+    /// 未対応のバックエンドでは false を返す。
+    virtual bool RenderDebugPreview(const DrawCall& /*call*/,
+                                    ResourceHandle<RenderTargetTag> /*target*/,
+                                    ResourceManager& /*resources*/) { return false; }
     virtual void Dispatch(const ComputeCall& call, ResourceManager& resources) = 0;
     // 相互依存しない Dispatch 群の UAV バリアをバッチ末尾へまとめる。
     // WHY: スキニングのように各 Dispatch が別バッファへ書くパスでは、Dispatch ごとの

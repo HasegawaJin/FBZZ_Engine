@@ -35,6 +35,8 @@ public:
     void Clear(const math::Vector4& color) override;
     void ClearDepth(float depth = 1.0f) override;
     void Submit(const DrawCall& call, ResourceManager& resources) override;
+    bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+                            ResourceManager& resources) override;
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
     void BeginComputeBatch() override;
     void EndComputeBatch() override;
@@ -70,6 +72,7 @@ public:
     DX12Context& GetContext() { return m_context; }
 
 private:
+    bool PrepareShaderReload() override;
     std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override;
     std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride) override;
     std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override;
@@ -108,6 +111,10 @@ private:
     ResourceHandle<RenderTargetTag> m_currentRenderTargetHandle;
     std::unique_ptr<class DX12IblBaker> m_iblBaker;
     D3D12_CPU_DESCRIPTOR_HANDLE m_currentCubeRtv{};
+    uint32_t m_currentCubeFace = 0;
+    uint32_t m_currentCubeMip = 0;
+    D3D12_VIEWPORT m_currentViewport{};
+    D3D12_RECT m_currentScissor{};
     D3D12_GPU_VIRTUAL_ADDRESS m_nullConstantAddress = 0;
 
     // WHY: 連続する Draw が同じテクスチャ/バッファ集合を束縛する場合 (同一マテリアルのバッチ等)、

@@ -857,6 +857,45 @@ void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceM
     BindRenderTarget(resources.Get(rt));
 }
 
+bool DX11Renderer::RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+                                      ResourceManager& resources)
+{
+    if (!m_context || !resources.Get(target) || !resources.Get(call.shader)
+        || !resources.Get(call.pipelineState)) return false;
+
+    ID3D11RenderTargetView* targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> savedTargets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
+    m_context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, depth.GetAddressOf());
+    for (UINT i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+        savedTargets[i].Attach(targets[i]);
+    D3D11_VIEWPORT viewports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    D3D11_RECT scissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    UINT viewportCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    UINT scissorCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    m_context->RSGetViewports(&viewportCount, viewports);
+    m_context->RSGetScissorRects(&scissorCount, scissors);
+    Microsoft::WRL::ComPtr<ID3D11Buffer> vertexConstants;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> pixelConstants;
+    m_context->VSGetConstantBuffers(5, 1, vertexConstants.GetAddressOf());
+    m_context->PSGetConstantBuffers(5, 1, pixelConstants.GetAddressOf());
+    auto* previous = m_currentRT;
+
+    SetRenderTarget(target, resources);
+    Submit(call, resources);
+
+    // プレビュー元が元の RTV/DSV でも競合しないよう、SRV を外してから戻す。
+    BindRenderTarget(nullptr);
+    m_context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, depth.Get());
+    m_context->RSSetViewports(viewportCount, viewports);
+    m_context->RSSetScissorRects(scissorCount, scissors);
+    // DX11 の Submit は未指定 CB を残す契約なので、診断専用 b5 も元へ戻す。
+    m_context->VSSetConstantBuffers(5, 1, vertexConstants.GetAddressOf());
+    m_context->PSSetConstantBuffers(5, 1, pixelConstants.GetAddressOf());
+    m_currentRT = previous;
+    return true;
+}
+
 void DX11Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
     // BindRenderTarget が RT 全体のビューポートを張った後に、その一部へ絞り込む。
