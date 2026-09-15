@@ -71,6 +71,11 @@ Math/Segment.hpp は最近接点と距離のみを扱う。長さ EPSILON 以下
 
 ## ゲーム側に残すもの
 
+LaserVolley の地面への着弾判定は、登録済みの具体的なコライダー型を取得し、
+`RaycastHit::collider` と所有する形状が一致したものの `isTrigger` を確認する。
+基底 `ColliderComponent` は ECS の登録型ではないため `GetComponent` の型引数にしない。
+同一物体に実体とトリガーが併存しても、実際に当たった形状だけで除外を判断する。
+
 RagdollPresentation の常時ふらつき、ボス脚の除外名、衝撃から角速度を作る演出はゲーム方針。
 WeaponSockets のクリップ名と持ち替え時刻、BeamTrailRenderer のビーム固有の波と配色、
 VfxManager の効果選択と同時発生数の制御もゲーム側に残す。

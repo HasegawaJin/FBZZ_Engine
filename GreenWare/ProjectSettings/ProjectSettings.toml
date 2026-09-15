@@ -3,7 +3,7 @@ renderer = 'dx12'
 targetFps = 0
 
 [audio]
-masterVolume = 0.0
+masterVolume = 1.0
 voiceLimit = 48
 
     [[audio.bus]]

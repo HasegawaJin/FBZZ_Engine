@@ -9,6 +9,13 @@
 > / `ClimbPromptComponent`) はシーンで **無効化** してあり、コードとアセットは残っている
 > ── 戻すならチェックを 2 つ入れ直すだけ。
 >
+> **2026-09-14: `ClimbPrompt` の枠はチュートリアルが引き取った。** シーンの
+> `HUD_ClimbIcon` / `HUD_ClimbLabel` は `HUD_TutorialIcon` / `HUD_TutorialText` へ改名され、
+> `TutorialPromptComponent` が使っている（[tutorial.md](tutorial.md)）。
+> 登攀を戻すなら、案内の枠はもう空いていないので**別の枠を足すこと**。
+> なお `Katana_Draw` / `Katana_Sheathe` / `Climb` のクリップは
+> 両手剣への入れ替えで**存在しなくなっている**（[player-motions.md](player-motions.md)）。
+>
 > **決着は「脚 4 本を落とす」へ戻した** (`BossRigComponent::ApplyLegLoss`)。
 > 登攀が無いとコアは 6m の高さに残って地上から届かず、そのままでは
 > 「脚を全部落としても倒せないボス」になるため。コアを削り切る道
