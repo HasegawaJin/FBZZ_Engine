@@ -60,6 +60,8 @@ public:
 
     // DrawCall を受け取り、パイプラインステート → シェーダー → リソース → Draw の順で実行する
     void Submit(const DrawCall& call, ResourceManager& resources) override;
+    bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+                            ResourceManager& resources) override;
 
     // Compute Shader を Dispatch する (SSAO / Bloom 等のポストプロセス CS に使用)
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
