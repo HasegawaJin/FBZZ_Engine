@@ -388,7 +388,7 @@ bool ProjectSettings::Load(const std::string& path)
     // WHY 失敗しても Load 全体を失敗させないか: 入力ファイルは無くて当然 (既定バインドで動く)。
     //     ここで false を返すとプロジェクト設定そのものが読めなかった扱いになってしまう。
     {
-        const std::filesystem::path settingsPath(path);
+        const std::filesystem::path settingsPath = util::FileSystem::PathFromUtf8(path);
         const std::filesystem::path inputPath =
             settingsPath.has_parent_path()
                 ? settingsPath.parent_path() / "Input.inputactions"
@@ -403,9 +403,9 @@ bool ProjectSettings::Load(const std::string& path)
             FBZZ_LOG_WARN("ProjectSettings: %s が見つかりません。"
                           "入力は既定バインドへ落ちます (Submit / Cancel は既定に無いため、"
                           "メニューの決定・戻るが効かなくなります)",
-                          inputPath.string().c_str());
+                          util::FileSystem::PathToUtf8(inputPath).c_str());
         } else {
-            (void)input::InputActionMap::LoadFromFile(inputPath.string());
+            (void)input::InputActionMap::LoadFromFile(util::FileSystem::PathToUtf8(inputPath));
         }
     }
 

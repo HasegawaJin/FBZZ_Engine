@@ -11,6 +11,8 @@
 
 #include <Engine/Input/InputActionMap.hpp>
 #include <Engine/Input/InputBinding.hpp>
+#include <Engine/ProjectSettings.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -132,6 +134,32 @@ TEST_F(InputActionMapTest, SavesAndReloadsTheDefaultBindings)
 
     EXPECT_EQ(input::InputActionMap::GetActions().size(), actionCount);
     EXPECT_EQ(input::InputActionMap::GetAxes().size(), axisCount);
+}
+
+TEST_F(InputActionMapTest, ProjectLoadsAttackBindingsFromJapaneseExportDirectory)
+{
+    WriteText("attack.inputactions",
+              "[[action]]\nname = 'EmitPlus'\n"
+              "bindings = [{ source = 'MouseButton', code = 0 }]\n");
+    ASSERT_TRUE(input::InputActionMap::LoadFromFile(File("attack.inputactions")));
+    const auto directory = util::FileSystem::PathFromUtf8(File("export"))
+                         / u8"GreenWare_実行ファイル" / "ProjectSettings";
+    const auto inputPath = util::FileSystem::PathToUtf8(directory / "Input.inputactions");
+    ASSERT_TRUE(input::InputActionMap::SaveToFile(inputPath));
+    const auto projectPath = util::FileSystem::PathToUtf8(directory / "ProjectSettings.toml");
+    ProjectSettings settings;
+    ASSERT_TRUE(settings.Save(projectPath));
+
+    input::InputActionMap::LoadDefaults();
+    ASSERT_FALSE(HasAction("EmitPlus"));
+    ASSERT_TRUE(settings.Load(projectPath));
+    ASSERT_TRUE(HasAction("EmitPlus"));
+    const auto& actions = input::InputActionMap::GetActions();
+    const auto attack = std::find_if(actions.begin(), actions.end(),
+        [](const input::InputAction& action) { return action.name == "EmitPlus"; });
+    ASSERT_EQ(attack->bindings.size(), 1u);
+    EXPECT_EQ(attack->bindings.front().source, input::BindingSource::MOUSE_BUTTON);
+    EXPECT_EQ(attack->bindings.front().code, 0u);
 }
 
 TEST_F(InputActionMapTest, KeepsActionNamesThroughARoundTrip)

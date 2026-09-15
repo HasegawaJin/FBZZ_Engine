@@ -13,6 +13,7 @@
 /// Assets/EditorConfig/ に置くと配布物から漏れる。
 #include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Core/Logger.hpp"
+#include "Engine/Util/FileSystem.hpp"
 
 #include <toml++/toml.hpp>
 
@@ -144,13 +145,19 @@ void ArrayToBindings(const toml::node* node, std::vector<InputBinding>& out)
 bool InputActionMap::LoadFromFile(const std::string& path)
 {
     std::error_code error;
-    if (!std::filesystem::exists(path, error)) {
+    const std::filesystem::path filePath = util::FileSystem::PathFromUtf8(path);
+    if (!std::filesystem::exists(filePath, error)) {
         FBZZ_LOG_INFO("InputActionMap: %s が見つかりません — 既定バインドを使用します",
                       path.c_str());
         return false;
     }
 
-    toml::parse_result parsed = toml::parse_file(path);
+    std::ifstream stream(filePath, std::ios::binary);
+    if (!stream.is_open()) {
+        FBZZ_LOG_ERROR("InputActionMap: %s を読み込めません", path.c_str());
+        return false;
+    }
+    toml::parse_result parsed = toml::parse(stream, path);
     if (!parsed) {
         FBZZ_LOG_ERROR("InputActionMap: %s のパースに失敗しました: %s",
                        path.c_str(), std::string(parsed.error().description()).c_str());
@@ -244,12 +251,12 @@ bool InputActionMap::SaveToFile(const std::string& path)
 
     // 親ディレクトリが無い場合は作る (新規プロジェクトの初回保存)。
     std::error_code error;
-    const std::filesystem::path filePath(path);
+    const std::filesystem::path filePath = util::FileSystem::PathFromUtf8(path);
     if (filePath.has_parent_path()) {
         std::filesystem::create_directories(filePath.parent_path(), error);
     }
 
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    std::ofstream stream(filePath, std::ios::binary | std::ios::trunc);
     if (!stream.is_open()) {
         FBZZ_LOG_ERROR("InputActionMap: %s を書き込めません", path.c_str());
         return false;

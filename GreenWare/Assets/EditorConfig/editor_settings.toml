@@ -6,7 +6,7 @@ interval_sec = 300
 [build]
 development = false
 icon = 'Assets/Icons/GreenWare.ico'
-output_dir = 'Builds/Release'
+output_dir = 'Builds/実行ファイル'
 product_name = 'GreenWare'
 strip_editor_assets = true
 version = '1.0.0'
