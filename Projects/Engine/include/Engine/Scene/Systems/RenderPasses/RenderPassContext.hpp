@@ -1283,8 +1283,9 @@ struct RenderPassContext {
     int                         shadowCascadeCount = 1;
 
     // ── Spot / Point シャドウ ────────────────────────────────────────────────
-    // 有効なのは先頭 punctualShadowViewCount 枚。Spot は 1 枚、Point は連続する
-    // 6 枚 (キューブ面) を占める。0 のとき ShadowPass はアトラスをクリアするだけで戻る。
+    // 有効なのは先頭 punctualShadowViewCount 枚。Spot / Area は 1 枚、
+    // Point / Sphere / Tube は連続する 6 枚 (キューブ面) を占める。
+    // 0 のとき ShadowPass はアトラスをクリアするだけで戻る。
     PunctualShadowView          punctualShadowViews[kMaxPunctualShadows];
     int                         punctualShadowViewCount = 0;
     // アトラス全体の一辺 [px]。タイルサイズは これ / 4。

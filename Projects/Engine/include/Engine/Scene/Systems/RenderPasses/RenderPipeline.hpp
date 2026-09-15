@@ -29,6 +29,7 @@ namespace fbzz::renderer { class ResourceManager; }
 namespace fbzz::scene {
 
 struct RenderPassContext;
+class RenderPassCapture;
 
 /// 既存のラムダ式パスを新しい IRenderPass 契約へ載せるアダプタ。
 ///
@@ -134,7 +135,7 @@ public:
 
     // 登録されたすべてのパスを RenderGraph に組み込んで実行する。
     // IsEnabled が false のパスはスキップされる。
-    bool Execute(RenderPassContext& ctx);
+    bool Execute(RenderPassContext& ctx, RenderPassCapture* capture = nullptr);
 
     const renderer::RenderGraph::ExecutionReport& LastReport() const { return m_lastReport; }
 
