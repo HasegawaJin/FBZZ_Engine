@@ -34,6 +34,11 @@ struct StageRecord {
     int   bestChain   = 0;
     /// 最も少なく済ませた被ダメージ。負は «まだ記録が無い»。
     int   leastDamage = -1;
+    int scoreVersion = 0;
+    int bestTechnique = 0;
+
+    [[nodiscard]] bool HasCurrentScore() const
+    { return cleared && scoreVersion == GameResultState::kScoreVersion; }
 };
 
 /// ディスクへ落とす形。項目ごとに «ステージ数ぶんの並び» を 1 本持つ。
@@ -48,6 +53,8 @@ struct StageProgressSave : fbzz::scene::IScriptSerializable {
     std::vector<float> bestSeconds;
     std::vector<int>   bestChain;
     std::vector<int>   leastDamage;
+    std::vector<int> scoreVersion;
+    std::vector<int> bestTechnique;
 
     void Reflect(fbzz::scene::IReflector& r) override
     {
@@ -57,6 +64,8 @@ struct StageProgressSave : fbzz::scene::IScriptSerializable {
         r.ListField("bestSeconds", bestSeconds);
         r.ListField("bestChain",   bestChain);
         r.ListField("leastDamage", leastDamage);
+        r.ListField("scoreVersion", scoreVersion);
+        r.ListField("bestTechnique", bestTechnique);
     }
 };
 
@@ -100,6 +109,18 @@ struct StageProgressState {
             Load(save);
         }
         stages[0].unlocked = true;
+
+        // 解放は «前をクリアした» と «実体がある» から毎回引き直す。
+        //
+        // WHY 保存された値をそのまま信じないか (2026-09-15):
+        //   解放を立てるのが Commit の «クリアした瞬間» だけだと、そのとき次の枠が
+        //   まだ空 (StageExists == false) だった場合、解放は永久に起きない。
+        //   後からステージを足しても、既にクリア済みの progress.toml には
+        //   `unlocked = false` が残り続ける ── **前の面をもう一度クリアしない限り
+        //   新しい面が出てこない**。実際に Stage_03 を足したときこれで詰まった。
+        //   解放は «クリアと台帳から導ける» 事実なので、保存より今の台帳を優先する。
+        for (int i = 0; i + 1 < kCount; ++i)
+            if (stages[i].cleared && StageExists(i + 1)) stages[i + 1].unlocked = true;
     }
 
     /// 保存先を今の設定へ合わせる。既に合っていれば何もしない。
@@ -131,6 +152,8 @@ struct StageProgressState {
             if (i < static_cast<int>(data.bestSeconds.size())) r.bestSeconds = data.bestSeconds[i];
             if (i < static_cast<int>(data.bestChain.size()))   r.bestChain   = data.bestChain[i];
             if (i < static_cast<int>(data.leastDamage.size())) r.leastDamage = data.leastDamage[i];
+            if (i < static_cast<int>(data.scoreVersion.size())) r.scoreVersion = data.scoreVersion[i];
+            if (i < static_cast<int>(data.bestTechnique.size())) r.bestTechnique = data.bestTechnique[i];
         }
     }
 
@@ -144,6 +167,8 @@ struct StageProgressState {
         data.bestSeconds.reserve(kCount);
         data.bestChain.reserve(kCount);
         data.leastDamage.reserve(kCount);
+        data.scoreVersion.reserve(kCount);
+        data.bestTechnique.reserve(kCount);
         for (const StageRecord& r : stages) {
             data.cleared.push_back(r.cleared);
             data.unlocked.push_back(r.unlocked);
@@ -151,6 +176,8 @@ struct StageProgressState {
             data.bestSeconds.push_back(r.bestSeconds);
             data.bestChain.push_back(r.bestChain);
             data.leastDamage.push_back(r.leastDamage);
+            data.scoreVersion.push_back(r.scoreVersion);
+            data.bestTechnique.push_back(r.bestTechnique);
         }
 
         Bind(save);
@@ -169,8 +196,17 @@ struct StageProgressState {
     /// リザルトが «勝ちで» 閉じるときに呼ぶ。次のステージを開ける。
     static void Commit(int index)
     {
-        if (index < 0 || index >= kCount) return;
+        if (!GameResultState::victory || index < 0 || index >= kCount
+            || index != GameResultState::stageIndex) return;
         StageRecord& r = stages[index];
+        if (!r.HasCurrentScore()) {
+            r.bestScore = 0;
+            r.bestSeconds = 0.0f;
+            r.bestChain = 0;
+            r.leastDamage = -1;
+            r.bestTechnique = 0;
+            r.scoreVersion = GameResultState::kScoreVersion;
+        }
         r.cleared  = true;
         r.unlocked = true;
         const int score = GameResultState::Score();
@@ -178,6 +214,7 @@ struct StageProgressState {
         if (r.bestSeconds <= 0.0f || GameResultState::clearSeconds < r.bestSeconds)
             r.bestSeconds = GameResultState::clearSeconds;
         r.bestChain = (std::max)(r.bestChain, GameResultState::bestChain);
+        r.bestTechnique = (std::max)(r.bestTechnique, GameResultState::TechniquePoints());
         if (r.leastDamage < 0 || GameResultState::damageTaken < r.leastDamage)
             r.leastDamage = GameResultState::damageTaken;
         // WHY 実体のある枠だけ開けるか: 解放してしまうと選択画面が «押せる行» として

@@ -265,49 +265,6 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'a1000001-0000-0000-0000-000000000007'
-layer = 0
-name = 'Version'
-parent = 'Canvas'
-parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.UIText]
-    align = 0
-    anchor = [ 0.0, 0.0 ]
-    anchorMax = [ 1.0, 1.0 ]
-    autoSize = false
-    autoSizeMax = 0.0
-    autoSizeMin = 8.0
-    color = [ 0.341176, 0.333333, 0.317647, 0.55 ]
-    enabled = true
-    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
-    fontSize = 13.8
-    letterSpacing = 4.6
-    lineSpacing = 1.0
-    materialPath = ''
-    maxHeight = 0.0
-    maxWidth = 0.0
-    offsetMax = [ 0.0, 0.0 ]
-    overflow = 0
-    pivot = [ 0.0, 0.0 ]
-    richText = false
-    sortOrder = 2
-    stretchX = false
-    stretchY = false
-    text = 'PROTOTYPE 0.1'
-    verticalAlign = 0
-    visibleCharacters = -1
-
-    [gameobjects.transform]
-    position = [ 132.0, 87.660004, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 134.549988, 13.8, 1.0 ]
-
-[[gameobjects]]
-active = true
 instanceId = 'a1000001-0000-0000-0000-000000000008'
 layer = 0
 name = 'MenuRow_START'
@@ -602,7 +559,7 @@ tag = 'Untagged'
     [gameobjects.transform]
     position = [ 106.5, -1.429965, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 275.444977, 54.0, 1.0 ]
+    scale = [ 275.445007, 54.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -751,7 +708,7 @@ tag = 'Untagged'
     [gameobjects.transform]
     position = [ 106.5, -1.429965, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 139.229996, 54.0, 1.0 ]
+    scale = [ 139.230011, 54.0, 1.0 ]
 
 [[gameobjects]]
 active = false
@@ -1121,11 +1078,11 @@ tag = 'Untagged'
         debugBuilt = 0
         debugPad = false
         entries = [ 'Confirm:決定', 'Navigate:選択' ]
-        fontSize = 16.0
-        gapEntries = 30.0
-        gapIconText = 8.0
+        fontSize = 28.0
+        gapEntries = 45.0
+        gapIconText = 12.0
         hitColor = [ 1.0, 1.0, 1.0, 1.0 ]
-        iconSize = 30.0
+        iconSize = 45.0
         introDelay = 0.9
         introSeconds = 0.45
         rightMargin = 132.0
@@ -1225,7 +1182,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777156
+    aspectRatio = 1.777379
     backgroundColor = [ 0.0, 0.0, 0.0, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -1269,6 +1226,7 @@ tag = 'Player'
     clearOnStop = false
     collisionBounciness = 0.5
     collisionDamping = 0.0
+    collisionLayerMask = 4294967295
     collisionMode = 0
     collisionPlaneY = 0.0
     collisionRadius = 0.05
@@ -1289,10 +1247,18 @@ tag = 'Player'
     emitVelocity = [ 0.0, 0.0, 0.0 ]
     enabled = true
     forceFieldChannels = 1
-    gravity = [ 0.0, 0.0, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 1.0
     lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
     lodEnabled = true
     lodFarDistance = 40.0
     lodFarRateScale = 0.25
@@ -1307,15 +1273,9 @@ tag = 'Player'
     meshShapeNormalVelocity = 0.0
     meshShapePath = ''
     meshShapeScale = 1.0
-    noiseFrequency = 1.2
-    noiseSpeed = 2.0
-    noiseStrength = 3.0
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = 2.0
     pauseWhenCulled = false
     playing = true
     prewarm = false
-    radialVelocity = 3.0
     randomSeed = 1
     rateOverDistance = 0.0
     receiveForceFields = true
@@ -1336,6 +1296,7 @@ tag = 'Player'
     stretchedLengthScale = 1.0
     stretchedVelocityScale = 0.1
     subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
     trailAlphaScale = 0.5
     trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
     trailEnabled = false
@@ -1352,7 +1313,6 @@ tag = 'Player'
     useSpeedColorGradient = false
     useSpeedSizeCurve = false
     useVelocityCurve = false
-    velocityDamping = 0.5
     velocitySpread = 0.9
 
         [gameobjects.ParticleEmitter.colorGradient]
@@ -1398,6 +1358,66 @@ tag = 'Player'
         interp = 0
         keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
 
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
     [gameobjects.transform]
     position = [ 8.650194, 3.580898, 0.933818 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
@@ -1415,6 +1435,7 @@ tag = 'Player'
         arcStrands = 3
         arcStrikeRate = 22.0
         arcWidth = 0.1
+        collisionGlow = 0.0
         coreIntensity = 2.6
         corePulseDepth = 0.22
         corePulseRate = 1.6
@@ -1477,6 +1498,7 @@ tag = 'Untagged'
     clearOnStop = false
     collisionBounciness = 0.5
     collisionDamping = 0.0
+    collisionLayerMask = 4294967295
     collisionMode = 0
     collisionPlaneY = 0.0
     collisionRadius = 0.05
@@ -1497,10 +1519,18 @@ tag = 'Untagged'
     emitVelocity = [ 0.0, 0.0, 0.0 ]
     enabled = true
     forceFieldChannels = 2
-    gravity = [ 0.0, 0.0, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 1.0
     lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
     lodEnabled = true
     lodFarDistance = 40.0
     lodFarRateScale = 0.25
@@ -1515,15 +1545,9 @@ tag = 'Untagged'
     meshShapeNormalVelocity = 0.0
     meshShapePath = ''
     meshShapeScale = 1.0
-    noiseFrequency = 1.2
-    noiseSpeed = 2.0
-    noiseStrength = 3.0
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = -2.0
     pauseWhenCulled = false
     playing = true
     prewarm = false
-    radialVelocity = 3.0
     randomSeed = 1
     rateOverDistance = 0.0
     receiveForceFields = true
@@ -1544,6 +1568,7 @@ tag = 'Untagged'
     stretchedLengthScale = 1.0
     stretchedVelocityScale = 0.1
     subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
     trailAlphaScale = 0.5
     trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
     trailEnabled = false
@@ -1560,7 +1585,6 @@ tag = 'Untagged'
     useSpeedColorGradient = false
     useSpeedSizeCurve = false
     useVelocityCurve = false
-    velocityDamping = 0.5
     velocitySpread = 0.9
 
         [gameobjects.ParticleEmitter.colorGradient]
@@ -1606,6 +1630,66 @@ tag = 'Untagged'
         interp = 0
         keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
 
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = -2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
     [gameobjects.transform]
     position = [ 7.296653, 0.32256, 0.817395 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
@@ -1616,6 +1700,7 @@ tag = 'Untagged'
     type = 'ElectricMinusParticleComponent'
 
         [gameobjects.ScriptComponents.fields]
+        collisionGlow = 0.0
         coreIntensity = 2.6
         corePulseDepth = 0.22
         corePulseRate = 1.6
@@ -1675,6 +1760,7 @@ tag = 'Untagged'
     clearOnStop = false
     collisionBounciness = 0.5
     collisionDamping = 0.0
+    collisionLayerMask = 4294967295
     collisionMode = 0
     collisionPlaneY = 0.0
     collisionRadius = 0.05
@@ -1695,10 +1781,18 @@ tag = 'Untagged'
     emitVelocity = [ 0.0, 0.0, 0.0 ]
     enabled = true
     forceFieldChannels = 2
-    gravity = [ 0.0, 0.0, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 1.0
     lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
     lodEnabled = true
     lodFarDistance = 40.0
     lodFarRateScale = 0.25
@@ -1713,15 +1807,9 @@ tag = 'Untagged'
     meshShapeNormalVelocity = 0.0
     meshShapePath = ''
     meshShapeScale = 1.0
-    noiseFrequency = 1.2
-    noiseSpeed = 2.0
-    noiseStrength = 3.0
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = -2.0
     pauseWhenCulled = false
     playing = true
     prewarm = false
-    radialVelocity = 3.0
     randomSeed = 1
     rateOverDistance = 0.0
     receiveForceFields = true
@@ -1742,6 +1830,7 @@ tag = 'Untagged'
     stretchedLengthScale = 1.0
     stretchedVelocityScale = 0.1
     subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
     trailAlphaScale = 0.5
     trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
     trailEnabled = false
@@ -1758,7 +1847,6 @@ tag = 'Untagged'
     useSpeedColorGradient = false
     useSpeedSizeCurve = false
     useVelocityCurve = false
-    velocityDamping = 0.5
     velocitySpread = 0.9
 
         [gameobjects.ParticleEmitter.colorGradient]
@@ -1804,6 +1892,66 @@ tag = 'Untagged'
         interp = 0
         keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
 
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = -2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
     [gameobjects.transform]
     position = [ 4.747179, 0.097828, -0.135671 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
@@ -1814,6 +1962,7 @@ tag = 'Untagged'
     type = 'ElectricMinusParticleComponent'
 
         [gameobjects.ScriptComponents.fields]
+        collisionGlow = 0.0
         coreIntensity = 2.6
         corePulseDepth = 0.22
         corePulseRate = 1.6
