@@ -1103,6 +1103,17 @@ void DrawLeakReportSummary(const MemoryLeakReport& report)
                                    bytes),
                        static_cast<long long>(report.totalCountDelta),
                        report.liveCount);
+
+    // 合計が負のときは «増えた行» の表だけでは釣り合わない。返した側の頭を添える。
+    if (report.totalBytesDelta < 0 && !report.shrunkRows.empty()) {
+        const MemoryLeakRow& top = report.shrunkRows.front();
+        char shrunkBytes[32]{};
+        ImGui::TextDisabled("released: %zu origin(s), largest -%s  %s (%s)",
+                            report.shrunkRows.size(),
+                            FormatBytes(static_cast<std::size_t>(-top.bytesDelta), shrunkBytes),
+                            top.allocatorName.c_str(),
+                            top.origin.c_str());
+    }
 }
 
 // Renderer リソースの «基準からの増分» を発生位置ごとに出す。
@@ -1176,12 +1187,14 @@ void DrawLeakDiff(EditorContext& ctx)
     const int cycles = diff.GetCycleCount();
     if (s_leakDiff.session.valid && cycles > 0) {
         ImGui::Spacing();
-        ImGui::Text("Since first Play (%d cycles, %+lld bytes/cycle)", cycles,
-                    static_cast<long long>(s_leakDiff.session.totalBytesDelta / cycles));
+        ImGui::Text("Since first Play (%d cycles, last cycle %+lld resources)", cycles,
+                    static_cast<long long>(diff.GetLastCycleCountDelta()));
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("往復のたびに比例して伸びる行がリークです。\n"
+            ImGui::SetTooltip("last cycle が 0 に落ち着けばリークではありません。\n"
                               "初回の Play で 1 度だけ増えるもの (LoadTexture / LoadShader /\n"
-                              ".mat 解決のキャッシュ) は、2 往復目以降は増えません。");
+                              ".mat 解決のキャッシュ) は、2 往復目以降は増えません。\n"
+                              "バイト数は RT の張り直し (ビューポートの寸法) で上下するため、\n"
+                              "リークの判定には本数を見てください。");
         }
         DrawLeakReportSummary(s_leakDiff.session);
         DrawLeakRows(s_leakDiff.session, "LeakDiffSession##Analysis");

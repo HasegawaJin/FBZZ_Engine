@@ -38,6 +38,13 @@ struct MemoryLeakReport {
     bool                      valid           = false;
     std::string               label;          ///< 基準を取った文脈 ("Play" / "Manual")
     std::vector<MemoryLeakRow> rows;          ///< 増えた発生位置のみ。bytesDelta 降順
+    /// 減った発生位置のみ。bytesDelta 昇順 (いちばん大きく減った行が先頭)。
+    ///
+    /// WHY 要るか: 合計は増えた行と減った行の和なので、増えた行だけを見せると
+    ///     「-92 MB / +109 本」のように符号が食い違って読めなくなる。RT は
+    ///     SizedRenderTarget::Ensure が «Release してから作り直す» ため、
+    ///     ビューポートを縮めるだけで数十 MB がここへ落ちる。
+    std::vector<MemoryLeakRow> shrunkRows;
     std::ptrdiff_t            totalBytesDelta = 0;
     std::ptrdiff_t            totalCountDelta = 0;
     std::size_t               liveCount       = 0;
@@ -80,6 +87,14 @@ public:
     void CaptureSessionBaselineIfAbsent(const renderer::ResourceManager& resources);
     [[nodiscard]] bool HasSessionBaseline() const { return m_hasSession; }
     [[nodiscard]] int  GetCycleCount() const { return m_cycleCount; }
+
+    /// 直近 1 往復ぶんの増減 (前の往復の累計との差)。
+    ///
+    /// WHY 累計 ÷ 往復回数ではないか: 平均には «初回だけの充填» と «RT の張り直し» が
+    ///     混ざる。一度きりの -90 MB を 3 で割れば「毎回 -30 MB」という有りもしない
+    ///     傾向が出る。リークの判定に要るのは前の往復との差だけ。
+    [[nodiscard]] std::ptrdiff_t GetLastCycleCountDelta() const { return m_lastCycleCountDelta; }
+    [[nodiscard]] std::ptrdiff_t GetLastCycleBytesDelta() const { return m_lastCycleBytesDelta; }
     void NoteCycleCompleted() { ++m_cycleCount; }
     void ClearSessionBaseline();
     /// セッション基準との差分。基準が無ければ valid == false。
@@ -109,9 +124,13 @@ private:
     [[nodiscard]] static MemoryLeakReport CompareTo(const Buckets& baseline,
                                                     const renderer::ResourceManager& resources);
 
-    Buckets     m_session;
-    bool        m_hasSession = false;
-    int         m_cycleCount = 0;
+    Buckets        m_session;
+    bool           m_hasSession = false;
+    int            m_cycleCount = 0;
+    std::ptrdiff_t m_prevCycleCountDelta = 0;
+    std::ptrdiff_t m_prevCycleBytesDelta = 0;
+    std::ptrdiff_t m_lastCycleCountDelta = 0;
+    std::ptrdiff_t m_lastCycleBytesDelta = 0;
 
     Buckets     m_baseline;
     std::string m_baselineLabel;
