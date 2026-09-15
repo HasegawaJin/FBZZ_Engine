@@ -67,6 +67,7 @@ struct RebindState {
 };
 
 struct MapContext {
+    bool initialized = false;
     std::vector<InputAction> actions;
     std::vector<InputAxis>   axes;
 
@@ -339,6 +340,7 @@ void ApplyCapturedBinding(const InputBinding& binding)
 void InputActionMap::Clear()
 {
     MapContext& context = Ctx();
+    context.initialized = true;
     context.actions.clear();
     context.axes.clear();
     context.actionRuntime.clear();
@@ -348,6 +350,12 @@ void InputActionMap::Clear()
     context.rebind = RebindState{};
     context.rebind.active = false;
     context.rebindCompleted = false;
+}
+
+void InputActionMap::Initialize()
+{
+    if (!Ctx().initialized)
+        LoadDefaults();
 }
 
 void InputActionMap::LoadDefaults()
@@ -653,6 +661,7 @@ bool InputActionMap::AddAction(const InputAction& action)
     if (action.name.empty()) return false;
 
     MapContext& context = Ctx();
+    context.initialized = true;
     if (InputAction* existing = FindAction(action.name)) {
         *existing = action;
         return true;
@@ -667,6 +676,7 @@ bool InputActionMap::AddAxis(const InputAxis& axis)
     if (axis.name.empty()) return false;
 
     MapContext& context = Ctx();
+    context.initialized = true;
     if (InputAxis* existing = FindAxis(axis.name)) {
         *existing = axis;
         return true;

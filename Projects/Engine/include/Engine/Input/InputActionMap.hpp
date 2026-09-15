@@ -24,6 +24,9 @@ namespace fbzz::input {
 
 class InputActionMap {
 public:
+    /// 未設定のときだけ既定バインドを作る。起動前に読んだプロジェクト設定は保持する。
+    static void Initialize();
+
     // WASD + XInput の標準バインドを構築する。設定ファイルが無い場合の初期状態。
     static void LoadDefaults();
 

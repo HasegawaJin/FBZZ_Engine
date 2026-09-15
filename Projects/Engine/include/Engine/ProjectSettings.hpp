@@ -128,7 +128,7 @@ struct GameProjectConfig {
     };
     std::array<std::string, 32> layerNames = {
         "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
-        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "Static", "", "", "", "", "", "",
         "", "", "", "", "", "", "", "", "", "",
         "", "", "", "", "", ""
     };

@@ -81,6 +81,33 @@ TEST_F(InputActionMapTest, DefaultsProvideSomethingToPlayWith)
     EXPECT_FALSE(input::InputActionMap::GetAxes().empty());
 }
 
+TEST_F(InputActionMapTest, InitializePreservesProjectMenuBindings)
+{
+    WriteText("menu.inputactions",
+              "[[action]]\nname = 'Submit'\n"
+              "[[action]]\nname = 'Cancel'\n");
+    ASSERT_TRUE(input::InputActionMap::LoadFromFile(File("menu.inputactions")));
+
+    input::InputActionMap::Initialize();
+    input::InputActionMap::Initialize();
+
+    EXPECT_TRUE(HasAction("Submit"));
+    EXPECT_TRUE(HasAction("Cancel"));
+    EXPECT_EQ(input::InputActionMap::GetActions().size(), 2u);
+    EXPECT_TRUE(input::InputActionMap::GetAxes().empty());
+}
+
+TEST_F(InputActionMapTest, InitializePreservesExplicitEmptyConfiguration)
+{
+    WriteText("empty.inputactions", "");
+    ASSERT_TRUE(input::InputActionMap::LoadFromFile(File("empty.inputactions")));
+
+    input::InputActionMap::Initialize();
+
+    EXPECT_TRUE(input::InputActionMap::GetActions().empty());
+    EXPECT_TRUE(input::InputActionMap::GetAxes().empty());
+}
+
 TEST_F(InputActionMapTest, ClearRemovesEverything)
 {
     input::InputActionMap::LoadDefaults();

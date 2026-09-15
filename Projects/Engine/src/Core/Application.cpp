@@ -117,12 +117,9 @@ bool Application::Init(const Window::Config& windowConfig,
 
     input::Input::Init();
 
-    // WHY ここで既定バインドを入れるか:
-    //   プロジェクト固有の .inputactions は「どのプロジェクトを開くか」が決まってから
-    //   ProjectRuntime 側で読み込まれる。Application::Init の時点ではまだ確定していないため、
-    //   まず既定バインドで動く状態を作っておく。設定ファイルがあれば後から上書きされる。
-    //   これにより「プロジェクト未読込のエディタでも入力が完全に死なない」状態を保証する。
-    input::InputActionMap::LoadDefaults();
+    // Standalone はウィンドウ設定のため Init より先に ProjectSettings を読む。
+    // 読み込み済みの Submit / Cancel やゲーム固有アクションを既定値で消さない。
+    input::InputActionMap::Initialize();
 
     // WHY: バックエンド具象 (DX11 / DX12) の選択と生成は RendererFactory に集約する。
     //      合成ルートである Application は RendererBackend を指定するだけで具象を直接知らない。
