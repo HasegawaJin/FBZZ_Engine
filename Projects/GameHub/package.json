@@ -44,6 +44,7 @@
     "electron": "43.1.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
+    "resedit": "^2.0.3",
     "typescript": "^6.0.3",
     "vite": "^5.4.21"
   },

@@ -30,6 +30,11 @@ struct BuildSettings {
     std::string outputDirectory = "Builds/MyGame";
     std::string productName     = "MyGame";
     std::string version         = "1.0.0";
+
+    // exe に焼き込むアイコン画像 (PNG / JPEG / TGA / BMP / ICO)。"Assets/..." 相対。
+    // 空なら差し替えず、Windows の既定アイコンのまま出る。
+    std::string iconPath;
+
     // true のとき game.manifest.toml に development = true を書き、dev 構成をビルドする。
     bool        developmentBuild = true;
 
@@ -43,6 +48,9 @@ struct BuildSettings {
 
     // 絶対パス / 相対パス両対応で出力先を解決する
     std::filesystem::path ResolveOutputPath(const std::string& projectRoot) const;
+
+    // アイコン画像のディスク上のパス。未設定なら空を返す。
+    std::filesystem::path ResolveIconPath(const std::string& projectRoot) const;
 
     // 出力先が配布物の書き出し先として安全か判定する。
     //

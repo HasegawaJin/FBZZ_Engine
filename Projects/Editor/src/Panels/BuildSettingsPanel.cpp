@@ -7,12 +7,16 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/ToolchainLocator.hpp>
+#include <Editor/Util/AppIconWriter.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/StandaloneLauncher.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/RendererBackend.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -20,6 +24,7 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <string>
 
@@ -46,6 +51,7 @@ bool BuildSettingsEqual(const BuildSettings& lhs, const BuildSettings& rhs)
     return lhs.outputDirectory == rhs.outputDirectory
         && lhs.productName == rhs.productName
         && lhs.version == rhs.version
+        && lhs.iconPath == rhs.iconPath
         && lhs.developmentBuild == rhs.developmentBuild
         && lhs.stripEditorAssets == rhs.stripEditorAssets
         && ScenesEqual(lhs.scenes, rhs.scenes);
@@ -83,6 +89,40 @@ bool SceneExists(const std::string& projectRoot, const std::string& relativePath
     const std::filesystem::path p = util::FileSystem::PathFromUtf8(relativePath);
     if (p.is_absolute()) return util::FileSystem::Exists(p);
     return util::FileSystem::Exists(util::FileSystem::PathFromUtf8(projectRoot) / p);
+}
+
+// アイコン 1 枚ぶんのプレビュー枠。texId が無ければ emptyLabel を枠の中央に出す。
+// WHY 市松を敷くか: アイコンは透明部分を持つ。単色の上に描くと、その色まで絵の一部に見える。
+void IconPreviewBox(void* texId, float side, const char* emptyLabel)
+{
+    const ImVec2 boxMin = ImGui::GetCursorScreenPos();
+    const ImVec2 boxMax{ boxMin.x + side, boxMin.y + side };
+    ImGui::Dummy({ side, side });
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const float cell = std::max(4.0f, side / 8.0f);
+    drawList->PushClipRect(boxMin, boxMax, true);
+    drawList->AddRectFilled(boxMin, boxMax, IM_COL32(70, 70, 70, 255));
+    for (int y = 0; boxMin.y + static_cast<float>(y) * cell < boxMax.y; ++y) {
+        for (int x = 0; boxMin.x + static_cast<float>(x) * cell < boxMax.x; ++x) {
+            if (((x + y) & 1) == 0) continue;
+            const ImVec2 cellMin{ boxMin.x + static_cast<float>(x) * cell,
+                                  boxMin.y + static_cast<float>(y) * cell };
+            drawList->AddRectFilled(cellMin, { cellMin.x + cell, cellMin.y + cell },
+                                    IM_COL32(96, 96, 96, 255));
+        }
+    }
+    drawList->PopClipRect();
+
+    if (texId) {
+        drawList->AddImage(widgets::ToImTextureID(texId), boxMin, boxMax);
+    } else if (emptyLabel) {
+        const ImVec2 textSize = ImGui::CalcTextSize(emptyLabel);
+        drawList->AddText({ boxMin.x + (side - textSize.x) * 0.5f,
+                            boxMin.y + (side - textSize.y) * 0.5f },
+                          ImGui::GetColorU32(ImGuiCol_TextDisabled), emptyLabel);
+    }
+    drawList->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), 3.0f);
 }
 
 } // namespace
@@ -343,6 +383,8 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
     ImGui::SetNextItemWidth(120.0f);
     widgets::InputString("Version", m_settings.version);
 
+    DrawIconSetting(ctx);
+
     ImGui::Spacing();
     ImGui::Checkbox("Development Build", &m_settings.developmentBuild);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -360,6 +402,75 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
 
     ImGui::TextDisabled("Platform: Windows x64   |   Configuration: %s",
                         m_settings.developmentBuild ? "Development" : "Release");
+}
+
+void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
+{
+    ImGui::Spacing();
+
+    if (widgets::AssetPathField("Icon", m_settings.iconPath,
+                                ".png,.jpg,.jpeg,.tga,.bmp,.ico", ctx.projectRoot))
+        m_checksValid = false;
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("Burned into %s.exe as its Windows icon (Explorer, taskbar, "
+                          "title bar and Alt+Tab).\n"
+                          "Give it a square 256x256 or larger image; the 16 / 32 / 48 / 64 / "
+                          "128 / 256 sizes are generated on build.\n"
+                          "Leave it empty to ship the default Windows icon.",
+                          m_settings.productName.c_str());
+
+    const bool isIco =
+        util::StringUtils::ToLower(util::FileSystem::GetExtension(m_settings.iconPath)) == ".ico";
+
+    // WHY 絵を出すか: パス文字列だけでは «どの絵が exe に付くのか» を確かめられない。
+    //     .ico はレンダラーが読めないため、そこだけは文字で代える。
+    const std::string previewPath = (m_settings.iconPath.empty() || isIco)
+        ? std::string{}
+        : util::FileSystem::PathToUtf8(m_settings.ResolveIconPath(ctx.projectRoot));
+    const std::uint64_t resetVersion = ctx.resources ? ctx.resources->GetResetVersion() : 0;
+
+    // 読み込みはパスが変わったときだけ。デバイスを作り直した後は取り直す。
+    if (previewPath != m_iconPreviewPath || resetVersion != m_iconPreviewResetVersion) {
+        m_iconPreviewPath         = previewPath;
+        m_iconPreviewResetVersion = resetVersion;
+        m_iconPreviewTexture      = renderer::ResourceHandle<renderer::TextureTag>::Null();
+        if (!previewPath.empty() && ctx.resources)
+            m_iconPreviewTexture = ctx.resources->LoadTexture(previewPath);
+    }
+
+    // ImTextureID はフレームごとに引き直す。ホットリロードで実体が入れ替わっても
+    // 古いディスクリプタを掴んだままにしない。
+    void* texId = (m_iconPreviewTexture.IsValid() && ctx.resources && ctx.imguiRenderer)
+        ? ctx.imguiRenderer->GetImTextureID(m_iconPreviewTexture, *ctx.resources)
+        : nullptr;
+
+    const char* emptyLabel = m_settings.iconPath.empty() ? "No icon"
+                           : isIco                       ? ".ico"
+                                                         : "Cannot read";
+    IconPreviewBox(texId, 96.0f, emptyLabel);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !m_settings.iconPath.empty())
+        ImGui::SetTooltip("%s", m_settings.iconPath.c_str());
+
+    // WHY 小さい方も並べるか: アイコンが潰れて読めなくなるのは 16px のときで、
+    //     大きいプレビューだけ見ても気付けない。実際に出る大きさで隣に並べる。
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    constexpr std::array kPreviewSizes{ 48, 32, 16 };
+    for (std::size_t i = 0; i < kPreviewSizes.size(); ++i) {
+        if (i > 0) ImGui::SameLine();
+        ImGui::PushID(kPreviewSizes[i]);
+        ImGui::BeginGroup();
+        IconPreviewBox(texId, static_cast<float>(kPreviewSizes[i]), nullptr);
+        ImGui::TextDisabled("%d", kPreviewSizes[i]);
+        ImGui::EndGroup();
+        ImGui::PopID();
+    }
+
+    ImGui::TextDisabled("%s", m_settings.iconPath.empty()
+        ? "The exe ships with the default Windows icon."
+        : isIco ? "Every size inside the .ico is embedded as-is."
+                : "Sizes 16-256 are generated from this image on build.");
+    ImGui::EndGroup();
 }
 
 // =============================================================================
@@ -389,6 +500,34 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
                 util::FileSystem::PathToUtf8(m_settings.ResolveOutputPath(ctx.projectRoot)) });
         } else {
             m_checks.push_back({ Check::Level::Error, "Output", reason });
+        }
+    }
+
+    // --- アイコン ---
+    // WHY 事前に読むか: 差し替えはコンパイルの後にしか走らない。読めない画像を
+    //     指したままだと、数分かけたビルドがアイコンのためだけに失敗する。
+    if (!m_settings.iconPath.empty()) {
+        const std::filesystem::path icon = m_settings.ResolveIconPath(ctx.projectRoot);
+        AppIconWriter::SourceInfo info;
+        std::string reason;
+        if (!AppIconWriter::Inspect(icon, info, reason)) {
+            m_checks.push_back({ Check::Level::Error, "Icon", m_settings.iconPath + " — " + reason });
+        } else if (info.isIco) {
+            m_checks.push_back({ Check::Level::Ok, "Icon",
+                                 m_settings.iconPath + " (embedded as-is)" });
+        } else {
+            const std::string size = std::to_string(info.width) + "x" + std::to_string(info.height);
+            if (info.width != info.height) {
+                m_checks.push_back({ Check::Level::Warn, "Icon",
+                                     size + " is not square — it will be centered on a "
+                                     "transparent square" });
+            } else if (info.width < 256) {
+                m_checks.push_back({ Check::Level::Warn, "Icon",
+                                     size + " is smaller than 256x256 — large icon views "
+                                     "will look soft" });
+            } else {
+                m_checks.push_back({ Check::Level::Ok, "Icon", m_settings.iconPath + " (" + size + ")" });
+            }
         }
     }
 

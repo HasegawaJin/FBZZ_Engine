@@ -12,6 +12,7 @@
 #include <Editor/BuildPipeline.hpp>
 #include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/LogListView.hpp>
+#include <Engine/Renderer/ResourceHandle.hpp>
 
 #include <cstdint>
 #include <string>
@@ -45,6 +46,8 @@ private:
     void DrawScenesInBuild(EditorContext& ctx);
     // 出力先・製品名・バージョン設定
     void DrawOutputSettings(EditorContext& ctx);
+    // exe に焼くアイコン画像の指定 (パス欄 + プレビュー)
+    void DrawIconSetting(EditorContext& ctx);
     // 配布物に何が入るかの事前チェック
     void DrawPackageChecks(EditorContext& ctx);
     // 進捗バーとビルドボタン
@@ -65,6 +68,13 @@ private:
     BuildSettings m_settings;
     BuildPipeline m_pipeline;
     int           m_selectedSceneIdx = -1;
+
+    // アイコンプレビューの読み込み結果。
+    // WHY 持ち回すか: ResourceManager::LoadTexture は解決に失敗するとログへ書く。
+    //     毎フレーム引くと、読めないパスを入れている間だけコンソールが埋まる。
+    std::string                                m_iconPreviewPath;
+    renderer::ResourceHandle<renderer::TextureTag> m_iconPreviewTexture{};
+    std::uint64_t                              m_iconPreviewResetVersion = 0;
 
     std::vector<Check> m_checks;
     bool               m_checksValid    = false;
