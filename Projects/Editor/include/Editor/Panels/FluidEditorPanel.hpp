@@ -69,7 +69,7 @@ private:
     void FinishSaveAs(EditorContext& ctx, const fluideditor::FluidSaveAsResult& result);
     void BeginNewFromPreset(EditorContext& ctx);
     void CreateFromPreset(EditorContext& ctx, const std::string& rawName);
-    void StartBake(EditorContext& ctx, bool makeVfx);
+    void StartBake(EditorContext& ctx, bool makeMaterial, bool makeVfx);
     void PollBakeJob(EditorContext& ctx);
     void SyncDirtyRegistry(EditorContext& ctx);
     void SyncPreview();

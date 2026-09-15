@@ -39,7 +39,7 @@ struct FluidBakeRequest {
     /// 焼く .fluid の実パス。
     std::string fluidPath;
     /// 焼き上がったら .fluid の隣の同名 .mat を作る / 追従させる。
-    bool updateMaterial = true;
+    bool updateMaterial = false;
     /// 空でなければ、焼き上がったあとその .mat を貼った 1 層の .vfx をこの実パスへ書く。
     std::string vfxPath;
     std::string vfxRootName;

@@ -12,6 +12,7 @@
 #include <Engine/Asset/FluidRecipe.hpp>
 #include <Engine/Asset/FluidSourceMask.hpp>
 #include <Engine/Asset/FluidVolumeBake.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
@@ -1163,9 +1164,9 @@ TEST(FluidSourceMaskTest, SpriteReferenceUsesOnlyThatCell)
     const std::filesystem::path file = temp.File("atlas.tga");
     ASSERT_TRUE(WriteTgaRgba8(file, kWidth, kHeight, rgba));
     ASSERT_TRUE(util::FileSystem::WriteText(
-        std::filesystem::path(file).concat(".meta"),
+        temp.File("atlas.tga.meta"),
         std::string(R"([texture]
-type = "Sprite"
+type = "sprite"
 sprite_mode = "Multiple"
 sprites = [
   { id = "id-lit", name = "Lit", x = 0, y = 0, width = 32, height = 32 },
