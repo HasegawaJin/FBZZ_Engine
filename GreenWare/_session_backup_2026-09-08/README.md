@@ -11,7 +11,7 @@ ScriptCodeGen やアセットインポータの目に触れさせないため。
 | `Animation/` | マスク 3 種の `skeleton_source` 修正前、`Boss.animcontroller` の Hatch レイヤー入り版 |
 | 直下の `*.md` | **中身は編集«後»。取り違えて上書きしてしまった** ─ ドキュメントは git 管理下なので `git diff` / `git checkout` で戻せる。こちらは見ないこと |
 
-音の旧版だけは別で、`Assets/Sound/SE/Weapon/_prev_2026-09-08/` にある（22 本）。
+当時別置きしていた音の旧版22本は2026-09-14に整理済み。旧音源はgit履歴を参照。
 
 ## 戻し方
 

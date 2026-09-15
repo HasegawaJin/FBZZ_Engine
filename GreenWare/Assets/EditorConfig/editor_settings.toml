@@ -4,9 +4,10 @@ fluid_editor = true
 interval_sec = 300
 
 [build]
-development = true
-output_dir = 'Builds/Development'
-product_name = 'Test'
+development = false
+icon = 'Assets/Icons/GreenWare.ico'
+output_dir = 'Builds/Release'
+product_name = 'GreenWare'
 strip_editor_assets = true
 version = '1.0.0'
 
@@ -21,6 +22,22 @@ version = '1.0.0'
     [[build.scenes]]
     enabled = true
     path = 'Assets/Scenes/Result.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Stage_01.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Stage_02.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Stage_03.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/StageSelect.scene'
 
     [[build.scenes]]
     enabled = true
@@ -42,7 +59,7 @@ follow_selection = true
 
 [game_view]
 aspect = 6
-play_focus_mode = 2
+play_focus_mode = 1
 
 [gizmo]
 mode = 0
@@ -325,17 +342,17 @@ hot_reload = true
 sweep_orphaned_baked = true
 
 [snap]
-enabled = true
+enabled = false
 pos = 1.0
 rot = 15.0
 scale = 0.25
 
 [terrain_tool]
 brush_falloff = 1
-brush_radius = 21.899999618530273
-brush_strength = 0.9700000286102295
+brush_radius = 42.5
+brush_strength = 1.0
 paint_layer = 0
-sculpt_mode = 0
+sculpt_mode = 4
 
 [tools]
 show_terrain = false
@@ -352,6 +369,6 @@ show_grid = false
 show_light_range = false
 show_ragdoll = false
 show_skeleton = false
-show_stats = true
+show_stats = false
 show_vfx_gizmos = false
 surface_snap_align_to_normal = true

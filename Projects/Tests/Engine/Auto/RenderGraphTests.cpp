@@ -70,6 +70,43 @@ RG::ResourceDesc ImportedRT(uint32_t width = 1920, uint32_t height = 1080)
 
 class RenderGraphTest : public testkit::Fixture {};
 
+TEST_F(RenderGraphTest, CaptureHookRunsAfterProfilingAndBeforeTheNextOverwrite)
+{
+    RG graph;
+    int imageValue = 0;
+    bool gpuActive = false;
+    std::vector<int> captured;
+    graph.AddPass("Opaque", {}, { "HDR" }, [&] { imageValue = 7; });
+    graph.AddPass("Unused", {}, { "UnusedImage" }, [&] { ADD_FAILURE(); });
+    graph.AddPass("Transparent", { "HDR" }, { "HDR" }, [&] { imageValue = 42; });
+    graph.AddPass("Composite", { "HDR" }, { "Output" }, [] {});
+    graph.SetOutputs({ "Output" });
+    graph.SetGpuProfilerHooks([&](std::string_view) { gpuActive = true; },
+                              [&](std::string_view) { gpuActive = false; });
+    graph.SetPassCompletedHook([&](size_t index) {
+        EXPECT_FALSE(gpuActive);
+        EXPECT_NE(index, 1u);
+        EXPECT_EQ(graph.GetLastReport().profiles.size(), captured.size() + 1);
+        captured.push_back(imageValue);
+    });
+
+    ASSERT_TRUE(graph.Execute());
+    EXPECT_EQ(captured, (std::vector<int>{ 7, 42, 42 }));
+    EXPECT_EQ(graph.GetLastReport().culledPasses, (std::vector<size_t>{ 1 }));
+}
+
+TEST_F(RenderGraphTest, FailedPlanDoesNotInvokeCaptureHook)
+{
+    RG graph;
+    bool captured = false;
+    graph.AddPass("A", { "B" }, { "A" }, [] {});
+    graph.AddPass("B", { "A" }, { "B" }, [] {});
+    graph.SetOutputs({ "A" });
+    graph.SetPassCompletedHook([&](size_t) { captured = true; });
+    EXPECT_FALSE(graph.Execute());
+    EXPECT_FALSE(captured);
+}
+
 // --- 実行順 -----------------------------------------------------------------
 
 TEST_F(RenderGraphTest, ExecutesLivePassesInRegistrationOrder)

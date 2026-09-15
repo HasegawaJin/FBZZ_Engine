@@ -45,6 +45,12 @@ const int   level  = settings::GetInt("difficulty");
 既存の行を複製して名前を変えるだけでよい（子の `Label` / `Value` / `Slider` /
 `Track` / `Fill` / `Knob` は名前が固定）。
 
+⚠ **行は 4 か所にある。** `Options.scene` と、`Stage_01`〜`Stage_03` のポーズ
+（`Pause_Canvas > Pause_Root > Pause_Options`、[game-flow.md](game-flow.md#ポーズstage_01stage_03)）。
+ポーズ側には CONTROLS（キーコンフィグ）を置いていないので、行を足すときに触るのは
+タブ 4 枚ぶんだけでよい。**片方だけに足すと「タイトルからは直せるのに、遊びながらは
+出てこない」**という形で欠ける。
+
 **置いた行だけが出る。** 宣言の `page` は覚え書きで、実際にどのページへ出るかは
 オブジェクトを置いた場所が決める。同じ id を 2 ページへ置くこともできる
 （INPUT の `device` がそうなっている）。
@@ -92,3 +98,7 @@ settings::DeclarePercent("uiOpacity", "Tab_GAME", 0.9f,
   次のフレームには揃い直す。値は config から読み戻される。
 - **`ResetToDefaults` は宣言簿が値を持つ項目だけ戻す。** 組み込みは
   `VideoConfig{}` のような構造体の初期化子が既定なので、あちらが自分で戻す。
+
+## 廃止済み設定（2026-09-15）
+
+チェイン表示の有効・無効設定は廃止。Optionsと戦闘中のポーズ設定から行を削除し、保存対象にも含めない。連撃が成立したときのHUDは常に表示する。

@@ -69,6 +69,7 @@
 |---|---|---|
 | Title / StageSelect / Stage / Result / Options | `Assets/Scenes/*.scene` | ✅ |
 | ステージ台帳（7 枠 / 実体 2 本） | `UI/StageCatalog.hpp` | ✅ |
+| **チュートリアル**（Stage_01 が通しで兼ねる / 6 幕の完全ゲート） | `Game/TutorialDirectorComponent.hpp` ・ [tutorial.md](tutorial.md) | ✅ 実機未確認 |
 | 評価とランク（3 軸 / 1 表から 2 画面が引く） | `Game/GameResultState.hpp` | ✅ |
 | 設定の宣言簿（`settings::Declare*` 1 行で増える） | `Game/GameSettingsRegistry.hpp` ・ [settings.md](settings.md) | ✅ |
 | 設定の保存（`%LOCALAPPDATA%/GreenWare/settings.toml`） | `Game/GameSettingsComponent.hpp` | ✅ |
@@ -97,31 +98,39 @@
 
 ## 残り作業
 
-### 1. ステージ 3（ボス 3「ポラリティ・ルーム」）
+### 1. ステージ 3（ボス 3・呼び名は未決）
 
-**設計と AI の骨は入っている** — [boss-loom.md](boss-loom.md) と
-`Combat/LoomAiComponent.hpp` / `LoomBossComponent.hpp`。
-状態機械・`Parryable` の配線・崩しの受け口・とどめ で腕が 1 本もげるところまで通る。
+**モデルとスクリプトは入っている** — [boss03.md](boss03.md) と
+`Combat/Boss03AiComponent.hpp` / `Boss03BossComponent.hpp` / `Boss03AnimatorComponent.hpp`、
+`Assets/Models/Boss_03`（24 クリップ）と `Animation/Boss03/Boss03.animcontroller`。
+状態機械・`Parryable` の配線・崩しの受け口・とどめ で翼が 1 枚もげるところまで通る。
 
-残っているのは**絵とシーン**。
+当たり判定（`Boss03HitboxRigComponent`）・HP・崩しゲージ・予兆・VFX
+（`Boss03VfxComponent` ＋ 扇は `LaserVolleyComponent`、波は `BossShockwaveComponent`）も
+シーンのボスへ載せてある。
+
+盤面も置いた ── `Assets/Terrain/Stage03_Island.terrain`（海に囲まれた孤島・
+戦闘面は半径 20m / 高さ 2m の平ら）と、Stage_02 から持ってきたプレイヤー一式。
+`StageCatalog` の 3 行目も埋めたので、選択画面から押せる。
+
+残っているのは**手触り**。**まだ一度も起動していない。**
 
 | # | 何 | 何が確かめられる |
 |---|---|---|
-| 1 | **箱で 4 連を振る**（`Stage_01` に立方体を置いて `LoomAiComponent` を付ける） | 拍 0.62 秒が弾きの窓 0.22 秒に対して読めるか。**ここが駄目なら全部やり直し** |
-| 2 | 締めの「拍を飛ばす」溜め | 連打で流しているとそこで外すか |
-| 3 | 梭（跳ぶ手）と幕（走る手） | 3 択が成立しているか |
-| 4 | 腕をもぐ → 連撃が縮んでテンポが上がる | 進行が形で読めるか |
-| 5 | モデル / リグ / アニメ / VFX | ここで初めて絵を当てる |
-| 6 | `Stage_03.scene` と `StageCatalog` の 3 行目 | 台帳は**最後**。`scene` を埋めた瞬間に押せてしまう |
-
-**1〜4 は専用シーン無しで確かめられる。**
+| 1 | **まず 1 回起動する** | 島に立てるか・ボスが振るか・倒せるか |
+| 2 | 4 連の拍 0.62 秒 | 弾きの窓 0.22 秒に対して読めるか。**ここが駄目なら数字からやり直し** |
+| 3 | `Boss03AnimatorComponent` の Impact を詰める | 絵の叩きつけと判定の時刻が合っているか |
+| 4 | 翼の当たりの寸法を見ながら合わせる | 斬ったときに当たるか |
+| 5 | 扇の本数と長さ | 線が床を走り、隙間が読めるか |
+| 6 | とどめ → 翼が落ちる → 連撃が縮む | 進行が形とテンポで読めるか |
+| 7 | 呼び名（ボス・ステージ名）と BGM | 仮のまま出ていないか |
 
 台帳へ足すときは、
 
 - `StageCatalog::kStages` に 1 行（`scene` は**シーンが出来てから**埋める）
 - `StageProgressState::kCount` は台帳から引くので触らない
 - `StageSelect.scene` の Row は **7 行とも既にある**（複製は不要）
-- ボスに **`IBoss::Bind`**（`LoomBossComponent::OnStart` に書いてある）
+- ボスに **`IBoss::Bind`**（`Boss03BossComponent::OnStart` に書いてある）
 - ボスに `EnemyHealthComponent` と `BossBreakComponent`（無いと終わらない / 崩れない）
 - `progress.toml` は列ごとの配列なので、**行が増えても古い保存を読める**（短い方に合わせる）
 

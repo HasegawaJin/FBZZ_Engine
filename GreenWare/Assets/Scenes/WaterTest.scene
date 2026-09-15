@@ -18,7 +18,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.776753
+    aspectRatio = 1.777379
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -45,6 +45,7 @@ tag = 'MainCamera'
 
         [gameobjects.ScriptComponents.fields]
         distance = 5.120482
+        focusLagSeconds = 0.18
         followSpeed = 10.0
         height = 1.807229
         loosenedFollowSpeed = 2.0
@@ -57,6 +58,9 @@ tag = 'MainCamera'
         padInvertY = false
         padLookSpeed = 200.0
         padOrbit = true
+        parryExtraDistance = 1.0
+        parryFocusWeight = 0.25
+        parryTurnSpeed = 45.0
         pitch = 7.969
         targetTag = 'Player'
         verticalFollowSpeed = 10.0
@@ -118,8 +122,11 @@ tag = 'MainCamera'
         executeSlow = 0.45
         executeSlowSeconds = 0.28
         focusHeight = 3.2
+        introColor = [ 0.9, 0.65, 0.3, 1.0 ]
         introDistance = 13.0
         introEnabled = true
+        introFixedFocus = false
+        introFocus = [ 0.0, 0.0, 0.0 ]
         introFov = -6.0
         introHoldBoss = true
         introHoldPlayer = true
@@ -127,6 +134,8 @@ tag = 'MainCamera'
         introPitch = -12.0
         introRise = 2.4
         introSeconds = 2.6
+        introSubtitle = '鉄骸の番人'
+        introTitle = 'IRON WARDEN'
         previewShot = 0
         toppleDistance = 7.5
         toppleEnabled = true
@@ -158,6 +167,12 @@ tag = 'Untagged'
     cookiePath = ''
     cookieRotation = 0.0
     enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
     innerCone = 15.0
     intensity = 1.0
     outerCone = 30.0
@@ -171,9 +186,13 @@ tag = 'Untagged'
     type = 0
     useColorTemperature = true
 
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
     [gameobjects.transform]
     position = [ 0.098, 33.136452, 0.004797 ]
-    rotation = [ 0.363267, 0.894023, -0.094506, -0.244598 ]
+    rotation = [ -0.181637, 0.240909, -0.898649, 0.318436 ]
     scale = [ 0.999992, 1.0, 0.999995 ]
 
 [[gameobjects]]
@@ -345,6 +364,7 @@ tag = 'Untagged'
     clearOnStop = false
     collisionBounciness = 0.5
     collisionDamping = 0.0
+    collisionLayerMask = 4294967295
     collisionMode = 0
     collisionPlaneY = 0.0
     collisionRadius = 0.05
@@ -368,6 +388,15 @@ tag = 'Untagged'
     inheritVelocity = 0.0
     lifetime = 4.5
     lifetimeRandom = 0.45
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
     lodEnabled = false
     lodFarDistance = 40.0
     lodFarRateScale = 0.25
@@ -405,6 +434,7 @@ tag = 'Untagged'
     stretchedLengthScale = 1.0
     stretchedVelocityScale = 0.1
     subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
     trailAlphaScale = 0.5
     trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
     trailEnabled = false
@@ -526,7 +556,47 @@ tag = 'Untagged'
     resolutionZ = 512
     splashEnabled = true
     waterDrag = 2.0
-    waveAmplitudeScale = 1.0
+    waveAmplitudeScale = 0.1
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '19250501-6c8f-4160-9865-66d1689f153e'
+layer = 0
+name = 'Terrain'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'guid:c0783f3ffcca445387418210c93113cc|Assets/Materials/Terrain/Layer0_Ground.mat',
+        'guid:6e860c554e5e45d196d874f813c007ee|Assets/Materials/Terrain/Layer1_Grass.mat',
+        'guid:a59a94c7c1d245a48beca037609f0fd6|Assets/Materials/Terrain/Layer2_Sand.mat',
+        'guid:2326f3a9a5be48dc855084ef5304bc1c|Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
