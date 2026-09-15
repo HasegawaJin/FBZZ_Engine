@@ -213,6 +213,9 @@ private:
         return CreateNativeStructuredBuffer(data, elementCount, stride);
     }
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
+
+    /// 旧シェーダーの破棄前に GPU 使用と依存キャッシュを解消する。安全に切り替えられなければ false。
+    virtual bool PrepareShaderReload() { return true; }
 };
 
 } // namespace fbzz::renderer

@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Renderer/IConstantBuffer.hpp"
 #include <cstring>
 #include <utility>
 
@@ -65,25 +66,25 @@ Material Material::CloneWithoutGpuResources() const
 
 void Material::Init(ResourceManager& resources, uint32_t cbufferSize, Where where)
 {
-    // サイズが変わった場合は cbuffer を再作成する。
-    if (paramsBuffer.IsValid() && paramData.size() == cbufferSize) return;
+    // 呼び出し側が CPU 配列を先に組み直すため、容量は GPU 実体で判定する。
+    // DX12 は 256 byte 単位で確保するので、必要量以上なら再利用できる。
+    if (paramData.size() != cbufferSize)
+        paramData.assign(cbufferSize, 0u);
+    const auto* buffer = resources.Get(paramsBuffer);
+    if (buffer && cbufferSize > 0 && buffer->GetSize() >= cbufferSize) return;
     if (paramsBuffer.IsValid()) {
         // WHY: ハンドルの上書きだけでは旧 ConstantBuffer が ResourceManager に残るため、
         //      シェーダー変更でレイアウトが変わる前に明示的に解放する。
         resources.Release(paramsBuffer);
         paramsBuffer = {};
     }
-    // WHY: 呼び出し元が事前に paramData を設定している場合 (SyncMaterial / SceneSerializer) は
-    //      サイズが一致していれば上書きしない。サイズ不一致のときだけ 0 初期化する。
-    if (paramData.size() != cbufferSize)
-        paramData.assign(cbufferSize, 0u);
-    paramsBuffer = resources.CreateConstantBuffer(cbufferSize, where);
+    if (cbufferSize > 0)
+        paramsBuffer = resources.CreateConstantBuffer(cbufferSize, where);
 }
 
 void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc, Where where)
 {
-    if (!paramsBuffer.IsValid())
-        Init(resources, desc.cbufferSize, where);
+    Init(resources, desc.cbufferSize, where);
     if (!paramsBuffer.IsValid()) return;
     if (paramData.size() != desc.cbufferSize) return;
 

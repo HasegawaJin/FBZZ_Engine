@@ -94,11 +94,16 @@ bool DX12PsoCache::Initialize(ID3D12Device* device)
 
 void DX12PsoCache::Shutdown()
 {
-    m_cache.clear();
-    m_computeCache.clear();
+    ClearPipelines();
     m_computeRootSignature.Reset();
     m_rootSignature.Reset();
     m_device.Reset();
+}
+
+void DX12PsoCache::ClearPipelines()
+{
+    m_cache.clear();
+    m_computeCache.clear();
 }
 
 bool DX12PsoCache::CreateComputeRootSignature()
