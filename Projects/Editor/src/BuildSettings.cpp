@@ -51,6 +51,14 @@ std::filesystem::path BuildSettings::ResolveOutputPath(const std::string& projec
     return util::FileSystem::PathFromUtf8(projectRoot) / out;
 }
 
+std::filesystem::path BuildSettings::ResolveIconPath(const std::string& projectRoot) const
+{
+    if (iconPath.empty()) return {};
+    std::filesystem::path icon = util::FileSystem::PathFromUtf8(iconPath);
+    if (icon.is_absolute()) return icon;
+    return util::FileSystem::PathFromUtf8(projectRoot) / icon;
+}
+
 bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::string& outReason) const
 {
     outReason.clear();
