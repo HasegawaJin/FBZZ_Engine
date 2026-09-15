@@ -48,6 +48,8 @@ struct ScriptAnimatorProxy {
     float       GetBlendToNormalizedTime() const;
     float       GetBlendToNormalizedTime(GameObject* go) const;
     void        SetSpeed(float speed) const;
+    /// Freeze 用の speed と独立した時計倍率 [0,8]。1 で通常。
+    void SetLocalTimeScale(float scale) const;
     float       GetSpeed() const;
     void        Play(std::string_view stateName) const;
     void        SetSpeed(GameObject* go, float speed) const;

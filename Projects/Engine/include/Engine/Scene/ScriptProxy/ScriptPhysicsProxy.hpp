@@ -43,6 +43,8 @@ struct ScriptPhysicsProxy {
     // 1 = 通常 / 0 = 無重力 / 負値 = 反重力。浮かせる演出の間だけ下げて、終わったら戻す。
     [[nodiscard]] float GetGravityScale() const;
     void SetGravityScale(float scale) const;
+    /// 自分の剛体の時計倍率 [0,8]。1 で通常。
+    void SetLocalTimeScale(float scale) const;
     // World が全剛体へ与えている重力加速度 (m/s^2)。
     // SetGravityScale は「これに対する倍率」なので、跳躍高さのように m/s^2 で
     // 決めた値を倍率へ直すには基準となるこの大きさが要る。
