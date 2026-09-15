@@ -1,13 +1,15 @@
 /// @file    DX12Buffer.cpp
-/// @brief   永続 Map した Upload Heap による動的頂点・インデックス更新。
+/// @brief   頂点・インデックスの更新内容を GPU 使用中のデータから分離する。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #include "DX12Buffer.hpp"
 #include "DX12Context.hpp"
 #include "DX12StateTracker.hpp"
+#include "DX12UploadArena.hpp"
 
 #include <Engine/Core/Logger.hpp>
 #include <cstring>
+#include <algorithm>
 
 namespace fbzz::renderer {
 
@@ -30,6 +32,7 @@ bool DX12Buffer::Init(DX12Context* context, const void* data, size_t sizeBytes, 
     m_size = sizeBytes;
     m_stride = stride;
     m_kind = kind;
+    m_dataSize = data ? sizeBytes : 0;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC desc{};
@@ -106,17 +109,41 @@ void DX12Buffer::Update(const void* data, size_t sizeBytes)
         FBZZ_LOG_ERROR("DX12Buffer: 無効な更新サイズです (%zu / %zu)", sizeBytes, m_size);
         return;
     }
-    std::memcpy(m_mapped, data, sizeBytes);
+    // 同じバッファを UI が次フレームで借りても、GPU が読む旧頂点を上書きしない。
+    if (m_cpuData.empty()) {
+        m_cpuData.resize(m_size, 0);
+        if (m_dataSize > 0)
+            std::memcpy(m_cpuData.data(), m_mapped, m_dataSize);
+    }
+    std::memcpy(m_cpuData.data(), data, sizeBytes);
+    m_dataSize = (std::max)(m_dataSize, sizeBytes);
+    m_dirty = true;
 }
 
-D3D12_VERTEX_BUFFER_VIEW DX12Buffer::GetVertexView() const
+D3D12_GPU_VIRTUAL_ADDRESS DX12Buffer::PrepareForSubmit(DX12UploadArena& arena)
 {
-    return {m_resource->GetGPUVirtualAddress(), static_cast<UINT>(m_size), m_stride};
+    if (m_cpuData.empty()) return m_resource->GetGPUVirtualAddress();
+    if (!m_dirty && m_cachedAddress != 0 && m_cachedEpoch == arena.GetEpoch())
+        return m_cachedAddress;
+    const auto allocation = arena.Allocate(m_dataSize, 16);
+    if (!allocation) return 0;
+    std::memcpy(allocation.cpu, m_cpuData.data(), m_dataSize);
+    m_cachedAddress = allocation.gpu;
+    m_cachedEpoch = arena.GetEpoch();
+    m_dirty = false;
+    return m_cachedAddress;
 }
 
-D3D12_INDEX_BUFFER_VIEW DX12Buffer::GetIndexView() const
+D3D12_VERTEX_BUFFER_VIEW DX12Buffer::GetVertexView(DX12UploadArena& arena)
 {
-    return {m_resource->GetGPUVirtualAddress(), static_cast<UINT>(m_size), DXGI_FORMAT_R32_UINT};
+    return {PrepareForSubmit(arena),
+            static_cast<UINT>(m_cpuData.empty() ? m_size : m_dataSize), m_stride};
+}
+
+D3D12_INDEX_BUFFER_VIEW DX12Buffer::GetIndexView(DX12UploadArena& arena)
+{
+    return {PrepareForSubmit(arena),
+            static_cast<UINT>(m_cpuData.empty() ? m_size : m_dataSize), DXGI_FORMAT_R32_UINT};
 }
 
 } // namespace fbzz::renderer
