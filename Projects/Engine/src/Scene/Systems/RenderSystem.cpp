@@ -13,6 +13,7 @@
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
+#include <Engine/Scene/Systems/RenderPasses/RenderPassCapture.hpp>
 #include "Engine/Renderer/DebugDraw.hpp"
 #include "RenderPasses/Debug/DebugPasses.hpp"
 #include <Physics/World.hpp>
@@ -494,7 +495,8 @@ void RenderSystem(Scene& scene,
                   fbzz::LayerMask cullingMask,
                   const RenderSystemUIOptions* uiOptions,
                   const physics::World* physicsWorld,
-                  const CameraCullingSettings* cullingSettings)
+                  const CameraCullingSettings* cullingSettings,
+                  RenderPassCapture* capture)
 {
     FBZZ_PROFILE_SCOPE("RenderSystem");
 
@@ -1423,17 +1425,18 @@ void RenderSystem(Scene& scene,
     std::vector<PunctualLightGPU> punctualLights;
     punctualLights.reserve(32);
 
-    // 影を落とせる Spot / Point の候補。
+    // 影を落とせるライトの候補 (Directional 以外の全型)。
     // アトラスは 16 タイルしかなく、走査順に配ると「シーンのどこに置いたか」で
     // 影の有無が決まる。全部集めてから捨てる相手を選ぶ。
     struct PunctualShadowCandidate {
         size_t        punctualIndex;   // punctualLights 内の位置
         int           legacySlot;      // b3 側の位置 (点 0-7 / スポット 8-11)。-1 = b3 に入らない
-        bool          isPoint;
+        // 全方位のライトはキューブ 6 面 = 6 タイルを使う。Spot / Area は 1 タイル。
+        bool          needsCube;
         math::Vector3 position;
-        math::Vector3 direction;       // Spot の照射方向 (Point では未使用)
+        math::Vector3 direction;       // 1 タイル側の照射方向 (キューブでは未使用)
         float         range;
-        float         outerCone;       // [degrees]
+        float         outerCone;       // [degrees] 1 タイル側の半画角
         float         nearPlane;
         float         bias;
         float         strength;
@@ -1464,6 +1467,10 @@ void RenderSystem(Scene& scene,
     constexpr float kDegToRad = 3.14159265f / 180.0f;
     // キューブ 1 面ぶんの半画角 (= 90 度の半分)。Point シャドウの 6 面で使う。
     constexpr float kQuarterPi = 3.14159265f / 4.0f;
+    // Area の影を焼く錐台の半画角 [degrees]。Spot の outerCone に相当する値として渡す。
+    // 面光源は法線側の半球 (= 90 度) を照らすが、透視投影は 90 度で無限に広がるため
+    // 張れない。75 度は「パネルの正面に置いた物の影は出る / 真横は諦める」の線。
+    constexpr float kAreaShadowOuterConeDeg = 75.0f;
     // View<> だと GameObject が取れず activeInHierarchy() を見られないので、GO を切っても
     // 光だけが残る。GetEntities<> は View<> と同じ基底 span なので走査順は変わらない。
     for (EntityID id : scene.GetEntities<LightComponent>()) {
@@ -1563,10 +1570,16 @@ void RenderSystem(Scene& scene,
                 cookieCandidates.push_back(std::move(cookie));
             }
 
-            // 影の候補として控える。Area は LTC が解析積分で遮蔽の概念を持たないため対象外。
+            // 影の候補として控える。Directional 以外は全型が落とせる。
+            //
+            // WHY 形状を持つ光源も «点から焼いた影» でよいか: 影の形は遮蔽物と受光面の
+            //     配置でほぼ決まり、光源の大きさは半影の広さにしか効かない。その広さは
+            //     sourceRadius から作る penumbraTexels が受け持つので、深度そのものは
+            //     中心 1 点から焼けば足りる。管が長いほど本当は半影が軸方向へ伸びるが、
+            //     それを出すには軸に沿った複数枚が要り、16 タイルでは到底足りない。
             const bool canCastShadow =
                 lc.castShadows && lc.shadowStrength > 0.0f &&
-                (lc.type == LightComponent::Type::Spot || lc.type == LightComponent::Type::Point);
+                lc.type != LightComponent::Type::Directional;
             if (canCastShadow) {
                 // 遠すぎるライトへタイルを割り当てない。判定距離に range を足すのは、
                 // range の大きいライトは離れていても画面を広く照らすため。
@@ -1575,13 +1588,20 @@ void RenderSystem(Scene& scene,
                     PunctualShadowCandidate cand{};
                     cand.punctualIndex = punctualIndex;
                     cand.legacySlot    = legacySlot;
-                    cand.isPoint       = (lc.type == LightComponent::Type::Point);
+                    // Sphere / Tube は Point と同じ全方位。Area だけが向きを持つ。
+                    cand.needsCube     = (lc.type == LightComponent::Type::Point
+                                       || lc.type == LightComponent::Type::Sphere
+                                       || lc.type == LightComponent::Type::Tube);
                     cand.position      = tf.worldPosition;
-                    cand.direction     = cand.isPoint
+                    cand.direction     = cand.needsCube
                                        ? math::Vector3{ 0.0f, -1.0f, 0.0f }
                                        : tf.forward.NormalizedOr({ 0.0f, 0.0f, 1.0f });
                     cand.range         = (std::max)(lc.range, 0.05f);
-                    cand.outerCone     = lc.outerCone;
+                    // Area は法線側の半球を照らすが、1 枚の透視投影では 180 度を張れない。
+                    // 実用上そこまでで、これ以上広げると端のテクセル密度が落ちるだけ。
+                    cand.outerCone     = (lc.type == LightComponent::Type::Area)
+                                       ? kAreaShadowOuterConeDeg
+                                       : lc.outerCone;
                     cand.nearPlane     = (std::max)(lc.shadowNearPlane, 0.01f);
                     cand.bias          = (std::max)(lc.shadowBias, 0.0f);
                     cand.strength      = std::clamp(lc.shadowStrength, 0.0f, 1.0f);
@@ -1681,7 +1701,8 @@ void RenderSystem(Scene& scene,
 
     PunctualShadowView punctualViews[kMaxPunctualShadows] = {};
     int punctualViewCount   = 0;
-    int shadowedPointCount  = 0;
+    // キューブ 6 面を使ったライトの本数 (Point / Sphere / Tube)。
+    int shadowedCubeCount   = 0;
     // b3 経路 (既定の Forward) 向けのスロット番号。-1 = 影なし。
     int legacyShadowSlots[kMaxLegacyPunctualLights];
     for (int& slot : legacyShadowSlots) slot = -1;
@@ -1735,11 +1756,11 @@ void RenderSystem(Scene& scene,
 
     if (rs.shadowEnabled) {
         for (const PunctualShadowCandidate& cand : shadowCandidates) {
-            const int needed = cand.isPoint ? 6 : 1;
-            // break ではなく continue。Point が入らなかっただけで、後ろに続く
-            // Spot は 1 枚で収まる可能性がある。
+            const int needed = cand.needsCube ? 6 : 1;
+            // break ではなく continue。全方位のライトが入らなかっただけで、後ろに続く
+            // Spot / Area は 1 枚で収まる可能性がある。
             if (punctualViewCount + needed > kMaxPunctualShadows) continue;
-            if (cand.isPoint && shadowedPointCount >= rs.shadow.maxShadowedPointLights) continue;
+            if (cand.needsCube && shadowedCubeCount >= rs.shadow.maxShadowedPointLights) continue;
 
             // Inspector で range より大きい shadowNearPlane を入れられるので、
             // ここで潰さないと Matrix4::Perspective の assert を踏む。
@@ -1747,7 +1768,7 @@ void RenderSystem(Scene& scene,
             const float nearZ = (std::min)(cand.nearPlane, farZ * 0.5f);
 
             const int baseSlot = punctualViewCount;
-            if (cand.isPoint) {
+            if (cand.needsCube) {
                 for (int face = 0; face < 6; ++face) {
                     buildPunctualView(baseSlot + face, cand.position,
                                       kCubeFaceDir[face], kCubeFaceUp[face],
@@ -1755,10 +1776,11 @@ void RenderSystem(Scene& scene,
                                       cand.sourceRadius);
                 }
                 punctualViewCount += 6;
-                ++shadowedPointCount;
+                ++shadowedCubeCount;
             } else {
                 // 錐台は円錐へ外接させる。outerCone は半角なので画角はその 2 倍。
                 // 少し広げるのは、ぴったり切ると PCF が縁ではみ出して影が欠けるため。
+                // Area はコーンを持たないので kAreaShadowOuterConeDeg が入っている。
                 const float halfFov = (std::min)(
                     std::clamp(cand.outerCone, 1.0f, 79.0f) * kDegToRad * 1.05f,
                     kQuarterPi * 1.9f);
@@ -2461,6 +2483,10 @@ void RenderSystem(Scene& scene,
         reg.BindTexture("SSAO",                ssaoBlur);
         reg.BindTexture("GTAOResult",          gtaoBlur);
         reg.BindTexture("ContactShadowResult", contactShadowResult);
+        reg.BindTexture("SSRResult",           ssrResult);
+        reg.BindTexture("MotionBlurResult",    motionBlurResult);
+        reg.BindTexture("VolumetricResult",    volumetricResult);
+        reg.BindTexture("LensFlareSource",     bloomHalf);
     }
 
     passCtx.uiOptions               = uiOptions;
@@ -2800,6 +2826,9 @@ void RenderSystem(Scene& scene,
     if (upscaleActive)
         pipeline.DeclareResource("UpscaleSrc", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
     pipeline.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
+    pipeline.DeclareResource("SSRResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
+    pipeline.DeclareResource("MotionBlurResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
+    pipeline.DeclareResource("VolumetricResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
     // Forward もプリパスで GBuffer へ描くので、ここを Deferred 限定にすると
     // 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。
     if (screenSpaceReady)
@@ -2808,6 +2837,7 @@ void RenderSystem(Scene& scene,
     // 申告していると、エイリアシングが全画面 RT と同じ枠を貸してしまう。
     const uint32_t halfW = (std::max)(1u, sHdrW / 2);
     const uint32_t halfH = (std::max)(1u, sHdrH / 2);
+    pipeline.DeclareResource("LensFlareSource", { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
     if (ssaoEnabled)
         pipeline.DeclareResource("SSAO",               { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
     // GTAO / ContactShadows は GBuffer を読んで独自の UAV へ書く。専用名で宣言しないと
@@ -2989,7 +3019,7 @@ void RenderSystem(Scene& scene,
         // SSR — Forward でもプリパスの GBuffer から反射を計算する。
         // 映すのはライティング済みのシーンなので HDR が出揃った後に置く。
         if (forwardGBufferPrepass && rs.ssr.enabled) {
-            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "SSRResult", "HDR" }, [&]() {
                 ExecuteSSRPass(passCtx);
             });
         }
@@ -3073,7 +3103,7 @@ void RenderSystem(Scene& scene,
         // SSR — 透明オブジェクト通過後の深度を使うので DeferredForwardTransparent の後。
         // 実行条件はパイプラインの選択ではなく GBuffer の有無。
         if (rs.ssr.enabled) {
-            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "SSRResult", "HDR" }, [&]() {
                 ExecuteSSRPass(passCtx);
             });
         }
@@ -3088,7 +3118,7 @@ void RenderSystem(Scene& scene,
     //     光芒の上へ順番に乗り、遮蔽も屈折も普通の透明描画として処理される。
     //     WaterCaustics が「Water の前でなければならない」のと同じ理由。
     if (rs.volumetricLight.enabled) {
-        pipeline.AddRawPass("VolumetricLight", { "HDR", "ShadowMap" }, { "HDR" }, [&]() {
+        pipeline.AddRawPass("VolumetricLight", { "HDR", "ShadowMap" }, { "VolumetricResult", "HDR" }, [&]() {
             ExecuteVolumetricLightPass(passCtx);
         });
     }
@@ -3255,7 +3285,7 @@ void RenderSystem(Scene& scene,
     if (rs.motionBlur.enabled) {
         // Velocity は誰も書かないフレームがある。書かれないものを読むと申告した瞬間に
         // «producer が居ない» で Plan が落ちるので、要るときだけ足す。
-        std::vector<RA> motionBlurAccesses = { { "HDR", RU::ReadWrite } };
+        std::vector<RA> motionBlurAccesses = { { "MotionBlurResult", RU::Write }, { "HDR", RU::ReadWrite } };
         if (velocityNeeded) motionBlurAccesses.push_back({ "Velocity", RU::Read });
         pipeline.AddRawPass("MotionBlur", std::move(motionBlurAccesses), [&]() {
             ExecuteMotionBlurPass(passCtx);
@@ -3263,9 +3293,9 @@ void RenderSystem(Scene& scene,
     }
     // LensFlare PS — 輝度抽出した光源を ADDITIVE で HDR へ合成する。
     // Bloom の前に置くのでフレアも Bloom に乗るが、その順序では bloomHalf に今フレームの
-    // 輝点がまだ無い。パス自身が bloomHalf へ焼いてから読む (Bloom 宣言はこの書き込み)。
+    // 輝点がまだ無い。パス自身が bloomHalf へ焼いてから読む (LensFlareSource がこの出力)。
     if (rs.lensFlare.enabled) {
-        pipeline.AddRawPass("LensFlare", { "HDR" }, { "HDR", "Bloom" }, [&]() {
+        pipeline.AddRawPass("LensFlare", { "HDR" }, { "HDR", "LensFlareSource" }, [&]() {
             ExecuteLensFlarePass(passCtx);
         });
     }
@@ -3326,6 +3356,8 @@ void RenderSystem(Scene& scene,
             passHandles.fxaaInput = resources.GetColorTexture(taaOut, 0);
             // TAA 後は履歴バッファが最新フレーム。更新しないと後続が TAA 前の ldrRT を読む。
             passHandles.postProcessInput = passHandles.fxaaInput;
+            // LDR の論理的な最新世代は履歴 RT に移る。診断も後続パスも同じ実体を引く。
+            passCtx.resourceRegistry.BindTarget("LDR", taaOut);
         };
         // MotionBlur と同じ理由で Velocity は要るときだけ足す。
         std::vector<RA> taaAccesses = { { ppCurrent, RU::ReadWrite } };
@@ -3441,9 +3473,11 @@ void RenderSystem(Scene& scene,
         );
     }
 
-    const bool graphExecuted = pipeline.Execute(passCtx);
+    const bool graphExecuted = pipeline.Execute(passCtx, capture);
 
     renderer.GpuProfEndFrame();
+    if (capture)
+        capture->Finish(pipeline.LastReport(), renderer.GpuProfGetResults());
     assert(graphExecuted);
     (void)graphExecuted;
     // パスが書き換えたフレームをまたぐ状態をビューへ戻す。

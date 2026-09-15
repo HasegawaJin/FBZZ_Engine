@@ -722,14 +722,13 @@ void EditorApp::CacheSceneWriteTime()
 
 void EditorApp::CheckHotReload()
 {
-    if (!m_ctx.hotReloadEnabled) return;
-
     // WHY: Sceneファイル監視の前提が満たされない場合でも、初回Scripts DLLビルドと
     //      進行中コンパイルは完了させる。ここで早期returnすると、Standaloneを別途
     //      ビルドするまでEditor Playにスクリプトが登録されない状態になるため。
     TickScriptCompile();
     TickHlslCompile();
 
+    if (!m_ctx.hotReloadEnabled) return;
     if (m_settings.lastScenePath.empty() || !m_ctx.editScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
@@ -933,13 +932,11 @@ bool LooksLikeSdkConfigureFailure(const std::string& log)
 
 void EditorApp::InitScriptDll()
 {
-    if (!m_ctx.hotReloadEnabled) return;
-
     // HLSL の監視先は C++ ツールチェーンと無関係に決まる。必要なのは PowerShell と
     // シェーダーツリー同梱の compile_shaders.ps1 だけで、cmake は 1 度も通らない。
     // ツールチェーン分岐の中で決めていた頃は、build.config を持たない (あるいは
     // configure に失敗した) プロジェクトでシェーダーのリロードまで道連れに死んでいた。
-    InitHlslHotReload();
+    if (m_ctx.hotReloadEnabled) InitHlslHotReload();
 
     ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
         util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
@@ -1058,20 +1055,6 @@ void EditorApp::InitScriptDll()
         } else {
             FBZZ_LOG_INFO("ScriptDll: stale DLL was rejected; rebuild scheduled");
             if (toolchain.found) {
-                // 拒否した DLL は消してから再ビルドを予約する。
-                //
-                // 消さないと «Engine をエクスポート不変で再リンクしただけ» のときに
-                // 抜け出せなくなる。ローダーは «Engine.dll より古い» と拒否し続けるが、
-                // ヘッダーもインポートライブラリも変わっていないので MSBuild は
-                // «更新不要» と正しく判断して何もせず、DLL の日時も進まない。
-                // 出力を消せばリンクだけは必ず走り、日時が進んで膠着が解ける。
-                std::error_code removeError;
-                std::filesystem::remove(m_scriptDllPath, removeError);
-                if (removeError) {
-                    FBZZ_LOG_WARN("ScriptDll: 古い DLL を削除できませんでした: %s",
-                                  removeError.message().c_str());
-                }
-
                 // WHY: Engine 側の Scene / Component レイアウトだけが変わった場合、
                 //      スクリプトソースのタイムスタンプ比較では古い DLL を検出できない。
                 //      ABI 不一致でロードを拒否した時点で依存ターゲット込みの再ビルドを予約する。
@@ -1227,13 +1210,32 @@ void EditorApp::CheckScriptDirtyAndRebuild()
 
 void EditorApp::TickScriptCompile()
 {
+    const bool inEditor = !m_ctx.playMode || m_ctx.playMode->IsInEditor();
+    const bool explicitRebuild = m_ctx.requestScriptReload && inEditor &&
+        m_scriptCompiler.GetState() != Compiler::State::Building && !m_scriptCompilePending;
+    if (explicitRebuild) {
+        m_ctx.requestScriptReload = false;
+        m_scriptCompilePending = true;
+        m_scriptDebounceTimer = 0.0f;
+        m_ctx.scriptReloadBusy = true;
+        FBZZ_LOG_INFO("ScriptDll: explicit rebuild requested");
+    }
+
     // デバウンスタイマーを消費してからビルド開始する
     if (m_scriptCompilePending) {
+        if (!inEditor) return;
         m_ctx.scriptReloadBusy = true;
         m_scriptDebounceTimer -= 0.016f;
         if (m_scriptDebounceTimer > 0.0f) return;
 
         m_scriptCompilePending = false;
+
+        if (m_scriptDllPath.empty()) {
+            m_ctx.scriptReloadBusy = false;
+            SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: DLL target is not configured");
+            FBZZ_LOG_ERROR("ScriptDll: cannot rebuild without a configured Scripts DLL path");
+            return;
+        }
 
         ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
             util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
@@ -1257,8 +1259,15 @@ void EditorApp::TickScriptCompile()
         config.sdkRoot       = m_ctx.engineRoot;
         // WHY: 初回ビルド (DLL 未存在) はエンジン libs がまだないため依存ターゲットも含めてビルドする。
         //      ホットリロード時はエディタがエンジン DLL をロック中のためスキップする。
-        config.skipDeps      = !m_scriptInitialBuild;
+        config.skipDeps      = explicitRebuild || !m_scriptInitialBuild;
+        config.rebuild       = explicitRebuild;
         m_scriptInitialBuild = false;
+
+        if (!m_ctx.scriptsSourceDir.empty()) {
+            ScriptCodeGen::SyncScriptRegistry(m_ctx.scriptsSourceDir,
+                m_ctx.scriptsDllCppPath, m_ctx.scriptsStaticCppPath);
+            m_lastScriptWriteTime = GetLatestScriptSourceWriteTime(GetScriptScanRoot(m_scriptsSourceDir));
+        }
 
         if (!m_scriptCompiler.Start(config)) {
             m_ctx.scriptReloadBusy = false;
@@ -1288,6 +1297,7 @@ void EditorApp::TickScriptCompile()
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Done) {
+        if (!inEditor) return;
         m_ctx.scriptReloadBusy = true;
         // コンパイル成功を確定する (この後の DLL リロードは別工程として扱う)。
         m_buildConsole.IngestFullLog(m_scriptCompiler.GetLog());
@@ -1306,7 +1316,10 @@ void EditorApp::TickScriptCompile()
             }
         }
 
-        if (m_ctx.activeScene && m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)) {
+        const bool reloaded = m_ctx.activeScene
+            ? m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)
+            : (!m_scriptDll.IsLoaded() && m_scriptDll.Load(m_scriptDllPath));
+        if (reloaded) {
             std::vector<scene::EntityID> restored;
             for (const auto& guid : savedGuids) {
                 if (auto* go = scene::GameObject::FindByGuid(guid))
@@ -1318,7 +1331,9 @@ void EditorApp::TickScriptCompile()
             m_ctx.hotReloadDoneTimer = 3.0f;
         } else {
             ClearEntitySelection(m_ctx);
-            SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: reload failed");
+            SetHotReloadState(EditorContext::HotReloadState::Failed,
+                m_scriptDll.IsLoaded() ? "Scripts: reload failed; previous DLL loaded, see Console"
+                                      : "Scripts: unavailable; fix errors and press Rebuild");
             m_ctx.hotReloadDoneTimer = 5.0f;
         }
         m_scriptCompiler.Reset();
@@ -1462,8 +1477,14 @@ void EditorApp::TickHlslCompile()
         if (!SyncCompiledShadersToRuntimeAssets(m_hlslSourceDir)) {
             FBZZ_LOG_WARN("HLSL: runtime CSO sync failed; renderer may still use stale shader binaries");
         }
-        if (renderer::ResourceManager::Active())
-            renderer::ResourceManager::Active()->ReloadAllShaders();
+        if (auto* resources = renderer::ResourceManager::Active();
+            resources && !resources->ReloadAllShaders()) {
+            SetHotReloadState(EditorContext::HotReloadState::Failed,
+                              "HLSL: reload failed; previous shaders retained");
+            m_ctx.hotReloadDoneTimer = 8.0f;
+            m_hlslCompiler.Reset();
+            return;
+        }
         SetHotReloadState(EditorContext::HotReloadState::Done, "HLSL: shader reload complete");
         m_ctx.hotReloadDoneTimer = 3.0f;
         m_hlslCompiler.Reset();

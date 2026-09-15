@@ -4,6 +4,7 @@
 /// @date    2026-06-18
 #include "Engine/Scene/Systems/RenderPasses/RenderPipeline.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPasses/RenderPassCapture.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/RenderBindingGuard.hpp>
@@ -140,7 +141,7 @@ void RenderPipeline::ReleaseViewResources(renderer::ResourceManager& resources)
     m_bindingPoisonRT.Release(resources);
 }
 
-bool RenderPipeline::Execute(RenderPassContext& ctx)
+bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
 {
     FBZZ_PROFILE_SCOPE("RenderPipeline::Execute");
 
@@ -282,6 +283,11 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
         } else {
             graph.InjectPlan(m_lastReport);
         }
+    }
+
+    if (capture) {
+        capture->Begin(graph.GetPasses(), graph.GetLastReport());
+        graph.SetPassCompletedHook([capture, &ctx](size_t index) { capture->Capture(index, ctx); });
     }
 
     bool ok = false;

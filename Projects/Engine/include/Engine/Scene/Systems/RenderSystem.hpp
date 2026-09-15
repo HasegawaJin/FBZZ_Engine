@@ -23,6 +23,8 @@ namespace fbzz::renderer {
 
 namespace fbzz::scene {
 
+class RenderPassCapture;
+
 // RenderSystemUIOptions は RenderGraph 内へ UI 合成パスを登録するための設定。
 // WHY: UI を RenderSystem の外で描くと、PostProcess 後の RT バインド状態に依存して
 //      Editor の複数 Viewport で別 RT へ描いてしまうリスクがある。
@@ -56,6 +58,7 @@ void RenderSystem(Scene& scene,
                   //     CameraComponent の設定が効くようにしておきたい。
                   //     Editor の Scene View は自前のデバッグカメラで描くため、
                   //     ゲームカメラの設定を持ち込まないよう明示的に既定値を渡す。
-                  const CameraCullingSettings* cullingSettings = nullptr);
+                  const CameraCullingSettings* cullingSettings = nullptr,
+                  RenderPassCapture* capture = nullptr);
 
 } // namespace fbzz::scene

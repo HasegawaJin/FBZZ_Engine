@@ -39,6 +39,7 @@
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/Panels/BuildSettingsPanel.hpp>
 #include <Editor/Panels/AnalysisPanel.hpp>
+#include <Editor/Panels/RenderPassViewerPanel.hpp>
 #include <Editor/Panels/AnimationGraphPanel.hpp>
 #include <Editor/Panels/BehaviorTreePanel.hpp>
 #include <Editor/Panels/SequencePanel.hpp>
@@ -65,7 +66,6 @@
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
-#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
@@ -389,6 +389,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     // 通常パネルをメイン HWND の外や別モニターへドラッグできるよう、OS Multi-Viewport を有効化する。
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // WHY タイトルバー限定にするか: ビューポートの絵は DrawList へ直接描くので ImGui の
+    //     アイテムを持たない。既定 (false) だとゲーム画面の全面が «ウィンドウの空き地» 扱いで、
+    //     Play 中にゲーム画面をクリックした瞬間にウィンドウ移動が始まる。そこへ Locked の
+    //     中央戻しが重なると、窓はカーソルを追い・カーソルは窓の中心へ戻されて増幅し、
+    //     パネルが画面外まで飛んでいく。掴む場所をタイトルバー / タブへ限ればこの入口が閉じる。
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
     // WHY: IniFilename は OpenProject() で projectRoot が確定してから設定する。
     //      Init() 時点では projectRoot が空なので nullptr にしておき、
     //      最初の NewFrame() で自動ロードされないようにする。
@@ -550,6 +556,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         auto analysis = std::make_unique<AnalysisPanel>();
         m_analysisPanel = analysis.get();
         m_panels.push_back(std::move(analysis));
+    }
+    {
+        auto viewer = std::make_unique<RenderPassViewerPanel>();
+        m_renderPassViewerPanel = viewer.get();
+        m_panels.push_back(std::move(viewer));
     }
     {
         auto mapEditor = std::make_unique<MapEditorPanel>();
@@ -1291,13 +1302,6 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         }
     }
 
-    // GPU レンダリング完了後・ImGui フレーム内のここで描画する。
-    // RenderSystem は GPU 実行中のため直接 ImGui を呼べず、スナップショットだけ保存している。
-    if (m_imguiRenderer && m_resources) {
-        FBZZ_PROFILE_SCOPE("EditorPanel::RenderDebugOverlay");
-        renderer::RenderDebugOverlay::DrawIfEnabled(*m_imguiRenderer, *m_resources);
-    }
-
     // ── 全パネルの上に重ねるオーバーレイ ─────────────────────────────────────
     // パネルより後に描くのは、モーダル的なオーバーレイを最前面に出すため。
     DrawCommandPalette(ctx);
@@ -1644,10 +1648,17 @@ void EditorApp::UpdatePlayCursorControls()
     const bool freeOverride =
         m_ctx.playCursorOverride == EditorContext::PlayCursorOverride::Free;
     const bool gameFocused = m_ctx.gameViewportFocused;
+    // WHY 窓を掴んでいる間も外すか: 移動中は Game View の矩形が毎フレーム動き、拘束範囲も
+    //     それに追従する (上の SetClipRegion)。そこへ Locked の中央戻しが効くと、窓は
+    //     io.MousePos を追い・カーソルは窓の中心へ戻されて互いを追いかけ、ずれが増幅する。
+    //     タイトルバーから掴んだ場合は ConfigWindowsMoveFromTitleBarOnly では止まらないため、
+    //     «掴んでいる間はカーソルを人へ返す» をここで保証する。離した位置から自然に張り直る。
+    const bool movingWindow = ImGui::GetCurrentContext()->MovingWindow != nullptr;
     if (!gameFocused || m_ctx.requestGameCursorCapture)
         m_playCursorReleased = false;
     m_ctx.requestGameCursorCapture = false;
-    core::Cursor::SetSuppressed(freeOverride || !gameFocused || m_playCursorReleased);
+    core::Cursor::SetSuppressed(
+        freeOverride || !gameFocused || m_playCursorReleased || movingWindow);
 
     // Locked の中央戻しはここが担い、Confined も他アプリに ClipCursor を取られると
     // 黙って外れる。抑制中は ApplyLock 自身が何もしない。
@@ -1705,6 +1716,8 @@ void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)
 
 void EditorApp::ResizeViewportRTsIfNeeded()
 {
+    m_sceneViewportRTRecreated = false;
+    m_gameViewportRTRecreated  = false;
     if (!m_renderer) return;
 
     auto resizeRT = [this](renderer::ResourceHandle<renderer::RenderTargetTag>& rt,
@@ -1713,17 +1726,17 @@ void EditorApp::ResizeViewportRTsIfNeeded()
                            float height) {
         // WHY 無効なハンドルでも通すか: ここで弾くと、一度でも生成に失敗した
         //      ビューポートは «作り直しの入口» を失い、二度と映らなくなる。
-        if (!panel) return;
+        if (!panel) return false;
 
         const uint32_t vpW = static_cast<uint32_t>(width);
         const uint32_t vpH = static_cast<uint32_t>(height);
-        if (vpW == 0 || vpH == 0) return;
+        if (vpW == 0 || vpH == 0) return false;
         auto* currentRT = m_resources->Get(rt);
-        if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) return;
+        if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) return false;
 
         const auto created = m_resources->CreateRenderTarget(vpW, vpH);
         // 生成に失敗したら今の RT を持ち続ける。捨てた上で作れないと絵が消えたまま戻らない。
-        if (!created.IsValid()) return;
+        if (!created.IsValid()) return false;
 
         const auto previousRT = rt;
         rt = created;
@@ -1732,10 +1745,13 @@ void EditorApp::ResizeViewportRTsIfNeeded()
         if (previousRT.IsValid())
             m_resources->Release(previousRT);
         panel->hdrRT = rt;
+        return true;
     };
 
-    resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth,     m_ctx.viewportHeight);
-    resizeRT(m_gameViewportRT,  m_gameViewportPanel,  m_ctx.gameViewportWidth,  m_ctx.gameViewportHeight);
+    m_sceneViewportRTRecreated =
+        resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth, m_ctx.viewportHeight);
+    m_gameViewportRTRecreated =
+        resizeRT(m_gameViewportRT, m_gameViewportPanel, m_ctx.gameViewportWidth, m_ctx.gameViewportHeight);
     // WHY: UI Viewport は専用 RT を持たず、Game View の完成済み RT を参照する。
     //      リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
     if (m_uiViewportPanel)
@@ -1901,6 +1917,7 @@ void EditorApp::OnLateUpdate(float dt)
 
 void EditorApp::OnRender()
 {
+    if (m_renderPassViewerPanel) m_renderPassViewerPanel->PrepareFrame();
     if (auto* rt = m_resources->Get(m_sceneViewportRT))
         m_debugCamera.camera.m_aspect =
             static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
@@ -1930,12 +1947,21 @@ void EditorApp::OnRender()
     const bool aiViewportCaptureActive = m_ctx.aiViewportRenderUntilFrame != 0
         && Time::frameCount <= m_ctx.aiViewportRenderUntilFrame;
 
-    const bool needSceneView = isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive;
+    // WHY 作り直したフレームは必ず描くか: 新しい RT の中身は未定義で、DX12 では解放待ちの
+    //     領域を使い回すため «少し前の絵» が残っている。WasContentRendered() は 1 フレーム
+    //     遅れなので、寸法が動いたフレームはここが false になりうる。そのフレームを飛ばすと、
+    //     パネルが未初期化の RT を貼り、止まった絵と描き直した絵が重なって出る
+    //     (リサイズを伴うのは «起動直後» と «非アクティブなタブを開いた瞬間»)。
+    const bool needSceneView = isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive
+        || m_sceneViewportRTRecreated
+        || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(false));
     // Game View の RT は UI Viewport が背景として共有する (m_uiViewportPanel->hdrRT = m_gameViewportRT)。
     // どちらか一方でも出ていれば描かないと、UI 編集画面が止まった絵のままになる。
     const bool needGameView = isViewportShowing(m_gameViewportPanel)
         || isViewportShowing(m_uiViewportPanel)
-        || aiViewportCaptureActive;
+        || aiViewportCaptureActive
+        || m_gameViewportRTRecreated
+        || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(true));
 
     if (needSceneView)
         RenderSceneView(gameCamera, gameCullingMask);
@@ -2173,7 +2199,8 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         scene::RenderSystem(*sceneViewScene, *m_renderer, *m_resources,
                             sceneViewCamera, sceneRT, &sceneRenderSettings,
                         fbzz::Layer::Everything, &uiOptions, &m_runtime.GetPhysicsWorld(),
-                        &sceneViewCulling);
+                        &sceneViewCulling,
+                        m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(false) : nullptr);
     }
 }
 
@@ -2219,7 +2246,8 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
     scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
                         gameCamera, gameRT,
                         &gameRenderSettings,
-                        gameCullingMask, &uiOptions);
+                        gameCullingMask, &uiOptions, nullptr, nullptr,
+                        m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(true) : nullptr);
 }
 
 } // namespace fbzz::editor

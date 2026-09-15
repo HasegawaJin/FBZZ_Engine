@@ -459,6 +459,13 @@ private:
     AiSettingsPanel*                         m_aiSettingsPanel        = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
+    // このフレームで RT を作り直したか。OnRender の «出ているビューだけ描く» 判定へ渡す。
+    //
+    // WHY 要るか: 作り直した直後の RT は中身が未定義で、DX12 では解放待ちの領域を
+    //     使い回すため «少し前の絵» がそのまま見える。描画を省いたフレームでパネルが
+    //     それを貼ると、止まった絵と描き直した絵が重なって出る。
+    bool m_sceneViewportRTRecreated = false;
+    bool m_gameViewportRTRecreated  = false;
 };
 
 } // namespace fbzz::editor
