@@ -50,10 +50,15 @@ protected:
     void OnRenderContent(EditorContext& ctx) override;
     void OnBeforeBegin(EditorContext& ctx) override;
     void OnAfterBegin(EditorContext& ctx) override;
+    ImGuiWindowFlags GetWindowFlags() const override;
 
 private:
     Kind m_kind = Kind::Scene;
     std::string m_windowName;
+
+    // ゲームがカーソルを取り上げている間だけ立つ。OnBeforeBegin が更新し、
+    // 直後の GetWindowFlags() が読む (Begin の引数評価はフックの後)。
+    bool m_pinWindowRect = false;
 
     int m_uiGizmoDrag = -1;
     ImVec2 m_uiGizmoDragStart = {};
