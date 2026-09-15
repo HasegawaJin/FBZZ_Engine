@@ -90,7 +90,8 @@ cbuffer PunctualShadowConstants : register(CB_PUNCTUAL_SHADOW)
     //   [2] xyz = direction (面の法線 / 未使用),  w = 予備
     //   [3] xyz = tangent (面内軸 / 管の軸),      w = halfWidth  (半径 / 半幅)
     //   [4] xyz = bitangent (面内軸 / 未使用),    w = halfHeight (半長 / 半高)
-    //   [5] x = FBZZ_LIGHT_TYPE_*, y = 1 なら両面 (Area のみ), zw = 予備
+    //   [5] x = FBZZ_LIGHT_TYPE_*, y = 1 なら両面 (Area のみ),
+    //       z = シャドウスロット番号 (-1 = 影なし), w = 予備
     //
     // WHY 実体ごと載せるか: 番号だけ運べば済んだ影 / Cookie と違い、これらは
     //     b3 の PointLightData / SpotLightData に「型そのもの」が無い。

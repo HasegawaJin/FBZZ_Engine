@@ -241,7 +241,6 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
-        if (!fbzz::Layer::Contains(markMask, go.layer)) continue;
 
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
@@ -250,7 +249,13 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
             mr->mesh->vertexBuffer.IsValid() && mr->mesh->indexBuffer.IsValid();
         const bool drawSkinned = h.decalMaskSkinnedShader.IsValid() &&
             smr && smr->enabled && smr->lodVisible && smr->model;
-        if (!drawStatic && !drawSkinned) continue;
+        // Static は GameObject に手で付ける層ではなく、静的メッシュを表す受信分類。
+        // インポート済みの環境オブジェクトへ一つずつ層を設定する必要をなくす。
+        const bool markStatic = drawStatic &&
+            fbzz::Layer::Contains(markMask, fbzz::Layer::Static);
+        const bool markSkinned = !markStatic && drawSkinned &&
+            fbzz::Layer::Contains(markMask, go.layer);
+        if (!markStatic && !markSkinned) continue;
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
@@ -258,10 +263,11 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         DecalReceiverCB layerData{};
-        layerData.layerEncoded = static_cast<float>((go.layer & 31) + 1);
+        const int receiverLayer = markStatic ? fbzz::Layer::Static : go.layer;
+        layerData.layerEncoded = static_cast<float>((receiverLayer & 31) + 1);
         resources.Update(h.decalReceiverCB, &layerData, sizeof(DecalReceiverCB));
 
-        if (drawStatic)
+        if (markStatic)
         {
             renderer::DrawCall dc;
             dc.vertexBuffer        = mr->mesh->vertexBuffer;
@@ -276,7 +282,7 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
             r.Submit(dc, resources);
         }
 
-        if (!drawSkinned) continue;
+        if (!markSkinned) continue;
 
         // WHY FindAnimator を使うか: Animator はモデルルート側、SkinnedMeshRenderer は
         //     submesh 子 GO に分かれる構成が一般的で、自 GO だけを見ると bind pose へ

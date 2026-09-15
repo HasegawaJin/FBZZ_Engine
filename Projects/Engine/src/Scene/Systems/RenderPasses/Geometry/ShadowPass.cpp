@@ -170,8 +170,12 @@ void CollectStaticMeshShadowCasters(RenderPassContext& ctx,
         // 深度専用パスなので、実際に描くと決まってから MaterialComponent を触る。
         // WHY: カリングで落ちる caster にまでマテリアル解決 (アセットロードを伴う) を
         //      走らせる必要はない。ここで使うのは「描画対象として有効か」の判定だけ。
+        // visible はカメラ側 (SyncMaterial → SyncMaterialSlotImpl) が nullptr を返して
+        // 描画を落とす軸。ここで見ないと「画面から消したのに影だけ残る」ことになる。
+        // MaterialComponent は MaterialSlot を継承した «スロット 0» なので、静的メッシュは
+        // この 1 枚を見れば足りる (スキンド側が slot.visible を見るのと同じ判定)。
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mat || !mat->enabled) continue;
+        if (!mat || !mat->enabled || !mat->visible) continue;
 
         // 全カスケードのカリング判定と深度キーを 1 回の bounds 計算で賄う。
         const bool hasBounds = mr->mesh->boundsRadius > 0.0f;
