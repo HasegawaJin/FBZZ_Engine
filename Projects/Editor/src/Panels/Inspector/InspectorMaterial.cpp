@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #include "InspectorMaterial.hpp"
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <cstring>
 
 namespace fbzz::editor {
 
@@ -130,9 +131,16 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                 static constexpr std::array<const char*, 8> kCanonicalSlots = {
                     "albedo", "normal", "metallic", "emissive", "ao", "tex5", "tex6", "tex7"
                 };
+                // Sprite のコマを受けるのはメッシュ描画 (Auto) の albedo だけ。
+                // 矩形を uvTiling / uvOffset へ畳むのは ApplyAlbedoSpriteUv (GeometryPassHelpers) の
+                // 1 か所しかなく、1 描画に 1 組しか無い。他のスロットや Particle / UI / Decal の
+                // パスへ入れても切り抜きは効かず、アトラス全面が出る。
+                const bool spriteAlbedo = mat.renderPath == asset::RenderPath::Auto;
                 auto drawTexSlot = [&](const char* slot) {
                     std::string& path = mat.textures[slot];
-                    if (widgets::AssetPathField(slot, path, widgets::kTextureAssetFilter, ctx.projectRoot))
+                    const char* filter = spriteAlbedo && std::strcmp(slot, "albedo") == 0
+                        ? widgets::kSpriteAssetFilter : widgets::kTextureAssetFilter;
+                    if (widgets::AssetPathField(slot, path, filter, ctx.projectRoot))
                         materialDirty = true;
                 };
                 if (desc && !desc->textures.empty()) {

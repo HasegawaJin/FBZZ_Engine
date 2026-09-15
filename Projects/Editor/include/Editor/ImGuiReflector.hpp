@@ -114,7 +114,9 @@ struct ImGuiReflector : scene::IReflector {
     //      ドラッグ＆ドロップと検索ピッカーを自動提供する。
     static const char* AssetFilterFor(const char* name)
     {
-        if (std::strcmp(name, "texturePath") == 0) return widgets::kTextureAssetFilter;
+        // UIImage / SpriteRenderer は矩形を .meta から解決して描くので、Sprite のコマも受ける。
+        if (std::strcmp(name, "texturePath") == 0) return widgets::kSpriteAssetFilter;
+        if (std::strcmp(name, "spritePath") == 0)  return widgets::kSpriteAssetFilter;
         if (std::strcmp(name, "fontPath") == 0)    return ".png,.fnt,.ttf,.ttc,.otf";
         if (std::strcmp(name, "materialPath") == 0) return ".mat";
         if (std::strcmp(name, "meshPath") == 0 || std::strcmp(name, "modelPath") == 0)

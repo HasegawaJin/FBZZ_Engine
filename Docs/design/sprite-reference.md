@@ -68,6 +68,29 @@ Single かつトークン == ファイル名  → ResolvedAsImplicitSingle
 以前はここが黙って uv 0..1 に落ちていたため、「割り当てたのに分割前の絵が出る」が
 ログにも UI にも出ないまま起きていた。
 
+### どの欄が受けるか
+切り抜きを活かせるのは、矩形を読む経路を持つ欄だけ。それ以外の欄へ入れても
+`ResourceManager::LoadTexture` が `::sprite::` を落として読む (`AssetPathService::normalizeTextureKey`)
+ので、**エラーにならずアトラス全面が出る**。受けられない欄は入り口で断る。
+
+宣言は**欄の拡張子フィルター**で行う。`".sprite"` を含むフィルターだけが Sprite を受け、
+ピッカーがコマを並べ、D&D を受理する (`Editor/Util/ImGuiWidgets.hpp` の `kSpriteAssetFilter`)。
+フィルターは全部の欄が既に持っているので、新しいメタデータも仮想関数も足さずに済む。
+
+| 受ける欄 | 矩形を読む場所 |
+| `UIImage.texturePath` / `UIButton` の状態別スプライト | `UISystem` |
+| `SpriteRenderer.spritePath` | `GeometryPassHelpers` |
+| `.mat` の `albedo` (**メッシュ描画 = renderPath Auto のみ**) | `ApplyAlbedoSpriteUv` → `uvTiling` / `uvOffset` |
+| `.fluid` の texture 発生源 (`source.texture`) | `LoadFluidSourceMask` が切り抜いてから 256² へ縮める |
+
+`.mat` の albedo 以外のスロットが受けないのは、UV の合成が 1 描画に 1 組しか無いため。
+Particle / Trail / UI / Decal のパスは `ApplyAlbedoSpriteUv` を通らないので同じく受けない。
+
+流体のマスクだけは `ResolveSpriteReference` ではなく、同じキャッシュ
+(`GetCachedTextureImportSettings` + `FindSprite`) からピクセル矩形を引く。
+GPU のテクスチャを作らずに画像を自前で展開して縮めるので、必要なのは UV ではなく
+整数の矩形で、`ResolveSpriteReference` が先に要求する «元画像の寸法» をまだ持っていない。
+
 `.meta` は書き込み時刻でキャッシュする。解決は毎フレーム・毎ドローで走るので、
 素直に読むと 1 スプライトにつき数千行の TOML を毎回パースすることになる
 (SpriteRenderer が実際そうなっていた)。ID / 名前の索引もキャッシュ側で持つ。

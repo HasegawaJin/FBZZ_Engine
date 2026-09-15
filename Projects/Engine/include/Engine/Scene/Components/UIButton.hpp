@@ -19,8 +19,10 @@ enum class UIButtonState {
 };
 
 // 状態別スプライト欄が受け付ける拡張子 (ImageImporter が読める画像)。
+// 先頭の ".sprite" は «Sprite のコマも受ける» の印 (Editor の kSpriteAssetFilter と同じ規約)。
+// ここへ入った値は UIImage.texturePath へ渡るので、UIImage が受けるものと同じ集合になる。
 inline constexpr const char* kSpriteFieldExtensions =
-    ".fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp";
+    ".sprite,.fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp";
 
 // UI の効果音欄が受け付ける拡張子 (AudioSourceComponent と同じ集合)。
 inline constexpr const char* kUISoundFieldExtensions =

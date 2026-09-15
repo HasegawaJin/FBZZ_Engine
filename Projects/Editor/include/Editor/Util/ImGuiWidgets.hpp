@@ -45,6 +45,11 @@ inline constexpr const char* kSpriteAssetFilter =
 // Editor のピッカーが同じ集合を指す必要があるため、Editor 側では別定義せず参照する。
 inline constexpr const char* kAudioClipAssetFilter = scene::kAudioClipExtensions;
 
+/// この欄は Sprite サブアセット参照 ("<画像>::sprite::<ID>") を受けるか。
+/// フィルターに ".sprite" があるか、フィルター自体が空 (何でも受ける欄) なら true。
+/// ピッカーがコマを並べるか・D&D を受理するかはこの 1 つで決まる。
+[[nodiscard]] bool FilterAcceptsSprites(const char* filterExts);
+
 // std::string を直接編集する InputText。
 // @return true if the value changed
 bool InputString(const char* label, std::string& value, std::size_t capacity = 512);

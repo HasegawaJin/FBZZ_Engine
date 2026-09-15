@@ -270,7 +270,7 @@ std::vector<std::string> SplitFilterExts(const char* exts)
 
 // この欄は Sprite サブアセット参照を受けるか (kSpriteAssetFilter の規約)。
 // フィルター無し (= 何でも受ける欄) も受け皿に含める。
-bool FilterAllowsSprites(const std::vector<std::string>& allowed)
+bool AllowsSprites(const std::vector<std::string>& allowed)
 {
     return allowed.empty()
         || std::find(allowed.begin(), allowed.end(), ".sprite") != allowed.end();
@@ -372,12 +372,17 @@ void* ResolveAssetThumbnail(const std::string& relativePath,
     return textureId;
 }
 
+bool FilterAcceptsSprites(const char* filterExts)
+{
+    return AllowsSprites(SplitFilterExts(filterExts));
+}
+
 bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
 {
     bool dropped = false;
     if (ImGui::BeginDragDropTarget()) {
         const std::vector<std::string> allowed = SplitFilterExts(filterExts);
-        const bool spritesAllowed = FilterAllowsSprites(allowed);
+        const bool spritesAllowed = AllowsSprites(allowed);
 
         // 受けられない Sprite は «押しても何も起きない» にしない。掴んでいる間に理由を出す。
         // WHY 受理してから捨てないか: 離した瞬間に消えると、狙いが外れたのか型が違うのかが
@@ -386,8 +391,8 @@ bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
             !spritesAllowed && peek != nullptr && peek->IsDataType("ASSET_PATH")
             && IsSpritePayload(*peek)) {
             ImGui::SetTooltip("この欄は Sprite の切り抜きを読めません。\n"
-                              "元の画像をドロップしてください (切り抜きは無視され、"
-                              "アトラス全面が使われます)");
+                              "元の画像をドロップしてください (入れても切り抜きは効かず、"
+                              "アトラス全面が出ます)");
         } else if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
             const std::string candidate = NormalizeAssetPath(
                 std::string(static_cast<const char*>(p->Data),
@@ -1035,7 +1040,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         drawEntry(absPath, ext, filename, textureReference, nullptr);
 
         // 切り抜きを読めない欄にコマを並べない。並べると «選べたのに効かない» になる。
-        if (!IsImageExt(ext) || !FilterAllowsSprites(s_picker.filterExts)) continue;
+        if (!IsImageExt(ext) || !AllowsSprites(s_picker.filterExts)) continue;
 
         // スプライトのサブ項目。親テクスチャ名が語に当たっているなら全部出し、
         // パス経由でしか当たっていないならスプライト名でも絞る。
