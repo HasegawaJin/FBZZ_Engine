@@ -91,10 +91,10 @@ maxParticles = 26
 shape = 2
 coneAngleDegrees = 10.0
 coneRadius = 0.55
-sizeStart = 0.75
+sizeStart = 0.4
 sizeEnd = 3.2
 sizeCurvePower = 0.6
-lifetime = 0.8
+lifetime = 0.68
 lifetimeRandom = 0.3
 emitVelocity = [0.0, 11.0, 0.0]
 velocitySpread = 0.9
@@ -110,7 +110,7 @@ colorVariation = 0.08
 useColorGradient = true
 colorGradient = [[0.0, 0.72, 0.68, 0.62, 0.0], [0.09, 0.68, 0.65, 0.6, 0.5], [0.6, 0.6, 0.58, 0.54, 0.36], [1.0, 0.52, 0.5, 0.47, 0.0]]
 bursts = [{ time = 0.0, count = 12, cycles = 1, interval = 0.02, probability = 1.0 }]
-startDelay = 0.0
+startDelay = 0.02
 
 # 裾。根元で外へ逃げる空気。縦の勢いは «これとの対比» でしか読めない。
 [[gameobjects]]
@@ -138,10 +138,10 @@ emitRate = 0.0
 maxParticles = 14
 shape = 1
 sphereRadius = 0.7
-sizeStart = 0.5
+sizeStart = 0.3
 sizeEnd = 2.4
 sizeCurvePower = 0.5
-lifetime = 0.7
+lifetime = 0.52
 lifetimeRandom = 0.3
 emitVelocity = [0.0, 1.1, 0.0]
 velocitySpread = 0.5
@@ -206,7 +206,7 @@ colorVariation = 0.12
 colorStart = [0.66, 0.63, 0.58, 1.0]
 colorEnd = [0.42, 0.4, 0.36, 0.0]
 bursts = [{ time = 0.0, count = 12, cycles = 1, interval = 0.02, probability = 1.0 }]
-startDelay = 0.0
+startDelay = 0.035
 
 # 火の粉。開口の縁と同じ琥珀で、«機械が開いた穴から» を色で言う唯一の層。
 [[gameobjects]]
@@ -235,10 +235,10 @@ maxParticles = 20
 shape = 2
 coneAngleDegrees = 26.0
 coneRadius = 0.6
-sizeStart = 0.14
+sizeStart = 0.075
 sizeEnd = 0.02
 sizeCurvePower = 1.8
-lifetime = 0.85
+lifetime = 0.55
 lifetimeRandom = 0.5
 emitVelocity = [0.0, 8.0, 0.0]
 velocitySpread = 1.6
@@ -252,7 +252,7 @@ colorVariation = 0.14
 useColorGradient = true
 colorGradient = [[0.0, 1.0, 0.86, 0.5, 1.0], [0.4, 1.0, 0.62, 0.16, 0.9], [1.0, 0.7, 0.25, 0.04, 0.0]]
 bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.02, probability = 1.0 }]
-startDelay = 0.0
+startDelay = 0.015
 
 # 縁の光。閃光ではない ─ 開いた口が一瞬強く光る程度。
 [[gameobjects]]

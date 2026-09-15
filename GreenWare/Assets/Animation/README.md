@@ -35,6 +35,16 @@ weight = 1.0
 - `default_include` はどのエントリにも当たらなかった骨の重み (`false` = 0)。
   **「全身に効かせたい」なら `.mask` を指定しない** (レイヤーの `maskPath` を空にする)。
   空マスクと `default_include = true` は結果が同じだが、前者は読み込み自体が起きない。
+
+> **`bone = 'Root'` の全身マスクは no-op ではない。**
+> スケルトンのノードは骨だけではない。Player の実体は
+> `RootNode / {PlayerRig, Export_Player_LOD0, Export_Player_Fingers_LOD0}` の下に
+> `Root` 以下 54 骨がぶら下がる 58 ノードで、`Root` 配下エントリはこの**上の 4 ノードを 0 に落とす**。
+> そして重み 0 のノードは «前フレームの姿勢を残さない» ため
+> `ApplyNBlendedPoseToBones` が**バインドへ固定**する (`AnimatorSystem.cpp:1581`)。
+> `PlayerRig` は Blender の軸変換 (90°X) を持ち、**全クリップがトラックを持っている**ので、
+> ここを固定すると毎フレームバインドへ引き戻される。
+> 全身が欲しいなら `maskPath` は**空にする** ── Boss も Enemy_Mite もそうしている。
 - `bone` は **ボーン名だけでも、ルートからのパスでもよい**。名前だけで書くと、
   骨格が違うキャラでも同じマスクが使い回せる。GreenWare は全部この形。
 - `include_children = true` はその骨の配下すべて。深いエントリほど強い

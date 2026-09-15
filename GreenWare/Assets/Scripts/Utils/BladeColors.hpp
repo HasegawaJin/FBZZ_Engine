@@ -45,6 +45,15 @@ inline constexpr fbzz::math::Vector4 kColorWarning{ 1.00f, 0.82f, 0.10f, 1.0f };
 // 発光の基準強度。白飛びさせないため 1.0 より低く始める。
 inline constexpr float kEmissiveBase = 0.65f;
 
+// プレイヤーの刃が撒く色。一閃・火花・回転斬りの輪はここから引く。
+//
+// WHY BladeColor(Right) を使わないか: 赤青は «＋/−» の対で、タイトルの電極と
+//   リザルトのゴースト文字が kColorRight / kColorLeft を直接引いている。さらに
+//   ボスのビーム (kBeamSide = Right) も同じ赤を引く。両手剣へ移って «どちらの刀か»
+//   が無くなった今、刃の色が名乗るべきは «誰が振ったか» なので、対の表から外して
+//   プレイヤー自身の色を返す。表を書き換えると別画面とボスまで緑になる。
+[[nodiscard]] inline fbzz::math::Vector4 PlayerBladeColor() { return kColorPlayer; }
+
 [[nodiscard]] inline fbzz::math::Vector4 BladeColor(BladeSide side)
 {
     switch (side) {

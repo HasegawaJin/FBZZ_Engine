@@ -18,6 +18,7 @@
 #include <Scripts/Vfx/VfxBinding.hpp>
 
 #include <algorithm>
+#include <string_view>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -71,11 +72,21 @@ inline void SerpentSlamVfxComponent::Apply()
     vfxbind::ParticleColor(root, "Wing Right", dustColor);
     vfxbind::ParticleColor(root, "Grit", Vector4{ dustColor.x, dustColor.y, dustColor.z, 1.0f });
 
-    // 帯そのものは «長い箱» の中へ撒く。箱は層のスケールで伸ばすので、
-    // ここでは撒く範囲 (球半径) を長さの半分へ合わせる。
-    vfxbind::ParticleSphereRadius(root, "Band Smoke", length * 0.5f);
-    vfxbind::ParticleSphereRadius(root, "Grit",       length * 0.5f);
-    vfxbind::ParticleSizeEnd(root, "Band Smoke", width * 1.5f);
+    // 球では胴の長さぶん左右・地下にも湧く。接地線に沿う薄い箱へ限定する。
+    constexpr const char* nodes[] = { "Band Smoke", "Grit", "Wing Left", "Wing Right" };
+    for (const char* node : nodes) {
+        if (GameObject* target = vfxbind::Find(root, node)) {
+            if (auto* emitter = target->GetComponent<ParticleEmitter>()) {
+                emitter->settings.shape = ParticleEmitterShape::Box;
+                const bool edge = std::string_view(node) == "Wing Left"
+                               || std::string_view(node) == "Wing Right";
+                emitter->settings.boxExtents = { edge ? 0.12f : width * 0.5f, 0.08f, length * 0.5f };
+            }
+        }
+    }
+    vfxbind::NodePosition(root, "Wing Left", { -width * 0.5f, 0.12f, 0.0f });
+    vfxbind::NodePosition(root, "Wing Right", { width * 0.5f, 0.12f, 0.0f });
+    vfxbind::ParticleSizeEnd(root, "Band Smoke", width * 1.1f);
 
     // 脇へ逃がす。左右で符号だけが違う ─ 同じ向きにすると «横へ滑った» になる。
     vfxbind::ParticleEmitVelocity(root, "Wing Left",  { -kick, kick * 0.30f, 0.0f });

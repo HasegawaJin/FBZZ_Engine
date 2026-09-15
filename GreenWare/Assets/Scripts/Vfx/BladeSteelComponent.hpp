@@ -317,8 +317,8 @@ inline void BladeSteelComponent::OnUpdate()
             m_eventFlash        = steelBeatFlashSeconds;
         }
         const BladeSide swung = m_blades->SwingSide();
-        // 溜め斬りは両刀 (Katana_Slash_Dual)。片方だけ走らせると、回っている
-        // 2 本のうち 1 本だけ刃が冷たいままになる。
+        // 溜め斬りは体ごと回る全周の一撃なので、枠を左右とも走らせる。刀は 1 本なので
+        // 片方は空振りするが、走らせ損ねるより害が無い (両手剣へ替えた名残)。
         if (m_blades->IsCharged()) {
             for (Blade& blade : m_hands) blade.sweep = 0.0f;
         } else if (swung != BladeSide::None) {

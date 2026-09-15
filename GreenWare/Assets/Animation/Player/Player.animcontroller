@@ -1,4 +1,4 @@
-baseLayerMaskPath = 'guid:e78bc9eb645c4df3856b5ec081b27a9d|Assets/Animation/Player/Player_Base.mask'
+baseLayerMaskPath = ''
 defaultStateName = 'Locomotion'
 version = 6
 
@@ -12,49 +12,49 @@ slotX = -220.0
 slotY = 440.0
 
     [[editorLayout.nodes]]
+    stateName = 'Locomotion'
+    x = 0.0
+    y = 0.0
+
+    [[editorLayout.nodes]]
     stateName = 'Land'
     x = 0.0
     y = 800.0
 
     [[editorLayout.nodes]]
-    stateName = 'Locomotion'
-    x = 14.049280166625977
-    y = -30.908416748046875
-
-    [[editorLayout.nodes]]
     stateName = 'SlideAttack'
-    x = 340.0
-    y = 480.0
+    x = 300.6619567871094
+    y = 444.8768310546875
 
     [[editorLayout.nodes]]
     stateName = 'RunStop'
-    x = 0.0
-    y = 160.0
+    x = -29.959754943847656
+    y = 156.4752960205078
 
     [[editorLayout.nodes]]
     stateName = 'Dodge'
-    x = 0.0
-    y = 320.0
+    x = -33.48443603515625
+    y = 337.6234436035156
 
     [[editorLayout.nodes]]
     stateName = 'JumpStart'
-    x = 0.0
-    y = 480.0
+    x = -214.56507873535156
+    y = 473.8947448730469
 
     [[editorLayout.nodes]]
     stateName = 'FallLoop'
-    x = 0.0
-    y = 640.0
-
-    [[editorLayout.nodes]]
-    stateName = 'Death'
-    x = 1020.0
-    y = 160.0
+    x = 8.811761856079102
+    y = 601.228515625
 
     [[editorLayout.nodes]]
     stateName = 'Slash01'
     x = 340.0
     y = 0.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Death'
+    x = 1020.0
+    y = 160.0
 
     [[editorLayout.nodes]]
     stateName = 'HighSpinAttack'
@@ -72,14 +72,14 @@ slotY = 440.0
     y = 640.0
 
     [[editorLayout.nodes]]
-    stateName = 'Hit'
-    x = 1020.0
-    y = 0.0
-
-    [[editorLayout.nodes]]
     stateName = 'UnderSlashandUpperSlash'
     x = 340.0
     y = 800.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Hit'
+    x = 1020.0
+    y = 0.0
 
     [[editorLayout.nodes]]
     stateName = 'ToBlocking'
@@ -321,7 +321,7 @@ transitionDuration = 0.05999999865889549
 anyStateTransitions = []
 defaultStateName = ''
 enabled = true
-maskPath = 'guid:e78bc9eb645c4df3856b5ec081b27a9d|Assets/Animation/Player/Player_Base.mask'
+maskPath = ''
 mode = 0
 name = 'Attack'
 retargetMappings = []
@@ -340,17 +340,37 @@ weight = 0.0
 [[layers]]
 anyStateTransitions = []
 defaultStateName = ''
-enabled = false
-maskPath = 'guid:e78bc9eb645c4df3856b5ec081b27a9d|Assets/Animation/Player/Player_Base.mask'
+enabled = true
+maskPath = ''
 mode = 0
+name = 'Attack_B'
+retargetMappings = []
+states = []
+weight = 0.0
+
+    [layers.additiveReference]
+    clipName = ''
+    sourcePath = ''
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.15000000596046448
+    fadeOutDuration = 0.15000000596046448
+
+[[layers]]
+anyStateTransitions = []
+defaultStateName = ''
+enabled = true
+maskPath = ''
+mode = 1
 name = 'HitReaction'
 retargetMappings = []
 states = []
 weight = 1.0
 
     [layers.additiveReference]
-    clipName = ''
-    sourcePath = ''
+    clipName = 'Idle'
+    sourcePath = 'guid:8013f1b0c65116d85912a864d3f1019e|Library/Baked/652cf49f63ec40a8b4e3e3f5c80072f8/anims/Idle.anim'
     time = 0.0
 
     [layers.slot]
@@ -500,7 +520,7 @@ type = 3
 [[states]]
 clipIndex = -1
 clipName = ''
-ikWeight = 0.0
+ikWeight = 1.0
 loop = true
 mode = 1
 name = 'Locomotion'
@@ -628,7 +648,7 @@ speed = 1.0
 [[states]]
 clipIndex = -1
 clipName = 'RunStop'
-ikWeight = 0.0
+ikWeight = 1.0
 loop = false
 mode = 0
 name = 'RunStop'
@@ -729,7 +749,7 @@ loop = false
 mode = 0
 name = 'JumpStart'
 sourcePath = 'guid:ece5f3d2e9c49da09b5182a0f16fb0f2|Library/Baked/e2f096101cd64638a10b99b106b7da5b/anims/JumpStart.anim'
-speed = 1.0
+speed = 1.25
 
     [states.blendTree1D]
     dampTime = 0.0
@@ -792,7 +812,7 @@ speed = 1.0
 [[states]]
 clipIndex = -1
 clipName = 'Land'
-ikWeight = 0.0
+ikWeight = 1.0
 loop = false
 mode = 0
 name = 'Land'
@@ -1128,7 +1148,7 @@ speed = 1.0
 [[states]]
 clipIndex = -1
 clipName = 'ToBlocking'
-ikWeight = 0.0
+ikWeight = 1.0
 loop = false
 mode = 0
 name = 'ToBlocking'
@@ -1176,7 +1196,7 @@ speed = 1.0
 [[states]]
 clipIndex = -1
 clipName = 'Blocking'
-ikWeight = 0.0
+ikWeight = 1.0
 loop = true
 mode = 0
 name = 'Blocking'
@@ -1212,7 +1232,7 @@ speed = 1.0
 [[states]]
 clipIndex = -1
 clipName = 'GuardHit'
-ikWeight = 0.0
+ikWeight = 1.0
 loop = false
 mode = 0
 name = 'GuardHit'
@@ -1260,7 +1280,7 @@ speed = 1.0
 [[states]]
 clipIndex = -1
 clipName = 'BlockingToIdle'
-ikWeight = 0.0
+ikWeight = 1.0
 loop = false
 mode = 0
 name = 'BlockingToIdle'

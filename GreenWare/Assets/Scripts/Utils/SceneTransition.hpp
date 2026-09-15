@@ -60,6 +60,7 @@ struct State {
     float       cover   = 0.0f;   ///< 0..1。1 で全面
     float       elapsed = 0.0f;
     std::string target;
+    std::string nextScene;
     /// 直前に LoadScene が失敗した行き先。同じ所へは «出来なかった» と返し続ける。
     ///
     /// WHY 覚えるか: 失敗しても扉は Idle へ戻るだけなので、呼ぶ側の
@@ -89,7 +90,8 @@ inline Style& StyleRef() { return Mutable().style; }
 
 /// 塗り始める。既に塗っている最中なら無視 (二重発火の防止はここが持つ)。
 /// 直前に読み込めなかった行き先も false で返す (State::failedTarget の WHY)。
-inline bool Begin(const std::string& targetScene)
+/// throughLoading はステージ選択から出撃するときと、戦闘からリザルトへ移るときだけ指定する。
+inline bool Begin(const std::string& targetScene, bool throughLoading = false)
 {
     State& s = Mutable();
     if (targetScene.empty()) return false;
@@ -105,9 +107,19 @@ inline bool Begin(const std::string& targetScene)
     s.elapsed = (1.0f - std::sqrt(std::max(1.0f - cover, 0.0f)))
               * std::max(s.style.outSeconds, 0.01f);
     s.cover         = cover;
-    s.target        = targetScene;
+    // 中継からの退出だけは直行し、Loadを再び経由する循環を防ぐ。
+    const bool relay = throughLoading && targetScene != "Load";
+    s.target        = relay ? "Load" : targetScene;
+    s.nextScene     = relay ? targetScene : std::string{};
     s.loadRequested = false;
     return true;
+}
+
+inline std::string TakeNextScene()
+{
+    std::string next = std::move(Mutable().nextScene);
+    Mutable().nextScene.clear();
+    return next;
 }
 
 /// 新しいシーンの頭で «剥がす» へ入る。LoadScene の直前に Tick が立てるので、
@@ -155,13 +167,16 @@ inline void Tick(float dt, const fbzz::scene::ScriptSceneProxy& scene)
             s.loadRequested = true;
             // 次のシーンの Tick が剥がす。LoadScene が失敗しても覆いを残さない。
             const std::string target = s.target;
+            const std::string requested = s.nextScene.empty() ? target : s.nextScene;
+            if (target == "Load") s.style.inSeconds = 0.18f;
             BeginIn();
             if (!scene.LoadScene(target)) {
                 s.phase        = Phase::Idle;
                 s.cover        = 0.0f;
                 // 覚えておく。次に同じ所を頼まれたら Begin が false を返し、
                 // 呼ぶ側の «読み込めませんでした» が出る (それまでは無言で回り続けた)。
-                s.failedTarget = target;
+                s.failedTarget = requested;
+                s.nextScene.clear();
             }
         }
         break;

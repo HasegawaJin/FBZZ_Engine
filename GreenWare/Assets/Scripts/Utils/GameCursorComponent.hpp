@@ -87,6 +87,8 @@ public:
     [[nodiscard]] static GameObject* MainCameraObject(Script& script);
 
     void OnStart() override;
+    void OnEnable() override;
+    void OnDisable() override;
     void OnUpdate() override;
     void OnDestroy() override;
 
@@ -143,7 +145,15 @@ inline void GameCursorComponent::OnStart()
     s_position   = { m_canvasSize.x * 0.5f, m_canvasSize.y * 0.5f };
     m_lastMouse  = ui.GetCanvasMousePosition();
     s_usingPad   = false;
+}
 
+// WHY 要求を OnStart ではなく有効・無効で出し入れするか:
+//   ポーズ画面のカーソルは «開いている間だけ» 居る。OnStart で積んだままだと、
+//   閉じてオブジェクトを畳んでも要求は残り、視点操作の Locked (優先度 Camera) を
+//   UI の Confined が覆い続ける ─ «ポーズを閉じた後だけマウスで振り向けない» という
+//   形で出る。有効になった時に積み、無効になった時に下ろせば、枠の開閉と一致する。
+inline void GameCursorComponent::OnEnable()
+{
     // このカーソルはマウスの «絶対座標» で動く。Locked は毎フレーム OS カーソルを中央へ
     // 戻すモードなので、そのままだと絵が画面中央に貼り付いてマウスで動かせなくなる。
     // Confined なら座標は生きたまま、ポインターがゲーム画面の外 (別モニター) へ
@@ -156,6 +166,15 @@ inline void GameCursorComponent::OnStart()
     //     別モニターへ出た先で OS の矢印が戻ってくるので、Confined と対で使うこと。
     m_hardwareAvailable = useHardwareCursor && cursor.HasShapeImage(CursorShape::Default);
     m_cursor = cursor.Push(CursorLockMode::Confined, m_hardwareAvailable, CursorPriority::UI);
+}
+
+inline void GameCursorComponent::OnDisable()
+{
+    m_cursor.Release();
+    // ポインターの差し替えも下ろす。1 フレームで失効する作りだが、UI が «OS のマウス»
+    // へ戻る瞬間をここで揃えておくと、閉じた後に前の座標で 1 コマ当たるのを防げる。
+    ui.ClearPointer();
+    s_live = false;
 }
 
 inline void GameCursorComponent::OnDestroy()

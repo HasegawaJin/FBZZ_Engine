@@ -1,15 +1,4 @@
-"""蓋 (コアハッチ) の開閉と、登攀の手掛けを合成する。
-
-WHY この 3 種だけ新規に要るか:
-  既存の 180 本を精査したところ、鳴らす側が無いだけのバンクは «音源はある» ので
-  配線で済む。音そのものが 1 本も無いのは «蓋が開く / 閉じる» と «脚を掴む» の
-  3 つだけだった (Docs/climb-core.md の中核が丸ごと無音だった)。
-
-音程の置き方 (README_v3 の表に従う):
-  ボス 55Hz(A1) / 右剣 220Hz / 左剣 660Hz。蓋はボスの体なので 55Hz 系へ、
-  手掛けはプレイヤーの体なので剣より上の 520〜700Hz へ置いて、
-  同時に鳴っても濁らないようにする。
-"""
+"""コアハッチの開閉。登攀音はgen_movement.pyへ移管済み。"""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
@@ -63,46 +52,11 @@ def hatch_close():
     return S.arena(x, open_sky=True, wet=0.30)
 
 # ── 脚を掴む (Player_Climb_Grab 3 変奏) ─────────────────────────────────────
-def climb_grab(i):
-    """WHY 3 変奏を層化するか: 登りは 0.83 秒周期で手が変わるので、同じ音が
-       すぐ返ってくる。乱数任せだと似た 2 つが並んだ瞬間に «使い回し» が出る。
-       接触音の基音・擦れの量・サーボの長さ・焼き込む音量を等分して 1 つずつ配る。"""
-    base   = (520.0, 605.0, 690.0)[i]          # 接触する装甲の «厚み»
-    scrape = (0.34, 0.20, 0.27)[i]             # 擦れの量
-    pull   = (0.115, 0.150, 0.132)[i]          # 荷重が乗るまでの長さ
-    gain   = (0.81, 1.00, 0.90)[i]             # -1.8 / 0.0 / -0.9 dB を焼き込む
-    dur = 0.26
-    x = S.silence(dur)
-    # ① 手が装甲に当たる。指が先に触れて掌が遅れる (2 段)。
-    S.place(x, S.metal(0.10, 61 + i * 3, base, partials=4, decay=0.028) * 0.50, 0.000)
-    S.place(x, S.metal(0.12, 62 + i * 3, base * 0.72, partials=5, decay=0.040) * 0.34, 0.011)
-    # ② 掴んで擦れる。短い雑音を帯域で削って «金属の上を滑った» にする。
-    sc = S.onepole_hp(S.noise(0.07, 63 + i * 3), 1800) * scrape
-    sc *= S.env(len(sc), 0.004, 0.05, curve=1.8)
-    S.place(x, S.onepole_lp(sc, 7000), 0.008)
-    # ③ 腕のサーボに荷重が乗る。下がる ─ 支えた側の音。
-    S.place(x, S.servo(pull, 64 + i * 3, f0=205, f1=142, amp=0.22, rough=0.22), 0.016)
-    # ④ 関節が収まる細かいガタつき。
-    S.place(x, S.metal(0.06, 65 + i * 3, base * 1.9, partials=3, decay=0.018) * 0.13, 0.055 + pull * 0.4)
-    y = S.arena(x, open_sky=True, wet=0.12) * gain
-    # WHY 尻尾を切るか: 手掛けは 0.83 秒周期で返ってくる。部屋の残響をそのまま
-    #     残すと次の一手に被って «ずっと擦れている» になる。反射 2 つ分で切る。
-    n = int(S.SR * 0.45)
-    y = y[:n] * np.concatenate([np.ones(n - int(S.SR*0.06)),
-                                np.linspace(1.0, 0.0, int(S.SR*0.06)) ** 1.5])
-    return y
-
 if __name__ == "__main__":
     jobs = [("Boss/SE_BOSS_Hatch_Open.wav",  hatch_open(),  0.86),
             ("Boss/SE_BOSS_Hatch_Close.wav", hatch_close(), 0.86)]
-    for i in range(3):
-        jobs.append((f"Player/SE_PL_Climb_Grab_{i+1:02d}.wav", climb_grab(i), None))
-    # 手掛けの 3 本は «変奏どうしの音量差» が意味を持つので、まとめて 1 つの
-    # 係数で正規化する (個別に正規化すると焼き込んだ差が消える)。
-    grabs = [w for n, w, p in jobs if "Climb_Grab" in n]
-    gm = max(float(np.max(np.abs(w))) for w in grabs)
     for name, wav, peak in jobs:
         path = os.path.join(OUT, name.replace("/", "_"))
-        out = S.normalize(wav, peak) if peak else wav * (0.82 / gm)
+        out = S.normalize(wav, peak)
         sec = S.write(path, out)
         print(f"  {name:<38} {sec:.3f}s  peak {float(np.max(np.abs(out))):.3f}")

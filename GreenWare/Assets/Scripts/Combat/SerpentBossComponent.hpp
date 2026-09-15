@@ -22,6 +22,7 @@
 #include <Scripts/Combat/IBoss.hpp>
 #include <Scripts/Combat/SerpentAiComponent.hpp>
 #include <Scripts/Combat/SerpentBodyComponent.hpp>
+#include <Scripts/Combat/SerpentSpineComponent.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <string>
 
@@ -34,7 +35,7 @@ class SerpentBossComponent : public Script, public IBoss {
 
 public:
     FBZZ_GROUP("識別")
-    FBZZ_FIELD(std::string, bossName, "POLARITY SERPENT", "名前")
+    FBZZ_FIELD(std::string, bossName, "双獄の大蛇 NIDHOGG", "名前")
     FBZZ_TOOLTIP("ボスバーに出す表示名。シーン上の GameObject 名とは別物")
 
     FBZZ_GROUP("デバッグ")
@@ -86,6 +87,15 @@ public:
         return body ? body->SegmentCount() : -1;
     }
     [[nodiscard]] int PartsTotal() const override { return serpent::kSegmentCount; }
+
+    /// 蛇の «居場所» は頭。ルートはシーンに置いた座標のまま動かない。
+    [[nodiscard]] bool FocusPoint(fbzz::math::Vector3& out) const override
+    {
+        const auto* spine = scene.GetScript<SerpentSpineComponent>();
+        if (!spine) return false;
+        out = spine->HeadPosition();
+        return true;
+    }
 
     void OnStart() override;
     void OnUpdate() override;

@@ -89,6 +89,8 @@ inline constexpr const char* kVfxHeavyHitPath    = "guid:52ca3e2d259555fda0bce30
 inline constexpr const char* kVfxChargeReadyPath = "guid:e71f1b8e117f5e86a81388ed564633ba|Assets/VFX/Game/FX_BLD_ChargeReady.vfx";
 inline constexpr const char* kVfxTopplePath      = "Assets/VFX/Game/FX_BOSS_Topple.vfx";
 inline constexpr const char* kVfxExecutePath     = "Assets/VFX/Game/FX_BOSS_Execute.vfx";
+inline constexpr const char* kVfxPartVentPath = "guid:fc093c4452e04bd1b65bc13996790eda|Assets/VFX/Game/FX_BOSS_PartVent.vfx";
+inline constexpr const char* kVfxWingRecallPath = "guid:ef1d2b7b6a764d4180d88aab531c37f0|Assets/VFX/Game/FX_BOSS_WingRecall.vfx";
 
 // サーペント (Boss02) 専用。手ごとにシルエットを分けるためのグラフ一式。
 //
@@ -108,7 +110,7 @@ inline constexpr const char* kVfxSerpentBitePath   = "Assets/VFX/Serpent/FX_SRP_
 // 同じ .vfx を «その場の爆発» と «床» で共有しても、枠は別々になる。
 inline constexpr const char* kGroundPool = "Ground";
 
-// 壊れた脚から立ちのぼる煙。同じ土煙のグラフを «常時鳴り続ける絵» として回す札。
+// 破断面の排煙は接地の粉塵と別の寿命・枠で回す。
 inline constexpr const char* kLegSmokePool = "LegSmoke";
 
 // 噴き上がり (FX_SRP_Geyser) を «手» と «出入り» で分けて回すための札。
@@ -154,6 +156,8 @@ public:
     FBZZ_TOOLTIP("崩しが満ちてボスが倒れた瞬間。未割り当てなら FX_BOSS_Topple.vfx を使う")
     FBZZ_ASSET_FIELD(VFXRef, executeVfx, "とどめ")
     FBZZ_TOOLTIP("とどめで脚 / 節がもげた瞬間。未割り当てなら FX_BOSS_Execute.vfx を使う")
+    FBZZ_ASSET_FIELD(VFXRef, partVentVfx, "破断面の排煙")
+    FBZZ_ASSET_FIELD(VFXRef, wingRecallVfx, "翼回収の合図")
 
     FBZZ_GROUP("Graphs (Serpent)")
     FBZZ_ASSET_FIELD(VFXRef, serpentGeyserVfx, "Geyser")
@@ -352,10 +356,16 @@ public:
     ///
     /// WHY 弾きの流用をやめたか: 輪と閃光は «弾いた» の印で、当たりのたびに輪が出ると
     ///     1 秒に何度も弾いているように読める。当たりは «刃が通った線» と火花だけで言う。
+    /// tintOverride は «刀の左右» で決まらない色を差すための逃げ道。alpha > 0 のときだけ
+    /// 採用する。両手剣のプレイヤーは side ではなくプレイヤー色を撒く
+    /// (BladeColors.hpp の PlayerBladeColor)。
     void PlaySlashHit(const Vector3& point, const Vector3& away, float strength01,
                       BladeSide side = BladeSide::None,
-                      const Vector2& sweep = Vector2{ -1.0f, 0.0f }, bool heavy = false);
+                      const Vector2& sweep = Vector2{ -1.0f, 0.0f }, bool heavy = false,
+                      const Vector4& tintOverride = Vector4{ 0.0f, 0.0f, 0.0f, 0.0f });
     void PlayChargeReady(const Vector3& point);
+    /// 回収開始位置と、そこから本体へ向かうワールド方向。
+    void PlayWingRecall(const Vector3& point, const Vector3& toward);
     /// 崩しが満ちてボスが倒れた瞬間。point は体が床に着いた所、scale は 1.0 でコア (6m 級)。
     ///
     /// WHY 床の爆発 (PlayGroundBlast) を使わないか: 爆発は閃光と熱が主役で、転倒は床が主役。
@@ -927,7 +937,8 @@ inline void VfxManagerComponent::PlayParry(const Vector3& point, const Vector3& 
 
 inline void VfxManagerComponent::PlaySlashHit(const Vector3& point, const Vector3& away,
                                               float strength01, BladeSide side,
-                                              const Vector2& sweep, bool heavy)
+                                              const Vector2& sweep, bool heavy,
+                                              const Vector4& tintOverride)
 {
     const float strength = Clamp01(strength01);
 
@@ -943,7 +954,8 @@ inline void VfxManagerComponent::PlaySlashHit(const Vector3& point, const Vector
 
     if (auto* params = root->GetScript<SlashHitVfxComponent>()) {
         // 弧と光が振った刀の色になり、«どちらの刀で斬ったか» が跡に残る。
-        params->tint       = side == BladeSide::None ? Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
+        params->tint       = tintOverride.w > 0.0f ? tintOverride
+                           : side == BladeSide::None ? Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
                                                      : BladeColor(side);
         params->sparkPower = Lerp(slashSparkMin, slashSparkMax, strength);
         params->flashLight = Lerp(slashLightMin, slashLightMax, strength);
@@ -1160,7 +1172,7 @@ inline void VfxManagerComponent::PlayLegSmoke(const Vector3& point, const Vector
     Vector3 side{ drift.x, 0.0f, drift.z };
     side = side.NormalizedOr(Vector3::FORWARD);
 
-    GameObject* root = Prepare(PathOf(groundDustVfx, kVfxGroundDustPath), point,
+    GameObject* root = Prepare(PathOf(partVentVfx, kVfxPartVentPath), point,
                                Quaternion::LookRotation(Vector3::UP, side), "LegSmoke",
                                kLegSmokePool, legSmokeSlots);
     if (!root) return;
@@ -1174,6 +1186,16 @@ inline void VfxManagerComponent::PlayLegSmoke(const Vector3& point, const Vector
         params->Apply();
     }
     Fire(*root);
+}
+
+inline void VfxManagerComponent::PlayWingRecall(const Vector3& point, const Vector3& toward)
+{
+    const Vector3 direction = toward.NormalizedOr(Vector3::UP);
+    const Vector3 up = Abs(Vector3::Dot(direction, Vector3::UP)) > 0.99f
+        ? Vector3::FORWARD : Vector3::UP;
+    GameObject* root = Prepare(PathOf(wingRecallVfx, kVfxWingRecallPath), point,
+        Quaternion::LookRotation(direction, up), "WingRecall", "", 6);
+    if (root) Fire(*root);
 }
 
 inline void VfxManagerComponent::PlayGroundDust(const Vector3& point, const Vector3& outward,

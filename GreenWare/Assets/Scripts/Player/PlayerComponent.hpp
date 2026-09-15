@@ -20,6 +20,8 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Combat/BossBreakComponent.hpp>
+#include <Scripts/Combat/IBoss.hpp>
 #include <Scripts/Combat/IDamageable.hpp>
 #include <Scripts/Game/CameraFollowManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
@@ -31,6 +33,7 @@
 #include <Scripts/Data/BladeTuning.hpp>
 #include <Scripts/Player/AimMarkerComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
+#include <Scripts/Player/PlayerBreathComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Player/PlayerHeadLookComponent.hpp>
 #include <Scripts/Player/PlayerHealthComponent.hpp>
@@ -50,6 +53,7 @@
 #include <cmath>
 #include <functional>
 #include <utility>
+#include <vector>
 
 using namespace fbzz::scene;
 
@@ -75,17 +79,29 @@ public:
     /// WHY 弾きを回避より先に見るか: 構えている最中は回避していない (回避中は構えられない)
     ///     ので実際には排他だが、順番を決めておかないと «どちらの手柄か» が組み方で変わる。
     ///     弾きは押した意思がはっきりしている側なので先に取る。
+    ///
+    /// WHY ガードを «弾きより後» に見るか (2026-09-14):
+    ///     一度ガードを先に見ていた時期があり、同じボタンなので押した瞬間は必ず
+    ///     そちらが勝った ─ `AddParry` へ一度も届かず、崩しゲージが弾きから 1 も
+    ///     溜まらないまま «防げてはいる» ように見えていた。
+    ///     弾きは «押した頭の 0.22 秒»、ガードはその後の押しっぱなし。
+    ///     **窓を先に見る限り、両方を置いても弾きは食われない。**
+    ///
+    /// WHY ガードでは崩しが溜まらないか: 溜まるなら押しっぱなしで崩せることになり、
+    ///     «崩すのは弾きだけ» (Docs/break-parry.md) がまた壊れる。
+    ///     ガードは止めるだけ ─ 弾けない手 (ビーム・パルス・扇) は Unblockable なので
+    ///     構えていても素通りする。そちらが押しっぱなしを咎める。
     PlayerHitResult ReceiveHit(int amount, const fbzz::math::Vector3* fromWorld,
                                PlayerHitKind kind) override
     {
         if (amount <= 0 || !m_health.IsAlive()) return PlayerHitResult::Ignored;
-        if (m_blocking && kind == PlayerHitKind::Parryable) {
-            animator.SetTrigger("GuardHit");
-            return PlayerHitResult::Ignored;
-        }
         if (kind == PlayerHitKind::Parryable && m_parry.IsParryActive()) {
             m_parry.OnParried(amount, fromWorld);
             return PlayerHitResult::Parried;
+        }
+        if (kind == PlayerHitKind::Parryable && m_parry.IsGuardActive()) {
+            m_parry.OnGuarded(amount, fromWorld);
+            return PlayerHitResult::Guarded;
         }
         if (TryPerfectDodge(fromWorld)) return PlayerHitResult::Dodged;
         if (!m_health.TakeDamage(amount)) return PlayerHitResult::Ignored;
@@ -104,6 +120,16 @@ public:
     // 外部システムは個別モジュールを探さず、Player の公開 API だけを使う。
     [[nodiscard]] int Current() const { return m_health.Current(); }
     [[nodiscard]] float NormalizedHealth() const { return m_health.Normalized(); }
+    /// 息の残量 (1 = 満タン)。HUD が読む。
+    [[nodiscard]] float NormalizedBreath() const { return m_breath.Normalized(); }
+    [[nodiscard]] float DodgeStaminaSpent() const { return m_breath.DodgeSpent(); }
+    [[nodiscard]] float GuardStaminaSpent() const { return m_breath.GuardSpent(); }
+    [[nodiscard]] float MaxStamina() const { return m_breath.MaxBreath(); }
+    /// 息が尽きて回避もガードも出せない状態か。
+    [[nodiscard]] bool IsBreathExhausted() const { return m_breath.IsExhausted(); }
+    /// 直近 seconds 秒に «息が無くて出せなかった» があったか。
+    [[nodiscard]] bool BreathDeniedWithin(float seconds) const
+    { return m_breath.DeniedWithin(seconds); }
     /// ダメージの唯一の入口。回避中なら弾いて、ジャスト回避の報酬を配る。
     ///
     /// WHY 体力側 (PlayerHealthComponent) ではなくここで弾くか: 回避しているのを
@@ -114,8 +140,12 @@ public:
         return ReceiveHit(amount, nullptr, PlayerHitKind::Unblockable) == PlayerHitResult::Damaged;
     }
     void Heal(int amount) { m_health.Heal(amount); }
-    void ResetHealth() { m_health.ResetHealth(); }
+    // 仕切り直しは息も戻す。体力だけ満タンで息が空だと、立て直した最初の 1 回が転がれない。
+    void ResetHealth() { m_health.ResetHealth(); m_breath.ResetBreath(); }
     // ── 双剣 ────────────────────────────────────────────────────────────────
+    /// これまでに転がった回数。差を見て «今 1 回避けた» を知る
+    /// (PlayerParryComponent::ParryCount と同じ «通知ではなく数» の形)。
+    [[nodiscard]] int DodgeSerial() const { return m_controller.DodgeSerial(); }
     [[nodiscard]] bool IsSwinging() const { return m_blades.IsSwinging(); }
     [[nodiscard]] BladeSide SwingSide() const { return m_blades.SwingSide(); }
 
@@ -126,6 +156,8 @@ public:
     // 今狙っている相手。カメラ演出・枠・剣が同じ 1 体を見るための窓口。
     [[nodiscard]] GameObject* CurrentTarget() const { return m_aim.CurrentTarget(); }
 
+    FBZZ_FIELD(bool, terrainRecovery, false, "地形下への貫通から復帰")
+    void RecoverBelowTerrain();
     void OnStart() override;
     void OnUpdate() override;
     void OnLateUpdate() override;
@@ -133,6 +165,14 @@ public:
     // 内部モジュールが作ったランタイム GameObject (照準枠・ビーム) はルートに置かれる。
     // Player と一緒には消えないため、ここから畳ませる。
     void OnDestroy() override;
+    void OnDisable() override
+    {
+        if (auto* manager = TimeManagerComponent::Instance()) manager->EndParryRush();
+        animator.SetLocalTimeScale(1.0f);
+        physics.SetLocalTimeScale(1.0f);
+        if (auto* label = scene.Find("HUD_ParryRush")) label->SetActive(false);
+        if (auto* fill = scene.Find("HUD_ParryRushFill")) fill->SetActive(false);
+    }
     // 内部モジュールのギズモは自動では呼ばれないため、ここから中継する。
     void OnDrawGizmos() override { m_weaponRig.OnDrawGizmos(); }
 
@@ -149,6 +189,8 @@ public:
     void RequestSuspend(bool lockInput) { m_controller.RequestSuspend(lockInput); }
     /// この向きへ体を向けるよう 1 フレームぶん要求する。
     void RequestFacing(const fbzz::math::Vector3& direction) { m_controller.RequestFacing(direction); }
+    /// 体力がここより下へ減らないよう 1 フレームぶん要求する (PlayerHealthComponent)。
+    void RequestDamageFloor(int minHealth) { m_health.RequestDamageFloor(minHealth); }
     /// 拘束中の体を倒す角度 [度]。pitch は前へ、roll は右へ。1 フレームぶん。
     void RequestLean(float pitchDegrees, float rollDegrees)
     { m_controller.RequestLean(pitchDegrees, rollDegrees); }
@@ -179,6 +221,20 @@ private:
     void OnDamaged(const fbzz::math::Vector3* fromWorld);
     /// 土壇場 (残り HP が Last Stand 以下) を画面とボスの崩しへ申告する。
     void DriveLastStand();
+
+    /// 盤面に立っているボスの崩しゲージを全部なぞる。
+    ///
+    /// WHY 1 体を引く口を使わないか: 被弾・ジャスト回避・土壇場は «盤面の出来事» で、
+    ///     どの相手に起きたかを問わない。名簿は順序を持たないので 1 体だけ引くと、
+    ///     相手が 2 体居る盤面では毎回どちらかが乱数で選ばれ、片方のゲージだけが育つ。
+    template <class Fn>
+    void ForEachBoss(Fn&& apply) const
+    {
+        std::vector<GameObject*> bosses;
+        CollectBossesOnBoard(scene, bosses);
+        for (GameObject* boss : bosses)
+            if (auto* brk = scene.GetScript<BossBreakComponent>(boss)) apply(*brk);
+    }
     [[nodiscard]] bool IsLastStand() const
     { return tuning && tuning->lastStandHealth > 0 && m_health.IsAlive()
           && m_health.Current() <= tuning->lastStandHealth; }
@@ -187,7 +243,6 @@ private:
     int m_lastFluxDodge = 0;
     /// 前フレームに申告した土壇場。変わったフレームだけボスを引き直す。
     bool m_lastStandSent = false;
-    bool m_blocking = false;
     bool m_deathAnimationPlayed = false;
 
     PlayerControllerComponent m_controller;
@@ -201,6 +256,9 @@ private:
     // 対象の表示はエイムの選定から分ける。枠の見た目を触っても選び方には波及しない。
     AimMarkerComponent       m_aimMarker;
     PlayerHealthComponent    m_health;
+    // 息 (スタミナ)。体力と分けるのは、減らすものも戻すものもまったく違うため ─
+    // 体力は敵だけが減らし、息は自分の選んだ手が減らして自分の攻めが戻す。
+    PlayerBreathComponent    m_breath;
     // 双剣。斬る判定を持つ唯一の入口。
     BladeComponent   m_blades;
     // 弾きと とどめ。«受ける» と «仕留める» はどちらもボスの状態で決まるので、剣から分ける。
@@ -214,8 +272,8 @@ private:
     BladeTrailComponent      m_bladeTrail;
     // 当たった瞬間の一閃。«振った» (残像) と «斬れた» (線) を分ける ─ 空振りでは出ない。
     SlashCutFxComponent      m_slashCut;
-    // 回転斬りの «一周»。刃が体の裏へ回る区間は帯が自分に隠れるので、そこを輪で補う。
     SpinSlashFxComponent     m_spinFx;
+    // 回転斬りの «一周»。刃が体の裏へ回る区間は帯が自分に隠れるので、そこを輪で補う。
     // 回避中の残像。無敵の «時間» を体の絵で伝える層で、回避そのものには触らない。
     DodgeAfterimageComponent m_dodgeGhost;
     // 溜めている量を «剣そのもの» で伝える発光。剣の挙動には触らない。
@@ -240,6 +298,7 @@ inline void PlayerComponent::Reflect(::fbzz::scene::IReflector& r_)
     m_headLook.Reflect(r_);
     m_aimMarker.Reflect(r_);
     m_health.Reflect(r_);
+    m_breath.Reflect(r_);
     m_blades.Reflect(r_);
     m_parry.Reflect(r_);
     m_bladeTrail.Reflect(r_);
@@ -259,6 +318,7 @@ inline void PlayerComponent::BindModules()
     m_headLook.AdoptContext(*this);
     m_aimMarker.AdoptContext(*this);
     m_health.AdoptContext(*this);
+    m_breath.AdoptContext(*this);
     m_blades.AdoptContext(*this);
     m_parry.AdoptContext(*this);
     m_bladeTrail.AdoptContext(*this);
@@ -271,6 +331,12 @@ inline void PlayerComponent::BindModules()
 
     m_controller.tuning.ref = tuning.ref;
     m_health.tuning.ref = tuning.ref;
+    m_breath.tuning.ref = tuning.ref;
+    // 息を払うのは回避と構え、戻すのは当たった斬撃と弾き。3 つとも «要求する側» が
+    // 息を知っていて、息の側は誰が払ったかを知らない。
+    m_controller.SetBreath(&m_breath);
+    m_parry.SetBreath(&m_breath);
+    m_blades.SetBreath(&m_breath);
     m_controller.SetAimComponent(&m_aim);
     m_controller.SetWeaponRig(&m_weaponRig);
     m_health.SetController(&m_controller);
@@ -311,7 +377,7 @@ inline bool PlayerComponent::HasRequiredAssets() const
 inline bool PlayerComponent::TryPerfectDodge(const fbzz::math::Vector3* fromWorld)
 {
     if (!tuning || !tuning->dodgeInvulnerable) return false;
-    if (!m_controller.IsDodging()) return false;
+    if (!m_controller.InDodgeIFrames(tuning->dodgeInvulnerableSeconds)) return false;
 
     const int serial = m_controller.DodgeSerial();
     if (serial != m_lastFluxDodge) {
@@ -325,8 +391,10 @@ inline void PlayerComponent::OnDamaged(const fbzz::math::Vector3* fromWorld)
 {
     if (auto* screen = ScreenEffectManagerComponent::Instance())
         if (fromWorld) screen->SetHurtSource(*fromWorld);
-    if (GameObject* boss = FindBossOnBoard(scene))
-        if (auto* brk = scene.GetScript<BossBreakComponent>(boss)) brk->ResetParryStreak();
+    // 被弾・回避・土壇場は «誰か 1 体との» 出来事ではなく盤面の出来事なので、
+    // 立っている相手の全部へ配る。名簿は順序を持たないので、1 体だけ引くと
+    // 2 体居る盤面では乱数で選ばれた片方だけが育つ (IBoss.hpp の WHY)。
+    ForEachBoss([](BossBreakComponent& brk) { brk.ResetParryStreak(); });
     // 土壇場に入った瞬間は同じフレームで申告する。次の OnUpdate を待つと、
     // 落ちた HP の赤と鼓動が 1 フレームずれて «別々の出来事» に見える。
     DriveLastStand();
@@ -337,13 +405,13 @@ inline void PlayerComponent::DriveLastStand()
 {
     const bool lastStand = IsLastStand();
     if (auto* screen = ScreenEffectManagerComponent::Instance())
-        screen->SetDanger(lastStand ? 1.0f : 0.0f);
+        screen->SetDanger(m_health.IsAlive()
+            ? Clamp01((0.30f - m_health.Normalized()) / 0.30f) : 0.0f);
     if (lastStand == m_lastStandSent) return;
     m_lastStandSent = lastStand;
     // ボスの探索は状態が変わったフレームだけ。毎フレーム型で引くのは重い。
-    if (GameObject* boss = FindBossOnBoard(scene))
-        if (auto* brk = scene.GetScript<BossBreakComponent>(boss))
-            brk->SetGainScale(lastStand ? (std::max)(tuning->lastStandBreakScale, 1.0f) : 1.0f);
+    const float scale = lastStand ? (std::max)(tuning->lastStandBreakScale, 1.0f) : 1.0f;
+    ForEachBoss([scale](BossBreakComponent& brk) { brk.SetGainScale(scale); });
 }
 
 inline void PlayerComponent::OnPerfectDodge(const fbzz::math::Vector3* fromWorld)
@@ -352,6 +420,14 @@ inline void PlayerComponent::OnPerfectDodge(const fbzz::math::Vector3* fromWorld
     // 土壇場は猶予が伸びる。かわした後に «押す時間» が長いほど、最後の 1 から返せる。
     if (IsLastStand()) flux *= (std::max)(tuning->lastStandFluxScale, 1.0f);
     if (flux > 0.0f) m_blades.GrantFlux(flux);
+
+    // 息も満タンへ戻す。読み切った 1 回だけが «呼吸ごと» 返る ─ 報酬を別々の
+    // 出来事に散らさず、Flux と同じ瞬間へ集める。
+    //
+    // WHY 一定量ではなく満タンか: ジャスト回避が出るのは追い詰められた場面で、
+    //     そこは息が薄い場面でもある。«次の一振りは満溜め» と言いながら転がる息が
+    //     残っていないと、報酬が受け取れない形で終わる。
+    m_breath.Refill();
 
     // 世界を «ゆっくり» にする。かわしたことを見せる時間であり、Flux を押す時間でもある。
     // ヒットストップ (Override) とは層が違うので、重なっても互いを消さない。
@@ -396,13 +472,12 @@ inline void PlayerComponent::OnPerfectDodge(const fbzz::math::Vector3* fromWorld
         pad->Rumble(0.2f, 0.9f, 0.12f);
     // 満溜めの合図をそのまま使う。Flux は «満溜めが手に入った» ことなので、
     // 普段の溜めで覚えた音がここでも同じ意味で鳴る。
-    se::Play(audio, se::kBladeChargeUpFull);
+    se::Play(audio, se::kSwordFlux);
 
     if (auto* combat = CombatManagerComponent::Instance()) combat->AddPerfectDodge();
 
     // 弾けない手 (輪・ビーム・柱) にも崩しへの道を残す。弾きより薄い量。
-    if (GameObject* boss = FindBossOnBoard(scene))
-        if (auto* brk = scene.GetScript<BossBreakComponent>(boss)) brk->AddPerfectDodge();
+    ForEachBoss([](BossBreakComponent& brk) { brk.AddPerfectDodge(); });
 }
 
 inline void PlayerComponent::OnStart()
@@ -410,9 +485,14 @@ inline void PlayerComponent::OnStart()
     BindModules();
     m_lastFluxDodge    = 0;
     m_lastStandSent    = false;
-    m_blocking = false;
     m_deathAnimationPlayed = false;
-    m_parry.enabled = false;
+    // WHY 弾きを «切った状態» から始めないか (2026-09-14):
+    //     ここには `m_parry.enabled = false;` が置かれていて、**どこにも戻す行が
+    //     無かった**。updateModule は enabled を見て回すので、弾きは一度も走らず
+    //     ─ 窓が開かず、構えの絵も出ず、IsParryActive() は常に false。
+    //     «押しっぱなしのガード» がその上に被さっていたため «防げてはいる»
+    //     ように見え、崩しだけが溜まらないという形で隠れていた。
+    //     本作の中核 (Docs/break-parry.md) を既定で切らない。
     if (!HasRequiredAssets()) {
         enabled = false;
         return;
@@ -442,6 +522,7 @@ inline void PlayerComponent::OnStart()
     m_headLook.OnStart();
     m_aimMarker.OnStart();
     m_health.OnStart();
+    m_breath.OnStart();
     m_blades.OnStart();
     m_parry.OnStart();
     m_bladeTrail.OnStart();
@@ -457,6 +538,11 @@ inline void PlayerComponent::OnUpdate()
 {
     if (!enabled)
         return;
+    if (!m_health.IsAlive())
+        if (auto* manager = TimeManagerComponent::Instance()) manager->EndParryRush();
+    const float playerClockScale = TimeManagerComponent::PlayerTimeScale();
+    animator.SetLocalTimeScale(playerClockScale);
+    physics.SetLocalTimeScale(playerClockScale);
     // WHY: 内部モジュールも Script の一種だが、直接呼び出すとモジュール内の
     //      空 Ref / 無効な EntityRef が親 PlayerComponent の例外として扱われる。
     //      各モジュールを既存の ExecuteCallback 境界へ通し、問題の責務だけを停止して
@@ -475,6 +561,7 @@ inline void PlayerComponent::OnUpdate()
         m_controller.RequestSuspend(true);
         if (!m_deathAnimationPlayed) {
             animator.StopSlot(m_blades.slashLayerName, 0.0f);
+            animator.StopSlot(m_blades.slashLayerNameB, 0.0f);
             animator.StopSlot(m_blades.airSlashLayerName, 0.0f);
             animator.StopSlot(m_controller.hitLayerName, 0.0f);
             animator.Play("Death");
@@ -482,17 +569,12 @@ inline void PlayerComponent::OnUpdate()
         }
     }
     {
-        const auto* cc = scene.Self()->GetComponent<CharacterControllerComponent>();
-        m_blocking = m_health.IsAlive() && cc && cc->isGrounded
-            && !m_controller.IsDodging() && !m_controller.IsInputLocked()
-            && !cutscene::HoldsPlayer(Time::unscaledTime) && !m_blades.IsSwinging()
-            && input.GetAction(actions::kParry);
-        m_blades.SetGuarding(m_blocking || !m_health.IsAlive());
-        animator.SetBool("IsBlocking", m_blocking);
+        // 剣を止めるのは «倒れたとき» だけ。構えている間の停止は弾きの側が
+        // RequestMoveSpeedScale で持っている (構えは 0.22 秒しか続かない)。
+        m_blades.SetGuarding(!m_health.IsAlive());
         // Controller の AnyState は «倒れていない間だけ» 割り込みを通す門にこれを使う。
         // 立てないと、撃破後に残っている Trigger が Death を蹴り出して起き上がる。
         animator.SetBool("IsDead", !m_health.IsAlive());
-        if (m_blocking) m_controller.RequestMoveSpeedScale(0.0f);
     }
 
     // 剣 → 纏い → コントローラー、の順で回す。
@@ -525,6 +607,9 @@ inline void PlayerComponent::OnUpdate()
     // フレームで首だけ 1 フレーム遅れると、構えと視線の立ち上がりがずれる。
     updateModule(m_headLook);
     updateModule(m_health);
+    // 息は払う側 (回避・構え) より後。先に回すと、同じフレームに払ったぶんの
+    // 待ち時間 (Regen Delay) が 1 フレーム寝て、転がった直後に回復が始まる。
+    updateModule(m_breath);
     // 土壇場は «状態» なので毎フレーム申告する (回復・死・シーン跨ぎで自然に消える)。
     DriveLastStand();
 }
@@ -538,10 +623,25 @@ inline void PlayerComponent::OnUpdate()
 //
 //   枠だけは対象の座標も要る。対象は物理と CharacterController で動くため、
 //   Script フェーズで読むと半歩遅れて付いてくるのが、動きの速い相手ほどはっきり見える。
+inline void PlayerComponent::RecoverBelowTerrain()
+{
+    if (!terrainRecovery || !transform || !m_health.IsAlive()) return;
+    const Vector3 current = transform.worldPosition;
+    const float surface = scene.GetTerrainHeightAt(current);
+    if (!std::isfinite(surface) || surface < -100000.0f || current.y >= surface - 0.05f) return;
+    Vector3 local = transform.position;
+    local.y += surface + 0.08f - current.y;
+    transform.position = local;
+    Vector3 velocity = physics.GetVelocity();
+    velocity.y = std::max(velocity.y, 0.0f);
+    physics.SetVelocity(velocity);
+}
+
 inline void PlayerComponent::OnLateUpdate()
 {
     if (!enabled)
         return;
+    RecoverBelowTerrain();
     const auto lateUpdateModule = [](Script& module) {
         if (module.enabled)
             module.ExecuteCallback(&Script::OnLateUpdate, module.GetTypeName());
@@ -559,12 +659,14 @@ inline void PlayerComponent::OnLateUpdate()
 
 inline void PlayerComponent::OnFixedUpdate()
 {
+    physics.SetLocalTimeScale(TimeManagerComponent::PlayerTimeScale());
     if (enabled && m_controller.enabled)
         m_controller.ExecuteCallback(&Script::OnFixedUpdate, m_controller.GetTypeName());
 }
 
 inline void PlayerComponent::OnDestroy()
 {
+    OnDisable();
     IDamageable::Unbind(scene.Self(), this);
     m_aimMarker.OnDestroy();
     m_headLook.OnDestroy();

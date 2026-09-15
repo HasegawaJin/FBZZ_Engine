@@ -59,8 +59,7 @@ gritPower = 1.8
 scorchLength = 11.0
 thudLight = 6.0
 
-# 帯の煙。球の «半径» を弦の半分へ合わせて撒くので、長さは呼ぶ側が入れる値で決まる。
-# 縦に薄く広がるのは «上から落ちてきた» の形。
+# 球では接地していない脇や地下にも発生するため、胴の長さに沿う薄い箱へ撒く。
 [[gameobjects]]
 name = "Band Smoke"
 instanceId = "77b1e0d5-3c94-4a26-8f13-b6205ea9d738"
@@ -78,18 +77,19 @@ rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
 
 [gameobjects.ParticleEmitter]
+boxExtents = [1.3, 0.08, 5.5]
 cullingEnabled = false
 lodEnabled = false
 duration = 0.35
 loop = false
 emitRate = 0.0
 maxParticles = 44
-shape = 1
+shape = 3
 sphereRadius = 5.5
-sizeStart = 1.1
-sizeEnd = 3.9
+sizeStart = 0.65
+sizeEnd = 2.86
 sizeCurvePower = 0.55
-lifetime = 0.85
+lifetime = 0.7
 lifetimeRandom = 0.35
 emitVelocity = [0.0, 2.0, 0.0]
 velocitySpread = 1.1
@@ -125,18 +125,19 @@ rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
 
 [gameobjects.ParticleEmitter]
+boxExtents = [0.12, 0.08, 5.5]
 cullingEnabled = false
 lodEnabled = false
 duration = 0.3
 loop = false
 emitRate = 0.0
 maxParticles = 22
-shape = 1
+shape = 3
 sphereRadius = 4.6
-sizeStart = 0.7
+sizeStart = 0.4
 sizeEnd = 3.1
 sizeCurvePower = 0.5
-lifetime = 0.7
+lifetime = 0.55
 lifetimeRandom = 0.35
 emitVelocity = [-5.5, 1.65, 0.0]
 velocitySpread = 0.8
@@ -171,18 +172,19 @@ rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
 
 [gameobjects.ParticleEmitter]
+boxExtents = [0.12, 0.08, 5.5]
 cullingEnabled = false
 lodEnabled = false
 duration = 0.3
 loop = false
 emitRate = 0.0
 maxParticles = 22
-shape = 1
+shape = 3
 sphereRadius = 4.6
-sizeStart = 0.7
+sizeStart = 0.4
 sizeEnd = 3.1
 sizeCurvePower = 0.5
-lifetime = 0.7
+lifetime = 0.55
 lifetimeRandom = 0.35
 emitVelocity = [5.5, 1.65, 0.0]
 velocitySpread = 0.8
@@ -218,13 +220,14 @@ rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
 
 [gameobjects.ParticleEmitter]
+boxExtents = [1.3, 0.08, 5.5]
 cullingEnabled = false
 lodEnabled = false
 duration = 0.25
 loop = false
 emitRate = 0.0
 maxParticles = 40
-shape = 1
+shape = 3
 sphereRadius = 5.5
 sizeStart = 0.16
 sizeEnd = 0.045
@@ -245,7 +248,7 @@ colorVariation = 0.12
 colorStart = [0.66, 0.63, 0.58, 1.0]
 colorEnd = [0.42, 0.4, 0.36, 0.0]
 bursts = [{ time = 0.0, count = 18, cycles = 1, interval = 0.02, probability = 1.0 }]
-startDelay = 0.0
+startDelay = 0.03
 
 # 床に残る «擦った跡»。ここに落ちたことが数秒残るので、次に同じ手が来たとき
 # «またあの線» と読める ─ 間合いの学習はこの跡が担当する。
