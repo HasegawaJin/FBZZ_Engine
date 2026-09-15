@@ -25,6 +25,8 @@
 #include <Scripts/Combat/SerpentSpineComponent.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <algorithm>
+#include <Scripts/Utils/GlowMaterial.hpp>
+#include <Scripts/Combat/EnemyHealthComponent.hpp>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -76,9 +78,12 @@ public:
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugOutlined, 0, "輪郭を出す")
 
+    void OnStart() override { m_glowMaterials.Reset(); m_armorMaterials.Reset(); }
     void OnUpdate() override;
 
 private:
+    BossGlowMaterials m_glowMaterials;
+    BossArmorMaterials m_armorMaterials;
     [[nodiscard]] SerpentBodyComponent*      Body()  const { return scene.GetScript<SerpentBodyComponent>(); }
     [[nodiscard]] SerpentSpineComponent*     Spine() const { return scene.GetScript<SerpentSpineComponent>(); }
     [[nodiscard]] SerpentHitboxRigComponent* Rig()   const { return scene.GetScript<SerpentHitboxRigComponent>(); }
@@ -88,6 +93,18 @@ FBZZ_REFLECT(SerpentRigComponent)
 
 inline void SerpentRigComponent::OnUpdate()
 {
+    const auto* health = scene.GetScript<EnemyHealthComponent>();
+    if (health && health->IsAlive()) {
+        const auto* state = scene.GetScript<BossBreakComponent>();
+        const bool down = state && state->IsToppled();
+        const float stress = state ? state->Ratio() : 0.0f;
+        m_armorMaterials.Apply(scene.Self(), material, stress, down, 0.0f, Time::deltaTime);
+        const float pulse = 0.5f + 0.5f * std::sin(Time::time * (down ? 5.0f : 3.0f + stress * 5.0f));
+        const Vector4 tint = down ? Vector4{1.0f, 0.8f, 0.25f, 1.0f}
+            : Vector4{1.0f, 0.55f + pulse * 0.15f, 0.18f, 1.0f};
+        m_glowMaterials.Apply(scene.Self(), material, tint,
+            down ? 1.4f + pulse * 0.6f : 0.7f + stress * pulse, Time::time);
+    }
     debugOutlined = 0;
     if (!outlineSegments) return;
 
@@ -129,6 +146,10 @@ inline void SerpentRigComponent::OnUpdate()
 
         for (const EntityRef& ref : body->Meshes(i))
             if (GameObject* piece = ref.Resolve(scene)) {
+                if (hit && health && health->IsAlive())
+                    m_glowMaterials.Apply(scene.Self(), material,
+                        {1.0f, 0.94f, 0.78f, 1.0f}, 0.8f + 2.2f * k, Time::time,
+                        "", piece->name.c_str(), 0.0f);
                 objectMask.Set(*piece, color, width, true, !outlineThroughWalls);
                 ++debugOutlined;
             }

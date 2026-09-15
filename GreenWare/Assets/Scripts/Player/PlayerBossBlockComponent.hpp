@@ -29,6 +29,7 @@
 ///   ボスが押し返される必要は無い (6m・400kg の重機が小型ロボに押されては困る)。
 ///   片側だけを動かせば、自己衝突も質量比の破綻も原理的に起きない。
 #pragma once
+#include <Scripts/Game/TimeManagerComponent.hpp>
 #include <Math/Segment.hpp>
 
 #include <Engine/Scene/EntityRef.hpp>
@@ -247,7 +248,7 @@ inline void PlayerBossBlockComponent::OnUpdate()
     debugOnBack = HoldOnBack(*boss);
 
     // 骨の «探索» は高いが、位置を読むのは安い。探し直しは間隔を空ける。
-    m_probeCooldown -= std::max(Time::deltaTime, 0.0f);
+    m_probeCooldown -= std::max(TimeManagerComponent::PlayerDeltaTime(), 0.0f);
     if (m_limbs.empty() || m_probeCooldown <= 0.0f) {
         m_probeCooldown = kProbeInterval;
         CollectLimbs(*boss);
@@ -255,7 +256,7 @@ inline void PlayerBossBlockComponent::OnUpdate()
     if (m_limbs.empty()) return;
 
     Vector3     pos  = transform.worldPosition;
-    const float step = std::max(pushPerSecond, 0.1f) * std::max(Time::deltaTime, 0.0f);
+    const float step = std::max(pushPerSecond, 0.1f) * std::max(TimeManagerComponent::PlayerDeltaTime(), 0.0f);
     const float pr   = std::max(playerRadius, 0.01f);
     const Vector3 center = boss->transform.worldPosition;
 

@@ -108,29 +108,7 @@ inline std::string_view Bank::Next() const
 }
 
 // ── Player ──────────────────────────────────────────────────────────────────
-// WHY 変奏を 1 つも省かないか:
-//   足音の変奏はピッチ違いではなく «接地の構造» ごと別に合成されていて、素材側は
-//   全変奏に渡ってパラメーターを層化してある (範囲を変種数で等分して 1 つずつ配る)。
-//   走り 8 / 歩き 6 のうち何本かを外すと、その層化が崩れて残った変奏だけが偏り、
-//   «作り分けたのに似て聞こえる» に戻る。数を減らすなら素材から作り直す側の仕事。
-inline constexpr std::string_view kPlayerFootstepWalkPaths[] = {
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Walk_01.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Walk_02.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Walk_03.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Walk_04.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Walk_05.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Walk_06.wav",
-};
-inline constexpr std::string_view kPlayerFootstepRunPaths[] = {
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_01.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_02.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_03.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_04.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_05.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_06.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_07.wav",
-    "Assets/Sound/SE/Player/SE_PL_Footstep_Run_08.wav",
-};
+// 接地とサーボの変奏・相対音量は gen_movement.py で焼き込む。
 inline constexpr std::string_view kPlayerDodgePaths[] = {
     "Assets/Sound/SE/Player/SE_PL_Dodge_01.wav",
     "Assets/Sound/SE/Player/SE_PL_Dodge_02.wav",
@@ -164,16 +142,12 @@ inline constexpr std::string_view kPlayerWeaponStowPaths[] = {
     "Assets/Sound/SE/Player/SE_PL_Weapon_Stow_01.wav",
     "Assets/Sound/SE/Player/SE_PL_Weapon_Stow_02.wav",
 };
-// 脚を掴んで登るときの一手。0.83 秒周期で左右が入れ替わるので、変奏どうしの
-// 音量差 (-1.8 / 0.0 / -0.9 dB) はファイルに焼き込んである。ここで揃えないこと。
 inline constexpr std::string_view kPlayerClimbGrabPaths[] = {
     "Assets/Sound/SE/Player/SE_PL_Climb_Grab_01.wav",
     "Assets/Sound/SE/Player/SE_PL_Climb_Grab_02.wav",
     "Assets/Sound/SE/Player/SE_PL_Climb_Grab_03.wav",
 };
 
-inline Bank kPlayerFootstepWalk { kPlayerFootstepWalkPaths };
-inline Bank kPlayerFootstepRun  { kPlayerFootstepRunPaths };
 inline Bank kPlayerDodge        { kPlayerDodgePaths };
 inline Bank kPlayerDodgeEnd     { kPlayerDodgeEndPaths };
 inline Bank kPlayerLanding      { kPlayerLandingPaths };
@@ -184,124 +158,144 @@ inline Bank kPlayerWeaponDeploy { kPlayerWeaponDeployPaths };
 inline Bank kPlayerWeaponStow   { kPlayerWeaponStowPaths };
 inline Bank kPlayerClimbGrab    { kPlayerClimbGrabPaths };
 
+inline constexpr std::string_view kPlayerJumpPaths[] = {
+    "Assets/Sound/SE/Player/SE_PL_Jump_01.wav",
+    "Assets/Sound/SE/Player/SE_PL_Jump_02.wav",
+};
+inline Bank kPlayerJump { kPlayerJumpPaths };
+inline constexpr std::string_view kPlayerMotorLoopPaths[] = {
+    "Assets/Sound/SE/Player/SE_PL_Motor_Loop.wav",
+};
+inline Bank kPlayerMotorLoop { kPlayerMotorLoopPaths };
+inline constexpr std::string_view kBossLandingPaths[] = {
+    "Assets/Sound/SE/Boss/SE_BOSS_Landing_01.wav",
+    "Assets/Sound/SE/Boss/SE_BOSS_Landing_02.wav",
+};
+inline Bank kBossLanding { kBossLandingPaths };
+inline constexpr std::string_view kSerpentRushLoopPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_SERP_Rush_Loop.wav",
+};
+inline Bank kSerpentRushLoop { kSerpentRushLoopPaths };
+
 // ── Blade (双剣) ────────────────────────────────────────────────────────────
-// 極ごとに音が分かれているのは企画書 12.2 の「赤と青を耳でも区別する」に対応する。
-// ＋ = 右手 / − = 左手 なので、極が決まれば手も一意に決まる。
-//
-// WHY 銃の音を «消した» か:
-//   企画が Wave 制の銃から双剣へ移った時点で、Beam / Paint / Tap / Battery は
-//   鳴らす場所そのものが無くなった。定義だけ残すと «使える音がある» ように見えて、
-//   次に音を足す人が空振りする。素材ごと畳んで、双剣の音と 1 対 1 で並べ直す。
-//
-// WHY 段ごとに別の音を持つか:
-//   1 段目と 3 段目が同じ «シュッ» だと、連撃のどこに居るかが耳で追えない。
-//   3 段目 (締め) だけ長く重くしてあるので、次が繋がるかどうかが音で判る。
-inline constexpr std::string_view kBladeSwingR1Paths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_1st_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_1st_02.wav",
-};
-inline constexpr std::string_view kBladeSwingR2Paths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_2nd_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_2nd_02.wav",
-};
-inline constexpr std::string_view kBladeSwingR3Paths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_3rd_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_3rd_02.wav",
-};
-inline constexpr std::string_view kBladeSwingL1Paths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_1st_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_1st_02.wav",
-};
-inline constexpr std::string_view kBladeSwingL2Paths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_2nd_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_2nd_02.wav",
-};
-inline constexpr std::string_view kBladeSwingL3Paths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_3rd_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_3rd_02.wav",
-};
+// 両手剣の音作りと再生契約: Docs/design/player-combat-audio.md
+inline constexpr float SWORD_SWING_PEAK_SECONDS = 0.060f;
 
-inline constexpr std::string_view kBladeHitRPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_R_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_R_02.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_R_03.wav",
+inline constexpr std::string_view kSwordSwingDownPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Down_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Down_02.wav",
 };
-inline constexpr std::string_view kBladeHitLPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_L_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_L_02.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_L_03.wav",
-};
-inline constexpr std::string_view kBladeHitFinishRPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_Finish_R.wav" };
-inline constexpr std::string_view kBladeHitFinishLPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Hit_Finish_L.wav" };
+inline Bank kSwordSwingDown { kSwordSwingDownPaths };
 
-inline constexpr std::string_view kBladeChargePlusPaths[]  = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Charge_Plus.wav" };
-inline constexpr std::string_view kBladeChargeMinusPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Charge_Minus.wav" };
-// 溜めの持続音。振幅変調は PlayerTuning の chargeShakeHz (24Hz) に合わせてあるので、
-// 画面の震えと音のうねりが同じ周期で来る。別々の数字にすると «ずれている» と感じる。
-inline constexpr std::string_view kBladeChargeUpLoopPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_ChargeUp_Loop.wav" };
-inline constexpr std::string_view kBladeChargeUpFullPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_ChargeUp_Full.wav" };
-inline constexpr std::string_view kBladeChargeSlashRPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_ChargeSlash_R.wav" };
-inline constexpr std::string_view kBladeChargeSlashLPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_ChargeSlash_L.wav" };
+inline constexpr std::string_view kSwordSwingUpPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Up_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Up_02.wav",
+};
+inline Bank kSwordSwingUp { kSwordSwingUpPaths };
+
+inline constexpr std::string_view kSwordSwingSpinPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Spin_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Spin_02.wav",
+};
+inline Bank kSwordSwingSpin { kSwordSwingSpinPaths };
+
+inline constexpr std::string_view kSwordSwingSlidePaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Slide_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Slide_02.wav",
+};
+inline Bank kSwordSwingSlide { kSwordSwingSlidePaths };
+
+inline constexpr std::string_view kSwordSwingAirPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Air_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Air_02.wav",
+};
+inline Bank kSwordSwingAir { kSwordSwingAirPaths };
+
+inline constexpr std::string_view kSwordSwingFinishPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Finish_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Finish_02.wav",
+};
+inline Bank kSwordSwingFinish { kSwordSwingFinishPaths };
+
+inline constexpr std::string_view kSwordSwingChargePaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Charge_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Swing_Charge_02.wav",
+};
+inline Bank kSwordSwingCharge { kSwordSwingChargePaths };
+
+inline constexpr std::string_view kSwordHitPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Hit_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Hit_02.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Hit_03.wav",
+};
+inline Bank kSwordHit { kSwordHitPaths };
+
+inline constexpr std::string_view kSwordHitHeavyPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Hit_Heavy_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Hit_Heavy_02.wav",
+};
+inline Bank kSwordHitHeavy { kSwordHitHeavyPaths };
+
+inline constexpr std::string_view kSwordExecutePaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Execute_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Execute_02.wav",
+};
+inline Bank kSwordExecute { kSwordExecutePaths };
+
+inline constexpr std::string_view kSwordParryPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Parry_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Parry_02.wav",
+};
+inline Bank kSwordParry { kSwordParryPaths };
+
+inline constexpr std::string_view kSwordParryJustPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_ParryJust_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_ParryJust_02.wav",
+};
+inline Bank kSwordParryJust { kSwordParryJustPaths };
+
+inline constexpr std::string_view kSwordGuardPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Guard_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Guard_02.wav",
+};
+inline Bank kSwordGuard { kSwordGuardPaths };
 
 inline constexpr std::string_view kBladeDashPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Dash_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Dash_02.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Dash_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Dash_02.wav",
 };
-// ＋と−が打ち消し合って無極へ落ちる音。斬撃そのものではなく «帯びが消えた» 合図。
-inline constexpr std::string_view kNeutralizePaths[] = {
-    "Assets/Sound/SE/Weapon/SE_BLD_Neutralize_01.wav",
-    "Assets/Sound/SE/Weapon/SE_BLD_Neutralize_02.wav",
-};
+inline Bank kBladeDash { kBladeDashPaths };
 
-inline Bank kBladeSwingR1     { kBladeSwingR1Paths };
-inline Bank kBladeSwingR2     { kBladeSwingR2Paths };
-inline Bank kBladeSwingR3     { kBladeSwingR3Paths };
-inline Bank kBladeSwingL1     { kBladeSwingL1Paths };
-inline Bank kBladeSwingL2     { kBladeSwingL2Paths };
-inline Bank kBladeSwingL3     { kBladeSwingL3Paths };
-inline Bank kBladeHitR        { kBladeHitRPaths };
-inline Bank kBladeHitL        { kBladeHitLPaths };
-inline Bank kBladeHitFinishR  { kBladeHitFinishRPaths };
-inline Bank kBladeHitFinishL  { kBladeHitFinishLPaths };
-inline Bank kBladeChargePlus  { kBladeChargePlusPaths };
-inline Bank kBladeChargeMinus { kBladeChargeMinusPaths };
+inline constexpr std::string_view kSwordReadyPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Ready.wav",
+};
+inline Bank kSwordReady { kSwordReadyPaths };
+
+inline constexpr std::string_view kBladeChargeUpLoopPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Charge_Loop.wav",
+};
 inline Bank kBladeChargeUpLoop { kBladeChargeUpLoopPaths };
+
+inline constexpr std::string_view kBladeChargeUpFullPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Charge_Full.wav",
+};
 inline Bank kBladeChargeUpFull { kBladeChargeUpFullPaths };
-inline Bank kBladeChargeSlashR { kBladeChargeSlashRPaths };
-inline Bank kBladeChargeSlashL { kBladeChargeSlashLPaths };
-inline Bank kBladeDash        { kBladeDashPaths };
-inline Bank kNeutralize       { kNeutralizePaths };
 
-/// 空振りの «ヒュッ»。stage は 0 = 入口 / 1 = 途中 / 2 = 締め の 3 段階。
-///
-/// WHY 段番号そのものを受け取らないか: 素材は 3 種類しか無いのに連撃は 5 段ある。
-///     ここで «4 段目は何の音か» を決めると、段構成を変えるたびに音の割り当てが
-///     置き去りになる。«連撃のどこか» へ畳むのは段を数えている呼び出し側の仕事。
-[[nodiscard]] inline const Bank& BladeSwing(BladeSide p, int stage)
-{
-    const int s = stage < 0 ? 0 : (stage > 2 ? 2 : stage);
-    if (p == BladeSide::Right)
-        return s == 0 ? kBladeSwingR1 : s == 1 ? kBladeSwingR2 : kBladeSwingR3;
-    return s == 0 ? kBladeSwingL1 : s == 1 ? kBladeSwingL2 : kBladeSwingL3;
-}
-[[nodiscard]] inline const Bank& BladeHit(BladeSide p)
-{ return p == BladeSide::Right ? kBladeHitR : kBladeHitL; }
-[[nodiscard]] inline const Bank& BladeHitFinish(BladeSide p)
-{ return p == BladeSide::Right ? kBladeHitFinishR : kBladeHitFinishL; }
-[[nodiscard]] inline const Bank& BladeCharge(BladeSide p)
-{ return p == BladeSide::Right ? kBladeChargePlus : kBladeChargeMinus; }
-[[nodiscard]] inline const Bank& BladeChargeSlash(BladeSide p)
-{ return p == BladeSide::Right ? kBladeChargeSlashR : kBladeChargeSlashL; }
+inline constexpr std::string_view kSwordFluxPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Flux.wav",
+};
+inline Bank kSwordFlux { kSwordFluxPaths };
 
-// ── Impact ──────────────────────────────────────────────────────────────────
+inline constexpr std::string_view kSwordCadencePaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Cadence.wav",
+};
+inline Bank kSwordCadence { kSwordCadencePaths };
+inline constexpr std::string_view kSwordCorePaths[] = {
+    "Assets/Sound/SE/Weapon/SE_GS_Core_01.wav",
+    "Assets/Sound/SE/Weapon/SE_GS_Core_02.wav",
+};
+inline Bank kSwordCore { kSwordCorePaths };
+
 inline constexpr std::string_view kImpactLightPaths[] = {
     "Assets/Sound/SE/Impact/SE_IMP_Hit_Light_01.wav",
     "Assets/Sound/SE/Impact/SE_IMP_Hit_Light_02.wav",

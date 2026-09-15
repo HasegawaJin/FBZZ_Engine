@@ -226,8 +226,8 @@ inline void BladeChargeGlowComponent::OnUpdate()
     const bool swinging = m_blades->IsSwinging();
     if (swinging && !m_wasSwinging) {
         const BladeSide swung = m_blades->SwingSide();
-        // 溜め斬りは両刀 (Katana_Slash_Dual)。片方だけ灯すと、回っている 2 本の
-        // うち 1 本だけが暗いままになる。
+        // 溜め斬りは体ごと回る全周の一撃なので、枠を左右とも灯す。刀は 1 本なので
+        // 片方は空振りするが、灯し損ねるより害が無い (両手剣へ替えた名残)。
         if (m_blades->IsCharged()) {
             m_hands[0].flare = 1.0f;
             m_hands[1].flare = 1.0f;
@@ -275,7 +275,9 @@ inline void BladeChargeGlowComponent::OnUpdate()
 
         // 色は «その剣の» 極。左右で固定なので、溜めていないときの控えめな灯りでも
         // どちらが ＋ でどちらが − かが常に読める。
-        Vector4 color = hand == HandSide::Right ? kColorRight : kColorLeft;
+        // 刃は左右を名乗らない (BladeColors.hpp の PlayerBladeColor を参照)。
+        Vector4 color = PlayerBladeColor();
+        (void)hand;
         // 満溜めの瞬間だけ白へ寄せる。極性色のまま明るくすると、赤は «もっと赤い» に
         // しかならず «上限に着いた» が出ない。
         if (charging && flash > 0.0f) {

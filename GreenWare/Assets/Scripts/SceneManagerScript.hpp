@@ -25,15 +25,21 @@
 #pragma once
 
 #include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
+#include <Scripts/Title/ElectrodeRig.hpp>
 #include <Scripts/Utils/SceneTransition.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
+#include <cmath>
 #include <string>
+#include <vector>
 
 using namespace fbzz::scene;
 using fbzz::Time;
+using fbzz::math::Vector3;
+using fbzz::math::Vector4;
 
 namespace sandbox {
 
@@ -84,6 +90,9 @@ private:
     void ExecuteLoad();
     // マネージャーが居ないシーンで、今フレームの覆いを PostProcessSettings へ書く。
     void ApplyWipe();
+    void TickFusion();
+    void StartFusion(const Vector3& position);
+    void UpdateFusionVisual();
     // 遷移先。viaScene があればそちら (目的地は s_next へ)。
     [[nodiscard]] std::string Destination();
 
@@ -91,6 +100,12 @@ private:
     float      m_elapsed   = 0.0f;
     bool       m_fired     = false; // ボタン / タイマー二重発火防止
     bool       m_writing   = false; // 自分で postprocess を書いた (マネージャー無し)
+    float      m_loadingElapsed = 0.0f;
+    int        m_loadingDots = -1;
+    bool       m_fusionStarted = false;
+    float      m_fusionElapsed = 0.0f;
+    Vector3    m_fusionPosition = Vector3::ZERO;
+    std::vector<EntityID> m_fusionParts;
 };
 
 FBZZ_REFLECT(SceneManagerScript)
@@ -99,9 +114,19 @@ FBZZ_REFLECT(SceneManagerScript)
 inline void SceneManagerScript::OnStart()
 {
     if (autoTransition) {
+        const std::string next = transition::TakeNextScene();
+        if (!next.empty()) targetScene = next;
         // Load.scene モード: 静的変数から遷移先を受け取る
-        if (!s_next.empty())
+        else if (!s_next.empty())
             targetScene = s_next;
+        s_next.clear();
+        if (targetScene.empty() || targetScene == "Load") targetScene = "Title";
+        ui.SetText(scene.Find("LoadDestination"), targetScene);
+        m_loadingElapsed = 0.0f;
+        m_loadingDots = -1;
+        m_fusionStarted = false;
+        m_fusionElapsed = 0.0f;
+        m_fusionParts.clear();
     } else {
         // ボタンモード: 同 GO の UIButton をキャッシュ
         m_btn = scene.GetComponent<UIButton>();
@@ -115,15 +140,42 @@ inline void SceneManagerScript::OnUpdate()
     // 扉は実時間で進める。同じフレームに ScreenEffectManager も呼ぶが、進むのは 1 回。
     ApplyWipe();
 
+    if (autoTransition) TickFusion();
+
+    if (autoTransition && !m_fired) {
+        m_loadingElapsed += std::max(time.UnscaledDeltaTime(), 0.0f);
+        const int dots = static_cast<int>(m_loadingElapsed / 0.32f) % 4;
+        if (dots != m_loadingDots) {
+            std::string label = "NOW LOADING";
+            label.append(static_cast<std::size_t>(dots), '.');
+            ui.SetText(scene.Find("LoadingText"), label);
+            m_loadingDots = dots;
+        }
+    }
+
     // 塗っている / 剥がしている最中は押せない (押した瞬間にもう 1 枚扉が開く)。
     if (transition::Busy()) return;
-    if (m_fired) return;
+    if (m_fired) {
+        if (autoTransition && !transition::Active()
+            && transition::Mutable().failedTarget == targetScene) {
+            ui.SetText(scene.Find("LoadingText"), "LOAD FAILED");
+            ui.SetText(scene.Find("LoadStatus"), "Unable to open scene. Press Cancel to return.");
+            if (input.GetActionDown("Cancel")) {
+                targetScene = "Title";
+                m_fired = false;
+                m_elapsed = autoDelay;
+            }
+        }
+        return;
+    }
 
     if (autoTransition) {
         // 剥がし切ってから数える。剥がしている最中に数えると «見えた瞬間に去る» になる。
         if (transition::Active()) return;
-        m_elapsed += Time::deltaTime;
-        if (m_elapsed >= autoDelay && !targetScene.empty()) {
+        m_elapsed += std::max(time.UnscaledDeltaTime(), 0.0f);
+        const bool fusionSettled = !ElectrodeRig::IsFusionApproaching()
+            && (!m_fusionStarted || m_fusionElapsed >= 1.1f);
+        if (m_elapsed >= autoDelay && fusionSettled && !targetScene.empty()) {
             m_fired = true;
             BeginFadeOut();
         }
@@ -136,6 +188,160 @@ inline void SceneManagerScript::OnUpdate()
 
     m_fired = true;
     BeginFadeOut();
+}
+
+inline void SceneManagerScript::TickFusion()
+{
+    if (!m_fusionStarted) {
+        if (ElectrodeRig::IsFusionActive()) {
+            StartFusion(ElectrodeRig::FusionPosition());
+        }
+    }
+
+    if (m_fusionStarted) {
+        m_fusionElapsed += std::max(time.UnscaledDeltaTime(), 0.0f);
+        UpdateFusionVisual();
+    }
+}
+
+inline void SceneManagerScript::StartFusion(const Vector3& position)
+{
+    if (m_fusionStarted) return;
+    m_fusionStarted = true;
+    m_fusionPosition = position;
+    m_fusionElapsed = 0.0f;
+    ElectrodeRig::BeginFusion(position);
+
+    constexpr int kParts = 26;
+    m_fusionParts.reserve(kParts);
+    for (int index = 0; index < kParts; ++index) {
+        GameObject& part = scene.Create("LoadFusionCore");
+        part.runtimeGenerated = true;
+        part.transform.position = Vector3::ZERO;
+        auto& line = part.AddComponent<LineRendererComponent>();
+        line.materialPath = "Assets/Materials/Effects/ElectricArc.mat";
+        line.space = LineSpace::World;
+        line.billboard = true;
+        line.orderInLayer = 60;
+        line.points.reserve(49);
+        m_fusionParts.push_back(part.GetID());
+    }
+}
+
+inline void SceneManagerScript::UpdateFusionVisual()
+{
+    constexpr float kTwoPi = 6.28318530718f;
+    const float burst = fbzz::math::Clamp01(m_fusionElapsed / 0.65f);
+    const float travel = 1.0f - std::pow(1.0f - burst, 3.0f);
+    const float impact = std::exp(-m_fusionElapsed * 9.0f);
+    const float settle = 1.0f - 0.38f * std::exp(-m_fusionElapsed * 7.0f)
+        * std::cos(m_fusionElapsed * 19.0f);
+    const float pulse = settle * (1.0f + std::sin(m_fusionElapsed * 3.2f) * 0.025f);
+    const Vector4 green{ 0.12f, 1.0f, 0.38f, 1.0f };
+    const Vector4 glow{ 0.22f + impact * 0.42f, 1.0f, 0.45f + impact * 0.3f, 1.0f };
+
+    for (std::size_t index = 0; index < m_fusionParts.size(); ++index) {
+        GameObject* object = scene.GetGameObject(m_fusionParts[index]);
+        if (!object) continue;
+        auto* line = object->GetComponent<LineRendererComponent>();
+        if (!line) continue;
+
+        const MaterialInstance instance = material.Instance(EntityRef{ m_fusionParts[index] });
+        if (instance.HasProperty(MaterialPropertyId("coreColor"))) {
+            instance.SetVector4(MaterialPropertyId("tipColor"), green);
+            instance.SetVector4(MaterialPropertyId("coreColor"), { 0.6f, 1.6f, 0.85f, 1.0f });
+            instance.SetFloat(MaterialPropertyId("coreTint"), 0.85f);
+            instance.SetFloat(MaterialPropertyId("breakup"), index >= 12 ? 0.08f : 0.3f);
+            instance.SetFloat(MaterialPropertyId("phase"), m_fusionElapsed);
+            instance.SetFloat(MaterialPropertyId("travel"), index >= 12 ? 0.0f : 2.0f);
+        }
+
+        if (index >= 12) {
+            const float afterglow = std::max(m_fusionElapsed - 0.45f, 0.0f);
+            const float reveal = fbzz::math::Clamp01(afterglow / 0.4f);
+            line->enabled = reveal > 0.0f;
+            if (!line->enabled) continue;
+
+            line->points.clear();
+            if (index < 14) {
+                const float cycle = afterglow / 1.8f + static_cast<float>(index - 12) * 0.5f;
+                const float phase = cycle - std::floor(cycle);
+                const float radius = 0.5f + phase * 0.85f;
+                const float envelope = std::sin(phase * kTwoPi * 0.5f);
+                line->startWidth = 0.025f * (1.0f - phase * 0.65f);
+                line->endWidth = line->startWidth;
+                line->startColor = { green.x, green.y, green.z,
+                    reveal * envelope * envelope * 0.3f };
+                line->endColor = line->startColor;
+                for (int point = 0; point <= 48; ++point) {
+                    const float angle = kTwoPi * static_cast<float>(point) / 48.0f;
+                    line->points.push_back(m_fusionPosition
+                        + Vector3::RIGHT * std::cos(angle) * radius
+                        + Vector3::UP * std::sin(angle) * radius);
+                }
+            } else {
+                const float seed = static_cast<float>(index - 14);
+                const float cycle = afterglow / (1.5f + seed * 0.045f) + seed / 12.0f;
+                const float phase = cycle - std::floor(cycle);
+                const float envelope = std::sin(phase * kTwoPi * 0.5f);
+                const float radius = 0.36f + (1.0f - phase) * (1.0f - phase) * 0.95f;
+                const float angle = seed * 2.399963f + afterglow * 1.4f + phase * 3.2f;
+                const float alpha = reveal * envelope * envelope * 0.75f;
+                line->startWidth = 0.007f;
+                line->endWidth = 0.035f + envelope * 0.015f;
+                // ElectricArc は頂点色でなく startColor のアルファを帯全体へ使う。
+                line->startColor = { green.x, green.y, green.z, alpha };
+                line->endColor = { 0.3f, 1.0f, 0.55f, alpha };
+                for (int point = 0; point <= 6; ++point) {
+                    const float tail = 1.0f - static_cast<float>(point) / 6.0f;
+                    const float arc = angle - tail * 0.22f;
+                    const float distance = radius + tail * 0.08f;
+                    line->points.push_back(m_fusionPosition
+                        + Vector3::RIGHT * std::cos(arc) * distance
+                        + Vector3::UP * std::sin(arc) * distance);
+                }
+            }
+            continue;
+        }
+
+        if (index >= 3 && burst >= 1.0f) {
+            line->enabled = false;
+            continue;
+        }
+
+        const bool ring = index <= 3;
+        const float radius = index == 0 ? 0.48f * pulse
+            : index == 1 ? 0.13f * pulse
+            : index == 2 ? 0.29f * pulse
+            : 0.48f + travel * 1.5f;
+        line->enabled = true;
+        line->startWidth = index == 0 ? 0.065f + impact * 0.045f
+            : index == 1 ? 0.23f * pulse
+            : index == 2 ? 0.045f
+            : 0.085f * (1.0f - burst);
+        line->endWidth = line->startWidth;
+        line->startColor = index == 1 ? glow : green;
+        if (index >= 3) line->startColor.w = (1.0f - burst) * (1.0f - burst);
+        else if (index == 2) line->startColor.w = 0.45f;
+        line->endColor = line->startColor;
+
+        if (ring) {
+            line->points.clear();
+            for (int point = 0; point <= 48; ++point) {
+                const float angle = kTwoPi * static_cast<float>(point) / 48.0f;
+                line->points.push_back(m_fusionPosition
+                    + Vector3::RIGHT * std::cos(angle) * radius
+                    + Vector3::UP * std::sin(angle) * radius);
+            }
+        } else {
+            const int ray = static_cast<int>(index) - 4;
+            const float angle = kTwoPi * static_cast<float>(ray) / 8.0f;
+            const Vector3 direction = Vector3::RIGHT * std::cos(angle)
+                                    + Vector3::UP * std::sin(angle);
+            line->points = { m_fusionPosition + direction * (radius - 0.3f * (1.0f - burst)),
+                             m_fusionPosition + direction * radius };
+        }
+    }
 }
 
 inline void SceneManagerScript::ApplyWipe()

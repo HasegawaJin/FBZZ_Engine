@@ -85,6 +85,9 @@ public:
     FBZZ_FIELD_RANGE(float, engageDelay, 1.0f, "Engage Delay", 0.0f, 8.0f)
     FBZZ_TOOLTIP("起きてから最初の口が光るまで。踏み込んだ足が止まる時間")
 
+    FBZZ_FIELD(std::string, firstExitHole, "", "初回の出現穴")
+    FBZZ_FIELD(std::string, firstEntryHole, "", "初回の帰還穴")
+
     FBZZ_GROUP("音")
     FBZZ_FIELD_RANGE(float, crawlVolume, 0.7f, "匍匐の音量", 0.0f, 2.0f)
     FBZZ_TOOLTIP("這っている間の定常音。頭の速さに比例して鳴り、止まると切れる。0 で «音も無く迫る蛇» になる")
@@ -115,8 +118,8 @@ public:
                  "頭が床へ突っ込む角度になり、«睨んでいる» に見えない")
 
     FBZZ_GROUP("Attacks")
-    FBZZ_FIELD_RANGE(float, attackIntervalMin, 2.2f, "間隔の下限", 0.2f, 12.0f)
-    FBZZ_FIELD_RANGE(float, attackIntervalMax, 3.4f, "間隔の上限", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackIntervalMin, 1.5f, "間隔の下限", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackIntervalMax, 2.4f, "間隔の上限", 0.2f, 12.0f)
 
     // 突き上げ ─ 足元の穴から節が跳ね上がる。予兆は穴の縁が光る (18F)。
     //
@@ -268,9 +271,18 @@ public:
     FBZZ_TOOLTIP("走るときの速さの倍率。既定で約 15 m/s ─ 歩いて避けられない速さ")
     FBZZ_FIELD_RANGE(float, rushRadius, 2.20f, "半径", 0.5f, 10.0f)
     FBZZ_FIELD_RANGE_INT(int, rushDamage, 2, "ダメージ", 0, 100)
-    FBZZ_FIELD_RANGE(float, rushCooldown, 14.0f, "クールダウン", 0.0f, 90.0f)
-    FBZZ_FIELD_RANGE_INT(int, rushFromPhase, 2, "開始位相", 1, 3)
-    FBZZ_TOOLTIP("この段から出す。第 1 段は «盤面を作る練習の段» なので既定は 2")
+    FBZZ_FIELD_RANGE(float, rushCooldown, 7.0f, "クールダウン", 0.0f, 90.0f)
+    FBZZ_FIELD_RANGE_INT(int, rushFromPhase, 1, "開始位相", 1, 3)
+    FBZZ_TOOLTIP("この段から出す。第 1 段から走り、弾きを狙える主手にする")
+    FBZZ_FIELD_RANGE_INT(int, groundRushChains, 3, "地上連続突進", 1, 6)
+    FBZZ_TOOLTIP("穴へ戻らず床の上で繰り返す突進回数")
+    FBZZ_FIELD_RANGE(float, groundRushTelegraph, 0.45f, "地上突進予告", 0.1f, 2.0f)
+    FBZZ_TOOLTIP("地上連続突進の溜め。短くすると連続攻撃のリズムが速くなる")
+    FBZZ_FIELD(bool, leaveHeatTrail, true, "熱い地面を残す")
+    FBZZ_FIELD_RANGE(float, heatTrailSeconds, 4.0f, "熱い地面の持続", 0.5f, 12.0f)
+    FBZZ_FIELD_RANGE(float, heatTrailRadius, 2.0f, "熱い地面の半径", 0.5f, 6.0f)
+    FBZZ_FIELD_RANGE_INT(int, heatTrailDamage, 1, "熱い地面のダメージ", 0, 20)
+    FBZZ_FIELD_RANGE(float, heatTrailTick, 0.65f, "熱い地面の間隔", 0.1f, 3.0f)
 
     // 構えている間、頭がプレイヤーの正面へ滑る。
     //
@@ -401,13 +413,15 @@ public:
                  "«量» ではなく «質» が変わることで «今» が読める")
     FBZZ_FIELD_RANGE(float, telegraphStripeScrollHz, 0.45f, "縞のスクロール", -4.0f, 4.0f)
 
-    // 弾いて崩す (Docs/break-parry.md)。噛みつき (Lunge) と薙ぎ (Sweep) は弾ける。
-    // 崩しが満ちたら Toppled へ落ち、その間の とどめ で節がまとめて飛ぶ。
+    // 弾いて崩す (Docs/break-parry.md)。噛みつき (Lunge)・薙ぎ (Sweep)・走り (Rush) は弾ける。
+    // 走りを弾くと、そのまま地上へ引きずり出して短く晒す。
     FBZZ_GROUP("Break")
     FBZZ_FIELD_RANGE_INT(int, executeSegments, 4, "Execute Segments", 1, 12)
     FBZZ_TOOLTIP("とどめ 1 回で飛ぶ節の数。28 節 → 6 節が決着なので、既定なら 5〜6 回")
     FBZZ_FIELD_RANGE(float, parryRecoverScale, 1.6f, "Parried Recover x", 0.5f, 4.0f)
     FBZZ_TOOLTIP("噛みつきを弾かれたときの硬直の倍率 (外したときの Recover に掛かる)")
+    FBZZ_FIELD_RANGE(float, rushParryToppleSeconds, 3.5f, "Rush Parry Ground Seconds", 0.5f, 12.0f)
+    FBZZ_TOOLTIP("走りを弾かれたとき、地上に出て晒す時間。短すぎると反撃が間に合わない")
 
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugState, "Dormant", "状態")
@@ -500,6 +514,10 @@ private:
     bool BeginSlam();
     /// 口から口へ走り抜ける手。通り道の口を先に全部開ける。@ret 始めたら true。
     bool BeginRush();
+    /// 穴を使わず、現在の地上経路をプレイヤー側へ延長して突進する。
+    bool BeginGroundRush();
+    void TickHeatPatches(float dt);
+    void AddHeatPatch(const Vector3& point);
     [[nodiscard]] LaserVolleyComponent* Laserer() const
     {
         return scene.GetScript<LaserVolleyComponent>();
@@ -564,8 +582,29 @@ private:
     ///     刺さる。尾の弧長より後ろにある口はもう誰も乗っていないので、必ず安全に閉まる。
     void TickMouths();
     void RecordMouth(const std::string& hole, float arc);
-    /// その口にまだ胴が乗っているか (経路上の口として控えてあるか)。
+    /// その口にまだ **自分の** 胴が乗っているか (経路上の口として控えてあるか)。
     [[nodiscard]] bool MouthInUse(const std::string& hole) const;
+    /// 盤面の他の蛇がその口を使っているか。
+    ///
+    /// WHY 口の取り合いを見るか: 羽は盤面の設備で、蛇の数だけあるわけではない。
+    ///     渡り先の候補は «プレイヤーに近い順» に並ぶので、2 体同時に渡ると
+    ///     同じ組を選んで同じ弧の上で胴が重なる。閉じる側はもっと重く、
+    ///     片方が閉じた口の中でもう片方の胴が羽に刺さる。
+    [[nodiscard]] bool HoleTakenByOther(const std::string& hole) const;
+    /// 盤面の誰かがその口を使っているか。閉じてよいかの判断はこちらで見る。
+    [[nodiscard]] bool HoleInUse(const std::string& hole) const
+    {
+        return MouthInUse(hole) || HoleTakenByOther(hole);
+    }
+    /// 自分以外にまだ立っている蛇が居るか。
+    ///
+    /// WHY カメラの判断に要るか: 決め所のカメラは «操作しても意味が無い瞬間» にだけ
+    ///     取り上げてよい (BossCameraDirectorComponent の WHY)。もう 1 体がまだ
+    ///     戦っているなら、こちらが倒れても撃破されても操作には意味があり続ける ─
+    ///     とくに撃破の画は操作を返さないので、1 体目が死んだ時点で残りが遊べなくなる。
+    [[nodiscard]] bool AnotherSerpentAlive() const;
+    /// 盤面の他の蛇を 1 度だけ拾う (m_others)。
+    void ScanOthers() const;
     /// from から «窓の中» にある口を集める。弧の真ん中がプレイヤーに近い順。
     /// @param avoid 直前に出てきた口。他に選べるならここへは戻らない。
     /// 口の上に «落ちた節» が乗っているか。乗っている口は経路に選ばない。
@@ -702,6 +741,9 @@ private:
     std::string m_to;
     /// 経路上の口と、その口の弧長。尾が過ぎたら閉じて捨てる。
     std::vector<std::pair<std::string, float>> m_mouths;
+    /// 盤面の他の蛇。口の取り合いを見るのに引く (HoleTakenByOther)。
+    mutable std::vector<EntityRef> m_others;
+    mutable bool                   m_othersScanned = false;
     /// 今の薙ぎでもう栓を吹き飛ばしたか。薙ぎ 1 回につき 1 度きり。
     bool m_sweptDebris = false;
     /// 薙ぎで前後する起点。
@@ -722,6 +764,16 @@ private:
     /// 走り出す前に控えた弧長。溜めの «引き» はここからの相対で指す。
     float       m_rushFrom     = 0.0f;
     float       m_rushCooldown = 0.0f;
+    int         m_groundRushCount = 0;
+    bool        m_groundRush = false;
+    Vector3     m_groundRushFromPoint{};
+    Vector3     m_groundRushToPoint{};
+    struct HeatPatch {
+        Vector3 center{};
+        float   remaining = 0.0f;
+        float   cooldown  = 0.0f;
+    };
+    std::vector<HeatPatch> m_heatPatches;
     /// 前フレームに地上へ出ていたか。口から出るたびに当たりを入れ直す札。
     bool        m_rushSurfaced = false;
     /// 渡りの «床»。追い掛けはこれより前だけで、ここが構える位置に届いたら渡り終わり。
@@ -835,11 +887,15 @@ inline void SerpentAiComponent::Topple(float seconds)
     Enter(State::Toppled, std::max(seconds, 0.5f));
     if (auto* brk = Break()) brk->BeginTopple(std::max(seconds, 0.5f));
 
-    if (auto* camera = BossCameraDirectorComponent::Instance()) {
-        auto* spine = Spine();
-        camera->PlayAt(BossShot::Topple,
-                       spine ? spine->HeadPosition() : transform.worldPosition);
-    }
+    // もう 1 体がまだ立っているなら、カメラは預けない。5 秒の隙は «遊び» なので
+    // 取り上げはしないが、視点だけ移っても、その間こちらへ手を出す相手から
+    // 目を離すことになる。
+    if (!AnotherSerpentAlive())
+        if (auto* camera = BossCameraDirectorComponent::Instance()) {
+            auto* spine = Spine();
+            camera->PlayAt(BossShot::Topple,
+                           spine ? spine->HeadPosition() : transform.worldPosition);
+        }
 
     se::Play(audio, se::kBossChargeCrash);
     if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.75f);
@@ -887,6 +943,13 @@ inline void SerpentAiComponent::OnParried(const Vector3& hitPoint)
         Enter(State::SlamRecover, Max(slamRecover, 0.0f) * Max(parryRecoverScale, 0.1f));
         se::Play(audio, se::kBossDamaged);
         break;
+    case State::Rush:
+        // 走りを弾かれた。移動を止め、今出ている胴を地上の反撃時間へ変える。
+        m_dealt = true;
+        m_rushLegs.clear();
+        Topple(std::max(rushParryToppleSeconds, 0.5f));
+        se::Play(audio, se::kBossDamaged);
+        break;
     default:
         break;
     }
@@ -925,6 +988,9 @@ inline void SerpentAiComponent::Enter(State state, float timer)
     m_dealt  = false;
     m_waited = 0.0f;
     debugState = StateName();
+    if (auto* brk = Break())
+        brk->SetDecayPaused(state == State::Dormant || state == State::Emerge ||
+                            state == State::Transit || state == State::Dead);
 }
 
 inline void SerpentAiComponent::OnStart()
@@ -936,8 +1002,14 @@ inline void SerpentAiComponent::OnStart()
     //     見た目の «質» は共有の .mat が持っているので、ここで触るのは
     //     «この持ち主に固有の事情» だけに絞る。
     m_sweepTrail.AdoptContext(*this);
-    // 帯の実体名を分ける。プレイヤーと同じ名前だと互いの帯を奪い合う。
-    m_sweepTrail.trailObjectName = "SerpentSweepTrail";
+    // 帯の実体名を分ける。プレイヤーと同じ名前だと互いの帯を奪い合う ─
+    // 蛇どうしでも同じなので、持ち主の instanceId まで含めて分ける
+    // (実体はルートに置かれ、名前で拾い直される)。
+    {
+        const GameObject* self = scene.Self();
+        m_sweepTrail.trailObjectName =
+            "SerpentSweepTrail_" + (self ? self->instanceId : std::string("orphan"));
+    }
     // 匍匐音の口。盤面のどこかで鳴っている 3D の SE として出す。
     m_crawl.SetKey("SerpentCrawl");
     m_crawl.SetOutput("SE", 1.0f);
@@ -962,14 +1034,22 @@ inline void SerpentAiComponent::OnStart()
     m_to.clear();
     m_thrustHoles.clear();
     m_mouths.clear();
+    m_others.clear();
+    m_othersScanned = false;
     m_arcBase      = 0.0f;
     m_cageWarned   = false;
     // 開幕から檻は出さない。まず «渡って構える» を見せてからでないと、
     // 壁が «蛇の胴» だと分からない。
-    m_cageCooldown = Max(cageCooldown, 0.0f) * 0.5f;
-    m_rushCooldown = Max(rushCooldown, 0.0f) * 0.5f;
+    //
+    // WHY ばらすか: 2 体置く盤面 (Stage_02) で待ちが同じだと、2 匹が同じ拍で同じ手を
+    //     出す。予兆が重なって «1 つの大きな手» にしか見えず、どちらを見て避けるのか
+    //     決められなくなる。開幕だけ散らせば、以後は手番が自然にずれていく。
+    const auto stagger = [this](float seconds) { return seconds * random.Range(0.75f, 1.25f); };
+    m_cageCooldown = stagger(Max(cageCooldown, 0.0f) * 0.5f);
+    m_rushCooldown = stagger(Max(rushCooldown, 0.0f) * 0.5f);
     m_rushSurfaced = false;
     m_rushLegs.clear();
+    m_heatPatches.clear();
     m_cruiseFloor  = 0.0f;
     m_contactCool  = 0.0f;
     m_rushFrom     = 0.0f;
@@ -977,9 +1057,9 @@ inline void SerpentAiComponent::OnStart()
     m_wakeValid    = false;
     m_sweepDust    = 0.0f;
     m_biteCharged  = false;
-    m_laserCool    = Max(laserCooldown, 0.0f) * 0.6f;
-    m_lanceCool    = Max(lanceCooldown, 0.0f) * 0.6f;
-    m_fanCool      = Max(fanCooldown, 0.0f) * 0.6f;
+    m_laserCool    = stagger(Max(laserCooldown, 0.0f) * 0.6f);
+    m_lanceCool    = stagger(Max(lanceCooldown, 0.0f) * 0.6f);
+    m_fanCool      = stagger(Max(fanCooldown, 0.0f) * 0.6f);
     m_safeFor      = 0.0f;
     m_telegraph    = 1.0f;
     m_laserHoles.clear();
@@ -1087,6 +1167,16 @@ inline void SerpentAiComponent::CandidatesFrom(const std::string& from,
         if (!open.empty()) out.swap(open);
     }
 
+    // もう 1 体が使っている口も外す。並べ替えの基準が «プレイヤーへの近さ» なので、
+    // 2 体同時に渡ると候補の順まで揃い、同じ弧の上で胴が重なる。
+    // 空になったら許すのは上 2 つと同じ ─ 削るのであって詰ませるのではない。
+    if (!out.empty()) {
+        std::vector<std::string> vacant;
+        for (const std::string& id : out)
+            if (!HoleTakenByOther(id)) vacant.push_back(id);
+        if (!vacant.empty()) out.swap(vacant);
+    }
+
     // 並べ替えの基準は «弧の真ん中がプレイヤーにどれだけ近いか»。
     //
     // WHY 入る口の距離で測らないか: プレイヤーが相手にするのは口ではなく胴で、
@@ -1121,6 +1211,45 @@ inline void SerpentAiComponent::AimAtPlayer(float weight)
 inline void SerpentAiComponent::RecordMouth(const std::string& hole, float arc)
 {
     m_mouths.emplace_back(hole, arc);
+}
+
+inline void SerpentAiComponent::ScanOthers() const
+{
+    // 相手はシーンに置かれた時点で決まっていて、戦いのあいだ増えない。
+    // 型で全走査するのは 1 度だけにして、以後は参照から引き直す。
+    if (m_othersScanned) return;
+    m_othersScanned = true;
+
+    const GameObject* self = scene.Self();
+    for (GameObject* object : scene.FindObjectsOfType<SerpentAiComponent>())
+        if (object && object != self) m_others.push_back(EntityRef{ object->GetID() });
+}
+
+inline bool SerpentAiComponent::HoleTakenByOther(const std::string& hole) const
+{
+    if (hole.empty()) return false;
+    ScanOthers();
+
+    for (const EntityRef& ref : m_others) {
+        GameObject* object = ref.Resolve(scene);
+        if (!object || !object->activeInHierarchy()) continue;
+        const auto* other = scene.GetScript<SerpentAiComponent>(object);
+        if (other && other->MouthInUse(hole)) return true;
+    }
+    return false;
+}
+
+inline bool SerpentAiComponent::AnotherSerpentAlive() const
+{
+    ScanOthers();
+
+    for (const EntityRef& ref : m_others) {
+        GameObject* object = ref.Resolve(scene);
+        if (!object || !object->activeInHierarchy()) continue;
+        const auto* other = scene.GetScript<SerpentAiComponent>(object);
+        if (other && other->IsAlive()) return true;
+    }
+    return false;
 }
 
 inline bool SerpentAiComponent::MouthInUse(const std::string& hole) const
@@ -1195,9 +1324,28 @@ inline bool SerpentAiComponent::BeginFirstRoute()
         return false;
     }
 
-    const Vector3     player = Player() ? Player()->transform.worldPosition : Vector3::ZERO;
-    const std::string from   = aperture->NearestHole(player);
+    const Vector3 player = Player() ? Player()->transform.worldPosition : Vector3::ZERO;
 
+    // 出てくる口はプレイヤーの一番近く。ただし 2 体目はそこを 1 体目に取られている ─
+    // 同じ口から 2 匹が出ると、開幕の 1 手がまるごと重なって «1 体しか居ない» に見える。
+    std::string from = aperture->NearestHole(player);
+    if (HoleTakenByOther(from)) {
+        std::string vacant;
+        float       bestSq = 0.0f;
+        for (const std::string& id : aperture->Holes()) {
+            if (HoleTakenByOther(id)) continue;
+            const float distanceSq = (aperture->HoleCenter(id) - player).LengthSq();
+            if (!vacant.empty() && distanceSq >= bestSq) continue;
+            vacant = id;
+            bestSq = distanceSq;
+        }
+        // 全部取られている盤面では今までどおり一番近い口から出す (詰ませない)。
+        if (!vacant.empty()) from = vacant;
+    }
+
+    const auto& holes = aperture->Holes();
+    if (!firstExitHole.empty() && std::find(holes.begin(), holes.end(), firstExitHole) != holes.end()
+        && !HoleTakenByOther(firstExitHole)) from = firstExitHole;
     std::vector<std::string> candidates;
     CandidatesFrom(from, std::string{}, candidates);
     if (candidates.empty()) {
@@ -1211,6 +1359,8 @@ inline bool SerpentAiComponent::BeginFirstRoute()
     const int pick = random.Range(0, std::min(static_cast<int>(candidates.size()), 3) - 1);
     m_from = from;
     m_to   = candidates[static_cast<std::size_t>(pick)];
+    if (std::find(candidates.begin(), candidates.end(), firstEntryHole) != candidates.end())
+        m_to = firstEntryHole;
 
     path->BeginRoute(m_from, m_to, aperture->HoleCenter(m_from), aperture->HoleCenter(m_to),
                      ExposedMeters());
@@ -1253,7 +1403,9 @@ inline bool SerpentAiComponent::BeginTransit()
     const int pickNext = random.Range(0, std::min(static_cast<int>(arrivals.size()), 3) - 1);
     const std::string nextHole = arrivals[static_cast<std::size_t>(pickNext)];
 
-    if (!path->AppendRoute(exitHole, aperture->HoleCenter(exitHole), nextHole,
+    // 地上連続突進の後は、最後の弧の終点が穴ではない。リンクの始点は
+    // ラベルではなく実際の経路終端から取るので、床上からそのまま潜れる。
+    if (!path->AppendRoute(exitHole, path->At(path->LastArcEnd()), nextHole,
                            aperture->HoleCenter(nextHole), ExposedMeters()))
         return false;
 
@@ -1264,6 +1416,8 @@ inline bool SerpentAiComponent::BeginTransit()
     RecordMouth(m_from, path->LastArcStart());
     RecordMouth(m_to, path->LastArcEnd());
     debugRoute = m_from + " -> " + m_to;
+    m_groundRush = false;
+    m_groundRushCount = 0;
 
     m_nextExit.clear();
     for (std::string& hole : m_cage) hole.clear();
@@ -1431,6 +1585,7 @@ inline GameObject* SerpentAiComponent::EnsureDecal(int slot)
     DecalComponent* decal = object->GetComponent<DecalComponent>();
     if (!decal) decal = &object->AddComponent<DecalComponent>();
     if (!telegraphMaterial.empty()) decal->materialPath = telegraphMaterial;
+    decal->receiverLayerMask = fbzz::Layer::Mask(fbzz::Layer::Static);
 
     m_decals[slot] = EntityRef{ object->GetID() };
     return object;
@@ -1978,6 +2133,8 @@ inline bool SerpentAiComponent::BeginRush()
     m_rushTo       = path->HoldArc(holdRatio);
     m_rushFrom     = Spine() ? Spine()->HeadArc() : 0.0f;
     m_rushSurfaced = false;
+    m_groundRush = false;
+    m_groundRushCount = 0;
     m_nextExit.clear();
     for (std::string& hole : m_cage) hole.clear();
     debugRoute = "rush x" + std::to_string(static_cast<int>(m_rushLegs.size())) + " -> " + m_to;
@@ -1986,6 +2143,107 @@ inline bool SerpentAiComponent::BeginRush()
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.25f, 0.18f, 0.35f);
     EnterTelegraph(State::RushWindup, rushTelegraph);
     return true;
+}
+
+inline bool SerpentAiComponent::BeginGroundRush()
+{
+    auto* path  = Path();
+    auto* spine = Spine();
+    auto* player = Player();
+    if (!path || !spine || !player || !path->Valid()) return false;
+    if (m_groundRushCount >= std::max(groundRushChains, 1)) return false;
+
+    const float end = path->LastArcEnd();
+    if (spine->HeadArc() < end - 0.05f) return false;
+
+    const Vector3 from = path->At(end);
+    const Vector3 playerPoint = player->transform.worldPosition;
+    Vector3 to{ playerPoint.x, from.y, playerPoint.z };
+    ScanOthers();
+    for (const EntityRef& ref : m_others) {
+        GameObject* object = ref.Resolve(scene);
+        if (!object || !object->activeInHierarchy()) continue;
+        const auto* other = scene.GetScript<SerpentAiComponent>(object);
+        const auto* otherSpine = other ? other->Spine() : nullptr;
+        if (!otherSpine || !otherSpine->HeadIsExposed()) continue;
+
+        Vector3 away = to - otherSpine->HeadPosition();
+        away.y = 0.0f;
+        const float distanceToOther = away.Length();
+        const float keepDistance = Max(heatTrailRadius, 2.5f) * 2.0f;
+        if (distanceToOther > 0.01f && distanceToOther < keepDistance)
+            to += away.NormalizedOr(Vector3::FORWARD) * (keepDistance - distanceToOther);
+    }
+
+    Vector3 delta = to - from;
+    delta.y = 0.0f;
+    const float distance = delta.Length();
+    if (distance < 3.0f) return false;
+
+    to += delta.NormalizedOr(Vector3::FORWARD) * 2.0f;
+    const float exposed = Max(distance * 1.03f, 2.0f);
+    if (!path->AppendSurfaceRoute("Ground", from, "GroundTarget", to, exposed)) return false;
+
+    m_groundRushFromPoint = from;
+    m_groundRushToPoint   = to;
+    m_groundRush          = true;
+    ++m_groundRushCount;
+    m_rushFrom     = spine->HeadArc();
+    m_rushTo       = path->LastArcEnd();
+    m_rushSurfaced = false;
+    m_rushLegs.clear();
+    debugRoute = "ground rush " + std::to_string(m_groundRushCount) +
+                 "/" + std::to_string(std::max(groundRushChains, 1));
+
+    se::Play(audio, se::kBossChargeWindup);
+    EnterTelegraph(State::RushWindup, groundRushTelegraph);
+    return true;
+}
+
+inline void SerpentAiComponent::AddHeatPatch(const Vector3& point)
+{
+    if (!leaveHeatTrail || heatTrailSeconds <= 0.0f || heatTrailDamage <= 0) return;
+
+    const float mergeRadius = Max(heatTrailRadius, 0.5f) * 0.75f;
+    for (HeatPatch& patch : m_heatPatches) {
+        Vector3 delta = patch.center - point;
+        delta.y = 0.0f;
+        if (delta.LengthSq() > mergeRadius * mergeRadius) continue;
+        patch.remaining = Max(patch.remaining, heatTrailSeconds);
+        return;
+    }
+    m_heatPatches.push_back({ point, heatTrailSeconds, 0.0f });
+}
+
+inline void SerpentAiComponent::TickHeatPatches(float dt)
+{
+    if (m_heatPatches.empty()) return;
+
+    GameObject* player = Player();
+    auto* combat = CombatManagerComponent::Instance();
+    const float radius = Max(heatTrailRadius, 0.5f);
+    const float tick = Max(heatTrailTick, 0.1f);
+    std::vector<HeatPatch> keep;
+    keep.reserve(m_heatPatches.size());
+
+    for (HeatPatch patch : m_heatPatches) {
+        patch.remaining -= Max(dt, 0.0f);
+        patch.cooldown = Max(patch.cooldown - Max(dt, 0.0f), 0.0f);
+        if (patch.remaining <= 0.0f) continue;
+
+        if (player && combat && patch.cooldown <= 0.0f) {
+            Vector3 delta = player->transform.worldPosition - patch.center;
+            delta.y = 0.0f;
+            if (delta.LengthSq() <= radius * radius &&
+                std::abs(player->transform.worldPosition.y - patch.center.y) <= 2.0f) {
+                (void)combat->HitPlayer(player, heatTrailDamage, &patch.center,
+                                        PlayerHitKind::Unblockable);
+                patch.cooldown = tick;
+            }
+        }
+        keep.push_back(patch);
+    }
+    m_heatPatches.swap(keep);
 }
 
 inline void SerpentAiComponent::TickRushWake()
@@ -2015,6 +2273,7 @@ inline void SerpentAiComponent::TickRushWake()
     const Vector3 on = path->At(arc);
     if (auto* vfx = VfxManagerComponent::Instance())
         vfx->PlaySerpentRush(Vector3{ on.x, 0.0f, on.z }, path->Tangent(arc), 1.0f);
+    AddHeatPatch(Vector3{ on.x, 0.0f, on.z });
 }
 
 inline void SerpentAiComponent::TickSweepDust(float dt)
@@ -2037,6 +2296,12 @@ inline void SerpentAiComponent::TickSweepDust(float dt)
 
 inline void SerpentAiComponent::PushRushTelegraph(float progress)
 {
+    if (m_groundRush) {
+        PushTelegraphLine(m_groundRushFromPoint, m_groundRushToPoint, rushRadius,
+                          progress, /*travels=*/true);
+        return;
+    }
+
     const auto* aperture = Aperture();
     if (!aperture) return;
 
@@ -2178,6 +2443,8 @@ inline void SerpentAiComponent::DrawCage() const
 
 inline void SerpentAiComponent::TickSettle(float dt)
 {
+    auto* spine = Spine();
+    auto* path  = Path();
     // 弧の上を渡り «続ける»。着いたらそのまま次の口へ潜るので、止まる瞬間が無い。
     const bool arrived = DriveCruise(dt);
     // 進みながら睨む。ここで «次にどこへ来るか» を読ませる。
@@ -2205,6 +2472,13 @@ inline void SerpentAiComponent::TickSettle(float dt)
 
     // 渡りきったらそのまま潜る。組めなかったときだけ、その場で手を出しながら次を待つ。
     if (arrived) {
+        // 地上弧の終点まで出切ってから、穴を使わない突進を継ぎ足す。
+        // これを先に試すことで、構えへ戻るたびに地上で複数回走れる。
+        if (spine && path && spine->HeadArc() < path->LastArcEnd() - 0.05f) {
+            (void)spine->DriveHeadArc(path->LastArcEnd(), dt, 1.35f);
+            return;
+        }
+        if (BeginGroundRush()) return;
         if (BeginTransit()) return;
         if (!m_stallWarned) {
             m_stallWarned = true;
@@ -2237,7 +2511,6 @@ inline void SerpentAiComponent::TickSettle(float dt)
     // WHY 距離を «胴» で測るか: 薙ぎも叩きつけも走りも当たるのは胴で、頭はその先端に
     //     すぎない。頭で測ると、胴の真横に立っているのに «遠い» と判定される。
     GameObject* player = Player();
-    auto*       spine  = Spine();
     // WHY 変数名が far / near ではないか: windef.h が両方を空マクロとして定義して
     //     いるので、`const float far` はその場で消えて構文エラーになる。
     float range = 0.0f;
@@ -2313,7 +2586,9 @@ inline void SerpentAiComponent::OnUpdate()
     //     体が這っていて、状態の数だけ条件を書くと必ずどれかで音が切れる。
     if (spine && IsAlive() && m_state != State::Dormant) {
         const float ratio = Clamp01(spine->HeadSpeedNow() / Max(spine->headSpeed, 0.1f));
-        if (ratio > 0.06f) m_crawl.Update(*this, se::kSerpentCrawlLoop.First(),
+        if (ratio > 0.06f) m_crawl.Update(*this,
+                                           (m_state == State::Rush ? se::kSerpentRushLoop
+                                                                   : se::kSerpentCrawlLoop).First(),
                                           crawlVolume * ratio, 0.85f + 0.35f * ratio);
         else               m_crawl.Stop(*this);
     } else {
@@ -2344,11 +2619,16 @@ inline void SerpentAiComponent::OnUpdate()
         // EnemyDeathVfxComponent の側 (EnemyHealthComponent が撃破の瞬間に呼ぶ)。
         if (auto* death = scene.GetScript<SerpentDeathVfxComponent>()) death->Begin();
         // 引きながら回り込む決着の画。コアと同じ演出で、Boss02 を見つめる。
-        if (auto* camera = BossCameraDirectorComponent::Instance()) {
-            auto* spine = Spine();
-            camera->PlayAt(BossShot::Death,
-                           spine ? spine->HeadPosition() : transform.worldPosition);
-        }
+        //
+        // WHY 最後の 1 体のときだけか: 撃破の画は操作を返さない (そのままリザルトへ
+        //     行く前提の演出)。もう 1 体が立っているうちに出すと、1 体目を倒した
+        //     時点で残りの戦いが操作不能のまま流れ続ける。
+        if (!AnotherSerpentAlive())
+            if (auto* camera = BossCameraDirectorComponent::Instance()) {
+                auto* spine = Spine();
+                camera->PlayAt(BossShot::Death,
+                               spine ? spine->HeadPosition() : transform.worldPosition);
+            }
         // 倒れたら胴を床下へ引き取る。決着の «見え» は撃破演出が持つので、
         // ここは «もう手を出さない» だけを保証する。
         //
@@ -2372,11 +2652,13 @@ inline void SerpentAiComponent::OnUpdate()
     // 口の開け閉めは手番ではなく «尾がどこまで来たか» で決まる。
     if (m_state != State::Dormant) TickMouths();
     // 触れて痛いかは «状態» ではなく «速さ» で決まる。手番の外側で毎フレーム見る。
-    if (m_state != State::Dormant && m_state != State::Dead) TickBodyContact(dt);
+    if (m_state != State::Dormant && m_state != State::Dead &&
+        !cutscene::HoldsBoss(Time::unscaledTime)) TickBodyContact(dt);
 
     // 走っている間だけ削り跡を置く。走りを抜けたら «次に走り出した所» から数え直す。
     if (m_state == State::Rush) TickRushWake();
     else                        m_wakeValid = false;
+    TickHeatPatches(dt);
     if (m_state == State::Sweep) TickSweepDust(dt);
 
     switch (m_state) {
@@ -2396,7 +2678,10 @@ inline void SerpentAiComponent::OnUpdate()
                 Enter(State::Emerge);
                 // 出てくる所を見せる。渡り (Cross / Settle) は演出の一部なので止めず、
                 // 手 (TickSettle の攻撃) だけを cutscene::HoldsBoss で止める。
-                if (auto* camera = BossCameraDirectorComponent::Instance()) {
+                // 2 体同時に出てくる盤面では、先に出た方が登場の画を持つ。
+                // 後から言い直すと同じ演出が頭から掛かり直し、1 体目が出る所が消える。
+                if (auto* camera = BossCameraDirectorComponent::Instance();
+                    camera && !camera->IsPlaying()) {
                     auto* spine = Spine();
                     // 出てくる口の上を見る。根 (Boss02) は闘技場の中心で、そこには何も居ない。
                     const Vector3 at = spine ? spine->HeadPosition() : transform.worldPosition;
@@ -2478,7 +2763,8 @@ inline void SerpentAiComponent::OnUpdate()
 
                     // 胴が乗っている口は閉じない。閉じると渡っている最中の胴の上で
                     // 羽が戻り、床と胴が刺さる (経路の口は尾が過ぎてから閉じる)。
-                    if (!MouthInUse(hole)) aperture->Close(hole);
+                    // もう 1 体の胴が乗っている口も同じ ─ 見るのは盤面の全員。
+                    if (!HoleInUse(hole)) aperture->Close(hole);
                 }
                 se::Play(audio, se::kBossStompImpact);
                 // 3 口が同時に吹く手なのに揺れが無かった。叩きつけ (0.60) より
@@ -2593,23 +2879,17 @@ inline void SerpentAiComponent::OnUpdate()
                                            PlayerHitKind::Parryable);
         if (m_state != State::Lunge) break;
         if (arrived) {
-            // 外したら硬直する。頭が地上に居る唯一の «触れる» 時間。
-            if (m_dealt) Enter(State::Settle);
-            else {
-                // 空振って床へ突っ込んだ。溜めた光がここで途切れることに意味がある
-                // ので、着弾は必ず出す ─ 以前は外しても無音無絵で、«硬直している»
-                // という一番近づいてよい瞬間の合図が何も無かった。
-                if (spine && spine->HeadIsExposed()) {
-                    const Vector3 head = spine->HeadPosition();
-                    if (auto* vfx = VfxManagerComponent::Instance())
-                        vfx->PlaySerpentBite(Vector3{ head.x, 0.0f, head.z },
-                                             spine->HeadForward(), false);
-                    se::PlayAt(audio, se::kBossStompImpact, head, 0.8f);
-                    if (auto* shake = CameraShakeManagerComponent::Instance())
-                        shake->Shake(0.30f);
-                }
-                Enter(State::LungeRecover, Max(lungeRecover, 0.0f));
+            // 回避やガードでも m_dealt は立つ。結果によらず振り切った後の隙を残す。
+            if (spine && spine->HeadIsExposed()) {
+                const Vector3 head = spine->HeadPosition();
+                if (auto* vfx = VfxManagerComponent::Instance())
+                    vfx->PlaySerpentBite(Vector3{ head.x, 0.0f, head.z },
+                                         spine->HeadForward(), false);
+                se::PlayAt(audio, se::kBossStompImpact, head, 0.8f);
+                if (auto* shake = CameraShakeManagerComponent::Instance())
+                    shake->Shake(0.30f);
             }
+            Enter(State::LungeRecover, Max(lungeRecover, 0.0f));
         }
         break;
     }
@@ -2654,6 +2934,7 @@ inline void SerpentAiComponent::OnUpdate()
             const float t = Clamp01(m_timer / fall);
             DriveRise(t * t);
             (void)HitPlayerAlongBody(slamRadius, slamDamage);
+            if (m_state != State::Slam) break;
         }
         if (path && spine)
             PushTelegraphLine(path->At(path->LastArcStart()), spine->HeadPosition(), slamRadius,
@@ -2685,8 +2966,6 @@ inline void SerpentAiComponent::OnUpdate()
         if (m_recoil > 0.0f && spine) {
             m_recoil -= dt;
             (void)spine->DriveHeadArc(m_recoilArc, dt, 2.5f);
-        } else {
-            (void)DriveCruise(dt);
         }
         if (m_timer <= 0.0f) Enter(State::Settle);
         break;
@@ -2763,11 +3042,15 @@ inline void SerpentAiComponent::OnUpdate()
         //     目標が頭と一緒に逃げ続けるので、引きが止まらない。溜め 0.9 秒 × 3 m/s で
         //     2.7 m 下がり、溜めを伸ばすとそのぶん青天井に増えていた。
         //     走り出す位置は入った瞬間に決まっているべきなので、そこを控えて指す。
-        if (spine) (void)spine->DriveHeadArc(m_rushFrom - kRushCoil, dt, 0.5f);
+        // 地上突進は既に床へ出ているので、毎回後退してから走ると
+        // 連続突進の継ぎ目で逆走と急加速が見える。地上ではその場で溜める。
+        if (spine) {
+            const float coilTarget = m_groundRush ? m_rushFrom : m_rushFrom - kRushCoil;
+            (void)spine->DriveHeadArc(coilTarget, dt, 0.5f);
+        }
         AimAtPlayer(1.0f);
         PushRushTelegraph(TelegraphProgress());
         if (m_timer <= 0.0f) {
-            se::Play(audio, se::kBossChargeRun);
             if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.25f);
             Enter(State::Rush);
         }
@@ -2783,12 +3066,15 @@ inline void SerpentAiComponent::OnUpdate()
         if (onSurface && !m_rushSurfaced) m_dealt = false;
         m_rushSurfaced = onSurface;
 
-        (void)HitPlayerAlongBody(rushRadius, rushDamage);
+        (void)HitPlayerAlongBody(rushRadius, rushDamage, PlayerHitKind::Parryable);
         PushRushTelegraph(1.0f);
 
         if (spine->DriveHeadArc(m_rushTo, dt, rushSpeedScale)) {
             m_rushLegs.clear();
-            m_rushCooldown = Max(rushCooldown, 0.0f);
+            if (m_groundRush && m_groundRushCount < std::max(groundRushChains, 1) &&
+                BeginGroundRush())
+                break;
+            if (!m_groundRush) m_rushCooldown = Max(rushCooldown, 0.0f);
             m_attackIn     = random.Range(0.8f, 1.6f);
             Enter(State::Settle);
         }
@@ -2807,7 +3093,7 @@ inline void SerpentAiComponent::OnUpdate()
             // 柱のために開けた口を閉じる。胴が乗っている口は尾が過ぎてから閉じる。
             if (auto* aperture = Aperture())
                 for (const std::string& hole : m_laserHoles)
-                    if (!MouthInUse(hole)) aperture->Close(hole);
+                    if (!HoleInUse(hole)) aperture->Close(hole);
             m_laserHoles.clear();
             Enter(State::Settle);
         }
@@ -2895,7 +3181,11 @@ inline void SerpentAiComponent::OnUpdate()
             // 毎フレーム開け直し、閉じた床がその場で開き直る。
             m_mouths.clear();
             m_nextExit.clear();
-            if (auto* aperture = Aperture()) aperture->CloseAll();
+            // 全部閉じるのは «自分が最後の 1 体» のときだけ。もう 1 体が渡っている
+            // 最中の口まで閉めると、あちらの頭が縁の手前で 3 秒待たされる。
+            if (auto* aperture = Aperture())
+                for (const std::string& hole : aperture->Holes())
+                    if (!HoleTakenByOther(hole)) aperture->Close(hole);
         }
         break;
     }

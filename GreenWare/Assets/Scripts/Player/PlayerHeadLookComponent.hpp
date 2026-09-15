@@ -21,6 +21,7 @@
 ///   ポーズ側の Chest ひねりも、足 IK による腰の上下も、頭のワールド姿勢を動かす。
 ///   上流が動いた結果に対して向きを取り直さないと、狙点から少しずつずれる。
 #pragma once
+#include <Scripts/Game/TimeManagerComponent.hpp>
 
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -29,6 +30,7 @@
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
+#include <Scripts/Utils/PlayerActionState.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
 #include <cmath>
@@ -65,6 +67,21 @@ public:
     //     頭だけなら「気にしている」に読めるので、同じ判断を持ち込まない。
     FBZZ_FIELD(bool, lookWhenHolstered, true, "Look When Holstered")
 
+    FBZZ_GROUP("体ごと向く")
+    // WHY 頭だけで足りないか: 首の拘束は ±60 度 (clampDegrees) で、そこへ張り付いたまま
+    //     カメラを回し続けると «頭が限界で固まった人» になる。限界に達したら体を回して
+    //     首を中央へ戻すのが、TPS で «振り向いた» と読める唯一の形。
+    FBZZ_FIELD(bool, turnBodyBeyondClamp, true, "限界を越えたら体ごと向く")
+    FBZZ_FIELD_RANGE(float, bodyTurnDegrees, 50.0f, "体が動き出す角度", 10.0f, 180.0f)
+    FBZZ_TOOLTIP("カメラ前方と体の正面がこれだけ開いたら体が回り始める。"
+                 "Clamp Degrees より小さくしないと «首が限界で止まってから回る» になる")
+    // WHY 止める角を別に持つか: 同じ角で入り切りすると、境目でカメラを微動させるたびに
+    //     体が回ったり止まったりして震える。入る角より内側で止める。
+    FBZZ_FIELD_RANGE(float, bodyTurnReleaseDegrees, 12.0f, "止まる角度", 0.0f, 90.0f)
+    FBZZ_FIELD_RANGE(float, bodyTurnMaxSpeed, 1.5f, "止まっているとみなす速さ [m/s]", 0.0f, 10.0f)
+    FBZZ_TOOLTIP("歩いている間は進む向きが体を回すので、こちらは手を出さない")
+    FBZZ_FIELD_READ_ONLY(float, debugHeadYaw, 0.0f, "カメラとのずれ [度]")
+
     FBZZ_GROUP("軸")
     // 頭のローカル軸のうちどれが前かは FBX の軸変換とボーンロールで決まり、
     // リグを差し替えると変わる。既定は実行時に解決し、狂ったときだけ手で入れる。
@@ -85,6 +102,11 @@ public:
     void SetController(PlayerControllerComponent* controller) { m_controller = controller; }
     /// 銃を構えているかは銃の側の事実。収納中に見るかどうかの判断に使う。
     void SetWeaponRig(WeaponRigComponent* rig) { m_weaponRig = rig; }
+
+private:
+    /// 体を回している最中か。入る角と止まる角を別に持つためのラッチ。
+    bool m_turningBody = false;
+public:
 
     void OnStart() override;
     void OnUpdate() override;
@@ -113,6 +135,8 @@ private:
     [[nodiscard]] GameObject* HeadBone();
     /// 頭のローカル軸のうち、モデルの正面 / 上に最も近い直交軸を選ぶ。
     bool ResolveAxes(GameObject& headBone);
+    /// 首の限界を越えたぶんだけ体を回す。回している間は毎フレーム要求し続ける。
+    void TurnBodyIfNeeded(const Vector3& cameraForward);
     /// 視線の的を用意する。DLL リロードで Script だけ作り直されても増やさない。
     void EnsureTarget();
     /// Player は IKSolverComponent を持っていないので、視線を使う側が用意する。
@@ -355,17 +379,22 @@ inline void PlayerHeadLookComponent::OnUpdate()
     // WHY 敵ではなく照準の先を見るか: 6.4 でロックオンを廃したので、頭が向くべきなのは
     //     「選ばれた 1 体」ではなく「今どこへ線を引こうとしているか」になる。敵が居ない
     //     方向へ照準を振っている間も、視線が先に動く方がなぞりの意図が絵に出る。
-    auto*      aim   = Aim();
+    // WHY 敵ではなくカメラの前方を見るか: TPS で頭が向くべきなのは «プレイヤーが
+    //     見ている方» で、盤面に居る敵ではない。敵を見させると、画面の外の相手へ
+    //     首が張り付いて «あらぬ方向を向いたまま走る» になる。
     const bool drawn = !m_weaponRig || m_weaponRig->IsDrawn();
-    const bool wants = aim && aim->HasAim() && (drawn || lookWhenHolstered);
+    Vector3 cameraForward = Vector3::ZERO;
+    if (GameObject* camera = scene.GetMainCameraObject())
+        cameraForward = camera->transform.forward.NormalizedOr(Vector3::ZERO);
+    const bool wants = cameraForward.LengthSq() > EPSILON && (drawn || lookWhenHolstered);
     const Vector3 headPosition = head->transform.worldPosition;
 
     // WHY 見ない間も的を置き直すか: kWeightFloor で薄く回し続けるため、的を
     //     置き去りにすると残りかすが古い方向へ効き続ける。正面へ置けば、
     //     ウェイトが落ちる過程がそのまま「正面へ戻る」になる。
-    const Vector3 lookPoint = wants
-        ? aim->AimPoint()
-        : headPosition + (ModelRotation() * Vector3::FORWARD) * kIdleTargetDistance;
+    const Vector3 lookPoint = headPosition
+        + (wants ? cameraForward : (ModelRotation() * Vector3::FORWARD))
+              * kIdleTargetDistance;
     proxy->transform.position      = lookPoint;
     proxy->transform.worldPosition = lookPoint;
 
@@ -374,7 +403,7 @@ inline void PlayerHeadLookComponent::OnUpdate()
     //     頭が 1 フレームで正面へ戻り、切り替わるたびに首が跳ねる。
     const float desired = wants ? Clamp01(headWeight) : 0.0f;
     const float res = 1.0f - std::exp(
-        -std::max(weightResponse, 0.0f) * std::max(Time::deltaTime, 0.0f));
+        -std::max(weightResponse, 0.0f) * std::max(TimeManagerComponent::PlayerDeltaTime(), 0.0f));
     m_weight += (desired - m_weight) * res;
 
     // Inspector で触った値がその場のフレームから効くよう、毎回入れ直す。
@@ -389,10 +418,49 @@ inline void PlayerHeadLookComponent::OnUpdate()
     chain->lookAtUpAxis     = m_upAxis;
     debugWeight             = m_weight;
 
+    TurnBodyIfNeeded(cameraForward);
+
     if (drawDebugLine && wants)
         debug.DrawLine(headPosition, lookPoint, { 0.4f, 0.8f, 1.0f, 1.0f });
 }
 
+// 首が限界 (clampDegrees) に張り付く前に体を回し、視線を首の可動域の内側へ戻す。
+//
+// WHY 歩いている間は手を出さないか: 移動中は進む向きが体を回している。両方が
+//   RequestFacing を出すと 1 フレームごとに要求が入れ替わり、体が細かく振れる。
+// WHY 振っている間は手を出さないか: 斬撃と弾きは «斬る向き» を自分で決めて
+//   RequestFacing を出す。こちらが後から上書きすると、狙った先と刃の向きがずれる。
+//   (このモジュールは m_controller より後に回るので、黙って勝ってしまう)
+inline void PlayerHeadLookComponent::TurnBodyIfNeeded(const Vector3& cameraForward)
+{
+    debugHeadYaw = 0.0f;
+    if (!turnBodyBeyondClamp || !m_controller) { m_turningBody = false; return; }
+
+    Vector3 wanted = cameraForward;
+    wanted.y = 0.0f;
+    if (wanted.LengthSq() <= EPSILON) { m_turningBody = false; return; }
+    wanted = wanted.Normalized();
+
+    Vector3 facing = ModelRotation() * Vector3::FORWARD;
+    facing.y = 0.0f;
+    if (facing.LengthSq() <= EPSILON) { m_turningBody = false; return; }
+    facing = facing.Normalized();
+
+    const float dot   = std::clamp(Vector3::Dot(facing, wanted), -1.0f, 1.0f);
+    const float yaw   = ToDeg(std::acos(dot));
+    debugHeadYaw = yaw;
+
+    const auto blade = playeraction::Read(Time::time);
+    if (blade.swinging || blade.recovering) { m_turningBody = false; return; }
+    if (animator.GetFloat("Speed") > std::max(bodyTurnMaxSpeed, 0.0f)) {
+        m_turningBody = false;
+        return;
+    }
+
+    if (!m_turningBody && yaw >= std::max(bodyTurnDegrees, 1.0f)) m_turningBody = true;
+    if (m_turningBody && yaw <= std::max(bodyTurnReleaseDegrees, 0.0f)) m_turningBody = false;
+    if (m_turningBody) m_controller->RequestFacing(wanted);
+}
 inline void PlayerHeadLookComponent::OnDestroy()
 {
     // ルートに置いた以上、プレイヤーと一緒には消えない。持ち主が畳む。

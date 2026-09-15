@@ -23,7 +23,6 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
-#include <Scripts/Game/GameSettingsComponent.hpp>
 #include <algorithm>
 #include <string>
 
@@ -145,8 +144,7 @@ inline void ChainDisplayComponent::OnLateUpdate()
             m_perfectRemaining = std::max(perfectSeconds, 0.0f);
         }
     }
-    const bool wanted = GameSettingsComponent::GameOrDefault().chain
-                     && chain >= std::max(minimumChain, 1);
+    const bool wanted = chain >= std::max(minimumChain, 1);
 
     if (!wanted) {
         if (m_visible) {

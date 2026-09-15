@@ -21,6 +21,8 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/EntityRef.hpp>
+#include <Engine/Scene/GameObject.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Game/GameSettingsComponent.hpp>
 #include <algorithm>
@@ -70,6 +72,9 @@ public:
 
     /// 画角を一瞬広げる (点火・集束などの手応え)。Option で切られていれば何もしない。
     void PunchFov(float strength01);
+    void FrameParry(GameObject* opponent)
+    { m_parryOpponent = opponent ? EntityRef{opponent->GetID()} : EntityRef{}; }
+    [[nodiscard]] GameObject* ParryOpponent() const { return m_parryOpponent.Resolve(scene); }
 
     /// カメラが毎フレーム読む合成済みのたるみ (0..1)。
     [[nodiscard]] float HorizontalSlack() const { return m_horizontal; }
@@ -91,6 +96,7 @@ private:
     static inline CameraFollowManagerComponent* s_instance = nullptr;
 
     std::vector<Request_> m_requests;
+    EntityRef m_parryOpponent;
     float m_horizontal = 0.0f;
     float m_vertical   = 0.0f;
 
@@ -113,6 +119,7 @@ inline void CameraFollowManagerComponent::OnStart()
     m_requests.clear();
     m_horizontal = 0.0f;
     m_vertical   = 0.0f;
+    m_parryOpponent = {};
     m_fovOffset  = 0.0f;
     m_fovTarget  = 0.0f;
     m_fovAttackRemaining = 0.0f;

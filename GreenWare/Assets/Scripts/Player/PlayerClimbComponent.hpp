@@ -98,7 +98,8 @@ public:
                  "(0.73s、WeaponSockets の kKatanaSheatheTransferL) なので、"
                  "そこを下回ると刀を握ったまま壁を掴み始める。クリップ全体 (40F/1.33s) は待たない")
     FBZZ_FIELD_RANGE(float, drawSeconds, 0.60f, "抜刀", 0.0f, 3.0f)
-    FBZZ_TOOLTIP("Katana_Draw は 34F/1.13s、刀が手へ移るのは f18 (0.60s)")
+    FBZZ_TOOLTIP("抜刀クリップの尺。**両手剣のセットに抜刀・納刀は無く、登攀も 2026-09-10 に "
+                 "取り下げられている** ─ この値は使われない")
 
     FBZZ_GROUP("甲板")
     FBZZ_FIELD(std::string, deckAnchorBone, "Body", "基準の骨")

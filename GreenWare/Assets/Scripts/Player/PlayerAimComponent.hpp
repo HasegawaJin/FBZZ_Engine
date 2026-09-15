@@ -13,11 +13,13 @@
 ///   TPS でプレイヤーの体から引くと、カメラと体の横ずれのぶんだけ画面中央と
 ///   照準がずれ、遠いほど開く。画面の中央が狙っている先である方が読みやすい。
 ///
-/// WHY «どれを狙うか» を選ばないか:
-///   盤面に立っているのはボス 1 体だけで、選ぶ余地がそもそも無い。最寄りを探したり
-///   視界に入っているかを測ったりしても答えは常に同じで、条件を足したぶんだけ
-///   «なぜか枠が付かない» 状態を作れるようになる。名簿 (IBoss) が返す 1 体を
-///   そのまま相手とする ─ 眠っているボスは名簿の側が弾く。
+/// WHY «どれを狙うか» を照準の点への近さで決めるか (2026-09-15):
+///   長らく盤面に立っているのはボス 1 体だけで、名簿 (IBoss) が返す 1 体を
+///   そのまま相手にしていた。Stage_02 が蛇を 2 体置いたことで «どれか 1 体» が
+///   毎フレーム入れ替わるようになり、枠・首の向き・吸い付きの先が同じフレームでも
+///   ばらけるようになった。基準は照準の点 ─ 画面の中央が狙っている先である、
+///   というこのファイルの前提をそのまま «相手» の選び方にも使う。
+///   近さは IBoss::FocusPoint で測る。蛇はルートが据え置きで、胴だけが動く。
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>
@@ -180,8 +182,8 @@ inline void PlayerAimComponent::OnLateUpdate()
     m_hitGeometry   = geometry.hit;
     m_surfaceNormal = geometry.normal;
 
-    // 相手は選ばない。名簿が返す 1 体がそのまま «戦っている相手» (冒頭の WHY)。
-    m_target = FindBossOnBoard(scene);
+    // 照準の点に一番近い相手。1 体しか立っていない盤面では今までどおり «その 1 体»。
+    m_target = FindNearestBossOnBoard(scene, m_aimPoint);
     if (m_target) debugAimTarget = m_target->name;
     ReportTargetChange();
 

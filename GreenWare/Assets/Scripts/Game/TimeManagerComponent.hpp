@@ -62,14 +62,14 @@ public:
 
     /// 今どれだけ遅いか [0,1]。0 で等速、1 で完全停止。画面効果がこれを読む
     /// (Override = ヒットストップは含めない。あちらは Freeze が別に描く)。
-    [[nodiscard]] float Slow01() const { return Clamp01(1.0f - m_blended); }
+    [[nodiscard]] float Slow01() const { return Clamp01(1.0f - (IsParryRush() ? std::min(m_blended, m_rushScale) : m_blended)); }
 
     // --- ポーズ (スローより優先、解除するまで維持) ---
     void SetPaused(bool paused) { m_paused = paused; }
     [[nodiscard]] bool IsPaused() const { return m_paused; }
 
     // --- 絶対上書き (最優先。ヒットストップが使う) ---
-    // 有効な間はスローもポーズも無視してこの値になる。解除で下の層へ戻る。
+    // 有効な間は演出スローより優先する。ポーズは停止を維持する。解除で下の層へ戻る。
     void SetOverride(float scale);
     void ClearOverride() { m_hasOverride = false; }
     [[nodiscard]] bool HasOverride() const { return m_hasOverride; }
@@ -77,6 +77,43 @@ public:
     [[nodiscard]] float CurrentScale() const { return debugScale; }
 
     void OnStart() override;
+    void BeginParryRush(float seconds, float worldScale, float attackSpeed)
+    {
+        m_rushRemaining = m_rushDuration = std::max(seconds, 0.0f);
+        m_rushScale = std::clamp(worldScale, 0.125f, 1.0f);
+        m_rushAttackSpeed = std::clamp(attackSpeed, 1.0f, 3.0f);
+    }
+    void EnsureParryRushSeconds(float seconds)
+    {
+        if (!IsParryRush()) return;
+        m_rushRemaining = std::max(m_rushRemaining, seconds);
+        m_rushDuration = std::max(m_rushDuration, m_rushRemaining);
+    }
+    void EndParryRush() { m_rushRemaining = 0.0f; }
+    [[nodiscard]] bool IsParryRush() const { return m_rushRemaining > 0.0f; }
+    [[nodiscard]] float ParryRush01() const
+    { return m_rushDuration > 0.0f ? Clamp01(m_rushRemaining / m_rushDuration) : 0.0f; }
+    [[nodiscard]] static float PlayerTimeScale()
+    {
+        const auto* manager = Instance();
+        if (manager && manager->IsPaused()) return 0.0f;
+        if (!manager || !manager->IsParryRush() || manager->IsPaused()
+            || manager->HasOverride() || Time::deltaTime <= 0.0f) return 1.0f;
+        return std::clamp(Time::unscaledDeltaTime / Time::deltaTime, 1.0f, 8.0f);
+    }
+    [[nodiscard]] static float PlayerDeltaTime()
+    {
+        const auto* manager = Instance();
+        if (manager && manager->IsPaused()) return 0.0f;
+        return std::max(Time::deltaTime, 0.0f) * PlayerTimeScale();
+    }
+    [[nodiscard]] static float RushAttackSpeed()
+    {
+        const auto* manager = Instance();
+        return manager && manager->IsParryRush() ? manager->m_rushAttackSpeed : 1.0f;
+    }
+    [[nodiscard]] static bool ParryRushActive()
+    { return Instance() && Instance()->IsParryRush(); }
     void OnUpdate() override;
     void OnDestroy() override;
 
@@ -93,6 +130,10 @@ private:
     }
 
     float m_slowTarget   = 1.0f;
+    float m_rushRemaining = 0.0f;
+    float m_rushDuration = 0.0f;
+    float m_rushScale = 0.25f;
+    float m_rushAttackSpeed = 1.65f;
     float m_blendSeconds = 0.0f;
     float m_blended      = 1.0f;   // 実際に適用している下位層の値
     float m_slowRemaining = 0.0f;  // SlowFor の残り (実時間)。0 以下で無期限
@@ -112,6 +153,7 @@ inline void TimeManagerComponent::OnStart()
                          "The most recently started one takes over.");
     }
     s_instance = this;
+    m_rushRemaining = 0.0f;
 
     m_slowTarget    = 1.0f;
     m_blended       = 1.0f;
@@ -179,6 +221,8 @@ inline void TimeManagerComponent::OnUpdate()
         if (m_slowRemaining <= 0.0f) ClearSlow(m_slowOutBlend);
     }
 
+    if (!m_paused && !m_hasOverride)
+        m_rushRemaining = std::max(m_rushRemaining - dt, 0.0f);
     const float target = m_paused ? 0.0f : m_slowTarget;
     if (m_blendSeconds <= 0.0f) {
         m_blended = target;
@@ -189,12 +233,14 @@ inline void TimeManagerComponent::OnUpdate()
         if (std::abs(target - m_blended) < 0.001f) m_blended = target;
     }
 
-    const float applied = m_hasOverride ? m_overrideScale : m_blended;
+    const float worldScale = IsParryRush() ? std::min(m_blended, m_rushScale) : m_blended;
+    const float applied = m_paused ? 0.0f : m_hasOverride ? m_overrideScale : worldScale;
     time.SetTimeScale(applied);
 
     debugScale  = applied;
     debugSource = m_hasOverride ? "Override"
                 : m_paused      ? "Paused"
+                : IsParryRush() ? "Parry Rush"
                 : (m_blended < 0.999f) ? "Slow"
                                        : "Normal";
 }

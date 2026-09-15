@@ -96,6 +96,9 @@ public:
     /// @ret 足せたら true。
     bool AppendRoute(const std::string& exitHole, const Vector3& exitCenter,
                      const std::string& to, const Vector3& toCenter, float exposedMeters);
+    /// 現在の終端から床上だけを走る弧を継ぎ足す。穴を開けずに地上移動を続けるために使う。
+    bool AppendSurfaceRoute(const std::string& from, const Vector3& fromCenter,
+                            const std::string& to, const Vector3& toCenter, float exposedMeters);
     /// 経路を持っているか。張る前は At() が原点を返すだけになる。
     [[nodiscard]] bool Valid() const { return !m_pieces.empty(); }
 
@@ -347,6 +350,23 @@ inline bool SerpentPathComponent::AppendRoute(const std::string& exitHole,
     m_pieces.push_back(std::move(link));
     m_pieces.push_back(std::move(arc));
     debugRoute  = m_pieces.back().from + " -> " + m_pieces.back().to;
+    debugPieces = static_cast<int>(m_pieces.size());
+    return true;
+}
+
+inline bool SerpentPathComponent::AppendSurfaceRoute(const std::string& from,
+                                                     const Vector3& fromCenter,
+                                                     const std::string& to,
+                                                     const Vector3& toCenter,
+                                                     float exposedMeters)
+{
+    if (m_pieces.empty()) return false;
+
+    Piece arc;
+    if (!ShapeArc(arc, from, to, fromCenter, toCenter, exposedMeters)) return false;
+    arc.start = m_pieces.back().start + m_pieces.back().length;
+    m_pieces.push_back(std::move(arc));
+    debugRoute  = from + " -> " + to;
     debugPieces = static_cast<int>(m_pieces.size());
     return true;
 }

@@ -29,6 +29,7 @@ class AimMarkerComponent : public Script {
     FBZZ_SCRIPT(AimMarkerComponent)
 
 public:
+    FBZZ_FIELD(bool, showAimMarker, false, "AIM枠を表示")
     FBZZ_GROUP("配置")
     FBZZ_FIELD_RANGE(float, padding, 0.25f, "Padding", 0.0f, 3.0f)
     FBZZ_TOOLTIP("体の外周から枠までのワールド距離。体にぴったり付けると輪郭に紛れる")
@@ -218,7 +219,7 @@ inline void AimMarkerComponent::OnLateUpdate()
     debugTargetName = target ? target->name : std::string{};
 
     auto* canvas = canvasObject->GetComponent<UICanvas>();
-    if (!target) {
+    if (!showAimMarker || !target) {
         if (canvas) canvas->enabled = false;
         m_lastTarget = {};
         return;

@@ -72,23 +72,29 @@ inline void SeWarmupComponent::OnStart()
     m_head = 0;
 
     if (warmBlades) {
-        // 段ごとに束が別なので、左右 3 段ぶんを名指しで積む。
-        for (int stage = 0; stage < 3; ++stage) {
-            Push(se::BladeSwing(BladeSide::Right, stage));
-            Push(se::BladeSwing(BladeSide::Left,  stage));
-        }
-        for (BladeSide side : { BladeSide::Right, BladeSide::Left }) {
-            Push(se::BladeHit(side));
-            Push(se::BladeHitFinish(side));
-            Push(se::BladeChargeSlash(side));
-        }
-        Push(se::kBladeChargeUpFull);
-        Push(se::kBladeRepulse);
+        Push(se::kSwordSwingDown);
+        Push(se::kSwordSwingUp);
+        Push(se::kSwordSwingSpin);
+        Push(se::kSwordSwingSlide);
+        Push(se::kSwordSwingAir);
+        Push(se::kSwordSwingFinish);
+        Push(se::kSwordSwingCharge);
+        Push(se::kSwordHit);
+        Push(se::kSwordHitHeavy);
+        Push(se::kSwordExecute);
+        Push(se::kSwordParry);
+        Push(se::kSwordParryJust);
+        Push(se::kSwordGuard);
         Push(se::kBladeDash);
+        Push(se::kSwordReady);
+        Push(se::kBladeChargeUpLoop);
+        Push(se::kBladeChargeUpFull);
+        Push(se::kSwordFlux);
+        Push(se::kSwordCadence);
+        Push(se::kSwordCore);
     }
     if (warmPlayer) {
-        Push(se::kPlayerFootstepWalk);
-        Push(se::kPlayerFootstepRun);
+        Push(se::kPlayerMotorLoop);
         Push(se::kPlayerDodge);
         Push(se::kPlayerDodgeEnd);
         Push(se::kPlayerLanding);
@@ -97,6 +103,7 @@ inline void SeWarmupComponent::OnStart()
         Push(se::kPlayerWeaponStow);
         Push(se::kPlayerWeaponDeploy);
         Push(se::kPlayerClimbGrab);
+        Push(se::kPlayerJump);
     }
     if (warmImpact) {
         Push(se::kImpactLight);
@@ -111,6 +118,17 @@ inline void SeWarmupComponent::OnStart()
     if (warmBoss) {
         Push(se::kBossStepWalk);
         Push(se::kBossStepCharge);
+        Push(se::kBossServoLoop);
+        Push(se::kBossChargeRun);
+        Push(se::kBossChargeWindup);
+        Push(se::kBossChargeCrash);
+        Push(se::kBossStunLoop);
+        Push(se::kBossStunRecover);
+        Push(se::kBossAppear);
+        Push(se::kBossLanding);
+        Push(se::kSerpentCrawlLoop);
+        Push(se::kSerpentRushLoop);
+        Push(se::kSerpentRear);
         Push(se::kBossDamaged);
         Push(se::kBossHatchOpen);
         Push(se::kBossHatchClose);

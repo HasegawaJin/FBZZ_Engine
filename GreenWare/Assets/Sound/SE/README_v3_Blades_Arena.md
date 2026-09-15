@@ -1,5 +1,8 @@
 # GreenWare SFX — v3（双剣化 / アリーナ実寸 対応）
 
+> 双剣時代の制作記録。Player戦闘SEは2026-09-14に差し替え済み。
+> 現行仕様は [Player戦闘SE](../../../../Docs/design/player-combat-audio.md)。以下の削除依頼は当時の記録。
+
 48kHz / 16bit / モノラル WAV。すべて手続き的合成（録音素材は不使用）。
 `Assets/Sound/SE/<カテゴリ>/` に、これまでと同じ並びで入る。
 

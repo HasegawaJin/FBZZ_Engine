@@ -494,12 +494,12 @@ inline void SerpentSpineComponent::Solve()
 
     // 骨の +Y が «次の関節» を向く。潰れて重なった関節では 1 つ手前の向きを継ぐ。
     Vector3 dir[serpent::kBoneCount];
-    // 頭は «次の関節» を持たないので経路の接線を使う。蠕動を乗せた後は、
-    // 直後の関節との差の方が実際の胴の向きに合う。
+    // 頭は «次の関節» を持たないので経路の接線を主軸にする。蠕動後の関節差分だけを
+    // そのまま使うと、波の位相が進むたびに頭の向きまで細かく揺れる。
     const Vector3 headDelta = m_joints[0] - m_joints[1];
-    dir[0] = headDelta.LengthSq() > 1.0e-8f
-        ? headDelta.NormalizedOr(path->Tangent(m_headArc))
-        : path->Tangent(m_headArc);
+    const Vector3 pathDirection = path->Tangent(m_headArc);
+    const Vector3 bodyDirection = headDelta.NormalizedOr(pathDirection);
+    dir[0] = (pathDirection * 0.75f + bodyDirection * 0.25f).NormalizedOr(pathDirection);
     for (int i = 1; i < serpent::kBoneCount; ++i) {
         const Vector3 delta = m_joints[i - 1] - m_joints[i];
         dir[i] = delta.LengthSq() > 1.0e-8f ? delta.NormalizedOr(dir[i - 1]) : dir[i - 1];
