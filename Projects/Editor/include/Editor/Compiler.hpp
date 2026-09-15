@@ -30,6 +30,7 @@ public:
         // WHY: ホットリロード時はエディタプロセスがエンジン DLL をロック中のため、
         //      依存ターゲットの再ビルドをスキップしないとリンカが失敗する。
         bool                  skipDeps = false;
+        bool                  rebuild = false;
     };
 
     Compiler() = default;

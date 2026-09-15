@@ -68,6 +68,7 @@ private:
         Compile,          // standalone ターゲットを CMake でビルドする
         PrepareTempDir,   // 一時ディレクトリを用意する
         CopyExecutable,   // standalone exe を <ProductName>.exe としてコピー
+        ApplyIcon,        // Build Settings のアイコン画像を exe のリソースへ焼く
         CopyDlls,         // exe 隣のランタイム DLL をコピー
         EnumerateFiles,   // コピー対象ファイル一覧を収集する
         CopyFiles,        // ファイルを 1 つずつコピー (複数フレーム)

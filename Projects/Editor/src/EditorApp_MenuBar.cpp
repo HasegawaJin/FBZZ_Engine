@@ -904,6 +904,12 @@ void EditorApp::StartPlayMode()
         m_ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
     if (!m_ctx.activeScene || !m_playMode.IsInEditor() || scriptReloadBusy)
         return;
+    if (!m_scriptDll.IsLoaded() && !m_scriptDllPath.empty()) {
+        m_ctx.requestScriptReload = true;
+        Toast::Error("Scripts unavailable. Rebuilding; press Play again after success.");
+        FBZZ_LOG_WARN("Play: Scripts DLL is unavailable; rebuild requested");
+        return;
+    }
     // Prefab 編集面には「シーン」が無い (カメラもライトも無い、プレファブ単体)。
     // WHY: そのまま Play すると空舞台でゲームが動き出し、Stop 時のスナップショット復元も
     //      プレファブの内容に対して行われる。編集面から出るまで開始させない。

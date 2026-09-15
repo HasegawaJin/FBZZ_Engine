@@ -3,6 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-03
 #include <Editor/ScriptDllLoader.hpp>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
@@ -46,16 +50,6 @@ std::wstring MakeTimestamp()
     const auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
     return std::to_wstring(ms);
 }
-
-// ── 古い DLL からエディターを守る 2 段構え ──────────────────────────────────
-//
-// WHY 要るか: Engine のヘッダーを触った日に Scripts.dll を建て直さないと、DLL は
-//     «別のレイアウトの Engine» を前提にしたまま読み込まれる。運が良ければ
-//     ScriptDllAbi の署名が弾くが、それはロードの «後» の話で、
-//       - 消えたエクスポート (既定引数の追加でマングル名が変わる) はロード自体を失敗させ、
-//       - DllMain / 静的初期化での違反はエディター本体を道連れにする。
-//     後者は «再ビルドすれば直る» ことにすら気付けない形で落ちるので、
-//     (1) 読む前に «古い» と分かるものは読まない、(2) それでも落ちたら受け止める。
 
 // 実行中の FBZZEngine.dll の最終更新時刻。取れなければ nullopt。
 std::optional<std::filesystem::file_time_type> EngineModuleWriteTime()
@@ -125,29 +119,29 @@ bool ScriptDllLoader::Load(const std::filesystem::path& dllPath)
 
     m_dllPath = dllPath;
 
+    return LoadCopy(dllPath);
+}
+
+bool ScriptDllLoader::LoadCopy(const std::filesystem::path& dllPath)
+{
     if (!util::FileSystem::Exists(dllPath)) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Load: DLL not found: %ls",
                        dllPath.wstring().c_str());
         return false;
     }
 
-    // Engine より古い DLL は読まない。
-    // WHY 署名チェックに任せないか: 署名を見るのはロードの後で、そこへ辿り着く前に
-    //     «消えたエクスポート» や «静的初期化での違反» で落ちることがある。
-    //     «エンジンより古い» は確実に作り直しが要る状態なので、触らずに突き返す。
+    // リンク順序だけでも日時は前後するため、互換性の判定は ABI 検査で行う。
     if (const auto engineTime = EngineModuleWriteTime()) {
         std::error_code ec;
         const auto dllTime = std::filesystem::last_write_time(dllPath, ec);
         if (!ec && dllTime < *engineTime) {
             FBZZ_LOG_WARN("ScriptDllLoader::Load: Scripts DLL は FBZZEngine.dll より古いため "
-                          "読み込みません (再ビルドが要ります): %ls",
+                          "ABI を検査します: %ls",
                           dllPath.wstring().c_str());
-            return false;
         }
     }
 
     // _hot/ にコピーしてからロードする (元ファイルを再ビルドできるようにするため)
-    CleanHotDir();
     m_hotCopy = CopyToHot(dllPath);
     if (m_hotCopy.empty()) return false;
 
@@ -168,13 +162,16 @@ bool ScriptDllLoader::Load(const std::filesystem::path& dllPath)
     }
 
     if (!ValidateAbi()) {
-        FreeLibrary(m_hDll);
-        m_hDll = nullptr;
+        Unload();
         m_hotCopy.clear();
         return false;
     }
 
-    RegisterScripts();
+    if (!RegisterScripts()) {
+        Unload();
+        m_hotCopy.clear();
+        return false;
+    }
     FBZZ_LOG_INFO("ScriptDllLoader: DLL loaded -> %ls", m_hotCopy.wstring().c_str());
     return true;
 }
@@ -229,23 +226,32 @@ bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& n
         return false;
     }
 
-    // 現在の DLL をアンロードする (Script インスタンスもここで破棄)
+    const auto previousCopy = m_hDll ? m_hotCopy : std::filesystem::path{};
+    const auto previousPath = m_dllPath;
+    const auto targetPath = newDllPath.empty() ? m_dllPath : newDllPath;
+    if (!util::FileSystem::Exists(targetPath)) {
+        FBZZ_LOG_ERROR("ScriptDllLoader::Reload: replacement DLL is missing; keeping current scripts");
+        return false;
+    }
+
+    // 静的 DataAsset 登録が同じレジストリを書き換えるため、新旧 DLL は同時ロードしない。
     Unload(&scene);
 
     // 新しい DLL をロードして ScriptFactory に再登録する
-    if (!Load(newDllPath.empty() ? m_dllPath : newDllPath)) {
-        FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to load the new DLL");
+    if (!Load(targetPath) || !SceneIO::Deserialize(scene, snapshot)) {
+        FBZZ_LOG_ERROR("ScriptDllLoader::Reload: replacement failed; restoring previous DLL");
+        Unload(&scene);
+        m_dllPath = previousPath.empty() ? targetPath : previousPath;
+        if (!previousCopy.empty() && !LoadCopy(previousCopy))
+            FBZZ_LOG_ERROR("ScriptDllLoader::Reload: previous DLL could not be loaded");
         if (!SceneIO::Deserialize(scene, snapshot))
-            FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to restore scene after DLL load failure");
+            FBZZ_LOG_ERROR("ScriptDllLoader::Reload: previous scene could not be restored");
+        else if (m_hDll)
+            FBZZ_LOG_WARN("ScriptDllLoader::Reload: previous scripts and saved scene restored");
         return false;
     }
 
-    // シーンをスナップショットから復元する (新しいファクトリでスクリプトが再生成される)
-    if (!SceneIO::Deserialize(scene, snapshot)) {
-        FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to restore scene");
-        return false;
-    }
-
+    CleanHotDir();
     FBZZ_LOG_INFO("ScriptDllLoader: hot reload complete");
     return true;
 }
@@ -256,7 +262,7 @@ bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& n
 
 std::filesystem::path ScriptDllLoader::CopyToHot(const std::filesystem::path& src) const
 {
-    const std::filesystem::path hotDir = src.parent_path() / L"_hot";
+    const std::filesystem::path hotDir = m_dllPath.parent_path() / L"_hot";
     if (!util::FileSystem::EnsureDirectory(hotDir)) {
         FBZZ_LOG_ERROR("ScriptDllLoader: failed to create _hot directory: %s",
                        util::FileSystem::PathToUtf8(hotDir).c_str());
@@ -264,8 +270,10 @@ std::filesystem::path ScriptDllLoader::CopyToHot(const std::filesystem::path& sr
     }
 
     // タイムスタンプ付きファイル名でコピーする
-    const std::wstring stem = src.stem().wstring();
-    const std::filesystem::path dst = hotDir / (stem + L"_" + MakeTimestamp() + src.extension().wstring());
+    const std::wstring stem = m_dllPath.stem().wstring() + L"_" + MakeTimestamp();
+    std::filesystem::path dst = hotDir / (stem + src.extension().wstring());
+    for (unsigned int suffix = 1; util::FileSystem::Exists(dst); ++suffix)
+        dst = hotDir / (stem + L"_" + std::to_wstring(suffix) + src.extension().wstring());
 
     if (!util::FileSystem::CopyFile(src, dst)) {
         FBZZ_LOG_ERROR("ScriptDllLoader: failed to copy DLL: %s",
@@ -289,16 +297,16 @@ void ScriptDllLoader::CleanHotDir() const
     }
 }
 
-void ScriptDllLoader::RegisterScripts()
+bool ScriptDllLoader::RegisterScripts()
 {
-    if (!m_hDll) return;
+    if (!m_hDll) return false;
 
     auto registerFn = reinterpret_cast<RegisterFnPtr>(
         GetProcAddress(m_hDll, kRegisterFnName));
 
     if (!registerFn) {
         FBZZ_LOG_ERROR("ScriptDllLoader: export %s not found (DLL を再ビルドしてください)", kRegisterFnName);
-        return;
+        return false;
     }
 
     // EXE 側の ScriptFactory::Register を関数ポインタとして渡す。
@@ -316,12 +324,13 @@ void ScriptDllLoader::RegisterScripts()
         FBZZ_LOG_ERROR("ScriptDllLoader: %s の実行中に例外 (0x%08lX)。"
                        "古い DLL の可能性が高いので再ビルドしてください",
                        kRegisterFnName, exceptionCode);
-        return;
+        return false;
     }
 
     FBZZ_LOG_DEBUG("ScriptDllLoader: scripts registered via %s (%d types)",
                   kRegisterFnName,
                   static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+    return true;
 }
 
 bool ScriptDllLoader::ValidateAbi() const

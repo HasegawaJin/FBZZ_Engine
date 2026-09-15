@@ -770,6 +770,11 @@ void ScriptPhysicsProxy::SetGravityScale(float scale) const
     if (auto* rb = SelfRigidBody(script)) rb->m_gravityScale = scale;
 }
 
+void ScriptPhysicsProxy::SetLocalTimeScale(float scale) const
+{
+    if (auto* rb = SelfRigidBody(script)) rb->m_timeScale = std::clamp(scale, 0.0f, 8.0f);
+}
+
 math::Vector3 ScriptPhysicsProxy::GetWorldGravity() const
 {
     if (!Script::s_physicsWorld) return { 0.0f, -9.81f, 0.0f };
@@ -4120,6 +4125,12 @@ float ScriptAnimatorProxy::GetBlendToNormalizedTime(GameObject* go) const
 void ScriptAnimatorProxy::SetSpeed(float speed) const
 {
     if (auto* a = SelfComponent<AnimatorComponent>(script)) a->speed = speed;
+}
+
+void ScriptAnimatorProxy::SetLocalTimeScale(float scale) const
+{
+    if (auto* a = SelfComponent<AnimatorComponent>(script))
+        a->localTimeScale = std::clamp(scale, 0.0f, 8.0f);
 }
 
 float ScriptAnimatorProxy::GetSpeed() const

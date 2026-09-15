@@ -262,9 +262,17 @@ void SceneManager::Update(float dt, physics::World& world)
         //     画面をまたいで引き継いでよいカーソル状態は無い、と決めておく。
         //     新しい Scene のスクリプトはこの直後の Update で名乗り直すため、
         //     プレイヤーから見て既定へ戻る瞬間は現れない。
+        // Scene のデストラクタはコールバックを呼ばない。次の OnStart が
+        // 破棄済みのシングルトンを読む前に、旧シーンの登録と設定を片付ける。
+        if (m_active) m_active->Clear();
         core::Cursor::ClearRequests();
 
+        // Play中のPreScriptではTransformEditorPreviewが動かない。
+        // 初回スクリプトが未計算の原点を接触・出現位置として使う前に階層を確定する。
+        FlushWorldTransforms(*nextScene);
         m_active = std::move(nextScene);
+        // 前シーンの固定ステップの残時間を新しい盤面へ持ち込まない。
+        m_scheduler.ResetAccumulator();
         // LoadScene は明示的な遷移要求なので、新しい owned Scene を外部 Scene より優先する。
         m_externalScene = nullptr;
         m_activeName    = m_pendingLoad;

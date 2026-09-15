@@ -459,7 +459,9 @@ void EditorApp::RegisterBuiltinOperators()
             c.ctx.requestScriptReload = true;
             return OpResult::Ok();
         },
-        [scriptBusy](const OpContext& c, const OpArgs& a) { return !scriptBusy(c, a); });
+        [scriptBusy, inEditor](const OpContext& c, const OpArgs& a) {
+            return inEditor(c, a) && !scriptBusy(c, a);
+        });
 
     // ── Tools ───────────────────────────────────────────────────────────────
     add("tools.map_editing_mode", "Map Editing Mode", "Tools",

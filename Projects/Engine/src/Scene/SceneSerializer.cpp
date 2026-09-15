@@ -1851,6 +1851,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr) return scene;
     std::vector<Script*> pendingDeserializedScripts;
+    // ファクトリに居なかったスクリプト型。読み終わりに 1 度だけまとめて告げる。
+    std::vector<std::string> unresolvedScriptTypes;
 
     // ------------------------------------------------------------------
     // Pass 1: GameObject 生成 + Component アタッチ
@@ -2727,8 +2729,11 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 pendingDeserializedScripts.push_back(script.get());
                 entry.script = std::move(script);
             } else {
-                // DLL 再ビルド待ちでも serialized data は保持されるため、起動時の通常経路では警告にしない。
+                // DLL 再ビルド待ちでも serialized data は保持されるため、1 件ずつは警告にしない。
                 FBZZ_LOG_DEBUG("SceneSerializer: script type pending registration '%s'", type.c_str());
+                if (std::find(unresolvedScriptTypes.begin(), unresolvedScriptTypes.end(), type)
+                    == unresolvedScriptTypes.end())
+                    unresolvedScriptTypes.push_back(type);
             }
         };
 
@@ -2821,8 +2826,13 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
         const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
         if (ownerGuid.empty() && ownerName.empty()) continue;
-        const std::string boneName = (*goTbl)["name"].value_or(std::string{});
-        auto* boneGo = scene->Find(boneName);
+        // WHY 名前で引かないか: 骨の名前はシーン内で一意ではない (同じモデルを
+        //     2 体置くと Seg01 が 2 つになる)。名前で引くと後から来た側の行が
+        //     1 体目の骨へ書き込まれ、2 体目は skinnedMeshEntity を持たないまま
+        //     «バインドポーズで固まる» という形でしか症状が出ない。
+        const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        auto* boneGo = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
+        if (!boneGo) boneGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
         if (!boneGo) continue;
         auto* bone = boneGo->GetComponent<BoneComponent>();
         if (!bone) continue;
@@ -2872,6 +2882,28 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     for (Script* script : pendingDeserializedScripts) {
         script->OnAfterDeserialize();
         script->OnValidate();
+    }
+
+    // 生えなかったスクリプトを 1 行で告げる。
+    //
+    // WHY 1 件ずつ警告にしないか: エディタは DLL を建て直している最中に «まだ居ない»
+    //     型を通る。毎回出すとリビルド待ちのあいだログが埋まり、本当の欠落が沈む。
+    //
+    // WHY DEBUG のままにしないか: **配布ビルドに «建て直し» は来ない。** 登録が
+    //     無いまま読み込まれた Component は二度と生えず、しかも画面には
+    //     «その機能だけ動かない» という形でしか出ない (スクリプトが生えていないので、
+    //     当人が出すはずのエラーも出ない)。型名が 1 行残るだけで、
+    //     «exe が古い / 登録リストに入っていない» のどちらかだと即分かる。
+    if (!unresolvedScriptTypes.empty()) {
+        std::string joined;
+        for (const std::string& type : unresolvedScriptTypes) {
+            if (!joined.empty()) joined += ", ";
+            joined += type;
+        }
+        FBZZ_LOG_WARN("SceneSerializer: %zu script type(s) were not registered and were dropped "
+                      "from the loaded scene: %s "
+                      "(rebuild the scripts, or check that the runtime exe registers them)",
+                      unresolvedScriptTypes.size(), joined.c_str());
     }
 
     return scene;
@@ -3189,8 +3221,10 @@ bool SceneSerializer::AppendObjects(
         const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
         const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
         if (ownerGuid.empty() && ownerName.empty()) continue;
-        const std::string boneName = (*goTbl)["name"].value_or(std::string{});
-        auto* boneGo = scene.Find(boneName);
+        // 名前は一意でない (上の Pass と同じ理由)。instanceId を先に見る。
+        const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        auto* boneGo = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
+        if (!boneGo) boneGo = scene.Find((*goTbl)["name"].value_or(std::string{}));
         if (!boneGo) continue;
         auto* bone = boneGo->GetComponent<BoneComponent>();
         if (!bone) continue;
