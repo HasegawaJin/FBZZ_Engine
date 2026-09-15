@@ -427,11 +427,7 @@ inline void BossAudioComponent::MagneticPulse()
 
 inline void BossAudioComponent::JumpLand()
 {
-    // WHY 踏みつけと同じ着弾音か: 大ジャンプ専用の素材は無く、鳴っているのは
-    //     どちらも «脚が地面を貫いた» という同じ出来事。違うのは «4 本同時» という
-    //     重さで、そこは着地の衝撃波と揺れ (BossAiComponent の landRumble) が担当する。
-    se::Play(audio, se::kBossStompImpact);
-    se::Play(audio, se::kBossStompSettle);
+    se::Play(audio, se::kBossLanding);
 }
 
 inline void BossAudioComponent::TickPhase(float dt)

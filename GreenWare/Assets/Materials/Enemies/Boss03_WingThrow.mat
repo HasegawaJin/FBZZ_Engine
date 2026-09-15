@@ -1,0 +1,17 @@
+mesh_type = "surface"
+name = "Boss03_WingThrow"
+render_path = "auto"
+shader = "Assets/Shaders/Material/Surface/PBR.hlsl"
+version = 1
+
+[params]
+albedo = [ 0.46000000834465027, 0.5099999904632568, 0.5600000023841858, 1.0 ]
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10000000149011612
+emissiveColor = [ 1.0, 0.41999998688697815, 0.30000001192092896 ]
+emissiveScale = 1.2000000476837158
+metallic = 0.0
+roughness = 0.2800000309944153
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

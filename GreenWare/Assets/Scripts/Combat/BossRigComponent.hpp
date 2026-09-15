@@ -73,6 +73,24 @@ public:
     //     倒れている間にできるのは «寄って斬る» だけなので、9 秒は «待っているだけの
     //     時間» に変わる。斬りに行って戻るのに要るのは 5 秒で足りる。
     FBZZ_FIELD_RANGE(float, toppleOnLegLossSeconds, 5.0f, "脚を失って倒れる秒数", 0.0f, 15.0f)
+
+    // 落とした脚が時間で戻る。
+    //
+    // WHY 決着 (脚 4 本) が壊れないか: 再生は «本数を戻す» ので、勝ち筋は
+    //   «4 本目を落とす前に 1 本目が戻らないこと» へ変わるだけで、条件そのものは
+    //   `ApplyLegLoss` の «4 本折れている» のまま動かない。
+    //   **盤面の形で進行を刻む** という芯は残り、そこへ «速さ» が足される。
+    //
+    // WHY 要るか: 1 本でも落とせば以後ずっと有利なままだと、崩し → とどめ の輪が
+    //   «一度成功すれば終わり» になる。戻るなら、同じ輪を回し続ける理由ができる。
+    //
+    // WHY 0 を «戻らない» にするか: 従来の挙動をそのまま残す逃げ道。
+    //   手触りを比べるときに、片方だけを切れる形にしておく。
+    FBZZ_FIELD_RANGE(float, legRegenSeconds, 26.0f, "脚が戻るまで [秒]", 0.0f, 120.0f)
+    FBZZ_TOOLTIP("落とした脚が戻るまで。**0 で戻らない (従来)**。"
+                 "短いと «4 本目まで届かない» 戦いになり、長いほど従来へ近づく。"
+                 "1 回の転倒 (5 秒) ＋ 崩しを溜め直す時間より長くすること")
+    FBZZ_FIELD_READ_ONLY(std::string, debugRegen, "-", "再生の残り")
     FBZZ_TOOLTIP("脚を 1 本落とすたびに倒れている長さ。この間は寄って削り放題になる。"
                  "0 で «倒れない»")
     FBZZ_FIELD_RANGE_INT(int, coreExecuteDamage, 30, "コアへのとどめ", 1, 500)
@@ -201,10 +219,17 @@ public:
     // WHY 弾けなくするか (Unblockable): 弾ける手にすると放電が «崩しを溜める機会» になり、
     //     とどめの窓が余計に伸びる ── 緊張を上げるために足したものが逆に働く。
     //     弾きはボスが意思で振る手のための語で、漏れた高圧はそうではない。
+    // WHY 既定を off にしたか (2026-09-14):
+    //   半径 3m が **とどめの射程 3.4m とほぼ同じ**なので、«寄れば必ず圏内» になる。
+    //   避ける道が «とどめを諦める» しか無い危険は、避ける遊びではなく税になる。
+    //   しかも壊した脚のそばで爆ぜるので、**自分が壊したことへの罰**として読める ──
+    //   崩して脚を落とした直後という、盤面で一番報われるべき瞬間に。
+    //
+    //   戻すなら半径を先に下げること (2m 前後で «寄れるが留まれない» になる)。
     FBZZ_GROUP("破断面の放電")
-    FBZZ_FIELD(bool, ventDischarge, true, "放電する")
-    FBZZ_TOOLTIP("転倒中、壊れた脚 1 本ごとに膝から放電させる。切ると倒れている 5 秒が"
-                 "従来どおり «安全に寄れる時間» に戻る")
+    FBZZ_FIELD(bool, ventDischarge, false, "放電する")
+    FBZZ_TOOLTIP("転倒中、壊れた脚 1 本ごとに膝から放電させる。**半径をとどめの射程 "
+                 "(3.4m) より狭くしないと «寄ったら必ず食らう» になる**")
     FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
     FBZZ_FIELD_RANGE(float, ventRadius, 3.0f, "半径 [m]", 0.5f, 12.0f)
     FBZZ_TOOLTIP("膝からこの距離まで届く。**とどめの射程 3.4m とわざと重ねてある** ─ "
@@ -351,7 +376,9 @@ private:
     /// 削り切られた脚を落とす。脚が落ちる道はここ 1 本。
     void BreakDepletedLegs(const std::vector<Part>& parts);
     /// 背のコアを削り切ったらボスを倒す。脚とは別の «削り切り» なので分けて持つ。
-    void KillOnCoreDepleted(const std::vector<Part>& parts);
+    void BreakLegOnCoreDepleted(const std::vector<Part>& parts);
+    /// 残っている脚のうち 1 本を落とす。コアを削り切った見返り。
+    void BreakWeakestLeg(const Vector3& at);
     /// 帯電している部位を極の色で囲う。毎フレーム。
     /// 表示用の短い部位名。"HB_Hock_FR" → "FR"。
     [[nodiscard]] static std::string ShortName(const GameObject& object);
@@ -402,6 +429,12 @@ private:
     void DebugBreakLeg(int leg);
     /// 脚 1 本を落とす。分割された `E_*_<接尾辞>` を伏せ、極を持てなくする。
     void BreakLeg(int leg, const Vector3& at);
+    /// 落とした脚を戻す。BreakLeg が畳んだものを 1 つずつ起こし直す。
+    void RestoreLeg(int leg);
+    /// 本数から «崩れた姿勢» と «据え付け化» を引き直す。失っても戻っても通る。
+    void SyncLegState();
+    /// 再生の時計を回す。
+    void DriveRegen(float dt);
 
     /// 極を帯びた脚のメッシュを、その極の色で輪郭マスクへ描く。
     void DriveOutline(const std::vector<Part>& parts);
@@ -427,6 +460,13 @@ private:
 
     /// もぎ取った脚の札。
     bool        m_broken[4]    = { false, false, false, false };
+    /// 再生までの残り [秒]。0 以下なら数えていない。
+    float       m_regen[4]     = { 0.0f, 0.0f, 0.0f, 0.0f };
+    /// その脚から生まれて床に残っている «もげた脚»。再生のときに片付ける。
+    EntityRef   m_debris[4]    = {};
+    /// 畳む直前の IK の重み。戻すときは «元の値» へ返す ─ 1.0 で決め打つと、
+    /// シーンで重みを絞ってある構成が再生のたびに勝手に強くなる。
+    float       m_legIkWeight[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
     /// バインド姿勢 (ボス根空間) の付け根の骨と、脚全体の箱。CaptureBind が書く。
     ///
     /// WHY 最初の 1 回だけ控えるか: 静的メッシュはバインド姿勢で描かれるので、
@@ -814,7 +854,7 @@ inline void BossRigComponent::BreakDepletedLegs(const std::vector<Part>& parts)
     }
 }
 
-inline void BossRigComponent::KillOnCoreDepleted(const std::vector<Part>& parts)
+inline void BossRigComponent::BreakLegOnCoreDepleted(const std::vector<Part>& parts)
 {
     if (m_killed) return;
 
@@ -822,18 +862,21 @@ inline void BossRigComponent::KillOnCoreDepleted(const std::vector<Part>& parts)
         // コアは脚と違って «落ちる» 部位ではないので、接尾辞では見分けられない。
         // BossHitboxRigComponent が付ける名前で名指しする。
         if (!part.object || part.object->name != "HB_Core") continue;
-        if (!part.part->IsDepleted()) continue;
+        // 削り切ったコアは «毎フレーム» 削り切ったままなので、消費済みを弾かないと
+        // 脚が 1 フレームに 1 本ずつ落ちていく (以前は m_killed がこれを兼ねていた)。
+        if (part.part->IsBroken() || !part.part->IsDepleted()) continue;
 
-        m_killed = true;
         part.part->Break();
 
-        // HP を «残り全部» 削って落とす。撃破の演出・ランク・フェーズは
-        // すべて EnemyHealthComponent が 0 になったところから走るので、
-        // ここに別の撃破経路を作らない。
-        if (auto* combat = CombatManagerComponent::Instance())
-            if (GameObject* self = scene.Self())
-                if (auto* health = scene.GetScript<EnemyHealthComponent>(self))
-                    (void)combat->DamageEnemyDirect(self, std::max(health->Current(), 1));
+        // コアで «倒せて» はいけない (2026-09-14)。決着は脚 4 本ただ 1 本の道で、
+        // 裏道を残すと «脚が残っているのに終わった» が起きる ── 部位破壊が主軸の
+        // 盤面で、主軸を飛ばせる手があると主軸が飾りになる。
+        //
+        // WHY コアを死に札にしないか: コアの当たりが届くのは転倒中だけで、そこへ
+        //     当てるには弾いて崩すまでを通す必要がある。通した人の見返りが無いと
+        //     «崩す» 側の遊びが丸ごと無意味になる。倒す代わりに «脚 1 本ぶん» を
+        //     渡す ── 本筋を飛び越えず、本筋を早送りする報酬にする。
+        BreakWeakestLeg(part.position);
         break;
     }
 }
@@ -856,34 +899,125 @@ inline void BossRigComponent::CollectParts(std::vector<Part>& out) const
     }
 }
 
-inline void BossRigComponent::ApplyLegLoss()
+// コアを削り切った見返りに、残っている脚を 1 本落とす。
+//
+// WHY «一番弱った脚» か: 削りかけの脚があるなら、そこへ入るのが一番素直に読める
+//   («削っていた脚が落ちた»)。手つかずの脚が落ちると、どこへ入ったのかが絵から
+//   読めず «勝手に減った» になる。
+inline void BossRigComponent::BreakWeakestLeg(const Vector3& at)
 {
-    // 四足が二足になったら歩けない。判定は «壊した瞬間» に 1 度だけで、
-    // 毎フレーム申告する restrained とは別物 (こちらは元に戻らない)。
+    std::vector<Part> parts;
+    CollectParts(parts);
+
+    int   target = -1;
+    float weakest = 2.0f;
+    Vector3 where = at;
+    for (const Part& part : parts) {
+        if (!part.part || part.part->IsBroken()) continue;
+        const int leg = LegIndexOf(part.part->legSuffix);
+        if (leg < 0 || IsLegBroken(leg)) continue;
+        const float remaining = part.part->HealthNormalized();
+        if (remaining >= weakest) continue;
+        weakest = remaining;
+        target  = leg;
+        where   = part.position;
+    }
+    if (target < 0) return;   // 脚はもう残っていない (決着は ApplyLegLoss が出す)
+
+    m_broken[target] = true;
+    BreakLeg(target, where);
+    ApplyLegLoss();
+}
+inline void BossRigComponent::RestoreLeg(int leg)
+{
+    GameObject* self = scene.Self();
+    if (leg < 0 || leg >= 4 || !self || !m_broken[leg]) return;
+
+    m_broken[leg] = false;
+    m_regen[leg]  = 0.0f;
+
+    const std::string suffix = SuffixOf(leg);
+
+    // 床に残っている «もげた脚» を片付ける。残したまま生やすと、同じ脚が
+    // 本体と床に 2 本あることになる ─ **どちらを斬ればいいのか分からなくなる。**
+    if (GameObject* debris = m_debris[leg].Resolve(scene)) scene.Destroy(*debris);
+    m_debris[leg] = {};
+
+    for (const EntityRef& ref : m_legs[leg].meshes)
+        if (GameObject* piece = ref.Resolve(scene)) piece->SetActive(true);
+
+    // 当たり判定と耐久を戻す。耐久まで戻さないと、生えた瞬間に 1 撃で落ちる。
+    if (GameObject* hitbox = FindInSubtree(*self, std::string("HB_Hock") + suffix))
+        if (auto* part = scene.GetScript<BossPartComponent>(hitbox))
+            part->Restore();
+
+    if (auto* ik = self->GetComponent<IKSolverComponent>())
+        for (IKChain& chain : ik->chains)
+            if (chain.order == kChainOrderBase + leg) {
+                chain.enabled = true;
+                chain.weight  = m_legIkWeight[leg];
+            }
+
+    if (auto* ai = scene.GetScript<BossAiComponent>()) ai->SetLegBroken(leg, false);
+
+    // 姿勢と据え付け化だけ引き直す。**ApplyLegLoss は呼ばない** ─ あちらは
+    // «失った» ときの反応 (転倒させる・決着を出す) まで持っているので、
+    // 生えた側から呼ぶと生えるたびにボスが転ぶ。
+    SyncLegState();
+
+    se::Play(audio, se::kImpactCoreHit, 0.8f);
+    if (auto* vfx = VfxManagerComponent::Instance())
+        vfx->PlayImpact(transform.worldPosition, BladeSide::None, 0.6f, false);
+}
+
+inline void BossRigComponent::DriveRegen(float dt)
+{
+    if (legRegenSeconds <= 0.0f) { debugRegen = "-"; return; }
+
+    float soonest = -1.0f;
+    for (int leg = 0; leg < 4; ++leg) {
+        if (!m_broken[leg] || m_regen[leg] <= 0.0f) continue;
+        m_regen[leg] = std::max(0.0f, m_regen[leg] - dt);
+        if (m_regen[leg] <= 0.0f) { RestoreLeg(leg); continue; }
+        if (soonest < 0.0f || m_regen[leg] < soonest) soonest = m_regen[leg];
+    }
+    debugRegen = soonest < 0.0f ? std::string("-")
+                                : std::to_string(static_cast<int>(soonest + 0.5f)) + " s";
+}
+
+inline void BossRigComponent::SyncLegState()
+{
     int broken = 0;
+    int mask   = 0;
     for (int leg = 0; leg < LegCount(); ++leg)
-        if (IsLegBroken(leg)) ++broken;
+        if (IsLegBroken(leg)) { ++broken; mask |= (1 << leg); }
 
-    int mask = 0;
-    for (int leg = 0; leg < LegCount(); ++leg)
-        if (IsLegBroken(leg)) mask |= (1 << leg);
-
-    // 崩れは «2 本目を失った瞬間» で固定せず、失うたびに送り直す。3 本目が落ちれば
-    // 蝶番も倒れる向きも変わる ─ 姿勢を焼いていたころの «2 本ちょうどでしか
-    // 引けない» 制約はもう無い。
+    // 崩れは «2 本目を失った瞬間» で固定せず、本数が変わるたびに送り直す。
+    // 3 本目が落ちれば蝶番も倒れる向きも変わるし、**戻れば起き上がる**。
     if (auto* posture = scene.GetScript<BossCollapsePostureComponent>())
         posture->SetBrokenMask(mask);
 
-    if (broken >= std::max(crippleAtBrokenLegs, 1) && !m_crippled) {
-        m_crippled = true;
-        if (auto* ai = scene.GetScript<BossAiComponent>()) ai->SetCrippled(true);
-
+    // 据え付け化は本数に追従させる (2026-09-14)。«元に戻らない» 一方通行のままだと、
+    // 脚が戻っているのに歩けない «立っているだけのボス» になる。
+    const bool crippled = broken >= std::max(crippleAtBrokenLegs, 1);
+    if (crippled != m_crippled) {
+        m_crippled = crippled;
+        if (auto* ai = scene.GetScript<BossAiComponent>()) ai->SetCrippled(crippled);
+    }
+    if (crippled && !scene.GetScript<BossCollapsePostureComponent>())
         // 体が崩れないと «歩けなくなった» が絵に出ない。黙って «立ったまま
         // 動かないボス» になるので、名指しで言う。
-        if (!scene.GetScript<BossCollapsePostureComponent>())
-            debug.LogError("BossRigComponent: BossCollapsePostureComponent が "
-                           "ボスに付いていない。脚を失っても体が崩れない。");
-    }
+        debug.LogError("BossRigComponent: BossCollapsePostureComponent が "
+                       "ボスに付いていない。脚を失っても体が崩れない。");
+}
+
+inline void BossRigComponent::ApplyLegLoss()
+{
+    SyncLegState();
+
+    int broken = 0;
+    for (int leg = 0; leg < LegCount(); ++leg)
+        if (IsLegBroken(leg)) ++broken;
 
     // 脚を 1 本失うたびに倒れる。
     //
@@ -900,9 +1034,10 @@ inline void BossRigComponent::ApplyLegLoss()
     //     地上から届かない ── そのままでは «脚を全部落としても倒せないボス» になる。
     //     勝ち筋は «届く手» の側に無ければならない。
     //
-    // WHY コア側の経路 (KillOnCoreDepleted) を残すか: 転倒で体が沈んでいる間は
-    //     コアの当たりが斬撃の届く高さまで降りてくる。狙って当てた人が報われる道は
-    //     塞がない ── ただし本筋は脚 4 本で、コアは «早上がり» の裏道。
+    // WHY ここが «唯一» の決着か (2026-09-14): コアを削り切る道は撃破ではなく
+    //     «脚 1 本» を渡す形へ変えた (BreakLegOnCoreDepleted)。裏道を残すと
+    //     «脚が残っているのに終わった» が起きて、部位破壊という主軸が飾りになる。
+    //     コアは主軸を飛び越える手ではなく、主軸を早送りする報酬。
     if (broken >= LegCount() && !m_killed) {
         m_killed = true;
         if (auto* combat = CombatManagerComponent::Instance())
@@ -954,12 +1089,16 @@ inline void BossRigComponent::BreakLeg(int leg, const Vector3& at)
     if (auto* ik = self->GetComponent<IKSolverComponent>())
         for (IKChain& chain : ik->chains)
             if (chain.order == kChainOrderBase + leg) {
+                m_legIkWeight[leg] = chain.weight;   // 戻すときのために控える
                 chain.enabled = false;
                 chain.weight  = 0.0f;
             }
 
     // 攻撃側へ «この脚はもう無い» を渡す。踏みつけの脚選びがこれを見る。
     if (auto* ai = scene.GetScript<BossAiComponent>()) ai->SetLegBroken(leg);
+
+    // 再生の時計を回し始める。0 なら戻らない (従来どおり)。
+    m_regen[leg] = std::max(legRegenSeconds, 0.0f);
 
     if (auto* vfx = VfxManagerComponent::Instance())
         vfx->PlayImpact(at, BladeSide::None, 1.0f, true);
@@ -982,7 +1121,7 @@ inline bool BossRigComponent::ExecutePart(GameObject* partObject, const Vector3&
     if (!part) return false;
 
     // 背のコア。脚と違って «落ちる» 部位ではないので、削って返すだけ。
-    // 削り切りは KillOnCoreDepleted が OnUpdate で拾う (撃破の経路を 2 本にしない)。
+    // 削り切りは BreakLegOnCoreDepleted が OnUpdate で拾う (撃破の経路を 2 本にしない)。
     //
     // WHY ここで起こさないか: 起こすと甲板に居るプレイヤーが立ち上がった重機に
     //     乗ったままになる。転倒を延ばしているのは «乗っている間だけ» なので、
@@ -1086,6 +1225,10 @@ inline void BossRigComponent::OnUpdate()
     // parts が握っているポインタを跨いで作ると途中で無効になる。
     EnsureRuntime();
 
+    // 脚の再生も走査より前。RestoreLeg は落ちた脚を scene.Destroy するので、
+    // 走査した後に呼ぶと parts が消えた相手を指したまま残る。
+    DriveRegen(dt);
+
     std::vector<Part> parts;
     CollectParts(parts);
 
@@ -1098,7 +1241,7 @@ inline void BossRigComponent::OnUpdate()
         core->SetProgress(LegCount() - debugBrokenLegs, LegCount());
 
     BreakDepletedLegs(parts);
-    KillOnCoreDepleted(parts);
+    BreakLegOnCoreDepleted(parts);
     DriveOutline(parts);
 
     // よろけは斬られたときに起きる (Flinch)。当たったフレームだけ触ると押された姿勢の
@@ -1422,6 +1565,10 @@ inline void BossRigComponent::SpawnLegDebris(int leg, const Vector3& at)
     auto& script = debris->AddScript<BossPartDebrisComponent>();
     script.playerTag = playerTag;
     script.Setup(velocity, spin, Max(size.x, Max(size.y, size.z)));
+
+    // 誰から落ちたかを覚えておく。脚が戻るときにこれを片付けないと、
+    // 同じ脚が本体と床に 2 本並ぶ (RestoreLeg)。
+    if (leg >= 0 && leg < 4) m_debris[leg] = EntityRef{ debris->GetID() };
 
     ++debugDebrisSpawned;
 }

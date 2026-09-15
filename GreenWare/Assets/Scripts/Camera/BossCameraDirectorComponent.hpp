@@ -48,6 +48,7 @@
 #include <Math/Vector3.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Scripts/Camera/TpsCameraComponent.hpp>
+#include <Scripts/Combat/IBoss.hpp>
 #include <Scripts/Game/GameSettingsComponent.hpp>
 #include <Scripts/Game/TimeManagerComponent.hpp>
 #include <Scripts/Utils/PlayerActionState.hpp>
@@ -83,6 +84,13 @@ public:
     // WHY 登場だけ長いか: ここは «これから何と戦うか» を伝える唯一の機会で、
     //     全高 6m を下から上まで見せるには時間が要る。転倒と撃破は «今起きたこと» の
     //     確認なので、長いと «見せられている» に変わる。
+    FBZZ_GROUP("登場タイトル")
+    FBZZ_FIELD(std::string, introTitle, "IRON WARDEN", "タイトル")
+    FBZZ_FIELD(std::string, introSubtitle, "鉄骸の番人", "異名")
+    FBZZ_FIELD_COLOR(introColor, Vector4(0.9f, 0.65f, 0.3f, 1.0f), "アクセント")
+    FBZZ_FIELD(bool, introFixedFocus, false, "登場の注視点を固定")
+    FBZZ_FIELD(Vector3, introFocus, Vector3::ZERO, "登場の注視点")
+
     FBZZ_GROUP("導入")
     FBZZ_FIELD(bool, introEnabled, true, "有効")
     FBZZ_FIELD_RANGE(float, introSeconds, 2.6f, "秒数", 0.2f, 10.0f)
@@ -186,7 +194,8 @@ public:
 
     void OnStart()      override;
     void OnLateUpdate() override;
-    void OnDestroy()    override { if (s_instance == this) s_instance = nullptr; }
+    void OnDisable() override { Release(); UpdateTitle(0.0f); }
+    void OnDestroy() override { Release(); UpdateTitle(0.0f); if (s_instance == this) s_instance = nullptr; }
 
 private:
     static inline BossCameraDirectorComponent* s_instance = nullptr;
@@ -222,6 +231,8 @@ private:
     [[nodiscard]] Vector3 Focus(const GameObject& boss) const;
     [[nodiscard]] static const char* NameOf(BossShot shot);
 
+    void UpdateTitle(float alpha);
+    bool m_introPlayed = false;
     BossShot m_shot    = BossShot::None;
     Shot     m_form;
     float    m_elapsed = 0.0f;
@@ -248,6 +259,8 @@ inline void BossCameraDirectorComponent::OnStart()
                          "後から始まった方が窓口になる");
     }
     s_instance = this;
+    m_introPlayed = false;
+    UpdateTitle(0.0f);
 
     m_shot    = BossShot::None;
     m_elapsed = 0.0f;
@@ -338,7 +351,7 @@ inline void BossCameraDirectorComponent::Begin(BossShot shot, const Shot& formIn
                        : shot == BossShot::Topple  ? toppleEnabled
                        : shot == BossShot::Death   ? deathEnabled
                                                    : executeEnabled;
-    if (!allowed) return;
+    if (!allowed || (shot == BossShot::Intro && m_introPlayed)) return;
 
     // 撃破は最後まで持つ。その上に とどめ や転倒が来ても (同フレームの順序次第で
     // 起きうる) 決着の画を捨てない。
@@ -350,6 +363,15 @@ inline void BossCameraDirectorComponent::Begin(BossShot shot, const Shot& formIn
     const bool wasPlaying = m_shot != BossShot::None;
     m_shot    = shot;
     m_form    = formIn;
+    if (shot == BossShot::Intro) {
+        m_introPlayed = true;
+        if (introFixedFocus) {
+            m_form.focusFixed = true;
+            m_form.focusPoint = introFocus;
+            m_form.focusLift = 0.0f;
+        }
+    }
+    UpdateTitle(0.0f);
     m_elapsed = 0.0f;
     debugShot = NameOf(shot);
 
@@ -387,6 +409,7 @@ inline void BossCameraDirectorComponent::Release()
 {
     if (m_shot == BossShot::None) return;
     m_shot    = BossShot::None;
+    UpdateTitle(0.0f);
     debugShot = "-";
 
     // 画角を設定の値へ戻す。追従は次のフレームから自分で書くが、その 1 フレームだけ
@@ -445,6 +468,26 @@ inline void BossCameraDirectorComponent::Pose(float t, Vector3& position,
     rotation = (yawRot * pitchRot).Normalized();
 }
 
+inline void BossCameraDirectorComponent::UpdateTitle(float alpha)
+{
+    const bool visible = alpha > 0.001f;
+    if (auto* label = scene.Find("HUD_BossIntroTitle")) {
+        ui.SetTextEnabled(label, visible);
+        ui.SetText(label, introTitle);
+        ui.SetTextColor(label, { 0.96f, 0.95f, 0.9f, alpha });
+    }
+    if (auto* label = scene.Find("HUD_BossIntroSubtitle")) {
+        ui.SetTextEnabled(label, visible);
+        ui.SetText(label, introSubtitle);
+        ui.SetTextColor(label, { introColor.x, introColor.y, introColor.z, alpha });
+    }
+    if (auto* line = scene.Find("HUD_BossIntroLine")) {
+        ui.SetImageEnabled(line, visible);
+        ui.SetImageColor(line, { introColor.x, introColor.y, introColor.z, alpha });
+        ui.SetImageFillAmount(line, alpha);
+    }
+}
+
 inline void BossCameraDirectorComponent::OnLateUpdate()
 {
     // Inspector からの確認。Play 中に選んだら 1 回流して None へ戻す。
@@ -454,6 +497,10 @@ inline void BossCameraDirectorComponent::OnLateUpdate()
         Play(requested);
     }
 
+    // 入室トリガーを持たないボスも、交戦公開後に1度だけ登場させる。
+    if (!m_introPlayed && m_shot == BossShot::None)
+        if (auto* owner = Boss())
+            if (auto* boss = IBoss::Of(owner); boss && boss->IsEngaged()) Play(BossShot::Intro);
     if (m_shot == BossShot::None) return;
     if (!transform) return;
 
@@ -462,6 +509,10 @@ inline void BossCameraDirectorComponent::OnLateUpdate()
 
     // WHY スケール時間か: 転倒も撃破もヒットストップと同じ «盤面の出来事» で、
     //     止まっている画面の上でカメラだけ動くと、止めが効いていないように見える。
+    if (auto* manager = TimeManagerComponent::Instance(); manager && manager->IsPaused()) {
+        UpdateTitle(0.0f);
+        return;
+    }
     m_elapsed += std::max(Time::deltaTime, 0.0f);
     debugElapsed = m_elapsed;
 
@@ -483,6 +534,17 @@ inline void BossCameraDirectorComponent::OnLateUpdate()
         rotation = Quaternion::Slerp(m_fromRot, rotation, s).Normalized();
     }
 
+    float returnBlend = 0.0f;
+    if (m_shot == BossShot::Intro) {
+        const float outSeconds = std::min(0.65f, total * 0.25f);
+        const float k = Clamp01((m_elapsed - total + outSeconds) / outSeconds);
+        returnBlend = k * k * (3.0f - 2.0f * k);
+        position = Vector3::Lerp(position, m_fromPos, returnBlend);
+        rotation = Quaternion::Slerp(rotation, m_fromRot, returnBlend).Normalized();
+        const float alpha = Clamp01((m_elapsed - 0.35f) / 0.35f) * (1.0f - returnBlend);
+        UpdateTitle(alpha);
+    }
+
     // WHY ローカルへ書くか: worldRotation は proxy が put を持たない (world は
     //     TransformSystem が local から作る派生値)。カメラはルートに置いてあるので
     //     ローカル = ワールドで、書き先は TpsCamera と同じ 2 つで足りる。
@@ -492,7 +554,7 @@ inline void BossCameraDirectorComponent::OnLateUpdate()
     // 画角も «寄せ» と同じ坂で入れる。位置だけ寄って画角が一瞬で変わると、
     // 寄りの途中でカットが 1 回入ったように見える。
     const float fovIn = blend > 0.0f ? Clamp01(m_elapsed / blend) : 1.0f;
-    ApplyFov(m_form.fov * fovIn * (2.0f - fovIn));
+    ApplyFov(m_form.fov * fovIn * (2.0f - fovIn) * (1.0f - returnBlend));
 
     if (t < 1.0f) return;
 

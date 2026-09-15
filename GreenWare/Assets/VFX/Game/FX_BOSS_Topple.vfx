@@ -78,7 +78,7 @@ shape = 0
 sizeStart = 1.5
 sizeEnd = 14.0
 sizeCurvePower = 0.32
-lifetime = 0.45
+lifetime = 0.28
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
@@ -86,7 +86,7 @@ renderMode = 2
 sortMode = 0
 renderPriority = 56
 useColorGradient = true
-colorGradient = [[0.0, 1.0, 0.97, 0.9, 0.9], [0.3, 1.0, 0.95, 0.85, 0.6], [1.0, 1.0, 0.9, 0.8, 0.0]]
+colorGradient = [[0.0, 0.7, 0.65, 0.54, 0.22], [0.3, 0.65, 0.6, 0.5, 0.14], [1.0, 0.55, 0.5, 0.42, 0.0]]
 bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
 
 [[gameobjects]]
@@ -116,14 +116,14 @@ duration = 0.5
 maxParticles = 64
 shape = 1
 sphereRadius = 1.6
-sizeStart = 1.6
+sizeStart = 0.75
 sizeEnd = 3.8
 sizeCurvePower = 0.55
 lifetime = 0.9
 lifetimeRandom = 0.35
 emitVelocity = [0.0, 0.8, 0.0]
 velocitySpread = 2.2
-velocityDamping = 1.7
+velocityDamping = 2.8
 radialVelocity = 22.0
 gravity = [0.0, 0.25, 0.0]
 materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
@@ -164,10 +164,10 @@ duration = 0.4
 maxParticles = 12
 shape = 1
 sphereRadius = 1.2
-sizeStart = 2.4
+sizeStart = 0.65
 sizeEnd = 3.2
 sizeCurvePower = 0.6
-lifetime = 0.8
+lifetime = 0.6
 lifetimeRandom = 0.3
 emitVelocity = [0.0, 1.2, 0.0]
 velocitySpread = 1.0
@@ -182,7 +182,7 @@ colorVariation = 0.08
 useColorGradient = true
 colorGradient = [[0.0, 0.6, 0.58, 0.55, 0.0], [0.12, 0.58, 0.56, 0.53, 0.6], [1.0, 0.5, 0.48, 0.46, 0.0]]
 bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
-startDelay = 0.04
+startDelay = 0.08
 
 [[gameobjects]]
 name = "Grit"
@@ -201,6 +201,7 @@ rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
 
 [gameobjects.ParticleEmitter]
+startDelay = 0.025
 cullingEnabled = false
 lodEnabled = false
 loop = false
@@ -250,6 +251,7 @@ scale = [1.0, 1.0, 1.0]
 
 # 装甲片。回転しながら落ちて床で跳ねる。無彩色。
 [gameobjects.ParticleEmitter]
+startDelay = 0.06
 cullingEnabled = false
 lodEnabled = false
 loop = false
@@ -308,10 +310,10 @@ duration = 0.6
 maxParticles = 30
 shape = 1
 sphereRadius = 3.5
-sizeStart = 2.0
+sizeStart = 0.85
 sizeEnd = 3.6
 sizeCurvePower = 0.7
-lifetime = 1.4
+lifetime = 0.95
 lifetimeRandom = 0.3
 emitVelocity = [0.0, 0.3, 0.0]
 velocitySpread = 0.8
@@ -327,7 +329,7 @@ colorVariation = 0.08
 useColorGradient = true
 colorGradient = [[0.0, 0.64, 0.61, 0.57, 0.0], [0.2, 0.64, 0.61, 0.57, 0.28], [1.0, 0.58, 0.56, 0.52, 0.0]]
 bursts = [{ time = 0.0, count = 7, cycles = 1, interval = 0.02, probability = 1.0 }]
-startDelay = 0.22
+startDelay = 0.3
 
 [[gameobjects]]
 name = "Blast Push"

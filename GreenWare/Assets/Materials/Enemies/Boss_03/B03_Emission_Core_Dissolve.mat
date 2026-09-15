@@ -1,0 +1,20 @@
+version = 1
+name = 'B03_Emission_Core_Dissolve'
+mesh_type = 'skinned'
+render_path = 'auto'
+shader = 'guid:9b1716dca591ddaa8bec6bb27619a653|Assets/Shaders/Material/Skinned/SkinnedEnemyDissolve.hlsl'
+blend_mode = 'Opaque'
+double_sided = false
+
+[params]
+albedo = [1.0, 0.17000000178813934, 0.07000000029802322, 1.0]
+metallic = 0.0
+roughness = 0.24000000953674316
+dissolveAmount = 0.0
+dissolveAxis = [0.0, -1.0, 0.0]
+dissolveRange = 8.0
+dissolveSweep = 0.35
+dissolveNoiseScale = 7.0
+dissolveEdgeWidth = 0.1
+dissolveEdgeColor = [1.0, 0.5, 0.18]
+dissolveEdgeIntensity = 8.0

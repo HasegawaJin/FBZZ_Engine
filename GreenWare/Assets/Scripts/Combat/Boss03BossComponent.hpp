@@ -1,12 +1,10 @@
-/// @file    LoomBossComponent.hpp
-/// @brief   ポラリティ・ルームの «問い合わせ口»。HUD と進行がここを読む
+/// @file    Boss03BossComponent.hpp
+/// @brief   ボス 3 の «問い合わせ口»。HUD と進行がここを読む
 /// @author  Hasegawa Jin
-/// @date    2026-09-08
-///
-/// ⚠ 骨だけ。設計は Docs/boss-loom.md。モデル / アニメ / シーンはまだ無い。
+/// @date    2026-09-15
 ///
 /// WHY AI と分けるか (SerpentBossComponent と同じ形):
-///   `IBoss` は «今どうなっているか» を外へ見せる口で、`LoomAiComponent` は
+///   `IBoss` は «今どうなっているか» を外へ見せる口で、`Boss03AiComponent` は
 ///   «どう決めているか» を持つ。同じクラスに畳むと、HUD の都合で状態機械へ
 ///   フィールドが生えていく。ボス 1 と 2 が既にこの分け方をしているので揃える。
 ///
@@ -19,10 +17,11 @@
 
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/Boss03AiComponent.hpp>
+#include <Scripts/Combat/Boss03AnimParams.hpp>
 #include <Scripts/Combat/BossBreakComponent.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Combat/IBoss.hpp>
-#include <Scripts/Combat/LoomAiComponent.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <string>
 
@@ -30,22 +29,22 @@ using namespace fbzz::scene;
 
 namespace sandbox {
 
-class LoomBossComponent : public Script, public IBoss {
-    FBZZ_SCRIPT_DERIVED(LoomBossComponent, Script, IBoss)
+class Boss03BossComponent : public Script, public IBoss {
+    FBZZ_SCRIPT_DERIVED(Boss03BossComponent, Script, IBoss)
 
 public:
     FBZZ_GROUP("識別")
-    FBZZ_FIELD(std::string, bossName, "POLARITY LOOM", "名前")
+    FBZZ_FIELD(std::string, bossName, "焔翼の熾天使 SERAPH", "名前")
     FBZZ_TOOLTIP("ボスバーに出す表示名。シーン上の GameObject 名とは別物")
 
     FBZZ_GROUP("デバッグ")
-    FBZZ_FIELD_READ_ONLY(int, debugArms, kLoomArmCount, "腕")
+    FBZZ_FIELD_READ_ONLY(int, debugWings, kBoss03WingCount, "翼")
     FBZZ_FIELD_READ_ONLY(int, debugPhase, 1, "位相")
     FBZZ_FIELD_READ_ONLY(bool, debugEngaged, false, "交戦中")
 
     [[nodiscard]] const char* BossName() const override { return bossName.c_str(); }
 
-    /// 段階は «残り腕» から出す。フェーズ変数を別に持たない。
+    /// 段階は «残り翼» から出す。フェーズ変数を別に持たない。
     [[nodiscard]] int CurrentPhase() const override
     {
         const auto* ai = Ai();
@@ -63,6 +62,14 @@ public:
         const auto* ai = Ai();
         return ai && ai->IsEngaged();
     }
+    [[nodiscard]] bool CanExecute() const override
+    { const auto* ai = Ai(); return ai && ai->CanExecute(); }
+    [[nodiscard]] bool UsesBodyHitbox() const override { return true; }
+    [[nodiscard]] bool CanTakeBodyDamage() const override
+    { const auto* ai = Ai(); return ai && ai->CanTakeBodyDamage(); }
+    bool ApplyBodyDamage(int amount) override
+    { auto* ai = Ai(); return ai && ai->ApplyBodyDamage(amount); }
+
     [[nodiscard]] bool IsToppled() const override
     {
         const auto* ai = Ai();
@@ -79,13 +86,13 @@ public:
         return ai && ai->Execute(part, from);
     }
 
-    /// 進行は残り腕。4 本もいで決着 (Docs/boss-loom.md)。
+    /// 進行は残り翼。6 枚もいで決着 (Docs/boss03.md)。
     [[nodiscard]] int PartsRemaining() const override
     {
         const auto* ai = Ai();
-        return ai ? ai->ArmsRemaining() : -1;
+        return ai ? ai->WingsRemaining() : -1;
     }
-    [[nodiscard]] int PartsTotal() const override { return kLoomArmCount; }
+    [[nodiscard]] int PartsTotal() const override { return kBoss03WingCount; }
 
     void OnStart() override;
     void OnUpdate() override;
@@ -93,40 +100,43 @@ public:
     void OnDestroy() override { IBoss::Unbind(scene.Self(), this); }
 
 private:
-    [[nodiscard]] LoomAiComponent* Ai() const { return scene.GetScript<LoomAiComponent>(); }
+    [[nodiscard]] Boss03AiComponent* Ai() const { return scene.GetScript<Boss03AiComponent>(); }
 };
 
-FBZZ_REFLECT(LoomBossComponent)
+FBZZ_REFLECT(Boss03BossComponent)
 
-inline void LoomBossComponent::OnStart()
+inline void Boss03BossComponent::OnStart()
 {
     // «ボスとして» 名乗る。型で引く経路はこの環境では空を返すので、
     // ここを書き忘れると倒してもステージが終わらない (IBoss.hpp の WHY)。
     IBoss::Bind(scene.Self(), this);
 
     if (!Ai())
-        debug.LogError("LoomBossComponent: no LoomAiComponent on the loom. "
+        debug.LogError("Boss03BossComponent: no Boss03AiComponent on the boss. "
                        "Phase, topple and execute cannot be read.");
 
     if (auto* health = scene.GetScript<EnemyHealthComponent>()) {
         health->SetFlinchVoice(&se::kBossDamaged);
+        // 撃破の声も預ける。ここを書かないと «最後の翼が落ちた瞬間» が無音になり、
+        // 撃破の演出 (BossDeathVfxComponent) だけが音無しで始まる。
+        health->SetDestroyVoice(&se::kBossDestroy);
     } else {
         // 進行はボスの EnemyHealthComponent で終わりを決める。無いと «倒しても
         // 何も起きない» ステージになり、しかも進行側は何も言わない。
-        debug.LogError("LoomBossComponent: no EnemyHealthComponent on the loom. "
+        debug.LogError("Boss03BossComponent: no EnemyHealthComponent on the boss. "
                        "GameFlowComponent decides victory from it, so the stage can never end.");
     }
 
     if (!scene.GetScript<BossBreakComponent>())
-        debug.LogError("LoomBossComponent: no BossBreakComponent on the loom. "
+        debug.LogError("Boss03BossComponent: no BossBreakComponent on the boss. "
                        "The break gauge never fills, so the boss never topples and "
-                       "the arms can never be executed.");
+                       "the wings can never be executed.");
 }
 
-inline void LoomBossComponent::OnUpdate()
+inline void Boss03BossComponent::OnUpdate()
 {
     const auto* ai = Ai();
-    debugArms    = ai ? ai->ArmsRemaining() : 0;
+    debugWings   = ai ? ai->WingsRemaining() : 0;
     debugPhase   = CurrentPhase();
     debugEngaged = IsEngaged();
 }

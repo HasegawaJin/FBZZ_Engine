@@ -1,0 +1,25 @@
+version = 1
+name = 'UIBossGauge'
+shader = "Assets/Shaders/UI/Material/UIBreathGauge.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+fillColor = [ 0.84, 0.49, 0.31, 1.0 ]
+fillHotColor = [ 1.0, 0.78, 0.32, 1.0 ]
+trackColor = [ 0.055, 0.025, 0.02, 0.94 ]
+rimColor = [ 0.95, 0.36, 0.12, 1.0 ]
+cornerRadius = [ 10.0, 10.0, 10.0, 10.0 ]
+fillRatio = [ 1.0 ]
+fillFromRight = [ 0.0 ]
+edgeGlowWidth = [ 18.0 ]
+edgeGlowGain = [ 0.95 ]
+stripeDensity = [ 24.0 ]
+stripeAlpha = [ 0.10 ]
+shellThickness = [ 2.5 ]
+rimGain = [ 0.95 ]
+highlightGain = [ 0.78 ]

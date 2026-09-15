@@ -17,6 +17,7 @@ struct Layer {
     static constexpr int IgnoreRaycast = 2;
     static constexpr int Water         = 4;
     static constexpr int UI            = 5;
+    static constexpr int Static        = 9;
 
     static constexpr LayerMask Everything = ~0u;
     static constexpr LayerMask Nothing    = 0u;

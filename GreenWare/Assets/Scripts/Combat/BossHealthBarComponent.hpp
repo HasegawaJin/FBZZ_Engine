@@ -1,5 +1,5 @@
 /// @file    BossHealthBarComponent.hpp
-/// @brief   画面上部のボス体力バー。誰と戦っていて、あと何割かを 1 本で出す
+/// @brief   ボスの残り部位と、敵ごとの崩し・とどめの猶予を表示する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-28
 ///
@@ -8,12 +8,6 @@
 ///   位置も太さも絵合わせで何度も触るので、ランタイムで組むと Canvas Editor で
 ///   掴めなくなる (あちらの冒頭の WHY)。敵の頭上バーだけがランタイム生成なのは、
 ///   対象ごとに 1 枚要るから。ボスは «画面に固定の 1 枚» なので置く側。
-///
-/// WHY 極を «バーの色» ではなく名前の側に出すか:
-///   ボスは塗られる的になったので (BossCoreComponent の Player Charged)、
-///   «今どちらの極が乗っているか» は撃ち込めるかどうかを決める情報になった。
-///   ただしバー本体は残り HP を表しており、そこへ極性色を混ぜると «赤いのは
-///   ＋だからか、瀕死だからか» が読めなくなる。量はバー、極は文字、と分ける。
 ///
 /// WHY ボットが居ないときに «隠す» か:
 ///   Main 以外のシーンや、ボスを置いていない検証用の配置でも同じ HUD を使う。
@@ -40,6 +34,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -69,7 +64,9 @@ public:
                  "Sort Order だけ Fill より下にする。未設定でもバーは動く")
     FBZZ_REF(GameObject, bossBackground, "Boss Background")
     FBZZ_REF(GameObject, bossName, "Boss Name")
-    FBZZ_TOOLTIP("ボス名と極性記号を出す UIText。未設定でも動作する")
+    FBZZ_TOOLTIP("ボス名を出す UIText")
+    FBZZ_FIELD(std::string, materialFillParam, "fillRatio", "Fill Ratio Param")
+    FBZZ_FIELD(std::string, materialColorParam, "fillColor", "Fill Color Param")
 
     FBZZ_GROUP("Color")
     FBZZ_FIELD_COLOR(backgroundColor, (Vector4{ 0.02f, 0.02f, 0.03f, 0.78f }), "Background")
@@ -79,12 +76,9 @@ public:
     FBZZ_FIELD_COLOR(neutralNameColor, (Vector4{ 0.62f, 0.66f, 0.72f, 1.00f }), "Name (No BladeSide)")
     FBZZ_TOOLTIP("無極のときのボス名の色。極が乗ると 12.2 の極性色へ切り替わる")
 
-    // 崩しゲージ (Docs/break-parry.md)。ボスに BossBreakComponent が付いていれば、
-    // バーは HP ではなく «崩れるまで» を描く。溜まるほど白へ寄り、倒れている間は
-    // 残り時間として減っていく。
-    FBZZ_GROUP("Break Gauge")
-    FBZZ_FIELD_COLOR(breakEmptyColor, (Vector4{ 0.42f, 0.50f, 0.60f, 1.00f }), "Break (empty)")
-    FBZZ_FIELD_COLOR(breakFullColor,  (Vector4{ 0.88f, 0.97f, 1.00f, 1.00f }), "Break (full)")
+    // 倒れている間 (Docs/presentation.md)。残り部位とは別に攻める猶予を表示する
+    // 琥珀色はとどめを狙える時間にだけ使う。
+    FBZZ_GROUP("Toppled")
     FBZZ_FIELD_COLOR(toppledColor,    (Vector4{ 1.00f, 0.84f, 0.30f, 1.00f }), "Toppled")
     FBZZ_TOOLTIP("倒れている間の色。琥珀は «今が攻め時» の色 (予兆の色と同じ語)")
     FBZZ_FIELD_RANGE(float, toppledPulseHz, 4.5f, "Toppled Pulse Hz", 0.0f, 12.0f)
@@ -133,6 +127,12 @@ private:
     EntityRef m_drain;
     EntityRef m_background;
     EntityRef m_name;
+    EntityRef m_summary;
+    EntityRef m_plate;
+    EntityRef m_breakFill[2];
+    EntityRef m_breakBack[2];
+    EntityRef m_breakLabel[2];
+    void RefreshBreakRows(const std::vector<GameObject*>& bosses);
 
     // 追従帯の現在値と、被弾を検出するための前フレームの残量。
     float m_drainRatio    = 1.0f;
@@ -158,6 +158,14 @@ inline void BossHealthBarComponent::OnStart()
 {
     m_warnedNoBoss = false;
     debugBoss.clear();
+    if (auto* object = scene.Find("HUD_BossSummary")) m_summary = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_BossPlate")) m_plate = EntityRef{ object->GetID() };
+    for (int i = 0; i < 2; ++i) {
+        const std::string suffix = std::to_string(i);
+        if (auto* object = scene.Find("HUD_BreakFill" + suffix)) m_breakFill[i] = EntityRef{ object->GetID() };
+        if (auto* object = scene.Find("HUD_BreakBack" + suffix)) m_breakBack[i] = EntityRef{ object->GetID() };
+        if (auto* object = scene.Find("HUD_BreakLabel" + suffix)) m_breakLabel[i] = EntityRef{ object->GetID() };
+    }
 
     // 参照の解決は Play 開始時に 1 度だけ。毎フレーム名前で探すと、見つからない構成で
     // 静かに全シーン走査を続けることになる。
@@ -246,6 +254,48 @@ inline void BossHealthBarComponent::Hide()
     if (GameObject* drain = m_drain.Resolve(scene))     ui.SetImageEnabled(drain, false);
     if (GameObject* back = m_background.Resolve(scene)) ui.SetImageEnabled(back, false);
     if (GameObject* label = m_name.Resolve(scene))      ui.SetTextEnabled(label, false);
+    if (auto* object = m_summary.Resolve(scene)) ui.SetTextEnabled(object, false);
+    if (auto* object = m_plate.Resolve(scene)) ui.SetImageEnabled(object, false);
+    for (int i = 0; i < 2; ++i) {
+        if (auto* object = m_breakFill[i].Resolve(scene)) ui.SetImageEnabled(object, false);
+        if (auto* object = m_breakBack[i].Resolve(scene)) ui.SetImageEnabled(object, false);
+        if (auto* object = m_breakLabel[i].Resolve(scene)) ui.SetTextEnabled(object, false);
+    }
+}
+
+inline void BossHealthBarComponent::RefreshBreakRows(const std::vector<GameObject*>& bosses)
+{
+    for (int i = 0; i < 2; ++i) {
+        GameObject* boss = i < static_cast<int>(bosses.size()) ? bosses[i] : nullptr;
+        const auto* health = boss ? scene.GetScript<EnemyHealthComponent>(boss) : nullptr;
+        const auto* meter = boss ? scene.GetScript<BossBreakComponent>(boss) : nullptr;
+        const bool visible = health && meter;
+        const bool alive = visible && health->IsAlive();
+        const bool down = alive && meter->IsToppled();
+        const float amount = alive ? Clamp01(meter->Ratio()) : 0.0f;
+        const Vector4 tint = down ? toppledColor : Vector4{ 0.54f, 0.85f, 0.91f, 1.0f };
+        if (auto* object = m_breakBack[i].Resolve(scene)) ui.SetImageEnabled(object, visible);
+        if (auto* object = m_breakFill[i].Resolve(scene)) {
+            ui.SetImageEnabled(object, visible);
+            ui.SetImageFillAmount(object, amount);
+            ui.SetImageColor(object, tint);
+        }
+        if (auto* object = m_breakLabel[i].Resolve(scene)) {
+            ui.SetTextEnabled(object, visible);
+            if (!visible) continue;
+            std::string label = bosses.size() > 1 ? std::to_string(i + 1) + "体目  " : "";
+            const auto* identity = IBoss::Of(boss);
+            if (bosses.size() > 1 && alive && identity)
+                label += "第" + std::to_string(identity->CurrentPhase()) + "段階  ";
+            const char* opening = identity && identity->UsesBodyHitbox()
+                ? (identity->IsToppled() ? (identity->CanExecute() ? "連撃 / とどめの好機" : "本体へ連撃！") : "落下中")
+                : "とどめの好機";
+            label += !alive ? "撃破" : down ? opening
+                : "崩し  " + std::to_string(static_cast<int>(amount * 100.0f)) + "%";
+            ui.SetText(object, label);
+            ui.SetTextColor(object, alive ? tint : neutralNameColor);
+        }
+    }
 }
 
 inline void BossHealthBarComponent::OnLateUpdate()
@@ -284,27 +334,80 @@ inline void BossHealthBarComponent::OnLateUpdate()
     //   帯電した雑魚を叩き込んだときだけなので、この最後の 1 発こそ一番返したい。
     //   0 まで «減り切る» のを見せ、追従帯が追いついてから引く (畳むまでの猶予は
     //   BossDeathVfxComponent の崩壊が持っているので、この間バーだけが浮くことはない)。
-    const bool  alive = health->IsAlive();
-    // 崩しゲージを持つボスは、バーが «崩れるまで» を描く。HP は動かないので出さない。
-    const auto* brk   = scene.GetScript<BossBreakComponent>(boss);
-    const bool  gauge = alive && brk != nullptr;
-    const float ratio = !alive ? 0.0f : gauge ? brk->Ratio() : health->Normalized();
+    const auto* bossScript = IBoss::Of(boss);
+
+    // バーが描くのは «残り部位»。脚を全部落とすことが勝利条件そのものなので、
+    // «あとどれだけか» はここにしか無い。
+    //
+    // WHY HP へ落ちる道を残すか: 部位を持たない構成 (Serpent 以外の将来のボス) では
+    //     PartsTotal が 0 で返る。そこで 0 除算せず、従来どおり HP を描く。
+    // WHY 1 本のバーに «盤面の全員» を足すか (2026-09-15): Stage_02 は蛇を 2 体置く。
+    //     代表の 1 体だけを描くと、片方を倒し切った瞬間にバーがもう 1 体の満タンへ
+    //     跳ね上がり、積み上げた戦いがそこで巻き戻ったように見える。
+    //     長さが表すのは «この戦いがあとどれだけ残っているか» で、相手の頭数ではない。
+    int   bossCount  = 0;
+    int   aliveCount = 0;
+    int   partsLeft  = 0;
+    int   partsTotal = 0;
+    float healthSum  = 0.0f;
+    bool bodyHealth = false;
+    bool  toppled    = false;
+    int   maxPhase   = 1;
+
+    std::vector<GameObject*> bosses;
+    CollectBossesOnBoard(scene, bosses);
+    // 名乗っていない相手を明示で割り当てている構成 (FindBoss の WHY) では名簿に居ない。
+    if (std::find(bosses.begin(), bosses.end(), boss) == bosses.end()) bosses.push_back(boss);
+    std::sort(bosses.begin(), bosses.end(), [](const GameObject* left, const GameObject* right) {
+        return left->name < right->name;
+    });
+
+    for (GameObject* other : bosses) {
+        const auto* otherHealth = scene.GetScript<EnemyHealthComponent>(other);
+        if (!otherHealth) continue;
+        ++bossCount;
+        const bool otherAlive = otherHealth->IsAlive();
+        if (otherAlive) ++aliveCount;
+
+        const auto* script = IBoss::Of(other);
+        bodyHealth = bodyHealth || (script && script->UsesBodyHitbox());
+        const int   total  = script ? script->PartsTotal() : 0;
+        const int   left   = script ? script->PartsRemaining() : -1;
+        if (total > 0 && left >= 0) {
+            partsTotal += total;
+            // 倒した相手は 0 本。残り節は最小値で止まる (SerpentBody の minSegments) ので、
+            // 生死を見ないと «倒したのにまだ 6 本ある» がバーに残る。
+            partsLeft += otherAlive ? left : 0;
+        }
+        healthSum += otherAlive ? otherHealth->Normalized() : 0.0f;
+
+        const auto* otherBreak = scene.GetScript<BossBreakComponent>(other);
+        if (otherAlive && otherBreak && otherBreak->IsToppled()) toppled = true;
+        if (script) maxPhase = std::max(maxPhase, script->CurrentPhase());
+    }
+
+    const bool  byParts = partsTotal > 0 && !bodyHealth;
+    const float ratio = byParts
+        ? static_cast<float>(partsLeft) / static_cast<float>(partsTotal)
+        : (bossCount > 0 ? healthSum / static_cast<float>(bossCount) : 0.0f);
     const float drain = AdvanceDrain(ratio);
     debugRatio = ratio;
     debugDrain = drain;
 
-    if (!alive && drain <= kDrainSettled) {
+    if (aliveCount == 0 && drain <= kDrainSettled) {
         Hide();
         return;
     }
     debugVisible = true;
+    if (auto* object = m_plate.Resolve(scene)) ui.SetImageEnabled(object, true);
+    RefreshBreakRows(bosses);
+    if (auto* object = m_summary.Resolve(scene)) {
+        ui.SetTextEnabled(object, false);
+    }
 
-    const bool toppled = gauge && brk->IsToppled();
-    const Vector4 base = gauge
-        ? (toppled ? toppledColor : breakEmptyColor + (breakFullColor - breakEmptyColor) * ratio)
+    const Vector4 base = toppled
+        ? toppledColor
         : emptyColor + (fullColor - emptyColor) * ratio;
-
-    const auto* bossScript = IBoss::Of(boss);
 
     float pulse = 1.0f;
     // 倒れている間は «今が攻め時» の明滅。残り時間が減る動きと重なって急かす。
@@ -331,6 +434,10 @@ inline void BossHealthBarComponent::OnLateUpdate()
         ui.SetImageEnabled(drainObject, true);
         ui.SetImageFillAmount(drainObject, drain);
         ui.SetImageColor(drainObject, drainColor);
+        if (!materialFillParam.empty())
+            ui.SetMaterialFloat(drainObject, materialFillParam, drain);
+        if (!materialColorParam.empty())
+            ui.SetMaterialColor(drainObject, materialColorParam, drainColor);
     }
 
     // 表示は毎フレーム押し直す。Hide() が落としたスイッチを戻すのはここだけで、
@@ -338,21 +445,14 @@ inline void BossHealthBarComponent::OnLateUpdate()
     ui.SetImageEnabled(fill, true);
     ui.SetImageFillAmount(fill, ratio);
     ui.SetImageColor(fill, color);
+    if (!materialFillParam.empty())
+        ui.SetMaterialFloat(fill, materialFillParam, ratio);
+    if (!materialColorParam.empty())
+        ui.SetMaterialColor(fill, materialColorParam, color);
 
     if (GameObject* label = m_name.Resolve(scene)) {
         ui.SetTextEnabled(label, true);
         std::string text = bossScript ? bossScript->BossName() : "BOSS";
-        // 崩しの遊びでは進行を «残り本数» で出す。バーが HP でない以上、あとどれだけかは
-        // ここにしか無い。倒れている間はその旨を言う。
-        if (gauge) {
-            if (bossScript && bossScript->PartsTotal() > 0) {
-                text += "   " + std::to_string(std::max(bossScript->PartsRemaining(), 0))
-                      + " / " + std::to_string(bossScript->PartsTotal());
-            }
-            if (toppled) text += "   BREAK!";
-        }
-        // フェーズは 2 つしかないので «P2 に入った» ことだけ分かればよい。
-        if (bossScript && bossScript->CurrentPhase() >= 2) text += "   PHASE 2";
 
         ui.SetText(label, text);
         ui.SetTextColor(label, toppled ? toppledColor : neutralNameColor);

@@ -37,19 +37,19 @@ class BossBreakComponent : public Script {
 public:
     FBZZ_GROUP("Gauge")
     FBZZ_FIELD_RANGE(float, maxBreak, 100.0f, "Max", 10.0f, 1000.0f)
-    FBZZ_FIELD_RANGE(float, parryGain, 34.0f, "弾き", 0.0f, 500.0f)
+    FBZZ_FIELD_RANGE(float, parryGain, 40.0f, "弾き", 0.0f, 500.0f)
     FBZZ_TOOLTIP("弾き 1 回。3 回で満ちる量が既定。ここが戦いのテンポそのもの")
     FBZZ_FIELD_RANGE(float, parryHeavyGain, 60.0f, "Parry (heavy)", 0.0f, 500.0f)
     FBZZ_TOOLTIP("突進のような重い手を弾いたとき。読み切りの難しさに見合う量")
-    FBZZ_FIELD_RANGE(float, perfectDodgeGain, 16.0f, "Just Dodge", 0.0f, 500.0f)
+    FBZZ_FIELD_RANGE(float, perfectDodgeGain, 10.0f, "Just Dodge", 0.0f, 500.0f)
     FBZZ_TOOLTIP("ジャスト回避。弾けない手 (輪・ビーム) にも道を残すが、弾きより薄く")
-    // WHY 3.5 から 6.0 へ上げたか (2026-09-05):
-    //   «30 発近く» は 3 連の頃の見積もり。5 連に増えた今は 1 セット振り切れば 5 発
-    //   入るので、17 発 = 3〜4 セットで満ちる。斬るだけで満たす道が «無い» のではなく
-    //   «遠回り» であることは変わらない (弾きなら 3 回)。
-    FBZZ_FIELD_RANGE(float, slashGain, 6.0f, "Slash", 0.0f, 100.0f)
-    FBZZ_TOOLTIP("斬撃 1 発。«斬るだけ» で満たすには 17 発 (連撃 3〜4 セット) 要る量に留める")
-    FBZZ_FIELD_RANGE(float, chargedSlashGain, 12.0f, "Charged Slash", 0.0f, 200.0f)
+    // WHY 3.5 か: «斬るだけで満たすには 30 発近く要る» という宣言
+    //   (BladeComponent::ResolveHit) と揃えてある。2026-09-05 に 6.0 (17 発) へ上げた
+    //   ことがあるが、**弾かずに斬るだけで転倒させられる**ので 2026-09-08 に戻した
+    //   (Docs/break-parry.md)。斬った分は «刃の熱» として次の弾きへ返す形にしてある。
+    FBZZ_FIELD_RANGE(float, slashGain, 3.5f, "Slash", 0.0f, 100.0f)
+    FBZZ_TOOLTIP("斬撃 1 発。«斬るだけ» で満たすには約 30 発 要る量に留める")
+    FBZZ_FIELD_RANGE(float, chargedSlashGain, 9.0f, "Charged Slash", 0.0f, 200.0f)
 
     // WHY «上手い弾き» に上乗せするか (2026-09-06):
     //   弾きは窓 0.22 秒のどこで受けても同じ量だった。予兆を読み切って «叩きつけの
@@ -91,17 +91,21 @@ public:
     //   8/秒 は «最後に溜めてから 2.5 秒» の後、12.5 秒で全部消える速さ。ボスの手番が
     //   2〜5 秒あるので、1 回分の隙で稼いだぶんが次の隙まで持たず、何度弾いても
     //   ゲージが «同じ所» に戻る。積み上がっている実感が出ないと、弾く動機が消える。
-    FBZZ_FIELD_RANGE(float, decayDelay, 4.0f, "保持", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, decayDelay, 2.5f, "保持", 0.0f, 20.0f)
     FBZZ_TOOLTIP("最後に溜めてからこの秒数は戻らない。連撃の合間に減り始めると «溜まらない» に見える")
-    FBZZ_FIELD_RANGE(float, decayPerSecond, 4.0f, "Decay / s", 0.0f, 200.0f)
+    FBZZ_FIELD_RANGE(float, decayPerSecond, 8.0f, "Decay / s", 0.0f, 200.0f)
 
     FBZZ_GROUP("Topple")
-    // WHY 5 → 9 秒か (2026-09-10): 倒れている間にやることが «脚へ とどめ» から
-    //     «脚を登って背のコアへ とどめ» に変わった。登攀だけで 3.5 秒あり、
-    //     5 秒では甲板へ着いた頃に起き上がられる。
+    // WHY 5 → 9 秒か (2026-09-10): 倒れている間にやることが «脚を登って背のコアへ»
+    //     に変わったときに、登攀 3.5 秒を収めるため広げた。
+    //     **その登攀は同じ 2026-09-10 に取り下げられ、決着は脚 4 本へ戻っている**
+    //     (Docs/climb-core.md) ので、9 秒の理由は既に無い。
+    //     それでも戻していないのは、9 秒が «どの脚を斬るか選ぶ» 時間として効いている
+    //     から ── 5 秒は «一番近い膝下へ走る» しか選べない長さだった。
+    //     縮めるなら、二択 (脚 / コア) が成立する下限を測ってから。
     FBZZ_FIELD_RANGE(float, toppleSeconds, 9.0f, "Topple Seconds", 0.5f, 15.0f)
-    FBZZ_TOOLTIP("満ちて倒れている時間。この間だけ «とどめ» が通り、脚を登れる。"
-                 "登攀 3.5 秒 ＋ 蓋の開閉 0.7 秒を収める長さが要る")
+    FBZZ_TOOLTIP("満ちて倒れている時間。この間だけ «とどめ» が通る。"
+                 "短くすると «どの部位を斬るか» の選択が消える")
 
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(float, debugBreak, 0.0f, "Break")
@@ -126,6 +130,7 @@ public:
     /// 直前に当てた斬撃 (刃の熱) はここで使い切られる。
     void AddParry(bool heavy, bool just = false)
     {
+        if (m_toppled || m_gainScale <= 0.0f) return;
         const float base   = heavy ? parryHeavyGain : parryGain;
         const float streak = 1.0f + std::max(streakBonus, 0.0f)
                            * static_cast<float>(std::min(m_parryStreak, std::max(streakCap, 0)));
@@ -150,6 +155,9 @@ public:
     /// 全部の溜まり方に掛かる倍率。プレイヤーの «土壇場» (残り HP 僅か) が上げる。
     void SetGainScale(float scale) { m_gainScale = std::max(scale, 0.0f); }
 
+    /// 潜行・登場演出など、ボス側の都合で攻防できない間は減衰の時計だけを止める。
+    void SetDecayPaused(bool paused) { m_decayPaused = paused; }
+
     /// 斬撃だけに掛かる倍率。盤面が «斬る番» になっている間だけボスが上げる。
     ///
     /// WHY 全体の倍率 (SetGainScale) と分けるか: あちらはプレイヤーの状態 (土壇場) で、
@@ -160,6 +168,7 @@ public:
 
     void AddSlash(bool charged)
     {
+        if (m_toppled || m_gainScale <= 0.0f) return;
         // 熱を 1 発ぶん溜める。上限で頭打ちにしておかないと、連撃を延々当てた後の
         // 1 回だけが桁違いに濃くなる。
         if (m_edge < std::max(edgeCap, 0)) ++m_edge;
@@ -185,6 +194,8 @@ public:
 private:
     float m_break         = 0.0f;
     float m_idle          = 0.0f;
+    float m_decayIdle     = 0.0f;
+    bool  m_decayPaused   = false;
     bool  m_toppled       = false;
     float m_toppleLeft    = 0.0f;
     float m_toppleSeconds = 0.0f;
@@ -208,6 +219,8 @@ inline void BossBreakComponent::OnStart()
 {
     m_break         = 0.0f;
     m_idle          = 0.0f;
+    m_decayIdle     = 0.0f;
+    m_decayPaused   = false;
     m_toppled       = false;
     m_toppleLeft    = 0.0f;
     m_toppleSeconds = 0.0f;
@@ -225,10 +238,11 @@ inline void BossBreakComponent::OnStart()
 
 inline void BossBreakComponent::Add(float amount, const char* source)
 {
-    if (amount <= 0.0f || m_toppled) return;
+    if (amount <= 0.0f || m_toppled || m_gainScale <= 0.0f) return;
 
     m_break = std::min(m_break + amount * m_gainScale, std::max(maxBreak, 1.0f));
     m_idle  = 0.0f;
+    m_decayIdle = 0.0f;
     debugBreak      = m_break;
     debugLastSource = source ? source : "-";
 
@@ -270,6 +284,7 @@ inline void BossBreakComponent::EndTopple()
     m_toppleLeft = 0.0f;
     m_break      = 0.0f;
     m_idle       = 0.0f;
+    m_decayIdle  = 0.0f;
     debugBreak   = 0.0f;
     debugState   = "Idle";
 }
@@ -287,8 +302,11 @@ inline void BossBreakComponent::OnUpdate()
     }
 
     m_idle += dt;
-    if (m_break > 0.0f && m_idle >= std::max(decayDelay, 0.0f)) {
-        m_break = std::max(m_break - std::max(decayPerSecond, 0.0f) * dt, 0.0f);
+    const float previousIdle = m_decayIdle;
+    if (!m_decayPaused) m_decayIdle += dt;
+    if (m_break > 0.0f && m_decayIdle >= std::max(decayDelay, 0.0f)) {
+        const float decayTime = m_decayIdle - std::max(previousIdle, std::max(decayDelay, 0.0f));
+        m_break = std::max(m_break - std::max(decayPerSecond, 0.0f) * decayTime, 0.0f);
         debugBreak = m_break;
     }
     debugState = m_break > 0.0f ? "Charging" : "Idle";

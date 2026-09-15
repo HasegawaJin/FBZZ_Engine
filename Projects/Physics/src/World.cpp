@@ -840,6 +840,7 @@ namespace fbzz::physics
         {
             auto& body = m_bodies[i];
             if (!body || body->IsSleeping()) continue;
+            effectiveDts[i] *= std::clamp(body->m_timeScale, 0.0f, 8.0f);
             bool gravityOverridden = false;
 
             for (auto& volume : m_volumes)
@@ -983,6 +984,7 @@ namespace fbzz::physics
 
     void World::CCDPhase(float dt)
     {
+        if (dt <= 0.0f) return;
         // m_useCCD が true かつ速度が十分に速い物体について、
         // 他の球コライダー持ち物体との TOI を計算し速度をクランプする。
         // この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
@@ -991,7 +993,8 @@ namespace fbzz::physics
             auto& bodyA = m_bodies[i];
             if (!bodyA->m_useCCD) continue;
             if (bodyA->IsStatic()) continue;
-            if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, dt)) continue;
+            const float localDtA = m_effectiveDts[i];
+            if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, localDtA)) continue;
 
             // bodyA に紐づくコライダーを探す (SphereCollider のみ対応)
             const SphereCollider* sphereA = nullptr;
@@ -1035,9 +1038,9 @@ namespace fbzz::physics
                 const float         radiusB = sphereB->m_radius;
 
                 // 相対速度を使った Swept Sphere テスト
-                const math::Vector3 relVel = bodyA->GetVelocity()
-                                           - (bodyB->IsStatic() ? math::Vector3::ZERO
-                                                                 : bodyB->GetVelocity());
+                const math::Vector3 relVel = bodyA->GetVelocity() * (localDtA / dt)
+                                            - (bodyB->IsStatic() ? math::Vector3::ZERO
+                                                                  : bodyB->GetVelocity() * (m_effectiveDts[j] / dt));
                 const CCDResult res = CCDSolver::SweptSphereSphere(
                     centerA, radiusA, relVel, centerB, radiusB, dt);
 

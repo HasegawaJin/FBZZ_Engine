@@ -108,6 +108,23 @@ TEST_F(WorldStepTest, GravityIsReadBackAsSet)
     EXPECT_VEC3_NEAR(world.GetGravity(), math::Vector3(0.0f, -3.0f, 0.0f), testkit::kTolerance);
 }
 
+TEST_F(WorldStepTest, LocalClockKeepsPlayerMovingWhileOtherBodiesSlow)
+{
+    physics::RigidBody player;
+    physics::RigidBody enemy;
+    player.SetVelocity({4.0f, 0.0f, 0.0f});
+    enemy.SetVelocity({4.0f, 0.0f, 0.0f});
+    player.m_timeScale = 4.0f;
+    SyncScene(world, {&player, &enemy});
+    world.Step(0.025f);
+    EXPECT_VEC3_NEAR(player.GetPosition(), math::Vector3(0.4f, 0.0f, 0.0f), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(enemy.GetPosition(), math::Vector3(0.1f, 0.0f, 0.0f), testkit::kTolerance);
+
+    player.m_timeScale = 1.0f;
+    world.Step(0.025f);
+    EXPECT_VEC3_NEAR(player.GetPosition(), math::Vector3(0.5f, 0.0f, 0.0f), testkit::kTolerance);
+}
+
 TEST_F(WorldStepTest, SubstepCountIsClampedToTheSupportedRange)
 {
     // 0 以下で割ると dt が inf になり、1 フレームで世界が消し飛ぶ。上限は計算量の歯止め。

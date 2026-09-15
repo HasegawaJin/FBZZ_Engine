@@ -70,6 +70,8 @@ public:
     FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
     FBZZ_TOOLTIP("衝撃の減衰を測る相手。パッドを持っているのはプレイヤー本人")
 
+    FBZZ_FIELD(bool, wingedDeath, false, "翼を順に起爆")
+
     FBZZ_GROUP("Self Destruct")
     FBZZ_FIELD_RANGE(float, buildupSeconds, 1.70f, "蓄積", 0.1f, 8.0f)
     FBZZ_TOOLTIP("決定打までの秒数。EnemyDeathVfxComponent の Body Dissolve > Delay と "
@@ -148,6 +150,8 @@ inline Vector3 BossDeathVfxComponent::CorePoint() const
         if (GameObject* core = rig->CoreBone())
             return core->transform.worldPosition;
     }
+    if (auto* self = scene.Self())
+        if (auto* core = FindInSubtree(*self, "SOCKET_Core")) return core->transform.worldPosition;
     // リグが無い構成へのフォールバック。胴体の高さだけは外さないようにする。
     Vector3 point = transform.worldPosition;
     point.y += 3.3f;
@@ -161,7 +165,10 @@ inline Vector3 BossDeathVfxComponent::BlastPoint(int index) const
     Vector3 point = transform.worldPosition;
     point.y += 3.3f;
     if (GameObject* self = scene.Self()) {
-        if (GameObject* bone = FindInSubtree(*self, kBossBlastBones[index % kBoneCount]))
+        constexpr const char* wings[] = { "Wing_L_Lower", "Wing_R_Lower", "Wing_L_Middle",
+                                          "Wing_R_Middle", "Wing_L_Upper", "Wing_R_Upper", "Body" };
+        const char* boneName = wingedDeath ? wings[index % 7] : kBossBlastBones[index % kBoneCount];
+        if (GameObject* bone = FindInSubtree(*self, boneName))
             point = bone->transform.worldPosition;
     }
 

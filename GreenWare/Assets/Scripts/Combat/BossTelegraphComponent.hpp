@@ -1,5 +1,5 @@
 /// @file    BossTelegraphComponent.hpp
-/// @brief   BossAiComponent が出す予兆を、地面のデカール 1 枚として描く
+/// @brief   ボスの AI が出す予兆を、地面のデカールとして描く
 /// @author  Hasegawa Jin
 /// @date    2026-08-30
 ///
@@ -21,6 +21,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Combat/Boss03AiComponent.hpp>
 #include <Scripts/Combat/BossAiComponent.hpp>
 #include <Scripts/Combat/BossTelegraph.hpp>
 #include <Scripts/Combat/DangerWallComponent.hpp>
@@ -84,6 +85,19 @@ public:
     void OnDestroy() override;
 
 private:
+    /// 予兆を出している相手。ボス 1 と ボス 3 が同じ口 (CurrentTelegraph / ExtraTelegraphs) を持つ。
+    struct Source {
+        const BossTelegraph*              primary = nullptr;
+        const std::vector<BossTelegraph>* extras  = nullptr;
+        explicit operator bool() const { return primary != nullptr; }
+    };
+    /// 同じ GameObject に載っている AI から引く。
+    ///
+    /// WHY 仮想関数にしないか: 予兆は «形と進み» だけの値で、口も 2 つしかない。
+    ///     この 2 つのために IBoss へ純粋仮想を足すと、予兆を出さないボス
+    ///     (蛇は自前で描く) にも空の実装を書かせることになる。
+    [[nodiscard]] Source ResolveSource();
+
     [[nodiscard]] std::string DecalName(int index) const;
     /// index 枚目のデカールを拾い直す。無ければ作る。
     [[nodiscard]] GameObject* EnsureDecal(int index);
@@ -103,6 +117,15 @@ private:
 };
 
 FBZZ_REFLECT(BossTelegraphComponent)
+
+inline BossTelegraphComponent::Source BossTelegraphComponent::ResolveSource()
+{
+    if (const auto* core = scene.GetScript<BossAiComponent>())
+        return { &core->CurrentTelegraph(), &core->ExtraTelegraphs() };
+    if (const auto* boss03 = scene.GetScript<Boss03AiComponent>())
+        return { &boss03->CurrentTelegraph(), &boss03->ExtraTelegraphs() };
+    return {};
+}
 
 inline std::string BossTelegraphComponent::DecalName(int index) const
 {
@@ -138,6 +161,7 @@ inline GameObject* BossTelegraphComponent::EnsureDecal(int index)
     DecalComponent* decal = object->GetComponent<DecalComponent>();
     if (!decal) decal = &object->AddComponent<DecalComponent>();
     if (!telegraphMaterial.empty()) decal->materialPath = telegraphMaterial;
+    decal->receiverLayerMask = fbzz::Layer::Mask(fbzz::Layer::Static);
 
     slot = EntityRef{ object->GetID() };
     return object;
@@ -194,10 +218,12 @@ inline void BossTelegraphComponent::Place(GameObject& object, const BossTelegrap
     // 位相は cue が進める。回避窓へ入ると止まる ─ 動いていたものが止まるのは
     // «構え終わった» の合図で、明るさの変化より視界の端でも拾いやすい。
     decal->materialParamOverrides["stripeScroll"] = { m_cue.scroll };
-    // 突進は帯に沿って «走ってくる» 手。踏みつけ・着地・パルスは円、ビームは
-    // 撃った瞬間に線が通るので、走る絵になるのは突進だけ。
+    // 帯に沿って «走ってくる» 手か。ビームは撃った瞬間に線が通るので太る側。
+    // 出す側が travels を言ってくるならそれに従う (BossTelegraph.hpp の WHY) ─
+    // ボス 1 の突進は言ってこないので、ここで補う。
     decal->materialParamOverrides["travel"] =
-        { (line && telegraph.kind == BossAttackKind::Charge) ? 1.0f : 0.0f };
+        { (line && (telegraph.travels || telegraph.kind == BossAttackKind::Charge)) ? 1.0f
+                                                                                    : 0.0f };
     decal->materialParamOverrides["strikeWindow"] = { Clamp01(strikeFrom) };
     decal->materialParamOverrides["countPips"]    = { static_cast<float>(std::max(pips, 0)) };
     decal->materialParamOverrides["burstFade"]    = { m_cue.burstFade };
@@ -205,9 +231,9 @@ inline void BossTelegraphComponent::Place(GameObject& object, const BossTelegrap
 
 inline void BossTelegraphComponent::OnStart()
 {
-    if (!scene.GetScript<BossAiComponent>()) {
-        debug.LogError("BossTelegraphComponent requires BossAiComponent on the same object "
-                       "(the attack progress is what decides the telegraph).");
+    if (!ResolveSource()) {
+        debug.LogError("BossTelegraphComponent requires BossAiComponent or Boss03AiComponent "
+                       "on the same object (the attack progress is what decides the telegraph).");
         enabled = false;
         return;
     }
@@ -217,11 +243,11 @@ inline void BossTelegraphComponent::OnStart()
 
 inline void BossTelegraphComponent::OnLateUpdate()
 {
-    const auto* ai = scene.GetScript<BossAiComponent>();
-    if (!ai) return;
+    const Source source = ResolveSource();
+    if (!source) return;
 
-    const BossTelegraph&              primary = ai->CurrentTelegraph();
-    const std::vector<BossTelegraph>& extras  = ai->ExtraTelegraphs();
+    const BossTelegraph&              primary = *source.primary;
+    const std::vector<BossTelegraph>& extras  = *source.extras;
     const bool shown = primary.shape != BossTelegraphShape::None;
 
     // 出ていない間は «出てからの秒数» を進めない。1 枚目の状態で代表させるのは、

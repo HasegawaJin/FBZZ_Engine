@@ -1,0 +1,72 @@
+# 無害な余韻。危険範囲を示す輪・床デカール・画面フラッシュは持たない。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BOSS_WingRecall"
+instanceId = "e40b7e7f-1bb9-47a6-a6d8-49edb2efdf29"
+tag = "Untagged"
+layer = 0
+active = true
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects]]
+name = "Recall Filaments"
+instanceId = "2623529c-49b1-486d-90d5-55c284be9a6e"
+tag = "Untagged"
+layer = 0
+active = true
+parent = "FX_BOSS_WingRecall"
+parentInstanceId = "e40b7e7f-1bb9-47a6-a6d8-49edb2efdf29"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 12
+shape = 2
+coneAngleDegrees = 12.0
+coneRadius = 0.35
+sizeStart = 0.055
+sizeEnd = 0.015
+lifetime = 0.24
+lifetimeRandom = 0.06
+emitVelocity = [0.0, 0.0, 3.8]
+velocitySpread = 0.25
+velocityDamping = 0.6
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:5d7c9c0d8430448cbd6e36aafda5438a"
+renderMode = 1
+stretchedVelocityScale = 0.06
+stretchedLengthScale = 1.6
+sortMode = 0
+renderPriority = 35
+colorStart = [0.75, 0.72, 0.68, 0.48]
+colorEnd = [0.35, 0.33, 0.3, 0.0]
+bursts = [{ time = 0.0, count = 3, cycles = 3, interval = 0.09, probability = 1.0 }]
+
