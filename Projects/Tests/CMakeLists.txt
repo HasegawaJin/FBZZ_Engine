@@ -141,13 +141,22 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/FluidAmountEnvelopeTests.cpp
         Engine/Auto/FluidGpuLiquidTests.cpp
         Engine/Auto/RenderGraphTests.cpp
+        Engine/Auto/RenderPassCaptureTests.cpp
+        Engine/Auto/ShaderReloadTests.cpp
         Engine/Auto/RenderGraphLifetimeTests.cpp
         Engine/Auto/RenderSettingsTests.cpp
         Engine/Auto/SceneSerializerTests.cpp
+        Engine/Auto/SceneManagerTests.cpp
         Engine/Auto/TrailMultiKeyTests.cpp
         Engine/Auto/UIRectTests.cpp
         Engine/Auto/WaterWaveTests.cpp
         GreenWare/Auto/SerpentHitboxTests.cpp
+        GreenWare/Auto/BossBreakTests.cpp
+        GreenWare/Auto/Boss03CounterTests.cpp
+        GreenWare/Auto/GroundFireAreaTests.cpp
+        GreenWare/Auto/StageScoringTests.cpp
+        GreenWare/Auto/BossPartOwnerTests.cpp
+        GreenWare/Auto/ParryRushTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics
@@ -163,6 +172,7 @@ target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/G
 fbzz_add_test_suite(EditorAuto
   SOURCES
     Editor/Auto/AnimatorMaskAuditTests.cpp
+    Editor/Auto/AppIconWriterTests.cpp
     Editor/Auto/AssetDirtyRegistryTests.cpp
     Editor/Auto/AssetPathTests.cpp
     Editor/Auto/AssetPickerTests.cpp
@@ -184,6 +194,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/PrefabSaveTests.cpp
     Editor/Auto/SceneDirtyTrackerTests.cpp
     Editor/Auto/ScriptCodeGenTests.cpp
+    Editor/Auto/SpriteFieldFilterTests.cpp
     Editor/Auto/SpriteSlicerTests.cpp
     Editor/Auto/TerrainBrushTests.cpp
     Editor/Auto/UndoStackTests.cpp
