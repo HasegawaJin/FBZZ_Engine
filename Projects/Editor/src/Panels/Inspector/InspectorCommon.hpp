@@ -1466,26 +1466,32 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         ImGui::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
     }
 
-    // 大きさを持つ光源は解析的に評価するので遮蔽を扱えない。影の欄そのものを出さない。
-    if (lc.type != scene::LightComponent::Type::Area &&
-        lc.type != scene::LightComponent::Type::Sphere &&
-        lc.type != scene::LightComponent::Type::Tube) {
-        ImGui::Separator();
-        ImGui::SeparatorText("Shadow");
-        ImGui::Checkbox("Cast Shadows", &lc.castShadows);
-        if (lc.castShadows) {
-            ImGui::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
-            ImGui::DragFloat("Shadow Bias",     &lc.shadowBias,     0.05f, 0.1f, 10.0f);
-            if (lc.type == scene::LightComponent::Type::Directional) {
-                // 0 のとき "Auto" 表示。シーン全体の AABB から自動フィット。
-                const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Auto" : "%.1f m";
-                ImGui::DragFloat("Shadow Distance", &lc.shadowDistance, 5.0f, 0.0f, 2000.0f, distFmt);
-            } else {
-                ImGui::DragFloat("Shadow Near Plane", &lc.shadowNearPlane,
-                                 0.01f, 0.01f, 10.0f, "%.2f m");
-                ImGui::TextDisabled(
-                    "アトラスのタイルは 16 枚。Spot が 1 枚、Point が 6 枚を使う");
-            }
+    ImGui::Separator();
+    ImGui::SeparatorText("Shadow");
+    ImGui::Checkbox("Cast Shadows", &lc.castShadows);
+    if (lc.castShadows) {
+        ImGui::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("Shadow Bias",     &lc.shadowBias,     0.05f, 0.1f, 10.0f);
+        if (lc.type == scene::LightComponent::Type::Directional) {
+            // 0 のとき "Auto" 表示。シーン全体の AABB から自動フィット。
+            const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Auto" : "%.1f m";
+            ImGui::DragFloat("Shadow Distance", &lc.shadowDistance, 5.0f, 0.0f, 2000.0f, distFmt);
+        } else {
+            ImGui::DragFloat("Shadow Near Plane", &lc.shadowNearPlane,
+                             0.01f, 0.01f, 10.0f, "%.2f m");
+            // タイルの取り合いは «置いたのに影が出ない» の唯一の原因なので、
+            // この型が何枚使うかをその場で出す。
+            const bool cube = lc.type == scene::LightComponent::Type::Point
+                           || lc.type == scene::LightComponent::Type::Sphere
+                           || lc.type == scene::LightComponent::Type::Tube;
+            ImGui::TextDisabled(cube
+                ? "アトラスのタイルは 16 枚。この型は全方位なのでキューブ 6 面 = 6 枚"
+                : "アトラスのタイルは 16 枚。この型は 1 枚");
+            ImGui::TextDisabled("割り当てはカメラに近い順。あふれた光源は影を落とさない");
+            if (lc.type == scene::LightComponent::Type::Area)
+                ImGui::TextDisabled("Area は法線方向 75 度ぶんだけ。真横へは影が出ない");
+            if (lc.type == scene::LightComponent::Type::Tube)
+                ImGui::TextDisabled("管の長さは影の形に効かない (中心から焼く)。ぼけ幅は Source Radius");
         }
     }
 

@@ -437,7 +437,10 @@ void UpdatePunctualShadowConstants(RenderPassContext& ctx)
         dst[3] = { a.tangent,   a.halfWidth };
         dst[4] = { a.bitangent, a.halfHeight };
         // y は両面フラグ。PunctualLightGPU では outerCos の枠に載せてある。
-        dst[5] = { static_cast<float>(a.type), a.outerCos, 0.0f, 0.0f };
+        // z は影のスロット番号。legacyPunctualSlots は b3 の 12 枠に紐付いた表なので、
+        // b3 に席の無い「大きさを持つ光源」はそこから引けない。空いている枠へ載せる。
+        dst[5] = { static_cast<float>(a.type), a.outerCos,
+                   static_cast<float>(a.shadowIndex), 0.0f };
     }
 
     // レガシー経路のスロット番号と光源半径。「無し」は -1 (ctx 側の既定値がそう)。

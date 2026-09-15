@@ -74,13 +74,18 @@ struct LightComponent {
     bool          areaTwoSided = false;
 
     // ---- 影 ----
-    // Directional はカスケードシャドウ (CSM)、Spot / Point は専用アトラスへ描く。
-    // Area は影を落とさない (LTC は解析積分なので遮蔽の概念を持たない)。
+    // Directional はカスケードシャドウ (CSM)、それ以外は専用アトラス (4x4 = 16 タイル)。
+    // タイルの消費は型で変わる:
+    //   Spot / Area          … 1 枚 (Area は法線方向 75 度の錐台。真横は諦める)
+    //   Point / Sphere / Tube … キューブ 6 面で 6 枚。本数上限は
+    //                           ShadowSettings::maxShadowedPointLights
+    // 光源の «大きさ» は深度ではなく半影の広さ (sourceRadius) として効く。
+    // 割り当てはカメラから近い順で、あふれたライトは黙って影を落とさなくなる。
     bool  castShadows    = true;  // false のとき影を無効化 (shadowStrength=0 と等価)
     float shadowBias     = 1.0f;  // 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
     float shadowStrength = 1.0f;  // 影の濃さ: 0=影なし, 1=完全な影
     float shadowDistance = 0.0f;  // Directional のみ: 0=シーンに自動フィット, >0=正射影の半幅 [m]
-    // Spot / Point の透視投影 near 面 [m]。
+    // Directional 以外の透視投影 near 面 [m]。
     // WHY 露出させるか: near が小さいほど深度の分解能が near 側へ寄り、遠い側で
     //     アクネが出る。逆に大きくするとライトのすぐ手前にある caster が near で
     //     切り取られ、影が抜ける。ライトを壁や天井へ埋める使い方だと既定では

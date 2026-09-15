@@ -48,9 +48,9 @@ float FBZZ_PunctualSlopeBias(float bias, float3 N, float3 L)
 //   radius : カーネル半径 (タップ数は (2r+1)^2)
 //   spread : 1 タップあたりのテクセル歩幅。1 で隣接テクセル、大きいほど柔らかい縁
 //
-// WHY 歩幅を広げて半影を作るか: 半径を増やすとタップ数が二乗で増える。光源半径ぶんの
-//     にじみは「同じタップ数のまま間隔を広げる」方が安く、PCF の性質上ほぼ同じ見た目に
-//     なる。間隔が空きすぎるとバンディングが出るため、呼び出し側で上限を掛けてある。
+// WHY 歩幅と半径の両方を呼び出し側が決めるか: 半影の広さは歩幅 × 半径で決まるが、
+//     «標本が途切れないか» は歩幅だけで決まる。両方を外から渡せる形にしておかないと、
+//     「半影は広いが 9 点しか撃たない」カーネルを作れてしまう (呼び出し側の注記を参照)。
 //
 // WHY 矩形へクランプするか: カーネルはタイル端で隣のスロットへはみ出す。隣は
 //     「別のライトの深度」なので、漏れると無関係な影が帯状に貼り付く。
@@ -95,12 +95,24 @@ float FBZZ_SamplePunctualShadow(int slot, float3 worldPos, float3 N, float3 L)
         return 1.0f;
 
     const float bias = FBZZ_PunctualSlopeBias(params.x, N, L);
-    // params.z = 光源半径ぶんの半影 (テクセル)。上限 8 テクセルはバンディングが
-    // 出始める手前の実用値。0 のときは 1 (= 隣接テクセル) で従来と同じ硬さになる。
-    const float spread = 1.0f + clamp(params.z, 0.0f, 8.0f);
+
+    // params.z = 光源半径ぶんの半影 (テクセル)。広げるのは歩幅だけでなく半径も。
+    //
+    // WHY 半径も増やすか: 歩幅だけ伸ばしてもタップ数は増えないので、標本が散るだけで
+    //     半影にならない。半影 4 テクセルのとき 3x3 の 9 点は 8 テクセル四方へ広がり、
+    //     その隙間 (Spot 1 枚 512² では床で 50cm 間隔) へ人 1 人ぶんのシルエットが
+    //     まるごと落ちる。「大きい光源にすると影が消える」のがこれ。
+    //     歩幅は 2 テクセル以下に抑える — 比較サンプラーが 1 タップで 2x2 を畳むので、
+    //     そこまでは標本が途切れない。足りないぶんは半径で埋める。
+    //     上限 3 (7x7 = 49 タップ) はライト 1 本あたりのコストの実用上限。
+    const float penumbra  = clamp(params.z, 0.0f, 8.0f);
+    const int   minRadius = clamp(punctualShadowPcf, 0, 3);
+    const int   radius    = clamp((int)ceil(penumbra * 0.5f), minRadius, 3);
+    const float spread    = max(penumbra / max((float)radius, 1.0f), 1.0f);
+
     const float factor = FBZZ_PunctualShadowPCF(uv, depth - bias,
                                                 punctualShadowRect[slot],
-                                                punctualShadowPcf, spread);
+                                                radius, spread);
 
     // params.y: 1 = 完全な影, 0 = 影なし。
     return lerp(1.0f - params.y, 1.0f, factor);
@@ -116,10 +128,17 @@ float FBZZ_PunctualShadowFactor(uint lightType, int shadowIndex,
 {
     if (shadowIndex < 0 || punctualShadowCount <= 0) return 1.0f;
 
-    if (lightType == FBZZ_LIGHT_TYPE_POINT)
+    // 全方位のライトはキューブ 6 面のどれかを引く。Sphere / Tube も CPU 側が
+    // 「中心から見た点光源」として 6 面を焼くので、面の選び方は Point と同じでよい。
+    // 形状ぶんの広がりは半影 (params.z) が受け持つ。
+    if (lightType == FBZZ_LIGHT_TYPE_POINT
+     || lightType == FBZZ_LIGHT_TYPE_SPHERE
+     || lightType == FBZZ_LIGHT_TYPE_TUBE)
         return FBZZ_SamplePunctualShadow(
             shadowIndex + FBZZ_CubeFaceIndex(worldPos - lightPos), worldPos, N, L);
 
+    // Spot と Area は 1 枚。Area は法線方向へ張った錐台なので、外れた点は
+    // 錐台外として 1.0 (遮蔽なし) が返る。
     return FBZZ_SamplePunctualShadow(shadowIndex, worldPos, N, L);
 }
 

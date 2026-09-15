@@ -128,7 +128,9 @@ PunctualLight FBZZ_PunctualAt(uint base, uint i)
             // Area では outerCos が両面フラグの運搬に使われる (1 = 両面)。
             lt.outerCos    = r5.y;
             lt.type        = (uint)r5.x;
-            lt.shadowIndex = -1;
+            // 影のスロット番号。legacyPunctualSlots は b3 の 12 枠に紐付いた表で、
+            // b3 に席の無いこれらは引けないため、実体側の空き枠で運ぶ。無しは -1。
+            lt.shadowIndex = (int)r5.z;
             lt.cookieIndex = -1;
             lt.tangent     = r3.xyz;  lt.halfWidth  = r3.w;
             lt.bitangent   = r4.xyz;  lt.halfHeight = r4.w;
@@ -228,12 +230,34 @@ PunctualSample FBZZ_EvalPointSpotLight(PunctualLight lt, float3 worldPos, float3
 PunctualSample FBZZ_EvalPunctual(PunctualLight lt, float3 worldPos, float3 N)
 {
     PunctualSample s;
+    const bool shaped = (lt.type == FBZZ_LIGHT_TYPE_AREA)
+                     || (lt.type == FBZZ_LIGHT_TYPE_SPHERE)
+                     || (lt.type == FBZZ_LIGHT_TYPE_TUBE);
+
     if (lt.type == FBZZ_LIGHT_TYPE_AREA)
         s = FBZZ_EvalAreaLight(lt, worldPos, N, SafeNormalize(cameraPos - worldPos, N));
     else if (lt.type == FBZZ_LIGHT_TYPE_SPHERE || lt.type == FBZZ_LIGHT_TYPE_TUBE)
         s = FBZZ_EvalSphereTubeLight(lt, worldPos, N, SafeNormalize(cameraPos - worldPos, N));
     else
-        s = FBZZ_EvalPointSpotLight(lt, worldPos, N);
+        s = FBZZ_EvalPointSpotLight(lt, worldPos, N);   // 影は関数の中で畳んである
+
+    // 大きさを持つ光源の影。
+    //
+    // WHY 形状の評価関数の中でやらないか: AreaLight.hlsli / SphereTubeLight.hlsli は
+    //     b12 に依存しない «形状の解き方» だけに保ちたい (エディタのプレビューのように
+    //     b12 を束縛しない経路からも呼ばれる)。影は b12 が要るのでここで掛ける。
+    // WHY 遮蔽率 1 つを掛けるだけで済ませるか: 面光源の拡散は LTC の解析積分で、
+    //     光源の «どの部分が隠れたか» を表現できない。部分遮蔽まで出すには面を
+    //     分割して積分し直す必要があり、ライト 1 本あたりの費用が桁で変わる。
+    //     代表点 1 つの遮蔽で全体を割るのは主要エンジンと同じ近似。
+    // 拡散と鏡面の両方に効かせるため intensityNoCosine も一緒に落とす。
+    if (shaped && lt.shadowIndex >= 0 && s.intensity > 0.0f)
+    {
+        const float occl = FBZZ_PunctualShadowFactor(lt.type, lt.shadowIndex,
+                                                     lt.position, worldPos, N, s.L);
+        s.intensity         *= occl;
+        s.intensityNoCosine *= occl;
+    }
     return s;
 }
 
