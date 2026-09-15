@@ -378,6 +378,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         build.productName       = (*buildTbl)["product_name"].value_or(build.productName);
         build.version           = (*buildTbl)["version"].value_or(build.version);
         build.outputDirectory   = (*buildTbl)["output_dir"].value_or(build.outputDirectory);
+        build.iconPath          = (*buildTbl)["icon"].value_or(build.iconPath);
         build.developmentBuild  = (*buildTbl)["development"].value_or(build.developmentBuild);
         build.stripEditorAssets = (*buildTbl)["strip_editor_assets"].value_or(build.stripEditorAssets);
 
@@ -640,6 +641,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     buildTbl.insert("product_name",        build.productName);
     buildTbl.insert("version",             build.version);
     buildTbl.insert("output_dir",          build.outputDirectory);
+    buildTbl.insert("icon",                build.iconPath);
     buildTbl.insert("development",         build.developmentBuild);
     buildTbl.insert("strip_editor_assets", build.stripEditorAssets);
     {
