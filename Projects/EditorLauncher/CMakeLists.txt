@@ -20,6 +20,9 @@ fbzz_apply_app_manifest(FBZZEditorLauncher)
 
 set_target_properties(FBZZEditorLauncher PROPERTIES
     OUTPUT_NAME "FBZZEditor"
+    # EXE の import lib が入力の FBZZEditor.lib と衝突すると、MSBuild が
+    # 入力ライブラリを出力として扱い、Editor 更新時の再リンクを省略する。
+    ARCHIVE_OUTPUT_NAME "FBZZEditorLauncher"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Editor"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Editor"
     RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Editor"
