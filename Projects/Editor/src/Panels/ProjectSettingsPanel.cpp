@@ -745,17 +745,10 @@ void ProjectSettingsPanel::DrawRenderDebug(renderer::RenderSettings& render)
 
     ImGui::Spacing();
     ImGui::SeparatorText("Debug");
-    ImGui::Checkbox("Pass Viewer", &render.passViewerEnabled);
+    ImGui::TextDisabled("Render Pass Viewer: Debug > Render Pass Viewer");
     ImGui::Checkbox("Particle Budget", &render.particleBudgetEnabled);
     if (render.particleBudgetEnabled)
         ImGui::DragInt("Particle Budget Count", &render.particleBudget, 100, 0, 1000000);
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(
-            "Shows RT thumbnails and CPU timings for each render pass\n"
-            "in the ImGui window \"Render Debug\".");
-    }
 
     ImGui::Spacing();
     ImGui::SeparatorText("Selection Outline");
