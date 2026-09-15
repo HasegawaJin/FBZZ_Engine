@@ -114,6 +114,8 @@ public:
     FBZZ_TOOLTIP("元の配置へ戻すばね。0 にすると電極が画面外へ流れ去る")
     FBZZ_FIELD_RANGE(float, minSeparation, 1.6f, "最小の間隔", 0.05f, 20.0f)
     FBZZ_TOOLTIP("逆極どうしがこれ以上近づかない距離。重なって 1 点に潰れるのを防ぐ")
+    FBZZ_FIELD_RANGE(float, collisionGlow, 0.0f, "衝突グロー", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("逆極が近づいたとき、コアを合成色の緑へ変える強さ")
     FBZZ_FIELD_RANGE(float, orbitSpeed, 8.0f, "旋回の速さ", -180.0f, 180.0f)
     FBZZ_TOOLTIP("原点まわりに定位置を回す角速度 [deg/s]。釣り合った後も画面を止めない")
 
@@ -130,7 +132,11 @@ public:
                  "0 = 画面全体 / 0.5 = 右半分。左に置いたメニューの上へ極が乗るのを防ぐ。"
                  "領域から外れている間は Home Spring で定位置へ戻る")
 
-    void OnStart()   override { m_rig.Attach(*this, Pole::Plus, Tuning()); }
+    void OnStart()   override
+    {
+        ElectrodeRig::ResetFusion();
+        m_rig.Attach(*this, Pole::Plus, Tuning());
+    }
     void OnUpdate()  override { m_rig.Tick(*this, Tuning(), time.UnscaledDeltaTime()); }
     void OnDestroy() override { m_rig.Detach(*this); }
 
@@ -185,6 +191,7 @@ private:
         tuning.coupling      = coupling;
         tuning.homeSpring    = homeSpring;
         tuning.minSeparation = minSeparation;
+        tuning.collisionGlow = collisionGlow;
         tuning.orbitSpeed    = orbitSpeed;
 
         tuning.followCursor   = followCursor;

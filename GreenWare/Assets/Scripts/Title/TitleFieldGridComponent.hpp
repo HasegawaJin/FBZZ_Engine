@@ -25,6 +25,7 @@
 #include <Scripts/Title/ElectrodeRig.hpp>
 #include <Scripts/Utils/GameCursorComponent.hpp>
 #include <Scripts/Title/ElectrodePole.hpp>
+#include <cmath>
 #include <cstddef>
 
 using namespace fbzz::scene;
@@ -73,6 +74,28 @@ inline void TitleFieldGridComponent::OnUpdate()
     //     per-instance の上書きが落ちる。書き込み 2 回で «落ちたら戻る» が保証できる。
     instance.SetVector4(kFieldGridPlusId,  kColorRight);
     instance.SetVector4(kFieldGridMinusId, kColorLeft);
+
+    if (scene.name == "Load") {
+        float collision = 0.0f;
+        const auto& rigs = ElectrodeRig::All();
+        for (const ElectrodeRig* left : rigs) {
+            for (const ElectrodeRig* right : rigs) {
+                if (!left || !right || left == right || left->PoleOf() == right->PoleOf()) continue;
+                const float distance = (left->Position() - right->Position()).Length();
+                collision = Max(collision, Clamp01((2.0f - distance) / 1.2f));
+            }
+        }
+        const Vector4 green{ 0.12f, 1.0f, 0.38f, 1.0f };
+        const float pulse = 0.5f + 0.5f * std::sin(time.UnscaledTime() * 5.0f);
+        const float accent = collision * (0.72f + pulse * 0.28f);
+        instance.SetVector4(kFieldGridPlusId,
+                            kColorRight * (1.0f - accent) + green * accent);
+        instance.SetVector4(kFieldGridMinusId,
+                            kColorLeft * (1.0f - accent) + green * accent);
+        instance.SetFloat(MaterialPropertyId("intensity"), 1.0f + accent * 0.45f);
+        instance.SetFloat(MaterialPropertyId("warpStrength"), 1.6f + accent * 1.4f);
+        instance.SetFloat(MaterialPropertyId("ringStrength"), 0.3f + accent * 0.9f);
+    }
 
     // WHY 巻き取らないか: phase は輪の進み (r - phase * speed) にしか入らない。
     //     ハッシュへ渡す Beam の phase と違い、大きくしても縞へ潰れる場所が無い。

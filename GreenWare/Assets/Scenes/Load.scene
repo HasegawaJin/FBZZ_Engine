@@ -1,5 +1,5 @@
 [scene]
-format_version = 1
+format_version = 2
 
 [[gameobjects]]
 active = true
@@ -7,21 +7,27 @@ instanceId = 'a2000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Canvas'
 parent = ''
-
 parentInstanceId = ''
 prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.UICanvas]
     canvasHeight = 1080.0
     canvasWidth = 1920.0
     enabled = true
+    faceCamera = false
     matchWidthOrHeight = 0.0
+    navigationEnabled = false
+    navigationRepeatDelay = 0.4
+    navigationRepeatInterval = 0.12
+    planeDistance = 2.0
     referenceHeight = 1080.0
     referenceWidth = 1920.0
     renderMode = 0
+    safeArea = [ 0.0, 0.0, 0.0, 0.0 ]
     scaleMode = 1
-    sortOrder = 0
+    sortOrder = 10
     worldScale = 0.01
 
     [gameobjects.transform]
@@ -33,49 +39,91 @@ tag = 'Untagged'
 active = true
 instanceId = 'a2000001-0000-0000-0000-000000000002'
 layer = 0
-name = 'Background'
-parent = 'Canvas'
-
-parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.UIImage]
-    color = [ 1.0, 1.0, 1.0, 1.0 ]
-    enabled = true
-    materialPath = 'Assets/Materials/UI/UITitleBackdrop.mat'
-    texturePath = ''
-    uvMax = [ 1.0, 1.0 ]
-    uvMin = [ 0.0, 0.0 ]
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1920.0, 1080.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'a2000001-0000-0000-0000-000000000003'
-layer = 0
 name = 'LoadingText'
 parent = 'Canvas'
-
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.UIText]
-    color = [ 0.8, 0.8, 0.8, 1.0 ]
+    [gameobjects.UIAnimator]
+    colorActive = false
+    colorDuration = 1.0
+    colorEasing = 0
+    colorFrom = [ 1.0, 1.0, 1.0, 1.0 ]
+    colorLoop = false
+    colorPingPong = false
+    colorTo = [ 1.0, 1.0, 1.0, 0.0 ]
+    delay = 0.0
     enabled = true
-    fontPath = ''
-    fontSize = 40.0
-    letterSpacing = 4.0
-    text = 'NOW LOADING...'
+    fillActive = false
+    fillDuration = 0.3
+    fillEasing = 0
+    fillFrom = 0.0
+    fillLoop = false
+    fillPingPong = false
+    fillTo = 1.0
+    matActive = false
+    matDuration = 0.3
+    matEasing = 0
+    matFrom = 0.0
+    matLoop = false
+    matPingPong = false
+    matTo = 1.0
+    materialParam = ''
+    posActive = false
+    posDuration = 1.0
+    posEasing = 0
+    posFrom = [ 0.0, 0.0 ]
+    posLoop = false
+    posPingPong = false
+    posTo = [ 100.0, 0.0 ]
+    rotActive = false
+    rotDuration = 0.3
+    rotEasing = 0
+    rotFrom = 0.0
+    rotLoop = false
+    rotPingPong = false
+    rotTo = 1.0
+    scaleActive = false
+    scaleDuration = 0.3
+    scaleEasing = 2
+    scaleFrom = [ 1.0, 1.0 ]
+    scaleLoop = false
+    scalePingPong = false
+    scaleTo = [ 1.2, 1.2 ]
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.88, 0.92, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 92.567551
+    letterSpacing = 5.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = true
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    text = 'NOW LOADING'
+    verticalAlign = 0
+    visibleCharacters = -1
 
     [gameobjects.transform]
-    position = [ 820.0, 341.0, 0.0 ]
+    position = [ 787.0, 887.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 310.736816, 40.0, 1.0 ]
+    scale = [ 374.280884, 92.567551, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -83,9 +131,9 @@ instanceId = 'a2000001-0000-0000-0000-000000000004'
 layer = 0
 name = 'LoadController'
 parent = 'Canvas'
-
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.transform]
@@ -98,10 +146,659 @@ tag = 'Untagged'
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        autoDelay = 1.5
+        autoDelay = 5.0
         autoTransition = true
         fadeDuration = 0.5
         fadeEnabled = true
         targetScene = ''
         triggerAction = ''
         viaScene = ''
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000005'
+layer = 0
+name = 'LoadFusionDirector'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'LoadFusionComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        approachSeconds = 2.4
+        fusionRadius = 0.72
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000010'
+layer = 0
+name = 'MainCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'MainCamera'
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777365
+    backgroundColor = [ 0.0, 0.0, 0.0, 1.0 ]
+    clearMode = 0
+    cullDistanceSpherical = true
+    cullingBoundsPadding = 0.0
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 1000.0
+    fovY = 74.0
+    frustumCulling = true
+    isMain = true
+    maxDrawDistance = 0.0
+    nearZ = 0.1
+    occlusionCulling = true
+    smallObjectScreenHeight = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.2, -8.0 ]
+    rotation = [ 0.130526, 0.0, 0.0, 0.991445 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000020'
+layer = 0
+name = 'GridField'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:9f42c7b13e8a4d05b6ce1f70a2d95c38|Assets/Materials/Title/FieldGrid.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = false
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.2, -7.8 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 5.0, 5.0, 5.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'TitleFieldGridComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugElectrodes = 0
+
+[[gameobjects]]
+active = true
+instanceId = '8385414c-5109-4e2b-95dc-0f38b4b594dd'
+layer = 0
+name = 'PolarityCore_Plus'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Player'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    bursts = []
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 1.0, 0.12, 0.14, 0.0 ]
+    colorStart = [ 1.0, 0.12, 0.14, 1.0 ]
+    colorVariation = 0.0
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = true
+    deathSubEmitter = ''
+    duration = 0.0
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 120.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 1
+    inheritVelocity = 0.0
+    lifetime = 1.0
+    lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    lodEnabled = true
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = 'guid:bb4a69ff2e2be26600132fa848c7c9cd|Assets/Materials/Effects/ElectricChargePlusGPU.mat'
+    maxParticles = 1000
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = true
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 0
+    screenCoverageThreshold = 0.0
+    shape = 1
+    simulationMode = 1
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.03
+    sizeStart = 0.1
+    sortMode = 0
+    speedRange = 10.0
+    sphereRadius = 0.35
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = true
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = true
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.9
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [
+            [ 0.0, 1.5, 0.18, 0.21, 1.0 ],
+            [ 0.18, 1.0, 0.12, 0.14, 1.0 ],
+            [ 0.55, 0.6, 0.072, 0.084, 0.8 ],
+            [ 1.0, 0.2, 0.024, 0.028, 0.0 ]
+        ]
+        space = 1
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.85 ], [ 0.12, 0.0 ], [ 0.75, 0.1 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ -3.0, 1.2, -4.8 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ElectricPlusParticleComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        arcAmplitude = 0.55
+        arcBreakup = 0.55
+        arcIntensity = 1.6
+        arcRange = 7.0
+        arcStrands = 3
+        arcStrikeRate = 22.0
+        arcWidth = 0.1
+        collisionGlow = 1.0
+        coreIntensity = 2.6
+        corePulseDepth = 0.22
+        corePulseRate = 1.6
+        coreRingBeads = 5.0
+        coreRingScale = 1.0
+        coreRingTravel = 1.2
+        coreSize = 0.255834
+        coreThickness = 0.28
+        coupling = 24.0
+        crackle = 29.731255
+        emitRate = 2000.0
+        fieldLineBeads = 4.0
+        fieldLineCount = 16
+        fieldLineIntensity = 1.15
+        fieldLineLength = 3.2
+        fieldLineSegments = 44
+        fieldLineSpin = -8.0
+        fieldLineStart = 1.15
+        fieldLineTravel = 2.5
+        fieldLineWidth = 0.07
+        fieldRadius = 10.0
+        followCursor = false
+        followMinX = 0.5
+        followResponse = 12.0
+        homeSpring = 0.2
+        hotCore = 1.5
+        lifetime = 1.0
+        maxParticles = 10000
+        minSeparation = 0.72
+        orbitSpeed = 0.0
+        particleSize = 0.422067
+        pullStrength = 26.0
+        pushStrength = 10.0
+        radialBurst = 1.0
+        simulationMode = 1
+        spawnRadius = 0.35
+        spin = 2.0
+        swirlStrength = 4.0
+
+[[gameobjects]]
+active = true
+instanceId = 'bc6dba7e-d477-461a-905f-ad96e2f6c421'
+layer = 0
+name = 'PolarityCore_Minus'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    bursts = []
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 0.1, 0.35, 1.0, 0.0 ]
+    colorStart = [ 0.1, 0.35, 1.0, 1.0 ]
+    colorVariation = 0.0
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = true
+    deathSubEmitter = ''
+    duration = 0.0
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 120.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 2
+    inheritVelocity = 0.0
+    lifetime = 1.0
+    lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    lodEnabled = true
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = 'guid:46d1920d0f5e7622467b814d5aeb31f8|Assets/Materials/Effects/ElectricChargeMinusGPU.mat'
+    maxParticles = 1000
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = true
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 0
+    screenCoverageThreshold = 0.0
+    shape = 1
+    simulationMode = 1
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.03
+    sizeStart = 0.1
+    sortMode = 0
+    speedRange = 10.0
+    sphereRadius = 0.35
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = true
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = true
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.9
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [
+            [ 0.0, 0.15, 0.525, 1.5, 1.0 ],
+            [ 0.18, 0.1, 0.35, 1.0, 1.0 ],
+            [ 0.55, 0.06, 0.21, 0.6, 0.8 ],
+            [ 1.0, 0.02, 0.07, 0.2, 0.0 ]
+        ]
+        space = 1
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.85 ], [ 0.12, 0.0 ], [ 0.75, 0.1 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = -2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ 3.0, 1.2, -4.8 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ElectricMinusParticleComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        collisionGlow = 1.0
+        coreIntensity = 2.6
+        corePulseDepth = 0.22
+        corePulseRate = 1.6
+        coreRingBeads = 5.0
+        coreRingScale = 1.0
+        coreRingTravel = -1.2
+        coreSize = 0.318334
+        coreThickness = 0.28
+        coupling = 24.0
+        crackle = 3.0
+        emitRate = 2000.0
+        fieldLineBeads = 4.0
+        fieldLineCount = 16
+        fieldLineIntensity = 1.15
+        fieldLineLength = 3.2
+        fieldLineSegments = 44
+        fieldLineSpin = -8.0
+        fieldLineStart = 1.15
+        fieldLineTravel = 2.5
+        fieldLineWidth = 0.07
+        fieldRadius = 38.687515
+        homeSpring = 0.2
+        hotCore = 1.5
+        lifetime = 1.0
+        maxParticles = 10000
+        minSeparation = 0.72
+        orbitSpeed = 0.0
+        particleSize = 0.411489
+        pullStrength = 26.0
+        pushStrength = 10.0
+        radialBurst = 1.0
+        simulationMode = 1
+        spawnRadius = 0.35
+        spin = -2.0
+        swirlStrength = -4.0
+
+[[gameobjects]]
+active = true
+instanceId = '036bae6e-5c7e-4e7b-a673-0f519b96cf77'
+layer = 0
+name = 'Post Process Volume'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:42a080b1689b1639699ce5fc43a53d4a|Assets/PostProcess/Title.fzdata'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
