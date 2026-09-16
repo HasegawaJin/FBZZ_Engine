@@ -110,4 +110,14 @@ void ExecuteLightCookiePass(RenderPassContext& ctx)
     renderer.SetViewport(0, 0, kLightCookieAtlasWidth, kLightCookieAtlasHeight);
 }
 
+
+void LightCookiePass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Write("LightCookieAtlas");
+}
+
+void LightCookiePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteLightCookiePass(ctx);
+}
 } // namespace fbzz::scene

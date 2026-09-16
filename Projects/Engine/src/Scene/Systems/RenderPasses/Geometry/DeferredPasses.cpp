@@ -620,4 +620,67 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
     }
 }
 
+
+std::string_view GBufferPass::Name() const
+{
+    return m_mode == GBufferPassMode::ForwardPrepass ? "ForwardGBufferPrepass" : "DeferredGBuffer";
+}
+
+void GBufferPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    /// @note Forward のプリパスだけが影と Cookie を読む。Deferred 本経路は
+    ///       ライティングをしないので、法線・深度・roughness を書くだけ。
+    if (m_mode == GBufferPassMode::ForwardPrepass)
+        builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+    builder.Write("GBuffer");
+}
+
+void GBufferPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteGBufferPass(ctx);
+}
+
+void DeferredDepthCopyPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("GBuffer").Write("HDR");
+}
+
+void DeferredDepthCopyPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDeferredDepthCopyPass(ctx);
+}
+
+void DeferredSkinnedForwardPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas")
+           .ReadWrite("HDR");
+}
+
+void DeferredSkinnedForwardPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDeferredSkinnedForwardPass(ctx);
+}
+
+void DeferredForwardTransparentPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas")
+           .ReadWrite("HDR");
+}
+
+void DeferredForwardTransparentPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDeferredForwardTransparentPass(ctx);
+}
+
+void DeferredLightingPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+{
+    builder.Read("GBuffer").ReadWrite("HDR")
+           .Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+    DeclareScreenSpaceOcclusionReads(builder, ctx);
+}
+
+void DeferredLightingPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDeferredLightingPass(ctx);
+}
 } // namespace fbzz::scene

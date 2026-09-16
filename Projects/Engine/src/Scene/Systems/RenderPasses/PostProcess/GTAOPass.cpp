@@ -63,4 +63,24 @@ void ExecuteGTAOPass(RenderPassContext& ctx)
     r.Dispatch(blurDC, resources);
 }
 
+
+std::string_view GTAOPass::Name() const { return "GTAO"; }
+
+void GTAOPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    /// @note HDR は申告しない。GBuffer の法線と深度だけから作るので、本描画前の
+    ///       HDR へ依存を張ると偽の順序制約になる。
+    builder.Read("GBuffer").Write("GTAOResult");
+}
+
+bool GTAOPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.IsGtaoActive();
+}
+
+void GTAOPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteGTAOPass(ctx);
+}
+
 } // namespace fbzz::scene

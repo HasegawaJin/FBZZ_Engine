@@ -3,6 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
+
 #include <cstdint>
 
 namespace fbzz::scene {
@@ -77,6 +79,116 @@ void ExecuteMotionBlurPass(RenderPassContext& ctx);
 // Lens Flare — スクリーンスペースレンズフレア。加算合成で HDR バッファに合成する。
 // 光源抽出のため bloomHalf を作業バッファとして上書きする (Bloom より前に走る前提)。
 void ExecuteLensFlarePass(RenderPassContext& ctx);
+
+// ---- 画面空間パス (IRenderPass) --------------------------------------------
+//
+// どれも Forward のプリパス経路と Deferred 経路の両方に登録される。違うのは
+// «実行順のどこに置くか» だけで、申告も有効条件も本体も同じ。
+//
+// WHY クラスにするか: ラムダで登録していた頃は申告が RenderSystem 側に 2 か所並び、
+//     本体 (このディレクトリの .cpp) から 200 行以上離れていた。本体が新しい
+//     テクスチャを読み始めても申告を直す場所が視界に入らず、実際 Terrain と
+//     DeferredLighting で «読んでいるのに申告していない» が起きている。
+// WHY 有効条件も持たせるか: 同じ式を 2 か所へ書かずに済み、登録側には
+//     «どの経路のどの位置か» だけが残る。
+// @note 描き先の束縛は各本体が行う。SetAutoTarget は呼ばない。
+
+class GTAOPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class ContactShadowsPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class SSAOPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class SSRPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class VolumetricCloudPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// 512x512 の BRDF 積分テーブルを 1 度だけ焼く。
+/// @note 出力は論理リソースではない外部 ComputeTexture。書き先を申告できない以上
+///       «誰も読まない» と判定されるので、カリングを禁止しないと必ず刈られる。
+class IBLBrdfBakePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "IBLBrdfBake"; }
+    void Setup(PassBuilder&, const RenderPassContext&) const override {}
+    bool AllowCulling() const override { return false; }
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class VolumetricLightPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "VolumetricLight"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// フロクセル霧。
+/// @note 出力はボリュームテクスチャなので書き先を申告できない。Particle が同じフレームの
+///       霧を読んで «自分の奥行きの霧» を逆算する (ApplyParticleFog) ため、登録順で先に置く。
+class FroxelFogPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "FroxelFog"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool AllowCulling() const override { return false; }
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// @note HDR を読むだけで書かない。出力は StructuredBuffer (Composite が t29 で読む) で
+///       グラフの論理リソースに乗らないため、FroxelFog と同じ理由でカリングを禁止する。
+class AutoExposurePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "AutoExposure"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    bool AllowCulling() const override { return false; }
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// @note bloomHalf を光源抽出の作業バッファとして上書きするので、Bloom より前に走る前提。
+class LensFlarePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "LensFlare"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class BloomPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "Bloom"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
 
 } // namespace fbzz::scene
 

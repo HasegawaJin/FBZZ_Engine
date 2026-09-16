@@ -223,4 +223,14 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
     ctx.statsSmallObjectCulled = savedSmallObjectCulled;
 }
 
+
+void VelocityPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Write("Velocity");
+}
+
+void VelocityPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteVelocityPass(ctx);
+}
 } // namespace fbzz::scene

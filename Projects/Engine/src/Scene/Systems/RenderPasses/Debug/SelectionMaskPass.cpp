@@ -284,4 +284,19 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
+
+void SelectionMaskPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("HDR").Write("SelectionMask");
+}
+
+bool SelectionMaskPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.selectionOutlineEnabled;
+}
+
+void SelectionMaskPass::Execute(PassResources& resources, RenderPassContext& ctx)
+{
+    ExecuteSelectionMaskPass(resources, ctx);
+}
 } // namespace fbzz::scene

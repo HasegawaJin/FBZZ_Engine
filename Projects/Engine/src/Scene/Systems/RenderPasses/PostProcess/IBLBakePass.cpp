@@ -39,4 +39,9 @@ void ExecuteIBLBakeBrdfLutPass(RenderPassContext& ctx)
     sBakedTarget = h.iblBrdfLut;
 }
 
+
+void IBLBrdfBakePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteIBLBakeBrdfLutPass(ctx);
+}
 } // namespace fbzz::scene

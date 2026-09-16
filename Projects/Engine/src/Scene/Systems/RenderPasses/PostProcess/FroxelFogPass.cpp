@@ -168,4 +168,14 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
     renderer.Dispatch(integrate, resources);
 }
 
+
+void FroxelFogPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+}
+
+void FroxelFogPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteFroxelFogPass(ctx);
+}
 } // namespace fbzz::scene

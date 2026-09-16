@@ -123,4 +123,19 @@ void ExecuteBloomPass(RenderPassContext& ctx)
               false);
 }
 
+
+void BloomPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("HDR").Write("Bloom");
+}
+
+bool BloomPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.postProcess.bloom.enabled;
+}
+
+void BloomPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteBloomPass(ctx);
+}
 } // namespace fbzz::scene

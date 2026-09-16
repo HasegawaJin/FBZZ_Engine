@@ -152,16 +152,13 @@ public:
                  ExecuteFn execute,
                  bool allowCulling)
     {
-        RenderPass pass;
-        pass.name = name;
-        pass.accesses.reserve(reads.size() + writes.size());
+        std::vector<ResourceAccess> accesses;
+        accesses.reserve(reads.size() + writes.size());
         for (std::string_view read : reads)
-            pass.accesses.push_back({ std::string(read), ResourceUsage::Read });
+            accesses.push_back({ std::string(read), ResourceUsage::Read });
         for (std::string_view write : writes)
-            pass.accesses.push_back({ std::string(write), ResourceUsage::Write });
-        pass.execute = std::move(execute);
-        pass.allowCulling = allowCulling;
-        m_passes.push_back(std::move(pass));
+            accesses.push_back({ std::string(write), ResourceUsage::Write });
+        AddPass(name, std::move(accesses), std::move(execute), allowCulling);
     }
 
     void AddPass(std::string_view name,
@@ -169,14 +166,11 @@ public:
                  ExecuteFn execute,
                  bool allowCulling = true)
     {
-        RenderPass pass;
-        pass.name = name;
-        pass.accesses.assign(accesses.begin(), accesses.end());
-        pass.execute = std::move(execute);
-        pass.allowCulling = allowCulling;
-        m_passes.push_back(std::move(pass));
+        AddPass(name, std::vector<ResourceAccess>(accesses.begin(), accesses.end()),
+                std::move(execute), allowCulling);
     }
 
+    // すべてのオーバーロードはここへ集まる。
     void AddPass(std::string_view name,
                  std::vector<ResourceAccess> accesses,
                  ExecuteFn execute,
