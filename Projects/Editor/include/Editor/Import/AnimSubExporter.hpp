@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimSubExporter.hpp | fbzz::editor
-// FBX → .anim バイナリ v3
+/// @file    AnimSubExporter.hpp
+/// @brief   FBX → .anim バイナリ v3。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Editor/Import/IFbxSubExporter.hpp>
 

@@ -1,9 +1,12 @@
-// FBZZ Engine
-// StandaloneProjectModule.cpp | fbzz::scene
-// Standaloneプロジェクト共通のゲーム更新・描画モジュール実装
+/// @file    StandaloneProjectModule.cpp
+/// @brief   Standaloneプロジェクト共通のゲーム更新・描画モジュール実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #include <Engine/Scene/StandaloneProjectModule.hpp>
 
+#include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -21,7 +24,7 @@ StandaloneProjectModule::StandaloneProjectModule(renderer::IRenderer& renderer,
                                                  renderer::ResourceManager& resources,
                                                  std::filesystem::path projectRoot,
                                                  std::filesystem::path startSceneFile,
-                                                 const ProjectSettings& settings)
+                                                 ProjectSettings& settings)
     : m_renderer(renderer)
     , m_resources(resources)
     , m_projectRoot(std::move(projectRoot))
@@ -38,6 +41,16 @@ bool StandaloneProjectModule::OnInit()
     auto& app = core::Application::Get();
     // GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
+    if (auto* audioManager = app.GetAudioManager()) {
+        audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
+        audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
+    }
+    // graphics プロキシが触る描画設定の実体を登録する。配布ゲームでは
+    // ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
+    // ファイルへ戻ることはない。
+    app.SetActiveRenderSettings(&m_settings.render);
+    // カーソルの拘束と表示はスクリプトが名乗る (cursor.Push)。設定が持つのは «絵» だけ。
+    m_settings.cursor.Apply(m_projectRoot.string());
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
     return true;
@@ -45,6 +58,10 @@ bool StandaloneProjectModule::OnInit()
 
 void StandaloneProjectModule::OnUpdate(float dt)
 {
+    // WHY 毎フレーム張り直すか: Locked は中央へ戻す処理そのものがここにあり、Confined も
+    //     他アプリが ClipCursor を取ると黙って外れる。Input::Update の直後・スクリプトの前で
+    //     解くことで、Locked のマウス移動量がそのフレームのうちに読める。
+    core::Cursor::ApplyLock();
     m_runtime.Update(dt, m_settings, true);
 }
 

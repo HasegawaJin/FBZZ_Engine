@@ -1,0 +1,35 @@
+# FBZZ Engine
+# FX_ExplosionCore_Additive.mat
+# 素材: Assets/VFX/Textures/FX_Explosion_8x8.png (2048x2048 / 8x8 / 64コマ)
+# 爆発の «芯» だけを担う層。外側 (縁と煙) は FX_ExplosionBody_Alpha.mat が持つ。
+#
+# WHY 1 枚の素材を 2 マテリアルに割るか:
+#   素材 README の「全部を加算にすると白飽和して赤と青の区別が消える」への対応。
+#   加算にしてよいのは面積の狭い芯だけで、膨らんだ煙まで加算にすると画面が白く飛ぶ。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:9554789813288bd28479addebab5ca58"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+sprite_columns = 8
+sprite_rows = 8
+# 後半 24 コマは減衰しか起きない。芯は «立ち上がりだけ» を担うので前半で打ち切り、
+# その分をパーティクルの短い寿命へ詰める (README の「前半40コマで打ち切ってよい」)。
+sprite_end_frame = 39
+flipbook_mode = "lifetime"
+# 30fps で焼いた素材を寿命へ引き伸ばすため、コマ送りが見える。隣接コマを混ぜて均す。
+flipbook_frame_blending = true
+emissive_scale = 2.4
+soft_particles = true
+soft_particle_fade_distance = 0.5

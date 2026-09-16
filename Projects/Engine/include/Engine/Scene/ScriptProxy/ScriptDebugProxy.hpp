@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptDebugProxy.hpp | fbzz::scene
-// Script からログとデバッグ描画を扱うショートハンド
+/// @file    ScriptDebugProxy.hpp
+/// @brief   Script からログとデバッグ描画を扱うショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Math/Vector3.hpp>

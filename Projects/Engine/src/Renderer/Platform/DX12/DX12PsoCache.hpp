@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12PsoCache.hpp | fbzz::renderer
-// 汎用 Root Signature と遅延生成 Graphics PSO のキャッシュ
+/// @file    DX12PsoCache.hpp
+/// @brief   汎用 Root Signature と遅延生成 Graphics PSO のキャッシュ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/RenderState.hpp>
@@ -16,6 +17,8 @@ class DX12PsoCache final {
 public:
     bool Initialize(ID3D12Device* device);
     void Shutdown();
+    /// このキャッシュを参照する GPU コマンドがすべて完了していること。
+    void ClearPipelines();
     ID3D12RootSignature* GetRootSignature() const { return m_rootSignature.Get(); }
     ID3D12RootSignature* GetComputeRootSignature() const { return m_computeRootSignature.Get(); }
     ID3D12PipelineState* GetOrCreate(const DX12Shader& shader, const PipelineStateDesc& state,

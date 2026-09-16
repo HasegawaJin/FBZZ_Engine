@@ -1,13 +1,16 @@
-// FBZZ Engine
-// AvatarMaskAsset.cpp | fbzz::asset
-// .mask アセットの TOML 入出力とボーン別ウェイト評価
+/// @file    AvatarMaskAsset.cpp
+/// @brief   .mask アセットの TOML 入出力とボーン別ウェイト評価。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Asset/AvatarMaskAsset.hpp>
+#include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <sstream>
 
 namespace fbzz::asset {
@@ -77,14 +80,13 @@ bool MatchEntry(const AvatarMaskEntry& entry,
     return false;
 }
 
-// blendDepth に沿って深さ depth のウェイトを求める。
-// depth = 0 で weight/(blendDepth+1)、depth >= blendDepth で weight に到達する。
-float RampedWeight(const AvatarMaskEntry& entry, int depth)
+// 1 エントリぶんの優先度。深く (具体的に) 指定されたエントリほど強い。
+// WHY 関数にするか: EvaluateAvatarMaskWeight と MatchAvatarMaskEntries が同じ順序で
+//     勝者を選ばないと、Editor が「効いている」と表示したエントリと実際に効くエントリが
+//     食い違う。順位付けの規則は 1 箇所にしか置かない。
+int EntrySpecificity(const AvatarMaskEntry& entry, int depth)
 {
-    if (entry.blendDepth <= 0) return entry.weight;
-    const float t = static_cast<float>(std::min(depth + 1, entry.blendDepth + 1)) /
-                    static_cast<float>(entry.blendDepth + 1);
-    return entry.weight * t;
+    return PathDepth(entry.bonePath) * 1000 - depth;
 }
 
 // 体パーツごとのボーン名トークン。小文字部分一致で判定する。
@@ -115,6 +117,89 @@ HumanoidPatternTable()
 
 } // namespace
 
+std::string BuildSkeletonNodePath(const Skeleton& skeleton, int nodeIndex)
+{
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()))
+        return {};
+
+    std::vector<std::string_view> reverseNames;
+    std::vector<bool> visited(skeleton.nodes.size(), false);
+    int current = nodeIndex;
+    while (current >= 0 && current < static_cast<int>(skeleton.nodes.size())) {
+        if (visited[static_cast<size_t>(current)]) return {};
+        visited[static_cast<size_t>(current)] = true;
+        reverseNames.push_back(skeleton.nodes[static_cast<size_t>(current)].name);
+        current = skeleton.nodes[static_cast<size_t>(current)].parentIndex;
+    }
+
+    std::string path;
+    for (auto it = reverseNames.rbegin(); it != reverseNames.rend(); ++it) {
+        if (!path.empty()) path += '/';
+        path += *it;
+    }
+    return path;
+}
+
+namespace {
+
+bool IsDescendantPath(std::string_view ancestor, std::string_view candidate)
+{
+    return candidate.size() > ancestor.size()
+        && candidate.compare(0, ancestor.size(), ancestor) == 0
+        && candidate[ancestor.size()] == '/';
+}
+
+} // namespace
+
+void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
+{
+    std::vector<AvatarMaskEntry> compressed;
+    compressed.reserve(mask.entries.size());
+
+    for (const AvatarMaskEntry& entry : mask.entries) {
+        if (entry.bonePath.empty()) continue;
+
+        bool replaced = false;
+        for (AvatarMaskEntry& existing : compressed) {
+            if (existing.bonePath == entry.bonePath) {
+                existing = entry;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) compressed.push_back(entry);
+    }
+
+    const std::vector<AvatarMaskEntry> original = compressed;
+    compressed.erase(
+        std::remove_if(compressed.begin(), compressed.end(),
+            [&original](const AvatarMaskEntry& entry) {
+                for (const AvatarMaskEntry& parent : original) {
+                    if (parent.bonePath == entry.bonePath || !parent.includeChildren
+                        || parent.blendDepth != 0
+                        || !IsDescendantPath(parent.bonePath, entry.bonePath)) {
+                        continue;
+                    }
+                    if (parent.weight == entry.weight
+                        && entry.includeChildren == parent.includeChildren) {
+                        return true;
+                    }
+                }
+                return false;
+            }),
+        compressed.end());
+
+    mask.entries = std::move(compressed);
+}
+
+float AvatarMaskRampedWeight(const AvatarMaskEntry& entry, int depth)
+{
+    if (entry.blendDepth <= 0) return entry.weight;
+    const float t = static_cast<float>(std::min(depth + 1, entry.blendDepth + 1)) /
+                    static_cast<float>(entry.blendDepth + 1);
+    return entry.weight * t;
+}
+
 float EvaluateAvatarMaskWeight(
     const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName)
 {
@@ -123,13 +208,15 @@ float EvaluateAvatarMaskWeight(
 
     // より具体的な (bonePath が深い) エントリを優先する。
     // WHY: 「腕全体を 0 → 手だけ 1」のような上書きを、記述順に依存させないため。
+    // NOTE: 毎フレーム × ボーン数で呼ばれる。MatchAvatarMaskEntries と規則は共有するが、
+    //       ここでは配列を作らず最良の 1 件だけを走査で選ぶ。
     const AvatarMaskEntry* best = nullptr;
     int bestSpecificity = -1;
     int bestDepth = 0;
     for (const auto& entry : mask.entries) {
         int depth = 0;
         if (!MatchEntry(entry, bonePath, boneName, depth)) continue;
-        const int specificity = PathDepth(entry.bonePath) * 1000 - depth;
+        const int specificity = EntrySpecificity(entry, depth);
         if (specificity > bestSpecificity) {
             bestSpecificity = specificity;
             best = &entry;
@@ -137,7 +224,29 @@ float EvaluateAvatarMaskWeight(
         }
     }
     if (!best) return fallback;
-    return std::clamp(RampedWeight(*best, bestDepth), 0.0f, 1.0f);
+    return std::clamp(AvatarMaskRampedWeight(*best, bestDepth), 0.0f, 1.0f);
+}
+
+std::vector<AvatarMaskMatch> MatchAvatarMaskEntries(
+    const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName)
+{
+    std::vector<AvatarMaskMatch> matches;
+    for (int i = 0; i < static_cast<int>(mask.entries.size()); ++i) {
+        const AvatarMaskEntry& entry = mask.entries[static_cast<size_t>(i)];
+        int depth = 0;
+        if (!MatchEntry(entry, bonePath, boneName, depth)) continue;
+        matches.push_back(AvatarMaskMatch{
+            i, depth,
+            std::clamp(AvatarMaskRampedWeight(entry, depth), 0.0f, 1.0f),
+            EntrySpecificity(entry, depth) });
+    }
+    // 同点は先に書かれた方を勝ちにする。Evaluate 側が「より大きいときだけ差し替える」
+    // 走査になっているため、安定ソートでないと勝者の表示がずれる。
+    std::stable_sort(matches.begin(), matches.end(),
+        [](const AvatarMaskMatch& a, const AvatarMaskMatch& b) {
+            return a.specificity > b.specificity;
+        });
+    return matches;
 }
 
 const char* HumanoidBodyPartName(HumanoidBodyPart part)
@@ -212,16 +321,28 @@ HumanoidBodyPart GuessBodyPartForBone(std::string_view boneName)
 
 bool SaveAvatarMaskAsset(const std::string& path, const AvatarMaskAsset& asset)
 {
+    AvatarMaskAsset normalized = asset;
+    for (auto& entry : normalized.entries) {
+        // 外部編集や旧形式から NaN / 範囲外が入っても、保存値を必ずランタイムの
+        // 評価範囲へ戻す。std::clamp は NaN を検出しないため有限値を先に確認する。
+        entry.weight = std::isfinite(entry.weight)
+            ? std::clamp(entry.weight, 0.0f, 1.0f)
+            : 0.0f;
+        entry.blendDepth = (std::max)(entry.blendDepth, 0);
+    }
+    CompressAvatarMaskEntries(normalized);
+
     toml::table root;
     toml::table header;
     header.insert("version", int64_t{ 1 });
-    header.insert("name", asset.name);
-    header.insert("default_include", asset.defaultInclude);
-    header.insert("skeleton_source", asset.skeletonSourcePath);
+    header.insert("name", normalized.name);
+    header.insert("default_include", normalized.defaultInclude);
+    header.insert("skeleton_source", normalized.skeletonSourcePath);
+    header.insert("skeleton_source_signature", normalized.skeletonSourceSignature);
     root.insert("mask", std::move(header));
 
     toml::array entries;
-    for (const auto& entry : asset.entries) {
+    for (const auto& entry : normalized.entries) {
         toml::table t;
         t.insert("bone", entry.bonePath);
         t.insert("weight", static_cast<double>(entry.weight));
@@ -258,6 +379,8 @@ bool LoadAvatarMaskAsset(const std::string& path, AvatarMaskAsset& outAsset)
         outAsset.name = (*header)["name"].value_or(std::string{});
         outAsset.defaultInclude = (*header)["default_include"].value_or(false);
         outAsset.skeletonSourcePath = (*header)["skeleton_source"].value_or(std::string{});
+        outAsset.skeletonSourceSignature =
+            (*header)["skeleton_source_signature"].value_or(std::string{});
     }
     if (outAsset.name.empty())
         outAsset.name = util::FileSystem::GetFilename(path);

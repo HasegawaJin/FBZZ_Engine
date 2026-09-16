@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IAssetImporter.hpp | fbzz::asset
-// ランタイムアセットローダーの基底インターフェース
-// AssetManager が内部で使う。型ごとに SupportedExtensions() を自己申告し、
-// Load<T> の特殊化がディスパッチする。
+/// @file    IAssetImporter.hpp
+/// @brief   ランタイムアセットローダーの基底インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// AssetManager が内部で使う。型ごとに SupportedExtensions() を自己申告し、
+/// Load<T> の特殊化がディスパッチする。
 #pragma once
 #include <memory>
 #include <span>

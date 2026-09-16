@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptTrailProxy.hpp | fbzz::scene
-// Script から TrailComponent を操作するショートハンド
+/// @file    ScriptTrailProxy.hpp
+/// @brief   Script から TrailComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Math/Vector3.hpp>
@@ -67,6 +68,13 @@ struct ScriptTrailProxy {
 
     // ClearAttachBone — ボーン追従を解除し、GameObject 原点から Trail を発生させる。
     void ClearAttachBone() const;
+
+    // SetEnabled(false, false) で記録だけ止めた場合、enabled は false のまま
+    // 制御点が duration 経過まで残る。剣閃が完全に消えたかは GetPointCount() で見る。
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetDuration() const;
+    // 現在保持している制御点数。0 なら描画するものが残っていない。
+    [[nodiscard]] int   GetPointCount() const;
 };
 
 } // namespace fbzz::scene

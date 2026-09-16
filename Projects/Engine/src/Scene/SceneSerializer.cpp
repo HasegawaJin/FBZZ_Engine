@@ -1,15 +1,20 @@
-// FBZZ Engine
-// SceneSerializer.cpp | fbzz::scene
-// TOML ベースの Scene 保存・復元
-// GameObject 階層と登録済み Component を .fbzz へ書き出す。
-// ロード時は既存 Scene をクリアしてから復元する。
+/// @file    SceneSerializer.cpp
+/// @brief   TOML ベースの Scene 保存・復元。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// GameObject 階層と登録済み Component を .fbzz へ書き出す。
+/// ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
+#include <Engine/Core/Memory/MakeUnique.hpp>
+#include <Engine/Scene/TomlReflector.hpp>
 #include <cstddef>
 #include <vector>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -17,8 +22,8 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
-#include <Engine/Scene/Components/WindZoneComponent.hpp>
+#include <Engine/Scene/ComponentReflectionCodec.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
@@ -36,10 +41,10 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/RagdollComponent.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
-#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
-#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
@@ -60,6 +65,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector2.hpp>
@@ -73,8 +79,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
 #include <cctype>
 #include <cassert>
 
@@ -84,6 +93,85 @@ namespace fbzz::scene {
 // 内部ヘルパー
 // -----------------------------------------------------------------------
 namespace {
+
+// LightComponent を読む。`type` が文字列で書かれた旧シーンをここで吸収する。
+//
+// WHY 要るか: 2026-09-11 以前は手書きコーデックが `type` を "Directional" / "Tube" …
+//     という**文字列**で書いていた。`Reflect()` は他のすべての enum と同じく int を読むので、
+//     そのままでは文字列が読めず既定値の 0 (= Directional) に落ちる。
+//     しかも次の保存で 0 が書き戻され、Spot も Tube も**元に戻せない形で消える**。
+void ReadLightComponent(GameObject& go, const toml::table& goTbl)
+{
+    const auto* lightTbl = goTbl["LightComponent"].as_table();
+    if (lightTbl == nullptr) return;
+
+    LightComponent light{};
+    if (const auto* typeStr = (*lightTbl)["type"].as_string()) {
+        static constexpr std::string_view kTypeNames[] = {
+            "Directional", "Point", "Spot", "Area", "Sphere", "Tube" };
+        constexpr int kTypeCount = 6;
+        toml::table migrated = *lightTbl;
+        int index = 0;
+        for (int i = 0; i < kTypeCount; ++i) {
+            if (kTypeNames[i] == typeStr->get()) { index = i; break; }
+        }
+        migrated.insert_or_assign("type", index);
+        DeserializeReflected(migrated, light);
+    } else {
+        DeserializeReflected(*lightTbl, light);
+    }
+    go.AddComponent<LightComponent>(light);
+}
+
+// 力場コンポーネントを読む。旧い 2 つの形をここで吸収する。
+//
+//   (a) 2026-09-11 以前の ForceField … 力 1 本ぶんのキーが直下にフラットに並ぶ
+//   (b) WindZoneComponent                  … 廃止。radius 0 の Wind + Turbulence へ写す
+//
+// WHY 自動で移すか: 環境風と力場は «空気が動く» という同じ 1 つの概念で、型が 2 つ
+//     あること自体が設計の穴だった。捨てると既存シーンの風が黙って止まる ——
+//     しかも «風が弱い» と区別が付かない。値は移して、言い方だけを 1 つにする。
+void ReadForceFieldComponent(GameObject& go, const toml::table& goTbl)
+{
+    std::vector<ForceFieldSettings> forces;
+
+    // 型が ParticleForceField → ForceField になったのでキーも変わった (2026-09-11)。
+    // 出荷済みシーンは旧キーで書かれているので、両方を受ける。
+    const auto* fieldTbl = goTbl["ForceField"].as_table();
+    if (fieldTbl == nullptr) fieldTbl = goTbl["ParticleForceField"].as_table();
+    if (fieldTbl != nullptr) {
+        if (fieldTbl->contains("forces")) {
+            ForceField component{};
+            DeserializeReflected(*fieldTbl, component);
+            forces = std::move(component.forces);
+        } else {
+            // 旧フラット形式。1 本ぶんとして読む。
+            ForceFieldSettings single{};
+            DeserializeReflected(*fieldTbl, single);
+            forces.push_back(single);
+        }
+    }
+
+    if (const auto* windTbl = goTbl["WindZoneComponent"].as_table()) {
+        const bool enabled = (*windTbl)["enabled"].value_or(true);
+        const math::Vector3 direction =
+            util::ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
+        const float strength   = (float)(*windTbl)["strength"].value_or(1.0);
+        const float turbulence = (float)(*windTbl)["turbulence"].value_or(0.0);
+        const float pulse      = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
+
+        for (ForceFieldSettings& wind :
+             MakeAmbientWindForces(direction, strength, turbulence, pulse)) {
+            wind.enabled = enabled;
+            forces.push_back(wind);
+        }
+    }
+
+    if (forces.empty()) return;
+    ForceField component{};
+    component.forces = std::move(forces);
+    go.AddComponent<ForceField>(component);
+}
 
 double RoundTomlFloat(double value)
 {
@@ -113,96 +201,15 @@ void NormalizeTomlFloats(toml::node& node)
     }
 }
 
-toml::array Vec3ToArr(const math::Vector3& v)
-{
-    toml::array a;
-    a.push_back((double)v.x);
-    a.push_back((double)v.y);
-    a.push_back((double)v.z);
-    return a;
-}
-
-toml::array Vec2ToArr(const math::Vector2& v)
-{
-    toml::array a;
-    a.push_back((double)v.x);
-    a.push_back((double)v.y);
-    return a;
-}
-
-toml::array Vec4ToArr(const math::Vector4& v)
-{
-    toml::array a;
-    a.push_back((double)v.x);
-    a.push_back((double)v.y);
-    a.push_back((double)v.z);
-    a.push_back((double)v.w);
-    return a;
-}
-
-toml::array QuatToArr(const math::Quaternion& q)
-{
-    toml::array a;
-    a.push_back((double)q.x);
-    a.push_back((double)q.y);
-    a.push_back((double)q.z);
-    a.push_back((double)q.w);
-    return a;
-}
-
-math::Vector2 ArrToVec2(const toml::array* arr, math::Vector2 def = {})
-{
-    if (!arr || arr->size() < 2) return def;
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0)
-    };
-}
-
-math::Vector3 ArrToVec3(const toml::array* arr, math::Vector3 def = {})
-{
-    if (!arr || arr->size() < 3) return def;
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0),
-        (float)(*arr)[2].value_or(0.0)
-    };
-}
-
-math::Vector4 ArrToVec4(const toml::array* arr, math::Vector4 def = {})
-{
-    if (!arr || arr->size() < 4) return def;
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0),
-        (float)(*arr)[2].value_or(0.0),
-        (float)(*arr)[3].value_or(0.0)
-    };
-}
-
-math::Quaternion ArrToQuat(const toml::array* arr)
-{
-    if (!arr || arr->size() < 4) return { 0.0f, 0.0f, 0.0f, 1.0f };
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0),
-        (float)(*arr)[2].value_or(0.0),
-        (float)(*arr)[3].value_or(1.0)
-    };
-}
-
-const char* ColliderTypeToString(physics::ColliderType type)
-{
-    switch (type) {
-    case physics::ColliderType::SPHERE:  return "Sphere";
-    case physics::ColliderType::AABB:    return "AABB";
-    case physics::ColliderType::OBB:     return "OBB";
-    case physics::ColliderType::CAPSULE: return "Capsule";
-    case physics::ColliderType::TRIANGLE_MESH: return "TriangleMesh";
-    case physics::ColliderType::CONVEX_HULL:   return "ConvexHull";
-    }
-    return "AABB";
-}
+// 値型 ⇔ TOML 配列の変換は util 共通版を使う (Engine/Scene/TomlReflector.hpp)。
+using util::ArrToQuat;
+using util::ArrToVec2;
+using util::ArrToVec3;
+using util::ArrToVec4;
+using util::QuatToArr;
+using util::Vec2ToArr;
+using util::Vec3ToArr;
+using util::Vec4ToArr;
 
 toml::table SerializeCollider(const ColliderComponent& col)
 {
@@ -227,27 +234,9 @@ toml::table SerializeCollider(const ColliderComponent& col)
     matTbl.insert("frictionCombine",    (int64_t)col.material.frictionCombine);
     colTbl.insert("material", std::move(matTbl));
 
-    if (col.collider) {
-        toml::table shapeTbl;
-        const auto type = col.collider->GetType();
-        shapeTbl.insert("type", ColliderTypeToString(type));
-        if (type == physics::ColliderType::SPHERE) {
-            auto* sphere = static_cast<physics::SphereCollider*>(col.collider.get());
-            shapeTbl.insert("radius", (double)sphere->m_radius);
-        } else if (type == physics::ColliderType::AABB) {
-            auto* box = static_cast<physics::AABBCollider*>(col.collider.get());
-            shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
-        } else if (type == physics::ColliderType::OBB) {
-            auto* box = static_cast<physics::OBBCollider*>(col.collider.get());
-            shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
-        } else if (type == physics::ColliderType::CAPSULE) {
-            auto* capsule = static_cast<physics::CapsuleCollider*>(col.collider.get());
-            shapeTbl.insert("radius",     (double)capsule->m_radius);
-            shapeTbl.insert("halfHeight", (double)capsule->m_halfHeight);
-        }
-        colTbl.insert("shape", std::move(shapeTbl));
-    }
-
+    // shape はここで書かない。physics::Collider の寸法は worldScale を焼き込んだ後の値で、
+    // ここから書き出すと保存のたびにスケールが 1 段ずつ掛かって太り続ける。
+    // 呼び出し側がコンポーネントのフィールドから書くこと。
     return colTbl;
 }
 
@@ -354,6 +343,20 @@ void ReadCapsuleCollider(const toml::table& colTbl, CapsuleColliderComponent& co
     col.radius = radius;
     col.halfHeight = halfHeight;
     col.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
+}
+
+void ReadCylinderCollider(const toml::table& colTbl, CylinderColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    float radius = 0.5f;
+    float halfHeight = 1.0f;
+    if (auto* shapeTbl = colTbl["shape"].as_table()) {
+        radius = (float)(*shapeTbl)["radius"].value_or(0.5);
+        halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
+    }
+    col.radius = radius;
+    col.halfHeight = halfHeight;
+    col.collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
 }
 
 void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
@@ -479,32 +482,70 @@ static input::KeyCode KeyCodeFromString(const std::string& s)
 std::string TomlTableToString(const toml::table& table);
 toml::table TomlTableFromString(const std::string& text);
 
-// 書き込み先をスタックで持つ。
-// WHY スタックが要るか: BeginObject / BeginObjectElement は「現在の書き込み先」を
-//      一時的に子テーブルへ差し替える。ネストは任意の深さになりうるため、
-//      復帰先を LIFO で覚えておく必要がある。
-class TomlWriteReflector : public IReflector {
+// instanceId → GameObject の索引。Scene::FindByGuid は線形探索なので、
+// 参照解決を GameObject ごとに呼ぶと全体で O(n^2) になる。
+// Scene へ常駐させないのは、同期漏れが「解決できない」ではなく
+// 「別のオブジェクトに解決される」形で出るため。ロード中だけ作って捨てる。
+class GuidIndex {
 public:
-    explicit TomlWriteReflector(toml::table& table) { m_stack.push_back(&table); }
+    /// @param reportDuplicates 同じ instanceId が 2 つ以上あったらエラーとして出すか。
+    ///   重複はシーンファイルの性質なので、報告はファイルを読んだ経路 1 回で足りる。
+    ///   ロード後に索引を作り直す場面 (複製など) で出し直すと、同じ 1 件が操作のたびに
+    ///   並ぶだけで、新しいことは何も判らない。
+    explicit GuidIndex(Scene& scene, bool reportDuplicates = true)
+    {
+        for (GameObject& go : scene.GameObjects()) {
+            if (go.instanceId.empty()) continue;
 
-    void Field(const char* name, float& v) override { Current().insert(PersistentKey(name), (double)v); }
-    void Field(const char* name, int& v) override { Current().insert(PersistentKey(name), (int64_t)v); }
-    void Field(const char* name, bool& v) override { Current().insert(PersistentKey(name), v); }
-    void Field(const char* name, math::Vector2& v) override { Current().insert(PersistentKey(name), Vec2ToArr(v)); }
-    void Field(const char* name, math::Vector3& v) override { Current().insert(PersistentKey(name), Vec3ToArr(v)); }
-    void Field(const char* name, math::Vector4& v) override { Current().insert(PersistentKey(name), Vec4ToArr(v)); }
-    void Field(const char* name, std::string& v) override { Current().insert(PersistentKey(name), v); }
-    void Field(const char* name, math::Quaternion& v) override { Current().insert(PersistentKey(name), QuatToArr(v)); }
+            // emplace は先勝ちなので、重複した id の GameObject は辿れなくなり、
+            // その id への参照はすべて先頭のオブジェクトへ解決される。
+            // 新しい id を振って直しはしない — 参照は既に先頭を指しており、読み込みの
+            // 副作用でシーンを書き換えると事故がそのまま保存される。両方の名前を出すまで。
+            const auto [it, inserted] = m_objects.emplace(go.instanceId, &go);
+            if (!inserted && reportDuplicates) {
+                FBZZ_LOG_ERROR("SceneSerializer: duplicate instanceId %s "
+                               "('%s' and '%s'). Every reference to it resolves to '%s'.",
+                               go.instanceId.c_str(), it->second->name.c_str(),
+                               go.name.c_str(), it->second->name.c_str());
+            }
+        }
+    }
+
+    [[nodiscard]] GameObject* Find(const std::string& guid) const
+    {
+        const auto it = m_objects.find(guid);
+        return it == m_objects.end() ? nullptr : it->second;
+    }
+
+private:
+    std::unordered_map<std::string, GameObject*> m_objects;
+};
+
+// GameObject 参照とアセット参照を Scene の文脈で解決する書き込みリフレクタ。
+// 値型・リスト・入れ子スコープは util::TomlWriteReflector が受け持つ。
+class SceneWriteReflector : public util::TomlWriteReflector {
+public:
+    // GameObject 参照は EntityID (並び順の番号) ではなく instanceId で保存する。
+    // 番号は 1 つ増減しただけで以降が全部ずれ、しかも無効にならず別のオブジェクトを
+    // 指したまま有効になる。EntityID → instanceId の変換に Scene が要る。
+    // 挿入が先勝ちなのは従来の保存結果と一致させるため。
+    explicit SceneWriteReflector(toml::table& table, const Scene* scene = nullptr)
+        : util::TomlWriteReflector(table, /*overwriteDuplicates=*/false)
+        , m_scene(scene)
+    {
+    }
+
+    // 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
+    using util::TomlWriteReflector::Field;
+    using util::TomlWriteReflector::ListField;
+
     void Field(const char* name, EntityID& v) override
     {
-        toml::array arr;
-        arr.push_back((int64_t)v.index);
-        arr.push_back((int64_t)v.generation);
-        Current().insert(PersistentKey(name), std::move(arr));
+        Put(name, GuidOfEntity(v));
     }
     void Field(const char* name, input::KeyCode& v) override
     {
-        Current().insert(PersistentKey(name), std::string(KeyCodeToString(v)));
+        Put(name, std::string(KeyCodeToString(v)));
     }
     void AssetField(const char* name,
                     ScriptAssetReference& v,
@@ -515,60 +556,13 @@ public:
         toml::table assetRef;
         assetRef.insert("guid", v.guid);
         assetRef.insert("path", v.path);
-        Current().insert(PersistentKey(name), std::move(assetRef));
-    }
-    void ListField(const char* name, std::vector<float>& values) override
-    {
-        toml::array array;
-        for (const float value : values) array.push_back(static_cast<double>(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<int>& values) override
-    {
-        toml::array array;
-        for (const int value : values) array.push_back(static_cast<int64_t>(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<bool>& values) override
-    {
-        toml::array array;
-        for (const bool value : values) array.push_back(value);
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<std::string>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(value);
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<math::Vector2>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(Vec2ToArr(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<math::Vector3>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(Vec3ToArr(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<math::Vector4>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(Vec4ToArr(value));
-        Current().insert(PersistentKey(name), std::move(array));
+        Put(name, std::move(assetRef));
     }
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         toml::array array;
-        for (const auto& value : values) {
-            toml::array entity;
-            entity.push_back(static_cast<int64_t>(value.id.index));
-            entity.push_back(static_cast<int64_t>(value.id.generation));
-            array.push_back(std::move(entity));
-        }
-        Current().insert(PersistentKey(name), std::move(array));
+        for (const auto& value : values) array.push_back(GuidOfEntity(value.id));
+        Put(name, std::move(array));
     }
     void AssetListField(const char* name,
                         std::vector<ScriptAssetReference>& values,
@@ -583,140 +577,56 @@ public:
             assetRef.insert("path", value.path);
             array.push_back(std::move(assetRef));
         }
-        Current().insert(PersistentKey(name), std::move(array));
+        Put(name, std::move(array));
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
-    // WHY override を消したか: 従来は子リフレクタを作って入れ子テーブルを組んでいたが、
-    //      BeginObject / EndObject が同じことを行うため、二重実装になる。
-    //      一本化することで「入れ子の作り方」が 1 箇所に集約される。
-
-    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
-    void BeginObject(const char* name) override
-    {
-        // 親へ空テーブルを先に挿入し、その実体を書き込み先として積む。
-        // WHY 先に挿入するか: 構築し終えてから move で挿入する方式だと、
-        //      構築中に子のアドレスを保持できずスタックに積めない。
-        auto [iterator, inserted] =
-            Current().insert_or_assign(PersistentKey(name), toml::table{});
-        toml::table* child = iterator->second.as_table();
-        m_stack.push_back(child ? child : &Current());
-    }
-
-    void EndObject() override
-    {
-        // ルート (最初の 1 枚) は決して pop しない。
-        if (m_stack.size() > 1) m_stack.pop_back();
-    }
-
-    // ── 構造体配列 ───────────────────────────────────────────────────────────
-    std::size_t BeginObjectList(const char* name, std::size_t count) override
-    {
-        auto [iterator, inserted] =
-            Current().insert_or_assign(PersistentKey(name), toml::array{});
-        m_listStack.push_back(iterator->second.as_array());
-        return count;   // 書き込みは要素数を変えない
-    }
-
-    void BeginObjectElement(std::size_t index) override
-    {
-        (void)index;
-        toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
-        if (!array) { m_stack.push_back(&Current()); return; }
-
-        array->push_back(toml::table{});
-        toml::table* element = array->back().as_table();
-        m_stack.push_back(element ? element : &Current());
-    }
-
-    void EndObjectElement() override { EndObject(); }
-
-    std::size_t EndObjectList() override
-    {
-        if (!m_listStack.empty()) m_listStack.pop_back();
-        return NO_REMOVE;   // 永続化は要素を削除しない
-    }
-
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
         toml::table reference;
         reference.insert("type", value.type);
         toml::table fields;
         if (value.value) {
-            TomlWriteReflector child(fields);
+            SceneWriteReflector child(fields, m_scene);
             value.value->Reflect(child);
             value.preservedFieldsToml = TomlTableToString(fields);
         } else if (!value.preservedFieldsToml.empty()) {
             fields = TomlTableFromString(value.preservedFieldsToml);
         }
         reference.insert("fields", std::move(fields));
-        Current().insert(PersistentKey(name), std::move(reference));
+        Put(name, std::move(reference));
     }
 
 private:
-    toml::table& Current() { return *m_stack.back(); }
+    // 解決できない参照は空文字列。読み込み側は空を「未設定」として扱う。
+    [[nodiscard]] std::string GuidOfEntity(EntityID id) const
+    {
+        if (!m_scene || !id.IsValid()) return {};
+        const GameObject* go = m_scene->GetGameObject(id);
+        return go ? go->instanceId : std::string{};
+    }
 
-    std::vector<toml::table*> m_stack;
-    std::vector<toml::array*> m_listStack;
+    const Scene* m_scene = nullptr;
 };
 
-// 読み込み元をスタックで持つ。書き込み側と対称。
-// 対応するテーブルが存在しない入れ子は nullptr を積み、中のフィールドは
-// 既定値のまま残す (部分的に古いシーンでも壊れない)。
-class TomlReadReflector : public IReflector {
+// 書き込み側と対称の読み込みリフレクタ。値型は util::TomlReadReflector が読み、
+// ここは GameObject 参照とアセット参照だけを Scene の文脈で解決する。
+class SceneReadReflector : public util::TomlReadReflector {
 public:
-    explicit TomlReadReflector(const toml::table& table) { m_stack.push_back(&table); }
-
-    void Field(const char* name, float& v) override
+    // guids が null の場合、GameObject 参照は解決されず無効のまま残る。
+    // 参照先がまだ生成されていない Pass 1 では正常な状態で、あとの解決パスが埋め直す。
+    explicit SceneReadReflector(const toml::table& table, const GuidIndex* guids = nullptr)
+        : util::TomlReadReflector(table)
+        , m_guids(guids)
     {
-        if (const toml::node* node = FindNode(name))
-            v = static_cast<float>(node->value_or(static_cast<double>(v)));
     }
 
-    void Field(const char* name, int& v) override
-    {
-        if (const toml::node* node = FindNode(name))
-            v = static_cast<int>(node->value_or(static_cast<int64_t>(v)));
-    }
-
-    void Field(const char* name, bool& v) override
-    {
-        if (const toml::node* node = FindNode(name))
-            v = node->value_or(v);
-    }
-
-    void Field(const char* name, math::Vector3& v) override
-    {
-        v = ArrToVec3(FindArray(name), v);
-    }
-
-    void Field(const char* name, math::Vector2& v) override
-    {
-        v = ArrToVec2(FindArray(name), v);
-    }
-
-    void Field(const char* name, math::Vector4& v) override
-    {
-        v = ArrToVec4(FindArray(name), v);
-    }
-
-    void Field(const char* name, std::string& v) override
-    {
-        if (const toml::node* node = FindNode(name))
-            v = node->value_or(v);
-    }
-
-    void Field(const char* name, math::Quaternion& v) override
-    {
-        if (const auto* arr = FindArray(name))
-            v = ArrToQuat(arr);
-    }
+    // 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
+    using util::TomlReadReflector::Field;
+    using util::TomlReadReflector::ListField;
 
     void Field(const char* name, EntityID& v) override
     {
-        if (const auto* arr = FindArray(name); arr && arr->size() == 2) {
-            v.index      = (uint32_t)arr->at(0).value_or((int64_t)EntityID::INVALID_INDEX);
-            v.generation = (uint32_t)arr->at(1).value_or(0LL);
-        }
+        if (const toml::node* node = FindNode(name))
+            v = EntityFromGuid(*node);
     }
 
     void Field(const char* name, input::KeyCode& v) override
@@ -725,6 +635,7 @@ public:
         const std::string s = node ? node->value_or(std::string{}) : std::string{};
         if (!s.empty()) v = KeyCodeFromString(s);
     }
+
     void AssetField(const char* name,
                     ScriptAssetReference& v,
                     ScriptAssetType) override
@@ -736,86 +647,17 @@ public:
             v.path = (*assetRef)["path"].value_or(std::string{});
         }
     }
-    void ListField(const char* name, std::vector<float>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(static_cast<float>(node.value_or(0.0)));
-    }
-    void ListField(const char* name, std::vector<int>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(static_cast<int>(node.value_or(int64_t{0})));
-    }
-    void ListField(const char* name, std::vector<bool>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(node.value_or(false));
-    }
-    void ListField(const char* name, std::vector<std::string>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(node.value_or(std::string{}));
-    }
-    void ListField(const char* name, std::vector<math::Vector2>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(ArrToVec2(node.as_array(), {}));
-    }
-    void ListField(const char* name, std::vector<math::Vector3>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(ArrToVec3(node.as_array(), {}));
-    }
-    void ListField(const char* name, std::vector<math::Vector4>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(ArrToVec4(node.as_array(), {}));
-    }
+
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         const toml::array* array = FindArray(name);
         if (!array) return;
         values.clear();
         values.reserve(array->size());
-        for (const auto& node : *array) {
-            EntityRef value;
-            if (const toml::array* entity = node.as_array(); entity && entity->size() >= 2) {
-                value.id.index = static_cast<uint32_t>(
-                    entity->at(0).value_or(static_cast<int64_t>(EntityID::INVALID_INDEX)));
-                value.id.generation = static_cast<uint32_t>(
-                    entity->at(1).value_or(int64_t{0}));
-            }
-            values.push_back(value);
-        }
+        for (const auto& node : *array)
+            values.push_back(EntityRef{ EntityFromGuid(node) });
     }
+
     void AssetListField(const char* name,
                         std::vector<ScriptAssetReference>& values,
                         ScriptAssetType) override
@@ -833,49 +675,6 @@ public:
             values.push_back(std::move(value));
         }
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
-
-    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
-    void BeginObject(const char* name) override
-    {
-        const toml::node* node = FindNode(name);
-        // 見つからなければ nullptr を積む。以降の Field は読み込み元が無いため
-        // 何もせず、呼び出し側の既定値がそのまま残る (欠損スコープ)。
-        // WHY 早期 return しないか: スコープ対は必ず EndObject と釣り合う必要がある。
-        //      積まずに抜けると EndObject でスタックが破綻する。
-        m_stack.push_back(node ? node->as_table() : nullptr);
-    }
-
-    void EndObject() override
-    {
-        if (m_stack.size() > 1) m_stack.pop_back();
-    }
-
-    // ── 構造体配列 ───────────────────────────────────────────────────────────
-    std::size_t BeginObjectList(const char* name, std::size_t count) override
-    {
-        (void)count;
-        const toml::array* array = FindArray(name);
-        m_listStack.push_back(array);
-        // 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
-        // 配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
-        return array ? array->size() : 0u;
-    }
-
-    void BeginObjectElement(std::size_t index) override
-    {
-        const toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
-        if (!array || index >= array->size()) { m_stack.push_back(nullptr); return; }
-        m_stack.push_back(array->at(index).as_table());
-    }
-
-    void EndObjectElement() override { EndObject(); }
-
-    std::size_t EndObjectList() override
-    {
-        if (!m_listStack.empty()) m_listStack.pop_back();
-        return NO_REMOVE;
-    }
 
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
@@ -887,44 +686,79 @@ public:
         value.preservedFieldsToml = fields ? TomlTableToString(*fields) : std::string{};
         value.value = ScriptSerializableFactory::Create(value.type);
         if (value.value && fields) {
-            TomlReadReflector child(*fields);
+            SceneReadReflector child(*fields, m_guids);
             value.value->Reflect(child);
         }
     }
 
-private:
-    [[nodiscard]] const toml::table* Current() const { return m_stack.back(); }
-
-    [[nodiscard]] const toml::node* FindNode(const char* fallback) const
+protected:
+    [[nodiscard]] EntityID EntityFromGuid(const toml::node& node) const
     {
-        const toml::table* table = Current();
-        if (!table) return nullptr;   // 欠損スコープの内側
-
-        if (const toml::node* node = table->get(PersistentKey(fallback)))
-            return node;
-        return nullptr;
+        if (!m_guids) return EntityID::INVALID;
+        const std::string guid = node.value_or(std::string{});
+        if (guid.empty()) return EntityID::INVALID;
+        const GameObject* go = m_guids->Find(guid);
+        return go ? go->GetID() : EntityID::INVALID;
     }
 
-    [[nodiscard]] const toml::array* FindArray(const char* fallback) const
-    {
-        const toml::node* node = FindNode(fallback);
-        return node ? node->as_array() : nullptr;
-    }
+    const GuidIndex* m_guids = nullptr;
+};
 
-    std::vector<const toml::table*> m_stack;
-    std::vector<const toml::array*> m_listStack;
+// GameObject 参照だけを解決し直す読み込みリフレクタ。
+// 参照先が参照元より後ろに並ぶことがあるので 1 パスでは解決できない。patch 先の
+// アドレスも覚えられない (コンポーネントはローカル変数から ComponentArray へ move される)。
+// 全 GameObject を生成し終えてから参照フィールドだけを流し直すのが、追加の状態を
+// 持たずに済む唯一の形。
+// 値フィールドを無効化してあるのは「解決のためだけのパス」だと型で示すため。
+class EntityRefResolveReflector : public SceneReadReflector {
+public:
+    using SceneReadReflector::SceneReadReflector;
+
+    void Field(const char*, float&) override {}
+    void Field(const char*, int&) override {}
+    void Field(const char*, bool&) override {}
+    void Field(const char*, math::Vector2&) override {}
+    void Field(const char*, math::Vector3&) override {}
+    void Field(const char*, math::Vector4&) override {}
+    void Field(const char*, std::string&) override {}
+    void Field(const char*, math::Quaternion&) override {}
+    void Field(const char*, input::KeyCode&) override {}
+    void AssetField(const char*, ScriptAssetReference&, ScriptAssetType) override {}
+    void ListField(const char*, std::vector<float>&) override {}
+    void ListField(const char*, std::vector<int>&) override {}
+    void ListField(const char*, std::vector<bool>&) override {}
+    void ListField(const char*, std::vector<std::string>&) override {}
+    void ListField(const char*, std::vector<math::Vector2>&) override {}
+    void ListField(const char*, std::vector<math::Vector3>&) override {}
+    void ListField(const char*, std::vector<math::Vector4>&) override {}
+    void AssetListField(const char*, std::vector<ScriptAssetReference>&, ScriptAssetType) override {}
+
+    // 入れ子の Serializable は作り直さず、既にある実体の参照だけを解決する。
+    // 基底の実装はファクトリで作り直すので、Pass 1 で読んだオブジェクトが差し替わる。
+    void ReferenceField(const char* name, ScriptSerializedReference& value) override
+    {
+        if (!value.value) return;
+        const toml::node* node = FindNode(name);
+        const toml::table* reference = node ? node->as_table() : nullptr;
+        if (!reference) return;
+        const toml::table* fields = (*reference)["fields"].as_table();
+        if (!fields) return;
+
+        EntityRefResolveReflector child(*fields, m_guids);
+        value.value->Reflect(child);
+    }
 };
 
 // RegistryでAutomatic指定された標準コンポーネントをReflect()だけで保存する。
 // WHY: 新型追加時にSceneSerializerへ型別ifブロックを増やさず、単純データを共通経路へ流す。
-void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable)
+void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable, const Scene* scene)
 {
     ForEachRegisteredComponent([&]<typename T, typename Registration>() {
         if constexpr (Registration::serializationMode == ComponentSerializationMode::Automatic
                       && requires(T& component, IReflector& reflector) { component.Reflect(reflector); }) {
             if (T* component = go.GetComponent<T>()) {
                 toml::table componentTable;
-                TomlWriteReflector reflector(componentTable);
+                SceneWriteReflector reflector(componentTable, scene);
                 component->Reflect(reflector);
                 gameObjectTable.insert(Registration::serializedName, std::move(componentTable));
             }
@@ -941,12 +775,53 @@ void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
             if (const toml::table* componentTable =
                     gameObjectTable[Registration::serializedName].as_table()) {
                 T component{};
-                TomlReadReflector reflector(*componentTable);
+                SceneReadReflector reflector(*componentTable);
                 component.Reflect(reflector);
                 go.AddComponent<T>(std::move(component));
             }
         }
     });
+}
+
+// 全 GameObject 生成後に呼ぶ。コンポーネントとスクリプトの GameObject 参照を
+// instanceId から EntityID へ解決する。
+void ResolveEntityReferences(GameObject& go,
+                             const toml::table& gameObjectTable,
+                             const GuidIndex& guids)
+{
+    ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if constexpr (Registration::serializationMode == ComponentSerializationMode::Automatic
+                      && requires(T& component, IReflector& reflector) { component.Reflect(reflector); }) {
+            if (const toml::table* componentTable =
+                    gameObjectTable[Registration::serializedName].as_table()) {
+                if (T* component = go.GetComponent<T>()) {
+                    EntityRefResolveReflector reflector(*componentTable, &guids);
+                    component->Reflect(reflector);
+                }
+            }
+        }
+    });
+
+    auto* sc = go.GetComponent<ScriptComponent>();
+    const auto* scriptsArr = gameObjectTable["ScriptComponents"].as_array();
+    if (!sc || !scriptsArr) return;
+
+    // 読み込み時と同じ規則で歩幅を合わせる。readScriptEntry は type が空の項目を
+    // 読み飛ばすため、単純な添字対応にすると 1 つずれた Script へ書き込む。
+    size_t scriptIndex = 0;
+    for (const auto& item : *scriptsArr) {
+        const auto* scTbl = item.as_table();
+        if (!scTbl) continue;
+        if ((*scTbl)["type"].value_or(std::string{}).empty()) continue;
+        if (scriptIndex >= sc->scripts.size()) break;
+
+        Script* script = sc->scripts[scriptIndex++].script.get();
+        if (!script) continue;   // DLL 未登録。fieldsToml のまま保持され、保存時に戻る
+        if (const toml::table* fieldsTbl = (*scTbl)["fields"].as_table()) {
+            EntityRefResolveReflector reflector(*fieldsTbl, &guids);
+            script->Reflect(reflector);
+        }
+    }
 }
 
 std::string TomlTableToString(const toml::table& table)
@@ -979,57 +854,20 @@ toml::table MakeScriptEntryTable(const std::string& type, bool enabled, toml::ta
     return scTbl;
 }
 
-// "primitive:sphere" → PrimitiveMesh::Sphere
-// "models/foo.fbx"   → AssetManager::LoadModel mesh[0]
-// "models/foo.fbx:2" → mesh[2]
-// WHY: primitive mesh は AssetManager 管轄外のため、static キャッシュで寿命を保持する。
-//      Model mesh は AssetManager が所有するため raw pointer で返す。
-renderer::Mesh* ResolveMesh(
-    const std::string& path, renderer::ResourceManager& resources)
+// 実体は Scene/MeshResolver.cpp。実行中の meshPath 差し替えからも同じ解決を使うため、
+// ここから括り出してある。
+//
+// resources == nullptr は «GPU リソースを作らない» 復元 (SceneSerializer::LoadData)。
+// メッシュは張らず、meshPath だけをコンポーネントに残す。
+renderer::Mesh* ResolveMesh(const std::string& path, renderer::ResourceManager* resources)
 {
-    if (path.starts_with("primitive:")) {
-        if (path == "primitive:cube")     return renderer::PrimitiveMesh::Cube(resources);
-        if (path == "primitive:sphere")   return renderer::PrimitiveMesh::Sphere(resources, 32);
-        if (path == "primitive:plane")    return renderer::PrimitiveMesh::Plane(resources);
-        if (path == "primitive:quad")     return renderer::PrimitiveMesh::Quad(resources);
-        if (path == "primitive:cylinder") return renderer::PrimitiveMesh::Cylinder(resources);
-        if (path == "primitive:cone")     return renderer::PrimitiveMesh::Cone(resources);
-        if (path == "primitive:torus")    return renderer::PrimitiveMesh::Torus(resources);
-        if (path == "primitive:capsule")  return renderer::PrimitiveMesh::Capsule(resources);
-        return nullptr;
-    }
-
-    std::string filePath  = path;
-    int         meshIndex = 0;
-
-    // Windows のドライブ文字を誤判定しないように、最後の '/' より後ろの ':' を探す
-    size_t slashPos   = path.find_last_of('/');
-    size_t searchFrom = (slashPos != std::string::npos) ? slashPos : 0;
-    size_t colonPos   = path.find(':', searchFrom);
-
-    if (colonPos != std::string::npos) {
-        std::string_view suffix(path.data() + colonPos + 1, path.size() - colonPos - 1);
-        bool allDigits = !suffix.empty();
-        for (char c : suffix) {
-            if (!std::isdigit((unsigned char)c)) { allDigits = false; break; }
-        }
-        if (allDigits) {
-            filePath = path.substr(0, colonPos);
-            for (char c : suffix) meshIndex = meshIndex * 10 + (c - '0');
-        }
-    }
-
-    auto* model = asset::AssetManager::LoadModel(filePath);
-    if (!model) return nullptr;
-    if (meshIndex < 0 || meshIndex >= (int)model->meshes.size()) return nullptr;
-    return model->meshes[meshIndex].get();
+    if (resources == nullptr) return nullptr;
+    return ResolveMeshPath(path, *resources);
 }
 
 // SceneSerializer が扱う Asset パスを、現在保存/読込している Scene の場所から解決する。
-// WHY: TerrainComponent は Scene には "Assets/Terrain/..." という移動可能な参照を保存する。
-//      ただし FileSystem はプロジェクトルートを知らないため、そのまま読むと実行時カレント
-//      ディレクトリに依存して .terrain を見失う。Scene が Assets 配下にある前提から
-//      プロジェクトルートを逆算し、ディスクアクセス時だけ絶対寄りのパスへ変換する。
+// FileSystem はプロジェクトルートを知らないので、"Assets/..." をそのまま読むと
+// カレントディレクトリ次第で見失う。Scene が Assets 配下にある前提から逆算する。
 std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std::string& assetPath)
 {
     if (assetPath.empty()) return {};
@@ -1066,14 +904,86 @@ std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std
 } // namespace
 
 // -----------------------------------------------------------------------
+// ScriptComponent の複製
+// -----------------------------------------------------------------------
+ScriptComponent CloneScriptComponent(const ScriptComponent& src,
+                                     const Scene* srcScene,
+                                     Scene* dstScene,
+                                     GameObject* dstOwner)
+{
+    // WHY エントリ単位で作らないか: GuidIndex の構築は GameObject 数に比例する。
+    //     Script ごとに作ると階層複製で GameObject 数 × Script 数になる。
+    // 重複 id の報告は切る。複製先はロード済みのシーンで、重複があるならそのとき出ている。
+    std::optional<GuidIndex> guids;
+    if (dstScene) guids.emplace(*dstScene, false);
+
+    ScriptComponent dst{};
+    for (const auto& srcEntry : src.scripts) {
+        std::string type;
+        bool        enabled = true;
+        std::string fieldsToml;
+
+        if (srcEntry.script) {
+            Script& script = *srcEntry.script;
+            script.OnBeforeSerialize();
+
+            toml::table fields;
+            SceneWriteReflector writer(fields, srcScene);
+            script.Reflect(writer);
+
+            type       = script.GetTypeName();
+            enabled    = script.enabled;
+            fieldsToml = TomlTableToString(fields);
+        } else if (srcEntry.serialized) {
+            // DLL 未登録で実体が無い Script。保持している値をそのまま引き継ぐ。
+            type       = srcEntry.serialized->type;
+            enabled    = srcEntry.serialized->enabled;
+            fieldsToml = srcEntry.serialized->fieldsToml;
+        }
+        if (type.empty()) continue;
+
+        ScriptEntry& dstEntry = dst.scripts.emplace_back();
+        dstEntry.serialized = core::MakeUnique<SerializedScriptData>();
+        dstEntry.serialized->type       = type;
+        dstEntry.serialized->enabled    = enabled;
+        dstEntry.serialized->fieldsToml = fieldsToml;
+
+        dstEntry.script = ScriptFactory::Create(type);
+        if (!dstEntry.script) continue;
+
+        dstEntry.script->SetContext(dstScene, dstOwner);
+        dstEntry.script->enabled = enabled;
+
+        const toml::table fields = TomlTableFromString(fieldsToml);
+        SceneReadReflector reader(fields, guids ? &*guids : nullptr);
+        dstEntry.script->Reflect(reader);
+        dstEntry.script->OnAfterDeserialize();
+    }
+    return dst;
+}
+
+// -----------------------------------------------------------------------
 // Save
 // -----------------------------------------------------------------------
 bool SceneSerializer::Save(Scene& scene, const std::string& path)
 {
+    const std::string text = SaveToText(scene, path);
+    if (text.empty()) return false;
+    util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(path));
+    return util::FileSystem::WriteText(path, text);
+}
+
+std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePath)
+{
+    // Terrain のレイヤーマテリアルは «シーンの隣» へ書き出す副作用がある。
+    // 保存先が決まらない呼び出し (テキストだけ欲しい場合) では書き出さない。
+    const std::string& path = scenePath;
     toml::table doc;
 
     toml::table sceneTbl;
-    sceneTbl.insert("format_version", 1);
+    // 2 = GameObject 参照を EntityID の並び順番号ではなく instanceId で保存する形式。
+    // 読み込み側は分岐しない (旧形式は移行済み)。読む人向けの目印として上げておく。
+    sceneTbl.insert("format_version", 2);
     doc.insert("scene", std::move(sceneTbl));
 
     toml::array goArr;
@@ -1126,10 +1036,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             matTbl.insert("material", mc->materialPath);
             matTbl.insert("enabled",  mc->enabled);
             matTbl.insert("visible",  mc->visible);
-            // submesh 1 以降のマテリアルスロット。
-            // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体になったため、
-            //      submesh ごとの .mat 割り当てはここに並ぶ。単一マテリアルの
-            //      オブジェクトでは空配列を書かず、既存シーンの diff を増やさない。
+            // submesh 1 以降のマテリアルスロット。単一マテリアルのオブジェクトでは
+            // 空配列を書かず、既存シーンの diff を増やさない。
             if (!mc->extraSlots.empty()) {
                 toml::array slotArr;
                 for (const auto& slot : mc->extraSlots) {
@@ -1147,6 +1055,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* decal = go.GetComponent<DecalComponent>()) {
             toml::table decalTbl;
             decalTbl.insert("enabled",           decal->enabled);
+            decalTbl.insert("material",          decal->materialPath);
             decalTbl.insert("albedoTex",         decal->albedoTexPath);
             decalTbl.insert("normalTex",         decal->normalTexPath);
             decalTbl.insert("emissiveTex",       decal->emissiveTexPath);
@@ -1157,6 +1066,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 decal->albedoColor[3]
             }));
             decalTbl.insert("normalStrength",    (double)decal->normalStrength);
+            decalTbl.insert("angleFadeStrength", (double)decal->angleFadeStrength);
+            decalTbl.insert("angleFadeDegrees",  (double)decal->angleFadeDegrees);
             decalTbl.insert("emissiveColor",     Vec3ToArr({
                 decal->emissiveColor[0],
                 decal->emissiveColor[1],
@@ -1165,27 +1076,19 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             decalTbl.insert("emissiveScale",     (double)decal->emissiveScale);
             decalTbl.insert("lifetime",          (double)decal->lifetime);
             decalTbl.insert("fadeTime",          (double)decal->fadeTime);
+            decalTbl.insert("fadeInTime",        (double)decal->fadeInTime);
             decalTbl.insert("age",               (double)decal->age);
+            decalTbl.insert("frameCount",        (int64_t)decal->frameCount);
+            decalTbl.insert("framesPerRow",      (int64_t)decal->framesPerRow);
+            decalTbl.insert("frameRate",         (double)decal->frameRate);
+            decalTbl.insert("frameLoop",         decal->frameLoop);
+            decalTbl.insert("sortOrder",         (int64_t)decal->sortOrder);
             decalTbl.insert("receiverLayerMask", (int64_t)decal->receiverLayerMask);
             goTbl.insert("DecalComponent", std::move(decalTbl));
         }
 
         // LightComponent
-        if (auto* lc = go.GetComponent<LightComponent>()) {
-            static constexpr const char* kTypeNames[] = { "Directional", "Point", "Spot" };
-            toml::table lcTbl;
-            lcTbl.insert("type",      kTypeNames[static_cast<int>(lc->type)]);
-            lcTbl.insert("color",     Vec3ToArr(lc->color));
-            lcTbl.insert("intensity", (double)lc->intensity);
-            lcTbl.insert("enabled",   lc->enabled);
-            if (lc->type != LightComponent::Type::Directional)
-                lcTbl.insert("range", (double)lc->range);
-            if (lc->type == LightComponent::Type::Spot) {
-                lcTbl.insert("innerCone", (double)lc->innerCone);
-                lcTbl.insert("outerCone", (double)lc->outerCone);
-            }
-            goTbl.insert("LightComponent", std::move(lcTbl));
-        }
+        WriteComponentReflected<LightComponent>(go, goTbl, "LightComponent");
 
         // CameraComponent
         if (auto* cc = go.GetComponent<CameraComponent>()) {
@@ -1197,6 +1100,27 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ccTbl.insert("isMain",  cc->isMain);
             ccTbl.insert("enabled", cc->enabled);
             ccTbl.insert("cullingMask", (int64_t)cc->cullingMask);
+            ccTbl.insert("frustumCulling", cc->frustumCulling);
+            ccTbl.insert("occlusionCulling", cc->occlusionCulling);
+            ccTbl.insert("cullingBoundsPadding", (double)cc->cullingBoundsPadding);
+            ccTbl.insert("maxDrawDistance", (double)cc->maxDrawDistance);
+            ccTbl.insert("cullDistanceSpherical", cc->cullDistanceSpherical);
+            ccTbl.insert("smallObjectScreenHeight", (double)cc->smallObjectScreenHeight);
+            ccTbl.insert("backgroundColor", Vec4ToArr(cc->backgroundColor));
+            ccTbl.insert("clearMode", (int64_t)cc->clearMode);
+            // レイヤー別距離は「1 つでも設定されているとき」だけ 32 要素の配列を書く。
+            // WHY: 既定 (全 0) のカメラすべてに 32 個のゼロが並ぶと、シーンの差分が読めなくなる。
+            {
+                bool anyLayerDistance = false;
+                for (int i = 0; i < kCullLayerCount; ++i)
+                    if (cc->layerCullDistances[i] > 0.0f) { anyLayerDistance = true; break; }
+                if (anyLayerDistance) {
+                    toml::array layerArr;
+                    for (int i = 0; i < kCullLayerCount; ++i)
+                        layerArr.push_back((double)cc->layerCullDistances[i]);
+                    ccTbl.insert("layerCullDistances", std::move(layerArr));
+                }
+            }
             goTbl.insert("CameraComponent", std::move(ccTbl));
         }
 
@@ -1206,6 +1130,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             lodTbl.insert("enabled", lodGroup->enabled);
             lodTbl.insert("size", (double)lodGroup->size);
             lodTbl.insert("cullBelowLastLevel", lodGroup->cullBelowLastLevel);
+            lodTbl.insert("fadeDuration", (double)lodGroup->fadeDuration);
             toml::array levelsArr;
             for (auto& level : lodGroup->levels) {
                 toml::table levelTbl;
@@ -1226,242 +1151,32 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // EnvironmentLightComponent
-        if (auto* elc = go.GetComponent<EnvironmentLightComponent>()) {
-            toml::table elcTbl;
-            elcTbl.insert("enabled",        elc->enabled);
-            elcTbl.insert("source",         (int64_t)static_cast<uint8_t>(elc->source));
-            elcTbl.insert("irradiancePath", elc->irradiancePath);
-            elcTbl.insert("prefilterPath",  elc->prefilterPath);
-            elcTbl.insert("intensity",      (double)elc->intensity);
-            elcTbl.insert("diffuseScale",   (double)elc->diffuseScale);
-            elcTbl.insert("specularScale",  (double)elc->specularScale);
-            elcTbl.insert("maxMipLevel",    (int64_t)elc->maxMipLevel);
-            goTbl.insert("EnvironmentLightComponent", std::move(elcTbl));
-        }
+        WriteComponentReflected<EnvironmentLightComponent>(go, goTbl, "EnvironmentLightComponent");
 
         // ReflectionProbeComponent
-        if (auto* rpc = go.GetComponent<ReflectionProbeComponent>()) {
-            toml::table rpcTbl;
-            rpcTbl.insert("enabled",         rpc->enabled);
-            rpcTbl.insert("cubemapPath",     rpc->cubemapPath);
-            rpcTbl.insert("captureMode",     (int64_t)static_cast<uint8_t>(rpc->captureMode));
-            rpcTbl.insert("captureResolution",(int64_t)rpc->captureResolution);
-            rpcTbl.insert("updateInterval",  (double)rpc->updateInterval);
-            rpcTbl.insert("influenceRadius", (double)rpc->influenceRadius);
-            rpcTbl.insert("intensity",       (double)rpc->intensity);
-            rpcTbl.insert("boxInfluence",    rpc->boxInfluence);
-            rpcTbl.insert("boxExtents",      Vec3ToArr(rpc->boxExtents));
-            goTbl.insert("ReflectionProbeComponent", std::move(rpcTbl));
-        }
+        WriteComponentReflected<ReflectionProbeComponent>(go, goTbl, "ReflectionProbeComponent");
 
         // AtmosphericScatteringComponent
-        if (auto* asc = go.GetComponent<AtmosphericScatteringComponent>()) {
-            toml::table ascAtmTbl;
-            ascAtmTbl.insert("enabled",    asc->enabled);
-            ascAtmTbl.insert("fogEnabled", asc->fogEnabled);
-            ascAtmTbl.insert("fogSource",  (int64_t)static_cast<uint8_t>(asc->fogSource));
-            ascAtmTbl.insert("fogDensity", (double)asc->fogDensity);
-            ascAtmTbl.insert("fogFar",     (double)asc->fogFar);
-            ascAtmTbl.insert("fogColor",   Vec3ToArr(asc->fogColor));
-            goTbl.insert("AtmosphericScatteringComponent", std::move(ascAtmTbl));
-        }
+        WriteComponentReflected<AtmosphericScatteringComponent>(go, goTbl, "AtmosphericScatteringComponent");
 
         // PostProcessVolumeComponent — ルック本体は .fzdata プロファイル側にあるため、
         // シーンにはボリュームの掛かり方 (参照・領域・優先度) だけを保存する。
-        if (auto* ppvc = go.GetComponent<PostProcessVolumeComponent>()) {
-            toml::table ppvcTbl;
-            ppvcTbl.insert("enabled",         ppvc->enabled);
-            // プロファイル参照は "Assets/..." パス文字列で保存する。
-            // 保存直前に GuidRefCodec が guid: へ変換するため、リネーム耐性が付く。
-            ppvcTbl.insert("profile",         ppvc->profile.ref.path);
-            ppvcTbl.insert("isGlobal",        ppvc->isGlobal);
-            ppvcTbl.insert("priority",        (int64_t)ppvc->priority);
-            ppvcTbl.insert("blendWeight",     (double)ppvc->blendWeight);
-            ppvcTbl.insert("influenceRadius", (double)ppvc->influenceRadius);
-            ppvcTbl.insert("blendDistance",   (double)ppvc->blendDistance);
-            goTbl.insert("PostProcessVolumeComponent", std::move(ppvcTbl));
-        }
+        WriteComponentReflected<PostProcessVolumeComponent>(go, goTbl, "PostProcessVolumeComponent");
 
-        // ParticleEmitter
+        // ParticleEmitter。表を手書きで二重管理すると、.vfx 側にだけ項目が足されて
+        // シーン直置きの Emitter が Play 往復で既定値へ戻る。コーデックへ委譲する。
         if (auto* pe = go.GetComponent<ParticleEmitter>()) {
-            toml::table peTbl;
-            peTbl.insert("emitPosition",   Vec3ToArr(pe->emitPosition));
-            peTbl.insert("emitVelocity",   Vec3ToArr(pe->emitVelocity));
-            peTbl.insert("velocitySpread", (double)pe->velocitySpread);
-            peTbl.insert("colorStart",     Vec4ToArr(pe->colorStart));
-            peTbl.insert("colorEnd",       Vec4ToArr(pe->colorEnd));
-            peTbl.insert("sizeStart",      (double)pe->sizeStart);
-            peTbl.insert("sizeEnd",        (double)pe->sizeEnd);
-            peTbl.insert("lifetime",       (double)pe->lifetime);
-            peTbl.insert("emitRate",       (double)pe->emitRate);
-            peTbl.insert("maxParticles",   (int64_t)pe->maxParticles);
-            peTbl.insert("gravity",        Vec3ToArr(pe->gravity));
-            peTbl.insert("randomSeed",     (int64_t)pe->randomSeed);
-            peTbl.insert("playing",        pe->playing);
-            peTbl.insert("loop",           pe->loop);
-            peTbl.insert("duration",       (double)pe->duration);
-            peTbl.insert("startDelay",     (double)pe->startDelay);
-            peTbl.insert("clearOnStop",    pe->clearOnStop);
-            peTbl.insert("shape",          (int64_t)static_cast<int>(pe->shape));
-            peTbl.insert("sphereRadius",   (double)pe->sphereRadius);
-            peTbl.insert("coneAngleDegrees", (double)pe->coneAngleDegrees);
-            peTbl.insert("coneRadius",     (double)pe->coneRadius);
-            peTbl.insert("boxExtents",     Vec3ToArr(pe->boxExtents));
-            peTbl.insert("meshShapePath",  pe->meshShapePath);
-            peTbl.insert("meshShapeIndex", (int64_t)pe->meshShapeIndex);
-            peTbl.insert("meshShapeScale", (double)pe->meshShapeScale);
-            peTbl.insert("meshShapeFollowSkinnedAnimation", pe->meshShapeFollowSkinnedAnimation);
-            peTbl.insert("blendMode",      (int64_t)static_cast<int>(pe->blendMode));
-            peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
-            peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
-            peTbl.insert("materialPath",   pe->materialPath);
-            peTbl.insert("spriteColumns",  (int64_t)pe->spriteColumns);
-            peTbl.insert("spriteRows",     (int64_t)pe->spriteRows);
-            peTbl.insert("spriteStartFrame", (int64_t)pe->spriteStartFrame);
-            peTbl.insert("spriteEndFrame", (int64_t)pe->spriteEndFrame);
-            peTbl.insert("sizeCurvePower", (double)pe->sizeCurvePower);
-            peTbl.insert("colorCurvePower", (double)pe->colorCurvePower);
-            peTbl.insert("velocityDamping", (double)pe->velocityDamping);
-            peTbl.insert("angularVelocityMin", (double)pe->angularVelocityMin);
-            peTbl.insert("angularVelocityMax", (double)pe->angularVelocityMax);
-            peTbl.insert("noiseStrength",  (double)pe->noiseStrength);
-            peTbl.insert("noiseFrequency", (double)pe->noiseFrequency);
-            peTbl.insert("noiseSpeed",     (double)pe->noiseSpeed);
-            peTbl.insert("receiveForceFields", pe->receiveForceFields);
-            peTbl.insert("lifetimeRandom", (double)pe->lifetimeRandom);
-            peTbl.insert("simulationSpace", (int64_t)pe->simulationSpace);
-            peTbl.insert("renderMode", (int64_t)pe->renderMode);
-            peTbl.insert("stretchedVelocityScale", (double)pe->stretchedVelocityScale);
-            peTbl.insert("stretchedLengthScale", (double)pe->stretchedLengthScale);
-            peTbl.insert("collisionMode", (int64_t)pe->collisionMode);
-            peTbl.insert("collisionResponse", (int64_t)pe->collisionResponse);
-            peTbl.insert("collisionRadius", (double)pe->collisionRadius);
-            peTbl.insert("collisionBounciness", (double)pe->collisionBounciness);
-            peTbl.insert("collisionDamping", (double)pe->collisionDamping);
-            peTbl.insert("collisionPlaneY", (double)pe->collisionPlaneY);
-            peTbl.insert("flipbookMode", (int64_t)pe->flipbookMode);
-            peTbl.insert("flipbookFramesPerSecond", (double)pe->flipbookFramesPerSecond);
-            peTbl.insert("flipbookFrameBlending", pe->flipbookFrameBlending);
-            peTbl.insert("useSizeCurve", pe->useSizeCurve);
-            peTbl.insert("useVelocityCurve", pe->useVelocityCurve);
-            peTbl.insert("useColorGradient", pe->useColorGradient);
-            peTbl.insert("rateOverDistance", (double)pe->rateOverDistance);
-            peTbl.insert("prewarm", pe->prewarm);
-            peTbl.insert("birthSubEmitter", pe->birthSubEmitter);
-            peTbl.insert("deathSubEmitter", pe->deathSubEmitter);
-            peTbl.insert("collisionSubEmitter", pe->collisionSubEmitter);
-            peTbl.insert("subEmitterBurstCount", (int64_t)pe->subEmitterBurstCount);
-            peTbl.insert("softParticles", pe->softParticles);
-            peTbl.insert("softParticleFadeDistance", (double)pe->softParticleFadeDistance);
-            peTbl.insert("cullingEnabled", pe->cullingEnabled);
-            peTbl.insert("cullingBoundsPadding", (double)pe->cullingBoundsPadding);
-            peTbl.insert("lodEnabled", pe->lodEnabled);
-            peTbl.insert("lodNearDistance", (double)pe->lodNearDistance);
-            peTbl.insert("lodFarDistance", (double)pe->lodFarDistance);
-            peTbl.insert("lodNearRateScale", (double)pe->lodNearRateScale);
-            peTbl.insert("lodFarRateScale", (double)pe->lodFarRateScale);
-            peTbl.insert("screenCoverageThreshold", (double)pe->screenCoverageThreshold);
-            peTbl.insert("pauseWhenCulled", pe->pauseWhenCulled);
-
-            auto curveToArray = [](const ParticleCurve& curve) {
-                toml::array array;
-                for (uint32_t index = 0; index < curve.keyCount && index < curve.keys.size(); ++index)
-                    array.push_back(toml::array{ (double)curve.keys[index].time, (double)curve.keys[index].value });
-                return array;
-            };
-            peTbl.insert("sizeCurve", curveToArray(pe->sizeCurve));
-            peTbl.insert("velocityCurve", curveToArray(pe->velocityCurve));
-            toml::array gradient;
-            for (uint32_t index = 0; index < pe->colorGradient.keyCount && index < pe->colorGradient.keys.size(); ++index) {
-                const auto& key = pe->colorGradient.keys[index];
-                gradient.push_back(toml::array{ (double)key.time, (double)key.color.x,
-                    (double)key.color.y, (double)key.color.z, (double)key.color.w });
-            }
-            peTbl.insert("colorGradient", std::move(gradient));
-            toml::array bursts;
-            for (const ParticleBurst& burst : pe->bursts) {
-                toml::table burstTable;
-                burstTable.insert("time", (double)burst.time);
-                burstTable.insert("count", (int64_t)burst.count);
-                burstTable.insert("cycles", (int64_t)burst.cycles);
-                burstTable.insert("interval", (double)burst.interval);
-                burstTable.insert("probability", (double)burst.probability);
-                bursts.push_back(std::move(burstTable));
-            }
-            peTbl.insert("bursts", std::move(bursts));
-            peTbl.insert("enabled",        pe->enabled);
-            goTbl.insert("ParticleEmitter", std::move(peTbl));
+            goTbl.insert("ParticleEmitter", asset::SerializeParticleEmitterSettings(pe->settings));
         }
 
-        // ParticleForceField
-        if (auto* ff = go.GetComponent<ParticleForceField>()) {
-            toml::table ffTbl;
-            ffTbl.insert("enabled",        ff->enabled);
-            ffTbl.insert("fieldType",      (int64_t)static_cast<int>(ff->fieldType));
-            ffTbl.insert("strength",       (double)ff->strength);
-            ffTbl.insert("radius",         (double)ff->radius);
-            ffTbl.insert("falloffPower",   (double)ff->falloffPower);
-            ffTbl.insert("direction",      Vec3ToArr(ff->direction));
-            ffTbl.insert("noiseFrequency", (double)ff->noiseFrequency);
-            ffTbl.insert("noiseSpeed",     (double)ff->noiseSpeed);
-            goTbl.insert("ParticleForceField", std::move(ffTbl));
-        }
-
-        // WindZoneComponent
-        if (auto* wind = go.GetComponent<WindZoneComponent>()) {
-            toml::table windTbl;
-            windTbl.insert("enabled",        wind->enabled);
-            windTbl.insert("direction",      Vec3ToArr(wind->direction));
-            windTbl.insert("strength",       (double)wind->strength);
-            windTbl.insert("turbulence",     (double)wind->turbulence);
-            windTbl.insert("pulseFrequency", (double)wind->pulseFrequency);
-            goTbl.insert("WindZoneComponent", std::move(windTbl));
-        }
+        // ForceField
+        WriteComponentReflected<ForceField>(go, goTbl, "ForceField");
 
         // TrailComponent
-        if (auto* trail = go.GetComponent<TrailComponent>()) {
-            toml::table trailTbl;
-            trailTbl.insert("enabled",            trail->enabled);
-            trailTbl.insert("duration",           (double)trail->duration);
-            trailTbl.insert("maxPoints",          (int64_t)trail->maxPoints);
-            trailTbl.insert("sampleInterval",     (double)trail->sampleInterval);
-            trailTbl.insert("minVertexDist",      (double)trail->minVertexDist);
-            trailTbl.insert("widthStart",         (double)trail->widthStart);
-            trailTbl.insert("widthEnd",           (double)trail->widthEnd);
-            trailTbl.insert("widthEasing",        (int64_t)static_cast<int>(trail->widthEasing));
-            trailTbl.insert("colorStart",         Vec4ToArr(trail->colorStart));
-            trailTbl.insert("colorEnd",           Vec4ToArr(trail->colorEnd));
-            trailTbl.insert("alignment",          (int64_t)static_cast<int>(trail->alignment));
-            trailTbl.insert("smoothSubdivisions", (int64_t)trail->smoothSubdivisions);
-            trailTbl.insert("attachBone",         trail->attachBone);
-            trailTbl.insert("attachOffset",       Vec3ToArr(trail->attachOffset));
-            trailTbl.insert("clearOnDisable",     trail->clearOnDisable);
-            trailTbl.insert("materialPath",       trail->materialPath);
-            trailTbl.insert("uvMode",             (int64_t)static_cast<int>(trail->uvMode));
-            trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
-            trailTbl.insert("uvTiling",           (double)trail->uvTiling);
-            goTbl.insert("TrailComponent", std::move(trailTbl));
-        }
+        WriteComponentReflected<TrailComponent>(go, goTbl, "TrailComponent");
 
         // MeshTrailComponent
-        if (auto* trail = go.GetComponent<MeshTrailComponent>()) {
-            toml::table trailTbl;
-            trailTbl.insert("enabled",        trail->enabled);
-            trailTbl.insert("duration",       (double)trail->duration);
-            trailTbl.insert("sampleInterval", (double)trail->sampleInterval);
-            trailTbl.insert("minVertexDist",  (double)trail->minVertexDist);
-            trailTbl.insert("maxSamples",     (int64_t)trail->maxSamples);
-            trailTbl.insert("colorStart",     Vec4ToArr(trail->colorStart));
-            trailTbl.insert("colorEnd",       Vec4ToArr(trail->colorEnd));
-            trailTbl.insert("doubleSided",    trail->doubleSided);
-            trailTbl.insert("clearOnDisable", trail->clearOnDisable);
-            trailTbl.insert("materialPath",   trail->materialPath);
-            toml::array excludedMeshIndices;
-            for (int meshIndex : trail->excludedMeshIndices)
-                excludedMeshIndices.push_back((int64_t)meshIndex);
-            trailTbl.insert("excludedMeshIndices", std::move(excludedMeshIndices));
-            goTbl.insert("MeshTrailComponent", std::move(trailTbl));
-        }
+        WriteComponentReflected<MeshTrailComponent>(go, goTbl, "MeshTrailComponent");
 
         if (auto* col = go.GetComponent<AabbColliderComponent>()) {
             toml::table colTbl = SerializeCollider(*col);
@@ -1498,6 +1213,16 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             shapeTbl.insert("halfHeight", (double)col->halfHeight);
             colTbl.insert_or_assign("shape", std::move(shapeTbl));
             goTbl.insert("CapsuleColliderComponent", std::move(colTbl));
+        }
+
+        if (auto* col = go.GetComponent<CylinderColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            toml::table shapeTbl;
+            shapeTbl.insert("type", "Cylinder");
+            shapeTbl.insert("radius", (double)col->radius);
+            shapeTbl.insert("halfHeight", (double)col->halfHeight);
+            colTbl.insert_or_assign("shape", std::move(shapeTbl));
+            goTbl.insert("CylinderColliderComponent", std::move(colTbl));
         }
 
         if (auto* col = go.GetComponent<MeshColliderComponent>()) {
@@ -1556,100 +1281,19 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // CharacterControllerComponent
-        if (auto* cc = go.GetComponent<CharacterControllerComponent>()) {
-            toml::table ccTbl;
-            ccTbl.insert("jumpMinAirTime",        (double)cc->jumpMinAirTime);
-            ccTbl.insert("fallVelThreshold",      (double)cc->fallVelThreshold);
-            ccTbl.insert("groundVelThreshold",    (double)cc->groundVelThreshold);
-            ccTbl.insert("ledgeFallThreshold",    (double)cc->ledgeFallThreshold);
-            ccTbl.insert("minGroundNormalY",      (double)cc->minGroundNormalY);
-            ccTbl.insert("groundContactGrace",    (double)cc->groundContactGrace);
-            ccTbl.insert("jumpGroundIgnoreTime",  (double)cc->jumpGroundIgnoreTime);
-            ccTbl.insert("groundedVelSnap",       (double)cc->groundedVelSnap);
-            ccTbl.insert("intentionalJumpMaxTime",(double)cc->intentionalJumpMaxTime);
-            // WHY: isGrounded はゲームプレイ中に変化するランタイム状態だが、
-            //      スナップショットに含めることでエディタ編集中の初期状態を正確に復元する。
-            //      (デフォルト true のため、シリアライズしなくても起動時は問題ないが
-            //       エディタで false に変更した場合に備えて保存する)
-            ccTbl.insert("isGrounded",            cc->isGrounded);
-            goTbl.insert("CharacterControllerComponent", std::move(ccTbl));
-        }
+        WriteComponentReflected<CharacterControllerComponent>(go, goTbl, "CharacterControllerComponent");
 
         // VolumeComponent
-        if (auto* volume = go.GetComponent<VolumeComponent>()) {
-            toml::table volTbl;
-            volTbl.insert("enabled",          volume->enabled);
-            volTbl.insert("type",             VolumeTypeToString(volume->type));
-            volTbl.insert("gravity",          Vec3ToArr(volume->gravity));
-            volTbl.insert("magneticField",    Vec3ToArr(volume->magneticField));
-            volTbl.insert("swirlStrength",    (double)volume->swirlStrength);
-            volTbl.insert("inwardStrength",   (double)volume->inwardStrength);
-            volTbl.insert("liftStrength",     (double)volume->liftStrength);
-            volTbl.insert("buoyancy",         (double)volume->buoyancy);
-            volTbl.insert("drag",             (double)volume->drag);
-            volTbl.insert("explosionImpulse", (double)volume->explosionImpulse);
-            volTbl.insert("timeScale",        (double)volume->timeScale);
-            volTbl.insert("duration",         (double)volume->duration);
-            volTbl.insert("elapsed",          (double)volume->elapsed);
-            goTbl.insert("VolumeComponent", std::move(volTbl));
-        }
+        WriteComponentReflected<VolumeComponent>(go, goTbl, "VolumeComponent");
 
         // SkyRenderer
-        if (auto* sr = go.GetComponent<SkyRenderer>()) {
-            toml::table srTbl;
-            srTbl.insert("rayleighScattering", Vec3ToArr(sr->rayleighScattering));
-            srTbl.insert("mieScattering",      (double)sr->mieScattering);
-            srTbl.insert("sunIntensity",       (double)sr->sunIntensity);
-            srTbl.insert("planetRadius",       (double)sr->planetRadius);
-            srTbl.insert("atmosphereRadius",   (double)sr->atmosphereRadius);
-            srTbl.insert("mieG",               (double)sr->mieG);
-            srTbl.insert("enabled",            sr->enabled);
-            srTbl.insert("dayNightEnabled",    sr->dayNightEnabled);
-            srTbl.insert("dayColor",           Vec3ToArr(sr->dayColor));
-            srTbl.insert("sunsetColor",        Vec3ToArr(sr->sunsetColor));
-            srTbl.insert("nightColor",         Vec3ToArr(sr->nightColor));
-            srTbl.insert("dayIntensity",       (double)sr->dayIntensity);
-            srTbl.insert("nightIntensity",     (double)sr->nightIntensity);
-            srTbl.insert("cloudShadowStrength",(double)sr->cloudShadowStrength);
-            srTbl.insert("cloudShadowCoverage",(double)sr->cloudShadowCoverage);
-            srTbl.insert("cloudShadowScale",   (double)sr->cloudShadowScale);
-            srTbl.insert("cloudShadowSpeed",   (double)sr->cloudShadowSpeed);
-            goTbl.insert("SkyRenderer", std::move(srTbl));
-        }
+        WriteComponentReflected<SkyRenderer>(go, goTbl, "SkyRenderer");
 
         // SunMoonRenderer
-        if (auto* smr = go.GetComponent<SunMoonRenderer>()) {
-            toml::table smrTbl;
-            smrTbl.insert("enabled",        smr->enabled);
-            smrTbl.insert("sunEnabled",     smr->sunEnabled);
-            smrTbl.insert("sunIntensity",   (double)smr->sunIntensity);
-            smrTbl.insert("moonEnabled",    smr->moonEnabled);
-            smrTbl.insert("moonSize",       (double)smr->moonSize);
-            smrTbl.insert("moonBrightness", (double)smr->moonBrightness);
-            smrTbl.insert("moonColor",      Vec3ToArr(smr->moonColor));
-            goTbl.insert("SunMoonRenderer", std::move(smrTbl));
-        }
+        WriteComponentReflected<SunMoonRenderer>(go, goTbl, "SunMoonRenderer");
 
         // VolumetricCloudComponent
-        if (auto* cloud = go.GetComponent<VolumetricCloudComponent>()) {
-            toml::table cloudTbl;
-            cloudTbl.insert("enabled",          cloud->enabled);
-            cloudTbl.insert("bottomHeight",     (double)cloud->bottomHeight);
-            cloudTbl.insert("thickness",        (double)cloud->thickness);
-            cloudTbl.insert("coverage",         (double)cloud->coverage);
-            cloudTbl.insert("density",          (double)cloud->density);
-            cloudTbl.insert("noiseScale",       (double)cloud->noiseScale);
-            cloudTbl.insert("detailScale",      (double)cloud->detailScale);
-            cloudTbl.insert("windSpeed",        (double)cloud->windSpeed);
-            cloudTbl.insert("windDirection",    Vec2ToArr(cloud->windDirection));
-            cloudTbl.insert("lightAbsorption",  (double)cloud->lightAbsorption);
-            cloudTbl.insert("ambientStrength",  (double)cloud->ambientStrength);
-            cloudTbl.insert("silverLining",     (double)cloud->silverLining);
-            cloudTbl.insert("albedo",           Vec3ToArr(cloud->albedo));
-            cloudTbl.insert("stepCount",        (int64_t)cloud->stepCount);
-            cloudTbl.insert("maxDistance",      (double)cloud->maxDistance);
-            goTbl.insert("VolumetricCloudComponent", std::move(cloudTbl));
-        }
+        WriteComponentReflected<VolumetricCloudComponent>(go, goTbl, "VolumetricCloudComponent");
 
         // SkinnedMeshRenderer
         if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
@@ -1657,8 +1301,24 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             smrTbl.insert("enabled",     smr->enabled);
             smrTbl.insert("castShadows", smr->castShadows);
             smrTbl.insert("modelPath",   smr->modelPath);
-            // NOTE: 旧 "meshIndex" は書き出さない。submesh の担当は
-            //       MaterialComponent のスロット (visible) で表現する。
+            // この Renderer が担当する submesh の添字列。空なら書き出さない
+            // (=「モデル全体を描く」)。DCC のノード 1 個が複数マテリアルを持つので配列。
+            if (!smr->submeshIndices.empty()) {
+                toml::array submeshes;
+                for (const uint32_t index : smr->submeshIndices)
+                    submeshes.push_back(static_cast<int64_t>(index));
+                smrTbl.insert("submeshIndices", std::move(submeshes));
+            }
+            // ボーン階層の起点 (Unity の SkinnedMeshRenderer.rootBone 相当)。
+            // EnsureBoneHierarchy の「自分の子孫から探す」だけだと、ボーンが兄弟の
+            // Armature 側に居る構成で見つからず Renderer ごとにスケルトンが複製される。
+            // EntityID は実行ごとに変わるので GUID + 名前で持つ。
+            if (smr->skeletonRootEntity.IsValid()) {
+                if (auto* skeletonRoot = scene.GetGameObject(smr->skeletonRootEntity)) {
+                    smrTbl.insert("skeletonRootGuid", skeletonRoot->instanceId);
+                    smrTbl.insert("skeletonRootName", skeletonRoot->name);
+                }
+            }
             goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
         }
 
@@ -1691,6 +1351,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             animTbl.insert("speed",     (double)anim->speed);
             animTbl.insert("enabled",   anim->enabled);
             animTbl.insert("playing",   anim->playing);
+            animTbl.insert("externalPose", anim->externalPose);
             // ── Root Motion ───────────────────────────────────────────────
             animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
             animTbl.insert("rootMotionSource",   (int64_t)anim->rootMotion.source);
@@ -1766,6 +1427,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 blend2DTbl.insert("paramX", st.blendTree2D.paramX);
                 blend2DTbl.insert("paramY", st.blendTree2D.paramY);
                 blend2DTbl.insert("type",   (int64_t)st.blendTree2D.type);
+                blend2DTbl.insert("dampTime", (double)st.blendTree2D.dampTime);
+                blend2DTbl.insert("syncNormalizedTime", st.blendTree2D.syncNormalizedTime);
                 toml::array motions2D;
                 for (const auto& motion : st.blendTree2D.motions) {
                     toml::table motionTbl;
@@ -1814,7 +1477,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 pTbl.insert("type",       (int64_t)p.type);
                 pTbl.insert("floatValue", (double)p.floatValue);
                 pTbl.insert("intValue",   (int64_t)p.intValue);
-                pTbl.insert("boolValue",  p.boolValue);
+                // Trigger は一時的な発火信号であり、Scene に初期値を保存しない。
+                // WHY: 保存された true がロード直後の遷移を発火させると、Play 開始時に
+                //      Player の Jump / Draw / Holster が勝手に再生される。
+                pTbl.insert(
+                    "boolValue",
+                    p.type == ParamType::Trigger ? false : p.boolValue);
                 paramsArr.push_back(std::move(pTbl));
             }
             animTbl.insert("parameters", std::move(paramsArr));
@@ -1827,9 +1495,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 layerTbl.insert("mode", (int64_t)layer.mode);
                 layerTbl.insert("enabled", layer.enabled);
                 // .mask アセット参照と加算基準ポーズ。
-                // NOTE: レイヤー独自ステートマシン (layer.states) はここには保存しない。
-                // WHY: シーンはインスタンス配置を持つ場所で、遷移グラフの置き場は
-                //      .animcontroller。両方に持たせると同じグラフの二重管理になる。
+                // レイヤー独自ステートマシン (layer.states) は保存しない ─ 遷移グラフの
+                // 置き場は .animcontroller で、両方に持たせると二重管理になる。
                 layerTbl.insert("maskPath", layer.mask.path);
                 toml::table additiveRef;
                 additiveRef.insert("sourcePath", layer.additiveReference.sourcePath);
@@ -1905,14 +1572,10 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 chainTbl.insert("lookAtUpAxis",        Vec3ToArr(chain.lookAtUpAxis));
                 chainTbl.insert("lookAtClampAngle",    (double)chain.lookAtClampAngle);
                 chainTbl.insert("lookAtSpeed",         (double)chain.lookAtSpeed);
-                // EntityID が有効なら実 GameObject 名を優先取得し、
-                // 無効 (未 Resolve / ロード直後など) の場合は文字列フィールドをフォールバックに使う。
-                // WHY: Inspector でテキスト直打ちしたまま Resolve せずに保存すると
-                //      EntityID が INVALID で chain.targetName / chain.poleName だけに正しい値がある。
-                //      EntityID のみを参照すると名前が空文字列になり Prefab/シーン再ロード後に
-                //      KneePole 等の参照が消える。
-                // target: EntityID が有効なら実 GO から名前と GUID を取得。
-                // GUID 優先で保存し、古いシーンとの互換性のため名前も保持する。
+                // EntityID が有効なら実 GameObject から名前と GUID を取り、無効なら
+                // 文字列フィールドを使う。Inspector でテキスト直打ちしたまま Resolve せずに
+                // 保存すると EntityID は INVALID で targetName にだけ正しい値がある。
+                // GUID 優先で保存し、古いシーンとの互換性のため名前も残す。
                 std::string savedTargetName;
                 std::string savedTargetGuid;
                 if (chain.targetEntity.IsValid())
@@ -1944,6 +1607,50 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("IKSolverComponent", std::move(ikTbl));
         }
 
+        // SpringBoneComponent
+        if (auto* spring = go.GetComponent<SpringBoneComponent>()) {
+            toml::table springTbl;
+            springTbl.insert("enabled",               spring->enabled);
+            springTbl.insert("simulateInEditor",      spring->simulateInEditor);
+            springTbl.insert("teleportResetDistance", (double)spring->teleportResetDistance);
+
+            toml::array chainsArr;
+            for (const auto& chain : spring->chains) {
+                toml::table chainTbl;
+                chainTbl.insert("enabled",          chain.enabled);
+                chainTbl.insert("rootBoneName",     chain.rootBoneName);
+                chainTbl.insert("maxDepth",         (int64_t)chain.maxDepth);
+                chainTbl.insert("stiffness",        (double)chain.stiffness);
+                chainTbl.insert("damping",          (double)chain.damping);
+                chainTbl.insert("gravityPower",     (double)chain.gravityPower);
+                chainTbl.insert("gravityDirection", Vec3ToArr(chain.gravityDirection));
+                chainTbl.insert("radius",           (double)chain.radius);
+                chainTbl.insert("limitAngle",       (double)chain.limitAngle);
+                chainTbl.insert("weight",           (double)chain.weight);
+                chainTbl.insert("leafTailLength",   (double)chain.leafTailLength);
+                chainsArr.push_back(std::move(chainTbl));
+            }
+            springTbl.insert("chains", std::move(chainsArr));
+
+            toml::array collidersArr;
+            for (const auto& collider : spring->colliders) {
+                toml::table colliderTbl;
+                colliderTbl.insert("enabled",    collider.enabled);
+                colliderTbl.insert("boneName",   collider.boneName);
+                colliderTbl.insert("shape",      (int64_t)collider.shape);
+                colliderTbl.insert("offset",     Vec3ToArr(collider.offset));
+                colliderTbl.insert("tailOffset", Vec3ToArr(collider.tailOffset));
+                colliderTbl.insert("radius",     (double)collider.radius);
+                collidersArr.push_back(std::move(colliderTbl));
+            }
+            springTbl.insert("colliders", std::move(collidersArr));
+
+            goTbl.insert("SpringBoneComponent", std::move(springTbl));
+        }
+
+        // RagdollComponent
+        WriteComponentReflected<RagdollComponent>(go, goTbl, "RagdollComponent");
+
         // ScriptComponent
         // TerrainComponent
         if (auto* tc = go.GetComponent<TerrainComponent>()) {
@@ -1954,7 +1661,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             // WHY: シーン終了時の保存では Inspector の「Save Asset」ボタンを押さないため、
             //      参照だけ保存すると .terrain / .mat の実体が古いまま、または未作成のまま残る。
             //      Scene 保存と同じタイミングで外部アセットも更新し、再起動後の白地形を防ぐ。
-            if (!tc->terrainAssetPath.empty()) {
+            // scenePath が空 = «テキストだけ欲しい» 呼び出しなので、実体は書かない。
+            if (!path.empty() && !tc->terrainAssetPath.empty()) {
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
                 TerrainAssetSerializer::Save(*tc, terrainDiskPath);
@@ -1962,7 +1670,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::array layerMatArr;
             for (int li = 0; li < 4; ++li) {
                 layerMatArr.push_back(tc->layerMaterials[li]);
-                if (!tc->layerMaterials[li].empty()) {
+                // 保存先が決まっているときだけ、レイヤーマテリアルを実ファイルへ書く。
+                // scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
+                if (!path.empty() && !tc->layerMaterials[li].empty()) {
                     auto matHandle = asset::AssetManager::LoadMaterial(tc->layerMaterials[li]);
                     if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
                         const std::string matDiskPath =
@@ -1980,8 +1690,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* tgc = go.GetComponent<TerrainGridComponent>()) {
             tgc->SyncInstanceIds(scene);
             toml::table tbl;
+            tbl.insert("enabled",    tgc->enabled);
             tbl.insert("cellCountX", (int64_t)tgc->cellCountX);
             tbl.insert("cellCountZ", (int64_t)tgc->cellCountZ);
+            tbl.insert("defaultColumns",   (int64_t)tgc->defaultColumns);
+            tbl.insert("defaultRows",      (int64_t)tgc->defaultRows);
+            tbl.insert("defaultCellSize",  (double)tgc->defaultCellSize);
+            tbl.insert("defaultChunkSize", (int64_t)tgc->defaultChunkSize);
             toml::array cellArr;
             for (const auto& guid : tgc->cellInstanceIds)
                 cellArr.push_back(guid);
@@ -1989,84 +1704,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("TerrainGridComponent", std::move(tbl));
         }
 
-        // TerrainDetailComponent
-        if (auto* tdc = go.GetComponent<TerrainDetailComponent>()) {
-            toml::table tdcTbl;
-            tdcTbl.insert("enabled", tdc->enabled);
-            toml::array layersArr;
-            for (const auto& layer : tdc->layers) {
-                toml::table lt;
-                lt.insert("type",            static_cast<int64_t>(static_cast<uint8_t>(layer.type)));
-                lt.insert("meshPath",        layer.meshPath);
-                lt.insert("densityMapPath",  layer.densityMapPath);
-                lt.insert("texturePath",     layer.texturePath);
-                lt.insert("density",         static_cast<double>(layer.density));
-                lt.insert("minScale",        static_cast<double>(layer.minScale));
-                lt.insert("maxScale",        static_cast<double>(layer.maxScale));
-                lt.insert("alignToNormal",   static_cast<double>(layer.alignToNormal));
-                lt.insert("randomYRotation", layer.randomYRotation);
-                lt.insert("drawDistance",    static_cast<double>(layer.drawDistance));
-                lt.insert("fadeStartDist",   static_cast<double>(layer.fadeStartDist));
-                lt.insert("bladeHeight",     static_cast<double>(layer.bladeHeight));
-                lt.insert("bladeWidth",      static_cast<double>(layer.bladeWidth));
-                lt.insert("bladeSegments",   static_cast<int64_t>(layer.bladeSegments));
-                lt.insert("windStrength",    static_cast<double>(layer.windStrength));
-                lt.insert("windFrequency",   static_cast<double>(layer.windFrequency));
-                layersArr.push_back(std::move(lt));
-            }
-            tdcTbl.insert("layers", std::move(layersArr));
-            goTbl.insert("TerrainDetailComponent", std::move(tdcTbl));
-        }
-
-        // FoliageComponent — Species定義のみ保存し、配置/GPUキャッシュはロード時に再生成する。
-        if (auto* foliage = go.GetComponent<FoliageComponent>()) {
-            toml::table foliageTbl;
-            foliageTbl.insert("enabled", foliage->enabled);
-            toml::array speciesArr;
-            for (const auto& species : foliage->species) {
-                toml::table st;
-                st.insert("modelPath", species.modelPath);
-                st.insert("placementMode",
-                          species.placementMode == FoliagePlacementMode::STAMP
-                              ? "Stamp" : "Procedural");
-                st.insert("densityPer100SquareMeters",
-                          static_cast<double>(species.densityPer100SquareMeters));
-                st.insert("minScale", static_cast<double>(species.minScale));
-                st.insert("maxScale", static_cast<double>(species.maxScale));
-                st.insert("drawDistance", static_cast<double>(species.drawDistance));
-                st.insert("seed", static_cast<int64_t>(species.seed));
-                st.insert("randomYRotation", species.randomYRotation);
-                st.insert("colliderEnabled",      species.colliderEnabled);
-                st.insert("colliderManual",       species.colliderManual);
-                st.insert("colliderHalfWidth",    static_cast<double>(species.colliderHalfWidth));
-                st.insert("colliderHalfHeight",   static_cast<double>(species.colliderHalfHeight));
-                st.insert("colliderCullDistance", static_cast<double>(species.colliderCullDistance));
-
-                toml::array materials;
-                for (const auto& materialPath : species.subMeshMaterialPaths)
-                    materials.push_back(materialPath);
-                st.insert("subMeshMaterialPaths", std::move(materials));
-
-                toml::array stamps;
-                for (const auto& stamp : species.stamps) {
-                    toml::table stampTbl;
-                    stampTbl.insert("position", toml::array{
-                        static_cast<double>(stamp.localPosition.x),
-                        static_cast<double>(stamp.localPosition.y),
-                        static_cast<double>(stamp.localPosition.z)
-                    });
-                    stampTbl.insert("rotationY", static_cast<double>(stamp.rotationY));
-                    stampTbl.insert("scale", static_cast<double>(stamp.scale));
-                    stamps.push_back(std::move(stampTbl));
-                }
-                st.insert("stamps", std::move(stamps));
-                speciesArr.push_back(std::move(st));
-            }
-            foliageTbl.insert("species", std::move(speciesArr));
-            goTbl.insert("FoliageComponent", std::move(foliageTbl));
-        }
-
-        // WaterComponent — ジオメトリ・波・materialPath のみ保存。視覚パラメータは fzmat に委譲。
+        // WaterComponent — ジオメトリ・個体の補正・浮力・materialPath のみ保存。
+        // 水の種類 (色・波・風・水流) は .mat が持つ。waves / current は WaterSystem が毎フレーム作る。
         if (auto* water = go.GetComponent<WaterComponent>()) {
             toml::table waterTbl;
             waterTbl.insert("enabled",             water->enabled);
@@ -2077,66 +1716,27 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             waterTbl.insert("resolutionZ",         static_cast<int64_t>(water->resolutionZ));
             waterTbl.insert("chunkCount",          static_cast<int64_t>(water->chunkCount));
             waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
-            toml::array wavesArr;
-            for (const auto& w : water->waves) {
-                toml::table waveTbl;
-                waveTbl.insert("direction",  Vec2ToArr(w.direction));
-                waveTbl.insert("amplitude",  static_cast<double>(w.amplitude));
-                waveTbl.insert("wavelength", static_cast<double>(w.wavelength));
-                waveTbl.insert("steepness",  static_cast<double>(w.steepness));
-                wavesArr.push_back(std::move(waveTbl));
-            }
-            waterTbl.insert("waves", std::move(wavesArr));
+            waterTbl.insert("waveAmplitudeScale",  static_cast<double>(water->waveAmplitudeScale));
+            waterTbl.insert("buoyancyEnabled",     water->buoyancyEnabled);
+            waterTbl.insert("buoyancy",            static_cast<double>(water->buoyancy));
+            waterTbl.insert("waterDrag",           static_cast<double>(water->waterDrag));
+            waterTbl.insert("buoyancyDepth",       static_cast<double>(water->buoyancyDepth));
+            waterTbl.insert("splashEnabled",       water->splashEnabled);
             goTbl.insert("WaterComponent", std::move(waterTbl));
         }
 
         // NavMeshSurfaceComponent — Bake 設定のみ保存。navMesh は再 Bake で再生成するため非保存。
-        if (auto* surface = go.GetComponent<NavMeshSurfaceComponent>()) {
-            toml::table volTbl;
-            volTbl.insert("enabled",           surface->enabled);
-            volTbl.insert("collectObjects",    static_cast<int64_t>(static_cast<uint8_t>(surface->collectObjects)));
-            volTbl.insert("size",              Vec3ToArr(surface->size));
-            volTbl.insert("cellSize",          static_cast<double>(surface->cellSize));
-            volTbl.insert("maxSlopeAngleDeg",  static_cast<double>(surface->maxSlopeAngleDeg));
-            volTbl.insert("agentRadius",       static_cast<double>(surface->agentRadius));
-            volTbl.insert("agentHeight",       static_cast<double>(surface->agentHeight));
-            goTbl.insert("NavMeshSurfaceComponent", std::move(volTbl));
-        }
+        WriteComponentReflected<NavMeshSurfaceComponent>(go, goTbl, "NavMeshSurfaceComponent");
 
-        if (auto* modifier = go.GetComponent<NavMeshModifierComponent>()) {
-            toml::table modTbl;
-            modTbl.insert("enabled", modifier->enabled);
-            modTbl.insert("mode",    static_cast<int64_t>(static_cast<uint8_t>(modifier->mode)));
-            goTbl.insert("NavMeshModifierComponent", std::move(modTbl));
-        }
+        WriteComponentReflected<NavMeshModifierComponent>(go, goTbl, "NavMeshModifierComponent");
 
         // NavMeshAgentComponent — 移動パラメータのみ保存。目的地・パス等はランタイム状態のため非保存。
-        if (auto* agent = go.GetComponent<NavMeshAgentComponent>()) {
-            toml::table agentTbl;
-            agentTbl.insert("enabled",          agent->enabled);
-            agentTbl.insert("radius",           static_cast<double>(agent->radius));
-            agentTbl.insert("maxSpeed",         static_cast<double>(agent->maxSpeed));
-            agentTbl.insert("acceleration",     static_cast<double>(agent->acceleration));
-            agentTbl.insert("angularSpeedDeg",  static_cast<double>(agent->angularSpeedDeg));
-            agentTbl.insert("stoppingDistance", static_cast<double>(agent->stoppingDistance));
-            agentTbl.insert("avoidancePriority", static_cast<int64_t>(agent->avoidancePriority));
-            goTbl.insert("NavMeshAgentComponent", std::move(agentTbl));
-        }
+        WriteComponentReflected<NavMeshAgentComponent>(go, goTbl, "NavMeshAgentComponent");
 
         // NavMeshOffMeshLinkComponent — 非連続ポリゴン接続の設計値のみ保存する。
         // WHY: Bake 後の内部接続は navMesh と同じランタイム生成物なので、Prefab/Scene には
         //      編集可能な端点・方向・通過条件だけを永続化する。
-        if (auto* link = go.GetComponent<NavMeshOffMeshLinkComponent>()) {
-            toml::table linkTbl;
-            linkTbl.insert("enabled",       link->enabled);
-            linkTbl.insert("startPoint",    Vec3ToArr(link->startPoint));
-            linkTbl.insert("endPoint",      Vec3ToArr(link->endPoint));
-            linkTbl.insert("bidirectional", link->bidirectional);
-            linkTbl.insert("activated",     link->activated);
-            linkTbl.insert("traversalTime", static_cast<double>(link->traversalTime));
-            linkTbl.insert("agentTypeMask", static_cast<int64_t>(link->agentTypeMask));
-            goTbl.insert("NavMeshOffMeshLinkComponent", std::move(linkTbl));
-        }
+        WriteComponentReflected<NavMeshOffMeshLinkComponent>(go, goTbl, "NavMeshOffMeshLinkComponent");
 
         // NavMeshPatrolComponent — ウェイポイント・巡回設定を保存。進行状態はランタイムのため非保存。
         if (auto* patrol = go.GetComponent<NavMeshPatrolComponent>()) {
@@ -2148,23 +1748,21 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             for (const auto& wp : patrol->waypoints)
                 wpArr.push_back(Vec3ToArr(wp));
             patrolTbl.insert("waypoints", std::move(wpArr));
+            toml::array waitArr;
+            for (float wait : patrol->waypointWaitTimes)
+                waitArr.push_back(static_cast<double>(wait));
+            patrolTbl.insert("waypointWaitTimes", std::move(waitArr));
+            toml::array speedArr;
+            for (float speed : patrol->waypointSpeeds)
+                speedArr.push_back(static_cast<double>(speed));
+            patrolTbl.insert("waypointSpeeds", std::move(speedArr));
             goTbl.insert("NavMeshPatrolComponent", std::move(patrolTbl));
         }
 
         // NavMeshSensorComponent — 検知設定のみ保存。検知状態はランタイムのため非保存。
-        if (auto* sensor = go.GetComponent<NavMeshSensorComponent>()) {
-            toml::table sensorTbl;
-            sensorTbl.insert("enabled",            sensor->enabled);
-            sensorTbl.insert("viewDistance",       static_cast<double>(sensor->viewDistance));
-            sensorTbl.insert("viewAngleDeg",       static_cast<double>(sensor->viewAngleDeg));
-            sensorTbl.insert("targetTag",          sensor->targetTag);
-            sensorTbl.insert("useLineOfSight",     sensor->useLineOfSight);
-            sensorTbl.insert("autoChase",          sensor->autoChase);
-            sensorTbl.insert("chaseRepathInterval", static_cast<double>(sensor->chaseRepathInterval));
-            goTbl.insert("NavMeshSensorComponent", std::move(sensorTbl));
-        }
+        WriteComponentReflected<NavMeshSensorComponent>(go, goTbl, "NavMeshSensorComponent");
 
-        WriteAutomaticComponents(go, goTbl);
+        WriteAutomaticComponents(go, goTbl, &scene);
 
         if (auto* sc = go.GetComponent<ScriptComponent>()) {
             toml::array scriptsArr;
@@ -2173,12 +1771,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 if (entry.script) {
                     entry.script->SetContext(&scene, &go);
                     entry.script->OnBeforeSerialize();
-                    TomlWriteReflector reflector(fieldsTbl);
+                    SceneWriteReflector reflector(fieldsTbl, &scene);
                     entry.script->Reflect(reflector);
                     const std::string type = entry.script->GetTypeName();
                     const bool enabled = entry.script->enabled;
                     if (!entry.serialized)
-                        entry.serialized = std::make_shared<SerializedScriptData>();
+                        entry.serialized = core::MakeUnique<SerializedScriptData>();
                     entry.serialized->type = type;
                     entry.serialized->enabled = enabled;
                     entry.serialized->fieldsToml = TomlTableToString(fieldsTbl);
@@ -2209,26 +1807,38 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
     std::ostringstream oss;
     oss << doc;
-
-    util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(path));
-    return util::FileSystem::WriteText(path, oss.str());
+    return oss.str();
 }
 
 // -----------------------------------------------------------------------
 // Load
 // -----------------------------------------------------------------------
 std::unique_ptr<Scene> SceneSerializer::Load(
-    const std::string& path, renderer::ResourceManager& resources)
+    const std::string& path, renderer::ResourceManager* resources)
 {
+    // assert しない。シーンファイルの欠落や破損はデータ側の事故で、不変条件の破れではない。
+    // abort させると壊れたシーンへ遷移しただけでエディタが落ちる。ログにして nullptr を返す。
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) {
-        assert(false && "SceneSerializer::Load — file not found");
+        FBZZ_LOG_ERROR("SceneSerializer: scene file not found [%s]", path.c_str());
         return nullptr;
     }
+    return LoadFromText(text, resources, path);
+}
 
-    auto result = toml::parse(text);
+std::unique_ptr<Scene> SceneSerializer::LoadFromText(
+    const std::string& tomlText, renderer::ResourceManager* resources,
+    const std::string& sourcePath)
+{
+    auto result = toml::parse(tomlText);
     if (!result) {
-        assert(false && "SceneSerializer::Load — TOML parse error");
+        // 行と列まで出す。壊れたシーンは目視で原因を探すのが難しい。
+        const auto& err = result.error();
+        FBZZ_LOG_ERROR("SceneSerializer: TOML parse error in [%s]\n  line %u, column %u: %s",
+                       sourcePath.c_str(),
+                       static_cast<unsigned>(err.source().begin.line),
+                       static_cast<unsigned>(err.source().begin.column),
+                       std::string(err.description()).c_str());
         return nullptr;
     }
     auto& doc = result.table();
@@ -2241,6 +1851,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr) return scene;
     std::vector<Script*> pendingDeserializedScripts;
+    // ファクトリに居なかったスクリプト型。読み終わりに 1 度だけまとめて告げる。
+    std::vector<std::string> unresolvedScriptTypes;
 
     // ------------------------------------------------------------------
     // Pass 1: GameObject 生成 + Component アタッチ
@@ -2305,6 +1917,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* decalTbl = (*goTbl)["DecalComponent"].as_table()) {
             DecalComponent decal{};
             decal.enabled         = (*decalTbl)["enabled"].value_or(true);
+            decal.materialPath    = (*decalTbl)["material"].value_or(std::string{});
             decal.albedoTexPath   = (*decalTbl)["albedoTex"].value_or(std::string{});
             decal.normalTexPath   = (*decalTbl)["normalTex"].value_or(std::string{});
             decal.emissiveTexPath = (*decalTbl)["emissiveTex"].value_or(std::string{});
@@ -2318,6 +1931,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             decal.albedoColor[3] = albedo.w;
 
             decal.normalStrength = (float)(*decalTbl)["normalStrength"].value_or(1.0);
+            decal.angleFadeStrength = (float)(*decalTbl)["angleFadeStrength"].value_or(1.0);
+            decal.angleFadeDegrees  = (float)(*decalTbl)["angleFadeDegrees"].value_or(70.0);
 
             const math::Vector3 emissive = ArrToVec3(
                 (*decalTbl)["emissiveColor"].as_array(),
@@ -2329,28 +1944,20 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
             decal.lifetime          = (float)(*decalTbl)["lifetime"].value_or(-1.0);
             decal.fadeTime          = (float)(*decalTbl)["fadeTime"].value_or(1.0);
+            decal.fadeInTime        = (float)(*decalTbl)["fadeInTime"].value_or(0.0);
             decal.age               = (float)(*decalTbl)["age"].value_or(0.0);
+            decal.frameCount        = (int)(*decalTbl)["frameCount"].value_or((int64_t)0);
+            decal.framesPerRow      = (int)(*decalTbl)["framesPerRow"].value_or((int64_t)1);
+            decal.frameRate         = (float)(*decalTbl)["frameRate"].value_or(0.0);
+            decal.frameLoop         = (*decalTbl)["frameLoop"].value_or(false);
+            decal.sortOrder         = (int)(*decalTbl)["sortOrder"].value_or((int64_t)0);
             decal.receiverLayerMask = static_cast<fbzz::LayerMask>(
                 static_cast<uint32_t>((*decalTbl)["receiverLayerMask"].value_or((int64_t)fbzz::Layer::Everything)));
             go.AddComponent<DecalComponent>(std::move(decal));
         }
 
         // LightComponent
-        if (auto* lcTbl = (*goTbl)["LightComponent"].as_table()) {
-            LightComponent lc{};
-            std::string typeStr = (*lcTbl)["type"].value_or(std::string{"Directional"});
-            if      (typeStr == "Point") lc.type = LightComponent::Type::Point;
-            else if (typeStr == "Spot")  lc.type = LightComponent::Type::Spot;
-            else                         lc.type = LightComponent::Type::Directional;
-
-            lc.color     = ArrToVec3((*lcTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f });
-            lc.intensity = (float)(*lcTbl)["intensity"].value_or(1.0);
-            lc.enabled   = (*lcTbl)["enabled"].value_or(true);
-            lc.range     = (float)(*lcTbl)["range"].value_or(10.0);
-            lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
-            lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
-            go.AddComponent<LightComponent>(lc);
-        }
+        ReadLightComponent(go, *goTbl);
 
         // CameraComponent
         if (auto* ccTbl = (*goTbl)["CameraComponent"].as_table()) {
@@ -2362,6 +1969,29 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.isMain  = (*ccTbl)["isMain"].value_or(true);
             cc.enabled = (*ccTbl)["enabled"].value_or(true);
             cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);
+            // 既定値は「これまでの挙動」= 両方有効・余白なし。旧シーンを読んでも絵は変わらない。
+            cc.frustumCulling   = (*ccTbl)["frustumCulling"].value_or(true);
+            // 既定はコンポーネント側と揃える (未記載の古いシーンも無効で読む)。
+            cc.occlusionCulling = (*ccTbl)["occlusionCulling"].value_or(false);
+            cc.cullingBoundsPadding = (float)(*ccTbl)["cullingBoundsPadding"].value_or(0.0);
+            cc.maxDrawDistance = (float)(*ccTbl)["maxDrawDistance"].value_or(0.0);
+            cc.cullDistanceSpherical = (*ccTbl)["cullDistanceSpherical"].value_or(true);
+            cc.smallObjectScreenHeight = (float)(*ccTbl)["smallObjectScreenHeight"].value_or(0.0);
+            // 未記載の旧シーンはこれまでの背景色のまま読む (絵が変わらない)。
+            cc.backgroundColor = ArrToVec4((*ccTbl)["backgroundColor"].as_array(),
+                                           renderer::kDefaultBackgroundColor);
+            {
+                int clearMode = (int)(*ccTbl)["clearMode"].value_or((int64_t)0);
+                clearMode = clearMode < 0 ? 0 : (clearMode > 1 ? 1 : clearMode);
+                cc.clearMode = static_cast<renderer::CameraClearMode>(clearMode);
+            }
+            // 要素数が足りない / 多い旧データでも壊れないよう、書ける範囲だけ読む。
+            if (const auto* layerArr = (*ccTbl)["layerCullDistances"].as_array()) {
+                const size_t count =
+                    (std::min)(layerArr->size(), (size_t)kCullLayerCount);
+                for (size_t i = 0; i < count; ++i)
+                    cc.layerCullDistances[i] = (float)(*layerArr)[i].value_or(0.0);
+            }
             go.AddComponent<CameraComponent>(cc);
         }
 
@@ -2371,6 +2001,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             lodGroup.enabled = (*lodTbl)["enabled"].value_or(true);
             lodGroup.size = (float)(*lodTbl)["size"].value_or(1.0);
             lodGroup.cullBelowLastLevel = (*lodTbl)["cullBelowLastLevel"].value_or(false);
+            // 既存シーンにキーが無いときは 0 (従来どおり即差し替え) にする。
+            // WHY 既定値 0.25 を使わないか: 保存済みのシーンの見え方を勝手に変えないため。
+            lodGroup.fadeDuration = (float)(*lodTbl)["fadeDuration"].value_or(0.0);
             if (const auto* levelsArr = (*lodTbl)["levels"].as_array()) {
                 for (const auto& levelNode : *levelsArr) {
                     const auto* levelTbl = levelNode.as_table();
@@ -2392,283 +2025,44 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         }
 
         // EnvironmentLightComponent
-        if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
-            EnvironmentLightComponent elc{};
-            elc.enabled        = (*elcTbl)["enabled"].value_or(true);
-            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
-            elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
-            elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
-            elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
-            elc.diffuseScale   = (float)(*elcTbl)["diffuseScale"].value_or(1.0);
-            elc.specularScale  = (float)(*elcTbl)["specularScale"].value_or(1.0);
-            elc.maxMipLevel    = (int)(*elcTbl)["maxMipLevel"].value_or((int64_t)4);
-            go.AddComponent<EnvironmentLightComponent>(elc);
-        }
+        ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");
 
         // ReflectionProbeComponent
-        if (auto* rpcTbl = (*goTbl)["ReflectionProbeComponent"].as_table()) {
-            ReflectionProbeComponent rpc{};
-            rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
-            rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
-            rpc.captureMode     = static_cast<ReflectionProbeCaptureMode>(
-                static_cast<uint8_t>((*rpcTbl)["captureMode"].value_or((int64_t)0)));
-            rpc.captureResolution = static_cast<uint32_t>((*rpcTbl)["captureResolution"].value_or((int64_t)128));
-            rpc.updateInterval  = (float)(*rpcTbl)["updateInterval"].value_or(1.0);
-            rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
-            rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
-            rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
-            rpc.boxExtents      = ArrToVec3((*rpcTbl)["boxExtents"].as_array(), {1.0f, 1.0f, 1.0f});
-            go.AddComponent<ReflectionProbeComponent>(rpc);
-        }
+        ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
 
         // AtmosphericScatteringComponent
-        if (auto* ascAtmTbl = (*goTbl)["AtmosphericScatteringComponent"].as_table()) {
-            AtmosphericScatteringComponent atm{};
-            atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
-            atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
-            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
-            atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
-            atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
-            atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
-            go.AddComponent<AtmosphericScatteringComponent>(atm);
-        }
+        ReadComponentReflected<AtmosphericScatteringComponent>(go, *goTbl, "AtmosphericScatteringComponent");
 
         // PostProcessVolumeComponent — pp サブテーブルから PostProcessSettings を復元する。
-        if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
-            PostProcessVolumeComponent ppvc{};
-            ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
-            // 旧シーンが持っていた pp サブテーブル (インライン設定) は読み飛ばす。
-            // WHY 黙って捨てるか: ルック設定の所有者はプロファイル 1 本に統一した。
-            //     ここで読み戻せる先が既に存在しないため、キーが残っていても
-            //     どこにも反映されない。プロファイル未アサインのボリュームは無効扱い。
-            ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
-            ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
-            ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
-            ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
-            ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
-            ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
-            go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
-        }
+        ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");
 
         // ParticleEmitter
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
             ParticleEmitter pe{};
-            pe.emitPosition   = ArrToVec3((*peTbl)["emitPosition"].as_array());
-            pe.emitVelocity   = ArrToVec3((*peTbl)["emitVelocity"].as_array(),
-                                          { 0.0f, 4.0f, 0.0f });
-            pe.velocitySpread = (float)(*peTbl)["velocitySpread"].value_or(1.5);
-            pe.colorStart     = ArrToVec4((*peTbl)["colorStart"].as_array(),
-                                          { 1.0f, 0.7f, 0.2f, 1.0f });
-            pe.colorEnd       = ArrToVec4((*peTbl)["colorEnd"].as_array(),
-                                          { 1.0f, 0.1f, 0.0f, 0.0f });
-            pe.sizeStart      = (float)(*peTbl)["sizeStart"].value_or(0.4);
-            pe.sizeEnd        = (float)(*peTbl)["sizeEnd"].value_or(0.05);
-            pe.lifetime       = (float)(*peTbl)["lifetime"].value_or(2.0);
-            pe.emitRate       = (float)(*peTbl)["emitRate"].value_or(30.0);
-            pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
-            pe.gravity        = ArrToVec3((*peTbl)["gravity"].as_array(), { 0.0f, -5.0f, 0.0f });
-            const int64_t randomSeed = (*peTbl)["randomSeed"].value_or((int64_t)1);
-            pe.randomSeed     = static_cast<uint32_t>(randomSeed < 1 ? 1 : randomSeed);
-            pe.randomState    = pe.randomSeed;
-            pe.playing        = (*peTbl)["playing"].value_or(true);
-            pe.loop           = (*peTbl)["loop"].value_or(true);
-            pe.duration       = (float)(*peTbl)["duration"].value_or(5.0);
-            pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
-            pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
-            int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
-            shape = shape < 0 ? 0 : (shape > 4 ? 4 : shape);
-            pe.shape          = static_cast<ParticleEmitterShape>(shape);
-            pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
-            pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
-            pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
-            pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
-            pe.meshShapePath  = (*peTbl)["meshShapePath"].value_or(std::string{});
-            pe.meshShapeIndex = (int)(*peTbl)["meshShapeIndex"].value_or((int64_t)-1);
-            pe.meshShapeScale = (float)(*peTbl)["meshShapeScale"].value_or(1.0);
-            pe.meshShapeFollowSkinnedAnimation =
-                (*peTbl)["meshShapeFollowSkinnedAnimation"].value_or(false);
-            int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
-            blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
-            pe.blendMode      = static_cast<ParticleBlendMode>(blend);
-            int sort = (int)(*peTbl)["sortMode"].value_or((int64_t)0);
-            sort = sort < 0 ? 0 : (sort > 1 ? 1 : sort);
-            pe.sortMode       = static_cast<ParticleSortMode>(sort);
-            int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
-            sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
-            pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
-            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
-            pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
-            pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
-            pe.spriteEndFrame = (int)(*peTbl)["spriteEndFrame"].value_or((int64_t)0);
-            pe.sizeCurvePower = (float)(*peTbl)["sizeCurvePower"].value_or(1.0);
-            pe.colorCurvePower = (float)(*peTbl)["colorCurvePower"].value_or(1.0);
-            pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
-            pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
-            pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
-            pe.noiseStrength  = (float)(*peTbl)["noiseStrength"].value_or(0.0);
-            pe.noiseFrequency = (float)(*peTbl)["noiseFrequency"].value_or(0.5);
-            pe.noiseSpeed     = (float)(*peTbl)["noiseSpeed"].value_or(1.0);
-            pe.receiveForceFields = (*peTbl)["receiveForceFields"].value_or(true);
-            pe.lifetimeRandom = (float)(*peTbl)["lifetimeRandom"].value_or(0.0);
-            pe.simulationSpace = static_cast<ParticleSimulationSpace>(std::clamp((int)(*peTbl)["simulationSpace"].value_or((int64_t)0), 0, 1));
-            pe.renderMode = static_cast<ParticleRenderMode>(std::clamp((int)(*peTbl)["renderMode"].value_or((int64_t)0), 0, 3));
-            pe.stretchedVelocityScale = (float)(*peTbl)["stretchedVelocityScale"].value_or(0.1);
-            pe.stretchedLengthScale = (float)(*peTbl)["stretchedLengthScale"].value_or(1.0);
-            pe.collisionMode = static_cast<ParticleCollisionMode>(std::clamp((int)(*peTbl)["collisionMode"].value_or((int64_t)0), 0, 2));
-            pe.collisionResponse = static_cast<ParticleCollisionResponse>(std::clamp((int)(*peTbl)["collisionResponse"].value_or((int64_t)0), 0, 2));
-            pe.collisionRadius = (float)(*peTbl)["collisionRadius"].value_or(0.05);
-            pe.collisionBounciness = (float)(*peTbl)["collisionBounciness"].value_or(0.5);
-            pe.collisionDamping = (float)(*peTbl)["collisionDamping"].value_or(0.0);
-            pe.collisionPlaneY = (float)(*peTbl)["collisionPlaneY"].value_or(0.0);
-            pe.flipbookMode = static_cast<ParticleFlipbookMode>(std::clamp((int)(*peTbl)["flipbookMode"].value_or((int64_t)0), 0, 3));
-            pe.flipbookFramesPerSecond = (float)(*peTbl)["flipbookFramesPerSecond"].value_or(24.0);
-            pe.flipbookFrameBlending = (*peTbl)["flipbookFrameBlending"].value_or(false);
-            pe.useSizeCurve = (*peTbl)["useSizeCurve"].value_or(false);
-            pe.useVelocityCurve = (*peTbl)["useVelocityCurve"].value_or(false);
-            pe.useColorGradient = (*peTbl)["useColorGradient"].value_or(false);
-            pe.rateOverDistance = (float)(*peTbl)["rateOverDistance"].value_or(0.0);
-            pe.prewarm = (*peTbl)["prewarm"].value_or(false);
-            pe.birthSubEmitter = (*peTbl)["birthSubEmitter"].value_or(std::string{});
-            pe.deathSubEmitter = (*peTbl)["deathSubEmitter"].value_or(std::string{});
-            pe.collisionSubEmitter = (*peTbl)["collisionSubEmitter"].value_or(std::string{});
-            pe.subEmitterBurstCount = (int)(*peTbl)["subEmitterBurstCount"].value_or((int64_t)1);
-            pe.softParticles = (*peTbl)["softParticles"].value_or(false);
-            pe.softParticleFadeDistance = (float)(*peTbl)["softParticleFadeDistance"].value_or(0.5);
-            pe.cullingEnabled = (*peTbl)["cullingEnabled"].value_or(true);
-            pe.cullingBoundsPadding = (float)(*peTbl)["cullingBoundsPadding"].value_or(0.25);
-            pe.lodEnabled = (*peTbl)["lodEnabled"].value_or(true);
-            pe.lodNearDistance = (float)(*peTbl)["lodNearDistance"].value_or(12.0);
-            pe.lodFarDistance = (float)(*peTbl)["lodFarDistance"].value_or(40.0);
-            pe.lodNearRateScale = (float)(*peTbl)["lodNearRateScale"].value_or(1.0);
-            pe.lodFarRateScale = (float)(*peTbl)["lodFarRateScale"].value_or(0.25);
-            pe.screenCoverageThreshold = (float)(*peTbl)["screenCoverageThreshold"].value_or(0.0);
-            pe.pauseWhenCulled = (*peTbl)["pauseWhenCulled"].value_or(false);
-            auto loadCurve = [&](const char* name, ParticleCurve& curve) {
-                if (auto* array = (*peTbl)[name].as_array()) {
-                    curve.keyCount = static_cast<uint32_t>((std::min)(array->size(), curve.keys.size()));
-                    for (uint32_t index = 0; index < curve.keyCount; ++index) {
-                        if (auto* key = (*array)[index].as_array(); key && key->size() >= 2) {
-                            curve.keys[index].time = (float)(*key)[0].value_or(0.0);
-                            curve.keys[index].value = (float)(*key)[1].value_or(0.0);
-                        }
-                    }
-                }
-            };
-            loadCurve("sizeCurve", pe.sizeCurve);
-            loadCurve("velocityCurve", pe.velocityCurve);
-            if (auto* gradient = (*peTbl)["colorGradient"].as_array()) {
-                pe.colorGradient.keyCount = static_cast<uint32_t>((std::min)(gradient->size(), pe.colorGradient.keys.size()));
-                for (uint32_t index = 0; index < pe.colorGradient.keyCount; ++index) {
-                    if (auto* key = (*gradient)[index].as_array(); key && key->size() >= 5) {
-                        pe.colorGradient.keys[index].time = (float)(*key)[0].value_or(0.0);
-                        pe.colorGradient.keys[index].color = {
-                            (float)(*key)[1].value_or(1.0), (float)(*key)[2].value_or(1.0),
-                            (float)(*key)[3].value_or(1.0), (float)(*key)[4].value_or(1.0) };
-                    }
-                }
+            asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
+            // 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
+            // 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
+            pe.ResetPlayback();
+            // 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
+            // colorGradient.space が無い場合だけ、こちらを正として反映する。
+            if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
+                pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+                    std::clamp(static_cast<int>(*legacySpace), 0,
+                               static_cast<int>(ParticleColorSpace::Oklab)));
             }
-            if (auto* bursts = (*peTbl)["bursts"].as_array()) {
-                for (auto&& burstNode : *bursts) {
-                    auto* burstTable = burstNode.as_table();
-                    if (!burstTable) continue;
-                    ParticleBurst burst;
-                    burst.time = (float)(*burstTable)["time"].value_or(0.0);
-                    burst.count = (int)(*burstTable)["count"].value_or((int64_t)10);
-                    burst.cycles = (int)(*burstTable)["cycles"].value_or((int64_t)1);
-                    burst.interval = (float)(*burstTable)["interval"].value_or(0.1);
-                    burst.probability = (float)(*burstTable)["probability"].value_or(1.0);
-                    pe.bursts.push_back(burst);
-                }
-            }
-            pe.enabled        = (*peTbl)["enabled"].value_or(true);
-            go.AddComponent<ParticleEmitter>(pe);
+            // ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
+            pe.settings.playing = (*peTbl)["playing"].value_or(true);
+            go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
-        // ParticleForceField
-        if (auto* ffTbl = (*goTbl)["ParticleForceField"].as_table()) {
-            ParticleForceField ff{};
-            ff.enabled      = (*ffTbl)["enabled"].value_or(true);
-            int fieldType   = (int)(*ffTbl)["fieldType"].value_or((int64_t)0);
-            fieldType       = fieldType < 0 ? 0 : (fieldType > 5 ? 5 : fieldType);
-            ff.fieldType    = static_cast<ParticleForceFieldType>(fieldType);
-            ff.strength     = (float)(*ffTbl)["strength"].value_or(5.0);
-            ff.radius       = (float)(*ffTbl)["radius"].value_or(5.0);
-            ff.falloffPower = (float)(*ffTbl)["falloffPower"].value_or(2.0);
-            ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
-            ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
-            ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
-            go.AddComponent<ParticleForceField>(ff);
-        }
-
-        // WindZoneComponent
-        if (auto* windTbl = (*goTbl)["WindZoneComponent"].as_table()) {
-            WindZoneComponent wind{};
-            wind.enabled        = (*windTbl)["enabled"].value_or(true);
-            wind.direction      = ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
-            wind.strength       = (float)(*windTbl)["strength"].value_or(1.0);
-            wind.turbulence     = (float)(*windTbl)["turbulence"].value_or(0.0);
-            wind.pulseFrequency = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
-            go.AddComponent<WindZoneComponent>(wind);
-        }
+        // 力場 (旧 WindZoneComponent と旧フラット形式もここで吸収する)
+        ReadForceFieldComponent(go, *goTbl);
 
         // TrailComponent
-        if (auto* trailTbl = (*goTbl)["TrailComponent"].as_table()) {
-            TrailComponent trail{};
-            trail.enabled        = (*trailTbl)["enabled"].value_or(true);
-            trail.duration       = (float)(*trailTbl)["duration"].value_or(1.0);
-            trail.maxPoints      = (int)(*trailTbl)["maxPoints"].value_or((int64_t)64);
-            trail.sampleInterval = (float)(*trailTbl)["sampleInterval"].value_or(1.0 / 30.0);
-            trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
-            trail.widthStart     = (float)(*trailTbl)["widthStart"].value_or(0.20);
-            trail.widthEnd       = (float)(*trailTbl)["widthEnd"].value_or(0.02);
-            int widthEasing = (int)(*trailTbl)["widthEasing"].value_or((int64_t)0);
-            widthEasing = widthEasing < 0 ? 0 : (widthEasing > 3 ? 3 : widthEasing);
-            trail.widthEasing = static_cast<TrailWidthEasing>(widthEasing);
-            trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
-                                              { 1.0f, 1.0f, 1.0f, 1.0f });
-            trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
-                                             { 1.0f, 1.0f, 1.0f, 0.0f });
-            int alignment = (int)(*trailTbl)["alignment"].value_or((int64_t)0);
-            alignment = alignment < 0 ? 0 : (alignment > 1 ? 1 : alignment);
-            trail.alignment      = static_cast<TrailAlignment>(alignment);
-            trail.smoothSubdivisions = (int)(*trailTbl)["smoothSubdivisions"].value_or((int64_t)0);
-            trail.attachBone     = (*trailTbl)["attachBone"].value_or(std::string{});
-            trail.attachOffset   = ArrToVec3((*trailTbl)["attachOffset"].as_array(), math::Vector3::ZERO);
-            trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
-            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            int uvMode = (int)(*trailTbl)["uvMode"].value_or((int64_t)0);
-            uvMode = uvMode < 0 ? 0 : (uvMode > 1 ? 1 : uvMode);
-            trail.uvMode         = static_cast<TrailUVMode>(uvMode);
-            trail.uvScrollSpeed  = (float)(*trailTbl)["uvScrollSpeed"].value_or(0.0);
-            trail.uvTiling       = (float)(*trailTbl)["uvTiling"].value_or(1.0);
-            go.AddComponent<TrailComponent>(std::move(trail));
-        }
+        ReadComponentReflected<TrailComponent>(go, *goTbl, "TrailComponent");
 
         // MeshTrailComponent
-        if (auto* trailTbl = (*goTbl)["MeshTrailComponent"].as_table()) {
-            MeshTrailComponent trail{};
-            trail.enabled        = (*trailTbl)["enabled"].value_or(true);
-            trail.duration       = (float)(*trailTbl)["duration"].value_or(0.5);
-            trail.sampleInterval = (float)(*trailTbl)["sampleInterval"].value_or(1.0 / 15.0);
-            trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
-            trail.maxSamples     = (int)(*trailTbl)["maxSamples"].value_or((int64_t)12);
-            trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
-                                             { 0.35f, 0.75f, 1.0f, 0.35f });
-            trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
-                                               { 0.35f, 0.75f, 1.0f, 0.0f });
-            trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
-            trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
-            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            if (const auto* excludedArr = (*trailTbl)["excludedMeshIndices"].as_array()) {
-                for (const auto& node : *excludedArr) {
-                    const int meshIndex = (int)node.value_or((int64_t)-1);
-                    if (meshIndex >= 0)
-                        trail.excludedMeshIndices.push_back(meshIndex);
-                }
-            }
-            go.AddComponent<MeshTrailComponent>(std::move(trail));
-        }
+        ReadComponentReflected<MeshTrailComponent>(go, *goTbl, "MeshTrailComponent");
 
         if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
             AabbColliderComponent col{};
@@ -2692,6 +2086,12 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             CapsuleColliderComponent col{};
             ReadCapsuleCollider(*colTbl, col);
             go.AddComponent<CapsuleColliderComponent>(std::move(col));
+        }
+
+        if (auto* colTbl = (*goTbl)["CylinderColliderComponent"].as_table()) {
+            CylinderColliderComponent col{};
+            ReadCylinderCollider(*colTbl, col);
+            go.AddComponent<CylinderColliderComponent>(std::move(col));
         }
 
         if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
@@ -2756,100 +2156,19 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         }
 
         // CharacterControllerComponent
-        if (auto* ccTbl = (*goTbl)["CharacterControllerComponent"].as_table()) {
-            CharacterControllerComponent cc{};
-            cc.jumpMinAirTime        = (float)(*ccTbl)["jumpMinAirTime"].value_or(0.2);
-            cc.fallVelThreshold      = (float)(*ccTbl)["fallVelThreshold"].value_or(-0.5);
-            cc.groundVelThreshold    = (float)(*ccTbl)["groundVelThreshold"].value_or(0.3);
-            cc.ledgeFallThreshold    = (float)(*ccTbl)["ledgeFallThreshold"].value_or(-1.0);
-            cc.minGroundNormalY      = (float)(*ccTbl)["minGroundNormalY"].value_or(0.5);
-            cc.groundContactGrace    = (float)(*ccTbl)["groundContactGrace"].value_or(0.12);
-            cc.jumpGroundIgnoreTime  = (float)(*ccTbl)["jumpGroundIgnoreTime"].value_or(0.12);
-            cc.groundedVelSnap       = (float)(*ccTbl)["groundedVelSnap"].value_or(0.35);
-            cc.intentionalJumpMaxTime= (float)(*ccTbl)["intentionalJumpMaxTime"].value_or(1.0);
-            cc.isGrounded            = (*ccTbl)["isGrounded"].value_or(true);
-            go.AddComponent<CharacterControllerComponent>(std::move(cc));
-        }
+        ReadComponentReflected<CharacterControllerComponent>(go, *goTbl, "CharacterControllerComponent");
 
         // VolumeComponent
-        if (auto* volTbl = (*goTbl)["VolumeComponent"].as_table()) {
-            VolumeComponent volume{};
-            volume.enabled          = (*volTbl)["enabled"].value_or(true);
-            volume.type             = StringToVolumeType(
-                (*volTbl)["type"].value_or(std::string{"Gravity"}));
-            volume.gravity          = ArrToVec3((*volTbl)["gravity"].as_array(),
-                                                { 0.0f, -9.81f, 0.0f });
-            volume.magneticField    = ArrToVec3((*volTbl)["magneticField"].as_array(),
-                                                { 0.0f, 1.0f, 0.0f });
-            volume.swirlStrength    = (float)(*volTbl)["swirlStrength"].value_or(1.0);
-            volume.inwardStrength   = (float)(*volTbl)["inwardStrength"].value_or(0.0);
-            volume.liftStrength     = (float)(*volTbl)["liftStrength"].value_or(0.0);
-            volume.buoyancy         = (float)(*volTbl)["buoyancy"].value_or(10.0);
-            volume.drag             = (float)(*volTbl)["drag"].value_or(1.0);
-            volume.explosionImpulse = (float)(*volTbl)["explosionImpulse"].value_or(10.0);
-            volume.timeScale        = (float)(*volTbl)["timeScale"].value_or(1.0);
-            volume.duration         = (float)(*volTbl)["duration"].value_or(-1.0);
-            volume.elapsed          = (float)(*volTbl)["elapsed"].value_or(0.0);
-            go.AddComponent<VolumeComponent>(volume);
-        }
+        ReadComponentReflected<VolumeComponent>(go, *goTbl, "VolumeComponent");
 
         // SkyRenderer
-        if (auto* srTbl = (*goTbl)["SkyRenderer"].as_table()) {
-            SkyRenderer sr{};
-            sr.rayleighScattering = ArrToVec3((*srTbl)["rayleighScattering"].as_array(),
-                                              { 5.8e-3f, 13.5e-3f, 33.1e-3f });
-            sr.mieScattering = (float)(*srTbl)["mieScattering"].value_or(21.0e-4);
-            sr.sunIntensity  = (float)(*srTbl)["sunIntensity"].value_or(20.0);
-            sr.planetRadius  = (float)(*srTbl)["planetRadius"].value_or(6371.0);
-            sr.atmosphereRadius = (float)(*srTbl)["atmosphereRadius"].value_or(6471.0);
-            sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
-            sr.enabled       = (*srTbl)["enabled"].value_or(true);
-            sr.dayNightEnabled = (*srTbl)["dayNightEnabled"].value_or(false);
-            sr.dayColor      = ArrToVec3((*srTbl)["dayColor"].as_array(), { 1.0f, 0.98f, 0.95f });
-            sr.sunsetColor   = ArrToVec3((*srTbl)["sunsetColor"].as_array(), { 1.0f, 0.5f, 0.2f });
-            sr.nightColor    = ArrToVec3((*srTbl)["nightColor"].as_array(), { 0.1f, 0.15f, 0.3f });
-            sr.dayIntensity  = (float)(*srTbl)["dayIntensity"].value_or(1.5);
-            sr.nightIntensity = (float)(*srTbl)["nightIntensity"].value_or(0.1);
-            sr.cloudShadowStrength = (float)(*srTbl)["cloudShadowStrength"].value_or(0.0);
-            sr.cloudShadowCoverage = (float)(*srTbl)["cloudShadowCoverage"].value_or(0.5);
-            sr.cloudShadowScale    = (float)(*srTbl)["cloudShadowScale"].value_or(0.02);
-            sr.cloudShadowSpeed    = (float)(*srTbl)["cloudShadowSpeed"].value_or(1.0);
-            go.AddComponent<SkyRenderer>(sr);
-        }
+        ReadComponentReflected<SkyRenderer>(go, *goTbl, "SkyRenderer");
 
         // SunMoonRenderer
-        if (auto* smrTbl = (*goTbl)["SunMoonRenderer"].as_table()) {
-            SunMoonRenderer smr{};
-            smr.enabled        = (*smrTbl)["enabled"].value_or(true);
-            smr.sunEnabled     = (*smrTbl)["sunEnabled"].value_or(true);
-            smr.sunIntensity   = (float)(*smrTbl)["sunIntensity"].value_or(20.0);
-            smr.moonEnabled    = (*smrTbl)["moonEnabled"].value_or(false);
-            smr.moonSize       = (float)(*smrTbl)["moonSize"].value_or(1.0);
-            smr.moonBrightness = (float)(*smrTbl)["moonBrightness"].value_or(0.6);
-            smr.moonColor      = ArrToVec3((*smrTbl)["moonColor"].as_array(), { 0.85f, 0.9f, 1.0f });
-            go.AddComponent<SunMoonRenderer>(smr);
-        }
+        ReadComponentReflected<SunMoonRenderer>(go, *goTbl, "SunMoonRenderer");
 
         // VolumetricCloudComponent
-        if (auto* cloudTbl = (*goTbl)["VolumetricCloudComponent"].as_table()) {
-            VolumetricCloudComponent cloud{};
-            cloud.enabled         = (*cloudTbl)["enabled"].value_or(true);
-            cloud.bottomHeight    = (float)(*cloudTbl)["bottomHeight"].value_or(650.0);
-            cloud.thickness       = (float)(*cloudTbl)["thickness"].value_or(420.0);
-            cloud.coverage        = (float)(*cloudTbl)["coverage"].value_or(0.48);
-            cloud.density         = (float)(*cloudTbl)["density"].value_or(0.72);
-            cloud.noiseScale      = (float)(*cloudTbl)["noiseScale"].value_or(0.0018);
-            cloud.detailScale     = (float)(*cloudTbl)["detailScale"].value_or(5.0);
-            cloud.windSpeed       = (float)(*cloudTbl)["windSpeed"].value_or(18.0);
-            cloud.windDirection   = ArrToVec2((*cloudTbl)["windDirection"].as_array(), { 1.0f, 0.25f });
-            cloud.lightAbsorption = (float)(*cloudTbl)["lightAbsorption"].value_or(1.35);
-            cloud.ambientStrength = (float)(*cloudTbl)["ambientStrength"].value_or(0.28);
-            cloud.silverLining    = (float)(*cloudTbl)["silverLining"].value_or(0.42);
-            cloud.albedo          = ArrToVec3((*cloudTbl)["albedo"].as_array(), { 1.0f, 0.96f, 0.88f });
-            cloud.stepCount       = (int)(*cloudTbl)["stepCount"].value_or((int64_t)48);
-            cloud.maxDistance     = (float)(*cloudTbl)["maxDistance"].value_or(6000.0);
-            go.AddComponent<VolumetricCloudComponent>(cloud);
-        }
+        ReadComponentReflected<VolumetricCloudComponent>(go, *goTbl, "VolumetricCloudComponent");
 
         // SkinnedMeshRenderer
         if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
@@ -2861,6 +2180,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 smr.model = asset::AssetManager::LoadModel(smr.modelPath);
                 if (!smr.model)
                     FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
+            }
+            // 無い / 空なら submeshIndices は空のまま = モデル全体を描く。
+            if (auto* submeshes = (*smrTbl)["submeshIndices"].as_array()) {
+                smr.submeshIndices.reserve(submeshes->size());
+                for (const auto& node : *submeshes)
+                    if (const auto value = node.value<int64_t>(); value && *value >= 0)
+                        smr.submeshIndices.push_back(static_cast<uint32_t>(*value));
             }
             go.AddComponent<SkinnedMeshRenderer>(std::move(smr));
         }
@@ -2881,6 +2207,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             anim.speed     = (float)(*animTbl)["speed"].value_or(1.0);
             anim.enabled   = (*animTbl)["enabled"].value_or(true);
             anim.playing   = (*animTbl)["playing"].value_or(true);
+            anim.externalPose = (*animTbl)["externalPose"].value_or(false);
 
             // ── Root Motion ───────────────────────────────────────────────
             const auto readEnum = [&animTbl](const char* key, int fallback) {
@@ -2996,6 +2323,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         st.blendTree2D.type = blendType >= 0 && blendType <= 1
                             ? static_cast<BlendTree2DType>(blendType)
                             : BlendTree2DType::SimpleDirectional;
+                        st.blendTree2D.dampTime =
+                            (float)(*blend2DTbl)["dampTime"].value_or(0.0);
+                        st.blendTree2D.syncNormalizedTime =
+                            (*blend2DTbl)["syncNormalizedTime"].value_or(false);
                         readMotions((*blend2DTbl)["motions"].as_array(),
                                     st.blendTree2D.motions);
                     }
@@ -3043,6 +2374,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     p.floatValue = (float)(*pTbl)["floatValue"].value_or(0.0);
                     p.intValue   = (int)(*pTbl)["intValue"].value_or((int64_t)0);
                     p.boolValue  = (*pTbl)["boolValue"].value_or(false);
+                    // 旧 Scene に残った Trigger=true もランタイム初期値にはしない。
+                    if (p.type == ParamType::Trigger)
+                        p.boolValue = false;
                     anim.parameters.push_back(std::move(p));
                 }
             }
@@ -3173,6 +2507,64 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<IKSolverComponent>(std::move(ikSolver));
         }
 
+        // SpringBoneComponent
+        if (auto* springTbl = (*goTbl)["SpringBoneComponent"].as_table()) {
+            SpringBoneComponent spring{};
+            spring.enabled          = (*springTbl)["enabled"].value_or(true);
+            spring.simulateInEditor = (*springTbl)["simulateInEditor"].value_or(true);
+            spring.teleportResetDistance =
+                (float)(*springTbl)["teleportResetDistance"].value_or(1.0);
+
+            if (const auto* chainsArr = (*springTbl)["chains"].as_array()) {
+                for (const auto& elem : *chainsArr) {
+                    const auto* chainTbl = elem.as_table();
+                    if (!chainTbl) continue;
+                    SpringBoneChain chain{};
+                    chain.enabled      = (*chainTbl)["enabled"].value_or(true);
+                    chain.rootBoneName = (*chainTbl)["rootBoneName"].value_or(std::string{});
+                    chain.maxDepth     = (int)(*chainTbl)["maxDepth"].value_or((int64_t)0);
+                    chain.stiffness    = (float)(*chainTbl)["stiffness"].value_or(0.6);
+                    chain.damping      = (float)(*chainTbl)["damping"].value_or(0.4);
+                    chain.gravityPower = (float)(*chainTbl)["gravityPower"].value_or(0.0);
+                    chain.gravityDirection =
+                        ArrToVec3((*chainTbl)["gravityDirection"].as_array(),
+                                  math::Vector3{ 0.0f, -1.0f, 0.0f });
+                    chain.radius         = (float)(*chainTbl)["radius"].value_or(0.02);
+                    chain.limitAngle     = (float)(*chainTbl)["limitAngle"].value_or(60.0);
+                    chain.weight         = (float)(*chainTbl)["weight"].value_or(1.0);
+                    chain.leafTailLength = (float)(*chainTbl)["leafTailLength"].value_or(0.03);
+                    spring.chains.push_back(std::move(chain));
+                }
+            }
+
+            if (const auto* collidersArr = (*springTbl)["colliders"].as_array()) {
+                for (const auto& elem : *collidersArr) {
+                    const auto* colliderTbl = elem.as_table();
+                    if (!colliderTbl) continue;
+                    SpringBoneCollider collider{};
+                    collider.enabled  = (*colliderTbl)["enabled"].value_or(true);
+                    collider.boneName = (*colliderTbl)["boneName"].value_or(std::string{});
+                    const int64_t shape = (*colliderTbl)["shape"].value_or((int64_t)0);
+                    collider.shape = shape == 1
+                        ? SpringBoneColliderShape::Capsule
+                        : SpringBoneColliderShape::Sphere;
+                    collider.offset =
+                        ArrToVec3((*colliderTbl)["offset"].as_array(), math::Vector3::ZERO);
+                    collider.tailOffset =
+                        ArrToVec3((*colliderTbl)["tailOffset"].as_array(), math::Vector3::ZERO);
+                    collider.radius = (float)(*colliderTbl)["radius"].value_or(0.05);
+                    spring.colliders.push_back(std::move(collider));
+                }
+            }
+            go.AddComponent<SpringBoneComponent>(std::move(spring));
+        }
+
+        // RagdollComponent
+        //
+        // 実行状態 (rig / phase) は保存しない。ラグドールは倒れる数秒のための一時状態で、
+        // シーンに焼き付いていると Play した瞬間に崩れている。
+        ReadComponentReflected<RagdollComponent>(go, *goTbl, "RagdollComponent");
+
         // TerrainComponent
         if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
             TerrainComponent tc{};
@@ -3181,7 +2573,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
             if (!tc.terrainAssetPath.empty()) {
                 const std::string terrainDiskPath =
-                    ResolveAssetDiskPathForScene(path, tc.terrainAssetPath);
+                    ResolveAssetDiskPathForScene(sourcePath, tc.terrainAssetPath);
                 if (!TerrainAssetSerializer::Load(terrainDiskPath, tc)) {
                     FBZZ_LOG_WARN("SceneSerializer: failed to load terrain asset '%s'",
                                   terrainDiskPath.c_str());
@@ -3207,8 +2599,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // TerrainGridComponent — cells は全 GO ロード後に ResolveFromScene() で解決する
         if (auto* tgcTbl = (*goTbl)["TerrainGridComponent"].as_table()) {
             TerrainGridComponent tgc;
+            tgc.enabled    = (*tgcTbl)["enabled"].value_or(true);
             tgc.cellCountX = (int)(*tgcTbl)["cellCountX"].value_or((int64_t)4);
             tgc.cellCountZ = (int)(*tgcTbl)["cellCountZ"].value_or((int64_t)4);
+            tgc.defaultColumns   = (int)(*tgcTbl)["defaultColumns"].value_or((int64_t)65);
+            tgc.defaultRows      = (int)(*tgcTbl)["defaultRows"].value_or((int64_t)65);
+            tgc.defaultCellSize  = (float)(*tgcTbl)["defaultCellSize"].value_or(2.0);
+            tgc.defaultChunkSize = (int)(*tgcTbl)["defaultChunkSize"].value_or((int64_t)32);
             if (const auto* cellArr = (*tgcTbl)["cells"].as_array()) {
                 for (const auto& node : *cellArr)
                     tgc.cellInstanceIds.push_back(node.value_or(std::string{}));
@@ -3217,111 +2614,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<TerrainGridComponent>(std::move(tgc));
         }
 
-        // TerrainDetailComponent — layers のみ復元。chunks はランタイムに Bake で再生成。
-        if (auto* tdcTbl = (*goTbl)["TerrainDetailComponent"].as_table()) {
-            TerrainDetailComponent tdc{};
-            tdc.enabled   = (*tdcTbl)["enabled"].value_or(true);
-            tdc.needsBake = true;
-            if (const auto* layersArr = (*tdcTbl)["layers"].as_array()) {
-                for (const auto& layerNode : *layersArr) {
-                    const auto* lt = layerNode.as_table();
-                    if (!lt) continue;
-                    DetailLayer layer{};
-                    layer.type     = static_cast<DetailLayerType>(
-                        static_cast<uint8_t>((*lt)["type"].value_or((int64_t)0)));
-                    layer.meshPath       = (*lt)["meshPath"].value_or(std::string{});
-                    layer.densityMapPath = (*lt)["densityMapPath"].value_or(std::string{});
-                    layer.texturePath    = (*lt)["texturePath"].value_or(std::string{});
-                    layer.density        = (float)(*lt)["density"].value_or(1.0);
-                    layer.minScale       = (float)(*lt)["minScale"].value_or(0.8);
-                    layer.maxScale       = (float)(*lt)["maxScale"].value_or(1.2);
-                    layer.alignToNormal  = (float)(*lt)["alignToNormal"].value_or(0.0);
-                    layer.randomYRotation = (*lt)["randomYRotation"].value_or(true);
-                    layer.drawDistance   = (float)(*lt)["drawDistance"].value_or(50.0);
-                    layer.fadeStartDist  = (float)(*lt)["fadeStartDist"].value_or(40.0);
-                    layer.bladeHeight    = (float)(*lt)["bladeHeight"].value_or(0.4);
-                    layer.bladeWidth     = (float)(*lt)["bladeWidth"].value_or(0.05);
-                    layer.bladeSegments  = (int)(*lt)["bladeSegments"].value_or((int64_t)3);
-                    layer.windStrength   = (float)(*lt)["windStrength"].value_or(1.0);
-                    layer.windFrequency  = (float)(*lt)["windFrequency"].value_or(1.0);
-                    tdc.layers.push_back(std::move(layer));
-                }
-            }
-            go.AddComponent<TerrainDetailComponent>(std::move(tdc));
-        }
-
-        if (auto* foliageTbl = (*goTbl)["FoliageComponent"].as_table()) {
-            FoliageComponent foliage{};
-            foliage.enabled = (*foliageTbl)["enabled"].value_or(true);
-            foliage.needsBake = foliage.needsBakeChildren = true;
-            if (const auto* speciesArr = (*foliageTbl)["species"].as_array()) {
-                for (const auto& speciesNode : *speciesArr) {
-                    const auto* st = speciesNode.as_table();
-                    if (!st) continue;
-
-                    FoliageSpecies species{};
-                    species.modelPath = (*st)["modelPath"].value_or(std::string{});
-                    species.placementMode =
-                        (*st)["placementMode"].value_or(std::string{"Procedural"}) == "Stamp"
-                            ? FoliagePlacementMode::STAMP
-                            : FoliagePlacementMode::PROCEDURAL;
-                    species.densityPer100SquareMeters =
-                        static_cast<float>((*st)["densityPer100SquareMeters"].value_or(0.5));
-                    species.minScale =
-                        static_cast<float>((*st)["minScale"].value_or(0.9));
-                    species.maxScale =
-                        static_cast<float>((*st)["maxScale"].value_or(1.1));
-                    species.drawDistance =
-                        static_cast<float>((*st)["drawDistance"].value_or(150.0));
-                    species.seed = static_cast<uint32_t>(
-                        std::max<int64_t>(0, (*st)["seed"].value_or(int64_t{1})));
-                    species.randomYRotation =
-                        (*st)["randomYRotation"].value_or(true);
-                    species.colliderEnabled =
-                        (*st)["colliderEnabled"].value_or(true);
-                    species.colliderManual =
-                        (*st)["colliderManual"].value_or(false);
-                    species.colliderHalfWidth =
-                        static_cast<float>((*st)["colliderHalfWidth"].value_or(0.35));
-                    species.colliderHalfHeight =
-                        static_cast<float>((*st)["colliderHalfHeight"].value_or(2.0));
-                    species.colliderCullDistance =
-                        static_cast<float>((*st)["colliderCullDistance"].value_or(0.0));
-
-                    if (const auto* materials =
-                            (*st)["subMeshMaterialPaths"].as_array()) {
-                        for (const auto& materialNode : *materials) {
-                            if (const auto path = materialNode.value<std::string>())
-                                species.subMeshMaterialPaths.push_back(*path);
-                        }
-                    }
-                    if (const auto* stamps = (*st)["stamps"].as_array()) {
-                        for (const auto& stampNode : *stamps) {
-                            const auto* stampTbl = stampNode.as_table();
-                            if (!stampTbl) continue;
-                            FoliageStamp stamp{};
-                            if (const auto* position = (*stampTbl)["position"].as_array();
-                                position && position->size() >= 3) {
-                                stamp.localPosition = {
-                                    static_cast<float>((*position)[0].value_or(0.0)),
-                                    static_cast<float>((*position)[1].value_or(0.0)),
-                                    static_cast<float>((*position)[2].value_or(0.0))
-                                };
-                            }
-                            stamp.rotationY =
-                                static_cast<float>((*stampTbl)["rotationY"].value_or(0.0));
-                            stamp.scale =
-                                static_cast<float>((*stampTbl)["scale"].value_or(1.0));
-                            species.stamps.push_back(stamp);
-                        }
-                    }
-                    foliage.species.push_back(std::move(species));
-                }
-            }
-            go.AddComponent<FoliageComponent>(std::move(foliage));
-        }
-
-        // WaterComponent — ジオメトリ・波・materialPath のみロード。視覚パラメータは fzmat から。
+        // WaterComponent — ジオメトリ・個体の補正・浮力・materialPath のみロード。水の種類は .mat から。
         if (auto* waterTbl = (*goTbl)["WaterComponent"].as_table()) {
             WaterComponent water{};
             water.enabled             = (*waterTbl)["enabled"].value_or(true);
@@ -3335,20 +2628,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             water.chunkCount          = static_cast<uint32_t>(
                 std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
             water.enableGerstnerWaves = (*waterTbl)["enableGerstnerWaves"].value_or(true);
-
-            if (auto* wavesArr = (*waterTbl)["waves"].as_array()) {
-                size_t wi = 0;
-                for (auto& waveNode : *wavesArr) {
-                    if (wi >= water.waves.size()) break;
-                    if (auto* waveTbl = waveNode.as_table()) {
-                        auto& w      = water.waves[wi++];
-                        w.direction  = ArrToVec2((*waveTbl)["direction"].as_array(), { 1.0f, 0.0f });
-                        w.amplitude  = static_cast<float>((*waveTbl)["amplitude"].value_or(0.5));
-                        w.wavelength = static_cast<float>((*waveTbl)["wavelength"].value_or(10.0));
-                        w.steepness  = static_cast<float>((*waveTbl)["steepness"].value_or(0.5));
-                    }
-                }
-            }
+            water.waveAmplitudeScale  = static_cast<float>((*waterTbl)["waveAmplitudeScale"].value_or(1.0));
+            water.buoyancyEnabled     = (*waterTbl)["buoyancyEnabled"].value_or(true);
+            water.buoyancy            = static_cast<float>((*waterTbl)["buoyancy"].value_or(15.0));
+            water.waterDrag           = static_cast<float>((*waterTbl)["waterDrag"].value_or(2.0));
+            water.buoyancyDepth       = static_cast<float>((*waterTbl)["buoyancyDepth"].value_or(10.0));
+            water.splashEnabled       = (*waterTbl)["splashEnabled"].value_or(true);
+            // 旧形式の "waves" 配列は読まない。波は .mat へ移った (WaterComponent.hpp の WHY)。
 
             water.meshDirty = true;
             water.foamDirty = true;
@@ -3359,18 +2645,16 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // NavMeshSurfaceComponent
         // navMesh は Bake で再生成するため needsBake=true で登録し非保存。
         {
-            const toml::table* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table();
-            if (surfTbl) {
+            // 値の読み込みは Reflect() が担う。既定は NavMeshSurfaceComponent{} から来るので、
+            // キーの無い古いシーンも構造体の既定で開く。
+            // (maxClimb は既定 0.4。0 で読むと «段差を無視して繋がる» 旧 NavMesh の状態が
+            //  固定され、しかも Inspector には 0 と出て設定として正しく見えてしまう。)
+            if (const auto* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table()) {
                 NavMeshSurfaceComponent surface{};
-                surface.enabled          = (*surfTbl)["enabled"].value_or(true);
-                surface.size             = ArrToVec3((*surfTbl)["size"].as_array(), { 50.0f, 10.0f, 50.0f });
-                surface.cellSize         = static_cast<float>((*surfTbl)["cellSize"].value_or(1.0));
-                surface.maxSlopeAngleDeg = static_cast<float>((*surfTbl)["maxSlopeAngleDeg"].value_or(45.0));
-                surface.agentRadius      = static_cast<float>((*surfTbl)["agentRadius"].value_or(0.4));
-                surface.agentHeight      = static_cast<float>((*surfTbl)["agentHeight"].value_or(2.0));
-                surface.collectObjects   = static_cast<NavMeshCollectObjects>(
-                    static_cast<uint8_t>((*surfTbl)["collectObjects"].value_or(int64_t{0})));
-                surface.needsBake        = true;
+                DeserializeReflected(*surfTbl, surface);
+                // ベイク結果 (navMesh) は保存しないので、開いた直後は «設定はあるが面が無い»。
+                // シーンを開いたら必ず焼き直す。
+                surface.needsBake = true;
                 go.AddComponent<NavMeshSurfaceComponent>(std::move(surface));
             }
         }
@@ -3383,33 +2667,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 modifier.enabled = (*modTbl)["enabled"].value_or(true);
                 modifier.mode    = static_cast<NavMeshModifierMode>(
                     static_cast<uint8_t>((*modTbl)["mode"].value_or(int64_t{0})));
+                modifier.areaType = static_cast<int>((*modTbl)["areaType"].value_or(int64_t{0}));
                 go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
             }
         }
 
-        if (auto* agentTbl = (*goTbl)["NavMeshAgentComponent"].as_table()) {
-            NavMeshAgentComponent agent{};
-            agent.enabled          = (*agentTbl)["enabled"].value_or(true);
-            agent.radius           = static_cast<float>((*agentTbl)["radius"].value_or(0.4));
-            agent.maxSpeed         = static_cast<float>((*agentTbl)["maxSpeed"].value_or(3.5));
-            agent.acceleration     = static_cast<float>((*agentTbl)["acceleration"].value_or(8.0));
-            agent.angularSpeedDeg  = static_cast<float>((*agentTbl)["angularSpeedDeg"].value_or(360.0));
-            agent.stoppingDistance = static_cast<float>((*agentTbl)["stoppingDistance"].value_or(0.1));
-            agent.avoidancePriority = static_cast<int>((*agentTbl)["avoidancePriority"].value_or(int64_t{0}));
-            go.AddComponent<NavMeshAgentComponent>(std::move(agent));
-        }
+        ReadComponentReflected<NavMeshAgentComponent>(go, *goTbl, "NavMeshAgentComponent");
 
-        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
-            NavMeshOffMeshLinkComponent link{};
-            link.enabled       = (*linkTbl)["enabled"].value_or(true);
-            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
-            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
-            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
-            link.activated     = (*linkTbl)["activated"].value_or(true);
-            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
-            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
-            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
-        }
+        ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, *goTbl, "NavMeshOffMeshLinkComponent");
 
         if (auto* patrolTbl = (*goTbl)["NavMeshPatrolComponent"].as_table()) {
             NavMeshPatrolComponent patrol{};
@@ -3422,20 +2687,18 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 for (auto& wpNode : *wpArr)
                     patrol.waypoints.push_back(ArrToVec3(wpNode.as_array(), math::Vector3::ZERO));
             }
+            if (auto* waitArr = (*patrolTbl)["waypointWaitTimes"].as_array()) {
+                for (auto& waitNode : *waitArr)
+                    patrol.waypointWaitTimes.push_back(static_cast<float>(waitNode.value_or(0.0)));
+            }
+            if (auto* speedArr = (*patrolTbl)["waypointSpeeds"].as_array()) {
+                for (auto& speedNode : *speedArr)
+                    patrol.waypointSpeeds.push_back(static_cast<float>(speedNode.value_or(0.0)));
+            }
             go.AddComponent<NavMeshPatrolComponent>(std::move(patrol));
         }
 
-        if (auto* sensorTbl = (*goTbl)["NavMeshSensorComponent"].as_table()) {
-            NavMeshSensorComponent sensor{};
-            sensor.enabled             = (*sensorTbl)["enabled"].value_or(true);
-            sensor.viewDistance        = static_cast<float>((*sensorTbl)["viewDistance"].value_or(10.0));
-            sensor.viewAngleDeg        = static_cast<float>((*sensorTbl)["viewAngleDeg"].value_or(90.0));
-            sensor.targetTag           = (*sensorTbl)["targetTag"].value_or(std::string{"Player"});
-            sensor.useLineOfSight      = (*sensorTbl)["useLineOfSight"].value_or(true);
-            sensor.autoChase           = (*sensorTbl)["autoChase"].value_or(true);
-            sensor.chaseRepathInterval = static_cast<float>((*sensorTbl)["chaseRepathInterval"].value_or(0.4));
-            go.AddComponent<NavMeshSensorComponent>(std::move(sensor));
-        }
+        ReadComponentReflected<NavMeshSensorComponent>(go, *goTbl, "NavMeshSensorComponent");
 
         ReadAutomaticComponents(go, *goTbl);
 
@@ -3450,7 +2713,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             }
 
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized = core::MakeUnique<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
@@ -3460,14 +2723,17 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 script->SetContext(scene.get(), &go);
                 script->enabled = enabled;
                 if (auto* fieldsTbl = scTbl["fields"].as_table()) {
-                    TomlReadReflector reflector(*fieldsTbl);
+                    SceneReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
                 pendingDeserializedScripts.push_back(script.get());
                 entry.script = std::move(script);
             } else {
-                // DLL 再ビルド待ちでも serialized data は保持されるため、起動時の通常経路では警告にしない。
+                // DLL 再ビルド待ちでも serialized data は保持されるため、1 件ずつは警告にしない。
                 FBZZ_LOG_DEBUG("SceneSerializer: script type pending registration '%s'", type.c_str());
+                if (std::find(unresolvedScriptTypes.begin(), unresolvedScriptTypes.end(), type)
+                    == unresolvedScriptTypes.end())
+                    unresolvedScriptTypes.push_back(type);
             }
         };
 
@@ -3484,6 +2750,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         }
     }
 
+    // 以降の解決パスはすべてこの索引を引く。全 GameObject 生成後に一度だけ作る。
+    const GuidIndex guids(*scene);
+
     // ------------------------------------------------------------------
     // Pass 2: 親子関係の解決
     // ------------------------------------------------------------------
@@ -3497,16 +2766,25 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
         if (childGuid.empty()) continue;
 
-        auto* child = scene->FindByGuid(childGuid);
-        auto* parent = scene->FindByGuid(parentGuid);
+        auto* child = guids.Find(childGuid);
+        auto* parent = guids.Find(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 
     // ------------------------------------------------------------------
-    // Pass 3: EntityID 参照を名前から解決する
-    // WHY: EntityID は実行ごとに変わりうるためシリアライズ時は名前で保存している。
-    //      全 GameObject がロードされた後にまとめて解決する。
+    // Pass 3: EntityID 参照を識別子から解決する
+    // EntityID は実行ごとに変わるので識別子で保存し、全 GameObject を揃えてから解決する。
     // ------------------------------------------------------------------
+
+    // Reflect() を通る全コンポーネント / スクリプトの GameObject 参照。
+    for (auto& item : *goArr) {
+        const auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+        const std::string guid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (guid.empty()) continue;
+        if (GameObject* go = guids.Find(guid))
+            ResolveEntityReferences(*go, *goTbl, guids);
+    }
 
     // IKSolverComponent: targetEntity / poleEntity を GUID 優先・名前フォールバックで解決する。
     // WHY: GUID はリネームに耐性があり複数インスタンス時も衝突しない。
@@ -3519,7 +2797,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             {
                 GameObject* resolved = nullptr;
                 if (!chain.targetGuid.empty())
-                    resolved = scene->FindByGuid(chain.targetGuid);
+                    resolved = guids.Find(chain.targetGuid);
                 if (!resolved && !chain.targetName.empty())
                     resolved = scene->Find(chain.targetName);
                 if (resolved) chain.targetEntity = resolved->GetID();
@@ -3528,7 +2806,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             {
                 GameObject* resolved = nullptr;
                 if (!chain.poleGuid.empty())
-                    resolved = scene->FindByGuid(chain.poleGuid);
+                    resolved = guids.Find(chain.poleGuid);
                 if (!resolved && !chain.poleName.empty())
                     resolved = scene->Find(chain.poleName);
                 if (resolved) chain.poleEntity = resolved->GetID();
@@ -3537,11 +2815,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
     }
 
     // BoneComponent: skinnedMeshEntity
-    // WHY: SkinnedMeshRenderer オーナーの EntityID は Pass 1 時点では確定していないため
-    //      識別子で保存していたものをここで EntityID へ変換する。
-    //      解決優先順位: GUID (リネーム耐性あり) → 名前 (後方互換フォールバック)
-    //      nodeEntities / skeletonRootEntity は AnimatorSystem 初回 tick の
-    //      EnsureBoneHierarchy が nodeIndex を元に自動再構築するので保存不要。
+    // オーナーの EntityID は Pass 1 では確定しないので、識別子をここで変換する。
+    // 解決順は GUID (リネーム耐性) → 名前 (後方互換)。
+    // nodeEntities は EnsureBoneHierarchy が nodeIndex から再構築するので保存不要。
     for (size_t i = 0; i < goArr->size(); ++i) {
         auto* goTbl = (*goArr)[i].as_table();
         if (!goTbl) continue;
@@ -3550,15 +2826,43 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
         const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
         if (ownerGuid.empty() && ownerName.empty()) continue;
-        const std::string boneName = (*goTbl)["name"].value_or(std::string{});
-        auto* boneGo = scene->Find(boneName);
+        // WHY 名前で引かないか: 骨の名前はシーン内で一意ではない (同じモデルを
+        //     2 体置くと Seg01 が 2 つになる)。名前で引くと後から来た側の行が
+        //     1 体目の骨へ書き込まれ、2 体目は skinnedMeshEntity を持たないまま
+        //     «バインドポーズで固まる» という形でしか症状が出ない。
+        const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        auto* boneGo = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
+        if (!boneGo) boneGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
         if (!boneGo) continue;
         auto* bone = boneGo->GetComponent<BoneComponent>();
         if (!bone) continue;
         GameObject* owner = nullptr;
-        if (!ownerGuid.empty()) owner = scene->FindByGuid(ownerGuid);
+        if (!ownerGuid.empty()) owner = guids.Find(ownerGuid);
         if (!owner && !ownerName.empty()) owner = scene->Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
+    }
+
+    // SkinnedMeshRenderer: skeletonRootEntity
+    // 起点のボーンは Pass 1 では未生成のことがあるので、全 GO を揃えてから変換する。
+    // 解決できていれば AnimatorSystem は子孫を探さずに共有スケルトンへ束縛できる。
+    for (size_t i = 0; i < goArr->size(); ++i) {
+        auto* goTbl = (*goArr)[i].as_table();
+        if (!goTbl) continue;
+        auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table();
+        if (!smrTbl) continue;
+        const std::string rootGuid = (*smrTbl)["skeletonRootGuid"].value_or(std::string{});
+        const std::string rootName = (*smrTbl)["skeletonRootName"].value_or(std::string{});
+        if (rootGuid.empty() && rootName.empty()) continue;
+        const std::string ownerGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        GameObject* ownerGo = ownerGuid.empty() ? nullptr : guids.Find(ownerGuid);
+        if (!ownerGo) ownerGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
+        if (!ownerGo) continue;
+        auto* smr = ownerGo->GetComponent<SkinnedMeshRenderer>();
+        if (!smr) continue;
+        GameObject* skeletonRoot = nullptr;
+        if (!rootGuid.empty()) skeletonRoot = guids.Find(rootGuid);
+        if (!skeletonRoot && !rootName.empty()) skeletonRoot = scene->Find(rootName);
+        if (skeletonRoot) smr->skeletonRootEntity = skeletonRoot->GetID();
     }
 
     // TerrainGridComponent の cellInstanceIds → cells を全 GO ロード後に解決する。
@@ -3580,16 +2884,54 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         script->OnValidate();
     }
 
+    // 生えなかったスクリプトを 1 行で告げる。
+    //
+    // WHY 1 件ずつ警告にしないか: エディタは DLL を建て直している最中に «まだ居ない»
+    //     型を通る。毎回出すとリビルド待ちのあいだログが埋まり、本当の欠落が沈む。
+    //
+    // WHY DEBUG のままにしないか: **配布ビルドに «建て直し» は来ない。** 登録が
+    //     無いまま読み込まれた Component は二度と生えず、しかも画面には
+    //     «その機能だけ動かない» という形でしか出ない (スクリプトが生えていないので、
+    //     当人が出すはずのエラーも出ない)。型名が 1 行残るだけで、
+    //     «exe が古い / 登録リストに入っていない» のどちらかだと即分かる。
+    if (!unresolvedScriptTypes.empty()) {
+        std::string joined;
+        for (const std::string& type : unresolvedScriptTypes) {
+            if (!joined.empty()) joined += ", ";
+            joined += type;
+        }
+        FBZZ_LOG_WARN("SceneSerializer: %zu script type(s) were not registered and were dropped "
+                      "from the loaded scene: %s "
+                      "(rebuild the scripts, or check that the runtime exe registers them)",
+                      unresolvedScriptTypes.size(), joined.c_str());
+    }
+
     return scene;
 }
 
 // -----------------------------------------------------------------------
 // 既存 Scene への読み込み
 // -----------------------------------------------------------------------
+int SceneSerializer::ResolveMeshes(Scene& scene, renderer::ResourceManager& resources)
+{
+    // LoadData で復元した Scene を «描けるようにする» ための後段。
+    // 既に mesh を持つものは触らない ─ 二重に載せると同じ頂点バッファが 2 本になる。
+    int resolved = 0;
+    for (auto& gameObject : scene.GameObjects()) {
+        auto* mr = gameObject.GetComponent<MeshRenderer>();
+        if (mr == nullptr || mr->mesh != nullptr || mr->meshPath.empty()) continue;
+
+        mr->mesh = ResolveMesh(mr->meshPath, &resources);
+        if (mr->mesh) ++resolved;
+        else FBZZ_LOG_WARN("SceneSerializer: failed to resolve mesh '%s'", mr->meshPath.c_str());
+    }
+    return resolved;
+}
+
 bool SceneSerializer::LoadInPlace(
     Scene& scene, const std::string& path, renderer::ResourceManager& resources)
 {
-    auto newScene = Load(path, resources);
+    auto newScene = Load(path, &resources);
     if (!newScene) return false;
     scene = std::move(*newScene);
     // Scene object自体をmoveしたため、Scriptが保持する非所有contextを移動先へ張り直す。
@@ -3603,14 +2945,13 @@ bool SceneSerializer::LoadInPlace(
 }
 
 // -----------------------------------------------------------------------
-// AppendObjects
-// WHY: Script::OnUpdate 内の scene.Instantiate() でシーン全体を再構築すると
-//      呼び出し元 Script が解放され use-after-free になる。
-//      AppendObjects はシーンを破棄せず新規 GO の追記のみ行う。
+// AppendObjects — シーンを破棄せず新規 GO の追記だけを行う。
+// OnUpdate 内の Instantiate() でシーン全体を再構築すると呼び出し元 Script が
+// 解放されて use-after-free になる。
 // -----------------------------------------------------------------------
 bool SceneSerializer::AppendObjects(
     Scene& scene, const std::string& tomlText,
-    renderer::ResourceManager& resources,
+    renderer::ResourceManager* resources,
     std::vector<EntityID>& outRoots)
 {
     outRoots.clear();
@@ -3676,235 +3017,39 @@ bool SceneSerializer::AppendObjects(
         if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
             go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
 
-        if (auto* lcTbl = (*goTbl)["LightComponent"].as_table()) {
-            LightComponent lc{};
-            std::string typeStr = (*lcTbl)["type"].value_or(std::string{"Directional"});
-            if      (typeStr == "Point") lc.type = LightComponent::Type::Point;
-            else if (typeStr == "Spot")  lc.type = LightComponent::Type::Spot;
-            else                         lc.type = LightComponent::Type::Directional;
-            lc.color     = ArrToVec3((*lcTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f });
-            lc.intensity = (float)(*lcTbl)["intensity"].value_or(1.0);
-            lc.enabled   = (*lcTbl)["enabled"].value_or(true);
-            lc.range     = (float)(*lcTbl)["range"].value_or(10.0);
-            lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
-            lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
-            go.AddComponent<LightComponent>(lc);
-        }
+        ReadLightComponent(go, *goTbl);
 
         // EnvironmentLightComponent
-        if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
-            EnvironmentLightComponent elc{};
-            elc.enabled        = (*elcTbl)["enabled"].value_or(true);
-            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
-            elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
-            elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
-            elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
-            elc.diffuseScale   = (float)(*elcTbl)["diffuseScale"].value_or(1.0);
-            elc.specularScale  = (float)(*elcTbl)["specularScale"].value_or(1.0);
-            elc.maxMipLevel    = (int)(*elcTbl)["maxMipLevel"].value_or((int64_t)4);
-            go.AddComponent<EnvironmentLightComponent>(elc);
-        }
+        ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");
 
         // ReflectionProbeComponent
-        if (auto* rpcTbl = (*goTbl)["ReflectionProbeComponent"].as_table()) {
-            ReflectionProbeComponent rpc{};
-            rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
-            rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
-            rpc.captureMode     = static_cast<ReflectionProbeCaptureMode>(
-                static_cast<uint8_t>((*rpcTbl)["captureMode"].value_or((int64_t)0)));
-            rpc.captureResolution = static_cast<uint32_t>((*rpcTbl)["captureResolution"].value_or((int64_t)128));
-            rpc.updateInterval  = (float)(*rpcTbl)["updateInterval"].value_or(1.0);
-            rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
-            rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
-            rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
-            rpc.boxExtents      = ArrToVec3((*rpcTbl)["boxExtents"].as_array(), {1.0f, 1.0f, 1.0f});
-            go.AddComponent<ReflectionProbeComponent>(rpc);
-        }
+        ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
 
         // AtmosphericScatteringComponent
-        if (auto* ascAtmTbl = (*goTbl)["AtmosphericScatteringComponent"].as_table()) {
-            AtmosphericScatteringComponent atm{};
-            atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
-            atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
-            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
-            atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
-            atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
-            atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
-            go.AddComponent<AtmosphericScatteringComponent>(atm);
-        }
+        ReadComponentReflected<AtmosphericScatteringComponent>(go, *goTbl, "AtmosphericScatteringComponent");
 
         // PostProcessVolumeComponent
-        if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
-            PostProcessVolumeComponent ppvc{};
-            ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
-            // 旧シーンが持っていた pp サブテーブル (インライン設定) は読み飛ばす。
-            // WHY 黙って捨てるか: ルック設定の所有者はプロファイル 1 本に統一した。
-            //     ここで読み戻せる先が既に存在しないため、キーが残っていても
-            //     どこにも反映されない。プロファイル未アサインのボリュームは無効扱い。
-            ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
-            ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
-            ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
-            ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
-            ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
-            ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
-            go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
-        }
+        ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");
 
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
             ParticleEmitter pe{};
-            pe.emitPosition   = ArrToVec3((*peTbl)["emitPosition"].as_array());
-            pe.emitVelocity   = ArrToVec3((*peTbl)["emitVelocity"].as_array(), { 0.0f, 4.0f, 0.0f });
-            pe.velocitySpread = (float)(*peTbl)["velocitySpread"].value_or(1.5);
-            pe.colorStart     = ArrToVec4((*peTbl)["colorStart"].as_array(), { 1.0f, 0.7f, 0.2f, 1.0f });
-            pe.colorEnd       = ArrToVec4((*peTbl)["colorEnd"].as_array(),   { 1.0f, 0.1f, 0.0f, 0.0f });
-            pe.sizeStart      = (float)(*peTbl)["sizeStart"].value_or(0.4);
-            pe.sizeEnd        = (float)(*peTbl)["sizeEnd"].value_or(0.05);
-            pe.lifetime       = (float)(*peTbl)["lifetime"].value_or(2.0);
-            pe.emitRate       = (float)(*peTbl)["emitRate"].value_or(30.0);
-            pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
-            pe.gravity        = ArrToVec3((*peTbl)["gravity"].as_array(), { 0.0f, -5.0f, 0.0f });
-            const int64_t randomSeed = (*peTbl)["randomSeed"].value_or((int64_t)1);
-            pe.randomSeed     = static_cast<uint32_t>(randomSeed < 1 ? 1 : randomSeed);
-            pe.randomState    = pe.randomSeed;
-            pe.playing        = (*peTbl)["playing"].value_or(true);
-            pe.loop           = (*peTbl)["loop"].value_or(true);
-            pe.duration       = (float)(*peTbl)["duration"].value_or(5.0);
-            pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
-            pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
-            int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
-            shape = shape < 0 ? 0 : (shape > 4 ? 4 : shape);
-            pe.shape          = static_cast<ParticleEmitterShape>(shape);
-            pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
-            pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
-            pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
-            pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
-            pe.meshShapePath  = (*peTbl)["meshShapePath"].value_or(std::string{});
-            pe.meshShapeIndex = (int)(*peTbl)["meshShapeIndex"].value_or((int64_t)-1);
-            pe.meshShapeScale = (float)(*peTbl)["meshShapeScale"].value_or(1.0);
-            pe.meshShapeFollowSkinnedAnimation =
-                (*peTbl)["meshShapeFollowSkinnedAnimation"].value_or(false);
-            int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
-            blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
-            pe.blendMode      = static_cast<ParticleBlendMode>(blend);
-            int sort = (int)(*peTbl)["sortMode"].value_or((int64_t)0);
-            sort = sort < 0 ? 0 : (sort > 1 ? 1 : sort);
-            pe.sortMode       = static_cast<ParticleSortMode>(sort);
-            int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
-            sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
-            pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
-            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
-            pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
-            pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
-            pe.spriteEndFrame = (int)(*peTbl)["spriteEndFrame"].value_or((int64_t)0);
-            pe.sizeCurvePower = (float)(*peTbl)["sizeCurvePower"].value_or(1.0);
-            pe.colorCurvePower = (float)(*peTbl)["colorCurvePower"].value_or(1.0);
-            pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
-            pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
-            pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
-            pe.noiseStrength  = (float)(*peTbl)["noiseStrength"].value_or(0.0);
-            pe.noiseFrequency = (float)(*peTbl)["noiseFrequency"].value_or(0.5);
-            pe.noiseSpeed     = (float)(*peTbl)["noiseSpeed"].value_or(1.0);
-            pe.receiveForceFields = (*peTbl)["receiveForceFields"].value_or(true);
-            pe.lifetimeRandom = (float)(*peTbl)["lifetimeRandom"].value_or(0.0);
-            pe.simulationSpace = static_cast<ParticleSimulationSpace>(std::clamp((int)(*peTbl)["simulationSpace"].value_or((int64_t)0), 0, 1));
-            pe.renderMode = static_cast<ParticleRenderMode>(std::clamp((int)(*peTbl)["renderMode"].value_or((int64_t)0), 0, 3));
-            pe.stretchedVelocityScale = (float)(*peTbl)["stretchedVelocityScale"].value_or(0.1);
-            pe.stretchedLengthScale = (float)(*peTbl)["stretchedLengthScale"].value_or(1.0);
-            pe.collisionMode = static_cast<ParticleCollisionMode>(std::clamp((int)(*peTbl)["collisionMode"].value_or((int64_t)0), 0, 2));
-            pe.collisionResponse = static_cast<ParticleCollisionResponse>(std::clamp((int)(*peTbl)["collisionResponse"].value_or((int64_t)0), 0, 2));
-            pe.collisionRadius = (float)(*peTbl)["collisionRadius"].value_or(0.05);
-            pe.collisionBounciness = (float)(*peTbl)["collisionBounciness"].value_or(0.5);
-            pe.collisionDamping = (float)(*peTbl)["collisionDamping"].value_or(0.0);
-            pe.collisionPlaneY = (float)(*peTbl)["collisionPlaneY"].value_or(0.0);
-            pe.flipbookMode = static_cast<ParticleFlipbookMode>(std::clamp((int)(*peTbl)["flipbookMode"].value_or((int64_t)0), 0, 3));
-            pe.flipbookFramesPerSecond = (float)(*peTbl)["flipbookFramesPerSecond"].value_or(24.0);
-            pe.flipbookFrameBlending = (*peTbl)["flipbookFrameBlending"].value_or(false);
-            pe.useSizeCurve = (*peTbl)["useSizeCurve"].value_or(false);
-            pe.useVelocityCurve = (*peTbl)["useVelocityCurve"].value_or(false);
-            pe.useColorGradient = (*peTbl)["useColorGradient"].value_or(false);
-            pe.rateOverDistance = (float)(*peTbl)["rateOverDistance"].value_or(0.0);
-            pe.prewarm = (*peTbl)["prewarm"].value_or(false);
-            pe.birthSubEmitter = (*peTbl)["birthSubEmitter"].value_or(std::string{});
-            pe.deathSubEmitter = (*peTbl)["deathSubEmitter"].value_or(std::string{});
-            pe.collisionSubEmitter = (*peTbl)["collisionSubEmitter"].value_or(std::string{});
-            pe.subEmitterBurstCount = (int)(*peTbl)["subEmitterBurstCount"].value_or((int64_t)1);
-            pe.softParticles = (*peTbl)["softParticles"].value_or(false);
-            pe.softParticleFadeDistance = (float)(*peTbl)["softParticleFadeDistance"].value_or(0.5);
-            pe.cullingEnabled = (*peTbl)["cullingEnabled"].value_or(true);
-            pe.cullingBoundsPadding = (float)(*peTbl)["cullingBoundsPadding"].value_or(0.25);
-            pe.lodEnabled = (*peTbl)["lodEnabled"].value_or(true);
-            pe.lodNearDistance = (float)(*peTbl)["lodNearDistance"].value_or(12.0);
-            pe.lodFarDistance = (float)(*peTbl)["lodFarDistance"].value_or(40.0);
-            pe.lodNearRateScale = (float)(*peTbl)["lodNearRateScale"].value_or(1.0);
-            pe.lodFarRateScale = (float)(*peTbl)["lodFarRateScale"].value_or(0.25);
-            pe.screenCoverageThreshold = (float)(*peTbl)["screenCoverageThreshold"].value_or(0.0);
-            pe.pauseWhenCulled = (*peTbl)["pauseWhenCulled"].value_or(false);
-            auto loadCurve = [&](const char* name, ParticleCurve& curve) {
-                if (auto* array = (*peTbl)[name].as_array()) {
-                    curve.keyCount = static_cast<uint32_t>((std::min)(array->size(), curve.keys.size()));
-                    for (uint32_t index = 0; index < curve.keyCount; ++index) {
-                        if (auto* key = (*array)[index].as_array(); key && key->size() >= 2) {
-                            curve.keys[index].time = (float)(*key)[0].value_or(0.0);
-                            curve.keys[index].value = (float)(*key)[1].value_or(0.0);
-                        }
-                    }
-                }
-            };
-            loadCurve("sizeCurve", pe.sizeCurve);
-            loadCurve("velocityCurve", pe.velocityCurve);
-            if (auto* gradient = (*peTbl)["colorGradient"].as_array()) {
-                pe.colorGradient.keyCount = static_cast<uint32_t>((std::min)(gradient->size(), pe.colorGradient.keys.size()));
-                for (uint32_t index = 0; index < pe.colorGradient.keyCount; ++index) {
-                    if (auto* key = (*gradient)[index].as_array(); key && key->size() >= 5) {
-                        pe.colorGradient.keys[index].time = (float)(*key)[0].value_or(0.0);
-                        pe.colorGradient.keys[index].color = {
-                            (float)(*key)[1].value_or(1.0), (float)(*key)[2].value_or(1.0),
-                            (float)(*key)[3].value_or(1.0), (float)(*key)[4].value_or(1.0) };
-                    }
-                }
+            asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
+            // 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
+            // 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
+            pe.ResetPlayback();
+            // 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
+            // colorGradient.space が無い場合だけ、こちらを正として反映する。
+            if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
+                pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+                    std::clamp(static_cast<int>(*legacySpace), 0,
+                               static_cast<int>(ParticleColorSpace::Oklab)));
             }
-            if (auto* bursts = (*peTbl)["bursts"].as_array()) {
-                for (auto&& burstNode : *bursts) {
-                    auto* burstTable = burstNode.as_table();
-                    if (!burstTable) continue;
-                    ParticleBurst burst;
-                    burst.time = (float)(*burstTable)["time"].value_or(0.0);
-                    burst.count = (int)(*burstTable)["count"].value_or((int64_t)10);
-                    burst.cycles = (int)(*burstTable)["cycles"].value_or((int64_t)1);
-                    burst.interval = (float)(*burstTable)["interval"].value_or(0.1);
-                    burst.probability = (float)(*burstTable)["probability"].value_or(1.0);
-                    pe.bursts.push_back(burst);
-                }
-            }
-            pe.enabled        = (*peTbl)["enabled"].value_or(true);
-            go.AddComponent<ParticleEmitter>(pe);
+            // ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
+            pe.settings.playing = (*peTbl)["playing"].value_or(true);
+            go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
-        if (auto* ffTbl = (*goTbl)["ParticleForceField"].as_table()) {
-            ParticleForceField ff{};
-            ff.enabled      = (*ffTbl)["enabled"].value_or(true);
-            int fieldType   = (int)(*ffTbl)["fieldType"].value_or((int64_t)0);
-            fieldType       = fieldType < 0 ? 0 : (fieldType > 5 ? 5 : fieldType);
-            ff.fieldType    = static_cast<ParticleForceFieldType>(fieldType);
-            ff.strength     = (float)(*ffTbl)["strength"].value_or(5.0);
-            ff.radius       = (float)(*ffTbl)["radius"].value_or(5.0);
-            ff.falloffPower = (float)(*ffTbl)["falloffPower"].value_or(2.0);
-            ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
-            ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
-            ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
-            go.AddComponent<ParticleForceField>(ff);
-        }
-
-        if (auto* windTbl = (*goTbl)["WindZoneComponent"].as_table()) {
-            WindZoneComponent wind{};
-            wind.enabled        = (*windTbl)["enabled"].value_or(true);
-            wind.direction      = ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
-            wind.strength       = (float)(*windTbl)["strength"].value_or(1.0);
-            wind.turbulence     = (float)(*windTbl)["turbulence"].value_or(0.0);
-            wind.pulseFrequency = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
-            go.AddComponent<WindZoneComponent>(wind);
-        }
+        ReadForceFieldComponent(go, *goTbl);
 
         if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
             AabbColliderComponent col{};
@@ -3925,6 +3070,11 @@ bool SceneSerializer::AppendObjects(
             CapsuleColliderComponent col{};
             ReadCapsuleCollider(*colTbl, col);
             go.AddComponent<CapsuleColliderComponent>(std::move(col));
+        }
+        if (auto* colTbl = (*goTbl)["CylinderColliderComponent"].as_table()) {
+            CylinderColliderComponent col{};
+            ReadCylinderCollider(*colTbl, col);
+            go.AddComponent<CylinderColliderComponent>(std::move(col));
         }
         if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
             MeshColliderComponent col{};
@@ -3971,17 +3121,7 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<RigidBodyComponent>(std::move(rb));
         }
 
-        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
-            NavMeshOffMeshLinkComponent link{};
-            link.enabled       = (*linkTbl)["enabled"].value_or(true);
-            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
-            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
-            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
-            link.activated     = (*linkTbl)["activated"].value_or(true);
-            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
-            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
-            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
-        }
+        ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, *goTbl, "NavMeshOffMeshLinkComponent");
 
         ReadAutomaticComponents(go, *goTbl);
 
@@ -3993,7 +3133,7 @@ bool SceneSerializer::AppendObjects(
             if (auto* fieldsTbl = scTbl["fields"].as_table())
                 preservedFieldsToml = TomlTableToString(*fieldsTbl);
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized = core::MakeUnique<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
@@ -4002,7 +3142,7 @@ bool SceneSerializer::AppendObjects(
                 script->SetContext(&scene, &go);
                 script->enabled = enabled;
                 if (auto* fieldsTbl = scTbl["fields"].as_table()) {
-                    TomlReadReflector reflector(*fieldsTbl);
+                    SceneReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
                 pendingDeserializedScripts.push_back(script.get());
@@ -4023,6 +3163,9 @@ bool SceneSerializer::AppendObjects(
         }
     }
 
+    // 以降の解決パスはすべてこの索引を引く。全 GameObject 生成後に一度だけ作る。
+    const GuidIndex guids(scene);
+
     // ------------------------------------------------------------------
     // Pass 2: 親子関係の解決
     // ------------------------------------------------------------------
@@ -4035,27 +3178,36 @@ bool SceneSerializer::AppendObjects(
         std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
         if (childGuid.empty()) continue;
 
-        auto* child = scene.FindByGuid(childGuid);
-        auto* parent = scene.FindByGuid(parentGuid);
+        auto* child = guids.Find(childGuid);
+        auto* parent = guids.Find(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 
     // ------------------------------------------------------------------
     // Pass 3: EntityID 参照の解決
     // ------------------------------------------------------------------
+    for (auto& item : *goArr) {
+        const auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+        const std::string guid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (guid.empty()) continue;
+        if (GameObject* go = guids.Find(guid))
+            ResolveEntityReferences(*go, *goTbl, guids);
+    }
+
     for (auto& go : scene.GameObjects()) {
         auto* ik = go.GetComponent<IKSolverComponent>();
         if (!ik) continue;
         for (auto& chain : ik->chains) {
             {
                 GameObject* resolved = nullptr;
-                if (!chain.targetGuid.empty()) resolved = scene.FindByGuid(chain.targetGuid);
+                if (!chain.targetGuid.empty()) resolved = guids.Find(chain.targetGuid);
                 if (!resolved && !chain.targetName.empty()) resolved = scene.Find(chain.targetName);
                 if (resolved) chain.targetEntity = resolved->GetID();
             }
             {
                 GameObject* resolved = nullptr;
-                if (!chain.poleGuid.empty()) resolved = scene.FindByGuid(chain.poleGuid);
+                if (!chain.poleGuid.empty()) resolved = guids.Find(chain.poleGuid);
                 if (!resolved && !chain.poleName.empty()) resolved = scene.Find(chain.poleName);
                 if (resolved) chain.poleEntity = resolved->GetID();
             }
@@ -4069,13 +3221,15 @@ bool SceneSerializer::AppendObjects(
         const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
         const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
         if (ownerGuid.empty() && ownerName.empty()) continue;
-        const std::string boneName = (*goTbl)["name"].value_or(std::string{});
-        auto* boneGo = scene.Find(boneName);
+        // 名前は一意でない (上の Pass と同じ理由)。instanceId を先に見る。
+        const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        auto* boneGo = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
+        if (!boneGo) boneGo = scene.Find((*goTbl)["name"].value_or(std::string{}));
         if (!boneGo) continue;
         auto* bone = boneGo->GetComponent<BoneComponent>();
         if (!bone) continue;
         GameObject* owner = nullptr;
-        if (!ownerGuid.empty()) owner = scene.FindByGuid(ownerGuid);
+        if (!ownerGuid.empty()) owner = guids.Find(ownerGuid);
         if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
@@ -4084,16 +3238,14 @@ bool SceneSerializer::AppendObjects(
         script->OnValidate();
     }
 
-    // root 収集
-    // WHY: instanceId(guid) で GO を引く。同じプレファブを複数配置すると同名ルートが
-    //      並ぶため、Find(name) では常に先頭の 1 体しか拾えず、2 体目以降のインスタンス化が
-    //      「root 無し」で失敗扱いになっていた。guid を正としてフォールバックのみ名前引きにする。
+    // root 収集。guid を正とし、フォールバックだけ名前引きにする。
+    // Find(name) だと同名ルートが並んだとき常に先頭の 1 体しか拾えない。
     for (const auto& item : *goArr) {
         const auto* tbl = item.as_table();
         if (!tbl) continue;
         if (!(*tbl)["parent"].value_or(std::string{}).empty()) continue;
         const std::string guid = (*tbl)["instanceId"].value_or(std::string{});
-        GameObject* go = !guid.empty() ? scene.FindByGuid(guid) : nullptr;
+        GameObject* go = !guid.empty() ? guids.Find(guid) : nullptr;
         if (!go) go = scene.Find((*tbl)["name"].value_or(std::string{}));
         if (go) outRoots.push_back(go->GetID());
     }

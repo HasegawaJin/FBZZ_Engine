@@ -1,7 +1,9 @@
-// FBZZ Engine
-// Allocator.hpp | fbzz::core
-// カスタムアロケータ共通インターフェースと補助 API
-// 各アロケータを同じ呼び出し形で扱い、所有権と統計取得の入口を揃える。
+/// @file    Allocator.hpp
+/// @brief   カスタムアロケータ共通インターフェースと補助 API。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 各アロケータを同じ呼び出し形で扱い、所有権と統計取得の入口を揃える。
 #pragma once
 
 #include "Engine/Core/Memory/AllocationInfo.hpp"

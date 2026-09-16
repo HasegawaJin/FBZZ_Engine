@@ -1,4 +1,4 @@
-file(GLOB_RECURSE EDITOR_LAUNCHER_SOURCES
+file(GLOB_RECURSE EDITOR_LAUNCHER_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     src/*.hpp
 )
@@ -20,6 +20,9 @@ fbzz_apply_app_manifest(FBZZEditorLauncher)
 
 set_target_properties(FBZZEditorLauncher PROPERTIES
     OUTPUT_NAME "FBZZEditor"
+    # EXE の import lib が入力の FBZZEditor.lib と衝突すると、MSBuild が
+    # 入力ライブラリを出力として扱い、Editor 更新時の再リンクを省略する。
+    ARCHIVE_OUTPUT_NAME "FBZZEditorLauncher"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Editor"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Editor"
     RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Editor"
@@ -84,3 +87,19 @@ add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
         "${CMAKE_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:FBZZEditorLauncher>/assets"
 )
+
+# WHY: DX12 プロジェクト (テンプレート既定) の shader は DXIL reflection に dxcompiler.dll を必要とし、
+#      LoadLibraryW は exe 隣を探す。Engine 出力へのコピーだけでは Editor/ サブディレクトリに届かず、
+#      shader ロードが全て失敗して DebugDraw の初期化 assert で落ちる。
+if(FBZZ_DXC_RUNTIME_DIRECTORY)
+    foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
+        if(EXISTS "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
+            add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:FBZZEditorLauncher>/${FBZZ_DXC_RUNTIME_DLL}"
+                COMMENT "Copying ${FBZZ_DXC_RUNTIME_DLL} for DXIL runtime support"
+            )
+        endif()
+    endforeach()
+endif()

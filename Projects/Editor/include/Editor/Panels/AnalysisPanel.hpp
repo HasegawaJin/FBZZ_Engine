@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnalysisPanel.hpp | fbzz::editor
-// Profiler と MemoryDebug をまとめて確認するエディター診断パネル
+/// @file    AnalysisPanel.hpp
+/// @brief   Profiler と MemoryDebug をまとめて確認するエディター診断パネル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>
@@ -21,8 +22,8 @@ protected:
 private:
     void DrawProfiler();
     void DrawMemory(EditorContext& ctx);
-    // DrawCall / ポリゴン数・GPU パスタイミングを表示するレンダリング統計タブ。
-    void DrawRendering();
+    // フレーム時間・DrawCall / ポリゴン数・GPU パスタイミングを表示するレンダリング統計タブ。
+    void DrawRendering(EditorContext& ctx);
 };
 
 } // namespace fbzz::editor

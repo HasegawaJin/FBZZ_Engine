@@ -1,15 +1,18 @@
-// FBZZ Engine
-// DX12Buffer.hpp | fbzz::renderer
-// CPU 更新可能な DirectX 12 頂点・インデックスバッファ
+/// @file    DX12Buffer.hpp
+/// @brief   CPU 更新可能な DirectX 12 頂点・インデックスバッファ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IBuffer.hpp>
 #include <d3d12.h>
 #include <wrl/client.h>
+#include <vector>
 
 namespace fbzz::renderer {
 
 class DX12Context;
+class DX12UploadArena;
 
 class DX12StateTracker;
 
@@ -32,8 +35,8 @@ public:
     void Update(const void* data, size_t sizeBytes) override;
     size_t GetSize() const override { return m_size; }
     uint32_t GetStride() const override { return m_stride; }
-    D3D12_VERTEX_BUFFER_VIEW GetVertexView() const;
-    D3D12_INDEX_BUFFER_VIEW GetIndexView() const;
+    D3D12_VERTEX_BUFFER_VIEW GetVertexView(DX12UploadArena& arena);
+    D3D12_INDEX_BUFFER_VIEW GetIndexView(DX12UploadArena& arena);
 
     // InitGpuWritableVertex で作った場合のみ有効。それ以外は nullptr / 空ハンドル。
     ID3D12Resource*             GetResource() const { return m_resource.Get(); }
@@ -41,6 +44,12 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetUav() const;
 
 private:
+    D3D12_GPU_VIRTUAL_ADDRESS PrepareForSubmit(DX12UploadArena& arena);
+    std::vector<uint8_t> m_cpuData;
+    size_t m_dataSize = 0;
+    uint64_t m_cachedEpoch = 0;
+    D3D12_GPU_VIRTUAL_ADDRESS m_cachedAddress = 0;
+    bool m_dirty = false;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;
     // GPU 書き込み可能バッファの UAV を置く CPU 専用ヒープ。
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;

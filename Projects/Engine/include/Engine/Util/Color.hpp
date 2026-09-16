@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Color.hpp | fbzz::util
-// RGBA カラー型と変換ユーティリティ
-// Vector4 / RGBA32 / HSV / Hex との相互変換をまとめる。
-// Renderer へ渡す色は float 0.0f から 1.0f を基準にする。
+/// @file    Color.hpp
+/// @brief   RGBA カラー型と変換ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// Vector4 / RGBA32 / HSV / Hex との相互変換をまとめる。
+/// Renderer へ渡す色は float 0.0f から 1.0f を基準にする。
 #pragma once
 #include <Math/Vector4.hpp>
 #include <algorithm>

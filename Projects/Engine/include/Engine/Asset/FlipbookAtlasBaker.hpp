@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FlipbookAtlasBaker.hpp | fbzz::asset
-// 順序付き画像列を等間隔グリッドのFlipbook Atlasへ結合するAPI
+/// @file    FlipbookAtlasBaker.hpp
+/// @brief   順序付き画像列を等間隔グリッドのFlipbook Atlasへ結合するAPI。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <cstdint>

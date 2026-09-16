@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PhysicsSolver.hpp | fbzz::physics
-// 衝突検出 (Broad/Narrow フェーズ) と衝突解決 (PGS インパルスベース)
+/// @file    PhysicsSolver.hpp
+/// @brief   衝突検出 (Broad/Narrow フェーズ) と衝突解決 (PGS インパルスベース)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <functional>
 #include <Physics/ContactPoint.hpp>
@@ -9,6 +10,7 @@
 #include <Physics/AABBCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
@@ -35,6 +37,14 @@ namespace fbzz::physics
         // PGS ベースの衝突解決 (Warm Starting 済みの蓄積インパルスを引き継ぐ)
         void Resolve(std::vector<ContactPoint>& contacts);
 
+        // 接触点における 2 剛体の相対速度 (A から見た B との差、角速度の寄与を含む)。
+        //
+        // WHY 公開するか: Resolve は速度を書き換えるため、呼んだ後では「ぶつかった勢い」が
+        //     もう残っていない。ゲーム側が衝突の強さを知るには Resolve の前に同じ値を
+        //     取る必要がある。ResolveVelocity 内の計算と食い違うと、解決に使った速度と
+        //     ゲームへ報告する速度が別物になるため、両者で同じ関数を使う。
+        [[nodiscard]] static math::Vector3 RelativeVelocityAt(const ContactPoint& cp);
+
     private:
         bool TestSphereSphere(const SphereCollider& a, const SphereCollider& b,
                             ContactPoint& out);
@@ -57,6 +67,18 @@ namespace fbzz::physics
         bool TestCapsuleCapsule(const CapsuleCollider& a, const CapsuleCollider& b,
                             ContactPoint& out);
 
+        // Cylinder 用テスト関数。球以外は解析解の場合分けが増えすぎるため GJK + EPA に委譲する。
+        bool TestSphereCylinder (const SphereCollider&  s, const CylinderCollider& c,
+                            ContactPoint& out);
+        bool TestAABBCylinder   (const AABBCollider&    b, const CylinderCollider& c,
+                            ContactPoint& out);
+        bool TestOBBCylinder    (const OBBCollider&     b, const CylinderCollider& c,
+                            ContactPoint& out);
+        bool TestCapsuleCylinder(const CapsuleCollider& a, const CylinderCollider& c,
+                            ContactPoint& out);
+        bool TestCylinderCylinder(const CylinderCollider& a, const CylinderCollider& b,
+                            ContactPoint& out);
+
         // TriangleMesh 用テスト関数。メッシュ全体ではなく BVH で候補三角形を絞ってから呼ぶ。
         bool TestSphereTriangle  (const SphereCollider&  s, const Triangle& tri, ContactPoint& out);
         bool TestAABBTriangle    (const AABBCollider&    b, const Triangle& tri, ContactPoint& out);
@@ -67,6 +89,7 @@ namespace fbzz::physics
         bool TestCapsuleTriangleMesh (const CapsuleCollider&, const TriangleMeshCollider&, ContactPoint& out);
         bool TestOBBTriangleMesh     (const OBBCollider&,      const TriangleMeshCollider&, ContactPoint& out);
         bool TestConvexHullTriangleMesh(const ConvexHullCollider&, const TriangleMeshCollider&, ContactPoint& out);
+        bool TestCylinderTriangleMesh  (const CylinderCollider&,   const TriangleMeshCollider&, ContactPoint& out);
 
         // HeightField 用テスト関数。内部 BVH に対して TriangleMesh と同一アルゴリズムを適用する。
         bool TestSphereHeightField    (const SphereCollider&,  const HeightFieldCollider&, ContactPoint& out);
@@ -74,6 +97,7 @@ namespace fbzz::physics
         bool TestCapsuleHeightField   (const CapsuleCollider&, const HeightFieldCollider&, ContactPoint& out);
         bool TestOBBHeightField       (const OBBCollider&,     const HeightFieldCollider&, ContactPoint& out);
         bool TestConvexHullHeightField(const ConvexHullCollider&, const HeightFieldCollider&, ContactPoint& out);
+        bool TestCylinderHeightField  (const CylinderCollider&,   const HeightFieldCollider&, ContactPoint& out);
 
         // ConvexHull 用テスト関数 (GJK + EPA)。形状差分をサポート関数で抽象化する。
         bool TestConvexConvex  (const ConvexHullCollider&, const ConvexHullCollider&, ContactPoint& out);
@@ -81,6 +105,7 @@ namespace fbzz::physics
         bool TestAABBConvex    (const AABBCollider&,        const ConvexHullCollider&, ContactPoint& out);
         bool TestOBBConvex     (const OBBCollider&,         const ConvexHullCollider&, ContactPoint& out);
         bool TestCapsuleConvex (const CapsuleCollider&,     const ConvexHullCollider&, ContactPoint& out);
+        bool TestCylinderConvex(const CylinderCollider&,    const ConvexHullCollider&, ContactPoint& out);
 
         // 法線方向の PGS インパルス解決 (クランプ付き蓄積)
         void ResolveVelocity(ContactPoint& cp);

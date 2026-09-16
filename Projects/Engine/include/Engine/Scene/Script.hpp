@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Script.hpp | fbzz::scene
-// ユーザースクリプト基底クラスとリフレクション補助
-// GameObject にアタッチされる振る舞いの共通ライフサイクルを定義する。
-// engine 側の Component とは分け、ScriptComponent が所有する。
+/// @file    Script.hpp
+/// @brief   ユーザースクリプト基底クラスとリフレクション補助。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// GameObject にアタッチされる振る舞いの共通ライフサイクルを定義する。
+/// engine 側の Component とは分け、ScriptComponent が所有する。
 #pragma once
 
 #include <Engine/Core/Time.hpp>
@@ -12,6 +14,7 @@
 #include <Engine/Scene/DataAssetRef.hpp> // DataAsset (純共有 ScriptableObject) 参照スロット
 #include <Engine/Scene/ScriptAssetRef.hpp>
 #include <Engine/Scene/Reflection.hpp>  // 自己登録リフレクション基盤 (ReflectTag / DisplayOr)
+#include <Engine/Scene/ParticleCurve.hpp> // FBZZ_FIELD_CURVE / FBZZ_FIELD_GRADIENT の値型
 #include <Engine/Scene/Ref.hpp>          // 型安全オブジェクト参照ハンドル Ref<T>
 // 全プロキシヘッダーのアンブレラインクルード。新プロキシ追加時はこちらを編集すること。
 #include <Engine/Scene/ScriptProxy/AllScriptProxies.hpp>
@@ -99,6 +102,20 @@ struct CollisionInfo {
     math::Vector3 contactNormal = math::Vector3::UP;
     math::Vector3 contactPoint = math::Vector3::ZERO;
     float contactDepth = 0.0f;
+
+    // ── 衝突の強さ ──────────────────────────────────────────────────────────
+    // コールバックは速度の解決後に呼ばれるので、physics.GetVelocity() では
+    // 「ぶつかった後」しか読めない。解決前の勢いを物理側で記録して運ぶ。
+    // OnCollisionEnter でのみ意味を持つ (Stay / Exit では 0)。
+
+    // 接触点での相対速度 (self から見た other との差、角速度の寄与を含む)。
+    math::Vector3 relativeVelocity = math::Vector3::ZERO;
+    // 法線方向の接近速度 (m/s)。正 = 近づいていた = ぶつかった強さ。
+    // 「一定速度以上の衝突だけダメージにする」判定はこの値で行う。
+    float approachSpeed = 0.0f;
+    // 解決で実際に加わった法線インパルス (質量込みの強さ)。
+    // 軽い相手と重い相手で手応えを変えたい場合は approachSpeed ではなくこちらを見る。
+    float impactImpulse = 0.0f;
 };
 
 // ── IReflector ────────────────────────────────────────────────────────────────
@@ -114,6 +131,10 @@ struct IReflector {
         LayerMask,
         Tag,
         File,
+        // ミキサーバス名。Inspector は ProjectSettings で定義されたバスの
+        // ドロップダウンを出す。綴りミスは Master へ黙って落ちるため、
+        // 自由入力のままにしておくと設定ミスが表に出ない。
+        AudioBus,
     };
 
     virtual ~IReflector() = default;
@@ -131,6 +152,8 @@ struct IReflector {
         m_fieldHint = FieldHint::Default;
         m_fieldMin = 0.0f;
         m_hasFieldMin = false;
+        m_fieldMax = 0.0f;
+        m_hasFieldMax = false;
         m_fieldStep = 0.0f;
         m_fileExtensions.clear();
         m_fixedList = false;
@@ -152,6 +175,8 @@ struct IReflector {
     void SetFieldHidden(bool hidden) { m_fieldHidden = hidden; }
     void SetFieldHint(FieldHint hint) { m_fieldHint = hint; }
     void SetFieldMin(float minimum) { m_fieldMin = minimum; m_hasFieldMin = true; }
+    // 上限。数値の clamp ではなく「表示レンジ」を伝える用途で、カーブの縦軸に使う。
+    void SetFieldMax(float maximum) { m_fieldMax = maximum; m_hasFieldMax = true; }
     void SetFieldStep(float step) { m_fieldStep = step; }
     void SetFileExtensions(std::string_view extensions)
     {
@@ -166,6 +191,8 @@ struct IReflector {
     [[nodiscard]] FieldHint CurrentFieldHint() const { return m_fieldHint; }
     [[nodiscard]] float FieldMin() const { return m_fieldMin; }
     [[nodiscard]] bool HasFieldMin() const { return m_hasFieldMin; }
+    [[nodiscard]] float FieldMax() const { return m_fieldMax; }
+    [[nodiscard]] bool HasFieldMax() const { return m_hasFieldMax; }
     [[nodiscard]] float FieldStep() const { return m_fieldStep; }
     [[nodiscard]] const std::string& FileExtensions() const { return m_fileExtensions; }
     [[nodiscard]] bool FixedList() const { return m_fixedList; }
@@ -234,6 +261,59 @@ struct IReflector {
             value.value->Reflect(*this);
     }
 
+    // 色として編集させる Vector3 / Vector4。Inspector はカラーピッカーを出す。
+    // ヒントは BeginField でリセットされるので「BeginField → SetFieldHint → Field」の
+    // 3 手が要る。毎回書くと 1 箇所抜けただけで数値入力へ戻るのでヘルパーにする。
+    // 保存キーは name のままなので、r.Field から差し替えてもシーンのデータは変わらない。
+    // 非仮想なのは vtable の並びを崩さないため。
+    // BeginField で立てた保存キー・表示条件・ヒントを既定へ戻す。
+    // 状態は「次の BeginField まで」残るので、戻し忘れると続く Field が前のキーを
+    // 引き継ぐ。TOML は同じキーへの二重挿入を黙って捨てるため、以降のフィールドが
+    // エラーも警告もなく保存されなくなる。BeginField を直に呼んだら必ず呼ぶこと。
+    void EndField() { BeginField(nullptr, nullptr); }
+
+    void ColorField(const char* name, math::Vector3& v)
+    {
+        BeginField(name, name);
+        SetFieldHint(FieldHint::Color);
+        Field(name, v);
+        EndField();
+    }
+    void ColorField(const char* name, math::Vector4& v)
+    {
+        BeginField(name, name);
+        SetFieldHint(FieldHint::Color);
+        Field(name, v);
+        EndField();
+    }
+
+    // 条件を満たすときだけ Inspector に出すフィールド。保存は条件によらず常に行う。
+    // 表示条件は「今この値が効くか」でしかなく、止めるとモードを戻すだけで設定が消える。
+    // 説明文まで受け取るのは、Tooltip が「直前に描いた項目」に付くため。
+    template<typename T>
+    void FieldIf(const char* name, T& v, bool visible, const char* tooltip = nullptr)
+    {
+        BeginField(name, name);
+        SetFieldVisible(visible);
+        Field(name, v);
+        if (visible && tooltip) Tooltip(tooltip);
+        EndField();
+    }
+
+    // アセットパス欄。Inspector は extensions で絞ったピッカーとドロップ先を出す。
+    //
+    // WHY 名前規約 (xxxPath) に頼らないか: 同じ種類のアセットを 1 つのコンポーネントが
+    //     4 つ持つ (ボタンの状態別スプライト等) と、規約に合う名前は 1 つしか作れない。
+    void FileField(const char* name, std::string& v, const char* extensions,
+                   const char* tooltip = nullptr)
+    {
+        BeginField(name, name);
+        SetFileExtensions(extensions);
+        Field(name, v);
+        if (tooltip) Tooltip(tooltip);
+        EndField();
+    }
+
     // 付加情報付き (デフォルトは Field へフォールバック)
     virtual void FloatRange(const char* name, float& v, float min, float max)  { Field(name, v); }
     virtual void IntRange(const char* name, int& v, int min, int max)          { Field(name, v); }
@@ -251,22 +331,15 @@ struct IReflector {
     virtual void Readonly(const char* name, int v)    {}
 
     // ── 入れ子オブジェクト / 構造体配列 ─────────────────────────────────────
-    // WHY 新しい仮想関数を必ずクラス末尾へ追記するか:
-    //     スクリプト DLL の Reflect() は vtable インデックスで仮想呼び出しする。
-    //     途中に挿入すると既存関数のインデックスまでずれ、ABI チェックを
-    //     すり抜けた場合の被害が大きくなる。追記した際は ScriptDllAbi.hpp の
-    //     kReflectionAbiVersion を必ずインクリメントすること。
+    // 新しい仮想関数は必ずクラス末尾へ追記する。DLL の Reflect() は vtable インデックスで
+    // 呼ぶので、途中へ挿すと既存関数の番号までずれる。
+    // 追記したら ScriptDllAbi.hpp の kReflectionAbiVersion を必ずインクリメントすること。
 
     // BeginObject / EndObject で挟んだ範囲を 1 つの入れ子オブジェクトとして扱う。
-    // 既定実装は何もしない = 従来どおり親と同じ階層へフラット展開される。
-    // これにより未対応のリフレクタでも挙動が変わらない (後方互換)。
-    //
-    // WHY ObjectField ではなくスコープ対を用意するか:
-    //     ObjectField は入れ子の型が IScriptSerializable を継承していることを要求する。
-    //     しかし反映したい構造体 (renderer::BloomSettings 等) はレンダラー層に住み、
-    //     Scene 層のインターフェースを継承させると RenderSettings.hpp が
-    //     Script.hpp を include することになり、依存方向が逆流する。
-    //     スコープ対なら継承を要求せず、自由関数のヘルパーで任意の構造体を反映できる。
+    // 既定実装は何もしない = 親と同じ階層へフラット展開される (未対応リフレクタと後方互換)。
+    // ObjectField ではなくスコープ対なのは、継承を要求しないため。ObjectField だと
+    // renderer::BloomSettings のような他層の構造体に Scene 層の interface が要り、
+    // RenderSettings.hpp が Script.hpp を include して依存方向が逆流する。
     virtual void BeginObject(const char* name) { (void)name; }
     virtual void EndObject() {}
 
@@ -277,11 +350,7 @@ struct IReflector {
     //
     // 呼び出し側は戻り値で vector を resize してから、要素ごとに
     // BeginObjectElement / EndObjectElement で挟んで反映する。
-    //
-    // WHY 戻り値で要素数を返す形にするか:
-    //     読み込み・UI 編集・書き込みの 3 方向すべてで要素数の変更が起こりうる。
-    //     コールバックを渡す設計にすると DLL 境界を越える std::function が増え、
-    //     ScriptDllAbi の互換管理が複雑になる。戻り値なら vtable への追加で済む。
+    // 戻り値で返すのは、コールバックだと DLL 境界を越える std::function が増えるため。
     [[nodiscard]] virtual std::size_t BeginObjectList(const char* name, std::size_t count)
     {
         (void)name;
@@ -292,14 +361,38 @@ struct IReflector {
 
     // 削除要求のインデックスを返す。要素数未満なら呼び出し側がその要素を erase する。
     // 削除要求が無い場合は NO_REMOVE を返す。
-    //
-    // WHY 戻り値で削除を伝えるか: 配列の実体を所有しているのは呼び出し側であり、
-    //     リフレクタは触れない。要素数の増加は BeginObjectList の戻り値 + resize で
-    //     表現できるが、「途中の要素を消す」は resize では表現できない
-    //     (resize は必ず末尾を落とすため、消したい要素と実際に消える要素がずれる)。
-    //     削除だけは別の経路で伝える必要がある。
+    // 要素数の増加は BeginObjectList の戻り値 + resize で表せるが、「途中の要素を消す」は
+    // resize では表せない (必ず末尾が落ちる)。削除だけは別経路で伝える。
     static constexpr std::size_t NO_REMOVE = static_cast<std::size_t>(-1);
     [[nodiscard]] virtual std::size_t EndObjectList() { return NO_REMOVE; }
+
+    // 時間 → 値 / 色のカーブ。Inspector は専用のキャンバスエディタを出す。
+    // 縦軸の最大値は SetFieldMax で伝える (未指定なら 1.0)。
+    // 既定が no-op なのは未対応リフレクタでクラッシュさせないため。保存を伴うリフレクタ
+    // (TomlWrite/Read・Snapshot) は必ず override すること (落とすと Play/Stop で既定へ戻る)。
+    virtual void Field(const char* name, ParticleCurve& v) { (void)name; (void)v; }
+    virtual void Field(const char* name, ParticleGradient& v) { (void)name; (void)v; }
+
+    // Inspector のアクションボタン。押されたら action(userData) を 1 回だけ呼ぶ。
+    // 関数ポインタ + void* なのは、std::function が実装定義のレイアウトを DLL 境界へ
+    // 晒すため。キャプチャ無しラムダなら関数ポインタへ落ち、境界を安全に越える。
+    using ActionCallback = void (*)(void* userData);
+    virtual void Button(const char* label, ActionCallback action, void* userData)
+    {
+        (void)label;
+        (void)action;
+        (void)userData;
+    }
+
+    // 構造体配列の並び替え要求。EndObjectList の直後に呼ばれる。
+    // 戻り値 1 つでは「どこからどこへ」を運べないので、削除とは別の経路にする。
+    // 同じフレームで削除と並び替えが重なったら削除だけを通すこと (index がずれる)。
+    [[nodiscard]] virtual bool ObjectListMove(std::size_t& from, std::size_t& to)
+    {
+        (void)from;
+        (void)to;
+        return false;
+    }
 
 private:
     std::string m_persistentKey;
@@ -311,6 +404,8 @@ private:
     FieldHint m_fieldHint = FieldHint::Default;
     float m_fieldMin = 0.0f;
     bool m_hasFieldMin = false;
+    float m_fieldMax = 0.0f;
+    bool m_hasFieldMax = false;
     float m_fieldStep = 0.0f;
     std::string m_fileExtensions;
     bool m_fixedList = false;
@@ -324,12 +419,33 @@ struct AnimationEventInfo {
     float clipTime = 0.0f;
 };
 
-// OnAnimatorMove へ渡すルートモーション 1 フレーム分の移動量。
+// .sequence の EventTrack から Script へ渡す DLL 安全な値型。
 //
-// WHY: 以前は Script が ScriptAnimatorProxy 経由で「前フレームの値」をポーリングするしか
-//      なかった。AnimatorSystem は Phase::LateUpdate に居るため、Phase::Script の OnUpdate は
-//      常に 1 フレーム遅れた delta を読むことになる。抽出直後に同期コールバックを飛ばすことで、
-//      移動の権威を Script / CharacterController 側へ渡せるようにする。
+// WHY AnimationEventInfo と同じ形にするか: 受け手が覚えることを増やさないため。
+//     どちらも「時間軸上の点で飛んでくる名前付きの合図」で、扱いは変わらない。
+struct SequenceEventInfo {
+    const char* name         = "";
+    int32_t     intParam     = 0;
+    float       floatParam   = 0.0f;
+    float       sequenceTime = 0.0f;
+    const char* sequenceName = "";
+};
+
+// binding を持たない EventTrack が ScriptEventBus へ流す合図。
+// 「ボス自身に効く合図」はターゲットへ直接届けたいが、「盤面全体に効く合図」の受け手は
+// 演出の当事者ではない。binding で縛ると演出のたびに全シーケンスへバインドして回る。
+struct SequenceEvent {
+    FBZZ_EVENT(SequenceEvent);
+    const char* name         = "";
+    int32_t     intParam     = 0;
+    float       floatParam   = 0.0f;
+    float       sequenceTime = 0.0f;
+    const char* sequenceName = "";
+};
+
+// OnAnimatorMove へ渡すルートモーション 1 フレーム分の移動量。
+// AnimatorSystem は Phase::LateUpdate なので、ポーリングだと Phase::Script は常に
+// 1 フレーム遅れた delta を読む。抽出直後に同期コールバックを飛ばす。
 struct RootMotionInfo {
     // Animator 所有 GameObject のローカル空間 (親回転を掛ける前) での移動量。
     math::Vector3    deltaPosition = math::Vector3::ZERO;
@@ -347,15 +463,24 @@ struct RootMotionInfo {
 };
 
 // FBZZ_REF(T, ...) が RefField へ渡す型名を解決する。
-// GameObject 参照は「任意の GameObject 可」を意味する空文字、Script 派生参照は T::TYPE_NAME を返す。
-// WHY: Inspector はこの型名でドロップを検証し、フィルタ付きピッカーを出す (型不一致アサインを防ぐ)。
+//   GameObject        … 「任意の GameObject 可」を意味する空文字
+//   Script 派生       … T::TYPE_NAME (基底型で受けると継承鎖のどこで一致してもよい)
+//   登録コンポーネント … declaredName (= FBZZ_REF に書いた型名そのもの)
+// Inspector はこの型名でドロップを検証し、フィルタ付きピッカーを出す。
+// コンポーネントだけマクロから名前を貰うのは TYPE_NAME を持たないため。名前の正本は
+// ComponentRegistry の serializedName で中身は登録マクロの #Type なので、FBZZ_REF が
+// 手元に持つ #Type から同じ文字列が作れる (ComponentRegistry.hpp を引かずに済む)。
+// 名前空間付きで書かれた場合だけ食い違うので、素の型名で書くこと。
 template<typename T>
-constexpr const char* RefTypeNameOf()
+constexpr const char* RefTypeNameOf(const char* declaredName)
 {
+    (void)declaredName;  // GameObject / Script 参照では使わない
     if constexpr (std::is_same_v<T, GameObject>)
         return "";
-    else
+    else if constexpr (std::is_base_of_v<Script, T>)
         return T::TYPE_NAME;
+    else
+        return declaredName;
 }
 
 // ── InvokeHandle ─────────────────────────────────────────────────────────────
@@ -367,13 +492,10 @@ struct InvokeHandle {
 
 // ── FBZZ リフレクションマクロ (自己登録方式) ──────────────────────────────────
 //
-// 設計 (WHY):
-//   FBZZ_FIELD 等は「メンバー宣言」と「Reflect() への登録」を同じ 1 行で行う。
-//   __COUNTER__ で採番したタグ型 detail::ReflectTag<N> のオーバーロードを宣言順に
-//   連鎖させ、外部ツール (旧 FHT) も .generated.hpp も使わずに Reflect() を生成する。
-//   フィールドを 1 行足すだけで Inspector / シリアライズが自動追従する (単一の真実)。
-//
-//   表示名は "" を渡すと変数名から自動生成される (DisplayOr)。冗長な再掲が不要。
+// FBZZ_FIELD 等は「メンバー宣言」と「Reflect() への登録」を同じ 1 行で行う。
+// __COUNTER__ で採番したタグ型 detail::ReflectTag<N> のオーバーロードを宣言順に
+// 連鎖させて Reflect() を生成するので、外部ツールも .generated.hpp も要らない。
+// 表示名は "" を渡すと変数名から自動生成される (DisplayOr)。
 //
 // 使い方:
 //   class Foo : public Script {
@@ -386,17 +508,237 @@ struct InvokeHandle {
 //   FBZZ_REFLECT(Foo)                          // クラス直後・同 namespace 内に置く
 //
 // 役割分担: FBZZ_SCRIPT が Reflect() を「宣言」し、FBZZ_REFLECT が「定義」する。
-//          外部コード生成ツール (旧 FHT) と .generated.hpp は全廃済み。
 
-#define FBZZ_SCRIPT(T)                                                          \
+// 型名と Reflect 連鎖の土台。「GetTypeName() const / Reflect(IReflector&) を持つ基底」
+// であれば Script でなくても使える (DataAsset がこれを流用する)。
+// 終端 (ReflectTag<0>) は含めない。中身が用途ごとに違い、固定で置くと派生で
+// フィールドの引き継ぎができなくなる。
+// _fbzz_base を採ったあとに __COUNTER__ を消費しないこと (フィールドの採番がずれる)。
+#define FBZZ_REFLECT_CORE_(T)                                                   \
     public:                                                                     \
     using FbzzSelf = T;                                                         \
     static constexpr const char* TYPE_NAME = #T;                               \
     const char* GetTypeName() const override { return TYPE_NAME; }             \
     void Reflect(::fbzz::scene::IReflector& r_) override;                       \
-    static constexpr int _fbzz_base = __COUNTER__;                              \
+    static constexpr int _fbzz_base = __COUNTER__;
+
+#define FBZZ_SCRIPT(T)                                                          \
+    FBZZ_REFLECT_CORE_(T)                                                       \
+    using FbzzBase = ::fbzz::scene::Script;                                     \
+    void* FbzzAsType(::std::string_view n_) const override                      \
+        { return n_ == TYPE_NAME ? const_cast<T*>(this)                         \
+                                 : ::fbzz::scene::Script::FbzzAsType(n_); }     \
     void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
                        ::fbzz::scene::IReflector&) {}
+
+// __VA_ARGS__ の先頭だけを取り出す。MSVC の伝統的プリプロセッサでも展開されるよう
+// EXPAND を 1 枚挟む (/Zc:preprocessor の有無に依存しないため)。
+#define FBZZ_EXPAND_(x) x
+#define FBZZ_FIRST_IMPL_(First, ...) First
+#define FBZZ_FIRST_(...) FBZZ_EXPAND_(FBZZ_FIRST_IMPL_(__VA_ARGS__, ))
+
+// スクリプトの継承。第 2 引数以降に基底を並べる。
+//
+//   class EnemyAiBase : public Script { FBZZ_SCRIPT_BASE(EnemyAiBase, Script) ... };
+//   class MiteComponent : public EnemyAiBase, public IDamageable {
+//       FBZZ_SCRIPT_DERIVED(MiteComponent, EnemyAiBase, IDamageable) ...
+//   };
+//
+//   scene.GetScript<EnemyAiBase>()           // MiteComponent が返る
+//   scene.FindObjectsOfType<IDamageable>()   // 敵も樽もプレイヤーも返る
+//
+// Script 派生の鎖は 1 本に保つこと。2 つ以上継承すると Script 部分オブジェクトが 2 個になり、
+// ScriptComponent の unique_ptr<Script> も proxy も m_gameObject も曖昧になる。
+// 横断的な能力は Script を継承しないインターフェース (FBZZ_SCRIPT_INTERFACE) で足す。
+// 基底の Reflect は tag 0 で呼ぶ。フィールドの連鎖は __COUNTER__ - _fbzz_base で採番され
+// クラスごとに 1 から並ぶので、終端の tag 0 を差し替えるだけで基底が先・派生が後になる。
+// 引き継ぐのは先頭の基底だけ。
+// FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT は仮想オーバーライドなので、派生で
+// 再宣言すると基底の宣言を上書きする。基底が要求するぶんも並べること。
+#define FBZZ_SCRIPT_DERIVED(T, ...)                                             \
+    FBZZ_REFLECT_CORE_(T)                                                       \
+    using FbzzBase = FBZZ_FIRST_(__VA_ARGS__);                                  \
+    void* FbzzAsType(::std::string_view n_) const override                      \
+        { return n_ == TYPE_NAME                                                \
+            ? const_cast<T*>(this)                                              \
+            : ::fbzz::scene::detail::TryBases<__VA_ARGS__>(this, n_); }         \
+    void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
+                       ::fbzz::scene::IReflector& r_)                           \
+        { FBZZ_FIRST_(__VA_ARGS__)::Reflect(r_); }
+
+// 共有基底。中身は FBZZ_SCRIPT_DERIVED と同じだが、ScriptCodeGen が
+// ScriptList.inl へ登録しないため GameObject へ直接アタッチできない。
+//
+// WHY 登録から外すか: 登録簿のファクトリは make_unique<T>() を作る。純粋仮想を持つ
+//     基底はそこでコンパイルが通らないし、通ったとしても「基底そのもの」を
+//     Add Component の一覧に出す意味がない。
+#define FBZZ_SCRIPT_BASE(T, ...) FBZZ_SCRIPT_DERIVED(T, __VA_ARGS__)
+
+// Script を継承しない横断インターフェース。能力だけを表す。
+//
+//   struct IDamageable {
+//       FBZZ_SCRIPT_INTERFACE(IDamageable)
+//       virtual bool TakeDamage(int amount) = 0;
+//   };
+//
+// WHY Script を継承させないか:
+//   継承させると Script 部分オブジェクトが複数になり unique_ptr<Script> が曖昧になる
+//   (FBZZ_SCRIPT_DERIVED の注記)。能力の側が状態を持たなければ、その制約は要らない。
+//
+// WHY FbzzAsType を純粋仮想にしないか:
+//   TryBases が Bases::FbzzAsType(n) を修飾呼び出しで叩く。純粋仮想を修飾呼び出しすると
+//   実体が無くリンクできない。ここで自分の分だけ答える実装を置いておく。
+#define FBZZ_SCRIPT_INTERFACE(I)                                                \
+    public:                                                                     \
+    static constexpr const char* TYPE_NAME = #I;                               \
+    virtual ~I() = default;                                                     \
+    virtual void* FbzzAsType(::std::string_view n_) const                       \
+        { return n_ == TYPE_NAME ? const_cast<I*>(this) : nullptr; }
+
+namespace detail {
+
+// T が FbzzAsType で引ける型か。Script 派生と、FBZZ_SCRIPT_INTERFACE を持つ
+// 横断インターフェースの両方が true になる。
+// WHY 要るか: インターフェースは Script を継承しないので is_base_of<Script, T> では
+//     拾えず、FindObjectsOfType<T>() が ECS 側の分岐へ落ちてしまう。
+template<typename T, typename = void>
+inline constexpr bool kIsScriptQueryable = false;
+template<typename T>
+inline constexpr bool kIsScriptQueryable<
+    T, std::void_t<decltype(std::declval<const T&>().FbzzAsType(std::string_view{}))>> = true;
+
+// 基底を順に当たり、最初に見つかった部分オブジェクトのポインタを返す。
+//
+// WHY 修飾呼び出し (Bases::FbzzAsType) にするか:
+//   仮想呼び出しにすると派生の実装へ戻ってきて無限再帰になる。修飾すればその基底の
+//   実装が直接呼ばれ、しかも self は static_cast でその基底の部分オブジェクトへ
+//   ずらされた後なので、返る番地も自動的に正しくなる。多重継承のずれはここで消える。
+//
+// NOTE: 同じ型名が 2 つの経路から見える場合 (ダイヤモンド) は先に書いた基底が勝つ。
+template<typename... Bases, typename Self>
+[[nodiscard]] inline void* TryBases(const Self* self, std::string_view typeName)
+{
+    void* found = nullptr;
+    (void)(((found = static_cast<const Bases*>(self)->Bases::FbzzAsType(typeName)) != nullptr)
+           || ...);
+    return found;
+}
+
+// 1 要素を from から to へ運ぶ。間の要素の相対順序は保たれる。
+// FBZZ_OBJECT_LIST_FIELD が IReflector::ObjectListMove の結果を反映するのに使う。
+template<typename T>
+inline void MoveListElement(std::vector<T>& values, std::size_t from, std::size_t to)
+{
+    if (from >= values.size() || to >= values.size() || from == to) return;
+    const auto begin = values.begin();
+    const auto source = begin + static_cast<std::ptrdiff_t>(from);
+    const auto target = begin + static_cast<std::ptrdiff_t>(to);
+    if (from < to) std::rotate(source, source + 1, target + 1);
+    else           std::rotate(target, source, source + 1);
+}
+
+// "RigidBodyComponent, AnimatorComponent" → { "RigidBodyComponent", "AnimatorComponent" }
+// 名前空間修飾は落とす。短縮名でも fbzz::scene:: 付きでも ComponentRegistry の
+// serializedName (= #Type の短縮名) と突き合わせられるよう、最後の "::" より後だけを採る。
+inline std::vector<std::string> SplitComponentNames(const char* list)
+{
+    std::vector<std::string> names;
+    if (!list) return names;
+
+    const std::string_view all(list);
+    std::size_t begin = 0;
+    while (begin <= all.size()) {
+        const std::size_t comma = all.find(',', begin);
+        std::string_view token =
+            all.substr(begin, comma == std::string_view::npos ? all.size() - begin : comma - begin);
+
+        // 前後の空白を落としてから名前空間修飾を剥がす。
+        while (!token.empty() && (token.front() == ' ' || token.front() == '\t'))
+            token.remove_prefix(1);
+        while (!token.empty() && (token.back() == ' ' || token.back() == '\t'))
+            token.remove_suffix(1);
+        if (const std::size_t scope = token.rfind("::"); scope != std::string_view::npos)
+            token.remove_prefix(scope + 2);
+
+        if (!token.empty()) names.emplace_back(token);
+        if (comma == std::string_view::npos) break;
+        begin = comma + 1;
+    }
+    return names;
+}
+
+// 要求に並べた型が「完全型か」を静的に確かめるだけの補助。
+// WHY: 名前は #__VA_ARGS__ の文字列から採るため、型そのものは一度も使われない。
+//      それだと綴り違いや include 漏れが実行時まで露見しないので、sizeof で
+//      完全型を強制して宣言した場所でコンパイルエラーにする。
+template<typename... Ts>
+struct ComponentCompleteness {
+    static constexpr std::size_t value = (sizeof(Ts) + ... + 0);
+};
+
+} // namespace detail
+
+// ── 必須 / 任意コンポーネントの宣言 ──────────────────────────────────────────
+//
+// GetComponent<T>() が null なら黙って早期 return するので、付け忘れはエラーにならず
+// 動かない理由がどこにも出ない。宣言しておけば 3 箇所が同じ情報で名指しする:
+//   - Inspector    … 不足を赤帯で表示し、Fix ボタンで一括追加
+//   - Play 開始時  … Console へエラーを出力 (シーン全体をまとめて検証)
+//   - ScriptSystem … 実行時に一度だけ警告 (Standalone ビルドでも出る)
+//
+//   FBZZ_REQUIRE_COMPONENT  — 無いと成立しない。エラー扱い。
+//   FBZZ_OPTIONAL_COMPONENT — 無くても縮退動作する。Inspector に情報として出るだけ。
+//
+// 使い方 (クラス本体・FBZZ_SCRIPT の直後):
+//   class EnemyComponent : public Script {
+//       FBZZ_SCRIPT(EnemyComponent)
+//       FBZZ_REQUIRE_COMPONENT(RigidBodyComponent, CharacterControllerComponent)
+//       FBZZ_OPTIONAL_COMPONENT(IKSolverComponent)
+//   ...
+//
+// 文字列ではなく型で書かせる。綴り違いは文字列だとコンパイルを通り、
+// 「宣言したのに検証されない」という壊れ方をする。名前は #__VA_ARGS__ から採るので、
+// 型名の綴りがそのまま検証キーになる。
+#define FBZZ_REQUIRE_COMPONENT(...)                                             \
+    ::std::span<const ::std::string> RequiredComponents() const override {      \
+        static_assert(                                                          \
+            ::fbzz::scene::detail::ComponentCompleteness<__VA_ARGS__>::value > 0,\
+            "FBZZ_REQUIRE_COMPONENT: 未定義の型です (include 漏れ / 綴り違い)"); \
+        static const ::std::vector<::std::string> names_ =                      \
+            ::fbzz::scene::detail::SplitComponentNames(#__VA_ARGS__);           \
+        return names_;                                                          \
+    }
+
+#define FBZZ_OPTIONAL_COMPONENT(...)                                            \
+    ::std::span<const ::std::string> OptionalComponents() const override {      \
+        static_assert(                                                          \
+            ::fbzz::scene::detail::ComponentCompleteness<__VA_ARGS__>::value > 0,\
+            "FBZZ_OPTIONAL_COMPONENT: 未定義の型です (include 漏れ / 綴り違い)");\
+        static const ::std::vector<::std::string> names_ =                      \
+            ::fbzz::scene::detail::SplitComponentNames(#__VA_ARGS__);           \
+        return names_;                                                          \
+    }
+
+// このスクリプトを Play 中だけでなく編集中も実行する (Unity の [ExecuteAlways] 相当)。
+//
+// 使い方 (クラス本体・FBZZ_SCRIPT の直後):
+//   class PolarityGunHudComponent : public Script {
+//       FBZZ_SCRIPT(PolarityGunHudComponent)
+//       FBZZ_EXECUTE_ALWAYS()
+//   ...
+//
+// 編集中に呼ばれるのは OnAwake / OnStart / OnEnable / OnDisable / OnUpdate /
+// OnLateUpdate / OnDestroy と Invoke・Coroutine まで。OnFixedUpdate と衝突系は
+// 呼ばれない (PhysicsSystem が停止しており、積分する相手が居ないため)。
+//
+// 付ける前に:
+//   - ここでシーンへ書いた値はそのまま保存対象になる。ゲーム進行を持つ状態
+//     (体力・スコア・座標) を触るスクリプトには向かない。
+//   - Play の開始と停止でライフサイクルは張り直される
+//     (OnDisable → OnDestroy → OnAwake → OnStart)。編集中の状態は持ち越さない。
+//   - 編集中は入力・物理・音が動いていない。app.IsPlaying() で分岐すること。
+#define FBZZ_EXECUTE_ALWAYS()                                                   \
+    bool ExecuteInEditMode() const override { return true; }
 
 // Script以外のネスト値型へ同じ宣言式Reflectを与える。
 #define FBZZ_SERIALIZABLE(T)                                                    \
@@ -498,6 +840,27 @@ struct InvokeHandle {
         r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
     })
 
+// 音声クリップのパス欄。拡張子は kAudioClipExtensions で一元管理する。
+// WHY 専用マクロにするか: FBZZ_FIELD_FILE に ".wav,.ogg" と手書きすると、
+//     対応形式を増やしても既存フィールドが取り残される (実際 .mp3 / .synth が
+//     どのスロットにも入らない状態になっていた)。
+#define FBZZ_FIELD_AUDIO(Name, Default, Display)                                \
+    std::string Name = Default;                                                 \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFileExtensions(::fbzz::scene::kAudioClipExtensions);              \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+// ミキサーバス名の欄。Inspector は ProjectSettings のバス一覧から選ばせる。
+#define FBZZ_FIELD_AUDIO_BUS(Name, Default, Display)                            \
+    std::string Name = Default;                                                 \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldHint(::fbzz::scene::IReflector::FieldHint::AudioBus);        \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
 #define FBZZ_FIELD_READ_ONLY(Type, Name, Default, Display)                      \
     Type Name = Default;                                                        \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
@@ -564,10 +927,8 @@ struct InvokeHandle {
     })
 
 // 構造体の配列。要素型は IScriptSerializable を実装していること。
-// 要素数の増減と途中要素の削除をリフレクタから受け取り、vector へ反映する。
-//
-// WHY 削除を戻り値で受けるか: resize は必ず末尾を落とすため、
-//     「途中の要素を消す」を要素数の変更だけでは表現できない。
+// 要素数の増減・途中要素の削除・並び替えをリフレクタから受け取り、vector へ反映する。
+// 削除を戻り値で受けるのは、resize が必ず末尾を落とすため。
 #define FBZZ_OBJECT_LIST_FIELD(Type, Name, Display)                             \
     std::vector<Type> Name;                                                     \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
@@ -583,6 +944,10 @@ struct InvokeHandle {
         const std::size_t _fbzz_rm = r_.EndObjectList();                        \
         if (_fbzz_rm < Name.size())                                             \
             Name.erase(Name.begin() + static_cast<std::ptrdiff_t>(_fbzz_rm));   \
+        std::size_t _fbzz_from = 0;                                             \
+        std::size_t _fbzz_to = 0;                                               \
+        if (r_.ObjectListMove(_fbzz_from, _fbzz_to))                            \
+            ::fbzz::scene::detail::MoveListElement(Name, _fbzz_from, _fbzz_to); \
     })
 
 #define FBZZ_ASSET_LIST_FIELD(Type, Name, Display)                              \
@@ -664,6 +1029,45 @@ struct InvokeHandle {
             Type::ASSET_TYPE);                                                  \
     })
 
+// 時間 (0..1) に対する値のカーブ。Inspector はキーをドラッグできるキャンバスを出す。
+// Max は縦軸の最大値 (減衰率なら 1、速度倍率なら 10 など)。値は curve.Evaluate(t) で読む。
+// 実体は ParticleCurve だがマクロが宣言まで行うので、利用側は名前と縦軸だけ決めればよい。
+#define FBZZ_FIELD_CURVE(Name, Display, Max)                                    \
+    ::fbzz::scene::ParticleCurve Name;                                          \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldMax(static_cast<float>(Max));                                \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+// 時間 (0..1) に対する色のグラデーション。gradient.Evaluate(t) が sRGB、
+// EvaluateLinear(t) がシェーダーへ渡すリニア色を返す。
+#define FBZZ_FIELD_GRADIENT(Name, Display)                                      \
+    ::fbzz::scene::ParticleGradient Name;                                       \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+// Inspector のアクションボタン。押すと引数なしのメンバー関数 Method() を 1 回呼ぶ。
+//
+//   void Respawn() { ... }              // 普通のメンバー関数として書く
+//   FBZZ_BUTTON(Respawn, "Respawn")     // その直後に置くとボタンが出る
+//
+// メンバー関数の宣言は受け持たない (in-class の再宣言はエラーになり、定義をクラス外へ
+// 追い出すことになる)。ここは結線だけを担う。
+// 編集中 (Play していない) でも押せる。押した結果はそのまま保存対象になる。
+#define FBZZ_BUTTON(Method, Display)                                            \
+    FBZZ_REFLECT_ENTRY_(Method, {                                               \
+        r_.BeginField(#Method, FBZZ_DISP_(Display, Method));                    \
+        r_.Button(FBZZ_DISP_(Display, Method),                                  \
+                  [](void* self_) {                                             \
+                      static_cast<FbzzSelf*>(self_)->Method();                  \
+                  },                                                            \
+                  this);                                                        \
+        r_.EndField();                                                          \
+    })
+
 // Inspector 表示のみ・Serializer 非保存の計算値ラベル。
 #define FBZZ_COMPUTED(Type, Name, Display)                                      \
     Type Name = {};                                                            \
@@ -674,24 +1078,27 @@ struct InvokeHandle {
 // 型安全オブジェクト参照フィールド。Inspector にドラッグ&ドロップスロットを出す。
 // Ref<T> は { this } で所有 Script を受け取り、Name.Get() / if (Name) で解決する。
 // シリアライズは内包する EntityRef (= EntityID) を対象にする。
+//
+// T に取れるもの:
+//   GameObject        … 任意の GameObject
+//   Script 派生       … その型 (または基底型) のスクリプトを持つ GameObject
+//   登録コンポーネント … そのコンポーネントを持つ GameObject
+//     FBZZ_REF(LightComponent, targetLight, "Light")
+//     ...
+//     if (targetLight) targetLight->intensity = 3.0f;
 #define FBZZ_REF(Type, Name, Display)                                           \
     ::fbzz::scene::Ref<Type> Name { this };                                     \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
         r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
         r_.RefField(FBZZ_DISP_(Display, Name), Name.ref,                        \
-            ::fbzz::scene::RefTypeNameOf<Type>());                              \
+            ::fbzz::scene::RefTypeNameOf<Type>(#Type));                         \
     })
 
 // 型安全オブジェクト参照の可変長リスト。ウェイポイント列・砲塔の候補ターゲット・
 // スポーン地点の集合など「同じ型の参照を N 個並べる」用途に使う。
-//
-// WHY std::vector<Ref<T>> を直接リフレクタへ渡さないか:
-//   シリアライズの実体は EntityRef (= EntityID) だけで足り、リフレクタ実装 3 種
-//   (Inspector / TOML 読み / TOML 書き) が Ref<T> というテンプレートを知る必要はない。
-//   ここで EntityRef 列へ詰め替えることで、リフレクタ側は 1 つの非テンプレート
-//   オーバーロードだけを実装すればよくなる。
-//   詰め替え後は owner を貼り直す — 要素が増えたときの Ref<T> は既定構築 (owner=nullptr)
-//   で、そのままでは Get() が解決できないため。
+// EntityRef 列へ詰め替えてから渡す。シリアライズの実体は EntityID だけで足り、
+// リフレクタ実装 3 種が Ref<T> というテンプレートを知る必要はない。
+// 詰め替え後は owner を貼り直すこと (増えた要素の Ref<T> は owner=nullptr で解決できない)。
 #define FBZZ_REF_LIST_FIELD(Type, Name, Display)                                \
     ::std::vector<::fbzz::scene::Ref<Type>> Name;                               \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
@@ -701,7 +1108,7 @@ struct InvokeHandle {
         for (const auto& _fbzz_item : Name)                                     \
             _fbzz_refIds.push_back(_fbzz_item.ref);                             \
         r_.RefListField(FBZZ_DISP_(Display, Name), _fbzz_refIds,                \
-            ::fbzz::scene::RefTypeNameOf<Type>());                              \
+            ::fbzz::scene::RefTypeNameOf<Type>(#Type));                         \
         Name.resize(_fbzz_refIds.size());                                       \
         for (::std::size_t _fbzz_i = 0; _fbzz_i < _fbzz_refIds.size(); ++_fbzz_i) { \
             Name[_fbzz_i].ref   = _fbzz_refIds[_fbzz_i];                        \
@@ -805,15 +1212,29 @@ public:
     virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 
+    // 型名から、その型の部分オブジェクトを指すポインタを返す。無ければ nullptr。
+    // GetScript<T>() / FindObjectsOfType<T>() が基底型やインターフェースで引けるのはこれによる。
+    // bool ではなく void* を返す。多重継承では派生の先頭番地と基底の番地が一致せず、
+    // 補正できるのは自分の型を知っている派生側だけなので、調整済みのポインタを返させる。
+    // dynamic_cast は使えない ─ スクリプトはホットリロードされる DLL 側に居るため、
+    // EXE と DLL で同じクラスの type_info が別実体になり得る。
+    virtual void* FbzzAsType(std::string_view typeName) const
+    {
+        return typeName == "Script" ? const_cast<Script*>(this) : nullptr;
+    }
+
+    // 型名による is-a 判定。継承鎖とインターフェースを辿り、1 つでも一致すれば true。
+    [[nodiscard]] bool IsA(std::string_view typeName) const
+    {
+        return FbzzAsType(typeName) != nullptr;
+    }
+
     // ── 固定ステップ更新 ────────────────────────────────────────────────────
     // Phase::Physics と同じ固定タイムステップ (既定 60Hz) で、物理の直前に呼ばれる。
     // フレームレートに関わらず 1 秒あたりの呼び出し回数が一定なので、力の加算や
     // 移動量の積分はここへ置くと PC 性能で挙動が変わらない。
     // 経過時間は time.DeltaTime() ではなく time.FixedDeltaTime() を使うこと。
-    //
-    // WHY OnUpdate と分けるか: OnUpdate は描画フレームごと (可変 dt) に 1 回で、
-    //     入力の取りこぼしを避けたい処理や見た目の更新に向く。両者は呼ばれる回数が
-    //     違うため、物理に効く処理を OnUpdate に書くと重い/軽い環境で結果がずれる。
+    // OnUpdate は描画フレームごと (可変 dt) なので、物理に効く処理を書くと環境で結果がずれる。
     virtual void OnFixedUpdate() {}
 
     // ── オブジェクトプール ──────────────────────────────────────────────────
@@ -822,6 +1243,31 @@ public:
     // 「毎回リセットしたい状態」(HP・経過時間・軌跡バッファ) はここで初期化する。
     virtual void OnSpawn() {}
     virtual void OnDespawn() {}
+
+    // このスクリプトが成立するために同じ GameObject へ必要なコンポーネント型名。
+    // FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT が override する。
+    // 返す名前は ComponentRegistry の serializedName (= 型名そのもの) と同じ綴り。
+    //
+    // 仮想関数の追加は必ず仮想関数列の末尾に行い、ScriptDllAbi.hpp の
+    // kScriptVtableAbiVersion をインクリメントすること (途中へ挿すと番号がずれる)。
+    virtual std::span<const std::string> RequiredComponents() const { return {}; }
+    virtual std::span<const std::string> OptionalComponents() const { return {}; }
+
+    // true を返すと Play 中でなくても ScriptSystem が回す。FBZZ_EXECUTE_ALWAYS() が override する。
+    // 既定は false。編集中の実行はシーンの中身を書き換えるので、ゲームロジックが走ると
+    // 保存したシーンに遊んだ後の状態が入る。見た目を組み立てる用途だけ opt-in する。
+    // 追加位置は仮想関数列の末尾 (kScriptVtableAbiVersion も併せて上げる)。
+    virtual bool ExecuteInEditMode() const { return false; }
+
+    // ── .sequence のコールバック ────────────────────────────────────────────
+    // EventTrack のキーを跨いだフレームで、時刻昇順に呼ばれる。逆再生と
+    // エディタのスクラブでは発火しない (演出の合図は巻き戻せないため)。
+    //
+    // 追加位置について: 仮想関数列の末尾に置くこと。ScriptDllAbi.hpp の
+    // kScriptVtableAbiVersion も併せて上げる。
+    virtual void OnSequenceEvent(const SequenceEventInfo&) {}
+    // wrapMode が Once のシーケンスが終端へ達し、復帰まで終えた直後に呼ばれる。
+    virtual void OnSequenceFinished(const char* /*sequenceName*/) {}
 
     bool enabled = true;
 
@@ -843,25 +1289,62 @@ public:
     void CancelEventSubscriptions();
 
     // コルーチン (Coroutine.hpp)。WaitForSeconds 等を co_await して時間軸処理を直線的に書く。
-    // 注意: コルーチン内から StopAllCoroutines() を呼ばないこと (実行中ハンドルの自己破棄になる)。
     void StartCoroutine(Coroutine co);
+    // コルーチン内から呼んでもよい。その場合は実行中のハンドルを自己破棄しないよう、
+    // ティックを抜けてから実際に畳む。
     void StopAllCoroutines();
 
     // QueueRenderPass / GetShaderDescriptor
     void QueueRenderPass(UserRenderPassDesc desc) const;
     const renderer::ShaderDescriptor* GetShaderDescriptor(std::string_view shaderPath) const;
 
-    // ScriptSystem 専用
+    // Engine の実行時コールバック共通経路
     void SetContext(Scene* scene, GameObject* gameObject);
-    void SyncEnabledState();
-    void TickInvokes(float dt);
-    void TickFrameDelays();
-    void TickCoroutines();
+    // 複合 Script が内部モジュールへ同じ Scene / GameObject コンテキストを渡す。
+    // WHY 公開するか: PlayerComponent のような 1 コンポーネント構成でも、責務別クラスを
+    // ファイル分割したまま既存の Script proxy と EntityRef を再利用できる。
+    void AdoptContext(const Script& owner) { SetContext(owner.m_scene, owner.m_gameObject); }
+    // GameObject の階層有効状態も含めた実効 enabled を更新し、OnEnable / OnDisable を通知する。
+    // WHY: Script 自身の enabled だけを見ると、GameObject を無効化してもコールバックが動き続ける。
+    void SynchronizeEnabledState(bool gameObjectActive = true);
+    // Script 内の空参照によるアクセス違反を Editor プロセスへ伝播させない共通入口。
+    // WHY: C++ の nullptr 参照は例外ではなく、通常の try/catch では保護できない。
+    //      すべての実行時コールバックをここへ通し、問題の Script だけを停止する。
+    bool ExecuteCallback(void (Script::*callback)(), const char* callbackName);
+    bool ExecuteCallback(void (Script::*callback)(const CollisionInfo&),
+                         const CollisionInfo& info,
+                         const char* callbackName);
+    bool ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&),
+                         const AnimationEventInfo& info);
+    bool ExecuteCallback(void (Script::*callback)(const RootMotionInfo&),
+                         const RootMotionInfo& info);
+    bool ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&),
+                         const SequenceEventInfo& info);
+    bool ExecuteCallback(void (Script::*callback)(const char*),
+                         const char* argument,
+                         const char* callbackName);
+    bool ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&),
+                         RenderPipeline& pipeline,
+                         RenderPassContext& context);
+    bool ExecuteCallback(const std::function<void()>& function, const char* callbackName);
+    bool ResumeCoroutine(Coroutine& coroutine);
+    void UpdateInvocations(float dt);
+    void UpdateFrameDelays();
+    void UpdateCoroutines();
+    // OnAwake 前と同じ状態へ戻す。Play の開始・停止をまたぐときに ScriptSystem が呼ぶ。
+    // WHY: 編集中に積んだ Invoke / Coroutine / OnEnable 済みフラグを Play へ持ち越すと、
+    //      Play 開始直後に「前のセッションの続き」が発火する。
+    void ResetLifecycleState();
     static void SetPhysicsWorld(physics::World* world);
+    // 今のスクリプト実行が Play セッション中か。app.IsPlaying() の実体。
+    // WHY 静的か: 編集中も走るスクリプトは自分がどちらのモードに居るか知る必要があるが、
+    //     Script は SceneManager を知らない。実行主体である ScriptSystem が毎フレーム書く。
+    static void SetInPlayMode(bool inPlayMode);
+    [[nodiscard]] static bool IsInPlayMode();
 
     using PrefabInstantiateFn = std::function<bool(Scene&, const std::string&, std::vector<EntityID>&)>;
-    static void SetInstantiateFn(PrefabInstantiateFn fn);
-    static bool InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots);
+    static void SetPrefabInstantiationCallback(PrefabInstantiateFn fn);
+    static bool InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots);
 
 protected:
     renderer::PostProcessSettings& GetRuntimePostProcessSettings();
@@ -871,6 +1354,8 @@ protected:
 
     Scene*      m_scene      = nullptr;
     GameObject* m_gameObject = nullptr;
+    // アクセス違反後は同じ Script を毎フレーム呼ばず、Play を継続できるようにする。
+    bool        m_runtimeFaulted = false;
 
 private:
     friend struct ScriptTransformProxy;
@@ -886,10 +1371,9 @@ private:
     friend struct ScriptMaterialProxy;
     friend class MaterialInstance;
     friend struct ScriptParticleProxy;
-    friend struct ScriptParticleForceFieldProxy;
+    friend struct ScriptForceFieldProxy;
     friend struct ScriptCloudProxy;
     friend struct ScriptSunMoonProxy;
-    friend struct ScriptTerrainDetailProxy;
     friend struct ScriptPatrolProxy;
     friend struct ScriptWindProxy;
     friend struct ScriptTrailProxy;
@@ -906,16 +1390,20 @@ private:
     friend struct ScriptIKProxy;
     friend struct ScriptWaterProxy;
     friend struct ScriptTerrainProxy;
-    friend struct ScriptFoliageProxy;
     friend struct ScriptEnvironmentProxy;
     friend struct ScriptDecalProxy;
     friend struct ScriptVolumeProxy;
     friend struct ScriptReflectionProbeProxy;
+    friend struct ScriptMotionWarpProxy;
     friend struct ScriptLifetimeProxy;
     friend struct ScriptSaveProxy;
     friend struct ScriptEventProxy;
     friend struct ScriptRandomProxy;
     friend struct ScriptTweenProxy;
+    friend struct ScriptSequenceProxy;
+    friend struct ScriptObjectMaskProxy;
+    friend struct ScriptSpringBoneProxy;
+    friend struct ScriptJointProxy;
 
     struct InvokeEntry {
         std::function<void()> fn;
@@ -941,10 +1429,12 @@ private:
     std::vector<Coroutine> m_coroutines;
     std::vector<Coroutine> m_pendingCoroutines;
     bool m_isTickingCoroutines = false;
+    bool m_stopAllCoroutinesRequested = false;
     bool m_enableStateInitialized = false;
     bool m_lastEnabled = true;
     bool m_isTickingInvokes = false;
     static physics::World*     s_physicsWorld;
+    static bool                s_inPlayMode;
     static PrefabInstantiateFn s_instantiateFn;
 };
 
@@ -966,9 +1456,13 @@ inline T* Ref<T>::Get() const
     if (!go) return nullptr;
     if constexpr (std::is_same_v<T, GameObject>)
         return go;
-    else
+    else if constexpr (std::is_base_of_v<Script, T>)
         // T が Script 派生のとき、その GameObject 上の T スクリプトを取得する。
         return owner->scene.template GetScript<T>(go);
+    else
+        // それ以外はコンポーネント。GameObject を完全型にしないで済むよう
+        // プロキシ経由で引く (Script.hpp は GameObject.hpp を include していない)。
+        return owner->scene.template GetComponent<T>(go);
 }
 
 } // namespace fbzz::scene

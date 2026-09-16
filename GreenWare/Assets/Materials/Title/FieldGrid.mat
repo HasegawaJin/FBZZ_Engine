@@ -1,0 +1,51 @@
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 1000
+shader = 'guid:2b9d47f1c05e4a3d9e61bc84f7a20d53|Assets/Shaders/Material/Background/FieldGrid.hlsl'
+version = 1
+
+[params]
+cellSize = 2.0
+dither = 0.004000000189989805
+electrode0 = [ -0.05999999865889549, 0.0, 0.0, 0.0 ]
+electrode1 = [ 0.0, 0.0, 0.0, 0.0 ]
+electrode2 = [ 0.0, 0.0, 0.0, 0.0 ]
+electrode3 = [ 0.0, 0.0, 0.0, 0.0 ]
+fadeEnd = 90.0
+fadeStart = 25.0
+gridColor = [ 0.08500000089406967, 0.0949999988079071, 0.11500000208616257, 1.0 ]
+groundHeight = 0.0
+heightFalloff = 3.0
+horizonColor = [ 0.054999999701976776, 0.06199999898672104, 0.07800000160932541, 1.0 ]
+horizonThickness = 0.04500000178813934
+intensity = 1.0
+lineWidth = 1.100000023841858
+majorColor = [ 0.20000000298023224, 0.2150000035762787, 0.24500000476837158, 1.0 ]
+majorEvery = 5.0
+majorWidth = 1.7999999523162842
+minusColor = [ 0.10000000149011612, 0.3499999940395355, 1.0, 1.0 ]
+phase = 0.0
+plusColor = [ 1.0, 0.11999999731779099, 0.14000000059604645, 1.0 ]
+poolRadius = 2.200000047683716
+poolStrength = 0.550000011920929
+ringSharpness = 14.0
+ringSpacing = 3.5
+ringSpeed = 2.200000047683716
+ringStrength = 0.30000001192092896
+warpRadius = 4.5
+warpStrength = 1.600000023841858
+zenithColor = [ 0.004000000189989805, 0.004999999888241291, 0.00800000037997961, 1.0 ]
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

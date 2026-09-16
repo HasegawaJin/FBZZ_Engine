@@ -1,14 +1,51 @@
-// FBZZ Engine
-// InspectorAnimation.cpp | fbzz::editor
-// Animation / IK 系 Component の Inspector 描画
+/// @file    InspectorAnimation.cpp
+/// @brief   Animation / IK 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorAnimation.hpp"
 #include <Editor/Util/EditorTheme.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
+#include <algorithm>
 
 namespace fbzz::editor {
 
 namespace {
+
+// Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
+// Inspector のレイヤー編集も Graph の編集モデルへ反映する。
+// WHY: Controller を開いた Graph は scene component のコピーを編集しているため、Inspector
+//      側だけを書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
+void SyncOpenControllerLayers(EditorContext& ctx,
+                              const scene::AnimatorComponent& source)
+{
+    if (!ctx.animationControllerEditor ||
+        ctx.animationControllerEditor.get() == &source ||
+        source.controllerPath.empty() ||
+        ctx.animationControllerEditorPath.empty() ||
+        asset::AssetManager::ResolveAssetPath(source.controllerPath) !=
+            ctx.animationControllerEditorPath) {
+        return;
+    }
+
+    auto& target = *ctx.animationControllerEditor;
+    target.layers = source.layers;
+    target.baseLayerMask = source.baseLayerMask;
+    ctx.animationControllerDirty = true;
+}
+
+void QueueLayerRename(EditorContext& ctx,
+                      const std::string& oldName,
+                      const std::string& newName)
+{
+    if (oldName.empty() || newName.empty() || oldName == newName) return;
+    ctx.animationGraphLayerRenamedFrom = oldName;
+    ctx.animationGraphLayerRenamedTo = newName;
+    ctx.animationGraphLayerFocus = newName;
+    if (ctx.animationGraphSelection.layerName == oldName)
+        ctx.animationGraphSelection.layerName = newName;
+}
 
 // ── Root Motion ──────────────────────────────────────────────────────────────
 // WHY: 従来は "Apply Root Motion" チェックボックス 1 個しかなく、
@@ -124,12 +161,16 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         "Base Layer が全身のポーズを作り、各レイヤーが Mask のボーンだけを上書き / 加算します。");
 
     const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
+    const auto markLayerDirty = [&]() {
+        SyncOpenControllerLayers(ctx, anim);
+        markDirty();
+    };
 
     // Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
     if (widgets::AssetPathField("Base Layer Mask", anim.baseLayerMask.path,
                                 ".mask", ctx.projectRoot)) {
         anim.baseLayerMask.Invalidate();
-        markDirty();
+        markLayerDirty();
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip(
@@ -152,7 +193,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                       layer.weight * 100.0f,
                       layer.slot.active ? "  (slot)" : "");
 
-        if (ImGui::Checkbox("##layer_enabled", &layer.enabled)) markDirty();
+        if (ImGui::Checkbox("##layer_enabled", &layer.enabled)) markLayerDirty();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("このレイヤーを評価するか");
         ImGui::SameLine();
 
@@ -164,17 +205,33 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             char nameBuffer[128];
             std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", layer.name.c_str());
             if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
-                layer.name = nameBuffer;
-                markDirty();
+                const std::string oldName = layer.name;
+                const std::string newName = nameBuffer;
+                const bool duplicate = std::any_of(
+                    anim.layers.begin(), anim.layers.end(),
+                    [&](const scene::AnimationLayer& candidate) {
+                        return &candidate != &layer && candidate.name == newName;
+                    });
+                if (!newName.empty() && !duplicate) {
+                    layer.name = newName;
+                    QueueLayerRename(ctx, oldName, newName);
+                    markLayerDirty();
+                }
             }
 
-            if (widgets::RangeField("Weight", layer.weight, 0.0f, 1.0f)) markDirty();
+            // Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
+            // 足りないときの誇張がここで完結する。
+            const float weightMax = layer.mode == scene::AnimationLayerMode::Additive
+                ? scene::MAX_LAYER_WEIGHT : 1.0f;
+            if (widgets::RangeField("Weight", layer.weight, 0.0f, weightMax)) markLayerDirty();
 
             static constexpr const char* kModeNames[] = { "Override", "Additive" };
             int modeIndex = static_cast<int>(layer.mode);
             if (ImGui::Combo("Blending", &modeIndex, kModeNames, 2)) {
                 layer.mode = static_cast<scene::AnimationLayerMode>(modeIndex);
-                markDirty();
+                if (layer.mode == scene::AnimationLayerMode::Override)
+                    layer.weight = std::min(layer.weight, 1.0f);
+                markLayerDirty();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::SetTooltip(
@@ -186,7 +243,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             if (widgets::AssetPathField("Mask", layer.mask.path, ".mask", ctx.projectRoot)) {
                 // 次フレームの AnimatorSystem に読み直させる。
                 layer.mask.Invalidate();
-                markDirty();
+                markLayerDirty();
             }
             if (layer.mask.path.empty()) {
                 ImGui::TextDisabled("  Mask 未設定 = 全身に効きます");
@@ -196,19 +253,22 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             if (layer.mode == scene::AnimationLayerMode::Additive) {
                 ImGui::SeparatorText("Additive Reference Pose");
                 ImGui::TextDisabled("空なら加算クリップ自身の先頭フレームを基準にします。");
+                // 基準ポーズも通常の Source と同じ種類のアセットを受ける。
+                // .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
+                // (Pose_XXX.anim 等) をドロップで割り当てられない。
                 if (widgets::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
-                                            ".fbx", ctx.projectRoot))
-                    markDirty();
+                                            ".anim,.asset,.fzasset,.fbx", ctx.projectRoot))
+                    markLayerDirty();
                 char clipBuffer[128];
                 std::snprintf(clipBuffer, sizeof(clipBuffer), "%s",
                               layer.additiveReference.clipName.c_str());
                 if (ImGui::InputText("Ref Clip", clipBuffer, sizeof(clipBuffer))) {
                     layer.additiveReference.clipName = clipBuffer;
-                    markDirty();
+                    markLayerDirty();
                 }
                 if (ImGui::DragFloat("Ref Time", &layer.additiveReference.time,
                                      0.01f, 0.0f, 600.0f, "%.2f s"))
-                    markDirty();
+                    markLayerDirty();
             }
 
             // ── State Machine ────────────────────────────────────────────
@@ -242,8 +302,12 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
     }
 
     if (removeIndex >= 0) {
+        const std::string removedName = anim.layers[static_cast<size_t>(removeIndex)].name;
         anim.layers.erase(anim.layers.begin() + removeIndex);
-        markDirty();
+        if (ctx.animationGraphSelection.layerName == removedName)
+            ctx.animationGraphSelection.Clear();
+        ctx.animationGraphLayerRemoved = removedName;
+        markLayerDirty();
     }
 
     if (ImGui::Button("Add Layer", ImVec2(-1.0f, 0.0f))) {
@@ -252,9 +316,159 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         layer.name = "Layer " + std::to_string(anim.layers.size() + 1);
         for (int suffix = 1; anim.FindLayer(layer.name) != nullptr && suffix < 1000; ++suffix)
             layer.name = "Layer " + std::to_string(anim.layers.size() + 1 + suffix);
+        const std::string createdName = layer.name;
         anim.layers.push_back(std::move(layer));
-        markDirty();
+        ctx.animationGraphLayerFocus = createdName;
+        markLayerDirty();
     }
+}
+
+// 揺れものは「根ボーンを 1 つ指す」だけで枝全体が対象になるため、IK のような
+// ボーン名リストを持たない。編集項目もチェーンあたり数個で済む。
+void DrawSpringBoneInspector(scene::GameObject* go,
+                             EditorContext& ctx,
+                             std::any& m_componentClipboard,
+                             const std::type_info*& m_componentClipboardType)
+{
+    DrawComponentSection<scene::SpringBoneComponent>(
+        go, ctx, m_componentClipboard, m_componentClipboardType, "Spring Bone",
+        [](scene::SpringBoneComponent& spring, EditorContext&) {
+            ImGui::Checkbox("Simulate In Editor", &spring.simulateInEditor);
+            ImGui::DragFloat("Teleport Reset", &spring.teleportResetDistance,
+                             0.05f, 0.0f, 100.0f, "%.2f m");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("この距離を超えて 1 フレームで移動したら慣性を捨てる");
+
+            ImGui::SeparatorText("Chains");
+            int removeChain = -1;
+            for (int ci = 0; ci < static_cast<int>(spring.chains.size()); ++ci) {
+                auto& chain = spring.chains[static_cast<size_t>(ci)];
+                ImGui::PushID(ci);
+
+                char header[64];
+                std::snprintf(header, sizeof(header), "##springchain%d", ci);
+                const float removeW = ImGui::CalcTextSize("Remove").x +
+                                      ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float checkboxW = ImGui::GetFrameHeight();
+
+                const bool open = ImGui::TreeNodeEx(
+                    header, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap,
+                    "Chain %d  (%s)", ci,
+                    chain.rootBoneName.empty() ? "no root" : chain.rootBoneName.c_str());
+
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::Checkbox("##en", &chain.enabled);
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+                if (ImGui::SmallButton("Remove")) removeChain = ci;
+                ImGui::PopStyleColor(3);
+
+                if (open) {
+                    if (!chain.enabled)
+                        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+
+                    char rootName[128];
+                    std::snprintf(rootName, sizeof(rootName), "%s", chain.rootBoneName.c_str());
+                    if (ImGui::InputText("Root Bone", rootName, sizeof(rootName))) {
+                        chain.rootBoneName = rootName;
+                        chain.nodes.clear();
+                        chain.builtSkeleton = nullptr;
+                    }
+                    if (ImGui::DragInt("Max Depth", &chain.maxDepth, 1.0f, 0, 32))
+                        chain.nodes.clear();
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("0 = 葉まで揺らす");
+
+                    ImGui::DragFloat("Stiffness", &chain.stiffness, 0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Damping",   &chain.damping,   0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Weight",    &chain.weight,    0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Gravity",   &chain.gravityPower,
+                                     0.05f, 0.0f, 50.0f, "%.2f m/s2");
+                    widgets::DragVec3("Gravity Dir", chain.gravityDirection, 0.01f, -1.0f, 1.0f);
+                    ImGui::DragFloat("Collision Radius", &chain.radius,
+                                     0.001f, 0.0f, 1.0f, "%.3f m");
+                    ImGui::DragFloat("Limit Angle", &chain.limitAngle,
+                                     1.0f, 0.0f, 180.0f, "%.1f deg");
+                    if (ImGui::DragFloat("Leaf Tail Length", &chain.leafTailLength,
+                                         0.001f, 0.001f, 1.0f, "%.3f m"))
+                        chain.nodes.clear();
+
+                    ImGui::TextDisabled("Simulated Bones: %d",
+                                        static_cast<int>(chain.nodes.size()));
+
+                    if (!chain.enabled) ImGui::PopStyleVar();
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+                ImGui::Spacing();
+            }
+            if (removeChain >= 0)
+                spring.chains.erase(spring.chains.begin() + removeChain);
+            if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f }))
+                spring.chains.push_back(scene::SpringBoneChain{});
+
+            ImGui::SeparatorText("Colliders");
+            int removeCollider = -1;
+            for (int di = 0; di < static_cast<int>(spring.colliders.size()); ++di) {
+                auto& collider = spring.colliders[static_cast<size_t>(di)];
+                ImGui::PushID(1000 + di);
+
+                char header[64];
+                std::snprintf(header, sizeof(header), "##springcol%d", di);
+                const float removeW = ImGui::CalcTextSize("Remove").x +
+                                      ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float checkboxW = ImGui::GetFrameHeight();
+
+                const bool open = ImGui::TreeNodeEx(
+                    header, ImGuiTreeNodeFlags_AllowOverlap, "Collider %d  (%s)", di,
+                    collider.boneName.empty() ? "root" : collider.boneName.c_str());
+
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::Checkbox("##en", &collider.enabled);
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+                if (ImGui::SmallButton("Remove")) removeCollider = di;
+                ImGui::PopStyleColor(3);
+
+                if (open) {
+                    char boneName[128];
+                    std::snprintf(boneName, sizeof(boneName), "%s", collider.boneName.c_str());
+                    if (ImGui::InputText("Bone", boneName, sizeof(boneName)))
+                        collider.boneName = boneName;
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("空欄でオーナー Transform 基準");
+
+                    const char* shapeNames[] = { "Sphere", "Capsule" };
+                    int shape = static_cast<int>(collider.shape);
+                    if (ImGui::Combo("Shape", &shape, shapeNames, 2))
+                        collider.shape = static_cast<scene::SpringBoneColliderShape>(shape);
+
+                    widgets::DragVec3("Offset", collider.offset, 0.005f, -10.0f, 10.0f);
+                    if (collider.shape == scene::SpringBoneColliderShape::Capsule)
+                        widgets::DragVec3("Tail Offset", collider.tailOffset,
+                                          0.005f, -10.0f, 10.0f);
+                    ImGui::DragFloat("Radius", &collider.radius, 0.005f, 0.001f, 5.0f, "%.3f m");
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+            if (removeCollider >= 0)
+                spring.colliders.erase(spring.colliders.begin() + removeCollider);
+            if (ImGui::Button("+ Add Collider", { -1.0f, 0.0f }))
+                spring.colliders.push_back(scene::SpringBoneCollider{});
+
+            ImGui::SeparatorText("Runtime Diagnostics");
+            ImGui::Text("Updates: %llu",
+                        static_cast<unsigned long long>(spring.runtimeUpdateCount));
+            ImGui::Text("Simulated Bones: %d", spring.runtimeSimulatedBoneCount);
+            ImGui::Text("Active Colliders: %d", spring.runtimeActiveColliderCount);
+        });
 }
 
 } // namespace
@@ -297,7 +511,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     if (asset::SaveAnimatorControllerAsset(path, controller)) {
                         anim.controllerPath = NormalizeAssetPath(path);
                         anim.loadedControllerPath = anim.controllerPath;
-                        ctx.selectedAssetPath = path;
+                        SelectAsset(ctx, path);
                         ctx.requestAssetBrowserRefresh = true;
                         if (ctx.markSceneDirty) ctx.markSceneDirty();
                     }
@@ -305,11 +519,24 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 return;
             }
 
-            if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f)))
+            if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f))) {
+                // WHY selectedAssetPath 任せにしないか: ここでの選択は GameObject であって
+                //     .animcontroller ではない。開くべき対象はこの Animator が指している
+                //     Controller なので、パスを明示して渡す。
+                if (ctx.openAnimationGraph) ctx.openAnimationGraph(anim.controllerPath);
                 ctx.requestOpenAnimationGraph = true;
+            }
 
             ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
             ImGui::Checkbox("Playing", &anim.playing);
+            ImGui::Checkbox("External Pose", &anim.externalPose);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Script が骨のローカルを毎フレーム書く構成。\n"
+                    "クリップが無いフレームでもバインドポーズへ戻さず、\n"
+                    "今の骨からスキニングパレットを組み直す。\n"
+                    "クリップで表せない動き (経路に沿って形が変わる胴など) 用。");
+            }
             DrawRootMotionSettings(anim);
 
             if (!anim.currentStateName.empty()) {
@@ -707,6 +934,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
         });
 
+    DrawSpringBoneInspector(go, ctx, m_componentClipboard, m_componentClipboardType);
 }
 
 

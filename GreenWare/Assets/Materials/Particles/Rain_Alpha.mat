@@ -1,0 +1,31 @@
+blend_mode = 'AlphaBlend'
+depth_test = 'LessEqual'
+depth_write = false
+double_sided = true
+mesh_type = 'surface'
+render_path = 'particle'
+render_queue = 3000
+shader = 'guid:3113effe97127d6489ff713f1fbc7fa7|Assets/Shaders/Material/Effects/RainDrop.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.7803921699523926, 0.9411764740943909, 1.0, 1.0 ]
+coreSharpness = 3.0
+headSize = 0.18000000715255737
+opacity = 1.0
+tailFalloff = 1.600000023841858
+
+[particle]
+emissive_scale = 0.0
+lighting_strength = 0.0
+soft_particles = true
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

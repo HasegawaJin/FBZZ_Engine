@@ -1,10 +1,12 @@
-// FBZZ Engine
-// BinaryReader.hpp | fbzz::asset
-// バイナリファイルを一括メモリ読み込みしてカーソルで読み進めるヘルパー。
-// WHY: ModelAssetImporter / AnimationImporter で同一構造が重複していたため共通化。
-//      Open に util::FileSystem::ReadBinary を使うことで Windows ANSI / UTF-8 混在問題を解消する。
-//      std::ifstream(std::string) は MSVC では ANSI コードページで解釈するが、
-//      ReadBinary は Win32 Unicode API 経由のため UTF-8 パスを正しく扱える。
+/// @file    BinaryReader.hpp
+/// @brief   バイナリファイルを一括メモリ読み込みしてカーソルで読み進めるヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// WHY: ModelAssetImporter / AnimationImporter で同一構造が重複していたため共通化。
+/// Open に util::FileSystem::ReadBinary を使うことで Windows ANSI / UTF-8 混在問題を解消する。
+/// std::ifstream(std::string) は MSVC では ANSI コードページで解釈するが、
+/// ReadBinary は Win32 Unicode API 経由のため UTF-8 パスを正しく扱える。
 #pragma once
 #include <Engine/Util/FileSystem.hpp>
 #include <cstddef>

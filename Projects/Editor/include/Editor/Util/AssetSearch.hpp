@@ -1,19 +1,20 @@
-// FBZZ Engine
-// AssetSearch.hpp | fbzz::editor
-// アセット検索の共通基盤 — 索引・差分更新・スコア付きマッチング
-//
-// WHY 共通化するか:
-//   統合前はアセット検索が 3 箇所で独立に実装され、挙動が食い違っていた。
-//     - SearchEverythingPanel : projectRoot/Assets を走査、拡張子はハードコードの 23 種、上限 5000
-//     - ImGuiWidgets のピッカー: projectRoot 全体を走査 (build/ や ThirdParty/ も含む)、
-//                                しかも開くたびにフルスキャンしていて索引を持たない
-//     - AssetBrowser           : ディレクトリ単位の列挙のみで横断検索は無し
-//   同じ「アセットを名前で探す」操作なのに、どこから呼ぶかで見つかるものが変わる状態だった。
-//
-// この Util が持つ責務:
-//   1. 走査対象と除外規則を 1 箇所に定める (build/ 等の生成物を索引に入れない)
-//   2. 索引をキャッシュし、AssetFileWatcher のイベントで差分更新する
-//   3. 一致判定とスコア付けを共通化し、どの画面でも同じ並び順で結果が出るようにする
+/// @file    AssetSearch.hpp
+/// @brief   アセット検索の共通基盤 — 索引・差分更新・スコア付きマッチング。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY 共通化するか:
+/// 統合前はアセット検索が 3 箇所で独立に実装され、挙動が食い違っていた。
+/// - SearchEverythingPanel : projectRoot/Assets を走査、拡張子はハードコードの 23 種、上限 5000
+/// - ImGuiWidgets のピッカー: projectRoot 全体を走査 (build/ や ThirdParty/ も含む)、
+/// しかも開くたびにフルスキャンしていて索引を持たない
+/// - AssetBrowser           : ディレクトリ単位の列挙のみで横断検索は無し
+/// 同じ「アセットを名前で探す」操作なのに、どこから呼ぶかで見つかるものが変わる状態だった。
+///
+/// この Util が持つ責務:
+/// 1. 走査対象と除外規則を 1 箇所に定める (build/ 等の生成物を索引に入れない)
+/// 2. 索引をキャッシュし、AssetFileWatcher のイベントで差分更新する
+/// 3. 一致判定とスコア付けを共通化し、どの画面でも同じ並び順で結果が出るようにする
 #pragma once
 #include <Editor/AssetFileWatcher.hpp>
 

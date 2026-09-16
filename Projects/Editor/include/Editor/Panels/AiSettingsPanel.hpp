@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AiSettingsPanel.hpp | fbzz::editor
-// AI 連携の診断・登録・Command Bus 制御を集約する設定パネル
+/// @file    AiSettingsPanel.hpp
+/// @brief   AI 連携の診断・登録・Command Bus 制御を集約する設定パネル。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 #include <Editor/Ai/AiSetupService.hpp>
 #include <Editor/Panels/IPanel.hpp>

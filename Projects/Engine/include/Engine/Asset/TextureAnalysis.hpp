@@ -1,24 +1,25 @@
-// FBZZ Engine
-// TextureAnalysis.hpp | fbzz::asset
-// VFX 素材テクスチャを解析し、オーサリング設定の根拠になる特徴量を取り出す
-//
-// WHY: エフェクトの見た目を決める設定 (blendMode / alphaSource / sprite グリッド /
-//      softParticles) は、どれも「その素材がどういう絵か」で正解が変わる。
-//      これまで素材はパス文字列でしかなく、中身を見る手段が「エディターで開いて目視」
-//      しか無かった。AI に至っては目視すらできないため、ファイル名から推測して
-//      blendMode を決め、プレビュー画像が変になってから初めて気づく、という
-//      収束しない反復に陥っていた。
-//
-//      画素を数えれば機械的に決まる項目は多い:
-//        - アルファチャンネルが実データを持つか (無ければ alphaSource=Luminance が必須)
-//        - RGB > A の画素があるか (= 事前乗算済み。Premultiplied 以外では黒枠が出る)
-//        - タイル境界の不連続から flipbook のコマ割り
-//        - 中心に輝度のピークがあるか (発光する芯 = Additive 向き)
-//        - 縁のアルファ勾配 (硬い縁なら softParticles が効く)
-//      これらを返せば、設定は推測ではなく観測から決まる。
-//
-// NOTE: DirectXTex は Engine に閉じているため、解析本体はここに置き
-//       Editor と MCP の双方から呼ぶ (FlipbookMotionVectors と同じ方針)。
+/// @file    TextureAnalysis.hpp
+/// @brief   VFX 素材テクスチャを解析し、オーサリング設定の根拠になる特徴量を取り出す。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: エフェクトの見た目を決める設定 (blendMode / alphaSource / sprite グリッド /
+/// softParticles) は、どれも「その素材がどういう絵か」で正解が変わる。
+/// これまで素材はパス文字列でしかなく、中身を見る手段が「エディターで開いて目視」
+/// しか無かった。AI に至っては目視すらできないため、ファイル名から推測して
+/// blendMode を決め、プレビュー画像が変になってから初めて気づく、という
+/// 収束しない反復に陥っていた。
+///
+/// 画素を数えれば機械的に決まる項目は多い:
+/// - アルファチャンネルが実データを持つか (無ければ alphaSource=Luminance が必須)
+/// - RGB > A の画素があるか (= 事前乗算済み。Premultiplied 以外では黒枠が出る)
+/// - タイル境界の不連続から flipbook のコマ割り
+/// - 中心に輝度のピークがあるか (発光する芯 = Additive 向き)
+/// - 縁のアルファ勾配 (硬い縁なら softParticles が効く)
+/// これらを返せば、設定は推測ではなく観測から決まる。
+///
+/// NOTE: DirectXTex は Engine に閉じているため、解析本体はここに置き
+/// Editor と MCP の双方から呼ぶ (FlipbookMotionVectors と同じ方針)。
 #pragma once
 
 #include <cstdint>
@@ -109,12 +110,10 @@ struct TextureAnalysis {
 
 // ── マテリアル解析 ──
 //
-// WHY: ParticleEmitter に materialPath があると、ParticlePass は .mat の blendMode で
-//      emitter.blendMode を**上書きする** (materialPath を描画設定の単一の信頼元にするため)。
-//      つまり .mat を割り当てた瞬間、Inspector や AI が設定した blendMode は無視される。
-//      これは仕様として正しいが、設定側からは「変更したのに効かない」としか見えない。
-    //      さらにテクスチャは .mat の albedo スロットで一元管理するため、
-    //      テクスチャ単体の解析だけでは推奨が実際の描画と噛み合わない。
+// WHY: パーティクルの «見た目» — ブレンド・アルファの取り出し方・フリップブック・歪み・
+//      煙・自己影 — は .mat (blend_mode と [particle]) が唯一の正本で、ParticleEmitter は
+//      «いつどこに出すか» しか持たない。さらにテクスチャも .mat の albedo スロットで
+//      一元管理するため、テクスチャ単体の解析だけでは推奨が実際の描画と噛み合わない。
 //      .mat まで読んで初めて「この素材をこの設定で描くと何が起きるか」が言える。
 
 // .mat とその albedo テクスチャを併せて見た結果。

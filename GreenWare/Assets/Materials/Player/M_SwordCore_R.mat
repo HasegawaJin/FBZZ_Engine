@@ -1,0 +1,29 @@
+# GreenWare
+# M_SwordCore_R.mat
+# 右刀の刀身の芯。
+#
+# WHY Library/Baked を指すのをやめたか:
+#   あれは再インポートで作り直される生成物で、しかも名前が旧極性 (_Plus / _Minus) の
+#   まま残っていた。極性の遊びは 2026-09-08 に撤去済みで、この 2 色が今区別して
+#   いるのは «どちらの刀か» だけ (BladeColors.hpp)。参照先を Assets 側の実体へ移し、
+#   名前も左右 (_R / _L) へ合わせる。
+#
+# WHY 左右で別ファイルにするか:
+#   赤青は共有 .mat の albedo が持っている。1 枚に統合すると、光っていない待機中に
+#   どちらの刀かが読めなくなる ─ 発光 (emissiveColor) は BladeChargeGlowComponent が
+#   GameObject 単位で書くので Play 中は色が付くが、地の色は材質側にしか無い。
+version = 1
+name = 'M_SwordCore_R'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.80, 0.25, 0.22, 1.0 ]
+metallic = 0.0
+roughness = 0.15
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

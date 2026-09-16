@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MatAssetImporter.cpp | fbzz::asset
-// .mat TOML → MaterialAsset ローダー (LoadMaterialAssetFromFile ラッパー)
+/// @file    MatAssetImporter.cpp
+/// @brief   .mat TOML → MaterialAsset ローダー (LoadMaterialAssetFromFile ラッパー)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Engine/Asset/MatAssetImporter.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Logger.hpp>

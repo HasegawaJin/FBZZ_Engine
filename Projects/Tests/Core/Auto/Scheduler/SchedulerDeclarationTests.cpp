@@ -1,7 +1,9 @@
-// FBZZ Engine
-// SchedulerDeclarationTests.cpp | GoogleTest
-// Scheduler の Phase、アクセス、順序宣言の値型契約を自動検証する。
-#include <gtest/gtest.h>
+/// @file    SchedulerDeclarationTests.cpp
+/// @brief   Scheduler の Phase、アクセス、順序宣言の値型契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Scheduler/ComponentAccess.hpp>
 #include <Engine/Core/Scheduler/OrderingHints.hpp>
@@ -11,10 +13,12 @@
 
 namespace fbzz::tests {
 
+class SchedulerDeclarationTest : public testkit::EngineFixture {};
+
 struct Position {};
 struct Velocity {};
 
-TEST(SchedulerDeclarationTest, RecordsReadAndWriteComponentTypes)
+TEST_F(SchedulerDeclarationTest, RecordsReadAndWriteComponentTypes)
 {
     fbzz::ComponentAccess access;
     access.Reads<Position>().Writes<Velocity>();
@@ -25,14 +29,14 @@ TEST(SchedulerDeclarationTest, RecordsReadAndWriteComponentTypes)
     EXPECT_EQ(access.writes.front(), std::type_index(typeid(Velocity)));
 }
 
-TEST(SchedulerDeclarationTest, SupportsUnrestrictedAccess)
+TEST_F(SchedulerDeclarationTest, SupportsUnrestrictedAccess)
 {
     fbzz::ComponentAccess access;
     access.Unrestricted();
     EXPECT_TRUE(access.unrestricted);
 }
 
-TEST(SchedulerDeclarationTest, RecordsOrderingHints)
+TEST_F(SchedulerDeclarationTest, RecordsOrderingHints)
 {
     fbzz::OrderingHints hints;
     hints.After<Position>().Before<Velocity>();
@@ -43,7 +47,7 @@ TEST(SchedulerDeclarationTest, RecordsOrderingHints)
     EXPECT_EQ(hints.before.front(), std::type_index(typeid(Velocity)));
 }
 
-TEST(SchedulerDeclarationTest, ExposesTheConfiguredPhaseDefaults)
+TEST_F(SchedulerDeclarationTest, ExposesTheConfiguredPhaseDefaults)
 {
     const fbzz::PhaseConfig config{};
 

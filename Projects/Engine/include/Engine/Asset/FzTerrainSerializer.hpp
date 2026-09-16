@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FzTerrainSerializer.hpp | fbzz::asset
-// .terrain バイナリの読み書き (IAssetSerializer<TerrainAsset> 実装)
+/// @file    FzTerrainSerializer.hpp
+/// @brief   .terrain バイナリの読み書き (IAssetSerializer<TerrainAsset> 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Engine/Asset/IAssetSerializer.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>

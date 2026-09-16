@@ -1,6 +1,7 @@
-// FBZZ Engine
-// OBBCollider.cpp | fbzz::physics
-// Oriented bounding box collider
+/// @file    OBBCollider.cpp
+/// @brief   Oriented bounding box collider.
+/// @author  Hasegawa Jin
+/// @date    2026-05-25
 #include <Physics/OBBCollider.hpp>
 #include <algorithm>
 #include <cmath>

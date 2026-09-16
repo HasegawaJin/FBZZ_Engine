@@ -102,7 +102,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
         // その UV の深度をサンプル
         float sampleNdcDepth  = texDepth.SampleLevel(sampDefault, rayUV, 0).r;
-        float sampleDepthLin  = LinearizeDepth(sampleNdcDepth, nearZ, farZ);
+        float sampleDepthLin  = LinearizeDepth(sampleNdcDepth, nearZ, farZ, isOrthographic);
 
         // レイの現在深度 (正値)
         float rayDepthLin     = -rayPosVS.z;

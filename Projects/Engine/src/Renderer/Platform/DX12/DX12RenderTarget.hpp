@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DX12RenderTarget.hpp | fbzz::renderer
-// MRTカラー、深度、RTV/DSV/SRVを所有するDirectX 12描画先
+/// @file    DX12RenderTarget.hpp
+/// @brief   MRTカラー、深度、RTV/DSV/SRVを所有するDirectX 12描画先。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
+#include <Engine/Renderer/Format.hpp>
 #include <Engine/Renderer/IRenderTarget.hpp>
 #include <array>
 #include <d3d12.h>
@@ -18,7 +20,7 @@ public:
     static constexpr uint32_t MAX_COLOR = 8;
     ~DX12RenderTarget() override;
     bool Init(DX12Context* context, DX12StateTracker* tracker,
-              uint32_t width, uint32_t height, uint32_t colorCount);
+              uint32_t width, uint32_t height, const RenderTargetDesc& desc);
     bool InitCubemap(DX12Context* context, DX12StateTracker* tracker,
                      uint32_t size, uint32_t mipCount);
     uint32_t GetWidth() const override { return m_width; }
@@ -32,6 +34,7 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetDepthSrv() const;
     ID3D12Resource* GetColorResource(uint32_t index) const;
     ID3D12Resource* GetDepthResource() const { return m_depth.Get(); }
+    bool            HasDepth() const { return m_depth != nullptr; }
     DXGI_FORMAT GetColorFormat() const { return DXGI_FORMAT_R16G16B16A16_FLOAT; }
     void TransitionColorForRead(ID3D12GraphicsCommandList* commands, uint32_t index);
     bool IsCubemap() const { return m_isCubemap; }

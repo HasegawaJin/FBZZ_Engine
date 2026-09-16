@@ -1,6 +1,7 @@
-// FBZZ Engine
-// CollisionPair.hpp | fbzz::physics
-// BroadPhase が生成する衝突候補ペア
+/// @file    CollisionPair.hpp
+/// @brief   BroadPhase が生成する衝突候補ペア。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Physics/Collider.hpp>
 #include <Physics/PhysicsMaterial.hpp>

@@ -1,15 +1,29 @@
-// FBZZ Engine
-// PrefabSerializer.hpp | fbzz::editor
-// Saves and instantiates GameObject hierarchies as .prefab assets
+/// @file    PrefabSerializer.hpp
+/// @brief   Saves and instantiates GameObject hierarchies as .prefab assets.
+/// @author  Hasegawa Jin
+/// @date    2026-05-26
 #pragma once
 #include <Editor/Util/PrefabOverrides.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::scene { class Scene; }
 
 namespace fbzz::editor {
+
+/// ドロップやコマンドでシーンへそのまま実体化できるアセット拡張子か (先頭ドット付き・小文字)。
+///
+/// WHY 1 箇所にまとめるか: 同じ判定が Scene View のドロップ・Hierarchy の 2 つのドロップ先・
+///     AI の prefab.instantiate と 4 箇所に散っており、対応拡張子を増やすたびに
+///     «Hierarchy には置けるのに Scene View には置けない» 取りこぼしが出る。
+/// WHY .vfx を含めるか: .vfx は .prefab とまったく同じ prefab 形式 (TOML) で、
+///     展開経路 (scene::InstantiatePrefabAsset) も拡張子を見ていない。
+[[nodiscard]] inline bool IsInstantiableAssetExtension(std::string_view ext)
+{
+    return ext == ".prefab" || ext == ".vfx";
+}
 
 class PrefabSerializer {
 public:
@@ -34,10 +48,14 @@ public:
     // その値で上書きしてから生成する (インスタンス側の個別調整を保ったまま作り直す用)。
     // WHY: 生成後のライブなコンポーネントへ値を書き戻すのは型ごとの分岐が必要になるが、
     //      「展開直前の TOML を書き換える」なら 1 箇所で全コンポーネントに効く。
+    // preserveGuids は「プレファブ側 instanceId → 名乗らせたい instanceId」。
+    // 既存インスタンスの作り直しで元の guid を引き継ぐために Revert が渡す
+    // (詳細は Engine/Scene/PrefabInstantiate.hpp)。
     static bool Instantiate(scene::Scene& scene,
                             const std::string& path,
                             std::vector<scene::EntityID>& outRootEntities,
-                            const PrefabOverrideSet* overrides = nullptr);
+                            const PrefabOverrideSet* overrides = nullptr,
+                            const std::unordered_map<std::string, std::string>* preserveGuids = nullptr);
 
     // Apply: インスタンスの現在状態をプレファブアセットに書き戻す。
     // WHY: インスタンスを編集してプレファブに反映する Unity の "Apply to Prefab" に相当する。
@@ -47,6 +65,22 @@ public:
     //      プロジェクトの Assets フォルダを指さない。
     static bool Apply(const scene::Scene& scene, scene::EntityID rootEntity,
                       const std::string& projectRoot = "");
+
+    // ApplyAndPropagate: Apply したうえで、同じ .prefab の他インスタンスも新定義へ揃える。
+    //
+    // WHY 別関数にするか (不具合修正):
+    //   Apply 単体はアセットファイルを書き換えるだけで、既に配置済みの他インスタンスは
+    //   古い定義のまま残る。それを避けるため UI 側は Apply の直後に必ず
+    //   PropagateToInstances を呼んでいたが、**AI の prefab.apply だけが呼んでいなかった**。
+    //   同じ「Apply」なのに、人が押すと 100 個の実体へ反映され、AI が実行すると
+    //   ファイルだけ変わって画面は何も変わらない、という食い違いになっていた。
+    //   2 つを 1 つの操作として閉じてしまえば、呼び忘れが起きる場所が無くなる。
+    //
+    // 戻り値: 更新した他インスタンス数。Apply 自体に失敗したときは -1。
+    // (0 と -1 を分けるのは「他に実体が無かった」と「書き戻せなかった」が別物のため)
+    static int ApplyAndPropagate(scene::Scene& scene, scene::EntityID rootEntity,
+                                 const std::string& projectRoot = "",
+                                 bool preserveOverrides = true);
 
     // Revert: インスタンスをプレファブアセットの状態に戻す。
     // WHY: インスタンスへの変更を破棄して元の定義に揃える "Revert" に相当する。

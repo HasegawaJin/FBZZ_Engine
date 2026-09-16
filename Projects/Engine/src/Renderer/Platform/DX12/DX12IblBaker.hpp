@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12IblBaker.hpp | fbzz::renderer
-// キャプチャ済み環境キューブをirradiance/prefilterへGPU畳み込みする
+/// @file    DX12IblBaker.hpp
+/// @brief   キャプチャ済み環境キューブをirradiance/prefilterへGPU畳み込みする。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <memory>
@@ -37,6 +38,10 @@ private:
     DX12UploadArena* m_uploadArena = nullptr;
     std::unique_ptr<DX12Shader> m_irradianceShader;
     std::unique_ptr<DX12Shader> m_prefilterShader;
+
+    /// 読み込み失敗を報告済みか。失敗しても毎フレーム再試行するため、
+    /// これが無いと同じエラーで Console が埋まって他のログが押し出される。
+    bool m_shaderFailureReported = false;
 };
 
 } // namespace fbzz::renderer

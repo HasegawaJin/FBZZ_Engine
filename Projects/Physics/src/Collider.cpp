@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Collider.cpp | fbzz::physics
-// コライダー形状の定義 (Sphere / AABB / Capsule)
+/// @file    Collider.cpp
+/// @brief   コライダー形状の定義 (Sphere / AABB / Capsule)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/Collider.hpp>
 #include <algorithm>
 

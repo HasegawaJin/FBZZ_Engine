@@ -1,18 +1,19 @@
-// FBZZ Engine
-// TerrainTool.hpp | fbzz::editor
-// エディタ上でマウス操作により地形の高さ彫刻（Sculpt）とテクスチャ塗布（Paint）を行うツール
-//
-// WHY: 地形編集は「ブラシ操作 → heightData / splatData 変更 → dirty フラグ → GPU 再転送」
-//      という明確なデータフローを持つ。これを Script や Panel に分散させず、
-//      TerrainTool という単一クラスに集約することで、レイキャスト・ブラシ計算・
-//      フォールオフ・アルゴリズムを一箇所で管理できる。
-//
-// 使い方:
-//   1. ViewportPanel::OnRenderContent のシーンビュー処理末尾で Update() を呼ぶ
-//   2. TerrainTool::OnEditorGUI() でブラシ設定 UI を表示する
-//   3. heightDirty / splatDirty は TerrainTool が自動的に立てる
-//
-// 依存: Engine (TerrainComponent, Ray, Camera, Scene), ImGui
+/// @file    TerrainTool.hpp
+/// @brief   エディタ上でマウス操作により地形の高さ彫刻（Sculpt）とテクスチャ塗布（Paint）を行うツール。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: 地形編集は「ブラシ操作 → heightData / splatData 変更 → dirty フラグ → GPU 再転送」
+/// という明確なデータフローを持つ。これを Script や Panel に分散させず、
+/// TerrainTool という単一クラスに集約することで、レイキャスト・ブラシ計算・
+/// フォールオフ・アルゴリズムを一箇所で管理できる。
+///
+/// 使い方:
+/// 1. ViewportPanel::OnRenderContent のシーンビュー処理末尾で Update() を呼ぶ
+/// 2. TerrainTool::OnEditorGUI() でブラシ設定 UI を表示する
+/// 3. heightDirty / splatDirty は TerrainTool が自動的に立てる
+///
+/// 依存: Engine (TerrainComponent, Ray, Camera, Scene), ImGui
 #pragma once
 
 #include "TerrainBrush.hpp"

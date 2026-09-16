@@ -1,0 +1,339 @@
+# FBZZ Engine
+# FX_SRP_Bite.vfx — 噛みつきの «喉の溜め» と «外した着弾»。
+#
+# WHY 1 つのグラフで両方を持つか:
+#   噛みつきは «喉が溜まって → 突っ込む» の 1 続きで、外した瞬間に溜めた光が
+#   そこで途切れることに意味がある。2 本に割ると «溜めだけ出て着弾が出ない» /
+#   «着弾だけ出て溜めが無い» という組み合わせが作れてしまう。
+#   姿の選択は SerpentBiteVfxComponent の Impact Pose が持ち、要らない側の層を畳む。
+#
+# WHY ここに絵が要るか (boss-serpent.md「撃破までの形」):
+#   終盤まで頭は床下にいて触れず、«頭を斬りたい» だけが動機として置かれている。
+#   その頭がこちら側へ出てくる唯一の手が噛みつきなので、ここに何も無いと
+#   «近づいてよい 1 秒» がプレイヤーに伝わらない。以前は外しても無音無絵だった。
+#
+# WHY 溜めを «吸い込み» で作るか:
+#   噴き出す絵にすると «もう撃った» と読める。外から内へ集まる火の粉なら、
+#   «まだ来ていない / これから来る» が 1 目で分かる。放射を負に取るのがその実装。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_SRP_Bite"
+instanceId = "4d6208fb-3e71-4a95-8c02-b17e5943da60"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "SerpentBiteVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+rimColor = [1.0, 0.62, 0.16, 1.0]
+dustColor = [0.66, 0.63, 0.58, 0.5]
+throatSize = 1.1
+throatLight = 14.0
+intakeSpeed = 5.0
+impactSize = 2.2
+impactKick = 7.0
+sparkPower = 10.0
+impactPose = false
+
+# 喉の芯。開いた口の中で光っている 1 点。溜めのあいだ膨らみ続ける。
+[[gameobjects]]
+name = "Throat Core"
+instanceId = "9f38b05a-7c14-4d26-b8e9-0357a2c6d1e4"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Bite"
+parentInstanceId = "4d6208fb-3e71-4a95-8c02-b17e5943da60"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.7
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 0
+sizeStart = 0.15
+sizeEnd = 0.75
+sizeCurvePower = 0.7
+lifetime = 0.7
+lifetimeRandom = 0.1
+emitVelocity = [0.0, 0.0, 0.0]
+velocitySpread = 0.1
+velocityDamping = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+renderMode = 0
+sortMode = 0
+renderPriority = 48
+colorVariation = 0.0
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.72, 0.3, 0.0], [0.25, 1.0, 0.62, 0.16, 0.8], [0.85, 1.0, 0.78, 0.4, 1.0], [1.0, 1.0, 0.9, 0.6, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+# 外から喉へ集まる火の粉。放射が負なので «吸い込み» になる。
+[[gameobjects]]
+name = "Throat Intake"
+instanceId = "22b7e491-05fa-4c68-9d31-7ae460c85b3f"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Bite"
+parentInstanceId = "4d6208fb-3e71-4a95-8c02-b17e5943da60"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.6
+loop = false
+emitRate = 0.0
+maxParticles = 24
+shape = 1
+sphereRadius = 2.6
+sizeStart = 0.095
+sizeEnd = 0.03
+sizeCurvePower = 1.4
+lifetime = 0.6
+lifetimeRandom = 0.25
+emitVelocity = [0.0, 0.0, 0.0]
+velocitySpread = 0.3
+velocityDamping = 0.0
+radialVelocity = -12.5
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_EmberDot_Additive.mat"
+renderMode = 0
+sortMode = 0
+renderPriority = 46
+colorVariation = 0.1
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.62, 0.16, 0.0], [0.3, 1.0, 0.7, 0.26, 0.9], [1.0, 1.0, 0.86, 0.5, 0.0]]
+bursts = [{ time = 0.0, count = 8, cycles = 3, interval = 0.14, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Throat Light"
+instanceId = "8e04c73d-b129-4f50-a962-51d3607be8a4"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Bite"
+parentInstanceId = "4d6208fb-3e71-4a95-8c02-b17e5943da60"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 0.62, 0.16]
+intensity = 14.0
+enabled = true
+range = 7.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.7
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+# 溜めきる所で最大。頭打ちにせず «上がり続ける» ことが予兆そのものになる。
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 0.1], [0.75, 0.7], [0.95, 1.0], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }
+
+# ── 外した着弾 (Impact Pose = true のときだけ生きる層) ──────────────────
+# 頭が床へ突っ込んだ。層は «ローカル +Z が噛んだ向き» で置く。
+[[gameobjects]]
+name = "Impact Dust"
+instanceId = "61ad9427-fc35-4e08-b512-d7409e6a3c8b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Bite"
+parentInstanceId = "4d6208fb-3e71-4a95-8c02-b17e5943da60"
+
+[gameobjects.transform]
+position = [0.0, 0.15, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 22
+shape = 2
+coneAngleDegrees = 48.0
+coneRadius = 0.3
+sizeStart = 0.3
+sizeEnd = 2.2
+sizeCurvePower = 0.55
+lifetime = 0.52
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 3.15, 7.0]
+velocitySpread = 0.8
+velocityDamping = 2.4
+gravity = [0.0, 0.3, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -22.0
+angularVelocityMax = 22.0
+renderPriority = 30
+colorVariation = 0.08
+colorStart = [0.66, 0.63, 0.58, 0.5]
+colorEnd = [0.5, 0.48, 0.45, 0.0]
+bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.04
+
+[[gameobjects]]
+name = "Impact Grit"
+instanceId = "37f5c1b8-4d90-42e7-8016-5be3a2704d19"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Bite"
+parentInstanceId = "4d6208fb-3e71-4a95-8c02-b17e5943da60"
+
+[gameobjects.transform]
+position = [0.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.22
+loop = false
+emitRate = 0.0
+maxParticles = 24
+shape = 2
+coneAngleDegrees = 36.0
+coneRadius = 0.16
+sizeStart = 0.16
+sizeEnd = 0.045
+sizeCurvePower = 1.4
+lifetime = 0.8
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 6.3, 7.7]
+velocitySpread = 1.5
+velocityDamping = 0.9
+gravity = [0.0, -9.8, 0.0]
+materialPath = "guid:0035bd7a679f54fa90c30d3b9b5d2941"
+renderMode = 1
+stretchedVelocityScale = 0.08
+stretchedLengthScale = 1.5
+sortMode = 0
+renderPriority = 36
+colorVariation = 0.12
+colorStart = [0.66, 0.63, 0.58, 1.0]
+colorEnd = [0.42, 0.4, 0.36, 0.0]
+bursts = [{ time = 0.0, count = 10, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.02
+
+[[gameobjects]]
+name = "Impact Sparks"
+instanceId = "0c92b7e6-58d3-4a14-9f7b-e340562c81af"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Bite"
+parentInstanceId = "4d6208fb-3e71-4a95-8c02-b17e5943da60"
+
+[gameobjects.transform]
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.18
+loop = false
+emitRate = 0.0
+maxParticles = 18
+shape = 2
+coneAngleDegrees = 52.0
+coneRadius = 0.2
+sizeStart = 0.07
+sizeEnd = 0.02
+sizeCurvePower = 1.9
+lifetime = 0.22
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 5.5, 10.0]
+velocitySpread = 2.0
+velocityDamping = 1.2
+gravity = [0.0, -13.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.1
+stretchedLengthScale = 2.2
+sortMode = 0
+renderPriority = 46
+colorVariation = 0.12
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.94, 0.72, 1.0], [0.35, 1.0, 0.62, 0.16, 0.95], [1.0, 0.68, 0.22, 0.03, 0.0]]
+bursts = [{ time = 0.0, count = 9, cycles = 1, interval = 0.015, probability = 1.0 }]
+startDelay = 0.0

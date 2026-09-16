@@ -169,7 +169,7 @@ float3 EvaluateIBLAdvanced(
         (float3(0.04f, 0.04f, 0.04f) * coatBrdf.x + coatBrdf.y) * coat;
 
     const float grazing = Pow5(1.0f - NdotV);
-    const float3 sheenEnv = irradianceMap.Sample(samp, N) * saturate(sheen) *
+    const float3 sheenEnv = irradianceMap.Sample(samp, N).rgb * saturate(sheen) *
         saturate(sheenColor) * grazing * (1.0f - saturate(metallic)) * 0.5f * saturate(ao);
     return base + clearcoatSpec + sheenEnv;
 }

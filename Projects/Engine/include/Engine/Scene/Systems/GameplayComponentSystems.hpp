@@ -1,6 +1,7 @@
-// FBZZ Engine
-// GameplayComponentSystems.hpp | fbzz::scene
-// 制約、Spline、Camera Rig、Billboardを実行時に評価するSystem群
+/// @file    GameplayComponentSystems.hpp
+/// @brief   制約、Spline、Camera Rig、Billboardを実行時に評価するSystem群。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <Engine/Core/Scheduler/ISystem.hpp>

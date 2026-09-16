@@ -1,14 +1,15 @@
-// FBZZ Engine
-// IIblBaker.hpp | fbzz::renderer
-// IBL ベイク処理の抽象インターフェース
-//
-// 責務:
-//   HDRI float ピクセルデータを受け取り、4 枚の DDS ファイルを outputDir に生成する。
-//   処理は GPU Compute Shader で行う。Runtime は生成済み DDS を LoadTexture で読むだけ。
-//
-// 取得方法:
-//   IRenderer::CreateIblBaker(compiledShadersDir) で DX11 実装を得る。
-//   compiledShadersDir は Assets/Shaders/compiled/ の絶対パス。
+/// @file    IIblBaker.hpp
+/// @brief   IBL ベイク処理の抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 責務:
+/// HDRI float ピクセルデータを受け取り、4 枚の DDS ファイルを outputDir に生成する。
+/// 処理は GPU Compute Shader で行う。Runtime は生成済み DDS を LoadTexture で読むだけ。
+///
+/// 取得方法:
+/// IRenderer::CreateIblBaker(compiledShadersDir) で DX11 実装を得る。
+/// compiledShadersDir は Assets/Shaders/compiled/ の絶対パス。
 #pragma once
 #include <cstdint>
 #include <memory>

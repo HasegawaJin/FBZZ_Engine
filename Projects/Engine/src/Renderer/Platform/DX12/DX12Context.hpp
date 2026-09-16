@@ -1,7 +1,10 @@
-// FBZZ Engine
-// DX12Context.hpp | fbzz::renderer
-// DirectX 12 のデバイス・キュー・フレーム同期を共有管理する基盤
+/// @file    DX12Context.hpp
+/// @brief   DirectX 12 のデバイス・キュー・フレーム同期を共有管理する基盤。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
+
+#include <span>
 
 #include <array>
 #include <cstdint>
@@ -55,6 +58,15 @@ public:
     DescriptorTableAllocation AllocateUavTable();
     D3D12_CPU_DESCRIPTOR_HANDLE GetNullBufferSrv(uint32_t slot) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetNullUav(uint32_t slot) const;
+    /// 転送する 1 段ぶん。rowPitch は rgba の 1 行のバイト数。
+    struct TextureMip {
+        const uint8_t* rgba = nullptr;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        std::size_t rowPitch = 0;
+    };
+    /// 0 段目から並べたミップの列を RGBA8 の 2D テクスチャとして同期転送する。
+    bool UploadTexture2DMips(std::span<const TextureMip> mips, Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
     bool UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
                          Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
     bool CreateDefaultBuffer(const void* data, size_t sizeBytes,
@@ -68,6 +80,11 @@ public:
     uint32_t GetDynamicSrvUsage() const { return m_dynamicSrvOffsets[m_frameIndex]; }
     uint32_t GetDynamicSrvCapacity() const { return DYNAMIC_DESCRIPTORS_PER_FRAME; }
     bool IsFrameOpen() const { return m_frameOpen; }
+
+    // Present の垂直同期。既定は無効 (フレームレート制御は Time::targetFps)。
+    // 有効時は SyncInterval=1 にし、tearing フラグは落とす (併用は DXGI が拒否する)。
+    void SetVSync(bool enabled) { m_vsync = enabled; }
+    bool GetVSync() const { return m_vsync; }
 
     // ---- 共有コマンドリストのパイプライン状態の世代 ----
     // WHY: フレーム用コマンドリストは DX12Renderer 以外 (ImGui / IblBaker) も記録に使い、
@@ -145,6 +162,7 @@ private:
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_allowTearing = false;
+    bool m_vsync = false;
     bool m_frameOpen = false;
     uint64_t m_pipelineStateGeneration = 0;
     bool m_suspended = false;

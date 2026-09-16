@@ -1,12 +1,14 @@
-﻿// FBZZ Engine
-// SelectionMaskPass.cpp | fbzz::scene
-// Selection mask render pass implementation
+/// @file    SelectionMaskPass.cpp
+/// @brief   Selection mask render pass implementation.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "../Geometry/GeometryPasses.hpp"  // FindAnimator (親方向探索) を共用する
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
+#include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -23,8 +25,6 @@
 
 namespace fbzz::scene {
 
-namespace {
-
 bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& settings)
 {
     const EntityID id = go.GetID();
@@ -37,6 +37,8 @@ bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& 
     }
     return false;
 }
+
+namespace {
 
 // ParticlePassと同じ規則でLocal座標をWorld座標へ移す。
 math::Vector3 ParticleWorldPoint(const Transform& transform, const math::Vector3& localPoint)
@@ -54,22 +56,28 @@ math::Vector3 ParticleWorldVector(const Transform& transform, const math::Vector
     return transform.worldRotation * localVector;
 }
 
+// エミッター 1 個ぶんのマスク頂点を貸し出すプール。
+// WHY 共有バッファを使わないか: 複数のエミッターを同時選択すると Update → Submit が
+//     エミッターの数だけ並ぶ。DX12 では後の Update が先に記録した Draw の中身まで
+//     差し替えてしまう (詳細は DynamicBufferPool.hpp)。
+renderer::DynamicVertexBufferPool g_selectionMaskParticlePool;
+
 // 選択されたParticleEmitterの現在形状を、テクスチャAlpha込みでSelection Maskへ描く。
 // WHY: GameObjectのBounds矩形では炎・煙の透明部分まで囲まれ、Unity型のシルエット輪郭にならない。
 void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderPassContext& ctx)
 {
     auto& h = ctx.handles;
-    if (!emitter.enabled || emitter.particles.empty() || !emitter.texture.IsValid()
-        || !emitter.renderCB.IsValid() || !h.selectionMaskParticleShader.IsValid()
-        || !h.particleVB.IsValid() || !h.particleIB.IsValid()
-        || !h.selectionMaskPSO.IsValid() || !emitter.meshParticlePath.empty()) {
+    if (!emitter.settings.enabled || emitter.runtime.particles.empty() || !emitter.runtime.texture.IsValid()
+        || !emitter.runtime.renderCB.IsValid() || !h.selectionMaskParticleShader.IsValid()
+        || !h.particleIB.IsValid()
+        || !h.selectionMaskPSO.IsValid() || !emitter.settings.meshParticlePath.empty()) {
         return;
     }
 
     constexpr float uv[4][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } };
     std::vector<ParticleVertex> vertices;
     const int particleCount = (std::min)(
-        static_cast<int>(emitter.particles.size()), kMaxParticleDraw);
+        static_cast<int>(emitter.runtime.particles.size()), kMaxParticleDraw);
     vertices.reserve(static_cast<std::size_t>(particleCount) * 4);
     int quadCount = 0;
 
@@ -107,12 +115,12 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
         ++quadCount;
     };
 
-    const bool localSpace = emitter.simulationSpace == ParticleSimulationSpace::Local;
-    const bool billboardTrails = emitter.trailEnabled && !emitter.trailRibbon;
+    const bool localSpace = emitter.settings.simulationSpace == ParticleSimulationSpace::Local;
+    const bool billboardTrails = emitter.settings.trail.trailEnabled && !emitter.settings.trail.trailRibbon;
     const int trailPoints = billboardTrails
-        ? std::clamp(emitter.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
+        ? std::clamp(emitter.settings.trail.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
     for (int index = 0; index < particleCount; ++index) {
-        const Particle& particle = emitter.particles[static_cast<std::size_t>(index)];
+        const Particle& particle = emitter.runtime.particles[static_cast<std::size_t>(index)];
         const math::Vector3 position = localSpace
             ? ParticleWorldPoint(go.transform, particle.position) : particle.position;
         const math::Vector3 velocity = localSpace
@@ -127,15 +135,15 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
                 ? ParticleWorldPoint(go.transform,
                     particle.trailPoints[static_cast<std::size_t>(trail)])
                 : particle.trailPoints[static_cast<std::size_t>(trail)];
-            const float width = emitter.trailWidthScale
-                + (1.0f - emitter.trailWidthScale) * fade;
-            const float alpha = emitter.trailAlphaScale
-                + (1.0f - emitter.trailAlphaScale) * fade;
+            const float width = emitter.settings.trail.trailWidthScale
+                + (1.0f - emitter.settings.trail.trailWidthScale) * fade;
+            const float alpha = emitter.settings.trail.trailAlphaScale
+                + (1.0f - emitter.settings.trail.trailAlphaScale) * fade;
             const math::Vector4 trailColor = {
-                particle.color.x * emitter.trailColorTint.x,
-                particle.color.y * emitter.trailColorTint.y,
-                particle.color.z * emitter.trailColorTint.z,
-                particle.color.w * emitter.trailColorTint.w * alpha
+                particle.color.x * emitter.settings.trail.trailColorTint.x,
+                particle.color.y * emitter.settings.trail.trailColorTint.y,
+                particle.color.z * emitter.settings.trail.trailColorTint.z,
+                particle.color.w * emitter.settings.trail.trailColorTint.w * alpha
             };
             emitQuad(trailPosition, velocity, particle.size * width, particle.rotation,
                      trailColor, particle);
@@ -143,18 +151,20 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
     }
     if (quadCount == 0) return;
 
-    ctx.resources.Update(h.particleVB, vertices.data(),
+    const auto vertexBuffer = g_selectionMaskParticlePool.Acquire(
+        ctx.resources, vertices.size(), static_cast<std::uint32_t>(sizeof(ParticleVertex)));
+    if (!vertexBuffer.IsValid()) return;
+    ctx.resources.Update(vertexBuffer, vertices.data(),
                          static_cast<std::uint32_t>(vertices.size() * sizeof(ParticleVertex)));
     renderer::DrawCall draw;
-    draw.vertexBuffer = h.particleVB;
+    draw.vertexBuffer = vertexBuffer;
     draw.indexBuffer = h.particleIB;
     draw.indexCount = static_cast<std::uint32_t>(quadCount * 6);
     draw.shader = h.selectionMaskParticleShader;
     draw.pipelineState = h.selectionMaskPSO;
     draw.constantBuffers[0] = h.frameCB;
-    draw.constantBuffers[2] = emitter.renderCB;
-    draw.textures[0] = emitter.texture;
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
+    draw.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
+    draw.textures[0] = emitter.runtime.texture;
     ctx.renderer.Submit(draw, ctx.resources);
 }
 
@@ -162,31 +172,31 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
 void DrawGpuParticleSelectionMask(ParticleEmitter& emitter, RenderPassContext& ctx)
 {
     auto& h = ctx.handles;
-    if (!CanUseGpuSimulation(emitter) || !emitter.gpuParticleBuffer.IsValid()
-        || !emitter.texture.IsValid() || !emitter.renderCB.IsValid()
+    if (!CanUseGpuSimulation(emitter.settings, &emitter.runtime.material)
+        || !emitter.runtime.gpuParticleBuffer.IsValid()
+        || !emitter.runtime.texture.IsValid() || !emitter.runtime.renderCB.IsValid()
         || !h.selectionMaskParticleGpuShader.IsValid() || !h.selectionMaskPSO.IsValid()
-        || !emitter.meshParticlePath.empty()) {
+        || !emitter.settings.meshParticlePath.empty()) {
         return;
     }
 
-    const int maximumParticles = (std::max)(emitter.maxParticles, 0);
+    const int maximumParticles = (std::max)(emitter.settings.maxParticles, 0);
     if (maximumParticles == 0) return;
     renderer::DrawCall draw;
     draw.shader = h.selectionMaskParticleGpuShader;
     draw.pipelineState = h.selectionMaskPSO;
     draw.vertexCount = static_cast<std::uint32_t>(maximumParticles) * 6u;
     draw.constantBuffers[0] = h.frameCB;
-    draw.constantBuffers[2] = emitter.renderCB;
-    draw.textures[0] = emitter.texture;
-    draw.vsBuffers[0] = emitter.gpuParticleBuffer;
-    draw.vsBuffers[1] = emitter.gpuSortBuffer;
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
+    draw.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
+    draw.textures[0] = emitter.runtime.texture;
+    draw.vsBuffers[0] = emitter.runtime.gpuParticleBuffer;
+    draw.vsBuffers[1] = emitter.runtime.gpuSortBuffer;
     ctx.renderer.Submit(draw, ctx.resources);
 }
 
 } // namespace
 
-void ExecuteSelectionMaskPass(RenderPassContext& ctx)
+void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
 {
     if (!ctx.selectionOutlineEnabled) return;
 
@@ -194,7 +204,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
 
-    r.SetRenderTarget(h.selectionMaskRT, resources);
+    r.SetRenderTarget(res.Target("SelectionMask"), resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     for (auto& go : ctx.scene.GameObjects()) {
@@ -239,14 +249,15 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
 
                 // 通常描画パスと同じく、モデル全体のうち可視スロットの submesh だけを描く。
                 const auto* mat = go.GetComponent<MaterialComponent>();
-                for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
-                    const auto& meshPtr = smr->model->meshes[mi];
+                // mi はローカルスロット番号 (submeshIndices 対応)。
+                for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
+                    renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                     if (!meshPtr) continue;
                     if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
                     if (mat && !mat->SlotAt(mi).visible) continue;
 
                     renderer::DrawCall dc;
-                    dc.vertexBuffer = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+                    dc.vertexBuffer = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
                     dc.indexBuffer = meshPtr->indexBuffer;
                     dc.indexCount = meshPtr->indexCount;
                     dc.vertexCount = meshPtr->vertexCount;
@@ -268,8 +279,9 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
 
     TerrainSelectionMaskSystem(ctx);
     WaterSelectionMaskSystem(ctx);
+    if (ctx.appendUISelectionMask) ctx.appendUISelectionMask();
 
-    r.SetRenderTarget(h.hdrRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
 } // namespace fbzz::scene

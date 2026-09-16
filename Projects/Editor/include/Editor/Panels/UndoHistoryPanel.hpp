@@ -1,6 +1,7 @@
-// FBZZ Engine
-// UndoHistoryPanel.hpp | fbzz::editor
-// Undo 履歴を一覧表示し、クリックで任意のステートへジャンプするパネル
+/// @file    UndoHistoryPanel.hpp
+/// @brief   Undo 履歴を一覧表示し、クリックで任意のステートへジャンプするパネル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <cstddef>

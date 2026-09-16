@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainBrush.cpp | fbzz::editor
-// Terrain ブラシカーネルの実装。TerrainTool (マウス) と EditorBusDispatcher (AI) の共通実体。
+/// @file    TerrainBrush.cpp
+/// @brief   Terrain ブラシカーネルの実装。TerrainTool (マウス) と EditorBusDispatcher (AI) の共通実体。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
 #include "TerrainBrush.hpp"
 
 #include <Math/Matrix4.hpp>

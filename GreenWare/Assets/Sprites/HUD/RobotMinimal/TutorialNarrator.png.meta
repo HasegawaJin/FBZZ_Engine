@@ -1,0 +1,13 @@
+[meta]
+guid = '2a166e6515544accbe8719185ce51ccc'
+
+[texture]
+alpha_mode = 'Straight'
+compression = 'None'
+filter = 'Bilinear'
+mipmaps = false
+srgb = true
+type = 'sprite'
+sprite_mode = 'Single'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

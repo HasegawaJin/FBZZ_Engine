@@ -1,0 +1,24 @@
+# GreenWare
+# M_E_ArmorGrey.mat
+# 蛇の装甲板。地金として扱う («灰 / 暗色 = 地金» の切り分け)。
+#
+# WHY プレイヤーの M_ArmorGrey と別ファイルか:
+#   同じ規則で作ってあるが、敵と自分が完全に同じ材質だと «どちらの部品か» が
+#   画面から消える。roughness を一段上げて、蛇の方が «鈍い» 側に置いてある。
+#
+# NOTE: M_E_ArmorGrey_Dissolve.mat と «無傷のとき同じ絵» であること。
+version = 1
+name = 'M_E_ArmorGrey'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.30, 0.315, 0.34, 1.0 ]
+metallic = 1.0
+roughness = 0.44
+anisotropy = 0.0
+clearcoat = 0.35
+clearcoatRoughness = 0.14
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// RendererBackend.hpp | fbzz::renderer
-// 描画バックエンド種別の軽量列挙。RendererFactory / ProjectSettings / Application が共有する。
-// WHY: enum を RendererFactory.hpp から切り出すことで、ProjectSettings や Application が
-//      IRenderer 一式 (重いインターフェース) を include せずにバックエンド種別だけを参照できる。
+/// @file    RendererBackend.hpp
+/// @brief   描画バックエンド種別の軽量列挙。RendererFactory / ProjectSettings / Application が共有する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+///
+/// WHY: enum を RendererFactory.hpp から切り出すことで、ProjectSettings や Application が
+/// IRenderer 一式 (重いインターフェース) を include せずにバックエンド種別だけを参照できる。
 #pragma once
 
 #include <cstdint>

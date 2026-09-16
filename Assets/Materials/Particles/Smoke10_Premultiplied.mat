@@ -1,0 +1,32 @@
+# FBZZ Engine
+# Smoke10_Premultiplied.mat
+# 煙の上部の薄まり。
+# WHY: 素材 1 枚につき 1 マテリアルを置くことで、複数の Emitter から
+#      同じ素材設定を共有できる。
+# shader を空にしてあるのは «組み込み Particle.hlsl で描く» の意味。
+# 素材: Assets/Textures/Particles/smoke_10.png
+version = 1
+shader = ""
+blend_mode = "Premultiplied"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:a813370dace44e579fc2861b32bdc27c"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+lighting_strength = 0.95
+receive_shadows = true
+shadow_strength = 0.75
+six_way_lighting = true
+smoke_back_scatter_power = 2.5
+smoke_transmission = 1.6
+smoke_wrap = 0.75
+soft_particle_fade_distance = 0.9
+soft_particles = true

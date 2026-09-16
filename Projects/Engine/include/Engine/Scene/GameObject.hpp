@@ -1,12 +1,15 @@
-// FBZZ Engine
-// GameObject.hpp | fbzz::scene
-// Unity ライクな OOP ラッパー
-// Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
-// 親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
+/// @file    GameObject.hpp
+/// @brief   Unity ライクな OOP ラッパー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
+/// 親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
 #include "Entity.hpp"
 #include "Transform.hpp"
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::scene {
@@ -34,7 +37,7 @@ public:
     std::string prefabSourceId;
     int layer = 0;
 
-    // システムが実行時に作った GO (VFX Graph のノード実体・Foliage bake・Water splash 等)。
+    // システムが実行時に作った GO (VFX Graph のノード実体・Water splash 等)。
     // WHY: これまでは名前を "__" で始めるという規約でシリアライズ除外を表現していたが、
     //      規約だと「見せる名前」と「保存するか」が同じ文字列に相乗りしてしまい、
     //      表示名を読みやすくした瞬間に保存対象へ戻るという壊れ方をする。
@@ -72,6 +75,10 @@ public:
     GameObject* GetParent()         const;
     int         GetChildCount()     const;
     GameObject* GetChild(int index) const;
+
+    /// 自分を含む部分木を子の表示順に深さ優先で検索する。非アクティブも含む。
+    /// 同名は最初の1件、未検出は nullptr。戻り値は Scene が所有する非所有参照。
+    [[nodiscard]] GameObject* FindInSubtree(std::string_view objectName);
 
     // Unity: transform.GetSiblingIndex / SetSiblingIndex
     // 兄弟内の表示順 (Hierarchy の並び)。親がいない場合はルート同士の並び順を指す。

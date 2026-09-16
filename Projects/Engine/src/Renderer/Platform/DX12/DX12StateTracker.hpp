@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12StateTracker.hpp | fbzz::renderer
-// DirectX 12 リソース状態を追跡して必要な遷移バリアだけを記録する
+/// @file    DX12StateTracker.hpp
+/// @brief   DirectX 12 リソース状態を追跡して必要な遷移バリアだけを記録する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <d3d12.h>

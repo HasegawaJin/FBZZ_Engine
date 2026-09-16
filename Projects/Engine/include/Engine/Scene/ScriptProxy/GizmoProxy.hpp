@@ -1,10 +1,12 @@
-// FBZZ Engine
-// GizmoProxy.hpp | fbzz::scene
-// OnDrawGizmos() 内から Gizmo:: / DebugDraw:: を呼ぶための Script 向けプロキシ。
-// WHY: Script が IRenderer や ResourceManager を直接参照しないよう、
-//      RenderSystem が renderer ポインタを注入してから OnDrawGizmos() を呼ぶ設計にする。
-//      ScriptDebugProxy (コマンドキュー経由) とは異なり、GizmoProxy は BeginFrame/Flush の
-//      区間内で直接 DebugDraw / Gizmo を呼ぶため遅延なしで描画できる。
+/// @file    GizmoProxy.hpp
+/// @brief   OnDrawGizmos() 内から Gizmo:: / DebugDraw:: を呼ぶための Script 向けプロキシ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
+///
+/// WHY: Script が IRenderer や ResourceManager を直接参照しないよう、
+/// RenderSystem が renderer ポインタを注入してから OnDrawGizmos() を呼ぶ設計にする。
+/// ScriptDebugProxy (コマンドキュー経由) とは異なり、GizmoProxy は BeginFrame/Flush の
+/// 区間内で直接 DebugDraw / Gizmo を呼ぶため遅延なしで描画できる。
 #pragma once
 
 #include <Math/Quaternion.hpp>

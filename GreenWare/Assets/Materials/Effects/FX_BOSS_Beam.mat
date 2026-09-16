@@ -1,0 +1,87 @@
+# FBZZ Engine
+# FX_BOSS_Beam.mat
+# ボスのコアビーム。BossBeamComponent が BeamTrailRendererComponent 経由で差す。
+# 素材: Assets/VFX/Textures/T_Beam_Stripe.png (X 方向シームレス。必須)
+#
+# WHY プレイヤーの FX_WPN_Beam と分けるか:
+#      同じ .mat を共有すると «線の質» がゲームの状態ではなく «誰が撃っているか» で
+#      変わることになり、per-instance の上書きだけで 2 種類の絵を維持する羽目になる。
+#      1 か所書き忘れた瞬間にボスの線がプレイヤーの線になる。
+#      シェーダーごと分けてあるので .mat も分ける (詳細は BossBeam.hlsl のヘッダー)。
+#
+# 何をどちらが持つか:
+#   albedo             … LineRenderer が startColor から毎フレーム書く (極性色 × 明るさ)。
+#   layer / charge     … BossBeamComponent が層と点火を毎フレーム書く。
+#   scroll / phase     … 同じくスクリプト (時間で進む)。
+#   断面・環・段・熱   … ここが正本。線の «質» はゲームの状態で変わらないので、
+#                        Inspector ではなく .mat 側で決める (絵の調整はここだけを触る)。
+version = 1
+name = 'FX_BOSS_Beam'
+shader = 'guid:35114f9fc65bf0f8ff29c5c2294d81e8'
+blend_mode = 'Premultiplied'
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[textures]
+albedo = "guid:a359f1c0b98e9f5f2481834e44ae12eb"
+
+[params]
+albedo = [ 1.0, 0.12, 0.14, 1.0 ]
+
+# 断面。プレイヤーの線より太く、縁を立てて «切っている棒» にする。
+coreWidth = 0.30
+edgeFalloff = 2.0
+coreBoost = 2.6
+intensity = 1.0
+
+# 流れ。tiling は «1m あたりの繰り返し» としてスクリプトが長さを掛ける。
+tiling = 3.0
+scroll = 0.0
+muzzleFade = 0.05
+tipFade = 0.04
+
+# 乱れ。ボスの線は «変わらない» ことが読みなので、既定ではほぼ振らない。
+phase = 0.0
+arcAmp = 0.06
+arcFreq = 5.0
+crackle = 0.18
+flicker = 0.12
+
+# 落ちる段。cascadeGravity が 1 より大きいほど接地側で詰まって加速して見える。
+beadDensity = 7.0
+beadFalloff = 9.0
+cascadeGravity = 2.1
+cascadeSpeed = 0.5
+
+layer = 1.0
+surge = 0.0
+charge = 1.0
+
+# 焦点環。撚りの代わりに «絞り込まれたレンズの筒» を作る。
+focusRings = 3.0
+focusRadius = 0.72
+focusWidth = 0.13
+focusBoost = 0.65
+dispersion = 0.025
+
+# 接地側の膨らみ。VFX の火花へ受け渡すための «広がり» で、主役は奪わない。
+impactBloom = 0.22
+impactSpread = 0.55
+muzzleFlare = 0.09
+
+# 熱のにじみ。線の外で空気が光る。隠さない (純加算) ので焦げが読める。
+heatWash = 0.85
+heatBoost = 0.32
+
+# 筒の半径 [m]。BossBeamComponent が層ごとの実寸を毎フレーム書き込むので、
+# ここの値は «板として描く» へ倒れたときのフォールバックでしかない。
+tubeRadius = 0.0
+
+volume = 1.0
+detail = 0.55
+# 芯の白熱。上げすぎると ＋ (赤) と − (青) が同じ白線に見える (企画書 12.2)。
+coreWhite = 0.30
+axialGlint = 1.2

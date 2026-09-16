@@ -1,8 +1,10 @@
-// FBZZ Engine
-// HResult.hpp | fbzz::core
-// DirectX 系 HRESULT の検査マクロ
-// 回復不能な DX 呼び出し失敗を assert で止めるための薄い補助。
-// エンジン方針どおり例外には変換しない。
+/// @file    HResult.hpp
+/// @brief   DirectX 系 HRESULT の検査マクロ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 回復不能な DX 呼び出し失敗を assert で止めるための薄い補助。
+/// エンジン方針どおり例外には変換しない。
 #pragma once
 #include "Logger.hpp"
 

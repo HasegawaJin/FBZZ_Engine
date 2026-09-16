@@ -1,6 +1,7 @@
-// FBZZ Engine
-// World.hpp | fbzz::physics
-// 物理シミュレーション世界の管理と Step 実行
+/// @file    World.hpp
+/// @brief   物理シミュレーション世界の管理と Step 実行。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Physics/RigidBody.hpp>
 #include <Physics/BodyHandle.hpp>
@@ -18,6 +19,8 @@
 #include <Physics/HingeConstraint.hpp>
 #include <Physics/FixedConstraint.hpp>
 #include <Physics/SliderConstraint.hpp>
+#include <Physics/Layer.hpp>
+#include <cstring>
 #include <functional>
 #include <vector>
 #include <map>
@@ -27,7 +30,7 @@ namespace fbzz::physics
 {
 
     // Step() の最後に前フレームとの差分から生成するイベント。
-    struct CollisionEvent 
+    struct CollisionEvent
     {
         const Collider* colliderA;
         const Collider* colliderB;
@@ -37,6 +40,24 @@ namespace fbzz::physics
         math::Vector3 normal = math::Vector3::UP;
         float depth = 0.0f;
         bool isTrigger = false;
+
+        // ── 衝突の強さ ──────────────────────────────────────────────────────
+        // WHY 別途記録するか: このイベントは Step() の末尾で作られるが、その時点では
+        //     Resolve が既に速度を書き換えているため、bodyA/bodyB から「ぶつかった勢い」を
+        //     復元できない。ゲーム側 (衝突ダメージ・ヒットストップ・SE の強弱) が必要と
+        //     するのはまさに解決前の値なので、Resolve の前後で拾ってここへ持ち越す。
+        //
+        //     substep を増やすと 2 回目以降の NarrowPhase では既に減速しているため、
+        //     フレーム内で観測した最大値を保持する (substep 数を変えても値がぶれない)。
+
+        // 接触点での相対速度 (A から見た B との差、角速度の寄与を含む)。解決前の値。
+        math::Vector3 relativeVelocity = math::Vector3::ZERO;
+        // 法線方向の接近速度。正 = 近づいている = 実際にぶつかった強さ。
+        // 「一定速度以上で衝突したときだけダメージ」の判定はこの値を使う。
+        float approachSpeed = 0.0f;
+        // 解決で実際に加わった法線インパルス (質量込みの強さ)。
+        // 軽い敵と重い敵で手応えを変えたい場合は approachSpeed ではなくこちらを使う。
+        float normalImpulse = 0.0f;
     };
 
     // Physics モジュールの統合点。剛体・コライダー・制約を受け取り、1 フレーム分の物理を進める。
@@ -55,10 +76,64 @@ namespace fbzz::physics
         // WHY: Constraint は AddConstraint 呼び出し側が生成して World へ移譲する。
         //      World が唯一の所有者となり、World 破棄時に一括解放される。
         void AddConstraint(std::unique_ptr<Constraint> constraint);
-        const std::vector<std::unique_ptr<Constraint>>& GetConstraints() const;
+
+        // ── シーン同期で張る制約 ──────────────────────────────────────────────
+        // BeginSceneSync / EndSceneSync の窓の中で申告する。申告が途切れた制約は
+        // EndSceneSync が破棄するので、Scene 側は «外す» 処理を書かなくてよい。
+        //
+        // WHY AddConstraint と分けるか: AddConstraint は «置いたら消えない» 制約で、
+        //     Physics 単体利用 (Tests) の入口でもある。同じ入れ物へ混ぜると、
+        //     BeginSceneSync を一度呼んだ瞬間にそれらが全部消える。
+        //
+        // WHY Volume と違い毎フレーム作り直させないか: HingeConstraint / FixedConstraint は
+        //     構築時の相対姿勢を基準として抱えている。毎フレーム作り直すと基準が
+        //     «今の姿勢» へ書き換わり続け、可動域も溶接も効かなくなる。
+        ConstraintHandle SyncConstraint(ConstraintHandle handle, std::unique_ptr<Constraint> constraint);
+        // 既存の制約をそのまま今フレームも生かす申告。作り直しが要らないときに使う。
+        // 戻り値 false = そのハンドルは既に無効 (作り直しが必要)。
+        bool KeepConstraint(ConstraintHandle handle);
+        // 同期で張った制約への非所有参照。パラメーターだけを書き換えるために使う。
+        [[nodiscard]] Constraint* FindConstraint(ConstraintHandle handle) const;
+        void RemoveConstraint(ConstraintHandle handle);
+
+        // 今フレーム有効な制約すべて (AddConstraint 分 + 同期分)。
+        const std::vector<Constraint*>& GetConstraints() const;
 
         // サブステップ、Volume、制約、衝突検出、衝突解決、イベント分類をこの順で実行する。
+        // layerFilter を渡すとその 1 回だけ使い、渡さなければ SetLayerFilter の値が効く。
         void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
+
+        // レイヤーの組がぶつかるか。設定しなければ全部ぶつかる。
+        //
+        // WHY Step の引数と別に持つか: 衝突行列はプロジェクト設定で、フレームごとに
+        //     変わるものではない。呼び出し側が毎フレーム組み立てて渡す形だと、
+        //     渡し忘れた経路 (エディタのプレビュー等) だけ黙ってフィルタが外れる。
+        //
+        // WHY 変わったときだけ組み直すか: 設定の適用は毎フレーム走る
+        //     (ProjectRuntime::Update)。行列は 1KB あり、std::function に包むと
+        //     その都度ヒープを踏む。中身が同じなら何もしない。
+        void SetCollisionMatrix(const LayerCollisionMatrix& matrix)
+        {
+            if (m_hasCollisionMatrix &&
+                std::memcmp(&m_collisionMatrix, &matrix, sizeof(matrix)) == 0) return;
+            m_collisionMatrix    = matrix;
+            m_hasCollisionMatrix = true;
+            // 値で captures する。this を掴むと World の代入 (ProjectRuntime::ResetPhysics が
+            // `world = World{}` で作り直す) で消えたオブジェクトを指し続ける。
+            const LayerCollisionMatrix copy = matrix;
+            m_defaultLayerFilter = [copy](int a, int b) { return copy.CanCollide(a, b); };
+        }
+
+        // この 2 つのレイヤーがぶつかるか。行列を設定していなければ常に true。
+        //
+        // WHY 問い合わせられるようにするか: «自分の当たりを自分の剛体へ当てない»
+        //     ような形は、行列が正しく組まれていて初めて成立する。設定が外れると
+        //     «押され続けて勝手に動く» という、原因の見えない壊れ方をする。
+        //     組み立てる側が前提を確かめて、駄目なら安全側へ倒せるようにする。
+        [[nodiscard]] bool LayersCollide(int a, int b) const
+        {
+            return !m_hasCollisionMatrix || m_collisionMatrix.CanCollide(a, b);
+        }
 
         void          SetGravity(const math::Vector3& gravity);
         math::Vector3 GetGravity() const { return m_gravity; }
@@ -121,6 +196,8 @@ namespace fbzz::physics
         void ApplyGravitationalAttraction();
         void IntegrateBodies(const std::vector<float>& effectiveDts);
         void SolveConstraintPositions(float dt);
+        // m_ownedConstraints と制約プールから m_activeConstraints を組み直す。
+        void RebuildConstraintViews();
         void UpdateColliders();
         void BroadPhase();
         void NarrowPhase(bool doWarmStart = false);
@@ -130,18 +207,28 @@ namespace fbzz::physics
         void ClassifyCollisions();
         void CCDPhase(float dt);    // 高速物体のトンネリング防止 (IntegrateBodies の前)
         bool HasActiveSimulationBodies() const;
+        // Resolve の直前に呼ぶ。接触点の相対速度 (= 衝突直前の勢い) を記録する。
+        void RecordApproachVelocities();
+        // Resolve の直後に呼ぶ。実際に加わった法線インパルスを記録する。
+        void RecordContactImpulses();
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
         int m_substeps = 1;
         // BroadPhase 中に使う一時フィルタ。Scene の LayerCollisionMatrix から渡される。
         std::function<bool(int, int)> m_layerFilter;
+        // Step に何も渡されなかったときに使う既定。プロジェクト設定の衝突行列が入る。
+        std::function<bool(int, int)> m_defaultLayerFilter;
+        LayerCollisionMatrix          m_collisionMatrix;
+        bool                          m_hasCollisionMatrix = false;
 
         // 現フレームの Step() に渡す非所有ビュー (EndSceneSync で再構築)
         std::vector<RigidBody*>                 m_bodies;
         std::vector<ColliderInstance>           m_colliders;
         std::vector<Volume*>                    m_volumes;
-        // Constraint は World が唯一の所有者
-        std::vector<std::unique_ptr<Constraint>> m_constraints;
+        // Constraint は World が唯一の所有者。AddConstraint で置かれた «消えない» ぶん。
+        std::vector<std::unique_ptr<Constraint>> m_ownedConstraints;
+        // Step() が走らせる非所有ビュー (所有分 + 同期分。RebuildConstraintViews で再構築)
+        std::vector<Constraint*>                 m_activeConstraints;
         struct BodySlot {
             // WHY: 所有権は RigidBodyComponent が持つ。World は非所有参照のみ保持する。
             RigidBody* body = nullptr;
@@ -160,9 +247,17 @@ namespace fbzz::physics
             uint32_t generation = 1;
             bool touched = false;
         };
+        struct ConstraintSlot {
+            // WHY: SyncConstraint で渡された Constraint は World が所有する。
+            //      申告が途切れたら EndSceneSync がここで破棄する。
+            std::unique_ptr<Constraint> constraint;
+            uint32_t generation = 1;
+            bool touched = false;
+        };
         std::vector<BodySlot> m_bodyPool;
         std::vector<ColliderSlot> m_colliderPool;
         std::vector<VolumeSlot> m_volumePool;
+        std::vector<ConstraintSlot> m_constraintPool;
         bool m_sceneSyncChanged = false; // 追加・削除など接触集合が変わり得る同期変更があったか
         std::vector<CollisionPair>              m_collisionPairs;
         std::vector<ContactPoint>               m_contacts;
@@ -176,6 +271,18 @@ namespace fbzz::physics
         std::vector<CollisionEvent> m_enterEvents;
         std::vector<CollisionEvent> m_stayEvents;
         std::vector<CollisionEvent> m_exitEvents;
+
+        // このフレームで観測した衝突の強さ。Step() の先頭で clear し、
+        // 各サブステップの Resolve 前後で最大値を更新して ClassifyCollisions が読む。
+        // WHY 最大値か: 1 フレームに複数サブステップがあると、2 回目以降は既に
+        //     減速している。最初の当たりの勢いこそがゲーム側の欲しい値なので、
+        //     substep 数を変えてもダメージ量が変わらないよう最大値で代表させる。
+        struct ContactImpact {
+            math::Vector3 relativeVelocity = math::Vector3::ZERO;
+            float approachSpeed = 0.0f;
+            float normalImpulse = 0.0f;
+        };
+        std::map<ColliderPair, ContactImpact> m_frameImpacts;
     };
 
 } // namespace fbzz::physics

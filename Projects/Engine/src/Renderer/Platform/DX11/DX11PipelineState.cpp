@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DX11PipelineState.cpp | fbzz::renderer
-// DX11 パイプラインステート管理
-// Rasterizer / Blend / DepthStencil の各 state を RenderState から生成する。
-// DX11 の分割された state を Engine 側の PipelineState としてまとめる。
+/// @file    DX11PipelineState.cpp
+/// @brief   DX11 パイプラインステート管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Rasterizer / Blend / DepthStencil の各 state を RenderState から生成する。
+/// DX11 の分割された state を Engine 側の PipelineState としてまとめる。
 #include "DX11PipelineState.hpp"
 #include <Engine/Core/HResult.hpp>
 
@@ -36,10 +38,8 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
 
     // -------------------------------------------------------------------------
     // Blend State
-    //   RenderTarget[0] のみ設定。ブレンド方程式:
-    //     ALPHA_BLEND : out = src.rgb * src.a + dst.rgb * (1 - src.a)  (標準アルファ合成)
-    //     ADDITIVE    : out = src.rgb * src.a + dst.rgb                 (加算。エフェクト向け)
-    //     OPAQUE_BLEND : ブレンドなし (最も高速)
+    //   RenderTarget[0] のみ設定。方程式は RenderState.hpp の BlendMode が正本で、
+    //   ここはその翻訳でしかない (DX12PsoCache.cpp と 1 語も違えてはならない)。
     // -------------------------------------------------------------------------
     {
         D3D11_BLEND_DESC bsDesc = {};
@@ -54,7 +54,7 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
             rt.DestBlend      = D3D11_BLEND_INV_SRC_ALPHA;
             rt.BlendOp        = D3D11_BLEND_OP_ADD;
             rt.SrcBlendAlpha  = D3D11_BLEND_ONE;
-            rt.DestBlendAlpha = D3D11_BLEND_ZERO;
+            rt.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
             rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
             break;
 
@@ -64,7 +64,7 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
             rt.DestBlend      = D3D11_BLEND_ONE;   // dst を 1 倍で加算 → 発光感
             rt.BlendOp        = D3D11_BLEND_OP_ADD;
             rt.SrcBlendAlpha  = D3D11_BLEND_ONE;
-            rt.DestBlendAlpha = D3D11_BLEND_ZERO;
+            rt.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
             rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
             break;
 

@@ -1,12 +1,13 @@
-// FBZZ Engine
-// TextureAnalysis.cpp | fbzz::asset
-// VFX 素材テクスチャの特徴量抽出と、そこから決まるオーサリング推奨値の導出
-//
-// 処理フロー:
-//   1. テクスチャを R32G32B32A32_FLOAT で読む
-//   2. 原寸のまま flipbook のコマ割りを推定 (縮小すると境界が潰れるため)
-//   3. 統計用に縮小し、アルファ・輝度・形状の特徴量を取る
-//   4. 特徴量から blendMode / alphaSource / sprite 設定などの推奨値を組み立てる
+/// @file    TextureAnalysis.cpp
+/// @brief   VFX 素材テクスチャの特徴量抽出と、そこから決まるオーサリング推奨値の導出。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// 処理フロー:
+/// 1. テクスチャを R32G32B32A32_FLOAT で読む
+/// 2. 原寸のまま flipbook のコマ割りを推定 (縮小すると境界が潰れるため)
+/// 3. 統計用に縮小し、アルファ・輝度・形状の特徴量を取る
+/// 4. 特徴量から blendMode / alphaSource / sprite 設定などの推奨値を組み立てる
 #pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
 
 #include <Engine/Asset/TextureAnalysis.hpp>
@@ -339,37 +340,37 @@ void BuildRecommendations(TextureAnalysis& out)
     const bool isFlipbook = !out.flipbookCandidates.empty();
     if (isFlipbook) {
         const FlipbookGridCandidate& best = out.flipbookCandidates.front();
-        add("particle.spriteColumns", std::to_string(best.columns),
+        add("material.particle.flipbook.spriteColumns", std::to_string(best.columns),
             "タイル境界の不連続からコマ割りを検出しました (境界比 "
                 + std::to_string(best.seamScore).substr(0, 4) + ")");
-        add("particle.spriteRows", std::to_string(best.rows),
+        add("material.particle.flipbook.spriteRows", std::to_string(best.rows),
             "同上。誤検出が疑われる場合は flipbookCandidates の他候補を試してください");
-        add("particle.spriteEndFrame", std::to_string(best.columns * best.rows - 1),
+        add("material.particle.flipbook.spriteEndFrame", std::to_string(best.columns * best.rows - 1),
             "全コマを再生する場合の終端フレーム");
-        add("particle.spriteRandomStartFrame", "true",
+        add("material.particle.flipbook.spriteRandomStartFrame", "true",
             "同時に湧いた粒子が全部同じコマで回るのを防ぎます");
     }
 
     // alphaSource — アルファが機能していない素材は輝度から抜くしかない。
     if (!out.alphaIsMeaningful) {
-        add("particle.alphaSource", "1",
+        add("material.particle.alphaSource", "1",
             "アルファチャンネルが実データを持たない (min=" + std::to_string(out.alphaMin).substr(0, 4)
                 + " max=" + std::to_string(out.alphaMax).substr(0, 4)
                 + ") ため、Luminance からアルファを取る必要があります。"
                   "TextureAlpha のままだと矩形の板として描かれます");
     }
 
-    // blendMode — 事前乗算 > 発光する芯 > それ以外の順で決まる。
+    // blend_mode — 事前乗算 > 発光する芯 > それ以外の順で決まる。
     if (out.likelyPremultiplied) {
-        add("particle.blendMode", "2",
+        add("material.blend_mode", "Premultiplied",
             "全画素で RGB <= A が成り立つ事前乗算済み素材です。"
             "Alpha ブレンドで使うと縁が黒く縁取られます");
     } else if (out.coreHotspot > 2.2f && out.saturationMean < 0.55f) {
-        add("particle.blendMode", "0",
+        add("material.blend_mode", "Additive",
             "中心の輝度が周辺の " + std::to_string(out.coreHotspot).substr(0, 4)
                 + " 倍で、発光する芯を持つ素材です。加算が向きます");
     } else if (out.coverage > 0.45f) {
-        add("particle.blendMode", "1",
+        add("material.blend_mode", "AlphaBlend",
             "面積の " + std::to_string(static_cast<int>(out.coverage * 100.0f))
                 + "% を覆う body 素材です。背景を隠す層は Alpha にしないと"
                   "重なりが白飽和します");
@@ -379,7 +380,7 @@ void BuildRecommendations(TextureAnalysis& out)
 
     // softParticles — 硬い縁の素材は交差面が線として見える。
     if (out.edgeHardness > 0.35f && out.alphaIsMeaningful) {
-        add("particle.softParticles", "true",
+        add("material.particle.softParticles", "true",
             "縁のアルファ勾配が大きい (硬い) 素材です。地面や壁と交差したとき"
             "切り口が直線として出るため、深度フェードで隠します");
     }
@@ -469,23 +470,14 @@ const char* BlendModeName(renderer::BlendMode mode)
 const char* RenderPathName(RenderPath path)
 {
     switch (path) {
-    case RenderPath::Deferred: return "deferred";
-    case RenderPath::Forward:  return "forward";
     case RenderPath::Particle: return "particle";
     case RenderPath::Trail:    return "trail";
+    case RenderPath::UI:       return "ui";
+    case RenderPath::Decal:    return "decal";
+    case RenderPath::PostProcess: return "post_process";
     case RenderPath::Auto:
     default:                   return "auto";
     }
-}
-
-// ParticleBlendMode (scene 側の enum) と同じ並びの整数。
-// asset 層から scene 層へ依存させないため、値だけをここで持つ。
-// 0=Additive 1=Alpha 2=Premultiplied — ScriptParticleProxy.hpp の定義と一致させること。
-int ParticleBlendValue(std::string_view name)
-{
-    if (name == "Alpha") return 1;
-    if (name == "Premultiplied") return 2;
-    return 0; // Additive / Opaque
 }
 
 } // namespace
@@ -544,10 +536,9 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
         addFinding("albedo テクスチャを解析できません: " + result.albedoAnalysis.message);
     } else {
         const TextureAnalysis& texture = result.albedoAnalysis;
-        // テクスチャの中身が要求する blendMode と .mat の宣言を突き合わせる。
+        // テクスチャの中身が要求する blend_mode と .mat の宣言を突き合わせる。
         // WHY: ここが「テクスチャ単体の推測」と「実際の描画設定」の差が出る唯一の場所。
-        //      .mat を割り当てた時点で emitter.blendMode は無視されるため、
-        //      直すべきは emitter ではなく .mat 側になる。
+        //      ブレンドは .mat が唯一の正本なので、直すのは常に .mat 側になる。
         std::string wanted;
         std::string why;
         if (texture.likelyPremultiplied) {
@@ -566,43 +557,35 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
             result.blendModeConflictsWithTexture = true;
             addFinding("blend_mode が " + result.blendMode + " ですが、" + why
                        + "なので " + wanted + " が適切です。"
-                         "materialPath を設定した Emitter では .mat の blend_mode が"
-                         "emitter 側の設定を上書きするため、直すのはこの .mat です");
+                         "ブレンドは .mat が唯一の正本なので、直すのはこの .mat です");
         }
 
-        // アルファが機能していない素材は、.mat 側では直せない (alphaSource は emitter の設定)。
+        // アルファの取り出し方も .mat の [particle]。
         if (!texture.alphaIsMeaningful)
-            addRecommendation("particle.alphaSource", "1",
+            addRecommendation("material.particle.alphaSource", "1",
                               "albedo テクスチャのアルファが実データを持たない (min="
                                   + std::to_string(texture.alphaMin).substr(0, 4) + " max="
                                   + std::to_string(texture.alphaMax).substr(0, 4)
-                                  + ")。alphaSource は .mat ではなく Emitter 側の設定なので、"
-                                    "ここは emitter へ適用します");
+                                  + ")。この .mat の [particle] へ設定します");
 
-        // flipbook のコマ割りも emitter 側の設定。
+        // flipbook のコマ割りも .mat の [particle]。
         if (!texture.flipbookCandidates.empty()) {
             const auto& best = texture.flipbookCandidates.front();
-            addRecommendation("particle.spriteColumns", std::to_string(best.columns),
-                              "albedo テクスチャがアトラスです (コマ割りは Emitter 側の設定)");
-            addRecommendation("particle.spriteRows", std::to_string(best.rows),
+            addRecommendation("material.particle.flipbook.spriteColumns", std::to_string(best.columns),
+                              "albedo テクスチャがアトラスです (コマ割りは .mat の [particle])");
+            addRecommendation("material.particle.flipbook.spriteRows", std::to_string(best.rows),
                               "同上");
-            addRecommendation("particle.spriteEndFrame",
+            addRecommendation("material.particle.flipbook.spriteEndFrame",
                               std::to_string(best.columns * best.rows - 1), "全コマを再生する終端");
         }
 
-        // Alpha 系は描画順で結果が変わる。これも emitter 側。
+        // 描画順だけは «いつどこに出すか» の側なので Emitter が持つ。
         if (material.blendMode == renderer::BlendMode::ALPHA_BLEND
             || material.blendMode == renderer::BlendMode::PREMULTIPLIED)
             addRecommendation("particle.sortMode", "1",
                               ".mat が " + result.blendMode
                                   + " なので、描画順が結果を変えます。BackToFront が必須です");
     }
-
-    // .mat の blendMode は emitter を上書きするので、参考値として「実際に効く値」を出す。
-    // WHY: AI が emitter.blendMode を読んで納得してしまうのを防ぐ。実際に描かれるのはこちら。
-    addRecommendation("particle.blendMode", std::to_string(ParticleBlendValue(result.blendMode)),
-                      "実行時に .mat から上書きされる値です。emitter 側を変えても効きません "
-                      "(変えたい場合は .mat の blend_mode を編集してください)");
 
     result.message = result.blendMode + " / " + result.renderPath
         + (result.hasAlbedoTexture ? " / albedo: " + result.albedoAnalysis.classification

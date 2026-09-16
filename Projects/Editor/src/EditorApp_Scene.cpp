@@ -1,17 +1,21 @@
-// FBZZ Engine
-// EditorApp_Scene.cpp | fbzz::editor
-// シーンの新規作成・開く・保存・ダーティ追跡・ホットリロード
-//
-// WHY: EditorApp.cpp が肥大化しないよう、シーン I/O とダーティ追跡を分離した。
-//      これらはいずれも「シーンファイル」という単一の概念を中心とした処理群であり、
-//      ライフサイクル管理 (Init/Shutdown/BeginFrame) や UI (MenuBar) とは関心が異なる。
+/// @file    EditorApp_Scene.cpp
+/// @brief   シーンの新規作成・開く・保存・ダーティ追跡・ホットリロード。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: EditorApp.cpp が肥大化しないよう、シーン I/O とダーティ追跡を分離した。
+/// これらはいずれも「シーンファイル」という単一の概念を中心とした処理群であり、
+/// ライフサイクル管理 (Init/Shutdown/BeginFrame) や UI (MenuBar) とは関心が異なる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -146,6 +150,44 @@ FILETIME GetLatestScriptSourceWriteTime(const std::filesystem::path& root)
     return latest;
 }
 
+// 開いたシーンの中で、アセット定義の方が新しくなっている Prefab インスタンスを揃える。
+//
+// WHY «開くとき» に要るか: 伝播の経路 (Apply / Prefab 編集の保存 / ディスク監視) は
+//     どれも «今開いているシーン» しか触らない。一方シーンファイルはインスタンスを
+//     展開済みの完全な状態で持つので、更新のときに閉じていたシーンは古い複製を
+//     抱えたまま固定され、次に開いて保存すると古さがそのまま焼き直される。
+//     «プレファブなのに片方のステージだけ直らない» はここで塞がないと消えない。
+// WHY 更新時刻で絞るか: 作り直しは EntityID を振り直すので、開くたびに全部走らせると
+//     «開いただけで dirty» が常態化する。シーンより後に書かれた .prefab だけで足りる。
+int ReconcileStalePrefabInstances(scene::Scene& scene,
+                                  const std::string& scenePath,
+                                  const std::string& projectRoot)
+{
+    FILETIME sceneTime{};
+    if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(scenePath), sceneTime)) return 0;
+
+    std::vector<std::string> assetPaths;
+    for (const auto& gameObject : scene.GameObjects()) {
+        const std::string& assetPath = gameObject.prefabAssetPath;
+        if (assetPath.empty()) continue;
+        if (std::find(assetPaths.begin(), assetPaths.end(), assetPath) != assetPaths.end())
+            continue;
+        assetPaths.push_back(assetPath);
+    }
+
+    int updated = 0;
+    for (const std::string& assetPath : assetPaths) {
+        const std::string diskPath = ToProjectAssetDiskPath(projectRoot, assetPath);
+        FILETIME assetTime{};
+        if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(diskPath), assetTime)) continue;
+        if (CompareFileTime(&assetTime, &sceneTime) <= 0) continue;
+
+        updated += PrefabSerializer::PropagateToInstances(
+            scene, assetPath, scene::EntityID{}, projectRoot);
+    }
+    return updated;
+}
+
 std::filesystem::path GetScriptScanRoot(const std::filesystem::path& scriptsSourceDir)
 {
     if (scriptsSourceDir.filename() == L"Scripts")
@@ -205,16 +247,32 @@ bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceD
 // シーン ダーティ追跡
 // =============================================================================
 
+// Play 中にシーンファイルを読み書きしようとしたら断る。
+// WHY: 走っているのはスナップショットを撮ったあとのシーンで、遷移していれば
+//      別のシーンファイルの中身ですらある。それを currentScenePath へ書けば、
+//      開いていたシーンが最後に走っていたシーンで丸ごと潰れる。
+bool EditorApp::RejectSceneIOWhilePlaying(const char* action)
+{
+    if (m_playMode.IsInEditor()) return false;
+
+    std::string message = std::string(action) + ": stop play mode first";
+    if (!m_ctx.playSceneName.empty())
+        message += " (running: " + m_ctx.playSceneName + ")";
+    FBZZ_LOG_WARN("%s", message.c_str());
+    Toast::Error(message);
+    return true;
+}
+
 void EditorApp::CaptureCleanScene()
 {
-    if (!m_ctx.activeScene) {
+    if (!m_ctx.editScene) {
         m_dirtyTracker.Reset();
         m_ctx.sceneDirty = false;
         return;
     }
 
     CacheSceneWriteTime();
-    m_dirtyTracker.CaptureClean(*m_ctx.activeScene);
+    m_dirtyTracker.CaptureClean(*m_ctx.editScene);
     m_ctx.sceneDirty = false;
     m_dirtyPollTimer = 0.0f;
     UpdateWindowTitle();
@@ -222,7 +280,7 @@ void EditorApp::CaptureCleanScene()
 
 void EditorApp::RefreshSceneDirtyState(bool force)
 {
-    if (!m_ctx.activeScene) return;
+    if (!m_ctx.editScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
     // WHY: Evaluate() はシーン全体を serialize して hash 化する重い処理（~80ms）。
@@ -249,7 +307,7 @@ void EditorApp::RefreshSceneDirtyState(bool force)
     m_dirtyPollTimer = 0.0f;
 
     const bool wasDirty = m_ctx.sceneDirty;
-    m_ctx.sceneDirty = m_dirtyTracker.Evaluate(*m_ctx.activeScene);
+    m_ctx.sceneDirty = m_dirtyTracker.Evaluate(*m_ctx.editScene);
     if (wasDirty != m_ctx.sceneDirty)
         UpdateWindowTitle();
 }
@@ -324,12 +382,17 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
 
 void EditorApp::NewScene()
 {
-    if (!m_ctx.activeScene) return;
-    m_ctx.activeScene->Clear();
+    if (!m_ctx.editScene) return;
+    if (RejectSceneIOWhilePlaying("New Scene")) return;
+    m_ctx.editScene->Clear();
     m_undoStack.Clear();
-    m_ctx.selectedEntities.clear();
+    ClearEntitySelection(m_ctx);
     m_ctx.graphLayouts.clear();
     m_ctx.editorHiddenGuids.clear();
+    // ロックは EntityID で覚えている。新しいシーンは同じ番号を配り直すので、
+    // 残したままだと「まだ何も触っていないのに選べないオブジェクト」ができる。
+    m_ctx.lockedEntities.clear();
+    m_ctx.editorSceneState.Clear();
     RebuildEditorUIFromScene();
     m_settings.lastScenePath.clear();
     m_ctx.currentScenePath.clear();
@@ -359,7 +422,7 @@ void EditorApp::RequestOpenScenePath(const std::string& path)
 
 bool EditorApp::OpenSceneFromDialog()
 {
-    if (!m_ctx.activeScene) return false;
+    if (!m_ctx.editScene) return false;
 
     std::string path;
     if (!FileDialog::OpenFile(m_hwnd, { SCENE_FILTER }, path)) return false;
@@ -368,26 +431,43 @@ bool EditorApp::OpenSceneFromDialog()
 
 bool EditorApp::OpenScenePath(const std::string& path)
 {
-    if (!m_ctx.activeScene || path.empty()) return false;
+    if (!m_ctx.editScene || path.empty()) return false;
+    if (RejectSceneIOWhilePlaying("Open Scene")) return false;
 
-    if (!SceneIO::Load(*m_ctx.activeScene, path)) {
+    if (!SceneIO::Load(*m_ctx.editScene, path)) {
         FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
         return false;
     }
     // WHY: SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。
     //      次フレームの TransformEditorPreview まで待つと 1 フレーム間オブジェクトが
     //      原点に表示されるため、ここで即時フラッシュして最初のフレームも正しくする。
-    scene::FlushWorldTransforms(*m_ctx.activeScene);
+    scene::FlushWorldTransforms(*m_ctx.editScene);
 
     // Undo コマンドは読込前シーンの EntityID と状態を保持するため、
     // 別シーンへ持ち越さず読込成功時点で破棄する。
     m_undoStack.Clear();
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
-    m_ctx.selectedEntities.clear();
-    m_ctx.editorHiddenGuids.clear();
+    ClearEntitySelection(m_ctx);
+    ApplyEditorViewStateFromSceneMeta();
     RebuildEditorUIFromScene();
     CaptureCleanScene();
+    CaptureSceneDiskStamp();
+
+    // 閉じている間に更新された .prefab をここで取り込む。
+    // 清書後の状態を基準に採ってから走らせるので、揃え直した結果はそのまま
+    // 「ディスクとは違う = 保存が要る」として出る。
+    if (const int updated =
+            ReconcileStalePrefabInstances(*m_ctx.editScene, path, m_ctx.projectRoot);
+        updated > 0) {
+        scene::FlushWorldTransforms(*m_ctx.editScene);
+        ClearEntitySelection(m_ctx);
+        RebuildEditorUIFromScene();
+        MarkSceneDirty();
+        Toast::Info("Prefab updated: " + std::to_string(updated) + " instance(s)");
+        FBZZ_LOG_INFO("Opened scene: prefab assets were newer; %d instance(s) updated", updated);
+    }
+
     AddRecentScene(path);
     Toast::Info("Opened: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
@@ -400,7 +480,8 @@ bool EditorApp::OpenScenePath(const std::string& path)
 
 bool EditorApp::SaveScene()
 {
-    if (!m_ctx.activeScene) return false;
+    if (!m_ctx.editScene) return false;
+    if (RejectSceneIOWhilePlaying("Save Scene")) return false;
     // Prefab 編集モード中は m_scene の中身がプレファブなので、シーンとして保存すると
     // 元のシーンファイルをプレファブの内容で上書きしてしまう。
     // WHY: Ctrl+S は反射的に押される操作なので、ここで止めないと確実に事故になる。
@@ -408,8 +489,17 @@ bool EditorApp::SaveScene()
     if (m_ctx.InPrefabEditMode()) return SavePrefabEdit();
     if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog();
 
+    // 読み込んだ後に他人 (AI・外部エディタ・git) がファイルを書いていたら、黙って
+    // 踏まない。Ctrl+S は反射で押される操作なので、ここで止めないと相手の編集が
+    // 一度も画面に出ないまま消える。
+    if (IsSceneStaleOnDisk()) {
+        m_staleSaveConfirmPending = true;
+        return false;
+    }
+
+    CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.activeScene, m_settings.lastScenePath);
+    const bool ok = SceneIO::Save(*m_ctx.editScene, m_settings.lastScenePath);
     RestoreEditorHiding();
     if (!ok) {
         FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
@@ -419,6 +509,7 @@ bool EditorApp::SaveScene()
 
     m_ctx.currentScenePath = m_settings.lastScenePath;
     CaptureCleanScene();
+    CaptureSceneDiskStamp();
     AddRecentScene(m_settings.lastScenePath);
     Toast::Success("Saved: " + util::FileSystem::GetFilename(m_settings.lastScenePath));
     FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
@@ -427,7 +518,7 @@ bool EditorApp::SaveScene()
 
 bool EditorApp::SaveSceneAsDialog()
 {
-    if (!m_ctx.activeScene) return false;
+    if (!m_ctx.editScene) return false;
 
     std::string path;
     if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
@@ -440,11 +531,26 @@ bool EditorApp::SaveSceneAsDialog()
 //      真似ると、保存したのに dirty のままという食い違いが残る。
 bool EditorApp::SaveScenePath(const std::string& requestedPath)
 {
-    if (!m_ctx.activeScene || requestedPath.empty()) return false;
+    if (!m_ctx.editScene || requestedPath.empty()) return false;
+    if (RejectSceneIOWhilePlaying("Save Scene")) return false;
     const std::string path = WithFbzzExtension(requestedPath);
 
+    // 別名保存は衝突しない。同じファイルを上書きするときだけ、読み込み後に他人が
+    // 書いていないかを見る。
+    // モーダルは出さない。この関数は AI (scene.save) も通り、クリック待ちにするとバスの
+    // drain が止まる。黙って踏むよりは失敗を返す。
+    if (util::FileSystem::SamePathText(path, m_ctx.currentScenePath) && IsSceneStaleOnDisk()) {
+        FBZZ_LOG_ERROR("Save refused: %s changed on disk after it was opened. "
+                       "Reload it, or save through Ctrl+S to choose which version wins.",
+                       util::FileSystem::GetFilename(path).c_str());
+        Toast::Error("Save refused: " + util::FileSystem::GetFilename(path) +
+                     " changed on disk");
+        return false;
+    }
+
+    CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
+    const bool ok = SceneIO::Save(*m_ctx.editScene, path);
     RestoreEditorHiding();
     if (!ok) {
         FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
@@ -455,6 +561,7 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath)
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
     CaptureCleanScene();
+    CaptureSceneDiskStamp();
     AddRecentScene(path);
     Toast::Success("Saved: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
@@ -531,7 +638,7 @@ void EditorApp::ClearSessionLock()
 void EditorApp::TickAutoSave(float dt)
 {
     if (!m_settings.autoSaveEnabled) return;
-    if (!m_ctx.activeScene) return;
+    if (!m_ctx.editScene) return;
     // Play 中は編集シーンを触らない。ダーティでなければ何もしない。
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
     if (!m_ctx.sceneDirty) { m_autoSaveTimer = 0.0f; return; }
@@ -546,8 +653,9 @@ void EditorApp::TickAutoSave(float dt)
     util::FileSystem::EnsureDirectory(AutoSaveDir());
 
     // 本保存 (SaveScene) とは別の中間ファイルへ書き出す。dirty 状態や lastScenePath は変えない。
+    CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
+    const bool ok = SceneIO::Save(*m_ctx.editScene, path);
     RestoreEditorHiding();
     if (ok) {
         Toast::Info("Auto-saved");
@@ -572,12 +680,12 @@ void EditorApp::ProcessCrashRecovery()
         "An auto-saved version of the scene was found.\n\n"
         "Restore it? (Choosing No keeps the last saved scene.)",
         [this, autosavePath]() {
-            if (!m_ctx.activeScene) return;
-            if (SceneIO::Load(*m_ctx.activeScene, autosavePath)) {
-                scene::FlushWorldTransforms(*m_ctx.activeScene);
+            if (!m_ctx.editScene) return;
+            if (SceneIO::Load(*m_ctx.editScene, autosavePath)) {
+                scene::FlushWorldTransforms(*m_ctx.editScene);
                 m_undoStack.Clear();
-                m_ctx.selectedEntities.clear();
-                m_ctx.editorHiddenGuids.clear();
+                ClearEntitySelection(m_ctx);
+                ApplyEditorViewStateFromSceneMeta();
                 RebuildEditorUIFromScene();
                 // 復旧直後は未保存状態にして、ユーザーに保存を促す。
                 m_dirtyTracker.MarkDirty();
@@ -614,15 +722,14 @@ void EditorApp::CacheSceneWriteTime()
 
 void EditorApp::CheckHotReload()
 {
-    if (!m_ctx.hotReloadEnabled) return;
-
     // WHY: Sceneファイル監視の前提が満たされない場合でも、初回Scripts DLLビルドと
     //      進行中コンパイルは完了させる。ここで早期returnすると、Standaloneを別途
     //      ビルドするまでEditor Playにスクリプトが登録されない状態になるため。
     TickScriptCompile();
     TickHlslCompile();
 
-    if (m_settings.lastScenePath.empty() || !m_ctx.activeScene) return;
+    if (!m_ctx.hotReloadEnabled) return;
+    if (m_settings.lastScenePath.empty() || !m_ctx.editScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
     WIN32_FILE_ATTRIBUTE_DATA info{};
@@ -637,10 +744,11 @@ void EditorApp::CheckHotReload()
 
     if (CompareFileTime(&ft, &m_lastSceneWriteTime) != 0) {
         m_lastSceneWriteTime = ft;
-        if (!SceneIO::Load(*m_ctx.activeScene, m_settings.lastScenePath))
+        if (!SceneIO::Load(*m_ctx.editScene, m_settings.lastScenePath))
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
-            m_ctx.selectedEntities.clear();
+            ClearEntitySelection(m_ctx);
+            ApplyEditorViewStateFromSceneMeta();
             RebuildEditorUIFromScene();
             CaptureCleanScene();
             FBZZ_LOG_INFO("Hot reloaded: %s", m_settings.lastScenePath.c_str());
@@ -666,15 +774,44 @@ void EditorApp::CheckHotReload()
 
 namespace {
 
+// CMakeCache.txt に記録された FBZZ_SDK_ROOT の値を 1 行分そのまま取り出す。
+// 見つからない / cache が読めない場合は空文字列を返す。
+std::string ReadCachedSdkRoot(const std::filesystem::path& buildDir)
+{
+    std::string cacheText;
+    if (!util::FileSystem::ReadText(buildDir / L"CMakeCache.txt", cacheText)) return {};
+
+    static constexpr std::string_view kSdkKey = "FBZZ_SDK_ROOT:PATH=";
+    const std::size_t keyBegin = cacheText.find(kSdkKey);
+    if (keyBegin == std::string::npos) return {};
+    const std::size_t valueBegin = keyBegin + kSdkKey.size();
+    const std::size_t valueEnd   = cacheText.find_first_of("\r\n", valueBegin);
+    return cacheText.substr(valueBegin, valueEnd - valueBegin);
+}
+
+// find_package(FBZZ CONFIG) が解決できる実体が残っている SDK root かを判定する。
+// WHY: SDK ディレクトリを削除・改名しても cache の値だけは残るため、値の一致だけでは
+//      「使える SDK を指しているか」を保証できない。
+bool IsUsableSdkRoot(const std::string& sdkRoot)
+{
+    if (sdkRoot.empty()) return false;
+    return util::FileSystem::Exists(
+        util::FileSystem::PathFromUtf8(sdkRoot) / L"cmake" / L"FBZZ" / L"FBZZConfig.cmake");
+}
+
 bool CMakeCacheUsesSdkRoot(const std::filesystem::path& buildDir, const std::string& sdkRoot)
 {
     if (sdkRoot.empty()) return true;
-    std::string cacheText;
-    if (!util::FileSystem::ReadText(buildDir / L"CMakeCache.txt", cacheText)) return false;
+    const std::string cachedRoot = ReadCachedSdkRoot(buildDir);
+    if (cachedRoot.empty()) return false;
 
-    const std::string normalizedCache = util::FileSystem::NormalizePathSeparators(cacheText);
-    const std::string normalizedSdk = util::FileSystem::NormalizePathSeparators(sdkRoot);
-    return normalizedCache.find("FBZZ_SDK_ROOT:PATH=" + normalizedSdk) != std::string::npos;
+    // 行末までを含めた値の完全一致で比較する (区切り文字・大小文字は正規化)。
+    // 部分一致だと ".../SDK/0.1.0" が ".../SDK/0.1.0-dev.dirty" へ前方一致し、
+    // 消えた SDK を指す cache を「一致」と誤判定して reconfigure が永久にスキップされる。
+    if (!util::FileSystem::SamePathText(cachedRoot, sdkRoot)) return false;
+
+    // 値が一致していても SDK 実体が無ければ configure は必ず失敗するので stale 扱いにする。
+    return IsUsableSdkRoot(cachedRoot);
 }
 
 // コピーされたテンプレートのCMakeCacheは生成元を指すため、configure前に破棄する。
@@ -780,11 +917,26 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     return true;
 }
 
+// Scripts ビルドの失敗ログが「コンパイルエラー」ではなく「SDK を解決できない configure 失敗」かを判定する。
+// WHY: cmake --build は generate.stamp が古いと暗黙に configure をやり直すため、
+//      壊れた CMakeCache は compile error の顔をして毎回同じ内容で失敗し続ける。
+//      この形の失敗だけは再ビルドではなく cache の作り直しでしか復帰できない。
+bool LooksLikeSdkConfigureFailure(const std::string& log)
+{
+    return log.find("FBZZConfig.cmake")            != std::string::npos
+        || log.find("FBZZ_SDK_ROOT")               != std::string::npos
+        || log.find("CMake Configure step failed") != std::string::npos;
+}
+
 } // namespace
 
 void EditorApp::InitScriptDll()
 {
-    if (!m_ctx.hotReloadEnabled) return;
+    // HLSL の監視先は C++ ツールチェーンと無関係に決まる。必要なのは PowerShell と
+    // シェーダーツリー同梱の compile_shaders.ps1 だけで、cmake は 1 度も通らない。
+    // ツールチェーン分岐の中で決めていた頃は、build.config を持たない (あるいは
+    // configure に失敗した) プロジェクトでシェーダーのリロードまで道連れに死んでいた。
+    if (m_ctx.hotReloadEnabled) InitHlslHotReload();
 
     ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
         util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
@@ -826,13 +978,7 @@ void EditorApp::InitScriptDll()
 
         const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         m_scriptsSourceDir     = engineRoot / L"Assets" / L"Scripts";
-        // WHY: Engine shaderはプロジェクトへコピーせず、選択中SDKの共有assetを正本とする。
-        m_hlslSourceDir        = util::FileSystem::PathFromUtf8(
-            asset::AssetManager::ResolveAssetPath("Assets/Shaders"));
-        m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.ps1";
-
         m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
-        m_ctx.hlslSourceDir    = util::FileSystem::PathToUtf8(m_hlslSourceDir);
 
         // 新方式: Reflect() はヘッダ内の FBZZ_REFLECT が生成するため、起動時の
         //         .generated.hpp 一括生成 (旧 FHT) は不要になった。
@@ -962,14 +1108,60 @@ void EditorApp::InitScriptDll()
             FBZZ_LOG_INFO("ScriptDll: source is newer than DLL; scheduling rebuild");
         }
     }
-    if (!m_hlslSourceDir.empty()) {
-        m_hlslSourceFingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
-        if (m_hlslSourceFingerprint != 0) {
-            m_hlslCompilePending = true;
-            m_hlslDebounceTimer = 0.0f;
-            // WHY: 起動していない間の削除もstampでは判定できないため、差分スクリプトを一度走らせる。
-            FBZZ_LOG_INFO("HLSL: 起動時の差分検証を予約します");
-        }
+}
+
+// 監視するシェーダーツリーを決め、それがプロジェクトの持ち物かを判定する。
+//
+// WHY 所有者を見るか: AssetManager::ResolveAssetPath は «プロジェクト → 共有 SDK» の順に
+//   探すので、自前の Assets/Shaders を持たないプロジェクトでは SDK 側の実体が返る。
+//   そこへ書き戻すと、その SDK を使う他のプロジェクトの CSO まで書き換わる。
+//   逆に自前のツリーを持っているなら書き換えて困る相手はいないので、止める理由もない。
+//   従来は FBZZ_SOURCE_TREE_BUILD というビルド構成で切っており、«自前のシェーダーを
+//   持つ SDK プロジェクト» が巻き添えで無効化されていた。判断すべきはビルド構成ではなく
+//   «今から書き込む先が誰のものか» なので、実行時の所在で決める。
+void EditorApp::InitHlslHotReload()
+{
+    m_hlslProjectOwned      = false;
+    m_hlslSourceDir         = util::FileSystem::PathFromUtf8(
+        asset::AssetManager::ResolveAssetPath("Assets/Shaders"));
+    m_compileShadersScript  = m_hlslSourceDir / L"compile_shaders.ps1";
+    m_ctx.hlslSourceDir     = util::FileSystem::PathToUtf8(m_hlslSourceDir);
+
+    if (m_ctx.projectRoot.empty() || m_ctx.hlslSourceDir.empty()) return;
+
+    // 比較の前に絶対化して '..' を畳む。ResolveAssetPath は基準パスを継ぎ足すだけなので、
+    // 相対のまま比べると «プロジェクトの中» を «外» と読み違える。
+    const auto absolutize = [](const std::filesystem::path& path) {
+        if (path.is_absolute())
+            return util::FileSystem::PathToUtf8(path.lexically_normal());
+        std::error_code error;
+        const std::filesystem::path full = std::filesystem::absolute(path, error);
+        return util::FileSystem::PathToUtf8((error ? path : full).lexically_normal());
+    };
+    const std::string shaderDirAbs  = absolutize(m_hlslSourceDir);
+    const std::string projectAbs    = absolutize(util::FileSystem::PathFromUtf8(m_ctx.projectRoot));
+
+    if (!util::FileSystem::IsChildPathText(shaderDirAbs, projectAbs)) {
+        FBZZ_LOG_INFO("HLSL: hot reload is off - %s belongs to the shared SDK, not this project. "
+                      "Copy Assets/Shaders into the project to edit shaders live.",
+                      m_ctx.hlslSourceDir.c_str());
+        return;
+    }
+    // 走らせるのは同梱スクリプトなので、無いなら «自前のツリー» とは呼べない。
+    if (!util::FileSystem::Exists(m_compileShadersScript)) {
+        FBZZ_LOG_WARN("HLSL: hot reload is off - compile_shaders.ps1 not found in %s",
+                      m_ctx.hlslSourceDir.c_str());
+        return;
+    }
+
+    m_hlslProjectOwned      = true;
+    m_hlslSourceFingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
+    if (m_hlslSourceFingerprint != 0) {
+        m_hlslCompilePending = true;
+        m_hlslDebounceTimer  = 0.0f;
+        // WHY: 起動していない間の削除もstampでは判定できないため、差分スクリプトを一度走らせる。
+        FBZZ_LOG_INFO("HLSL: hot reload is on for %s; verifying the tree once",
+                      m_ctx.hlslSourceDir.c_str());
     }
 }
 
@@ -1018,13 +1210,32 @@ void EditorApp::CheckScriptDirtyAndRebuild()
 
 void EditorApp::TickScriptCompile()
 {
+    const bool inEditor = !m_ctx.playMode || m_ctx.playMode->IsInEditor();
+    const bool explicitRebuild = m_ctx.requestScriptReload && inEditor &&
+        m_scriptCompiler.GetState() != Compiler::State::Building && !m_scriptCompilePending;
+    if (explicitRebuild) {
+        m_ctx.requestScriptReload = false;
+        m_scriptCompilePending = true;
+        m_scriptDebounceTimer = 0.0f;
+        m_ctx.scriptReloadBusy = true;
+        FBZZ_LOG_INFO("ScriptDll: explicit rebuild requested");
+    }
+
     // デバウンスタイマーを消費してからビルド開始する
     if (m_scriptCompilePending) {
+        if (!inEditor) return;
         m_ctx.scriptReloadBusy = true;
         m_scriptDebounceTimer -= 0.016f;
         if (m_scriptDebounceTimer > 0.0f) return;
 
         m_scriptCompilePending = false;
+
+        if (m_scriptDllPath.empty()) {
+            m_ctx.scriptReloadBusy = false;
+            SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: DLL target is not configured");
+            FBZZ_LOG_ERROR("ScriptDll: cannot rebuild without a configured Scripts DLL path");
+            return;
+        }
 
         ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
             util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
@@ -1048,8 +1259,15 @@ void EditorApp::TickScriptCompile()
         config.sdkRoot       = m_ctx.engineRoot;
         // WHY: 初回ビルド (DLL 未存在) はエンジン libs がまだないため依存ターゲットも含めてビルドする。
         //      ホットリロード時はエディタがエンジン DLL をロック中のためスキップする。
-        config.skipDeps      = !m_scriptInitialBuild;
+        config.skipDeps      = explicitRebuild || !m_scriptInitialBuild;
+        config.rebuild       = explicitRebuild;
         m_scriptInitialBuild = false;
+
+        if (!m_ctx.scriptsSourceDir.empty()) {
+            ScriptCodeGen::SyncScriptRegistry(m_ctx.scriptsSourceDir,
+                m_ctx.scriptsDllCppPath, m_ctx.scriptsStaticCppPath);
+            m_lastScriptWriteTime = GetLatestScriptSourceWriteTime(GetScriptScanRoot(m_scriptsSourceDir));
+        }
 
         if (!m_scriptCompiler.Start(config)) {
             m_ctx.scriptReloadBusy = false;
@@ -1079,6 +1297,7 @@ void EditorApp::TickScriptCompile()
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Done) {
+        if (!inEditor) return;
         m_ctx.scriptReloadBusy = true;
         // コンパイル成功を確定する (この後の DLL リロードは別工程として扱う)。
         m_buildConsole.IngestFullLog(m_scriptCompiler.GetLog());
@@ -1097,18 +1316,24 @@ void EditorApp::TickScriptCompile()
             }
         }
 
-        if (m_ctx.activeScene && m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)) {
-            m_ctx.selectedEntities.clear();
+        const bool reloaded = m_ctx.activeScene
+            ? m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)
+            : (!m_scriptDll.IsLoaded() && m_scriptDll.Load(m_scriptDllPath));
+        if (reloaded) {
+            std::vector<scene::EntityID> restored;
             for (const auto& guid : savedGuids) {
                 if (auto* go = scene::GameObject::FindByGuid(guid))
-                    m_ctx.selectedEntities.push_back(go->GetID());
+                    restored.push_back(go->GetID());
             }
+            SelectEntities(m_ctx, std::move(restored), SelectionReveal::Skip);
             SetHotReloadState(EditorContext::HotReloadState::Done, "Scripts: hot reload complete");
             m_ctx.hotReloadProgress = 1.0f;
             m_ctx.hotReloadDoneTimer = 3.0f;
         } else {
-            m_ctx.selectedEntities.clear();
-            SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: reload failed");
+            ClearEntitySelection(m_ctx);
+            SetHotReloadState(EditorContext::HotReloadState::Failed,
+                m_scriptDll.IsLoaded() ? "Scripts: reload failed; previous DLL loaded, see Console"
+                                      : "Scripts: unavailable; fix errors and press Rebuild");
             m_ctx.hotReloadDoneTimer = 5.0f;
         }
         m_scriptCompiler.Reset();
@@ -1118,16 +1343,41 @@ void EditorApp::TickScriptCompile()
 
     if (m_scriptCompiler.GetState() == Compiler::State::Failed) {
         // 失敗ログを取り込み、診断を確定する。Build Output パネルへ件数と file:line が並ぶ。
-        m_buildConsole.IngestFullLog(m_scriptCompiler.GetLog());
+        const std::string buildLog = m_scriptCompiler.GetLog();
+        m_buildConsole.IngestFullLog(buildLog);
         m_buildConsole.EndBuild(false, m_scriptCompiler.GetExitCode());
         const int errs = m_buildConsole.Latest() ? m_buildConsole.Latest()->errorCount : 0;
         const std::string msg = errs > 0
             ? "Scripts: " + std::to_string(errs) + " error(s)"
             : "Scripts: compile error (exit=" + std::to_string(m_scriptCompiler.GetExitCode()) + ")";
-        FBZZ_LOG_ERROR("ScriptDll: %s\n%s", msg.c_str(), m_scriptCompiler.GetLog().c_str());
+        FBZZ_LOG_ERROR("ScriptDll: %s\n%s", msg.c_str(), buildLog.c_str());
+        m_scriptCompiler.Reset();
+
+        // 自己修復: SDK を解決できない CMakeCache は、放置すると起動のたびに同じ失敗を出す。
+        // configure をやり直して cache を作り直し、その場で 1 度だけ再ビルドを予約する。
+        // WHY: 1 セッションにつき 1 回に制限するのは、SDK 自体が本当に無い場合に
+        //      configure 失敗 → 再ビルド → 同じ失敗、の無限ループへ落ちないようにするため。
+        if (!m_scriptSdkRecoveryDone
+            && !m_ctx.projectRoot.empty()
+            && LooksLikeSdkConfigureFailure(buildLog)) {
+            m_scriptSdkRecoveryDone = true;
+            FBZZ_LOG_WARN("ScriptDll: SDK を解決できない CMakeCache を検出しました。configure をやり直します");
+            if (TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot)) {
+                m_scriptCompilePending = true;
+                m_scriptDebounceTimer  = 0.0f;
+                // 依存ターゲットも含めた初回ビルド扱いにする (cache 再生成後は中間物が失われている)。
+                m_scriptInitialBuild   = true;
+                m_ctx.scriptReloadBusy = true;
+                SetHotReloadState(EditorContext::HotReloadState::Compiling,
+                                  "Scripts: SDK cache を再構成しました。再ビルド中...");
+                m_ctx.hotReloadProgress = 0.0f;
+                return;
+            }
+            FBZZ_LOG_ERROR("ScriptDll: SDK cache の再構成に失敗しました。FBZZ Hub で SDK を選び直してください");
+        }
+
         SetHotReloadState(EditorContext::HotReloadState::Failed, msg);
         m_ctx.hotReloadDoneTimer = 8.0f;
-        m_scriptCompiler.Reset();
         m_ctx.scriptReloadBusy = false;
     }
 }
@@ -1138,10 +1388,8 @@ void EditorApp::TickScriptCompile()
 
 void EditorApp::CheckHlslDirty()
 {
-#if !defined(FBZZ_SOURCE_TREE_BUILD) || !FBZZ_SOURCE_TREE_BUILD
-    // WHY: immutable SDKの共有shaderをEditor実行中に書き換えてはならない。
-    return;
-#else
+    // 共有 SDK の shader を実行中に書き換えてはならない。判定は InitHlslHotReload が持つ。
+    if (!m_hlslProjectOwned) return;
     if (!m_ctx.hotReloadEnabled) return;
     if (m_hlslSourceDir.empty()) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
@@ -1170,15 +1418,12 @@ void EditorApp::CheckHlslDirty()
     m_hlslDebounceTimer  = 0.5f;
     FBZZ_LOG_DEBUG("HLSL: change detected in %s; recompiling after 500 ms debounce",
                    m_ctx.hlslSourceDir.c_str());
-#endif
 }
 
 void EditorApp::TickHlslCompile()
 {
-#if !defined(FBZZ_SOURCE_TREE_BUILD) || !FBZZ_SOURCE_TREE_BUILD
-    // SDK EditorではSDK publish時に確定したcompiled shaderだけを使用する。
-    return;
-#else
+    if (!m_hlslProjectOwned) return;
+
     if (m_hlslCompilePending) {
         m_hlslDebounceTimer -= 0.016f;
         if (m_hlslDebounceTimer > 0.0f) return;
@@ -1232,8 +1477,14 @@ void EditorApp::TickHlslCompile()
         if (!SyncCompiledShadersToRuntimeAssets(m_hlslSourceDir)) {
             FBZZ_LOG_WARN("HLSL: runtime CSO sync failed; renderer may still use stale shader binaries");
         }
-        if (renderer::ResourceManager::Active())
-            renderer::ResourceManager::Active()->ReloadAllShaders();
+        if (auto* resources = renderer::ResourceManager::Active();
+            resources && !resources->ReloadAllShaders()) {
+            SetHotReloadState(EditorContext::HotReloadState::Failed,
+                              "HLSL: reload failed; previous shaders retained");
+            m_ctx.hotReloadDoneTimer = 8.0f;
+            m_hlslCompiler.Reset();
+            return;
+        }
         SetHotReloadState(EditorContext::HotReloadState::Done, "HLSL: shader reload complete");
         m_ctx.hotReloadDoneTimer = 3.0f;
         m_hlslCompiler.Reset();
@@ -1251,7 +1502,6 @@ void EditorApp::TickHlslCompile()
         m_ctx.hotReloadDoneTimer = 8.0f;
         m_hlslCompiler.Reset();
     }
-#endif
 }
 
 void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std::string& msg)
@@ -1282,6 +1532,48 @@ void EditorApp::RestoreEditorHiding()
         if (auto* go = m_ctx.activeScene->FindByGuid(guid))
             go->SetActive(false);
     }
+}
+
+void EditorApp::CaptureEditorViewStateToSceneMeta()
+{
+    EditorSceneState::InstanceIds hidden;
+    hidden.reserve(m_ctx.editorHiddenGuids.size());
+    for (const auto& [guid, wasActive] : m_ctx.editorHiddenGuids) {
+        (void)wasActive;
+        hidden.push_back(guid);
+    }
+    // 保存順が毎回変わると .meta の差分が無意味に膨らむ (unordered_map の走査順は不定)。
+    std::sort(hidden.begin(), hidden.end());
+    m_ctx.editorSceneState.SetHiddenObjects(std::move(hidden));
+
+    EditorSceneState::InstanceIds locked;
+    if (m_ctx.activeScene) {
+        locked.reserve(m_ctx.lockedEntities.size());
+        for (const scene::EntityID id : m_ctx.lockedEntities)
+            if (const auto* go = m_ctx.activeScene->GetGameObject(id))
+                locked.push_back(go->instanceId);
+        std::sort(locked.begin(), locked.end());
+    }
+    m_ctx.editorSceneState.SetLockedObjects(std::move(locked));
+}
+
+void EditorApp::ApplyEditorViewStateFromSceneMeta()
+{
+    m_ctx.editorHiddenGuids.clear();
+    m_ctx.lockedEntities.clear();
+    if (!m_ctx.activeScene) return;
+
+    // .scene には非表示を解除した状態の activeSelf が入っている (Save 前に
+    // RemoveEditorHiding が戻す)。つまり「隠す前の値」はいま読んだ値そのもの。
+    for (const std::string& guid : m_ctx.editorSceneState.GetHiddenObjects()) {
+        auto* go = m_ctx.activeScene->FindByGuid(guid);
+        if (!go) continue;
+        m_ctx.editorHiddenGuids[guid] = go->activeSelf();
+        go->SetActive(false);
+    }
+    for (const std::string& guid : m_ctx.editorSceneState.GetLockedObjects())
+        if (const auto* go = m_ctx.activeScene->FindByGuid(guid))
+            m_ctx.lockedEntities.push_back(go->GetID());
 }
 
 } // namespace fbzz::editor

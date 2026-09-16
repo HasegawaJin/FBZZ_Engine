@@ -1,10 +1,11 @@
-// FBZZ Engine
-// NavMeshSensorComponent.hpp | fbzz::scene
-// 視野角・視認距離・遮蔽判定 (Line of Sight) で対象を検知する簡易 AI センサー
-//
-// WHY: 「巡回中に視界内へ入ったプレイヤーを追跡する」は NavMeshPatrol と並ぶ
-//      典型的なゲーム AI パターンのため、検知ロジックを NavMeshSensorSystem に
-//      切り出し、同 GO の NavMeshAgentComponent と自動連携できるようにする。
+/// @file    NavMeshSensorComponent.hpp
+/// @brief   視野角・視認距離・遮蔽判定 (Line of Sight) で対象を検知する簡易 AI センサー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// WHY: 「巡回中に視界内へ入ったプレイヤーを追跡する」は NavMeshPatrol と並ぶ
+/// 典型的なゲーム AI パターンのため、検知ロジックを NavMeshSensorSystem に
+/// 切り出し、同 GO の NavMeshAgentComponent と自動連携できるようにする。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

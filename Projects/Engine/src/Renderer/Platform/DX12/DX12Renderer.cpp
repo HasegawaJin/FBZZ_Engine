@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Renderer.cpp | fbzz::renderer
-// DirectX 12 バックバッファのフレーム記録とクリア操作
+/// @file    DX12Renderer.cpp
+/// @brief   DirectX 12 バックバッファのフレーム記録とクリア操作。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12Renderer.hpp"
 
 #include <Engine/Core/Logger.hpp>
@@ -53,6 +54,7 @@ bool DX12Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
 void DX12Renderer::Shutdown()
 {
+    EndComputeBatch();
     m_context.Flush();
     m_iblBaker.reset();
     if (m_gpuReadback && m_gpuMappedTimestamps) m_gpuReadback->Unmap(0, nullptr);
@@ -106,8 +108,15 @@ void DX12Renderer::InvalidateRootCbvCache()
 void DX12Renderer::BeginFrame()
 {
     if (m_context.BeginFrame()) {
+        m_computeBatchActive = false;
+        m_computeBatchWrittenResources.clear();
         m_currentRenderTarget = nullptr;
+        m_currentRenderTargetHandle = {};
         m_currentCubeRtv = {};
+        m_currentViewport = { 0.0f, 0.0f, static_cast<float>(m_context.GetWidth()),
+                              static_cast<float>(m_context.GetHeight()), 0.0f, 1.0f };
+        m_currentScissor = { 0, 0, static_cast<LONG>(m_context.GetWidth()),
+                            static_cast<LONG>(m_context.GetHeight()) };
         // WHAT: shader-visible SRVリングはフレーム単位で巻き戻るため、前フレームのGPUテーブル
         //       キャッシュは無効。次Submitで必ず再割当・再コピーさせる。
         m_lastPixelTableValid = false;
@@ -130,6 +139,8 @@ void DX12Renderer::BeginFrame()
 
 void DX12Renderer::EndFrame()
 {
+    // 呼び出し側が閉じ忘れても、UAV 書き込みを未同期のまま Submit しない。
+    EndComputeBatch();
     m_context.EndFrame();
 }
 
@@ -150,8 +161,10 @@ void DX12Renderer::Clear(const math::Vector4& color)
         //      RenderSystem は GBuffer / HDR パス開始時に Clear(色) しか呼ばない。
         //      DX12 側で深度を残すと初期値 0 のまま LESS 比較が全滅し、
         //      深度テストを使う全ジオメトリが 1 ピクセルも描画されない。
-        m_context.GetCommandList()->ClearDepthStencilView(
-            m_currentRenderTarget->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        if (m_currentRenderTarget->HasDepth()) {
+            m_context.GetCommandList()->ClearDepthStencilView(
+                m_currentRenderTarget->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        }
     } else {
         m_context.GetCommandList()->ClearRenderTargetView(m_context.GetCurrentRtv(), clearColor, 0, nullptr);
         // バックバッファも DX11 と同じく色クリア時に深度を 1.0 へ戻す。
@@ -164,10 +177,24 @@ void DX12Renderer::ClearDepth(float depth)
 {
     if (m_context.IsFrameOpen()) {
         if (m_currentRenderTarget && m_currentRenderTarget->IsCubemap()) return;
+        if (m_currentRenderTarget && !m_currentRenderTarget->HasDepth()) return;
         const auto dsv = m_currentRenderTarget ? m_currentRenderTarget->GetDsv() : m_context.GetDsv();
         m_context.GetCommandList()->ClearDepthStencilView(
             dsv, D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr);
     }
+}
+
+bool DX12Renderer::PrepareShaderReload()
+{
+    // Flush は提出済みのコマンドだけを待つ。記録中の PSO を解放してはならない。
+    if (m_context.IsFrameOpen()) {
+        FBZZ_LOG_WARN("DX12Renderer: shader reload rejected while a frame is recording");
+        return false;
+    }
+    m_context.Flush();
+    m_psoCache.ClearPipelines();
+    InvalidateRootCbvCache();
+    return true;
 }
 
 void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
@@ -385,11 +412,13 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
             m_stateTracker.Transition(commands, vertexBuffer->GetResource(),
                                       D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
         }
-        const auto view = vertexBuffer->GetVertexView();
+        const auto view = vertexBuffer->GetVertexView(m_uploadArena);
+        if (view.BufferLocation == 0) return;
         commands->IASetVertexBuffers(0, 1, &view);
     }
     if (auto* indexBase = resources.Get(call.indexBuffer)) {
-        const auto view = static_cast<DX12Buffer*>(indexBase)->GetIndexView();
+        const auto view = static_cast<DX12Buffer*>(indexBase)->GetIndexView(m_uploadArena);
+        if (view.BufferLocation == 0) return;
         commands->IASetIndexBuffer(&view);
     }
 
@@ -465,20 +494,22 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     if (!srvTable) return;
     auto srvDestination = srvTable.cpu;
     for (uint32_t slot = 0; slot < 32; ++slot) {
-        D3D12_CPU_DESCRIPTOR_HANDLE source = m_context.GetNullPixelSrv(slot);
+        // 何も束縛されなかったときの null は、そのレジスタの宣言に合わせて選ぶ。
+        // StructuredBuffer のスロットへ Texture2D の null を差すと読み値が未定義になる。
+        D3D12_CPU_DESCRIPTOR_HANDLE source = IsComputeStructuredBufferSlot(slot)
+            ? m_context.GetNullBufferSrv(slot)
+            : m_context.GetNullPixelSrv(slot);
         if (auto* textureBase = resources.Get(call.srvInputs[slot])) {
             auto* texture = static_cast<DX12Texture*>(textureBase);
             m_stateTracker.QueueTransition(texture->GetResource(),
                                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             source = texture->GetSrvCpu();
         }
-        if (slot >= 14 && slot <= 15) {
-            if (auto* bufferBase = resources.Get(call.srvBuffers[slot - 14])) {
-                auto* buffer = static_cast<DX12StructuredBuffer*>(bufferBase);
-                m_stateTracker.QueueTransition(buffer->GetResource(),
-                                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                source = buffer->GetSrv();
-            }
+        if (auto* bufferBase = resources.Get(call.srvBuffers[slot])) {
+            auto* buffer = static_cast<DX12StructuredBuffer*>(bufferBase);
+            m_stateTracker.QueueTransition(buffer->GetResource(),
+                                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            source = buffer->GetSrv();
         }
         m_context.GetDevice()->CopyDescriptorsSimple(
             1, srvDestination, source, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -530,14 +561,53 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     m_stateTracker.FlushBarriers(commands);
     commands->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
     if (writtenCount > 0) {
-        // WHAT: このDispatchが書き込んだUAVの読み出し前ハザードを防ぐバリアも1回にまとめて発行する。
-        std::array<D3D12_RESOURCE_BARRIER, 10> uavBarriers{};
-        for (uint32_t index = 0; index < writtenCount; ++index) {
-            uavBarriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-            uavBarriers[index].UAV.pResource = writtenResources[index];
+        if (m_computeBatchActive) {
+            // バッチ内 Dispatch は相互依存しない契約なので、ここでは記録だけ行う。
+            // 同じ UAV が複数回現れてもパス末尾のバリアは 1 個で十分。
+            for (uint32_t index = 0; index < writtenCount; ++index) {
+                if (std::find(m_computeBatchWrittenResources.begin(),
+                              m_computeBatchWrittenResources.end(),
+                              writtenResources[index]) == m_computeBatchWrittenResources.end()) {
+                    m_computeBatchWrittenResources.push_back(writtenResources[index]);
+                }
+            }
+        } else {
+            // 通常 Dispatch は後続 Dispatch が同じ UAV を読む可能性があるため即時同期する。
+            std::array<D3D12_RESOURCE_BARRIER, 10> uavBarriers{};
+            for (uint32_t index = 0; index < writtenCount; ++index) {
+                uavBarriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                uavBarriers[index].UAV.pResource = writtenResources[index];
+            }
+            commands->ResourceBarrier(writtenCount, uavBarriers.data());
         }
-        commands->ResourceBarrier(writtenCount, uavBarriers.data());
     }
+}
+
+void DX12Renderer::BeginComputeBatch()
+{
+    // ネストは契約外。既存バッチを安全に閉じてから新しい収集を開始する。
+    if (m_computeBatchActive) EndComputeBatch();
+    m_computeBatchWrittenResources.clear();
+    m_computeBatchActive = true;
+}
+
+void DX12Renderer::EndComputeBatch()
+{
+    if (!m_computeBatchActive) return;
+
+    if (m_context.IsFrameOpen() && !m_computeBatchWrittenResources.empty()) {
+        std::vector<D3D12_RESOURCE_BARRIER> barriers(m_computeBatchWrittenResources.size());
+        for (size_t index = 0; index < m_computeBatchWrittenResources.size(); ++index) {
+            barriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+            barriers[index].UAV.pResource = m_computeBatchWrittenResources[index];
+        }
+        // WHAT: Dispatch ごとの API 呼び出しをやめ、パス全体を 1 回の UAV barrier 群で確定する。
+        m_context.GetCommandList()->ResourceBarrier(
+            static_cast<UINT>(barriers.size()), barriers.data());
+    }
+
+    m_computeBatchWrittenResources.clear();
+    m_computeBatchActive = false;
 }
 
 void DX12Renderer::Resize(uint32_t width, uint32_t height)
@@ -545,19 +615,38 @@ void DX12Renderer::Resize(uint32_t width, uint32_t height)
     m_context.Resize(width, height);
 }
 
+void DX12Renderer::SetVSync(bool enabled)
+{
+    m_context.SetVSync(enabled);
+}
+
+bool DX12Renderer::GetVSync() const
+{
+    return m_context.GetVSync();
+}
+
 void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, ResourceManager& resources)
 {
     if (!m_context.IsFrameOpen()) return;
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
-    if (m_currentRenderTarget) {
-        for (uint32_t index = 0; index < m_currentRenderTarget->GetColorCount(); ++index)
-            m_stateTracker.QueueTransition(m_currentRenderTarget->GetColorResource(index),
+    // 前の RT はハンドルから引き直す。生ポインタのまま触ると、束縛したあとに解放された
+    // RT (リサイズで作り直された中間 RT 等) を «読める状態へ戻す» つもりで破棄済みの
+    // オブジェクトから番地を引くことになる。解放済みなら Get が nullptr を返し、
+    // 戻し忘れたぶんの遷移は次にそのリソースを束縛する側が積み直す。
+    auto* previousBase = resources.Get(m_currentRenderTargetHandle);
+    auto* previous = previousBase ? static_cast<DX12RenderTarget*>(previousBase) : nullptr;
+    if (previous) {
+        for (uint32_t index = 0; index < previous->GetColorCount(); ++index)
+            m_stateTracker.QueueTransition(previous->GetColorResource(index),
                                            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        m_stateTracker.QueueTransition(m_currentRenderTarget->GetDepthResource(),
-                                       D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        if (previous->HasDepth()) {
+            m_stateTracker.QueueTransition(previous->GetDepthResource(),
+                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        }
     }
     auto* targetBase = resources.Get(handle);
     m_currentRenderTarget = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
+    m_currentRenderTargetHandle = targetBase ? handle : ResourceHandle<RenderTargetTag>{};
     m_currentCubeRtv = {};
     if (!m_currentRenderTarget) {
         m_stateTracker.FlushBarriers(commands);
@@ -570,6 +659,8 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
                            static_cast<LONG>(m_context.GetHeight())};
         commands->RSSetViewports(1, &viewport);
         commands->RSSetScissorRects(1, &scissor);
+        m_currentViewport = viewport;
+        m_currentScissor = scissor;
         return;
     }
     std::array<D3D12_CPU_DESCRIPTOR_HANDLE, DX12RenderTarget::MAX_COLOR> rtvs{};
@@ -578,18 +669,24 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
                                        D3D12_RESOURCE_STATE_RENDER_TARGET);
         rtvs[index] = m_currentRenderTarget->GetRtv(index);
     }
-    m_stateTracker.QueueTransition(m_currentRenderTarget->GetDepthResource(),
-                                   D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    const bool hasDepth = m_currentRenderTarget->HasDepth();
+    if (hasDepth) {
+        m_stateTracker.QueueTransition(m_currentRenderTarget->GetDepthResource(),
+                                       D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    }
     // WHAT: 旧RTの解放遷移と新RTのバインド遷移をまとめて1回のResourceBarrierで発行する。
     m_stateTracker.FlushBarriers(commands);
     const auto dsv = m_currentRenderTarget->GetDsv();
-    commands->OMSetRenderTargets(m_currentRenderTarget->GetColorCount(), rtvs.data(), FALSE, &dsv);
+    commands->OMSetRenderTargets(m_currentRenderTarget->GetColorCount(), rtvs.data(), FALSE,
+                                 hasDepth ? &dsv : nullptr);
     D3D12_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(m_currentRenderTarget->GetWidth()),
                             static_cast<float>(m_currentRenderTarget->GetHeight()), 0.0f, 1.0f};
     D3D12_RECT scissor{0, 0, static_cast<LONG>(m_currentRenderTarget->GetWidth()),
                        static_cast<LONG>(m_currentRenderTarget->GetHeight())};
     commands->RSSetViewports(1, &viewport);
     commands->RSSetScissorRects(1, &scissor);
+    m_currentViewport = viewport;
+    m_currentScissor = scissor;
 }
 
 void DX12Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
@@ -608,6 +705,8 @@ void DX12Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t 
                         static_cast<LONG>(x + width), static_cast<LONG>(y + height) };
     commands->RSSetViewports(1, &viewport);
     commands->RSSetScissorRects(1, &scissor);
+    m_currentViewport = viewport;
+    m_currentScissor = scissor;
 }
 
 void DX12Renderer::SetRenderTargetFace(
@@ -618,7 +717,10 @@ void DX12Renderer::SetRenderTargetFace(
     auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
     if (!target || !target->IsCubemap() || face >= 6 || mip >= target->GetMipCount()) return;
     m_currentRenderTarget = target;
+    m_currentRenderTargetHandle = handle;
     m_currentCubeRtv = target->GetFaceRtv(face, mip);
+    m_currentCubeFace = face;
+    m_currentCubeMip = mip;
     m_stateTracker.Transition(m_context.GetCommandList(), target->GetCubeResource(),
                               D3D12_RESOURCE_STATE_RENDER_TARGET);
     m_context.GetCommandList()->OMSetRenderTargets(1, &m_currentCubeRtv, FALSE, nullptr);
@@ -628,8 +730,39 @@ void DX12Renderer::SetRenderTargetFace(
     D3D12_RECT scissor{0, 0, static_cast<LONG>(mipSize), static_cast<LONG>(mipSize)};
     m_context.GetCommandList()->RSSetViewports(1, &viewport);
     m_context.GetCommandList()->RSSetScissorRects(1, &scissor);
+    m_currentViewport = viewport;
+    m_currentScissor = scissor;
 }
-void DX12Renderer::SetSampler(uint32_t, SamplerMode) {}
+
+bool DX12Renderer::RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+                                      ResourceManager& resources)
+{
+    if (!m_context.IsFrameOpen() || !resources.Get(target) || !resources.Get(call.shader)
+        || !resources.Get(call.pipelineState)) return false;
+    auto* previewTarget = static_cast<DX12RenderTarget*>(resources.Get(target));
+    auto* previewShader = static_cast<DX12Shader*>(resources.Get(call.shader));
+    auto* previewState = static_cast<DX12PipelineState*>(resources.Get(call.pipelineState));
+    if (!m_psoCache.GetOrCreate(*previewShader, previewState->GetDesc(), call.topology,
+                               previewTarget->GetColorFormat(), previewTarget->GetColorCount())) return false;
+    const auto previous = m_currentRenderTargetHandle;
+    const auto viewport = m_currentViewport;
+    const auto scissor = m_currentScissor;
+    const bool cube = m_currentCubeRtv.ptr != 0;
+    const uint32_t face = m_currentCubeFace;
+    const uint32_t mip = m_currentCubeMip;
+
+    SetRenderTarget(target, resources);
+    Submit(call, resources);
+    // キューブ RT は通常添付の RTV を持たない。プレビューを外してから面として戻す。
+    SetRenderTarget(cube ? ResourceHandle<RenderTargetTag>{} : previous, resources);
+    if (cube) SetRenderTargetFace(previous, face, mip, resources);
+    auto* commands = m_context.GetCommandList();
+    commands->RSSetViewports(1, &viewport);
+    commands->RSSetScissorRects(1, &scissor);
+    m_currentViewport = viewport;
+    m_currentScissor = scissor;
+    return true;
+}
 
 bool DX12Renderer::BakeSkyLight(
     ResourceHandle<RenderTargetTag> handle, ResourceManager& resources,
@@ -778,10 +911,10 @@ std::unique_ptr<IPipelineState> DX12Renderer::CreateNativePipelineState(const Pi
     return std::make_unique<DX12PipelineState>(desc);
 }
 std::unique_ptr<IRenderTarget> DX12Renderer::CreateNativeRenderTarget(
-    uint32_t width, uint32_t height, uint32_t colorCount)
+    uint32_t width, uint32_t height, const RenderTargetDesc& desc)
 {
     auto target = std::make_unique<DX12RenderTarget>();
-    if (!target->Init(&m_context, &m_stateTracker, width, height, colorCount))
+    if (!target->Init(&m_context, &m_stateTracker, width, height, desc))
         return nullptr;
     return target;
 }
@@ -810,11 +943,35 @@ std::unique_ptr<ITexture> DX12Renderer::CreateNativeComputeTexture(uint32_t widt
     return texture;
 }
 
+std::unique_ptr<ITexture> DX12Renderer::CreateNativeComputeTexture3D(
+    uint32_t width, uint32_t height, uint32_t depth)
+{
+    auto texture = std::make_unique<DX12Texture>();
+    if (!texture->InitForCompute3D(&m_context, &m_stateTracker, width, height, depth)) return nullptr;
+    return texture;
+}
+
+std::unique_ptr<ITexture> DX12Renderer::CreateNativeDynamicTexture(
+    uint32_t width, uint32_t height, DynamicTextureFormat format)
+{
+    auto texture = std::make_unique<DX12Texture>();
+    if (!texture->InitDynamic(&m_context, &m_stateTracker, width, height, format)) return nullptr;
+    return texture;
+}
+
 std::unique_ptr<IStructuredBuffer> DX12Renderer::CreateNativeStructuredBuffer(
     const void* data, uint32_t count, uint32_t stride)
 {
     auto buffer = std::make_unique<DX12StructuredBuffer>();
     if (!buffer->Init(&m_context, &m_stateTracker, data, count, stride, false)) return nullptr;
+    return buffer;
+}
+
+std::unique_ptr<IStructuredBuffer> DX12Renderer::CreateNativeGpuLocalStructuredBuffer(
+    const void* data, uint32_t count, uint32_t stride)
+{
+    auto buffer = std::make_unique<DX12StructuredBuffer>();
+    if (!buffer->Init(&m_context, &m_stateTracker, data, count, stride, false, true)) return nullptr;
     return buffer;
 }
 

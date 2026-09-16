@@ -1,15 +1,17 @@
-// FBZZ Engine
-// ComponentRegistry.hpp | fbzz::scene
-// コンポーネント型とEditor／永続化メタデータの単一登録表
+/// @file    ComponentRegistry.hpp
+/// @brief   コンポーネント型とEditor／永続化メタデータの単一登録表。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 
 #include "Components/MeshRenderer.hpp"
 #include "Components/MaterialComponent.hpp"
 #include "Components/ParticleEmitter.hpp"
-#include "Components/ParticleForceField.hpp"
-#include "Components/WindZoneComponent.hpp"
+#include "Components/ForceField.hpp"
+#include "Components/WeatherComponent.hpp"
 #include "Components/ColliderComponent.hpp"
 #include "Components/RigidBodyComponent.hpp"
+#include "Components/JointComponent.hpp"
 #include "Components/VolumeComponent.hpp"
 #include "Components/LightComponent.hpp"
 #include "Components/CameraComponent.hpp"
@@ -22,6 +24,7 @@
 #include "Components/SkinnedMeshRenderer.hpp"
 #include "Components/BoneComponent.hpp"
 #include "Components/UICanvas.hpp"
+#include "Components/UICanvasGroup.hpp"
 #include "Components/UIImage.hpp"
 #include "Components/UIButton.hpp"
 #include "Components/UIText.hpp"
@@ -33,18 +36,23 @@
 #include "Components/AtmosphericScatteringComponent.hpp"
 #include "Components/PostProcessVolumeComponent.hpp"
 #include "Components/IKSolverComponent.hpp"
+#include "Components/SpringBoneComponent.hpp"
+#include "Components/RagdollComponent.hpp"
+#include "Components/MotionWarpComponent.hpp"
 #include "Components/CharacterControllerComponent.hpp"
 #include "Components/TerrainComponent.hpp"
 #include "Components/TerrainGridComponent.hpp"
-#include "Components/TerrainDetailComponent.hpp"
-#include "Components/FoliageComponent.hpp"
 #include "Components/WaterComponent.hpp"
 #include "Components/VolumetricCloudComponent.hpp"
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
 #include "Components/LifetimeComponent.hpp"
-#include "Components/VFXGraphComponent.hpp"
 #include "Components/VFXScreenEffect.hpp"
+#include "Components/VFXComponent.hpp"
+#include "Components/VFXElement.hpp"
+#include "Components/VFXBeamComponent.hpp"
+#include "Components/VFXLineComponent.hpp"
+#include "Components/VFXAudioEnvelope.hpp"
 #include "Components/PresentationComponents.hpp"
 #include "Components/ConstraintComponents.hpp"
 #include "Components/SplineComponents.hpp"
@@ -58,6 +66,8 @@
 #include "Components/NavMeshPatrolComponent.hpp"
 #include "Components/NavMeshSensorComponent.hpp"
 #include "Components/BehaviorTreeComponent.hpp"
+#include "Components/ProceduralMeshComponent.hpp"
+#include "Components/SequencePlayerComponent.hpp"
 #include "ScriptComponent.hpp"
 
 #include <cstddef>
@@ -148,8 +158,7 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(MeshRenderer, Rendering, "Mesh Renderer"),
     FBZZ_CUSTOM_COMPONENT(MaterialComponent, Rendering, "Material"),
     FBZZ_CUSTOM_COMPONENT(ParticleEmitter, Effects, "Particle Emitter"),
-    FBZZ_CUSTOM_COMPONENT(ParticleForceField, Effects, "Particle Force Field"),
-    FBZZ_CUSTOM_COMPONENT(WindZoneComponent, Environment, "Wind Zone"),
+    FBZZ_CUSTOM_COMPONENT(ForceField, Effects, "Force Field"),
     FBZZ_CUSTOM_COMPONENT(AabbColliderComponent, Physics, "AABB Collider"),
     FBZZ_CUSTOM_COMPONENT(BoxColliderComponent, Physics, "Box Collider"),
     FBZZ_CUSTOM_COMPONENT(SphereColliderComponent, Physics, "Sphere Collider"),
@@ -181,8 +190,6 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(CharacterControllerComponent, Physics, "Character Controller"),
     FBZZ_CUSTOM_COMPONENT(TerrainComponent, Terrain, "Terrain"),
     FBZZ_CUSTOM_COMPONENT(TerrainGridComponent, Terrain, "Terrain Grid"),
-    FBZZ_CUSTOM_COMPONENT(TerrainDetailComponent, Terrain, "Terrain Detail"),
-    FBZZ_CUSTOM_COMPONENT(FoliageComponent, Terrain, "Foliage"),
     FBZZ_CUSTOM_COMPONENT(WaterComponent, Terrain, "Water"),
     FBZZ_CUSTOM_COMPONENT(VolumetricCloudComponent, Environment, "Volumetric Cloud"),
     FBZZ_CUSTOM_COMPONENT(TrailComponent, Effects, "Trail"),
@@ -199,11 +206,12 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(AtmosphericScatteringComponent, Environment, "Atmospheric Scattering"),
     FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume"),
     // WHY: ComponentRegistryはScript DLL ABIへ影響するため、新規型は既存順を崩さず末尾へ追加する。
-    FBZZ_CUSTOM_COMPONENT(VFXGraphComponent, Effects, "VFX Graph"),
-    // VFXGraphSystemがScreenEffectノードから生成する内部型。手動追加もシーン保存もしない。
-    FBZZ_INTERNAL_COMPONENT(VFXScreenEffect, "VFX Screen Effect"),
-    FBZZ_INTERNAL_COMPONENT(VFXCameraShake, "VFX Camera Shake"),
-    FBZZ_INTERNAL_COMPONENT(VFXTimeScale, "VFX Time Scale"),
+    // かつては VFXGraphSystem が生成するだけの内部型だったが、.vfx がプレハブになった
+    // 以上「シーンに置いて保存できる」必要がある (置けなければ変換で消える)。
+    // weight は VFXElement が毎フレーム書くランタイム値なので Reflect には含めない。
+    FBZZ_COMPONENT(VFXScreenEffect, Effects, "VFX Screen Effect"),
+    FBZZ_COMPONENT(VFXCameraShake, Effects, "VFX Camera Shake"),
+    FBZZ_COMPONENT(VFXTimeScale, Effects, "VFX Time Scale"),
     FBZZ_COMPONENT(SpriteRendererComponent, Rendering, "Sprite Renderer"),
     FBZZ_COMPONENT(SortingGroupComponent, Rendering, "Sorting Group"),
     FBZZ_COMPONENT(LineRendererComponent, Rendering, "Line Renderer"),
@@ -228,7 +236,40 @@ using ComponentRegistry = std::tuple<
     FBZZ_COMPONENT(AudioMixerSendComponent, Audio, "Audio Mixer Send"),
     // WHY 末尾か: ComponentRegistry の順序は Scene の SoA tuple 順と
     //      Script DLL ABI に影響する。既存順を崩さず末尾へ追加する。
-    FBZZ_COMPONENT(BehaviorTreeComponent, Navigation, "Behavior Tree")
+    FBZZ_COMPONENT(BehaviorTreeComponent, Navigation, "Behavior Tree"),
+    FBZZ_CUSTOM_COMPONENT(CylinderColliderComponent, Physics, "Cylinder Collider"),
+    FBZZ_CUSTOM_COMPONENT(SpringBoneComponent, Animation, "Spring Bone"),
+    // 寄せ先はスクリプトが毎回入れ替えるランタイム値で、保存する設定は enabled だけ。
+    FBZZ_COMPONENT(MotionWarpComponent, Animation, "Motion Warp"),
+    FBZZ_COMPONENT(WeatherComponent, Environment, "Weather"),
+    // 形の正本はスクリプトなので保存も手動追加もしない。mesh.Apply が付ける。
+    FBZZ_INTERNAL_COMPONENT(ProceduralMeshComponent, "Procedural Mesh"),
+    FBZZ_COMPONENT(SequencePlayerComponent, Misc, "Sequence Player"),
+    // .vfx プレハブの再生ヘッドと生存窓 (Docs/design/vfx-prefab.md)。
+    FBZZ_COMPONENT(VFXComponent, Effects, "VFX"),
+    FBZZ_COMPONENT(VFXElement, Effects, "VFX Element"),
+    FBZZ_COMPONENT(VFXLightEnvelope, Effects, "VFX Light Envelope"),
+    FBZZ_COMPONENT(VFXTransformEnvelope, Effects, "VFX Transform Envelope"),
+    FBZZ_COMPONENT(VFXMaterialEnvelope, Effects, "VFX Material Envelope"),
+    FBZZ_COMPONENT(VFXDecalEnvelope, Effects, "VFX Decal Envelope"),
+    FBZZ_COMPONENT(VFXAudioEnvelope, Effects, "VFX Audio Envelope"),
+    // 経路だけを持つ。見た目は同じ GameObject の TrailComponent が受け持つ。
+    FBZZ_COMPONENT(VFXBeamComponent, Effects, "VFX Beam"),
+    // 配下の透明度と入力可否をまとめて変える。矩形は持たない。
+    FBZZ_COMPONENT(UICanvasGroup, UI, "UI Canvas Group"),
+    FBZZ_COMPONENT(UIContentSizeFitter, UI, "UI Content Size Fitter"),
+    FBZZ_COMPONENT(UINavigation, UI, "UI Navigation"),
+    FBZZ_COMPONENT(UIDragSource, UI, "UI Drag Source"),
+    FBZZ_COMPONENT(UIDropTarget, UI, "UI Drop Target"),
+    // 実行状態 (質点・拘束・段階) は保存しないので保存は手動。設定は Reflect で足りる。
+    FBZZ_AUTO_INSPECTOR_COMPONENT(RagdollComponent, Animation, "Ragdoll"),
+    // 雷・ビーム。保存は Reflect のまま、Inspector はプリセットと形のプレビューを持つ専用 UI。
+    ComponentRegistration<VFXLineComponent, ComponentCategory::Effects, "VFXLineComponent", "VFX Line",
+                          ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>,
+    // 剛体の関節 (ロープ・鎖・ヒンジ)。保存は Reflect のまま、Inspector は種別で出し分ける
+    // 専用 UI (張れているか / 実効距離は Reflect では表せない)。
+    ComponentRegistration<JointComponent, ComponentCategory::Physics, "JointComponent", "Joint",
+                          ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>
 >;
 
 template<typename Registry>

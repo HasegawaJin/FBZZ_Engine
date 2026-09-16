@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PostProcessProfile.cpp | fbzz::asset
-// オーバーライドリストの適用・複製と、TOML (.fzdata) との相互変換。
+/// @file    PostProcessProfile.cpp
+/// @brief   オーバーライドリストの適用・複製と、TOML (.fzdata) との相互変換。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
@@ -95,4 +96,6 @@ void PostProcessProfile::Reflect(scene::IReflector& r)
 
 } // namespace fbzz::asset
 
-FBZZ_REGISTER_DATA_ASSET(::fbzz::asset::PostProcessProfile);
+// 組み込み登録。ここは Engine の静的初期化でプロセス起動時に 1 回しか走らないため、
+// スクリプト DLL のアンロードで消される側に置くと二度と復活しない。
+FBZZ_REGISTER_BUILTIN_DATA_ASSET(::fbzz::asset::PostProcessProfile);

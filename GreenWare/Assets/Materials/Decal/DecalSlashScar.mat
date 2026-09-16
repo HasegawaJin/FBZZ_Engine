@@ -1,0 +1,39 @@
+# FBZZ Engine
+# DecalSlashScar.mat
+# 斬撃痕。SlashScarComponent が当たった一撃ごとに 1 枚置く。
+#
+# 何をどちらが持つか:
+#   cooled / coverage / seed … スクリプトが毎フレーム書く。«いつ斬ったか» と
+#                              «1 枚ごとの揺らぎ» はゲームの状態なので静的にできない。
+#   それ以外                 … ここが正本。«傷の質» は誰を斬っても変わらない。
+version = 1
+name = 'DecalSlashScar'
+shader = 'Assets/Shaders/Material/Decal/Material/DecalSlashScar.hlsl'
+render_path = 'decal'
+blend_mode = 'AlphaBlend'
+double_sided = true
+render_queue = 3000
+
+[textures]
+
+[params]
+# 裂け目は «面が割れて中の暗がりが見えている» ので、色ではなく暗さで作る。
+# a が傷そのものの濃さ。
+scarColor = [ 0.02, 0.02, 0.03, 0.80 ]
+# 斬った直後だけ縁に残る熱。刃の軌跡 (FX_BLD_Trail) の主色と揃えること ─
+# 別の色にすると «誰が付けた傷か» が繋がらない。
+glowColor = [ 2.10, 1.30, 0.42, 1.0 ]
+
+scarWidth = 0.16
+# 両端の尖り。大きいほど細く長い «斬った線» になる。
+scarTaper = 0.55
+edgeSoftness = 0.35
+glowIntensity = 2.6
+
+# スクリプトが書くまでの値。冷え切った跡を既定にしておく。
+cooled = 1.0
+coverage = 1.0
+seed = 1.0
+
+# 中心線のぶれ。0 で定規で引いた直線になり «描いた線» に見える。
+waver = 1.0

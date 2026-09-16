@@ -1,0 +1,1998 @@
+{
+  "schema_version": 1,
+  "status": "exported_and_roundtrip_verified",
+  "source_blend": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\MiniBotC_PlayerMotions.blend",
+  "authoring_fps": 30,
+  "source_unit_meters": 1.0,
+  "fbx_settings": {
+    "use_selection": true,
+    "use_visible": false,
+    "global_scale": 1.0,
+    "apply_unit_scale": true,
+    "apply_scale_options": "FBX_SCALE_NONE",
+    "axis_forward": "-Z",
+    "axis_up": "Y",
+    "use_space_transform": true,
+    "bake_space_transform": false,
+    "add_leaf_bones": false,
+    "primary_bone_axis": "Y",
+    "secondary_bone_axis": "X",
+    "armature_nodetype": "NULL",
+    "use_armature_deform_only": false,
+    "use_mesh_modifiers": true,
+    "mesh_smooth_type": "OFF",
+    "use_tspace": true,
+    "path_mode": "RELATIVE",
+    "embed_textures": false
+  },
+  "animation_settings": {
+    "bake_anim": true,
+    "bake_anim_use_all_bones": true,
+    "bake_anim_use_all_actions": false,
+    "bake_anim_use_nla_strips": false,
+    "bake_anim_force_startend_keying": true,
+    "bake_anim_step": 0.25,
+    "bake_anim_simplify_factor": 0.0
+  },
+  "coordinate_contract": {
+    "blender_up": "+Z",
+    "blender_player_forward": "-Y",
+    "engine_up": "+Y",
+    "engine_game_forward": "+Z",
+    "imported_visual_forward": "-Z",
+    "visual_child_yaw_degrees": 180,
+    "source_point_to_engine_model": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "source_point_to_engine_game": [
+      [
+        -1.0,
+        8.742277657347586e-08,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        -8.742277657347586e-08,
+        -1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "models": [
+    {
+      "asset": "Player",
+      "lod": 0,
+      "meshes": [
+        "Player_LOD0",
+        "Player_Fingers_LOD0"
+      ],
+      "source_rig": "MiniBotC_Humanoid",
+      "bones": 54,
+      "fbx": "GreenWare/Assets/Models/Player/Player.fbx",
+      "triangles": 60428,
+      "vertices": 30408,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Player_LOD0",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 4,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        },
+        {
+          "name": "Player_Fingers_LOD0",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 1,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        }
+      ],
+      "export_meshes": [
+        "Export_Player_LOD0",
+        "Export_Player_Fingers_LOD0"
+      ]
+    },
+    {
+      "asset": "Player",
+      "lod": 1,
+      "meshes": [
+        "Player_LOD1",
+        "Player_Fingers_LOD1"
+      ],
+      "source_rig": "MiniBotC_Humanoid",
+      "bones": 54,
+      "fbx": "GreenWare/Assets/Models/Player/Player_LOD1.fbx",
+      "triangles": 30051,
+      "vertices": 15162,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Player_LOD1",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 4,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        },
+        {
+          "name": "Player_Fingers_LOD1",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 1,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        }
+      ],
+      "export_meshes": [
+        "Export_Player_LOD1",
+        "Export_Player_Fingers_LOD1"
+      ]
+    },
+    {
+      "asset": "Player",
+      "lod": 2,
+      "meshes": [
+        "Player_LOD2",
+        "Player_Fingers_LOD2"
+      ],
+      "source_rig": "MiniBotC_Humanoid",
+      "bones": 54,
+      "fbx": "GreenWare/Assets/Models/Player/Player_LOD2.fbx",
+      "triangles": 13040,
+      "vertices": 6596,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Player_LOD2",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 4,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        },
+        {
+          "name": "Player_Fingers_LOD2",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 1,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        }
+      ],
+      "export_meshes": [
+        "Export_Player_LOD2",
+        "Export_Player_Fingers_LOD2"
+      ]
+    },
+    {
+      "asset": "Sword",
+      "lod": 0,
+      "meshes": [
+        "Sword_LOD0"
+      ],
+      "source_rig": null,
+      "bones": 0,
+      "fbx": "GreenWare/Assets/Models/Player/Sword/Sword.fbx",
+      "triangles": 5994,
+      "vertices": 2838,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Sword_LOD0",
+          "uv_maps": [
+            "UVMap"
+          ]
+        }
+      ],
+      "export_meshes": [
+        "Export_Sword_LOD0"
+      ]
+    },
+    {
+      "asset": "Sword",
+      "lod": 1,
+      "meshes": [
+        "Sword_LOD1"
+      ],
+      "source_rig": null,
+      "bones": 0,
+      "fbx": "GreenWare/Assets/Models/Player/Sword/Sword_LOD1.fbx",
+      "triangles": 2994,
+      "vertices": 1338,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Sword_LOD1",
+          "uv_maps": [
+            "UVMap"
+          ]
+        }
+      ],
+      "export_meshes": [
+        "Export_Sword_LOD1"
+      ]
+    },
+    {
+      "asset": "Sword",
+      "lod": 2,
+      "meshes": [
+        "Sword_LOD2"
+      ],
+      "source_rig": null,
+      "bones": 0,
+      "fbx": "GreenWare/Assets/Models/Player/Sword/Sword_LOD2.fbx",
+      "triangles": 2194,
+      "vertices": 938,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Sword_LOD2",
+          "uv_maps": [
+            "UVMap"
+          ]
+        }
+      ],
+      "export_meshes": [
+        "Export_Sword_LOD2"
+      ]
+    },
+    {
+      "asset": "Companion",
+      "lod": 0,
+      "meshes": [
+        "Companion_LOD0"
+      ],
+      "source_rig": "Companion_Rig",
+      "bones": 4,
+      "fbx": "GreenWare/Assets/Models/Player/Companion/Companion.fbx",
+      "triangles": 19999,
+      "vertices": 9985,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Companion_LOD0",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 2,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        }
+      ],
+      "export_meshes": [
+        "Export_Companion_LOD0"
+      ]
+    },
+    {
+      "asset": "Companion",
+      "lod": 1,
+      "meshes": [
+        "Companion_LOD1"
+      ],
+      "source_rig": "Companion_Rig",
+      "bones": 4,
+      "fbx": "GreenWare/Assets/Models/Player/Companion/Companion_LOD1.fbx",
+      "triangles": 9999,
+      "vertices": 4985,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Companion_LOD1",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 2,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        }
+      ],
+      "export_meshes": [
+        "Export_Companion_LOD1"
+      ]
+    },
+    {
+      "asset": "Companion",
+      "lod": 2,
+      "meshes": [
+        "Companion_LOD2"
+      ],
+      "source_rig": "Companion_Rig",
+      "bones": 4,
+      "fbx": "GreenWare/Assets/Models/Player/Companion/Companion_LOD2.fbx",
+      "triangles": 3999,
+      "vertices": 1985,
+      "bind_pose_only": true,
+      "include_animation": false,
+      "mesh_checks": [
+        {
+          "name": "Companion_LOD2",
+          "uv_maps": [
+            "UVMap"
+          ],
+          "maximum_influences": 2,
+          "maximum_weight_sum_error": 0.0,
+          "weighted_socket_vertices": 0
+        }
+      ],
+      "export_meshes": [
+        "Export_Companion_LOD2"
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "action": "MB_C_Idle",
+      "label": "待機",
+      "category": "Locomotion",
+      "take": "Idle",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Idle.fbx",
+      "source_frames": [
+        1,
+        145
+      ],
+      "preview_frames": [
+        1,
+        144
+      ],
+      "duration_seconds": 4.8,
+      "loop": true,
+      "import_clip": {
+        "name": "Idle",
+        "loop": true,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Idle"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Ready": 1,
+        "LookRight": 28,
+        "SettleLeft": 47,
+        "LookLeft": 92,
+        "Regrip": 123
+      },
+      "fcurve_sha256": "73482a898b9fcb8c124745be575c93cfe61930b414dd5a8467c2e98bae620f3d",
+      "source_guid": "652cf49f63ec40a8b4e3e3f5c80072f8",
+      "runtime_guid": "8013f1b0c65116d85912a864d3f1019e",
+      "runtime_path": "Library/Baked/652cf49f63ec40a8b4e3e3f5c80072f8/anims/Idle.anim",
+      "runtime_ref": "guid:8013f1b0c65116d85912a864d3f1019e|Library/Baked/652cf49f63ec40a8b4e3e3f5c80072f8/anims/Idle.anim"
+    },
+    {
+      "action": "MB_C_SwordWalk",
+      "label": "剣歩き（両手）",
+      "category": "Locomotion",
+      "take": "SwordWalk",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/SwordWalk.fbx",
+      "source_frames": [
+        1,
+        42
+      ],
+      "preview_frames": [
+        1,
+        41
+      ],
+      "duration_seconds": 1.3666666666666667,
+      "loop": true,
+      "import_clip": {
+        "name": "SwordWalk",
+        "loop": true,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "SwordWalk"
+      },
+      "weapon_released": false,
+      "markers": {
+        "CycleStart": 1,
+        "LeftPlant": 12,
+        "OppositeStep": 21,
+        "RightPlant": 33
+      },
+      "fcurve_sha256": "a8659bd5b3129a05edec625efbf04438d036e35eaff84c433f7f6de16a610db0",
+      "source_guid": "1e6d7888971947ceb9e9ca9ded6dc5d4",
+      "runtime_guid": "031ebbd6e67261d9898f76cd06deb857",
+      "runtime_path": "Library/Baked/1e6d7888971947ceb9e9ca9ded6dc5d4/anims/SwordWalk.anim",
+      "runtime_ref": "guid:031ebbd6e67261d9898f76cd06deb857|Library/Baked/1e6d7888971947ceb9e9ca9ded6dc5d4/anims/SwordWalk.anim"
+    },
+    {
+      "action": "MB_C_Run_F",
+      "label": "走り",
+      "category": "Locomotion",
+      "take": "Run_F",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Run_F.fbx",
+      "source_frames": [
+        1,
+        19
+      ],
+      "preview_frames": [
+        1,
+        18
+      ],
+      "duration_seconds": 0.6,
+      "loop": true,
+      "import_clip": {
+        "name": "Run_F",
+        "loop": true,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Run_F"
+      },
+      "weapon_released": false,
+      "markers": {
+        "CycleStart": 1,
+        "OppositeStep": 10
+      },
+      "fcurve_sha256": "6f16c8ecdbaa5abb1539f42ee1233244e66e6a26e589d9dd01efdceac4f0a06b",
+      "source_guid": "4cbaa73fa602496fa5d1951052ea34ef",
+      "runtime_guid": "065fc494401a7056539b78461eff78b8",
+      "runtime_path": "Library/Baked/4cbaa73fa602496fa5d1951052ea34ef/anims/Run_F.anim",
+      "runtime_ref": "guid:065fc494401a7056539b78461eff78b8|Library/Baked/4cbaa73fa602496fa5d1951052ea34ef/anims/Run_F.anim"
+    },
+    {
+      "action": "MB_C_RunStop",
+      "label": "走り停止",
+      "category": "Locomotion",
+      "take": "RunStop",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/RunStop.fbx",
+      "source_frames": [
+        1,
+        28
+      ],
+      "preview_frames": [
+        1,
+        28
+      ],
+      "duration_seconds": 0.9,
+      "loop": false,
+      "import_clip": {
+        "name": "RunStop",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "RunStop"
+      },
+      "weapon_released": false,
+      "markers": {
+        "RunContact": 1,
+        "BrakePlant": 5,
+        "Brake": 8,
+        "RightPlant": 14,
+        "LeftRecover": 24,
+        "Ready": 28
+      },
+      "fcurve_sha256": "d978a0e75cec65af0f3ea940fdd3f5e7d94b67545bf46b26ef0d6ea38ce72c69",
+      "source_guid": "8019a28b210c4723a25aca32b83c1c48",
+      "runtime_guid": "fdc9e903734823a643c3af3fbb8ec9bc",
+      "runtime_path": "Library/Baked/8019a28b210c4723a25aca32b83c1c48/anims/RunStop.anim",
+      "runtime_ref": "guid:fdc9e903734823a643c3af3fbb8ec9bc|Library/Baked/8019a28b210c4723a25aca32b83c1c48/anims/RunStop.anim"
+    },
+    {
+      "action": "MB_C_Dodge",
+      "label": "回避ローリング",
+      "category": "Locomotion",
+      "take": "Dodge",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Dodge.fbx",
+      "source_frames": [
+        1,
+        43
+      ],
+      "preview_frames": [
+        1,
+        43
+      ],
+      "duration_seconds": 1.4,
+      "loop": false,
+      "import_clip": {
+        "name": "Dodge",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Dodge"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Ready": 1,
+        "EnterRoll": 5,
+        "ShoulderRoll": 16,
+        "Recover": 26,
+        "Stand": 35,
+        "ReadyEnd": 43,
+        "FoldRightArm": 5,
+        "CarrySword": 17,
+        "ReturnSword": 27,
+        "SwordContact": 12,
+        "SwordLift": 24
+      },
+      "fcurve_sha256": "2d48eb762939a698e326bc9506cf89cbb01d436449d004cd529bbb078b5f4490",
+      "source_guid": "7a2095243a6f4deeab39ae9bf23642ac",
+      "runtime_guid": "2898422c2e8d7d3862acebc592360e46",
+      "runtime_path": "Library/Baked/7a2095243a6f4deeab39ae9bf23642ac/anims/Dodge.anim",
+      "runtime_ref": "guid:2898422c2e8d7d3862acebc592360e46|Library/Baked/7a2095243a6f4deeab39ae9bf23642ac/anims/Dodge.anim"
+    },
+    {
+      "action": "MB_C_JumpStart",
+      "label": "ジャンプ踏切",
+      "category": "Air",
+      "take": "JumpStart",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/JumpStart.fbx",
+      "source_frames": [
+        1,
+        19
+      ],
+      "preview_frames": [
+        1,
+        19
+      ],
+      "duration_seconds": 0.6,
+      "loop": false,
+      "import_clip": {
+        "name": "JumpStart",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "JumpStart"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Ready": 1,
+        "Anticipation": 7,
+        "PushOff": 10,
+        "Takeoff": 12,
+        "AirPose": 19
+      },
+      "fcurve_sha256": "9e85fc1e27f4005934222347086c17e7fa198c0df972286f7a0710a963370545",
+      "source_guid": "e2f096101cd64638a10b99b106b7da5b",
+      "runtime_guid": "ece5f3d2e9c49da09b5182a0f16fb0f2",
+      "runtime_path": "Library/Baked/e2f096101cd64638a10b99b106b7da5b/anims/JumpStart.anim",
+      "runtime_ref": "guid:ece5f3d2e9c49da09b5182a0f16fb0f2|Library/Baked/e2f096101cd64638a10b99b106b7da5b/anims/JumpStart.anim"
+    },
+    {
+      "action": "MB_C_FallLoop",
+      "label": "空中・落下",
+      "category": "Air",
+      "take": "FallLoop",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/FallLoop.fbx",
+      "source_frames": [
+        1,
+        31
+      ],
+      "preview_frames": [
+        1,
+        30
+      ],
+      "duration_seconds": 1.0,
+      "loop": true,
+      "import_clip": {
+        "name": "FallLoop",
+        "loop": true,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "FallLoop"
+      },
+      "weapon_released": false,
+      "markers": {
+        "AirLoop": 1,
+        "RightLegExtend": 16,
+        "LeftLegExtend": 19
+      },
+      "fcurve_sha256": "73464674d634f006d73434e448befb9f250c9352f0c8266a245989361d23d4cc",
+      "source_guid": "fe60dd636b4a4a239e6bfbb5b230f5f2",
+      "runtime_guid": "05168376dc33bc5fa682bf22ffc9e21d",
+      "runtime_path": "Library/Baked/fe60dd636b4a4a239e6bfbb5b230f5f2/anims/FallLoop.anim",
+      "runtime_ref": "guid:05168376dc33bc5fa682bf22ffc9e21d|Library/Baked/fe60dd636b4a4a239e6bfbb5b230f5f2/anims/FallLoop.anim"
+    },
+    {
+      "action": "MB_C_Land",
+      "label": "着地",
+      "category": "Air",
+      "take": "Land",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Land.fbx",
+      "source_frames": [
+        1,
+        22
+      ],
+      "preview_frames": [
+        1,
+        22
+      ],
+      "duration_seconds": 0.7,
+      "loop": false,
+      "import_clip": {
+        "name": "Land",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Land"
+      },
+      "weapon_released": false,
+      "markers": {
+        "AirPose": 1,
+        "Contact": 4,
+        "Compress": 8,
+        "Rebound": 14,
+        "Settle": 18,
+        "Ready": 22
+      },
+      "fcurve_sha256": "af5a2a5874cd0f155c4232a1ecba106a0b0c3d351208bb6b7a1b000a3b11a67e",
+      "source_guid": "901c8ab9230e44728ca4ff2a551fe397",
+      "runtime_guid": "44fc15d1b0cdba6974f834ca79a20e2f",
+      "runtime_path": "Library/Baked/901c8ab9230e44728ca4ff2a551fe397/anims/Land.anim",
+      "runtime_ref": "guid:44fc15d1b0cdba6974f834ca79a20e2f|Library/Baked/901c8ab9230e44728ca4ff2a551fe397/anims/Land.anim"
+    },
+    {
+      "action": "MB_C_Slash01",
+      "label": "斬撃",
+      "category": "Attack",
+      "take": "Slash01",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Slash01.fbx",
+      "source_frames": [
+        1,
+        52
+      ],
+      "preview_frames": [
+        1,
+        52
+      ],
+      "duration_seconds": 1.7,
+      "loop": false,
+      "import_clip": {
+        "name": "Slash01",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Slash01"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Windup": 8,
+        "WindupPeak": 20,
+        "Hit": 25,
+        "FollowThrough": 34,
+        "Recover": 43
+      },
+      "fcurve_sha256": "d5dd42f615baad78f257581382f4c9240966b8223192618e793162860c65d16e",
+      "source_guid": "5504eddbbfc94223b1b818af16295b47",
+      "runtime_guid": "44e3d16e380b5bbbbfb71aa23d1dbfad",
+      "runtime_path": "Library/Baked/5504eddbbfc94223b1b818af16295b47/anims/Slash01.anim",
+      "runtime_ref": "guid:44e3d16e380b5bbbbfb71aa23d1dbfad|Library/Baked/5504eddbbfc94223b1b818af16295b47/anims/Slash01.anim"
+    },
+    {
+      "action": "MB_C_HighSpinAttack",
+      "label": "回転斬り",
+      "category": "Attack",
+      "take": "HighSpinAttack",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/HighSpinAttack.fbx",
+      "source_frames": [
+        1,
+        57
+      ],
+      "preview_frames": [
+        1,
+        57
+      ],
+      "duration_seconds": 1.8666666666666667,
+      "loop": false,
+      "import_clip": {
+        "name": "HighSpinAttack",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "HighSpinAttack"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Windup": 6,
+        "SpinStart": 10,
+        "SpinPeak": 25,
+        "Hit": 35,
+        "Recover": 50
+      },
+      "fcurve_sha256": "cd68e5f42372d637b1e38c96fec57be36a60d1ab2ffbc36536c3ef348a422fac",
+      "source_guid": "493d01bbd29d49f4a2127b8df5cf44f4",
+      "runtime_guid": "49fc2cee68d30b5adf135f2796e52930",
+      "runtime_path": "Library/Baked/493d01bbd29d49f4a2127b8df5cf44f4/anims/HighSpinAttack.anim",
+      "runtime_ref": "guid:49fc2cee68d30b5adf135f2796e52930|Library/Baked/493d01bbd29d49f4a2127b8df5cf44f4/anims/HighSpinAttack.anim"
+    },
+    {
+      "action": "MB_C_JumpAttack",
+      "label": "ジャンプ攻撃",
+      "category": "Attack",
+      "take": "JumpAttack",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/JumpAttack.fbx",
+      "source_frames": [
+        1,
+        66
+      ],
+      "preview_frames": [
+        1,
+        66
+      ],
+      "duration_seconds": 2.1666666666666665,
+      "loop": false,
+      "import_clip": {
+        "name": "JumpAttack",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "JumpAttack"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Windup": 16,
+        "Takeoff": 21,
+        "Apex": 24,
+        "Land": 30,
+        "Hit": 35,
+        "Recover": 56
+      },
+      "fcurve_sha256": "b398d11e71443277f7f39f81b485b34ff53ad5e7482e40290124b523cd525f8f",
+      "source_guid": "3d6851dcdf3148799153f50a0016935a",
+      "runtime_guid": "ff9fee0f8bb5f479414fa60eb5cbd80b",
+      "runtime_path": "Library/Baked/3d6851dcdf3148799153f50a0016935a/anims/JumpAttack.anim",
+      "runtime_ref": "guid:ff9fee0f8bb5f479414fa60eb5cbd80b|Library/Baked/3d6851dcdf3148799153f50a0016935a/anims/JumpAttack.anim"
+    },
+    {
+      "action": "MB_C_SlideAttack",
+      "label": "スライド斬り",
+      "category": "Attack",
+      "take": "SlideAttack",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/SlideAttack.fbx",
+      "source_frames": [
+        1,
+        65
+      ],
+      "preview_frames": [
+        1,
+        65
+      ],
+      "duration_seconds": 2.1333333333333333,
+      "loop": false,
+      "import_clip": {
+        "name": "SlideAttack",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "SlideAttack"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Entry": 1,
+        "Slide": 9,
+        "Lowest": 16,
+        "Rise": 27,
+        "Slash": 40,
+        "Recover": 53
+      },
+      "fcurve_sha256": "ad5b9d50dcbc4b53bc633da6226afc23ee8af0c235bf8e95ec8634162bcba2f5",
+      "source_guid": "5c122d77aced43388c7a0712f05e5587",
+      "runtime_guid": "f318903764723f31bc36144d69bd49cf",
+      "runtime_path": "Library/Baked/5c122d77aced43388c7a0712f05e5587/anims/SlideAttack.anim",
+      "runtime_ref": "guid:f318903764723f31bc36144d69bd49cf|Library/Baked/5c122d77aced43388c7a0712f05e5587/anims/SlideAttack.anim"
+    },
+    {
+      "action": "MB_C_UnderSlash",
+      "label": "切り上げ",
+      "category": "Attack",
+      "take": "UnderSlash",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/UnderSlash.fbx",
+      "source_frames": [
+        1,
+        56
+      ],
+      "preview_frames": [
+        1,
+        56
+      ],
+      "duration_seconds": 1.8333333333333333,
+      "loop": false,
+      "import_clip": {
+        "name": "UnderSlash",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "UnderSlash"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Windup": 10,
+        "WindupPeak": 22,
+        "Slash": 27,
+        "FollowThrough": 35,
+        "Recover": 47
+      },
+      "fcurve_sha256": "4a52390771728d484bc834c4b35412467decbc95befc084b6fa87f188f9c6a93",
+      "source_guid": "9e094b3c70654151bdec385b37ae9e78",
+      "runtime_guid": "111c581a18e3ab54ae4f8a3489d4b3d2",
+      "runtime_path": "Library/Baked/9e094b3c70654151bdec385b37ae9e78/anims/UnderSlash.anim",
+      "runtime_ref": "guid:111c581a18e3ab54ae4f8a3489d4b3d2|Library/Baked/9e094b3c70654151bdec385b37ae9e78/anims/UnderSlash.anim"
+    },
+    {
+      "action": "MB_C_UnderSlashandUpperSlash",
+      "label": "連続斬り",
+      "category": "Attack",
+      "take": "UnderSlashandUpperSlash",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/UnderSlashandUpperSlash.fbx",
+      "source_frames": [
+        1,
+        55
+      ],
+      "preview_frames": [
+        1,
+        55
+      ],
+      "duration_seconds": 1.8,
+      "loop": false,
+      "import_clip": {
+        "name": "UnderSlashandUpperSlash",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "UnderSlashandUpperSlash"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Windup": 5,
+        "Slash1": 21,
+        "Windup2": 30,
+        "Slash2": 38,
+        "Recover": 47
+      },
+      "fcurve_sha256": "22a9cce0fd4634afdbaeb78b9f825a66fcb61f5e9af35731dbc0aae21c9cb9de",
+      "source_guid": "60a126f7835d420ebb85eb89e38d0bc4",
+      "runtime_guid": "950e258ec5950c35b6ec8c0e362cdd1b",
+      "runtime_path": "Library/Baked/60a126f7835d420ebb85eb89e38d0bc4/anims/UnderSlashandUpperSlash.anim",
+      "runtime_ref": "guid:950e258ec5950c35b6ec8c0e362cdd1b|Library/Baked/60a126f7835d420ebb85eb89e38d0bc4/anims/UnderSlashandUpperSlash.anim"
+    },
+    {
+      "action": "MB_C_ToBlocking",
+      "label": "ガード開始",
+      "category": "Defense",
+      "take": "ToBlocking",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/ToBlocking.fbx",
+      "source_frames": [
+        1,
+        16
+      ],
+      "preview_frames": [
+        1,
+        16
+      ],
+      "duration_seconds": 0.5,
+      "loop": false,
+      "import_clip": {
+        "name": "ToBlocking",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "ToBlocking"
+      },
+      "weapon_released": false,
+      "markers": {
+        "GuardStart": 1,
+        "GuardReady": 16
+      },
+      "fcurve_sha256": "356879d8d0b90bdad07dd196f9bbfa3685ca8027a55329d82227e0d0ae7971b8",
+      "source_guid": "57911fd51ce74fac920b7120996b5003",
+      "runtime_guid": "e868e45cccf53747bb47478207a97465",
+      "runtime_path": "Library/Baked/57911fd51ce74fac920b7120996b5003/anims/ToBlocking.anim",
+      "runtime_ref": "guid:e868e45cccf53747bb47478207a97465|Library/Baked/57911fd51ce74fac920b7120996b5003/anims/ToBlocking.anim"
+    },
+    {
+      "action": "MB_C_Blocking",
+      "label": "ガード維持",
+      "category": "Defense",
+      "take": "Blocking",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Blocking.fbx",
+      "source_frames": [
+        1,
+        30
+      ],
+      "preview_frames": [
+        1,
+        29
+      ],
+      "duration_seconds": 0.9666666666666667,
+      "loop": true,
+      "import_clip": {
+        "name": "Blocking",
+        "loop": true,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Blocking"
+      },
+      "weapon_released": false,
+      "markers": {
+        "GuardLoop": 1
+      },
+      "fcurve_sha256": "e1fb417977b40d0c83d9944678f01e6379c884ce5d31fb3b9ff584fd70600caf",
+      "source_guid": "8d8448298b4942609c57470778c13c9a",
+      "runtime_guid": "5c39623af4ff4c868a59f410d205f78c",
+      "runtime_path": "Library/Baked/8d8448298b4942609c57470778c13c9a/anims/Blocking.anim",
+      "runtime_ref": "guid:5c39623af4ff4c868a59f410d205f78c|Library/Baked/8d8448298b4942609c57470778c13c9a/anims/Blocking.anim"
+    },
+    {
+      "action": "MB_C_GuardHit",
+      "label": "ガードヒット",
+      "category": "Defense",
+      "take": "GuardHit",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/GuardHit.fbx",
+      "source_frames": [
+        1,
+        16
+      ],
+      "preview_frames": [
+        1,
+        16
+      ],
+      "duration_seconds": 0.5,
+      "loop": false,
+      "import_clip": {
+        "name": "GuardHit",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "GuardHit"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Guard": 1,
+        "Impact": 3,
+        "Absorb": 6,
+        "Recover": 10,
+        "GuardReady": 16
+      },
+      "fcurve_sha256": "570ae985d0bde1fc8ff86721c3fbe856b592cb2e2e7679db921bc7edac610aac",
+      "source_guid": "237865fc4ebd44ceafdf2dcaed33b848",
+      "runtime_guid": "5ef8954912369033016d77197f2c9aed",
+      "runtime_path": "Library/Baked/237865fc4ebd44ceafdf2dcaed33b848/anims/GuardHit.anim",
+      "runtime_ref": "guid:5ef8954912369033016d77197f2c9aed|Library/Baked/237865fc4ebd44ceafdf2dcaed33b848/anims/GuardHit.anim"
+    },
+    {
+      "action": "MB_C_BlockingToIdle",
+      "label": "ガード解除",
+      "category": "Defense",
+      "take": "BlockingToIdle",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/BlockingToIdle.fbx",
+      "source_frames": [
+        1,
+        16
+      ],
+      "preview_frames": [
+        1,
+        16
+      ],
+      "duration_seconds": 0.5,
+      "loop": false,
+      "import_clip": {
+        "name": "BlockingToIdle",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "BlockingToIdle"
+      },
+      "weapon_released": false,
+      "markers": {
+        "GuardRelease": 1,
+        "IdleReady": 16
+      },
+      "fcurve_sha256": "5363fba01253d91f96e3567d60180d3b6a70a328ccd4ab5263002dcd672ecfe8",
+      "source_guid": "f4205f13cfbc4cf1bb7fe14e63d366ad",
+      "runtime_guid": "c55e17d2f4e684fe09033647649cdf2c",
+      "runtime_path": "Library/Baked/f4205f13cfbc4cf1bb7fe14e63d366ad/anims/BlockingToIdle.anim",
+      "runtime_ref": "guid:c55e17d2f4e684fe09033647649cdf2c|Library/Baked/f4205f13cfbc4cf1bb7fe14e63d366ad/anims/BlockingToIdle.anim"
+    },
+    {
+      "action": "MB_C_Hit",
+      "label": "被弾",
+      "category": "Reaction",
+      "take": "Hit",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Hit.fbx",
+      "source_frames": [
+        1,
+        39
+      ],
+      "preview_frames": [
+        1,
+        39
+      ],
+      "duration_seconds": 1.2666666666666666,
+      "loop": false,
+      "import_clip": {
+        "name": "Hit",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Hit"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Impact": 5,
+        "Recoil": 12,
+        "Recover": 27,
+        "IdleReady": 39
+      },
+      "fcurve_sha256": "10224e04e493fd4a678cfabc2f39655e2c4c1713955b35728b5d824cba5a66c0",
+      "source_guid": "a417880436274df4a656ac7cd43a45aa",
+      "runtime_guid": "a811fee1fde3556ba08c66eb375ee675",
+      "runtime_path": "Library/Baked/a417880436274df4a656ac7cd43a45aa/anims/Hit.anim",
+      "runtime_ref": "guid:a811fee1fde3556ba08c66eb375ee675|Library/Baked/a417880436274df4a656ac7cd43a45aa/anims/Hit.anim"
+    },
+    {
+      "action": "MB_C_Death",
+      "label": "死亡",
+      "category": "Reaction",
+      "take": "Death",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Death.fbx",
+      "source_frames": [
+        1,
+        79
+      ],
+      "preview_frames": [
+        1,
+        79
+      ],
+      "duration_seconds": 2.6,
+      "loop": false,
+      "import_clip": {
+        "name": "Death",
+        "loop": false,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Death"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Impact": 5,
+        "Collapse": 22,
+        "ReleaseLeft": 43,
+        "Grounded": 58,
+        "EndHold": 79
+      },
+      "fcurve_sha256": "cd7e808943fe155948f5d3ce131dd7871a4f1cc30e65d01bd2e7704278c1ed81",
+      "source_guid": "e72fa7c4248f4d5bb68e679073955c95",
+      "runtime_guid": "57827a91fe14128d54a1d51b985dc61b",
+      "runtime_path": "Library/Baked/e72fa7c4248f4d5bb68e679073955c95/anims/Death.anim",
+      "runtime_ref": "guid:57827a91fe14128d54a1d51b985dc61b|Library/Baked/e72fa7c4248f4d5bb68e679073955c95/anims/Death.anim"
+    },
+    {
+      "action": "MB_C_Victory",
+      "label": "勝利",
+      "category": "Result",
+      "take": "Victory",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/Victory.fbx",
+      "source_frames": [
+        1,
+        121
+      ],
+      "preview_frames": [
+        1,
+        120
+      ],
+      "duration_seconds": 4.0,
+      "loop": true,
+      "import_clip": {
+        "name": "Victory",
+        "loop": true,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "Victory"
+      },
+      "weapon_released": false,
+      "markers": {
+        "Proud": 1,
+        "Crouch": 14,
+        "CelebrateJump": 24,
+        "Land": 34,
+        "FistPumpA": 44,
+        "FistPumpB": 66,
+        "ProudReturn": 100
+      },
+      "fcurve_sha256": "bc358ecdc807da5acf5ddb74ee7e40b088961c40451ebd224799330f44b8c3dc",
+      "source_guid": "b4ee8c4a3d34479eb653b724fe5c9648",
+      "runtime_guid": "46fdc91bbd6d32ce18a1744fed716b68",
+      "runtime_path": "Library/Baked/b4ee8c4a3d34479eb653b724fe5c9648/anims/Victory.anim",
+      "runtime_ref": "guid:46fdc91bbd6d32ce18a1744fed716b68|Library/Baked/b4ee8c4a3d34479eb653b724fe5c9648/anims/Victory.anim"
+    },
+    {
+      "action": "MB_C_DefeatIdle",
+      "label": "敗北",
+      "category": "Result",
+      "take": "DefeatIdle",
+      "fbx": "GreenWare/Assets/Models/Player/Animations/DefeatIdle.fbx",
+      "source_frames": [
+        1,
+        121
+      ],
+      "preview_frames": [
+        1,
+        120
+      ],
+      "duration_seconds": 4.0,
+      "loop": true,
+      "import_clip": {
+        "name": "DefeatIdle",
+        "loop": true,
+        "start_frame": 0.0,
+        "end_frame": -1.0,
+        "output_name": "DefeatIdle"
+      },
+      "weapon_released": true,
+      "markers": {
+        "HandsAndKnees": 1,
+        "Exhale": 61
+      },
+      "fcurve_sha256": "7d9bf8f108d79fb4476e8c58ef6516a54eb58c0d76f29331802510ae0b98fc29",
+      "source_guid": "90176f8dee93410cadc776a2e7f64a7c",
+      "runtime_guid": "7def61c1a29094ae57f8943565897c2c",
+      "runtime_path": "Library/Baked/90176f8dee93410cadc776a2e7f64a7c/anims/DefeatIdle.anim",
+      "runtime_ref": "guid:7def61c1a29094ae57f8943565897c2c|Library/Baked/90176f8dee93410cadc776a2e7f64a7c/anims/DefeatIdle.anim"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Companion_LOD0_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Companion_LOD0_BaseColor",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Companion_LOD0_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Companion_LOD1_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Companion_LOD1_BaseColor",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Companion_LOD1_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Companion_LOD2_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Companion_LOD2_BaseColor",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Companion_LOD2_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Player_Fingers_LOD0_Tripo",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "Emission Strength": 0.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Player_Fingers_LOD0_BaseColor",
+          "role": "BaseColor"
+        }
+      ]
+    },
+    {
+      "name": "Player_Fingers_LOD1_Tripo",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "Emission Strength": 0.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Player_Fingers_LOD1_BaseColor",
+          "role": "BaseColor"
+        }
+      ]
+    },
+    {
+      "name": "Player_Fingers_LOD2_Tripo",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "Emission Strength": 0.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Player_Fingers_LOD2_BaseColor",
+          "role": "BaseColor"
+        }
+      ]
+    },
+    {
+      "name": "Player_LOD0_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "white+robot+3d+model_basecolor.jpg",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Player_LOD0_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Player_LOD1_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "white+robot+3d+model_basecolor.jpg",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Player_LOD1_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Player_LOD2_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "white+robot+3d+model_basecolor.jpg",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Player_LOD2_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Sword_LOD0_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Sword_LOD0_BaseColor",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Sword_LOD0_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Sword_LOD1_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Sword_LOD1_BaseColor",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Sword_LOD1_Normal",
+          "role": "Normal"
+        }
+      ]
+    },
+    {
+      "name": "Sword_LOD2_PBR",
+      "scalars": {
+        "Metallic": 0.0,
+        "Roughness": 0.5,
+        "Emission Color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "Emission Strength": 1.0,
+        "Alpha": 1.0
+      },
+      "textures": [
+        {
+          "image": "Sword_LOD2_BaseColor",
+          "role": "BaseColor"
+        },
+        {
+          "image": "Sword_LOD2_Normal",
+          "role": "Normal"
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "image": "Companion_LOD0_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Companion_LOD0_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        2048,
+        2048
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Companion_LOD0_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Companion_LOD0_BaseColor.png"
+    },
+    {
+      "image": "Companion_LOD0_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Companion_LOD0_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Companion_LOD0_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Companion_LOD0_Normal.png"
+    },
+    {
+      "image": "Companion_LOD1_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Companion_LOD1_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Companion_LOD1_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Companion_LOD1_BaseColor.png"
+    },
+    {
+      "image": "Companion_LOD1_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Companion_LOD1_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Companion_LOD1_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Companion_LOD1_Normal.png"
+    },
+    {
+      "image": "Companion_LOD2_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Companion_LOD2_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Companion_LOD2_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Companion_LOD2_BaseColor.png"
+    },
+    {
+      "image": "Companion_LOD2_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Companion_LOD2_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Companion_LOD2_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Companion_LOD2_Normal.png"
+    },
+    {
+      "image": "Player_Fingers_LOD0_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_AnimationReady\\Player_Fingers_LOD0_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Player_Fingers_LOD0_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Player_Fingers_LOD0_BaseColor.png"
+    },
+    {
+      "image": "Player_Fingers_LOD1_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_AnimationReady\\Player_Fingers_LOD1_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Player_Fingers_LOD1_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Player_Fingers_LOD1_BaseColor.png"
+    },
+    {
+      "image": "Player_Fingers_LOD2_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_AnimationReady\\Player_Fingers_LOD2_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Player_Fingers_LOD2_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Player_Fingers_LOD2_BaseColor.png"
+    },
+    {
+      "image": "white+robot+3d+model_basecolor.jpg",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Player_BaseColor.jpg",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        2048,
+        2048
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Player_BaseColor.jpg",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Player_BaseColor.jpg"
+    },
+    {
+      "image": "Player_LOD0_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Player_LOD0_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        2048,
+        2048
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Player_LOD0_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Player_LOD0_Normal.png"
+    },
+    {
+      "image": "Player_LOD1_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Player_LOD1_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Player_LOD1_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Player_LOD1_Normal.png"
+    },
+    {
+      "image": "Player_LOD2_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Player_LOD2_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Player_LOD2_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Player_LOD2_Normal.png"
+    },
+    {
+      "image": "Sword_LOD0_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Sword_LOD0_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        2048,
+        2048
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Sword_LOD0_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Sword_LOD0_BaseColor.png"
+    },
+    {
+      "image": "Sword_LOD0_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Sword_LOD0_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Sword_LOD0_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Sword_LOD0_Normal.png"
+    },
+    {
+      "image": "Sword_LOD1_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Sword_LOD1_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Sword_LOD1_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Sword_LOD1_BaseColor.png"
+    },
+    {
+      "image": "Sword_LOD1_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Sword_LOD1_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Sword_LOD1_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Sword_LOD1_Normal.png"
+    },
+    {
+      "image": "Sword_LOD2_BaseColor",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Sword_LOD2_BaseColor.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "role": "BaseColor",
+      "export_filename": "Sword_LOD2_BaseColor.png",
+      "fbzz_normal_convention": null,
+      "export_path": "Textures/Sword_LOD2_BaseColor.png"
+    },
+    {
+      "image": "Sword_LOD2_Normal",
+      "source_path": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\MiniBotC\\..\\..\\Textures\\MiniBotC_Tripo\\Sword_LOD2_Normal.png",
+      "source_exists": true,
+      "packed": true,
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "role": "Normal",
+      "export_filename": "Sword_LOD2_Normal.png",
+      "fbzz_normal_convention": "OpenGL",
+      "export_path": "Textures/Sword_LOD2_Normal.png"
+    }
+  ],
+  "export_exclusions": {
+    "actions": [
+      "DEMO_RigCheck",
+      "MB_C_Stance",
+      "Player_NewAction",
+      "REF_Source_Blocking",
+      "REF_Source_BlockingToIdle",
+      "REF_Source_Death",
+      "REF_Source_HighSpinAttack",
+      "REF_Source_Hit",
+      "REF_Source_JumpAttack",
+      "REF_Source_Run_F",
+      "REF_Source_Slash01",
+      "REF_Source_SlideAttack",
+      "REF_Source_SprintRoll",
+      "REF_Source_StandRoll",
+      "REF_Source_SwordWalk",
+      "REF_Source_ToBlocking",
+      "REF_Source_UnderSlash",
+      "REF_Source_UnderSlashandUpperSlash"
+    ],
+    "objects": [
+      "Defeat_SwordGround",
+      "LeftHand_GripPivot",
+      "LeftHand_GripTarget",
+      "MiniBotC_ControlRig",
+      "MiniBotC_Metarig",
+      "MiniBotC_PreviewFloor",
+      "Preview_Camera",
+      "Preview_Fill",
+      "Preview_Key",
+      "Preview_Rim",
+      "REF_Blocking",
+      "REF_BlockingToIdle",
+      "REF_Death",
+      "REF_HighSpinAttack",
+      "REF_Hit",
+      "REF_JumpAttack",
+      "REF_Run_F",
+      "REF_Slash01",
+      "REF_SlideAttack",
+      "REF_SprintRoll",
+      "REF_StandRoll",
+      "REF_SwordWalk",
+      "REF_ToBlocking",
+      "REF_UnderSlash",
+      "REF_UnderSlashandUpperSlash",
+      "Sword_Control",
+      "WGT-RIG-MiniBotC_Metarig_chest",
+      "WGT-RIG-MiniBotC_Metarig_f_index.01.L",
+      "WGT-RIG-MiniBotC_Metarig_f_index.01.L.001",
+      "WGT-RIG-MiniBotC_Metarig_f_index.01.R",
+      "WGT-RIG-MiniBotC_Metarig_f_index.01.R.001",
+      "WGT-RIG-MiniBotC_Metarig_f_index.01_master.L",
+      "WGT-RIG-MiniBotC_Metarig_f_index.01_master.R",
+      "WGT-RIG-MiniBotC_Metarig_f_index.02.L",
+      "WGT-RIG-MiniBotC_Metarig_f_index.02.R",
+      "WGT-RIG-MiniBotC_Metarig_f_index.03.L",
+      "WGT-RIG-MiniBotC_Metarig_f_index.03.R",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.01.L",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.01.L.001",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.01.R",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.01.R.001",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.01_master.L",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.01_master.R",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.02.L",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.02.R",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.03.L",
+      "WGT-RIG-MiniBotC_Metarig_f_middle.03.R",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.01.L",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.01.L.001",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.01.R",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.01.R.001",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.01_master.L",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.01_master.R",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.02.L",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.02.R",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.03.L",
+      "WGT-RIG-MiniBotC_Metarig_f_pinky.03.R",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.01.L",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.01.L.001",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.01.R",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.01.R.001",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.01_master.L",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.01_master.R",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.02.L",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.02.R",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.03.L",
+      "WGT-RIG-MiniBotC_Metarig_f_ring.03.R",
+      "WGT-RIG-MiniBotC_Metarig_foot_fk.L",
+      "WGT-RIG-MiniBotC_Metarig_foot_fk.R",
+      "WGT-RIG-MiniBotC_Metarig_foot_heel_ik.L",
+      "WGT-RIG-MiniBotC_Metarig_foot_heel_ik.R",
+      "WGT-RIG-MiniBotC_Metarig_foot_ik.L",
+      "WGT-RIG-MiniBotC_Metarig_foot_ik.R",
+      "WGT-RIG-MiniBotC_Metarig_foot_spin_ik.L",
+      "WGT-RIG-MiniBotC_Metarig_foot_spin_ik.R",
+      "WGT-RIG-MiniBotC_Metarig_foot_tweak.L",
+      "WGT-RIG-MiniBotC_Metarig_foot_tweak.R",
+      "WGT-RIG-MiniBotC_Metarig_forearm_fk.L",
+      "WGT-RIG-MiniBotC_Metarig_forearm_fk.R",
+      "WGT-RIG-MiniBotC_Metarig_forearm_tweak.L",
+      "WGT-RIG-MiniBotC_Metarig_forearm_tweak.R",
+      "WGT-RIG-MiniBotC_Metarig_hand_fk.L",
+      "WGT-RIG-MiniBotC_Metarig_hand_fk.R",
+      "WGT-RIG-MiniBotC_Metarig_hand_ik.L",
+      "WGT-RIG-MiniBotC_Metarig_hand_ik.R",
+      "WGT-RIG-MiniBotC_Metarig_hand_tweak.L",
+      "WGT-RIG-MiniBotC_Metarig_hand_tweak.R",
+      "WGT-RIG-MiniBotC_Metarig_head",
+      "WGT-RIG-MiniBotC_Metarig_hips",
+      "WGT-RIG-MiniBotC_Metarig_neck",
+      "WGT-RIG-MiniBotC_Metarig_root",
+      "WGT-RIG-MiniBotC_Metarig_shin_fk.L",
+      "WGT-RIG-MiniBotC_Metarig_shin_fk.R",
+      "WGT-RIG-MiniBotC_Metarig_shin_tweak.L",
+      "WGT-RIG-MiniBotC_Metarig_shin_tweak.R",
+      "WGT-RIG-MiniBotC_Metarig_shoulder.L",
+      "WGT-RIG-MiniBotC_Metarig_shoulder.R",
+      "WGT-RIG-MiniBotC_Metarig_spine_fk",
+      "WGT-RIG-MiniBotC_Metarig_spine_fk.001",
+      "WGT-RIG-MiniBotC_Metarig_spine_fk.002",
+      "WGT-RIG-MiniBotC_Metarig_spine_fk.003",
+      "WGT-RIG-MiniBotC_Metarig_thigh_fk.L",
+      "WGT-RIG-MiniBotC_Metarig_thigh_fk.R",
+      "WGT-RIG-MiniBotC_Metarig_thigh_ik.L",
+      "WGT-RIG-MiniBotC_Metarig_thigh_ik.R",
+      "WGT-RIG-MiniBotC_Metarig_thigh_ik_target.L",
+      "WGT-RIG-MiniBotC_Metarig_thigh_ik_target.R",
+      "WGT-RIG-MiniBotC_Metarig_thigh_parent.L",
+      "WGT-RIG-MiniBotC_Metarig_thigh_parent.R",
+      "WGT-RIG-MiniBotC_Metarig_thigh_tweak.L",
+      "WGT-RIG-MiniBotC_Metarig_thigh_tweak.R",
+      "WGT-RIG-MiniBotC_Metarig_thumb.01.L",
+      "WGT-RIG-MiniBotC_Metarig_thumb.01.L.001",
+      "WGT-RIG-MiniBotC_Metarig_thumb.01.R",
+      "WGT-RIG-MiniBotC_Metarig_thumb.01.R.001",
+      "WGT-RIG-MiniBotC_Metarig_thumb.01_master.L",
+      "WGT-RIG-MiniBotC_Metarig_thumb.01_master.R",
+      "WGT-RIG-MiniBotC_Metarig_thumb.02.L",
+      "WGT-RIG-MiniBotC_Metarig_thumb.02.R",
+      "WGT-RIG-MiniBotC_Metarig_thumb.03.L",
+      "WGT-RIG-MiniBotC_Metarig_thumb.03.R",
+      "WGT-RIG-MiniBotC_Metarig_toe_fk.L",
+      "WGT-RIG-MiniBotC_Metarig_toe_fk.R",
+      "WGT-RIG-MiniBotC_Metarig_toe_ik.L",
+      "WGT-RIG-MiniBotC_Metarig_toe_ik.R",
+      "WGT-RIG-MiniBotC_Metarig_torso",
+      "WGT-RIG-MiniBotC_Metarig_tweak_spine",
+      "WGT-RIG-MiniBotC_Metarig_tweak_spine.001",
+      "WGT-RIG-MiniBotC_Metarig_tweak_spine.002",
+      "WGT-RIG-MiniBotC_Metarig_tweak_spine.003",
+      "WGT-RIG-MiniBotC_Metarig_tweak_spine.004",
+      "WGT-RIG-MiniBotC_Metarig_tweak_spine.005",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_fk.L",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_fk.R",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_ik.L",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_ik.R",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_ik_target.L",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_ik_target.R",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_parent.L",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_parent.R",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_tweak.L",
+      "WGT-RIG-MiniBotC_Metarig_upper_arm_tweak.R",
+      "WGT-RIG-MiniBotC_Metarig_VIS_thigh_ik_pole.L",
+      "WGT-RIG-MiniBotC_Metarig_VIS_thigh_ik_pole.R",
+      "WGT-RIG-MiniBotC_Metarig_VIS_upper_arm_ik_pole.L",
+      "WGT-RIG-MiniBotC_Metarig_VIS_upper_arm_ik_pole.R"
+    ]
+  },
+  "socket_policy": {
+    "bone": "Socket_Weapon_R",
+    "evaluated_source": "Sword_Control",
+    "operation": "Bake evaluated weapon transform into export-copy socket; calibrate identical socket rest matrix in every model/clip export.",
+    "source_skeleton_unchanged": true,
+    "source_weights_on_socket": 0,
+    "sword_model_attach_node": "Attach_Grip",
+    "result_weapon_physics": "not_connected",
+    "export_rest_matrix": [
+      [
+        0.5611587166786194,
+        -0.827707827091217,
+        3.6689138482870476e-07,
+        -0.37699997425079346
+      ],
+      [
+        4.191091917959966e-14,
+        -3.88324366440429e-07,
+        -0.9999996423721313,
+        0.10300002992153168
+      ],
+      [
+        0.8277077674865723,
+        0.5611591339111328,
+        -2.978633517614071e-07,
+        0.7079996466636658
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "import_options": {
+    "source_dcc": "Blender",
+    "up_axis": 0,
+    "normal_map_convention": "OpenGL",
+    "unit_scale_multiplier": 1.0,
+    "generate_normals": true,
+    "generate_tangents": true,
+    "root_motion_node": "",
+    "root_motion_enabled_in_animator": false
+  },
+  "preflight": {
+    "errors": [],
+    "runtime_tested": false,
+    "fbx_roundtrip_tested": true
+  },
+  "export_directory": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\Models\\Player",
+  "backup_directory": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\Models\\Player_BackUp",
+  "export_execution": {
+    "exported": true,
+    "fbx_count": 31,
+    "texture_count": 19,
+    "source_actions_unchanged": true,
+    "engine_import_pending": true
+  },
+  "controller": {
+    "path": "GreenWare/Assets/Animation/Player/Player.animcontroller",
+    "states": 20,
+    "masks": {
+      "Player_Base": 54,
+      "M_UpperBody": 44,
+      "M_Arms": 39
+    }
+  }
+}

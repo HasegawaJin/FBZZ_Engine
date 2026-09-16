@@ -30,6 +30,17 @@ function failure(error: unknown): OperationResult<never> {
   return { ok: false, error: error instanceof Error ? error.message : String(error) };
 }
 
+function publishResolvedSettings(): void {
+  void ensureConfigLoaded()
+    .then(() => configStore.ensureSdkResolved())
+    .then(() => {
+      const settings = configStore.snapshot().settings;
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('hub:settings-updated', settings);
+      }
+    });
+}
+
 async function bootstrap(): Promise<BootstrapData> {
   await ensureConfigLoaded();
   const config = configStore.snapshot();
@@ -45,6 +56,7 @@ async function bootstrap(): Promise<BootstrapData> {
 export function registerIpcHandlers(): void {
   // 読込は開始するが、BrowserWindow生成側をブロックしない。
   void ensureConfigLoaded();
+  publishResolvedSettings();
 
   ipcMain.handle('hub:bootstrap', async () => {
     try { return success(await bootstrap()); } catch (error) { return failure(error); }
@@ -78,6 +90,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('project:create', async (_event, request: CreateProjectRequest) => {
     try {
       await ensureConfigLoaded();
+      await configStore.ensureSdkResolved();
       const settings = configStore.snapshot().settings;
       if (!settings.sdkId) throw new Error('新規プロジェクトを作成する前にFBZZ SDKを選択してください。');
       const projectPath = await templateService.create(request, settings.sdkId, ENGINE_VERSION);

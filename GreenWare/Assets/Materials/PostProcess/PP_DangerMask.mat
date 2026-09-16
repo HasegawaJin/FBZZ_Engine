@@ -1,0 +1,16 @@
+version = 1
+name = 'PP_DangerMask'
+shader = 'guid:3873cab36a8046ae84bd6285b1a600f9|Assets/Shaders/PostProcess/Custom/DangerMask.hlsl'
+blend_mode = 'Opaque'
+depth_write = false
+render_path = 'post_process'
+mesh_type = 'surface'
+
+[textures]
+albedo = 'guid:ed3a8027bb2048df98862216e13554cc|Assets/Textures/UI/T_DangerDiamondMask.png'
+
+[params]
+tilePixels = 52.0
+maskSoftness = 0.10
+bleedGain = 0.24
+edgeDarken = 0.20

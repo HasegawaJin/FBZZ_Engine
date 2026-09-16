@@ -1,0 +1,31 @@
+blend_mode = 'AlphaBlend'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = true
+mesh_type = 'any'
+render_path = 'ui'
+render_queue = 4000
+shader = 'guid:4c8b1a90f27d5e3b6a41d80c9f2e7b53|Assets/Shaders/UI/Material/UICrosshair.hlsl'
+version = 1
+
+[params]
+dotSize = 3.0
+gap = 9.0
+outlineColor = [ 0.009999999776482582, 0.029999999329447746, 0.019999999552965164, 0.8500000238418579 ]
+outlineWidth = 1.0
+spread = 0.0
+spriteMode = 0.0
+tickColor = [ 0.20000000298023224, 1.0, 0.44999998807907104, 0.8500000238418579 ]
+tickLength = 13.0
+tickRoundness = 1.0
+tickThickness = 2.5
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptMeshTrailProxy.hpp | fbzz::scene
-// Script から MeshTrailComponent を操作するショートハンド
+/// @file    ScriptMeshTrailProxy.hpp
+/// @brief   Script から MeshTrailComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Math/Vector4.hpp>
@@ -41,6 +42,12 @@ struct ScriptMeshTrailProxy {
 
     // ClearExcludedMeshIndices — submesh 除外設定を解除する。
     void ClearExcludedMeshIndices() const;
+
+    // SetEnabled(false, false) の自然消滅待ちを判定するための状態取得。
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetDuration() const;
+    // 現在保持している残像サンプル数。0 なら描画するものが残っていない。
+    [[nodiscard]] int   GetSampleCount() const;
 };
 
 } // namespace fbzz::scene

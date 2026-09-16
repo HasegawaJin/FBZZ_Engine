@@ -1,8 +1,10 @@
-// FBZZ Engine
-// AnimationClip.hpp | fbzz::asset
-// .anim バイナリのランタイム表現
-// AnimatorSystem がサンプリングする読み取り中心のデータ定義。
-// 再生中の時刻やブレンド状態は AnimatorComponent 側に置き、この型には持たせない。
+/// @file    AnimationClip.hpp
+/// @brief   .anim バイナリのランタイム表現。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// AnimatorSystem がサンプリングする読み取り中心のデータ定義。
+/// 再生中の時刻やブレンド状態は AnimatorComponent 側に置き、この型には持たせない。
 #pragma once
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>

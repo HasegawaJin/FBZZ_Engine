@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FileDialog.hpp | fbzz::editor
-// Win32 ネイティブのファイル開く/保存ダイアログ
+/// @file    FileDialog.hpp
+/// @brief   Win32 ネイティブのファイル開く/保存ダイアログ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <string>
 #include <vector>

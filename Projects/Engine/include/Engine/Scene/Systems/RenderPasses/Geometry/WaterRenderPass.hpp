@@ -1,6 +1,7 @@
-// FBZZ Engine
-// WaterRenderPass.hpp | fbzz::scene
-// WaterComponent を走査して水面メッシュ・泡・波紋を描画する IRenderPass 実装
+/// @file    WaterRenderPass.hpp
+/// @brief   WaterComponent を走査して水面メッシュ・泡・波紋を描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
@@ -10,8 +11,12 @@
 #include <Math/MathUtils.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
+#include <cstdint>
 
 namespace fbzz::scene {
+
+/// 波紋テクスチャの一辺 [texel]。水面 1 枚につき 1 枚だけ張る。
+inline constexpr uint32_t kWaterRippleTextureSize = 128;
 
 // AddWaterRipple — 水面ローカル UV [0,1] に動的なリング波紋を追加する。
 void AddWaterRipple(
@@ -45,9 +50,8 @@ void WaterSelectionMaskSystem(RenderPassContext& ctx);
 class WaterRenderPass final : public IRenderPass {
 public:
     std::string_view Name() const override;
-    std::vector<renderer::RenderGraph::ResourceAccess> DeclareAccesses(
-        const RenderPassContext& ctx) const override;
-    void Execute(RenderPassContext& ctx) override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 } // namespace fbzz::scene

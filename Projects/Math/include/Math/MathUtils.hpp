@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MathUtils.hpp | fbzz::math
-// 数学定数とスカラーユーティリティ関数 (ヘッダオンリー)
+/// @file    MathUtils.hpp
+/// @brief   数学定数とスカラーユーティリティ関数 (ヘッダオンリー)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include <cmath>

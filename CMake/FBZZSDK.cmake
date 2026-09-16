@@ -33,7 +33,15 @@ file(MAKE_DIRECTORY "${FBZZ_SDK_GENERATED_DIR}")
 
 # WHY: Script DLL は Engine の C++ 型を共有するため、版数と構成をコンパイル単位へ伝播させる。
 #      ScriptDllAbi.hpp の実行時署名と detect_mismatch の双方がこの値を利用する。
-foreach(FBZZ_ABI_TARGET FBZZMath FBZZPhysics FBZZEngine FBZZEditor)
+#
+# WHY 内部モジュールにも配るか: ScriptDllAbi.hpp は Scene/Script.hpp 経由で広く届く。
+#      これらのマクロが無い翻訳単位では «"0.0.0-unconfigured"» という既定値へ落ち、
+#      detect_mismatch が同じ DLL の中で食い違って LNK2038 になる。現状は各モジュールが
+#      FBZZMath をリンクしているおかげで PUBLIC 定義が «たまたま» 流れているだけで、
+#      リンク先を 1 つ減らした瞬間に壊れる。宛先を明示して事故を断つ。
+get_property(FBZZ_ENGINE_MODULE_TARGETS GLOBAL PROPERTY FBZZ_ENGINE_MODULES)
+foreach(FBZZ_ABI_TARGET FBZZMath FBZZPhysics FBZZEngine FBZZEditor
+                        ${FBZZ_ENGINE_MODULE_TARGETS})
     target_compile_definitions(${FBZZ_ABI_TARGET} PUBLIC
         FBZZ_ENGINE_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
         FBZZ_ENGINE_VERSION_MINOR=${PROJECT_VERSION_MINOR}
@@ -134,8 +142,7 @@ add_custom_target(FBZZSDK
         "-DSDK_STORE_ROOT=${FBZZ_SDK_STORE_ROOT}"
         "-DKEEP_SDK_ID=${FBZZ_SDK_ID}"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/PruneFBZZSDKStore.cmake"
-    # WHY: GameHubからVFXを開く際もSDK内の実行ファイルを使うため、EditorとVFXEditorを同じ版へ揃える。
-    DEPENDS FBZZMath FBZZPhysics FBZZEngine FBZZEditorLauncher FBZZVFXEditor
+    DEPENDS FBZZMath FBZZPhysics FBZZEngine FBZZEditorLauncher
     COMMENT "Publishing immutable FBZZ SDK ${FBZZ_SDK_ID}"
     VERBATIM
 )

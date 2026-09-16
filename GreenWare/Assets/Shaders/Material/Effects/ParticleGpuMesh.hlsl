@@ -11,67 +11,13 @@
 //      GPU シミュレーションでは CPU 側に粒子配列が存在しないので描きようがなく、
 //      meshParticlePath があるだけで CPU へ縮退していた。
 //      粒子データは既に StructuredBuffer にあるので、インスタンス描画 1 本へ畳める。
-//
-// NOTE: ビルボード経路 (ParticleGPU.hlsl) と同じ b2 (ParticleRenderCB) を共有する。
-//       フィールドの並びは 3 経路で完全に一致させること。
 
-#include "Common/Binding.hlsli"
-#define FBZZ_MATERIAL_CONSTANTS
-#include "Common/Constants.hlsli"
+// 構造体・StructuredBuffer・定数バッファは契約ヘッダーが供給する。
+// ビルボードではなくメッシュをインスタンス描画するので、VS は自前で書く。
+#define FBZZ_PARTICLE_GPU
+#define FBZZ_PARTICLE_CUSTOM_VS
+#include "Material/Effects/ParticleMaterial.hlsli"
 #include "Common/Structs.hlsli"
-#include "Platform/Backend.hlsli"
-#include "Rendering/ParticleCommon.hlsli"
-
-// LAYOUT: ParticleGpuSim.cs.hlsl の GpuParticle と完全に一致させること (96 bytes)。
-struct GpuParticle
-{
-    float3 position;
-    float  size;
-    float3 velocity;
-    float  age;
-    float4 color;
-    float  lifetime;
-    float  rotation;
-    float  angularVelocity;
-    float  spriteSeed;
-    float4 uvRect;
-    float3 colorScale;
-    float  colorScalePad;
-};
-
-StructuredBuffer<GpuParticle> gParticles       : register(SB_GPU_PARTICLES);
-StructuredBuffer<uint2>       gSortedParticles : register(SB_GPU_SORT);
-Texture2D                     gTex             : register(TEX_ALBEDO);
-SamplerState                  gSampler         : register(SAMPLER_DEFAULT);
-
-// ビルボード経路と共有する b2。並びは GeometryPasses.hpp の ParticleRenderCB が正本。
-cbuffer ParticleRenderConstants : register(CB_MATERIAL)
-{
-    uint  gRenderMode;
-    float gStretchedVelocityScale;
-    float gStretchedLengthScale;
-    float gSoftParticleFadeDistance;
-    uint  gSoftParticles;
-    uint  gMaxParticles;
-    uint  gEffectsFlags;
-    float gDistortionStrength;
-    float gLightingStrength;
-    float gEmissiveScale;
-    float gMotionVectorStrength;
-    float gScreenWidth;
-    float gScreenHeight;
-    float gSizeAxisScaleX;
-    float gSizeAxisScaleY;
-    float gShadowStrength;
-    uint  gVolumetricSteps;
-    float gVolumetricDensity;
-    float gVolumetricAnisotropy;
-    float gVolumetricNoiseScale;
-    uint  gGpuSortEnabled;
-    float gSelfShadowStrength;
-    float gParticlePad1;
-    float gParticlePad2;
-};
 
 struct MeshParticlePSIn
 {
@@ -130,11 +76,11 @@ MeshParticlePSIn VSMain(VSInput v, uint instanceId : SV_InstanceID)
 
 float4 PSMain(MeshParticlePSIn input) : SV_Target0
 {
-    float4 texel = gTex.Sample(gSampler, input.uv);
-    // アルファの取り出し方はビルボード経路と同じ規約 (effectsFlags bit8-10) に従う。
-    // ここがずれると、同じ素材が billboard と mesh で違う抜き方をされる。
-    float4 resolved = ResolveParticleTexel(texel, gEffectsFlags);
-    float4 color = resolved * input.color;
+    float4 texel = gParticleTex.Sample(gSampler, input.uv);
+    // アルファの取り出し方と色空間はビルボード経路と同じ規約に従う。
+    // ここがずれると、同じ素材が billboard と mesh で違う抜き方・違う色で出る。
+    float4 resolved = ResolveParticleAlbedo(texel, gEffectsFlags);
+    float4 color = resolved * input.color * gTintColor;
 
     // 破片の立体感を出すための最小限のライティング。半球状の環境光を法線で振るだけで、
     // 影も IBL も通さない (パーティクルは大量に出るためピクセルコストを増やさない)。

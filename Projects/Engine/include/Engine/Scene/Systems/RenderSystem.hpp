@@ -1,12 +1,15 @@
-// FBZZ Engine
-// RenderSystem.hpp | fbzz::scene
-// Scene から DrawCall を生成する描画 System
-// MeshRenderer / Light / Camera / Transform を集約し、IRenderer へ送信する。
-// Renderer の具体実装には依存せず、ResourceManager とインターフェースだけを使う。
+/// @file    RenderSystem.hpp
+/// @brief   Scene から DrawCall を生成する描画 System。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// MeshRenderer / Light / Camera / Transform を集約し、IRenderer へ送信する。
+/// Renderer の具体実装には依存せず、ResourceManager とインターフェースだけを使う。
 #pragma once
 #include <Physics/Layer.hpp>
 #include <memory>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 
 namespace fbzz::scene    { class Scene; }
@@ -19,6 +22,8 @@ namespace fbzz::renderer {
 }
 
 namespace fbzz::scene {
+
+class RenderPassCapture;
 
 // RenderSystemUIOptions は RenderGraph 内へ UI 合成パスを登録するための設定。
 // WHY: UI を RenderSystem の外で描くと、PostProcess 後の RT バインド状態に依存して
@@ -46,6 +51,14 @@ void RenderSystem(Scene& scene,
                   const renderer::RenderSettings* settings = nullptr,
                   fbzz::LayerMask cullingMask = fbzz::Layer::Everything,
                   const RenderSystemUIOptions* uiOptions = nullptr,
-                  const physics::World* physicsWorld = nullptr);
+                  const physics::World* physicsWorld = nullptr,
+                  // カリング挙動の上書き。nullptr のときはシーンのメインカメラから解決する。
+                  // WHY 既定を「シーンから解決」にするか: Standalone / GameHub テンプレートは
+                  //     RenderSystem を素朴に呼ぶだけなので、呼び出し側を書き換えなくても
+                  //     CameraComponent の設定が効くようにしておきたい。
+                  //     Editor の Scene View は自前のデバッグカメラで描くため、
+                  //     ゲームカメラの設定を持ち込まないよう明示的に既定値を渡す。
+                  const CameraCullingSettings* cullingSettings = nullptr,
+                  RenderPassCapture* capture = nullptr);
 
 } // namespace fbzz::scene

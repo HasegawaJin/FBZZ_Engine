@@ -1,16 +1,17 @@
-// FBZZ Engine
-// RendererFactory.hpp | fbzz::renderer
-// バックエンド具象 (DX11 / 将来の DX12) を選択して IRenderer / IImGuiRenderer を生成する唯一の窓口。
-//
-// 設計方針:
-//   これまで Application.cpp が DX11Renderer / DX11ImGuiRenderer を直接 make_unique しており、
-//   合成ルートに DX11 具象名が漏れていた。DX12 バックエンド追加時に Application を書き換えずに済むよう、
-//   バックエンド選択を本ファクトリへ集約する。具象ヘッダーを知るのは RendererFactory.cpp のみとなり、
-//   上位レイヤーは RendererBackend enum と IRenderer / IImGuiRenderer 抽象だけを参照する。
-//
-//   ImGui バックエンドは GPU デバイスを必要とするため、DX11 では DX11Renderer が保持する
-//   Device / Context を DX11ImGuiRenderer へ橋渡しする必要がある。この「デバイス配線」も
-//   バックエンド固有の知識なので、Application ではなくファクトリ内部に閉じ込める。
+/// @file    RendererFactory.hpp
+/// @brief   バックエンド具象 (DX11 / 将来の DX12) を選択して IRenderer / IImGuiRenderer を生成する唯一の窓口。
+/// @author  Hasegawa Jin
+/// @date    2026-07-02
+///
+/// 設計方針:
+/// これまで Application.cpp が DX11Renderer / DX11ImGuiRenderer を直接 make_unique しており、
+/// 合成ルートに DX11 具象名が漏れていた。DX12 バックエンド追加時に Application を書き換えずに済むよう、
+/// バックエンド選択を本ファクトリへ集約する。具象ヘッダーを知るのは RendererFactory.cpp のみとなり、
+/// 上位レイヤーは RendererBackend enum と IRenderer / IImGuiRenderer 抽象だけを参照する。
+///
+/// ImGui バックエンドは GPU デバイスを必要とするため、DX11 では DX11Renderer が保持する
+/// Device / Context を DX11ImGuiRenderer へ橋渡しする必要がある。この「デバイス配線」も
+/// バックエンド固有の知識なので、Application ではなくファクトリ内部に閉じ込める。
 #pragma once
 #include <cstdint>
 #include <memory>

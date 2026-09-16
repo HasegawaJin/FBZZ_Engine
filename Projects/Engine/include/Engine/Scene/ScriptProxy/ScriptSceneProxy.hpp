@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptSceneProxy.hpp | fbzz::scene
-// Script から Scene / GameObject 操作へ転送するショートハンド
+/// @file    ScriptSceneProxy.hpp
+/// @brief   Script から Scene / GameObject 操作へ転送するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
@@ -37,11 +38,17 @@ struct ScriptSceneProxy {
     // EntityID から直接 Script を取得する。Inspector でアサインした参照に使う。
     template<typename T> T* GetScript(EntityID id) const;
     template<typename T> T* GetComponent() const;
+    // 別 GameObject のコンポーネント。GetScript の GameObject 版と対になる。
+    // WHY 要るか: 部位ごとに GameObject が分かれた構成では «自分の» コンポーネントだけ
+    //      引けても足りない。Ref<T> がコンポーネント型を解決するのにも使う。
+    template<typename T> T* GetComponent(GameObject& go) const;
+    template<typename T> T* GetComponent(GameObject* go) const;  // nullptr 安全なポインタ版
     template<typename T> T& GetOrAddComponent() const;
     template<typename T> T& RequireComponent() const;
     bool IsActiveAndEnabled() const;
     bool isActiveAndEnabled() const { return IsActiveAndEnabled(); }
-    void LoadScene(std::string_view name) const;
+    // 遷移要求。未登録のシーン名なら false を返す (演出を巻き戻す判断に使う)。
+    bool LoadScene(std::string_view name) const;
     std::string GetSceneName() const;
     float GetTerrainHeightAt(const math::Vector3& worldPos) const;
     math::Vector3 GetTerrainNormalAt(const math::Vector3& worldPos) const;

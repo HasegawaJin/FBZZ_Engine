@@ -1,0 +1,38 @@
+# FBZZ Engine
+# FX_Smoke_Alpha.mat
+# 素材: Assets/VFX/Textures/FX_Smoke_8x8.png (2048x2048 / 8x8 / 64コマ)
+# 衝突の粉塵。企画書 12.2 の «無彩色» の側に立つ層なので、極性色を乗せないこと。
+# 煙まで赤青にすると、盤面のどこが帯電しているのか読めなくなる。
+version = 1
+shader = ""
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:c293fab2e0ab9002afd9cf33f39121f0"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+sprite_columns = 8
+sprite_rows = 8
+flipbook_mode = "lifetime"
+flipbook_frame_blending = true
+# NOTE: 再生位相はずらさない (sprite_random_start_frame / sprite_random_row とも既定の false)。
+#       64 コマは «湧いて崩れる» 1 本のシミュレーションで、行ごとのバリエーションではない。
+#       位相をずらすと、生まれた瞬間から崩れかけている粒が混じる。
+#       粒どうしの差は寿命のばらつきと初期回転で作ること。
+six_way_lighting = true
+lighting_strength = 0.9
+smoke_wrap = 0.55
+smoke_transmission = 0.5
+smoke_back_scatter_power = 6.0
+receive_shadows = true
+shadow_strength = 0.9
+soft_particles = true
+soft_particle_fade_distance = 0.6

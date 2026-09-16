@@ -1,0 +1,156 @@
+# FX_BLD_ChargeReady.vfx — 満溜めになった刀先の合図。光条と短い残光。
+
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BLD_ChargeReady"
+instanceId = "27694d14-89d9-587c-ace1-23bb40fb5e87"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects]]
+name = "Flash"
+instanceId = "019191a7-c808-56ee-a380-a26b5fc3f208"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_ChargeReady"
+parentInstanceId = "27694d14-89d9-587c-ace1-23bb40fb5e87"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.12
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 0
+sizeStart = 0.5
+sizeEnd = 0.05
+sizeCurvePower = 2.4
+lifetime = 0.055
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:fa25f7836ccab31765f7da9e0ef7550d"
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 80
+colorStart = [0.65, 1.0, 0.8, 0.8]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Cross"
+instanceId = "f726cb5c-f746-50c5-aa75-83c81c57e0fb"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_ChargeReady"
+parentInstanceId = "27694d14-89d9-587c-ace1-23bb40fb5e87"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.2
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 0
+sizeStart = 0.15
+sizeEnd = 0.9
+sizeCurvePower = 0.22
+lifetime = 0.14
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:620590efd5b3297f0dc6f412339d31b5"
+sortMode = 0
+angularVelocityMin = -10.0
+angularVelocityMax = 10.0
+renderPriority = 76
+colorStart = [0.75, 1.0, 0.85, 0.8]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Glint Stars"
+instanceId = "fdcdf070-56c1-5e5d-8dac-61ff01182c6e"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_ChargeReady"
+parentInstanceId = "27694d14-89d9-587c-ace1-23bb40fb5e87"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 4 本光条の «キラッ» 2 粒。Just (FX_BLD_ChargeReadyJust) は 5 粒。数で読み分ける。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 1
+sphereRadius = 0.4
+sizeStart = 0.18
+sizeEnd = 0.0
+sizeCurvePower = 0.7
+lifetime = 0.14
+lifetimeRandom = 0.3
+velocitySpread = 0.55
+velocityDamping = 3.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:0fa5db40d2e54e9ba9516b42d76fb14f"
+sortMode = 0
+angularVelocityMin = -0.6
+angularVelocityMax = 0.6
+renderPriority = 79
+colorStart = [0.65, 1.0, 0.8, 0.8]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.05

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProfilerMarker.hpp | fbzz::profiler
-// プロファイラで計測区間を識別するための軽量メタデータ
+/// @file    ProfilerMarker.hpp
+/// @brief   プロファイラで計測区間を識別するための軽量メタデータ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <cstdint>

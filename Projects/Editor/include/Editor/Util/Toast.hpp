@@ -1,13 +1,14 @@
-// FBZZ Engine
-// Toast.hpp | fbzz::editor
-// 画面右下に数秒表示して自動的に消える非モーダル通知 (トースト)
-//
-// WHY: 保存成功・インポート完了・アセット取り込みなどの操作結果は、従来 Logger へ出すだけで
-//      画面上のフィードバックが無かった。ビルド失敗バー (DrawBuildNotificationBar) が扱うのは
-//      「消えずに残すべき失敗」だけであり、短命な成功通知は別系統として本トーストに集約する。
-//      静的 API にするのは AssetDirtyRegistry / EditorTaskOverlay と同じく、
-//      発火元 (シーン I/O・AssetBrowser・各パネル) が状態を持ち回らずに通知できるようにするため。
-//      呼び出しはすべてメインスレッド (ImGui フレーム内) を前提とし、ロックは持たない。
+/// @file    Toast.hpp
+/// @brief   画面右下に数秒表示して自動的に消える非モーダル通知 (トースト)。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// WHY: 保存成功・インポート完了・アセット取り込みなどの操作結果は、従来 Logger へ出すだけで
+/// 画面上のフィードバックが無かった。ビルド失敗バー (DrawBuildNotificationBar) が扱うのは
+/// 「消えずに残すべき失敗」だけであり、短命な成功通知は別系統として本トーストに集約する。
+/// 静的 API にするのは AssetDirtyRegistry / EditorTaskOverlay と同じく、
+/// 発火元 (シーン I/O・AssetBrowser・各パネル) が状態を持ち回らずに通知できるようにするため。
+/// 呼び出しはすべてメインスレッド (ImGui フレーム内) を前提とし、ロックは持たない。
 #pragma once
 #include <string>
 #include <vector>

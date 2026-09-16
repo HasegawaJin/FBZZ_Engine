@@ -1,9 +1,11 @@
-// FBZZ Engine
-// IBLBakePass.cpp | fbzz::scene
-// BRDF 積分 LUT をスタートアップ時に一度だけ Compute Shader で焼く。
-// WHY: LUT は NdotV × roughness の全組み合わせで積分した定数テーブルで、
-//      シーンや設定が変わっても値は変わらない。毎フレーム計算するのは無駄なため、
-//      初回フレームのみ実行し、以降はスキップする。
+/// @file    IBLBakePass.cpp
+/// @brief   BRDF 積分 LUT をスタートアップ時に一度だけ Compute Shader で焼く。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// WHY: LUT は NdotV × roughness の全組み合わせで積分した定数テーブルで、
+/// シーンや設定が変わっても値は変わらない。毎フレーム計算するのは無駄なため、
+/// 初回フレームのみ実行し、以降はスキップする。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>

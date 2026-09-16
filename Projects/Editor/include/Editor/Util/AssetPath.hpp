@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetPath.hpp | fbzz::editor
-// Editor 内で共有する Assets 起点パスの正規化ユーティリティ
+/// @file    AssetPath.hpp
+/// @brief   Editor 内で共有する Assets 起点パスの正規化ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include <string>

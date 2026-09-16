@@ -1,0 +1,3831 @@
+[meta]
+guid = '2ed3edb2e457f35bfb9e0d03e43e5f35'
+
+[texture]
+alpha_dither = false
+alpha_mode = 'Straight'
+aniso = 1
+compression = 'BC3'
+compression_quality = 1
+filter = 'Bilinear'
+flip_green = false
+max_size = 4096
+mip_bias = 0.0
+mip_filter = 'Kaiser'
+mip_sharpen = 0.0
+mipmaps = false
+normalize_mipmaps = false
+pixels_per_unit = 100.0
+sprite_mode = 'Multiple'
+srgb = true
+type = 'sprite'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '790ca46b-1b10-4041-9394-c26fabccec87'
+    name = 'keyboard-&-mouse_sheet_default_0'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'dcf2642f-b990-4d56-adb2-2db12321ad7c'
+    name = 'keyboard-&-mouse_sheet_default_1'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '741105bc-8af6-45eb-a839-efb9f9e3bb78'
+    name = 'keyboard-&-mouse_sheet_default_2'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ac97818e-adbd-443f-b2ff-cf112822bc8f'
+    name = 'keyboard-&-mouse_sheet_default_3'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '70bc8a69-a102-464f-bb55-087652fef848'
+    name = 'keyboard-&-mouse_sheet_default_4'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a813aba6-0de3-4245-9f59-ba9ff7f4b7b7'
+    name = 'keyboard-&-mouse_sheet_default_5'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b3479838-52e1-4389-b2d6-721bc3ea1eb2'
+    name = 'keyboard-&-mouse_sheet_default_6'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'febbfeb3-cb06-45c2-bd72-65c25dff7d4b'
+    name = 'keyboard-&-mouse_sheet_default_7'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a6347abe-b713-42d3-87c0-8efe1bed2f32'
+    name = 'keyboard-&-mouse_sheet_default_8'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '96564e94-5f24-4077-92d6-3c7046f7f785'
+    name = 'keyboard-&-mouse_sheet_default_9'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '53367a97-e4e9-4441-95fe-2e5e53f4fc7b'
+    name = 'keyboard-&-mouse_sheet_default_10'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fba1c235-31d7-4965-a705-2cae63d15580'
+    name = 'keyboard-&-mouse_sheet_default_11'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd343ba0a-a76c-48b0-bda1-5dbbc1d68504'
+    name = 'keyboard-&-mouse_sheet_default_12'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '270d04d5-a3ab-4eb0-afdb-dc7eb9a4ebc0'
+    name = 'keyboard-&-mouse_sheet_default_13'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '1486ac2c-7b96-4afd-93ab-d03d6d12f03a'
+    name = 'keyboard-&-mouse_sheet_default_14'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'cccb995e-8468-4956-bacd-06bf9688ee5e'
+    name = 'keyboard-&-mouse_sheet_default_15'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '7d061c9e-77db-4f72-9b0e-d7de951713e2'
+    name = 'keyboard-&-mouse_sheet_default_16'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd7bd3d66-0ca3-4bb6-a65c-ec6d975fbc98'
+    name = 'keyboard-&-mouse_sheet_default_17'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6cbe9459-485b-4a0f-b3f4-1ae7cc203aaa'
+    name = 'keyboard-&-mouse_sheet_default_18'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e0b68501-d61b-4aa2-a159-6de4978a23eb'
+    name = 'keyboard-&-mouse_sheet_default_19'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '309d91f6-6d38-4e5f-834e-76f7059cda81'
+    name = 'keyboard-&-mouse_sheet_default_20'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fbc5b05e-6dbf-475c-a658-592d0d2962dd'
+    name = 'keyboard-&-mouse_sheet_default_21'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3d80918f-64ee-4af0-90f6-aee1eddd591d'
+    name = 'keyboard-&-mouse_sheet_default_22'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '65851da5-02b5-4247-9932-86347713b5e6'
+    name = 'keyboard-&-mouse_sheet_default_23'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f6372257-f793-4bcd-a352-0a3cc389cc0c'
+    name = 'keyboard-&-mouse_sheet_default_24'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b4e25cf4-babe-4374-8bc9-c9273a364688'
+    name = 'keyboard-&-mouse_sheet_default_25'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a04d13a6-79e1-41a0-86ae-54d5c6de9282'
+    name = 'keyboard-&-mouse_sheet_default_26'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'eb3ca88e-8ab9-42c0-ba72-5814f9937f3e'
+    name = 'keyboard-&-mouse_sheet_default_27'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '185f811e-a41c-481d-941d-019329e9f515'
+    name = 'keyboard-&-mouse_sheet_default_28'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3197342f-8dcb-4e43-99c7-eda862d18c8a'
+    name = 'keyboard-&-mouse_sheet_default_29'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'cb63b966-5492-41b4-a62c-ecfbbd8e325e'
+    name = 'keyboard-&-mouse_sheet_default_30'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '5b993299-6de0-4671-82a8-7fe81bc64825'
+    name = 'keyboard-&-mouse_sheet_default_31'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b48e8498-86f6-4f57-a241-6642933658a0'
+    name = 'keyboard-&-mouse_sheet_default_32'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '5bb4e0da-0010-4ace-8baf-a0c0fe81e89f'
+    name = 'keyboard-&-mouse_sheet_default_33'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 64
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0d3d2888-0499-462e-82ef-02632b6d2359'
+    name = 'keyboard-&-mouse_sheet_default_34'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f3c22201-e6c1-4091-b9a9-5a95d5af65ea'
+    name = 'keyboard-&-mouse_sheet_default_35'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '836d2b4d-ed00-4420-ba95-fc329c7005e5'
+    name = 'keyboard-&-mouse_sheet_default_36'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '30800584-1555-49ba-9203-f634fccc216d'
+    name = 'keyboard-&-mouse_sheet_default_37'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '623af9b3-500c-4ce0-8e2e-a233e2f9c445'
+    name = 'keyboard-&-mouse_sheet_default_38'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'bc0a0475-ce2b-4eab-b907-206e948d2297'
+    name = 'keyboard-&-mouse_sheet_default_39'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '1b1c8cf6-f60a-45d7-8619-c5bd4a9b2767'
+    name = 'keyboard-&-mouse_sheet_default_40'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '987b6e66-48cb-4242-bf49-51aefc098c8d'
+    name = 'keyboard-&-mouse_sheet_default_41'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'c0b02853-1b45-438c-af86-cd1ad6101729'
+    name = 'keyboard-&-mouse_sheet_default_42'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '4a268441-342c-4399-8de9-85b0a139ca6a'
+    name = 'keyboard-&-mouse_sheet_default_43'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '306b33aa-0d7c-4a74-9e8e-e0e4b5f37203'
+    name = 'keyboard-&-mouse_sheet_default_44'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '39e7c4ae-7679-48b8-a8e1-3b227c767013'
+    name = 'keyboard-&-mouse_sheet_default_45'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9ec2766d-3547-4849-bff8-ac0f72bb81ef'
+    name = 'keyboard-&-mouse_sheet_default_46'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '42ca16b9-1a8f-4d8d-ae2b-12271e7aebb0'
+    name = 'keyboard-&-mouse_sheet_default_47'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd229690d-badf-437e-848e-5c48b507d683'
+    name = 'keyboard-&-mouse_sheet_default_48'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '20377992-6a61-48a2-901a-1aaf1e4cd1d9'
+    name = 'keyboard-&-mouse_sheet_default_49'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '14325a7a-3844-4c3e-b11c-4c7ed3898655'
+    name = 'keyboard-&-mouse_sheet_default_50'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 128
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e1a3fb12-29ef-48ca-9af6-adc341cb5406'
+    name = 'keyboard-&-mouse_sheet_default_51'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd88fa846-cab6-4409-a971-ae612ca2eb82'
+    name = 'keyboard-&-mouse_sheet_default_52'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '285b99f9-693b-425d-af31-9e341253b3a7'
+    name = 'keyboard-&-mouse_sheet_default_53'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '234ac94c-b718-4089-9c9a-933b38ce505e'
+    name = 'keyboard-&-mouse_sheet_default_54'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fcfc1a37-555f-48d5-b0db-ca4362e0e176'
+    name = 'keyboard-&-mouse_sheet_default_55'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '32517aa3-6101-4ea4-83df-9af9dd6bac71'
+    name = 'keyboard-&-mouse_sheet_default_56'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '74fdbb45-92d6-4ef4-979a-3745b91f000b'
+    name = 'keyboard-&-mouse_sheet_default_57'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '029e0b0f-d936-486d-89b4-9eff09a52002'
+    name = 'keyboard-&-mouse_sheet_default_58'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0e10e84a-988b-4481-ae36-44571f900e20'
+    name = 'keyboard-&-mouse_sheet_default_59'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '853ec748-f5a3-4ac9-8c85-3ef191765153'
+    name = 'keyboard-&-mouse_sheet_default_60'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '8b5ef4a6-faa5-451f-b26d-7bbc35ae8d4f'
+    name = 'keyboard-&-mouse_sheet_default_61'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '77c6b965-25ca-48d7-90cc-4a6b47f8a2bd'
+    name = 'keyboard-&-mouse_sheet_default_62'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a42ac61b-3d85-4dac-8943-9a10991cd60f'
+    name = 'keyboard-&-mouse_sheet_default_63'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6deba652-134d-435d-8da3-8de450a71816'
+    name = 'keyboard-&-mouse_sheet_default_64'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'c8f56339-6a4d-448e-bcf4-514c484e6c9e'
+    name = 'keyboard-&-mouse_sheet_default_65'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '8670cc25-d31c-40f5-9739-1d33f730e601'
+    name = 'keyboard-&-mouse_sheet_default_66'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'de4e4967-4bea-40d9-8fd2-5fe4e0e6e642'
+    name = 'keyboard-&-mouse_sheet_default_67'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 192
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '755f0ea8-a854-4aa5-9a5e-1838c2f685de'
+    name = 'keyboard-&-mouse_sheet_default_68'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'bf164c90-8139-492f-bf4d-14888774076f'
+    name = 'keyboard-&-mouse_sheet_default_69'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '65f30850-e85b-4263-8d8a-0ac299714038'
+    name = 'keyboard-&-mouse_sheet_default_70'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '26a53eee-ca89-4cd6-8d43-892f537736c7'
+    name = 'keyboard-&-mouse_sheet_default_71'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd1a22b3a-ba3b-4140-bc35-de92a1ad8df8'
+    name = 'keyboard-&-mouse_sheet_default_72'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '74356bc1-9c8a-4517-b7cf-e2816e53c0b6'
+    name = 'keyboard-&-mouse_sheet_default_73'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6c6ea007-9ec5-4bd7-8b64-23ae8dfe0b33'
+    name = 'keyboard-&-mouse_sheet_default_74'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '34b31824-5b04-4858-aaf1-2b777b6eab47'
+    name = 'keyboard-&-mouse_sheet_default_75'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0f64bf66-5622-4cd0-aa8b-c16200307c7e'
+    name = 'keyboard-&-mouse_sheet_default_76'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '232f4b9a-a918-411f-9c8a-3ee914bf1bfc'
+    name = 'keyboard-&-mouse_sheet_default_77'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '88c6ac3a-0891-455a-8d78-fae53dae5bab'
+    name = 'keyboard-&-mouse_sheet_default_78'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd6878105-85cf-4860-a108-3ae917a96b31'
+    name = 'keyboard-&-mouse_sheet_default_79'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'cb2193a4-6f5a-4892-9fea-99a38791ccf6'
+    name = 'keyboard-&-mouse_sheet_default_80'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3727c741-8dc0-450c-bad4-a13d072e0ee8'
+    name = 'keyboard-&-mouse_sheet_default_81'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '92ae6e34-33b8-4de9-a3fc-37bd3b94ef46'
+    name = 'keyboard-&-mouse_sheet_default_82'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '14851605-fc04-4dbb-88e4-99b88e5816de'
+    name = 'keyboard-&-mouse_sheet_default_83'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '5ca681d7-3866-4f69-949e-8d064839780c'
+    name = 'keyboard-&-mouse_sheet_default_84'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 256
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ad6de583-57fe-4853-8358-e93736d89952'
+    name = 'keyboard-&-mouse_sheet_default_85'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '1c9488fb-1e77-431c-aabd-f3e9160a27cc'
+    name = 'keyboard-&-mouse_sheet_default_86'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '87d965aa-d6f7-47b8-8b27-7a49e55aae30'
+    name = 'keyboard-&-mouse_sheet_default_87'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6efecc9b-6707-4f5f-a0ca-b5a851f52a5e'
+    name = 'keyboard-&-mouse_sheet_default_88'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6ea0397c-03a7-4b57-9009-6e26d86d5e26'
+    name = 'keyboard-&-mouse_sheet_default_89'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '1c95dec6-be68-475f-8283-69c08fd9b275'
+    name = 'keyboard-&-mouse_sheet_default_90'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '57d824bf-7304-440e-9183-55847664a7c9'
+    name = 'keyboard-&-mouse_sheet_default_91'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd39fe53c-2d5e-4e35-bcf9-f458e7467b06'
+    name = 'keyboard-&-mouse_sheet_default_92'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd2f41026-6f0f-4545-b44f-1686397783de'
+    name = 'keyboard-&-mouse_sheet_default_93'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '2d8a69a1-674f-4aa5-ab71-df15c7bfb8fa'
+    name = 'keyboard-&-mouse_sheet_default_94'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '49f3cb01-fea3-40ad-8a35-ee0946e6acab'
+    name = 'keyboard-&-mouse_sheet_default_95'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ade1beaf-def7-4135-9c14-fe338e24f143'
+    name = 'keyboard-&-mouse_sheet_default_96'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b9c4e17c-7c3a-47a6-abdb-70d6f8527c05'
+    name = 'keyboard-&-mouse_sheet_default_97'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'da313bb8-c967-4be9-9e86-74593b6e378a'
+    name = 'keyboard-&-mouse_sheet_default_98'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '246e0a47-d6e8-435d-bc13-7d56de32f24c'
+    name = 'keyboard-&-mouse_sheet_default_99'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd6619bfc-9c95-4fa9-b57a-a662d40bf08c'
+    name = 'keyboard-&-mouse_sheet_default_100'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'dfb2cc00-fd8d-4d2c-ad59-ffea8d6f6ed1'
+    name = 'keyboard-&-mouse_sheet_default_101'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 320
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a7f214fb-8664-4658-bf50-6778ec2f17d6'
+    name = 'keyboard-&-mouse_sheet_default_102'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '38dc1936-2db2-4725-bb85-7c667e6da72b'
+    name = 'keyboard-&-mouse_sheet_default_103'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '4eba512c-bbe0-44f9-b25d-31d46c4fd082'
+    name = 'keyboard-&-mouse_sheet_default_104'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'acf32f55-8e53-4967-aa91-b62fbe2fe03d'
+    name = 'keyboard-&-mouse_sheet_default_105'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f244b7eb-03d5-497e-b008-52945478cd75'
+    name = 'keyboard-&-mouse_sheet_default_106'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '67d3445e-bdc1-4a35-b33b-3e09b879d7d1'
+    name = 'keyboard-&-mouse_sheet_default_107'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ab2aab79-f41c-4916-9e95-548329612d05'
+    name = 'keyboard-&-mouse_sheet_default_108'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b4d80982-022e-4ed2-8dcf-ac5bb8b84f3d'
+    name = 'keyboard-&-mouse_sheet_default_109'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '105a048a-a93c-467a-99ba-2d89325a9ea6'
+    name = 'keyboard-&-mouse_sheet_default_110'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0540c5e5-7ceb-41f9-a85b-f5fee692bf26'
+    name = 'keyboard-&-mouse_sheet_default_111'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '2411085f-e20d-407d-bee7-a6148c3c3f08'
+    name = 'keyboard-&-mouse_sheet_default_112'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '57020486-d2fc-42d2-91cb-62ced033f502'
+    name = 'keyboard-&-mouse_sheet_default_113'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'aac9c5e7-b823-4e49-8af4-11bad6b08703'
+    name = 'keyboard-&-mouse_sheet_default_114'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3f23cde0-2c13-4590-a611-56eae4db7240'
+    name = 'keyboard-&-mouse_sheet_default_115'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fbe76b14-b362-4190-a4a7-f4676f864088'
+    name = 'keyboard-&-mouse_sheet_default_116'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'c6ea791f-8452-4c37-9233-97a6252eeb95'
+    name = 'keyboard-&-mouse_sheet_default_117'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd5148ac1-ba7d-4c9c-9ee3-b1d3548df246'
+    name = 'keyboard-&-mouse_sheet_default_118'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 384
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9cc79f6b-e683-4aef-908a-2516cfbdcf94'
+    name = 'keyboard-&-mouse_sheet_default_119'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '88d9f28f-db47-4a91-a0ef-0f66c90aa8ea'
+    name = 'keyboard-&-mouse_sheet_default_120'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0a23b9f7-f91a-460b-8f29-e326a92f5322'
+    name = 'keyboard-&-mouse_sheet_default_121'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0f1b6032-a7a9-4ba8-bf29-ba2ea05b3ac9'
+    name = 'keyboard-&-mouse_sheet_default_122'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e5782f28-32ae-43fc-a05b-5678633f94f2'
+    name = 'keyboard-&-mouse_sheet_default_123'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd49b03b1-b5ae-4a8b-bbe3-fcf58304a139'
+    name = 'keyboard-&-mouse_sheet_default_124'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '536da0f9-d5c5-4d5d-86ca-4ccd4ee4e80b'
+    name = 'keyboard-&-mouse_sheet_default_125'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3b08eb6d-94a2-4e10-a49a-f3cb86fef705'
+    name = 'keyboard-&-mouse_sheet_default_126'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '31ad2ffc-35ff-4087-9d47-93b48c68cf26'
+    name = 'keyboard-&-mouse_sheet_default_127'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd2863143-e12f-4866-8e52-32bbbdcb2745'
+    name = 'keyboard-&-mouse_sheet_default_128'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '84e874ec-a76c-4f57-b811-74c7431c9cbf'
+    name = 'keyboard-&-mouse_sheet_default_129'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '022eb73a-cb60-4ba2-9938-47946623fd06'
+    name = 'keyboard-&-mouse_sheet_default_130'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '12529f3a-f0cb-4929-8b4c-b75e5e39b550'
+    name = 'keyboard-&-mouse_sheet_default_131'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e83f5cfa-348b-4724-b795-5436d9b9e752'
+    name = 'keyboard-&-mouse_sheet_default_132'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0d25d9b6-6be8-4752-ad10-6c88d3080488'
+    name = 'keyboard-&-mouse_sheet_default_133'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9bb03efe-8964-44ec-a507-7210cf7f06c6'
+    name = 'keyboard-&-mouse_sheet_default_134'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0b9d06d4-b039-483d-9e0b-a14b079f99a4'
+    name = 'keyboard-&-mouse_sheet_default_135'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 448
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd0d777e3-0bb2-4fc8-ad4d-9ec90ffbe550'
+    name = 'keyboard-&-mouse_sheet_default_136'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '264bfa25-17f2-46de-b819-8e40794f7c3e'
+    name = 'keyboard-&-mouse_sheet_default_137'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '90c0474a-94b3-48cc-b8e3-70922d9db6e4'
+    name = 'keyboard-&-mouse_sheet_default_138'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '62cc687f-f2ef-401a-af6b-b64f1e112328'
+    name = 'keyboard-&-mouse_sheet_default_139'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9cc2b549-9863-48f1-9cb4-e075230bb7ee'
+    name = 'keyboard-&-mouse_sheet_default_140'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '789d61d6-ca86-46d7-8f5c-7191f9bb8773'
+    name = 'keyboard-&-mouse_sheet_default_141'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '2e412ae5-7384-48fe-a60a-7006c501f894'
+    name = 'keyboard-&-mouse_sheet_default_142'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '361aab42-dd3e-4310-90c3-50792462db52'
+    name = 'keyboard-&-mouse_sheet_default_143'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'd96ca782-a8c9-4cc9-84f6-31db276dcea9'
+    name = 'keyboard-&-mouse_sheet_default_144'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9c87d7e6-e856-4a63-bf7c-d641478ca848'
+    name = 'keyboard-&-mouse_sheet_default_145'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9380663b-e931-486b-a150-f1e07468f7d2'
+    name = 'keyboard-&-mouse_sheet_default_146'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'aa239bf3-e7ac-4b84-86b0-35c2b35fa97a'
+    name = 'keyboard-&-mouse_sheet_default_147'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6e8fad8f-7788-49fa-9d66-13e84bb27d85'
+    name = 'keyboard-&-mouse_sheet_default_148'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '183fab5b-a412-4ee5-b93e-9b885c9b75cd'
+    name = 'keyboard-&-mouse_sheet_default_149'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '8e218ed2-c534-4354-bd45-62b702d9c603'
+    name = 'keyboard-&-mouse_sheet_default_150'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0fd0425c-a5fd-4bd8-ba6b-b63173f7e23a'
+    name = 'keyboard-&-mouse_sheet_default_151'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b3c81868-4560-4290-9e90-18ccd6f63f27'
+    name = 'keyboard-&-mouse_sheet_default_152'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a5893159-424e-4355-bbde-c7df069002c3'
+    name = 'keyboard-&-mouse_sheet_default_153'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'bdd14b77-9458-4b6d-8d22-00e21b697f1f'
+    name = 'keyboard-&-mouse_sheet_default_154'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '332c9a3d-48f3-4440-9309-4447b633bd12'
+    name = 'keyboard-&-mouse_sheet_default_155'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '467bdd8a-89f3-4828-b910-d76c00cedb4b'
+    name = 'keyboard-&-mouse_sheet_default_156'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '5486b422-771c-4a97-8c19-724d7dd96fc5'
+    name = 'keyboard-&-mouse_sheet_default_157'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f0967702-e309-4f72-813b-71bc082a5034'
+    name = 'keyboard-&-mouse_sheet_default_158'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '7770d584-b8c9-412e-b262-124195f2f321'
+    name = 'keyboard-&-mouse_sheet_default_159'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '7bec9ca2-0da2-4386-89c9-ee459a251062'
+    name = 'keyboard-&-mouse_sheet_default_160'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3c7a581c-2f1d-4493-bb8b-b4259d7eb041'
+    name = 'keyboard-&-mouse_sheet_default_161'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '297d8982-a830-4ffe-8b63-ada8728dbfdf'
+    name = 'keyboard-&-mouse_sheet_default_162'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0e7e256d-d885-4803-b715-fba15478934f'
+    name = 'keyboard-&-mouse_sheet_default_163'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ecd1636b-12b9-4557-a239-a38f5bbe8798'
+    name = 'keyboard-&-mouse_sheet_default_164'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '1a761e4f-bb8a-47bf-9c20-c39d3c9944f4'
+    name = 'keyboard-&-mouse_sheet_default_165'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '7bbd414e-f4da-428b-96dc-e916e0ebd22f'
+    name = 'keyboard-&-mouse_sheet_default_166'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '05f441d5-2c96-4967-bfc2-52b22c091af5'
+    name = 'keyboard-&-mouse_sheet_default_167'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '18fbda9c-3ef5-4c8a-9d60-3d5820565352'
+    name = 'keyboard-&-mouse_sheet_default_168'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'dbf49ed1-b95b-4dfb-aa89-b4fde9bdf62f'
+    name = 'keyboard-&-mouse_sheet_default_169'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 576
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ae37b767-c800-4c16-a24b-daaa73664131'
+    name = 'keyboard-&-mouse_sheet_default_170'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '777b3b57-9618-4a85-a26b-1120a12408cc'
+    name = 'keyboard-&-mouse_sheet_default_171'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ed3e60ea-0c28-435c-9851-c86855c3be72'
+    name = 'keyboard-&-mouse_sheet_default_172'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '72acc043-a47d-4922-82d4-56329ee13e8d'
+    name = 'keyboard-&-mouse_sheet_default_173'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '15fdc2a6-a5dd-477f-98b6-0d0d59c97b6b'
+    name = 'keyboard-&-mouse_sheet_default_174'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b887f40c-d4b1-4bb5-88f7-22e0865d8b91'
+    name = 'keyboard-&-mouse_sheet_default_175'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0632689c-6fc0-42a9-877b-a675da24779d'
+    name = 'keyboard-&-mouse_sheet_default_176'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '92bea177-6837-46de-b5f9-71ca4d0f7a90'
+    name = 'keyboard-&-mouse_sheet_default_177'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '8fa99b3a-03b6-4099-9919-861e07f1c52e'
+    name = 'keyboard-&-mouse_sheet_default_178'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '743e947b-d846-428c-a060-7c6413f6afc7'
+    name = 'keyboard-&-mouse_sheet_default_179'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0a7ac7fe-5e66-4ad6-bc47-ad18a1143b6f'
+    name = 'keyboard-&-mouse_sheet_default_180'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f10db975-4f46-4fc1-a7d8-234951993568'
+    name = 'keyboard-&-mouse_sheet_default_181'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '18d52cbc-6922-4a16-b101-679cfb41f9c1'
+    name = 'keyboard-&-mouse_sheet_default_182'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b65d1571-1356-4f11-80b4-ac4b6559fe39'
+    name = 'keyboard-&-mouse_sheet_default_183'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '36b554be-a8e8-4f22-ad91-5a940a635004'
+    name = 'keyboard-&-mouse_sheet_default_184'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '5b1bb163-b364-4e7c-9b70-e23f0a398c69'
+    name = 'keyboard-&-mouse_sheet_default_185'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '19b46219-5592-4ecb-bbb9-1668a21170bd'
+    name = 'keyboard-&-mouse_sheet_default_186'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 640
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '62aa45e4-8a31-4683-84f6-8c499b613c25'
+    name = 'keyboard-&-mouse_sheet_default_187'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '87d75cf8-d915-4875-9358-481f4b1cce40'
+    name = 'keyboard-&-mouse_sheet_default_188'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '11ea58a3-984a-4495-8eb8-9f7f5fc371da'
+    name = 'keyboard-&-mouse_sheet_default_189'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '497a9ecf-be37-4c0d-9f49-20be81d51799'
+    name = 'keyboard-&-mouse_sheet_default_190'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fd18e64b-ad19-422e-9e9e-12a7fc23205e'
+    name = 'keyboard-&-mouse_sheet_default_191'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '694c5442-4b86-436a-a2de-dc6dba085ac0'
+    name = 'keyboard-&-mouse_sheet_default_192'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3385d238-fc55-474f-8185-f3da4ba538cc'
+    name = 'keyboard-&-mouse_sheet_default_193'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6ccd11c5-6e49-4acc-b293-ca211774752c'
+    name = 'keyboard-&-mouse_sheet_default_194'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f2b46dea-2b7d-427f-a361-31d98443cb05'
+    name = 'keyboard-&-mouse_sheet_default_195'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '80e77c2b-3695-457f-8115-49633d641ea4'
+    name = 'keyboard-&-mouse_sheet_default_196'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '818663e0-f42e-4cfa-9fc3-48a2c0612b4f'
+    name = 'keyboard-&-mouse_sheet_default_197'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e064945d-b0e3-4f40-8f03-326b36e1a688'
+    name = 'keyboard-&-mouse_sheet_default_198'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e8760984-ef67-4134-a141-47bae7e6a4f4'
+    name = 'keyboard-&-mouse_sheet_default_199'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '4a8015aa-e5f9-46ca-a2b8-f3ccf8476327'
+    name = 'keyboard-&-mouse_sheet_default_200'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e5fcc4ed-fe56-4995-aaab-96d978c7bff5'
+    name = 'keyboard-&-mouse_sheet_default_201'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b63aad27-0c27-41e8-9c82-2d9f09ea17f6'
+    name = 'keyboard-&-mouse_sheet_default_202'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '480d3bf3-dd15-4de2-b02d-e2d8eabbc9c4'
+    name = 'keyboard-&-mouse_sheet_default_203'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 704
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '72abf7e0-c3a9-4cf3-9239-efd9dce90249'
+    name = 'keyboard-&-mouse_sheet_default_204'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9e973958-d64c-4ecb-bc09-599e9c48539c'
+    name = 'keyboard-&-mouse_sheet_default_205'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '487c3e92-77d0-4b0b-8673-ed410b9d4565'
+    name = 'keyboard-&-mouse_sheet_default_206'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ff5fbc24-d0ad-4d06-b153-6d85a8947121'
+    name = 'keyboard-&-mouse_sheet_default_207'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '59bf4447-e383-4088-88aa-e05806626e1d'
+    name = 'keyboard-&-mouse_sheet_default_208'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '082e1f50-b541-487d-844d-b52b77ae51b0'
+    name = 'keyboard-&-mouse_sheet_default_209'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '8f8785db-6bd4-4043-ac63-3cfc5b099371'
+    name = 'keyboard-&-mouse_sheet_default_210'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fedfdba5-da1f-40f2-afc5-dc27d3a2232e'
+    name = 'keyboard-&-mouse_sheet_default_211'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '77a791a9-313f-4dec-a573-a13350a3ba61'
+    name = 'keyboard-&-mouse_sheet_default_212'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ef2a5496-689b-48a0-90a0-5aeb6f03433f'
+    name = 'keyboard-&-mouse_sheet_default_213'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '68702d8c-cef8-47e2-ab37-0e396c092f8e'
+    name = 'keyboard-&-mouse_sheet_default_214'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a9d8b614-e1ea-44b0-aad7-a8dd8c89dbf1'
+    name = 'keyboard-&-mouse_sheet_default_215'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a1a99deb-3fb3-46a1-8e94-d71977a450d8'
+    name = 'keyboard-&-mouse_sheet_default_216'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0c50b382-9fcc-41ff-abbc-ac7b0f6f2e2a'
+    name = 'keyboard-&-mouse_sheet_default_217'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '2bc3325f-79dd-454a-96b6-175d73a9bc7e'
+    name = 'keyboard-&-mouse_sheet_default_218'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '23bc1664-0521-4f17-829c-5a7cc62b47be'
+    name = 'keyboard-&-mouse_sheet_default_219'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '8be4ae66-a9c7-4294-ab06-064cd535aac7'
+    name = 'keyboard-&-mouse_sheet_default_220'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 768
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ca7331ef-05af-436b-8bcd-0f13680f7af2'
+    name = 'keyboard-&-mouse_sheet_default_221'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '7f9acad3-cb10-47c6-a217-960fa18a0042'
+    name = 'keyboard-&-mouse_sheet_default_222'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fe39d505-0ca2-43b0-85ca-63bccf5f1c5c'
+    name = 'keyboard-&-mouse_sheet_default_223'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e69bffaf-5c4b-49f7-a356-7d68145f070b'
+    name = 'keyboard-&-mouse_sheet_default_224'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a80541bc-80b2-4728-a092-63b3fb6784bf'
+    name = 'keyboard-&-mouse_sheet_default_225'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'db5eaed7-b3cd-433f-89da-1526eebfb096'
+    name = 'keyboard-&-mouse_sheet_default_226'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a7630a91-070f-4bff-a66b-275af0c09364'
+    name = 'keyboard-&-mouse_sheet_default_227'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '176dd5de-83f3-4895-bef2-2e196fbc5b70'
+    name = 'keyboard-&-mouse_sheet_default_228'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '60dd082b-955a-4fc9-8f4d-44c410a91a0b'
+    name = 'keyboard-&-mouse_sheet_default_229'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0262e5bb-150b-4a59-b52b-d762ee49f798'
+    name = 'keyboard-&-mouse_sheet_default_230'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f932785f-3bf3-4cbf-8c95-37e9073658ef'
+    name = 'keyboard-&-mouse_sheet_default_231'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6eb88b10-fbb5-43d2-b296-ffed002b8651'
+    name = 'keyboard-&-mouse_sheet_default_232'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3529dec9-65ec-422c-8ca8-b164bf9d680a'
+    name = 'keyboard-&-mouse_sheet_default_233'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6bfdb2ac-42b1-47d5-a2ae-d89b81fe776b'
+    name = 'keyboard-&-mouse_sheet_default_234'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '8feb4925-202d-4b89-9e02-9002fe689fcd'
+    name = 'keyboard-&-mouse_sheet_default_235'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0067fb54-1e54-4d1b-9e2a-093f88524369'
+    name = 'keyboard-&-mouse_sheet_default_236'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f2b2c490-f1ec-4c41-b883-b1adf1fed03a'
+    name = 'keyboard-&-mouse_sheet_default_237'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 832
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '69b0cf99-bee4-4f5c-9422-978a27d6ff71'
+    name = 'keyboard-&-mouse_sheet_default_238'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9cddd3c4-3530-4f56-9393-814069257638'
+    name = 'keyboard-&-mouse_sheet_default_239'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '5beb12c2-458b-46f9-ac04-6f272dac5b30'
+    name = 'keyboard-&-mouse_sheet_default_240'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '19db00ba-7e5f-4852-8bf8-474f92d13848'
+    name = 'keyboard-&-mouse_sheet_default_241'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '71214115-6220-48b8-a69b-bec26806a7ba'
+    name = 'keyboard-&-mouse_sheet_default_242'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '4f8b9a10-0002-4d7d-949a-0ceffe5c2eb5'
+    name = 'keyboard-&-mouse_sheet_default_243'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '53b36270-528d-4ada-a286-71068f5d7e9c'
+    name = 'keyboard-&-mouse_sheet_default_244'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b8a9be5d-514d-425d-aee2-556951e9b616'
+    name = 'keyboard-&-mouse_sheet_default_245'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ebb4c23d-b87e-4039-9b3a-77aed5ea6c8f'
+    name = 'keyboard-&-mouse_sheet_default_246'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'ae2f2368-8d4e-4d61-9a50-1c335e659c45'
+    name = 'keyboard-&-mouse_sheet_default_247'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b0febb9d-fc35-4c7b-a170-ae1d3c7d4178'
+    name = 'keyboard-&-mouse_sheet_default_248'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '4cca8067-e066-4f11-886f-a6420b54156e'
+    name = 'keyboard-&-mouse_sheet_default_249'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'f7668b73-cfeb-4b61-a9a2-68a9f60e21d0'
+    name = 'keyboard-&-mouse_sheet_default_250'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'e0eff57e-7087-40a5-90af-53f2a37acaf4'
+    name = 'keyboard-&-mouse_sheet_default_251'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '1b4d0ccd-b34a-4f90-aef2-20c2ad37f163'
+    name = 'keyboard-&-mouse_sheet_default_252'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '17f9f6d4-1327-43d7-aa5d-d7bd41d0965a'
+    name = 'keyboard-&-mouse_sheet_default_253'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '7b540a02-08de-4ce0-8745-da5caecc8a9b'
+    name = 'keyboard-&-mouse_sheet_default_254'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 896
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a2efb1c1-d21c-41ac-b3b0-47479de37c3a'
+    name = 'keyboard-&-mouse_sheet_default_255'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 0
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '0c35c2ab-41c9-4c63-9caf-2d8b2d477022'
+    name = 'keyboard-&-mouse_sheet_default_256'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 64
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '1607607a-00ee-4c49-8a90-30f1fef4bc9a'
+    name = 'keyboard-&-mouse_sheet_default_257'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 128
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '6516c1ce-d4f7-41fe-b800-93dea6c30f98'
+    name = 'keyboard-&-mouse_sheet_default_258'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 192
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'cb906e42-94ac-4ff6-af75-abcfae66eab0'
+    name = 'keyboard-&-mouse_sheet_default_259'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 256
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '4e91eea4-e314-4cd4-8dc4-847257500daf'
+    name = 'keyboard-&-mouse_sheet_default_260'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 320
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '53cb65fb-0092-4128-8966-492763857dc9'
+    name = 'keyboard-&-mouse_sheet_default_261'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 384
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a9570894-234d-4bac-a21e-794978d1d5b3'
+    name = 'keyboard-&-mouse_sheet_default_262'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 448
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'fc532e50-2732-470a-b9bb-85a501903a6a'
+    name = 'keyboard-&-mouse_sheet_default_263'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 512
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b6fb2878-7d39-43f2-b323-0a2f86fe9ac0'
+    name = 'keyboard-&-mouse_sheet_default_264'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 576
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'b5c54d60-075f-4962-b557-fcdabac9842d'
+    name = 'keyboard-&-mouse_sheet_default_265'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 640
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = 'a4446980-d0d2-47bf-b3ca-18024472301d'
+    name = 'keyboard-&-mouse_sheet_default_266'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 704
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '9b6a76be-9467-407f-8b39-8b8d311066f5'
+    name = 'keyboard-&-mouse_sheet_default_267'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 768
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '7b3df85d-247f-4b87-a9f1-72f442c16544'
+    name = 'keyboard-&-mouse_sheet_default_268'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 832
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '2063e5f8-8187-467c-bc83-e511f9386ff2'
+    name = 'keyboard-&-mouse_sheet_default_269'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 896
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '347a0406-09d5-42c4-9c71-2ed100f005d4'
+    name = 'keyboard-&-mouse_sheet_default_270'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 960
+    y = 960
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 64
+    id = '3f6f7e64-a484-4b8c-a81e-c1cd0b1e7529'
+    name = 'keyboard-&-mouse_sheet_default_271'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 64
+    x = 1024
+    y = 960

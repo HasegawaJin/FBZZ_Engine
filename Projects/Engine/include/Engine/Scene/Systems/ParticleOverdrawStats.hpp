@@ -1,12 +1,13 @@
-// FBZZ Engine
-// ParticleOverdrawStats.hpp | fbzz::scene
-// パーティクルの重なり枚数 (fill rate) を数値として取り出すための集計結果
-//
-// WHY: パーティクルの実コストは粒子数ではなく fill rate で決まる。オーサリング規約自身が
-//      そう書いているのに、その fill rate を数値で取る手段がどこにも無かった。
-//      ヒートマップ表示は「見れば判る」が、閾値を持てないため AI は毎回違う基準で判定してしまう。
-//      RenderSettings::particleOverdrawReadback を立てたフレームだけ GPU から読み戻し、
-//      ここに集計を残す。読み戻しは同期を伴うので、常時計測はしない。
+/// @file    ParticleOverdrawStats.hpp
+/// @brief   パーティクルの重なり枚数 (fill rate) を数値として取り出すための集計結果。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: パーティクルの実コストは粒子数ではなく fill rate で決まる。オーサリング規約自身が
+/// そう書いているのに、その fill rate を数値で取る手段がどこにも無かった。
+/// ヒートマップ表示は「見れば判る」が、閾値を持てないため AI は毎回違う基準で判定してしまう。
+/// RenderSettings::particleOverdrawReadback を立てたフレームだけ GPU から読み戻し、
+/// ここに集計を残す。読み戻しは同期を伴うので、常時計測はしない。
 #pragma once
 
 #include <cstdint>

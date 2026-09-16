@@ -1,6 +1,7 @@
-// FBZZ Engine
-// HotkeyManager.cpp | fbzz::editor
-// キーショートカットの登録・判定・整形
+/// @file    HotkeyManager.cpp
+/// @brief   キーショートカットの登録・判定・整形。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/HotkeyManager.hpp>
 #include <imgui.h>
 
@@ -42,8 +43,26 @@ bool HotkeyManager::IsCurrentlyActive(const Hotkey& hk) const
     return true;
 }
 
+void HotkeyManager::SuppressOperatorThisFrame(std::string_view operatorId)
+{
+    if (operatorId.empty()) return;
+    for (const auto& id : m_suppressedOperators)
+        if (id == operatorId) return;   // 同じフレームに何度呼ばれても 1 件
+    m_suppressedOperators.emplace_back(operatorId);
+}
+
 void HotkeyManager::ProcessInput()
 {
+    // 申告は «前回の ProcessInput 以降に積まれた分» を効かせ、ここで空にする。
+    // WHY: ProcessInput は EditorApp::BeginFrame、つまりどのパネルの描画よりも前に走る。
+    //      パネルが描画中に申告できるのは «次に来る» ProcessInput に対してだけなので、
+    //      持ち越さないと «Ctrl+S を押したフレーム» には間に合わず 1 回目が素通りする。
+    //      EditorContext のフォーカス状態が 1 フレーム遅れで効くのと同じ仕組みで、
+    //      «フォーカスを持っている間ずっと申告する» 使い方と噛み合う。
+    //      早期 return の経路でも必ず空にしたいので、最初に取り出す。
+    std::vector<std::string> suppressed;
+    suppressed.swap(m_suppressedOperators);
+
     // WHY: テキスト入力中はキーが文字として消費される。名前入力の途中で
     //      "D" がオブジェクト複製になってはいけない。
     if (ImGui::GetIO().WantTextInput) return;
@@ -59,16 +78,45 @@ void HotkeyManager::ProcessInput()
         if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(hk.imguiKey), false)) continue;
         if (!IsCurrentlyActive(hk)) continue;
 
+        if (!hk.operatorId.empty()) {
+            bool claimed = false;
+            for (const auto& id : suppressed)
+                if (id == hk.operatorId) { claimed = true; break; }
+            if (claimed) continue;   // フォーカスのあるパネルがこのキーを自分で処理する
+        }
+
         hk.callback();
     }
 }
 
-void HotkeyManager::Clear() { m_hotkeys.clear(); }
-
-void HotkeyManager::Rebind(const std::string& name, int imguiKey, bool ctrl, bool shift, bool alt)
+void HotkeyManager::Clear()
 {
+    m_hotkeys.clear();
+    m_suppressedOperators.clear();
+}
+
+const Hotkey* HotkeyManager::FindByOperator(std::string_view operatorId) const
+{
+    for (const auto& hk : m_hotkeys)
+        if (!hk.operatorId.empty() && hk.operatorId == operatorId) return &hk;
+    return nullptr;
+}
+
+void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool shift, bool alt)
+{
+    // operatorId を優先し、見つからなければ表示名で引く (旧形式の設定ファイル互換)。
     for (auto& hk : m_hotkeys) {
-        if (hk.name != name) continue;
+        if (hk.operatorId.empty() || hk.operatorId != key) continue;
+        if (hk.infoOnly) return;
+        hk.imguiKey = imguiKey;
+        hk.ctrl     = ctrl;
+        hk.shift    = shift;
+        hk.alt      = alt;
+        return;
+    }
+
+    for (auto& hk : m_hotkeys) {
+        if (hk.name != key) continue;
         if (hk.infoOnly) return;   // 説明専用エントリは割り当てを持たない
         hk.imguiKey = imguiKey;
         hk.ctrl     = ctrl;
@@ -126,6 +174,7 @@ const char* HotkeyManager::CategoryLabel(HotkeyCategory category)
     case HotkeyCategory::Gizmo:     return "Gizmo";
     case HotkeyCategory::Play:      return "Play";
     case HotkeyCategory::Panels:    return "Panels";
+    case HotkeyCategory::Tools:     return "Tools";
     }
     return "Other";
 }

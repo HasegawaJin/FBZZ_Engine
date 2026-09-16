@@ -1,7 +1,9 @@
-// FBZZ Engine
-// Profiler.cpp | fbzz::profiler
-// CPU プロファイラの収集バッファ管理と ImGui ビュー描画
-// シングルスレッドのゲームループから呼ばれる前提で、低コストなスコープ計測を提供する。
+/// @file    Profiler.cpp
+/// @brief   CPU プロファイラの収集バッファ管理と ImGui ビュー描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
+///
+/// シングルスレッドのゲームループから呼ばれる前提で、低コストなスコープ計測を提供する。
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Profiler/ProfilerViewer.hpp>
 
@@ -98,6 +100,23 @@ void Profiler::EndSample()
     record.frameIndex = s_currentFrameIndex;
     record.depth      = sample.depth;
     record.color      = sample.marker.color;
+    s_currentFrameRecords.push_back(record);
+}
+
+void Profiler::PushSample(const ProfilerMarker& marker, double elapsedMs)
+{
+    if (!s_enabled) {
+        return;
+    }
+
+    ProfileRecord record;
+    record.name       = marker.name;
+    record.category   = marker.category;
+    record.elapsedMs  = elapsedMs;
+    record.frameIndex = s_currentFrameIndex;
+    // 積む時点のスタック深さ。並列バッチを回している側のスコープの子として並ぶ。
+    record.depth      = static_cast<uint32_t>(s_stack.size());
+    record.color      = marker.color;
     s_currentFrameRecords.push_back(record);
 }
 

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorMultiEdit.hpp | fbzz::editor
-// 複数選択時の Inspector (Transform 一括編集 + 共通コンポーネントの一括編集)
+/// @file    InspectorMultiEdit.hpp
+/// @brief   複数選択時の Inspector (Transform 一括編集 + 共通コンポーネントの一括編集)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 #include <Engine/Scene/Scene.hpp>
 #include <vector>

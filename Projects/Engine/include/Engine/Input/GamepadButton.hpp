@@ -1,10 +1,12 @@
-// FBZZ Engine
-// GamepadButton.hpp | fbzz::input
-// ゲームパッドのボタン・軸の論理定義
-// XInput の生ビットマスクをそのまま外へ出さず、エンジン独自の連番へ写像する。
-// WHY: XINPUT_GAMEPAD_* はビットフラグのため配列添字として使えず、
-//      「前フレーム状態を配列で持って差分を取る」既存 Input の実装様式に噛み合わない。
-//      連番にすることで Gamepad 側も std::array<bool, COUNT> で統一できる。
+/// @file    GamepadButton.hpp
+/// @brief   ゲームパッドのボタン・軸の論理定義。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// XInput の生ビットマスクをそのまま外へ出さず、エンジン独自の連番へ写像する。
+/// WHY: XINPUT_GAMEPAD_* はビットフラグのため配列添字として使えず、
+/// 「前フレーム状態を配列で持って差分を取る」既存 Input の実装様式に噛み合わない。
+/// 連番にすることで Gamepad 側も std::array<bool, COUNT> で統一できる。
 #pragma once
 #include <cstdint>
 

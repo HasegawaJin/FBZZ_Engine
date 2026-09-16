@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AssetBrowserCore.cpp | fbzz::editor
-// AssetBrowser のルート、マウント、ディレクトリ走査
+/// @file    AssetBrowserCore.cpp
+/// @brief   AssetBrowser のルート、マウント、ディレクトリ走査。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
@@ -94,8 +96,33 @@ std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx
 {
     // WHY: Asset Browser の内部パスは実ファイル操作のため絶対パスを保持するが、
     //      Scene / Prefab に保存する payload は配布後も壊れない Assets 起点の相対パスにする。
-    (void)ctx;
-    return NormalizeAssetPath(path);
+    const std::string normalized = util::FileSystem::NormalizePathSeparators(path);
+    const std::string projectAssets = util::FileSystem::NormalizePathSeparators(
+        ctx.projectRoot + "/Assets");
+    if (util::FileSystem::IsChildPathText(normalized, projectAssets))
+        return NormalizeAssetPath(normalized);
+
+    // 外部マウントはプロジェクト相対へ変換できないため、実パスを保持する。
+    return normalized;
+}
+
+std::string ToAssetDragPayloadPath(const std::string& path, const EditorContext& ctx)
+{
+    // ASSET_PATH は内部移動にも使うため、外部マウントを見失わない形式を選ぶ。
+    return ToProjectAssetPath(path, ctx);
+}
+
+bool ReadAssetDragPayload(const ImGuiPayload* payload, std::string& outPath)
+{
+    outPath.clear();
+    if (!payload || !payload->Data || payload->DataSize <= 0) return false;
+
+    const auto* bytes = static_cast<const char*>(payload->Data);
+    const size_t size = static_cast<size_t>(payload->DataSize);
+    const size_t length = bytes[size - 1] == '\0' ? size - 1 : size;
+    if (length == 0) return false;
+    outPath.assign(bytes, length);
+    return true;
 }
 
 std::filesystem::path GetPackageModelPath(const std::filesystem::path& dirPath)
@@ -118,20 +145,74 @@ bool IsModelPackageDirectory(const std::filesystem::path& dirPath)
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
+AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath, std::size_t instanceIndex)
     : m_rootPath(util::FileSystem::NormalizePathSeparators(rootPath)),
-      m_currentPath(util::FileSystem::NormalizePathSeparators(rootPath)) {}
+      m_currentPath(util::FileSystem::NormalizePathSeparators(rootPath)),
+      m_instanceIndex(instanceIndex)
+{
+    // 2 枚目以降は "Asset Browser 2" のように番号を付ける。
+    // WHY 名前を実体に持たせるか: ImGui はウィンドウを名前で識別するので、
+    //     同名のパネルが 2 枚あるとドッキング配置も可視状態も混ざる。
+    m_windowName = instanceIndex == 0
+        ? "Asset Browser"
+        : "Asset Browser " + std::to_string(instanceIndex + 1);
+}
 
 void AssetBrowserPanel::OnInit(EditorContext& ctx)
 {
     m_resources = ctx.resources;
-    m_iconSize = ctx.assetBrowserIconSize;
-    m_treeWidth = ctx.assetBrowserTreeWidth;
     RefreshDirectory();
-    if (!m_rootPath.empty()) {
+    if (!m_rootPath.empty() && IsAssetPipelineOwner()) {
         m_watcher.Start(m_rootPath);
         ScanAndQueueUnimported(m_rootPath);
     }
+}
+
+void AssetBrowserPanel::OnLoadSettings(const EditorSettings& settings)
+{
+    // WHY OnInit ではなくここか (不具合修正): OnInit は projectRoot が決まる前に走るため、
+    //     そこで読める EditorContext はまだ既定値のまま。アイコンサイズとツリー幅は
+    //     保存だけされて復元されず、毎起動で 84 / 180 に戻っていた。
+    const EditorSettings::AssetBrowserPanelState state =
+        settings.AssetBrowserPanelAt(m_instanceIndex);
+
+    m_iconSize  = std::clamp(state.iconSize, 56.0f, 132.0f);
+    m_treeWidth = std::clamp(state.treeWidth, 140.0f, 420.0f);
+
+    m_viewMode   = static_cast<ViewMode>(std::clamp(state.viewMode, 0, 1));
+    m_sortMode   = static_cast<SortMode>(std::clamp(state.sortMode, 0, 3));
+    // All (bit 0) は「絞り込みなし」の番兵なので、ビットとしては常に落とす。
+    constexpr uint32_t kValidFilterBits =
+        ((1u << static_cast<int>(TypeFilter::COUNT)) - 1u) & ~1u;
+    m_typeFilterMask   = state.typeFilterMask & kValidFilterBits;
+    m_searchAllFolders = state.searchAllFolders;
+    m_treeShowFiles    = state.treeShowFiles;
+
+    // 前回のフォルダは「今のプロジェクトの中に実在する」ときだけ復元する。
+    // プロジェクトを開き直した直後は SetRootPath がルートへ戻した状態なので、
+    // 解決できない保存値は黙って捨ててルート表示のままにする。
+    const std::string folder =
+        util::FileSystem::NormalizePathSeparators(state.currentFolder);
+    if (!folder.empty() && !m_rootPath.empty()
+        && folder.rfind(m_rootPath, 0) == 0
+        && util::FileSystem::Exists(folder)) {
+        m_currentPath = folder;
+        RefreshDirectory();
+    }
+}
+
+void AssetBrowserPanel::OnSaveSettings(EditorSettings& settings) const
+{
+    EditorSettings::AssetBrowserPanelState& state =
+        settings.AssetBrowserPanelAt(m_instanceIndex);
+    state.iconSize         = m_iconSize;
+    state.treeWidth        = m_treeWidth;
+    state.viewMode         = static_cast<int>(m_viewMode);
+    state.sortMode         = static_cast<int>(m_sortMode);
+    state.typeFilterMask   = m_typeFilterMask;
+    state.searchAllFolders = m_searchAllFolders;
+    state.treeShowFiles    = m_treeShowFiles;
+    state.currentFolder    = m_currentPath;
 }
 
 void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
@@ -142,9 +223,11 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
     m_pendingNavigate.clear();
     m_mounts.clear();
     m_pendingImports.clear();
-    m_watcher.Start(m_rootPath);
+    // 旧プロジェクトのパスを持ち越さない。監視先が変わった時点で待機中の候補は無効。
+    m_scheduledReimports.clear();
+    if (IsAssetPipelineOwner()) m_watcher.Start(m_rootPath);
     RefreshDirectory();
-    ScanAndQueueUnimported(m_rootPath);
+    if (IsAssetPipelineOwner()) ScanAndQueueUnimported(m_rootPath);
 }
 
 namespace {
@@ -199,7 +282,7 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
         m_searchResultsTypeFilter = -1;
     }
     // タイプフィルタで除外されていると選択しても見えないので、Reveal では常に外す。
-    m_typeFilter = TypeFilter::All;
+    m_typeFilterMask = 0;
 
     // FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
     // 原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
@@ -231,11 +314,16 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
     m_pingPath      = absolute;
     m_pingStartTime = static_cast<float>(ImGui::GetTime());
 
-    // ダブルクリック相当のときだけ Inspector の表示対象も移す (Unity の Ping と選択の違い)。
-    if (selectForInspector) {
-        ctx.selectedAssetPath = absolute;
-        ctx.selectedEntities.clear();
-    }
+    // ダブルクリック相当のときは一覧側の選択も合わせる (Unity の Ping と選択の違い)。
+    //
+    // WHY Inspector の表示対象をここで触らないか:
+    //   ctx.selectedAssetPath は EditorApp が要求を受けた時点で確定させている。
+    //   この関数は OnRenderContent の中にあり、非アクティブなドッキングタブでは
+    //   1 度も呼ばれない。ここが唯一の書き手だった頃は、Asset Browser が Inspector と
+    //   同じドックノードに居るだけで参照を辿れなくなっていた。
+    //   上の 2 つの early return (ファイル欠落 / ルート外) でも同じ形で選択が消えていた。
+    if (selectForInspector)
+        ClearEntitySelection(ctx);
 }
 
 void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
@@ -339,9 +427,18 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_materialPreviews);
     evictStaleEntries(m_meshPreviews);
     evictStaleEntries(m_prefabPreviews);
+    evictStaleEntries(m_vfxPreviews);
     evictStaleEntries(m_terrainPreviews);
     evictStaleEntries(m_spritePreviews);
+
+    // キューを空にしたら「積んである」印も落とす。
+    // WHY: 印を残したまま待ち行列だけ捨てると、そのテクスチャは二度と積み直されず
+    //      サムネイルが永久に出ない。素材を一括で入れた直後はファイル監視が
+    //      毎フレーム RefreshDirectory を呼ぶため、3 件/フレームの読み込みが
+    //      追いつく前にほぼ全部がこの状態に落ちる (再起動するまで直らなかった原因)。
     m_texLoadQueue.clear();
+    for (auto& entry : m_texturePreviews)
+        if (!entry.second.handle.IsValid()) entry.second.queued = false;
     const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
     for (const auto& p : util::FileSystem::ListAll(currentPath)) {
         const std::filesystem::path fsPath = util::FileSystem::PathFromUtf8(p);
@@ -508,9 +605,10 @@ std::string AssetBrowserPanel::ResolveFallbackAssetDir(const std::string& childD
     std::filesystem::path current = util::FileSystem::PathFromUtf8(
         util::FileSystem::NormalizePathSeparators(m_rootPath));
 
-    // WHY: ctx.scriptsSourceDir / ctx.hlslSourceDir は hot reload の ToolchainLocator 成功後にだけ入る。
-    //      AssetBrowser は hot reload なしでも使うため、現在の Assets ルートから親をたどって
-    //      リポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
+    // WHY: ctx.scriptsSourceDir は hot reload の ToolchainLocator 成功後にだけ入る
+    //      (ctx.hlslSourceDir は ToolchainLocator に依存しなくなったが、hotReloadEnabled が
+    //      false なら依然として空)。AssetBrowser は hot reload なしでも使うため、現在の
+    //      Assets ルートから親をたどってリポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
     for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
         const std::filesystem::path candidate = current / "Assets" / childDirName;
         if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(candidate)))
@@ -616,9 +714,25 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
     const std::filesystem::path mergedMeshPath = util::FileSystem::PathFromUtf8(
         asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(
             packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".mesh"))));
-    const std::filesystem::path animDir = packageDir / "anims";
-    const std::filesystem::path materialDir = packageDir / "materials";
-    const std::filesystem::path textureDir = packageDir / "textures";
+    // anims/ と materials/ は Library/Baked/<fbx-guid>/ へ隔離済み。
+    // WHY 旧配置もフォールバックで見るか: 隔離を入れる前にインポートしたモデルは
+    //     Assets 側にこれらを持ったままになる。再インポートするまでは
+    //     そちらを見せないとクリップとマテリアルが一覧から消えてしまう。
+    //     Extract で Assets へ取り出した実体も、この経路では出てこない
+    //     (取り出した先は原本 FBX の隣なので、通常のエントリとして並ぶ)。
+    const auto resolveGeneratedDir = [&](const char* name) {
+        std::filesystem::path dir = packageDir / name;
+        if (modelExt != ".fbx") return dir;
+        const std::string bakedDir =
+            asset::AssetManager::BakedDirForSource(sourceAssetPath);
+        if (!bakedDir.empty() &&
+            util::FileSystem::IsDirectory(bakedDir + "/" + name))
+            dir = util::FileSystem::PathFromUtf8(bakedDir + "/" + name);
+        return dir;
+    };
+    const std::filesystem::path animDir     = resolveGeneratedDir("anims");
+    const std::filesystem::path materialDir = resolveGeneratedDir("materials");
+    const std::filesystem::path textureDir  = resolveGeneratedDir("textures");
     const std::string animDirStr = util::FileSystem::NormalizePathSeparators(
         util::FileSystem::PathToUtf8(animDir));
     const std::string materialDirStr = util::FileSystem::NormalizePathSeparators(
@@ -702,6 +816,8 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         e.ext        = ".mat";
         e.isDir      = false;
         e.isSubAsset = true;
+        // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
 
@@ -712,6 +828,8 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         e.ext       = ".anim";
         e.isDir     = false;
         e.isSubAsset = true;
+        // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
 
@@ -729,6 +847,8 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
             e.ext        = imageExt;
             e.isDir      = false;
             e.isSubAsset = true;
+            // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+            e.sourceAssetPath = sourceAssetPath;
             cached.items.push_back(std::move(e));
         }
     }

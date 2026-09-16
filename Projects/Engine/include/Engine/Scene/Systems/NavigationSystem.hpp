@@ -1,6 +1,7 @@
-// FBZZ Engine
-// NavigationSystem.hpp | fbzz::scene
-// NavMeshAgentComponent を NavMesh 上で A* + Funnel Algorithm によりパス追従させる毎フレームシステム。
+/// @file    NavigationSystem.hpp
+/// @brief   NavMeshAgentComponent を NavMesh 上で A* + Funnel Algorithm によりパス追従させる毎フレームシステム。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

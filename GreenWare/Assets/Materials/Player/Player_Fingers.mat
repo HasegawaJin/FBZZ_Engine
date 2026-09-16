@@ -1,0 +1,20 @@
+mesh_type = "skinned"
+name = "Player_Fingers"
+render_path = "auto"
+shader = "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl"
+version = 1
+
+[params]
+albedo = [ 0.800000011920929, 0.800000011920929, 0.800000011920929, 1.0 ]
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10000000149011612
+metallic = 0.0
+roughness = 0.5
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]
+
+
+[textures]
+albedo = "guid:7e9bcffe2b064d0db0652122740949bd|Assets/Models/Player/Textures/Player_Fingers_LOD0_BaseColor.png"
+

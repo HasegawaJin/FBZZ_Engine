@@ -1,0 +1,34 @@
+# FBZZ Engine
+# ElectricChargeMinusGPU.mat
+# −極の電荷パーティクル (GPU シミュレーション用)。
+# ElectricChargePlusGPU.mat と chargeSign 以外まったく同じ
+# (経路ごとに分ける理由はそちらの WHY)。
+version = 1
+name = 'ElectricChargeMinusGPU'
+shader = 'Assets/Shaders/Material/Effects/ElectricChargeGPU.hlsl'
+blend_mode = 'Additive'
+double_sided = true
+render_path = 'particle'
+render_queue = 3000
+mesh_type = 'surface'
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+chargeSign = -1.0
+signScale = 0.68
+signWeight = 0.24
+signGlow = 3.2
+
+[particle]
+emissive_scale = 1.4
+lighting_strength = 0.0
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

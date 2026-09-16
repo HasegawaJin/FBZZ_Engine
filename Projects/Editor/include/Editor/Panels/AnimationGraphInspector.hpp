@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimationGraphInspector.hpp | fbzz::editor
-// Animation Graph で選択した State / Transition の Inspector 描画 API
+/// @file    AnimationGraphInspector.hpp
+/// @brief   Animation Graph で選択した State / Transition の Inspector 描画 API。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
 #pragma once
 
 namespace fbzz::scene {

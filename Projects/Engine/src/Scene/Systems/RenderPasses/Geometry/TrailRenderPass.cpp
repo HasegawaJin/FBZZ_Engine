@@ -1,14 +1,16 @@
-// FBZZ Engine
-// RenderPasses/Geometry/TrailRenderPass.cpp | fbzz::scene
-// TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)
+/// @file    RenderPasses/Geometry/TrailRenderPass.cpp
+/// @brief   TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
+#include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Renderer/RenderState.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
+#include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -37,6 +39,12 @@ struct TrailDrawItem {
     renderer::DrawCall drawCall;
     float distanceSq = 0.0f;
 };
+
+// 帯の頂点バッファ。Component に 1 本持たせず、描くたびにプールから借りる。
+// WHY: 帯はカメラへ正対するのでビューごとに形が変わる。1 本だと Scene View と Game View が
+//      同じ実体を 2 回書き、DX12 では先に記録した Scene View の Draw まで Game View の形を読む。
+//      前フレームの GPU がまだ読んでいる実体を書き直す問題もある (詳細は DynamicBufferPool.hpp)。
+renderer::DynamicVertexBufferPool g_trailVertexPool;
 
 void InitTrailStorage(TrailComponent& trail)
 {
@@ -195,32 +203,22 @@ void BuildTrailVertices(
     if (points.size() < 2)
         return;
 
-    std::vector<math::Vector3> normals(points.size(), math::Vector3::RIGHT);
-    for (size_t i = 0; i < points.size(); ++i) {
-        math::Vector3 nLeft = math::Vector3::RIGHT;
-        math::Vector3 nRight = math::Vector3::RIGHT;
-        bool hasLeft = false;
-        bool hasRight = false;
+    // 各点の幅方向。マイター接合そのものは粒子リボンと共通で、Trail だけが
+    // alignment (View / Local / Velocity) で幅方向の決め方を変える。
+    //
+    // NOTE: 長さ 0 の線分の扱いが変わった。以前は FORWARD へ倒して «向きがある» ものと
+    //       して扱っていたが、共通版では寄与しない。重なった点は minVertexDist で
+    //       間引かれるので実データでは出ないが、出れば «前後の向きだけで決まる» 側になる。
+    std::vector<math::Vector3> positions;
+    positions.reserve(points.size());
+    for (const TrailPoint& point : points) positions.push_back(point.position);
 
-        if (i > 0) {
-            const math::Vector3 dir = SafeNormalize(points[i].position - points[i - 1u].position, math::Vector3::FORWARD);
-            nLeft = ComputeRibbonNormal(dir, trail.alignment, cameraPos, points[i].position);
-            hasLeft = true;
-        }
-        if (i + 1u < points.size()) {
-            const math::Vector3 dir = SafeNormalize(points[i + 1u].position - points[i].position, math::Vector3::FORWARD);
-            nRight = ComputeRibbonNormal(dir, trail.alignment, cameraPos, points[i].position);
-            hasRight = true;
-        }
-
-        if (hasLeft && hasRight) {
-            math::Vector3 miter = SafeNormalize(nLeft + nRight, nRight);
-            const float cosHalfAngle = (std::max)(math::Vector3::Dot(miter, nLeft), 0.5f);
-            normals[i] = miter * (1.0f / cosHalfAngle);
-        } else {
-            normals[i] = hasRight ? nRight : nLeft;
-        }
-    }
+    std::vector<math::Vector3> normals;
+    BuildRibbonMiterNormals(positions,
+        [&](const math::Vector3& direction, const math::Vector3& point) {
+            return ComputeRibbonNormal(direction, trail.alignment, cameraPos, point);
+        },
+        normals);
 
     const float duration = (std::max)(trail.duration, math::EPSILON);
     const float birthTime = currentTime - duration;
@@ -243,8 +241,8 @@ void BuildTrailVertices(
         const float age1 = ageOf(p1);
         const float widthAge0 = ApplyWidthEasing(trail.widthEasing, age0);
         const float widthAge1 = ApplyWidthEasing(trail.widthEasing, age1);
-        const float halfWidth0 = math::Lerp(trail.widthEnd, trail.widthStart, widthAge0) * 0.5f;
-        const float halfWidth1 = math::Lerp(trail.widthEnd, trail.widthStart, widthAge1) * 0.5f;
+        const float halfWidth0 = TrailWidthAt(trail, age0, widthAge0) * 0.5f;
+        const float halfWidth1 = TrailWidthAt(trail, age1, widthAge1) * 0.5f;
         const float u0 = trail.uvMode == TrailUVMode::Tile ? cumulativeLengths[i] : static_cast<float>(i) / segmentDenom;
         const float u1 = trail.uvMode == TrailUVMode::Tile ? cumulativeLengths[i + 1u] : static_cast<float>(i + 1u) / segmentDenom;
 
@@ -255,6 +253,29 @@ void BuildTrailVertices(
 
         outVertices.insert(outVertices.end(), { tl, tr, bl, bl, tr, br });
     }
+}
+
+// 多キー色を CB へ詰める。キーが足りなければ何も書かず、シェーダーは
+// colorStart / colorEnd の 2 点へ落ちる (既存シーンの見た目を変えないため)。
+void FillTrailGradient(const TrailComponent& trail, TrailCB& cb)
+{
+    if (!TrailUsesColorGradient(trail)) return;
+
+    const uint32_t count = (std::min)(trail.colorGradient.keyCount, kMaxParticleCurveKeys);
+    for (uint32_t i = 0; i < count; ++i) {
+        const ParticleGradientKey& key = trail.colorGradient.keys[i];
+        cb.gradientColors[i] = ParticleSrgbToLinear(key.color);
+        // 時刻は float4 × 2 に詰めてある (HLSL の float 配列は 1 要素 16 バイトを食う)。
+        math::Vector4& slot = cb.gradientTimes[i / 4];
+        switch (i % 4) {
+        case 0:  slot.x = key.time; break;
+        case 1:  slot.y = key.time; break;
+        case 2:  slot.z = key.time; break;
+        default: slot.w = key.time; break;
+        }
+    }
+    cb.gradientKeyCount = count;
+    cb.gradientInterpolation = static_cast<uint32_t>(trail.colorGradient.interpolation);
 }
 
 void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
@@ -269,23 +290,6 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
 
     if (trail.pointBuffer.size() != static_cast<size_t>(trail.maxPoints))
         InitTrailStorage(trail);
-
-    if (!trail.vertexBuffer.IsValid() ||
-        trail.allocatedMaxPoints != trail.maxPoints ||
-        trail.allocatedSmoothSubdivisions != trail.smoothSubdivisions)
-    {
-        if (trail.vertexBuffer.IsValid())
-            resources.Release(trail.vertexBuffer);
-        const uint32_t maxSegments =
-            static_cast<uint32_t>(trail.maxPoints - 1) * static_cast<uint32_t>(trail.smoothSubdivisions + 1);
-        const uint32_t maxVertices = maxSegments * 6u;
-        trail.vertexBuffer = resources.CreateVertexBuffer(
-            nullptr,
-            maxVertices * sizeof(TrailVertex),
-            static_cast<uint32_t>(sizeof(TrailVertex)));
-        trail.allocatedMaxPoints = trail.maxPoints;
-        trail.allocatedSmoothSubdivisions = trail.smoothSubdivisions;
-    }
 
     if (!trail.trailCB.IsValid())
         trail.trailCB = resources.CreateConstantBuffer(sizeof(TrailCB));
@@ -303,8 +307,7 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
             const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
             if (!trail.texture.IsValid() || trail.loadedTexturePath != resolvedTex) {
                 if (resolvedTex.empty()) {
-                    static const uint8_t white[4] = { 255, 255, 255, 255 };
-                    trail.texture = resources.CreateTexture(white, 1, 1);
+                    trail.texture = resources.GetWhiteTexture();
                 } else {
                     trail.texture = resources.LoadTexture(resolvedTex);
                 }
@@ -312,8 +315,8 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
             }
         }
     } else if (!trail.texture.IsValid()) {
-        static const uint8_t white[4] = { 255, 255, 255, 255 };
-        trail.texture = resources.CreateTexture(white, 1, 1);
+        // 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
+        trail.texture = resources.GetWhiteTexture();
         trail.loadedTexturePath.clear();
     }
 }
@@ -328,19 +331,36 @@ math::Vector3 ResolveTrailSamplePosition(Scene& scene, GameObject& go, const Tra
                     const int nodeIndex = it->second;
                     if (nodeIndex >= 0 && nodeIndex < static_cast<int>(smr->nodeEntities.size())) {
                         if (auto* boneGo = scene.GetGameObject(smr->nodeEntities[static_cast<size_t>(nodeIndex)]))
-                            return boneGo->transform.worldPosition + boneGo->transform.worldRotation * trail.attachOffset;
+        return boneGo->transform.worldPosition +
+            boneGo->transform.worldRotation * trail.attachOffset;
                     }
                 }
             }
         }
     }
 
-    return go.transform.worldPosition + go.transform.worldRotation * trail.attachOffset;
+        return go.transform.worldPosition +
+            go.transform.worldRotation * trail.attachOffset;
+}
+
+void ClearRing(TrailComponent& trail)
+{
+    trail.ringHead = 0;
+    trail.ringTail = 0;
+    trail.ringCount = 0;
+    trail.lastSampleTime = -1.0f;
 }
 
 void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, float currentTime)
 {
     RingExpireOld(trail, currentTime);
+
+    // 瞬間移動の切断。sampleInterval の «待ち» より前に判定する ─ 跳んだフレームを
+    // 待たせると、その 1 フレームのあいだ古い点と新しい点が 1 本の筋でつながる。
+    if (trail.ringCount > 0
+        && TrailIsDiscontinuous(trail, RingAt(trail, trail.ringCount - 1).position, currentPos)) {
+        ClearRing(trail);
+    }
 
     const bool firstSample = trail.lastSampleTime < 0.0f;
     const bool timeReady = firstSample || currentTime - trail.lastSampleTime >= trail.sampleInterval;
@@ -363,13 +383,12 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, f
 
 std::string_view TrailRenderPass::Name() const { return "Trail"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> TrailRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+void TrailRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void TrailRenderPass::Execute(RenderPassContext& ctx)
+void TrailRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     auto& renderer = ctx.renderer;
     auto& resources = ctx.resources;
@@ -378,8 +397,7 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
     if (!h.trailShader.IsValid() || !h.trailPSO.IsValid())
         return;
 
-    renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     const float currentTime = Time::time;
     std::vector<TrailVertex> vertices;
@@ -394,27 +412,33 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
             continue;
 
         if (!trail->enabled && trail->clearOnDisable) {
-            trail->ringCount = 0;
-            trail->ringHead = 0;
-            trail->ringTail = 0;
-            trail->lastSampleTime = -1.0f;
+            ClearRing(*trail);
             continue;
         }
 
         EnsureResources(*trail, ctx);
 
         if (trail->enabled && trail->beamMode) {
-            const auto transformPoint = [&go](const math::Vector3& local) {
-                const math::Vector3 scaled{ local.x * go.transform.worldScale.x,
-                                            local.y * go.transform.worldScale.y,
-                                            local.z * go.transform.worldScale.z };
-                return go.transform.worldPosition + go.transform.worldRotation * scaled;
+            const auto transformPoint = [&go, &trail](const math::Vector3& point) {
+                if (trail->beamWorldSpace) return point;
+                const math::Vector3 scaled{
+        point.x * go.transform.worldScale.x,
+        point.y * go.transform.worldScale.y,
+        point.z * go.transform.worldScale.z };
+    return go.transform.worldPosition +
+        go.transform.worldRotation * scaled;
             };
             trail->ringHead = 0;
             trail->ringTail = 0;
             trail->ringCount = 0;
-            RingPushBack(*trail, { transformPoint(trail->beamStart), currentTime });
-            RingPushBack(*trail, { transformPoint(trail->beamEnd), currentTime });
+            // 折れ線が与えられていればそれを、無ければ従来どおり 2 端点を描く。
+            if (trail->beamPoints.size() >= 2) {
+                for (const math::Vector3& point : trail->beamPoints)
+                    RingPushBack(*trail, { transformPoint(point), currentTime });
+            } else {
+                RingPushBack(*trail, { transformPoint(trail->beamStart), currentTime });
+                RingPushBack(*trail, { transformPoint(trail->beamEnd), currentTime });
+            }
             trail->lastSampleTime = currentTime;
         } else if (trail->enabled) {
             const math::Vector3 samplePos = ResolveTrailSamplePosition(ctx.scene, go, *trail);
@@ -430,29 +454,35 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
         if (vertices.empty())
             continue;
 
-        const size_t maxBytes =
+        const size_t maxVertices =
             static_cast<size_t>(trail->maxPoints - 1) *
-            static_cast<size_t>(trail->smoothSubdivisions + 1) *
-            6u * sizeof(TrailVertex);
-        const size_t uploadBytes = (std::min)(vertices.size() * sizeof(TrailVertex), maxBytes);
-        resources.Update(trail->vertexBuffer, vertices.data(), uploadBytes);
+            static_cast<size_t>(trail->smoothSubdivisions + 1) * 6u;
+        const size_t uploadVertices = (std::min)(vertices.size(), maxVertices);
+        const auto vertexBuffer = g_trailVertexPool.Acquire(
+            resources, uploadVertices, static_cast<uint32_t>(sizeof(TrailVertex)));
+        if (!vertexBuffer.IsValid())
+            continue;
+        resources.Update(vertexBuffer, vertices.data(), uploadVertices * sizeof(TrailVertex));
 
         TrailCB cb{};
-        cb.colorStart = trail->colorStart;
-        cb.colorEnd = trail->colorEnd;
+        // オーサリング値 (sRGB) → リニア。素材のリニア化はシェーダー側が行う。
+        cb.colorStart = ParticleSrgbToLinear(trail->colorStart);
+        cb.colorEnd = ParticleSrgbToLinear(trail->colorEnd);
+        FillTrailGradient(*trail, cb);
         cb.uvScrollSpeed = trail->uvScrollSpeed;
         cb.uvTiling = trail->uvTiling;
         cb.time = currentTime;
+        cb.flags = IsEffectTextureSrgb(trail->loadedTexturePath) ? kTrailFlagSrgbTexture : 0u;
         resources.Update(trail->trailCB, &cb, sizeof(cb));
 
         renderer::DrawCall dc;
-        dc.vertexBuffer = trail->vertexBuffer;
+        dc.vertexBuffer = vertexBuffer;
         dc.shader = h.trailShader;
         dc.pipelineState = h.trailPSO;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[2] = trail->trailCB;
         dc.textures[0] = trail->texture;
-        dc.vertexCount = static_cast<uint32_t>(uploadBytes / sizeof(TrailVertex));
+        dc.vertexCount = static_cast<uint32_t>(uploadVertices);
         dc.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
         dc.topology = renderer::PrimitiveTopology::TRIANGLE_LIST;
         drawItems.push_back({ dc, NearestTrailDistanceSq(*trail, ctx.camera.m_position) });

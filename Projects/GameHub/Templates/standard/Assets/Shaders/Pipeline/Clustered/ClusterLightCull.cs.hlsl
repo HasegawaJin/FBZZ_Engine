@@ -41,6 +41,27 @@ float2 ClusterViewXYFromNdc(float2 ndc, float viewZ)
     return float2(ndc.x * viewZ / sx, ndc.y * viewZ / sy);
 }
 
+// ライトが lt.position を中心にして届く距離。
+//
+// WHY range をそのまま使えないか: lt.range は「形状の表面からどこまで届くか」であって、
+//     中心からの距離ではない。減衰の基準点は型ごとに違う:
+//       Point / Spot : lt.position からの距離で減衰      → range のまま
+//       Sphere       : 球面からの距離 (SphereTubeLight)   → range + 半径
+//       Tube         : 軸線分の表面からの距離            → range + 半径 + 軸方向の半長
+//       Area         : 中心からの距離に窓を掛ける         → range のまま
+//     形状の広がりを足さないと、光が届いている領域をクラスタが取りこぼす。取りこぼしの
+//     境界はカメラと一緒に動くので、サーフェス上ではライトの点滅として見える。
+// LAYOUT: 減衰式を変えたらここも合わせること。判定半径が実際の到達距離より短いと
+//         必ず点滅が出る (長いぶんには無駄なライトを拾うだけで絵は正しい)。
+float FBZZ_LightReachRadius(PunctualLight lt)
+{
+    if (lt.type == FBZZ_LIGHT_TYPE_SPHERE)
+        return lt.range + max(lt.halfWidth, 0.0f);
+    if (lt.type == FBZZ_LIGHT_TYPE_TUBE)
+        return lt.range + max(lt.halfWidth, 0.0f) + max(lt.halfHeight, 0.0f);
+    return lt.range;
+}
+
 // 球 vs AABB の最短距離の 2 乗。
 float SphereAabbDistanceSq(float3 center, float3 aabbMin, float3 aabbMax)
 {
@@ -106,7 +127,8 @@ void CSMain(uint3 dispatchId : SV_DispatchThreadID)
         //     まず「絵が合う」ことを確定させたい。精度改善は別ステップで積む。
         const float3 posView = mul(float4(lt.position, 1.0f), view).xyz;
 
-        if (SphereAabbDistanceSq(posView, aabbMin, aabbMax) <= lt.range * lt.range)
+        const float reach = FBZZ_LightReachRadius(lt);
+        if (SphereAabbDistanceSq(posView, aabbMin, aabbMax) <= reach * reach)
         {
             gClusterLights[base + 1 + stored] = i;
             ++stored;

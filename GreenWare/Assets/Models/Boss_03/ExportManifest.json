@@ -1,0 +1,385 @@
+{
+  "source": "C:\\Users\\jinhs\\Downloads\\FBZZ_Engine\\GreenWare\\Assets\\_src\\Boss03\\Boss03.blend",
+  "fps": 30,
+  "bones": [
+    "Root",
+    "Body",
+    "SOCKET_Eye",
+    "Core",
+    "SOCKET_Core",
+    "Wing_L_Upper",
+    "Wing_L_Middle",
+    "Wing_L_Lower",
+    "Wing_R_Upper",
+    "Wing_R_Middle",
+    "Wing_R_Lower"
+  ],
+  "clips": [
+    {
+      "name": "Close",
+      "frames": [
+        1,
+        61
+      ],
+      "seconds": 2.0
+    },
+    {
+      "name": "Cocoon_Idle",
+      "frames": [
+        1,
+        121
+      ],
+      "seconds": 4.0
+    },
+    {
+      "name": "Dash_InPlace",
+      "frames": [
+        1,
+        91
+      ],
+      "seconds": 3.0
+    },
+    {
+      "name": "Death",
+      "frames": [
+        1,
+        121
+      ],
+      "seconds": 4.0
+    },
+    {
+      "name": "Deploy",
+      "frames": [
+        1,
+        91
+      ],
+      "seconds": 3.0
+    },
+    {
+      "name": "Detach_L_Lower",
+      "frames": [
+        1,
+        51
+      ],
+      "seconds": 1.6666666666666667
+    },
+    {
+      "name": "Detach_L_Middle",
+      "frames": [
+        1,
+        51
+      ],
+      "seconds": 1.6666666666666667
+    },
+    {
+      "name": "Detach_L_Upper",
+      "frames": [
+        1,
+        51
+      ],
+      "seconds": 1.6666666666666667
+    },
+    {
+      "name": "Detach_R_Lower",
+      "frames": [
+        1,
+        51
+      ],
+      "seconds": 1.6666666666666667
+    },
+    {
+      "name": "Detach_R_Middle",
+      "frames": [
+        1,
+        51
+      ],
+      "seconds": 1.6666666666666667
+    },
+    {
+      "name": "Detach_R_Upper",
+      "frames": [
+        1,
+        51
+      ],
+      "seconds": 1.6666666666666667
+    },
+    {
+      "name": "Hit",
+      "frames": [
+        1,
+        31
+      ],
+      "seconds": 1.0
+    },
+    {
+      "name": "Hover_Forward",
+      "frames": [
+        1,
+        91
+      ],
+      "seconds": 3.0
+    },
+    {
+      "name": "Hover_Left",
+      "frames": [
+        1,
+        91
+      ],
+      "seconds": 3.0
+    },
+    {
+      "name": "Hover_Right",
+      "frames": [
+        1,
+        91
+      ],
+      "seconds": 3.0
+    },
+    {
+      "name": "Idle",
+      "frames": [
+        1,
+        121
+      ],
+      "seconds": 4.0
+    },
+    {
+      "name": "Laser_Fan",
+      "frames": [
+        1,
+        101
+      ],
+      "seconds": 3.3333333333333335
+    },
+    {
+      "name": "Pulse",
+      "frames": [
+        1,
+        101
+      ],
+      "seconds": 3.3333333333333335
+    },
+    {
+      "name": "Showcase",
+      "frames": [
+        1,
+        241
+      ],
+      "seconds": 8.0
+    },
+    {
+      "name": "Slam_Combo",
+      "frames": [
+        1,
+        151
+      ],
+      "seconds": 5.0
+    },
+    {
+      "name": "Slam_L",
+      "frames": [
+        1,
+        91
+      ],
+      "seconds": 3.0
+    },
+    {
+      "name": "Slam_R",
+      "frames": [
+        1,
+        91
+      ],
+      "seconds": 3.0
+    },
+    {
+      "name": "Stagger",
+      "frames": [
+        1,
+        151
+      ],
+      "seconds": 5.0
+    },
+    {
+      "name": "Turn_L_InPlace",
+      "frames": [
+        1,
+        61
+      ],
+      "seconds": 2.0
+    },
+    {
+      "name": "Turn_R_InPlace",
+      "frames": [
+        1,
+        61
+      ],
+      "seconds": 2.0
+    }
+  ],
+  "source_meshes": 207,
+  "materials": [
+    {
+      "name": "B03_Mechanism_Graphite",
+      "base_color": [
+        0.02500000037252903,
+        0.03400000184774399,
+        0.04500000178813934,
+        1.0
+      ],
+      "metallic": 0.7200000286102295,
+      "roughness": 0.30000001192092896,
+      "emission": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emission_strength": 0.0
+    },
+    {
+      "name": "B03_Armor_Secondary",
+      "base_color": [
+        0.1599999964237213,
+        0.1899999976158142,
+        0.23000000417232513,
+        1.0
+      ],
+      "metallic": 0.699999988079071,
+      "roughness": 0.3400000035762787,
+      "emission": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emission_strength": 0.0
+    },
+    {
+      "name": "B03_Armor_Ceramic_Gray",
+      "base_color": [
+        0.3199999928474426,
+        0.36000001430511475,
+        0.4000000059604645,
+        1.0
+      ],
+      "metallic": 0.6399999856948853,
+      "roughness": 0.3199999928474426,
+      "emission": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emission_strength": 0.0
+    },
+    {
+      "name": "B03_Armor_Edge_Silver",
+      "base_color": [
+        0.46000000834465027,
+        0.5099999904632568,
+        0.5600000023841858,
+        1.0
+      ],
+      "metallic": 0.7200000286102295,
+      "roughness": 0.2800000011920929,
+      "emission": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emission_strength": 0.0
+    },
+    {
+      "name": "B03_Recess_Black",
+      "base_color": [
+        0.007000000216066837,
+        0.012000000104308128,
+        0.017999999225139618,
+        1.0
+      ],
+      "metallic": 0.1599999964237213,
+      "roughness": 0.41999998688697815,
+      "emission": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emission_strength": 0.0
+    },
+    {
+      "name": "B03_Emission_Coral",
+      "base_color": [
+        1.0,
+        0.06499999761581421,
+        0.03200000151991844,
+        1.0
+      ],
+      "metallic": 0.3199999928474426,
+      "roughness": 0.25,
+      "emission": [
+        1.0,
+        0.06499999761581421,
+        0.03200000151991844,
+        1.0
+      ],
+      "emission_strength": 3.0
+    },
+    {
+      "name": "B03_Emission_Core",
+      "base_color": [
+        1.0,
+        0.17000000178813934,
+        0.07000000029802322,
+        1.0
+      ],
+      "metallic": 0.20000000298023224,
+      "roughness": 0.23999999463558197,
+      "emission": [
+        1.0,
+        0.17000000178813934,
+        0.07000000029802322,
+        1.0
+      ],
+      "emission_strength": 4.0
+    },
+    {
+      "name": "B03_Joint_Machined_Steel",
+      "base_color": [
+        0.15000000596046448,
+        0.1899999976158142,
+        0.2199999988079071,
+        1.0
+      ],
+      "metallic": 0.8799999952316284,
+      "roughness": 0.23999999463558197,
+      "emission": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emission_strength": 0.0
+    },
+    {
+      "name": "B03_Emission_Indicator",
+      "base_color": [
+        0.6200000047683716,
+        0.03500000014901161,
+        0.017999999225139618,
+        1.0
+      ],
+      "metallic": 0.4000000059604645,
+      "roughness": 0.30000001192092896,
+      "emission": [
+        0.6200000047683716,
+        0.03500000014901161,
+        0.017999999225139618,
+        1.0
+      ],
+      "emission_strength": 1.399999976158142
+    }
+  ],
+  "source_restored": true
+}

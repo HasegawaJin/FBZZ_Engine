@@ -1,0 +1,22 @@
+# FBZZ Engine
+# FX_EmberDot_Additive.mat
+# 素材: Assets/VFX/Textures/T_Ember_Dot.png (64² / 火の粉)
+# 小さな熱い点。FX_GlowCore より芯が小さく、大量に撒いても白く抜けにくい。
+# 無彩色の «火花» 側 (12.2)。色は黒体放射 (blackbodyEnabled) か熱色のグラデーションで。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:dc554f2514384b95921d8505571df14b"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.4

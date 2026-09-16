@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConsoleSink.hpp | fbzz::editor
-// Logger のログエントリをリングバッファに蓄積し ConsolePanel に渡す
+/// @file    ConsoleSink.hpp
+/// @brief   Logger のログエントリをリングバッファに蓄積し ConsolePanel に渡す。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Engine/Core/ILogSink.hpp>
 #include <cstdint>

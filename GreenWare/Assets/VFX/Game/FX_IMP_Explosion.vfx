@@ -1,0 +1,713 @@
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_IMP_Explosion"
+instanceId = "70877d33-f613-4a7b-8813-3a0f41590fa8"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "ImpactVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+tintColor = [1.0, 1.0, 1.0, 1.0]
+sparkPower = 11.0
+smokeAmount = 4.2
+blastLight = 22.0
+groundMark = "Assets/VFX/Textures/T_Scorch_Decal.png"
+
+[[gameobjects]]
+name = "First Frame (0.00s)"
+instanceId = "9f5eb976-75ad-473a-94b8-96f21b71336b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_IMP_Explosion"
+parentInstanceId = "70877d33-f613-4a7b-8813-3a0f41590fa8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[gameobjects]]
+name = "Blast Volume"
+instanceId = "c6097bf8-4345-45a9-a1b7-76c755db4d32"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_IMP_Explosion"
+parentInstanceId = "70877d33-f613-4a7b-8813-3a0f41590fa8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[gameobjects]]
+name = "Debris (無彩色)"
+instanceId = "331d848e-f942-41ac-bbdd-9ebd00af8f94"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_IMP_Explosion"
+parentInstanceId = "70877d33-f613-4a7b-8813-3a0f41590fa8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[gameobjects]]
+name = "Light & Ground"
+instanceId = "4e4bf0c4-016b-4a16-8d0d-6c8d4a4989e4"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_IMP_Explosion"
+parentInstanceId = "70877d33-f613-4a7b-8813-3a0f41590fa8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[gameobjects]]
+name = "Flash Core"
+instanceId = "055cb840-6e34-4731-bd9d-ee9ded1dd8dc"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "First Frame (0.00s)"
+parentInstanceId = "9f5eb976-75ad-473a-94b8-96f21b71336b"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.16
+loop = false
+emitRate = 0.0
+maxParticles = 8
+shape = 0
+sizeStart = 2.4
+sizeEnd = 0.2
+sizeCurvePower = 2.6
+lifetime = 0.065
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 70
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Splash"
+instanceId = "df7987ee-eb21-4a2a-a89d-d02da24d33cf"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "First Frame (0.00s)"
+parentInstanceId = "9f5eb976-75ad-473a-94b8-96f21b71336b"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.26
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 0
+sizeStart = 1.0
+sizeEnd = 3.6
+sizeCurvePower = 0.35
+lifetime = 0.2
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SplashImpact_Additive.mat"
+sortMode = 0
+angularVelocityMin = -6.0
+angularVelocityMax = 6.0
+renderPriority = 65
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Blast Core"
+instanceId = "ba85b018-d7eb-4ba7-be1e-b6244d291536"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "First Frame (0.00s)"
+parentInstanceId = "9f5eb976-75ad-473a-94b8-96f21b71336b"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.55
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 1
+sphereRadius = 0.25
+sizeStart = 1.5
+sizeEnd = 3.4
+sizeCurvePower = 0.42
+lifetime = 0.36
+lifetimeRandom = 0.15
+velocitySpread = 1.2
+velocityDamping = 3.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ExplosionCore_Additive.mat"
+sortMode = 0
+angularVelocityMin = -2.0
+angularVelocityMax = 2.0
+renderPriority = 60
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Blast Body"
+instanceId = "560d402f-4e20-48ab-9fcd-93522b9c87d7"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Blast Volume"
+parentInstanceId = "c6097bf8-4345-45a9-a1b7-76c755db4d32"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.1
+loop = false
+emitRate = 0.0
+maxParticles = 12
+shape = 1
+sphereRadius = 0.55
+sizeStart = 1.8
+sizeEnd = 5.2
+sizeCurvePower = 0.6
+lifetime = 1.0
+lifetimeRandom = 0.3
+velocitySpread = 2.4
+velocityDamping = 2.6
+gravity = [0.0, 0.6, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ExplosionBody_Alpha.mat"
+sortMode = 1
+angularVelocityMin = -1.4
+angularVelocityMax = 1.4
+renderPriority = 20
+colorVariation = 0.1
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.035
+
+[[gameobjects]]
+name = "Shock Ring"
+instanceId = "0995a507-b397-43d3-9b44-9de3b9046bd4"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Blast Volume"
+parentInstanceId = "c6097bf8-4345-45a9-a1b7-76c755db4d32"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.45
+loop = false
+emitRate = 0.0
+maxParticles = 3
+shape = 0
+sizeStart = 0.6
+sizeEnd = 9.0
+sizeCurvePower = 0.28
+lifetime = 0.32
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
+renderMode = 2
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 55
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Arc Snap"
+instanceId = "517c9351-dcb6-44a8-9784-78314c196afb"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Blast Volume"
+parentInstanceId = "c6097bf8-4345-45a9-a1b7-76c755db4d32"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.32
+loop = false
+emitRate = 0.0
+maxParticles = 24
+shape = 1
+sphereRadius = 0.7
+sizeStart = 1.6
+sizeEnd = 0.3
+sizeCurvePower = 1.6
+lifetime = 0.16
+lifetimeRandom = 0.5
+velocitySpread = 1.5
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ArcNoise_Additive.mat"
+sortMode = 0
+angularVelocityMin = -14.0
+angularVelocityMax = 14.0
+renderPriority = 58
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 10, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Sparks"
+instanceId = "dc8e5378-a805-4ecc-9307-d4db015e24ea"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Debris (無彩色)"
+parentInstanceId = "331d848e-f942-41ac-bbdd-9ebd00af8f94"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.2
+loop = false
+emitRate = 0.0
+maxParticles = 260
+shape = 1
+sphereRadius = 0.15
+sizeStart = 0.12
+sizeEnd = 0.02
+lifetime = 0.65
+lifetimeRandom = 0.45
+velocitySpread = 11.0
+velocityDamping = 2.4
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_StreakLong_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.14
+stretchedLengthScale = 2.2
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.02
+collisionBounciness = 0.35
+collisionDamping = 0.55
+renderPriority = 50
+simulationMode = 0
+trailEnabled = true
+trailPointCount = 5
+trailSampleInterval = 0.012
+trailWidthScale = 0.28
+trailAlphaScale = 0.22
+colorVariation = 0.15
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.94, 0.78, 1.0], [0.35, 1.0, 0.66, 0.24, 1.0], [1.0, 0.7, 0.18, 0.03, 0.0]]
+bursts = [{ time = 0.0, count = 36, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Debris Smoke"
+instanceId = "2daf2e3e-41ee-4d75-be14-3b1051ad013e"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Debris (無彩色)"
+parentInstanceId = "331d848e-f942-41ac-bbdd-9ebd00af8f94"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 2.2
+loop = false
+emitRate = 0.0
+maxParticles = 28
+shape = 1
+sphereRadius = 0.8
+sizeStart = 1.4
+sizeEnd = 4.2
+sizeCurvePower = 0.7
+lifetime = 1.2
+lifetimeRandom = 0.4
+velocitySpread = 1.8
+velocityDamping = 1.6
+gravity = [0.0, 0.25, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
+sortMode = 1
+angularVelocityMin = -0.9
+angularVelocityMax = 0.9
+renderPriority = 0
+colorVariation = 0.1
+useColorGradient = true
+colorGradient = [[0.0, 0.58, 0.58, 0.6, 0.0], [0.12, 0.5, 0.5, 0.53, 0.72], [1.0, 0.42, 0.42, 0.45, 0.0]]
+bursts = [{ time = 0.0, count = 6, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.05
+
+[[gameobjects]]
+name = "Heat Haze"
+instanceId = "106ecbc7-f4c8-442a-80cb-51995c2d5f6d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Debris (無彩色)"
+parentInstanceId = "331d848e-f942-41ac-bbdd-9ebd00af8f94"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.4
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 0
+sizeStart = 1.2
+sizeEnd = 3.8
+sizeCurvePower = 0.3
+lifetime = 0.22
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_HeatHaze_Distort.mat"
+sortMode = 1
+angularVelocityMin = -3.0
+angularVelocityMax = 3.0
+renderPriority = 100
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.4, 1.0, 1.0, 1.0, 0.55], [1.0, 1.0, 1.0, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Blast Light"
+instanceId = "314f249e-a5ea-4532-b90b-8dfbdfa95ab9"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Light & Ground"
+parentInstanceId = "4e4bf0c4-016b-4a16-8d0d-6c8d4a4989e4"
+
+[gameobjects.transform]
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 0.85, 0.7]
+intensity = 22.0
+enabled = true
+range = 9.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.4
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.12, 0.55], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }
+
+[[gameobjects]]
+name = "Blast Push"
+instanceId = "bc2c7d69-363f-4185-b538-5395bad898ab"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Light & Ground"
+parentInstanceId = "4e4bf0c4-016b-4a16-8d0d-6c8d4a4989e4"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleForceField]
+enabled = true
+fieldType = 2
+strength = 20.0
+radius = 4.5
+falloffPower = 2.0
+direction = [0.0, 1.0, 0.0]
+noiseFrequency = 0.5
+noiseSpeed = 1.0
+channels = -1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.25
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[[gameobjects]]
+name = "Ground Mark"
+instanceId = "6ed57a36-765f-4556-a2d5-24cdedb96fd8"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Light & Ground"
+parentInstanceId = "4e4bf0c4-016b-4a16-8d0d-6c8d4a4989e4"
+
+[gameobjects.transform]
+position = [0.0, -1.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [2.6, 3.2, 2.6]
+
+[gameobjects.DecalComponent]
+enabled = true
+material = ""
+albedoTex = "Assets/VFX/Textures/T_Scorch_Decal.png"
+normalTex = ""
+emissiveTex = ""
+albedo = [0.14, 0.13, 0.13, 0.9]
+normalStrength = 0.0
+angleFadeStrength = 1.0
+angleFadeDegrees = 70.0
+emissiveColor = [1.0, 1.0, 1.0]
+emissiveScale = 0.0
+lifetime = 4.0
+fadeTime = 1.0
+age = 0.0
+receiverLayerMask = -1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.03
+duration = 4.0
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXDecalEnvelope]
+enabled = true
+fadeCurve = { interp = 0, keys = [[0.0, 1.0], [0.65, 0.95], [1.0, 0.0]] }
+driveEmissive = false
+emissiveCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 0.0]] }
+
+[[gameobjects]]
+name = "Glint Stars"
+instanceId = "1cf431d2-6f42-4e8f-98bb-800dd87f0fd0"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "First Frame (0.00s)"
+parentInstanceId = "9f5eb976-75ad-473a-94b8-96f21b71336b"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 金属どうしがぶつかった «キラッ»。極性色を乗せる層 (閃光側)。数を絞る ─ 重ねると白い板になる。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 1
+sphereRadius = 0.5
+sizeStart = 0.8
+sizeEnd = 0.0
+sizeCurvePower = 0.7
+lifetime = 0.22
+lifetimeRandom = 0.35
+velocitySpread = 1.5
+velocityDamping = 3.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlintStar_Additive.mat"
+sortMode = 0
+angularVelocityMin = -0.6
+angularVelocityMax = 0.6
+renderPriority = 66
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.015, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Armor Chunks"
+instanceId = "6aafa2e9-0e61-4b05-bdbb-7f8a4b2d5167"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Debris (無彩色)"
+parentInstanceId = "331d848e-f942-41ac-bbdd-9ebd00af8f94"
+
+[gameobjects.transform]
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 装甲パーツの飛散 (presentation.md «衝突»)。無彩色。回転しながら落ちて床で跳ねる。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 14
+shape = 1
+sphereRadius = 0.3
+sizeStart = 0.2
+sizeEnd = 0.16
+lifetime = 1.0
+lifetimeRandom = 0.4
+emitVelocity = [0.0, 3.5, 0.0]
+velocitySpread = 7.0
+velocityDamping = 0.8
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Shard_Lit.mat"
+sortMode = 1
+angularVelocityMin = -26.0
+angularVelocityMax = 26.0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.06
+collisionBounciness = 0.3
+collisionDamping = 0.65
+renderPriority = 38
+simulationMode = 0
+colorVariation = 0.08
+colorStart = [0.72, 0.74, 0.77, 1.0]
+colorEnd = [0.5, 0.52, 0.55, 0.0]
+bursts = [{ time = 0.0, count = 8, cycles = 1, interval = 0.0, probability = 1.0 }]
+startDelay = 0.0

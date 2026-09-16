@@ -1,13 +1,17 @@
-// FBZZ Engine
-// PoolAllocatorTests.cpp | GoogleTest
-// PoolAllocator の固定ブロック再利用契約を自動検証する。
-#include <gtest/gtest.h>
+/// @file    PoolAllocatorTests.cpp
+/// @brief   PoolAllocator の固定ブロック再利用契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/PoolAllocator.hpp>
 
 namespace fbzz::tests {
 
-TEST(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
+class PoolAllocatorTest : public testkit::EngineFixture {};
+
+TEST_F(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
 {
     core::PoolAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(32, 3));
@@ -22,7 +26,7 @@ TEST(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
     allocator.Shutdown();
 }
 
-TEST(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
+TEST_F(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
 {
     core::PoolAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(32, 2));
@@ -40,13 +44,23 @@ TEST(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
     allocator.Shutdown();
 }
 
-TEST(PoolAllocatorTest, RejectsARequestWithTheWrongBlockSize)
+// WHY «ブロックサイズちょうど» を要求しないか: 基底 Allocator の契約は «容量不足なら
+//     nullptr» だけで、サイズの完全一致は求めていない。CreateObject<T> が
+//     Allocate(sizeof(T), alignof(T)) を呼ぶので、完全一致を要求すると
+//     sizeof(T) == blockSize のときしか使えず、ヘッダーが謳う «同サイズのオブジェクトを
+//     頻繁に生成破棄する場面» という用途そのものが成立しなくなる。
+//
+// NOTE: blockSize を超える要求は Allocate 内の assert が先に止める。Development 構成は
+//       NDEBUG を定義しない (アサート有効) ため、その経路はテストから踏めない。
+TEST_F(PoolAllocatorTest, AcceptsAnyRequestThatFitsInTheBlock)
 {
     core::PoolAllocator allocator;
-    ASSERT_TRUE(allocator.Initialize(32, 1));
+    ASSERT_TRUE(allocator.Initialize(32, 2));
 
-    EXPECT_EQ(allocator.Allocate(31), nullptr);
+    EXPECT_NE(allocator.Allocate(31), nullptr);
     EXPECT_NE(allocator.Allocate(32), nullptr);
+    EXPECT_EQ(allocator.Allocate(32), nullptr);   // 使い切れば容量不足で nullptr
+
     allocator.Shutdown();
 }
 

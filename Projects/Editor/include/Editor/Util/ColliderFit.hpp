@@ -1,11 +1,13 @@
-// FBZZ Engine
-// ColliderFit.hpp | fbzz::editor
-// GameObject のメッシュ bounds から Collider の寸法を自動計算するヘルパー。
-//
-// WHY: Collider を固定既定値 (1m³ 等) で生成すると、モデルやプリミティブの実寸と
-//      合わず毎回手調整になる。Unity と同じく「アタッチした瞬間にメッシュへフィット」
-//      させるため、Inspector の Add Component と Hierarchy の Create の両方がここを使う。
-// メッシュが無い GameObject には Unity 相当の既定値 (Box 1m³ / Sphere r0.5 / Capsule r0.5,h2)。
+/// @file    ColliderFit.hpp
+/// @brief   GameObject のメッシュ bounds から Collider の寸法を自動計算するヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
+///
+/// WHY: Collider を固定既定値 (1m³ 等) で生成すると、モデルやプリミティブの実寸と
+/// 合わず毎回手調整になる。Unity と同じく「アタッチした瞬間にメッシュへフィット」
+/// させるため、Inspector の Add Component と Hierarchy の Create の両方がここを使う。
+/// メッシュが無い GameObject には Unity 相当の既定値
+/// (Box 1m³ / Sphere r0.5 / Capsule r0.5,h2 / Cylinder r0.5,h2)。
 #pragma once
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -68,8 +70,13 @@ inline bool LocalBoundsFromGameObject(scene::GameObject& go,
     return false;
 }
 
-// bounds の half extents。メッシュ無し / 退化時は false。
-inline bool HalfExtentsFromGameObject(scene::GameObject& go, math::Vector3& outHalf)
+// bounds の half extents と中心。メッシュ無し / 退化時は false。
+//
+// WHY 中心も返すか:
+//   AABB が原点対称とは限らない。原点が足元にあるキャラクターや、床から生えた柱を
+//   原点対称とみなすと、寸法だけ合っていて位置が半分ずれたコライダーになる。
+//   寸法を合わせる処理と位置を合わせる処理は必ず同じ bounds から出す。
+inline bool FitFromGameObject(scene::GameObject& go, math::Vector3& outHalf, math::Vector3& outCenter)
 {
     math::Vector3 mn, mx;
     if (!LocalBoundsFromGameObject(go, mn, mx)) return false;
@@ -78,49 +85,75 @@ inline bool HalfExtentsFromGameObject(scene::GameObject& go, math::Vector3& outH
     outHalf = { std::max((mx.x - mn.x) * 0.5f, kMinHalf),
                 std::max((mx.y - mn.y) * 0.5f, kMinHalf),
                 std::max((mx.z - mn.z) * 0.5f, kMinHalf) };
+    outCenter = (mn + mx) * 0.5f;
     return true;
+}
+
+inline bool HalfExtentsFromGameObject(scene::GameObject& go, math::Vector3& outHalf)
+{
+    math::Vector3 center;
+    return FitFromGameObject(go, outHalf, center);
 }
 
 inline scene::BoxColliderComponent MakeFittedBoxCollider(scene::GameObject& go)
 {
     scene::BoxColliderComponent col;
-    math::Vector3 half;
-    if (HalfExtentsFromGameObject(go, half))
+    math::Vector3 half, center;
+    if (FitFromGameObject(go, half, center)) {
         col.SetSize(half * 2.0f);
+        col.SetCenter(center);
+    }
     return col; // メッシュ無しは既定 1m³
 }
 
 inline scene::AabbColliderComponent MakeFittedAabbCollider(scene::GameObject& go)
 {
     scene::AabbColliderComponent col;
-    math::Vector3 half;
-    if (HalfExtentsFromGameObject(go, half))
+    math::Vector3 half, center;
+    if (FitFromGameObject(go, half, center)) {
         col.SetSize(half * 2.0f);
+        col.SetCenter(center);
+    }
     return col;
 }
 
 inline scene::SphereColliderComponent MakeFittedSphereCollider(scene::GameObject& go)
 {
     scene::SphereColliderComponent col;
-    math::Vector3 half;
-    if (HalfExtentsFromGameObject(go, half))
+    math::Vector3 half, center;
+    if (FitFromGameObject(go, half, center)) {
         col.SetRadius(std::max({ half.x, half.y, half.z })); // bounds 外接 (Unity と同じ規則)
+        col.SetCenter(center);
+    }
     return col; // 既定 r=0.5
 }
 
 inline scene::CapsuleColliderComponent MakeFittedCapsuleCollider(scene::GameObject& go)
 {
     scene::CapsuleColliderComponent col;
-    math::Vector3 half;
-    if (HalfExtentsFromGameObject(go, half)) {
+    math::Vector3 half, center;
+    if (FitFromGameObject(go, half, center)) {
         // Y 軸カプセル: 半径は水平 extents、円柱半長は全高から両端の半球を引いた残り
         const float radius = std::max(half.x, half.z);
         const float halfHeight = std::max(half.y - radius, 0.01f);
         col.SetCapsule(radius, halfHeight);
+        col.SetCenter(center);
     } else {
         col.SetCapsule(0.5f, 0.5f); // 人間大 (全高 2m, Unity と同じ)
     }
     return col;
+}
+
+inline scene::CylinderColliderComponent MakeFittedCylinderCollider(scene::GameObject& go)
+{
+    scene::CylinderColliderComponent col;
+    math::Vector3 half, center;
+    if (FitFromGameObject(go, half, center)) {
+        // Y 軸円柱: カプセルと違い端が平らなので、半長は bounds の Y extents そのもの
+        col.SetCylinder(std::max(half.x, half.z), half.y);
+        col.SetCenter(center);
+    }
+    return col; // 既定 r=0.5 / 全高 2m
 }
 
 } // namespace fbzz::editor::colliderfit

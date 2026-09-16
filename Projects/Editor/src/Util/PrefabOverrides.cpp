@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PrefabOverrides.cpp | fbzz::editor
-// プレファブインスタンスとアセット定義の TOML 差分
+/// @file    PrefabOverrides.cpp
+/// @brief   プレファブインスタンスとアセット定義の TOML 差分。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Util/PrefabOverrides.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -8,6 +9,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 #include <algorithm>
 #include <sstream>
@@ -125,52 +127,6 @@ void CollectHierarchyGuids(scene::GameObject& go, std::unordered_set<std::string
 
 } // namespace
 
-const toml::node* FindNodeAtPath(const toml::table& table, const std::string& path)
-{
-    const toml::table* current = &table;
-    std::size_t start = 0;
-
-    while (true) {
-        const std::size_t dot = path.find('.', start);
-        const std::string key = path.substr(start, dot == std::string::npos
-                                                       ? std::string::npos
-                                                       : dot - start);
-        const toml::node* node = current->get(key);
-        if (!node) return nullptr;
-        if (dot == std::string::npos) return node;
-
-        current = node->as_table();
-        if (!current) return nullptr;
-        start = dot + 1;
-    }
-}
-
-bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node& value)
-{
-    toml::table* current = &table;
-    std::size_t start = 0;
-
-    while (true) {
-        const std::size_t dot = path.find('.', start);
-        if (dot == std::string::npos) {
-            const std::string key = path.substr(start);
-            current->erase(key);
-            // WHY: toml++ の node は多態なので、visit で具体型へ落としてから複製する。
-            value.visit([&](const auto& concrete) {
-                current->insert(key, concrete);
-            });
-            return true;
-        }
-
-        const std::string key = path.substr(start, dot - start);
-        toml::node* node = current->get(key);
-        if (!node) return false;      // 途中のテーブルが無い場合は作らない (想定外の形)
-        current = node->as_table();
-        if (!current) return false;
-        start = dot + 1;
-    }
-}
-
 std::string FormatNodeForDisplay(const toml::node* node)
 {
     if (!node) return "(none)";
@@ -190,9 +146,9 @@ std::string FormatNodeForDisplay(const toml::node* node)
         }
         oneLine.push_back(ch);
     }
+    // substr はバイトで切るので、日本語の値が «□» で終わる。文字境界まで戻す。
     constexpr std::size_t kMaxLen = 64;
-    if (oneLine.size() > kMaxLen) oneLine = oneLine.substr(0, kMaxLen - 3) + "...";
-    return oneLine;
+    return util::StringUtils::TruncateUtf8(oneLine, kMaxLen);
 }
 
 bool ComputePrefabOverrides(scene::Scene& scene,

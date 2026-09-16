@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SchemaInspector.cpp | fbzz::editor::widgets
-// ITypeSchema 走査による汎用 Inspector の実装
+/// @file    SchemaInspector.cpp
+/// @brief   ITypeSchema 走査による汎用 Inspector の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Util/SchemaInspector.hpp>
 
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -72,10 +73,11 @@ bool DrawInt(const PropertyDesc& property, void* owner, const char* label)
     int value = ReadValue<int>(property, owner, 0);
     bool changed = false;
     if (property.range.enabled) {
+        // レンジ宣言があるなら float 版と同じゲージ付きフィールドで描く
+        // (同じスキーマ Inspector の中で範囲付き数値の見た目を 1 つに保つ)。
         const int minimum = static_cast<int>(property.range.minimum);
         const int maximum = static_cast<int>(property.range.maximum);
-        changed = ImGui::DragInt(label, &value, 1.0f, minimum, maximum);
-        value = std::clamp(value, minimum, maximum);
+        changed = RangeField(label, value, minimum, maximum);
     } else {
         changed = ImGui::DragInt(label, &value);
     }

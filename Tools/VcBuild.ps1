@@ -15,22 +15,23 @@
 # 使い方:
 #   VcBuild.ps1 configure <configurePreset>
 #   VcBuild.ps1 build     <configurePreset> <buildPreset> [追加の cmake 引数...]
-#   VcBuild.ps1 test      <configurePreset>
+#   VcBuild.ps1 test      <configurePreset> [追加の ctest 引数...]
+#   VcBuild.ps1 run       <configurePreset> <exe 名>       [追加の実行時引数...]
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('configure', 'build', 'test')]
+    [ValidateSet('configure', 'build', 'test', 'run')]
     [string] $Verb,
 
     [Parameter(Mandatory = $true)]
     [string] $ConfigurePreset,
 
-    # build 検証時のみ必須。configure / test では使わない。
+    # build では buildPreset、run では実行する exe 名。configure / test では使わない。
     [Parameter(Mandatory = $false)]
     [string] $BuildPreset,
 
-    # --target 等、cmake へそのまま渡す追加引数。
+    # --target 等、cmake / ctest / exe へそのまま渡す追加引数。
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $CMakeArguments = @()
 )
@@ -44,11 +45,15 @@ $RepositoryRoot = Split-Path -Parent $PSScriptRoot
 # WHY: 初回の自動 configure 判定 (CMakeCache.txt の有無) と ctest の実行先を知るために
 #      binaryDir が要る。preset を追加したらここへも 1 行足すこと。
 #      ずれると初回ビルドが「未 configure なのに configure されない」状態になる。
+#
+#      coverage は Ninja の単一構成ビルド。CMAKE_BUILD_TYPE=Debug なので、CMake が
+#      参照する出力先プロパティは他と同じ *_DEBUG 系になり、Binaries/Debug/ へ出る。
 $PresetLayout = @{
     'debug'       = @{ BinaryDir = 'build/Debug';       Configuration = 'Debug' }
     'release'     = @{ BinaryDir = 'build/Release';     Configuration = 'Release' }
     'development' = @{ BinaryDir = 'build/Development'; Configuration = 'Development' }
     'sdk'         = @{ BinaryDir = 'build/SDK';         Configuration = 'Development' }
+    'coverage'    = @{ BinaryDir = 'build/Coverage';    Configuration = 'Debug' }
 }
 
 $PresetKey = $ConfigurePreset.ToLowerInvariant()
@@ -136,7 +141,20 @@ switch ($Verb) {
         #      「プロジェクト数 × /MP」で cl.exe が掛け算に増える。Inspector 等の
         #      /bigobj が要る重い翻訳単位は cl.exe 1 つで 1〜2GB 使うため、
         #      物理メモリを使い切ってマシン全体がスワップに巻き込まれる。
-        & cmake --build --preset $BuildPreset --parallel 1 @CMakeArguments
+        #
+        #      coverage preset だけは Ninja。/MP を渡していないので «並列はジェネレーターが
+        #      全部持つ» 側になり、ここで 1 を渡すとビルド全体が本当に直列になる。
+        #      物理メモリから同時実行数を決め直す (clang-cl 1 プロセス = 1GB 見積り)。
+        if ($PresetKey -eq 'coverage') {
+            $memoryMB = [int]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
+            $jobs = [Math]::Min([Environment]::ProcessorCount - 2, [int]($memoryMB / 1024))
+            $jobs = [Math]::Max(2, [Math]::Min(12, $jobs))
+        }
+        else {
+            $jobs = 1
+        }
+
+        & cmake --build --preset $BuildPreset --parallel $jobs @CMakeArguments
         exit $LASTEXITCODE
     }
 
@@ -144,7 +162,34 @@ switch ($Verb) {
         # gtest_discover_tests() が CTest へ個別テストを登録済みなので、exe を直接叩かず
         # ctest を通す。失敗したテストの出力だけがそのままターミナルへ出る。
         # ManualTest は Window/Cursor の OS 状態を触るため CTest 未登録で、ここでは走らない。
-        & ctest --test-dir $BinaryDirectory -C $Configuration --output-on-failure
+        # 追加引数はそのまま ctest へ渡す (-R で名前を絞る等)。
+        #
+        # --timeout: 1 件でも «終わらないテスト» があると、そこから先が丸ごと実行されない。
+        #   CMake 側でも TIMEOUT プロパティを付けているが、古いビルドツリー
+        #   (再 configure していない) には載っていないため、ここでも上限を渡す。
+        # --no-tests=error: フィルタの打ち間違いで 0 件になったとき «全部成功» に見せない。
+        & ctest --test-dir $BinaryDirectory -C $Configuration --output-on-failure `
+            --timeout 30 --no-tests=error @CMakeArguments
+        exit $LASTEXITCODE
+    }
+
+    'run' {
+        # WHY ここで解決するか: テスト成果物の置き場は構成ごとに分かれる。
+        #     tasks.json 側に書くと preset を足すたびに全タスクへ同じパスが増える。
+        #     「どこに出るか」を知っているのはこのファイルだけ、という状態を保つ。
+        if ([string]::IsNullOrWhiteSpace($BuildPreset)) {
+            Write-Host "[VcBuild] run には exe 名が必要です。" -ForegroundColor Red
+            exit 1
+        }
+
+        $executable = Join-Path $BinaryDirectory "Binaries/$Configuration/Tests/$BuildPreset.exe"
+        if (-not (Test-Path -LiteralPath $executable)) {
+            Write-Host "[VcBuild] 実行ファイルが見つかりません: $executable" -ForegroundColor Red
+            Write-Host "[VcBuild] 先に対応するビルドタスクを実行してください。"
+            exit 1
+        }
+
+        & $executable @CMakeArguments
         exit $LASTEXITCODE
     }
 }

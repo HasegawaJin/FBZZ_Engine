@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MeshTrailComponent.hpp | fbzz::scene
-// MeshRenderer / SkinnedMeshRenderer の形状を過去姿勢で半透明描画する残像トレイル
+/// @file    MeshTrailComponent.hpp
+/// @brief   MeshRenderer / SkinnedMeshRenderer の形状を過去姿勢で半透明描画する残像トレイル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -124,11 +125,14 @@ struct MeshTrailComponent {
         r.Field("sampleInterval", sampleInterval);
         r.Field("minVertexDist", minVertexDist);
         r.Field("maxSamples", maxSamples);
-        r.Field("colorStart", colorStart);
-        r.Field("colorEnd", colorEnd);
+        r.ColorField("colorStart", colorStart);
+        r.ColorField("colorEnd", colorEnd);
         r.Field("doubleSided", doubleSided);
         r.Field("clearOnDisable", clearOnDisable);
         r.Field("materialPath", materialPath);
+        // 保存はされていたのに Reflect に無く、AI バスと汎用 Inspector からだけ
+        // 見えない状態だった。キー名は保存済みシーンに合わせる。
+        r.ListField("excludedMeshIndices", excludedMeshIndices);
     }
 };
 

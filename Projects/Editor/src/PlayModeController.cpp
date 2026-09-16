@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PlayModeController.cpp | fbzz::editor
-// Play / Pause / Stop の状態管理とシーンスナップショット
+/// @file    PlayModeController.cpp
+/// @brief   Play / Pause / Stop の状態管理とシーンスナップショット。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Cursor.hpp>

@@ -9,14 +9,22 @@ import type { PermissionMode } from './config.js';
 import {
     EditorCommandSchema,
     AssetThumbnailResultSchema,
+    FluidEffectNameSchema,
+    FluidFieldsSchema,
+    FluidOperatorIndexSchema,
+    FluidOperatorListSchema,
+    FluidOperatorTypeSchema,
+    FluidJobIdSchema,
+    FluidJobStatusResultSchema,
+    FluidPathSchema,
+    FluidPresetSchema,
+    SpriteThumbnailResultSchema,
     JsonValueSchema,
     NodeIdSchema,
     SemanticViewportResultSchema,
     Vec3Schema,
-    VFXPreviewCameraSchema,
     ViewportCaptureResultSchema,
     type EditorCommand,
-    type VFXPreviewCamera,
 } from './editorContracts.js';
 
 const NameSchema = z.string().min(1).max(128);
@@ -95,103 +103,12 @@ function DiffSceneSnapshots(beforeValue: unknown, afterValue: unknown): Record<s
 
 const Delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-// preview を組んでから RT を読み戻すまでに必要な待ち時間 (ms)。
-// Editor の Update / LateUpdate / Render を数フレーム通す必要があるため、応答直後には読めない。
-const PREVIEW_SETTLE_MS = 80;
-
-type PreviewView = 'normal' | 'overdraw' | 'gizmos';
-
-interface PreviewRequest {
-    path: string;
-    time: number;
-    w: number;
-    h: number;
-    view: PreviewView;
-    camera?: VFXPreviewCamera | undefined;
-}
-
-// preview を指定時刻で組み直し、落ち着くまで待つ。返り値は duration などを含む prepared 応答。
-// WHY: Preview World は randomSeed から決定論的に再シミュレートされるので、
-//      毎回組み直しても同じ時刻なら同じ絵になる。呼び出し側はこの前提に乗ってよい。
-async function PreparePreview(bus: EditorBus, request: PreviewRequest): Promise<Record<string, unknown>> {
-    const prepared = await bus.Query({
-        t: 'vfx.preview', path: request.path, time: request.time,
-        w: request.w, h: request.h, view: request.view,
-        ...(request.camera === undefined ? {} : { camera: request.camera }),
-    });
-    await Delay(PREVIEW_SETTLE_MS);
-    return prepared as Record<string, unknown>;
-}
-
-// preview を組んで、画像ではなく指標を取る。
-async function MeasurePreview(bus: EditorBus, request: PreviewRequest): Promise<{
-    prepared: Record<string, unknown>;
-    metrics: Record<string, unknown>;
-}> {
-    const prepared = await PreparePreview(bus, request);
-    const metrics = await bus.Query({ t: 'vfx.previewMetrics', path: request.path, view: request.view });
-    return { prepared, metrics: metrics as Record<string, unknown> };
-}
-
-// duration を取得して等間隔サンプル時刻を作る。duration が 0 なら [0] だけ返す。
-async function ResolveSampleTimes(bus: EditorBus, request: PreviewRequest,
-                                  explicit: number[] | undefined, count: number): Promise<number[]> {
-    if (explicit !== undefined) return explicit;
-    const first = await bus.Query({
-        t: 'vfx.preview', path: request.path, time: 0, w: request.w, h: request.h, view: request.view,
-        ...(request.camera === undefined ? {} : { camera: request.camera }),
-    });
-    const duration = Number((first as { duration?: number }).duration ?? 0);
-    if (!(duration > 0)) return [0];
-    return Array.from({ length: count }, (_, index) => (duration * index) / (count - 1));
-}
-
-// 指標の入れ子から、時系列として並べたい代表値だけを抜く。
-function FlattenMetrics(metrics: Record<string, unknown>): Record<string, number> {
-    const exposure = (metrics.exposure ?? {}) as Record<string, number>;
-    const occupancy = (metrics.occupancy ?? {}) as Record<string, number>;
-    const motion = (metrics.motion ?? {}) as Record<string, number>;
-    return {
-        luminanceMean: Number(exposure.luminanceMean ?? 0),
-        coveredLuminanceMean: Number(exposure.coveredLuminanceMean ?? 0),
-        luminanceP99: Number(exposure.luminanceP99 ?? 0),
-        clippedRatio: Number(exposure.clippedRatio ?? 0),
-        blownOutRatio: Number(exposure.blownOutRatio ?? 0),
-        coverage: Number(occupancy.coverage ?? 0),
-        centroidX: Number(occupancy.centroidX ?? 0.5),
-        centroidY: Number(occupancy.centroidY ?? 0.5),
-        motion: Number(motion.meanLuminanceDelta ?? 0),
-        changedRatio: Number(motion.changedRatio ?? 0),
-    };
-}
-
-// 時系列から「時間の形」を読み取る。AAA の判断はここでしか下せない。
-// WHY: 静止画を何枚並べても「立ち上がりが鈍い」は言えない。ピークがいつ来て、
-//      どれだけの速さで立ち上がり、どう消えるかを数値の形にしておく。
-function SummarizeCurve(samples: Array<{ time: number } & Record<string, number>>,
-                        key: 'luminanceMean' | 'coverage'): Record<string, number | string> {
-    if (samples.length === 0) return {};
-    let peakIndex = 0;
-    for (let index = 1; index < samples.length; index += 1) {
-        if ((samples[index]?.[key] ?? 0) > (samples[peakIndex]?.[key] ?? 0)) peakIndex = index;
-    }
-    const peak = samples[peakIndex];
-    const last = samples[samples.length - 1];
-    const first = samples[0];
-    const duration = Math.max(1e-6, (last?.time ?? 0) - (first?.time ?? 0));
-    const peakValue = peak?.[key] ?? 0;
-    // ピーク位置を再生全長で正規化する。爆発なら 0.15 より手前、煙なら中盤が目安。
-    const peakNormalized = ((peak?.time ?? 0) - (first?.time ?? 0)) / duration;
-    // 消え際: 最終サンプルがピークの何割まで落ちたか。1 に近ければ「消えていない」。
-    const tailRatio = peakValue > 0 ? (last?.[key] ?? 0) / peakValue : 0;
-    return {
-        metric: key,
-        peakTime: Number((peak?.time ?? 0).toFixed(4)),
-        peakValue: Number(peakValue.toFixed(6)),
-        peakNormalized: Number(peakNormalized.toFixed(4)),
-        tailRatio: Number(tailRatio.toFixed(4)),
-    };
-}
+// 識別子は MakeFluidPreset の enum 名。括弧内は Editor の Preset メニューの表示名 (FluidPresetName)。
+const FluidPresetDescription = 'プリセット名。Smoke(Smoke Puff) / Fire(Fire (loop)) / Explosion / Steam(Steam (loop)) / '
+    + 'DustBurst(Dust Burst) / Ink(Ink Swirl) / MagicWisp(Magic Wisp (loop)) / HeatHaze(Heat Haze (loop)) / '
+    + 'WaterSplash(Water Splash) / WaterJet(Water Jet (loop)) / BloodBurst(Blood Burst) / LavaBlob(Lava Blob) / '
+    + 'PlasmaBurst(Plasma Burst) / ArcHaze(Arc Haze (loop))。'
+    + '正確な一覧は fluid_schema の presets。省略で Smoke';
 
 // engine の JSON 応答を MCP text content に変換する。
 function TextResult(value: unknown): CallToolResult {
@@ -227,6 +144,59 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'editor.catalog' }))));
+
+    // ── Operator ゲートウェイ (Docs/design/editor-operator-model.md) ──
+    // WHY: 従来は Editor 側の機能 1 つにつき、C++ の dispatcher・この tools.ts の
+    //      zod スキーマ・ドキュメントのツール一覧へ 3 度書いていた。写し損ねると
+    //      人が使う経路と AI が使う経路で結果が食い違い、実際にその修正を
+    //      ObjectPresets / TerrainBrush / NavMeshQuery など 8 回している。
+    //      operator として登録された操作はここを通って自動的に AI から見えるので、
+    //      以後 Editor に操作を足しても TypeScript 側は 1 行も増えない。
+    server.registerTool('editor_op_list', {
+        description: 'Editor に登録された操作 (Operator) の目録を返します。'
+            + 'メニュー・ホットキー・コマンドパレットが読むのと同じ登録簿なので、'
+            + '「人が UI からできること」と一致します。'
+            + '各項目の available は実行可能条件 (poll) の評価結果で、'
+            + '実行前に「今できない理由がある」ことを判別できます。'
+            + 'kind は query / action / mutation で、mutation だけが Undo 履歴に残ります。'
+            + 'params が付いている操作は editor_op_invoke の args にその名前で渡します。',
+        inputSchema: {
+            search: z.string().min(1).max(128).optional()
+                .describe('id / label / desc の部分一致 (大小無視)'),
+            category: z.string().min(1).max(64).optional()
+                .describe('File / Edit / Selection / Viewport / Gizmo / Play / Tools / Panels'),
+            includeUnavailable: z.boolean().optional()
+                .describe('既定 true。false にすると今実行できる操作だけを返す'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ search, category, includeUnavailable }) => Safely(async () => TextResult(await bus.Query({
+        t: 'editor.op.list',
+        ...(search === undefined ? {} : { search }),
+        ...(category === undefined ? {} : { category }),
+        ...(includeUnavailable === undefined ? {} : { includeUnavailable }),
+    }))));
+
+    // 読み取り側の Operator。invoke (write) と入口を分けてあるので read 権限でも呼べる。
+    // WHY 必要か: OpKind::Query は型としては最初からあったのに、結果を返す器が
+    //      OpResult に無かったため登録された Query が 1 つも無く、「読む機能」は
+    //      すべて専用ツールとして手書きするしかなかった。器と入口を用意したことで、
+    //      以後は読み取りも登録簿へ載り、ここのツール数は増えない。
+    server.registerTool('editor_op_query', {
+        description: 'kind=query の Operator を実行し、結果データを返します。'
+            + 'editor_op_list で id と params を調べてから呼びます。'
+            + '書き込み系 (action / mutation) はここでは拒否され、editor_op_invoke を使います。',
+        inputSchema: {
+            id: z.string().min(1).max(128)
+                .describe('operator の id (例: "panel.list")'),
+            args: z.record(z.string(), z.unknown()).optional()
+                .describe('editor_op_list の params に対応する引数'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id, args }) => Safely(async () => TextResult(await bus.Query({
+        t: 'editor.op.query',
+        id,
+        ...(args === undefined ? {} : { args }),
+    }))));
 
     server.registerTool('editor_catalog_search', {
         description: 'Component API を型名・表示名・カテゴリ・フィールド名・tooltipから検索し、必要な項目だけ返します。',
@@ -299,7 +269,7 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
 
     server.registerTool('scene_get_tree', {
         description: '現在のシーン階層を取得します。副作用はありません。'
-            + '既定ではシステムが実行時に生成したオブジェクト(VFX Graphのノード実体、foliage bake、'
+            + '既定ではシステムが実行時に生成したオブジェクト(VFX Graphのノード実体、'
             + 'water splash)を除外します。これらは編集してもシーンへ保存されないため、'
             + '編集対象を探す用途では常に除外したままで構いません。'
             + '除外した件数は親ノードの hiddenGeneratedChildren に出ます。'
@@ -415,88 +385,37 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
             structuredContent: { path: thumbnail.path },
         };
     }));
+    // ── Sprite ──
+    // Sprite はファイルではないので asset_list には出ない。切り出したコマへ
+    // 参照を張るには、この 2 つで「一覧を見る → 絵を見る」しかない。
+    server.registerTool('sprite_list', {
+        description: 'Sprite Texture が持つコマの一覧 (ID・名前・矩形・pivot) を返します。'
+            + 'reference はそのまま component_set の texturePath / spritePath / .mat の albedo '
+            + '(メッシュ描画の .mat のみ) / .fluid の texture 発生源へ渡せる完成形です。'
+            + 'どのコマがどの絵かは sprite_thumbnail で確認してください。'
+            + '名前は参照キーを兼ねるので、連番のままなら sprite_rename で意味のある名前にできます '
+            + '(ID は変わらないため既存の参照は切れません)。',
+        inputSchema: { path: z.string().min(1).describe('projectRoot 相対の画像パス') },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ path }) => Safely(async () => TextResult(await bus.Query({ t: 'sprite.list', path }))));
 
-    server.registerTool('vfx_inspect_graph', {
-        description: '.vfxのノード、イベントリンク、SubGraph、Particle実行方式、Burst数、リソースbudgetと検証結果を構造化して取得します。'
-            + '既定の detail="summary" では、ノードのtransform・キャンバス座標・group・signalNodeの中身を返しません。'
-            + '構造の把握にはこれで足り、応答量は半分以下になります。'
-            + '空間配置やキャンバス配置を編集するときだけ detail="full" を指定してください。'
-            + '個々のフィールドの現在値が知りたいだけなら vfx_node_get_field のほうが小さく済みます。',
+    server.registerTool('sprite_thumbnail', {
+        description: 'Sprite 1 コマだけを切り抜いた画像を返します。長辺 256px へ間引かれます。'
+            + 'シート全体を見ても「何番目がどの絵か」は判別できないため、割り当て先を選ぶ前にここで確認します。',
         inputSchema: {
-            path: z.string().min(1).describe('projectRoot相対または絶対の.vfxパス'),
-            detail: z.enum(['summary', 'full']).default('summary')
-                .describe('summary=構造のみ / full=transform・group・signalNodeも含む'),
+            path: z.string().min(1).describe('projectRoot 相対の画像パス'),
+            sprite: z.string().min(1).describe('Sprite の ID または名前 (sprite_list の id / name)'),
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, detail }) => Safely(async () => TextResult(
-        await bus.Query({ t: 'vfx.graph', path, detail }))));
+    }, ({ path, sprite }) => Safely(async () => {
+        const thumbnail = SpriteThumbnailResultSchema.parse(
+            await bus.Query({ t: 'sprite.thumbnail', path, sprite }));
+        return {
+            content: [{ type: 'image', data: thumbnail.base64, mimeType: thumbnail.mimeType }],
+            structuredContent: { name: thumbnail.name, reference: thumbnail.reference },
+        };
+    }));
 
-    server.registerTool('vfx_node_get_field', {
-        description: 'VFXノードのフィールドの現在値を読みます。vfx_node_set_field の対になる取得系です。'
-            + 'blendMode / texturePath / colorGradient / sizeCurve に「今何が入っているか」を'
-            + '確認する手段はこれだけです (node_get_components は Scene のノード用で、'
-            + 'VFX Graph の nodeId とは別空間なので使えません)。'
-            + '返る value は vfx_node_set_field の value へそのまま渡せる形なので、'
-            + '読んで一部だけ変えて書き戻せます。'
-            + 'Curve / Gradient は {interp, keys} で返ります。enum は enumName に現在の名前が付きます。'
-            + 'schemaPath を指定すると 1 つだけ、省略すると全 leaf を返します。'
-            + 'Particle ノードの全 leaf は 100 個を超えるため、'
-            + 'prefix="particle." のように部分木で絞ってください。',
-        inputSchema: {
-            path: z.string().min(1).describe('projectRoot相対または絶対の.vfxパス'),
-            nodeId: z.number().int().positive(),
-            schemaPath: z.string().min(1).max(256).optional()
-                .describe('vfx_get_schema に存在する型付きpath。省略すると全leaf'),
-            prefix: z.string().min(1).max(256).optional()
-                .describe('schemaPath省略時の絞り込み。例 "particle."'),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, nodeId, schemaPath, prefix }) => Safely(async () => TextResult(await bus.Query({
-        t: 'vfx.nodeField', path, nodeId,
-        ...(schemaPath === undefined ? {} : { schemaPath }),
-        ...(prefix === undefined ? {} : { prefix }),
-    }))));
-
-    server.registerTool('vfx_lint', {
-        description: '.vfxを静的診断します。循環、Entryから到達できない(=実行時に起動しない)ノード、'
-            + '参照アセットの欠落、budget超過、公開パラメーターbindingの不正、消えないMesh、'
-            + '実体ノード無しを severity/code/message/nodeId で返します。'
-            + '各issueには直し方が fix (呼ぶべきツールと引数) と autoFixable (vfx_repairで直せるか) '
-            + 'として付きます。修正はfixに従ってください。推測は不要です。'
-            + 'cautionがある場合は、その修正で失われるものを確認してから実行してください。'
-            + 'エフェクトを編集したら、プレビュー画像を見る前にまずこれを実行してください。',
-        inputSchema: { path: z.string().min(1).describe('projectRoot相対または絶対の.vfxパス') },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path }) => Safely(async () => TextResult(await bus.Query({ t: 'vfx.lint', path }))));
-
-    server.registerTool('vfx_guide', {
-        description: 'このエンジンで見られるエフェクトを作るためのオーサリング規約と、'
-            + 'Fire/Explosion/Impact/Smoke の層構成レシピを返します。'
-            + '「全部を加算にすると白飽和する」「回転と非等方サイズは排他」「上昇加速度の出所は1つ」など、'
-            + 'DAG検証もlintも通るのに見た目が破綻する落とし穴をまとめてあります。'
-            + '.vfxを新規作成または大きく変更する前に必ず1度読んでください。'
-            + 'lintCodeを持つ規約はvfx_lintが機械的に検査します。',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, () => Safely(async () => TextResult(await bus.Query({ t: 'vfx.guide' }))));
-
-    server.registerTool('vfx_knowledge_catalog', {
-        description: '組み込みとプロジェクト固有のVFX Templateを同じカタログから検索します。'
-            + 'vfx_knowledge_promoteで採択した成果もここへ現れるため、次の制作ではゼロから作らず'
-            + '最も近い成功例をvfx_candidate_forkしてください。',
-        inputSchema: {
-            query: z.string().min(1).max(128).optional()
-                .describe('名前・カテゴリ・タグ・説明・ノード構成の部分一致。省略すると全件'),
-            limit: z.number().int().min(1).max(256).default(64),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ query, limit }) => Safely(async () => TextResult(await bus.Query({
-        t: 'vfx.templateCatalog', ...(query === undefined ? {} : { query }), limit,
-    }))));
-
-    // ── Behavior Tree ──
-    // WHY vfx_* と同じ形にするか: 「アセットを読む → 規約を読む → 編集する → 検証する」
-    //     という流れは VFX と同一で、面の作り方を変える理由が無い。
     server.registerTool('bt_inspect_tree', {
         description: '.behaviortree の木構造・Blackboard・検証結果を返します。'
             + 'ノードは parentId と order で並べて返るため、配列の順序がそのまま優先順位です。'
@@ -600,33 +519,6 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'bt.templateCatalog' }))));
-
-    server.registerTool('vfx_curve_presets', {
-        description: '名前付きの時間カーブプリセット一覧を返します。'
-            + 'Spike(閃光)/Breathe(炎の呼吸)/Ease Out(減衰)/Blink(点滅)など。'
-            + 'vfx_node_set_field の value へ {"preset":"Spike","scale":1.0} を渡すと適用されます。'
-            + '生のキー列を書くより意図した形になり、外したときの原因も特定しやすくなります。',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, () => Safely(async () => TextResult(await bus.Query({ t: 'vfx.curvePresets' }))));
-
-    server.registerTool('vfx_analyze_texture', {
-        description: 'VFX素材テクスチャ(png/tga/dds等)の中身を解析し、設定の根拠になる特徴量と'
-            + '推奨オーサリング値を返します。'
-            + '.vfxでテクスチャを割り当てる前に必ず1度実行してください。'
-            + 'blendMode / alphaSource / spriteColumns / spriteRows / softParticles は'
-            + '素材の中身で正解が変わり、ファイル名からは判断できません。'
-            + 'recommendations[].schemaPath と .value は vfx_node_set_field へそのまま渡せます。'
-            + 'alpha.isMeaningful=false なら alphaSource=Luminance が必須(そうしないと矩形の板になる)、'
-            + 'alpha.likelyPremultiplied=true なら blendMode=Premultiplied 以外で縁が黒く縁取られます。'
-            + 'flipbookCandidates が空でなければアトラス素材で、先頭が最有力の候補です。'
-            + 'classification (glow/smoke/spark/flipbook/mask) は vfx_guide の層構成recipeと突き合わせます。',
-        inputSchema: {
-            path: z.string().min(1).max(1024).describe('projectRoot相対または絶対のテクスチャパス'),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path }) => Safely(async () => TextResult(await bus.Query({ t: 'vfx.textureAnalyze', path }))));
-
     server.registerTool('shader_inspect', {
         description: 'シェーダーが公開する変数とテクスチャスロットの目録を返します。'
             + '.matのparamsやVFX MeshノードのanimatedParamは「シェーダー変数名」を要求しますが、'
@@ -645,443 +537,11 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
 
     server.registerTool('shader_get_compile_diagnostics', {
         description: 'DX11/DX12ランタイムコンパイルと外部HLSLビルドのエラー・警告を取得します。'
-            + 'VFXEditorの赤いShader Compile Errorバナーと同じ診断を返します。'
+            + 'Editor の赤い Shader Compile Error バナーと同じ診断を返します。'
             + 'path/entryPoint/target/messageを読み、修正後は再コンパイルして一覧から消えたことを確認してください。',
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'shader.diagnostics' }))));
-
-    server.registerTool('vfx_analyze_material', {
-        description: '.matとそのalbedoテクスチャを併せて解析します。'
-            + 'ParticleEmitterにmaterialPathを設定すると、実行時にblendModeが.matの値で'
-            + '**上書きされます**。つまりEmitter側のblendModeを変えても効きません。'
-            + 'ブレンドを変えたい場合は.matのblend_modeを編集してください。'
-            + 'findings は .mat 自体を直すべき問題(blend_mode/render_path/albedo未設定)、'
-            + 'recommendations は .mat では表現できずEmitter側にしか無い設定'
-            + '(alphaSource/spriteColumns/sortMode)で vfx_node_set_field へ渡せます。'
-            + 'blendModeConflictsWithTexture=true は、albedoテクスチャの中身が要求するブレンドと'
-            + '.matの宣言が食い違っている状態です。',
-        inputSchema: {
-            path: z.string().min(1).max(1024).describe('projectRoot相対または絶対の.matパス'),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path }) => Safely(async () => TextResult(await bus.Query({ t: 'vfx.materialAnalyze', path }))));
-
-    server.registerTool('vfx_survey_assets', {
-        description: 'プロジェクトの素材テクスチャを分類し、エフェクトの層構成に対して'
-            + '何が足りないかを返します。'
-            + '.vfxをゼロから組む前、またはvfx_guideのrecipeに沿う前に1度実行してください。'
-            + 'recipeは「煙/外炎/芯/火の粉/陽炎」のような層を要求しますが、'
-            + 'その層を作れる素材が手元にあるかは別問題です。'
-            + 'missingRolesにある役割は手持ちでは作れないため、'
-            + 'そのままrecipeを再現しようとすると破綻します(代替案はhintに含まれます)。'
-            + '解析は1枚あたり数十msかかるため、既定は120枚で打ち切ります(truncatedで判ります)。'
-            + '分類はsize+mtimeでキャッシュされ、2回目以降は解析し直しません'
-            + '(freshlyAnalyzed / fromCache で内訳が判ります)。'
-            + '既定の detail="summary" は1枚あたりpathだけを返します。'
-            + '個別の素材の中身は vfx_analyze_texture で見てください。'
-            + '**全素材の棚卸しが要るのは新しくグラフを組むときだけ**です。'
-            + '既存.vfxの確認や修正では呼ばず、directoryで対象を絞るかlimitを下げてください。',
-        inputSchema: {
-            directory: z.string().min(1).max(1024).optional()
-                .describe('projectRoot相対の走査ディレクトリ(既定 "Assets")。'
-                    + '"Assets/Textures/Particles" のように絞ると応答も時間も大きく減ります'),
-            limit: z.number().int().min(1).max(400).optional().describe('解析する最大枚数(既定120)'),
-            detail: z.enum(['summary', 'full']).default('summary')
-                .describe('summary=pathのみ / full=1枚ごとの解析文も含む'),
-            refresh: z.boolean().optional()
-                .describe('外部ツールで素材を差し替えたのに分類が変わらないときだけtrue'),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ directory, limit, detail, refresh }) => Safely(async () => TextResult(await bus.Query({
-        t: 'vfx.assetSurvey',
-        ...(directory === undefined ? {} : { directory }),
-        ...(limit === undefined ? {} : { limit }),
-        detail,
-        ...(refresh === undefined ? {} : { refresh }),
-    }))));
-
-    server.registerTool('vfx_preview_ensure', {
-        description: 'VFX Preview Worldを起動し、プレビュー系を呼べる状態かを返します。'
-            + 'vfx_preview / vfx_preview_metrics / vfx_preview_curve / vfx_runtime_state は'
-            + 'すべてこのWorldを前提にしますが、Worldを所有するのはEditor本体ではなく'
-            + '独立プロセスのFBZZVFXEditorです。'
-            + 'このツールは必要ならそのプロセスを起動し、初期化完了まで待ってから状態を返します。'
-            + 'preview系が NO_PREVIEW_WORLD で失敗したときは、まずこれを1度呼んでください。'
-            + 'readyForPreview=false の場合、原因は rendererReady に出ます'
-            + '(false なら描画デバイス未取得。console_logs でシェーダーコンパイル失敗を確認)。'
-            + 'prepared.hasGraph=false は「まだ一度もvfx_previewを実行していない」だけで異常ではありません。'
-            + 'プロセスが未起動だった場合、初回だけ起動と初期化に数秒かかります'
-            + '(BUS_TIMEOUTになる場合は環境変数 FBZZ_EDITOR_BUS_TIMEOUT_MS を上げてください)。',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, () => Safely(async () => TextResult(await bus.Query({ t: 'vfx.previewEnsure' }))));
-
-    server.registerTool('vfx_runtime_state', {
-        description: '直前のvfx_previewが構築した実行状態と実測コストを、その時刻のまま読み出します。'
-            + 'ノードが画に出ない原因のうち「起動していない」「イベント待ちのまま起動しない」を'
-            + '画像を見ずに切り分けられます。'
-            + 'waitingForEvent=trueのノードはOnCollision/OnDeath待ちで、'
-            + 'source側のParticleが衝突・死亡しない限り永久に起動しません。'
-            + 'active=trueなのに見えない場合だけ、サイズ・色・カメラ画角を疑ってください。'
-            + 'simulation.effectiveは実際に走った経路で、requestedがGpuなのにeffectiveがCpuなら'
-            + 'fallbackFieldの設定が原因で黙って縮退しています(粒子数を増やしても性能は使われません)。'
-            + 'cost.particlePassGpuMsはParticleパスの実測GPU時間、'
-            + 'cost.overdrawは重なり枚数(vfx_previewをview="overdraw"で実行したときだけ計測)。'
-            + '先にvfx_previewを実行し、readyAfterFrameまで待ってから呼びます。'
-            + 'NO_PREVIEW_WORLDで失敗する場合はvfx_preview_ensureを1度呼んでください。',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, () => Safely(async () => TextResult(await bus.Query({ t: 'vfx.runtime' }))));
-
-    server.registerTool('vfx_diff', {
-        description: '2つの.vfxをノード/リンク/公開パラメーター単位で比較し、変わった箇所だけを返します。'
-            + '編集前後の確認や、テンプレートとの差分把握に使ってください。'
-            + 'ファイル全文を2回読むより情報量が少なく、判断も速くなります。',
-        inputSchema: {
-            base: z.string().min(1).describe('比較元の.vfxパス'),
-            target: z.string().min(1).describe('比較先の.vfxパス'),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ base, target }) => Safely(async () => TextResult(await bus.Query({ t: 'vfx.diff', base, target }))));
-
-    server.registerTool('vfx_get_params', {
-        description: '公開パラメーター、binding、defaultと、任意VFXGraphComponentのvariant・sparse override・解決済み値を取得します。',
-        inputSchema: { path: z.string().min(1), id: NodeIdSchema.optional() },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, id }) => Safely(async () => TextResult(await bus.Query({
-        t: 'vfx.params', path, ...(id === undefined ? {} : { id }),
-    }))));
-
-    server.registerTool('vfx_get_schema', {
-        description: 'VFXノードのauthoring schemaを取得します。setFieldとparameter bindingに使えるpath・型・range・exposableが同じ定義から返ります。',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, () => Safely(async () => TextResult(await bus.Query({ t: 'vfx.schema' }))));
-
-    const PreviewViewSchema = z.enum(['normal', 'overdraw', 'gizmos']).default('normal')
-        .describe("normal=評価用のクリーンな絵 / overdraw=半透明の重なり枚数 "
-            + "/ gizmos=力場の半径・向きとエミッター形状・初速。"
-            + "見た目の原因が分からないときだけ診断用へ切り替えてください");
-    const CameraDescription = '視点。省略すると Editor の固定視点(正面・約5m)になります。'
-        + 'ビルボードは横から見ると平面なので、シルエットの破綻は yaw:90 でしか判りません。'
-        + 'ゲーム内距離で読めるかは distance を振って確認してください。';
-
-    server.registerTool('vfx_preview', {
-        description: '専用VFX WorldをrandomSeedから指定時刻へscrubし、UIやSceneを含まない決定論的PNGを返します。'
-            + '画像の良し悪しを目で判断する前に、vfx_preview_metricsで機械的に判る破綻'
-            + '(白飛び・覆いすぎ・何も出ていない)を潰しておくと反復が収束します。',
-        inputSchema: {
-            path: z.string().min(1),
-            time: z.number().finite().nonnegative(),
-            w: z.number().int().min(160).max(1920).default(960),
-            h: z.number().int().min(90).max(1080).default(540),
-            view: PreviewViewSchema,
-            camera: VFXPreviewCameraSchema.optional().describe(CameraDescription),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, time, w, h, view, camera }) => Safely(async () => {
-        const prepared = await PreparePreview(bus, { path, time, w, h, view, camera });
-        const capture = ViewportCaptureResultSchema.parse(await bus.Query({ t: 'viewport.capture', w, h, view: 'vfx' }));
-        return {
-            content: [
-                { type: 'text', text: JSON.stringify(prepared, null, 2) },
-                { type: 'image', data: capture.base64, mimeType: capture.mimeType },
-            ],
-            structuredContent: { prepared, width: capture.width, height: capture.height, view: 'vfx' },
-        };
-    }));
-
-    server.registerTool('vfx_preview_metrics', {
-        description: '直前と同じ手順でプレビューを組み、画像ではなく数値で評価します。'
-            + '輝度ヒストグラム/白飛び率/画面占有率/重心/前サンプルからの変化量を返し、'
-            + '機械的に判る破綻(BLOWN_OUT・SCREEN_FLOODED・EMPTY_FRAME・STATIC_FRAME・OFF_CENTER)を'
-            + 'issuesとして名指しします。'
-            + '「少し暗い」の“少し”に基準が無いまま画像だけで直すと反復が振動するため、'
-            + 'まずこれでissuesを空にしてから、残った「らしさ」を画像で詰めてください。',
-        inputSchema: {
-            path: z.string().min(1),
-            time: z.number().finite().nonnegative(),
-            w: z.number().int().min(160).max(1920).default(960),
-            h: z.number().int().min(90).max(1080).default(540),
-            view: PreviewViewSchema,
-            camera: VFXPreviewCameraSchema.optional().describe(CameraDescription),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, time, w, h, view, camera }) => Safely(async () => {
-        const measured = await MeasurePreview(bus, { path, time, w, h, view, camera });
-        return TextResult(measured);
-    }));
-
-    server.registerTool('vfx_preview_curve', {
-        description: 'エフェクトを全区間サンプルし、指標の時系列(=時間の形)を返します。画像は返しません。'
-            + 'エフェクトの質は静止画ではなく立ち上がりの速さ・ピークの位置・消え際の粘りで決まりますが、'
-            + 'それは3枚の静止画からは判定できません。'
-            + 'peakNormalized(ピーク位置を全長で正規化した値)が判るので、'
-            + '「爆発なのにピークが t=0.62 にある」のような時間設計の誤りを直接指摘できます。'
-            + 'AAAの爆発はピークが概ね0.15より手前、煙や炎は中盤〜後半が目安です。',
-        inputSchema: {
-            path: z.string().min(1),
-            samples: z.number().int().min(3).max(16).default(8)
-                .describe('再生全長を等分するサンプル数'),
-            times: z.array(z.number().finite().nonnegative()).min(2).max(16).optional()
-                .describe('秒。指定するとsamplesより優先する'),
-            w: z.number().int().min(160).max(1280).default(480),
-            h: z.number().int().min(90).max(720).default(270),
-            camera: VFXPreviewCameraSchema.optional().describe(CameraDescription),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, samples, times, w, h, camera }) => Safely(async () => {
-        const request: PreviewRequest = { path, time: 0, w, h, view: 'normal', camera };
-        const sampleTimes = await ResolveSampleTimes(bus, request, times, samples);
-        const series: Array<{ time: number } & Record<string, number>> = [];
-        const issues: Array<{ time: number; issues: string[] }> = [];
-        for (const time of sampleTimes) {
-            const measured = await MeasurePreview(bus, { ...request, time });
-            series.push({ time: Number(time.toFixed(4)), ...FlattenMetrics(measured.metrics) });
-            const frameIssues = (measured.metrics.issues ?? []) as string[];
-            if (frameIssues.length > 0) issues.push({ time: Number(time.toFixed(4)), issues: frameIssues });
-        }
-        return TextResult({
-            path,
-            series,
-            shape: {
-                luminance: SummarizeCurve(series, 'luminanceMean'),
-                coverage: SummarizeCurve(series, 'coverage'),
-            },
-            issuesByTime: issues,
-            hint: 'peakNormalized は 0=開始 / 1=終了。tailRatio が 0.5 を超えていれば、'
-                + '再生終了時点でまだピークの半分が残っている = 消え際が切れていません。'
-                + 'motion がほぼ 0 の区間が続くなら、そこはエフェクトが止まって見えています。',
-        });
-    }));
-
-    server.registerTool('vfx_preview_compare', {
-        description: '2つの.vfx(または編集前後)を同条件でサンプルし、指標の差を返します。'
-            + '画像2枚からは「良くなった」のか「変わっただけ」なのかを言えませんが、'
-            + 'ここでは変化量が符号付きで出ます。'
-            + '例: emitRateを上げてcoverageが1.8倍・luminanceがほぼ同じ=コストだけ増えた、が判ります。',
-        inputSchema: {
-            base: z.string().min(1).describe('比較元の.vfxパス'),
-            target: z.string().min(1).describe('比較先の.vfxパス'),
-            samples: z.number().int().min(2).max(12).default(5),
-            w: z.number().int().min(160).max(1280).default(480),
-            h: z.number().int().min(90).max(720).default(270),
-            camera: VFXPreviewCameraSchema.optional().describe(CameraDescription),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ base, target, samples, w, h, camera }) => Safely(async () => {
-        // 両者を同じ時刻列で測る。base 側の duration を基準にしないと、
-        // 「長さが違うだけ」の差を「形が変わった」と読み違える。
-        const baseRequest: PreviewRequest = { path: base, time: 0, w, h, view: 'normal', camera };
-        const sampleTimes = await ResolveSampleTimes(bus, baseRequest, undefined, samples);
-        const Collect = async (path: string) => {
-            const collected: Array<{ time: number } & Record<string, number>> = [];
-            for (const time of sampleTimes) {
-                const measured = await MeasurePreview(bus, { path, time, w, h, view: 'normal', camera });
-                collected.push({ time: Number(time.toFixed(4)), ...FlattenMetrics(measured.metrics) });
-            }
-            return collected;
-        };
-        const baseSeries = await Collect(base);
-        const targetSeries = await Collect(target);
-        // 各指標の平均で比較する。1 サンプルの偶然の差に引きずられないため。
-        const keys = ['luminanceMean', 'coveredLuminanceMean', 'clippedRatio', 'blownOutRatio',
-                      'coverage', 'motion'] as const;
-        const Average = (series: Array<Record<string, number>>, key: string): number =>
-            series.reduce((sum, sample) => sum + Number(sample[key] ?? 0), 0) / Math.max(1, series.length);
-        const delta: Record<string, { base: number; target: number; delta: number; ratio: number | null }> = {};
-        for (const key of keys) {
-            const baseValue = Average(baseSeries, key);
-            const targetValue = Average(targetSeries, key);
-            delta[key] = {
-                base: Number(baseValue.toFixed(6)),
-                target: Number(targetValue.toFixed(6)),
-                delta: Number((targetValue - baseValue).toFixed(6)),
-                ratio: baseValue > 1e-9 ? Number((targetValue / baseValue).toFixed(3)) : null,
-            };
-        }
-        return TextResult({
-            base, target, times: sampleTimes,
-            averages: delta,
-            shape: {
-                base: SummarizeCurve(baseSeries, 'luminanceMean'),
-                target: SummarizeCurve(targetSeries, 'luminanceMean'),
-            },
-            hint: 'coverage だけが増えて luminance が変わらない変更は、コストを払って見た目が変わっていません。'
-                + 'peakTime がずれていれば、時間設計そのものが変わっています。',
-        });
-    }));
-
-    server.registerTool('vfx_candidate_evaluate', {
-        description: '候補.vfxを固定した品質契約で全区間評価し、採択・棄却・意味評価待ちを返します。'
-            + 'lint、白飛び、画面占有、ピーク位置、tailを一度に検査するため、反復ごとに評価基準が変わりません。'
-            + '機械判定を通過した後、vfx_preview画像を見てsemanticScoreを付けて再実行してください。'
-            + 'semanticScoreなしでAAA品質を自動承認することはありません。',
-        inputSchema: {
-            path: z.string().min(1).describe('評価する候補.vfx'),
-            samples: z.number().int().min(3).max(16).default(8),
-            w: z.number().int().min(160).max(1280).default(480),
-            h: z.number().int().min(90).max(720).default(270),
-            camera: VFXPreviewCameraSchema.optional().describe(CameraDescription),
-            objective: z.object({
-                maxLintErrors: z.number().int().min(0).default(0),
-                maxLintWarnings: z.number().int().min(0).default(0),
-                minCoverage: z.number().min(0).max(1).default(0.01),
-                maxCoverage: z.number().min(0).max(1).default(0.65),
-                maxClippedRatio: z.number().min(0).max(1).default(0.02),
-                peakBefore: z.number().min(0).max(1).default(0.35),
-                maxTailRatio: z.number().min(0).max(1).default(0.5),
-                minSemanticScore: z.number().min(0).max(1).default(0.8),
-            }).describe('反復中に変更しない品質契約。Smoke/Fireなど遅い効果ではpeakBeforeを明示調整する'),
-            semanticAssessment: z.object({
-                score: z.number().min(0).max(1),
-                rationale: z.string().min(1).max(2000),
-            }).optional().describe('画像を見たAI/アートディレクターの意味・らしさ評価'),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, samples, w, h, camera, objective, semanticAssessment }) => Safely(async () => {
-        const lint = await bus.Query({ t: 'vfx.lint', path }) as Record<string, unknown>;
-        const request: PreviewRequest = { path, time: 0, w, h, view: 'normal', camera };
-        const times = await ResolveSampleTimes(bus, request, undefined, samples);
-        const series: Array<{ time: number } & Record<string, number>> = [];
-        const previewIssues: Array<{ time: number; issues: string[] }> = [];
-        for (const time of times) {
-            const measured = await MeasurePreview(bus, { ...request, time });
-            series.push({ time: Number(time.toFixed(4)), ...FlattenMetrics(measured.metrics) });
-            const issues = Array.isArray(measured.metrics.issues)
-                ? measured.metrics.issues.filter((value): value is string => typeof value === 'string')
-                : [];
-            if (issues.length > 0) previewIssues.push({ time: Number(time.toFixed(4)), issues });
-        }
-
-        const luminanceShape = SummarizeCurve(series, 'luminanceMean');
-        const coverageShape = SummarizeCurve(series, 'coverage');
-        const average = (key: string): number =>
-            series.reduce((sum, sample) => sum + Number(sample[key] ?? 0), 0) / Math.max(1, series.length);
-        const lintErrors = Number(lint.errors ?? 0);
-        const lintWarnings = Number(lint.warnings ?? 0);
-        const peakCoverage = Math.max(...series.map((sample) => Number(sample.coverage ?? 0)));
-        const clippedRatio = Math.max(...series.map((sample) => Number(sample.clippedRatio ?? 0)));
-        const violations: string[] = [];
-        if (lintErrors > objective.maxLintErrors) violations.push(`lint.errors ${lintErrors} > ${objective.maxLintErrors}`);
-        if (lintWarnings > objective.maxLintWarnings) violations.push(`lint.warnings ${lintWarnings} > ${objective.maxLintWarnings}`);
-        if (peakCoverage < objective.minCoverage) violations.push(`coverage.peak ${peakCoverage} < ${objective.minCoverage}`);
-        if (peakCoverage > objective.maxCoverage) violations.push(`coverage.peak ${peakCoverage} > ${objective.maxCoverage}`);
-        if (clippedRatio > objective.maxClippedRatio) violations.push(`clippedRatio.max ${clippedRatio} > ${objective.maxClippedRatio}`);
-        if (Number(luminanceShape.peakNormalized ?? 0) > objective.peakBefore)
-            violations.push(`luminance.peakNormalized ${luminanceShape.peakNormalized} > ${objective.peakBefore}`);
-        if (Number(luminanceShape.tailRatio ?? 0) > objective.maxTailRatio)
-            violations.push(`luminance.tailRatio ${luminanceShape.tailRatio} > ${objective.maxTailRatio}`);
-
-        let decision: 'reject' | 'needs_semantic_review' | 'accept' = violations.length > 0
-            ? 'reject' : 'needs_semantic_review';
-        if (violations.length === 0 && semanticAssessment !== undefined) {
-            if (semanticAssessment.score >= objective.minSemanticScore) decision = 'accept';
-            else {
-                decision = 'reject';
-                violations.push(`semanticScore ${semanticAssessment.score} < ${objective.minSemanticScore}`);
-            }
-        }
-        return TextResult({
-            path,
-            decision,
-            objective,
-            violations,
-            lint,
-            previewIssues,
-            metrics: {
-                luminance: luminanceShape,
-                coverage: coverageShape,
-                peakCoverage: Number(peakCoverage.toFixed(6)),
-                averageCoverage: Number(average('coverage').toFixed(6)),
-                maxClippedRatio: Number(clippedRatio.toFixed(6)),
-            },
-            semanticAssessment: semanticAssessment ?? null,
-            next: decision === 'accept'
-                ? 'vfx_candidate_acceptで本番へ採択し、vfx_knowledge_promoteで成功例を知識化してください。'
-                : decision === 'needs_semantic_review'
-                    ? 'vfx_previewでピーク前後の画像を確認し、semanticAssessmentを付けて再評価してください。'
-                    : 'violationsとlint.issuesを直し、同じobjectiveのまま再評価してください。',
-        });
-    }));
-
-    server.registerTool('vfx_preview_sweep', {
-        description: '同じ時刻のエフェクトを複数の距離から評価し、距離ごとの指標と画像を返します。'
-            + '近接で作り込んだディテールは10m先では消え、逆に近くでは板が透けて見えます。'
-            + 'lodNearDistance/lodFarDistanceを設定しても、距離を変えなければ切り替わりを一度も見られません。'
-            + 'LOD検証と「ゲーム内距離で読めるか」の確認はこれ1回で済みます。',
-        inputSchema: {
-            path: z.string().min(1),
-            time: z.number().finite().nonnegative().describe('評価する時刻。通常はピーク付近'),
-            distances: z.array(z.number().finite().min(0.05).max(500)).min(1).max(6)
-                .default([2, 5, 12, 30]).describe('注視点からの距離 m'),
-            yaw: z.number().finite().min(-360).max(360).default(25).describe('度。90で真横=シルエット確認'),
-            pitch: z.number().finite().min(-89).max(89).default(12),
-            w: z.number().int().min(160).max(1280).default(480),
-            h: z.number().int().min(90).max(720).default(270),
-            includeImages: z.boolean().default(true).describe('falseにすると指標だけを返す(高速)'),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, time, distances, yaw, pitch, w, h, includeImages }) => Safely(async () => {
-        const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [];
-        const series: Array<{ distance: number } & Record<string, number>> = [];
-        for (const distance of distances) {
-            const camera: VFXPreviewCamera = { distance, yaw, pitch };
-            const measured = await MeasurePreview(bus, { path, time, w, h, view: 'normal', camera });
-            series.push({ distance, ...FlattenMetrics(measured.metrics) });
-            if (!includeImages) continue;
-            const capture = ViewportCaptureResultSchema.parse(
-                await bus.Query({ t: 'viewport.capture', w, h, view: 'vfx' }));
-            content.push({ type: 'text', text: `distance = ${distance}m` });
-            content.push({ type: 'image', data: capture.base64, mimeType: capture.mimeType });
-        }
-        content.unshift({
-            type: 'text',
-            text: JSON.stringify({
-                path, time, yaw, pitch, series,
-                hint: '遠距離で coverage が急に 0 近くまで落ちていれば、そこで LOD がエフェクトを消しています。'
-                    + '逆に距離を離しても coverage がほとんど減らないなら、'
-                    + 'そのエフェクトは遠景でも画面を占有し続けている = 引きの絵で邪魔になります。',
-            }, null, 2),
-        });
-        return { content, structuredContent: { path, time, series } };
-    }));
-
-    server.registerTool('vfx_preview_sequence', {
-        description: '.vfxを複数時刻でプレビューし、連番画像をまとめて返します。'
-            + '静止画1枚では「動いているか」「タイミングが合っているか」が判断できないため、'
-            + 'エフェクトの見た目を確認するときはこちらを使ってください。'
-            + 'times未指定なら再生全長を等間隔にサンプルします。'
-            + '時間の形を数値で評価したいときは vfx_preview_curve を使ってください。',
-        inputSchema: {
-            path: z.string().min(1),
-            times: z.array(z.number().finite().nonnegative()).min(1).max(8).optional()
-                .describe('秒。未指定なら duration を等分した6点'),
-            w: z.number().int().min(160).max(1280).default(640),
-            h: z.number().int().min(90).max(720).default(360),
-            view: PreviewViewSchema,
-            camera: VFXPreviewCameraSchema.optional().describe(CameraDescription),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ path, times, w, h, view, camera }) => Safely(async () => {
-        const request: PreviewRequest = { path, time: 0, w, h, view, camera };
-        const sampleTimes = await ResolveSampleTimes(bus, request, times, 6);
-        const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [];
-        const frames: Array<{ time: number; width: number; height: number }> = [];
-        for (const time of sampleTimes) {
-            // 各時刻ごとに preview を作り直す。Preview World は randomSeed から
-            // 決定論的に再シミュレートされるので、同じ時刻なら常に同じ絵になる。
-            await PreparePreview(bus, { ...request, time });
-            const capture = ViewportCaptureResultSchema.parse(
-                await bus.Query({ t: 'viewport.capture', w, h, view: 'vfx' }));
-            content.push({ type: 'text', text: `t = ${time.toFixed(3)}s` });
-            content.push({ type: 'image', data: capture.base64, mimeType: capture.mimeType });
-            frames.push({ time, width: capture.width, height: capture.height });
-        }
-        return { content, structuredContent: { path, frames } };
-    }));
-
     server.registerTool('material_inspect', {
         description: 'NodeのMaterialパス、解決済みShader、インスタンス別parameter overrideを取得します。',
         inputSchema: { id: NodeIdSchema },
@@ -1204,7 +664,7 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
         inputSchema: {
             w: z.number().int().min(160).max(1920).default(960).describe('PNG 幅'),
             h: z.number().int().min(90).max(1080).default(540).describe('PNG 高さ'),
-            view: z.enum(['scene', 'game', 'vfx']).default('scene').describe('Scene / Game / 装飾なし VFX Preview'),
+            view: z.enum(['scene', 'game']).default('scene').describe('Scene / Game'),
             cameraId: NodeIdSchema.optional().describe('省略時は active editor camera'),
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1287,7 +747,7 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
         description: '指定ワールド座標の地形高さ・法線・斜度・4レイヤーの重みを返します。'
             + 'points は [x,y,z] でも [x,z] でも構いません (高さを問う用途で y は使いません)。'
             + 'terrain_sculpt の前後で同じ点を測れば、狙った量だけ動いたかを画像ではなく数値で確認できます。'
-            + 'slopeDegrees は Foliage を置けるか / NavMesh が歩行可能と判定するかに直結します。',
+            + 'slopeDegrees は NavMesh が歩行可能と判定するかに直結します。',
         inputSchema: {
             points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
             id: NodeIdSchema.optional().describe('特定 Terrain に限定する場合'),
@@ -1297,20 +757,13 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
         t: 'terrain.sample', points, ...(id === undefined ? {} : { id }),
     }))));
 
-    server.registerTool('foliage_inspect', {
-        description: 'Foliage の Species 一覧 (モデル・配置モード・密度・スケール範囲・stamp 数) を返します。'
-            + 'bakedInstances は実際に描かれている本数で、stampCount と食い違うときは未 Bake か Terrain 外へ置いた印です。'
-            + 'foliage_scatter の species は、ここで返る index を指定します。',
-        inputSchema: { id: NodeIdSchema.optional() },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ id }) => Safely(async () => TextResult(await bus.Query({
-        t: 'foliage.inspect', ...(id === undefined ? {} : { id }),
-    }))));
-
     server.registerTool('navmesh_get_state', {
         description: 'NavMesh Surface のベイク設定・状態・ポリゴン数・歩行可能範囲(bounds)と、Agent の実行状態を返します。'
             + '「敵が来ない」の切り分けはここから始めます — Surface と Agent の agentTypeId が食い違っていれば経路は絶対に引けません。'
-            + 'bakeState=done かつ polygonCount>0 でなければ navmesh_find_path は失敗します。',
+            + 'bakeState=done かつ polygonCount>0 でなければ navmesh_find_path は失敗します。'
+            + 'stale=true はベイク後に地形か Modifier か設定が変わった状態で、経路は引けても現状と合っていません (navmesh_bake が必要)。'
+            + 'polygonCount=0 のときは failReason に、bake.{tooSteep,tooHighStep,obstructed,eroded} にはセル判定の内訳が入るので、'
+            + 'Max Slope / Max Climb / Agent Radius / NotWalkable Modifier のどれで落ちたのかを総当たりせずに特定できます。',
         inputSchema: { id: NodeIdSchema.optional() },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({
@@ -1371,9 +824,14 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'environment.inspect' }))));
 
     server.registerTool('audio_inspect', {
-        description: 'AudioSource の設定 (clipPath / volume / spatialBlend / 距離減衰) と再生状態、AudioListener の一覧を返します。'
+        description: 'AudioSource の設定 (clipPath / volume / spatialBlend / 距離減衰 / busName) と再生状態、'
+            + 'AudioListener の一覧、ミキサーバスの構成を返します。'
             + 'runtime.playing は保存対象ではないため component 照会には出ません — 鳴っているかはここでしか確認できません。'
-            + 'AudioListener が 0 件なら 3D 音の距離減衰は効きません (warning に出ます)。',
+            + 'AudioListener が 0 件なら 3D 音の距離減衰は効きません (warning に出ます)。'
+            + 'busName に指定できるのは buses[].name にある名前だけで、未知の名前は黙って Master へ落ちます。'
+            + 'AudioReverbZone の残響が乗るのは buses[].reverb が true のバスへ出している音だけです。'
+            + 'activeVoices が voiceLimit に張り付いていると、AudioSource の priority が低い音から畳まれます。'
+            + '手続き効果音 (.synth) の作成・調整は sfx.* Operator (editor_op_invoke / editor_op_query) 側です。',
         inputSchema: { id: NodeIdSchema.optional() },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({
@@ -1397,6 +855,72 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
         inputSchema: { limit: z.number().int().min(1).max(20).default(5) },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ limit }) => Safely(async () => TextResult(await bus.Query({ t: 'build.status', limit }))));
+
+    // ── 流体 (.fluid) ──
+    // WHY 絵を返す照会まで用意するか: 流体の見た目は数値からは予測できない (浮力を 2 倍にしても
+    //     「2 倍上がる」とは限らない)。AI が自分で絵を見て直す反復が回らないと、
+    //     レシピを書けても狙った煙にはならない。
+    server.registerTool('fluid_schema', {
+        description: '流体レシピ (.fluid) の編集可能フィールド目録 (型・範囲・enum)、部品の種類ごとの項目 (operators)、'
+            + 'プリセット名、焼きモード (2d / 3d)、上限 (limits) を返します。'
+            + '流体エフェクトを作る前に必ず最初に読んでください — fluid_set の fields はここに載っている名前と入れ子で書きます。'
+            + 'レシピは «部品» の組み合わせです: 発生源 source (形 sphere / box / cone / ring / texture、最大16)、力 force '
+            + '(wind / attract / repulse / vortex / noise / drag、最大8)、障害物 collider (sphere / box / plane、最大8)。'
+            + 'operators.source.fields.cone のように、'
+            + 'その種類で効く項目だけが種類ごとに載っています (他の項目も保存はされますが、その種類では効きません)。'
+            + 'collider は流体が入り込めない形で、plane は center を通り direction を法線とする面 (裏側がすべて固体。壁・斜めの床)。'
+            + '動く collider は流体を押しのけます。床は collider ではなく gas.floor / liquid.floor で別に持ちます。'
+            + 'source の shape="texture" は画像の形に湧きます (文字・ロゴ・魔法陣): texture に projectRoot 相対の画像パスを入れ、'
+            + '白く不透明なところほど強く注ぎます。Sprite 参照 (sprite_list の reference) を入れるとそのコマだけを切り抜きます。'
+            + '部品の motion.key ({time, offset} の配列、最大8) で部品を時間で動かせます。'
+            + '発生源ごとに色を変えるには render.use_albedo_ramp=true にし、render.albedo_ramp (4 点固定の {color: リニア RGB, position} 配列) に色を並べ、'
+            + '各 source の color_key (0〜1) でどの色かを選びます。気体は色が煙に乗って運ばれて混ざり、液体は粒子ごとに色を持ちます。'
+            + '3d 焼きでもループ (output.loop) と歪み (render.shading="distortion") が焼け、全プリセットが 3d で焼けます。'
+            + 'bake.solver="gpu" は液体でも使えます (新しいが粒子が多いほど速い。怪しければ "cpu" で焼き比べる)。'
+            + '作業の流れ: fluid_schema → fluid_create_effect (または fluid_create) → fluid_add_operator / fluid_set で部品を組む → fluid_preview → '
+            + 'fluid_job_status で画像を実際に見る → fluid_set で調整 → プレビューを繰り返す → fluid_bake → '
+            + 'fluid_job_status で done まで待つ → できた .vfx を prefab_instantiate などで配置。',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => Safely(async () => TextResult(await bus.Query({ t: 'fluid.schema' }))));
+
+    server.registerTool('fluid_get', {
+        description: '.fluid レシピの現在値を全部返します。部品は recipe.source (発生源)・recipe.force (力)・recipe.collider (障害物) の配列で、'
+            + 'ここでの並び順がそのまま fluid_set の "source.<添字>" / fluid_remove_operator の index になります。'
+            + 'enum は添字の数値で返りますが、書くときはラベル文字列でも構いません。'
+            + 'fluid_set で書く前に今の値を確かめる、プレビューの絵と数値を突き合わせる、といった用途に使います。',
+        inputSchema: { path: FluidPathSchema.describe('projectRoot 相対の .fluid パス') },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ path }) => Safely(async () => TextResult(await bus.Query({ t: 'fluid.get', path }))));
+
+    server.registerTool('fluid_job_status', {
+        description: 'fluid_preview / fluid_bake / fluid_create_effect が返した job の進み具合を返します。'
+            + 'state は queued → running → encoding → done / failed / cancelled。done / failed / cancelled になるまでポーリングしてください。'
+            + 'プレビューが done なら画像も返るので、必ず絵を見てから次の fluid_set を決めてください。'
+            + '焼きが done になると outputs (書いたテクスチャ等)・materialPath・vfxPath が埋まります。'
+            + 'fingerprint は出た絵の指紋で、前回と同じなら 1 画素も変わっていません (効かない値をいじり続けるのを防げます)。'
+            + 'solverUsed は実際に解いたソルバー ("gpu" / "cpu")、fallbackReason は GPU を頼んだのに CPU へ落ちた理由です '
+            + '(同じレシピなのに絵が違うときはここを見てください。落としたくなければ bake.solver="gpu")。'
+            + 'failed の理由は message にあります。終わったジョブは直近 32 件まで引けます。',
+        inputSchema: {
+            job: FluidJobIdSchema.describe('fluid_preview / fluid_bake / fluid_create_effect の応答の job'),
+            includeImage: z.boolean().optional().describe('既定 true。false でプレビュー画像を省く (進捗だけ見たいとき)'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ job, includeImage }) => Safely(async () => {
+        const raw = FluidJobStatusResultSchema.parse(await bus.Query({
+            t: 'fluid.jobStatus', job, ...(includeImage === undefined ? {} : { includeImage }),
+        }));
+        // base64 を text に残すと、同じ画像を文字列でも読ませて context を浪費する。
+        const { image, ...status } = raw;
+        const text = { type: 'text' as const, text: JSON.stringify(status, null, 2) };
+        return {
+            content: image === undefined
+                ? [text]
+                : [text, { type: 'image' as const, data: image.base64, mimeType: image.mimeType }],
+            structuredContent: status,
+        };
+    }));
 }
 
 // Stage B/C でのみ Command を登録し、MCP から engine の Undo 対応 Command Bus へ転送する。
@@ -1409,6 +933,29 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         idempotentHint: false,
         openWorldHint: false,
     };
+
+    // ── Operator ゲートウェイ ──
+    // editor_op_list で見つけた操作をそのまま実行する。実行可否の判定は Editor 側の
+    // poll が持つので、ホットキーやメニューでグレーアウトされる状況ではここも拒否される
+    // (AI にだけできる操作、という抜け道を作らない)。
+    server.registerTool('editor_op_invoke', {
+        description: 'editor_op_list に載っている操作を実行します。'
+            + 'メニューやホットキーが呼ぶのと同一の実体を通るため、人が UI で行った場合と結果が一致します。'
+            + '実行可能条件を満たさない場合は NOT_AVAILABLE で拒否され、シーンには触れません。'
+            + 'args は operator が宣言した params の名前で渡します (未宣言のキーはエラー)。'
+            + 'dry-run 権限では引数検証と実行可否の判定だけを行います。',
+        inputSchema: {
+            id: z.string().min(1).max(128)
+                .describe('operator の id (例: "scene.save" / "gizmo.move")'),
+            args: z.record(z.string(), z.unknown()).optional()
+                .describe('editor_op_list の params に対応する引数。引数なしの操作では省略する'),
+        },
+        annotations: writeAnnotations,
+    }, ({ id, args }) => run({
+        t: 'editor.op.invoke',
+        id,
+        ...(args === undefined ? {} : { args }),
+    }));
 
     // ── Behavior Tree の編集 ──
     server.registerTool('bt_node_add', {
@@ -1543,407 +1090,89 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         ...(name === undefined ? {} : { name }),
         ...(description === undefined ? {} : { description }),
     }));
-
-    server.registerTool('vfx_template_apply', {
-        description: '組み込みまたはvfx_knowledge_catalogで見つけた任意のTemplateを適用します。'
-            + 'mode=replace(既定)は新しい.vfxへ複製、mode=mergeは既存.vfxへ層を追記、'
-            + 'mode=subgraphは複製せずSub Graphノードとして参照します。'
-            + 'mergeはノードを1個ずつaddするより確実で、パラメーター・binding・Variant・'
-            + 'Signal Graphまで欠落なく持ち込みます。応答のdetailに改名されたパラメーター・'
-            + '引き上げられたbudget・不足素材が載るため、次の手で存在しない名前を指さずに済みます。'
-            + 'dry-run・Undoに対応します。',
-        inputSchema: {
-            template: z.string().min(1).max(260)
-                .describe('Template名、またはprojectRoot相対の.vfxパス'),
-            path: z.string().min(1)
-                .describe('projectRoot相対の.vfx。replaceでは出力先、merge/subgraphでは取り込み先(既存必須)'),
-            name: z.string().min(1).max(128).optional(),
-            mode: z.enum(['replace', 'merge', 'subgraph']).optional()
-                .describe('replace=複製 / merge=追記 / subgraph=参照(Template更新が伝播)'),
-            groups: z.array(z.number().int().min(1)).max(64).optional()
-                .describe('取り込む層のgroupId。vfx_knowledge_catalogのlayersで確認する。省略で全体'),
-            anchorNodeId: z.number().int().min(1).optional()
-                .describe('取り込んだ塊の発火元ノード。省略でEntry'),
-            trigger: z.enum(['onComplete', 'onStart', 'onCollision', 'onDeath']).optional()
-                .describe('anchorNodeIdからの発火条件。onCollision/onDeathはParticleのみ'),
-            delay: z.number().min(0).max(600).optional(),
-            parentNodeId: z.number().int().min(1).optional()
-                .describe('空間の親(Transform階層)。発火順ではない'),
-            variant: z.string().min(1).max(128).optional()
-                .describe('適用するVariant Set名。公開パラメーターの既定値へ焼き込む'),
-            raiseBudget: z.boolean().optional()
-                .describe('取り込み後の実使用量へbudget上限を合わせる(既定true)。'
-                    + 'falseにすると検証は通るのに実行時だけ粒子が出ない状態を作れる'),
-        }, annotations: writeAnnotations,
-    }, ({ template, path, name, mode, groups, anchorNodeId, trigger, delay, parentNodeId,
-          variant, raiseBudget }) => run({
-        t: 'vfx.template.apply', template, path,
-        ...(name === undefined ? {} : { name }),
-        ...(mode === undefined ? {} : { mode }),
-        ...(groups === undefined ? {} : { groups }),
-        ...(anchorNodeId === undefined ? {} : { anchorNodeId }),
-        ...(trigger === undefined ? {} : { trigger }),
-        ...(delay === undefined ? {} : { delay }),
-        ...(parentNodeId === undefined ? {} : { parentNodeId }),
-        ...(variant === undefined ? {} : { variant }),
-        ...(raiseBudget === undefined ? {} : { raiseBudget }),
-    }));
-
-    server.registerTool('vfx_candidate_fork', {
-        description: '既存.vfxまたは成功Templateを変更せず、反復専用の候補.vfxへ分岐します。'
-            + '候補だけをコード差分で編集するため、各試行を独立比較でき、失敗時も元へ戻す操作が不要です。',
-        inputSchema: {
-            source: z.string().min(1).max(260).describe('元の.vfxパスまたはTemplate名'),
-            candidatePath: z.string().min(1).describe('projectRoot相対の候補.vfx出力先'),
-            name: z.string().min(1).max(128).optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ source, candidatePath, name }) => run({
-        t: 'vfx.template.apply', template: source, path: candidatePath,
-        ...(name === undefined ? {} : { name }),
-    }));
-
-    server.registerTool('vfx_candidate_accept', {
-        description: 'vfx_candidate_evaluateでacceptになった候補だけを本番.vfxへ採択します。'
-            + '本番の旧内容はUndoへ保持されるため、生成と採択を分離したまま安全に反復できます。',
-        inputSchema: {
-            candidatePath: z.string().min(1).max(260),
-            targetPath: z.string().min(1).describe('projectRoot相対の本番.vfx'),
-            name: z.string().min(1).max(128).optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ candidatePath, targetPath, name }) => run({
-        t: 'vfx.template.apply', template: candidatePath, path: targetPath,
-        ...(name === undefined ? {} : { name }),
-    }));
-
-    server.registerTool('vfx_knowledge_promote', {
-        description: '採択済み候補をプロジェクト固有の再利用可能Templateへ昇格します。'
-            + '用途・成功条件はdescriptionとtagsへ保存され、Editorのカタログと'
-            + 'vfx_knowledge_catalogの両方から同じ文言で検索できます。'
-            + '評価がacceptになる前には呼ばないでください。',
-        inputSchema: {
-            path: z.string().min(1).max(260).describe('採択済み.vfx'),
-            name: z.string().regex(/^[A-Za-z0-9_-]+$/).min(1).max(96)
-                .describe('Templateファイル名。パス区切り不可'),
-            summary: z.string().min(1).max(512)
-                .describe('用途・演出意図・成功条件。Templateのdescriptionとして保存される'),
-            category: z.string().regex(/^[A-Za-z0-9_-]+$/).max(64).optional()
-                .describe('Templates直下のサブフォルダ。カタログではカテゴリとして畳まれる'),
-            tags: z.array(z.string().min(1).max(48)).max(16).optional()
-                .describe('検索用のタグ。descriptionと合わせて部分一致の対象になる'),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, name, summary, category, tags }) => run({
-        t: 'vfx.template.apply',
-        template: path,
-        // 名前はファイル名。説明を名前へ押し込むと、カタログの表示名が説明文になる。
-        path: category === undefined || category === ''
-            ? `Assets/VFX/Templates/${name}.vfx`
-            : `Assets/VFX/Templates/${category}/${name}.vfx`,
-        name,
-        description: summary,
-        ...(tags === undefined ? {} : { tags }),
-    }));
-
-    server.registerTool('vfx_optimize_budget', {
-        description: 'エフェクトのコストを下げます。適用前dry-runとUndoに対応します。'
-            + '削る対象はstrategyで選びます。'
-            + 'particles=発生数・上限を比例で下げる(従来の挙動)。'
-            + 'fillRate=粒を大きくして枚数を減らし、寄与の大きい層を遠距離で間引く。'
-            + 'both=両方。'
-            + '重要: パーティクルの実コストは粒子数ではなく塗った画素数(fill rate)で決まります。'
-            + '原因がfill rateのときに粒子数だけ減らすと、効きが悪いうえ見た目だけが痩せます。'
-            + 'どちらが効くかはvfx_runtime_stateのcost.overdrawとcost.particlePassGpuMsで判断してください。'
-            + 'overdraw.meanLayersが大きい(5枚超)ならfillRate、'
-            + '粒子数がbudget超過なだけならparticlesです。',
-        inputSchema: {
-            path: z.string().min(1),
-            targetParticles: z.number().int().min(1).max(10000000).optional()
-                .describe('strategy=fillRate のときだけ省略できます'),
-            strategy: z.enum(['particles', 'fillRate', 'both']).optional()
-                .describe('省略時は particles (従来の挙動)'),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, targetParticles, strategy }) => run({
-        t: 'vfx.optimize', path,
-        ...(targetParticles === undefined ? {} : { targetParticles }),
-        ...(strategy === undefined ? {} : { strategy }),
-    }));
-
-    server.registerTool('vfx_repair', {
-        description: 'vfx_lintが autoFixable=true を返した不備を自動修正します。対応する code は '
-            + 'UNREACHABLE_NODE / MISSING_ASSET / SHEARED_SPRITE / LIGHTING_SATURATED / '
-            + 'ALPHA_NO_SORT / MESH_NO_FADE / PARENT_HAS_NO_TRANSFORM です。'
-            + '既定では全て有効なので、通常は path だけ渡してください。'
-            + '直し方が一意に決まるものだけを扱い、設計判断(何を出すか)には触れません。'
-            + 'lint → repair → lint の順で使い、残ったissueをfixに従って手で直します。'
-            + 'dry-runとUndoに対応します。',
-        inputSchema: {
-            path: z.string().min(1),
-            connectOrphans: z.boolean().optional().describe('孤立ノードをEntryへ接続する (既定true)'),
-            fixAssets: z.boolean().optional().describe('欠落アセットパスを近い候補へ置換する (既定true)'),
-            fixSprites: z.boolean().optional().describe('回転と併用された非等方sizeAxisScaleを等方へ戻す (既定true)'),
-            fixLighting: z.boolean().optional().describe('1.0超のlightingStrengthを0.8へ落とす (既定true)'),
-            fixSorting: z.boolean().optional().describe('半透明エミッターのsortModeをBackToFrontにする (既定true)'),
-            fixMeshFade: z.boolean().optional().describe('Meshノードのmesh.colorEnd RGBを0にする (既定true)'),
-            fixParents: z.boolean().optional().describe('Entry/Delayを親にした無効なparentNodeIdを外す (既定true)'),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, connectOrphans, fixAssets, fixSprites, fixLighting, fixSorting, fixMeshFade, fixParents }) => run({
-        t: 'vfx.repair', path,
-        ...(connectOrphans === undefined ? {} : { connectOrphans }),
-        ...(fixAssets === undefined ? {} : { fixAssets }),
-        ...(fixSprites === undefined ? {} : { fixSprites }),
-        ...(fixLighting === undefined ? {} : { fixLighting }),
-        ...(fixSorting === undefined ? {} : { fixSorting }),
-        ...(fixMeshFade === undefined ? {} : { fixMeshFade }),
-        ...(fixParents === undefined ? {} : { fixParents }),
-    }));
-
-    server.registerTool('vfx_variant_upsert', {
-        description: '公開パラメーター値の名前付きVariant Setを一括作成・置換します。複数styleのAI量産に使います。',
-        inputSchema: { path: z.string().min(1), name: z.string().min(1).max(128), values: z.record(z.string(), JsonValueSchema) },
-        annotations: writeAnnotations,
-    }, ({ path, name, values }) => run({ t: 'vfx.variant.upsert', path, name, values }));
-
-    server.registerTool('vfx_variant_remove', {
-        description: '名前付きVariant Setを削除します。Undo可能です。',
-        inputSchema: { path: z.string().min(1), name: z.string().min(1).max(128) },
-        annotations: writeAnnotations,
-    }, ({ path, name }) => run({ t: 'vfx.variant.remove', path, name }));
-
-    server.registerTool('vfx_graph_set', {
-        description: 'Graph名と粒子・Light・Audioのbudget上限を変更します。UIのGraph Settingsと同じ保存面をUndo可能に編集します。',
-        inputSchema: {
-            path: z.string().min(1),
-            name: z.string().min(1).max(128).optional(),
-            maxParticles: z.number().int().min(1).max(10000000).optional(),
-            maxLights: z.number().int().min(0).max(1024).optional(),
-            maxAudioVoices: z.number().int().min(0).max(1024).optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, name, maxParticles, maxLights, maxAudioVoices }) => run({
-        t: 'vfx.graph.set', path,
-        ...(name === undefined ? {} : { name }),
-        ...(maxParticles === undefined ? {} : { maxParticles }),
-        ...(maxLights === undefined ? {} : { maxLights }),
-        ...(maxAudioVoices === undefined ? {} : { maxAudioVoices }),
-    }));
-
-    server.registerTool('vfx_node_add', {
-        description: '検証済み.vfxへEffectノードを追加し、任意のsourceから接続します。budget/DAG超過は拒否されUndo可能です。',
-        inputSchema: {
-            path: z.string().min(1),
-            // C++ の ParseVFXNodeType / editorContracts.ts と3箇所そろえること。
-            nodeType: z.enum(['particle', 'trail', 'meshTrail', 'light', 'audio', 'decal', 'delay',
-                'subGraph', 'forceField', 'mesh', 'screenEffect', 'cameraShake', 'timeScale', 'wind',
-                'reroute'])
-                .describe('forceField=風/吸引/渦/乱流, mesh=衝撃波シェル, screenEffect=画面フラッシュ, '
-                    + 'cameraShake=カメラ揺れ, timeScale=ヒットストップ, wind=風域, '
-                    + 'reroute=配線の中継点(実行のタイミングには影響しない。Canvas の見た目専用)'),
-            name: z.string().min(1).max(128).optional(),
-            from: z.number().int().positive().optional(),
-            assetPath: z.string().min(1).optional(),
-        }, annotations: writeAnnotations,
-    }, ({ path, nodeType, name, from, assetPath }) => run({
-        t: 'vfx.node.add', path, nodeType,
-        ...(name === undefined ? {} : { name }), ...(from === undefined ? {} : { from }),
-        ...(assetPath === undefined ? {} : { assetPath }),
-    }));
-
-    server.registerTool('vfx_node_duplicate', {
-        description: 'VFXノードの全設定を複製し、新しいNodeIdを割り当てます。任意の名前・Canvas座標を指定でき、Undo可能です。',
-        inputSchema: {
-            path: z.string().min(1), nodeId: z.number().int().positive(),
-            name: z.string().min(1).max(128).optional(),
-            editorX: z.number().finite().optional(), editorY: z.number().finite().optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, nodeId, name, editorX, editorY }) => run({
-        t: 'vfx.node.duplicate', path, nodeId,
-        ...(name === undefined ? {} : { name }),
-        ...(editorX === undefined ? {} : { editorX }),
-        ...(editorY === undefined ? {} : { editorY }),
-    }));
-
-    server.registerTool('vfx_node_remove', {
-        description: 'VFXノードと関連link/bindingを検証付きで削除します。',
-        inputSchema: { path: z.string().min(1), nodeId: z.number().int().positive() }, annotations: writeAnnotations,
-    }, ({ path, nodeId }) => run({ t: 'vfx.node.remove', path, nodeId }));
-
-    server.registerTool('vfx_node_set_enabled', {
-        description: 'VFXノードを配線を保ったまま有効化・無効化します。無効ノードはpreviewとbudgetから除外され、Undo可能です。',
-        inputSchema: { path: z.string().min(1), nodeId: z.number().int().positive(), enabled: z.boolean() },
-        annotations: writeAnnotations,
-    }, ({ path, nodeId, enabled }) => run({ t: 'vfx.node.setEnabled', path, nodeId, enabled }));
-
-    server.registerTool('vfx_node_set_metadata', {
-        description: 'ノードの表示名とCanvas座標を更新します。実行パラメーターではないEditor情報もAIから完全に編集できます。',
-        inputSchema: {
-            path: z.string().min(1), nodeId: z.number().int().positive(),
-            name: z.string().min(1).max(128).optional(),
-            editorX: z.number().finite().optional(), editorY: z.number().finite().optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, nodeId, name, editorX, editorY }) => run({
-        t: 'vfx.node.setMetadata', path, nodeId,
-        ...(name === undefined ? {} : { name }),
-        ...(editorX === undefined ? {} : { editorX }),
-        ...(editorY === undefined ? {} : { editorY }),
-    }));
-
-    server.registerTool('vfx_node_set_parent', {
-        description: 'VFXノードの「空間の親」を設定します。親のPosition/Rotation/Scaleがこのノードへ合成され、'
-            + '親を動かすと子もついてきます。'
-            + 'これはgraph link(いつ発火するか)とは完全に別の軸です。'
-            + 'linkで繋いだだけでは位置は継承されず、親子にしただけでは発火順は変わりません。'
-            + 'parentNodeIdを省略または-1にすると親を外します。'
-            + '親にできるのは実体を持つノード(Particle/Mesh/Light/Trail等)だけで、'
-            + 'Entry/Delayを指定するとPARENT_HAS_NO_TRANSFORMで拒否されます。'
-            + '循環はPARENT_CYCLEで拒否されます。Undo可能です。',
-        inputSchema: {
-            path: z.string().min(1),
-            nodeId: z.number().int().positive(),
-            parentNodeId: z.number().int().optional()
-                .describe('親ノードid。省略または-1でowner直下へ戻す'),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, nodeId, parentNodeId }) => run({
-        t: 'vfx.node.setParent', path, nodeId,
-        ...(parentNodeId === undefined ? {} : { parentNodeId }),
-    }));
-
-    server.registerTool('vfx_node_set_field', {
-        description: 'vfx_get_schemaに存在する型付きschemaPathだけを変更します。保存前にbudgetとDAGを再検証します。'
-            + 'Curve型(sizeCurve/velocityCurve/rotationCurve/dragCurve/light.intensityCurve等)は '
-            + '{"preset":"Spike","scale":1.0} または {"interp":0|1|2,"keys":[[t,v],...]} で、'
-            + 'Gradient型は {"interp":0|1|2,"keys":[[t,r,g,b,a],...]} で指定します(最大8キー)。'
-            + '利用できるpreset名は vfx_curve_presets を参照してください。',
-        inputSchema: { path: z.string().min(1), nodeId: z.number().int().positive(), schemaPath: z.string().min(1).max(256), value: JsonValueSchema },
-        annotations: writeAnnotations,
-    }, ({ path, nodeId, schemaPath, value }) => run({ t: 'vfx.node.setField', path, nodeId, schemaPath, value }));
-
-    server.registerTool('vfx_link_add', {
-        description: 'VFXイベントlinkを追加します。循環・重複・無効なcollision sourceは拒否します。',
-        inputSchema: { path: z.string().min(1), from: z.number().int().positive(), to: z.number().int().positive(), trigger: z.enum(['onComplete', 'onStart', 'onCollision', 'onDeath']).optional(), delay: z.number().finite().nonnegative().optional() },
-        annotations: writeAnnotations,
-    }, ({ path, from, to, trigger, delay }) => run({
-        t: 'vfx.link.add', path, from, to,
-        ...(trigger === undefined ? {} : { trigger }), ...(delay === undefined ? {} : { delay }),
-    }));
-
-    server.registerTool('vfx_link_update', {
-        description: '既存イベントlinkの接続先・trigger・delayを更新します。削除して作り直さず1回のUndoで変更できます。',
-        inputSchema: {
-            path: z.string().min(1), index: z.number().int().nonnegative(),
-            from: z.number().int().positive().optional(), to: z.number().int().positive().optional(),
-            trigger: z.enum(['onComplete', 'onStart', 'onCollision', 'onDeath']).optional(),
-            delay: z.number().finite().nonnegative().optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ path, index, from, to, trigger, delay }) => run({
-        t: 'vfx.link.update', path, index,
-        ...(from === undefined ? {} : { from }), ...(to === undefined ? {} : { to }),
-        ...(trigger === undefined ? {} : { trigger }), ...(delay === undefined ? {} : { delay }),
-    }));
-
-    server.registerTool('vfx_link_remove', {
-        description: 'index指定でVFXイベントlinkを削除します。',
-        inputSchema: { path: z.string().min(1), index: z.number().int().nonnegative() }, annotations: writeAnnotations,
-    }, ({ path, index }) => run({ t: 'vfx.link.remove', path, index }));
-
     server.registerTool('vfx_generate_motion_vectors', {
         description: 'フリップブックアトラスを解析してモーションベクターアトラス(<name>_mv.png)を生成します。'
-            + 'columns/rowsはアトラスの分割数です。生成後はvfx_node_set_fieldで'
-            + 'particle.motionVectorTexturePathへ割り当て、particle.motionVectorFlipbookを有効にしてください。',
+            + 'columns/rowsはアトラスの分割数です。MVは «次のコマへの移動量の逆符号» を、アトラス内の最大移動量Sで'
+            + '正規化して保存するため、パーティクルの .mat には [textures] tex5 = <name>_mv.png と'
+            + '[particle] motion_vector_strength = S / motion_vector_flipbook = true / flipbook_frame_blending = true'
+            + 'が揃っている必要があります。materialPath を渡すとこれらを自動で書き込みます (Sは他の手段では分かりません)。',
         inputSchema: {
             texturePath: z.string().min(1).max(1024),
             columns: z.number().int().min(1).max(64),
             rows: z.number().int().min(1).max(64),
             searchRadius: z.number().int().min(1).max(64).optional(),
             loop: z.boolean().optional(),
+            rowSequences: z.boolean().optional()
+                .describe('各行を独立したアニメーションとして扱う (.mat の sprite_random_row と揃える)'),
+            materialPath: z.string().min(1).max(1024).optional()
+                .describe('生成結果を割り当てるパーティクル .mat (projectRoot 相対)'),
         },
         annotations: writeAnnotations,
-    }, ({ texturePath, columns, rows, searchRadius, loop }) => run({
+    }, ({ texturePath, columns, rows, searchRadius, loop, rowSequences, materialPath }) => run({
         t: 'vfx.generateMotionVectors', texturePath, columns, rows,
         ...(searchRadius === undefined ? {} : { searchRadius }),
         ...(loop === undefined ? {} : { loop }),
+        ...(rowSequences === undefined ? {} : { rowSequences }),
+        ...(materialPath === undefined ? {} : { materialPath }),
     }));
 
-    server.registerTool('vfx_param_declare', {
-        description: '意味名・型・default・任意rangeを持つ公開VFXパラメーターを宣言します。',
-        inputSchema: { path: z.string().min(1), name: z.string().min(1).max(128), paramType: z.enum(['float', 'int', 'bool', 'color', 'vector3', 'asset']), defaultValue: JsonValueSchema, minimum: z.number().finite().optional(), maximum: z.number().finite().optional() },
-        annotations: writeAnnotations,
-    }, ({ path, name, paramType, defaultValue, minimum, maximum }) => run({
-        t: 'vfx.param.declare', path, name, paramType, defaultValue,
-        ...(minimum === undefined ? {} : { minimum }), ...(maximum === undefined ? {} : { maximum }),
-    }));
-
-    server.registerTool('vfx_param_remove', {
-        description: '公開VFXパラメーターと、そのbinding・Variant overrideをまとめて削除します。Undo可能です。',
-        inputSchema: { path: z.string().min(1), name: z.string().min(1).max(128) },
-        annotations: writeAnnotations,
-    }, ({ path, name }) => run({ t: 'vfx.param.remove', path, name }));
-
-    server.registerTool('vfx_param_bind', {
-        description: '公開パラメーターをexposableかつ型互換なVFXノードschema leafへbindingします。',
-        inputSchema: { path: z.string().min(1), name: z.string().min(1).max(128), nodeId: z.number().int().positive(), schemaPath: z.string().min(1).max(256) },
-        annotations: writeAnnotations,
-    }, ({ path, name, nodeId, schemaPath }) => run({ t: 'vfx.param.bind', path, name, nodeId, schemaPath }));
-
-    server.registerTool('vfx_param_unbind', {
-        description: '公開パラメーターのbindingを解除します。nodeId/schemaPathを省略すると、そのパラメーターの全bindingを解除します。',
+    // ── Sprite ──
+    server.registerTool('sprite_rename', {
+        description: 'Sprite の名前を変更します。ID は変わらないので、保存済みの参照は切れません。'
+            + '名前は参照キーを兼ねるため、テクスチャ内で一意である必要があります。'
+            + '連番 (_0.._271) のままだと人も AI もどのコマか呼べないので、意味のある名前を付けてください。',
         inputSchema: {
-            path: z.string().min(1), name: z.string().min(1).max(128),
-            nodeId: z.number().int().positive().optional(),
-            schemaPath: z.string().min(1).max(256).optional(),
+            path: z.string().min(1).max(1024).describe('projectRoot 相対の画像パス'),
+            sprite: z.string().min(1).max(256).describe('現在の ID または名前'),
+            name: z.string().min(1).max(128).describe('新しい名前 (テクスチャ内で一意)'),
         },
         annotations: writeAnnotations,
-    }, ({ path, name, nodeId, schemaPath }) => run({
-        t: 'vfx.param.unbind', path, name,
-        ...(nodeId === undefined ? {} : { nodeId }),
-        ...(schemaPath === undefined ? {} : { schemaPath }),
+    }, ({ path, sprite, name }) => run({ t: 'sprite.rename', path, sprite, name }));
+
+    server.registerTool('sprite_slice', {
+        description: 'Sprite Texture を切り直します。Sprite Editor の Slice と同じ実装です。'
+            + 'type=grid (既定) は等間隔グリッドで、columns/rows か cellWidth/cellHeight を指定します。'
+            + 'type=automatic は alpha が連結した島ごとに外接矩形を作ります (コマ間隔が不揃いなシート向け)。'
+            + '既定 (mode=smart) は重なった既存矩形の ID・名前・pivot・Border を残して矩形だけ合わせ直すため、'
+            + '保存済みの参照も詰めた pivot も生き残ります。'
+            + 'mode=safe は重なった既存矩形に一切触れず、新しい場所だけ足します。'
+            + 'mode=replace は全 ID を作り直すので、その Sprite への参照はすべて切れます。',
+        inputSchema: {
+            path: z.string().min(1).max(1024).describe('projectRoot 相対の画像パス'),
+            type: z.enum(['grid', 'automatic']).optional().describe('既定は grid'),
+            columns: z.number().int().min(1).max(256).optional(),
+            rows: z.number().int().min(1).max(256).optional(),
+            cellWidth: z.number().int().min(1).max(16384).optional(),
+            cellHeight: z.number().int().min(1).max(16384).optional(),
+            offsetX: z.number().int().min(0).max(16384).optional().describe('左上の余白 (grid)'),
+            offsetY: z.number().int().min(0).max(16384).optional(),
+            paddingX: z.number().int().min(0).max(16384).optional().describe('セル間の隙間 (grid)'),
+            paddingY: z.number().int().min(0).max(16384).optional(),
+            pivotX: z.number().min(0).max(1).optional().describe('新しい矩形の pivot。既定 0.5'),
+            pivotY: z.number().min(0).max(1).optional(),
+            keepEmptyRects: z.boolean().optional().describe('false で不透明ピクセルの無いセルを捨てる (grid)'),
+            prefix: z.string().min(1).max(64).optional().describe('名前の接頭辞。既定はファイル名 + "_"'),
+            mode: z.enum(['smart', 'safe', 'replace']).optional().describe('既定は smart (ID を引き継ぐ)'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, type, columns, rows, cellWidth, cellHeight, offsetX, offsetY,
+          paddingX, paddingY, pivotX, pivotY, keepEmptyRects, prefix, mode }) => run({
+        t: 'sprite.slice', path,
+        ...(type === undefined ? {} : { type }),
+        ...(columns === undefined ? {} : { columns }),
+        ...(rows === undefined ? {} : { rows }),
+        ...(cellWidth === undefined ? {} : { cellWidth }),
+        ...(cellHeight === undefined ? {} : { cellHeight }),
+        ...(offsetX === undefined ? {} : { offsetX }),
+        ...(offsetY === undefined ? {} : { offsetY }),
+        ...(paddingX === undefined ? {} : { paddingX }),
+        ...(paddingY === undefined ? {} : { paddingY }),
+        ...(pivotX === undefined ? {} : { pivotX }),
+        ...(pivotY === undefined ? {} : { pivotY }),
+        ...(keepEmptyRects === undefined ? {} : { keepEmptyRects }),
+        ...(prefix === undefined ? {} : { prefix }),
+        ...(mode === undefined ? {} : { mode }),
     }));
-
-    server.registerTool('vfx_param_set_default', {
-        description: '公開VFXパラメーターのdefault値ソースを型検証して更新します。',
-        inputSchema: { path: z.string().min(1), name: z.string().min(1).max(128), value: JsonValueSchema }, annotations: writeAnnotations,
-    }, ({ path, name, value }) => run({ t: 'vfx.param.setDefault', path, name, value }));
-
-    server.registerTool('vfx_instance_set', {
-        description: 'Scene上のVFXGraphComponentへ型付きsparse overrideを設定します。',
-        inputSchema: { id: NodeIdSchema, name: z.string().min(1).max(128), value: JsonValueSchema }, annotations: writeAnnotations,
-    }, ({ id, name, value }) => run({ t: 'vfx.instance.set', id, name, value }));
-
-    server.registerTool('vfx_instance_clear', {
-        description: 'Scene上のVFX parameter overrideを消し、variant/defaultへ戻します。',
-        inputSchema: { id: NodeIdSchema, name: z.string().min(1).max(128) }, annotations: writeAnnotations,
-    }, ({ id, name }) => run({ t: 'vfx.instance.clear', id, name }));
-
-    const VFXGroupFields = {
-        title: z.string().min(1).max(128).optional(),
-        note: z.string().max(2048).optional(),
-        x: z.number().finite().optional(), y: z.number().finite().optional(),
-        width: z.number().finite().min(80).max(10000).optional(),
-        height: z.number().finite().min(60).max(10000).optional(),
-        color: z.tuple([z.number().finite(), z.number().finite(), z.number().finite(), z.number().finite()]).optional(),
-    };
-    server.registerTool('vfx_group_add', {
-        description: 'Graph CanvasへGroup/Noteを追加します。構成意図をAIと人間の双方へ残すEditor情報で、Undo可能です。',
-        inputSchema: { path: z.string().min(1), ...VFXGroupFields },
-        annotations: writeAnnotations,
-    }, ({ path, ...fields }) => run({ t: 'vfx.group.add', path, ...fields }));
-    server.registerTool('vfx_group_update', {
-        description: 'Group/Noteのタイトル・説明・位置・大きさ・色を更新します。Undo可能です。',
-        inputSchema: { path: z.string().min(1), groupId: z.number().int().positive(), ...VFXGroupFields },
-        annotations: writeAnnotations,
-    }, ({ path, groupId, ...fields }) => run({ t: 'vfx.group.update', path, groupId, ...fields }));
-    server.registerTool('vfx_group_remove', {
-        description: 'Group/Noteを削除します。内包ノード自体は削除せず、Undo可能です。',
-        inputSchema: { path: z.string().min(1), groupId: z.number().int().positive() },
-        annotations: writeAnnotations,
-    }, ({ path, groupId }) => run({ t: 'vfx.group.remove', path, groupId }));
 
     server.registerTool('node_create', {
         description: dryRun ? 'ノード作成の差分を試算します。シーンは変更しません。' : 'Undo 可能なノードを作成します。',
@@ -2904,43 +2133,6 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         annotations: writeAnnotations,
     }, ({ id, layer, material }) => run({ t: 'terrain.setLayerMaterial', id, layer, material }));
 
-    server.registerTool('foliage_scatter', {
-        description: '指定した円内へ植生 (Species) を散布します。地形の高さへ吸着し、斜度が maxSlopeDegrees を超える場所は避けます。'
-            + 'id は FoliageComponent と TerrainComponent の両方を持つノードです'
-            + '(stamp は Terrain ローカル座標で保存するため、Terrain が同居していないと置けません)。'
-            + 'seed を指定すると同じ要求から必ず同じ配置になります — 指定しないと「もう一度」で別の絵になり、結果を比較できません。'
-            + '1 本も置けなかった場合は斜度超過と範囲外の内訳をエラーに含めるので、radius か maxSlopeDegrees のどちらを直すか判断できます。'
-            + '配置モードは STAMP へ切り替わります (PROCEDURAL のままだと stamps は描画に使われません)。',
-        inputSchema: {
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63).describe('foliage_inspect が返す species index'),
-            position: Vec3Schema.describe('散布円の中心 (ワールド座標)'),
-            radius: z.number().finite().gt(0).max(500).default(5),
-            count: z.number().int().min(1).max(500).default(10),
-            maxSlopeDegrees: z.number().finite().min(0).max(90).default(40),
-            seed: z.number().int().min(1).optional().describe('決定論的な配置にする乱数種'),
-        },
-        annotations: writeAnnotations,
-    }, ({ id, species, position, radius, count, maxSlopeDegrees, seed }) => run({
-        t: 'foliage.scatter', id, species, position, radius, count, maxSlopeDegrees,
-        ...(seed === undefined ? {} : { seed }),
-    }));
-
-    server.registerTool('foliage_clear', {
-        description: '植生の stamp を削除します。position と radius を指定するとその円内だけ、省略するとその Species の全 stamp を消します。',
-        inputSchema: {
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63),
-            position: Vec3Schema.optional(),
-            radius: z.number().finite().gt(0).max(500).optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ id, species, position, radius }) => run({
-        t: 'foliage.clear', id, species,
-        ...(position === undefined ? {} : { position }),
-        ...(radius === undefined ? {} : { radius }),
-    }));
-
     server.registerTool('navmesh_bake', {
         description: 'NavMesh Surface の再ベイクを要求します。id 省略で有効な全 Surface が対象です。'
             + 'terrain_sculpt やコライダーの追加/削除の後は必ず実行してください — 古い NavMesh のまま経路を引くと'
@@ -2964,6 +2156,199 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         inputSchema: { target: z.literal('script').default('script') },
         annotations: writeAnnotations,
     }, ({ target }) => run({ t: 'build.run', target }));
+
+    // ── 流体 (.fluid) ──
+    server.registerTool('fluid_create', {
+        description: 'プリセットから .fluid レシピを 1 つ作ります (テクスチャはまだ焼きません)。'
+            + '既存ファイルは既定で拒否 (FLUID_EXISTS) します。'
+            + 'レシピと .mat / .vfx をまとめて一度に作りたいなら fluid_create_effect のほうが手数が少なく済みます。'
+            + '作った後は fluid_preview で見た目を確かめてから fluid_set で詰めます。',
+        inputSchema: {
+            path: FluidPathSchema.describe('作る .fluid の projectRoot 相対パス (例: Assets/VFX/Fluid/Smoke.fluid)'),
+            preset: FluidPresetSchema.optional().describe(FluidPresetDescription),
+            overwrite: z.boolean().optional().describe('既定 false。true で既存 .fluid を上書き'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, preset, overwrite }) => run({
+        t: 'fluid.create', path,
+        ...(preset === undefined ? {} : { preset }),
+        ...(overwrite === undefined ? {} : { overwrite }),
+    }));
+
+    server.registerTool('fluid_set', {
+        description: '.fluid レシピの一部だけを書き換えます。fields は fluid_schema と同じ入れ子で渡します '
+            + '(例: {"gas":{"buoyancy":2}} / {"bake":{"mode":"3d"}} / {"source.0.density":3} / {"force.1.type":"vortex"} / {"collider.0.shape":"plane"})。'
+            + '部品は source (発生源)・force (力)・collider (障害物) の配列で、1 つだけ直すなら "source.0.xxx" のように添字で書きます。'
+            + '配列ごと渡すと要素数がその長さになり (上限 source 16 / force 8 / collider 8 / motion.key 8 を超えた分は切り詰めて clamped に載ります)、'
+            + '要素内で省いたキーは既存値のままです。部品を 1 つ足す・消す・並べ替えるだけなら fluid_add_operator / fluid_remove_operator / fluid_move_operator のほうが安全です。'
+            + '部品を時間で動かすには "source.0.motion.key" に [{"time":0,"offset":[0,0,0]},{"time":1,"offset":[0.5,0,0]}] を time 昇順で渡します。'
+            + 'enum (shape / type / shading / bake.mode など) はラベル文字列で書けます (大文字小文字は問いません)。'
+            + 'shape="texture" の発生源の texture は projectRoot 相対の画像パス (例 "Assets/Textures/Logo.png") か、'
+            + 'Sprite 参照 (sprite_list の reference。そのコマだけを切り抜きます) で、'
+            + '画像がまだ無くても書き込みは通り、応答の warnings に "texture not found: ..." が載ります (projectRoot の外は BAD_PATH)。'
+            + '存在しないコマを指した Sprite 参照は warnings に "sprite not found: ..." が載り、焼くと板の形で湧きます。'
+            + '発生源ごとの色は {"render.use_albedo_ramp":true,"render.albedo_ramp":[{"color":[0.05,0.05,0.05],"position":0},'
+            + '{"color":[0.3,0.3,0.3],"position":0.33},{"color":[0.6,0.35,0.1],"position":0.66},{"color":[0.9,0.5,0.1],"position":1}],'
+            + '"source.1.color_key":1} のように書きます (albedo_ramp は 4 点固定・リニア RGB・position 昇順。1 点だけなら "render.albedo_ramp.2.color")。'
+            + 'use_albedo_ramp が false の間は color_key は効きません。'
+            + '応答の changed に実際に書いた項目が載ります。'
+            + '焼き済みのテクスチャはここでは変わりません。見た目は fluid_preview で確かめ、確定したら fluid_bake で焼き直します。'
+            + '立体 (ボリューム) で焼くには bake.mode を "3d" にしてから fluid_bake します (ループ・歪みも 3d で焼けます。'
+            + 'bake.solver="gpu" は液体でも有効)。',
+        inputSchema: {
+            path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
+            fields: FluidFieldsSchema.describe('部分レシピ。キーと型は fluid_schema の fields に従う'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, fields }) => run({ t: 'fluid.set', path, fields }));
+
+    // WHY 部品の増減を専用ツールにするか: fluid_set で配列を渡すと «全要素を並べ直す» ことになり、
+    //     触るつもりのない部品の値を書き写し間違えると黙って変わる。1 つだけ足す・消すなら他は触らない。
+    server.registerTool('fluid_add_operator', {
+        description: '.fluid レシピに部品を 1 つ足します。list="source" は発生源 (気体は密度・温度・燃料を注ぎ、液体は粒子を撃ち出す)、'
+            + 'list="force" は流れにかかる力、list="collider" は流体が入り込めない障害物 (動かせば流体を押しのける) です。'
+            + 'type は source なら形 (sphere / box / cone / ring / texture)、force なら種類 (wind / attract / repulse / vortex / noise / drag)、'
+            + 'collider なら形 (sphere / box / plane)。種類ごとに効く項目は fluid_schema の operators.<list>.fields.<type> にあります。'
+            + 'fields で新しい部品の初期値を fluid_set と同じ書き方で渡せます (例: {"center":[0,-0.5,0],"size":[0.2,0.6,0.2]})。'
+            + 'texture の発生源は画像の形に湧きます: {"texture":"Assets/Textures/Logo.png","direction":[0,0,1]} のように渡し、'
+            + '白く不透明なところほど強く注ぎます (画像が無ければ warnings に載るだけで書き込みは通ります)。'
+            + 'Sprite 参照 (sprite_list の reference) ならそのコマだけを切り抜きます。'
+            + 'source の色は fields の color_key (0〜1) で render.albedo_ramp のどの色かを選びます (render.use_albedo_ramp=true のときだけ効く。'
+            + '例: 煙の中に火の粉色の発生源を 1 つ足すなら {"color_key":1})。'
+            + '上限は source 16 / force 8 / collider 8 で、満杯なら OPERATOR_LIMIT。応答は {path, list, index, count, changed, warnings?}。Undo で戻せます。',
+        inputSchema: {
+            path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
+            list: FluidOperatorListSchema.describe('"source" (発生源) / "force" (力) / "collider" (障害物)'),
+            type: FluidOperatorTypeSchema.optional().describe('形 / 力の種類のラベル。省略で既定 (sphere / wind / sphere)'),
+            index: FluidOperatorIndexSchema.optional().describe('差し込む位置。省略で末尾'),
+            fields: FluidFieldsSchema.optional().describe('新しい部品の初期値 (部品 1 つぶんの部分指定)'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, list, type, index, fields }) => run({
+        t: 'fluid.addOperator', path, list,
+        ...(type === undefined ? {} : { type }),
+        ...(index === undefined ? {} : { index }),
+        ...(fields === undefined ? {} : { fields }),
+    }));
+
+    server.registerTool('fluid_remove_operator', {
+        description: '.fluid レシピの部品を 1 つ消します。後ろの部品の添字は 1 つずつ詰まります。'
+            + '範囲外の index は BAD_ARG。応答は {path, list, removed, count}。Undo で戻せます。',
+        inputSchema: {
+            path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
+            list: FluidOperatorListSchema.describe('"source" (発生源) / "force" (力) / "collider" (障害物)'),
+            index: FluidOperatorIndexSchema.describe('消す部品の添字 (fluid_get の recipe の配列順)'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, list, index }) => run({ t: 'fluid.removeOperator', path, list, index }));
+
+    server.registerTool('fluid_move_operator', {
+        description: '.fluid レシピの部品の並び順を変えます (from の部品を取り出して to の位置へ差し込む)。'
+            + '発生源は並び順に注ぐため、重なった発生源の見え方が変わることがあります。応答は {path, list, from, to}。Undo で戻せます。',
+        inputSchema: {
+            path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
+            list: FluidOperatorListSchema.describe('"source" (発生源) / "force" (力) / "collider" (障害物)'),
+            from: FluidOperatorIndexSchema.describe('動かす部品の今の添字'),
+            to: FluidOperatorIndexSchema.describe('動かした後の添字'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, list, from, to }) => run({ t: 'fluid.moveOperator', path, list, from, to }));
+
+    server.registerTool('fluid_preview', {
+        description: '.fluid をその場でシミュレーションし、焼いたときの «そのコマ» を画像にするジョブを始めます。アセットは書きません。'
+            + '応答の job を fluid_job_status でポーリングし、done になったら返る画像を必ず見てください。'
+            + '**プレビューは焼きと同じ経路で解くので、ここで見た絵は fluid_bake で出るコマと 1 画素まで同じです。**'
+            + 'frame は焼きの何コマ目か (0 = 最初)。contactSheet=true なら全コマを焼いたアトラスの並びで 1 枚にするので、'
+            + '時間方向の当たり外れを 1 回で見られます (立ち上がり・ピーク・消え際を別々に頼む必要がありません)。'
+            + 'variants=N は seed を 1 つずつずらした N 通りを並べます — 気に入った 1 枚の seed を fluid_set で seed に書けば、'
+            + 'その絵が何度でも同じに焼けます (乱数の振り直しではなく seed の選択で «ばらつき» を扱ってください)。'
+            + '応答の fingerprint が前回と同じなら、絵は 1 画素も変わっていません (変えた値が効いていない、の判定に使えます)。'
+            + '同じ .fluid を焼いている最中は FLUID_BUSY で拒否されます。'
+            + '3d (bake.mode="3d") では contactSheet / variants / seed は使えません。',
+        inputSchema: {
+            path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
+            frame: z.number().int().min(0).max(1023).optional().describe('焼きの何コマ目か。既定 0'),
+            time: z.number().finite().min(0).max(600).optional()
+                .describe('warmup 後の秒。frame を省いたときだけ使い、一番近いコマへ吸着します'),
+            size: z.number().int().min(32).max(2048).optional()
+                .describe('出力 PNG の 1 辺 [px]。既定 256。contactSheet ではシート全体の 1 辺'),
+            contactSheet: z.boolean().optional().describe('全コマ (variants>1 なら seed 違い) を 1 枚に並べる'),
+            variants: z.number().int().min(1).max(16).optional().describe('seed を 1 ずつずらした試しの本数。既定 1'),
+            seed: z.number().int().min(0).max(4294967295).optional()
+                .describe('0 以外でこの seed で解く (.fluid は書き換えません)'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, frame, time, size, contactSheet, variants, seed }) => run({
+        t: 'fluid.preview', path,
+        ...(frame === undefined ? {} : { frame }),
+        ...(time === undefined ? {} : { time }),
+        ...(size === undefined ? {} : { size }),
+        ...(contactSheet === undefined ? {} : { contactSheet }),
+        ...(variants === undefined ? {} : { variants }),
+        ...(seed === undefined ? {} : { seed }),
+    }));
+
+    server.registerTool('fluid_bake', {
+        description: '.fluid をフリップブックテクスチャへ焼くジョブを始めます。数秒〜数十秒かかるため、すぐ job を返します'
+            + '(ここで待つと Editor のメインスレッドごと止まるため)。fluid_job_status で done / failed になるまでポーリングしてください。'
+            + '既定 (updateMaterial=true) では .fluid の隣に同名の .mat (Smoke.fluid → Smoke.mat) を作る / 焼き結果へ追従させます。'
+            + '焼きモードはレシピの bake.mode で決まり、立体で焼くなら先に fluid_set で {"bake":{"mode":"3d"}} にします。'
+            + '**焼いた出力 (テクスチャ・.mat) は Undo で消えません** (同名の既存アセットを壊しうるため)。'
+            + '出力は必ず同じ名前へ上書きされるので、焼き直しても .mat の指す先はずれません。'
+            + '応答 (fluid_job_status) の fingerprint で «前回と同じ絵か» を、solverUsed / fallbackReason で '
+            + '«GPU で解けたか、CPU へ落ちたか» を確認できます。'
+            + '見た目が固まるまでは fluid_preview で反復し、焼くのは最後にしてください。',
+        inputSchema: {
+            path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
+            updateMaterial: z.boolean().optional().describe('既定 true。false で隣の .mat を作らず / 触らず、テクスチャだけ焼く'),
+            seed: z.number().int().min(0).max(4294967295).optional()
+                .describe('0 以外でこの seed で焼く (.fluid は書き換えません。2d のみ)'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, updateMaterial, seed }) => run({
+        t: 'fluid.bake', path,
+        ...(updateMaterial === undefined ? {} : { updateMaterial }),
+        ...(seed === undefined ? {} : { seed }),
+    }));
+
+    server.registerTool('fluid_cancel', {
+        description: '待機中 / 実行中の流体ジョブ (プレビュー・焼き) を止めます。'
+            + '終わっているか見つからなければ cancelled=false。止めても途中まで書いた出力は巻き戻りません。',
+        inputSchema: { job: FluidJobIdSchema },
+        annotations: writeAnnotations,
+    }, ({ job }) => run({ t: 'fluid.cancel', job }));
+
+    server.registerTool('fluid_create_effect', {
+        description: '流体エフェクトを 1 回で組み立てます: <dir>/<name>.fluid を作り、fields を当て、'
+            + 'bake=true (既定) なら焼いて同名の <name>.mat と、それを貼った 1 層の <name>.vfx まで書きます。'
+            + '焼きは非同期なので応答の job を fluid_job_status で done までポーリングし、'
+            + 'できた vfxPath を prefab_instantiate などでシーンへ置きます。'
+            + '見た目を詰めたいときは bake=false で作り、fluid_add_operator (発生源 source / 力 force / 障害物 collider を足す) と fluid_set で部品を組み、'
+            + 'fluid_preview → fluid_set を繰り返してから fluid_bake してください (焼いた出力は Undo で消えません)。'
+            + 'fields で部品を渡すなら {"source":[{"shape":"cone","direction":[0,1,0]}],"force":[{"type":"vortex"}],'
+            + '"collider":[{"shape":"sphere","center":[0,0.2,0],"size":[0.2,0.2,0.2]}]} のように配列で書き '
+            + '(配列はプリセットの部品を丸ごと置き換えます。上限 source 16 / force 8 / collider 8)、enum はラベル文字列で構いません。'
+            + 'collider は流体をよける障害物 (plane は壁・斜めの床。床そのものは gas.floor / liquid.floor)、'
+            + 'source の shape="texture" は texture (projectRoot 相対の画像、または sprite_list の reference で 1 コマ) の形に湧き、'
+            + '白く不透明なところほど強く注ぎます (画像が無ければ warnings に載ります)。'
+            + '発生源ごとに色を分けるなら fields に "render":{"use_albedo_ramp":true,"albedo_ramp":[4 点の {color, position}]} を入れ、'
+            + '各 source に color_key (0〜1) を持たせます (煙は混ざると色も混ざり、液体は粒子ごとの色)。'
+            + '立体で焼くなら "bake":{"mode":"3d"} (ループ・歪みも焼け、液体も bake.solver="gpu" で解けます)。',
+        inputSchema: {
+            name: FluidEffectNameSchema.describe('ファイル名の素 (拡張子なし)。例: "CampfireSmoke"'),
+            dir: z.string().min(1).max(1024).optional().describe('出力先ディレクトリ (projectRoot 相対)。既定 Assets/VFX/Fluid'),
+            preset: FluidPresetSchema.optional().describe(FluidPresetDescription),
+            fields: FluidFieldsSchema.optional().describe('プリセットの上に当てる部分レシピ (fluid_set と同じ形)'),
+            bake: z.boolean().optional().describe('既定 true。false でレシピだけ作り、焼き・.mat・.vfx は後回し'),
+        },
+        annotations: writeAnnotations,
+    }, ({ name, dir, preset, fields, bake }) => run({
+        t: 'fluid.createEffect', name,
+        ...(dir === undefined ? {} : { dir }),
+        ...(preset === undefined ? {} : { preset }),
+        ...(fields === undefined ? {} : { fields }),
+        ...(bake === undefined ? {} : { bake }),
+    }));
 
     server.registerTool('run_transaction', {
         description: '複数 Command を1つの Undo 単位として原子的に実行します。',

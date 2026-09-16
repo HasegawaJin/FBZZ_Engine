@@ -1,28 +1,29 @@
-// FBZZ Engine
-// ScriptTweenProxy.hpp | fbzz::scene
-// Script から 3D オブジェクトの補間アニメーションをコルーチンとして回す
-//
-// 設計意図 (WHY):
-//   Tween は UIAnimator に既にあるが、あれは UI 要素 (RectTransform / 色) 専用で、
-//   3D の Transform には使えなかった。そのため「扉が 0.4 秒かけて開く」のような
-//   演出を毎回 OnUpdate に経過時間の変数を足して手書きすることになっていた。
-//
-//   コルーチンを返す形にするのは、Tween 専用のマネージャーとその更新順序を
-//   新設せずに済ませるため。既にある StartCoroutine / TickCoroutines に乗るだけで、
+/// @file    ScriptTweenProxy.hpp
+/// @brief   Script から 3D オブジェクトの補間アニメーションをコルーチンとして回す。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
+///
+/// 設計意図 (WHY):
+/// Tween は UIAnimator に既にあるが、あれは UI 要素 (RectTransform / 色) 専用で、
+/// 3D の Transform には使えなかった。そのため「扉が 0.4 秒かけて開く」のような
+/// 演出を毎回 OnUpdate に経過時間の変数を足して手書きすることになっていた。
+///
+/// コルーチンを返す形にするのは、Tween 専用のマネージャーとその更新順序を
+/// 新設せずに済ませるため。既にある StartCoroutine / UpdateCoroutines に乗るだけで、
 //   Script が破棄されれば動作中の Tween も一緒に止まる (寿命管理が増えない)。
-//
-//     void OnStart() override { StartCoroutine(tween.MoveTo({ 0, 3, 0 }, 0.4f,
-//                                                           TweenEase::OutCubic)); }
-//
-//   順番に繋ぎたい場合は、自前のコルーチンから所要時間ぶん待つ。
-//   WHY co_await tween.MoveTo(...) と書けないか: Coroutine 自体は awaiter ではなく、
-//   co_await できるのは WaitForSeconds などの待機命令だけだから。
-//
-//     Coroutine OpenDoor() {
-//         StartCoroutine(tween.MoveTo({ 0, 3, 0 }, 0.4f, TweenEase::OutCubic));
-//         co_await WaitForSeconds(0.4f);
-//         audio.Play("Assets/Audio/door_locked.wav");
-//     }
+///
+/// void OnStart() override { StartCoroutine(tween.MoveTo({ 0, 3, 0 }, 0.4f,
+/// TweenEase::OutCubic)); }
+///
+/// 順番に繋ぎたい場合は、自前のコルーチンから所要時間ぶん待つ。
+/// WHY co_await tween.MoveTo(...) と書けないか: Coroutine 自体は awaiter ではなく、
+/// co_await できるのは WaitForSeconds などの待機命令だけだから。
+///
+/// Coroutine OpenDoor() {
+/// StartCoroutine(tween.MoveTo({ 0, 3, 0 }, 0.4f, TweenEase::OutCubic));
+/// co_await WaitForSeconds(0.4f);
+/// audio.Play("Assets/Audio/door_locked.wav");
+/// }
 #pragma once
 
 #include <Engine/Scene/Coroutine.hpp>

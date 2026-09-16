@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MaterialAsset.hpp | fbzz::asset
-// .mat マテリアルアセットのランタイム表現と TOML 入出力 API
+/// @file    MaterialAsset.hpp
+/// @brief   .mat マテリアルアセットのランタイム表現と TOML 入出力 API。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
+#include <Engine/Asset/ParticleMaterialSettings.hpp>
 #include <Engine/Renderer/RenderLayer.hpp>
 #include <Engine/Renderer/RenderState.hpp>
 #include <cstdint>
@@ -13,13 +15,20 @@
 namespace fbzz::asset {
 
 // fzmat の render_path フィールドが取れる値。
-// WHY: カスタムシェーダーのレンダーパス振り分けをエンジンコード変更なしに制御するため。
-//      "auto"     → 明示的なレンダーパス指定なし。
-//      "forward"  → 常に Forward パスで描画 (カスタムエフェクト・Unlit 系)。
-//      "deferred" → 常に GBuffer Deferred パスで描画 (PBR 系)。
+//      "auto"     → 通常の材質。Forward / Deferred はプロジェクト設定に従う。
 //      "particle" → ParticleEmitter 専用。ParticlePass が albedo テクスチャと blendMode を参照する。
 //      "trail"    → TrailComponent / MeshTrailComponent 専用。TrailRenderPass が albedo テクスチャを参照する。
-enum class RenderPath { Auto, Deferred, Forward, Particle, Trail };
+//      "ui"       → UIImage 専用。UI パスは b0 を UIConstants として使い、カメラもライトも
+//                   束縛しない。同じ .mat をメッシュへ割り当てると b0 の中身が別物になるため、
+//                   宣言で弾けるようにしておく (Assets/Shaders/UI/UICommon.hlsli 参照)。
+//      "decal"    → DecalComponent 専用。頂点入力を持たず、深度から復元した面へ投影する。
+//                   メッシュ用の .mat を割り当てると頂点が来ないまま描くことになるため、
+//                   UI と同じ理由で宣言で弾く (Assets/Shaders/Material/Decal/DecalCommon.hlsli 参照)。
+//
+// WHY Forward / Deferred をここへ持たないか:
+//      描画経路は RenderSettings::pipeline がプロジェクト全体で決める責務であり、
+//      Material ごとに上書きすると同じシーン内でライティング・GBuffer の前提が混在する。
+enum class RenderPath { Auto, Particle, Trail, UI, Decal, PostProcess };
 
 // fzmat の mesh_type フィールドが取れる値。
 // WHY: Surface シェーダー判定をパス文字列検索から fzmat 宣言へ移し、
@@ -54,6 +63,11 @@ struct MaterialAsset {
 
     // シェーダーコンパイル時 define 一覧（例: "USE_NORMAL_MAP", "USE_AO"）
     std::vector<std::string> keywords;
+
+    // [particle] テーブル。render_path = "particle" のときだけ意味を持つ。
+    // WHY ここに置くか: パーティクルの見た目 (ブレンド以外) の正本。
+    //      詳細と «なぜ [params] ではないか» は ParticleMaterialSettings.hpp を参照。
+    ParticleMaterialSettings particle;
 };
 
 // TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。

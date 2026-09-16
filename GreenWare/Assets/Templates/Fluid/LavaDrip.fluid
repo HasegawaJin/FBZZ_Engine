@@ -1,0 +1,64 @@
+# 垂れる溶岩 — 液体の «とろみ» の見本。viscosity (粘り) と cohesion (まとまり) を上げると、
+# 同じソルバーでも水が飴に変わる。落ちる速さは gravity ではなく粘りで決まって見えるので、
+# 重力は下げて糸を引かせる。寿命 0 = 消えない (落ちた分が溜まる)。
+version = 2
+kind = "liquid"
+seed = 97
+
+[liquid]
+max_particles = 3000
+particle_radius = 0.014
+gravity = 3.2
+viscosity = 0.55
+cohesion = 0.85
+solver_iterations = 6
+floor = true
+floor_height = -0.9
+floor_friction = 0.9
+particle_lifetime = 0.0
+
+[[source]]
+name = "Spout"
+shape = "sphere"
+center = [-0.06, 0.78, 0.0]
+size = [0.09, 0.09, 0.09]
+velocity = [0.15, -0.4, 0.0]
+spread = 0.06
+count = 900
+duration = 1.2
+
+[[collider]]
+name = "Ledge"
+shape = "box"
+center = [0.18, -0.34, 0.0]
+size = [0.26, 0.07, 0.3]
+friction = 0.85
+
+[render]
+shading = "liquid"
+liquid_color = [1.3, 0.42, 0.1, 0.95]
+liquid_radius_scale = 2.8
+liquid_threshold = 0.55
+liquid_softness = 0.06
+liquid_extinction = 90.0
+liquid_gloss = 32.0
+liquid_fresnel = 0.05
+specular = 0.5
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 1.8
+warmup = 0.0
+substeps = 3
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "3d"
+volume_resolution = 96
+ray_steps = 192
+shadow_steps = 16
+solver = "cpu"

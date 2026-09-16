@@ -1,0 +1,24 @@
+# FBZZ Engine
+# FX_GlowSoft_Additive.mat
+# 素材: Assets/VFX/Textures/T_Glow_Soft.png
+# 色を持たない。極性色 (赤/青) は Emitter の colorStart から乗る。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:ec2bcd01d536db422ba51d3a05f8d794"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+# ほぼ全エフェクトの下地。単体で目立つと重ねた層が全部白へ寄るので 1 倍のまま置く。
+emissive_scale = 1.0
+soft_particles = true
+soft_particle_fade_distance = 0.5

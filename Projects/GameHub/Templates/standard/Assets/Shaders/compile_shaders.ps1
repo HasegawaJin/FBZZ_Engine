@@ -377,7 +377,10 @@ try {
         })
     }
 
-    $targetBackends = if ($Backend -eq "All") { @("DX11", "DX12") } else { @($Backend) }
+    # WHY: if 文の出力は 1 要素配列が自動でスカラーへ展開されるため、-Backend DX11 のように
+    #      単一指定すると $targetBackends が文字列になり、後段の .Count が StrictMode で例外になる。
+    #      外側を @() で包んで常に配列を保証する。
+    $targetBackends = @(if ($Backend -eq "All") { "DX11", "DX12" } else { $Backend })
     $plans = New-Object System.Collections.Generic.List[object]
     $orphanPlans = New-Object System.Collections.Generic.List[object]
     $expectedOutputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)

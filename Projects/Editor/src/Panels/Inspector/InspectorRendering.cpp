@@ -1,102 +1,35 @@
-// FBZZ Engine
-// InspectorRendering.cpp | fbzz::editor
-// Rendering 系 Component の Inspector 描画
+/// @file    InspectorRendering.cpp
+/// @brief   Rendering 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorRendering.hpp"
 
 namespace fbzz::editor {
 
 namespace {
 
-// "Element N" ラベル列の幅。行が増えても .mat 名の開始位置を揃えるための固定値。
-constexpr float kMaterialElementLabelWidth = 96.0f;
-
-// Renderer が描く submesh 1 つぶんのマテリアル参照を 1 行で見せる (表示専用)。
-// WHY: 参照先を「読む」ための行なので、編集ウィジェット (AssetPathField) は置かない。
-//      代わりに行そのものをクリック対象にして、Asset Browser 側の .mat 実体へ飛べるようにする。
-//      未割当・ファイル欠落・Visible OFF は色と注記で区別する — 一覧の役目は
-//      「この Renderer が結局どのマテリアルで描かれるのか」を 1 画面で確定させること。
-void DrawMaterialOverviewRow(size_t index, scene::MaterialComponent& mc)
-{
-    const scene::MaterialSlot& assigned = mc.RawSlotAt(index);
-    scene::MaterialSlot&       drawn    = mc.SlotAt(index);
-    drawn.EnsureMaterialAsset();
-
-    // SlotAt は未割当スロットを主スロット (Element 0) へフォールバックさせる。
-    // 「割り当てが無いのに描かれている」状態を隠さないよう、その旨を明示する。
-    const bool usesFallback = assigned.materialPath.empty() && !drawn.materialPath.empty();
-    const std::string& path = drawn.materialPath;
-
-    ImGui::PushID(static_cast<int>(index));
-    ImGui::TextDisabled("Element %zu", index);
-    ImGui::SameLine(kMaterialElementLabelWidth);
-
-    if (path.empty()) {
-        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "None (未割当)");
-        ImGui::PopID();
-        return;
-    }
-
-    const std::string name = util::FileSystem::PathToUtf8(
-        util::FileSystem::PathFromUtf8(path).stem());
-    const bool missing = !drawn.materialAsset.IsValid();
-    const bool dimmed  = usesFallback || !assigned.visible;
-
-    // WHY Selectable / Button を使わないか: それらは押下中 ImGui の ActiveID を握る。
-    //      この一覧は DrawGenericUndoableComponentBody の内側で描かれ、あちらは
-    //      「ActiveID が動いた = コンポーネントを編集した」とみなして Undo を積むため、
-    //      ただ参照先を見に行っただけで中身の変わらない履歴が残ってしまう。
-    //      テキスト + ホバー判定なら ActiveID に触れずにクリックだけを拾える。
-    ImGui::TextColored(
-        missing ? EditorTheme::Color(ThemeColor::Danger)
-                : EditorTheme::Color(dimmed ? ThemeColor::TextMuted : ThemeColor::Text),
-        "%s", name.c_str());
-    const bool hovered = ImGui::IsItemHovered();
-    if (hovered) {
-        // 下線とカーソル変化だけで「押せる」ことを示す (行の地色は塗らない)。
-        const ImVec2 rectMin = ImGui::GetItemRectMin();
-        const ImVec2 rectMax = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddLine(
-            { rectMin.x, rectMax.y - 1.0f }, { rectMax.x, rectMax.y - 1.0f },
-            EditorTheme::ColorU32(ThemeColor::Accent), 1.0f);
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-
-    // シングルクリック = Asset Browser で位置を示すだけ、ダブルクリック = Inspector も移す。
-    // 参照欄 (widgets::AssetPathField) と同じ操作感に揃える。
-    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-        widgets::RequestAssetReveal(path, ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left));
-
-    if (hovered) {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(path.c_str());
-        if (missing)
-            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger),
-                               "ファイルが見つかりません");
-        if (usesFallback)
-            ImGui::TextDisabled("未割当のため Element 0 のマテリアルで描画されます");
-        if (!assigned.visible)
-            ImGui::TextDisabled("Visible = OFF — この submesh は描画されません");
-        ImGui::Separator();
-        ImGui::TextDisabled("Click: Asset Browser で表示 / Double-Click: 選択");
-        ImGui::EndTooltip();
-    }
-    ImGui::PopID();
-}
-
-// Renderer が描く submesh すべてのマテリアル総一覧 (表示専用)。
-// WHY Renderer 側に置くか: 「何枚のマテリアルで描かれるか」を決めているのはモデルの submesh 数、
-//      つまり Renderer が持つ情報であって Material コンポーネントではない。スロット配列だけを
-//      見ても submesh との対応が読めないため、全体像は Renderer に集約する。
-//      割り当ての変更は Material コンポーネントに一本化し、ここでは編集させない。
-void DrawRendererMaterialOverview(EditorContext& ctx, size_t submeshCount, bool skinned)
+// マテリアルの状況を 1 行で示す。割り当てと編集は Material コンポーネント側。
+//
+// WHY 一覧をここへ置かないか (重要):
+//   以前は Renderer が「閲覧専用の Element 一覧」を、Material が「編集可能な
+//   Element 一覧」を別々に出していた。同じ情報が 2 か所に並ぶため、どちらを触れば
+//   よいのか、なぜ Element 0 だけ扱いが違うのかが読めない UI になっていた。
+//
+//   Unity は Renderer に materials 配列を出すが、あれは Unity に Material
+//   コンポーネントが存在しないからである。このエンジンではスロット配列の実体を
+//   MaterialComponent が持っているため、配置だけ真似ると「Renderer のセクションで
+//   編集しているのに、Undo トラッカーが見ているのは MaterialComponent ではない」
+//   というズレが生まれ、回避コードが必要になる。編集 UI はデータの持ち主へ置く。
+//
+//   ここに残すのは、Material コンポーネントが必要なのに無い場合の導線だけ。
+void DrawRendererMaterialStatus(EditorContext& ctx, size_t submeshCount, bool skinned)
 {
     scene::GameObject* go = ctx.GetSelectedGO();
     if (!go || submeshCount == 0) return;
 
-    ImGui::SeparatorText("Materials");
-
     auto* mc = go->GetComponent<scene::MaterialComponent>();
     if (!mc) {
+        ImGui::SeparatorText("Materials");
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
                            "! Material component required");
         if (ImGui::Button("Add Material"))
@@ -104,22 +37,8 @@ void DrawRendererMaterialOverview(EditorContext& ctx, size_t submeshCount, bool 
         return;
     }
 
-    ImGui::TextDisabled("Size  %zu", submeshCount);
-    for (size_t i = 0; i < submeshCount; ++i)
-        DrawMaterialOverviewRow(i, *mc);
-
-    ImGui::TextDisabled("割り当ての変更は Material コンポーネントで行います");
-
-    // スロット数と submesh 数がずれていても描画は主マテリアルへフォールバックするので
-    // 壊れないが、submesh ごとに .mat を割り当てたい場合に備えて揃える手段を残す。
-    if (mc->SlotCount() != submeshCount) {
-        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
-                           "Material slots: %zu / %zu submesh", mc->SlotCount(), submeshCount);
-        if (ImGui::Button("Match Material Slots")) {
-            mc->ResizeSlots(submeshCount);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
-        }
-    }
+    ImGui::TextDisabled("%zu material slot(s) — Material コンポーネントで割り当てます",
+                        mc->SlotCount());
 }
 
 } // namespace
@@ -180,9 +99,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     "影が絵に出ないオブジェクト (小物・天井裏・遠景) を外すと、\n"
                     "見た目を変えずにシャドウ描画量をそのぶん減らせる。");
 
-            // MeshRenderer は常に 1 メッシュしか描かないので一覧は 1 行だが、
-            // SkinnedMeshRenderer と同じ場所・同じ見え方で参照先を確認できるようにする。
-            DrawRendererMaterialOverview(ctx, mr.mesh ? 1u : 0u, false);
+            DrawRendererMaterialStatus(ctx, mr.mesh ? 1u : 0u, false);
         });
 
     DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
@@ -195,13 +112,15 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 });
 
             if (smr.model) {
-                // WHY: submesh の指定 UI は持たない。1 GameObject = モデル全体を描き、
-                //      submesh ごとの見た目は Material コンポーネントのスロットで決める。
-                const size_t meshCount = smr.model->meshes.size();
-                ImGui::TextDisabled("%zu submesh(es) | %s skeleton",
-                    meshCount, smr.model->skeleton ? "has" : "no");
+                // WHY: submesh の指定 UI は持たない。担当 submesh は FBX のノード構造から
+                //      配置時に決まる構造的な事実で、ユーザーが手で打つ値ではない
+                //      (SkinnedMeshRenderer::submeshIndices のコメント参照)。
+                const size_t meshCount = smr.SubmeshCount();
+                ImGui::TextDisabled("%zu submesh(es) of %zu | %s skeleton",
+                    meshCount, smr.model->meshes.size(),
+                    smr.model->skeleton ? "has" : "no");
 
-                DrawRendererMaterialOverview(ctx, meshCount, true);
+                DrawRendererMaterialStatus(ctx, meshCount, true);
             }
 
             ImGui::Checkbox("Cast Shadows", &smr.castShadows);
@@ -211,6 +130,9 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
         [](scene::LODGroupComponent& group, EditorContext& ctx) {
             ImGui::DragFloat("Size", &group.size, 0.05f, 0.001f, 100000.0f);
             ImGui::Checkbox("Cull Below Last LOD", &group.cullBelowLastLevel);
+            ImGui::DragFloat("Fade Duration", &group.fadeDuration, 0.01f, 0.0f, 2.0f, "%.2f s");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("LOD を入れ替えるときのディザクロスフェード時間。0 で即差し替え");
 
             int removeLevel = -1;
             for (size_t levelIndex = 0; levelIndex < group.levels.size(); ++levelIndex) {

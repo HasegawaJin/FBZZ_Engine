@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ModelSubExporter.hpp | fbzz::editor
-// FBX → .fzasset バイナリ (FZMD) + スケルトン埋め込み
+/// @file    ModelSubExporter.hpp
+/// @brief   FBX → .fzasset バイナリ (FZMD) + スケルトン埋め込み。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Editor/Import/IFbxSubExporter.hpp>
 

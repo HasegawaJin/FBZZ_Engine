@@ -1,0 +1,21 @@
+# FBZZ Engine
+# FX_BeamStripe_Additive.mat
+# 素材: Assets/VFX/Textures/T_Beam_Stripe.png (512x64 / X方向シームレス)
+# 照射の «筋»。粒 1 つが線の一節になるので、renderMode = 1 で速度方向へ寝かせて使う。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:a359f1c0b98e9f5f2481834e44ae12eb"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.4

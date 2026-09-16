@@ -1,0 +1,2724 @@
+version = 6
+defaultStateName = "Idle"
+baseLayerMaskPath = "guid:7937b2b861c74db5bfa0e710da063e5e|Assets/Animation/Boss03/Boss03_Base.mask"
+
+[[parameters]]
+name = "IsDead"
+type = 2
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "IsStaggered"
+type = 2
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "IsClosed"
+type = 2
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Motion"
+type = 1
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Dash_InPlace"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Laser_Fan"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Pulse"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Slam_Combo"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Slam_L"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Slam_R"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Turn_L_InPlace"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Turn_R_InPlace"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Showcase"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Hit"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Detach_L_Upper"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Detach_L_Middle"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Detach_L_Lower"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Detach_R_Upper"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Detach_R_Middle"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[parameters]]
+name = "Detach_R_Lower"
+type = 3
+floatValue = 0.0
+intValue = 0
+boolValue = false
+
+
+[[anyStateTransitions]]
+toStateName = "Death"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.08
+
+[[anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 4
+threshold = 0.0
+
+
+
+[[anyStateTransitions]]
+toStateName = "Stagger"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.08
+
+[[anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[anyStateTransitions.conditions]]
+paramName = "IsStaggered"
+op = 4
+threshold = 0.0
+
+
+
+[[states]]
+name = "Idle"
+mode = 0
+sourcePath = "guid:f1f581d61ec54d07bcf1f2db7a24643a|Assets/Models/Boss_03/Animations/Idle.fbx"
+clipName = "Idle"
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Close"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Forward"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 1.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Left"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 2.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Right"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 3.0
+
+
+
+[[states.transitions]]
+toStateName = "Dash_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Dash_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Laser_Fan"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Laser_Fan"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Pulse"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Pulse"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_Combo"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_Combo"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_L"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_L"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_R"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_R"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_L_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_L_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_R_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_R_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Showcase"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Showcase"
+op = 4
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Hover_Forward"
+mode = 0
+sourcePath = "guid:bbe1ca6116d64df3a773e248f7b643f3|Assets/Models/Boss_03/Animations/Hover_Forward.fbx"
+clipName = "Hover_Forward"
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Close"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Left"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 2.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Right"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 3.0
+
+
+
+[[states.transitions]]
+toStateName = "Dash_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Dash_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Laser_Fan"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Laser_Fan"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Pulse"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Pulse"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_Combo"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_Combo"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_L"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_L"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_R"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_R"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_L_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_L_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_R_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_R_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Showcase"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Showcase"
+op = 4
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Hover_Left"
+mode = 0
+sourcePath = "guid:e7a18bdbb1a04eed90e8efa8c3f01f8f|Assets/Models/Boss_03/Animations/Hover_Left.fbx"
+clipName = "Hover_Left"
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Close"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Forward"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 1.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Right"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 3.0
+
+
+
+[[states.transitions]]
+toStateName = "Dash_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Dash_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Laser_Fan"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Laser_Fan"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Pulse"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Pulse"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_Combo"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_Combo"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_L"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_L"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_R"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_R"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_L_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_L_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_R_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_R_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Showcase"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Showcase"
+op = 4
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Hover_Right"
+mode = 0
+sourcePath = "guid:eb5e365d2e854f9d8070f0b3a06d2c79|Assets/Models/Boss_03/Animations/Hover_Right.fbx"
+clipName = "Hover_Right"
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Close"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Forward"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 1.0
+
+
+
+[[states.transitions]]
+toStateName = "Hover_Left"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Motion"
+op = 2
+threshold = 2.0
+
+
+
+[[states.transitions]]
+toStateName = "Dash_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Dash_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Laser_Fan"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Laser_Fan"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Pulse"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Pulse"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_Combo"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_Combo"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_L"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_L"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Slam_R"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Slam_R"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_L_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_L_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Turn_R_InPlace"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Turn_R_InPlace"
+op = 4
+threshold = 0.0
+
+
+
+[[states.transitions]]
+toStateName = "Showcase"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "Showcase"
+op = 4
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Death"
+mode = 0
+sourcePath = "guid:550925d13e2548a4a58edcf44cf5f80f|Assets/Models/Boss_03/Animations/Death.fbx"
+clipName = "Death"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+transitions = []
+
+
+[[states]]
+name = "Stagger"
+mode = 0
+sourcePath = "guid:efcaa0781b54438d9a8987f06acc2605|Assets/Models/Boss_03/Animations/Stagger.fbx"
+clipName = "Stagger"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Close"
+mode = 0
+sourcePath = "guid:30686b7426b640ed813d60eb1f0bb848|Assets/Models/Boss_03/Animations/Close.fbx"
+clipName = "Close"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Cocoon_Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Cocoon_Idle"
+mode = 0
+sourcePath = "guid:12ec825f853e4a91bde4a8d6395f1b2f|Assets/Models/Boss_03/Animations/Cocoon_Idle.fbx"
+clipName = "Cocoon_Idle"
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Deploy"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[states.transitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Deploy"
+mode = 0
+sourcePath = "guid:3e37561449ea4515b5a4eda648635f4a|Assets/Models/Boss_03/Animations/Deploy.fbx"
+clipName = "Deploy"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Dash_InPlace"
+mode = 0
+sourcePath = "guid:d4bb5dbeaf54433f8a758942ee1dd95d|Assets/Models/Boss_03/Animations/Dash_InPlace.fbx"
+clipName = "Dash_InPlace"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Laser_Fan"
+mode = 0
+sourcePath = "guid:ec64efa17e2947c58c0d15de3b02329f|Assets/Models/Boss_03/Animations/Laser_Fan.fbx"
+clipName = "Laser_Fan"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Pulse"
+mode = 0
+sourcePath = "guid:72b32dd9ac614603bbb32b5293be8215|Assets/Models/Boss_03/Animations/Pulse.fbx"
+clipName = "Pulse"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Slam_Combo"
+mode = 0
+sourcePath = "guid:f559bfaed297471985486db9c0da7013|Assets/Models/Boss_03/Animations/Slam_Combo.fbx"
+clipName = "Slam_Combo"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Slam_L"
+mode = 0
+sourcePath = "guid:28392e4f90604b338d01c560d5f948be|Assets/Models/Boss_03/Animations/Slam_L.fbx"
+clipName = "Slam_L"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Slam_R"
+mode = 0
+sourcePath = "guid:8325e9ec511f497db1e0c7c12cd44646|Assets/Models/Boss_03/Animations/Slam_R.fbx"
+clipName = "Slam_R"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Turn_L_InPlace"
+mode = 0
+sourcePath = "guid:54db900b48d94f029ee4f70d85265fff|Assets/Models/Boss_03/Animations/Turn_L_InPlace.fbx"
+clipName = "Turn_L_InPlace"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Turn_R_InPlace"
+mode = 0
+sourcePath = "guid:752c2540a43143c99212e502607090ec|Assets/Models/Boss_03/Animations/Turn_R_InPlace.fbx"
+clipName = "Turn_R_InPlace"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[states]]
+name = "Showcase"
+mode = 0
+sourcePath = "guid:19ee5a69149e41d7acc50ef02092aedf|Assets/Models/Boss_03/Animations/Showcase.fbx"
+clipName = "Showcase"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[states.transitions]]
+toStateName = "Idle"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.15
+
+[[states.transitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+
+
+[[layers]]
+name = "Hit"
+mode = 1
+enabled = true
+weight = 1.0
+maskPath = "guid:45d0d0f4f61047ae83bb0d1ac8ecdf4a|Assets/Animation/Boss03/Boss03_Hit.mask"
+defaultStateName = "Empty"
+
+[layers.additiveReference]
+sourcePath = "guid:f1f581d61ec54d07bcf1f2db7a24643a|Assets/Models/Boss_03/Animations/Idle.fbx"
+clipName = "Idle"
+time = 0.0
+
+
+[[layers.anyStateTransitions]]
+toStateName = "Hit"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.04
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsStaggered"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsClosed"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "Hit"
+op = 4
+threshold = 0.0
+
+
+
+[[layers.states]]
+name = "Empty"
+mode = 0
+sourcePath = ""
+clipName = ""
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+transitions = []
+
+
+[[layers.states]]
+name = "Hit"
+mode = 0
+sourcePath = "guid:f02c118fb17e4a3f843557fe1b78b148|Assets/Models/Boss_03/Animations/Hit.fbx"
+clipName = "Hit"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+
+[[layers.states.transitions]]
+toStateName = "Empty"
+hasExitTime = true
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.1
+conditions = []
+
+
+
+
+[[layers]]
+name = "Detach_L_Upper"
+mode = 0
+enabled = true
+weight = 1.0
+maskPath = "guid:ba5a281bbd7c4001869fb1c507ea11b3|Assets/Animation/Boss03/Boss03_Wing_L_Upper.mask"
+defaultStateName = "Attached"
+
+[[layers.anyStateTransitions]]
+toStateName = "Detached"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.06
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "Detach_L_Upper"
+op = 4
+threshold = 0.0
+
+
+
+[[layers.states]]
+name = "Attached"
+mode = 0
+sourcePath = ""
+clipName = ""
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+transitions = []
+
+
+[[layers.states]]
+name = "Detached"
+mode = 0
+sourcePath = "guid:9561482bed4d405fb6bb2d613965d7ce|Assets/Models/Boss_03/Animations/Detach_L_Upper.fbx"
+clipName = "Detach_L_Upper"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+transitions = []
+
+
+
+[[layers]]
+name = "Detach_L_Middle"
+mode = 0
+enabled = true
+weight = 1.0
+maskPath = "guid:f4bde23cc1d9495281cf738fc5b9f7a6|Assets/Animation/Boss03/Boss03_Wing_L_Middle.mask"
+defaultStateName = "Attached"
+
+[[layers.anyStateTransitions]]
+toStateName = "Detached"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.06
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "Detach_L_Middle"
+op = 4
+threshold = 0.0
+
+
+
+[[layers.states]]
+name = "Attached"
+mode = 0
+sourcePath = ""
+clipName = ""
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+transitions = []
+
+
+[[layers.states]]
+name = "Detached"
+mode = 0
+sourcePath = "guid:9caf2d92cdac440287e2c641902242e2|Assets/Models/Boss_03/Animations/Detach_L_Middle.fbx"
+clipName = "Detach_L_Middle"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+transitions = []
+
+
+
+[[layers]]
+name = "Detach_L_Lower"
+mode = 0
+enabled = true
+weight = 1.0
+maskPath = "guid:709788e8285a40799de20c89dabfb062|Assets/Animation/Boss03/Boss03_Wing_L_Lower.mask"
+defaultStateName = "Attached"
+
+[[layers.anyStateTransitions]]
+toStateName = "Detached"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.06
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "Detach_L_Lower"
+op = 4
+threshold = 0.0
+
+
+
+[[layers.states]]
+name = "Attached"
+mode = 0
+sourcePath = ""
+clipName = ""
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+transitions = []
+
+
+[[layers.states]]
+name = "Detached"
+mode = 0
+sourcePath = "guid:df1aab37b46d456d937949b756f29d7d|Assets/Models/Boss_03/Animations/Detach_L_Lower.fbx"
+clipName = "Detach_L_Lower"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+transitions = []
+
+
+
+[[layers]]
+name = "Detach_R_Upper"
+mode = 0
+enabled = true
+weight = 1.0
+maskPath = "guid:c157755f39594efcbe998599e0c5339b|Assets/Animation/Boss03/Boss03_Wing_R_Upper.mask"
+defaultStateName = "Attached"
+
+[[layers.anyStateTransitions]]
+toStateName = "Detached"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.06
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "Detach_R_Upper"
+op = 4
+threshold = 0.0
+
+
+
+[[layers.states]]
+name = "Attached"
+mode = 0
+sourcePath = ""
+clipName = ""
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+transitions = []
+
+
+[[layers.states]]
+name = "Detached"
+mode = 0
+sourcePath = "guid:d563a5c6faaa415eb9c237ba75b0c298|Assets/Models/Boss_03/Animations/Detach_R_Upper.fbx"
+clipName = "Detach_R_Upper"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+transitions = []
+
+
+
+[[layers]]
+name = "Detach_R_Middle"
+mode = 0
+enabled = true
+weight = 1.0
+maskPath = "guid:f5fdc6b2ba98433983a151603327af04|Assets/Animation/Boss03/Boss03_Wing_R_Middle.mask"
+defaultStateName = "Attached"
+
+[[layers.anyStateTransitions]]
+toStateName = "Detached"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.06
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "Detach_R_Middle"
+op = 4
+threshold = 0.0
+
+
+
+[[layers.states]]
+name = "Attached"
+mode = 0
+sourcePath = ""
+clipName = ""
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+transitions = []
+
+
+[[layers.states]]
+name = "Detached"
+mode = 0
+sourcePath = "guid:655e3e6ef9284cd3b097b0810c464bba|Assets/Models/Boss_03/Animations/Detach_R_Middle.fbx"
+clipName = "Detach_R_Middle"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+transitions = []
+
+
+
+[[layers]]
+name = "Detach_R_Lower"
+mode = 0
+enabled = true
+weight = 1.0
+maskPath = "guid:cb8c2ee83ea545a586c963728bbbcac9|Assets/Animation/Boss03/Boss03_Wing_R_Lower.mask"
+defaultStateName = "Attached"
+
+[[layers.anyStateTransitions]]
+toStateName = "Detached"
+hasExitTime = false
+exitTime = 1.0
+fixedDuration = true
+transitionDuration = 0.06
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "IsDead"
+op = 5
+threshold = 0.0
+
+
+[[layers.anyStateTransitions.conditions]]
+paramName = "Detach_R_Lower"
+op = 4
+threshold = 0.0
+
+
+
+[[layers.states]]
+name = "Attached"
+mode = 0
+sourcePath = ""
+clipName = ""
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+transitions = []
+
+
+[[layers.states]]
+name = "Detached"
+mode = 0
+sourcePath = "guid:3f73534745b8484b8ae594b459d84acd|Assets/Models/Boss_03/Animations/Detach_R_Lower.fbx"
+clipName = "Detach_R_Lower"
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+transitions = []
+
+
+
+[editorLayout]
+entryX = -300.0
+entryY = 0.0
+anyStateX = -300.0
+anyStateY = -240.0
+
+[[editorLayout.nodes]]
+stateName = "Idle"
+x = 0.0
+y = 0.0
+
+
+[[editorLayout.nodes]]
+stateName = "Hover_Forward"
+x = 280.0
+y = 0.0
+
+
+[[editorLayout.nodes]]
+stateName = "Hover_Left"
+x = 560.0
+y = 0.0
+
+
+[[editorLayout.nodes]]
+stateName = "Hover_Right"
+x = 840.0
+y = 0.0
+
+
+[[editorLayout.nodes]]
+stateName = "Death"
+x = 0.0
+y = 180.0
+
+
+[[editorLayout.nodes]]
+stateName = "Stagger"
+x = 280.0
+y = 180.0
+
+
+[[editorLayout.nodes]]
+stateName = "Close"
+x = 560.0
+y = 180.0
+
+
+[[editorLayout.nodes]]
+stateName = "Cocoon_Idle"
+x = 840.0
+y = 180.0
+
+
+[[editorLayout.nodes]]
+stateName = "Deploy"
+x = 0.0
+y = 360.0
+
+
+[[editorLayout.nodes]]
+stateName = "Dash_InPlace"
+x = 280.0
+y = 360.0
+
+
+[[editorLayout.nodes]]
+stateName = "Laser_Fan"
+x = 560.0
+y = 360.0
+
+
+[[editorLayout.nodes]]
+stateName = "Pulse"
+x = 840.0
+y = 360.0
+
+
+[[editorLayout.nodes]]
+stateName = "Slam_Combo"
+x = 0.0
+y = 540.0
+
+
+[[editorLayout.nodes]]
+stateName = "Slam_L"
+x = 280.0
+y = 540.0
+
+
+[[editorLayout.nodes]]
+stateName = "Slam_R"
+x = 560.0
+y = 540.0
+
+
+[[editorLayout.nodes]]
+stateName = "Turn_L_InPlace"
+x = 840.0
+y = 540.0
+
+
+[[editorLayout.nodes]]
+stateName = "Turn_R_InPlace"
+x = 0.0
+y = 720.0
+
+
+[[editorLayout.nodes]]
+stateName = "Showcase"
+x = 280.0
+y = 720.0
+
+

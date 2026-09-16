@@ -1,13 +1,17 @@
-// FBZZ Engine
-// SignalTests.cpp | GoogleTest
-// Signal の購読・解除と通知中の変更に対する契約を自動検証する。
-#include <gtest/gtest.h>
+/// @file    SignalTests.cpp
+/// @brief   Signal の購読・解除と通知中の変更に対する契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Signal.hpp>
 
 namespace fbzz::tests {
 
-TEST(SignalTest, EmitsArgumentsToEverySubscriber)
+class SignalTest : public testkit::EngineFixture {};
+
+TEST_F(SignalTest, EmitsArgumentsToEverySubscriber)
 {
     fbzz::Signal<int> signal;
     int first = 0;
@@ -22,7 +26,7 @@ TEST(SignalTest, EmitsArgumentsToEverySubscriber)
     EXPECT_FALSE(signal.Empty());
 }
 
-TEST(SignalTest, DisconnectRemovesOnlyTheSelectedSubscriber)
+TEST_F(SignalTest, DisconnectRemovesOnlyTheSelectedSubscriber)
 {
     fbzz::Signal<> signal;
     int first = 0;
@@ -37,7 +41,7 @@ TEST(SignalTest, DisconnectRemovesOnlyTheSelectedSubscriber)
     EXPECT_EQ(second, 1);
 }
 
-TEST(SignalTest, NewSubscriptionsWaitUntilTheNextEmission)
+TEST_F(SignalTest, NewSubscriptionsWaitUntilTheNextEmission)
 {
     fbzz::Signal<> signal;
     int first = 0;
@@ -58,7 +62,7 @@ TEST(SignalTest, NewSubscriptionsWaitUntilTheNextEmission)
     EXPECT_EQ(late, 1);
 }
 
-TEST(SignalTest, ClearMakesTheSignalEmpty)
+TEST_F(SignalTest, ClearMakesTheSignalEmpty)
 {
     fbzz::Signal<int> signal;
     signal.Connect([](int) {});

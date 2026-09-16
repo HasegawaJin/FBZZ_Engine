@@ -1,13 +1,14 @@
-// FBZZ Engine
-// ScriptRuntime.hpp | fbzz::scene
-// Editor と Standalone で ScriptProxy が参照するサブシステムを集約するコンテキスト。
-//
-// WHY: Editor は独自の SceneManager / 描画ビューポートを持ち、
-//      Standalone は core::Application のサブシステムをそのまま使う。
-//      ScriptProxy の各メソッドが直接 Application::Get() を呼ぶと
-//      Editor 側のインスタンスと食い違い、バグの温床になる。
-//      すべての ScriptProxy アクセスをこの struct 経由にすることで
-//      発散を1箇所に封じ込め、テスト・拡張を容易にする。
+/// @file    ScriptRuntime.hpp
+/// @brief   Editor と Standalone で ScriptProxy が参照するサブシステムを集約するコンテキスト。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// WHY: Editor は独自の SceneManager / 描画ビューポートを持ち、
+/// Standalone は core::Application のサブシステムをそのまま使う。
+/// ScriptProxy の各メソッドが直接 Application::Get() を呼ぶと
+/// Editor 側のインスタンスと食い違い、バグの温床になる。
+/// すべての ScriptProxy アクセスをこの struct 経由にすることで
+/// 発散を1箇所に封じ込め、テスト・拡張を容易にする。
 #pragma once
 #include <cstdint>
 

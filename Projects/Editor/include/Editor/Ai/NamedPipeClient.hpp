@@ -1,6 +1,7 @@
-// FBZZ Engine
-// NamedPipeClient.hpp | fbzz::editor::ai
-// 独立Editor Application間でNDJSON要求を送受信する同期Named Pipeクライアント
+/// @file    NamedPipeClient.hpp
+/// @brief   独立Editor Application間でNDJSON要求を送受信する同期Named Pipeクライアント。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #pragma once
 
 #include <cstdint>

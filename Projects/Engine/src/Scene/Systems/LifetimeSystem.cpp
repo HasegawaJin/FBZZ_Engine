@@ -1,8 +1,10 @@
-// FBZZ Engine
-// LifetimeSystem.cpp | fbzz::scene
-// LifetimeComponent を持つ GO の残り寿命を毎フレーム減算し、
-// 0 以下になったら GameObject::Destroy でキューに積む。
-// FlushDestroyQueue が実際の削除を行う。
+/// @file    LifetimeSystem.cpp
+/// @brief   LifetimeComponent を持つ GO の残り寿命を毎フレーム減算し、。
+/// @author  Hasegawa Jin
+/// @date    2026-06-10
+///
+/// 0 以下になったら GameObject::Destroy でキューに積む。
+/// FlushDestroyQueue が実際の削除を行う。
 #include <Engine/Scene/Systems/LifetimeSystem.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
@@ -25,12 +27,12 @@ void LifetimeSystem::Update(SystemContext& ctx)
     const float dt = ctx.dt;
     for (EntityID id : scene.GetEntities<LifetimeComponent>()) {
         auto* lc = scene.GetComponent<LifetimeComponent>(id);
-        if (!lc) continue;
+        auto* go = scene.GetGameObject(id);
+        if (!lc || !go || !go->activeInHierarchy()) continue;
         if (!lc->enabled) continue;
         lc->remaining -= dt;
         if (lc->remaining <= 0.0f) {
-            auto* go = scene.GetGameObject(id);
-            if (go) GameObject::Destroy(*go, 0.0f);
+            GameObject::Destroy(*go, 0.0f);
         }
     }
 }

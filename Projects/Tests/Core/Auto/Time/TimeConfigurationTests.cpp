@@ -1,16 +1,19 @@
-// FBZZ Engine
-// TimeConfigurationTests.cpp | GoogleTest
-// Time の時間倍率・FPS 設定のクランプ契約を自動検証する。
-#include <gtest/gtest.h>
+/// @file    TimeConfigurationTests.cpp
+/// @brief   Time の時間倍率・FPS 設定のクランプ契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Time.hpp>
 
 namespace fbzz::tests {
 
-class TimeConfigurationTest : public ::testing::Test {
+class TimeConfigurationTest : public testkit::EngineFixture {
 protected:
     void SetUp() override
     {
+        EngineFixture::SetUp();
         fbzz::Time::Reset();
         fbzz::Time::SetTimeScale(1.0f);
         fbzz::Time::SetTargetFps(0);
@@ -21,6 +24,7 @@ protected:
         fbzz::Time::Reset();
         fbzz::Time::SetTimeScale(1.0f);
         fbzz::Time::SetTargetFps(0);
+        EngineFixture::TearDown();
     }
 };
 

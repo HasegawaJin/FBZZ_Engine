@@ -1,0 +1,37 @@
+# FBZZ Engine
+# FX_ExplosionBody_Alpha.mat
+# 素材: Assets/VFX/Textures/FX_Explosion_8x8.png (2048x2048 / 8x8 / 64コマ)
+# 爆発の «外側»。芯は FX_ExplosionCore_Additive.mat が持つ。
+version = 1
+shader = ""
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:9554789813288bd28479addebab5ca58"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+sprite_columns = 8
+sprite_rows = 8
+flipbook_mode = "lifetime"
+flipbook_frame_blending = true
+# NOTE: 芯と違ってコマを打ち切らない (sprite_end_frame は既定の «最後まで»)。
+#       外側は膨らみと崩れが表現そのもので、途中で切ると «消えた» に見える。
+# 素材の疑似ボリューム陰影はライトの位置を知らない。実光源で応答させないと、
+# 爆発だけがアリーナの照明から浮く。
+six_way_lighting = true
+lighting_strength = 0.7
+smoke_wrap = 0.5
+smoke_transmission = 0.35
+smoke_back_scatter_power = 5.0
+receive_shadows = true
+shadow_strength = 0.7
+soft_particles = true
+soft_particle_fade_distance = 0.6

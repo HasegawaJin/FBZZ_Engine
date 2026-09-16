@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LifetimeComponent.hpp | fbzz::scene
-// GameObjectを自動破棄するまでの残り時間を保持する
+/// @file    LifetimeComponent.hpp
+/// @brief   GameObjectを自動破棄するまでの残り時間を保持する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-10
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

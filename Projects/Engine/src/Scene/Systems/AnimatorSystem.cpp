@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AnimatorSystem.cpp | fbzz::scene
-// スケルタルアニメーションのサンプリングとスキニングパレットのアップロード
+/// @file    AnimatorSystem.cpp
+/// @brief   スケルタルアニメーションのサンプリングとスキニングパレットのアップロード。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/SkinnedPoseBounds.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include <Engine/Scene/Scene.hpp>
@@ -11,7 +13,10 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/MotionWarpComponent.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/AnimationPropertyBinding.hpp>
+#include <Engine/Asset/AnimationSampling.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
@@ -20,6 +25,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -51,43 +57,10 @@ float WrapTime(float time, float duration)
     return wrapped < 0.0f ? wrapped + duration : wrapped;
 }
 
-math::Vector3 SampleVectorKeys(const std::vector<asset::VectorKey>& keys,
-                               double ticks,
-                               const math::Vector3& fallback,
-                               asset::AnimInterp interp = asset::AnimInterp::Linear)
-{
-    if (keys.empty()) return fallback;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
-
-    const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
-        [](double value, const asset::VectorKey& key) { return value < key.time; });
-    const auto& b = *upper;
-    const auto& a = *(upper - 1);
-    if (interp == asset::AnimInterp::Step) return a.value;
-    const double span = b.time - a.time;
-    const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
-    return math::Vector3::Lerp(a.value, b.value, t);
-}
-
-math::Quaternion SampleQuaternionKeys(const std::vector<asset::QuaternionKey>& keys,
-                                       double ticks,
-                                       const math::Quaternion& fallback,
-                                       asset::AnimInterp interp = asset::AnimInterp::Linear)
-{
-    if (keys.empty()) return fallback;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
-
-    const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
-        [](double value, const asset::QuaternionKey& key) { return value < key.time; });
-    const auto& b = *upper;
-    const auto& a = *(upper - 1);
-    if (interp == asset::AnimInterp::Step) return a.value;
-    const double span = b.time - a.time;
-    const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
-    return math::Quaternion::Slerp(a.value, b.value, t).Normalized();
-}
+// 補間規則は .sequence と共有する (AnimationSampling.hpp)。
+using asset::SampleVectorKeys;
+using asset::SampleQuaternionKeys;
+using asset::SampleFloatKeys;
 
 const asset::NodeAnimationTrack* FindTrack(const asset::AnimationClip& clip,
                                            const std::string& nodeName)
@@ -96,12 +69,9 @@ const asset::NodeAnimationTrack* FindTrack(const asset::AnimationClip& clip,
         if (track.nodeName == nodeName)
             return &track;
 
-    // FBX は DCC / exporter の設定により、同じボーンでも
-    //   mixamorig:RightFoot
-    //   RightFoot
-    //   mixamorig:RightFoot_$AssimpFbx$_PreRotation
-    // のようにチャンネル名が揺れることがある。
-    // exact match を優先した上で、補助ノード suffix と namespace 差だけを吸収する。
+    // FBX は exporter 次第で同じボーンのチャンネル名が揺れる
+    // (mixamorig:RightFoot / RightFoot / mixamorig:RightFoot_$AssimpFbx$_PreRotation)。
+    // exact match を優先し、補助ノード suffix と namespace 差だけを吸収する。
     // 正規化規則は asset::CanonicalNodeName に集約し、インポーター側と共有する。
     const std::string canonicalNodeName = asset::CanonicalNodeName(nodeName);
     for (const auto& track : clip.tracks)
@@ -147,11 +117,8 @@ bool ResolveAxis(RootMotionAxisOverride axisOverride, bool clipValue)
 }
 
 // Animator の設定とクリップの内容から、そのクリップのルートモーション構成を確定する。
-//
-// WHY: 旧実装はクリップ側フラグ (rootMotionApplyXZ 等) をポーズサンプリングが直接読み、
-//      Animator 側の applyRootMotion は見ていなかった。その結果 applyRootMotion=false は
-//      「ポーズからは抜かれるが Transform も delta も動かない」= 前進が消える状態になっていた。
-//      抽出可否と除去可否をここで一元的に決め、両者が必ず整合するようにする。
+// 抽出可否と除去可否をここで一元的に決める。片方だけクリップ側フラグを直接読むと、
+// 「ポーズからは抜かれるが Transform も delta も動かない」= 前進が消える状態になる。
 ResolvedRootMotion ResolveRootMotion(const AnimatorComponent& animator,
                                      const asset::AnimationClip& clip)
 {
@@ -208,11 +175,8 @@ ResolvedRootMotion ResolveRootMotion(const AnimatorComponent& animator,
 }
 
 // 階層パス ("Armature/Hips/Spine/Head") から対象 GameObject を引く。
-//
-// WHY string_view: この関数は「毎フレーム × アニメーター数 × クリップのトラック数」で呼ばれる。
-//     ボーン 80 本のキャラなら 1 体あたり毎フレーム 80 回、パスは 5〜7 階層あるので
-//     以前の substr 実装では 1 フレームに数千回の std::string ヒープ確保が発生していた。
-//     区間を string_view で切り出せば確保はゼロになり、比較結果は完全に同じ。
+// 毎フレーム × アニメーター数 × トラック数で呼ばれる。substr で切ると 1 フレームに
+// 数千回のヒープ確保が出るので、区間は string_view で切り出す。
 GameObject* FindAnimationTarget(GameObject& root, const std::string& path)
 {
     const std::string_view pathView{ path };
@@ -241,11 +205,36 @@ GameObject* FindAnimationTarget(GameObject& root, const std::string& path)
     return current;
 }
 
+// targetPath が無い旧 .anim を、BoneComponent の名前から解決する。
+// BoneComponent に限定して検索し、同名の装飾用 GameObject を誤って動かさない。
+GameObject* FindAnimationBoneByNameRecursive(GameObject& current,
+                                             std::string_view canonicalName)
+{
+    if (auto* bone = current.GetComponent<BoneComponent>()) {
+        if (asset::CanonicalNodeName(bone->boneName) == canonicalName ||
+            asset::CanonicalNodeName(current.name) == canonicalName)
+            return &current;
+    }
+
+    for (int i = 0; i < current.GetChildCount(); ++i) {
+        GameObject* child = current.GetChild(i);
+        if (!child) continue;
+        if (GameObject* found = FindAnimationBoneByNameRecursive(*child, canonicalName))
+            return found;
+    }
+    return nullptr;
+}
+
+GameObject* FindAnimationTargetByNodeName(GameObject& root, std::string_view nodeName)
+{
+    const std::string canonicalName = asset::CanonicalNodeName(nodeName);
+    if (canonicalName.empty()) return nullptr;
+    return FindAnimationBoneByNameRecursive(root, canonicalName);
+}
+
 // マテリアルアニメーションの適用先 GameObject を探す。
-// WHY: 以前は submesh ごとの子 GO を meshIndex == materialSlot で探していたが、
-//      1 GameObject = モデル全体になり、submesh は MaterialComponent のスロットで
-//      表現されるようになった。ここではスロットを持つ Renderer 側の GO を返し、
-//      どのスロットへ書くかは ApplyMaterialProperty が track.materialSlot で決める。
+// 1 GameObject = モデル全体で submesh は MaterialComponent のスロットなので、
+// ここは Renderer 側の GO を返し、どのスロットへ書くかは ApplyMaterialProperty が決める。
 GameObject* FindMaterialSlotTarget(GameObject& root)
 {
     if (root.GetComponent<SkinnedMeshRenderer>() && root.GetComponent<MaterialComponent>())
@@ -258,114 +247,9 @@ GameObject* FindMaterialSlotTarget(GameObject& root)
     return nullptr;
 }
 
-float SampleFloatKeys(const std::vector<asset::FloatKey>& keys,
-                      double ticks,
-                      asset::AnimInterp interp)
-{
-    if (keys.empty()) return 0.0f;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
-    const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
-        [](double value, const asset::FloatKey& key) { return value < key.time; });
-    const auto& b = *upper;
-    const auto& a = *(upper - 1);
-    if (interp == asset::AnimInterp::Step) return a.value;
-    const double span = b.time - a.time;
-    const float t = span > 0.0 ? static_cast<float>((ticks - a.time) / span) : 0.0f;
-    if (interp != asset::AnimInterp::Cubic) return a.value + (b.value - a.value) * t;
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    const float duration = static_cast<float>(span);
-    return (2.0f * t3 - 3.0f * t2 + 1.0f) * a.value
-         + (t3 - 2.0f * t2 + t) * a.outTangent * duration
-         + (-2.0f * t3 + 3.0f * t2) * b.value
-         + (t3 - t2) * b.inTangent * duration;
-}
-
-math::Vector2 SampleVector2Keys(const std::vector<asset::Vector2Key>& keys,
-                                double ticks,
-                                asset::AnimInterp interp)
-{
-    if (keys.empty()) return math::Vector2::ZERO;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
-    const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
-        [](double value, const asset::Vector2Key& key) { return value < key.time; });
-    const auto& b = *upper;
-    const auto& a = *(upper - 1);
-    if (interp == asset::AnimInterp::Step) return a.value;
-    const float t = static_cast<float>((ticks - a.time) / (b.time - a.time));
-    return math::Vector2::Lerp(a.value, b.value, t);
-}
-
-math::Vector4 SampleVector4Keys(const std::vector<asset::Vector4Key>& keys,
-                                double ticks,
-                                asset::AnimInterp interp)
-{
-    if (keys.empty()) return math::Vector4::ZERO;
-    if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
-    if (ticks >= keys.back().time) return keys.back().value;
-    const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
-        [](double value, const asset::Vector4Key& key) { return value < key.time; });
-    const auto& b = *upper;
-    const auto& a = *(upper - 1);
-    if (interp == asset::AnimInterp::Step) return a.value;
-    const float t = static_cast<float>((ticks - a.time) / (b.time - a.time));
-    return a.value + (b.value - a.value) * t;
-}
-
-template<typename Key>
-const Key& SampleDiscreteKey(const std::vector<Key>& keys, double ticks)
-{
-    const auto upper = std::upper_bound(keys.begin(), keys.end(), ticks,
-        [](double value, const Key& key) { return value < key.time; });
-    return upper == keys.begin() ? keys.front() : *(upper - 1);
-}
-
-// Reflect() を一度だけ巡回して一致する永続キーへ値を書き込む。
-class AnimationPropertyReflector final : public IReflector {
-public:
-    AnimationPropertyReflector(const asset::PropertyAnimationTrack& track, double ticks)
-        : m_track(track), m_ticks(ticks) {}
-
-    void Field(const char* name, float& value) override {
-        if (Matches(name) && !m_track.floatKeys.empty())
-            value = SampleFloatKeys(m_track.floatKeys, m_ticks, m_track.interp);
-    }
-    void Field(const char* name, int& value) override {
-        if (Matches(name) && !m_track.intKeys.empty())
-            value = SampleDiscreteKey(m_track.intKeys, m_ticks).value;
-    }
-    void Field(const char* name, bool& value) override {
-        if (Matches(name) && !m_track.boolKeys.empty())
-            value = SampleDiscreteKey(m_track.boolKeys, m_ticks).value;
-    }
-    void Field(const char* name, math::Vector2& value) override {
-        if (Matches(name) && !m_track.vector2Keys.empty())
-            value = SampleVector2Keys(m_track.vector2Keys, m_ticks, m_track.interp);
-    }
-    void Field(const char* name, math::Vector3& value) override {
-        if (Matches(name) && !m_track.vector3Keys.empty())
-            value = SampleVectorKeys(m_track.vector3Keys, m_ticks, value, m_track.interp);
-    }
-    void Field(const char* name, math::Vector4& value) override {
-        if (Matches(name) && !m_track.vector4Keys.empty())
-            value = SampleVector4Keys(m_track.vector4Keys, m_ticks, m_track.interp);
-    }
-    void Field(const char*, std::string&) override {}
-    void Field(const char*, math::Quaternion&) override {}
-
-private:
-    bool Matches(const char* fallback) const {
-        return m_track.propertyName == PersistentKey(fallback);
-    }
-    const asset::PropertyAnimationTrack& m_track;
-    double m_ticks = 0.0;
-};
-
 void ApplyTransformTracks(GameObject& root,
-                           const asset::AnimationClip& clip,
-                           double ticks)
+                          const asset::AnimationClip& clip,
+                          double ticks)
 {
     for (const auto& track : clip.tracks) {
         GameObject* target = track.targetPath.empty()
@@ -377,75 +261,6 @@ void ApplyTransformTracks(GameObject& root,
             track.rotations, ticks, target->transform.rotation, track.interp);
         target->transform.scale = SampleVectorKeys(
             track.scales, ticks, target->transform.scale, track.interp);
-    }
-}
-
-void ApplyComponentProperty(GameObject& target,
-                            const asset::PropertyAnimationTrack& track,
-                            double ticks)
-{
-    bool applied = false;
-    ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        if (applied || track.componentType != Registration::serializedName) return;
-        if constexpr (requires(T& component, IReflector& reflector) {
-            component.Reflect(reflector);
-        }) {
-            if (T* component = target.GetComponent<T>()) {
-                AnimationPropertyReflector reflector(track, ticks);
-                component->Reflect(reflector);
-                applied = true;
-            }
-        }
-    });
-    if (applied) return;
-
-    if (ScriptComponent* scripts = target.GetComponent<ScriptComponent>()) {
-        for (auto& entry : scripts->scripts) {
-            if (!entry.script || track.componentType != entry.script->GetTypeName()) continue;
-            AnimationPropertyReflector reflector(track, ticks);
-            entry.script->Reflect(reflector);
-            break;
-        }
-    }
-}
-
-void ApplyMaterialProperty(GameObject& target,
-                           const asset::PropertyAnimationTrack& track,
-                           double ticks)
-{
-    MaterialComponent* material = target.GetComponent<MaterialComponent>();
-    if (!material || track.propertyName.empty()) return;
-    // track.materialSlot が submesh (= マテリアルスロット) を選ぶ。負値は主スロット。
-    const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
-    auto& values = material->SlotAt(slotIndex).paramOverrides[track.propertyName];
-    switch (track.valueType) {
-    case asset::AnimValueType::Float:
-        values = { SampleFloatKeys(track.floatKeys, ticks, track.interp) };
-        break;
-    case asset::AnimValueType::Vector2: {
-        const auto v = SampleVector2Keys(track.vector2Keys, ticks, track.interp);
-        values = { v.x, v.y };
-        break;
-    }
-    case asset::AnimValueType::Vector3: {
-        const auto v = SampleVectorKeys(track.vector3Keys, ticks, math::Vector3::ZERO, track.interp);
-        values = { v.x, v.y, v.z };
-        break;
-    }
-    case asset::AnimValueType::Vector4:
-    case asset::AnimValueType::Color: {
-        const auto v = SampleVector4Keys(track.vector4Keys, ticks, track.interp);
-        values = { v.x, v.y, v.z, v.w };
-        break;
-    }
-    case asset::AnimValueType::Int:
-        if (!track.intKeys.empty())
-            values = { static_cast<float>(SampleDiscreteKey(track.intKeys, ticks).value) };
-        break;
-    case asset::AnimValueType::Bool:
-        if (!track.boolKeys.empty())
-            values = { SampleDiscreteKey(track.boolKeys, ticks).value ? 1.0f : 0.0f };
-        break;
     }
 }
 
@@ -508,7 +323,8 @@ void DispatchAnimationEvents(GameObject& owner,
             event.name, event.intParam, event.floatParam, eventTime, Time::frameCount });
         if (scripts != nullptr)
             for (auto& entry : scripts->scripts)
-                if (entry.script) entry.script->OnAnimationEvent(info);
+                if (entry.script)
+                    entry.script->ExecuteCallback(&Script::OnAnimationEvent, info);
     }
 }
 
@@ -531,12 +347,8 @@ RootMotionClipSample& AcquireRootMotionSample(AnimatorComponent& animator,
 }
 
 // 前フレームからの差分としてクリップ 1 本のルートモーションを取り出す。
-//
-// WHY: 旧実装は「ステート時刻の前後差分 + ループ判定」で計算していたため、
-//      BlendTree の位相同期・Motion ごとの speed・遷移によるステート切り替えを
-//      すべて呼び出し側で辻褄合わせする必要があり、実際には支配クリップ 1 本しか
-//      扱えていなかった。クリップが自分の前回サンプル tick を覚えていれば、
-//      ブレンド構成が毎フレーム変わっても各クリップの delta は連続する。
+// クリップが自分の前回サンプル tick を覚えていれば、ブレンド構成が毎フレーム変わっても
+// 各クリップの delta は連続する (ステート時刻の差分で出すと支配クリップ 1 本しか扱えない)。
 RootMotionDelta SampleClipRootMotion(AnimatorComponent& animator,
                                      const asset::AnimationClip& clip,
                                      const ResolvedRootMotion& resolved,
@@ -636,9 +448,11 @@ void UpdateMorphVertexBuffers(SkinnedMeshRenderer& smr,
                     vertices[i].tangent += target.tangentDeltas[i] * weight;
                 }
             }
+            // 接線を持たないモデルや、デルタが元の向きを打ち消した頂点はゼロになる。
+            // 描けない値ではあるが読み込めてしまうデータなので、既定の軸へ逃がす。
             for (auto& vertex : vertices) {
-                vertex.normal = vertex.normal.Normalized();
-                vertex.tangent = vertex.tangent.Normalized();
+                vertex.normal = vertex.normal.NormalizedOr(math::Vector3::UP);
+                vertex.tangent = vertex.tangent.NormalizedOr(math::Vector3::RIGHT);
             }
             auto& buffer = smr.morphVertexBuffers[meshIndex];
             if (!buffer.IsValid())
@@ -662,8 +476,8 @@ void UpdateMorphVertexBuffers(SkinnedMeshRenderer& smr,
                 }
             }
             for (auto& vertex : vertices) {
-                vertex.normal = vertex.normal.Normalized();
-                vertex.tangent = vertex.tangent.Normalized();
+                vertex.normal = vertex.normal.NormalizedOr(math::Vector3::UP);
+                vertex.tangent = vertex.tangent.NormalizedOr(math::Vector3::RIGHT);
             }
             auto& buffer = smr.morphVertexBuffers[meshIndex];
             if (!buffer.IsValid())
@@ -679,10 +493,8 @@ void UpdateMorphVertexBuffers(SkinnedMeshRenderer& smr,
 }
 
 // ポーズからルート成分を除去する。除去する軸は ResolvedRootMotion が決める。
-//
-// WHY: 旧実装はクリップ側フラグを直接読んでいたため、Animator 側で抽出を止めても
-//      ポーズからは抜かれ続け、前進成分がどこにも行かず消えていた。
-//      「抜くかどうか」は Animator の設定で決まる、という一点に集約する。
+// 「抜くかどうか」は Animator の設定で決まる ─ クリップ側フラグを直接読むと、
+// 抽出を止めてもポーズからは抜かれ続けて前進成分が消える。
 void StripRootMotionFromPose(const asset::SkeletonNode& node,
                              const ResolvedRootMotion& rootMotion,
                              math::Vector3& translation,
@@ -755,12 +567,76 @@ void UpdateWorldTransform(GameObject& go, const Transform& parentTransform)
     };
 }
 
+// アフィン行列を Transform の TRS へ分解する。
+// TransformSystem / ConstraintSystem は local から world を再計算するので、world だけへ
+// 補正を入れても後段の Flush で消える。root bone の local 値へ組み込む必要がある。
+Transform DecomposeAffineMatrix(const math::Matrix4& worldMatrix)
+{
+    Transform result;
+    result.worldPosition = {
+        worldMatrix.m[0][3], worldMatrix.m[1][3], worldMatrix.m[2][3]
+    };
+
+    const math::Vector3 basisX{
+        worldMatrix.m[0][0], worldMatrix.m[1][0], worldMatrix.m[2][0]
+    };
+    const math::Vector3 basisY{
+        worldMatrix.m[0][1], worldMatrix.m[1][1], worldMatrix.m[2][1]
+    };
+    const math::Vector3 basisZ{
+        worldMatrix.m[0][2], worldMatrix.m[1][2], worldMatrix.m[2][2]
+    };
+    result.worldScale = { basisX.Length(), basisY.Length(), basisZ.Length() };
+
+    math::Matrix4 rotationMatrix = math::Matrix4::Identity();
+    const float inverseScaleX = result.worldScale.x > math::EPSILON
+        ? 1.0f / result.worldScale.x : 0.0f;
+    const float inverseScaleY = result.worldScale.y > math::EPSILON
+        ? 1.0f / result.worldScale.y : 0.0f;
+    const float inverseScaleZ = result.worldScale.z > math::EPSILON
+        ? 1.0f / result.worldScale.z : 0.0f;
+    for (int row = 0; row < 3; ++row) {
+        rotationMatrix.m[row][0] = worldMatrix.m[row][0] * inverseScaleX;
+        rotationMatrix.m[row][1] = worldMatrix.m[row][1] * inverseScaleY;
+        rotationMatrix.m[row][2] = worldMatrix.m[row][2] * inverseScaleZ;
+    }
+    result.worldRotation = math::Quaternion::FromMatrix4(rotationMatrix).Normalized();
+    return result;
+}
+
+void SetRootBoneLocalInSkinningSpace(GameObject& rootBone,
+                                     const math::Matrix4& rootInverseTransform)
+{
+    const math::Matrix4 renderLocal =
+        rootInverseTransform * math::Matrix4::TRS(
+            rootBone.transform.position,
+            rootBone.transform.rotation,
+            rootBone.transform.scale);
+    const Transform decomposed = DecomposeAffineMatrix(renderLocal);
+    rootBone.transform.position = decomposed.worldPosition;
+    rootBone.transform.rotation = decomposed.worldRotation;
+    rootBone.transform.scale = decomposed.worldScale;
+}
+
+void SetRootBoneLocalInAnimationSpace(GameObject& rootBone,
+                                      const math::Matrix4& rootInverseTransform)
+{
+    const math::Matrix4 animationLocal =
+        math::Matrix4::Inverse(rootInverseTransform) * math::Matrix4::TRS(
+            rootBone.transform.position,
+            rootBone.transform.rotation,
+            rootBone.transform.scale);
+    const Transform decomposed = DecomposeAffineMatrix(animationLocal);
+    rootBone.transform.position = decomposed.worldPosition;
+    rootBone.transform.rotation = decomposed.worldRotation;
+    rootBone.transform.scale = decomposed.worldScale;
+}
+
 void PropagateNonBoneChildTransforms(GameObject& parent)
 {
-    // WHY: AnimatorSystem は TransformSystem より後で Bone の local pose / world pose を上書きする。
-    //      そのままだと Bone 配下にユーザーが置いた Particle / Attachment 用 GameObject は
-    //      直前の TransformSystem 結果のままになり、手や武器に追従しない。
-    //      BoneComponent を持つ子は Skeleton 再帰側で処理されるため、ここでは通常子だけ更新する。
+    // AnimatorSystem は TransformSystem の後で Bone の姿勢を上書きするので、Bone 配下へ
+    // 置いた Particle / Attachment は放っておくと手や武器に追従しない。
+    // BoneComponent を持つ子は Skeleton 再帰側が処理する。ここは通常子だけ。
     for (int i = 0; i < parent.GetChildCount(); ++i) {
         GameObject* child = parent.GetChild(i);
         if (!child) continue;
@@ -788,6 +664,24 @@ GameObject* FindBoneDescendant(GameObject& root, int nodeIndex)
     return nullptr;
 }
 
+// スケルトンの親参照が循環していないかを確認し、生成時の再帰を止める。
+// WHY: 通常のインポーターは木構造を作るが、古いキャッシュや破損した .fzasset は
+//      親インデックスだけが循環することがあり、Base Layer の初回評価をハングさせる。
+bool HasAcyclicParentChain(const asset::Skeleton& skeleton, int nodeIndex)
+{
+    std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
+    int current = nodeIndex;
+    while (current >= 0) {
+        if (current >= static_cast<int>(skeleton.nodes.size()))
+            return false;
+        if (visited[static_cast<size_t>(current)] != 0)
+            return false;
+        visited[static_cast<size_t>(current)] = 1;
+        current = skeleton.nodes[static_cast<size_t>(current)].parentIndex;
+    }
+    return true;
+}
+
 GameObject& EnsureBoneObject(Scene& scene,
                              GameObject& owner,
                              SkinnedMeshRenderer& smr,
@@ -809,7 +703,20 @@ GameObject& EnsureBoneObject(Scene& scene,
         }
     }
 
-    if (GameObject* found = FindBoneDescendant(owner, nodeIndex)) {
+    // 既存ボーンの捜索範囲。
+    // Renderer は Body / Visor といった子に付き、ボーンは兄弟の Armature 側に居るので、
+    // owner の子孫しか見ないと Renderer ごとにボーン階層が生えてしまう。
+    // skeletonRootEntity が解決できていればその親を範囲にする。別キャラの兄弟へ
+    // 誤って束縛しないよう、範囲は「起点ボーンの親」までに限る。
+    GameObject* searchScope = &owner;
+    if (GameObject* skeletonRoot = scene.GetGameObject(smr.skeletonRootEntity)) {
+        if (auto* skeletonParent = skeletonRoot->GetParent())
+            searchScope = skeletonParent;
+        else
+            searchScope = skeletonRoot;
+    }
+
+    if (GameObject* found = FindBoneDescendant(*searchScope, nodeIndex)) {
         if (auto* bone = found->GetComponent<BoneComponent>()) {
             bone->boneName = node.name;
             bone->boneIndex = node.boneIndex;
@@ -823,7 +730,8 @@ GameObject& EnsureBoneObject(Scene& scene,
 
     GameObject* parent = &owner;
     if (node.parentIndex >= 0 &&
-        node.parentIndex < static_cast<int>(skeleton.nodes.size()))
+        node.parentIndex < static_cast<int>(skeleton.nodes.size()) &&
+        HasAcyclicParentChain(skeleton, node.parentIndex))
         parent = &EnsureBoneObject(scene, owner, smr, skeleton, node.parentIndex);
 
     GameObject& boneObject = scene.CreateGameObject(node.name);
@@ -879,23 +787,103 @@ void ApplyAnimatedPoseToBones(Scene& scene,
     }
 }
 
+// ボーン階層を積み始める親。既定では SkinnedMeshRenderer が乗っている GameObject だが、
+// root ボーンが別のノードにぶら下げ直されていればそちらを使う。
+//
+// WHY owner 固定にしないか:
+//   owner を親と決め打つと、owner と root ボーンの間に挟んだノードが伝播で素通しされ、
+//   そこへ書いた回転・移動が毎フレーム捨てられる。骨より上に 1 枚挟んで «クリップの
+//   上から体ごと傾ける» (脚を失ったボスが崩れる等) が、挟んだ側からは «何も起きない»
+//   としか見えなくなる。骨の world は骨の実際の親から積む。
+//
+//   スキニング行列は owner のローカル系で組む (RebuildSkinningFromBoneTransforms) ので、
+//   挟んだノードのぶんはメッシュにも当たり判定にもそのまま乗る。
+const Transform& SkeletonParentTransform(Scene& scene,
+                                         const SkinnedMeshRenderer& smr,
+                                         const asset::Skeleton& skeleton,
+                                         GameObject& owner)
+{
+    if (skeleton.rootNodeIndex < 0 ||
+        skeleton.rootNodeIndex >= static_cast<int>(smr.nodeEntities.size()))
+        return owner.transform;
+    GameObject* rootBone =
+        scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(skeleton.rootNodeIndex)]);
+    if (!rootBone) return owner.transform;
+    GameObject* parent = rootBone->GetParent();
+    if (!parent || parent == &owner) return owner.transform;
+    return parent->transform;
+}
+
 void PropagateBoneTransforms(Scene& scene,
                              const asset::Skeleton& skeleton,
                              SkinnedMeshRenderer& smr,
+                             const math::Matrix4& rootInverseTransform,
                              int nodeIndex,
-                             const Transform& parentTransform)
+                             const Transform& parentTransform,
+                             std::vector<uint8_t>& visited)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
         nodeIndex >= static_cast<int>(smr.nodeEntities.size()))
         return;
+    // アセット破損で children が循環していても、Base Layer の全身評価を
+    // 無限再帰にしない。通常の Assimp 階層では各ノードは一度だけ通る。
+    if (visited[static_cast<size_t>(nodeIndex)] != 0)
+        return;
+    visited[static_cast<size_t>(nodeIndex)] = 1;
     GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(nodeIndex)]);
     if (!boneObject) return;
+
+    if (nodeIndex == skeleton.rootNodeIndex) {
+        // 描画側の boneMatrix = rootInverse * nodeGlobal * offset と同じ補正を
+        // 階層の root local へ移す。これで ConstraintSystem の Flush 後も維持される。
+        SetRootBoneLocalInSkinningSpace(*boneObject, rootInverseTransform);
+    }
 
     UpdateWorldTransform(*boneObject, parentTransform);
     PropagateNonBoneChildTransforms(*boneObject);
 
     for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
-        PropagateBoneTransforms(scene, skeleton, smr, child, boneObject->transform);
+        PropagateBoneTransforms(scene, skeleton, smr, rootInverseTransform,
+                                child, boneObject->transform, visited);
+}
+
+// ボーン GameObject をリファレンスポーズへ戻し、ソケットを停止中にも描画空間へ揃える。
+// 停止中も GPU は referencePose を描くので、ボーンだけ前フレームの姿勢を残すと
+// SOCKET_HAND Gizmo と bind pose のメッシュがずれる。
+void ApplyBindPoseToBones(Scene& scene,
+                          const asset::Skeleton& skeleton,
+                          SkinnedMeshRenderer& smr,
+                          GameObject& owner)
+{
+    for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
+        if (i >= smr.nodeEntities.size()) continue;
+        GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[i]);
+        if (!boneObject) continue;
+        const auto& node = skeleton.nodes[i];
+        boneObject->transform.position = node.bindTranslation;
+        boneObject->transform.rotation = node.bindRotation;
+        boneObject->transform.scale = node.bindScale;
+    }
+
+    std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
+    PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
+                            skeleton.rootNodeIndex,
+                            SkeletonParentTransform(scene, smr, skeleton, owner), visited);
+}
+
+// 骨の «いまの» 位置から、カリング用の球を owner ローカル空間で組み直す。
+//
+// WHY 骨から作るか: 従来の球はバインドポーズの submesh バウンズを Renderer の
+//   Transform で運んだもので、骨がバインドポーズの近くにいる前提だった。Script が
+//   骨を数十 m 動かす構成 (externalPose で経路に沿って場を渡る胴など) では、球だけが
+//   バインドポーズの場所に取り残され、部位ごとに独立して明滅する。
+//
+// WHY 肉の厚みを足さないか: ここは «骨がどこにいるか» までを返し、その周りの
+//   厚みは読む側 (ComputeSkinnedWorldBounds) が submesh のバインド半径で足す。
+//   厚みは Renderer ごとに違うので、ここで一律に足すと必ず過大になる。
+void UpdateSkinnedBounds(AnimatorComponent& animator, const asset::Skeleton& skeleton)
+{
+    UpdateSkinnedPoseBounds(animator, skeleton);
 }
 
 void RebuildSkinningFromBoneTransforms(Scene& scene,
@@ -910,13 +898,17 @@ void RebuildSkinningFromBoneTransforms(Scene& scene,
         return;
 
     const math::Matrix4 ownerInverse = math::Matrix4::Inverse(owner.transform.GetWorldMatrix());
+    // PropagateBoneTransforms は root local へ rootInverse を組み込むため、
+    // world -> nodeGlobal の復元ではその逆行列を先に戻す。
+    const math::Matrix4 rootTransform =
+        math::Matrix4::Inverse(skeleton.rootInverseTransform);
 
     for (size_t nodeIndex = 0; nodeIndex < skeleton.nodes.size(); ++nodeIndex) {
         GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[nodeIndex]);
         if (!boneObject) continue;
 
         animator.nodeGlobalTransforms[nodeIndex] =
-            ownerInverse * boneObject->transform.GetWorldMatrix();
+            rootTransform * ownerInverse * boneObject->transform.GetWorldMatrix();
     }
 
     for (size_t boneIndex = 0; boneIndex < animator.boneMatrices.size(); ++boneIndex) {
@@ -962,21 +954,15 @@ void EvaluateNode(const asset::Skeleton& skeleton,
         EvaluateNode(skeleton, clip, child, global, ticks, palette, nodeGlobals, rootMotion);
 }
 
-// バインドポーズのスキニング行列をノード階層から構築する。
-//
-// WHY: 単位行列ではない。boneMatrix = rootInverse · nodeGlobal · offsetMatrix の
-//   nodeGlobal をバインド TRS で埋めた値が正しい「無アニメ状態」で、これは
-//   メッシュノードのグローバルバインド変換に一致する。
-//   Mixamo など Y-up で書き出された FBX ではこれがたまたま identity になるため
-//   単位行列でも破綻しなかったが、Blender 製 FBX は頂点が Z-up 生データのままで
-//   Y-up への変換 (-90°X) をアーマチュアノードが担っている。単位行列を入れると
-//   その回転が失われ、モデルが X 軸まわりに 90° 倒れて描画される。
-// 無アニメ時はスケルトンのリファレンスポーズを送る。単位行列は
-// skeleton = nullptr (スケルトン未解決の汎用アニメータ経路) のときだけ。
-//
-// WHY animator 側の配列も埋める: boneMatrices は IKSystem・MeshTrailRenderPass・
-//   ParticlePass・AnimatorDebugPass が読む。GPU にだけリファレンスポーズを送って
-//   CPU 側を identity のままにすると、トレイルの発生位置や IK の初期姿勢が描画とズレる。
+// バインドポーズのスキニング行列をノード階層から構築する。単位行列ではない。
+// boneMatrix = rootInverse · nodeGlobal · offsetMatrix の nodeGlobal をバインド TRS で
+// 埋めた値が正しい「無アニメ状態」。Mixamo (Y-up) ではたまたま identity になるが、
+// Blender 製 FBX は Y-up への変換 (-90°X) をアーマチュアノードが担うので、
+// 単位行列を入れるとモデルが X 軸まわりに 90° 倒れる。
+// 無アニメ時はスケルトンのリファレンスポーズを送る。単位行列は skeleton = nullptr
+// (スケルトン未解決の汎用アニメータ経路) のときだけ。
+// animator 側の配列も埋める ─ boneMatrices は IKSystem / MeshTrailRenderPass /
+// ParticlePass / AnimatorDebugPass が読むので、CPU 側だけ identity だと描画とズレる。
 void UploadBindPose(AnimatorComponent& animator,
                     renderer::ResourceManager& resources,
                     const asset::Skeleton* skeleton = nullptr)
@@ -998,6 +984,30 @@ void UploadBindPose(AnimatorComponent& animator,
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
+// SnapshotPreviousBonePalette — 現在の boneMatrices を「前フレーム」として確定させる。
+// AnimatorSystem がポーズを上書きする直前に 1 回だけ呼ぶこと。
+void SnapshotPreviousBonePalette(AnimatorComponent& animator,
+                                 renderer::ResourceManager& resources)
+{
+    if (animator.boneMatrices.empty() || !animator.prevSkinningBuffer.IsValid()) {
+        animator.prevBoneMatricesValid = false;
+        return;
+    }
+
+    animator.prevBoneMatrices = animator.boneMatrices;
+
+    SkinningCB cb{};
+    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
+        cb.boneMatrices[i] = math::Matrix4::Identity();
+    const size_t boneCount = (std::min)(animator.prevBoneMatrices.size(),
+                                        static_cast<size_t>(asset::MAX_SKINNING_BONES));
+    for (size_t i = 0; i < boneCount; ++i)
+        cb.boneMatrices[i] = animator.prevBoneMatrices[i];
+
+    resources.Update(animator.prevSkinningBuffer, &cb, sizeof(SkinningCB));
+    animator.prevBoneMatricesValid = true;
+}
+
 void LoadClips(AnimatorComponent& animator)
 {
     animator.clips.clear();
@@ -1013,19 +1023,52 @@ void LoadClips(AnimatorComponent& animator)
         if (std::find(sources.begin(), sources.end(), sourcePath) == sources.end())
             sources.push_back(sourcePath);
     };
-    for (const auto& state : animator.states) {
+    const auto addStateSources = [&addSource](const AnimationState& state) {
         addSource(state.sourcePath);
         for (const auto& motion : state.blendTree1D.motions) addSource(motion.sourcePath);
         for (const auto& motion : state.blendTree2D.motions) addSource(motion.sourcePath);
+    };
+
+    // Base Layer だけでなく、追加 Layer の Draw/Holster や攻撃モーションも同じ
+    // Animator クリップ配列へ登録する。Layer 側だけに接続された Motion を見落とすと、
+    // Base Layer を有効にした後に「Layer のステート名は合っているのに動かない」状態になる。
+    for (const auto& state : animator.states)
+        addStateSources(state);
+    for (const auto& layer : animator.layers)
+    {
+        for (const auto& state : layer.states)
+            addStateSources(state);
+        // Additive の基準クリップはステートから参照されないことがあるため、ここでも
+        // 収集する。未ロードの基準ポーズを先頭キーへ黙って縮退させない。
+        addSource(layer.additiveReference.sourcePath);
     }
+    // ステートから辿れない演出専用クリップ (.sequence の AnimationTrack など)。
+    for (const auto& src : animator.externalClipSources)
+        addSource(src);
 
     for (const auto& src : sources) {
         if (src.empty()) continue;
 
+        // Controller は .anim を GUID で保存するため、GUID 文字列そのものには
+        // 拡張子が無い。解決前に ModelImporter へ渡すと、追加レイヤーの .anim を
+        // FBX / .fzasset として解釈してクラッシュする経路になる。
+        const std::string resolvedSource = asset::AssetManager::ResolveAssetPath(src);
+        const auto hasAnimExtension = [](const std::string& path) {
+            if (path.size() < 5) return false;
+            const size_t offset = path.size() - 5;
+            for (size_t i = 0; i < 5; ++i) {
+                const char c = static_cast<char>(std::tolower(
+                    static_cast<unsigned char>(path[offset + i])));
+                constexpr char suffix[] = ".anim";
+                if (c != suffix[i]) return false;
+            }
+            return true;
+        };
+
         // .anim ファイルは AnimationClip として直接ロードする。
         // WHY: FBX インポート時のアニメーションクリップは .anim に分離されており、
         //      .fzasset (モデルファイル) には clips が含まれないため。
-        if (src.size() > 5 && src.rfind(".anim") == src.size() - 5) {
+        if (hasAnimExtension(resolvedSource)) {
             auto h = asset::AssetManager::Load<asset::AnimationClip>(src);
             if (!h.IsValid()) {
                 FBZZ_LOG_WARN("AnimatorSystem: .anim source '%s' failed to load", src.c_str());
@@ -1055,10 +1098,8 @@ void LoadClips(AnimatorComponent& animator)
 
 // ── ステートマシン用ヘルパー ──────────────────────────────────────────────────
 
-// animator.clips からクリップ名で探す。
-// 完全一致 → 大文字小文字無視の含有一致 の順でフォールバックする。
-// WHY: FBX エクスポーターによっては "Walk" → "Armature|Walk" のように
-//      オブジェクト名がプレフィックスとして付くため、完全一致だけでは取得できない。
+// animator.clips からクリップ名で探す。完全一致 → 大文字小文字無視の含有一致。
+// エクスポーターによっては "Walk" → "Armature|Walk" とプレフィックスが付く。
 const asset::AnimationClip* FindClipByName(const AnimatorComponent& animator,
                                            const std::string& clipName)
 {
@@ -1086,10 +1127,8 @@ const asset::AnimationClip* FindClipBySource(const AnimatorComponent& animator,
                                              const std::string& sourcePath,
                                              const std::string& clipName);
 
-// ステートに対応するクリップを返す。
-// clipName 名前検索 → clipIndex 直接指定 の順でフォールバックする。
-// WHY: Mixamo 等は FBX 内クリップ名を "mixamo.com" にするため名前検索が失敗する。
-//      clipIndex を明示することで任意の FBX でも確実に動作させる。
+// ステートに対応するクリップを返す。clipName 名前検索 → clipIndex 直接指定。
+// Mixamo 等は FBX 内クリップ名を "mixamo.com" にするため名前検索が失敗する。
 const asset::AnimationClip* FindClipForState(const AnimatorComponent& animator,
                                              const AnimationState& state)
 {
@@ -1175,9 +1214,8 @@ struct WeightedClip {
     float                       weight = 0.0f;
     float                       ikWeight = 1.0f;
     // このクリップのルートモーション構成。ポーズ除去と delta 抽出の両方がここを見る。
-    // WHY: 旧実装は「最大 weight のクリップ 1 本」からしかルートモーションを取れず、
-    //      BlendTree の Walk↔Run が 0.5 を跨いだ瞬間に移動量が段差状に飛んでいた。
-    //      クリップごとに持たせて weight で加重合成する。
+    // クリップごとに持たせて weight で加重合成する (1 本だけ見ると Walk↔Run が 0.5 を
+    // 跨いだ瞬間に移動量が段差状に飛ぶ)。
     ResolvedRootMotion          rootMotion{};
     // 逆再生中か。ループ跨ぎの判定方向がひっくり返る。
     bool                        reverse = false;
@@ -1271,8 +1309,9 @@ std::vector<WeightedMotion> Compute2DWeights(const AnimatorComponent& animator,
     std::vector<WeightedMotion> result;
     if (tree.motions.empty()) return result;
 
-    float px = animator.GetFloat(tree.paramX);
-    float py = animator.GetFloat(tree.paramY);
+    const bool damped = tree.dampTime > math::EPSILON && tree.dampedValueInitialized;
+    float px = damped ? tree.dampedX : animator.GetFloat(tree.paramX);
+    float py = damped ? tree.dampedY : animator.GetFloat(tree.paramY);
     std::vector<const BlendTreeMotion*> motions;
     motions.reserve(tree.motions.size());
     for (const auto& motion : tree.motions) motions.push_back(&motion);
@@ -1376,12 +1415,17 @@ std::vector<WeightedClip> BuildStateClips(const AnimatorComponent& animator,
         const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
         const float duration = static_cast<float>(clip->GetDurationSeconds());
         float motionTime = stateTime * weighted.motion->speed;
-        if (state.mode == AnimationStateMode::BlendTree1D &&
-            state.blendTree1D.syncNormalizedTime &&
-            state.blendTree1D.normalizedPhaseInitialized) {
+        const bool sync1D = state.mode == AnimationStateMode::BlendTree1D &&
+                            state.blendTree1D.syncNormalizedTime &&
+                            state.blendTree1D.normalizedPhaseInitialized;
+        const bool sync2D = state.mode == AnimationStateMode::BlendTree2D &&
+                            state.blendTree2D.syncNormalizedTime &&
+                            state.blendTree2D.normalizedPhaseInitialized;
+        if (sync1D || sync2D) {
             // WHY: Motionごとの秒数で個別Wrapすると、Weight 0から復帰したWalkが別位相で現れる。
             //      同じ0..1位相を各Clip長へ写像し、Idle/Walk/Runの足運びを連続させる。
-            motionTime = state.blendTree1D.normalizedPhase * duration;
+            motionTime = (sync1D ? state.blendTree1D.normalizedPhase
+                                 : state.blendTree2D.normalizedPhase) * duration;
         } else {
             motionTime = state.loop
                 ? WrapTime(motionTime, duration)
@@ -1479,9 +1523,15 @@ void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
                                    int nodeIndex,
                                    const math::Matrix4& parentGlobal,
                                    std::vector<math::Matrix4>& palette,
-                                   std::vector<math::Matrix4>& nodeGlobals)
+                                   std::vector<math::Matrix4>& nodeGlobals,
+                                   std::vector<uint8_t>& visited)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+    // Base Layer は全スケルトンを評価するため、壊れたキャッシュの循環参照が
+    // あるとここがフレームを返さなくなる。評価済みノードを一度だけ処理する。
+    if (visited[static_cast<size_t>(nodeIndex)] != 0)
+        return;
+    visited[static_cast<size_t>(nodeIndex)] = 1;
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
     const NodeLocalPose blended = BlendNodePose(node, clips);
     const math::Matrix4 global =
@@ -1499,7 +1549,7 @@ void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
     }
     for (int child : node.children)
         EvaluateNBlendedNodeRecursive(
-            skeleton, clips, child, global, palette, nodeGlobals);
+            skeleton, clips, child, global, palette, nodeGlobals, visited);
 }
 
 void ApplyNBlendedPoseToBones(Scene& scene,
@@ -1516,12 +1566,13 @@ void ApplyNBlendedPoseToBones(Scene& scene,
         const NodeLocalPose pose = BlendNodePose(node, clips);
 
         // Base Layer マスク: 重みが 1 未満のボーンはバインドポーズ側へ寄せる。
-        // WHY: Base Layer から外したボーンは「誰も動かしていない素の状態」であってほしい。
-        //      前フレームの姿勢を残すと、上のレイヤーが weight 0 になった瞬間に
-        //      最後のポーズで固まってしまう。バインドへ戻せば常に決定的になる。
+        // 前フレームの姿勢を残すと、上のレイヤーが weight 0 になった瞬間に固まる。
         float weight = 1.0f;
-        if (baseMask != nullptr)
-            weight = asset::EvaluateAvatarMaskWeight(*baseMask, node.name, node.name);
+        if (baseMask != nullptr) {
+            const std::string path = asset::BuildSkeletonNodePath(
+                skeleton, static_cast<int>(i));
+            weight = asset::EvaluateAvatarMaskWeight(*baseMask, path, node.name);
+        }
 
         if (weight >= 1.0f - math::EPSILON) {
             boneObject->transform.position = pose.translation;
@@ -1601,13 +1652,11 @@ void ConsumeTriggers(AnimatorComponent& animator, const AnimationTransition& tr)
 // ステートマシンを defaultStateName または states[0] で初期化する。
 // currentStateName が既に設定されている場合は何もしない。
 // ── ステートマシンのスコープ化 ───────────────────────────────────────────────
-// WHY: 上半身と下半身を別々に制御するには、レイヤーごとに独立したステートマシンが要る。
-//      しかし Base Layer の状態は AnimatorComponent 直下のフィールド
-//      (currentStateName / stateTime / blendTo*) にあり、Script・Editor・MCP・VFX が
-//      これを直接参照している。フィールドを構造体へ畳むと参照側を全部書き換えることになる。
-//      そこで「どの states を、どのランタイム変数で回すか」だけを参照で束ねたビューを作り、
-//      評価ロジックはこのビューに対して書く。Base Layer は既存フィールドを、
-//      追加レイヤーは AnimationLayer::runtime を指すだけで同じコードが使い回せる。
+// Base Layer の状態は AnimatorComponent 直下のフィールド (currentStateName / stateTime /
+// blendTo*) にあり、Script・Editor・MCP・VFX が直接参照している。構造体へ畳むと
+// 参照側を全部書き換えることになる。
+// 「どの states を、どのランタイム変数で回すか」だけを参照で束ねたビューにすれば、
+// Base Layer も追加レイヤーも同じ評価コードで回せる。
 struct StateMachineScope {
     std::vector<AnimationState>&            states;
     const std::vector<AnimationTransition>& anyStateTransitions;
@@ -1696,6 +1745,8 @@ bool TryStartTransitionScoped(AnimatorComponent& animator,
         if (auto* targetState = FindMutableStateIn(scope.states, tr.toStateName)) {
             targetState->blendTree1D.normalizedPhase = 0.0f;
             targetState->blendTree1D.normalizedPhaseInitialized = false;
+            targetState->blendTree2D.normalizedPhase = 0.0f;
+            targetState->blendTree2D.normalizedPhaseInitialized = false;
         }
         // 正規化指定は遷移元ステートの Length を基準に実秒へ変換する。
         // WHY: クリップを差し替えても同じ割合の Motion Blend を維持できる。
@@ -1714,38 +1765,56 @@ bool TryStartTransitionScoped(AnimatorComponent& animator,
     return false;
 }
 
-// 1D BlendTree の入力値を時定数ベースで平滑化する。
+// BlendTree の入力値を時定数ベースで平滑化する (1D は 1 本、2D は 2 軸とも)。
 // WHY: Script が Speed を 0 / 4 / 7.2 と離散的に設定しても、姿勢 Weight は連続変化させる。
-void UpdateBlendTree1DDampingIn(AnimatorComponent& animator,
-                                std::vector<AnimationState>& states,
-                                float dt)
+//      2D では移動方向が入力を離した瞬間に不連続へ飛ぶため、同じ平滑化が要る。
+void UpdateBlendTreeDampingIn(AnimatorComponent& animator,
+                              std::vector<AnimationState>& states,
+                              float dt)
 {
     if (!animator.playing) return;
-    for (auto& state : states) {
-        if (state.mode != AnimationStateMode::BlendTree1D) continue;
-        auto& tree = state.blendTree1D;
-        const float target = animator.GetFloat(tree.paramName);
-        if (!tree.dampedValueInitialized || tree.dampTime <= math::EPSILON) {
-            tree.dampedValue = target;
-            tree.dampedValueInitialized = true;
-            continue;
-        }
+
+    // 1 本ぶんの指数補間。1D の値と 2D の各軸で式を分けない。
+    const auto damp = [dt](float current, float target, float dampTime) {
         const float alpha =
-            1.0f - std::exp(
-                -(std::max)(dt, 0.0f) / (std::max)(tree.dampTime, 1e-4f));
-        tree.dampedValue += (target - tree.dampedValue) * std::clamp(alpha, 0.0f, 1.0f);
+            1.0f - std::exp(-(std::max)(dt, 0.0f) / (std::max)(dampTime, 1e-4f));
+        float value = current + (target - current) * std::clamp(alpha, 0.0f, 1.0f);
         // 指数補間は理論上目標へ到達しないため、近傍で確定して不要な2Clip評価を終了する。
         // WHY: 極小WeightのClipも全ボーンをサンプリングすると、定常時のCPU負荷が倍増する。
-        const float snapEpsilon =
-            (std::max)(0.001f, std::abs(target) * 0.001f);
-        if (std::abs(target - tree.dampedValue) <= snapEpsilon)
-            tree.dampedValue = target;
+        const float snapEpsilon = (std::max)(0.001f, std::abs(target) * 0.001f);
+        if (std::abs(target - value) <= snapEpsilon) value = target;
+        return value;
+    };
+
+    for (auto& state : states) {
+        if (state.mode == AnimationStateMode::BlendTree1D) {
+            auto& tree = state.blendTree1D;
+            const float target = animator.GetFloat(tree.paramName);
+            if (!tree.dampedValueInitialized || tree.dampTime <= math::EPSILON) {
+                tree.dampedValue = target;
+                tree.dampedValueInitialized = true;
+                continue;
+            }
+            tree.dampedValue = damp(tree.dampedValue, target, tree.dampTime);
+        } else if (state.mode == AnimationStateMode::BlendTree2D) {
+            auto& tree = state.blendTree2D;
+            const float targetX = animator.GetFloat(tree.paramX);
+            const float targetY = animator.GetFloat(tree.paramY);
+            if (!tree.dampedValueInitialized || tree.dampTime <= math::EPSILON) {
+                tree.dampedX = targetX;
+                tree.dampedY = targetY;
+                tree.dampedValueInitialized = true;
+                continue;
+            }
+            tree.dampedX = damp(tree.dampedX, targetX, tree.dampTime);
+            tree.dampedY = damp(tree.dampedY, targetY, tree.dampTime);
+        }
     }
 }
 
-void UpdateBlendTree1DDamping(AnimatorComponent& animator, float dt)
+void UpdateBlendTreeDamping(AnimatorComponent& animator, float dt)
 {
-    UpdateBlendTree1DDampingIn(animator, animator.states, dt);
+    UpdateBlendTreeDampingIn(animator, animator.states, dt);
 }
 
 // 現在のBlend Weightからサイクル周波数を補間し、共通の正規化位相を積分する。
@@ -1756,8 +1825,12 @@ void AdvanceBlendTreePhase(AnimatorComponent& animator,
                            float stateTime,
                            float dt)
 {
-    if (!animator.playing || state.mode != AnimationStateMode::BlendTree1D ||
-        !state.blendTree1D.syncNormalizedTime) return;
+    if (!animator.playing) return;
+    const bool is1D = state.mode == AnimationStateMode::BlendTree1D &&
+                      state.blendTree1D.syncNormalizedTime;
+    const bool is2D = state.mode == AnimationStateMode::BlendTree2D &&
+                      state.blendTree2D.syncNormalizedTime;
+    if (!is1D && !is2D) return;
 
     float cycleFrequency = 0.0f;
     float validWeight = 0.0f;
@@ -1773,21 +1846,25 @@ void AdvanceBlendTreePhase(AnimatorComponent& animator,
     if (validWeight <= math::EPSILON) return;
     cycleFrequency /= validWeight;
 
-    auto& tree = state.blendTree1D;
-    if (!tree.normalizedPhaseInitialized) {
-        tree.normalizedPhase = state.loop
+    // 位相の置き場だけが 1D / 2D で違う。進め方は同じ。
+    float& phase = is1D ? state.blendTree1D.normalizedPhase
+                        : state.blendTree2D.normalizedPhase;
+    bool&  initialized = is1D ? state.blendTree1D.normalizedPhaseInitialized
+                              : state.blendTree2D.normalizedPhaseInitialized;
+    if (!initialized) {
+        phase = state.loop
             ? stateTime * cycleFrequency -
                 std::floor(stateTime * cycleFrequency)
             : math::Clamp01(stateTime * cycleFrequency);
-        tree.normalizedPhaseInitialized = true;
+        initialized = true;
         return;
     }
 
-    tree.normalizedPhase += dt * state.speed * animator.speed * cycleFrequency;
+    phase += dt * state.speed * animator.speed * cycleFrequency;
     if (state.loop) {
-        tree.normalizedPhase -= std::floor(tree.normalizedPhase);
+        phase -= std::floor(phase);
     } else {
-        tree.normalizedPhase = math::Clamp01(tree.normalizedPhase);
+        phase = math::Clamp01(phase);
     }
 }
 
@@ -1873,9 +1950,8 @@ void UpdateStateMachine(AnimatorComponent& animator, float dt)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 加重クリップ集合からルートモーションを合成する。
-// 位置は weight で線形加重、回転は姿勢ブレンドと同じ逐次 Slerp で合成する。
-// WHY: Walk 0.6 / Run 0.4 のとき、ポーズは 6:4 で混ざっているのに移動量だけ
-//      Walk 100% では足が滑る。ポーズと同じ比率で移動量も混ぜる。
+// 位置は weight で線形加重、回転は姿勢ブレンドと同じ逐次 Slerp。
+// ポーズが 6:4 で混ざっているのに移動量だけ Walk 100% だと足が滑る。
 RootMotionDelta AccumulateRootMotion(AnimatorComponent& animator,
                                      const std::vector<WeightedClip>& clips,
                                      std::uint64_t frame)
@@ -1910,8 +1986,7 @@ RootMotionDelta AccumulateRootMotion(AnimatorComponent& animator,
 
 // ルートモーションの適用先 GameObject を解決する。
 // 空文字列なら Animator 自身。".." で親を遡り、それ以外は owner からの子孫パス。
-// WHY: Animator がメッシュ側の子 GameObject に付いていると、旧実装はその子だけを
-//      動かしてしまい、コライダを持つ親から見た目がずれていった。
+// Animator がメッシュ側の子に付いていると、その子だけ動かして親からずれていく。
 GameObject& ResolveRootMotionTarget(GameObject& owner, const std::string& path)
 {
     if (path.empty()) return owner;
@@ -1940,11 +2015,8 @@ GameObject& ResolveRootMotionTarget(GameObject& owner, const std::string& path)
 }
 
 // target から owner までの親子チェーンのワールド Transform を更新する。
-//
-// WHY: AnimatorSystem は TransformLateUpdate の後に走るため、ここで Transform を
-//      書き換えても worldPosition は前の値のまま残る。旧実装はそれを放置していたので、
-//      ルートモーションで進んだ分だけ「見た目 (ボーンのワールド行列) が 1 フレーム遅れる」
-//      状態になっていた。ボーン伝播の前にチェーンだけ作り直す。
+// AnimatorSystem は TransformLateUpdate の後に走るので、Transform を書き換えても
+// worldPosition は前の値のまま。放置するとボーンのワールド行列が 1 フレーム遅れる。
 void RefreshWorldChain(GameObject& target, GameObject& owner)
 {
     std::vector<GameObject*> chain;
@@ -1970,6 +2042,65 @@ void RefreshWorldChain(GameObject& target, GameObject& owner)
     }
 }
 
+// Motion Warping — クリップが生む移動量へ「まだ足りないぶん」を上乗せし、
+// 指定時間の終わりにちょうど目標へ着かせる。
+// 本来の Motion Warping は残り区間の総量を先読みして倍率を求めるが、BlendTree と遷移で
+// 毎フレーム合成が変わる本実装では総量が確定しない。毎フレーム誤差の一定割合を配れば
+// 先読みが要らず、残り時間が 0 に近づくほど割合が 1 へ寄って必ず収束する。
+// 置き換えでなく上乗せなのは、置き換えると区間中の緩急が消えて等速で滑るため。
+// 戻り値はワールド空間の補正量。呼び出し側が localDelta へも反映する。
+math::Vector3 ApplyMotionWarp(MotionWarpComponent& warp,
+                              const GameObject& target,
+                              const math::Vector3& predictedWorldPosition,
+                              math::Quaternion& localRotation,
+                              float dt)
+{
+    MotionWarpTarget& goal = warp.target;
+    warp.runtimeLastCorrection = math::Vector3::ZERO;
+    if (!warp.enabled || !goal.active || dt <= math::EPSILON) {
+        warp.runtimeRemainingDistance = 0.0f;
+        return math::Vector3::ZERO;
+    }
+
+    // 残り時間より dt が大きいフレームでは alpha が 1 になり、誤差を一括で詰める。
+    const float alpha = math::Clamp01(dt / std::max(goal.remaining, dt));
+
+    math::Vector3 correction = math::Vector3::ZERO;
+    if (goal.warpPosition) {
+        const math::Vector3 error = goal.position - predictedWorldPosition;
+        correction = {
+            error.x * math::Clamp01(goal.positionAxisWeight.x) * alpha,
+            error.y * math::Clamp01(goal.positionAxisWeight.y) * alpha,
+            error.z * math::Clamp01(goal.positionAxisWeight.z) * alpha,
+        };
+        if (goal.maxSpeed > 0.0f) {
+            const float limit  = goal.maxSpeed * dt;
+            const float length = correction.Length();
+            if (length > limit && length > math::EPSILON)
+                correction = correction * (limit / length);
+        }
+        warp.runtimeRemainingDistance = error.Length();
+    }
+
+    if (goal.warpRotation) {
+        const math::Quaternion predicted =
+            (target.transform.worldRotation * localRotation).Normalized();
+        const math::Quaternion error = (predicted.Inverse() * goal.rotation).Normalized();
+        localRotation = (localRotation *
+            math::Quaternion::Slerp(math::Quaternion::Identity(), error, alpha)).Normalized();
+    }
+
+    goal.remaining -= dt;
+    if (goal.remaining <= 0.0f) {
+        goal.active    = false;
+        goal.remaining = 0.0f;
+        warp.runtimeRemainingDistance = 0.0f;
+    }
+
+    warp.runtimeLastCorrection = correction;
+    return correction;
+}
+
 // 合成済みの delta を Animator の出力へ書き、mode に応じて適用する。
 // ポーズ評価より前に呼ぶこと (適用後のワールド行列でボーンを伝播させるため)。
 void ApplyRootMotionResult(AnimatorComponent& animator,
@@ -1989,13 +2120,24 @@ void ApplyRootMotionResult(AnimatorComponent& animator,
 
     GameObject& target = ResolveRootMotionTarget(owner, settings.targetPath);
 
-    const math::Vector3 localDelta = rawDelta.position * settings.positionScale;
-    const math::Quaternion localRotation = math::Quaternion::Slerp(
+    math::Vector3 localDelta = rawDelta.position * settings.positionScale;
+    math::Quaternion localRotation = math::Quaternion::Slerp(
         math::Quaternion::Identity(), rawDelta.rotation,
         std::clamp(settings.rotationScale, 0.0f, 1.0f)).Normalized();
 
     // ワールド空間の移動量。適用前の worldRotation を基準にする。
-    const math::Vector3 worldDelta = target.transform.worldRotation * localDelta;
+    math::Vector3 worldDelta = target.transform.worldRotation * localDelta;
+
+    // Motion Warping はクリップの移動量が出そろった後、適用の直前に上乗せする。
+    if (auto* warp = owner.GetComponent<MotionWarpComponent>()) {
+        const math::Vector3 correction = ApplyMotionWarp(
+            *warp, target, target.transform.worldPosition + worldDelta,
+            localRotation, dt);
+        if (correction.LengthSq() > 0.0f) {
+            worldDelta = worldDelta + correction;
+            localDelta = target.transform.worldRotation.Inverse() * worldDelta;
+        }
+    }
 
     animator.rootMotionDeltaPosition = localDelta;
     animator.rootMotionDeltaRotation = localRotation;
@@ -2068,7 +2210,8 @@ void DispatchAnimatorMove(GameObject& owner, const AnimatorComponent& animator)
     info.appliedByEngine = animator.rootMotionAppliedByEngine;
 
     for (auto& entry : scripts->scripts)
-        if (entry.script && entry.script->enabled) entry.script->OnAnimatorMove(info);
+        if (entry.script && entry.script->enabled)
+            entry.script->ExecuteCallback(&Script::OnAnimatorMove, info);
 }
 
 // 加重クリップ集合からルートモーションを抽出し、適用して Script へ通知するまでを行う。
@@ -2102,7 +2245,7 @@ static const asset::AnimationClip* ResolveStateMachineEffectClip(AnimatorCompone
 static const asset::AnimationClip* AdvanceStateMachineAnimator(AnimatorComponent& animator, float dt)
 {
     InitStateMachine(animator);
-    UpdateBlendTree1DDamping(animator, dt);
+    UpdateBlendTreeDamping(animator, dt);
     UpdateStateMachine(animator, dt);
     if (auto* state = FindMutableState(animator, animator.currentStateName))
         AdvanceBlendTreePhase(animator, *state, animator.stateTime, dt);
@@ -2110,16 +2253,19 @@ static const asset::AnimationClip* AdvanceStateMachineAnimator(AnimatorComponent
 }
 
 static void ApplyClipSideEffects(GameObject& owner,
-                                 AnimatorComponent& animator,
-                                 const asset::AnimationClip& clip,
-                                 SkinnedMeshRenderer* smr,
-                                 float previousTime,
-                                  float currentTime)
+                                  AnimatorComponent& animator,
+                                  const asset::AnimationClip& clip,
+                                  SkinnedMeshRenderer* smr,
+                                  float previousTime,
+                                  float currentTime,
+                                  bool applyTransformTracks)
 {
     const double ticksPerSecond = clip.ticksPerSecond > 0.0 ? clip.ticksPerSecond : 30.0;
     const double ticks = static_cast<double>(currentTime) * ticksPerSecond;
-    // トラック適用はクリップのトラック数ぶん階層探索を回すため、単独で計測する。
-    {
+    // スケルトン経路では RunStateMachineAnimatorPath がブレンド結果を Bone Transform へ
+    // 確定済みなので、単独クリップを再適用しない。すると GPU スキニングはブレンド姿勢、
+    // socket は最大ウェイト 1 本の姿勢になり、手と武器が別軌道になる。
+    if (applyTransformTracks) {
         FBZZ_PROFILE_SCOPE("AnimatorSystem::ApplyTransformTracks");
         ApplyTransformTracks(owner, clip, ticks);
     }
@@ -2146,33 +2292,45 @@ static void ApplyClipSideEffects(GameObject& owner,
 static void EnsureMaskLoaded(AnimationMaskRef& ref)
 {
     if (ref.path.empty()) {
-        if (ref.loaded) {
+        if (ref.loaded || ref.failed) {
             ref.loaded = false;
+            ref.failed = false;
             ref.asset = asset::AvatarMaskAsset{};
             ref.loadedPath.clear();
         }
         return;
     }
-    if (ref.loaded && ref.loadedPath == ref.path) return;
+    if ((ref.loaded || ref.failed) && ref.loadedPath == ref.path) return;
 
     ref.loadedPath = ref.path;
     ref.asset      = asset::AvatarMaskAsset{};
     const std::string resolved = asset::AssetManager::ResolveAssetPath(ref.path);
     ref.loaded = asset::LoadAvatarMaskAsset(resolved, ref.asset);
-    if (!ref.loaded)
-        FBZZ_LOG_WARN("AnimatorSystem: avatar mask load failed [%s]", ref.path.c_str());
+    ref.failed = !ref.loaded;
+    if (ref.failed) {
+        // ERROR にするのは、これが «静かに全身へ効く» ではなく «レイヤーが黙る» へ
+        // 変わったため。上半身だけのはずのレイヤーが消えたら、まずここを見る。
+        FBZZ_LOG_ERROR("AnimatorSystem: avatar mask load failed [%s] "
+                       "- layer is disabled until it loads", ref.path.c_str());
+    }
 }
 
 // このレイヤーが対象ボーンへ効く割合 0..1 を返す。
-// .mask アセットが無ければ全身に適用する。
-// WHY: 0/1 の二値だと、上半身レイヤーの境界ボーン (Spine 等) でポーズが折れる。
-//      .mask の blendDepth により数階層かけて立ち上げられるようにした。
+// 0/1 の二値だと境界ボーン (Spine 等) でポーズが折れるので、blendDepth で数階層かけて立ち上げる。
+//
+// WHY マスク未ロードで 0 を返すか: 以前は 1.0 (= 全身) へ落ちていた。guid の破損や
+//     パス解決の失敗で「上半身だけのはずのレイヤーが全身を上書きする」に化け、
+//     症状が «マスクが無視された» としか見えなかった。マスクを «指定した» なら、
+//     それが読めない間は効かせない方が原因に辿り着ける。
+//     マスク «未指定» (path が空) は従来どおり全身に効く。
 static float LayerBoneWeight(const AnimationLayer& layer,
                              const std::string& path,
                              const std::string& nodeName)
 {
     if (layer.mask.loaded)
         return asset::EvaluateAvatarMaskWeight(layer.mask.asset, path, nodeName);
+    if (!layer.mask.path.empty())
+        return 0.0f;
 
     (void)path;
     (void)nodeName;
@@ -2247,6 +2405,9 @@ static const asset::AnimationClip* UpdateLayerSlot(
         return nullptr;
     }
 
+    // 外部 (SequenceSystem) が時刻とフェードを書いている間は、こちらから触らない。
+    if (slot.driven) return clip;
+
     const float duration = static_cast<float>(clip->GetDurationSeconds());
     if (animator.playing) {
         slot.time += dt * slot.speed * animator.speed;
@@ -2276,9 +2437,8 @@ static const asset::AnimationClip* UpdateLayerSlot(
 }
 
 // レイヤー内で 1 ボーンぶんのポーズを重み付き平均で積む作業バッファ。
-// WHY: 従来は clip ごとに target->transform へ順次 Lerp していたため、
-//      3 つ以上の Motion をブレンドすると後ろの Clip ほど強く出る偏りがあった。
-//      「累積ウェイトに対する比率」で積めば、順序に依存しない正しい加重平均になる。
+// 順次 Lerp だと 3 つ以上の Motion で後ろの Clip ほど強く出る。
+// 「累積ウェイトに対する比率」で積めば順序に依存しない加重平均になる。
 struct LayerBonePose {
     GameObject*      target       = nullptr;
     math::Vector3    position     = math::Vector3::ZERO;
@@ -2289,12 +2449,14 @@ struct LayerBonePose {
     math::Vector3    deltaScale   = math::Vector3::ZERO;
     float            accumWeight  = 0.0f;
     bool             hasRotation  = false;
-    float            boneWeight   = 1.0f;
+    // AccumulateLayerClips が積むたびに max で更新するため、初期値は 0。
+    float            boneWeight   = 0.0f;
 };
 
 // 1 レイヤーぶんのクリップ集合を評価して、ボーンごとのポーズを積む。
 static void AccumulateLayerClips(AnimatorComponent& animator,
                                  AnimationLayer& layer,
+                                 const asset::Skeleton& skeleton,
                                  GameObject& owner,
                                  SkinnedMeshRenderer& smr,
                                  const std::vector<WeightedClip>& clips,
@@ -2323,12 +2485,25 @@ static void AccumulateLayerClips(AnimatorComponent& animator,
                 }
             }
 
-            const float boneWeight = LayerBoneWeight(layer, targetPath, targetName);
-            if (boneWeight <= math::EPSILON) continue;
+            // 新しいクリップは正規パスを使うが、旧クリップは targetPath が空のため
+            // nodeName から BoneComponent を引く。非空パスが古い階層を指している場合も
+            // 名前へフォールバックし、インポートし直すまでレイヤー全体を無効にしない。
+            GameObject* target = targetPath.empty()
+                ? nullptr : FindAnimationTarget(owner, targetPath);
+            if (!target && !targetName.empty())
+                target = FindAnimationTargetByNodeName(owner, targetName);
+            if (!target) continue;
 
-            if (targetPath.empty()) continue;
-            GameObject* target = FindAnimationTarget(owner, targetPath);
-            if (!target || !target->GetComponent<BoneComponent>()) continue;
+            const BoneComponent* bone = target->GetComponent<BoneComponent>();
+            if (!bone) continue;
+
+            std::string maskPath = targetPath;
+            if (bone->nodeIndex >= 0)
+                maskPath = asset::BuildSkeletonNodePath(skeleton, bone->nodeIndex);
+            if (maskPath.empty()) maskPath = bone->boneName;
+            const std::string maskName = bone->boneName.empty() ? targetName : bone->boneName;
+            const float boneWeight = LayerBoneWeight(layer, maskPath, maskName);
+            if (boneWeight <= math::EPSILON) continue;
 
             math::Vector3 sampledPosition = SampleVectorKeys(
                 track.positions, weighted.ticks, target->transform.position, track.interp);
@@ -2349,8 +2524,11 @@ static void AccumulateLayerClips(AnimatorComponent& animator,
                 poses.push_back(LayerBonePose{});
                 pose = &poses.back();
                 pose->target = target;
-                pose->boneWeight = boneWeight;
             }
+            // 同じレイヤー内なら同じマスクなので毎回同じ値になるが、retarget で
+            // ボーンパスが変わる経路があるため «後から来た方» ではなく最大値を採る。
+            // 初回だけ代入する形だと、どのクリップが先に積まれたかで結果が変わる。
+            pose->boneWeight = (std::max)(pose->boneWeight, boneWeight);
 
             if (layer.mode == AnimationLayerMode::Override) {
                 // 累積ウェイトに対する比率で積み、順序に依存しない加重平均にする。
@@ -2400,7 +2578,7 @@ static std::vector<WeightedClip> BuildLayerStateClips(
     // 新形式: レイヤー専用のステートマシンを 1 フレーム進める。
     StateMachineScope scope = LayerScope(layer);
     InitStateMachineScoped(scope);
-    UpdateBlendTree1DDampingIn(animator, layer.states, dt);
+    UpdateBlendTreeDampingIn(animator, layer.states, dt);
     UpdateStateMachineScoped(animator, scope, dt);
 
     if (auto* currentState = FindMutableStateIn(layer.states, scope.currentStateName))
@@ -2440,12 +2618,24 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
         smr.nodeEntities.size() < skeleton.nodes.size() ||
         animator.nodeGlobalTransforms.size() < skeleton.nodes.size())
         return;
+    if (animator.layers.empty()) return;
+
+    // Base Layer の伝播で root local へ一度組み込んだ rootInverse を外してから
+    // 追加 Layer を合成する。これを戻さずに再度掛けると、Layer が存在するモデルだけ
+    // rootInverse が毎フレーム二重に積み上がる。
+    if (GameObject* rootBone =
+            scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(skeleton.rootNodeIndex)]))
+        SetRootBoneLocalInAnimationSpace(*rootBone, skeleton.rootInverseTransform);
 
     bool poseChanged = false;
     std::vector<LayerBonePose> poses;
 
     for (auto& layer : animator.layers) {
         if (!layer.enabled) continue;
+        // Layer を追加した直後はステートも Slot も無い。空 Layer で Mask のロードや
+        // Slot の更新まで行うと、まだ何も接続していない編集操作が再生経路へ副作用を
+        // 持ち込むため、定義と一時再生の両方が空なら評価を完全に省略する。
+        if (layer.states.empty() && !layer.slot.active) continue;
         EnsureMaskLoaded(layer.mask);
 
         // Slot はレイヤー weight が 0 でも時間を進める。
@@ -2465,7 +2655,7 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
 
         poses.clear();
         // ステートマシン出力は Slot に押しのけられる分だけ弱める。
-        AccumulateLayerClips(animator, layer, owner, smr, stateClips,
+        AccumulateLayerClips(animator, layer, skeleton, owner, smr, stateClips,
                              1.0f - slotWeight, additiveReference, poses);
 
         if (slotClip && slotWeight > math::EPSILON) {
@@ -2477,14 +2667,19 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
             slotClips.push_back(WeightedClip{
                 slotClip, nullptr, static_cast<double>(layer.slot.time) * tps, 1.0f, 1.0f,
                 ResolveRootMotion(animator, *slotClip), animator.speed < 0.0f });
-            AccumulateLayerClips(animator, layer, owner, smr, slotClips,
+            AccumulateLayerClips(animator, layer, skeleton, owner, smr, slotClips,
                                  slotWeight, additiveReference, poses);
         }
 
         // 積んだポーズを、レイヤー weight × ボーン weight で実際の Transform へ適用する。
         for (const auto& pose : poses) {
             if (!pose.target || pose.accumWeight <= math::EPSILON) continue;
-            const float alpha = std::clamp(layer.weight * pose.boneWeight, 0.0f, 1.0f);
+            // Override は補間係数なので 1.0 で頭打ち。Additive は差分の倍率なので上限を
+            // 残さない (Quaternion::Slerp は t > 1 を大円上へ正しく外挿する)。
+            const float rawAlpha = layer.weight * pose.boneWeight;
+            const float alpha = layer.mode == AnimationLayerMode::Override
+                ? std::clamp(rawAlpha, 0.0f, 1.0f)
+                : std::clamp(rawAlpha, 0.0f, MAX_LAYER_WEIGHT);
             if (alpha <= math::EPSILON) continue;
 
             if (layer.mode == AnimationLayerMode::Override) {
@@ -2507,8 +2702,11 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
         }
     }
 
-    if (poseChanged) {
-        PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex, owner.transform);
+    if (poseChanged || !animator.layers.empty()) {
+        std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
+        PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
+                                skeleton.rootNodeIndex,
+                                SkeletonParentTransform(scene, smr, skeleton, owner), visited);
         RebuildSkinningFromBoneTransforms(scene, owner, skeleton, smr, animator);
     }
 }
@@ -2522,7 +2720,7 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
                                         float dt)
 {
     InitStateMachine(animator);
-    UpdateBlendTree1DDamping(animator, dt);
+    UpdateBlendTreeDamping(animator, dt);
     UpdateStateMachine(animator, dt);
     if (auto* currentState = FindMutableState(animator, animator.currentStateName))
         AdvanceBlendTreePhase(animator, *currentState, animator.stateTime, dt);
@@ -2549,17 +2747,43 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     }
     EnsureBoneHierarchy(scene, go, smr, skeleton);
 
+    // クリップの代わりに Script が骨を並べる構成 (externalPose)。
+    //
+    // WHY 要るか: クリップで表せない動き ─ 経路に沿って毎フレーム形が変わる胴のような
+    //     ものは、Script が骨のローカルを直接書くしかない。だがここは «クリップが無ければ
+    //     バインドポーズへ戻す» ので、書いた姿勢が毎フレーム消される。しかも
+    //     スキニングパレットを埋めるのは Animator だけなので、Animator を外すと
+    //     今度は骨を書いてもメッシュが動かない (bind pose の CB が使われる)。
+    //     «戻さずに、今の骨からパレットを組み直す» という 3 つ目の道をここに置く。
+    //
+    // WHY IK チェーンで代用しないか: IKSystem は骨を «動かせる» が、29 関節を任意の
+    //     形へ置くには関節ごとにチェーンと的を 1 組ずつ持つことになり、
+    //     «骨のローカルを書く» という一番素直な表現より遠回りになる。
+    const auto applyRestPose = [&]() {
+        if (animator.externalPose) {
+            // Script が書いたローカルからワールドを組み直し、そこからパレットを作る。
+            std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
+            PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
+                                    skeleton.rootNodeIndex,
+                                    SkeletonParentTransform(scene, smr, skeleton, go), visited);
+            RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
+            return;
+        }
+        ApplyBindPoseToBones(scene, skeleton, smr, go);
+        UploadBindPose(animator, resources, &skeleton);
+    };
+
     // 評価できるクリップが無いフレームは移動量ゼロを公開する。
     // WHY: 前フレームの delta が残ると、ExtractOnly の Script が止まった値で動き続ける。
     if (!curSt) {
-        UploadBindPose(animator, resources, &skeleton);
+        applyRestPose();
         ProcessRootMotion(animator, go, {}, dt);
         return;
     }
 
     auto currentClips = BuildStateClips(animator, *curSt, animator.stateTime);
     if (currentClips.empty()) {
-        UploadBindPose(animator, resources, &skeleton);
+        applyRestPose();
         ProcessRootMotion(animator, go, {}, dt);
         return;
     }
@@ -2623,24 +2847,35 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     // 移動量も同じ比率で混ざる (旧実装は支配クリップ 1 本しか見ていなかった)。
     ProcessRootMotion(animator, go, currentClips, dt);
 
+    std::vector<uint8_t> evaluationVisited(skeleton.nodes.size(), 0);
     EvaluateNBlendedNodeRecursive(
         skeleton, currentClips, skeleton.rootNodeIndex,
         math::Matrix4::Identity(),
-        animator.boneMatrices, animator.nodeGlobalTransforms);
+        animator.boneMatrices, animator.nodeGlobalTransforms, evaluationVisited);
     // Base Layer マスク: 未設定なら nullptr を渡し、従来どおり全ボーンへ適用する。
     EnsureMaskLoaded(animator.baseLayerMask);
     ApplyNBlendedPoseToBones(scene, skeleton, currentClips, smr,
                              animator.baseLayerMask.loaded ? &animator.baseLayerMask.asset : nullptr);
 
-    PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex, go.transform);
+    std::vector<uint8_t> propagationVisited(skeleton.nodes.size(), 0);
+    PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
+                            skeleton.rootNodeIndex,
+                            SkeletonParentTransform(scene, smr, skeleton, go), propagationVisited);
     RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
 }
 
+// WHY Transform と SkinnedMeshRenderer まで宣言するか:
+//   SystemScheduler は ComponentAccess が交差しない System を同じバッチにまとめ、
+//   TaskSystem で «並列に» 走らせる。ここは骨 GameObject の Transform を毎フレーム
+//   書き、smr.nodeEntities を作る側なので、宣言から漏らすと «Transform か
+//   SkinnedMeshRenderer は触るが Animator/Bone は触らない» System と同じバッチに入る。
+//   実際 LODSystem は SkinnedMeshRenderer を書く側で、交差が無いまま並んでいた。
+//   宣言は «何を触るか» であって «何を持っているか» ではない。
 ComponentAccess AnimatorSystem::GetAccess() const
 {
     return ComponentAccess{}
         .Reads<AnimatorComponent>()
-        .Writes<AnimatorComponent, BoneComponent>();
+        .Writes<AnimatorComponent, BoneComponent, SkinnedMeshRenderer, Transform>();
 }
 
 OrderingHints AnimatorSystem::GetOrder() const
@@ -2657,7 +2892,6 @@ void AnimatorSystem::Update(SystemContext& ctx)
     if (!ctx.resources) return;
     Scene& scene = ctx.scene;
     renderer::ResourceManager& resources = *ctx.resources;
-    const float dt = ctx.dt;
     const auto animatorSpan = scene.GetEntities<AnimatorComponent>();
     const auto animatorEntities = std::vector<EntityID>(
         animatorSpan.begin(),
@@ -2665,12 +2899,17 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
     for (EntityID id : animatorEntities) {
         GameObject* gameObject = scene.GetGameObject(id);
-        if (!gameObject) continue;
+        if (!gameObject || !gameObject->activeInHierarchy()) continue;
         GameObject& go = *gameObject;
 
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
+        const float dt = ctx.dt * std::clamp(animator->localTimeScale, 0.0f, 8.0f);
         animator->firedEvents.clear();
+        // 骨から作るカリング球は «今フレーム確定した» ときだけ有効。ここで一度捨てて、
+        // ポーズを組み終えた経路だけが入れ直す。停止中やスケルトンを持たない Animator は
+        // 0 のままになり、カリングは従来のバインドポーズ球へ落ちる。
+        animator->skinnedBoundsRadius = 0.0f;
 
         if (!animator->controllerPath.empty() &&
             animator->loadedControllerPath != animator->controllerPath) {
@@ -2679,6 +2918,27 @@ void AnimatorSystem::Update(SystemContext& ctx)
                 asset::ApplyAnimatorControllerAsset(controller, *animator);
             }
             animator->loadedControllerPath = animator->controllerPath;
+            animator->appliedAssetGeneration = asset::AssetManager::GetAssetGeneration();
+        }
+
+        // アセットがディスク上で書き換わったら、そこから作った派生キャッシュを捨てる。
+        // loadedControllerPath は消さない。初回ロード扱いにすると preservePlayback が
+        // 働かず、保存のたびに再生が頭へ巻き戻る。
+        if (const int assetGeneration = asset::AssetManager::GetAssetGeneration();
+            animator->appliedAssetGeneration != assetGeneration) {
+            animator->appliedAssetGeneration = assetGeneration;
+
+            if (!animator->controllerPath.empty()) {
+                asset::AnimatorControllerAsset controller;
+                if (asset::LoadAnimatorControllerAsset(animator->controllerPath, controller))
+                    asset::ApplyAnimatorControllerAsset(controller, *animator);
+            }
+            // クリップは animator へ複製されるため、ストア側を差し替えても届かない。
+            animator->clipsLoaded = false;
+            // .mask は AssetManager を通さず直読みしているので、ここで明示的に落とす。
+            animator->baseLayerMask.Invalidate();
+            for (auto& layer : animator->layers)
+                layer.mask.Invalidate();
         }
 
         // FlushFailed() が呼ばれて世代が進んだときだけ再試行する。
@@ -2693,6 +2953,12 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
         if (!animator->skinningBuffer.IsValid())
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
+        if (!animator->prevSkinningBuffer.IsValid())
+            animator->prevSkinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
+
+        // これから boneMatrices を上書きするので、その直前の値が「前フレームの最終ポーズ」。
+        // IKSystem と SpringBoneSystem の補正も含んだ確定値がここで手に入る。
+        SnapshotPreviousBonePalette(*animator, resources);
 
         // SMR が自 GO になければ子 GO を探す (sub-mesh 分割ヒエラルキー対応)。
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
@@ -2720,19 +2986,20 @@ void AnimatorSystem::Update(SystemContext& ctx)
         }
 
         // ── 再生は Play Mode のみ ──────────────────────────────────────────
-        // WHY: エディタ停止中にクリップが進むと、シーンビューのポーズが
-        //   「最後に流れたフレーム」で固定されて編集の基準にならない。
-        //   モーション確認は Inspector の Animation Preview で行う方針なので、
-        //   停止中はリファレンスポーズ (= バインドポーズ) で静止させる。
-        //   セットアップ (コントローラ / クリップ読み込み、スキニングバッファ生成、
-        //   EnsureBoneHierarchy) は停止中も必要なため、ここまでは通す。
+        // 停止中にクリップが進むと、シーンビューのポーズが「最後に流れたフレーム」で
+        // 固定されて編集の基準にならない。停止中はバインドポーズで静止させる
+        // (モーション確認は Inspector の Animation Preview の役目)。
+        // セットアップ (クリップ読み込み・スキニングバッファ・EnsureBoneHierarchy) は通す。
         if (!ctx.simulating) {
             // ボーン GameObject 階層だけは停止中にも用意する。
             // WHY: ソケットの親付けや Inspector からのボーン選択は
             //      Play Mode に入る前から使えている必要がある。
             if (smr && skeleton && skeleton->rootNodeIndex >= 0 &&
                 skeleton->rootNodeIndex < static_cast<int>(skeleton->nodes.size()))
+            {
                 EnsureBoneHierarchy(scene, go, *smr, *skeleton);
+                ApplyBindPoseToBones(scene, *skeleton, *smr, go);
+            }
             UploadBindPose(*animator, resources, skeleton);
             // 停止中は移動量ゼロを公開する。前フレームの delta が残ると
             // Inspector の表示や Script のポーリングが止まった値を掴み続ける。
@@ -2760,7 +3027,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
                                     animator->speed < 0.0f } },
                     dt);
                 ApplyClipSideEffects(go, *animator, *clip, smr,
-                                     previousTime, currentTime);
+                                     previousTime, currentTime, true);
                 if (smr) UpdateMorphVertexBuffers(*smr, resources);
             }
             UploadBindPose(*animator, resources);
@@ -2775,9 +3042,10 @@ void AnimatorSystem::Update(SystemContext& ctx)
         if (effectClip) {
             const float currentTime = animator->stateTime;
             ApplyClipSideEffects(go, *animator, *effectClip, smr,
-                                 previousTime, currentTime);
+                                 previousTime, currentTime, false);
         }
         UpdateMorphVertexBuffers(*smr, resources);
+        UpdateSkinnedBounds(*animator, *skeleton);
 
         SkinningCB cb{};
         for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)

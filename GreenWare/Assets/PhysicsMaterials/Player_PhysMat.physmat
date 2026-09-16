@@ -1,0 +1,6 @@
+density = 25000.0
+dynamic_friction = 0.4000000059604645
+friction_combine = 'geometric_mean'
+restitution = 0.30000001192092896
+restitution_combine = 'minimum'
+static_friction = 0.6000000238418579

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Transform.cpp | fbzz::scene
-// Transform メソッドの実装
-// ローカル移動・回転・LookAt とワールド行列生成を提供する。
-// 親子階層の再計算は TransformSystem が担当する。
+/// @file    Transform.cpp
+/// @brief   Transform メソッドの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// ローカル移動・回転・LookAt とワールド行列生成を提供する。
+/// 親子階層の再計算は TransformSystem が担当する。
 #include "Engine/Scene/Transform.hpp"
 #include <Math/MathUtils.hpp>
 #include <cmath>
@@ -35,9 +37,11 @@ void Transform::Rotate(const math::Vector3& eulerDegrees, bool worldSpace) {
 }
 
 void Transform::LookAt(const math::Vector3& worldTarget) {
-    math::Vector3 dir = (worldTarget - worldPosition).Normalized();
+    // 正規化の前に見る。旧実装は正規化してから長さを見ていたため、判定は常に 1 で
+    // 素通りし、対象が自分と同じ位置のとき Normalized() の assert で落ちていた。
+    math::Vector3 dir = worldTarget - worldPosition;
     if (dir.LengthSq() < 1e-6f) return;
-    math::Quaternion worldLook = math::Quaternion::LookRotation(dir);
+    math::Quaternion worldLook = math::Quaternion::LookRotation(dir.Normalized());
     math::Quaternion parentRot = worldRotation * rotation.Inverse();
     rotation = parentRot.Inverse() * worldLook;
 }

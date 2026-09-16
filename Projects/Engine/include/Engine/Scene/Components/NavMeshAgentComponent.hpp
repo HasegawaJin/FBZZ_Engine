@@ -1,6 +1,7 @@
-// FBZZ Engine
-// NavMeshAgentComponent.hpp | fbzz::scene
-// NavMesh 上を自律移動するエージェントの移動パラメータとパス追従ランタイム状態
+/// @file    NavMeshAgentComponent.hpp
+/// @brief   NavMesh 上を自律移動するエージェントの移動パラメータとパス追従ランタイム状態。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

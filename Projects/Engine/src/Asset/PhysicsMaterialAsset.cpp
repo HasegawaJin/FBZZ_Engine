@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PhysicsMaterialAsset.cpp | fbzz::asset
-// .physmat の TOML 入出力
+/// @file    PhysicsMaterialAsset.cpp
+/// @brief   .physmat の TOML 入出力。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

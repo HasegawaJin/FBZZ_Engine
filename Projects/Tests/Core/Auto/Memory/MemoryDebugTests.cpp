@@ -1,38 +1,81 @@
-// FBZZ Engine
-// MemoryDebugTests.cpp | GoogleTest
-// MemoryDebug の非所有 weak_ptr 追跡契約を自動検証する。
-#include <gtest/gtest.h>
+/// @file    MemoryDebugTests.cpp
+/// @brief   MemoryDebug の «登録したら抹消されるまで残る» 契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/MemoryDebug.hpp>
 
-#include <memory>
-
 namespace fbzz::tests {
 
-TEST(MemoryDebugTest, TracksLiveSharedResourcesWithoutExtendingLifetime)
+class MemoryDebugTest : public testkit::EngineFixture {};
+
+namespace {
+
+core::AllocationInfo MakeInfo(void* pointer, core::MemoryTag tag, int line)
 {
-    core::MemoryDebug debug;
-    auto resource = std::make_shared<int>(42);
-
-    ASSERT_TRUE(debug.TrackShared(resource, core::MemoryTag::RENDERER,
-                                  "Test", "MemoryDebugTests.cpp", 1));
-    ASSERT_EQ(debug.GetLiveCount(), 1u);
-    ASSERT_NE(debug.GetLive(0), nullptr);
-    EXPECT_EQ(debug.GetLive(0)->pointer, resource.get());
-
-    resource.reset();
-    debug.SweepExpired();
-    EXPECT_EQ(debug.GetLiveCount(), 0u);
+    core::AllocationInfo info;
+    info.pointer = pointer;
+    info.size = sizeof(int);
+    info.alignment = alignof(int);
+    info.tag = tag;
+    info.allocatorName = "Test";
+    info.file = "MemoryDebugTests.cpp";
+    info.line = line;
+    return info;
 }
 
-TEST(MemoryDebugTest, ResetRemovesAllTrackedResources)
+} // namespace
+
+TEST_F(MemoryDebugTest, TracksResourceUntilUntracked)
 {
     core::MemoryDebug debug;
-    auto first = std::make_shared<int>(1);
-    auto second = std::make_shared<int>(2);
+    int resource = 42;
 
-    ASSERT_TRUE(debug.TrackShared(first, core::MemoryTag::CORE, "Test", "file", 1));
-    ASSERT_TRUE(debug.TrackShared(second, core::MemoryTag::CORE, "Test", "file", 2));
+    ASSERT_TRUE(debug.Track(MakeInfo(&resource, core::MemoryTag::RENDERER, 1)));
+    ASSERT_EQ(debug.GetLiveCount(), 1u);
+    ASSERT_NE(debug.GetLive(0), nullptr);
+    EXPECT_EQ(debug.GetLive(0)->pointer, &resource);
+
+    EXPECT_TRUE(debug.Untrack(&resource));
+    EXPECT_EQ(debug.GetLiveCount(), 0u);
+    // 二度目は «載っていない» ので false。
+    EXPECT_FALSE(debug.Untrack(&resource));
+}
+
+TEST_F(MemoryDebugTest, RejectsDuplicatePointer)
+{
+    core::MemoryDebug debug;
+    int resource = 1;
+
+    ASSERT_TRUE(debug.Track(MakeInfo(&resource, core::MemoryTag::CORE, 1)));
+    EXPECT_FALSE(debug.Track(MakeInfo(&resource, core::MemoryTag::CORE, 2)));
+    EXPECT_EQ(debug.GetLiveCount(), 1u);
+}
+
+TEST_F(MemoryDebugTest, CollectLiveReturnsEveryEntry)
+{
+    core::MemoryDebug debug;
+    int first = 1;
+    int second = 2;
+
+    ASSERT_TRUE(debug.Track(MakeInfo(&first, core::MemoryTag::CORE, 1)));
+    ASSERT_TRUE(debug.Track(MakeInfo(&second, core::MemoryTag::CORE, 2)));
+
+    std::vector<core::AllocationInfo> live;
+    debug.CollectLive(live);
+    EXPECT_EQ(live.size(), 2u);
+}
+
+TEST_F(MemoryDebugTest, ResetRemovesAllTrackedResources)
+{
+    core::MemoryDebug debug;
+    int first = 1;
+    int second = 2;
+
+    ASSERT_TRUE(debug.Track(MakeInfo(&first, core::MemoryTag::CORE, 1)));
+    ASSERT_TRUE(debug.Track(MakeInfo(&second, core::MemoryTag::CORE, 2)));
     debug.Reset();
 
     EXPECT_EQ(debug.GetLiveCount(), 0u);

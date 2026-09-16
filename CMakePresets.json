@@ -40,6 +40,24 @@
             }
         },
         {
+            "name": "coverage",
+            "displayName": "Coverage (clang-cl + llvm-cov)",
+            "description": "分岐 (C1) / 条件・MC/DC (C2 以上) カバレッジ計測専用。通常の開発ビルドには使わない。",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/Coverage",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang-cl",
+                "CMAKE_CXX_COMPILER": "clang-cl",
+                "CMAKE_LINKER": "lld-link",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "FBZZ_BUILD_TESTS": "ON",
+                "FBZZ_COVERAGE": "ON",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "OFF",
+                "FBZZ_ENABLE_DX12": "OFF"
+            }
+        },
+        {
             "name": "sdk",
             "displayName": "Shared SDK Publisher",
             "generator": "Visual Studio 18 2026",
@@ -67,6 +85,11 @@
             "name": "development",
             "configurePreset": "development",
             "configuration": "Development"
+        },
+        {
+            "name": "coverage",
+            "configurePreset": "coverage",
+            "configuration": "Debug"
         },
         {
             "name": "sdk-debug",

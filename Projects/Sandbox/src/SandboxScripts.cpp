@@ -1,13 +1,14 @@
-// FBZZ Engine
-// SandboxScripts.cpp | fbzz::sandbox
-// Sandbox 固有 Script の ScriptFactory 登録 (EXE 側静的リンク)
-//
-// WHY: DLL ホットリロードが有効な場合、これらの登録は ScriptDllLoader が上書きする。
-//      DLL 未ビルド時の起動フォールバック、および RuntimeBuild した Standalone exe の
-//      スクリプト登録として機能する。
-// WHY (マーカーコメント方式):
-//      ScriptCodeGen が Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンし、
-//      @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間を自動同期する。エントリは Scripts/ScriptList.inl で一元管理する。
+/// @file    SandboxScripts.cpp
+/// @brief   Sandbox 固有 Script の ScriptFactory 登録 (EXE 側静的リンク)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
+///
+/// WHY: DLL ホットリロードが有効な場合、これらの登録は ScriptDllLoader が上書きする。
+/// DLL 未ビルド時の起動フォールバック、および RuntimeBuild した Standalone exe の
+/// スクリプト登録として機能する。
+/// WHY (マーカーコメント方式):
+/// ScriptCodeGen が Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンし、
+/// @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間を自動同期する。エントリは Scripts/ScriptList.inl で一元管理する。
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 #include "Scripts/PlayerControllerComponent.hpp"

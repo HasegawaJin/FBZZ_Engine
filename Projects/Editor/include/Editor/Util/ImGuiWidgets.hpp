@@ -1,15 +1,24 @@
-// FBZZ Engine
-// ImGuiWidgets.hpp | fbzz::editor
-// プロジェクト固有の ImGui カスタムウィジェット集
+/// @file    ImGuiWidgets.hpp
+/// @brief   パネル間で共有する ImGui カスタムウィジェット集。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+
 #pragma once
 #include <imgui.h>
 #include <algorithm>
+#include <Editor/Util/Localization.hpp>
+#include <Engine/Scene/ScriptAssetRef.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <string>
+#include <string_view>
+#include <functional>
+#include <unordered_set>
 
 namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
@@ -20,10 +29,28 @@ namespace fbzz::editor::widgets {
 inline constexpr const char* kTextureAssetFilter =
     ".fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp,.hdr,.exr";
 
+// 上に «Sprite サブアセット参照 ("<画像>::sprite::<ID>") も受ける» を足したもの。
+// 中身は kTextureAssetFilter と揃えること (片方だけ増やすと欄によって候補が変わる)。
+//
+// WHY 擬似拡張子 ".sprite" で表すか:
+//   切り抜きを活かせるかどうかは «欄» が決める (UI・Sprite Renderer・.mat の albedo・
+//   流体のマスクだけが矩形を読む)。フィルター文字列は全部の欄が既に持っているので、
+//   そこへ 1 つ足すだけで「ピッカーがコマを並べるか」「D&D を受けるか」が同じ 1 か所で決まる。
+//   これが無いと、読めない欄がドロップだけ黙って受け取り、実行時にアトラス全面が出る。
+inline constexpr const char* kSpriteAssetFilter =
+    ".sprite,.fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp,.hdr,.exr";
+
+// 音声クリップ選択欄の共通フィルター。
+// 正本は Engine 側 (scene::kAudioClipExtensions) — スクリプトの FBZZ_FIELD_AUDIO と
+// Editor のピッカーが同じ集合を指す必要があるため、Editor 側では別定義せず参照する。
+inline constexpr const char* kAudioClipAssetFilter = scene::kAudioClipExtensions;
+
+/// この欄は Sprite サブアセット参照 ("<画像>::sprite::<ID>") を受けるか。
+/// フィルターに ".sprite" があるか、フィルター自体が空 (何でも受ける欄) なら true。
+/// ピッカーがコマを並べるか・D&D を受理するかはこの 1 つで決まる。
+[[nodiscard]] bool FilterAcceptsSprites(const char* filterExts);
+
 // std::string を直接編集する InputText。
-// WHY ここに置くか: 元は VFXEditorUiCommon にあり、VFX 以外のパネルが使うには
-//     VFX のヘッダを引く必要があった。文字列編集はどのパネルでも要る汎用部品なので、
-//     ウィジェット層へ移して VFX 側は転送するだけにする。
 // @return true if the value changed
 bool InputString(const char* label, std::string& value, std::size_t capacity = 512);
 
@@ -44,15 +71,51 @@ inline bool ColorEdit4(const char* label, math::Vector4& color) {
     return false;
 }
 
+/// 力場チャンネル (32bit マスク) の編集欄。ForceField と ParticleEmitter が共有する。
+/// @return 値が変わったら true。
+///
+/// WHY ポップアップに畳むか: 既定は全ビット ON で、大半のエミッターは一度も触らない。
+///     32 個のチェックボックスを常時並べると、触らない設定が他のモジュールを画面外へ押し出す。
+inline bool ForceFieldChannelMask(const char* label, std::uint32_t& mask)
+{
+    bool changed = false;
+    char preview[16];
+    if (mask == 0xFFFFFFFFu)    std::snprintf(preview, sizeof(preview), "All");
+    else if (mask == 0u)        std::snprintf(preview, sizeof(preview), "None");
+    else                        std::snprintf(preview, sizeof(preview), "0x%08X", mask);
+
+    ImGui::PushID(label);
+    if (ImGui::Button(preview, ImVec2(ImGui::CalcItemWidth(), 0.0f)))
+        ImGui::OpenPopup("##channels");
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::TextUnformatted(label);
+    if (ImGui::BeginPopup("##channels")) {
+        if (ImGui::SmallButton("All"))  { mask = 0xFFFFFFFFu; changed = true; }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("None")) { mask = 0u; changed = true; }
+        ImGui::Separator();
+        for (int bit = 0; bit < 32; ++bit) {
+            if (bit % 8 != 0) ImGui::SameLine();
+            ImGui::PushID(bit);
+            bool on = (mask & (1u << bit)) != 0u;
+            char name[4];
+            std::snprintf(name, sizeof(name), "%d", bit);
+            if (ImGui::Checkbox(name, &on)) {
+                mask = on ? (mask | (1u << bit)) : (mask & ~(1u << bit));
+                changed = true;
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
+    return changed;
+}
+
 // アセットのサムネイル用テクスチャ ID を解決する。画像なら本体、.mat なら albedo を返す。
 // 解決できない (画像でない / 見つからない) 場合は nullptr。
-//
-// WHY: 「このノードはどの素材を使っているか」をパス文字列だけで判断させると、
-//      名前が似た素材を取り違える。絵を出せば一目で分かる。
-//      ResourceManager 側でも GPU ロードはキャッシュされるが、パス解決と .mat の
-//      albedo 探索は毎フレームやるには重いので、ここでも結果を覚える。
-// NOTE: ResourceManager の resetVersion が変わったらキャッシュ全体を捨てる
-//       (デバイスリセット後は古いテクスチャ ID が無効になるため)。
+// パス解決と .mat の albedo 探索は毎フレームやるには重いので結果を覚える。
+// resetVersion が変わったらキャッシュ全体を捨てる (古いテクスチャ ID が無効になるため)。
 // @param relativePath projectRoot 相対のアセットパス
 [[nodiscard]] void* ResolveAssetThumbnail(const std::string& relativePath,
                                           renderer::ResourceManager* resources,
@@ -62,7 +125,46 @@ inline bool ColorEdit4(const char* label, math::Vector4& color) {
 [[nodiscard]] ImTextureID ToImTextureID(void* ptr);
 
 // セクションヘッダー (太字テキスト + 区切り線)
+/// text を maxWidth [px] に収まるところまで縮め、切ったときだけ ellipsis を足す。
+///
+/// WHY 1 箇所に集めるか: 同じ «収まる所まで縮める» ループがパネルごとに手書きされており、
+///     どれもバイト単位で切っていた。UTF-8 は 1 文字が 1〜4 バイトなので、日本語の
+///     途中で切ると壊れた列が残り «□...» になる。英語だけで動かしている限り出ないので、
+///     書くたびに同じ穴が開く。切り方を 1 つにしてそこだけ正しくする。
+[[nodiscard]] std::string ElideToWidth(const char* text, float maxWidth,
+                                       const char* ellipsis = "...");
+
 void SectionHeader(const char* label);
+
+/// 見出し用の太い書体で 1 行だけ組む (読めない環境では本文のまま組む)。
+/// 対で EndHeadingFont() を呼ぶこと。
+void BeginHeadingFont(float scale = 1.0f);
+void EndHeadingFont();
+
+/// 何も無いパネルの中身。アイコン・見出し・一言・(あれば) 次の一手のボタンを中央へ置く。
+///
+/// WHY 共通化するか: «何も無い» は全パネルに必ず現れる状態なのに、灰色の 1 行で
+///     済ませていた。何が足りないのかも、次に何をすればいいのかも書いていないので、
+///     初めて開いた人はそこで止まる。出す形を 1 つにして、言葉だけ各パネルが決める。
+///
+/// @param icon        EditorIcons の字 (icons::Or 済み)。nullptr なら絵を出さない
+/// @param title       状態の名前 (「まだ何も無い」)。必須
+/// @param hint        次に何をすればよいか。nullptr なら出さない
+/// @param actionLabel 押せる次の一手。nullptr ならボタンを出さない
+/// @return actionLabel のボタンが押された
+bool EmptyState(const char* icon, const char* title,
+                const char* hint = nullptr, const char* actionLabel = nullptr);
+
+/// id ごとに保持した値を target へ寄せて返す (0〜1 の進捗に使う)。
+///
+/// WHY 即時モードで «前回» を持てるか: ImGui はウィンドウごとに ImGuiStorage を
+///     持っていて、そこに id をキーに float を置ける。ウィジェットの状態と同じ寿命なので、
+///     パネル側に «アニメーション用のメンバー» を生やさずに済む。
+///
+/// @param id     ImGui::GetID() などで作った一意な ID
+/// @param target 目標値
+/// @param speed  1 秒あたりに詰める割合 (既定はおよそ 100ms で到達する速さ)
+[[nodiscard]] float Animate(ImGuiID id, float target, float speed = 12.0f);
 
 // 色付きテキスト
 void ColoredText(const char* text, ImVec4 color);
@@ -71,26 +173,45 @@ void ColoredText(const char* text, ImVec4 color);
 void ReadOnlyText(const char* label, const char* text);
 
 // レンジ付き数値フィールド: スライダー (ゲージ) + 編集可能な数値入力ボックスを 1 行に並べる。
-// WHY: SliderFloat 単体は正確な値入力がしづらく、DragFloat 単体は範囲内の量感が掴めない。
-//      ゲージで量感とドラッグ操作を、右の入力ボックスで正確なタイプ入力を同時に満たす。
-//      スクリプトの FBZZ_FIELD_RANGE (ImGuiReflector::FloatRange) から共通で使う。
+// ゲージで量感とドラッグを、右の入力ボックスで正確なタイプ入力を同時に満たす。
 // ImGui::SliderFloat の差し替え先として使えるよう、ラベルは右側に描く ("##" 始まりで非表示)。
-// @param tooltip 非 nullptr なら、ゲージ / 入力ボックス / ラベルのどこをホバーしても表示する。
-//        呼び出し側の ImGui::IsItemHovered() では最後のアイテムしか拾えないため、
-//        説明の出し方はウィジェット側に持たせている。
+// @param tooltip 非 nullptr なら、ゲージ / 入力ボックス / ラベルのどこをホバーしても表示する
+//        (呼び出し側の IsItemHovered() では最後のアイテムしか拾えないため)。
 // @return true if value changed
+// 整数版のレンジ入力。float 版と同じ「ゲージ + 数値ボックス」の見た目で描く。
+bool RangeField(const char* label, int& value, int min, int max,
+                const char* fmt = "%d", const char* tooltip = nullptr);
+
 bool RangeField(const char* label, float& value, float min, float max,
                 const char* fmt = "%.3f", const char* tooltip = nullptr);
 
-// ─── 数値調整をやりやすくするための共通部品 ───────────────────────────────
-// WHY: Inspector は「値をいくつにするか」を延々と試す場所なので、1 回の操作コストが
-//      そのまま作業時間に乗る。掴みやすさ (どの成分か即座に分かる) と刻みの妥当さ
-//      (小さい値でも大きい値でも同じ手応え) をウィジェット側で担保する。
+/// 四則と括弧だけの式を評価する ("1920/2"・"45*2"・"-(3+1)*0.5")。数値だけでも通る。
+///
+/// WHY 数値欄に式を通すか: 座標合わせ・角度・タイル配置では «画面幅の半分» や
+///     «45 度の 2 倍» を暗算してから打ち込んでいた。暗算した時点で
+///     «何をしたかったのか» が数値に埋もれ、あとから直せなくなる。
+///
+/// @return 読めたら true (out へ書く)。読めなければ false で out は触らない。
+[[nodiscard]] bool EvaluateExpression(const char* text, float& out);
 
-// 値の大きさに応じたドラッグ刻みを返す。
-// WHY: 固定 0.1 刻みだと、0〜1 のブレンド率では粗すぎて狙った値に止められず、
-//      逆に数百 m の距離では細かすぎて目的の値まで何度もドラッグし直すことになる。
-//      現在値の 1% を目安にし、下限 0.01 (0 から抜け出せる) / 上限 1.0 で挟む。
+/// ImGui::DragFloat の置き換え。ドラッグの挙動は同じで、
+/// Ctrl+Click / ダブルクリックのタイプ入力だけ EvaluateExpression を通す。
+///
+/// @note ImGui 側のタイプ入力 (ImGuiSliderFlags_NoInput) は切る。式を読むのはこちらの役目。
+bool DragFloatExpr(const char* id, float& value, float speed,
+                   float min = 0.0f, float max = 0.0f, const char* fmt = "%.3f",
+                   ImGuiSliderFlags flags = 0);
+
+/// 整数版。式の結果は四捨五入してから範囲へ収める。
+bool DragIntExpr(const char* id, int& value, float speed,
+                 int min = 0, int max = 0, const char* fmt = "%d",
+                 ImGuiSliderFlags flags = 0);
+
+// ─── 数値調整をやりやすくするための共通部品 ───────────────────────────────
+// 掴みやすさ (どの成分か即座に分かる) と刻みの妥当さをウィジェット側で担保する。
+
+// 値の大きさに応じたドラッグ刻みを返す。現在値の 1% を目安に、下限 0.01 / 上限 1.0 で挟む。
+// 固定刻みだと 0〜1 のブレンド率では粗すぎ、数百 m の距離では細かすぎる。
 [[nodiscard]] inline float AdaptiveDragSpeed(float value)
 {
     const float magnitude = std::abs(value) * 0.01f;
@@ -99,18 +220,12 @@ bool RangeField(const char* label, float& value, float min, float max,
 
 // 軸ごとに色分けした多成分ドラッグ入力。
 //   X [1.234]  Y [0.000]  Z [-2.500]
-// WHY: DragFloat3 は 3 つの数値が同じ見た目で並ぶため「どれが Z か」を毎回数え直す
-//      必要があり、隣の成分を掴む誤操作も起きやすい。頭文字を各成分へ付けると
-//      視線だけで対象を特定でき、Position / Rotation / Scale の往復が速くなる。
-// NOTE: 頭文字は枠の外 (左隣) に軸色で描く。枠内に入れると数値と一緒に中央寄せされ、
-//       桁数によって数値の左端が成分ごとにずれてしまうため。幅が足りない狭い
-//       Inspector では頭文字を落とし、代わりに枠内へ軸色のマーカーを出す。
-// NOTE: 成分ごとに独立した DragFloat なので、Ctrl+Click の直接入力・Alt (微調整) /
-//       Shift (粗調整) といった ImGui 標準操作はそのまま使える。
-//       BeginGroup で囲んでいるため、ImGui::DragFloat3 と同様に IsItemActivated() /
-//       IsItemDeactivatedAfterEdit() が全成分ぶんまとめて機能する (Undo 追跡が壊れない)。
-// @param id  "##" 始まりならラベル非表示。それ以外は DragFloat3 と同じく右側へ描くので、
-//            既存の ImGui::DragFloat2/3/4 呼び出しをそのまま差し替えられる。
+// 頭文字は枠の外 (左隣) に軸色で描く。枠内に入れると数値と一緒に中央寄せされ、
+// 桁数によって数値の左端が成分ごとにずれる。狭いときは頭文字を落として枠内へマーカーを出す。
+// 成分ごとに独立した DragFloat なので Ctrl+Click / Alt / Shift はそのまま使える。
+// BeginGroup で囲んであるので IsItemActivated() / IsItemDeactivatedAfterEdit() は
+// 全成分ぶんまとめて機能する (Undo 追跡が壊れない)。
+// @param id  "##" 始まりならラベル非表示。それ以外は DragFloat3 と同じく右側へ描く。
 // @param count 成分数 (1..4 / それぞれ X Y Z W として描く)
 // @param speed <= 0 を渡すと成分ごとに AdaptiveDragSpeed() を使う
 // @return true if any component changed
@@ -128,9 +243,7 @@ inline bool DragAxes(const char* id, math::Vector3& v, float speed = 0.1f,
 }
 
 // 等比リンク付きのスケール入力。[鍵] [▌X] [▌Y] [▌Z]
-// WHY: 均一スケールは Inspector で最も頻繁に触る値だが、3 成分を手で揃えると
-//      桁がずれて「なぜか潰れたモデル」になりやすい。鍵を閉じている間は
-//      掴んだ成分の変化率を他成分へそのまま掛けて比率を保つ。
+// 鍵を閉じている間は、掴んだ成分の変化率を他成分へそのまま掛けて比率を保つ。
 // @param uniform リンク状態 (呼び出し側が保持する。ボタン押下でトグルされる)
 // @return true if the vector changed
 bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform,
@@ -142,14 +255,10 @@ bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform,
 void LabelEllipsis(const char* text, float maxWidth);
 
 // プロパティ 1 行ぶんのホバー地色を、行の中身より先に敷くためのスコープ。
-// WHY: 縦に数十行続く Inspector では「左のラベル」と「右の値」の対応を目で追いづらく、
-//      1 行ずれた値を触ってしまう。カーソル下の行だけ淡く塗れば対応が一目で分かる。
-// NOTE: 縞模様 (ゼブラ) は採用していない。Inspector は Reflector 生成の行と手書きの行が
-//       混在しており、片方だけに恒久的な縞が付くと不具合のように見えるため。
-//       ホバーは一時的な表示なので、付いていない行があっても違和感が出ない。
-// HOW: ImGui は「これから描く行の高さ」を事前に知らないため、前フレームの実測高さを
-//      ImGuiStorage に覚えて背景を先に描く。行高はフレーム間で安定するので、
-//      初回フレームだけ 1 行ぶんの既定高さで代用すれば見た目の破綻は起きない。
+// 縞模様 (ゼブラ) は採らない ─ Reflector 生成の行と手書きの行が混在しており、
+// 片方だけに恒久的な縞が付くと不具合のように見えるため。
+// ImGui は「これから描く行の高さ」を事前に知らないので、前フレームの実測高さを
+// ImGuiStorage に覚えて背景を先に描く (初回だけ既定高さで代用する)。
 struct PropertyRowScope {
     ImGuiID key = 0;      // 行高を覚える ImGuiStorage のキー
     float   top = 0.0f;   // 行の開始 Y (スクリーン座標)
@@ -158,16 +267,20 @@ struct PropertyRowScope {
 void EndPropertyRow(const PropertyRowScope& row);
 
 // プロパティ行で値ウィジェットを開始する X (= ラベル列の幅、ウィンドウローカル)。
-// WHY: Reflector が自動生成する行と、手書きの行 (Transform など) で列位置が違うと
-//      同じ Inspector の中で値の左端が段違いになり、目で追いづらい。1 か所で決める。
-// WHY 上下でクランプするか: 割合だけで決めると、狭いドックでは Position のような
-//      3 成分ベクトルに残る幅が足りず数値が欠け、逆に広げたときはラベルの右へ
-//      無駄な余白だけが伸びる。「名前が読める最小」と「値に残す幅」を両端で押さえる。
+// 自動生成の行と手書きの行で列位置がずれないよう、1 か所で決める。
+// 割合だけだと狭いドックで数値が欠け、広げると余白だけ伸びるので上下でクランプする。
+// ラベル列の幅。font (1em) 基準で、狭い窓では値の入力欄を潰さないよう頭打ちにする。
+//
+// WHY 言語で上限を変えるか: 上限の «9em» はラテン文字を前提に決めた値で、
+//     欧文は 1 文字が約 0.5em なので 18 文字ぶん入る。CJK は 1 文字が 1em なので
+//     同じ 9em では 9 文字しか入らず、«パーティクルエミッター» のような
+//     カタカナ語がほぼ全部«...»になる。列が足りないのではなく、文字の幅が違う。
 [[nodiscard]] inline float PropertyLabelColumnWidth()
 {
-    const float font  = ImGui::GetFontSize();
-    const float ratio = ImGui::GetWindowWidth() * 0.34f;
-    return (std::min)((std::max)(ratio, font * 5.0f), font * 9.0f);
+    const float font    = ImGui::GetFontSize();
+    const float maxEm   = loc::GetLanguage() == loc::Language::English ? 9.0f : 12.0f;
+    const float ratio   = ImGui::GetWindowWidth() * 0.34f;
+    return (std::min)((std::max)(ratio, font * 5.0f), font * maxEm);
 }
 
 // 手書きパネル用のプロパティ行。「地色 + 省略付きラベル + 列合わせ済みの値」を 1 回で用意する。
@@ -177,10 +290,8 @@ void EndPropertyRow(const PropertyRowScope& row);
 void EndPropertyField(const PropertyRowScope& row);
 
 // ─── カード表現 ───────────────────────────────────────────────────────────
-// WHY: Inspector は 10 枚以上のコンポーネントが縦に積まれる画面なので、
-//      「どこからどこまでが 1 つのコンポーネントか」が見えないと、値を追うたびに
-//      名前を読み直すことになる。ヘッダーと本文を 1 枚のカードとして囲い、
-//      左端にカテゴリ色の帯を通すことで、スクロール中でも色と塊で目的地を拾える。
+// ヘッダーと本文を 1 枚のカードとして囲い、左端にカテゴリ色の帯を通す。
+// 10 枚以上積まれる画面で、スクロール中でも色と塊で目的地を拾えるようにする。
 
 struct ComponentHeaderResult {
     bool   open           = false;  // 本文を描くか (折り畳み状態)
@@ -190,20 +301,39 @@ struct ComponentHeaderResult {
     ImVec2 rectMax{};
 };
 
+// ドロップを受けたときの通知。
+// @param draggedKey  掴まれた側の識別子 (ComponentReorderTarget::dragKey、既定は label)
+// @param insertAfter true = このカードの直後へ、false = 直前へ挿入する
+using ComponentReorderCallback =
+    std::function<void(std::string_view draggedKey, bool insertAfter)>;
+
+// カードをマウスで並び替えられるようにする指定。
+// scope ごとにペイロード名を分け、同じリストの中でしかドロップが成立しないようにする
+// (Inspector には Component の表示順・Script の実行順・PostProcess の適用順が同時に並ぶ)。
+// dragKey は、同じ表示名が複数並びうるリストで要素を一意に指すための任意キー。
+struct ComponentReorderTarget {
+    const char*              scope   = nullptr; // 並び替えグループ ID (英数字・18 文字以内)
+    const char*              dragKey = nullptr; // ペイロードに載せる識別子。null なら label
+    ComponentReorderCallback onDrop{};
+
+    // scope と onDrop の両方が揃って初めて並び替え可能とみなす。
+    explicit operator bool() const { return scope != nullptr && static_cast<bool>(onDrop); }
+};
+
 // コンポーネントカードのヘッダー。
 //   [帯] [▼] [✓] Name ................................... [⋯]
 // @param label   表示名 (ImGui ID もこの文字列から作るので、同じ親の中で一意にすること)
 // @param accent  左帯の色 (カテゴリ色)
 // @param enabled 有効チェックを出す場合の参照先。nullptr ならチェックを描かない
 //                (BoneComponent のように常に有効な補助コンポーネント用)
+// @param reorder マウスでの並び替え指定。既定 (空) ならドラッグ元にもドロップ先にもならない
 ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
-                                      bool* enabled, bool defaultOpen = true);
+                                      bool* enabled, bool defaultOpen = true,
+                                      const ComponentReorderTarget& reorder = {});
 
 // カード本文のスコープ。淡い地色とヘッダーから続く左帯を敷き、中身を一段字下げする。
-// HOW: PropertyRowScope と同じく、ImGui は「これから描く中身の高さ」を事前に知れないため
-//      前フレームの実測高さを ImGuiStorage に覚えて地色を先に描く。
-// NOTE: 横位置はヘッダーの実測矩形から取る。ContentRegion / WorkRect から独自に計算すると、
-//       スクロールバーの有無やインデントの扱いの違いでヘッダーと本文の左右端がずれる。
+// PropertyRowScope と同じく前フレームの実測高さを ImGuiStorage に覚えて地色を先に描く。
+// 横位置はヘッダーの実測矩形から取る (独自計算だとスクロールバーの有無でずれる)。
 struct ComponentBodyScope {
     ImGuiID key    = 0;
     float   top    = 0.0f;
@@ -215,15 +345,18 @@ struct ComponentBodyScope {
 [[nodiscard]] ComponentBodyScope BeginComponentBody(const ComponentHeaderResult& header, ImU32 accent);
 void EndComponentBody(const ComponentBodyScope& body);
 
+// このセッションで ComponentHeader が使った折り畳み状態の ImGuiID 一覧。
+// ImGui の StateStorage には折り畳み以外の値も同居している (カード本文の高さ = float 等)。
+// 保存側が区別できないと全エントリを int として書き戻し、float が潰れて復元される。
+const std::unordered_set<ImGuiID>& ComponentHeaderStateIds();
+
 // 汎用カード (GameObject ヘッダーなど、コンポーネント以外のまとまりを囲う)。
 // 中身を描く前に呼び、必ず EndCard() で閉じる。
 [[nodiscard]] ComponentBodyScope BeginCard();
 void EndCard(const ComponentBodyScope& card);
 
 // ─── 参照スロット (GameObject / Prefab / DataAsset) ───────────────────────
-// WHY: 参照フィールドは「今なにが入っているか」「ここへ落とせるか」「型が合っているか」の
-//      3 つを同時に読めないと使えない。素の Button ではどれも表現できず、
-//      ドラッグ中にどこへ落とせるのかも分からなかった。状態を枠と色で持たせる。
+// 「今なにが入っているか」「ここへ落とせるか」「型が合っているか」を枠と色で同時に見せる。
 
 enum class ReferenceSlotState {
     Empty,     // 未割り当て
@@ -246,12 +379,59 @@ struct ReferenceSlotButtons {
 // 本体の右へ ◎ と × を並べる。グリフはフォントに依存しないよう自前描画。
 ReferenceSlotButtons EndReferenceSlot(bool showPick = true, bool showClear = true);
 
-// アセット参照欄 → AssetBrowser への「この参照先を一覧で見せろ」要求 (Unity の Ping / 選択相当)。
-// WHY: 参照欄に入っているのはパス文字列だが、ユーザーが知りたいのは「どのアセットか」で
-//      あって文字列ではない。クリックでフルパスの編集欄に化けるだけだと、参照先を確かめる
-//      には結局フォルダを手で辿ることになる。クリックで AssetBrowser 側の選択へ橋渡しする。
-// HOW: widgets 層は EditorContext を知らないため one-shot の静的チャネルに積み、
-//      EditorApp が毎フレーム 1 回だけ取り出して EditorContext のパネル間リクエストへ移す。
+// ─── リスト行 (配列フィールド) ─────────────────────────────────────────────
+// 参照スロットの ◎ / × と同じ「自前グリフ + テーマ色 + ツールチップ + 無効化」へ揃える。
+// 文字ボタン (SmallButton("^") 等) は太さと中心が行ごとにばらつき、アイコンとして読めない。
+
+struct ListRowButtons {
+    bool moveUp   = false;
+    bool moveDown = false;
+    bool remove   = false;
+};
+
+// リスト要素 1 行の右端に並べる操作ボタン (▲ ▼ ✕)。直前のアイテムへ SameLine で続ける。
+// 端の要素では対応するボタンを無効表示にする (押せるのに動かないボタンを作らない)。
+// @param removable false なら ✕ を出さない (FBZZ_FIXED_LIST)
+// @param sameLine  false なら先頭の SameLine を省き、呼び出し側が置いたカーソル位置から描く。
+//                  構造体配列の見出し行の右端へ寄せたいとき、SameLine だと打ち消されるため。
+ListRowButtons ListRowToolbar(int index, int count, bool removable, bool sameLine = true);
+
+// ListRowToolbar が占める横幅。値ウィジェットの幅を決めるのに使う。
+[[nodiscard]] float ListRowToolbarWidth(bool removable);
+
+// リスト全体を指す ID。並び替えのドロップ先を同じリスト内へ限定するために使う。
+// リスト用の PushID 直後・要素ごとの PushID より前に 1 回だけ取得すること。
+[[nodiscard]] ImGuiID ListScopeId();
+
+// 行頭のドラッグつまみ。ここを掴んで行を並び替える。
+// 行の本体は値ウィジェットで、そこを掴むのは「値を動かす」操作。掴みどころを分けないと
+// 2 つの操作が同じドラッグに重なる。
+// @param listId       ListScopeId() の値
+// @param index        この行の index
+// @param outInsertAfter ドロップ位置がこの行の前か後ろか
+// @return ドロップされた要素の元 index。ドロップが無ければ -1
+int ListRowDragHandle(ImGuiID listId, int index, bool& outInsertAfter);
+
+// リスト見出し行の右側に置く「N item(s)」表示と + ボタン。
+// @return + が押されたら true
+bool ListAddButton(std::size_t count, bool addable);
+
+// 単独の ✕ (削除) ボタン。並び替えを持たない要素見出し (構造体配列) 用。
+bool ListRemoveButton();
+
+// 行の右端に reserve だけ余白を空けたまま値ウィジェットを描くためのスコープ。
+// BeginReferenceSlot / AssetPathField / DragAxes は幅を GetContentRegionAvail() から決める
+// 複合ウィジェットで SetNextItemWidth を見ない。作業領域の右端そのものを詰める。
+struct RightReserveScope {
+    float previousWorkRight = 0.0f;
+    bool  active            = false;
+};
+[[nodiscard]] RightReserveScope BeginRightReserve(float reserve);
+void EndRightReserve(const RightReserveScope& scope);
+
+// アセット参照欄 → AssetBrowser への「この参照先を一覧で見せろ」要求 (Unity の Ping 相当)。
+// widgets 層は EditorContext を知らないので one-shot の静的チャネルに積み、
+// EditorApp が毎フレーム 1 回だけ取り出してパネル間リクエストへ移す。
 struct AssetRevealRequest {
     std::string path;                      // 欄に入っている値 (Assets 起点の相対パス)
     bool        selectInInspector = false; // true = Inspector の表示対象もこのアセットへ移す
@@ -261,17 +441,19 @@ void RequestAssetReveal(std::string assetPath, bool selectInInspector);
 [[nodiscard]] bool ConsumeAssetRevealRequest(AssetRevealRequest& out);
 
 // アセットパス入力フィールド。"..." ボタンで projectRoot/ 以下を検索できるモーダルを開く。
-// filterExts: カンマ区切り拡張子 ".mat,.hlsl" (空 = すべてのファイル)
+// filterExts: カンマ区切り拡張子 ".mat,.hlsl" (空 = すべてのファイル)。
+//             ".sprite" を含む欄だけが Sprite サブアセット参照を受ける (kSpriteAssetFilter)。
 // 操作: シングルクリック = AssetBrowser で Ping / ダブルクリック = 選択して Inspector を切替 /
 //       右クリック = パス直接編集・コピー・クリア / D&D と "..." は従来どおり。
+/// ピッカーの結果は次の同一 ImGui ID の呼び出しで反映する。path は呼び出し中だけ生存すればよい。
+/// 編集対象を切り替える呼び手は、その対象の識別子も PushID に含めること。
 // @return true if path was changed (InputText 編集 / drag-drop / picker 選択のいずれか)
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
                     const std::string& projectRoot);
 
-// AssetPathField + ロードコールバック付き版。
-// WHY: パス変更時に必ずアセット再ロードが必要なパターン (MeshRenderer/SkinnedMesh 等) の
-//      if (AssetPathField(...)) { reload(); } ボイラープレートを排除する。
+// AssetPathField + ロードコールバック付き版。パス変更時に必ず再ロードが要るパターン
+// (MeshRenderer / SkinnedMesh 等) のボイラープレートを排除する。
 // @return true if path was changed (AssetPathField と同じ)
 template<typename Fn>
 inline bool AssetPathFieldWithLoad(const char* label, std::string& path,
@@ -297,6 +479,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources = nullptr,
 //      選択時に target へ正規化済み相対パスが書き込まれる。描画は DrawAssetPickerModal() が担う。
 //   filterExts: カンマ区切り拡張子 (".prefab" / ".fzdata" 等、空ですべて)
 //   anchorPos : ポップアップを出す画面座標 (通常は呼び出し元ボタンの直下)
+/// target は選択完了まで生存すること。一時コピーの編集には AssetPathField を使う。
 void OpenAssetPicker(std::string& target, const char* filterExts,
                      const std::string& projectRoot, ImVec2 anchorPos);
 
@@ -305,8 +488,28 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
 //      定型がパス欄やリスト行に散在していたため集約する。ドロップ後の処理 (拡張子除去・
 //      リロード等の特殊挙動) は呼び出し側に委ねるので、既存挙動を保ったまま重複だけ消せる。
 // filterExts が指定された場合は手入力欄と同じ拡張子制約をドロップにも適用する。
+// Sprite サブアセットのドロップは filterExts に ".sprite" がある欄だけが受け取る
+// (受けない欄はドラッグ中に理由を出して弾く)。
 // @return true if an asset path was dropped (outPath に正規化済みパスを格納)
 bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts = nullptr);
+
+// ドラッグ中にスクロール領域の上下端へカーソルを置くと、自動で縦スクロールする設定。
+// WHY: Hierarchy / Inspector / AssetBrowser などの各パネルが個別に実装すると、
+//      端からの距離・速度・DeltaTime の扱いがばらつき、ドラッグ操作の感触が揃わない。
+struct DragAutoScrollOptions {
+    float edgeSize = 48.0f;  // 上下端からこの距離以内をスクロール帯にする (px)
+    float maxSpeed = 720.0f; // スクロール帯の最端での最大速度 (px / 秒)
+};
+
+// 現在の ImGui ウィンドウを、ドラッグ中の自動スクロール対象にする。
+// @return 今フレームに自動スクロールを試みた場合 true
+bool UpdateDragAutoScroll(const DragAutoScrollOptions& options = {});
+
+// 任意の画面座標矩形をドラッグ中の自動スクロール対象にする。
+// Child ウィンドウや分割ペインなど、現在のウィンドウ全体とは異なる領域で使う。
+// @return 今フレームに自動スクロールを試みた場合 true
+bool UpdateDragAutoScroll(const ImVec2& regionMin, const ImVec2& regionMax,
+                          const DragAutoScrollOptions& options = {});
 
 // Quaternion → オイラー角 (度, YXZ 順)。InspectorPanel と ImGuiReflector で共用
 // YXZ 内因順: X(Pitch) が中間角で ±90° 制約、Y(Yaw) は ±180° 任意範囲。

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetSearch.cpp | fbzz::editor
-// アセット索引の構築・差分更新と、スコア付きマッチングの実装
+/// @file    AssetSearch.cpp
+/// @brief   アセット索引の構築・差分更新と、スコア付きマッチングの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Util/AssetSearch.hpp>
 
 #include <Engine/Core/Logger.hpp>

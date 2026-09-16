@@ -1,16 +1,19 @@
-// FBZZ Engine
-// TimeTickTests.cpp | GoogleTest
-// Time のリセットとフレーム進行を実時間に依存しない範囲で自動検証する。
-#include <gtest/gtest.h>
+/// @file    TimeTickTests.cpp
+/// @brief   Time のリセットとフレーム進行を実時間に依存しない範囲で自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Time.hpp>
 
 namespace fbzz::tests {
 
-class TimeTickTest : public ::testing::Test {
+class TimeTickTest : public testkit::EngineFixture {
 protected:
     void SetUp() override
     {
+        EngineFixture::SetUp();
         fbzz::Time::SetTargetFps(0);
         fbzz::Time::SetTimeScale(1.0f);
         fbzz::Time::Reset();
@@ -21,6 +24,7 @@ protected:
         fbzz::Time::Reset();
         fbzz::Time::SetTimeScale(1.0f);
         fbzz::Time::SetTargetFps(0);
+        EngineFixture::TearDown();
     }
 };
 

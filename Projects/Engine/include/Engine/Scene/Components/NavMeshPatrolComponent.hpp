@@ -1,10 +1,11 @@
-// FBZZ Engine
-// NavMeshPatrolComponent.hpp | fbzz::scene
-// NavMeshAgentComponent を巡回ウェイポイント間で自動移動させる定義とランタイム状態
-//
-// WHY: 「巡回して敵を見つけたら追跡」は最も基本的なゲーム AI パターンのため、
-//      NavMeshAgentComponent の SetDestination を毎ウェイポイントで呼ぶだけの薄い
-//      System として用意し、ユーザー Script から手動で呼ぶ必要がないようにする。
+/// @file    NavMeshPatrolComponent.hpp
+/// @brief   NavMeshAgentComponent を巡回ウェイポイント間で自動移動させる定義とランタイム状態。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// WHY: 「巡回して敵を見つけたら追跡」は最も基本的なゲーム AI パターンのため、
+/// NavMeshAgentComponent の SetDestination を毎ウェイポイントで呼ぶだけの薄い
+/// System として用意し、ユーザー Script から手動で呼ぶ必要がないようにする。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

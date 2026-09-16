@@ -1,16 +1,22 @@
-// FBZZ Engine
-// BuildConsole.hpp | fbzz::editor
-// スクリプト DLL / HLSL コンパイルの出力・診断・履歴を集約するハブ。
-//
-// WHY: これまでコンパイル結果は「StatusBar に一過性テキスト」＋「汎用 Console に生ログ」
-//      という二重の弱点があり、失敗内容へ辿り着けなかった。BuildConsole を唯一の情報源とし、
-//      Build Output パネル・StatusBar・ツールバー通知の 3 つの UI が同じデータを読む。
-//
-// 使い方 (EditorApp 側):
-//   1. ビルド開始時          : BeginBuild(kind)
-//   2. Tick ごと (Building中) : IngestFullLog(compiler.GetLog())   // 差分だけ取り込む
-//   3. ビルド確定時          : EndBuild(success, exitCode) / EndBuildCancelled()
+/// @file    BuildConsole.hpp
+/// @brief   スクリプト DLL / HLSL コンパイルの出力・診断・履歴を集約するハブ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
+///
+/// WHY: これまでコンパイル結果は「StatusBar に一過性テキスト」＋「汎用 Console に生ログ」
+/// という二重の弱点があり、失敗内容へ辿り着けなかった。BuildConsole を唯一の情報源とし、
+/// Build Output パネル・StatusBar・ツールバー通知の 3 つの UI が同じデータを読む。
+///
+/// 使い方 (EditorApp 側):
+/// 1. ビルド開始時          : BeginBuild(kind)
+/// 2. Tick ごと (Building中) : IngestFullLog(compiler.GetLog())   // 差分だけ取り込む
+/// 3. ビルド確定時          : EndBuild(success, exitCode) / EndBuildCancelled()
 #pragma once
+#include <Editor/Util/LogListView.hpp>
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <string>
 #include <vector>
@@ -69,6 +75,10 @@ public:
     bool               IsBuilding()  const { return m_building; }
     const std::string& CurrentFile() const { return m_currentFile; }  // 現在コンパイル中の .cpp 名 (無ければ空)
     const std::string& LiveLog()     const { return m_liveLog; }
+    /// LiveLog 先頭行の通し番号。上限超過で前方を捨てたぶんだけ進む。
+    uint64_t LiveLogFirstLine()  const { return m_liveLogFirstLine; }
+    /// BeginBuild のたびに進む。LiveLog が別ビルドの中身へ入れ替わったことを表示側へ伝える。
+    uint64_t LiveLogGeneration() const { return m_liveLogGeneration; }
 
     // --- 履歴 ---
     const std::deque<BuildRecord>& History() const { return m_history; }
@@ -76,13 +86,21 @@ public:
     void ClearHistory();
 
     // --- 失敗通知 (ツールバー下の通知バー) ---
-    // 最新レコードが Failed で、かつユーザーが Dismiss していない場合に true。
-    // 新しいビルド開始 or 成功で通知は自動的にリセットされる。
+    //
+    // 状態は Kind ごとに持つ。
+    // WHY: 履歴は Script と HLSL を 1 本に混ぜており、以前は「履歴の末尾」を見て
+    //      通知の要否を決めていた。そのため HLSL が 1 本コンパイルされただけで
+    //      «スクリプトは壊れたまま» 通知が消え、新しいビルドが走っている間も
+    //      末尾が Building になって消えていた。出す条件は種類ごとの «最後に確定した
+    //      結果» でなければならない (表示する中身は LatestFailure が種類ごとに返す)。
+    //
+    // いずれかの Kind に未 Dismiss の失敗があれば true。
     bool HasActiveFailure() const;
-    void DismissNotification() { m_notificationDismissed = true; }
-
-    // 最新の失敗レコード (通知・ジャンプ用)。無ければ nullptr。
+    // 通知に出すべき失敗レコード。無ければ nullptr。
+    // 両方失敗しているときは «新しい方» を返す。
     const BuildRecord* LatestFailure() const;
+    // 現在通知に出ている失敗を黙らせる (その Kind だけ)。次の失敗でまた出る。
+    void DismissNotification();
 
 private:
     // 完全な 1 行を解析し、診断抽出 or 「現在コンパイル中ファイル」更新を行う。
@@ -95,9 +113,51 @@ private:
     size_t      m_consumedLen  = 0;    // IngestFullLog が消費済みの fullLog バイト数
     std::string m_lineBuffer;          // 改行未満の端数を次回まで保持
     std::string m_liveLog;             // 現在ビルドの全表示ログ (MAX_LOG_BYTES 上限)
+    uint64_t    m_liveLogFirstLine  = 0;
+    uint64_t    m_liveLogGeneration = 0;
     std::string m_currentFile;         // cl.exe がエコーした現在コンパイル中ファイル名
-    bool        m_notificationDismissed = false;
+
+    // Kind ごとの通知状態。添字は BuildRecord::Kind の値 (Script=0 / Hlsl=1)。
+    struct FailureState {
+        bool     failed    = false;  // 最後に «確定した» ビルドが失敗だったか
+        bool     dismissed = false;  // ユーザーが閉じたか
+        uint64_t sequence  = 0;      // 新しさの比較用 (両方失敗しているときの優先順)
+    };
+    static constexpr size_t kKindCount = 2;
+    std::array<FailureState, kKindCount> m_failures{};
+    uint64_t m_failureSequence = 0;
+
+    // 現在ビルド中のレコードの種類 (EndBuild が状態を書く先を決める)。
+    BuildRecord::Kind m_buildingKind = BuildRecord::Kind::Script;
+
     unsigned long long m_startTickMs = 0;  // duration 計測用 (GetTickCount64)
+};
+
+/// ビルド出力 1 行を LogListView の行へ変換する。MSVC / CMake の診断形式なら
+/// 重大度と file:line を埋め、ダブルクリックで該当箇所を開けるようにする。
+[[nodiscard]] LogListLine MakeBuildLogLine(const std::string& text, std::uint64_t id);
+
+/// 伸びていくビルドログ全文を、LogListView へ差分で流し込む。
+///
+/// WHY 差分か: 1 行ごとに正規表現を当てるため、Tick ごとに全文を割り直すと
+///     数千行のビルドでエディタが目に見えて重くなる。
+class BuildLogFeed {
+public:
+    /// @param text       ログ全文
+    /// @param generation ビルドごとに変わる値。変わったら一覧を作り直す
+    /// @param firstLine  text 先頭行の通し番号 (前方を捨てたぶんだけ進む)
+    void Sync(const std::string& text, std::uint64_t generation, std::uint64_t firstLine,
+              LogListView& view);
+
+private:
+    void Reset(LogListView& view, std::uint64_t generation, std::uint64_t firstLine);
+
+    std::uint64_t           m_generation  = ~0ull;
+    std::uint64_t           m_firstLine   = 0;
+    std::size_t             m_parsedBytes = 0;   // 改行まで確定して取り込んだバイト数
+    std::size_t             m_seenBytes   = 0;   // 前回見た全文の長さ (変化の検出用)
+    std::deque<std::size_t> m_lineBytes;         // 確定行ごとのバイト数 (前方切り捨ての追従用)
+    bool                    m_hasPartial  = false; // 一覧末尾が改行待ちの書きかけ行か
 };
 
 } // namespace fbzz::editor

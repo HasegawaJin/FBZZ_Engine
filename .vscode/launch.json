@@ -3,7 +3,7 @@
 // デバッグ実行の入口。
 //
 // 2 つの起動経路がある:
-//   1. ビルドツリー直接起動 (FBZZEditor / FBZZVFXEditor / Sandbox / Tests)
+//   1. ビルドツリー直接起動 (FBZZEditor / Sandbox / Tests)
 //      → 最短でブレークポイントに入れる。日常のデバッグはこちら。
 //   2. GameHub 経由 (GameHub + SDK)
 //      → 実際のユーザー体験と同じ経路。ただし GameHub は Editor を
@@ -69,10 +69,13 @@
             "presentation": { "group": "1_editor", "order": 2 }
         },
         {
-            "name": "FBZZVFXEditor (Development)",
+            // GPU リソースの漏れを追う日に使う。Development の速度のまま D3D 検証レイヤーを立てる。
+            // 検証レイヤーは API 呼び出しごとに負荷が掛かるので、通常の Development 起動では
+            // 立てない (立てるのはこの構成と Debug だけ)。
+            "name": "FBZZEditor (Development + GPU Validation)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZVFXEditor.exe",
+            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
@@ -81,7 +84,8 @@
             "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
             "environment": [
                 { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
-                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" },
+                { "name": "FBZZ_GPU_VALIDATION", "value": "1" }
             ],
             "console": "integratedTerminal",
             "requireExactSource": false,
@@ -89,7 +93,7 @@
             "presentation": { "group": "1_editor", "order": 3 }
         },
         {
-            // GameHub から起動した Editor / VFXEditor はデバッガーを持たないので、
+            // GameHub から起動した Editor はデバッガーを持たないので、
             // 後からここでアタッチする。プロセス一覧から FBZZEditor.exe を選ぶ。
             "name": "Attach: FBZZ プロセス",
             "type": "cppvsdbg",
@@ -155,6 +159,54 @@
             "presentation": { "group": "2_runtime", "order": 3 }
         },
         {
+            "name": "Tests: Math Auto (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests/FBZZTestsMathAuto.exe",
+            "args": [
+                "${input:gtestFilter}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Tests (Debug)",
+            "presentation": { "group": "2_runtime", "order": 4 }
+        },
+        {
+            "name": "Tests: Physics Auto (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests/FBZZTestsPhysicsAuto.exe",
+            "args": [
+                "${input:gtestFilter}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Tests (Debug)",
+            "presentation": { "group": "2_runtime", "order": 5 }
+        },
+        {
+            "name": "Tests: Engine Auto (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests/FBZZTestsEngineAuto.exe",
+            "args": [
+                "${input:gtestFilter}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Tests (Debug)",
+            "presentation": { "group": "2_runtime", "order": 6 }
+        },
+        {
             // Window / Cursor の OS 状態を触るため CTest には登録されていない。
             // 手動で確認したい時だけここから起動する。
             "name": "Tests: Core Manual (Debug)",
@@ -168,7 +220,43 @@
             "console": "integratedTerminal",
             "requireExactSource": false,
             "preLaunchTask": "CMake: Build Tests (Debug)",
-            "presentation": { "group": "2_runtime", "order": 4 }
+            "presentation": { "group": "2_runtime", "order": 7 }
+        },
+        {
+            // ビジュアル検証ベンチ。合否はコードではなく目で判断する層。
+            // DX11 固定で起動するので dxcompiler.dll は要らない。
+            "name": "Bench: Visual (Development)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Development/Binaries/Development/Tests/FBZZTestBench.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Tests",
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "Bench: Build (Development)",
+            "presentation": { "group": "2_runtime", "order": 8 }
+        },
+        {
+            "name": "Bench: Visual (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests/FBZZTestBench.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests",
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "Bench: Build (Debug)",
+            "presentation": { "group": "2_runtime", "order": 9 }
         },
 
         // ------------------------------------------------------------------

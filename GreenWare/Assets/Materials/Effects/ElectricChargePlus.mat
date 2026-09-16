@@ -1,0 +1,36 @@
+# FBZZ Engine
+# ElectricChargePlus.mat
+# ＋極の電荷パーティクル。1 粒が ＋ の記号として描かれる。
+# WHY 極ごとに .mat を分けるか:
+#   ParticlePass は材質を materialPath をキーにグローバルへ 1 つだけ持つ。
+#   GameObject ごとの paramOverrides はパーティクルへ届かないので、
+#   同じ .mat を差した 2 つの電極は必ず同じ符号になる。詳細は ElectricCharge.hlsl。
+version = 1
+name = 'ElectricChargePlus'
+shader = 'Assets/Shaders/Material/Effects/ElectricCharge.hlsl'
+blend_mode = 'Additive'
+double_sided = true
+render_path = 'particle'
+render_queue = 3000
+mesh_type = 'surface'
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+chargeSign = 1.0
+signScale = 0.68
+signWeight = 0.24
+signGlow = 3.2
+
+[particle]
+emissive_scale = 1.4
+lighting_strength = 0.0
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FxaaPass.cpp | fbzz::scene
-// FXAA render pass implementation
+/// @file    FxaaPass.cpp
+/// @brief   ポストプロセスチェーンの最新画像を FXAA で最終出力へ描く。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -12,9 +13,16 @@ void ExecuteFxaaPass(RenderPassContext& ctx)
     auto& h = ctx.handles;
     const auto& rs = ctx.settings;
 
-    if (rs.postProcess.fxaaEnabled && h.fxaaShader.IsValid() && h.ldrRT.IsValid())
+    // CustomPP / Outline 後は LDR ではなく、グラフが申告した直前の出力を読む。
+    if (rs.postProcess.fxaaEnabled && h.fxaaShader.IsValid() && h.fxaaInput.IsValid())
     {
-        ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
+        ctx.renderer.SetRenderTarget(ctx.chainOutputRT, ctx.resources);
+
+        // FXAA.hlsl はサンプル間隔を b5 の texelSize だけで決める。
+        // WHY: 直前に b5 を書いたのが Composite か CustomPostProcess かでたまたま正しい値が
+        //      残っていただけで、チェーンの構成が変われば静かに壊れる。自前で入れる。
+        const PostProcCB fxaaData = MakeScreenPostProcCB(ctx.width, ctx.height);
+        ctx.resources.Update(h.postprocCB, &fxaaData, sizeof(PostProcCB));
 
         renderer::DrawCall fxaaDC;
         fxaaDC.shader = h.fxaaShader;
@@ -37,7 +45,10 @@ void ExecuteTAABlitPass(RenderPassContext& ctx)
     //      TAA 後の出力はエッジがほぼ平滑化済みなので FXAA の追加処理量は極小。
     if (!h.fxaaShader.IsValid() || !h.fxaaInput.IsValid()) return;
 
-    ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
+    ctx.renderer.SetRenderTarget(ctx.chainOutputRT, ctx.resources);
+
+    const PostProcCB blitData = MakeScreenPostProcCB(ctx.width, ctx.height);
+    ctx.resources.Update(h.postprocCB, &blitData, sizeof(PostProcCB));
 
     renderer::DrawCall blitDC;
     blitDC.shader             = h.fxaaShader;

@@ -1,21 +1,23 @@
-// FBZZ Engine
-// DX11Shader.hpp | fbzz::renderer
-// DX11 頂点・ピクセルシェーダーと InputLayout の管理
-// IShader を継承し、CSO から作ったネイティブシェーダーを保持する。
-// InputLayout は頂点シェーダーの反射情報から作る。
-//
-// 設計方針:
-//   通常はビルド済み CSO (Compiled Shader Object) をロードする。
-//   CSO が存在しない場合 (初回起動・compile_shaders.ps1 未実行) は
-//   D3DCompileFromFile でオンデマンドコンパイルし、生成した CSO をキャッシュする。
-//   WHY: DemoGame / StandaloneApp が compile_shaders.ps1 なしに動作するよう。
-//        エディター向けの本番ワークフローは compile_shaders.ps1 が担う。
-//   シェーダーパスは "assets/shaders/Phong.hlsl" 形式で受け取り、
-//   "assets/shaders/compiled/Phong.vs.cso" / ".ps.cso" に解決する。
-//
-//   InputLayout は VS バイトコードを D3DReflect でリフレクションして自動構築する。
-//   シェーダーごとに異なる頂点フォーマット (Unlit: POSITION+NORMAL+TEXCOORD,
-//   Debug: POSITION+COLOR 等) に対応できる。
+/// @file    DX11Shader.hpp
+/// @brief   DX11 頂点・ピクセルシェーダーと InputLayout の管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// IShader を継承し、CSO から作ったネイティブシェーダーを保持する。
+/// InputLayout は頂点シェーダーの反射情報から作る。
+///
+/// 設計方針:
+/// 通常はビルド済み CSO (Compiled Shader Object) をロードする。
+/// CSO が存在しない場合 (初回起動・compile_shaders.ps1 未実行) は
+/// D3DCompileFromFile でオンデマンドコンパイルし、生成した CSO をキャッシュする。
+/// WHY: DemoGame / StandaloneApp が compile_shaders.ps1 なしに動作するよう。
+/// エディター向けの本番ワークフローは compile_shaders.ps1 が担う。
+/// シェーダーパスは "assets/shaders/Phong.hlsl" 形式で受け取り、
+/// "assets/shaders/compiled/Phong.vs.cso" / ".ps.cso" に解決する。
+///
+/// InputLayout は VS バイトコードを D3DReflect でリフレクションして自動構築する。
+/// シェーダーごとに異なる頂点フォーマット (Unlit: POSITION+NORMAL+TEXCOORD,
+/// Debug: POSITION+COLOR 等) に対応できる。
 #pragma once
 
 #include <d3d11.h>

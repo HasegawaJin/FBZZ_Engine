@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ISystem.hpp | fbzz
-// 全 System が実装するインターフェース。SystemScheduler に登録して使う。
+/// @file    ISystem.hpp
+/// @brief   全 System が実装するインターフェース。SystemScheduler に登録して使う。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include "Phase.hpp"
 #include "ComponentAccess.hpp"

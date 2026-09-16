@@ -1,0 +1,64 @@
+# 地を這う土煙 — 2D フリップブックの見本。箱の湧き口から出た砂が風に流され、
+# 床 (plane コライダー) に沿って寝たまま広がる。3D を焼くほどでもない足元の芝居向け。
+version = 2
+kind = "gas"
+seed = 11
+
+[gas]
+buoyancy = 0.22
+weight = 0.38
+vorticity = 0.55
+turbulence = 0.3
+turbulence_scale = 5.0
+density_dissipation = 0.32
+temperature_dissipation = 1.6
+floor = true
+wind = [0.22, 0.0, 0.0]
+
+[[source]]
+name = "Kickup"
+shape = "box"
+center = [-0.62, -0.74, 0.0]
+size = [0.24, 0.07, 0.24]
+density = 4.2
+temperature = 0.5
+noise = 0.75
+velocity = [1.2, 0.9, 0.0]
+duration = 0.5
+
+[[force]]
+name = "Gust"
+type = "wind"
+direction = [1.0, 0.08, 0.0]
+strength = 0.7
+duration = 0.9
+
+[[collider]]
+name = "Ground"
+shape = "plane"
+center = [0.0, -0.82, 0.0]
+direction = [0.0, 1.0, 0.0]
+friction = 0.7
+
+[render]
+shading = "smoke"
+smoke_color = [0.72, 0.66, 0.55, 1.0]
+shadow_color = [0.18, 0.15, 0.12, 1.0]
+opacity = 2.2
+self_shadow = 1.8
+detail_strength = 0.55
+detail_scale = 12.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 1.2
+warmup = 0.2
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "2d"
+scattering_octaves = 5

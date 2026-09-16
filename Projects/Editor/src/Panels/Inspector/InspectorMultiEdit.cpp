@@ -1,14 +1,15 @@
-// FBZZ Engine
-// InspectorMultiEdit.cpp | fbzz::editor
-// 複数選択時の Inspector
-//
-// WHY: 従来は Transform を「全員をプライマリの値に揃える」だけで、共通コンポーネントは
-//      BulletText で名前を並べるだけだった。レベル調整では「選んだ 20 個のライトの強度を
-//      まとめて下げる」「全員を +Y に 2m ずらす」が毎日発生するため、
-//        1) Transform に Set / Offset の 2 モード
-//        2) 共通コンポーネントの実編集 (Reflect() 経由で自動生成)
-//        3) 列挙をコンポーネントレジストリ由来にして追加漏れを無くす
-//      の 3 点を入れる。
+/// @file    InspectorMultiEdit.cpp
+/// @brief   複数選択時の Inspector。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: 従来は Transform を「全員をプライマリの値に揃える」だけで、共通コンポーネントは
+/// BulletText で名前を並べるだけだった。レベル調整では「選んだ 20 個のライトの強度を
+/// まとめて下げる」「全員を +Y に 2m ずらす」が毎日発生するため、
+/// 1) Transform に Set / Offset の 2 モード
+/// 2) 共通コンポーネントの実編集 (Reflect() 経由で自動生成)
+/// 3) 列挙をコンポーネントレジストリ由来にして追加漏れを無くす
+/// の 3 点を入れる。
 #include "InspectorMultiEdit.hpp"
 #include "InspectorCommon.hpp"
 
@@ -519,7 +520,9 @@ void DrawSharedComponentSection(EditorContext& ctx,
             for (auto* g : gos) {
                 if (auto* c = g->GetComponent<T>()) {
                     guids.push_back(g->instanceId);
+                    // やり直し用のコピーからは GPU ハンドルを消す (実体は下で返される)。
                     removed.push_back(*c);
+                    scene::ClearComponentGpuHandles(removed.back());
                     g->RemoveComponent<T>();
                 }
             }

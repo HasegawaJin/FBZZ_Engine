@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptColliderProxy.hpp | fbzz::scene
-// Script から ColliderComponent を安全に更新するショートハンド
+/// @file    ScriptColliderProxy.hpp
+/// @brief   Script から ColliderComponent を安全に更新するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #include <Math/Vector3.hpp>
@@ -10,6 +11,7 @@
 namespace fbzz::scene {
 
 class Script;
+class GameObject;
 
 struct ScriptColliderProxy {
     Script* script = nullptr;
@@ -17,9 +19,23 @@ struct ScriptColliderProxy {
     void SetEnabled(bool enabled) const;
     void SetTrigger(bool trigger) const;
     void SetCenter(const math::Vector3& center) const;
+
+    // コライダーが付いていなければ IsEnabled / IsTrigger は false、GetCenter は原点。
+    [[nodiscard]] bool          HasCollider() const;
+    [[nodiscard]] bool          IsEnabled() const;
+    [[nodiscard]] bool          IsTrigger() const;
+    [[nodiscard]] math::Vector3 GetCenter() const;
+
+    /// プリミティブ形状のワールド AABB。無効状態も含め、同一オブジェクトの形状を統合する。
+    /// 回転・中心・負スケールを反映する。対象不在・未対応は false、出力は未変更。
+    /// 物理実体は変更しない。Transform の world 値が更新済みであること。
+    [[nodiscard]] static bool TryGetPrimitiveWorldBounds(GameObject* object,
+        math::Vector3& outMin, math::Vector3& outMax);
+
     void SetBoxSize(const math::Vector3& size) const;
     void SetSphereRadius(float radius) const;
     void SetCapsule(float radius, float halfHeight) const;
+    void SetCylinder(float radius, float halfHeight) const;
     void SetMesh(std::string_view meshPath, int meshIndex = 0) const;
 
     // ── 物理マテリアル ────────────────────────────────────────────────────

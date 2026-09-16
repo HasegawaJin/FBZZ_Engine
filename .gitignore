@@ -4,7 +4,19 @@ out/
 build_log.txt
 .cache/
 /SDK/
-/Artifacts/
+# レポート類の置き場。リポジトリ直下 (coverage) と、各ゲームプロジェクト直下
+# (エディターが吐く RenderGraph の構成テキストなど) の両方に出る。
+Artifacts/
+# ゲームプロジェクトの配布ビルド出力。exe / dll だけでなく、その隣へ複製される
+# EngineAssets / Library まで丸ごと入るため (GreenWare で 480MB) ディレクトリごと除外する。
+Binaries/
+# BuildSettings.outputDirectory の既定先 (<Project>/Builds/<name>)。
+# 複製された Assets 配下は .toml / .meta / .scene など拡張子ルールに掛からない
+# ファイルも持つため、上の Binaries/ と同じ理由でディレクトリごと除外する。
+Builds/
+# DCC からの書き出しを Assets へ配備する前に一度受ける中継置き場。
+# 配備が済めば Assets 側が正本になり、ここは同じ FBX の二重持ちにしかならない。
+/Temp/
 
 # CMake
 CMakeCache.txt
@@ -45,6 +57,18 @@ CMakeUserPresets.json
 imgui.ini
 editor_config/hub_imgui.ini
 
+# プロジェクト内 (<Project>/Assets/EditorConfig/) のエディター個人設定。
+# ウィンドウ配置と Play 中の一時退避で、触った人の分だけ毎回書き換わる。
+# 共有する意味が無いうえ、追跡すると全員が同じ行で衝突し続ける。
+# editor_settings.toml は起動シーン等の共有設定を持つので追跡したままにする。
+**/Assets/EditorConfig/imgui_layout.ini
+**/Assets/EditorConfig/vfx_editor.ini
+**/Assets/EditorConfig/.playmode_snapshot.scene
+# 本体を追跡しないので .meta も持たない (孤児 .meta を作らないため)。
+**/Assets/EditorConfig/imgui_layout.ini.meta
+**/Assets/EditorConfig/vfx_editor.ini.meta
+**/Assets/EditorConfig/.playmode_snapshot.scene.meta
+
 # Claude Code (ローカル設定)
 .claude/
 
@@ -84,6 +108,14 @@ Thumbs.db
 **/Assets/**/*.ogg
 # .meta は追跡する: AssetDatabase の GUID を保持するため (Unity と同じ)。
 # クローン先で GUID が再発行されると guid: 参照が全て切れるので必ずコミットする。
+#
+# 例外: GameHub のテンプレートだけは .meta を持たない。
+# WHY: テンプレートは «内容» を配るもので、guid (そのプロジェクト内の識別子) は配れない。
+#      新規プロジェクトでは .meta が作り直されて guid が変わるため、テンプレートに
+#      guid を残すと参照が全て切れる (実際 Player.animcontroller が一度そうなった)。
+#      テンプレート内の参照は素のパスで持ち、初回保存でそのプロジェクトの guid へ
+#      再エンコードさせる。.meta 自体は AssetDatabase が起動時に自動生成する。
+Projects/GameHub/Templates/**/*.meta
 **/Assets/**/*.mesh
 **/Assets/**/*.fzasset
 **/Assets/**/*.skel
@@ -92,6 +124,33 @@ Thumbs.db
 **/Assets/**/*.cso
 **/Assets/**/compile_log.txt
 **/Assets/**/compile_ui_log.txt
+
+# GreenWare だけは例外で素材を追跡する (Git LFS 経由。対象は .gitattributes)。
+# WHY: 素材が無いと clone しても GreenWare が起動せず、公開する意味が無い。
+#      除外したままなのはベイク出力 (.fzasset / .anim / .skel / .cso / .ibl) と
+#      IBL の .dds — いずれもソースから再生成でき、LFS は差分を持たないため
+#      焼き直すたびに旧版のフルコピーが無料枠を食う。
+!GreenWare/Assets/**/*.fbx
+!GreenWare/Assets/**/*.png
+!GreenWare/Assets/**/*.jpg
+!GreenWare/Assets/**/*.jpeg
+!GreenWare/Assets/**/*.bmp
+!GreenWare/Assets/**/*.tga
+!GreenWare/Assets/**/*.hdr
+!GreenWare/Assets/**/*.exr
+!GreenWare/Assets/**/*.wav
+!GreenWare/Assets/**/*.mp3
+!GreenWare/Assets/**/*.ogg
+
+# DCC の作業ファイル置き場 (.blend)。MiniBotC と Boss03 だけで 4.5GB あり、
+# LFS の無料枠 (1GB) にも GitHub の推奨リポジトリサイズにも収まらない。
+# エンジンは読まないので、clone 側は Assets/ に配備済みの FBX だけで動く。
+GreenWare/Assets/_src/
+GreenWare/Assets/_src.meta
+
+# モデル制作の記録 (レンダー画像・検証動画・Tripo への入力 zip)。112MB。
+# Assets/ の外なので LFS の対象にもならず、通常 blob で履歴に積み上がる。
+Docs/Art/
 
 # Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
 Projects/GameHub/Templates/standard/Assets/Nature/Tree/**
@@ -103,3 +162,8 @@ __pycache__/
 # 手動バックアップファイル
 *.bak
 *.bak_*
+*.bisect_backup
+
+# 作業中の退避ディレクトリ。差し替え前のシーン・スクリプトの旧版を置く場所で、
+# 手元でしか意味を持たない。追跡すると公開リポジトリに旧版が二重に残り続ける。
+_session_backup_*/

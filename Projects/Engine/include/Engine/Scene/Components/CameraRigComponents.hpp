@@ -1,6 +1,7 @@
-// FBZZ Engine
-// CameraRigComponents.hpp | fbzz::scene
-// Virtual Cameraの優先度選択、追従、ブレンド、揺れを構成するComponent
+/// @file    CameraRigComponents.hpp
+/// @brief   Virtual Cameraの優先度選択、追従、ブレンド、揺れを構成するComponent。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>

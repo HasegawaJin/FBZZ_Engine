@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorEnvironment.cpp | fbzz::editor
-// Environment / Decal / IBL / PostProcess 系 Component の Inspector 描画
+/// @file    InspectorEnvironment.cpp
+/// @brief   Environment / Decal / IBL / PostProcess 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorEnvironment.hpp"
 
 namespace fbzz::editor {
@@ -12,7 +13,10 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Atmosphere");
             widgets::DragVec3("Rayleigh", sr.rayleighScattering, 0.0001f, 0.0f, 1.0f);
             ImGui::DragFloat("Mie Scattering", &sr.mieScattering, 0.0001f, 0.0f, 1.0f);
-            ImGui::DragFloat("Sun Intensity", &sr.sunIntensity, 0.1f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Sky Scatter Intensity", &sr.skyScatterIntensity, 0.1f, 0.0f, 1000.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("大気散乱そのものの明るさ。太陽ディスクの明るさは\n"
+                                  "Sun Moon Renderer の Sun Disk Intensity です。");
             ImGui::DragFloat("Planet Radius", &sr.planetRadius, 1.0f, 1.0f, 100000.0f);
             ImGui::DragFloat("Atmosphere Radius", &sr.atmosphereRadius, 1.0f, 1.0f, 100000.0f);
             widgets::RangeField("Mie G", sr.mieG, -0.99f, 0.99f);
@@ -20,37 +24,49 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Day Night");
             ImGui::Checkbox("Day Night Enabled", &sr.dayNightEnabled);
             if (sr.dayNightEnabled) {
+                // 誰が何を決めているのかをここで明示する。
+                // WHY: 有効な間 Light コンポーネントの Color / Intensity はここが上書きするため、
+                //      向きだけがライト側に残ることを知らないと「ライトが効かない」と映る。
+                ImGui::TextDisabled("太陽の向きは Directional Light の Transform。\n"
+                                    "有効な間、そのライトの Color / Intensity はここが決めます。");
+
+                ImGui::DragFloat("Day Altitude", &sr.dayAltitude, 0.5f, 0.1f, 90.0f, "%.1f\xc2\xb0");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽がこの高度まで昇ると完全な昼になります。\n"
+                                      "地平線 (0°) からここまでが夕方の帯です。");
+                ImGui::DragFloat("Night Altitude", &sr.nightAltitude, 0.5f, 0.1f, 90.0f, "-%.1f\xc2\xb0");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽が地平線からこの角度だけ沈むと完全な夜になります。\n"
+                                      "地平線 (0°) からここまでが薄明の帯です。");
+
                 widgets::ColorEdit3("Day Color", sr.dayColor);
                 widgets::ColorEdit3("Sunset Color", sr.sunsetColor);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽高度がちょうど 0° のときの色。\n"
+                                      "夕方を作るには Directional Light を水平へ向けます。");
                 widgets::ColorEdit3("Night Color", sr.nightColor);
+
                 // 太陽光の強さ = 地表のライティング。
                 // 1.0 で「白い拡散面が albedo そのままの明るさ」になる単位
                 // (Lighting.hlsli の LIGHT_UNIT_SCALE)。
                 ImGui::DragFloat("Day Intensity", &sr.dayIntensity, 0.01f, 0.0f, 20.0f);
+                ImGui::DragFloat("Sunset Intensity", &sr.sunsetIntensity, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Night Intensity", &sr.nightIntensity, 0.01f, 0.0f, 5.0f);
 
                 // 空の見た目の明るさ = Skydome / 太陽ディスク / ボリューメトリック雲・
-                // 光芒 / エアリアルパースに掛かる係数 (Sun Intensity への乗数)。
+                // 光芒 / エアリアルパースに掛かる係数 (Sky Scatter Intensity への乗数)。
                 // 上の太陽光と別軸なので、太陽だけ強めても空は白飛びしない。
                 ImGui::DragFloat("Sky Day Brightness", &sr.skyDayBrightness, 0.01f, 0.0f, 20.0f);
+                ImGui::DragFloat("Sky Sunset Brightness", &sr.skySunsetBrightness, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Sky Night Brightness", &sr.skyNightBrightness, 0.01f, 0.0f, 5.0f);
             }
 
             ImGui::SeparatorText("Cloud Shadow");
             widgets::RangeField("Cloud Shadow Strength", sr.cloudShadowStrength, 0.0f, 1.0f);
             widgets::RangeField("Cloud Shadow Coverage", sr.cloudShadowCoverage, 0.0f, 1.0f);
-            ImGui::DragFloat("Cloud Shadow Scale", &sr.cloudShadowScale, 0.0001f, 0.0001f, 1.0f, "%.5f");
+            // 中身は world→ノイズ UV スケールだが、Inspector では「まだら 1 周期の大きさ」で扱う。
+            ImGui::DragFloat("Cloud Shadow Size", &sr.cloudShadowSize, 1.0f, 1.0f, 10000.0f, "%.0f m");
             ImGui::DragFloat("Cloud Shadow Speed", &sr.cloudShadowSpeed, 0.01f, 0.0f, 10.0f);
-        });
-
-    DrawComponentSection<scene::WindZoneComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Wind Zone",
-        [](scene::WindZoneComponent& wind, EditorContext&) {
-            widgets::DragVec3("Direction", wind.direction, 0.01f);
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Local direction; rotated by the GameObject transform");
-            ImGui::DragFloat("Strength", &wind.strength, 0.01f, 0.0f, 100.0f);
-            ImGui::DragFloat("Turbulence", &wind.turbulence, 0.01f, 0.0f, 100.0f);
-            ImGui::DragFloat("Pulse Frequency", &wind.pulseFrequency, 0.01f, 0.0f, 20.0f);
         });
 
     DrawComponentSection<scene::SunMoonRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Sun Moon Renderer",
@@ -58,7 +74,10 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Sun");
             ImGui::Checkbox("Sun Enabled", &smr.sunEnabled);
             if (smr.sunEnabled) {
-                ImGui::DragFloat("Sun Intensity", &smr.sunIntensity, 0.1f, 0.0f, 1000.0f);
+                ImGui::DragFloat("Sun Disk Intensity", &smr.sunDiskIntensity, 0.1f, 0.0f, 1000.0f);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽ディスクの明るさ。空そのものの明るさは\n"
+                                      "Sky Renderer の Sky Scatter Intensity です。");
             }
 
             ImGui::SeparatorText("Moon");
@@ -72,24 +91,130 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     DrawComponentSection<scene::VolumetricCloudComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volumetric Cloud",
         [](scene::VolumetricCloudComponent& cloud, EditorContext&) {
+            // DragFloat 直後に付ける説明。RangeField はウィジェット側が tooltip 引数を持つ。
+            auto tip = [](const char* text) {
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", text);
+            };
+
+            ImGui::SeparatorText("Layer");
             ImGui::DragFloat("Bottom Height", &cloud.bottomHeight, 5.0f, -10000.0f, 10000.0f);
             ImGui::DragFloat("Thickness", &cloud.thickness, 5.0f, 1.0f, 5000.0f);
             widgets::RangeField("Coverage", cloud.coverage, 0.0f, 1.0f);
             ImGui::DragFloat("Density", &cloud.density, 0.01f, 0.0f, 8.0f);
-            ImGui::DragFloat("Noise Scale", &cloud.noiseScale, 0.0001f, 0.00001f, 0.02f, "%.5f");
-            ImGui::DragFloat("Detail Scale", &cloud.detailScale, 0.05f, 1.0f, 16.0f);
+
+            ImGui::SeparatorText("Shape");
+            // すべて「ワールド単位の大きさ」で編集する。
+            // WHY: 中身は world→ノイズ座標のスケール (逆数) だが、そのまま出すと
+            //      0.000063 のような読めない値をドラッグすることになり、
+            //      「雲をどれくらいの大きさにしたいか」と数字が結びつかない。
+            ImGui::DragFloat("Cloud Size", &cloud.cloudSize, 5.0f, 50.0f, 100000.0f, "%.0f m");
+            tip(
+                "雲塊 1 周期の大きさ。大きいほど雄大な雲になります。\n"
+                "Shape ノイズはタイラブルな 3D テクスチャなので、\n"
+                "この距離ごとにまったく同じ雲が並びます。小さくすると\n"
+                "雲は細かくなりますが、繰り返しが視界内で目立ちます。");
+            ImGui::DragFloat("Weather Size", &cloud.weatherSize, 25.0f, 100.0f, 1000000.0f, "%.0f m");
+            tip(
+                "晴れ間と厚い塊が入れ替わる周期。Cloud Size の 5〜10 倍にしてください。\n"
+                "Shape のタイル周期と十分ずらすことで、同じ雲が格子状に\n"
+                "並んで見える繰り返しを視覚的に解きます。");
+            widgets::RangeField("Weather Amount", cloud.weatherAmount, 0.0f, 1.0f, "%.2f",
+                "雲量ムラの強さ。0 で空一面が同じ雲量になり (旧挙動)、\n"
+                "タイリングがそのまま見えます。上げるほど晴れ間と\n"
+                "厚い塊の差が大きくなります。");
+            ImGui::DragFloat("Detail Size", &cloud.detailSize, 1.0f, 1.0f, cloud.cloudSize, "%.0f m");
+            tip("雲の縁を侵食する細部ノイズの大きさ。Cloud Size より小さくします。");
+            widgets::RangeField("Detail Strength", cloud.detailStrength, 0.0f, 1.0f, "%.2f",
+                "高周波ノイズで雲の縁を侵食する量。上げるとちぎれた綿状になります。");
+            widgets::RangeField("Bottom Softness", cloud.bottomSoftness, 0.01f, 0.9f, "%.2f",
+                "雲底の丸み。小さいほど平らな底になります。");
+            widgets::RangeField("Top Softness", cloud.topSoftness, 0.01f, 0.9f, "%.2f",
+                "雲頂の散り方。大きいほど上へふわりと消えます。");
+            ImGui::DragFloat("Evolution Speed", &cloud.evolutionSpeed, 0.05f, 0.0f, 20.0f);
+            tip("流れとは別に、雲の形そのものが変化する速さ。0 で形が固定されます。");
+
+            ImGui::SeparatorText("Wind");
             ImGui::DragFloat("Wind Speed", &cloud.windSpeed, 0.5f, 0.0f, 300.0f);
             DragVec2("Wind Direction", cloud.windDirection, 0.01f, -1.0f, 1.0f);
+
+            ImGui::SeparatorText("Lighting");
+            ImGui::DragFloat("Sun Intensity", &cloud.sunIntensity, 0.05f, 0.0f, 20.0f);
+            tip(
+                "太陽散乱の倍率。雲が暗くて見えないときはまずここを上げます。\n"
+                "空の明るさ (Sky Renderer の Sky Day Brightness) に対する相対値です。");
+            ImGui::DragFloat("Extinction", &cloud.extinction, 0.001f, 0.001f, 0.5f, "%.4f");
+            tip(
+                "密度 → 消散係数のスケール。上げるほど不透明で締まった雲、\n"
+                "下げるほど薄く光を通す雲になります。Density と合わせて詰めます。");
             ImGui::DragFloat("Light Absorption", &cloud.lightAbsorption, 0.01f, 0.0f, 8.0f);
-            widgets::RangeField("Ambient Strength", cloud.ambientStrength, 0.0f, 1.0f);
+            tip("雲内部のセルフシャドウの濃さ。大きいほど陰影が強く暗い雲になります。");
+            ImGui::DragFloat("Ambient Strength", &cloud.ambientStrength, 0.01f, 0.0f, 4.0f);
+            tip("空から回り込む間接光の強さ。影側が黒く潰れるときに上げます。");
+            widgets::RangeField("Ambient Gradient", cloud.ambientGradient, 0.0f, 1.0f, "%.2f",
+                "雲底に届く間接光の割合。間接光は雲の天面から入るので、\n"
+                "0 にすると底が真っ黒に、1 にすると上下均一になります。");
+            widgets::RangeField("Multi Scatter", cloud.multiScatter, 0.0f, 1.0f, "%.2f",
+                "多重散乱オクターブの寄与。0 だと単散乱のみで雲の内側が\n"
+                "真っ黒に落ちます。上げるほど内部まで光が回ります。");
+            widgets::RangeField("Powder Strength", cloud.powderStrength, 0.0f, 1.0f, "%.2f",
+                "Beer-Powder。太陽側の縁を暗く落として立体感を出します。");
+            widgets::RangeField("Anisotropy", cloud.anisotropy, 0.0f, 0.95f, "%.2f",
+                "位相関数の前方散乱の鋭さ。上げるほど太陽の周りだけが強く光ります。");
             ImGui::DragFloat("Silver Lining", &cloud.silverLining, 0.01f, 0.0f, 4.0f);
+
+            ImGui::SeparatorText("Color");
             widgets::ColorEdit3("Albedo", cloud.albedo);
+            tip("雲そのものの色。ふつうは白のままにします。");
+            widgets::ColorEdit3("Sun Tint", cloud.sunTint);
+            tip("太陽に照らされた側へ掛ける色。夕焼けの雲を暖色へ寄せるときに使います。");
+            widgets::ColorEdit3("Ambient Tint", cloud.ambientTint);
+            tip("影側 (空からの間接光) へ掛ける色。空の色に合わせると雲が空になじみます。");
+
+            ImGui::SeparatorText("Range");
+            ImGui::DragFloat("Min Distance", &cloud.minDistance, 1.0f, 0.0f, cloud.maxDistance, "%.0f m");
+            tip("この距離までは雲を出しません。");
+            ImGui::DragFloat("Fade Distance", &cloud.fadeDistance, 1.0f, 1.0f, 5000.0f, "%.0f m");
+            tip("Min Distance からこの距離をかけて雲を濃くしていきます。\n"
+                "カメラが雲層の高さまで上がると視線が雲の内部から始まり、\n"
+                "手前が濃すぎて画面が真っ白になります。ここを広げると\n"
+                "雲の中を通り抜けられるようになります。");
+            widgets::RangeField("Horizon Fade", cloud.horizonFade, 0.0f, 1.0f, "%.2f",
+                "水平線ぎわのフェード幅 (Max Distance に対する割合)。\n"
+                "視線を水平へ倒すと雲層に入る距離が伸び、Max Distance を\n"
+                "越えた瞬間に雲が消えます。その直前まで不透明なので、\n"
+                "地平線に硬い切れ目が出ます。ここを広げると溶けます。");
+            ImGui::DragFloat("Max Distance", &cloud.maxDistance, 50.0f, 100.0f, 50000.0f, "%.0f m");
+
+            ImGui::SeparatorText("Light Shafts");
+            widgets::RangeField("Light Shaft Strength", cloud.lightShaftStrength, 0.0f, 1.0f, "%.2f",
+                "雲の切れ間から差す光の線 (ゴッドレイ) の濃さ。\n"
+                "体積光パスがこの雲の密度を直接引いて光芒を遮ります。\n"
+                "Post Process Volume の Volumetric Light を有効にし、\n"
+                "Max Distance を光芒を伸ばしたい距離まで上げてください。\n"
+                "0 で遮蔽をやめ、光芒は一様な靄に戻ります。");
+
+            ImGui::SeparatorText("Quality");
             ImGui::SliderInt("Step Count", &cloud.stepCount, 8, 96);
-            ImGui::DragFloat("Max Distance", &cloud.maxDistance, 50.0f, 100.0f, 50000.0f);
+            ImGui::SliderInt("Light Step Count", &cloud.lightStepCount, 1, 8);
+            tip("太陽方向セルフシャドウのステップ数。上げると陰影が正確になりますが重くなります。");
+            ImGui::Checkbox("Half Resolution", &cloud.halfResolution);
+            tip("半解像度でレイマーチしてから拡大合成します。\n"
+                "描画ピクセルが 1/4 になる代わりに輪郭が甘くなります。");
         });
 
     DrawComponentSection<scene::DecalComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Decal",
         [](scene::DecalComponent& dc, EditorContext& ctx) {
+
+            ImGui::SeparatorText("Material");
+            widgets::AssetPathField("Material (.mat)", dc.materialPath, ".mat", ctx.projectRoot);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("render_path = \"decal\" の .mat だけが使えます。\n"
+                                  "空欄のときは下のテクスチャと色で組み込みシェーダーが描きます。");
+
+            // .mat を割り当てると下の値はシェーダーへ渡らない。編集できたままだと
+            // 「色を変えたのに絵が変わらない」原因が Inspector から読めなくなる。
+            const bool usesMaterial = !dc.materialPath.empty();
+            ImGui::BeginDisabled(usesMaterial);
 
             ImGui::SeparatorText("Textures");
             widgets::AssetPathField("Albedo (t0)", dc.albedoTexPath,
@@ -102,6 +227,8 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Surface");
             ImGui::ColorEdit4("Albedo Color",     dc.albedoColor);
             widgets::RangeField("Normal Strength", dc.normalStrength, 0.0f, 2.0f);
+
+            ImGui::EndDisabled();
 
             ImGui::SeparatorText("Angle Fade");
             // 説明は RangeField へ渡す (行はゲージ / 数値 / ラベルの複数アイテムで構成されるため、
@@ -120,10 +247,67 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
             ImGui::SeparatorText("Lifetime");
             ImGui::DragFloat("Lifetime (s)",  &dc.lifetime, 0.1f, -1.0f, 3600.0f, dc.lifetime < 0.0f ? "Permanent" : "%.1f s");
+            ImGui::DragFloat("Fade In (s)",   &dc.fadeInTime, 0.05f, 0.0f, 60.0f,
+                             dc.fadeInTime <= 0.0f ? "Instant" : "%.2f s");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("出現時に濃くなっていく時間。0 でいきなり全濃度 (従来の挙動)。\n"
+                                  "血だまりが広がる・焦げが焼き付く、といった «痕が付く» 過程を作ります。\n"
+                                  "Permanent なデカールでも効きます。");
+            }
+            if (dc.fadeInTime < 0.0f) dc.fadeInTime = 0.0f;
             ImGui::DragFloat("Fade Time (s)", &dc.fadeTime, 0.05f, 0.0f, 60.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("消える前のフェード時間。Lifetime が Permanent のときは効きません。");
             ImGui::BeginDisabled();
             ImGui::DragFloat("Age (s)", &dc.age, 0.0f, 0.0f, 0.0f, "%.2f s");
+            // VFX のフェードカーブとスクリプトが書くランタイム倍率。保存はされない。
+            // 表示しておかないと「薄いのに設定はどこも薄くない」の理由が読めない。
+            ImGui::DragFloat("Opacity", &dc.opacity, 0.0f, 0.0f, 0.0f, "%.2f");
             ImGui::EndDisabled();
+
+            ImGui::SeparatorText("Flipbook");
+            ImGui::DragInt("Frame Count", &dc.frameCount, 1.0f, 0, 4096,
+                           dc.frameCount > 1 ? "%d" : "Off");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("アトラスに詰めたコマ数。0 または 1 で無効 (UV は素通し)。\n"
+                                  "焦げの広がり・血の乾き・亀裂の進行をテクスチャだけで作れます。\n"
+                                  "コマの境界はバイリニアが隣を拾うので、各コマの周囲に余白を作ってください。");
+            }
+            if (dc.frameCount < 0) dc.frameCount = 0;
+            if (dc.frameCount > 1) {
+                ImGui::DragInt("Frames Per Row", &dc.framesPerRow, 1.0f, 1, dc.frameCount);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("横方向のコマ数。縦の段数は Frame Count から切り上げで決まります。");
+                dc.framesPerRow = std::clamp(dc.framesPerRow, 1, dc.frameCount);
+
+                ImGui::DragFloat("Frame Rate", &dc.frameRate, 0.5f, 0.0f, 240.0f,
+                                 dc.frameRate > 0.0f ? "%.1f fps" : "Fit lifetime");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("0 なら Lifetime いっぱいで 1 周します (Permanent では進みません)。\n"
+                                      ">0 なら秒あたりのコマ数。");
+                }
+                if (dc.frameRate < 0.0f) dc.frameRate = 0.0f;
+
+                ImGui::Checkbox("Frame Loop", &dc.frameLoop);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("OFF: 最後のコマで止まる (焦げ・傷が «進んで残る»)\n"
+                                      "ON : 先頭へ戻って繰り返す (電気の走る痕)");
+                }
+                if (dc.frameRate <= 0.0f && dc.lifetime < 0.0f) {
+                    ImGui::TextColored({ 1.0f, 0.75f, 0.35f, 1.0f },
+                        "Permanent + Frame Rate 0 では 1 コマ目のまま止まります");
+                }
+                const int rows = (dc.frameCount + dc.framesPerRow - 1) / dc.framesPerRow;
+                ImGui::TextDisabled("アトラス %d x %d コマ", dc.framesPerRow, rows);
+            }
+
+            ImGui::SeparatorText("Sorting");
+            ImGui::DragInt("Sort Order", &dc.sortOrder, 1.0f, -1024, 1024);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("小さいほど先に描く = 後ろになります。\n"
+                                  "デカールは深度を書かないので、合成する順番だけが重なりの前後を決めます。\n"
+                                  "同じ値のデカールは Hierarchy の並び順のままです。");
+            }
 
             ImGui::SeparatorText("Receiver Layer Mask");
             // ビット 0〜7 を個別チェックボックスで表示。残りは hex 入力で直接編集。

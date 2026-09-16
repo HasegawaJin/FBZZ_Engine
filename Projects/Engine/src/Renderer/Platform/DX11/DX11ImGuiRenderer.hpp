@@ -1,7 +1,9 @@
-// FBZZ Engine
-// DX11ImGuiRenderer.hpp | fbzz::renderer
-// ImGui バックエンドの DX11 実装
-// WHY: DX11Renderer から ImGui の初期化・フレーム制御を分離し、通常描画 API とエディター UI API を別責務にする。
+/// @file    DX11ImGuiRenderer.hpp
+/// @brief   ImGui バックエンドの DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// WHY: DX11Renderer から ImGui の初期化・フレーム制御を分離し、通常描画 API とエディター UI API を別責務にする。
 #pragma once
 
 #include <Engine/Renderer/IImGuiRenderer.hpp>

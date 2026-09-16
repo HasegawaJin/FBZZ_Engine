@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptPostProcessProxy.hpp | fbzz::scene
-// Script からランタイム PostProcess 設定を操作するショートハンド
+/// @file    ScriptPostProcessProxy.hpp
+/// @brief   Script からランタイム PostProcess 設定を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <cstdint>
@@ -43,10 +44,11 @@ struct ScriptPostProcessProxy {
     // SetCustomEnabled: 同名効果の有効状態を切り替える。存在しない場合は false。
     bool SetCustomEnabled(std::string_view name, bool enabled) const;
 
-    // SetCustomParameter: customParameters[index] を更新する。index は 0〜3。
+    // SetCustomParameter: パラメーター [index] を更新する。index は 0〜7。
+    // シェーダー側では 0〜3 が customParameters、4〜7 が customParameters2 に届く。
     bool SetCustomParameter(std::string_view name, uint32_t index, float value) const;
 
-    // SetCustomParameters: customParameters.xyzw をまとめて更新する。
+    // SetCustomParameters: customParameters.xyzw (0〜3) をまとめて更新する。
     bool SetCustomParameters(std::string_view name, float x, float y, float z, float w) const;
 
     // LoadProfile: PostProcessProfile (.fzdata) を読み込み、ランタイム設定を全置換する。

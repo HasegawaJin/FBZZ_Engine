@@ -1,0 +1,36 @@
+[mask]
+default_include = false
+name = 'M_Boss_Aim'
+skeleton_source = 'Assets/Models/Boss_01/Boss.fbx'
+skeleton_source_signature = ''
+version = 1
+
+[[entries]]
+blend_depth = 0
+bone = 'RootNode/Boss_Armature/Root/Body'
+include_children = false
+weight = 1.0
+
+[[entries]]
+blend_depth = 0
+bone = 'RootNode/Boss_Armature/Root/Body/Head'
+include_children = true
+weight = 1.0
+
+[[entries]]
+blend_depth = 0
+bone = 'RootNode/Boss_Armature/Root/Body/Rear'
+include_children = true
+weight = 1.0
+
+[[entries]]
+blend_depth = 0
+bone = 'RootNode/Boss_Armature/Root/Body/Ring'
+include_children = true
+weight = 1.0
+
+[[entries]]
+blend_depth = 0
+bone = 'RootNode/Boss_Armature/Root/Body/Core'
+include_children = true
+weight = 1.0

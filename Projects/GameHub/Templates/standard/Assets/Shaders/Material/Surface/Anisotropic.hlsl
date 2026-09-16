@@ -105,6 +105,9 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 H      = normalize(V + L);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
+    ao *= FBZZ_ScreenAO(p.svPosition.xy);
 
     float  NdotL      = saturate(dot(N, L));
     float  shininess  = max(lerp(512.0f, 2.0f, rough), 2.0f);

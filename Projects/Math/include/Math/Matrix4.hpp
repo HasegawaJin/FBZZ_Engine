@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Matrix4.hpp | fbzz::math
-// 4x4行列 (ワールド・ビュー・プロジェクション行列)
+/// @file    Matrix4.hpp
+/// @brief   4x4行列 (ワールド・ビュー・プロジェクション行列)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include "Vector3.hpp"

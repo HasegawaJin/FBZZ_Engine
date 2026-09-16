@@ -1,0 +1,343 @@
+# FBZZ Engine
+# FX_SRP_Slam.vfx — 11 m の胴が持ち上がって落ち、床を «帯» で叩いた。
+#
+# WHY 締め上げ (FX_SRP_Snap) と別のグラフか:
+#   以前はどちらも «中心に爆発 1 発 + 両側に土煙 2 発» で、渡す向きの意味まで同じだった。
+#   叩きつけは «線» が落ちてくる手で、危険なのは 2 つの口を結ぶ帯そのもの。逃げるのは
+#   帯から «横» へ。締め上げは «角» が寄る手で、逃げるのは角から «外» へ。
+#   同じ絵で出していた間、予兆のデカールを見ていなければ 2 つを区別できなかった。
+#
+# WHY 層は «ローカル +Z が帯の向き» で置くか:
+#   呼ぶ側 (SerpentAiComponent) は弧の 2 つの足元を知っている。その 2 点を向く回転を
+#   渡せば、あとは長さ (Length) を Z へ伸ばすだけで帯になる。点を 11 m ぶん並べると
+#   枠 (VfxManager の Pool) をその数だけ食う。
+#
+# WHY 閃光を置かないか:
+#   閃光は «壊れた / 斬った» の印 (VFX/Game/README.md)。叩きつけは床が凹んだ出来事で、
+#   明るくすると «撃破» と読み違える。光は «影が一瞬動く» 程度に絞る。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_SRP_Slam"
+instanceId = "1e6c93af-70b2-4d85-92e0-58ad3f41c7b9"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "SerpentSlamVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+dustColor = [0.66, 0.63, 0.58, 0.55]
+bandLength = 11.0
+bandWidth = 2.6
+kickSpeed = 5.5
+gritPower = 1.8
+scorchLength = 11.0
+thudLight = 6.0
+
+# 球では接地していない脇や地下にも発生するため、胴の長さに沿う薄い箱へ撒く。
+[[gameobjects]]
+name = "Band Smoke"
+instanceId = "77b1e0d5-3c94-4a26-8f13-b6205ea9d738"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Slam"
+parentInstanceId = "1e6c93af-70b2-4d85-92e0-58ad3f41c7b9"
+
+[gameobjects.transform]
+position = [0.0, 0.25, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+boxExtents = [1.3, 0.08, 5.5]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.35
+loop = false
+emitRate = 0.0
+maxParticles = 44
+shape = 3
+sphereRadius = 5.5
+sizeStart = 0.65
+sizeEnd = 2.86
+sizeCurvePower = 0.55
+lifetime = 0.7
+lifetimeRandom = 0.35
+emitVelocity = [0.0, 2.0, 0.0]
+velocitySpread = 1.1
+velocityDamping = 2.4
+gravity = [0.0, 0.2, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -14.0
+angularVelocityMax = 14.0
+renderPriority = 30
+colorVariation = 0.09
+useColorGradient = true
+colorGradient = [[0.0, 0.7, 0.67, 0.61, 0.0], [0.08, 0.66, 0.63, 0.58, 0.55], [0.6, 0.6, 0.58, 0.54, 0.38], [1.0, 0.52, 0.5, 0.47, 0.0]]
+bursts = [{ time = 0.0, count = 18, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.025
+
+# 帯の «脇» へ逃げる空気。左右で符号だけが違う ─ 同じ向きにすると «横へ滑った» になる。
+[[gameobjects]]
+name = "Wing Left"
+instanceId = "a5309f74-6d18-42b3-b09c-4e7182ad6501"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Slam"
+parentInstanceId = "1e6c93af-70b2-4d85-92e0-58ad3f41c7b9"
+
+[gameobjects.transform]
+position = [-1.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+boxExtents = [0.12, 0.08, 5.5]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 22
+shape = 3
+sphereRadius = 4.6
+sizeStart = 0.4
+sizeEnd = 3.1
+sizeCurvePower = 0.5
+lifetime = 0.55
+lifetimeRandom = 0.35
+emitVelocity = [-5.5, 1.65, 0.0]
+velocitySpread = 0.8
+velocityDamping = 2.8
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:5536328b5f3b553cb10094468418c70b"
+renderMode = 2
+sortMode = 1
+angularVelocityMin = -20.0
+angularVelocityMax = 20.0
+renderPriority = 26
+colorVariation = 0.07
+colorStart = [0.66, 0.63, 0.58, 0.55]
+colorEnd = [0.5, 0.48, 0.45, 0.0]
+bursts = [{ time = 0.0, count = 7, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Wing Right"
+instanceId = "cd47215e-9b60-4f8a-a3d2-1f95c806b47e"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Slam"
+parentInstanceId = "1e6c93af-70b2-4d85-92e0-58ad3f41c7b9"
+
+[gameobjects.transform]
+position = [1.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+boxExtents = [0.12, 0.08, 5.5]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 22
+shape = 3
+sphereRadius = 4.6
+sizeStart = 0.4
+sizeEnd = 3.1
+sizeCurvePower = 0.5
+lifetime = 0.55
+lifetimeRandom = 0.35
+emitVelocity = [5.5, 1.65, 0.0]
+velocitySpread = 0.8
+velocityDamping = 2.8
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:5536328b5f3b553cb10094468418c70b"
+renderMode = 2
+sortMode = 1
+angularVelocityMin = -20.0
+angularVelocityMax = 20.0
+renderPriority = 26
+colorVariation = 0.07
+colorStart = [0.66, 0.63, 0.58, 0.55]
+colorEnd = [0.5, 0.48, 0.45, 0.0]
+bursts = [{ time = 0.0, count = 7, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+# 砂粒。帯の全長へ撒く ─ 中心にだけ落とすと 11 m の胴が «1 点で» 落ちたことになる。
+[[gameobjects]]
+name = "Grit"
+instanceId = "0b8fa639-42c7-4d15-9e60-73a1cb52048d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Slam"
+parentInstanceId = "1e6c93af-70b2-4d85-92e0-58ad3f41c7b9"
+
+[gameobjects.transform]
+position = [0.0, 0.12, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+boxExtents = [1.3, 0.08, 5.5]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.25
+loop = false
+emitRate = 0.0
+maxParticles = 40
+shape = 3
+sphereRadius = 5.5
+sizeStart = 0.16
+sizeEnd = 0.045
+sizeCurvePower = 1.4
+lifetime = 0.9
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 5.22, 0.0]
+velocitySpread = 1.8
+velocityDamping = 0.8
+gravity = [0.0, -9.8, 0.0]
+materialPath = "guid:0035bd7a679f54fa90c30d3b9b5d2941"
+renderMode = 1
+stretchedVelocityScale = 0.08
+stretchedLengthScale = 1.5
+sortMode = 0
+renderPriority = 38
+colorVariation = 0.12
+colorStart = [0.66, 0.63, 0.58, 1.0]
+colorEnd = [0.42, 0.4, 0.36, 0.0]
+bursts = [{ time = 0.0, count = 18, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.03
+
+# 床に残る «擦った跡»。ここに落ちたことが数秒残るので、次に同じ手が来たとき
+# «またあの線» と読める ─ 間合いの学習はこの跡が担当する。
+[[gameobjects]]
+name = "Scorch Band"
+instanceId = "48e07c3b-1a95-4d62-8bf7-90d3517ae264"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Slam"
+parentInstanceId = "1e6c93af-70b2-4d85-92e0-58ad3f41c7b9"
+
+[gameobjects.transform]
+position = [0.0, -1.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [3.0, 3.0, 11.0]
+
+[gameobjects.DecalComponent]
+enabled = true
+material = ""
+albedoTex = "Assets/VFX/Textures/T_Scorch_Decal.png"
+normalTex = ""
+emissiveTex = ""
+albedo = [0.14, 0.13, 0.12, 0.7]
+normalStrength = 0.0
+angleFadeStrength = 1.0
+angleFadeDegrees = 70.0
+emissiveColor = [1.0, 1.0, 1.0]
+emissiveScale = 0.0
+lifetime = 4.0
+fadeTime = 1.2
+age = 0.0
+receiverLayerMask = -1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.02
+duration = 4.0
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXDecalEnvelope]
+enabled = true
+fadeCurve = { interp = 0, keys = [[0.0, 1.0], [0.65, 0.9], [1.0, 0.0]] }
+driveEmissive = false
+
+# «影が一瞬動く» だけの光。閃光にすると撃破と読み違える。
+[[gameobjects]]
+name = "Thud Light"
+instanceId = "d92b4160-58ea-4c37-b715-2c60948fd3a7"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Slam"
+parentInstanceId = "1e6c93af-70b2-4d85-92e0-58ad3f41c7b9"
+
+[gameobjects.transform]
+position = [0.0, 1.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 0.88, 0.74]
+intensity = 6.0
+enabled = true
+range = 14.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.3
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.25, 0.45], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

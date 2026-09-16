@@ -25,15 +25,15 @@ paramName = 'Speed'
 dampTime = 0.18
 syncNormalizedTime = true
 motions = [
-    { sourcePath = 'guid:ee2af3191ea243a298c0b8a6d217bd32', clipName = 'mixamo.com', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'guid:a284341d60c147e49acb66926e5742b6', clipName = 'mixamo.com', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'guid:5344d10b0b1d4204aa3ab8950cb0c9c3', clipName = 'mixamo.com', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 }
+    { sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Walking/anims/Walking@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Running/anims/Running@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 }
 ]
 
 [[states]]
 name = 'JumpUp'
 mode = 0
-sourcePath = 'guid:eb9b47457d9d43ec83a295997ea27f8e'
+sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/anims/JumpingUp@mixamo.com.anim'
 clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
@@ -50,7 +50,7 @@ conditions = [{ paramName = 'VerticalSpeed', op = 1, threshold = -0.5 }]
 [[states]]
 name = 'Fall'
 mode = 0
-sourcePath = 'guid:379f4a3bca874dd7846ab9b26389d612'
+sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/anims/FallingIdle@mixamo.com.anim'
 clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
@@ -67,7 +67,7 @@ conditions = [{ paramName = 'IsGrounded', op = 4, threshold = 0.0 }]
 [[states]]
 name = 'Landing'
 mode = 0
-sourcePath = 'guid:0cda3533845842879c13429243d57caf'
+sourcePath = 'Assets/Models/DebugCharacter/Landing/anims/Landing@mixamo.com.anim'
 clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0

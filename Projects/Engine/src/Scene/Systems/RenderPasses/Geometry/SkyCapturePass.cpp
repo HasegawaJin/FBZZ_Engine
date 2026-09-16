@@ -1,13 +1,15 @@
-// FBZZ Engine
-// RenderPasses/SkyCapturePass.cpp | fbzz::scene
-// 空連動 IBL (環境システム設計 Phase A) の「①SkyCapture」パス。
-// 既存スカイドームシェーダーを 6 面それぞれの view/projection で描き、空を低解像度
-// キューブマップ "SkyEnvCube" へ焼く。畳み込み (irradiance/prefilter) は後段の SkyLightBake が行う。
-//
-// WHY (新規 HLSL 不要):
-//   Skydome.hlsl は色を「オブジェクト空間のレイ方向 (= ドーム頂点)」から計算し、view/projection は
-//   ドームを画面のどこに置くかにしか使わない。そのため面ごとの view(回転)+90°射影を差し替えるだけで、
-//   各面に正しい方向の空が描ける。スカイシェーダーには一切手を入れない。
+/// @file    RenderPasses/SkyCapturePass.cpp
+/// @brief   空連動 IBL (環境システム設計 Phase A) の「①SkyCapture」パス。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// 既存スカイドームシェーダーを 6 面それぞれの view/projection で描き、空を低解像度
+/// キューブマップ "SkyEnvCube" へ焼く。畳み込み (irradiance/prefilter) は後段の SkyLightBake が行う。
+///
+/// WHY (新規 HLSL 不要):
+/// Skydome.hlsl は色を「オブジェクト空間のレイ方向 (= ドーム頂点)」から計算し、view/projection は
+/// ドームを画面のどこに置くかにしか使わない。そのため面ごとの view(回転)+90°射影を差し替えるだけで、
+/// 各面に正しい方向の空が描ける。スカイシェーダーには一切手を入れない。
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/SkyRenderer.hpp"
@@ -60,7 +62,7 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
         sig.sunDirection     = ctx.lightData.lightDir.Normalized();
         sig.rayleigh         = sky->rayleighScattering;
         sig.mieScattering    = sky->mieScattering;
-        sig.sunIntensity     = sky->sunIntensity;
+        sig.skyScatterIntensity = sky->skyScatterIntensity;
         sig.mieG             = sky->mieG;
         sig.planetRadius     = sky->planetRadius;
         sig.atmosphereRadius = sky->atmosphereRadius;
@@ -86,7 +88,7 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
     atmData.mieScattering         = sky->mieScattering;
     atmData.planetRadius          = sky->planetRadius;
     atmData.atmosphereRadius      = sky->atmosphereRadius;
-    atmData.sunIntensity          = sky->sunIntensity;
+    atmData.sunIntensity          = sky->skyScatterIntensity;
     atmData.mieG                  = sky->mieG;
     resources.Update(h.atmosphereCB, &atmData, sizeof(AtmosphereCB));
 

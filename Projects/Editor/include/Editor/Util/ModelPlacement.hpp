@@ -1,15 +1,26 @@
-// FBZZ Engine
-// ModelPlacement.hpp | fbzz::editor
-// .fbx アセットを Scene 上の GameObject 階層として配置するユーティリティ
+/// @file    ModelPlacement.hpp
+/// @brief   .fbx アセットを Scene 上の GameObject 階層として配置するユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
 #include <Math/Vector3.hpp>
 #include <string>
 
+namespace fbzz::asset { struct ModelAsset; }
+
 namespace fbzz::editor {
 
 struct EditorContext;
+
+/// モデルの meshIndex 番目の submesh に、インポーターが書き出した .mat の論理パスを返す。
+/// 見つからなければ空文字列 (配置時はここで Fallback.mat へ落ちる)。
+/// WHY 公開するか: Animation Preview が「シーンへ置いたときと同じ材質」で描くため。
+///     命名規則 (サニタイズ・重複番号・Library/Baked 解決) を写すと片方だけずれる。
+std::string FindImportedMaterialPath(const std::string& modelPath,
+                                     const asset::ModelAsset* modelAsset,
+                                     int meshIndex);
 
 // .fbx を読み込み、メッシュ種別に応じた MeshRenderer / SkinnedMeshRenderer と
 // MaterialComponent を持つ GO 階層を生成する。

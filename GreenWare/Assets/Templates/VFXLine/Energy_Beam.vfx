@@ -1,0 +1,95 @@
+[prefab]
+format_version = 1
+root_count = 1
+
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'fdf21839-0003-4786-9513-600b5838e570'
+layer = 0
+name = 'Energy_Beam'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.VFXComponent]
+    autoDestroy = false
+    duration = 0.0
+    enabled = true
+    loop = true
+    playOnAwake = true
+    speed = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '61fc7de1-8c80-4207-9959-7c5c8ca130b4'
+layer = 0
+name = 'Line'
+parent = 'Energy_Beam'
+parentInstanceId = 'fdf21839-0003-4786-9513-600b5838e570'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e993c489df75feb3c2f8db0b621eca37|Assets/Materials/Effects/VFXLine.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = ''
+
+    [gameobjects.VFXLineComponent]
+    beamSegments = 32
+    branchAngle = 35.0
+    branchBrightness = 0.6
+    branchCount = 3
+    branchLength = 0.35
+    branchWidth = 0.55
+    breakup = 0.5
+    chaos = 0.18
+    color = [ 0.4, 0.9, 1.0, 1.0 ]
+    coreColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    coreWidth = 0.3
+    detail = 6
+    disableWhenEndpointMissing = true
+    duration = 0.0
+    enabled = true
+    endTaper = 0.8
+    fadeIn = 0.0
+    fadeOut = 0.2
+    flicker = 0.25
+    fromEntity = ''
+    fromOffset = [ 0.0, 0.0, 0.0 ]
+    intensity = 4.0
+    jitter = 0.01
+    loop = true
+    materialPath = 'guid:e993c489df75feb3c2f8db0b621eca37|Assets/Materials/Effects/VFXLine.mat'
+    mode = 1
+    pulseDensity = 4.0
+    pulseSpeed = 6.0
+    sag = 0.0
+    seed = 1
+    strikeRate = 14.0
+    toEntity = ''
+    toPoint = [ 0.0, 0.0, 5.0 ]
+    width = 0.45
+    wobble = 0.03
+    wobbleFrequency = 6.0
+    wobbleWaves = 2.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

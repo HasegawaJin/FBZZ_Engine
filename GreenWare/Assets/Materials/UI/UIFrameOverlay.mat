@@ -1,0 +1,23 @@
+version = 1
+name = 'UIFrameOverlay'
+shader = "Assets/Shaders/UI/Material/UIFrameOverlay.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+overlayColor = [ 0.86, 0.94, 1.0, 1.0 ]
+rimColor = [ 0.72, 0.82, 0.90, 1.0 ]
+metalColor = [ 0.78, 0.86, 0.94, 1.0 ]
+cornerRadius = [ 8.0, 8.0, 8.0, 8.0 ]
+borderWidth = [ 2.0 ]
+rimGain = [ 0.8 ]
+scanDensity = [ 10.0 ]
+scanAlpha = [ 0.08 ]
+scanWidth = [ 0.09 ]
+metallicGain = [ 0.62 ]
+brushedDensity = [ 72.0 ]
+brushedAlpha = [ 0.12 ]

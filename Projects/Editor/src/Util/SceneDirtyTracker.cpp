@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneDirtyTracker.cpp | fbzz::editor
-// Snapshot-based dirty state detection for editor scenes
+/// @file    SceneDirtyTracker.cpp
+/// @brief   Snapshot-based dirty state detection for editor scenes.
+/// @author  Hasegawa Jin
+/// @date    2026-05-26
 #include <Editor/Util/SceneDirtyTracker.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Scene/Scene.hpp>

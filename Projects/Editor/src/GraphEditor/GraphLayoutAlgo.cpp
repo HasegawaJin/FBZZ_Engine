@@ -1,6 +1,7 @@
-// FBZZ Engine
-// GraphLayoutAlgo.cpp | fbzz::editor
-// 深さベース列配置の実装
+/// @file    GraphLayoutAlgo.cpp
+/// @brief   深さベース列配置の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
 
 #include <algorithm>

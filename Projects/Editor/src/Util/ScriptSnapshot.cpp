@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ScriptSnapshot.cpp | fbzz::editor
-// Script 1 個の Reflect フィールド ↔ TOML テキスト
+/// @file    ScriptSnapshot.cpp
+/// @brief   Script 1 個の Reflect フィールド ↔ TOML テキスト。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Util/ScriptSnapshot.hpp>
+#include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <toml++/toml.hpp>
 
@@ -58,6 +60,17 @@ public:
     void Field(const char* name, math::Vector4& v) override { Current().insert_or_assign(PersistentKey(name), Vec4ToArr(v)); }
     void Field(const char* name, std::string& v) override   { Current().insert_or_assign(PersistentKey(name), v); }
     void Field(const char* name, math::Quaternion& v) override { Current().insert_or_assign(PersistentKey(name), QuatToArr(v)); }
+
+    // WHY 対応が必須か: Undo はこのスナップショットの差分で戻す。落とすとカーブだけが
+    //     「編集はできるが元に戻せない」フィールドになる。
+    void Field(const char* name, scene::ParticleCurve& v) override
+    {
+        Current().insert_or_assign(PersistentKey(name), asset::SerializeParticleCurve(v));
+    }
+    void Field(const char* name, scene::ParticleGradient& v) override
+    {
+        Current().insert_or_assign(PersistentKey(name), asset::SerializeParticleGradient(v));
+    }
 
     // 参照は index / generation の組で持つ。
     // WHY: このスナップショットは「同一セッション内の Undo」専用で、シーンの
@@ -261,6 +274,16 @@ public:
     {
         const auto* a = FindArray(name);
         v = { ArrAt(a, 0, v.x), ArrAt(a, 1, v.y), ArrAt(a, 2, v.z), ArrAt(a, 3, v.w) };
+    }
+    void Field(const char* name, scene::ParticleCurve& v) override
+    {
+        if (const toml::table* table = Current())
+            asset::DeserializeParticleCurve(*table, PersistentKey(name), v);
+    }
+    void Field(const char* name, scene::ParticleGradient& v) override
+    {
+        if (const toml::table* table = Current())
+            asset::DeserializeParticleGradient(*table, PersistentKey(name), v);
     }
     void Field(const char* name, scene::EntityID& v) override
     {

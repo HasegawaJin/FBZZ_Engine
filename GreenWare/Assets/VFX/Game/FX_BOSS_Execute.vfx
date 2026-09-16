@@ -1,0 +1,463 @@
+# FX_BOSS_Execute.vfx — とどめ (break-parry.md «とどめ (Execute)»)
+# 居合の斬り下ろしで脚 / 節が «もげる» 瞬間。切った面が赤熱して冷める、が芯:
+#   Cut Arc     … 刃が通った大きな弧 (白)。0.14 秒
+#   Cut Flash   … 芯の閃光
+#   Cut Seam    … 溶断の縫い目 (T_Cut_Line)。白熱 → 橙 → 暗く冷める 0.9 秒
+#   Molten Sparks … 長い溶断スパーク。尾を引き、床で跳ねる (熱色。極性色を乗せない)
+#   Embers      … 火の粉が漂う 1.2 秒 (黒体放射で色を作る)
+#   Metal Shards … 切断面から飛ぶ金属片 (無彩色)
+#   Smoke Wisps … 細い煙が立つ
+#   Heat Haze   … 切断面の空気が歪む
+#   Cut Light   … 白〜橙の点光源 0.35 秒
+# 足元の土煙は VfxManager::PlayGroundDust が別に出す。ScreenEffect / CameraShake / TimeScale は置かない。
+
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BOSS_Execute"
+instanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "ExecuteVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+tint = [1.0, 1.0, 1.0, 1.0]
+sparkPower = 18.0
+cutLight = 30.0
+cutSize = 2.6
+
+[[gameobjects]]
+name = "Cut Arc"
+instanceId = "18e62b1d-878c-4dfb-b7fc-8290d6dc3e72"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.18
+maxParticles = 2
+shape = 0
+sizeStart = 1.4
+sizeEnd = 2.6
+sizeCurvePower = 0.4
+lifetime = 0.14
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SlashArc_Additive.mat"
+sortMode = 0
+angularVelocityMin = -2.0
+angularVelocityMax = 2.0
+renderPriority = 82
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.45, 1.0, 1.0, 1.0, 0.9], [1.0, 1.0, 1.0, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Cut Flash"
+instanceId = "6159e21a-7672-4555-b618-5728b6acef5d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.12
+maxParticles = 4
+shape = 0
+sizeStart = 0.95
+sizeEnd = 0.3
+sizeCurvePower = 2.4
+lifetime = 0.05
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+sortMode = 0
+renderPriority = 86
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Cut Seam"
+instanceId = "7c3a7fe8-06b9-43d9-8b14-0284be5e46d3"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 溶断の縫い目。横長のビルボード (sizeAxisScale) で、白熱 → 橙 → 暗赤へ冷める。
+# 熱は色ではなく輝度差で出るため、黒体放射で色を作る (1900K → 1000K)。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.2
+maxParticles = 3
+shape = 0
+sizeStart = 1.0
+sizeEnd = 1.15
+sizeAxisScale = [2.6, 0.32, 1.0]
+lifetime = 0.32
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_CutLine_Additive.mat"
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 75
+useColorGradient = true
+blackbodyEnabled = true
+blackbodyReferenceTemperature = 1800.0
+blackbodyIntensity = 1.3
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.35, 1.0, 1.0, 1.0, 0.9], [1.0, 1.0, 1.0, 1.0, 0.0]]
+temperatureCurve = { interp = 0, keys = [[0.0, 2600.0], [0.2, 1900.0], [0.6, 1300.0], [1.0, 950.0]] }
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.02
+[[gameobjects]]
+name = "Molten Sparks"
+instanceId = "7d688ab8-4ad0-4a63-9d00-6829b1a8fee8"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 溶断スパーク。Spark Power は ExecuteVfxComponent が書く。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.4
+maxParticles = 140
+shape = 1
+sphereRadius = 0.35
+sizeStart = 0.085
+sizeEnd = 0.03
+lifetime = 0.42
+lifetimeRandom = 0.5
+velocitySpread = 18.0
+velocityDamping = 1.8
+gravity = [0.0, -18.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_StreakLong_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.13
+stretchedLengthScale = 2.8
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.03
+collisionBounciness = 0.45
+collisionDamping = 0.5
+renderPriority = 62
+simulationMode = 0
+trailEnabled = true
+trailPointCount = 5
+trailSampleInterval = 0.014
+trailWidthScale = 0.3
+trailAlphaScale = 0.25
+colorVariation = 0.12
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.96, 0.85, 1.0], [0.3, 1.0, 0.7, 0.28, 1.0], [1.0, 0.65, 0.16, 0.02, 0.0]]
+bursts = [{ time = 0.0, count = 36, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.035
+[[gameobjects]]
+name = "Embers"
+instanceId = "2ffd0589-6390-46df-8e07-095b8eb76e4e"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 漂う火の粉。ノイズで揺れながら落ちる。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.5
+maxParticles = 60
+shape = 1
+sphereRadius = 0.5
+sizeStart = 0.055
+sizeEnd = 0.02
+sizeCurvePower = 0.8
+lifetime = 0.85
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 1.2, 0.0]
+velocitySpread = 2.4
+velocityDamping = 1.3
+gravity = [0.0, -1.6, 0.0]
+noiseStrength = 4.0
+noiseFrequency = 1.2
+noiseSpeed = 1.5
+materialPath = "Assets/Materials/Effects/FX_EmberDot_Additive.mat"
+sortMode = 0
+renderPriority = 58
+blackbodyEnabled = true
+blackbodyReferenceTemperature = 1800.0
+blackbodyIntensity = 1.1
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 0.0], [0.08, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 16, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.13
+[[gameobjects]]
+name = "Metal Shards"
+instanceId = "9ecdf21f-eaf5-45c4-9451-8959efe9f3cf"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 24
+shape = 1
+sphereRadius = 0.3
+sizeStart = 0.22
+sizeEnd = 0.18
+lifetime = 1.1
+lifetimeRandom = 0.4
+emitVelocity = [0.0, 3.0, 0.0]
+velocitySpread = 8.0
+velocityDamping = 0.8
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Shard_Lit.mat"
+sortMode = 1
+angularVelocityMin = -28.0
+angularVelocityMax = 28.0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.06
+collisionBounciness = 0.3
+collisionDamping = 0.65
+renderPriority = 38
+simulationMode = 0
+colorVariation = 0.08
+colorStart = [0.72, 0.74, 0.77, 1.0]
+colorEnd = [0.5, 0.52, 0.55, 0.0]
+bursts = [{ time = 0.0, count = 10, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.075
+[[gameobjects]]
+name = "Smoke Wisps"
+instanceId = "5b6931a3-ac3a-469b-8764-364686a99685"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.5
+maxParticles = 8
+shape = 1
+sphereRadius = 0.35
+sizeStart = 0.25
+sizeEnd = 1.15
+sizeCurvePower = 0.6
+lifetime = 0.8
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 1.6, 0.0]
+velocitySpread = 0.5
+velocityDamping = 1.5
+gravity = [0.0, 0.6, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
+sortMode = 1
+angularVelocityMin = -0.8
+angularVelocityMax = 0.8
+renderPriority = 14
+colorVariation = 0.1
+useColorGradient = true
+colorGradient = [[0.0, 0.5, 0.5, 0.52, 0.0], [0.15, 0.48, 0.48, 0.5, 0.5], [1.0, 0.4, 0.4, 0.42, 0.0]]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.18
+
+[[gameobjects]]
+name = "Heat Haze"
+instanceId = "c00f96ab-dd5d-4d3b-abf0-ebb7a929ebf0"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.4
+maxParticles = 4
+shape = 0
+sizeStart = 1.0
+sizeEnd = 2.2
+sizeCurvePower = 0.35
+lifetime = 0.22
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_HeatHaze_Distort.mat"
+sortMode = 1
+angularVelocityMin = -2.0
+angularVelocityMax = 2.0
+renderPriority = 100
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.4, 1.0, 1.0, 1.0, 0.5], [1.0, 1.0, 1.0, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.04
+[[gameobjects]]
+name = "Cut Light"
+instanceId = "ae666a12-2ea2-4836-a604-012ba7dc1ccd"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Execute"
+parentInstanceId = "19f6ffe5-e7fd-49fd-9b2a-60e5e9ff58c8"
+
+[gameobjects.transform]
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 白熱の光。Cut Light は ExecuteVfxComponent が書く。
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 0.86, 0.7]
+intensity = 30.0
+enabled = true
+range = 9.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.35
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.15, 0.55], [0.5, 0.25], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

@@ -33,9 +33,86 @@ test('空の transform.set は拒否し、有効な transaction は受理する'
         ],
     }).success, true);
 });
+test('Operator ゲートウェイの契約を検証する', () => {
+    // 目録は絞り込み条件なしでも引ける (全操作の一覧が出発点になる)。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.op.list' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({
+        t: 'editor.op.list',
+        search: 'gizmo',
+        category: 'Gizmo',
+        includeUnavailable: false,
+    }).success, true);
+    // strict なので綴り違いは受理しない。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.op.list', query: 'gizmo' }).success, false);
+    // 引数なしの操作は id だけで呼べる。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: 'scene.save' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'editor.op.invoke',
+        id: 'node.set_tag',
+        args: { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' },
+    }).success, true);
+    // id は必須。args の中身は Editor 側の params 宣言で検証されるため、ここでは形だけを見る。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: '' }).success, false);
+});
+test('fluid.* の Query / Command 契約を検証する', () => {
+    const path = 'Assets/VFX/Fluid/Smoke.fluid';
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.schema' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.get', path }).success, true);
+    // .fluid 以外の拡張子は C++ まで届けない。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.get', path: 'Assets/VFX/Fluid/Smoke.mat' }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1, includeImage: false }).success, true);
+    // job 0 は FluidBakeService が「受け付けなかった」に使う値。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 0 }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1.5 }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.create', path }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.create', path, preset: 'LavaBlob', overwrite: true }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.set', path, fields: { gas: { buoyancy: 2 } } }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.set', path, fields: { source: [{ shape: 'cone' }, { motion: { key: [{ time: 0, offset: [0, 0, 0] }] } }] },
+    }).success, true);
+    // 部品の追加・削除・並べ替え。list は 3 種だけで、type と index は省略できる。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'source' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.addOperator', path, list: 'collider', type: 'plane', fields: { direction: [1, 1, 0], friction: 0.5 },
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.addOperator', path, list: 'source', type: 'texture', fields: { texture: 'Assets/Textures/Logo.png' },
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.removeOperator', path, list: 'collider', index: 0 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'collider', from: 1, to: 0 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'obstacle' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.addOperator', path, list: 'force', type: 'vortex', index: 0, fields: { strength: 4 },
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'emitter' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'source', index: -1 }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.removeOperator', path, list: 'force', index: 2 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.removeOperator', path, list: 'force' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'source', from: 0, to: 3 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'source', from: 0 }).success, false);
+    // 空の部分レシピは「何も変えない」要求なので受けない。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.set', path, fields: {} }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.preview', path, time: 2, size: 256 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.preview', path, size: 4096 }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.bake', path, updateMaterial: false }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.cancel', job: 12 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.cancel' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: 'Campfire' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'fluid.createEffect', name: 'Campfire', dir: 'Assets/VFX/Fluid', preset: 'Fire',
+        fields: { bake: { mode: '3d' } }, bake: false,
+    }).success, true);
+    // name はファイル名 1 つ分。区切り文字で dir の外へ出られない。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: '../Escape' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: 'a/b' }).success, false);
+});
 test('viewport.capture は既定上限を超える要求を拒否する', () => {
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540 }).success, true);
-    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'vfx' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'game' }).success, true);
+    // .vfx はプレファブになり、専用のプレビュー面が無くなった。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'vfx' }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 3840, h: 2160 }).success, false);
 });
 test('catalog・scene.find・node.duplicate の契約を検証する', () => {

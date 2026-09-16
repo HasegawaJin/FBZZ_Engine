@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ProjectSettings.cpp | fbzz
-// プロジェクト設定の TOML 永続化実装
-// タグ・レイヤーなどエディタとランタイムで共有する設定を読み書きする。
-// 失敗時は bool で返し、例外は使わない。
+/// @file    ProjectSettings.cpp
+/// @brief   プロジェクト設定の TOML 永続化実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
+///
+/// タグ・レイヤーなどエディタとランタイムで共有する設定を読み書きする。
+/// 失敗時は bool で返し、例外は使わない。
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -15,6 +17,22 @@
 #include <utility>
 
 namespace fbzz {
+
+std::vector<audio::BusDesc> AudioSettings::BuildBusLayout() const
+{
+    std::vector<audio::BusDesc> layout =
+        buses.empty() ? audio::DefaultBusLayout() : buses;
+    // Master の音量はここで masterVolume に一本化する。
+    // WHY バス側の値を使わないか: 設定 UI は Master を「全体音量」として 1 本の
+    //     スライダーで見せる。両方に書ける状態にすると、どちらが効くか読めなくなる。
+    for (audio::BusDesc& desc : layout) {
+        if (desc.name == audio::kMasterBusName) {
+            desc.volume = masterVolume;
+            break;
+        }
+    }
+    return layout;
+}
 
 namespace {
 
@@ -110,6 +128,25 @@ const char* RenderingPipelineToString(renderer::RenderingPipeline pipeline)
 
 } // namespace
 
+void CursorAppearance::Apply(const std::string& projectRoot) const
+{
+    // 先に全部畳む。前のプロジェクト / 前の Play で読んだ絵が «設定を空にしても
+    // 残り続ける» のを防ぐ。
+    core::Cursor::ClearShapeImages();
+    if (!hardwareCursor) return;
+
+    const std::filesystem::path root(projectRoot);
+    for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+        const ShapeImage& entry = shapes[i];
+        if (entry.path.empty()) continue;
+
+        std::filesystem::path full(entry.path);
+        if (full.is_relative() && !root.empty()) full = root / full;
+        core::Cursor::SetShapeImage(static_cast<core::CursorShape>(i),
+                                    full.string().c_str(), entry.hotspotX, entry.hotspotY);
+    }
+}
+
 ProjectSettings ProjectSettings::Default()
 {
     ProjectSettings ps;
@@ -172,6 +209,20 @@ bool ProjectSettings::Load(const std::string& path)
         physics.hz      = (int)(*physicsTbl)["hz"].value_or((int64_t)physics.hz);
         physics.substeps = (int)(*physicsTbl)["substeps"].value_or((int64_t)physics.substeps);
         physics.gravity = ArrToVec3((*physicsTbl)["gravity"].as_array(), physics.gravity);
+
+        // 衝突行列は «ぶつからない組» だけを書く。32x32 = 1024 個の true を並べても
+        // 読めないうえ、レイヤーを 1 つ足すたびに差分が全面になる。
+        physics.collisionMatrix = LayerCollisionMatrix{};
+        if (auto* ignoreArr = (*physicsTbl)["ignoreCollisions"].as_array()) {
+            for (const auto& entry : *ignoreArr) {
+                const auto* pair = entry.as_array();
+                if (!pair || pair->size() < 2) continue;
+                const auto a = (*pair)[0].value<int64_t>();
+                const auto b = (*pair)[1].value<int64_t>();
+                if (!a || !b) continue;
+                physics.collisionMatrix.Set(static_cast<int>(*a), static_cast<int>(*b), false);
+            }
+        }
     }
 
     if (physics.hz < 1)        physics.hz = 1;
@@ -223,6 +274,7 @@ bool ProjectSettings::Load(const std::string& path)
 
         // ── デバッグ表示 ──────────────────────────────────────────
         render.showColliders        = (*renderTbl)["showColliders"].value_or(render.showColliders);
+        render.showUIRects          = (*renderTbl)["showUIRects"].value_or(render.showUIRects);
         render.showDecalBounds      = (*renderTbl)["showDecalBounds"].value_or(render.showDecalBounds);
         render.showSelectionOutline = (*renderTbl)["showSelectionOutline"].value_or(render.showSelectionOutline);
         render.passViewerEnabled    = (*renderTbl)["passViewerEnabled"].value_or(render.passViewerEnabled);
@@ -242,12 +294,43 @@ bool ProjectSettings::Load(const std::string& path)
     }
 
     if (auto* audioTbl = tbl["audio"].as_table()) {
-        audio.bgmVolume = (float)(*audioTbl)["bgmVolume"].value_or((double)audio.bgmVolume);
-        audio.seVolume  = (float)(*audioTbl)["seVolume"].value_or((double)audio.seVolume);
-        if (audio.bgmVolume < 0.0f) audio.bgmVolume = 0.0f;
-        if (audio.bgmVolume > 1.0f) audio.bgmVolume = 1.0f;
-        if (audio.seVolume  < 0.0f) audio.seVolume  = 0.0f;
-        if (audio.seVolume  > 1.0f) audio.seVolume  = 1.0f;
+        const auto unitRange = [](double v) {
+            return (float)(v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v));
+        };
+        audio.masterVolume = unitRange((*audioTbl)["masterVolume"]
+                                           .value_or((double)audio.masterVolume));
+        audio.voiceLimit = (int)(*audioTbl)["voiceLimit"]
+                               .value_or((int64_t)audio.voiceLimit);
+        if (audio.voiceLimit < 4) audio.voiceLimit = 4;
+
+        std::vector<audio::BusDesc> buses;
+        if (auto* busArray = (*audioTbl)["bus"].as_array()) {
+            for (const auto& node : *busArray) {
+                const auto* busTbl = node.as_table();
+                if (!busTbl) continue;
+                audio::BusDesc desc;
+                desc.name = (*busTbl)["name"].value_or(std::string{});
+                if (desc.name.empty()) continue;
+                desc.parent        = (*busTbl)["parent"].value_or(std::string{});
+                desc.volume        = unitRange((*busTbl)["volume"].value_or(1.0));
+                desc.lowPassCutoff = unitRange((*busTbl)["lowPassCutoff"].value_or(1.0));
+                desc.reverb        = (*busTbl)["reverb"].value_or(false);
+                buses.push_back(std::move(desc));
+            }
+        }
+
+        if (buses.empty()) {
+            // 旧形式 (bgmVolume / seVolume の 2 スライダー) からの移行。
+            // WHY 既定構成へ写すか: 旧設定を捨てると、更新しただけで音量が 1.0 へ戻る。
+            buses = audio::DefaultBusLayout();
+            const float bgm = unitRange((*audioTbl)["bgmVolume"].value_or(1.0));
+            const float se  = unitRange((*audioTbl)["seVolume"].value_or(1.0));
+            for (audio::BusDesc& desc : buses) {
+                if (desc.name == "BGM") desc.volume = bgm;
+                if (desc.name == "SE")  desc.volume = se;
+            }
+        }
+        audio.buses = std::move(buses);
     }
 
     if (auto* screenTbl = tbl["screen"].as_table()) {
@@ -273,6 +356,27 @@ bool ProjectSettings::Load(const std::string& path)
         if (window.height < 1) window.height = 1;
     }
 
+    // 旧 [cursor] の lock_mode / visible は読まない。拘束と表示はスクリプトが持つ
+    // ランタイム状態になり、設定ファイルは «絵» だけを持つ (CursorAppearance を参照)。
+    // 古いファイルに残っていてもここで黙って捨てられ、次の Save で消える。
+    if (auto* cursorTbl = tbl["cursor"].as_table()) {
+        cursor.hardwareCursor = (*cursorTbl)["hardware"].value_or(cursor.hardwareCursor);
+        if (auto* shapesTbl = (*cursorTbl)["shapes"].as_table()) {
+            for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+                const auto shape = static_cast<core::CursorShape>(i);
+                auto* shapeTbl = (*shapesTbl)[core::ToString(shape)].as_table();
+                if (!shapeTbl) continue;
+                auto& entry = cursor.shapes[i];
+                entry.path = (*shapeTbl)["image"].value_or(entry.path);
+                if (auto* hotspot = (*shapeTbl)["hotspot"].as_array();
+                    hotspot && hotspot->size() >= 2) {
+                    entry.hotspotX = (float)hotspot->get(0)->value_or(0.0);
+                    entry.hotspotY = (float)hotspot->get(1)->value_or(0.0);
+                }
+            }
+        }
+    }
+
     if (auto* uiTbl = tbl["ui"].as_table())
         ui.defaultFontPath = (*uiTbl)["default_font"].value_or(ui.defaultFontPath);
 
@@ -284,12 +388,25 @@ bool ProjectSettings::Load(const std::string& path)
     // WHY 失敗しても Load 全体を失敗させないか: 入力ファイルは無くて当然 (既定バインドで動く)。
     //     ここで false を返すとプロジェクト設定そのものが読めなかった扱いになってしまう。
     {
-        const std::filesystem::path settingsPath(path);
+        const std::filesystem::path settingsPath = util::FileSystem::PathFromUtf8(path);
         const std::filesystem::path inputPath =
             settingsPath.has_parent_path()
                 ? settingsPath.parent_path() / "Input.inputactions"
                 : std::filesystem::path("Input.inputactions");
-        (void)input::InputActionMap::LoadFromFile(inputPath.string());
+        // WHY 無いことを言うか: 既定バインドが持っているのは Move / Look / Jump /
+        //     Attack / Dodge / Interact / Pause だけで、**メニューが使う Submit /
+        //     Cancel は入っていない**。このファイルが配布物から抜けると、遊びは
+        //     動くのに «UI だけ何を押しても反応しない» という形になり、しかも
+        //     どこにも記録が残らない。黙って既定へ落ちるのは正しいが、黙るのは違う。
+        std::error_code ec;
+        if (!std::filesystem::exists(inputPath, ec)) {
+            FBZZ_LOG_WARN("ProjectSettings: %s が見つかりません。"
+                          "入力は既定バインドへ落ちます (Submit / Cancel は既定に無いため、"
+                          "メニューの決定・戻るが効かなくなります)",
+                          util::FileSystem::PathToUtf8(inputPath).c_str());
+        } else {
+            (void)input::InputActionMap::LoadFromFile(util::FileSystem::PathToUtf8(inputPath));
+        }
     }
 
     return true;
@@ -315,6 +432,19 @@ bool ProjectSettings::Save(const std::string& path) const
     physicsTbl.insert("hz",       (int64_t)physics.hz);
     physicsTbl.insert("substeps", (int64_t)physics.substeps);
     physicsTbl.insert("gravity",  Vec3ToArr(physics.gravity));
+
+    // 対称行列なので下三角 (a <= b) だけ書く。両方書くと、手で片方を消したときに
+    // «消したのに効いている» が起きる。
+    toml::array ignoreArr;
+    for (int a = 0; a < 32; ++a)
+        for (int b = a; b < 32; ++b) {
+            if (physics.collisionMatrix.CanCollide(a, b)) continue;
+            toml::array pair;
+            pair.push_back((int64_t)a);
+            pair.push_back((int64_t)b);
+            ignoreArr.push_back(std::move(pair));
+        }
+    if (!ignoreArr.empty()) physicsTbl.insert("ignoreCollisions", std::move(ignoreArr));
 
     toml::array outlineColorArr;
     outlineColorArr.push_back((double)render.outlineColor[0]);
@@ -346,6 +476,7 @@ bool ProjectSettings::Save(const std::string& path) const
 
     // ── デバッグ表示 ────────────────────────────────────────────────────────
     renderTbl.insert("showColliders",        render.showColliders);
+    renderTbl.insert("showUIRects",          render.showUIRects);
     renderTbl.insert("showDecalBounds",      render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("passViewerEnabled",    render.passViewerEnabled);
@@ -359,8 +490,22 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("outlineColor", std::move(outlineColorArr));
 
     toml::table audioTbl;
-    audioTbl.insert("bgmVolume", (double)audio.bgmVolume);
-    audioTbl.insert("seVolume",  (double)audio.seVolume);
+    audioTbl.insert("masterVolume", (double)audio.masterVolume);
+    audioTbl.insert("voiceLimit", (int64_t)audio.voiceLimit);
+    {
+        toml::array busArray;
+        for (const audio::BusDesc& desc : audio.buses) {
+            toml::table busTbl;
+            busTbl.insert("name", desc.name);
+            if (!desc.parent.empty()) busTbl.insert("parent", desc.parent);
+            busTbl.insert("volume", (double)desc.volume);
+            if (desc.lowPassCutoff < 1.0f)
+                busTbl.insert("lowPassCutoff", (double)desc.lowPassCutoff);
+            if (desc.reverb) busTbl.insert("reverb", true);
+            busArray.push_back(std::move(busTbl));
+        }
+        audioTbl.insert("bus", std::move(busArray));
+    }
 
     toml::table screenTbl;
     screenTbl.insert("width",  (int64_t)screen.width);
@@ -383,6 +528,24 @@ bool ProjectSettings::Save(const std::string& path) const
     toml::table runtimeTbl;
     runtimeTbl.insert("start_scene", game.runtime.startScene);
 
+    toml::table cursorTbl;
+    cursorTbl.insert("hardware", cursor.hardwareCursor);
+    {
+        // 画像を割り当てていない種類は書き出さない。全種類を空文字で並べても
+        // «設定してあるのはどれか» が読めなくなるだけで、既定へ倒す判断は Load 側が持つ。
+        toml::table shapesTbl;
+        for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+            const auto& entry = cursor.shapes[i];
+            if (entry.path.empty()) continue;
+            toml::table shapeTbl;
+            shapeTbl.insert("image", entry.path);
+            shapeTbl.insert("hotspot", toml::array{ entry.hotspotX, entry.hotspotY });
+            shapesTbl.insert(core::ToString(static_cast<core::CursorShape>(i)),
+                             std::move(shapeTbl));
+        }
+        if (!shapesTbl.empty()) cursorTbl.insert("shapes", std::move(shapesTbl));
+    }
+
     toml::table uiTbl;
     uiTbl.insert("default_font", ui.defaultFontPath);
 
@@ -397,6 +560,7 @@ bool ProjectSettings::Save(const std::string& path) const
     root.insert("screen",  std::move(screenTbl));
     root.insert("app",     std::move(appTbl));
     root.insert("window",  std::move(windowTbl));
+    root.insert("cursor",  std::move(cursorTbl));
     root.insert("ui",      std::move(uiTbl));
 
     NormalizeTomlFloats(root);

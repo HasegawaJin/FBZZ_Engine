@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ViewportPicking.cpp | fbzz::editor
-// Scene View のアセットドロップと3Dピッキング
+/// @file    ViewportPicking.cpp
+/// @brief   Scene View のアセットドロップと3Dピッキング。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "ViewportCommon.hpp"
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -25,6 +26,15 @@ math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin
 
     const math::Matrix4 invVP = math::Matrix4::Inverse(
         ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix());
+
+    // 正投影の視線はすべて平行で、カメラ位置を通らない。原点はカーソル位置の近平面上の点。
+    // WHY 分けるか: Ray::FromNDC はカメラ位置を原点に固定するため、正投影では
+    //     画面中央以外のクリックが常に中央付近を貫くレイになり、まるで当たらない。
+    if (ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic) {
+        math::Vector4 nearWorld = invVP * math::Vector4{ nx, ny, 0.0f, 1.0f };
+        if (std::fabs(nearWorld.w) > 1e-6f) nearWorld = nearWorld * (1.0f / nearWorld.w);
+        return { { nearWorld.x, nearWorld.y, nearWorld.z }, ctx.editorCamera->GetForward() };
+    }
     return math::Ray::FromNDC(nx, ny, ctx.editorCamera->m_position, invVP);
 }
 
@@ -47,14 +57,16 @@ math::Vector3 PrefabDropPosition(const EditorContext& ctx, const ImVec2& viewpor
 
 bool InstantiatePrefabAsset(EditorContext& ctx, const std::string& assetPath)
 {
-    if (!ctx.activeScene || util::FileSystem::GetExtension(assetPath) != ".prefab")
+    if (!ctx.activeScene) return false;
+    if (!IsInstantiableAssetExtension(
+            util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath))))
         return false;
 
     std::vector<scene::EntityID> roots;
     if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
         return false;
 
-    ctx.selectedEntities = roots;
+    SelectEntities(ctx, roots);
     return true;
 }
 
@@ -75,7 +87,7 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
     if (!modelPath.empty()) {
         const scene::EntityID root = SpawnModelAssetHierarchy(ctx, modelPath, &position);
         if (root == scene::EntityID::INVALID) return false;
-        ctx.selectedEntities = { root };
+        SelectEntity(ctx, root);
         return true;
     }
 
@@ -83,7 +95,7 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
     // ホバープレビュー付きで処理するため、ここでは扱わない。
     if (ext == ".mat") return false;
 
-    if (ext != ".prefab") return false;
+    if (!IsInstantiableAssetExtension(ext)) return false;
     if (!InstantiatePrefabAsset(ctx, assetPath)) return false;
     for (scene::EntityID id : ctx.selectedEntities) {
         if (auto* go = ctx.activeScene->GetGameObject(id))
@@ -261,12 +273,12 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
 
         if (smr && smr->model) {
-            // 1 GameObject = モデル全体。submesh ごとの子 GO は無くなったので、
-            // どの submesh に当たっても選ばれるのはこの GameObject 自身。
+            // どの submesh に当たっても選ばれるのはこの Renderer の GameObject 自身。
             // 描画されていない (非表示スロットの) submesh は判定から外す。
+            // mi はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
             const auto* mat = go.GetComponent<scene::MaterialComponent>();
-            for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
-                const auto& meshPtr = smr->model->meshes[mi];
+            for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
+                const renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                 if (!meshPtr) continue;
                 if (mat && !mat->SlotAt(mi).visible) continue;
                 // WHY: スキンメッシュはアニメーションでバインドポーズより外へ動くため、
@@ -527,22 +539,13 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     const scene::EntityID best = RaycastEntityAtMouse(ctx, viewportMin);
 
     if (best.IsValid() && !ctx.IsLocked(best)) {
-        auto& sel = ctx.selectedEntities;
-        const auto it = std::find(sel.begin(), sel.end(), best);
-        if (ImGui::GetIO().KeyCtrl) {
-            // Ctrl+クリック: 未選択なら追加、選択済みなら解除 (Unity 互換のトグル)
-            if (it != sel.end())
-                sel.erase(it);
-            else
-                sel.push_back(best);
-        } else {
-            sel.clear();
-            sel.push_back(best);
-        }
+        // Ctrl+クリック: 未選択なら追加、選択済みなら解除 (Unity 互換のトグル)
+        if (ImGui::GetIO().KeyCtrl) ToggleSelection(ctx, best);
+        else                        SelectEntity(ctx, best);
         return true;
     }
 
-    if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
+    if (!ImGui::GetIO().KeyCtrl) ClearEntitySelection(ctx);
     return false;
 }
 
@@ -558,8 +561,8 @@ void RectSelectEntities(EditorContext& ctx,
     const ImVec2 rectMax = { (std::max)(rectA.x, rectB.x), (std::max)(rectA.y, rectB.y) };
 
     // Ctrl なしは置き換え、Ctrl ありは追加 (Unity の矩形選択と同じ)
-    if (!ImGui::GetIO().KeyCtrl)
-        ctx.selectedEntities.clear();
+    std::vector<scene::EntityID> picked;
+    if (ImGui::GetIO().KeyCtrl) picked = ctx.selectedEntities;
 
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (!go.activeInHierarchy()) continue;
@@ -570,10 +573,13 @@ void RectSelectEntities(EditorContext& ctx,
         if (!WorldToScreen(go.transform.position, ctx, vpMin, vpSize, sp)) continue;
         if (sp.x < rectMin.x || sp.x > rectMax.x || sp.y < rectMin.y || sp.y > rectMax.y) continue;
 
-        if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
-            == ctx.selectedEntities.end())
-            ctx.selectedEntities.push_back(id);
+        if (std::find(picked.begin(), picked.end(), id) == picked.end())
+            picked.push_back(id);
     }
+
+    // 矩形選択は「今見えている範囲を囲った」操作なので、Hierarchy を先頭要素へ
+    // 飛ばさない (数十件を選んだ直後にツリーが跳ねる方が邪魔になる)。
+    SelectEntities(ctx, std::move(picked), SelectionReveal::Skip);
 }
 
 } // namespace fbzz::editor

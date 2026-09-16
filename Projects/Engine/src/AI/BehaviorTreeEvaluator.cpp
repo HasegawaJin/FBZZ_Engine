@@ -1,15 +1,16 @@
-// FBZZ Engine
-// BehaviorTreeEvaluator.cpp | fbzz::ai
-// 木の評価。Scene に触るノードは IBTActionHandler へ委ねる。
-//
-// 評価モデル (Docs/design/game-ai-layer.md の D7):
-//   Running のときも**ルートから再入する**が、Composite は cursor[] に
-//   現在の子スロットを持つので兄弟の再評価は起きない。歩くのは根から
-//   Running リーフまでの O(depth) で済む。
-//
-//   WHY リーフへ直接ジャンプしないか:
-//     Decorator の TimeLimit / Cooldown はリーフへ至る経路上にあり、
-//     ジャンプすると評価がスキップされて時間切れが効かなくなる。
+/// @file    BehaviorTreeEvaluator.cpp
+/// @brief   木の評価。Scene に触るノードは IBTActionHandler へ委ねる。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// 評価モデル (Docs/design/game-ai-layer.md の D7):
+/// Running のときも**ルートから再入する**が、Composite は cursor[] に
+/// 現在の子スロットを持つので兄弟の再評価は起きない。歩くのは根から
+/// Running リーフまでの O(depth) で済む。
+///
+/// WHY リーフへ直接ジャンプしないか:
+/// Decorator の TimeLimit / Cooldown はリーフへ至る経路上にあり、
+/// ジャンプすると評価がスキップされて時間切れが効かなくなる。
 #include <Engine/AI/BehaviorTreeEvaluator.hpp>
 
 #include <algorithm>

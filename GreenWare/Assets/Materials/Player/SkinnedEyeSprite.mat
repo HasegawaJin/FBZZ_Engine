@@ -1,0 +1,27 @@
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'skinned'
+render_path = 'auto'
+render_queue = 2000
+shader = 'guid:c50374f68b9949ecaa30b68762f776cd'
+version = 1
+
+[params]
+albedo = [ 0.0, 1.0, 0.0, 1.0 ]
+alphaCutoff = 0.0
+ambientFloor = 0.44999998807907104
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.0
+shadeStrength = 0.20999999344348907
+uvOffset = [ 0.0, 0.0 ]
+uvTiling = [ 1.0, 1.0 ]
+
+[textures]
+albedo = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b|Assets/Sprites/Player/T_VisorEyes.png'
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

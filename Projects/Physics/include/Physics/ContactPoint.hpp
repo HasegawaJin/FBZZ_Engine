@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ContactPoint.hpp | fbzz::physics
-// NarrowPhase が生成する衝突接触点データ
+/// @file    ContactPoint.hpp
+/// @brief   NarrowPhase が生成する衝突接触点データ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Math/Vector3.hpp>
 

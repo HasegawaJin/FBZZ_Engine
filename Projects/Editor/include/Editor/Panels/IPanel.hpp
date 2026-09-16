@@ -1,12 +1,20 @@
-// FBZZ Engine
-// IPanel.hpp | fbzz::editor
-// エディターパネルの基底インターフェース
+/// @file    IPanel.hpp
+/// @brief   エディターパネルの基底インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
+#include <Editor/Util/HotkeyScope.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <imgui.h>
 
-namespace fbzz::editor { struct EditorContext; }
+namespace fbzz::editor { struct EditorContext; struct EditorSettings; }
 
 namespace fbzz::editor {
+
+// EditorContext::focusedPanelScope へ書く唯一の口。
+// WHY 関数にするか: IPanel.hpp は EditorContext を前方宣言しか持たない (パネルの基底が
+//     コンテキストの全定義を引くと、コンテキストを触るたび全パネルが再コンパイルされる)。
+void PublishPanelScope(EditorContext& ctx, HotkeyScope scope);
 
 class IPanel {
 public:
@@ -21,8 +29,27 @@ public:
     virtual bool GetDefaultVisibility() const { return true; }
     // View > Panels のサブメニュー名。nullptr の場合はルートに並べる。
     virtual const char* GetMenuCategory() const { return nullptr; }
+    // このパネルにフォーカスがある間、どの «面» のキーを効かせるか。
+    //
+    // WHY パネル側に名乗らせるか: 「今どこにフォーカスがあるか」を決められるのは
+    //     ウィンドウを Begin している当人だけで、そこ以外に知る手立てが無い。
+    //     一方その «結果» はどの瞬間も 1 つなので、置き場所は
+    //     EditorContext::focusedPanelScope の 1 つで足りる。名乗りだけを各パネルに、
+    //     記録と解決を基底と HotkeyManager に置くと、パネルを足しても触る場所が増えない。
+    //
+    // None を返すパネルはキーの文脈を持たない (Global なキーだけが効く)。
+    virtual HotkeyScope GetHotkeyScope() const { return HotkeyScope::None; }
+
     virtual void OnInit(EditorContext& ctx) { (void)ctx; }
     virtual void OnShutdown() {}
+
+    // パネル固有の設定を editor_settings.toml と往復させるフック。
+    // OnLoadSettings はプロジェクトを開いた直後 (設定ロード後)、
+    // OnSaveSettings は終了時 (設定保存前) に EditorApp が呼ぶ。
+    // WHY: OnInit は projectRoot が決まる前に走るため、そこで EditorContext を読んでも
+    //      まだ既定値しか入っていない。パネルが「前回の状態」を受け取れる唯一の点がここ。
+    virtual void OnLoadSettings(const EditorSettings& settings) { (void)settings; }
+    virtual void OnSaveSettings(EditorSettings& settings) const { (void)settings; }
 
     // テンプレートメソッド。フック呼び出し順序:
     //  OnBeforeBegin  → ImGui::Begin → OnAfterBegin → OnRenderContent → ImGui::End → OnAfterEnd
@@ -32,7 +59,11 @@ public:
     void OnRender(EditorContext& ctx)
     {
         OnBeforeBegin(ctx);
-        bool open = ImGui::Begin(GetWindowName(), CanClose() ? &visible : nullptr, GetWindowFlags());
+        // タイトルだけを訳す。LOC は "訳###原文" を返すので ImGui の ID は原文のままで、
+        // 保存済みのドッキング配置 (imgui_layout.ini) も、名前で引く
+        // DockBuilderDockWindow / panelVisibility も、言語を切り替えても効き続ける。
+        bool open = ImGui::Begin(LOC(GetWindowName()), CanClose() ? &visible : nullptr,
+                                 GetWindowFlags());
         OnAfterBegin(ctx);
         if (!open || !visible) {
             m_contentRendered = false;
@@ -42,6 +73,16 @@ public:
         }
 
         m_contentRendered = true;
+
+        // キーの文脈はウィンドウの内側でしか判定できないので、ここで名乗る。
+        // 中身より先に立てるのは、パネル自身のキー処理 (Ctrl+C など) が
+        // 同じフレームのうちに PanelScopeFocused() を読めるようにするため。
+        if (const HotkeyScope scope = GetHotkeyScope();
+            scope != HotkeyScope::None &&
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+            PublishPanelScope(ctx, scope);
+        }
+
         OnRenderContent(ctx);
         ImGui::End();
         OnAfterEnd(ctx);

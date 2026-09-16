@@ -1,9 +1,14 @@
-// FBZZ Engine
-// Scene.cpp | fbzz::scene
-// Scene の Entity 管理と GameObject 所有
-// EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
-// フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
+/// @file    Scene.cpp
+/// @brief   Scene の Entity 管理と GameObject 所有。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
+/// フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/PrefabPool.hpp"
+#include "Engine/Scene/SceneRenderResources.hpp"
+#include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Core/Time.hpp"
@@ -20,6 +25,27 @@
 #include <utility>
 
 namespace fbzz::scene {
+
+namespace {
+
+// Component 個体が抱えている GPU リソースを、返す先がまだ生きているあいだだけ返す。
+// WHY Active() を使うか: Scene は ResourceManager を知らない (Script も含めた上位が
+//     ResourceHandle しか触らない設計)。プロセス終了で ResourceManager が先に畳まれた
+//     場合は Active() が空になり、そのときは返す先そのものが無いので何もしなくてよい。
+void ReleaseGpuResourcesIfPossible(Scene& scene)
+{
+    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+        ReleaseSceneOwnedGpuResources(scene, *resources);
+}
+
+} // namespace
+
+Scene::~Scene()
+{
+    // WHY Clear() を呼ばないか: デストラクタから OnDestroy を回すと、既に畳まれた
+    //     サブシステムへスクリプトが触りにいく。ここで要るのは GPU リソースの返却だけ。
+    ReleaseGpuResourcesIfPossible(*this);
+}
 
 Scene::Scene(Scene&& other) noexcept
 {
@@ -86,11 +112,26 @@ void Scene::DestroyImmediate(EntityID id) {
         }
     }
 
-    // Script の後処理
-    if (auto* sc = GetComponent<ScriptComponent>(id))
-        for (auto& entry : sc->scripts)
+    // Script の後処理。
+    // WHY 添字ループか (不具合修正): OnDestroy から AddScript / Create が呼ばれると
+    //     ScriptComponent 配列も sc->scripts も再確保される。範囲 for が握る参照は
+    //     そこで無効になるため、毎回 id と添字から引き直す。
+    //     FBZZ_EXECUTE_ALWAYS の導入で編集中も m_started が立つようになり、
+    //     エディタ上の削除でもこの経路を通るようになった。
+    if (auto* sc = GetComponent<ScriptComponent>(id)) {
+        const size_t initialCount = sc->scripts.size();
+        for (size_t i = 0; i < initialCount; ++i) {
+            sc = GetComponent<ScriptComponent>(id);
+            if (!sc || i >= sc->scripts.size()) break;
+            ScriptEntry& entry = sc->scripts[i];
             if (entry.script && entry.m_started)
-                entry.script->OnDestroy();
+                entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
+        }
+    }
+
+    // Component が抱えている GPU リソースを、Component を捨てる前に返す。
+    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+        ReleaseEntityOwnedGpuResources(*this, id, *resources);
 
     // Component 削除
     RemoveAllComponents(id);
@@ -340,8 +381,16 @@ void Scene::Clear()
         if (!sc) continue;
         for (auto& entry : sc->scripts)
             if (entry.script && entry.m_started)
-                entry.script->OnDestroy();
+                entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
     }
+
+    // Component を捨てる前に返す。捨ててからでは、どのハンドルを持っていたか辿れない。
+    ReleaseGpuResourcesIfPossible(*this);
+
+    // 待機列は Scene* をキーに持つ静的な表で、Scene の実体が同じまま中身だけ入れ替わる
+    // Play/Stop では生き残る。EntityID の generation は Clear で 0 に戻るので、
+    // 残したままだと «次の Play で無関係な GameObject をプール済みとして配る» ことが起きる。
+    PrefabPool::Clear(*this);
 
     m_destroyQueue.clear();
     m_gameObjects.clear();
@@ -443,6 +492,8 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
         (..., CopyIfHas(arrs, src, dst));
     }, m_arrays);
 
+    CopyScriptComponentFrom(*this, src, dst);
+    ClearDuplicatedGpuHandles(*this, dst);
 }
 
 void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst)
@@ -452,6 +503,21 @@ void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst
             (..., CopyFromOtherIfHas(srcArrs, dstArrs, src, dst));
         }, m_arrays);
     }, srcScene.m_arrays);
+
+    CopyScriptComponentFrom(srcScene, src, dst);
+    ClearDuplicatedGpuHandles(*this, dst);
+}
+
+void Scene::CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst)
+{
+    const auto& srcArr = srcScene.GetArray<ScriptComponent>();
+    auto&       dstArr = GetArray<ScriptComponent>();
+    if (!srcArr.Has(src) || dstArr.Has(dst)) return;
+
+    ScriptComponent cloned =
+        CloneScriptComponent(srcArr.Get(src), &srcScene, this, GetGameObject(dst));
+    if (!cloned.scripts.empty())
+        dstArr.Add(dst, std::move(cloned));
 }
 
 void Scene::FixupOwnership()

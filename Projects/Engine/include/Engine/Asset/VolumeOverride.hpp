@@ -1,24 +1,25 @@
-// FBZZ Engine
-// VolumeOverride.hpp | fbzz::asset
-// ポストプロセス / 高度グラフィクスの「効果 1 つ分」を表す差分オーバーライドの基底。
-//
-// WHY 効果単位のクラスにするか:
-//   以前は PostProcessProfile が 20 セクション分の設定を常に丸ごと抱え、
-//   「何を上書きするか」を別の bool マスク (PostProcessOverrides) で表していた。
-//   この形には 3 つの問題があった:
-//     1. 効果を 1 つ足すたびに、設定構造体・マスク・Lerp 関数・Reflect・Inspector の
-//        5 か所を同時に触る必要があり、どこか 1 つ忘れると静かに壊れる。
-//     2. 「洞窟では fog だけ変えたい」プロファイルでも、使わない 19 セクション分の
-//        値がファイルに書かれる。差分であることがファイルから読み取れない。
-//     3. Inspector が常に全 20 セクションを並べるため、実際に効いている 1 つを
-//        目で探すことになる。
-//   オーバーライドを「リストに入っているものだけが効く」実体にすると、
-//   これらがすべて構造として解決される。Unity の Volume Override と同じ考え方。
-//
-// WHY Engine/Asset に置くか (Engine/Renderer ではなく):
-//   Reflect(scene::IReflector&) を持つため。Renderer 層に置くと
-//   RenderSettings.hpp が Script.hpp へ依存し、依存方向が逆流する。
-//   オーバーライドは「保存されるオーサリングデータ」なのでアセット層が正しい。
+/// @file    VolumeOverride.hpp
+/// @brief   ポストプロセス / 高度グラフィクスの「効果 1 つ分」を表す差分オーバーライドの基底。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// WHY 効果単位のクラスにするか:
+/// 以前は PostProcessProfile が 20 セクション分の設定を常に丸ごと抱え、
+/// 「何を上書きするか」を別の bool マスク (PostProcessOverrides) で表していた。
+/// この形には 3 つの問題があった:
+/// 1. 効果を 1 つ足すたびに、設定構造体・マスク・Lerp 関数・Reflect・Inspector の
+/// 5 か所を同時に触る必要があり、どこか 1 つ忘れると静かに壊れる。
+/// 2. 「洞窟では fog だけ変えたい」プロファイルでも、使わない 19 セクション分の
+/// 値がファイルに書かれる。差分であることがファイルから読み取れない。
+/// 3. Inspector が常に全 20 セクションを並べるため、実際に効いている 1 つを
+/// 目で探すことになる。
+/// オーバーライドを「リストに入っているものだけが効く」実体にすると、
+/// これらがすべて構造として解決される。Unity の Volume Override と同じ考え方。
+///
+/// WHY Engine/Asset に置くか (Engine/Renderer ではなく):
+/// Reflect(scene::IReflector&) を持つため。Renderer 層に置くと
+/// RenderSettings.hpp が Script.hpp へ依存し、依存方向が逆流する。
+/// オーバーライドは「保存されるオーサリングデータ」なのでアセット層が正しい。
 #pragma once
 #include <Engine/Scene/Script.hpp>   // scene::IReflector
 #include <functional>

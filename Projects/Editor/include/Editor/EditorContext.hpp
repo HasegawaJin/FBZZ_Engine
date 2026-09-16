@@ -1,10 +1,17 @@
-// FBZZ Engine
-// EditorContext.hpp | fbzz::editor
-// パネル間で共有するエディター状態
+/// @file    EditorContext.hpp
+/// @brief   パネル間で共有するエディター状態。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/GraphLayout.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
+#include <Editor/Util/EditorSceneState.hpp>
+#include <Editor/Util/HotkeyScope.hpp>
+#include <Engine/Audio/SynthSpec.hpp>
 #include <Engine/ProjectSettings.hpp>
+// WHY 前方宣言で済ませないか: ProjectionMode は enum class なので、値をメンバーに持つ側は
+//     基底型まで含めた定義が要る。Camera.hpp は既に多くの Editor 側が引いている軽い依存。
+#include <Engine/Renderer/Camera.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
@@ -21,9 +28,11 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; class ProjectRuntime; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; class BuildConsole; class ConsoleSink; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; class MemoryLeakDiff; class FluidBakeService; }
 
 namespace fbzz::editor {
+
+struct InspectorComponentDrawCollector;
 
 struct EditorContext {
     // Animation Graph 上で選択中の編集対象をパネル間で共有する。
@@ -34,7 +43,8 @@ struct EditorContext {
             State,
             Transition,
             AnyState,
-            AnyStateTransition
+            AnyStateTransition,
+            BlendTreeMotion
         };
 
         Type            type = Type::None;
@@ -46,6 +56,15 @@ struct EditorContext {
         std::string     layerName;
         int             stateIndex = -1;
         int             transitionIndex = -1;
+        // BlendTree 内で選択中の Motion。stateIndex が親 State、motionIndex が Motion の添字。
+        // WHY: Motion は State の配列とは別の入れ子データなので、State と同じ index だけでは
+        //      Inspector がどの Motion を編集すべきか特定できない。
+        int             motionIndex = -1;
+        // グラフ上で掴んでいるステートの数 (矩形選択・Ctrl クリック)。
+        // WHY 数だけ持つか: Inspector が編集するのは常にプライマリ 1 件だが、
+        //     Delete は選択全部に効く。件数を見せないと「1 個選んでいるつもりで
+        //     3 個消える」ように見えるため、食い違いを UI 上で明示する。
+        int             selectedCount = 0;
 
         void Clear()
         {
@@ -55,25 +74,30 @@ struct EditorContext {
             layerName.clear();
             stateIndex = -1;
             transitionIndex = -1;
+            motionIndex = -1;
+            selectedCount = 0;
         }
     };
 
     // エンジンオブジェクト (非所有)
+    // 今«見えている»シーン。Play 中に LoadScene が起きると、SceneManager が所有する
+    // 遷移後シーンを指す。パネル・ギズモ・AI クエリはこちらを見る。
     scene::Scene*     activeScene  = nullptr;
+    // 編集対象のシーン (ドキュメント本体)。currentScenePath が指すファイルの中身であり、
+    // Play 中もシーン遷移の影響を受けない。
+    // WHY activeScene と分けるか: 保存・読込を activeScene で行うと、Play 中に遷移した
+    //     あとの Ctrl+S が「遷移後シーンの中身」を「遷移前シーンのファイル」へ書き込む。
+    //     開いていたシーンが、最後に走っていたシーンで丸ごと潰れる。
+    scene::Scene*     editScene    = nullptr;
+    // Play 中に遷移した実行シーンの登録名 (遷移していなければ空)。表示専用。
+    std::string       playSceneName;
     // 編集中Sceneを駆動するProjectRuntime (EditorApp所有)。Physics World等の実行時系へアクセスする。
     // WHY: AI(EditorBusDispatcher)のraycast/overlap等はこのruntimeのPhysics Worldへ問い合わせる。
     scene::ProjectRuntime* runtime = nullptr;
-    // VFXEditor 専用の一時 World。編集 Scene の階層・Undo・保存へ Preview Object を混入させない。
-    scene::Scene*     vfxPreviewScene = nullptr;
-    // AI の決定論プレビュー要求は VFXEditor が閉じていても専用 World を数フレームだけ駆動する。
-    // WHY: query 応答と GPU 描画は同一フレームで完結しないため、capture までの猶予を frame 値で共有する。
-    std::uint64_t     vfxAiPreviewUntilFrame = 0;
     // AI の viewport.capture / viewport.semantic が RT を読み出す間、表示状態に関わらず
     // Scene View / Game View を描き続けるための猶予フレーム。
-    // WHY: EditorApp は「実際に画面へ出ているビューポートだけ」を描くようになったため、
-    //      Play 中 (Scene View が隠れる) や Map 編集中 (Game View が隠れる) に AI が
-    //      キャプチャすると、描画が止まった RT の古い内容を読んでしまう。
-    //      vfxAiPreviewUntilFrame と同じく frame 値で猶予を共有する。
+    // EditorApp は画面に出ているビューポートだけを描くので、隠れている側をキャプチャすると
+    // 描画が止まった RT の古い内容を読んでしまう。
     std::uint64_t     aiViewportRenderUntilFrame = 0;
     renderer::Camera* editorCamera = nullptr;
     // DebugCamera が持つオービット中心と注視距離のミラー (EditorApp が毎フレーム更新)。
@@ -81,10 +105,17 @@ struct EditorContext {
     //      カメラ位置からは復元できない DebugCamera 内部の中心・距離を必要とする。
     math::Vector3     editorCameraPivot         = {};
     float             editorCameraFocusDistance = 10.0f;
+    // ピボットからカメラを引いている実距離。正投影では焦点距離と一致しない
+    // (DebugCamera::ViewDistance)。視点だけ回す計算はこちらを使うこと。
+    float             editorCameraViewDistance  = 10.0f;
     renderer::IRenderer* renderer = nullptr;
     renderer::IImGuiRenderer* imguiRenderer = nullptr;
     renderer::ResourceManager* resources = nullptr;
+    /// .fluid の焼き・プレビューの窓口 (EditorApp が所有)。
+    FluidBakeService* fluidBake = nullptr;
     core::MemorySystem* memorySystem = nullptr;
+    // Renderer リソースのリーク差分。EditorApp が所有し、Analysis パネルが読む。
+    MemoryLeakDiff*     memoryLeakDiff = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
     std::string       engineRoot;          // GameHubが選択したimmutable SDK root (cmake configureへ渡す)
@@ -115,13 +146,34 @@ struct EditorContext {
     //      instanceId または Controller アセットパスをキーにした別データとして保持する。
     std::unordered_map<std::string, GraphLayout> graphLayouts;
     AnimationGraphSelection animationGraphSelection;
+    // Inspector の Name 欄でステートを改名したことを Animation Graph パネルへ伝える 1 ショット。
+    // パネルの選択は名前が権威なので、伝えないと改名した瞬間に選択が外れる。
+    std::string animationGraphRenamedFrom;
+    std::string animationGraphRenamedTo;
+    // Inspector の Layers 欄でレイヤー名を改名したことを Animation Graph パネルへ伝える 1 ショット。
+    // WHY: Graph はレイヤー名を編集対象の識別子として保持しているため、データ側だけを
+    //      改名すると次フレームに旧名が見つからず Base Layer へ戻り、Mask 欄も消えたように見える。
+    std::string animationGraphLayerRenamedFrom;
+    std::string animationGraphLayerRenamedTo;
+    // Inspector で追加・改名したレイヤーを Graph 側で表示する要求。空なら通常の選択を維持する。
+    std::string animationGraphLayerFocus;
+    // Inspector で削除したレイヤー。Graph 側の古いステート選択を Base Layer に誤適用させない。
+    std::string animationGraphLayerRemoved;
     // Animation Graph と Inspector が共有する Controller アセット編集モデル。
     std::shared_ptr<scene::AnimatorComponent> animationControllerEditor;
     std::string animationControllerEditorPath;
     bool animationControllerDirty = false;
 
     // 選択状態 (Multi-select 対応)
+    // 直接書き換えず Editor/Util/Selection.hpp の SelectEntity / SelectEntities 等を使う。
+    // WHY: 選択にはアセット選択との排他と Hierarchy への反映が付いて回る。
+    //      ここへ直接代入すると、その後始末をした面としない面が混在する。
     std::vector<scene::EntityID> selectedEntities;
+
+    // Hierarchy 以外の面 (Scene View / 検索 / Map / AI) が選んだ対象を、ツリー上で
+    // 見えるようにする要求。SceneHierarchyPanel が畳まれた祖先を開いてスクロールする。
+    // 親が畳まれていると Viewport でクリックした子は Hierarchy に 1 行も現れない。
+    scene::EntityID hierarchyRevealTarget = scene::EntityID::INVALID;
     scene::EntityID PrimarySelected() const
     {
         return selectedEntities.empty() ? scene::EntityID{} : selectedEntities.front();
@@ -136,6 +188,70 @@ struct EditorContext {
         return activeScene->GetGameObject(sel);
     }
 
+    // Inspector が表示する対象を、各パネルのローカル判定ではなくここで解決する。
+    // WHY: Hierarchy / Asset Browser / Animation Graph がそれぞれ別の優先順位を持つと、
+    //      Graph を選択しても古い Hierarchy 選択へ戻るなど、表示対象と編集対象が食い違う。
+    struct InspectorSelection {
+        enum class Type {
+            None,
+            Entity,
+            MultiEntity,
+            Asset,
+            AnimationGraphEntity,
+            AnimationGraphAsset
+        };
+
+        Type              type = Type::None;
+        scene::GameObject* gameObject = nullptr; // 非所有。activeScene が所有する。
+        std::string        assetPath;
+    };
+
+    InspectorSelection ResolveInspectorSelection() const
+    {
+        const bool graphSelected =
+            animationGraphSelection.type != AnimationGraphSelection::Type::None;
+        if (graphSelected) {
+            // Graph の Scene 選択は Hierarchy の現在選択より優先する。
+            if (activeScene && animationGraphSelection.entityId.IsValid()) {
+                if (auto* gameObject = activeScene->GetGameObject(animationGraphSelection.entityId)) {
+                    InspectorSelection result;
+                    result.type = InspectorSelection::Type::AnimationGraphEntity;
+                    result.gameObject = gameObject;
+                    return result;
+                }
+            }
+
+            // Asset Graph は Hierarchy に Entity が残っていても、開いている Controller を優先する。
+            if (animationControllerEditor && !animationControllerEditorPath.empty() &&
+                animationGraphSelection.assetPath == animationControllerEditorPath) {
+                InspectorSelection result;
+                result.type = InspectorSelection::Type::AnimationGraphAsset;
+                result.assetPath = animationControllerEditorPath;
+                return result;
+            }
+        }
+
+        // Graph の選択が無い、または無効になった場合だけ通常の選択へフォールバックする。
+        if (!selectedAssetPath.empty()) {
+            InspectorSelection result;
+            result.type = InspectorSelection::Type::Asset;
+            result.assetPath = selectedAssetPath;
+            return result;
+        }
+        if (selectedEntities.size() > 1) {
+            InspectorSelection result;
+            result.type = InspectorSelection::Type::MultiEntity;
+            return result;
+        }
+        if (auto* gameObject = GetSelectedGO()) {
+            InspectorSelection result;
+            result.type = InspectorSelection::Type::Entity;
+            result.gameObject = gameObject;
+            return result;
+        }
+        return {};
+    }
+
     // カメラ操作設定 (EditorSettings からロードされ、main.cpp が DebugCamera へ適用する)
     // WHY: DebugCamera は Engine 層に属しパネルから直接参照できない。
     //      EditorContext を仲介とすることで、将来的にカメラ設定 UI を
@@ -146,12 +262,25 @@ struct EditorContext {
     // ビューポート
     bool  viewportFocused  = false;
     bool  sceneViewportHovered = false; // シーンビューにマウスが乗っているか (ホイール制御に使う)
-    // HotkeyManager が「今どの文脈のキーを受け付けるか」を決めるためのフォーカス状態。
-    // WHY: 同じ Delete でも Scene View と Hierarchy では対象が違い、F2 は Hierarchy
-    //      だけで意味を持つ。各パネルが自分の描画中に立てて、次フレームの
-    //      HotkeyManager::ProcessInput が参照する (1 フレーム遅れるが実用上問題ない)。
-    bool  hierarchyFocused    = false;
-    bool  assetBrowserFocused = false;
+    // 今フォーカスされているパネルの «面»。キーの意味はここで決まる。
+    //
+    // WHY パネルごとの bool を持たないか (2026-09-12 の作り直し):
+    //   以前は hierarchyFocused / assetBrowserFocused / fluidEditorFocused … と
+    //   パネルの数だけ bool を並べ、各パネルが自分で立て、HotkeyManager の
+    //   scope 解決が手書きの if チェーンでそれを読んでいた。パネルを 1 つ足すたびに
+    //   enum・bool・if の 3 か所を触る必要があり、37 あるパネルのうち
+    //   参加できていたのは 4 つだけだった。«今どこにフォーカスがあるか» は
+    //   どの瞬間も 1 つしかないので、持つ値も 1 つでよい。
+    //
+    // 書くのは IPanel::OnRender だけ (パネルは GetHotkeyScope() で名乗る)。
+    // 毎フレーム None へ落としてから描画で立て直すため、参照側は 1 フレーム遅れで見る。
+    HotkeyScope focusedPanelScope = HotkeyScope::None;
+
+    /// その面に今フォーカスがあるか。パネル内のキー処理もここを通す。
+    [[nodiscard]] bool PanelScopeFocused(HotkeyScope scope) const
+    {
+        return HasScope(focusedPanelScope, scope);
+    }
     // F2 リネーム要求 (HotkeyManager → Hierarchy)。
     // WHY: リネームは編集バッファとフォーカス制御がパネル内部にあり、外へ出すと
     //      パネルの内部状態を公開することになる。キーの割り当てだけを
@@ -164,13 +293,30 @@ struct EditorContext {
     float gameViewportOriginY = 0.0f;
     float gameViewportWidth   = 1280.0f;
     float gameViewportHeight  = 720.0f;
+    // Game View がこのフレームに実際に描かれ、上の矩形が «今の画面» を指しているか。
+    // WHY: 寸法と原点はパネルが描いたときにしか書かれず、閉じている間は前回の値が残る。
+    //      カーソル拘束のように «外れると操作不能» な用途は、古い矩形を掴んではいけない。
+    bool  gameViewportRectValid = false;
     bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
+    // Escape で解放したカーソルをゲームへ返す one-shot 要求。Game View をクリックしたときと
+    // オーバーレイの「Click to capture」から立ち、EditorApp が消費する。
+    bool  requestGameCursorCapture = false;
+    // Play 開始時の «ウィンドウの並べ方»。カーソルの扱いはここでは決めない
+    // (スクリプトの cursor.Push と playCursorOverride が決める)。
     enum class PlayFocusMode {
         Focused,
         Maximized,
         Unfocused
     };
     PlayFocusMode playFocusMode = PlayFocusMode::Maximized; // Unity の Play Focused / Maximized / Unfocused 相当
+    // Play 中のカーソル要求を、スクリプトを書き換えずに一時的に外す口。
+    // WHY: Confined + 非表示のゲームを Editor で触るとき、確認のたびに
+    //      スクリプトへ手を入れて再ビルドさせたくない。
+    enum class PlayCursorOverride {
+        Game,      // ゲーム (cursor.Push / SetLockMode) の要求どおりにする
+        Free       // 常に None + 表示 (デバッグ用)
+    };
+    PlayCursorOverride playCursorOverride = PlayCursorOverride::Game;
     bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
     bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
     // Map Editing Mode の選択中ツール。
@@ -179,13 +325,10 @@ struct EditorContext {
     enum class MapTool {
         TerrainSculpt,
         TerrainPaint,
-        Water,
-        Detail,
-        Foliage,
         Grid
     };
     MapTool mapActiveTool = MapTool::TerrainSculpt;
-    bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water/Detail/Foliage だけ表示
+    bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water だけ表示
     bool  mapInspectorFilter = true; // Map Mode 中に Map 関連 Component だけ表示
     // システムが実行時に生成した GameObject (GameObject::runtimeGenerated) を Hierarchy へ出すか。
     // WHY: VFX Graph は 1 エフェクトにつきノード数ぶんの GameObject を作る。爆発を 5 箇所へ
@@ -222,10 +365,8 @@ struct EditorContext {
     enum class GizmoMode  { Translate, Rotate, Scale };
     enum class GizmoSpace { World, Local };
     // ギズモを置く基準点 (Unity の Pivot / Center トグル相当)。
-    // WHY: Pivot はプライマリ選択の原点にギズモを置く。複数選択して回すと
-    //      「たまたま最初に選んだオブジェクト」を軸に全体が振り回されるため、
-    //      選択全体のバウンズ中心を軸にする Center が要る。単一選択でも、
-    //      原点がメッシュの外にあるモデル (足元原点のキャラ等) では Center が効く。
+    // Pivot はプライマリ選択の原点。複数選択で回すと「たまたま最初に選んだもの」が軸になる。
+    // Center は選択全体のバウンズ中心を軸にする (足元原点のキャラなど単一選択でも効く)。
     enum class GizmoPivot { Pivot, Center };
     GizmoMode  gizmoMode  = GizmoMode::Translate;
     GizmoSpace gizmoSpace = GizmoSpace::World;
@@ -253,35 +394,19 @@ struct EditorContext {
 
     // 表示オプション (エディター固有)
     // 力場の影響体積とエミッター発生形状のワイヤー表示。
-    // シーンへ直接置いた ParticleForceField / ParticleEmitter にも効く。
+    // シーンへ直接置いた ForceField / ParticleEmitter にも効く。
     bool showVFXGizmos = false;
-    // AI が vfx.preview で明示要求したときだけ立つ診断表示。
-    // 既定はどちらも false で、評価画は常にクリーンなまま保つ。
-    bool vfxAiPreviewOverdraw = false;
-    bool vfxAiPreviewGizmos = false;
-    // AI capture 用プレビューの視点。vfx.preview の camera 引数で上書きされる。
-    // WHY: これが無いと AI は常に同じ 1 方向・1 距離からしか自分の作ったものを見られず、
-    //      ゲーム内距離での可読性・ビルボードのシルエット・LOD の切り替わりを一度も検証できない。
-    //      注視点からの球面座標で持つのは、AI が「回り込む」「離れる」を 1 パラメーターで
-    //      指定できるようにするため (自由なカメラ行列を組ませると再現性が落ちる)。
-    struct VFXAiPreviewCamera {
-        bool  valid    = false;   // false の間は従来どおり操作用プレビューのカメラを流用する
-        float targetX  = 0.0f;    // 注視点 (エフェクト原点まわりを想定)
-        float targetY  = 0.5f;
-        float targetZ  = 0.0f;
-        float distance = 5.0f;    // 注視点からの距離 (m)。ゲーム内距離の検証はここを振る
-        float yaw      = 0.0f;    // 度。0 = 正面 (-Z 側から見る) / 90 = 真横
-        float pitch    = 10.0f;   // 度。正で見下ろし
-        float fovY     = 60.0f;   // 度
-    };
-    VFXAiPreviewCamera vfxAiPreviewCamera;
+    // ラグドールの剛体・可動域・接触点。飽和した関節が赤く出る。
+    // 常時出すと骨の絵が線で埋まるので、可動域とサーボを詰めるときだけ点ける。
+    bool showRagdoll   = false;
     bool showLightRange  = true;
     bool showSkeleton    = false;
+    // Scene View で CPU ソフトウェアオクルージョンカリングを効かせるか。
+    // Scene View はデバッグカメラで描くので CameraComponent の設定が効かない。
+    // 既定は無効 (編集中は見えているものが見えることを優先)。効きは Stats の Occlusion 行。
+    bool sceneViewOcclusionCulling = false;
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
     bool showTerrainTool = false; // Terrain Tool ウィンドウを表示する
-    bool showWaterTool   = false; // Water Tool ウィンドウを表示する
-    bool showDetailTool  = false; // Detail Tool ウィンドウを表示する
-    bool showFoliageTool = false; // Foliage Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
 
     // スクリプト DLL / HLSL ホットリロード状態 (StatusBar が表示する)
@@ -305,8 +430,15 @@ struct EditorContext {
     bool requestOpenBuildSettings    = false;
     bool requestOpenAnalysis         = false;
     bool requestOpenAnimationGraph   = false; // .animcontroller ダブルクリック → AnimationGraphPanel を開く
-    bool requestOpenVFXEditor        = false; // .vfx ダブルクリック → VFXEditorPanel を開く
     bool requestOpenBehaviorTree     = false; // .behaviortree ダブルクリック → BehaviorTreePanel を開く
+    bool requestOpenSfxEditor        = false; // .synth ダブルクリック → SfxEditorPanel を開く
+    bool requestOpenSequence         = false; // .sequence ダブルクリック → SequencePanel を開く
+    // .fluid Inspector の «Bake in 3D» → Volume Flipbook Baker を開き、この .fluid を Fluid ソースにする。
+    // one-shot。消すのはパネル (要求を読んだとき)。
+    std::string requestVolumeFlipbookFluid;
+    // .fluid ダブルクリック / Inspector の «Open in Fluid Editor» → Fluid Editor でこの .fluid を開く (実パス)。
+    // one-shot。消すのは Fluid Editor パネル (要求を読んだとき)。
+    std::string requestOpenFluidEditor;
 
     // Inspector 等のアセット参照欄 → AssetBrowser: 参照先を一覧上で選択させる要求 (one-shot)。
     // WHY: Unity の Object Field と同じく、参照を辿る動線が無いと「この .mat はどのファイルか」を
@@ -317,10 +449,8 @@ struct EditorContext {
     bool        requestRevealAssetSelect = false;
 
     // ── Prefab 編集モード ────────────────────────────────────────────────────
-    // WHY: プレファブを直す唯一の手段が「インスタンスを選んで Apply」だと、
-    //      シーンに 1 個も置いていないプレファブは編集できず、シーン側の
-    //      ライティングや隣接オブジェクトに紛れて中身を確認しづらい。
-    //      編集中のシーンを一時退避して .prefab だけを開き、閉じるときに戻す。
+    // 編集中のシーンを一時退避して .prefab だけを開き、閉じるときに戻す。
+    // 「インスタンスを選んで Apply」だけだと、シーンに 1 個も置いていないものを直せない。
     std::string requestOpenPrefabEdit;        // one-shot: 開きたい .prefab (Assets 相対)
     bool     requestSavePrefabEdit  = false;
     bool     requestClosePrefabEdit = false;  // 保存せず戻る
@@ -330,13 +460,27 @@ struct EditorContext {
 
     // ディスク上で書き換わった .prefab の絶対パス。AssetBrowser のファイル監視が積み、
     // EditorApp が「シーン内のインスタンスへ反映」して消費する。
-    // WHY: プレファブを直しても既に置いてある実体が古いままだと、
-    //      アセットとシーンの内容が静かに食い違う。外部エディタや別セッションからの
-    //      変更も含めて追従させるには、ファイルの変化そのものを拾う必要がある。
+    // ファイルの変化そのものを拾うので、外部エディタからの変更にも追従する。
     std::vector<std::string> pendingPrefabReloads;
-    // 独立VFXEditorの File > Open からホスト側のネイティブダイアログを要求する。
-    std::function<void()> requestOpenVFXAssetDialog;
+
+    // ディスク上で書き換わったアセット (.mat / .anim / .animcontroller / .mask /
+    // .fzdata / .physmat / .synth / .terrain) の絶対パス。積むのは AssetBrowser のファイル監視、
+    // 消費するのは EditorApp。
+    // 積んでから処理する。監視イベントはパネル描画の途中で届くので、その場でキャッシュを
+    // 差し替えると同じフレームのパネル同士が別の版を見ることになる。
+    std::vector<std::string> pendingAssetReloads;
+
+    // ディスク上で書き換わった .scene の絶対パス。
+    // WHY アセットと分けるか: シーンの再読込は EntityID も選択も Undo 履歴も作り直す。
+    //      「中身を差し替えるだけ」のアセットとは失敗したときの被害が桁違いなので、
+    //      未保存判定・Play 判定を通す別経路に置く。
+    std::vector<std::string> pendingSceneReloads;
     bool requestScriptReload         = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
+
+    // パネルが書き換えた EditorSettings を今すぐ editor_settings.toml へ書き出す要求。
+    // WHY: 通常の回収は Shutdown 一括だが、ビルド構成のように「次の起動まで待てない」
+    //      設定がある。エディターを強制終了しても直前の編集が残るようにする。
+    bool requestEditorSettingsSave   = false;
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
@@ -348,6 +492,14 @@ struct EditorContext {
     bool             requestTeleportCamera  = false;
     math::Vector3    teleportPosition       = {};
     math::Quaternion teleportRotation       = {};
+
+    // Scene View の射影切り替え: Operator / パネルがセット → EditorApp が DebugCamera へ
+    // 適用してクリア。
+    // WHY 直接書かないか: 射影を変えるとカメラをピボットから引く距離まで変わる。
+    //     Camera::m_projection だけ書き換えると DebugCamera の pivot / focusDistance と
+    //     食い違い、次のオービットで視点が飛ぶ (Teleport 要求と同じ理由)。
+    bool                    requestCameraProjection = false;
+    renderer::ProjectionMode cameraProjection       = renderer::ProjectionMode::Perspective;
 
     // エディター専用: ロック中の EntityID 一覧（シリアライズしない）
     std::vector<scene::EntityID> lockedEntities;
@@ -365,9 +517,24 @@ struct EditorContext {
     //      value は非表示前の activeSelf: Play/Save 時に一時解除してこの値を復元する。
     std::unordered_map<std::string, bool> editorHiddenGuids;
 
+    // Inspector の Transform ヘッダーメニュー (Copy / Paste) と
+    // AI の transform.copy / transform.paste が共有するクリップボード。
+    // 別々に持つと、同じ操作名なのに中身が違うという追いにくい食い違いになる。
+    struct TransformClipboard {
+        bool             has = false;
+        math::Vector3    position{};
+        math::Quaternion rotation{};
+        math::Vector3    scale{ 1.0f, 1.0f, 1.0f };
+    };
+    TransformClipboard transformClipboard;
+
     // Util (非所有)
     HotkeyManager*      hotkeyManager = nullptr;
     UndoStack*          undoStack   = nullptr;
+    // エディター操作の登録簿 (EditorApp 所有)。メニュー・ホットキー・パレットに加え、
+    // AI Command Bus の editor.op.list / editor.op.invoke がここを読む。
+    // WHY: AI 専用の実装経路を作らないための唯一の入口。Docs/design/editor-operator-model.md
+    OperatorRegistry*   operators   = nullptr;
     // ログ集約シンク (EditorApp 所有)。AI の console.logs クエリが履歴を読む。
     ConsoleSink*        consoleSink = nullptr;
     // AI 連携のライブ状態と制御口。Panel は EditorApp の所有物へ直接依存せず、この窓口だけを使う。
@@ -379,13 +546,39 @@ struct EditorContext {
     std::function<void(const std::string&)> openSpriteEditor;
     // .behaviortree を BehaviorTreePanel へ渡す (同じくパネル実体は公開しない)。
     std::function<void(const std::string&)> openBehaviorTree;
+    // .synth を SfxEditorPanel へ渡す。
+    std::function<void(const std::string&)> openSfxEditor;
+    // .sequence を SequencePanel へ渡す。
+    std::function<void(const std::string&)> openSequence;
+
+    // SFX Editor が編集中の手続き効果音。読み書きが同じ場所を指すよう context に置く。
+    // パネルが実体を抱えて Operator が要求を積む形だと、set_param の直後に inspect を
+    // 呼んだときパネルがまだ要求を消費しておらず 1 フレーム古い値が返る。
+    std::string      sfxEditorPath;            // 空 = 未保存の下書き
+    audio::SynthSpec sfxEditorSpec;
+    std::string      sfxEditorPresetName;      // 由来プリセット名 (空 = 手編集)
+    bool             sfxEditorDirty = false;
+    // BehaviorTreePanel が開いているドキュメント (パネルが毎フレーム公開する)。
+    // Operator の poll が「今この操作ができるか」を判定するのに使う。
+    std::string behaviorTreeEditorPath;
+    // 整列要求 (ワンショット)。パネルが消費して AutoLayout を実行する。
+    // WHY 要求経由か: 整列は Undo スタックを通す必要があり、それを持つのはパネル。
+    //     外から木の中身だけ書き換えると整列前へ戻せなくなる。
+    bool requestBehaviorTreeAutoLayout = false;
+    // .animcontroller を AnimationGraphPanel へ渡す。
+    // WHY 要求経路を分けるか: 以前 Animation Graph は selectedAssetPath に追従していたため、
+    //     Asset Browser で別ファイルをクリックしただけで編集対象が入れ替わり、
+    //     未保存の変更が確認なしに消えていた。「開く」を明示的な操作として切り出す。
+    std::function<void(const std::string&)> openAnimationGraph;
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
-    WaterTool*          waterTool   = nullptr; // EditorApp が所有、ViewportPanel が使用
-    DetailTool*         detailTool  = nullptr; // EditorApp が所有、ViewportPanel が使用
-    FoliageTool*        foliageTool = nullptr; // EditorApp が所有、ViewportPanel が使用
     // Inspector セクション折り畳み状態 (EditorSettings ↔ ImGui StateStorage の中継)
     std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
+    // 現在の Scene に紐づく Editor 専用メタデータ。Scene 本体には保存しない。
+    EditorSceneState editorSceneState;
+    // Inspector がカテゴリ別の既存描画関数から Component カードを収集するための一時窓口。
+    // 1 フレームだけ設定し、描画順を決定した後に必ず nullptr へ戻す。
+    InspectorComponentDrawCollector* inspectorComponentCollector = nullptr;
 
     // デフォルトインポート設定 (EditorSettings に永続化)
     FbxImportOptions                        defaultImportOptions;
@@ -399,17 +592,29 @@ struct EditorContext {
     bool                                    requestSaveScene = false; // StatusBar の●クリック等から現在シーン保存を要求
 
     // AI (Command Bus の scene.open / scene.save) 専用のシーン入出力。確認モーダルを挟まない。
-    // WHY: requestOpenScene は未保存変更があるとモーダル確認を開く。人の操作ならそれが正しいが、
-    //      AI 要求では「応答は返ったのに、その後エディタが人のクリック待ちで止まる」ことになり、
-    //      次の要求も処理されない (バスはメインスレッドで drain するため)。
-    //      未保存の確認は AI 側の引数 (discardUnsaved) で成立させ、ここには確認なしの実体だけを置く。
-    //      save の path が空なら現在のシーンパスへ上書き保存する。
+    // モーダルを開くとエディタが人のクリック待ちで止まり、バスの drain も止まる。
+    // 未保存の確認は AI 側の引数 (discardUnsaved) で成立させる。
+    // save の path が空なら現在のシーンパスへ上書き保存する。
     std::function<bool(const std::string&)> openScenePathImmediate;
     std::function<bool(const std::string&)> saveScenePathImmediate;
-    float                                   assetBrowserIconSize       = 84.0f;
-    float                                   assetBrowserTreeWidth      = 180.0f; // 左フォルダツリーの幅 (永続化)
+    // NOTE: Asset Browser のアイコンサイズ / ツリー幅はここには持たない。
+    // WHY: パネルは複数開けるので「どのパネルの値か」が決まらない。1 パネルぶんの
+    //      状態は EditorSettings::assetBrowserPanels[instance] が唯一の持ち場で、
+    //      往復は OnLoadSettings / OnSaveSettings だけで完結する。
     float                                   editorUiScale              = 1.0f;   // UI 全体スケール (永続化)
     std::vector<std::string>                assetBrowserBookmarks;
+    // フォルダごとの色 (Unreal の Set Color 相当)。キーは絶対パス、値は IM_COL32 の packed 値。
+    // WHY パネルではなく ctx か: Favorites と同じく EditorSettings 経由で永続化され、
+    //      左ツリー・グリッド・パンくずの複数の描画箇所が同じ 1 つの表を引くため。
+    std::unordered_map<std::string, uint32_t> assetBrowserFolderColors;
+    // 一覧を作り直すべき変更が起きた回数。
+    // WHY 一発フラグ (requestAssetBrowserRefresh) だけでは足りないか: Asset Browser は
+    //     複数開けるので、最初に描いたパネルがフラグを消すと残りの枚に届かない。
+    //     フラグを受け取った側が世代を 1 つ進め、各パネルは自分が最後に適用した
+    //     世代と比べる。これなら何枚あっても、閉じていた枚が開いたときも 1 回だけ効く。
+    uint64_t                                 assetBrowserRefreshGeneration = 0;
+    // Set Color で最近使った色 (新しい順)。プリセットに無い色を選び直す手間を省く。
+    std::vector<uint32_t>                    assetBrowserRecentFolderColors;
 
     // カメラブックマーク (最大 9 件、Shift+1~9 で保存・1~9 で呼び出し)
     struct CameraBookmark {
@@ -420,11 +625,9 @@ struct EditorContext {
     std::array<CameraBookmark, 9>           cameraBookmarks;
 
     // Inspector → AssetBrowser: 編集中 .mat のサムネイル即時更新。
-    // WHY: AssetBrowser のマテリアルサムネイルは .mat のファイル更新時刻でしか再生成されないため、
-    //      「値をいじってもアイコンが変わらない (保存するまで古いまま)」という状態だった。
-    //      Inspector 側で値が変わるたびにリビジョンを進め、AssetBrowser はそれを見て
-    //      ディスクではなく AssetManager 上の (未保存の) MaterialAsset からサムネイルを描き直す。
-    //      キーは NormalizeAssetPath 済みのプロジェクト相対パス。
+    // サムネイルはファイル更新時刻でしか再生成されないので、値が変わるたびにリビジョンを進め、
+    // AssetBrowser が未保存の MaterialAsset から描き直せるようにする。
+    // キーは NormalizeAssetPath 済みのプロジェクト相対パス。
     std::unordered_map<std::string, uint64_t> materialPreviewRevisions;
 
     void BumpMaterialPreviewRevision(const std::string& relativeMaterialPath)

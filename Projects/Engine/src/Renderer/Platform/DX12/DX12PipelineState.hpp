@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12PipelineState.hpp | fbzz::renderer
-// 遅延 PSO 生成に使うバックエンド非依存状態の記述子
+/// @file    DX12PipelineState.hpp
+/// @brief   遅延 PSO 生成に使うバックエンド非依存状態の記述子。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IPipelineState.hpp>

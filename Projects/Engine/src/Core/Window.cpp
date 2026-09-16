@@ -1,10 +1,13 @@
-// FBZZ Engine
-// Window.cpp | fbzz::core
-// Win32 ウィンドウの生成とメッセージ処理
-// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
-// Renderer / ImGui とはコールバックで疎結合に接続する。
+/// @file    Window.cpp
+/// @brief   Win32 ウィンドウの生成とメッセージ処理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
+/// Renderer / ImGui とはコールバックで疎結合に接続する。
 
 #include "Engine/Core/Window.hpp"
+#include "Engine/Core/Cursor.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Input/Input.hpp"
 #include "Engine/Util/FileSystem.hpp"
@@ -77,12 +80,27 @@ namespace
         }
     }
 
-    bool AdjustWindowRectForDpi(RECT& rect, DWORD style, DWORD exStyle, UINT dpi)
+    bool AdjustWindowRectForDpi(RECT& rect, DWORD style, DWORD exStyle, UINT dpi,
+                                bool hasMenu = false)
     {
-        if (AdjustWindowRectExForDpi(&rect, style, FALSE, exStyle, dpi))
+        const BOOL menu = hasMenu ? TRUE : FALSE;
+        if (AdjustWindowRectExForDpi(&rect, style, menu, exStyle, dpi))
             return true;
 
-        return AdjustWindowRectEx(&rect, style, FALSE, exStyle) != FALSE;
+        return AdjustWindowRectEx(&rect, style, menu, exStyle) != FALSE;
+    }
+
+    // ウィンドウが載っているモニターの矩形。取得できなければプライマリの画面サイズ。
+    RECT GetMonitorRectFor(HWND hwnd)
+    {
+        HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+
+        MONITORINFO monitorInfo{};
+        monitorInfo.cbSize = sizeof(MONITORINFO);
+        if (!GetMonitorInfoW(monitor, &monitorInfo))
+            return { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+
+        return monitorInfo.rcMonitor;
     }
 
     RECT GetPrimaryWorkArea()
@@ -345,7 +363,133 @@ bool Window::Initialize(const Config& config)
     m_width  = static_cast<uint32_t>(clientRect.right - clientRect.left);
     m_height = static_cast<uint32_t>(clientRect.bottom - clientRect.top);
 
+    // ウィンドウへ戻したときの寸法の初期値。CalculateInitialWindowRect が
+    // 作業領域に収まるようクランプしているため、config の値ではなく実寸を覚える。
+    m_windowedWidth  = m_width;
+    m_windowedHeight = m_height;
+
+    if (config.fullscreen)
+        SetWindowMode(WindowMode::BorderlessFullscreen);
+
     return m_hwnd != nullptr;
+}
+
+void Window::SetWindowMode(WindowMode mode)
+{
+    if (!m_hwnd || mode == m_windowMode) return;
+
+    if (mode == WindowMode::BorderlessFullscreen) {
+        // 復帰用にウィンドウ配置を控える。WS_OVERLAPPEDWINDOW を戻すだけでは
+        // 位置とサイズがフルスクリーンのまま残る。
+        m_windowedPlacement.length = sizeof(WINDOWPLACEMENT);
+        m_hasWindowedPlacement = GetWindowPlacement(m_hwnd, &m_windowedPlacement) != FALSE;
+
+        const RECT monitor = GetMonitorRectFor(m_hwnd);
+        SetWindowLongPtrW(m_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowPos(m_hwnd, HWND_TOP,
+                     monitor.left, monitor.top,
+                     monitor.right - monitor.left,
+                     monitor.bottom - monitor.top,
+                     SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+    } else {
+        SetWindowLongPtrW(m_hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+        if (m_hasWindowedPlacement)
+            SetWindowPlacement(m_hwnd, &m_windowedPlacement);
+        // 新しい枠を反映させる。SetWindowPlacement だけでは非クライアント領域が再計算されない。
+        SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+
+    m_windowMode = mode;
+
+    // フルスクリーン中に要求されたウィンドウ寸法をここで反映する。
+    if (mode == WindowMode::Windowed)
+        ApplyWindowedClientSize(m_windowedWidth, m_windowedHeight);
+
+    // 実寸は WM_SIZE で更新されるが、ここでも取り直しておく。
+    // WHY: SetWindowPos は WM_SIZE を同期的に届けるとは限らず、直後に GetWidth() を
+    //      読む呼び出し側 (Option 画面の表示更新) が 1 フレーム古い値を見る。
+    RECT clientRect{};
+    if (GetClientRect(m_hwnd, &clientRect)) {
+        m_width  = static_cast<uint32_t>(clientRect.right - clientRect.left);
+        m_height = static_cast<uint32_t>(clientRect.bottom - clientRect.top);
+    }
+}
+
+void Window::SetClientSize(uint32_t width, uint32_t height)
+{
+    if (width == 0 || height == 0) return;
+
+    m_windowedWidth  = width;
+    m_windowedHeight = height;
+
+    // フルスクリーン中はモニター解像度が優先。覚えるだけで画面は変えない。
+    if (!m_hwnd || m_windowMode != WindowMode::Windowed) return;
+    ApplyWindowedClientSize(width, height);
+}
+
+void Window::ApplyWindowedClientSize(uint32_t width, uint32_t height)
+{
+    if (!m_hwnd || width == 0 || height == 0) return;
+
+    const DWORD style   = static_cast<DWORD>(GetWindowLongPtrW(m_hwnd, GWL_STYLE));
+    const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtrW(m_hwnd, GWL_EXSTYLE));
+    const UINT  dpi     = GetDpiForWindow(m_hwnd);
+
+    RECT rect{ 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
+    AdjustWindowRectForDpi(rect, style, exStyle, dpi, GetMenu(m_hwnd) != nullptr);
+
+    // 位置は動かさない。解像度を変えるたびにウィンドウが飛ぶのは操作として不快。
+    SetWindowPos(m_hwnd, nullptr, 0, 0,
+                 rect.right - rect.left, rect.bottom - rect.top,
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER);
+}
+
+void Window::GetMonitorSize(uint32_t& outWidth, uint32_t& outHeight) const
+{
+    const RECT monitor = GetMonitorRectFor(m_hwnd);
+    outWidth  = static_cast<uint32_t>(monitor.right - monitor.left);
+    outHeight = static_cast<uint32_t>(monitor.bottom - monitor.top);
+}
+
+std::vector<std::pair<uint32_t, uint32_t>> Window::EnumerateResolutions() const
+{
+    std::vector<std::pair<uint32_t, uint32_t>> modes;
+
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(MONITORINFOEXW);
+    HMONITOR monitor = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTONEAREST);
+    const wchar_t* deviceName =
+        GetMonitorInfoW(monitor, &info) ? info.szDevice : nullptr;
+
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(DEVMODEW);
+    for (DWORD index = 0; EnumDisplaySettingsW(deviceName, index, &mode); ++index) {
+        // リフレッシュレートと色深度違いで同じ寸法が何度も出る。寸法だけを見て畳む。
+        const std::pair<uint32_t, uint32_t> entry{
+            static_cast<uint32_t>(mode.dmPelsWidth),
+            static_cast<uint32_t>(mode.dmPelsHeight)
+        };
+        if (entry.first < 640u || entry.second < 480u) continue;
+        if (std::find(modes.begin(), modes.end(), entry) == modes.end())
+            modes.push_back(entry);
+    }
+
+    // 大きい順。Option のドロップダウンは上が最大解像度である方が選びやすい。
+    std::sort(modes.begin(), modes.end(), [](const auto& a, const auto& b) {
+        if (a.first != b.first) return a.first > b.first;
+        return a.second > b.second;
+    });
+
+    // 列挙に失敗するのはリモートデスクトップ等の特殊な表示ドライバー。
+    // 空を返すと Option の解像度欄が消えるので、現在の寸法だけは必ず 1 つ入れる。
+    if (modes.empty()) {
+        uint32_t width = 0, height = 0;
+        GetMonitorSize(width, height);
+        if (width > 0 && height > 0) modes.emplace_back(width, height);
+    }
+
+    return modes;
 }
 
 void Window::Shutdown()
@@ -456,8 +600,23 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         window->m_height = h;
         if (window->m_resizeCallback)
             window->m_resizeCallback(w, h);
+        // 拘束中はクライアント矩形が変わった時点で拘束範囲も古くなる。
+        fbzz::core::Cursor::ApplyLock();
         return 0;
     }
+
+    // 拘束範囲はスクリーン座標なので、寸法が同じでも «動いた» だけで古くなる。
+    case WM_MOVE:
+        fbzz::core::Cursor::ApplyLock();
+        return 0;
+
+    // WHY 活性を Cursor へ伝えるか: ClipCursor はフォアグラウンドが変わると OS 側で外れ、
+    //     ShowCursor(FALSE) は復帰時に戻す責任がこちらに残る。要求状態は Cursor が持ち、
+    //     «いま OS へ効かせてよいか» だけをここから渡す。これが無いと Alt+Tab で
+    //     抜けた先でカーソルが拘束されたままになったり、戻ってきて拘束が復活しない。
+    case WM_ACTIVATEAPP:
+        fbzz::core::Cursor::SetWindowActive(wParam != FALSE);
+        return 0;
 
     // DPI の異なるモニターへ移動した / 表示スケールが変更された。
     case WM_DPICHANGED:

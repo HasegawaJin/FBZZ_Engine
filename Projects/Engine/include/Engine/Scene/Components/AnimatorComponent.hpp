@@ -1,11 +1,13 @@
-// FBZZ Engine
-// AnimatorComponent.hpp | fbzz::scene
-// スケルタルアニメーション再生状態コンポーネント
-// Model の AnimationClip を参照し、現在時刻や再生速度を保持する。
-// 骨行列の計算と GPU 転送は AnimatorSystem が行う。
-//
-// ── ステートマシン設計 ──────────────────────────────────────────────────────────
-// AnimatorSystem は State / BlendTree を統一したステートマシンとして評価する。
+/// @file    AnimatorComponent.hpp
+/// @brief   スケルタルアニメーション再生状態コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// Model の AnimationClip を参照し、現在時刻や再生速度を保持する。
+/// 骨行列の計算と GPU 転送は AnimatorSystem が行う。
+///
+/// ── ステートマシン設計 ──────────────────────────────────────────────────────────
+/// AnimatorSystem は State / BlendTree を統一したステートマシンとして評価する。
 #pragma once
 
 #include <Engine/Asset/AnimationClip.hpp>
@@ -109,7 +111,22 @@ struct BlendTree2D {
     std::string                  paramX;
     std::string                  paramY;
     BlendTree2DType              type = BlendTree2DType::SimpleDirectional;
+    // パラメーターの急変を時間補間する。1D と同じ意味・同じ時定数の扱い。
+    // WHY 2D にも要るか: 移動方向は入力を離した瞬間に不連続へ飛ぶ。生値のままだと
+    //     前進から後退へ切り返した 1 フレームで前後のクリップが入れ替わり、脚が跳ねる。
+    float                        dampTime = 0.0f;
+    // 全Motionを同じ正規化位相で評価し、Weightが再上昇したClipの位相ジャンプを防ぐ。
+    // WHY 2D にも要るか: 歩きと走りのように長さの違う輪を重ねると、ブレンド中に
+    //     両者の位相がずれて足が滑る。方向 4 本だけなら長さが揃うので不要だが、
+    //     速さの輪を足した瞬間に 1D と同じ問題が出る。
+    bool                         syncNormalizedTime = false;
     std::vector<BlendTreeMotion> motions;
+    // ランタイム専用。Controller / Scene には保存しない。
+    float                        dampedX = 0.0f;
+    float                        dampedY = 0.0f;
+    bool                         dampedValueInitialized = false;
+    float                        normalizedPhase = 0.0f;
+    bool                         normalizedPhaseInitialized = false;
 };
 
 // AnimationState が単一クリップと BlendTree のどれを評価するかを表す。
@@ -157,6 +174,11 @@ struct AnimatorParameter {
 // Base Layer の結果へ重ねる追加レイヤー。
 enum class AnimationLayerMode : int { Override = 0, Additive = 1 };
 
+/// レイヤー weight の上限。
+/// Additive は 1.0 を超えるとクリップの差分をそのまま誇張する (1.0 未満は従来どおり減衰)。
+/// Override は補間係数なので 1.0 より上は意味を持たず、適用時に 1.0 へ丸められる。
+inline constexpr float MAX_LAYER_WEIGHT = 4.0f;
+
 struct RetargetBoneMapping {
     std::string sourcePath;
     std::string targetPath;
@@ -173,12 +195,16 @@ struct AnimationMaskRef {
     // ── ランタイム専用。Controller / Scene には保存しない。────────────────
     std::string            loadedPath;
     bool                   loaded = false;
+    // loadedPath のロードが失敗した。再試行とログの抑止に使う。
+    // WHY: loaded だけだと失敗のたびに毎フレーム TOML を開き直し、警告も毎フレーム出る。
+    bool                   failed = false;
     asset::AvatarMaskAsset asset;
 
     // path を書き換えたあと、次フレームに読み直させる。
     void Invalidate()
     {
         loaded = false;
+        failed = false;
         loadedPath.clear();
     }
 };
@@ -224,6 +250,8 @@ struct AnimationSlotPlayback {
     bool  stopping = false;  // フェードアウト中
     float time     = 0.0f;   // クリップ内の再生秒数
     float weight   = 0.0f;   // 0..1。ステートマシン出力に対するこの Slot の被せ量
+    // SequenceSystem が時刻を握っている間 true。AnimatorSystem は自前で time を進めない。
+    bool  driven   = false;
 };
 
 struct AnimationLayer {
@@ -343,6 +371,21 @@ struct RootMotionClipSample {
     std::uint64_t    frame    = 0;     // 前回サンプルしたフレーム番号
 };
 
+// 存在しないレイヤー名で命令系 API を叩いたことを報告する。同じ (API, 名前) の組は
+// 最初の 1 回だけ出す。
+//
+// WHY 要るか: PlaySlot / StopSlot / PlayLayerState / SetLayerWeight は名前が一致しないと
+//     何もせず戻る。名前を打ち間違えても、レイヤーを消しても、Controller の読み込みが
+//     まだでも、症状はすべて «無反応» で同じ。実際に「抜刀が出ない」の原因究明が
+//     ここで止まったことがある。
+// WHY 宣言だけ置くか: 実装には Logger が要るが、このヘッダーは Script から Editor まで
+//     広く include される。Logger.hpp を持ち込むと前処理量が全 TU に乗るため、
+//     定義は src/Scene/Components/AnimatorComponent.cpp に置く。
+// NOTE: 一致に失敗したときしか呼ばれない。成功経路には何も足さない。
+void ReportUnknownAnimationLayer(const char* api,
+                                 std::string_view layerName,
+                                 const std::vector<AnimationLayer>& available);
+
 // ── AnimatorComponent ────────────────────────────────────────────────────────
 
 struct AnimatorComponent {
@@ -353,10 +396,31 @@ struct AnimatorComponent {
     // ランタイム専用。参照変更時だけ Controller を再読み込みする。
     std::string loadedControllerPath;
     float       speed      = 1.0f;
+    /// speed による凍結と独立した時計倍率。ランタイム専用。
+    float       localTimeScale = 1.0f;
     bool        playing    = true;
+    // クリップの代わりに Script が骨のローカルを書く構成。
+    //
+    // WHY 要るか: 経路に沿って毎フレーム形が変わる胴のような動きはクリップで表せない。
+    //     ところが AnimatorSystem は «評価できるクリップが無い» フレームで骨を
+    //     バインドポーズへ戻すため、Script が書いた姿勢は毎フレーム消える。
+    //     かといって Animator を外すと、スキニングパレットを埋める者が居なくなり
+    //     (SkinningComputePass / 各 GeometryPass は親をたどって Animator を探す)、
+    //     骨を動かしてもメッシュは bind pose のまま描かれる。
+    //     これを立てると «戻さずに、今の骨からパレットを組み直す» に切り替わる。
+    //
+    // WHY playing / enabled で代用できないか: enabled = false は Animator の評価ごと
+    //     止めるので、パレットが一度も作られない。playing はクリップの再生位置を
+    //     止めるだけで、バインドポーズへ戻す経路はそのまま通る。
+    bool        externalPose = false;
     // ルートモーションの適用先・解決方法・軸マスク。
     // VFX の決定論的 Preview は mode = None を使い、姿勢だけを評価して Transform を動かさない。
     RootMotionSettings rootMotion;
+
+    // ステートから参照されないクリップ (演出専用) のソース。
+    // LoadClips はステートと Additive 基準からしか集めないので、ここに宣言が無いと
+    // Slot へ差し込んでも「参照が解決できない」として黙って畳まれる。
+    std::vector<std::string> externalClipSources;
 
     // ランタイム専用。初回更新時にステート参照から再構築する。
     std::vector<asset::AnimationClip> clips;
@@ -364,10 +428,45 @@ struct AnimatorComponent {
     std::vector<std::string> clipSourcePaths;
     bool clipsLoaded          = false;
     int  clipsAttemptGeneration = -1; // FlushGeneration at last LoadClips attempt
+    // 最後に Controller / クリップ / マスクを取り込んだときのアセット世代。
+    // これが AssetManager の現在値と食い違う間は、派生キャッシュが古い。
+    int  appliedAssetGeneration = -1;
+
+    // スキニング後の骨が «実際にどこにいるか» (owner のローカル空間)。
+    //
+    // WHY 要るか: カリングの球はバインドポーズの submesh バウンズを Renderer の
+    //     Transform で運んだものだった。骨がバインドポーズの近くにいる限りそれで
+    //     足りるが、Script が骨を数十 m 動かすもの (経路に沿って場を渡る胴など) では
+    //     球と実体が別の場所にあり、«実体は見えているのに球が視錐台の外／遮蔽物の中»
+    //     で消える ─ 部位ごとに独立して明滅する。骨から作り直した球をここに置く。
+    //
+    // WHY 半径 0 を «未計算» にするか: スケルトンを持たない Animator や停止中は
+    //     骨の姿勢が確定していない。そこで 0 を返しておけば、カリング側は
+    //     従来のバインドポーズ球へそのまま落ちる。
+    math::Vector3 skinnedBoundsCenter{};
+    float         skinnedBoundsRadius = 0.0f;
 
     std::vector<math::Matrix4> boneMatrices;
     std::vector<math::Matrix4> nodeGlobalTransforms;
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningBuffer;
+
+    // 前フレームの確定ボーンパレット。VelocityPass が「前フレームの頂点位置」を
+    // VS で組み直すために使う (b2 = CB_PREV_SKINNING へ束縛する)。
+    //
+    // WHY skinnedVertexBuffers の ping-pong にしないか:
+    //   コンピュートスキニングの出力は GPU 書き込み頂点バッファ (BufferTag) で、
+    //   VS から SRV として読める保証がない。DrawCall::vsBuffers は
+    //   StructuredBufferTag しか受け付けないため、前フレームの頂点を頂点入力として
+    //   持ち込む経路が存在しない。パレットを 2 本渡して VS で 2 回スキニングする方が
+    //   バックエンドの制約に触れずに済む。
+    //
+    // WHY フレーム末ではなく次フレーム頭でスナップショットするか:
+    //   boneMatrices の最終書き込み者は AnimatorSystem ではなく SpringBoneSystem。
+    //   AnimatorSystem が上書きする直前に取れば、それが「前フレームの最終ポーズ」になる。
+    std::vector<math::Matrix4> prevBoneMatrices;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> prevSkinningBuffer;
+    // prevBoneMatrices が有効か。初回フレームは前フレームが存在しないので速度 0 にする。
+    bool prevBoneMatricesValid = false;
 
     // ── ステートマシン定義（シリアライズ対象）──────────────────────────────
     std::string                    defaultStateName; // 初期ステート名。空なら states[0]
@@ -429,6 +528,7 @@ struct AnimatorComponent {
         r.Field("controllerPath",   controllerPath);
         r.Field("speed",            speed);
         r.Field("playing",          playing);
+        r.Field("externalPose",     externalPose);
         r.Field("rootMotionMode",     reinterpret_cast<int&>(rootMotion.mode));
         r.Field("rootMotionSource",   reinterpret_cast<int&>(rootMotion.source));
         r.Field("rootMotionPoseMode", reinterpret_cast<int&>(rootMotion.poseMode));
@@ -525,8 +625,9 @@ struct AnimatorComponent {
 
     void SetLayerWeight(std::string_view layerName, float w)
     {
-        if (AnimationLayer* l = FindLayer(layerName))
-            l->weight = std::clamp(w, 0.0f, 1.0f);
+        AnimationLayer* l = FindLayer(layerName);
+        if (!l) { ReportUnknownAnimationLayer("SetLayerWeight", layerName, layers); return; }
+        l->weight = std::clamp(w, 0.0f, MAX_LAYER_WEIGHT);
     }
 
     [[nodiscard]] float GetLayerWeight(std::string_view layerName) const
@@ -543,6 +644,59 @@ struct AnimatorComponent {
         return l->runtime.currentStateName;
     }
 
+    // 指定 Layer の現在ステートを、そのステートの実クリップ長で 0..1 に正規化する。
+    // WHY: 武器のように「アニメーションの途中で親を差し替える」処理は、フレーム数や
+    //      固定秒数ではなく、実際のクリップ再生位置へ同期しないと速度変更・遷移時間変更で
+    //      手と銃の位置がずれる。Base Layer 用の GetNormalizedTime と同じ規則を Layer にも公開する。
+    [[nodiscard]] float GetLayerNormalizedTime(std::string_view layerName) const
+    {
+        const AnimationLayer* layer = FindLayer(layerName);
+        if (!layer || layer->runtime.currentStateName.empty()) return 0.0f;
+
+        const AnimationState* state = nullptr;
+        for (const auto& candidate : layer->states) {
+            if (candidate.name == layer->runtime.currentStateName) {
+                state = &candidate;
+                break;
+            }
+        }
+        if (!state) return 0.0f;
+        if (state->mode != AnimationStateMode::Clip) {
+            return layer->runtime.blendDuration > 0.0f
+                ? std::clamp(layer->runtime.stateTime / layer->runtime.blendDuration, 0.0f, 1.0f)
+                : 0.0f;
+        }
+
+        const asset::AnimationClip* clip = nullptr;
+        if (!state->sourcePath.empty()) {
+            for (size_t i = 0; i < clips.size(); ++i) {
+                if (i >= clipSourcePaths.size() || clipSourcePaths[i] != state->sourcePath)
+                    continue;
+                if (!clip) clip = &clips[i];
+                if (!state->clipName.empty() && clips[i].name == state->clipName) {
+                    clip = &clips[i];
+                    break;
+                }
+            }
+        }
+        if (!clip && !state->clipName.empty()) {
+            for (const auto& candidate : clips)
+                if (candidate.name == state->clipName) {
+                    clip = &candidate;
+                    break;
+                }
+        }
+        if (!clip && state->clipIndex >= 0 &&
+            state->clipIndex < static_cast<int>(clips.size()))
+            clip = &clips[static_cast<size_t>(state->clipIndex)];
+        if (!clip) return 0.0f;
+
+        const float duration = static_cast<float>(clip->GetDurationSeconds());
+        return duration > 0.0f
+            ? std::clamp(layer->runtime.stateTime / duration, 0.0f, 1.0f)
+            : 0.0f;
+    }
+
     [[nodiscard]] bool IsLayerInState(std::string_view layerName, std::string_view stateName) const
     {
         return GetLayerState(layerName) == stateName;
@@ -552,8 +706,14 @@ struct AnimatorComponent {
     void PlayLayerState(std::string_view layerName, std::string_view stateName)
     {
         AnimationLayer* l = FindLayer(layerName);
-        if (!l) return;
-        if (l->states.empty()) return;
+        if (!l) { ReportUnknownAnimationLayer("PlayLayerState", layerName, layers); return; }
+        // Controller の初回ロード前でも要求をランタイム状態へ保持する。
+        // WHY: Script は AnimatorSystem より先に実行されるため、開始直後の入力で
+        //      states がまだ空だと PlayLayerState が無言で消え、次のフレームの
+        //      Controller 適用で再生要求を復元できなくなる。
+        //      ApplyAnimatorControllerAsset は同名 Layer の runtime を引き継ぐので、
+        //      ロード完了後にこの要求をそのまま実行できる。
+        if (stateName.empty()) return;
         l->runtime.currentStateName = std::string(stateName);
         l->runtime.stateTime   = 0.0f;
         l->runtime.blendToState.clear();
@@ -572,7 +732,7 @@ struct AnimatorComponent {
                   bool  slotLoop = false)
     {
         AnimationLayer* l = FindLayer(layerName);
-        if (!l) return;
+        if (!l) { ReportUnknownAnimationLayer("PlaySlot", layerName, layers); return; }
         l->slot.sourcePath      = std::string(sourcePath);
         l->slot.clipName        = std::string(clipName);
         l->slot.fadeInDuration  = (std::max)(fadeIn, 0.0f);
@@ -589,7 +749,9 @@ struct AnimatorComponent {
     void StopSlot(std::string_view layerName, float fadeOut = -1.0f)
     {
         AnimationLayer* l = FindLayer(layerName);
-        if (!l || !l->slot.active) return;
+        if (!l) { ReportUnknownAnimationLayer("StopSlot", layerName, layers); return; }
+        // 鳴っていない Slot を止めるのは «空振り» ではなく通常の使い方なので報告しない。
+        if (!l->slot.active) return;
         if (fadeOut >= 0.0f) l->slot.fadeOutDuration = fadeOut;
         l->slot.stopping = true;
     }

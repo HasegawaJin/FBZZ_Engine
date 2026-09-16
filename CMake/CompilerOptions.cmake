@@ -19,3 +19,7 @@ target_compile_definitions(FBZZCompilerOptions INTERFACE
     $<$<CONFIG:Development>:FBZZ_DEVELOPMENT>
     $<$<CONFIG:Release>:FBZZ_RELEASE NDEBUG>
 )
+
+# NOTE (2026-09-02): このファイルはどの CMakeLists からも include されていない。
+#      /W4 /WX も FBZZ_DEBUG / FBZZ_DEVELOPMENT も現状は効いていないので、
+#      実際に効かせたい定義はルート CMakeLists.txt 側へ書くこと。

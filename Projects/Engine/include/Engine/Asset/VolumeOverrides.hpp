@@ -1,18 +1,19 @@
-// FBZZ Engine
-// VolumeOverrides.hpp | fbzz::asset
-// 組み込みの VolumeOverride 派生一覧。
-//
-// 効果 1 つ = クラス 1 つ。各クラスはその効果のパラメーターだけを持ち、
-// 対応する XxxSettings::enabled は Apply 側で立てる。
-// WHY enabled をフィールドに持たないか:
-//   「リストに載っていること」自体が使用の意思表示で、一時的に外したいときは
-//   基底の active を落とす。両方あると「enabled=false の Bloom オーバーライド」
-//   という、存在するのに効かない読みにくい状態が作れてしまう。
-//
-// 新しい効果を足す手順はこのファイル内で完結する:
-//   1. ここにクラスを 1 つ足す
-//   2. VolumeOverrides.cpp に Apply / Reflect を書き、FBZZ_REGISTER_VOLUME_OVERRIDE
-//   Inspector の Add Override メニューと .fzdata の読み書きは自動的に追随する。
+/// @file    VolumeOverrides.hpp
+/// @brief   組み込みの VolumeOverride 派生一覧。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// 効果 1 つ = クラス 1 つ。各クラスはその効果のパラメーターだけを持ち、
+/// 対応する XxxSettings::enabled は Apply 側で立てる。
+/// WHY enabled をフィールドに持たないか:
+/// 「リストに載っていること」自体が使用の意思表示で、一時的に外したいときは
+/// 基底の active を落とす。両方あると「enabled=false の Bloom オーバーライド」
+/// という、存在するのに効かない読みにくい状態が作れてしまう。
+///
+/// 新しい効果を足す手順はこのファイル内で完結する:
+/// 1. ここにクラスを 1 つ足す
+/// 2. VolumeOverrides.cpp に Apply / Reflect を書き、FBZZ_REGISTER_VOLUME_OVERRIDE
+/// Inspector の Add Override メニューと .fzdata の読み書きは自動的に追随する。
 #pragma once
 #include <Engine/Asset/VolumeOverride.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
@@ -180,8 +181,46 @@ class VolumetricLightOverride final : public VolumeOverride {
                               "Volumetric Light", Atmosphere)
     float scattering  = 0.3f;
     float intensity   = 0.8f;
+    float minDistance = 0.0f;
     float maxDistance = 30.0f;
+    float edgeFade    = 0.2f;
+    float density     = 0.0f;
+    float heightFalloff = 0.0f;
+    float heightStart   = 0.0f;
+    float tint[3]     = { 1.0f, 1.0f, 1.0f };
     int   steps       = 32;
+};
+
+// FroxelFogOverride — 視錐台を 3D グリッドへ切って焼く体積フォグ。
+// VolumetricLight と違い、点光源・スポット・面光源も霧へ映り込む。
+// NOTE: グリッド寸法だけは Volume でブレンドしない。解像度が変わるとボリュームの
+//       再確保が走るため、プロファイル間の遷移中に毎フレーム作り直すことになる。
+//       寸法は RenderSettings の既定 (160x90x64) を使う。
+class FroxelFogOverride final : public VolumeOverride {
+    FBZZ_VOLUME_OVERRIDE_BODY(FroxelFogOverride, "FroxelFog", "Froxel Fog", Atmosphere)
+    float density       = 0.02f;
+    float albedo[3]     = { 1.0f, 1.0f, 1.0f };
+    float emissive[3]   = { 0.0f, 0.0f, 0.0f };
+    float anisotropy    = 0.4f;
+    float heightFalloff = 0.0f;
+    float heightStart   = 0.0f;
+    float nearDistance  = 0.1f;
+    float farDistance   = 64.0f;
+    float ambient       = 1.0f;
+};
+
+// AutoExposureOverride — 画面の明るさから露出を自動で決める (眼の順応)。
+class AutoExposureOverride final : public VolumeOverride {
+    FBZZ_VOLUME_OVERRIDE_BODY(AutoExposureOverride, "AutoExposure", "Auto Exposure", Exposure)
+    float minEV         = -6.0f;
+    float maxEV         = 14.0f;
+    float lowPercent    = 0.45f;
+    float highPercent   = 0.95f;
+    float speedUp       = 3.0f;
+    float speedDown     = 1.0f;
+    float compensation  = 0.0f;
+    float minExposureEV = -8.0f;
+    float maxExposureEV =  8.0f;
 };
 
 // ── 影・反射 (いずれも Deferred Pipeline 専用) ──────────────────────────

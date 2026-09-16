@@ -1,0 +1,22 @@
+# FBZZ Engine
+# FX_Bolt_Additive.mat
+# 素材: Assets/VFX/Textures/T_Bolt.png (512x128 / 稲妻 1 本)
+# «1 発の放電»。T_Arc_Noise はリボンに貼るノイズで、こちらは形のあるスプライト。
+# renderMode = 1 (Stretched) で速度方向へ寝かせるか、Billboard で回転を散らして使う。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:0e2bfa8095d64e33b068856a30c732cf"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.6

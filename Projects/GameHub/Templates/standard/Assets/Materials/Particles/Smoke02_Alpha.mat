@@ -1,0 +1,28 @@
+# FBZZ Engine
+# Smoke02_Alpha.mat
+# 熱気の屈折マスク。
+# WHY: 素材 1 枚につき 1 マテリアルを置くことで、複数の Emitter から
+#      同じ素材設定を共有できる。
+# shader を空にしてあるのは «組み込み Particle.hlsl で描く» の意味。
+# 素材: Assets/Textures/Particles/smoke_02.png
+version = 1
+shader = ""
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "Assets/Textures/Particles/smoke_02.png"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+distortion = true
+distortion_strength = 0.014
+emissive_scale = 0.0
+soft_particle_fade_distance = 0.6
+soft_particles = true

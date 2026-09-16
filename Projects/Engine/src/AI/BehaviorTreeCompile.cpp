@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BehaviorTreeCompile.cpp | fbzz::ai
-// オーサリング表現 (id / parentId / order) → ランタイム表現 (DFS pre-order フラット配列)
+/// @file    BehaviorTreeCompile.cpp
+/// @brief   オーサリング表現 (id / parentId / order) → ランタイム表現 (DFS pre-order フラット配列)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
 
 #include <algorithm>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Vector4.hpp | fbzz::math
-// 4次元ベクトル (同次座標・RGBA色・シェーダー定数)
+/// @file    Vector4.hpp
+/// @brief   4次元ベクトル (同次座標・RGBA色・シェーダー定数)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include "Vector3.hpp"

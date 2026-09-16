@@ -1,8 +1,10 @@
-// FBZZ Engine
-// NavMeshOffMeshLinkComponent.hpp | fbzz::scene
-// NavMesh 上の非連続エリアを接続するオフメッシュリンク（Unity の Off-Mesh Link 相当）。
-// GO をリンクの起点側に置き、startPoint / endPoint をワールド座標で指定する。
-// NavMeshBakeSystem がベイク完了後に最近傍ポリゴンへ自動接続する。
+/// @file    NavMeshOffMeshLinkComponent.hpp
+/// @brief   NavMesh 上の非連続エリアを接続するオフメッシュリンク（Unity の Off-Mesh Link 相当）。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// GO をリンクの起点側に置き、startPoint / endPoint をワールド座標で指定する。
+/// NavMeshBakeSystem がベイク完了後に最近傍ポリゴンへ自動接続する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
@@ -23,6 +25,9 @@ struct NavMeshOffMeshLinkComponent {
     const char* GetTypeName() const { return "Off-Mesh Link"; }
     void Reflect(IReflector& r)
     {
+        // enabled は保存されていたのに Reflect に無く、AI バスと汎用 Inspector から
+        // だけ見えない状態だった。キー名は保存済みシーンに合わせる。
+        r.Field("enabled",       enabled);
         r.Field("startPoint",    startPoint);
         r.Field("endPoint",      endPoint);
         r.Field("bidirectional", bidirectional);

@@ -1,7 +1,9 @@
 blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
 double_sided = false
 mesh_type = 'surface'
-render_path = 'deferred'
+render_path = 'auto'
 render_queue = 2000
 shader = ''
 version = 1
@@ -24,11 +26,11 @@ tilingZ = 8.0
 [textures]
 albedo = ''
 ao = ''
-ao_roughness = 'guid:b38da769c1554a5b99b8cd1186906a60'
-diffuse = 'guid:7d1f210a70d548d7bf8d0272a3f509e3'
+ao_roughness = 'guid:b38da769c1554a5b99b8cd1186906a60|Assets/Textures/Terrain/Grass/Grass_AmbientOcclusion.png'
+diffuse = 'guid:7d1f210a70d548d7bf8d0272a3f509e3|Assets/Textures/Terrain/Grass/Grass_Color.png'
 emissive = ''
 metallic = ''
-normal = 'guid:b409163b43c2478cbeac49e0ef245e85'
+normal = 'guid:b409163b43c2478cbeac49e0ef245e85|Assets/Textures/Terrain/Grass/Grass_Normal.png'
 tex5 = ''
 tex6 = ''
 tex7 = ''

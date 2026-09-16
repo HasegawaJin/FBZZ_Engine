@@ -1,7 +1,9 @@
-// FBZZ Engine
-// LinearAllocator.cpp | fbzz::core
-// LinearAllocator の実装
-// 連続メモリを前方へ切り出し、Reset でまとめて再利用する。
+/// @file    LinearAllocator.cpp
+/// @brief   LinearAllocator の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 連続メモリを前方へ切り出し、Reset でまとめて再利用する。
 #include "Engine/Core/Memory/LinearAllocator.hpp"
 
 #include <cstdlib>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimationImporter.hpp | fbzz::asset
-// .anim バイナリ → AnimationClip ローダー
+/// @file    AnimationImporter.hpp
+/// @brief   .anim バイナリ → AnimationClip ローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>

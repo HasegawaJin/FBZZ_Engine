@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ParticleSimulationSystem.hpp | fbzz::scene
-// Particleの再生時間・Emission要求を描画回数から独立してフレーム単位で更新する。
+/// @file    ParticleSimulationSystem.hpp
+/// @brief   Particleの再生時間・Emission要求を描画回数から独立してフレーム単位で更新する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Core/Scheduler/ISystem.hpp>

@@ -1,19 +1,20 @@
-// FBZZ Engine
-// EditorApp_Prefab.cpp | fbzz::editor
-// Prefab 編集モード — .prefab を隔離状態で開いて直接編集する
-//
-// WHY: これまでプレファブを直す手段は「シーンに置いたインスタンスを選んで Apply」だけだった。
-//      そのため
-//        - シーンに 1 個も置いていないプレファブは編集できない
-//        - シーンのライティング・隣接オブジェクトに紛れて中身を確認しづらい
-//        - 「インスタンス固有の調整」と「プレファブ本体への変更」の区別が付かない
-//      という 3 つの問題があった。編集中シーンを丸ごと退避し、.prefab だけを
-//      m_scene へ展開することで、Unity の Prefab Mode に相当する編集面を用意する。
-//
-//      Scene オブジェクト自体を差し替えず m_scene の「中身」を入れ替えるのは、
-//      ProjectRuntime / SceneManager / レンダーパスが握っているポインタを
-//      一切張り替えずに済ませるため。張り替え箇所が増えるほど
-//      「片方だけ古いシーンを見ている」種類のバグが出る。
+/// @file    EditorApp_Prefab.cpp
+/// @brief   Prefab 編集モード — .prefab を隔離状態で開いて直接編集する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: これまでプレファブを直す手段は「シーンに置いたインスタンスを選んで Apply」だけだった。
+/// そのため
+/// - シーンに 1 個も置いていないプレファブは編集できない
+/// - シーンのライティング・隣接オブジェクトに紛れて中身を確認しづらい
+/// - 「インスタンス固有の調整」と「プレファブ本体への変更」の区別が付かない
+/// という 3 つの問題があった。編集中シーンを丸ごと退避し、.prefab だけを
+/// m_scene へ展開することで、Unity の Prefab Mode に相当する編集面を用意する。
+///
+/// Scene オブジェクト自体を差し替えず m_scene の「中身」を入れ替えるのは、
+/// ProjectRuntime / SceneManager / レンダーパスが握っているポインタを
+/// 一切張り替えずに済ませるため。張り替え箇所が増えるほど
+/// 「片方だけ古いシーンを見ている」種類のバグが出る。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
@@ -21,6 +22,7 @@
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -70,7 +72,12 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
     // ── 編集中シーンを退避 ───────────────────────────────────────────────────
     // WHY: ここで保存を強制せず「メモリ上に退避」するのは、未保存の作業を捨てさせない
     //      ため。閉じたときにそのまま元の状態 (dirty も含めて) へ戻る。
+    // WHY 非表示を外してから採るか: スナップショットへ入れるのは「隠す前の activeSelf」。
+    //     隠したままの false を焼くと、シーンへ戻ったとき表示へ戻す手立てが無くなる。
+    CaptureEditorViewStateToSceneMeta();
+    RemoveEditorHiding();
     m_prefabEditStashedScene     = SceneIO::Serialize(*m_ctx.activeScene);
+    RestoreEditorHiding();
     if (m_prefabEditStashedScene.empty()) {
         FBZZ_LOG_ERROR("Prefab edit: failed to snapshot the current scene");
         return;
@@ -84,7 +91,7 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
 
     // ── プレファブだけの状態にする ───────────────────────────────────────────
     m_ctx.activeScene->Clear();
-    m_ctx.selectedEntities.clear();
+    ClearEntitySelection(m_ctx);
     m_ctx.lockedEntities.clear();
     m_ctx.editorHiddenGuids.clear();
     m_undoStack.Clear();
@@ -95,6 +102,7 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
         // 開けなかったので退避したシーンを戻す。
         SceneIO::Deserialize(*m_ctx.activeScene, m_prefabEditStashedScene);
         m_prefabEditStashedScene.clear();
+        ApplyEditorViewStateFromSceneMeta();
         RebuildEditorUIFromScene();
         return;
     }
@@ -114,7 +122,7 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
     m_ctx.prefabEditDirty = false;
     m_prefabEditSaved     = false;
     m_prefabEditDiskPath  = diskPath;
-    m_ctx.selectedEntities = { roots.front() };
+    SelectEntity(m_ctx, roots.front());
 
     RebuildEditorUIFromScene();
     UpdateWindowTitle();
@@ -153,7 +161,7 @@ void EditorApp::ExitPrefabEditMode(bool save)
 
     // ── 退避していたシーンを戻す ─────────────────────────────────────────────
     m_ctx.activeScene->Clear();
-    m_ctx.selectedEntities.clear();
+    ClearEntitySelection(m_ctx);
     m_undoStack.Clear();
 
     if (!m_prefabEditStashedScene.empty() &&
@@ -164,11 +172,17 @@ void EditorApp::ExitPrefabEditMode(bool save)
 
     m_ctx.currentScenePath = m_prefabEditStashedScenePath;
     m_ctx.sceneDirty       = m_prefabEditStashedDirty;
+    // 編集に入るとき退避した非表示 / ロックをシーンごと戻す。
+    ApplyEditorViewStateFromSceneMeta();
 
     // 選択は EntityID ではなく GUID で戻す (再構築で ID が変わるため)。
-    for (const std::string& guid : m_prefabEditStashedSelection)
-        if (auto* go = m_ctx.activeScene->FindByGuid(guid))
-            m_ctx.selectedEntities.push_back(go->GetID());
+    {
+        std::vector<scene::EntityID> restored;
+        for (const std::string& guid : m_prefabEditStashedSelection)
+            if (auto* go = m_ctx.activeScene->FindByGuid(guid))
+                restored.push_back(go->GetID());
+        SelectEntities(m_ctx, std::move(restored), SelectionReveal::Skip);
+    }
 
     m_ctx.prefabEditPath.clear();
     m_ctx.prefabEditDirty = false;
@@ -223,7 +237,7 @@ void EditorApp::ProcessPrefabDiskReloads()
             *m_ctx.activeScene, relPath, scene::EntityID{}, m_ctx.projectRoot);
         if (updated > 0) {
             // WHY: 作り直しで EntityID が変わるため、古い ID を掴んだままの選択は捨てる。
-            m_ctx.selectedEntities.clear();
+            ClearEntitySelection(m_ctx);
             MarkSceneDirty();
             FBZZ_LOG_INFO("Prefab changed on disk: %s (%d instance(s) updated)",
                           relPath.c_str(), updated);

@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MemorySystem.cpp | fbzz::core
-// MemorySystem の実装
-// フレームアロケータとトラッカーの寿命を明示的に管理する。
+/// @file    MemorySystem.cpp
+/// @brief   MemorySystem の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// フレームアロケータとトラッカーの寿命を明示的に管理する。
 #include "Engine/Core/Memory/MemorySystem.hpp"
 
 #include <cassert>

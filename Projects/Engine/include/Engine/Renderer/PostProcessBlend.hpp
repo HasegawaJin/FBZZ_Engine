@@ -1,11 +1,12 @@
-// FBZZ Engine
-// PostProcessBlend.hpp | fbzz::renderer
-// ボリューム合成の共通プリミティブと、解決結果を描画設定へ流し込むヘルパー。
-//
-// WHY 補間規則をここに集約するか:
-//   実際の合成は VolumeOverride の派生 27 種がそれぞれ行う。各クラスが
-//   自前で「bool はどう混ぜるか」を決めると、効果ごとに挙動が食い違う。
-//   規則を 1 か所に置き、全オーバーライドがこれを呼ぶ形にする。
+/// @file    PostProcessBlend.hpp
+/// @brief   ボリューム合成の共通プリミティブと、解決結果を描画設定へ流し込むヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY 補間規則をここに集約するか:
+/// 実際の合成は VolumeOverride の派生 27 種がそれぞれ行う。各クラスが
+/// 自前で「bool はどう混ぜるか」を決めると、効果ごとに挙動が食い違う。
+/// 規則を 1 か所に置き、全オーバーライドがこれを呼ぶ形にする。
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
 

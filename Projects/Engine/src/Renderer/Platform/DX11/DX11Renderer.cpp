@@ -1,12 +1,14 @@
-// FBZZ Engine
-// DX11Renderer.cpp | fbzz::renderer
-// IRenderer の DX11 実装
-// デバイス・スワップチェーン・バックバッファ・フレーム送信を管理する。
-// 上位レイヤーには IRenderer と ResourceManager の境界だけを見せる。
-//
-// d3d11.lib / dxgi.lib はプラグマリンクで解決する。
-// CMakeLists で target_link_libraries に追加してもよいが、
-// DX11 依存を実装ファイルに閉じ込めるためここで宣言している。
+/// @file    DX11Renderer.cpp
+/// @brief   IRenderer の DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// デバイス・スワップチェーン・バックバッファ・フレーム送信を管理する。
+/// 上位レイヤーには IRenderer と ResourceManager の境界だけを見せる。
+///
+/// d3d11.lib / dxgi.lib はプラグマリンクで解決する。
+/// CMakeLists で target_link_libraries に追加してもよいが、
+/// DX11 依存を実装ファイルに閉じ込めるためここで宣言している。
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 
@@ -19,15 +21,17 @@
 #include "DX11Texture.hpp"
 #include "DX11RenderTarget.hpp"
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Renderer/AssetPathService.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
 #include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
+#include "../GpuValidation.hpp"
 #include <DirectXTex.h>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <dxgi1_5.h>
+#include <iterator>
 #include <string>
-#ifdef _DEBUG
+#ifdef FBZZ_GPU_VALIDATION
 #include <d3d11sdklayers.h>  // ID3D11InfoQueue
 #endif
 
@@ -78,59 +82,81 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
                                                        ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
                                                        : 0u;
 
-    // DEBUG ビルドではデバッグレイヤーを有効化し、DX11 の検証エラーを OutputDebugString に出力する
+    // Debug / Development では検証レイヤーを立てる (Release は素通し)。
+    // FBZZ_GPU_VALIDATION=0 を環境変数に入れると、ビルドし直さずに切れる。
     UINT flags = 0;
-#ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
+#ifdef FBZZ_GPU_VALIDATION
+    if (gpuvalidation::IsEnabled())
+        flags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
     // D3D_FEATURE_LEVEL_11_0 を明示して、それ未満の GPU でエラーを即座に返す
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-    FBZZ_HR_CHECK(D3D11CreateDeviceAndSwapChain(
-        nullptr,                        // 既定アダプター
-        D3D_DRIVER_TYPE_HARDWARE,       // GPU ドライバーを使用
-        nullptr,
-        flags,
-        &featureLevel, 1,
-        D3D11_SDK_VERSION,
-        &scDesc,
-        m_swapChain.GetAddressOf(),
-        m_device.GetAddressOf(),
-        nullptr,
-        m_context.GetAddressOf()));
+    const auto createDevice = [&](UINT createFlags) {
+        return D3D11CreateDeviceAndSwapChain(
+            nullptr,                        // 既定アダプター
+            D3D_DRIVER_TYPE_HARDWARE,       // GPU ドライバーを使用
+            nullptr,
+            createFlags,
+            &featureLevel, 1,
+            D3D11_SDK_VERSION,
+            &scDesc,
+            m_swapChain.GetAddressOf(),
+            m_device.GetAddressOf(),
+            nullptr,
+            m_context.GetAddressOf());
+    };
+    HRESULT hr = createDevice(flags);
+#ifdef FBZZ_GPU_VALIDATION
+    if (FAILED(hr) && (flags & D3D11_CREATE_DEVICE_DEBUG) != 0) {
+        // WHY 落とさず作り直すか: 検証レイヤーは Windows の «グラフィックス ツール» が
+        //     入っていない機械では生成そのものが失敗する。検証が無いだけで動く構成を、
+        //     起動できない構成にはしない。
+        FBZZ_LOG_WARN("DX11Renderer: 検証レイヤーを有効化できません "
+                      "(オプション機能「グラフィックス ツール」未導入?)。検証なしで続行します");
+        flags &= ~static_cast<UINT>(D3D11_CREATE_DEVICE_DEBUG);
+        hr = createDevice(flags);
+    }
+#endif
+    FBZZ_HR_CHECK(hr);
 
     if (!CreateRenderTargetView())  return false;
     if (!CreateDepthStencilView())  return false;
 
-#ifdef _DEBUG
-    // D3D11 Debug Layer はデフォルトで検証メッセージを約2秒ごとにフラッシュし、
-    // その際に定期的な FPS スパイクを引き起こす。
-    // InfoQueue でストレージフィルタを空にすることでメッセージ蓄積量を最小化し、
-    // フラッシュコストを抑える。エラーだけはブレークポイントで捕捉する。
-    // WHY: ポートフォリオ動作確認で Release 以外のビルドも一定の FPS 安定性が必要なため。
+#ifdef FBZZ_GPU_VALIDATION
+    // 検証は効かせたまま、読み出しの重さだけを消す。
+    // WHY 溜めて終了時に読むか: InfoQueue の取り出しはメッセージ 1 件につき COM 呼び出し 2 回で、
+    //     毎フレーム触ると検証レイヤー本体より重い。上限付きで溜め、Shutdown() で一度に吐く。
+    //     WARNING を捨てないのは、リソースの取り違えや解放漏れがそこに出るため。
+    if (gpuvalidation::IsEnabled())
     {
         Microsoft::WRL::ComPtr<ID3D11InfoQueue> infoQueue;
         if (SUCCEEDED(m_device.As(&infoQueue)))
         {
-            infoQueue->SetMuteDebugOutput(FALSE);
-            infoQueue->SetMessageCountLimit(-1);            // メッセージ上限を解除
+            // WHY デバッガー接続時だけ止めるか: ブレークポイント例外は、デバッガーが
+            //     居ない実行では «原因不明のクラッシュ» にしかならない。
+            const BOOL breakOnError = gpuvalidation::ShouldBreakOnError() ? TRUE : FALSE;
+            // WHY 実況を黙らせるか: メッセージ 1 件ごとの OutputDebugString は、デバッガーが
+            //     付いていると 1 回あたりミリ秒級のラウンドトリップになる。検証レイヤー本体より
+            //     この «出力» の方が重い。溜めるのは続け、Shutdown() で一度に読む。
+            infoQueue->SetMuteDebugOutput(TRUE);
+            infoQueue->SetMessageCountLimit(
+                static_cast<UINT64>(gpuvalidation::kMaxStoredMessages));
             infoQueue->ClearStoredMessages();
 
-            // ERROR / CORRUPTION だけブレーク、INFO / WARNING は蓄積しない
-            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR,      TRUE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, breakOnError);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR,      breakOnError);
             infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_WARNING,    FALSE);
             infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_INFO,       FALSE);
             infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_MESSAGE,    FALSE);
 
-            // WARNING 以下をフィルタアウトして蓄積自体を止める
+            // INFO / MESSAGE は «状態が変わった» の実況で、量が桁違いに多い。蓄積を止める。
             D3D11_MESSAGE_SEVERITY denySeverities[] = {
                 D3D11_MESSAGE_SEVERITY_INFO,
                 D3D11_MESSAGE_SEVERITY_MESSAGE,
-                D3D11_MESSAGE_SEVERITY_WARNING,
             };
             D3D11_INFO_QUEUE_FILTER filter = {};
-            filter.DenyList.NumSeverities  = 3u;
+            filter.DenyList.NumSeverities  = static_cast<UINT>(std::size(denySeverities));
             filter.DenyList.pSeverityList  = denySeverities;
             infoQueue->AddStorageFilterEntries(&filter);
         }
@@ -186,9 +212,24 @@ void DX11Renderer::Shutdown()
     m_depthStencilView.Reset();
     m_renderTargetView.Reset();
     m_swapChain.Reset();
+
+#ifdef FBZZ_GPU_VALIDATION
+    // デバイスを手放す前に、溜まった検証メッセージを回収する。
+    if (m_device) {
+        Microsoft::WRL::ComPtr<ID3D11InfoQueue> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+            gpuvalidation::DrainStoredMessages<D3D11_MESSAGE>(*infoQueue.Get(), "DX11Renderer");
+    }
+#endif
+
     m_context.Reset();
     m_device.Reset();
     m_currentRT = nullptr;
+
+#ifdef FBZZ_GPU_VALIDATION
+    // 参照を全部落とした «後» に数える。ここで残っているものが本当の解放漏れ。
+    gpuvalidation::ReportLiveObjects(DXGI_DEBUG_D3D11, "D3D11");
+#endif
 
     FBZZ_LOG_INFO("DX11Renderer shutdown");
 }
@@ -204,16 +245,52 @@ void DX11Renderer::BeginFrame()
     m_context->PSSetShaderResources(0, 16, kNullSRVs);
     m_context->CSSetShaderResources(0, 16, kNullSRVs);
 
+    BindStaticSamplers();
+
     m_currentRT = nullptr;
     m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), m_depthStencilView.Get());
+}
+
+// レジスタごとに意味を固定したサンプラーをフレーム頭で 1 回だけ張る。
+//
+// WHY パスごとに差し替えないか: DX12 は Root Signature へ焼き込む静的サンプラーなので
+//     1 レジスタに 1 つの意味しか持てない。DX11 だけ差し替えられるようにしておくと、
+//     同じシェーダーがバックエンドによって違う絵を出す。意味を固定して両者を揃える。
+// LAYOUT: DX12PsoCache.cpp の MakeStaticSamplers と、Assets/Shaders/Common/Binding.hlsli の
+//         SAMPLER_* に一致させること。3 か所のうち 1 つだけ変えると静かに壊れる。
+void DX11Renderer::BindStaticSamplers()
+{
+    // s6 はどのシェーダーも宣言していない予約枠。DX12 側と数を揃えるために埋めておく。
+    static constexpr SamplerMode kSlotModes[] = {
+        SamplerMode::WRAP_ANISOTROPIC,     // s0 SAMPLER_DEFAULT      : メッシュのタイリング
+        SamplerMode::BORDER_ZERO,          // s1 SAMPLER_SHADOW       : 比較サンプラー (PCF)
+        SamplerMode::CLAMP_LINEAR,         // s2 SAMPLER_LINEAR_CLAMP : 全画面フェッチ / LUT
+        SamplerMode::CLAMP_POINT,          // s3 SAMPLER_POINT_CLAMP  : TAA 再投影
+        SamplerMode::WRAP_BILINEAR,        // s4 SAMPLER_WRAP_LINEAR  : タイラブルな 3D ノイズ
+        SamplerMode::CLAMP_LINEAR,         // s5                      : UI / ライト Cookie
+        SamplerMode::CLAMP_POINT,          // s6                      : 予約
+        SamplerMode::BORDER_ZERO,          // s7 SAMPLER_SHADOW_PUNCTUAL : Spot / Point の比較
+        SamplerMode::WRAP_ANISOTROPIC_4X,  // s8                      : 地形ディフューズ
+    };
+    constexpr uint32_t kSlotCount = sizeof(kSlotModes) / sizeof(kSlotModes[0]);
+
+    ID3D11SamplerState* samplers[kSlotCount] = {};
+    for (uint32_t slot = 0; slot < kSlotCount; ++slot)
+        samplers[slot] = m_samplers[static_cast<uint32_t>(kSlotModes[slot])].Get();
+
+    m_context->PSSetSamplers(0, kSlotCount, samplers);
+    m_context->CSSetSamplers(0, kSlotCount, samplers);
 }
 
 void DX11Renderer::EndFrame()
 {
     // FPS limiting is handled by Time::targetFps.
     FBZZ_PROFILE_SCOPE("DX11Renderer::Present");
-    // 対応環境では tearing を許可し、Present 内の DWM 同期待ちを発生させない。
-    m_swapChain->Present(0, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0u);
+    // VSync 無効時は対応環境で tearing を許可し、Present 内の DWM 同期待ちを発生させない。
+    // 有効時は SyncInterval=1 にし、tearing フラグは落とす (併用は DXGI が拒否する)。
+    const UINT syncInterval = m_vsync ? 1u : 0u;
+    const UINT presentFlags = (!m_vsync && m_allowTearing) ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+    m_swapChain->Present(syncInterval, presentFlags);
 }
 
 void DX11Renderer::Clear(const math::Vector4& color)
@@ -339,10 +416,11 @@ std::unique_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const Pi
     return pso;
 }
 
-std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
+std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height,
+                                                                     const RenderTargetDesc& desc)
 {
     auto rt = std::make_unique<DX11RenderTarget>();
-    if (!rt->Init(m_device.Get(), width, height, colorCount))
+    if (!rt->Init(m_device.Get(), width, height, desc))
         return nullptr;
     return rt;
 }
@@ -387,8 +465,7 @@ bool DX11Renderer::BakeSkyLight(ResourceHandle<RenderTargetTag> envCubeRT, Resou
     // 入力キューブは mip0 のみ (SkyCapture)。prefilter の env LOD は mip0 を参照する (envMipCount=1)。
     // ConvolveCubeToTextures は結果を戻り値で返す (out 引数ではない)。
     // WHY: プロジェクトへEngine shaderを複製せず、GameHubが選択したSDKの共有assetを使う。
-    const std::string compiledShaders =
-        asset::AssetManager::ResolveAssetPath("Assets/Shaders/compiled/");
+    const std::string compiledShaders = ResolveAssetPath("Assets/Shaders/compiled/");
     IblTextureSet set = m_runtimeIblBaker->ConvolveCubeToTextures(
         envSRV, compiledShaders,
         irradianceSize, prefilterSize, prefilterMips, sampleCount, /*envMipCount=*/1);
@@ -410,6 +487,24 @@ std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t widt
 {
     auto tex = std::make_unique<DX11Texture>();
     if (!tex->InitForCompute(m_device.Get(), width, height))
+        return nullptr;
+    return tex;
+}
+
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture3D(
+    uint32_t width, uint32_t height, uint32_t depth)
+{
+    auto tex = std::make_unique<DX11Texture>();
+    if (!tex->InitForCompute3D(m_device.Get(), width, height, depth))
+        return nullptr;
+    return tex;
+}
+
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeDynamicTexture(
+    uint32_t width, uint32_t height, DynamicTextureFormat format)
+{
+    auto tex = std::make_unique<DX11Texture>();
+    if (!tex->InitDynamic(m_device.Get(), m_context.Get(), width, height, format))
         return nullptr;
     return tex;
 }
@@ -448,11 +543,10 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     auto* cs = static_cast<DX11Shader*>(shader);
     m_context->CSSetShader(cs->GetComputeShader(), nullptr, 0);
 
-    // WHY: HLSL 側の Compute Shader は SAMPLER_DEFAULT(s0) を使うパスがある。
-    //      DX11 は NULL Sampler でも既定動作にフォールバックするが、デバッグレイヤー警告を避けるため
-    //      ポストプロセスで最も一般的な clamp + linear を Dispatch ごとに明示する。
-    ID3D11SamplerState* defaultSampler = m_samplers[static_cast<uint32_t>(SamplerMode::CLAMP_LINEAR)].Get();
-    m_context->CSSetSamplers(0, 1, &defaultSampler);
+    // WHY BeginFrame で張ってあるのに張り直すか: DX11IblBaker のようにバックエンド内部で
+    //     CSSetSamplers を直接呼ぶ経路があり、そこを通ると s0 が別物のまま残る。
+    //     Dispatch ごとに戻しておけば、以降のパスがその影響を受けない。
+    BindStaticSamplers();
 
     // 定数バッファ (CS ステージ)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
@@ -472,13 +566,13 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         m_context->CSSetShaderResources(i, 1, &srv);
     }
 
-    // StructuredBuffer SRV (t14〜t15)
+    // StructuredBuffer SRV (添字 = レジスタ番号)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.srvBuffers.size()); ++i)
     {
         auto* sb = resources.Get(call.srvBuffers[i]);
         if (!sb) continue;
         ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
-        m_context->CSSetShaderResources(14 + i, 1, &srv);
+        m_context->CSSetShaderResources(i, 1, &srv);
     }
 
     // WHY: DX11 SM5.0 の CS UAV スロットは u0〜u7 の 8 本。
@@ -763,6 +857,45 @@ void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceM
     BindRenderTarget(resources.Get(rt));
 }
 
+bool DX11Renderer::RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+                                      ResourceManager& resources)
+{
+    if (!m_context || !resources.Get(target) || !resources.Get(call.shader)
+        || !resources.Get(call.pipelineState)) return false;
+
+    ID3D11RenderTargetView* targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> savedTargets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
+    m_context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, depth.GetAddressOf());
+    for (UINT i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+        savedTargets[i].Attach(targets[i]);
+    D3D11_VIEWPORT viewports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    D3D11_RECT scissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    UINT viewportCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    UINT scissorCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    m_context->RSGetViewports(&viewportCount, viewports);
+    m_context->RSGetScissorRects(&scissorCount, scissors);
+    Microsoft::WRL::ComPtr<ID3D11Buffer> vertexConstants;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> pixelConstants;
+    m_context->VSGetConstantBuffers(5, 1, vertexConstants.GetAddressOf());
+    m_context->PSGetConstantBuffers(5, 1, pixelConstants.GetAddressOf());
+    auto* previous = m_currentRT;
+
+    SetRenderTarget(target, resources);
+    Submit(call, resources);
+
+    // プレビュー元が元の RTV/DSV でも競合しないよう、SRV を外してから戻す。
+    BindRenderTarget(nullptr);
+    m_context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, targets, depth.Get());
+    m_context->RSSetViewports(viewportCount, viewports);
+    m_context->RSSetScissorRects(scissorCount, scissors);
+    // DX11 の Submit は未指定 CB を残す契約なので、診断専用 b5 も元へ戻す。
+    m_context->VSSetConstantBuffers(5, 1, vertexConstants.GetAddressOf());
+    m_context->PSSetConstantBuffers(5, 1, pixelConstants.GetAddressOf());
+    m_currentRT = previous;
+    return true;
+}
+
 void DX11Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
     // BindRenderTarget が RT 全体のビューポートを張った後に、その一部へ絞り込む。
@@ -841,15 +974,6 @@ void DX11Renderer::SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint3
     m_context->RSSetViewports(1, &vp);
 }
 
-void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)
-{
-    // m_samplers のインデックスは SamplerMode の列挙値と一致させている (InitSamplers 参照)
-    uint32_t idx = static_cast<uint32_t>(mode);
-    ID3D11SamplerState* sampler = m_samplers[idx].Get();
-    m_context->PSSetSamplers(slot, 1, &sampler);
-    m_context->CSSetSamplers(slot, 1, &sampler);
-}
-
 // =============================================================================
 // Private helpers
 // =============================================================================
@@ -890,7 +1014,7 @@ bool DX11Renderer::CreateDepthStencilView()
 void DX11Renderer::InitSamplers()
 {
     // SamplerMode の列挙値と配列インデックスを一致させる。
-    // SamplerMode::COUNT = 8 個を Init 時に一括生成してキャッシュする。
+    // SamplerMode::COUNT 個を Init 時に一括生成してキャッシュする。
     auto make = [&](D3D11_FILTER filter,
                     D3D11_TEXTURE_ADDRESS_MODE addr,
                     uint32_t maxAniso,

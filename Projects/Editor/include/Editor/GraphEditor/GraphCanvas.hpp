@@ -1,26 +1,27 @@
-// FBZZ Engine
-// GraphCanvas.hpp | fbzz::editor
-// ノードグラフ編集の共通キャンバス (ImNodes ラッパー)
-//
-// 責務:
-//   ImNodes コンテキストの寿命 / テーマ / カーソル基準ズーム / パン /
-//   ノード・リンク・グループの描画 / 選択・移動・接続・削除の解釈 /
-//   ミニマップ / グリッド / Frame All・Frame Selection / キーボード操作 /
-//   ピン hover・コンテキストメニュー / 一時エラーハイライト / Asset D&D 受け
-//   ノード・ピン・リンク・グループのビュー単位スタイル適用
-//
-// 責務でないもの (ツール側に残す):
-//   データモデル / リンクの妥当性検証 / Undo / Inspector / アセットの保存
-//
-// WHY この分割か: Docs/design/graph-editor-framework.md を参照。
-//   要点は「3 つのグラフはデータモデルが根本的に違うので、共通の抽象モデルを
-//   作ると和集合になってどのツールにも使いにくい型ができる」。
-//
-// ビルド:
-//   imnodes は fbzz_editor が PUBLIC リンクする正式なライブラリターゲット。
-//   `#include <imnodes.cpp>` で実装を .obj へ抱え込む必要はない (以前は
-//   AnimationGraphPanel.cpp がそうしており、「他の .cpp は真似してはならない」という
-//   不変条件をこのコメントでしか守れなかった。今は二重定義をリンカが弾く)。
+/// @file    GraphCanvas.hpp
+/// @brief   ノードグラフ編集の共通キャンバス (ImNodes ラッパー)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// 責務:
+/// ImNodes コンテキストの寿命 / テーマ / カーソル基準ズーム / パン /
+/// ノード・リンク・グループの描画 / 選択・移動・接続・削除の解釈 /
+/// ミニマップ / グリッド / Frame All・Frame Selection / キーボード操作 /
+/// ピン hover・コンテキストメニュー / 一時エラーハイライト / Asset D&D 受け
+/// ノード・ピン・リンク・グループのビュー単位スタイル適用
+///
+/// 責務でないもの (ツール側に残す):
+/// データモデル / リンクの妥当性検証 / Undo / Inspector / アセットの保存
+///
+/// WHY この分割か: Docs/design/graph-editor-framework.md を参照。
+/// 要点は「3 つのグラフはデータモデルが根本的に違うので、共通の抽象モデルを
+/// 作ると和集合になってどのツールにも使いにくい型ができる」。
+///
+/// ビルド:
+/// imnodes は fbzz_editor が PUBLIC リンクする正式なライブラリターゲット。
+/// `#include <imnodes.cpp>` で実装を .obj へ抱え込む必要はない (以前は
+/// AnimationGraphPanel.cpp がそうしており、「他の .cpp は真似してはならない」という
+/// 不変条件をこのコメントでしか守れなかった。今は二重定義をリンカが弾く)。
 #pragma once
 #include <Editor/GraphEditor/GraphInteraction.hpp>
 #include <Editor/GraphEditor/GraphView.hpp>

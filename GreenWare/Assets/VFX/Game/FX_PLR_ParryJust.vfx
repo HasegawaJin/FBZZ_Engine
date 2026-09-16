@@ -1,0 +1,477 @@
+# FX_PLR_ParryJust.vfx — Just 弾き (break-parry.md «Just 窓»)
+# FX_PLR_Parry と同じ 4 層に、«読み切った» を言う 3 層を足す:
+#   Burst Rays  … 放射の光条 1 枚。0.16 秒。2 枚以上重ねると白く抜けるので 1 枚
+#   Hard Ring   … 締まった輪が 2 重 (即時の輪 + 0.05 秒遅れの大きい輪)
+#   Glint Stars … 4 本光条の «キラッ» を 5 粒。金属の噛み合いの音を絵にする
+# 色は通常の弾きと同じ白〜氷色 (極性の出来事ではない)。煙も焦げも残さず 0.45 秒で全て消える。
+# ScreenEffect / CameraShake / TimeScale は置かない (ImpactFeedback 側が配分を持つ)。
+# 公開パラメーターは ParryVfxComponent を共用 (層の名前を揃えてある)。
+
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_PLR_ParryJust"
+instanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "ParryVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+tint = [0.86, 0.95, 1.0, 1.0]
+sparkPower = 24.0
+flashLight = 34.0
+ringSize = 4.6
+
+[[gameobjects]]
+name = "Flash"
+instanceId = "3c830709-3523-4382-b8f1-359c2cb644e3"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.12
+maxParticles = 4
+shape = 0
+sizeStart = 1.9
+sizeEnd = 0.15
+sizeCurvePower = 2.6
+lifetime = 0.065
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+sortMode = 0
+renderPriority = 84
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Burst Rays"
+instanceId = "2686dd40-1e6c-4397-b563-f19861123591"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 放射の光条。回転をランダムに散らすため角速度を大きく取り、1 コマ目で向きが決まる。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.2
+maxParticles = 2
+shape = 0
+sizeStart = 2.5
+sizeEnd = 3.8
+sizeCurvePower = 0.22
+lifetime = 0.1
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_BurstRays_Additive.mat"
+sortMode = 0
+angularVelocityMin = -1.5
+angularVelocityMax = 1.5
+renderPriority = 78
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0, 0.9], [1.0, 1.0, 1.0, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Cross"
+instanceId = "c6e52c1f-81f6-4a98-8161-d7eb6c2a6de3"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.2
+maxParticles = 4
+shape = 0
+sizeStart = 0.6
+sizeEnd = 3.2
+sizeCurvePower = 0.2
+lifetime = 0.11
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SplashImpact_Additive.mat"
+sortMode = 0
+angularVelocityMin = -10.0
+angularVelocityMax = 10.0
+renderPriority = 76
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Ring"
+instanceId = "29c6aa13-43ed-4fc3-922d-e9fc743f6384"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 即時の硬い輪。Ring Size (直径) は ParryVfxComponent が書く。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 2
+shape = 0
+sizeStart = 0.3
+sizeEnd = 4.6
+sizeCurvePower = 0.28
+lifetime = 0.18
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
+sortMode = 0
+renderPriority = 70
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+
+startDelay = 0.02
+[[gameobjects]]
+name = "Ring Late"
+instanceId = "202a750c-cba3-416e-bb6a-bf18fcb34af8"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 0.05 秒遅れて走る 2 本目。輪が 2 重になると «音が響いた» に見える。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.4
+maxParticles = 2
+shape = 0
+sizeStart = 0.4
+sizeEnd = 7.0
+sizeCurvePower = 0.32
+lifetime = 0.24
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
+sortMode = 0
+renderPriority = 69
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 0.0], [0.15, 1.0, 1.0, 1.0, 0.8], [1.0, 1.0, 1.0, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+startDelay = 0.075
+
+
+colorStart = [0.65, 0.88, 1.0, 0.42]
+[[gameobjects]]
+name = "Glint Stars"
+instanceId = "ac60cef8-ecc7-4e37-aba8-d16ff92d9bda"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 4 本光条の «キラッ»。数を絞る ─ 重ねると星ではなく白い板になる。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.35
+maxParticles = 8
+shape = 1
+sphereRadius = 0.55
+sizeStart = 0.5
+sizeEnd = 0.0
+sizeCurvePower = 0.7
+lifetime = 0.19
+lifetimeRandom = 0.35
+velocitySpread = 1.2
+velocityDamping = 3.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlintStar_Additive.mat"
+sortMode = 0
+angularVelocityMin = -0.6
+angularVelocityMax = 0.6
+renderPriority = 79
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.05
+[[gameobjects]]
+name = "Glint Dots"
+instanceId = "b8274763-0edd-4e44-ae43-126258657fd5"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.35
+maxParticles = 12
+shape = 1
+sphereRadius = 0.5
+sizeStart = 0.3
+sizeEnd = 0.0
+sizeCurvePower = 1.4
+lifetime = 0.24
+lifetimeRandom = 0.3
+velocitySpread = 3.5
+velocityDamping = 2.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+sortMode = 0
+renderPriority = 72
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 8, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Shards"
+instanceId = "75e78834-f507-44d5-ab2d-c406a1fa63cd"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 破片の火花。通常より数と速さが上。尾を引かせて «弾き飛んだ» を残す (0.4 秒で全滅)。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.5
+maxParticles = 90
+shape = 1
+sphereRadius = 0.12
+sizeStart = 0.11
+sizeEnd = 0.02
+lifetime = 0.29
+lifetimeRandom = 0.4
+velocitySpread = 24.0
+velocityDamping = 3.4
+gravity = [0.0, -12.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.12
+stretchedLengthScale = 2.4
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.02
+collisionBounciness = 0.4
+collisionDamping = 0.5
+renderPriority = 60
+simulationMode = 0
+trailEnabled = true
+trailPointCount = 4
+trailSampleInterval = 0.012
+trailWidthScale = 0.3
+trailAlphaScale = 0.2
+colorVariation = 0.05
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.3, 0.8, 0.93, 1.0, 1.0], [1.0, 0.5, 0.7, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 28, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Chips"
+instanceId = "b9584c11-c74e-4d54-9cc6-fe7eda459a09"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 金属片。無彩色 (12.2 の «破片»)。少数を重力で落として «硬い物が欠けた» を言う。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 10
+shape = 1
+sphereRadius = 0.1
+sizeStart = 0.09
+sizeEnd = 0.06
+lifetime = 0.55
+lifetimeRandom = 0.3
+velocitySpread = 9.0
+velocityDamping = 1.2
+gravity = [0.0, -16.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Shard_Lit.mat"
+sortMode = 1
+angularVelocityMin = -30.0
+angularVelocityMax = 30.0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.03
+collisionBounciness = 0.3
+collisionDamping = 0.6
+renderPriority = 40
+simulationMode = 0
+colorStart = [0.85, 0.87, 0.9, 1.0]
+colorEnd = [0.6, 0.62, 0.65, 0.0]
+bursts = [{ time = 0.0, count = 6, cycles = 1, interval = 0.0, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Flash Light"
+instanceId = "db160847-7e29-4cff-abaa-c52a56aa4bbc"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_ParryJust"
+parentInstanceId = "1d1d90fd-a284-4bbd-8606-16031f7d7ef3"
+
+[gameobjects.transform]
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 通常の弾きより長く (0.14 → 0.18 秒) 明るく。Just の閃光は «止めが解けるまで» 残る。
+[gameobjects.LightComponent]
+type = "Point"
+color = [0.86, 0.95, 1.0]
+intensity = 34.0
+enabled = true
+range = 9.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.18
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.3, 0.45], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

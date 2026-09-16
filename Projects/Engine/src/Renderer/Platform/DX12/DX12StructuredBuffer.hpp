@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12StructuredBuffer.hpp | fbzz::renderer
-// StructuredBuffer / RWStructuredBuffer のDirectX 12実装
+/// @file    DX12StructuredBuffer.hpp
+/// @brief   StructuredBuffer / RWStructuredBuffer のDirectX 12実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IStructuredBuffer.hpp>
@@ -16,7 +17,8 @@ class DX12StructuredBuffer final : public IStructuredBuffer {
 public:
     ~DX12StructuredBuffer() override;
     bool Init(DX12Context* context, DX12StateTracker* tracker, const void* data,
-              uint32_t elementCount, uint32_t stride, bool readWrite);
+              uint32_t elementCount, uint32_t stride, bool readWrite,
+              bool gpuLocalReadOnly = false);
     void Update(const void* data, size_t sizeBytes) override;
     uint32_t GetElementCount() const override { return m_elementCount; }
     uint32_t GetStride() const override { return m_stride; }
@@ -36,6 +38,8 @@ private:
     uint32_t m_elementCount = 0;
     uint32_t m_stride = 0;
     bool m_readWrite = false;
+    // DEFAULT Heap 上の immutable SRV。生成時の upload 後は CPU Update を受け付けない。
+    bool m_gpuLocalReadOnly = false;
 };
 
 } // namespace fbzz::renderer

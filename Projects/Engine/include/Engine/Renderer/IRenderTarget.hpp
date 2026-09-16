@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IRenderTarget.hpp | fbzz::renderer
-// RenderTarget の抽象インターフェース
-// バックバッファ以外の描画先をバックエンド非依存に扱う。
-// 複数カラーバッファや ImGui 表示用 SRV は実装側が管理する。
+/// @file    IRenderTarget.hpp
+/// @brief   RenderTarget の抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// バックバッファ以外の描画先をバックエンド非依存に扱う。
+/// 複数カラーバッファや ImGui 表示用 SRV は実装側が管理する。
 #pragma once
 #include <cstdint>
 

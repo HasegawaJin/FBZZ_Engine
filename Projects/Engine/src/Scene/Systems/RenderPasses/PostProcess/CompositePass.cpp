@@ -1,17 +1,18 @@
-// FBZZ Engine
-// CompositePass.cpp | fbzz::scene
-// Composite render pass implementation
+/// @file    CompositePass.cpp
+/// @brief   Composite render pass implementation.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "PostProcessPasses.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Util/Mathf.hpp>
+#include <algorithm>
 #include <cmath>
 
 namespace fbzz::scene {
@@ -42,7 +43,8 @@ UnderwaterInfo EvaluateUnderwaterInfo(const RenderPassContext& ctx)
 
         // WHY: 水面は GPU で揺らすが、カメラ水没判定はポストプロセス前に CPU で決める必要がある。
         //      WaterComponent の Gerstner 評価を再利用し、描画された水面と近い高さで判定する。
-        const float surfaceY = transform.position.y + water.GetSurfaceHeightAt(localX, localZ, time);
+        const float surfaceY = transform.position.y
+            + water.GetSurfaceHeightAt(ctx.camera.m_position.x, ctx.camera.m_position.z, time);
         const float depth = surfaceY - ctx.camera.m_position.y;
         if (depth <= 0.0f || depth <= best.depth) continue;
 
@@ -94,21 +96,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     const auto& rs = ctx.settings;
 
     const auto& pp = rs.postProcess;
-    bool hasCustomPostProcess = false;
-    for (const auto shader : h.customPostProcessShaders) {
-        if (shader.IsValid()) {
-            hasCustomPostProcess = true;
-            break;
-        }
-    }
-    // WHY: TAA は Composite の出力 (ldrRT) を t5 として読む。
-    //      taa.enabled の場合も ldrRT に書かないと TAA が stale なバッファを読んで黒になる。
-    //      RenderSystem 側の needsLdrIntermediate と必ず一致させること。
-    const bool needsLdrIntermediate =
-        pp.fxaaEnabled || ctx.selectionOutlineEnabled ||
-        (hasCustomPostProcess && h.customPostProcessRT[0].IsValid()) ||
-        rs.IsTaaActive();
-    r.SetRenderTarget(needsLdrIntermediate ? h.ldrRT : ctx.outputRT, resources);
+    // 書き先はパイプラインを組んだ側が決める (ctx.compositeOutputRT の WHY)。
+    r.SetRenderTarget(ctx.compositeOutputRT, resources);
 
     PostProcCB postData{};
     postData.texelSize[0] = 1.0f / static_cast<float>(ctx.width);
@@ -117,7 +106,9 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.screenSize[1] = static_cast<float>(ctx.height);
     postData.exposure = pp.exposure;
     postData.time = Time::time;
-    postData.bloomIntensity = pp.bloom.enabled ? pp.bloom.intensity : 0.0f;
+    // ユーザー設定の発光量はボリューム合成の影響を受けない rs から掛ける。
+    postData.bloomIntensity =
+        (pp.bloom.enabled ? pp.bloom.intensity : 0.0f) * (std::max)(rs.userBloomScale, 0.0f);
     postData.fogDensity = pp.fog.enabled ? pp.fog.density : 0.0f;
     postData.fogFar = pp.fog.farDistance;
     postData.fogColor[0] = pp.fog.color[0];
@@ -125,6 +116,13 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.fogColor[2] = pp.fog.color[2];
     // フォグ色の出どころ (0=Exponential, 1=Atmosphere)。Atmosphere は b3/b6 から大気散乱を計算する。
     postData.fogSource = static_cast<float>(pp.fog.source);
+    postData.radialBlur = std::clamp(pp.lens.radialBlur, 0.0f, 1.0f);
+    // 衝撃波リング。幅 0 は «輪が無い» ではなく 0 除算なので、下限で止める。
+    postData.shockRingAmplitude = std::clamp(pp.lens.shockRingAmplitude, 0.0f, 1.0f);
+    postData.shockRingRadius    = (std::max)(pp.lens.shockRingRadius, 0.0f);
+    postData.shockRingWidth     = (std::max)(pp.lens.shockRingWidth, 0.001f);
+    postData.shockRingCenter[0] = pp.lens.shockRingCenter[0];
+    postData.shockRingCenter[1] = pp.lens.shockRingCenter[1];
     postData.contrast = pp.colorGrading.enabled ? pp.colorGrading.contrast : 0.0f;
     postData.saturation = pp.colorGrading.enabled ? pp.colorGrading.saturation : 1.0f;
     postData.hueShift = pp.colorGrading.enabled ? pp.colorGrading.hueShift : 0.0f;
@@ -159,6 +157,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.colorFilter[0] = pp.imageQuality.colorFilter[0];
     postData.colorFilter[1] = pp.imageQuality.colorFilter[1];
     postData.colorFilter[2] = pp.imageQuality.colorFilter[2];
+    // ユーザー設定の明るさ。ボリューム合成の影響を受けない rs から直に読む。
+    postData.userBrightness     = rs.userBrightness;
     postData.screenFadeAlpha    = pp.screenFadeAlpha;
     postData.screenFadeColor[0] = pp.screenFadeColor[0];
     postData.screenFadeColor[1] = pp.screenFadeColor[1];
@@ -174,10 +174,6 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     }
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
-    r.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
-    // Procedural Texture3D LUTはテクセル間を三線形補間し、端ではClampする。
-    r.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
-
     renderer::DrawCall compositeDC;
     compositeDC.shader = h.compositeShader;
     compositeDC.pipelineState = h.postprocPSO;
@@ -189,26 +185,44 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     compositeDC.constantBuffers[5] = h.postprocCB;
     compositeDC.constantBuffers[6] = h.atmosphereCB;
     compositeDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: ssrIntensity, volLightIntensity, lutBlend 等
+    // t29: 自動露出が求めた順応済み平均輝度 (1 要素)。
+    // WHY 有効なときだけ束縛するか: Composite.hlsl は autoExposureKey <= 0 で
+    //     読みに行かない。未束縛のまま読むと 0 が返って露出が発散する。
+    if (rs.autoExposure.enabled && h.exposureResult.IsValid())
+        compositeDC.psBuffers[0] = h.exposureResult;
+    // b13 + t23: フロクセル霧。
+    // WHY 無効でも b13 を束縛するか: 有効 / 無効の判断は CB の froxelGridZ が持つ。
+    //     FroxelFogPass が切ったときに 0 を書き戻すので、ここは常に最新を渡せばよい。
+    //     束縛を止めると DX11 では前フレームの値が残り、切った瞬間に画面が黒く落ちる。
+    if (h.froxelFogCB.IsValid()) {
+        compositeDC.constantBuffers[13] = h.froxelFogCB;
+        if (h.froxelIntegrated.IsValid())
+            compositeDC.textures[23] = h.froxelIntegrated;
+    }
     // MotionBlur が有効な場合、CS が生成した blurred HDR を hdrRT の代わりに t5 に束縛する。
     // WHY: MotionBlurPass が motionBlurResult に完全なブラー済み HDR を書いているため、
     //      Composite はそれを HDR ソースとして読めばよい。Composite.hlsl の変更は不要。
     compositeDC.textures[5] = (rs.motionBlur.enabled && h.motionBlurResult.IsValid())
         ? h.motionBlurResult
-        : resources.GetColorTexture(h.hdrRT, 0);
-    compositeDC.textures[7] = resources.GetDepthTexture(h.hdrRT);
-    compositeDC.textures[10] = pp.bloom.enabled ? h.bloomFull : renderer::ResourceHandle<renderer::TextureTag>{};
+        : resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
+    compositeDC.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    // t10 / t19 / t20 は RenderGraph の外にある永続テクスチャなので、書き手のパスが
+    // 走らなかったフレームは前の中身が残る。«設定が有効» ではなく «今フレーム書かれた» で
+    // 束縛を決める。未束縛の SRV は 0 を返すので、シェーダー側は分岐なしで素通しになる。
+    const bool bloomWritten = pp.bloom.enabled
+        && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid();
+    compositeDC.textures[10] = bloomWritten ? ctx.Res().Texture("Bloom") : renderer::ResourceHandle<renderer::TextureTag>{};
     // SSR 反射結果 (t19) — Composite.hlsl が ssrIntensity に基づいてブレンドする
-    if (rs.ssr.enabled && h.ssrResult.IsValid())
+    if (ctx.ssrPassActive && h.ssrResult.IsValid())
         compositeDC.textures[19] = h.ssrResult;
-    // Volumetric Light 結果 (t20) — Composite.hlsl が volLightIntensity で加算する
-    if (rs.volumetricLight.enabled && h.volumetricResult.IsValid())
-        compositeDC.textures[20] = h.volumetricResult;
+    // Volumetric Light はここでは束縛しない。VolumetricLightPass が水・半透明より前で
+    // HDR へ加算済みで、ここで足すと二重になるうえ水面の手前へ光芒が乗る。
     // Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。
     if (rs.lutColorGrading.enabled && h.proceduralColorLut.IsValid())
         compositeDC.textures[22] = h.proceduralColorLut;
     r.Submit(compositeDC, resources);
 
-    h.postProcessInput = resources.GetColorTexture(h.ldrRT, 0);
+    h.postProcessInput = resources.GetColorTexture(ctx.Res().Target("LDR"), 0);
     h.fxaaInput = h.postProcessInput;
 }
 

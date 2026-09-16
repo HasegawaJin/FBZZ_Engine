@@ -1,21 +1,24 @@
-// FBZZ Engine
-// AvatarMaskAsset.hpp | fbzz::asset
-// アニメーションレイヤーが「どのボーンに効くか」を定義する再利用可能アセット (.mask)
-//
-// WHY: 上半身だけ / 下半身だけの制御は、レイヤーごとに対象ボーン集合を切り替えることで実現する。
-//      その集合をレイヤー内にインライン保持すると、キャラクターやコントローラーごとに
-//      同じボーンパスを手で書き直すことになり、スケルトンを差し替えた瞬間に全滅する。
-//      独立アセットにしておけば 1 つ作って全レイヤー・全キャラで使い回せる。
-//
-// WHAT: ボーンパスごとに weight (0..1) と blendDepth を持つ。blendDepth は
-//       「分岐点から下へ何階層かけて weight を立ち上げるか」で、腰などの継ぎ目で
-//       ポーズが折れるのを防ぐ (Unreal の Layered blend per bone の blend depth 相当)。
+/// @file    AvatarMaskAsset.hpp
+/// @brief   アニメーションレイヤーが「どのボーンに効くか」を定義する再利用可能アセット (.mask)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: 上半身だけ / 下半身だけの制御は、レイヤーごとに対象ボーン集合を切り替えることで実現する。
+/// その集合をレイヤー内にインライン保持すると、キャラクターやコントローラーごとに
+/// 同じボーンパスを手で書き直すことになり、スケルトンを差し替えた瞬間に全滅する。
+/// 独立アセットにしておけば 1 つ作って全レイヤー・全キャラで使い回せる。
+///
+/// WHAT: ボーンパスごとに weight (0..1) と blendDepth を持つ。blendDepth は
+/// 「分岐点から下へ何階層かけて weight を立ち上げるか」で、腰などの継ぎ目で
+/// ポーズが折れるのを防ぐ (Unreal の Layered blend per bone の blend depth 相当)。
 #pragma once
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace fbzz::asset {
+
+struct Skeleton;
 
 // ボーン 1 本 (と、任意でその子孫) に対するマスク設定。
 struct AvatarMaskEntry {
@@ -63,6 +66,8 @@ struct AvatarMaskAsset {
     // このマスクを作った元スケルトン。Editor がボーンツリーを再表示するために覚えておく。
     // ランタイムの評価には使わない。
     std::string skeletonSourcePath;
+    // 元 FBX の更新検知用署名。空文字は旧形式または未保存状態を表す。
+    std::string skeletonSourceSignature;
 
     bool operator==(const AvatarMaskAsset&) const = default;
 };
@@ -74,6 +79,28 @@ struct AvatarMaskAsset {
 // 複数エントリが一致する場合は「より深い (より具体的な) エントリ」が勝つ。
 // WHY: 「腕全体 0 → 手だけ 1」のような上書き指定を、記述順に依存せず自然に書けるようにする。
 [[nodiscard]] float EvaluateAvatarMaskWeight(
+    const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName);
+
+// blendDepth によるランプ。エントリのルート骨 (depth 0) は weight/(blendDepth+1) から始まり、
+// depth >= blendDepth で weight に到達する。
+// WHY 公開するか: 「指定した骨自身は weight に届かない」という規則は、Inspector の
+//     blendDepth 入力欄からも .mask のテキストからも読み取れない。Editor がその場で
+//     ランプを表示できないと、今回の「Chest が 0.33 で Base が 67% 残る」が再発する。
+[[nodiscard]] float AvatarMaskRampedWeight(const AvatarMaskEntry& entry, int depth);
+
+// EvaluateAvatarMaskWeight が内部で行う一致判定の結果。勝者だけでなく全候補を返す。
+struct AvatarMaskMatch {
+    int   entryIndex  = -1;
+    int   depth       = 0;   // エントリのルート骨からの階層差
+    float weight      = 0.0f;// このエントリ単独で採用された場合の実効ウェイト
+    int   specificity = -1;  // 大きいほど優先。同点は先に書かれた方が勝つ
+};
+
+// bonePath / boneName に一致するエントリを、勝つ順 (specificity 降順) に返す。
+// WHY: 名前指定とフルパス指定を両方書いたマスクでは、どちらが効くかが内部規則にしかない。
+//      負け続けて何もしていないエントリを Editor が見せられるようにする。
+// NOTE: 割り当てを伴うため毎フレーム経路では使わないこと (ランタイムは Evaluate 側)。
+[[nodiscard]] std::vector<AvatarMaskMatch> MatchAvatarMaskEntries(
     const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName);
 
 // 体パーツの表示名 ("Left Arm" 等)。Editor UI とログに使う。
@@ -89,5 +116,13 @@ struct AvatarMaskAsset {
 
 // ボーン名からもっとも当てはまる体パーツを推定する。判定できなければ Count を返す。
 [[nodiscard]] HumanoidBodyPart GuessBodyPartForBone(std::string_view boneName);
+
+// SkeletonNode の親を辿って、Inspector とランタイムで共有できる完全パスを構築する。
+// WHY: ノード名だけでは同名ボーンを区別できず、階層編集したマスクが別ボーンへ誤適用される。
+[[nodiscard]] std::string BuildSkeletonNodePath(const Skeleton& skeleton, int nodeIndex);
+
+// 保存前に、親ルールと同じ結果になる冗長な子ルールを取り除く。
+// WHY: ツリーで大量のボーンを選択しても、.mask は最小限の階層ルールとして保つ。
+void CompressAvatarMaskEntries(AvatarMaskAsset& mask);
 
 } // namespace fbzz::asset

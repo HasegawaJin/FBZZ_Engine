@@ -1,19 +1,22 @@
-// FBZZ Engine
-// Material/Effects/Particle.hlsl | Material
-// CPU パーティクル用ビルボードシェーダー
+/// @file    Particle.hlsl
+/// @brief   CPU パーティクル用ビルボードシェーダー
+/// @author  Hasegawa Jin
+/// @date    2026-05-19
+//
 // PSO: SOLID_NOCULL + ADDITIVE/ALPHA_BLEND + DEPTH_READ
 
-#include "Common/Binding.hlsli"
-#define FBZZ_MATERIAL_CONSTANTS
-#include "Common/Constants.hlsli"
-#include "Common/Space.hlsli"
-#include "Platform/Backend.hlsli"
+// ParticleCommon.hlsli を最初に include する (b11 の cbuffer / ParticleVSIn /
+// ParticlePSIn / ParticleBillboardVS を供給し、b2 を材質へ空ける)。
 #include "Rendering/ParticleCommon.hlsli"
+#include "Common/Space.hlsli"
 #include "Rendering/ParticleNoise.hlsli"
 #include "Rendering/ParticleSelfShadow.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Rendering/ParticleLighting.hlsli"
 
 Texture2D    gParticleTex : register(TEX_ALBEDO);
+// 歪みベクトル専用ノーマルマップ。gEffectsFlags の FBZZ_PFX_DISTORTION_MAP で有効判定する。
+Texture2D    gDistortionTex : register(TEX_NORMAL);
 Texture2D    gSceneDepth  : register(TEX_DEPTH);
 Texture2D    gSceneColor  : register(t5);
 Texture2D    gMotionVectors : register(t6);
@@ -24,155 +27,10 @@ Texture2D<float>       gShadowMap  : register(TEX_SHADOW);
 SamplerState           gSampler    : register(SAMPLER_DEFAULT);
 SamplerComparisonState gSampShadow : register(SAMPLER_SHADOW);
 
-cbuffer ParticleRenderConstants : register(CB_MATERIAL)
-{
-    uint  gRenderMode;
-    float gStretchedVelocityScale;
-    float gStretchedLengthScale;
-    float gSoftParticleFadeDistance;
-    uint  gSoftParticles;
-    uint  gMaxParticles;
-    uint  gEffectsFlags;
-    float gDistortionStrength;
-    float gLightingStrength;
-    float gEmissiveScale;
-    float gMotionVectorStrength;
-    // 描画先の解像度。PostProcConstants の screenSize はパーティクル描画では
-    // バインドされないため、歪みの画面UVはこちらを使う。
-    float gScreenWidth;
-    float gScreenHeight;
-    // ビルボードの軸ごとサイズ倍率 (縦に伸びる炎・平たい衝撃波などの非等方形状用)
-    float gSizeAxisScaleX;
-    float gSizeAxisScaleY;
-    // 受け影の強さ [0,1]。0 で無効 (影サンプリング自体をスキップ)。
-    float gShadowStrength;
-    // ボリュメトリック煙 (gEffectsFlags bit4)
-    uint  gVolumetricSteps;
-    float gVolumetricDensity;
-    float gVolumetricAnisotropy;
-    float gVolumetricNoiseScale;
-    // GPU 経路 (ParticleGPU.hlsl) 専用。CPU 経路では読まないが、同じ b2 を共有するため
-    // ParticleRenderCB のレイアウトを 1 バイトもずらさないよう必ず宣言を揃える。
-    uint  gGpuSortEnabled;
-    // 自己影の消衰係数。0 で無効。密度バッファ (t9) は Particle パスが用意する。
-    float gSelfShadowStrength;
-    float gParticlePad1;
-    float gParticlePad2;
-};
-
-struct ParticleVSIn
-{
-    float3 center : POSITION;   // ワールド空間パーティクル中心
-    float2 uv     : TEXCOORD0;  // クワッドコーナー UV [0,1]
-    float4 color  : COLOR;      // RGBA (alpha = フェード乗数)
-    float  size   : TEXCOORD1;  // ビルボードの一辺サイズ (ワールド単位)
-    float  rotation : TEXCOORD2;
-    float4 uvRect   : TEXCOORD3; // xy=min, zw=max
-    float3 velocity : TEXCOORD4;
-    float4 nextUvRect : TEXCOORD5;
-    float spriteBlend : TEXCOORD6;
-};
-
-struct ParticlePSIn
-{
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-    float2 localUv    : TEXCOORD1;
-    float2 nextUv     : TEXCOORD2;
-    float spriteBlend : TEXCOORD3;
-    // 受け影のシャドウマップ投影に使うワールド座標。
-    float3 worldPos   : TEXCOORD4;
-    // ボリュメトリック煙のレイマーチ用: 粒子中心と半径 (ワールド単位)。
-    float3 center     : TEXCOORD5;
-    float  radius     : TEXCOORD6;
-    float4 color      : COLOR;
-};
-
-// ---------- ボリュメトリック煙 -------------------------------------------
-// ビルボードの矩形内で、粒子中心の球状密度場をレイマーチする。
-// WHY: 板ポリゴンにテクスチャを貼るだけでは、カメラが回り込んだときに
-//      「紙が回った」ように見える。視線方向へ積分すると厚みが出て、
-//      逆光での前方散乱 (縁が光る) も表現できる。
-//      専用パスを増やさず PS 内で完結させることで、既存の VB/PSO/ブレンド・
-//      ソート・受け影の仕組みをそのまま流用している。
-
-// Henyey-Greenstein 位相関数。g>0 で前方散乱が強くなる。
-float HenyeyGreenstein(float cosTheta, float g)
-{
-    float gg = g * g;
-    float denom = 1.0f + gg - 2.0f * g * cosTheta;
-    return (1.0f - gg) / (4.0f * 3.14159265f * max(pow(abs(denom), 1.5f), 1.0e-4f));
-}
-
-// 球内の密度。中心ほど濃く、外周でゼロへ落ちる。ノイズで塊感を与える。
-float VolumetricDensityAt(float3 samplePos, float3 center, float radius)
-{
-    float3 offset = (samplePos - center) / max(radius, 1.0e-4f);
-    float  r = length(offset);
-    if (r >= 1.0f) return 0.0f;
-    // 外周へ向かって滑らかに 0 へ。二乗で中心に密度を寄せる。
-    float falloff = 1.0f - r;
-    falloff *= falloff;
-    // ノイズはワールド座標基準。粒子が動いても模様が張り付いて見えないよう
-    // 中心からの相対位置ではなくワールド位置でサンプルする。
-    float noise = FbmNoise3D(samplePos * gVolumetricNoiseScale, 3);
-    return saturate(falloff * (0.6f + 0.8f * noise));
-}
-
-ParticlePSIn VSMain(ParticleVSIn v)
-{
-    // row-major view 行列の列 0, 1 = カメラ空間 X / Y 軸のワールド向き
-    float3 right = float3(view[0][0], view[1][0], view[2][0]);
-    float3 up    = float3(view[0][1], view[1][1], view[2][1]);
-    float lengthScale = 1.0f;
-    if (gRenderMode == 1)
-    {
-        float speed = length(v.velocity);
-        if (speed > 1.0e-4f)
-        {
-            up = v.velocity / speed;
-            float3 viewDir = normalize(cameraPos - v.center);
-            right = normalize(cross(up, viewDir));
-            lengthScale = max(gStretchedLengthScale + speed * gStretchedVelocityScale, 0.0f);
-        }
-    }
-    else if (gRenderMode == 2)
-    {
-        right = float3(1.0f, 0.0f, 0.0f);
-        up = float3(0.0f, 0.0f, 1.0f);
-    }
-    else if (gRenderMode == 3)
-    {
-        up = float3(0.0f, 1.0f, 0.0f);
-        float3 viewDir = normalize(cameraPos - v.center);
-        right = normalize(cross(up, viewDir));
-    }
-
-    // UV [0,1] → corner オフセット [-1, +1]
-    float2 corner   = v.uv * 2.0f - 1.0f;
-    float  s = sin(v.rotation);
-    float  c = cos(v.rotation);
-    corner = float2(corner.x * c - corner.y * s, corner.x * s + corner.y * c);
-    // 軸ごとの倍率は回転の後に掛ける。先に掛けると回転で縦横比が混ざり、
-    // 「回しても細長いまま」という直感的な挙動にならない。
-    float3 worldPos = v.center
-                    + right * corner.x * v.size * 0.5f * gSizeAxisScaleX
-                    + up    * corner.y * v.size * 0.5f * gSizeAxisScaleY * lengthScale;
-
-    ParticlePSIn o;
-    o.svPosition = mul(float4(worldPos, 1.0f), viewProjection);
-    o.uv         = lerp(v.uvRect.xy, v.uvRect.zw, v.uv);
-    o.localUv    = v.uv;
-    o.nextUv     = lerp(v.nextUvRect.xy, v.nextUvRect.zw, v.uv);
-    o.spriteBlend = v.spriteBlend;
-    o.worldPos   = worldPos;
-    o.center     = v.center;
-    // 非等方スケールが掛かっていても球として扱うため、大きい方の半径を使う
-    // (小さい方に合わせると縁が矩形からはみ出して切れて見える)。
-    o.radius     = v.size * 0.5f * max(gSizeAxisScaleX, gSizeAxisScaleY);
-    o.color      = v.color;
-    return o;
-}
+// ビルボード展開は Rendering/ParticleCommon.hlsli が持つ。
+// WHY: 自己影・オーバードロー計測・選択マスクも同じ形を描かないと意味を持たないため、
+//      式を 1 か所に置いて 4 つのパスで共有する。
+ParticlePSIn VSMain(ParticleVSIn v) { return ParticleBillboardVS(v); }
 
 float4 PSMain(ParticlePSIn p) : SV_Target0
 {
@@ -204,6 +62,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         float stepLength = (2.0f * halfChord) / (float)steps;
         float3 lightDirection = normalize(-lightDir);
         float  phase = HenyeyGreenstein(dot(-viewDir, lightDirection), gVolumetricAnisotropy);
+        // 空の照度 (IBL) を受ける。定数の ambientColor だと、同じ場所の地面と煙で環境光が食い違う。
+        const float3 volumetricAmbient = ParticleAmbientIsotropic();
 
         float3 scattered = 0.0f;
         float  transmittance = 1.0f;
@@ -242,8 +102,9 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
 
             float extinction = density * gVolumetricDensity * stepLength;
             float stepTransmittance = exp(-extinction);
-            float3 inScatter = (ambientColor
-                + lightColor * (phase * lightTransmittance * mapShadow)) * p.color.rgb;
+            float3 inScatter = (volumetricAmbient
+                + lightColor * (phase * lightTransmittance * mapShadow))
+                * p.color.rgb * gTintColor.rgb;
             // エネルギー保存に沿った積分 (解析的な 1 ステップ積分)
             scattered += transmittance * (1.0f - stepTransmittance) * inScatter;
             transmittance *= stepTransmittance;
@@ -251,38 +112,40 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         }
 
         float alpha = (1.0f - transmittance) * p.color.a;
+        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
         if (gSoftParticles != 0)
         {
             float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
-            float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ);
-            float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
+            float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
             alpha *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
         }
-        // 散乱光は既に alpha で重み付けされているため、事前乗算アルファとして出す。
-        return float4(scattered * gEmissiveScale, alpha);
+        // 割り戻し (下の PREMULTIPLIED 補正) より前に掛ける。後から掛けると
+        // RGB が減らないまま alpha だけ落ち、近づいた煙が «暗くならずに濃いまま» 残る。
+        alpha *= ParticleCameraFade(particleLinear);
+        // 散乱光は積分の時点で alpha (= 1 - transmittance) の重みを含んだ «事前乗算» の値。
+        // PREMULTIPLIED 以外のブレンドはブレンド側がもう一度 src.a を掛けるため、
+        // ここで割り戻して非事前乗算へ揃える (方程式は RenderState.hpp の BlendMode)。
+        float3 volumeRgb = scattered * gEmissiveScale;
+        if ((gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) == 0u)
+            volumeRgb /= max(alpha, 1.0e-4f);
+        return FinishParticleFog(float4(volumeRgb, alpha), p.svPosition.xy, p.svPosition.z,
+                                 gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r);
     }
-    float2 currentUv = p.uv;
-    float2 nextUv = p.nextUv;
-    if ((gEffectsFlags & FBZZ_PFX_MOTION_VECTOR) != 0u)
-    {
-        float2 motion = gMotionVectors.Sample(gSampler, p.uv).rg * 2.0f - 1.0f;
-        currentUv += motion * (p.spriteBlend * gMotionVectorStrength);
-        nextUv -= motion * ((1.0f - p.spriteBlend) * gMotionVectorStrength);
-    }
-    // アルファの取り出し方を素材に合わせて解決してから 2 コマを混ぜる。
-    // WHY: 先に lerp してから輝度を取ると、コマ境界で「合成後の輝度」を
-    //      マスクにすることになり、コマの重なった部分だけ濃く出てしまう。
-    float4 tex = lerp(ResolveParticleTexel(gParticleTex.Sample(gSampler, currentUv), gEffectsFlags),
-                      ResolveParticleTexel(gParticleTex.Sample(gSampler, nextUv), gEffectsFlags),
-                      saturate(p.spriteBlend));
+    float2 currentUv;
+    float4 tex = SampleParticleFlipbook(gParticleTex, gMotionVectors, gSampler,
+                                        p.uv, p.nextUv, p.spriteBlend, gEffectsFlags, currentUv);
+    float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
     if (gSoftParticles != 0)
     {
         float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
-        float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ);
-        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
+        float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
-    float4 result = tex * float4(p.color.rgb, p.color.a * fade);
+    // WHY fade へ掛けるか: PSMain 末尾の事前乗算補正が RGB にも fade を掛けるため、
+    //     ここに乗せれば PREMULTIPLIED でも RGB が一緒に減る (alpha だけでは白い縁が残る)。
+    fade *= ParticleCameraFade(particleLinear);
+    // 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。
+    float4 result = tex * float4(p.color.rgb * gTintColor.rgb, p.color.a * fade * gTintColor.a);
 
     // 受け影。ビルボードには本物の法線が無いので、法線依存のバイアス項には
     // ライト方向をそのまま渡して法線バイアスを実質無効化する
@@ -303,28 +166,35 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     shadow *= ComputeParticleSelfShadowFromMap(gParticleDensity, gSampler, p.worldPos,
                                                lightViewProjection, gSelfShadowStrength);
 
-    if ((gEffectsFlags & FBZZ_PFX_SIX_WAY) != 0u)
+    // 陰影 (6 方向マップ / 疑似法線 / 点光源) は GPU 経路と同じ ParticleLighting.hlsli で付ける。
+    float4 sixWayNegative = 0.0f;
+    if ((gEffectsFlags & FBZZ_PFX_SIX_WAY_MAPS) != 0u)
     {
-        float2 normalXY = p.localUv * 2.0f - 1.0f;
-        float3 normal = normalize(float3(normalXY, sqrt(saturate(1.0f - dot(normalXY, normalXY)))));
-        float diffuse = saturate(dot(normal, normalize(-lightDir)));
-        // six-way lit smoke では影は直接光成分だけに掛け、環境光は残す
-        // (影の中の煙が真っ黒に潰れず、環境光で形が見える)。
-        float3 lit = ambientColor + lightColor * diffuse * shadow;
-        result.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
+        // Negative はデータ (sRGB でもアルファ抽出でもない) なので MV の寄せだけ同じにする。
+        float2 negativeUv;
+        sixWayNegative = SampleParticleFlipbook(gSixWayNegative, gMotionVectors, gSampler, p.uv, p.nextUv,
+                                                p.spriteBlend, gEffectsFlags & FBZZ_PFX_MOTION_VECTOR, negativeUv);
     }
-    else
-    {
-        // 非ライティング時は色へ直接掛ける。発光体 (加算) では影が効きすぎないよう
-        // 完全な 0 にはせず、strength の範囲で減衰させる。
-        result.rgb *= shadow;
-    }
+    result.rgb = ShadeParticle(p, result.rgb, tex, sixWayNegative, shadow);
     result.rgb *= gEmissiveScale;
     if ((gEffectsFlags & FBZZ_PFX_DISTORTION) != 0u)
     {
         float2 screenUv = p.svPosition.xy / max(float2(gScreenWidth, gScreenHeight), float2(1.0f, 1.0f));
-        float2 offset = (tex.rg * 2.0f - 1.0f) * gDistortionStrength;
-        float3 refracted = gSceneColor.Sample(gSampler, saturate(screenUv + offset)).rgb;
+        // 歪みベクトルは専用マップ優先。無い場合だけ従来どおり albedo の RG を流用する。
+        // WHY: albedo の RG を向きとして使うと、素材を差し替えただけで曲がる向きが変わる。
+        // NOTE: 専用マップはリニア化しない (色ではなく [-1,1] のベクトルなので、
+        //       ガンマを掛けると向きが歪む)。
+        float2 vector2 = (gEffectsFlags & FBZZ_PFX_DISTORTION_MAP) != 0u
+            ? gDistortionTex.Sample(gSampler, currentUv).rg
+            : tex.rg;
+        float2 offset = (vector2 * 2.0f - 1.0f) * gDistortionStrength;
+        // 色収差: 屈折率の波長依存を、RGB を歪み方向へずらして表す。
+        // 衝撃波の縁が単色で滑るのを防ぎ、圧縮された空気の density 差が見えるようになる。
+        float2 dispersion = offset * gDistortionChromatic;
+        float3 refracted;
+        refracted.r = gSceneColor.Sample(gSampler, saturate(screenUv + offset + dispersion)).r;
+        refracted.g = gSceneColor.Sample(gSampler, saturate(screenUv + offset)).g;
+        refracted.b = gSceneColor.Sample(gSampler, saturate(screenUv + offset - dispersion)).b;
         result = float4(refracted, result.a);
     }
     // 事前乗算アルファは SrcBlend=ONE なので RGB が「そのまま」出力される。
@@ -341,5 +211,7 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     // NOTE: ボリュメトリック経路は scattered を alpha で重み付け済みのまま早期 return
     //       するので、ここは通らない (二重に掛からない)。
     if ((gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) != 0u) result.rgb *= p.color.a * fade;
-    return result;
+    // 霧は Composite が背景の奥行きで掛ける。粒子の奥行きで効くよう、ここで逆算しておく。
+    return FinishParticleFog(result, p.svPosition.xy, p.svPosition.z,
+                             gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r);
 }

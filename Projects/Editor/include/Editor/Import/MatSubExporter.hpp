@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MatSubExporter.hpp | fbzz::editor
-// FBX → .mat TOML + textures/ コピー
+/// @file    MatSubExporter.hpp
+/// @brief   FBX → .mat TOML + textures/ コピー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Editor/Import/IFbxSubExporter.hpp>
 

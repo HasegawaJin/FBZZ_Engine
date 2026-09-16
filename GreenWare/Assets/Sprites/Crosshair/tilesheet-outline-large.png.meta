@@ -1,0 +1,2823 @@
+[meta]
+guid = 'b328a7938899c766699c5053c72096bf'
+
+[texture]
+alpha_dither = false
+alpha_mode = 'Straight'
+aniso = 1
+compression = 'BC3'
+compression_quality = 1
+filter = 'Bilinear'
+flip_green = false
+max_size = 4096
+mip_bias = 0.0
+mip_filter = 'Kaiser'
+mip_sharpen = 0.0
+mipmaps = false
+normalize_mipmaps = false
+pixels_per_unit = 100.0
+sprite_mode = 'Multiple'
+srgb = true
+type = 'sprite'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4e284a03-11bc-4234-be53-fd88760d94d7'
+    name = 'tilesheet-outline-large_0'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '09bbc57d-8ab9-402e-a78f-502ff7e11283'
+    name = 'tilesheet-outline-large_1'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '33495750-6cee-49a6-ab71-efa1353fa458'
+    name = 'tilesheet-outline-large_2'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '8a5b90ec-f08f-416c-8079-fda72a5ad189'
+    name = 'tilesheet-outline-large_3'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '1ca36edd-74d8-4a53-9e42-2c31a0b11121'
+    name = 'tilesheet-outline-large_4'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'a7767baa-334e-421e-b66f-a4a17f72bc8c'
+    name = 'tilesheet-outline-large_5'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'fc22ff59-5455-4046-a595-46c97266133d'
+    name = 'tilesheet-outline-large_6'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '46db6249-0d82-4575-97b2-eb0482f85a9c'
+    name = 'tilesheet-outline-large_7'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '65908c42-cb10-4391-9250-c57339a51873'
+    name = 'tilesheet-outline-large_8'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '05c7f1da-7332-4741-ba4b-f5aa3a2765d4'
+    name = 'tilesheet-outline-large_9'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '27988ad6-c664-4709-a084-41ccbadfc0a4'
+    name = 'tilesheet-outline-large_10'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ff646474-86cf-4a71-a4e8-524641dcfb4c'
+    name = 'tilesheet-outline-large_11'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '127398f7-f8bf-457e-a31f-6dac5663dd26'
+    name = 'tilesheet-outline-large_12'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '90ac1072-bc9a-4091-b6c9-e462be6bdbca'
+    name = 'tilesheet-outline-large_13'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '1dbe6a07-a9c7-41ed-a261-eee4ba34d4c7'
+    name = 'tilesheet-outline-large_14'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '47388df1-a4f5-4d56-ada4-04188f4ed5a8'
+    name = 'tilesheet-outline-large_15'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd0f6cf82-77ab-4e98-a5ac-f258c1aeef3f'
+    name = 'tilesheet-outline-large_16'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '8237ba0f-ddb0-4871-80f6-03b5ad8c5a08'
+    name = 'tilesheet-outline-large_17'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '51ed1b2c-cce0-4b1b-9682-949650b46ae6'
+    name = 'tilesheet-outline-large_18'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ffcd2fcf-10db-4f29-920d-1b1fd3459d3f'
+    name = 'tilesheet-outline-large_19'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '7754d72b-b906-4aa1-bc53-df36a6f49cb6'
+    name = 'tilesheet-outline-large_20'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '48989c23-19cb-4aa5-9806-9e654ff3e96f'
+    name = 'tilesheet-outline-large_21'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'f3813a06-7581-4119-9567-47dbb484d0a8'
+    name = 'tilesheet-outline-large_22'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ca2745a7-4cf5-4dd0-8ba4-9aa8dc693bed'
+    name = 'tilesheet-outline-large_23'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '89450867-011e-43bc-8f7b-bc159636b84f'
+    name = 'tilesheet-outline-large_24'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '8d8f1732-5730-4435-8cf9-282e268fabb2'
+    name = 'tilesheet-outline-large_25'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4162e496-64dd-41c1-b60d-31b2e41f6c0f'
+    name = 'tilesheet-outline-large_26'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'c9ce5ffa-7f8f-4a05-a5be-0430fc6b613d'
+    name = 'tilesheet-outline-large_27'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '3ff48c86-e92f-4c1d-8bbf-1021c7911c27'
+    name = 'tilesheet-outline-large_28'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'a82fe44f-b323-4c8e-bcf9-dab551af6368'
+    name = 'tilesheet-outline-large_29'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'fa790e1f-3082-4381-81b3-389449a599c6'
+    name = 'tilesheet-outline-large_30'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4e7b43eb-dfa4-432b-a572-ad3c2baf8ec6'
+    name = 'tilesheet-outline-large_31'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '00ab6f9f-54b5-4e7d-87a6-36a7cecb1805'
+    name = 'tilesheet-outline-large_32'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '0ee6e4e6-efa8-4e16-b4dc-e297bb043381'
+    name = 'tilesheet-outline-large_33'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '8e34f17b-6497-466a-8942-29c0f2214ff3'
+    name = 'tilesheet-outline-large_34'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '99d4587b-d6df-451a-9e55-a84f4bfc1e55'
+    name = 'tilesheet-outline-large_35'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9da24962-b927-4c6b-8667-c105afdfc4ad'
+    name = 'tilesheet-outline-large_36'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd3c202da-50ad-483c-8834-78aeb0be6a1e'
+    name = 'tilesheet-outline-large_37'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4d391ebf-01e7-4501-a2eb-f491364f8cc3'
+    name = 'tilesheet-outline-large_38'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2e7746e3-31d2-4c65-b5b9-edff7c5004b5'
+    name = 'tilesheet-outline-large_39'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 150
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '3e0cf4e8-44df-431a-95bf-bfb4085b9c59'
+    name = 'tilesheet-outline-large_40'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '11c861a3-b143-4d21-bea0-d471b26bb9b6'
+    name = 'tilesheet-outline-large_41'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2eae8647-605a-484a-8010-591f073aba98'
+    name = 'tilesheet-outline-large_42'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '71eaa521-ca77-4083-a7ab-5ea48e94a885'
+    name = 'tilesheet-outline-large_43'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'f015a60a-22d2-4026-b133-ef9e206ac1b1'
+    name = 'tilesheet-outline-large_44'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '7d8dfd8a-02c9-4e60-9099-6b386a0e4cfa'
+    name = 'tilesheet-outline-large_45'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '895e8a4d-bf1f-4d4e-8b58-311735401efb'
+    name = 'tilesheet-outline-large_46'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b319fa75-4cb9-4f87-b14e-fcc71f58ce96'
+    name = 'tilesheet-outline-large_47'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'e47a8783-1e23-41ea-b45e-04be93a5013b'
+    name = 'tilesheet-outline-large_48'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'a284e536-3631-4cae-990d-e98396ec81e5'
+    name = 'tilesheet-outline-large_49'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4da3ba75-948e-4a56-a91f-10915d9ce23b'
+    name = 'tilesheet-outline-large_50'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'c8c1383a-cb97-47a0-ade4-74458b83d0e9'
+    name = 'tilesheet-outline-large_51'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'f0f8f2b6-1f1f-4c68-b5eb-98b7fdb53470'
+    name = 'tilesheet-outline-large_52'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '42b0daba-f575-426e-9532-60243b9ce720'
+    name = 'tilesheet-outline-large_53'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2aa8a34f-f452-4b16-9224-4f0a0d98e3d7'
+    name = 'tilesheet-outline-large_54'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9d79d42c-f2cd-4bfa-8d3a-f33272951513'
+    name = 'tilesheet-outline-large_55'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'fdba2b3c-81de-4e7d-b2c7-8ff8d1db2797'
+    name = 'tilesheet-outline-large_56'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'a264d756-7e44-4929-be78-5b39d2653349'
+    name = 'tilesheet-outline-large_57'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '386f5cd0-95ae-47f1-841b-864f5469dd46'
+    name = 'tilesheet-outline-large_58'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '7fa23af3-331d-4bf2-9e1b-ef4683bc9817'
+    name = 'tilesheet-outline-large_59'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 300
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '5b9a0381-3bd0-4dda-8eeb-719dbd66100a'
+    name = 'tilesheet-outline-large_60'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '16ad6a9f-6e90-41e6-9fbe-0386c90b5f0f'
+    name = 'tilesheet-outline-large_61'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2f889cd0-3b94-4488-88c2-14627781af87'
+    name = 'tilesheet-outline-large_62'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '3ad3a9c8-2722-4592-9c5c-bb016fbb2f37'
+    name = 'tilesheet-outline-large_63'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '643626ef-9ccc-4c41-9c96-22a9ee0f5c26'
+    name = 'tilesheet-outline-large_64'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '291ea334-afcb-4952-8fcb-55f69432886a'
+    name = 'tilesheet-outline-large_65'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4a92933a-da31-4c8e-8301-9945368c5bc2'
+    name = 'tilesheet-outline-large_66'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'be98c765-65ea-43b9-a5be-26c3611896e9'
+    name = 'tilesheet-outline-large_67'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'af4ebaee-69b4-44ba-a7e6-d9fc19f958e6'
+    name = 'tilesheet-outline-large_68'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '8421d4c2-ac37-43e2-b282-be36361c53b1'
+    name = 'tilesheet-outline-large_69'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '31231445-184d-4d1d-99ec-8cee1bb6d954'
+    name = 'tilesheet-outline-large_70'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd1f06050-22d0-45c0-ab4f-065666c0ab97'
+    name = 'tilesheet-outline-large_71'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '695425ef-8b19-48a7-96dd-af1a9bed3355'
+    name = 'tilesheet-outline-large_72'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '115f7db1-6b1e-4850-a416-40d2ebb6f035'
+    name = 'tilesheet-outline-large_73'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '457b4ab6-1737-4295-a1ad-d1cc5f278653'
+    name = 'tilesheet-outline-large_74'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'a6346be6-9e06-4bfa-beb5-838ab82657e4'
+    name = 'tilesheet-outline-large_75'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd7fe6ee6-eb1f-4394-b135-7ad4e0f1340c'
+    name = 'tilesheet-outline-large_76'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '7c80718f-92fc-4b42-8bcd-85d3337a5c15'
+    name = 'tilesheet-outline-large_77'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '7f627584-39da-425f-868d-b082f3466469'
+    name = 'tilesheet-outline-large_78'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '6eb057b0-816e-4e9d-b7c8-18e28cb9d37b'
+    name = 'tilesheet-outline-large_79'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 450
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '138a8808-7d02-4b45-9444-95053f6dcdd1'
+    name = 'tilesheet-outline-large_80'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '31a68a6e-30b2-4cb7-b7eb-b93263c7c013'
+    name = 'tilesheet-outline-large_81'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ddbac06d-9b27-4797-af99-4e05a157501c'
+    name = 'tilesheet-outline-large_82'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '53fabebc-2420-467c-a210-7e901fe95526'
+    name = 'tilesheet-outline-large_83'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd6555827-5c8a-4e81-8276-a14ff65fe26a'
+    name = 'tilesheet-outline-large_84'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b2cf1bdf-f24f-4c59-b6d0-bc2b1c9ce247'
+    name = 'tilesheet-outline-large_85'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9b29ecca-de3c-4b8c-97c6-783905f70a82'
+    name = 'tilesheet-outline-large_86'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'df839d78-7edb-4940-9e05-f5c752847e7e'
+    name = 'tilesheet-outline-large_87'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '933117cd-f8b9-47a2-90b4-f902cbb0f8cd'
+    name = 'tilesheet-outline-large_88'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ebb33f64-d181-4609-9eb1-210f269ea2cd'
+    name = 'tilesheet-outline-large_89'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd2b1c437-9113-4bf8-acd2-d0908e74718c'
+    name = 'tilesheet-outline-large_90'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '64503b03-8905-434b-b2f9-117a3add22de'
+    name = 'tilesheet-outline-large_91'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '506e196f-ab32-4a81-9b50-9d11752173fa'
+    name = 'tilesheet-outline-large_92'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '61231448-cd89-4132-8f0f-3f134fb58b29'
+    name = 'tilesheet-outline-large_93'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '99e77473-b36c-488f-a6b8-9788c21fc6b0'
+    name = 'tilesheet-outline-large_94'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'af9776ca-8398-4d63-9b12-d08ede6df391'
+    name = 'tilesheet-outline-large_95'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9c303927-df5f-426c-aed5-5a5e859fbe2e'
+    name = 'tilesheet-outline-large_96'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'f9e3bedf-7ead-4ee8-b9a3-385a5554b3d8'
+    name = 'tilesheet-outline-large_97'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4a3ff36c-8539-4d2c-8d3e-147d36a6913b'
+    name = 'tilesheet-outline-large_98'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'e881ef07-4a49-45ec-9aa6-c480a18f9af4'
+    name = 'tilesheet-outline-large_99'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 600
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'cfc9b88f-3bbd-4140-a915-049f406f9e10'
+    name = 'tilesheet-outline-large_100'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '5270e15d-b2cf-49c0-acaa-43c256641485'
+    name = 'tilesheet-outline-large_101'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '73a1f81e-469c-4d31-89dd-7e25179a9074'
+    name = 'tilesheet-outline-large_102'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '0f9105c6-a4ad-496f-bfc6-394e0dd3eb66'
+    name = 'tilesheet-outline-large_103'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '1fdee3d8-eb37-4ff7-9bb8-b177af024386'
+    name = 'tilesheet-outline-large_104'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ef61d811-75da-4e08-a410-8e4290e89139'
+    name = 'tilesheet-outline-large_105'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'c423b24d-6e01-4a62-8546-a1ceb80c5422'
+    name = 'tilesheet-outline-large_106'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ba8bbf1e-e5de-402e-a255-6af0b3485dba'
+    name = 'tilesheet-outline-large_107'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '34e30f99-d415-41aa-8396-2f852023e0f7'
+    name = 'tilesheet-outline-large_108'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9a2c7294-5173-4f27-82ba-c22526dc31ee'
+    name = 'tilesheet-outline-large_109'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'cfb13427-863b-4681-af15-9adc045d995b'
+    name = 'tilesheet-outline-large_110'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'c46aeca9-f713-4100-bfd5-06914cff10d3'
+    name = 'tilesheet-outline-large_111'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '685c251d-eeab-409e-8966-feaa5bbaa2e4'
+    name = 'tilesheet-outline-large_112'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'fd9bcefc-b5be-4bf1-bd29-488566510f50'
+    name = 'tilesheet-outline-large_113'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd73224af-6ef2-490d-9a52-e40e78e9f986'
+    name = 'tilesheet-outline-large_114'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'a7ebff62-b5a9-42c2-aff3-4410761a9730'
+    name = 'tilesheet-outline-large_115'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '6a412577-b2ad-4031-84ea-79bb60460996'
+    name = 'tilesheet-outline-large_116'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'c6bde3cc-00c5-42d8-a444-cf9196979800'
+    name = 'tilesheet-outline-large_117'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'f0838002-d872-40b9-8c88-f1b332fbc4a8'
+    name = 'tilesheet-outline-large_118'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2c88700f-abf2-4e40-b78d-1e590a1c010b'
+    name = 'tilesheet-outline-large_119'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 750
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4608d690-5a32-4857-a4b4-a8fc43d69753'
+    name = 'tilesheet-outline-large_120'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '3ed32a54-7498-4dc5-aee9-324face6c406'
+    name = 'tilesheet-outline-large_121'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '92b1e21e-b2f1-48b4-a7a5-f795d02fcd9b'
+    name = 'tilesheet-outline-large_122'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '87b393ce-33e2-43a9-8ea2-509b2f8f54e6'
+    name = 'tilesheet-outline-large_123'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '32bbb448-ab9d-425d-ac59-7f8699632ec8'
+    name = 'tilesheet-outline-large_124'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '5f1cfa31-0748-4ff1-af97-2ade697b468c'
+    name = 'tilesheet-outline-large_125'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '03bddac2-c16f-4f96-892b-cf963feee789'
+    name = 'tilesheet-outline-large_126'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '89dee929-2b3a-4693-be4f-300b92e0effe'
+    name = 'tilesheet-outline-large_127'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'f30694f2-4d29-448a-b9a2-eca88a3b6390'
+    name = 'tilesheet-outline-large_128'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ea00272d-d92a-43c7-90dc-ece6416f1b19'
+    name = 'tilesheet-outline-large_129'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '8942373b-1c97-4fe5-aeeb-0373cf9c5312'
+    name = 'tilesheet-outline-large_130'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b260c827-1e14-4ee6-bde6-d7a7c869c599'
+    name = 'tilesheet-outline-large_131'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '45fbd720-d410-46f5-90fc-4469291212d9'
+    name = 'tilesheet-outline-large_132'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '73fbde00-ab88-47a6-a1be-f9ab2d8837e5'
+    name = 'tilesheet-outline-large_133'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '8da79b06-9177-4850-b052-06dab0d959ee'
+    name = 'tilesheet-outline-large_134'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '39a0ff3e-4dc5-4b3a-9581-88ff3b1b1a9d'
+    name = 'tilesheet-outline-large_135'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '3f9af4c8-483c-4db2-9f0f-78a98165c064'
+    name = 'tilesheet-outline-large_136'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '58dd3c73-406d-41cb-948a-a4fa0197ab7c'
+    name = 'tilesheet-outline-large_137'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '49a67e52-c6c2-488d-b24c-c061f867acf0'
+    name = 'tilesheet-outline-large_138'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '72c71788-7b19-4fe7-a3a4-e837d4693cbf'
+    name = 'tilesheet-outline-large_139'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 900
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'fe53c59c-331f-4597-85ef-6f81e3b91bcf'
+    name = 'tilesheet-outline-large_140'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '06e025f8-80e1-4385-bba2-5c987711465b'
+    name = 'tilesheet-outline-large_141'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd3b23a43-2e5e-48c0-beb3-eac714895710'
+    name = 'tilesheet-outline-large_142'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ab9bee99-ab2f-4513-8e5b-de07e20af247'
+    name = 'tilesheet-outline-large_143'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2264a0a1-8b25-4120-b736-7f35e7475c93'
+    name = 'tilesheet-outline-large_144'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'abf1fea8-fecd-48ab-afae-826c1153cc0b'
+    name = 'tilesheet-outline-large_145'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '865eeb2f-7208-4960-ab83-d0c73012f422'
+    name = 'tilesheet-outline-large_146'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'e78180e6-6a23-4ae0-877e-d52a39c29fac'
+    name = 'tilesheet-outline-large_147'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '16c5d1aa-155d-40e5-8114-f6011f8e8595'
+    name = 'tilesheet-outline-large_148'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd49f6980-1064-4b03-8890-277620bb9654'
+    name = 'tilesheet-outline-large_149'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9f11d4d7-ba49-4ee1-aff6-2213326e9656'
+    name = 'tilesheet-outline-large_150'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2f460235-29a3-4b4b-b149-bb988e7d435c'
+    name = 'tilesheet-outline-large_151'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '98cb4f57-38ab-4594-9e28-05b0bb032fe4'
+    name = 'tilesheet-outline-large_152'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '5efe86cb-1478-4edf-afb6-a5fb2ccbc3ed'
+    name = 'tilesheet-outline-large_153'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9ba6ed78-e83c-447a-aead-cb0b995413a0'
+    name = 'tilesheet-outline-large_154'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '0444a231-68bf-458c-a249-0127177edcc0'
+    name = 'tilesheet-outline-large_155'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '6a8b1181-189d-4e11-aa68-138a9fb874cc'
+    name = 'tilesheet-outline-large_156'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '41714ccf-0b67-491b-bb06-b992bade4243'
+    name = 'tilesheet-outline-large_157'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '07acfc1e-3f58-4a2e-a832-0d12ecb0977c'
+    name = 'tilesheet-outline-large_158'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'fd2abd54-56e1-4591-b6a5-81cf63ec0057'
+    name = 'tilesheet-outline-large_159'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 1050
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '55189cd4-a525-48ff-ac33-5b309267229f'
+    name = 'tilesheet-outline-large_160'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ac0a3cf3-50f1-4123-8018-5d0d4c9328cd'
+    name = 'tilesheet-outline-large_161'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '6806d542-70b3-4a1f-a4c8-d15d60d1b31c'
+    name = 'tilesheet-outline-large_162'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '64f95743-2a1f-431e-8b22-cfea627f88cc'
+    name = 'tilesheet-outline-large_163'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'c342aba9-6181-4f2f-96bf-126d994ecec1'
+    name = 'tilesheet-outline-large_164'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b2aeaa8c-2b55-4d47-ba86-739d586d89e7'
+    name = 'tilesheet-outline-large_165'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '2f221055-3ce0-4e39-b0c5-962267711da4'
+    name = 'tilesheet-outline-large_166'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '6bbe6955-a545-44ef-a369-dff94708acb4'
+    name = 'tilesheet-outline-large_167'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '28a1aa3e-96c2-4abd-9048-99643800b99d'
+    name = 'tilesheet-outline-large_168'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b9219328-1097-40aa-bae8-5f689521dd8f'
+    name = 'tilesheet-outline-large_169'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '5bbd29c1-1bf1-4228-9434-a17188eb5d2c'
+    name = 'tilesheet-outline-large_170'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'fc075158-e018-4a07-bc87-69008d7cf805'
+    name = 'tilesheet-outline-large_171'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '0c11674d-9702-46ac-88f2-3ae27a5e5717'
+    name = 'tilesheet-outline-large_172'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b671e7b0-64e8-44d9-bc87-5b16d5913cdf'
+    name = 'tilesheet-outline-large_173'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'acba6698-3882-47bd-ab30-6fa14cfd57d7'
+    name = 'tilesheet-outline-large_174'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '0532bec6-f7e5-42be-ab8d-b418d1493af7'
+    name = 'tilesheet-outline-large_175'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '87c7531d-3732-44b4-8f85-ec25bc37ff22'
+    name = 'tilesheet-outline-large_176'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '459638d4-a6be-47da-9e59-c02b333c224d'
+    name = 'tilesheet-outline-large_177'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ad3e7acc-11ae-4fd5-a0a7-6858dc2d612b'
+    name = 'tilesheet-outline-large_178'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b6f80bfc-06e8-4d33-b07d-965defa7c529'
+    name = 'tilesheet-outline-large_179'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 1200
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '7896cb06-d14a-411a-b12b-e510d4095784'
+    name = 'tilesheet-outline-large_180'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 0
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '353ef625-2bf5-4c1a-9f21-fa75e6a86776'
+    name = 'tilesheet-outline-large_181'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 149
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'bedd73a0-f50c-4603-bed5-2d84eb95aa57'
+    name = 'tilesheet-outline-large_182'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 298
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '4fac1bd5-1d00-410e-979a-0fca5783bd34'
+    name = 'tilesheet-outline-large_183'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 447
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b5e24046-e8c6-4dd3-9e19-622a4a4ec270'
+    name = 'tilesheet-outline-large_184'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 596
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '55acb396-09c8-44d5-8bdf-b58ce91a328f'
+    name = 'tilesheet-outline-large_185'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 745
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '724b4eb9-58ea-4c62-96e9-281482576653'
+    name = 'tilesheet-outline-large_186'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 894
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '05d5ecc9-ef78-4d10-bdf3-06983619df35'
+    name = 'tilesheet-outline-large_187'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1043
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '5757b485-95da-4569-a875-01d3e4203e65'
+    name = 'tilesheet-outline-large_188'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1192
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '751b43bb-6320-42f4-a544-db49747f890f'
+    name = 'tilesheet-outline-large_189'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1341
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '12d3f705-602e-4f72-8b2c-dfd4f295e265'
+    name = 'tilesheet-outline-large_190'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1490
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'bcccc213-0bd9-44cf-ac48-3c0d4c5ac770'
+    name = 'tilesheet-outline-large_191'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1639
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '9b5fce66-343c-4525-9c1e-7d1f6a2065bc'
+    name = 'tilesheet-outline-large_192'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1788
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'b5da5ed3-b66f-41fe-901f-37fbd6e16efb'
+    name = 'tilesheet-outline-large_193'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 1937
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '716a2be6-fc91-4239-8f03-bf449fee1e49'
+    name = 'tilesheet-outline-large_194'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2086
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'd58bba18-7a45-40da-91d2-c2c631a8a50f'
+    name = 'tilesheet-outline-large_195'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2235
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'ba689296-4ab0-4ff4-a43a-25b311c86fe4'
+    name = 'tilesheet-outline-large_196'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2384
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = 'cb0b04c0-b311-4df1-a6d0-122e01510ee5'
+    name = 'tilesheet-outline-large_197'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2533
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '55dfaf7d-b23a-473c-ba82-52b96ab8cadf'
+    name = 'tilesheet-outline-large_198'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2682
+    y = 1350
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 150
+    id = '60076359-dbf3-41f3-80e7-304c002c8649'
+    name = 'tilesheet-outline-large_199'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 149
+    x = 2831
+    y = 1350

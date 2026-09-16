@@ -1,19 +1,20 @@
-// FBZZ Engine
-// BehaviorTreeAsset.hpp | fbzz::ai
-// .behaviortree のオーサリング表現 (編集用)
-//
-// WHY オーサリング表現とランタイム表現を分けるか:
-//   ランタイムは「DFS pre-order のフラット配列」が最速だが、エディタは
-//   安定した ID と自由な親子付け替えを要求する。フラット配列を直接編集させると
-//   ノードを 1 つ動かすたびに全ての firstChild を振り直すことになり、Undo とも相性が悪い。
-//   ここでは id / parentId / order で木を表現し、CompileBehaviorTree() が
-//   ロード時に一度だけフラット化する。
-//
-// WHY 型消去しないか:
-//   設計当初は「パラメータをバイト列プールに詰める」案だったが、それだと
-//   TOML へ書けず (base64 にすると人間が読めず diff も取れない)、Inspector も出せず、
-//   フィールドを 1 つ増やした瞬間に既存アセットが全滅する。
-//   VFXGraphNode と同じく全種別のパラメータを平置きで持つ。
+/// @file    BehaviorTreeAsset.hpp
+/// @brief   .behaviortree のオーサリング表現 (編集用)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY オーサリング表現とランタイム表現を分けるか:
+/// ランタイムは「DFS pre-order のフラット配列」が最速だが、エディタは
+/// 安定した ID と自由な親子付け替えを要求する。フラット配列を直接編集させると
+/// ノードを 1 つ動かすたびに全ての firstChild を振り直すことになり、Undo とも相性が悪い。
+/// ここでは id / parentId / order で木を表現し、CompileBehaviorTree() が
+/// ロード時に一度だけフラット化する。
+///
+/// WHY 型消去しないか:
+/// 設計当初は「パラメータをバイト列プールに詰める」案だったが、それだと
+/// TOML へ書けず (base64 にすると人間が読めず diff も取れない)、Inspector も出せず、
+/// フィールドを 1 つ増やした瞬間に既存アセットが全滅する。
+/// 全種別のパラメータを平置きで持つ。
 #pragma once
 #include <Engine/AI/BehaviorTreeTypes.hpp>
 #include <Engine/AI/Blackboard.hpp>

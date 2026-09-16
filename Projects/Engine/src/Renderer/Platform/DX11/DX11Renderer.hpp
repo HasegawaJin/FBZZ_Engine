@@ -1,19 +1,21 @@
-// FBZZ Engine
-// DX11Renderer.hpp | fbzz::renderer
-// IRenderer の DX11 実装
-// DX11 固有のデバイスオブジェクトと各種バインド処理を保持する。
-// Application からは IRenderer として所有される。
-//
-// 設計方針:
-//   上位レイヤー (Application / Sandbox) は IRenderer& のみを参照し、
-//   このクラスに直接アクセスしない。依存方向: sandbox → engine (IRenderer) → DX11Renderer。
-//   Application.cpp のみが DX11Renderer を make_unique して IRenderer に格納する
-//   ファクトリー役を担い、それ以外の場所では DX11Renderer を知る必要がない。
-//
-//   サンプラー:
-//     Init() 時に SamplerMode::COUNT 種のサンプラーを事前生成し、
-//     SetSampler() で要求に応じてバインドする。
-//     毎フレーム生成/破棄するのではなくキャッシュ方式を採用する。
+/// @file    DX11Renderer.hpp
+/// @brief   IRenderer の DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// DX11 固有のデバイスオブジェクトと各種バインド処理を保持する。
+/// Application からは IRenderer として所有される。
+///
+/// 設計方針:
+/// 上位レイヤー (Application / Sandbox) は IRenderer& のみを参照し、
+/// このクラスに直接アクセスしない。依存方向: sandbox → engine (IRenderer) → DX11Renderer。
+/// Application.cpp のみが DX11Renderer を make_unique して IRenderer に格納する
+/// ファクトリー役を担い、それ以外の場所では DX11Renderer を知る必要がない。
+///
+/// サンプラー:
+/// Init() 時に SamplerMode::COUNT 種を事前生成しておき、BindStaticSamplers() が
+/// レジスタごとに意味を固定した並びを BeginFrame で 1 回だけ張る。
+/// パス単位の差し替えはしない (DX12 の静的サンプラーと意味を揃えるため)。
 #pragma once
 
 #include <d3d11.h>
@@ -47,6 +49,9 @@ public:
     // Present the swap chain. Frame pacing is controlled by Time.
     void EndFrame() override;
 
+    void SetVSync(bool enabled) override { m_vsync = enabled; }
+    [[nodiscard]] bool GetVSync() const override { return m_vsync; }
+
     // RTV と DSV を指定色でクリアする (現在バインド中の RT に対して動作する)
     void Clear(const math::Vector4& color) override;
 
@@ -55,6 +60,8 @@ public:
 
     // DrawCall を受け取り、パイプラインステート → シェーダー → リソース → Draw の順で実行する
     void Submit(const DrawCall& call, ResourceManager& resources) override;
+    bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+                            ResourceManager& resources) override;
 
     // Compute Shader を Dispatch する (SSAO / Bloom 等のポストプロセス CS に使用)
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
@@ -71,7 +78,6 @@ public:
                              uint32_t mip, ResourceManager& resources) override;
 
     // スロット番号に対応するサンプラープリセットをバインドする
-    void SetSampler(uint32_t slot, SamplerMode mode) override;
 
     // GPU プロファイリング (D3D11_QUERY_TIMESTAMP_DISJOINT / D3D11_QUERY_TIMESTAMP)
     // QUERY_LATENCY フレーム遅延のリングバッファ方式で非同期計測する。
@@ -127,10 +133,15 @@ private:
         uint32_t index,
         RenderTargetTextureKind kind) override;
     std::unique_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
-    std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
+    std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height,
+                                                              const RenderTargetDesc& desc) override;
     std::unique_ptr<IRenderTarget>   CreateNativeCubemapRenderTarget(uint32_t size, uint32_t mipCount) override;
     std::unique_ptr<ITexture>        CreateNativeCubeTextureFromRenderTarget(IRenderTarget& rt) override;
     std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>           CreateNativeComputeTexture3D(
+        uint32_t width, uint32_t height, uint32_t depth) override;
+    std::unique_ptr<ITexture>           CreateNativeDynamicTexture(uint32_t width, uint32_t height,
+                                                                   DynamicTextureFormat format) override;
     std::unique_ptr<IStructuredBuffer>  CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
     std::unique_ptr<IStructuredBuffer>  CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
 
@@ -191,11 +202,15 @@ private:
 
     // VSync 無効時に DWM の表示周期待ちを避けられるかを Init() で検出する。
     bool m_allowTearing = false;
+    // Option 画面から切り替える垂直同期。既定は無効 (Time::targetFps で制御する)。
+    bool m_vsync = false;
 
     // --- Init 内部ヘルパー ---
     bool CreateRenderTargetView();
     bool CreateDepthStencilView();
     void InitSamplers();
+    // レジスタごとに意味を固定したサンプラーを PS / CS へ張る。BeginFrame から 1 回。
+    void BindStaticSamplers();
 };
 
 } // namespace fbzz::renderer

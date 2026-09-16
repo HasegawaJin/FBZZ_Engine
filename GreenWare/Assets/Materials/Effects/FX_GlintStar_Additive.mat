@@ -1,0 +1,21 @@
+# FBZZ Engine
+# FX_GlintStar_Additive.mat
+# 素材: Assets/VFX/Textures/T_Glint_Star.png (256² / 4 本の光条)
+# 金属がぶつかった «キラッ»。1 粒を大きく、数を絞って置く (重ねると星ではなく白い板になる)。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:dc27ed983a3048f2a559398255eed48d"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.8

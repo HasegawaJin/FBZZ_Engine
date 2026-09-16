@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IConstantBuffer.hpp | fbzz::renderer
-// 定数バッファの抽象インターフェース
-// CPU 側の構造体を GPU へ転送する最小 API。
-// Upload のサイズと HLSL 側 cbuffer レイアウトを一致させる。
+/// @file    IConstantBuffer.hpp
+/// @brief   定数バッファの抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// CPU 側の構造体を GPU へ転送する最小 API。
+/// Upload のサイズと HLSL 側 cbuffer レイアウトを一致させる。
 #pragma once
 #include <cstddef>
 

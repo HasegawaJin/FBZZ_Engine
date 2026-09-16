@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Layer.hpp | fbzz
-// GameObject レイヤーマスクと衝突行列
+/// @file    Layer.hpp
+/// @brief   GameObject レイヤーマスクと衝突行列。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
 #pragma once
 
 #include <cstdint>
@@ -16,6 +17,7 @@ struct Layer {
     static constexpr int IgnoreRaycast = 2;
     static constexpr int Water         = 4;
     static constexpr int UI            = 5;
+    static constexpr int Static        = 9;
 
     static constexpr LayerMask Everything = ~0u;
     static constexpr LayerMask Nothing    = 0u;

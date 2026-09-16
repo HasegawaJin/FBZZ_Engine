@@ -1,13 +1,15 @@
-// FBZZ Engine
-// DX11Buffer.hpp | fbzz::renderer
-// DX11 頂点・インデックスバッファ実装
-// IBuffer を継承し、上位レイヤーから D3D11Buffer を隠蔽する。
-// 頂点 stride と byte size を保持し、DrawCall 解決時に使う。
-//
-// 設計方針:
-//   IBuffer を継承し、上位レイヤーが DX11 の詳細に依存しないよう抽象化する。
-//   バッファは D3D11_USAGE_DYNAMIC + MAP_WRITE_DISCARD で生成し、
-//   毎フレーム部分更新 (頂点ストリーミング等) に対応する。
+/// @file    DX11Buffer.hpp
+/// @brief   DX11 頂点・インデックスバッファ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// IBuffer を継承し、上位レイヤーから D3D11Buffer を隠蔽する。
+/// 頂点 stride と byte size を保持し、DrawCall 解決時に使う。
+///
+/// 設計方針:
+/// IBuffer を継承し、上位レイヤーが DX11 の詳細に依存しないよう抽象化する。
+/// バッファは D3D11_USAGE_DYNAMIC + MAP_WRITE_DISCARD で生成し、
+/// 毎フレーム部分更新 (頂点ストリーミング等) に対応する。
 #pragma once
 
 #include <Engine/Renderer/IBuffer.hpp>

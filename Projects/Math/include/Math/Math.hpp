@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Math.hpp | fbzz::math
-// mathモジュール一括インクルード
+/// @file    Math.hpp
+/// @brief   mathモジュール一括インクルード。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
+#include "MathContract.hpp"
 #include "MathUtils.hpp"
 #include "Vector2.hpp"
 #include "Vector3.hpp"

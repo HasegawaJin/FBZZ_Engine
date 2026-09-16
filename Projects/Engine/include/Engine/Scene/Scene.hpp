@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Scene.hpp | fbzz::scene
-// GameObject 所有と ComponentArray 管理
-// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
-// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
+/// @file    Scene.hpp
+/// @brief   GameObject 所有と ComponentArray 管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
+/// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -12,6 +14,7 @@
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
 #include "ScriptFactory.hpp"
+#include "SceneRenderResources.hpp"
 #include <Math/Vector4.hpp>
 #include <vector>
 #include <memory>
@@ -102,6 +105,9 @@ public:
     static constexpr uint32_t MAX_ENTITIES = ComponentArray<uint8_t>::MAX;
 
     Scene() = default;
+    // WHY 明示するか: Component が個体ごとに確保した GPU リソースは ResourceManager 側の実体で、
+    //      Component が消えるだけでは返らない。畳むときに必ず返す口をここに置く。
+    ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
     Scene(Scene&& other) noexcept;
@@ -248,34 +254,11 @@ private:
         if (arr.Has(id)) arr.Remove(id);
     }
 
+    // ScriptComponent はコピー不可 (Script は unique_ptr 所有) のため、この fold からは
+    // 落ちる。実体の作り直しとフィールド値の複製は CopyScriptComponentFrom が担う。
     template<typename T>
     static void CopyIfHas(ComponentArray<T>& arr, EntityID src, EntityID dst) {
-        if constexpr (std::is_same_v<T, ScriptComponent>) {
-            if (!arr.Has(src) || arr.Has(dst)) return;
-
-            const auto& srcComponent = arr.Get(src);
-            ScriptComponent dstComponent{};
-            for (const auto& srcEntry : srcComponent.scripts) {
-                ScriptEntry& dstEntry = dstComponent.scripts.emplace_back();
-                if (srcEntry.serialized) {
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>(*srcEntry.serialized);
-                    dstEntry.script = ScriptFactory::Create(dstEntry.serialized->type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = dstEntry.serialized->enabled;
-                } else if (srcEntry.script) {
-                    const std::string type = srcEntry.script->GetTypeName();
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>();
-                    dstEntry.serialized->type = type;
-                    dstEntry.serialized->enabled = srcEntry.script->enabled;
-                    dstEntry.script = ScriptFactory::Create(type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = srcEntry.script->enabled;
-                }
-            }
-
-            if (!dstComponent.scripts.empty())
-                arr.Add(dst, std::move(dstComponent));
-        } else if constexpr (std::is_copy_constructible_v<T>) {
+        if constexpr (std::is_copy_constructible_v<T>) {
             if (arr.Has(src) && !arr.Has(dst)) arr.Add(dst, arr.Get(src));
         }
     }
@@ -283,35 +266,12 @@ private:
     template<typename T>
     static void CopyFromOtherIfHas(const ComponentArray<T>& srcArr, ComponentArray<T>& dstArr,
                                    EntityID src, EntityID dst) {
-        if constexpr (std::is_same_v<T, ScriptComponent>) {
-            if (!srcArr.Has(src) || dstArr.Has(dst)) return;
-
-            const auto& srcComponent = srcArr.Get(src);
-            ScriptComponent dstComponent{};
-            for (const auto& srcEntry : srcComponent.scripts) {
-                ScriptEntry& dstEntry = dstComponent.scripts.emplace_back();
-                if (srcEntry.serialized) {
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>(*srcEntry.serialized);
-                    dstEntry.script = ScriptFactory::Create(dstEntry.serialized->type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = dstEntry.serialized->enabled;
-                } else if (srcEntry.script) {
-                    const std::string type = srcEntry.script->GetTypeName();
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>();
-                    dstEntry.serialized->type = type;
-                    dstEntry.serialized->enabled = srcEntry.script->enabled;
-                    dstEntry.script = ScriptFactory::Create(type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = srcEntry.script->enabled;
-                }
-            }
-
-            if (!dstComponent.scripts.empty())
-                dstArr.Add(dst, std::move(dstComponent));
-        } else if constexpr (std::is_copy_constructible_v<T>) {
+        if constexpr (std::is_copy_constructible_v<T>) {
             if (srcArr.Has(src) && !dstArr.Has(dst)) dstArr.Add(dst, srcArr.Get(src));
         }
     }
+
+    void CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst);
 
     template<typename... Ts> friend class SceneView;
     friend class GameObject;
@@ -452,6 +412,11 @@ bool Scene::HasComponent(EntityID id) const {
 
 template<typename T>
 void Scene::RemoveComponent(EntityID id) {
+    // WHY ここで返すか: Component を配列から外すと «誰がそのハンドルを持っていたか» を
+    //     辿る手段が無くなる。Inspector から 1 つ外すたびに、その個体が抱えていた
+    //     定数バッファ / 頂点バッファが GPU に残り続けていた。
+    if (T* component = GetComponent<T>(id))
+        ReleaseComponentGpuResources(*component);
     GetArray<T>().Remove(id);
 }
 
@@ -517,8 +482,12 @@ T* GameObject::GetScript() {
     if (!sc) return nullptr;
     for (auto& entry : sc->scripts) {
         if (!entry.script) continue;
-        if (std::string_view(entry.script->GetTypeName()) == T::TYPE_NAME)
-            return static_cast<T*>(entry.script.get());
+        // WHY 名前一致ではなく FbzzAsType か: 基底型やインターフェースで引けるようにするため。
+        //     MiteComponent が付いた GameObject を GetScript<EnemyAiBase>() でも
+        //     GetScript<IDamageable>() でも拾える。返るのは調整済みの番地なので、
+        //     多重継承していても正しい部分オブジェクトを指す (Script::FbzzAsType)。
+        if (void* found = entry.script->FbzzAsType(T::TYPE_NAME))
+            return static_cast<T*>(found);
     }
     return nullptr;
 }
@@ -554,7 +523,11 @@ std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
     if (!script || !script->m_scene) return {};
     // Script 派生型は ECS に登録されていないため GameObject を全走査して GetScript<T>() で探す。
     // Component 型は Scene::FindObjectsOfType<T>() (ECS) に委譲する。
-    if constexpr (std::is_base_of_v<Script, T>) {
+    //
+    // WHY is_base_of<Script, T> で判定しないか: 横断インターフェース
+    //     (FBZZ_SCRIPT_INTERFACE) は Script を継承しないため、それだと ECS 側へ
+    //     落ちてコンパイルが通らない。「FbzzAsType で引ける型か」で振り分ける。
+    if constexpr (detail::kIsScriptQueryable<T>) {
         std::vector<GameObject*> result;
         for (auto& go : script->m_scene->GameObjects())
             if (go.template GetScript<T>())
@@ -596,6 +569,18 @@ T* ScriptSceneProxy::GetComponent() const
 {
     return (script && script->m_gameObject)
         ? script->m_gameObject->GetComponent<T>() : nullptr;
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetComponent(GameObject& go) const
+{
+    return go.GetComponent<T>();
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetComponent(GameObject* go) const
+{
+    return go ? go->GetComponent<T>() : nullptr;
 }
 
 template<typename T>
