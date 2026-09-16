@@ -75,6 +75,8 @@ private:
     std::string                                m_iconPreviewPath;
     renderer::ResourceHandle<renderer::TextureTag> m_iconPreviewTexture{};
     std::uint64_t                              m_iconPreviewResetVersion = 0;
+    // .ico は自前でデコードして CreateTexture するため、実体の所有権をこちらが持つ。
+    bool                                       m_iconPreviewOwnsTexture = false;
 
     std::vector<Check> m_checks;
     bool               m_checksValid    = false;
