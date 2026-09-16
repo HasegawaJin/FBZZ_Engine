@@ -77,8 +77,8 @@ name = '{{PROJECT_NAME}}'
 
 # プロジェクト全体で固定の描画構成のみを置く。
 # ポストプロセス / 高度グラフィクス (Bloom, Fog, SSR, TAA, LUT …) は
-# Assets/PostProcess/DefaultPostProcess.fzdata に移した。
-# 各シーンの "Post Process Volume" オブジェクトがそれを参照している。
+# Assets/PostProcess/DefaultPostProcess.fzdata が既定値を持つ。
+# 効かせるにはシーンへ "Post Process Volume" を置き、そこから参照すること。
 [render]
 pipeline             = 'deferred'
 

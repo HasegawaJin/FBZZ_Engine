@@ -98,8 +98,8 @@ export class TemplateService {
         const table = (document.template ?? {}) as Record<string, unknown>;
         return {
           id: typeof table.id === 'string' ? table.id : entry.name,
-          displayName: typeof table.name === 'string' ? table.name : entry.name,
-          description: typeof table.desc === 'string' ? table.desc : '',
+          displayName: typeof table.display_name === 'string' ? table.display_name : entry.name,
+          description: typeof table.description === 'string' ? table.description : '',
         } satisfies TemplateInfo;
       } catch {
         return null;

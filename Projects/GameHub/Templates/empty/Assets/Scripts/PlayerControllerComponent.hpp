@@ -1,7 +1,7 @@
 /// @file    PlayerControllerComponent.hpp
 /// @brief   RigidBody ベースの汎用プレイヤーコントローラースクリプト。
 /// @author  Hasegawa Jin
-/// @date    2026-08-16
+/// @date    2026-06-03
 #pragma once
 
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>

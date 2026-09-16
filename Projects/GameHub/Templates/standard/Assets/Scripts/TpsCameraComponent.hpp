@@ -1,7 +1,7 @@
 /// @file    TpsCameraComponent.hpp
 /// @brief   プレイヤーを追う三人称カメラのスクリプト。
 /// @author  Hasegawa Jin
-/// @date    2026-06-19
+/// @date    2026-06-03
 #pragma once
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/GameObject.hpp>

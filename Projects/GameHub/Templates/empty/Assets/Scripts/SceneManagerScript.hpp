@@ -1,7 +1,7 @@
 /// @file    SceneManagerScript.hpp
 /// @brief   ボタンクリック / 自動タイマーによるシーン遷移ユーティリティスクリプト。
 /// @author  Hasegawa Jin
-/// @date    2026-08-16
+/// @date    2026-06-22
 ///
 /// 使い方:
 /// [ボタン GO に付ける場合]
