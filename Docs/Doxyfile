@@ -1,0 +1,65 @@
+# FBZZ Engine — Doxygen 設定
+# 実行: リポジトリ直下で `doxygen Docs/Doxyfile` → build/docs/html/index.html
+# 対象は公開ヘッダーのみ。AGENTS.md のコメント規約 (各タグ 1 行・契約のみ) が守られているかを
+# WARN_IF_DOC_ERROR で検出する。未文書化は警告しない (書かない規約のため)。
+
+PROJECT_NAME           = "FBZZ Engine"
+PROJECT_BRIEF          = "C++20 自作 3D ゲームエンジン"
+OUTPUT_DIRECTORY       = build/docs
+OUTPUT_LANGUAGE        = Japanese
+INPUT_ENCODING         = UTF-8
+
+INPUT                  = Projects/Math/include \
+                         Projects/Physics/include \
+                         Projects/Engine/include \
+                         Projects/Editor/include
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp
+EXCLUDE_PATTERNS       = */ScriptProxyMembers.inl \
+                         */AllScriptProxies.hpp
+
+STRIP_FROM_PATH        = Projects/Math/include \
+                         Projects/Physics/include \
+                         Projects/Engine/include \
+                         Projects/Editor/include
+STRIP_FROM_INC_PATH    = $(STRIP_FROM_PATH)
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = NO
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = NO
+MARKDOWN_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+SORT_MEMBER_DOCS       = NO
+# 旧コメントの独自タグ @ret を @return として読む (新規コードは @return を使う)
+ALIASES                = "ret=\return"
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+SKIP_FUNCTION_MACROS   = YES
+PREDEFINED             = FBZZ_ENABLE_DX12 \
+                         "__declspec(x)=" \
+                         "FBZZ_SCRIPT(T)=" \
+                         "FBZZ_REFLECT(T)=" \
+                         "FBZZ_REQUIRE_COMPONENT(...)=" \
+                         "FBZZ_OPTIONAL_COMPONENT(...)=" \
+                         "FBZZ_EXECUTE_ALWAYS()="
+
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_INCOMPLETE_DOC = NO
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = NO
+WARN_LOGFILE           = build/docs/doxygen-warnings.log
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+QUIET                  = YES

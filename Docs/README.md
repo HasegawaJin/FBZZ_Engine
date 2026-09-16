@@ -36,6 +36,8 @@ FBZZ Engine のドキュメントは 4 か所に分かれている。**どこを
 |---|---|
 | [audio-system.md](design/audio-system.md) | 手続き音生成 (`.synth`) と Mixer Bus の階層 |
 | [cursor.md](design/cursor.md) | カーソルの要求スタックと見た目の分離 |
+| [bindless.md](design/bindless.md) | ResourceDescriptorHeap によるディスクリプタ直引き。区画割り・枠の寿命・縮退規則 |
+| [dx11-removal.md](design/dx11-removal.md) | DirectX 11 サポート終了 (v1.0)。捨てた理由・残した境界・終了済み設定の扱い |
 | [game-settings.md](design/game-settings.md) | ユーザー定義シリアライズと Option 画面。宣言 1 行で設定を増やす |
 | [sequence-system.md](design/sequence-system.md) | 演出タイムライン (`.sequence`) |
 | [sprite-reference.md](design/sprite-reference.md) | Sprite 参照の設計。名前で書き、ID で保存する契約 |
