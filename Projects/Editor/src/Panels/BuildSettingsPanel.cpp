@@ -9,6 +9,7 @@
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AppIconWriter.hpp>
 #include <Editor/Util/EditorSettings.hpp>
+#include <Editor/Util/IcoImage.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/StandaloneLauncher.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -423,19 +424,38 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
         util::StringUtils::ToLower(util::FileSystem::GetExtension(m_settings.iconPath)) == ".ico";
 
     // WHY 絵を出すか: パス文字列だけでは «どの絵が exe に付くのか» を確かめられない。
-    //     .ico はレンダラーが読めないため、そこだけは文字で代える。
-    const std::string previewPath = (m_settings.iconPath.empty() || isIco)
+    const std::string previewPath = m_settings.iconPath.empty()
         ? std::string{}
         : util::FileSystem::PathToUtf8(m_settings.ResolveIconPath(ctx.projectRoot));
     const std::uint64_t resetVersion = ctx.resources ? ctx.resources->GetResetVersion() : 0;
 
     // 読み込みはパスが変わったときだけ。デバイスを作り直した後は取り直す。
     if (previewPath != m_iconPreviewPath || resetVersion != m_iconPreviewResetVersion) {
+        // .ico の実体はここが自前で作るので、捨てる前に解放する。
+        if (m_iconPreviewOwnsTexture && m_iconPreviewTexture.IsValid() && ctx.resources)
+            ctx.resources->Release(m_iconPreviewTexture);
         m_iconPreviewPath         = previewPath;
         m_iconPreviewResetVersion = resetVersion;
         m_iconPreviewTexture      = renderer::ResourceHandle<renderer::TextureTag>::Null();
-        if (!previewPath.empty() && ctx.resources)
-            m_iconPreviewTexture = ctx.resources->LoadTexture(previewPath);
+        m_iconPreviewOwnsTexture  = false;
+        if (!previewPath.empty() && ctx.resources) {
+            if (isIco) {
+                // WHY LoadTexture を通さないか: 下地の WIC は .ico の先頭フレームしか
+                //     返さない。exe に焼かれるのは «中の全サイズ» なので、
+                //     代表として面積最大のフレームを自前で展開する。
+                IcoImage image;
+                std::string error;
+                if (DecodeIcoFile(util::FileSystem::PathFromUtf8(previewPath), image, error) &&
+                    image.IsValid()) {
+                    m_iconPreviewTexture = ctx.resources->CreateTexture(
+                        image.rgba.data(), static_cast<std::uint32_t>(image.width),
+                        static_cast<std::uint32_t>(image.height));
+                    m_iconPreviewOwnsTexture = m_iconPreviewTexture.IsValid();
+                }
+            } else {
+                m_iconPreviewTexture = ctx.resources->LoadTexture(previewPath);
+            }
+        }
     }
 
     // ImTextureID はフレームごとに引き直す。ホットリロードで実体が入れ替わっても
@@ -444,9 +464,7 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
         ? ctx.imguiRenderer->GetImTextureID(m_iconPreviewTexture, *ctx.resources)
         : nullptr;
 
-    const char* emptyLabel = m_settings.iconPath.empty() ? "No icon"
-                           : isIco                       ? ".ico"
-                                                         : "Cannot read";
+    const char* emptyLabel = m_settings.iconPath.empty() ? "No icon" : "Cannot read";
     IconPreviewBox(texId, 96.0f, emptyLabel);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !m_settings.iconPath.empty())
         ImGui::SetTooltip("%s", m_settings.iconPath.c_str());
@@ -560,16 +578,12 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
         } else {
             // WHY DXC を名指しで見るか: DX12 は焼いた .cso を読むだけの経路でもリフレクションに
             //     dxcompiler.dll が要る。無いまま配ると「起動はするが何も描かれない」になる。
-            std::vector<std::wstring> required = {
+            /// @note DX11 撤去後は DXC が全構成で必須になったので、条件付けをやめて常に見る。
+            const std::vector<std::wstring> required = {
                 L"imgui.dll", L"FBZZMath.dll", L"FBZZPhysics.dll", L"FBZZEngine.dll",
                 L"assimp-vc145-mt.dll",
+                L"dxcompiler.dll", L"dxil.dll",
             };
-            const bool isDx12 =
-                ctx.projectSettings.app.rendererBackend == renderer::RendererBackend::DX12;
-            if (isDx12) {
-                required.push_back(L"dxcompiler.dll");
-                required.push_back(L"dxil.dll");
-            }
 
             std::string missing;
             for (const std::wstring& dll : required) {
@@ -580,7 +594,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
             if (missing.empty()) {
                 m_checks.push_back({ Check::Level::Ok, "Runtime DLLs",
-                                     isDx12 ? "including DXC (dx12)" : "dx11" });
+                                     "including DXC (dx12)" });
             } else {
                 m_checks.push_back({ Check::Level::Warn, "Runtime DLLs",
                                      "missing next to the exe: " + missing +
