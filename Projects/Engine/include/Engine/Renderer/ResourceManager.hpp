@@ -73,6 +73,11 @@ public:
     std::size_t EvictTexture(std::string_view path);
     ResourceHandle<TextureTag> CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height,
                                              Where where = Where::current());
+    /// CPU で焼いたミップ連鎖 (RGBA8) からテクスチャを作る。
+    /// @param mips 0 段目から順。空、または未対応バックエンドでは無効ハンドルを返す。
+    /// @note 縮小を CPU 側で決めたいテクスチャ (水面のさざ波勾配タイルなど) 用。
+    ResourceHandle<TextureTag> CreateTextureWithMips(const TextureMipData* mips, uint32_t mipCount,
+                                                     Where where = Where::current());
     /// テクスチャ未設定のフォールバックが共有する 1x1 白テクスチャ。
     /// WHY: 呼ぶたびに CreateTexture すると «誰も返さない 1 枚» が実体ごとに増える。
     ///      パーティクル / トレイルは寿命が短く数も多いので、そのぶんだけ漏れ続ける。

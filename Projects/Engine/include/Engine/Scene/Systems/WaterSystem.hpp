@@ -28,6 +28,10 @@ inline constexpr const char* kWaveSteepness[4]  = { "wave0Steepness",  "wave1Ste
 inline constexpr const char* kWindResponse  = "windResponse";
 /// 浮いている物体を押し流す水流の速さ [m/s]。向きは kFlowDirection。
 inline constexpr const char* kCurrentSpeed  = "currentSpeed";
+/// 波の «群» の深さ [0,1]。0 でどの波頭も同じ高さ、上げるほど大きい波の塊と凪が交互に来る。
+inline constexpr const char* kWaveGrouping  = "waveGrouping";
+/// 方向広がり [0,1]。0 で «1 波 1 方向» の直線的な波頭、上げるほど波頭が有限の長さに切れる。
+inline constexpr const char* kWaveSpread    = "waveSpread";
 inline constexpr const char* kFlowDirection = "flowDirection";
 } // namespace water_keys
 
