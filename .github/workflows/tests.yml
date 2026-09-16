@@ -33,14 +33,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # WHY generator を総当たりするか: ランナーイメージが載せる Visual Studio の世代は
+      #      予告なく入れ替わる。1 つに固定すると «その世代が消えた日» に configure ごと落ちる。
+      #      枯れている順に試し、最初に通ったものを使う。失敗した generator は CMakeCache に
+      #      残って次の試行を汚すため、build ディレクトリごと消してから次へ進む。
+      #      世代を足すときは «古い順» を崩さないこと (新しい方を先に試すと、過渡期の
+      #      ランナーで毎回 1 回分の configure が無駄に走る)。
       - name: Configure
         shell: pwsh
         run: |
-          cmake -S . -B "$env:BUILD_DIR" `
-            -G "Visual Studio 17 2022" -A x64 `
-            -DFBZZ_BUILD_TESTS=ON `
-            -DFBZZ_ENABLE_SOURCE_REBUILD=OFF `
-            -DFBZZ_BUILD_JOBS=4
+          $generators = @(
+            "Visual Studio 17 2022",
+            "Visual Studio 18 2026"
+          )
+
+          $configured = $false
+          foreach ($gen in $generators) {
+            Write-Host "Trying CMake generator: $gen"
+            cmake -S . -B "$env:BUILD_DIR" `
+              -G "$gen" -A x64 `
+              -DFBZZ_BUILD_TESTS=ON `
+              -DFBZZ_ENABLE_SOURCE_REBUILD=OFF `
+              -DFBZZ_BUILD_JOBS=4
+
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Configured with generator: $gen"
+              $configured = $true
+              break
+            }
+
+            Remove-Item -Recurse -Force "$env:BUILD_DIR" -ErrorAction SilentlyContinue
+          }
+
+          if (-not $configured) {
+            Write-Error "No supported Visual Studio generator found on runner."
+            exit 1
+          }
 
       # テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
       # WHY Editor が混ざるか: EditorAuto は FBZZEditor をリンクするため、その分だけは
