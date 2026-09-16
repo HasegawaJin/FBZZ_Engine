@@ -22,6 +22,13 @@ permissions:
   contents: read
   pull-requests: write
 
+# 同じブランチ / PR へ続けて push したとき、追い越された実行を打ち切る。
+# WHY: 1 回 40〜70 分かかるうえ Windows ランナーは課金分数が 2 倍で、
+#      結果を誰も見ない古い実行を最後まで回すと無料枠がそれだけで溶ける。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   BUILD_DIR: build/ci
   BUILD_CONFIG: Debug
@@ -29,6 +36,11 @@ env:
 jobs:
   test:
     runs-on: windows-latest
+
+    # Engine + Editor のフルビルド (EditorAuto が FBZZEditor をリンクするため) と、
+    # 素の ctest + OpenCppCoverage 計装の 2 周で 40〜70 分かかる。既定の上限は 360 分で、
+    # ハング 1 件に 6 時間ぶん持っていかれるため «正常な最長» の倍あたりで切る。
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -113,7 +125,7 @@ jobs:
             --excluded_sources "ThirdParty" `
             --export_type "cobertura:coverage.xml" `
             --export_type "html:coverage-html" `
-            -- ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG
+            -- ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG --timeout 30
 
       # OpenCppCoverage が書くパスは «ランナーのユーザー名を含む絶対パス»。
       # 直さないと PR コメントの表がランナーの絶対パスで埋まり、
