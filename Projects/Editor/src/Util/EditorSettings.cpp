@@ -304,6 +304,40 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["console"]["detail_ratio"].value<double>())
         consoleDetailRatio = std::clamp(static_cast<float>(*v), 0.10f, 0.80f);
 
+    // Animation Preview
+    {
+        const auto& ap = tbl["animation_preview"];
+        if (auto v = ap["show_mesh"].value<bool>())        animPreviewShowMesh       = *v;
+        if (auto v = ap["show_bones"].value<bool>())       animPreviewShowBones      = *v;
+        if (auto v = ap["show_bone_names"].value<bool>())  animPreviewShowBoneNames  = *v;
+        if (auto v = ap["show_trail"].value<bool>())       animPreviewShowTrail      = *v;
+        if (auto v = ap["show_ghost"].value<bool>())       animPreviewShowGhost      = *v;
+        if (auto v = ap["show_info"].value<bool>())        animPreviewShowInfo       = *v;
+        if (auto v = ap["show_curves"].value<bool>())      animPreviewShowCurves     = *v;
+        if (auto v = ap["show_root_motion"].value<bool>()) animPreviewShowRootMotion = *v;
+        if (auto v = ap["label_mode"].value<int64_t>())
+            animPreviewLabelMode = std::clamp(static_cast<int>(*v), 0, 2);
+        if (auto v = ap["ghost_offset"].value<double>())
+            animPreviewGhostOffset = std::clamp(static_cast<float>(*v), 0.0f, 0.5f);
+        if (auto v = ap["loop"].value<bool>())             animPreviewLoop           = *v;
+        if (auto v = ap["speed"].value<double>())
+            animPreviewSpeed = std::clamp(static_cast<float>(*v), 0.05f, 4.0f);
+        if (auto v = ap["camera_yaw"].value<double>())
+            animPreviewCameraYaw = static_cast<float>(*v);
+        if (auto v = ap["camera_pitch"].value<double>())
+            animPreviewCameraPitch = std::clamp(static_cast<float>(*v), -1.35f, 1.35f);
+        if (auto v = ap["show_grid"].value<bool>())        animPreviewShowGrid       = *v;
+        if (auto v = ap["show_ground_ring"].value<bool>()) animPreviewShowGroundRing = *v;
+        if (auto v = ap["wireframe"].value<bool>())        animPreviewWireframe      = *v;
+        if (auto v = ap["show_axis_gizmo"].value<bool>())  animPreviewShowAxisGizmo  = *v;
+        if (auto v = ap["background"].value<int64_t>())
+            animPreviewBackground = std::clamp(static_cast<int>(*v), 0, 3);
+        if (auto v = ap["fov"].value<double>())
+            animPreviewFov = std::clamp(static_cast<float>(*v), 12.0f, 90.0f);
+        if (auto v = ap["light_yaw"].value<double>())
+            animPreviewLightYaw = static_cast<float>(*v);
+    }
+
     // パネル表示状態
     panelVisibility.clear();
     if (auto* arr = tbl["panels"]["visible"].as_array()) {
@@ -550,6 +584,30 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     consoleTbl.insert("show_detail",   consoleShowDetail);
     consoleTbl.insert("detail_ratio",  static_cast<double>(consoleDetailRatio));
 
+    // Animation Preview
+    toml::table animPreviewTbl;
+    animPreviewTbl.insert("show_mesh",        animPreviewShowMesh);
+    animPreviewTbl.insert("show_bones",       animPreviewShowBones);
+    animPreviewTbl.insert("show_bone_names",  animPreviewShowBoneNames);
+    animPreviewTbl.insert("show_trail",       animPreviewShowTrail);
+    animPreviewTbl.insert("show_ghost",       animPreviewShowGhost);
+    animPreviewTbl.insert("show_info",        animPreviewShowInfo);
+    animPreviewTbl.insert("show_curves",      animPreviewShowCurves);
+    animPreviewTbl.insert("show_root_motion", animPreviewShowRootMotion);
+    animPreviewTbl.insert("label_mode",       static_cast<int64_t>(animPreviewLabelMode));
+    animPreviewTbl.insert("ghost_offset",     static_cast<double>(animPreviewGhostOffset));
+    animPreviewTbl.insert("loop",             animPreviewLoop);
+    animPreviewTbl.insert("speed",            static_cast<double>(animPreviewSpeed));
+    animPreviewTbl.insert("camera_yaw",       static_cast<double>(animPreviewCameraYaw));
+    animPreviewTbl.insert("camera_pitch",     static_cast<double>(animPreviewCameraPitch));
+    animPreviewTbl.insert("show_grid",        animPreviewShowGrid);
+    animPreviewTbl.insert("show_ground_ring", animPreviewShowGroundRing);
+    animPreviewTbl.insert("wireframe",        animPreviewWireframe);
+    animPreviewTbl.insert("show_axis_gizmo",  animPreviewShowAxisGizmo);
+    animPreviewTbl.insert("background",       static_cast<int64_t>(animPreviewBackground));
+    animPreviewTbl.insert("fov",              static_cast<double>(animPreviewFov));
+    animPreviewTbl.insert("light_yaw",        static_cast<double>(animPreviewLightYaw));
+
     // パネル表示状態
     toml::array panelArr;
     for (const auto& [name, open] : panelVisibility) {
@@ -671,6 +729,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     localRoot.insert("asset_browser",      std::move(assetBrowserTbl));
     localRoot.insert("panels",             std::move(panelsTbl));
     localRoot.insert("console",            std::move(consoleTbl));
+    localRoot.insert("animation_preview",  std::move(animPreviewTbl));
     localRoot.insert("inspector_sections", std::move(inspectorTbl));
     localRoot.insert("fluid_editor_state", std::move(fluidEditorStateTbl));
 

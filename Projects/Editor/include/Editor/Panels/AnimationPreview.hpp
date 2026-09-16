@@ -11,6 +11,7 @@
 namespace fbzz::editor {
 
 struct EditorContext;
+struct EditorSettings;
 
 // Inspector 埋め込みと Preview パネルで共有する Animation プレビュー。
 bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight);
@@ -21,6 +22,12 @@ bool HasAnimationPreviewTarget();
 void TickAnimationPreview(EditorContext& ctx);
 // Editor 終了時に Preview のセッション状態と GPU ハンドルを破棄する。
 void ShutdownAnimationPreview();
+
+// 表示トグル・再生速度・カメラ角などを EditorSettings と往復させる。
+// WHY: ボーン表示や背景を選び直す作業は「今追っている問題」に紐づく。起動のたびに
+//      既定へ戻ると、同じクリップを開くたび同じ設定をやり直すことになる。
+void LoadAnimationPreviewSettings(const EditorSettings& settings);
+void SaveAnimationPreviewSettings(EditorSettings& settings);
 
 // 選択 FBX のメッシュを Avatar Mask のウェイトで色分けする専用プレビュー。
 // Inspector 埋め込みではなく独立パネルからも同じ描画経路を利用する。

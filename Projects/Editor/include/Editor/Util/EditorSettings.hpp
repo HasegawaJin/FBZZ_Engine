@@ -252,6 +252,32 @@ struct EditorSettings {
     //      「閉じた」という状態は持たない。閉じたパネルが毎起動で開き直る。
     std::vector<std::pair<std::string, bool>> panelVisibility;
 
+    // --- Animation Preview (EditorLocalState.toml) --------------------------
+    // WHY: プレビューのトグルは「今どのクリップの何を疑っているか」で選ぶもので、
+    //      毎起動で既定へ戻るとボーン・軌跡・背景の選び直しから作業が始まる。
+    //      カメラ角まで含めるのは、同じ向きで見比べたいのが常だから。
+    bool  animPreviewShowMesh       = true;
+    bool  animPreviewShowBones      = false;
+    bool  animPreviewShowBoneNames  = false;
+    bool  animPreviewShowTrail      = false;
+    bool  animPreviewShowGhost      = false;
+    bool  animPreviewShowInfo       = false;
+    bool  animPreviewShowCurves     = false;
+    bool  animPreviewShowRootMotion = false;
+    int   animPreviewLabelMode      = 1;    // 0=選択/ホバー 1=アニメ有 2=全部
+    float animPreviewGhostOffset    = 0.0f; // 0 = タイムライン長依存の自動
+    bool  animPreviewLoop           = true;
+    float animPreviewSpeed          = 1.0f;
+    float animPreviewCameraYaw      = 2.55f;
+    float animPreviewCameraPitch    = 0.30f;
+    bool  animPreviewShowGrid       = true;
+    bool  animPreviewShowGroundRing = true;
+    bool  animPreviewWireframe      = false;
+    bool  animPreviewShowAxisGizmo  = true;
+    int   animPreviewBackground     = 0;
+    float animPreviewFov            = 40.0f;
+    float animPreviewLightYaw       = 0.0f;
+
     // --- Inspector セクション折り畳み状態 (EditorLocalState.toml) --------------
     // ImGui の CollapsingHeader が使う ImGuiID (uint32) と open フラグのペアを保存する。
     // WHY: ImGui の .ini はウィンドウ位置・サイズしか保存しない。
