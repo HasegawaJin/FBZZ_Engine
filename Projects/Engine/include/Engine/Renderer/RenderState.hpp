@@ -19,7 +19,7 @@ namespace fbzz::renderer {
         SOLID_FRONT_CULL, // 選択アウトライン用
     };
 
-    // ブレンド方程式の唯一の正本。DX11PipelineState / DX12PsoCache は「ここに書いてある式を
+    // ブレンド方程式の唯一の正本。DX12PsoCache は「ここに書いてある式を
     // それぞれの API 語彙へ翻訳するだけ」であって、片方だけ別の式を選んではならない。
     //
     //   OPAQUE_BLEND  : ブレンドなし
@@ -37,7 +37,7 @@ namespace fbzz::renderer {
     // NOTE: 2026-08-24 まで DX12 だけ ADDITIVE の SrcBlend が ONE になっていた。
     //       出力アルファがブレンド方程式から消えるため、加算パーティクルが寿命フェードを
     //       失って重なり枚数ぶん明るくなり続ける (白飛び) 一方、alpha=0 を返していた
-    //       LensFlare は DX11 でだけ完全に消えていた。式を 1 つに揃えて両方を閉じる。
+    //       LensFlare が片方のバックエンドでだけ完全に消えていた。式を 1 つに揃えて閉じた。
     enum class BlendMode {
         OPAQUE_BLEND, // 不透明 (デフォルト)
         ALPHA_BLEND, // アルファブレンド (半透明)

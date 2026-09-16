@@ -1,5 +1,5 @@
 /// @file    ShaderCompileDiagnostics.hpp
-/// @brief   DX11/DX12と外部HLSLビルドのコンパイル診断をEditorへ公開する共有レジストリ。
+/// @brief   バックエンドと外部 HLSL ビルドのコンパイル診断を Editor へ公開する共有レジストリ。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #pragma once

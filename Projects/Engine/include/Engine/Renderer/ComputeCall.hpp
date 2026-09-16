@@ -32,7 +32,9 @@ struct ComputeCall {
     ResourceHandle<ShaderTag> shader;
     std::array<ResourceHandle<ConstantBufferTag>, 14> constantBuffers = {}; // b0〜b13
     std::array<ResourceHandle<TextureTag>, 32>        srvInputs       = {}; // t0〜t31
-    std::array<ResourceHandle<TextureTag>, 8>         uavOutputs      = {}; // u0〜u7 (DX11 CS上限)
+    // u0〜u7。枠数の由来は撤去済みの DX11 SM5.0 の CS UAV 上限で、DX12 は 64 本まで張れる。
+    // 広げるときはシェーダー側 (Binding.hlsli) の時分割も一緒に解くこと。
+    std::array<ResourceHandle<TextureTag>, 8>         uavOutputs      = {};
     // StructuredBuffer SRV。添字 = レジスタ番号で、srvInputs と同じ規則。
     //
     // WHY 添字 = レジスタ番号にするか: 以前は「先頭 2 本を t14/t15 へ」という固定配置で、

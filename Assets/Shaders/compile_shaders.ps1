@@ -1,11 +1,14 @@
 ﻿# FBZZ Engine
 # compile_shaders.ps1 | Assets/Shaders
-# HLSLの自動収集、依存差分検知、DX11/DX12向けコンパイルを一元管理する
+# HLSLの自動収集、依存差分検知、DX12 (DXC / SM 6.8) 向けコンパイルを一元管理する
+# NOTE: DirectX 11 / FXC 経路は v1.0 で撤去した (Docs/design/dx11-removal.md)。
 
 [CmdletBinding()]
 param(
-    [ValidateSet("All", "DX11", "DX12")]
-    [string]$Backend = "All",
+    # 唯一のバックエンド。撤去後も選択の入口を残すのは、次のバックエンドを足すときに
+    # 呼び出し側のコマンドラインを変えずに済ませるため。
+    [ValidateSet("DX12")]
+    [string]$Backend = "DX12",
 
     [switch]$Force,
 
@@ -220,8 +223,8 @@ function Get-ShaderJobs {
 function Find-ShaderCompiler {
     param([Parameter(Mandatory = $true)][string]$TargetBackend)
 
-    $executableName = if ($TargetBackend -eq "DX11") { "fxc.exe" } else { "dxc.exe" }
-    $overrideName = if ($TargetBackend -eq "DX11") { "FBZZ_FXC" } else { "FBZZ_DXC" }
+    $executableName = "dxc.exe"
+    $overrideName = "FBZZ_DXC"
     $overridePath = [Environment]::GetEnvironmentVariable($overrideName)
     if (-not [string]::IsNullOrWhiteSpace($overridePath)) {
         if (-not (Test-Path -LiteralPath $overridePath -PathType Leaf)) {
@@ -267,9 +270,6 @@ function Get-ShaderProfile {
     )
 
     $prefix = $Stage.ToLowerInvariant()
-    if ($TargetBackend -eq "DX11") {
-        return "${prefix}_5_0"
-    }
     return "${prefix}_6_8"
 }
 
@@ -298,21 +298,12 @@ function Invoke-ShaderJob {
     $temporaryPath = "$OutputPath.$([Guid]::NewGuid().ToString('N')).tmp"
     $profile = Get-ShaderProfile -TargetBackend $TargetBackend -Stage $Job.Stage
 
-    if ($TargetBackend -eq "DX11") {
-        $arguments = @(
-            "/nologo", "/O3", "/I", $shaderRoot,
-            "/D", "FBZZ_BACKEND_DX11=1",
-            "/T", $profile, "/E", $Job.Entry,
-            "/Fo", $temporaryPath, $Job.SourcePath
-        )
-    } else {
-        $arguments = @(
-            "-nologo", "-O3", "-HV", "2021", "-I", $shaderRoot,
-            "-D", "FBZZ_BACKEND_DX12=1",
-            "-T", $profile, "-E", $Job.Entry,
-            "-Fo", $temporaryPath, $Job.SourcePath
-        )
-    }
+    $arguments = @(
+        "-nologo", "-O3", "-HV", "2021", "-I", $shaderRoot,
+        "-D", "FBZZ_BACKEND_DX12=1",
+        "-T", $profile, "-E", $Job.Entry,
+        "-Fo", $temporaryPath, $Job.SourcePath
+    )
 
     try {
         # WHY: Windows PowerShell 5.1はネイティブプロセスのstderrもErrorRecordへ変換する。
@@ -377,10 +368,8 @@ try {
         })
     }
 
-    # WHY: if 文の出力は 1 要素配列が自動でスカラーへ展開されるため、-Backend DX11 のように
-    #      単一指定すると $targetBackends が文字列になり、後段の .Count が StrictMode で例外になる。
-    #      外側を @() で包んで常に配列を保証する。
-    $targetBackends = @(if ($Backend -eq "All") { "DX11", "DX12" } else { $Backend })
+    # WHY 1 要素でも @() で包むか: 文字列がそのまま入ると後段の .Count が StrictMode で例外になる。
+    $targetBackends = @($Backend)
     $plans = New-Object System.Collections.Generic.List[object]
     $orphanPlans = New-Object System.Collections.Generic.List[object]
     $expectedOutputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -389,7 +378,7 @@ try {
     }
 
     foreach ($targetBackend in $targetBackends) {
-        $outputDirectoryName = if ($targetBackend -eq "DX11") { "compiled" } else { "compiled_dx12" }
+        $outputDirectoryName = "compiled_dx12"
         $outputDirectory = Join-Path $shaderRoot $outputDirectoryName
         foreach ($job in $catalog.Jobs) {
             $outputPath = Join-Path $outputDirectory $job.OutputName
@@ -454,7 +443,7 @@ try {
 
     foreach ($targetBackend in $targetBackends) {
         $backendPlans = @($plans | Where-Object { $_.Backend -eq $targetBackend })
-        $outputDirectoryName = if ($targetBackend -eq "DX11") { "compiled" } else { "compiled_dx12" }
+        $outputDirectoryName = "compiled_dx12"
         $outputDirectory = Join-Path $shaderRoot $outputDirectoryName
         $compilerPath = $null
 

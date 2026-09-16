@@ -161,7 +161,7 @@ int Run()
             return 1;
         }
 
-        // WHY: Standalone は ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する。
+        // WHY: Standalone は ProjectSettings の renderer 指定でレンダラーを生成する。
         //      コマンドライン --renderer= があれば Application::Init 内でそちらが優先される。
         if (!app.Init(scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
@@ -178,7 +178,7 @@ int Run()
         asset::AssetManager::UnloadAll();
         resources.Reset();
     } else {
-        // WHY: Editor も起動時プロジェクトの renderer 設定 (dx11/dx12) に従う。レンダラーは
+        // WHY: Editor も起動時プロジェクトの renderer 設定に従う。レンダラーは
         //      プロジェクト読込前に生成するため設定をここで先読みしてバックエンドを渡す
         //      (ウィンドウは Editor 既定サイズ。--renderer= があればそちらが優先)。
         //      Load 失敗時は全体既定のDX12でEditorを開く (設定の本読込はOpenProjectが行う)。

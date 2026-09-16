@@ -77,7 +77,7 @@ public:
     // ViewportPanel の Stats オーバーレイから renderStats を読む用途を想定。
     static const Snapshot& GetLastSnapshot();
 
-    // RenderSystem 末尾から呼ぶ。ハンドルを静的領域に保存するだけで ImGui / DX11 に触れない。
+    // RenderSystem 末尾から呼ぶ。ハンドルを静的領域に保存するだけで ImGui / GPU に触れない。
     // ImGui フレーム外 (GPU レンダリング中) から安全に呼べる。
     static void UpdateSnapshot(const Snapshot& snapshot, bool enabled);
 

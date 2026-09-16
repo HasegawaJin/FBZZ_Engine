@@ -17,7 +17,7 @@ namespace fbzz::renderer
 
         // CPU からデータを書き込む。この呼び出し時点の内容は、次に行われる Submit が
         // キャプチャし、同じバッファへの後続 Update から独立して使われる。
-        // DX11: UpdateSubresource / Map+Unmap
+        // 実装はバックエンド依存 (DX12 は upload heap への書き込み)。
         // DX12: Upload ヒープへの memcpy
 
         virtual void Update(const void* data, size_t sizeBytes) = 0;

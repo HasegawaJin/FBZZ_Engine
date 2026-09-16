@@ -120,7 +120,7 @@ private:
     std::string   m_settingsRelPath = "ProjectSettings/ProjectSettings.toml";
     std::string   m_defaultSceneRel = "Assets/Scenes/Main.scene";
     std::string   m_startSceneRel;
-    std::string   m_rendererBackend; // ProjectSettings の renderer ("dx11" / "dx12")
+    std::string   m_rendererBackend; ///< ProjectSettings の renderer ("dx12")。
 
     std::filesystem::path m_outputDir;  // 解決済みの出力先
     std::filesystem::path m_tmpDir;     // 作業用一時ディレクトリ (outputDir + "_tmp")

@@ -50,8 +50,8 @@ template <> struct DynamicBufferFactory<StructuredBufferTag> {
 ///   先に記録した Draw まで後から書いた内容を読む。「エミッターごとに Update → Submit」
 ///   「パスごとに Flush」「Scene View と Game View がそれぞれ書く」のような書き方は、
 ///   2 個目以降が 1 個目を巻き添えにして壊す (線や板が別の形に化ける・ちらつく)。
-///   DX11 は MAP_WRITE_DISCARD がバッファをリネームするため同じコードでも無害で、
-///   バックエンドを DX12 へ切り替えたときだけ症状が出る。
+///   撤去済みの DX11 では MAP_WRITE_DISCARD がバッファをリネームしていたため同じコードが
+///   無害で、DX12 へ切り替えたときに初めて症状が出た経緯がある。
 ///
 /// WHY フレームをまたいでも同じバッファを貸さないか (2026-09-11 に変更):
 ///   DX12 は GPU が CPU から最大 1 フレーム遅れて走る (DX12Context::FRAME_COUNT = 2。
