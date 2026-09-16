@@ -27,27 +27,31 @@ namespace fbzz::core {
 
 namespace {
 
-// 描画バックエンドを選ぶ。優先順位: コマンドライン (--renderer=) > 呼び出し側指定 (fallback)。
-// WHY: コマンドラインを最優先にすることで、プロジェクト設定が dx12 でも A/B 検証時に
-//      既定はDX12。--renderer=dx11を指定した場合だけ互換バックエンドへ戻す。
+/// @brief 描画バックエンドを選ぶ。優先順位はコマンドライン (--renderer=) > 呼び出し側指定。
+/// @note  DirectX 11 サポートは v1.0 で終了した (Docs/design/dx11-removal.md)。
+///        --renderer=dx11 は起動を止めず DX12 へ倒すが、黙って倒すと設定が効いていると
+///        誤解されるため名指しで警告する。
 renderer::RendererBackend SelectRendererBackend(renderer::RendererBackend fallback)
 {
     const wchar_t* commandLine = GetCommandLineW();
     if (commandLine) {
         if (wcsstr(commandLine, L"--renderer=dx12")) return renderer::RendererBackend::DX12;
-        if (wcsstr(commandLine, L"--renderer=dx11")) return renderer::RendererBackend::DX11;
+        if (wcsstr(commandLine, L"--renderer=dx11")) {
+            FBZZ_LOG_WARN("Application: --renderer=dx11 は v1.0 でサポートを終了しました。"
+                          "DirectX 12 で起動します (Docs/design/dx11-removal.md)");
+            return renderer::RendererBackend::DX12;
+        }
     }
     return fallback;
 }
 
-// ウィンドウタイトルに付ける描画バックエンドの識別サフィックス。
-// WHY: DX11 / DX12 のどちらで起動しているかをタイトルバーで一目で判別できるようにする
-//      (A/B 検証時にどちらのウィンドウか取り違えないため)。
+/// @brief ウィンドウタイトルに付ける描画バックエンドの識別サフィックス。
+/// @note  バックエンドが 1 つになった後も残すのは、実行中のバイナリがどの API で
+///        動いているかをスクリーンショットだけで判別できるようにするため。
 const wchar_t* BackendTitleTag(renderer::RendererBackend backend)
 {
     switch (backend) {
     case renderer::RendererBackend::DX12: return L" [DirectX 12]";
-    case renderer::RendererBackend::DX11: return L" [DirectX 11]";
     }
     return L" [Unknown Renderer]";
 }
@@ -121,8 +125,8 @@ bool Application::Init(const Window::Config& windowConfig,
     // 読み込み済みの Submit / Cancel やゲーム固有アクションを既定値で消さない。
     input::InputActionMap::Initialize();
 
-    // WHY: バックエンド具象 (DX11 / DX12) の選択と生成は RendererFactory に集約する。
-    //      合成ルートである Application は RendererBackend を指定するだけで具象を直接知らない。
+    /// @note バックエンド具象の選択と生成は RendererFactory に集約してある。
+    ///       合成ルートである Application は RendererBackend を指定するだけで具象を直接知らない。
     FBZZ_LOG_INFO("Application::Init: レンダラー生成を開始します");
     auto rendererBundle = renderer::CreateRenderer(
         backend,
@@ -185,7 +189,7 @@ void Application::Shutdown() {
     m_imguiRenderer.reset();
     // WHAT: デバイスを破棄する前に ResourceManager 所有の全 GPU リソースを解放する。
     // WHY: ResourceManager は呼び出し側のローカル変数として Application より長く生存するため、
-    //      先に renderer を破棄すると Shader 等が DX11 Live Object として報告される。
+    //      先に renderer を破棄すると Shader 等が D3D の Live Object として報告される。
     if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
         resources->Reset();
     if (m_renderer)

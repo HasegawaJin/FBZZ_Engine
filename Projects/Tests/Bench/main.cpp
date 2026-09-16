@@ -3,9 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
 ///
-/// WHY DX11 を明示するか: このベンチはシェーダーを 1 本も使わず ImGui しか描かない。
-///     DX12 経路は実行時に dxcompiler.dll / dxil.dll を要求するため、それが無い環境で
-///     «物理を見たいだけ» のツールが起動しなくなる。--renderer=dx12 で上書きはできる。
+/// @note このベンチはシェーダーを 1 本も使わず ImGui しか描かない。以前は DXC を要求しない
+///       DX11 経路を明示していたが、DirectX 11 サポートは v1.0 で終了した。DX12 経路は
+///       dxcompiler.dll / dxil.dll を実行時に要求するため、それらが exe の隣に無い環境では
+///       起動に失敗する (CMake が FBZZEngine の出力先へ配置する)。
+/// @see  Docs/design/dx11-removal.md
 #include "BenchApp.hpp"
 
 #include <TestKit/Console.hpp>
@@ -29,7 +31,7 @@ int main()
     config.width  = 1600;
     config.height = 900;
 
-    if (!app.Init(config, fbzz::renderer::RendererBackend::DX11)) {
+    if (!app.Init(config, fbzz::renderer::RendererBackend::DX12)) {
         std::printf("\nApplication::Init に失敗しました。上のログを確認してください。\n");
         if (ownsConsole) fbzz::testkit::WaitForKey();
         return 1;

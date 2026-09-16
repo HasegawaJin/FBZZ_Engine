@@ -177,8 +177,7 @@ void IblBakePanel::DoBake(EditorContext& ctx)
     }
 
     // ── Step 2: IblBaker 生成 ───────────────────────────────────────────────
-    // DX11Renderer::CreateIblBaker() が DX11IblBaker を返す。
-    // 上位レイヤーは IIblBaker* として使い DX11 を直接参照しない。
+    /// @note 具象は各バックエンドが返す。上位レイヤーは IIblBaker* としてだけ扱う。
     auto baker = ctx.renderer->CreateIblBaker();
     if (!baker) {
         FBZZ_LOG_ERROR("IblBakePanel: CreateIblBaker() が nullptr を返しました");
@@ -188,11 +187,10 @@ void IblBakePanel::DoBake(EditorContext& ctx)
     }
 
     // ── Step 3: ベイク実行 ─────────────────────────────────────────────────
-    // DX11 は DXBC、DX12 は DXIL を別ディレクトリへ生成するため、抽象 API の表示名で選ぶ。
-    // WHY: 上位レイヤーから具象 Renderer へダウンキャストせず、IBL Compute も同じ SM 契約に揃える。
-    const bool usesDx12 = std::string_view(ctx.renderer->GetBackendName()) == "DirectX 12";
-    const std::string compiledDir = ctx.hlslSourceDir
-        + (usesDx12 ? "/compiled_dx12/" : "/compiled/");
+    /// @note DXIL の出力先。DX11 (DXBC を compiled/ へ出していた) を v1.0 で撤去したため
+    ///       分岐は無くなったが、出力先の決定をここへ残しておく。
+    /// @see  Docs/design/dx11-removal.md
+    const std::string compiledDir = ctx.hlslSourceDir + "/compiled_dx12/";
 
     renderer::IblBakeInput input;
     input.pixels              = pixels.Pixels();

@@ -1740,7 +1740,7 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 
         const auto previousRT = rt;
         rt = created;
-        // WHY: ハンドルの上書きだけでは旧DX11リソースがResourceManagerに残り、
+        // WHY: ハンドルの上書きだけでは旧 GPU リソースが ResourceManager に残り、
         //      Dock操作を繰り返すほどVRAM使用量とPresent待機が増える。
         if (previousRT.IsValid())
             m_resources->Release(previousRT);

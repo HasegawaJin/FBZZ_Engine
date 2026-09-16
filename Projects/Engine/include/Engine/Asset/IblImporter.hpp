@@ -7,7 +7,7 @@
 /// ヘッダー内の 4 つの DDS パス (相対) を ResourceManager::LoadTexture() で GPU にロードし、
 /// IblAsset::ResourceHandle として返す。
 ///
-/// 既存の DX11Texture::Init() が DDS cubemap を DirectXTex で正しく処理するため、
+/// バックエンドの ITexture::Init() が DDS cubemap を DirectXTex で正しく処理するため、
 /// このインポーターは DDS のロードを完全に ResourceManager に委譲できる。
 #pragma once
 #include <Engine/Asset/IAssetImporter.hpp>

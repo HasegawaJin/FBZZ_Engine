@@ -3,7 +3,6 @@
 #   FBZZCore           Logger / Time / Memory / Scheduler / Util / Profiler / Input
 #   FBZZRHI            IRenderer 等の抽象とその上の共通実装 (Mesh / Material / ResourceManager)
 #   FBZZRenderPlatform D3D 共通の下支え (GpuValidation / RenderTargetCapture)
-#   FBZZRenderDX11     DirectX 11 バックエンド
 #   FBZZRenderDX12     DirectX 12 バックエンド (FBZZ_ENABLE_DX12)
 #   FBZZEngine         Scene / Asset / Audio / AI と合成ルート。上記を全て飲み込む DLL
 #
@@ -85,7 +84,7 @@ set(FBZZ_ENGINE_UNITY_EXCLUDE
 # 内部レイヤー 1 つ分の OBJECT ライブラリを作る。
 #
 #   PRIVATE_INCLUDES に渡したディレクトリだけが、そのモジュールの «自分専用の窓» になる。
-#   例えば DX11 のヘッダーは FBZZRenderDX11 の PRIVATE_INCLUDES にしか現れないため、
+#   例えば d3d12.h は FBZZRenderDX12 の PRIVATE_INCLUDES にしか現れないため、
 #   他のモジュールからは #include できない。«上位レイヤーは IRenderer& のみ» という
 #   規約が、レビューではなくコンパイルエラーで守られる。
 function(fbzz_engine_module TARGET)
@@ -151,7 +150,7 @@ file(GLOB RHI_SOURCES CONFIGURE_DEPENDS
 fbzz_engine_module(FBZZRHI SOURCES ${RHI_SOURCES})
 
 # ── FBZZRenderPlatform ──────────────────────────────────────────────────────
-# DX11 / DX12 のどちらからも使う D3D 共通処理。特定バックエンドの型は持たない。
+# バックエンドから使う D3D 共通処理。特定バックエンドの型は持たない。
 file(GLOB RENDER_PLATFORM_SOURCES CONFIGURE_DEPENDS
     src/Renderer/Platform/*.cpp src/Renderer/Platform/*.hpp
 )
@@ -159,20 +158,12 @@ fbzz_engine_module(FBZZRenderPlatform
     SOURCES ${RENDER_PLATFORM_SOURCES}
 )
 
-# ── FBZZRenderDX11 / FBZZRenderDX12 ─────────────────────────────────────────
-file(GLOB_RECURSE DX11_SOURCES CONFIGURE_DEPENDS
-    src/Renderer/Platform/DX11/*.cpp src/Renderer/Platform/DX11/*.hpp
-)
-fbzz_engine_module(FBZZRenderDX11
-    SOURCES ${DX11_SOURCES}
-    PRIVATE_INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/Platform/DX11"
-    # d3d11.h は 11 TU 中 10、wrl/client.h は 9 が既に include している。
-    PCH_EXTRA <Windows.h> <d3d11.h> <wrl/client.h>
-)
-
+# ── FBZZRenderDX12 ──────────────────────────────────────────────────────────
+# WHY 1 バックエンドでもモジュールを分けたままにするか: DX ヘッダーを PRIVATE_INCLUDES に
+#     閉じ込める仕組みが、上位層から具象へのダウンキャストを «include が通らない» という形で
+#     禁止している (AGENTS.md の絶対制約)。FBZZRenderDX11 を撤去した後もこの境界は要る。
 set(FBZZ_BACKEND_OBJECTS
     $<TARGET_OBJECTS:FBZZRenderPlatform>
-    $<TARGET_OBJECTS:FBZZRenderDX11>
 )
 
 if(FBZZ_ENABLE_DX12)
@@ -187,14 +178,15 @@ if(FBZZ_ENABLE_DX12)
     )
     list(APPEND FBZZ_BACKEND_OBJECTS $<TARGET_OBJECTS:FBZZRenderDX12>)
 else()
-    message(STATUS "FBZZ: DX12 バックエンドを含めずにビルドします (dxcompiler.dll / dxil.dll も配置しない)")
-    # WHY 警告するか: GameHub のプロジェクトテンプレートは既定 renderer が DX12。
-    #      この構成で FBZZSDK を公開すると、そこから作られたゲームは起動時に
-    #      «DX12 を含まずにビルドされています» で描画できない。SDK 検証
+    message(STATUS "FBZZ: 描画バックエンドを含めずにビルドします (dxcompiler.dll / dxil.dll も配置しない)")
+    # WHY 警告するか: DirectX 11 を v1.0 で撤去したため、この構成はバックエンドを 1 つも
+    #      持たない。ここから FBZZSDK を公開すると、作られたゲームは起動時に
+    #      «描画バックエンドを含まずにビルドされています» で必ず落ちる。SDK 検証
     #      (ValidateFBZZSDK.cmake) は bin と Editor の整合しか見ないため素通りする。
+    #      GPU を使わないビルド (カバレッジ計測など) 専用と考えること。
     message(WARNING
         "FBZZ_ENABLE_DX12=OFF の構成から FBZZSDK を公開しないこと。"
-        "プロジェクトテンプレートの既定 renderer は DX12 のため、"
+        "DirectX 11 撤去後、この構成には描画バックエンドが 1 つも無いため、"
         "配布した SDK から作ったゲームが起動できなくなる。")
 endif()
 
@@ -225,7 +217,7 @@ list(APPEND ENGINE_SOURCES
 #      «実行時に機能が無い» として現れるため、configure の時点で落とす。
 file(GLOB_RECURSE FBZZ_ALL_ENGINE_CPP CONFIGURE_DEPENDS src/*.cpp)
 set(FBZZ_CLAIMED_CPP ${CORE_SOURCES} ${RHI_SOURCES} ${RENDER_PLATFORM_SOURCES}
-                     ${DX11_SOURCES} ${DX12_SOURCES} ${ENGINE_SOURCES})
+                     ${DX12_SOURCES} ${ENGINE_SOURCES})
 list(FILTER FBZZ_CLAIMED_CPP INCLUDE REGEX "\\.cpp$")
 set(FBZZ_UNCLAIMED_CPP ${FBZZ_ALL_ENGINE_CPP})
 list(REMOVE_ITEM FBZZ_UNCLAIMED_CPP ${FBZZ_CLAIMED_CPP})
@@ -252,8 +244,8 @@ set_target_properties(FBZZEngine PROPERTIES
 )
 target_compile_definitions(FBZZEngine PRIVATE ${FBZZ_ENGINE_DEFINES})
 
-# WHY src を include パスへ入れないか: src/Renderer/Platform/DX11 等が
-#      "Platform/DX11/DX11Renderer.hpp" として届いてしまい、バックエンドの隔離が
+# WHY src を include パスへ入れないか: src/Renderer/Platform/DX12 等が
+#      "Platform/DX12/DX12Renderer.hpp" として届いてしまい、バックエンドの隔離が
 #      名ばかりになる。src ルート起点の include は 1 つも無いことを確認済み。
 target_include_directories(FBZZEngine
     PUBLIC
@@ -292,7 +284,7 @@ target_link_libraries(FBZZEngine
 )
 
 # DX12 のホットリロードと DXIL reflection は dxcompiler.dll を実行時に遅延ロードする。
-# WHY: DX11 専用起動には DXC を強制せず、DX12 を使う構成だけ同梱 SDK の DLL を配置する。
+# WHY: バックエンドを持たない構成 (FBZZ_ENABLE_DX12=OFF) には DXC を強制しない。
 get_filename_component(FBZZ_WINDOWS_SDK_BIN_DIRECTORY "${CMAKE_RC_COMPILER}" DIRECTORY)
 if(FBZZ_ENABLE_DX12)
     if(DEFINED ENV{FBZZ_DXC} AND EXISTS "$ENV{FBZZ_DXC}")

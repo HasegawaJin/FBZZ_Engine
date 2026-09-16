@@ -365,7 +365,7 @@ private:
 
     // HLSL ホットリロード
     std::filesystem::path    m_hlslSourceDir;      // Assets/shaders/ ディレクトリ
-    std::filesystem::path    m_compileShadersScript; // compile_shaders.bat パス
+    std::filesystem::path    m_compileShadersScript; ///< compile_shaders.ps1 のパス。
     /// m_hlslSourceDir が「開いているプロジェクトの持ち物」か。
     /// 共有 SDK の shader へ解決されたときは false になり、監視も再コンパイルも行わない
     /// (実行中の Editor が SDK を書き換えると、その SDK を使う他プロジェクトまで巻き込む)。

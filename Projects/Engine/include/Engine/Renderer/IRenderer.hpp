@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// 上位レイヤーは DX11 実装を直接参照せず、このインターフェースだけを使う。
+/// 上位レイヤーはバックエンド具象を直接参照せず、このインターフェースだけを使う。
 /// リソース生成は ResourceManager に閉じ、描画 API は Submit / Dispatch に集約する。
 #pragma once
 #include <cstddef>
@@ -32,7 +32,7 @@ namespace fbzz::renderer {
 class ResourceManager;
 
 // GPU プロファイリング 1 パス分の結果。
-// WHY: IRenderer を経由することで上位レイヤーが DX11Renderer を知らずに GPU 時間を取得できる。
+// WHY: IRenderer を経由することで上位レイヤーが具象を知らずに GPU 時間を取得できる。
 struct GpuPassProfile {
     std::string name;
     double gpuMs = 0.0;
@@ -103,26 +103,25 @@ public:
 
     // SetRenderTargetFace — キューブマップ RT の 1 面 (+mip) を描画先にバインドする。
     // WHY: 空連動 IBL の SkyCapture が、空ドームを 6 面それぞれの向きで描き込むために使う。
-    //      DX11 以外のバックエンドは未対応 (no-op)。CreateCubemapRenderTarget で作った RT 以外を
-    //      渡した場合の挙動は実装依存 (DX11 は何もしない)。
+    //      未対応バックエンドは no-op でよい。CreateCubemapRenderTarget で作った RT 以外を
+    //      渡した場合の挙動は実装依存。
     virtual void SetRenderTargetFace(ResourceHandle<RenderTargetTag> /*rt*/, uint32_t /*face*/,
                                      uint32_t /*mip*/, ResourceManager& /*resources*/) {}
 
     // NOTE: かつてここに SetSampler(slot, mode) があったが削除した。
     //       サンプラーはレジスタごとに意味を 1 つ固定する規約になっており、その正本は
     //       Assets/Shaders/Common/Binding.hlsli の SAMPLER_* と、それに対応する
-    //       バックエンド側の固定テーブル (DX12 は Root Signature の静的サンプラー、
-    //       DX11 は BeginFrame でまとめて張る) の対。
+    //       バックエンド側の固定テーブル (DX12 は Root Signature の静的サンプラー) の対。
     // WHY 動的差し替えをやめたか: DX12 は静的サンプラーを Root Signature へ焼き込むため
     //     1 レジスタに 1 つの意味しか持てず、SetSampler は実装できずに no-op だった。
     //     呼び出し側は効いているつもりで書き続けるので、シェーダーのコメントと実挙動が
     //     食い違ったまま誰も気づかない (全画面パスが s0 を使い、DX12 では WRAP のせいで
     //     画面端が反対側へ回り込んでいた)。正本を 1 つにして構造的に防ぐ。
 
-    // GPU プロファイリング。DX11Renderer のみ実装し、他バックエンドは no-op。
+    // GPU プロファイリング。未対応バックエンドは no-op のままでよい。
     // WHY: パスごとの GPU 実行時間を上位レイヤーから取得するために抽象化する。
-    //      D3D11_QUERY_TIMESTAMP_DISJOINT / D3D11_QUERY_TIMESTAMP を使って非同期に計測する。
-    //      GpuProfCollect() を呼んだ時点で QUERY_LATENCY フレーム前の結果が確定する。
+    //      タイムスタンプクエリで非同期に計測するため、GpuProfCollect() を呼んだ時点で
+    //      数フレーム前の結果が確定する (即値ではない)。
     virtual void GpuProfBeginFrame()                      {}
     virtual void GpuProfEndFrame()                        {}
     virtual void GpuProfBeginPass(const char* /*name*/)   {}
@@ -136,9 +135,9 @@ public:
 
     // BakeSkyLight — キャプチャ済み空キューブマップ (envCubeRT) を irradiance / prefilter キューブへ
     // 畳み込み、それぞれを ITexture (TextureCube SRV) として返す。空連動 IBL の runtime 畳み込み経路。
-    // WHY: 畳み込み Compute は DX11 固有 (面ごとの Texture2DArray UAV) のため、抽象 IRenderer の入口だけ
-    //      提供し実装は DX11 に閉じる。返した ITexture は呼び出し側が ResourceManager::RegisterTexture で所有する。
-    //      DX11 以外のバックエンドは未対応 (false)。
+    // WHY: 畳み込み Compute は面ごとの Texture2DArray UAV を要求するバックエンド固有処理のため、
+    //      抽象 IRenderer は入口だけ提供し実装は各 Platform へ閉じる。返した ITexture は
+    //      呼び出し側が ResourceManager::RegisterTexture で所有する。未対応なら false。
     virtual bool BakeSkyLight(ResourceHandle<RenderTargetTag> /*envCubeRT*/, ResourceManager& /*resources*/,
                               uint32_t /*irradianceSize*/, uint32_t /*prefilterSize*/,
                               uint32_t /*prefilterMips*/, uint32_t /*sampleCount*/,
@@ -146,16 +145,16 @@ public:
                               std::unique_ptr<ITexture>& /*outPrefilter*/) { return false; }
 
     // IBL ベイク処理の実装を返す (Editor 専用)。
-    // DX11Renderer は DX11IblBaker を返す。他のバックエンドは nullptr を返してよい。
-    // WHY: IblBaker は DX11 固有の UAV 操作を必要とするため IRenderer の factory 経由で提供し、
-    //      Editor が DX11Renderer に直接ダウンキャストしなくて済むようにする。
+    // 未対応のバックエンドは nullptr を返してよい。
+    // WHY: IblBaker はバックエンド固有の UAV 操作を必要とするため IRenderer の factory 経由で提供し、
+    //      Editor が具象レンダラーへ直接ダウンキャストしなくて済むようにする。
     virtual std::unique_ptr<IIblBaker> CreateIblBaker() { return nullptr; }
 
     // CaptureRenderTargetToPng — 指定 RenderTarget のカラーを PNG バイト列として CPU へ読み戻す。
     // WHY: AI 連携 (MCP viewport.capture) が「現在の Scene View を Claude に見せる」ために使う。
-    //      GPU テクスチャ読み戻し・PNG エンコードはバックエンド固有 (DX11: CopyResource + DirectXTex /
-    //      DX12: CommandQueue + DirectXTex) のため、上位 Editor が具象へダウンキャストせずに済むよう
-    //      抽象入口だけ提供し、実装は各 Platform に閉じる。DX11/DX12 が実装し、他は未対応 (false)。
+    //      GPU テクスチャ読み戻し・PNG エンコードはバックエンド固有 (DX12: CommandQueue + DirectXTex)
+    //      のため、上位 Editor が具象へダウンキャストせずに済むよう抽象入口だけ提供し、
+    //      実装は各 Platform に閉じる。未対応バックエンドは false。
     //      outPng は PNG ファイル全体のバイト列、out{Width,Height} は実 RT サイズ (要求サイズではない)。
     virtual bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> /*rt*/, ResourceManager& /*resources*/,
                                           std::vector<uint8_t>& /*outPng*/,
@@ -184,6 +183,12 @@ private:
     virtual std::unique_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTexture(const std::string& path) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
+    /// CPU で焼いたミップ連鎖からテクスチャを作る。未対応バックエンドは nullptr を返してよい。
+    /// @param mips 0 段目から順に並んだ RGBA8。各段の行ピッチは width*4 固定。
+    /// @note ドライバの自動生成に任せないのは、勾配を格納したテクスチャのように
+    ///       «どう縮小すれば正しいか» を呼び出し側しか知らない場合があるため。
+    virtual std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(
+        const TextureMipData* /*mips*/, uint32_t /*mipCount*/) { return nullptr; }
     virtual std::unique_ptr<ITexture> CreateNativeTexture3DFromData(
         const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(
@@ -193,7 +198,7 @@ private:
     virtual std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
     virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height,
                                                                     const RenderTargetDesc& desc) = 0;
-    // 6 面キューブマップ描画先。未対応バックエンドは nullptr を返してよい (DX11 のみ実装)。
+    // 6 面キューブマップ描画先。未対応バックエンドは nullptr を返してよい。
     virtual std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t /*size*/, uint32_t /*mipCount*/) { return nullptr; }
     // キューブマップ RT の TextureCube SRV を ITexture 化する (TextureTag として束縛可能にする)。
     virtual std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget& /*rt*/) { return nullptr; }
@@ -212,7 +217,7 @@ private:
     virtual std::unique_ptr<ITexture> CreateNativeDynamicTexture(
         uint32_t /*width*/, uint32_t /*height*/, DynamicTextureFormat /*format*/) { return nullptr; }
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
-    // 初期データだけを持つ GPU ローカル SRV。DX11 など専用経路がない場合は通常の SRV へ縮退する。
+    // 初期データだけを持つ GPU ローカル SRV。専用経路がないバックエンドは通常の SRV へ縮退する。
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
         const void* data, uint32_t elementCount, uint32_t stride)
     {

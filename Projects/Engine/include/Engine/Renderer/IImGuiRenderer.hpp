@@ -29,7 +29,7 @@ public:
     virtual void ImGuiRenderDrawData() = 0;
 
     // Multi-Viewport で生成された追加 OS ウィンドウを更新・描画する。
-    // WHY: Editor から DX11 / DX12 バックエンド関数を直接呼ばず、API 固有の実装をこの境界へ閉じ込める。
+    // WHY: Editor からバックエンド関数を直接呼ばず、API 固有の実装をこの境界へ閉じ込める。
     virtual void ImGuiRenderPlatformWindows() = 0;
 
     // RenderTarget を ImGui::Image が受け取れるテクスチャ ID へ変換する。
@@ -38,7 +38,7 @@ public:
 
     // Texture を ImGui::Image が受け取れるテクスチャ ID へ変換する。
     // WHY: AssetBrowser など通常のレンダーターゲットではない GPU テクスチャも UI 上で確認したい。
-    //      SRV の具体型は DX11 固有なので、Editor は ResourceHandle のまま抽象境界を越えない。
+    //      SRV の具体型はバックエンド固有なので、Editor は ResourceHandle のまま抽象境界を越えない。
     virtual void* GetImTextureID(ResourceHandle<TextureTag> texture, ResourceManager& resources) = 0;
 };
 

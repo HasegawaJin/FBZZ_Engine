@@ -55,8 +55,8 @@ struct DrawCall {
     std::array<ResourceHandle<StructuredBufferTag>, 2> vsBuffers = {}; // t14〜t15
 
     // PS-readable StructuredBuffer (t29〜t30): クラスタライティングのライト配列とインデックスリスト。
-    // WHY vsBuffers と分けるか: vsBuffers は両バックエンドとも頂点シェーダーにしか束縛しない
-    //     (DX11 は VSSetShaderResources、DX12 の root param 15 は SHADER_VISIBILITY_VERTEX)。
+    // WHY vsBuffers と分けるか: vsBuffers は頂点シェーダーにしか束縛しない
+    //     (DX12 の root param 15 は SHADER_VISIBILITY_VERTEX)。
     //     ピクセルシェーダーからバッファを読む手段が存在しなかったため、専用スロットを設ける。
     // NOTE: DX12 側はピクセル SRV テーブル (t0〜t31) の空き 2 枠へ差し込むだけなので、
     //       ルートシグネチャの変更は不要。テクスチャ SRV とバッファ SRV は同じレンジに入る。

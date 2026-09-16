@@ -8,7 +8,7 @@
 /// 処理は GPU Compute Shader で行う。Runtime は生成済み DDS を LoadTexture で読むだけ。
 ///
 /// 取得方法:
-/// IRenderer::CreateIblBaker(compiledShadersDir) で DX11 実装を得る。
+/// IRenderer::CreateIblBaker(compiledShadersDir) でバックエンド実装を得る。
 /// compiledShadersDir は Assets/Shaders/compiled/ の絶対パス。
 #pragma once
 #include <cstdint>
@@ -47,7 +47,7 @@ struct IblBakeOutput {
 };
 
 // IBL ベイク処理の抽象インターフェース
-// DX11 実装 (DX11IblBaker) は IRenderer::CreateIblBaker() で生成する。
+// 具象実装は IRenderer::CreateIblBaker() が生成する。
 class IIblBaker {
 public:
     virtual ~IIblBaker() = default;
