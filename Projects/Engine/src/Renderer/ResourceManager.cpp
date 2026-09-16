@@ -77,7 +77,7 @@ ResourceManager* ResourceManager::Active()
 ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 {
     // WHY: LoadTexture と同様にパス区切りを統一し、大文字小文字の違いによる
-    //      同一シェーダーの二重ロードを防ぐ。DX11Shader 内部も同様に正規化する。
+    //      同一シェーダーの二重ロードを防ぐ。バックエンドの IShader 内部も同様に正規化する。
     std::string key(path);
     std::replace(key.begin(), key.end(), '\\', '/');
     auto it = m_shaderCache.find(key);
@@ -160,7 +160,7 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     if (it != m_textureCache.end()) return it->second;
 
     // ".meta" サイドカー表記と生画像パスを同じ公開 API で扱う (ResolveSourcePath が元画像へ解決)。
-    // WHY: .mat / Scene は Assets/ 起点の相対パスを保存するが、DX11Texture は実ファイルパスを要求する。
+    // WHY: .mat / Scene は Assets/ 起点の相対パスを保存するが、テクスチャ実装は実ファイルパスを要求する。
     //      ResourceManager が AssetManager と同じ解決規則を通すことで、呼び出し側ごとの cwd 依存をなくす。
     std::string sourcePath;
     if (!ResolveTextureSource(ResolveAssetPath(key), sourcePath)) {
@@ -238,6 +238,18 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, u
     //     *texture を読むと空のポインタを参照しうる。
     const std::size_t bytes = EstimateTextureBytes(*texture);
     return m_textures.Insert(std::move(texture), bytes, "TextureFromData", where.file_name(), static_cast<int>(where.line()));
+}
+
+ResourceHandle<TextureTag> ResourceManager::CreateTextureWithMips(
+    const TextureMipData* mips, uint32_t mipCount, Where where)
+{
+    auto texture = m_renderer.CreateNativeTextureFromDataMips(mips, mipCount);
+    if (!texture) {
+        FBZZ_LOG_ERROR("ResourceManager::CreateTextureWithMips failed (%u 段)", mipCount);
+        return ResourceHandle<TextureTag>::Null();
+    }
+    const std::size_t bytes = EstimateTextureBytes(*texture);
+    return m_textures.Insert(std::move(texture), bytes, "TextureFromDataMips", where.file_name(), static_cast<int>(where.line()));
 }
 
 ResourceHandle<TextureTag> ResourceManager::GetWhiteTexture()

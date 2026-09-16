@@ -8,6 +8,7 @@
 /// Scene データは保存しやすい純粋なパラメータのまま保つ。
 #include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
 #include "GeometryPasses.hpp"
+#include "WaterNoiseBake.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -44,11 +45,9 @@ namespace fbzz::scene {
 
 namespace {
 
-// WaterVertex — HLSL の WaterVSInput と一致する頂点レイアウト。
-struct WaterVertex {
-    math::Vector3 position;
-    math::Vector2 uv;
-};
+// WaterVertex / WaterCB / WaterEffectParams の定義は RenderPassContext.hpp。
+// WHY そちらか: エディタのマテリアルプレビューが «本編と同じ絵» を焼くために
+//      同じレイアウトを要る。ここに置くと写しが 2 つになり、黙ってずれる。
 
 // WaterChunk — チャンク 1 個分の GPU リソースと «波を乗せる前» のローカル AABB。
 // WHY 波のマージンを焼き込まないか: 波の振幅は meshDirty を立てずに変わる。焼き込むと
@@ -77,8 +76,12 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
 {
     WaveMargin margin;
     if (water.enableGerstnerWaves) {
+        // 群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
+        // ここに入れ忘れると、山に当たったチャンクだけが «AABB からはみ出した» 扱いで消える。
+        const float peak = (1.0f + math::Clamp01(water.waveGrouping))
+                         * WaterComponent::WaveSpreadAmplitudeSum(water.waveSpread);
         for (const GerstnerWave& wave : water.waves) {
-            const float amplitude = (std::max)(wave.amplitude, 0.0f);
+            const float amplitude = (std::max)(wave.amplitude, 0.0f) * peak;
             margin.vertical   += amplitude;
             margin.horizontal += amplitude * math::Clamp01(wave.steepness);
         }
@@ -113,42 +116,6 @@ struct WaterRippleState {
     renderer::ResourceHandle<renderer::TextureTag> gpuTex;
     bool dirty = true;
 };
-
-// WaterCB — Assets/Shaders/Water/Water.hlsl の WaterCB と完全に一致させる。
-struct WaterCB {
-    math::Matrix4 worldMatrix;
-    math::Matrix4 wvpMatrix;
-    math::Vector4 shallowColorDepth;
-    math::Vector4 deepColorDepth;
-    math::Vector4 surfaceParams;
-    math::Vector4 normalParams;
-    math::Vector4 timeParams;
-    math::Vector4 foamParams;
-    math::Vector4 refractionFlowParams;
-    math::Vector4 waveDir[4];
-    math::Vector4 waveParams[4];
-    math::Vector4 detailParams;
-    math::Vector4 sssParams;
-    math::Vector4 reflectParams;
-    math::Vector4 flowParams;
-};
-
-// WaterEffectParams — MaterialConstants cbuffer (b2) の C++ ミラー。
-struct WaterEffectParams {
-    float rimGlowStrength    = 0.40f;
-    float minShallowAlpha    = 0.65f;
-    float specularStrength   = 0.75f;
-    float specularExponent   = 80.0f;
-    float skyReflectTint[3]  = { 0.45f, 0.82f, 1.0f };
-    float envMapBlend        = 0.35f;
-    float rippleRingColor[3] = { 0.88f, 0.97f, 1.0f };
-    float rippleRingStrength = 0.72f;
-};
-static_assert(sizeof(WaterEffectParams) == 48, "WaterEffectParams layout mismatch with MaterialConstants");
-
-static_assert(sizeof(WaterVertex) == 20, "WaterVertex size mismatch");
-// Matrix4 x2 (128) + float4 x7 (112) + waveDir[4]/waveParams[4] (128) + float4 x4 (64)
-static_assert(sizeof(WaterCB) == 432, "WaterCB size mismatch");
 
 static std::unordered_map<uint32_t, WaterMesh> s_meshCache;
 static std::unordered_map<uint32_t, WaterTextures> s_texCache;
@@ -421,7 +388,7 @@ void UpdateRippleState(WaterRippleState& state, float dt, renderer::ResourceMana
 // viewProjection は TAA ジッター込みで渡す。カメラから組み直すとジッターが落ちる。
 WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* mat,
                      const Transform& transform, const math::Matrix4& viewProjection, float time,
-                     float skyReflection)
+                     float skyReflection, const WaterDetailNoise& detailNoise)
 {
     WaterCB cb{};
     const math::Matrix4 world = transform.GetWorldMatrix();
@@ -444,10 +411,13 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     // 波のエイリアシング判定が、画面に出ているとおりの大きさで効くようにする。
     const float worldExtentX = (std::max)(water.extentX * std::abs(transform.worldScale.x), 0.0001f);
     const float worldExtentZ = (std::max)(water.extentZ * std::abs(transform.worldScale.z), 0.0001f);
-    cb.normalParams = { worldExtentX, worldExtentZ, 0.0f, WGetF(mat, "normalStrength", 1.0f) };
+    // z はさざ波タイルの勾配復号係数。ベイクした値をそのまま渡し、シェーダー側に定数を写さない。
+    // WHY: 写すと «タイルを焼き直したのにシェーダーが古い係数で復号する» が黙って起きる。
+    cb.normalParams = { worldExtentX, worldExtentZ, detailNoise.derivativeScale,
+                        WGetF(mat, "normalStrength", 1.0f) };
     // 頂点グリッド 1 セルの実寸。«刻めない波» の判断を CPU (浮力) と揃えるため、
-    // 描画側で計算し直さず WaterSystem が解決した値をそのまま渡す。
-    cb.timeParams   = { water.cellSize.x, water.cellSize.y, 0.0f, time };
+    // 描画側で計算し直さず WaterSystem が解決した値をそのまま渡す。z はタイルのセル数の逆数。
+    cb.timeParams   = { water.cellSize.x, water.cellSize.y, detailNoise.invTileCells, time };
     cb.foamParams = {
         WGetF(mat, "foamThreshold",     0.3f),
         WGetF(mat, "foamFade",          0.5f),
@@ -475,20 +445,31 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     cb.sssParams = { sssColor.x, sssColor.y, sssColor.z,
                      math::Clamp01(WGetF(mat, "sssStrength", 0.6f)) };
     // 波の山ほど透過光を強くするため、CPU 側と同じ「振幅の合計」を波高の基準として渡す。
+    // 群の包絡と方向広がりのぶんも含める。含めないと、山に当たった波だけ waveState.x が 1 で
+    // 飽和し、透過光と白波が «そこだけ最大» に張り付く。
+    const float peak = (1.0f + math::Clamp01(water.waveGrouping))
+                     * WaterComponent::WaveSpreadAmplitudeSum(water.waveSpread);
     float waveHeightSum = 0.0f;
     if (water.enableGerstnerWaves)
         for (const GerstnerWave& w : water.waves) waveHeightSum += (std::max)(w.amplitude, 0.0f);
     cb.reflectParams = {
         skyReflection * math::Clamp01(WGetF(mat, "skyReflection", 1.0f)),
-        0.0f, // y は未使用 (mip 数は b8 の iblMaxMipLevel を使う)
+        math::Clamp01(water.waveGrouping),
         transform.worldPosition.y,
-        (std::max)(waveHeightSum, 0.01f)
+        (std::max)(waveHeightSum * peak, 0.01f)
     };
     const auto flowDir = WGetF2(mat, "flowDirection", { 1.0f, 0.0f });
     const float flowLen = std::sqrt(flowDir.x * flowDir.x + flowDir.y * flowDir.y);
+    // zw はさざ波の «形»。異方比は風向と直交する «うね» の伸び、ワープ幅はうねりの斜面が
+    // さざ波を運ぶ距離 [m]。どちらも 1.0 / 0.0 にすれば従来の等方・非追従へ戻る。
+    const math::Vector2 detailShape = {
+        (std::max)(WGetF(mat, "detailAnisotropy", 2.0f), 1.0f),
+        (std::max)(WGetF(mat, "detailWarp",       0.5f), 0.0f)
+    };
     cb.flowParams = flowLen > 1.0e-4f
-        ? math::Vector4{ flowDir.x / flowLen, flowDir.y / flowLen, 0.0f, 0.0f }
-        : math::Vector4{ 1.0f, 0.0f, 0.0f, 0.0f };
+        ? math::Vector4{ flowDir.x / flowLen, flowDir.y / flowLen, detailShape.x, detailShape.y }
+        : math::Vector4{ 1.0f, 0.0f, detailShape.x, detailShape.y };
+    cb.waveShapeParams = { math::Clamp01(water.waveSpread), 0.0f, 0.0f, 0.0f };
 
     for (int i = 0; i < 4; ++i) {
         const GerstnerWave& wave = water.waves[static_cast<size_t>(i)];
@@ -513,14 +494,12 @@ WaterEffectParams BuildWaterEffectParams(const asset::MaterialAsset* mat)
     params.rimGlowStrength    = WGetF(mat, "rimGlowStrength",    params.rimGlowStrength);
     params.minShallowAlpha    = WGetF(mat, "minShallowAlpha",    params.minShallowAlpha);
     params.specularStrength   = WGetF(mat, "specularStrength",   params.specularStrength);
-    params.specularExponent   = WGetF(mat, "specularExponent",   params.specularExponent);
     const math::Vector3 skyTint = WGetF3(mat, "skyReflectTint", {
         params.skyReflectTint[0], params.skyReflectTint[1], params.skyReflectTint[2]
     });
     params.skyReflectTint[0] = skyTint.x;
     params.skyReflectTint[1] = skyTint.y;
     params.skyReflectTint[2] = skyTint.z;
-    params.envMapBlend = WGetF(mat, "envMapBlend", params.envMapBlend);
     const math::Vector3 rippleColor = WGetF3(mat, "rippleRingColor", {
         params.rippleRingColor[0], params.rippleRingColor[1], params.rippleRingColor[2]
     });
@@ -574,6 +553,30 @@ void ExpandByWaveMargin(const WaveMargin& margin, math::Vector3& outMin, math::V
 }
 
 } // namespace
+
+const WaterDetailNoise& GetWaterDetailNoise(renderer::ResourceManager& resources)
+{
+    static WaterDetailNoise s_noise;
+    static uint64_t s_bakedAt = 0xFFFFFFFFFFFFFFFFull;
+
+    // WHY 焼き直しを Reset に紐づけるか: デバイスロストで実体が消えてもハンドルは残る。
+    //     世代が変わったときだけ焼き直せば、失敗しても毎フレーム焼き続けることはない。
+    const uint64_t resetVersion = resources.GetResetVersion();
+    if (s_bakedAt == resetVersion)
+        return s_noise;
+    s_bakedAt = resetVersion;
+
+    const waternoise::Tile tile = waternoise::BakeDetailTile();
+    std::vector<renderer::TextureMipData> mips;
+    mips.reserve(tile.mips.size());
+    for (size_t level = 0; level < tile.mips.size(); ++level)
+        mips.push_back({ tile.mips[level].data(), tile.sizes[level], tile.sizes[level] });
+
+    s_noise.texture = resources.CreateTextureWithMips(mips.data(), static_cast<uint32_t>(mips.size()));
+    s_noise.derivativeScale = tile.derivativeScale;
+    s_noise.invTileCells = 1.0f / static_cast<float>(waternoise::kTileCells);
+    return s_noise;
+}
 
 void AddWaterRipple(
     EntityID waterEntity,
@@ -961,8 +964,8 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {
-            const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
-            mat = asset::AssetManager::GetMaterial(handle);
+            const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath);
+            mat = asset::AssetManager::Get<asset::MaterialAsset>(handle);
         }
 
         const float foamThreshold = WGetF(mat, "foamThreshold", 0.3f);
@@ -1002,8 +1005,9 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         // WHY: DX12 の未バインドスロットは Texture2D の null ディスクリプタなので、
         //      TextureCube 宣言のまま参照させない。0 を渡してシェーダー側の分岐を閉じる。
         const bool hasSkyCube = ctx.handles.iblPrefilter.IsValid();
+        const WaterDetailNoise& detailNoise = GetWaterDetailNoise(resources);
         const WaterCB cb = BuildWaterCB(water, mat, transform, jitteredVP, elapsedTime,
-                                        hasSkyCube ? 1.0f : 0.0f);
+                                        hasSkyCube ? 1.0f : 0.0f, detailNoise);
         resources.Update(waterCBH, &cb, sizeof(cb));
 
         auto effectCBH = defaultEffectCBH;
@@ -1055,6 +1059,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
             BindForwardShadingResources(call, ctx);
             call.textures[3]  = textures.foamMask;
+            call.textures[4]  = detailNoise.texture; // さざ波タイル (全水面で共有)
             call.textures[5]  = depthTex;
             call.textures[6]  = colorTex;
             call.textures[8]  = rippleTex;

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "../PostProcess/PostProcessPasses.hpp"
+#include "GeometryPasses.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -46,8 +47,8 @@ CausticsSource FindCausticsSource(RenderPassContext& ctx)
 
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {
-            const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
-            mat = asset::AssetManager::GetMaterial(handle);
+            const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath);
+            mat = asset::AssetManager::Get<asset::MaterialAsset>(handle);
         }
 
         auto getF = [mat](const char* name, float def) -> float {
@@ -204,4 +205,14 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     ctx.renderer.Submit(dc, ctx.resources);
 }
 
+
+void WaterCausticsPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.ReadWrite("HDR");
+}
+
+void WaterCausticsPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteCausticsPass(ctx);
+}
 } // namespace fbzz::scene

@@ -95,7 +95,7 @@ GerstnerWave DefaultWaterWave(int index)
 const asset::MaterialAsset* LoadWaterMaterial(const WaterComponent& water)
 {
     if (water.materialPath.empty()) return nullptr;
-    return asset::AssetManager::GetMaterial(asset::AssetManager::LoadMaterial(water.materialPath));
+    return asset::AssetManager::Get<asset::MaterialAsset>(asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath));
 }
 
 void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind)
@@ -139,6 +139,14 @@ void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* materi
         wave.amplitude *= scale;
         water.waves[static_cast<size_t>(i)] = wave;
     }
+
+    // 群と方向広がりは «波があるとき» だけの話。enableGerstnerWaves を切った水面では 0 に倒す。
+    water.waveGrouping = scale > 0.0f
+        ? math::Clamp01(GetF(material, kWaveGrouping, 0.45f))
+        : 0.0f;
+    water.waveSpread = scale > 0.0f
+        ? math::Clamp01(GetF(material, kWaveSpread, 0.35f))
+        : 0.0f;
 
     const math::Vector2 flow = GetF2(material, kFlowDirection, { 1.0f, 0.0f });
     const float speed = (std::max)(GetF(material, kCurrentSpeed, 0.0f), 0.0f);

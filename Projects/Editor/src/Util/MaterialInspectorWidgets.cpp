@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -73,18 +74,28 @@ void Tooltip(const char* text)
 bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, const char* key)
 {
     std::string& path = mat.textures[key];
-    char buf[512];
-    std::snprintf(buf, sizeof(buf), "%s", path.c_str());
     bool changed = false;
 
     ImGui::PushID(key);
     ImGui::TextUnformatted(label);
 
-    // WHY: InputText の可視ラベルに幅 -1 を指定すると、ImGui の「入力欄 + 右側ラベル」
-    //      レイアウトと衝突して、Inspector の狭い列でテクスチャ欄が潰れて見える。
-    //      ラベルを独立行に出し、入力欄は ## ID だけで描画することで Terrain / Water の
-    //      長いアセットパスを横幅いっぱいに編集できるようにする。
+    /// @note サムネイルは入力欄の左に置く。Unity の Material Inspector と同じ並びにして、
+    ///       «どの絵を入れたか» をパスの読み合わせなしで確かめられるようにする。
     const ImGuiStyle& style = ImGui::GetStyle();
+    const float thumbSize = widgets::TextureThumbnailSize();
+    const float rowTopY   = ImGui::GetCursorPosY();
+    changed |= widgets::TextureThumbnail(path, thumbSize, widgets::kTextureAssetFilter);
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    ImGui::SetCursorPosY(rowTopY + (thumbSize - ImGui::GetFrameHeight()) * 0.5f);
+
+    /// @note 入力欄のスナップショットはサムネイルへのドロップより後に取る。
+    ///       先に取ると、落とした直後の 1 フレームだけ古いパスが欄に出る。
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "%s", path.c_str());
+
+    /// @note ラベルを独立行に出し、入力欄は ## ID だけで描く。InputText の可視ラベルに
+    ///       幅 -1 を指定すると ImGui の «入力欄 + 右側ラベル» レイアウトと衝突し、
+    ///       Inspector の狭い列で Terrain / Water の長いパスが潰れて読めなくなる。
     const float clearWidth = path.empty()
         ? 0.0f
         : ImGui::CalcTextSize("Clear").x + style.FramePadding.x * 2.0f + style.ItemInnerSpacing.x;
@@ -107,6 +118,9 @@ bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, cons
             changed = true;
         }
     }
+
+    /// @note 行の高さはサムネイルが決める。欄を縦中央へ下げた分だけ次の行が食い込む。
+    ImGui::SetCursorPosY(rowTopY + thumbSize + style.ItemSpacing.y);
     ImGui::PopID();
     return changed;
 }
@@ -142,9 +156,9 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& m
 bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
 {
     using namespace scene::water_keys;
-    // 既定値は WaterRenderPass / CausticsPass / WaterSystem がキー欠落時に使う値と揃える。
-    // WHY: EnsureFloatParam は開いた瞬間に欠けたキーを既定値で埋める。描画側と違う値を
-    //      入れると、Inspector を開いただけで水面の見た目が変わる。
+    /// @note 既定値は WaterRenderPass / CausticsPass / WaterSystem がキー欠落時に使う値と
+    ///       揃えること。EnsureFloatParam は開いた瞬間に欠けたキーを既定値で埋めるため、
+    ///       描画側と違う値を入れると Inspector を開いただけで水面の見た目が変わる。
     bool dirty = false;
 
     ImGui::SeparatorText("Surface");
@@ -182,6 +196,12 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
     Tooltip("さざ波の細かさ (1 m あたりのノイズセル数)。法線マップは使いません。");
     dirty |= DrawMaterialFloat(mat, "Detail Strength", "detailStrength", 1.0f,  0.01f,  0.0f,  4.0f);
     dirty |= DrawMaterialFloat(mat, "Detail Speed",    "detailSpeed",    0.6f,  0.01f,  0.0f,  8.0f);
+    dirty |= DrawMaterialFloat(mat, "Anisotropy",      "detailAnisotropy", 2.0f, 0.01f, 1.0f, 6.0f);
+    Tooltip("さざ波を Flow Direction と直交する «うね» へ伸ばす比。\n"
+            "1.0 で等方 (粒の集まり)。上げるほど風で立った筋に見えます。");
+    dirty |= DrawMaterialFloat(mat, "Swell Warp",      "detailWarp",     0.5f,  0.01f,  0.0f,  4.0f);
+    Tooltip("うねりの斜面がさざ波を運ぶ距離 [m]。\n"
+            "0 にするとうねりとさざ波が別々の層として滑って見えます。");
     dirty |= DrawMaterialFloat(mat, "Normal Strength", "normalStrength", 1.0f,  0.01f,  0.0f,  4.0f);
     dirty |= DrawMaterialFloat2(mat, "Flow Direction", kFlowDirection, { 1.0f, 0.0f });
     Tooltip("さざ波と泡が流れる向き (ワールド XZ)。Current Speed の水流もこの向きに流れます。");
@@ -208,7 +228,7 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
 
     ImGui::SeparatorText("Waves (Gerstner)");
     ImGui::TextDisabled("4 本の波を重ねてうねりを作ります。振幅 0 の波は使いません。");
-    // ビューポートのギズモ (選択中の水面) と同じ色で並べ、どの矢印がどの波かを対応させる。
+    /// @note ビューポートのギズモ (選択中の水面) と同じ色で並べ、どの矢印がどの波かを対応させる。
     static constexpr ImU32 kWaveColors[4] = {
         IM_COL32(255, 230,  80, 255), IM_COL32(255, 160,  80, 255),
         IM_COL32( 80, 255, 160, 255), IM_COL32(200,  80, 255, 255),
@@ -230,6 +250,14 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
         }
         ImGui::PopID();
     }
+    dirty |= DrawMaterialFloat(mat, "Spread", kWaveSpread, 0.35f, 0.005f, 0.0f, 1.0f);
+    Tooltip("波の方向の広がり。0 だと波頭が «無限に長い直線» になります。\n"
+            "上げると同じ波数で向きの違う波が重なり、波頭が有限の長さに切れます。\n"
+            "振幅は分け合うので、上げても海全体は高くなりません。");
+    dirty |= DrawMaterialFloat(mat, "Grouping", kWaveGrouping, 0.45f, 0.005f, 0.0f, 1.0f);
+    Tooltip("波の «群» の深さ。0 にするとどの波頭も同じ高さ・同じ形になります。\n"
+            "上げるほど «大きい波の塊» と «凪の区間» が交互に来ます。\n"
+            "群は個々の波の半分の速さで進むので、波頭が群を追い越していきます。");
 
     ImGui::SeparatorText("Wind & Current");
     ImGui::PushID("WaterWindCurrent");

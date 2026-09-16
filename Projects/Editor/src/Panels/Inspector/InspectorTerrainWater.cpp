@@ -97,8 +97,8 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                         tc.layerMaterials[li].clear();
                         tc.splatDirty = true;
                     }
-                    auto matHandle = asset::AssetManager::LoadMaterial(tc.layerMaterials[li]);
-                    if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+                    auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(tc.layerMaterials[li]);
+                    if (auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
                         {
                             const auto f = DrawTerrainLayerMaterialInspector(*mat);
                             if (f.textureDirty) tc.splatDirty         = true;

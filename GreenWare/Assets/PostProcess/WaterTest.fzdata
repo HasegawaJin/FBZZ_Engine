@@ -46,7 +46,7 @@ speedUp = 15.570488929748535
 type = 'AutoExposure'
 
 [[overrides]]
-active = false
+active = true
 samples = 8
 strength = 0.30000001192092896
 type = 'MotionBlur'
@@ -78,7 +78,7 @@ nearDistance = 10.0
 type = 'FroxelFog'
 
 [[overrides]]
-active = false
+active = true
 distortion = 0.47906920313835144
 ghostCount = 16
 haloWidth = 0.3790694773197174

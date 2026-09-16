@@ -141,6 +141,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/FluidAmountEnvelopeTests.cpp
         Engine/Auto/FluidGpuLiquidTests.cpp
         Engine/Auto/RenderGraphTests.cpp
+        Engine/Auto/RenderPipelineTests.cpp
         Engine/Auto/RenderPassCaptureTests.cpp
         Engine/Auto/ShaderReloadTests.cpp
         Engine/Auto/RenderGraphLifetimeTests.cpp
@@ -150,6 +151,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/TrailMultiKeyTests.cpp
         Engine/Auto/UIRectTests.cpp
         Engine/Auto/WaterWaveTests.cpp
+        Engine/Auto/WaterNoiseBakeTests.cpp
         GreenWare/Auto/SerpentHitboxTests.cpp
         GreenWare/Auto/BossBreakTests.cpp
         GreenWare/Auto/Boss03CounterTests.cpp
@@ -163,6 +165,10 @@ fbzz_add_test_suite(EngineAuto
 )
 
 target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/GreenWare/Assets")
+# WHY Engine/src を足すか: 水面のさざ波タイルのような «GPU へ渡す前の CPU ベイク» は
+#     ヘッダーオンリーで src 側に閉じている。公開ヘッダーへ出すと、焼き方を知る必要のない
+#     利用側にまで実装が露出する。テストだけが実装ディレクトリを覗く。
+target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
 
 # --- Editor -----------------------------------------------------------------
 # WHY Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»
