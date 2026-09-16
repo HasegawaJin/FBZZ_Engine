@@ -1,4 +1,6 @@
 blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
 double_sided = false
 mesh_type = 'surface'
 render_path = 'auto'
@@ -24,11 +26,11 @@ tilingZ = 8.0
 [textures]
 albedo = ''
 ao = ''
-ao_roughness = 'guid:9d580e973a734d0ab2bf2cf667074ccf'
-diffuse = 'guid:05cbce5312f9482fb6f943039bb1b7aa'
+ao_roughness = 'guid:9d580e973a734d0ab2bf2cf667074ccf|Assets/Textures/Terrain/Rock/Rock_AmbientOcclusion.png'
+diffuse = 'guid:05cbce5312f9482fb6f943039bb1b7aa|Assets/Textures/Terrain/Rock/Rock_Color.png'
 emissive = ''
 metallic = ''
-normal = 'guid:c693df4f1aa54809bfa6a5fee0788eae'
+normal = 'guid:c693df4f1aa54809bfa6a5fee0788eae|Assets/Textures/Terrain/Rock/Rock_Normal.png'
 tex5 = ''
 tex6 = ''
 tex7 = ''

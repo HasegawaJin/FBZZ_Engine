@@ -13,7 +13,7 @@ prefabAssetPath = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 2.667883
+    aspectRatio = 1.777778
     cullingMask = 4294967295
     enabled = true
     farZ = 1000.0
@@ -22,9 +22,9 @@ tag = 'MainCamera'
     nearZ = 0.1
 
     [gameobjects.transform]
-    position = [ 68.398079, 1.070739, 84.211967 ]
-    rotation = [ 0.005337, -0.994608, -0.067806, -0.078285 ]
-    scale = [ 1.000005, 1.0, 1.000005 ]
+    position = [ 0.0, 2.0, -6.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true

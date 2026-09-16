@@ -1,6 +1,6 @@
 [template]
 id = "empty"
 display_name = "Empty"
-description = "Minimal FBZZ project with a default scene and public API header."
+description = "Title/Load/Main/Result の4シーンとマテリアル・シェーダー一式のみ。サンプル素材は含まない。"
 thumbnail = ""
 engine_version_min = "0.1.0"
