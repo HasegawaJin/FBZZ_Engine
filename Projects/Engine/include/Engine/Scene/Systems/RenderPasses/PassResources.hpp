@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace fbzz::scene {
@@ -59,6 +60,26 @@ public:
         return it == m_textures.end() ? renderer::ResourceHandle<renderer::TextureTag>{} : it->second;
     }
 
+    /// 束縛済みの名前を走査する。
+    ///
+    /// WHY 引きだけでなく走査も要るか: 診断側は «どの名前が差さっているか» を
+    ///     知る術が無く、見たいリソース名を手で書き写すしかなかった。写した一覧は
+    ///     必ず本体と食い違う。
+    /// @note 走査順は unordered_map の内部順。表示する側が並べ替えること。
+    template<typename Fn>
+    void ForEachTarget(Fn&& fn) const
+    {
+        for (const auto& [name, handle] : m_targets)
+            fn(name, handle);
+    }
+
+    template<typename Fn>
+    void ForEachTexture(Fn&& fn) const
+    {
+        for (const auto& [name, handle] : m_textures)
+            fn(name, handle);
+    }
+
 private:
     std::unordered_map<std::string, renderer::ResourceHandle<renderer::RenderTargetTag>> m_targets;
     std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>>      m_textures;
@@ -73,6 +94,11 @@ public:
     PassBuilder& Read(std::string_view name)      { return Add(name, Usage::Read); }
     PassBuilder& Write(std::string_view name)     { return Add(name, Usage::Write); }
     PassBuilder& ReadWrite(std::string_view name) { return Add(name, Usage::ReadWrite); }
+
+    /// 組み立て済みの申告をそのまま載せる。
+    /// WHY: 登録時点で accesses を持っているアダプタ (LambdaPass) が usage を
+    ///      Read/Write/ReadWrite へ場合分けし直さずに済むようにする。
+    PassBuilder& Declare(const Access& access) { m_accesses.push_back(access); return *this; }
 
     /// Execute の直前に、この名前の RT を自動で束縛する。
     ///
@@ -89,6 +115,15 @@ public:
 
     [[nodiscard]] const std::vector<Access>& Accesses() const { return m_accesses; }
     [[nodiscard]] const std::string& AutoTarget() const { return m_autoTarget; }
+
+    /// Setup が終わった申告を呼び出し側の保管場所へ移す。呼び出し後のビルダーは空。
+    /// WHY: パイプラインは毎フレーム全パスの Setup を引き直す。コピーで受けると
+    ///      パス数 × 申告数ぶんの文字列を毎フレーム作り直すことになる。
+    void MoveOut(std::vector<Access>& accesses, std::string& autoTarget)
+    {
+        accesses   = std::move(m_accesses);
+        autoTarget = std::move(m_autoTarget);
+    }
 
 private:
     PassBuilder& Add(std::string_view name, Usage usage)

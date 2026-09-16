@@ -56,4 +56,9 @@ void ExecuteClusterLightCullPass(RenderPassContext& ctx)
     ctx.renderer.Dispatch(cc, resources);
 }
 
+
+void ClusterLightCullPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteClusterLightCullPass(ctx);
+}
 } // namespace fbzz::scene

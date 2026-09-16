@@ -279,6 +279,33 @@ bool ProjectSettings::Load(const std::string& path)
         render.showSelectionOutline = (*renderTbl)["showSelectionOutline"].value_or(render.showSelectionOutline);
         render.passViewerEnabled    = (*renderTbl)["passViewerEnabled"].value_or(render.passViewerEnabled);
 
+        render.schedulePolicy =
+            (*renderTbl)["schedulePolicy"].value_or(std::string{}) == "MinimizeLifetimes"
+                ? renderer::RenderGraphSchedulePolicy::MinimizeLifetimes
+                : renderer::RenderGraphSchedulePolicy::RegistrationOrder;
+
+        // ── RenderGraph のパス上書き ──────────────────────────────
+        render.passOverrides.clear();
+        if (auto* overrideArray = (*renderTbl)["passOverride"].as_array()) {
+            for (const auto& node : *overrideArray) {
+                const auto* overrideTbl = node.as_table();
+                if (!overrideTbl) continue;
+                renderer::RenderPassOverride entry;
+                entry.name = (*overrideTbl)["name"].value_or(std::string{});
+                if (entry.name.empty()) continue;
+                entry.enabled      = (*overrideTbl)["enabled"].value_or(true);
+                entry.allowCulling = (*overrideTbl)["allowCulling"].value_or(true);
+                if (auto* readArray = (*overrideTbl)["extraReads"].as_array()) {
+                    for (const auto& read : *readArray) {
+                        if (auto value = read.value<std::string>(); value && !value->empty())
+                            entry.extraReads.push_back(*value);
+                    }
+                }
+                // 既定に戻された行は読み捨てる。表に «何も変えていない» 行を残さない。
+                if (!entry.IsDefault()) render.passOverrides.push_back(std::move(entry));
+            }
+        }
+
         // ── パーティクル予算 ──────────────────────────────────────
         render.particleBudget        = (int)(*renderTbl)["particleBudget"].value_or((int64_t)render.particleBudget);
         render.particleBudgetEnabled = (*renderTbl)["particleBudgetEnabled"].value_or(render.particleBudgetEnabled);
@@ -343,8 +370,16 @@ bool ProjectSettings::Load(const std::string& path)
     if (auto* appTbl = tbl["app"].as_table()) {
         app.targetFps = (int)(*appTbl)["targetFps"].value_or((int64_t)app.targetFps);
         if (app.targetFps < 0) app.targetFps = 0;
-        if (auto backend = (*appTbl)["renderer"].value<std::string>())
+        if (auto backend = (*appTbl)["renderer"].value<std::string>()) {
+            /// @note 終了済みトークンを黙って DX12 へ倒すと、利用者は設定が効いていると
+            ///       誤解したまま動いてしまう。倒すこと自体は変えず、名指しで伝える。
+            if (renderer::IsRetiredBackendToken(*backend)) {
+                FBZZ_LOG_WARN("ProjectSettings: renderer=\"%s\" は v1.0 でサポートを終了しました。"
+                              "DirectX 12 で起動します (Docs/design/dx11-removal.md)",
+                              backend->c_str());
+            }
             app.rendererBackend = renderer::BackendFromString(*backend);
+        }
     }
 
     if (auto* windowTbl = tbl["window"].as_table()) {
@@ -480,6 +515,26 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("showDecalBounds",      render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("passViewerEnabled",    render.passViewerEnabled);
+    if (render.schedulePolicy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes)
+        renderTbl.insert("schedulePolicy", "MinimizeLifetimes");
+    {
+        toml::array overrideArray;
+        for (const renderer::RenderPassOverride& entry : render.passOverrides) {
+            if (entry.IsDefault()) continue;
+            toml::table overrideTbl;
+            overrideTbl.insert("name", entry.name);
+            if (!entry.enabled)      overrideTbl.insert("enabled", false);
+            if (!entry.allowCulling) overrideTbl.insert("allowCulling", false);
+            if (!entry.extraReads.empty()) {
+                toml::array readArray;
+                for (const std::string& read : entry.extraReads)
+                    readArray.push_back(read);
+                overrideTbl.insert("extraReads", std::move(readArray));
+            }
+            overrideArray.push_back(std::move(overrideTbl));
+        }
+        if (!overrideArray.empty()) renderTbl.insert("passOverride", std::move(overrideArray));
+    }
 
     // ── パーティクル予算 ────────────────────────────────────────────────────
     renderTbl.insert("particleBudget",        (int64_t)render.particleBudget);

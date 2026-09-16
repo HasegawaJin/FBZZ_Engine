@@ -237,7 +237,7 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
     emitter.runtime.loadedMeshShapeIndex = emitter.settings.meshShapeIndex;
     if (emitter.settings.meshShapePath.empty()) return;
 
-    const asset::Model* model = asset::AssetManager::LoadModel(emitter.settings.meshShapePath);
+    const asset::Model* model = asset::AssetManager::LoadAndGet<asset::Model>(emitter.settings.meshShapePath);
     if (!model) return;
 
     auto appendMesh = [&](const renderer::Mesh& mesh) {
@@ -564,7 +564,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
     //   albedo = 素材 / normal = 歪みベクトル専用マップ / tex5 = Motion Vector アトラス
     // 未設定なら既定 .mat へ落とす。1x1 白は alpha=1 なので、そのまま描くと粒子が
     // 「不透明な四角」になり、素材の付け忘れが最も分かりにくい形で表に出る。
-    // 既定 .mat が無いプロジェクトでは LoadMaterial が失敗し、従来どおり白へ落ちる。
+    // 既定 .mat が無いプロジェクトでは Load<MaterialAsset> が失敗し、従来どおり白へ落ちる。
     const bool usingFallback = emitter.settings.materialPath.empty();
     const std::string resolvedMaterial =
         usingFallback ? std::string(PARTICLE_FALLBACK_MATERIAL) : emitter.settings.materialPath;
@@ -574,8 +574,8 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             emitter.runtime.loadedMaterialPath = resolvedMaterial;
             emitter.runtime.loadedTexturePath.clear(); // .mat の変更でテクスチャも再ロードさせる
         }
-        const auto matHandle = asset::AssetManager::LoadMaterial(resolvedMaterial);
-        if (const auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+        const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(resolvedMaterial);
+        if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
             const std::string& resolvedTex = ParticleMaterialTexture(*mat, "albedo");
             if (!emitter.runtime.texture.IsValid() || emitter.runtime.loadedTexturePath != resolvedTex) {
                 emitter.runtime.texture = LoadParticleTextureOrWhite(resources, resolvedTex);
@@ -2711,4 +2711,45 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
     renderer.Submit(heatmap, resources);
 }
 
+
+void ParticlePass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("DecalDepth").Read("ShadowMap").Read("PunctualShadowMap")
+           .Read("LightCookieAtlas").ReadWrite("HDR");
+}
+
+void ParticlePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteParticlePass(ctx);
+}
+
+void ParticleOverdrawPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.ReadWrite("HDR");
+}
+
+bool ParticleOverdrawPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.particleOverdrawView;
+}
+
+void ParticleOverdrawPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteParticleOverdrawPass(ctx);
+}
+
+void ParticleReactivePass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("DecalDepth").ReadWrite("HDR");
+}
+
+bool ParticleReactivePass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.IsTaaActive();
+}
+
+void ParticleReactivePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteParticleReactivePass(ctx);
+}
 } // namespace fbzz::scene

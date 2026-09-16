@@ -91,9 +91,9 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
 {
     if (decal.materialPath.empty()) return nullptr;
 
-    const auto assetHandle = asset::AssetManager::LoadMaterial(decal.materialPath);
+    const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(decal.materialPath);
     const auto* matAsset = assetHandle.IsValid()
-        ? asset::AssetManager::GetMaterial(assetHandle) : nullptr;
+        ? asset::AssetManager::Get<asset::MaterialAsset>(assetHandle) : nullptr;
     if (!matAsset) {
         if (WarnDecalMaterialOnce(decal.materialPath))
             FBZZ_LOG_WARN("Decal material load failed '%s' -> falling back to the built-in decal shader.",
@@ -568,4 +568,24 @@ void ExecuteDecalDepthCopyPass(RenderPassContext& ctx)
     r.Submit(dc, resources);
 }
 
+
+void DecalDepthCopyPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+{
+    builder.Read(ctx.isDeferred ? "GBuffer" : "HDR").Write("DecalDepth");
+}
+
+void DecalDepthCopyPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDecalDepthCopyPass(ctx);
+}
+
+void DecalPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("DecalDepth").ReadWrite("HDR");
+}
+
+void DecalPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDecalPass(ctx);
+}
 } // namespace fbzz::scene

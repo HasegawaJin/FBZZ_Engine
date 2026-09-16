@@ -504,4 +504,16 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     renderer.SetViewport(0, 0, atlasResolution, atlasResolution);
 }
 
+
+void ShadowPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    /// @note Directional の CSM と Spot / Point のアトラスを 1 パスで描く。caster の収集と
+    ///       ソートを両者で共有するので、分けるとシーン走査が丸ごと 2 回になる。
+    builder.Write("ShadowMap").Write("PunctualShadowMap");
+}
+
+void ShadowPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteShadowPass(ctx);
+}
 } // namespace fbzz::scene

@@ -593,6 +593,33 @@ struct VolumeSettings {
     }
 };
 
+/// RenderGraph::SchedulePolicy の設定側の写し。
+///
+/// WHY 列挙を写すか: RenderSettings は RenderGraph.hpp を include していない
+///     (設定は依存解決器を知らなくてよい)。値の対応は RenderPipeline が付ける。
+enum class RenderGraphSchedulePolicy : uint8_t {
+    RegistrationOrder = 0,  ///< 既定。依存が同じなら登録順が最小のものから出す
+    MinimizeLifetimes = 1,  ///< 同時に生きる中間 RT を減らす。申告漏れがあると壊れる
+};
+
+/// RenderGraph に載せる 1 パスへの上書き。エディターから編集し、プロジェクトへ保存する。
+///
+/// WHY 実行順そのものを持たせないか: このグラフの唯一の思想は «順序は申告された依存が
+///     決める» で、順番を直接書けるようにするとそれが壊れる。動かしたいときは
+///     extraReads で «何を待つか» を足す。結果として実行順は動くが、理由がグラフに残る。
+struct RenderPassOverride {
+    std::string name;                     ///< RenderGraph 上のパス名
+    bool enabled = true;                  ///< false でこのフレームに載せない
+    bool allowCulling = true;             ///< false で «出力へ届かなくても残す»
+    std::vector<std::string> extraReads;  ///< 追加で待たせるリソース名
+
+    /// 既定と同じなら保存もしない。無害な行がプロジェクトに溜まるのを避ける。
+    [[nodiscard]] bool IsDefault() const
+    {
+        return enabled && allowCulling && extraReads.empty();
+    }
+};
+
 struct RenderSettings {
     RenderingPipeline pipeline  = RenderingPipeline::Forward;
     ViewMode          viewMode  = ViewMode::Lit;
@@ -628,6 +655,17 @@ struct RenderSettings {
     // true のとき、各パスの RT サムネイルと CPU タイミングを ImGui ウィンドウで表示する。
     // ImGui フレーム内 (ImGuiNewFrame〜Render の間) で RenderSystem を呼ぶ構成が前提。
     bool passViewerEnabled = false;
+    /// RenderGraph の実行順の決め方。既定は登録順どおり。
+    ///
+    /// @note MinimizeLifetimes は同時に生きる中間 RT を減らす代わりに実行順が
+    ///       登録順から離れる。申告漏れのあるパス (読むと言っていないものを束縛する
+    ///       パス) はそこで即座に壊れるので、«申告が本当に揃っているか» を試す
+    ///       診断モードとしても使える。既定を変えないのはそのため。
+    RenderGraphSchedulePolicy schedulePolicy = RenderGraphSchedulePolicy::RegistrationOrder;
+    // RenderGraph のパス単位の上書き。既定は空 (＝素のパイプライン)。
+    // NOTE: StripDebugVisualization では消さない。診断表示ではなく «この構成で描く»
+    //       という指定なので、Game View でも同じ絵が出なければ確かめる意味が無い。
+    std::vector<RenderPassOverride> passOverrides;
     // 全Particleのフレーム予算。0以下は無制限。RenderPassがエミッター順に残量を配分する。
     int particleBudget = 20000;
     bool particleBudgetEnabled = true;

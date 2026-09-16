@@ -137,22 +137,9 @@ struct TerrainCameraFrameCB {
 };
 static_assert(sizeof(TerrainCameraFrameCB) == 288, "PerFrameCB size mismatch");
 
-// TerrainCB (b1)
-struct TerrainObjectCB {
-    math::Matrix4 worldMatrix;
-    math::Matrix4 wvpMatrix;
-    math::Vector4 layerTiling[4];
-    math::Vector4 layerNormalStrength;
-    math::Vector4 layerMaterial[4];
-    math::Vector4 layerTextureFlags;
-    math::Vector4 layerAutoHeight[4];
-    math::Vector4 layerAutoSlope[4];
-    // 天候 (x=wetness, y=darkening, z=puddleAmount)。
-    // WHY b8 から読まないか: 地形シェーダーは b1 を TerrainCB として使うため
-    //     AdvancedGraphicsConstants を宣言できない。値はここで手渡す。
-    math::Vector4 weather;
-};
-static_assert(sizeof(TerrainObjectCB) == 432, "TerrainObjectCB size mismatch");
+// TerrainObjectCB (b1) の定義は RenderPassContext.hpp。
+// WHY そちらか: エディタのマテリアルプレビューが «本編と同じ絵» を焼くために同じ
+//      レイアウトを要る。ここに置くと写しが 2 つになり、黙ってずれる。
 
 static std::unordered_map<uint32_t, TerrainObjectCB> g_cbParamCache;
 
@@ -710,8 +697,8 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         std::array<const asset::MaterialAsset*, 4> layerMats = {};
         for (int li = 0; li < 4; ++li) {
             if (!terrain.layerMaterials[li].empty()) {
-                const auto handle = asset::AssetManager::LoadMaterial(terrain.layerMaterials[li]);
-                layerMats[li] = asset::AssetManager::GetMaterial(handle);
+                const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(terrain.layerMaterials[li]);
+                layerMats[li] = asset::AssetManager::Get<asset::MaterialAsset>(handle);
             }
         }
 

@@ -219,4 +219,17 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     ctx.renderer.Submit(up, ctx.resources);
 }
 
+
+std::string_view VolumetricCloudPass::Name() const { return "VolumetricCloud"; }
+
+void VolumetricCloudPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.ReadWrite("HDR");
+}
+
+void VolumetricCloudPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteVolumetricCloudPass(ctx);
+}
+
 } // namespace fbzz::scene

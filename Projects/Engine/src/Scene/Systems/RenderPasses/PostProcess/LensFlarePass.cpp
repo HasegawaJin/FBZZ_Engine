@@ -73,4 +73,19 @@ void ExecuteLensFlarePass(RenderPassContext& ctx)
     r.Submit(flareDC, resources);
 }
 
+
+void LensFlarePass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.ReadWrite("HDR").Write("LensFlareSource");
+}
+
+bool LensFlarePass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.lensFlare.enabled;
+}
+
+void LensFlarePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteLensFlarePass(ctx);
+}
 } // namespace fbzz::scene

@@ -185,4 +185,19 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
+
+void ObjectMaskPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("HDR").Write("ObjectMask");
+}
+
+bool ObjectMaskPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.objectMaskEnabled;
+}
+
+void ObjectMaskPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteObjectMaskPass(ctx);
+}
 } // namespace fbzz::scene

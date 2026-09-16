@@ -97,4 +97,19 @@ void ExecuteAutoExposurePass(RenderPassContext& ctx)
     h.exposureResetGeneration = s_resetGeneration;
 }
 
+
+void AutoExposurePass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("HDR");
+}
+
+bool AutoExposurePass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.autoExposure.enabled;
+}
+
+void AutoExposurePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteAutoExposurePass(ctx);
+}
 } // namespace fbzz::scene

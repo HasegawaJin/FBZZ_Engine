@@ -92,4 +92,19 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     r.Submit(applyDC, resources);
 }
 
+
+void VolumetricLightPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("ShadowMap").ReadWrite("HDR").Write("VolumetricResult");
+}
+
+bool VolumetricLightPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.volumetricLight.enabled;
+}
+
+void VolumetricLightPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteVolumetricLightPass(ctx);
+}
 } // namespace fbzz::scene

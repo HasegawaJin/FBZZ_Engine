@@ -47,4 +47,25 @@ void ExecuteContactShadowsPass(RenderPassContext& ctx)
     r.Dispatch(csDC, resources);
 }
 
+
+std::string_view ContactShadowsPass::Name() const { return "ContactShadows"; }
+
+void ContactShadowsPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    /// @note HDR は申告しない。本体は gbufferDepthReady が false のときだけ HDR の
+    ///       深度へ落ちるが、このパスが載るのは «GBuffer が揃う» 経路だけ。申告すると
+    ///       本描画前の HDR へ偽の依存が張られる。
+    builder.Read("GBuffer").Write("ContactShadowResult");
+}
+
+bool ContactShadowsPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.contactShadow.enabled;
+}
+
+void ContactShadowsPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteContactShadowsPass(ctx);
+}
+
 } // namespace fbzz::scene

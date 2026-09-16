@@ -2455,39 +2455,8 @@ void RenderSystem(Scene& scene,
     passCtx.cullCameraForward = camera.GetForward();
     passCtx.width                   = sHdrW;
     passCtx.height                  = sHdrH;
-    // ---- 名前 → 実ハンドルの登録簿 ----
-    // グラフへ申告するのも、パスが引くのも同じ名前。ここが唯一の対応表になる。
-    // WHY 毎フレーム埋めるか: 中身 (TAA の ping-pong、UpscaleSrc の有無、GBuffer の
-    //     使用可否) はフレームごとに変わる。作り直すのは数十件なので、
-    //     «いつのものか分からない対応表» を持ち回るより素直。
-    {
-        auto& reg = passCtx.resourceRegistry;
-        reg.Clear();
-        reg.BindTarget("Output",             outputRT);
-        reg.BindTarget("HDR",                hdrRT);
-        reg.BindTarget("LDR",                ldrRT);
-        reg.BindTarget("ShadowMap",          shadowMapRT);
-        reg.BindTarget("PunctualShadowMap",  punctualShadowRT);
-        reg.BindTarget("LightCookieAtlas",   lightCookieRT);
-        reg.BindTarget("SelectionMask",      selectionMaskRT);
-        reg.BindTarget("Outline",            outlineRT);
-        reg.BindTarget("ObjectMask",         objectMaskRT);
-        reg.BindTarget("Velocity",           velocityRT);
-        reg.BindTarget("CustomPostProcess0", customPostProcessRT[0]);
-        reg.BindTarget("CustomPostProcess1", customPostProcessRT[1]);
-        reg.BindTarget("GBuffer",            gbufferRT);
-        reg.BindTarget("DecalDepth",         decalDepthRT);
-        reg.BindTarget("UpscaleSrc",         upscaleSrcRT);
-        // Kind が Texture のもの (CS 出力)。RT ではないので別の口へ入れる。
-        reg.BindTexture("Bloom",               bloomFull);
-        reg.BindTexture("SSAO",                ssaoBlur);
-        reg.BindTexture("GTAOResult",          gtaoBlur);
-        reg.BindTexture("ContactShadowResult", contactShadowResult);
-        reg.BindTexture("SSRResult",           ssrResult);
-        reg.BindTexture("MotionBlurResult",    motionBlurResult);
-        reg.BindTexture("VolumetricResult",    volumetricResult);
-        reg.BindTexture("LensFlareSource",     bloomHalf);
-    }
+    // 名前 → 実ハンドルの登録簿は、下の DeclareTarget / DeclareTexture から
+    // RenderPipeline が組み立てる。ここに 2 つ目の一覧は置かない。
 
     passCtx.uiOptions               = uiOptions;
     passCtx.outputWidth             = nativeW;
@@ -2800,59 +2769,91 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     RenderPipeline& pipeline = viewTargets.pipeline;
     pipeline.BeginBuild();
+    // エディターが編集した «このパスは載せない / これを待つ» をこのフレームへ効かせる。
+    pipeline.SetPassOverrides(rs.passOverrides);
+    pipeline.SetSchedulePolicy(rs.schedulePolicy);
     // 申告を条件で組み立てるパス用。initializer_list には if を書けないので、
     // 読むものが構成で変わるパスは vector を渡す。
     using RA = renderer::RenderGraph::ResourceAccess;
     using RU = renderer::RenderGraph::ResourceUsage;
-    // 申告を条件で組み立てるパス用。initializer_list には if を書けないので、
-    // 読むものが構成で変わるパスは vector を渡す。
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
+    // ---- 論理リソースの宣言 ----
+    // 申告 (依存解析に使う «形») と実体 (名前 → ハンドル) を同じ 1 行で渡す。
+    // WHY: 以前は宣言と RenderResourceRegistry への登録が別々の場所にあり、
+    //      片方だけ足しても Plan は通った。«申告したのに実体が無い» が静かに
+    //      成立する形をやめる。登録簿は RenderPipeline がここから組み立てる。
+    using RK = renderer::RenderGraph::ResourceKind;
+    constexpr auto kResFormat = renderer::Format::RGBA16F;
+
+    // 内部解像度・フレーム内だけ生きる RT。違うのは MRT 枚数と深度の有無だけ。
+    const auto declareViewTarget = [&](const char* name,
+                                       renderer::ResourceHandle<renderer::RenderTargetTag> handle,
+                                       uint32_t colorCount, bool withDepth) {
+        pipeline.DeclareTarget(name, handle,
+            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, colorCount, withDepth, false, true });
+    };
+    // CS 出力のテクスチャ。解像度以外の «形» は全部同じ。
+    const auto declareViewTexture = [&](const char* name,
+                                        renderer::ResourceHandle<renderer::TextureTag> handle,
+                                        uint32_t width, uint32_t height) {
+        pipeline.DeclareTexture(name, handle,
+            { RK::Texture, width, height, kResFormat, 1, false, false, true });
+    };
+
     // Output だけは出力先そのものなので実寸で申告する (中間 RT は内部解像度)。
-    pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, nativeW, nativeH, renderer::Format::RGBA16F, 1, true,  true,  false });
-    pipeline.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, renderer::Format::RGBA16F, 0, true, false, false });
-    pipeline.DeclareResource("PunctualShadowMap", { renderer::RenderGraph::ResourceKind::RenderTarget, punctualShadowRes, punctualShadowRes, renderer::Format::RGBA16F, 0, true, false, false });
-    pipeline.DeclareResource("LightCookieAtlas",  { renderer::RenderGraph::ResourceKind::RenderTarget, kLightCookieAtlasWidth, kLightCookieAtlasHeight, renderer::Format::RGBA16F, 1, true, false, false });
-    pipeline.DeclareResource("HDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("LDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("Outline",    { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("ObjectMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("Velocity",   { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
+    pipeline.DeclareTarget("Output", outputRT,
+        { RK::RenderTarget, nativeW, nativeH, kResFormat, 1, true, true, false });
+    pipeline.DeclareTarget("ShadowMap", shadowMapRT,
+        { RK::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, kResFormat, 0, true, false, false });
+    pipeline.DeclareTarget("PunctualShadowMap", punctualShadowRT,
+        { RK::RenderTarget, punctualShadowRes, punctualShadowRes, kResFormat, 0, true, false, false });
+    pipeline.DeclareTarget("LightCookieAtlas", lightCookieRT,
+        { RK::RenderTarget, kLightCookieAtlasWidth, kLightCookieAtlasHeight, kResFormat, 1, true, false, false });
+
+    declareViewTarget("HDR",                hdrRT,                  1, true);
+    declareViewTarget("LDR",                ldrRT,                  1, false);
+    declareViewTarget("SelectionMask",      selectionMaskRT,        1, true);
+    declareViewTarget("Outline",            outlineRT,              1, false);
+    declareViewTarget("ObjectMask",         objectMaskRT,           1, true);
+    declareViewTarget("Velocity",           velocityRT,             1, true);
+    declareViewTarget("CustomPostProcess0", customPostProcessRT[0], 1, false);
+    declareViewTarget("CustomPostProcess1", customPostProcessRT[1], 1, false);
+
     // 実体は upscaleSrcRT。等倍のフレームは誰も触らないので申告もしない。
     const bool upscaleActive = needsUpscale && upscaleSrcRT.IsValid();
     if (upscaleActive)
-        pipeline.DeclareResource("UpscaleSrc", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("SSRResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("MotionBlurResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("VolumetricResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
+        declareViewTarget("UpscaleSrc", upscaleSrcRT, 1, false);
+
+    declareViewTexture("Bloom",            bloomFull,        sHdrW, sHdrH);
+    declareViewTexture("SSRResult",        ssrResult,        sHdrW, sHdrH);
+    declareViewTexture("MotionBlurResult", motionBlurResult, sHdrW, sHdrH);
+    declareViewTexture("VolumetricResult", volumetricResult, sHdrW, sHdrH);
+
     // Forward もプリパスで GBuffer へ描くので、ここを Deferred 限定にすると
     // 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。
     if (screenSpaceReady)
-        pipeline.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 2, true, false, false });
+        pipeline.DeclareTarget("GBuffer", gbufferRT,
+            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, 2, true, false, false });
+
     // AO と接触影は半解像度で持つ (実体は curW/2 x curH/2)。ここをフル解像度で
     // 申告していると、エイリアシングが全画面 RT と同じ枠を貸してしまう。
     const uint32_t halfW = (std::max)(1u, sHdrW / 2);
     const uint32_t halfH = (std::max)(1u, sHdrH / 2);
-    pipeline.DeclareResource("LensFlareSource", { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
+    declareViewTexture("LensFlareSource", bloomHalf, halfW, halfH);
     if (ssaoEnabled)
-        pipeline.DeclareResource("SSAO",               { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
+        declareViewTexture("SSAO", ssaoBlur, halfW, halfH);
     // GTAO / ContactShadows は GBuffer を読んで独自の UAV へ書く。専用名で宣言しないと
     // GBuffer への偽書き込みとみなされ、DeferredLighting との依存順が崩れる。
     if (screenSpaceReady && rs.IsGtaoActive())
-        pipeline.DeclareResource("GTAOResult",          { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
+        declareViewTexture("GTAOResult", gtaoBlur, halfW, halfH);
     if (screenSpaceReady && rs.contactShadow.enabled)
-        pipeline.DeclareResource("ContactShadowResult", { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
+        declareViewTexture("ContactShadowResult", contactShadowResult, halfW, halfH);
     pipeline.SetOutputs({ "Output" });
 
     // IBL BRDF LUT 焼き付け。512x512 の積分テーブルはシーンにも設定にも依存しない定数なので、
     // 毎フレーム呼ぶが実処理は世代追跡で初回のみ走る。
-    pipeline.AddRawPass("IBLBrdfBake", {}, {}, [&]() {
-        ExecuteIBLBakeBrdfLutPass(passCtx);
-    }, false); // 外部 ComputeTexture への副作用パスなので RenderGraph カリング禁止
+    pipeline.AddPass<IBLBrdfBakePass>();
 
     scene.ClearUserRenderPasses();
 
@@ -2890,42 +2891,30 @@ void RenderSystem(Scene& scene,
     // ── Skinning (コンピュート) ───────────────────────────────────────────────
     // Shadow より前。変形結果をシャドウ・GBuffer・Forward が共有するので 1 回で済む。
     // 出力は論理リソースではなく SkinnedMeshRenderer の頂点バッファなので依存には乗せない。
-    pipeline.AddRawPass("SkinningCompute", {}, {}, [&]() {
-        ExecuteSkinningComputePass(passCtx);
-    }, false);
+    pipeline.AddPass<SkinningComputePass>();
 
     // ── クラスタライトカリング ────────────────────────────────────────────────
     // Shadow より前。どちらの経路も同じ結果を読むので 1 回で済む。
     // 出力は StructuredBuffer で論理リソースではないため reads/writes は空。
     if (clusteredEnabled) {
-        pipeline.AddRawPass("ClusterLightCull", {}, {}, [&]() {
-            ExecuteClusterLightCullPass(passCtx);
-        }, false);
+        pipeline.AddPass<ClusterLightCullPass>();
     }
 
     // ── Light Cookie ──────────────────────────────────────────────────────────
     // Cookie の顔ぶれが変わったフレームだけアトラスを焼き直す。
-    pipeline.AddRawPass("LightCookie", {}, { "LightCookieAtlas" }, [&]() {
-        ExecuteLightCookiePass(passCtx);
-    });
+    pipeline.AddPass<LightCookiePass>();
 
     // ── Shadow ────────────────────────────────────────────────────────────────
     // Directional の CSM と Spot / Point のアトラスを 1 パスで描く。caster の収集と
     // ソートを両者で共有するため、パスを分けるとシーン走査が丸ごと 2 回になる。
-    pipeline.AddRawPass("Shadow", {}, { "ShadowMap", "PunctualShadowMap" }, [&]() {
-        ExecuteShadowPass(passCtx);
-    });
+    pipeline.AddPass<ShadowPass>();
 
     // ── Forward or Deferred ───────────────────────────────────────────────────
     if (!useGBufferOpaquePipeline) {
         // 画面空間系のための GBuffer プリパス。ライティングはせず法線・深度・roughness だけ書く。
         // 以降の SSAO / GTAO / SSR / 接触影は Deferred と同じ入力を読む。
         if (forwardGBufferPrepass) {
-            pipeline.AddRawPass("ForwardGBufferPrepass",
-                                { "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                                { "GBuffer" }, [&]() {
-                ExecuteGBufferPass(passCtx);
-            });
+            pipeline.AddPass<GBufferPass>(GBufferPassMode::ForwardPrepass);
 
             // 地形も GBuffer へ入れる。飛ばすと地形が AO の遮蔽者にも受け手にもならず、
             // 「Deferred では地形に AO が乗るのに Forward では乗らない」差が残る。
@@ -2936,60 +2925,23 @@ void RenderSystem(Scene& scene,
 
             // AO と接触影は ForwardOpaque より前。Forward には合流点が無く各マテリアルが
             // 自分の画素で読むので、本描画の時点で結果が揃っていないと何も掛からない。
-            if (rs.IsGtaoActive()) {
-                pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GTAOResult" }, [&]() {
-                    ExecuteGTAOPass(passCtx);
-                });
-            }
-            if (rs.contactShadow.enabled) {
-                // WHY HDR を申告しないか: ContactShadowsPass は gbufferDepthReady が false の
-            //     ときだけ HDR の深度へ落ちるが、この登録は 2 箇所とも «GBuffer が揃う»
-            //     分岐の中にある。申告すると本描画前の HDR へ偽の依存が張られる。
-            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "ContactShadowResult" }, [&]() {
-                    ExecuteContactShadowsPass(passCtx);
-                });
-            }
-            if (ssaoEnabled) {
-                pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
-                    ExecuteSSAOPass(passCtx);
-                });
-            }
+            // 有効条件と申告はパス側が持つ (PostProcessPasses.hpp)。ここが決めるのは位置だけ。
+            pipeline.AddPass<GTAOPass>();
+            pipeline.AddPass<ContactShadowsPass>();
+            pipeline.AddPass<SSAOPass>();
         }
 
-        // ForwardOpaque の reads は AO / 接触影の有無で変わる。
-        // 宣言しておかないとグラフが AO より先に本描画を並べうる。
-        {
-            // HDR は Write。ReadWrite にすると読み手にもなるが、この時点で producer が
-            // いないため検証が落ちる。ForwardOpaque は自分でクリアしてから描く。
-            std::vector<RA> forwardAccesses = {
-                { "ShadowMap",         RU::Read  },
-                { "PunctualShadowMap", RU::Read  },
-                { "LightCookieAtlas",  RU::Read  },
-                { "HDR",               RU::Write },
-            };
-            if (forwardGBufferPrepass) {
-                if (ssaoEnabled)              forwardAccesses.push_back({ "SSAO",                RU::Read });
-                if (rs.IsGtaoActive())        forwardAccesses.push_back({ "GTAOResult",          RU::Read });
-                if (rs.contactShadow.enabled) forwardAccesses.push_back({ "ContactShadowResult", RU::Read });
-            }
-            pipeline.AddRawPass("ForwardOpaque", std::move(forwardAccesses), [&]() {
-                ExecuteForwardPasses(passCtx);
-            });
-        }
+        pipeline.AddPass<ForwardOpaquePass>();
     }
 
     if (useGBufferOpaquePipeline) {
-        pipeline.AddRawPass("DeferredGBuffer", {}, { "GBuffer" }, [&]() {
-            ExecuteGBufferPass(passCtx);
-        });
+        pipeline.AddPass<GBufferPass>(GBufferPassMode::Deferred);
 
         // Deferred Terrain — GBuffer へ書く。DepthCopy / AO / Lighting より前に置くことで
         // GTAO/SSAO/ContactShadows/SSR/IBL が地形へも効く。
         pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::GBuffer);
 
-        pipeline.AddRawPass("DeferredDepthCopy", { "GBuffer" }, { "HDR" }, [&]() {
-            ExecuteDeferredDepthCopyPass(passCtx);
-        });
+        pipeline.AddPass<DeferredDepthCopyPass>();
     }
 
     // ── Terrain (Forward フォールバック用) ────────────────────────────────────
@@ -3003,110 +2955,48 @@ void RenderSystem(Scene& scene,
     // GBuffer 経路では Terrain が HDR を書かないので Sky と DeferredDepthCopy の順序保証が
     // 失われ、DepthCopy のクリアで空が消える。だから Lighting 後 (下のブロック) に描く。
     if (!useGBufferOpaquePipeline) {
-        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSkyPass(passCtx);
-        });
-        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSunMoonPass(passCtx);
-        });
+        pipeline.AddPass<SkyPass>();
+        pipeline.AddPass<SunMoonPass>();
 
         // VolumetricCloud — GBuffer フォールバックの Forward では Sky 後・透明物前に HDR へ合成する。
         // WHY: 空を背景にしつつ、後続の水面・透明エフェクトで上書きできる順序にする。
-        pipeline.AddRawPass("VolumetricCloud", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteVolumetricCloudPass(passCtx);
-        });
+        pipeline.AddPass<VolumetricCloudPass>();
 
         // SSR — Forward でもプリパスの GBuffer から反射を計算する。
         // 映すのはライティング済みのシーンなので HDR が出揃った後に置く。
-        if (forwardGBufferPrepass && rs.ssr.enabled) {
-            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "SSRResult", "HDR" }, [&]() {
-                ExecuteSSRPass(passCtx);
-            });
-        }
+        // 設定のトグルは SSRPass::IsEnabled。ここで見るのは GBuffer があるかだけ。
+        if (forwardGBufferPrepass)
+            pipeline.AddPass<SSRPass>();
     }
 
     // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
     if (useGBufferOpaquePipeline) {
-        // GTAO — DeferredLighting より前に GBuffer から AO を計算する。
-        // "GTAOResult" として宣言することで DeferredLighting が正確な依存で待てる。
-        if (rs.IsGtaoActive()) {
-            pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GTAOResult" }, [&]() {
-                ExecuteGTAOPass(passCtx);
-            });
-        }
-        // ContactShadows — DeferredLighting より前に深度から接触影マスクを生成する。
-        // WHY: GTAO と同様に ContactShadowResult として宣言し偽依存を除去する。
-        if (rs.contactShadow.enabled) {
-            // WHY HDR を申告しないか: ContactShadowsPass は gbufferDepthReady が false の
-            //     ときだけ HDR の深度へ落ちるが、この登録は 2 箇所とも «GBuffer が揃う»
-            //     分岐の中にある。申告すると本描画前の HDR へ偽の依存が張られる。
-            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "ContactShadowResult" }, [&]() {
-                ExecuteContactShadowsPass(passCtx);
-            });
-        }
-        if (ssaoEnabled) {
-            pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
-                ExecuteSSAOPass(passCtx);
-            });
-        }
-        // DeferredLighting の reads を動的に構築し、有効な AO の出力だけへ依存を張る。
-        // 静的に書くと有効/無効の組み合わせごとに分岐が要る。
-        {
-            std::vector<RA> deferredAccesses = {
-                { "GBuffer", RU::Read     },
-                { "HDR",     RU::ReadWrite }, // 深度を読み、ライティング結果を書く
-                // 影と Cookie はライティングの本体が読む (t13 / t28 / t31)。
-                // 申告が抜けていたので «Shadow / LightCookie の後» という依存が張られず、
-                // 登録順が偶然そうなっているだけの状態だった。
-                { "ShadowMap",         RU::Read },
-                { "PunctualShadowMap", RU::Read },
-                { "LightCookieAtlas",  RU::Read },
-            };
-            if (ssaoEnabled)              deferredAccesses.push_back({ "SSAO",               RU::Read });
-            if (rs.IsGtaoActive())        deferredAccesses.push_back({ "GTAOResult",          RU::Read });
-            if (rs.contactShadow.enabled) deferredAccesses.push_back({ "ContactShadowResult", RU::Read });
-            pipeline.AddRawPass("DeferredLighting", std::move(deferredAccesses), [&]() {
-                ExecuteDeferredLightingPass(passCtx);
-            });
-        }
+        // AO と接触影は DeferredLighting より前。専用名で書くので、Lighting は
+        // "GTAOResult" / "ContactShadowResult" を正確な依存で待てる。
+        // 申告と有効条件はパス側 (PostProcessPasses.hpp)。Forward 側と同じ 3 行になる。
+        pipeline.AddPass<GTAOPass>();
+        pipeline.AddPass<ContactShadowsPass>();
+        pipeline.AddPass<SSAOPass>();
+        pipeline.AddPass<DeferredLightingPass>();
 
         // Sky / SunMoon — GBuffer ライティング後に HDR へ描く。深度==1.0 の画素だけを埋め、
         // HDR 依存チェーンで DeferredDepthCopy のクリアより確実に後段になる。
-        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSkyPass(passCtx);
-        });
-        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSunMoonPass(passCtx);
-        });
+        pipeline.AddPass<SkyPass>();
+        pipeline.AddPass<SunMoonPass>();
 
         // VolumetricCloud — GBuffer Lighting / Sky 後・透明物前に HDR へ合成する。
         // WHY: Lighting・空に上書きされず、透明物や水面を雲の手前に描ける順序にする。
-        pipeline.AddRawPass("VolumetricCloud", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteVolumetricCloudPass(passCtx);
-        });
+        pipeline.AddPass<VolumetricCloudPass>();
 
         // Deferred の中で «前方描画される» 2 パス。どちらも BindForwardShadingResources を
         // 通るので、Forward パスと同じく Spot/Point の影 (t28) と Cookie (t31) を引く。
         // 申告しないと依存辺が張られず、Shadow / LightCookie より先に走ってよいことになる。
-        pipeline.AddRawPass("DeferredSkinnedForward",
-                            { "HDR", "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                            { "HDR" }, [&]() {
-            ExecuteDeferredSkinnedForwardPass(passCtx);
-        });
-
-        pipeline.AddRawPass("DeferredForwardTransparent",
-                            { "HDR", "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                            { "HDR" }, [&]() {
-            ExecuteDeferredForwardTransparentPass(passCtx);
-        });
+        pipeline.AddPass<DeferredSkinnedForwardPass>();
+        pipeline.AddPass<DeferredForwardTransparentPass>();
 
         // SSR — 透明オブジェクト通過後の深度を使うので DeferredForwardTransparent の後。
-        // 実行条件はパイプラインの選択ではなく GBuffer の有無。
-        if (rs.ssr.enabled) {
-            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "SSRResult", "HDR" }, [&]() {
-                ExecuteSSRPass(passCtx);
-            });
-        }
+        // 実行条件はパイプラインの選択ではなく GBuffer の有無 (SSRPass::IsEnabled)。
+        pipeline.AddPass<SSRPass>();
     }
 
     // VolumetricLight — ゴッドレイ・光柱を HDR バッファへ加算合成する。
@@ -3117,17 +3007,11 @@ void RenderSystem(Scene& scene,
     //     不透明深度が確定したこの位置で足しておけば、水面・トレイル・パーティクルが
     //     光芒の上へ順番に乗り、遮蔽も屈折も普通の透明描画として処理される。
     //     WaterCaustics が「Water の前でなければならない」のと同じ理由。
-    if (rs.volumetricLight.enabled) {
-        pipeline.AddRawPass("VolumetricLight", { "HDR", "ShadowMap" }, { "VolumetricResult", "HDR" }, [&]() {
-            ExecuteVolumetricLightPass(passCtx);
-        });
-    }
+    pipeline.AddPass<VolumetricLightPass>();
 
     // WaterCaustics — 水面下の不透明ジオメトリへコースティクスを投影してから、水面本体を透明描画する。
     // WHY: Water の後に加算すると水面そのものへ模様が乗りやすいため、深度が不透明物だけを指す段階で実行する。
-    pipeline.AddRawPass("WaterCaustics", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteCausticsPass(passCtx);
-    });
+    pipeline.AddPass<WaterCausticsPass>();
 
     pipeline.AddPass<WaterRenderPass>();
 
@@ -3152,11 +3036,7 @@ void RenderSystem(Scene& scene,
     //     半透明は深度を書かないので待っても結果は変わらない。一方でここより後ろへ
     //     置くと、AfterOpaque 段のカスタムパスがマスクを読めなくなる
     //     (グラフ上「まだ描かれていないもの」を読む宣言になり、順序が閉じない)。
-    if (objectMaskEnabled) {
-        pipeline.AddRawPass("ObjectMask", { "HDR" }, { "ObjectMask" }, [&]() {
-            ExecuteObjectMaskPass(passCtx);
-        });
-    }
+    pipeline.AddPass<ObjectMaskPass>();
 
     // ── AfterOpaque 段のユーザーシェーダー ────────────────────────────────────
     // WHY ここか: 背景だけが描かれていて、デカール・トレイル・パーティクル・半透明は
@@ -3166,15 +3046,11 @@ void RenderSystem(Scene& scene,
 
     // ── デカール用深度スナップショット ────────────────────────────────────────
     // 深度専用 RT (colorCount = 0)。カラーを持つ RT と貸し回してはいけない。
-    pipeline.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 0, true, false, true });
-    pipeline.AddRawPass("DecalDepthCopy", { useGBufferOpaquePipeline ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
-        ExecuteDecalDepthCopyPass(passCtx);
-    });
+    declareViewTarget("DecalDepth", decalDepthRT, 0, true);
+    pipeline.AddPass<DecalDepthCopyPass>();
 
     // ── Decal + Trail + Particle ──────────────────────────────────────────────
-    pipeline.AddRawPass("Decal", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
-        ExecuteDecalPass(passCtx);
-    });
+    pipeline.AddPass<DecalPass>();
 
     pipeline.AddPass<MeshTrailRenderPass>();
     pipeline.AddPass<TrailRenderPass>();
@@ -3182,41 +3058,23 @@ void RenderSystem(Scene& scene,
     // ShadowMap は粒子の自己影が読む (t8)。申告していないと影より前に走れてしまう。
     // WHY Particle より前に登録するか: 粒子は同じフレームの霧を読んで «自分の奥行きの霧» を逆算する
     //     (ParticleLighting.hlsli の ApplyParticleFog)。依存を申告しあわない 2 つのパスは登録順に並ぶ。
-    pipeline.AddRawPass("FroxelFog", { "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" }, {}, [&]() {
-        ExecuteFroxelFogPass(passCtx);
-    }, false);
+    pipeline.AddPass<FroxelFogPass>();
 
     // PunctualShadowMap / LightCookieAtlas は «点光源を受ける» .mat の粒子が読む (ParticleLighting.hlsli)。
-    pipeline.AddRawPass("Particle", { "HDR", "DecalDepth", "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                        { "HDR" }, [&]() {
-        ExecuteParticlePass(passCtx);
-    });
+    pipeline.AddPass<ParticlePass>();
 
     // Overdraw 可視化は診断表示。有効なときだけ Particle の直後に HDR を上書きする。
     // GPU 時間を Particle パスの実測値と混ぜないよう、別パスとして計測させる。
-    if (rs.particleOverdrawView) {
-        pipeline.AddRawPass("ParticleOverdraw", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteParticleOverdrawPass(passCtx);
-        });
-    }
+    pipeline.AddPass<ParticleOverdrawPass>();
 
     // TAA の反応マスク。HDR へは書かないが、Particle の後・Composite (→ TAA) の前に並べるために
     // HDR の書き手として申告する (Overdraw と同じ申告の仕方)。
-    if (rs.IsTaaActive()) {
-        pipeline.AddRawPass("ParticleReactive", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
-            ExecuteParticleReactivePass(passCtx);
-        });
-    }
+    pipeline.AddPass<ParticleReactivePass>();
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
     // ── Selection / Debug ─────────────────────────────────────────────────────
-    if (selectionOutlineEnabled) {
-        pipeline.AddRawPass("SelectionMask", { "HDR" }, { "SelectionMask" },
-                            [&](PassResources& res) {
-            ExecuteSelectionMaskPass(res, passCtx);
-        });
-    }
+    pipeline.AddPass<SelectionMaskPass>();
 
     // ── SceneHDR 段のユーザーシェーダー ───────────────────────────────────────
     // WHY ここか: 絵が出揃っていて、まだブルームにも露出にも触れていない唯一の場所。
@@ -3239,11 +3097,7 @@ void RenderSystem(Scene& scene,
     //
     // 出力は StructuredBuffer (Composite が t29 で読む) で、グラフの論理リソースに
     // 乗らない。FroxelFog と同じ理由でカリング対象から外す。
-    if (rs.autoExposure.enabled) {
-        pipeline.AddRawPass("AutoExposure", { "HDR" }, {}, [&]() {
-            ExecuteAutoExposurePass(passCtx);
-        }, false);
-    }
+    pipeline.AddPass<AutoExposurePass>();
 
     pipeline.AddPass<ConstraintDebugPass>();
     pipeline.AddPass<RagdollDebugPass>();
@@ -3274,9 +3128,7 @@ void RenderSystem(Scene& scene,
     const bool velocityNeeded =
         velocityRT.IsValid() && (rs.motionBlur.enabled || rs.IsTaaActive());
     if (velocityNeeded) {
-        pipeline.AddRawPass("Velocity", {}, { "Velocity" }, [&]() {
-            ExecuteVelocityPass(passCtx);
-        });
+        pipeline.AddPass<VelocityPass>();
     }
 
     // ── PostProcess チェーン ──────────────────────────────────────────────────
@@ -3294,16 +3146,8 @@ void RenderSystem(Scene& scene,
     // LensFlare PS — 輝度抽出した光源を ADDITIVE で HDR へ合成する。
     // Bloom の前に置くのでフレアも Bloom に乗るが、その順序では bloomHalf に今フレームの
     // 輝点がまだ無い。パス自身が bloomHalf へ焼いてから読む (LensFlareSource がこの出力)。
-    if (rs.lensFlare.enabled) {
-        pipeline.AddRawPass("LensFlare", { "HDR" }, { "HDR", "LensFlareSource" }, [&]() {
-            ExecuteLensFlarePass(passCtx);
-        });
-    }
-    if (rs.postProcess.bloom.enabled) {
-        pipeline.AddRawPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
-            ExecuteBloomPass(passCtx);
-        });
-    }
+    pipeline.AddPass<LensFlarePass>();
+    pipeline.AddPass<BloomPass>();
 
     // フロクセル霧。シャドウマップを読むので Shadow より後、Composite より前。
     // 霧はライトとシャドウだけから作るので HDR の完成を待つ必要はない。

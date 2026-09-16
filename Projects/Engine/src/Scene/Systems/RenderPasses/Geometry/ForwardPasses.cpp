@@ -402,4 +402,18 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     SortAndSubmitTransparent(ctx, transparentQueue, h.objectCB);
 }
 
+
+void ForwardOpaquePass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+{
+    builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas").Write("HDR");
+    /// @note GBuffer プリパスが走ったフレームだけ画面空間の遮蔽が存在する。
+    ///       走っていないのに申告すると、誰も書かない名前を読むことになり Plan が落ちる。
+    if (ctx.gbufferDepthReady)
+        DeclareScreenSpaceOcclusionReads(builder, ctx);
+}
+
+void ForwardOpaquePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteForwardPasses(ctx);
+}
 } // namespace fbzz::scene

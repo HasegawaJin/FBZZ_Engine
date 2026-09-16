@@ -43,4 +43,23 @@ void ExecuteSSRPass(RenderPassContext& ctx)
     r.Dispatch(ssrDC, resources);
 }
 
+
+std::string_view SSRPass::Name() const { return "SSR"; }
+
+void SSRPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    /// @note 映すのはライティング済みのシーンなので HDR を読み、合成結果を書き戻す。
+    builder.Read("GBuffer").ReadWrite("HDR").Write("SSRResult");
+}
+
+bool SSRPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.ssr.enabled;
+}
+
+void SSRPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteSSRPass(ctx);
+}
+
 } // namespace fbzz::scene

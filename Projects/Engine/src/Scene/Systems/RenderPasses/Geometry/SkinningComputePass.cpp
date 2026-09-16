@@ -358,4 +358,9 @@ void ReleaseSkinningComputeCaches()
     g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
 }
 
+
+void SkinningComputePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteSkinningComputePass(ctx);
+}
 } // namespace fbzz::scene

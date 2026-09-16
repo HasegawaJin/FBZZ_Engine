@@ -55,4 +55,24 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
     r.Dispatch(blurDC, resources);
 }
 
+
+std::string_view SSAOPass::Name() const { return "SSAO"; }
+
+void SSAOPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("GBuffer").Write("SSAO");
+}
+
+bool SSAOPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    /// @note 設定だけでなくシェーダーと作業バッファの有無まで含んだ判定。
+    ///       組み立てた RenderSystem 側が ctx へ載せているので、ここでは引くだけ。
+    return ctx.ssaoEnabled;
+}
+
+void SSAOPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteSSAOPass(ctx);
+}
+
 } // namespace fbzz::scene

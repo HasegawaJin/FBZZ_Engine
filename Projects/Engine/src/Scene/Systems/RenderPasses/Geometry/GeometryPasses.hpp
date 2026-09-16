@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/Mesh.hpp>
@@ -111,116 +112,6 @@ inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const Rend
 // パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
 constexpr int kMaxParticleDraw = 10000;
 
-// パーティクルビルボード頂点。Particle.hlsl の ParticleVSIn と一致させること。
-struct ParticleVertex {
-    float center[3];  // POSITION   12 bytes
-    float uv[2];      // TEXCOORD0   8 bytes
-    float color[4];   // COLOR       16 bytes
-    float size;       // TEXCOORD1    4 bytes
-    float rotation;   // TEXCOORD2    4 bytes
-    float uvRect[4];  // TEXCOORD3   16 bytes
-    float velocity[3];// TEXCOORD4   12 bytes
-    float nextUvRect[4]; // TEXCOORD5 16 bytes
-    float spriteBlend;   // TEXCOORD6  4 bytes
-};                       // 92 bytes
-static_assert(sizeof(ParticleVertex) == 92, "ParticleVertex must match ParticleVSIn (92 bytes)");
-
-// ParticleRenderCB::effectsFlags のビット割り当て。
-// LAYOUT: Assets/Shaders/Rendering/ParticleCommon.hlsli の FBZZ_PFX_* / FBZZ_PALPHA_* と
-//         完全に一致させること。片方だけ変えると該当機能が黙って効かなくなる。
-inline constexpr std::uint32_t kParticleFxDistortion    = 1u;
-inline constexpr std::uint32_t kParticleFxSixWay        = 2u;
-inline constexpr std::uint32_t kParticleFxMotionVector  = 4u;
-inline constexpr std::uint32_t kParticleFxReceiveShadow = 8u;
-inline constexpr std::uint32_t kParticleFxVolumetric    = 16u;
-// 事前乗算アルファ。PS がソフトパーティクルの fade を RGB へも掛けるために使う。
-inline constexpr std::uint32_t kParticleFxPremultiplied = 32u;
-// albedo テクスチャが sRGB エンコード。PS が SRGBToLinear を掛ける。
-inline constexpr std::uint32_t kParticleFxSrgbTexture   = 64u;
-// 歪み専用ノーマルマップ (t1) がバインドされている。
-inline constexpr std::uint32_t kParticleFxDistortionMap = 128u;
-// bit8-10 は下のアルファの取り出し方が使うので、以降の機能ビットは bit11 から。
-// 点光源 (クラスタ) を粒子の中心で受ける。
-inline constexpr std::uint32_t kParticleFxPunctual      = 1u << 11;
-// 6 方向ライトマップ (t0 = Positive / t3 = Negative) で陰影を付ける。
-inline constexpr std::uint32_t kParticleFxSixWayMaps    = 1u << 12;
-// 加算合成。霧の補正 (ParticleLighting.hlsli) と TAA の反応マスクが合成式によって式を変える。
-inline constexpr std::uint32_t kParticleFxAdditive      = 1u << 13;
-// アルファの取り出し方は bit8-10 の 3 ビットに ParticleAlphaSource を格納する。
-// 値は Rendering/Mask.hlsli の FBZZ_MASK_* と共通 (全マテリアルで同じ語彙を使う)。
-inline constexpr std::uint32_t kParticleAlphaShift = 8u;
-inline constexpr std::uint32_t kParticleAlphaMask  = 7u;
-
-// ParticleRenderCB を束縛する DrawCall::constantBuffers のスロット。
-// LAYOUT: Assets/Shaders/Common/Binding.hlsli の CB_PARTICLE と一致させること。
-//
-// WHY b2 ではないか: シェーダーリフレクションは cbuffer 名 "MaterialConstants" を b2 に
-//     探すため、そこをエンジン定数で占有するとパーティクルだけ .mat の [params] を
-//     1 つも束縛できない。b2 は材質へ明け渡す (Decal の CB_DECAL と同じ判断)。
-inline constexpr std::size_t kParticleConstantSlot = 11;
-
-// Particle描画専用CB (b11)。CPU/GPUシェーダーで同じRenderer設定を使う。
-struct ParticleRenderCB {
-    uint32_t renderMode = 0;
-    float stretchedVelocityScale = 0.1f;
-    float stretchedLengthScale = 1.0f;
-    float softParticleFadeDistance = 0.5f;
-    uint32_t softParticles = 0;
-    uint32_t maxParticles = 0;
-    uint32_t effectsFlags = 0; // bit0 distortion / bit1 six-way lighting / bit2 motion-vector flipbook
-    float distortionStrength = 0.015f;
-    float lightingStrength = 1.0f;
-    float emissiveScale = 1.0f;
-    float motionVectorStrength = 1.0f;
-    // 描画先の解像度 [px]。
-    // WHY: 歪み (distortion) はシーンカラーを画面UVでサンプルするが、screenSize は
-    //      PostProcConstants 側にあり、パーティクル描画はその定数バッファをバインドしない。
-    //      結果 screenSize=0 となり UV がピクセル座標のまま saturate で右下隅へ張り付き、
-    //      屈折ではなくべた塗りになっていた。解像度はここから渡す。
-    float screenWidth = 1.0f;
-    float screenHeight = 1.0f;
-    // ビルボードの軸ごとのサイズ倍率 (ParticleEmitter::sizeAxisScale の xy)。
-    // WHY: 縦横比はエミッター単位の値なので、粒子ごとに持たせず CB で渡す。
-    //      こうすると CPU 頂点フォーマット (ParticleVertex) も GPU の GpuParticle も
-    //      太らせずに、CPU/GPU 双方の描画へ同じ 1 か所から効かせられる。
-    float sizeAxisScaleX = 1.0f;
-    float sizeAxisScaleY = 1.0f;
-    // 受け影の強さ [0,1]。有効/無効は effectsFlags の bit3 で判定する。
-    float shadowStrength = 1.0f;
-    // ボリュメトリック煙 (effectsFlags bit4)。ビルボード内で球状密度場をレイマーチする。
-    uint32_t volumetricSteps = 8;      // 視線方向のサンプル数
-    float volumetricDensity = 1.0f;    // 消衰係数。大きいほど濃く不透明になる
-    float volumetricAnisotropy = 0.3f; // Henyey-Greenstein g。正で前方散乱 (逆光で縁が光る)
-    float volumetricNoiseScale = 2.0f; // 密度ノイズの空間周波数 [1/m]
-    // GPU ソート済みインデックス (t15) が有効か。GPU 経路の VS だけが読む。
-    // WHY: 有効/無効をシェーダー分岐ではなく定数で切り替えるのは、
-    //      ソート無効時に t15 へ何もバインドしない構成を許すため
-    //      (未バインド SRV の読みを踏まない)。
-    uint32_t gpuSortEnabled = 0;
-    // 自己影の消衰係数。0 で無効。光源側密度バッファ (t9) を引いて透過率へ変換する。
-    // WHY: 受け影は「他の物体が落とす影」しか扱えない。粒子群が自分へ落とす影が無いと
-    //      厚みのある煙・雲は光の当たり方が一様になり、平坦な塊に見える。
-    float selfShadowStrength = 0.0f;
-    // ── 煙の散乱 (effectsFlags bit1 有効時) ──
-    // WHY: 素の N·L は不透明な球の陰影で、光を透かす媒質には合わない。
-    //      巻き込み拡散で陰側の黒潰れを避け、前方散乱で逆光時に縁が光るようにする。
-    float smokeWrap = 0.5f;
-    float smokeTransmission = 0.0f;
-    // HLSL の cbuffer では float4 が 16 バイト境界を跨げない。ここまでで offset 96 に
-    // 揃えてあるので、この 2 つを動かすとシェーダー側と黙ってずれる。
-    math::Vector4 tintColor = { 1.0f, 1.0f, 1.0f, 1.0f }; // .mat の albedo (リニア済み)
-    float smokeBackScatterPower = 4.0f;
-    float distortionChromatic = 0.0f;
-    // カメラ距離フェード [m]。near 未満で 0、far 以上で 1 の不透明度になる。
-    // 0 / 0 (既定) で無効。near == far も無効扱い (0 除算になる)。
-    // WHY 要るか: 一人称の近距離で粒子が «顔に張り付いて画面を覆う» のを、粒子側の
-    //      サイズや寿命をいじらずに消せる唯一の手段。pad 枠の転用なので CB のサイズは動かない。
-    float cameraFadeNear = 0.0f;
-    float cameraFadeFar = 0.0f;
-    math::Vector4 sixWayEmission = { 0.0f, 0.0f, 0.0f, 0.0f }; // rgb = 6-way マップの発光色 (リニア HDR)
-};
-static_assert(sizeof(ParticleRenderCB) == 144);
-
 // GPU パーティクルのソート用 CB (b0)。
 // LAYOUT: Rendering/ParticleSortCommon.hlsli の GpuParticleSortCB と一致させること。
 struct GpuParticleSortCB {
@@ -235,55 +126,6 @@ static_assert(sizeof(GpuParticleSortCB) == 32);
 
 // LDS 段が 1 グループで扱う要素数。ParticleSortCommon.hlsli の PARTICLE_SORT_BLOCK と一致させること。
 inline constexpr std::uint32_t kParticleSortBlock = 256u;
-
-// TrailVertex — Assets/Shaders/Material/Effects/Trail.hlsl の VS 入力と一致する CPU 頂点。
-// Trail ノード (TrailRenderPass) と per-particle Trail のリボン (ParticlePass) が共有する。
-struct TrailVertex {
-    math::Vector3 position;
-    float         age;
-    float         v;
-    float         u;
-};
-static_assert(sizeof(TrailVertex) == 24, "TrailVertex layout mismatch");
-
-// TrailCB — TrailConstants (cbuffer b2) の C++ ミラー。
-// NOTE: colorStart / colorEnd はリニアで入れること。オーサリング値 (sRGB) のまま渡すと
-//       HDR バッファへ sRGB 値を書くことになり、ACES を通した後で色が淡く飛ぶ。
-struct TrailCB {
-    math::Vector4 colorStart;
-    math::Vector4 colorEnd;
-    float uvScrollSpeed = 0.0f;
-    float uvTiling = 1.0f;
-    float time = 0.0f;
-    // bit0 = テクスチャが sRGB エンコード (シェーダー側でリニア化する)。
-    std::uint32_t flags = 0;
-
-    // 多キー色 (TrailComponent::colorGradient)。gradientKeyCount = 0 で
-    // colorStart / colorEnd の 2 点へ落ちる。
-    //
-    // WHY 頂点に色を持たせないか: TrailVertex は per-particle リボン (ParticlePass) と
-    //     共有していて、1 要素足すと帯を描く全経路の入力レイアウトが変わる。
-    //     帯 1 本に 1 つしか要らない値を、頂点数ぶん運ぶ理由も無い。
-    // WHY 末尾へ足すか: ParticlePass は TrailCB を 0 初期化して sizeof で確保するので、
-    //     末尾に足したぶんは «キー無し» として素通りする (見た目は変わらない)。
-    math::Vector4 gradientColors[kMaxParticleCurveKeys]{}; // リニア化済み
-    // 8 個のキー時刻。float4 × 2 に詰めるのは、HLSL の cbuffer が float の配列を
-    // 1 要素 16 バイトへ膨らませるため (float times[8] は 128 バイトを食う)。
-    math::Vector4 gradientTimes[kMaxParticleCurveKeys / 4]{};
-    std::uint32_t gradientKeyCount = 0;
-    // ParticleCurveInterpolation の値 (0=Linear / 1=Step / 2=Smooth)。
-    std::uint32_t gradientInterpolation = 0;
-    std::uint32_t _gradientPad[2]{};
-};
-// Trail.hlsl の gTrailFlags と一致させること。
-inline constexpr std::uint32_t kTrailFlagSrgbTexture = 1u;
-static_assert(sizeof(TrailCB) == 224, "TrailCB layout mismatch");
-
-// テクスチャが sRGB でエンコードされているかを .meta から引く。
-// WHY: このエンジンは _SRGB フォーマットの SRV を作らず、「シェーダーが自分で SRGBToLinear
-//      する」規約で統一されている。そのためシェーダーは素材が sRGB かどうかを知る必要がある。
-//      手描き素材は sRGB だが ProceduralVFXTextures はリニアで焼くため一律には決められない。
-[[nodiscard]] bool IsEffectTextureSrgb(const std::string& texturePath);
 
 // リボン 1 点ぶんの法線 (帯の幅方向)。カメラへ正対する向きを返す。
 // WHY: 帯は板なので、幅方向を進行方向とカメラ方向の両方に直交させないと
@@ -357,6 +199,227 @@ void ExecuteDeferredSkinnedForwardPass     (RenderPassContext& ctx);
 void ExecuteDeferredForwardTransparentPass (RenderPassContext& ctx);
 void ExecuteSkyPass                        (RenderPassContext& ctx);
 void ExecuteSunMoonPass                    (RenderPassContext& ctx);
+
+/// 空と太陽・月を HDR へ描く。
+///
+/// WHY クラスにするか: Forward と Deferred で «どこに登録するか» だけが違い、申告も
+///     本体も同じだった。ラムダで登録すると申告が RenderSystem 側に 2 つ並び、
+///     本体 (SkyPass.cpp) から離れる。申告を本体の隣へ置けば、読むものが増えたときに
+///     直す場所が目に入る。
+/// @note 描き先の束縛は本体が行う。SetAutoTarget は呼ばない。
+class SkyPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class SunMoonPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+// ---- 不透明描画より前の下ごしらえ -------------------------------------------
+//
+// どれも出力が論理リソースでない (SkinnedMeshRenderer の頂点バッファ /
+// StructuredBuffer / 外部 ComputeTexture) か、書き先が 1 つに決まっている。
+// @note 申告の無い副作用パスは AllowCulling() を false にする。書き先を申告できない
+//       以上 «誰も読まない» と判定されるので、既定のままだと必ず刈られる。
+
+class SkinningComputePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "SkinningCompute"; }
+    void Setup(PassBuilder&, const RenderPassContext&) const override {}
+    bool AllowCulling() const override { return false; }
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class ClusterLightCullPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "ClusterLightCull"; }
+    void Setup(PassBuilder&, const RenderPassContext&) const override {}
+    bool AllowCulling() const override { return false; }
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class LightCookiePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "LightCookie"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class ShadowPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "Shadow"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// GBuffer を «どちらの経路として» 埋めるか。本体は同じで、名前と申告だけが違う。
+///
+/// WHY 名前を分けるか: プロファイラーと構成テキストで «Forward なのに GBuffer を
+///     描いている» フレームを見分けられなくなる。
+enum class GBufferPassMode {
+    ForwardPrepass, ///< Forward 経路の画面空間入力づくり。影と Cookie を読む
+    Deferred,       ///< Deferred 本経路。ライティングしないので何も読まない
+};
+
+class GBufferPass final : public IRenderPass {
+public:
+    explicit GBufferPass(GBufferPassMode mode) : m_mode(mode) {}
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+
+private:
+    GBufferPassMode m_mode;
+};
+
+class DeferredDepthCopyPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "DeferredDepthCopy"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// Deferred の中で «前方描画される» 2 パス。
+///
+/// @note どちらも BindForwardShadingResources を通るので、Forward パスと同じく
+///       Spot / Point の影 (t28) と Cookie (t31) を読む。申告しないと依存辺が張られず、
+///       Shadow / LightCookie より先に走ってよいことになる。
+class DeferredSkinnedForwardPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "DeferredSkinnedForward"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class DeferredForwardTransparentPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "DeferredForwardTransparent"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// 有効な画面空間 AO / 接触影の «出力» へだけ依存を張る。
+///
+/// WHY 関数にするか: ForwardOpaque と DeferredLighting が同じ 3 本を同じ条件で読む。
+///     静的に全部書くと有効/無効の組み合わせごとに偽の依存が生まれ、条件を 2 か所へ
+///     書き写すと片方だけ追従し損ねる。
+/// @note 宣言する順序は SSAO → GTAOResult → ContactShadowResult で固定する。
+///       順序が変わると Plan キャッシュの鍵だけが変わり、無駄な再 Plan が走る。
+inline void DeclareScreenSpaceOcclusionReads(PassBuilder& builder, const RenderPassContext& ctx)
+{
+    if (ctx.ssaoEnabled)                    builder.Read("SSAO");
+    if (ctx.settings.IsGtaoActive())        builder.Read("GTAOResult");
+    if (ctx.settings.contactShadow.enabled) builder.Read("ContactShadowResult");
+}
+
+/// Forward の不透明本描画。
+///
+/// @note HDR は Write であって ReadWrite ではない。この時点で producer が居らず、
+///       読み手として申告すると検証が落ちる。自分でクリアしてから描く。
+class ForwardOpaquePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "ForwardOpaque"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// GBuffer をライティングして HDR へ合成する。
+///
+/// @note 影と Cookie はライティングの本体が読む (t13 / t28 / t31)。申告が抜けていた
+///       ため «Shadow / LightCookie の後» という依存が張られず、登録順が偶然そう
+///       なっているだけの状態だった。
+class DeferredLightingPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "DeferredLighting"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class WaterCausticsPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "WaterCaustics"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// デカール用の深度スナップショット。
+/// @note 読み元は不透明深度を持っている方。Deferred なら GBuffer、Forward なら HDR。
+class DecalDepthCopyPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "DecalDepthCopy"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class DecalPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "Decal"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// @note ShadowMap は粒子の自己影が読む (t8)。PunctualShadowMap / LightCookieAtlas は
+///       «点光源を受ける» .mat の粒子が読む (ParticleLighting.hlsli)。
+class ParticlePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "Particle"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// 重なり枚数のヒートマップ。診断表示。
+/// @note 別パスにするのは、GPU 時間を Particle の実測値と混ぜないため。
+class ParticleOverdrawPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "ParticleOverdraw"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// TAA の反応マスク。
+/// @note HDR へは書かないが、Particle の後・Composite (→ TAA) の前へ並べるために
+///       HDR の書き手として申告する。
+class ParticleReactivePass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "ParticleReactive"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+///  マスクの中身は «不透明の形と、その時点の深度» で決まる。半透明は深度を
+///       書かないので、待っても結果は変わらない。
+class ObjectMaskPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "ObjectMask"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// 選択オブジェクトのシルエット。
+///  本体は res.Target(...) から引くので PassResources を受け取る。
+class SelectionMaskPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "SelectionMask"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+class VelocityPass final : public IRenderPass {
+public:
+    std::string_view Name() const override { return "Velocity"; }
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
 void ExecuteSkyCapturePass                 (RenderPassContext& ctx);
 void ExecuteSkyLightBakePass               (RenderPassContext& ctx);
 // ReflectionProbe の動的キューブマップを更新し、メインカメラに最も近い有効プローブを返す。
