@@ -56,15 +56,8 @@ namespace {
 // 置くためにヘッダー側へ出してあるので、ここでは名前だけ借りる。
 using UIVertex = UIVertex2D;
 
-// LAYOUT: Assets/Shaders/UI/UICommon.hlsli の cbuffer UIConstants と一致させること。
-struct UIConstants {
-    math::Matrix4 ortho;
-    math::Vector4 color;
-    math::Vector4 uvRect;
-    // xy = この矩形の Canvas ピクセル寸法, zw = 予約。
-    // 角丸・枠線・影は「何ピクセルぶん」で決まる。UV だけだと縦横比で角の形が変わる。
-    math::Vector4 rect;
-};
+// 定義は UISystem.hpp (UIConstantsCB)。エディタの UI マテリアルプレビューと共有する。
+using UIConstants = UIConstantsCB;
 
 struct CanvasEntry {
     GameObject* go = nullptr;
@@ -344,9 +337,9 @@ UIMaterialBinding* ResolveUIMaterial(UISystemContext& ctx,
     // 壊れた 1 件がフレーム時間を持っていくうえログが埋まる。
     UIMaterialBinding& binding = ctx.materialCache[materialPath];
 
-    const auto assetHandle = asset::AssetManager::LoadMaterial(materialPath);
+    const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
     const auto* matAsset = assetHandle.IsValid()
-        ? asset::AssetManager::GetMaterial(assetHandle) : nullptr;
+        ? asset::AssetManager::Get<asset::MaterialAsset>(assetHandle) : nullptr;
     if (!matAsset) {
         FBZZ_LOG_WARN("UI material load failed '%s' -> falling back to the built-in sprite shader.",
                       materialPath.c_str());

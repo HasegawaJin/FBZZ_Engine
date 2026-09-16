@@ -24,7 +24,7 @@ void RegisterMaterialDirty(const scene::MaterialSlot& slot, const EditorContext&
     AssetDirtyRegistry::Register(
         diskPath, NormalizeAssetPath(slot.materialPath), "MAT",
         [diskPath, handle]() {
-            const auto* material = asset::AssetManager::GetMaterial(handle);
+            const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
             return material && asset::SaveMaterialAssetToFile(diskPath, *material);
         });
 }
@@ -38,7 +38,7 @@ void RegisterMaterialDirty(const scene::MaterialSlot& slot, const EditorContext&
 //   原因でもある。スロットを引数にすれば、どの Element でもその場で展開できる。
 void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
 {
-            auto* matPtr = asset::AssetManager::GetMaterial(mc.materialAsset);
+            auto* matPtr = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
             if (!matPtr)
                 return;
 
@@ -140,7 +140,7 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                     std::string& path = mat.textures[slot];
                     const char* filter = spriteAlbedo && std::strcmp(slot, "albedo") == 0
                         ? widgets::kSpriteAssetFilter : widgets::kTextureAssetFilter;
-                    if (widgets::AssetPathField(slot, path, filter, ctx.projectRoot))
+                    if (widgets::TextureSlotField(slot, path, filter, ctx.projectRoot))
                         materialDirty = true;
                 };
                 if (desc && !desc->textures.empty()) {
@@ -249,7 +249,7 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                 const std::string diskPath = MaterialAssetDiskPath(ctx, mc.materialPath);
                 auto apply = [handle, markDirty, context, relPath, diskPath](
                                  const asset::MaterialAsset& value) {
-                    if (auto* target = asset::AssetManager::GetMaterial(handle)) {
+                    if (auto* target = asset::AssetManager::Get<asset::MaterialAsset>(handle)) {
                         *target = value;
                         context->BumpMaterialPreviewRevision(relPath);
                         if (markDirty) markDirty();
@@ -259,7 +259,7 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                             AssetDirtyRegistry::Register(
                                 diskPath, relPath, "MAT",
                                 [handle, diskPath]() {
-                                    const auto* material = asset::AssetManager::GetMaterial(handle);
+                                    const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
                                     return material
                                         && asset::SaveMaterialAssetToFile(diskPath, *material);
                                 });

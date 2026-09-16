@@ -12,6 +12,8 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Panels/IPreviewPanel.hpp>
 #include <Editor/Panels/MaterialPreview.hpp>
+#include <Engine/Renderer/ResourceHandle.hpp>
+#include <string>
 #include <string_view>
 
 namespace fbzz::editor {
@@ -29,11 +31,32 @@ public:
                                    std::string_view assetPath,
                                    float previewHeight) override;
 
+    // Animation Preview の表示トグル・カメラ角を EditorLocalState.toml と往復させる。
+    void OnLoadSettings(const EditorSettings& settings) override;
+    void OnSaveSettings(EditorSettings& settings) const override;
+
 protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
+    // .ico は 1 ファイルに複数サイズが入るので、面積最大のフレームを展開して持つ。
+    struct IconPreview {
+        std::string                                    path;
+        renderer::ResourceHandle<renderer::TextureTag> texture;
+        int         width      = 0;
+        int         height     = 0;
+        int         frameCount = 0;
+        bool        resolved   = false;
+        std::string error;
+    };
+
+    bool DrawIconPreview(EditorContext& ctx, std::string_view assetPath, float previewHeight);
+
+    IconPreview          m_iconPreview;
     AnimationMaskPreview m_animationMaskPreview;
+    // WHY パネルごとに持つか: Inspector 内のプレビューと視点・照明を共有させると、
+    //      片方を回したときにもう片方まで動き、2 つ並べて比べられない。
+    MaterialPreviewView  m_materialPreview;
 };
 
 } // namespace fbzz::editor

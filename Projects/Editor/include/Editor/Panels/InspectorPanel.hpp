@@ -5,6 +5,9 @@
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Panels/MaterialPreview.hpp>
+#include <Engine/Asset/AssetHandle.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <any>
@@ -38,7 +41,10 @@ private:
     //      増分ビルドで古い sizeof(InspectorPanel) が残った際に破損しやすい。
     //      Asset ロックは m_locked && !m_lockedEntityId.IsValid() と、この path の組み合わせで表現する。
     std::string                                          m_inspectedAssetPath;
-    renderer::ResourceHandle<renderer::MaterialAssetTag> m_inspectedMat;
+    asset::AssetHandle<asset::MaterialAsset>             m_inspectedMat;
+
+    // .mat インスペクター下部のプレビュー。Preview パネルとは別の視点・照明を持つ。
+    MaterialPreviewView m_materialPreview;
 
     void DrawAssetInspector(EditorContext& ctx, const std::string& assetPath);
 };

@@ -73,6 +73,21 @@ struct UIVertex2D {
     math::Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
+// UI パスの b0。UI は b0 を CameraConstants ではなく UIConstants として使う。
+//
+// LAYOUT: Assets/Shaders/UI/UICommon.hlsli の cbuffer UIConstants と一致させること。
+// WHY ヘッダーに出すか: エディタの UI マテリアルプレビューが «本編と同じ矩形» を
+//     焼くのに同じレイアウトを要る。UISystem.cpp に閉じたままだと写しが 2 つになる。
+struct UIConstantsCB {
+    math::Matrix4 ortho;  ///< Canvas 空間 → clip 空間
+    math::Vector4 color;  ///< UIImage.color / UIText.color
+    math::Vector4 uvRect; ///< xy = uvMin, zw = uvMax
+    // xy = この矩形の Canvas ピクセル寸法, zw = 予約。
+    // 角丸・枠線・影は「何ピクセルぶん」で決まる。UV だけだと縦横比で角の形が変わる。
+    math::Vector4 rect;
+};
+static_assert(sizeof(UIConstantsCB) == 112, "UIConstantsCB layout mismatch with UICommon.hlsli");
+
 // クリップ領域を表す半平面 1 枚。dot(p - point, normal) >= 0 側を残す。
 //
 // WHY 矩形ではなく半平面の並びで持つか:

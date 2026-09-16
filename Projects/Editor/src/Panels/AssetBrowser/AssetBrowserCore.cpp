@@ -409,15 +409,21 @@ void AssetBrowserPanel::RefreshDirectory()
                 if constexpr (requires { it->second.thumbnailRT; }) {
                     if (it->second.thumbnailRT.IsValid())
                         m_resources->Release(it->second.thumbnailRT);
-                    if constexpr (requires { it->second.materialCB; }) {
-                        if (it->second.materialCB.IsValid())
-                            m_resources->Release(it->second.materialCB);
+                    if constexpr (requires { it->second.gpu; })
+                        matpreview::ResetGpuData(it->second.gpu, m_resources);
+                    if constexpr (requires { it->second.slotMaterials; }) {
+                        for (auto& slot : it->second.slotMaterials)
+                            matpreview::ResetGpuData(slot.gpu, m_resources);
                     }
                 } else if constexpr (requires { it->second.mat.thumbnailRT; }) {
                     if (it->second.mat.thumbnailRT.IsValid())
                         m_resources->Release(it->second.mat.thumbnailRT);
-                    if (it->second.mat.materialCB.IsValid())
-                        m_resources->Release(it->second.mat.materialCB);
+                    matpreview::ResetGpuData(it->second.mat.gpu, m_resources);
+                }
+                // .ico のようにこのパネルが自前で作ったテクスチャは実体ごと解放する。
+                if constexpr (requires { it->second.ownsTexture; }) {
+                    if (it->second.ownsTexture && it->second.handle.IsValid())
+                        m_resources->Release(it->second.handle);
                 }
             }
             map.erase(it);
