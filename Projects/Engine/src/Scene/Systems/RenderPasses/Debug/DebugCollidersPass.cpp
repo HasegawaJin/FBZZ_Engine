@@ -35,6 +35,14 @@ constexpr int   DASH_MAX    = 8;
 //      ちらつきを解く必要があるのはプリミティブ形状の側だけ。
 constexpr std::size_t DASH_LINE_LIMIT = 512;
 
+// 三角形ワイヤーを実寸で出す半径 [m]。外側は BVH ノードの箱になる。
+constexpr float DETAIL_RADIUS = 80.0f;
+
+math::Vector4 CoarseColor(const math::Vector4& color)
+{
+    return { color.x * 0.7f, color.y * 0.7f, color.z * 0.7f, color.w * 0.6f };
+}
+
 // コライダー 1 個分のワイヤーを積む。
 // WHY: PhysicsSystem は RunMode::SimOnly のため、エディタ停止中は Collider の遅延構築も
 //      形状同期も走らない。可視化側でも PrepareCollider() を通すことで
@@ -42,13 +50,14 @@ constexpr std::size_t DASH_LINE_LIMIT = 512;
 //      「Inspector で size を変えてもワイヤーが追従しない」の両方を解消する。
 template<typename T>
 void DrawCollider(Scene& scene, GameObject& go, T& collider,
-                  renderer::IRenderer& renderer, const math::Vector4& color)
+                  renderer::IRenderer& renderer, const math::Vector4& color,
+                  const physics::ColliderDebugView& view)
 {
     if (!collider.enabled) return;
     if (!PrepareCollider(scene, go, collider)) return;
 
     const physics::ColliderDebugGeometry geometry =
-        physics::BuildColliderDebugGeometry(*collider.collider);
+        physics::BuildColliderDebugGeometry(*collider.collider, view);
 
     // プリミティブ形状は破線で描く。Script の Gizmo が同じ位置に実線を出していても、
     // 隙間から下の線が見えるため両方読める (このパスは Gizmo より後に走る)。
@@ -65,12 +74,15 @@ void DrawCollider(Scene& scene, GameObject& go, T& collider,
         renderer::DebugDraw::Flush();
     }
 
-    for (const physics::DebugLine& line : geometry.lines) {
+    for (std::size_t i = 0; i < geometry.lines.size(); ++i) {
+        const physics::DebugLine& line = geometry.lines[i];
+        // detailLineCount より後ろは BVH ノードの箱。輪郭として読ませたいだけなので落とす。
+        const math::Vector4 lineColor = i < geometry.detailLineCount ? color : CoarseColor(color);
         if (dashed)
-            renderer::DebugDraw::LineDashed(renderer, line.from, line.to, color,
+            renderer::DebugDraw::LineDashed(renderer, line.from, line.to, lineColor,
                                             DASH_LENGTH, DASH_MAX);
         else
-            renderer::DebugDraw::Line(renderer, line.from, line.to, color);
+            renderer::DebugDraw::Line(renderer, line.from, line.to, lineColor);
     }
 }
 
@@ -78,7 +90,8 @@ void DrawCollider(Scene& scene, GameObject& go, T& collider,
 // WHY: GameObject を総なめして GetComponent するより、ComponentArray の Entity span を
 //      入口にした方が PhysicsSystem と走査対象が完全に一致する (数え漏れが起きない)。
 template<typename T>
-void DrawCollidersOfType(RenderPassContext& ctx, const math::Vector4& color)
+void DrawCollidersOfType(RenderPassContext& ctx, const math::Vector4& color,
+                         const physics::ColliderDebugView& view)
 {
     for (EntityID id : ctx.scene.GetEntities<T>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
@@ -87,7 +100,7 @@ void DrawCollidersOfType(RenderPassContext& ctx, const math::Vector4& color)
         //     Collider を同期対象から外す。可視化だけ描いてしまうと、当たり判定が
         //     生きていない場所にワイヤーが残り「消したはずの壁に当たる」と誤読される。
         if (!go || !col || !go->activeInHierarchy()) continue;
-        DrawCollider(ctx.scene, *go, *col, ctx.renderer, color);
+        DrawCollider(ctx.scene, *go, *col, ctx.renderer, color, view);
     }
 }
 
@@ -101,18 +114,28 @@ bool DebugCollidersPass::IsEnabled(const RenderPassContext& ctx) const
 void DebugCollidersPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     constexpr math::Vector4 kColor = { 0.1f, 1.0f, 0.35f, 1.0f };
+
+    // BVH コライダー (Mesh / Terrain) だけがこの視点を見る。プリミティブは影響を受けない。
+    physics::ColliderDebugView view;
+    view.cameraPosition = ctx.camera.m_position;
+    view.detailRadius   = DETAIL_RADIUS;
+    view.enabled        = true;
+
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
 
-    DrawCollidersOfType<AabbColliderComponent>(ctx, kColor);
-    DrawCollidersOfType<BoxColliderComponent>(ctx, kColor);
-    DrawCollidersOfType<SphereColliderComponent>(ctx, kColor);
-    DrawCollidersOfType<CapsuleColliderComponent>(ctx, kColor);
-    DrawCollidersOfType<CylinderColliderComponent>(ctx, kColor);
-    DrawCollidersOfType<MeshColliderComponent>(ctx, kColor);
-    DrawCollidersOfType<ConvexHullColliderComponent>(ctx, kColor);
+    DrawCollidersOfType<AabbColliderComponent>(ctx, kColor, view);
+    DrawCollidersOfType<BoxColliderComponent>(ctx, kColor, view);
+    DrawCollidersOfType<SphereColliderComponent>(ctx, kColor, view);
+    DrawCollidersOfType<CapsuleColliderComponent>(ctx, kColor, view);
+    DrawCollidersOfType<CylinderColliderComponent>(ctx, kColor, view);
+    DrawCollidersOfType<MeshColliderComponent>(ctx, kColor, view);
+    DrawCollidersOfType<ConvexHullColliderComponent>(ctx, kColor, view);
     // TerrainCollider は従来この一覧から漏れており、地形の当たり判定だけ
     // showColliders で一切表示されなかった。
-    DrawCollidersOfType<TerrainColliderComponent>(ctx, kColor);
+    // showTerrainCollision が入っているときは TerrainCollisionDebugPass が同じ線を
+    // 同じ色で描くので、ここでは譲る (二重に積むとバッチ頂点だけ倍食う)。
+    if (!ctx.settings.showTerrainCollision)
+        DrawCollidersOfType<TerrainColliderComponent>(ctx, kColor, view);
 
     renderer::DebugDraw::Flush();
 }

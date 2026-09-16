@@ -11,6 +11,7 @@
 #include <Physics/SphereCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
+#include <Physics/BVHNode.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -25,6 +26,19 @@ namespace
     constexpr int CIRCLE_SEGMENTS = 24;
     constexpr size_t MAX_MESH_DEBUG_LINES = 8192;
     constexpr size_t MAX_CONVEX_HULL_DEBUG_LINES = 2048;
+    // 遠景で BVH ノードを表す箱の本数上限 (12 本 / 箱 = 約 340 ノード)。
+    constexpr size_t MAX_COARSE_DEBUG_LINES = 4096;
+    // ノードを箱で打ち切る角度サイズ。extent の長さがカメラ距離のこの比を下回ったら降りない。
+    constexpr float COARSE_DETAIL_RATIO = 0.12f;
+
+    // 点から AABB までの最短距離の 2 乗。点が内部にあるときは 0。
+    float DistanceSqToAABB(const math::Vector3& p, const AABB& box)
+    {
+        const float dx = std::max({ box.min.x - p.x, 0.0f, p.x - box.max.x });
+        const float dy = std::max({ box.min.y - p.y, 0.0f, p.y - box.max.y });
+        const float dz = std::max({ box.min.z - p.z, 0.0f, p.z - box.max.z });
+        return dx * dx + dy * dy + dz * dz;
+    }
 
     void AddLine(ColliderDebugGeometry& out, const math::Vector3& from, const math::Vector3& to)
     {
@@ -317,31 +331,147 @@ ColliderDebugGeometry BuildHeightFieldGeometry(const HeightFieldCollider& hf)
     return out;
 }
 
+    // BVH のノードを、カメラから見た角度サイズで «降りる / 箱で打ち切る» に振り分ける。
+    // 手前は三角形の辺そのもの、奥はノード AABB になるので、遠景でも起伏が塊として残る。
+    //
+    // WHY 全域の等間隔サンプリングをやめたか: 13 万三角形の地形では 8192 本の予算が
+    //     地図全体へ均等にばら撒かれ、どこも «繋がらない三角形が数個» にしかならなかった。
+    //     予算をカメラ手前へ寄せれば、実際に当たり判定を確かめたい足元だけが実寸で読める。
+    ColliderDebugGeometry BuildBVHLodGeometry(const BVHTree& bvh, const ColliderDebugView& view)
+    {
+        ColliderDebugGeometry out;
+        if (bvh.nodes.empty() || bvh.triangles.empty()) return out;
+
+        ColliderDebugGeometry detail;
+        ColliderDebugGeometry coarse;
+        detail.lines.reserve(std::min(MAX_MESH_DEBUG_LINES, bvh.triangles.size() * 3));
+
+        const float detailSq      = view.detailRadius * view.detailRadius;
+        const float coarseRatioSq = COARSE_DETAIL_RATIO * COARSE_DETAIL_RATIO;
+
+        std::vector<int> stack;
+        stack.reserve(64);
+        stack.push_back(0);
+
+        while (!stack.empty())
+        {
+            if (!CanAddLine(detail, MAX_MESH_DEBUG_LINES) &&
+                !CanAddLine(coarse, MAX_COARSE_DEBUG_LINES)) break;
+
+            const int idx = stack.back();
+            stack.pop_back();
+            if (idx < 0 || idx >= static_cast<int>(bvh.nodes.size())) continue;
+
+            const BVHNode&      node    = bvh.nodes[idx];
+            const math::Vector3 extents = node.aabb.Extents();
+            const float         distSq  = DistanceSqToAABB(view.cameraPosition, node.aabb);
+
+            // WHY 予算も条件に混ぜるか: 尽きた後も «手前» 扱いを続けると、足元のノードが
+            //     箱にすらならず何も描かれないまま捨てられる。
+            const bool detailed = distSq <= detailSq && CanAddLine(detail, MAX_MESH_DEBUG_LINES);
+
+            // 画面上で 1 点に潰れる大きさまで縮んだノードは、これ以上割っても情報が増えない。
+            if (!detailed && extents.LengthSq() <= distSq * coarseRatioSq)
+            {
+                if (CanAddLine(coarse, MAX_COARSE_DEBUG_LINES))
+                    AddBox(coarse, node.aabb.Center(), extents);
+                continue;
+            }
+
+            if (node.IsLeaf())
+            {
+                if (!detailed)
+                {
+                    if (CanAddLine(coarse, MAX_COARSE_DEBUG_LINES))
+                        AddBox(coarse, node.aabb.Center(), extents);
+                    continue;
+                }
+                for (uint32_t ti : node.triIndices)
+                {
+                    if (ti >= bvh.triangles.size()) continue;
+                    const Triangle& tri = bvh.triangles[ti];
+                    AddTriangleEdgesLimited(detail, tri.v[0], tri.v[1], tri.v[2], MAX_MESH_DEBUG_LINES);
+                }
+                continue;
+            }
+
+            // 遠い子を先に積む = 近い子が先に pop され、詳細線の予算がカメラ寄りから埋まる。
+            int        first     = node.left;
+            int        second    = node.right;
+            const auto nodeCount = static_cast<int>(bvh.nodes.size());
+            if (first >= 0 && first < nodeCount && second >= 0 && second < nodeCount &&
+                DistanceSqToAABB(view.cameraPosition, bvh.nodes[first].aabb) <
+                DistanceSqToAABB(view.cameraPosition, bvh.nodes[second].aabb))
+            {
+                std::swap(first, second);
+            }
+            stack.push_back(first);
+            stack.push_back(second);
+        }
+
+        out.lines = std::move(detail.lines);
+        out.detailLineCount = out.lines.size();
+        out.lines.insert(out.lines.end(), coarse.lines.begin(), coarse.lines.end());
+        return out;
+    }
+
+    ColliderDebugGeometry BuildByType(const Collider& collider)
+    {
+        switch (collider.GetType())
+        {
+        case ColliderType::SPHERE:
+            return BuildSphereGeometry(static_cast<const SphereCollider&>(collider));
+        case ColliderType::AABB:
+            return BuildAABBGeometry(collider);
+        case ColliderType::OBB:
+            return BuildOBBGeometry(static_cast<const OBBCollider&>(collider));
+        case ColliderType::CAPSULE:
+            return BuildCapsuleGeometry(static_cast<const CapsuleCollider&>(collider));
+        case ColliderType::CYLINDER:
+            return BuildCylinderGeometry(static_cast<const CylinderCollider&>(collider));
+        case ColliderType::TRIANGLE_MESH:
+            return BuildTriangleMeshGeometry(static_cast<const TriangleMeshCollider&>(collider));
+        case ColliderType::CONVEX_HULL:
+            return BuildConvexHullGeometry(static_cast<const ConvexHullCollider&>(collider));
+        case ColliderType::HEIGHT_FIELD:
+            return BuildHeightFieldGeometry(static_cast<const HeightFieldCollider&>(collider));
+        }
+
+        return BuildAABBGeometry(collider);
+    }
+
+    // 視点つきの LOD へ回せる形状か。回せないものは視点を無視して従来どおり描く。
+    const BVHTree* GetLodBVH(const Collider& collider)
+    {
+        switch (collider.GetType())
+        {
+        case ColliderType::HEIGHT_FIELD:
+            return &static_cast<const HeightFieldCollider&>(collider).GetBVH();
+        case ColliderType::TRIANGLE_MESH:
+            return &static_cast<const TriangleMeshCollider&>(collider).GetBVH();
+        default:
+            return nullptr;
+        }
+    }
+
 } // namespace
 
 ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider)
 {
-    switch (collider.GetType())
-    {
-    case ColliderType::SPHERE:
-        return BuildSphereGeometry(static_cast<const SphereCollider&>(collider));
-    case ColliderType::AABB:
-        return BuildAABBGeometry(collider);
-    case ColliderType::OBB:
-        return BuildOBBGeometry(static_cast<const OBBCollider&>(collider));
-    case ColliderType::CAPSULE:
-        return BuildCapsuleGeometry(static_cast<const CapsuleCollider&>(collider));
-    case ColliderType::CYLINDER:
-        return BuildCylinderGeometry(static_cast<const CylinderCollider&>(collider));
-    case ColliderType::TRIANGLE_MESH:
-        return BuildTriangleMeshGeometry(static_cast<const TriangleMeshCollider&>(collider));
-    case ColliderType::CONVEX_HULL:
-        return BuildConvexHullGeometry(static_cast<const ConvexHullCollider&>(collider));
-    case ColliderType::HEIGHT_FIELD:
-        return BuildHeightFieldGeometry(static_cast<const HeightFieldCollider&>(collider));
-    }
+    ColliderDebugGeometry out = BuildByType(collider);
+    out.detailLineCount = out.lines.size();
+    return out;
+}
 
-    return BuildAABBGeometry(collider);
+ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider,
+                                                 const ColliderDebugView& view)
+{
+    if (view.enabled && view.detailRadius > 0.0f)
+    {
+        if (const BVHTree* bvh = GetLodBVH(collider))
+            return BuildBVHLodGeometry(*bvh, view);
+    }
+    return BuildColliderDebugGeometry(collider);
 }
 
 } // namespace fbzz::physics
