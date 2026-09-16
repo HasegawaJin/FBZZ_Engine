@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DX11ImGuiRenderer.cpp | fbzz::renderer
-// ImGui バックエンドの DX11 実装
-// WHAT: imgui_impl_win32 / imgui_impl_dx11 を IImGuiRenderer 経由で呼び出す。
-// WHY: DX11Renderer に ImGui 依存を混ぜると、通常描画インターフェースの責務が膨らむため別クラスへ分離する。
+/// @file    DX11ImGuiRenderer.cpp
+/// @brief   ImGui バックエンドの DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// WHAT: imgui_impl_win32 / imgui_impl_dx11 を IImGuiRenderer 経由で呼び出す。
+/// WHY: DX11Renderer に ImGui 依存を混ぜると、通常描画インターフェースの責務が膨らむため別クラスへ分離する。
 #include "DX11ImGuiRenderer.hpp"
 
 #include <Engine/Renderer/IRenderTarget.hpp>

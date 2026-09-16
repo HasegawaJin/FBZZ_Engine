@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InputActionMap.cpp | fbzz::input
-// アクション/軸の評価、デッドゾーン処理、平滑化、リバインド
+/// @file    InputActionMap.cpp
+/// @brief   アクション/軸の評価、デッドゾーン処理、平滑化、リバインド。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Input/Input.hpp"
 #include "Engine/Input/Gamepad.hpp"
@@ -15,6 +16,12 @@
 namespace fbzz::input {
 
 namespace {
+
+// バインドは仮想キーコードの生値で持つ。KeyCode の値は VK_* と一致する。
+constexpr uint32_t Vk(KeyCode key) noexcept
+{
+    return static_cast<uint32_t>(key);
+}
 
 // std::string_view で unordered_map を引くための透過ハッシュ。
 // WHY: GetAction は 1 フレームに数十回呼ばれる。毎回 std::string を構築すると
@@ -60,6 +67,7 @@ struct RebindState {
 };
 
 struct MapContext {
+    bool initialized = false;
     std::vector<InputAction> actions;
     std::vector<InputAxis>   axes;
 
@@ -230,14 +238,16 @@ bool CaptureFirstPressedInput(InputBinding& out)
     // キーボード / マウスボタン。
     // ESC はリバインドの取消に予約するため捕捉しない。
     for (uint32_t code = 1; code < 256; ++code) {
-        if (code == VK_ESCAPE) continue;
+        if (code == Vk(KeyCode::ESCAPE)) continue;
         if (!Input::KeyDown(static_cast<KeyCode>(code))) continue;
 
-        // VK_LBUTTON 等はキー配列にも入るため、マウスボタンとして記録する。
-        if (code == VK_LBUTTON || code == VK_RBUTTON || code == VK_MBUTTON) {
+        // マウスボタンはキー配列にも入るため、マウスボタンとして記録する。
+        if (code == Vk(KeyCode::MouseLeft) || code == Vk(KeyCode::MouseRight)
+            || code == Vk(KeyCode::MouseMiddle)) {
             out = InputBinding{};
             out.source = BindingSource::MOUSE_BUTTON;
-            out.code   = code == VK_LBUTTON ? 0u : (code == VK_RBUTTON ? 1u : 2u);
+            out.code   = code == Vk(KeyCode::MouseLeft)  ? 0u
+                       : (code == Vk(KeyCode::MouseRight) ? 1u : 2u);
             return true;
         }
         out = InputBinding{};
@@ -330,6 +340,7 @@ void ApplyCapturedBinding(const InputBinding& binding)
 void InputActionMap::Clear()
 {
     MapContext& context = Ctx();
+    context.initialized = true;
     context.actions.clear();
     context.axes.clear();
     context.actionRuntime.clear();
@@ -339,6 +350,12 @@ void InputActionMap::Clear()
     context.rebind = RebindState{};
     context.rebind.active = false;
     context.rebindCompleted = false;
+}
+
+void InputActionMap::Initialize()
+{
+    if (!Ctx().initialized)
+        LoadDefaults();
 }
 
 void InputActionMap::LoadDefaults()
@@ -423,11 +440,11 @@ void InputActionMap::LoadDefaults()
 
     // --- ボタンアクション ---
     const struct { const char* name; InputBinding keyboard; InputBinding pad; } DEFAULT_ACTIONS[] = {
-        { "Jump",     key(VK_SPACE),      padButton(GamepadButton::A) },
-        { "Attack",   mouseButton(0),     padButton(GamepadButton::X) },
-        { "Dodge",    key(VK_SHIFT),      padButton(GamepadButton::B) },
-        { "Interact", key('E'),           padButton(GamepadButton::Y) },
-        { "Pause",    key(VK_ESCAPE),     padButton(GamepadButton::START) },
+        { "Jump",     key(Vk(KeyCode::SPACE)),  padButton(GamepadButton::A) },
+        { "Attack",   mouseButton(0),           padButton(GamepadButton::X) },
+        { "Dodge",    key(Vk(KeyCode::SHIFT)),  padButton(GamepadButton::B) },
+        { "Interact", key(Vk(KeyCode::E)),      padButton(GamepadButton::Y) },
+        { "Pause",    key(Vk(KeyCode::ESCAPE)), padButton(GamepadButton::START) },
     };
     for (const auto& entry : DEFAULT_ACTIONS) {
         InputAction action{};
@@ -644,6 +661,7 @@ bool InputActionMap::AddAction(const InputAction& action)
     if (action.name.empty()) return false;
 
     MapContext& context = Ctx();
+    context.initialized = true;
     if (InputAction* existing = FindAction(action.name)) {
         *existing = action;
         return true;
@@ -658,6 +676,7 @@ bool InputActionMap::AddAxis(const InputAxis& axis)
     if (axis.name.empty()) return false;
 
     MapContext& context = Ctx();
+    context.initialized = true;
     if (InputAxis* existing = FindAxis(axis.name)) {
         *existing = axis;
         return true;
@@ -759,18 +778,18 @@ namespace {
 const char* DescribeKeyCode(uint32_t code)
 {
     switch (code) {
-    case VK_SPACE:   return "Space";
-    case VK_RETURN:  return "Enter";
-    case VK_ESCAPE:  return "Escape";
-    case VK_BACK:    return "Backspace";
-    case VK_TAB:     return "Tab";
-    case VK_SHIFT:   return "Shift";
-    case VK_CONTROL: return "Ctrl";
-    case VK_MENU:    return "Alt";
-    case VK_LEFT:    return "Left";
-    case VK_RIGHT:   return "Right";
-    case VK_UP:      return "Up";
-    case VK_DOWN:    return "Down";
+    case Vk(KeyCode::SPACE):     return "Space";
+    case Vk(KeyCode::ENTER):     return "Enter";
+    case Vk(KeyCode::ESCAPE):    return "Escape";
+    case Vk(KeyCode::BACKSPACE): return "Backspace";
+    case Vk(KeyCode::TAB):       return "Tab";
+    case Vk(KeyCode::SHIFT):     return "Shift";
+    case Vk(KeyCode::CTRL):      return "Ctrl";
+    case Vk(KeyCode::ALT):       return "Alt";
+    case Vk(KeyCode::LEFT):      return "Left";
+    case Vk(KeyCode::RIGHT):     return "Right";
+    case Vk(KeyCode::UP):        return "Up";
+    case Vk(KeyCode::DOWN):      return "Down";
     default:         return nullptr;
     }
 }

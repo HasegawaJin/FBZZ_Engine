@@ -1,40 +1,61 @@
-// FBZZ Engine
-// Material/Decal/DecalMask.hlsl | Decal Receiver Mask
-//
-// デカールの receiverLayerMask から除外されたオブジェクトをこのシェーダーで
-// 1-color RT (decalMaskRT) に白として描画する。
-// Decal.hlsl は bit3 が立っている場合に t13 をサンプルし、白ピクセルを discard する。
-//
-// cbuffer:
-//   b0  CameraConstants  (viewProjection)
-//   b1  ObjectConstants  (world)
+/// @file DecalMask.hlsl
+/// @brief 可視サーフェスのレイヤー番号をデカール受信バッファへ書く (静的メッシュ)
+/// @author Hasegawa Jin
+/// @date 2026-08-23
+///
+/// WHY 「除外オブジェクトを白く塗る」ではなくレイヤー番号か:
+///   白塗りだと receiverLayerMask ごとにバッファを作り直すことになり、マスクを
+///   持つデカール 1 個につきシーン全体を 1 回描き直していた。レイヤー番号を
+///   書いておけば 1 フレーム 1 回で済み、判定はデカール側のビットテストになる。
+///
+/// WHY 深度で棄却するか:
+///   このバッファは「その画素に見えている面がどのレイヤーか」を表す。深度を見ずに
+///   描くと、壁の裏に隠れた非受信オブジェクトが手前の壁のデカールを削り取る。
+///   Decal.hlsl は深度から復元した可視サーフェスへ投影するので、こちらも可視
+///   サーフェスだけを書かないと指すものが食い違う。
+#include "Common/Constants.hlsli"
+#include "Common/Space.hlsli"
 
-#include "Common/Binding.hlsli"
+Texture2D texSceneDepth : register(TEX_DEPTH);
 
-cbuffer CameraConstants : register(CB_CAMERA)
+// DecalPass がオブジェクトごとに埋める。
+// LAYOUT: RenderPassContext.hpp の DecalReceiverCB と一致させること。
+cbuffer DecalReceiverConstants : register(CB_DECAL)
 {
-    float4x4 view;
-    float4x4 projection;
-    float4x4 viewProjection;
-    float4x4 invViewProjection;
-    float3   cameraPos;
-    float    nearZ;
-    float    farZ;
-    float3   _camPad;
+    float receiverLayerEncoded; // レイヤー番号 + 1 (0 はクリア値 = 未描画)
+    float3 _receiverPad;
 };
 
-cbuffer ObjectConstants : register(CB_OBJECT)
+struct DecalMaskPixelInput
 {
-    float4x4 world;
-    float4x4 worldInvTranspose;
+    float4 pos : SV_POSITION;
 };
 
-float4 VSMain(float3 pos : POSITION) : SV_POSITION
+// 可視サーフェス判定の許容差。深度の非線形性に引きずられないようビュー空間で取る。
+// WHY 広めに取るか: 狭すぎると頂点計算のわずかな差で自分自身の画素まで落ち、
+//     マスクが黙って無効になる。広すぎたときの副作用は「数 cm 裏の面も
+//     可視扱い」に留まるので、こちら側へ倒す。
+float DecalReceiverDepthTolerance(float viewDepth)
 {
-    return mul(float4(pos, 1.0f), mul(world, viewProjection));
+    return max(0.01f, viewDepth * 0.002f);
 }
 
-float4 PSMain() : SV_Target
+DecalMaskPixelInput VSMain(float3 pos : POSITION)
 {
-    return float4(1.0f, 1.0f, 1.0f, 1.0f);
+    DecalMaskPixelInput output;
+    // WHY GBuffer.hlsl と同じ積の順序にするか: 順序が違うと丸めが変わり、同じ頂点でも
+    //     深度がわずかにずれる。可視判定はその一致を当てにしている。
+    output.pos = mul(mul(float4(pos, 1.0f), world), viewProjection);
+    return output;
+}
+
+float4 PSMain(DecalMaskPixelInput input) : SV_Target
+{
+    float sceneDepth = texSceneDepth.Load(int3((int)input.pos.x, (int)input.pos.y, 0)).r;
+    float sceneView  = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+    float fragView   = LinearizeDepth(input.pos.z, nearZ, farZ, isOrthographic);
+    if (fragView > sceneView + DecalReceiverDepthTolerance(sceneView))
+        discard;
+
+    return float4(receiverLayerEncoded, 0.0f, 0.0f, 1.0f);
 }

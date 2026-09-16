@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectRuntime.cpp | fbzz::scene
-// Editor PlayとStandaloneで共有するプロジェクト実行パイプライン実装
+/// @file    ProjectRuntime.cpp
+/// @brief   Editor PlayとStandaloneで共有するプロジェクト実行パイプライン実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #include <Engine/Scene/ProjectRuntime.hpp>
 
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -36,6 +37,11 @@ void ProjectRuntime::BindExternalScene(Scene* scene)
     m_sceneManager.SetScene(scene);
 }
 
+void ProjectRuntime::ReleaseOwnedScene()
+{
+    m_sceneManager.ReleaseOwnedScene();
+}
+
 void ProjectRuntime::LoadScene(const std::string& sceneName)
 {
     m_sceneManager.LoadScene(sceneName);
@@ -49,12 +55,14 @@ void ProjectRuntime::LoadScene(const std::filesystem::path& sceneFile)
 void ProjectRuntime::Update(float dt,
                             const ProjectSettings& settings,
                             bool simulating,
-                            bool singleStep)
+                            bool singleStep,
+                            bool playing)
 {
     // WHAT: Moduleごとの差異を許さず、Physics設定→Simulation状態→Schedulerの順に固定する。
     ApplyPhysicsSettings(m_physicsWorld, settings);
     m_sceneManager.SetPhysicsHz(settings.physics.hz);
     m_sceneManager.SetSimulating(simulating);
+    m_sceneManager.SetPlaying(playing);
     m_sceneManager.SetSingleStep(singleStep);
     Script::SetPhysicsWorld(simulating ? &m_physicsWorld : nullptr);
     m_sceneManager.Update(dt, m_physicsWorld);
@@ -101,6 +109,12 @@ void ProjectRuntime::Shutdown()
         ScriptRuntime::Override(nullptr);
     }
     m_sceneManager.SetSimulating(false);
+    m_sceneManager.SetPlaying(false);
+
+    // m_gameUICtx は Play セッションごとに作り直される。抱えている頂点バッファは
+    // ResourceHandle なのでデストラクタでは返せず、ここで返さないと往復のたびに残る。
+    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+        UISystemReleaseGpuResources(m_gameUICtx, *resources);
 }
 
 } // namespace fbzz::scene

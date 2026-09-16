@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectLauncher.cpp | fbzz::scene
-// プロジェクト起動シーケンスのユーティリティ実装
+/// @file    ProjectLauncher.cpp
+/// @brief   プロジェクト起動シーケンスのユーティリティ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #include <Engine/Scene/ProjectLauncher.hpp>
 #include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/SceneUtils.hpp>

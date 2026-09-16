@@ -1,11 +1,11 @@
-// FBZZ Engine
-// AssetBrowserPanel.hpp | fbzz::editor
-// Unity スタイルのアセットブラウザ
+/// @file    AssetBrowserPanel.hpp
+/// @brief   Unity スタイルのアセットブラウザ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/AssetFileWatcher.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
-#include <Editor/VFXEditor/Services/VFXTemplateCatalog.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
@@ -13,6 +13,7 @@
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <future>
@@ -32,12 +33,34 @@ namespace fbzz::editor {
 
 class AssetBrowserPanel : public IPanel {
 public:
-    explicit AssetBrowserPanel(const std::string& rootPath);
-    const char* GetWindowName() const override { return "Asset Browser"; }
+    // 同時に開ける Asset Browser の枚数。2 枚目以降は既定で非表示。
+    // WHY 上限を設けるか: パネルは起動時に全数を作って常駐させるため、
+    //     数だけ ImGui ウィンドウとファイル監視の器が増える。実用上 4 枚あれば足りる。
+    static constexpr std::size_t kMaxInstances = 4;
+
+    // instanceIndex は同時に開ける Asset Browser の何枚目か (0 が既定の 1 枚目)。
+    // ウィンドウ名と、EditorSettings 側のパネル状態の添字を決める。
+    explicit AssetBrowserPanel(const std::string& rootPath, std::size_t instanceIndex = 0);
+    const char* GetWindowName() const override { return m_windowName.c_str(); }
+    HotkeyScope GetHotkeyScope() const override { return HotkeyScope::AssetBrowser; }
+    // 2 枚目以降は既定で非表示。View > Panels から出す (Unity の Project ウィンドウと同じ)。
+    bool GetDefaultVisibility() const override { return m_instanceIndex == 0; }
     void OnInit(EditorContext& ctx) override;
+    void OnLoadSettings(const EditorSettings& settings) override;
+    void OnSaveSettings(EditorSettings& settings) const override;
     void SetRootPath(const std::string& rootPath);
 
 private:
+    // --- Type フィルタの種別 -----------------------------------------------------
+    // WHY ここで定義するか: 下のメンバー関数宣言が引数型として使うため、
+    //     フィルタ関連のメンバー群 (m_typeFilterMask 等) より前に置く必要がある。
+    // Unreal の Filters と同じく複数タイプを同時に有効化できる。
+    // All は「絞り込みなし」を表す番兵で、マスクのビットとしては使わない。
+    // NOTE: Skeleton は無い。.skel は ShouldDisplayEntry が生成物として隠すため、
+    //       フィルタとして出しても必ず 0 件になる (項目があるほうが紛らわしい)。
+    enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab,
+                            Animation, Asset, COUNT };
+
     struct Entry {
         std::string path;
         std::string name;
@@ -82,6 +105,8 @@ private:
     void OnBeforeBegin(EditorContext& ctx) override;
     void RefreshDirectory();
     void DrawFolderTree(const std::string& dirPath, EditorContext& ctx);
+    // 左ツリーのファイル 1 行 (m_treeShowFiles が有効なときだけ描かれる葉)。
+    void DrawTreeFileRow(const Entry& e, EditorContext& ctx);
     void DrawEntry(const Entry& e, EditorContext& ctx, const SubAssetBand& band = {});
     void DrawCreateMenu(EditorContext& ctx);
     void UpdateMounts(const EditorContext& ctx);
@@ -98,12 +123,43 @@ private:
 
     static ImVec4      EntryColor(const Entry& e);
     static const char* EntryLabel(const Entry& e);
-    static void        DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false);
+    // フォルダの色分けを反映した表示色。フォルダに色が設定されていなければ EntryColor と同じ。
+    // WHY EntryColor と別か: EntryColor は static で、ユーザーが設定した色表 (ctx) を引けない。
+    [[nodiscard]] ImVec4 ResolveEntryColor(const Entry& e, const EditorContext& ctx) const;
+    // ユーザーが設定したフォルダ色。未設定なら false を返す。
+    [[nodiscard]] static bool TryGetFolderColor(const EditorContext& ctx,
+                                                const std::string& folderPath,
+                                                ImVec4& outColor);
+    // 右クリックメニューの "Set Color" (プリセット / 最近使った色 / カスタム / Reset)。
+    void DrawFolderColorMenu(const std::string& folderPath, EditorContext& ctx);
+    // folderPath に色を設定する。color が null なら解除。
+    // m_folderColorApplyRecursive が立っていれば配下のフォルダすべてに同じ操作をする。
+    void ApplyFolderColor(const std::string& folderPath, const uint32_t* color, EditorContext& ctx);
+    // 最近使った色の先頭へ積む (同じ色は重複させず先頭へ移し、上限を超えた分は捨てる)。
+    static void PushRecentFolderColor(uint32_t color, EditorContext& ctx);
+    // 最近使った色の保持数。1 行に収まる数に留める。
+    static constexpr std::size_t kMaxRecentFolderColors = 8;
+
+    // Custom ピッカーの作業色と、それがどのフォルダのものか。
+    // WHY パスを持つか: 別のフォルダでメニューを開いたときに前の編集値が残っていると、
+    //      関係のない色から編集を始めることになる。対象が変わったら現在色で初期化する。
+    std::string m_folderColorPickerPath;
+    ImVec4      m_folderColorPickerValue{ 0.5f, 0.5f, 0.5f, 1.0f };
+    // 次に選ぶ色を配下のフォルダにも適用するか (Unreal の Set Color と同じ選択肢)。
+    bool        m_folderColorApplyRecursive = false;
+    // colorOverride が非 null なら EntryColor の代わりにその色で描く (フォルダの色分け用)。
+    static void        DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false,
+                                      const ImVec4* colorOverride = nullptr);
     void               DrawAssetPreviewIconAt(ImVec2 origin, float sz, const Entry& e, EditorContext& ctx, bool hovered);
     void               ResetAssetPreviewCache(const std::string& path);
+    // 全プレビューの GPU リソースを解放して捨てる (次の描画で作り直される)。
+    void               ClearAllAssetPreviews();
+    // ファイル監視がイベントを取りこぼした後、一覧・プレビュー・索引を丸ごと作り直す。
+    // WHY: 個々のイベントに追従する仕組みは、そのイベント自体が失われると全て空振りする。
+    //      「エンジンを再起動すれば直る」状態を、再起動せずに作るための復旧経路。
+    void               ResyncAfterWatcherOverflow();
 
     void DrawFbxContents(EditorContext& ctx);
-    void DrawPendingImportBar(EditorContext& ctx);
     void DrawBreadcrumb(EditorContext& ctx);
     void DrawSaveModifiedDialog();
     void InvalidateTreeCache(const std::string& dirPath);
@@ -124,6 +180,8 @@ private:
     // FBX の従属アセット (Foo/materials/*.mat 等) は親 FBX を展開してから選択する。
     void HandleRevealRequest(EditorContext& ctx);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
+    // 単一の種別に当てはまるか。複数フィルタの OR 判定から呼ばれる。
+    [[nodiscard]] static bool MatchesTypeFilter(const Entry& e, TypeFilter type);
 
     // --- Ctrl+C / Ctrl+V (複数選択対応のアセットコピー&ペースト) -----------------
     // WHY: 既存の "Copy Path"/"Duplicate" はパス文字列コピーやその場複製のみで、
@@ -136,11 +194,37 @@ private:
     // FBX または Sprite Texture の従属アセットを列挙して、展開時のグリッドに挿入する。
     std::vector<Entry> GetAssetSubEntries(const std::string& sourceAssetPath);
 
+    // ── 生成物の取り出し (Unity の Extract 相当) ──────────────────────────
+    // Library/Baked 配下のパスか。取り出し対象かどうかは拡張子ではなく場所で決まる。
+    // Extract メニューとコピー&ペーストの両方がこの 1 つの判定を共有する。
+    [[nodiscard]] static bool IsBakedLibraryPath(const std::string& absPath);
+    // Library/Baked に隔離された実ファイルのサブアセットか。
+    // 仮想サブアセット (Sprite / ::mesh::) と、既に Assets に居るものは対象外。
+    [[nodiscard]] static bool IsExtractableSubAsset(const Entry& e);
+    // Assets 側へ複製し、作成された絶対パスを返す (失敗時は空)。
+    // 元ファイルと参照は変更しない。
+    [[nodiscard]] std::string ExtractSubAsset(const Entry& e, EditorContext& ctx) const;
+
     // 未変換モデルファイルを検出してインポートキューに積む (relPath は m_rootPath 相対)。
     // WHY: PNG / JPG 等のテクスチャは ResourceManager が原本を直接読むため変換しない。
     void TryQueuePendingImport(const std::string& relPath);
     // dirAbsPath 以下を再帰スキャンして未変換ファイルをキューに積む
     void ScanAndQueueUnimported(const std::string& dirAbsPath);
+    // 既存モデルが原本またはインポータ版より古い場合、保存済み設定で自動再インポートする。
+    void QueueAutomaticReimport(const std::string& absPath);
+
+    // ファイル変更通知を「再インポート候補」として受け取る (絶対パス。.meta なら原本へ読み替える)。
+    // WHY 即 QueueAutomaticReimport しないか: DCC の書き出しは 1 回の保存で Added / Modified を
+    //     何度も撒き、しかも通知が来た時点ではまだ書き込み途中のことがある。その瞬間に
+    //     Assimp を走らせると壊れたファイルを読んで失敗する。静かになるまで待ってから 1 回流す。
+    void NotifyAssetTouched(const std::string& absPath);
+    // 猶予を過ぎた候補を実際のインポートキューへ移す。毎フレーム OnBeforeBegin から呼ぶ。
+    void FlushScheduledReimports();
+
+    // 再インポート候補と、その「最後に変更通知を受け取った時刻」。
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_scheduledReimports;
+    // 通知が途切れてから実際に流すまでの猶予。書き出しの分割保存をまたげる程度に取る。
+    static constexpr std::chrono::milliseconds kAutoReimportQuietTime{ 700 };
     // ── エクスプローラーからの外部ファイル D&D 取り込み ─────────────────────
     // WHY: ドロップ位置のフォルダへ入れるには、フォルダの矩形が分かる描画フェーズで
     //      当たり判定する必要がある。そのためコピーは即時ではなく OnRenderContent 末尾へ遅延する。
@@ -153,6 +237,16 @@ private:
     };
     ExternalDrop m_externalDrop;
 
+    // ASSET_PATH の移動は一覧の描画が終わってから実行する。
+    // WHY: DrawEntry が参照している m_entries を移動直後に RefreshDirectory で差し替えると、
+    //      同じフレームの参照が無効化され、選択や表示が不定になる。
+    struct PendingAssetMove {
+        std::string sourcePath;
+        std::string targetDir;
+        bool active = false;
+    };
+    PendingAssetMove m_pendingAssetMove;
+
     // ドラッグ中 (ドロップ確定前) のライブハイライト状態。OnBeforeBegin で ctx から取り込む。
     bool   m_extDragActive = false;
     ImVec2 m_extDragPoint{ 0.0f, 0.0f };
@@ -163,16 +257,31 @@ private:
     void ConsiderExternalDropTarget(const std::string& folderAbs, const ImVec2& mn, const ImVec2& mx);
     // 解決済み (または現在フォルダ) へ実際にコピーし、m_externalDrop をクリアする。
     void FinalizeExternalDrop();
+    // 描画中に受け付けた AssetBrowser 内移動を、全アイテム描画後に確定する。
+    void QueueAssetMove(const std::string& sourcePath, const std::string& targetDir);
+    void FinalizePendingAssetMove(EditorContext& ctx);
     // sources を destDirUtf8 へコピーする共通処理 (同名は採番、Assets 配下の自己コピーは除外)。
     void CopyExternalFilesInto(const std::vector<std::string>& sources, const std::string& destDirUtf8);
     // 未変換ファイルかどうか判定する
     [[nodiscard]] static bool IsImportableRaw(const std::string& ext);
     [[nodiscard]] static bool IsTextureRaw(const std::string& ext);
 
-    // --- Type フィルタ -----------------------------------------------------------
-    enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab,
-                            Animation, Skeleton, Asset };
-    TypeFilter m_typeFilter = TypeFilter::All;
+    // --- Type フィルタ (種別の enum は Entry の上で定義済み) ----------------------
+    // bit N (N >= 1) = TypeFilter N が有効。0 なら絞り込みなし。
+    uint32_t m_typeFilterMask = 0;
+
+    [[nodiscard]] bool IsTypeFilterActive(TypeFilter type) const {
+        return (m_typeFilterMask & (1u << static_cast<int>(type))) != 0;
+    }
+    void ToggleTypeFilter(TypeFilter type) {
+        m_typeFilterMask ^= (1u << static_cast<int>(type));
+    }
+    // 有効な種別 1 つ 1 つを、その種別の色のピルとして並べる Unreal 風フィルターバー。
+    // 何も有効でなければ 1 行ぶんも占有しない。
+    void DrawFilterChips();
+    // Filters ボタンのドロップダウン (色付きチェックリスト)。
+    void DrawFilterMenu();
+    [[nodiscard]] static const char* TypeFilterLabel(TypeFilter type);
 
     // --- ソート方法 ------------------------------------------------------------
     enum class SortMode { NameAsc=0, NameDesc, Type, Modified };
@@ -190,7 +299,15 @@ private:
     // WHY: 新規作成の入口が「空 Entry 1 個」しか無いと、VFX で最も難しい
     //      層構成を毎回ゼロから積み直すことになる。VFX Editor と同じ
     //      カタログサービスを共有し、表示の食い違いを作らない。
-    VFXTemplateCatalog    m_vfxTemplates;
+
+    // このパネルが何枚目か。ウィンドウ名と保存先スロットを決めるだけで、
+    // 中身の挙動は 1 枚目と完全に同じ。
+    std::size_t           m_instanceIndex = 0;
+    std::string           m_windowName;
+    // ファイル監視・インポート・未変換ファイルの走査を担当するのは 1 枚目だけ。
+    [[nodiscard]] bool    IsAssetPipelineOwner() const { return m_instanceIndex == 0; }
+    // 最後に反映した ctx.assetBrowserRefreshGeneration。
+    uint64_t              m_appliedRefreshGeneration = 0;
 
     std::string           m_rootPath;
     std::string           m_currentPath;
@@ -236,8 +353,14 @@ private:
     // TypeFilter を AssetSearch へ渡す拡張子リストへ変換する。
     // All の場合は空 (絞り込みなし) を返す。
     [[nodiscard]] std::vector<std::string> TypeFilterExtensions() const;
+    [[nodiscard]] static std::vector<std::string> ExtensionsForTypeFilter(TypeFilter type);
     float                 m_iconSize  = 84.0f;
     float                 m_treeWidth = 180.0f; // 左フォルダツリーの幅 (スプリッターでドラッグ可変)
+    // 左の階層ツリーにファイルも並べるか。
+    // WHY 既定 OFF か: フォルダだけの木は「どこに何があるか」の地図として読めるが、
+    //     ファイルを全部並べると数百行になり、木を畳んで俯瞰する用途が壊れる。
+    //     ファイルまで一気に辿りたいときだけ出す。
+    bool                  m_treeShowFiles  = false;
     bool                  m_resetScroll    = false; // ディレクトリ移動後に右ペインをトップへ戻す
     bool                  m_assetExpandDirty  = false; // FBX 展開トグル後の遅延 Refresh フラグ
 
@@ -271,10 +394,20 @@ private:
     std::string    m_selectedFbxPath;
     asset::Model*  m_selectedModel = nullptr;
 
+    // 失敗を恒久化させないための再試行状態。
+    // WHY: 一括で素材を入れた直後は「まだ書き込み途中」「まだインポートされていない」
+    //      という理由でプレビューの生成が失敗する。1 回の失敗で確定させると、
+    //      素材が正常になってもサムネイルは出ないままで、エンジンを再起動するしか
+    //      直す方法がなくなる。間隔を空けて有限回だけ焼き直しに挑戦する。
+    struct PreviewRetry {
+        uint32_t count = 0;
+        double   nextTime = 0.0; // ImGui::GetTime() 基準
+    };
     struct ThumbnailBase {
         renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
         bool thumbnailRendered = false;
         bool failed = false;
+        PreviewRetry retry;
     };
     struct TexturePreview {
         renderer::ResourceHandle<renderer::TextureTag> handle;
@@ -282,6 +415,7 @@ private:
         uint32_t height = 0;
         bool failed = false;
         bool queued = false;
+        PreviewRetry retry;
     };
     struct MaterialPreview : ThumbnailBase {
         asset::MaterialAsset asset;
@@ -312,6 +446,16 @@ private:
         bool parsed = false;
         bool hasMesh = false;
     };
+    // .vfx: 主役エミッターの .mat から素材テクスチャ 1 枚を引いて「何の絵か」を出す。
+    // WHY シミュレーションを焼かないか: 粒子は時間と GPU パスの産物で、1 枚絵にはならない。
+    //      素材が分かるだけでも拡張子アイコンより一覧性が上がる、という割り切り。
+    //      中身を確かめる導線は Inspector の «Open in Prefab Mode» が持つ。
+    struct VfxPreview {
+        std::filesystem::file_time_type lastWriteTime{};
+        std::string texturePath; ///< m_texturePreviews のキー (実ファイルパス)
+        bool parsed = false;
+        bool hasTexture = false;
+    };
     struct TerrainPreview {
         MaterialPreview mat;
         std::filesystem::file_time_type lastWriteTime{};
@@ -330,6 +474,7 @@ private:
         uint32_t height = 0;
         std::filesystem::file_time_type lastWriteTime{};
         bool failed = false;
+        PreviewRetry retry;
     };
     // 画像の .meta から Sprite 切り抜き情報を保持し、グリッド描画中の再解析を避ける。
     struct SpritePreview {
@@ -347,6 +492,7 @@ private:
     std::unordered_map<std::string, MaterialPreview>      m_materialPreviews;
     std::unordered_map<std::string, MeshPreview>          m_meshPreviews;
     std::unordered_map<std::string, PrefabPreview>        m_prefabPreviews;
+    std::unordered_map<std::string, VfxPreview>           m_vfxPreviews;
     std::unordered_map<std::string, TerrainPreview>       m_terrainPreviews;
     std::unordered_map<std::string, ModelAssetPreview>    m_modelAssetPreviews;
     std::unordered_map<std::string, TexDescPreview>       m_texDescPreviews;
@@ -364,6 +510,8 @@ private:
     // Unity 風の遅延リネーム: 選択済みアイテムを再クリック後 0.5s 経過でリネーム開始
     std::string m_pendingRenamePath;
     float       m_pendingRenameTimer = 0.0f;
+    // 遅延リネームを待ち始めたときのカーソル位置。ここから動いたら取り消す。
+    ImVec2      m_pendingRenameMouse{ 0.0f, 0.0f };
     // D&D 判定: マウス押下→リリースの間にドラッグが発生したか
     bool        m_entryDragStarted    = false;
     // ダブルクリック判定: 2回目のリリースで余分な選択を防ぐ
@@ -419,12 +567,17 @@ private:
     void DrawImportSettingsModal(EditorContext& ctx);
 
     [[nodiscard]] static bool IsAlreadyImported(const std::string& absPath);
-    // .asset は存在するが、元ファイルのタイムスタンプがより新しい場合 true
+    // 生成物はあるが、原本・import 設定・インポータ版のどれかが焼いた時と違う場合 true。
+    // 比較は .meta の [cache] に記録した fingerprint で行う (mtime 比較ではない)。
     [[nodiscard]] static bool IsOutdated(const std::string& absPath);
 
-    // 再インポートが必要な (元ファイルが新しい) パスのセット
-    // WHY: ScanAndQueueUnimported で一度だけ算出し、DrawEntry でバッジ表示に使う。
+    // 自動再インポートのキューへ入れた原本のパス。import 完了で取り除く。
+    // WHY 残すか: 焼き直し中に同じ原本をもう一度積まないための重複除け。
     std::unordered_set<std::string> m_outdatedPaths;
+    // 今ワーカーが焼いている原本のパス。完了時に m_outdatedPaths から外すために持つ。
+    // WHY 成功パスだけで消さないか: 失敗した原本の印が残り続けると、原本を直して
+    //     保存し直しても「処理中」と見なされて二度と再試行されなくなる。
+    std::vector<std::string> m_inFlightImports;
 
     // ポップアップ内から Import をトリガーするためのフラグ
     // WHY: BeginPopupContextItem 内で直接インポートを呼ぶと

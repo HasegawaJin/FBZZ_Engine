@@ -106,6 +106,9 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 H      = normalize(V + L);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // NOTE: スキンドメッシュは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外)。
+    //       画面空間 AO / 接触影を引くと、キャラの画素で「背景の遮蔽」を読んでしまうので使わない。
+    //       これは Deferred でも同じ (キャラは DeferredLighting を通らない) ため、差は生じない。
 
     float  NdotL     = saturate(dot(N, L));
     float  shininess = max(lerp(512.0f, 2.0f, rough), 2.0f);

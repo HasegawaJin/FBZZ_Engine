@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ColliderSync.cpp | fbzz::scene
-// ColliderComponent と physics::Collider の同期処理の実体。
-// PhysicsSystem (シミュレーション中) と DebugCollidersPass (可視化) の共通基盤。
+/// @file    ColliderSync.cpp
+/// @brief   ColliderComponent と physics::Collider の同期処理の実体。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// PhysicsSystem (シミュレーション中) と DebugCollidersPass (可視化) の共通基盤。
 #include "Engine/Scene/Systems/ColliderSync.hpp"
 
 #include "Engine/Scene/Scene.hpp"
@@ -17,6 +19,7 @@
 #include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -184,12 +187,14 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
         if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
             if (!skinned->model && !skinned->modelPath.empty())
                 skinned->model = asset::AssetManager::LoadModel(skinned->modelPath);
-            // SkinnedMeshRenderer は 1 GameObject = モデル全体。コライダーのソースは
-            // 明示指定の meshIndex (col.meshIndex) を優先し、無指定なら先頭 submesh を使う。
+            // コライダーのソースは明示指定の meshIndex (col.meshIndex) を優先し、
+            // 無指定なら先頭 submesh を使う。
+            // WHY ローカルスロット番号で引くか: この Renderer が描いていない submesh を
+            //     コライダーにすると、見えている形と当たり判定が別物になる。
+            //     Inspector に出る番号も「この Renderer の何番目か」に揃える。
             if (skinned->model) {
                 const size_t submesh = meshIndex >= 0 ? static_cast<size_t>(meshIndex) : 0u;
-                if (submesh < skinned->model->meshes.size())
-                    mesh = skinned->model->meshes[submesh].get();
+                mesh = skinned->SubmeshMesh(submesh);
             }
         }
     }
@@ -204,6 +209,11 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
 
 } // namespace
 
+math::Vector3 ColliderTransformScale(const GameObject& go)
+{
+    return go.transform.worldScale;
+}
+
 math::Vector3 ColliderCenterOffset(const GameObject& go, const ColliderComponent& col)
 {
     return ComponentScale(col.center, go.transform.worldScale);
@@ -214,55 +224,154 @@ math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent&
     return go.transform.worldPosition + go.transform.worldRotation * ColliderCenterOffset(go, col);
 }
 
-void SyncColliderShape(ColliderComponent&) {}
+namespace {
 
-void SyncColliderShape(AabbColliderComponent& col)
+// 反転スケール (-1 等) でも寸法は正のまま扱う。負の半径は物理側で意味を持たない。
+[[nodiscard]] math::Vector3 AbsScale(const math::Vector3& scale)
 {
+    return { std::abs(scale.x), std::abs(scale.y), std::abs(scale.z) };
+}
+
+// 球のように 1 つの半径しか持てない形状へ非一様スケールを掛けるときの代表値。
+// WHY 最大値か: 小さい軸に合わせると、大きい軸の側でメッシュがコライダーから
+//     はみ出して壁をすり抜ける。包む方向へ倒す。
+[[nodiscard]] float MaxAxis(const math::Vector3& v)
+{
+    return std::max({ v.x, v.y, v.z });
+}
+
+physics::AABBCollider MakePrimitiveShape(const AabbColliderComponent& col, const math::Vector3& scale)
+{
+    return physics::AABBCollider(ComponentScale(col.size * 0.5f, AbsScale(scale)));
+}
+
+physics::OBBCollider MakePrimitiveShape(const BoxColliderComponent& col, const math::Vector3& scale)
+{
+    return physics::OBBCollider(ComponentScale(col.size * 0.5f, AbsScale(scale)));
+}
+
+physics::SphereCollider MakePrimitiveShape(const SphereColliderComponent& col, const math::Vector3& scale)
+{
+    return physics::SphereCollider(col.radius * MaxAxis(AbsScale(scale)));
+}
+
+physics::CapsuleCollider MakePrimitiveShape(const CapsuleColliderComponent& col, const math::Vector3& scale)
+{
+    const auto absolute = AbsScale(scale);
+    return physics::CapsuleCollider(col.radius * std::max(absolute.x, absolute.z), col.halfHeight * absolute.y);
+}
+
+physics::CylinderCollider MakePrimitiveShape(const CylinderColliderComponent& col, const math::Vector3& scale)
+{
+    const auto absolute = AbsScale(scale);
+    return physics::CylinderCollider(col.radius * std::max(absolute.x, absolute.z), col.halfHeight * absolute.y);
+}
+
+template<typename T>
+void MergePrimitiveBounds(GameObject& go, physics::AABB& bounds, bool& found)
+{
+    const auto* component = go.GetComponent<T>();
+    if (!component) return;
+    auto shape = MakePrimitiveShape(*component, go.transform.worldScale);
+    shape.Update(ColliderWorldCenter(go, *component), go.transform.worldRotation);
+    const auto candidate = shape.GetAABB();
+    bounds = found ? bounds.Merge(candidate) : candidate;
+    found = true;
+}
+
+} // namespace
+
+bool TryGetPrimitiveColliderBounds(GameObject& go, physics::AABB& outBounds)
+{
+    if (!go.IsValid()) return false;
+    physics::AABB bounds{};
+    bool found = false;
+    MergePrimitiveBounds<SphereColliderComponent>(go, bounds, found);
+    MergePrimitiveBounds<CapsuleColliderComponent>(go, bounds, found);
+    MergePrimitiveBounds<BoxColliderComponent>(go, bounds, found);
+    MergePrimitiveBounds<AabbColliderComponent>(go, bounds, found);
+    MergePrimitiveBounds<CylinderColliderComponent>(go, bounds, found);
+    if (!found) return false;
+    outBounds = bounds;
+    return true;
+}
+
+void SyncColliderShape(ColliderComponent&, const math::Vector3&) {}
+
+void SyncColliderShape(AabbColliderComponent& col, const math::Vector3& worldScale)
+{
+    const math::Vector3 half = MakePrimitiveShape(col, worldScale).m_halfExtents;
     auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::AABB
         ? static_cast<physics::AABBCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_unique<physics::AABBCollider>(col.size * 0.5f);
+        col.collider = std::make_unique<physics::AABBCollider>(half);
         shape = static_cast<physics::AABBCollider*>(col.collider.get());
     }
-    shape->m_halfExtents = col.size * 0.5f;
+    shape->m_halfExtents = half;
 }
 
-void SyncColliderShape(BoxColliderComponent& col)
+void SyncColliderShape(BoxColliderComponent& col, const math::Vector3& worldScale)
 {
+    const math::Vector3 half = MakePrimitiveShape(col, worldScale).m_halfExtents;
     auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::OBB
         ? static_cast<physics::OBBCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_unique<physics::OBBCollider>(col.size * 0.5f);
+        col.collider = std::make_unique<physics::OBBCollider>(half);
         shape = static_cast<physics::OBBCollider*>(col.collider.get());
     }
-    shape->m_halfExtents = col.size * 0.5f;
+    shape->m_halfExtents = half;
 }
 
-void SyncColliderShape(SphereColliderComponent& col)
+void SyncColliderShape(SphereColliderComponent& col, const math::Vector3& worldScale)
 {
+    // 球は半径 1 つしか持てない。非一様スケールでは最大軸に合わせて包む。
+    const float radius = MakePrimitiveShape(col, worldScale).m_radius;
     auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::SPHERE
         ? static_cast<physics::SphereCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_unique<physics::SphereCollider>(col.radius);
+        col.collider = std::make_unique<physics::SphereCollider>(radius);
         shape = static_cast<physics::SphereCollider*>(col.collider.get());
     }
-    shape->m_radius = col.radius;
+    shape->m_radius = radius;
 }
 
-void SyncColliderShape(CapsuleColliderComponent& col)
+void SyncColliderShape(CapsuleColliderComponent& col, const math::Vector3& worldScale)
 {
+    // Y 軸カプセル。半径は水平 2 軸の大きい方、円柱半長は Y。
+    const auto scaled = MakePrimitiveShape(col, worldScale);
+    const float radius = scaled.m_radius;
+    const float halfHeight = scaled.m_halfHeight;
+
     auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::CAPSULE
         ? static_cast<physics::CapsuleCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_unique<physics::CapsuleCollider>(col.radius, col.halfHeight);
+        col.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
         shape = static_cast<physics::CapsuleCollider*>(col.collider.get());
     }
-    shape->m_radius = col.radius;
-    shape->m_halfHeight = col.halfHeight;
+    shape->m_radius = radius;
+    shape->m_halfHeight = halfHeight;
+}
+
+void SyncColliderShape(CylinderColliderComponent& col, const math::Vector3& worldScale)
+{
+    // Y 軸円柱。半径は水平 2 軸の大きい方、半長は Y。
+    const auto scaled = MakePrimitiveShape(col, worldScale);
+    const float radius = scaled.m_radius;
+    const float halfHeight = scaled.m_halfHeight;
+
+    auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::CYLINDER
+        ? static_cast<physics::CylinderCollider*>(col.collider.get())
+        : nullptr;
+    if (!shape) {
+        col.collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
+        shape = static_cast<physics::CylinderCollider*>(col.collider.get());
+    }
+    shape->m_radius = radius;
+    shape->m_halfHeight = halfHeight;
 }
 
 void EnsureMeshCollider(GameObject& go, MeshColliderComponent& col)
@@ -341,6 +450,8 @@ void UpdateColliderPose(const GameObject& go, ColliderComponent& col, bool useTr
             ->UpdateWithScale(worldCenter, go.transform.worldRotation, go.transform.worldScale);
         break;
     default:
+        // 基本形状は寸法自体に既にスケールが焼かれている (SyncColliderShape)。
+        // ここで重ねて掛けると二乗になる。
         col.collider->Update(worldCenter, go.transform.worldRotation);
         break;
     }

@@ -1,17 +1,19 @@
-// FBZZ Engine
-// WaterComponent.hpp | fbzz::scene
-// 水面描画コンポーネント（ジオメトリ・Gerstner 波・マテリアル参照を管理）
-//
-// 視覚パラメータ（色・テクスチャ・Fresnel・泡・フローマップ等）は
-// materialPath が指す .mat ファイルで定義する。
-// WHY: パラメータをコンポーネントに持つと再利用・プリセット管理が難しい。
-//      fzmat に分離することで Inspector なしにシェーダーごとパラメータを差し替えられる。
+/// @file    WaterComponent.hpp
+/// @brief   水面コンポーネント（ジオメトリ・水の種類 (.mat) の参照・浮力・着水）。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 水の «種類» ── 色・さざ波・Gerstner 波・風への反応・水流 ── は materialPath が指す
+/// .mat が丸ごと持つ。コンポーネントに残すのは «この 1 枚» ごとに違う量だけ。
+/// WHY 波まで .mat に置くか: 色だけ .mat にあり波がコンポーネントにあると、Ocean.mat を
+///     差しても湖の波のまま、という食い違いが起きる。水の種類は 1 ファイルで決まるべき。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
+#include <Physics/BodyHandle.hpp>
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -29,7 +31,7 @@ struct GerstnerWave {
     float         steepness  = 0.50f;          // 急峻度 Q [0,1]。1 を超えると波面が交差する。
 };
 
-// WaterComponent — シーン上の水面 1 面分のジオメトリ・波・マテリアル参照。
+// WaterComponent — シーン上の水面 1 面分。
 struct WaterComponent {
     // ── ジオメトリ ──────────────────────────────────────────────────────────
     uint32_t resolutionX = 64;
@@ -40,12 +42,25 @@ struct WaterComponent {
     // チャンク単位でフラスタムカリングする。
     uint32_t chunkCount = 4;
 
-    // ── Gerstner 波 ────────────────────────────────────────────────────────
-    std::array<GerstnerWave, 4> waves = {};
-    bool enableGerstnerWaves = true;
+    // ── 波 (個体ごとの補正。波そのものは .mat が持つ) ──────────────────────
+    bool  enableGerstnerWaves = true;
+    /// .mat の振幅に掛ける倍率。同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるため。
+    float waveAmplitudeScale  = 1.0f;
 
-    // ── マテリアルアセット参照 ──────────────────────────────────────────────
-    // 色・テクスチャ・Fresnel・泡・フローマップ等の視覚パラメータはここが指す .mat で定義する。
+    // ── 物理 ────────────────────────────────────────────────────────────────
+    bool  buoyancyEnabled = true;
+    /// 完全に沈んだときの上向き加速度 [m/s^2]。重力 (9.8) を超えると浮く。
+    float buoyancy        = 15.0f;
+    /// 水中での速度減衰 [1/s]。水流があるときは «水に対する» 速度に掛かる。
+    float waterDrag       = 2.0f;
+    /// 浮力が届く水面からの深さ [m]。
+    /// WHY 上限を置くか: 水面は厚みを持たない板なので、置いたままだと «水面の真下にある洞窟»
+    ///     の中まで浮力が届いてしまう。
+    float buoyancyDepth   = 10.0f;
+    /// 剛体が水面を通過したときに波紋としぶきを出す。
+    bool  splashEnabled   = true;
+
+    // ── 水の種類 ────────────────────────────────────────────────────────────
     std::string materialPath;
 
     // ── 状態フラグ ──────────────────────────────────────────────────────────
@@ -54,22 +69,55 @@ struct WaterComponent {
     bool foamDirty = true;
     bool texDirty  = true;
 
+    // ── ランタイム (保存しない) ─────────────────────────────────────────────
+    /// WaterSystem が毎フレーム «.mat の波 × 倍率 × 環境風» から組み立てた実効波。
+    /// 描画・浮力・水中判定・スクリプトはすべてこれを読む。
+    std::array<GerstnerWave, 4> waves = {};
+    /// 水流の速度 [m/s] (ワールド XZ)。.mat の flowDirection × currentSpeed。
+    math::Vector2 current = math::Vector2::ZERO;
+    /// WaterSystem が毎フレーム書く «頂点グリッド 1 セルのワールド実寸» [m]。
+    /// WHY: 刻めない波長の Gerstner 波を寝かせる判断に、描画 (GPU) と浮力 (CPU) が
+    ///      同じ値を使う必要がある。片方だけ寝かせると、平らな水面の上で物が揺れる。
+    math::Vector2 cellSize = math::Vector2::ZERO;
+    physics::VolumeHandle volumeHandle;
+
     const char* GetTypeName() const { return "Water"; }
 
-    // GetSurfaceHeightAt — CPU 側で Gerstner 波の高さだけを評価する。
-    // WHY: 浮力やスクリプトが GPU と同じ水面高さを参照できる入口を Component に置く。
-    float GetSurfaceHeightAt(float localX, float localZ, float time) const
+    /// 頂点グリッドで «刻めない» 波を寝かせる係数 [0,1]。Water.hlsl の WaveMeshFade と同じ式。
+    ///
+    /// WHY: Gerstner 波は頂点でしか評価されないので、1 波長あたり数セルしか取れない波は
+    ///      山と谷がセル境界で入れ替わり、«もっと長い別の波» に化ける。海サイズの水面では
+    ///      これが全面で起きる。刻めない波は消し、細かさは手続きさざ波に任せる。
+    /// @param cell 頂点グリッド 1 セルのワールド実寸 [m]。0 のときはフェードしない。
+    static float WaveMeshFade(float wavelength, math::Vector2 cell)
+    {
+        const float c = (std::max)(cell.x, cell.y);
+        if (c <= 0.0f) return 1.0f;
+        // smoothstep(2, 3.5, 1 波長あたりのセル数)。下限 2.0 は Nyquist。
+        const float t = math::Clamp01((wavelength / c - 2.0f) / 1.5f);
+        return t * t * (3.0f - 2.0f * t);
+    }
+
+    /// 水面の基準面からの高さ [m] を CPU で評価する。
+    /// @param worldX, worldZ ワールド座標。
+    /// WHY ワールド座標か: シェーダーは波の位相をワールド XZ で取る。水面の原点からの相対座標で
+    ///     評価すると、水面を原点以外へ置いた瞬間に浮力・水中判定と描画の波がずれる。
+    float GetSurfaceHeightAt(float worldX, float worldZ, float time) const
     {
         if (!enableGerstnerWaves) return 0.0f;
 
         float height = 0.0f;
         for (const GerstnerWave& wave : waves) {
             if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) continue;
+            // 描画が寝かせた波は水面の形にも出ない。同じ係数を掛けないと、平らに見える
+            // 遠くの海面の上で浮いている物だけが波に乗って上下する。
+            const float fade = WaveMeshFade(wave.wavelength, cellSize);
+            if (fade <= 0.0f) continue;
             const math::Vector2 dir = wave.direction.Normalized();
             const float k = math::TWO_PI / wave.wavelength;
             const float omega = std::sqrt(9.8f * k);
-            const float phase = k * (dir.x * localX + dir.y * localZ) - omega * time;
-            height += wave.amplitude * std::sin(phase);
+            const float phase = k * (dir.x * worldX + dir.y * worldZ) - omega * time;
+            height += wave.amplitude * fade * std::sin(phase);
         }
         return height;
     }
@@ -93,14 +141,22 @@ struct WaterComponent {
         r.Field("chunkCount", chunks);
         r.Field("extentX", extentX);
         r.Field("extentZ", extentZ);
-        r.Field("enableGerstnerWaves", enableGerstnerWaves);
         r.Field("materialPath", materialPath);
+        r.Field("enableGerstnerWaves", enableGerstnerWaves);
+        r.Field("waveAmplitudeScale", waveAmplitudeScale);
+        r.Field("buoyancyEnabled", buoyancyEnabled);
+        r.Field("buoyancy", buoyancy);
+        r.Field("waterDrag", waterDrag);
+        r.Field("buoyancyDepth", buoyancyDepth);
+        r.Field("splashEnabled", splashEnabled);
 
         resolutionX = static_cast<uint32_t>((std::clamp)(resX, 1, 512));
         resolutionZ = static_cast<uint32_t>((std::clamp)(resZ, 1, 512));
         chunkCount  = static_cast<uint32_t>((std::clamp)(chunks, 1, 64));
         extentX = (std::clamp)(extentX, 0.1f, 10000.0f);
         extentZ = (std::clamp)(extentZ, 0.1f, 10000.0f);
+        waveAmplitudeScale = (std::max)(waveAmplitudeScale, 0.0f);
+        buoyancyDepth      = (std::max)(buoyancyDepth, 0.1f);
         if (resolutionX != oldResolutionX || resolutionZ != oldResolutionZ ||
             chunkCount  != oldChunkCount  || extentX      != oldExtentX      ||
             extentZ     != oldExtentZ) {
@@ -110,26 +166,6 @@ struct WaterComponent {
         if (materialPath != oldMaterialPath) {
             texDirty = true;
             foamDirty = true;
-        }
-
-        // GerstnerWave × 4 を Inspector から編集できるよう公開する
-        // IReflector::Field は const char* を要求するため文字列リテラルで渡す
-        static constexpr const char* kWaveFieldNames[4][5] = {
-            { "wave0_dirX", "wave0_dirZ", "wave0_amplitude", "wave0_wavelength", "wave0_steepness" },
-            { "wave1_dirX", "wave1_dirZ", "wave1_amplitude", "wave1_wavelength", "wave1_steepness" },
-            { "wave2_dirX", "wave2_dirZ", "wave2_amplitude", "wave2_wavelength", "wave2_steepness" },
-            { "wave3_dirX", "wave3_dirZ", "wave3_amplitude", "wave3_wavelength", "wave3_steepness" },
-        };
-        for (int i = 0; i < 4; ++i) {
-            GerstnerWave& w = waves[static_cast<size_t>(i)];
-            r.Field(kWaveFieldNames[i][0], w.direction.x);
-            r.Field(kWaveFieldNames[i][1], w.direction.y);
-            r.Field(kWaveFieldNames[i][2], w.amplitude);
-            r.Field(kWaveFieldNames[i][3], w.wavelength);
-            r.Field(kWaveFieldNames[i][4], w.steepness);
-            // steepness は [0,1] にクランプして反映する（括弧で Windows min/max マクロを回避）
-            if (w.steepness < 0.0f) w.steepness = 0.0f;
-            if (w.steepness > 1.0f) w.steepness = 1.0f;
         }
     }
 };

@@ -1,0 +1,247 @@
+[meta]
+guid = '7f90c4e045b524d2bd76c6774c4b29a5'
+
+[texture]
+alpha_dither = false
+alpha_mode = 'Straight'
+aniso = 1
+compression = 'BC3'
+compression_quality = 1
+filter = 'Bilinear'
+flip_green = false
+max_size = 4096
+mip_bias = 0.0
+mip_filter = 'Kaiser'
+mip_sharpen = 0.0
+mipmaps = false
+normalize_mipmaps = false
+pixels_per_unit = 100.0
+sprite_mode = 'Multiple'
+srgb = true
+type = 'sprite'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = 'f9a14c0c-7a58-4f40-a5eb-b9f87597c68b'
+    name = 'T_VisorEyes_0'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 0
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '5591206f-1dc5-4fa3-8158-2ea5263e4210'
+    name = 'T_VisorEyes_1'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 512
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '33926d8d-ce49-4b6b-ab47-c328a77ef8ea'
+    name = 'T_VisorEyes_2'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1024
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '6b2d3085-f58f-4c44-9291-af9206567a22'
+    name = 'T_VisorEyes_3'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1536
+    y = 0
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = 'f7e10c21-d46d-426a-bedc-88b1e23d7fdf'
+    name = 'T_VisorEyes_4'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 0
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '339d9b27-c4a4-42de-a55e-e011260b51c4'
+    name = 'T_VisorEyes_5'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 512
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = 'ff0a724d-c082-472c-ac01-846ba365ced0'
+    name = 'T_VisorEyes_6'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1024
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '303fd54c-42b5-4099-8e4d-aae7a9c6885a'
+    name = 'T_VisorEyes_7'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1536
+    y = 512
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = 'c6a33fa9-f60c-4661-a67c-212c3f54d0f5'
+    name = 'T_VisorEyes_8'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 0
+    y = 1024
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '017efaf9-ffb7-4dd1-9450-420bdb0d715f'
+    name = 'T_VisorEyes_9'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 512
+    y = 1024
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '445daa50-ded5-499a-9fb9-b52e823020e6'
+    name = 'T_VisorEyes_10'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1024
+    y = 1024
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '40d5a4ff-ef65-4575-ba59-733754d1ec08'
+    name = 'T_VisorEyes_11'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1536
+    y = 1024
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = 'f607f0f4-141a-4af9-8c93-0447d7cf9e9f'
+    name = 'T_VisorEyes_12'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 0
+    y = 1536
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '37835963-584b-4273-a167-e788ecd349fe'
+    name = 'T_VisorEyes_13'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 512
+    y = 1536
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = 'eacbce46-2dc2-4de1-be1a-bda7a602ddc6'
+    name = 'T_VisorEyes_14'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1024
+    y = 1536
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 512
+    id = '6389c2a4-4ed2-427c-900c-f1716118284d'
+    name = 'T_VisorEyes_15'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 512
+    x = 1536
+    y = 1536

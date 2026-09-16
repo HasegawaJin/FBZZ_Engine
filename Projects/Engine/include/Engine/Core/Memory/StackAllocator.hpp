@@ -1,7 +1,9 @@
-// FBZZ Engine
-// StackAllocator.hpp | fbzz::core
-// LIFO 解放を前提としたスタック型アロケータ
-// 入れ子の一時処理やスコープ単位の作業領域を、確保と逆順に解放する。
+/// @file    StackAllocator.hpp
+/// @brief   LIFO 解放を前提としたスタック型アロケータ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 入れ子の一時処理やスコープ単位の作業領域を、確保と逆順に解放する。
 #pragma once
 
 #include "Engine/Core/Memory/Allocator.hpp"

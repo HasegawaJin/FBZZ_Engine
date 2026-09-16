@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Profiler.hpp | fbzz::profiler
-// CPU 計測サンプルをフレーム単位で収集する軽量プロファイラ
+/// @file    Profiler.hpp
+/// @brief   CPU 計測サンプルをフレーム単位で収集する軽量プロファイラ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <Engine/Profiler/ProfilerMarker.hpp>
@@ -46,6 +47,15 @@ public:
 
     // インスタントイベントを記録する。時間幅を持たないため elapsedMs は 0 になる。
     static void PushMarker(const ProfilerMarker& marker);
+
+    // 既に別の場所で測り終えた区間を、そのままフレームへ積む。
+    //
+    // WHY 必要か: このプロファイラは s_stack / s_currentFrameRecords を素の static で
+    //     持つ main スレッド専用の作りで、BeginSample/EndSample をワーカースレッドから
+    //     呼ぶとスタックが壊れる。並列に投げた仕事はワーカー側で std::chrono で測り、
+    //     join した後に main スレッドからこれで積む、という分担にする。
+    // @param elapsedMs 呼び出し側が測った所要時間。
+    static void PushSample(const ProfilerMarker& marker, double elapsedMs);
 
     // Viewer やログ出力用に、確定済みフレームの計測結果を参照する。
     static const std::vector<ProfileRecord>& GetLastFrameRecords();

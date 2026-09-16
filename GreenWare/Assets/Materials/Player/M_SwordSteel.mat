@@ -1,0 +1,28 @@
+# GreenWare
+# M_SwordSteel.mat
+# 刀身の鋼。
+#
+# WHY F0 をここまで上げるか (0.24 -> 0.56):
+#   磨いた鋼の F0 は 0.55 前後。刀身は «映り込む» ことでしか鋼に見えないので、
+#   ここだけは他の部位より明確に明るくする。ボスの装甲 (0.30) と同じ値にすると、
+#   握っている刃と相手の板が同じ材質に見えてしまう。
+#
+# WHY 異方性を強く入れるか:
+#   刀身の研ぎ目は刃の長さ方向に走る。ハイライトがその向きへ伸びると、
+#   «真っ直ぐな金属の面» が振るたびに 1 本の線として流れる ─ 軌跡
+#   (FX_BLD_Trail) が出ていない待機中でも刀が金属として読める唯一の手掛かり。
+version = 1
+name = 'M_SwordSteel'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.56, 0.57, 0.60, 1.0 ]
+metallic = 1.0
+roughness = 0.16
+anisotropy = 0.55
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

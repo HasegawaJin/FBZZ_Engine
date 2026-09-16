@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ScriptReflectionProbeProxy.hpp | fbzz::scene
-// Script から ReflectionProbeComponent を操作するショートハンド。
-// 影響半径や強度をランタイムで変化させてポータル・水面反射の切り替えなどに使う。
+/// @file    ScriptReflectionProbeProxy.hpp
+/// @brief   Script から ReflectionProbeComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 影響半径や強度をランタイムで変化させてポータル・水面反射の切り替えなどに使う。
 #pragma once
 
 #include <Math/Vector3.hpp>
@@ -27,6 +29,10 @@ struct ScriptReflectionProbeProxy {
 
     // 静的環境マップを差し替える (.dds)。
     void SetCubemap(std::string_view path) const;
+
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetIntensity() const;
+    [[nodiscard]] float GetInfluenceRadius() const;
 };
 
 } // namespace fbzz::scene

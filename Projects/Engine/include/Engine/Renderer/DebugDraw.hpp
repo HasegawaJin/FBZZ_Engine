@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DebugDraw.hpp | fbzz::renderer
-// ワイヤーフレームのデバッグ描画ユーティリティ
-// Line / Box / Sphere / Capsule をフレーム内バッチとして集めて一括送信する。
-// 描画は BeginFrame から Flush までの間だけ有効。
+/// @file    DebugDraw.hpp
+/// @brief   ワイヤーフレームのデバッグ描画ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Line / Box / Sphere / Capsule をフレーム内バッチとして集めて一括送信する。
+/// 描画は BeginFrame から Flush までの間だけ有効。
 #pragma once
 
 #include "IRenderer.hpp"
@@ -25,13 +27,18 @@ public:
     // フレーム先頭で呼ぶ。リソースを遅延初期化し、カメラ VP 行列を設定する
     static void BeginFrame(IRenderer& r, ResourceManager& resources, const math::Matrix4& viewProjection);
     // フレーム末尾で呼ぶ。蓄積した頂点を一括 Submit し、バッチをクリアする。
-    // Submit は即時実行のため、1 フレーム内で複数回呼んでも安全 (溢れそうな時の中間 Flush 用)。
+    // 1 フレーム内で何度呼んでもよい (パスごとの描画・溢れそうな時の中間 Flush 用)。
+    // Flush ごとに別の頂点バッファを貸し出すため、後の Flush が先に記録した Draw の
+    // 頂点を上書きすることはない (DX12 は Submit が記録でしかなく、この保証がないと壊れる)。
     static void Flush();
 
     // 深度なし線分バッチの現在の頂点数と上限。
     // WHY: バッチが満杯になると以降の Line() は黙って捨てられる。大量のラインを出すパス
     //      (コライダー可視化・NavMesh 等) が「溢れる前に Flush する」判断をするために公開する。
     [[nodiscard]] static size_t PendingLineVertices();
+    // 塗りつぶし三角形バッチの現在の頂点数。線分とは別枠で溢れるため、FilledPolygon を
+    // 大量に積むパス (NavMesh の面・ボクセル) はこちらも見て中間 Flush を判断する。
+    [[nodiscard]] static size_t PendingTriangleVertices();
     [[nodiscard]] static size_t MaxBatchVertices();
 
     static void Line(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
@@ -42,6 +49,22 @@ public:
     //      手前に浮いて見えると空間の前後関係が壊れるため、遮蔽される版を分ける。
     static void LineDepthTested(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                                 const math::Vector4& color = {1,1,1,1});
+
+    // 破線。実線のワイヤーと同じ位置に重なっても、両方が読めるようにするための線種。
+    //
+    // WHY 必要か: デバッグ線はすべて深度オフの 1px ラインで、同じ形が 2 つ重なると
+    //     (例: Script の Gizmo が描く球と、その下にある SphereCollider の可視化)
+    //     どちらのピクセルが出るかがサブピクセルの被り方で決まる。カメラが少し動くたびに
+    //     取り合いの結果が入れ替わり、線がちらつく。深度では解決できない (両方とも深度オフ)。
+    //     片方を破線にして最後に描けば、隙間から下の実線が見えて両方とも読める。
+    //
+    // dashLength: 実線 1 本ぶんのワールド長の目安。線が短ければ 1 本に丸める。
+    // maxDashes : 1 線分あたりの分割上限。長い辺で頂点数が跳ね上がるのを止める。
+    static void LineDashed(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
+                           const math::Vector4& color = {1,1,1,1},
+                           float dashLength = 0.06f, int maxDashes = 8);
+    // LineDashed 1 本が最悪いくつの頂点を積むか。バッチ上限の見積もりに使う。
+    [[nodiscard]] static size_t DashedLineMaxVertices(int maxDashes = 8);
     static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,
                     const math::Vector4& color = {0,1,0,1});
     static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,

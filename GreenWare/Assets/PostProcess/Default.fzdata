@@ -7,28 +7,43 @@ type = 'SSAO'
 
 [[overrides]]
 active = true
-feedback = 0.8999999761581421
-type = 'TAA'
-
-[[overrides]]
-active = true
-intensity = 0.8999999761581421
-softKnee = 0.4000000059604645
-threshold = 0.6499999761581421
+intensity = 0.1149425283074379
+softKnee = 1.0
+threshold = 4.0
 type = 'Bloom'
 
 [[overrides]]
 active = true
-blend = 1.0
-contrast = 0.0
-hueShift = 0.0
-saturation = 1.0
-temperature = 0.0
-tint = 0.0
-type = 'LUTColorGrading'
+exposure = 1.0
+type = 'Exposure'
 
 [[overrides]]
 active = true
-radius = 1.0
-strength = 0.3499999940395355
-type = 'Sharpen'
+density = 0.03
+edgeFade = 0.35
+heightFalloff = 0.08
+heightStart = 0.5
+intensity = 0.35
+maxDistance = 70.0
+minDistance = 1.5
+scattering = 0.65
+steps = 24
+tint = [ 1.0, 1.0, 1.0 ]
+type = 'VolumetricLight'
+
+[[overrides]]
+active = true
+type = 'FXAA'
+
+[[overrides]]
+active = false
+compensation = 0.0
+highPercent = 0.949999988079071
+lowPercent = 0.44999998807907104
+maxEV = 2.0
+maxExposureEV = 8.0
+minEV = 0.0
+minExposureEV = -8.0
+speedDown = 1.2000000476837158
+speedUp = 0.800000011920929
+type = 'AutoExposure'

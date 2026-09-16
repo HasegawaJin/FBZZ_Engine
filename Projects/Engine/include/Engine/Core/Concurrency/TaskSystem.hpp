@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TaskSystem.hpp | fbzz
-// スレッドプールを中核としたバックグラウンド非同期タスク実行基盤。
-// Submit(fn) -> future<T> の単一 API でどこからでも非同期タスクを投入できる。
+/// @file    TaskSystem.hpp
+/// @brief   スレッドプールを中核としたバックグラウンド非同期タスク実行基盤。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// Submit(fn) -> future<T> の単一 API でどこからでも非同期タスクを投入できる。
 #pragma once
 #include <functional>
 #include <future>

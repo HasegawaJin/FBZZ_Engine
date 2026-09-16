@@ -1,21 +1,15 @@
-// FBZZ Engine
-// NavMeshSurfaceComponent.hpp | fbzz::scene
-// NavMesh Bake の設定・実行・結果キャッシュを保持するコンポーネント。
-// Terrain GO / 床 Mesh GO など任意の GO に追加して使う（専用の空 GO が不要）。
-//
-// collectObjects == AllSceneObjects:
-//   シーン内の全 TerrainComponent と NavMeshModifier::Walkable コライダーを自動収集し、
-//   バウンド範囲を自動計算してベイクする。複数テレイン・複数床オブジェクト対応。
-//
-// collectObjects == Volume:
-//   この GO の worldPosition を中心とする size ボックス内のみをベイクする。
-//   旧 NavMeshVolumeComponent と同等の挙動。
+/// @file    NavMeshSurfaceComponent.hpp
+/// @brief   NavMesh のベイク設定・進行状態・結果キャッシュを持つコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
+#include <cstddef>
+#include <iterator>
+#include <string>
 #include <vector>
 
 namespace fbzz::scene {
@@ -108,6 +102,74 @@ enum class NavMeshCollectObjects : uint8_t {
     Volume,      // この GO 中心の size ボックス内の全 Terrain を対象にする
 };
 
+// NavMeshBakeCell — ボクセル 1 セルの最終判定と、そう判定された理由。
+// WHY 理由まで持つか: 「ここに NavMesh が張られない」の原因は傾斜・障害物・
+//     エージェント半径の 3 通りあり、結果のポリゴンだけを見ても区別が付かない。
+//     Recast Demo の Voxels ビューと同じく、判定段階そのものを絵に出すために残す。
+enum class NavMeshBakeCell : uint8_t {
+    NoSurface   = 0,  // Terrain / Walkable modifier のどちらにも当たらない
+    Walkable    = 1,
+    TooSteep    = 2,  // 法線の傾きが maxSlopeAngleDeg を超えた
+    TooHighStep = 3,  // Walkable modifier の縁をまたぎ、段差が maxClimb を超えた
+    Obstructed  = 4,  // NotWalkable modifier の内側
+    Eroded      = 5,  // 歩行可能だが agentRadius ぶんの余裕が取れない
+};
+
+// NavMeshBakeDebugGrid — ベイクの中間結果 (ボクセル格子) のスナップショット。
+// Voxels 表示だけが読む診断用データで、シーンにも Play キャッシュにも載せない。
+// セル数が kMaxDebugCells を超えるベイクでは捨てる (columns == 0 になる)。
+struct NavMeshBakeDebugGrid {
+    // 5 byte/cell 相当を上限つきで抱える。40 万セル ≈ 2 MB。
+    static constexpr int kMaxDebugCells = 400000;
+
+    int           columns  = 0;
+    int           rows     = 0;
+    float         cellSize = 1.0f;
+    math::Vector3 origin{};  // セル (0,0) の -X-Z 側の角のワールド座標
+
+    std::vector<uint8_t> cells;         // NavMeshBakeCell を uint8_t で保持。size = columns * rows
+    // 格子の角の高さ。size = (columns + 1) * (rows + 1)。面が無い角は -1e30f。
+    std::vector<float>   cornerHeights;
+
+    bool IsValid() const { return columns > 0 && rows > 0 && !cells.empty(); }
+
+    NavMeshBakeCell CellAt(int x, int z) const
+    {
+        return static_cast<NavMeshBakeCell>(cells[static_cast<size_t>(z) * columns + x]);
+    }
+    float CornerAt(int cx, int cz) const
+    {
+        return cornerHeights[static_cast<size_t>(cz) * (columns + 1) + cx];
+    }
+};
+
+// NavMeshBakeStats — 直近のベイクの計測値。Navigation パネルの診断表示専用。
+struct NavMeshBakeStats {
+    float         bakeSeconds      = 0.0f;
+    int           cellsX           = 0;
+    int           cellsZ           = 0;
+    int           walkableCells    = 0;
+    int           steepCells       = 0;
+    int           stepCells        = 0;
+    int           obstructedCells  = 0;
+    int           erodedCells      = 0;
+    int           polygonCount     = 0;
+    float         areaSquareMeters = 0.0f;
+    math::Vector3 boundsMin{};
+    math::Vector3 boundsMax{};
+    // ポリゴンが 1 枚も生成されなかった理由。空文字なら成功。
+    // WHY: 一番多い失敗は「Terrain も Walkable modifier も無い GO に Surface を付けた」で、
+    //      これを黙って空返しすると設定のどこが悪いのか手掛かりが残らない。
+    std::string   failReason;
+};
+
+// NavMeshBakeResult — バックグラウンドのベイクジョブが返す一式。
+struct NavMeshBakeResult {
+    NavMesh              navMesh;
+    NavMeshBakeStats     stats;
+    NavMeshBakeDebugGrid debug;
+};
+
 enum class NavMeshBakeState : uint8_t {
     Idle,    // 未ベイク
     Baking,  // バックグラウンドスレッドで計算中
@@ -124,8 +186,16 @@ struct NavMeshSurfaceComponent {
     // ── Bake パラメータ ────────────────────────────────────────────────────
     float cellSize         = 1.0f;   // ボクセル解像度 [m]
     float maxSlopeAngleDeg = 45.0f;  // この角度を超える斜面は歩行不可
-    float agentRadius      = 0.4f;   // エージェント半径 (参照用・将来の clearance 判定向け)
-    float agentHeight      = 2.0f;   // エージェント高さ
+
+    // 歩行可能面を内側へ削る幅 [m] (Recast の walkableRadius 相当)。
+    // これが 0 だと歩行可能面が壁の根元まで届き、半径を持つエージェントが壁へめり込む。
+    float agentRadius      = 0.4f;
+    float agentHeight      = 2.0f;   // エージェント高さ [m]
+
+    // 隣接セルへ乗り移れる段差の上限 [m] (Recast の walkableClimb 相当)。
+    // これを超える高低差のセル同士は接続しない。0 にすると崖の上下が地続きになり、
+    // A* が「壁を垂直に登る経路」を返す。
+    float maxClimb         = 0.4f;
 
     // Agent Type ID: NavMeshAgentComponent::agentTypeId と一致する Agent だけがこの Surface を使う。
     // 0 = デフォルト（Unity の Humanoid 相当）。複数 Surface を使う場合に区別する。
@@ -153,6 +223,14 @@ struct NavMeshSurfaceComponent {
     // Terrain/Collider から再構築できるランタイムキャッシュのため非永続化。
     NavMesh navMesh;
 
+    // 直近のベイクの計測値と中間結果。どちらも診断表示専用で非永続化。
+    NavMeshBakeStats     bakeStats;
+    NavMeshBakeDebugGrid bakeDebug;
+
+    // ベイクを投入した時点のソース (設定・Terrain 高さ・Modifier 配置) のハッシュ。
+    // HashNavMeshBakeSources() の現在値と食い違えば、その NavMesh は古い。
+    uint64_t bakedSourceHash = 0;
+
     const char* GetTypeName() const { return "NavMesh Surface"; }
     void Reflect(IReflector& r)
     {
@@ -162,17 +240,27 @@ struct NavMeshSurfaceComponent {
         r.Field("maxSlopeAngleDeg", maxSlopeAngleDeg);
         r.Field("agentRadius",      agentRadius);
         r.Field("agentHeight",      agentHeight);
+        r.Field("maxClimb",         maxClimb);
         r.Field("agentTypeId",      agentTypeId);
         // collectObjects は整数として保存
         int collectObjectsValue = static_cast<int>(collectObjects);
         r.Field("collectObjects", collectObjectsValue);
         collectObjectsValue = collectObjectsValue < 0 ? 0 : (collectObjectsValue > 1 ? 1 : collectObjectsValue);
         collectObjects = static_cast<NavMeshCollectObjects>(collectObjectsValue);
-        for (int i = 0; i < 32; ++i) {
-            char key[16];
-            std::snprintf(key, sizeof(key), "areaCost_%d", i);
-            r.Field(key, areaCosts[i]);
-            if (areaCosts[i] < 1.0f) areaCosts[i] = 1.0f;
+        // エリアコストは 1 本の配列として持つ。
+        //
+        // WHY 32 個の areaCost_N をやめたか: 直列化が «手書きの配列» と
+        //   «Reflect の 32 キー» の 2 通りに分かれていて、同じ 1 つの値が
+        //   保存経路によって別の形になっていた。配列に寄せると、シーンも AI バスも
+        //   Inspector も同じ 1 つのキーを見る。
+        // WHY 実データを壊さないと言えるか: 移行時点でどちらの形も .scene / .prefab に
+        //   実在しなかった (既定のまま使われていた)。
+        std::vector<float> costs(std::begin(areaCosts), std::end(areaCosts));
+        r.ListField("areaCosts", costs);
+        // キーが無ければ ListField は costs へ触らないので、既定がそのまま残る。
+        for (std::size_t i = 0; i < std::size(areaCosts); ++i) {
+            const float cost = i < costs.size() ? costs[i] : 1.0f;
+            areaCosts[i] = cost < 1.0f ? 1.0f : cost;  // 0 以下は A* が進まなくなる
         }
         // navMesh は Bake で再生成できるランタイムキャッシュのため非保存。
     }

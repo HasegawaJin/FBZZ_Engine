@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ScriptComponent.hpp | fbzz::scene
-// GameObject に紐付く Script インスタンス群の所有者
-// std::unique_ptr の配列で複数 Script を保持し、owner を注入する。
-// 実行順とライフサイクル呼び出しは ScriptSystem が担う。
+/// @file    ScriptComponent.hpp
+/// @brief   GameObject に紐付く Script インスタンス群の所有者。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// std::unique_ptr の配列で複数 Script を保持し、owner を注入する。
+/// 実行順とライフサイクル呼び出しは ScriptSystem が担う。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -29,9 +31,14 @@ struct ScriptEntry {
     // WHY: エディタ起動直後や DLL ビルド失敗時は ScriptFactory が未登録で、
     //      .fbzz 内の Script をインスタンス化できないことがある。
     //      その状態で保存しても Script 情報を失わないよう、元の type/fields を保持する。
-    std::shared_ptr<SerializedScriptData> serialized;
+    std::unique_ptr<SerializedScriptData> serialized;
     bool m_awoken = false;
     bool m_started = false;
+    // OnAwake を通したとき Play 中だったか (FBZZ_EXECUTE_ALWAYS 用)。
+    // WHY: Play の開始・停止では Script インスタンスが作り直されないため、編集中に
+    //      立てた m_awoken / m_started がそのまま残り、Play を押しても OnStart が
+    //      二度と呼ばれない。初期化したモードを覚えておき、食い違ったら張り直す。
+    bool m_lifecyclePlayMode = false;
 };
 
 struct ScriptComponent {

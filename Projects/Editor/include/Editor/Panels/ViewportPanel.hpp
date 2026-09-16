@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ViewportPanel.hpp | fbzz::editor
-// IRenderTarget をテクスチャとして表示しカメラ操作を受け付ける
+/// @file    ViewportPanel.hpp
+/// @brief   IRenderTarget をテクスチャとして表示しカメラ操作を受け付ける。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <string>
@@ -34,6 +35,11 @@ public:
     explicit ViewportPanel(Kind kind = Kind::Scene);
 
     const char* GetWindowName() const override { return m_windowName.c_str(); }
+    // キーの文脈を持つのは Scene ビューだけ。Game / UI ビューは自前のキーを持たない。
+    HotkeyScope GetHotkeyScope() const override
+    {
+        return m_kind == Kind::Scene ? HotkeyScope::SceneViewport : HotkeyScope::None;
+    }
 
     // EditorApp がパネル生成後に直接セットするためpublic。これらが有効でない間はプレースホルダを描画する
     renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
@@ -44,10 +50,15 @@ protected:
     void OnRenderContent(EditorContext& ctx) override;
     void OnBeforeBegin(EditorContext& ctx) override;
     void OnAfterBegin(EditorContext& ctx) override;
+    ImGuiWindowFlags GetWindowFlags() const override;
 
 private:
     Kind m_kind = Kind::Scene;
     std::string m_windowName;
+
+    // ゲームがカーソルを取り上げている間だけ立つ。OnBeforeBegin が更新し、
+    // 直後の GetWindowFlags() が読む (Begin の引数評価はフックの後)。
+    bool m_pinWindowRect = false;
 
     int m_uiGizmoDrag = -1;
     ImVec2 m_uiGizmoDragStart = {};

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// OrderingHints.hpp | fbzz
-// 同 Phase 内の実行順序制約を型安全に宣言する。
+/// @file    OrderingHints.hpp
+/// @brief   同 Phase 内の実行順序制約を型安全に宣言する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <typeindex>
 #include <vector>

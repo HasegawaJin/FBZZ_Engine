@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialComponent.hpp | fbzz::scene
-// GameObject が参照する .mat マテリアルアセットと GPU Material キャッシュ
+/// @file    MaterialComponent.hpp
+/// @brief   GameObject が参照する .mat マテリアルアセットと GPU Material キャッシュ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 
 #include <Engine/Asset/AssetManager.hpp>
@@ -64,10 +65,11 @@ struct MaterialSlot {
     MaterialSlot() = default;
     ~MaterialSlot() = default;
 
-    // WHY: material は unique_ptr のため既定のコピーが作れない。GPU キャッシュを複製し、
-    //      shader descriptor に紐づく検証キャッシュだけは作り直す (差し替え検知のため)。
+    // WHY: material は unique_ptr のため既定のコピーが作れない。設定だけを写し、
+    //      ConstantBuffer と検証キャッシュは複製先で作り直す
+    //      (前者は所有者を 1 つに保つため、後者は shader descriptor の差し替え検知のため)。
     MaterialSlot(const MaterialSlot& o)
-        : material(o.material ? std::make_unique<renderer::Material>(*o.material) : nullptr)
+        : material(o.material ? std::make_unique<renderer::Material>(o.material->CloneWithoutGpuResources()) : nullptr)
         , materialAsset(o.materialAsset)
         , visible(o.visible)
         , materialPath(o.materialPath)
@@ -84,7 +86,7 @@ struct MaterialSlot {
     MaterialSlot& operator=(const MaterialSlot& o)
     {
         if (this != &o) {
-            material     = o.material ? std::make_unique<renderer::Material>(*o.material) : nullptr;
+            material     = o.material ? std::make_unique<renderer::Material>(o.material->CloneWithoutGpuResources()) : nullptr;
             materialAsset = o.materialAsset;
             visible      = o.visible;
             materialPath = o.materialPath;

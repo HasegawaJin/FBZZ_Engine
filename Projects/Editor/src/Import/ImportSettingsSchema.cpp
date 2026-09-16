@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ImportSettingsSchema.cpp | fbzz::editor
-// 拡張子 / テクスチャ型に対する有効インポート設定の判定実装
+/// @file    ImportSettingsSchema.cpp
+/// @brief   拡張子 / テクスチャ型に対する有効インポート設定の判定実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Import/ImportSettingsSchema.hpp>
 #include <utility>
 #include <imgui.h>
@@ -27,15 +28,17 @@ ImportCategory CategoryForExtension(std::string_view lowerExt)
     if (lowerExt == ".dds")
         return ImportCategory::TexturePrebaked;
 
-    if (lowerExt == ".wav" || lowerExt == ".mp3" || lowerExt == ".ogg")
+    if (lowerExt == ".wav" || lowerExt == ".mp3" || lowerExt == ".ogg" ||
+        lowerExt == ".flac")
         return ImportCategory::Audio;
 
     if (lowerExt == ".mat" || lowerExt == ".scene" || lowerExt == ".prefab" ||
         lowerExt == ".anim" || lowerExt == ".animcontroller" || lowerExt == ".animctrl" ||
         lowerExt == ".mask" ||
         lowerExt == ".terrain" || lowerExt == ".fzdata" || lowerExt == ".fnt" ||
-        lowerExt == ".physmat" ||
-        lowerExt == ".ibl" || lowerExt == ".hlsl" || lowerExt == ".vfx")
+        lowerExt == ".physmat" || lowerExt == ".synth" ||
+        lowerExt == ".ibl" || lowerExt == ".hlsl" || lowerExt == ".vfx" ||
+        lowerExt == ".sequence")
         return ImportCategory::Native;
 
     return ImportCategory::None;

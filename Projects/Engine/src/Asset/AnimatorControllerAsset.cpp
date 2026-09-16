@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimatorControllerAsset.cpp | fbzz::asset
-// .animcontroller の TOML 入出力と AnimatorComponent への適用
+/// @file    AnimatorControllerAsset.cpp
+/// @brief   .animcontroller の TOML 入出力と AnimatorComponent への適用。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
@@ -93,6 +94,8 @@ toml::table WriteEditorLayout(const AnimatorGraphLayout& layout)
     table.insert("entryY", static_cast<double>(layout.entryPosition.y));
     table.insert("anyStateX", static_cast<double>(layout.anyStatePosition.x));
     table.insert("anyStateY", static_cast<double>(layout.anyStatePosition.y));
+    table.insert("slotX", static_cast<double>(layout.slotPosition.x));
+    table.insert("slotY", static_cast<double>(layout.slotPosition.y));
 
     toml::array nodes;
     for (const auto& [stateName, pos] : layout.nodePositions) {
@@ -129,6 +132,10 @@ AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
     layout.anyStatePosition = {
         static_cast<float>(table["anyStateX"].value_or(-220.0)),
         static_cast<float>(table["anyStateY"].value_or(260.0))
+    };
+    layout.slotPosition = {
+        static_cast<float>(table["slotX"].value_or(-220.0)),
+        static_cast<float>(table["slotY"].value_or(440.0))
     };
 
     if (const auto* nodes = table["nodes"].as_array()) {
@@ -198,6 +205,8 @@ toml::table WriteState(const scene::AnimationState& state)
     blendTree2D.insert("paramX", state.blendTree2D.paramX);
     blendTree2D.insert("paramY", state.blendTree2D.paramY);
     blendTree2D.insert("type", static_cast<int64_t>(state.blendTree2D.type));
+    blendTree2D.insert("dampTime", static_cast<double>(state.blendTree2D.dampTime));
+    blendTree2D.insert("syncNormalizedTime", state.blendTree2D.syncNormalizedTime);
     toml::array motions2D;
     for (const auto& motion : state.blendTree2D.motions)
         motions2D.push_back(WriteMotion(motion));
@@ -241,6 +250,10 @@ scene::AnimationState ReadState(const toml::table& stateTable)
         state.blendTree2D.paramY = (*blend2D)["paramY"].value_or(std::string{});
         state.blendTree2D.type = static_cast<scene::BlendTree2DType>(
             (*blend2D)["type"].value_or(int64_t{0}));
+        state.blendTree2D.dampTime =
+            static_cast<float>((*blend2D)["dampTime"].value_or(0.0));
+        state.blendTree2D.syncNormalizedTime =
+            (*blend2D)["syncNormalizedTime"].value_or(false);
         if (const auto* motions = (*blend2D)["motions"].as_array())
             for (const auto& motionElement : *motions)
                 if (const auto* motionTable = motionElement.as_table())
@@ -275,7 +288,12 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         parameterTable.insert("type", static_cast<int64_t>(parameter.type));
         parameterTable.insert("floatValue", static_cast<double>(parameter.floatValue));
         parameterTable.insert("intValue", static_cast<int64_t>(parameter.intValue));
-        parameterTable.insert("boolValue", parameter.boolValue);
+        // Trigger は状態値ではなく一瞬の発火信号なので、Controller へ保存しない。
+        // WHY: Editor の一時操作や古い .animcontroller の boolValue=true を復元すると、
+        //      起動直後に Trigger 遷移が発火して意図しない State へ進んでしまう。
+        parameterTable.insert(
+            "boolValue",
+            parameter.type == scene::ParamType::Trigger ? false : parameter.boolValue);
         parameters.push_back(std::move(parameterTable));
     }
     root.insert("parameters", std::move(parameters));
@@ -457,21 +475,78 @@ bool LoadAnimatorControllerAsset(const std::string& path,
 void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
                                   scene::AnimatorComponent& animator)
 {
+    // Controller の初回ロードや差し替えでは再生状態を初期化するが、Graph の保存後に
+    // 同じ Controller をライブ Animator へ反映する場合は、現在のモーションを止めない。
+    // loadedControllerPath は AnimatorSystem が初回ロード完了後に設定するため、
+    // 「初回ロード」と「編集反映」を安全に区別できる。
+    const bool preservePlayback =
+        !animator.loadedControllerPath.empty() &&
+        animator.loadedControllerPath == animator.controllerPath;
+    const std::string previousStateName = animator.currentStateName;
+    const float previousStateTime = animator.stateTime;
+    const std::string previousBlendToState = animator.blendToState;
+    const float previousBlendToTime = animator.blendToTime;
+    const float previousBlendWeight = animator.blendWeight;
+    const float previousBlendDuration = animator.blendDuration;
+    const auto previousLayers = animator.layers;
+
     animator.defaultStateName = asset.defaultStateName;
     animator.states = asset.states;
     animator.anyStateTransitions = asset.anyStateTransitions;
     animator.parameters = asset.parameters;
+    // 旧形式・手編集された Controller に残る Trigger の true も実行開始前に捨てる。
+    // Trigger は SetTrigger() でのみ発火し、アセットの初期値にはしない。
+    for (auto& parameter : animator.parameters) {
+        if (parameter.type == scene::ParamType::Trigger)
+            parameter.boolValue = false;
+    }
     animator.layers = asset.layers;
     animator.baseLayerMask.path = asset.baseLayerMaskPath;
     animator.baseLayerMask.Invalidate();
     animator.currentStateName.clear();
     animator.blendToState.clear();
     animator.stateTime = 0.0f;
+    animator.blendToTime = 0.0f;
+    animator.blendWeight = 0.0f;
+    animator.blendDuration = 0.25f;
     animator.clips.clear();
     animator.clipSourcePaths.clear();
     animator.clipsLoaded = false;
     // clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
     animator.rootMotionSamples.clear();
+
+    const auto stateExists = [](const std::vector<scene::AnimationState>& states,
+                                const std::string& name) {
+        if (name.empty()) return false;
+        for (const auto& state : states)
+            if (state.name == name) return true;
+        return false;
+    };
+
+    if (preservePlayback) {
+        if (stateExists(animator.states, previousStateName)) {
+            animator.currentStateName = previousStateName;
+            animator.stateTime = previousStateTime;
+            if (stateExists(animator.states, previousBlendToState)) {
+                animator.blendToState = previousBlendToState;
+                animator.blendToTime = previousBlendToTime;
+                animator.blendWeight = previousBlendWeight;
+                animator.blendDuration = previousBlendDuration;
+            }
+        }
+    }
+
+    // Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
+    // 初回 Controller 読込前に Script が PlayLayerState を呼んだ場合も、同名ステートが
+    // Controller 側に存在するなら、その要求を復元して初回フレームから再生できる。
+    for (auto& layer : animator.layers) {
+        for (const auto& previousLayer : previousLayers) {
+            if (previousLayer.name != layer.name) continue;
+            if (stateExists(layer.states, previousLayer.runtime.currentStateName))
+                layer.runtime = previousLayer.runtime;
+            break;
+        }
+    }
 }
 
 AnimatorControllerAsset MakeAnimatorControllerAsset(

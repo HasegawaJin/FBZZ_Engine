@@ -3,8 +3,39 @@ renderer = 'dx12'
 targetFps = 0
 
 [audio]
-bgmVolume = 1.0
-seVolume = 1.0
+masterVolume = 1.0
+voiceLimit = 48
+
+    [[audio.bus]]
+    name = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'BGM'
+    parent = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'SE'
+    parent = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'UI'
+    parent = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'Voice'
+    parent = 'Master'
+    volume = 1.0
+
+[cursor]
+hardware = true
+
+    [cursor.shapes.Default]
+    hotspot = [ 2.0, 2.0 ]
+    image = 'Assets/Sprites/HUD/pointer_c_shaded.png'
 
 [layers]
 names = [
@@ -44,11 +75,11 @@ names = [
 
 [physics]
 gravity = [ 0.0, -9.81, 0.0 ]
-hz = 60
+hz = 144
 substeps = 1
 
 [project]
-default_scene = 'Assets/Scenes/Main.scene'
+default_scene = 'Assets/Scenes/Title.scene'
 name = 'GreenWare'
 
 [render]
@@ -63,21 +94,22 @@ particleBudgetEnabled = true
 passViewerEnabled = false
 pcssEnabled = true
 pcssLightRadius = 3.0
-pipeline = 'Forward+'
+pipeline = 'Deferred+'
 shadow = true
 shadowAutoFitDistance = 60.0
 shadowCascadeBlend = 0.1
-shadowCascadeCount = 1
+shadowCascadeCount = 4
 shadowCascadeSplitLambda = 0.75
-shadowPcfRadius = 2
-shadowResolution = 2048
+shadowPcfRadius = 3
+shadowResolution = 4096
 showColliders = false
 showDecalBounds = false
 showSelectionOutline = true
+showUIRects = false
 viewMode = 0
 
 [runtime]
-start_scene = 'Assets/Scenes/Main.scene'
+start_scene = 'Assets/Scenes/Title.scene'
 
 [screen]
 height = 1080

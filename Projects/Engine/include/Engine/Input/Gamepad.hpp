@@ -1,21 +1,22 @@
-// FBZZ Engine
-// Gamepad.hpp | fbzz::input
-// XInput ゲームパッドのフレーム状態管理と振動制御
-//
-// WHY ポーリング方式か:
-//   ゲームパッドは Win32 メッセージポンプに乗らない。XInputGetState を明示的に呼ぶ以外に
-//   状態を得る手段がないため、既存 Input と同じ「フレーム先頭で現在状態を確定し、
-//   前フレーム状態を保存する」モデルに合わせてフレーム先頭で 1 回だけポーリングする。
-//
-// WHY XInput のみで DirectInput を採用しないか:
-//   DirectInput は汎用性と引き換えにデバイス列挙・軸マッピング・フォースフィードバックの
-//   複雑さが跳ね上がる。PS 系パッドも Steam Input / DS4Windows 経由で XInput として
-//   認識されるため、実用上の欠落は小さい。ポートフォリオでの投資対効果を優先した。
-//
-// WHY デッドゾーンを適用しないか:
-//   デッドゾーンの適正値はアクションごとに異なる (移動は大きめ、カメラは小さめ)。
-//   デバイス層で潰すと後段で元の値を復元できないため、生の -1..1 を返し、
-//   デッドゾーン処理は InputActionMap に委ねる。
+/// @file    Gamepad.hpp
+/// @brief   XInput ゲームパッドのフレーム状態管理と振動制御。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY ポーリング方式か:
+/// ゲームパッドは Win32 メッセージポンプに乗らない。XInputGetState を明示的に呼ぶ以外に
+/// 状態を得る手段がないため、既存 Input と同じ「フレーム先頭で現在状態を確定し、
+/// 前フレーム状態を保存する」モデルに合わせてフレーム先頭で 1 回だけポーリングする。
+///
+/// WHY XInput のみで DirectInput を採用しないか:
+/// DirectInput は汎用性と引き換えにデバイス列挙・軸マッピング・フォースフィードバックの
+/// 複雑さが跳ね上がる。PS 系パッドも Steam Input / DS4Windows 経由で XInput として
+/// 認識されるため、実用上の欠落は小さい。ポートフォリオでの投資対効果を優先した。
+///
+/// WHY デッドゾーンを適用しないか:
+/// デッドゾーンの適正値はアクションごとに異なる (移動は大きめ、カメラは小さめ)。
+/// デバイス層で潰すと後段で元の値を復元できないため、生の -1..1 を返し、
+/// デッドゾーン処理は InputActionMap に委ねる。
 #pragma once
 #include "GamepadButton.hpp"
 #include <cstdint>
@@ -60,17 +61,6 @@ public:
                              float durationSeconds, int pad = 0);
     static void StopVibration(int pad = 0);
     static void StopAllVibration();
-
-    // --- テスト用フック ---
-    // 実機を接続せずに Gamepad の状態遷移を検証するための注入口。
-    // 有効化すると Update() は XInput をポーリングせず、注入値のみを反映する。
-    // WHY 必要か: CI や自動テストに実 XInput デバイスは存在しない。
-    //             注入口が無いと Gamepad のロジックが一切テストできなくなる。
-    static void SetSimulationEnabled(bool enabled);
-    [[nodiscard]] static bool IsSimulationEnabled();
-    static void SimulateConnected(int pad, bool connected);
-    static void SimulateButton(GamepadButton button, bool pressed, int pad = 0);
-    static void SimulateAxis(GamepadAxis axis, float value, int pad = 0);
 };
 
 } // namespace fbzz::input

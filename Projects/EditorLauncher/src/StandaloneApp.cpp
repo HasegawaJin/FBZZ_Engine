@@ -1,11 +1,13 @@
-// FBZZ Engine
-// StandaloneApp.cpp | fbzz::editor_launcher
-// スタンドアロンモードのゲームループ実装 (IModule)
-//
-// WHY: IModule を継承することで Application::Run() に乗せる。
-//      これにより Profiler::BeginFrame/EndFrame・MemorySystem・
-//      Input::Update・PollEvents などフレーム境界処理がエンジン側で統一される。
+/// @file    StandaloneApp.cpp
+/// @brief   スタンドアロンモードのゲームループ実装 (IModule)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: IModule を継承することで Application::Run() に乗せる。
+/// これにより Profiler::BeginFrame/EndFrame・MemorySystem・
+/// Input::Update・PollEvents などフレーム境界処理がエンジン側で統一される。
 #include "StandaloneApp.hpp"
+#include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -44,7 +46,7 @@ StandaloneApp::StandaloneApp(renderer::IRenderer& renderer,
                              renderer::IImGuiRenderer& imguiRenderer,
                              renderer::ResourceManager& resources,
                              const LaunchProject& project,
-                             const ProjectSettings& settings)
+                             ProjectSettings& settings)
     : m_renderer(renderer)
     , m_imguiRenderer(imguiRenderer)
     , m_resources(resources)
@@ -83,10 +85,14 @@ bool StandaloneApp::OnInit()
         scriptsDllPath = util::FileSystem::GetExecutableDirectory() / L"SandboxScripts.dll";
     }
     if (std::filesystem::exists(scriptsDllPath)) {
-        m_scriptDll.Load(scriptsDllPath);
-        FBZZ_LOG_INFO("StandaloneApp: scripts DLL loaded: %ls (%d types)",
-            scriptsDllPath.wstring().c_str(),
-            static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+        if (m_scriptDll.Load(scriptsDllPath)) {
+            FBZZ_LOG_INFO("StandaloneApp: scripts DLL loaded: %ls (%d types)",
+                scriptsDllPath.wstring().c_str(),
+                static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+        } else {
+            FBZZ_LOG_ERROR("StandaloneApp: scripts DLL load failed: %ls — no scripts will run",
+                scriptsDllPath.wstring().c_str());
+        }
     } else {
         FBZZ_LOG_WARN("StandaloneApp: scripts DLL not found: %ls — no scripts will run",
             scriptsDllPath.wstring().c_str());
@@ -98,6 +104,12 @@ bool StandaloneApp::OnInit()
     auto& app = core::Application::Get();
     // StandaloneのProjectRuntimeにもApplication所有のAudioManagerを共有する。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
+    if (auto* audioManager = app.GetAudioManager()) {
+        audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
+        audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
+    }
+    // graphics プロキシが触る描画設定の実体を登録する (配布ゲームでは書き戻さない)。
+    app.SetActiveRenderSettings(&m_settings.render);
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
 

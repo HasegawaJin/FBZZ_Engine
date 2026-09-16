@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainTool.cpp | fbzz::editor
-// TerrainTool の実装: レイキャスト・ブラシアルゴリズム・ImGui UI
+/// @file    TerrainTool.cpp
+/// @brief   TerrainTool の実装: レイキャスト・ブラシアルゴリズム・ImGui UI。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #include "TerrainTool.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>

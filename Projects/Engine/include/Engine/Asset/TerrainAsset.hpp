@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TerrainAsset.hpp | fbzz::asset
-// TerrainComponent の高さ・スプラット・レイヤー設定を .terrain バイナリで管理する独立型
-// WHY: TerrainComponent から切り離すことで AssetManager のキャッシュ・FlushFailed が使える。
+/// @file    TerrainAsset.hpp
+/// @brief   TerrainComponent の高さ・スプラット・レイヤー設定を .terrain バイナリで管理する独立型。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// WHY: TerrainComponent から切り離すことで AssetManager のキャッシュ・FlushFailed が使える。
 #pragma once
 #include <array>
 #include <cstdint>

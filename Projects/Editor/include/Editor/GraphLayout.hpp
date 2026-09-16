@@ -1,7 +1,9 @@
-// FBZZ Engine
-// GraphLayout.hpp | fbzz::editor
-// Animation Graph Editor 専用のノード配置情報を保持する。
-// WHY: AnimatorComponent はランタイムデータなので、エディター上の表示座標を混ぜない。
+/// @file    GraphLayout.hpp
+/// @brief   Animation Graph Editor 専用のノード配置情報を保持する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
+///
+/// WHY: AnimatorComponent はランタイムデータなので、エディター上の表示座標を混ぜない。
 #pragma once
 #include <imgui.h>
 #include <string>
@@ -21,6 +23,7 @@ struct GraphLayout {
     // WHY: 予約名を map key にすると、ユーザー定義 State と競合するため。
     ImVec2 entryPosition = ImVec2(-220.0f, 80.0f);
     ImVec2 anyStatePosition = ImVec2(-220.0f, 260.0f);
+    ImVec2 slotPosition = ImVec2(-220.0f, 440.0f);
 };
 
 } // namespace fbzz::editor

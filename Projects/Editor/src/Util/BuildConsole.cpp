@@ -1,9 +1,11 @@
-// FBZZ Engine
-// BuildConsole.cpp | fbzz::editor
-// コンパイラ出力の解析・診断抽出・履歴管理。
+/// @file    BuildConsole.cpp
+/// @brief   コンパイラ出力の解析・診断抽出・履歴管理。
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
 #include <Editor/Util/BuildConsole.hpp>
 
 #include <Windows.h>   // GetTickCount64 / GetLocalTime
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>     // atoi
 #include <regex>
@@ -29,6 +31,11 @@ const std::regex kSourceEchoRegex(
     R"(^\s*([A-Za-z0-9_\-.]+\.(?:cpp|cxx|cc|c|hlsl))\s*$)",
     std::regex::optimize);
 
+// "CMake Error at CMakeLists.txt:12 (add_library):" / "CMake Warning (dev) at foo.cmake:3 (...)"
+const std::regex kCMakeDiagRegex(
+    R"(^\s*CMake (Error|Warning)(?: \(dev\))? at (.+):(\d+))",
+    std::regex::optimize);
+
 // 現在時刻を "HH:MM:SS" で返す。
 std::string LocalClockString()
 {
@@ -39,7 +46,121 @@ std::string LocalClockString()
     return buf;
 }
 
+// MSBuild は /m 並列時、行頭に "<node>>" (例: "2>") を付ける。
+// これを除去しないと file グループに "2>C:\..." が入り、行ジャンプが壊れる。
+std::string StripBuildNodePrefix(const std::string& rawLine)
+{
+    std::string line = rawLine;
+    size_t i = 0;
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+    size_t d = i;
+    while (d < line.size() && line[d] >= '0' && line[d] <= '9') ++d;
+    if (d > i && d < line.size() && line[d] == '>')
+        line.erase(0, d + 1);
+    return line;
+}
+
 } // namespace
+
+LogListLine MakeBuildLogLine(const std::string& text, std::uint64_t id)
+{
+    LogListLine out;
+    out.id   = id;
+    out.text = text;
+
+    // 大半の行は診断ではない。正規表現は «それらしい語» を含む行にだけ当てる。
+    const bool mayBeError   = text.find("rror")   != std::string::npos || text.find("FAILED") != std::string::npos;
+    const bool mayBeWarning = text.find("arning") != std::string::npos;
+    if (!mayBeError && !mayBeWarning) return out;
+
+    const std::string line = StripBuildNodePrefix(text);
+    std::smatch m;
+    if (std::regex_match(line, m, kDiagRegex)) {
+        out.severity = (m[4].str() == "warning") ? LogListSeverity::Warning : LogListSeverity::Error;
+        out.file     = m[1].str();
+        out.line     = m[2].matched ? std::atoi(m[2].str().c_str()) : 0;
+        return out;
+    }
+    if (std::regex_search(line, m, kCMakeDiagRegex)) {
+        out.severity = (m[1].str() == "Warning") ? LogListSeverity::Warning : LogListSeverity::Error;
+        out.file     = m[2].str();
+        out.line     = std::atoi(m[3].str().c_str());
+        return out;
+    }
+
+    // 形式に当てはまらなくても、ninja / clang / スクリプトの出力は «error:» の形で出る。
+    // WHY 素の "error" で拾わないか: MSBuild のサマリ "0 Error(s)" や
+    //     "-- Looking for error.h" まで赤くなり、本物が埋もれる。
+    if (line.find(": error") != std::string::npos || line.find("error:") != std::string::npos
+        || line.find("CMake Error") != std::string::npos || line.find("Build FAILED") != std::string::npos
+        || line.find("FAILED:") != std::string::npos) {
+        out.severity = LogListSeverity::Error;
+    } else if (line.find(": warning") != std::string::npos || line.find("warning:") != std::string::npos
+               || line.find("CMake Warning") != std::string::npos) {
+        out.severity = LogListSeverity::Warning;
+    }
+    return out;
+}
+
+void BuildLogFeed::Reset(LogListView& view, std::uint64_t generation, std::uint64_t firstLine)
+{
+    view.ClearLines();
+    m_generation  = generation;
+    m_firstLine   = firstLine;
+    m_parsedBytes = 0;
+    m_seenBytes   = 0;
+    m_lineBytes.clear();
+    m_hasPartial  = false;
+}
+
+void BuildLogFeed::Sync(const std::string& text, std::uint64_t generation, std::uint64_t firstLine,
+                        LogListView& view)
+{
+    if (generation != m_generation || firstLine < m_firstLine) {
+        Reset(view, generation, firstLine);
+    } else if (firstLine != m_firstLine) {
+        const std::uint64_t dropped = firstLine - m_firstLine;
+        if (dropped > m_lineBytes.size()) {
+            Reset(view, generation, firstLine);
+        } else {
+            for (std::uint64_t i = 0; i < dropped; ++i) {
+                m_parsedBytes -= m_lineBytes.front();
+                m_lineBytes.pop_front();
+            }
+            view.DropFrontLines(static_cast<std::size_t>(dropped));
+            m_firstLine = firstLine;
+            m_seenBytes = ~static_cast<std::size_t>(0);  // 下の «変化なし» 判定を通さない
+        }
+    }
+    if (text.size() < m_parsedBytes) Reset(view, generation, firstLine);
+    if (text.size() == m_seenBytes) return;
+    m_seenBytes = text.size();
+
+    // 書きかけだった末尾行は、続きが来たかもしれないので作り直す。id は同じ値で積み直る。
+    if (m_hasPartial) {
+        view.PopBackLine();
+        m_hasPartial = false;
+    }
+
+    std::size_t pos = m_parsedBytes;
+    while (true) {
+        const std::size_t nl = text.find('\n', pos);
+        if (nl == std::string::npos) break;
+        std::string line = text.substr(pos, nl - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        view.AppendLine(MakeBuildLogLine(line, m_firstLine + m_lineBytes.size()));
+        m_lineBytes.push_back(nl + 1 - pos);
+        pos = nl + 1;
+    }
+    m_parsedBytes = pos;
+
+    if (pos < text.size()) {
+        std::string tail = text.substr(pos);
+        if (!tail.empty() && tail.back() == '\r') tail.pop_back();
+        view.AppendLine(MakeBuildLogLine(tail, m_firstLine + m_lineBytes.size()));
+        m_hasPartial = true;
+    }
+}
 
 void BuildConsole::BeginBuild(BuildRecord::Kind kind)
 {
@@ -52,13 +173,18 @@ void BuildConsole::BeginBuild(BuildRecord::Kind kind)
     while (m_history.size() > MAX_HISTORY)
         m_history.pop_front();
 
-    m_building              = true;
-    m_consumedLen           = 0;
+    m_building     = true;
+    m_buildingKind = kind;
+    m_consumedLen  = 0;
     m_lineBuffer.clear();
     m_liveLog.clear();
+    m_liveLogFirstLine = 0;
+    ++m_liveLogGeneration;
     m_currentFile.clear();
-    m_notificationDismissed = false;
-    m_startTickMs           = GetTickCount64();
+    m_startTickMs  = GetTickCount64();
+    // WHY ここで通知を消さないか: ビルドを «始めた» ことは失敗が直った証拠ではない。
+    //     直ったかどうかは EndBuild で分かる。開始時に消すと、走っている間だけ
+    //     バーが消えて「出たり出なかったり」に見える。
 }
 
 BuildRecord* BuildConsole::CurrentRecord()
@@ -84,8 +210,15 @@ void BuildConsole::IngestFullLog(const std::string& fullLog)
 
     // ライブ表示用ログへ追記し、上限を超えたら先頭を切り捨てる。
     m_liveLog += delta;
-    if (m_liveLog.size() > MAX_LOG_BYTES)
-        m_liveLog.erase(0, m_liveLog.size() - MAX_LOG_BYTES);
+    if (m_liveLog.size() > MAX_LOG_BYTES) {
+        // 行の途中で切ると先頭の欠けた行が残り、表示側の行番号もずれる。次の改行まで捨てる。
+        const size_t over = m_liveLog.size() - MAX_LOG_BYTES;
+        const size_t nl   = m_liveLog.find('\n', over);
+        const size_t cut  = (nl == std::string::npos) ? over : nl + 1;
+        m_liveLogFirstLine += static_cast<uint64_t>(
+            std::count(m_liveLog.begin(), m_liveLog.begin() + static_cast<std::ptrdiff_t>(cut), '\n'));
+        m_liveLog.erase(0, cut);
+    }
 
     // 端数バッファに連結し、完全な行だけを取り出して解析する。
     m_lineBuffer += delta;
@@ -106,17 +239,7 @@ void BuildConsole::ConsumeLine(const std::string& rawLine)
     BuildRecord* rec = CurrentRecord();
     if (!rec) return;
 
-    // MSBuild は /m 並列時、行頭に "<node>>" (例: "2>") を付ける。
-    // これを除去しないと file グループに "2>C:\..." が入り、行ジャンプが壊れる。
-    std::string line = rawLine;
-    {
-        size_t i = 0;
-        while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
-        size_t d = i;
-        while (d < line.size() && line[d] >= '0' && line[d] <= '9') ++d;
-        if (d > i && d < line.size() && line[d] == '>')
-            line.erase(0, d + 1);
-    }
+    const std::string line = StripBuildNodePrefix(rawLine);
 
     std::smatch m;
     if (std::regex_match(line, m, kDiagRegex)) {
@@ -163,8 +286,14 @@ void BuildConsole::EndBuild(bool success, int exitCode)
 
     m_building = false;
     m_currentFile.clear();
-    // 成功時は前回失敗の通知フラグをリセット (次の失敗で再表示できるようにする)。
-    if (success) m_notificationDismissed = true;
+
+    // 確定した結果を «その種類の» 通知状態へ書く。
+    // WHY 種類ごとか: 以前は成功のたびに 1 つのフラグを畳んでいたため、HLSL の成功が
+    //     スクリプトの失敗通知まで消していた。直っていないものを黙らせてはいけない。
+    FailureState& state = m_failures[static_cast<size_t>(m_buildingKind)];
+    state.failed    = !success;
+    state.dismissed = false;
+    state.sequence  = ++m_failureSequence;
 }
 
 void BuildConsole::EndBuildCancelled()
@@ -175,7 +304,7 @@ void BuildConsole::EndBuildCancelled()
     }
     m_building = false;
     m_currentFile.clear();
-    m_notificationDismissed = true;
+    // 中断は «結果» ではないので、その種類の通知状態は前のまま据え置く。
 }
 
 void BuildConsole::ClearHistory()
@@ -188,23 +317,44 @@ void BuildConsole::ClearHistory()
     } else {
         m_history.clear();
     }
-    m_notificationDismissed = true;
+    // 履歴を消せば通知の中身も辿れなくなるので、通知自体も畳む。
+    for (FailureState& state : m_failures) state = {};
 }
 
 bool BuildConsole::HasActiveFailure() const
 {
-    if (m_notificationDismissed) return false;
-    const BuildRecord* latest = Latest();
-    return latest && latest->result == BuildRecord::Result::Failed;
+    return LatestFailure() != nullptr;
 }
 
 const BuildRecord* BuildConsole::LatestFailure() const
 {
-    // 履歴を末尾から遡り、最初に見つかった Failed を返す。
-    for (auto it = m_history.rbegin(); it != m_history.rend(); ++it) {
-        if (it->result == BuildRecord::Result::Failed) return &*it;
+    // 未 Dismiss の失敗を抱えている Kind のうち、いちばん新しいものを選ぶ。
+    // WHY 履歴を «ただ» 遡らないか: 履歴には直った後の古い失敗も残っている。
+    //     通知に出してよいのは «その種類の最後の結果が失敗» のものだけ。
+    const BuildRecord* best     = nullptr;
+    uint64_t           bestSeq  = 0;
+    for (size_t kind = 0; kind < kKindCount; ++kind) {
+        const FailureState& state = m_failures[kind];
+        if (!state.failed || state.dismissed) continue;
+        if (best != nullptr && state.sequence < bestSeq) continue;
+
+        // その種類の最新の Failed レコードを履歴から引く (診断とエラー件数の出所)。
+        for (auto it = m_history.rbegin(); it != m_history.rend(); ++it) {
+            if (static_cast<size_t>(it->kind) != kind) continue;
+            if (it->result != BuildRecord::Result::Failed) continue;
+            best    = &*it;
+            bestSeq = state.sequence;
+            break;
+        }
     }
-    return nullptr;
+    return best;
+}
+
+void BuildConsole::DismissNotification()
+{
+    // 今バーに出ているものだけを黙らせる。もう片方の失敗は残す。
+    if (const BuildRecord* shown = LatestFailure())
+        m_failures[static_cast<size_t>(shown->kind)].dismissed = true;
 }
 
 } // namespace fbzz::editor

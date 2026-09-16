@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12RenderTarget.cpp | fbzz::renderer
-// RGBA16F MRTとSRV読み取り可能なR32深度の生成
+/// @file    DX12RenderTarget.cpp
+/// @brief   RGBA16F MRTとSRV読み取り可能なR32深度の生成。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12RenderTarget.hpp"
 
 #include "DX12Context.hpp"
@@ -82,10 +83,26 @@ bool DX12RenderTarget::InitCubemap(
     return true;
 }
 
-bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
-                            uint32_t width, uint32_t height, uint32_t colorCount)
+// Format → DXGI。DX11 側 (DX11RenderTarget.cpp) と同じ対応にすること。
+static DXGI_FORMAT ToDxgi(Format format)
 {
+    switch (format) {
+    case Format::RGBA16F:    return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    case Format::RGBA8:      return DXGI_FORMAT_R8G8B8A8_UNORM;
+    case Format::R11G11B10F: return DXGI_FORMAT_R11G11B10_FLOAT;
+    case Format::RG16F:      return DXGI_FORMAT_R16G16_FLOAT;
+    case Format::R16F:       return DXGI_FORMAT_R16_FLOAT;
+    case Format::R8:         return DXGI_FORMAT_R8_UNORM;
+    }
+    return DXGI_FORMAT_R16G16B16A16_FLOAT;
+}
+
+bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
+                            uint32_t width, uint32_t height, const RenderTargetDesc& desc)
+{
+    const uint32_t colorCount = desc.colorCount;
     assert(colorCount <= MAX_COLOR);
+    assert((colorCount > 0 || desc.withDepth) && "カラーも深度も無い RT は作れない");
     if (!context || !tracker || width == 0 || height == 0 || colorCount > MAX_COLOR)
         return false;
     m_tracker = tracker;
@@ -98,9 +115,11 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     heap.NumDescriptors = colorCount > 0 ? colorCount : 1;
     if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_rtvHeap)))) return false;
-    heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    heap.NumDescriptors = 1;
-    if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_dsvHeap)))) return false;
+    if (desc.withDepth) {
+        heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        heap.NumDescriptors = 1;
+        if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_dsvHeap)))) return false;
+    }
     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heap.NumDescriptors = colorCount + 1;
     if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_srvHeap)))) return false;
@@ -115,7 +134,7 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     colorDesc.Height = height;
     colorDesc.DepthOrArraySize = 1;
     colorDesc.MipLevels = 1;
-    colorDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    colorDesc.Format = ToDxgi(desc.format);
     colorDesc.SampleDesc.Count = 1;
     colorDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     for (uint32_t index = 0; index < colorCount; ++index) {
@@ -131,6 +150,9 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
         device->CreateShaderResourceView(m_colors[index].Get(), &srv, GetColorSrv(index));
         tracker->Register(m_colors[index].Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
+
+    if (!desc.withDepth)
+        return true;
 
     D3D12_RESOURCE_DESC depthDesc = colorDesc;
     depthDesc.Format = DXGI_FORMAT_R32_TYPELESS;
@@ -162,7 +184,12 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetRtv(uint32_t index) const
     return handle;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetDsv() const { return m_dsvHeap->GetCPUDescriptorHandleForHeapStart(); }
+// 深度を持たない RT では DSV ヒープ自体を作らない。呼び出し側は HasDepth() で分岐する。
+D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetDsv() const
+{
+    return m_dsvHeap ? m_dsvHeap->GetCPUDescriptorHandleForHeapStart()
+                     : D3D12_CPU_DESCRIPTOR_HANDLE{};
+}
 D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetColorSrv(uint32_t index) const
 {
     auto handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneEditUtils.cpp | fbzz::editor
-// シーン編集の共有ヘルパー実装
+/// @file    SceneEditUtils.cpp
+/// @brief   シーン編集の共有ヘルパー実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -60,18 +61,19 @@ scene::EntityID CopyHierarchyToSceneRecursive(const scene::Scene& srcScene,
 
 } // namespace
 
-void ExecuteSceneEditWithUndo(EditorContext& ctx,
-                              const char* description,
-                              const std::function<void()>& edit)
+std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
+                                               const char* description,
+                                               const std::function<void()>& edit)
 {
-    if (!ctx.activeScene || !edit) return;
+    if (!ctx.activeScene || !edit) return nullptr;
 
     const bool canRecordUndo =
         ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
     if (!canRecordUndo) {
+        // Play 中などは履歴を残さない。編集そのものは行う。
         edit();
         if (ctx.markSceneDirty) ctx.markSceneDirty();
-        return;
+        return nullptr;
     }
 
     const std::string before = SceneIO::Serialize(*ctx.activeScene);
@@ -83,7 +85,7 @@ void ExecuteSceneEditWithUndo(EditorContext& ctx,
     if (before == after ||
         ctx.undoStack->GetRevision() != historyRevisionBefore) {
         if (before != after && ctx.markSceneDirty) ctx.markSceneDirty();
-        return;
+        return nullptr;
     }
 
     scene::Scene* scene = ctx.activeScene;
@@ -91,30 +93,25 @@ void ExecuteSceneEditWithUndo(EditorContext& ctx,
     const auto markDirty = ctx.markSceneDirty;
     auto restore = [scene, context, markDirty](const std::string& snapshot) {
         if (SceneIO::Deserialize(*scene, snapshot)) {
-            context->selectedEntities.clear();
+            ClearEntitySelection(*context);
             context->activeUICanvas = {};
             if (markDirty) markDirty();
         }
     };
-    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    return std::make_unique<LambdaCommand>(
         description,
         [restore, after]() { restore(after); },
-        [restore, before]() { restore(before); }));
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+        [restore, before]() { restore(before); });
 }
 
-void RemoveSelection(EditorContext& ctx, scene::EntityID id)
+void ExecuteSceneEditWithUndo(EditorContext& ctx,
+                              const char* description,
+                              const std::function<void()>& edit)
 {
-    auto& selected = ctx.selectedEntities;
-    selected.erase(std::remove(selected.begin(), selected.end(), id), selected.end());
-}
-
-void PruneSelection(EditorContext& ctx)
-{
-    auto& selected = ctx.selectedEntities;
-    selected.erase(std::remove_if(selected.begin(), selected.end(),
-        [&ctx](scene::EntityID id) { return !ctx.activeScene->IsValid(id); }),
-        selected.end());
+    auto command = MakeSceneEditCommand(ctx, description, edit);
+    if (command && ctx.undoStack != nullptr)
+        ctx.undoStack->Push(std::move(command));
 }
 
 void DestroySelected(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
@@ -139,6 +136,7 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
     dst.prefabAssetPath = src->prefabAssetPath;
     dst.transform = src->transform;
     ctx.activeScene->DuplicateComponents(srcId, dst.GetID());
+    ctx.editorSceneState.CopyComponentOrder(src->instanceId, dst.instanceId);
 
     if (parentId.IsValid()) {
         if (auto* parent = ctx.activeScene->GetGameObject(parentId))
@@ -152,19 +150,19 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
     return dst.GetID();
 }
 
-void DeleteSelectedWithUndo(EditorContext& ctx)
+std::unique_ptr<ICommand> MakeDeleteSelectedCommand(EditorContext& ctx)
 {
-    if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) return nullptr;
     const std::vector<scene::EntityID> ids = ctx.selectedEntities;
-    ExecuteSceneEditWithUndo(ctx, "Delete GameObjects",
+    return MakeSceneEditCommand(ctx, "Delete GameObjects",
         [&ctx, ids]() { DestroySelected(ctx, ids); });
 }
 
-void DuplicateSelectedWithUndo(EditorContext& ctx)
+std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
 {
-    if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) return nullptr;
     const std::vector<scene::EntityID> toDup = ctx.selectedEntities;
-    ExecuteSceneEditWithUndo(ctx, "Duplicate GameObjects", [&ctx, toDup]() {
+    return MakeSceneEditCommand(ctx, "Duplicate GameObjects", [&ctx, toDup]() {
         std::vector<scene::EntityID> newIds;
         for (auto eid : toDup) {
             auto* src = ctx.activeScene->GetGameObject(eid);
@@ -175,8 +173,54 @@ void DuplicateSelectedWithUndo(EditorContext& ctx)
             if (newId != scene::EntityID::INVALID)
                 newIds.push_back(newId);
         }
-        if (!newIds.empty()) ctx.selectedEntities = newIds;
+        if (!newIds.empty()) SelectEntities(ctx, newIds);
     });
+}
+
+void DeleteSelectedWithUndo(EditorContext& ctx)
+{
+    auto command = MakeDeleteSelectedCommand(ctx);
+    if (command && ctx.undoStack != nullptr) ctx.undoStack->Push(std::move(command));
+}
+
+void DuplicateSelectedWithUndo(EditorContext& ctx)
+{
+    auto command = MakeDuplicateSelectedCommand(ctx);
+    if (command && ctx.undoStack != nullptr) ctx.undoStack->Push(std::move(command));
+}
+
+std::unique_ptr<ICommand> MakeRenameNodeCommand(EditorContext& ctx,
+                                                scene::EntityID id,
+                                                std::string newName,
+                                                const char* label,
+                                                bool applyNow)
+{
+    if (!ctx.activeScene || newName.empty()) return nullptr;
+    scene::GameObject* go = ctx.activeScene->GetGameObject(id);
+    if (go == nullptr || go->name == newName) return nullptr;
+
+    // ポインタではなく EntityID を捕捉して毎回引き直す。
+    // WHY: Undo/Redo の途中でシーンが差し替わっても対象を取り違えず、
+    //      解放後参照にもならない。
+    scene::Scene* scene = ctx.activeScene;
+    const auto markDirty = ctx.markSceneDirty;
+    const std::string oldName = go->name;
+
+    if (applyNow) {
+        go->name = newName;
+        if (markDirty) markDirty();
+    }
+
+    return std::make_unique<LambdaCommand>(
+        label,
+        [scene, id, newName, markDirty]() {
+            if (auto* g = scene->GetGameObject(id)) g->name = newName;
+            if (markDirty) markDirty();
+        },
+        [scene, id, oldName, markDirty]() {
+            if (auto* g = scene->GetGameObject(id)) g->name = oldName;
+            if (markDirty) markDirty();
+        });
 }
 
 void CopySelectedToClipboard(EditorContext& ctx)
@@ -202,12 +246,12 @@ bool HasGameObjectClipboard()
     return !g_gameObjectClipboardRoots.empty();
 }
 
-void PasteClipboardWithUndo(EditorContext& ctx, scene::EntityID parentId)
+std::unique_ptr<ICommand> MakePasteClipboardCommand(EditorContext& ctx, scene::EntityID parentId)
 {
-    if (!ctx.activeScene || g_gameObjectClipboardRoots.empty()) return;
+    if (!ctx.activeScene || g_gameObjectClipboardRoots.empty()) return nullptr;
 
     const std::vector<scene::EntityID> roots = g_gameObjectClipboardRoots;
-    ExecuteSceneEditWithUndo(ctx, "Paste GameObjects", [&ctx, parentId, roots]() {
+    return MakeSceneEditCommand(ctx, "Paste GameObjects", [&ctx, parentId, roots]() {
         std::vector<scene::EntityID> pastedIds;
         for (scene::EntityID sourceRootId : roots) {
             auto* sourceRoot = g_gameObjectClipboard.GetGameObject(sourceRootId);
@@ -220,8 +264,14 @@ void PasteClipboardWithUndo(EditorContext& ctx, scene::EntityID parentId)
         }
 
         if (!pastedIds.empty())
-            ctx.selectedEntities = pastedIds;
+            SelectEntities(ctx, pastedIds);
     });
+}
+
+void PasteClipboardWithUndo(EditorContext& ctx, scene::EntityID parentId)
+{
+    auto command = MakePasteClipboardCommand(ctx, parentId);
+    if (command && ctx.undoStack != nullptr) ctx.undoStack->Push(std::move(command));
 }
 
 namespace {
@@ -268,11 +318,12 @@ void ComputeGameObjectBounds(scene::GameObject& go,
     }
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-        // 1 GameObject = モデル全体なので、全 submesh の境界球を合成する。
+        // この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
         // 非表示スロットの submesh は描画されないので境界にも含めない。
+        // i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
-        for (size_t i = 0; i < smr->model->meshes.size(); ++i) {
-            const auto& meshPtr = smr->model->meshes[i];
+        for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
+            const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
             if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
             if (mat && !mat->SlotAt(i).visible) continue;
             const math::Vector3 c = worldPoint(meshPtr->boundsCenter);

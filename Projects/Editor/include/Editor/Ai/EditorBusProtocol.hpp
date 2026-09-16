@@ -1,10 +1,11 @@
-// FBZZ Engine
-// EditorBusProtocol.hpp | fbzz::editor::ai
-// Editor Command Bus の wire 契約 (envelope) を C++ 側にミラーする。
-//
-// TypeScript 側 (Projects/EditorMcp/src/editorContracts.ts) と一字一句そろえることが唯一の真実。
-// 要求は NDJSON の EditorBusRequest {protocol,id,kind,payload,dryRun,source}、
-// 応答は EditorBusResponse {protocol,id,ok,result?,error?}。payload の判別子は "t"。
+/// @file    EditorBusProtocol.hpp
+/// @brief   Editor Command Bus の wire 契約 (envelope) を C++ 側にミラーする。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// TypeScript 側 (Projects/EditorMcp/src/editorContracts.ts) と一字一句そろえることが唯一の真実。
+/// 要求は NDJSON の EditorBusRequest {protocol,id,kind,payload,dryRun,source}、
+/// 応答は EditorBusResponse {protocol,id,ok,result?,error?}。payload の判別子は "t"。
 #pragma once
 #include <Editor/Ai/Json.hpp>
 #include <optional>

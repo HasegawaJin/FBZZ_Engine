@@ -1,13 +1,16 @@
-// FBZZ Engine
-// EditorApp_Shortcuts.cpp | fbzz::editor
-// ショートカット一覧オーバーレイ (F1) と選択ヒストリ (Alt+←/→)
-//
-// WHY: ホットキーは HotkeyManager が保持しているのに一覧で見る手段が無く、発見性が低かった。
-//      また階層で選び直す手間を減らすため、直近の選択を往復できる履歴を用意する。
-//      どちらも「操作の見通しを良くする」横断的 UX 改善であり、1 ファイルにまとめる。
+/// @file    EditorApp_Shortcuts.cpp
+/// @brief   ショートカット一覧オーバーレイ (F1) と選択ヒストリ (Alt+←/→)。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// WHY: ホットキーは HotkeyManager が保持しているのに一覧で見る手段が無く、発見性が低かった。
+/// また階層で選び直す手間を減らすため、直近の選択を往復できる履歴を用意する。
+/// どちらも「操作の見通しを良くする」横断的 UX 改善であり、1 ファイルにまとめる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
+#include <Editor/Util/Localization.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <imgui.h>
 #include <string>
@@ -51,7 +54,7 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
             HotkeyCategory::File,      HotkeyCategory::Edit,
             HotkeyCategory::Selection, HotkeyCategory::Viewport,
             HotkeyCategory::Gizmo,     HotkeyCategory::Play,
-            HotkeyCategory::Panels,
+            HotkeyCategory::Panels,    HotkeyCategory::Tools,
         };
 
         const auto& hotkeys = ctx.hotkeyManager->GetHotkeys();
@@ -78,8 +81,11 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
 
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                if (active) ImGui::TextUnformatted(hk.name.c_str());
-                else        ImGui::TextDisabled("%s", hk.name.c_str());
+                // 一覧の名前は operator の label と同じ出所なので、メニューと同じ訳を出す
+                // (片方だけ日本語だと «同じ操作» に見えなくなる)。
+                const char* shownName = LOCT(hk.name.c_str());
+                if (active) ImGui::TextUnformatted(shownName);
+                else        ImGui::TextDisabled("%s", shownName);
 
                 ImGui::TableSetColumnIndex(1);
                 const std::string binding = HotkeyManager::FormatBinding(hk);
@@ -138,7 +144,7 @@ void EditorApp::NavigateSelectionHistory(int dir)
         const scene::EntityID id = m_selectionHistory[idx];
         if (m_ctx.activeScene->GetGameObject(id)) {
             m_selectionHistoryIndex = idx;
-            m_ctx.selectedEntities  = { id };
+            SelectEntity(m_ctx, id);
             m_selectionNavigating   = true; // この選択は履歴へ再記録しない
             m_lastRecordedSelection = id;
             return;

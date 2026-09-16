@@ -1,6 +1,7 @@
-// FBZZ Engine
-// StatusBar.cpp | fbzz::editor
-// DockSpaceHost の画面下端でインライン描画される情報バー
+/// @file    StatusBar.cpp
+/// @brief   DockSpaceHost の画面下端でインライン描画される情報バー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -10,8 +11,6 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
@@ -21,11 +20,38 @@
 namespace fbzz::editor {
 
 namespace {
+constexpr float      kSnapFieldWidth   = 48.0f;
+constexpr const char* kSnapAxisLabels[] = { "Pos", "Rot", "Scl" };
+
 void Sep()
 {
     ImGui::SameLine();
     ImGui::TextDisabled(" | ");
     ImGui::SameLine();
+}
+
+float SepWidth()
+{
+    return ImGui::GetStyle().ItemSpacing.x * 2.0f + ImGui::CalcTextSize(" | ").x;
+}
+
+float SnapToggleWidth()
+{
+    return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize("Snap").x;
+}
+
+float SnapFieldsWidth()
+{
+    float w = 0.0f;
+    for (const char* label : kSnapAxisLabels)
+        w += 4.0f + ImGui::CalcTextSize(label).x + 2.0f + kSnapFieldWidth;
+    return w;
+}
+
+// 直前に描いた項目の右端 (ウィンドウローカル X)。バーは 1 行なので、これが次の項目の開始位置になる。
+float LastItemEndX()
+{
+    return ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
 }
 
 } // namespace
@@ -70,7 +96,58 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 
-    ImGui::SetCursorPosY((barH - ImGui::GetTextLineHeight()) * 0.5f);
+    // WHY: 行の基準をテキストではなく枠付きウィジェット (Checkbox / DragFloat) の高さに合わせる。
+    //      テキスト基準のままだと枠の下端がバー = ウィンドウ下端をはみ出して切れる。
+    //      AlignTextToFramePadding でテキスト側をこの行に合わせ直すので、文字の位置は変わらない。
+    const float rowY = (barH - ImGui::GetFrameHeight()) * 0.5f;
+    ImGui::SetCursorPosY(rowY);
+    ImGui::AlignTextToFramePadding();
+
+    // 右端に置く内容を描画前に決めておく。
+    // WHY: 左から流し込む情報をどこで打ち切るかは、右端領域と Snap 群の幅が確定しないと判定できない。
+    //      判定しないままだと、ウィンドウが狭いときに Snap のチェックボックスと入力欄が外へ押し出される。
+    const float pbW       = 180.0f;
+    const auto& hrs       = ctx.hotReloadState;
+    const bool  compiling = (hrs == EditorContext::HotReloadState::Compiling);
+    const bool  reloading = (hrs == EditorContext::HotReloadState::Reloading);
+    const bool  completed = (hrs == EditorContext::HotReloadState::Done && ctx.hotReloadProgress >= 1.0f);
+
+    const bool showProgress = compiling || reloading || completed;
+
+    // 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
+    // ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
+    const BuildRecord* latest       = ctx.buildConsole ? ctx.buildConsole->Latest() : nullptr;
+    const char*        reloadText   = nullptr;
+    ImVec4             reloadColor  = EditorTheme::Color(ThemeColor::Text);
+    char               summary[160] = {};
+    if (!showProgress) {
+        if (!m_message.empty()) {
+            // 一時的な操作メッセージ (保存など) を最優先で表示する。
+            reloadText  = m_message.c_str();
+            reloadColor = EditorTheme::Color(ThemeColor::Info);
+        } else if (latest && latest->result == BuildRecord::Result::Failed) {
+            std::snprintf(summary, sizeof(summary), "Build failed  %d error(s)  %s",
+                          latest->errorCount, latest->startClock.c_str());
+            reloadText  = summary;
+            reloadColor = EditorTheme::Color(ThemeColor::Danger);
+        } else if (latest && latest->result == BuildRecord::Result::Success) {
+            const char* kind = latest->kind == BuildRecord::Kind::Script ? "Scripts" : "HLSL";
+            if (latest->warnCount > 0)
+                std::snprintf(summary, sizeof(summary), "%s OK  %dW  %s (%.1fs)",
+                              kind, latest->warnCount, latest->startClock.c_str(), latest->durationSec);
+            else
+                std::snprintf(summary, sizeof(summary), "%s OK  %s (%.1fs)",
+                              kind, latest->startClock.c_str(), latest->durationSec);
+            reloadText  = summary;
+            reloadColor = EditorTheme::Color(ThemeColor::Success);
+        }
+    }
+
+    const float windowW    = ImGui::GetWindowWidth();
+    const float rightW     = showProgress ? (pbW + 4.0f)
+                                          : (reloadText ? ImGui::CalcTextSize(reloadText).x + 8.0f : 0.0f);
+    const float snapW      = SepWidth() + SnapToggleWidth() + (ctx.snapEnabled ? SnapFieldsWidth() : 0.0f);
+    const float leftBudget = windowW - rightW - snapW;
 
     // ── 下端ドロワー ──────────────────────────────────────────────────
     DrawDrawerToggle("Asset Browser", assetBrowserVisible, "Asset Browser");
@@ -104,6 +181,17 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         ? "Untitled"
         : util::FileSystem::GetFilename(ctx.currentScenePath);
     ImGui::Text("Scene: %s", sceneName.c_str());
+    // Play 中に LoadScene で移った先は「今走っているシーン」であって編集対象ではない。
+    // 名前を並べておかないと、遷移したこと自体が画面のどこにも出ない。
+    if (!ctx.playSceneName.empty()) {
+        ImGui::SameLine(0.0f, 4.0f);
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Success), "\xE2\x96\xB6 %s",
+                           ctx.playSceneName.c_str());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Running scene (loaded during play) \xe2\x80\x94 "
+                              "saving still targets %s, so it is refused until you stop",
+                              sceneName.c_str());
+    }
     if (ctx.sceneDirty) {
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "\xE2\x97\x8F"); // ● 未保存
@@ -120,28 +208,42 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     Sep();
     ImGui::Text("FPS: %.1f  (%.2f ms)", m_fps, ms);
 
+    // 選択名は長さが読めないため先に測り、シーン統計やカメラ座標より優先で場所を確保する。
+    const char* selName = "None";
+    if (auto* go = ctx.GetSelectedGO())
+        selName = go->name.c_str();
+    char selText[160];
+    std::snprintf(selText, sizeof(selText), "Sel: %s", selName);
+    const float selW = SepWidth() + ImGui::CalcTextSize(selText).x;
+
+    // 残り幅に入らない項目は落とす。reserved は「この項目より優先する後続項目」の幅。
+    auto DrawIfFits = [leftBudget](const char* text, float reserved) {
+        if (LastItemEndX() + SepWidth() + ImGui::CalcTextSize(text).x + reserved > leftBudget)
+            return;
+        Sep();
+        ImGui::TextUnformatted(text);
+    };
+
     // ── シーン統計 ────────────────────────────────────────────────────
     if (ctx.activeScene) {
         const int objCount   = static_cast<int>(ctx.activeScene->GameObjectCount());
         const int meshCount  = static_cast<int>(ctx.activeScene->GetComponents<scene::MeshRenderer>().size());
         const int lightCount = static_cast<int>(ctx.activeScene->GetComponents<scene::LightComponent>().size());
-        Sep();
-        ImGui::Text("Obj: %d  Mesh: %d  Light: %d", objCount, meshCount, lightCount);
+        char stats[96];
+        std::snprintf(stats, sizeof(stats), "Obj: %d  Mesh: %d  Light: %d", objCount, meshCount, lightCount);
+        DrawIfFits(stats, selW);
     }
 
     // ── カメラ座標 ────────────────────────────────────────────────────
     if (ctx.editorCamera) {
         const auto& p = ctx.editorCamera->m_position;
-        Sep();
-        ImGui::Text("Cam: (%.1f, %.1f, %.1f)", p.x, p.y, p.z);
+        char cam[64];
+        std::snprintf(cam, sizeof(cam), "Cam: (%.1f, %.1f, %.1f)", p.x, p.y, p.z);
+        DrawIfFits(cam, selW);
     }
 
     // ── 選択オブジェクト ──────────────────────────────────────────────
-    Sep();
-    const char* selName = "None";
-    if (auto* go = ctx.GetSelectedGO())
-        selName = go->name.c_str();
-    ImGui::Text("Sel: %s", selName);
+    DrawIfFits(selText, 0.0f);
 
     // ── スナップ設定 ──────────────────────────────────────────────────
     Sep();
@@ -152,12 +254,14 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     ImGui::PopStyleColor();
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Toggle gizmo snapping\nRight-click each value for presets");
-    if (ctx.snapEnabled) {
+    // 左側を削っても入力欄 3 つ分が残らない極端な幅では、チェックボックスだけ残す。
+    const bool roomForSnapFields = (windowW - rightW - LastItemEndX()) >= SnapFieldsWidth();
+    if (ctx.snapEnabled && roomForSnapFields) {
         // Position
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextDisabled("Pos");
         ImGui::SameLine(0.0f, 2.0f);
-        ImGui::SetNextItemWidth(48.0f);
+        ImGui::SetNextItemWidth(kSnapFieldWidth);
         ImGui::DragFloat("##snap_pos", &ctx.snapPos, 0.01f, 0.001f, 1000.0f, "%.2f");
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Position snap (m)\nRight-click for presets");
         if (ImGui::BeginPopupContextItem("##snap_pos_ctx")) {
@@ -174,7 +278,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextDisabled("Rot");
         ImGui::SameLine(0.0f, 2.0f);
-        ImGui::SetNextItemWidth(48.0f);
+        ImGui::SetNextItemWidth(kSnapFieldWidth);
         ImGui::DragFloat("##snap_rot", &ctx.snapRot, 0.5f, 0.1f, 180.0f, "%.1f\xc2\xb0");
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Rotation snap (degrees)\nRight-click for presets");
         if (ImGui::BeginPopupContextItem("##snap_rot_ctx")) {
@@ -191,7 +295,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextDisabled("Scl");
         ImGui::SameLine(0.0f, 2.0f);
-        ImGui::SetNextItemWidth(48.0f);
+        ImGui::SetNextItemWidth(kSnapFieldWidth);
         ImGui::DragFloat("##snap_scale", &ctx.snapScale, 0.01f, 0.001f, 100.0f, "%.2f");
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Scale snap\nRight-click for presets");
         if (ImGui::BeginPopupContextItem("##snap_scale_ctx")) {
@@ -206,29 +310,15 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         }
     }
 
-    // ── ホットリロード / Detail Bake 状態（右端）─────────────────────
+    // ── ホットリロード状態（右端）─────────────────────────────────────
     {
-        const float pbW    = 180.0f;
-        const float rightX = ImGui::GetWindowWidth() - pbW - 4.0f;
-        const float t      = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
+        const float rightX = windowW - pbW - 4.0f;
+        const float pbH    = barH - 4.0f;
+        const float pbY    = (barH - pbH) * 0.5f;
 
-        const auto& hrs      = ctx.hotReloadState;
-        const bool compiling = (hrs == EditorContext::HotReloadState::Compiling);
-        const bool reloading = (hrs == EditorContext::HotReloadState::Reloading);
-        const bool completed = (hrs == EditorContext::HotReloadState::Done && ctx.hotReloadProgress >= 1.0f);
-
-        bool detailBaking = false;
-        if (!compiling && !reloading && ctx.activeScene) {
-            for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::TerrainDetailComponent>()) {
-                auto* tdc     = ctx.activeScene->GetComponent<scene::TerrainDetailComponent>(eid);
-                auto* terrain = ctx.activeScene->GetComponent<scene::TerrainComponent>(eid);
-                if (tdc && terrain && tdc->enabled && !tdc->layers.empty()
-                    && terrain->enabled && !terrain->heightData.empty() && tdc->needsBake) {
-                    detailBaking = true;
-                    break;
-                }
-            }
-        }
+        // WHY: SameLine を挟まないと右端の内容が次の行 = バーの外へ落ちる。
+        //      行を保つことで、テキストは AlignTextToFramePadding の基準線に乗ったままになる。
+        ImGui::SameLine(0.0f, 0.0f);
 
         if (compiling || reloading || completed) {
             const char* label = compiling
@@ -239,11 +329,15 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
                 : (compiling ? EditorTheme::Color(ThemeColor::Warning)
                              : EditorTheme::Color(ThemeColor::Info));
             if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);
-            ImGui::SetCursorPosY(1.0f);
+            ImGui::SetCursorPosY(pbY);
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
             ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
+            // 進捗が取れないときは掃引アニメーションで「動いている」ことだけ示す。
+            // WHY ここで作るか: 以前は Detail Bake のバーと共用していて外側に置いていたが、
+            //     そちらが無くなったので、唯一の使い手であるこのブロックへ寄せる。
             const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
-            const float progress    = hasProgress ? ctx.hotReloadProgress : t;
+            const float sweep       = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
+            const float progress    = hasProgress ? ctx.hotReloadProgress : sweep;
             // コンパイル中は現在コンパイル対象のファイル名を重畳し、擬似進捗を実感のある表示にする。
             const char* curFile = (compiling && ctx.buildConsole && !ctx.buildConsole->CurrentFile().empty())
                                       ? ctx.buildConsole->CurrentFile().c_str() : nullptr;
@@ -254,58 +348,20 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
                 std::snprintf(progressLabel, sizeof(progressLabel), "%s %.0f%%", label, progress * 100.0f);
             }
             const bool hasLabel = curFile || hasProgress;
-            ImGui::ProgressBar(progress, { pbW, barH - 4.0f }, hasLabel ? progressLabel : label);
+            ImGui::ProgressBar(progress, { pbW, pbH }, hasLabel ? progressLabel : label);
             // クリックで Build Output を開けるようにする。
             if (ImGui::IsItemClicked()) ctx.requestOpenBuildOutput = true;
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to open Build Output");
             ImGui::PopStyleColor(2);
-        } else if (detailBaking) {
-            if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);
-            ImGui::SetCursorPosY(1.0f);
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, EditorTheme::Color(ThemeColor::Success));
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
-            ImGui::ProgressBar(t, { pbW, barH - 4.0f }, "Baking Detail...");
-            ImGui::PopStyleColor(2);
-        } else {
-            // 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
-            // ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
-            const char* reloadText  = nullptr;
-            ImVec4      reloadColor = EditorTheme::Color(ThemeColor::Text);
-            char        summary[160] = {};
-
-            const BuildRecord* latest = ctx.buildConsole ? ctx.buildConsole->Latest() : nullptr;
-            if (!m_message.empty()) {
-                // 一時的な操作メッセージ (保存など) を最優先で表示する。
-                reloadText  = m_message.c_str();
-                reloadColor = EditorTheme::Color(ThemeColor::Info);
-            } else if (latest && latest->result == BuildRecord::Result::Failed) {
-                std::snprintf(summary, sizeof(summary), "Build failed  %d error(s)  %s",
-                              latest->errorCount, latest->startClock.c_str());
-                reloadText  = summary;
-                reloadColor = EditorTheme::Color(ThemeColor::Danger);
-            } else if (latest && latest->result == BuildRecord::Result::Success) {
-                const char* kind = latest->kind == BuildRecord::Kind::Script ? "Scripts" : "HLSL";
-                if (latest->warnCount > 0)
-                    std::snprintf(summary, sizeof(summary), "%s OK  %dW  %s (%.1fs)",
-                                  kind, latest->warnCount, latest->startClock.c_str(), latest->durationSec);
-                else
-                    std::snprintf(summary, sizeof(summary), "%s OK  %s (%.1fs)",
-                                  kind, latest->startClock.c_str(), latest->durationSec);
-                reloadText  = summary;
-                reloadColor = EditorTheme::Color(ThemeColor::Success);
-            }
-
-            if (reloadText) {
-                const float msgW = ImGui::CalcTextSize(reloadText).x + 8.0f;
-                const float rx   = ImGui::GetWindowWidth() - msgW;
-                if (rx > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rx);
-                ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
-                ImGui::TextUnformatted(reloadText);
-                ImGui::PopStyleColor();
-                // ビルド結果テキストのクリックで Build Output を開く。
-                if (latest && ImGui::IsItemClicked())  ctx.requestOpenBuildOutput = true;
-                if (latest && ImGui::IsItemHovered())  ImGui::SetTooltip("Click to open Build Output");
-            }
+        } else if (reloadText) {
+            const float rx = windowW - rightW;
+            if (rx > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rx);
+            ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
+            ImGui::TextUnformatted(reloadText);
+            ImGui::PopStyleColor();
+            // ビルド結果テキストのクリックで Build Output を開く。
+            if (latest && ImGui::IsItemClicked())  ctx.requestOpenBuildOutput = true;
+            if (latest && ImGui::IsItemHovered())  ImGui::SetTooltip("Click to open Build Output");
         }
     }
 

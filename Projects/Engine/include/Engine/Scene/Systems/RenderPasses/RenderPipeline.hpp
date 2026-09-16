@@ -1,19 +1,21 @@
-// FBZZ Engine
-// RenderPipeline.hpp | fbzz::scene
-// IRenderPass の登録と renderer::RenderGraph への変換を担う実行パイプライン
-// AddPass<T>() で型付きパスを、AddRawPass() でラムダ式パスをフレームごとに登録し、
-// Execute(ctx) が呼ばれた時点ですべてのパスを RenderGraph に組み込んで実行する。
-// 追加順が RenderGraph 上の優先度になる (依存関係が同一の場合のタイブレーク)。
-//
-// [TransientRTPool]
-// DeclareResource() で transient=true のリソースを宣言すると、Execute() 内で
-// Plan() → RebuildTransientPool() が走り、同一 aliasGroup のリソースが同一の
-// 物理 RT ハンドルを共有する。パスのコールバックからは ctx.getTransientRT(name) で
-// 確保済みハンドルを取得できる。
+/// @file    RenderPipeline.hpp
+/// @brief   IRenderPass の登録と renderer::RenderGraph への変換を担う実行パイプライン。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// AddPass<T>() で型付きパスを、AddRawPass() でラムダ式パスをフレームごとに登録し、
+/// Execute(ctx) が呼ばれた時点ですべてのパスを RenderGraph に組み込んで実行する。
+/// 追加順が RenderGraph 上の優先度になる (依存関係が同一の場合のタイブレーク)。
+///
+/// リソースの実体はまだ ViewRenderTargets が持つ。パスは名前で引き
+/// (PassResources::Target / Texture)、名前 → 実体の対応は RenderPassContext の
+/// 登録簿が持つ。DeclareResource は依存解析と寿命解析のための申告で、
+/// 実体の確保は伴わない。
 #pragma once
 #include "IRenderPass.hpp"
 #include <Engine/Renderer/RenderGraph.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -27,6 +29,58 @@ namespace fbzz::renderer { class ResourceManager; }
 namespace fbzz::scene {
 
 struct RenderPassContext;
+class RenderPassCapture;
+
+/// 既存のラムダ式パスを新しい IRenderPass 契約へ載せるアダプタ。
+///
+/// WHY 生ラムダを残すか: 契約を 1 つに保ったまま切り替えるため。56 本のパス本体を
+///     同時に書き換えると、途中でビルドが通らずゴールデンも撮れない。名前と申告は
+///     登録時に確定しているので、それをそのまま Setup から流せば «新契約の 1 実装»
+///     として成立する。本体は順次 res.Target(...) へ移していけばよい。
+class LambdaPass final : public IRenderPass {
+public:
+    /// 申告した名前から実体を引く本体。移行の済んだパスはこちらを使う。
+    using PassFn = std::function<void(PassResources&)>;
+
+    LambdaPass(std::string_view name,
+               std::vector<renderer::RenderGraph::ResourceAccess> accesses,
+               PassFn fn,
+               bool allowCulling)
+        : m_name(name), m_accesses(std::move(accesses)),
+          m_fn(std::move(fn)), m_allowCulling(allowCulling) {}
+
+    /// 旧来の «引数なし» 本体。ctx.handles を直接触るパスがまだ多いので受け皿を残す。
+    LambdaPass(std::string_view name,
+               std::vector<renderer::RenderGraph::ResourceAccess> accesses,
+               renderer::RenderGraph::ExecuteFn fn,
+               bool allowCulling)
+        : LambdaPass(name, std::move(accesses),
+                     PassFn{ [fn = std::move(fn)](PassResources&) { fn(); } }, allowCulling) {}
+
+    std::string_view Name() const override { return m_name; }
+
+    void Setup(PassBuilder& builder, const RenderPassContext&) const override
+    {
+        for (const auto& access : m_accesses) {
+            switch (access.usage) {
+            case renderer::RenderGraph::ResourceUsage::Read:      builder.Read(access.name); break;
+            case renderer::RenderGraph::ResourceUsage::Write:     builder.Write(access.name); break;
+            case renderer::RenderGraph::ResourceUsage::ReadWrite: builder.ReadWrite(access.name); break;
+            }
+        }
+    }
+
+    bool IsEnabled(const RenderPassContext&) const override { return static_cast<bool>(m_fn); }
+    bool AllowCulling() const override { return m_allowCulling; }
+
+    void Execute(PassResources& resources, RenderPassContext&) override { m_fn(resources); }
+
+private:
+    std::string                                        m_name;
+    std::vector<renderer::RenderGraph::ResourceAccess> m_accesses;
+    PassFn                                             m_fn;
+    bool                                               m_allowCulling = true;
+};
 
 class RenderPipeline {
 public:
@@ -39,9 +93,7 @@ public:
     template<typename T, typename... Args>
     void AddPass(Args&&... args)
     {
-        Entry e;
-        e.pass = std::make_unique<T>(std::forward<Args>(args)...);
-        m_entries.push_back(std::move(e));
+        m_entries.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     }
 
     // ラムダ式パス (reads + writes を initializer_list<string_view> で指定)
@@ -63,6 +115,19 @@ public:
                     renderer::RenderGraph::ExecuteFn fn,
                     bool allowCulling = true);
 
+    // --- PassResources を受け取る版 (移行の済んだパス) ---
+    // 引数なしのラムダはこちらへは解決しない (invocable でないため) ので曖昧にならない。
+    void AddRawPass(std::string_view name,
+                    std::initializer_list<std::string_view> reads,
+                    std::initializer_list<std::string_view> writes,
+                    LambdaPass::PassFn fn,
+                    bool allowCulling = true);
+
+    void AddRawPass(std::string_view name,
+                    std::initializer_list<renderer::RenderGraph::ResourceAccess> accesses,
+                    LambdaPass::PassFn fn,
+                    bool allowCulling = true);
+
     void DeclareResource(std::string_view name, renderer::RenderGraph::ResourceDesc desc);
     void SetOutputs(std::initializer_list<std::string_view> outputs);
     void SetGpuProfilerHooks(std::function<void(std::string_view)> begin,
@@ -70,53 +135,51 @@ public:
 
     // 登録されたすべてのパスを RenderGraph に組み込んで実行する。
     // IsEnabled が false のパスはスキップされる。
-    bool Execute(RenderPassContext& ctx);
+    bool Execute(RenderPassContext& ctx, RenderPassCapture* capture = nullptr);
 
     const renderer::RenderGraph::ExecutionReport& LastReport() const { return m_lastReport; }
 
-    // トランジェントリソース名からプールされた RT ハンドルを返す。
-    // WHY: パスのコールバック内で ctx.getTransientRT(name) を通じて呼ばれる。
-    //      DeclareResource で transient=true と宣言されたリソースのみ有効。
-    renderer::ResourceHandle<renderer::RenderTargetTag> GetTransientRT(std::string_view name) const;
+    // 直近に Plan をやり直したときの構成テキスト (RenderGraph::DescribeLastPlan)。
+    // 毎フレームは作らない — トポロジが変わったフレームだけ更新する。
+    // 差分を取れば «絵は同じだが実行順が変わった» を捕まえられる。
+    const std::string& LastPlanDescription() const { return m_lastPlanDescription; }
 
-    // 保持中のトランジェント RT を ResourceManager へ返し、次回 Execute で再構築する。
-    // WHAT: Viewport のリサイズなど、物理 RT を直ちに破棄すべき境界で呼び出す。
-    void ReleaseTransientPool(renderer::ResourceManager& resources);
+    // 保持している GPU リソースを ResourceManager へ返す。
+    // WHAT: Viewport のリサイズなど、実体を直ちに破棄すべき境界で呼び出す。
+    void ReleaseViewResources(renderer::ResourceManager& resources);
 
 private:
-    struct Entry {
-        std::unique_ptr<IRenderPass> pass;  // 型付きパス (null = raw pass)
-        // raw pass 専用フィールド
-        std::string name;
+    // 契約は 1 つ。ラムダ式パスも LambdaPass として同じ列に並ぶ。
+    using Entry = std::unique_ptr<IRenderPass>;
+
+    // Setup が返した申告。グラフへ渡すラムダが参照で掴むので、Execute の間ずっと
+    // 生きている場所へ置く。添字は m_entries と揃える。
+    struct PassSetup {
         std::vector<renderer::RenderGraph::ResourceAccess> accesses;
-        renderer::RenderGraph::ExecuteFn fn;
-        bool allowCulling = true;
+        std::string                                        autoTarget;
     };
+    std::vector<PassSetup> m_setups;
 
-    // TransientRTPool: aliasGroup ごとに物理 RT を 1 つ確保し、同グループのリソースで共有する。
-    // WHY: RenderGraph の AnalyzeLifetimes() が算出したエイリアスグループを実際の RT 割り当てに
-    //      反映することで、ライフタイムが重ならない中間 RT のメモリを節約できる。
-    //      例: bloomHalf と ssaoRaw がエイリアスグループ 0 なら 1 つの RT バッファを使い回す。
-    struct PooledRT {
-        renderer::ResourceHandle<renderer::RenderTargetTag> handle;
-        renderer::RenderGraph::ResourceDesc                 desc;
-    };
-    // aliasGroup (-1 = 非エイリアス) → 物理 RT
-    std::unordered_map<int, PooledRT>        m_aliasGroupPool;
-    // リソース名 → aliasGroup (GetTransientRT の高速引き当て用)
-    std::unordered_map<std::string, int>     m_nameToAliasGroup;
-    bool                                     m_poolDirty = true;
-
-    // 直前の Plan() 結果を使ってトランジェント RT プールを再構築する。
-    // WHY: 毎フレーム呼ぶとアロケーションが走るため、m_poolDirty フラグで
-    //      パイプライン構成変更時のみ再構築するように制御する。
-    void RebuildTransientPool(const renderer::RenderGraph::ExecutionReport& report,
-                              renderer::ResourceManager& resources);
+    // NOTE: ここには «aliasGroup ごとに物理リソースを確保して貸し回す» プールがあった。
+    //
+    // WHY 消したか: 貸出先が 1 つも無いまま、alias グループの数だけ実体を確保していた。
+    //     実測 (Artifacts/RenderGraph の構成テキスト) では、トランジェント 7 個が
+    //     7 グループに分かれて «1 枚も共有できていない» 状態で、それでも 7 枚ぶんの
+    //     VRAM (1 ビュー約 34MB) を握っていた。節約ゼロで消費だけがある状態だったので、
+    //     使う当てができるまで確保しない。
+    //
+    //     寿命とエイリアスグループの解析そのものは RenderGraph::AnalyzeLifetimes に
+    //     残っている (構成テキストの alias= がそれ)。パスが増えて寿命が分かれたら、
+    //     まず構成テキストで «何枚浮くか» を測ってから作り直すこと。
 
     std::vector<Entry> m_entries;
     std::vector<std::pair<std::string, renderer::RenderGraph::ResourceDesc>> m_resources;
     std::vector<std::string> m_outputs;
     renderer::RenderGraph::ExecutionReport m_lastReport;
+    std::string m_lastPlanDescription;
+
+    // 束縛毒用の 1x1 RT (RenderBindingGuard)。診断を立てたときだけ確保する。
+    renderer::SizedRenderTarget m_bindingPoisonRT;
     std::function<void(std::string_view)> m_gpuBegin;
     std::function<void(std::string_view)> m_gpuEnd;
 

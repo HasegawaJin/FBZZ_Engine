@@ -119,7 +119,7 @@ tag = 'Player'
     clipIndex = 0
     clipName = ''
     clipSources = []
-    controllerPath = 'guid:8c176fc532594a07803663194ce4f99a'
+    controllerPath = 'Assets/Animation/Player.animcontroller'
     defaultStateName = 'Locomotion'
     enabled = true
     loop = true
@@ -206,7 +206,7 @@ tag = 'Player'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'guid:ee2af3191ea243a298c0b8a6d217bd32'
+                sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim'
                 speed = 1.0
                 threshold = 0.0
 
@@ -216,7 +216,7 @@ tag = 'Player'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'guid:a284341d60c147e49acb66926e5742b6'
+                sourcePath = 'Assets/Models/DebugCharacter/Walking/anims/Walking@mixamo.com.anim'
                 speed = 1.0
                 threshold = 4.0
 
@@ -226,7 +226,7 @@ tag = 'Player'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'guid:5344d10b0b1d4204aa3ab8950cb0c9c3'
+                sourcePath = 'Assets/Models/DebugCharacter/Running/anims/Running@mixamo.com.anim'
                 speed = 1.0
                 threshold = 7.2
 
@@ -243,7 +243,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'JumpUp'
-        sourcePath = 'guid:eb9b47457d9d43ec83a295997ea27f8e'
+        sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/anims/JumpingUp@mixamo.com.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -277,7 +277,7 @@ tag = 'Player'
         loop = true
         mode = 0
         name = 'Fall'
-        sourcePath = 'guid:379f4a3bca874dd7846ab9b26389d612'
+        sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/anims/FallingIdle@mixamo.com.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -311,7 +311,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'Landing'
-        sourcePath = 'guid:0cda3533845842879c13429243d57caf'
+        sourcePath = 'Assets/Models/DebugCharacter/Landing/anims/Landing@mixamo.com.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -604,12 +604,12 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:e971c5bf89664624982132d7ac1a7dc2'
+    material = 'Assets/Models/DebugCharacter/Player/materials/Alpha_Body_MAT.mat'
 
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
     meshIndex = 0
-    modelPath = 'guid:35470ae34f0742129a51e9ddfdd6f389'
+    modelPath = 'Assets/Models/DebugCharacter/Player.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -628,12 +628,12 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:526d64b673d145a18ca5a23ecb0e09e2'
+    material = 'Assets/Models/DebugCharacter/Player/materials/Alpha_Joints_MAT.mat'
 
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
     meshIndex = 1
-    modelPath = 'guid:35470ae34f0742129a51e9ddfdd6f389'
+    modelPath = 'Assets/Models/DebugCharacter/Player.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -2287,7 +2287,7 @@ tag = 'Untagged'
     enabled = true
     extentX = 1000.0
     extentZ = 1000.0
-    materialPath = 'guid:dfa812ae3e364cb786b06cb91a9cca24'
+    materialPath = 'Assets/Materials/Water/Ocean.mat'
     resolutionX = 64
     resolutionZ = 64
 
@@ -2344,12 +2344,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:d0e57201125485362002e9ae8e0ae471'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_0 3.terrain'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -2380,12 +2380,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:3778e70af28f37f9a4efc34c2bde66e0'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_0 4.terrain'
 
     [gameobjects.transform]
     position = [ 31.5, 0.0, 0.0 ]
@@ -2416,12 +2416,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:f635261a519082cef9919670a352380d'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_0 1.terrain'
 
     [gameobjects.transform]
     position = [ 63.0, 0.0, 0.0 ]
@@ -2452,12 +2452,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:79ba52aa0bacf34503c48bab2e762ea8'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_0 1.terrain'
 
     [gameobjects.transform]
     position = [ 94.5, 0.0, 0.0 ]
@@ -2488,12 +2488,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:f86319abdcd44bccaef197b0f54386b7'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_1 3.terrain'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 31.5 ]
@@ -2524,12 +2524,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:cc795648ba04d7ee23782f391cf82cc6'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_1 3.terrain'
 
     [gameobjects.transform]
     position = [ 31.5, 0.0, 31.5 ]
@@ -2560,12 +2560,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:26edacb470671223fd01d04e43fa209d'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_1 1.terrain'
 
     [gameobjects.transform]
     position = [ 63.0, 0.0, 31.5 ]
@@ -2596,12 +2596,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:ffa410f69033b7dd0d871fbcd11befb1'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_1 1.terrain'
 
     [gameobjects.transform]
     position = [ 94.5, 0.0, 31.5 ]
@@ -2632,12 +2632,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:41ebcec4e37ae781562f282f1bb833e1'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_2 1.terrain'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 63.0 ]
@@ -2668,12 +2668,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:acd2912ecc915bd6cfcff37237054125'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_2 1.terrain'
 
     [gameobjects.transform]
     position = [ 31.5, 0.0, 63.0 ]
@@ -2704,12 +2704,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:57b61652087976304f2324751bc9eb4a'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_2 1.terrain'
 
     [gameobjects.transform]
     position = [ 63.0, 0.0, 63.0 ]
@@ -2740,12 +2740,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:e99a24e2b7c14b0e481e44b1b87f358a'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_2 1.terrain'
 
     [gameobjects.transform]
     position = [ 94.5, 0.0, 63.0 ]
@@ -2776,12 +2776,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:4a41ecfbbee697c8a686a5db16fd34cb'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_3 1.terrain'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 94.5 ]
@@ -2812,12 +2812,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:e0235e1cca62dd0cc79b957464a09031'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_3 1.terrain'
 
     [gameobjects.transform]
     position = [ 31.5, 0.0, 94.5 ]
@@ -2848,12 +2848,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:6f56d384bc94f55a12b39027f760a7c9'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_3 1.terrain'
 
     [gameobjects.transform]
     position = [ 63.0, 0.0, 94.5 ]
@@ -2884,12 +2884,12 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'guid:a1bdf5ab32bc48a5a5f088240472a9ea',
-        'guid:f3d9c9b5ae544882b0e162e52635ec6d',
-        'guid:5559ff50c2554a348b0c65893cc8a252',
-        'guid:0e6ee26752ec42c48e9d837edf2ec747'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'guid:83e049e6e453eb94eb8ce6a3f16294cd'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_3 1.terrain'
 
     [gameobjects.transform]
     position = [ 94.5, 0.0, 94.5 ]

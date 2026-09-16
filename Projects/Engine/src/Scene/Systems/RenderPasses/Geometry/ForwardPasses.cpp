@@ -1,17 +1,18 @@
-// FBZZ Engine
-// RenderPasses/ForwardPasses.cpp | fbzz::scene
-// Forward パイプライン: 不透明 + 半透明の静的・スキンドメッシュ描画
-//
-// カリング戦略:
-//   1. Frustum Culling (フラスタムカリング)
-//      カメラ視錐台に交差しないバウンディング球を持つオブジェクトを除外する。
-//      Frustum::IntersectsSphere() で 6 平面テストを行う。
-//
-//   2. Software Occlusion Culling (ソフトウェアオクルージョンカリング)
-//      不透明静的オブジェクトを前から後ろ順にソートし、CPU 上の小型深度バッファで
-//      完全に隠蔽されているかどうかを判定する。
-//      スキンドメッシュはバインドポーズ球がアニメーション後の姿勢と乖離するため除外。
-//      半透明は深度書き込みを行わないためオクルージョンカリング対象外。
+/// @file    RenderPasses/ForwardPasses.cpp
+/// @brief   Forward パイプライン: 不透明 + 半透明の静的・スキンドメッシュ描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// カリング戦略:
+/// 1. Frustum Culling (フラスタムカリング)
+/// カメラ視錐台に交差しないバウンディング球を持つオブジェクトを除外する。
+/// Frustum::IntersectsSphere() で 6 平面テストを行う。
+///
+/// 2. Software Occlusion Culling (ソフトウェアオクルージョンカリング)
+/// 不透明静的オブジェクトを前から後ろ順にソートし、CPU 上の小型深度バッファで
+/// 完全に隠蔽されているかどうかを判定する。
+/// スキンドメッシュはバインドポーズ球がアニメーション後の姿勢と乖離するため除外。
+/// 半透明は深度書き込みを行わないためオクルージョンカリング対象外。
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -22,7 +23,6 @@
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
-#include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
 #include <vector>
@@ -84,28 +84,17 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     const auto& rs  = ctx.settings;
     const auto& cam = ctx.camera;
 
-    renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.Clear(kHdrClearColor);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
+    ClearForCamera(renderer, cam);
 
-    PerFrameCB frameData{};
-    frameData.view              = cam.GetViewMatrix();
-    frameData.projection        = cam.GetProjectionMatrix();
-    frameData.viewProjection    = cam.GetViewProjection();
-    frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
-    frameData.cameraPos         = cam.m_position;
-    frameData.nearZ             = cam.m_near;
-    frameData.farZ              = cam.m_far;
+    const PerFrameCB frameData = MakeCameraFrameCB(cam, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 
     UpdateShadowConstants(ctx);
+    UpdatePunctualShadowConstants(ctx);
 
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
-
-    const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
-    const auto& frustum       = *ctx.cameraFrustum;
+    const auto shadowDepthTex = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
 
     // =========================================================================
     // Phase 1: フラスタムカリング + ギャザー
@@ -128,11 +117,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
         ++ctx.statsTotalObjects;
 
-        // フラスタムカリング: バウンディング球が視錐台外なら除外
-        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) {
-            ++ctx.statsFrustumCulled;
-            continue;
-        }
+        // 距離 / 極小 / 錐台カリング。落ちた理由の統計は IsMeshVisible が加算する。
+        if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
         const float dx = go.transform.position.x - cam.m_position.x;
         const float dy = go.transform.position.y - cam.m_position.y;
@@ -149,6 +135,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             PerObjectCB objData{};
             objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+            objData.objectParams.x    = mr->lodDither;
 
             renderer::DrawCall dc;
             dc.vertexBuffer       = mr->mesh->vertexBuffer;
@@ -165,7 +152,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
-            BindClusterLighting(dc, ctx);
+            BindForwardShadingResources(dc, ctx);
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -185,10 +172,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!smr || !smr->enabled || !smr->lodVisible || !smr->model || !mat || !mat->EnsureMaterialAsset()) continue;
 
         ++ctx.statsTotalObjects;
-        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) {
-            ++ctx.statsFrustumCulled;
-            continue;
-        }
+        if (!IsSkinnedVisible(ctx, go, *smr)) continue;
 
         const float dx = go.transform.position.x - cam.m_position.x;
         const float dy = go.transform.position.y - cam.m_position.y;
@@ -199,9 +183,11 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         // 不透明キュー / 半透明キューへ振り分ける。
         // WHY: 1 モデル内に不透明ボディと半透明バイザーが混在するのが普通のため、
         //      オブジェクト単位で振り分けると片方が必ず誤ったキューへ入る。
-        const size_t meshCount = smr->model->meshes.size();
+        // mi は「この Renderer の中での」スロット番号。model->meshes の添字とは
+        // 一致しないことがあるため (submeshIndices)、メッシュは必ずアクセサから引く。
+        const size_t meshCount = smr->SubmeshCount();
         for (size_t mi = 0; mi < meshCount; ++mi) {
-            const auto& meshPtr = smr->model->meshes[mi];
+            renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
             if (!meshPtr) continue;
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
@@ -227,14 +213,16 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!skinnedShader.IsValid()) continue;
 
             PerObjectCB objData{};
+            // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
             objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+            objData.objectParams.x    = smr->lodDither;
             const auto skinCB = ResolveSkinningCB(
                 anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
                 smr->model, h.bindPoseSkinningCB);
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+            dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
@@ -249,7 +237,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             dc.constantBuffers[7] = skinCB;
-            BindClusterLighting(dc, ctx);
+            BindForwardShadingResources(dc, ctx);
             for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
                 if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -287,7 +275,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     // =========================================================================
     // Phase 3: オクルージョンカリング + 不透明描画
     // =========================================================================
-    if (ctx.occlusionCuller)
+    // カメラ側で Occlusion Culling を切っている場合はテストも遮蔽者登録も行わない。
+    const bool useOcclusion = ctx.occlusionCuller != nullptr && ctx.occlusionCullingEnabled;
+    if (useOcclusion)
         ctx.occlusionCuller->Reset(cam);
 
     // ── 不透明静的メッシュ ─────────────────────────────────────────────────────
@@ -300,15 +290,21 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!material || !material->shader.IsValid()) continue;
 
         // オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
-        const auto bounds = ComputeWorldBounds(go.transform, *mr->mesh);
-        if (ctx.occlusionCuller && !ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
-            ++ctx.statsOcclusionCulled;
-            continue;
+        if (useOcclusion) {
+            const auto bounds =
+                ComputeWorldBounds(go.transform, *mr->mesh, ctx.cullingBoundsPadding);
+            if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius,
+                                                    IsReliableOccluder(*mr->mesh))) {
+                ++ctx.statsOcclusionCulled;
+                continue;
+            }
         }
 
         PerObjectCB objData{};
+        // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = mr->lodDither;
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
@@ -326,7 +322,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[8] = h.advancedGraphicsCB;
-        BindClusterLighting(dc, ctx);
+        BindForwardShadingResources(dc, ctx);
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
@@ -346,7 +342,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* anim = entry.anim;
         const size_t mi = entry.meshIndex;
 
-        const auto& meshPtr = smr->model->meshes[mi];
+        renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
         if (!meshPtr) continue;
 
         auto& slot = mat->SlotAt(mi);
@@ -365,8 +361,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!skinnedShader.IsValid()) continue;
 
         PerObjectCB objData{};
+        // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = smr->lodDither;
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         const auto skinCB = ResolveSkinningCB(
@@ -374,7 +372,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             smr->model, h.bindPoseSkinningCB);
 
         renderer::DrawCall dc;
-        dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+        dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
         dc.indexBuffer        = meshPtr->indexBuffer;
         dc.indexCount         = meshPtr->indexCount;
         dc.vertexCount        = meshPtr->vertexCount;
@@ -387,8 +385,13 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[2] = drawMaterial->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
+        // b8: SkinnedPBR.hlsl は天候の濡れ (ApplyWetness) だけでなく iblIntensity /
+        //     screenAoStrength / pcssEnabled もここから読む。束縛しないと cbuffer は
+        //     全ゼロで読まれ、«不透明スキンドだけ IBL も濡れも乗らない» 状態になる。
+        //     同じパスの静的メッシュと半透明スキンドは渡していたので差が出ていた。
+        dc.constantBuffers[8] = h.advancedGraphicsCB;
         dc.constantBuffers[7] = skinCB;
-        BindClusterLighting(dc, ctx);
+        BindForwardShadingResources(dc, ctx);
         for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
             if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
         dc.textures[8] = shadowDepthTex;

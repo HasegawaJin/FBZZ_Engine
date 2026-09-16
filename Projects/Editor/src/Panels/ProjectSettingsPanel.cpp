@@ -1,15 +1,22 @@
-// FBZZ Engine
-// ProjectSettingsPanel.cpp | fbzz::editor
-// Project settings editor UI
+/// @file    ProjectSettingsPanel.cpp
+/// @brief   Project settings editor UI.
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Audio/AudioManager.hpp>
+#include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Gamepad.hpp>
 #include <Engine/Input/InputActionMap.hpp>
+#include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Renderer/PipelineDiagnostics.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -30,7 +37,10 @@ namespace fbzz::editor {
 
 namespace {
 
-constexpr float SIDEBAR_WIDTH = 180.0f;
+// セクション名の列。px 直値だと UI スケールを上げたときにも幅が変わらず、
+// 拡大したぶんだけ名前がはみ出す (日本語だと «アプリケーション» が最初に溢れる)。
+// 文字の大きさに追従させる。
+float SidebarWidth() { return ImGui::GetFontSize() * 11.0f; }
 
 bool SectionButton(const char* label, ProjectSettingsPanel::Section value, ProjectSettingsPanel::Section& current)
 {
@@ -113,23 +123,26 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 
 void ProjectSettingsPanel::DrawSidebar()
 {
-    ImGui::BeginChild("##ProjectSettingsSidebar", { SIDEBAR_WIDTH, 0.0f }, true);
+    ImGui::BeginChild("##ProjectSettingsSidebar", { SidebarWidth(), 0.0f }, true);
 
     // 検索バー — 入力文字列に部分一致するセクションのみ表示する。
     static char s_filter[64] = {};
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##search", "Search...", s_filter, sizeof(s_filter));
+    ImGui::InputTextWithHint("##search", LOCT("Search..."), s_filter, sizeof(s_filter));
     ImGui::Separator();
 
     // 空フィルター時は全表示、入力時は大文字小文字無視の部分一致フィルタリング。
     // keywords は「そのセクションに含まれるが名前には出てこない語」。
     // WHY 必要か: 項目を統合したことで "Screen" や "Bloom" のような
     //      旧項目名・内容語で引いたときに何も出なくなる。検索の当たりを維持する。
+    // 検索は原文と訳の両方に当てる。日本語表示中に "physics" で引けないと、
+    // 英語の資料を見ながら設定を探す使い方ができなくなる。
     auto btn = [&](const char* name, Section sec, const char* keywords = "") {
         const bool match = s_filter[0] == '\0'
             || util::StringUtils::ContainsCI(name, s_filter)
+            || util::StringUtils::ContainsCI(LOCT(name), s_filter)
             || (keywords[0] != '\0' && util::StringUtils::ContainsCI(keywords, s_filter));
-        if (match) SectionButton(name, sec, m_currentSection);
+        if (match) SectionButton(LOC(name), sec, m_currentSection);
     };
 
     btn("Application",    Section::Application,
@@ -141,6 +154,7 @@ void ProjectSettingsPanel::DrawSidebar()
     btn("Audio",          Section::Audio,   "volume bgm se 音量");
     btn("Tags & Layers",  Section::TagsAndLayers, "tag layer タグ レイヤー");
     btn("Import",         Section::Import,  "fbx preset model texture インポート");
+    btn("Editor",         Section::Editor,  "language english japanese 言語 日本語 表示");
 
     ImGui::EndChild();
 }
@@ -149,13 +163,14 @@ void ProjectSettingsPanel::DrawSection(EditorContext& ctx)
 {
     auto& settings = ctx.projectSettings;
     switch (m_currentSection) {
-    case Section::Application:   DrawApplication(settings); break;
-    case Section::Graphics:      DrawGraphics(settings.render); break;
+    case Section::Application:   DrawApplication(ctx, settings); break;
+    case Section::Graphics:      DrawGraphics(ctx, settings.render); break;
     case Section::Physics:       DrawPhysics(settings); break;
     case Section::Input:         DrawInput(ctx); break;
     case Section::Audio:         DrawAudio(settings); break;
     case Section::TagsAndLayers: DrawTagsAndLayers(settings); break;
     case Section::Import:        DrawImport(ctx); break;
+    case Section::Editor:        DrawEditor(ctx); break;
     }
 }
 
@@ -199,8 +214,16 @@ std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
             const auto& tbl = parsed.table();
             if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
                 p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
+            if (auto v = tbl["options"]["up_axis"].value<int64_t>())
+                p.options.upAxis = static_cast<FbxUpAxis>(*v);
             if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
                 p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
+            if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>())
+                p.options.unitScaleMultiplier = *v;
+            if (auto v = tbl["options"]["generate_normals"].value<bool>())
+                p.options.generateNormals = *v;
+            if (auto v = tbl["options"]["generate_tangents"].value<bool>())
+                p.options.generateTangents = *v;
             if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
                 p.options.generateTexDescriptors = *v;
             if (auto v = tbl["options"]["default_compression"].value<int64_t>())
@@ -235,6 +258,17 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
             if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3))
                 opt.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
         }
+        {
+            static constexpr const char* kAxisNames[] = { "Auto", "Y Up", "Z Up" };
+            int axisIdx = static_cast<int>(opt.upAxis);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo("Source Up Axis", &axisIdx, kAxisNames, 3))
+                opt.upAxis = static_cast<FbxUpAxis>(axisIdx);
+        }
+        ImGui::DragFloat("Unit Scale", &opt.unitScaleMultiplier, 0.01f, 0.001f, 100.0f, "%.3fx");
+        ImGui::Checkbox("Generate Normals", &opt.generateNormals);
+        ImGui::SameLine();
+        ImGui::Checkbox("Generate Tangents", &opt.generateTangents);
         {
             static constexpr const char* kConvNames[] = { "DirectX (keep G)", "OpenGL (flip G)" };
             int convIdx = static_cast<int>(opt.normalMapConvention);
@@ -295,9 +329,12 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
                     ImGui::TextUnformatted(p.name.c_str());
 
                     ImGui::TableSetColumnIndex(1);
-                    ImGui::TextDisabled("DCC=%s  Conv=%s  GenTex=%s",
+                    ImGui::TextDisabled("DCC=%s  Axis=%s  Scale=%.2f  Conv=%s  GenTex=%s",
                         p.options.sourceDcc == FbxSourceDcc::Blender ? "Blender" :
                         p.options.sourceDcc == FbxSourceDcc::Maya ? "Maya" : "Auto",
+                        p.options.upAxis == FbxUpAxis::ZUp ? "Z" :
+                        p.options.upAxis == FbxUpAxis::YUp ? "Y" : "Auto",
+                        p.options.unitScaleMultiplier,
                         p.options.normalMapConvention == NormalMapConvention::OpenGL ? "OpenGL" : "DirectX",
                         p.options.generateTexDescriptors ? "on" : "off");
 
@@ -353,7 +390,7 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
     }
 }
 
-void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
+void ProjectSettingsPanel::DrawApplication(EditorContext& ctx, ProjectSettings& settings)
 {
     ImGui::TextUnformatted("Application");
     ImGui::Separator();
@@ -383,9 +420,54 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
     ImGui::SeparatorText("Screen");
     ImGui::DragInt("Width",  &settings.screen.width,  1.0f, 1, 7680);
     ImGui::DragInt("Height", &settings.screen.height, 1.0f, 1, 4320);
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Cursor");
+    DrawCursor(ctx, settings.cursor);
 }
 
-void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
+void ProjectSettingsPanel::DrawCursor(EditorContext& ctx, CursorAppearance& cursor)
+{
+    // WHY 拘束モードがここに無いか: 拘束と表示は «その画面が今どう遊ばれているか» で
+    //     決まるもので、スクリプトが cursor.Push で名乗る。設定が持つのは差し替え可能な
+    //     «絵» だけ。以前は初期値としてここにも置いていたが、実行中の要求と同じ値を
+    //     共有していたため、Play 中にここを触るとスクリプトの要求が黙って消えていた。
+    ImGui::Checkbox("Hardware Cursor", &cursor.hardwareCursor);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("OS カーソルの絵を下の画像で差し替える。\n"
+                          "外すと常に既定の矢印になる (自前で UI に描く場合など)");
+
+    if (!cursor.hardwareCursor) ImGui::BeginDisabled();
+
+    for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+        const auto shape = static_cast<core::CursorShape>(i);
+        ImGui::PushID(static_cast<int>(i));
+        auto& entry = cursor.shapes[i];
+
+        widgets::AssetPathField(core::ToString(shape), entry.path,
+                                ".png,.tga,.bmp", ctx.projectRoot);
+        if (!entry.path.empty()) {
+            float hotspot[2] = { entry.hotspotX, entry.hotspotY };
+            if (ImGui::DragFloat2("Hotspot", hotspot, 1.0f, 0.0f, 4096.0f, "%.0f")) {
+                entry.hotspotX = hotspot[0];
+                entry.hotspotY = hotspot[1];
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("画像の左上から «実際に指す点» までの画素。\n"
+                                  "矢印なら先端、十字なら中心");
+        }
+        ImGui::PopID();
+    }
+
+    if (!cursor.hardwareCursor) ImGui::EndDisabled();
+
+    // WHY 編集中に反映しないか: 差し替え先はウィンドウクラスのカーソルで、Editor では
+    //     «エディタの窓全体» が対象になる。編集しながら適用すると、パネルの上でも
+    //     ゲームのカーソルが出てしまう。
+    ImGui::TextDisabled("画像は Play 開始時に読み込まれます");
+}
+
+void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render)
 {
     ImGui::TextUnformatted("Graphics");
     ImGui::Separator();
@@ -397,6 +479,9 @@ void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
     if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
         DrawRenderCore(render);
 
+    if (ImGui::CollapsingHeader("User Settings (preview)"))
+        DrawRenderUserSettings(ctx, render);
+
     if (ImGui::CollapsingHeader("Debug"))
         DrawRenderDebug(render);
 
@@ -404,6 +489,43 @@ void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
     ImGui::TextDisabled(
         "ポストプロセス / 高度グラフィクスは Post Process Volume で設定します。\n"
         "Hierarchy に Post Process Volume を追加し、Post Process Profile (.fzdata) を割り当ててください。");
+}
+
+// WHY 保存されない項目をここへ出すか:
+//     明るさと描画スケールは Option 画面がプレイヤー設定として持つ値で、
+//     プロジェクト設定には保存しない。ただし「効きを目で確かめる」手段が
+//     Play + スクリプトしか無いと、調整のたびに再生し直すことになる。
+//     保存されないことを明記したうえで、確認用のつまみだけ置く。
+void ProjectSettingsPanel::DrawRenderUserSettings(EditorContext& ctx,
+                                                  renderer::RenderSettings& render)
+{
+    ImGui::Indent();
+    ImGui::TextDisabled("Option 画面がプレイヤー設定として持つ値。ここでの変更は保存されません。");
+    ImGui::Spacing();
+
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::SliderFloat("Brightness", &render.userBrightness, 0.1f, 4.0f, "%.2f");
+
+    // WHY 描画スケールだけ直接書かないか: 値が変わるたびに中間 RT を作り直すため、
+    //     ドラッグ中ずっと 16 枚の再確保が走る。手を離した時点で 1 度だけ反映する。
+    if (!m_renderScaleDragging) m_renderScaleDraft = render.renderScale;
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::SliderFloat("Render Scale", &m_renderScaleDraft,
+                       renderer::kMinRenderScale, renderer::kMaxRenderScale, "%.2f");
+    m_renderScaleDragging = ImGui::IsItemActive();
+    if (ImGui::IsItemDeactivatedAfterEdit()) render.renderScale = m_renderScaleDraft;
+
+    // ドラッグ中は反映前の draft で予告する (何ピクセルになるかを見ながら決められる)。
+    uint32_t internalWidth = 0, internalHeight = 0;
+    renderer::ResolveRenderResolution(
+        static_cast<uint32_t>(std::max(ctx.viewportWidth, 1.0f)),
+        static_cast<uint32_t>(std::max(ctx.viewportHeight, 1.0f)),
+        m_renderScaleDraft, internalWidth, internalHeight);
+    ImGui::TextDisabled("Scene View: %.0fx%.0f -> %ux%u",
+                        ctx.viewportWidth, ctx.viewportHeight,
+                        internalWidth, internalHeight);
+
+    ImGui::Unindent();
 }
 
 void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
@@ -429,6 +551,30 @@ void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
         ImGui::EndCombo();
     }
     render.pipeline = static_cast<renderer::RenderingPipeline>(pipelineIdx);
+
+    // 「有効にしてあるのに、このパイプラインでは無視される設定」をその場で出す。
+    //
+    // WHY パイプラインの真下か: 原因は Pipeline の選択そのものなので、
+    //     効かない設定の側 (Post Process Volume) だけに出しても直し方が分からない。
+    //     選んだ直後に「これとこれが無効になります」と見えるのが一番短い導線になる。
+    if (const auto inert = renderer::CollectInertSettings(render); !inert.empty())
+    {
+        ImGui::Spacing();
+        const ImVec4 warn = EditorTheme::Color(ThemeColor::Warning);
+        ImGui::TextColored(warn, "Warning: このパイプラインで無効になる設定が %d 件あります",
+                           static_cast<int>(inert.size()));
+        ImGui::Indent();
+        for (const renderer::InertSetting& issue : inert)
+        {
+            ImGui::TextColored(warn, "%s", issue.label);
+            ImGui::Indent();
+            ImGui::TextDisabled("%s", issue.reason);
+            if (issue.remedy) ImGui::TextDisabled("→ %s", issue.remedy);
+            ImGui::Unindent();
+        }
+        ImGui::Unindent();
+        ImGui::Spacing();
+    }
 
     const bool clusteredPipeline = render.pipeline == renderer::RenderingPipeline::ForwardPlus
                                 || render.pipeline == renderer::RenderingPipeline::DeferredPlus;
@@ -591,23 +737,18 @@ void ProjectSettingsPanel::DrawRenderDebug(renderer::RenderSettings& render)
     ImGui::Checkbox("NavMesh",           &render.showNavMesh);
     ImGui::Checkbox("AI Sensors",        &render.showNavSensors);
     ImGui::SameLine();
+    ImGui::Checkbox("UI Rects",          &render.showUIRects);
+    ImGui::SameLine();
     ImGui::Checkbox("Decal Bounds",      &render.showDecalBounds);
     ImGui::SameLine();
     ImGui::Checkbox("Selection Outline", &render.showSelectionOutline);
 
     ImGui::Spacing();
     ImGui::SeparatorText("Debug");
-    ImGui::Checkbox("Pass Viewer", &render.passViewerEnabled);
+    ImGui::TextDisabled("Render Pass Viewer: Debug > Render Pass Viewer");
     ImGui::Checkbox("Particle Budget", &render.particleBudgetEnabled);
     if (render.particleBudgetEnabled)
         ImGui::DragInt("Particle Budget Count", &render.particleBudget, 100, 0, 1000000);
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(
-            "Shows RT thumbnails and CPU timings for each render pass\n"
-            "in the ImGui window \"Render Debug\".");
-    }
 
     ImGui::Spacing();
     ImGui::SeparatorText("Selection Outline");
@@ -632,6 +773,64 @@ void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)
     };
     if (ImGui::DragFloat3("Gravity", gravity, 0.05f, -1000.0f, 1000.0f))
         settings.physics.gravity = { gravity[0], gravity[1], gravity[2] };
+
+    DrawCollisionMatrix(settings);
+}
+
+void ProjectSettingsPanel::DrawCollisionMatrix(ProjectSettings& settings)
+{
+    ImGui::Spacing();
+    ImGui::SeparatorText(LOC("Layer Collision Matrix"));
+
+    // 名前の付いたレイヤーだけ並べる。32 本すべてを出すと 1024 マスになり、
+    // 実際に使っている数本を探せない。名前を付けることが «使う» の宣言になる。
+    std::vector<int> used;
+    for (int i = 0; i < 32; ++i)
+        if (i == Layer::Default ||
+            !settings.game.layerNames[static_cast<std::size_t>(i)].empty()) used.push_back(i);
+
+    if (used.size() < 2) {
+        ImGui::TextDisabled("%s", LOC("Name at least two layers in Tags & Layers to edit the matrix."));
+        return;
+    }
+
+    ImGui::TextDisabled("%s", LOC("Unchecked pairs never collide. Triggers are filtered too."));
+
+    // 行は «全レイヤー»、列は «自分より後ろのレイヤー» だけ。対称行列なので
+    // 全面を出すと同じ組が 2 回現れ、どちらを触ったのか分からなくなる。
+    if (ImGui::BeginTable("##collisionMatrix", static_cast<int>(used.size()) + 1,
+                          ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInner)) {
+        ImGui::TableSetupColumn("");
+        for (int column : used)
+            ImGui::TableSetupColumn(LayerLabel(settings, column).c_str());
+        ImGui::TableHeadersRow();
+
+        for (std::size_t row = 0; row < used.size(); ++row) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(LayerLabel(settings, used[row]).c_str());
+
+            for (std::size_t column = 0; column < used.size(); ++column) {
+                ImGui::TableNextColumn();
+                if (column < row) continue;   // 下三角は上三角と同じ組
+
+                const int a = used[row];
+                const int b = used[column];
+                bool collide = settings.physics.collisionMatrix.CanCollide(a, b);
+                ImGui::PushID(a * 32 + b);
+                if (ImGui::Checkbox("##pair", &collide))
+                    settings.physics.collisionMatrix.Set(a, b, collide);
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndTable();
+    }
+}
+
+std::string ProjectSettingsPanel::LayerLabel(const ProjectSettings& settings, int layer)
+{
+    const std::string& name = settings.game.layerNames[static_cast<std::size_t>(layer)];
+    return std::to_string(layer) + ": " + (name.empty() ? "Default" : name);
 }
 
 namespace {
@@ -965,8 +1164,179 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     ImGui::TextUnformatted("Audio");
     ImGui::Separator();
 
-    ImGui::SliderFloat("BGM Volume", &settings.audio.bgmVolume, 0.0f, 1.0f);
-    ImGui::SliderFloat("SE Volume", &settings.audio.seVolume, 0.0f, 1.0f);
+    bool dirty = ImGui::SliderFloat("Master Volume", &settings.audio.masterVolume, 0.0f, 1.0f);
+
+    dirty |= ImGui::SliderInt("Voice Limit", &settings.audio.voiceLimit, 8, 128);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("同時発音の上限。超えると AudioSource の Priority が低い音から"
+                          "畳まれる (ループ音は畳まれない)");
+    if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(now %zu)", audioManager->ActiveVoiceCount());
+    }
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Mixer Buses");
+    ImGui::TextDisabled("AudioSource の Bus Name と、スクリプトの audio.SetBusVolume() が"
+                        " ここで定義した名前を指す");
+    ImGui::TextDisabled("Rev = AudioReverbZone の残響を受けるバス"
+                        " (切り替えると再生中の音がいったん止まる)");
+
+    auto& buses = settings.audio.buses;
+    if (buses.empty()) {
+        buses = audio::DefaultBusLayout();
+        dirty = true;
+    }
+
+    int removeIndex = -1;
+    for (size_t i = 0; i < buses.size(); ++i) {
+        audio::BusDesc& bus = buses[i];
+        const bool isMaster = bus.name == audio::kMasterBusName;
+        ImGui::PushID(static_cast<int>(i));
+
+        char nameBuffer[64];
+        std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", bus.name.c_str());
+        ImGui::SetNextItemWidth(140.0f);
+        if (isMaster) {
+            ImGui::BeginDisabled();
+            ImGui::InputText("##name", nameBuffer, sizeof(nameBuffer));
+            ImGui::EndDisabled();
+        } else if (ImGui::InputText("##name", nameBuffer, sizeof(nameBuffer))) {
+            bus.name = nameBuffer;
+            dirty = true;
+        }
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        char parentBuffer[64];
+        std::snprintf(parentBuffer, sizeof(parentBuffer), "%s", bus.parent.c_str());
+        if (isMaster) {
+            ImGui::BeginDisabled();
+            ImGui::InputTextWithHint("##parent", "(output)", parentBuffer, sizeof(parentBuffer));
+            ImGui::EndDisabled();
+        } else if (ImGui::InputTextWithHint("##parent", "Master",
+                                            parentBuffer, sizeof(parentBuffer))) {
+            bus.parent = parentBuffer;
+            dirty = true;
+        }
+
+        // Master の音量は上の Master Volume が正本なので、ここでは触らせない。
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        if (isMaster) {
+            ImGui::BeginDisabled();
+            float shown = settings.audio.masterVolume;
+            ImGui::SliderFloat("##volume", &shown, 0.0f, 1.0f);
+            ImGui::EndDisabled();
+        } else {
+            dirty |= ImGui::SliderFloat("##volume", &bus.volume, 0.0f, 1.0f);
+        }
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        dirty |= ImGui::SliderFloat("##lowpass", &bus.lowPassCutoff, 0.0f, 1.0f, "LPF %.2f");
+
+        ImGui::SameLine();
+        dirty |= ImGui::Checkbox("Rev", &bus.reverb);
+
+        if (!isMaster) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("-")) removeIndex = static_cast<int>(i);
+        }
+        ImGui::PopID();
+    }
+
+    // 削除ボタンは Master 以外にしか出さないので、添字は素直に使える。
+    if (removeIndex >= 0) {
+        buses.erase(buses.begin() + removeIndex);
+        dirty = true;
+    }
+
+    if (ImGui::Button("Add Bus")) {
+        audio::BusDesc desc;
+        desc.name   = "Bus " + std::to_string(buses.size());
+        desc.parent = audio::kMasterBusName;
+        buses.push_back(std::move(desc));
+        dirty = true;
+    }
+
+    // WHY 即座に反映するか: 音量調整はスライダーを動かしながら耳で合わせる作業で、
+    //     保存してから確かめる形にすると往復が成立しない。
+    //     ただしバス構成の作り直しは再生中の音を止めるため、名前や親の変更では
+    //     グラフを組み直さず、音量とフィルターだけを送る。
+    if (dirty) {
+        if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+            audioManager->SetVoiceLimit(static_cast<size_t>(settings.audio.voiceLimit));
+            const std::vector<audio::BusDesc> layout = settings.audio.BuildBusLayout();
+            const bool sameGraph =
+                layout.size() == audioManager->BusLayout().size() &&
+                std::equal(layout.begin(), layout.end(), audioManager->BusLayout().begin(),
+                           [](const audio::BusDesc& a, const audio::BusDesc& b) {
+                               // reverb も比較に入れる: 残響 DSP は submix の生成時に
+                               // しか差し込めないので、切り替えには組み直しが要る。
+                               return a.name == b.name && a.parent == b.parent
+                                   && a.reverb == b.reverb;
+                           });
+            if (sameGraph) {
+                for (const audio::BusDesc& desc : layout) {
+                    audioManager->SetBusVolume(desc.name, desc.volume);
+                    audioManager->SetBusLowPass(desc.name, desc.lowPassCutoff);
+                }
+            } else {
+                audioManager->ApplyBusLayout(layout);
+            }
+        }
+        ++m_editGeneration;
+    }
+}
+
+// エディター自身の設定。書き込み先は ProjectSettings ではなく EditorSettings なので、
+// このセクションだけ Undo の対象にならない (OnRenderContent の Undo 追跡は
+// ProjectSettings の差分しか見ていない)。表示言語は «誰が触っているか» で決まる値で、
+// 元に戻す対象として履歴に積む種類の編集ではない。
+void ProjectSettingsPanel::DrawEditor(EditorContext& ctx)
+{
+    (void)ctx;
+
+    ImGui::TextUnformatted(LOCT("Editor"));
+    ImGui::Separator();
+
+    ImGui::SeparatorText(LOC("Language"));
+
+    const loc::Language current = loc::GetLanguage();
+    if (ImGui::BeginCombo(LOC("Language"), loc::DisplayName(current))) {
+        for (const loc::Language language : loc::kLanguages) {
+            // 表示名は常にその言語自身の表記。日本語表示のまま "英語" としか
+            // 出ないと、英語へ戻したい人が何を選べばよいか分からない。
+            if (ImGui::Selectable(loc::DisplayName(language), language == current))
+                loc::SetLanguage(language);
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::TextDisabled("%s", LOCT("Applies immediately. Saved to editor_settings.toml."));
+
+    if (current == loc::Language::English) return;
+
+    // 訳の埋まり具合。ここが無いと «日本語にしたのに英語のまま» の箇所を見たとき、
+    // 訳が無いのか仕組みが効いていないのかが区別できない。
+    ImGui::SeparatorText(LOC("Translation Coverage"));
+    ImGui::Text("%s: %d", LOCT("Entries"), loc::TranslationCount());
+
+    const std::vector<std::string>& missing = loc::MissingKeys();
+    ImGui::Text("%s: %zu", LOCT("Untranslated (seen this session)"), missing.size());
+    ImGui::TextDisabled("%s", LOCT("Open the panels you want translated, then add these to "
+                                   "Localization_ja.inl."));
+
+    if (missing.empty()) return;
+    if (ImGui::Button(LOC("Copy to Clipboard"))) {
+        std::string text;
+        for (const std::string& key : missing) text += "{ \"" + key + "\", \"\" },\n";
+        ImGui::SetClipboardText(text.c_str());
+    }
+    if (ImGui::BeginChild("##missing", { 0.0f, 260.0f }, true)) {
+        for (const std::string& key : missing) ImGui::TextUnformatted(key.c_str());
+    }
+    ImGui::EndChild();
 }
 
 void ProjectSettingsPanel::DrawTagsAndLayers(ProjectSettings& settings)

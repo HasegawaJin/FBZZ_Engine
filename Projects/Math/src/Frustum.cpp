@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Frustum.cpp | fbzz::math
-// 視錐台の平面抽出・交差判定実装
+/// @file    Frustum.cpp
+/// @brief   視錐台の平面抽出・交差判定実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include "Math/Frustum.hpp"
 
 namespace fbzz::math {

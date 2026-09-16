@@ -1,6 +1,7 @@
-// FBZZ Engine
-// UndoStack.cpp | fbzz::editor
-// コマンドパターンによる Undo/Redo スタック実装
+/// @file    UndoStack.cpp
+/// @brief   コマンドパターンによる Undo/Redo スタック実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/UndoStack.hpp>
 #include <cassert>
 

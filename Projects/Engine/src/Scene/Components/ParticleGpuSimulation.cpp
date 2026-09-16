@@ -1,13 +1,15 @@
-// FBZZ Engine
-// ParticleGpuSimulation.cpp | fbzz::scene
-// GPU シミュレーション可否とその縮退理由の判定
+/// @file    ParticleGpuSimulation.cpp
+/// @brief   GPU シミュレーション可否とその縮退理由の判定。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 
 namespace fbzz::scene {
 
-ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitter& emitter)
+ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitterSettings& emitter,
+                                                      const asset::ParticleMaterialSettings* material)
 {
     if (emitter.simulationMode != ParticleSimulationMode::Gpu)
         return ParticleGpuFallbackReason::NotRequested;
@@ -23,29 +25,35 @@ ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitter& em
     if (emitter.collisionMode != ParticleCollisionMode::None
         && emitter.collisionMode != ParticleCollisionMode::Depth)
         return ParticleGpuFallbackReason::Collision;
-    if (emitter.trailEnabled)
+    if (emitter.trail.trailEnabled)
         return ParticleGpuFallbackReason::Trail;
     // NOTE: meshParticlePath はここに無い。ParticleGpuMesh.hlsl のインスタンス描画で
     //       GPU 経路でもメッシュパーティクルを出せるようになったため。
     if (emitter.prewarm)
         return ParticleGpuFallbackReason::Prewarm;
-    if (emitter.flipbookFrameBlending)
-        return ParticleGpuFallbackReason::FlipbookFrameBlending;
-    if (emitter.motionVectorFlipbook)
-        return ParticleGpuFallbackReason::MotionVectorFlipbook;
+    // NOTE: Frame Blending / Motion Vector はここに無い。CS が次のコマと補間率を書き、
+    //       ParticleGPU.hlsl が CPU 経路と同じ式で 2 コマを混ぜるようになったため。
     if (!emitter.birthSubEmitter.empty() || !emitter.deathSubEmitter.empty()
         || !emitter.collisionSubEmitter.empty())
         return ParticleGpuFallbackReason::SubEmitter;
     // 自己影の密度パスは CPU が組んだ頂点バッファを光源視点で描き直す方式のため、
     // GPU 経路 (頂点バッファを持たない) では測れない。
-    if (emitter.selfShadowStrength > 0.0f)
+    if (material != nullptr && material->selfShadowStrength > 0.0f)
         return ParticleGpuFallbackReason::SelfShadow;
+    // 速さで見た目を変えるモジュールは CPU 側にしかない (理由は enum の宣言を参照)。
+    if (emitter.useSpeedSizeCurve || emitter.useSpeedColorGradient)
+        return ParticleGpuFallbackReason::SpeedModule;
+    // 粒子を点光源にするには CPU 側に位置が要る。«入れたのに光らない» を黙って通すより、
+    // CPU へ縮退して光らせる (光が要らないなら Lights を切れば GPU に戻る)。
+    if (emitter.light.lightEnabled)
+        return ParticleGpuFallbackReason::Light;
     return ParticleGpuFallbackReason::None;
 }
 
-bool CanUseGpuSimulation(const ParticleEmitter& emitter)
+bool CanUseGpuSimulation(const ParticleEmitterSettings& emitter,
+                         const asset::ParticleMaterialSettings* material)
 {
-    return GetParticleGpuFallbackReason(emitter) == ParticleGpuFallbackReason::None;
+    return GetParticleGpuFallbackReason(emitter, material) == ParticleGpuFallbackReason::None;
 }
 
 const char* ParticleGpuFallbackFieldName(ParticleGpuFallbackReason reason)
@@ -61,6 +69,9 @@ const char* ParticleGpuFallbackFieldName(ParticleGpuFallbackReason reason)
     case ParticleGpuFallbackReason::Trail:                 return "trailEnabled";
     case ParticleGpuFallbackReason::SubEmitter:            return "subEmitter";
     case ParticleGpuFallbackReason::SelfShadow:            return "selfShadowStrength";
+    case ParticleGpuFallbackReason::SpeedModule:           return "useSpeedSizeCurve";
+    case ParticleGpuFallbackReason::ReservedVectorField:   return "";
+    case ParticleGpuFallbackReason::Light:                 return "lightEnabled";
     }
     return "";
 }
@@ -83,11 +94,10 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
     case ParticleGpuFallbackReason::Prewarm:
         return "prewarm のため CPU で実行されます。"
                "「最初から定常状態で存在する」表現は GPU の逐次積分では作れません。";
+    // 予約 (Script DLL の ABI)。GPU 経路でも補間・Motion Vector を描けるので返らない。
     case ParticleGpuFallbackReason::FlipbookFrameBlending:
-        return "flipbookFrameBlending のため CPU で実行されます。"
-               "コマ数が十分あれば補間を切っても目立ちません。";
     case ParticleGpuFallbackReason::MotionVectorFlipbook:
-        return "motionVectorFlipbook のため CPU で実行されます。";
+        return "GPU シミュレーションで実行されます。";
     case ParticleGpuFallbackReason::Trail:
         return "trailEnabled のため CPU で実行されます。"
                "GPU 側の粒子は位置履歴を持てません。"
@@ -96,10 +106,22 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
         return "birth / death / collision SubEmitter が設定されているため CPU で実行されます。"
                "発火判定は CPU 側にしかありません。";
     case ParticleGpuFallbackReason::SelfShadow:
-        return "selfShadowStrength > 0 のため CPU で実行されます。"
+        return ".mat の selfShadowStrength > 0 のため CPU で実行されます。"
                "自己影は CPU が組んだ頂点バッファを光源視点で描き直して密度を測るため、"
                "頂点バッファを持たない GPU 経路では測れません。"
                "厚みより粒子数が要る場面では selfShadowStrength を 0 にしてください。";
+    case ParticleGpuFallbackReason::SpeedModule:
+        return "useSpeedSizeCurve / useSpeedColorGradient のため CPU で実行されます。"
+               "速さで大きさと色を変える処理は CPU 側にしかありません。"
+               "粒子数が要る場面では、寿命カーブ (useSizeCurve / useColorGradient) で"
+               "近い絵を作れないか先に試してください。";
+    case ParticleGpuFallbackReason::ReservedVectorField:
+        return "";
+    case ParticleGpuFallbackReason::Light:
+        return "Lights モジュール (lightEnabled) のため CPU で実行されます。"
+               "粒子を点光源にするには CPU 側に位置が必要で、GPU の粒子は位置が GPU にしか"
+               "ありません。粒子数が要る場面では Lights を切り、代わりに LightComponent を"
+               "1 つ置いて全体を照らしてください。";
     }
     return "";
 }

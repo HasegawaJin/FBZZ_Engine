@@ -1,7 +1,9 @@
-// FBZZ Engine
-// IAssetSerializer.hpp | fbzz::asset
-// ロード・セーブ両方が必要なアセット型の round-trip インターフェース
-// AssetManager 内部では使わない。Editor の Save ボタン・テンプレート生成から呼ばれる。
+/// @file    IAssetSerializer.hpp
+/// @brief   ロード・セーブ両方が必要なアセット型の round-trip インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// AssetManager 内部では使わない。Editor の Save ボタン・テンプレート生成から呼ばれる。
 #pragma once
 #include <string>
 #include <string_view>

@@ -1,26 +1,30 @@
-// FBZZ Engine
-// PostProcessInspectorWidgets.cpp | fbzz::editor
-// PostProcessProfile のオーバーライド編集 UI の実装。
-//
-// 画面構成 (上から):
-//   1. サマリーバー   — 何個の効果が効いているか、排他スロットの競合が無いか
-//   2. Add Override   — カテゴリ別ポップアップ。検索付き。追加済みは選べない
-//   3. オーバーライドカード — Inspector のコンポーネントカードと同じ見た目
-//   4. 空状態のプレースホルダ
-//
-// WHY コンポーネントカードと同じ見た目にそろえるか:
-//     Inspector には既に「左に色帯 + チェック + 折りたたみ」というカードの語彙がある。
-//     ここだけ独自の見た目にすると、同じ画面に 2 つの規則が並ぶことになる。
-//     色帯の色だけを効果カテゴリのものに差し替え、構造は共有する。
+/// @file    PostProcessInspectorWidgets.cpp
+/// @brief   PostProcessProfile のオーバーライド編集 UI の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// 画面構成 (上から):
+/// 1. サマリーバー   — 何個の効果が効いているか、排他スロットの競合が無いか
+/// 2. Add Override   — カテゴリ別ポップアップ。検索付き。追加済みは選べない
+/// 3. オーバーライドカード — Inspector のコンポーネントカードと同じ見た目
+/// 4. 空状態のプレースホルダ
+///
+/// WHY コンポーネントカードと同じ見た目にそろえるか:
+/// Inspector には既に「左に色帯 + チェック + 折りたたみ」というカードの語彙がある。
+/// ここだけ独自の見た目にすると、同じ画面に 2 つの規則が並ぶことになる。
+/// 色帯の色だけを効果カテゴリのものに差し替え、構造は共有する。
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/VolumeOverride.hpp>
+#include <Engine/Renderer/PipelineDiagnostics.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
 #include <imgui.h>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -210,9 +214,27 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
 // イテレータが壊れるため、要求だけ集めて後段でまとめて適用する。
 enum class CardAction { None, Remove, MoveUp, MoveDown, Reset };
 
+// カードのドラッグ結果。適用は一覧を描き終えてから行う。
+struct CardDragResult {
+    int from = -1;
+    int to   = -1;
+    bool Valid() const { return from >= 0 && to >= 0 && from != to; }
+};
+
+// 「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
+// 抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
+int ResolveDropDestination(int dragged, int target, bool insertAfter)
+{
+    int destination = insertAfter ? target + 1 : target;
+    if (dragged < destination) --destination;
+    return destination;
+}
+
 // ── オーバーライドカード ────────────────────────────────────────────────
 CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
-                            ImGuiReflector& reflector, bool& changed)
+                            ImGuiReflector& reflector, bool& changed,
+                            CardDragResult& drag,
+                            const renderer::RenderSettings* renderSettings)
 {
     CardAction action = CardAction::None;
 
@@ -221,8 +243,29 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
 
     const ImU32 accent = CategoryAccent(entry.GetCategory());
     const bool activeBefore = entry.active;
+
+    // ドラッグでも並び替えられるようにする。
+    // WHY 追加したか: 適用順は Bloom → Tonemap のように結果が変わる要素なのに、
+    //   これまで ⋯ メニューの Move Up / Move Down しか無く、離れた位置へ動かすには
+    //   メニューを何度も開き直す必要があった。dragKey は同名カード (Custom Effect) を
+    //   区別するため index を使う。
+    const std::string dragKey = std::to_string(index);
+    widgets::ComponentReorderTarget reorder;
+    reorder.scope   = "POSTFX";
+    reorder.dragKey = dragKey.c_str();
+    reorder.onDrop  = [&drag, index](std::string_view draggedKey, bool insertAfter) {
+        int dragged = 0;
+        const char* begin = draggedKey.data();
+        const char* end   = draggedKey.data() + draggedKey.size();
+        const auto [ptr, ec] = std::from_chars(begin, end, dragged);
+        if (ec != std::errc{} || ptr != end || dragged < 0) return;
+        drag.from = dragged;
+        drag.to   = ResolveDropDestination(dragged, index, insertAfter);
+    };
+
     widgets::ComponentHeaderResult header =
-        widgets::ComponentHeader(entry.GetDisplayName(), accent, &entry.active);
+        widgets::ComponentHeader(entry.GetDisplayName(), accent, &entry.active,
+                                 true, reorder);
     if (entry.active != activeBefore) changed = true;
 
     // ⋯ メニュー / ヘッダー右クリック。
@@ -239,8 +282,34 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
         ImGui::EndPopup();
     }
 
+    // 現在のパイプラインでは効かない効果に、その旨と直し方を出す。
+    //
+    // WHY 折りたたんでいても出すか: 効かないことに気づけるのが目的なので、
+    //     カードを開かないと見えないのでは意味がない。ヘッダーの直下へ出す。
+    // NOTE: entry.active が false のときは黙る。ユーザーが自分で切っているものに
+    //       「効きません」と言っても、直すべきことは何も無い。
+    const char* inertReason =
+        (renderSettings && entry.active && entry.GetTypeName())
+            ? renderer::DescribeInertOverride(*renderSettings, entry.GetTypeName())
+            : nullptr;
+    if (inertReason) {
+        ImGui::Indent();
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                           "このパイプラインでは効きません");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s\n→ Project Settings > Rendering > Pipeline", inertReason);
+        ImGui::Unindent();
+    }
+
     if (header.open) {
         const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
+
+        if (inertReason) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s", inertReason);
+            ImGui::TextDisabled("Project Settings > Rendering > Pipeline を "
+                                "Deferred / Deferred+ にすると有効になります");
+            ImGui::Spacing();
+        }
 
         // 無効化中は本文をグレーアウトする。値は見えるが、効いていないことが分かる。
         ImGui::BeginDisabled(!entry.active);
@@ -282,7 +351,8 @@ void DrawEmptyState()
 } // namespace
 
 PostProcessInspectorResult DrawVolumeOverrideListInspector(
-    asset::PostProcessProfile& profile, ImGuiReflector& reflector)
+    asset::PostProcessProfile& profile, ImGuiReflector& reflector,
+    const renderer::RenderSettings* renderSettings)
 {
     PostProcessInspectorResult result;
 
@@ -324,13 +394,15 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     int removeIndex = -1;
     int swapIndex   = -1;   // この要素と swapIndex+1 を入れ替える
     int resetIndex  = -1;
+    CardDragResult drag;
 
     const int count = static_cast<int>(profile.overrides.size());
     for (int i = 0; i < count; ++i) {
         VolumeOverride* entry = profile.overrides[static_cast<std::size_t>(i)].get();
         if (!entry) continue;
 
-        switch (DrawOverrideCard(*entry, i, count, reflector, result.changed)) {
+        switch (DrawOverrideCard(*entry, i, count, reflector, result.changed, drag,
+                                 renderSettings)) {
         case CardAction::Remove:   removeIndex = i; break;
         case CardAction::MoveUp:   swapIndex   = i - 1; break;
         case CardAction::MoveDown: swapIndex   = i; break;
@@ -354,6 +426,15 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     if (swapIndex >= 0 && swapIndex + 1 < count) {
         std::swap(profile.overrides[static_cast<std::size_t>(swapIndex)],
                   profile.overrides[static_cast<std::size_t>(swapIndex + 1)]);
+        result.changed = result.structureChanged = true;
+    }
+    // ドラッグでの移動。unique_ptr の配列なので 1 要素だけを回転させて移す。
+    if (drag.Valid() && drag.from < count && drag.to < count) {
+        const auto begin = profile.overrides.begin();
+        if (drag.from < drag.to)
+            std::rotate(begin + drag.from, begin + drag.from + 1, begin + drag.to + 1);
+        else
+            std::rotate(begin + drag.to, begin + drag.from, begin + drag.from + 1);
         result.changed = result.structureChanged = true;
     }
     if (removeIndex >= 0) {

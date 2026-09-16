@@ -1,2 +1,23 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Git LFS — GreenWare のアート素材のみ。
+# WHY: 素材を除外したままだと clone しただけでは GreenWare が起動しない
+#      (ポートフォリオとして成立しない)。一方で LFS は差分を持たず、
+#      再エクスポートのたびに旧版のフルコピーが GitHub の無料枠 (1GB) を食う。
+#      そのためソース素材だけを対象にし、ベイク出力 (.fzasset/.anim/.skel/.ibl/
+#      .cso/IBL の .dds) は .gitignore 側で除外したままにする。
+# NOTE: 他プロジェクト (Assets/ ・ Projects/GameHub/Templates/) は対象外。
+#       GreenWare/Assets/UI/Font/*.ttf は既に通常 blob として追跡済みのため、
+#       ここには含めない (移すには git lfs migrate = 履歴書き換えが要る)。
+GreenWare/Assets/**/*.fbx  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.png  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.jpg  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.bmp  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.tga  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.hdr  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.exr  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.wav  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.mp3  filter=lfs diff=lfs merge=lfs -text
+GreenWare/Assets/**/*.ogg  filter=lfs diff=lfs merge=lfs -text

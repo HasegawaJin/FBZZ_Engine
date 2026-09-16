@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ColliderComponent.hpp | fbzz::scene
-// GameObject Transform で駆動する Collider コンポーネント
-// 形状設定を physics::Collider 生成へ渡し、Scene と physics の境界を保つ。
-// 実際の衝突判定は physics モジュールに委譲する。
+/// @file    ColliderComponent.hpp
+/// @brief   GameObject Transform で駆動する Collider コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
+///
+/// 形状設定を physics::Collider 生成へ渡し、Scene と physics の境界を保つ。
+/// 実際の衝突判定は physics モジュールに委譲する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
@@ -11,12 +13,14 @@
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/Collider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <memory>
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -43,6 +47,20 @@ struct ColliderComponent {
     bool isTrigger = false;
     bool enabled = true;
 
+    // このコライダーを «祖先の剛体» へ属させる。既定 false = 自分の GameObject に
+    // RigidBody が無ければ静的コライダー。
+    //
+    // WHY 要るか: 骨に生やした当たり (BossHitboxRigComponent) のように、剛体は親に 1 つで
+    //     形だけが子に何個もぶら下がる作りがある。既定のままだと子の当たりは «世界に
+    //     固定された静的コライダー» になり、**親の剛体を押す。**ボーンは毎フレーム
+    //     瞬間移動するので、その押しは «勝手に動く / 吹き飛ぶ» という形で出る。
+    //     祖先の剛体へ属させれば、同じ剛体のコライダー同士は衝突しなくなり
+    //     (PhysicsSolver の同一ボディ除外)、自己衝突が原理的に起きない。
+    //
+    // WHY 既定を false にするか: 既存のシーンで «親が剛体・子が静的コライダー» を
+    //     意図して組んでいる場所の意味を変えないため。要る所だけが立てる。
+    bool attachToParentBody = false;
+
     ColliderComponent() = default;
     ~ColliderComponent() = default;
     // WHY: collider は abstract 型のため clone 不可。
@@ -56,6 +74,7 @@ struct ColliderComponent {
         , center(o.center)
         , isTrigger(o.isTrigger)
         , enabled(o.enabled)
+        , attachToParentBody(o.attachToParentBody)
     {}
     ColliderComponent& operator=(const ColliderComponent& o)
     {
@@ -67,6 +86,7 @@ struct ColliderComponent {
             center              = o.center;
             isTrigger           = o.isTrigger;
             enabled             = o.enabled;
+            attachToParentBody  = o.attachToParentBody;
         }
         return *this;
     }
@@ -79,6 +99,7 @@ struct ColliderComponent {
         r.Field("enabled", enabled);
         r.Field("center", center);
         r.Field("isTrigger", isTrigger);
+        r.Field("attachToParentBody", attachToParentBody);
         r.Field("physicsMaterial", physicsMaterialPath);
         // WHY 共有アセットを使っていてもインライン値を保存し続けるか:
         //     .physmat が見つからない (削除された・別プロジェクトへ持ち出した) 場合に
@@ -88,6 +109,19 @@ struct ColliderComponent {
         r.Field("staticFriction", material.staticFriction);
         r.Field("dynamicFriction", material.dynamicFriction);
         r.Field("density", material.density);
+        // 合成規則。.scene には保存されていたのに Reflect に無く、AI バスと汎用
+        // Inspector からだけ見えない状態だった («跳ね返りが噛み合わない» の原因を
+        // 外から確かめられない)。
+        int restitutionCombineValue = static_cast<int>(material.restitutionCombine);
+        r.Field("restitutionCombine", restitutionCombineValue);
+        // Average / GeometricMean / Minimum / Multiply / Maximum の 5 種。
+        constexpr int kCombineMax = static_cast<int>(physics::PhysicsMaterialCombine::Maximum);
+        material.restitutionCombine = static_cast<physics::PhysicsMaterialCombine>(
+            std::clamp(restitutionCombineValue, 0, kCombineMax));
+        int frictionCombineValue = static_cast<int>(material.frictionCombine);
+        r.Field("frictionCombine", frictionCombineValue);
+        material.frictionCombine = static_cast<physics::PhysicsMaterialCombine>(
+            std::clamp(frictionCombineValue, 0, kCombineMax));
     }
 
     // Script / Editor から共通で使う安全なランタイム更新 API。
@@ -181,6 +215,29 @@ struct CapsuleColliderComponent : public ColliderComponent {
         radius = newRadius;
         halfHeight = newHalfHeight;
         collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
+    }
+};
+
+// 天面と底面が平らな円柱。カプセルと違い縁が鋭いので、平面上に立てても倒れない。
+struct CylinderColliderComponent : public ColliderComponent {
+    float radius     = 0.5f;
+    float halfHeight = 1.0f;
+
+    CylinderColliderComponent() { collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); }
+    CylinderColliderComponent(const CylinderColliderComponent& o) : ColliderComponent(o), radius(o.radius), halfHeight(o.halfHeight)
+        { collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); }
+    CylinderColliderComponent& operator=(const CylinderColliderComponent& o)
+        { ColliderComponent::operator=(o); radius = o.radius; halfHeight = o.halfHeight; collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); return *this; }
+    CylinderColliderComponent(CylinderColliderComponent&&)            = default;
+    CylinderColliderComponent& operator=(CylinderColliderComponent&&) = default;
+
+    const char* GetTypeName() const { return "Cylinder Collider"; }
+    void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("radius", radius); r.Field("halfHeight", halfHeight); }
+    void SetCylinder(float newRadius, float newHalfHeight)
+    {
+        radius = newRadius;
+        halfHeight = newHalfHeight;
+        collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
     }
 };
 

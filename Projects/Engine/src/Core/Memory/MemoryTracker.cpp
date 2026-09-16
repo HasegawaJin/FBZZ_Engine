@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MemoryTracker.cpp | fbzz::core
-// MemoryTracker の実装
-// 固定配列でタグ別統計を持ち、集計そのものが追加メモリを要求しないようにする。
+/// @file    MemoryTracker.cpp
+/// @brief   MemoryTracker の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 固定配列でタグ別統計を持ち、集計そのものが追加メモリを要求しないようにする。
 #include "Engine/Core/Memory/MemoryTracker.hpp"
 
 namespace fbzz::core {

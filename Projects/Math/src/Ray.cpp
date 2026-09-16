@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Ray.cpp | fbzz::math
-// レイの交差判定実装
+/// @file    Ray.cpp
+/// @brief   レイの交差判定実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include "Math/Ray.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>

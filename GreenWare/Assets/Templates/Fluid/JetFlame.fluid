@@ -1,0 +1,150 @@
+kind = 'gas'
+seed = 21
+version = 2
+
+[bake]
+ambient = [ 0.25, 0.2800000011920929, 0.33000001311302185 ]
+anisotropy = 0.30000001192092896
+blackbody_emission = true
+blackbody_max_kelvin = 2400.0
+blackbody_min_kelvin = 1000.0
+camera_yaw_degrees = 0.0
+density_scale = 1.0
+emission_intensity = 6.0
+exposure = 0.800000011920929
+extinction = 10.0
+half_extent = 1.0
+light_color = [ 3.0, 2.8499999046325684, 2.700000047683716 ]
+light_pitch_degrees = 50.0
+light_yaw_degrees = 35.0
+mode = '3d'
+ray_steps = 256
+scattering_octaves = 3
+shadow_steps = 16
+six_way_lightmaps = true
+sky_occlusion = 0.6000000238418579
+solver = 'gpu'
+volume_resolution = 128
+
+[gas]
+buoyancy = 1.0
+burn_expansion = 0.6000000238418579
+burn_heat = 1.2999999523162842
+burn_rate = 6.0
+burn_smoke = 0.25
+density_dissipation = 1.899999976158142
+detail_period = 0.800000011920929
+floor = false
+ignition_temperature = 0.20000000298023224
+pressure_iterations = 40
+resolution = 0
+sharp_advection = true
+temperature_dissipation = 2.299999952316284
+turbulence = 0.4000000059604645
+turbulence_scale = 4.5
+velocity_damping = 0.10000000149011612
+vorticity = 0.550000011920929
+weight = 0.0
+wind = [ 0.0, 0.0, 0.0 ]
+
+[liquid]
+cohesion = 0.30000001192092896
+floor = true
+floor_friction = 0.4000000059604645
+floor_height = -0.8999999761581421
+gravity = 6.0
+max_particles = 4000
+particle_lifetime = 0.0
+particle_radius = 0.012000000104308128
+solver_iterations = 4
+viscosity = 0.05000000074505806
+
+[output]
+columns = 8
+duration = 1.600000023841858
+frame_size = 256
+loop = true
+motion_vectors = true
+rows = 8
+substeps = 2
+supersampling = 2
+vector_field = false
+vector_field_extents = [ 2.0, 2.0, 2.0 ]
+vector_field_resolution = 32
+warmup = 0.800000011920929
+
+[render]
+detail_scale = 7.0
+detail_strength = 0.338
+fire_intensity = 1.0
+fire_kelvin = 1500.0
+light_direction = [ -0.4000000059604645, 0.8999999761581421, 0.0 ]
+liquid_color = [ 0.30000001192092896, 0.550000011920929, 0.8500000238418579, 0.8500000238418579 ]
+liquid_extinction = 60.0
+liquid_fresnel = 0.019999999552965164
+liquid_gloss = 96.0
+liquid_radius_scale = 2.5
+liquid_softness = 0.07999999821186066
+liquid_threshold = 0.5
+opacity = 4.5
+self_shadow = 1.399999976158142
+shading = 'fire'
+shadow_color = [ 0.05000000074505806, 0.03999999910593033, 0.03999999910593033, 1.0 ]
+smoke_color = [ 0.23999999463558197, 0.2199999988079071, 0.20999999344348907, 1.0 ]
+specular = 0.800000011920929
+use_albedo_ramp = false
+use_emission_ramp = false
+
+    [[render.albedo_ramp]]
+    color = [ 0.3499999940395355, 0.3499999940395355, 0.36000001430511475 ]
+    position = 0.0
+
+    [[render.albedo_ramp]]
+    color = [ 0.3499999940395355, 0.3499999940395355, 0.36000001430511475 ]
+    position = 0.33000001311302185
+
+    [[render.albedo_ramp]]
+    color = [ 0.3499999940395355, 0.3499999940395355, 0.36000001430511475 ]
+    position = 0.6600000262260437
+
+    [[render.albedo_ramp]]
+    color = [ 0.3499999940395355, 0.3499999940395355, 0.36000001430511475 ]
+    position = 1.0
+
+    [[render.emission_ramp]]
+    color = [ 0.0, 0.0, 0.0 ]
+    position = 0.0
+
+    [[render.emission_ramp]]
+    color = [ 0.5, 0.05000000074505806, 0.0 ]
+    position = 0.33000001311302185
+
+    [[render.emission_ramp]]
+    color = [ 2.5, 0.8999999761581421, 0.20000000298023224 ]
+    position = 0.6600000262260437
+
+    [[render.emission_ramp]]
+    color = [ 6.0, 5.0, 4.0 ]
+    position = 1.0
+
+[[source]]
+center = [ -0.018868088722229004, -0.2782531678676605, 0.0 ]
+color_key = 0.0
+count = 600
+density = 0.0
+direction = [ 1.0, 0.11999999731779099, 0.0 ]
+duration = 0.0
+enabled = true
+fuel = 3.5999999046325684
+name = 'Nozzle'
+noise = 0.800000011920929
+shape = 'cone'
+size = [ 0.20000000298023224, 0.699999988079071, 0.20000000298023224 ]
+spread = 0.5
+start_time = 0.0
+temperature = 1.600000023841858
+texture = ''
+velocity = [ 0.0, 1.0, 0.0 ]
+
+    [source.motion]
+    inherit_velocity = true

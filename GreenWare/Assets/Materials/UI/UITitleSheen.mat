@@ -1,0 +1,39 @@
+version = 1
+name = 'UITitleSheen'
+shader = "Assets/Shaders/UI/Material/UITitleSheen.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+# 染め分けは «倍率» として掛かる。1 を超える成分は持たせない ─ 素材より明るく
+# すると題字が発光してしまい、ロゴではなく看板に見える。
+tintPlus = [ 1.0, 0.88, 0.84, 1.0 ]
+tintMinus = [ 0.86, 0.93, 1.0, 1.0 ]
+tintStrength = 0.55
+# 艶は白ではなく «わずかに冷たい白»。純白を足すと加算の頂点が飛ぶ
+# (Docs: 加算の白飛びは «明るい画素の面積» で決まる)。
+sheenColor = [ 0.78, 0.86, 1.0, 0.55 ]
+sheenWidth = 0.13
+sheenTilt = 0.35
+# sheenPhase は ScreenDressingComponent が進める。0 は «帯が左端の外» の位置。
+sheenPhase = 0.0
+edgeGlow = 0.0
+# ── 光・出現・放電 (2026-09-07) ─────────────────────────────────────────
+# reveal / crackle / phase は ScreenDressingComponent が要素ごとに上書きする。
+# .mat は «置き切った・放電なし» を既定にする (エディタで開いた絵が正本)。
+reveal = 1.0
+crackle = 0.0
+phase = 0.0
+# 外側の光。字より冷たい白。上げすぎると «看板» になる。
+glowColor = [ 0.78, 0.86, 1.0, 0.45 ]
+glowStrength = 0.8
+glowRadius = 2.5
+splitTexels = 2.0
+dissolveScale = 26.0
+# 刀の芯の色 (BladeColors と同じ)。熱色・放電・色ずれに使う。
+polePlus = [ 1.0, 0.415686, 0.360784, 1.0 ]
+poleMinus = [ 0.388235, 0.643137, 1.0, 1.0 ]

@@ -1,9 +1,10 @@
-// FBZZ Engine
-// VolumeOverrides.cpp | fbzz::asset
-// 組み込み VolumeOverride の Apply / Reflect 実装とレジストリ登録。
-//
-// 各 Apply は「対象の現在値と自分の値を weight で混ぜ、対応する enabled を立てる」だけ。
-// 混ぜ方の規則 (float は線形、bool / int は閾値) は BlendXxx に集約されている。
+/// @file    VolumeOverrides.cpp
+/// @brief   組み込み VolumeOverride の Apply / Reflect 実装とレジストリ登録。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// 各 Apply は「対象の現在値と自分の値を weight で混ぜ、対応する enabled を立てる」だけ。
+/// 混ぜ方の規則 (float は線形、bool / int は閾値) は BlendXxx に集約されている。
 #include <Engine/Asset/VolumeOverrides.hpp>
 #include <Engine/Renderer/PostProcessBlend.hpp>
 #include <cstdio>
@@ -385,19 +386,89 @@ void FogOverride::Reflect(IReflector& r)
 void VolumetricLightOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
     auto& v = target.volumetricLight;
-    v.enabled    = BlendBool(v.enabled, true, weight);
-    v.scattering = BlendFloat(v.scattering, scattering,  weight);
-    v.intensity  = BlendFloat(v.intensity,  intensity,   weight);
-    v.maxDist    = BlendFloat(v.maxDist,    maxDistance, weight);
-    v.steps      = BlendInt(v.steps, steps, weight);
+    v.enabled       = BlendBool(v.enabled, true, weight);
+    v.scattering    = BlendFloat(v.scattering,    scattering,    weight);
+    v.intensity     = BlendFloat(v.intensity,     intensity,     weight);
+    v.minDist       = BlendFloat(v.minDist,       minDistance,   weight);
+    v.maxDist       = BlendFloat(v.maxDist,       maxDistance,   weight);
+    v.edgeFade      = BlendFloat(v.edgeFade,      edgeFade,      weight);
+    v.density       = BlendFloat(v.density,       density,       weight);
+    v.heightFalloff = BlendFloat(v.heightFalloff, heightFalloff, weight);
+    v.heightStart   = BlendFloat(v.heightStart,   heightStart,   weight);
+    BlendColor3(v.tint, tint, weight, v.tint);
+    v.steps         = BlendInt(v.steps, steps, weight);
 }
 
 void VolumetricLightOverride::Reflect(IReflector& r)
 {
     Range(r, "scattering",  scattering,  0.0f, 1.0f);
     Range(r, "intensity",   intensity,   0.0f, 8.0f);
-    Range(r, "maxDistance", maxDistance, 1.0f, 200.0f);
+    Color3(r, "tint", tint);
+    Range(r, "minDistance", minDistance, 0.0f, 500.0f);
+    // 屋外の光芒は雲の切れ間から地面まで伸びるため、200 では手前の空気しか積分できない。
+    Range(r, "maxDistance", maxDistance, 1.0f, 4000.0f);
+    Range(r, "edgeFade",    edgeFade,    0.0f, 1.0f);
+    Range(r, "density",     density,     0.0f, 0.2f);
+    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f);
+    Range(r, "heightStart",   heightStart, -500.0f, 500.0f);
     Integer(r, "steps", steps, 4, 128);
+}
+
+void FroxelFogOverride::Apply(renderer::VolumeSettings& target, float weight) const
+{
+    auto& f = target.froxelFog;
+    f.enabled       = BlendBool(f.enabled, true, weight);
+    f.density       = BlendFloat(f.density,       density,       weight);
+    f.anisotropy    = BlendFloat(f.anisotropy,    anisotropy,    weight);
+    f.heightFalloff = BlendFloat(f.heightFalloff, heightFalloff, weight);
+    f.heightStart   = BlendFloat(f.heightStart,   heightStart,   weight);
+    f.nearDistance  = BlendFloat(f.nearDistance,  nearDistance,  weight);
+    f.farDistance   = BlendFloat(f.farDistance,   farDistance,   weight);
+    f.ambient       = BlendFloat(f.ambient,       ambient,       weight);
+    BlendColor3(f.albedo,   albedo,   weight, f.albedo);
+    BlendColor3(f.emissive, emissive, weight, f.emissive);
+    // グリッド寸法はブレンドしない (再確保が走るため)。RenderSettings の既定を使う。
+}
+
+void FroxelFogOverride::Reflect(IReflector& r)
+{
+    Range(r, "density",       density,       0.0f, 0.5f);
+    Color3(r, "albedo",   albedo);
+    Color3(r, "emissive", emissive);
+    Range(r, "anisotropy",    anisotropy,   -0.95f, 0.95f);
+    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f);
+    Range(r, "heightStart",   heightStart,  -500.0f, 500.0f);
+    Range(r, "nearDistance",  nearDistance,  0.01f, 10.0f);
+    Range(r, "farDistance",   farDistance,   1.0f, 500.0f);
+    Range(r, "ambient",       ambient,       0.0f, 4.0f);
+}
+
+void AutoExposureOverride::Apply(renderer::VolumeSettings& target, float weight) const
+{
+    auto& a = target.autoExposure;
+    a.enabled       = BlendBool(a.enabled, true, weight);
+    a.minEV         = BlendFloat(a.minEV,         minEV,         weight);
+    a.maxEV         = BlendFloat(a.maxEV,         maxEV,         weight);
+    a.lowPercent    = BlendFloat(a.lowPercent,    lowPercent,    weight);
+    a.highPercent   = BlendFloat(a.highPercent,   highPercent,   weight);
+    a.speedUp       = BlendFloat(a.speedUp,       speedUp,       weight);
+    a.speedDown     = BlendFloat(a.speedDown,     speedDown,     weight);
+    a.compensation  = BlendFloat(a.compensation,  compensation,  weight);
+    a.minExposureEV = BlendFloat(a.minExposureEV, minExposureEV, weight);
+    a.maxExposureEV = BlendFloat(a.maxExposureEV, maxExposureEV, weight);
+}
+
+void AutoExposureOverride::Reflect(IReflector& r)
+{
+    Range(r, "minEV",         minEV,        -16.0f, 0.0f);
+    Range(r, "maxEV",         maxEV,          0.0f, 20.0f);
+    Range(r, "lowPercent",    lowPercent,     0.0f, 0.95f);
+    Range(r, "highPercent",   highPercent,    0.05f, 1.0f);
+    Range(r, "speedUp",       speedUp,        0.0f, 20.0f);
+    Range(r, "speedDown",     speedDown,      0.0f, 20.0f);
+    Range(r, "compensation",  compensation,  -5.0f, 5.0f);
+    Range(r, "minExposureEV", minExposureEV, -16.0f, 0.0f);
+    Range(r, "maxExposureEV", maxExposureEV,   0.0f, 16.0f);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -514,9 +585,34 @@ void CustomEffectOverride::Reflect(IReflector& r)
     r.BeginField("shaderPath", "shaderPath");
     r.SetFileExtensions(".hlsl");
     r.Field("shaderPath", effect.shaderPath);
+    // .mat を指すと、シェーダー・テクスチャ・名前付きパラメーターがそちらから来る。
+    r.BeginField("materialPath", "materialPath");
+    r.SetFileExtensions(".mat");
+    r.Field("materialPath", effect.materialPath);
     Range(r, "intensity", effect.intensity, 0.0f, 4.0f);
     Range(r, "blend",     effect.blend,     0.0f, 1.0f);
-    for (int i = 0; i < 4; ++i) {
+
+    // 列挙は int で出す (FogOverride::source と同じ扱い)。
+    //   stage     0 = SceneHDR (Composite 前) / 1 = PostProcess (後) / 2 = AfterOpaque (半透明の前)
+    //   blendMode 0 = 置き換え / 1 = アルファ / 2 = 加算 / 3 = 事前乗算 (HDR の段のみ有効)
+    int stage = static_cast<int>(effect.stage);
+    Integer(r, "stage", stage, 0, 2);
+    effect.stage = static_cast<renderer::CustomPassStage>(stage);
+
+    int blendMode = static_cast<int>(effect.blendMode);
+    Integer(r, "blendMode", blendMode, 0, 3);
+    effect.blendMode = static_cast<renderer::BlendMode>(blendMode);
+
+    // 追加入力のビット (CustomPassInput)。
+    //   1 深度 / 2 オブジェクトマスク / 4 速度 / 8 法線 / 16 ブルーム / 32 AO
+    int inputs = static_cast<int>(effect.inputs);
+    Integer(r, "inputs", inputs, 0, 63);
+    effect.inputs = static_cast<uint32_t>(inputs);
+
+    Integer(r, "iterations", effect.iterations, 1, 8);
+    Integer(r, "downscale",  effect.downscale,  1, 8);
+
+    for (int i = 0; i < 8; ++i) {
         char name[16];
         std::snprintf(name, sizeof(name), "param%d", i);
         Number(r, name, effect.parameters[i]);
@@ -549,6 +645,8 @@ FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::LensFlareOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::MotionBlurOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::FogOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::VolumetricLightOverride)
+FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::FroxelFogOverride)
+FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::AutoExposureOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::SsrOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::ContactShadowOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::SepiaOverride)

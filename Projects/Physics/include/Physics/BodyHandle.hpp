@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BodyHandle.hpp | fbzz::physics
-// Physics World 内の pool 要素を世代付きで参照する軽量ハンドル
+/// @file    BodyHandle.hpp
+/// @brief   Physics World 内の pool 要素を世代付きで参照する軽量ハンドル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
 #pragma once
 #include <cstdint>
 
@@ -21,6 +22,13 @@ namespace fbzz::physics
     };
 
     struct VolumeHandle
+    {
+        uint32_t slot = 0;
+        uint32_t generation = 0;
+        bool IsValid() const { return slot != 0; }
+    };
+
+    struct ConstraintHandle
     {
         uint32_t slot = 0;
         uint32_t generation = 0;

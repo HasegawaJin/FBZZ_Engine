@@ -1,12 +1,14 @@
-// FBZZ Engine
-// IblBakePanel.hpp | fbzz::editor
-// HDRI (.hdr / .exr) → IBL アセット (.ibl + 4 つの DDS) をベイクするエディターパネル。
-// Tools > "IBL Baker..." から開く。View > Panels には表示しない。
-//
-// ベイクフロー:
-//   HdriLoader::Load()  → float RGBA ピクセル
-//   IRenderer::CreateIblBaker() → IIblBaker
-//   IIblBaker::Bake() → 4 DDS + .ibl バイナリ記述子
+/// @file    IblBakePanel.hpp
+/// @brief   HDRI (.hdr / .exr) → IBL アセット (.ibl + 4 つの DDS) をベイクするエディターパネル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// Tools > "IBL Baker..." から開く。View > Panels には表示しない。
+///
+/// ベイクフロー:
+/// HdriLoader::Load()  → float RGBA ピクセル
+/// IRenderer::CreateIblBaker() → IIblBaker
+/// IIblBaker::Bake() → 4 DDS + .ibl バイナリ記述子
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <array>

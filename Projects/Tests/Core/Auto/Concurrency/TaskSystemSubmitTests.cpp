@@ -1,16 +1,27 @@
-// FBZZ Engine
-// TaskSystemSubmitTests.cpp | GoogleTest
-// TaskSystem の future 結果と引数転送を自動検証する。
-#include <gtest/gtest.h>
+/// @file    TaskSystemSubmitTests.cpp
+/// @brief   TaskSystem の future 結果と引数転送を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
 
 namespace fbzz::tests {
 
-class TaskSystemSubmitTest : public ::testing::Test {
+class TaskSystemSubmitTest : public testkit::EngineFixture {
 protected:
-    void SetUp() override { fbzz::TaskSystem::Init(2); }
-    void TearDown() override { fbzz::TaskSystem::Shutdown(); }
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        fbzz::TaskSystem::Init(2);
+    }
+
+    void TearDown() override
+    {
+        fbzz::TaskSystem::Shutdown();
+        EngineFixture::TearDown();
+    }
 };
 
 TEST_F(TaskSystemSubmitTest, ReturnsTheResultOfAValueTask)

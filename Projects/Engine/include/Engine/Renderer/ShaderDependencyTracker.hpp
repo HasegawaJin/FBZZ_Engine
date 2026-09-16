@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ShaderDependencyTracker.hpp | fbzz::renderer
-// HLSLと再帰includeの更新時刻からCSOの鮮度を判定する
+/// @file    ShaderDependencyTracker.hpp
+/// @brief   HLSLと再帰includeの更新時刻からCSOの鮮度を判定する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
+#include <Engine/Util/EngineAssetPath.hpp>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -13,24 +15,11 @@
 
 namespace fbzz::renderer::shader_dependency {
 
-// 実行場所がbuild配下でもAssets相対パスを解決できるよう、親方向へ探索する。
+// 実行場所がbuild配下でもAssets相対パスを解決する。CWD探索とSDKのEngine assetルート探索は
+// util::ResolveEngineAssetPath が一元管理しており、ここは呼び出し名を保つための委譲。
 inline std::filesystem::path ResolveExistingPath(const std::filesystem::path& requested)
 {
-    std::error_code error;
-    if (std::filesystem::is_regular_file(requested, error)) return requested;
-    if (requested.is_absolute()) return requested;
-
-    std::filesystem::path current = std::filesystem::current_path(error);
-    if (error) return requested;
-    for (;;) {
-        const std::filesystem::path candidate = current / requested;
-        error.clear();
-        if (std::filesystem::is_regular_file(candidate, error)) return candidate;
-        const std::filesystem::path parent = current.parent_path();
-        if (parent.empty() || parent == current) break;
-        current = parent;
-    }
-    return requested;
+    return util::ResolveEngineAssetPath(requested);
 }
 
 // ソースの祖先からShadersディレクトリを特定し、ルートincludeの解決基準にする。

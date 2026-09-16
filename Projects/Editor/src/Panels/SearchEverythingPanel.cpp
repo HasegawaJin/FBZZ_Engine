@@ -1,9 +1,12 @@
-// FBZZ Engine
-// SearchEverythingPanel.cpp | fbzz::editor
-// シーン + アセット横断検索パネルの実装
+/// @file    SearchEverythingPanel.cpp
+/// @brief   シーン + アセット横断検索パネルの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Panels/SearchEverythingPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -62,7 +65,7 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
             for (scene::GameObject* go : hits) {
                 ImGui::PushID(go);
                 if (ImGui::Selectable(go->name.c_str())) {
-                    ctx.selectedEntities       = { go->GetID() };
+                    SelectEntity(ctx, go->GetID());
                     ctx.focusTargetPosition    = go->transform.worldPosition;
                     ctx.focusTargetRadius      = 0.0f;
                     ctx.requestFocusOnSelected = true;
@@ -85,19 +88,14 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
             if (!headerDrawn) { ImGui::SeparatorText("Assets"); headerDrawn = true; }
 
             ImGui::PushID(path.c_str());
+            // 開き方の振り分けは asset.open operator が持つ。
+            // WHY: 同じ拡張子分岐がここ・コマンドパレット・AssetBrowser のダブルクリックへ
+            //      写されており、.behaviortree はこの 2 つから開けない (分岐が抜けている)
+            //      状態だった。写しではなく 1 つの実体を呼ぶ。
             if (ImGui::Selectable(name.c_str())) {
-                const std::string& ext = hit.entry->extension;
-                if (ext == ".scene") {
-                    if (ctx.requestOpenScene) ctx.requestOpenScene(path);
-                } else if (ext == ".animcontroller") {
-                    ctx.selectedAssetPath = path;
-                    ctx.requestOpenAnimationGraph = true;
-                } else if (ext == ".vfx") {
-                    ctx.selectedAssetPath = path;
-                    ctx.requestOpenVFXEditor = true;
-                } else {
-                    ctx.selectedAssetPath = path; // Inspector にアセットを表示
-                }
+                OpArgs args;
+                args.Set("path", path);
+                InvokeOperator(ctx, "asset.open", args);
             }
             // 相対パスを添えて、同名ファイルをその場で区別できるようにする。
             ImGui::SameLine();

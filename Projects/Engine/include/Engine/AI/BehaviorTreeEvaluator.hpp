@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BehaviorTreeEvaluator.hpp | fbzz::ai
-// 木の評価とエージェントごとの実行状態
+/// @file    BehaviorTreeEvaluator.hpp
+/// @brief   木の評価とエージェントごとの実行状態。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
 #include <Engine/AI/Blackboard.hpp>

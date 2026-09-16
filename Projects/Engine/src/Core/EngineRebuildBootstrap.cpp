@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EngineRebuildBootstrap.cpp | fbzz::core
-// 起動時 Engine 鮮度チェック + 自動リビルド・リランチ
+/// @file    EngineRebuildBootstrap.cpp
+/// @brief   起動時 Engine 鮮度チェック + 自動リビルド・リランチ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/StringUtils.hpp>

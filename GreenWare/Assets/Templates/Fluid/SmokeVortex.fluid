@@ -1,0 +1,81 @@
+# 渦に巻き上がる煙 — Vortex の力で «立ち上る» だけの煙に回転を足す。
+# 発生源は Motion のキーで左右に振ってあり、動く湧き口が周りの煙を引きずる。
+version = 2
+kind = "gas"
+seed = 34
+
+[gas]
+buoyancy = 1.15
+weight = 0.04
+vorticity = 0.4
+turbulence = 0.2
+turbulence_scale = 3.5
+density_dissipation = 0.45
+temperature_dissipation = 0.8
+
+[[source]]
+name = "Vent"
+shape = "sphere"
+center = [0.0, -0.72, 0.0]
+size = [0.13, 0.13, 0.13]
+density = 3.2
+temperature = 2.2
+noise = 0.6
+velocity = [0.0, 0.5, 0.0]
+duration = 0.0
+
+[source.motion]
+inherit_velocity = true
+
+[[source.motion.key]]
+time = 0.0
+offset = [-0.22, 0.0, 0.0]
+
+[[source.motion.key]]
+time = 1.2
+offset = [0.22, 0.0, 0.0]
+
+[[source.motion.key]]
+time = 2.4
+offset = [-0.22, 0.0, 0.0]
+
+[[force]]
+name = "Swirl"
+type = "vortex"
+center = [0.0, -0.1, 0.0]
+direction = [0.0, 1.0, 0.0]
+strength = 1.8
+radius = 0.75
+falloff_power = 1.5
+
+[[force]]
+name = "Calm"
+type = "drag"
+strength = 0.6
+
+[render]
+shading = "smoke"
+smoke_color = [0.66, 0.66, 0.68, 1.0]
+shadow_color = [0.11, 0.10, 0.10, 1.0]
+opacity = 2.4
+self_shadow = 2.5
+detail_strength = 0.375
+
+detail_scale = 7.0
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 2.4
+warmup = 1.2
+loop = true
+motion_vectors = true
+
+[bake]
+mode = "3d"
+volume_resolution = 128
+ray_steps = 256
+shadow_steps = 24
+solver = "gpu"
+six_way_lightmaps = true

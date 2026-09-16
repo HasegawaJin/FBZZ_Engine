@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetBrowserPanel.cpp | fbzz::editor
-// AssetBrowserPanel のフォルダツリーとアセットグリッド描画
+/// @file    AssetBrowserPanel.cpp
+/// @brief   AssetBrowserPanel のフォルダツリーとアセットグリッド描画。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "AssetBrowser/AssetBrowserCommon.hpp"
 #include <Editor/Util/AssetSearch.hpp>
 
@@ -34,33 +35,117 @@ const std::vector<AssetBrowserPanel::Entry>& AssetBrowserPanel::VisibleEntries()
 
 std::vector<std::string> AssetBrowserPanel::TypeFilterExtensions() const
 {
-    // WHY PassesTypeFilter を再利用しないか: あちらは Entry を受け取る述語で、
+    // 有効な種別すべての拡張子を連結する (PassesTypeFilter の OR 判定と同じ集合)。
+    if (m_typeFilterMask == 0) return {};
+
+    std::vector<std::string> merged;
+    for (int type = 1; type < static_cast<int>(TypeFilter::COUNT); ++type) {
+        if ((m_typeFilterMask & (1u << type)) == 0) continue;
+        const auto exts = ExtensionsForTypeFilter(static_cast<TypeFilter>(type));
+        merged.insert(merged.end(), exts.begin(), exts.end());
+    }
+    return merged;
+}
+
+std::vector<std::string> AssetBrowserPanel::ExtensionsForTypeFilter(TypeFilter type)
+{
+    // WHY MatchesTypeFilter を再利用しないか: あちらは Entry を受け取る述語で、
     //     AssetSearch へ渡すのは拡張子の列。同じ分類を二重に書くことになるが、
     //     索引側で先に絞る方が候補を大幅に減らせる (全件を Entry 化してから
-    //     捨てるのは無駄)。分類の対応は PassesTypeFilter と揃えること。
-    switch (m_typeFilter) {
+    //     捨てるのは無駄)。分類の対応は MatchesTypeFilter と揃えること。
+    switch (type) {
     case TypeFilter::Scene:     return { ".scene" };
     case TypeFilter::Material:  return { ".mat" };
     case TypeFilter::Script:    return { ".hpp", ".cpp", ".h", ".c", ".cc", ".cxx",
                                          ".py", ".lua", ".cs" };
     case TypeFilter::Texture:   return { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga",
-                                         ".fnt", ".ttf", ".otf" };
-    case TypeFilter::Audio:     return { ".wav", ".mp3", ".ogg", ".flac" };
+                                         ".fnt", ".ttf", ".ttc", ".otf" };
+    case TypeFilter::Audio:     return { ".wav", ".mp3", ".ogg", ".flac", ".synth" };
     case TypeFilter::Mesh:      return { ".fbx", ".obj", ".gltf", ".glb", ".mesh" };
     case TypeFilter::Shader:    return { ".hlsl", ".hlsli" };
     case TypeFilter::Prefab:    return { ".prefab" };
-    case TypeFilter::Animation: return { ".anim", ".animcontroller", ".animctrl", ".mask" };
-    case TypeFilter::Skeleton:  return { ".skel" };
+    case TypeFilter::Animation: return { ".anim", ".animcontroller", ".animctrl", ".mask",
+                                         ".sequence" };
     case TypeFilter::Asset:     return { ".asset" };
     case TypeFilter::All:
     default:                    return {};
     }
 }
 
+void AssetBrowserPanel::DrawFilterMenu()
+{
+    for (int type = 1; type < static_cast<int>(TypeFilter::COUNT); ++type) {
+        const TypeFilter filter = static_cast<TypeFilter>(type);
+        ImGui::PushID(type);
+        bool enabled = IsTypeFilterActive(filter);
+        if (ImGui::Checkbox(TypeFilterLabel(filter), &enabled))
+            ToggleTypeFilter(filter);
+        ImGui::PopID();
+    }
+
+    ImGui::Separator();
+    if (ImGui::MenuItem("Clear All Filters", nullptr, false, m_typeFilterMask != 0))
+        m_typeFilterMask = 0;
+}
+
+void AssetBrowserPanel::DrawFilterChips()
+{
+    if (m_typeFilterMask == 0) return;
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float availWidth = ImGui::GetContentRegionAvail().x;
+    float rowStartX = ImGui::GetCursorPosX();
+
+    ImGui::Spacing();
+    for (int type = 1; type < static_cast<int>(TypeFilter::COUNT); ++type) {
+        const TypeFilter filter = static_cast<TypeFilter>(type);
+        if (!IsTypeFilterActive(filter)) continue;
+
+        const char* label = TypeFilterLabel(filter);
+        // ピルの幅 = ラベル + 左右パディング + 末尾の × ぶん。
+        const float labelW = ImGui::CalcTextSize(label).x;
+        const float chipW  = labelW + st.FramePadding.x * 2.0f + ImGui::CalcTextSize(" x").x;
+        const float chipH  = ImGui::GetFrameHeight();
+
+        // 行に収まらなくなったら折り返す (種別を全部有効にしても横に溢れさせない)。
+        if (ImGui::GetCursorPosX() > rowStartX &&
+            ImGui::GetCursorPosX() + chipW > rowStartX + availWidth) {
+            ImGui::NewLine();
+        }
+
+        ImGui::PushID(type);
+        const ImVec2 chipMin = ImGui::GetCursorScreenPos();
+        if (ImGui::InvisibleButton("##chip", { chipW, chipH })) ToggleTypeFilter(filter);
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+        const ImVec2 chipMax  = { chipMin.x + chipW, chipMin.y + chipH };
+        const float  rounding = chipH * 0.5f;
+        // 色はアクセント 1 色。ピルが並ぶ意味は「今この種別で絞っている」であって
+        // 種別そのものの識別ではないので、種別ごとに色を変えない。
+        // (色分けの意味はフォルダの Set Color に一本化している)
+        dl->AddRectFilled(chipMin, chipMax,
+                          EditorTheme::ColorU32(ThemeColor::Accent, hovered ? 0.45f : 0.28f),
+                          rounding);
+        dl->AddRect(chipMin, chipMax, EditorTheme::ColorU32(ThemeColor::Accent, 0.90f),
+                    rounding, 0, 1.0f);
+        dl->AddText({ chipMin.x + st.FramePadding.x, chipMin.y + st.FramePadding.y },
+                    IM_COL32(245, 246, 250, 255), label);
+        dl->AddText({ chipMin.x + st.FramePadding.x + labelW, chipMin.y + st.FramePadding.y },
+                    IM_COL32(245, 246, 250, hovered ? 255 : 150), " x");
+        if (hovered) ImGui::SetTooltip("クリックで %s フィルタを外す", label);
+        ImGui::PopID();
+
+        ImGui::SameLine(0.0f, st.ItemSpacing.x);
+    }
+    ImGui::NewLine();
+}
+
 void AssetBrowserPanel::RefreshSearchResults()
 {
     const std::string query(m_searchBuf.data());
-    const int typeFilter = static_cast<int>(m_typeFilter);
+    const int typeFilter = static_cast<int>(m_typeFilterMask);
 
     // 検索語もフィルタも変わっていなければ組み直さない。
     // WHY: 毎フレーム数千件を走査すると、入力していない間もフレーム時間を食う。
@@ -100,9 +185,9 @@ void AssetBrowserPanel::RefreshSearchResults()
 
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
-    // HotkeyManager の Scope::AssetBrowser 判定用。以前は誰も立てておらず
-    // 該当スコープのショートカットが常に無効化されていた。
-    ctx.assetBrowserFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    // フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
+    // Asset Browser は複数開けるが、フォーカスを持てるのはそのうち 1 枚だけなので、
+    // «どれか 1 枚でも» を自前で OR する必要はない。
     HandleClipboardShortcuts(ctx);
 
     DrawImportSettingsModal(ctx);
@@ -112,12 +197,19 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     UpdateMounts(ctx);
 
+    // 一発フラグを世代番号へ移し替えてから、自分がまだ適用していない世代なら作り直す。
+    // こうすると何枚開いていても、また閉じていた枚が開き直されたときも、
+    // 同じ変更をちょうど 1 回ずつ反映できる。
     if (ctx.requestAssetBrowserRefresh) {
+        ctx.requestAssetBrowserRefresh = false;
+        ++ctx.assetBrowserRefreshGeneration;
+    }
+    if (m_appliedRefreshGeneration != ctx.assetBrowserRefreshGeneration) {
+        m_appliedRefreshGeneration = ctx.assetBrowserRefreshGeneration;
         RefreshDirectory();
         // 横断検索の結果も作り直す (アセットが増減している可能性があるため)。
         m_searchResultsQuery.clear();
         m_searchResultsTypeFilter = -1;
-        ctx.requestAssetBrowserRefresh = false;
     }
 
     // Inspector 等の参照欄クリック → そのアセットのフォルダへ移動して選択する。
@@ -175,7 +267,37 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         }
     }
 
-    sectionHeader("FOLDERS");
+    // 見出しの行の右端に、ファイルまで木に並べるかのトグルを置く。
+    // WHY sectionHeader を使わないか: あちらは見出しの直後に Separator を引くため、
+    //     SameLine で並べると罫線の後ろに置かれてしまう。この行だけ手で組む。
+    // WHY ツールバーではなくここか: この設定はツリーの内容そのものを変えるので、
+    //     グリッド側の設定が並ぶツールバーではなくツリーの持ち物として置く。
+    {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
+        ImGui::TextUnformatted(m_treeShowFiles ? "HIERARCHY" : "FOLDERS");
+        ImGui::PopStyleColor();
+
+        // WHY 状態を控えるか: Push と Pop の条件に m_treeShowFiles を直接使うと、
+        //     間に挟まるボタンがその値を反転させてしまい、push していない色を pop
+        //     (またはその逆) することになる。ImGui のスタックが壊れて落ちる。
+        const bool showFiles = m_treeShowFiles;
+        const char* toggleLabel = showFiles ? "Files" : "Dirs";
+        const float toggleW = ImGui::CalcTextSize(toggleLabel).x
+                            + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
+                                 ImGui::GetContentRegionMax().x - toggleW));
+        if (showFiles)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ImGui::SmallButton(toggleLabel)) m_treeShowFiles = !m_treeShowFiles;
+        if (showFiles) ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Dirs  : フォルダだけを木に並べる\n"
+                "Files : ファイルも木に並べる (種別の色で表示)");
+        }
+        ImGui::Separator();
+    }
 
     ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth
@@ -200,6 +322,11 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         if (SaveHierarchyPayloadAsPrefab(
                 ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_rootPath)) {
             RefreshDirectory();
+        }
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            std::string sourcePath;
+            if (ReadAssetDragPayload(p, sourcePath))
+                QueueAssetMove(sourcePath, m_rootPath);
         }
         ImGui::EndDragDropTarget();
     }
@@ -237,6 +364,11 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                         ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, mount.path)) {
                     RefreshDirectory();
                 }
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string sourcePath;
+                    if (ReadAssetDragPayload(p, sourcePath))
+                        QueueAssetMove(sourcePath, mount.path);
+                }
                 ImGui::EndDragDropTarget();
             }
             if (mOpen) {
@@ -256,8 +388,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     if (ImGui::IsItemHovered() || splitActive)
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     if (splitActive) {
+        // 永続化は OnSaveSettings が担当する (パネルごとに別々の値を持つため)。
         m_treeWidth = std::clamp(m_treeWidth + ImGui::GetIO().MouseDelta.x, 140.0f, 420.0f);
-        ctx.assetBrowserTreeWidth = m_treeWidth; // EditorSettings 経由で永続化される
     }
     {
         // ホバー / ドラッグ中だけアクセント色の縦線を見せる。
@@ -294,21 +426,14 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     if (m_viewMode == ViewMode::Grid && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)
         && io.KeyCtrl && std::fabs(io.MouseWheel) > 0.001f) {
         m_iconSize = std::clamp(m_iconSize + io.MouseWheel * 8.0f, 56.0f, 132.0f);
-        ctx.assetBrowserIconSize = m_iconSize;
     }
 
     // パンくずリスト
     DrawBreadcrumb(ctx);
 
-    // 未変換ファイルがあれば警告バーを表示
-    DrawPendingImportBar(ctx);
-
     // ── ツールバー: 検索(伸縮) | Type / Sort | Save / Create / Refresh / View | 件数 ──
     // WHY: 旧実装は検索欄を固定 -470px で予約していたが、フォントサイズ変更でズレるため、
     //      右側コントロール群の幅を実測して検索欄を動的に伸縮させ、どの DPI/フォントでも揃える。
-    static constexpr const char* kTypeLabels[] = {
-        "All", "Scene", "Material", "Script", "Texture", "Audio",
-        "Mesh", "Shader", "Prefab", "Animation", "Skeleton", "Asset" };
     static constexpr const char* kSortLabels[] = { "Name ^", "Name v", "Type", "Modified" };
     {
         const ImGuiStyle& st = ImGui::GetStyle();
@@ -318,6 +443,11 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         };
 
         constexpr float kComboW = 78.0f;
+
+        // Filters ボタンは有効件数を添えて、畳んでいても効いていることを示す。
+        char filterLabel[32] = "Filters";
+        if (const int active = std::popcount(m_typeFilterMask); active > 0)
+            std::snprintf(filterLabel, sizeof(filterLabel), "Filters (%d)", active);
 
         const bool dirty = AssetDirtyRegistry::HasAny();
         char saveLabel[32] = {};
@@ -342,7 +472,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
         // 右クラスタの合計幅を実測して検索欄の幅を決める。
         float rightW = btnW(scopeLabel) + sp;          // 検索範囲トグル
-        rightW += kComboW + sp + kComboW + sp;         // Type / Sort
+        rightW += btnW(filterLabel) + sp + kComboW + sp; // Filters / Sort
         if (dirty) rightW += btnW(saveLabel) + sp;
         rightW += btnW("Create") + sp + btnW("Refresh") + sp + btnW(viewLabel) + sp;
         rightW += ImGui::CalcTextSize(countStr).x;
@@ -358,7 +488,10 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SameLine(0.0f, sp);
 
         // 検索範囲の切り替え。ON の間はアクセント色で状態を示す。
-        if (m_searchAllFolders)
+        // WHY 状態を控えるか: Push / Pop の条件にメンバーを直接使うと、間のボタンが
+        //     その値を反転させ、push していない色を pop してスタックが壊れる。
+        const bool searchAllFoldersBefore = m_searchAllFolders;
+        if (searchAllFoldersBefore)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
         if (ImGui::Button(scopeLabel)) {
             m_searchAllFolders = !m_searchAllFolders;
@@ -366,7 +499,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             m_searchResultsQuery.clear();
             m_searchResultsTypeFilter = -1;
         }
-        if (m_searchAllFolders) ImGui::PopStyleColor();
+        if (searchAllFoldersBefore) ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
                 "検索範囲を切り替えます。\n"
@@ -375,9 +508,17 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         }
         ImGui::SameLine(0.0f, sp);
 
-        ImGui::SetNextItemWidth(kComboW);
-        { int tf = static_cast<int>(m_typeFilter);
-          if (ImGui::Combo("##type", &tf, kTypeLabels, 12)) m_typeFilter = static_cast<TypeFilter>(tf); }
+        // Filters: 種別を複数同時に有効化できるドロップダウン (Unreal と同じ方式)。
+        if (m_typeFilterMask != 0)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ImGui::Button(filterLabel)) ImGui::OpenPopup("##type_filters");
+        if (m_typeFilterMask != 0) ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("表示するアセットの種別を選びます (複数選択可)");
+        if (ImGui::BeginPopup("##type_filters")) {
+            DrawFilterMenu();
+            ImGui::EndPopup();
+        }
         ImGui::SameLine(0.0f, sp);
 
         ImGui::SetNextItemWidth(kComboW);
@@ -409,6 +550,9 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     }
 
     DrawSaveModifiedDialog();
+
+    // 有効なフィルタを、種別色のピルとしてツールバー直下に並べる。
+    DrawFilterChips();
 
     ImGui::Separator();
 
@@ -557,6 +701,13 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_currentPath)) {
             RefreshDirectory();
         }
+        // 空白領域へのドロップは現在フォルダへの移動として扱う。
+        // WHY: フォルダが表示されていない検索結果 / List 表示でも、移動先を失わないため。
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            std::string sourcePath;
+            if (ReadAssetDragPayload(p, sourcePath))
+                QueueAssetMove(sourcePath, m_currentPath);
+        }
         ImGui::EndDragDropTarget();
     }
 
@@ -570,6 +721,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     //      いずれにもヒットしなければ現在フォルダへ取り込まれる。
     if (m_externalDrop.active)
         FinalizeExternalDrop();
+    FinalizePendingAssetMove(ctx);
 }
 
 void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
@@ -635,8 +787,21 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
 bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
 {
     if (e.isSubAsset) return true; // サブアセットは親が表示されていれば常に表示
-    if (m_typeFilter == TypeFilter::All || e.isDir) return true;
-    switch (m_typeFilter) {
+    if (m_typeFilterMask == 0 || e.isDir) return true;
+
+    // 有効なフィルタのいずれかに当てはまれば表示する (OR 結合)。
+    // WHY AND ではないか: 1 つのファイルが 2 つの種別に同時に属することはないため、
+    //     AND にすると 2 個目を有効にした瞬間に必ず 0 件になる。
+    for (int type = 1; type < static_cast<int>(TypeFilter::COUNT); ++type) {
+        if ((m_typeFilterMask & (1u << type)) == 0) continue;
+        if (MatchesTypeFilter(e, static_cast<TypeFilter>(type))) return true;
+    }
+    return false;
+}
+
+bool AssetBrowserPanel::MatchesTypeFilter(const Entry& e, TypeFilter type)
+{
+    switch (type) {
     case TypeFilter::Scene:    return e.ext == ".scene";
     case TypeFilter::Material: return e.ext == ".mat";
     case TypeFilter::Script:   return e.ext == ".hpp" || e.ext == ".cpp" || e.ext == ".h"
@@ -644,9 +809,10 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
                                    || e.ext == ".py"  || e.ext == ".lua" || e.ext == ".cs";
     case TypeFilter::Texture:  return e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg"
                                    || e.ext == ".dds" || e.ext == ".bmp" || e.ext == ".tga"
-                                   || e.ext == ".fnt" || e.ext == ".ttf" || e.ext == ".otf";
-    case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
-                                   || e.ext == ".flac";
+                                   || e.ext == ".fnt" || e.ext == ".ttf" || e.ext == ".ttc"
+                                   || e.ext == ".otf";
+    case TypeFilter::Audio:    return e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg"
+                                   || e.ext == ".flac" || e.ext == ".synth";
     case TypeFilter::Mesh:      return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
                                      || e.ext == ".glb"    || e.ext == ".mesh";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
@@ -656,7 +822,6 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
     //      同じフィルタで一望できないと毎回 All に戻すことになる。
     case TypeFilter::Animation: return e.ext == ".anim" || e.ext == ".animcontroller"
                                      || e.ext == ".animctrl" || e.ext == ".mask";
-    case TypeFilter::Skeleton:  return e.ext == ".skel";
     case TypeFilter::Asset:     return e.ext == ".asset";
     default:                    return true;
     }
@@ -788,6 +953,33 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
             }
             if (selected) ImGui::PopStyleColor();
             const bool hov = ImGui::IsItemHovered();
+            // グリッドと同じ ASSET_PATH を発行し、List 表示でもファイル / フォルダを整理できるようにする。
+            if (!e.isMount && !e.isPackageAsset && ImGui::BeginDragDropSource()) {
+                m_entryDragStarted = true;
+                const std::string payloadPath = ToAssetDragPayloadPath(e.path, ctx);
+                ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
+                ImGui::TextUnformatted(e.name.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (e.isDir && ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string sourcePath;
+                    if (ReadAssetDragPayload(p, sourcePath))
+                        QueueAssetMove(sourcePath, e.path);
+                }
+                ImGui::EndDragDropTarget();
+            }
+            // 色を付けたフォルダだけ、行の左端にその色のバーを立てる。
+            // グリッドのカードと同じ手がかりを List にも通す。
+            // 主選択のアクセントバーはこの上に重ねて描かれ、そちらが優先される。
+            if (ImVec4 folderColor; e.isDir && TryGetFolderColor(ctx, e.path, folderColor)) {
+                ImDrawList* rowDl = ImGui::GetWindowDrawList();
+                const ImVec2 rowMin = ImGui::GetItemRectMin();
+                const ImVec2 rowMax = ImGui::GetItemRectMax();
+                rowDl->AddRectFilled({ rowMin.x, rowMin.y + 1.0f },
+                                     { rowMin.x + 3.0f, rowMax.y - 1.0f },
+                                     ImGui::ColorConvertFloat4ToU32(folderColor));
+            }
             // 主選択の行だけ左端にアクセントバーを立て、複数選択の中の「現在の対象」を示す。
             if (selected && emphasized) {
                 ui::DrawSelectionAccent(ImGui::GetWindowDrawList(),
@@ -809,7 +1001,7 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                 ImGui::TextDisabled("\xe2\x94\x94");  // └
                 ImGui::SameLine();
             }
-            const ImVec4 col = EntryColor(e);
+            const ImVec4 col = ResolveEntryColor(e, ctx);
             ImGui::TextColored(col, "%s", e.isDir ? "[D]" : EntryLabel(e));
             ImGui::SameLine();
             ImGui::TextUnformatted(e.name.c_str());

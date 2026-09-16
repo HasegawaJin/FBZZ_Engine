@@ -1,9 +1,8 @@
-// FBZZ Engine
-// InspectorTerrainWater.cpp | fbzz::editor
-// Terrain / Water 系 Component の Inspector 描画
+/// @file    InspectorTerrainWater.cpp
+/// @brief   Terrain / Water 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorTerrainWater.hpp"
-#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
-#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <algorithm>
@@ -104,6 +103,11 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                             const auto f = DrawTerrainLayerMaterialInspector(*mat);
                             if (f.textureDirty) tc.splatDirty         = true;
                             if (f.paramDirty)   tc.materialParamDirty = true;
+                            // レイヤー .mat の実体はシーン保存時に SceneSerializer が
+                            // 書き出す。編集してもシーンが dirty にならないと、保存も
+                            // 終了時の確認も素通りして値が消える。
+                            if ((f.textureDirty || f.paramDirty) && ctx.markSceneDirty)
+                                ctx.markSceneDirty();
                         }
                         if (ImGui::Button("Save .mat")) {
                             (void)asset::SaveMaterialAssetToFile(
@@ -155,21 +159,40 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 
     DrawComponentSection<scene::WaterComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Water",
         [go](scene::WaterComponent& water, EditorContext& ctx) {
-            // ── Material (.mat) ─────────────────────────────────────────────
-            ImGui::SeparatorText("Material (.mat)");
+            // ── 水の種類 (.mat) ─────────────────────────────────────────────
+            // 色・波・風への反応・水流は .mat が丸ごと持つ。ここでは差し替えるだけで、
+            // 中身は .mat を選んで Inspector で編集する。
+            ImGui::SeparatorText("Water Type (.mat)");
+            {
+                const std::string current = NormalizeAssetPath(water.materialPath);
+                const auto presets = WaterMaterialPresets();
+                const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                const float count = static_cast<float>(presets.size());
+                const float buttonW = (ImGui::GetContentRegionAvail().x - spacing * (count - 1.0f)) / count;
+                for (size_t i = 0; i < presets.size(); ++i) {
+                    const WaterMaterialPreset& preset = presets[i];
+                    if (i > 0) ImGui::SameLine();
+                    const bool active = current == preset.path;
+                    if (active)
+                        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Secondary));
+                    if (ImGui::Button(preset.label, { buttonW, 0.0f }) && !active) {
+                        water.materialPath = preset.path;
+                        water.texDirty = true;
+                        water.foamDirty = true;
+                    }
+                    if (active)
+                        ImGui::PopStyleColor();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("%s\n%s", preset.tooltip, preset.path);
+                }
+            }
             // 変更時はテクスチャ・フォームキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", water.materialPath, ".mat", ctx.projectRoot)) {
                 water.texDirty = true;
                 water.foamDirty = true;
             }
-            if (water.materialPath.empty()) {
-                ImGui::TextDisabled("(no material — visual params missing)");
-                if (ImGui::Button("Use Default Water Material")) {
-                    water.materialPath = DefaultWaterMaterialPath();
-                    water.texDirty = true;
-                    water.foamDirty = true;
-                }
-            }
+            if (water.materialPath.empty())
+                ImGui::TextDisabled("(no material — built-in ocean waves, default look)");
 
             // ── Geometry ─────────────────────────────────────────────────────
             ImGui::Spacing();
@@ -208,282 +231,58 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 ImGui::TextDisabled("(%d x %d chunks = %d draw calls)", chunks, chunks, chunks * chunks);
             }
 
+            // ── Waves ─────────────────────────────────────────────────────────
+            ImGui::SeparatorText("Waves");
+            ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
+            ImGui::BeginDisabled(!water.enableGerstnerWaves);
+            if (ImGui::DragFloat("Amplitude Scale", &water.waveAmplitudeScale, 0.01f, 0.0f, 10.0f, "x%.2f"))
+                water.waveAmplitudeScale = (std::max)(water.waveAmplitudeScale, 0.0f);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip(".mat の波の高さに掛ける倍率。\n"
+                                  "同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるときに使います。");
+            ImGui::EndDisabled();
+            // 実際に描かれている波 (.mat × 倍率 × 環境風)。風の効き具合をここで確かめる。
+            for (size_t i = 0; i < water.waves.size(); ++i) {
+                const scene::GerstnerWave& wave = water.waves[i];
+                ImGui::TextDisabled("Wave %zu   A %.2f m   L %.1f m   Q %.2f",
+                                    i, wave.amplitude, wave.wavelength, wave.steepness);
+            }
+            if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f)
+                ImGui::TextDisabled("Current  %.2f m/s", currentSpeed);
+
             // ── Physics ───────────────────────────────────────────────────────
             ImGui::SeparatorText("Physics");
-            if (ImGui::Button("Setup Buoyancy Volume")) {
-                if (!go) return;
-                auto* box = go->GetComponent<scene::BoxColliderComponent>();
-                if (!box) box = &go->AddComponent<scene::BoxColliderComponent>();
-                box->enabled   = true;
-                box->isTrigger = true;
-                box->center    = { 0.0f, -2.5f, 0.0f };
-                box->size      = { water.extentX, 5.0f, water.extentZ };
+            ImGui::Checkbox("Buoyancy", &water.buoyancyEnabled);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("水面の範囲に入った RigidBody を浮かせます。\n"
+                                  "トリガーコライダーや Volume を別に付ける必要はありません。");
+            ImGui::BeginDisabled(!water.buoyancyEnabled);
+            ImGui::DragFloat("Lift", &water.buoyancy, 0.1f, 0.0f, 200.0f, "%.1f m/s^2");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("完全に沈んだときの上向き加速度。重力 (9.8) を超えると浮きます。");
+            ImGui::DragFloat("Drag", &water.waterDrag, 0.01f, 0.0f, 50.0f, "%.2f /s");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("水中での速度減衰。\n川では水流との速度差に掛かり、物体を流れに乗せます。");
+            if (ImGui::DragFloat("Depth", &water.buoyancyDepth, 0.1f, 0.1f, 1000.0f, "%.1f m"))
+                water.buoyancyDepth = (std::max)(water.buoyancyDepth, 0.1f);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("水面からこの深さまで浮力が届きます。");
+            ImGui::EndDisabled();
+            ImGui::Checkbox("Splash & Ripples", &water.splashEnabled);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("RigidBody が水面を通過したときに波紋としぶきを出し、\n"
+                                  "水面をまたいで進む物体には航跡を引かせます。");
 
-                auto* volume = go->GetComponent<scene::VolumeComponent>();
-                if (!volume) volume = &go->AddComponent<scene::VolumeComponent>();
-                volume->enabled  = true;
-                volume->type     = physics::VolumeType::Buoyancy;
-                volume->buoyancy = 15.0f;
-                volume->drag     = 2.0f;
-                volume->duration = -1.0f;
-                volume->elapsed  = 0.0f;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Sync Collider Size")) {
-                if (!go) return;
-                if (auto* box = go->GetComponent<scene::BoxColliderComponent>()) {
-                    box->isTrigger = true;
-                    box->size      = { water.extentX, box->size.y, water.extentZ };
+            // 以前の «Setup Buoyancy Volume» で付けた Volume は、Water の上では無視される。
+            // 残っていると «なぜ Volume の値が効かないのか» で迷うので、ここで知らせる。
+            if (go) {
+                if (const auto* volume = go->GetComponent<scene::VolumeComponent>();
+                    volume && volume->type == physics::VolumeType::Buoyancy) {
+                    ImGui::TextColored({ 1.0f, 0.75f, 0.3f, 1.0f }, "Buoyancy Volume on this object is ignored.");
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("浮力は Water 自身が持つようになりました。\n"
+                                          "Volume とトリガーコライダーは削除して構いません。");
                 }
-            }
-
-            // ── Gerstner Waves ────────────────────────────────────────────────
-            ImGui::SeparatorText("Gerstner Waves");
-            ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
-            for (int i = 0; i < static_cast<int>(water.waves.size()); ++i) {
-                auto& wave = water.waves[static_cast<size_t>(i)];
-                ImGui::PushID(i);
-                if (ImGui::TreeNodeEx("Wave", ImGuiTreeNodeFlags_DefaultOpen, "Wave %d", i)) {
-                    DragVec2("Direction", wave.direction, 0.01f, -1.0f, 1.0f);
-                    ImGui::DragFloat("Amplitude",  &wave.amplitude,  0.01f, 0.0f,  100.0f);
-                    ImGui::DragFloat("Wavelength", &wave.wavelength, 0.1f,  0.01f, 10000.0f);
-                    ImGui::DragFloat("Steepness",  &wave.steepness,  0.01f, 0.0f,  1.0f);
-                    ImGui::TreePop();
-                }
-                ImGui::PopID();
-            }
-        });
-
-    // ============================================================
-    // TerrainDetailComponent — Detail レイヤー編集 UI
-    // ============================================================
-
-    DrawComponentSection<scene::TerrainDetailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Detail",
-    [go](scene::TerrainDetailComponent& tdc, EditorContext& ctx) {
-
-        // Bake ボタン: インスタンス配列を再生成する
-        if (ImGui::Button("Bake All Layers")) {
-            tdc.chunks.clear();
-            tdc.needsBake = true;
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("%zu chunks cached", tdc.chunks.size());
-
-        ImGui::Spacing();
-        ImGui::SeparatorText("Layers");
-
-        // レイヤー追加
-        if (ImGui::Button("+ Add Mesh Layer")) {
-            tdc.layers.push_back(scene::DetailLayer{});
-            tdc.needsBake = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("+ Add Billboard")) {
-            scene::DetailLayer l{};
-            l.type = scene::DetailLayerType::Billboard;
-            tdc.layers.push_back(std::move(l));
-            tdc.needsBake = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("+ Add Grass")) {
-            scene::DetailLayer l{};
-            l.type = scene::DetailLayerType::Grass;
-            tdc.layers.push_back(std::move(l));
-            tdc.needsBake = true;
-        }
-
-        // レイヤーリスト
-        static const char* kTypeNames[] = { "Mesh", "Billboard", "Grass" };
-        int deleteIdx = -1;
-
-        for (int i = 0; i < static_cast<int>(tdc.layers.size()); ++i) {
-            auto& layer = tdc.layers[static_cast<size_t>(i)];
-            ImGui::PushID(i);
-
-            const char* typeName = kTypeNames[static_cast<int>(layer.type)];
-            const bool open = ImGui::TreeNodeEx("##layer", ImGuiTreeNodeFlags_DefaultOpen,
-                "[%d] %s", i, typeName);
-            ImGui::SameLine();
-            if (ImGui::SmallButton("X")) deleteIdx = i;
-
-            if (open) {
-                // タイプ
-                int typeInt = static_cast<int>(layer.type);
-                if (ImGui::Combo("Type", &typeInt, kTypeNames, 3)) {
-                    layer.type = static_cast<scene::DetailLayerType>(typeInt);
-                    tdc.needsBake = true;
-                }
-
-                // アセット参照
-                ImGui::SeparatorText("Assets");
-                if (layer.type != scene::DetailLayerType::Billboard) {
-                    if (widgets::AssetPathField("Mesh Path", layer.meshPath, ".fbx,.fzmodel", ctx.projectRoot))
-                        tdc.needsBake = true;
-                }
-                widgets::AssetPathField("Texture Path", layer.texturePath,
-                                        widgets::kTextureAssetFilter, ctx.projectRoot);
-                if (widgets::AssetPathField("Density Map", layer.densityMapPath,
-                                            widgets::kTextureAssetFilter, ctx.projectRoot))
-                    tdc.needsBake = true;
-
-                // 配置パラメータ
-                ImGui::SeparatorText("Placement");
-                if (ImGui::DragFloat("Density",       &layer.density,      0.05f, 0.0f, 10.0f))
-                    tdc.needsBake = true;
-                if (ImGui::DragFloat("Min Scale",     &layer.minScale,     0.01f, 0.0f,  5.0f))
-                    tdc.needsBake = true;
-                if (ImGui::DragFloat("Max Scale",     &layer.maxScale,     0.01f, 0.0f,  5.0f))
-                    tdc.needsBake = true;
-                if (ImGui::Checkbox("Random Y Rotation", &layer.randomYRotation))
-                    tdc.needsBake = true;
-
-                // 描画距離
-                ImGui::SeparatorText("Draw Distance");
-                ImGui::DragFloat("Draw Distance",  &layer.drawDistance,  1.0f, 0.0f, 500.0f);
-                ImGui::DragFloat("Fade Start",     &layer.fadeStartDist, 1.0f, 0.0f, 500.0f);
-
-                // Grass 専用
-                if (layer.type == scene::DetailLayerType::Grass) {
-                    ImGui::SeparatorText("Grass (Phase 4)");
-                    if (ImGui::DragFloat("Blade Height",   &layer.bladeHeight,   0.01f, 0.0f, 5.0f))
-                        tdc.needsBake = true;
-                    if (ImGui::DragFloat("Blade Width",    &layer.bladeWidth,    0.001f,0.0f, 1.0f))
-                        tdc.needsBake = true;
-                    if (ImGui::DragInt  ("Blade Segments", &layer.bladeSegments, 1.0f,  1,   16))
-                        tdc.needsBake = true;
-                    ImGui::DragFloat("Wind Strength",  &layer.windStrength,  0.01f, 0.0f, 10.0f);
-                    ImGui::DragFloat("Wind Frequency", &layer.windFrequency, 0.01f, 0.0f, 10.0f);
-                }
-
-                // インスタンス数の表示
-                if (!tdc.chunks.empty()) {
-                    size_t total = 0;
-                    for (const auto& chunk : tdc.chunks) {
-                        if (static_cast<size_t>(i) < chunk.instancesPerLayer.size())
-                            total += chunk.instancesPerLayer[static_cast<size_t>(i)].size();
-                    }
-                    ImGui::TextDisabled("Instances: %zu", total);
-                }
-
-                ImGui::TreePop();
-            }
-            ImGui::PopID();
-        }
-
-        // 削除処理
-        if (deleteIdx >= 0) {
-            tdc.layers.erase(tdc.layers.begin() + deleteIdx);
-            tdc.needsBake = true;
-        }
-    });
-
-    DrawComponentSection<scene::FoliageComponent>(
-        go, ctx, m_componentClipboard, m_componentClipboardType, "Foliage",
-        [](scene::FoliageComponent& foliage, EditorContext& ctx) {
-            if (ImGui::Button("Bake Foliage")) {
-                foliage.caches.clear();
-                foliage.needsBake = foliage.needsBakeChildren = true;
-            }
-            ImGui::SameLine();
-            ImGui::TextDisabled("%zu species", foliage.species.size());
-
-            if (ImGui::Button("+ Add Species")) {
-                foliage.species.emplace_back();
-                foliage.needsBake = foliage.needsBakeChildren = true;
-            }
-
-            int deleteSpecies = -1;
-            for (int speciesIndex = 0;
-                 speciesIndex < static_cast<int>(foliage.species.size());
-                 ++speciesIndex) {
-                auto& species = foliage.species[static_cast<size_t>(speciesIndex)];
-                ImGui::PushID(speciesIndex);
-
-                const bool open = ImGui::TreeNodeEx(
-                    "##FoliageSpecies", ImGuiTreeNodeFlags_DefaultOpen,
-                    "[%d] %s", speciesIndex,
-                    species.modelPath.empty() ? "(No Model)" : species.modelPath.c_str());
-                ImGui::SameLine();
-                if (ImGui::SmallButton("X"))
-                    deleteSpecies = speciesIndex;
-
-                if (open) {
-                    if (widgets::AssetPathField("Model Path", species.modelPath, ".fbx,.fzmodel", ctx.projectRoot))
-                        foliage.needsBake = foliage.needsBakeChildren = true;
-
-                    int placementMode =
-                        species.placementMode == scene::FoliagePlacementMode::STAMP ? 1 : 0;
-                    if (ImGui::Combo(
-                            "Placement", &placementMode, "Procedural\0Stamp\0")) {
-                        species.placementMode = placementMode == 1
-                            ? scene::FoliagePlacementMode::STAMP
-                            : scene::FoliagePlacementMode::PROCEDURAL;
-                        foliage.needsBake = foliage.needsBakeChildren = true;
-                    }
-                    if (species.placementMode == scene::FoliagePlacementMode::STAMP) {
-                        ImGui::TextDisabled("Stamped Instances: %zu", species.stamps.size());
-                        if (ImGui::Button("Clear Stamps") && !species.stamps.empty()) {
-                            species.stamps.clear();
-                            foliage.needsBake = foliage.needsBakeChildren = true;
-                        }
-                    }
-
-                    if (ImGui::DragFloat("Density / 100m2",
-                                         &species.densityPer100SquareMeters,
-                                         0.05f, 0.0f, 100.0f)) {
-                        foliage.needsBake = true;
-                    }
-                    if (ImGui::DragFloat("Min Scale", &species.minScale,
-                                         0.01f, 0.01f, 20.0f))
-                        foliage.needsBake = foliage.needsBakeChildren = true;
-                    if (ImGui::DragFloat("Max Scale", &species.maxScale,
-                                         0.01f, 0.01f, 20.0f))
-                        foliage.needsBake = foliage.needsBakeChildren = true;
-                    ImGui::DragFloat("Draw Distance", &species.drawDistance,
-                                     1.0f, 1.0f, 2000.0f);
-                    int seed = static_cast<int>(species.seed);
-                    if (ImGui::DragInt("Seed", &seed, 1.0f, 0)) {
-                        species.seed = static_cast<uint32_t>(std::max(seed, 0));
-                        foliage.needsBake = true;
-                    }
-                    if (ImGui::Checkbox("Random Y Rotation",
-                                        &species.randomYRotation))
-                        foliage.needsBake = true;
-
-                    ImGui::SeparatorText("SubMesh Materials");
-                    ImGui::TextDisabled("Index must match Model::meshes index.");
-                    if (ImGui::SmallButton("+ Material Slot"))
-                        species.subMeshMaterialPaths.emplace_back();
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("- Material Slot")
-                        && !species.subMeshMaterialPaths.empty())
-                        species.subMeshMaterialPaths.pop_back();
-
-                    for (int materialIndex = 0;
-                         materialIndex < static_cast<int>(
-                             species.subMeshMaterialPaths.size());
-                         ++materialIndex) {
-                        ImGui::PushID(materialIndex);
-                        auto& path =
-                            species.subMeshMaterialPaths[static_cast<size_t>(materialIndex)];
-                        char label[32];
-                        std::snprintf(label, sizeof(label), "Material %d", materialIndex);
-                        widgets::AssetPathField(label, path, ".mat", ctx.projectRoot);
-                        ImGui::PopID();
-                    }
-
-                    if (static_cast<size_t>(speciesIndex) < foliage.caches.size())
-                        ImGui::TextDisabled("Instances: %zu",
-                            foliage.caches[static_cast<size_t>(speciesIndex)].instances.size());
-                    ImGui::TreePop();
-                }
-                ImGui::PopID();
-            }
-
-            if (deleteSpecies >= 0) {
-                foliage.species.erase(foliage.species.begin() + deleteSpecies);
-                foliage.caches.clear();
-                foliage.needsBake = true;
             }
         });
 

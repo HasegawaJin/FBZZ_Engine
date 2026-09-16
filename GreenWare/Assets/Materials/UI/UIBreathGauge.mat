@@ -1,0 +1,25 @@
+version = 1
+name = 'UIBreathGauge'
+shader = "Assets/Shaders/UI/Material/UIBreathGauge.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+fillColor = [ 0.18, 0.56, 0.28, 1.0 ]
+fillHotColor = [ 0.70, 1.0, 0.48, 1.0 ]
+trackColor = [ 0.015, 0.035, 0.02, 0.94 ]
+rimColor = [ 0.36, 0.86, 0.34, 1.0 ]
+cornerRadius = [ 8.0, 8.0, 8.0, 8.0 ]
+fillRatio = [ 1.0 ]
+fillFromRight = [ 0.0 ]
+edgeGlowWidth = [ 12.0 ]
+edgeGlowGain = [ 0.55 ]
+stripeDensity = [ 18.0 ]
+stripeAlpha = [ 0.08 ]
+shellThickness = [ 2.0 ]
+rimGain = [ 0.75 ]
+highlightGain = [ 0.68 ]

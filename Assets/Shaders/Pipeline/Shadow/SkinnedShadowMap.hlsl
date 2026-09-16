@@ -5,6 +5,7 @@
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Rendering/LodDither.hlsli"
 
 struct SMPSInput
 {
@@ -28,4 +29,7 @@ SMPSInput VSMain(SkinnedVSInput v)
     return o;
 }
 
-void PSMain(SMPSInput p) {}
+void PSMain(SMPSInput p)
+{
+    ApplyLodDither(p.svPosition.xy, objectParams.x);
+}

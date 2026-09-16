@@ -1,7 +1,9 @@
-// FBZZ Engine
-// LinearAllocator.hpp | fbzz::core
-// 線形にメモリを切り出す一括解放型アロケータ
-// フレーム中の作業バッファなど、個別解放が不要な短命データに使う。
+/// @file    LinearAllocator.hpp
+/// @brief   線形にメモリを切り出す一括解放型アロケータ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// フレーム中の作業バッファなど、個別解放が不要な短命データに使う。
 #pragma once
 
 #include "Engine/Core/Memory/Allocator.hpp"

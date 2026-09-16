@@ -1,0 +1,24 @@
+# FBZZ Engine
+# FX_SlashArc_Additive.mat
+# 素材: Assets/VFX/Textures/T_Slash_Arc.png (512x256 / 三日月)
+# 刃が通った «弧»。左が振り始め (太い)、右が抜け (細い)。Billboard で斬った向きへ回して使う。
+# 極性色を乗せる層 (12.2 の «閃光 / 光条» 側)。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:dd2c92d524524b0b83d3e082a49c6e92"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.4
+soft_particles = true
+soft_particle_fade_distance = 0.3

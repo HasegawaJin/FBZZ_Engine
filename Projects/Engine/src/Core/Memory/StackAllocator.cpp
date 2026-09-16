@@ -1,7 +1,9 @@
-// FBZZ Engine
-// StackAllocator.cpp | fbzz::core
-// StackAllocator の実装
-// 確保順と逆順の Free に限定し、ヘッダー 1 個で高速に巻き戻す。
+/// @file    StackAllocator.cpp
+/// @brief   StackAllocator の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 確保順と逆順の Free に限定し、ヘッダー 1 個で高速に巻き戻す。
 #include "Engine/Core/Memory/StackAllocator.hpp"
 
 #include <cstdlib>

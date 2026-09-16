@@ -1,6 +1,7 @@
-// FBZZ Engine
-// HotkeyEditorPanel.hpp | fbzz::editor
-// ホットキー一覧表示とリバインド UI
+/// @file    HotkeyEditorPanel.hpp
+/// @brief   ホットキー一覧表示とリバインド UI。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <string>

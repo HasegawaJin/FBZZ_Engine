@@ -1,12 +1,13 @@
-// FBZZ Engine
-// Blackboard.hpp | fbzz::ai
-// エージェントが「知っていること」を型付きで保持する共有データ領域
-//
-// WHY 必要か:
-//   BT のノード同士は直接値を渡し合わない (木の形を変えると配線が壊れるため)。
-//   代わりに Blackboard を介して間接的にやり取りする。
-//   知覚システムが書き、条件ノードが読み、アクションノードが使う、という
-//   一方向の流れになるので、木の構造とデータの流れを独立に変更できる。
+/// @file    Blackboard.hpp
+/// @brief   エージェントが「知っていること」を型付きで保持する共有データ領域。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY 必要か:
+/// BT のノード同士は直接値を渡し合わない (木の形を変えると配線が壊れるため)。
+/// 代わりに Blackboard を介して間接的にやり取りする。
+/// 知覚システムが書き、条件ノードが読み、アクションノードが使う、という
+/// 一方向の流れになるので、木の構造とデータの流れを独立に変更できる。
 #pragma once
 #include <Engine/AI/BehaviorTreeTypes.hpp>
 #include <Engine/Scene/Entity.hpp>
@@ -27,7 +28,7 @@ struct BlackboardDef {
 
     // 既定値。type に応じて 1 つだけ意味を持つ。
     // WHY variant を使わないか: TOML へ素直に書き出せる形にしたい。
-    //     VFXGraphNode と同じ「平置き」方式で揃える。
+    //     BTNodeDef と同じ「平置き」方式で揃える。
     bool          defaultBool    = false;
     int           defaultInt     = 0;
     float         defaultFloat   = 0.0f;

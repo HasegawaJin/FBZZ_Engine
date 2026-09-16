@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SplineComponents.hpp | fbzz::scene
-// Catmull-Rom曲線と曲線追従のオーサリング／ランタイム状態
+/// @file    SplineComponents.hpp
+/// @brief   Catmull-Rom曲線と曲線追従のオーサリング／ランタイム状態。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>

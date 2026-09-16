@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptWindProxy.hpp | fbzz::scene
-// Script から WindZoneComponent を操作するプロキシ
+/// @file    ScriptWindProxy.hpp
+/// @brief   Script から環境風 (ForceField の Wind + Turbulence) を操作するプロキシ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Math/Vector3.hpp>

@@ -6,14 +6,8 @@ import { app } from 'electron';
 import { access, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'smol-toml';
-import type { CreateProjectRequest, TemplateInfo } from '../shared/contracts';
-
-interface ProjectNameInfo {
-  name: string;
-  projectId: string;
-  cppNamespace: string;
-  targetName: string;
-}
+import type { CreateProjectRequest, ProjectIdentifiers, TemplateInfo } from '../shared/contracts';
+import { deriveProjectIdentifiers, isValidProjectIdentifiers } from '../shared/contracts';
 
 const TEXT_EXTENSIONS = new Set([
   '.cpp', '.hpp', '.h', '.inl', '.txt', '.toml', '.json', '.cmake', '.md', '.hlsl', '.hlsli', '.glsl', '.gitignore',
@@ -32,24 +26,13 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
-function makeProjectName(displayName: string): ProjectNameInfo {
-  const asciiParts = displayName.match(/[A-Za-z0-9]+/g) ?? [];
-  const projectId = asciiParts.join('_').toLowerCase();
-  return {
-    name: displayName.trim(),
-    projectId,
-    cppNamespace: projectId,
-    targetName: asciiParts.map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`).join(''),
-  };
-}
-
-function assertValidName(info: ProjectNameInfo): void {
-  if (!info.name || !/^[a-z][a-z0-9_]*$/.test(info.projectId) || !info.targetName) {
+function assertValidName(info: ProjectIdentifiers): void {
+  if (!isValidProjectIdentifiers(info)) {
     throw new Error('プロジェクト名には、英字で始まるASCII英数字を含めてください。');
   }
 }
 
-function applyPlaceholders(text: string, info: ProjectNameInfo, createdAt: string, sdkId: string, engineVersion: string): string {
+function applyPlaceholders(text: string, info: ProjectIdentifiers, createdAt: string, sdkId: string, engineVersion: string): string {
   const replacements: Record<string, string> = {
     PROJECT_NAME: info.name,
     PROJECT_ID: info.projectId,
@@ -77,6 +60,8 @@ function isTextTemplate(filePath: string): boolean {
 }
 
 export class TemplateService {
+  private templatesPromise: Promise<TemplateInfo[]> | null = null;
+
   private async resolveTemplatesRoot(): Promise<string> {
     const candidates = [
       path.join(process.resourcesPath, 'Templates'),
@@ -91,6 +76,20 @@ export class TemplateService {
   }
 
   async listTemplates(): Promise<TemplateInfo[]> {
+    // テンプレートはGameHubの実行中に変化しないため、一覧をプロセス内で共有する。
+    // WHY: bootstrap は設定保存後や操作完了後にも呼ばれる。毎回 template.toml を
+    //      探して読むと、起動直後のStrictMode再実行も含めて不要なI/Oが増える。
+    if (!this.templatesPromise) {
+      this.templatesPromise = this.loadTemplates().catch((error: unknown) => {
+        // 一時的なファイルアクセス失敗から復帰できるよう、失敗したPromiseは捨てる。
+        this.templatesPromise = null;
+        throw error;
+      });
+    }
+    return this.templatesPromise;
+  }
+
+  private async loadTemplates(): Promise<TemplateInfo[]> {
     const root = await this.resolveTemplatesRoot();
     const entries = await readdir(root, { withFileTypes: true });
     const templates = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
@@ -110,7 +109,7 @@ export class TemplateService {
   }
 
   async create(request: CreateProjectRequest, sdkId: string, engineVersion: string): Promise<string> {
-    const info = makeProjectName(request.displayName);
+    const info = deriveProjectIdentifiers(request.displayName);
     assertValidName(info);
 
     const templatesRoot = await this.resolveTemplatesRoot();
@@ -129,7 +128,7 @@ export class TemplateService {
     return projectRoot;
   }
 
-  private async copyTemplateDirectory(sourceRoot: string, projectRoot: string, info: ProjectNameInfo, createdAt: string, sdkId: string, engineVersion: string): Promise<void> {
+  private async copyTemplateDirectory(sourceRoot: string, projectRoot: string, info: ProjectIdentifiers, createdAt: string, sdkId: string, engineVersion: string): Promise<void> {
     const walk = async (sourceDirectory: string, relativeDirectory: string): Promise<void> => {
       for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
         if (!relativeDirectory && entry.name === 'template.toml') continue;
@@ -158,7 +157,7 @@ export class TemplateService {
     await walk(sourceRoot, '');
   }
 
-  private async syncScriptRegistrations(projectRoot: string, info: ProjectNameInfo): Promise<void> {
+  private async syncScriptRegistrations(projectRoot: string, info: ProjectIdentifiers): Promise<void> {
     const assetsRoot = path.join(projectRoot, 'Assets');
     const scriptsRoot = path.join(assetsRoot, 'Scripts');
     if (!await exists(scriptsRoot)) return;

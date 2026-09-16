@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TerrainCollisionDebugPass.cpp | fbzz::scene
-// TerrainComponent のコリジョン形状を LOD ワイヤーで HDR バッファへ描画する IRenderPass 実装
-// 遠景: チャンク AABB ボックス / 近景: gridStride おきのダウンサンプリング格子
+/// @file    TerrainCollisionDebugPass.cpp
+/// @brief   TerrainComponent のコリジョン形状を LOD ワイヤーで HDR バッファへ描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// 遠景: チャンク AABB ボックス / 近景: gridStride おきのダウンサンプリング格子
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
@@ -13,16 +15,19 @@ namespace fbzz::scene {
 
 std::string_view TerrainCollisionDebugPass::Name() const { return "TerrainCollisionDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> TerrainCollisionDebugPass::DeclareAccesses(const RenderPassContext&) const
+void TerrainCollisionDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void TerrainCollisionDebugPass::Execute(RenderPassContext& ctx)
+bool TerrainCollisionDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showTerrainCollision) return;
+    return ctx.settings.showTerrainCollision;
+}
 
+void TerrainCollisionDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     constexpr float         kNearDistance = 80.0f;
     constexpr int           kGridStride   = 8;
     constexpr math::Vector4 kNearColor    = { 0.1f, 1.0f, 0.35f, 1.0f };

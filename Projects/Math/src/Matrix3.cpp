@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Matrix3.cpp | fbzz::math
-// 3x3行列の演算実装
+/// @file    Matrix3.cpp
+/// @brief   3x3行列の演算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Matrix3.hpp"
 #include "Math/Matrix4.hpp"
 

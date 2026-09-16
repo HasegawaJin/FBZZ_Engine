@@ -11,10 +11,20 @@ file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
 set(EDITOR_MINIZ_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/TinyExr/miniz.c")
 set_source_files_properties(${EDITOR_MINIZ_SRC} PROPERTIES
     LANGUAGE C
-    COMPILE_OPTIONS "/W0"  # サードパーティ警告を抑制
+    COMPILE_OPTIONS "/W0"       # サードパーティ警告を抑制
+    SKIP_PRECOMPILE_HEADERS ON  # PCH は C++ 用。C 翻訳単位へ強制 include すると壊れる
 )
 
 add_library(FBZZEditor STATIC ${EDITOR_SOURCES} ${EDITOR_MINIZ_SRC})
+fbzz_use_std_pch(FBZZEditor)
+
+# StbImage.cpp と HdriLoader.cpp はヘッダーオンリー実装の展開場所なので統合しない。
+# miniz.c は C なので CMake が別バッチにするが、明示しておく。
+fbzz_use_unity_build(FBZZEditor EXCLUDE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Import/StbImage.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Import/HdriLoader.cpp"
+    "${EDITOR_MINIZ_SRC}"
+)
 set_target_properties(FBZZEditor PROPERTIES
     OUTPUT_NAME "FBZZEditor"
 )

@@ -1,13 +1,17 @@
-// FBZZ Engine
-// FrameAllocatorTests.cpp | GoogleTest
-// FrameAllocator のフレーム境界リセット契約を自動検証する。
-#include <gtest/gtest.h>
+/// @file    FrameAllocatorTests.cpp
+/// @brief   FrameAllocator のフレーム境界リセット契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/FrameAllocator.hpp>
 
 namespace fbzz::tests {
 
-TEST(FrameAllocatorTest, EndFrameResetsTemporaryAllocations)
+class FrameAllocatorTest : public testkit::EngineFixture {};
+
+TEST_F(FrameAllocatorTest, EndFrameResetsTemporaryAllocations)
 {
     core::FrameAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(256));
@@ -23,7 +27,7 @@ TEST(FrameAllocatorTest, EndFrameResetsTemporaryAllocations)
     allocator.Shutdown();
 }
 
-TEST(FrameAllocatorTest, CanReuseCapacityAcrossFrames)
+TEST_F(FrameAllocatorTest, CanReuseCapacityAcrossFrames)
 {
     core::FrameAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(128));

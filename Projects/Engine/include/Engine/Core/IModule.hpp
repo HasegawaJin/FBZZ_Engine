@@ -1,6 +1,7 @@
-// FBZZ Engine
-// IModule.hpp | fbzz::core
-// Application の共通メインループから呼び出される実行単位インターフェース
+/// @file    IModule.hpp
+/// @brief   Application の共通メインループから呼び出される実行単位インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 namespace fbzz::core {

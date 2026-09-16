@@ -1,5 +1,7 @@
-// FBZZ Engine
-// AssetDirtyRegistry.cpp | fbzz::editor
+/// @file    AssetDirtyRegistry.cpp
+/// @brief   未保存アセット中央レジストリの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <algorithm>
 
@@ -45,6 +47,23 @@ bool AssetDirtyRegistry::HasAny()
 const std::vector<DirtyAsset>& AssetDirtyRegistry::GetAll()
 {
     return s_dirty;
+}
+
+bool AssetDirtyRegistry::Save(const std::string& absPath)
+{
+    // saveFunc をコピーしてから呼ぶ。
+    // WHY: saveFunc の中で Register が呼ばれると s_dirty が再確保され、
+    //      イテレータ (と entry への参照) が実行中に無効化されうる。
+    std::function<bool()> saveFunc;
+    for (const auto& entry : s_dirty) {
+        if (entry.path != absPath) continue;
+        saveFunc = entry.saveFunc;
+        break;
+    }
+    if (!saveFunc) return false;
+    if (!saveFunc()) return false;
+    MarkClean(absPath);
+    return true;
 }
 
 int AssetDirtyRegistry::SaveAll()

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SocketAttach.hpp | fbzz::scene
-// モデルの「指定ノード」をキャラクターのソケットボーンへ一致させてアタッチする。
+/// @file    SocketAttach.hpp
+/// @brief   モデルの「指定ノード」をキャラクターのソケットボーンへ一致させてアタッチする。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <string_view>

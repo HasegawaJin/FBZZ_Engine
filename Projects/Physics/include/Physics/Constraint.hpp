@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Constraint.hpp | fbzz::physics
-// 剛体間制約の基底クラス
+/// @file    Constraint.hpp
+/// @brief   剛体間制約の基底クラス。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/RigidBody.hpp>
 

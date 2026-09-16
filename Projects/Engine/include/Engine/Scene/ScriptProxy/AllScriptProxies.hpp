@@ -1,8 +1,10 @@
-// FBZZ Engine
-// AllScriptProxies.hpp | fbzz::scene
-// 全 ScriptProxy ヘッダーのアンブレラインクルード。
-// Script.hpp はここを 1 行インクルードするだけでよい。
-// 新しいプロキシを追加する際はこのファイルに include を 1 行追加すること。
+/// @file    AllScriptProxies.hpp
+/// @brief   全 ScriptProxy ヘッダーのアンブレラインクルード。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// Script.hpp はここを 1 行インクルードするだけでよい。
+/// 新しいプロキシを追加する際はこのファイルに include を 1 行追加すること。
 #pragma once
 
 #include <Engine/Scene/ScriptProxy/ScriptTransformProxy.hpp>
@@ -18,10 +20,9 @@
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptVFXProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptParticleForceFieldProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptForceFieldProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptCloudProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptSunMoonProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptTerrainDetailProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPatrolProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptWindProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTrailProxy.hpp>
@@ -40,7 +41,6 @@
 #include <Engine/Scene/ScriptProxy/ScriptIKProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptWaterProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTerrainProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptFoliageProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptEnvironmentProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptDecalProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptVolumeProxy.hpp>
@@ -51,3 +51,11 @@
 #include <Engine/Scene/ScriptProxy/ScriptEventProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptRandomProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTweenProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptDisplayProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptGraphicsProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptMotionWarpProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptSequenceProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptObjectMaskProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptSpringBoneProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptRagdollProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptJointProxy.hpp>

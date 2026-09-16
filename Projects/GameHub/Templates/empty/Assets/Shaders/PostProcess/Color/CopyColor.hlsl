@@ -6,7 +6,8 @@
 #include "Common/Fullscreen.hlsli"
 
 Texture2D    texSource   : register(TEX_GBUFFER0);
-SamplerState sampDefault : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {

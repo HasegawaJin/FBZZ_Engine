@@ -1,0 +1,21 @@
+# FBZZ Engine
+# FX_SplashImpact_Additive.mat
+# 素材: Assets/VFX/Textures/T_Splash_Impact.png
+# 企画書 12.1 の最優先。極性弾にダメージが無いぶん、当たった事実はこの 1 枚が背負う。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:c8fad26bf7ccb35488ba336d30f97cb9"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 3.0

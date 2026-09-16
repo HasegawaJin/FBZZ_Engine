@@ -1,10 +1,11 @@
-// FBZZ Engine
-// StandaloneLauncher.hpp | fbzz::editor
-// Build and Run 用の子プロセス起動ユーティリティ。
-//
-// WHY: Build Settings の「Build and Run」は、生成済み配布 exe をエディタとは別プロセスで起動する。
-//      CreateProcess で分離した子プロセスとして起動するため、
-//      エディタの終了や UI 操作が配布ゲームに影響しない。
+/// @file    StandaloneLauncher.hpp
+/// @brief   Build and Run 用の子プロセス起動ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: Build Settings の「Build and Run」は、生成済み配布 exe をエディタとは別プロセスで起動する。
+/// CreateProcess で分離した子プロセスとして起動するため、
+/// エディタの終了や UI 操作が配布ゲームに影響しない。
 #pragma once
 #include <string>
 

@@ -1,16 +1,15 @@
-// FBZZ Engine
-// ViewportCommon.hpp | fbzz::editor
-// ViewportPanel の分割ファイルで共有する描画・ピッキングヘルパー
+/// @file    ViewportCommon.hpp
+/// @brief   ViewportPanel の分割ファイルで共有する描画・ピッキングヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include <Editor/Panels/ViewportPanel.hpp>
 #include "../../Tools/TerrainTool.hpp"
-#include "../../Tools/WaterTool.hpp"
-#include "../../Tools/DetailTool.hpp"
-#include "../../Tools/FoliageTool.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/Camera.hpp>
@@ -71,10 +70,16 @@ void RectSelectEntities(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& v
                         const ImVec2& rectA, const ImVec2& rectB);
 void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
+// 選択中の UI 要素すべての矩形を描く。ギズモより先に呼ぶこと (ハンドルを上に出す)。
+void DrawUISelectionOutlines(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& drag, ImVec2& dragStart, float& startX, float& startY, float& startWidth, float& startHeight, float& startAngle, float& startZ);
 // 矢印キーで選択中 UI 要素を微移動する（1px / Shift で 10px）。allowed=false のときは何もしない。
 void HandleUINudge(EditorContext& ctx, bool allowed);
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
+// Game ビューポート左下のフレーム / 描画統計 HUD。
+// 位置は「呼び出し元ウィンドウの左下」を基準にするため、対象ビューポートの
+// Begin/End スコープ内から呼ぶこと。
+void DrawStatsOverlay(EditorContext& ctx);
 // 右上のナビゲーションギズモ (Blender / Godot 風の軸ボール)。
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 // ナビゲーションギズモがマウスを取っているか。DrawOrientationGizmo より前に問い合わせるため、

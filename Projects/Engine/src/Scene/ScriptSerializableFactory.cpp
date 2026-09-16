@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptSerializableFactory.cpp | fbzz::scene
-// SerializeReference相当のネスト型factory
+/// @file    ScriptSerializableFactory.cpp
+/// @brief   SerializeReference相当のネスト型factory。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Scene/Script.hpp>
 
 #include <algorithm>

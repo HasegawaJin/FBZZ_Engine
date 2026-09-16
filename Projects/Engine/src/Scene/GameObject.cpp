@@ -1,8 +1,10 @@
-// FBZZ Engine
-// GameObject.cpp | fbzz::scene
-// GameObject の非 template メソッド実装
-// active、tag、親子関係、検索、Destroy の OOP API を提供する。
-// Component 操作の template 本体は Scene.hpp 側に置く。
+/// @file    GameObject.cpp
+/// @brief   GameObject の非 template メソッド実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// active、tag、親子関係、検索、Destroy の OOP API を提供する。
+/// Component 操作の template 本体は Scene.hpp 側に置く。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Scene/ScriptRuntime.hpp"
@@ -146,6 +148,21 @@ GameObject* GameObject::GetChild(int index) const
     if (!m_scene || index < 0 || index >= static_cast<int>(m_children.size()))
         return nullptr;
     return m_scene->GetGameObject(m_children[index]);
+}
+
+GameObject* GameObject::FindInSubtree(std::string_view objectName)
+{
+    if (!IsValid()) return nullptr;
+    std::vector<GameObject*> pending{this};
+    while (!pending.empty()) {
+        GameObject* current = pending.back();
+        pending.pop_back();
+        if (current->name == objectName) return current;
+        for (int i = current->GetChildCount(); i > 0; --i) {
+            if (GameObject* child = current->GetChild(i - 1)) pending.push_back(child);
+        }
+    }
+    return nullptr;
 }
 
 namespace {

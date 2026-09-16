@@ -16,6 +16,11 @@ const api: GameHubApi = {
   openProject: (projectPath: string) => ipcRenderer.invoke('project:open', projectPath),
   revealProject: (projectPath: string) => ipcRenderer.invoke('project:reveal', projectPath),
   saveSettings: (settings: HubSettings) => ipcRenderer.invoke('settings:save', settings),
+  onSettingsUpdated: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, settings: HubSettings) => callback(settings);
+    ipcRenderer.on('hub:settings-updated', listener);
+    return () => ipcRenderer.removeListener('hub:settings-updated', listener);
+  },
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),

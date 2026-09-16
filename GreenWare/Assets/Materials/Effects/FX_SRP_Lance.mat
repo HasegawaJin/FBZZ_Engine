@@ -1,0 +1,53 @@
+# GreenWare
+# FX_SRP_Lance.mat
+# 頭から吐く電磁の槍。SerpentLaserComponent が帯として差す。
+# 素材: Assets/VFX/Textures/T_Beam_Stripe.png (X 方向シームレス)
+#
+# 何をどちらが持つか:
+#   albedo         … LineRenderer が startColor から毎フレーム書く (琥珀 × 明るさ)。
+#   charge / phase … SerpentLaserComponent が溜めと時間を毎フレーム書く。
+#   断面・輪・熱   … ここが正本。柱の «質» はゲームの状態で変わらない。
+#
+# WHY 槍 (FX_SRP_Lance) と .mat を分けるか:
+#   同じシェーダーだが、柱は «立っている場» で輪が主役、槍は «飛んでいる一撃» で
+#   芯が主役。per-instance の上書きだけで 2 種類を維持すると、1 か所書き忘れた瞬間に
+#   柱が槍の絵になる。
+version = 1
+name = 'FX_SRP_Lance'
+shader = 'Assets/Shaders/Material/Effects/EnergyLance.hlsl'
+blend_mode = 'Premultiplied'
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[textures]
+albedo = "guid:a359f1c0b98e9f5f2481834e44ae12eb"
+
+[params]
+# 帯の色は蛇の帯と同じ琥珀。極の赤青を使うと «帯電している» と読み違える。
+albedo = [ 1.0, 0.62, 0.18, 1.0 ]
+
+# 断面。柱は太く、縁を残して «場» に見せる (棒にしない)。
+coreWidth = 0.26
+edgeFalloff = 2.4
+coreBoost = 3.0
+intensity = 1.0
+
+# 流れ。柱は上下に長いので、素材のタイルは細かめ。
+tiling = 7.0
+scroll = 0.0
+muzzleFade = 0.06
+tipFade = 0.10
+
+# 輪。柱の主役。下から上へ抜ける。
+ringDensity = 3.0
+ringSpeed = 2.6
+ringWidth = 0.16
+ringBoost = 0.7
+
+phase = 0.0
+charge = 1.0
+flicker = 0.22
+heatWash = 0.35

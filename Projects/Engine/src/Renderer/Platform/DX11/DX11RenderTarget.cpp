@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DX11RenderTarget.cpp | fbzz::renderer
-// DX11 オフスクリーン描画ターゲット実装
-// MRT、深度、SRV 取得をまとめ、ポストプロセスやシャドウに使う。
-// RenderTarget の生成と解放を DX11 リソース寿命に合わせる。
+/// @file    DX11RenderTarget.cpp
+/// @brief   DX11 オフスクリーン描画ターゲット実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// MRT、深度、SRV 取得をまとめ、ポストプロセスやシャドウに使う。
+/// RenderTarget の生成と解放を DX11 リソース寿命に合わせる。
 #include "DX11RenderTarget.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
@@ -11,9 +13,26 @@
 namespace fbzz::renderer
 {
 
-bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height, uint32_t colorCount)
+// Format → DXGI。ここが «バックエンド非依存の形式» と D3D の唯一の対応表。
+static DXGI_FORMAT ToDxgi(Format format)
 {
+    switch (format) {
+    case Format::RGBA16F:    return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    case Format::RGBA8:      return DXGI_FORMAT_R8G8B8A8_UNORM;
+    case Format::R11G11B10F: return DXGI_FORMAT_R11G11B10_FLOAT;
+    case Format::RG16F:      return DXGI_FORMAT_R16G16_FLOAT;
+    case Format::R16F:       return DXGI_FORMAT_R16_FLOAT;
+    case Format::R8:         return DXGI_FORMAT_R8_UNORM;
+    }
+    return DXGI_FORMAT_R16G16B16A16_FLOAT;
+}
+
+bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
+                            const RenderTargetDesc& desc)
+{
+    const uint32_t colorCount = desc.colorCount;
     assert(colorCount <= MAX_COLOR);
+    assert((colorCount > 0 || desc.withDepth) && "カラーも深度も無い RT は作れない");
     m_width      = width;
     m_height     = height;
     m_colorCount = colorCount;
@@ -28,7 +47,7 @@ bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t heigh
         texDesc.Height           = height;
         texDesc.MipLevels        = 1;
         texDesc.ArraySize        = 1;
-        texDesc.Format           = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        texDesc.Format           = ToDxgi(desc.format);
         texDesc.SampleDesc.Count = 1;
         texDesc.Usage            = D3D11_USAGE_DEFAULT;
         texDesc.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -42,8 +61,11 @@ bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t heigh
         }
     }
 
+    if (!desc.withDepth)
+        return true;
+
     // -------------------------------------------------------------------------
-    // 深度バッファ (全 RT で生成)
+    // 深度バッファ
     //   R32_TYPELESS + DSV(D32_FLOAT) + SRV(R32_FLOAT) の組み合わせで
     //   深度書き込みと SRV 読み取りを両立させる。
     // -------------------------------------------------------------------------

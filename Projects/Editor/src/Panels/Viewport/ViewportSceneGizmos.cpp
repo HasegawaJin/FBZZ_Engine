@@ -1,17 +1,19 @@
-// FBZZ Engine
-// ViewportSceneGizmos.cpp | fbzz::editor
-// Scene View のカメラ・ライトアイコンと3D Gizmo
+/// @file    ViewportSceneGizmos.cpp
+/// @brief   Scene View のカメラ・ライトアイコンと3D Gizmo。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "ViewportCommon.hpp"
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/ViewportCamera.hpp>
 // メッシュを持たないコンポーネントのアイコン描画に必要な型。
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
-#include <Engine/Scene/Components/WindZoneComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 
 namespace fbzz::editor {
 
@@ -234,6 +236,57 @@ ImU32 WithAlpha(ImU32 color, int alpha)
     return (color & 0x00FFFFFFu) | (static_cast<ImU32>(alpha) << IM_COL32_A_SHIFT);
 }
 
+// 選択中の水面の範囲・実効波・水流を描く。
+// WHY .mat の値ではなく実効波を描くか: 倍率と環境風を掛けた後の «実際に描かれている波» が
+//     見えないと、風を置いても何が変わったのか分からない。
+void DrawWaterGizmo(EditorContext& ctx, ImDrawList* dl, const scene::GameObject& go,
+                    const scene::WaterComponent& water, const ImVec2& vpMin, const ImVec2& vpSize)
+{
+    const math::Matrix4 world = go.transform.GetWorldMatrix();
+    const float hx = water.extentX * 0.5f;
+    const float hz = water.extentZ * 0.5f;
+    const math::Vector3 localCorners[4] = {
+        { -hx, 0.0f, -hz }, { hx, 0.0f, -hz }, { hx, 0.0f, hz }, { -hx, 0.0f, hz },
+    };
+    ImVec2 screen[4];
+    bool visible[4];
+    for (int i = 0; i < 4; ++i) {
+        const math::Vector4 corner = world * math::Vector4{
+            localCorners[i].x, localCorners[i].y, localCorners[i].z, 1.0f };
+        visible[i] = WorldToScreen({ corner.x, corner.y, corner.z }, ctx, vpMin, vpSize, screen[i]);
+    }
+    for (int i = 0; i < 4; ++i) {
+        const int next = (i + 1) % 4;
+        if (visible[i] && visible[next])
+            dl->AddLine(screen[i], screen[next], IM_COL32(80, 200, 255, 200), 1.5f);
+    }
+
+    // 色は .mat Inspector の Wave 0..3 と揃える。長さは振幅に比例させ、水面の外へは出さない。
+    static constexpr ImU32 kWaveColors[4] = {
+        IM_COL32(255, 230,  80, 230), IM_COL32(255, 160,  80, 220),
+        IM_COL32( 80, 255, 160, 220), IM_COL32(200,  80, 255, 220),
+    };
+    const math::Vector3 origin = go.transform.worldPosition;
+    const float maxLength = (std::max)(
+        (std::min)(hx * std::abs(go.transform.worldScale.x), hz * std::abs(go.transform.worldScale.z)) * 0.8f,
+        0.5f);
+    if (water.enableGerstnerWaves) {
+        for (size_t i = 0; i < water.waves.size(); ++i) {
+            const scene::GerstnerWave& wave = water.waves[i];
+            if (wave.amplitude < 1.0e-4f || wave.direction.LengthSq() < 1.0e-8f) continue;
+            const math::Vector2 dir = wave.direction.Normalized();
+            DrawDirectionLine(ctx, dl, origin, { dir.x, 0.0f, dir.y },
+                              (std::min)(wave.amplitude * 20.0f, maxLength), vpMin, vpSize, kWaveColors[i]);
+        }
+    }
+    if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f) {
+        DrawDirectionLine(ctx, dl, origin,
+                          { water.current.x / currentSpeed, 0.0f, water.current.y / currentSpeed },
+                          (std::min)(currentSpeed * 4.0f, maxLength), vpMin, vpSize,
+                          IM_COL32(90, 255, 230, 230));
+    }
+}
+
 } // namespace
 
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
@@ -296,6 +349,9 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
                                icon.screenPos.y + std::sinf(ang) * (kR + kRay) };
             icon.dl->AddLine(a, b, col, 1.5f);
         }
+        // NOTE: 範囲・形状のワイヤーはここでは描かない。Overlay の "Light Range" に
+        //       繋がった LightRangeDebugPass (Engine 側の DebugDraw) が担当する。
+        //       両方で描くと二重線になり、チェックボックスも片方にしか効かない。
         if (active && light->enabled && light->type == scene::LightComponent::Type::Directional)
             DrawDirectionLine(ctx, icon.dl, go.transform.position, go.transform.forward,
                               2.5f, vpMin, vpSize, col);
@@ -342,11 +398,20 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
 
     forEachIcon(ComponentTag<scene::AudioSourceComponent>{},      IM_COL32(140, 220, 150, 210), badge("A"));
     forEachIcon(ComponentTag<scene::ParticleEmitter>{},           IM_COL32(230, 150, 230, 210), badge("P"));
-    forEachIcon(ComponentTag<scene::ParticleForceField>{},        IM_COL32(200, 120, 240, 210), badge("F"));
-    forEachIcon(ComponentTag<scene::WindZoneComponent>{},         IM_COL32(150, 220, 235, 210), badge("W"));
+    forEachIcon(ComponentTag<scene::ForceField>{},        IM_COL32(200, 120, 240, 210), badge("F"));
+    // 環境風は ForceField の 1 種類になったので、専用アイコンは持たない。
     forEachIcon(ComponentTag<scene::NavMeshAgentComponent>{},     IM_COL32(120, 190, 120, 210), badge("N"));
     forEachIcon(ComponentTag<scene::ReflectionProbeComponent>{},  IM_COL32(190, 190, 240, 210), badge("R"));
     forEachIcon(ComponentTag<scene::DecalComponent>{},            IM_COL32(240, 180, 120, 210), badge("D"));
+
+    // ── 水面 (選択中だけ) ─────────────────────────────────────────────────────
+    // WHY 選択中だけか: 水面は広く、常に描くと地形を触っている間じゅう枠線と矢印が視界を横切る。
+    for (const scene::EntityID id : ctx.activeScene->GetEntities<scene::WaterComponent>()) {
+        if (!isSelected(id)) continue;
+        const scene::GameObject* go = ctx.activeScene->GetGameObject(id);
+        const auto* water = ctx.activeScene->GetComponent<scene::WaterComponent>(id);
+        if (go && water) DrawWaterGizmo(ctx, dl, *go, *water, vpMin, vpSize);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -435,26 +500,10 @@ void NavForwardToYawPitch(const math::Vector3& fwd, float& yaw, float& pitch)
 }
 
 // yaw / pitch からカメラ姿勢を組み立て、ピボットと距離を保ったまま Teleport 要求へ流す。
-// WHY: Camera へ直接 m_position/m_rotation を書くと DebugCamera が持つ
-//      yaw/pitch/pivot と乖離し、次に FPS ルックやオービットを始めた瞬間に視点が飛ぶ。
-//      カメラブックマークと同じ Teleport 要求経由にして内部状態まで一括同期する。
+// 実体は Util/ViewportCamera へ移した (コマンドパレット・AI からの軸ビューと同じ経路)。
 void NavApplyYawPitch(EditorContext& ctx, float yaw, float pitch)
 {
-    // ±90 ちょうどにすると forward が真上/真下になり、Teleport 側の atan2(0, 0) から
-    // yaw を復元できず 0 に落ちる。DebugCamera のオービット上限と揃えつつ、
-    // 見た目には真上・真下と区別が付かない角度で止める。
-    pitch = math::Clamp(pitch, -89.9f, 89.9f);
-
-    const math::Quaternion yawQ =
-        math::Quaternion::FromAxisAngle({ 0.0f, 1.0f, 0.0f }, math::ToRad(yaw));
-    const math::Quaternion pitchQ =
-        math::Quaternion::FromAxisAngle({ 1.0f, 0.0f, 0.0f }, math::ToRad(pitch));
-    const math::Quaternion rot = yawQ * pitchQ;
-    const math::Vector3    fwd = rot * math::Vector3::FORWARD;
-
-    ctx.teleportRotation      = rot;
-    ctx.teleportPosition      = ctx.editorCameraPivot - fwd * ctx.editorCameraFocusDistance;
-    ctx.requestTeleportCamera = true;
+    PointEditorCamera(ctx, yaw, pitch);
 }
 
 // from → to の角度差を -180..180 に畳む (補間で遠回りさせないため)。
@@ -685,7 +734,10 @@ void DrawGizmo(EditorContext& ctx,
 
     ImGuizmo::SetDrawlist();
     ImGuizmo::Enable(true);
-    ImGuizmo::SetOrthographic(false);
+    // ImGuizmo はハンドルの大きさを射影から逆算するため、ここを間違えると
+    // 正投影でハンドルが極端に伸び縮みして掴めなくなる。
+    ImGuizmo::SetOrthographic(
+        ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic);
     ImGuizmo::SetRect(viewportMin.x, viewportMin.y, viewportSize.x, viewportSize.y);
 
     ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE;

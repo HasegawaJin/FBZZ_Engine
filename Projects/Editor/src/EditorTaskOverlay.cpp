@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorTaskOverlay.cpp | fbzz::editor
-// モーダルオーバーレイの描画と状態管理
+/// @file    EditorTaskOverlay.cpp
+/// @brief   モーダルオーバーレイの描画と状態管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #include <Editor/EditorTaskOverlay.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <imgui.h>

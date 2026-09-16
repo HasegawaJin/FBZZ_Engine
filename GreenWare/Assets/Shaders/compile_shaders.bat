@@ -85,18 +85,6 @@ REM =========================================================================
 
 call :CompileVSPS Water\Water.hlsl Water.Water || goto :error
 
-REM Terrain Detail
-
-call :CompileVSPS Detail\Detail.hlsl Detail.Detail || goto :error
-call :CompileVSPS Detail\DetailGrass.hlsl Detail.DetailGrass || goto :error
-call :CompileVSPS Detail\DetailGBuffer.hlsl Detail.DetailGBuffer || goto :error
-call :CompileVSPS Detail\DetailGrassGBuffer.hlsl Detail.DetailGrassGBuffer || goto :error
-
-REM Foliage
-
-call :CompileVSPS Foliage\Foliage.hlsl Foliage.Foliage || goto :error
-call :CompileVSPS Foliage\FoliageGBuffer.hlsl Foliage.FoliageGBuffer || goto :error
-
 REM =========================================================================
 REM Debug
 REM =========================================================================

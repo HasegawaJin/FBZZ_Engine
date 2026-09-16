@@ -1,0 +1,299 @@
+# FX_BLD_HeavyHit.vfx — 連撃の締めと溜め命中。通常斬撃より遅れる輪と多い火花。
+
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BLD_HeavyHit"
+instanceId = "a3c9bd1a-5444-5da0-8579-2e3deeddea98"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "SlashHitVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+tint = [1.0, 1.0, 1.0, 1.0]
+sparkPower = 10.0
+flashLight = 3.0
+arcSize = 1.4
+sweepLateral = -1.0
+sweepTilt = 0.0
+
+[[gameobjects]]
+name = "Impact Rays"
+instanceId = "38e71098-3d82-5ef3-b3dc-2774232947ca"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_HeavyHit"
+parentInstanceId = "a3c9bd1a-5444-5da0-8579-2e3deeddea98"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 放射の光条 1 枚。放射なので向きを持たず、回転が乱数で入っても崩れない。
+# 大きさは SlashHitVfxComponent が当たりの強さ (arcSize) から書き直す。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.1
+maxParticles = 2
+shape = 0
+sizeStart = 0.7
+sizeEnd = 0.12
+sizeCurvePower = 0.5
+lifetime = 0.055
+velocitySpread = 0.0
+emitVelocity = [0.0, 0.0, 0.0]
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:163cde9e30ab4448882c0c2835c84fd8"
+sortMode = 0
+renderPriority = 74
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Impact Ring"
+instanceId = "7a2ee0d9-4029-54c8-a53d-b974efdcf715"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_HeavyHit"
+parentInstanceId = "a3c9bd1a-5444-5da0-8579-2e3deeddea98"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 衝撃の輪。弾き (FX_PLR_Parry の Ring) より速く小さく ─ 同じ大きさだと «弾いた» に読まれる。
+# 大きさと色は SlashHitVfxComponent が当たりの強さと刀の色から書く (ここは既定値)。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.2
+maxParticles = 2
+shape = 0
+sizeStart = 0.3
+sizeEnd = 2.4
+sizeCurvePower = 0.3
+lifetime = 0.16
+velocitySpread = 0.0
+emitVelocity = [0.0, 0.0, 0.0]
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:1400d4a587874d4687bc1485f66385aa"
+sortMode = 0
+renderPriority = 70
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.03
+[[gameobjects]]
+name = "Hit Flash"
+instanceId = "5c96e18c-46b6-58f7-8462-97dbfd6988f6"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_HeavyHit"
+parentInstanceId = "a3c9bd1a-5444-5da0-8579-2e3deeddea98"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.1
+maxParticles = 2
+shape = 0
+sizeStart = 0.5
+sizeEnd = 0.1
+sizeCurvePower = 2.2
+lifetime = 0.045
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:fa25f7836ccab31765f7da9e0ef7550d"
+sortMode = 0
+renderPriority = 80
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Sparks"
+instanceId = "2cf65a12-b536-5e15-853a-318e99cd32b4"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_HeavyHit"
+parentInstanceId = "a3c9bd1a-5444-5da0-8579-2e3deeddea98"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 火花は熱色のまま (12.2)。Spark Power (速さ) は SlashHitVfxComponent が書く。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 30
+shape = 1
+sphereRadius = 0.08
+sizeStart = 0.11
+sizeEnd = 0.008
+lifetime = 0.34
+lifetimeRandom = 0.45
+velocitySpread = 10.0
+velocityDamping = 2.8
+gravity = [0.0, -14.0, 0.0]
+materialPath = "guid:76825f55e16a283c202b0dc0bc5321ed"
+renderMode = 1
+stretchedVelocityScale = 0.1
+stretchedLengthScale = 2.6
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.02
+collisionBounciness = 0.35
+collisionDamping = 0.55
+renderPriority = 60
+simulationMode = 0
+colorVariation = 0.12
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.96, 0.85, 1.0], [0.3, 1.0, 0.7, 0.28, 1.0], [1.0, 0.65, 0.16, 0.02, 0.0]]
+bursts = [{ time = 0.0, count = 20, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Glint"
+instanceId = "650471de-19a0-5062-ba7b-4c3838eae086"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_HeavyHit"
+parentInstanceId = "a3c9bd1a-5444-5da0-8579-2e3deeddea98"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.25
+maxParticles = 4
+shape = 1
+sphereRadius = 0.25
+sizeStart = 0.35
+sizeEnd = 0.0
+sizeCurvePower = 0.8
+lifetime = 0.12
+lifetimeRandom = 0.3
+velocitySpread = 0.6
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:0fa5db40d2e54e9ba9516b42d76fb14f"
+sortMode = 0
+angularVelocityMin = -0.5
+angularVelocityMax = 0.5
+renderPriority = 78
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+
+startDelay = 0.055
+[[gameobjects]]
+name = "Hit Light"
+instanceId = "7180b8d8-d8c8-5906-b6aa-cfdec24a292d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_HeavyHit"
+parentInstanceId = "a3c9bd1a-5444-5da0-8579-2e3deeddea98"
+
+[gameobjects.transform]
+position = [0.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 極の色で当たった所を照らす。«当たった対象の輪郭が極の色で一瞬光る» の実体。0.1 秒。
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 1.0, 1.0]
+intensity = 3.0
+enabled = true
+range = 3.5
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.1
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.4, 0.4], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Skeleton.hpp | fbzz::asset
-// スキンメッシュ用の階層ノードとボーン情報
-// AnimationClip の nodeName と対応付け、AnimatorSystem が行列パレットを構築する。
-// インデックス配列を使い、ランタイム中の動的確保を減らす。Model 側に保持される。
+/// @file    Skeleton.hpp
+/// @brief   スキンメッシュ用の階層ノードとボーン情報。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// AnimationClip の nodeName と対応付け、AnimatorSystem が行列パレットを構築する。
+/// インデックス配列を使い、ランタイム中の動的確保を減らす。Model 側に保持される。
 #pragma once
 #include <Math/Matrix4.hpp>
 #include <Math/Quaternion.hpp>

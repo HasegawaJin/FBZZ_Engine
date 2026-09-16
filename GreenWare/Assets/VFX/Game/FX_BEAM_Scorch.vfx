@@ -1,0 +1,245 @@
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BEAM_Scorch"
+instanceId = "752dedfe-5be5-4969-a3c5-1a8b2631e079"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "BeamScorchVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+tintColor = [1.0, 1.0, 1.0, 1.0]
+emberRate = 26.0
+searSize = 0.35
+
+[[gameobjects]]
+name = "Burn (0.00s)"
+instanceId = "2e8c4ca7-69a0-4766-9c32-4c6d5e029f0a"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BEAM_Scorch"
+parentInstanceId = "752dedfe-5be5-4969-a3c5-1a8b2631e079"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[gameobjects]]
+name = "After"
+instanceId = "18209345-707c-4828-8914-937d43ba53fc"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BEAM_Scorch"
+parentInstanceId = "752dedfe-5be5-4969-a3c5-1a8b2631e079"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[gameobjects]]
+name = "Ember Spray"
+instanceId = "9dedd6e1-2fcf-40a8-a019-049b42e3c1d3"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Burn (0.00s)"
+parentInstanceId = "2e8c4ca7-69a0-4766-9c32-4c6d5e029f0a"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.25
+loop = false
+emitRate = 26.0
+maxParticles = 48
+shape = 2
+coneAngleDegrees = 62.0
+coneRadius = 0.05
+sizeStart = 0.085
+sizeEnd = 0.008
+sizeCurvePower = 1.6
+lifetime = 0.55
+lifetimeRandom = 0.55
+emitVelocity = [0.0, 0.0, 2.1]
+velocitySpread = 1.0
+velocityDamping = 2.4
+gravity = [0.0, -6.5, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.18
+stretchedLengthScale = 2.6
+sortMode = 0
+renderPriority = 55
+colorVariation = 0.18
+colorStart = [1.0, 0.62, 0.22, 1.0]
+colorEnd = [0.35, 0.05, 0.0, 0.0]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Sear Glow"
+instanceId = "93d0689c-03a1-4595-8203-0971a9857ddb"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Burn (0.00s)"
+parentInstanceId = "2e8c4ca7-69a0-4766-9c32-4c6d5e029f0a"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.95
+loop = false
+emitRate = 0.0
+maxParticles = 2
+shape = 0
+sizeStart = 0.42
+sizeEnd = 0.05
+sizeCurvePower = 1.7
+lifetime = 0.85
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowSoft_Additive.mat"
+renderMode = 0
+sortMode = 0
+renderPriority = 52
+colorStart = [1.0, 0.52, 0.16, 1.0]
+colorEnd = [0.14, 0.02, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Scorch Smoke"
+instanceId = "ec8be893-8089-4fc9-a320-ac7ed4c589f8"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "After"
+parentInstanceId = "18209345-707c-4828-8914-937d43ba53fc"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.8
+loop = false
+emitRate = 8.0
+maxParticles = 20
+shape = 2
+coneAngleDegrees = 26.0
+coneRadius = 0.04
+sizeStart = 0.1
+sizeEnd = 0.5
+sizeCurvePower = 0.7
+lifetime = 0.95
+lifetimeRandom = 0.45
+emitVelocity = [0.0, 0.0, 0.5]
+velocitySpread = 0.16
+velocityDamping = 0.9
+gravity = [0.0, 0.4, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -18.0
+angularVelocityMax = 18.0
+renderPriority = 40
+colorVariation = 0.08
+colorStart = [0.17, 0.16, 0.16, 0.45]
+colorEnd = [0.1, 0.1, 0.1, 0.0]
+startDelay = 0.08
+
+[[gameobjects]]
+name = "Sear Arc"
+instanceId = "b6d0b9fa-a4db-4bde-b0d9-6b380e33548f"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "After"
+parentInstanceId = "18209345-707c-4828-8914-937d43ba53fc"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.22
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 1
+sphereRadius = 0.12
+sizeStart = 0.35
+sizeEnd = 0.1
+sizeCurvePower = 1.8
+lifetime = 0.13
+lifetimeRandom = 0.45
+velocitySpread = 0.45
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Bolt_Additive.mat"
+renderMode = 0
+sortMode = 0
+angularVelocityMin = -22.0
+angularVelocityMax = 22.0
+renderPriority = 58
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainAssetSerializer.cpp | fbzz::scene
-// TerrainComponent の外部アセット保存・復元
+/// @file    TerrainAssetSerializer.cpp
+/// @brief   TerrainComponent の外部アセット保存・復元。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>

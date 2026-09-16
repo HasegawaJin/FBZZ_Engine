@@ -1,7 +1,9 @@
-// FBZZ Engine
-// Gizmo.cpp | fbzz::renderer
-// Gizmo クラスの実装。DebugDraw の低レベル API を組み合わせて AI デバッグ向け複合プリミティブを描く。
-// BeginFrame/Flush の外から呼ばれた場合は DebugDraw の assert が検知する。
+/// @file    Gizmo.cpp
+/// @brief   Gizmo クラスの実装。DebugDraw の低レベル API を組み合わせて AI デバッグ向け複合プリミティブを描く。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
+///
+/// BeginFrame/Flush の外から呼ばれた場合は DebugDraw の assert が検知する。
 #include <Engine/Renderer/Gizmo.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Math/MathUtils.hpp>

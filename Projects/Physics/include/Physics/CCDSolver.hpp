@@ -1,7 +1,9 @@
-// FBZZ Engine
-// CCDSolver.hpp | fbzz::physics
-// Continuous Collision Detection (高速移動物体のトンネリング防止)
-// 適用対象: SphereCollider を持つ物体のみ (m_useCCD == true)
+/// @file    CCDSolver.hpp
+/// @brief   Continuous Collision Detection (高速移動物体のトンネリング防止)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// 適用対象: SphereCollider を持つ物体のみ (m_useCCD == true)
 #pragma once
 #include <Math/Vector3.hpp>
 

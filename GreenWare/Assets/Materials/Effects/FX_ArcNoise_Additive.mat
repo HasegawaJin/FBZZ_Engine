@@ -1,0 +1,26 @@
+# FBZZ Engine
+# FX_ArcNoise_Additive.mat
+# 素材: Assets/VFX/Textures/T_Arc_Noise.png (512x128 / X方向シームレス)
+# 電弧。帯電の伝染・エネルギーラインに使う。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:16807b728faa751532db43b5516ff815"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+# 横に長い素材を 1 行 4 コマとして切り、粒ごとに違う «折れ» を引かせる。
+# 同じ形が並ぶと放電ではなく «同じステッカーの複製» に見える。
+sprite_columns = 4
+sprite_rows = 1
+flipbook_mode = "random"
+emissive_scale = 2.0

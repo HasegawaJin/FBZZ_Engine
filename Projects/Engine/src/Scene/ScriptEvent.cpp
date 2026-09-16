@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptEvent.cpp | fbzz::scene
-// スクリプト間イベントバスの実装
+/// @file    ScriptEvent.cpp
+/// @brief   スクリプト間イベントバスの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
 #include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Scene/Script.hpp>
 

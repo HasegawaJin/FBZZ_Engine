@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptCloudProxy.hpp | fbzz::scene
-// Script から VolumetricCloudComponent を操作するプロキシ
+/// @file    ScriptCloudProxy.hpp
+/// @brief   Script から VolumetricCloudComponent を操作するプロキシ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Math/Vector2.hpp>

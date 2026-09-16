@@ -19,20 +19,19 @@ export declare const ScenePropertyFilterSchema: z.ZodObject<{
     value: z.ZodType<JsonValue, unknown, z.core.$ZodTypeInternals<JsonValue, unknown>>;
 }, z.core.$strict>;
 export type ScenePropertyFilter = z.infer<typeof ScenePropertyFilterSchema>;
-export declare const VFXPreviewCameraSchema: z.ZodObject<{
-    preset: z.ZodOptional<z.ZodEnum<{
-        angle: "angle";
-        front: "front";
-        side: "side";
-        top: "top";
-    }>>;
-    target: z.ZodOptional<z.ZodTuple<[z.ZodNumber, z.ZodNumber, z.ZodNumber], null>>;
-    distance: z.ZodOptional<z.ZodNumber>;
-    yaw: z.ZodOptional<z.ZodNumber>;
-    pitch: z.ZodOptional<z.ZodNumber>;
-    fovY: z.ZodOptional<z.ZodNumber>;
-}, z.core.$strict>;
-export type VFXPreviewCamera = z.infer<typeof VFXPreviewCameraSchema>;
+export declare const FluidPathSchema: z.ZodString;
+export declare const FluidJobIdSchema: z.ZodNumber;
+export declare const FluidPresetSchema: z.ZodString;
+export declare const FluidFieldsSchema: z.ZodRecord<z.ZodString, z.ZodType<JsonValue, unknown, z.core.$ZodTypeInternals<JsonValue, unknown>>>;
+export declare const FluidEffectNameSchema: z.ZodString;
+export declare const FluidOperatorListSchema: z.ZodEnum<{
+    collider: "collider";
+    force: "force";
+    source: "source";
+}>;
+export type FluidOperatorList = z.infer<typeof FluidOperatorListSchema>;
+export declare const FluidOperatorIndexSchema: z.ZodNumber;
+export declare const FluidOperatorTypeSchema: z.ZodString;
 export type EditorQuery = {
     t: 'editor.catalog';
 } | {
@@ -40,6 +39,15 @@ export type EditorQuery = {
     query?: string | undefined;
     category?: string | undefined;
     limit?: number | undefined;
+} | {
+    t: 'editor.op.list';
+    search?: string | undefined;
+    category?: string | undefined;
+    includeUnavailable?: boolean | undefined;
+} | {
+    t: 'editor.op.query';
+    id: string;
+    args?: Record<string, unknown> | undefined;
 } | {
     t: 'editor.state';
 } | {
@@ -85,34 +93,12 @@ export type EditorQuery = {
     t: 'asset.thumbnail';
     path: string;
 } | {
-    t: 'vfx.graph';
-    path: string;
-    detail?: 'summary' | 'full' | undefined;
-} | {
-    t: 'vfx.nodeField';
-    path: string;
-    nodeId: number;
-    schemaPath?: string | undefined;
-    prefix?: string | undefined;
-} | {
-    t: 'vfx.lint';
+    t: 'sprite.list';
     path: string;
 } | {
-    t: 'vfx.diff';
-    base: string;
-    target: string;
-} | {
-    t: 'vfx.params';
+    t: 'sprite.thumbnail';
     path: string;
-    id?: string | undefined;
-} | {
-    t: 'vfx.schema';
-} | {
-    t: 'vfx.guide';
-} | {
-    t: 'vfx.templateCatalog';
-    query?: string | undefined;
-    limit?: number | undefined;
+    sprite: string;
 } | {
     t: 'bt.tree';
     path: string;
@@ -140,40 +126,10 @@ export type EditorQuery = {
 } | {
     t: 'bt.templateCatalog';
 } | {
-    t: 'vfx.runtime';
-} | {
-    t: 'vfx.previewEnsure';
-} | {
-    t: 'vfx.textureAnalyze';
-    path: string;
-} | {
-    t: 'vfx.materialAnalyze';
-    path: string;
-} | {
-    t: 'vfx.assetSurvey';
-    directory?: string | undefined;
-    limit?: number | undefined;
-    detail?: 'summary' | 'full' | undefined;
-    refresh?: boolean | undefined;
-} | {
     t: 'shader.inspect';
     path: string;
 } | {
     t: 'shader.diagnostics';
-} | {
-    t: 'vfx.curvePresets';
-} | {
-    t: 'vfx.preview';
-    path: string;
-    time: number;
-    w?: number | undefined;
-    h?: number | undefined;
-    view?: 'normal' | 'overdraw' | 'gizmos' | undefined;
-    camera?: VFXPreviewCamera | undefined;
-} | {
-    t: 'vfx.previewMetrics';
-    path: string;
-    view?: 'normal' | 'overdraw' | 'gizmos' | undefined;
 } | {
     t: 'material.inspect';
     id: string;
@@ -215,7 +171,7 @@ export type EditorQuery = {
     w: number;
     h: number;
     cameraId?: string | undefined;
-    view?: 'scene' | 'game' | 'vfx' | undefined;
+    view?: 'scene' | 'game' | undefined;
 } | {
     t: 'viewport.semantic';
     w: number;
@@ -232,9 +188,6 @@ export type EditorQuery = {
 } | {
     t: 'terrain.sample';
     points: Array<number[]>;
-    id?: string | undefined;
-} | {
-    t: 'foliage.inspect';
     id?: string | undefined;
 } | {
     t: 'navmesh.state';
@@ -264,9 +217,22 @@ export type EditorQuery = {
 } | {
     t: 'build.status';
     limit?: number | undefined;
+} | {
+    t: 'fluid.schema';
+} | {
+    t: 'fluid.get';
+    path: string;
+} | {
+    t: 'fluid.jobStatus';
+    job: number;
+    includeImage?: boolean | undefined;
 };
 export declare const EditorQuerySchema: z.ZodType<EditorQuery>;
 export type EditorCommand = {
+    t: 'editor.op.invoke';
+    id: string;
+    args?: Record<string, unknown> | undefined;
+} | {
     t: 'node.create';
     parent?: string | undefined;
     name?: string | undefined;
@@ -354,141 +320,6 @@ export type EditorCommand = {
     path: string;
     shaderPath: string;
 } | {
-    t: 'vfx.graph.set';
-    path: string;
-    name?: string | undefined;
-    maxParticles?: number | undefined;
-    maxLights?: number | undefined;
-    maxAudioVoices?: number | undefined;
-} | {
-    t: 'vfx.node.add';
-    path: string;
-    nodeType: 'particle' | 'trail' | 'meshTrail' | 'light' | 'audio' | 'decal' | 'delay' | 'subGraph' | 'forceField' | 'mesh' | 'screenEffect' | 'cameraShake' | 'timeScale' | 'wind' | 'reroute';
-    name?: string | undefined;
-    from?: number | undefined;
-    assetPath?: string | undefined;
-} | {
-    t: 'vfx.node.duplicate';
-    path: string;
-    nodeId: number;
-    name?: string | undefined;
-    editorX?: number | undefined;
-    editorY?: number | undefined;
-} | {
-    t: 'vfx.node.remove';
-    path: string;
-    nodeId: number;
-} | {
-    t: 'vfx.node.setEnabled';
-    path: string;
-    nodeId: number;
-    enabled: boolean;
-} | {
-    t: 'vfx.node.setMetadata';
-    path: string;
-    nodeId: number;
-    name?: string | undefined;
-    editorX?: number | undefined;
-    editorY?: number | undefined;
-} | {
-    t: 'vfx.node.setParent';
-    path: string;
-    nodeId: number;
-    parentNodeId?: number | undefined;
-} | {
-    t: 'vfx.node.setField';
-    path: string;
-    nodeId: number;
-    schemaPath: string;
-    value: JsonValue;
-} | {
-    t: 'vfx.link.add';
-    path: string;
-    from: number;
-    to: number;
-    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
-    delay?: number | undefined;
-} | {
-    t: 'vfx.link.update';
-    path: string;
-    index: number;
-    from?: number | undefined;
-    to?: number | undefined;
-    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
-    delay?: number | undefined;
-} | {
-    t: 'vfx.link.remove';
-    path: string;
-    index: number;
-} | {
-    t: 'vfx.param.declare';
-    path: string;
-    name: string;
-    paramType: 'float' | 'int' | 'bool' | 'color' | 'vector3' | 'asset';
-    defaultValue: JsonValue;
-    minimum?: number | undefined;
-    maximum?: number | undefined;
-} | {
-    t: 'vfx.param.remove';
-    path: string;
-    name: string;
-} | {
-    t: 'vfx.param.bind';
-    path: string;
-    name: string;
-    nodeId: number;
-    schemaPath: string;
-} | {
-    t: 'vfx.param.unbind';
-    path: string;
-    name: string;
-    nodeId?: number | undefined;
-    schemaPath?: string | undefined;
-} | {
-    t: 'vfx.param.setDefault';
-    path: string;
-    name: string;
-    value: JsonValue;
-} | {
-    t: 'vfx.instance.set';
-    id: string;
-    name: string;
-    value: JsonValue;
-} | {
-    t: 'vfx.instance.clear';
-    id: string;
-    name: string;
-} | {
-    t: 'vfx.template.apply';
-    template: 'explosion' | 'fire' | 'smoke' | 'impact' | 'magic' | string;
-    path: string;
-    name?: string | undefined;
-    description?: string | undefined;
-    tags?: string[] | undefined;
-    mode?: 'replace' | 'merge' | 'subgraph' | undefined;
-    groups?: number[] | undefined;
-    anchorNodeId?: number | undefined;
-    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
-    delay?: number | undefined;
-    parentNodeId?: number | undefined;
-    variant?: string | undefined;
-    raiseBudget?: boolean | undefined;
-} | {
-    t: 'vfx.optimize';
-    path: string;
-    targetParticles?: number | undefined;
-    strategy?: 'particles' | 'fillRate' | 'both' | undefined;
-} | {
-    t: 'vfx.repair';
-    path: string;
-    connectOrphans?: boolean | undefined;
-    fixAssets?: boolean | undefined;
-    fixSprites?: boolean | undefined;
-    fixLighting?: boolean | undefined;
-    fixSorting?: boolean | undefined;
-    fixMeshFade?: boolean | undefined;
-    fixParents?: boolean | undefined;
-} | {
     t: 'bt.node.add';
     path: string;
     nodeType: string;
@@ -545,48 +376,36 @@ export type EditorCommand = {
     name?: string | undefined;
     description?: string | undefined;
 } | {
-    t: 'vfx.variant.upsert';
-    path: string;
-    name: string;
-    values: {
-        [key: string]: JsonValue;
-    };
-} | {
-    t: 'vfx.variant.remove';
-    path: string;
-    name: string;
-} | {
-    t: 'vfx.group.add';
-    path: string;
-    title?: string | undefined;
-    note?: string | undefined;
-    x?: number | undefined;
-    y?: number | undefined;
-    width?: number | undefined;
-    height?: number | undefined;
-    color?: [number, number, number, number] | undefined;
-} | {
-    t: 'vfx.group.update';
-    path: string;
-    groupId: number;
-    title?: string | undefined;
-    note?: string | undefined;
-    x?: number | undefined;
-    y?: number | undefined;
-    width?: number | undefined;
-    height?: number | undefined;
-    color?: [number, number, number, number] | undefined;
-} | {
-    t: 'vfx.group.remove';
-    path: string;
-    groupId: number;
-} | {
     t: 'vfx.generateMotionVectors';
     texturePath: string;
     columns: number;
     rows: number;
     searchRadius?: number | undefined;
     loop?: boolean | undefined;
+    rowSequences?: boolean | undefined;
+    materialPath?: string | undefined;
+} | {
+    t: 'sprite.rename';
+    path: string;
+    sprite: string;
+    name: string;
+} | {
+    t: 'sprite.slice';
+    path: string;
+    type?: 'grid' | 'automatic' | undefined;
+    columns?: number | undefined;
+    rows?: number | undefined;
+    cellWidth?: number | undefined;
+    cellHeight?: number | undefined;
+    offsetX?: number | undefined;
+    offsetY?: number | undefined;
+    paddingX?: number | undefined;
+    paddingY?: number | undefined;
+    pivotX?: number | undefined;
+    pivotY?: number | undefined;
+    keepEmptyRects?: boolean | undefined;
+    prefix?: string | undefined;
+    mode?: 'smart' | 'safe' | 'replace' | undefined;
 } | {
     t: 'animation.control';
     id: string;
@@ -826,21 +645,6 @@ export type EditorCommand = {
     layer: number;
     material: string;
 } | {
-    t: 'foliage.scatter';
-    id: string;
-    species: number;
-    position: [number, number, number];
-    radius?: number | undefined;
-    count?: number | undefined;
-    maxSlopeDegrees?: number | undefined;
-    seed?: number | undefined;
-} | {
-    t: 'foliage.clear';
-    id: string;
-    species: number;
-    position?: [number, number, number] | undefined;
-    radius?: number | undefined;
-} | {
     t: 'navmesh.bake';
     id?: string | undefined;
 } | {
@@ -850,6 +654,57 @@ export type EditorCommand = {
 } | {
     t: 'build.run';
     target?: 'script' | undefined;
+} | {
+    t: 'fluid.create';
+    path: string;
+    preset?: string | undefined;
+    overwrite?: boolean | undefined;
+} | {
+    t: 'fluid.set';
+    path: string;
+    fields: Record<string, JsonValue>;
+} | {
+    t: 'fluid.addOperator';
+    path: string;
+    list: FluidOperatorList;
+    type?: string | undefined;
+    index?: number | undefined;
+    fields?: Record<string, JsonValue> | undefined;
+} | {
+    t: 'fluid.removeOperator';
+    path: string;
+    list: FluidOperatorList;
+    index: number;
+} | {
+    t: 'fluid.moveOperator';
+    path: string;
+    list: FluidOperatorList;
+    from: number;
+    to: number;
+} | {
+    t: 'fluid.preview';
+    path: string;
+    frame?: number | undefined;
+    time?: number | undefined;
+    size?: number | undefined;
+    contactSheet?: boolean | undefined;
+    variants?: number | undefined;
+    seed?: number | undefined;
+} | {
+    t: 'fluid.bake';
+    path: string;
+    updateMaterial?: boolean | undefined;
+    seed?: number | undefined;
+} | {
+    t: 'fluid.cancel';
+    job: number;
+} | {
+    t: 'fluid.createEffect';
+    name: string;
+    dir?: string | undefined;
+    preset?: string | undefined;
+    fields?: Record<string, JsonValue> | undefined;
+    bake?: boolean | undefined;
 } | {
     t: 'editor.transaction';
     label: string;
@@ -885,7 +740,6 @@ export declare const ViewportCaptureResultSchema: z.ZodObject<{
     view: z.ZodOptional<z.ZodEnum<{
         game: "game";
         scene: "scene";
-        vfx: "vfx";
     }>>;
 }, z.core.$strict>;
 export type ViewportCaptureResult = z.infer<typeof ViewportCaptureResultSchema>;
@@ -917,4 +771,39 @@ export declare const AssetThumbnailResultSchema: z.ZodObject<{
     }>;
     base64: z.ZodString;
     path: z.ZodString;
+}, z.core.$strict>;
+export declare const FluidJobImageSchema: z.ZodObject<{
+    mimeType: z.ZodEnum<{
+        "image/jpeg": "image/jpeg";
+        "image/png": "image/png";
+    }>;
+    base64: z.ZodString;
+}, z.core.$loose>;
+export declare const FluidJobStatusResultSchema: z.ZodObject<{
+    job: z.ZodNumber;
+    state: z.ZodEnum<{
+        cancelled: "cancelled";
+        done: "done";
+        encoding: "encoding";
+        failed: "failed";
+        queued: "queued";
+        running: "running";
+    }>;
+    image: z.ZodOptional<z.ZodObject<{
+        mimeType: z.ZodEnum<{
+            "image/jpeg": "image/jpeg";
+            "image/png": "image/png";
+        }>;
+        base64: z.ZodString;
+    }, z.core.$loose>>;
+}, z.core.$loose>;
+export declare const SpriteThumbnailResultSchema: z.ZodObject<{
+    mimeType: z.ZodLiteral<"image/png">;
+    base64: z.ZodString;
+    width: z.ZodNumber;
+    height: z.ZodNumber;
+    sourceWidth: z.ZodNumber;
+    sourceHeight: z.ZodNumber;
+    name: z.ZodString;
+    reference: z.ZodString;
 }, z.core.$strict>;

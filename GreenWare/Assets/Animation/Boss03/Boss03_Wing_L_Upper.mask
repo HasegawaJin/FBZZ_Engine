@@ -1,0 +1,15 @@
+
+[mask]
+version = 1
+name = "Boss03_Wing_L_Upper"
+default_include = false
+skeleton_source = "guid:de70434e5389489ba8ef71bda4fb34a3|Assets/Models/Boss_03/Boss03.fbx"
+skeleton_source_signature = ""
+
+
+[[entries]]
+bone = "Wing_L_Upper"
+include_children = true
+blend_depth = 0
+weight = 1.0
+

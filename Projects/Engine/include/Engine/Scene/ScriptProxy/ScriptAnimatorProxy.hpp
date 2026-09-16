@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptAnimatorProxy.hpp | fbzz::scene
-// Script から AnimatorComponent を操作するショートハンド
+/// @file    ScriptAnimatorProxy.hpp
+/// @brief   Script から AnimatorComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Math/Quaternion.hpp>
@@ -39,6 +40,7 @@ struct ScriptAnimatorProxy {
     float       GetNormalizedTime(GameObject* go) const;
     std::vector<std::pair<std::string, float>> GetCurrentBlendWeights() const;
     std::string GetCurrentState() const;
+    std::string GetCurrentState(GameObject* go) const;
     // クロスフェード遷移先ステート名 (遷移中でなければ空) とその正規化時間 0..1。
     // コンボの Slash→Slash 遷移中に次段の振りタイミングを正しく判定するために使う。
     std::string GetBlendToState() const;
@@ -46,9 +48,16 @@ struct ScriptAnimatorProxy {
     float       GetBlendToNormalizedTime() const;
     float       GetBlendToNormalizedTime(GameObject* go) const;
     void        SetSpeed(float speed) const;
+    /// Freeze 用の speed と独立した時計倍率 [0,8]。1 で通常。
+    void SetLocalTimeScale(float scale) const;
+    float       GetSpeed() const;
     void        Play(std::string_view stateName) const;
     void        SetSpeed(GameObject* go, float speed) const;
+    float       GetSpeed(GameObject* go) const;
     void        Play(GameObject* go, std::string_view stateName) const;
+    // 時間の進行そのものを止める。SetSpeed(0) と違い、再開時に速度を覚えておく必要がない。
+    void        SetPlaying(bool playing) const;
+    bool        IsPlaying() const;
     void        SetLayerWeight(std::string_view layerName, float weight) const;
     float       GetLayerWeight(std::string_view layerName) const;
 
@@ -61,6 +70,7 @@ struct ScriptAnimatorProxy {
     // レイヤーのマスクを差し替える (.mask アセットのパス)。空文字列でマスク解除。
     // WHY: 同じ上半身レイヤーを、武器種によって「腕だけ」「腕＋頭」と切り替えたいことがある。
     void        SetLayerMask(std::string_view layerName, std::string_view maskPath) const;
+    std::string GetLayerMask(std::string_view layerName) const;
 
     // ── Slot (ワンショット差し込み) ──────────────────────────────────────────
     // 指定レイヤーへクリップを割り込ませる。終端に達すると自動でフェードアウトする。
@@ -72,6 +82,19 @@ struct ScriptAnimatorProxy {
     void  StopSlot(std::string_view layerName, float fadeOut = -1.0f) const;
     bool  IsSlotPlaying(std::string_view layerName) const;
     float GetSlotWeight(std::string_view layerName) const;
+    // 鳴っている Slot の再生速度を途中で書き換える (PlaySlot の speed を上書き)。
+    // WHY: 1 本のクリップの中に «溜めはゆっくり・斬り抜けは速く» の緩急を付けるには、
+    //      再生の途中で速度を変える必要がある。Slot が鳴っていなければ何もしない。
+    void  SetSlotSpeed(std::string_view layerName, float speed) const;
+    // Slot のクリップ内の再生秒数。鳴っていなければ 0。
+    float GetSlotTime(std::string_view layerName) const;
+    // Base Layer のステートの再生速度を実行時に書き換える (.animcontroller の speed を上書き)。
+    // WHY: SetSpeed は Animator 全体 (Slot も) に掛かる。走りを実速へ合わせる・転がりを
+    //      移動の減速に合わせる、のように «そのステートだけ» 速さを変える口が要る。
+    //      コントローラーを読み直すと .animcontroller の値へ戻る。
+    void  SetStateSpeed(std::string_view stateName, float speed) const;
+    // 見つからなければ 1。
+    float GetStateSpeed(std::string_view stateName) const;
     void        SetMorphWeight(std::string_view morphName, float weight) const;
     float       GetMorphWeight(std::string_view morphName) const;
 
@@ -95,9 +118,13 @@ struct ScriptAnimatorProxy {
     int   GetRootMotionMode() const;
     // 抽出したルートモーションへ掛ける倍率。アニメの歩幅とゲーム速度を合わせる調整用。
     void  SetRootMotionPositionScale(float scale) const;
+    float GetRootMotionPositionScale() const;
     void  SetRootMotionRotationScale(float scale) const;
+    float GetRootMotionRotationScale() const;
     // 名前指定でルートモーショントラックを差し替える。空文字列でクリップ指定へ戻す。
-    void  SetRootMotionNodeName(std::string_view nodeName) const;
+    void        SetRootMotionNodeName(std::string_view nodeName) const;
+    // 空文字列ならクリップ指定のトラックを使っている。
+    std::string GetRootMotionNodeName() const;
 };
 
 } // namespace fbzz::scene

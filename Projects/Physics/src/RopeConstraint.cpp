@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RopeConstraint.cpp | fbzz::physics
-// 最大距離のみを拘束するロープ制約
+/// @file    RopeConstraint.cpp
+/// @brief   最大距離のみを拘束するロープ制約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #include <Physics/RopeConstraint.hpp>
 
 namespace fbzz::physics

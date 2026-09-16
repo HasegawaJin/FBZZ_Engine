@@ -1,31 +1,32 @@
-// FBZZ Engine
-// ScriptDllLoader.hpp | fbzz::editor
-// スクリプト DLL のロード / アンロード / ホットリロード管理
-//
-// WHAT: SandboxScripts.dll を LoadLibrary で動的にロードし、
-//       エクスポート関数 SandboxScripts_Register() 経由で ScriptFactory に登録する。
-//
-// WHY (ファイルロック対策):
-//   Windows の LoadLibrary はロードした DLL ファイルをロックする。
-//   ビルド中に上書きできないため、ロード前に _hot/ ディレクトリへ
-//   タイムスタンプ付きコピーを作成し、そのコピーをロードする。
-//   古いコピーは次回 Reload 時に掃除する。
-//
-// WHY (スクリプト破棄順序):
-//   仮想デストラクタが DLL コード内にあるため、FreeLibrary 前に
-//   すべての Script インスタンスを破棄しなければならない。
-//   Reload() はシーンをシリアライズ → Script 全破棄 → FreeLibrary →
-//   LoadLibrary → デシリアライズの順で処理する。
+/// @file    ScriptDllLoader.hpp
+/// @brief   スクリプト DLL のロード / アンロード / ホットリロード管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHAT: SandboxScripts.dll を LoadLibrary で動的にロードし、
+/// エクスポート関数 SandboxScripts_Register() 経由で ScriptFactory に登録する。
+///
+/// WHY (ファイルロック対策):
+/// Windows の LoadLibrary はロードした DLL ファイルをロックする。
+/// ビルド中に上書きできないため、ロード前に _hot/ ディレクトリへ
+/// タイムスタンプ付きコピーを作成し、そのコピーをロードする。
+/// 古いコピーは次回 Reload 時に掃除する。
+///
+/// WHY (スクリプト破棄順序):
+/// 仮想デストラクタが DLL コード内にあるため、FreeLibrary 前に
+/// すべての Script インスタンスを破棄しなければならない。
+/// Reload() の差し替えに失敗したら旧 DLL と保存シーンを再ロードする。
+/// 復帰範囲は Docs/design/script-dll-recovery.md を参照。
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>
-#include <Windows.h>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
 
 namespace fbzz::scene { class Script; }
+struct HINSTANCE__;
 
 namespace fbzz::editor {
 
@@ -47,7 +48,7 @@ public:
 
     // シーン状態を維持したまま DLL を差し替える (ホットリロード本体)。
     // 手順: Serialize → Script 全破棄 → FreeLibrary → Load → Deserialize
-    // Play 中は false を返してリロードをスキップする。
+    // 呼び出し側は Play 中の差し替えを禁止すること。
     // @return リロード成功なら true
     [[nodiscard]] bool Reload(scene::Scene& scene, const std::filesystem::path& newDllPath);
 
@@ -62,14 +63,16 @@ private:
     void CleanHotDir() const;
 
     // DLL エクスポート関数を使って ScriptFactory に登録する
-    void RegisterScripts();
+    [[nodiscard]] bool RegisterScripts();
     // Scene / Script の型レイアウトがホスト側と一致するか検証する
     [[nodiscard]] bool ValidateAbi() const;
+
+    [[nodiscard]] bool LoadCopy(const std::filesystem::path& source);
 
     // シーン内の全 Script インスタンスを破棄する (FreeLibrary 前に呼ぶ)
     static void DestroyAllScripts(scene::Scene& scene);
 
-    HMODULE               m_hDll    = nullptr;
+    HINSTANCE__*          m_hDll    = nullptr;
     std::filesystem::path m_dllPath;     // 元の DLL パス (ビルド出力先)
     std::filesystem::path m_hotCopy;     // 現在ロード中のコピーパス
 };

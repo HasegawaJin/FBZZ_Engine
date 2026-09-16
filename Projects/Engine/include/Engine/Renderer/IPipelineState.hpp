@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IPipelineState.hpp | fbzz::renderer
-// パイプライン状態の抽象インターフェース
-// ブレンド・深度・カリングなど描画状態をバックエンド非依存でまとめる。
-// DrawCall はハンドルでこの状態を参照する。
+/// @file    IPipelineState.hpp
+/// @brief   パイプライン状態の抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// ブレンド・深度・カリングなど描画状態をバックエンド非依存でまとめる。
+/// DrawCall はハンドルでこの状態を参照する。
 #pragma once
 #include "RenderState.hpp"
 

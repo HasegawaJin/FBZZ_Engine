@@ -1,0 +1,74 @@
+# 風の速度場 — 絵ではなく «速度» を配るためのレシピ。output.vector_field = true で
+# フリップブックと一緒に .vfield が焼かれ、パーティクルの ForceField から参照できる。
+# 煙は速度を見るための目印なので薄くてよい。ループさせて継ぎ目を消す。
+version = 2
+kind = "gas"
+seed = 41
+
+[gas]
+buoyancy = 0.6
+weight = 0.02
+vorticity = 0.85
+turbulence = 0.5
+turbulence_scale = 6.5
+density_dissipation = 0.55
+temperature_dissipation = 1.0
+wind = [0.3, 0.05, 0.0]
+
+[[source]]
+name = "Inflow"
+shape = "box"
+center = [-0.78, 0.0, 0.0]
+size = [0.06, 0.55, 0.55]
+density = 1.6
+temperature = 0.8
+noise = 0.85
+velocity = [1.1, 0.0, 0.0]
+duration = 0.0
+
+[[force]]
+name = "Eddy"
+type = "vortex"
+center = [0.1, 0.05, 0.0]
+direction = [0.0, 0.0, 1.0]
+strength = 1.6
+radius = 0.6
+falloff_power = 1.3
+
+[[force]]
+name = "Churn"
+type = "noise"
+strength = 1.2
+noise_frequency = 2.4
+noise_speed = 0.6
+
+[render]
+shading = "smoke"
+smoke_color = [0.6, 0.62, 0.66, 1.0]
+shadow_color = [0.12, 0.12, 0.14, 1.0]
+opacity = 1.6
+self_shadow = 1.2
+detail_strength = 0.375
+detail_scale = 7.0
+
+[output]
+frame_size = 128
+columns = 8
+rows = 8
+supersampling = 2
+duration = 2.4
+warmup = 1.6
+loop = true
+motion_vectors = true
+vector_field = true
+vector_field_resolution = 32
+vector_field_extents = [2.0, 2.0, 2.0]
+
+[bake]
+mode = "3d"
+volume_resolution = 96
+ray_steps = 192
+shadow_steps = 16
+solver = "gpu"
+six_way_lightmaps = false
+scattering_octaves = 4

@@ -1,22 +1,28 @@
-// FBZZ Engine
-// PostProcess/Bloom/BloomDownsample.cs.hlsl | PostProcess
-// Bloom ダウンサンプル — 輝度閾値でフィルタしながら半分解像度に縮小する
+/// @file BloomDownsample.cs.hlsl
+/// @brief Bloom ミップ連鎖のダウンサンプル (1 段目だけ輝度閾値でフィルタする)
+/// @author Hasegawa Jin
+/// @date 2026-08-25
 //
 // Dispatch サイズ: ceil(dstWidth/8) x ceil(dstHeight/8) x 1
+//
+// texelSize    = 書き込み先のテクセルサイズ (UV を作るのに使う)
+// bloomSrcTexel = 読み込み元のテクセルサイズ (タップのずらし幅に使う)
 
 #include "Common/Constants.hlsli"
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
 
 Texture2D          texSrc      : register(TEX_BLOOM);
-SamplerState       sampDefault : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須。s0 は DX12 の静的サンプラーが WRAP (メッシュの
+// タイリング用) なので、ここで使うと画面端のカーネルが反対側の端を読み込む。
+SamplerState       sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 RWTexture2D<float4> outputDst  : register(UAV_OUTPUT);
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
-    uint2  pixel  = dtid.xy;
+    uint2 pixel = dtid.xy;
     uint2 outputSize;
     outputDst.GetDimensions(outputSize.x, outputSize.y);
     if (any(pixel >= outputSize))
@@ -28,23 +34,35 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
         return;
     }
 
-    // 出力テクセルサイズ (入力の 2 倍)
-    float2 srcUV  = (float2(pixel) + 0.5f) * texelSize * 2.0f;
+    const float2 uv = (float2(pixel) + 0.5f) * texelSize;
+    const float2 o  = bloomSrcTexel;
 
-    // 2x2 バイリニア平均
-    float4 s0 = texSrc.SampleLevel(sampDefault, srcUV + texelSize * float2(-0.5f, -0.5f), 0);
-    float4 s1 = texSrc.SampleLevel(sampDefault, srcUV + texelSize * float2( 0.5f, -0.5f), 0);
-    float4 s2 = texSrc.SampleLevel(sampDefault, srcUV + texelSize * float2(-0.5f,  0.5f), 0);
-    float4 s3 = texSrc.SampleLevel(sampDefault, srcUV + texelSize * float2( 0.5f,  0.5f), 0);
-    float4 avg = (s0 + s1 + s2 + s3) * 0.25f;
+    // テント状の 5 タップ。
+    // WHY 中心 1 タップで済ませないか: 書き込み先の画素中心は読み込み元の
+    //     テクセル境界に乗るため、バイリニア 1 回で 2x2 の平均そのものになる。
+    //     それだけだと畳み込みが箱型で、段を重ねると四角いにじみが残る。
+    //     隣の 2x2 ブロックまで含めて 4x4 を滑らかに拾うと段間の継ぎ目が消える。
+    float4 c = texSrc.SampleLevel(sampDefault, uv, 0) * 0.5f;
+    c += texSrc.SampleLevel(sampDefault, uv + float2(-o.x, -o.y), 0) * 0.125f;
+    c += texSrc.SampleLevel(sampDefault, uv + float2( o.x, -o.y), 0) * 0.125f;
+    c += texSrc.SampleLevel(sampDefault, uv + float2(-o.x,  o.y), 0) * 0.125f;
+    c += texSrc.SampleLevel(sampDefault, uv + float2( o.x,  o.y), 0) * 0.125f;
 
-    // 輝度閾値。
-    // WHY: 固定値では昼夜や屋内外の露出差に合わせにくいため、ProjectSettings から調整できるようにする。
-    float lum    = Luminance(avg.rgb);
-    float knee   = max(bloomThreshold * bloomSoftKnee, 0.0001f);
-    float soft   = saturate((lum - bloomThreshold + knee) / (2.0f * knee));
-    soft = soft * soft * knee;
-    float weight = max(lum - bloomThreshold, soft) / max(lum, 0.0001f);
+    // 輝度閾値は連鎖の 1 段目だけ。2 段目以降は既に選別済みのものをぼかすだけ。
+    if (bloomApplyThreshold > 0.5f)
+    {
+        const float lum    = Luminance(c.rgb);
+        const float knee   = max(bloomThreshold * bloomSoftKnee, 0.0001f);
+        float       soft   = saturate((lum - bloomThreshold + knee) / (2.0f * knee));
+        soft = soft * soft * knee;
+        const float weight = max(lum - bloomThreshold, soft) / max(lum, 0.0001f);
+        c.rgb *= weight;
 
-    outputDst[pixel] = float4(avg.rgb * weight, avg.a);
+        // NaN / Inf の混入を止める。HDR バッファは発散した値を持ちうるが、
+        // ここで拾うとミップ全段へ広がって画面が丸ごと壊れる。
+        c.rgb = min(c.rgb, 65504.0f);
+        c.rgb = max(c.rgb, 0.0f);
+    }
+
+    outputDst[pixel] = float4(c.rgb, c.a);
 }

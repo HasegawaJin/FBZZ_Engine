@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SphereCollider.hpp | fbzz::physics
-// 球形コライダー
+/// @file    SphereCollider.hpp
+/// @brief   球形コライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Physics/Collider.hpp>
 

@@ -1,11 +1,12 @@
-// FBZZ Engine
-// NavigationSystem.cpp | fbzz::scene
-// NavMeshAgentComponent の毎フレーム更新: パス計算 (A* + Funnel Algorithm) と移動 (Steering)。
-//
-// 複数 NavMeshSurface: agentTypeId が一致する Surface を各 Agent が個別に選択する。
-// オフメッシュリンク: NavMesh::offMeshLinks を A* のエッジとして扱い、TRAVERSING_LINK 状態で補間移動。
-// NavMesh スナップ: snapToNavMesh=true のとき移動後に NavMesh 面の Y へ補正する。
-// Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ逆変換して書き戻す。
+/// @file    NavigationSystem.cpp
+/// @brief   NavMeshAgentComponent の毎フレーム更新: パス計算 (A* + Funnel Algorithm) と移動 (Steering)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// 複数 NavMeshSurface: agentTypeId が一致する Surface を各 Agent が個別に選択する。
+/// オフメッシュリンク: NavMesh::offMeshLinks を A* のエッジとして扱い、TRAVERSING_LINK 状態で補間移動。
+/// NavMesh スナップ: snapToNavMesh=true のとき移動後に NavMesh 面の Y へ補正する。
+/// Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ逆変換して書き戻す。
 #include "Engine/Scene/Systems/NavigationSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/NavMeshQuery.hpp"
@@ -128,16 +129,25 @@ void HaltKeepingTarget(NavMeshAgentComponent& agent)
     agent.state = NavMeshAgentState::IDLE;
 }
 
-// GO に付いているコライダーの底面から GO 原点までの Y オフセットを返す。
+// GO に付いているコライダーの底面から GO 原点までの Y オフセット (ワールド)。
 // snapToNavMesh でエージェントの足元を NavMesh 面に合わせるために使う。
+//
+// WHY worldScale を掛けるか: Inspector の寸法はスケールを掛ける前の値で、
+//     実際の当たり判定は ColliderSync がスケールを掛けたもの。掛けずに使うと
+//     スケール 2 のキャラクターが床へ半分めり込む。
 static float ColliderFloorOffset(GameObject& go)
 {
+    const math::Vector3& s = go.transform.worldScale;
+    const float sx = std::abs(s.x), sy = std::abs(s.y), sz = std::abs(s.z);
+
     if (const auto* cap = go.GetComponent<scene::CapsuleColliderComponent>())
-        return cap->halfHeight + cap->radius - cap->center.y;
+        return cap->halfHeight * sy + cap->radius * std::max(sx, sz) - cap->center.y * sy;
+    if (const auto* cyl = go.GetComponent<scene::CylinderColliderComponent>())
+        return (cyl->halfHeight - cyl->center.y) * sy;
     if (const auto* box = go.GetComponent<scene::BoxColliderComponent>())
-        return box->size.y * 0.5f - box->center.y;
+        return (box->size.y * 0.5f - box->center.y) * sy;
     if (const auto* sph = go.GetComponent<scene::SphereColliderComponent>())
-        return sph->radius - sph->center.y;
+        return sph->radius * std::max({ sx, sy, sz }) - sph->center.y * sy;
     return 0.0f;
 }
 
@@ -175,7 +185,7 @@ void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*ca
     for (auto& entry : scriptComp->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, &go);
-        (entry.script.get()->*callback)();
+        entry.script->ExecuteCallback(callback, "navigation callback");
     }
 }
 
@@ -226,7 +236,9 @@ void NavigationSystem::Update(SystemContext& ctx)
     float minCellSize = 1.0f;
     for (EntityID veid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto* v = scene.GetComponent<NavMeshSurfaceComponent>(veid);
-        if (!v || !v->enabled || !v->navMesh.IsValid()) continue;
+        auto* surfaceGo = scene.GetGameObject(veid);
+        if (!v || !surfaceGo || !surfaceGo->activeInHierarchy()
+            || !v->enabled || !v->navMesh.IsValid()) continue;
         if (!surfaceMap.count(v->agentTypeId)) {
             surfaceMap[v->agentTypeId] = v;
             minCellSize = std::min(minCellSize, v->cellSize);
@@ -242,14 +254,14 @@ void NavigationSystem::Update(SystemContext& ctx)
     for (EntityID id : agentEntities) {
         auto* a = scene.GetComponent<NavMeshAgentComponent>(id);
         auto* g = scene.GetGameObject(id);
-        if (!a || !g || !a->enabled) continue;
+        if (!a || !g || !g->activeInHierarchy() || !a->enabled) continue;
         avoidanceBuckets[BucketKeyFor(g->transform.worldPosition, bucketSize)].push_back(id);
     }
 
     for (EntityID eid : agentEntities) {
         auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid);
         auto* go    = scene.GetGameObject(eid);
-        if (!agent || !go || !agent->enabled) continue;
+        if (!agent || !go || !go->activeInHierarchy() || !agent->enabled) continue;
 
         // この Agent が使う NavMeshSurface を agentTypeId で引く。
         // 対応する Surface がなければスキップ (agentTypeId の Surface をまだ置いていない場合等)。

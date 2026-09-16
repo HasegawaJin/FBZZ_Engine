@@ -1,17 +1,18 @@
-// FBZZ Engine
-// InputActionMap.hpp | fbzz::input
-// アクション名でのバインド解決・デッドゾーン処理・リバインド
-//
-// レイヤー構成:
-//   Script / Game
-//      ↓ GetAction("Jump") / GetAxis2D("MoveX","MoveY")
-//   InputActionMap   ← このファイル
-//      ↓ Input::KeyHeld / Gamepad::ButtonHeld / Gamepad::Axis
-//   Input / Gamepad (デバイス層)
-//
-// WHY 静的クラスにするか:
-//   既存の Input / Gamepad と同じ呼び出し様式に揃える。入力は本質的にプロセス唯一の
-//   グローバル状態であり、インスタンスを持ち回る利点がない。
+/// @file    InputActionMap.hpp
+/// @brief   アクション名でのバインド解決・デッドゾーン処理・リバインド。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// レイヤー構成:
+/// Script / Game
+/// ↓ GetAction("Jump") / GetAxis2D("MoveX","MoveY")
+/// InputActionMap   ← このファイル
+/// ↓ Input::KeyHeld / Gamepad::ButtonHeld / Gamepad::Axis
+/// Input / Gamepad (デバイス層)
+///
+/// WHY 静的クラスにするか:
+/// 既存の Input / Gamepad と同じ呼び出し様式に揃える。入力は本質的にプロセス唯一の
+/// グローバル状態であり、インスタンスを持ち回る利点がない。
 #pragma once
 #include "InputBinding.hpp"
 #include "Math/Vector2.hpp"
@@ -23,6 +24,9 @@ namespace fbzz::input {
 
 class InputActionMap {
 public:
+    /// 未設定のときだけ既定バインドを作る。起動前に読んだプロジェクト設定は保持する。
+    static void Initialize();
+
     // WASD + XInput の標準バインドを構築する。設定ファイルが無い場合の初期状態。
     static void LoadDefaults();
 

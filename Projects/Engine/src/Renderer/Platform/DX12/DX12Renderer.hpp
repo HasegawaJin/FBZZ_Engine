@@ -1,11 +1,13 @@
-// FBZZ Engine
-// DX12Renderer.hpp | fbzz::renderer
-// IRenderer の DirectX 12 実装と Phase 1 フレーム制御
+/// @file    DX12Renderer.hpp
+/// @brief   IRenderer の DirectX 12 実装と Phase 1 フレーム制御。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IRenderer.hpp>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 #include "DX12Context.hpp"
 #include "DX12UploadArena.hpp"
 #include "DX12PsoCache.hpp"
@@ -33,13 +35,18 @@ public:
     void Clear(const math::Vector4& color) override;
     void ClearDepth(float depth = 1.0f) override;
     void Submit(const DrawCall& call, ResourceManager& resources) override;
+    bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+                            ResourceManager& resources) override;
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
+    void BeginComputeBatch() override;
+    void EndComputeBatch() override;
     void Resize(uint32_t width, uint32_t height) override;
+    void SetVSync(bool enabled) override;
+    [[nodiscard]] bool GetVSync() const override;
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
     void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
     void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
                              uint32_t mip, ResourceManager& resources) override;
-    void SetSampler(uint32_t slot, SamplerMode mode) override;
     bool BakeSkyLight(ResourceHandle<RenderTargetTag>, ResourceManager&, uint32_t, uint32_t,
                       uint32_t, uint32_t, std::unique_ptr<ITexture>&,
                       std::unique_ptr<ITexture>&) override;
@@ -65,6 +72,7 @@ public:
     DX12Context& GetContext() { return m_context; }
 
 private:
+    bool PrepareShaderReload() override;
     std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override;
     std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride) override;
     std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override;
@@ -75,20 +83,38 @@ private:
     std::unique_ptr<ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(IRenderTarget&, uint32_t, RenderTargetTextureKind) override;
     std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc&) override;
-    std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t, uint32_t) override;
+    std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t,
+                                                            const RenderTargetDesc&) override;
     std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget&) override;
     std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override;
+    std::unique_ptr<ITexture> CreateNativeComputeTexture3D(uint32_t, uint32_t, uint32_t) override;
+    std::unique_ptr<ITexture> CreateNativeDynamicTexture(uint32_t width, uint32_t height,
+                                                         DynamicTextureFormat format) override;
     std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t, uint32_t) override;
+    std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
+        const void*, uint32_t, uint32_t) override;
     std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override;
 
     DX12Context m_context;
     DX12UploadArena m_uploadArena;
     DX12PsoCache m_psoCache;
     DX12StateTracker m_stateTracker;
+    // 独立 Dispatch 群が書いた UAV を保持し、パス末尾の 1 回の ResourceBarrier へ集約する。
+    std::vector<ID3D12Resource*> m_computeBatchWrittenResources;
+    bool m_computeBatchActive = false;
     class DX12RenderTarget* m_currentRenderTarget = nullptr;
+    // 束縛中の RT のハンドル。生ポインタと二重に持つのは «消えたかどうか» を問えるようにするため。
+    // WHY: RT は描画の途中でも解放される (ビューポートのリサイズ、ViewRenderTargets の作り直し)。
+    //      解放されたものを次の SetRenderTarget が «前の RT» として触ると、破棄済みの
+    //      オブジェクトから GetColorResource を引いて、無関係な番地へバリアを積む。
+    ResourceHandle<RenderTargetTag> m_currentRenderTargetHandle;
     std::unique_ptr<class DX12IblBaker> m_iblBaker;
     D3D12_CPU_DESCRIPTOR_HANDLE m_currentCubeRtv{};
+    uint32_t m_currentCubeFace = 0;
+    uint32_t m_currentCubeMip = 0;
+    D3D12_VIEWPORT m_currentViewport{};
+    D3D12_RECT m_currentScissor{};
     D3D12_GPU_VIRTUAL_ADDRESS m_nullConstantAddress = 0;
 
     // WHY: 連続する Draw が同じテクスチャ/バッファ集合を束縛する場合 (同一マテリアルのバッチ等)、

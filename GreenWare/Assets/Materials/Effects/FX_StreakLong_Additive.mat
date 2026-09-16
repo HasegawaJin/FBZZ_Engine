@@ -1,0 +1,22 @@
+# FBZZ Engine
+# FX_StreakLong_Additive.mat
+# 素材: Assets/VFX/Textures/T_Streak_Long.png (512x64 / 頭が X=88%)
+# T_Spark_Streak より細く長い速度線。renderMode = 1 (Stretched Billboard) 必須。
+# とどめの溶断スパーク、転倒の破片の尾に使う。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:15c5ecf9886c4f7c9c876532ed9ddda4"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.4

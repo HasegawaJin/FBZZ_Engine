@@ -1,12 +1,14 @@
-// FBZZ Engine
-// SkelSubExporter.cpp | fbzz::editor
-// FBX シーンノード階層を [baseName].skel バイナリに書き出す。
-// スキンあり FBX: ノード階層 + メッシュボーンのオフセット行列を含む。
-// スキンなし FBX: ノード階層のみ (boneCount=0) を出力する。
-//   → Mixamo アニメーション専用 FBX はメッシュボーンを持たないため、
-//     アニメーショントラック名と骨ノード名を対応付けるだけの骨階層を提供する。
+/// @file    SkelSubExporter.cpp
+/// @brief   FBX シーンノード階層を [baseName].skel バイナリに書き出す。
+/// @author  Hasegawa Jin
+/// @date    2026-06-19
+///
+/// スキンあり FBX: ノード階層 + メッシュボーンのオフセット行列を含む。
+/// スキンなし FBX: ノード階層のみ (boneCount=0) を出力する。
+/// → Mixamo アニメーション専用 FBX はメッシュボーンを持たないため、
+/// アニメーショントラック名と骨ノード名を対応付けるだけの骨階層を提供する。
 #include <Editor/Import/SkelSubExporter.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/scene.h>
 #include <cstring>

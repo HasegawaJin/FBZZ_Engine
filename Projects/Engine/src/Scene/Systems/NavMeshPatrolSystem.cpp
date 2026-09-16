@@ -1,7 +1,9 @@
-// FBZZ Engine
-// NavMeshPatrolSystem.cpp | fbzz::scene
-// NavMeshPatrolComponent のウェイポイントを順送りし、同一 GO の NavMeshAgentComponent へ
-// SetDestination する。到達判定そのものは NavigationSystem (destinationReached) に委ねる。
+/// @file    NavMeshPatrolSystem.cpp
+/// @brief   NavMeshPatrolComponent のウェイポイントを順送りし、同一 GO の NavMeshAgentComponent へ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// SetDestination する。到達判定そのものは NavigationSystem (destinationReached) に委ねる。
 #include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
@@ -76,7 +78,9 @@ void NavMeshPatrolSystem::Update(SystemContext& ctx)
     for (EntityID eid : scene.GetEntities<NavMeshPatrolComponent>()) {
         auto* patrol = scene.GetComponent<NavMeshPatrolComponent>(eid);
         auto* agent  = scene.GetComponent<NavMeshAgentComponent>(eid);
-        if (!patrol || !agent || !patrol->enabled || !agent->enabled) continue;
+        auto* go     = scene.GetGameObject(eid);
+        if (!patrol || !agent || !go || !go->activeInHierarchy()
+            || !patrol->enabled || !agent->enabled) continue;
         if (patrol->waypoints.empty()) continue;
         if (patrol->currentIndex >= patrol->waypoints.size()) patrol->currentIndex = 0;
 

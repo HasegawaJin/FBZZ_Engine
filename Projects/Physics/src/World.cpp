@@ -1,11 +1,13 @@
-// FBZZ Engine
-// World.cpp | fbzz::physics
-// 物理シミュレーション世界の管理と Step 実行
+/// @file    World.cpp
+/// @brief   物理シミュレーション世界の管理と Step 実行。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/World.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
@@ -175,6 +177,69 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
 }
 
 // -----------------------------------------------------------------
+// Ray vs Cylinder (側面 + 上下の円板)
+// WHAT: 軸方向成分を抜いて 2D のレイ vs 円に帰着させ側面の交点を求め、
+//       軸に垂直な 2 枚の円板は平面交点が半径内かで判定して最も手前を返す
+// -----------------------------------------------------------------
+static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
+                        const CylinderCollider& cyl,
+                        float& tOut, Vector3& normalOut)
+{
+    const Vector3 center = cyl.GetCenter();
+    const Vector3 axis   = cyl.GetAxis();
+    const float   r      = cyl.m_radius;
+    const float   h      = cyl.m_halfHeight;
+
+    const Vector3 oc      = o - center;
+    const float   dAxial  = Vector3::Dot(d, axis);
+    const float   ocAxial = Vector3::Dot(oc, axis);
+    const Vector3 dPerp   = d  - axis * dAxial;
+    const Vector3 ocPerp  = oc - axis * ocAxial;
+
+    float   bestT = maxDist + 1.0f;
+    Vector3 bestN;
+
+    // 側面: 無限円柱との交点のうち、円板の間に収まるものだけ採用する
+    const float a = Vector3::Dot(dPerp, dPerp);
+    if (a > 1e-8f) {
+        const float b    = 2.0f * Vector3::Dot(dPerp, ocPerp);
+        const float c    = Vector3::Dot(ocPerp, ocPerp) - r * r;
+        const float disc = b * b - 4.0f * a * c;
+        if (disc >= 0.0f) {
+            const float sqrtDisc = std::sqrt(disc);
+            // a > 0 なので 2 根は昇順。手前から見て最初に条件を満たしたものが最近点。
+            const float roots[2] = { (-b - sqrtDisc) / (2.0f * a),
+                                     (-b + sqrtDisc) / (2.0f * a) };
+            for (const float t : roots) {
+                if (t < 0.0f || t >= bestT) continue;
+                const float axial = ocAxial + dAxial * t;
+                if (std::abs(axial) > h) continue;
+                bestT = t;
+                bestN = (o + d * t - (center + axis * axial)).Normalized();
+                break;
+            }
+        }
+    }
+
+    // 上下の円板
+    if (std::abs(dAxial) > 1e-8f) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            const float capAxial = h * static_cast<float>(sign);
+            const float t = (capAxial - ocAxial) / dAxial;
+            if (t < 0.0f || t >= bestT) continue;
+            if ((o + d * t - (center + axis * capAxial)).LengthSq() > r * r) continue;
+            bestT = t;
+            bestN = axis * static_cast<float>(sign);
+        }
+    }
+
+    if (bestT > maxDist) return false;
+    tOut = bestT;
+    normalOut = bestN;
+    return true;
+}
+
+// -----------------------------------------------------------------
 // Ray vs Triangle (Möller–Trumbore)
 // 戻り値: ヒットした t (負なら miss)
 // -----------------------------------------------------------------
@@ -289,6 +354,10 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
         const auto* cap = static_cast<const CapsuleCollider*>(inst.collider);
         return RayCapsule(o, d, maxDist, *cap, tOut, normalOut);
     }
+    case ColliderType::CYLINDER: {
+        const auto* cyl = static_cast<const CylinderCollider*>(inst.collider);
+        return RayCylinder(o, d, maxDist, *cyl, tOut, normalOut);
+    }
     case ColliderType::TRIANGLE_MESH: {
         const auto* mesh = static_cast<const TriangleMeshCollider*>(inst.collider);
         return RayTriangleMesh(o, d, maxDist, *mesh, tOut, normalOut);
@@ -371,6 +440,11 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
         const float r = radius + cap->m_radius;
         return dist2 <= r * r;
     }
+    case ColliderType::CYLINDER: {
+        const auto* cyl = static_cast<const CylinderCollider*>(inst.collider);
+        const Vector3 closest = cyl->ClosestPoint(center);
+        return (center - closest).LengthSq() <= radius * radius;
+    }
     default:
         return false;
     }
@@ -396,6 +470,8 @@ namespace fbzz::physics
         for (auto& slot : m_colliderPool)
             slot.touched = false;
         for (auto& slot : m_volumePool)
+            slot.touched = false;
+        for (auto& slot : m_constraintPool)
             slot.touched = false;
     }
 
@@ -573,16 +649,108 @@ namespace fbzz::physics
                 m_sceneSyncChanged = true;
             }
         }
+
+        for (auto& slot : m_constraintPool) {
+            if (slot.touched || !slot.constraint) continue;
+            slot.constraint.reset(); // World が所有しているので直接破棄する
+            slot.generation = NextGeneration(slot.generation);
+            m_sceneSyncChanged = true;
+        }
+        RebuildConstraintViews();
     }
 
     void World::AddConstraint(std::unique_ptr<Constraint> constraint)
     {
-        m_constraints.push_back(std::move(constraint));
+        m_ownedConstraints.push_back(std::move(constraint));
+        RebuildConstraintViews();
     }
 
-    const std::vector<std::unique_ptr<Constraint>>& World::GetConstraints() const
+    ConstraintHandle World::SyncConstraint(ConstraintHandle handle,
+                                           std::unique_ptr<Constraint> constraint)
     {
-        return m_constraints;
+        if (!constraint) return {};
+
+        if (handle.IsValid()) {
+            const size_t index = static_cast<size_t>(handle.slot - 1u);
+            if (index < m_constraintPool.size() &&
+                m_constraintPool[index].generation == handle.generation &&
+                !m_constraintPool[index].touched)
+            {
+                m_constraintPool[index].constraint = std::move(constraint);
+                m_constraintPool[index].touched = true;
+                m_sceneSyncChanged = true;
+                RebuildConstraintViews();
+                return handle;
+            }
+        }
+
+        for (size_t i = 0; i < m_constraintPool.size(); ++i) {
+            if (m_constraintPool[i].constraint || m_constraintPool[i].touched) continue;
+            m_constraintPool[i].constraint = std::move(constraint);
+            m_constraintPool[i].touched = true;
+            m_sceneSyncChanged = true;
+            RebuildConstraintViews();
+            return { static_cast<uint32_t>(i + 1u), m_constraintPool[i].generation };
+        }
+
+        ConstraintSlot slot;
+        slot.constraint = std::move(constraint);
+        slot.touched = true;
+        m_constraintPool.push_back(std::move(slot));
+        m_sceneSyncChanged = true;
+        RebuildConstraintViews();
+        return { static_cast<uint32_t>(m_constraintPool.size()),
+                 m_constraintPool.back().generation };
+    }
+
+    bool World::KeepConstraint(ConstraintHandle handle)
+    {
+        if (!handle.IsValid()) return false;
+        const size_t index = static_cast<size_t>(handle.slot - 1u);
+        if (index >= m_constraintPool.size()) return false;
+        ConstraintSlot& slot = m_constraintPool[index];
+        if (slot.generation != handle.generation || !slot.constraint) return false;
+        slot.touched = true;
+        return true;
+    }
+
+    Constraint* World::FindConstraint(ConstraintHandle handle) const
+    {
+        if (!handle.IsValid()) return nullptr;
+        const size_t index = static_cast<size_t>(handle.slot - 1u);
+        if (index >= m_constraintPool.size()) return nullptr;
+        const ConstraintSlot& slot = m_constraintPool[index];
+        if (slot.generation != handle.generation) return nullptr;
+        return slot.constraint.get();
+    }
+
+    void World::RemoveConstraint(ConstraintHandle handle)
+    {
+        if (!handle.IsValid()) return;
+        const size_t index = static_cast<size_t>(handle.slot - 1u);
+        if (index >= m_constraintPool.size()) return;
+        ConstraintSlot& slot = m_constraintPool[index];
+        if (slot.generation != handle.generation || !slot.constraint) return;
+        slot.constraint.reset();
+        slot.touched = false;
+        slot.generation = NextGeneration(slot.generation);
+        m_sceneSyncChanged = true;
+        RebuildConstraintViews();
+    }
+
+    void World::RebuildConstraintViews()
+    {
+        m_activeConstraints.clear();
+        m_activeConstraints.reserve(m_ownedConstraints.size() + m_constraintPool.size());
+        for (const auto& constraint : m_ownedConstraints)
+            if (constraint) m_activeConstraints.push_back(constraint.get());
+        for (const auto& slot : m_constraintPool)
+            if (slot.constraint) m_activeConstraints.push_back(slot.constraint.get());
+    }
+
+    const std::vector<Constraint*>& World::GetConstraints() const
+    {
+        return m_activeConstraints;
     }
 
     void World::SetGravity(const math::Vector3& gravity)
@@ -597,12 +765,16 @@ namespace fbzz::physics
 
     void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
-        m_layerFilter = std::move(layerFilter);
+        m_layerFilter = layerFilter ? std::move(layerFilter) : m_defaultLayerFilter;
         // WHY: Sleep 済みのシーンでは接触集合が変わらないため、毎 substep の
         //      UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない。
         //      Terrain/TriangleMesh がある resting scene ではここが World::Step の主な CPU 負荷になる。
         // WHAT: Scene 同期で追加・削除がなく、動いている非 Static body もない場合は、
         //       前回 contacts から Stay/Exit 分類だけを更新して collision pipeline を省略する。
+        // 衝突の強さはフレーム単位で集計する。止まっているシーンの早期 return でも
+        // 前フレームの値が残らないよう、分岐より前に落とす。
+        m_frameImpacts.clear();
+
         if (!m_sceneSyncChanged && !HasActiveSimulationBodies()) {
             ClassifyCollisions();
             return;
@@ -625,8 +797,12 @@ namespace fbzz::physics
             UpdateColliders();
             BroadPhase();
             NarrowPhase(s == 0); // WarmStart は最初のサブステップのみ
+            // Resolve は速度を書き換えるため、「ぶつかった勢い」はこの時点でしか取れない。
+            RecordApproachVelocities();
             WakeSleepingContacts();
             Resolve();
+            // 実際に加わったインパルスは解決後に確定する。
+            RecordContactImpulses();
             UpdateSleepStates(subDt);
         }
 
@@ -664,6 +840,7 @@ namespace fbzz::physics
         {
             auto& body = m_bodies[i];
             if (!body || body->IsSleeping()) continue;
+            effectiveDts[i] *= std::clamp(body->m_timeScale, 0.0f, 8.0f);
             bool gravityOverridden = false;
 
             for (auto& volume : m_volumes)
@@ -682,7 +859,7 @@ namespace fbzz::physics
 
     void World::ApplyConstraintForces(float dt)
     {
-        for (auto& constraint : m_constraints)
+        for (Constraint* constraint : m_activeConstraints)
         {
             if (constraint) constraint->ApplyForce(dt);
         }
@@ -723,7 +900,7 @@ namespace fbzz::physics
 
     void World::SolveConstraintPositions(float dt)
     {
-        for (auto& constraint : m_constraints)
+        for (Constraint* constraint : m_activeConstraints)
         {
             if (constraint) constraint->SolvePosition(dt);
         }
@@ -757,12 +934,14 @@ namespace fbzz::physics
         for (auto& cp : m_contacts)
         {
             if (cp.isTrigger) continue;
+            // 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
+            // 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
             math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
             if (t0.LengthSq() < 1e-6f)
                 t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
-            t0            = t0.Normalized();
+            t0            = t0.NormalizedOr(math::Vector3::RIGHT);
             cp.tangent[0] = t0;
-            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).Normalized();
+            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).NormalizedOr(math::Vector3::FORWARD);
         }
 
         if (doWarmStart)
@@ -805,6 +984,7 @@ namespace fbzz::physics
 
     void World::CCDPhase(float dt)
     {
+        if (dt <= 0.0f) return;
         // m_useCCD が true かつ速度が十分に速い物体について、
         // 他の球コライダー持ち物体との TOI を計算し速度をクランプする。
         // この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
@@ -813,7 +993,8 @@ namespace fbzz::physics
             auto& bodyA = m_bodies[i];
             if (!bodyA->m_useCCD) continue;
             if (bodyA->IsStatic()) continue;
-            if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, dt)) continue;
+            const float localDtA = m_effectiveDts[i];
+            if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, localDtA)) continue;
 
             // bodyA に紐づくコライダーを探す (SphereCollider のみ対応)
             const SphereCollider* sphereA = nullptr;
@@ -857,9 +1038,9 @@ namespace fbzz::physics
                 const float         radiusB = sphereB->m_radius;
 
                 // 相対速度を使った Swept Sphere テスト
-                const math::Vector3 relVel = bodyA->GetVelocity()
-                                           - (bodyB->IsStatic() ? math::Vector3::ZERO
-                                                                 : bodyB->GetVelocity());
+                const math::Vector3 relVel = bodyA->GetVelocity() * (localDtA / dt)
+                                            - (bodyB->IsStatic() ? math::Vector3::ZERO
+                                                                  : bodyB->GetVelocity() * (m_effectiveDts[j] / dt));
                 const CCDResult res = CCDSolver::SweptSphereSphere(
                     centerA, radiusA, relVel, centerB, radiusB, dt);
 
@@ -871,6 +1052,50 @@ namespace fbzz::physics
             // 残りの速度解決は通常の NarrowPhase/Resolve が担う
             if (minToi < 1.0f)
                 bodyA->SetVelocity(bodyA->GetVelocity() * minToi);
+        }
+    }
+
+    void World::RecordApproachVelocities()
+    {
+        for (const auto& cp : m_contacts)
+        {
+            if (cp.isTrigger) continue;
+
+            const math::Vector3 vRel = PhysicsSolver::RelativeVelocityAt(cp);
+            // normal は b → a 向きなので、近づいているとき Dot は負になる。
+            // ゲーム側が扱いやすいよう「正 = 接近」へ符号を反転する。
+            const float approach = -math::Vector3::Dot(vRel, cp.normal);
+            if (approach <= 0.0f) continue;   // 離れていく接触は衝突ではない
+
+            const Collider* a = cp.colliderA;
+            const Collider* b = cp.colliderB;
+            if (a > b) std::swap(a, b);
+
+            ContactImpact& impact = m_frameImpacts[ColliderPair{ a, b }];
+            if (approach > impact.approachSpeed) {
+                impact.approachSpeed    = approach;
+                impact.relativeVelocity = vRel;
+            }
+        }
+    }
+
+    void World::RecordContactImpulses()
+    {
+        for (const auto& cp : m_contacts)
+        {
+            if (cp.isTrigger) continue;
+
+            const Collider* a = cp.colliderA;
+            const Collider* b = cp.colliderB;
+            if (a > b) std::swap(a, b);
+
+            // WHY find か: 接近していない接触 (床に載っているだけ等) は
+            //      RecordApproachVelocities が積んでいない。そこへインパルスだけを
+            //      入れると「速度 0 なのに強い衝突」に見えるエントリができる。
+            const auto it = m_frameImpacts.find(ColliderPair{ a, b });
+            if (it == m_frameImpacts.end()) continue;
+
+            it->second.normalImpulse = std::max(it->second.normalImpulse, cp.cachedNormalImpulse);
         }
     }
 
@@ -888,10 +1113,18 @@ namespace fbzz::physics
             if (a > b) std::swap(a, b);
 
             const ColliderPair pair{ a, b };
-            currentEvents.insert({
-                pair,
-                { cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB, cp.point, cp.normal, cp.depth, cp.isTrigger }
-            });
+            CollisionEvent event{
+                cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB,
+                cp.point, cp.normal, cp.depth, cp.isTrigger
+            };
+            // このフレーム中に観測した衝突の強さを載せる。
+            // 接触が継続しているだけ (Stay) なら 0 のままになる。
+            if (const auto impact = m_frameImpacts.find(pair); impact != m_frameImpacts.end()) {
+                event.relativeVelocity = impact->second.relativeVelocity;
+                event.approachSpeed    = impact->second.approachSpeed;
+                event.normalImpulse    = impact->second.normalImpulse;
+            }
+            currentEvents.insert({ pair, event });
         }
 
         for (auto& [pair, event] : currentEvents)
@@ -904,8 +1137,15 @@ namespace fbzz::physics
 
         for (auto& [pair, event] : m_prevEvents)
         {
-            if (currentEvents.count(pair) == 0)
-                m_exitEvents.push_back(event);
+            if (currentEvents.count(pair) != 0) continue;
+
+            // 離れた瞬間のイベントに「ぶつかった強さ」は無い。前フレームの値を
+            // そのまま残すと、Exit を見ているスクリプトが古い衝突速度を読んでしまう。
+            CollisionEvent exitEvent = event;
+            exitEvent.relativeVelocity = math::Vector3::ZERO;
+            exitEvent.approachSpeed    = 0.0f;
+            exitEvent.normalImpulse    = 0.0f;
+            m_exitEvents.push_back(exitEvent);
         }
 
         m_prevEvents = std::move(currentEvents);
@@ -923,6 +1163,9 @@ namespace fbzz::physics
                         RaycastHit&          hit,
                         ColliderFilter        filter) const
     {
+        // 向きの無いレイは何にも当たらない。スクリプトから 0 ベクトルが来るのは
+        // 「対象と重なっている」等で普通に起きるため、当たり無しとして返す。
+        if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
         float   bestT = maxDistance + 1.0f;
         RaycastHit bestHit;
@@ -951,6 +1194,7 @@ namespace fbzz::physics
                                                       float                maxDistance,
                                                       ColliderFilter        filter) const
     {
+        if (direction.LengthSq() < 1e-12f) return {};
         const math::Vector3 d = direction.Normalized();
         std::vector<RaycastHit> results;
 
@@ -986,8 +1230,9 @@ namespace fbzz::physics
         //         Sphere       → 半径を加算
         //         AABB/OBB     → AABB を各辺方向へ radius だけ広げる
         //         Capsule      → カプセル半径を加算
-        //         Mesh/Convex  → AABB 近似
+        //         Cylinder/Mesh/Convex → AABB 近似
 
+        if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
         float     bestT = maxDistance + 1.0f;
         RaycastHit bestHit;

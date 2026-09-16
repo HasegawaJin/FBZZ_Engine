@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TrailRenderSystem.hpp | fbzz::scene
-// TrailComponent を更新し、マイタージョイント付きリボンとして透明描画するシステム
+/// @file    TrailRenderSystem.hpp
+/// @brief   TrailComponent を更新し、マイタージョイント付きリボンとして透明描画するシステム。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -12,9 +13,8 @@ namespace fbzz::scene {
 class TrailRenderPass final : public IRenderPass {
 public:
     std::string_view Name() const override;
-    std::vector<renderer::RenderGraph::ResourceAccess> DeclareAccesses(
-        const RenderPassContext& ctx) const override;
-    void Execute(RenderPassContext& ctx) override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 } // namespace fbzz::scene

@@ -1,0 +1,37 @@
+[meta]
+guid = 'd6e563caa00f5c78451100802d790e27'
+
+[texture]
+alpha_dither = false
+alpha_mode = 'Straight'
+aniso = 1
+compression = 'BC3'
+compression_quality = 1
+filter = 'Bilinear'
+flip_green = false
+max_size = 4096
+mip_bias = 0.0
+mip_filter = 'Kaiser'
+mip_sharpen = 0.0
+mipmaps = false
+normalize_mipmaps = false
+pixels_per_unit = 100.0
+sprite_mode = 'Single'
+srgb = true
+type = 'sprite'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'
+
+    [[texture.sprites]]
+    border_bottom = 0.0
+    border_left = 0.0
+    border_right = 0.0
+    border_top = 0.0
+    height = 0
+    id = '0ff89d49-f09f-4877-ae7a-f3ccc93c57fb'
+    name = 'JetFlame'
+    pivot_x = 0.5
+    pivot_y = 0.5
+    width = 0
+    x = 0
+    y = 0

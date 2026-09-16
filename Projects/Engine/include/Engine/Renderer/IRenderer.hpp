@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IRenderer.hpp | fbzz::renderer
-// Renderer バックエンドの抽象インターフェース
-// 上位レイヤーは DX11 実装を直接参照せず、このインターフェースだけを使う。
-// リソース生成は ResourceManager に閉じ、描画 API は Submit / Dispatch に集約する。
+/// @file    IRenderer.hpp
+/// @brief   Renderer バックエンドの抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 上位レイヤーは DX11 実装を直接参照せず、このインターフェースだけを使う。
+/// リソース生成は ResourceManager に閉じ、描画 API は Submit / Dispatch に集約する。
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +13,7 @@
 #include <vector>
 #include "ComputeCall.hpp"
 #include "DrawCall.hpp"
+#include "Format.hpp"
 #include "IIblBaker.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
@@ -61,11 +64,30 @@ public:
     virtual void Clear(const math::Vector4& color) = 0;
 
     virtual void Submit(const DrawCall& call, ResourceManager& resources) = 0;
+    /// 診断画像を描き、呼び出し前の描画先・ビューポート・シザーへ戻す。
+    /// パス境界でのみ呼ぶ。後続の Submit は自身の描画状態を束縛すること。
+    /// 未対応のバックエンドでは false を返す。
+    virtual bool RenderDebugPreview(const DrawCall& /*call*/,
+                                    ResourceHandle<RenderTargetTag> /*target*/,
+                                    ResourceManager& /*resources*/) { return false; }
     virtual void Dispatch(const ComputeCall& call, ResourceManager& resources) = 0;
+    // 相互依存しない Dispatch 群の UAV バリアをバッチ末尾へまとめる。
+    // WHY: スキニングのように各 Dispatch が別バッファへ書くパスでは、Dispatch ごとの
+    //      ResourceBarrier 呼び出しは不要。未対応バックエンドは既定の no-op でよい。
+    virtual void BeginComputeBatch() {}
+    virtual void EndComputeBatch() {}
 
     virtual void Resize(uint32_t width, uint32_t height) = 0;
     virtual uint32_t GetWidth() const = 0;
     virtual uint32_t GetHeight() const = 0;
+
+    // Present の垂直同期。既定は無効。
+    // WHY 既定を無効にするか: フレームレート制御は Time::targetFps に任せ、DXGI の
+    //     表示周期待ちを描画同期へ混ぜない (待ちが Present の中に隠れると、
+    //     プロファイラ上で描画コストと区別できなくなる)。
+    // NOTE: 有効にすると tearing 許可フラグは自動的に落ちる (併用は DXGI が拒否する)。
+    virtual void SetVSync(bool /*enabled*/) {}
+    [[nodiscard]] virtual bool GetVSync() const { return false; }
 
     virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
     virtual void ClearDepth(float depth = 1.0f) = 0;
@@ -86,7 +108,16 @@ public:
     virtual void SetRenderTargetFace(ResourceHandle<RenderTargetTag> /*rt*/, uint32_t /*face*/,
                                      uint32_t /*mip*/, ResourceManager& /*resources*/) {}
 
-    virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
+    // NOTE: かつてここに SetSampler(slot, mode) があったが削除した。
+    //       サンプラーはレジスタごとに意味を 1 つ固定する規約になっており、その正本は
+    //       Assets/Shaders/Common/Binding.hlsli の SAMPLER_* と、それに対応する
+    //       バックエンド側の固定テーブル (DX12 は Root Signature の静的サンプラー、
+    //       DX11 は BeginFrame でまとめて張る) の対。
+    // WHY 動的差し替えをやめたか: DX12 は静的サンプラーを Root Signature へ焼き込むため
+    //     1 レジスタに 1 つの意味しか持てず、SetSampler は実装できずに no-op だった。
+    //     呼び出し側は効いているつもりで書き続けるので、シェーダーのコメントと実挙動が
+    //     食い違ったまま誰も気づかない (全画面パスが s0 を使い、DX12 では WRAP のせいで
+    //     画面端が反対側へ回り込んでいた)。正本を 1 つにして構造的に防ぐ。
 
     // GPU プロファイリング。DX11Renderer のみ実装し、他バックエンドは no-op。
     // WHY: パスごとの GPU 実行時間を上位レイヤーから取得するために抽象化する。
@@ -160,14 +191,37 @@ private:
         uint32_t index,
         RenderTargetTextureKind kind) = 0;
     virtual std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
-    virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
+    virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height,
+                                                                    const RenderTargetDesc& desc) = 0;
     // 6 面キューブマップ描画先。未対応バックエンドは nullptr を返してよい (DX11 のみ実装)。
     virtual std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t /*size*/, uint32_t /*mipCount*/) { return nullptr; }
     // キューブマップ RT の TextureCube SRV を ITexture 化する (TextureTag として束縛可能にする)。
     virtual std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget& /*rt*/) { return nullptr; }
     virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
+    // CS が RWTexture3D として書き、後段が Texture3D として読むボリューム (フロクセル霧)。
+    // 未対応バックエンドは nullptr を返してよい。呼び出し側は機能そのものを落とすこと。
+    virtual std::unique_ptr<ITexture> CreateNativeComputeTexture3D(
+        uint32_t /*width*/, uint32_t /*height*/, uint32_t /*depth*/) { return nullptr; }
+    // CPU から矩形単位で書き換えられるテクスチャ。ITexture::UpdateRegion と対で使う。
+    // 中身は未初期化ではなくゼロクリアされた状態で返すこと。
+    //
+    // WHY: フォントの動的アトラス (使われたグリフだけを実行時にラスタライズして貼る) が要求する。
+    //      Immutable な CreateNativeTextureFromData では 1 グリフ増えるたびに
+    //      テクスチャ全体を作り直すことになり、ハンドルも毎回変わってしまう。
+    //      未対応バックエンドは nullptr を返してよい (呼び出し側は静的アトラスへ縮退する)。
+    virtual std::unique_ptr<ITexture> CreateNativeDynamicTexture(
+        uint32_t /*width*/, uint32_t /*height*/, DynamicTextureFormat /*format*/) { return nullptr; }
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
+    // 初期データだけを持つ GPU ローカル SRV。DX11 など専用経路がない場合は通常の SRV へ縮退する。
+    virtual std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
+        const void* data, uint32_t elementCount, uint32_t stride)
+    {
+        return CreateNativeStructuredBuffer(data, elementCount, stride);
+    }
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
+
+    /// 旧シェーダーの破棄前に GPU 使用と依存キャッシュを解消する。安全に切り替えられなければ false。
+    virtual bool PrepareShaderReload() { return true; }
 };
 
 } // namespace fbzz::renderer

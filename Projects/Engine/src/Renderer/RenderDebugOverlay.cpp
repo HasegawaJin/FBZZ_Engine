@@ -1,12 +1,13 @@
-// FBZZ Engine
-// RenderDebugOverlay.cpp | fbzz::renderer
-// 主要 RT サムネイル (HDR/LDR/GBuffer) とパスタイミングを表示するデバッグオーバーレイ。
-//
-// 呼び出しタイミングの分離について:
-//   GetImTextureID は DX11 の SRV バインド状態を変化させる可能性があるため、
-//   GPU レンダリング中 (RenderSystem 内) から直接呼ぶと DrawIndexed でクラッシュする。
-//   そのため RenderSystem では UpdateSnapshot() でハンドルだけ保存し、
-//   GPU レンダリング完了後の ImGui フレーム内で DrawIfEnabled() を呼ぶ 2 ステップ構成にしている。
+/// @file    RenderDebugOverlay.cpp
+/// @brief   主要 RT サムネイル (HDR/LDR/GBuffer) とパスタイミングを表示するデバッグオーバーレイ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
+///
+/// 呼び出しタイミングの分離について:
+/// GetImTextureID は DX11 の SRV バインド状態を変化させる可能性があるため、
+/// GPU レンダリング中 (RenderSystem 内) から直接呼ぶと DrawIndexed でクラッシュする。
+/// そのため RenderSystem では UpdateSnapshot() でハンドルだけ保存し、
+/// GPU レンダリング完了後の ImGui フレーム内で DrawIfEnabled() を呼ぶ 2 ステップ構成にしている。
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 

@@ -3,15 +3,23 @@
 // Temporal Anti-Aliasing — 前フレームを再投影・ブレンドしてエイリアシングを低減する
 //
 // アルゴリズム概要:
-//   1. 深度からワールド座標を復元し、prevViewProjection で前フレーム UV を計算（再投影）
+//   1. 前フレーム UV を求める
+//      - モーションベクターが書かれている画素はそれを引く (オブジェクトの動きを含む)
+//      - 書かれていない画素 (空・未描画) は深度からワールド座標を復元して再投影
 //   2. 前フレーム UV が画面外なら現フレームをそのまま出力
 //   3. 現フレームの 3x3 近傍カラーで Variance Clipping を行い履歴をクランプ
 //   4. taaFeedback でブレンド比を制御: lerp(history, current, 1 - taaFeedback)
+//
+// WHY 深度再投影だけでは足りないか:
+//   深度再投影が復元できるのは「カメラが動いた」ぶんだけ。走っているキャラクターは
+//   前フレームに別の場所にいたのに、その画素は「動いていない」と判定される。
+//   結果、履歴が背景の色を引いてきて輪郭に尾を引く (ゴースト)。
 //
 // 入力バインディング:
 //   t5  = 現フレーム HDR/LDR カラー   (TEX_GBUFFER0)
 //   t21 = 前フレーム TAA 出力          (TEX_TAA_HISTORY)
 //   t7  = 深度バッファ                 (TEX_DEPTH)
+//   t26 = モーションベクター            (TEX_VELOCITY)
 //   b0  = CameraConstants
 //   b5  = PostProcConstants
 //   b8  = AdvancedGraphicsConstants
@@ -21,11 +29,14 @@
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
-Texture2D        texCurrent : register(TEX_GBUFFER0);    // 現フレームカラー
-Texture2D        texHistory : register(TEX_TAA_HISTORY); // 前フレーム TAA 出力
-Texture2D<float> texDepth   : register(TEX_DEPTH);       // 深度バッファ
+Texture2D        texCurrent  : register(TEX_GBUFFER0);    // 現フレームカラー
+Texture2D        texHistory  : register(TEX_TAA_HISTORY); // 前フレーム TAA 出力
+Texture2D<float> texDepth    : register(TEX_DEPTH);       // 深度バッファ
+Texture2D        texVelocity : register(TEX_VELOCITY);    // モーションベクター (RG=速度, B=有効)
+// 粒子が画素を覆う割合 (ParticleReactive パス)。束縛されないフレームは 0 が読まれて何もしない。
+Texture2D        texReactive : register(TEX_SSAO);
 
-SamplerState sampDefault : register(SAMPLER_DEFAULT);     // バイリニアクランプ
+SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP); // バイリニアクランプ (s0 は DX12 では WRAP)
 SamplerState sampPoint   : register(SAMPLER_POINT_CLAMP); // ポイントサンプル（再投影用）
 
 // ─── フルスクリーントライアングル ───────────────────────────────────────────────
@@ -64,16 +75,26 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     if (taaFeedback <= 0.0f)
         return float4(currentColor, 1.0f);
 
-    // ── 深度からワールド座標を復元し、前フレーム UV を計算 ─────────────────────
-    float  ndcZ     = texDepth.Sample(sampPoint, uv).r;
-    float3 worldPos = ReconstructWorldPos(uv, ndcZ, invViewProjection);
+    // ── 前フレーム UV を求める ─────────────────────────────────────────────────
+    float2 prevUV;
+    float3 velocity = texVelocity.Sample(sampPoint, uv).rgb;
+    if (velocity.z > 0.5f)
+    {
+        // Velocity パスが書いた画素。カメラとオブジェクトの動きが両方入っている。
+        prevUV = uv - velocity.xy;
+    }
+    else
+    {
+        // 空や未描画の画素。ここはカメラの動きしか無いので深度再投影で足りる。
+        float  ndcZ     = texDepth.Sample(sampPoint, uv).r;
+        float3 worldPos = ReconstructWorldPos(uv, ndcZ, invViewProjection);
 
-    // 前フレームのクリップ空間へ投影
-    float4 prevClip = mul(float4(worldPos, 1.0f), prevViewProjection);
-    if (abs(prevClip.w) < 1.0e-5f)
-        return float4(currentColor, 1.0f);
-    prevClip.xyz   /= prevClip.w;
-    float2 prevUV   = NdcToUv(prevClip.xy);
+        float4 prevClip = mul(float4(worldPos, 1.0f), prevViewProjection);
+        if (abs(prevClip.w) < 1.0e-5f)
+            return float4(currentColor, 1.0f);
+        prevClip.xyz /= prevClip.w;
+        prevUV = NdcToUv(prevClip.xy);
+    }
 
     // ── 再投影 UV が画面外なら現フレームをそのまま出力 ─────────────────────────
     if (any(prevUV < 0.0f) || any(prevUV > 1.0f))
@@ -107,6 +128,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     // taaFeedback = 0   : 現フレームのみ (TAA 無効相当)
     // taaFeedback = 0.9 : 標準的な時間的蓄積（ジッタリングと組み合わせて滑らかな AA）
     float  blend  = 1.0f - saturate(taaFeedback);
+    // 粒子は速度を書かないので、履歴は背景の動きで引かれている。粒子が覆う画素ほど今のフレームを採る。
+    const float reactive = saturate(texReactive.SampleLevel(sampPoint, uv, 0.0f).r);
+    blend = lerp(blend, 1.0f, reactive * 0.85f);
     float3 result = lerp(historyColor, currentColor, blend);
 
     return float4(result, 1.0f);

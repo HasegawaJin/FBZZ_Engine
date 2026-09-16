@@ -1,5 +1,7 @@
-// FBZZ Engine
-// SocketAttach.cpp | fbzz::scene
+/// @file    SocketAttach.cpp
+/// @brief   モデルノードをソケットボーンへ合わせるアタッチ処理の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Scene/SocketAttach.hpp>
 
 #include <Engine/Scene/GameObject.hpp>

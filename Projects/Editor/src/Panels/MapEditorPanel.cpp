@@ -1,8 +1,10 @@
-// FBZZ Engine
-// MapEditorPanel.cpp | fbzz::editor
-// Map Editing Mode のツール選択・設定パネル実装
+/// @file    MapEditorPanel.cpp
+/// @brief   Map Editing Mode のツール選択・設定パネル実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-14
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include "MapToolCommon.hpp"
 #include <Engine/Renderer/Camera.hpp>
@@ -14,6 +16,7 @@
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 #include <imgui.h>
 #include <algorithm>
@@ -239,8 +242,11 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         //      その場で入れるボタンを置き、モードへの導線をパネル内で完結させる。
         ImGui::TextDisabled("Map Editing Mode is not active.");
         ImGui::Spacing();
-        if (ctx.activeScene && ImGui::Button("Enter Map Editing Mode", { -1.0f, 0.0f }))
-            ctx.requestMapEditingModeToggle = true;
+        // 実行可否と実体は operator が持つ。ここでフラグを直に立てると、
+        // メニュー / ツールバーが従っている条件 (Play 中は不可) を素通りする。
+        if (CanInvokeOperator(ctx, "tools.map_editing_mode")
+            && ImGui::Button("Enter Map Editing Mode", { -1.0f, 0.0f }))
+            InvokeOperator(ctx, "tools.map_editing_mode");
         if (!ctx.activeScene)
             ImGui::TextDisabled("Open a scene first.");
         return;
@@ -254,7 +260,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP EDITING MODE");
     ImGui::SameLine(ImGui::GetContentRegionMax().x - 68.0f);
     if (ImGui::SmallButton("Exit Mode"))
-        ctx.requestMapEditingModeToggle = true;
+        InvokeOperator(ctx, "tools.map_editing_mode");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Return to normal editor layout");
     ImGui::Separator();
@@ -283,8 +289,8 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     // ── ツール選択: 3列のコンパクトグリッド ─────────────────────────────
-    // WHY: 旧実装の全幅縦積みボタンはツール6個で画面の1/3を占有し、肝心の
-    //      ブラシ設定・レイヤー選択が下へ押し出されていた。3列に畳んで設定領域を最大化する。
+    // WHY: 旧実装の全幅縦積みボタンは画面の1/3を占有し、肝心のブラシ設定・
+    //      レイヤー選択が下へ押し出されていた。3列に畳んで設定領域を最大化する。
     {
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         const float buttonW = (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f;
@@ -305,7 +311,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
             column = (column + 1) % 3;
         }
     }
-    ImGui::TextDisabled("Keys 1-6 switch tools while the Scene View is focused");
+    ImGui::TextDisabled("Keys 1-3 switch tools while the Scene View is focused");
 
     ImGui::Separator();
     ImGui::BeginChild("##MapToolSettings", { 0.0f, 0.0f }, false);
@@ -326,20 +332,6 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
                 *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
             ctx.terrainTool->DrawBrushSettings();
         }
-        break;
-    case EditorContext::MapTool::Water:
-        if (ctx.waterTool) {
-            ctx.waterTool->DrawContent(
-                *ctx.activeScene, ctx.projectRoot, ctx.markSceneDirty, ctx.undoStack);
-        }
-        break;
-    case EditorContext::MapTool::Detail:
-        if (ctx.detailTool)
-            ctx.detailTool->DrawContent(*ctx.activeScene, ctx.markSceneDirty);
-        break;
-    case EditorContext::MapTool::Foliage:
-        if (ctx.foliageTool)
-            ctx.foliageTool->DrawContent(*ctx.activeScene, ctx.markSceneDirty);
         break;
     case EditorContext::MapTool::Grid:
         DrawGridContent(ctx);
@@ -524,7 +516,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                     }
                 }
                 if (ImGui::MenuItem("Select in Hierarchy"))
-                    ctx.selectedEntities = { cellId };
+                    SelectEntity(ctx, cellId);
                 ImGui::Separator();
                 if (ImGui::MenuItem("Remove from Grid")) {
                     MarkTerrainDirty(scene, cellId);

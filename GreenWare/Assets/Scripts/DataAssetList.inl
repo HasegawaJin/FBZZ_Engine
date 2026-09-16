@@ -8,4 +8,6 @@
 // ScriptCodeGen は Assets/**/*.hpp の FBZZ_DATA_ASSET(...) をスキャンして、この範囲を自動同期する。
 
 // @@FBZZ_DATA_ASSET_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+FBZZ_DATA_ASSET_ENTRY(sandbox, BladeTuning)
+FBZZ_DATA_ASSET_ENTRY(sandbox, PlayerTuning)
 // @@FBZZ_DATA_ASSET_ENTRIES_END

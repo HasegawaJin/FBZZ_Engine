@@ -1,0 +1,14 @@
+// 推奨拡張。
+//
+// coverage-gutters は、カバレッジの結果をエディターの行番号横に直接描く。
+// 「レポートを開きに行く」から「コードを読んでいる最中に未到達が目に入る」へ変わるので、
+// カバレッジを «測る» のではなく «使う» ためにこれだけは入れておく。
+//
+// 読み込む対象は .vscode/settings.json の coverage-gutters.* で指定する。
+// 設定値は Docs/conventions/test.md のカバレッジ章に載せてある
+// (settings.json は .gitignore 対象のため、リポジトリには含まれない)。
+{
+    "recommendations": [
+        "ryanluker.vscode-coverage-gutters"
+    ]
+}

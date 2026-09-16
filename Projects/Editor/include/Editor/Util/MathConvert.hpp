@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MathConvert.hpp | fbzz::editor
-// engine math 型 ↔ ImGui 型 のインライン変換
+/// @file    MathConvert.hpp
+/// @brief   engine math 型 ↔ ImGui 型 のインライン変換。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <imgui.h>
 #include <Math/Vector2.hpp>

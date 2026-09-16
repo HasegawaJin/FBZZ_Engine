@@ -1,0 +1,18 @@
+googletest v1.15.2
+https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
+取得日: 2026-09-02
+ライセンス: BSD-3-Clause (LICENSE を参照)
+
+取り込み範囲:
+  googletest/include/  googletest/src/    -> GoogleTest / GoogleTestMain
+  googlemock/include/  googlemock/src/    -> GoogleMock / GoogleMockMain
+
+上流の CMakeLists.txt / bazel / docs / ci は取り込んでいない。
+WHY: 向こうのビルドスクリプトは CRT 設定 (gtest_force_shared_crt) と install 規則を
+     持ち込むため、ThirdParty/CMakeLists.txt で gtest-all.cc / gmock-all.cc だけを
+     直接ビルドし、ルートの CMAKE_MSVC_RUNTIME_LIBRARY をそのまま継承させる。
+
+更新手順:
+  1. 上の URL のタグ部分を差し替えて zip を取得
+  2. googletest/{include,src} と googlemock/{include,src} と LICENSE を上書きコピー
+  3. このファイルのバージョンと取得日を更新

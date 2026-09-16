@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SourceOpen.cpp | fbzz::editor
-// 「ファイル:行」を外部エディターで開く処理と、ログ行の位置プレフィックス解析
+/// @file    SourceOpen.cpp
+/// @brief   「ファイル:行」を外部エディターで開く処理と、ログ行の位置プレフィックス解析。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Util/SourceOpen.hpp>
 #include <Engine/Util/StringUtils.hpp>
 

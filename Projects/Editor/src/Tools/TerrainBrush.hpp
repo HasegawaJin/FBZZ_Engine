@@ -1,18 +1,19 @@
-// FBZZ Engine
-// TerrainBrush.hpp | fbzz::editor
-// Terrain ブラシの純粋カーネル（座標変換・フォールオフ・Sculpt/Paint の適用）。
-//
-// WHY 分離するか:
-//   同じブラシを叩く経路が 2 つある —— 人が使う TerrainTool (マウス入力) と、
-//   AI が使う Command Bus (terrain.sculpt / terrain.paint)。ここを別実装にすると、
-//   同じ radius / strength を指定しても「人が塗った結果」と「AI が塗った結果」が
-//   食い違う。特に Paint の splat 正規化 (4ch 整数和を常に 255 に保つ端数配分) は
-//   書き直せば必ずズレる種類のコードで、ズレは「AI が塗ったところだけ縁が出る」と
-//   いう形でしか現れず原因に辿り着けない。入力デバイスに依存しない部分だけを
-//   ここへ集約し、TerrainTool も EditorBusDispatcher もこの 1 実装を呼ぶ。
-//
-// ここに置かないもの: レイキャスト・ImGui・Undo・dirty フラグ管理。
-//   それらは呼び出し側 (ツール / ディスパッチャ) の責務。
+/// @file    TerrainBrush.hpp
+/// @brief   Terrain ブラシの純粋カーネル（座標変換・フォールオフ・Sculpt/Paint の適用）。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// WHY 分離するか:
+/// 同じブラシを叩く経路が 2 つある —— 人が使う TerrainTool (マウス入力) と、
+/// AI が使う Command Bus (terrain.sculpt / terrain.paint)。ここを別実装にすると、
+/// 同じ radius / strength を指定しても「人が塗った結果」と「AI が塗った結果」が
+/// 食い違う。特に Paint の splat 正規化 (4ch 整数和を常に 255 に保つ端数配分) は
+/// 書き直せば必ずズレる種類のコードで、ズレは「AI が塗ったところだけ縁が出る」と
+/// いう形でしか現れず原因に辿り着けない。入力デバイスに依存しない部分だけを
+/// ここへ集約し、TerrainTool も EditorBusDispatcher もこの 1 実装を呼ぶ。
+///
+/// ここに置かないもの: レイキャスト・ImGui・Undo・dirty フラグ管理。
+/// それらは呼び出し側 (ツール / ディスパッチャ) の責務。
 #pragma once
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Transform.hpp>

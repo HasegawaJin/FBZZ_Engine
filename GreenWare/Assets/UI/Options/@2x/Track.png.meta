@@ -1,0 +1,21 @@
+[meta]
+guid = 'db6e4ba9e5478467893d3d1cbf8d70dc'
+
+[texture]
+alpha_dither = false
+alpha_mode = 'Straight'
+aniso = 8
+compression = 'Auto'
+compression_quality = 1
+filter = 'Anisotropic'
+flip_green = false
+max_size = 4096
+mip_bias = 0.0
+mip_filter = 'Kaiser'
+mip_sharpen = 0.0
+mipmaps = true
+normalize_mipmaps = false
+srgb = true
+type = 'color'
+wrap_u = 'Repeat'
+wrap_v = 'Repeat'

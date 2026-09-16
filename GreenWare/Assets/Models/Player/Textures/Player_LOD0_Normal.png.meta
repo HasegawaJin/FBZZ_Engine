@@ -1,0 +1,12 @@
+
+[meta]
+guid = "f34703e5d5f845858f51f9489d2d9cae"
+
+
+[texture]
+type = "normal"
+srgb = false
+flip_green = true
+mipmaps = true
+normalize_mipmaps = true
+

@@ -1,0 +1,22 @@
+# FBZZ Engine
+# FX_SymCross_Additive.mat
+# 素材: Assets/VFX/Textures/T_Sym_Cross.png
+# 企画書 6.5 の中和警告。色は極性色ではなく kColorWarning (黄) を乗せること。
+# 赤や青を乗せると «警告» が «極性の表示» に見えて、避けるべき対象が読めなくなる。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:23ccec1f7774adcf0a7be0acfeee7f2a"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 1.8

@@ -1,0 +1,26 @@
+file_format_version = 1
+
+[meta]
+guid = '4cbaa73fa602496fa5d1951052ea34ef'
+
+[model]
+default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 4
+normal_map_convention = 'OpenGL'
+root_motion_node = ''
+selected_animations = []
+selected_meshes = []
+source_dcc = 'Blender'
+unit_scale_multiplier = 1.0
+up_axis = 0
+
+    [[model.clips]]
+    end_frame = -1.0
+    loop = true
+    name = 'Run_F'
+    output_name = 'Run_F'
+    start_frame = 0.0

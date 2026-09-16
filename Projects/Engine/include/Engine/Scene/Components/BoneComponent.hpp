@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BoneComponent.hpp | fbzz::scene
-// シーンの GameObject とインポート済み SkeletonNode を 1 対 1 で対応付けるコンポーネント。
+/// @file    BoneComponent.hpp
+/// @brief   シーンの GameObject とインポート済み SkeletonNode を 1 対 1 で対応付けるコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-30
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

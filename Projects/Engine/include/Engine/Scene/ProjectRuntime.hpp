@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectRuntime.hpp | fbzz::scene
-// Editor PlayとStandaloneで共有するプロジェクト実行状態と更新パイプライン
+/// @file    ProjectRuntime.hpp
+/// @brief   Editor PlayとStandaloneで共有するプロジェクト実行状態と更新パイプライン。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #pragma once
 
 #include <Engine/ProjectSettings.hpp>
@@ -35,6 +36,13 @@ public:
     /// Editor所有Sceneを実行対象としてバインドする。nullptrでowned Sceneへ戻す。
     void BindExternalScene(Scene* scene);
 
+    /// Play中のLoadSceneでManagerが所有したSceneを破棄し、保留中の遷移要求も捨てる。
+    /// EditorがStopで編集Sceneへ戻るときに呼ぶ。
+    void ReleaseOwnedScene();
+
+    /// 遷移で切り替わった実行中Sceneの登録名。遷移していなければ空。
+    [[nodiscard]] const std::string& ActiveSceneName() const { return m_sceneManager.ActiveSceneName(); }
+
     /// 登録済みScene名への遷移を要求する。
     void LoadScene(const std::string& sceneName);
 
@@ -42,10 +50,15 @@ public:
     void LoadScene(const std::filesystem::path& sceneFile);
 
     /// 共通のSimulation設定を適用してSystemSchedulerを更新する。
+    /// @param simulating このフレームでシミュレーションを進めるか (Pause 中は false)。
+    /// @param playing    Play セッションが続いているか。Pause 中も true。
+    ///                   既定の true は Standalone (常に Play セッション) を指す。
+    ///                   Editor は Pause を simulating=false / playing=true で表す。
     void Update(float dt,
                 const ProjectSettings& settings,
                 bool simulating,
-                bool singleStep = false);
+                bool singleStep = false,
+                bool playing = true);
 
     /// Update後のLateUpdateフェーズを駆動する。
     void LateUpdate(float dt);

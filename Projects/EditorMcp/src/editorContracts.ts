@@ -38,26 +38,41 @@ export const ScenePropertyFilterSchema = z.object({
 }).strict();
 export type ScenePropertyFilter = z.infer<typeof ScenePropertyFilterSchema>;
 
-// VFX プレビューの視点。注視点まわりの球面座標で持つ。
-// WHY: 自由なカメラ行列を組ませると同じ「斜め上から」を再現できず評価が揺れる。
-//      距離 1 本で LOD 検証、yaw 1 本でビルボードのシルエット検証ができる形に絞る。
-export const VFXPreviewCameraSchema = z.object({
-    preset: z.enum(['front', 'angle', 'side', 'top']).optional()
-        .describe('代表視点。yaw/pitch を個別指定すると、そちらが preset を上書きする'),
-    target: Vec3Schema.optional().describe('注視点 (既定 [0, 0.5, 0])'),
-    distance: z.number().finite().min(0.05).max(500).optional()
-        .describe('注視点からの距離 m。ゲーム内距離で読めるかの検証はここを振る (既定 5)'),
-    yaw: z.number().finite().min(-360).max(360).optional()
-        .describe('度。0 = 正面 / 90 = 真横。ビルボードの破綻は正面からは判らない'),
-    pitch: z.number().finite().min(-89).max(89).optional().describe('度。正で見下ろし (既定 10)'),
-    fovY: z.number().finite().min(5).max(120).optional().describe('度 (既定 60)'),
-}).strict();
-export type VFXPreviewCamera = z.infer<typeof VFXPreviewCameraSchema>;
+// .fluid はレシピ本体。拡張子を先に弾くのは、.mat や .vfx を渡されても C++ 側では
+// FLUID_READ_FAILED としか言えず、AI が「中身が壊れている」と誤読するため。
+export const FluidPathSchema = z.string().min(1).max(1024).regex(/\.fluid$/i, '.fluid のパスを指定してください');
+// FluidBakeService のジョブ id は uint32 で 0 が「受け付けなかった」を意味する。
+export const FluidJobIdSchema = z.number().int().min(1).max(0xFFFFFFFF);
+// 既定値は C++ 側が持つ (MakeFluidPreset の識別子)。ここで enum に固定すると、
+// エンジンにプリセットを 1 つ足すたびに TypeScript も直すことになる。
+export const FluidPresetSchema = z.string().min(1).max(64);
+// fluid.set / fluid.createEffect の部分レシピ。形は fluid.schema が正本なので中身は見ない。
+export const FluidFieldsSchema = z.record(z.string().min(1).max(128), JsonValueSchema)
+    .refine((fields) => Object.keys(fields).length > 0, { message: 'fields に 1 つ以上の項目が必要です' });
+export const FluidEffectNameSchema = z.string().min(1).max(64)
+    .regex(/^[^\\/:*?"<>|.][^\\/:*?"<>|]*$/, 'name はファイル名 1 つ分 (区切り文字・先頭の . は不可)');
+// 部品リストの名前は .fluid の配列キー (recipe.source / recipe.force / recipe.collider) と同じ。
+export const FluidOperatorListSchema = z.enum(['source', 'force', 'collider']);
+// 上限 (source 16 / force 8 / collider 8) の判定は C++ 側 (OPERATOR_LIMIT)。ここは添字として読める範囲だけ見る。
+export type FluidOperatorList = z.infer<typeof FluidOperatorListSchema>;
+export const FluidOperatorIndexSchema = z.number().int().min(0).max(15);
+// 形 (source: sphere / box / cone / ring / texture、collider: sphere / box / plane) か
+// 力の種類 (wind / attract / ...) のラベル。一覧は fluid.schema が正本。
+export const FluidOperatorTypeSchema = z.string().min(1).max(32);
+
 
 // 副作用のない読み取り要求。Editor の状態を観測するだけで Scene を変更しない。
 export type EditorQuery =
     | { t: 'editor.catalog' }
     | { t: 'editor.catalog.search'; query?: string | undefined; category?: string | undefined; limit?: number | undefined }
+    // Operator モデルの目録。メニュー・ホットキー・コマンドパレットが読むのと同じ登録簿。
+    // Docs/design/editor-operator-model.md
+    | { t: 'editor.op.list'; search?: string | undefined; category?: string | undefined; includeUnavailable?: boolean | undefined }
+    // kind=query の Operator を実行して結果データを読む。
+    // WHY editor.op.invoke と分けるか: invoke は write 権限のツールとして公開される。
+    //      読むだけの操作までそこに閉じ込めると、read 権限の接続からは
+    //      「目録には出るのに 1 つも呼べない Query」に見える。
+    | { t: 'editor.op.query'; id: string; args?: Record<string, unknown> | undefined }
     | { t: 'editor.state' }
     | { t: 'editor.undoHistory'; limit?: number | undefined }
     | { t: 'console.logs'; minLevel?: 'debug' | 'info' | 'warning' | 'error' | undefined; contains?: string | undefined; limit?: number | undefined; afterSequence?: number | undefined }
@@ -72,16 +87,11 @@ export type EditorQuery =
     | { t: 'asset.inspect'; path: string }
     | { t: 'asset.findUnused'; limit?: number | undefined }
     | { t: 'asset.thumbnail'; path: string }
-    // detail 既定 summary。transform / editorPosition / group / signalNode の中身は full だけ返る。
-    | { t: 'vfx.graph'; path: string; detail?: 'summary' | 'full' | undefined }
-    // vfx.node.setField の対になる読み出し。schemaPath 省略時はノードの全 leaf。
-    | { t: 'vfx.nodeField'; path: string; nodeId: number; schemaPath?: string | undefined; prefix?: string | undefined }
-    | { t: 'vfx.lint'; path: string }
-    | { t: 'vfx.diff'; base: string; target: string }
-    | { t: 'vfx.params'; path: string; id?: string | undefined }
-    | { t: 'vfx.schema' }
-    | { t: 'vfx.guide' }
-    | { t: 'vfx.templateCatalog'; query?: string | undefined; limit?: number | undefined }
+    // ── Sprite (Texture のサブアセット) ──
+    // Sprite は独立したファイルではないので asset.list に出ない。一覧と切り抜き画像を
+    // 出せないと、AI は .meta の UUID を書き写す以外に割り当てる手段が無い。
+    | { t: 'sprite.list'; path: string }
+    | { t: 'sprite.thumbnail'; path: string; sprite: string }
     // ── Behavior Tree ──
     // 木の構造・Blackboard・検証結果。order が優先度そのものなので必ず含まれる。
     | { t: 'bt.tree'; path: string }
@@ -96,25 +106,9 @@ export type EditorQuery =
     | { t: 'bt.runtime'; path?: string | undefined; id?: string | undefined }
     | { t: 'bt.diff'; base: string; target: string }
     | { t: 'bt.templateCatalog' }
-    // 直前の vfx.preview が構築した実行状態。引数は無く、常にその時刻のまま返る。
-    | { t: 'vfx.runtime' }
-    // Preview World を起動し、プレビュー系を呼べる状態かを返す。preview 系の前提確認。
-    | { t: 'vfx.previewEnsure' }
-    // 素材テクスチャの観測。中身を知らないまま blendMode 等を決めるのを防ぐ。
-    | { t: 'vfx.textureAnalyze'; path: string }
-    // .mat とその albedo を併せて見る。Emitter の blendMode は .mat に上書きされるため。
-    | { t: 'vfx.materialAnalyze'; path: string }
-    // プロジェクトの素材を分類し、狙う層構成に対して何が足りないかを返す。
-    // 分類は size + mtime でキャッシュされ、refresh=true でのみ再解析する。
-    | { t: 'vfx.assetSurvey'; directory?: string | undefined; limit?: number | undefined;
-        detail?: 'summary' | 'full' | undefined; refresh?: boolean | undefined }
     // シェーダーが公開する変数とテクスチャスロットの目録。書ける名前の唯一の正本。
     | { t: 'shader.inspect'; path: string }
     | { t: 'shader.diagnostics' }
-    | { t: 'vfx.curvePresets' }
-    | { t: 'vfx.preview'; path: string; time: number; w?: number | undefined; h?: number | undefined; view?: 'normal' | 'overdraw' | 'gizmos' | undefined; camera?: VFXPreviewCamera | undefined }
-    // 直前に描いたプレビュー画を「絵」ではなく「数値」として読む。動き指標は連続呼び出しで意味を持つ。
-    | { t: 'vfx.previewMetrics'; path: string; view?: 'normal' | 'overdraw' | 'gizmos' | undefined }
     | { t: 'material.inspect'; id: string }
     | { t: 'animation.state'; id: string }
     | { t: 'animation.graph'; id: string; layer?: string | undefined }
@@ -125,7 +119,7 @@ export type EditorQuery =
     | { t: 'physics.raycast'; origin: [number, number, number]; direction: [number, number, number]; maxDistance: number; sphereRadius?: number | undefined }
     | { t: 'physics.overlapSphere'; center: [number, number, number]; radius: number }
     | { t: 'physics.events' }
-    | { t: 'viewport.capture'; w: number; h: number; cameraId?: string | undefined; view?: 'scene' | 'game' | 'vfx' | undefined }
+    | { t: 'viewport.capture'; w: number; h: number; cameraId?: string | undefined; view?: 'scene' | 'game' | undefined }
     | { t: 'viewport.semantic'; w: number; h: number; view?: 'scene' | 'game' | undefined }
     // ── ワールドオーサリング ──
     // プロジェクト内の .scene 一覧。AI が「今開いている 1 枚」の外へ出るための入口。
@@ -135,7 +129,6 @@ export type EditorQuery =
     // 地形のグリッド・レイヤー・高さ統計。生の heightData は返さない (点は terrain.sample)。
     | { t: 'terrain.inspect'; id?: string | undefined }
     | { t: 'terrain.sample'; points: Array<number[]>; id?: string | undefined }
-    | { t: 'foliage.inspect'; id?: string | undefined }
     // NavMesh: Surface の設定・ベイク状態と Agent の実行状態を並べて返す。
     | { t: 'navmesh.state'; id?: string | undefined }
     // Agent が実際に使う A* + Funnel で経路を引く。歩けるかどうかの唯一の確実な検証手段。
@@ -148,9 +141,28 @@ export type EditorQuery =
     | { t: 'audio.inspect'; id?: string | undefined }
     | { t: 'ui.inspect'; id?: string | undefined }
     // スクリプト DLL / HLSL のビルド結果と診断 (shader.diagnostics の Script 版)。
-    | { t: 'build.status'; limit?: number | undefined };
+    | { t: 'build.status'; limit?: number | undefined }
+    // ── 流体 (.fluid) ──
+    // 焼きとプレビューは非同期ジョブ。fluid.jobStatus が唯一の完了通知で、
+    // プレビュー画像もここに載る (includeImage 省略 = 載せる、は C++ 側の既定)。
+    | { t: 'fluid.schema' }
+    | { t: 'fluid.get'; path: string }
+    | { t: 'fluid.jobStatus'; job: number; includeImage?: boolean | undefined };
 export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t', [
     z.object({ t: z.literal('editor.catalog') }).strict(),
+    z.object({
+        t: z.literal('editor.op.list'),
+        search: z.string().min(1).max(128).optional(),
+        category: z.string().min(1).max(64).optional(),
+        includeUnavailable: z.boolean().optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('editor.op.query'),
+        id: z.string().min(1).max(128),
+        // 引数は Editor 側の params 宣言だけで検証する。ここで形を固定すると
+        // 「Operator を 1 つ足すたび TypeScript も直す」という重複が復活する。
+        args: z.record(z.string(), z.unknown()).optional(),
+    }).strict(),
     z.object({
         t: z.literal('editor.catalog.search'),
         query: z.string().min(1).max(128).optional(),
@@ -192,26 +204,9 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     z.object({ t: z.literal('asset.inspect'), path: z.string().min(1) }).strict(),
     z.object({ t: z.literal('asset.findUnused'), limit: z.number().int().min(1).max(500).optional() }).strict(),
     z.object({ t: z.literal('asset.thumbnail'), path: z.string().min(1) }).strict(),
-    z.object({ t: z.literal('vfx.graph'), path: z.string().min(1),
-        detail: z.enum(['summary', 'full']).optional() }).strict(),
-    // schemaPath 単体か、prefix で絞った leaf 群の現在値を返す (setField の value と同じ表現)。
-    z.object({ t: z.literal('vfx.nodeField'), path: z.string().min(1),
-        nodeId: z.number().int().positive(),
-        schemaPath: z.string().min(1).max(256).optional(),
-        prefix: z.string().min(1).max(256).optional() }).strict(),
-    // .vfx を静的診断し、孤立ノード/欠落アセット/budget超過などを構造化して返す。
-    z.object({ t: z.literal('vfx.lint'), path: z.string().min(1) }).strict(),
-    // 2つの .vfx をノード/リンク/パラメーター単位で比較する。
-    z.object({ t: z.literal('vfx.diff'), base: z.string().min(1), target: z.string().min(1) }).strict(),
-    z.object({ t: z.literal('vfx.params'), path: z.string().min(1), id: NodeIdSchema.optional() }).strict(),
-    z.object({ t: z.literal('vfx.schema') }).strict(),
-    // 作る前に読むオーサリング規約。lintCode を持つ規約は vfx.lint が検査する。
-    z.object({ t: z.literal('vfx.guide') }).strict(),
-    z.object({
-        t: z.literal('vfx.templateCatalog'),
-        query: z.string().min(1).max(128).optional(),
-        limit: z.number().int().min(1).max(256).optional(),
-    }).strict(),
+    z.object({ t: z.literal('sprite.list'), path: z.string().min(1).max(1024) }).strict(),
+    z.object({ t: z.literal('sprite.thumbnail'), path: z.string().min(1).max(1024),
+        sprite: z.string().min(1).max(256) }).strict(),
     z.object({ t: z.literal('bt.tree'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.lint'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.guide') }).strict(),
@@ -226,28 +221,8 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     z.object({ t: z.literal('bt.diff'), base: z.string().min(1).max(1024),
         target: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.templateCatalog') }).strict(),
-    z.object({ t: z.literal('vfx.runtime') }).strict(),
-    // Preview World の起動と存在確認。preview 系を呼ぶ前の前提チェック。
-    z.object({ t: z.literal('vfx.previewEnsure') }).strict(),
-    z.object({ t: z.literal('vfx.textureAnalyze'), path: z.string().min(1).max(1024) }).strict(),
-    z.object({ t: z.literal('vfx.materialAnalyze'), path: z.string().min(1).max(1024) }).strict(),
-    z.object({ t: z.literal('vfx.assetSurvey'),
-        directory: z.string().min(1).max(1024).optional(),
-        limit: z.number().int().min(1).max(400).optional(),
-        detail: z.enum(['summary', 'full']).optional(),
-        refresh: z.boolean().optional() }).strict(),
     z.object({ t: z.literal('shader.inspect'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('shader.diagnostics') }).strict(),
-    // 名前付きカーブプリセットの目録。setField の value へ {preset:'Spike'} で渡す。
-    z.object({ t: z.literal('vfx.curvePresets') }).strict(),
-    z.object({ t: z.literal('vfx.preview'), path: z.string().min(1), time: z.number().finite().nonnegative(),
-        w: z.number().int().min(160).max(1920).optional(), h: z.number().int().min(90).max(1080).optional(),
-        // 診断ビュー。既定 normal はクリーンな評価画のままで、明示要求時だけ切り替える。
-        view: z.enum(['normal', 'overdraw', 'gizmos']).optional(),
-        // 視点。省略すると従来どおり Editor の固定視点になる。
-        camera: VFXPreviewCameraSchema.optional() }).strict(),
-    z.object({ t: z.literal('vfx.previewMetrics'), path: z.string().min(1),
-        view: z.enum(['normal', 'overdraw', 'gizmos']).optional() }).strict(),
     z.object({ t: z.literal('material.inspect'), id: NodeIdSchema }).strict(),
     z.object({ t: z.literal('animation.state'), id: NodeIdSchema }).strict(),
     z.object({ t: z.literal('animation.graph'), id: NodeIdSchema, layer: z.string().min(1).max(128).optional() }).strict(),
@@ -273,7 +248,7 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
         w: z.number().int().min(160).max(1920),
         h: z.number().int().min(90).max(1080),
         cameraId: NodeIdSchema.optional(),
-        view: z.enum(['scene', 'game', 'vfx']).optional(),
+        view: z.enum(['scene', 'game']).optional(),
     }).strict(),
     z.object({
         t: z.literal('viewport.semantic'),
@@ -291,7 +266,6 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
         points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
         id: NodeIdSchema.optional(),
     }).strict(),
-    z.object({ t: z.literal('foliage.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('navmesh.state'), id: NodeIdSchema.optional() }).strict(),
     z.object({
         t: z.literal('navmesh.path'),
@@ -313,6 +287,9 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     z.object({ t: z.literal('audio.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('ui.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('build.status'), limit: z.number().int().min(1).max(20).optional() }).strict(),
+    z.object({ t: z.literal('fluid.schema') }).strict(),
+    z.object({ t: z.literal('fluid.get'), path: FluidPathSchema }).strict(),
+    z.object({ t: z.literal('fluid.jobStatus'), job: FluidJobIdSchema, includeImage: z.boolean().optional() }).strict(),
 ]);
 
 const CommandNameSchema = z.string().min(1).max(128);
@@ -320,6 +297,9 @@ const ComponentNameSchema = z.string().min(1).max(128);
 
 // Scene を変更しうる要求。engine 側で Undo 可能な Command Bus へ転送される。
 export type EditorCommand =
+    // Operator を 1 つ実行する。実行可否 (poll) の判定は Editor 側の登録簿にあり、
+    // メニューやホットキーと同じ述語が効く。args は operator が宣言した params に従う。
+    | { t: 'editor.op.invoke'; id: string; args?: Record<string, unknown> | undefined }
     | { t: 'node.create'; parent?: string | undefined; name?: string | undefined }
     | { t: 'node.duplicate'; id: string; parent?: string | undefined; name?: string | undefined }
     | { t: 'node.delete'; id: string }
@@ -347,41 +327,6 @@ export type EditorCommand =
     | { t: 'material.assign'; id: string; path: string }
     | { t: 'material.override'; id: string; parameter: string; value: number[] }
     | { t: 'material.asset.setShader'; path: string; shaderPath: string }
-    | { t: 'vfx.graph.set'; path: string; name?: string | undefined; maxParticles?: number | undefined; maxLights?: number | undefined; maxAudioVoices?: number | undefined }
-    | { t: 'vfx.node.add'; path: string; nodeType: 'particle' | 'trail' | 'meshTrail' | 'light' | 'audio' | 'decal' | 'delay' | 'subGraph' | 'forceField' | 'mesh' | 'screenEffect' | 'cameraShake' | 'timeScale' | 'wind' | 'reroute'; name?: string | undefined; from?: number | undefined; assetPath?: string | undefined }
-    | { t: 'vfx.node.duplicate'; path: string; nodeId: number; name?: string | undefined; editorX?: number | undefined; editorY?: number | undefined }
-    | { t: 'vfx.node.remove'; path: string; nodeId: number }
-    | { t: 'vfx.node.setEnabled'; path: string; nodeId: number; enabled: boolean }
-    | { t: 'vfx.node.setMetadata'; path: string; nodeId: number; name?: string | undefined; editorX?: number | undefined; editorY?: number | undefined }
-    // 空間の親子。parentNodeId 省略 = 親を外す (owner 直下へ戻す)。link とは別軸。
-    | { t: 'vfx.node.setParent'; path: string; nodeId: number; parentNodeId?: number | undefined }
-    | { t: 'vfx.node.setField'; path: string; nodeId: number; schemaPath: string; value: JsonValue }
-    | { t: 'vfx.link.add'; path: string; from: number; to: number; trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined; delay?: number | undefined }
-    | { t: 'vfx.link.update'; path: string; index: number; from?: number | undefined; to?: number | undefined; trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined; delay?: number | undefined }
-    | { t: 'vfx.link.remove'; path: string; index: number }
-    | { t: 'vfx.param.declare'; path: string; name: string; paramType: 'float' | 'int' | 'bool' | 'color' | 'vector3' | 'asset'; defaultValue: JsonValue; minimum?: number | undefined; maximum?: number | undefined }
-    | { t: 'vfx.param.remove'; path: string; name: string }
-    | { t: 'vfx.param.bind'; path: string; name: string; nodeId: number; schemaPath: string }
-    | { t: 'vfx.param.unbind'; path: string; name: string; nodeId?: number | undefined; schemaPath?: string | undefined }
-    | { t: 'vfx.param.setDefault'; path: string; name: string; value: JsonValue }
-    | { t: 'vfx.instance.set'; id: string; name: string; value: JsonValue }
-    | { t: 'vfx.instance.clear'; id: string; name: string }
-    // mode 省略 = replace (Template を複製して新規アセット化。従来の挙動)。
-    //   merge    — 既存 .vfx へ層を追記する。groups で Template の層だけを選べる。
-    //   subgraph — 複製せず Sub Graph ノードとして参照する。Template の更新が伝播する。
-    | { t: 'vfx.template.apply'; template: 'explosion' | 'fire' | 'smoke' | 'impact' | 'magic' | string; path: string;
-        name?: string | undefined; description?: string | undefined; tags?: string[] | undefined;
-        mode?: 'replace' | 'merge' | 'subgraph' | undefined;
-        groups?: number[] | undefined; anchorNodeId?: number | undefined;
-        trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
-        delay?: number | undefined; parentNodeId?: number | undefined;
-        variant?: string | undefined; raiseBudget?: boolean | undefined }
-    // strategy 省略時は従来どおり粒子数だけを削る。fill rate が原因のときは 'fillRate' / 'both'。
-    | { t: 'vfx.optimize'; path: string; targetParticles?: number | undefined; strategy?: 'particles' | 'fillRate' | 'both' | undefined }
-    // 修復フラグは全て「省略 = 有効」。個別に false を渡したときだけその修復を止める。
-    | { t: 'vfx.repair'; path: string; connectOrphans?: boolean | undefined; fixAssets?: boolean | undefined;
-        fixSprites?: boolean | undefined; fixLighting?: boolean | undefined; fixSorting?: boolean | undefined;
-        fixMeshFade?: boolean | undefined; fixParents?: boolean | undefined }
     // ── Behavior Tree ──
     // parentId 省略は「ルートとして作る」。既にルートがあれば拒否される。
     | { t: 'bt.node.add'; path: string; nodeType: string; parentId?: number | undefined; name?: string | undefined }
@@ -402,12 +347,19 @@ export type EditorCommand =
     // 動く骨格を取り込む。path は存在しなくてよい (新規作成される)。
     | { t: 'bt.template.apply'; template: string; path: string;
         name?: string | undefined; description?: string | undefined }
-    | { t: 'vfx.variant.upsert'; path: string; name: string; values: { [key: string]: JsonValue } }
-    | { t: 'vfx.variant.remove'; path: string; name: string }
-    | { t: 'vfx.group.add'; path: string; title?: string | undefined; note?: string | undefined; x?: number | undefined; y?: number | undefined; width?: number | undefined; height?: number | undefined; color?: [number, number, number, number] | undefined }
-    | { t: 'vfx.group.update'; path: string; groupId: number; title?: string | undefined; note?: string | undefined; x?: number | undefined; y?: number | undefined; width?: number | undefined; height?: number | undefined; color?: [number, number, number, number] | undefined }
-    | { t: 'vfx.group.remove'; path: string; groupId: number }
-    | { t: 'vfx.generateMotionVectors'; texturePath: string; columns: number; rows: number; searchRadius?: number | undefined; loop?: boolean | undefined }
+    | { t: 'vfx.generateMotionVectors'; texturePath: string; columns: number; rows: number; searchRadius?: number | undefined; loop?: boolean | undefined;
+        rowSequences?: boolean | undefined; materialPath?: string | undefined }
+    // Sprite の名前は「参照キーを兼ねる別名」。ID は触らないので、名前を付け直しても
+    // 保存済みの参照は切れない。slice も重なりで ID を引き継ぐ。
+    | { t: 'sprite.rename'; path: string; sprite: string; name: string }
+    | { t: 'sprite.slice'; path: string; type?: 'grid' | 'automatic' | undefined;
+        columns?: number | undefined; rows?: number | undefined;
+        cellWidth?: number | undefined; cellHeight?: number | undefined;
+        offsetX?: number | undefined; offsetY?: number | undefined;
+        paddingX?: number | undefined; paddingY?: number | undefined;
+        pivotX?: number | undefined; pivotY?: number | undefined;
+        keepEmptyRects?: boolean | undefined;
+        prefix?: string | undefined; mode?: 'smart' | 'safe' | 'replace' | undefined }
     | { t: 'animation.control'; id: string; action: 'play' | 'pause' | 'stop' | 'seek'; clipName?: string | undefined; clipIndex?: number | undefined; state?: string | undefined; time?: number | undefined; frame?: number | undefined }
     | { t: 'animation.setParameter'; id: string; name: string; value?: number | boolean | undefined }
     | { t: 'animation.addTransition'; id: string; layer?: string | undefined; from?: string | undefined; to: string; hasExitTime?: boolean | undefined; exitTime?: number | undefined; fixedDuration?: boolean | undefined; transitionDuration?: number | undefined }
@@ -447,17 +399,38 @@ export type EditorCommand =
         radius?: number | undefined; strength?: number | undefined; falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
         iterations?: number | undefined; id?: string | undefined }
     | { t: 'terrain.setLayerMaterial'; id: string; layer: number; material: string }
-    | { t: 'foliage.scatter'; id: string; species: number; position: [number, number, number];
-        radius?: number | undefined; count?: number | undefined; maxSlopeDegrees?: number | undefined; seed?: number | undefined }
-    | { t: 'foliage.clear'; id: string; species: number; position?: [number, number, number] | undefined; radius?: number | undefined }
     // ベイクは非同期。完了は navmesh.state の bakeState で確認する。
     | { t: 'navmesh.bake'; id?: string | undefined }
     | { t: 'audio.control'; id: string; action: 'play' | 'stop' | 'pause' | 'resume' }
     // スクリプト DLL の再ビルド要求。完了は build.status のポーリングで確認する。
     | { t: 'build.run'; target?: 'script' | undefined }
+    // ── 流体 (.fluid) ──
+    // preview / bake / createEffect(bake) はジョブ id を返してすぐ戻る。焼いた出力は Undo で消えない。
+    | { t: 'fluid.create'; path: string; preset?: string | undefined; overwrite?: boolean | undefined }
+    | { t: 'fluid.set'; path: string; fields: Record<string, JsonValue> }
+    // 部品 (発生源 / 力 / 障害物) の追加・削除・並べ替え。どれも fluid.set と同じく Undo 可能なファイル書き込み。
+    | { t: 'fluid.addOperator'; path: string; list: FluidOperatorList; type?: string | undefined;
+        index?: number | undefined; fields?: Record<string, JsonValue> | undefined }
+    | { t: 'fluid.removeOperator'; path: string; list: FluidOperatorList; index: number }
+    | { t: 'fluid.moveOperator'; path: string; list: FluidOperatorList; from: number; to: number }
+    | { t: 'fluid.preview'; path: string; frame?: number | undefined; time?: number | undefined;
+        size?: number | undefined; contactSheet?: boolean | undefined; variants?: number | undefined;
+        seed?: number | undefined }
+    | { t: 'fluid.bake'; path: string; updateMaterial?: boolean | undefined; seed?: number | undefined }
+    | { t: 'fluid.cancel'; job: number }
+    | { t: 'fluid.createEffect'; name: string; dir?: string | undefined; preset?: string | undefined;
+        fields?: Record<string, JsonValue> | undefined; bake?: boolean | undefined }
     | { t: 'editor.transaction'; label: string; cmds: EditorCommand[] };
 export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
     z.discriminatedUnion('t', [
+        // args の中身は Editor 側の params 宣言に従って検証される。
+        // ここで形を固定しないのは、operator が増えてもこのファイルを触らずに済ませるため
+        // (Editor に 1 つ足すたび TypeScript も直す、が今回無くしたい重複そのもの)。
+        z.object({
+            t: z.literal('editor.op.invoke'),
+            id: z.string().min(1).max(128),
+            args: z.record(z.string(), z.unknown()).optional(),
+        }).strict(),
         z.object({ t: z.literal('node.create'), parent: NodeIdSchema.optional(), name: CommandNameSchema.optional() }).strict(),
         z.object({
             t: z.literal('node.duplicate'),
@@ -517,96 +490,34 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             path: z.string().min(1),
             shaderPath: z.string().min(1),
         }).strict(),
-        z.object({ t: z.literal('vfx.graph.set'), path: z.string().min(1),
-            name: z.string().min(1).max(128).optional(),
-            maxParticles: z.number().int().min(1).max(10000000).optional(),
-            maxLights: z.number().int().min(0).max(1024).optional(),
-            maxAudioVoices: z.number().int().min(0).max(1024).optional() }).strict(),
-        z.object({ t: z.literal('vfx.node.add'), path: z.string().min(1),
-            // C++ 側 ParseVFXNodeType と同じ集合を保つこと。ここが欠けると
-            // エンジンに実装済みのノードでも zod で弾かれ、AI からは存在しないのと同じになる。
-            nodeType: z.enum(['particle', 'trail', 'meshTrail', 'light', 'audio', 'decal', 'delay',
-                'subGraph', 'forceField', 'mesh', 'screenEffect', 'cameraShake', 'timeScale', 'wind',
-                'reroute']),
-            name: z.string().min(1).max(128).optional(), from: z.number().int().positive().optional(),
-            assetPath: z.string().min(1).optional() }).strict(),
-        z.object({ t: z.literal('vfx.node.duplicate'), path: z.string().min(1),
-            nodeId: z.number().int().positive(), name: z.string().min(1).max(128).optional(),
-            editorX: z.number().finite().optional(), editorY: z.number().finite().optional() }).strict(),
-        z.object({ t: z.literal('vfx.node.remove'), path: z.string().min(1), nodeId: z.number().int().positive() }).strict(),
-        z.object({ t: z.literal('vfx.node.setEnabled'), path: z.string().min(1), nodeId: z.number().int().positive(),
-            enabled: z.boolean() }).strict(),
-        z.object({ t: z.literal('vfx.node.setMetadata'), path: z.string().min(1), nodeId: z.number().int().positive(),
-            name: z.string().min(1).max(128).optional(), editorX: z.number().finite().optional(),
-            editorY: z.number().finite().optional() }).strict(),
-        // parentNodeId は -1 (親を外す) を許すため positive ではなく int で受ける。
-        z.object({ t: z.literal('vfx.node.setParent'), path: z.string().min(1), nodeId: z.number().int().positive(),
-            parentNodeId: z.number().int().optional() }).strict(),
-        z.object({ t: z.literal('vfx.node.setField'), path: z.string().min(1), nodeId: z.number().int().positive(),
-            schemaPath: z.string().min(1).max(256), value: JsonValueSchema }).strict(),
-        z.object({ t: z.literal('vfx.link.add'), path: z.string().min(1), from: z.number().int().positive(),
-            to: z.number().int().positive(), trigger: z.enum(['onComplete', 'onStart', 'onCollision', 'onDeath']).optional(),
-            delay: z.number().finite().nonnegative().optional() }).strict(),
-        z.object({ t: z.literal('vfx.link.update'), path: z.string().min(1), index: z.number().int().nonnegative(),
-            from: z.number().int().positive().optional(), to: z.number().int().positive().optional(),
-            trigger: z.enum(['onComplete', 'onStart', 'onCollision', 'onDeath']).optional(),
-            delay: z.number().finite().nonnegative().optional() }).strict(),
-        z.object({ t: z.literal('vfx.link.remove'), path: z.string().min(1), index: z.number().int().nonnegative() }).strict(),
-        z.object({ t: z.literal('vfx.param.declare'), path: z.string().min(1), name: z.string().min(1).max(128),
-            paramType: z.enum(['float', 'int', 'bool', 'color', 'vector3', 'asset']), defaultValue: JsonValueSchema,
-            minimum: z.number().finite().optional(), maximum: z.number().finite().optional() }).strict(),
-        z.object({ t: z.literal('vfx.param.remove'), path: z.string().min(1),
-            name: z.string().min(1).max(128) }).strict(),
-        z.object({ t: z.literal('vfx.param.bind'), path: z.string().min(1), name: z.string().min(1).max(128),
-            nodeId: z.number().int().positive(), schemaPath: z.string().min(1).max(256) }).strict(),
-        z.object({ t: z.literal('vfx.param.unbind'), path: z.string().min(1), name: z.string().min(1).max(128),
-            nodeId: z.number().int().positive().optional(), schemaPath: z.string().min(1).max(256).optional() }).strict(),
-        z.object({ t: z.literal('vfx.param.setDefault'), path: z.string().min(1), name: z.string().min(1).max(128),
-            value: JsonValueSchema }).strict(),
-        z.object({ t: z.literal('vfx.instance.set'), id: NodeIdSchema, name: z.string().min(1).max(128),
-            value: JsonValueSchema }).strict(),
-        z.object({ t: z.literal('vfx.instance.clear'), id: NodeIdSchema, name: z.string().min(1).max(128) }).strict(),
-        z.object({ t: z.literal('vfx.template.apply'), template: z.string().min(1).max(260),
-            path: z.string().min(1).max(1024), name: z.string().min(1).max(128).optional(),
-            description: z.string().max(512).optional(),
-            tags: z.array(z.string().min(1).max(48)).max(16).optional(),
-            mode: z.enum(['replace', 'merge', 'subgraph']).optional(),
-            groups: z.array(z.number().int().min(1)).max(64).optional(),
-            anchorNodeId: z.number().int().min(1).optional(),
-            trigger: z.enum(['onComplete', 'onStart', 'onCollision', 'onDeath']).optional(),
-            delay: z.number().min(0).max(600).optional(),
-            parentNodeId: z.number().int().min(1).optional(),
-            variant: z.string().min(1).max(128).optional(),
-            raiseBudget: z.boolean().optional() }).strict()
-            // groups / anchorNodeId / parent は「既存グラフのどこへ入れるか」の指定なので、
-            // 複製 (replace) では意味を持たない。黙って無視すると効いたと誤解される。
-            .refine((value) => value.mode === 'merge' || value.mode === 'subgraph'
-                || (value.groups === undefined && value.anchorNodeId === undefined
-                    && value.parentNodeId === undefined && value.trigger === undefined), {
-                message: 'groups / anchorNodeId / parentNodeId / trigger は mode=merge または subgraph でのみ使えます',
-            })
-            .refine((value) => value.mode !== 'subgraph' || value.groups === undefined, {
-                message: 'subgraph は Template 全体を参照するため groups を指定できません',
-            }),
-        z.object({ t: z.literal('vfx.optimize'), path: z.string().min(1),
-            targetParticles: z.number().int().min(1).max(10000000).optional(),
-            strategy: z.enum(['particles', 'fillRate', 'both']).optional() }).strict()
-            .refine((value) => value.targetParticles !== undefined || value.strategy === 'fillRate', {
-                message: 'targetParticles は strategy=fillRate のときだけ省略できます',
-            }),
         // フリップブックアトラスからモーションベクターアトラスを生成する。
         // MV は外部ツールでしか作れず、AI が flipbook のブレンド品質を上げたくても
         // 手段が無かったため、コマンドとして公開する。
         z.object({ t: z.literal('vfx.generateMotionVectors'), texturePath: z.string().min(1).max(1024),
             columns: z.number().int().min(1).max(64), rows: z.number().int().min(1).max(64),
             searchRadius: z.number().int().min(1).max(64).optional(),
-            loop: z.boolean().optional() }).strict(),
-        // vfx.lint が指摘する機械的な不備を自動修正する (Undo 可能)。
-        z.object({ t: z.literal('vfx.repair'), path: z.string().min(1),
-            connectOrphans: z.boolean().optional(), fixAssets: z.boolean().optional(),
-            fixSprites: z.boolean().optional(), fixLighting: z.boolean().optional(),
-            fixSorting: z.boolean().optional(), fixMeshFade: z.boolean().optional(),
-            fixParents: z.boolean().optional() }).strict(),
+            loop: z.boolean().optional(),
+            rowSequences: z.boolean().optional(),
+            // 推奨 strength は生成結果でしか決まらないため、渡されたら .mat へ直接書き込む。
+            materialPath: z.string().min(1).max(1024).optional() }).strict(),
+        // ── Sprite ──
+        z.object({ t: z.literal('sprite.rename'), path: z.string().min(1).max(1024),
+            sprite: z.string().min(1).max(256), name: z.string().min(1).max(128) }).strict(),
+        z.object({ t: z.literal('sprite.slice'), path: z.string().min(1).max(1024),
+            type: z.enum(['grid', 'automatic']).optional(),
+            columns: z.number().int().min(1).max(256).optional(),
+            rows: z.number().int().min(1).max(256).optional(),
+            cellWidth: z.number().int().min(1).max(16384).optional(),
+            cellHeight: z.number().int().min(1).max(16384).optional(),
+            offsetX: z.number().int().min(0).max(16384).optional(),
+            offsetY: z.number().int().min(0).max(16384).optional(),
+            paddingX: z.number().int().min(0).max(16384).optional(),
+            paddingY: z.number().int().min(0).max(16384).optional(),
+            pivotX: z.number().min(0).max(1).optional(),
+            pivotY: z.number().min(0).max(1).optional(),
+            keepEmptyRects: z.boolean().optional(),
+            prefix: z.string().min(1).max(64).optional(),
+            mode: z.enum(['smart', 'safe', 'replace']).optional() }).strict(),
         // ── Behavior Tree ──
         z.object({ t: z.literal('bt.node.add'), path: z.string().min(1).max(1024),
             nodeType: z.string().min(1).max(64), parentId: z.number().int().min(1).optional(),
@@ -637,24 +548,6 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             path: z.string().min(1).max(1024),
             name: z.string().min(1).max(128).optional(),
             description: z.string().max(512).optional() }).strict(),
-        z.object({ t: z.literal('vfx.variant.upsert'), path: z.string().min(1),
-            name: z.string().min(1).max(128), values: z.record(z.string().min(1).max(128), JsonValueSchema) }).strict(),
-        z.object({ t: z.literal('vfx.variant.remove'), path: z.string().min(1),
-            name: z.string().min(1).max(128) }).strict(),
-        z.object({ t: z.literal('vfx.group.add'), path: z.string().min(1),
-            title: z.string().min(1).max(128).optional(), note: z.string().max(2048).optional(),
-            x: z.number().finite().optional(), y: z.number().finite().optional(),
-            width: z.number().finite().min(80).max(10000).optional(),
-            height: z.number().finite().min(60).max(10000).optional(),
-            color: z.tuple([z.number().finite(), z.number().finite(), z.number().finite(), z.number().finite()]).optional() }).strict(),
-        z.object({ t: z.literal('vfx.group.update'), path: z.string().min(1), groupId: z.number().int().positive(),
-            title: z.string().min(1).max(128).optional(), note: z.string().max(2048).optional(),
-            x: z.number().finite().optional(), y: z.number().finite().optional(),
-            width: z.number().finite().min(80).max(10000).optional(),
-            height: z.number().finite().min(60).max(10000).optional(),
-            color: z.tuple([z.number().finite(), z.number().finite(), z.number().finite(), z.number().finite()]).optional() }).strict(),
-        z.object({ t: z.literal('vfx.group.remove'), path: z.string().min(1),
-            groupId: z.number().int().positive() }).strict(),
         z.object({
             t: z.literal('animation.control'),
             id: NodeIdSchema,
@@ -937,23 +830,6 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             layer: z.number().int().min(0).max(3),
             material: z.string().max(512),
         }).strict(),
-        z.object({
-            t: z.literal('foliage.scatter'),
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63),
-            position: Vec3Schema,
-            radius: z.number().finite().gt(0).max(500).optional(),
-            count: z.number().int().min(1).max(500).optional(),
-            maxSlopeDegrees: z.number().finite().min(0).max(90).optional(),
-            seed: z.number().int().min(1).optional(),
-        }).strict(),
-        z.object({
-            t: z.literal('foliage.clear'),
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63),
-            position: Vec3Schema.optional(),
-            radius: z.number().finite().gt(0).max(500).optional(),
-        }).strict(),
         z.object({ t: z.literal('navmesh.bake'), id: NodeIdSchema.optional() }).strict(),
         z.object({
             t: z.literal('audio.control'),
@@ -961,6 +837,61 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             action: z.enum(['play', 'stop', 'pause', 'resume']),
         }).strict(),
         z.object({ t: z.literal('build.run'), target: z.literal('script').optional() }).strict(),
+        z.object({
+            t: z.literal('fluid.create'),
+            path: FluidPathSchema,
+            preset: FluidPresetSchema.optional(),
+            overwrite: z.boolean().optional(),
+        }).strict(),
+        z.object({ t: z.literal('fluid.set'), path: FluidPathSchema, fields: FluidFieldsSchema }).strict(),
+        z.object({
+            t: z.literal('fluid.addOperator'),
+            path: FluidPathSchema,
+            list: FluidOperatorListSchema,
+            type: FluidOperatorTypeSchema.optional(),
+            index: FluidOperatorIndexSchema.optional(),
+            fields: FluidFieldsSchema.optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('fluid.removeOperator'),
+            path: FluidPathSchema,
+            list: FluidOperatorListSchema,
+            index: FluidOperatorIndexSchema,
+        }).strict(),
+        z.object({
+            t: z.literal('fluid.moveOperator'),
+            path: FluidPathSchema,
+            list: FluidOperatorListSchema,
+            from: FluidOperatorIndexSchema,
+            to: FluidOperatorIndexSchema,
+        }).strict(),
+        z.object({
+            t: z.literal('fluid.preview'),
+            path: FluidPathSchema,
+            // frame が第一級 (焼きの第 n コマ)。time は «一番近いコマ» へ吸着させる旧来の指定。
+            frame: z.number().int().min(0).max(1023).optional(),
+            time: z.number().finite().min(0).max(600).optional(),
+            size: z.number().int().min(32).max(2048).optional(),
+            contactSheet: z.boolean().optional(),
+            variants: z.number().int().min(1).max(16).optional(),
+            seed: z.number().int().min(0).max(4294967295).optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('fluid.bake'),
+            path: FluidPathSchema,
+            updateMaterial: z.boolean().optional(),
+            seed: z.number().int().min(0).max(4294967295).optional(),
+        }).strict(),
+        z.object({ t: z.literal('fluid.cancel'), job: FluidJobIdSchema }).strict(),
+        z.object({
+            t: z.literal('fluid.createEffect'),
+            // ファイル名の素になる。区切り文字を許すと dir の外へ書けてしまう。
+            name: FluidEffectNameSchema,
+            dir: z.string().min(1).max(1024).optional(),
+            preset: FluidPresetSchema.optional(),
+            fields: FluidFieldsSchema.optional(),
+            bake: z.boolean().optional(),
+        }).strict(),
         z.object({
             t: z.literal('editor.transaction'),
             label: z.string().min(1).max(128),
@@ -999,7 +930,7 @@ export const ViewportCaptureResultSchema = z.object({
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     cameraId: NodeIdSchema.optional(),
-    view: z.enum(['scene', 'game', 'vfx']).optional(),
+    view: z.enum(['scene', 'game']).optional(),
 }).strict();
 export type ViewportCaptureResult = z.infer<typeof ViewportCaptureResultSchema>;
 
@@ -1026,4 +957,28 @@ export const AssetThumbnailResultSchema = z.object({
     mimeType: z.enum(['image/png', 'image/jpeg']),
     base64: z.string().min(1),
     path: z.string().min(1),
+}).strict();
+
+// fluid.jobStatus の応答。C++ 側で項目が増えても MCP を壊さないよう未知キーは素通しする。
+// image は asset.thumbnail と同じ形で、MCP 側で image content へ移し替える。
+export const FluidJobImageSchema = z.looseObject({
+    mimeType: z.enum(['image/png', 'image/jpeg']),
+    base64: z.string().min(1),
+});
+export const FluidJobStatusResultSchema = z.looseObject({
+    job: z.number().int(),
+    state: z.enum(['queued', 'running', 'encoding', 'done', 'failed', 'cancelled']),
+    image: FluidJobImageSchema.optional(),
+});
+
+// 切り抜き 1 コマ。reference をそのまま component_set へ渡せる形で返す。
+export const SpriteThumbnailResultSchema = z.object({
+    mimeType: z.literal('image/png'),
+    base64: z.string().min(1),
+    width: z.number().int(),
+    height: z.number().int(),
+    sourceWidth: z.number().int(),
+    sourceHeight: z.number().int(),
+    name: z.string(),
+    reference: z.string().min(1),
 }).strict();

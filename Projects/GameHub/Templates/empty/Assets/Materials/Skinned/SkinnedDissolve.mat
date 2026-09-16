@@ -1,5 +1,5 @@
 version = 1
-shader = "guid:5155fa803d1743ecb0ed9c4c6cf05556"
+shader = "Assets/Shaders/Material/Skinned/SkinnedDissolve.hlsl"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

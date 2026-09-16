@@ -1,0 +1,23 @@
+# FBZZ Engine
+# FX_SymPlus_Additive.mat
+# 素材: Assets/VFX/Textures/T_Sym_Plus.png
+# 企画書 12.3 の「頭上または身体に記号表示」。色覚に頼らず極が読めるようにするための層。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:fef2552347019ea37da13ffd0d9059c2"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+# 記号は «読めること» が仕事なので、明るさより形の輪郭を優先して控えめに置く。
+# 上げると腕が滲んで ＋ と − の区別が付かなくなる。
+emissive_scale = 1.6

@@ -1,14 +1,18 @@
-// FBZZ Engine
-// SystemScheduler.cpp | fbzz
-// Phase × DAG によるシステム実行管理。
-// Build() でトポロジカルソートし、競合しない System ペアを同バッチに配置する。
-// 同バッチの System は TaskSystem 経由で並列実行される。
+/// @file    SystemScheduler.cpp
+/// @brief   Phase × DAG によるシステム実行管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// Build() でトポロジカルソートし、競合しない System ペアを同バッチに配置する。
+/// 同バッチの System は TaskSystem 経由で並列実行される。
 #include "Engine/Core/Scheduler/SystemScheduler.hpp"
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
+#include "Engine/Profiler/Profiler.hpp"
 #include "Engine/Core/Logger.hpp"
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <future>
 #include <queue>
 #include <sstream>
@@ -187,11 +191,33 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
                 FBZZ_PROFILE_SCOPE(toRun[0]->Name().data());
                 toRun[0]->Update(c);
             } else {
+                // WHY ワーカー側で ProfileScope を張らないか:
+                //   Profiler は s_stack を素の static で持つ main スレッド専用の作りで、
+                //   ワーカーから Begin/End を呼ぶとスタックが壊れる。ここで測って
+                //   join 後に main から積む。
+                // WHY 計測を諦めないか:
+                //   以前はこの経路に計測が一切無く、「バッチに 1 個しか入らなかった
+                //   System だけがプロファイラに出る」状態だった。同じフェーズに居る
+                //   隣の System の時間が丸ごと見えないため、重い System を名指しできず、
+                //   単独バッチになった無関係な名前が犯人に見えていた。
                 std::vector<std::future<void>> futs;
+                std::vector<double> elapsedMs(toRun.size(), 0.0);
                 futs.reserve(toRun.size());
-                for (ISystem* sys : toRun)
-                    futs.push_back(TaskSystem::Submit([sys, &c]{ sys->Update(c); }));
+                for (size_t i = 0; i < toRun.size(); ++i) {
+                    ISystem* sys = toRun[i];
+                    double*  out = &elapsedMs[i];
+                    futs.push_back(TaskSystem::Submit([sys, &c, out] {
+                        const auto begin = std::chrono::steady_clock::now();
+                        sys->Update(c);
+                        *out = std::chrono::duration<double, std::milli>(
+                            std::chrono::steady_clock::now() - begin).count();
+                    }));
+                }
                 for (auto& f : futs) f.get();
+                for (size_t i = 0; i < toRun.size(); ++i) {
+                    profiler::Profiler::PushSample(
+                        profiler::ProfilerMarker(toRun[i]->Name().data()), elapsedMs[i]);
+                }
             }
         }
     };
@@ -236,6 +262,14 @@ void SystemScheduler::Update(SystemContext ctx)
 void SystemScheduler::LateUpdate(SystemContext ctx)
 {
     assert(m_built);
+    const PhaseConfig& physicsConfig = m_phaseConfigs[static_cast<size_t>(Phase::Physics)];
+    if (physicsConfig.fixedStep && physicsConfig.hz > 0)
+    {
+        const float fixedDt = 1.0f / static_cast<float>(physicsConfig.hz);
+        // Update() 後に残った accumulator は、現在の確定姿勢から次の fixed step
+        // までの経過割合。LateUpdate の描画だけをこの係数で補間する。
+        ctx.interpolationAlpha = std::clamp(m_accumulator / fixedDt, 0.0f, 1.0f);
+    }
     RunPhase(Phase::LateUpdate, ctx);
 }
 
@@ -281,7 +315,9 @@ void SystemScheduler::DumpGraph() const
             oss << "\n";
         }
     }
-    FBZZ_LOG_INFO("{}", oss.str());
+    // WHY %s か: Logger は printf 形式の可変長引数。"{}" は書式指定として解釈されず
+    //     そのまま出力されるうえ、std::string を ... へ渡すのは未定義動作になる。
+    FBZZ_LOG_INFO("%s", oss.str().c_str());
 }
 
 } // namespace fbzz

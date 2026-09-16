@@ -1,22 +1,25 @@
-// FBZZ Engine
-// DX12Context.cpp | fbzz::renderer
-// DirectX 12 の初期化、フレーム記録、フェンス同期、リサイズ処理
+/// @file    DX12Context.cpp
+/// @brief   DirectX 12 の初期化、フレーム記録、フェンス同期、リサイズ処理。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12Context.hpp"
+
+#include "../GpuValidation.hpp"
 
 #include <Engine/Core/Logger.hpp>
 #include <cstring>
 #include <algorithm>
-#if defined(_DEBUG)
+#include <iterator>
+#include <vector>
+#if defined(FBZZ_GPU_VALIDATION)
 #include <d3d12sdklayers.h>
-#include <dxgidebug.h>
 #endif
 
 namespace fbzz::renderer {
 
 namespace {
 
-// VSync は常時無効。Present の第 1 引数を 0 に固定し、対応環境では tearing も許可する。
-// WHY: フレームレート制御は Application 側の targetFps に任せ、DXGI の表示周期待ちを描画同期に混ぜない。
+// 遮蔽検知の Present-test は実 Present を行わないため、常に同期無しで投げる。
 constexpr UINT kPresentSyncIntervalNoVsync = 0;
 
 bool CheckResult(HRESULT result, const char* operation)
@@ -41,16 +44,17 @@ bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
     m_height = height;
     FBZZ_LOG_INFO("DX12Context::Initialize: 開始 (%ux%u)", width, height);
 
-#if defined(_DEBUG)
+#if defined(FBZZ_GPU_VALIDATION)
     Microsoft::WRL::ComPtr<ID3D12Debug> debug;
-    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
+    // FBZZ_GPU_VALIDATION=0 を環境変数に入れると、ビルドし直さずに切れる。
+    if (gpuvalidation::IsEnabled() && SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
         debug->EnableDebugLayer();
         FBZZ_LOG_INFO("DX12Context: デバッグレイヤー有効化");
         // WHY: GPU-Based Validationは全Draw/Dispatchへ検証処理を挿入し、Scene/Gameの
         //      2 Viewを描くEditorでは数十FPSまで低下する。通常のDebug Layerは維持し、
         //      GPU-Based ValidationはPIX等で問題を局所調査するときだけ一時的に有効化する。
         FBZZ_LOG_INFO("DX12Context: GPU-Based Validation 無効 (通常Debug実行)");
-    } else {
+    } else if (gpuvalidation::IsEnabled()) {
         FBZZ_LOG_WARN("DX12Context: D3D12GetDebugInterface 取得不可 (デバッグレイヤーなしで続行)");
     }
 #endif
@@ -76,10 +80,22 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
 {
     (void)hwnd;
     UINT flags = 0;
-#if defined(_DEBUG)
-    flags |= DXGI_CREATE_FACTORY_DEBUG;
+#if defined(FBZZ_GPU_VALIDATION)
+    if (gpuvalidation::IsEnabled())
+        flags |= DXGI_CREATE_FACTORY_DEBUG;
 #endif
-    if (!CheckResult(CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory)), "DXGI Factory の生成"))
+    HRESULT factoryResult = CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory));
+#if defined(FBZZ_GPU_VALIDATION)
+    if (FAILED(factoryResult) && (flags & DXGI_CREATE_FACTORY_DEBUG) != 0) {
+        // WHY 落とさず作り直すか: 検証つきの Factory は «グラフィックス ツール» が入って
+        //     いない機械では作れない。検証が無いだけで動く構成を、起動できない構成にしない。
+        FBZZ_LOG_WARN("DX12Context: 検証つき DXGI Factory を作れません "
+                      "(オプション機能「グラフィックス ツール」未導入?)。検証なしで続行します");
+        flags &= ~static_cast<UINT>(DXGI_CREATE_FACTORY_DEBUG);
+        factoryResult = CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory));
+    }
+#endif
+    if (!CheckResult(factoryResult, "DXGI Factory の生成"))
         return false;
     FBZZ_LOG_INFO("DX12Context: DXGI Factory 生成 OK (flags=0x%X)", flags);
 
@@ -136,26 +152,30 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
         return false;
     }
 
-#if defined(_DEBUG)
+#if defined(FBZZ_GPU_VALIDATION)
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
-    if (SUCCEEDED(m_device.As(&infoQueue))) {
-        // DX11 と同じく、検証は維持しつつ Warning/Info の蓄積と定期フラッシュを止める。
-        // WHY: D3D12 はリソース遷移・ディスクリプタ操作の通知が多く、毎フレーム蓄積すると
-        //      Development/Debug 実行の CPU コストとメモリ使用量が Release と大きく離れる。
-        infoQueue->SetMuteDebugOutput(FALSE);
-        infoQueue->SetMessageCountLimit(-1);
+    if (gpuvalidation::IsEnabled() && SUCCEEDED(m_device.As(&infoQueue))) {
+        // DX11 と同じ方針: 検証は維持し、読み出しは終了時の 1 回だけにする。
+        // WHY: D3D12 はリソース遷移・ディスクリプタ操作の通知が多く、毎フレーム読み出すと
+        //      Development/Debug 実行の CPU コストが Release と大きく離れる。
+        // 止めるのはデバッガーが居るときだけ (GpuValidation::ShouldBreakOnError の WHY)。
+        const BOOL breakOnError = gpuvalidation::ShouldBreakOnError() ? TRUE : FALSE;
+        // メッセージ 1 件ごとの OutputDebugString はデバッガー接続時ミリ秒級。
+        // 溜めるのは続け、Shutdown() で一度に読む (DX11 側と同じ理由)。
+        infoQueue->SetMuteDebugOutput(TRUE);
+        infoQueue->SetMessageCountLimit(
+            static_cast<UINT64>(gpuvalidation::kMaxStoredMessages));
         infoQueue->ClearStoredMessages();
-        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, breakOnError);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, breakOnError);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, FALSE);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_INFO, FALSE);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_MESSAGE, FALSE);
 
-        // ERROR 以上は残し、Warning 以下は蓄積自体を止める。
+        // WARNING 以上は残す (解放漏れ・状態違反はここに出る)。実況になる 2 つだけ止める。
         D3D12_MESSAGE_SEVERITY denySeverities[] = {
             D3D12_MESSAGE_SEVERITY_INFO,
             D3D12_MESSAGE_SEVERITY_MESSAGE,
-            D3D12_MESSAGE_SEVERITY_WARNING,
         };
         D3D12_INFO_QUEUE_FILTER filter{};
         filter.DenyList.NumSeverities = static_cast<UINT>(std::size(denySeverities));
@@ -173,7 +193,8 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     BOOL tearing = FALSE;
     m_allowTearing = SUCCEEDED(m_factory->CheckFeatureSupport(
         DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing, sizeof(tearing))) && tearing;
-    FBZZ_LOG_INFO("DX12Context: Present VSync=OFF / tearing=%s", m_allowTearing ? "ON" : "OFF");
+    FBZZ_LOG_INFO("DX12Context: Present VSync=%s / tearing=%s",
+                  m_vsync ? "ON" : "OFF", m_allowTearing ? "ON" : "OFF");
     return true;
 }
 
@@ -383,8 +404,9 @@ void DX12Context::EndFrame()
     const uint64_t fenceValue = m_nextFenceValue++;
     m_commandQueue->Signal(m_fence.Get(), fenceValue);
     m_frames[m_frameIndex].fenceValue = fenceValue;
-    const HRESULT presentResult = m_swapChain->Present(
-        kPresentSyncIntervalNoVsync, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
+    const UINT syncInterval = m_vsync ? 1u : 0u;
+    const UINT presentFlags = (!m_vsync && m_allowTearing) ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+    const HRESULT presentResult = m_swapChain->Present(syncInterval, presentFlags);
     if (presentResult == DXGI_STATUS_OCCLUDED) {
         // 遮蔽開始。次フレームは BeginFrame の Present-test 復帰待ちへ回す (エラーではない)。
         m_occluded = true;
@@ -476,14 +498,21 @@ void DX12Context::Shutdown()
     m_deferredResources.clear();
     m_swapChain.Reset();
     m_commandQueue.Reset();
+
+#if defined(FBZZ_GPU_VALIDATION)
+    // デバイスを手放す前に、溜まった検証メッセージを回収する。
+    if (m_device) {
+        Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+            gpuvalidation::DrainStoredMessages<D3D12_MESSAGE>(*infoQueue.Get(), "DX12Context");
+    }
+#endif
+
     m_device.Reset();
     m_factory.Reset();
-#if defined(_DEBUG)
-    Microsoft::WRL::ComPtr<IDXGIDebug1> dxgiDebug;
-    if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
-        dxgiDebug->ReportLiveObjects(
-            DXGI_DEBUG_D3D12, static_cast<DXGI_DEBUG_RLO_FLAGS>(
-                DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
+
+#if defined(FBZZ_GPU_VALIDATION)
+    gpuvalidation::ReportLiveObjects(DXGI_DEBUG_D3D12, "D3D12");
 #endif
 }
 
@@ -618,16 +647,24 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetNullUav(uint32_t slot) const
 bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
                                   Microsoft::WRL::ComPtr<ID3D12Resource>& texture)
 {
-    if (!rgba || width == 0 || height == 0 || !m_device || !m_commandQueue)
+    const TextureMip mip{ rgba, width, height, static_cast<std::size_t>(width) * 4 };
+    return UploadTexture2DMips(std::span<const TextureMip>(&mip, 1), texture);
+}
+
+bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
+                                      Microsoft::WRL::ComPtr<ID3D12Resource>& texture)
+{
+    if (mips.empty() || !mips[0].rgba || mips[0].width == 0 || mips[0].height == 0 || !m_device || !m_commandQueue)
         return false;
+    const UINT mipCount = static_cast<UINT>(mips.size());
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
     D3D12_RESOURCE_DESC textureDesc{};
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    textureDesc.Width = width;
-    textureDesc.Height = height;
+    textureDesc.Width = mips[0].width;
+    textureDesc.Height = mips[0].height;
     textureDesc.DepthOrArraySize = 1;
-    textureDesc.MipLevels = 1;
+    textureDesc.MipLevels = static_cast<UINT16>(mipCount);
     textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     textureDesc.SampleDesc.Count = 1;
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -635,11 +672,12 @@ bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t 
             D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&texture))))
         return false;
 
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-    UINT rowCount = 0;
-    UINT64 rowSize = 0;
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(mipCount);
+    std::vector<UINT> rowCounts(mipCount);
+    std::vector<UINT64> rowSizes(mipCount);
     UINT64 uploadSize = 0;
-    m_device->GetCopyableFootprints(&textureDesc, 0, 1, 0, &footprint, &rowCount, &rowSize, &uploadSize);
+    m_device->GetCopyableFootprints(&textureDesc, 0, mipCount, 0, footprints.data(), rowCounts.data(),
+                                    rowSizes.data(), &uploadSize);
     D3D12_HEAP_PROPERTIES uploadHeap{};
     uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC uploadDesc{};
@@ -657,11 +695,15 @@ bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t 
     void* mapped = nullptr;
     if (FAILED(upload->Map(0, nullptr, &mapped)))
         return false;
-    auto* destination = static_cast<uint8_t*>(mapped) + footprint.Offset;
-    const size_t sourcePitch = static_cast<size_t>(width) * 4;
-    for (UINT row = 0; row < rowCount; ++row)
-        std::memcpy(destination + static_cast<size_t>(row) * footprint.Footprint.RowPitch,
-                    rgba + static_cast<size_t>(row) * sourcePitch, sourcePitch);
+    for (UINT level = 0; level < mipCount; ++level) {
+        const TextureMip& mip = mips[level];
+        auto* destination = static_cast<uint8_t*>(mapped) + footprints[level].Offset;
+        const std::size_t rowBytes = (std::min)(static_cast<std::size_t>(rowSizes[level]),
+                                                static_cast<std::size_t>(mip.width) * 4);
+        for (UINT row = 0; row < rowCounts[level]; ++row)
+            std::memcpy(destination + static_cast<std::size_t>(row) * footprints[level].Footprint.RowPitch,
+                        mip.rgba + static_cast<std::size_t>(row) * mip.rowPitch, rowBytes);
+    }
     upload->Unmap(0, nullptr);
 
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
@@ -670,14 +712,17 @@ bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t 
         || FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
                                               IID_PPV_ARGS(&list))))
         return false;
-    D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
-    destinationLocation.pResource = texture.Get();
-    destinationLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    D3D12_TEXTURE_COPY_LOCATION sourceLocation{};
-    sourceLocation.pResource = upload.Get();
-    sourceLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    sourceLocation.PlacedFootprint = footprint;
-    list->CopyTextureRegion(&destinationLocation, 0, 0, 0, &sourceLocation, nullptr);
+    for (UINT level = 0; level < mipCount; ++level) {
+        D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
+        destinationLocation.pResource = texture.Get();
+        destinationLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        destinationLocation.SubresourceIndex = level;
+        D3D12_TEXTURE_COPY_LOCATION sourceLocation{};
+        sourceLocation.pResource = upload.Get();
+        sourceLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        sourceLocation.PlacedFootprint = footprints[level];
+        list->CopyTextureRegion(&destinationLocation, 0, 0, 0, &sourceLocation, nullptr);
+    }
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = texture.Get();

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Window.hpp | fbzz::core
-// Win32 ウィンドウの生成・イベント処理
-// Renderer のリサイズ通知と ImGui の WndProc フックをつなぐ境界。
-// HWND は必要なバックエンドへ渡すために公開する。
+/// @file    Window.hpp
+/// @brief   Win32 ウィンドウの生成・イベント処理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Renderer のリサイズ通知と ImGui の WndProc フックをつなぐ境界。
+/// HWND は必要なバックエンドへ渡すために公開する。
 #pragma once
 #include <string>
 #include <vector>
@@ -16,6 +18,16 @@ struct IDropTarget;
 
 namespace fbzz::core
 {
+// ウィンドウの表示形態。
+// WHY 排他フルスクリーン (DXGI SetFullscreenState) を持たないか:
+//     スワップチェーンの作り直しとデバイスロスト処理を DX11 / DX12 の両方へ要求する。
+//     得られるのは「モニター解像度そのものを変えられる」ことだけで、それは描画スケールで
+//     代替できる。ボーダーレスなら Alt+Tab も壊れない。
+enum class WindowMode : uint8_t {
+    Windowed,
+    BorderlessFullscreen,
+};
+
 class Window
 {
 public:
@@ -56,6 +68,26 @@ public:
         HWND     GetHandle()   const { return m_hwnd; }
         uint32_t GetWidth()    const { return m_width; }
         uint32_t GetHeight()   const { return m_height; }
+
+        // ── 表示形態 (Option 画面から切り替える) ─────────────────────────────
+        // ボーダーレス化はウィンドウスタイルの差し替えと SetWindowPos だけで済み、
+        // 生じる WM_SIZE が既存の ResizeCallback 経由でスワップチェーンを合わせる。
+        void       SetWindowMode(WindowMode mode);
+        WindowMode GetWindowMode() const { return m_windowMode; }
+
+        // ウィンドウモード時のクライアント寸法を変える。
+        // BorderlessFullscreen 中は「次にウィンドウへ戻したときの寸法」として覚えるだけで、
+        // 画面はモニター解像度のまま変わらない。
+        void SetClientSize(uint32_t width, uint32_t height);
+
+        // ウィンドウが載っているモニターの表示領域 (物理ピクセル)。
+        // 解像度ドロップダウンの上限や、フルスクリーン時の寸法予測に使う。
+        void GetMonitorSize(uint32_t& outWidth, uint32_t& outHeight) const;
+
+        // ウィンドウが載っているモニターが対応する解像度。重複を畳んで降順で返す。
+        // WHY OS へ問い合わせるか: 固定表を持つと、ウルトラワイドや縦置きのモニターで
+        //     選べない解像度が並ぶ。実際に存在するモードだけを Option へ出す。
+        [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> EnumerateResolutions() const;
 
         // リサイズコールバック。WM_SIZE で実クライアント寸法 (物理ピクセル) を通知する。
         // 登録するのは合成ルートである Application で、IRenderer::Resize へ橋渡しする。
@@ -100,10 +132,26 @@ public:
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam);
 
+        // クライアント寸法から枠込みのウィンドウ寸法を逆算して適用する。
+        // 位置は動かさない (解像度を変えるたびにウィンドウが飛ぶのを避ける)。
+        void ApplyWindowedClientSize(uint32_t width, uint32_t height);
+
         HWND     m_hwnd        = nullptr;
         uint32_t m_width       = 0;
         uint32_t m_height      = 0;
         bool     m_shouldClose = false;
+
+        WindowMode m_windowMode = WindowMode::Windowed;
+        // ボーダーレスへ入る直前のウィンドウ配置。
+        // WHY 覚える必要があるか: WS_OVERLAPPEDWINDOW を戻すだけでは位置とサイズが
+        //     フルスクリーン時のまま残り、ウィンドウへ戻した瞬間に画面いっぱいの
+        //     枠付きウィンドウになる。
+        WINDOWPLACEMENT m_windowedPlacement{ sizeof(WINDOWPLACEMENT) };
+        bool            m_hasWindowedPlacement = false;
+        // ウィンドウモードで狙うクライアント寸法。フルスクリーン中に
+        // SetClientSize を呼ばれたら、ここへ溜めて復帰時に適用する。
+        uint32_t m_windowedWidth  = 0;
+        uint32_t m_windowedHeight = 0;
 
         ResizeCallback        m_resizeCallback;
         WndProcHook           m_wndProcHook;

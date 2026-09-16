@@ -1,15 +1,16 @@
-// FBZZ Engine
-// CloudNoiseBake.hpp | fbzz::scene::cloudnoise
-// 起動時に CPU で焼く「タイラブルな 3D ノイズボリューム」生成ヘルパー。
-//
-// WHY: ボリューメトリック雲はレイマーチの各サンプル (+ ライトマーチ) で 3D ノイズを引く。
-//      これを手続き計算すると ALU ネックになるため、Nubis/Horizon と同様に
-//      事前ベイクした 3D テクスチャ (Shape + Detail) を HW トライリニアでサンプルする。
-//      外部バイナリ資産を持たず自己完結させるため、周期 (タイラブル) ノイズを実行時に生成する。
-//
-// 生成物 (RGBA8, WRAP サンプル前提で完全タイラブル):
-//   Shape  (例 128³): R = Perlin-Worley(基本形状), G/B/A = Worley FBM 帯 (低周波ディテール)
-//   Detail (例  32³): R/G/B = 高周波 Worley FBM (雲縁の侵食用)
+/// @file    CloudNoiseBake.hpp
+/// @brief   起動時に CPU で焼く「タイラブルな 3D ノイズボリューム」生成ヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// WHY: ボリューメトリック雲はレイマーチの各サンプル (+ ライトマーチ) で 3D ノイズを引く。
+/// これを手続き計算すると ALU ネックになるため、Nubis/Horizon と同様に
+/// 事前ベイクした 3D テクスチャ (Shape + Detail) を HW トライリニアでサンプルする。
+/// 外部バイナリ資産を持たず自己完結させるため、周期 (タイラブル) ノイズを実行時に生成する。
+///
+/// 生成物 (RGBA8, WRAP サンプル前提で完全タイラブル):
+/// Shape  (例 128³): R = Perlin-Worley(基本形状), G/B/A = Worley FBM 帯 (低周波ディテール)
+/// Detail (例  32³): R/G/B = 高周波 Worley FBM (雲縁の侵食用)
 #pragma once
 #include <vector>
 #include <cstdint>

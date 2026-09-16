@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DistanceConstraint.cpp | fbzz::physics
-// 固定距離を保つ剛体ロッド制約
+/// @file    DistanceConstraint.cpp
+/// @brief   固定距離を保つ剛体ロッド制約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #include <Physics/DistanceConstraint.hpp>
 
 namespace fbzz::physics

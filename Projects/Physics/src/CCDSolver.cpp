@@ -1,6 +1,7 @@
-// FBZZ Engine
-// CCDSolver.cpp | fbzz::physics
-// Swept Sphere の TOI 計算実装
+/// @file    CCDSolver.cpp
+/// @brief   Swept Sphere の TOI 計算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/CCDSolver.hpp>
 #include <Physics/RigidBody.hpp>
 #include <cmath>

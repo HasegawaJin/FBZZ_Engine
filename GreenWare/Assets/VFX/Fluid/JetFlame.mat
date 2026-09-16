@@ -1,0 +1,34 @@
+blend_mode = 'AlphaBlend'
+depth_test = 'LessEqual'
+depth_write = false
+double_sided = true
+mesh_type = 'surface'
+render_path = 'particle'
+render_queue = 3000
+shader = ''
+version = 1
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+
+[particle]
+flipbook_fps = 40.0
+flipbook_mode = 'fps'
+motion_vector_flipbook = true
+motion_vector_strength = 0.06109999865293503
+punctual_lighting = true
+six_way_emission_color = [ 6.0, 2.1019959449768066, 0.316101998090744 ]
+six_way_maps = true
+sprite_columns = 8
+sprite_end_frame = 63
+sprite_rows = 8
+
+[textures]
+albedo = 'guid:d6e563caa00f5c78451100802d790e27|Assets/VFX/Fluid/JetFlame.png'
+ao = ''
+emissive = 'guid:dc4aa4478437b50a23710f7cdbf6a753|Assets/VFX/Fluid/JetFlame_6wayN.dds'
+metallic = ''
+normal = ''
+tex5 = 'guid:875775af050b907d0b802c948aca4236|Assets/VFX/Fluid/JetFlame_mv.dds'
+tex6 = ''
+tex7 = ''

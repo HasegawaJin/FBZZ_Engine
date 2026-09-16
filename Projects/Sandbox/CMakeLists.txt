@@ -225,3 +225,22 @@ add_custom_command(TARGET SandboxStandalone POST_BUILD
         "${CMAKE_SOURCE_DIR}/Assets"
         "$<TARGET_FILE_DIR:SandboxStandalone>/Assets"
 )
+
+# dxcompiler.dll は LoadLibraryW で exe 隣から解決される。Engine の POST_BUILD が置くのは
+# Binaries/<Config>/ 直下で、Sandbox は 1 段下の Sandbox/ へ出るため届かない。
+# 既定 renderer の DX12 は DXIL reflection にこれを要求し、無いと全シェーダーのロードが
+# 失敗して DebugDraw の初期化 assert で落ちる。Editor と同じ規則で exe 隣へ配置する。
+if(FBZZ_DXC_RUNTIME_DIRECTORY)
+    foreach(FBZZ_SANDBOX_TARGET Sandbox SandboxStandalone)
+        foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
+            if(EXISTS "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
+                add_custom_command(TARGET ${FBZZ_SANDBOX_TARGET} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
+                        "$<TARGET_FILE_DIR:${FBZZ_SANDBOX_TARGET}>/${FBZZ_DXC_RUNTIME_DLL}"
+                    COMMENT "Copying ${FBZZ_DXC_RUNTIME_DLL} for ${FBZZ_SANDBOX_TARGET}"
+                )
+            endif()
+        endforeach()
+    endforeach()
+endif()

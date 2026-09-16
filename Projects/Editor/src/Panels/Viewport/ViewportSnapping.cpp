@@ -1,14 +1,15 @@
-// FBZZ Engine
-// ViewportSnapping.cpp | fbzz::editor
-// 頂点スナップ (V ドラッグ) と面スナップ (Ctrl+Shift ドラッグ)
-//
-// WHY: 座標グリッドスナップだけでは「地形の起伏に建物を接地させる」「隣の壁と隙間なく
-//      並べる」ができず、目視 + 数値打ちに頼ることになる。どちらも配置作業では毎回出るので、
-//      ImGuizmo を介さない独立のドラッグ操作として実装する。
-//
-//      ImGuizmo に混ぜないのは、これらが「ギズモの軸に沿った移動」ではなく
-//      「掴んだ点をカーソル下の点へ吸着させる」操作で、軸ハンドルの概念と噛み合わないため。
-//      スナップ中は呼び出し側 (ViewportPanel) がギズモ・ピッキング・矩形選択を止める。
+/// @file    ViewportSnapping.cpp
+/// @brief   頂点スナップ (V ドラッグ) と面スナップ (Ctrl+Shift ドラッグ)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: 座標グリッドスナップだけでは「地形の起伏に建物を接地させる」「隣の壁と隙間なく
+/// 並べる」ができず、目視 + 数値打ちに頼ることになる。どちらも配置作業では毎回出るので、
+/// ImGuizmo を介さない独立のドラッグ操作として実装する。
+///
+/// ImGuizmo に混ぜないのは、これらが「ギズモの軸に沿った移動」ではなく
+/// 「掴んだ点をカーソル下の点へ吸着させる」操作で、軸ハンドルの概念と噛み合わないため。
+/// スナップ中は呼び出し側 (ViewportPanel) がギズモ・ピッキング・矩形選択を止める。
 #include "ViewportCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 
@@ -95,11 +96,11 @@ void ForEachWorldVertex(scene::GameObject& go, const math::Ray& cursorRay, Fn&& 
                 fn(TransformPoint(world, v.position));
     }
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-        // 1 GameObject = モデル全体。描画していない (非表示スロットの) submesh へ
-        // 吸着しないよう、可視スロットの頂点だけを対象にする。
+        // 描画していない (非表示スロットの) submesh へ吸着しないよう、
+        // 可視スロットの頂点だけを対象にする。i はローカルスロット番号。
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
-        for (size_t i = 0; i < smr->model->meshes.size(); ++i) {
-            const auto& meshPtr = smr->model->meshes[i];
+        for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
+            const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
             if (!meshPtr) continue;
             if (mat && !mat->SlotAt(i).visible) continue;
             // スキンメッシュはバインドポーズより外へ動くため球を大きめに取る。
@@ -208,10 +209,10 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
         if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh)
             testMesh(*mr->mesh, mr->mesh->cpuVertices, mr->mesh->cpuIndices, 1.0f);
         if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-            // 1 GameObject = モデル全体。描画されている submesh だけを判定対象にする。
+            // 描画されている submesh だけを判定対象にする。i はローカルスロット番号。
             const auto* mat = go.GetComponent<scene::MaterialComponent>();
-            for (size_t i = 0; i < smr->model->meshes.size(); ++i) {
-                const auto& meshPtr = smr->model->meshes[i];
+            for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
+                const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
                 if (!meshPtr) continue;
                 if (mat && !mat->SlotAt(i).visible) continue;
                 testMesh(*meshPtr, meshPtr->cpuSkinnedVertices, meshPtr->cpuIndices, 2.0f);

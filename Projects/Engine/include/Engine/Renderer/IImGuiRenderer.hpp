@@ -1,7 +1,9 @@
-// FBZZ Engine
-// IImGuiRenderer.hpp | fbzz::renderer
-// ImGui バックエンドの抽象インターフェース
-// WHY: IRenderer は通常描画 API の境界に限定し、エディター UI 用の ImGui 依存を別契約へ分離する。
+/// @file    IImGuiRenderer.hpp
+/// @brief   ImGui バックエンドの抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// WHY: IRenderer は通常描画 API の境界に限定し、エディター UI 用の ImGui 依存を別契約へ分離する。
 #pragma once
 #include "ResourceHandle.hpp"
 

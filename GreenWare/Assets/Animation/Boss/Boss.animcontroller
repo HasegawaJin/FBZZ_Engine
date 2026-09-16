@@ -1,0 +1,1334 @@
+baseLayerMaskPath = ''
+defaultStateName = 'Locomotion'
+version = 6
+
+[editorLayout]
+anyStateX = -320.0
+anyStateY = 560.0
+entryX = -320.0
+entryY = 60.0
+
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 0
+    stateName = 'Locomotion'
+    x = -240.0
+    y = 20.0
+
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 1
+    stateName = 'Locomotion'
+    x = -240.0
+    y = 140.0
+
+    [[editorLayout.nodes]]
+    stateName = 'MagneticPulse'
+    x = 460.0
+    y = 60.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Land'
+    x = 940.0
+    y = -300.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Locomotion'
+    x = 60.0
+    y = 60.0
+
+    [[editorLayout.nodes]]
+    stateName = 'TurnLeft'
+    x = 60.0
+    y = -140.0
+
+    [[editorLayout.nodes]]
+    stateName = 'JumpUp'
+    x = 460.0
+    y = -300.0
+
+    [[editorLayout.nodes]]
+    stateName = 'BeamLoop'
+    x = 700.0
+    y = 420.0
+
+    [[editorLayout.nodes]]
+    stateName = 'TurnRight'
+    x = 60.0
+    y = 240.0
+
+    [[editorLayout.nodes]]
+    stateName = 'FallIdle'
+    x = 700.0
+    y = -300.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Stomp_FR'
+    x = 460.0
+    y = -120.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Stomp_FL'
+    x = 640.0
+    y = -120.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Stomp_BR'
+    x = 820.0
+    y = -120.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Stomp_BL'
+    x = 1000.0
+    y = -120.0
+
+    [[editorLayout.nodes]]
+    stateName = 'ChargeWindup'
+    x = 460.0
+    y = 240.0
+
+    [[editorLayout.nodes]]
+    stateName = 'ChargeRun'
+    x = 700.0
+    y = 240.0
+
+    [[editorLayout.nodes]]
+    stateName = 'CrashStun'
+    x = 940.0
+    y = 240.0
+
+    [[editorLayout.nodes]]
+    stateName = 'BeamStart'
+    x = 460.0
+    y = 420.0
+
+    [[editorLayout.nodes]]
+    stateName = 'BeamEnd'
+    x = 940.0
+    y = 420.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Death'
+    x = 60.0
+    y = 700.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Death'
+transitionDuration = 0.15000000596046448
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'CrashStun'
+transitionDuration = 0.10000000149011612
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Crash'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'JumpUp'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Jump'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Stomp_FR'
+transitionDuration = 0.11999999731779099
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Stomp'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 2
+    paramName = 'StompLeg'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Stomp_FL'
+transitionDuration = 0.11999999731779099
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Stomp'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 2
+    paramName = 'StompLeg'
+    threshold = 1.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Stomp_BR'
+transitionDuration = 0.11999999731779099
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Stomp'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 2
+    paramName = 'StompLeg'
+    threshold = 2.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Stomp_BL'
+transitionDuration = 0.11999999731779099
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Stomp'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 2
+    paramName = 'StompLeg'
+    threshold = 3.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'ChargeWindup'
+transitionDuration = 0.11999999731779099
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Charge'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'BeamStart'
+transitionDuration = 0.11999999731779099
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Beam'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'MagneticPulse'
+transitionDuration = 0.07999999821186066
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Pulse'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[layers]]
+anyStateTransitions = []
+defaultStateName = 'Aim'
+enabled = true
+maskPath = 'guid:b8d7d974f80e65fd5b74f9d9e9c687f1|Assets/Animation/Boss/M_Boss_Aim.mask'
+mode = 0
+name = 'Aim'
+retargetMappings = []
+weight = 0.0
+
+    [layers.additiveReference]
+    clipName = ''
+    sourcePath = ''
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.10000000149011612
+    fadeOutDuration = 0.15000000596046448
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Beam_Aim'
+    ikWeight = 1.0
+    loop = true
+    mode = 0
+    name = 'Aim'
+    sourcePath = 'guid:f03bc9174a51f3bdeb0c58278ac4de17|Library/Baked/31143629a5e7de090343a3985e567d82/anims/Beam_Aim.anim'
+    speed = 1.0
+    transitions = []
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+[[layers]]
+defaultStateName = 'HitIdle'
+enabled = true
+maskPath = 'guid:56bc6ec161ab69a5ff91c8263e916d23|Assets/Animation/Boss/M_Boss_Hit.mask'
+mode = 1
+name = 'Add_Hit'
+retargetMappings = []
+weight = 1.0
+
+    [layers.additiveReference]
+    clipName = 'Idle'
+    sourcePath = 'guid:1a9b2ffbaccf5bee0bbb5092e14fe82c|Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.05000000074505806
+    fadeOutDuration = 0.11999999731779099
+
+    [[layers.anyStateTransitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Hit'
+    transitionDuration = 0.03999999910593033
+
+        [[layers.anyStateTransitions.conditions]]
+        op = 4
+        paramName = 'Hit'
+        threshold = 0.0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = ''
+    ikWeight = 1.0
+    loop = true
+    mode = 0
+    name = 'HitIdle'
+    sourcePath = ''
+    speed = 1.0
+    transitions = []
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Hit_Add'
+    ikWeight = 1.0
+    loop = false
+    mode = 0
+    name = 'Hit'
+    sourcePath = 'guid:286d6d28f356eed49d4a51fbda5bbf3e|Library/Baked/cc3e1c5d73dfe80b17135e01e126132b/anims/Hit_Add.anim'
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+        [[layers.states.transitions]]
+        conditions = []
+        exitTime = 0.8500000238418579
+        fixedDuration = true
+        hasExitTime = true
+        toStateName = 'HitIdle'
+        transitionDuration = 0.11999999731779099
+
+[[layers]]
+anyStateTransitions = []
+defaultStateName = 'Sealed'
+enabled = true
+maskPath = 'guid:8329909c9a5348fb9e5d7145fd55435a|Assets/Animation/Boss/M_Boss_Hatch.mask'
+mode = 0
+name = 'Hatch'
+retargetMappings = []
+weight = 1.0
+
+    [layers.additiveReference]
+    clipName = ''
+    sourcePath = ''
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.10000000149011612
+    fadeOutDuration = 0.15000000596046448
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = ''
+    ikWeight = 1.0
+    loop = true
+    mode = 0
+    name = 'Sealed'
+    sourcePath = ''
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+        [[layers.states.transitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Open'
+        transitionDuration = 0.0
+
+            [[layers.states.transitions.conditions]]
+            op = 4
+            paramName = 'HatchOpen'
+            threshold = 0.0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Hatch_Open'
+    ikWeight = 1.0
+    loop = false
+    mode = 0
+    name = 'Open'
+    sourcePath = 'Library/Baked/99873989b2ec78a861c40ea675a6bc5d/anims/Hatch_Open.anim'
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+        [[layers.states.transitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Closing'
+        transitionDuration = 0.0
+
+            [[layers.states.transitions.conditions]]
+            op = 5
+            paramName = 'HatchOpen'
+            threshold = 0.0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Hatch_Close'
+    ikWeight = 1.0
+    loop = false
+    mode = 0
+    name = 'Closing'
+    sourcePath = 'Library/Baked/b4c4e07685b194d6fd64df500737b932/anims/Hatch_Close.anim'
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+        [[layers.states.transitions]]
+        conditions = []
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = true
+        toStateName = 'Sealed'
+        transitionDuration = 0.0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'HatchOpen'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Speed'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Turn'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'StompLeg'
+type = 1
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Stomp'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Jump'
+type = 3
+
+[[parameters]]
+boolValue = true
+floatValue = 0.0
+intValue = 0
+name = 'Grounded'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Pulse'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Charge'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Charging'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Crash'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Beam'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Beaming'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Hit'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'IsDead'
+type = 2
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = true
+mode = 1
+name = 'Locomotion'
+sourcePath = ''
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.18000000715255737
+    paramName = 'Speed'
+    syncNormalizedTime = false
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Idle'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'guid:1a9b2ffbaccf5bee0bbb5092e14fe82c|Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Walk_Crawl'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'guid:652fe0d20639e2afbbcca6df06e89ea5|Library/Baked/5c93c79d168a882bcb143675fb9e61b1/anims/Walk_Crawl.anim'
+        speed = 1.0
+        threshold = 2.0
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'TurnLeft'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 0
+        paramName = 'Turn'
+        threshold = 0.5
+
+        [[states.transitions.conditions]]
+        op = 1
+        paramName = 'Speed'
+        threshold = 0.4000000059604645
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsDead'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'TurnRight'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 1
+        paramName = 'Turn'
+        threshold = -0.5
+
+        [[states.transitions.conditions]]
+        op = 1
+        paramName = 'Speed'
+        threshold = 0.4000000059604645
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsDead'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Turn_L'
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'TurnLeft'
+sourcePath = 'guid:efcb0b100a2db9968c010570acfad920|Library/Baked/95bc59f38a2626a5fd4523e9c2ff6c4c/anims/Turn_L.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 1
+        paramName = 'Turn'
+        threshold = 0.4000000059604645
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 0
+        paramName = 'Speed'
+        threshold = 0.6000000238418579
+
+[[states]]
+clipIndex = -1
+clipName = 'Turn_R'
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'TurnRight'
+sourcePath = 'guid:f0e2bba122d748504db82e0e4f6dde02|Library/Baked/4d16ffe991993011161f45b274aed783/anims/Turn_R.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 0
+        paramName = 'Turn'
+        threshold = -0.4000000059604645
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 0
+        paramName = 'Speed'
+        threshold = 0.6000000238418579
+
+[[states]]
+clipIndex = -1
+clipName = 'JumpUp'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'JumpUp'
+sourcePath = 'guid:3a15fa0aa30ce9912b22bb858a6b09b7|Library/Baked/d7ba8d545f632ef6eb7f44465d90fbf0/anims/JumpUp.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'FallIdle'
+    transitionDuration = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'FallIdle'
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'FallIdle'
+sourcePath = 'guid:0b584a43fc98f73d997400a1125cac4f|Library/Baked/67445413f5d2429460f20f85134a2f28/anims/FallIdle.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Land'
+    transitionDuration = 0.0
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Grounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Land'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Land'
+sourcePath = 'guid:708ef6fe0c81f15f31abc9c2a7050c31|Library/Baked/c70dc16ed9f58786e101ce91b35e119e/anims/Land.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.0
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Stomp_FR'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Stomp_FR'
+sourcePath = 'guid:44feba4d164917a2a7bb043d0ded6758|Library/Baked/383e9d382e29dc7b818f0a403586968b/anims/Stomp_FR.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Stomp_FL'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Stomp_FL'
+sourcePath = 'guid:3a0df9102e087664fb3ff8ffb441045a|Library/Baked/9298a95e02e96f9c0ee9cb4087453ac9/anims/Stomp_FL.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Stomp_BR'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Stomp_BR'
+sourcePath = 'guid:96655b438f41a03bd736e1dee313ea29|Library/Baked/ffcfe3a2d79b929f35e98d66ae46d9a3/anims/Stomp_BR.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Stomp_BL'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Stomp_BL'
+sourcePath = 'guid:11c91906c811e13c22523b7f673229be|Library/Baked/dacceeae15a178959bb88349fa2c6ece/anims/Stomp_BL.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Magnetic_Pulse'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'MagneticPulse'
+sourcePath = 'guid:2eee86cea0dc35b38ce8e5de944b1635|Library/Baked/faa51d40c8d488e641bb58b07d88d4b8/anims/Magnetic_Pulse.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.07999999821186066
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Charge_Windup'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'ChargeWindup'
+sourcePath = 'guid:8d0cc7fa4aa6822620d11997dac38344|Library/Baked/c2cdcb877d7170b3fee42bf2841bcca1/anims/Charge_Windup.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'ChargeRun'
+    transitionDuration = 0.10000000149011612
+
+[[states]]
+clipIndex = -1
+clipName = 'Charge_Run'
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'ChargeRun'
+sourcePath = 'guid:1042ccdf8953874592e44faa9944b723|Library/Baked/eb043aa096b8efae111e826f43ddeaa3/anims/Charge_Run.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.25
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'Charging'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Crash_Stun'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'CrashStun'
+sourcePath = 'guid:2ee50ebd2a934092be22b54bc4bacaa8|Library/Baked/f790b35dcbc90fdd77cf0123af92776f/anims/Crash_Stun.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.15000000596046448
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Beam_Start'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'BeamStart'
+sourcePath = 'guid:4befc974168e7b23ebe7a22b05c5e1d5|Library/Baked/0031f917ee493e64da421e66ccf45f69/anims/Beam_Start.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'BeamLoop'
+    transitionDuration = 0.05999999865889549
+
+[[states]]
+clipIndex = -1
+clipName = 'Beam_Loop'
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'BeamLoop'
+sourcePath = 'guid:d5f6a2ab4a77bcd8605d046944b71412|Library/Baked/29ae10dffaa9073bece66868a45b6022/anims/Beam_Loop.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'BeamEnd'
+    transitionDuration = 0.07999999821186066
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'Beaming'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Beam_End'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'BeamEnd'
+sourcePath = 'guid:36cd2ea8a2778bc4c1c4231783aff9e2|Library/Baked/608c8e0aaf442cbe3c00770ac772c6a3/anims/Beam_End.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+    conditions = []
+
+[[states]]
+clipIndex = -1
+clipName = 'Death'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Death'
+sourcePath = 'guid:8f50e47345faf1c8c80b68826cd77f92|Library/Baked/c7e29924650f95ab69ecb684beb5d2dd/anims/Death.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    dampTime = 0.0
+    motions = []
+    paramX = ''
+    paramY = ''
+    syncNormalizedTime = false
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsDead'
+        threshold = 0.0

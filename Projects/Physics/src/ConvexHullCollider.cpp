@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConvexHullCollider.cpp | fbzz::physics
-// Quickhull による凸包構築と GJK サポート関数
+/// @file    ConvexHullCollider.cpp
+/// @brief   Quickhull による凸包構築と GJK サポート関数。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/ConvexHullCollider.hpp>
 #include <algorithm>
 #include <array>
@@ -79,30 +80,54 @@ namespace fbzz::physics
             }
             if (minX == maxX) return { std::move(pts), {} };
 
+            // 退化を判定する長さの基準。絶対値の閾値で切ると、小さいメッシュがすべて
+            // 「退化」に、大きいメッシュがすべて「非退化」になる。
+            math::Vector3 lower = pts[0];
+            math::Vector3 upper = pts[0];
+            for (const math::Vector3& p : pts)
+            {
+                lower = { std::min(lower.x, p.x), std::min(lower.y, p.y), std::min(lower.z, p.z) };
+                upper = { std::max(upper.x, p.x), std::max(upper.y, p.y), std::max(upper.z, p.z) };
+            }
+            const float degenerateEps =
+                std::max({ upper.x - lower.x, upper.y - lower.y, upper.z - lower.z }) * 1e-6f;
+
             // 直線 (minX, maxX) から最遠点
+            // WHY 外積の長さではなく直線からの距離で比べるか: 外積の長さは軸の長さに比例するので、
+            //     同じ閾値が形の大きさで意味を変えてしまう。
+            const math::Vector3 axis       = pts[maxX] - pts[minX];
+            const float         axisLength = axis.Length();
             int far1 = -1;
-            float bestDist = -1.0f;
+            float bestDist = degenerateEps;
             for (int i = 0; i < n; ++i)
             {
                 if (i == minX || i == maxX) continue;
-                const math::Vector3 d = math::Vector3::Cross(
-                    pts[maxX] - pts[minX], pts[i] - pts[minX]);
-                const float dist = d.Length();
+                const float dist =
+                    math::Vector3::Cross(axis, pts[i] - pts[minX]).Length() / axisLength;
                 if (dist > bestDist) { bestDist = dist; far1 = i; }
             }
+            // 全点が一直線。三角形が作れないので面は持たず、点だけを凸包として返す
+            // (サポート関数は点の集合だけで正しく解ける)。
+            // WHY ここで降りるか: 進むと下の正規化が長さ 0 の外積を踏む。
+            //     板ポリのメッシュや潰れたスケールから、この点群は実データで普通に来る。
             if (far1 < 0) return { std::move(pts), {} };
 
             // 平面 (minX, maxX, far1) から最遠点
-            const math::Vector3 triN = math::Vector3::Cross(
-                pts[maxX] - pts[minX], pts[far1] - pts[minX]).Normalized();
+            // WHY Normalized() ではなく NormalizedOr か: 上の閾値は «最も条件の良い 3 点目» を
+            //     選ぶためのもので、外積の長さが正規化に耐えることまでは保証しない。
+            //     Normalized() は長さ 0 を契約違反として assert で落とすので、ここは踏めない。
+            const math::Vector3 triN = math::Vector3::Cross(axis, pts[far1] - pts[minX])
+                                           .NormalizedOr(math::Vector3::ZERO);
+            if (triN.LengthSq() < 0.5f) return { std::move(pts), {} };
             int far2 = -1;
-            bestDist = -1.0f;
+            bestDist = degenerateEps;
             for (int i = 0; i < n; ++i)
             {
                 if (i == minX || i == maxX || i == far1) continue;
                 const float dist = std::abs(DistToPlane(triN, pts[minX], pts[i]));
                 if (dist > bestDist) { bestDist = dist; far2 = i; }
             }
+            // 全点が同一平面。厚みの無い四面体からは外向き法線が決まらない。
             if (far2 < 0) return { std::move(pts), {} };
 
             // 4 点から凸包を構築する (簡易: 全点に対して外側テスト)

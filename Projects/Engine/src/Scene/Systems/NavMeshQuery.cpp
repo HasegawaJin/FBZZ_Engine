@@ -1,7 +1,9 @@
-// FBZZ Engine
-// NavMeshQuery.cpp | fbzz::scene
-// NavMesh クエリの実装。NavigationSystem (Agent の毎フレーム更新) と
-// EditorBusDispatcher (AI の navmesh.path / navmesh.sample) が同じ実体を共有する。
+/// @file    NavMeshQuery.cpp
+/// @brief   NavMesh クエリの実装。NavigationSystem (Agent の毎フレーム更新) と。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// EditorBusDispatcher (AI の navmesh.path / navmesh.sample) が同じ実体を共有する。
 #include "Engine/Scene/Systems/NavMeshQuery.hpp"
 #include <algorithm>
 #include <cfloat>

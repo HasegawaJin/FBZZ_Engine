@@ -1,2 +1,11 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Particle Emitter', 'Script:ElectricMinusParticleComponent' ]
+    instance_id = '83f19a9d-7bc3-4c7a-bae1-34305a98db89'
+
 [meta]
 guid = '32b164641e684ec1a7b325764a8b75d3'

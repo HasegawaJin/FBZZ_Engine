@@ -1,10 +1,14 @@
-// FBZZ Engine
-// ObjectPresets.cpp | fbzz::editor
-// Add Object プリセットの実体。SceneHierarchyPanel のメニューと AI (preset.create) が同じ表を使う。
+/// @file    ObjectPresets.cpp
+/// @brief   Add Object プリセットの実体。SceneHierarchyPanel のメニューと AI (preset.create) が同じ表を使う。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Engine/Scene/VFXLineGeometry.hpp>
 #include <Editor/Util/ObjectPresets.hpp>
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ColliderFit.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 // 全コンポーネント型の登録表。個別 include を並べるより、追加時に漏れが出ない。
 #include <Engine/Scene/ComponentRegistry.hpp>
@@ -72,6 +76,9 @@ void AttachFittedCollider(scene::GameObject& go, PrimitiveKind kind)
         break;
     case PrimitiveKind::Capsule:
         go.AddComponent<scene::CapsuleColliderComponent>(colliderfit::MakeFittedCapsuleCollider(go));
+        break;
+    case PrimitiveKind::Cylinder:
+        go.AddComponent<scene::CylinderColliderComponent>(colliderfit::MakeFittedCylinderCollider(go));
         break;
     default:
         go.AddComponent<scene::BoxColliderComponent>(colliderfit::MakeFittedBoxCollider(go));
@@ -162,6 +169,10 @@ scene::GameObject* MakeCamera(EditorContext& ctx)
     auto& go = ctx.activeScene->CreateGameObject("Camera");
     go.transform.position = { 0.0f, 2.0f, -5.0f };
     go.AddComponent<scene::CameraComponent>();
+    // WHY Listener も付けるか: Listener が 1 つも無いシーンでは 3D 音の距離減衰が
+    //     まるごと効かないのに、エラーも警告も出ない。カメラは受聴点として最も
+    //     自然な既定で、複数あっても AudioListener::priority で選ばれる。
+    go.AddComponent<scene::AudioListenerComponent>();
     return &go;
 }
 
@@ -264,11 +275,71 @@ scene::GameObject* MakeReflectionProbe(EditorContext& ctx)
     return &go;
 }
 
+// 環境風。専用コンポーネントは廃止し、«radius 0 の Wind + Turbulence» という
+// 力場 2 本のプリセットになった。置いたときの操作感は従来どおり。
 scene::GameObject* MakeWindZone(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Wind Zone");
-    go.AddComponent<scene::WindZoneComponent>();
+    scene::ForceField field{};
+    field.forces = scene::MakeAmbientWindForces();
+    go.AddComponent<scene::ForceField>(field);
     return &go;
+}
+
+// 天候ルート + 雨エミッター。
+// WHY 1 個の導線にまとめるか: 濡れだけ置いても «雨が降っていないのに地面が濡れている»
+//      絵にしかならず、雨だけ置いても路面が乾いたままで嘘に見える。両方揃って天候になる。
+//      雨量は WeatherComponent.rainIntensity が正本で、子のエミッターは
+//      WeatherSystem が毎フレーム駆動する。
+scene::GameObject* MakeWeather(EditorContext& ctx)
+{
+    auto& weatherGo = ctx.activeScene->CreateGameObject("Weather");
+    // 既定の rainIntensity は 0 (＝雨も濡れも出ない)。置いた瞬間に何も起きないと
+    // «壊れている» と映るので、この導線からは降っている状態で置く。
+    scene::WeatherComponent weather;
+    weather.rainIntensity = 0.5f;
+    weatherGo.AddComponent<scene::WeatherComponent>(weather);
+    const scene::EntityID weatherId = weatherGo.GetID();
+
+    auto& rainGo = ctx.activeScene->CreateGameObject("Rain");
+
+    scene::ParticleEmitter rain;
+    auto& s = rain.settings;
+    s.shape      = scene::ParticleEmitterShape::Box;
+    // 頭上に広く薄い板を張り、そこから落とす。厚みを持たせると降り始めの高さが
+    // 粒ごとにばらつき、地面へ届くタイミングが揃わない。
+    s.boxExtents   = { 20.0f, 0.5f, 20.0f };
+    s.emitPosition = { 0.0f, 12.0f, 0.0f };
+    s.emitVelocity = { 0.0f, -14.0f, 0.0f };
+    s.velocitySpread = 0.6f;
+    s.SetGravityAcceleration({ 0.0f, -9.0f, 0.0f });
+    s.lifetime       = 1.6f;
+    s.lifetimeRandom = 0.2f;
+    // 発生量は WeatherSystem が rainIntensity から毎フレーム上書きするので、
+    // ここの値は最初の 1 フレームぶんしか意味を持たない。
+    s.emitRate     = 0.0f;
+    s.maxParticles = 8000;
+    s.sizeStart    = 0.05f;
+    s.sizeEnd      = 0.05f;
+    // 速度方向へ伸ばす。この renderMode でないと RainDrop.hlsl は縦棒しか描けない。
+    s.renderMode              = scene::ParticleRenderMode::StretchedBillboard;
+    s.stretchedLengthScale    = 0.6f;
+    s.stretchedVelocityScale  = 0.06f;
+    // World 空間。Local だと親を動かした瞬間に降っている粒ごと平行移動する。
+    s.simulationSpace = scene::ParticleSimulationSpace::World;
+    s.colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
+    s.colorEnd   = { 1.0f, 1.0f, 1.0f, 1.0f };
+    s.materialPath = "Assets/Materials/Particles/Rain_Alpha.mat";
+    s.loop = true;
+    rainGo.AddComponent<scene::ParticleEmitter>(std::move(rain));
+
+    const scene::EntityID rainId = rainGo.GetID();
+    // CreateGameObject でコンテナが再確保され得るので、参照は取り直す。
+    if (auto* parent = ctx.activeScene->GetGameObject(weatherId))
+        if (auto* child = ctx.activeScene->GetGameObject(rainId))
+            child->SetParent(parent);
+
+    return ctx.activeScene->GetGameObject(weatherId);
 }
 
 // 空・太陽・大気・IBL をまとめた 1 個の環境ルート。
@@ -332,7 +403,8 @@ scene::GameObject* MakeNavMeshSurface(EditorContext& ctx)
     auto& go = ctx.activeScene->CreateGameObject("NavMesh Surface");
     // WHY needsBake を立てないか: NavMeshSurfaceComponent は「AddComponent 直後に自動ベイクが
     //      走ってエディタが固まるのを防ぐため」既定 false と決められている。置いた直後は
-    //      polygons が空なので、ベイクは navmesh_bake / Inspector から明示的に実行する。
+    //      polygons が空なので、ベイクは Tools > Navigation / Inspector / navmesh_bake から
+    //      明示的に実行する。
     go.AddComponent<scene::NavMeshSurfaceComponent>();
     return &go;
 }
@@ -380,17 +452,10 @@ scene::GameObject* MakeParticleEmitter(EditorContext& ctx)
     return &go;
 }
 
-scene::GameObject* MakeParticleForceField(EditorContext& ctx)
+scene::GameObject* MakeForceField(EditorContext& ctx)
 {
-    auto& go = ctx.activeScene->CreateGameObject("Particle Force Field");
-    go.AddComponent<scene::ParticleForceField>();
-    return &go;
-}
-
-scene::GameObject* MakeVFXGraph(EditorContext& ctx)
-{
-    auto& go = ctx.activeScene->CreateGameObject("VFX Graph");
-    go.AddComponent<scene::VFXGraphComponent>();
+    auto& go = ctx.activeScene->CreateGameObject("Force Field");
+    go.AddComponent<scene::ForceField>();
     return &go;
 }
 
@@ -398,6 +463,202 @@ scene::GameObject* MakeTrail(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Trail");
     go.AddComponent<scene::TrailComponent>();
+    return &go;
+}
+
+// ── VFX (.vfx プレハブ) の部品 ──────────────────────────────────────────────
+
+// 立ち上がり 0.1 → ピーク → 減衰。閃光・画面フラッシュの既定の重み。
+scene::ParticleCurve MakeFlashWeightCurve()
+{
+    scene::ParticleCurve curve;
+    curve.keys[0] = { 0.0f, 0.0f };
+    curve.keys[1] = { 0.1f, 1.0f };
+    curve.keys[2] = { 1.0f, 0.0f };
+    for (std::size_t i = 3; i < scene::kMaxParticleCurveKeys; ++i) curve.keys[i] = curve.keys[2];
+    curve.keyCount = 3;
+    return curve;
+}
+
+// 頭でっかちに減衰する。カメラ揺れの既定 (旧 falloffPower = 2 相当)。
+scene::ParticleCurve MakeDecayWeightCurve()
+{
+    scene::ParticleCurve curve;
+    curve.keys[0] = { 0.0f, 1.0f };
+    curve.keys[1] = { 0.25f, 0.56f };
+    curve.keys[2] = { 0.5f, 0.25f };
+    curve.keys[3] = { 0.75f, 0.06f };
+    curve.keys[4] = { 1.0f, 0.0f };
+    for (std::size_t i = 5; i < scene::kMaxParticleCurveKeys; ++i) curve.keys[i] = curve.keys[4];
+    curve.keyCount = 5;
+    return curve;
+}
+
+// WHY 既存の fx.* と分けるか: シーンに常設するエフェクト (焚き火・煙突) と、
+//     1 発鳴らして消える演出では既定値が正反対になる。前者は loop = true で
+//     出しっぱなし、後者は loop = false・duration 有限で、終わったら自分で畳む。
+//     同じプリセットに両方を兼ねさせると、置いた直後の挙動がどちらでも間違う。
+
+scene::GameObject* MakeVFXRoot(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("VFX");
+    go.AddComponent<scene::VFXComponent>();
+    return &go;
+}
+
+scene::GameObject* MakeVFXGroup(EditorContext& ctx)
+{
+    // 層のまとまり。Transform だけを持ち、時間には関与しない。
+    return &ctx.activeScene->CreateGameObject("Layer");
+}
+
+scene::GameObject* MakeVFXParticle(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Particle");
+    scene::ParticleEmitter emitter;
+    emitter.settings.loop = false;
+    emitter.settings.duration = 1.0f;
+    emitter.settings.lifetime = 0.8f;
+    go.AddComponent<scene::ParticleEmitter>(std::move(emitter));
+    return &go;
+}
+
+scene::GameObject* MakeVFXLightFlash(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Light Flash");
+    scene::LightComponent light;
+    light.type = scene::LightComponent::Type::Point;
+    light.intensity = 20.0f;
+    light.range = 8.0f;
+    // 一瞬の閃光に影は要らない。点光源の影は 6 面ぶん描くので、
+    // 既定で有効なままだと «光らせただけ» で目に見えて重くなる。
+    light.castShadows = false;
+    go.AddComponent<scene::LightComponent>(light);
+    scene::VFXElement element;
+    element.duration = 0.4f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    go.AddComponent<scene::VFXLightEnvelope>();
+    return &go;
+}
+
+scene::GameObject* MakeVFXMeshShell(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Shell");
+    scene::MeshRenderer renderer;
+    renderer.meshPath = "primitive:sphere";
+    go.AddComponent<scene::MeshRenderer>(std::move(renderer));
+    scene::MaterialComponent material;
+    material.materialPath = scene::kVFXMeshFallbackMaterial;
+    go.AddComponent<scene::MaterialComponent>(std::move(material));
+    scene::VFXElement element;
+    element.duration = 0.5f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    go.AddComponent<scene::VFXTransformEnvelope>();
+    go.AddComponent<scene::VFXMaterialEnvelope>();
+    return &go;
+}
+
+scene::GameObject* MakeVFXForceField(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Blast Push");
+    scene::ForceFieldSettings push;
+    push.fieldType = scene::ForceFieldType::Repulse;
+    push.strength = 20.0f;
+    push.radius = 4.5f;
+    scene::ForceField field;
+    field.forces = { push };
+    go.AddComponent<scene::ForceField>(std::move(field));
+    scene::VFXElement element;
+    element.duration = 0.25f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXScreenEffect(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Screen Flash");
+    scene::VFXScreenEffect effect;
+    effect.flashIntensity = 0.35f;
+    effect.bloomBoost = 0.4f;
+    // 明るさだけでは «押し出された» にならないので、動きも少しだけ足す。
+    effect.radialBlur = 0.05f;
+    go.AddComponent<scene::VFXScreenEffect>(std::move(effect));
+    scene::VFXElement element;
+    element.duration = 0.3f;
+    // 立ち上がり 0.03 秒 → 減衰 0.25 秒。定数の重みでは «一瞬だけ» にならない。
+    element.weightCurve = MakeFlashWeightCurve();
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXCameraShake(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Camera Shake");
+    scene::VFXCameraShake shake;
+    // 揺れだけでは «揺れた» で終わる。発生源から押しのけられる成分を既定で少し入れる。
+    shake.kick = 0.06f;
+    go.AddComponent<scene::VFXCameraShake>(std::move(shake));
+    scene::VFXElement element;
+    element.duration = 0.35f;
+    element.weightCurve = MakeDecayWeightCurve();
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXTimeScale(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Hit Stop");
+    go.AddComponent<scene::VFXTimeScale>();
+    scene::VFXElement element;
+    element.duration = 0.12f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXBeam(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Beam");
+    // 見た目は Trail が持つ。経路だけ VFXBeam が毎フレーム書く。
+    scene::TrailComponent trail;
+    trail.beamMode = true;
+    trail.widthStart = 0.12f;
+    trail.widthEnd = 0.12f;   // 引き寄せの線は先細らせない。先細ると «飛んだ跡» に見える
+    trail.uvMode = scene::TrailUVMode::Tile;
+    trail.uvTiling = 4.0f;
+    trail.uvScrollSpeed = -2.0f; // 流れる向きで «どちらへ引かれているか» を出す
+    go.AddComponent<scene::TrailComponent>(std::move(trail));
+
+    scene::VFXBeamComponent beam;
+    beam.segments = 12;
+    beam.jitter = 0.08f;
+    go.AddComponent<scene::VFXBeamComponent>(std::move(beam));
+    return &go;
+}
+
+scene::GameObject* MakeVFXLine(EditorContext& ctx, scene::VFXLinePreset preset, const char* name)
+{
+    auto& go = ctx.activeScene->CreateGameObject(name);
+    scene::VFXLineComponent line;
+    scene::ApplyVFXLinePreset(line, preset);
+    go.AddComponent<scene::VFXLineComponent>(std::move(line));
+    return &go;
+}
+
+scene::GameObject* MakeVFXLightning(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Lightning, "Lightning"); }
+scene::GameObject* MakeVFXElectricArc(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::ElectricArc, "Electric Arc"); }
+scene::GameObject* MakeVFXLaser(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Laser, "Laser"); }
+scene::GameObject* MakeVFXEnergyBeam(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::EnergyBeam, "Energy Beam"); }
+scene::GameObject* MakeVFXTether(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Tether, "Tether"); }
+
+scene::GameObject* MakeVFXDecal(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Ground Mark");
+    scene::DecalComponent decal;
+    decal.lifetime = 4.0f;
+    decal.fadeTime = 1.0f;
+    go.AddComponent<scene::DecalComponent>(std::move(decal));
+    go.AddComponent<scene::VFXDecalEnvelope>();
+    go.transform.scale = { 2.0f, 3.0f, 2.0f };
     return &go;
 }
 
@@ -593,7 +854,7 @@ constexpr ObjectPreset kPresets[] = {
     { "3d.sphere",   "3D Object", "Sphere",   "MeshRenderer(sphere) + Lit マテリアル + Sphere Collider", &MakeSphere },
     { "3d.plane",    "3D Object", "Plane",    "MeshRenderer(plane) + Lit マテリアル + Box Collider", &MakePlane },
     { "3d.quad",     "3D Object", "Quad",     "MeshRenderer(quad) + Lit マテリアル + Box Collider + カメラを向くスクリプト", &MakeQuad },
-    { "3d.cylinder", "3D Object", "Cylinder", "MeshRenderer(cylinder) + Lit マテリアル + Box Collider", &MakeCylinder },
+    { "3d.cylinder", "3D Object", "Cylinder", "MeshRenderer(cylinder) + Lit マテリアル + Cylinder Collider", &MakeCylinder },
     { "3d.cone",     "3D Object", "Cone",     "MeshRenderer(cone) + Lit マテリアル + Box Collider", &MakeCone },
     { "3d.torus",    "3D Object", "Torus",    "MeshRenderer(torus) + Lit マテリアル + Box Collider", &MakeTorus },
     { "3d.capsule",  "3D Object", "Capsule",  "MeshRenderer(capsule) + Lit マテリアル + Capsule Collider", &MakeCapsule },
@@ -618,23 +879,41 @@ constexpr ObjectPreset kPresets[] = {
     { "env.volumetricCloud",  "Environment", "Volumetric Cloud",       "ボリューメトリック雲", &MakeVolumetricCloud },
     { "env.postProcess",      "Environment", "Post Process Volume",    "ルック設定 (Post Process Profile を割り当てて使う)", &MakePostProcessVolume },
     { "env.reflectionProbe",  "Environment", "Reflection Probe",       "反射プローブ。周囲をキューブマップへ焼く", &MakeReflectionProbe },
-    { "env.windZone",         "Environment", "Wind Zone",              "風。植生とパーティクルを揺らす", &MakeWindZone },
+    { "env.windZone",         "Environment", "Wind Zone",              "環境風 (Wind + 乱れの力場)。雲と粒子が同じ向きへ流れる", &MakeWindZone },
+    { "env.weather",          "Environment", "Weather",                "天候。雨量と路面の濡れ (雨エミッターを子に持つ)", &MakeWeather },
 
     { "terrain.terrain", "Terrain", "Terrain",      "平坦な地形 (65x65) + Terrain Collider + 既定レイヤーマテリアル", &MakeTerrain },
     { "terrain.grid",    "Terrain", "Terrain Grid", "Terrain セルを並べて広い地形を作る親", &MakeTerrainGrid },
     { "terrain.water",   "Terrain", "Water",        "水面 (80m x 80m / 96x96 分割)", &MakeWater },
 
-    { "nav.surface",    "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは navmesh_bake で明示的に実行する", &MakeNavMeshSurface },
+    { "nav.surface",    "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは Tools > Navigation で明示的に実行する", &MakeNavMeshSurface },
     { "nav.agent",      "Navigation", "NavMesh Agent",    "Capsule メッシュ + NavMeshAgent。経路移動する実体", &MakeNavMeshAgent },
     { "nav.modifier",   "Navigation", "NavMesh Modifier", "Cube + Collider + NavMeshModifier。歩行可否とエリアコストを上書きする", &MakeNavMeshModifier },
     { "nav.offMeshLink", "Navigation", "Off-Mesh Link",   "離れた 2 点をつなぐジャンプ経路", &MakeOffMeshLink },
     { "nav.aiAgent",    "Navigation", "AI Agent",         "Agent + Sensor + Patrol + BehaviorTree。敵 1 体の骨格一式", &MakeAIAgent },
 
     { "fx.particle",   "Effects", "Particle Emitter",     "ParticleEmitter 単体", &MakeParticleEmitter },
-    { "fx.forceField", "Effects", "Particle Force Field", "パーティクルへ働く力場", &MakeParticleForceField },
-    { "fx.vfxGraph",   "Effects", "VFX Graph",            "VFXGraphComponent。graphPath に .vfx を設定して使う", &MakeVFXGraph },
+    { "fx.forceField", "Effects", "Force Field",           "粒子・雲・風に働く力の場", &MakeForceField },
     { "fx.trail",      "Effects", "Trail",                "移動軌跡を帯で描く", &MakeTrail },
     { "fx.meshTrail",  "Effects", "Mesh Trail",           "メッシュの残像を残す", &MakeMeshTrail },
+
+    // .vfx プレハブの部品。vfx.root の子として組む (Docs/design/vfx-prefab.md)。
+    { "vfx.root",         "VFX", "VFX Root",      "VFXComponent。これを .vfx として保存する。子が層になる", &MakeVFXRoot },
+    { "vfx.group",        "VFX", "Layer",         "空 GameObject。層のまとまり。時間には関与しない", &MakeVFXGroup },
+    { "vfx.particle",     "VFX", "Particle",      "1 発ぶんの ParticleEmitter (loop なし・duration 1 秒)", &MakeVFXParticle },
+    { "vfx.lightFlash",   "VFX", "Light Flash",   "点光源 + 生存窓 + 明るさカーブ。影は落とさない", &MakeVFXLightFlash },
+    { "vfx.meshShell",    "VFX", "Mesh Shell",    "球シェル + 膨張カーブ + 色フェード。衝撃波・斬撃に使う", &MakeVFXMeshShell },
+    { "vfx.forceField",   "VFX", "Force Field",   "爆風。周囲のパーティクルを押しのける", &MakeVFXForceField },
+    { "vfx.decal",        "VFX", "Ground Mark",   "床の跡。濃さのカーブ付き", &MakeVFXDecal },
+    { "vfx.beam",         "VFX", "Beam (2 点を結ぶ)", "Trail + VFXBeam。2 つの実体を結ぶ。引き寄せの線・電弧に使う", &MakeVFXBeam },
+    { "vfx.lightning",    "VFX", "Lightning (雷)",   "VFX Line。本流と枝を毎秒十数回打ち直す雷", &MakeVFXLightning },
+    { "vfx.electricArc",  "VFX", "Electric Arc",     "VFX Line。電極の間を細かく走る放電", &MakeVFXElectricArc },
+    { "vfx.laser",        "VFX", "Laser",            "VFX Line。まっすぐな光線 (芯とグロー)", &MakeVFXLaser },
+    { "vfx.energyBeam",   "VFX", "Energy Beam",      "VFX Line。うねりと流れる輝点を持つ太いビーム", &MakeVFXEnergyBeam },
+    { "vfx.tether",       "VFX", "Tether",           "VFX Line。垂れて揺れる引き寄せの線", &MakeVFXTether },
+    { "vfx.screenEffect", "VFX", "Screen Flash",  "画面フラッシュ + ブルーム上乗せ", &MakeVFXScreenEffect },
+    { "vfx.cameraShake",  "VFX", "Camera Shake",  "カメラ揺れ。頭でっかちに減衰する", &MakeVFXCameraShake },
+    { "vfx.timeScale",    "VFX", "Hit Stop",      "一瞬の時間減速", &MakeVFXTimeScale },
 
     { "decal.medium", "Decal", "Decal (2m x 2m)", "デカール投影ボリューム", &MakeDecalMedium },
     { "decal.small",  "Decal", "Decal (1m x 1m)", "小さいデカール投影ボリューム", &MakeDecalSmall },
@@ -692,7 +971,7 @@ scene::GameObject* CreateObjectFromPreset(EditorContext& ctx, std::string_view i
             if (auto* child = ctx.activeScene->GetGameObject(createdId)) child->SetParent(parentObject);
         }
     }
-    ctx.selectedEntities = { createdId };
+    SelectEntity(ctx, createdId);
     return ctx.activeScene->GetGameObject(createdId);
 }
 

@@ -29,13 +29,23 @@ set(REQUIRED_PATHS
     # WHY: 作業世代の最新性判定は公開時刻に依存するため、stampの存在もSDK契約に含める。
     "bin/${CONFIG}/published.stamp"
     "tools/${CONFIG}/Editor/FBZZEditor.exe"
-    "tools/${CONFIG}/Editor/FBZZVFXEditor.exe"
     # WHY: Editor は imgui 共有 DLL を起動時に読み込むため、exe と同じ階層への配置をSDK契約として検証する。
     "tools/${CONFIG}/Editor/imgui.dll"
 )
 foreach(REQUIRED_PATH IN LISTS REQUIRED_PATHS)
     if(NOT EXISTS "${SDK_ROOT}/${REQUIRED_PATH}")
         message(FATAL_ERROR "FBZZ SDK validation failed: ${REQUIRED_PATH} is missing")
+    endif()
+endforeach()
+
+# WHY: DX12はプロジェクトテンプレートの既定rendererであり、DXIL reflectionはdxcompiler.dllを
+#      exe隣から LoadLibraryW で解決する。DXCを同梱するSDKでEditor隣への配置が漏れると、
+#      shaderロードが全滅してDebugDrawの初期化assertで落ちる。同梱有無ではなく整合を契約とする。
+foreach(DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
+    if(EXISTS "${SDK_ROOT}/bin/${CONFIG}/${DXC_RUNTIME_DLL}"
+       AND NOT EXISTS "${SDK_ROOT}/tools/${CONFIG}/Editor/${DXC_RUNTIME_DLL}")
+        message(FATAL_ERROR
+            "FBZZ SDK validation failed: tools/${CONFIG}/Editor/${DXC_RUNTIME_DLL} is missing")
     endif()
 endforeach()
 

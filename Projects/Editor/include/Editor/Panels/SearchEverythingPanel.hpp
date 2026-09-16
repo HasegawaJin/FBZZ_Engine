@@ -1,10 +1,11 @@
-// FBZZ Engine
-// SearchEverythingPanel.hpp | fbzz::editor
-// シーン (GameObject) とアセットを横断検索するドッキング可能パネル (Ctrl+Shift+F)
-//
-// WHY: コマンドパレット (Ctrl+K) は「1 つ選んで即実行」に最適化されているが、結果を並べて
-//      見比べたい / 開いたまま連続で辿りたい用途には向かない。常設パネルとして結果一覧を保持し、
-//      GameObject は選択+フォーカス、アセットは開く/選択へ繋ぐ横断検索を提供する。
+/// @file    SearchEverythingPanel.hpp
+/// @brief   シーン (GameObject) とアセットを横断検索するドッキング可能パネル (Ctrl+Shift+F)。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// WHY: コマンドパレット (Ctrl+K) は「1 つ選んで即実行」に最適化されているが、結果を並べて
+/// 見比べたい / 開いたまま連続で辿りたい用途には向かない。常設パネルとして結果一覧を保持し、
+/// GameObject は選択+フォーカス、アセットは開く/選択へ繋ぐ横断検索を提供する。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <string>

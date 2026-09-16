@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Compiler.cpp | fbzz::editor
-// RuntimeBuild 用の CMake 子プロセス管理
+/// @file    Compiler.cpp
+/// @brief   RuntimeBuild 用の CMake 子プロセス管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #include <Editor/Compiler.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
@@ -48,8 +49,12 @@ bool Compiler::Start(const Config& config)
             L" --parallel 1";
     }
 
-    if (!usesExplicitCommand && config.skipDeps)
-        command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
+    if (!usesExplicitCommand && (config.skipDeps || config.rebuild)) {
+        command += L" --";
+        if (config.rebuild) command += L" /t:Rebuild";
+        if (config.skipDeps)
+            command += L" /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
+    }
 
     // WHY: 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
     m_log += "> " + util::StringUtils::ToNarrow(command) + "\n";

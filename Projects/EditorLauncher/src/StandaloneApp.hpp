@@ -1,10 +1,11 @@
-// FBZZ Engine
-// StandaloneApp.hpp | fbzz::editor_launcher
-// エディタ UI を持たないスタンドアロン (配布ゲーム) モードのライフサイクル管理。
-//
-// WHY: IModule を実装することで Application::Run() に乗せ、
-//      Profiler / MemorySystem / Input::Update / PollEvents などの
-//      フレーム境界処理をエンジン側に委譲する。
+/// @file    StandaloneApp.hpp
+/// @brief   エディタ UI を持たないスタンドアロン (配布ゲーム) モードのライフサイクル管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: IModule を実装することで Application::Run() に乗せ、
+/// Profiler / MemorySystem / Input::Update / PollEvents などの
+/// フレーム境界処理をエンジン側に委譲する。
 #pragma once
 #include <Editor/ScriptDllLoader.hpp>
 #include <Engine/Core/ILogSink.hpp>
@@ -26,11 +27,14 @@ namespace fbzz::editor_launcher {
 
 class StandaloneApp final : public core::IModule {
 public:
+    // WHY settings が非 const か: `graphics` プロキシ (Option 画面) が実行中に
+    //      settings.render を書き換えるため、その実体を可変で握る必要がある。
+    //      配布ゲームでは ProjectSettings をファイルへ書き戻さない。
     StandaloneApp(renderer::IRenderer& renderer,
                   renderer::IImGuiRenderer& imguiRenderer,
                   renderer::ResourceManager& resources,
                   const LaunchProject& project,
-                  const ProjectSettings& settings);
+                  ProjectSettings& settings);
 
     // IModule
     [[nodiscard]] bool OnInit()         override;
@@ -50,7 +54,7 @@ private:
     renderer::IImGuiRenderer&        m_imguiRenderer;
     renderer::ResourceManager&       m_resources;
     const LaunchProject&             m_project;
-    const ProjectSettings&           m_settings;
+    ProjectSettings&                 m_settings;
     scene::ProjectRuntime            m_runtime;
     editor::ScriptDllLoader          m_scriptDll;
     FileLogSink                      m_logSink;

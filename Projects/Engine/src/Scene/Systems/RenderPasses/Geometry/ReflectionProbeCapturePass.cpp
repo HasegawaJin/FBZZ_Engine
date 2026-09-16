@@ -1,10 +1,11 @@
-// FBZZ Engine
-// ReflectionProbeCapturePass.cpp | fbzz::scene
-// ReflectionProbe の空のみ／周辺メッシュ込み動的キャプチャと IBL 畳み込み
-//
-// WHY: プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得る。
-//      そのため更新間隔と明示リクエストで更新を間引き、昼夜変化だけを追従したい用途には
-//      DynamicSky、室内・配置物の反射には DynamicScene を提供する。
+/// @file    ReflectionProbeCapturePass.cpp
+/// @brief   ReflectionProbe の空のみ／周辺メッシュ込み動的キャプチャと IBL 畳み込み。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得る。
+/// そのため更新間隔と明示リクエストで更新を間引き、昼夜変化だけを追従したい用途には
+/// DynamicSky、室内・配置物の反射には DynamicScene を提供する。
 #include "GeometryPasses.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -134,7 +135,19 @@ void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
         draw.constantBuffers[4] = h.shadowCB;
         for (size_t i = 0; i < gpuMaterial->textures.size() && i < 8; ++i)
             if (gpuMaterial->textures[i].IsValid()) draw.textures[i] = gpuMaterial->textures[i];
-        draw.textures[8] = resources.GetDepthTexture(h.shadowMapRT);
+        draw.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+        // 点光源まわり (b9 / t29 / t30 / b12 / t28 / t31) をまとめて束縛する。
+        //
+        // WHY プローブ捕捉でも要るか: ここで描くのは通常のマテリアルシェーダーで、
+        //     定数バッファの束縛は直前のパスのものが残る一方、テクスチャ SRV は
+        //     ドローごとにクリアされる。片方だけ生きている状態になると、
+        //     シャドウなら「深度 0 = 完全な影」で捕捉結果が真っ黒になり、
+        //     ライト配列なら「本数は残っているのに中身が全部ゼロ」で点光源が消える。
+        //
+        // WHY Linear を強制するか: ここはキューブ面ごとにプローブ位置から描いており、
+        //     メインカメラの視錐台に対して作られたクラスタリストとは対応が取れない。
+        //     そのまま引くと、画面の別の場所のライトが焼き込まれる。
+        BindForwardShadingResources(draw, ctx, /*forceLinearLights=*/true);
         ctx.renderer.Submit(draw, resources);
     }
 }
@@ -171,7 +184,7 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
     atmosphere.mieScattering = sky->mieScattering;
     atmosphere.planetRadius = sky->planetRadius;
     atmosphere.atmosphereRadius = sky->atmosphereRadius;
-    atmosphere.sunIntensity = sky->sunIntensity;
+    atmosphere.sunIntensity = sky->skyScatterIntensity;
     atmosphere.mieG = sky->mieG;
     resources.Update(h.atmosphereCB, &atmosphere, sizeof(atmosphere));
 

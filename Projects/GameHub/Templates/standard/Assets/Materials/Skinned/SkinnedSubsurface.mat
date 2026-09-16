@@ -1,5 +1,5 @@
 version = 1
-shader = "guid:d6b3874d27e643adbcce8f3ca6c1dc6e"
+shader = "Assets/Shaders/Material/Skinned/SkinnedSubsurface.hlsl"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

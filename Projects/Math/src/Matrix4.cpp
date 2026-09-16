@@ -1,10 +1,11 @@
-// FBZZ Engine
-// Matrix4.cpp | fbzz::math
-// 4x4行列の演算実装 (DirectX 左手系)
+/// @file    Matrix4.cpp
+/// @brief   4x4行列の演算実装 (DirectX 左手系)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Matrix4.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>
-#include <cassert>
+#include "Math/MathContract.hpp"
 
 namespace fbzz::math {
 
@@ -74,8 +75,13 @@ Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3
 
 Matrix4 Matrix4::Perspective(float fovY, float aspect, float nearZ, float farZ) {
     // DirectX 左手系 透視投影 (depth: 0 to 1)
-    assert(aspect > EPSILON);
-    assert(farZ > nearZ);
+    // 潰れたビューポート (幅 0 / 高さ 0) は編集中に普通に起きる。行列を作れないだけなので、
+    // 破綻しない最小値へ寄せて進む。止めるとレイアウト操作の途中でエディターが死ぬ。
+    FBZZ_MATH_CONTRACT(aspect > EPSILON, "degenerate aspect; clamped to 1.0");
+    if (!(aspect > EPSILON)) aspect = 1.0f;
+    FBZZ_MATH_CONTRACT(farZ > nearZ, "far <= near; far pushed past near");
+    if (!(farZ > nearZ)) farZ = nearZ + 1.0f;
+
     float yScale = 1.0f / std::tan(fovY * 0.5f);
     float xScale = yScale / aspect;
 
@@ -146,7 +152,11 @@ Matrix4 Matrix4::Inverse(const Matrix4& mat) {
     float b11 = a[10]*a[15] - a[11]*a[14];
 
     float det = b00*b11 - b01*b10 + b02*b09 + b03*b08 - b04*b07 + b05*b06;
-    assert(!NearlyZero(det) && "Matrix4::Inverse: singular matrix");
+    // scale に 0 が入った Transform は特異行列になる。Inspector の操作として普通に起きるので、
+    // 単位行列を返して «その変換が効かない» だけに留める (Matrix4.cpp の Decompose 側と同じ判断)。
+    FBZZ_MATH_CONTRACT(!NearlyZero(det),
+                       "singular matrix inverted (zero scale?); returning identity");
+    if (NearlyZero(det)) return Identity();
 
     float inv = 1.0f / det;
     Matrix4 result;

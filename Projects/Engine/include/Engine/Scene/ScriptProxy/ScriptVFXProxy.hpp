@@ -1,9 +1,14 @@
-// FBZZ Engine
-// ScriptVFXProxy.hpp | fbzz::scene
-// Scriptから同じGameObjectのVFXGraphComponent再生状態を制御する
+/// @file    ScriptVFXProxy.hpp
+/// @brief   Script から同じ GameObject の VFXComponent 再生状態を制御する
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
+///
+/// WHY パラメーター操作 (SetFloat / SetColor / SetAsset …) を持たないか:
+///   .vfx がプレハブになり、公開パラメーターは «ルートに載せたスクリプトの公開
+///   フィールド» へ移った (Docs/design/vfx-prefab.md §6)。名前で値を差すのは
+///   型が効かず、綴り違いが黙って通る。値の受け口はスクリプト自身が持つ。
 #pragma once
 
-#include <Engine/Scene/ScriptAssetRef.hpp>
 #include <string_view>
 
 namespace fbzz::scene {
@@ -18,20 +23,14 @@ struct ScriptVFXProxy {
     void Pause() const;
     void Stop() const;
     void SetSpeed(float speed) const;
-    // SerializeFieldのVFXRefから同じGameObjectのGraphを差し替える。
-    bool SetGraph(const VFXRef& graph, bool restart = true) const;
-    // On Triggerリンクを同名で発火する。空名は明示的に許可しない。
+    /// trigger 名を持つ VFXElement を開始する。空名は明示的に許可しない。
     bool Trigger(std::string_view name) const;
-    bool SetFloat(std::string_view name, float value) const;
-    bool SetInt(std::string_view name, int value) const;
-    bool SetBool(std::string_view name, bool value) const;
-    bool SetColor(std::string_view name, float r, float g, float b, float a) const;
-    bool SetVector3(std::string_view name, float x, float y, float z) const;
-    bool SetAsset(std::string_view name, std::string_view path) const;
-    bool ClearOverride(std::string_view name) const;
+
     [[nodiscard]] bool IsPlaying() const;
     [[nodiscard]] float GetTime() const;
+    /// 全体の尺 [秒]。duration が 0 (自動) なら配下から算出した実効尺を返す。
     [[nodiscard]] float GetDuration() const;
+    [[nodiscard]] float GetSpeed() const;
 };
 
 } // namespace fbzz::scene

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12ImGuiRenderer.hpp | fbzz::renderer
-// Dear ImGui の DirectX 12 バックエンド橋渡し
+/// @file    DX12ImGuiRenderer.hpp
+/// @brief   Dear ImGui の DirectX 12 バックエンド橋渡し。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -31,6 +32,12 @@ public:
     void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE cpu);
 
 private:
+    // CacheKey::kind — ハンドルの種別。回収時にどちらの Get で生存を問うかを決める。
+    static constexpr uint8_t CACHE_KIND_RENDER_TARGET = 0;
+    static constexpr uint8_t CACHE_KIND_TEXTURE       = 1;
+    // 生存判定を回す間隔 [フレーム]。毎フレーム全件を舐めるほど枯渇は速くない。
+    static constexpr uint64_t SWEEP_INTERVAL_FRAMES = 30;
+
     struct CacheKey {
         uint32_t id = 0;
         uint32_t generation = 0;
@@ -42,13 +49,22 @@ private:
         size_t operator()(const CacheKey& key) const;
     };
 
+    // 回収済みディスクリプタ。GPU が読み終わるまで再利用へ回せない。
+    struct RetiredDescriptor {
+        uint32_t index = 0;
+        uint64_t frame = 0;  // 回収した ImGui フレーム番号
+    };
+
     void* CacheDescriptor(const CacheKey& key, D3D12_CPU_DESCRIPTOR_HANDLE source);
+    void SweepReleasedDescriptors();
 
     DX12Context* m_context = nullptr;
     bool m_imguiInitialized = false;
     uint32_t m_nextDescriptor = 0;
     std::vector<uint32_t> m_freeDescriptors;
     std::unordered_map<CacheKey, uint32_t, CacheKeyHash> m_textureCache;
+    std::vector<RetiredDescriptor> m_retiredDescriptors;
+    uint64_t m_frameCounter = 0;
     bool m_reportedHeapExhaustion = false;
 };
 

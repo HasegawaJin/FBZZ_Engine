@@ -1,0 +1,22 @@
+# GreenWare
+# M_PanelLine.mat
+# 装甲の合わせ目・溝。
+#
+# WHY 溝を周りより滑らかにするか:
+#   溝は擦れないので摩耗しない。周りの板より roughness を下げると «別の部品» として
+#   分かれて見え、同じ色のまま体の情報量だけが増える。
+version = 1
+name = 'M_PanelLine'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.12, 0.13, 0.15, 1.0 ]
+metallic = 1.0
+roughness = 0.25
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

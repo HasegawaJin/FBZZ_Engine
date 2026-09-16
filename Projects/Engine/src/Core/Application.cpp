@@ -1,9 +1,10 @@
-// FBZZ Engine
-// Application.cpp | fbzz::core
-// Application シングルトンの初期化とメインループ
-// Window / Renderer / Audio / SceneManager を所有し、エンジン全体の寿命を管理する。
-// sandbox 側で手動ループする場合も、初期化済みサブシステムの入口になる。
-#define NOMINMAX
+/// @file    Application.cpp
+/// @brief   Application シングルトンの初期化とメインループ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Window / Renderer / Audio / SceneManager を所有し、エンジン全体の寿命を管理する。
+/// sandbox 側で手動ループする場合も、初期化済みサブシステムの入口になる。
 #include <Windows.h>
 #include <timeapi.h>
 #include "Engine/Core/Application.hpp"
@@ -19,6 +20,8 @@
 #include "Engine/Profiler/Profiler.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RendererFactory.hpp"
+#include "Engine/Util/SaveStore.hpp"
+#include "Math/MathContract.hpp"
 
 namespace fbzz::core {
 
@@ -56,6 +59,15 @@ Application& Application::Get() {
     return instance;
 }
 
+// WHY 既定パスを Application が決めるか: ゲーム側がパスを設定し忘れても
+//     セーブと設定が同じファイルへ落ちない状態を最初から保証するため。
+//     ゲームは SetPath / SetSlot で好きな場所へ差し替えてよい。
+Application::Application()
+    : m_saveStore(std::make_unique<util::SaveStore>("Saves/save0.toml"))
+    , m_configStore(std::make_unique<util::SaveStore>("Config/settings.toml"))
+{
+}
+
 Application::~Application() = default;
 
 bool Application::Init() {
@@ -68,6 +80,14 @@ bool Application::Init(const Window::Config& windowConfig,
                        renderer::RendererBackend preferredBackend) {
     FBZZ_LOG_INFO("Application::Init: 開始 (preferred=%s)", renderer::ToString(preferredBackend));
     timeBeginPeriod(1);
+
+    // 数学の契約違反を Logger へ流す。Math は Engine に依存できないので、出力先はここで差す。
+    // WHY 落とさないか: ゼロ長ベクトルも特異行列も «ユーザーデータ» で普通に起きる。
+    //     abort すると未保存の作業ごとエディターが死ぬ (MathContract.hpp)。
+    math::SetContractHandler([](const math::ContractViolation& v) {
+        FBZZ_LOG_ERROR("[%s:%d] %s: %s (%s)",
+                       v.file, v.line, v.function, v.message, v.expr);
+    });
 
     // WHY: フレームアロケータとメモリ統計はエンジン全体の診断基盤なので、
     //      Window / Renderer より先に初期化し、以後のサブシステムから参照できる状態にする。
@@ -97,12 +117,9 @@ bool Application::Init(const Window::Config& windowConfig,
 
     input::Input::Init();
 
-    // WHY ここで既定バインドを入れるか:
-    //   プロジェクト固有の .inputactions は「どのプロジェクトを開くか」が決まってから
-    //   ProjectRuntime 側で読み込まれる。Application::Init の時点ではまだ確定していないため、
-    //   まず既定バインドで動く状態を作っておく。設定ファイルがあれば後から上書きされる。
-    //   これにより「プロジェクト未読込のエディタでも入力が完全に死なない」状態を保証する。
-    input::InputActionMap::LoadDefaults();
+    // Standalone はウィンドウ設定のため Init より先に ProjectSettings を読む。
+    // 読み込み済みの Submit / Cancel やゲーム固有アクションを既定値で消さない。
+    input::InputActionMap::Initialize();
 
     // WHY: バックエンド具象 (DX11 / DX12) の選択と生成は RendererFactory に集約する。
     //      合成ルートである Application は RendererBackend を指定するだけで具象を直接知らない。
@@ -155,6 +172,9 @@ bool Application::Init(const Window::Config& windowConfig,
 }
 
 void Application::Shutdown() {
+    // 描画設定の実体を持っているのは Module 側 (ProjectSettings)。Application より先に
+    // 消えることがあるので、参照はここで必ず切っておく。
+    m_activeRenderSettings = nullptr;
     // SceneManagerはAudioManagerをraw pointerで参照するため、音響より先に参照とSceneを破棄する。
     if (m_sceneManager) m_sceneManager->SetAudioManager(nullptr);
     m_sceneManager.reset();
@@ -274,6 +294,12 @@ void Application::Run(IModule& module) {
         const float dt = Time::deltaTime;
         module.OnUpdate(dt);
         module.OnLateUpdate(dt);
+
+        // WHY AudioSystem ではなくここで回すか: AudioSystem は SimOnly のため Edit モードでは
+        //     走らない。生成クリップの回収を任せると、Editor のプレビュー再生ぶんが
+        //     Play を開始するまで解放されない。
+        if (m_audioManager) m_audioManager->Update(dt);
+
         module.OnRender();
 
         profiler::Profiler::EndFrame();

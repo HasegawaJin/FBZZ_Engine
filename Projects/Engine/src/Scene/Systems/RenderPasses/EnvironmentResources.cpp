@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EnvironmentResources.cpp | fbzz::scene
-// 空連動 IBL の状態オブジェクト — dirty 判定の実装。
+/// @file    EnvironmentResources.cpp
+/// @brief   空連動 IBL の状態オブジェクト — dirty 判定の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
 #include <Engine/Scene/Systems/RenderPasses/EnvironmentResources.hpp>
 #include <cmath>
 
@@ -19,7 +20,7 @@ bool EnvironmentResources::SkySignature::AtmosphereApproxEquals(const SkySignatu
 
     return approxVec(rayleigh, o.rayleigh)
         && approx(mieScattering, o.mieScattering)
-        && approx(sunIntensity, o.sunIntensity)
+        && approx(skyScatterIntensity, o.skyScatterIntensity)
         && approx(mieG, o.mieG)
         && approx(planetRadius, o.planetRadius)
         && approx(atmosphereRadius, o.atmosphereRadius);

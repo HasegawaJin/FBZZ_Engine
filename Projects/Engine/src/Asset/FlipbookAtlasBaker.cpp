@@ -1,11 +1,14 @@
-// FBZZ Engine
-// FlipbookAtlasBaker.cpp | fbzz::asset
-// PNG等の画像列をRGBA8 Flipbook Atlasへ結合する実装
+/// @file    FlipbookAtlasBaker.cpp
+/// @brief   PNG等の画像列をRGBA8 Flipbook Atlasへ結合する実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma comment(lib, "ole32.lib")
 
 #include <Engine/Asset/FlipbookAtlasBaker.hpp>
 
-#include <Engine/Asset/TexDescSerializer.hpp>
+#include "FlipbookImageIO.hpp"
+
+#include <Engine/Asset/FlipbookMotionVectorEncoding.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 
 #include <DirectXTex.h>
@@ -65,21 +68,6 @@ bool LoadFrame(const std::filesystem::path& path, DirectX::ScratchImage& rgba,
     return true;
 }
 
-bool SaveTextureMeta(const std::filesystem::path& outputPath)
-{
-    TextureAsset texture;
-    texture.sourcePath = outputPath.string();
-    texture.settings = DefaultSettingsForType(TextureType::Color);
-    // WHY: AtlasのMip生成は隣接フレームを混ぜて境界を汚すため、明示的に無効化する。
-    texture.settings.mipmaps = false;
-    texture.settings.maxSize = static_cast<int>(kMaximumAtlasDimension);
-    texture.settings.wrapU = TextureWrap::Clamp;
-    texture.settings.wrapV = TextureWrap::Clamp;
-    texture.settings.filter = TextureFilter::Bilinear;
-    TexDescSerializer serializer;
-    return serializer.Save(texture, outputPath.string() + ".meta");
-}
-
 } // namespace
 
 FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& settings)
@@ -98,10 +86,9 @@ FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& setti
 
     const int frameCount = static_cast<int>((std::min)(
         settings.framePaths.size(), static_cast<std::size_t>((std::numeric_limits<int>::max)())));
-    const int columns = settings.columns > 0
-        ? (std::min)(settings.columns, frameCount)
-        : static_cast<int>(std::ceil(std::sqrt(static_cast<double>(frameCount))));
-    const int rows = (frameCount + columns - 1) / columns;
+    const FlipbookGrid grid = ComputeFlipbookGrid(frameCount, settings.columns);
+    const int columns = grid.columns;
+    const int rows = grid.rows;
 
     DirectX::ScratchImage firstFrame;
     std::string loadError;
@@ -154,18 +141,18 @@ FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& setti
         }
     }
 
-    const std::filesystem::path parent = outputPath.parent_path();
-    if (!parent.empty()) {
-        std::filesystem::create_directories(parent, fileError);
-        if (fileError) return Fail("出力ディレクトリを作成できません: " + fileError.message());
-    }
-
-    hr = DirectX::SaveToWICFile(*atlasImage, DirectX::WIC_FLAGS_NONE,
-                                DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
-                                outputPath.wstring().c_str());
-    if (FAILED(hr)) return Fail("Atlasを書き出せません: " + outputPath.string());
-    if (settings.generateTextureMeta && !SaveTextureMeta(outputPath))
-        return Fail("Atlasは生成しましたが.metaを書き出せません: " + outputPath.string() + ".meta");
+    std::string saveError;
+    if (!detail::SavePngRgba8(outputPath, static_cast<std::uint32_t>(atlasWidth),
+                              static_cast<std::uint32_t>(atlasHeight),
+                              { atlasImage->pixels, atlasImage->slicePitch }, saveError,
+                              atlasImage->rowPitch))
+        return Fail(saveError);
+    // WHY mip なし: Atlas の Mip 生成は隣接フレームを混ぜて境界を汚す。
+    const TextureImportSettings colorDefaults = DefaultSettingsForType(TextureType::Color);
+    if (settings.generateTextureMeta
+        && !detail::SaveTextureMeta(outputPath, TextureType::Color, colorDefaults.compression,
+                                    colorDefaults.alphaMode, false, saveError))
+        return Fail("Atlasは生成しましたが.metaを書き出せません: " + saveError);
 
     FlipbookAtlasBakeResult result;
     result.success = true;

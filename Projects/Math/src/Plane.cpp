@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Plane.cpp | fbzz::math
-// 平面演算実装
+/// @file    Plane.cpp
+/// @brief   平面演算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include "Math/Plane.hpp"
 #include "Math/MathUtils.hpp"
 

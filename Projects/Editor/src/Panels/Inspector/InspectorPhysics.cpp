@@ -1,7 +1,9 @@
-// FBZZ Engine
-// InspectorPhysics.cpp | fbzz::editor
-// Physics 系 Component の Inspector 描画
+/// @file    InspectorPhysics.cpp
+/// @brief   Physics 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorPhysics.hpp"
+#include <algorithm>
 
 namespace fbzz::editor {
 
@@ -26,27 +28,49 @@ void DrawPhysicsMaterialPresetMenu(physics::PhysicsMaterial& material)
     ImGui::EndCombo();
 }
 
-void DrawColliderCommon(scene::ColliderComponent& col, const std::string& projectRoot)
+// go は同じ GameObject の RigidBody を見て density の効き方を注記するために取る。
+void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
+                        const std::string& projectRoot)
 {
     widgets::DragVec3("Center", col.center, 0.01f, -1000.0f, 1000.0f);
     ImGui::Checkbox("Is Trigger", &col.isTrigger);
 
     // 共有 .physmat スロット。割り当てるとインライン編集を閉じる。
-    if (widgets::AssetPathField("Physics Material", col.physicsMaterialPath, ".physmat", projectRoot))
-        col.ResolvePhysicsMaterial();
+    // WHY 変更検知の戻り値を使わないか: 参照がある間はどのみち毎フレーム解決するため、
+    //     割り当て直後だけ余分に解決しても意味が無い。解決口を 1 つに絞る。
+    widgets::AssetPathField("Physics Material", col.physicsMaterialPath, ".physmat", projectRoot);
 
     const bool usesSharedAsset = !col.physicsMaterialPath.empty();
     if (usesSharedAsset) {
         // 解決済みの実効値を読み取り専用で見せる。
         // WHY 表示するか: 「このコライダーが結局どんな物性で動くのか」を、
         //     .physmat を開き直さずに確認できるようにする。編集は共有アセット側で行う。
-        col.ResolvePhysicsMaterial();
+        const bool resolved = col.ResolvePhysicsMaterial();
+
+        // WHY 失敗を明示するか: 解決できなくても col.material には最後に解決できた値
+        //     (無ければ既定値) が残り続ける。数値だけ見ても正常時と区別が付かないため、
+        //     「アセットを割り当てたのに物理挙動が変わらない」の原因がここだと分からない。
+        if (!resolved) {
+            ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f },
+                               "参照を解決できません。下の値は最後に解決できた値です");
+            ImGui::TextDisabled("パスの綴りとアセットの実在を確認してください");
+        }
+
         ImGui::TextDisabled("Restitution %.3f  /  Friction %.3f (static %.3f)  /  Density %.3f",
                             col.material.restitution,
                             col.material.dynamicFriction,
                             col.material.staticFriction,
                             col.material.density);
-        ImGui::TextDisabled("値の編集は .physmat 側で行う (参照している全コライダーへ反映)");
+        if (resolved)
+            ImGui::TextDisabled("値の編集は .physmat 側で行う (参照している全コライダーへ反映)");
+
+        // Density は RigidBody の Mass Mode が From Density のときだけ質量へ効く。
+        // WHY ここで断るか: .physmat 側で density をいくら大きくしても既定の Manual では
+        //     何も起きない。値を触った本人がその場で気付けないと、原因を物理側へ探しに行く。
+        if (auto* rb = go.GetComponent<scene::RigidBodyComponent>();
+            rb && rb->massMode != scene::MassMode::FromDensity) {
+            ImGui::TextDisabled("Density は RigidBody の Mass Mode = From Density でのみ質量に反映されます");
+        }
         return;
     }
 
@@ -59,7 +83,7 @@ void DrawColliderCommon(scene::ColliderComponent& col, const std::string& projec
 
 void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, projectRoot);
+    DrawColliderCommon(col, go, projectRoot);
     widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
     // 形状パラメータの反映と姿勢同期は SyncColliderPreview (= ColliderSync) が行う。
     SyncColliderPreview(go, col);
@@ -67,21 +91,29 @@ void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go, 
 
 void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, projectRoot);
+    DrawColliderCommon(col, go, projectRoot);
     widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
 }
 
 void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, projectRoot);
+    DrawColliderCommon(col, go, projectRoot);
     ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
 }
 
 void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, projectRoot);
+    DrawColliderCommon(col, go, projectRoot);
+    ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
+    ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
+    SyncColliderPreview(go, col);
+}
+
+void DrawCylinderCollider(scene::CylinderColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
+{
+    DrawColliderCommon(col, go, projectRoot);
     ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
     ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
@@ -89,7 +121,7 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
 
 void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, projectRoot);
+    DrawColliderCommon(col, go, projectRoot);
     widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
@@ -110,7 +142,7 @@ void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, 
 
 void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, projectRoot);
+    DrawColliderCommon(col, go, projectRoot);
     if (!go.GetComponent<scene::TerrainComponent>())
         ImGui::TextColored({ 1.0f, 0.6f, 0.2f, 1.0f }, "TerrainComponent が同じ GO に必要です");
     SyncColliderPreview(go, col);
@@ -118,7 +150,7 @@ void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject
 
 void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, projectRoot);
+    DrawColliderCommon(col, go, projectRoot);
     widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
@@ -153,6 +185,30 @@ struct MeshColliderValue {
     bool isTrigger = false;
     bool useTransformScale = true;
     bool enabled = true;
+
+    // Undo を積むべきかの判定に使う (ComponentSnapshotCompare が検出する)。
+    // WHY 必要か: 参照欄をクリックして .physmat を見に行くだけでも ImGui の ActiveID は
+    //     動く。それを「編集した」とみなしていたため、中身の変わらない履歴が残っていた。
+    // WHY PhysicsMaterial をメンバーごとに比較するか: あちらは物理側の値型で
+    //     operator== を持たない。エディタ都合の比較のために物理層へ手を入れない。
+    bool operator==(const MeshColliderValue& o) const
+    {
+        return material.restitution     == o.material.restitution
+            && material.staticFriction  == o.material.staticFriction
+            && material.dynamicFriction == o.material.dynamicFriction
+            && material.density         == o.material.density
+            // 合成規則は現在 Inspector から編集できないが、.physmat の割り当てで
+            // 差し替わる値なので比較に含めておく (将来 UI を出したときの取りこぼし防止)。
+            && material.restitutionCombine == o.material.restitutionCombine
+            && material.frictionCombine    == o.material.frictionCombine
+            && physicsMaterialPath == o.physicsMaterialPath
+            && center.x == o.center.x && center.y == o.center.y && center.z == o.center.z
+            && meshPath          == o.meshPath
+            && meshIndex         == o.meshIndex
+            && isTrigger         == o.isTrigger
+            && useTransformScale == o.useTransformScale
+            && enabled           == o.enabled;
+    }
 };
 
 MeshColliderValue CaptureMeshColliderValue(const scene::MeshColliderComponent& c)
@@ -181,6 +237,93 @@ MeshColliderValue CaptureConvexHullValue(const scene::ConvexHullColliderComponen
 {
     return { c.material, c.physicsMaterialPath, c.center, c.meshPath, c.meshIndex,
              c.isTrigger, c.useTransformScale, c.enabled };
+}
+
+// ── Joint ───────────────────────────────────────────────────────────────────
+// 種別で使うフィールドが入れ替わるので、欄そのものは Reflect() の FieldIf に任せ、
+// ここは «Reflect() では表せないもの» だけを足す。
+// WHY 自動 Inspector に寄せないか: 関節は «張れているか» が分からないと詰められない。
+//     相手を指し忘れた・相手に剛体が無い・距離を自動で採ったといった状態は
+//     フィールドの一覧には出ないが、まさにそれが «垂れない» の原因になる。
+
+// Reflect() から欄を起こすリフレクタの下ごしらえ。参照スロットが GameObject 名を
+// 出せるよう、Script の Inspector (InspectorCore) と同じ解決器を繋ぐ。
+void ConfigureJointRefReflector(ComponentImGuiReflector& reflector, EditorContext& ctx)
+{
+    reflector.m_projectRoot = ctx.projectRoot;
+    if (!ctx.activeScene) return;
+
+    reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
+        auto* target = scene->GetGameObject(id);
+        return target ? target->name : "(Missing)";
+    };
+    reflector.m_goListProvider =
+        [scene = ctx.activeScene]() -> std::vector<std::pair<scene::EntityID, std::string>> {
+            std::vector<std::pair<scene::EntityID, std::string>> out;
+            for (auto& object : scene->GameObjects())
+                out.emplace_back(object.GetID(), object.name);
+            return out;
+        };
+    reflector.m_refTypeValidator =
+        [scene = ctx.activeScene](scene::EntityID id, const char* typeName) -> bool {
+            if (!typeName || !typeName[0]) return true;
+            auto* target = scene->GetGameObject(id);
+            return target && HasRegisteredComponentByName(*target, typeName);
+        };
+}
+
+void DrawJointStatus(const scene::JointComponent& joint, scene::GameObject& go, EditorContext& ctx)
+{
+    if (joint.connected) {
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Success));
+        ImGui::TextUnformatted("Connected");
+        ImGui::PopStyleColor();
+        if (joint.UsesDistance()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(distance %.3f m%s)", joint.resolvedDistance,
+                                joint.autoDistance ? ", auto" : "");
+        }
+        return;
+    }
+
+    // 張れていない理由を名指しする。Play 前は «まだ物理が回っていない» が普通なので、
+    // «設定が足りない» と区別できるようにしておく。
+    const bool hasSelfBody = go.GetComponent<scene::RigidBodyComponent>() != nullptr;
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
+    ImGui::TextUnformatted("Not connected");
+    ImGui::PopStyleColor();
+    if (!hasSelfBody) {
+        ImGui::TextDisabled("この GameObject に Rigid Body がありません");
+        return;
+    }
+    if (joint.type == scene::JointType::Chain) {
+        if (joint.chainBodies.empty())
+            ImGui::TextDisabled("Chain Bodies に 2 節目以降を並べてください");
+        return;
+    }
+    if (!joint.connectedBody.IsValid() && !joint.connectToParent) {
+        ImGui::TextDisabled("Connected Body を指すか Connect To Parent を入れてください");
+        return;
+    }
+    if (ctx.activeScene && joint.connectedBody.IsValid()) {
+        scene::GameObject* target = joint.connectedBody.Resolve(*ctx.activeScene);
+        if (!target)
+            ImGui::TextDisabled("Connected Body の参照先が見つかりません");
+        else if (!target->GetComponent<scene::RigidBodyComponent>())
+            ImGui::TextDisabled("相手 (%s) に Rigid Body がありません", target->name.c_str());
+        return;
+    }
+    ImGui::TextDisabled("Play 中に PhysicsSystem が張ります");
+}
+
+void DrawJoint(scene::JointComponent& joint, scene::GameObject& go, EditorContext& ctx)
+{
+    DrawJointStatus(joint, go, ctx);
+    ImGui::Spacing();
+
+    ComponentImGuiReflector reflector;
+    ConfigureJointRefReflector(reflector, ctx);
+    joint.Reflect(reflector);
 }
 
 void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColliderValue& v)
@@ -221,6 +364,11 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawComponentSection<scene::CapsuleColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Capsule Collider",
         [go](scene::CapsuleColliderComponent& col, EditorContext& ctx2) {
             DrawCapsuleCollider(col, *go, ctx2.projectRoot);
+        });
+
+    DrawComponentSection<scene::CylinderColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Cylinder Collider",
+        [go](scene::CylinderColliderComponent& col, EditorContext& ctx2) {
+            DrawCylinderCollider(col, *go, ctx2.projectRoot);
         });
 
     DrawComponentSectionCustom<scene::MeshColliderComponent, MeshColliderValue>(
@@ -315,6 +463,11 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             ImGui::DragFloat("Gravity Mass", &body.m_gravitationalMass, 0.05f, 0.0f, 100000.0f);
         });
 
+    DrawComponentSection<scene::JointComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Joint",
+        [go](scene::JointComponent& joint, EditorContext& ctx2) {
+            DrawJoint(joint, *go, ctx2);
+        });
+
     DrawComponentSection<scene::VolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volume",
         [](scene::VolumeComponent& volume, EditorContext&) {
             static constexpr const char* kVolumeNames[] = {
@@ -338,6 +491,14 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
     DrawComponentSection<scene::CharacterControllerComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Character Controller",
         [](scene::CharacterControllerComponent& cc, EditorContext&) {
+            ImGui::Checkbox("Enabled", &cc.enabled);
+            static constexpr const char* kGroundingModeLabels[] = {
+                "Automatic", "Forced Grounded", "Forced Airborne"
+            };
+            int groundingMode = static_cast<int>(cc.groundingMode);
+            if (ImGui::Combo("Grounding Mode", &groundingMode, kGroundingModeLabels, 3))
+                cc.SetGroundingMode(static_cast<scene::CharacterGroundingMode>(
+                    std::clamp(groundingMode, 0, 2)));
             ImGui::DragFloat("Jump Min Air Time",        &cc.jumpMinAirTime,          0.01f, 0.0f, 2.0f);
             ImGui::DragFloat("Fall Vel Threshold",       &cc.fallVelThreshold,        0.1f, -50.0f, 0.0f);
             ImGui::DragFloat("Ground Vel Threshold",     &cc.groundVelThreshold,      0.01f, 0.0f, 5.0f);

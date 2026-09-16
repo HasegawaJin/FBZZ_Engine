@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptRuntime.cpp | fbzz::scene
-// ScriptProxy 集約ランタイムコンテキストの実装
+/// @file    ScriptRuntime.cpp
+/// @brief   ScriptProxy 集約ランタイムコンテキストの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Renderer/IRenderer.hpp>

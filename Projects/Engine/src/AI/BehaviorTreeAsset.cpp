@@ -1,12 +1,13 @@
-// FBZZ Engine
-// BehaviorTreeAsset.cpp | fbzz::ai
-// .behaviortree のヘルパー・検証・TOML 入出力
-//
-// TOML の規約は Asset/VFXGraphAsset.cpp に揃える:
-//   - Save は EncodeGuidRefs → FileSystem::WriteText(AssetManager::ResolveAssetPath(path))
-//   - Load は ReadText(ResolveAssetPath(path)) → toml::parse → DecodeGuidRefs
-//   - int / enum は std::int64_t へキャストして書く
-//   - 読み込みは全て value_or で既定値を持たせる (フィールド追加で既存アセットが壊れない)
+/// @file    BehaviorTreeAsset.cpp
+/// @brief   .behaviortree のヘルパー・検証・TOML 入出力。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// TOML の規約:
+/// - Save は EncodeGuidRefs → FileSystem::WriteText(AssetManager::ResolveAssetPath(path))
+/// - Load は ReadText(ResolveAssetPath(path)) → toml::parse → DecodeGuidRefs
+/// - int / enum は std::int64_t へキャストして書く
+/// - 読み込みは全て value_or で既定値を持たせる (フィールド追加で既存アセットが壊れない)
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 
 #include <Engine/Asset/AssetManager.hpp>

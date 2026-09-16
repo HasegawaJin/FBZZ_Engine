@@ -1,9 +1,11 @@
-// FBZZ Engine
-// AtmosphericScatteringComponent.hpp | fbzz::scene
-// シーン単位の霧・大気散乱設定を GameObject で管理するコンポーネント。
-// WHY: ProjectSettings の fog 設定はグローバルだが、このコンポーネントで Scene Inspector から
-//      霧を制御できるようにし、屋外・室内などシーン境界で異なる大気表現を実現する。
-//      RenderSystem が最初のアクティブなコンポーネントで postProcess.fog を上書きする。
+/// @file    AtmosphericScatteringComponent.hpp
+/// @brief   シーン単位の霧・大気散乱設定を GameObject で管理するコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// WHY: ProjectSettings の fog 設定はグローバルだが、このコンポーネントで Scene Inspector から
+/// 霧を制御できるようにし、屋外・室内などシーン境界で異なる大気表現を実現する。
+/// RenderSystem が最初のアクティブなコンポーネントで postProcess.fog を上書きする。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
@@ -46,7 +48,7 @@ struct AtmosphericScatteringComponent {
 
         r.Field("fogDensity", fogDensity);
         r.Field("fogFar",     fogFar);
-        r.Field("fogColor",   fogColor);
+        r.ColorField("fogColor",   fogColor);
     }
 };
 

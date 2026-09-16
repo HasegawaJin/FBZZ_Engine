@@ -1,11 +1,13 @@
-// FBZZ Engine
-// BehaviorTreePanel.cpp | fbzz::editor
-// .behaviortree の木エディタ実装 (共通 GraphCanvas の最初の実利用者)
+/// @file    BehaviorTreePanel.cpp
+/// @brief   .behaviortree の木エディタ実装 (共通 GraphCanvas の最初の実利用者)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Panels/BehaviorTreePanel.hpp>
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
-#include <Editor/GraphEditor/GraphSubgraphOps.hpp>
+// NOTE: GraphLayoutAlgo / GraphSubgraphOps への直接依存は BehaviorTreeOps へ移った
+//       (整列・部分木抽出はそちらが呼ぶ)。
+#include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
@@ -100,30 +102,14 @@ const char* AbortModeName(fbzz::ai::AbortMode mode)
     return "None";
 }
 
-// 子を order 順に並べて返す。優先度そのものなので、表示も評価も必ずこの順。
-std::vector<const fbzz::ai::BTNodeDef*> ChildrenOf(const fbzz::ai::BehaviorTreeAsset& asset, int parentId)
-{
-    std::vector<const fbzz::ai::BTNodeDef*> children;
-    for (const auto& node : asset.nodes)
-        if (node.parentId == parentId) children.push_back(&node);
-    std::sort(children.begin(), children.end(),
-        [](const fbzz::ai::BTNodeDef* a, const fbzz::ai::BTNodeDef* b) { return a->order < b->order; });
-    return children;
-}
-
-// child が ancestor の子孫か (自分自身を含む)。循環の作成を防ぐために使う。
-bool IsDescendant(const fbzz::ai::BehaviorTreeAsset& asset, int ancestorId, int childId)
-{
-    int current = childId;
-    // ノード数を上限にすれば、既に壊れて循環しているデータでも止まる。
-    for (std::size_t guard = 0; guard <= asset.nodes.size() && current != 0; ++guard) {
-        if (current == ancestorId) return true;
-        const fbzz::ai::BTNodeDef* node = asset.FindNode(current);
-        if (node == nullptr) return false;
-        current = node->parentId;
-    }
-    return false;
-}
+// NOTE: ChildrenOf / IsDescendant と、追加・削除・親付け・複製の実体は
+//       Editor/GraphEditor/BehaviorTreeOps.hpp へ移した。
+//       WHY: 同じ規則が AI の EditorBusDispatcher にも手で書かれており、
+//            向こうには「Editor の TryReparent と同じ規則で食い違いを作らない」
+//            というコメントまであった = 手で揃え続けていた。実際に文言は既にずれていた。
+//       Docs/design/editor-operator-model.md
+using btops::ChildrenOf;
+using btops::IsDescendant;
 
 } // namespace
 
@@ -222,73 +208,27 @@ void BehaviorTreePanel::RefreshValidation()
 
 
 // 木の不変条件を保ったまま親を張り替える。
-// WHY ここで全部弾くか: 保存時の Validate まで待つと「繋いだ直後は通ったのに
-//     保存できない」状態を作れてしまい、どの操作が悪かったのか判らなくなる。
+// 検査規則は AI (bt.node.setParent) と共有する — 「AI からは繋げるが UI では弾かれる」
+// という食い違いを作らないため。
 std::string BehaviorTreePanel::TryReparent(int childId, int newParentId)
 {
-    fbzz::ai::BTNodeDef* child = m_asset.FindNode(childId);
-    if (child == nullptr) return "ノードが見つかりません";
-    if (childId == newParentId) return "自分自身を親にはできません";
-    if (newParentId != 0) {
-        const fbzz::ai::BTNodeDef* parent = m_asset.FindNode(newParentId);
-        if (parent == nullptr) return "親ノードが見つかりません";
-        // 子孫を親にすると循環する。BT は木なので必ず弾く。
-        if (IsDescendant(m_asset, childId, newParentId))
-            return "自分の子孫を親にはできません (循環します)";
-        const int maxChildren = fbzz::ai::BTNodeMaxChildren(parent->type);
-        if (maxChildren == 0)
-            return std::string(fbzz::ai::BTNodeTypeName(parent->type)) + " は葉ノードなので子を持てません";
-        const int current = static_cast<int>(ChildrenOf(m_asset, newParentId).size());
-        // 既に自分がその親の子なら、付け替えても数は増えない。
-        const bool alreadyChild = child->parentId == newParentId;
-        if (maxChildren > 0 && !alreadyChild && current >= maxChildren)
-            return std::string(fbzz::ai::BTNodeTypeName(parent->type)) + " が持てる子は "
-                 + std::to_string(maxChildren) + " 個までです";
-    } else {
-        // 親なし = ルート。木にルートは 1 つだけ。
-        for (const auto& node : m_asset.nodes)
-            if (node.parentId == 0 && node.id != childId)
-                return "ルートは 1 つだけです (既存のルートへ繋いでください)";
-    }
-
-    child->parentId = newParentId;
-    // 末尾へ追加する。優先度は order なので、後から Inspector か D&D で並べ替える。
-    int nextOrder = 0;
-    for (const auto& node : m_asset.nodes)
-        if (node.parentId == newParentId && node.id != childId)
-            nextOrder = (std::max)(nextOrder, node.order + 1);
-    child->order = nextOrder;
-    return {};
+    return btops::TryReparentNode(m_asset, childId, newParentId);
 }
 
 
 void BehaviorTreePanel::AddNode(fbzz::ai::BTNodeType type, float gridX, float gridY, int parentId)
 {
     PushUndo();
-    fbzz::ai::BTNodeDef node;
-    node.id = m_asset.nextNodeId++;
-    node.type = type;
-    node.name = fbzz::ai::BTNodeTypeName(type);
-    node.editorX = gridX;
-    node.editorY = gridY;
-    // ルートがまだ無ければ最初のノードがルートになる。
-    const bool hasRoot = std::any_of(m_asset.nodes.begin(), m_asset.nodes.end(),
-        [](const fbzz::ai::BTNodeDef& item) { return item.parentId == 0; });
-    node.parentId = hasRoot ? parentId : 0;
-    m_asset.nodes.push_back(node);
+    // orphanOnReject=true: 対話的な編集なので、繋げなくてもノードは残す。
+    // 作った直後に消えると「追加できなかった」のか「見えていない」のか区別できない。
+    const btops::AddNodeResult added =
+        btops::AddNode(m_asset, type, {}, parentId, gridX, gridY, /*orphanOnReject=*/true);
 
-    if (node.parentId != 0) {
-        const std::string reason = TryReparent(node.id, node.parentId);
-        if (!reason.empty()) {
-            // 繋げないなら孤立ノードとして残す。作った直後に消えると
-            // 「追加できなかった」のか「見えていない」のか区別できない。
-            m_asset.FindNode(node.id)->parentId = 0;
-            m_graphCanvas.ReportError(reason, { node.id });
-            // ルートが 2 つになるのは Validate が拒否する。理由は banner に出る。
-        }
-    }
-    m_selectedNode = node.id;
-    m_graphCanvas.RequestSelection({ node.id });
+    if (!added.rejectReason.empty())
+        m_graphCanvas.ReportError(added.rejectReason, { added.nodeId });
+
+    m_selectedNode = added.nodeId;
+    m_graphCanvas.RequestSelection({ added.nodeId });
     m_dirty = true;
     RefreshValidation();
 }
@@ -296,19 +236,9 @@ void BehaviorTreePanel::AddNode(fbzz::ai::BTNodeType type, float gridX, float gr
 
 void BehaviorTreePanel::DeleteNode(int nodeId)
 {
-    const fbzz::ai::BTNodeDef* target = m_asset.FindNode(nodeId);
-    if (target == nullptr) return;
+    if (m_asset.FindNode(nodeId) == nullptr) return;
     PushUndo();
-    // 子孫ごと消す。BT の枝は「まとめて 1 つの意味」なので、親だけ消して
-    // 子が浮くと、残された枝が何のためのものか判らなくなる。
-    std::vector<GraphEdge> edges;
-    for (const auto& node : m_asset.nodes)
-        if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
-    const std::vector<int> doomed = CollectReachable(std::vector<int>{ nodeId }, edges);
-    const std::unordered_set<int> doomedSet(doomed.begin(), doomed.end());
-    std::erase_if(m_asset.nodes, [&doomedSet](const fbzz::ai::BTNodeDef& node) {
-        return doomedSet.contains(node.id);
-    });
+    btops::RemoveSubtree(m_asset, nodeId);
     m_selectedNode = 0;
     m_graphCanvas.ClearSelection();
     m_dirty = true;
@@ -318,6 +248,7 @@ void BehaviorTreePanel::DeleteNode(int nodeId)
 
 void BehaviorTreePanel::DuplicateSubtree(int nodeId)
 {
+    // ルート複製の拒否は共有実装が判定する。PushUndo の前に一度試して弾く。
     const fbzz::ai::BTNodeDef* source = m_asset.FindNode(nodeId);
     if (source == nullptr) return;
     if (source->parentId == 0) {
@@ -326,40 +257,14 @@ void BehaviorTreePanel::DuplicateSubtree(int nodeId)
     }
     PushUndo();
 
-    std::vector<GraphEdge> edges;
-    for (const auto& node : m_asset.nodes)
-        if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
-    const std::vector<int> subtree = CollectReachable(std::vector<int>{ nodeId }, edges);
+    const btops::DuplicateResult duplicated =
+        btops::DuplicateSubtree(m_asset, nodeId, 40.0f, 40.0f);
 
-    // id の再割当と内部リンクの保持は framework の共通実装に任せる。
-    // クリップボード・Template 取り込み・レイヤー複製と同じ規則で動く。
-    int nextId = m_asset.nextNodeId - 1;
-    const GraphExtractResult extracted = ExtractSubgraph(subtree, edges, nextId);
-    m_asset.nextNodeId = nextId + 1;
-
-    std::vector<fbzz::ai::BTNodeDef> copies;
-    for (const auto& node : m_asset.nodes) {
-        const auto mapped = extracted.idMap.find(node.id);
-        if (mapped == extracted.idMap.end()) continue;
-        fbzz::ai::BTNodeDef copy = node;
-        copy.id = mapped->second;
-        const auto mappedParent = extracted.idMap.find(node.parentId);
-        // 部分木の根だけは元の親のまま (兄弟として並ぶ)。
-        copy.parentId = mappedParent == extracted.idMap.end() ? node.parentId
-                                                              : mappedParent->second;
-        copy.editorX += 40.0f;
-        copy.editorY += 40.0f;
-        copies.push_back(std::move(copy));
-    }
-    for (auto& copy : copies) m_asset.nodes.push_back(std::move(copy));
-
-    // 複製した根を親の末尾へ回す。
-    const auto rootCopy = extracted.idMap.find(nodeId);
-    if (rootCopy != extracted.idMap.end()) {
-        const std::string reason = TryReparent(rootCopy->second, source->parentId);
-        if (!reason.empty()) m_graphCanvas.ReportError(reason, { rootCopy->second });
-        m_selectedNode = rootCopy->second;
-        m_graphCanvas.RequestSelection({ rootCopy->second });
+    if (!duplicated.rejectReason.empty())
+        m_graphCanvas.ReportError(duplicated.rejectReason, { duplicated.newRootId });
+    if (duplicated.newRootId != 0) {
+        m_selectedNode = duplicated.newRootId;
+        m_graphCanvas.RequestSelection({ duplicated.newRootId });
     }
     m_dirty = true;
     RefreshValidation();
@@ -370,25 +275,10 @@ void BehaviorTreePanel::AutoLayout()
 {
     if (m_asset.nodes.empty()) return;
     PushUndo();
-    std::vector<int> nodeIds;
-    std::vector<GraphLayoutEdge> edges;
-    for (const auto& node : m_asset.nodes) {
-        nodeIds.push_back(node.id);
-        if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
-    }
-    const std::vector<int> roots = m_asset.FindRootIds();
-    // 木なので列 = 深さがそのまま階層になり、DAG より整った結果になる。
-    GraphLayoutOptions options;
-    options.columnStep = NODE_COLUMN_STEP;
-    options.rowStep = 170.0f;   // ノード高さ (タイトル + 本文 4 行 + ピン 2 行) が収まる間隔
-    const auto layout = roots.empty() ? ComputeGraphLayout(nodeIds, edges, options)
-                                      : ComputeGraphLayout(nodeIds, edges, roots, options);
-    for (auto& node : m_asset.nodes) {
-        const auto found = layout.find(node.id);
-        if (found == layout.end()) continue;
-        node.editorX = found->second.x;
-        node.editorY = found->second.y;
-    }
+    // 間隔の定数ごと共有実装へ移した。移行前は Editor 側が NODE_COLUMN_STEP、
+    // AI 側が 300.0f 直書きで、たまたま同じ値であることに依存していた
+    // (ノード幅を変えた瞬間にずれる)。
+    btops::AutoLayout(m_asset);
     m_dirty = true;
     m_graphCanvas.RequestFrameAll();
 }
@@ -930,7 +820,8 @@ void BehaviorTreePanel::DrawInspector()
         if (ImGui::Checkbox("Wait For Animation", &node->waitForAnimation)) m_dirty = true;
         break;
     case fbzz::ai::BTNodeType::PlayAudio:
-        if (widgets::AssetPathField("Sound", node->soundPath, ".wav,.ogg,.mp3", m_projectRoot)) m_dirty = true;
+        if (widgets::AssetPathField("Sound", node->soundPath,
+                                    widgets::kAudioClipAssetFilter, m_projectRoot)) m_dirty = true;
         if (ImGui::DragFloat("Volume", &node->volume, 0.01f, 0.0f, 2.0f)) m_dirty = true;
         break;
     case fbzz::ai::BTNodeType::RunScript:
@@ -959,10 +850,23 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
         (void)LoadTree(ctx.selectedAssetPath);
     }
 
+    // 開いているドキュメントを公開する。Operator (bt.auto_layout) の poll が
+    // 「今整列できるか」をこれで判定する。パネルの内部状態を外へ晒さずに済ませたいので、
+    // 公開するのはパスだけにして、実行はワンショット要求で受ける。
+    ctx.behaviorTreeEditorPath = m_path;
+
     if (m_path.empty()) {
         ImGui::TextDisabled("Asset Browser で .behaviortree を開いてください。");
         ImGui::TextDisabled("Create > Behavior Tree で新規作成できます。");
         return;
+    }
+
+    // Operator / メニュー / コマンドパレットからの整列要求。
+    // WHY 要求経由か: 整列は PushUndo を通す必要があり、Undo スタックはこのパネルが
+    //     持っている。外から m_asset だけ書き換えると整列前へ戻せなくなる。
+    if (ctx.requestBehaviorTreeAutoLayout) {
+        ctx.requestBehaviorTreeAutoLayout = false;
+        AutoLayout();
     }
 
     DrawToolbar(ctx);

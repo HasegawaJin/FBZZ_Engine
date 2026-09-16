@@ -1,0 +1,153 @@
+[prefab]
+format_version = 1
+root_count = 1
+
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = '0f822f08-b6ee-4141-b850-d253019b31bb'
+layer = 0
+name = 'Gpu_Swarm'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.VFXComponent]
+    autoDestroy = false
+    duration = 0.0
+    enabled = true
+    loop = true
+    playOnAwake = true
+    speed = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '854120bd-bcb2-4638-9c24-383b6b95bc22'
+layer = 0
+name = 'Swarm'
+parent = 'Gpu_Swarm'
+parentInstanceId = '0f822f08-b6ee-4141-b850-d253019b31bb'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    bursts = []
+    colorVariation = 0.14
+    cullingBoundsPadding = 3.0
+    cullingEnabled = true
+    duration = 4.0
+    emitRate = 2400.0
+    emitVelocity = [ 0.0, 0.35, 0.0 ]
+    enabled = true
+    lifetime = 3.2
+    lifetimeRandom = 0.4
+    lodEnabled = true
+    lodFarDistance = 60.0
+    lodFarRateScale = 0.3
+    lodNearDistance = 20.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = 'Assets/Materials/Effects/FX_EmberDot_Additive.mat'
+    maxParticles = 10000
+    playing = true
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 44
+    shape = 1
+    simulationMode = 1
+    simulationSpace = 0
+    sizeEnd = 0.012
+    sizeStart = 0.035
+    sortMode = 0
+    sphereRadius = 2.2
+    useColorGradient = true
+    velocitySpread = 0.6
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [
+            [ 0.0, 1.0, 0.72, 0.3, 0.0 ],
+            [ 0.15, 1.0, 0.6, 0.2, 1.0 ],
+            [ 0.7, 0.9, 0.32, 0.08, 0.85 ],
+            [ 1.0, 0.5, 0.14, 0.04, 0.0 ]
+        ]
+        space = 0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = -1
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 0.55
+        noiseSpeed = 0.9
+        radius = 0.0
+        space = 0
+        strength = 1.6
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = -1
+        direction = [ 0.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.9
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9df76dee-f641-45e5-a9be-b3ee92b38a0f'
+layer = 0
+name = 'Updraft'
+parent = 'Gpu_Swarm'
+parentInstanceId = '0f822f08-b6ee-4141-b850-d253019b31bb'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [[gameobjects.ForceField.forces]]
+    channels = -1
+    direction = [ 0.0, 1.0, 0.0 ]
+    enabled = true
+    falloffPower = 1.5
+    fieldType = 3
+    noiseFrequency = 0.5
+    noiseSpeed = 1.0
+    radius = 3.5
+    space = 0
+    strength = 4.5
+
+    [[gameobjects.ForceField.forces]]
+    channels = -1
+    direction = [ 0.0, 1.0, 0.0 ]
+    enabled = true
+    falloffPower = 1.2
+    fieldType = 0
+    noiseFrequency = 0.5
+    noiseSpeed = 1.0
+    radius = 3.5
+    space = 0
+    strength = 1.2
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

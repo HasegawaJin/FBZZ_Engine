@@ -9,7 +9,11 @@
 
 Texture2D        g_causticsTex : register(TEX_ALBEDO);
 Texture2D<float> g_depth       : register(TEX_DEPTH);
-SamplerState     sampDefault   : register(SAMPLER_DEFAULT);
+// コースティクス模様はワールド座標でタイリングさせるので wrap。
+SamplerState     sampTiling    : register(SAMPLER_DEFAULT);
+// 深度は全画面フェッチなので clamp。s0 と分けるのは、DX12 では s0 が WRAP に固定で、
+// 同じサンプラーで両方引くとどちらかが必ず間違うため。
+SamplerState     sampDepth     : register(SAMPLER_LINEAR_CLAMP);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
@@ -18,7 +22,7 @@ FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
-    float ndcDepth = g_depth.Sample(sampDefault, p.uv).r;
+    float ndcDepth = g_depth.Sample(sampDepth, p.uv).r;
     if (ndcDepth >= 0.9999f)
     {
         return float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -56,8 +60,8 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float timeOffset = customParameters.w;
     float2 uv0 = wp * tiling + float2(timeOffset, timeOffset * 0.73f);
     float2 uv1 = wp * tiling * 1.37f + float2(-timeOffset * 0.61f, timeOffset * 0.41f);
-    float caustics0 = g_causticsTex.Sample(sampDefault, uv0).r;
-    float caustics1 = g_causticsTex.Sample(sampDefault, uv1).r;
+    float caustics0 = g_causticsTex.Sample(sampTiling, uv0).r;
+    float caustics1 = g_causticsTex.Sample(sampTiling, uv1).r;
     float caustics = saturate((caustics0 + caustics1) * 0.5f);
 
     float attenuation = exp(-waterDepth * 0.45f);

@@ -1,9 +1,10 @@
-// FBZZ Engine
-// Inspector/InspectorPanel.cpp | fbzz::editor
-// 選択 Entity / Asset の Inspector ルーティング
+/// @file    Inspector/InspectorPanel.cpp
+/// @brief   選択 Entity / Asset の Inspector ルーティング。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
-#include <Editor/Panels/AnimationPreviewPanel.hpp>
+#include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorCommon.hpp"
@@ -20,6 +21,7 @@
 #include "InspectorUI.hpp"
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
@@ -80,6 +82,9 @@ void InspectorPanel::OnShutdown()
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Render");
+    // Hierarchy / AssetBrowser から Inspector 下部の Component へドラッグできるよう、
+    // ペイン上下端にカーソルを置いたときだけ現在のウィンドウを自動スクロールする。
+    widgets::UpdateDragAutoScroll();
     widgets::DrawAssetPickerModal(ctx.resources, ctx.imguiRenderer);
 
     if (ctx.mapEditingMode) {
@@ -105,7 +110,6 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     // Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
     // ロック先が破棄 / 削除されていた場合は自動解除する。
     // ------------------------------------------------------------------
-    scene::GameObject* selectedGo = ctx.GetSelectedGO();
     scene::GameObject* go = nullptr;
     const bool hasSelectedAsset = !ctx.selectedAssetPath.empty();
     std::string assetPathToInspect = ctx.selectedAssetPath;
@@ -122,7 +126,15 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     } else if (assetLocked) {
         assetPathToInspect = m_inspectedAssetPath;
     } else {
-        go = selectedGo;
+        const auto selection = ctx.ResolveInspectorSelection();
+        if (selection.type == EditorContext::InspectorSelection::Type::AnimationGraphAsset) {
+            assetPathToInspect.clear();
+        } else if (selection.type == EditorContext::InspectorSelection::Type::AnimationGraphEntity ||
+                   selection.type == EditorContext::InspectorSelection::Type::Entity) {
+            go = selection.gameObject;
+        } else if (selection.type == EditorContext::InspectorSelection::Type::Asset) {
+            assetPathToInspect = selection.assetPath;
+        }
     }
 
     // --- Play 中の編集警告バナー ---
@@ -207,6 +219,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::Spacing();
 
+    const auto resolvedSelection = ctx.ResolveInspectorSelection();
+
     // アセット選択中、または Asset Inspector ロック中 → アセットインスペクターへ
     if ((!m_locked || assetLocked) && !assetPathToInspect.empty()) {
         FBZZ_PROFILE_SCOPE("Inspector::Asset");
@@ -214,8 +228,20 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
+    // Controller アセットの Graph 選択は、Hierarchy の Entity 選択より優先する。
+    if ((!m_locked || assetLocked) &&
+        resolvedSelection.type == EditorContext::InspectorSelection::Type::AnimationGraphAsset) {
+        if (DrawAnimationGraphAssetInspector(ctx)) {
+            ImGui::SeparatorText("Preview");
+            DrawAnimationPreviewWidget(ctx, 240.0f);
+        }
+        return;
+    }
+
     // 複数選択中 (ロックなし) は Multi-select Inspector を表示
-    if (!m_locked && ctx.selectedEntities.size() > 1 && ctx.activeScene) {
+    if (!m_locked &&
+        resolvedSelection.type == EditorContext::InspectorSelection::Type::MultiEntity &&
+        ctx.activeScene) {
         DrawMultiSelectInspector(ctx, ctx.selectedEntities);
         return;
     }
@@ -307,11 +333,13 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
         ImGui::SameLine();
         if (ImGui::SmallButton("Apply")) {
-            if (PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot)) {
-                // WHY: アセットを書き換えただけでは、既に配置済みの他インスタンスは
-                //      古い定義のまま残る。プレファブの意味を成すよう、その場で揃える。
-                const int updated = PrefabSerializer::PropagateToInstances(
-                    *ctx.activeScene, go->prefabAssetPath, go->GetID(), ctx.projectRoot);
+            // WHY ApplyAndPropagate か: アセットを書き換えただけでは、既に配置済みの
+            //     他インスタンスは古い定義のまま残る。Apply と伝播を 1 つの操作として
+            //     閉じてあるので、呼び忘れが起きる場所が無い
+            //     (実際 AI の prefab.apply だけが伝播を呼んでいなかった)。
+            const int updated = PrefabSerializer::ApplyAndPropagate(
+                *ctx.activeScene, go->GetID(), ctx.projectRoot);
+            if (updated >= 0) {
                 ctx.requestAssetBrowserRefresh = true;
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
                 FBZZ_LOG_INFO("Prefab applied: %s (%d other instance(s) updated)",
@@ -331,7 +359,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::SmallButton("Revert")) {
             std::vector<scene::EntityID> newRoots;
             if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(), newRoots, ctx.projectRoot)) {
-                if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
                 return; // 古い GO を描画し続けないよう早期リターン
             }
@@ -351,7 +379,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 for (auto& candidate : ctx.activeScene->GameObjects())
                     if (candidate.prefabAssetPath == prefabPath)
                         instances.push_back(candidate.GetID());
-                if (!instances.empty()) ctx.selectedEntities = instances;
+                if (!instances.empty()) SelectEntities(ctx, instances, SelectionReveal::Skip);
                 return; // 選択が複数になったので、この後の単体 Inspector は描かない
             }
             if (ImGui::IsItemHovered())
@@ -456,7 +484,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                         std::vector<scene::EntityID> newRoots;
                         if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
                                                      newRoots, ctx.projectRoot)) {
-                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                             if (ctx.markSceneDirty) ctx.markSceneDirty();
                             cache.valid = false;
                             cache.guid.clear();
@@ -466,9 +494,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("Apply All to Prefab")) {
-                        if (PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot)) {
-                            const int updated = PrefabSerializer::PropagateToInstances(
-                                *ctx.activeScene, go->prefabAssetPath, go->GetID(), ctx.projectRoot);
+                        const int updated = PrefabSerializer::ApplyAndPropagate(
+                            *ctx.activeScene, go->GetID(), ctx.projectRoot);
+                        if (updated >= 0) {
                             ctx.requestAssetBrowserRefresh = true;
                             if (ctx.markSceneDirty) ctx.markSceneDirty();
                             cache.guid.clear();
@@ -487,7 +515,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                         std::vector<scene::EntityID> newRoots;
                         if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
                                                      newRoots, ctx.projectRoot, &kept)) {
-                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                             if (ctx.markSceneDirty) ctx.markSceneDirty();
                             cache.guid.clear();
                             ImGui::EndPopup();
@@ -515,6 +543,25 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     //      スクロールしても頭の 1 ブロックだけ性格が違うと分かるようにする。
     const widgets::ComponentBodyScope headerCard = widgets::BeginCard();
     ImGui::Spacing();
+
+    // Unity と同じく、GameObject 自体の有効状態を名前欄の左で切り替える。
+    // WHY activeSelf か: 親が無効でも Inspector からは子自身の保存値を編集できる必要があり、
+    //      activeInHierarchy を直接表示すると親の状態を誤って上書きしてしまう。
+    {
+        bool active = go->activeSelf();
+        if (ImGui::Checkbox("##game_object_active", &active)) {
+            const bool before = go->activeSelf();
+            go->SetActive(active);
+            PushGameObjectPropertyCommand(
+                ctx, go->GetID(), "Toggle GameObject",
+                before, active,
+                [](scene::GameObject& target, bool value) { target.SetActive(value); });
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", active ? "Enabled - uncheck to disable this GameObject"
+                                             : "Disabled - check to enable this GameObject");
+        ImGui::SameLine();
+    }
 
     char nameBuf[256];
     std::snprintf(nameBuf, sizeof(nameBuf), "%s", go->name.c_str());
@@ -614,21 +661,27 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     { FBZZ_PROFILE_SCOPE("Inspector::Transform");
       DrawTransformInspectors(go, ctx); }
+
+    InspectorComponentDrawCollector componentCollector;
+    componentCollector.gameObject = go;
+    componentCollector.editorState = &ctx.editorSceneState;
+    ctx.inspectorComponentCollector = &componentCollector;
     if (ctx.mapEditingMode && ctx.mapInspectorFilter) {
         const bool hasMapComponent =
             go->GetComponent<scene::TerrainComponent>()
             || go->GetComponent<scene::WaterComponent>()
-            || go->GetComponent<scene::TerrainDetailComponent>()
-            || go->GetComponent<scene::FoliageComponent>()
             || go->GetComponent<scene::TerrainGridComponent>();
         if (!hasMapComponent) {
             ImGui::TextDisabled("No Map component on this GameObject.");
             ImGui::TextDisabled("Disable Map Components Only to inspect everything.");
+            ctx.inspectorComponentCollector = nullptr;
             return;
         }
         { FBZZ_PROFILE_SCOPE("Inspector::TerrainWater");
           DrawTerrainWaterInspectors(
-              go, ctx, m_componentClipboard, m_componentClipboardType); }
+               go, ctx, m_componentClipboard, m_componentClipboardType); }
+        componentCollector.DrawInOrder();
+        ctx.inspectorComponentCollector = nullptr;
         return;
     }
     const auto drawAutomatic = [&](scene::ComponentCategory category) {
@@ -666,7 +719,30 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
       DrawTerrainWaterInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     drawAutomatic(scene::ComponentCategory::Terrain);
     drawAutomatic(scene::ComponentCategory::Misc);
-    DrawScriptInspectors(go, ctx);
+    auto* scriptComponent = go->GetComponent<scene::ScriptComponent>();
+    if (scriptComponent) {
+        // ScriptComponent は 1 つの入れ物だが、Inspector 上は各スクリプトを
+        // 独立した Component カードとして扱う。これにより Engine Component と
+        // スクリプトを同じ COMPONENT 順序リストで相互に入れ替えられる。
+        BeginScriptInspectorFrame(go, ctx);
+        for (int i = 0; i < static_cast<int>(scriptComponent->scripts.size()); ++i) {
+            const std::string orderKey = GetScriptOrderKey(*scriptComponent, i);
+            ctx.editorSceneState.EnsureComponentOrder(go->instanceId, orderKey);
+            componentCollector.Add(orderKey, [&componentCollector, go, &ctx, i]() {
+                componentCollector.drawing = true;
+                DrawScriptCard(go, ctx, i);
+                componentCollector.drawing = false;
+            });
+        }
+    }
+    // ここまでが「この GameObject の全 Component」の収集。以降で残骸キーを掃除してよい。
+    // NOTE: 上の Map モード絞り込み経路では complete を立てないこと。地形系しか
+    //       収集していない状態で掃除すると、隠れているだけの Component の並びが消える。
+    componentCollector.complete = true;
+    componentCollector.DrawInOrder();
+    ctx.inspectorComponentCollector = nullptr;
+    if (scriptComponent)
+        EndScriptInspectorFrame(go, ctx);
 
     ImGui::Spacing();
     { FBZZ_PROFILE_SCOPE("Inspector::AddComponent");
@@ -676,9 +752,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     // WHY: Unity と同じ動線。Animator 付きオブジェクトを選ぶだけでモーションを
     //   確認できるようにする。SkinnedMeshRenderer は子に分かれている構成も
     //   あるため、判定は Animator の有無だけで行う。
-    // 対象未解決のときに空の "Preview" 見出しだけ残らないよう、
-    // 直前フレームの解決結果 (HasAnimationPreviewTarget) で出し分ける。
-    if (go->GetComponent<scene::AnimatorComponent>() && HasAnimationPreviewTarget()) {
+    // 対象の解決は DrawAnimationPreviewWidget / TickAnimationPreview が行う。
+    // HasAnimationPreviewTarget() をここで先に判定すると、初回選択時に Preview 自身が
+    // 呼ばれず、再選択やパネルの再アタッチまで対象が解決されない。
+    if (go->GetComponent<scene::AnimatorComponent>()) {
         FBZZ_PROFILE_SCOPE("Inspector::AnimationPreview");
         ImGui::Spacing();
         ImGui::SeparatorText("Preview");

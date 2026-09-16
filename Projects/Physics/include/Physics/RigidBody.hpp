@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RigidBody.hpp | fbzz::physics
-// 剛体の状態と力の適用
+/// @file    RigidBody.hpp
+/// @brief   剛体の状態と力の適用。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Math/Vector3.hpp> // math::Vector3
 #include <Math/Quaternion.hpp> // math::Quaternion
@@ -29,8 +30,17 @@ namespace fbzz::physics
         void ApplyForceAtPoint(const math::Vector3& force,
                                 const math::Vector3& worldPoint);
         void ApplyImpulse(const math::Vector3& impulse);
+        // 重心から外れた点へのインパルス。並進と回転の両方が変わる。
+        //
+        // WHY ApplyImpulse と分けるか: 重心へのインパルスは物体を «押す» だけだが、
+        //     端を殴れば回る。ラグドールが瓦礫を蹴るときに必要なのは後者で、
+        //     重心へ入れると «回らずに滑って行く» 不自然な弾き方になる。
+        void ApplyImpulseAtPoint(const math::Vector3& impulse,
+                                 const math::Vector3& worldPoint);
         void ApplyAngularImpulse(const math::Vector3& angularImpulse); // PhysicsSolver から使用
         void ApplyTorque(const math::Vector3& torque);
+        // World 内部用: Volume が毎 substep 掛ける環境トルク。ApplyForceNoWake と同じ理由で Wake しない。
+        void ApplyTorqueNoWake(const math::Vector3& torque);
 
         // 積分 (半陰的オイラー法、World::Step から呼ばれる)
         void Integrate(float dt);
@@ -87,6 +97,8 @@ namespace fbzz::physics
         // 重力と減衰のゲーム向け調整値。World の重力ベクトルは共有し、剛体ごとに倍率だけ変える。
         bool  m_useGravity  = true;
         float m_gravityScale = 1.0f;
+        /// ワールドのステップに対する時計倍率。ランタイム専用。
+        float m_timeScale = 1.0f;
         float m_linearDrag   = 0.0f;
         float m_angularDrag  = 0.0f;
         bool  m_allowSleeping = true;

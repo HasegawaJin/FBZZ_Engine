@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12StructuredBuffer.cpp | fbzz::renderer
-// CPU更新用Upload BufferとGPU書き込み用Default Bufferの生成
+/// @file    DX12StructuredBuffer.cpp
+/// @brief   CPU更新用Upload Buffer、読み取り専用Default Buffer、GPU書き込み用Default Bufferの生成。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12StructuredBuffer.hpp"
 
 #include "DX12Context.hpp"
@@ -20,17 +21,22 @@ DX12StructuredBuffer::~DX12StructuredBuffer()
 }
 
 bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker, const void* data,
-                                uint32_t elementCount, uint32_t stride, bool readWrite)
+                                uint32_t elementCount, uint32_t stride, bool readWrite,
+                                bool gpuLocalReadOnly)
 {
-    if (!context || !tracker || elementCount == 0 || stride == 0) return false;
+    if (!context || !tracker || elementCount == 0 || stride == 0 ||
+        (readWrite && gpuLocalReadOnly)) return false;
     m_tracker = tracker;
     m_context = context;
     m_elementCount = elementCount;
     m_stride = stride;
     m_readWrite = readWrite;
+    m_gpuLocalReadOnly = gpuLocalReadOnly;
     const size_t sizeBytes = GetSize();
     ID3D12Device* device = context->GetDevice();
-    if (readWrite) {
+    if (readWrite || gpuLocalReadOnly) {
+        // 初期データは一度だけ Upload Heap を経由し、以後の SRV 読み取りは DEFAULT Heap から行う。
+        // WHY: immutable なスキニング入力を CPU 可視メモリへ置き続ける必要はない。
         if (!context->CreateDefaultBuffer(data, sizeBytes, m_resource)) return false;
         tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
     } else {
@@ -80,6 +86,11 @@ bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker,
 void DX12StructuredBuffer::Update(const void* data, size_t sizeBytes)
 {
     if (!data || sizeBytes == 0) return;
+    if (m_gpuLocalReadOnly) {
+        // immutable SRV の更新要求は契約違反。再生成による明示的な差し替えを要求する。
+        FBZZ_LOG_WARN("DX12StructuredBuffer: GPUローカル読み取り専用バッファは更新できません");
+        return;
+    }
     if (m_readWrite) {
         const size_t copySize = (std::min)(sizeBytes, GetSize());
         if (!m_context->IsFrameOpen()) {
