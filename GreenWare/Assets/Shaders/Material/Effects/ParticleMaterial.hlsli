@@ -24,6 +24,10 @@
 ///   {
 ///       float4 coreColor;   // .mat の [params] と **名前** で結ばれる
 ///       float  filaments;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
 ///   };
 ///
 ///   // VSMain はこのヘッダーが供給する。書くのは PSMain だけ。
@@ -51,8 +55,10 @@
 // b11 の ParticleRenderConstants / ParticleVSIn / ParticlePSIn / ParticleBillboardVS。
 // Constants.hlsli より先に include すること (b2 を材質へ空けるため)。
 #include "Rendering/ParticleCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    gParticleTex : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(gParticleTex, texAlbedoIndex);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);
 
 #ifdef FBZZ_PARTICLE_GPU
@@ -78,12 +84,17 @@ struct GpuParticle
     float4 nextUvRect;    // 次のコマの UV 矩形
 };
 
-StructuredBuffer<GpuParticle> gParticles       : register(SB_GPU_PARTICLES);
+// WHY FBZZ_SBUFFER ではなく FBZZ_VS_SBUFFER か: この 2 本は頂点シェーダーが読む。
+//     旧モデルでは VS の t14/t15 は «頂点 SRV テーブル» の vsBuffers[0]/[1] を指しており、
+//     同じ t14/t15 でもコンピュート側 (ParticleGpuSim.cs 等) の srvBuffers とは別物だった。
+//     bindless の添字空間は平坦なので、ここで空間を取り違えるとコンピュート用の
+//     ディスクリプタを VS が読んで «粒子が全部原点に出る» 形で壊れる。
+FBZZ_VS_SBUFFER(GpuParticle, gParticles,       VS_SB_BUFFER0_SLOT);
 // GPU ソート結果 (key, particleIndex)。gGpuSortEnabled が 0 のときは何もバインドされない。
 // WHY: 半透明は描画順で結果が変わるため、粒子プールの並び順ではなくカメラ距離で
 //      並べ替えた順に描く必要がある。プール自体は並べ替えない
 //      (リングバッファの位置が動くとスポーンとシミュレーションが破綻する)。
-StructuredBuffer<uint2>       gSortedParticles : register(SB_GPU_SORT);
+FBZZ_VS_SBUFFER(uint2,       gSortedParticles, VS_SB_BUFFER1_SLOT);
 
 static const float2 FBZZ_PARTICLE_QUAD_CORNERS[6] =
 {

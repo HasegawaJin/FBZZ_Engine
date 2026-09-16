@@ -7,11 +7,12 @@
 //     float の原子加算が要る (DX11 には無い)。集めればボクセルごとに 1 スレッドで閉じる。
 // 媒質: R = 粒子の山の和 / G = 0 / B = 色の鍵 (山の重みで平均) / A = 液体なら 1。速度: 山の重みで平均。
 #include "Bake/Fluid/LiquidGrid.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<float4> gState        : register(t14);
-StructuredBuffer<float4> gSpawn        : register(t29); // [2i + 1].w = 色の鍵
-RWTexture3D<float4>      gMediumOut    : register(u0);
-RWTexture3D<float4>      gVelocityOut  : register(u1);
+FBZZ_SBUFFER_T(float4, gState, 14);
+FBZZ_SBUFFER_T(float4, gSpawn, 29); // [2i + 1].w = 色の鍵
+FBZZ_RWTEX3D_T(float4, gMediumOut, 0);
+FBZZ_RWTEX3D_T(float4, gVelocityOut, 1);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)

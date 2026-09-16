@@ -14,8 +14,9 @@
 // ParticleCommon.hlsli を最初に include する (b11 の cbuffer / ParticleVSIn /
 // ParticlePSIn / ParticleBillboardVS を供給し、b2 を材質へ空ける)。
 #include "Rendering/ParticleCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    gParticleTex : register(TEX_ALBEDO);
+FBZZ_TEX2D(gParticleTex, TEX_ALBEDO_SLOT);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);
 
 struct DensityPSIn

@@ -10,6 +10,8 @@
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/SpecularAA.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
@@ -26,14 +28,22 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float3 _pad0;
     uint   textureMask;
     float3 _pad1;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
+    uint texNormalIndex;
+    uint texMetallicIndex;
+    uint texEmissiveIndex;
+    uint texAOIndex;
 };
 
-Texture2D<float>       texShadow        : register(TEX_SHADOW);
-Texture2D              texAlbedo        : register(TEX_ALBEDO);
-Texture2D              texNormal        : register(TEX_NORMAL);
-Texture2D              texMetallicRough : register(TEX_METALLIC_ROUGH);
-Texture2D              texEmissive      : register(TEX_EMISSIVE);
-Texture2D              texAO            : register(TEX_AO);
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
+FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);
+FBZZ_MATERIAL_TEX(texMetallicRough, texMetallicIndex);
+FBZZ_MATERIAL_TEX(texEmissive, texEmissiveIndex);
+FBZZ_MATERIAL_TEX(texAO, texAOIndex);
 SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
 

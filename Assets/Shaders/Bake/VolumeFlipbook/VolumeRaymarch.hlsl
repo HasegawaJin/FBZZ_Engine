@@ -18,6 +18,7 @@
 // gLiquidThreshold を跨ぐところを表面とみなし、密度の勾配を法線にして陰影を付ける。
 #include "Common/Fullscreen.hlsli"
 #include "Rendering/ParticleNoise.hlsli" // FbmNoise3D
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer VolumeRaymarchConstants : register(b0)
 {
@@ -59,8 +60,8 @@ cbuffer VolumeRaymarchConstants : register(b0)
     float gDistortionPad2;
 };
 
-Texture3D<float4> gMedium      : register(t0); // R 密度 / G 温度 / B colorKey / A 液体の割合
-Texture3D<float4> gVelocity    : register(t1);
+FBZZ_TEX3D_T(float4, gMedium, 0); // R 密度 / G 温度 / B colorKey / A 液体の割合
+FBZZ_TEX3D_T(float4, gVelocity, 1);
 SamplerState      gLinearClamp : register(s2);
 
 // 背景は «表示の色» (sRGB) で決め、合成のためにリニアへ戻す。

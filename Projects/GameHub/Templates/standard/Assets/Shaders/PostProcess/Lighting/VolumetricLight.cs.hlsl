@@ -27,17 +27,18 @@
 #include "Rendering/CloudVolume.hlsli"
 #include "Common/Space.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // ---- リソース ---------------------------------------------------------------
 
-Texture2D<float>         texDepth  : register(t7);
-Texture2D<float>         texShadow : register(t8);
+FBZZ_TEX2D_T(float, texDepth, 7);
+FBZZ_TEX2D_T(float, texShadow, 8);
 
 SamplerState             sampDefault : register(s0);
 SamplerComparisonState   sampShadow  : register(s1);
 
 // 出力 (UAV_VOLUMETRIC = u4)
-RWTexture2D<float4>      OutputVolumetric : register(u4);
+FBZZ_RWTEX2D_T(float4, OutputVolumetric, 4);
 
 // ---- フェーズ関数 -----------------------------------------------------------
 

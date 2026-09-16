@@ -3,20 +3,21 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gScalarsIn   : register(t0); // x 密度 / y 温度 / z 燃料 / w 色の質量
-Texture3D<float4>   gVelocityIn  : register(t1);
-Texture3D<float4>   gSolidIn     : register(t2); // xyz 固体の速度 / w 1 = 固体
+FBZZ_TEX3D_T(float4, gScalarsIn, 0); // x 密度 / y 温度 / z 燃料 / w 色の質量
+FBZZ_TEX3D_T(float4, gVelocityIn, 1);
+FBZZ_TEX3D_T(float4, gSolidIn, 2); // xyz 固体の速度 / w 1 = 固体
 // Texture 発生源のマスク。4×4 タイル (1 タイル 256²) のアトラスで値は R。Texture 発生源が無ければ 1×1 の白。
 // WHY 共通ヘッダーに置かないか: 引くのは Inject だけ。他のカーネルに宣言だけ残すと未束縛の SRV を抱える。
-Texture2D<float4>   gSourceMasks : register(t3);
-Texture3D<float4>   gFuelColorIn : register(t4); // z 燃料の色の質量 (= 燃料 × 色の鍵)
-RWTexture3D<float4> gScalarsOut  : register(u0);
-RWTexture3D<float4> gVelocityOut : register(u1);
+FBZZ_TEX2D_T(float4, gSourceMasks, 3);
+FBZZ_TEX3D_T(float4, gFuelColorIn, 4); // z 燃料の色の質量 (= 燃料 × 色の鍵)
+FBZZ_RWTEX3D_T(float4, gScalarsOut, 0);
+FBZZ_RWTEX3D_T(float4, gVelocityOut, 1);
 // x 燃焼の膨張 (圧力解法への湧き出し)。この刻みの Divergence が読んだら用済み。
 // WHY スカラーの w に同居させないか: w は色の質量として刻みを跨いで運ぶので、刻み限りの値を置けない。
-RWTexture3D<float4> gExpansionOut : register(u2);
-RWTexture3D<float4> gFuelColorOut : register(u3);
+FBZZ_RWTEX3D_T(float4, gExpansionOut, 2);
+FBZZ_RWTEX3D_T(float4, gFuelColorOut, 3);
 
 static const uint  kMaskColumns = 4u;        // kFluidSourceMaskAtlasColumns
 static const float kMaskTileTexels = 256.0f; // kFluidSourceMaskSize

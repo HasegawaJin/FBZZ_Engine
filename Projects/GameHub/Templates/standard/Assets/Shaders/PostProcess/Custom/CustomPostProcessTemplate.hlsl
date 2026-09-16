@@ -111,9 +111,10 @@
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/PostProcess.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // 入力テクスチャ — t5 は RenderSystem が自動バインドする LDR カラーバッファ
-Texture2D    texInput   : register(TEX_GBUFFER0);
+FBZZ_TEX2D(texInput, TEX_GBUFFER0_SLOT);
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 

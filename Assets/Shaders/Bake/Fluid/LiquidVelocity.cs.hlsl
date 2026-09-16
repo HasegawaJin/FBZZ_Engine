@@ -3,9 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 #include "Bake/Fluid/LiquidCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<float4>   gPredicted : register(t14);
-RWStructuredBuffer<float4> gState     : register(u2);
+FBZZ_SBUFFER_T(float4, gPredicted, 14);
+FBZZ_RWSBUFFER_T(float4, gState, 2);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

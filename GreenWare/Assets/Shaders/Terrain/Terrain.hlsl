@@ -105,6 +105,7 @@ cbuffer LightConstants : register(CB_LIGHT)
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/Wetness.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // ============================================================================
 // テクスチャ・サンプラー宣言 (Phase 4)
@@ -124,11 +125,11 @@ cbuffer LightConstants : register(CB_LIGHT)
 // s1 = シャドウ用 Comparison Border Zero（ライト錐台外を非遮蔽として扱う）
 // s2 = スプラットマップ用 Clamp Linear（UV が [0,1] を超えた場合に端値を維持）
 // ============================================================================
-Texture2D    g_splatmap      : register(t0);
+FBZZ_TEX2D(g_splatmap, 0);
 Texture2D    g_diffuse[4]    : register(t1); // t1, t2, t3, t4
 Texture2D    g_normal[4]     : register(t5); // t5, t6, t7, t8
 Texture2D    g_aoRoughness[4] : register(t9); // R=AO, G=Roughness
-Texture2D<float> g_shadowMap : register(t13);
+FBZZ_TEX2D_T(float, g_shadowMap, 13);
 // 地形レイヤーはワールド座標でタイリングするので wrap。異方性は x4。
 // WHY x16 の s0 を使わないか: 地形は画面を広く覆い、レイヤーごとに diffuse / normal /
 //     aoRoughness の 3 枚を引く。x16 のコストがそのまま枚数ぶん乗る。地面は視線に対して

@@ -13,10 +13,9 @@
 /// Texture (スロット名は .mat の [textures] と共通):
 ///   t0 albedo / t1 normal / t3 emissive — いずれも任意
 #include "Material/Decal/DecalCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D texAlbedo   : register(TEX_ALBEDO);
-Texture2D texNormal   : register(TEX_NORMAL);
-Texture2D texEmissive : register(TEX_EMISSIVE);
 
 // LAYOUT: RenderPassContext.hpp の DecalMaterialCB と一致させること。
 // textureMask は renderer::Material::Upload がテクスチャスロットの有効性から埋める。
@@ -30,7 +29,18 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  normalStrength;  // offset 48
     uint   textureMask;     // offset 52  bit0=albedo bit1=normal bit3=emissive
     float2 _matPad;         // offset 56
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
+    uint texNormalIndex;
+    uint texEmissiveIndex;
 };
+
+// WHY cbuffer の後ろへ置くか: 添字フィールドを参照して初期化するため、
+//     宣言はフィールドより後ろでなければならない。
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
+FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);
+FBZZ_MATERIAL_TEX(texEmissive, texEmissiveIndex);
 
 DecalPixelInput VSMain(uint id : SV_VertexID)
 {

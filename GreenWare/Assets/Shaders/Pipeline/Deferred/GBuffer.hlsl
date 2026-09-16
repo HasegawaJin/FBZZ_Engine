@@ -14,10 +14,11 @@
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LodDither.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    texAlbedo        : register(TEX_ALBEDO);
-Texture2D    texNormal        : register(TEX_NORMAL);
-Texture2D    texMetallicRough : register(TEX_METALLIC_ROUGH);
+FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
+FBZZ_TEX2D(texNormal, TEX_NORMAL_SLOT);
+FBZZ_TEX2D(texMetallicRough, TEX_METALLIC_ROUGH_SLOT);
 SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 
 PSInput VSMain(VSInput v)

@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gVelocityIn  : register(t0);
-Texture3D<float4>   gCurlIn      : register(t1);
-RWTexture3D<float4> gVelocityOut : register(u0);
+FBZZ_TEX3D_T(float4, gVelocityIn, 0);
+FBZZ_TEX3D_T(float4, gCurlIn, 1);
+FBZZ_RWTEX3D_T(float4, gVelocityOut, 0);
 
 float CurlLengthDerivative(uint3 id, uint axis)
 {

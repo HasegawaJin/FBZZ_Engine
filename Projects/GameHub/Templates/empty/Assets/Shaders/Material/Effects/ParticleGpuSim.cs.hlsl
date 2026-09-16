@@ -14,6 +14,7 @@
 #include "Common/Binding.hlsli"
 #include "Common/Color.hlsli"
 #include "Rendering/ParticleNoise.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // ---------- 構造体 --------------------------------------------------------
 
@@ -161,13 +162,13 @@ cbuffer GpuEmitterCB : register(b0)
     float4   gGradientMeta;         // x=キー数, y=補間モード, z/w=予約
 };
 
-StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
-RWStructuredBuffer<GpuParticle>   gParticles   : register(UAV_GPU_PARTICLES);
-Texture2D<float>                   gSceneDepth : register(TEX_DEPTH);
+FBZZ_SBUFFER_T(GpuSpawnEntry, gSpawnBuffer, SB_GPU_SPAWN_SLOT);
+FBZZ_RWSBUFFER_T(GpuParticle, gParticles, UAV_GPU_PARTICLES_SLOT);
+FBZZ_TEX2D_T(float, gSceneDepth, TEX_DEPTH_SLOT);
 // このエミッターに効く力場一式。本数は gForceFieldCount。上限は無い。
-StructuredBuffer<GpuForceField>    gParticleForces : register(SB_PARTICLE_FORCES);
+FBZZ_SBUFFER_T(GpuForceField, gParticleForces, SB_PARTICLE_FORCES_SLOT);
 // 常駐中の速度場を積んだアトラス。場が 1 枚も無くても 1x1x1 が必ず束縛される。
-Texture3D<float4>                  gVelocityAtlas  : register(TEX_VELOCITY_FIELD);
+FBZZ_TEX3D_T(float4, gVelocityAtlas, TEX_VELOCITY_FIELD_SLOT);
 SamplerState                       gVelocitySamp   : register(SAMPLER_LINEAR_CLAMP);
 
 // ---------- カールノイズ (乱流ベクトルフィールド) ---------------------------
@@ -427,20 +428,25 @@ float3 OklabToLinear(float3 lab)
 
 // 2 キーをオーサリング空間 (sRGB) で受け取り、指定空間で混ぜて sRGB のまま返す。
 // アルファは常に線形補間 (不透明度は光量ではないため色空間の対象外)。
+// NOTE: 出口を 1 つにしてある。ループ内で展開される関数の早期 return は FXC が X4000 で咎める。
 float4 MixGradientKeys(float4 a, float4 b, float alpha, float space)
 {
-    float w = lerp(a.a, b.a, alpha);
+    float3 rgb;
     if (space > 1.5f)   // Oklab
     {
         float3 oa = LinearToOklab(SRGBToLinear(a.rgb));
         float3 ob = LinearToOklab(SRGBToLinear(b.rgb));
-        return float4(LinearToSRGB(OklabToLinear(lerp(oa, ob, alpha))), w);
+        rgb = LinearToSRGB(OklabToLinear(lerp(oa, ob, alpha)));
     }
-    if (space > 0.5f)   // Linear
+    else if (space > 0.5f)   // Linear
     {
-        return float4(LinearToSRGB(lerp(SRGBToLinear(a.rgb), SRGBToLinear(b.rgb), alpha)), w);
+        rgb = LinearToSRGB(lerp(SRGBToLinear(a.rgb), SRGBToLinear(b.rgb), alpha));
     }
-    return float4(lerp(a.rgb, b.rgb, alpha), w);   // Gamma
+    else   // Gamma
+    {
+        rgb = lerp(a.rgb, b.rgb, alpha);
+    }
+    return float4(rgb, lerp(a.a, b.a, alpha));
 }
 
 // 戻り値はリニア。粒子バッファへ書く色は常にリニアで、描画側は変換しない。

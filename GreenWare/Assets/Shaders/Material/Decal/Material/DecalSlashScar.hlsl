@@ -22,8 +22,9 @@
 /// 投影軸はデカールのローカル +Y。uv.x が斬った向き、uv.y がそれに直交する側で、
 /// 呼び出し側 (SlashScarComponent) が箱の向きでそれを決める。
 #include "Material/Decal/DecalCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D texAlbedo : register(TEX_ALBEDO);
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
@@ -39,7 +40,12 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  waver;          // offset 56  中心線の «ぶれ»。0 で定規で引いた直線
     float  seed;           // offset 60  1 枚ごとの揺らぎの種
     uint   textureMask;    // offset 64  bit0 = albedo で裂け目を変調する
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
 };
+
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 
 DecalPixelInput VSMain(uint id : SV_VertexID)
 {

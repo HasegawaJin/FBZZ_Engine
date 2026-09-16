@@ -18,6 +18,7 @@
 
 #include "Common/Binding.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // 入力頂点。C++ の renderer::SkinnedVertex と完全に一致させること (76 bytes)。
 struct SkinSrcVertex
@@ -40,13 +41,13 @@ struct SkinnedOutVertex
     float4 color;        // 44
 };                       // = 60
 
-StructuredBuffer<SkinSrcVertex>     gSrcVertices : register(SB_SKIN_SRC_VERTICES);
+FBZZ_SBUFFER_T(SkinSrcVertex, gSrcVertices, SB_SKIN_SRC_VERTICES_SLOT);
 // ボーンパレットは cbuffer ではなく StructuredBuffer で受ける。
 // WHY: 動的インデックスは SRV のほうが素直に走る。cbuffer 配列への動的アクセスは
 //      ハードウェアによって定数キャッシュを外れ、頂点あたり 16 回のスカラーロードが
 //      ベクターロードへ落ちる。ここは全スキンド頂点が必ず通る場所なので効きが大きい。
-StructuredBuffer<float4x4>          gBoneMatrices : register(SB_SKIN_BONES);
-RWStructuredBuffer<SkinnedOutVertex> gOutVertices : register(UAV_SKINNED_VERTICES);
+FBZZ_SBUFFER_T(float4x4, gBoneMatrices, SB_SKIN_BONES_SLOT);
+FBZZ_RWSBUFFER_T(SkinnedOutVertex, gOutVertices, UAV_SKINNED_VERTICES_SLOT);
 
 cbuffer SkinningConstants : register(b0)
 {

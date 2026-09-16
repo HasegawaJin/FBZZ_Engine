@@ -17,7 +17,50 @@ DX12StructuredBuffer::~DX12StructuredBuffer()
     if (m_resource && m_mapped) m_resource->Unmap(0, nullptr);
     m_mapped = nullptr;
     if (m_tracker) m_tracker->Remove(m_resource.Get());
-    if (m_context) m_context->DeferRelease(m_resource);
+    if (m_context) {
+        // リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
+        m_context->FreeBindlessSlot(m_bindlessIndex);
+        m_context->FreeBindlessSlot(m_bindlessUavIndex);
+        m_context->DeferRelease(m_resource);
+    }
+}
+
+uint32_t DX12StructuredBuffer::GetBindlessIndex() const
+{
+    if (m_bindlessIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessIndex;
+    if (!m_context || !m_descriptorHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetSrv(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessIndex = slot;
+    return slot;
+}
+
+uint32_t DX12StructuredBuffer::GetBindlessUavIndex() const
+{
+    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessUavIndex;
+    // 読み取り専用で作られたバッファは UAV ディスクリプタを持たない。ここで弾かないと
+    // GetUav() が SRV 枠を指し、「書けるつもりの SRV」を配ってしまう。
+    if (!m_context || !m_readWrite || !m_descriptorHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetUav(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessUavIndex = slot;
+    return slot;
 }
 
 bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker, const void* data,

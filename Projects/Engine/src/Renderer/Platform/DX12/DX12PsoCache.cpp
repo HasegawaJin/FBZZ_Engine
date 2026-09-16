@@ -7,6 +7,7 @@
 #include "DX12Context.hpp"
 #include "DX12Shader.hpp"
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Renderer/BindlessIndices.hpp>
 #include <array>
 #include <d3dcompiler.h>
 
@@ -19,8 +20,7 @@ namespace {
 //
 // WHY: DX12 は Root Signature へ焼き込む静的サンプラーなので、レジスタごとに 1 つの意味へ
 //      固定するしかない。この制約に両バックエンドを合わせるため、パス単位でサンプラーを
-//      差し替える API (旧 IRenderer::SetSampler) は廃止した。DX11 側は同じ並びを
-//      DX11Renderer::BindStaticSamplers が張る。以前は
+//      差し替える API (旧 IRenderer::SetSampler) は廃止した。以前は
 //      SamplerMode の列挙順をそのままレジスタ番号として並べていたため、s1 が比較サンプラーでなく
 //      通常 Linear (ComparisonFunc=NEVER) に、s4 が wrap でなく clamp になっていた。
 //      前者は SampleCmpLevelZero が常に 0 を返して全面影に、後者はタイラブルな 3D ノイズが
@@ -85,11 +85,22 @@ size_t DX12PsoCache::KeyHash::operator()(const Key& key) const
     return hash;
 }
 
-bool DX12PsoCache::Initialize(ID3D12Device* device)
+bool DX12PsoCache::Initialize(ID3D12Device* device, bool bindlessEnabled)
 {
     if (!device) return false;
     m_device = device;
+    m_bindlessEnabled = bindlessEnabled;
     return CreateRootSignature() && CreateComputeRootSignature();
+}
+
+D3D12_ROOT_SIGNATURE_FLAGS DX12PsoCache::BaseRootSignatureFlags() const
+{
+    // WHY 既存のディスクリプタテーブルを残したまま立てるか: このフラグは «ヒープを直接引ける»
+    //     という許可を足すだけで、テーブル経由の束縛を無効化しない。144 本のシェーダーを
+    //     一斉に書き換えずに、bindless へ移したものから順に切り替えられる。
+    return m_bindlessEnabled
+        ? D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED
+        : D3D12_ROOT_SIGNATURE_FLAG_NONE;
 }
 
 void DX12PsoCache::Shutdown()
@@ -108,27 +119,19 @@ void DX12PsoCache::ClearPipelines()
 
 bool DX12PsoCache::CreateComputeRootSignature()
 {
-    std::array<D3D12_ROOT_PARAMETER1, 16> parameters{};
+    // 並びは描画側と揃える (param 14 = bindless 添字ブロック b14)。
+    // SRV / UAV テーブルは撤去済み。CS も ResourceDescriptorHeap から直接引く。
+    std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
     for (UINT slot = 0; slot < 14; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[slot].Descriptor.ShaderRegister = slot;
         parameters[slot].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
         parameters[slot].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     }
-    D3D12_DESCRIPTOR_RANGE1 srvRange{};
-    srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    srvRange.NumDescriptors = 32;
-    srvRange.BaseShaderRegister = 0;
-    srvRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
-    parameters[14].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    parameters[14].DescriptorTable = {1, &srvRange};
-    D3D12_DESCRIPTOR_RANGE1 uavRange{};
-    uavRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-    uavRange.NumDescriptors = 8;
-    uavRange.BaseShaderRegister = 0;
-    uavRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
-    parameters[15].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    parameters[15].DescriptorTable = {1, &uavRange};
+    parameters[kBindlessIndicesRootParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    parameters[kBindlessIndicesRootParam].Descriptor.ShaderRegister = kBindlessIndicesRegister;
+    parameters[kBindlessIndicesRootParam].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
+    parameters[kBindlessIndicesRootParam].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     const auto samplers = MakeStaticSamplers();
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc{};
     desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
@@ -136,6 +139,7 @@ bool DX12PsoCache::CreateComputeRootSignature()
     desc.Desc_1_1.pParameters = parameters.data();
     desc.Desc_1_1.NumStaticSamplers = static_cast<UINT>(samplers.size());
     desc.Desc_1_1.pStaticSamplers = samplers.data();
+    desc.Desc_1_1.Flags = BaseRootSignatureFlags();
     Microsoft::WRL::ComPtr<ID3DBlob> blob;
     Microsoft::WRL::ComPtr<ID3DBlob> errors;
     if (FAILED(D3D12SerializeVersionedRootSignature(&desc, &blob, &errors))) {
@@ -149,32 +153,25 @@ bool DX12PsoCache::CreateComputeRootSignature()
 
 bool DX12PsoCache::CreateRootSignature()
 {
-    std::array<D3D12_ROOT_PARAMETER1, 16> parameters{};
+    // param 0〜13 : 定数バッファ b0〜b13 (root CBV)
+    // param 14    : bindless 添字ブロック b14 (root CBV)
+    //
+    // かつてここに «ピクセル SRV テーブル (t0〜t31)» と «頂点 SRV テーブル» があったが、
+    // 全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
+    // ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
+    // @see Docs/design/bindless.md
+    std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
     for (UINT slot = 0; slot < 14; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[slot].Descriptor.ShaderRegister = slot;
         parameters[slot].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
         parameters[slot].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     }
-    D3D12_DESCRIPTOR_RANGE1 pixelSrv{};
-    pixelSrv.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    pixelSrv.NumDescriptors = 32;
-    pixelSrv.BaseShaderRegister = 0;
-    pixelSrv.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
-    pixelSrv.OffsetInDescriptorsFromTableStart = 0;
-    parameters[14].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    parameters[14].DescriptorTable = {1, &pixelSrv};
-    parameters[14].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-
-    D3D12_DESCRIPTOR_RANGE1 vertexSrv{};
-    vertexSrv.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    vertexSrv.NumDescriptors = 16;
-    vertexSrv.BaseShaderRegister = 0;
-    vertexSrv.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
-    vertexSrv.OffsetInDescriptorsFromTableStart = 0;
-    parameters[15].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    parameters[15].DescriptorTable = {1, &vertexSrv};
-    parameters[15].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    // bindless 添字ブロック (b14)。VS / PS / GS のどこからでも引くので ALL 可視。
+    parameters[kBindlessIndicesRootParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    parameters[kBindlessIndicesRootParam].Descriptor.ShaderRegister = kBindlessIndicesRegister;
+    parameters[kBindlessIndicesRootParam].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
+    parameters[kBindlessIndicesRootParam].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
     const auto samplers = MakeStaticSamplers();
 
@@ -184,7 +181,8 @@ bool DX12PsoCache::CreateRootSignature()
     desc.Desc_1_1.pParameters = parameters.data();
     desc.Desc_1_1.NumStaticSamplers = static_cast<UINT>(samplers.size());
     desc.Desc_1_1.pStaticSamplers = samplers.data();
-    desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    desc.Desc_1_1.Flags = BaseRootSignatureFlags()
+        | D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
     Microsoft::WRL::ComPtr<ID3DBlob> blob;
     Microsoft::WRL::ComPtr<ID3DBlob> errors;
     const HRESULT result = D3D12SerializeVersionedRootSignature(&desc, &blob, &errors);

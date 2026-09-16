@@ -7,9 +7,10 @@
 #include "Common/Fullscreen.hlsli"
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D texMask : register(TEX_ALBEDO);
-Texture2D texInput : register(TEX_GBUFFER0);
+FBZZ_TEX2D(texInput, TEX_GBUFFER0_SLOT);
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 cbuffer MaterialConstants : register(b2)
@@ -18,7 +19,14 @@ cbuffer MaterialConstants : register(b2)
     float maskSoftness;
     float bleedGain;
     float edgeDarken;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
 };
+
+// WHY cbuffer の後ろへ置くか: 添字フィールドを参照して初期化するため、
+//     宣言はフィールドより後ろでなければならない。
+FBZZ_MATERIAL_TEX(texMask, texAlbedoIndex);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {

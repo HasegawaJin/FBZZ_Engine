@@ -14,6 +14,7 @@
 #include "DX12HdriBaker.hpp"
 #include "DX12RenderTarget.hpp"
 #include "DX12StructuredBuffer.hpp"
+#include <Engine/Renderer/BindlessIndices.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
 #include <DirectXTex.h>
@@ -40,7 +41,7 @@ bool DX12Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
         m_context.Shutdown();
         return false;
     }
-    if (!m_psoCache.Initialize(m_context.GetDevice())) {
+    if (!m_psoCache.Initialize(m_context.GetDevice(), m_context.SupportsBindless())) {
         FBZZ_LOG_ERROR("DX12Renderer::Init: PsoCache/RootSignature 初期化失敗");
         m_uploadArena.Shutdown();
         m_context.Shutdown();
@@ -68,34 +69,6 @@ void DX12Renderer::Shutdown()
     m_context.Shutdown();
 }
 
-// ピクセル SRV テーブルの束縛シグネチャを組む。テクスチャ 32 枠のあとに psBuffers 2 枠を並べる。
-DX12Renderer::PixelTableKey DX12Renderer::MakePixelTableKey(const DrawCall& call)
-{
-    const auto pack = [](uint32_t id, uint32_t gen) {
-        return (static_cast<uint64_t>(id) << 32) | gen;
-    };
-    PixelTableKey key{};
-    for (size_t i = 0; i < call.textures.size(); ++i)
-        key[i] = pack(call.textures[i].id, call.textures[i].gen);
-    for (size_t i = 0; i < call.psBuffers.size(); ++i)
-        key[call.textures.size() + i] = pack(call.psBuffers[i].id, call.psBuffers[i].gen);
-    return key;
-}
-
-// キャッシュキー用ハッシュ。FNV-1a で畳む。
-// NOTE: RenderPipeline のグラフ指紋計算と同じ FNV-1a を使う (実装を揃えておくと読み手が迷わない)。
-size_t DX12Renderer::PixelTableKeyHash::operator()(const PixelTableKey& key) const noexcept
-{
-    size_t hash = 1469598103934665603ull; // FNV-1a offset basis
-    for (const uint64_t packed : key) {
-        for (int byte = 0; byte < 8; ++byte) {
-            hash ^= static_cast<unsigned char>(packed >> (byte * 8));
-            hash *= 1099511628211ull; // FNV-1a prime
-        }
-    }
-    return hash;
-}
-
 void DX12Renderer::InvalidateRootCbvCache()
 {
     m_lastRootCbv.fill(0);
@@ -117,11 +90,6 @@ void DX12Renderer::BeginFrame()
                               static_cast<float>(m_context.GetHeight()), 0.0f, 1.0f };
         m_currentScissor = { 0, 0, static_cast<LONG>(m_context.GetWidth()),
                             static_cast<LONG>(m_context.GetHeight()) };
-        // WHAT: shader-visible SRVリングはフレーム単位で巻き戻るため、前フレームのGPUテーブル
-        //       キャッシュは無効。次Submitで必ず再割当・再コピーさせる。
-        m_lastPixelTableValid = false;
-        m_lastVertexTableValid = false;
-        m_pixelTableCache.clear();
         // コマンドリストは BeginFrame で Reset される = 全パイプライン状態が既定へ戻る。
         // ここで直前値を捨てないと、実際には束縛されていない状態を「設定済み」と誤認する。
         InvalidateRootCbvCache();
@@ -133,6 +101,18 @@ void DX12Renderer::BeginFrame()
         if (nullConstant) {
             std::memset(nullConstant.cpu, 0, nullConstant.size);
             m_nullConstantAddress = nullConstant.gpu;
+        }
+        // 全枠 INVALID の添字ブロック。アリーナが枯渇した Draw でもここを差せば、
+        // シェーダー側の有効判定で «束縛されていない» と分かる (ゼロ埋めでは添字 0 を
+        // 有効なディスクリプタとして読んでしまう)。
+        m_invalidBindlessAddress = 0;
+        const auto invalidIndices = m_uploadArena.Allocate(
+            sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+        if (invalidIndices) {
+            BindlessIndicesConstants blank;
+            blank.Reset();
+            std::memcpy(invalidIndices.cpu, &blank, sizeof(blank));
+            m_invalidBindlessAddress = invalidIndices.gpu;
         }
     }
 }
@@ -157,7 +137,7 @@ void DX12Renderer::Clear(const math::Vector4& color)
         for (uint32_t index = 0; index < m_currentRenderTarget->GetColorCount(); ++index)
             m_context.GetCommandList()->ClearRenderTargetView(
                 m_currentRenderTarget->GetRtv(index), clearColor, 0, nullptr);
-        // WHY: DX11Renderer::Clear は色と同時に深度も 1.0 へクリアする契約で、
+        // WHY: IRenderer::Clear は色と同時に深度も 1.0 へクリアする契約で、
         //      RenderSystem は GBuffer / HDR パス開始時に Clear(色) しか呼ばない。
         //      DX12 側で深度を残すと初期値 0 のまま LESS 比較が全滅し、
         //      深度テストを使う全ジオメトリが 1 ピクセルも描画されない。
@@ -274,75 +254,47 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         }
     }
 
-    // キャッシュキーはテクスチャ 32 枠 + PS バッファ 2 枠。
-    // WHY psBuffers を含めるのが必須か: 含めないと「テクスチャは同じだがクラスタバッファだけ
-    //     違う」Draw が前回のテーブルを再利用し、t29/t30 が古いまま描かれる。
-    const PixelTableKey pixelKey = MakePixelTableKey(call);
+    // ---- bindless 添字ブロック (b14) ----
+    // WHY テーブルと併存させるか: 移行はシェーダー 1 本ずつ進める。まだ register(tN) で
+    //     読んでいるシェーダーはテーブルを、移行済みのものはこの添字を読む。両方が
+    //     同じリソースを指しているので、どちらの経路でも同じ絵になる。
+    // WHY 毎ドローで組み直すか: 添字はドローごとに変わる。前のドローの値が残ると
+    //     束縛していないテクスチャを読む (Reset() が全枠を INVALID で埋める理由)。
+    {
+        BindlessIndicesConstants indices;
+        indices.Reset();
+        for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
+            if (auto* textureBase = resources.Get(call.textures[slot]))
+                indices.pixel[slot] = textureBase->GetBindlessIndex();
+        }
+        for (uint32_t i = 0; i < call.psBuffers.size(); ++i) {
+            if (auto* bufferBase = resources.Get(call.psBuffers[i]))
+                indices.pixel[kPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
+        }
+        if (auto* instanceBase = resources.Get(call.instanceBuffer))
+            indices.vertex[0] = instanceBase->GetBindlessIndex();
+        for (uint32_t i = 0; i < call.vsBuffers.size(); ++i) {
+            if (auto* bufferBase = resources.Get(call.vsBuffers[i]))
+                indices.vertex[1 + i] = bufferBase->GetBindlessIndex();
+        }
 
-    bool pixelTableBound = false;
-    if (m_lastPixelTableValid && pixelKey == m_lastPixelTextures) {
-        // 直前 Draw と同一束縛 — マップ探索すら不要。
-        commands->SetGraphicsRootDescriptorTable(14, m_lastPixelTableGpu);
-        pixelTableBound = true;
-    } else if (auto cached = m_pixelTableCache.find(pixelKey); cached != m_pixelTableCache.end()) {
-        // 同一フレーム内で以前に組んだテーブルを再利用する。
-        commands->SetGraphicsRootDescriptorTable(14, cached->second);
-        m_lastPixelTextures   = pixelKey;
-        m_lastPixelTableGpu   = cached->second;
-        m_lastPixelTableValid = true;
-        pixelTableBound = true;
-    }
-
-    if (!pixelTableBound) {
-        const auto textureTable = m_context.AllocatePixelSrvTable();
-        if (textureTable) {
-            // WHY 1 回の CopyDescriptors にまとめるか: CopyDescriptorsSimple(1, ...) を 32 回
-            //     呼ぶと、1 Draw あたり 32 回のデバイス呼び出しになる。コピーする内容は同じでも、
-            //     ソース範囲の配列を組んで 1 回で渡せば呼び出しコストが 1/32 になる。
-            std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 32> sourceStarts{};
-            std::array<UINT, 32> sourceSizes{};
-            for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
-                auto* textureBase = resources.Get(call.textures[slot]);
-                sourceStarts[slot] = textureBase
-                    ? static_cast<DX12Texture*>(textureBase)->GetSrvCpu()
-                    : m_context.GetNullPixelSrv(slot);
-                sourceSizes[slot] = 1;
-            }
-            // t29〜t30 は StructuredBuffer の SRV で上書きする。
-            // テクスチャ SRV とバッファ SRV は同じディスクリプタレンジに同居できる。
-            for (uint32_t i = 0; i < call.psBuffers.size(); ++i) {
-                const uint32_t slot = kPsBufferBaseSlot + i;
-                if (auto* bufferBase = resources.Get(call.psBuffers[i])) {
-                    sourceStarts[slot] = static_cast<DX12StructuredBuffer*>(bufferBase)->GetSrv();
-                } else {
-                    // WHY テクスチャ用の null では駄目か: null ディスクリプタはシェーダーが宣言した
-                    //     次元と一致していなければならない。これらのスロットは HLSL 側で
-                    //     StructuredBuffer として宣言されるため、Texture2D の null を差すと
-                    //     デバッグレイヤーが警告し、読み値も未定義になる。
-                    sourceStarts[slot] = m_context.GetNullBufferSrv(i);
-                }
-            }
-            const UINT destSize = static_cast<UINT>(call.textures.size());
-            m_context.GetDevice()->CopyDescriptors(
-                1, &textureTable.cpu, &destSize,
-                destSize, sourceStarts.data(), sourceSizes.data(),
-                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-            commands->SetGraphicsRootDescriptorTable(14, textureTable.gpu);
-            m_pixelTableCache.emplace(pixelKey, textureTable.gpu);
-            m_lastPixelTextures = pixelKey;
-            m_lastPixelTableGpu = textureTable.gpu;
-            m_lastPixelTableValid = true;
-        } else {
-            commands->SetGraphicsRootDescriptorTable(14, m_context.GetNullPixelSrvTable());
-            m_lastPixelTableValid = false;
+        const auto block = m_uploadArena.Allocate(
+            sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+        if (block) {
+            std::memcpy(block.cpu, &indices, sizeof(indices));
+            commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam, block.gpu);
+        } else if (m_invalidBindlessAddress) {
+            // アリーナ枯渇時のフォールバック。
+            // WHY ゼロ埋めの m_nullConstantAddress で代用しないか: 添字 0 は «ヒープ先頭の
+            //     有効なディスクリプタ» なので、全スロットが無関係なリソースを指すことになる。
+            //     全枠 INVALID の専用ブロックを差せば、シェーダー側の有効判定で弾ける。
+            commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam,
+                                                        m_invalidBindlessAddress);
         }
     }
 
-    const std::array<ResourceHandle<StructuredBufferTag>, 3> vertexSignature{
-        call.instanceBuffer, call.vsBuffers[0], call.vsBuffers[1]};
-
-    // 状態遷移はテーブル再利用時も発行する (ピクセル側と同じ理由)。
+    // 状態遷移は bindless でも必ず要る。添字が同じでも、間に挟まった別パス
+    // (Compute の UAV 書き込み等) でリソースの状態は変わっている。
     if (auto* instanceBase = resources.Get(call.instanceBuffer))
         m_stateTracker.QueueTransition(
             static_cast<DX12StructuredBuffer*>(instanceBase)->GetResource(),
@@ -353,49 +305,6 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
                 static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-    const bool hasVertexBuffers =
-        resources.Get(call.instanceBuffer) != nullptr ||
-        resources.Get(call.vsBuffers[0]) != nullptr ||
-        resources.Get(call.vsBuffers[1]) != nullptr;
-
-    if (!hasVertexBuffers) {
-        // VS がバッファを 1 本も読まない Draw — GBuffer / Shadow / ポストプロセスの大半が該当する。
-        // WHY: 中身が全 null になるテーブルをわざわざ確保してコピーし直す必要はない。
-        //      あらかじめ用意してある null テーブルをそのまま束縛すれば 16 回のコピーが丸ごと消える。
-        commands->SetGraphicsRootDescriptorTable(15, m_context.GetNullVertexSrvTable());
-        m_lastVertexTableValid = false;
-    } else if (m_lastVertexTableValid && vertexSignature == m_lastVertexBuffers) {
-        commands->SetGraphicsRootDescriptorTable(15, m_lastVertexTableGpu);
-    } else {
-        const auto vertexTable = m_context.AllocateVertexSrvTable();
-        if (vertexTable) {
-            // ピクセル側と同じく 1 回の CopyDescriptors へまとめる。
-            std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 16> sourceStarts{};
-            std::array<UINT, 16> sourceSizes{};
-            for (uint32_t slot = 0; slot < 16; ++slot) {
-                DX12StructuredBuffer* buffer = nullptr;
-                if (slot == 0)
-                    buffer = static_cast<DX12StructuredBuffer*>(resources.Get(call.instanceBuffer));
-                else if (slot >= 14 && slot <= 15)
-                    buffer = static_cast<DX12StructuredBuffer*>(resources.Get(call.vsBuffers[slot - 14]));
-                sourceStarts[slot] = buffer ? buffer->GetSrv() : m_context.GetNullBufferSrv(slot);
-                sourceSizes[slot] = 1;
-            }
-            const UINT destSize = 16;
-            m_context.GetDevice()->CopyDescriptors(
-                1, &vertexTable.cpu, &destSize,
-                destSize, sourceStarts.data(), sourceSizes.data(),
-                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-            commands->SetGraphicsRootDescriptorTable(15, vertexTable.gpu);
-            m_lastVertexBuffers = vertexSignature;
-            m_lastVertexTableGpu = vertexTable.gpu;
-            m_lastVertexTableValid = true;
-        } else {
-            commands->SetGraphicsRootDescriptorTable(15, m_context.GetNullVertexSrvTable());
-            m_lastVertexTableValid = false;
-        }
-    }
     // WHAT: テクスチャ/バッファ SRV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する。
     //       Draw 呼び出し (このあと) より前であれば記録順の制約を満たす。
     m_stateTracker.FlushBarriers(commands);
@@ -490,51 +399,32 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         if (address) commands->SetComputeRootConstantBufferView(slot, address);
     }
 
-    const auto srvTable = m_context.AllocatePixelSrvTable();
-    if (!srvTable) return;
-    auto srvDestination = srvTable.cpu;
-    for (uint32_t slot = 0; slot < 32; ++slot) {
-        // 何も束縛されなかったときの null は、そのレジスタの宣言に合わせて選ぶ。
-        // StructuredBuffer のスロットへ Texture2D の null を差すと読み値が未定義になる。
-        D3D12_CPU_DESCRIPTOR_HANDLE source = IsComputeStructuredBufferSlot(slot)
-            ? m_context.GetNullBufferSrv(slot)
-            : m_context.GetNullPixelSrv(slot);
-        if (auto* textureBase = resources.Get(call.srvInputs[slot])) {
-            auto* texture = static_cast<DX12Texture*>(textureBase);
-            m_stateTracker.QueueTransition(texture->GetResource(),
-                                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            source = texture->GetSrvCpu();
-        }
-        if (auto* bufferBase = resources.Get(call.srvBuffers[slot])) {
-            auto* buffer = static_cast<DX12StructuredBuffer*>(bufferBase);
-            m_stateTracker.QueueTransition(buffer->GetResource(),
-                                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            source = buffer->GetSrv();
-        }
-        m_context.GetDevice()->CopyDescriptorsSimple(
-            1, srvDestination, source, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        srvDestination.ptr += m_context.GetSrvDescriptorIncrement();
+    // SRV の状態遷移。bindless ではディスクリプタを張らないが、遷移は従来どおり要る。
+    // WHY: 添字が同じでも、間に挟まった別パスでリソースの状態は変わっている。
+    for (uint32_t slot = 0; slot < kBindlessPixelSlotCount; ++slot) {
+        if (auto* textureBase = resources.Get(call.srvInputs[slot]))
+            m_stateTracker.QueueTransition(
+                static_cast<DX12Texture*>(textureBase)->GetResource(),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (auto* bufferBase = resources.Get(call.srvBuffers[slot]))
+            m_stateTracker.QueueTransition(
+                static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
-    commands->SetComputeRootDescriptorTable(14, srvTable.gpu);
 
-    const auto uavTable = m_context.AllocateUavTable();
-    if (!uavTable) return;
-    auto uavDestination = uavTable.cpu;
+    // UAV の状態遷移と、Dispatch 後の UAV バリア対象の収集。
     std::array<ID3D12Resource*, 10> writtenResources{};
     uint32_t writtenCount = 0;
-    for (uint32_t slot = 0; slot < 8; ++slot) {
-        D3D12_CPU_DESCRIPTOR_HANDLE source = m_context.GetNullUav(slot);
+    for (uint32_t slot = 0; slot < kBindlessUavSlotCount; ++slot) {
         if (auto* textureBase = resources.Get(call.uavOutputs[slot])) {
             auto* texture = static_cast<DX12Texture*>(textureBase);
             m_stateTracker.QueueTransition(texture->GetResource(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            source = texture->GetUavCpu();
             writtenResources[writtenCount++] = texture->GetResource();
         }
         if (slot >= 2 && slot <= 3) {
             if (auto* bufferBase = resources.Get(call.uavBuffers[slot - 2])) {
                 auto* buffer = static_cast<DX12StructuredBuffer*>(bufferBase);
                 m_stateTracker.QueueTransition(buffer->GetResource(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                source = buffer->GetUav();
                 writtenResources[writtenCount++] = buffer->GetResource();
             }
         }
@@ -547,16 +437,46 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                 if (buffer->IsGpuWritable()) {
                     m_stateTracker.QueueTransition(buffer->GetResource(),
                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                    source = buffer->GetUav();
                     writtenResources[writtenCount++] = buffer->GetResource();
                 }
             }
         }
-        m_context.GetDevice()->CopyDescriptorsSimple(
-            1, uavDestination, source, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        uavDestination.ptr += m_context.GetSrvDescriptorIncrement();
     }
-    commands->SetComputeRootDescriptorTable(15, uavTable.gpu);
+
+    // ---- bindless 添字ブロック (b14) ----
+    // srvInputs / srvBuffers は同じ t0〜t31 の空間を共有する。両方が同じスロットに居たら
+    // バッファが勝つ (旧テーブル構築と同じ順序。ここを変えると絵が変わる)。
+    {
+        BindlessIndicesConstants indices;
+        indices.Reset();
+        for (uint32_t slot = 0; slot < kBindlessPixelSlotCount; ++slot) {
+            if (auto* textureBase = resources.Get(call.srvInputs[slot]))
+                indices.pixel[slot] = textureBase->GetBindlessIndex();
+            if (auto* bufferBase = resources.Get(call.srvBuffers[slot]))
+                indices.pixel[slot] = bufferBase->GetBindlessIndex();
+        }
+        for (uint32_t slot = 0; slot < kBindlessUavSlotCount; ++slot) {
+            if (auto* textureBase = resources.Get(call.uavOutputs[slot]))
+                indices.uav[slot] = textureBase->GetBindlessUavIndex();
+            if (slot >= 2 && slot <= 3) {
+                if (auto* bufferBase = resources.Get(call.uavBuffers[slot - 2]))
+                    indices.uav[slot] = bufferBase->GetBindlessUavIndex();
+            }
+            if (slot == 4) {
+                if (auto* bufferBase = resources.Get(call.uavVertexBuffer))
+                    indices.uav[slot] = bufferBase->GetBindlessUavIndex();
+            }
+        }
+        const auto block = m_uploadArena.Allocate(
+            sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+        if (block) {
+            std::memcpy(block.cpu, &indices, sizeof(indices));
+            commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, block.gpu);
+        } else if (m_invalidBindlessAddress) {
+            commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam,
+                                                       m_invalidBindlessAddress);
+        }
+    }
     // WHAT: SRV/UAV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する (Dispatch より前)。
     m_stateTracker.FlushBarriers(commands);
     commands->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
@@ -879,6 +799,15 @@ std::unique_ptr<ITexture> DX12Renderer::CreateNativeTextureFromData(
 {
     auto texture = std::make_unique<DX12Texture>();
     if (!texture->InitFromData(&m_context, rgba, width, height))
+        return nullptr;
+    texture->RegisterState(&m_stateTracker, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    return texture;
+}
+std::unique_ptr<ITexture> DX12Renderer::CreateNativeTextureFromDataMips(
+    const TextureMipData* mips, uint32_t mipCount)
+{
+    auto texture = std::make_unique<DX12Texture>();
+    if (!texture->InitFromDataMips(&m_context, mips, mipCount))
         return nullptr;
     texture->RegisterState(&m_stateTracker, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     return texture;

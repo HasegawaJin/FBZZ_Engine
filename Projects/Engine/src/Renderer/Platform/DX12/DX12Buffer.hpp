@@ -43,6 +43,10 @@ public:
     bool                        IsGpuWritable() const { return m_descriptorHeap != nullptr; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetUav() const;
 
+    /// @brief UAV 側の永続 bindless 添字。GPU 書き込み不可のバッファは INVALID を返す。
+    /// @see  Docs/design/bindless.md
+    uint32_t GetBindlessUavIndex() const override;
+
 private:
     D3D12_GPU_VIRTUAL_ADDRESS PrepareForSubmit(DX12UploadArena& arena);
     std::vector<uint8_t> m_cpuData;
@@ -53,6 +57,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;
     // GPU 書き込み可能バッファの UAV を置く CPU 専用ヒープ。
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
+    // 永続 bindless 枠 (UAV)。初回参照で確保するため mutable。
+    mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
     DX12StateTracker* m_tracker = nullptr;
     uint8_t* m_mapped = nullptr;
     size_t m_size = 0;

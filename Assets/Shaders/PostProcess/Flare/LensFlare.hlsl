@@ -11,8 +11,9 @@
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    texBright   : register(TEX_GBUFFER0);
+FBZZ_TEX2D(texBright, TEX_GBUFFER0_SLOT);
 // 全画面フェッチなので clamp 必須。ゴーストは uv を画面中心へ反転させて引くため、
 // s0 (DX12 では WRAP) だと画面外へ出たゴーストが反対側の端から出てくる。
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);

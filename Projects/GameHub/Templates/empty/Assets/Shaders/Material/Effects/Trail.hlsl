@@ -28,10 +28,11 @@ cbuffer TrailConstants : register(CB_MATERIAL)
 #include "Common/Color.hlsli"
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 #define FBZZ_TRAIL_SRGB_TEXTURE 1u
 
-Texture2D    gTrailTex : register(TEX_ALBEDO);
+FBZZ_TEX2D(gTrailTex, TEX_ALBEDO_SLOT);
 SamplerState gSampler  : register(SAMPLER_DEFAULT);
 
 struct TrailVSIn

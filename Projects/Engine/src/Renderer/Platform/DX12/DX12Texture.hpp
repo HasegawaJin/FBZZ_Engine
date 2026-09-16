@@ -19,6 +19,9 @@ public:
     ~DX12Texture() override;
     bool Init(DX12Context* context, const std::string& path);
     bool InitFromData(DX12Context* context, const uint8_t* rgba, uint32_t width, uint32_t height);
+    /// CPU で焼いたミップ連鎖 (RGBA8) をそのまま全段転送する。
+    /// @param mips 0 段目から順。行ピッチは width*4 固定。
+    bool InitFromDataMips(DX12Context* context, const TextureMipData* mips, uint32_t mipCount);
     // 3D テクスチャ (R8G8B8A8_UNORM)。ボリューメトリック雲ノイズ / 3D カラー LUT 用。
     // WHY: DX11 の Init3DFromData 相当。未実装だと 3D テクスチャが null になり、シェーダーの
     //      Texture3D スロットへ null Texture2D SRV がバインドされて次元不一致の検証エラーになる。
@@ -40,6 +43,21 @@ public:
     uint32_t GetWidth() const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
     uint32_t GetDepth() const override { return m_depth; }
+
+    /// @brief 永続 bindless ディスクリプタの添字。初回呼び出しで確保して発行する。
+    /// @return bindless 非対応、SRV 未生成、または枠が枯渇していれば INVALID_BINDLESS_INDEX。
+    /// @note 遅延発行にしているのは、Init 経路が 8 本あり全てに発行を足すと «足し忘れたものだけ
+    ///       黙って bindless から消える» 事故が起きるため。加えて、実際に bindless で参照された
+    ///       テクスチャだけが枠を消費するので容量も節約できる。
+    /// @note 書き込むのは «まだ誰も参照していない新しい枠» なので、GPU 実行中に
+    ///       shader-visible ヒープへコピーしても競合しない。
+    /// @see  Docs/design/bindless.md
+    uint32_t GetBindlessIndex() const override;
+
+    /// @brief UAV 側の永続 bindless 添字。
+    /// @return UAV を持たないテクスチャ (InitForCompute* 以外) は INVALID_BINDLESS_INDEX。
+    /// @note SRV と UAV はディスクリプタが別物なので枠も別に取る。
+    uint32_t GetBindlessUavIndex() const override;
 
     bool UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                       const void* pixels, uint32_t srcRowPitch) override;
@@ -72,6 +90,9 @@ private:
     uint32_t m_height = 0;
     // 3D テクスチャの奥行き。2D では 1 のまま。
     uint32_t m_depth = 1;
+    // 永続 bindless 枠。GetBindlessIndex() の初回呼び出しで確保するため mutable。
+    mutable uint32_t m_bindlessIndex = INVALID_BINDLESS_INDEX;
+    mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
 };
 
 } // namespace fbzz::renderer

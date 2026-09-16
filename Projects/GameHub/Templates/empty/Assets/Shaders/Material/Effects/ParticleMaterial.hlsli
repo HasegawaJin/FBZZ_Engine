@@ -24,6 +24,10 @@
 ///   {
 ///       float4 coreColor;   // .mat の [params] と **名前** で結ばれる
 ///       float  filaments;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
 ///   };
 ///
 ///   // VSMain はこのヘッダーが供給する。書くのは PSMain だけ。
@@ -51,8 +55,10 @@
 // b11 の ParticleRenderConstants / ParticleVSIn / ParticlePSIn / ParticleBillboardVS。
 // Constants.hlsli より先に include すること (b2 を材質へ空けるため)。
 #include "Rendering/ParticleCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    gParticleTex : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(gParticleTex, texAlbedoIndex);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);
 
 #ifdef FBZZ_PARTICLE_GPU
@@ -78,12 +84,17 @@ struct GpuParticle
     float4 nextUvRect;    // 次のコマの UV 矩形
 };
 
-StructuredBuffer<GpuParticle> gParticles       : register(SB_GPU_PARTICLES);
+// WHY FBZZ_SBUFFER ではなく FBZZ_VS_SBUFFER か: この 2 本は頂点シェーダーが読む。
+//     旧モデルでは VS の t14/t15 は «頂点 SRV テーブル» の vsBuffers[0]/[1] を指しており、
+//     同じ t14/t15 でもコンピュート側 (ParticleGpuSim.cs 等) の srvBuffers とは別物だった。
+//     bindless の添字空間は平坦なので、ここで空間を取り違えるとコンピュート用の
+//     ディスクリプタを VS が読んで «粒子が全部原点に出る» 形で壊れる。
+FBZZ_VS_SBUFFER(GpuParticle, gParticles,       VS_SB_BUFFER0_SLOT);
 // GPU ソート結果 (key, particleIndex)。gGpuSortEnabled が 0 のときは何もバインドされない。
 // WHY: 半透明は描画順で結果が変わるため、粒子プールの並び順ではなくカメラ距離で
 //      並べ替えた順に描く必要がある。プール自体は並べ替えない
 //      (リングバッファの位置が動くとスポーンとシミュレーションが破綻する)。
-StructuredBuffer<uint2>       gSortedParticles : register(SB_GPU_SORT);
+FBZZ_VS_SBUFFER(uint2,       gSortedParticles, VS_SB_BUFFER1_SLOT);
 
 static const float2 FBZZ_PARTICLE_QUAD_CORNERS[6] =
 {
@@ -105,39 +116,10 @@ static const float2 FBZZ_PARTICLE_QUAD_UVS[6] =
     float2(0.0f, 1.0f),
 };
 
-// GPU 粒子 1 つぶんのビルボード展開。頂点バッファは無く SV_VertexID から引く。
-// Draw(6 * maxParticles, 0) で呼ぶ: vertId / 6 = 粒子番号、vertId % 6 = 三角形の頂点。
-//
-// WHY CPU 経路と同じ ParticlePSIn を返すか: 材質側の PSMain を CPU / GPU で
-//     そのまま共用できるようにするため。次のコマと補間率は CS が粒子ごとに書いている。
-ParticlePSIn ParticleGpuBillboardVS(uint vertId)
+// 生きている GPU 粒子 1 つぶんの、corner 番目のビルボード頂点。
+ParticlePSIn ParticleGpuExpandBillboard(GpuParticle p, uint corner)
 {
-    uint slot   = vertId / 6;
-    uint corner = vertId % 6;
-
-    // ソート有効時は「描画順の slot 番目」が指す粒子を引く。
-    // 死亡粒子と詰め物は最大キーで末尾へ落ちており、その index は maxParticles 以上か
-    // age >= lifetime なので、下の棄却判定にそのまま吸収される。
-    uint pIdx = gGpuSortEnabled != 0u ? gSortedParticles[slot].y : slot;
-
-    GpuParticle p = gParticles[pIdx];
-
     ParticlePSIn o;
-
-    // 死亡粒子: クリップ空間外に出力してラスタライザが棄却するようにする
-    if (p.age >= p.lifetime || (gMaxParticles > 0 && pIdx >= gMaxParticles))
-    {
-        o.svPosition = float4(0.0f, 0.0f, -2.0f, 1.0f); // z=-2 → NDC 外
-        o.uv         = (float2)0;
-        o.localUv    = (float2)0;
-        o.nextUv     = (float2)0;
-        o.spriteBlend = 0.0f;
-        o.worldPos   = (float3)0;
-        o.center     = (float3)0;
-        o.radius     = 0.0f;
-        o.color      = (float4)0;
-        return o;
-    }
 
     // カメラ空間 X/Y 軸のワールド向き (row-major view 行列の列 0, 1)
     float3 right = float3(view[0][0], view[1][0], view[2][0]);
@@ -190,6 +172,38 @@ ParticlePSIn ParticleGpuBillboardVS(uint vertId)
     // (QUAD_CORNERS が ±0.5) なので、半径にも 0.5 が要る。
     o.radius     = p.size * 0.5f * max(gSizeAxisScaleX, gSizeAxisScaleY);
     o.color      = p.color;
+    return o;
+}
+
+// GPU 粒子 1 つぶんのビルボード展開。頂点バッファは無く SV_VertexID から引く。
+// Draw(6 * maxParticles, 0) で呼ぶ: vertId / 6 = 粒子番号、vertId % 6 = 三角形の頂点。
+//
+// WHY CPU 経路と同じ ParticlePSIn を返すか: 材質側の PSMain を CPU / GPU で
+//     そのまま共用できるようにするため。次のコマと補間率は CS が粒子ごとに書いている。
+// WHY 展開を別関数にするか: 死亡粒子の分岐で早期 return すると FXC が X4000 を出す。
+ParticlePSIn ParticleGpuBillboardVS(uint vertId)
+{
+    uint slot   = vertId / 6;
+    uint corner = vertId % 6;
+
+    // ソート有効時は「描画順の slot 番目」が指す粒子を引く。
+    // 死亡粒子と詰め物は最大キーで末尾へ落ちており、その index は maxParticles 以上か
+    // age >= lifetime なので、下の棄却判定にそのまま吸収される。
+    uint pIdx = gGpuSortEnabled != 0u ? gSortedParticles[slot].y : slot;
+
+    GpuParticle p = gParticles[pIdx];
+
+    ParticlePSIn o;
+    if (p.age >= p.lifetime || (gMaxParticles > 0 && pIdx >= gMaxParticles))
+    {
+        // 死亡粒子: クリップ空間外に出力してラスタライザが棄却するようにする
+        o = (ParticlePSIn)0;
+        o.svPosition = float4(0.0f, 0.0f, -2.0f, 1.0f); // z=-2 → NDC 外
+    }
+    else
+    {
+        o = ParticleGpuExpandBillboard(p, corner);
+    }
     return o;
 }
 

@@ -12,8 +12,9 @@
 
 #include "Common/Fullscreen.hlsli"
 #include "Common/Binding.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    gCookieSource : register(TEX_ALBEDO);
+FBZZ_TEX2D(gCookieSource, TEX_ALBEDO_SLOT);
 SamplerState gCookieSamp   : register(SAMPLER_LINEAR_CLAMP);
 
 cbuffer CookieBlitConstants : register(CB_MATERIAL)

@@ -140,6 +140,15 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     if (SUCCEEDED(m_device->CheckFeatureSupport(
             D3D12_FEATURE_D3D12_OPTIONS5, &raytracingOptions, sizeof(raytracingOptions))))
         m_raytracingTier = raytracingOptions.RaytracingTier;
+
+    // WHY ここで問い合わせるか: bindless (ResourceDescriptorHeap) は «SM 6.6 以上» と
+    //     «Resource Binding Tier 3» の両方が要る。片方でも欠けるとルートシグネチャの生成
+    //     自体が E_INVALIDARG で落ちるため、フラグを立てる前に実機能力で確定させる。
+    D3D12_FEATURE_DATA_D3D12_OPTIONS bindingOptions{};
+    if (SUCCEEDED(m_device->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS, &bindingOptions, sizeof(bindingOptions))))
+        m_resourceBindingTier = bindingOptions.ResourceBindingTier;
+
     const unsigned int shaderModelMajor = (static_cast<unsigned int>(m_highestShaderModel) >> 4u) & 0xFu;
     const unsigned int shaderModelMinor = static_cast<unsigned int>(m_highestShaderModel) & 0xFu;
     FBZZ_LOG_INFO("DX12Context: Shader Model %u.%u / DXR Tier %u.%u / Inline RayQuery=%s",
@@ -147,8 +156,24 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
                   static_cast<unsigned int>(m_raytracingTier) / 10u,
                   static_cast<unsigned int>(m_raytracingTier) % 10u,
                   SupportsInlineRaytracing() ? "対応" : "非対応");
+    FBZZ_LOG_INFO("DX12Context: Resource Binding Tier %u / Bindless=%s",
+                  static_cast<unsigned int>(m_resourceBindingTier),
+                  SupportsBindless() ? "対応" : "非対応 (ディスクリプタテーブル経路のみ)");
     if (m_highestShaderModel < D3D_SHADER_MODEL_6_8) {
-        FBZZ_LOG_ERROR("DX12Context: DXC / SM 6.8 へ移行済みのため、この GPU/driver では DX12 を起動できません。--renderer=dx11 を使用してください");
+        FBZZ_LOG_ERROR("DX12Context: このエンジンは DXC / SM 6.8 を要求します。"
+                       "この GPU / ドライバーでは起動できません (DirectX 11 サポートは v1.0 で終了)");
+        return false;
+    }
+    // WHY 縮退させず落とすか: マテリアルシェーダーは ResourceDescriptorHeap を無条件に引く
+    //     (FBZZ_TEX2D マクロ)。ここで «非対応でも起動できる» ことにすると、ルートシグネチャの
+    //     フラグだけが落ちて、描画時に «何も貼られていない» 絵が出る。原因が見えない形で
+    //     壊れるくらいなら、起動時に何が足りないかを名指しして止める。
+    //     SM 6.8 が動く世代 (Maxwell+ / GCN1.2+ / Gen9+) は実質すべて Tier 3 なので、
+    //     ここで弾かれる機械は事実上存在しない。
+    if (!SupportsBindless()) {
+        FBZZ_LOG_ERROR("DX12Context: このエンジンは bindless (Resource Binding Tier 3) を要求します。"
+                       "この GPU / ドライバーは Tier %u までです (Docs/design/bindless.md)",
+                       static_cast<unsigned int>(m_resourceBindingTier));
         return false;
     }
 
@@ -239,55 +264,17 @@ bool DX12Context::CreateDescriptorHeaps()
     if (!CheckResult(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_imguiSrvHeap)), "ImGui SRV Heap の生成"))
         return false;
 
-    srvDesc.NumDescriptors = NULL_DESCRIPTOR_COUNT + FRAME_COUNT * DYNAMIC_DESCRIPTORS_PER_FRAME;
+    // bindless 一本になったので、このヒープは永続レンジそのもの。
+    // 添字 = ヒープ先頭からの位置 (BINDLESS_HEAP_BASE = 0)。
+    srvDesc.NumDescriptors = BINDLESS_HEAP_BASE + BINDLESS_DESCRIPTOR_CAPACITY;
     if (!CheckResult(m_device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_resourceSrvHeap)), "Resource SRV Heap の生成"))
         return false;
 
-    D3D12_DESCRIPTOR_HEAP_DESC nullHeapDesc{};
-    nullHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    nullHeapDesc.NumDescriptors = 56;
-    nullHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    if (!CheckResult(m_device->CreateDescriptorHeap(&nullHeapDesc, IID_PPV_ARGS(&m_nullSrvHeap)),
-                     "Null SRV staging Heap の生成"))
-        return false;
+    // NOTE: かつてここで «null ディスクリプタ 56 枚» を CPU staging ヒープへ作り、
+    //       ディスクリプタテーブルの空きスロットへ複製していた。bindless では
+    //       «束縛されていない» を添字 INVALID_BINDLESS_INDEX で表すため、null ビューは要らない。
 
     m_srvIncrement = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    auto cpu = m_nullSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    D3D12_SHADER_RESOURCE_VIEW_DESC textureNull{};
-    textureNull.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    textureNull.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    textureNull.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    textureNull.Texture2D.MipLevels = 1;
-    for (uint32_t index = 0; index < 32; ++index) {
-        m_device->CreateShaderResourceView(nullptr, &textureNull, cpu);
-        cpu.ptr += m_srvIncrement;
-    }
-    D3D12_SHADER_RESOURCE_VIEW_DESC bufferNull{};
-    bufferNull.Format = DXGI_FORMAT_UNKNOWN;
-    bufferNull.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    bufferNull.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    bufferNull.Buffer.NumElements = 1;
-    bufferNull.Buffer.StructureByteStride = 16;
-    for (uint32_t index = 0; index < 16; ++index) {
-        m_device->CreateShaderResourceView(nullptr, &bufferNull, cpu);
-        cpu.ptr += m_srvIncrement;
-    }
-    D3D12_UNORDERED_ACCESS_VIEW_DESC nullUav{};
-    nullUav.Format = DXGI_FORMAT_UNKNOWN;
-    nullUav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-    nullUav.Buffer.NumElements = 1;
-    nullUav.Buffer.StructureByteStride = 16;
-    for (uint32_t index = 0; index < 8; ++index) {
-        m_device->CreateUnorderedAccessView(nullptr, nullptr, &nullUav, cpu);
-        cpu.ptr += m_srvIncrement;
-    }
-
-    // Root tableのフォールバック用に、CPU stagingで作ったNull descriptorをGPU可視領域へ複製する。
-    m_device->CopyDescriptorsSimple(
-        56,
-        m_resourceSrvHeap->GetCPUDescriptorHandleForHeapStart(),
-        m_nullSrvHeap->GetCPUDescriptorHandleForHeapStart(),
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     m_rtvIncrement = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     return true;
@@ -376,8 +363,6 @@ bool DX12Context::BeginFrame()
         return false;
 
     m_backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
-    m_dynamicSrvOffsets[m_frameIndex] = 0;
-    m_srvHeapExhaustionReported[m_frameIndex] = false;
     TransitionBackBuffer(D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
     const auto rtv = GetCurrentRtv();
     const auto dsv = GetDsv();
@@ -488,7 +473,6 @@ void DX12Context::Shutdown()
     for (auto& buffer : m_backBuffers) buffer.Reset();
     m_imguiSrvHeap.Reset();
     m_resourceSrvHeap.Reset();
-    m_nullSrvHeap.Reset();
     m_dsvHeap.Reset();
     m_rtvHeap.Reset();
     m_fence.Reset();
@@ -496,6 +480,12 @@ void DX12Context::Shutdown()
     for (auto& frame : m_frames) frame.allocator.Reset();
     for (auto& uploads : m_transientUploads) uploads.clear();
     m_deferredResources.clear();
+    // 永続 bindless の台帳もヒープと一緒に捨てる。残すと再初期化後に «存在しないヒープの
+    // 添字» を配ってしまう (デバイスロストからの復帰で真っ黒に描画される形で出る)。
+    m_bindlessNextSlot = 0;
+    m_bindlessExhaustionReported = false;
+    m_bindlessFreeList.clear();
+    m_bindlessPendingFrees.clear();
     m_swapChain.Reset();
     m_commandQueue.Reset();
 
@@ -571,76 +561,54 @@ D3D12_GPU_DESCRIPTOR_HANDLE DX12Context::GetImGuiSrvGpu(uint32_t index) const
     return handle;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE DX12Context::GetNullPixelSrvTable() const
+uint32_t DX12Context::AllocateBindlessSlot()
 {
-    return m_resourceSrvHeap->GetGPUDescriptorHandleForHeapStart();
-}
-
-D3D12_GPU_DESCRIPTOR_HANDLE DX12Context::GetNullVertexSrvTable() const
-{
-    auto handle = m_resourceSrvHeap->GetGPUDescriptorHandleForHeapStart();
-    handle.ptr += static_cast<UINT64>(32) * m_srvIncrement;
-    return handle;
-}
-
-D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetNullPixelSrv(uint32_t slot) const
-{
-    auto handle = m_nullSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += static_cast<SIZE_T>(slot % 32) * m_srvIncrement;
-    return handle;
-}
-
-DX12Context::DescriptorTableAllocation DX12Context::AllocatePixelSrvTable()
-{
-    return AllocateSrvTable(32);
-}
-
-DX12Context::DescriptorTableAllocation DX12Context::AllocateVertexSrvTable()
-{
-    return AllocateSrvTable(16);
-}
-
-DX12Context::DescriptorTableAllocation DX12Context::AllocateSrvTable(uint32_t descriptorCount)
-{
-    uint32_t& offset = m_dynamicSrvOffsets[m_frameIndex];
-    if (offset > DYNAMIC_DESCRIPTORS_PER_FRAME
-        || descriptorCount > DYNAMIC_DESCRIPTORS_PER_FRAME - offset) {
-        // 同一フレームの後続Drawも失敗するため、一度だけ報告してログの洪水を防ぐ。
-        if (!m_srvHeapExhaustionReported[m_frameIndex]) {
-            FBZZ_LOG_ERROR("DX12Context: shader-visible SRV ヒープ不足 "
-                           "(frame=%u, used=%u, request=%u, capacity=%u)",
-                           m_frameIndex, offset, descriptorCount,
-                           DYNAMIC_DESCRIPTORS_PER_FRAME);
-            m_srvHeapExhaustionReported[m_frameIndex] = true;
-        }
-        return {};
+    if (!m_bindlessFreeList.empty()) {
+        const uint32_t reused = m_bindlessFreeList.back();
+        m_bindlessFreeList.pop_back();
+        return reused;
     }
-    const uint32_t descriptorIndex = NULL_DESCRIPTOR_COUNT
-        + m_frameIndex * DYNAMIC_DESCRIPTORS_PER_FRAME + offset;
-    offset += descriptorCount;
-    auto cpu = m_resourceSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    auto gpu = m_resourceSrvHeap->GetGPUDescriptorHandleForHeapStart();
-    cpu.ptr += static_cast<SIZE_T>(descriptorIndex) * m_srvIncrement;
-    gpu.ptr += static_cast<UINT64>(descriptorIndex) * m_srvIncrement;
-    return {cpu, gpu};
+    if (m_bindlessNextSlot >= BINDLESS_DESCRIPTOR_CAPACITY) {
+        // 枯渇は縮退であって異常終了ではない。ログの洪水を避けて一度だけ報告する。
+        if (!m_bindlessExhaustionReported) {
+            FBZZ_LOG_ERROR("DX12Context: bindless ディスクリプタ枯渇 (capacity=%u)。"
+                           "以降のテクスチャはディスクリプタテーブル経路で描画します",
+                           BINDLESS_DESCRIPTOR_CAPACITY);
+            m_bindlessExhaustionReported = true;
+        }
+        return INVALID_BINDLESS_INDEX;
+    }
+    return m_bindlessNextSlot++;
 }
 
-DX12Context::DescriptorTableAllocation DX12Context::AllocateUavTable()
+void DX12Context::FreeBindlessSlot(uint32_t index)
 {
-    return AllocateSrvTable(8);
+    if (index == INVALID_BINDLESS_INDEX || index >= BINDLESS_DESCRIPTOR_CAPACITY)
+        return;
+    // 直前まで記録したコマンドリストがこの添字を読む可能性があるので、フェンスを
+    // 通過するまで再利用させない。寿命規則は DeferRelease と完全に揃える
+    // (フレーム記録中は次に Signal される値、フレーム外は最後に Signal 済みの値)。
+    const uint64_t fenceValue = m_frameOpen ? m_nextFenceValue
+        : (m_nextFenceValue > 0 ? m_nextFenceValue - 1 : 0);
+    m_bindlessPendingFrees.push_back({index, fenceValue});
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetNullBufferSrv(uint32_t slot) const
+uint32_t DX12Context::PublishBindlessDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE source)
 {
-    auto handle = m_nullSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += static_cast<SIZE_T>(32 + slot % 16) * m_srvIncrement;
-    return handle;
+    if (source.ptr == 0) return INVALID_BINDLESS_INDEX;
+    const uint32_t slot = AllocateBindlessSlot();
+    if (slot == INVALID_BINDLESS_INDEX) return INVALID_BINDLESS_INDEX;
+    m_device->CopyDescriptorsSimple(1, GetBindlessCpu(slot), source,
+                                    D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    return slot;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetNullUav(uint32_t slot) const
+D3D12_CPU_DESCRIPTOR_HANDLE DX12Context::GetBindlessCpu(uint32_t index) const
 {
-    auto handle = m_nullSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += static_cast<SIZE_T>(48 + slot % 8) * m_srvIncrement;
+    auto handle = m_resourceSrvHeap->GetCPUDescriptorHandleForHeapStart();
+    if (index == INVALID_BINDLESS_INDEX || index >= BINDLESS_DESCRIPTOR_CAPACITY)
+        return handle;
+    handle.ptr += static_cast<SIZE_T>(BINDLESS_HEAP_BASE + index) * m_srvIncrement;
     return handle;
 }
 
@@ -832,6 +800,16 @@ void DX12Context::CollectDeferredReleases()
         m_deferredResources.begin(), m_deferredResources.end(),
         [completed](const DeferredResource& entry) { return entry.fenceValue <= completed; });
     m_deferredResources.erase(firstPending, m_deferredResources.end());
+
+    // 通過済みの bindless 枠をフリーリストへ戻す。リソース本体と同じフェンスで守る。
+    const auto firstLive = std::remove_if(
+        m_bindlessPendingFrees.begin(), m_bindlessPendingFrees.end(),
+        [this, completed](const PendingBindlessFree& entry) {
+            if (entry.fenceValue > completed) return false;
+            m_bindlessFreeList.push_back(entry.index);
+            return true;
+        });
+    m_bindlessPendingFrees.erase(firstLive, m_bindlessPendingFrees.end());
 }
 
 } // namespace fbzz::renderer

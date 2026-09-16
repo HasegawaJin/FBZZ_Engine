@@ -17,7 +17,57 @@ namespace fbzz::renderer {
 DX12Texture::~DX12Texture()
 {
     if (m_tracker) m_tracker->Remove(m_resource.Get());
-    if (m_context) m_context->DeferRelease(m_resource);
+    if (m_context) {
+        // リソース本体と同じフェンスで守る。先に枠を返すと、まだこのテクスチャを読む
+        // 記録済みコマンドが、再利用された別テクスチャを読むことになる。
+        m_context->FreeBindlessSlot(m_bindlessIndex);
+        m_context->FreeBindlessSlot(m_bindlessUavIndex);
+        m_context->DeferRelease(m_resource);
+    }
+}
+
+// 無効値は RHI 側の契約 (ITexture.hpp) とバックエンド側の台帳 (DX12Context) で
+// 同じでなければならない。ずれると «無効» が有効な添字として解釈され、無関係な
+// テクスチャが引かれる。片方だけ直したときにコンパイルで落とす。
+static_assert(INVALID_BINDLESS_INDEX == DX12Context::INVALID_BINDLESS_INDEX,
+              "ITexture と DX12Context の bindless 無効値が食い違っています");
+
+uint32_t DX12Texture::GetBindlessIndex() const
+{
+    if (m_bindlessIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessIndex;
+    if (!m_context || !m_srvHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetSrvCpu(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessIndex = slot;
+    return slot;
+}
+
+uint32_t DX12Texture::GetBindlessUavIndex() const
+{
+    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessUavIndex;
+    // m_hasUav が false のテクスチャは GetUavCpu() が SRV 枠を指すため、ここで弾かないと
+    // 「RWTexture として書けるつもりの SRV」を配ってしまう。
+    if (!m_context || !m_hasUav || !m_srvHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetUavCpu(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessUavIndex = slot;
+    return slot;
 }
 
 bool DX12Texture::Init(DX12Context* context, const std::string& path)
@@ -82,6 +132,31 @@ bool DX12Texture::InitFromData(
     m_context = context;
     m_width = width;
     m_height = height;
+    return CreateSrv(context);
+}
+
+bool DX12Texture::InitFromDataMips(
+    DX12Context* context, const TextureMipData* mips, uint32_t mipCount)
+{
+    if (!context || !mips || mipCount == 0)
+        return false;
+    std::vector<DX12Context::TextureMip> levels;
+    levels.reserve(mipCount);
+    for (uint32_t level = 0; level < mipCount; ++level) {
+        if (!mips[level].rgba || mips[level].width == 0 || mips[level].height == 0)
+            return false;
+        levels.push_back({ mips[level].rgba, mips[level].width, mips[level].height,
+                           static_cast<std::size_t>(mips[level].width) * 4u });
+    }
+    if (!context->UploadTexture2DMips(levels, m_resource)) {
+        FBZZ_LOG_ERROR("DX12Texture: ミップ付き RGBA8 テクスチャ転送に失敗しました (%ux%u, %u 段)",
+                       mips[0].width, mips[0].height, mipCount);
+        return false;
+    }
+    m_context = context;
+    m_width = mips[0].width;
+    m_height = mips[0].height;
+    m_mipLevels = mipCount;
     return CreateSrv(context);
 }
 

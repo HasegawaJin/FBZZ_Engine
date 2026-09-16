@@ -5,8 +5,9 @@
 // Deferred パスで Sky / スキンドフォワードが正しい深度でテストできるようにするために必要。
 
 #include "Common/Binding.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D texGBufDepth : register(TEX_DEPTH);  // t7: gbufferRT 深度 SRV
+FBZZ_TEX2D(texGBufDepth, TEX_DEPTH_SLOT);  // t7: gbufferRT 深度 SRV
 
 struct FSTriVSOut
 {

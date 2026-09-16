@@ -3,11 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gVelocityIn  : register(t0);
-Texture3D<float4>   gPressureIn  : register(t1);
-Texture3D<float4>   gSolidIn     : register(t2); // xyz 固体の速度 / w 1 = 固体
-RWTexture3D<float4> gVelocityOut : register(u0);
+FBZZ_TEX3D_T(float4, gVelocityIn, 0);
+FBZZ_TEX3D_T(float4, gPressureIn, 1);
+FBZZ_TEX3D_T(float4, gSolidIn, 2); // xyz 固体の速度 / w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gVelocityOut, 0);
 
 // NOTE: 出口を 1 つにしてある。早期 return は FXC が X4000 で咎める。
 // 障害物のセルは Jacobi と同じく ∂p/∂n = 0 (自分の圧力を映す)。

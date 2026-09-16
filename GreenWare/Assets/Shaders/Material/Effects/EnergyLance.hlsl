@@ -83,6 +83,9 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  flicker;
     /// 帯の外へにじむ熱。柱の «場» を出すが、背景は隠さない (純加算)。
     float  heatWash;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
 };
 
 // WHY cbuffer の «後» か: Constants.hlsli は FBZZ_MATERIAL_CONSTANTS が立っていないと
@@ -90,8 +93,10 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    texAlbedo   : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
 static const float kLaserTau = 6.28318530718f;

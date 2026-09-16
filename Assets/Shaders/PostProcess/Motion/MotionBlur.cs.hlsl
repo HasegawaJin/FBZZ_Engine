@@ -30,16 +30,17 @@
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D        texColor    : register(TEX_GBUFFER0); // 入力カラー（LDR/HDR）
-Texture2D<float> texDepth    : register(TEX_DEPTH);    // 深度バッファ
-Texture2D        texVelocity : register(TEX_VELOCITY); // モーションベクター (RG=速度, B=有効)
+FBZZ_TEX2D(texColor, TEX_GBUFFER0_SLOT); // 入力カラー（LDR/HDR）
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);    // 深度バッファ
+FBZZ_TEX2D(texVelocity, TEX_VELOCITY_SLOT); // モーションベクター (RG=速度, B=有効)
 
 // 全画面フェッチなので clamp 必須。速度方向へ uv を伸ばして引くので、
 // s0 (DX12 では WRAP) だと画面端のブラーが反対側の端を巻き込む。
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
-RWTexture2D<float4> OutputBlur : register(UAV_MOTION_BLUR); // モーションブラー出力
+FBZZ_RWTEX2D_T(float4, OutputBlur, UAV_MOTION_BLUR_SLOT); // モーションブラー出力
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

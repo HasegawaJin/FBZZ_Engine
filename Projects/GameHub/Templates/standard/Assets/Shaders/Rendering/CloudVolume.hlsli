@@ -18,9 +18,10 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #endif
 #include "Common/Constants.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4> g_cloudShape   : register(TEX_CLOUD_SHAPE);   // R=Perlin-Worley, GBA=Worley FBM 帯
-Texture3D<float4> g_cloudDetail  : register(TEX_CLOUD_DETAIL);  // RGB=高周波 Worley FBM
+FBZZ_TEX3D_T(float4, g_cloudShape, TEX_CLOUD_SHAPE_SLOT);   // R=Perlin-Worley, GBA=Worley FBM 帯
+FBZZ_TEX3D_T(float4, g_cloudDetail, TEX_CLOUD_DETAIL_SLOT);  // RGB=高周波 Worley FBM
 SamplerState      sampCloudNoise : register(SAMPLER_WRAP_LINEAR);
 
 cbuffer VolumetricCloudConstants : register(CB_MATERIAL)

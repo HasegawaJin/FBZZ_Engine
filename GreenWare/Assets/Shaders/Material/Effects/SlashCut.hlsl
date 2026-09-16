@@ -57,13 +57,18 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     /// 素材の揺らぎを裾へどれだけ乗せるか [0,1]。0 で滑らかな光の線。
     float  detail;
     float2 _cutPad;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
 };
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    texAlbedo   : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
 struct SlashCutPSIn

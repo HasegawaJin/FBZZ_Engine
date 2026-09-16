@@ -6,12 +6,13 @@
 
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D          texSSAO     : register(TEX_SSAO);
+FBZZ_TEX2D(texSSAO, TEX_SSAO_SLOT);
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState       sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
-RWTexture2D<float4> outputBlur : register(UAV_OUTPUT);
+FBZZ_RWTEX2D_T(float4, outputBlur, UAV_OUTPUT_SLOT);
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID)

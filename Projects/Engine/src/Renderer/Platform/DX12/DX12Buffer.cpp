@@ -20,7 +20,11 @@ DX12Buffer::~DX12Buffer()
     m_mapped = nullptr;
     // 状態追跡から外してから解放する。残すと同アドレスへ載った別リソースの状態を誤認する。
     if (m_tracker) m_tracker->Remove(m_resource.Get());
-    if (m_context) m_context->DeferRelease(m_resource);
+    if (m_context) {
+        // リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
+        m_context->FreeBindlessSlot(m_bindlessUavIndex);
+        m_context->DeferRelease(m_resource);
+    }
 }
 
 bool DX12Buffer::Init(DX12Context* context, const void* data, size_t sizeBytes, uint32_t stride, Kind kind)
@@ -96,6 +100,25 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Buffer::GetUav() const
 {
     if (!m_descriptorHeap) return {};
     return m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+}
+
+uint32_t DX12Buffer::GetBindlessUavIndex() const
+{
+    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessUavIndex;
+    // m_descriptorHeap を持つのは GPU 書き込み可能な頂点バッファだけ (IsGpuWritable と同じ条件)。
+    if (!m_context || !m_descriptorHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetUav(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessUavIndex = slot;
+    return slot;
 }
 
 void DX12Buffer::Update(const void* data, size_t sizeBytes)

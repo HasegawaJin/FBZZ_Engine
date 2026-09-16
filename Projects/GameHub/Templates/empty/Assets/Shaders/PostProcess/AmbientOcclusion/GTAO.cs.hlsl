@@ -25,14 +25,15 @@
 #include "Common/Space.hlsli"
 #include "Common/Random.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D        texGBuffer1 : register(TEX_GBUFFER1); // 法線(RGB) + metallic(A)
-Texture2D<float> texDepth    : register(TEX_DEPTH);    // 深度バッファ
+FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT); // 法線(RGB) + metallic(A)
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);    // 深度バッファ
 
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
-RWTexture2D<float> OutputGTAO : register(UAV_GTAO_RAW); // GTAO RAW 出力
+FBZZ_RWTEX2D_T(float, OutputGTAO, UAV_GTAO_RAW_SLOT); // GTAO RAW 出力
 
 static const float PI = 3.14159265f;
 

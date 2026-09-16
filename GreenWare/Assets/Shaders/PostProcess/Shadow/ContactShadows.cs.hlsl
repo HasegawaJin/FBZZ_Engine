@@ -23,15 +23,16 @@
 #include "Common/Binding.hlsli"
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // ---- リソース ---------------------------------------------------------------
 
-Texture2D<float>   texDepth          : register(t7);
+FBZZ_TEX2D_T(float, texDepth, 7);
 SamplerState       sampDefault       : register(s0);
 
 // コンタクトシャドウマスク出力 (UAV_CONTACT_SHADOW = u3)
 // 0.0 = 遮蔽（影）, 1.0 = 照らされている
-RWTexture2D<float> OutputContactShadow : register(UAV_CONTACT_SHADOW);
+FBZZ_RWTEX2D_T(float, OutputContactShadow, UAV_CONTACT_SHADOW_SLOT);
 
 // ---- メインカーネル ---------------------------------------------------------
 

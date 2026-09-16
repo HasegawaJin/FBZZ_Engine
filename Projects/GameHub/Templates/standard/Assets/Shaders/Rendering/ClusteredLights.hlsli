@@ -17,8 +17,8 @@
 
 // ピクセルシェーダーが読むライトデータ。
 // 束縛されていないフレームでは clusterLightMode == LEGACY になるため、これらは読まれない。
-StructuredBuffer<PunctualLight> gPunctualLights : register(SB_PUNCTUAL_LIGHTS);
-StructuredBuffer<uint>          gClusterIndices : register(SB_CLUSTER_INDICES);
+FBZZ_SBUFFER_T(PunctualLight, gPunctualLights, SB_PUNCTUAL_LIGHTS_SLOT);
+FBZZ_SBUFFER_T(uint, gClusterIndices, SB_CLUSTER_INDICES_SLOT);
 
 // 1 本ぶんの評価結果。intensity には距離減衰とスポットコーンを織り込み済み。
 struct PunctualSample
@@ -50,6 +50,7 @@ struct PunctualSample
 // 大きさを持つ光源の評価。PunctualSample を使うので、この定義より後でなければならない。
 #include "Rendering/AreaLight.hlsli"
 #include "Rendering/SphereTubeLight.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // -------------------------------------------------------------------------
 // 走査範囲の決定

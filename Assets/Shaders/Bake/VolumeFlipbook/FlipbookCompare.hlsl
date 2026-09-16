@@ -8,6 +8,7 @@
 //     ゲームでは二重に見える» が起きる。規約 (FlipbookMotionVectorEncoding.hpp) を
 //     確かめる場所として、ゲームと同じ計算をここにも置く。
 #include "Common/Fullscreen.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer FlipbookCompareConstants : register(b0)
 {
@@ -19,8 +20,8 @@ cbuffer FlipbookCompareConstants : register(b0)
     uint   gBackground;   // 0 = 暗 / 1 = 明 / 2 = チェッカー
 };
 
-Texture2D<float4> gColorAtlas  : register(t0); // 事前乗算、RGB は sRGB で符号化
-Texture2D<float4> gMotionAtlas : register(t1);
+FBZZ_TEX2D_T(float4, gColorAtlas, 0); // 事前乗算、RGB は sRGB で符号化
+FBZZ_TEX2D_T(float4, gMotionAtlas, 1);
 SamplerState      gLinearClamp : register(s2);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)

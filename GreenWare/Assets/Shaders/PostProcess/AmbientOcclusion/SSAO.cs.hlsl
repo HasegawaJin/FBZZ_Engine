@@ -9,13 +9,14 @@
 #include "Common/Space.hlsli"
 #include "Common/Random.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    texGBuffer1 : register(TEX_GBUFFER1);  // normal(RGB) + metallic(A)
-Texture2D    texDepth    : register(TEX_DEPTH);
+FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);  // normal(RGB) + metallic(A)
+FBZZ_TEX2D(texDepth, TEX_DEPTH_SLOT);
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
-RWTexture2D<float4> outputSSAO : register(UAV_OUTPUT);
+FBZZ_RWTEX2D_T(float4, outputSSAO, UAV_OUTPUT_SLOT);
 
 static const int   SAMPLE_COUNT  = 16;
 static const float SAMPLE_RADIUS = 0.5f;

@@ -1,8 +1,9 @@
 // パス終了時の HDR・深度・チャンネルを表示用 RGB へ変換する。
 #include "Common/Binding.hlsli"
 #include "Common/Fullscreen.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D<float4> sourceImage : register(TEX_GBUFFER0);
+FBZZ_TEX2D_T(float4, sourceImage, TEX_GBUFFER0_SLOT);
 SamplerState pointClamp : register(SAMPLER_POINT_CLAMP);
 
 cbuffer PreviewConstants : register(b5)

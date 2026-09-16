@@ -99,6 +99,23 @@ void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc, 
         std::memcpy(paramData.data() + desc.textureMaskOffset, &mask, sizeof(uint32_t));
     }
 
+    // bindless の添字を MaterialConstants へ書き込む。
+    // WHY 毎フレーム書くか: 添字はテクスチャの生存に紐づく。差し替え・再読み込み・
+    //     ホットリロードで変わるので、焼き込むと «前のテクスチャが貼られたまま» になる。
+    // WHY 未割り当てを INVALID で埋めるか: 0 はヒープ先頭の有効なディスクリプタで、
+    //     «差していない» と区別できない。シェーダーは添字の有効判定で分岐する。
+    for (const auto& bind : desc.textures) {
+        if (bind.constantOffset == UINT32_MAX
+            || bind.constantOffset + sizeof(uint32_t) > paramData.size())
+            continue;
+        uint32_t index = INVALID_BINDLESS_INDEX;
+        if (bind.slot < textures.size()) {
+            if (const ITexture* texture = resources.Get(textures[bind.slot]))
+                index = texture->GetBindlessIndex();
+        }
+        std::memcpy(paramData.data() + bind.constantOffset, &index, sizeof(uint32_t));
+    }
+
     resources.Update(paramsBuffer, paramData.data(),
                      static_cast<uint32_t>(paramData.size()));
 }

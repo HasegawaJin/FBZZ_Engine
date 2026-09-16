@@ -26,9 +26,10 @@
 #include "Common/Binding.hlsli"
 #include "Common/Space.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    texDecalDepth    : register(TEX_DEPTH);
-Texture2D    texDecalReceiver : register(TEX_DECAL_MASK);
+FBZZ_TEX2D(texDecalDepth, TEX_DEPTH_SLOT);
+FBZZ_TEX2D(texDecalReceiver, TEX_DECAL_MASK_SLOT);
 SamplerState sampDecal        : register(SAMPLER_DEFAULT);
 
 cbuffer CameraConstants : register(CB_CAMERA)

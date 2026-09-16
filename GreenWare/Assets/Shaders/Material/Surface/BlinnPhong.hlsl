@@ -8,6 +8,8 @@
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 // ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で提供される
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
@@ -15,11 +17,16 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float4 albedo;       // RGBA ベースカラー         offset 0
     float  roughness;    // スペキュラの広がり [0,1]   offset 16
     uint   textureMask;  // テクスチャフラグ           offset 20
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
+    uint texNormalIndex;
 };
 
-Texture2D<float>       texShadow   : register(TEX_SHADOW);
-Texture2D              texAlbedo   : register(TEX_ALBEDO);
-Texture2D              texNormal   : register(TEX_NORMAL);
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
+FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);
 SamplerState           sampDefault : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 

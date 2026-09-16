@@ -10,6 +10,7 @@
 //     «u0 に媒質、u1 に速度» しか見ていない。ソルバーは同じ 2 枚を書けばそのまま焼ける。
 #include "Platform/Backend.hlsli"
 #include "Rendering/ParticleNoise.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 struct VolumePuffGpu
 {
@@ -29,10 +30,10 @@ cbuffer VolumeFillConstants : register(b0)
 
 // t14 は ComputeCall の kComputeStructuredBufferSlots の 1 つ。それ以外の番号だと、
 // DX12 で束縛しなかったときの null がテクスチャ次元になり、読み値が未定義になる。
-StructuredBuffer<VolumePuffGpu> gPuffs : register(t14);
+FBZZ_SBUFFER_T(VolumePuffGpu, gPuffs, 14);
 
-RWTexture3D<float4> gMediumOut   : register(u0); // R 密度 / G 温度 / B colorKey / A 液体の割合
-RWTexture3D<float4> gVelocityOut : register(u1); // xyz 速度 [bake 単位/秒]
+FBZZ_RWTEX3D_T(float4, gMediumOut, 0); // R 密度 / G 温度 / B colorKey / A 液体の割合
+FBZZ_RWTEX3D_T(float4, gVelocityOut, 1); // xyz 速度 [bake 単位/秒]
 
 float PuffBodyDensity(float3 y, float seedOffset, float noiseScale)
 {

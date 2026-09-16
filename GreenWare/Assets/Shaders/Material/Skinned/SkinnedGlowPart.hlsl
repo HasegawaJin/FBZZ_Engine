@@ -35,6 +35,8 @@
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/SurfaceCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
 // 変数名と型がそのまま Inspector / .mat の [params] キーになる。
 // albedo / emissiveColor / emissiveScale / uvTiling / uvOffset はエンジン標準レイアウトと
@@ -54,10 +56,14 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float2 uvOffset;       // offset 56
     uint   textureMask;    // offset 64: テクスチャ存在フラグ (自動設定)
     float3 _pad0;          // offset 68
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
 };
 
-Texture2D              texAlbedo   : register(TEX_ALBEDO);   // t0: 任意。下地の模様
-Texture2D<float>       texShadow   : register(TEX_SHADOW);   // t8: シャドウマップ (自動バインド)
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);   // t0: 任意。下地の模様
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);   // t8: シャドウマップ (自動バインド)
 SamplerState           sampDefault : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 

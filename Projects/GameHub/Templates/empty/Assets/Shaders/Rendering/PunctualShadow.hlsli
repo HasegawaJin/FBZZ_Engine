@@ -17,10 +17,11 @@
 #include "Common/Space.hlsli"
 #include "Common/ClusterConstants.hlsli"   // FBZZ_LIGHT_TYPE_*
 #include "Common/PunctualShadowConstants.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D<float>       gPunctualShadowAtlas : register(TEX_PUNCTUAL_SHADOW);
+FBZZ_TEX2D_T(float, gPunctualShadowAtlas, TEX_PUNCTUAL_SHADOW_SLOT);
 SamplerComparisonState gPunctualShadowSamp  : register(SAMPLER_SHADOW_PUNCTUAL);
-Texture2D<float4>      gLightCookieAtlas    : register(TEX_LIGHT_COOKIE);
+FBZZ_TEX2D_T(float4, gLightCookieAtlas, TEX_LIGHT_COOKIE_SLOT);
 SamplerState           gLightCookieSamp     : register(SAMPLER_COOKIE);
 
 // FBZZ_CubeFaceIndex — 光源からフラグメントへ向かうベクトルが属するキューブ面。

@@ -28,13 +28,14 @@
 #include "Common/Space.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D        texCurrent  : register(TEX_GBUFFER0);    // 現フレームカラー
-Texture2D        texHistory  : register(TEX_TAA_HISTORY); // 前フレーム TAA 出力
-Texture2D<float> texDepth    : register(TEX_DEPTH);       // 深度バッファ
-Texture2D        texVelocity : register(TEX_VELOCITY);    // モーションベクター (RG=速度, B=有効)
+FBZZ_TEX2D(texCurrent, TEX_GBUFFER0_SLOT);    // 現フレームカラー
+FBZZ_TEX2D(texHistory, TEX_TAA_HISTORY_SLOT); // 前フレーム TAA 出力
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);       // 深度バッファ
+FBZZ_TEX2D(texVelocity, TEX_VELOCITY_SLOT);    // モーションベクター (RG=速度, B=有効)
 // 粒子が画素を覆う割合 (ParticleReactive パス)。束縛されないフレームは 0 が読まれて何もしない。
-Texture2D        texReactive : register(TEX_SSAO);
+FBZZ_TEX2D(texReactive, TEX_SSAO_SLOT);
 
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP); // バイリニアクランプ (s0 は DX12 では WRAP)
 SamplerState sampPoint   : register(SAMPLER_POINT_CLAMP); // ポイントサンプル（再投影用）

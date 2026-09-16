@@ -3,11 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gVelocityIn : register(t0);
-Texture3D<float4>   gExpansionIn : register(t1); // x 燃焼の膨張 (この刻みの Inject が書いたもの)
-Texture3D<float4>   gSolidIn    : register(t2); // xyz 固体の速度 / w 1 = 固体
-RWTexture3D<float4> gDivergenceOut : register(u0);
+FBZZ_TEX3D_T(float4, gVelocityIn, 0);
+FBZZ_TEX3D_T(float4, gExpansionIn, 1); // x 燃焼の膨張 (この刻みの Inject が書いたもの)
+FBZZ_TEX3D_T(float4, gSolidIn, 2); // xyz 固体の速度 / w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gDivergenceOut, 0);
 
 // 固体のセルは外力で速度が動いていても障害物の速度として読む (壁の «通さない» はここで効く)。
 float3 V(int3 cell)

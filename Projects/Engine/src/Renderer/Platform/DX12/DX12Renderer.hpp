@@ -80,6 +80,7 @@ private:
     std::unique_ptr<IShader> CreateNativeShader(const std::string&) override;
     std::unique_ptr<ITexture> CreateNativeTexture(const std::string&) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override;
+    std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(const TextureMipData*, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(IRenderTarget&, uint32_t, RenderTargetTextureKind) override;
     std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc&) override;
@@ -116,34 +117,15 @@ private:
     D3D12_VIEWPORT m_currentViewport{};
     D3D12_RECT m_currentScissor{};
     D3D12_GPU_VIRTUAL_ADDRESS m_nullConstantAddress = 0;
+    // 全スロットを INVALID_BINDLESS_INDEX で埋めた添字ブロック。フレーム頭に 1 個だけ確保する。
+    // WHY 専用に持つか: アリーナ枯渇時に m_nullConstantAddress (ゼロ埋め) を差すと、
+    //     添字 0 = ヒープ先頭の «有効な» ディスクリプタとして解釈されてしまう。
+    D3D12_GPU_VIRTUAL_ADDRESS m_invalidBindlessAddress = 0;
 
-    // WHY: 連続する Draw が同じテクスチャ/バッファ集合を束縛する場合 (同一マテリアルのバッチ等)、
-    //      shader-visible リングへの CopyDescriptors を毎 Draw 発行するのは無駄。
-    //      束縛シグネチャをキーに GPU テーブルをキャッシュし、一致すればコピーを丸ごと省略する。
-    //      リングはフレームごとに巻き戻る (BeginFrame でオフセットリセット) ため、フレームを跨いだ
-    //      再利用は不可 — BeginFrame で必ず無効化する。
-    //
-    // WHY 直前 1 件ではなくフレーム内マップか: GBuffer のようにマテリアルが交互に来るパスでは
-    //      「直前と同じか」だけの判定はほぼ毎 Draw で外れ、32 回のディスクリプタコピーが
-    //      そのまま記録コストになる。フレーム内で同じ束縛が再登場したら必ず当たるようにする。
-    // テクスチャ 32 枠 + PS-readable StructuredBuffer 2 枠を (id,gen) へ畳んだ束縛シグネチャ。
-    // WHY タグ違いのハンドルを uint64 へ潰すか: textures は TextureTag、psBuffers は
-    //     StructuredBufferTag と型が違うため 1 本の配列に並べられない。
-    //     比較とハッシュにしか使わないので、identity をそのまま数値化する。
-    static constexpr size_t kPixelTableKeySize = 34;
-    using PixelTableKey = std::array<uint64_t, kPixelTableKeySize>;
-    static PixelTableKey MakePixelTableKey(const DrawCall& call);
-    struct PixelTableKeyHash {
-        size_t operator()(const PixelTableKey& key) const noexcept;
-    };
-    std::unordered_map<PixelTableKey, D3D12_GPU_DESCRIPTOR_HANDLE, PixelTableKeyHash> m_pixelTableCache;
-    // 直前 Draw の結果だけは別に持ち、マップ探索すら省く高速路にする。
-    PixelTableKey m_lastPixelTextures{};
-    D3D12_GPU_DESCRIPTOR_HANDLE m_lastPixelTableGpu{};
-    bool m_lastPixelTableValid = false;
-    std::array<ResourceHandle<StructuredBufferTag>, 3> m_lastVertexBuffers{};
-    D3D12_GPU_DESCRIPTOR_HANDLE m_lastVertexTableGpu{};
-    bool m_lastVertexTableValid = false;
+    // NOTE: かつてここに «ピクセル/頂点 SRV テーブルのフレーム内キャッシュ» があった。
+    //       bindless 移行で 1 ドローあたりのディスクリプタコピーが無くなり、
+    //       «同じ束縛なら再利用する» という最適化そのものが不要になったため撤去した。
+    //       @see Docs/design/bindless.md
 
     // 直前に root スロットへ束縛した CBV の GPU VA。変化したスロットだけ再設定するために持つ。
     // WHY: 従来は毎 Draw「14 スロットを null で埋めてから実 CB で上書き」していて最大 28 回の

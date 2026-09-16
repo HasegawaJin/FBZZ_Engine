@@ -3,11 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gPressureIn   : register(t0);
-Texture3D<float4>   gDivergenceIn : register(t1);
-Texture3D<float4>   gSolidIn      : register(t2); // w 1 = 固体
-RWTexture3D<float4> gPressureOut  : register(u0);
+FBZZ_TEX3D_T(float4, gPressureIn, 0);
+FBZZ_TEX3D_T(float4, gDivergenceIn, 1);
+FBZZ_TEX3D_T(float4, gSolidIn, 2); // w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gPressureOut, 0);
 
 // 境界: 開いた縁は p = 0 (流れが自由に出ていく)、床と障害物は ∂p/∂n = 0 (通り抜けない)。
 // ∂p/∂n = 0 は «隣を自分と同じ圧力とみなす» こと。和にも数にも入れなければ同じ解になり、収束も速い。

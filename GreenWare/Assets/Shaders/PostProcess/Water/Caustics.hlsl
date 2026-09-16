@@ -6,9 +6,10 @@
 #include "Common/Space.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D        g_causticsTex : register(TEX_ALBEDO);
-Texture2D<float> g_depth       : register(TEX_DEPTH);
+FBZZ_TEX2D(g_causticsTex, TEX_ALBEDO_SLOT);
+FBZZ_TEX2D_T(float, g_depth, TEX_DEPTH_SLOT);
 // コースティクス模様はワールド座標でタイリングさせるので wrap。
 SamplerState     sampTiling    : register(SAMPLER_DEFAULT);
 // 深度は全画面フェッチなので clamp。s0 と分けるのは、DX12 では s0 が WRAP に固定で、

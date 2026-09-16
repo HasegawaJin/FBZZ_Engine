@@ -10,8 +10,9 @@
 #include "Common/Binding.hlsli"
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    gOverdraw : register(t5);
+FBZZ_TEX2D(gOverdraw, 5);
 SamplerState gSampler  : register(SAMPLER_DEFAULT);
 
 struct VSOut
