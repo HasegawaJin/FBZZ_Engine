@@ -21,6 +21,19 @@ namespace fbzz::renderer
         RGBA8,   // 4 チャンネル 8bit
     };
 
+    /// CPU で焼いたミップ連鎖 1 段ぶんの RGBA8 データ。
+    /// @note rgba は width*height*4 バイトを指し、転送が終わるまで有効であること。
+    struct TextureMipData
+    {
+        const std::uint8_t* rgba   = nullptr;
+        std::uint32_t       width  = 0;
+        std::uint32_t       height = 0;
+    };
+
+    // bindless 非対応、またはこのテクスチャが永続ディスクリプタ枠を持たないことを表す添字。
+    // WHY 0 を使わないか: 0 は «ヒープ先頭の有効なディスクリプタ» なので、未設定と区別できない。
+    inline constexpr std::uint32_t INVALID_BINDLESS_INDEX = 0xFFFFFFFFu;
+
     class ITexture
     {
         public:
@@ -28,6 +41,21 @@ namespace fbzz::renderer
 
         virtual std::uint32_t GetWidth() const = 0;
         virtual std::uint32_t GetHeight() const = 0;
+
+        // シェーダーが ResourceDescriptorHeap[] へ渡す永続ディスクリプタ添字。
+        //
+        // ディスクリプタテーブル経路と違い、この添字はテクスチャが生きている限り不変で、
+        // 定数バッファやマテリアルに «テクスチャの識別子» として載せられる。
+        //
+        // WHY 既定を INVALID にするか: bindless は SM 6.6 + Resource Binding Tier 3 を要求し、
+        //      満たさない機械ではテーブル経路へ縮退する。呼び出し側は必ず INVALID を判定し、
+        //      その場合は DrawCall::textures 経由で束縛すること。
+        // @see Docs/design/bindless.md
+        virtual std::uint32_t GetBindlessIndex() const { return INVALID_BINDLESS_INDEX; }
+
+        // 同じリソースの UAV 側の添字。SRV と UAV はディスクリプタが別物なので枠も別に取る。
+        // UAV を持たないテクスチャ (通常のファイル由来など) は INVALID を返す。
+        virtual std::uint32_t GetBindlessUavIndex() const { return INVALID_BINDLESS_INDEX; }
 
         // 3D テクスチャの奥行き。2D では 1 を返す。
         // WHY 既定実装を置くか: 奥行きを持つのはフロクセルボリュームのような

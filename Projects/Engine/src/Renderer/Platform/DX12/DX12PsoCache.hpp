@@ -15,7 +15,12 @@ class DX12Shader;
 
 class DX12PsoCache final {
 public:
-    bool Initialize(ID3D12Device* device);
+    /// @brief ルートシグネチャと PSO キャッシュを初期化する。
+    /// @param bindlessEnabled シェーダーから ResourceDescriptorHeap を引けるか
+    ///        (DX12Context::SupportsBindless)。true のときだけルートシグネチャへ
+    ///        CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED を立てる。非対応機で立てると生成が失敗する。
+    /// @see  Docs/design/bindless.md
+    bool Initialize(ID3D12Device* device, bool bindlessEnabled);
     void Shutdown();
     /// このキャッシュを参照する GPU コマンドがすべて完了していること。
     void ClearPipelines();
@@ -43,7 +48,12 @@ private:
 
     bool CreateRootSignature();
     bool CreateComputeRootSignature();
+    /// @brief 両ルートシグネチャに共通で載せるフラグ。
+    /// @note bindless 非対応機では CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED を落とす。
+    ///       非対応機で立てるとシリアライズが E_INVALIDARG で失敗し、起動できなくなる。
+    D3D12_ROOT_SIGNATURE_FLAGS BaseRootSignatureFlags() const;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
+    bool m_bindlessEnabled = false;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_computeRootSignature;
     std::unordered_map<Key, Microsoft::WRL::ComPtr<ID3D12PipelineState>, KeyHash> m_cache;

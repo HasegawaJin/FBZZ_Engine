@@ -15,12 +15,13 @@
 
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D<float> texGTAORaw  : register(TEX_GTAO);      // GTAO RAW 入力
+FBZZ_TEX2D_T(float, texGTAORaw, TEX_GTAO_SLOT);      // GTAO RAW 入力
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState     sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
-RWTexture2D<float> OutputGTAO : register(UAV_GTAO_BLUR); // ブラー後出力
+FBZZ_RWTEX2D_T(float, OutputGTAO, UAV_GTAO_BLUR_SLOT); // ブラー後出力
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

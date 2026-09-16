@@ -12,9 +12,10 @@
 
 #include "PostProcess/Color/ExposureCommon.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-RWStructuredBuffer<uint>  gHistogram : register(UAV_CLUSTER_LIGHTS); // u2
-RWStructuredBuffer<float> gExposure  : register(UAV_GPU_SORT);       // u3
+FBZZ_RWSBUFFER_T(uint, gHistogram, UAV_CLUSTER_LIGHTS_SLOT); // u2
+FBZZ_RWSBUFFER_T(float, gExposure, UAV_GPU_SORT_SLOT);       // u3
 
 // 各ビンの画素数。スレッド 0 が累積和を取るための作業領域。
 //

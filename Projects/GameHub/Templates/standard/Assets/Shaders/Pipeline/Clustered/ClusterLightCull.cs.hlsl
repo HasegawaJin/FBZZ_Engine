@@ -14,9 +14,10 @@
 #include "Common/Constants.hlsli"
 #include "Common/ClusterConstants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<PunctualLight> gLights       : register(SB_CLUSTER_LIGHTS_CS); // t14
-RWStructuredBuffer<uint>        gClusterLights : register(UAV_CLUSTER_LIGHTS);  // u2
+FBZZ_SBUFFER_T(PunctualLight, gLights, SB_CLUSTER_LIGHTS_CS_SLOT); // t14
+FBZZ_RWSBUFFER_T(uint, gClusterLights, UAV_CLUSTER_LIGHTS_SLOT);  // u2
 
 #define CLUSTER_CULL_GROUP_SIZE 64
 

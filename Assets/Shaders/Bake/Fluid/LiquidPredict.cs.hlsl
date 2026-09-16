@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 #include "Bake/Fluid/LiquidCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<float4>   gSpawn     : register(t29); // [2i] = xyz 位置 / w 湧く時刻、[2i + 1] = xyz 初速 / w 色の鍵
-RWStructuredBuffer<float4> gState     : register(u2);
-RWStructuredBuffer<float4> gPredicted : register(u3); // xyz 予測位置 / w 1 = 生きている
+FBZZ_SBUFFER_T(float4, gSpawn, 29); // [2i] = xyz 位置 / w 湧く時刻、[2i + 1] = xyz 初速 / w 色の鍵
+FBZZ_RWSBUFFER_T(float4, gState, 2);
+FBZZ_RWSBUFFER_T(float4, gPredicted, 3); // xyz 予測位置 / w 1 = 生きている
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

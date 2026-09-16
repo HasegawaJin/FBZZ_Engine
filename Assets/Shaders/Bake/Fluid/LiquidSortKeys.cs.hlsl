@@ -5,8 +5,9 @@
 //
 // dispatch: gSortCount / LIQUID_SORT_BLOCK。gPassA = 位置の間隔 (1 = 予測位置 float4 × 1 / 2 = 状態 float4 × 2)。
 #include "Bake/Fluid/LiquidSort.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<float4> gPositions : register(t14);
+FBZZ_SBUFFER_T(float4, gPositions, 14);
 
 [numthreads(LIQUID_SORT_BLOCK, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

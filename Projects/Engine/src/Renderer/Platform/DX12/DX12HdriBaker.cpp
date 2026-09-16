@@ -19,6 +19,8 @@
 
 #include "DX12HdriBaker.hpp"
 
+#include <Engine/Renderer/BindlessIndices.hpp>
+
 #include "DX12Context.hpp"
 #include "DX12PsoCache.hpp"
 #include <Engine/Format/FzAssetFormat.hpp>
@@ -56,8 +58,8 @@ struct alignas(16) CbPrefilter {
 
 // Compute Root Signature の固定スロット割り当て (DX12PsoCache と一致)
 constexpr uint32_t ROOT_CB0        = 0;   // root CBV b0
-constexpr uint32_t ROOT_SRV_TABLE  = 14;  // SRV テーブル t0〜t31
-constexpr uint32_t ROOT_UAV_TABLE  = 15;  // UAV テーブル u0〜u7
+// SRV / UAV テーブルは bindless 移行で撤去済み。添字は b14 (kBindlessIndicesRootParam) で配る。
+
 
 constexpr DXGI_FORMAT CUBE_FORMAT     = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr DXGI_FORMAT EQUIRECT_FORMAT = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -126,12 +128,12 @@ bool DX12HdriBaker::Bake(
     if (!UploadEquirect(input.pixels, input.equirectW, input.equirectH, equirectTex, equirectUpload))
         return false;
     {
-        const D3D12_GPU_DESCRIPTOR_HANDLE equirectSrv = CreateEquirectSrv(equirectTex.Get());
+        const uint32_t equirectSrv = CreateEquirectSrv(equirectTex.Get());
         for (uint32_t face = 0; face < 6; ++face) {
             const CbIblFace cb{face, input.envCubemapSize, 0, 0};
             const auto cbVA = PushConstants(&cb, sizeof(cb));
             const auto uav  = CreateFaceUav(envMip0.Get(), face, 0);
-            if (!cbVA || !equirectSrv.ptr || !uav.ptr) return false;
+            if (!cbVA || equirectSrv == INVALID_BINDLESS_INDEX || uav == INVALID_BINDLESS_INDEX) return false;
             Dispatch(m_psoEquirect.Get(), cbVA, equirectSrv, uav, input.envCubemapSize);
         }
     }
@@ -206,15 +208,15 @@ bool DX12HdriBaker::Bake(
     Transition(envCube.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-    const D3D12_GPU_DESCRIPTOR_HANDLE envSrv = CreateCubeSrv(envCube.Get(), envMipCount);
-    if (!envSrv.ptr) return false;
+    const uint32_t envSrv = CreateCubeSrv(envCube.Get(), envMipCount);
+    if (envSrv == INVALID_BINDLESS_INDEX) return false;
 
     // Irradiance (6 面)
     for (uint32_t face = 0; face < 6; ++face) {
         const CbIblFace cb{face, input.irradianceSize, IRRADIANCE_PHI, IRRADIANCE_THETA};
         const auto cbVA = PushConstants(&cb, sizeof(cb));
         const auto uav  = CreateFaceUav(irradianceCube.Get(), face, 0);
-        if (!cbVA || !uav.ptr) return false;
+        if (!cbVA || uav == INVALID_BINDLESS_INDEX) return false;
         Dispatch(m_psoIrradiance.Get(), cbVA, envSrv, uav, input.irradianceSize);
     }
     // Prefilter (面 × mip)。roughness は mip を [0,1] に均等割りする。
@@ -226,15 +228,15 @@ bool DX12HdriBaker::Bake(
             const CbPrefilter cb{face, mipSize, roughness, input.sampleCount, envMipCount, 0, 0, 0};
             const auto cbVA = PushConstants(&cb, sizeof(cb));
             const auto uav  = CreateFaceUav(prefilterCube.Get(), face, mip);
-            if (!cbVA || !uav.ptr) return false;
+            if (!cbVA || uav == INVALID_BINDLESS_INDEX) return false;
             Dispatch(m_psoPrefilter.Get(), cbVA, envSrv, uav, mipSize);
         }
     }
     // BRDF LUT (1 回。CB 無し / SRV 無し。シェーダーは GetDimensions で寸法を得る)
     {
         const auto uav = CreateLutUav(brdfLut.Get());
-        if (!uav.ptr) return false;
-        Dispatch(m_psoBrdf.Get(), 0, D3D12_GPU_DESCRIPTOR_HANDLE{}, uav, input.brdfLutSize);
+        if (uav == INVALID_BINDLESS_INDEX) return false;
+        Dispatch(m_psoBrdf.Get(), 0, INVALID_BINDLESS_INDEX, uav, input.brdfLutSize);
     }
     if (!ExecuteAndWait()) return false;
 
@@ -423,6 +425,7 @@ DX12HdriBaker::Descriptor DX12HdriBaker::AllocateDescriptor()
     result.cpu.ptr += shift;
     result.gpu = m_descriptorHeap->GetGPUDescriptorHandleForHeapStart();
     result.gpu.ptr += shift;
+    result.index = m_descriptorOffset;
     ++m_descriptorOffset;
     return result;
 }
@@ -485,23 +488,23 @@ DX12HdriBaker::Resource DX12HdriBaker::CreateLut(uint32_t size)
     return resource;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE DX12HdriBaker::CreateEquirectSrv(ID3D12Resource* equirect)
+uint32_t DX12HdriBaker::CreateEquirectSrv(ID3D12Resource* equirect)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return {};
+    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = EQUIRECT_FORMAT;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srv.Texture2D.MipLevels = 1;
     m_device->CreateShaderResourceView(equirect, &srv, slot.cpu);
-    return slot.gpu;
+    return slot.index;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE DX12HdriBaker::CreateCubeSrv(ID3D12Resource* cube, uint32_t mipCount)
+uint32_t DX12HdriBaker::CreateCubeSrv(ID3D12Resource* cube, uint32_t mipCount)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return {};
+    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = CUBE_FORMAT;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
@@ -509,14 +512,14 @@ D3D12_GPU_DESCRIPTOR_HANDLE DX12HdriBaker::CreateCubeSrv(ID3D12Resource* cube, u
     srv.TextureCube.MostDetailedMip = 0;
     srv.TextureCube.MipLevels = mipCount;
     m_device->CreateShaderResourceView(cube, &srv, slot.cpu);
-    return slot.gpu;
+    return slot.index;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE DX12HdriBaker::CreateFaceUav(
+uint32_t DX12HdriBaker::CreateFaceUav(
     ID3D12Resource* cube, uint32_t face, uint32_t mip)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return {};
+    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
     // Cubemap の各面 = Texture2DArray の 1 スライス。シェーダーは g_output[uint3(x,y,0)] を書くため
     // ArraySize=1 のビューにすることでスライス 0 = 対象面へ写る。
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
@@ -526,18 +529,18 @@ D3D12_GPU_DESCRIPTOR_HANDLE DX12HdriBaker::CreateFaceUav(
     uav.Texture2DArray.FirstArraySlice = face;
     uav.Texture2DArray.ArraySize = 1;
     m_device->CreateUnorderedAccessView(cube, nullptr, &uav, slot.cpu);
-    return slot.gpu;
+    return slot.index;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE DX12HdriBaker::CreateLutUav(ID3D12Resource* lut)
+uint32_t DX12HdriBaker::CreateLutUav(ID3D12Resource* lut)
 {
     const Descriptor slot = AllocateDescriptor();
-    if (!slot.cpu.ptr) return {};
+    if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
     uav.Format = CUBE_FORMAT;
     uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     m_device->CreateUnorderedAccessView(lut, nullptr, &uav, slot.cpu);
-    return slot.gpu;
+    return slot.index;
 }
 
 bool DX12HdriBaker::RecordUpload(
@@ -645,12 +648,19 @@ void DX12HdriBaker::Transition(
 
 void DX12HdriBaker::Dispatch(
     ID3D12PipelineState* pso, D3D12_GPU_VIRTUAL_ADDRESS cb,
-    D3D12_GPU_DESCRIPTOR_HANDLE srvTable, D3D12_GPU_DESCRIPTOR_HANDLE uavTable, uint32_t size)
+    uint32_t srvIndex, uint32_t uavIndex, uint32_t size)
 {
     m_commandList->SetPipelineState(pso);
     if (cb) m_commandList->SetComputeRootConstantBufferView(ROOT_CB0, cb);
-    if (srvTable.ptr) m_commandList->SetComputeRootDescriptorTable(ROOT_SRV_TABLE, srvTable);
-    m_commandList->SetComputeRootDescriptorTable(ROOT_UAV_TABLE, uavTable);
+    // IBL の CS は SRV を t0 (pixel[0])、UAV を u0 (uav[0]) で宣言している。
+    // 添字は «このベイカーが束縛している自前ヒープ» 内の位置。
+    BindlessIndicesConstants indices;
+    indices.Reset();
+    indices.pixel[0] = srvIndex;
+    indices.uav[0]   = uavIndex;
+    const auto indexBlock = PushConstants(&indices, sizeof(indices));
+    if (indexBlock)
+        m_commandList->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, indexBlock);
     const uint32_t groups = (size + 7u) / 8u;
     m_commandList->Dispatch(groups, groups, 1);
 }

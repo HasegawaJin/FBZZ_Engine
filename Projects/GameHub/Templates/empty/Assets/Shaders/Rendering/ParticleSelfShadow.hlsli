@@ -52,7 +52,8 @@ float ComputeParticleSelfShadowFromMap(Texture2D densityMap, SamplerState densit
     float2 uv = float2(lightNdc.x * 0.5f + 0.5f, 0.5f - lightNdc.y * 0.5f);
     // 密度バッファの外は「遮る物が無い」。端で影が張り付くのを防ぐ。
     if (any(uv < 0.0f) || any(uv > 1.0f)) return 1.0f;
-    float2 density = densityMap.Sample(densitySampler, uv).rg;
+    // 密度バッファはミップ 1 段。Sample だと点光源ループ内から呼ばれたとき勾配が未定義になる (X3595)。
+    float2 density = densityMap.SampleLevel(densitySampler, uv, 0.0f).rg;
     return ComputeParticleSelfShadowTransmittance(density, saturate(lightNdc.z), strength);
 }
 

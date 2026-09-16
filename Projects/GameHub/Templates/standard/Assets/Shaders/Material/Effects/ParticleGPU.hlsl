@@ -23,16 +23,17 @@
 #include "Rendering/ParticleSelfShadow.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/ParticleLighting.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // 歪みベクトル専用ノーマルマップ (CPU 経路 Particle.hlsl と同じスロット・同じ扱い)。
-Texture2D                     gDistortionTex : register(TEX_NORMAL);
-Texture2D                     gSceneDepth: register(TEX_DEPTH);
-Texture2D                     gSceneColor: register(t5);
-Texture2D                     gMotionVectors : register(t6);
+FBZZ_TEX2D(gDistortionTex, TEX_NORMAL_SLOT);
+FBZZ_TEX2D(gSceneDepth, TEX_DEPTH_SLOT);
+FBZZ_TEX2D(gSceneColor, 5);
+FBZZ_TEX2D(gMotionVectors, 6);
 // 自己影の光源側密度 (R=Σα, G=Σα·深度)。CPU 経路と同じ t9 を使う。
-Texture2D                     gParticleDensity : register(TEX_PARTICLE_DENSITY);
+FBZZ_TEX2D(gParticleDensity, TEX_PARTICLE_DENSITY_SLOT);
 // 受け影用。CPU 経路 (Particle.hlsl) と同じスロット・同じ ComputeShadow を使う。
-Texture2D<float>              gShadowMap : register(TEX_SHADOW);
+FBZZ_TEX2D_T(float, gShadowMap, TEX_SHADOW_SLOT);
 SamplerComparisonState        gSampShadow: register(SAMPLER_SHADOW);
 
 // ---------- PS ------------------------------------------------------------

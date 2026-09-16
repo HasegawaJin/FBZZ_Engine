@@ -25,6 +25,7 @@
 #pragma once
 
 #include <Engine/Renderer/IIblBaker.hpp>
+#include <Engine/Renderer/ITexture.hpp> // INVALID_BINDLESS_INDEX
 
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -54,10 +55,15 @@ public:
 private:
     using Resource = Microsoft::WRL::ComPtr<ID3D12Resource>;
 
-    // shader-visible ヒープから 1 スロット確保して CPU/GPU ハンドルを返す。
+    // shader-visible ヒープから 1 スロット確保して CPU/GPU ハンドルと添字を返す。
     struct Descriptor {
         D3D12_CPU_DESCRIPTOR_HANDLE cpu{};
         D3D12_GPU_DESCRIPTOR_HANDLE gpu{};
+        // 自前ヒープ内の添字。
+        // WHY これがそのまま bindless の添字になるか: ResourceDescriptorHeap[] は
+        //     «そのとき束縛されているヒープ» を引く。このベイカーは自分のヒープを
+        //     SetDescriptorHeaps しているので、共有ヒープの永続レンジへ複製する必要がない。
+        uint32_t index = INVALID_BINDLESS_INDEX;
     };
 
     // 一度だけ構築する device レベルのリソース (コマンドリスト・フェンス・ヒープ・CB アップロード)。
@@ -81,10 +87,10 @@ private:
     Resource CreateLut(uint32_t size);                          // R16G16B16A16F, 2D, UAV 可, 初期状態 UAV
 
     // ビュー作成 (割当済みスロットの CPU ハンドルへ) して table バインド用 GPU ハンドルを返す。
-    D3D12_GPU_DESCRIPTOR_HANDLE CreateEquirectSrv(ID3D12Resource* equirect);
-    D3D12_GPU_DESCRIPTOR_HANDLE CreateCubeSrv(ID3D12Resource* cube, uint32_t mipCount);
-    D3D12_GPU_DESCRIPTOR_HANDLE CreateFaceUav(ID3D12Resource* cube, uint32_t face, uint32_t mip);
-    D3D12_GPU_DESCRIPTOR_HANDLE CreateLutUav(ID3D12Resource* lut);
+    uint32_t CreateEquirectSrv(ID3D12Resource* equirect);
+    uint32_t CreateCubeSrv(ID3D12Resource* cube, uint32_t mipCount);
+    uint32_t CreateFaceUav(ID3D12Resource* cube, uint32_t face, uint32_t mip);
+    uint32_t CreateLutUav(ID3D12Resource* lut);
 
     // subresources を一時 upload バッファ経由で dest へコピー記録する (footprint / row-pitch 対応)。
     // uploadKeepAlive は GPU 完了 (ExecuteAndWait) まで生存させる必要がある。
@@ -96,9 +102,14 @@ private:
 
     void Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before,
                     D3D12_RESOURCE_STATES after);
+    /// @brief CS を 1 回記録する。
+    /// @param srvIndex SRV の bindless 添字 (t0 相当)。SRV を読まない CS は INVALID_BINDLESS_INDEX。
+    /// @param uavIndex UAV の bindless 添字 (u0 相当)。
+    /// @note 添字は «このベイカーが束縛している自前ヒープ» 内の位置。
+    ///       ResourceDescriptorHeap[] は束縛中のヒープを引くので、共有ヒープへ複製する必要がない。
+    /// @see  Docs/design/bindless.md
     void Dispatch(ID3D12PipelineState* pso, D3D12_GPU_VIRTUAL_ADDRESS cb,
-                  D3D12_GPU_DESCRIPTOR_HANDLE srvTable, D3D12_GPU_DESCRIPTOR_HANDLE uavTable,
-                  uint32_t size);
+                  uint32_t srvIndex, uint32_t uavIndex, uint32_t size);
 
     // GPU テクスチャを CaptureTexture (DirectXTex DX12) で読み戻して DDS 保存する。
     bool SaveDds(ID3D12Resource* resource, bool isCubeMap, const std::string& absPath);

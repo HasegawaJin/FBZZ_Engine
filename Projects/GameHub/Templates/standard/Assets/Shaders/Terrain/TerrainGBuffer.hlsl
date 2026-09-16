@@ -13,6 +13,7 @@
 #include "Common/Color.hlsli"
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer TerrainCB : register(CB_OBJECT)
 {
@@ -28,7 +29,7 @@ cbuffer TerrainCB : register(CB_OBJECT)
 };
 
 // テクスチャ・サンプラーは Terrain.hlsl と同一スロット (C++ TerrainRenderPass のバインドと一致)。
-Texture2D    g_splatmap     : register(t0);
+FBZZ_TEX2D(g_splatmap, 0);
 Texture2D    g_diffuse[4]   : register(t1);  // t1..t4
 Texture2D    g_normal[4]    : register(t5);  // t5..t8
 Texture2D    g_aoRoughness[4] : register(t9); // t9..t12 (R=AO, G=Roughness)

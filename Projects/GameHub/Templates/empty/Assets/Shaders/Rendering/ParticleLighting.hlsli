@@ -15,22 +15,25 @@
 #include "Rendering/Lighting.hlsli"
 
 #include "Common/FroxelFogConstants.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // 6 方向ライトマップの Negative 側 (左 / 下 / 手前 / 発光マスク)。Positive は albedo (t0)。
-Texture2D gSixWayNegative : register(TEX_EMISSIVE);
+FBZZ_TEX2D(gSixWayNegative, TEX_EMISSIVE_SLOT);
 // 拡散 IBL (空連動の照度キューブ)。iblIntensity が 0 のフレームは読まず ambientColor へ落ちる。
-TextureCube gParticleIrradiance : register(TEX_IBL_IRRADIANCE);
+FBZZ_TEXCUBE(gParticleIrradiance, TEX_IBL_IRRADIANCE_SLOT);
 // フロクセル霧の積分済みボリューム (rgb = 視線に沿って散乱してきた光 / a = 透過率)。
-Texture3D<float4> gParticleFroxelFog : register(TEX_FROXEL_FOG);
+FBZZ_TEX3D_T(float4, gParticleFroxelFog, TEX_FROXEL_FOG_SLOT);
 SamplerState gParticleLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
 // dir の向きから来る環境光。不透明なサーフェスと同じ «空の照度» を受けないと、
 // 同じ場所に置いた煙だけが灰色に浮く。
+// NOTE: 出口を 1 つにしてある。ループ内で展開される関数の早期 return は FXC が X4000 で咎める。
 float3 ParticleAmbient(float3 dir)
 {
+    float3 ambient = ambientColor;
     if (iblIntensity > 0.0f)
-        return gParticleIrradiance.SampleLevel(gParticleLinearClamp, dir, 0.0f).rgb * iblIntensity * iblDiffuseScale;
-    return ambientColor;
+        ambient = gParticleIrradiance.SampleLevel(gParticleLinearClamp, dir, 0.0f).rgb * iblIntensity * iblDiffuseScale;
+    return ambient;
 }
 
 // 向きを持たない媒質 (疑似法線の煙・ボリュメトリック) の環境光。上下と水平の平均。
@@ -115,10 +118,12 @@ float3 ParticlePunctualLight(ParticlePSIn p, float3 axisRight, float3 axisUp, fl
 //   positive … 6 方向マップの Positive (= albedo のサンプル)。FBZZ_PFX_SIX_WAY_MAPS のときだけ意味を持つ
 //   negative … 6 方向マップの Negative (t3)
 //   shadow   … 平行光への受け影 × 自己影
+// NOTE: 出口を 1 つにしてある (ParticleAmbient と同じ理由)。
 float3 ShadeParticle(ParticlePSIn p, float3 base, float4 positive, float4 negative, float shadow)
 {
     const float3 toLight = normalize(-lightDir);
     const bool punctual = (gEffectsFlags & FBZZ_PFX_PUNCTUAL) != 0u;
+    float3 rgb;
 
     if ((gEffectsFlags & FBZZ_PFX_SIX_WAY_MAPS) != 0u)
     {
@@ -134,10 +139,9 @@ float3 ShadeParticle(ParticlePSIn p, float3 base, float4 positive, float4 negati
         if (punctual)
             light += ParticlePunctualLight(p, axisRight, axisUp, axisBack, positive.rgb, negative.rgb, true);
         // 発光は光の当たり方と無関係 (炎の芯は影の中でも光る)。
-        return light * p.color.rgb * gTintColor.rgb + gSixWayEmission.rgb * negative.a;
+        rgb = light * p.color.rgb * gTintColor.rgb + gSixWayEmission.rgb * negative.a;
     }
-
-    if ((gEffectsFlags & FBZZ_PFX_SIX_WAY) != 0u)
+    else if ((gEffectsFlags & FBZZ_PFX_SIX_WAY) != 0u)
     {
         // ビルボードには本物の法線が無いため、スプライト面を球とみなした疑似法線を作る。
         const float2 normalXY = p.localUv * 2.0f - 1.0f;
@@ -151,15 +155,17 @@ float3 ShadeParticle(ParticlePSIn p, float3 base, float4 positive, float4 negati
         float3 lit = ParticleAmbientIsotropic() + lightColor * ((diffuse + back) * shadow);
         if (punctual)
             lit += ParticlePunctualLight(p, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false);
-        return base * lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
+        rgb = base * lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
     }
-
-    // 非ライティング時は色へ直接掛ける。発光体 (加算) では影が効きすぎないよう
-    // 完全な 0 にはせず、strength の範囲で減衰させる。
-    float3 rgb = base * shadow;
-    // 素の色は «既に照らされた色» なので、点光源は上乗せする (炎の近くの煙が明るくなる)。
-    if (punctual)
-        rgb += base * ParticlePunctualLight(p, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false) * saturate(gLightingStrength);
+    else
+    {
+        // 非ライティング時は色へ直接掛ける。発光体 (加算) では影が効きすぎないよう
+        // 完全な 0 にはせず、strength の範囲で減衰させる。
+        rgb = base * shadow;
+        // 素の色は «既に照らされた色» なので、点光源は上乗せする (炎の近くの煙が明るくなる)。
+        if (punctual)
+            rgb += base * ParticlePunctualLight(p, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false) * saturate(gLightingStrength);
+    }
     return rgb;
 }
 

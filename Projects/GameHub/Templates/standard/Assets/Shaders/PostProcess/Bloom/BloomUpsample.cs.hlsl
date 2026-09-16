@@ -15,13 +15,14 @@
 
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D           texSrc     : register(TEX_BLOOM);      // 1 段小さいミップ
-Texture2D           texAdd     : register(TEX_BLOOM_ADD);  // 同じ寸法のダウンサンプル結果
+FBZZ_TEX2D(texSrc, TEX_BLOOM_SLOT);      // 1 段小さいミップ
+FBZZ_TEX2D(texAdd, TEX_BLOOM_ADD_SLOT);  // 同じ寸法のダウンサンプル結果
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState        sampDefault: register(SAMPLER_LINEAR_CLAMP);
 
-RWTexture2D<float4> outputDst  : register(UAV_OUTPUT);
+FBZZ_RWTEX2D_T(float4, outputDst, UAV_OUTPUT_SLOT);
 
 // 3x3 テント (重み合計 = 1)
 static const float2 TENT_OFFSETS[9] =

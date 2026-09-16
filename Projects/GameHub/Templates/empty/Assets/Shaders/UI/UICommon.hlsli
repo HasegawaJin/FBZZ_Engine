@@ -22,6 +22,8 @@
 #endif
 
 #include "Common/Binding.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
 // UISystem が毎ドロー埋める。マテリアル側からは読み取り専用。
 cbuffer UIConstants : register(CB_UI)
@@ -44,9 +46,13 @@ cbuffer UIConstants : register(CB_UI)
 //       float4 tintColor;   // offset  0
 //       float  cornerRadius;// offset 16
 //       ...
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
 //   };
 
-Texture2D    g_Texture : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(g_Texture, texAlbedoIndex);
 SamplerState g_Sampler : register(SAMPLER_UI);
 
 struct UIVertexInput

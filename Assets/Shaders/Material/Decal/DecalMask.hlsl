@@ -15,8 +15,9 @@
 ///   サーフェスだけを書かないと指すものが食い違う。
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D texSceneDepth : register(TEX_DEPTH);
+FBZZ_TEX2D(texSceneDepth, TEX_DEPTH_SLOT);
 
 // DecalPass がオブジェクトごとに埋める。
 // LAYOUT: RenderPassContext.hpp の DecalReceiverCB と一致させること。

@@ -10,6 +10,7 @@
 #define PARTICLE_SORT_COMMON_HLSLI
 
 #include "Common/Binding.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // LDS 段の 1 グループが担当する要素数。スレッド数と一致させること。
 // この値の半分までの j (比較距離) はグループ内で完結するため、グローバル往復を省ける。
@@ -27,7 +28,7 @@ cbuffer GpuParticleSortCB : register(b0)
 
 // ソート対象 1 件。x = キー (昇順に並べる)、y = 粒子インデックス。
 // キーの作り方は ParticleGpuSortKeys.cs.hlsl を参照。死亡・詰め物は 0xFFFFFFFF で必ず末尾へ落ちる。
-RWStructuredBuffer<uint2> gSortEntries : register(UAV_GPU_SORT);
+FBZZ_RWSBUFFER_T(uint2, gSortEntries, UAV_GPU_SORT_SLOT);
 
 // bitonic ネットワークの向き。i の k ビットが 0 の区間は昇順、1 の区間は降順に組む。
 bool ParticleSortAscending(uint index)

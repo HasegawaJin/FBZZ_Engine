@@ -6,6 +6,8 @@
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Common/Color.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -35,19 +37,30 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  anisotropy;
     float3 sheenColor;
     float  _pad2;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
+    uint texNormalIndex;
+    uint texMetallicIndex;
+    uint texEmissiveIndex;
+    uint texAOIndex;
 };
 
-Texture2D<float>       texShadow        : register(TEX_SHADOW);
-Texture2D              texAlbedo        : register(TEX_ALBEDO);
-Texture2D              texNormal        : register(TEX_NORMAL);
-Texture2D              texMetallicRough : register(TEX_METALLIC_ROUGH);
-Texture2D              texEmissive      : register(TEX_EMISSIVE);
-Texture2D              texAO            : register(TEX_AO);
+// bindless 移行済み。宣言だけを置き換えてあり、以降の Sample 呼び出しは一切変えていない。
+// 添字は b14 の添字ブロック経由で毎ドロー配られる。@see Docs/design/bindless.md
+FBZZ_TEX2D_T(float,  texShadow,        TEX_SHADOW_SLOT);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
+FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);
+FBZZ_MATERIAL_TEX(texMetallicRough, texMetallicIndex);
+FBZZ_MATERIAL_TEX(texEmissive, texEmissiveIndex);
+FBZZ_MATERIAL_TEX(texAO, texAOIndex);
+FBZZ_TEXCUBE(        texIBLIrradiance, TEX_IBL_IRRADIANCE_SLOT);
+FBZZ_TEXCUBE(        texIBLPrefilter,  TEX_IBL_PREFILTER_SLOT);
+FBZZ_TEX2D_T(float4, texBRDFLut,       TEX_IBL_BRDF_LUT_SLOT);
+// サンプラーはルートシグネチャへ焼いた静的サンプラーのままで、bindless の対象外。
 SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
-TextureCube            texIBLIrradiance : register(TEX_IBL_IRRADIANCE);
-TextureCube            texIBLPrefilter  : register(TEX_IBL_PREFILTER);
-Texture2D<float4>      texBRDFLut       : register(TEX_IBL_BRDF_LUT);
 SamplerState           sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP);
 
 PSInput VSMain(VSInput v)

@@ -5,9 +5,10 @@
 //
 // 近傍は反復の前に 1 回だけ組む (CPU の BuildNeighbors と同じ)。反復・粘性はこの範囲を使い回す。
 #include "Bake/Fluid/LiquidGrid.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<float4>  gPredicted : register(t14);
-RWStructuredBuffer<uint2> gRangesOut : register(u2);
+FBZZ_SBUFFER_T(float4, gPredicted, 14);
+FBZZ_RWSBUFFER_T(uint2, gRangesOut, 2);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

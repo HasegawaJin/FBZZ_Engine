@@ -5,6 +5,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer ObjectMaskConstants : register(CB_MATERIAL)
 {
@@ -13,7 +14,7 @@ cbuffer ObjectMaskConstants : register(CB_MATERIAL)
 };
 
 // 遮蔽の判定はここで済ませる (ObjectMask.hlsl と同じ理由)。
-Texture2D<float> texSceneDepth : register(TEX_DEPTH);
+FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
 static const float kObjectMaskDepthBias = 0.00002f;
 
 struct MaskPSInput

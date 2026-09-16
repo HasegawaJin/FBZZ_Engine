@@ -12,14 +12,15 @@
 #include "Rendering/Atmosphere.hlsli"
 #include "Rendering/PostProcess.hlsli"
 #include "Common/FroxelFogConstants.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D          texHDR      : register(TEX_GBUFFER0);        // ライティング結果 HDR バッファ
-Texture2D          texBloom    : register(TEX_BLOOM);
-Texture2D<float>   texDepth    : register(TEX_DEPTH);           // 深度 (フォグ計算用)
-Texture3D          texLUT      : register(TEX_LUT_COLOR_GRADE); // 3D カラーグレーディング LUT (32x32x32 推奨)
+FBZZ_TEX2D(texHDR, TEX_GBUFFER0_SLOT);        // ライティング結果 HDR バッファ
+FBZZ_TEX2D(texBloom, TEX_BLOOM_SLOT);
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);           // 深度 (フォグ計算用)
+FBZZ_TEX3D(texLUT, TEX_LUT_COLOR_GRADE_SLOT); // 3D カラーグレーディング LUT (32x32x32 推奨)
 // ---- Advanced Graphics ----
 // SSR 反射 — ssrIntensity > 0 のとき alpha チャンネルをブレンド係数として HDR に乗せる
-Texture2D<float4>  texSSR        : register(TEX_SSR);
+FBZZ_TEX2D_T(float4, texSSR, TEX_SSR_SLOT);
 // 全画面フェッチはすべてこれ 1 本で引く。
 // WHY s0 (SAMPLER_DEFAULT) を使わないか: DX12 の静的サンプラーでは s0 が WRAP
 //     (メッシュテクスチャのタイリング用) になっている。色収差やレンズ歪みは uv を
@@ -28,12 +29,12 @@ SamplerState       sampLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
 // ---- フロクセル ボリューメトリック フォグ ----
 // froxelGridZ == 0 のとき無効。b13 が未束縛なら全ゼロで読まれるので、そのまま素通りする。
-Texture3D<float4>  texFroxelFog : register(TEX_FROXEL_FOG);
+FBZZ_TEX3D_T(float4, texFroxelFog, TEX_FROXEL_FOG_SLOT);
 
 // ---- 自動露出 ----
 // [0] = 順応済みの平均輝度。ExposureAverage.cs.hlsl が毎フレーム書く。
 // autoExposureKey <= 0 のときは束縛されておらず、b5 の exposure をそのまま使う。
-StructuredBuffer<float> gAdaptedLuminance : register(SB_PUNCTUAL_LIGHTS); // t29
+FBZZ_SBUFFER_T(float, gAdaptedLuminance, SB_PUNCTUAL_LIGHTS_SLOT); // t29
 
 // ResolveExposure — b5 の手動 exposure と自動露出を 1 か所で合流させる。
 //

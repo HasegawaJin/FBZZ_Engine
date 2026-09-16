@@ -256,6 +256,10 @@
 // フロクセル霧の定数。
 #define CB_FROXEL_FOG        b13 // FroxelFogConstants
 
+// bindless ディスクリプタ添字ブロック。全シェーダーが同じ並びで受け取る。
+// 詳細は Common/BindlessIndices.hlsli と Docs/design/bindless.md
+#define CB_BINDLESS_INDICES  b14
+
 // ---- Clustered Lighting (Forward+ / Deferred+) ------------------------
 #define CB_CLUSTER           b9   // ClusterConstants (グリッド寸法 / Z スライス係数 / ライト数)
 
@@ -286,4 +290,83 @@
 //     おかげで UAV_SSR / UAV_CONTACT_SHADOW / UAV_GPU_SORT が密集する u3 を避けられる。
 #define UAV_CLUSTER_LIGHTS   u2   // RWStructuredBuffer<uint> (UAV_GPU_PARTICLES と時分割で再利用)
 
+
+// ---- bindless 用の数値スロット ------------------------------------------
+// 上の t0〜t31 と 1:1 の数値版。宣言マクロ (FBZZ_TEX2D 等) の引数はレジスタ名では
+// なく数値でなければならないため、同じ割り当てを数値でも持つ。
+//
+// WARNING: 上の定義を動かしたらこちらも同じ値へ直すこと。食い違っても «コンパイルは
+//          通り、別のテクスチャが貼られる» としてしか現れない。
+// @see Docs/design/bindless.md
+#define TEX_ALBEDO_SLOT              0
+#define TEX_NORMAL_SLOT              1
+#define TEX_METALLIC_ROUGH_SLOT      2
+#define TEX_EMISSIVE_SLOT            3
+#define TEX_AO_SLOT                  4
+#define TEX_GBUFFER0_SLOT            5
+#define TEX_GBUFFER1_SLOT            6
+#define TEX_DEPTH_SLOT               7
+#define TEX_SHADOW_SLOT              8
+#define TEX_BLOOM_ADD_SLOT           9
+#define TEX_PARTICLE_DENSITY_SLOT    9
+#define TEX_SSAO_SLOT                9
+#define TEX_BLOOM_SLOT               10
+#define TEX_CUSTOM_VELOCITY_SLOT     11
+#define TEX_ENV_CUBE_SLOT            11
+#define TEX_CUSTOM_NORMAL_SLOT       12
+#define TEX_ENV_EQUIRECT_SLOT        12
+#define TEX_DECAL_MASK_SLOT          13
+#define SB_CLUSTER_LIGHTS_CS_SLOT    14
+#define SB_GPU_PARTICLES_SLOT        14
+#define SB_SKIN_SRC_VERTICES_SLOT    14
+#define SB_GPU_SORT_SLOT             15
+#define SB_GPU_SPAWN_SLOT            15
+#define SB_SKIN_BONES_SLOT           15
+#define TEX_IBL_IRRADIANCE_SLOT      16
+#define TEX_IBL_PREFILTER_SLOT       17
+#define TEX_IBL_BRDF_LUT_SLOT        18
+#define TEX_SSR_SLOT                 19
+#define TEX_FROXEL_HISTORY_SLOT      20
+#define TEX_FROXEL_SCATTER_SLOT      20
+#define TEX_VOLUMETRIC_SLOT          20
+#define TEX_TAA_HISTORY_SLOT         21
+#define TEX_LUT_COLOR_GRADE_SLOT     22
+#define TEX_FROXEL_FOG_SLOT          23
+#define TEX_GTAO_SLOT                23
+#define TEX_SCREEN_AO_SLOT           23
+#define TEX_CONTACT_SHADOW_SLOT      24
+#define TEX_SCENE_DEPTH_SLOT         25
+#define TEX_CLOUD_SHAPE_SLOT         26
+#define TEX_VELOCITY_SLOT            26
+#define TEX_VELOCITY_FIELD_SLOT      26
+#define TEX_CLOUD_DETAIL_SLOT        27
+#define TEX_PUNCTUAL_SHADOW_SLOT     28
+#define SB_PARTICLE_FORCES_SLOT      29
+#define SB_PUNCTUAL_LIGHTS_SLOT      29
+#define SB_CLUSTER_INDICES_SLOT      30
+#define TEX_LIGHT_COOKIE_SLOT        31
+
+// 頂点シェーダー側の添字空間 (旧 VS 用 SRV テーブル)。
+#define VS_SB_INSTANCE_SLOT          0
+#define VS_SB_BUFFER0_SLOT           1
+#define VS_SB_BUFFER1_SLOT           2
+
+// ---- bindless 用の UAV 数値スロット --------------------------------------
+// 上の u0〜u7 と 1:1 の数値版。FBZZ_RWTEX* / FBZZ_RWSBUFFER の引数に使う。
+// WARNING: 上の定義を動かしたらこちらも直すこと (食い違うと別の UAV へ書き込む)。
+#define UAV_BRDF_LUT_SLOT            0
+#define UAV_FROXEL_SCATTER_SLOT      0
+#define UAV_OUTPUT_SLOT              0
+#define UAV_FROXEL_INTEGRATED_SLOT   1
+#define UAV_OUTPUT2_SLOT             1
+#define UAV_CLUSTER_LIGHTS_SLOT      2
+#define UAV_GPU_PARTICLES_SLOT       2
+#define UAV_CONTACT_SHADOW_SLOT      3
+#define UAV_GPU_SORT_SLOT            3
+#define UAV_SSR_SLOT                 3
+#define UAV_SKINNED_VERTICES_SLOT    4
+#define UAV_VOLUMETRIC_SLOT          4
+#define UAV_MOTION_BLUR_SLOT         5
+#define UAV_GTAO_RAW_SLOT            6
+#define UAV_GTAO_BLUR_SLOT           7
 #endif // BINDING_HLSLI

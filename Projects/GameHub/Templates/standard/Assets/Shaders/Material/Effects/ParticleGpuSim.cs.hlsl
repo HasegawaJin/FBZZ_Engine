@@ -14,6 +14,7 @@
 #include "Common/Binding.hlsli"
 #include "Common/Color.hlsli"
 #include "Rendering/ParticleNoise.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // ---------- 構造体 --------------------------------------------------------
 
@@ -161,13 +162,13 @@ cbuffer GpuEmitterCB : register(b0)
     float4   gGradientMeta;         // x=キー数, y=補間モード, z/w=予約
 };
 
-StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
-RWStructuredBuffer<GpuParticle>   gParticles   : register(UAV_GPU_PARTICLES);
-Texture2D<float>                   gSceneDepth : register(TEX_DEPTH);
+FBZZ_SBUFFER_T(GpuSpawnEntry, gSpawnBuffer, SB_GPU_SPAWN_SLOT);
+FBZZ_RWSBUFFER_T(GpuParticle, gParticles, UAV_GPU_PARTICLES_SLOT);
+FBZZ_TEX2D_T(float, gSceneDepth, TEX_DEPTH_SLOT);
 // このエミッターに効く力場一式。本数は gForceFieldCount。上限は無い。
-StructuredBuffer<GpuForceField>    gParticleForces : register(SB_PARTICLE_FORCES);
+FBZZ_SBUFFER_T(GpuForceField, gParticleForces, SB_PARTICLE_FORCES_SLOT);
 // 常駐中の速度場を積んだアトラス。場が 1 枚も無くても 1x1x1 が必ず束縛される。
-Texture3D<float4>                  gVelocityAtlas  : register(TEX_VELOCITY_FIELD);
+FBZZ_TEX3D_T(float4, gVelocityAtlas, TEX_VELOCITY_FIELD_SLOT);
 SamplerState                       gVelocitySamp   : register(SAMPLER_LINEAR_CLAMP);
 
 // ---------- カールノイズ (乱流ベクトルフィールド) ---------------------------

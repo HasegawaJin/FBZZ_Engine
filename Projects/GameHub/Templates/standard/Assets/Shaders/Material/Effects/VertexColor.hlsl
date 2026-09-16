@@ -12,14 +12,20 @@
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
     float4 albedo;       // RGBA ベースカラー  offset 0
     uint   textureMask;  // テクスチャフラグ   offset 16
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
 };
 
-Texture2D    texAlbedo   : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
 // 法線・接線・ワールド座標は参照しないので、Unlit と同じく最小の補間だけ渡す。

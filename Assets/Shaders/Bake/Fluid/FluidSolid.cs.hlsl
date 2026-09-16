@@ -3,8 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-RWTexture3D<float4> gSolidOut : register(u0); // xyz 固体の速度 / w 1 = 固体, 0 = 流体
+FBZZ_RWTEX3D_T(float4, gSolidOut, 0); // xyz 固体の速度 / w 1 = 固体, 0 = 流体
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)

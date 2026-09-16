@@ -44,6 +44,7 @@
 #include "Common/Math.hlsli"
 #include "Common/Random.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // NOTE: PostProcess 段 (LDR / Composite の後) で走る。
 //
@@ -57,8 +58,8 @@
 //   ブルームと露出に乗せたいので SceneHDR + ADDITIVE で書いていたが、画面に
 //   一切出なかった。«最前面に出す» ことの方が «滲む» ことより優先される。
 //   代償として 1 を超える明るさは頭打ちになり、輪郭はブルームを拾わない。
-Texture2D texScene       : register(TEX_GBUFFER0);
-Texture2D texOutlineMask : register(TEX_GBUFFER1);
+FBZZ_TEX2D(texScene, TEX_GBUFFER0_SLOT);
+FBZZ_TEX2D(texOutlineMask, TEX_GBUFFER1_SLOT);
 
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampPoint : register(SAMPLER_POINT_CLAMP);

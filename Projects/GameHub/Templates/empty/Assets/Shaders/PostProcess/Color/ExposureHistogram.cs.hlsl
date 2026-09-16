@@ -9,9 +9,10 @@
 
 #include "PostProcess/Color/ExposureCommon.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D<float4>     gHdr       : register(TEX_GBUFFER0);
-RWStructuredBuffer<uint> gHistogram : register(UAV_CLUSTER_LIGHTS); // u2
+FBZZ_TEX2D_T(float4, gHdr, TEX_GBUFFER0_SLOT);
+FBZZ_RWSBUFFER_T(uint, gHistogram, UAV_CLUSTER_LIGHTS_SLOT); // u2
 
 groupshared uint s_bins[FBZZ_EXPOSURE_BINS];
 

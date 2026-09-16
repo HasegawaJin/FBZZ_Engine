@@ -15,13 +15,14 @@
 #include "Rendering/Lighting.hlsli"
 
 #include "Common/FroxelFogConstants.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // 6 方向ライトマップの Negative 側 (左 / 下 / 手前 / 発光マスク)。Positive は albedo (t0)。
-Texture2D gSixWayNegative : register(TEX_EMISSIVE);
+FBZZ_TEX2D(gSixWayNegative, TEX_EMISSIVE_SLOT);
 // 拡散 IBL (空連動の照度キューブ)。iblIntensity が 0 のフレームは読まず ambientColor へ落ちる。
-TextureCube gParticleIrradiance : register(TEX_IBL_IRRADIANCE);
+FBZZ_TEXCUBE(gParticleIrradiance, TEX_IBL_IRRADIANCE_SLOT);
 // フロクセル霧の積分済みボリューム (rgb = 視線に沿って散乱してきた光 / a = 透過率)。
-Texture3D<float4> gParticleFroxelFog : register(TEX_FROXEL_FOG);
+FBZZ_TEX3D_T(float4, gParticleFroxelFog, TEX_FROXEL_FOG_SLOT);
 SamplerState gParticleLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
 // dir の向きから来る環境光。不透明なサーフェスと同じ «空の照度» を受けないと、

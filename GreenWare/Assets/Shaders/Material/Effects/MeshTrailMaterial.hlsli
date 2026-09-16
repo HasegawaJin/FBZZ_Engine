@@ -30,6 +30,10 @@
 ///   {
 ///       float4 rimColor;    // .mat の [params] と **名前** で結ばれる
 ///       float  rimSharpness;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
 ///   };
 ///
 ///   // VSMain はこのヘッダーが供給する。書くのは PSMain だけ。
@@ -67,8 +71,10 @@ cbuffer MeshTrailConstants : register(CB_MESHTRAIL)
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    gMeshTrailTex : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(gMeshTrailTex, texAlbedoIndex);
 SamplerState gSampler      : register(SAMPLER_DEFAULT);
 
 // WHY 法線と world 座標まで渡すか:

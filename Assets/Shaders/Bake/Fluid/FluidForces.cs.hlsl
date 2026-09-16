@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gVelocityIn  : register(t0);
-Texture3D<float4>   gScalarsIn   : register(t1);
-RWTexture3D<float4> gVelocityOut : register(u0);
+FBZZ_TEX3D_T(float4, gVelocityIn, 0);
+FBZZ_TEX3D_T(float4, gScalarsIn, 1);
+FBZZ_RWTEX3D_T(float4, gVelocityOut, 0);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)

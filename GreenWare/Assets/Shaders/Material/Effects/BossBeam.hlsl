@@ -168,14 +168,19 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     ///   あれば視線と円柱の交差を解けるので、どの角度から見ても厚みが正しく出る。
     float  tubeRadius;
     float  _bossBeamPad0;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
 };
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Material/Effects/ArcNoise.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    texAlbedo   : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
 struct BossBeamPSIn

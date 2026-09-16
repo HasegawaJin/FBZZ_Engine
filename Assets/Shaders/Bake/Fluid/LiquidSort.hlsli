@@ -6,11 +6,12 @@
 #define LIQUID_SORT_HLSLI
 
 #include "Bake/Fluid/LiquidCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // FluidGpuLiquidPack.hpp の kGpuLiquidSortBlock と一致させること。
 #define LIQUID_SORT_BLOCK 256
 
-RWStructuredBuffer<uint2> gSortEntries : register(u3);
+FBZZ_RWSBUFFER_T(uint2, gSortEntries, 3);
 
 // WHY 粒子番号まで比べるか: 同じセルの中の順番まで決めておくと、近傍の和を足す順が毎回同じになり、焼き直しても同じ絵になる。
 bool LiquidSortGreater(uint2 a, uint2 b)

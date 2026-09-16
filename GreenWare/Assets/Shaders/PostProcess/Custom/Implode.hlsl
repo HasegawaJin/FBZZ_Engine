@@ -22,9 +22,10 @@
 #include "Common/Fullscreen.hlsli"
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // t5 は RenderSystem が自動で束ねる LDR カラー。
-Texture2D    texInput   : register(TEX_GBUFFER0);
+FBZZ_TEX2D(texInput, TEX_GBUFFER0_SLOT);
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 // 起点が画面外にあるとき、尾のタップは画面の外を舐めにいく。clamp なら縁の色が
 // 伸びるだけで済むが、wrap だと反対側の絵が回り込んで «裂け目» になる。

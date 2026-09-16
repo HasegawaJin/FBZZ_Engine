@@ -16,6 +16,7 @@
 //   textureSize: 出力解像度 (通常 32)
 
 #include "IBL/IBLCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer CbIblFace : register(b0)
 {
@@ -25,8 +26,8 @@ cbuffer CbIblFace : register(b0)
     uint g_thetaSteps;  // 半球積分の θ 分割数 (0 ならデフォルト 50)
 };
 
-TextureCube<float4>          g_envMap  : register(t0); // Environment Cubemap SRV
-RWTexture2DArray<float4>     g_output  : register(u0); // Irradiance Cubemap UAV (1 面分)
+FBZZ_TEXCUBE_T(float4, g_envMap, 0); // Environment Cubemap SRV
+FBZZ_RWTEX2DARRAY_T(float4, g_output, 0); // Irradiance Cubemap UAV (1 面分)
 SamplerState                 g_sampler : register(s0); // LinearWrap
 
 [numthreads(8, 8, 1)]

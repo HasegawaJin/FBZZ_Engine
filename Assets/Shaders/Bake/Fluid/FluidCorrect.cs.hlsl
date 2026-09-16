@@ -6,13 +6,14 @@
 /// スカラー場 (x 密度 / y 温度 / z 燃料 / w 煙の色) と、燃料の色のテクスチャ (z だけ使う) の両方が通る。
 /// z の扱い (減らさず負だけ切る) を変えると燃料の色の散逸まで変わる。
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gOriginalIn : register(t0); // 移流前
-Texture3D<float4>   gForwardIn  : register(t1); // 前進移流
-Texture3D<float4>   gBackwardIn : register(t2); // 前進 → 後退で戻したもの
-Texture3D<float4>   gVelocityIn : register(t3);
-Texture3D<float4>   gSolidIn    : register(t4); // w 1 = 固体
-RWTexture3D<float4> gFieldOut   : register(u0);
+FBZZ_TEX3D_T(float4, gOriginalIn, 0); // 移流前
+FBZZ_TEX3D_T(float4, gForwardIn, 1); // 前進移流
+FBZZ_TEX3D_T(float4, gBackwardIn, 2); // 前進 → 後退で戻したもの
+FBZZ_TEX3D_T(float4, gVelocityIn, 3);
+FBZZ_TEX3D_T(float4, gSolidIn, 4); // w 1 = 固体
+FBZZ_RWTEX3D_T(float4, gFieldOut, 0);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)

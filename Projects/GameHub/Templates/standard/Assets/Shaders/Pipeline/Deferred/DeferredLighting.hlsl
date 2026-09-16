@@ -14,13 +14,14 @@
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D      texGBuffer0  : register(TEX_GBUFFER0);   // albedo(RGB) + roughness(A)
-Texture2D      texGBuffer1  : register(TEX_GBUFFER1);   // normal(RGB) + metallic(A)
-Texture2D      texDepth     : register(TEX_DEPTH);
-Texture2D<float>       texShadow    : register(TEX_SHADOW);
-Texture2D              texSSAO      : register(TEX_SSAO);
-Texture2D<float>       texContactShadow : register(TEX_CONTACT_SHADOW); // t24: 接触影マスク (1=非遮蔽, 0=遮蔽)
+FBZZ_TEX2D(texGBuffer0, TEX_GBUFFER0_SLOT);   // albedo(RGB) + roughness(A)
+FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);   // normal(RGB) + metallic(A)
+FBZZ_TEX2D(texDepth, TEX_DEPTH_SLOT);
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
+FBZZ_TEX2D(texSSAO, TEX_SSAO_SLOT);
+FBZZ_TEX2D_T(float, texContactShadow, TEX_CONTACT_SHADOW_SLOT); // t24: 接触影マスク (1=非遮蔽, 0=遮蔽)
 SamplerState           sampDefault  : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow   : register(SAMPLER_SHADOW);
 SamplerState           sampGBuffer  : register(SAMPLER_POINT_CLAMP);
@@ -29,9 +30,9 @@ SamplerState           sampGBuffer  : register(SAMPLER_POINT_CLAMP);
 // irradiance : 拡散 IBL (半球積分済み)
 // prefilter  : 鏡面 IBL (roughness → mip でフィルタリング済み)
 // brdfLUT    : BRDF 積分テーブル (BRDFIntegration.cs.hlsl でスタートアップ時ベイク)
-TextureCube       texIBLIrradiance : register(TEX_IBL_IRRADIANCE);  // t16
-TextureCube       texIBLPrefilter  : register(TEX_IBL_PREFILTER);   // t17
-Texture2D<float4> texBRDFLut       : register(TEX_IBL_BRDF_LUT);   // t18: RG=scale/bias
+FBZZ_TEXCUBE(texIBLIrradiance, TEX_IBL_IRRADIANCE_SLOT);  // t16
+FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);   // t17
+FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);   // t18: RG=scale/bias
 // IBL BRDF LUT は UV が [0,1] 範囲外に出ないよう Linear Clamp でサンプリングする
 SamplerState      sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP); // s2
 

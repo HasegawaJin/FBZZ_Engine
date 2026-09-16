@@ -10,16 +10,22 @@
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
     float4 albedo;       // RGBA ベースカラー         offset 0
     float  roughness;    // スペキュラの広がり [0,1]   offset 16
     uint   textureMask;  // テクスチャフラグ           offset 20
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
 };
 
-Texture2D<float>       texShadow   : register(TEX_SHADOW);
-Texture2D              texAlbedo   : register(TEX_ALBEDO);
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 SamplerState           sampDefault : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 

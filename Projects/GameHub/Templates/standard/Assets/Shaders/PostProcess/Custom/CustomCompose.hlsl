@@ -5,8 +5,9 @@
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    texSource   : register(TEX_GBUFFER0);
+FBZZ_TEX2D(texSource, TEX_GBUFFER0_SLOT);
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState sampLinear  : register(SAMPLER_LINEAR_CLAMP);
 

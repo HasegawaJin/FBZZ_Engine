@@ -13,17 +13,18 @@
 #include "Rendering/ParticleSelfShadow.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/ParticleLighting.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    gParticleTex : register(TEX_ALBEDO);
+FBZZ_TEX2D(gParticleTex, TEX_ALBEDO_SLOT);
 // 歪みベクトル専用ノーマルマップ。gEffectsFlags の FBZZ_PFX_DISTORTION_MAP で有効判定する。
-Texture2D    gDistortionTex : register(TEX_NORMAL);
-Texture2D    gSceneDepth  : register(TEX_DEPTH);
-Texture2D    gSceneColor  : register(t5);
-Texture2D    gMotionVectors : register(t6);
+FBZZ_TEX2D(gDistortionTex, TEX_NORMAL_SLOT);
+FBZZ_TEX2D(gSceneDepth, TEX_DEPTH_SLOT);
+FBZZ_TEX2D(gSceneColor, 5);
+FBZZ_TEX2D(gMotionVectors, 6);
 // 自己影の光源側密度 (R=Σα, G=Σα·深度)。ParticleSelfShadowDensity.hlsl が書く。
-Texture2D    gParticleDensity : register(TEX_PARTICLE_DENSITY);
+FBZZ_TEX2D(gParticleDensity, TEX_PARTICLE_DENSITY_SLOT);
 // 受け影用。Surface/Skinned マテリアルと同じスロット・同じ ComputeShadow を使う。
-Texture2D<float>       gShadowMap  : register(TEX_SHADOW);
+FBZZ_TEX2D_T(float, gShadowMap, TEX_SHADOW_SLOT);
 SamplerState           gSampler    : register(SAMPLER_DEFAULT);
 SamplerComparisonState gSampShadow : register(SAMPLER_SHADOW);
 

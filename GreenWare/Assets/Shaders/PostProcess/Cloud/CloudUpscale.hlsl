@@ -8,8 +8,9 @@
 //      バイリニア補間しても比率が保たれ、元のフル解像度合成と同じ見た目になる。
 #include "Common/Binding.hlsli"
 #include "Common/Fullscreen.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D<float4> g_cloudHalf : register(t0);
+FBZZ_TEX2D_T(float4, g_cloudHalf, 0);
 SamplerState      sampLinear  : register(SAMPLER_LINEAR_CLAMP); // 全画面フェッチ (s0 は DX12 では WRAP)
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)

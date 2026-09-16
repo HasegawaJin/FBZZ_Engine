@@ -6,8 +6,9 @@
 // ParticlePSIn / ParticleBillboardVS を供給し、b2 を材質へ空ける)。
 #include "Rendering/ParticleCommon.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    gParticleTex : register(TEX_ALBEDO);
+FBZZ_TEX2D(gParticleTex, TEX_ALBEDO_SLOT);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);
 
 // 通常描画とMask描画のビルボード形状が1pxでもずれると輪郭が本体から浮いて見えるため、

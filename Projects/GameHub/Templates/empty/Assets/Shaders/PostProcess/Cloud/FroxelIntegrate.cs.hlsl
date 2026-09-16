@@ -13,9 +13,10 @@
 
 #include "Common/FroxelFogConstants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gScatter    : register(TEX_FROXEL_SCATTER);
-RWTexture3D<float4> gIntegrated : register(UAV_FROXEL_INTEGRATED);
+FBZZ_TEX3D_T(float4, gScatter, TEX_FROXEL_SCATTER_SLOT);
+FBZZ_RWTEX3D_T(float4, gIntegrated, UAV_FROXEL_INTEGRATED_SLOT);
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

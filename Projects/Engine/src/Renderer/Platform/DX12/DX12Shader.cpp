@@ -236,6 +236,18 @@ std::string DX12Shader::CompiledBase(const std::string& path)
     return base + "compiled_dx12/" + relative;
 }
 
+namespace {
+
+/// 添字フィールド名 → マテリアルのテクスチャ枠番号。該当しなければ UINT32_MAX。
+uint32_t MaterialTextureSlotOf(std::string_view field)
+{
+    for (uint32_t slot = 0; slot < kMaterialTextureSlotCount; ++slot)
+        if (field == kMaterialTextureSlots[slot].field) return slot;
+    return UINT32_MAX;
+}
+
+} // namespace
+
 ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 {
     // WHAT: DXBC / DXIL の PS reflection を共通化し、DX11 と同じ descriptor を構築する。
@@ -271,6 +283,16 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                 // textureMask は Inspector に出さないが offset を記録する
                 if (n == "textureMask") {
                     desc.textureMaskOffset = vDesc.StartOffset;
+                    continue;
+                }
+                // テクスチャ添字フィールドは «編集可能変数» ではなくテクスチャ枠。
+                // Inspector の数値欄に uint が並ぶのを避け、代わりにテクスチャ枠として出す。
+                if (const uint32_t slot = MaterialTextureSlotOf(n); slot != UINT32_MAX) {
+                    ShaderTexBindDesc bind;
+                    bind.name = vDesc.Name;
+                    bind.slot = slot;
+                    bind.constantOffset = vDesc.StartOffset;
+                    desc.textures.push_back(std::move(bind));
                     continue;
                 }
 
@@ -327,23 +349,10 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
         }
     }
 
-    // ---- t0-t4 のテクスチャバインドを列挙 ----
-    D3D12_SHADER_DESC shDesc{};
-    refl->GetDesc(&shDesc);
-    for (UINT i = 0; i < shDesc.BoundResources; ++i)
-    {
-        D3D12_SHADER_INPUT_BIND_DESC bDesc{};
-        refl->GetResourceBindingDesc(i, &bDesc);
-        if (bDesc.Type == D3D_SIT_TEXTURE && bDesc.BindPoint < 5)
-        {
-            if (!bDesc.Name) continue;
-
-            ShaderTexBindDesc t;
-            t.name = bDesc.Name;
-            t.slot = bDesc.BindPoint;
-            desc.textures.push_back(std::move(t));
-        }
-    }
+    // NOTE: かつてここで D3D_SIT_TEXTURE の束縛 (t0〜t4) を列挙していた。bindless では
+    //       ResourceDescriptorHeap から引くテクスチャが DXIL に束縛情報を残さないため、
+    //       この経路は «どのシェーダーでもテクスチャ 0 件» になる。枠の正本は
+    //       MaterialConstants の添字フィールドへ移した (上のループ)。
     std::sort(desc.textures.begin(), desc.textures.end(),
         [](const auto& a, const auto& b) { return a.slot < b.slot; });
 

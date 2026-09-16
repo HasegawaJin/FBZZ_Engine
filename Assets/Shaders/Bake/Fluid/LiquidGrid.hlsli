@@ -9,8 +9,9 @@
 #define LIQUID_GRID_HLSLI
 
 #include "Bake/Fluid/LiquidCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<uint2> gLiquidSorted : register(t15); // (セル番号, 粒子番号)。鍵の昇順
+FBZZ_SBUFFER_T(uint2, gLiquidSorted, 15); // (セル番号, 粒子番号)。鍵の昇順
 
 // 鍵が key 以上の最初の位置。
 uint LiquidLowerBound(uint key)

@@ -15,6 +15,7 @@
 //   textureSize: 出力 Cubemap の 1 辺のサイズ (px)
 
 #include "IBL/IBLCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer CbIblFace : register(b0)
 {
@@ -25,9 +26,9 @@ cbuffer CbIblFace : register(b0)
 };
 
 // t0: Equirectangular HDR テクスチャ (R32G32B32A32_FLOAT, 2D)
-Texture2D<float4>            g_equirect : register(t0);
+FBZZ_TEX2D_T(float4, g_equirect, 0);
 // u0: 出力 Cubemap (R16G16B16A16_FLOAT, Texture2DArray — face ごとに 1 スライス分の UAV)
-RWTexture2DArray<float4>     g_output   : register(u0);
+FBZZ_RWTEX2DARRAY_T(float4, g_output, 0);
 // s0: LinearWrap (Equirect サンプリング用)
 SamplerState                 g_sampler  : register(s0);
 

@@ -10,8 +10,9 @@
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D texSceneDepth : register(TEX_DEPTH);
+FBZZ_TEX2D(texSceneDepth, TEX_DEPTH_SLOT);
 
 // LAYOUT: DecalMask.hlsl / RenderPassContext.hpp の DecalReceiverCB と一致させること。
 cbuffer DecalReceiverConstants : register(CB_DECAL)
