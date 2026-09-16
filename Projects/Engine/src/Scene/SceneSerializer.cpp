@@ -250,7 +250,7 @@ MaterialComponent ReadMaterialComponent(const toml::table& matTbl)
     mc.visible      = matTbl["visible"].value_or(true);
     mc.materialPath = matTbl["material"].value_or(std::string{});
     if (!mc.materialPath.empty())
-        mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
+        mc.materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(mc.materialPath);
 
     // submesh 1 以降のスロット (無い場合は単一マテリアルのオブジェクト)。
     if (const auto* slotArr = matTbl["slots"].as_array()) {
@@ -262,7 +262,7 @@ MaterialComponent ReadMaterialComponent(const toml::table& matTbl)
             slot.materialPath = (*slotTbl)["material"].value_or(std::string{});
             slot.visible      = (*slotTbl)["visible"].value_or(true);
             if (!slot.materialPath.empty())
-                slot.materialAsset = asset::AssetManager::LoadMaterial(slot.materialPath);
+                slot.materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(slot.materialPath);
             mc.extraSlots.push_back(std::move(slot));
         }
     }
@@ -1673,8 +1673,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 // 保存先が決まっているときだけ、レイヤーマテリアルを実ファイルへ書く。
                 // scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
                 if (!path.empty() && !tc->layerMaterials[li].empty()) {
-                    auto matHandle = asset::AssetManager::LoadMaterial(tc->layerMaterials[li]);
-                    if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+                    auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(tc->layerMaterials[li]);
+                    if (auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
                         const std::string matDiskPath =
                             ResolveAssetDiskPathForScene(path, tc->layerMaterials[li]);
                         (void)asset::SaveMaterialAssetToFile(matDiskPath, *mat);
@@ -2177,7 +2177,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             smr.castShadows = (*smrTbl)["castShadows"].value_or(true);
             smr.modelPath   = (*smrTbl)["modelPath"].value_or(std::string{});
             if (!smr.modelPath.empty()) {
-                smr.model = asset::AssetManager::LoadModel(smr.modelPath);
+                smr.model = asset::AssetManager::LoadAndGet<asset::Model>(smr.modelPath);
                 if (!smr.model)
                     FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
             }

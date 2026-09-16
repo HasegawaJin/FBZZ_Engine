@@ -120,8 +120,8 @@ const asset::ParticleMaterialSettings* ResolveParticleMaterialSettings(
     const std::string& materialPath)
 {
     if (materialPath.empty()) return nullptr;
-    const auto handle = asset::AssetManager::LoadMaterial(materialPath);
-    const auto* material = asset::AssetManager::GetMaterial(handle);
+    const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
+    const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
     return material != nullptr ? &material->particle : nullptr;
 }
 

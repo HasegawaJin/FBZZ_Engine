@@ -60,7 +60,7 @@ inline bool LocalBoundsFromGameObject(scene::GameObject& go,
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
         if (!smr->model && !smr->modelPath.empty())
-            smr->model = asset::AssetManager::LoadModel(smr->modelPath);
+            smr->model = asset::AssetManager::LoadAndGet<asset::Model>(smr->modelPath);
         if (!smr->model) return false;
         bool any = false;
         for (const auto& mesh : smr->model->meshes)

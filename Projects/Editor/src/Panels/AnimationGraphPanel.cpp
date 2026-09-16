@@ -448,7 +448,7 @@ const asset::Skeleton* ResolveCompositionSkeleton(EditorContext& ctx,
         }
         if (!smr) return nullptr;
         if (!smr->model && !smr->modelPath.empty())
-            smr->model = asset::AssetManager::LoadModel(smr->modelPath);
+            smr->model = asset::AssetManager::LoadAndGet<asset::Model>(smr->modelPath);
         return smr->model ? smr->model->skeleton.get() : nullptr;
     };
 
@@ -461,7 +461,7 @@ const asset::Skeleton* ResolveCompositionSkeleton(EditorContext& ctx,
         if (!asset::LoadAvatarMaskAsset(asset::AssetManager::ResolveAssetPath(maskPath), mask))
             return nullptr;
         if (mask.skeletonSourcePath.empty()) return nullptr;
-        const auto model = asset::AssetManager::LoadModel(mask.skeletonSourcePath);
+        const auto model = asset::AssetManager::LoadAndGet<asset::Model>(mask.skeletonSourcePath);
         return model ? model->skeleton.get() : nullptr;
     };
 
@@ -826,7 +826,7 @@ void DrawTransitionTimeline(const scene::AnimatorComponent& animator,
 
 // sourcePath が指すクリップを animator.clips へ読み込む (未読込のときだけ)。
 // Clip コンボとキャンバスへのアセットドロップが同じ読み込みを要るので切り出す。
-// .anim は「1 ファイル = 1 クリップ」でモデルコンテナではないため、LoadModel に渡すと
+// .anim は「1 ファイル = 1 クリップ」でモデルコンテナではないため、Load<Model> に渡すと
 // 必ず失敗する。AnimatorSystem::LoadClips と同じ分岐をここにも置く。
 void EnsureSourceClipsLoaded(scene::AnimatorComponent& animator, const std::string& sourcePath)
 {
@@ -848,7 +848,7 @@ void EnsureSourceClipsLoaded(scene::AnimatorComponent& animator, const std::stri
         return;
     }
 
-    if (auto model = asset::AssetManager::LoadModel(sourcePath)) {
+    if (auto model = asset::AssetManager::LoadAndGet<asset::Model>(sourcePath)) {
         for (const auto& clip : model->clips) {
             animator.clips.push_back(clip);
             animator.clipSourcePaths.push_back(sourcePath);

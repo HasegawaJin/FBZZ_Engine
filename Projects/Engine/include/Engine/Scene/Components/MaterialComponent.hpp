@@ -28,7 +28,7 @@ struct MaterialSlot {
     // 共有 MaterialAsset から解決した GPU 側マテリアル。SyncMaterial が生成・更新する。
     std::unique_ptr<renderer::Material> material;
 
-    renderer::ResourceHandle<renderer::MaterialAssetTag> materialAsset;
+    asset::AssetHandle<asset::MaterialAsset> materialAsset;
 
     // この submesh を描画するか。false のスロットはスキップされる。
     // WHY: コンポーネント全体の有効/無効 (MaterialComponent::enabled) とは別軸。
@@ -112,41 +112,41 @@ struct MaterialSlot {
     bool EnsureMaterialAsset()
     {
         if (!materialAsset.IsValid() && !materialPath.empty())
-            materialAsset = asset::AssetManager::LoadMaterial(materialPath);
+            materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
         return materialAsset.IsValid();
     }
 
     renderer::BlendMode GetBlendMode() const
     {
         if (hasBlendModeOverride) return blendModeOverride;
-        const auto* a = asset::AssetManager::GetMaterial(materialAsset);
+        const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(materialAsset);
         return a ? a->blendMode : renderer::BlendMode::OPAQUE_BLEND;
     }
 
     bool IsDoubleSided() const
     {
         if (hasDoubleSidedOverride) return doubleSidedOverride;
-        const auto* a = asset::AssetManager::GetMaterial(materialAsset);
+        const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(materialAsset);
         return a ? a->doubleSided : false;
     }
 
     int32_t GetRenderQueue() const
     {
         if (hasRenderQueueOverride) return renderQueueOverride;
-        const auto* a = asset::AssetManager::GetMaterial(materialAsset);
+        const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(materialAsset);
         return a ? a->renderQueue : renderer::RenderQueue::GEOMETRY;
     }
 
     const std::string& GetShaderPath() const
     {
         static const std::string empty;
-        const auto* a = asset::AssetManager::GetMaterial(materialAsset);
+        const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(materialAsset);
         return a ? a->shaderPath : empty;
     }
 
     asset::MeshType GetMeshType() const
     {
-        const auto* a = asset::AssetManager::GetMaterial(materialAsset);
+        const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(materialAsset);
         return a ? a->meshType : asset::MeshType::Any;
     }
 

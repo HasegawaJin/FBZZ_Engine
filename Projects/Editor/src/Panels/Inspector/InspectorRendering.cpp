@@ -86,7 +86,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 widgets::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fbx", ctx.projectRoot,
                     [&mr]() {
                         if (!mr.meshPath.empty())
-                            if (auto* model = asset::AssetManager::LoadModel(mr.meshPath))
+                            if (auto* model = asset::AssetManager::LoadAndGet<asset::Model>(mr.meshPath))
                                 if (!model->meshes.empty())
                                     mr.mesh = model->meshes[0].get();
                     });
@@ -108,7 +108,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 [&smr]() {
                     smr.model = nullptr;
                     if (!smr.modelPath.empty())
-                        smr.model = asset::AssetManager::LoadModel(smr.modelPath);
+                        smr.model = asset::AssetManager::LoadAndGet<asset::Model>(smr.modelPath);
                 });
 
             if (smr.model) {

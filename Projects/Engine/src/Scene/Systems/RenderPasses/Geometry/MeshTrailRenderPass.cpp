@@ -98,8 +98,8 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
         return binding.shader.IsValid() ? &binding : nullptr;
     binding.resolvedPass = g_trailPassSerial;
 
-    const auto matHandle = asset::AssetManager::LoadMaterial(materialPath);
-    const auto* mat = asset::AssetManager::GetMaterial(matHandle);
+    const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
+    const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle);
     if (!mat) return nullptr;
 
     const bool declaredForTrails = (mat->renderPath == asset::RenderPath::Trail);
@@ -328,8 +328,8 @@ void EnsureComponentResources(MeshTrailComponent& trail, renderer::ResourceManag
             trail.loadedMaterialPath = trail.materialPath;
             trail.loadedTexturePath.clear();
         }
-        const auto matHandle = asset::AssetManager::LoadMaterial(trail.materialPath);
-        if (const auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+        const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(trail.materialPath);
+        if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
             const auto it = mat->textures.find("albedo");
             const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
             if (!trail.texture.IsValid() || trail.loadedTexturePath != resolvedTex) {

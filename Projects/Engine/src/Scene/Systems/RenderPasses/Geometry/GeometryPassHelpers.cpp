@@ -162,7 +162,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
     if (!componentEnabled || !mc.visible) return nullptr;
 
     if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
-        mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
+        mc.materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(mc.materialPath);
 
     auto activeAsset = mc.materialAsset;
     if (!activeAsset.IsValid()) {
@@ -178,7 +178,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
             FBZZ_LOG_WARN("Material load failed '%s' -> using fallback %s.",
                           warnKey.c_str(), fallbackPath);
         }
-        activeAsset = asset::AssetManager::LoadMaterial(fallbackPath);
+        activeAsset = asset::AssetManager::Load<asset::MaterialAsset>(fallbackPath);
         // フォールバック .mat 自体が存在しない場合だけは描画を諦める。
         if (!activeAsset.IsValid()) return nullptr;
     }
@@ -188,7 +188,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
 
     auto& material = *mc.material;
     const std::string& shaderPath = mc.GetShaderPath();
-    const auto* matAsset = asset::AssetManager::GetMaterial(activeAsset);
+    const auto* matAsset = asset::AssetManager::Get<asset::MaterialAsset>(activeAsset);
     if (matAsset && shaderPath.empty()) {
         const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
         // WHY: shader 未設定の .mat を PBR 推定で描くと、未設定と意図した PBR の区別が付かない。
@@ -199,8 +199,8 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
             FBZZ_LOG_WARN("Material '%s' has an empty shader path -> using %s.",
                           warnKey.c_str(), fallbackPath);
         }
-        activeAsset = asset::AssetManager::LoadMaterial(fallbackPath);
-        matAsset = asset::AssetManager::GetMaterial(activeAsset);
+        activeAsset = asset::AssetManager::Load<asset::MaterialAsset>(fallbackPath);
+        matAsset = asset::AssetManager::Get<asset::MaterialAsset>(activeAsset);
         if (!matAsset) return nullptr;
     }
     const std::string effectiveShaderPath = matAsset ? matAsset->shaderPath : std::string{};
@@ -308,7 +308,7 @@ bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask)
 
 bool IsForwardOnly(const MaterialSlot& mc)
 {
-    const auto* a = asset::AssetManager::GetMaterial(mc.materialAsset);
+    const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
     if (a) {
         // WHY: 2枚のGBufferにはclearcoat/sheen/anisotropyと接線基底を保持できない。
         //      拡張ローブをDeferredへ落とすと情報が欠落し、物理的なエネルギー配分も
@@ -331,7 +331,7 @@ bool IsForwardOnly(const MaterialSlot& mc)
 
 bool IsSurfaceMaterial(const MaterialSlot& mc)
 {
-    const auto* a = asset::AssetManager::GetMaterial(mc.materialAsset);
+    const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
     if (a) {
         if (a->meshType == asset::MeshType::Surface) return true;
         if (a->meshType == asset::MeshType::Skinned) return false;
