@@ -1,0 +1,293 @@
+baseLayerMaskPath = ''
+defaultStateName = 'Locomotion'
+version = 6
+
+[editorLayout]
+anyStateX = -260.0
+anyStateY = 320.0
+entryX = -260.0
+entryY = 100.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Locomotion'
+    x = 60.0
+    y = 120.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Attack'
+    x = 420.0
+    y = 20.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Death'
+    x = 420.0
+    y = 300.0
+
+    [[editorLayout.nodes]]
+    stateName = 'HitIdle'
+    x = 60.0
+    y = 520.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Hit'
+    x = 420.0
+    y = 520.0
+
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 0
+    stateName = 'Locomotion'
+    x = -220.0
+    y = 60.0
+
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 1
+    stateName = 'Locomotion'
+    x = -220.0
+    y = 200.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Death'
+transitionDuration = 0.12
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Attack'
+transitionDuration = 0.1
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Attack'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[layers]]
+defaultStateName = 'HitIdle'
+enabled = true
+maskPath = 'guid:80dc7ca127684fc181e0eef3ff1c2f15|Assets/Animation/Enemy_Roller/M_Roller_Hit.mask'
+mode = 1
+name = 'Add_Hit'
+retargetMappings = []
+weight = 1.0
+
+    [layers.additiveReference]
+    clipName = 'Scene'
+    sourcePath = 'guid:fb4e24e350e7ae29609e50d1afe37752|Assets/Animation/Enemy_Roller/Idle.anim'
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.05
+    fadeOutDuration = 0.12
+
+    [[layers.anyStateTransitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Hit'
+    transitionDuration = 0.04
+
+        [[layers.anyStateTransitions.conditions]]
+        op = 4
+        paramName = 'Hit'
+        threshold = 0.0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = ''
+    ikWeight = 1.0
+    loop = true
+    mode = 0
+    name = 'HitIdle'
+    sourcePath = ''
+    speed = 1.0
+    transitions = []
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        motions = []
+        paramX = ''
+        paramY = ''
+        type = 0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Scene'
+    ikWeight = 1.0
+    loop = false
+    mode = 0
+    name = 'Hit'
+    sourcePath = 'guid:d23aed32df77996fd0466ae2c5c862e8|Assets/Animation/Enemy_Roller/Hit_Add.anim'
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        motions = []
+        paramX = ''
+        paramY = ''
+        type = 0
+
+        [[layers.states.transitions]]
+        conditions = []
+        exitTime = 0.85
+        fixedDuration = true
+        hasExitTime = true
+        toStateName = 'HitIdle'
+        transitionDuration = 0.12
+
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Speed'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Attack'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Hit'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'IsDead'
+type = 2
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = true
+mode = 1
+name = 'Locomotion'
+sourcePath = ''
+speed = 1.0
+transitions = []
+
+    [states.blendTree1D]
+    dampTime = 0.12
+    paramName = 'Speed'
+    syncNormalizedTime = false
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'guid:fb4e24e350e7ae29609e50d1afe37752|Assets/Animation/Enemy_Roller/Idle.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'guid:8b3e3b741b30f3d0bf6b83a323767fd6|Assets/Animation/Enemy_Roller/Move.anim'
+        speed = 1.0
+        threshold = 3.2
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+[[states]]
+clipIndex = -1
+clipName = 'Scene'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Attack'
+sourcePath = 'guid:bb193fbc3f6038392962fae0d33f9923|Assets/Animation/Enemy_Roller/Attack.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.9
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.18
+
+[[states]]
+clipIndex = -1
+clipName = 'Scene'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Death'
+sourcePath = 'guid:2df51128486890d9eccfe385acf22b11|Assets/Animation/Enemy_Roller/Death.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.2
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsDead'
+        threshold = 0.0

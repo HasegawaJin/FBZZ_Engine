@@ -1,0 +1,20 @@
+[project]
+name = "GreenWare"
+project_id = "greenware"
+cpp_namespace = "greenware"
+target_name = "GreenWare"
+standalone_target_name = "GreenWareStandalone"
+engine_version = "0.1.0"
+created_at = "2026-08-14T13:27:39.014Z"
+default_scene = "Assets/Scenes/Title.scene"
+asset_root = "Assets/"
+settings_path = "ProjectSettings/ProjectSettings.toml"
+api_root = "Include/"
+public_api_header = "Include/GreenWare/ProjectAPI.hpp"
+script_root = "Src/Scripts/"
+library_root = "Lib/"
+binary_root = "Binaries/"
+build_root = "Build/"
+
+[engine]
+sdk_root = "C:/Users/jinhs/Downloads/FBZZ_Engine/SDK/0.1.0"

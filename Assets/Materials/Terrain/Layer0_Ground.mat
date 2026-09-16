@@ -1,7 +1,7 @@
 blend_mode = 'Opaque'
 double_sided = false
 mesh_type = 'surface'
-render_path = 'deferred'
+render_path = 'auto'
 render_queue = 2000
 shader = ''
 version = 1
@@ -24,11 +24,11 @@ tilingZ = 8.0
 [textures]
 albedo = ''
 ao = ''
-ao_roughness = 'Assets/Textures/Terrain/Ground/Ground_AmbientOcclusion.png'
-diffuse = 'Assets/Textures/Terrain/Ground/Ground_Color.png'
+ao_roughness = 'guid:36174a3a00c94d5fa3f270ff87febbb9'
+diffuse = 'guid:6144ba3aa45a4f728f3e67039094e47b'
 emissive = ''
 metallic = ''
-normal = 'Assets/Textures/Terrain/Ground/Ground_Normal.png'
+normal = 'guid:b3d1bd566ea241dfbe0e644d082863c2'
 tex5 = ''
 tex6 = ''
 tex7 = ''

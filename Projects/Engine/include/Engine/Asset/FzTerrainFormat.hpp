@@ -1,14 +1,16 @@
-// FBZZ Engine
-// FzTerrainFormat.hpp | fbzz::asset
-// .terrain バイナリのオンディスクレイアウト定義
-// 旧 TerrainAssetSerializer (TOML) をバイナリに置き換える。
-// 129×129 float 配列は TOML だと ~200KB → バイナリで ~66KB に削減。
-//
-// レイアウト:
-//   FzTerrainHeader
-//   layerMaterialPaths: layerCount × FZTERRAIN_PATH_LEN バイト (null 終端)
-//   heightData:         columns × rows × sizeof(float)
-//   splatData:          columns × rows × layerCount × sizeof(uint8_t)
+/// @file    FzTerrainFormat.hpp
+/// @brief   .terrain バイナリのオンディスクレイアウト定義。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// 旧 TerrainAssetSerializer (TOML) をバイナリに置き換える。
+/// 129×129 float 配列は TOML だと ~200KB → バイナリで ~66KB に削減。
+///
+/// レイアウト:
+/// FzTerrainHeader
+/// layerMaterialPaths: layerCount × FZTERRAIN_PATH_LEN バイト (null 終端)
+/// heightData:         columns × rows × sizeof(float)
+/// splatData:          columns × rows × layerCount × sizeof(uint8_t)
 #pragma once
 #include <cstdint>
 

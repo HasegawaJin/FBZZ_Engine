@@ -1,0 +1,79 @@
+# 格子から抜ける蒸気 — コライダーを複数置いて流れを «絞る» 見本。
+# 桟の箱 2 つが下の蒸気を 3 本の筋に割り、上の柱 (cylinder) がそれをさらに巻き込む。
+# 障害物は焼いた絵に写らないので、絵に残るのは筋と巻きだけ。
+version = 2
+kind = "gas"
+seed = 89
+
+[gas]
+buoyancy = 1.35
+weight = 0.02
+vorticity = 0.6
+turbulence = 0.28
+turbulence_scale = 5.0
+density_dissipation = 0.55
+temperature_dissipation = 1.1
+floor = true
+
+[[source]]
+name = "Under Floor"
+shape = "box"
+center = [0.0, -0.85, 0.0]
+size = [0.5, 0.05, 0.3]
+density = 4.0
+temperature = 1.6
+noise = 0.7
+velocity = [0.0, 1.4, 0.0]
+duration = 0.0
+
+[[collider]]
+name = "Bar L"
+shape = "box"
+center = [-0.24, -0.66, 0.0]
+size = [0.11, 0.04, 0.3]
+friction = 0.4
+
+[[collider]]
+name = "Bar R"
+shape = "box"
+center = [0.24, -0.66, 0.0]
+size = [0.11, 0.04, 0.3]
+friction = 0.4
+
+[[collider]]
+name = "Post"
+shape = "cylinder"
+center = [0.06, -0.1, 0.0]
+size = [0.14, 0.32, 0.0]
+direction = [0.0, 1.0, 0.0]
+friction = 0.3
+
+[[force]]
+name = "Wisps"
+type = "noise"
+strength = 0.9
+noise_frequency = 3.4
+noise_speed = 0.8
+
+[render]
+shading = "smoke"
+smoke_color = [0.9, 0.92, 0.95, 1.0]
+shadow_color = [0.46, 0.5, 0.56, 1.0]
+opacity = 2.2
+self_shadow = 1.1
+detail_strength = 0.42
+detail_scale = 9.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 2.4
+warmup = 1.2
+loop = true
+motion_vectors = true
+
+[bake]
+mode = "2d"
+scattering_octaves = 4

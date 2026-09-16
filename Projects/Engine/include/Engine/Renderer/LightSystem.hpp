@@ -1,8 +1,10 @@
-// FBZZ Engine
-// LightSystem.hpp | fbzz::renderer
-// ライト情報の管理と定数バッファ転送
-// Directional / Point / Spot を HLSL の LightConstants と一致する形に詰める。
-// 配列上限はシェーダー側レイアウトと同期して変更する。
+/// @file    LightSystem.hpp
+/// @brief   ライト情報の管理と定数バッファ転送。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Directional / Point / Spot を HLSL の LightConstants と一致する形に詰める。
+/// 配列上限はシェーダー側レイアウトと同期して変更する。
 #pragma once
 #include "IConstantBuffer.hpp"
 #include <Math/Vector3.hpp>
@@ -46,7 +48,15 @@ struct LightConstantsCB {
     SpotLight     spotLights[4];
     int           pointLightCount = 0;
     int           spotLightCount  = 0;
-    float         _lightPad2[2]   = {};
+    // 空・雲・光芒の見た目を制御する昼夜減光係数。lightIntensity とは別軸。
+    // WHY: 以前は空系シェーダーが lightIntensity をそのまま減光に使っていたため、
+    //      太陽を明るくすると空まで白飛びし、両者を独立に調整できなかった。
+    //      レイアウトを変えずに済むよう、未使用だった _lightPad2 の 1 スロットを充てる。
+    //      既定 1.0 は「昼夜サイクル無効 + DirectionalLight intensity = 1.0」だった
+    //      従来の空の明るさと一致する。昼夜サイクル有効時は RenderSystem が
+    //      SkyRenderer::skyNightBrightness〜skyDayBrightness を補間して上書きする。
+    float         skyDimmer       = 1.0f;
+    float         _lightPad2      = 0.0f;
     math::Vector3 ambientColor    = { 0.08f, 0.08f, 0.08f };
     float         _ambientPad     = 0.0f;
 };

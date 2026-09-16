@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AABBCollider.hpp | fbzz::physics
-// 軸整合バウンディングボックスコライダー
+/// @file    AABBCollider.hpp
+/// @brief   軸整合バウンディングボックスコライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Physics/Collider.hpp>
 
@@ -16,6 +17,8 @@ namespace fbzz::physics
         ColliderType GetType() const override { return ColliderType::AABB; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
+        // 8 * hx * hy * hz
+        [[nodiscard]] float ComputeVolume() const override;
 
         // 中心から各面までの距離。Update() 後もローカル軸ではなくワールド軸基準で扱う。
         math::Vector3 m_halfExtents;

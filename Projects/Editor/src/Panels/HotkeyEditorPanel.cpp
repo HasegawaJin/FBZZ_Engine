@@ -1,31 +1,17 @@
-// FBZZ Engine
-// HotkeyEditorPanel.cpp | fbzz::editor
-// ホットキー一覧表示とリバインド UI
+/// @file    HotkeyEditorPanel.cpp
+/// @brief   ホットキー一覧表示とリバインド UI。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
+///
+/// WHY: 一覧・整形・競合判定は HotkeyManager 側に持たせ、このパネルは表示と
+/// 入力待ちだけを担当する。以前は整形処理がここと F1 オーバーレイに
+/// 別々に書かれており、片方だけ直る状態だった。
 #include <Editor/Panels/HotkeyEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <imgui.h>
 
 namespace fbzz::editor {
-
-namespace {
-
-const char* ImGuiKeyName(int key)
-{
-    return ImGui::GetKeyName(static_cast<ImGuiKey>(key));
-}
-
-std::string FormatBinding(const Hotkey& hk)
-{
-    std::string s;
-    if (hk.ctrl)  s += "Ctrl+";
-    if (hk.shift) s += "Shift+";
-    if (hk.alt)   s += "Alt+";
-    s += ImGuiKeyName(hk.imguiKey);
-    return s;
-}
-
-} // namespace
 
 void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -43,22 +29,38 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
 
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             m_rebindTarget.clear();
+            m_conflictNote.clear();
         } else {
             for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k) {
                 if (k == ImGuiKey_Escape) continue;
                 if (k == ImGuiKey_LeftCtrl  || k == ImGuiKey_RightCtrl)  continue;
                 if (k == ImGuiKey_LeftShift || k == ImGuiKey_RightShift) continue;
                 if (k == ImGuiKey_LeftAlt   || k == ImGuiKey_RightAlt)   continue;
-                if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(k))) {
-                    const bool ctrl  = ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
-                    const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
-                    const bool alt   = ImGui::IsKeyDown(ImGuiKey_LeftAlt)   || ImGui::IsKeyDown(ImGuiKey_RightAlt);
-                    ctx.hotkeyManager->Rebind(m_rebindTarget, k, ctrl, shift, alt);
-                    m_rebindTarget.clear();
-                    break;
-                }
+                if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k))) continue;
+
+                const bool ctrl  = ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+                const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
+                const bool alt   = ImGui::IsKeyDown(ImGuiKey_LeftAlt)   || ImGui::IsKeyDown(ImGuiKey_RightAlt);
+
+                // WHY: 既存の割り当てを黙って潰すと、後になって「効かなくなった」
+                //      という形でしか気づけない。割り当ては行ったうえで警告を残す。
+                const std::string conflict =
+                    ctx.hotkeyManager->FindConflict(m_rebindTarget, k, ctrl, shift, alt);
+                ctx.hotkeyManager->Rebind(m_rebindTarget, k, ctrl, shift, alt);
+                m_conflictNote = conflict.empty()
+                    ? std::string{}
+                    : ("\"" + m_rebindTarget + "\" now shares its binding with \"" + conflict + "\"");
+                m_rebindTarget.clear();
+                break;
             }
         }
+    }
+
+    if (!m_conflictNote.empty()) {
+        ImGui::TextColored({ 1.0f, 0.75f, 0.25f, 1.0f }, "%s", m_conflictNote.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Dismiss")) m_conflictNote.clear();
+        ImGui::Separator();
     }
 
     const auto& hotkeys = ctx.hotkeyManager->GetHotkeys();
@@ -67,49 +69,63 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    if (ImGui::BeginTable("##hotkeys", 3,
+    if (ImGui::BeginTable("##hotkeys", 4,
             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
     {
-        ImGui::TableSetupColumn("Action",  ImGuiTableColumnFlags_WidthStretch, 2.0f);
-        ImGui::TableSetupColumn("Binding", ImGuiTableColumnFlags_WidthStretch, 1.5f);
-        ImGui::TableSetupColumn("",        ImGuiTableColumnFlags_WidthFixed,   80.0f);
+        ImGui::TableSetupColumn("Action",   ImGuiTableColumnFlags_WidthStretch, 2.0f);
+        ImGui::TableSetupColumn("Context",  ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Binding",  ImGuiTableColumnFlags_WidthStretch, 1.5f);
+        ImGui::TableSetupColumn("",         ImGuiTableColumnFlags_WidthFixed,   80.0f);
         ImGui::TableHeadersRow();
 
         for (const auto& hk : hotkeys) {
             ImGui::TableNextRow();
+
             ImGui::TableSetColumnIndex(0);
             ImGui::TextUnformatted(hk.name.c_str());
 
+            // どこにフォーカスがあるとき効くのかを出す。
+            // WHY: 同じ Delete が Scene View と Hierarchy で効くことが分からないと、
+            //      「効いたり効かなかったりする」ように見える。
             ImGui::TableSetColumnIndex(1);
-            const bool waiting = (m_rebindTarget == hk.name);
-            if (waiting) {
-                ImGui::TextColored({ 0.4f, 0.9f, 1.0f, 1.0f }, "...");
-            } else {
-                ImGui::TextUnformatted(FormatBinding(hk).c_str());
+            std::string scopeText;
+            if (HasScope(hk.scope, HotkeyScope::Global))        scopeText = "Anywhere";
+            else {
+                if (HasScope(hk.scope, HotkeyScope::SceneViewport)) scopeText += "Scene View";
+                if (HasScope(hk.scope, HotkeyScope::Hierarchy))
+                    scopeText += scopeText.empty() ? "Hierarchy" : " / Hierarchy";
+                if (HasScope(hk.scope, HotkeyScope::AssetBrowser))
+                    scopeText += scopeText.empty() ? "Assets" : " / Assets";
+                if (HasScope(hk.scope, HotkeyScope::FluidEditor))
+                    scopeText += scopeText.empty() ? "Fluid Editor" : " / Fluid Editor";
             }
+            ImGui::TextDisabled("%s", scopeText.c_str());
 
             ImGui::TableSetColumnIndex(2);
-            ImGui::PushID(hk.name.c_str());
-            if (ImGui::SmallButton("Rebind")) {
-                m_rebindTarget = hk.name;
+            const bool waiting = (m_rebindTarget == hk.name);
+            if (waiting)
+                ImGui::TextColored({ 0.4f, 0.9f, 1.0f, 1.0f }, "...");
+            else
+                ImGui::TextUnformatted(HotkeyManager::FormatBinding(hk).c_str());
+
+            ImGui::TableSetColumnIndex(3);
+            // 説明専用エントリ (マウス操作など) は割り当てを持たないのでリバインドできない。
+            if (hk.infoOnly) {
+                ImGui::TextDisabled("-");
+            } else {
+                ImGui::PushID(hk.name.c_str());
+                if (ImGui::SmallButton("Rebind")) {
+                    m_rebindTarget = hk.name;
+                    m_conflictNote.clear();
+                }
+                ImGui::PopID();
             }
-            ImGui::PopID();
         }
         ImGui::EndTable();
     }
 
     ImGui::Spacing();
-    if (ImGui::Button("Reset All to Defaults")) {
-        ctx.hotkeyManager->Clear();
-        // EditorApp::RegisterDefaultHotkeys に相当するリセットはここからは呼べないため、
-        // 再起動を促すヒントを表示する。
-        ImGui::OpenPopup("##hk_reset_note");
-    }
-    if (ImGui::BeginPopup("##hk_reset_note")) {
-        ImGui::TextUnformatted("Restart the editor to apply defaults.");
-        if (ImGui::Button("OK")) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
-    }
+    ImGui::TextDisabled("Rebinds are saved to editor_settings.toml when the editor exits.");
 }
 
 } // namespace fbzz::editor

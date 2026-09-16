@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ToolchainLocator.cpp | fbzz::editor
-// RuntimeBuild が使用する CMake とビルド成果物パスの解決
+/// @file    ToolchainLocator.cpp
+/// @brief   RuntimeBuild が使用する CMake とビルド成果物パスの解決。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #include <Editor/ToolchainLocator.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -61,6 +62,8 @@ bool ReadBuildConfig(const std::filesystem::path& path, ToolchainLocator::Result
             out.exeDebug = NormalizeConfigPath(path, value);
         } else if (key == "exe_release") {
             out.exeRelease = NormalizeConfigPath(path, value);
+        } else if (key == "exe_development") {
+            out.exeDevelopment = NormalizeConfigPath(path, value);
         } else if (key == "scripts_dll_debug") {
             out.scriptsDllDebug = NormalizeConfigPath(path, value);
         } else if (key == "scripts_dll_release") {

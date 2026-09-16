@@ -1,0 +1,19 @@
+# FBZZ Engine
+# fbzz-sdk.toml | SDK
+# SDK の版数・ツールチェーン・ABI 契約
+
+[sdk]
+id = "@FBZZ_SDK_ID@"
+version = "@PROJECT_VERSION@"
+# SDK は version ごとに 1 つで、publish のたびに上書きされる。
+# ID から由来を追えないため、publish 時点の revision を manifest 側へ残す。
+source_revision = "@FBZZ_SDK_REVISION@"
+architecture = "x64"
+compiler = "MSVC"
+msvc_version = "@FBZZ_SDK_MSVC_VERSION@"
+compiler_version = "@FBZZ_SDK_COMPILER_VERSION@"
+toolset_version = "@FBZZ_SDK_MSVC_TOOLSET_VERSION@"
+runtime_debug = "MultiThreadedDebugDLL"
+runtime_development = "MultiThreadedDLL"
+runtime_release = "MultiThreadedDLL"
+abi_policy = "exact"

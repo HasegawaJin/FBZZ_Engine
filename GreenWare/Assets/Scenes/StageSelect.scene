@@ -1,0 +1,5257 @@
+[scene]
+format_version = 2
+
+[[gameobjects]]
+active = true
+instanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+layer = 0
+name = 'Canvas'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    faceCamera = false
+    matchWidthOrHeight = 0.0
+    navigationEnabled = false
+    navigationRepeatDelay = 0.4
+    navigationRepeatInterval = 0.12
+    planeDistance = 2.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    safeArea = [ 0.0, 0.0, 0.0, 0.0 ]
+    scaleMode = 1
+    sortOrder = 0
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6812ed96-b772-4f28-920f-284aa4e09350'
+layer = 0
+name = 'Backdrop'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:f1625738ab6293eee66b06ad81751287|Assets/Materials/UI/UITitleBackdrop.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1920.0, 1080.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+layer = 0
+name = 'Head'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3a6d537f-cdb5-4ab6-8f43-bb03f16f291e'
+layer = 0
+name = 'Mark'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:4f62d3bf1ef70ec0ecaeaaff038fa0f4|Assets/UI/Select/Sel_Mark.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 102.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 158.0, 120.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1d0a38b3-83b8-4382-86ae-7e6aed2213bd'
+layer = 0
+name = 'Rule'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:71e7b8fb85308ed65961e104783f1f63|Assets/UI/Select/Sel_Rule.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 230.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 522.0, 98.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a589a368-4158-4267-9755-abcc76c73281'
+layer = 0
+name = 'VSep'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:be5104ed7f0aafbf890eaecf0a2cb236|Assets/UI/Select/Sel_VSep.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 708.0, 370.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 97.0, 620.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c024dce9-13f9-4ace-b6a2-667a9738758a'
+layer = 0
+name = 'Rail_Track'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:d62d3e351feac0246895de0eb4ce4f3f|Assets/UI/Select/Sel_Rail_Track.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 370.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 98.0, 620.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '937d1e95-c04e-451c-a3a7-3ef4231e4dda'
+layer = 0
+name = 'Rail_Thumb'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:8d10e7898b561ffcf1ad37db9ceea88b|Assets/UI/Select/Sel_Rail_Thumb.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 370.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 98.0, 612.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5cc1b7d3-96a9-45ee-9902-2da8cc96c9a6'
+layer = 0
+name = 'Head_Word'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:4e1baf19ad5d5b4a0e99eb4ee7c55932|Assets/UI/Font/GW-Sans-Light.ttf'
+    fontSize = 74.400002
+    letterSpacing = 14.88
+    lineSpacing = 1.0
+    materialPath = 'guid:7395b44080874640b3c2f7e0baa5331d|Assets/Materials/UI/UITextHero.mat'
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = 'STAGE'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 132.0, 176.080002, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 255.502014, 74.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2186be9f-4f67-4857-bc44-77e865fc4de0'
+layer = 0
+name = 'Head_Word2'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 74.400002
+    letterSpacing = 3.72
+    lineSpacing = 1.0
+    materialPath = 'guid:7395b44080874640b3c2f7e0baa5331d|Assets/Materials/UI/UITextHero.mat'
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = 'SELECT'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 442.0, 176.080002, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 251.533997, 74.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '95098605-ccd1-4bdb-9d59-a04a9b877d9e'
+layer = 0
+name = 'Count'
+parent = 'Head'
+parentInstanceId = 'f4dda683-b969-4342-b952-1c8b1855d58b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.290196, 0.282353, 0.266667, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 14.4
+    letterSpacing = 3.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 156.0, 963.080017, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 76.0, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+layer = 0
+name = 'Rows'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+layer = 0
+name = 'Row0'
+parent = 'Rows'
+parentInstanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 132.0, 418.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 556.0, 76.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd27260ef-4fc0-4025-85d7-3b7ac37b9676'
+layer = 0
+name = 'Bar_on'
+parent = 'Row0'
+parentInstanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:e747e61168a949088ff6941e62df0af8|Assets/UI/Select/Sel_Focus_on.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '2c4c0c7a-9577-4586-b09d-1e05f89433c3'
+layer = 0
+name = 'Bar_dim'
+parent = 'Row0'
+parentInstanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:16d4b0bc48ef99b6aad07614e18057fb|Assets/UI/Select/Sel_Focus_dim.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '924445d7-13ca-47cf-ae1a-c3f35a972613'
+layer = 0
+name = 'Bar_lock'
+parent = 'Row0'
+parentInstanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3c2dbc841ed868f4ee79fff49ba5196e|Assets/UI/Select/Sel_Focus_lock.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '81f9fe0d-98e0-479e-8d02-afccfa5a3344'
+layer = 0
+name = 'Chip'
+parent = 'Row0'
+parentInstanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:ee72783bf9a200d91c66cfc3bf9b4dce|Assets/UI/Select/Sel_Chip_NEW.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 461.0, -20.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 144.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '51b17a89-7cfe-4c75-8948-6ef953bab007'
+layer = 0
+name = 'No'
+parent = 'Row0'
+parentInstanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 2.8
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 24.0, 26.76, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 22.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '13c0fafa-f31e-4bb5-9c25-583da5c344ba'
+layer = 0
+name = 'Name'
+parent = 'Row0'
+parentInstanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 32.400002
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 70.0, 16.18, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 133.0, 32.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6bcad430-6dd9-4100-902f-11f56dbc5a20'
+layer = 0
+name = 'Rank'
+parent = 'Row0'
+parentInstanceId = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 31.200001
+    letterSpacing = 2.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 556.0, 16.84, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 23.0, 31.200001, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+layer = 0
+name = 'Row1'
+parent = 'Rows'
+parentInstanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 132.0, 494.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 556.0, 76.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '8cd9f086-e90a-46d4-bb96-a07ce0064830'
+layer = 0
+name = 'Bar_on'
+parent = 'Row1'
+parentInstanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:e747e61168a949088ff6941e62df0af8|Assets/UI/Select/Sel_Focus_on.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8f33a92e-6b0a-42df-91ba-5f36bf7a5fb3'
+layer = 0
+name = 'Bar_dim'
+parent = 'Row1'
+parentInstanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:16d4b0bc48ef99b6aad07614e18057fb|Assets/UI/Select/Sel_Focus_dim.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '7c844d1c-d25b-4e45-90fd-d424a4ec05ba'
+layer = 0
+name = 'Bar_lock'
+parent = 'Row1'
+parentInstanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3c2dbc841ed868f4ee79fff49ba5196e|Assets/UI/Select/Sel_Focus_lock.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '3c182ca6-913a-4f22-889a-83c032b16bdf'
+layer = 0
+name = 'Chip'
+parent = 'Row1'
+parentInstanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:ee72783bf9a200d91c66cfc3bf9b4dce|Assets/UI/Select/Sel_Chip_NEW.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 461.0, -20.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 144.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5a9bc259-59b9-4012-b1cc-4c7a7ed419b5'
+layer = 0
+name = 'No'
+parent = 'Row1'
+parentInstanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 2.8
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 24.0, 26.76, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 22.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '55ab0fca-e573-4f37-a5fa-16ef4afe0cae'
+layer = 0
+name = 'Name'
+parent = 'Row1'
+parentInstanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 32.400002
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 70.0, 16.18, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 133.0, 32.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd5cfc3af-2b1a-44f4-99c9-54a52f5be425'
+layer = 0
+name = 'Rank'
+parent = 'Row1'
+parentInstanceId = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 31.200001
+    letterSpacing = 2.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 556.0, 16.84, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 23.0, 31.200001, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+layer = 0
+name = 'Row2'
+parent = 'Rows'
+parentInstanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 132.0, 570.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 556.0, 76.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'c08c0f6e-38ed-45b8-96eb-16d02d19ae7c'
+layer = 0
+name = 'Bar_on'
+parent = 'Row2'
+parentInstanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:e747e61168a949088ff6941e62df0af8|Assets/UI/Select/Sel_Focus_on.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0c800452-48fa-4853-935f-74e5dc41f808'
+layer = 0
+name = 'Bar_dim'
+parent = 'Row2'
+parentInstanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:16d4b0bc48ef99b6aad07614e18057fb|Assets/UI/Select/Sel_Focus_dim.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '50a6e095-1be6-409c-84ca-84510be84f3c'
+layer = 0
+name = 'Bar_lock'
+parent = 'Row2'
+parentInstanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3c2dbc841ed868f4ee79fff49ba5196e|Assets/UI/Select/Sel_Focus_lock.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '96755820-b6df-497e-918e-e1a24300ddc1'
+layer = 0
+name = 'Chip'
+parent = 'Row2'
+parentInstanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:ee72783bf9a200d91c66cfc3bf9b4dce|Assets/UI/Select/Sel_Chip_NEW.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 461.0, -20.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 144.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '20cd2707-277f-43e2-9931-b0ae709878b5'
+layer = 0
+name = 'No'
+parent = 'Row2'
+parentInstanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 2.8
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 24.0, 26.76, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 22.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e1a411c5-fc93-4cfe-a9f4-b06a502c27de'
+layer = 0
+name = 'Name'
+parent = 'Row2'
+parentInstanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 32.400002
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 70.0, 16.18, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 133.0, 32.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e917ca5f-d317-451b-b942-570279f4149c'
+layer = 0
+name = 'Rank'
+parent = 'Row2'
+parentInstanceId = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 31.200001
+    letterSpacing = 2.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 556.0, 16.84, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 23.0, 31.200001, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+layer = 0
+name = 'Row3'
+parent = 'Rows'
+parentInstanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 132.0, 646.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 556.0, 76.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '2e3b9df2-4cb0-4b9b-a6a5-0d958d6300c5'
+layer = 0
+name = 'Bar_on'
+parent = 'Row3'
+parentInstanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:e747e61168a949088ff6941e62df0af8|Assets/UI/Select/Sel_Focus_on.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ae984654-d34f-4ddc-8b07-24eb70776f99'
+layer = 0
+name = 'Bar_dim'
+parent = 'Row3'
+parentInstanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:16d4b0bc48ef99b6aad07614e18057fb|Assets/UI/Select/Sel_Focus_dim.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '1e925468-1ed8-4e20-8b77-91643f190b98'
+layer = 0
+name = 'Bar_lock'
+parent = 'Row3'
+parentInstanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3c2dbc841ed868f4ee79fff49ba5196e|Assets/UI/Select/Sel_Focus_lock.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'd23a4726-69f7-43fd-a7cf-1953e732c2fc'
+layer = 0
+name = 'Chip'
+parent = 'Row3'
+parentInstanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:ee72783bf9a200d91c66cfc3bf9b4dce|Assets/UI/Select/Sel_Chip_NEW.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 461.0, -20.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 144.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5b91f3e0-5961-40be-80d0-f91188c328fc'
+layer = 0
+name = 'No'
+parent = 'Row3'
+parentInstanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 2.8
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 24.0, 26.76, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 22.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '73c70627-5044-45b1-b5a2-9e5f00654a93'
+layer = 0
+name = 'Name'
+parent = 'Row3'
+parentInstanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 32.400002
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 70.0, 16.18, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 133.0, 32.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c624d29e-d21b-4850-ab94-a3e47316a6ff'
+layer = 0
+name = 'Rank'
+parent = 'Row3'
+parentInstanceId = '0c0ec316-5942-45f9-894e-9b19c5632366'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 31.200001
+    letterSpacing = 2.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 556.0, 16.84, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 23.0, 31.200001, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+layer = 0
+name = 'Row4'
+parent = 'Rows'
+parentInstanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 132.0, 722.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 556.0, 76.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '2c968dee-c113-4c07-a24c-cdcf6a7cfc09'
+layer = 0
+name = 'Bar_on'
+parent = 'Row4'
+parentInstanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:e747e61168a949088ff6941e62df0af8|Assets/UI/Select/Sel_Focus_on.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '475af5a2-ea40-4089-9cb5-f20d77f84d00'
+layer = 0
+name = 'Bar_dim'
+parent = 'Row4'
+parentInstanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:16d4b0bc48ef99b6aad07614e18057fb|Assets/UI/Select/Sel_Focus_dim.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'b9005b12-6e0a-4bf7-a8bf-f0827821effc'
+layer = 0
+name = 'Bar_lock'
+parent = 'Row4'
+parentInstanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3c2dbc841ed868f4ee79fff49ba5196e|Assets/UI/Select/Sel_Focus_lock.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'd18c3481-0ad6-43dc-bc82-59c4e4ce4a9f'
+layer = 0
+name = 'Chip'
+parent = 'Row4'
+parentInstanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:ee72783bf9a200d91c66cfc3bf9b4dce|Assets/UI/Select/Sel_Chip_NEW.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 461.0, -20.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 144.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f24e1c72-bcd2-4ef2-86c9-9cf9a56dbf16'
+layer = 0
+name = 'No'
+parent = 'Row4'
+parentInstanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 2.8
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 24.0, 26.76, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 22.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ed6fcf0b-70e8-4c11-857a-c7bb7c4d8af8'
+layer = 0
+name = 'Name'
+parent = 'Row4'
+parentInstanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 32.400002
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 70.0, 16.18, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 133.0, 32.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '807e9d61-1234-49bd-8f46-da316ad981f1'
+layer = 0
+name = 'Rank'
+parent = 'Row4'
+parentInstanceId = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 31.200001
+    letterSpacing = 2.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 556.0, 16.84, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 23.0, 31.200001, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+layer = 0
+name = 'Row5'
+parent = 'Rows'
+parentInstanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 132.0, 798.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 556.0, 76.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'd9ad3ab3-7302-4b7a-b61d-8c98a7c9567f'
+layer = 0
+name = 'Bar_on'
+parent = 'Row5'
+parentInstanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:e747e61168a949088ff6941e62df0af8|Assets/UI/Select/Sel_Focus_on.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c214e23c-4c0f-4ceb-b431-4bd02fe57133'
+layer = 0
+name = 'Bar_dim'
+parent = 'Row5'
+parentInstanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:16d4b0bc48ef99b6aad07614e18057fb|Assets/UI/Select/Sel_Focus_dim.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '819bce31-223b-4ba5-9553-4730263882ce'
+layer = 0
+name = 'Bar_lock'
+parent = 'Row5'
+parentInstanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3c2dbc841ed868f4ee79fff49ba5196e|Assets/UI/Select/Sel_Focus_lock.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'bc2b5fb3-bad0-403d-8cee-cfd58fe4a217'
+layer = 0
+name = 'Chip'
+parent = 'Row5'
+parentInstanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:ee72783bf9a200d91c66cfc3bf9b4dce|Assets/UI/Select/Sel_Chip_NEW.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 461.0, -20.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 144.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '74c65bba-18ab-4aae-98ee-5df616b422d1'
+layer = 0
+name = 'No'
+parent = 'Row5'
+parentInstanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 2.8
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 24.0, 26.76, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 22.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f7d0f154-374a-4a95-9127-41905ad7db06'
+layer = 0
+name = 'Name'
+parent = 'Row5'
+parentInstanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 32.400002
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 70.0, 16.18, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 133.0, 32.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e31e6a75-f510-4bd0-820d-a16e72f68eb6'
+layer = 0
+name = 'Rank'
+parent = 'Row5'
+parentInstanceId = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 31.200001
+    letterSpacing = 2.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 556.0, 16.84, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 23.0, 31.200001, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+layer = 0
+name = 'Row6'
+parent = 'Rows'
+parentInstanceId = '674eba8e-e80a-4604-a50f-c635fe5dc287'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 132.0, 874.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 556.0, 76.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'd811efaf-afc3-4147-a5df-87d9b875efc3'
+layer = 0
+name = 'Bar_on'
+parent = 'Row6'
+parentInstanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:e747e61168a949088ff6941e62df0af8|Assets/UI/Select/Sel_Focus_on.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a36a0b07-2525-4ab2-a6b6-f0a612268010'
+layer = 0
+name = 'Bar_dim'
+parent = 'Row6'
+parentInstanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:16d4b0bc48ef99b6aad07614e18057fb|Assets/UI/Select/Sel_Focus_dim.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'c9b253b2-78f5-4541-9c24-cc79f41a61bc'
+layer = 0
+name = 'Bar_lock'
+parent = 'Row6'
+parentInstanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3c2dbc841ed868f4ee79fff49ba5196e|Assets/UI/Select/Sel_Focus_lock.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -48.0, -23.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 122.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '322a4efa-6287-440f-af04-a1a7bd422dfb'
+layer = 0
+name = 'Chip'
+parent = 'Row6'
+parentInstanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:ee72783bf9a200d91c66cfc3bf9b4dce|Assets/UI/Select/Sel_Chip_NEW.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 461.0, -20.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 144.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '73caa79a-54ad-4a31-8112-d16381e32922'
+layer = 0
+name = 'No'
+parent = 'Row6'
+parentInstanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 2.8
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 24.0, 26.76, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 22.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b875dd11-26a4-4048-a206-771da7b0d308'
+layer = 0
+name = 'Name'
+parent = 'Row6'
+parentInstanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 32.400002
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 70.0, 16.18, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 133.0, 32.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '76a6081b-c00a-4546-9f70-715d900bca35'
+layer = 0
+name = 'Rank'
+parent = 'Row6'
+parentInstanceId = '971d999f-7e63-4330-b3b3-c28236f95471'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 31.200001
+    letterSpacing = 2.6
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 556.0, 16.84, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 23.0, 31.200001, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+layer = 0
+name = 'Dividers'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2accd08c-37c8-447d-9cf8-947c22065bb4'
+layer = 0
+name = 'Div0'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.07 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 540.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c146ecce-ba1d-4d3c-80c6-9e09a9b6e6ee'
+layer = 0
+name = 'Div1'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.03 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 586.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '14f06c57-5688-4710-b714-641cdf7b3c42'
+layer = 0
+name = 'Div2'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.03 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 632.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c6af8829-6b5c-41e9-9312-e9274b114865'
+layer = 0
+name = 'Div3'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.03 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 678.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1c648af2-378f-4c54-b665-681123736f45'
+layer = 0
+name = 'Div4'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.07 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 824.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b5af5cb4-b9bb-467c-a18a-4f1f5c988c7a'
+layer = 0
+name = 'Div5'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.024 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 870.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8774822b-c718-4f0e-91e4-732a34d79c87'
+layer = 0
+name = 'Div6'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.024 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 909.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'fdcbb593-0df0-426f-998e-f16f2d9786d3'
+layer = 0
+name = 'Div7'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.024 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 948.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0fa403ae-6398-4960-b6b1-4605b3bb9766'
+layer = 0
+name = 'Div8'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.024 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 987.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4a722fcc-a18b-46ea-a1f3-010a2f783890'
+layer = 0
+name = 'Div9'
+parent = 'Dividers'
+parentInstanceId = 'f7379300-53c3-4d91-a4d2-76e322176437'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.024 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 836.0, 1026.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 952.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '66ff8d57-0387-4560-90d5-0782dd74a407'
+layer = 0
+name = 'ListFade'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 3
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6229766300d280ae90b42ae3572d9e7d|Assets/UI/Select/Sel_List_Fade.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 784.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 652.0, 206.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+layer = 0
+name = 'Pane'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6b73719d-6bfa-4f9a-b3f7-4b7cb2da5f3d'
+layer = 0
+name = 'Pane_Eyebrow'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.427451, 0.415686, 0.396078, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 4.42
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 402.920013, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 98.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '69781f86-8e54-4d8a-818e-b5f3f7526c57'
+layer = 0
+name = 'Pane_Name'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.92549, 0.917647, 0.898039, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 44.0
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 418.959991, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 182.0, 52.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6ed21976-6329-492d-82a5-23505e3f8342'
+layer = 0
+name = 'Pane_Lbl_Record'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.364706, 0.352941, 0.333333, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = '自己ベスト'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 512.080017, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 47.999996, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8932c33c-00c9-43c7-942a-b72050716aa4'
+layer = 0
+name = 'Pane_Lbl_Best'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.262745, 0.254902, 0.243137, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = '記録'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1744.0, 512.080017, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 19.199999, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '580041f7-1bec-408f-8a7e-e95603b3dc95'
+layer = 0
+name = 'Pane_Row0_Name'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 20.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 551.280029, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 108.0, 20.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'bd3e467f-7047-4877-a52e-6791d4285897'
+layer = 0
+name = 'Pane_Row0_Th'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.262745, 0.254902, 0.243137, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 13.2
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 956.0, 558.23999, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 147.0, 13.2, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '390128f0-6f7c-4636-9cff-4900a8df9346'
+layer = 0
+name = 'Pane_Row0_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.909804, 0.901961, 0.882353, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 22.799999
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1560.0, 548.460022, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 61.0, 22.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0f59d294-fba9-4b12-83fc-6894ab4ea607'
+layer = 0
+name = 'Pane_Row0_Dot0'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.309804, 0.85098, 0.478431, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1608.0, 552.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c9fd88b9-18a5-4e0d-9610-417e9dc1158d'
+layer = 0
+name = 'Pane_Row0_Dot1'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.309804, 0.85098, 0.478431, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1623.0, 552.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2e9e1da2-504c-4600-b13e-eab8c581a312'
+layer = 0
+name = 'Pane_Row0_Dot2'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.168627, 0.180392, 0.2, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1638.0, 552.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '200b8656-6f87-479a-a1f6-359d4bf28afe'
+layer = 0
+name = 'Pane_Row0_Best'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.341176, 0.329412, 0.309804, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 16.799999
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1788.0, 552.26001, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 42.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f91cfa2e-e035-4091-a395-253253265d85'
+layer = 0
+name = 'Pane_Row1_Name'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 20.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 597.280029, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 90.0, 20.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4425ee3a-6e2d-43f6-9295-1693ebbd6472'
+layer = 0
+name = 'Pane_Row1_Th'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.262745, 0.254902, 0.243137, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 13.2
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 938.0, 604.23999, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 94.0, 13.2, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5fb608ad-0e29-4971-9977-cf18295fda9a'
+layer = 0
+name = 'Pane_Row1_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.909804, 0.901961, 0.882353, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 22.799999
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1560.0, 593.460022, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 44.0, 22.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ce40e57b-73e6-4502-8614-ea161da24869'
+layer = 0
+name = 'Pane_Row1_Dot0'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.309804, 0.85098, 0.478431, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1608.0, 598.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '19307bf9-b6af-4ac6-b173-cd37085338fc'
+layer = 0
+name = 'Pane_Row1_Dot1'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.309804, 0.85098, 0.478431, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1623.0, 598.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ba651883-b0c1-44d9-879f-6d972282cd43'
+layer = 0
+name = 'Pane_Row1_Dot2'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.168627, 0.180392, 0.2, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1638.0, 598.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '641ac93e-dab6-4543-bf5b-b100b8dbc143'
+layer = 0
+name = 'Pane_Row1_Best'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.341176, 0.329412, 0.309804, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 16.799999
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1788.0, 597.26001, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 31.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '756b2c04-16b3-4a2d-8cb9-ac0b95d76b92'
+layer = 0
+name = 'Pane_Row2_Name'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.552941, 0.541176, 0.517647, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 20.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 643.280029, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 108.0, 20.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5e8262e0-6c21-45fa-9378-acc20a2dccec'
+layer = 0
+name = 'Pane_Row2_Th'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.262745, 0.254902, 0.243137, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 13.2
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 956.0, 650.23999, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 94.0, 13.2, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2a868d0-7bf1-447b-9e4c-934410125dc8'
+layer = 0
+name = 'Pane_Row2_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.909804, 0.901961, 0.882353, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 22.799999
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1560.0, 639.460022, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 44.0, 22.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '39f3289c-e2b8-4af6-b997-ee8c90e37911'
+layer = 0
+name = 'Pane_Row2_Dot0'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.309804, 0.85098, 0.478431, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1608.0, 644.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '82beeb89-f086-458e-8cc9-e70cb286b6e4'
+layer = 0
+name = 'Pane_Row2_Dot1'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.309804, 0.85098, 0.478431, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1623.0, 644.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '558a042d-7cbe-4c35-abc6-f46e44c1df3c'
+layer = 0
+name = 'Pane_Row2_Dot2'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.168627, 0.180392, 0.2, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 15.6
+    letterSpacing = 3.9
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1638.0, 644.919983, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 15.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '88ad95d5-d1fd-4625-bb49-21bb2e64dd28'
+layer = 0
+name = 'Pane_Row2_Best'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.341176, 0.329412, 0.309804, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 16.799999
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1788.0, 643.26001, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 31.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e864080a-5ffc-4521-bf8c-8ea011e66a62'
+layer = 0
+name = 'Pane_Rank_Cap'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.364706, 0.352941, 0.333333, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = '最高ランク'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1565.0, 730.109985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 47.999996, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '18bf6f36-e232-408d-801a-8063f0b7ddc9'
+layer = 0
+name = 'Pane_Rank_Letter'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.94902, 0.941176, 0.92549, 1.0 ]
+    enabled = true
+    fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
+    fontSize = 86.400002
+    letterSpacing = 1.44
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1631.0, 669.47998, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 57.0, 86.400002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '897ce008-e086-4104-bfb7-afbac4598f52'
+layer = 0
+name = 'Pane_Rank_Pts'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.427451, 0.415686, 0.396078, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 20.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 1.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1788.0, 725.309998, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 51.0, 20.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '221dd861-b453-4194-ad9d-08634bd17652'
+layer = 0
+name = 'Pane_Lbl_Boss'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.364706, 0.352941, 0.333333, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = '攻略情報'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 793.109985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 38.399998, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'fb488c48-64a0-4b18-9494-5c55155497a1'
+layer = 0
+name = 'Pane_Lbl_BossSub'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.262745, 0.254902, 0.243137, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1300.0, 794.109985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 158.0, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '873a4884-37fe-4663-9d68-0ef9cc56efc4'
+layer = 0
+name = 'Pane_Boss0_Key'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 1.0, 0.415686, 0.360784, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 837.609985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 40.0, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '420ab1e8-415b-4771-9275-817a475be4f2'
+layer = 0
+name = 'Pane_Boss0_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.92549, 0.917647, 0.898039, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 20.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 934.0, 835.309998, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 149.0, 20.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f26616f2-39f8-445c-b7ef-8fce7d3f79e4'
+layer = 0
+name = 'Pane_Boss1_Key'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.364706, 0.352941, 0.333333, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 880.109985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 20.0, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ec2284ad-22ed-4431-ab82-9293aa91f275'
+layer = 0
+name = 'Pane_Boss1_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.788235, 0.776471, 0.752941, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 18.0
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 934.0, 877.630005, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '75e14992-fd80-4979-8a59-53a0b0783b39'
+layer = 0
+name = 'Pane_Boss2_Key'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.364706, 0.352941, 0.333333, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 919.109985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 71.0, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e6cfcc47-07ae-44ad-9847-9b131e8583b0'
+layer = 0
+name = 'Pane_Boss2_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.788235, 0.776471, 0.752941, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 18.0
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 934.0, 918.130005, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 165.0, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a6ef319a-af1d-4ced-ae1e-d7188646f702'
+layer = 0
+name = 'Pane_Boss2_Sub'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.341176, 0.329412, 0.309804, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 15.6
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1117.0, 920.450012, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 207.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1debc681-21f9-4cb6-8d47-880913fce77e'
+layer = 0
+name = 'Pane_Boss3_Key'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.364706, 0.352941, 0.333333, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 958.109985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 71.0, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e889e46e-2805-42ae-9d39-05f2f95b62f2'
+layer = 0
+name = 'Pane_Boss3_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.788235, 0.776471, 0.752941, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 18.0
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 934.0, 957.130005, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 193.0, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd15a05eb-787c-4905-a58f-164a89aa35c7'
+layer = 0
+name = 'Pane_Boss3_Sub'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.341176, 0.329412, 0.309804, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 15.6
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1145.0, 959.450012, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 207.0, 15.6, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b494e8fc-1a29-4cde-b664-0537323ec9e7'
+layer = 0
+name = 'Pane_Boss4_Key'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.364706, 0.352941, 0.333333, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 14.4
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 836.0, 997.109985, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 81.0, 14.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f7020b64-eb3a-4002-ad27-f59238178afe'
+layer = 0
+name = 'Pane_Boss4_Value'
+parent = 'Pane'
+parentInstanceId = '08b2311c-ce59-4eb9-9503-4e12c5466e73'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.788235, 0.776471, 0.752941, 1.0 ]
+    enabled = true
+    fontPath = 'guid:2012ee84d88f1c22818977e9897f43af|Assets/Fonts/kaiso_up/Kaisotai-Next-UP-B.ttf'
+    fontSize = 18.0
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 934.0, 996.130005, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 296.0, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c70a9920-556e-4824-97dc-0846e4981fe2'
+layer = 0
+name = 'Cursor'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 100
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:a755a35867c1424c050b74987a0bab75|Assets/Sprites/HUD/pointer_c_shaded.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1568.699951, 275.600006, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 36.0, 36.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'GameCursorComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugDevice = 'Mouse'
+        padAccelPower = 2.0
+        padDeadzone = 0.18
+        padSpeed = 1400.0
+        spriteOffset = [ 10.0, 10.0 ]
+        useHardwareCursor = true
+
+[[gameobjects]]
+active = true
+instanceId = 'e0ecf062-a121-454b-b3e6-9da7b1ac0e51'
+layer = 0
+name = 'HintIcon_0'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_82'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1700.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '19a090e8-69e4-4793-982d-33057054c004'
+layer = 0
+name = 'HintText_0'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1740.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4f3f68c4-2b45-4511-8131-1926d1637e64'
+layer = 0
+name = 'HintIcon_1'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::cf52d251-9771-41b7-bded-c444768c0468|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_84'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1500.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '16d6fd7c-8525-4338-b62f-dc22886f35fb'
+layer = 0
+name = 'HintText_1'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1540.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0d167cc7-cd28-4d85-bebb-7c6ff7b0be69'
+layer = 0
+name = 'HintIcon_2'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3b47d37d-2b6b-4441-a362-d2d3a489ff5e|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_20'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1300.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'edd3ce1f-56e0-4d11-84c9-276e548c2b1d'
+layer = 0
+name = 'HintText_2'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1340.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '87d6c2c7-f288-4450-93b8-629951579fc3'
+layer = 0
+name = 'StageSelect'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'StageSelectComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugCursor = '0'
+        introDelay = 0.3
+        introSeconds = 0.4
+        introSlide = -36.0
+        introStagger = 0.05
+        nameNudge = 8.0
+        paneSeconds = 0.22
+        paneSlide = 18.0
+        paneStagger = 0.008
+        rowPitch = 76.0
+        titleScene = 'Title'
+        visibleRows = 6
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ScreenDressingComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        arcName = 'Logo_Arc'
+        backdropCoverage = 1.0
+        backdropName = 'Backdrop'
+        backdropSpeed = 1.0
+        crackleInterval = 5.5
+        crackleSeconds = 0.32
+        crackleStrength = 0.85
+        debugPhase = 0.0
+        debugSheen = 0.0
+        debugTargets = 0
+        revealDelay = 0.2
+        revealSeconds = 0.9
+        revealStagger = 0.12
+        sheenInterval = 6.5
+        sheenSeconds = 1.1
+        sheenStagger = 0.13
+        sheenTargets = [ 'Mark', 'Rule' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiRevealComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugElapsed = 0.0
+        debugSlots = 0
+        delay = 0.1
+        duration = 0.42
+        fromX = -28.0
+        fromY = 0.0
+        includeChildren = true
+        stagger = 0.06
+        targets = [ 'Head', 'Dividers', 'ListFade' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHintBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bottomMargin = 58.0
+        debugBuilt = 0
+        debugPad = false
+        entries = [ 'Confirm:決定', 'Cancel:戻る', 'Navigate:選択' ]
+        fontSize = 28.0
+        gapEntries = 45.0
+        gapIconText = 12.0
+        hitColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        iconSize = 45.0
+        introDelay = 0.9
+        introSeconds = 0.45
+        rightMargin = 132.0
+        textColor = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHeroTextComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugBound = 0
+        introDelay = 0.15
+        introSeconds = 0.85
+        introStagger = 0.18
+        sweepInterval = 4.2
+        sweepSeconds = 0.9
+        sweepStagger = 0.12
+        sweepWidth = 0.35
+        targets = [ 'Head_Word', 'Head_Word2' ]

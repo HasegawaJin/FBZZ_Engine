@@ -1,8 +1,10 @@
-// FBZZ Engine
-// StandaloneLauncher.cpp | fbzz::editor
-// CreateProcess による子プロセス起動の実装
+/// @file    StandaloneLauncher.cpp
+/// @brief   CreateProcess による子プロセス起動の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #include <Editor/Util/StandaloneLauncher.hpp>
 
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
 #include <Windows.h>
@@ -37,22 +39,13 @@ bool SpawnProcess(std::wstring cmdLine, const std::wstring& workingDir)
     if (ok) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
+    } else {
+        FBZZ_LOG_ERROR("StandaloneLauncher: CreateProcess failed (error=%lu)", GetLastError());
     }
     return ok != FALSE;
 }
 
 } // namespace
-
-bool StandaloneLauncher::Launch(const std::string& exePath, const std::string& projectPath)
-{
-    // コマンドライン: "<exePath>" --project "<projectPath>" --standalone
-    std::wstring cmd =
-        L"\"" + StringUtils::ToWide(exePath) + L"\""
-        L" --project \"" + StringUtils::ToWide(projectPath) + L"\""
-        L" --standalone";
-
-    return SpawnProcess(std::move(cmd), {});
-}
 
 bool StandaloneLauncher::LaunchExe(const std::string& exePath, const std::string& workingDir)
 {

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ComponentAccess.hpp | fbzz
-// System が読み書きする Component 型の宣言。Build() 時に競合検出と並列バッチ構築に使う。
+/// @file    ComponentAccess.hpp
+/// @brief   System が読み書きする Component 型の宣言。Build() 時に競合検出と並列バッチ構築に使う。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <typeindex>
 #include <vector>

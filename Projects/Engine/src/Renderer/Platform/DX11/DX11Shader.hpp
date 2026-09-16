@@ -1,20 +1,23 @@
-// FBZZ Engine
-// DX11Shader.hpp | fbzz::renderer
-// DX11 頂点・ピクセルシェーダーと InputLayout の管理
-// IShader を継承し、CSO から作ったネイティブシェーダーを保持する。
-// InputLayout は頂点シェーダーの反射情報から作る。
-//
-// 設計方針:
-//   実行時コンパイル (D3DCompile) ではなく、ビルド済み CSO (Compiled Shader Object) を
-//   ロードする方式を採用。理由:
-//     - d3dcompiler.dll への依存をなくし、配布バイナリを軽量化できる
-//     - ランタイムコンパイルエラーを事前に検出できる
-//   シェーダーパスは "assets/shaders/Phong.hlsl" 形式で受け取り、
-//   "assets/shaders/compiled/Phong.vs.cso" / ".ps.cso" に解決する。
-//
-//   InputLayout は VS バイトコードを D3DReflect でリフレクションして自動構築する。
-//   シェーダーごとに異なる頂点フォーマット (Unlit: POSITION+NORMAL+TEXCOORD,
-//   Debug: POSITION+COLOR 等) に対応できる。
+/// @file    DX11Shader.hpp
+/// @brief   DX11 頂点・ピクセルシェーダーと InputLayout の管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// IShader を継承し、CSO から作ったネイティブシェーダーを保持する。
+/// InputLayout は頂点シェーダーの反射情報から作る。
+///
+/// 設計方針:
+/// 通常はビルド済み CSO (Compiled Shader Object) をロードする。
+/// CSO が存在しない場合 (初回起動・compile_shaders.ps1 未実行) は
+/// D3DCompileFromFile でオンデマンドコンパイルし、生成した CSO をキャッシュする。
+/// WHY: DemoGame / StandaloneApp が compile_shaders.ps1 なしに動作するよう。
+/// エディター向けの本番ワークフローは compile_shaders.ps1 が担う。
+/// シェーダーパスは "assets/shaders/Phong.hlsl" 形式で受け取り、
+/// "assets/shaders/compiled/Phong.vs.cso" / ".ps.cso" に解決する。
+///
+/// InputLayout は VS バイトコードを D3DReflect でリフレクションして自動構築する。
+/// シェーダーごとに異なる頂点フォーマット (Unlit: POSITION+NORMAL+TEXCOORD,
+/// Debug: POSITION+COLOR 等) に対応できる。
 #pragma once
 
 #include <d3d11.h>
@@ -43,6 +46,13 @@ public:
     const std::string&      GetPath()       const override { return m_path; }
     const ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
 
+    // 深度だけを書き出すシャドウマップ用シェーダーか (PS が空実装)。
+    // WHY: Submit() は colorCount=0 の RT へ描くとき PS を外す判定にこれを使う。
+    //      以前は DrawCall ごとに GetPath().find("ShadowMap") を走らせていたが、
+    //      これはシャドウパスに限らず全描画のホットパスに乗る文字列検索だった。
+    //      パスは Init 後に変わらないので、そこで 1 度だけ判定して保持する。
+    bool IsShadowMapShader() const { return m_isShadowMapShader; }
+
 private:
     // "assets/shaders/Phong.hlsl" → "assets/shaders/compiled/Phong" に変換するヘルパー
     static std::string           CompiledBase(const std::string& path);
@@ -59,6 +69,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11InputLayout>   m_inputLayout;
     std::string                                 m_path;
     ShaderDescriptor                            m_descriptor;
+    bool                                        m_isShadowMapShader = false;
 };
 
 } // namespace fbzz::renderer

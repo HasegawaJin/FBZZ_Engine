@@ -1,14 +1,17 @@
-file(GLOB_RECURSE MATH_SOURCES
+file(GLOB_RECURSE MATH_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     include/*.hpp
 )
 
-add_library(fbzz_math SHARED ${MATH_SOURCES})
-set_target_properties(fbzz_math PROPERTIES
+add_library(FBZZMath SHARED ${MATH_SOURCES})
+set_target_properties(FBZZMath PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON
     OUTPUT_NAME "FBZZMath"
+    EXPORT_NAME "Math"
 )
 
-target_include_directories(fbzz_math
-    PUBLIC  include
+target_include_directories(FBZZMath
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:include>"
 )

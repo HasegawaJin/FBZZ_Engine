@@ -1,0 +1,293 @@
+baseLayerMaskPath = ''
+defaultStateName = 'Locomotion'
+version = 6
+
+[editorLayout]
+anyStateX = -260.0
+anyStateY = 320.0
+entryX = -260.0
+entryY = 100.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Locomotion'
+    x = 60.0
+    y = 120.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Attack'
+    x = 420.0
+    y = 20.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Death'
+    x = 420.0
+    y = 300.0
+
+    [[editorLayout.nodes]]
+    stateName = 'HitIdle'
+    x = 60.0
+    y = 520.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Hit'
+    x = 420.0
+    y = 520.0
+
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 0
+    stateName = 'Locomotion'
+    x = -220.0
+    y = 60.0
+
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 1
+    stateName = 'Locomotion'
+    x = -220.0
+    y = 200.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Death'
+transitionDuration = 0.12
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Attack'
+transitionDuration = 0.1
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Attack'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsDead'
+    threshold = 0.0
+
+[[layers]]
+defaultStateName = 'HitIdle'
+enabled = true
+maskPath = 'guid:035314d8cbc043f4bfea45306676c8e8|Assets/Animation/Enemy_Serpent/M_Serpent_Hit.mask'
+mode = 1
+name = 'Add_Hit'
+retargetMappings = []
+weight = 1.0
+
+    [layers.additiveReference]
+    clipName = 'Scene'
+    sourcePath = 'guid:72b6e6590fc02b364e8882e16e561a11|Assets/Animation/Enemy_Serpent/Idle.anim'
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.05
+    fadeOutDuration = 0.12
+
+    [[layers.anyStateTransitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Hit'
+    transitionDuration = 0.04
+
+        [[layers.anyStateTransitions.conditions]]
+        op = 4
+        paramName = 'Hit'
+        threshold = 0.0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = ''
+    ikWeight = 1.0
+    loop = true
+    mode = 0
+    name = 'HitIdle'
+    sourcePath = ''
+    speed = 1.0
+    transitions = []
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        motions = []
+        paramX = ''
+        paramY = ''
+        type = 0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Scene'
+    ikWeight = 1.0
+    loop = false
+    mode = 0
+    name = 'Hit'
+    sourcePath = 'guid:8d733f61d08d2194c3cdcf680a3a90a4|Assets/Animation/Enemy_Serpent/Hit_Add.anim'
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        motions = []
+        paramX = ''
+        paramY = ''
+        type = 0
+
+        [[layers.states.transitions]]
+        conditions = []
+        exitTime = 0.85
+        fixedDuration = true
+        hasExitTime = true
+        toStateName = 'HitIdle'
+        transitionDuration = 0.12
+
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Speed'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Attack'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Hit'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'IsDead'
+type = 2
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = true
+mode = 1
+name = 'Locomotion'
+sourcePath = ''
+speed = 1.0
+transitions = []
+
+    [states.blendTree1D]
+    dampTime = 0.12
+    paramName = 'Speed'
+    syncNormalizedTime = false
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'guid:72b6e6590fc02b364e8882e16e561a11|Assets/Animation/Enemy_Serpent/Idle.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'guid:43e4965965f0e93b3ff997429da42306|Assets/Animation/Enemy_Serpent/Move.anim'
+        speed = 1.0
+        threshold = 3.2
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+[[states]]
+clipIndex = -1
+clipName = 'Scene'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Attack'
+sourcePath = 'guid:c4981d09350c4b4dfc2f430a09cf23f0|Assets/Animation/Enemy_Serpent/Attack.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.9
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.18
+
+[[states]]
+clipIndex = -1
+clipName = 'Scene'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Death'
+sourcePath = 'guid:e1028ca2850ebd7e566cb6d186b43f14|Assets/Animation/Enemy_Serpent/Death.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.2
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'IsDead'
+        threshold = 0.0

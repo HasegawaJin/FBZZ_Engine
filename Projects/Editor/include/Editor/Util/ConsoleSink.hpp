@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ConsoleSink.hpp | fbzz::editor
-// Logger のログエントリをリングバッファに蓄積し ConsolePanel に渡す
+/// @file    ConsoleSink.hpp
+/// @brief   Logger のログエントリをリングバッファに蓄積し ConsolePanel に渡す。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Engine/Core/ILogSink.hpp>
+#include <cstdint>
 #include <deque>
 
 namespace fbzz::editor {
@@ -14,10 +16,22 @@ public:
     void OnLog(const core::LogEntry& entry) override;
 
     const std::deque<core::LogEntry>& GetEntries() const { return m_entries; }
-    void Clear() { m_entries.clear(); }
+    // ログ内容をコピーせず、MCP等の差分購読に使える単調増加カーソルを返す。
+    std::uint64_t GetOldestSequence() const { return m_entries.empty() ? m_nextSequence : m_nextSequence - m_entries.size(); }
+    std::uint64_t GetLatestSequence() const { return m_nextSequence - 1; }
+    void Clear() { m_entries.clear(); ++m_revision; }
+
+    // バッファ内容が変化するたびに増える世代番号。
+    // WHY: ConsolePanel はフィルタ結果 (Collapse 集約を含む) をキャッシュしており、
+    //      毎フレーム全エントリを舐め直さないために「変わったか」だけを安価に判定したい。
+    //      追加と Clear の両方で進むため、件数比較では気づけない Clear→再追加も検出できる。
+    std::uint64_t GetRevision() const { return m_revision; }
 
 private:
     std::deque<core::LogEntry> m_entries;
+    // WHY: Clearやリングバッファ破棄後も値を戻さず、古いカーソルの取りこぼしを検出可能にする。
+    std::uint64_t m_nextSequence = 1;
+    std::uint64_t m_revision     = 0;
 };
 
 } // namespace fbzz::editor

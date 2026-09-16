@@ -1,0 +1,81 @@
+# 吹き抜ける突風 — 力のエンベロープ ([[force.amount.key]]) の見本。
+# 風の向きと強さは据え置きで、«いつ来て いつ抜けるか» だけをキーで作る。
+# start_time / duration で切ると力が角ばって入る。エンベロープなら立ち上がりと引きが作れる。
+version = 2
+kind = "gas"
+seed = 71
+
+[gas]
+buoyancy = 0.3
+weight = 0.3
+vorticity = 0.5
+turbulence = 0.35
+turbulence_scale = 5.0
+density_dissipation = 0.35
+temperature_dissipation = 1.6
+floor = true
+
+[[source]]
+name = "Ground Haze"
+shape = "box"
+center = [-0.55, -0.76, 0.0]
+size = [0.3, 0.08, 0.3]
+density = 3.4
+temperature = 0.4
+noise = 0.8
+velocity = [0.5, 0.35, 0.0]
+duration = 0.6
+
+[[force]]
+name = "Gust"
+type = "wind"
+direction = [1.0, 0.06, 0.0]
+strength = 3.2
+
+# time は warmup を含む通算の秒数。warmup 0.15 のあいだに土埃を溜めてから風を入れたいので、
+# 立ち上がりのキーも 0.15 から置く (0 から置くと «もう吹いている» 状態で焼き始まる)。
+[[force.amount.key]]
+time = 0.15
+scale = 0.0
+
+[[force.amount.key]]
+time = 0.35
+scale = 1.0
+
+[[force.amount.key]]
+time = 0.7
+scale = 0.85
+
+[[force.amount.key]]
+time = 1.15
+scale = 0.0
+
+[[force]]
+name = "Tumble"
+type = "noise"
+strength = 0.9
+noise_frequency = 2.8
+noise_speed = 0.9
+
+[render]
+shading = "smoke"
+smoke_color = [0.7, 0.65, 0.56, 1.0]
+shadow_color = [0.17, 0.15, 0.12, 1.0]
+opacity = 2.0
+self_shadow = 1.6
+detail_strength = 0.5
+detail_scale = 10.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 1.4
+warmup = 0.15
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "2d"
+scattering_octaves = 4

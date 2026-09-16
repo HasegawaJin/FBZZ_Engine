@@ -1,14 +1,19 @@
-// FBZZ Engine
-// Input.hpp | fbzz::input
-// キーボード・マウス入力のフレーム状態管理
-// Window の Win32 メッセージから現在状態を更新し、Update で前フレーム状態を保存する。
-// KeyDown / KeyUp は 1 フレームだけ true になる。
+/// @file    Input.hpp
+/// @brief   キーボード・マウス入力のフレーム状態管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Window の Win32 メッセージから現在状態を更新し、Update で前フレーム状態を保存する。
+/// KeyDown / KeyUp は 1 フレームだけ true になる。
 #pragma once
 #include "KeyCode.hpp"
 #include "Math/Vector2.hpp"
 
 #include <array>
-#include <Windows.h>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 
 namespace fbzz::input {
 
@@ -36,15 +41,40 @@ public:
     // マウス座標 (クライアント座標)
     static math::Vector2 MousePosition();
     static math::Vector2 MouseDelta();
+    // CursorLockMode::Locked 用に OS カーソルを中央へ戻す前の移動量を注入する。
+    // WHY: SetCursorPos によるワープを通常の座標差分へ混ぜると、ゲームカメラのデルタが相殺されるため。
+    static void OverrideMouseDelta(const math::Vector2& delta);
 
     // マウスホイール (1ノッチ = +1.0 / -1.0)
     static float MouseScrollDelta();
 
-    // Window::WndProc から呼ぶ内部関数
-    static void HandleKeyMessage  (UINT msg, WPARAM wParam);
+    /// @name Window::WndProc から呼ぶ内部関数
+    /// `msg` は Win32 の `UINT`、`wParam` は `WPARAM` と同じ幅。このヘッダーは
+    /// エンジン全域へ伝播するため `<Windows.h>` を引かず、幅の一致は Input.cpp の
+    /// static_assert で担保する。
+    ///@{
+    static void HandleKeyMessage  (unsigned int msg, std::uintptr_t wParam);
     static void HandleMouseMove   (int x, int y);
-    static void HandleMouseButton (UINT msg);
+    static void HandleMouseButton (unsigned int msg);
     static void HandleMouseScroll (float delta);
+    static void HandleTextInput   (wchar_t character);
+    static std::string_view TextInput();
+    ///@}
+
+    // AI 自動プレイテスト用の入力注入。通常入力と同じフレーム状態へ合成する。
+    // WHY: EditorMCP が Pause+Step と組み合わせてゲームを決定的に操作できるようにする。
+    static bool InjectKey(uint32_t virtualKey, bool pressed);
+    static bool InjectMouseButton(int button, bool pressed);
+    static void InjectMousePosition(const math::Vector2& position);
+    static void InjectMouseDelta(const math::Vector2& delta);
+    static void InjectMouseScroll(float delta);
+    static bool SetVirtualAxis(std::string_view name, float value);
+    static float GetVirtualAxis(std::string_view name);
+    static bool SetVirtualButton(std::string_view name, bool pressed);
+    static bool GetVirtualButton(std::string_view name);
+    static bool GetVirtualButtonDown(std::string_view name);
+    static bool GetVirtualButtonUp(std::string_view name);
+    static void ClearInjected();
 
 private:
     static constexpr int KEY_COUNT = 256;
@@ -55,7 +85,15 @@ private:
     static std::array<bool, 3>         s_mousePrevious;
     static math::Vector2               s_mousePos;
     static math::Vector2               s_prevMousePos;
+    static math::Vector2               s_overrideMouseDelta;
     static float                       s_scrollDelta;
+    static bool                        s_hasOverrideMouseDelta;
+    static std::array<bool, KEY_COUNT> s_injectedKeys;
+    static std::array<bool, 3>         s_injectedMouseButtons;
+    static std::unordered_map<std::string, float> s_virtualAxes;
+    static std::unordered_map<std::string, bool> s_virtualButtons;
+    static std::unordered_map<std::string, bool> s_previousVirtualButtons;
+    static std::string s_textInput;
 };
 
 } // namespace fbzz::input

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Uuid.hpp | fbzz::util
-// UUID v4 (ランダム) 生成ユーティリティ
+/// @file    Uuid.hpp
+/// @brief   UUID v4 (ランダム) 生成ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #pragma once
 #include <cstdint>
 #include <cstdio>

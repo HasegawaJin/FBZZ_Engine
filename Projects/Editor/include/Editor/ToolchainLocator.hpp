@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ToolchainLocator.hpp | fbzz::editor
-// RuntimeBuild が使用する CMake とビルド成果物パスの解決
+/// @file    ToolchainLocator.hpp
+/// @brief   RuntimeBuild が使用する CMake とビルド成果物パスの解決。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <filesystem>
@@ -18,7 +19,8 @@ public:
         std::filesystem::path buildDir;
         std::filesystem::path exeDebug;
         std::filesystem::path exeRelease;
-        // スクリプト DLL のパス (build.config の scripts_dll_debug/release から解決)
+        std::filesystem::path exeDevelopment;
+        // スクリプト DLL のパス (build.config の scripts_dll_* から解決)
         // WHY: DLL 名はプロジェクトごとに異なる (SandboxScripts / MyGameScripts 等) ため
         //      build.config に記録して Editor が動的に解決できるようにする。
         std::filesystem::path scriptsDllDebug;

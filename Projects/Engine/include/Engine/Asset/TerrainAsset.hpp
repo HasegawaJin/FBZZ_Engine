@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TerrainAsset.hpp | fbzz::asset
-// TerrainComponent の高さ・スプラット・レイヤー設定を .terrain バイナリで管理する独立型
-// WHY: TerrainComponent から切り離すことで AssetManager のキャッシュ・FlushFailed が使える。
+/// @file    TerrainAsset.hpp
+/// @brief   TerrainComponent の高さ・スプラット・レイヤー設定を .terrain バイナリで管理する独立型。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// WHY: TerrainComponent から切り離すことで AssetManager のキャッシュ・FlushFailed が使える。
 #pragma once
 #include <array>
 #include <cstdint>
@@ -11,10 +13,10 @@
 namespace fbzz::asset {
 
 struct TerrainAsset {
-    uint32_t                   columns   = 129;
-    uint32_t                   rows      = 129;
-    float                      cellSize  = 1.0f;
-    float                      maxHeight = 30.0f;
+    uint32_t                   columns   = 65;
+    uint32_t                   rows      = 65;
+    float                      cellSize  = 2.0f;
+    float                      maxHeight = 20.0f;
     uint32_t                   chunkSize = 32;
 
     // 各レイヤーが参照する .mat のパス（assets/ 相対）

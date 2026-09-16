@@ -1,8 +1,10 @@
-// FBZZ Engine
-// SceneManager.hpp | fbzz::scene
-// シーン遷移とアクティブ Scene 管理
-// LoadScene 要求を保持し、フレーム境界で安全に切り替える。
-// Scene の所有は manager が持ち、利用側は非所有参照で扱う。
+/// @file    SceneManager.hpp
+/// @brief   シーン遷移とアクティブ Scene 管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// LoadScene 要求を保持し、フレーム境界で安全に切り替える。
+/// Scene の所有は manager が持ち、利用側は非所有参照で扱う。
 #pragma once
 #include "Scene.hpp"
 #include "Engine/Core/Scheduler/SystemScheduler.hpp"
@@ -11,6 +13,7 @@
 namespace fbzz::audio { class AudioManager; }
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <string>
 #include <unordered_map>
 
@@ -30,8 +33,11 @@ public:
     void RegisterFromFile(const std::string& name, const std::string& path,
                           renderer::ResourceManager& resources);
 
-    // 次フレームの先頭でシーンを切り替える
-    void LoadScene(const std::string& name);
+    // 次フレームの先頭でシーンを切り替える。
+    // 未登録の名前なら要求を受け付けず false を返す (エラーはログへ)。
+    // WHY 戻り値を返すか: 遷移はフェードアウトの後に呼ばれることが多く、失敗を
+    //     黙って捨てると「暗転したまま何も起きない」という最も気付きにくい形で止まる。
+    bool LoadScene(const std::string& name);
 
     // 外部所有シーンをバインドする。null を渡すと LoadScene で作成した m_active を使用する
     void SetScene(Scene* scene);
@@ -40,11 +46,23 @@ public:
     // WHY: Script DLLをFreeLibraryする前に、どちらのSceneに残る派生Scriptも破棄する必要がある。
     void ClearScenes();
 
+    // LoadScene で作った Manager 所有 Scene だけを破棄し、保留中の遷移要求も捨てる。
+    // WHY: Editor は Stop で外部 Scene へ戻るが、遷移先の Scene は誰も Update しないまま
+    //      Script ごと生き残る。保留要求も残すと、Stop の次フレームに外部バインドが
+    //      もう一度外れて「編集シーンが動かない」状態になる。
+    void ReleaseOwnedScene();
+
+    // 最後の LoadScene で切り替えた登録名。外部 Scene をバインドし直すと空に戻る。
+    [[nodiscard]] const std::string& ActiveSceneName() const { return m_activeName; }
+
     // 固定タイムステップの Hz (デフォルト 60)
     void SetPhysicsHz(int hz);
 
     // false のとき EditorOnly System のみ実行する (エディタ停止中)
     void SetSimulating(bool simulating);
+    // Play セッションが続いているか。Pause 中も true のまま (simulating だけ false になる)。
+    // 呼ばない場合は simulating と同じ扱いになる (Standalone / プレビュー用途)。
+    void SetPlaying(bool playing);
 
     // AudioSystem に渡す AudioManager を設定する（null を渡すと AudioSystem はスキップ）
     void SetAudioManager(audio::AudioManager* audioManager);
@@ -61,9 +79,10 @@ public:
 
     Scene* GetActive();
 
-    // 型で System インスタンスを取得（エディタ統合用）
-    template<typename T>
-    T* GetSystem() const { return m_scheduler.GetSystem<T>(); }
+    // 名前で System インスタンスを取得（エディタ統合用）。
+    [[nodiscard]] ISystem* FindSystem(std::string_view name) const {
+        return m_scheduler.FindSystem(name);
+    }
 
 private:
     Scene* CurrentScene() const;
@@ -72,8 +91,10 @@ private:
     std::unordered_map<std::string, SceneFactory> m_factories;
     std::unique_ptr<Scene>                        m_active;
     std::string                                   m_pendingLoad;
+    std::string                                   m_activeName;
     Scene*                                        m_externalScene  = nullptr;
     bool                                          m_simulating     = true;
+    bool                                          m_playing        = false;
     audio::AudioManager*                          m_audioManager   = nullptr;
 
     SystemScheduler m_scheduler;

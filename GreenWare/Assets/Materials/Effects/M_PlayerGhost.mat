@@ -1,0 +1,28 @@
+# FBZZ Engine
+# M_PlayerGhost.mat
+# 回避中のプレイヤーの残像。DodgeAfterimageComponent が実行時に張る。
+# 色そのもの (プレイヤー色 / ジャスト回避の白熱) は Inspector の
+# Dodge Afterimage が持つ ─ ここが持つのは «形» だけ。
+version = 1
+name = 'M_PlayerGhost'
+shader = 'guid:31cdf94e572d12e38b19c9c9588f8124'
+blend_mode = 'Alpha'
+double_sided = true
+render_path = 'trail'
+render_queue = 3000
+mesh_type = 'skinned'
+
+[params]
+# 縁の色。緑の本体に対して白熱側へ寄せる。a が 1 を超えるぶんはブルームが拾う。
+rimColor = [ 0.82, 1.0, 0.92, 1.35 ]
+# 大きいほど縁が細い。3 前後で «輪郭» に見え、1 まで下げると全体が薄く光る。
+rimSharpness = 3.2
+# 内側に残すアルファの比。0.28 で «殻» になり、重なっても濁らない。
+coreAlpha = 0.16
+# 縞の密度 [本/m]。体 (約 1.8m) に 20 本前後。0 で切る。
+scanDensity = 11.0
+# 縞の深さ。輪郭には掛からないので、上げても形は欠けない。
+scanDepth = 0.25
+
+[textures]
+albedo = ''

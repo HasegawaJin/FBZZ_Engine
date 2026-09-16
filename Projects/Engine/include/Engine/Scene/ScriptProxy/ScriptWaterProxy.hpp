@@ -1,10 +1,14 @@
-// FBZZ Engine
-// ScriptWaterProxy.hpp | fbzz::scene
-// Script から WaterComponent の Gerstner 波パラメータを操作するショートハンド。
-// 浮力スクリプトや水面エフェクトから水面高さを CPU 側で照会する用途にも使う。
+/// @file    ScriptWaterProxy.hpp
+/// @brief   Script から自 GO の WaterComponent (水面高さ・波の倍率・波紋) を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 浮力スクリプトや水面エフェクトから水面高さを CPU 側で照会する用途にも使う。
+/// 波の形そのものは .mat が持つ。Script から変えられるのは個体ごとの倍率と ON/OFF まで。
 #pragma once
 
 #include <Math/Vector2.hpp>
+#include <Math/Vector3.hpp>
 
 namespace fbzz::scene {
 
@@ -13,21 +17,25 @@ class Script;
 struct ScriptWaterProxy {
     Script* script = nullptr;
 
-    // 自 GO の WaterComponent の Gerstner 波高さをワールド XZ 座標で計算する。
-    // time は Application::GetTime() などを渡す。
-    // WHY: WaterComponent::GetSurfaceHeightAt はローカル座標を要求するため、
-    //      ここで worldPos → ローカル変換を行い Script 側の定型コードを排除する。
+    /// ワールド XZ での水面の高さ (ワールド Y)。time は Application::GetTime() などを渡す。
     float GetSurfaceHeightWorld(float worldX, float worldZ, float time) const;
-    // ローカル座標版（自 GO が Water GO と同一の場合や変換済み座標を渡す場合に使う）。
+    /// 自 GO のローカル XZ での、水面の基準面からの高さ。
     float GetSurfaceHeightLocal(float localX, float localZ, float time) const;
 
-    // index は [0, 3]。範囲外は無視する。
-    void SetWaveAmplitude (int index, float amplitude)   const;
-    void SetWaveWavelength(int index, float wavelength)  const;
-    void SetWaveSteepness (int index, float steepness)   const;
-    void SetWaveDirection (int index, math::Vector2 dir) const;
+    /// .mat の波の振幅に掛ける倍率。嵐の演出などで一時的に荒らすときに使う。
+    void  SetWaveAmplitudeScale(float scale) const;
+    float GetWaveAmplitudeScale() const;
+    void  SetGerstnerEnabled(bool enabled) const;
 
-    void SetGerstnerEnabled(bool enabled) const;
+    /// 水流の速度 [m/s] (ワールド XZ)。.mat の flowDirection × currentSpeed。
+    math::Vector2 GetCurrent() const;
+
+    /// ワールド座標へ波紋を置く。strength は [0,1]。
+    void AddRipple(const math::Vector3& worldPos, float strength = 0.5f) const;
+    /// 波紋に加えて水しぶきを上げる。intensity は [0,1]。
+    void Splash(const math::Vector3& worldPos, float intensity = 0.5f) const;
+
+    void SetBuoyancyEnabled(bool enabled) const;
     void SetEnabled(bool enabled) const;
     bool IsEnabled() const;
 };

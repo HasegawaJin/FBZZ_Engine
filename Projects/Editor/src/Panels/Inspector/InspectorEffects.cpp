@@ -1,102 +1,105 @@
-// FBZZ Engine
-// InspectorEffects.cpp | fbzz::editor
-// Effect 系 Component の Inspector 描画
+/// @file    InspectorEffects.cpp
+/// @brief   パーティクル / 力場 / トレイル系コンポーネントの Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
+
 #include "InspectorEffects.hpp"
+
+#include <Editor/Util/ParticleEditWidgets.hpp>
+#include <Editor/Util/ParticleEmitterModules.hpp>
+#include <Editor/Util/VFXLineInspector.hpp>
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <algorithm>
+#include <iterator>
 
 namespace fbzz::editor {
 
 void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
+    // ParticleEmitter は Shuriken 式のモジュールスタックで描画する。
+    // WHY: 約 80 項目あり、素直に並べると «どこを触ればよいか» が読めなくなる。
+    //      Undo は DrawComponentSection の ActiveID 追跡がそのまま効く。
     DrawComponentSection<scene::ParticleEmitter>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Emitter",
-        [](scene::ParticleEmitter& pe, EditorContext&) {
-            widgets::DragVec3("Emit Position", pe.emitPosition);
-            widgets::DragVec3("Emit Velocity", pe.emitVelocity);
-            ImGui::DragFloat("Velocity Spread", &pe.velocitySpread, 0.01f, 0.0f, 20.0f);
+        [](scene::ParticleEmitter& pe, EditorContext& ctx) {
+            // 戻り値は「どれか 1 つでも変わった」。捨てるとモジュール側の編集が
+            // シーンの dirty マークへ伝わらず、保存し忘れて消える。
+            if (DrawParticleEmitterModules(pe.settings, ctx, &pe) && ctx.markSceneDirty)
+                ctx.markSceneDirty();
+        });
 
-            float cs[4] = { pe.colorStart.x, pe.colorStart.y, pe.colorStart.z, pe.colorStart.w };
-            if (ImGui::ColorEdit4("Color Start", cs))
-                pe.colorStart = { cs[0], cs[1], cs[2], cs[3] };
-            float ce[4] = { pe.colorEnd.x, pe.colorEnd.y, pe.colorEnd.z, pe.colorEnd.w };
-            if (ImGui::ColorEdit4("Color End", ce))
-                pe.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
 
-            ImGui::DragFloat("Size Start", &pe.sizeStart, 0.005f, 0.0f, 10.0f);
-            ImGui::DragFloat("Size End", &pe.sizeEnd, 0.005f, 0.0f, 10.0f);
-            ImGui::DragFloat("Lifetime", &pe.lifetime, 0.05f, 0.1f, 30.0f);
-            ImGui::DragFloat("Emit Rate", &pe.emitRate, 1.0f, 0.0f, 1000.0f);
-            ImGui::DragInt("Max Particles", &pe.maxParticles, 1, 1, 10000);
-            widgets::DragVec3("Gravity", pe.gravity, 0.05f);
-            ImGui::Checkbox("Playing", &pe.playing);
-            ImGui::Checkbox("Loop", &pe.loop);
-            ImGui::DragFloat("Duration", &pe.duration, 0.05f, 0.0f, 300.0f);
-            ImGui::DragFloat("Start Delay", &pe.startDelay, 0.05f, 0.0f, 300.0f);
-            ImGui::Checkbox("Clear On Stop", &pe.clearOnStop);
-            int seed = static_cast<int>(pe.randomSeed);
-            if (ImGui::DragInt("Random Seed", &seed, 1, 1, 2147483647)) {
-                pe.randomSeed = static_cast<decltype(pe.randomSeed)>(seed);
-                pe.randomState = pe.randomSeed;
-                pe.emitAccum = 0.0f;
+    DrawComponentSection<scene::ForceField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Force Field",
+        [](scene::ForceField& ff, EditorContext& ctx) {
+            // 力のリストはエミッター内蔵の力と同じ UI。座標系は GameObject の Transform が
+            // 決めるので選択は出さない。
+            DrawForceFieldList(ff.forces, ctx, /*showSpace=*/false);
+            // channels はシーンに置いた力場だけの概念 (内蔵の力は相手が決まっている)。
+            // 力ごとに持てるが、束ねて置く用途では全部同じにしたいことが多いので
+            // «先頭に合わせて全部へ» 配る。個別に分けたいなら GameObject を分ける。
+            if (!ff.forces.empty()) {
+                std::uint32_t mask = ff.forces.front().channels;
+                if (widgets::ForceFieldChannelMask("Channels", mask))
+                    for (auto& force : ff.forces) force.channels = mask;
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Only emitters sharing a bit with this mask receive these forces.");
             }
+        });
 
-            const char* shapeItems[] = { "Point", "Sphere", "Cone", "Box" };
-            int shape = static_cast<int>(pe.shape);
-            if (ImGui::Combo("Shape", &shape, shapeItems, 4))
-                pe.shape = static_cast<scene::ParticleEmitterShape>(shape);
-            ImGui::DragFloat("Sphere Radius", &pe.sphereRadius, 0.01f, 0.0f, 100.0f);
-            ImGui::DragFloat("Cone Angle", &pe.coneAngleDegrees, 0.1f, 0.0f, 180.0f);
-            ImGui::DragFloat("Cone Radius", &pe.coneRadius, 0.01f, 0.0f, 100.0f);
-            widgets::DragVec3("Box Extents", pe.boxExtents, 0.01f);
-
-            const char* blendItems[] = { "Additive", "Alpha" };
-            int blend = static_cast<int>(pe.blendMode);
-            if (ImGui::Combo("Blend Mode", &blend, blendItems, 2))
-                pe.blendMode = static_cast<scene::ParticleBlendMode>(blend);
-            const char* sortItems[] = { "None", "Back To Front" };
-            int sort = static_cast<int>(pe.sortMode);
-            if (ImGui::Combo("Sort Mode", &sort, sortItems, 2))
-                pe.sortMode = static_cast<scene::ParticleSortMode>(sort);
-            const char* simItems[] = { "CPU", "GPU" };
-            int sim = static_cast<int>(pe.simulationMode);
-            if (ImGui::Combo("Simulation", &sim, simItems, 2))
-                pe.simulationMode = static_cast<scene::ParticleSimulationMode>(sim);
-
-            char textureBuf[512];
-            std::snprintf(textureBuf, sizeof(textureBuf), "%s", pe.texturePath.c_str());
-            if (ImGui::InputText("Texture Path", textureBuf, sizeof(textureBuf))) {
-                pe.texturePath = textureBuf;
-                pe.texture = {};
-                pe.loadedTexturePath.clear();
-            }
-            ImGui::DragInt("Sprite Columns", &pe.spriteColumns, 1, 1, 64);
-            ImGui::DragInt("Sprite Rows", &pe.spriteRows, 1, 1, 64);
-            ImGui::DragInt("Sprite Start", &pe.spriteStartFrame, 1, 0, 4095);
-            ImGui::DragInt("Sprite End", &pe.spriteEndFrame, 1, 0, 4095);
-            ImGui::DragFloat("Size Curve Power", &pe.sizeCurvePower, 0.01f, 0.01f, 10.0f);
-            ImGui::DragFloat("Color Curve Power", &pe.colorCurvePower, 0.01f, 0.01f, 10.0f);
-            ImGui::DragFloat("Velocity Damping", &pe.velocityDamping, 0.01f, 0.0f, 100.0f);
-            ImGui::DragFloat("Angular Velocity Min", &pe.angularVelocityMin, 0.01f, -100.0f, 100.0f);
-            ImGui::DragFloat("Angular Velocity Max", &pe.angularVelocityMax, 0.01f, -100.0f, 100.0f);
+    // 雷・ビーム。プリセットと «形が動くプレビュー» を上に置き、細かい値は Reflect の行で出す。
+    // WHY 専用にするか: 40 近い値のうち «どれを触ると枝が増えるか» は数値の列からは読めない。
+    //      触ったその場で形が変わるのを見せないと、雷は作れない。
+    DrawComponentSection<scene::VFXLineComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "VFX Line",
+        [](scene::VFXLineComponent& line, EditorContext& ctx) {
+            if (DrawVFXLinePresetBar(line) && ctx.markSceneDirty) ctx.markSceneDirty();
+            DrawVFXLinePreview(line);
+            ComponentImGuiReflector reflector;
+            reflector.m_projectRoot = ctx.projectRoot;
+            line.Reflect(reflector);
         });
 
     DrawComponentSection<scene::TrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Trail",
-        [](scene::TrailComponent& trail, EditorContext&) {
+        [](scene::TrailComponent& trail, EditorContext& ctx) {
             ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
             ImGui::DragInt("Max Points", &trail.maxPoints, 1, 2, 512);
             ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
             ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
-            ImGui::DragFloat("Width Start", &trail.widthStart, 0.001f, 0.0f, 10.0f);
-            ImGui::DragFloat("Width End", &trail.widthEnd, 0.001f, 0.0f, 10.0f);
-            const char* widthEasingItems[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
-            int widthEasing = static_cast<int>(trail.widthEasing);
-            if (ImGui::Combo("Width Easing", &widthEasing, widthEasingItems, 4))
-                trail.widthEasing = static_cast<scene::TrailWidthEasing>(widthEasing);
+            // 瞬間移動の切断。0 は «切らない» で、既存シーンの見た目を保つ既定。
+            ImGui::DragFloat("Break Distance", &trail.breakDistance, 0.01f, 0.0f, 500.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Cut the trail when it jumps farther than this in one frame. 0 = never cut.");
 
-            float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
-            if (ImGui::ColorEdit4("Color Start", cs))
-                trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
-            float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
-            if (ImGui::ColorEdit4("Color End", ce))
-                trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
+            // 幅は «2 点 + イージング» と «多キーカーブ» の二択。両方出すと
+            // どちらが効いているのか読めないので、有効な側だけを見せる。
+            //
+            // WHY キャンバスの戻り値を拾うか: カーブ / グラデーションはキーを
+            //     ドラッグして編集するため、ImGui の ActiveID 追跡では «変わった» を
+            //     取り切れない。捨てるとシーンの dirty が立たず、保存し忘れで消える。
+            bool curveChanged = false;
+            ImGui::Checkbox("Use Width Curve", &trail.widthCurveEnabled);
+            if (trail.widthCurveEnabled) {
+                ImGui::DragFloat("Width Scale", &trail.widthStart, 0.001f, 0.0f, 10.0f);
+                curveChanged |= widgets::CurveEditor("Width Curve", trail.widthCurve, 1.0f, 96.0f, &ctx.projectRoot);
+            } else {
+                ImGui::DragFloat("Width Start", &trail.widthStart, 0.001f, 0.0f, 10.0f);
+                ImGui::DragFloat("Width End", &trail.widthEnd, 0.001f, 0.0f, 10.0f);
+                const char* widthEasingItems[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
+                int widthEasing = static_cast<int>(trail.widthEasing);
+                if (ImGui::Combo("Width Easing", &widthEasing, widthEasingItems, 4))
+                    trail.widthEasing = static_cast<scene::TrailWidthEasing>(widthEasing);
+            }
+
+            ImGui::Checkbox("Use Color Gradient", &trail.colorGradientEnabled);
+            if (trail.colorGradientEnabled) {
+                curveChanged |= widgets::GradientEditor("Color Gradient", trail.colorGradient, &ctx.projectRoot);
+            } else {
+                float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
+                if (ImGui::ColorEdit4("Color Start", cs))
+                    trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
+                float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
+                if (ImGui::ColorEdit4("Color End", ce))
+                    trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
+            }
+            if (curveChanged && ctx.markSceneDirty) ctx.markSceneDirty();
 
             const char* alignmentItems[] = { "Camera Facing", "World Up" };
             int alignment = static_cast<int>(trail.alignment);
@@ -110,10 +113,10 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 trail.attachBone = boneBuf;
             widgets::DragVec3("Attach Offset", trail.attachOffset, 0.001f);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
-            char textureBuf[512];
-            std::snprintf(textureBuf, sizeof(textureBuf), "%s", trail.texturePath.c_str());
-            if (ImGui::InputText("Texture Path", textureBuf, sizeof(textureBuf))) {
-                trail.texturePath = textureBuf;
+            // .mat アセット参照。albedo テクスチャを .mat から解決する。
+            // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
+                trail.loadedMaterialPath.clear();
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }
@@ -126,7 +129,7 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
         });
 
     DrawComponentSection<scene::MeshTrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Trail",
-        [](scene::MeshTrailComponent& trail, EditorContext&) {
+        [](scene::MeshTrailComponent& trail, EditorContext& ctx) {
             ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
             ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
             ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
@@ -141,19 +144,15 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
             ImGui::Checkbox("Double Sided", &trail.doubleSided);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
-            char textureBuf[512];
-            std::snprintf(textureBuf, sizeof(textureBuf), "%s", trail.texturePath.c_str());
-            if (ImGui::InputText("Texture Path", textureBuf, sizeof(textureBuf))) {
-                trail.texturePath = textureBuf;
+            // .mat アセット参照。albedo テクスチャと doubleSided を .mat から解決する。
+            // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
+                trail.loadedMaterialPath.clear();
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }
         });
 
-    DrawComponentSection<scene::LifetimeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Lifetime",
-        [](scene::LifetimeComponent& lc, EditorContext&) {
-            ImGui::DragFloat("Remaining (s)", &lc.remaining, 0.1f, 0.0f, 9999.0f, "%.2f s");
-        });
 }
 
 

@@ -1,3 +1,7 @@
+[app]
+renderer = "dx12"
+targetFps = 60
+
 [project]
 name = "{{PROJECT_NAME}}"
 default_scene = "Assets/Scenes/Main.scene"

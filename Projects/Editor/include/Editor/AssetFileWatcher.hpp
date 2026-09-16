@@ -1,10 +1,12 @@
-// FBZZ Engine
-// AssetFileWatcher.hpp | fbzz::editor
-// Assets/ ディレクトリの変化をポーリングで検出するファイルシステム監視
-// WHY: ReadDirectoryChangesW の非同期オーバーラップモードを使い、
-//      std::thread なしで変化通知を取得する。
-//      毎フレーム Poll() を呼ぶだけでイベントを取得できる。
-//      AGENTS.md の「Step 1〜5 はシングルスレッド」方針に準拠する。
+/// @file    AssetFileWatcher.hpp
+/// @brief   Assets/ ディレクトリの変化をポーリングで検出するファイルシステム監視。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// WHY: ReadDirectoryChangesW の非同期オーバーラップモードを使い、
+/// std::thread なしで変化通知を取得する。
+/// 毎フレーム Poll() を呼ぶだけでイベントを取得できる。
+/// AGENTS.md の「Step 1〜5 はシングルスレッド」方針に準拠する。
 #pragma once
 #include <string>
 #include <vector>
@@ -41,6 +43,12 @@ public:
     [[nodiscard]] bool        IsRunning()  const { return m_handle != INVALID_HANDLE_VALUE; }
     [[nodiscard]] std::string GetRootPath() const { return m_rootPath; }
 
+    // 通知バッファが溢れてイベントを取りこぼしたか。true なら 1 回だけ返して印を消す。
+    // WHY: 大量のファイルを一度に入れると OS 側の通知バッファが溢れ、その回の変更が
+    //      「全部」捨てられる。個々のイベントで追従する仕組みは全て空振りするので、
+    //      呼び出し側は一覧とキャッシュを丸ごと作り直す必要がある。
+    [[nodiscard]] bool ConsumeOverflow() { const bool o = m_overflowed; m_overflowed = false; return o; }
+
 private:
     // 次の ReadDirectoryChangesW を発行する
     void IssueNextRead();
@@ -57,7 +65,11 @@ private:
     alignas(DWORD) uint8_t m_buffer[65536]{};
 
     std::vector<FileEvent> m_queue;
+    // FILE_ACTION_RENAMED_OLD_NAME と NEW_NAME が別の通知バッファへ分割されても
+    // ペアを失わないため、ParseBuffer をまたいで一時保持する。
+    std::string m_pendingRenameOld;
     bool m_readPending = false;
+    bool m_overflowed  = false;
 };
 
 } // namespace fbzz::editor

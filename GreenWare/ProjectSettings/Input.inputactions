@@ -1,0 +1,184 @@
+# GreenWare — 入力バインド
+#
+# WHY このファイルがゲームパッド対応の実体か:
+#   スクリプトが KeyCode::W や MouseBtn::Right を直接読むと、その 1 行のために
+#   パッド対応もキーコンフィグも原理的に不可能になる。論理名だけをスクリプトへ渡し、
+#   物理入力の割り当てはここに閉じる。Xbox コントローラーを足す作業は
+#   「この表に 1 行足す」だけで済み、ゲームロジックには一切波及しない。
+#
+# 論理名は Assets/Scripts/Utils/InputActions.hpp と 1 対 1 で対応する。
+# 片方だけを直すと無反応になるため、必ず両方を同時に更新すること。
+#
+# code は Win32 仮想キーコード (英字は ASCII 大文字と同値)。
+# GamepadButton / GamepadAxis は列挙名で書く (数値だと enum の追加で意味がずれる)。
+#
+# ── Xbox コントローラー 操作表 (Docs/camera-controls.md) ──────────────────────
+#   左スティック   移動 (アナログ。倒し量がそのまま速さになる)
+#   右スティック   カメラ
+#   RT             斬る。長押しで溜め斬り (左右の刀は段ごとに交互)
+#   LB             弾き。ボスが倒れている間は «とどめ»
+#   A              ジャンプ
+#   B              回避
+#   Y              刀の出し入れ (トグル)
+#   十字上 / 下    刀を抜く / 収める (明示指定)
+#   START          ポーズ
+#
+# ⚠ 既定の割り当てを変えたら Assets/Scripts/Utils/KeyIcons.hpp の Prompt() と、
+#   Options.scene の CtrlIcon_<機器>_<行>_<n> の絵も合わせること。
+#   差し替えた行だけアイコンをやめて文字を出す仕組みなので、ずれると
+#   «既定のまま遊んでいる人にだけ違うキーが出る» という形でしか現れない。
+
+# ── 移動 ──────────────────────────────────────────────────────────────────────
+# WHY analog を持たせるか: キーボードは 0/1 しか作れないが、スティックは倒し量が
+#     そのまま速さになる。両方が刺さっていても、実際に動かしている側が勝つ。
+[[axis]]
+name = "MoveX"
+deadZone = 0.22
+positive = [ { source = "Key", code = 68 } ]   # D
+negative = [ { source = "Key", code = 65 } ]   # A
+analog   = [ { source = "GamepadAxis", axis = "LeftStickX" } ]
+
+[[axis]]
+name = "MoveY"
+deadZone = 0.22
+positive = [ { source = "Key", code = 87 } ]   # W
+negative = [ { source = "Key", code = 83 } ]   # S
+analog   = [ { source = "GamepadAxis", axis = "LeftStickY" } ]
+
+# ── 視点 ──────────────────────────────────────────────────────────────────────
+# WHY raw = true か: マウス Delta は既にフレーム間の移動量で、-1..1 への正規化や
+#     平滑化を掛けると視点操作が破綻する。
+#
+# NOTE: TpsCameraComponent はこの 2 軸を読まない。マウスは「1 フレームの移動ピクセル」、
+#       スティックは「-1..1 の倒し量」で単位が違い、1 本の感度で両方を扱うと
+#       どちらかが必ず使い物にならなくなるため、カメラ側がデバイスごとに感度を持つ。
+#       ここに残してあるのは、メニューなど他の用途が視点入力を必要とした場合のため。
+[[axis]]
+name = "LookX"
+raw = true
+deadZone = 0.15
+analog = [
+    { source = "MouseAxis",   code = 0 },                 # DELTA_X
+    { source = "GamepadAxis", axis = "RightStickX" },
+]
+
+[[axis]]
+name = "LookY"
+raw = true
+deadZone = 0.15
+analog = [
+    { source = "MouseAxis",   code = 1, scale = -1.0 },   # DELTA_Y (画面 Y は下向き正)
+    { source = "GamepadAxis", axis = "RightStickY" },
+]
+
+# ── 斬撃 (Docs/blades.md) ─────────────────────────────────────────────────────
+# 斬るのはボタン 1 つ。どちらの刀が出るかは連撃の段が決める
+# (PolarityBladeComponent::NextSwingSide ─ 段の偶奇で右 → 左 → … と交互)。
+#
+# WHY 左右 2 ボタンをやめたか (2026-09-08): 押し分ける理由は «乗せる極を選ぶ» こと
+#     だったが、極性は休眠していて左右は絵の違いだけになっている。意味の無い選択に
+#     2 ボタン使うより、空いた右クリックを弾きへ回す方が芯 (弾いて崩す) に近い。
+#
+# 名前が Emit* なのは照射だった頃の名残。settings.toml の [bind] がこの綴りで
+# ユーザーの差し替えを保存しているので、改名すると既存のキーコンフィグが黙って
+# «既定に戻った» ように見える。画面に出る文字ではないため据え置く。
+#
+# WHY トリガーを軸ではなくボタンとして束ねるか: 要るのは長押しと単押しの区別だけで
+#     (長押し = 溜め斬り)、引き量に意味が無い。デバイス層の閾値 (0.5) に任せれば、
+#     スクリプト側は押しているかどうかだけを見ればよくなる。
+[[action]]
+name = "EmitPlus"
+bindings = [
+    { source = "MouseButton",   code = 0 },               # 左クリック
+    { source = "GamepadButton", button = "RightTrigger" },
+]
+
+# ── 移動アクション ────────────────────────────────────────────────────────────
+[[action]]
+name = "Jump"
+bindings = [
+    { source = "Key", code = 32 },                        # Space
+    { source = "GamepadButton", button = "A" },
+]
+
+[[action]]
+name = "Dodge"
+bindings = [
+    { source = "Key", code = 16 },                        # Shift
+    { source = "GamepadButton", button = "B" },
+]
+
+# 登る。転倒したボスの脚に取り付いて甲板へ上がる (Docs/climb-core.md)。
+#
+# WHY ジャンプと分けるか: 取り付けるのは «倒れているボスの脚のそば» だけで、
+#     そこは跳びたい場面でもある。1 つのボタンに兼ねさせると、跳ぼうとして
+#     登り始めるか、登ろうとして跳ぶかのどちらかが必ず起きる。
+#     しかも登りは 3 秒以上を拘束する ─ 取り違えた側の代償が大きすぎる。
+[[action]]
+name = "Climb"
+bindings = [
+    { source = "Key", code = 69 },                        # E
+    { source = "GamepadButton", button = "Y" },
+]
+
+# 弾き。ボスが倒れている間は同じボタンが «とどめ» になる (Docs/break-parry.md)。
+# WHY 攻撃と別のボタンか: 弾きは «押した瞬間に窓が開く» 入力で、押し続けや連打で
+#     出てはいけない。攻撃ボタンに兼ねさせると、連撃の 1 段目が全部弾きになる。
+[[action]]
+name = "Parry"
+bindings = [
+    { source = "MouseButton",   code = 1 },               # 右クリック
+    { source = "GamepadButton", button = "LeftShoulder" },
+]
+
+# ── 刀の出し入れ ──────────────────────────────────────────────────────────────
+# WHY トグルと明示指定を両方持つか: キーボードは G / H の 2 つを覚えれば済むが、
+#     パッドで 2 ボタン潰すのは割に合わない。パッドは Y の 1 つで往復させ、
+#     十字キーには「必ず抜く / 必ず収める」を残して意図が確実に通る経路も用意する。
+[[action]]
+name = "DrawWeapons"
+bindings = [
+    { source = "Key", code = 71 },                        # G
+    { source = "GamepadButton", button = "DPadUp" },
+]
+
+[[action]]
+name = "HolsterWeapons"
+bindings = [
+    { source = "Key", code = 72 },                        # H
+    { source = "GamepadButton", button = "DPadDown" },
+]
+
+[[action]]
+name = "ToggleWeapons"
+bindings = [
+    { source = "GamepadButton", button = "Y" },
+]
+
+[[action]]
+name = "Pause"
+bindings = [
+    { source = "Key", code = 27 },                        # Esc
+    { source = "GamepadButton", button = "Start" },
+]
+
+# ── メニュー ──────────────────────────────────────────────────────────────────
+# WHY カーソル移動を作らないか: UIButton はマウス座標で判定するため、パッドだけでは
+#     1 つも押せない。ただし本作のメニューはタイトルに 1 つ、リザルトに 2 つしかなく、
+#     フォーカス移動と選択表示を作り込むより、ボタンへ Submit / Cancel を直接
+#     割り当てる方が実装も操作も短い。SceneManagerScript の Trigger Action で結ぶ。
+[[action]]
+name = "Submit"
+bindings = [
+    { source = "Key", code = 13 },                        # Enter
+    { source = "Key", code = 32 },                        # Space
+    { source = "GamepadButton", button = "A" },
+    { source = "GamepadButton", button = "Start" },
+]
+
+[[action]]
+name = "Cancel"
+bindings = [
+    { source = "Key", code = 27 },                        # Esc
+    { source = "GamepadButton", button = "B" },
+]

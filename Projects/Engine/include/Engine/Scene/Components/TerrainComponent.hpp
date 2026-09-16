@@ -1,15 +1,16 @@
-// FBZZ Engine
-// TerrainComponent.hpp | fbzz::scene
-// ハイトマップベースの地形コンポーネント
-//
-// WHY: 屋外シーンに広い起伏地形を置くには、個別の MeshRenderer では頂点データ管理と
-//      高さクエリ（キャラクター・Physics）が分散してしまう。
-//      TerrainComponent に heightData / splatData を一元管理させ、
-//      TerrainRenderPass がチャンク分割と GPU 転送を行う構造にすることで
-//      「データ所有」と「描画戦略」を分離する。
-//
-// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .mat で管理する。
-// WHY: レイヤーごとに独立した .mat にすることで複数地形間でマテリアルを再利用できる。
+/// @file    TerrainComponent.hpp
+/// @brief   ハイトマップベースの地形コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: 屋外シーンに広い起伏地形を置くには、個別の MeshRenderer では頂点データ管理と
+/// 高さクエリ（キャラクター・Physics）が分散してしまう。
+/// TerrainComponent に heightData / splatData を一元管理させ、
+/// TerrainRenderPass がチャンク分割と GPU 転送を行う構造にすることで
+/// 「データ所有」と「描画戦略」を分離する。
+///
+/// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .mat で管理する。
+/// WHY: レイヤーごとに独立した .mat にすることで複数地形間でマテリアルを再利用できる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -20,6 +21,7 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fbzz::scene {
@@ -35,10 +37,10 @@ struct TerrainComponent {
     //      maxHeight は正負両方向の最大振幅として扱う。
     std::vector<float> heightData;
 
-    int   columns   = 129;    // X 方向の頂点数（2^n + 1 推奨: チャンク境界整合・LOD 二分割容易）
-    int   rows      = 129;    // Z 方向の頂点数
-    float cellSize  = 1.0f;  // 1 マスのワールド単位幅 [m]
-    float maxHeight = 30.0f; // heightData=1 のときのワールド高さ [m]
+    int   columns   = 65;    // X 方向の頂点数（2^n + 1 推奨: チャンク境界整合・LOD 二分割容易）
+    int   rows      = 65;    // Z 方向の頂点数
+    float cellSize  = 2.0f;  // 1 マスのワールド単位幅 [m]
+    float maxHeight = 20.0f; // heightData=1 のときのワールド高さ [m]
 
     // ── スプラットマップ (CPU, RGBA8 unorm) ────────────────────────────────────
     // index = (z * columns + x) * 4 + channel  (0=R 1=G 2=B 3=A)
@@ -166,13 +168,88 @@ struct TerrainComponent {
     //      汎用的な計算関数として公開する方がテスト・拡張しやすい。
     math::Vector3 ComputeNormal(int x, int z) const;
 
+    // Script / Tool から地形データを変更するための安全な入口。
+    // WHY: heightData / splatData を直接編集すると RenderPass と PhysicsSystem が参照する
+    //      dirty フラグを立て忘れやすいため、データ更新と再構築要求を同時に行う。
+    void RequestHeightRebuild()
+    {
+        heightDirty = true;
+        colliderDirty = true;
+    }
+
+    void RequestSplatRebuild()
+    {
+        splatDirty = true;
+    }
+
+    void RequestMaterialRebuild()
+    {
+        materialParamDirty = true;
+    }
+
+    bool SetHeightAtGrid(int x, int z, float worldHeight)
+    {
+        if (columns <= 0 || rows <= 0) return false;
+        if (heightData.size() != static_cast<size_t>(columns) * static_cast<size_t>(rows))
+            InitFlat();
+
+        x = (std::clamp)(x, 0, columns - 1);
+        z = (std::clamp)(z, 0, rows - 1);
+        const float safeMaxHeight = (std::max)(maxHeight, 0.0001f);
+        heightData[static_cast<size_t>(z) * static_cast<size_t>(columns) + static_cast<size_t>(x)] =
+            (std::clamp)(worldHeight / safeMaxHeight, -1.0f, 1.0f);
+        RequestHeightRebuild();
+        return true;
+    }
+
+    bool PaintLayerAtGrid(int x, int z, int layer, float weight)
+    {
+        if (columns <= 0 || rows <= 0 || layer < 0 || layer >= 4) return false;
+        if (splatData.size() != static_cast<size_t>(columns) * static_cast<size_t>(rows) * 4u)
+            InitDefaultSplat();
+
+        x = (std::clamp)(x, 0, columns - 1);
+        z = (std::clamp)(z, 0, rows - 1);
+        const size_t base =
+            (static_cast<size_t>(z) * static_cast<size_t>(columns) + static_cast<size_t>(x)) * 4u;
+        splatData[base + static_cast<size_t>(layer)] =
+            static_cast<uint8_t>((std::clamp)(weight, 0.0f, 1.0f) * 255.0f);
+
+        int sum = 0;
+        for (int i = 0; i < 4; ++i)
+            sum += splatData[base + static_cast<size_t>(i)];
+        if (sum <= 0) {
+            splatData[base + static_cast<size_t>(layer)] = 255u;
+        } else {
+            int normalizedSum = 0;
+            for (int i = 0; i < 3; ++i) {
+                uint8_t v = static_cast<uint8_t>(
+                    static_cast<int>(splatData[base + static_cast<size_t>(i)]) * 255 / sum);
+                splatData[base + static_cast<size_t>(i)] = v;
+                normalizedSum += v;
+            }
+            splatData[base + 3u] = static_cast<uint8_t>((std::clamp)(255 - normalizedSum, 0, 255));
+        }
+        RequestSplatRebuild();
+        return true;
+    }
+
+    bool SetLayerMaterial(int layer, std::string materialPath)
+    {
+        if (layer < 0 || layer >= 4) return false;
+        layerMaterials[static_cast<size_t>(layer)] = std::move(materialPath);
+        RequestSplatRebuild();
+        RequestMaterialRebuild();
+        return true;
+    }
+
 private:
 
     // 1 点の高さをインデックスから取得する（クランプ境界）。
     float SampleHeight(int x, int z) const
     {
-        x = std::clamp(x, 0, columns - 1);
-        z = std::clamp(z, 0, rows    - 1);
+        x = (std::clamp)(x, 0, columns - 1);
+        z = (std::clamp)(z, 0, rows    - 1);
         return heightData[static_cast<size_t>(z) * static_cast<size_t>(columns)
                         + static_cast<size_t>(x)] * maxHeight;
     }

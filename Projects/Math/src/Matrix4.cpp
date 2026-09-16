@@ -1,10 +1,11 @@
-// FBZZ Engine
-// Matrix4.cpp | fbzz::math
-// 4x4行列の演算実装 (DirectX 左手系)
+/// @file    Matrix4.cpp
+/// @brief   4x4行列の演算実装 (DirectX 左手系)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Matrix4.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>
-#include <cassert>
+#include "Math/MathContract.hpp"
 
 namespace fbzz::math {
 
@@ -74,8 +75,13 @@ Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3
 
 Matrix4 Matrix4::Perspective(float fovY, float aspect, float nearZ, float farZ) {
     // DirectX 左手系 透視投影 (depth: 0 to 1)
-    assert(aspect > EPSILON);
-    assert(farZ > nearZ);
+    // 潰れたビューポート (幅 0 / 高さ 0) は編集中に普通に起きる。行列を作れないだけなので、
+    // 破綻しない最小値へ寄せて進む。止めるとレイアウト操作の途中でエディターが死ぬ。
+    FBZZ_MATH_CONTRACT(aspect > EPSILON, "degenerate aspect; clamped to 1.0");
+    if (!(aspect > EPSILON)) aspect = 1.0f;
+    FBZZ_MATH_CONTRACT(farZ > nearZ, "far <= near; far pushed past near");
+    if (!(farZ > nearZ)) farZ = nearZ + 1.0f;
+
     float yScale = 1.0f / std::tan(fovY * 0.5f);
     float xScale = yScale / aspect;
 
@@ -146,7 +152,11 @@ Matrix4 Matrix4::Inverse(const Matrix4& mat) {
     float b11 = a[10]*a[15] - a[11]*a[14];
 
     float det = b00*b11 - b01*b10 + b02*b09 + b03*b08 - b04*b07 + b05*b06;
-    assert(!NearlyZero(det) && "Matrix4::Inverse: singular matrix");
+    // scale に 0 が入った Transform は特異行列になる。Inspector の操作として普通に起きるので、
+    // 単位行列を返して «その変換が効かない» だけに留める (Matrix4.cpp の Decompose 側と同じ判断)。
+    FBZZ_MATH_CONTRACT(!NearlyZero(det),
+                       "singular matrix inverted (zero scale?); returning identity");
+    if (NearlyZero(det)) return Identity();
 
     float inv = 1.0f / det;
     Matrix4 result;
@@ -169,6 +179,40 @@ Matrix4 Matrix4::Inverse(const Matrix4& mat) {
     r[14] = (-a[12]*b03 + a[13]*b01 - a[14]*b00) * inv;
     r[15] = ( a[ 8]*b03 - a[ 9]*b01 + a[10]*b00) * inv;
 
+    return result;
+}
+
+Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
+    // アフィン行列 M = [[A, 0], [t, 1]] (行優先・行ベクトル規約) の逆行列は
+    //   M^-1 = [[A^-1, 0], [-t*A^-1, 1]]
+    // なので、その転置の左上 3x3 は (A^-1)^T になる。平行移動 t は一切効かない。
+    // さらに A^-1 = adj(A)/det = cofactor(A)^T/det より (A^-1)^T = cofactor(A)/det。
+    // つまり左上 3x3 の余因子行列を行列式で割るだけでよい。
+    const auto& a = mat.m;
+
+    const float c00 = a[1][1]*a[2][2] - a[1][2]*a[2][1];
+    const float c01 = a[1][2]*a[2][0] - a[1][0]*a[2][2];
+    const float c02 = a[1][0]*a[2][1] - a[1][1]*a[2][0];
+
+    const float det = a[0][0]*c00 + a[0][1]*c01 + a[0][2]*c02;
+    Matrix4 result = Identity();
+    // スケール 0 などで退化した場合は単位行列を返す。
+    // WHY assert しないか: Transform のスケールに 0 を入れるのはエディタ操作として普通に起きる。
+    //      描画のたびに停止させる類の異常ではないので、法線を素通しして描き続ける。
+    if (NearlyZero(det))
+        return result;
+
+    const float c10 = a[0][2]*a[2][1] - a[0][1]*a[2][2];
+    const float c11 = a[0][0]*a[2][2] - a[0][2]*a[2][0];
+    const float c12 = a[0][1]*a[2][0] - a[0][0]*a[2][1];
+    const float c20 = a[0][1]*a[1][2] - a[0][2]*a[1][1];
+    const float c21 = a[0][2]*a[1][0] - a[0][0]*a[1][2];
+    const float c22 = a[0][0]*a[1][1] - a[0][1]*a[1][0];
+
+    const float inv = 1.0f / det;
+    result.m[0][0] = c00 * inv; result.m[0][1] = c01 * inv; result.m[0][2] = c02 * inv;
+    result.m[1][0] = c10 * inv; result.m[1][1] = c11 * inv; result.m[1][2] = c12 * inv;
+    result.m[2][0] = c20 * inv; result.m[2][1] = c21 * inv; result.m[2][2] = c22 * inv;
     return result;
 }
 

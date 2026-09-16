@@ -1,6 +1,5 @@
 ﻿version = 2
 defaultStateName = 'Locomotion'
-clipSources = []
 anyStateTransitions = [
     { toStateName = 'JumpUp', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'Jump', op = 4, threshold = 0.0 }] },
     { toStateName = 'Fall', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'IsGrounded', op = 5, threshold = 0.0 }, { paramName = 'VerticalSpeed', op = 1, threshold = -1.0 }] }
@@ -89,3 +88,29 @@ hasExitTime = true
 exitTime = 0.75
 transitionDuration = 0.12
 conditions = []
+
+[editorLayout]
+entryX = -220.0
+entryY = 80.0
+anyStateX = -220.0
+anyStateY = 200.0
+
+[[editorLayout.nodes]]
+stateName = 'Locomotion'
+x = 80.0
+y = 80.0
+
+[[editorLayout.nodes]]
+stateName = 'Landing'
+x = 680.0
+y = 300.0
+
+[[editorLayout.nodes]]
+stateName = 'JumpUp'
+x = 380.0
+y = 80.0
+
+[[editorLayout.nodes]]
+stateName = 'Fall'
+x = 680.0
+y = 80.0

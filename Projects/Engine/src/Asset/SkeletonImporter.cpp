@@ -1,12 +1,14 @@
-// FBZZ Engine
-// SkeletonImporter.cpp | fbzz::asset
-// .skel バイナリ v1 → Skeleton デシリアライザ
-// フォーマット: FzSkelHeader (magic "FZSK") + FzSkeletonNodeData[] + FzBoneData[]
-// WHY: ModelAssetImporter::ReadSkeleton と同じ読み込みロジックを持つが、
-//      .skel は単独ファイルとして存在し、メッシュなしのスケルトン参照を可能にする。
+/// @file    SkeletonImporter.cpp
+/// @brief   .skel バイナリ v1 → Skeleton デシリアライザ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-19
+///
+/// フォーマット: FzSkelHeader (magic "FZSK") + FzSkeletonNodeData[] + FzBoneData[]
+/// WHY: ModelAssetImporter::ReadSkeleton と同じ読み込みロジックを持つが、
+/// .skel は単独ファイルとして存在し、メッシュなしのスケルトン参照を可能にする。
 #include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Quaternion.hpp>
@@ -96,6 +98,8 @@ std::unique_ptr<Skeleton> SkeletonImporter::Import(
         skel->boneMap[bone.name] = static_cast<int>(bi);
     }
 
+    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    BuildReferencePose(*skel);
     return skel;
 }
 

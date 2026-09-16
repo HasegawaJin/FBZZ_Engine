@@ -1,0 +1,34 @@
+# FBZZ Engine
+# FX_DustPuff_Alpha.mat
+# 素材: Assets/VFX/Textures/T_Dust_Puff_2x2.png (512² / 2x2 / 4 種の土煙)
+# FlipFlop の煙 (FX_Smoke_Alpha) が «湧いて崩れる» 1 本の芝居なのに対し、こちらは
+# 軽く撒く静止した塊。走行・転倒の縁・脚がもげた足元など、数を撒く所に使う。
+# 無彩色の «煙» 側 (12.2)。色は Dust Color (床の色) から乗る。
+version = 1
+shader = ""
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:4635b06e85aa4f48a1cbaed1b87813d2"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+sprite_columns = 2
+sprite_rows = 2
+flipbook_mode = "random"
+six_way_lighting = true
+lighting_strength = 0.9
+smoke_wrap = 0.55
+smoke_transmission = 0.45
+smoke_back_scatter_power = 6.0
+receive_shadows = true
+shadow_strength = 0.8
+soft_particles = true
+soft_particle_fade_distance = 0.5

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ChainConstraint.cpp | fbzz::physics
-// 複数剛体を固定距離でつなぐ鎖制約
+/// @file    ChainConstraint.cpp
+/// @brief   複数剛体を固定距離でつなぐ鎖制約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #include <Physics/ChainConstraint.hpp>
 #include <utility>
 
@@ -10,9 +11,9 @@ namespace fbzz::physics
                                      float segmentLength,
                                      int solverIterations)
         : Constraint(nullptr, nullptr),
-          m_bodies(std::move(bodies)),
           m_segmentLength(segmentLength),
-          m_solverIterations(solverIterations)
+          m_solverIterations(solverIterations),
+          m_bodies(std::move(bodies))
     {
     }
 

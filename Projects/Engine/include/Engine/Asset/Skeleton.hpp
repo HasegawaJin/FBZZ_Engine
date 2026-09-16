@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Skeleton.hpp | fbzz::asset
-// スキンメッシュ用の階層ノードとボーン情報
-// AnimationClip の nodeName と対応付け、AnimatorSystem が行列パレットを構築する。
-// インデックス配列を使い、ランタイム中の動的確保を減らす。Model 側に保持される。
+/// @file    Skeleton.hpp
+/// @brief   スキンメッシュ用の階層ノードとボーン情報。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// AnimationClip の nodeName と対応付け、AnimatorSystem が行列パレットを構築する。
+/// インデックス配列を使い、ランタイム中の動的確保を減らす。Model 側に保持される。
 #pragma once
 #include <Math/Matrix4.hpp>
 #include <Math/Quaternion.hpp>
@@ -42,6 +44,20 @@ struct Skeleton {
     std::vector<Bone> bones;         // 変形ボーンのみ。GPU パレットのインデックスと対応
     std::unordered_map<std::string, int> nodeMap; // 名前 -> nodes インデックス
     std::unordered_map<std::string, int> boneMap; // 名前 -> bones インデックス
+
+    // リファレンスポーズ (= バインドポーズ) のスキニング行列パレット。
+    // bones と同じインデックス。BuildReferencePose() がロード時に一度だけ構築する。
+    //
+    // WHY: 「アニメーションが無いときのスキニング行列」は単位行列ではない。
+    //   単位行列が正しくなるのは、頂点がモデル空間そのままで格納されている
+    //   アセットに限られる (Mixamo など)。ノード階層にバインド変換を持つアセットでは
+    //   モデルが倒れる・原点へ潰れるといった破綻が起きる。
+    //   Unity / Unreal と同じく、無アニメ時はこのリファレンスポーズを既定とする。
+    std::vector<math::Matrix4> referencePose;
 };
+
+// nodes のバインド TRS を辿って referencePose を構築する。
+// palette[boneIndex] = rootInverseTransform · globalBind · offsetMatrix
+void BuildReferencePose(Skeleton& skeleton);
 
 } // namespace fbzz::asset

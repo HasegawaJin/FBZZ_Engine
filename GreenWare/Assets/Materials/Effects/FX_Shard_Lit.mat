@@ -1,0 +1,29 @@
+# FBZZ Engine
+# FX_Shard_Lit.mat
+# 素材: Assets/VFX/Textures/T_Shard_2x2.png (512² / 2x2 / 4 種の破片)
+# 装甲のかけら。無彩色の «破片» 側 (12.2)。極性色を乗せないこと。
+# 4 種を random で引き、粒ごとに違う形にする。回転は Emitter 側の angularVelocity で付ける。
+version = 1
+shader = ""
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:cee51894deee4e5892fff9bb8f5dd931"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+sprite_columns = 2
+sprite_rows = 2
+flipbook_mode = "random"
+# 板は光に応答しないと «紙» に見える。六方向ライティングを弱めに掛けて面の明暗を出す。
+six_way_lighting = true
+lighting_strength = 0.6
+receive_shadows = true
+shadow_strength = 0.6

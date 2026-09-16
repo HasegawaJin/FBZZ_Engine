@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainAssetSerializer.hpp | fbzz::scene
-// TerrainComponent の重い編集データを .terrain として保存・復元する
+/// @file    TerrainAssetSerializer.hpp
+/// @brief   TerrainComponent の重い編集データを .terrain として保存・復元する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <string>

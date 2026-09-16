@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialInspectorWidgets.hpp | fbzz::editor
-// .mat 用 Inspector ウィジェット群
+/// @file    MaterialInspectorWidgets.hpp
+/// @brief   .mat 用 Inspector ウィジェット群。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -19,8 +20,9 @@ bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, cons
 struct TerrainLayerDirtyFlags { bool textureDirty = false; bool paramDirty = false; };
 TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& mat);
 
-// DrawWaterMaterialInspector — Water 専用 .mat の見た目パラメータを編集する。
-// WHY: 水面は色・法線・泡・flow・caustics の調整頻度が高く、意味別のまとまりが必要。
+// DrawWaterMaterialInspector — Water 専用 .mat (水の種類) を編集する。
+// 見た目 (色・反射・さざ波・泡) に加え、Gerstner 波・環境風への反応・水流もここで持つ。
+// WHY: 水面は調整頻度が高く、汎用 float 一覧では «どれが波でどれが色か» を追えない。
 bool DrawWaterMaterialInspector(asset::MaterialAsset& mat);
 
 } // namespace fbzz::editor

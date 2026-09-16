@@ -1,0 +1,62 @@
+# FBZZ Engine
+# TestSharedSDKTemplates.cmake | CMake
+# 新規/移行後プロジェクトが Engine ソース参照へ退行しないことを検証する
+
+if(NOT DEFINED SOURCE_ROOT OR SOURCE_ROOT STREQUAL "")
+    message(FATAL_ERROR "TestSharedSDKTemplates: SOURCE_ROOT is required")
+endif()
+
+foreach(TEMPLATE_KIND standard empty)
+    set(TEMPLATE_ROOT "${SOURCE_ROOT}/Projects/GameHub/Templates/${TEMPLATE_KIND}")
+    file(READ "${TEMPLATE_ROOT}/CMakeLists.txt" CMAKE_TEXT)
+    file(READ "${TEMPLATE_ROOT}/CMakePresets.json" PRESET_TEXT)
+    file(READ "${TEMPLATE_ROOT}/.fbzz_proj" PROJECT_TEXT)
+
+    foreach(REQUIRED_TEXT "find_package(FBZZ {{ENGINE_VERSION}} EXACT CONFIG REQUIRED)"
+                          "FBZZ::Engine" "fbzz_stage_runtime")
+        string(FIND "${CMAKE_TEXT}" "${REQUIRED_TEXT}" REQUIRED_POS)
+        if(REQUIRED_POS EQUAL -1)
+            message(FATAL_ERROR "${TEMPLATE_KIND}: CMakeLists.txt is missing ${REQUIRED_TEXT}")
+        endif()
+    endforeach()
+    foreach(FORBIDDEN_TEXT "FBZZ_ENGINE_ROOT" "add_subdirectory")
+        string(FIND "${CMAKE_TEXT}" "${FORBIDDEN_TEXT}" FORBIDDEN_POS)
+        if(NOT FORBIDDEN_POS EQUAL -1)
+            message(FATAL_ERROR "${TEMPLATE_KIND}: CMakeLists.txt still contains ${FORBIDDEN_TEXT}")
+        endif()
+    endforeach()
+    string(FIND "${PRESET_TEXT}" "FBZZ_SDK_ROOT" SDK_PRESET_POS)
+    string(FIND "${PROJECT_TEXT}" "sdk_id = \"{{SDK_ID}}\"" SDK_PROJECT_POS)
+    if(SDK_PRESET_POS EQUAL -1 OR SDK_PROJECT_POS EQUAL -1)
+        message(FATAL_ERROR "${TEMPLATE_KIND}: SDK selection metadata is missing")
+    endif()
+
+    if(TEMPLATE_KIND STREQUAL "standard")
+        foreach(REQUIRED_SHADER_TEXT "add_custom_target(CompileShaders"
+                                     "Assets/Shaders/*.hlsli"
+                                     "add_dependencies({{TARGET_NAME}}Standalone CompileShaders)")
+            string(FIND "${CMAKE_TEXT}" "${REQUIRED_SHADER_TEXT}" SHADER_TEXT_POS)
+            if(SHADER_TEXT_POS EQUAL -1)
+                message(FATAL_ERROR "standard: shader build integration is missing ${REQUIRED_SHADER_TEXT}")
+            endif()
+        endforeach()
+
+        set(SHADER_SCRIPT "${TEMPLATE_ROOT}/Assets/Shaders/compile_shaders.ps1")
+        if(NOT EXISTS "${SHADER_SCRIPT}")
+            message(FATAL_ERROR "standard: compile_shaders.ps1 is missing")
+        endif()
+        file(READ "${SHADER_SCRIPT}" SHADER_SCRIPT_TEXT)
+        foreach(REQUIRED_SCRIPT_TEXT "Get-ChildItem" "Get-ShaderDependencyInfo" "PlanOnly" "orphan")
+            string(FIND "${SHADER_SCRIPT_TEXT}" "${REQUIRED_SCRIPT_TEXT}" SCRIPT_TEXT_POS)
+            if(SCRIPT_TEXT_POS EQUAL -1)
+                message(FATAL_ERROR "standard: incremental shader script is missing ${REQUIRED_SCRIPT_TEXT}")
+            endif()
+        endforeach()
+        if(EXISTS "${TEMPLATE_ROOT}/Assets/Shaders/compile_shaders.bat")
+            message(FATAL_ERROR "standard: legacy compile_shaders.bat must not exist")
+        endif()
+        if(EXISTS "${TEMPLATE_ROOT}/Assets/Shaders/compile_ui_shaders.bat")
+            message(FATAL_ERROR "standard: legacy compile_ui_shaders.bat must not exist")
+        endif()
+    endif()
+endforeach()

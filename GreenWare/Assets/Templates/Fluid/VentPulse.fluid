@@ -1,0 +1,78 @@
+# 脈打つ排気 — 量のエンベロープ ([[source.amount.key]]) の見本。
+# 湧き口は出しっぱなし (duration = 0) で、注ぐ «勢い» だけをキーで上下させる。
+# キーの time はウォームアップも含めた通算の秒数。焼くのは warmup..warmup+duration の窓なので、
+# ここでは 1.0s から 1.0 秒周期で 2 山、窓の両端が同じ値になるよう置いてループの継ぎ目を消す。
+version = 2
+kind = "gas"
+seed = 61
+
+[gas]
+buoyancy = 1.3
+weight = 0.03
+vorticity = 0.5
+turbulence = 0.3
+turbulence_scale = 4.5
+density_dissipation = 0.5
+temperature_dissipation = 1.0
+
+[[source]]
+name = "Vent"
+shape = "cylinder"
+center = [0.0, -0.82, 0.0]
+size = [0.16, 0.1, 0.16]
+direction = [0.0, 1.0, 0.0]
+density = 4.4
+temperature = 1.4
+noise = 0.7
+velocity = [0.0, 1.7, 0.0]
+duration = 0.0
+
+[[source.amount.key]]
+time = 1.0
+scale = 1.0
+
+[[source.amount.key]]
+time = 1.5
+scale = 0.12
+
+[[source.amount.key]]
+time = 2.0
+scale = 1.0
+
+[[source.amount.key]]
+time = 2.5
+scale = 0.12
+
+[[source.amount.key]]
+time = 3.0
+scale = 1.0
+
+[[force]]
+name = "Curl"
+type = "noise"
+strength = 1.0
+noise_frequency = 3.0
+noise_speed = 0.9
+
+[render]
+shading = "smoke"
+smoke_color = [0.86, 0.88, 0.9, 1.0]
+shadow_color = [0.4, 0.43, 0.48, 1.0]
+opacity = 2.4
+self_shadow = 1.4
+detail_strength = 0.45
+detail_scale = 9.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 2.0
+warmup = 1.0
+loop = true
+motion_vectors = true
+
+[bake]
+mode = "2d"
+scattering_octaves = 4

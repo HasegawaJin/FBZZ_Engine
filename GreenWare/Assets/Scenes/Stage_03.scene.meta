@@ -1,0 +1,93 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Environment Light', 'Atmospheric Scattering', 'Volumetric Cloud' ]
+    instance_id = 'a32b8f80-b125-4507-8ca5-9902943a2913'
+
+    [[editor.game_objects]]
+    component_order = [
+        'Camera',
+        'Script:TpsCameraComponent',
+        'Audio Listener',
+        'Script:FpsCameraComponent',
+        'Script:BossCameraDirectorComponent'
+    ]
+    instance_id = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
+
+    [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000012'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000011'
+
+    [[editor.game_objects]]
+    component_order = [ 'Post Process Volume' ]
+    instance_id = '29f249cf-bc13-44e7-a403-cc15ee729734'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000004'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ArenaHazardComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-0000000000a2'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ArenaBoundsComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-0000000000a1'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000005'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Canvas' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000001'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000002'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000003'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000010'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:GameSettingsComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-000000000030'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:BossHealthBarComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-00000000001f'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000013'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ScreenEffectManagerComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-000000000018'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:CombatManagerComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-000000000015'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:RumbleManagerComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-000000000017'
+
+[meta]
+guid = '20cf0a94a86daf1be6ee9aad82887346'

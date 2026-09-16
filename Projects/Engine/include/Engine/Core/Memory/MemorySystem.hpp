@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MemorySystem.hpp | fbzz::core
-// エンジン全体で共有するメモリ管理の入口
-// フレーム用アロケータとメモリ統計を束ね、Application など所有者から明示的に初期化する。
+/// @file    MemorySystem.hpp
+/// @brief   エンジン全体で共有するメモリ管理の入口。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// フレーム用アロケータとメモリ統計を束ね、Application など所有者から明示的に初期化する。
 #pragma once
 
 #include "Engine/Core/Memory/FrameAllocator.hpp"

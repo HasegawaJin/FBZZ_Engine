@@ -10,7 +10,10 @@
 #include "Common/Structs.hlsli"
 #include "Common/Space.hlsli"
 #include "Common/Color.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
+#include "Rendering/SpecularAA.hlsli"
+#include "Rendering/Wetness.hlsli"
+#include "Rendering/LodDither.hlsli"
 
 Texture2D    texAlbedo        : register(TEX_ALBEDO);
 Texture2D    texNormal        : register(TEX_NORMAL);
@@ -31,6 +34,8 @@ PSInput VSMain(VSInput v)
 
 GBufferOut PSMain(PSInput p)
 {
+    ApplyLodDither(p.svPosition.xy, objectParams.x);
+
     float2 uv = p.uv * uvTiling + uvOffset;
 
     // Albedo + tint
@@ -61,6 +66,17 @@ GBufferOut PSMain(PSInput p)
         rough = mr.x;
         met   = mr.y;
     }
+
+    // 濡れは素材の値なので、法線分散のフィルタより先に掛ける。
+    // 逆順にすると、AA で持ち上げた粗さを濡れが再び下げてちらつきが戻る。
+    const WetSurface wet = ApplyWetness(col, saturate(rough), N);
+    col   = wet.albedo;
+    rough = wet.roughness;
+
+    // WHY ここで掛けるか: Deferred では DeferredLighting が読む法線は GBuffer 経由の
+    //     隣接ピクセル値で、そこには別オブジェクトの法線も混ざる。1 面ぶんの法線分散は
+    //     書き出し側でしか測れない。
+    rough = FilterSpecularRoughness(N, rough);
 
     GBufferOut o;
     o.albedoRoughness = float4(col, rough);

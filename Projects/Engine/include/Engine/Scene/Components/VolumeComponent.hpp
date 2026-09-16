@@ -1,8 +1,10 @@
-// FBZZ Engine
-// VolumeComponent.hpp | fbzz::scene
-// トリガー領域に付与する物理効果コンポーネント
-// 重力・渦・爆風などの VolumeType と効果パラメーターを保持する。
-// 具体的な力の適用は physics / system 側で処理する。
+/// @file    VolumeComponent.hpp
+/// @brief   トリガー領域に付与する物理効果コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
+///
+/// 重力・渦・爆風などの VolumeType と効果パラメーターを保持する。
+/// 具体的な力の適用は physics / system 側で処理する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

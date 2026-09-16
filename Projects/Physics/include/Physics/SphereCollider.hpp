@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SphereCollider.hpp | fbzz::physics
-// 球形コライダー
+/// @file    SphereCollider.hpp
+/// @brief   球形コライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Physics/Collider.hpp>
 
@@ -16,6 +17,8 @@ namespace fbzz::physics {
         ColliderType GetType() const override { return ColliderType::SPHERE; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
+        // 4/3 π r³
+        [[nodiscard]] float ComputeVolume() const override;
 
         float m_radius;
 

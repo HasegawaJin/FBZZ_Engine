@@ -1,21 +1,22 @@
-// FBZZ Engine
-// ScriptCodeGen.hpp | fbzz::editor
-// エディター内からのソースコード生成ユーティリティ
-//
-// WHAT: C++ スクリプトヘッダと HLSL シェーダーのテンプレートを生成し、
-//       スクリプト登録リストに自動追記する。
-//
-// WHY (エントリ一元管理):
-//   スクリプト登録エントリは Scripts/ScriptList.inl (X-macro ファイル) で一元管理する。
-//   DLL 側 / EXE 側ともに ScriptList.inl を #include して展開するため、
-//   ScriptCodeGen はエントリを 1 ファイルだけ更新すればよい。
-//
-//   include セクション (DLL/EXE で形式が異なるため引き続き個別管理):
-//     DLL: #define Xxx_IMPL + #include — 型定義・ファクトリ用宣言のみ取り込む
-//     EXE: #include のみ — TU ごとの独立コンパイル
-//
-//   コード生成後にファイルが変更されると ScriptDllLoader の監視が反応し
-//   自動リビルド → ホットリロードまで自動実行される。
+/// @file    ScriptCodeGen.hpp
+/// @brief   エディター内からのソースコード生成ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHAT: C++ スクリプトヘッダと HLSL シェーダーのテンプレートを生成し、
+/// スクリプト登録リストを Assets/Scripts の実ファイル一覧から自動同期する。
+///
+/// WHY (エントリ一元管理):
+/// スクリプト登録エントリは Scripts/ScriptList.inl (X-macro ファイル) で一元管理する。
+/// DLL 側 / EXE 側ともに ScriptList.inl を #include して展開するため、
+/// ScriptCodeGen は Assets/ 配下の FBZZ_SCRIPT(...) をスキャンして、登録と include を同期する。
+///
+/// include セクション (DLL/EXE 共通 #include のみ):
+/// 新方式のスクリプトは実装を inline 化したため _IMPL ガードや専用 .cpp は不要。
+/// Reflect() は FBZZ_REFLECT がヘッダ内で生成するため .generated.hpp も生成しない。
+///
+/// コード生成後にファイルが変更されると ScriptDllLoader の監視が反応し
+/// 自動リビルド → ホットリロードまで自動実行される。
 #pragma once
 #include <string>
 
@@ -27,25 +28,40 @@ public:
         SurfaceVSPS,     // Material/Custom/ に VS+PS ペアを生成 (一般マテリアル用)
         PostProcessVSPS, // PostProcess/Custom/ に VS+PS ペアを生成 (フルスクリーン用)
         ComputeCS,       // PostProcess/Custom/ に CS を生成
+        ParticlePS,      // Material/Custom/ に PS を生成 (ParticleEmitter 用)
     };
 
-    // C++ スクリプトヘッダを scriptsDir に生成し、登録リストに追記する。
-    // @param name          クラス名に使う識別子 ("EnemyAI" など; "Component" は自動付与しない)
+    // 生成するヘッダの種類。
+    //
+    // WHY 種類を分けるか:
+    //   Assets/ 配下の .hpp は「アタッチするスクリプト」だけではない。ユーティリティ関数や
+    //   共有の調整値も同じ場所に置くが、それらに FBZZ_SCRIPT を付けてしまうと Add Script
+    //   メニューに並び、アタッチできてしまう (アタッチしても何も起きないのに)。
+    //   逆にこの区別が入口に無いと「Unity で MonoBehaviour を継承しないクラス」に当たる
+    //   書き方が分からず、何でもスクリプトにしてしまう。テンプレートを分けて明示する。
+    enum class ScriptKind {
+        Behaviour,  // FBZZ_SCRIPT — GameObject にアタッチする。ScriptList.inl へ登録される
+        Utility,    // 登録マクロなし — アタッチしない純粋なクラス (関数群・ヘルパー)
+        DataAsset,  // FBZZ_DATA_ASSET — .fzdata として共有する調整値 (ScriptableObject 相当)
+    };
+
+    // C++ ヘッダを scriptsDir に生成し、登録リストを実ファイル一覧から同期する。
+    // @param name          クラス名に使う識別子 ("EnemyAI" など)
+    //                      Behaviour のときだけ末尾へ "Component" が自動付与される。
     // @param dllCppPath    SandboxScriptsDll.cpp のパス (DLL 側登録。空なら省略)
     // @param staticCppPath SandboxScripts.cpp のパス (EXE 静的登録。空なら省略)
+    // @param kind          生成するヘッダの種類
     // @return 生成した .hpp ファイルのフルパス (失敗時は空)
     static std::string CreateScript(const std::string& name,
                                     const std::string& scriptsDir,
                                     const std::string& dllCppPath,
-                                    const std::string& staticCppPath = {});
-
-    // FBZZ Header Tool -- FBZZ_FIELD マクロをパースして .generated.hpp を生成する。
-    // @param headerPath  対象の .hpp ファイルパス
-    // @ret 生成した .generated.hpp のパス (失敗時は空)
-    static std::string GenerateReflect(const std::string& headerPath);
-
-    // scriptsDir 配下の全 .hpp に対して GenerateReflect を一括実行する。
-    static void GenerateReflectAll(const std::string& scriptsDir);
+                                    const std::string& staticCppPath = {},
+                                    ScriptKind kind = ScriptKind::Behaviour);
+    // Assets/Scripts の実ファイルを正として、DLL/EXE の include と ScriptList.inl を同期する。
+    // WHY: Unity と同じように、スクリプトファイルの追加・削除を登録ファイルの手動編集なしで反映する。
+    static bool SyncScriptRegistry(const std::string& scriptsDir,
+                                   const std::string& dllCppPath,
+                                   const std::string& staticCppPath = {});
 
     // HLSL シェーダーファイルを生成する。
     // @param name     シェーダー名 ("MyEffect" など)
@@ -56,28 +72,6 @@ public:
                                   const std::string& hlslDir,
                                   HlslKind kind);
 
-private:
-    // @@FBZZ_SCRIPT_INCLUDES_BEGIN の後に #include 行を挿入する (Standalone EXE 用)
-    static bool InsertScriptInclude(const std::string& cppPath,
-                                    const std::string& headerRelPath);
-    // DLL 用: #define {ClassName}_IMPL + #include を挿入して宣言のみ取り込む
-    static bool InsertScriptIncludeDll(const std::string& dllCppPath,
-                                       const std::string& className,
-                                       const std::string& headerRelPath);
-    // ScriptList.inl の @@FBZZ_SCRIPT_ENTRIES_BEGIN の後に FBZZ_SCRIPT_ENTRY を挿入する
-    // WHY: DLL/EXE 共通エントリを 1 ファイルで管理するため ScriptList.inl を更新する。
-    static bool InsertScriptListEntry(const std::string& scriptListPath,
-                                      const std::string& className);
-    // 旧形式フォールバック: SandboxScriptsDll.cpp にエントリを直接挿入する (ScriptList.inl 未対応プロジェクト)
-    static bool InsertScriptEntry(const std::string& dllCppPath,
-                                  const std::string& className);
-    // 旧形式フォールバック: SandboxScripts.cpp に FBZZ_REGISTER_SCRIPT を直接挿入する
-    static bool InsertScriptStaticEntry(const std::string& staticCppPath,
-                                        const std::string& className);
-
-    // 重複チェック: cppPath に既に同名エントリがあれば true
-    static bool AlreadyRegistered(const std::string& cppPath,
-                                  const std::string& className);
 };
 
 } // namespace fbzz::editor

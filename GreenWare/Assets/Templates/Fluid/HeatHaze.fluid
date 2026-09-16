@@ -1,0 +1,52 @@
+# 陽炎 — distortion シェーディングの見本。焼けるのは «色» ではなく «速度» で、
+# 背景を歪ませる 2 コマ (RG) が出力される。色を持たないので薄く広く出すのが正解。
+version = 2
+kind = "gas"
+seed = 27
+
+[gas]
+buoyancy = 1.8
+weight = 0.0
+vorticity = 0.35
+turbulence = 0.35
+turbulence_scale = 7.0
+density_dissipation = 0.25
+temperature_dissipation = 0.45
+
+[[source]]
+name = "Hot Ground"
+shape = "box"
+center = [0.0, -0.8, 0.0]
+size = [0.62, 0.05, 0.35]
+density = 2.4
+temperature = 2.6
+noise = 0.6
+velocity = [0.0, 0.55, 0.0]
+duration = 0.0
+
+[[force]]
+name = "Drift"
+type = "wind"
+direction = [0.35, 1.0, 0.0]
+strength = 0.45
+
+[render]
+shading = "distortion"
+smoke_color = [0.5, 0.5, 0.5, 1.0]
+opacity = 1.4
+detail_strength = 0.6
+detail_scale = 14.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 2.4
+warmup = 1.4
+loop = true
+motion_vectors = false
+
+[bake]
+mode = "2d"
+scattering_octaves = 3

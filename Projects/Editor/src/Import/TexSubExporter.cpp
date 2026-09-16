@@ -1,8 +1,10 @@
-// FBZZ Engine
-// TexSubExporter.cpp | fbzz::editor
-// textures/ フォルダ内の生画像に .tex descriptor を自動生成する
-// MatSubExporter の後に実行されることを前提とする。
-// GuessTextureType で型を推定し、flipGreen (法線マップ) を設定する。
+/// @file    TexSubExporter.cpp
+/// @brief   textures/ フォルダ内の生画像に "<画像>.meta" サイドカーを自動生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// MatSubExporter の後に実行されることを前提とする。
+/// GuessTextureType で型を推定し、flipGreen (法線マップ) を設定する。
 #include <Editor/Import/TexSubExporter.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
@@ -40,9 +42,9 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
     using namespace asset;
     namespace fs = std::filesystem;
 
-    if (!ctx.generateTexDescriptors) return true; // .tex 自動生成無効
+    if (!ctx.generateTexDescriptors) return true; // .meta 自動生成無効
 
-    const fs::path texDir = util::FileSystem::PathFromUtf8(ctx.outputDir) / "textures";
+    const fs::path texDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "textures";
     if (!util::FileSystem::Exists(texDir)) return true; // テクスチャなし
 
     // OpenGL 法線マップ → G を反転する
@@ -55,10 +57,10 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
         const std::string ext = LowerExt(absPath);
         if (!IsImageExtension(ext)) continue;
 
-        // 既に .tex がある場合はスキップ
-        const std::string texDescPath =
-            util::FileSystem::PathToUtf8(fs::path(entry.path()).replace_extension(".tex"));
-        if (util::FileSystem::Exists(texDescPath)) continue;
+        // 二重拡張子でサイドカーを生成: "Foo.png" -> "Foo.png.meta"。
+        // WHY: replace_extension は末尾拡張子を置換してしまうため、必ず文字列末尾へ付加する。
+        const std::string metaPath = absPath + ".meta";
+        if (util::FileSystem::Exists(metaPath)) continue; // 既存はスキップ
 
         const std::string filename = util::FileSystem::GetFilename(absPath);
         const TextureType type = GuessTextureType(filename);
@@ -72,13 +74,12 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
         if (ctx.defaultCompression != TextureCompression::Auto)
             settings.compression = ctx.defaultCompression;
 
-        // sourcePath は .tex と同じフォルダの画像ファイル名のみ (相対パス)
+        // サイドカーは元画像から一意に導出できるため source パスは保持しない。
         TextureAsset asset;
-        asset.sourcePath = filename;
-        asset.settings   = settings;
+        asset.settings = settings;
 
         TexDescSerializer ser;
-        ser.Save(asset, texDescPath);
+        if (!ser.Save(asset, metaPath)) return false;
     }
 
     return true;

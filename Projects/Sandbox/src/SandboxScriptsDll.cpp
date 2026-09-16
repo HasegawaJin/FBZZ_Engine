@@ -1,26 +1,19 @@
-// FBZZ Engine
-// SandboxScriptsDll.cpp | sandbox
-// スクリプト DLL のエントリポイント
-//
-// WHY (コールバック渡し設計):
-//   fbzz_engine は shared runtime として EXE / Script DLL から共有される。
-//   ただし Script DLL は任意のユーザーコードを後からロードする拡張境界なので、
-//   登録 API は DLL 側からグローバル状態へ暗黙アクセスするより、EXE が渡す関数ポインタ経由にする。
-//   これにより ScriptFactory の所有者をホスト側へ固定し、将来の外部プラグイン SDK 化でも
-//   境界が明確なまま保てる。
+/// @file    SandboxScriptsDll.cpp
+/// @brief   スクリプト DLL のエントリポイント。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHY (コールバック渡し設計):
+/// fbzz_engine は shared runtime として EXE / Script DLL から共有される。
+/// ただし Script DLL は任意のユーザーコードを後からロードする拡張境界なので、
+/// 登録 API は DLL 側からグローバル状態へ暗黙アクセスするより、EXE が渡す関数ポインタ経由にする。
+/// これにより ScriptFactory の所有者をホスト側へ固定し、将来の外部プラグイン SDK 化でも
+/// 境界が明確なまま保てる。
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
-//      Assets/Scripts/Foo.hpp に解決される。
-// WHY (_IMPL マクロ事前定義): 各スクリプトの inline 実装は同名 .cpp が担当する独立 TU で
-//      コンパイルする。このファイルは型定義・ファクトリ用に宣言だけを取り込む。
-//      Ninja はスクリプト .cpp 群と SandboxScriptsDll.cpp を並列にコンパイルできる。
-#define PlayerControllerComponent_IMPL
 #include "Scripts/PlayerControllerComponent.hpp"
-#define TpsCameraComponent_IMPL
-#include "Scripts/TpsCameraComponent.hpp"
-#define SceneManagerScript_IMPL
 #include "Scripts/SceneManagerScript.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。

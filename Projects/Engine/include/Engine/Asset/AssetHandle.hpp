@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AssetHandle.hpp | fbzz::asset
-// 世代番号付き型安全アセットハンドル
-// AssetManager のスロットプールへの安全な参照。id=0 は常に Null。
+/// @file    AssetHandle.hpp
+/// @brief   世代番号付き型安全アセットハンドル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// AssetManager のスロットプールへの安全な参照。id=0 は常に Null。
 #pragma once
 #include <cstdint>
 

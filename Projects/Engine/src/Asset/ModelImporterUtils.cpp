@@ -1,10 +1,45 @@
-// FBZZ Engine
-// ModelImporterUtils.cpp | fbzz::asset
-// Assimp 型変換および静的・スキンメッシュ両パスで共有するメッシュ変換の実装。
+/// @file    ModelImporterUtils.cpp
+/// @brief   Assimp 型変換および静的・スキンメッシュ両パスで共有するメッシュ変換の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
 #include "ModelImporterInternal.hpp"
+#include <Engine/Asset/Skeleton.hpp>
 #include <algorithm>
 
 namespace fbzz::asset {
+
+namespace {
+
+// 再帰でバインド TRS を積み上げ、ボーンごとのリファレンス行列を求める。
+void BuildReferencePoseRecursive(Skeleton& skeleton,
+                                 int nodeIndex,
+                                 const math::Matrix4& parentGlobal)
+{
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+    const SkeletonNode& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
+    const math::Matrix4 global = parentGlobal * math::Matrix4::TRS(
+        node.bindTranslation, node.bindRotation, node.bindScale);
+
+    if (node.boneIndex >= 0 &&
+        node.boneIndex < static_cast<int>(skeleton.referencePose.size())) {
+        const Bone& bone = skeleton.bones[static_cast<size_t>(node.boneIndex)];
+        skeleton.referencePose[static_cast<size_t>(node.boneIndex)] =
+            skeleton.rootInverseTransform * global * bone.offsetMatrix;
+    }
+
+    for (int child : node.children)
+        BuildReferencePoseRecursive(skeleton, child, global);
+}
+
+} // namespace
+
+void BuildReferencePose(Skeleton& skeleton)
+{
+    skeleton.referencePose.assign(skeleton.bones.size(), math::Matrix4::Identity());
+    if (skeleton.rootNodeIndex < 0 || skeleton.nodes.empty()) return;
+    BuildReferencePoseRecursive(skeleton, skeleton.rootNodeIndex,
+                                math::Matrix4::Identity());
+}
 
 std::string ToString(const aiString& s)
 {
@@ -76,6 +111,11 @@ renderer::Vertex ImportVertex(const aiMesh* mesh, uint32_t i, float unitScale)
         : math::Vector3{ 1.0f, 0.0f, 0.0f };
     if (mesh->mTextureCoords[0])
         v.uv = { mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y };
+    // 頂点カラーを持つ DCC データはそのまま採る。無ければ既定の白 (= 色を持たない) のまま。
+    if (mesh->HasVertexColors(0)) {
+        const aiColor4D& c = mesh->mColors[0][i];
+        v.color = { c.r, c.g, c.b, c.a };
+    }
     return v;
 }
 
@@ -102,6 +142,72 @@ std::unique_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
     // assimp の diffuse color は MaterialComponent 経由で設定する必要がある。
     (void)resources;
     return mat;
+}
+
+// ── ノード階層 ─────────────────────────────────────────────────
+
+namespace {
+
+void ImportModelNodesRecursive(const aiNode* node,
+                               int parentIndex,
+                               float unitScale,
+                               Model& model)
+{
+    if (!node) return;
+
+    const int nodeIndex = static_cast<int>(model.nodes.size());
+    ModelNode out;
+    out.name        = NormalizeName(node->mName);
+    out.parentIndex = parentIndex;
+
+    // WHY TRS へ分解して持つか: 生成先が GameObject::transform (position/rotation/scale) で、
+    //     行列のままでは代入できない。SkeletonNode のバインド TRS と同じ分解を使うことで、
+    //     ボーンノードとメッシュノードが同じ FBX ノードを指す場合に位置がずれない。
+    aiVector3D   scaling;
+    aiVector3D   position;
+    aiQuaternion rotation;
+    node->mTransformation.Decompose(scaling, rotation, position);
+    out.localTranslation = ToVector3(position, unitScale);
+    out.localRotation    = ToQuaternion(rotation);
+    out.localScale       = { scaling.x, scaling.y, scaling.z };
+
+    // aiNode::mMeshes はこのノードが描く aiMesh の添字列。Assimp のマテリアル分割で
+    // 複数件になるが、DCC 上では 1 個のオブジェクトなのでノードへ束ねたまま保つ。
+    out.meshIndices.reserve(node->mNumMeshes);
+    for (uint32_t i = 0; i < node->mNumMeshes; ++i)
+        out.meshIndices.push_back(node->mMeshes[i]);
+
+    model.nodes.push_back(std::move(out));
+    if (parentIndex >= 0)
+        model.nodes[static_cast<size_t>(parentIndex)].children.push_back(nodeIndex);
+    else
+        model.rootNodeIndex = nodeIndex;
+
+    for (uint32_t i = 0; i < node->mNumChildren; ++i)
+        ImportModelNodesRecursive(node->mChildren[i], nodeIndex, unitScale, model);
+}
+
+} // namespace
+
+void ImportModelNodes(const aiScene* scene, float unitScale, Model& model)
+{
+    model.nodes.clear();
+    model.rootNodeIndex = -1;
+    if (!scene || !scene->mRootNode) return;
+    ImportModelNodesRecursive(scene->mRootNode, -1, unitScale, model);
+}
+
+void BuildFlatModelNode(Model& model, const std::string& rootName)
+{
+    model.nodes.clear();
+    model.rootNodeIndex = 0;
+
+    ModelNode root;
+    root.name = rootName.empty() ? std::string("Mesh") : rootName;
+    root.meshIndices.reserve(model.meshes.size());
+    for (uint32_t i = 0; i < static_cast<uint32_t>(model.meshes.size()); ++i)
+        root.meshIndices.push_back(i);
+    model.nodes.push_back(std::move(root));
 }
 
 } // namespace fbzz::asset

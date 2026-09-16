@@ -1,6 +1,7 @@
-// FBZZ Engine
-// HingeConstraint.hpp | fbzz::physics
-// ピボット点を共有する簡易ヒンジ制約
+/// @file    HingeConstraint.hpp
+/// @brief   ピボット点を共有する簡易ヒンジ制約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/Constraint.hpp>
 

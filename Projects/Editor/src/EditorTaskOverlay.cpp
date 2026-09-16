@@ -1,7 +1,9 @@
-// FBZZ Engine
-// EditorTaskOverlay.cpp | fbzz::editor
-// モーダルオーバーレイの描画と状態管理
+/// @file    EditorTaskOverlay.cpp
+/// @brief   モーダルオーバーレイの描画と状態管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #include <Editor/EditorTaskOverlay.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include <imgui.h>
 #include <cmath>
 #include <cstdio>
@@ -77,7 +79,7 @@ void EditorTaskOverlay::Render()
     if (ImGui::BeginPopupModal("##EditorTaskOverlay", nullptr, kFlags))
     {
         // タイトル
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.4f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
         ImGui::TextUnformatted(s_taskName);
         ImGui::PopStyleColor();
 

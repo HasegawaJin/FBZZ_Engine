@@ -1,0 +1,21 @@
+# FBZZ Engine
+# VFXMeshFallback.mat
+# VFX Graph の Mesh ノードがマテリアル未割当のときに使う既定マテリアル。
+# WHY: 共通の Fallback.mat は不透明のマゼンタで「壊れている」ことを見せるためのもの。
+#      VFX の Mesh ノードは衝撃波シェルや斬撃板として使う前提なので、
+#      未設定のまま置いてもエフェクトとして成立する加算・両面のUnlitを既定にする。
+#      色とフェードは MaterialComponent::paramOverrides 経由で
+#      VFXGraphSystem が albedo へ毎フレーム書き込む (共有アセットは汚れない)。
+version = 1
+shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
+blend_mode = "Additive"
+double_sided = true
+render_queue = 3000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = ""
+
+[params]
+albedo = [0.85, 0.92, 1.0, 1.0]

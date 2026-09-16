@@ -7,6 +7,8 @@ instanceId = 'a1000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Canvas'
 parent = ''
+
+parentInstanceId = ''
 prefabAssetPath = ''
 tag = 'Untagged'
 
@@ -33,6 +35,8 @@ instanceId = 'a1000001-0000-0000-0000-000000000002'
 layer = 0
 name = 'Background'
 parent = 'Canvas'
+
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
 
@@ -54,6 +58,8 @@ instanceId = 'a1000001-0000-0000-0000-000000000003'
 layer = 0
 name = 'TitleText'
 parent = 'Canvas'
+
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
 
@@ -76,6 +82,8 @@ instanceId = 'a1000001-0000-0000-0000-000000000004'
 layer = 0
 name = 'SubText'
 parent = 'Canvas'
+
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
 
@@ -98,6 +106,8 @@ instanceId = 'a1000001-0000-0000-0000-000000000005'
 layer = 0
 name = 'StartButton'
 parent = 'Canvas'
+
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
 

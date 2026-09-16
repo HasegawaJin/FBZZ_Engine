@@ -1,0 +1,17 @@
+# FBZZ Engine
+# SpriteFallback.mat
+# SpriteRendererの既定Alpha Blend両面マテリアル
+version = 1
+shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = ""
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]

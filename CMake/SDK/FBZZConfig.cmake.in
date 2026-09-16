@@ -1,0 +1,47 @@
+# FBZZ Engine
+# FBZZConfig.cmake | CMake
+# 外部ゲーム向け共有 SDK package と ABI 検証
+
+@PACKAGE_INIT@
+
+set(FBZZ_VERSION "@PROJECT_VERSION@")
+get_filename_component(FBZZ_SDK_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(FBZZ_ENGINE_ASSET_ROOT "${FBZZ_SDK_ROOT}/share/fbzz/Assets")
+
+if(NOT MSVC)
+    message(FATAL_ERROR "FBZZ SDK ${FBZZ_VERSION} supports MSVC only")
+endif()
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "FBZZ SDK ${FBZZ_VERSION} supports x64 only")
+endif()
+if(NOT MSVC_VERSION EQUAL @FBZZ_SDK_MSVC_VERSION@)
+    message(FATAL_ERROR
+        "FBZZ SDK ABI mismatch: MSVC_VERSION=${MSVC_VERSION}, required=@FBZZ_SDK_MSVC_VERSION@")
+endif()
+if(NOT "${CMAKE_CXX_COMPILER_VERSION}" VERSION_EQUAL "@FBZZ_SDK_COMPILER_VERSION@")
+    message(FATAL_ERROR
+        "FBZZ SDK ABI mismatch: compiler=${CMAKE_CXX_COMPILER_VERSION}, required=@FBZZ_SDK_COMPILER_VERSION@")
+endif()
+if(NOT "@FBZZ_SDK_MSVC_TOOLSET_VERSION@" STREQUAL "" AND
+   NOT "${CMAKE_VS_PLATFORM_TOOLSET_VERSION}" STREQUAL "@FBZZ_SDK_MSVC_TOOLSET_VERSION@")
+    message(FATAL_ERROR
+        "FBZZ SDK ABI mismatch: MSVC toolset=${CMAKE_VS_PLATFORM_TOOLSET_VERSION}, required=@FBZZ_SDK_MSVC_TOOLSET_VERSION@")
+endif()
+
+# Debug=/MDd、Development/Release=/MD を SDK と利用側で完全一致させる。
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+include("${CMAKE_CURRENT_LIST_DIR}/FBZZTargets.cmake")
+
+function(fbzz_stage_runtime TARGET_NAME)
+    if(NOT TARGET "${TARGET_NAME}")
+        message(FATAL_ERROR "fbzz_stage_runtime: target '${TARGET_NAME}' does not exist")
+    endif()
+    add_custom_command(TARGET "${TARGET_NAME}" POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${FBZZ_SDK_ROOT}/bin/$<CONFIG>"
+            "$<TARGET_FILE_DIR:${TARGET_NAME}>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${FBZZ_ENGINE_ASSET_ROOT}"
+            "$<TARGET_FILE_DIR:${TARGET_NAME}>/EngineAssets"
+        COMMENT "Staging FBZZ ${FBZZ_VERSION} runtime for ${TARGET_NAME}")
+endfunction()

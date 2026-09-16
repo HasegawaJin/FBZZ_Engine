@@ -1,0 +1,24 @@
+# FBZZ Engine
+# FX_RingThin_Additive.mat
+# 素材: Assets/VFX/Textures/T_Ring_Thin.png (512² / 締まった輪)
+# «パキッ» の輪。FX_RingGrad は柔らかい階調で、こちらは外縁が鋭い。弾き・Just 弾き・転倒の衝撃波に使う。
+# 地面に寝かせる用途では renderMode = 2 (Horizontal Billboard)。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:baa21b59c83e43c38633e33f117e641d"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.2
+soft_particles = true
+soft_particle_fade_distance = 0.15

@@ -1,9 +1,11 @@
-﻿// FBZZ Engine
-// TerrainGridComponent.hpp | fbzz::scene
-// cellCountX × cellCountZ のグリッドで TerrainComponent エンティティを管理する。
-// WHY: 複数 Terrain を手動でリンクするとセル数が増えるほどリンク数が二乗で増える。
-//      Grid 座標から隣接を自動解決することで、ユーザーはセル追加/削除だけに集中できる。
-//      TerrainRenderPass はこのグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
+﻿/// @file    TerrainGridComponent.hpp
+/// @brief   cellCountX × cellCountZ のグリッドで TerrainComponent エンティティを管理する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
+///
+/// WHY: 複数 Terrain を手動でリンクするとセル数が増えるほどリンク数が二乗で増える。
+/// Grid 座標から隣接を自動解決することで、ユーザーはセル追加/削除だけに集中できる。
+/// TerrainRenderPass はこのグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -21,10 +23,10 @@ struct TerrainGridComponent {
 
     // 新規セル作成時のデフォルト設定。
     // MapEditorPanel の "Add New Terrain Here" および Inspector の "Apply to All Cells" が参照する。
-    int   defaultColumns   = 129;
-    int   defaultRows      = 129;
-    float defaultCellSize  = 1.0f;
-    int   defaultChunkSize = 64;
+    int   defaultColumns   = 65;
+    int   defaultRows      = 65;
+    float defaultCellSize  = 2.0f;
+    int   defaultChunkSize = 32;
 
     // row-major: cells[gz * cellCountX + gx]
     // ランタイム解決済み EntityID。シリアライズは cellInstanceIds で行う。

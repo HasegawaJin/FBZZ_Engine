@@ -1,13 +1,15 @@
-// FBZZ Engine
-// TerrainHeightMapLoader.cpp | fbzz::scene
-// DirectXTex を使って画像ファイルを heightData[] に変換する。
-//
-// 処理フロー:
-//   1. 拡張子で LoadFromDDSFile / LoadFromTGAFile / LoadFromWICFile を選択
-//   2. R32_FLOAT に変換（グレースケール・カラー問わず R チャンネルを使用）
-//   3. 地形サイズと異なる場合は三次補間でリサイズ
-//   4. 画素値 [0, 1] を heightData の正規化モードに応じてマッピング
+/// @file    TerrainHeightMapLoader.cpp
+/// @brief   DirectXTex を使って画像ファイルを heightData[] に変換する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// 処理フロー:
+/// 1. 拡張子で LoadFromDDSFile / LoadFromTGAFile / LoadFromWICFile を選択
+/// 2. R32_FLOAT に変換（グレースケール・カラー問わず R チャンネルを使用）
+/// 3. 地形サイズと異なる場合は三次補間でリサイズ
+/// 4. 画素値 [0, 1] を heightData の正規化モードに応じてマッピング
 #pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
+#include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -23,14 +25,17 @@ bool LoadHeightMapFromFile(
     TerrainComponent&  terrain,
     bool               unipolar)
 {
-    const std::wstring wpath = util::StringUtils::ToWide(path);
+    // ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
+    std::string sourcePath;
+    if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) return false;
+    const std::wstring wpath = util::StringUtils::ToWide(sourcePath);
 
     // 1. 拡張子でローダーを選択
     DirectX::ScratchImage image;
     HRESULT hr;
-    if (path.ends_with(".dds") || path.ends_with(".DDS"))
+    if (sourcePath.ends_with(".dds") || sourcePath.ends_with(".DDS"))
         hr = DirectX::LoadFromDDSFile(wpath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, image);
-    else if (path.ends_with(".tga") || path.ends_with(".TGA"))
+    else if (sourcePath.ends_with(".tga") || sourcePath.ends_with(".TGA"))
         hr = DirectX::LoadFromTGAFile(wpath.c_str(), nullptr, image);
     else
         hr = DirectX::LoadFromWICFile(wpath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, image);

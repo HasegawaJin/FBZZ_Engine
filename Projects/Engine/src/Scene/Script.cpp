@@ -1,28 +1,44 @@
-// FBZZ Engine
-// Script.cpp | fbzz::scene
-// Script 基底クラスの便利 API 実装
-// template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
+/// @file    Script.cpp
+/// @brief   Script 基底クラスの便利 API 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-27
+///
+/// template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <algorithm>
 #include <cassert>
 #include <utility>
+#if defined(_MSC_VER)
+#include <excpt.h>
+#endif
 
 namespace fbzz::scene {
 
 physics::World*    Script::s_physicsWorld  = nullptr;
+bool               Script::s_inPlayMode    = false;
 Script::PrefabInstantiateFn Script::s_instantiateFn;
 
-void Script::SetInstantiateFn(PrefabInstantiateFn fn) { s_instantiateFn = std::move(fn); }
-
-bool Script::InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
+void Script::SetPrefabInstantiationCallback(PrefabInstantiateFn fn)
 {
-    if (!s_instantiateFn) return false;
+    s_instantiateFn = std::move(fn);
+}
+
+bool Script::InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
+{
+    // WHY 既定を持つか: 以前はコールバック未設定で無条件に false を返していたため、
+    //     コールバックを注入するのが Editor だけだったスタンドアロン実行では
+    //     プレファブ生成が丸ごと動かなかった (PrefabPool::Spawn も必ず失敗する)。
+    //     Editor は差分 (override) 付きの生成を注入して上書きする。
+    if (!s_instantiateFn) return InstantiatePrefabAsset(scene, path, roots);
     return s_instantiateFn(scene, path, roots);
 }
 
@@ -39,23 +55,213 @@ void Script::SetContext(Scene* scene, GameObject* gameObject)
     m_gameObject = gameObject;
 }
 
-void Script::SyncEnabledState()
+namespace {
+
+// Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
+// WHY: 空の Ref<T> を誤って operator-> で使った場合、MSVC はアクセス違反を SEH として通知する。
+//      C++ 例外ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
+void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
+{
+    script.enabled = false;
+    FBZZ_LOG_ERROR("Script '%s' disabled after an invalid reference/access violation in %s().",
+                   script.GetTypeName(), callbackName ? callbackName : "callback");
+}
+
+} // namespace
+
+bool Script::ExecuteCallback(void (Script::*callback)(), const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    (this->*callback)();
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const CollisionInfo&),
+                             const CollisionInfo& info,
+                             const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    (this->*callback)(info);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&),
+                             const AnimationEventInfo& info)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, "OnAnimationEvent");
+        return false;
+    }
+#else
+    (this->*callback)(info);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&),
+                             const SequenceEventInfo& info)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, "OnSequenceEvent");
+        return false;
+    }
+#else
+    (this->*callback)(info);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const char*),
+                             const char* argument,
+                             const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(argument);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    (this->*callback)(argument);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const RootMotionInfo&),
+                             const RootMotionInfo& info)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, "OnAnimatorMove");
+        return false;
+    }
+#else
+    (this->*callback)(info);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&),
+                             RenderPipeline& pipeline,
+                             RenderPassContext& context)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(pipeline, context);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, "OnSetupRenderPasses");
+        return false;
+    }
+#else
+    (this->*callback)(pipeline, context);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(const std::function<void()>& function, const char* callbackName)
+{
+    if (!function || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        function();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    function();
+    return true;
+#endif
+}
+
+bool Script::ResumeCoroutine(Coroutine& coroutine)
+{
+    if (m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        coroutine.Step();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // WHY 破棄せず手放すか: 巻き戻したフレームは中断点に居らず、以降 done() も
+        //     destroy() も呼べない。畳もうとすると障害を握った意味がなくなる。
+        coroutine.Release();
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, "Coroutine step");
+        return false;
+    }
+#else
+    coroutine.Step();
+    return true;
+#endif
+}
+
+void Script::SynchronizeEnabledState(bool gameObjectActive)
 {
     // WHY: enabled は public 互換性を維持するため setter 化しない。
-    //      その代わり ScriptSystem の同期点で前回値と比較し、変化した瞬間だけ通知する。
+    //      その代わり ScriptSystem の同期点で GameObject の有効状態と合わせて比較し、
+    //      変化した瞬間だけ通知する。
+    const bool effectiveEnabled = enabled && gameObjectActive;
     if (!m_enableStateInitialized) {
-        m_lastEnabled = enabled;
+        m_lastEnabled = effectiveEnabled;
         m_enableStateInitialized = true;
-        if (enabled) OnEnable();
+        if (effectiveEnabled) ExecuteCallback(&Script::OnEnable, "OnEnable");
         return;
     }
 
-    if (m_lastEnabled == enabled) return;
-    m_lastEnabled = enabled;
-    if (enabled)
-        OnEnable();
+    if (m_lastEnabled == effectiveEnabled) return;
+    m_lastEnabled = effectiveEnabled;
+    if (effectiveEnabled)
+        ExecuteCallback(&Script::OnEnable, "OnEnable");
     else
-        OnDisable();
+        ExecuteCallback(&Script::OnDisable, "OnDisable");
 }
 
 
@@ -103,7 +309,7 @@ void Script::CancelInvoke(InvokeHandle handle)
         if (e.id == handle.id) { e.canceled = true; return; }
 }
 
-void Script::TickInvokes(float dt)
+void Script::UpdateInvocations(float dt)
 {
     if (m_invokes.empty()) return;
 
@@ -124,7 +330,8 @@ void Script::TickInvokes(float dt)
 
         // WHAT: callback 内から Invoke / CancelInvoke が呼ばれてもよい。
         //      fn はコピーしてから呼び、vector の再配置や canceled 更新の影響を受けないようにする。
-        if (fn) fn();
+        if (fn && !ExecuteCallback(fn, "deferred callback"))
+            break;
     }
     m_isTickingInvokes = false;
 
@@ -143,7 +350,7 @@ void Script::FrameDelay(uint32_t n, std::function<void()> fn)
     m_frameDelays.push_back(std::move(entry));
 }
 
-void Script::TickFrameDelays()
+void Script::UpdateFrameDelays()
 {
     if (m_frameDelays.empty()) return;
 
@@ -158,12 +365,74 @@ void Script::TickFrameDelays()
             m_frameDelays.push_back(std::move(entry));
             continue;
         }
-        if (entry.fn) entry.fn();
+        if (entry.fn && !ExecuteCallback(entry.fn, "FrameDelay callback"))
+            break;
     }
+}
+
+void Script::StartCoroutine(Coroutine co)
+{
+    if (co.Done()) return; // 即完了した (co_await を一度もしなかった) コルーチンは保持しない
+    // Tick 中に開始された場合は再配置を避けるため保留バッファへ積む。
+    if (m_isTickingCoroutines)
+        m_pendingCoroutines.push_back(std::move(co));
+    else
+        m_coroutines.push_back(std::move(co));
+}
+
+void Script::StopAllCoroutines()
+{
+    m_pendingCoroutines.clear();
+    // WHY 遅延させるか: コルーチンの中から呼ばれると、今 resume している
+    //     ハンドル自身を破棄することになる。ループを抜けてから畳む。
+    if (m_isTickingCoroutines) {
+        m_stopAllCoroutinesRequested = true;
+        return;
+    }
+    m_coroutines.clear();
+}
+
+void Script::UpdateCoroutines()
+{
+    if (m_coroutines.empty() && m_pendingCoroutines.empty()) return;
+
+    m_isTickingCoroutines = true;
+    // WHY: 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回り、
+    //      m_coroutines は本ループ中に再確保されない。
+    for (size_t i = 0; i < m_coroutines.size(); ++i) {
+        if (!ResumeCoroutine(m_coroutines[i])) break;
+        if (m_stopAllCoroutinesRequested) break;
+    }
+    m_isTickingCoroutines = false;
+
+    // 再開したコルーチンは次の中断点まで進んで戻っているため、ここでなら安全に畳める。
+    if (m_stopAllCoroutinesRequested) {
+        m_stopAllCoroutinesRequested = false;
+        m_coroutines.clear();
+        m_pendingCoroutines.clear();
+        return;
+    }
+
+    // 完了したコルーチンを除去する。
+    m_coroutines.erase(
+        std::remove_if(m_coroutines.begin(), m_coroutines.end(),
+            [](const Coroutine& c) { return c.Done(); }),
+        m_coroutines.end());
+
+    // ティック中に開始されたコルーチンを取り込む。
+    for (auto& c : m_pendingCoroutines)
+        m_coroutines.push_back(std::move(c));
+    m_pendingCoroutines.clear();
 }
 
 void Script::CancelEventSubscriptions()
 {
+    // ScriptEventBus の購読はオーナー単位で一括解除する。
+    // WHY ここで必ず行うか: ~Script から通るこの経路が、DLL ホットリロードで
+    //     解放されるコードを指すハンドラがバスに残らないことの唯一の保証になる。
+    ScriptEventBus::UnsubscribeOwner(this);
+
+    // 個別に登録された解除処理 (将来の別バス用の拡張点)。
     for (auto& unsubscribe : m_eventUnsubscribers) {
         if (unsubscribe) unsubscribe(this);
     }
@@ -175,85 +444,39 @@ void Script::SetPhysicsWorld(physics::World* world)
     s_physicsWorld = world;
 }
 
+void Script::SetInPlayMode(bool inPlayMode)
+{
+    s_inPlayMode = inPlayMode;
+}
+
+bool Script::IsInPlayMode()
+{
+    return s_inPlayMode;
+}
+
+void Script::ResetLifecycleState()
+{
+    CancelInvoke();
+    StopAllCoroutines();
+    CancelEventSubscriptions();
+    // 次の OnEnable を「初回」として扱わせる。モードをまたぐ直前に OnDisable を
+    // 出し終えているため、ここを残すと新しいモードの最初の OnEnable が落ちる。
+    m_enableStateInitialized = false;
+    m_lastEnabled            = true;
+    // 障害ラッチは畳んだライフサイクルのもの。次の OnAwake からやり直す。
+    // NOTE: 障害時に落とされた enabled はここでは戻さない。ユーザーが自分で切った
+    //       のか障害で落ちたのかを区別できず、切ったつもりの Script が復活するため。
+    m_runtimeFaulted = false;
+}
+
 // ── シーン操作ショートハンド ────────────────────────────────────────────────
 
-GameObject* Script::Find(const std::string& name) const
-{
-    return m_scene ? m_scene->Find(name) : nullptr;
-}
 
-GameObject* Script::FindWithTag(const std::string& tag) const
-{
-    return m_scene ? m_scene->FindWithTag(tag) : nullptr;
-}
-
-GameObject* Script::GetGameObject(EntityID id) const
-{
-    return m_scene ? m_scene->GetGameObject(id) : nullptr;
-}
-
-GameObject& Script::CreateGameObject(const std::string& name) const
-{
-    assert(m_scene && "Script context is not set");
-    return m_scene->CreateGameObject(name);
-}
-
-// シーン内の全 GO を走査し、有効なメインカメラを返す。
-// WHY: CameraComponent.isMain は複数存在し得るが、通常 1 つ。
-//      最初に見つかった有効なものを返す。
-GameObject* Script::GetMainCameraObject() const
-{
-    if (!m_scene) return nullptr;
-    for (auto& go : m_scene->GameObjects()) {
-        auto* cam = go.GetComponent<CameraComponent>();
-        if (cam && cam->enabled && cam->isMain) return &go;
-    }
-    return nullptr;
-}
 
 // ── Unity: Object.Destroy ───────────────────────────────────────────────────
 
-void Script::Destroy(GameObject& go, float delay)
-{
-    GameObject::Destroy(go, delay);
-}
 
 // ── Animator ショートハンド ─────────────────────────────────────────────────
-
-void Script::SetAnimatorFloat(std::string_view name, float v) const
-{
-    if (!m_gameObject) return;
-    auto* anim = m_gameObject->GetComponent<AnimatorComponent>();
-    if (anim) anim->SetFloat(name, v);
-}
-
-void Script::SetAnimatorInt(std::string_view name, int v) const
-{
-    if (!m_gameObject) return;
-    auto* anim = m_gameObject->GetComponent<AnimatorComponent>();
-    if (anim) anim->SetInt(name, v);
-}
-
-void Script::SetAnimatorBool(std::string_view name, bool v) const
-{
-    if (!m_gameObject) return;
-    auto* anim = m_gameObject->GetComponent<AnimatorComponent>();
-    if (anim) anim->SetBool(name, v);
-}
-
-void Script::SetAnimatorTrigger(std::string_view name) const
-{
-    if (!m_gameObject) return;
-    auto* anim = m_gameObject->GetComponent<AnimatorComponent>();
-    if (anim) anim->SetTrigger(name);
-}
-
-bool Script::IsAnimatorInState(std::string_view name) const
-{
-    if (!m_gameObject) return false;
-    auto* anim = m_gameObject->GetComponent<AnimatorComponent>();
-    return anim && anim->IsInState(name);
-}
 
 void Script::QueueRenderPass(UserRenderPassDesc desc) const
 {

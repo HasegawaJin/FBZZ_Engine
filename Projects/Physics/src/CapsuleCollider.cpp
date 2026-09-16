@@ -1,6 +1,7 @@
-// FBZZ Engine
-// CapsuleCollider.cpp | fbzz::physics
-// Y 軸向きカプセルコライダー
+/// @file    CapsuleCollider.cpp
+/// @brief   Y 軸向きカプセルコライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #include <Physics/CapsuleCollider.hpp>
 
 namespace fbzz::physics
@@ -8,6 +9,17 @@ namespace fbzz::physics
     CapsuleCollider::CapsuleCollider(float radius, float halfHeight)
         : m_radius(radius), m_halfHeight(halfHeight)
     {
+    }
+
+    float CapsuleCollider::ComputeVolume() const
+    {
+        constexpr float PI = 3.14159265358979323846f;
+        const float radiusSq = m_radius * m_radius;
+        // m_halfHeight は中心から円柱端までの距離なので、円柱の全長は 2 * halfHeight。
+        const float cylinder = PI * radiusSq * (2.0f * m_halfHeight);
+        // 両端の半球を合わせると球 1 個ぶん。
+        const float hemispheres = (4.0f / 3.0f) * PI * radiusSq * m_radius;
+        return cylinder + hemispheres;
     }
 
     AABB CapsuleCollider::GetAABB() const

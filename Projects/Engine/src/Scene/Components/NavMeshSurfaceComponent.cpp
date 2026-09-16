@@ -1,6 +1,7 @@
-// FBZZ Engine
-// NavMeshSurfaceComponent.cpp | fbzz::scene
-// NavMeshPolygon のメソッド実装（重心・内外判定・距離計算）
+/// @file    NavMeshSurfaceComponent.cpp
+/// @brief   NavMeshPolygon のメソッド実装（重心・内外判定・距離計算）。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 #include "Engine/Scene/Components/NavMeshSurfaceComponent.hpp"
 #include <limits>
 

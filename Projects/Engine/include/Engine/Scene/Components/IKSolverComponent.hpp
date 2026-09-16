@@ -1,6 +1,7 @@
-// FBZZ Engine
-// IKSolverComponent.hpp | fbzz::scene
-// 複数種の IK ソルバーを順序付きで実行するチェーン設定
+/// @file    IKSolverComponent.hpp
+/// @brief   複数種の IK ソルバーを順序付きで実行するチェーン設定。
+/// @author  Hasegawa Jin
+/// @date    2026-05-30
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
@@ -23,9 +24,6 @@ enum class IKSolverType : uint8_t {
     HandPlace = 4,
     FullBodyBiped = 5,
 
-    // 旧シーンスクリプトのソース互換性を維持する別名。保存値は AimAt/FABRIK と同一。
-    LookAt = AimAt,
-    Spine  = FABRIK,
 };
 
 // 1 つの IK 解法と、その入力およびランタイム状態を保持する。

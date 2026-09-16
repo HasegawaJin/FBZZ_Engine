@@ -1,8 +1,10 @@
-// FBZZ Engine
-// BitFlags.hpp | fbzz::util
-// enum class を型安全に扱うビットフラグ
-// レイヤーマスクや状態フラグを整数演算へ安全に変換する薄いラッパー。
-// ヘッダーオンリーで constexpr 利用を前提にする。
+/// @file    BitFlags.hpp
+/// @brief   enum class を型安全に扱うビットフラグ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// レイヤーマスクや状態フラグを整数演算へ安全に変換する薄いラッパー。
+/// ヘッダーオンリーで constexpr 利用を前提にする。
 #pragma once
 #include <type_traits>
 

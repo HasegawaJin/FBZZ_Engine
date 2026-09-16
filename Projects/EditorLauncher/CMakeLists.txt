@@ -1,4 +1,4 @@
-file(GLOB_RECURSE EDITOR_LAUNCHER_SOURCES
+file(GLOB_RECURSE EDITOR_LAUNCHER_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     src/*.hpp
 )
@@ -10,74 +10,96 @@ configure_file(
     @ONLY
 )
 
-add_executable(fbzz_editor_launcher WIN32
+add_executable(FBZZEditorLauncher WIN32
     ${EDITOR_LAUNCHER_SOURCES}
     "${EDITOR_LAUNCHER_RESOURCE}"
 )
 
-set_target_properties(fbzz_editor_launcher PROPERTIES
+# DPI 認識をプロセス起動時に確定させる (未適用だと高 DPI 環境で UI 全体が滲む)。
+fbzz_apply_app_manifest(FBZZEditorLauncher)
+
+set_target_properties(FBZZEditorLauncher PROPERTIES
     OUTPUT_NAME "FBZZEditor"
+    # EXE の import lib が入力の FBZZEditor.lib と衝突すると、MSBuild が
+    # 入力ライブラリを出力として扱い、Editor 更新時の再リンクを省略する。
+    ARCHIVE_OUTPUT_NAME "FBZZEditorLauncher"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Editor"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Editor"
+    RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Editor"
 )
 
-target_compile_definitions(fbzz_editor_launcher
+target_compile_definitions(FBZZEditorLauncher
     PRIVATE
         UNICODE
         _UNICODE
         TOML_EXCEPTIONS=0
 )
 
-target_link_libraries(fbzz_editor_launcher
+target_link_libraries(FBZZEditorLauncher
     PRIVATE
-        fbzz_editor
-        fbzz_engine
-        fbzz_physics
-        tomlplusplus
+        FBZZEditor
+        FBZZEngine
+        FBZZPhysics
+        TomlPlusPlus
         user32
-        d3d11
-        dxgi
         dwmapi
         shell32
 )
 
-set(SHADER_SCRIPT    "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
-set(SHADER_UI_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_ui_shaders.bat")
-set(SHADER_STAMP     "${CMAKE_BINARY_DIR}/editor_launcher_shaders_compiled.stamp")
+set(SHADER_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.ps1")
 
-file(GLOB_RECURSE EDITOR_LAUNCHER_HLSL_FILES "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsl")
-
-find_program(FBZZ_FXC_EXECUTABLE
-    NAMES fxc.exe
-    PATHS
-        "$ENV{WindowsSdkDir}/bin/$ENV{WindowsSDKVersion}/x64"
-    DOC "Path to fxc.exe from the Windows SDK"
+file(GLOB_RECURSE EDITOR_LAUNCHER_HLSL_FILES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsl"
+    "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsli"
 )
 
-if(FBZZ_FXC_EXECUTABLE)
-    set(FBZZ_FXC_ENV "FBZZ_FXC=${FBZZ_FXC_EXECUTABLE}")
-else()
-    set(FBZZ_FXC_ENV "FBZZ_FXC=")
-endif()
+# WHY: Visual Studio は .hlsl を既定で FXCompile に渡して main を探すが、
+#      エントリーポイントとバックエンドの選択は compile_shaders.ps1 が一元管理する。
+set_source_files_properties(${EDITOR_LAUNCHER_HLSL_FILES} PROPERTIES
+    HEADER_FILE_ONLY TRUE
+    VS_TOOL_OVERRIDE "None"
+)
 
-add_custom_command(
-    OUTPUT  ${SHADER_STAMP}
-    COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_SCRIPT}"
-    COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_UI_SCRIPT}"
-    COMMAND ${CMAKE_COMMAND} -E touch ${SHADER_STAMP}
-    DEPENDS ${EDITOR_LAUNCHER_HLSL_FILES} "${SHADER_SCRIPT}" "${SHADER_UI_SCRIPT}"
+find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
+
+add_custom_target(CompileEditorLauncherShaders
+    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders for FBZZEditor..."
+    SOURCES ${EDITOR_LAUNCHER_HLSL_FILES} "${SHADER_SCRIPT}"
+    VERBATIM
 )
+add_dependencies(FBZZEditorLauncher CompileEditorLauncherShaders)
 
-add_custom_target(compile_editor_launcher_shaders DEPENDS ${SHADER_STAMP})
-add_dependencies(fbzz_editor_launcher compile_editor_launcher_shaders)
-
-add_custom_command(TARGET fbzz_editor_launcher POST_BUILD
+add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
+    # コア DLL と ImGui DLL を Editor/ に配置する。
+# WHY: FBZZEditor は ImGui を共有 DLL として参照するため、exe 隣にないと起動前に 0xC0000135 で終了する。
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZMath>    "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZPhysics> "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZEngine>  "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ImGui>        "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
-        "$<TARGET_FILE_DIR:fbzz_editor_launcher>"
+        "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E rm -rf
-        "$<TARGET_FILE_DIR:fbzz_editor_launcher>/assets"
+        "$<TARGET_FILE_DIR:FBZZEditorLauncher>/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:fbzz_editor_launcher>/assets"
+        "$<TARGET_FILE_DIR:FBZZEditorLauncher>/assets"
 )
+
+# WHY: DX12 プロジェクト (テンプレート既定) の shader は DXIL reflection に dxcompiler.dll を必要とし、
+#      LoadLibraryW は exe 隣を探す。Engine 出力へのコピーだけでは Editor/ サブディレクトリに届かず、
+#      shader ロードが全て失敗して DebugDraw の初期化 assert で落ちる。
+if(FBZZ_DXC_RUNTIME_DIRECTORY)
+    foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
+        if(EXISTS "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
+            add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:FBZZEditorLauncher>/${FBZZ_DXC_RUNTIME_DLL}"
+                COMMENT "Copying ${FBZZ_DXC_RUNTIME_DLL} for DXIL runtime support"
+            )
+        endif()
+    endforeach()
+endif()

@@ -1,10 +1,12 @@
-// FBZZ Engine
-// MotionBlurPass.cpp | fbzz::scene
-// カメラモーションブラー — 深度再投影で各ピクセルのモーションベクトルを求め、
-// そのベクトル方向にサンプルを積算してブレを表現する Compute パス。
-// WHY: オブジェクトモーションブラーは MRT のベロシティバッファが必要だが、
-//      カメラブラーは深度と前フレームの ViewProjection 行列だけで実装できる。
-//      高速移動・旋回時のシネマティックな残像感を付加するため導入する。
+/// @file    MotionBlurPass.cpp
+/// @brief   モーションブラー — 各ピクセルの移動量ぶんサンプルを積算してブレを表現する Compute パス。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 移動量の出どころは 2 つある:
+/// 1. VelocityPass が描いたモーションベクター (t26) — カメラとオブジェクト両方の動き
+/// 2. 深度 + prevViewProjection の再投影 — カメラの動きだけ。1 が無い画素の穴埋め
+/// 判定はシェーダー側で行う (velocity.b が書き込み済みフラグ)。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
@@ -29,9 +31,15 @@ void ExecuteMotionBlurPass(RenderPassContext& ctx)
     mbDC.shader             = h.motionBlurShader;
     mbDC.constantBuffers[0] = h.frameCB;            // b0: CameraConstants (invViewProjection)
     mbDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: motionBlurStrength, motionBlurSamples, prevViewProjection
-    mbDC.srvInputs[5]       = resources.GetColorTexture(h.hdrRT, 0);  // t5: 現フレーム HDR カラー
-    mbDC.srvInputs[7]       = resources.GetDepthTexture(
-        ctx.isDeferred ? h.gbufferRT : h.hdrRT);                       // t7: Depth
+    mbDC.srvInputs[5]       = resources.GetColorTexture(ctx.Res().Target("HDR"), 0);  // t5: 現フレーム HDR カラー
+    // t7: シーン深度からワールド位置を復元して再投影する。Terrain を含む完全な
+    //     不透明深度（hdrRT）を読む。GBuffer depth には地形が無く、地形ピクセルの速度が誤って
+    //     算出されてモーションブラーが破綻するため、Deferred でも hdrRT を使う。
+    mbDC.srvInputs[7]       = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    // t26: モーションベクター。VelocityPass が動かなかったフレームは無効ハンドルのままで、
+    //      シェーダーは B=0 を読んで深度再投影へフォールバックする。
+    if (ctx.Res().Target("Velocity").IsValid())
+        mbDC.srvInputs[26]  = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
     mbDC.uavOutputs[5]      = h.motionBlurResult;  // u5: UAV_MOTION_BLUR
     mbDC.dispatchX          = (ctx.width  + 7) / 8;
     mbDC.dispatchY          = (ctx.height + 7) / 8;

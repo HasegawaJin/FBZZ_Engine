@@ -1,37 +1,17 @@
 // FBZZ Engine
 // UISprite.hlsl | UI
-// Runtime UI sprite rectangle shader
-cbuffer UIConstants : register(b0)
-{
-    float4x4 g_Ortho;
-    float4   g_Color;
-    float4   g_UVRect;
-};
+// UIImage の既定シェーダー。テクスチャ 1 枚を色で染めて出すだけ。
+//
+// マテリアルを持たない UIImage はすべてこれで描かれる。パラメータを公開しないので
+// MaterialConstants は宣言しない (宣言すると .mat 側に空の項目が並ぶだけになる)。
+#include "UI/UICommon.hlsli"
 
-Texture2D    g_Texture : register(t0);
-SamplerState g_Sampler : register(s5);
-
-struct VSIn
+UIPixelInput VSMain(UIVertexInput input)
 {
-    float2 pos : POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-struct PSIn
-{
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-PSIn VSMain(VSIn input)
-{
-    PSIn output;
-    output.pos = mul(float4(input.pos, 0.0f, 1.0f), g_Ortho);
-    output.uv  = g_UVRect.xy + input.uv * (g_UVRect.zw - g_UVRect.xy);
-    return output;
+    return UIVertexMain(input);
 }
 
-float4 PSMain(PSIn input) : SV_TARGET
+float4 PSMain(UIPixelInput input) : SV_TARGET
 {
-    return g_Texture.Sample(g_Sampler, input.uv) * g_Color;
+    return g_Texture.Sample(g_Sampler, input.uv) * UITint(input);
 }

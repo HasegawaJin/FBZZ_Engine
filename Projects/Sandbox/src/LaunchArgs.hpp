@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LaunchArgs.hpp | fbzz::sandbox
-// Sandbox のコマンドライン引数解析
+/// @file    LaunchArgs.hpp
+/// @brief   Sandbox のコマンドライン引数解析。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <filesystem>

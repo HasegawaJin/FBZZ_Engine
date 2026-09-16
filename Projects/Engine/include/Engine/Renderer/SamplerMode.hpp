@@ -1,8 +1,10 @@
-// FBZZ Engine
-// SamplerMode.hpp | fbzz::renderer
-// テクスチャサンプラーのプリセット一覧
-// Renderer バックエンドが共通名からネイティブサンプラー状態を選ぶ。
-// 描画処理やポストプロセスの呼び出し側は enum だけを指定する。
+/// @file    SamplerMode.hpp
+/// @brief   テクスチャサンプラーのプリセット一覧。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Renderer バックエンドが共通名からネイティブサンプラー状態を選ぶ。
+/// 描画処理やポストプロセスの呼び出し側は enum だけを指定する。
 #pragma once
 
 namespace fbzz::renderer

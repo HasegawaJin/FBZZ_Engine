@@ -7,7 +7,8 @@
 // view/projection を差し替えてセットする運用を想定している。
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
+#include "Rendering/LodDither.hlsli"
 
 struct SMVSInput
 {
@@ -29,4 +30,8 @@ SMPSInput VSMain(SMVSInput v)
 
 // PS は深度書き込みのみ。カラー出力は不要なため void で省略可能だが
 // SM5.0 では明示的に宣言しなくても深度は書き込まれる。
-void PSMain(SMPSInput p) {}
+// LOD 遷移中は本体と同じ市松で抜く。抜かないと遷移中だけ影が 2 枚重なる。
+void PSMain(SMPSInput p)
+{
+    ApplyLodDither(p.svPosition.xy, objectParams.x);
+}

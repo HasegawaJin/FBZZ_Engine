@@ -1,12 +1,15 @@
-// FBZZ Engine
-// GameObject.hpp | fbzz::scene
-// Unity ライクな OOP ラッパー
-// Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
-// 親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
+/// @file    GameObject.hpp
+/// @brief   Unity ライクな OOP ラッパー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
+/// 親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
 #include "Entity.hpp"
 #include "Transform.hpp"
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::scene {
@@ -26,7 +29,24 @@ public:
     //      GO 自身に持たせる。空文字列 = Prefab 非インスタンス (通常の GO)。
     //      SceneSerializer が Save/Load で永続化し、PrefabSerializer::Instantiate が書き込む。
     std::string prefabAssetPath;
+    // この GO が .prefab 内のどのオブジェクトから作られたか (プレファブ側の instanceId)。
+    // WHY: インスタンス化のたびに instanceId は新規採番されるため、これが無いと
+    //      「インスタンスの この子」と「プレファブの この子」を対応付けられない。
+    //      対応が取れて初めて、プロパティ単位の差分 (override) を計算できる。
+    //      ルートだけでなく階層内の全 GO に入る。空文字列 = プレファブ由来でない。
+    std::string prefabSourceId;
     int layer = 0;
+
+    // システムが実行時に作った GO (VFX Graph のノード実体・Water splash 等)。
+    // WHY: これまでは名前を "__" で始めるという規約でシリアライズ除外を表現していたが、
+    //      規約だと「見せる名前」と「保存するか」が同じ文字列に相乗りしてしまい、
+    //      表示名を読みやすくした瞬間に保存対象へ戻るという壊れ方をする。
+    //      意図を型で持たせることで、名前は純粋に表示のためだけに使えるようになる。
+    // 効果は 2 つ:
+    //   1. SceneSerializer が保存しない (ロード時のゾンビ GO 蓄積を防ぐ)
+    //   2. Hierarchy が既定で隠す (1 エフェクト置くたびに十数行増えるのを防ぐ)
+    // NOTE: 生成側が必ず立てる。
+    bool runtimeGenerated = false;
 
     // Unity: gameObject.transform (常に存在。ComponentArray には入れない)
     Transform transform;
@@ -55,6 +75,16 @@ public:
     GameObject* GetParent()         const;
     int         GetChildCount()     const;
     GameObject* GetChild(int index) const;
+
+    /// 自分を含む部分木を子の表示順に深さ優先で検索する。非アクティブも含む。
+    /// 同名は最初の1件、未検出は nullptr。戻り値は Scene が所有する非所有参照。
+    [[nodiscard]] GameObject* FindInSubtree(std::string_view objectName);
+
+    // Unity: transform.GetSiblingIndex / SetSiblingIndex
+    // 兄弟内の表示順 (Hierarchy の並び)。親がいない場合はルート同士の並び順を指す。
+    // WHY: Hierarchy パネルのドラッグ並べ替え (挿入ライン) に必要。
+    int  GetSiblingIndex() const;
+    bool SetSiblingIndex(int index);
 
     // Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
     static GameObject*              Find(const std::string& n);

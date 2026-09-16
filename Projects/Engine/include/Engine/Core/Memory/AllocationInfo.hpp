@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AllocationInfo.hpp | fbzz::core
-// メモリリーク特定用の割り当て詳細情報
-// 未解放ポインタのサイズ・用途・発生位置を保持し、終了時やデバッグ UI で原因を追えるようにする。
+/// @file    AllocationInfo.hpp
+/// @brief   メモリリーク特定用の割り当て詳細情報。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 未解放ポインタのサイズ・用途・発生位置を保持し、終了時やデバッグ UI で原因を追えるようにする。
 #pragma once
 
 #include <cstddef>

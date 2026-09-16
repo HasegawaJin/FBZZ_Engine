@@ -1,0 +1,23 @@
+# GreenWare
+# M_ArmorWhite.mat
+# 白い装甲板。
+#
+# WHY ここだけ metallic を 0 のままにするか:
+#   白は塗装で、塗膜は誘電体。metallic を 1 にすると albedo 0.76 がそのまま反射色に
+#   なって «クロムの鏡» になり、«白い装甲» という読みごと消える。塗られた金属らしさは
+#   金属性ではなく、塗膜の艶 (clearcoat) が作る。
+version = 1
+name = 'M_ArmorWhite'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.76, 0.775, 0.795, 1.0 ]
+metallic = 0.0
+roughness = 0.30
+anisotropy = 0.0
+clearcoat = 0.55
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

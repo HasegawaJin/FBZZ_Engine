@@ -1,13 +1,15 @@
-// FBZZ Engine
-// SceneUtils.hpp | fbzz::scene
-// 起動・実行時にシーン / 物理 / UI サブシステムへ ProjectSettings を適用するユーティリティ
-//
-// WHY: Sandbox と EditorLauncher の両方が同じ「設定 → サブシステム反映」処理を必要とする。
-//      重複を避けるため Engine に集約し、どの起動モジュールからも参照できるようにする。
+/// @file    SceneUtils.hpp
+/// @brief   起動・実行時にシーン / 物理 / UI サブシステムへ ProjectSettings を適用するユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHY: Sandbox と EditorLauncher の両方が同じ「設定 → サブシステム反映」処理を必要とする。
+/// 重複を避けるため Engine に集約し、どの起動モジュールからも参照できるようにする。
 #pragma once
 
 #include <Engine/Core/Window.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Physics/Layer.hpp>
@@ -42,7 +44,20 @@ void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx = nul
                                                        const renderer::Camera& editorFallback,
                                                        float aspectRatio);
 
+/// シーン内のメイン CameraComponent の背景色を返す。見つからなければ既定色を返す。
+///
+/// WHY エディタの Scene View がこれを引くか:
+///   Scene View はデバッグカメラの視点なのでカリング設定は持ち込まない (見え方が
+///   ゲームカメラの都合で変わると何を編集しているのか分からなくなるため) が、
+///   背景色は «何が存在するか» ではなく «シーンがどう見えるか» そのもので、
+///   編集中に本番と違う色が出ていると背景に合わせた色設計ができない。
+[[nodiscard]] math::Vector4 ResolveGameBackgroundColor(Scene& scene);
+
 /// シーン内のメイン CameraComponent の cullingMask を返す。見つからなければ Layer::Everything を返す。
 [[nodiscard]] fbzz::LayerMask ResolveGameCullingMask(Scene& scene);
+
+/// シーン内のメイン CameraComponent のカリング設定を返す。見つからなければ既定値を返す。
+/// 実体は CameraCullingSettings.hpp (RenderSystem 側と共有する POD)。
+[[nodiscard]] CameraCullingSettings ResolveGameCullingSettings(Scene& scene);
 
 } // namespace fbzz::scene

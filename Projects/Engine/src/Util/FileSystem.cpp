@@ -1,8 +1,10 @@
-// FBZZ Engine
-// FileSystem.cpp | fbzz::util
-// ファイル・ディレクトリ操作の Win32 実装
-// 存在確認、列挙、読み書き、ディレクトリ作成をまとめる。
-// 失敗は bool や空配列で返し、例外は使わない。
+/// @file    FileSystem.cpp
+/// @brief   ファイル・ディレクトリ操作の Win32 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 存在確認、列挙、読み書き、ディレクトリ作成をまとめる。
+/// 失敗は bool や空配列で返し、例外は使わない。
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
@@ -211,9 +213,12 @@ std::vector<std::string> FileSystem::ListAll(const std::string& dir)
 
 bool FileSystem::EnsureDirectory(const std::string& path)
 {
-    if (IsDirectory(path)) return true;
-    BOOL ok = CreateDirectoryW(Utf8ToWide(path).c_str(), nullptr);
-    return ok || GetLastError() == ERROR_ALREADY_EXISTS;
+    // WHY 委譲するか: 以前はここだけ CreateDirectoryW を 1 回呼んでおり、
+    //     中間ディレクトリを作らなかった。path 版は create_directories で
+    //     掘るので、同じ名前の関数が «引数の型によって深さが違う» 状態だった。
+    //     実プロジェクトでは親が既にあるため表に出ず、空のディレクトリから
+    //     組み立てたときだけ «作ったつもりで書き込みに失敗する» 形で現れる。
+    return EnsureDirectory(PathFromUtf8(path));
 }
 
 bool FileSystem::EnsureDirectory(const std::filesystem::path& path)
@@ -301,6 +306,35 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
     std::ofstream f(widePath);
     if (!f.is_open()) return false;
     f << text;
+    // WHY close() してから見るか: ストリームは破棄時にまとめて書き出すため、
+    //     ここで閉じるまで書き込み失敗 (ディスク満杯・共有違反) は現れない。
+    //     以前は無条件に true を返しており、中身が欠けたまま「保存できた」と
+    //     報告していた。
+    f.close();
+    return f.good();
+}
+
+bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& text)
+{
+    const std::filesystem::path target = PathFromUtf8(path);
+    if (target.empty()) return false;
+
+    // 同一フォルダに置く。別ボリュームだと rename がコピーになり、置き換えの原子性が崩れる。
+    const std::filesystem::path temp =
+        target.parent_path() / ("." + PathToUtf8(target.filename()) + ".tmp");
+
+    if (!WriteText(temp, text)) {
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
+
+    if (!Rename(temp, target)) {
+        // 置き換えに失敗しても原本は無傷。書きかけを残さないよう掃除して失敗を返す。
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
     return true;
 }
 
@@ -370,7 +404,8 @@ bool FileSystem::WriteText(const std::filesystem::path& path, const std::string&
     std::ofstream f(path, std::ios::binary);
     if (!f.is_open()) return false;
     f << text;
-    return true;
+    f.close();
+    return f.good();
 }
 
 std::filesystem::path FileSystem::PathFromUtf8(const std::string& path)

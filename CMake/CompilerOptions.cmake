@@ -1,6 +1,6 @@
-add_library(fbzz_compiler_options INTERFACE)
+add_library(FBZZCompilerOptions INTERFACE)
 
-target_compile_options(fbzz_compiler_options INTERFACE
+target_compile_options(FBZZCompilerOptions INTERFACE
     $<$<CXX_COMPILER_ID:MSVC>:
         /W4 /WX         # 警告レベル4, 警告をエラー扱い
         /permissive-    # 準拠モード
@@ -14,8 +14,12 @@ target_compile_options(fbzz_compiler_options INTERFACE
 
 # Debug/Development/Release 設定
 # Development は NDEBUG なし → アサート・デバッグツールが Release と同等の速度で動作する
-target_compile_definitions(fbzz_compiler_options INTERFACE
+target_compile_definitions(FBZZCompilerOptions INTERFACE
     $<$<CONFIG:Debug>:FBZZ_DEBUG>
     $<$<CONFIG:Development>:FBZZ_DEVELOPMENT>
     $<$<CONFIG:Release>:FBZZ_RELEASE NDEBUG>
 )
+
+# NOTE (2026-09-02): このファイルはどの CMakeLists からも include されていない。
+#      /W4 /WX も FBZZ_DEBUG / FBZZ_DEVELOPMENT も現状は効いていないので、
+#      実際に効かせたい定義はルート CMakeLists.txt 側へ書くこと。

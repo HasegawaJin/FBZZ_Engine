@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IKSystem.cpp | fbzz::scene
-// AnimatorSystem の FK 結果に複数種の IK Solver を順序付きで適用する。
-// WHY: IK はアニメーション後段で骨行列だけを補正し、足接地から全身 IK までを
-//      同一の依存順で処理して AnimatorSystem の責務を崩さない。
+/// @file    IKSystem.cpp
+/// @brief   AnimatorSystem の FK 結果に複数種の IK Solver を順序付きで適用する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-30
+///
+/// WHY: IK はアニメーション後段で骨行列だけを補正し、足接地から全身 IK までを
+/// 同一の依存順で処理して AnimatorSystem の責務を崩さない。
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
@@ -12,6 +14,7 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Physics/World.hpp>
@@ -40,10 +43,18 @@ math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 
 math::Vector3 ArbitraryPerpendicular(const math::Vector3& axis)
 {
-    math::Vector3 perp = math::Vector3::Cross(math::Vector3::RIGHT, axis);
-    if (perp.LengthSq() < math::EPSILON * math::EPSILON)
-        perp = math::Vector3::Cross(math::Vector3::UP, axis);
-    return perp.Normalized();
+    // 反平行時の回転軸を RIGHT 固定にすると、骨軸が RIGHT 近傍を通過する瞬間に
+    // RIGHT -> UP へ切り替わり、腕を振り切る箇所で姿勢が跳ねたり一時停止したように見える。
+    // 軸と最も直交する基底を選ぶことで、不要な特異点と符号反転を減らす。
+    const math::Vector3 absoluteAxis{
+        std::abs(axis.x), std::abs(axis.y), std::abs(axis.z)
+    };
+    math::Vector3 basis = math::Vector3::RIGHT;
+    if (absoluteAxis.y <= absoluteAxis.x && absoluteAxis.y <= absoluteAxis.z)
+        basis = math::Vector3::UP;
+    else if (absoluteAxis.z <= absoluteAxis.x && absoluteAxis.z <= absoluteAxis.y)
+        basis = math::Vector3::FORWARD;
+    return math::Vector3::Cross(basis, axis).Normalized();
 }
 
 math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& to)
@@ -56,10 +67,7 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
         return math::Quaternion::Identity();
 
     if (d <= -1.0f + math::EPSILON) {
-        math::Vector3 axis = math::Vector3::Cross(math::Vector3::RIGHT, f);
-        if (axis.LengthSq() < math::EPSILON * math::EPSILON)
-            axis = math::Vector3::Cross(math::Vector3::UP, f);
-        return math::Quaternion::FromAxisAngle(axis.Normalized(), math::PI);
+        return math::Quaternion::FromAxisAngle(ArbitraryPerpendicular(f), math::PI);
     }
 
     const math::Vector3 axis = math::Vector3::Cross(f, t);
@@ -86,8 +94,15 @@ void RecalcBoneMatrix(const asset::Skeleton& skeleton,
                       std::vector<math::Matrix4>& boneMatrices,
                       int nodeIndex)
 {
+    if (nodeIndex < 0 ||
+        nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
+        nodeIndex >= static_cast<int>(nodeGlobalTransforms.size()))
+        return;
+
     const int boneIndex = skeleton.nodes[static_cast<size_t>(nodeIndex)].boneIndex;
-    if (boneIndex < 0 || boneIndex >= static_cast<int>(boneMatrices.size()))
+    if (boneIndex < 0 ||
+        boneIndex >= static_cast<int>(boneMatrices.size()) ||
+        boneIndex >= static_cast<int>(skeleton.bones.size()))
         return;
 
     const auto& bone = skeleton.bones[static_cast<size_t>(boneIndex)];
@@ -95,6 +110,57 @@ void RecalcBoneMatrix(const asset::Skeleton& skeleton,
         skeleton.rootInverseTransform
       * nodeGlobalTransforms[static_cast<size_t>(nodeIndex)]
       * bone.offsetMatrix;
+}
+
+// Solver が出したワールド姿勢を「スキニング用 nodeGlobal + 骨行列」と
+// 「ボーン GameObject の Transform」の両方へ確定させる。IK の書き込み口はここ 1 つ。
+//
+// WHY Transform にも書くのか (これを欠くと何が壊れるか):
+//   IK 結果を nodeGlobalTransforms にしか書かないと、補正はスキニング行列にしか乗らない。
+//   ボーン GameObject の Transform は AnimatorSystem が出した FK ポーズのまま残るので、
+//   「画面に見えている手」と「Transform 上の手」が IK 補正量ぶん食い違う。
+//   この Transform は
+//     - SocketAttachment / TransformConstraint (ConstraintSystem) の追従先
+//     - VFX の発生点や Script が読む骨の位置
+//     - Gizmo / デバッグ描画
+//     - IKSystem 自身の後続 Solver の入力 (下の bodyState は、書き戻さないぶんを
+//       補うための側路だった)
+//   の全部が読む唯一の共有表現なので、書き戻さないと「メッシュだけが補正され、
+//   それに付いているものは全部ズレる」という壊れ方になる。
+//
+// WHY local まで書くか: world は local からの派生値でしかない。この後 ConstraintSystem の
+//   FlushWorldTransforms が local から world を引き直すため、local を直さない書き込みは
+//   同じフレーム内で消える。
+//   SetWorldPose が world と local を対で更新する。
+//
+// NOTE: 次フレームの AnimatorSystem が全ボーンの local をクリップから上書きするため、
+//       ここでの書き戻しがフレームをまたいで蓄積することはない。
+void CommitBoneWorldPose(Scene& scene,
+                         const asset::Skeleton& skeleton,
+                         const SkinnedMeshRenderer& renderer,
+                         AnimatorComponent& animator,
+                         const math::Matrix4& ownerInv,
+                         int nodeIndex,
+                         const math::Vector3& worldPosition,
+                         const math::Quaternion& worldRotation,
+                         const math::Vector3& worldScale)
+{
+    if (nodeIndex < 0 ||
+        nodeIndex >= static_cast<int>(renderer.nodeEntities.size()) ||
+        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        return;
+
+    // ボーン Transform は ownerWorld * rootInverse * nodeGlobal の空間で公開する。
+    // IK のワールド姿勢から nodeGlobal を戻すときは rootInverse の逆行列も戻す。
+    const math::Matrix4 rootTransform =
+        math::Matrix4::Inverse(skeleton.rootInverseTransform);
+    animator.nodeGlobalTransforms[static_cast<size_t>(nodeIndex)] =
+        rootTransform * ownerInv *
+        math::Matrix4::TRS(worldPosition, worldRotation, worldScale);
+    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, nodeIndex);
+
+    if (GameObject* bone = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]))
+        SetWorldPose(*bone, worldPosition, worldRotation, worldScale);
 }
 
 void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& resources)
@@ -136,15 +202,17 @@ void TranslateDescendantsKeepFkRotation(Scene& scene,
         if (!childGo)
             continue;
 
-        const auto& tf = childGo->transform;
-        // WHY: この行列は owner 空間へ戻す前の「ワールド姿勢」として組むため、
-        //      local position を使うと ToeBase などの子ボーンが親基準座標をワールド座標として扱われる。
-        animator.nodeGlobalTransforms[static_cast<size_t>(childIdx)] =
-            ownerInv * math::Matrix4::TRS(
-                tf.worldPosition + worldDelta,
-                tf.worldRotation,
-                tf.worldScale);
-        RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, childIdx);
+        // WHY: 「ワールド姿勢」として組むため、local position を使うと ToeBase などの
+        //      子ボーンが親基準座標をワールド座標として扱われる。
+        // NOTE: 親は再帰の 1 段上で既に確定済みだが、この子の world はまだ FK のまま。
+        //       だからここで読む worldPosition は素の FK 値で、それに delta を足せばよい。
+        //       値をコピーしてから渡す: Commit は同じ Transform を書き換えるため、
+        //       参照のまま渡すと引数が書き込み途中の値を指す。
+        const math::Vector3    fkPosition = childGo->transform.worldPosition;
+        const math::Quaternion fkRotation = childGo->transform.worldRotation;
+        const math::Vector3    fkScale    = childGo->transform.worldScale;
+        CommitBoneWorldPose(scene, skeleton, smr, animator, ownerInv, childIdx,
+                            fkPosition + worldDelta, fkRotation, fkScale);
 
         TranslateDescendantsKeepFkRotation(
             scene, skeleton, smr, animator, ownerInv, childIdx, worldDelta);
@@ -182,6 +250,25 @@ struct LegNodes {
     GameObject* rootGo = nullptr;
     GameObject* midGo  = nullptr;
     GameObject* footGo = nullptr;
+
+    // ResolveLeg 時点 (= このフレームの IK がまだ何も書いていない時点) の FK ワールド姿勢。
+    //
+    // WHY スナップショットが要るか:
+    //   脚 Solver は「Transform には素の FK が入っている」前提で組まれており、ヒップ補正は
+    //   hipDelta として自分で足し込む (root は動かすが接地点の target は動かさない、という
+    //   足し分けをするため)。ところが同じフレームの ApplyNodeAndDescendantsOffset が
+    //   ヒップ subtree の Transform を書き換えるようになったので、そのまま読み直すと
+    //   hipDelta が二重に乗り、接地点まで一緒に持ち上がってしまう。
+    //   「FK はここで凍結する」と決めてしまえば、書き戻しの有無に振り回されない。
+    math::Vector3    rootFkPosition = math::Vector3::ZERO;
+    math::Vector3    midFkPosition  = math::Vector3::ZERO;
+    math::Vector3    footFkPosition = math::Vector3::ZERO;
+    math::Quaternion rootFkRotation = math::Quaternion::Identity();
+    math::Quaternion midFkRotation  = math::Quaternion::Identity();
+    math::Quaternion footFkRotation = math::Quaternion::Identity();
+    math::Vector3    rootFkScale    = math::Vector3::ONE;
+    math::Vector3    midFkScale     = math::Vector3::ONE;
+    math::Vector3    footFkScale    = math::Vector3::ONE;
 };
 
 using GroundHit = physics::World::RaycastHit;
@@ -252,8 +339,20 @@ bool ResolveLeg(Scene& scene,
     out.footGo = scene.GetGameObject(renderer.nodeEntities[foot]);
     if (!out.rootGo || !out.midGo || !out.footGo) return false;
 
-    out.upperLength = (out.midGo->transform.worldPosition - out.rootGo->transform.worldPosition).Length();
-    out.lowerLength = (out.footGo->transform.worldPosition - out.midGo->transform.worldPosition).Length();
+    // ここが「このフレームの FK」を凍結する唯一の地点。以降 Solver は Transform を
+    // 読み直さず、このスナップショットだけを入力にする。
+    out.rootFkPosition = out.rootGo->transform.worldPosition;
+    out.midFkPosition  = out.midGo->transform.worldPosition;
+    out.footFkPosition = out.footGo->transform.worldPosition;
+    out.rootFkRotation = out.rootGo->transform.worldRotation;
+    out.midFkRotation  = out.midGo->transform.worldRotation;
+    out.footFkRotation = out.footGo->transform.worldRotation;
+    out.rootFkScale    = out.rootGo->transform.worldScale;
+    out.midFkScale     = out.midGo->transform.worldScale;
+    out.footFkScale    = out.footGo->transform.worldScale;
+
+    out.upperLength = (out.midFkPosition - out.rootFkPosition).Length();
+    out.lowerLength = (out.footFkPosition - out.midFkPosition).Length();
     return out.upperLength > math::EPSILON && out.lowerLength > math::EPSILON;
 }
 
@@ -271,12 +370,12 @@ void ApplyNodeAndDescendantsOffset(const asset::Skeleton& skeleton,
         return;
     const GameObject* bone = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]);
     if (!bone) return;
-    const auto& transform = bone->transform;
-    animator.nodeGlobalTransforms[static_cast<size_t>(nodeIndex)] =
-        ownerInv * math::Matrix4::TRS(transform.worldPosition + worldDelta,
-                                      transform.worldRotation,
-                                      transform.worldScale);
-    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, nodeIndex);
+    // Commit が同じ Transform を書き換えるため、FK 値はコピーしてから渡す。
+    const math::Vector3    fkPosition = bone->transform.worldPosition;
+    const math::Quaternion fkRotation = bone->transform.worldRotation;
+    const math::Vector3    fkScale    = bone->transform.worldScale;
+    CommitBoneWorldPose(scene, skeleton, renderer, animator, ownerInv, nodeIndex,
+                        fkPosition + worldDelta, fkRotation, fkScale);
     for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
         ApplyNodeAndDescendantsOffset(skeleton, renderer, scene, animator, ownerInv, child, worldDelta);
 }
@@ -330,9 +429,11 @@ bool SolveFootLeg(const IKChain& chain,
         hipDelta.LengthSq() <= math::EPSILON * math::EPSILON)
         return false;
 
-    const math::Vector3 rootFk = leg.rootGo->transform.worldPosition;
-    const math::Vector3 midFk  = leg.midGo->transform.worldPosition;
-    const math::Vector3 footFk = leg.footGo->transform.worldPosition;
+    // ヒップ補正は直前に Transform へ書き戻されているため、ここでライブ値を読むと
+    // hipDelta が root / foot の両方へ二重に加算される。ResolveLeg の FK スナップショットを使う。
+    const math::Vector3 rootFk = leg.rootFkPosition;
+    const math::Vector3 midFk  = leg.midFkPosition;
+    const math::Vector3 footFk = leg.footFkPosition;
     const math::Vector3 root   = rootFk + hipDelta;
     const math::Vector3 target = footFk + math::Vector3{ 0.0f, correction, 0.0f };
     const math::Vector3 rootToTarget = target - root;
@@ -347,17 +448,48 @@ bool SolveFootLeg(const IKChain& chain,
     const math::Vector3 axis = rootToTarget * (1.0f / rawDistance);
     const math::Vector3 effectiveTarget = root + axis * distance;
 
+    // FK 曲げ方向を常に計算する。autoPole はアニメーションの膝方向を完全に上書きせず、
+    // 逆折れ防止のヒントとしてのみ使用する。
+    // WHY: autoPole を完全上書きにすると、アニメーションに関わらず膝が常に同じ方向を向き
+    //      「固定化」して見える。FK 方向を優先し、逆半球になる場合のみ preferred で補正する。
+    const math::Vector3 fkBendRaw = (midFk + hipDelta) - root;
+    const math::Vector3 fkBend    = fkBendRaw - axis * math::Vector3::Dot(fkBendRaw, axis);
+
     math::Vector3 bendRaw = math::Vector3::ZERO;
     if (chain.autoPole &&
         chain.autoPoleLocalDirection.LengthSq() > math::EPSILON * math::EPSILON) {
         const math::Vector3 preferredDirection =
             (ownerRotation * chain.autoPoleLocalDirection.Normalized()).Normalized();
-        bendRaw = preferredDirection - axis * math::Vector3::Dot(preferredDirection, axis);
+        const math::Vector3 preferredBend =
+            preferredDirection - axis * math::Vector3::Dot(preferredDirection, axis);
+        if (fkBend.LengthSq() > math::EPSILON * math::EPSILON &&
+            preferredBend.LengthSq() > math::EPSILON * math::EPSILON) {
+            // fkBend の信頼度: sin²θ = |fkBend|²/|fkBendRaw|² が小さいほど FK 方向は信頼できない。
+            // WHY: スイング相で膝が axis とほぼ平行になると fkBend がほぼゼロになり、
+            //      正規化後の方向が任意になって膝が足の向きに引っ張られて見える。
+            //      ただし足が横方向を向く場合は fkBend が小さくても方向は正しいため、
+            //      ハードな閾値ではなく信頼度ウェイトで FK と preferred をグラデーションブレンドする。
+            const float fkBendRawSq = fkBendRaw.LengthSq();
+            const float sinSq   = fkBendRawSq > math::EPSILON * math::EPSILON
+                                  ? fkBend.LengthSq() / fkBendRawSq : 0.0f;
+            // sin²θ > 0.04 (≒ θ > 11.5°) で FK を完全に信頼し、それ未満は preferred へ漸近。
+            const float fkWeight = math::Clamp01(sinSq / 0.04f);
+            const float agreement = math::Vector3::Dot(
+                fkBend.Normalized(), preferredBend.Normalized());
+            if (agreement >= 0.0f) {
+                // FK 方向が preferred と同じ半球: 信頼度ウェイトで FK と preferred をブレンド。
+                bendRaw = fkBend * fkWeight + preferredBend * (1.0f - fkWeight);
+            } else {
+                // 逆半球 (後方折れ) → preferred で補正。
+                bendRaw = preferredBend;
+            }
+        } else {
+            bendRaw = preferredBend.LengthSq() > math::EPSILON * math::EPSILON
+                ? preferredBend : fkBend;
+        }
     }
-    if (bendRaw.LengthSq() <= math::EPSILON * math::EPSILON) {
-        bendRaw = (midFk + hipDelta) - root;
-        bendRaw = bendRaw - axis * math::Vector3::Dot(bendRaw, axis);
-    }
+    if (bendRaw.LengthSq() <= math::EPSILON * math::EPSILON)
+        bendRaw = fkBend;
     const math::Vector3 bend = bendRaw.LengthSq() > math::EPSILON * math::EPSILON
         ? bendRaw.Normalized() : ArbitraryPerpendicular(axis);
     const float cosine = math::Clamp(
@@ -369,19 +501,19 @@ bool SolveFootLeg(const IKChain& chain,
 
     const math::Quaternion solvedRootRotation =
         (FromToRotation((midFk - rootFk).Normalized(), (solvedMid - root).Normalized()) *
-         leg.rootGo->transform.worldRotation).Normalized();
+         leg.rootFkRotation).Normalized();
     const math::Quaternion solvedMidRotation =
         (FromToRotation((footFk - midFk).Normalized(), (effectiveTarget - solvedMid).Normalized()) *
-         leg.midGo->transform.worldRotation).Normalized();
+         leg.midFkRotation).Normalized();
     const math::Quaternion rootRotation = math::Quaternion::Slerp(
-        leg.rootGo->transform.worldRotation, solvedRootRotation, effectiveWeight);
+        leg.rootFkRotation, solvedRootRotation, effectiveWeight);
     const math::Quaternion midRotation = math::Quaternion::Slerp(
-        leg.midGo->transform.worldRotation, solvedMidRotation, effectiveWeight);
+        leg.midFkRotation, solvedMidRotation, effectiveWeight);
     const math::Vector3 finalMid = math::Vector3::Lerp(
         midFk + hipDelta, solvedMid, effectiveWeight);
     const math::Vector3 finalFoot = math::Vector3::Lerp(
         footFk + hipDelta, effectiveTarget, effectiveWeight);
-    math::Quaternion footRotation = leg.footGo->transform.worldRotation;
+    math::Quaternion footRotation = leg.footFkRotation;
     if (groundHit && chain.footNormalAxis.LengthSq() > math::EPSILON * math::EPSILON) {
         const math::Vector3 sole =
             (footRotation * chain.footNormalAxis.Normalized()).Normalized();
@@ -390,18 +522,26 @@ bool SolveFootLeg(const IKChain& chain,
         footRotation = math::Quaternion::Slerp(footRotation, aligned, effectiveWeight);
     }
 
-    const size_t rootIndex = static_cast<size_t>(leg.root);
-    const size_t midIndex  = static_cast<size_t>(leg.mid);
-    const size_t footIndex = static_cast<size_t>(leg.foot);
-    animator.nodeGlobalTransforms[rootIndex] = ownerInv * math::Matrix4::TRS(
-        root, rootRotation, leg.rootGo->transform.worldScale);
-    animator.nodeGlobalTransforms[midIndex] = ownerInv * math::Matrix4::TRS(
-        finalMid, midRotation, leg.midGo->transform.worldScale);
-    animator.nodeGlobalTransforms[footIndex] = ownerInv * math::Matrix4::TRS(
-        finalFoot, footRotation, leg.footGo->transform.worldScale);
-    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, leg.root);
-    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, leg.mid);
-    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, leg.foot);
+    if (leg.root < 0 || leg.mid < 0 || leg.foot < 0 ||
+        leg.root >= static_cast<int>(skeleton.nodes.size()) ||
+        leg.mid >= static_cast<int>(skeleton.nodes.size()) ||
+        leg.foot >= static_cast<int>(skeleton.nodes.size()) ||
+        leg.root >= static_cast<int>(animator.nodeGlobalTransforms.size()) ||
+        leg.mid >= static_cast<int>(animator.nodeGlobalTransforms.size()) ||
+        leg.foot >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        return false;
+
+    // 腿 → 脛 → 足首の順に確定させる。Commit は local を親のワールド姿勢から逆算するため、
+    // 親を先に書かないと子の local が古い親基準で求まる。
+    const math::Vector3 rootScale = leg.rootGo->transform.worldScale;
+    const math::Vector3 midScale  = leg.midGo->transform.worldScale;
+    const math::Vector3 footScale = leg.footGo->transform.worldScale;
+    CommitBoneWorldPose(scene, skeleton, renderer, animator, ownerInv, leg.root,
+                        root, rootRotation, rootScale);
+    CommitBoneWorldPose(scene, skeleton, renderer, animator, ownerInv, leg.mid,
+                        finalMid, midRotation, midScale);
+    CommitBoneWorldPose(scene, skeleton, renderer, animator, ownerInv, leg.foot,
+                        finalFoot, footRotation, footScale);
     TranslateDescendantsKeepFkRotation(
         scene, skeleton, renderer, animator, ownerInv, leg.foot, finalFoot - footFk);
     return true;
@@ -573,9 +713,10 @@ void WriteSolvedPose(const asset::Skeleton& skeleton,
     const GameObject* bone = scene.GetGameObject(renderer.nodeEntities[static_cast<size_t>(nodeIndex)]);
     if (!bone) return;
 
-    animator.nodeGlobalTransforms[static_cast<size_t>(nodeIndex)] =
-        ownerInv * math::Matrix4::TRS(position, rotation, bone->transform.worldScale);
-    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, nodeIndex);
+    // Commit がこの Transform を書き換えるため、スケールはコピーしてから渡す。
+    const math::Vector3 boneScale = bone->transform.worldScale;
+    CommitBoneWorldPose(scene, skeleton, renderer, animator, ownerInv, nodeIndex,
+                        position, rotation, boneScale);
 
     const size_t index = static_cast<size_t>(nodeIndex);
     if (index < bodyState.hasSolvedPose.size()) {
@@ -869,10 +1010,13 @@ bool SolveSpine(IKChain& chain,
 
 } // namespace
 
+// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
+// System と同じバッチに入って並列に走る (AnimatorSystem::GetAccess の WHY を参照)。
 ComponentAccess IKSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Writes<IKSolverComponent, AnimatorComponent, BoneComponent>();
+        .Reads<SkinnedMeshRenderer>()
+        .Writes<IKSolverComponent, AnimatorComponent, BoneComponent, Transform>();
 }
 
 OrderingHints IKSystem::GetOrder() const
@@ -892,7 +1036,7 @@ void IKSystem::Update(SystemContext& ctx)
 
     for (EntityID id : entities) {
         GameObject* go = scene.GetGameObject(id);
-        if (!go) continue;
+        if (!go || !go->activeInHierarchy()) continue;
 
         auto* ik       = go->GetComponent<IKSolverComponent>();
         auto* animator = go->GetComponent<AnimatorComponent>();

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <!--
+    FBZZ Engine 実行ファイル共通のアプリケーションマニフェスト。
+
+    WHY マニフェストで宣言するか:
+      DPI 認識は「プロセスが最初のウィンドウを作るより前」に確定していなければならない。
+      Window::Initialize() の SetProcessDpiAwarenessContext() は実行時フォールバックとして
+      残してあるが、呼び出し順序に依存する脆い経路で、失敗しても戻り値を握り潰すと無言で
+      DPI 非対応プロセスに落ちる。その場合 Windows はウィンドウ全体をビットマップ拡大
+      (DPI 仮想化) するため、100% 以外のスケール環境では ImGui の文字が一律に滲む。
+      マニフェストはプロセス起動時にローダーが適用するので、この順序問題が原理的に消える。
+
+    PerMonitorV2 を選ぶ理由:
+      モニターごとに異なる拡大率へ追従でき、非クライアント領域 (タイトルバー・枠) の
+      再スケールを OS が行う。クライアント領域の追従は WM_DPICHANGED で自前対応済み。
+  -->
+  <asmv3:application xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
+    <asmv3:windowsSettings>
+      <!-- Windows 10 1703 以降が解釈する。PerMonitorV2 非対応 OS は次の dpiAware へ落ちる。 -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <!-- Windows 8.1 以前向けの後方互換宣言。PerMonitorV2 が効く環境では無視される。 -->
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <!-- アセットパスが MAX_PATH を超えても開けるようにする (深い Library/Baked 階層対策)。 -->
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </asmv3:windowsSettings>
+  </asmv3:application>
+
+  <!-- 対応 OS の宣言。これが無いと GetVersionEx 系が互換モードの値を返す。 -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+    </application>
+  </compatibility>
+</assembly>

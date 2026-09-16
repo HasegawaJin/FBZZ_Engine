@@ -1,0 +1,210 @@
+# FBZZ Engine
+# FX_BOSS_ShockDust.vfx — ボスの重量が床へ掛かったときに舞う土煙。
+#
+# WHY FX_PLR_RunDust と分けるか:
+#   層の構成 (Ground Wash / Dust Puff / Grit) も差し込み口 (RunDustVfxComponent) も同じで、
+#   違うのは «1 発の大きさと寿命» だけ。だが足元の土煙は 1 秒に 7 回鳴るので、寿命を
+#   伸ばすと走っているあいだじゅう画面に煙が溜まる。同じアセットを大きくして共用すると、
+#   ボスに合わせた瞬間にプレイヤーの足元が煙まみれになる。
+#   枠のリング (VfxManagerComponent の Pool) がパスごとに分かれるのも、分けた副産物として効く。
+#
+# WHY 光源を置かないか:
+#   衝撃波は 1 回で数十発鳴る。その回数の点光源は他の演出の光を丸ごと押し出す
+#   (FX_PLR_RunDust と同じ理由)。«爆発» の光は FX_IMP_Explosion 側が担当する。
+#
+# WHY 粒を «大きく・長く» ではなく «大きく・やや長く» に留めるか:
+#   波は 20m を 2 秒足らずで走る。煙が 3 秒残ると、通り過ぎた跡が消えないまま次の輪が
+#   来て、どこが今の前縁なのか読めなくなる。跡は Cracks (床のデカール) が担当する。
+#   もう 1 つ、寿命は «枠の数 ÷ 撒く頻度» を超えられない ─ 超えた煙は最も新しい 1 発に
+#   枠を奪われて途中で消えるので、長くするほど輪が虫食いになる
+#   (VfxManagerComponent の Ground Dust Slots)。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BOSS_ShockDust"
+instanceId = "5a1c9d40-6b21-4f8e-9c07-2d4e8b31af65"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+# 差し込み口は走行の土煙と同じ。層の名前が一致していれば Apply() はそのまま通る。
+[[gameobjects.ScriptComponents]]
+type = "RunDustVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+dustColor = [0.66, 0.63, 0.58, 0.44]
+puffSize = 2.4
+kickSpeed = 4.2
+gritPower = 1.4
+
+[[gameobjects]]
+name = "Ground Wash"
+instanceId = "1f6d70b2-8c34-4a19-b5e2-77a0c9d41b83"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_ShockDust"
+parentInstanceId = "5a1c9d40-6b21-4f8e-9c07-2d4e8b31af65"
+
+# 床すれすれに置く。ちょうど 0 にすると水平ビルボードの半分が床へ潜って
+# 円が «欠けた半月» になる。
+[gameobjects.transform]
+position = [0.0, 0.05, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.4
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 0
+sizeStart = 0.35
+sizeEnd = 3.4
+sizeCurvePower = 0.5
+lifetime = 0.42
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 0.0, 1.1]
+velocitySpread = 0.3
+velocityDamping = 3.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "guid:5536328b5f3b553cb10094468418c70b"
+renderMode = 2
+sortMode = 1
+angularVelocityMin = -26.0
+angularVelocityMax = 26.0
+renderPriority = 28
+colorVariation = 0.06
+colorStart = [0.66, 0.63, 0.58, 0.44]
+colorEnd = [0.5, 0.48, 0.45, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.03, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Dust Puff"
+instanceId = "8b27e5c1-04af-4d63-8e19-c6f3a70b2d54"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_ShockDust"
+parentInstanceId = "5a1c9d40-6b21-4f8e-9c07-2d4e8b31af65"
+
+[gameobjects.transform]
+position = [0.0, 0.12, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# WHY 重力をわずかに «上» へ取るか: 舞い上がった砂は落ちるより先に薄まって消える。
+#     下向きにすると寿命の後半で床へ吸い込まれ、巻き上げた形が消える。
+#
+# WHY 円錐を太く取るか (足元の 38 度に対して 46 度):
+#   足の土煙は «蹴った 1 方向» へ流れるが、こちらは床が押し退けた空気で、
+#   前へ流れながら横へも膨らむ。細いと «噴射» に見えて重さが出ない。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.4
+loop = false
+emitRate = 0.0
+maxParticles = 20
+shape = 2
+coneAngleDegrees = 46.0
+coneRadius = 0.25
+sizeStart = 0.3
+sizeEnd = 2.4
+sizeCurvePower = 0.55
+lifetime = 0.52
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 1.76, 4.2]
+velocitySpread = 0.6
+velocityDamping = 2.6
+gravity = [0.0, 0.35, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -22.0
+angularVelocityMax = 22.0
+renderPriority = 32
+colorVariation = 0.08
+colorStart = [0.66, 0.63, 0.58, 0.44]
+colorEnd = [0.5, 0.48, 0.45, 0.0]
+bursts = [{ time = 0.0, count = 4, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.025
+
+[[gameobjects]]
+name = "Grit"
+instanceId = "d4903f18-72b6-4c05-a8d7-9e15b60c3f2a"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_ShockDust"
+parentInstanceId = "5a1c9d40-6b21-4f8e-9c07-2d4e8b31af65"
+
+[gameobjects.transform]
+position = [0.0, 0.08, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 砂粒は重力そのままで落とす。煙だけだと «ふわりと湧いた» になり、床が砕けて
+# 飛んだ «物» が無いぶん重さが出ない。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 24
+shape = 2
+coneAngleDegrees = 34.0
+coneRadius = 0.12
+sizeStart = 0.12
+sizeEnd = 0.035
+sizeCurvePower = 1.4
+lifetime = 0.8
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 3.57, 7.56]
+velocitySpread = 1.4
+velocityDamping = 0.9
+gravity = [0.0, -9.8, 0.0]
+materialPath = "guid:0035bd7a679f54fa90c30d3b9b5d2941"
+renderMode = 1
+stretchedVelocityScale = 0.08
+stretchedLengthScale = 1.5
+sortMode = 0
+renderPriority = 36
+colorVariation = 0.12
+colorStart = [0.66, 0.63, 0.58, 1.0]
+colorEnd = [0.42, 0.4, 0.36, 0.0]
+bursts = [{ time = 0.0, count = 8, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.025

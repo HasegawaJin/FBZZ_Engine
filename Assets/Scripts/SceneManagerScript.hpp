@@ -1,24 +1,25 @@
-// FBZZ Engine
-// SceneManagerScript.hpp | sandbox
-// ボタンクリック / 自動タイマーによるシーン遷移ユーティリティスクリプト
-//
-// 使い方:
-//   [ボタン GO に付ける場合]
-//     targetScene : 遷移先シーン名
-//     viaScene    : 中継シーン名 (例: "Load")。空の場合は直接遷移。
-//
-//   [Load.scene のコントローラー GO に付ける場合]
-//     autoTransition = true
-//     autoDelay      = 遷移までの秒数 (フェードイン完了後にカウント開始)
-//     targetScene    は OnStart で s_next から自動セットされる。
-//
-// フェード動作:
-//   fadeEnabled=true のとき、遷移前に黒フェードアウト、遷移先シーンで黒フェードインを行う。
-//   fadeDuration でフェードイン/アウト各々の秒数を制御する。
-//   シーン間の状態受け渡しは s_fadeIn 静的変数で行う。
-//
-// WHY: シーンごとに個別コントローラーを作らず、1 スクリプトで全遷移パターンを賄う。
-//      ポストプロセスの screenFadeAlpha を使うことで UI に依存せず真の最終レイヤーでフェードできる。
+/// @file    SceneManagerScript.hpp
+/// @brief   ボタンクリック / 自動タイマーによるシーン遷移ユーティリティスクリプト。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// 使い方:
+/// [ボタン GO に付ける場合]
+/// targetScene : 遷移先シーン名
+/// viaScene    : 中継シーン名 (例: "Load")。空の場合は直接遷移。
+///
+/// [Load.scene のコントローラー GO に付ける場合]
+/// autoTransition = true
+/// autoDelay      = 遷移までの秒数 (フェードイン完了後にカウント開始)
+/// targetScene    は OnStart で s_next から自動セットされる。
+///
+/// フェード動作:
+/// fadeEnabled=true のとき、遷移前に黒フェードアウト、遷移先シーンで黒フェードインを行う。
+/// fadeDuration でフェードイン/アウト各々の秒数を制御する。
+/// シーン間の状態受け渡しは s_fadeIn 静的変数で行う。
+///
+/// WHY: シーンごとに個別コントローラーを作らず、1 スクリプトで全遷移パターンを賄う。
+/// ポストプロセスの screenFadeAlpha を使うことで UI に依存せず真の最終レイヤーでフェードできる。
 #pragma once
 
 #include <Engine/Renderer/RenderSettings.hpp>
@@ -72,16 +73,10 @@ private:
     bool       m_fired     = false; // ボタン / タイマー二重発火防止
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(SceneManagerScript)
 
-#include "SceneManagerScript.generated.hpp"
-
-#ifndef SceneManagerScript_IMPL
-#define SceneManagerScript_IMPL
-
-namespace sandbox {
-
-void SceneManagerScript::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void SceneManagerScript::OnStart()
 {
     // 前シーンがフェードアウトして遷移してきた場合、黒から始めてフェードインする。
     if (s_fadeIn && fadeEnabled) {
@@ -101,7 +96,7 @@ void SceneManagerScript::OnStart()
     }
 }
 
-void SceneManagerScript::OnUpdate()
+inline void SceneManagerScript::OnUpdate()
 {
     // フェードイン: alpha 1→0
     if (m_fadeState == FadeState::FadeIn) {
@@ -147,7 +142,7 @@ void SceneManagerScript::OnUpdate()
     BeginFadeOut();
 }
 
-void SceneManagerScript::ApplyFade()
+inline void SceneManagerScript::ApplyFade()
 {
     // 既存のランタイム PostProcess 設定を引き継ぎ、screenFadeAlpha だけ上書きする。
     // WHY: ブルームや被写界深度など他のエフェクトを消さずにフェードだけを重ねるため。
@@ -160,7 +155,7 @@ void SceneManagerScript::ApplyFade()
     postprocess.Set(pp);
 }
 
-void SceneManagerScript::BeginFadeOut()
+inline void SceneManagerScript::BeginFadeOut()
 {
     if (!fadeEnabled) {
         // フェードなし: 即座に遷移
@@ -172,7 +167,7 @@ void SceneManagerScript::BeginFadeOut()
     m_fadeState = FadeState::FadeOut;
 }
 
-void SceneManagerScript::ExecuteLoad()
+inline void SceneManagerScript::ExecuteLoad()
 {
     if (!viaScene.empty()) {
         // 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
@@ -184,4 +179,3 @@ void SceneManagerScript::ExecuteLoad()
 }
 
 } // namespace sandbox
-#endif

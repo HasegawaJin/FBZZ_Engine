@@ -1,6 +1,0 @@
-// FBZZ Engine
-// InspectorAudio.hpp | fbzz::editor
-// Audio 系 Component の Inspector 描画
-#pragma once
-
-#include "InspectorCommon.hpp"

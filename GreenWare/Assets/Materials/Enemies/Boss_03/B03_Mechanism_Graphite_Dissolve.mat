@@ -1,0 +1,20 @@
+version = 1
+name = 'B03_Mechanism_Graphite_Dissolve'
+mesh_type = 'skinned'
+render_path = 'auto'
+shader = 'guid:9b1716dca591ddaa8bec6bb27619a653|Assets/Shaders/Material/Skinned/SkinnedEnemyDissolve.hlsl'
+blend_mode = 'Opaque'
+double_sided = false
+
+[params]
+albedo = [0.02500000037252903, 0.03400000184774399, 0.04500000178813934, 1.0]
+metallic = 0.0
+roughness = 0.30000001192092896
+dissolveAmount = 0.0
+dissolveAxis = [0.0, -1.0, 0.0]
+dissolveRange = 8.0
+dissolveSweep = 0.35
+dissolveNoiseScale = 7.0
+dissolveEdgeWidth = 0.1
+dissolveEdgeColor = [1.0, 0.5, 0.18]
+dissolveEdgeIntensity = 8.0

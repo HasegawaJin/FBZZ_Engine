@@ -1,13 +1,17 @@
-// FBZZ Engine
-// SkinnedModelImporter.cpp | fbzz::asset
-// スキンメッシュ・スケルトン・アニメーションクリップのインポートパイプライン。
-// WHY: aiProcess_PreTransformVertices を使わずボーン階層を保持する。
-//      静的メッシュと異なり頂点ごとのボーンインデックス・ウェイトを CPU 側で構築し、
-//      GPU スキニングに必要な SkinnedVertex レイアウトへ変換する。
+/// @file    SkinnedModelImporter.cpp
+/// @brief   スキンメッシュ・スケルトン・アニメーションクリップのインポートパイプライン。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
+///
+/// WHY: aiProcess_PreTransformVertices を使わずボーン階層を保持する。
+/// 静的メッシュと異なり頂点ごとのボーンインデックス・ウェイトを CPU 側で構築し、
+/// GPU スキニングに必要な SkinnedVertex レイアウトへ変換する。
 #include "ModelImporterInternal.hpp"
+#include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <array>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace fbzz::asset {
@@ -85,6 +89,24 @@ void ImportNodesRecursive(const aiNode* node,
         ImportNodesRecursive(node->mChildren[i], nodeIndex, unitScale, skeleton);
 }
 
+// AnimationClip の nodeName を Skeleton の完全パスへ変換する。
+// WHY: FBX チャンネル名には namespace や Assimp 補助 suffix が混ざるため、
+//      まず完全一致を試し、見つからなければ CanonicalNodeName で既存ノードへ寄せる。
+std::string ResolveAnimationTargetPath(const Skeleton& skeleton,
+                                       std::string_view nodeName)
+{
+    const std::string normalizedName(nodeName);
+    if (const auto it = skeleton.nodeMap.find(normalizedName); it != skeleton.nodeMap.end())
+        return BuildSkeletonNodePath(skeleton, it->second);
+
+    const std::string canonicalName = CanonicalNodeName(nodeName);
+    for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
+        if (CanonicalNodeName(skeleton.nodes[i].name) == canonicalName)
+            return BuildSkeletonNodePath(skeleton, static_cast<int>(i));
+    }
+    return {};
+}
+
 // aiBone を Skeleton::bones に登録しボーンインデックスを返す。
 // WHY: Assimp は同一ボーン名が複数メッシュに現れるため、名前で重複チェックする。
 //      ノード木に存在しない補助ボーンはルートの子として動的に追加する。
@@ -152,6 +174,8 @@ void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
             const aiNodeAnim* channel = src->mChannels[ci];
             NodeAnimationTrack track{};
             track.nodeName = NormalizeName(channel->mNodeName);
+            if (model.skeleton)
+                track.targetPath = ResolveAnimationTargetPath(*model.skeleton, track.nodeName);
 
             track.positions.reserve(channel->mNumPositionKeys);
             for (uint32_t i = 0; i < channel->mNumPositionKeys; ++i) {
@@ -249,6 +273,16 @@ std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         model->meshes.push_back(std::move(mesh));
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
+
+    // どのノードがどの submesh を描くかの対応表。
+    // WHY スケルトンと別に持つか: Skeleton::nodes は「変形の材料」で、ボーンも補助ノードも
+    //     含む全ノードが並ぶ。こちらが答えるのは「GameObject をどこに何個作り、それぞれ
+    //     どの submesh を描かせるか」という配置の問だけで、目的が違う。
+    //     スキンドは PreTransformVertices を通していないため、階層はそのまま残っている。
+    ImportModelNodes(scene, unitScale, *model);
+
+    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    if (model->skeleton) BuildReferencePose(*model->skeleton);
 
     ImportAnimations(scene, unitScale, *model);
     return model;

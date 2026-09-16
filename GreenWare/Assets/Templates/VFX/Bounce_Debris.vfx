@@ -1,0 +1,368 @@
+[prefab]
+format_version = 1
+root_count = 1
+
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = '1ced872b-a4ef-4d6d-9eaf-5973b87bfc50'
+layer = 0
+name = 'Bounce_Debris'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.VFXComponent]
+    autoDestroy = true
+    duration = 0.0
+    enabled = true
+    loop = false
+    playOnAwake = true
+    speed = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.6, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'dbd0ea10-ea75-445a-aa39-02542d522508'
+layer = 0
+name = 'Shards'
+parent = 'Bounce_Debris'
+parentInstanceId = '1ced872b-a4ef-4d6d-9eaf-5973b87bfc50'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 260.0
+    angularVelocityMin = -260.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    clearOnStop = false
+    collisionBounciness = 0.32
+    collisionDamping = 0.25
+    collisionLayerMask = 4294967295
+    collisionMode = 2
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 0.45, 0.42, 0.39, 0.0 ]
+    colorStart = [ 0.55, 0.52, 0.48, 1.0 ]
+    colorVariation = 0.15
+    coneAngleDegrees = 55.0
+    coneRadius = 0.12
+    cullingBoundsPadding = 0.25
+    cullingEnabled = false
+    deathSubEmitter = ''
+    duration = 0.2
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 0.0
+    emitVelocity = [ 0.0, 4.2, 0.0 ]
+    enabled = true
+    forceFieldChannels = 4294967295
+    inheritVelocity = 0.0
+    lifetime = 1.6
+    lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    lodEnabled = false
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = false
+    materialPath = 'guid:72cf2ca0e2f0484f90533abfe0078139|Assets/Materials/Effects/FX_Shard_Lit.mat'
+    maxParticles = 36
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = false
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 40
+    screenCoverageThreshold = 0.0
+    shape = 2
+    simulationMode = 0
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.08
+    sizeStart = 0.11
+    sortMode = 1
+    speedRange = 10.0
+    sphereRadius = 1.0
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = false
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = false
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 2.6
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.bursts]]
+        count = 18
+        cycles = 1
+        interval = 0.02
+        probability = 1.0
+        time = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, -1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 0
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 16.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9b844094-8d9a-4bd4-ad08-33a200895ecf'
+layer = 0
+name = 'Ground Dust'
+parent = 'Bounce_Debris'
+parentInstanceId = '1ced872b-a4ef-4d6d-9eaf-5973b87bfc50'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 30.0
+    angularVelocityMin = -30.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 0.52, 0.5, 0.47, 0.0 ]
+    colorStart = [ 0.66, 0.63, 0.58, 0.42 ]
+    colorVariation = 0.08
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = false
+    deathSubEmitter = ''
+    duration = 0.25
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 0.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 4294967295
+    inheritVelocity = 0.0
+    lifetime = 0.5
+    lifetimeRandom = 0.3
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    localForces = []
+    lodEnabled = false
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = false
+    materialPath = 'guid:a99969896a7146e08e47274bca31f332|Assets/Materials/Effects/FX_DustPuff_Alpha.mat'
+    maxParticles = 6
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = false
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 2
+    renderPriority = 24
+    screenCoverageThreshold = 0.0
+    shape = 0
+    simulationMode = 0
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 0.5
+    sizeEnd = 1.5
+    sizeStart = 0.3
+    sortMode = 1
+    speedRange = 10.0
+    sphereRadius = 1.0
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = false
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = false
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.25
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.bursts]]
+        count = 3
+        cycles = 1
+        interval = 0.03
+        probability = 1.0
+        time = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.55, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

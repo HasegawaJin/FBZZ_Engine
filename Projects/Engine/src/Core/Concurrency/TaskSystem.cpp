@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TaskSystem.cpp | fbzz
-// ThreadPool の実体。TaskSystem は Init() で生成した ThreadPool への static facade。
+/// @file    TaskSystem.cpp
+/// @brief   ThreadPool の実体。TaskSystem は Init() で生成した ThreadPool への static facade。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include <condition_variable>
 #include <deque>

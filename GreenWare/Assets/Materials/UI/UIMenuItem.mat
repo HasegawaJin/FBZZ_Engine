@@ -1,0 +1,20 @@
+version = 1
+name = 'UIMenuItem'
+shader = "Assets/Shaders/UI/Material/UIMenuItem.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+# 素材から実測した値。dim は Menu_Bar_dim.png の芯、active は Menu_Bar_red.png の芯。
+# 青極にしたい項目は ui.SetMaterialColor(go, "activeColor", ...) で要素ごとに上書きする
+# (Menu_Bar_blue.png の芯は rgb(99,164,255) = [0.388, 0.643, 1.0])。
+dimColor = [ 0.172549, 0.188235, 0.219608, 1.0 ]
+activeColor = [ 1.0, 0.415686, 0.360784, 1.0 ]
+# selected は要素ごとに ui.SetMaterialFloat(go, "selected", t) で動かす。
+# .mat 側は未選択を既定にしておく (オーサリング時の見た目 = 全項目が消灯)。
+selected = [ 0.0 ]
+glowGain = [ 1.0 ]

@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TriangleMeshCollider.hpp | fbzz::physics
-// 任意メッシュの静的コライダー (BVH 加速)
-// Physics は Engine に依存しないため、Mesh の代わりに生データを受け取る
+/// @file    TriangleMeshCollider.hpp
+/// @brief   任意メッシュの静的コライダー (BVH 加速)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// Physics は Engine に依存しないため、Mesh の代わりに生データを受け取る
 #pragma once
 #include <vector>
 #include <cstdint>
@@ -18,7 +20,7 @@ namespace fbzz::physics
     public:
         // 頂点位置リストとインデックスリスト (三角形ごとに 3 つ) から BVH を構築する
         // positions: ローカル空間の頂点位置
-        // indices:   三角形インデックス (要素数は 3 の倍数)
+        // indices:   三角形インデックス。3 の倍数でない端数は捨てる
         TriangleMeshCollider(const std::vector<math::Vector3>& positions,
                              const std::vector<uint32_t>&      indices);
 

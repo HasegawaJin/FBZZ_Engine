@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Skinned/SkinnedToon.hlsl"
+shader = "guid:1bbf3bb8d3f0465eb1642a33e7e7466f"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

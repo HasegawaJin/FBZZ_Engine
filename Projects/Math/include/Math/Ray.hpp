@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Ray.hpp | fbzz::math
-// レイ (origin + t * direction)
+/// @file    Ray.hpp
+/// @brief   レイ (origin + t * direction)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 
 #include "Vector3.hpp"
@@ -20,7 +21,8 @@ struct Ray {
     // t パラメータの点を返す
     Vector3 At(float t) const;
 
-    // 平面との交差。outT < 0 は後方交差。平行なら false を返す
+    // 平面との交差。平行なとき、および交点がレイの後方 (t < 0) にあるときは false。
+    // 法線の裏側から入る交差は成立する (片面判定はしない)
     bool IntersectPlane(const Plane& plane, float& outT) const;
 
     // 球との交差 (direction は正規化済み前提)

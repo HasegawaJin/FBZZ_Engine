@@ -1,15 +1,18 @@
-// FBZZ Engine
-// NavMeshSensorSystem.cpp | fbzz::scene
-// NavMeshSensorComponent の視野角・距離・遮蔽判定を評価し、検知状態の変化を
-// Script コールバック (OnNavMeshTargetSpotted/Lost) で通知する。
-// autoChase 中は同 GO の NavMeshAgentComponent と連携し、見失った直後は
-// 最後に見えた位置まで一度だけ移動させてから巡回などへ戻れるようにする。
+/// @file    NavMeshSensorSystem.cpp
+/// @brief   NavMeshSensorComponent の視野角・距離・遮蔽判定を評価し、検知状態の変化を。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// Script コールバック (OnNavMeshTargetSpotted/Lost) で通知する。
+/// autoChase 中は同 GO の NavMeshAgentComponent と連携し、見失った直後は
+/// 最後に見えた位置まで一度だけ移動させてから巡回などへ戻れるようにする。
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSensorComponent.hpp"
 #include "Engine/Scene/Components/NavMeshAgentComponent.hpp"
+#include "Engine/Scene/Components/BehaviorTreeComponent.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include <Physics/World.hpp>
 #include <Math/Vector3.hpp>
@@ -28,7 +31,7 @@ void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*ca
     for (auto& entry : scriptComp->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, &go);
-        (entry.script.get()->*callback)();
+        entry.script->ExecuteCallback(callback, "NavMesh sensor callback");
     }
 }
 
@@ -49,7 +52,25 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
     for (EntityID eid : scene.GetEntities<NavMeshSensorComponent>()) {
         auto* sensor = scene.GetComponent<NavMeshSensorComponent>(eid);
         auto* go     = scene.GetGameObject(eid);
-        if (!sensor || !go || !sensor->enabled) continue;
+        if (!sensor || !go || !go->activeInHierarchy() || !sensor->enabled) continue;
+
+        // ── Behavior Tree との共存 ──────────────────────────────────────────
+        // BT を持つエンティティでは autoChase を無視する。
+        //
+        // WHY: autoChase は「見つけたら追う」という判断をセンサーの中へ
+        //      ハードコードしたもの。BT がある場合、判断は木が行うべきで、
+        //      センサーは事実 (見えているか) の収集だけに徹する。
+        //      両方が agent を掴むと、BT の決定を毎フレーム autoChase が
+        //      上書きして追跡先が振動する。
+        //
+        // WHY 検知そのものは止めないか: targetVisible / detectedTarget /
+        //      OnNavMeshTargetSpotted は BT も既存スクリプトも使う情報源。
+        //      BT を持たないエンティティの挙動は 1 ビットも変わらない。
+        const auto* behaviorTree = scene.GetComponent<BehaviorTreeComponent>(eid);
+        const bool btOwnsAgent = behaviorTree != nullptr
+                              && behaviorTree->enabled
+                              && behaviorTree->runtime != nullptr;
+        const bool autoChase = sensor->autoChase && !btOwnsAgent;
 
         // ── scanInterval: 指定秒数ごとにのみ検知チェックを実行する ──────────────
         if (sensor->scanInterval > 0.0f) {
@@ -63,7 +84,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
                         sensor->detectedTarget = EntityID::INVALID;
                         sensor->memoryTimer    = 0.0f;
                         NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost);
-                        if (sensor->autoChase) {
+                        if (autoChase) {
                             if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
                                 agent->SetDestination(sensor->lastKnownTargetPos);
                         }
@@ -126,7 +147,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
             if (!wasVisible)
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetSpotted);
 
-            if (sensor->autoChase) {
+            if (autoChase) {
                 if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
                     agent->SetTarget(targetGo->GetID(), sensor->chaseRepathInterval);
             }
@@ -144,7 +165,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
                 sensor->memoryTimer    = 0.0f;
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost);
 
-                if (sensor->autoChase) {
+                if (autoChase) {
                     if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
                         agent->SetDestination(sensor->lastKnownTargetPos);
                 }

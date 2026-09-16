@@ -1,9 +1,10 @@
-// FBZZ Engine
-// IblImporter.cpp | fbzz::asset
-// .ibl バイナリ → IblAsset (4 つの DDS を GPU にロード)
+/// @file    IblImporter.cpp
+/// @brief   .ibl バイナリ → IblAsset (4 つの DDS を GPU にロード)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 #include <Engine/Asset/IblImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

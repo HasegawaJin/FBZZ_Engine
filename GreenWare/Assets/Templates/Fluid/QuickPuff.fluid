@@ -1,0 +1,61 @@
+# 安く焼く土埃 — 焼き値段のつまみを全部下げた見本。足元で一瞬しか見えないものは、
+# 16 コマ・128px・超解像なしで足りる (8×8 の 256px と比べて焼き時間も VRAM も 1/16)。
+# gas.resolution は Auto (0) だとコマの解像度に付いてくる。ここは明示して «粗いまま» を選ぶ。
+version = 2
+kind = "gas"
+seed = 101
+
+[gas]
+resolution = 96
+buoyancy = 0.6
+weight = 0.28
+vorticity = 0.45
+turbulence = 0.3
+turbulence_scale = 4.0
+density_dissipation = 0.5
+temperature_dissipation = 1.8
+floor = true
+
+[[source]]
+name = "Scuff"
+shape = "sphere"
+center = [0.0, -0.62, 0.0]
+size = [0.2, 0.2, 0.2]
+density = 5.0
+temperature = 0.6
+noise = 0.8
+velocity = [0.0, 0.7, 0.0]
+duration = 0.12
+
+[[force]]
+name = "Spread"
+type = "repulse"
+center = [0.0, -0.6, 0.0]
+strength = 1.6
+radius = 0.7
+falloff_power = 1.3
+duration = 0.25
+
+[render]
+shading = "smoke"
+smoke_color = [0.72, 0.68, 0.6, 1.0]
+shadow_color = [0.18, 0.16, 0.13, 1.0]
+opacity = 2.2
+self_shadow = 1.4
+detail_strength = 0.375
+detail_scale = 7.0
+
+[output]
+frame_size = 128
+columns = 4
+rows = 4
+supersampling = 1
+duration = 0.8
+warmup = 0.0
+substeps = 2
+loop = false
+motion_vectors = false
+
+[bake]
+mode = "2d"
+scattering_octaves = 3

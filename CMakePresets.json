@@ -6,12 +6,13 @@
             "displayName": "Debug",
             "generator": "Visual Studio 18 2026",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/debug",
+            "binaryDir": "${sourceDir}/build/Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
-                "FBZZ_BUILD_TESTS": "ON"
+                "FBZZ_BUILD_TESTS": "ON",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "ON"
             }
         },
         {
@@ -19,10 +20,11 @@
             "displayName": "Release",
             "generator": "Visual Studio 18 2026",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/release",
+            "binaryDir": "${sourceDir}/build/Release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "OFF"
             }
         },
         {
@@ -30,10 +32,41 @@
             "displayName": "Development",
             "generator": "Visual Studio 18 2026",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/development",
+            "binaryDir": "${sourceDir}/build/Development",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Development",
-                "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "ON"
+            }
+        },
+        {
+            "name": "coverage",
+            "displayName": "Coverage (clang-cl + llvm-cov)",
+            "description": "分岐 (C1) / 条件・MC/DC (C2 以上) カバレッジ計測専用。通常の開発ビルドには使わない。",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/Coverage",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang-cl",
+                "CMAKE_CXX_COMPILER": "clang-cl",
+                "CMAKE_LINKER": "lld-link",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "FBZZ_BUILD_TESTS": "ON",
+                "FBZZ_COVERAGE": "ON",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "OFF",
+                "FBZZ_ENABLE_DX12": "OFF"
+            }
+        },
+        {
+            "name": "sdk",
+            "displayName": "Shared SDK Publisher",
+            "generator": "Visual Studio 18 2026",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build/SDK",
+            "cacheVariables": {
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
+                "FBZZ_BUILD_TESTS": "OFF",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "OFF"
             }
         }
     ],
@@ -52,6 +85,26 @@
             "name": "development",
             "configurePreset": "development",
             "configuration": "Development"
+        },
+        {
+            "name": "coverage",
+            "configurePreset": "coverage",
+            "configuration": "Debug"
+        },
+        {
+            "name": "sdk-debug",
+            "configurePreset": "sdk",
+            "configuration": "Debug"
+        },
+        {
+            "name": "sdk-development",
+            "configurePreset": "sdk",
+            "configuration": "Development"
+        },
+        {
+            "name": "sdk-release",
+            "configurePreset": "sdk",
+            "configuration": "Release"
         }
     ]
 }

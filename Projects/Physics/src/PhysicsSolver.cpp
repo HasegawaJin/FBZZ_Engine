@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PhysicsSolver.cpp | fbzz::physics
-// 衝突検出 (Broad/Narrow フェーズ) と衝突解決 (インパルスベース)
+/// @file    PhysicsSolver.cpp
+/// @brief   衝突検出 (Broad/Narrow フェーズ) と衝突解決 (インパルスベース)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/PhysicsSolver.hpp>
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/GJK.hpp>
@@ -278,6 +279,16 @@ namespace fbzz::physics
                                        const std::function<bool(int, int)>& layerFilter)
         {
             if (layerFilter && !layerFilter(a.layer, b.layer)) return true;
+
+            // 同じ剛体に属するコライダー同士は当たらない。
+            //
+            // WHY: 1 つの体を «胴 + 脚 4 本» のように複数の形で表すのは普通の組み方で、
+            //      その形どうしは «同じ物» なので重なっていて当たり前。解こうとすると
+            //      体が自分自身を押すことになり、形を足すほど強く押される。
+            //      トリガーより先に見るのは、自分の体の一部に自分が入ったという
+            //      トリガー通知にも意味が無いため。
+            if (a.body && a.body == b.body) return true;
+
             if (a.isTrigger || b.isTrigger) return false;
 
             // WHY: 非 Trigger の Static / Sleeping 同士は解決しても状態が変わらない。
@@ -695,6 +706,21 @@ namespace fbzz::physics
                     if (hit && swapped)
                         cp.normal = -cp.normal;
                 }
+                else if ((tA == ColliderType::CONVEX_HULL && tB == ColliderType::HEIGHT_FIELD) ||
+                         (tA == ColliderType::HEIGHT_FIELD && tB == ColliderType::CONVEX_HULL))
+                {
+                    // WHY ここで受けるか: この分岐は CONVEX_HULL を含む組を «先に» 全部拾う。
+                    //     下の HEIGHT_FIELD 分岐には制御が届かないため、地形との組もここで
+                    //     捌かないと «凸包だけ地形をすり抜ける» ことになる。
+                    const bool swapped = (tA == ColliderType::HEIGHT_FIELD);
+                    const auto& hull = *static_cast<ConvexHullCollider*>(
+                        (swapped ? pair.colliderB : pair.colliderA)->collider);
+                    const auto& field = *static_cast<HeightFieldCollider*>(
+                        (swapped ? pair.colliderA : pair.colliderB)->collider);
+                    hit = TestConvexHullHeightField(hull, field, cp);
+                    if (hit && swapped)
+                        cp.normal = -cp.normal;
+                }
                 else
                 {
                     // ConvexHull を常に B 側に正規化する
@@ -716,6 +742,9 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::CAPSULE)
                         hit = TestCapsuleConvex(
                             *static_cast<CapsuleCollider*>(dynInst.collider), hull, cp);
+                    else if (dynType == ColliderType::CYLINDER)
+                        hit = TestCylinderConvex(
+                            *static_cast<CylinderCollider*>(dynInst.collider), hull, cp);
 
                     if (hit && swapped)
                         cp.normal = -cp.normal;
@@ -749,6 +778,9 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::OBB)
                         hit = TestOBBTriangleMesh(
                             *static_cast<OBBCollider*>(dynInst.collider), mesh, cp);
+                    else if (dynType == ColliderType::CYLINDER)
+                        hit = TestCylinderTriangleMesh(
+                            *static_cast<CylinderCollider*>(dynInst.collider), mesh, cp);
 
                     // スワップした場合は法線を反転 (normal は dyn → mesh 方向)
                     if (hit && swapped)
@@ -788,6 +820,45 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::CONVEX_HULL)
                         hit = TestConvexHullHeightField(
                             *static_cast<ConvexHullCollider*>(dynInst.collider), hf, cp);
+                    else if (dynType == ColliderType::CYLINDER)
+                        hit = TestCylinderHeightField(
+                            *static_cast<CylinderCollider*>(dynInst.collider), hf, cp);
+
+                    if (hit && swapped)
+                        cp.normal = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::CYLINDER || tB == ColliderType::CYLINDER)
+            {
+                // ConvexHull / TriangleMesh / HeightField との組は上の分岐が先に拾う。
+                // ここへ来るのは基本形状同士の組だけ。
+                if (tA == ColliderType::CYLINDER && tB == ColliderType::CYLINDER)
+                {
+                    hit = TestCylinderCylinder(
+                        *static_cast<CylinderCollider*>(pair.colliderA->collider),
+                        *static_cast<CylinderCollider*>(pair.colliderB->collider), cp);
+                }
+                else
+                {
+                    // CYLINDER を常に B 側に正規化する
+                    const bool swapped = (tA == ColliderType::CYLINDER);
+                    const ColliderInstance& dynInst = *(swapped ? pair.colliderB : pair.colliderA);
+                    const ColliderInstance& cylInst = *(swapped ? pair.colliderA : pair.colliderB);
+                    const ColliderType dynType = dynInst.collider->GetType();
+                    const auto& cylinder = *static_cast<CylinderCollider*>(cylInst.collider);
+
+                    if (dynType == ColliderType::SPHERE)
+                        hit = TestSphereCylinder(
+                            *static_cast<SphereCollider*>(dynInst.collider), cylinder, cp);
+                    else if (dynType == ColliderType::AABB)
+                        hit = TestAABBCylinder(
+                            *static_cast<AABBCollider*>(dynInst.collider), cylinder, cp);
+                    else if (dynType == ColliderType::OBB)
+                        hit = TestOBBCylinder(
+                            *static_cast<OBBCollider*>(dynInst.collider), cylinder, cp);
+                    else if (dynType == ColliderType::CAPSULE)
+                        hit = TestCapsuleCylinder(
+                            *static_cast<CapsuleCollider*>(dynInst.collider), cylinder, cp);
 
                     if (hit && swapped)
                         cp.normal = -cp.normal;
@@ -828,12 +899,14 @@ namespace fbzz::physics
             if (cp.isTrigger) continue;
 
             // normal に対して垂直な 2 軸を Gram-Schmidt で構築
+            // 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
+            // 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
             math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
             if (t0.LengthSq() < 1e-6f)
                 t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
-            t0           = t0.Normalized();
+            t0           = t0.NormalizedOr(math::Vector3::RIGHT);
             cp.tangent[0] = t0;
-            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).Normalized();
+            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).NormalizedOr(math::Vector3::FORWARD);
         }
 
         if (contacts.size() == 1)
@@ -920,6 +993,26 @@ namespace fbzz::physics
     }
 
     // ---------------------------------------------------------- ResolveVelocity (PGS)
+    math::Vector3 PhysicsSolver::RelativeVelocityAt(const ContactPoint& cp)
+    {
+        const RigidBody* bodyA = cp.bodyA;
+        const RigidBody* bodyB = cp.bodyB;
+
+        const math::Vector3 vA = bodyA ? bodyA->GetVelocity()        : math::Vector3::ZERO;
+        const math::Vector3 vB = bodyB ? bodyB->GetVelocity()        : math::Vector3::ZERO;
+        const math::Vector3 wA = bodyA ? bodyA->GetAngularVelocity() : math::Vector3::ZERO;
+        const math::Vector3 wB = bodyB ? bodyB->GetAngularVelocity() : math::Vector3::ZERO;
+
+        const math::Vector3 rA = bodyA ? cp.point - bodyA->GetPosition() : math::Vector3::ZERO;
+        const math::Vector3 rB = bodyB ? cp.point - bodyB->GetPosition() : math::Vector3::ZERO;
+
+        // 角速度による接触点の速度も含める。回転しながらぶつかる物体では
+        // 重心速度だけを見ると実際の当たりの強さと合わない。
+        const math::Vector3 vAContact = vA + math::Vector3::Cross(wA, rA);
+        const math::Vector3 vBContact = vB + math::Vector3::Cross(wB, rB);
+        return vAContact - vBContact;
+    }
+
     void PhysicsSolver::ResolveVelocity(ContactPoint& cp)
     {
         if (cp.isTrigger) return;
@@ -930,18 +1023,11 @@ namespace fbzz::physics
         const float invMassA = bodyA ? bodyA->GetInvMass() : 0.0f;
         const float invMassB = bodyB ? bodyB->GetInvMass() : 0.0f;
 
-        const math::Vector3 vA = bodyA ? bodyA->GetVelocity()        : math::Vector3::ZERO;
-        const math::Vector3 vB = bodyB ? bodyB->GetVelocity()        : math::Vector3::ZERO;
-        const math::Vector3 wA = bodyA ? bodyA->GetAngularVelocity() : math::Vector3::ZERO;
-        const math::Vector3 wB = bodyB ? bodyB->GetAngularVelocity() : math::Vector3::ZERO;
-
         const math::Vector3 rA = bodyA ? cp.point - bodyA->GetPosition() : math::Vector3::ZERO;
         const math::Vector3 rB = bodyB ? cp.point - bodyB->GetPosition() : math::Vector3::ZERO;
 
-        const math::Vector3 vAContact = vA + math::Vector3::Cross(wA, rA);
-        const math::Vector3 vBContact = vB + math::Vector3::Cross(wB, rB);
-        const math::Vector3 vRel      = vAContact - vBContact;
-        const float         vRelN     = math::Vector3::Dot(vRel, cp.normal);
+        const math::Vector3 vRel  = RelativeVelocityAt(cp);
+        const float         vRelN = math::Vector3::Dot(vRel, cp.normal);
 
         // WHY: Warm Start の過去インパルスが強すぎると、小さい Collider が大きい床上で微小な上向き速度を持つ。
         //      cachedNormalImpulse が残っている接触では即 return せず、下の PGS 累積クランプで過剰分を戻す。
@@ -1260,17 +1346,37 @@ namespace fbzz::physics
 
         if (dist < 1e-6f)
         {
-            // 球中心がAABB内部: 最も浅い面に押し出す
-            out.normal = math::Vector3::UP;
-            out.depth  = s.m_radius;
+            // 球中心が AABB の内部にある。最近点が中心そのものになるため法線を作れない。
+            // 6 面のうち «一番近い面» を選び、そこから押し出す。
+            // WHY 上向き固定にしないか: 壁の中に生成された・高速に貫通した球が、
+            //     形状に関係なく真上へ飛び出す。抜ける先は最短の面でなければならない。
+            const float toFace[6] = {
+                center.x - aabb.min.x, aabb.max.x - center.x,
+                center.y - aabb.min.y, aabb.max.y - center.y,
+                center.z - aabb.min.z, aabb.max.z - center.z
+            };
+            const math::Vector3 outward[6] = {
+                -math::Vector3::RIGHT,   math::Vector3::RIGHT,
+                -math::Vector3::UP,      math::Vector3::UP,
+                -math::Vector3::FORWARD, math::Vector3::FORWARD
+            };
+
+            int best = 0;
+            for (int i = 1; i < 6; ++i)
+                if (toFace[i] < toFace[best]) best = i;
+
+            out.normal = outward[best];
+            // 面まで戻る分と、そこから半径ぶん抜ける分の合計。
+            out.depth  = s.m_radius + toFace[best];
+            out.point  = center + outward[best] * toFace[best];
         }
         else
         {
             out.normal = diff * (1.0f / dist);
             out.depth  = s.m_radius - dist;
+            out.point  = closest;
         }
 
-        out.point = closest;
         return true;
     }
 
@@ -1348,6 +1454,50 @@ namespace fbzz::physics
         return true;
     }
 
+    namespace
+    {
+        /// 箱の内部に埋まった線分を外へ出すときの «出口»。
+        struct BoxExit
+        {
+            math::Vector3 outward;     ///< 押し出す向き (ワールド空間)
+            float         distance;    ///< 線分の最深点を面まで戻すのに要る距離
+            bool          bindsStart;  ///< その距離を決めているのが線分の始点側か
+        };
+
+        /// 箱の 6 面のうち «線分全体を出すのに一番浅くて済む面» を選ぶ。
+        ///
+        /// WHY 1 点で決めないか: 線分が箱に埋まっていると最近点は距離 0 の点が無数にあり、
+        ///     どれが返るかはサンプリングの刻み次第になる。たまたま拾った端点が底面へ
+        ///     接していると、カプセル全体は箱の中央に居るのに «下へ抜ける» が答えになる。
+        ///     押し出す先は 1 点ではなく «線分全体» で決めなければならない。
+        /// WHY 端点だけ見れば足りるか: 面は平面なので、線分上で最も深い点は必ず端点のどちらか。
+        ///
+        /// localStart / localEnd は箱の中心を原点、axes を基底とした座標。
+        BoxExit ShallowestBoxExit(const math::Vector3& localStart,
+                                  const math::Vector3& localEnd,
+                                  const math::Vector3& halfExtents,
+                                  const math::Vector3 axes[3])
+        {
+            const float head[3]   = { localStart.x,  localStart.y,  localStart.z  };
+            const float tail[3]   = { localEnd.x,    localEnd.y,    localEnd.z    };
+            const float extent[3] = { halfExtents.x, halfExtents.y, halfExtents.z };
+
+            BoxExit best{ axes[0], std::numeric_limits<float>::max(), true };
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                // + 側の面から出すなら一番 - 寄りの点が、- 側から出すなら + 寄りの点が縛りになる。
+                const float toPositive = extent[axis] - std::min(head[axis], tail[axis]);
+                const float toNegative = extent[axis] + std::max(head[axis], tail[axis]);
+
+                if (toPositive < best.distance)
+                    best = { axes[axis], toPositive, head[axis] <= tail[axis] };
+                if (toNegative < best.distance)
+                    best = { -axes[axis], toNegative, head[axis] >= tail[axis] };
+            }
+            return best;
+        }
+    } // namespace
+
     bool PhysicsSolver::TestAABBCapsule(const AABBCollider& b,
                                         const CapsuleCollider& c,
                                         ContactPoint& out)
@@ -1380,34 +1530,23 @@ namespace fbzz::physics
         const float dist = std::sqrt(bestDistSq);
         if (dist < 1e-6f)
         {
-            const float toMinX = bestCapsulePoint.x - aabb.min.x;
-            const float toMaxX = aabb.max.x - bestCapsulePoint.x;
-            const float toMinY = bestCapsulePoint.y - aabb.min.y;
-            const float toMaxY = aabb.max.y - bestCapsulePoint.y;
-            const float toMinZ = bestCapsulePoint.z - aabb.min.z;
-            const float toMaxZ = aabb.max.z - bestCapsulePoint.z;
-
-            float faceDistance = toMinX;
-            math::Vector3 faceOut = -math::Vector3::RIGHT;
-            auto SelectFace = [&](float distance, const math::Vector3& outward)
-            {
-                if (distance < faceDistance)
-                {
-                    faceDistance = distance;
-                    faceOut = outward;
-                }
+            // カプセル軸がボックスの内部に埋まっている。最近点が軸上の点そのものになるため
+            // 法線を作れない。線分全体を «一番浅い面» から押し出す。
+            const math::Vector3 center = aabb.Center();
+            const math::Vector3 worldAxes[3] = {
+                math::Vector3::RIGHT, math::Vector3::UP, math::Vector3::FORWARD
             };
-            SelectFace(toMaxX, math::Vector3::RIGHT);
-            SelectFace(toMinY, -math::Vector3::UP);
-            SelectFace(toMaxY, math::Vector3::UP);
-            SelectFace(toMinZ, -math::Vector3::FORWARD);
-            SelectFace(toMaxZ, math::Vector3::FORWARD);
+            const BoxExit boxExit = ShallowestBoxExit(c.GetSegmentStart() - center,
+                                                   c.GetSegmentEnd() - center,
+                                                   aabb.Extents(), worldAxes);
 
-            // 接触法線は「B(カプセル)→A(ボックス)」方向に統一。
-            // カプセル軸がボックス内部に埋まっている場合、最近接面の外向きノーマルの反対方向へ押し出す。
-            out.normal = -faceOut;
-            out.depth = c.m_radius + faceDistance;
-            bestBoxPoint = bestCapsulePoint + faceOut * faceDistance;
+            // 接触法線は「B(カプセル)→A(ボックス)」方向に統一。押し出す向きの逆。
+            out.normal = -boxExit.outward;
+            out.depth  = c.m_radius + boxExit.distance;
+
+            const math::Vector3 deepest =
+                boxExit.bindsStart ? c.GetSegmentStart() : c.GetSegmentEnd();
+            bestBoxPoint = deepest + boxExit.outward * boxExit.distance;
         }
         else
         {
@@ -1494,6 +1633,89 @@ namespace fbzz::physics
             const float v = vb * denom;
             const float w = vc * denom;
             return a + ab * v + ac * w;
+        }
+
+        // 点が三角形の内側または辺上にあるかを符号付き面積で判定する。
+        // WHY: 線分と三角形面の交差候補を、三角形の外側へ誤って採用しないため。
+        bool IsPointOnTriangle(const math::Vector3& p, const Triangle& tri)
+        {
+            constexpr float EPS = 1e-5f;
+            const math::Vector3& a = tri.v[0];
+            const math::Vector3& b = tri.v[1];
+            const math::Vector3& c = tri.v[2];
+            const math::Vector3& n = tri.normal;
+
+            const float edge0 = math::Vector3::Dot(math::Vector3::Cross(b - a, p - a), n);
+            const float edge1 = math::Vector3::Dot(math::Vector3::Cross(c - b, p - b), n);
+            const float edge2 = math::Vector3::Dot(math::Vector3::Cross(a - c, p - c), n);
+            return edge0 >= -EPS && edge1 >= -EPS && edge2 >= -EPS;
+        }
+
+        // 線分と三角形の最近接点を、端点サンプリングなしで求める。
+        // WHAT: 線分の端点と三角形、線分と三角形の各辺、線分と三角形面の
+        //       内部交差を全候補として比較する。
+        // WHY: 端点・中点だけの近似では、傾斜面や三角形境界で最近接点と法線が
+        //      移動方向に応じて跳ぶため、カプセルの前後振動を誘発する。
+        float ClosestPointsOnSegmentTriangle(const math::Vector3& segS,
+                                              const math::Vector3& segE,
+                                              const Triangle&       tri,
+                                              math::Vector3&        outSegment,
+                                              math::Vector3&        outTriangle)
+        {
+            float bestDistSq = std::numeric_limits<float>::max();
+            outSegment = segS;
+            outTriangle = tri.v[0];
+
+            auto Consider = [&](const math::Vector3& segmentPoint,
+                                const math::Vector3& trianglePoint)
+            {
+                const float distanceSq = (segmentPoint - trianglePoint).LengthSq();
+                if (distanceSq < bestDistSq)
+                {
+                    bestDistSq = distanceSq;
+                    outSegment = segmentPoint;
+                    outTriangle = trianglePoint;
+                }
+            };
+
+            // 線分の端点と三角形の最近接点。
+            Consider(segS, ClosestPointOnTriangle(segS, tri));
+            Consider(segE, ClosestPointOnTriangle(segE, tri));
+
+            // 線分と三角形の各辺の最近接点。
+            for (int edge = 0; edge < 3; ++edge)
+            {
+                math::Vector3 segmentPoint;
+                math::Vector3 edgePoint;
+                ClosestPointsOnSegments(segS, segE,
+                                         tri.v[edge], tri.v[(edge + 1) % 3],
+                                         segmentPoint, edgePoint);
+                Consider(segmentPoint, edgePoint);
+            }
+
+            // 線分が三角形面を横切り、交点が三角形内にある場合は距離 0。
+            const float signedStart = math::Vector3::Dot(segS - tri.v[0], tri.normal);
+            const float signedEnd   = math::Vector3::Dot(segE - tri.v[0], tri.normal);
+            const float planeDelta  = signedStart - signedEnd;
+            if (std::abs(planeDelta) > 1e-6f)
+            {
+                const float planeT = signedStart / planeDelta;
+                if (planeT >= 0.0f && planeT <= 1.0f)
+                {
+                    const math::Vector3 intersection = segS + (segE - segS) * planeT;
+                    if (IsPointOnTriangle(intersection, tri))
+                        Consider(intersection, intersection);
+                }
+            }
+            else if (std::abs(signedStart) <= 1e-5f &&
+                     (IsPointOnTriangle(segS, tri) || IsPointOnTriangle(segE, tri)))
+            {
+                // 線分全体が面とほぼ平行かつ同一平面にある退化ケース。
+                Consider(IsPointOnTriangle(segS, tri) ? segS : segE,
+                         IsPointOnTriangle(segS, tri) ? segS : segE);
+            }
+
+            return bestDistSq;
         }
     } // anonymous namespace
 
@@ -1614,8 +1836,8 @@ namespace fbzz::physics
     }
 
     bool PhysicsSolver::TestCapsuleTriangle(const CapsuleCollider& c,
-                                             const Triangle& tri,
-                                             ContactPoint& out)
+                                              const Triangle& tri,
+                                              ContactPoint& out)
     {
         const math::Vector3 segS = c.GetSegmentStart();
         const math::Vector3 segE = c.GetSegmentEnd();
@@ -1632,40 +1854,10 @@ namespace fbzz::physics
             return false;
         }
 
-        // カプセル線分と三角形の各エッジの最近傍点ペアを探す
-        float   bestDistSq = std::numeric_limits<float>::max();
-        math::Vector3 bestCapsule, bestTriPt;
-
-        // エッジ 3 本との線分-線分最近傍
-        for (int k = 0; k < 3; ++k)
-        {
-            const math::Vector3& ta = tri.v[k];
-            const math::Vector3& tb = tri.v[(k + 1) % 3];
-            math::Vector3 cp, tp;
-            ClosestPointsOnSegments(segS, segE, ta, tb, cp, tp);
-            const float dSq = (cp - tp).LengthSq();
-            if (dSq < bestDistSq)
-            {
-                bestDistSq = dSq;
-                bestCapsule = cp;
-                bestTriPt   = tp;
-            }
-        }
-
-        // 三角形面への投影点も候補に加える
-        // カプセル線分のサンプル点 (3 点) を三角形上の最近傍点と比較
-        for (float t : {0.0f, 0.5f, 1.0f})
-        {
-            const math::Vector3 sample = segS + (segE - segS) * t;
-            const math::Vector3 tp     = ClosestPointOnTriangle(sample, tri);
-            const float dSq = (sample - tp).LengthSq();
-            if (dSq < bestDistSq)
-            {
-                bestDistSq  = dSq;
-                bestCapsule = sample;
-                bestTriPt   = tp;
-            }
-        }
+        math::Vector3 bestCapsule;
+        math::Vector3 bestTriPt;
+        const float bestDistSq = ClosestPointsOnSegmentTriangle(
+            segS, segE, tri, bestCapsule, bestTriPt);
 
         if (bestDistSq >= c.m_radius * c.m_radius) return false;
 
@@ -1691,12 +1883,33 @@ namespace fbzz::physics
 
     namespace
     {
+        // GJK が渡してくる探索方向は «長さ 0 になりうる»。
+        //
+        // WHY 呼び出し側で保証できないか:
+        //   探索方向は 2 形状のミンコフスキー差から毎反復で作られる。中心が一致した
+        //   球どうし、完全に入れ子になったカプセル、単体が退化した瞬間 — どれも
+        //   «方向が定まらない» が正常な途中経過として現れる。GJK の側から見ると
+        //   «どこでもいいから表面の 1 点» が返ればよく、そこで止める理由が無い。
+        //
+        // WHY 固定の向きへ倒すか:
+        //   サポート関数は全域で定義されていなければならない (部分関数だと単体が
+        //   組めない)。方向が無いときにどの点を返すかは結果に影響しないので、
+        //   毎回同じ点を返して反復が振動しないようにする。
+        //
+        // NOTE: Vector3::Normalized() は長さ 0 で assert する契約 (ゲーム側で
+        //       退化した入力を握り潰さないため)。ここは «退化が正常系» の側なので
+        //       NormalizedOr を使う。
+        math::Vector3 SupportDirection(const math::Vector3& dir)
+        {
+            return dir.NormalizedOr(math::Vector3::UP);
+        }
+
         // 各形状の GJK サポート関数
         math::Vector3 SupportSphere(const void* shape, const math::Vector3& dir)
         {
             const auto* s = static_cast<const SphereCollider*>(shape);
             const math::Vector3 center = s->GetAABB().Center();
-            return center + dir.Normalized() * s->m_radius;
+            return center + SupportDirection(dir) * s->m_radius;
         }
 
         math::Vector3 SupportAABB(const void* shape, const math::Vector3& dir)
@@ -1722,7 +1935,7 @@ namespace fbzz::physics
             // セグメント上で dir と最も内積が大きい点 + radius
             const math::Vector3 best = (math::Vector3::Dot(s, dir) >= math::Vector3::Dot(e, dir))
                                         ? s : e;
-            return best + dir.Normalized() * c->m_radius;
+            return best + SupportDirection(dir) * c->m_radius;
         }
 
         math::Vector3 SupportTriangle(const void* shape, const math::Vector3& dir)
@@ -1765,12 +1978,10 @@ namespace fbzz::physics
                                        ContactPoint& out)
     {
         const math::Vector3 axes[3] = { b.GetAxis(0), b.GetAxis(1), b.GetAxis(2) };
-        const float extents[3] = { b.m_halfExtents.x, b.m_halfExtents.y, b.m_halfExtents.z };
         const math::Vector3 segment = c.GetSegmentEnd() - c.GetSegmentStart();
 
         math::Vector3 bestCapsulePoint = c.GetSegmentStart();
         math::Vector3 bestBoxPoint = b.GetCenter();
-        math::Vector3 bestLocalPoint = math::Vector3::ZERO;
         float bestDistSq = std::numeric_limits<float>::max();
 
         for (int i = 0; i <= 8; ++i)
@@ -1799,7 +2010,6 @@ namespace fbzz::physics
                 bestDistSq = distSq;
                 bestCapsulePoint = capsulePoint;
                 bestBoxPoint = boxPoint;
-                bestLocalPoint = localPoint;
             }
         }
 
@@ -1808,29 +2018,30 @@ namespace fbzz::physics
         const float dist = std::sqrt(bestDistSq);
         if (dist < 1e-6f)
         {
-            float faceDistance = extents[0] - std::abs(bestLocalPoint.x);
-            int faceAxis = 0;
-            float faceSign = bestLocalPoint.x >= 0.0f ? 1.0f : -1.0f;
+            // カプセル軸が OBB の内部に埋まっている。AABB 版と同じく、拾った 1 点ではなく
+            // 線分全体を出せる面を選ぶ。
+            const math::Vector3 toStart = c.GetSegmentStart() - b.GetCenter();
+            const math::Vector3 toEnd   = c.GetSegmentEnd()   - b.GetCenter();
+            const math::Vector3 localStart = {
+                math::Vector3::Dot(toStart, axes[0]),
+                math::Vector3::Dot(toStart, axes[1]),
+                math::Vector3::Dot(toStart, axes[2])
+            };
+            const math::Vector3 localEnd = {
+                math::Vector3::Dot(toEnd, axes[0]),
+                math::Vector3::Dot(toEnd, axes[1]),
+                math::Vector3::Dot(toEnd, axes[2])
+            };
+            const BoxExit boxExit =
+                ShallowestBoxExit(localStart, localEnd, b.m_halfExtents, axes);
 
-            for (int axis = 1; axis < 3; ++axis)
-            {
-                const float localValue =
-                    axis == 1 ? bestLocalPoint.y : bestLocalPoint.z;
-                const float distance = extents[axis] - std::abs(localValue);
-                if (distance < faceDistance)
-                {
-                    faceDistance = distance;
-                    faceAxis = axis;
-                    faceSign = localValue >= 0.0f ? 1.0f : -1.0f;
-                }
-            }
+            // 接触法線は「B(カプセル)→A(OBB)」方向に統一。押し出す向きの逆。
+            out.normal = -boxExit.outward;
+            out.depth  = c.m_radius + boxExit.distance;
 
-            const math::Vector3 faceOut = axes[faceAxis] * faceSign;
-            // 接触法線は「B(カプセル)→A(OBB)」方向に統一。
-            // OBB 内部では最近接面の外向きノーマルの反対方向へカプセルを押し出す。
-            out.normal = -faceOut;
-            out.depth = c.m_radius + faceDistance;
-            bestBoxPoint = bestCapsulePoint + faceOut * faceDistance;
+            const math::Vector3 deepest =
+                boxExit.bindsStart ? c.GetSegmentStart() : c.GetSegmentEnd();
+            bestBoxPoint = deepest + boxExit.outward * boxExit.distance;
         }
         else
         {
@@ -1879,6 +2090,92 @@ namespace fbzz::physics
                                            ContactPoint& out)
     {
         return GJKEPAToContact(&c,    SupportCapsule,
+                               &hull, ConvexHullCollider::SupportFnImpl, out);
+    }
+
+    // ------------------------------------------------------ Cylinder テスト関数
+
+    bool PhysicsSolver::TestSphereCylinder(const SphereCollider& s,
+                                            const CylinderCollider& c,
+                                            ContactPoint& out)
+    {
+        const math::Vector3 center  = s.GetAABB().Center();
+        const math::Vector3 closest = c.ClosestPoint(center);
+        const math::Vector3 diff    = center - closest;
+        const float         distSq  = diff.LengthSq();
+        if (distSq >= s.m_radius * s.m_radius) return false;
+
+        const float dist = std::sqrt(distSq);
+        if (dist < 1e-6f)
+        {
+            // 球中心が円柱の内部にあり方向が決まらない。側面と円板のうち脱出が浅い方へ押し出す。
+            const math::Vector3 delta     = center - c.GetCenter();
+            const float         axial     = math::Vector3::Dot(delta, c.GetAxis());
+            const math::Vector3 radial    = delta - c.GetAxis() * axial;
+            const float         radialLen = radial.Length();
+
+            const float sideDistance = c.m_radius - radialLen;
+            const float capDistance  = c.m_halfHeight - std::abs(axial);
+
+            // 中心軸上に完全に乗ると側面方向が定まらないため、その場合は必ず円板側へ逃がす。
+            if (radialLen > 1e-6f && sideDistance <= capDistance)
+            {
+                out.normal = radial * (1.0f / radialLen);
+                out.depth  = s.m_radius + sideDistance;
+            }
+            else
+            {
+                out.normal = c.GetAxis() * (axial >= 0.0f ? 1.0f : -1.0f);
+                out.depth  = s.m_radius + capDistance;
+            }
+        }
+        else
+        {
+            out.normal = diff * (1.0f / dist);
+            out.depth  = s.m_radius - dist;
+        }
+
+        out.point = closest;
+        return true;
+    }
+
+    bool PhysicsSolver::TestAABBCylinder(const AABBCollider& b,
+                                          const CylinderCollider& c,
+                                          ContactPoint& out)
+    {
+        return GJKEPAToContact(&b, SupportAABB,
+                               &c, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestOBBCylinder(const OBBCollider& b,
+                                         const CylinderCollider& c,
+                                         ContactPoint& out)
+    {
+        return GJKEPAToContact(&b, SupportOBB,
+                               &c, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestCapsuleCylinder(const CapsuleCollider& a,
+                                             const CylinderCollider& c,
+                                             ContactPoint& out)
+    {
+        return GJKEPAToContact(&a, SupportCapsule,
+                               &c, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestCylinderCylinder(const CylinderCollider& a,
+                                              const CylinderCollider& b,
+                                              ContactPoint& out)
+    {
+        return GJKEPAToContact(&a, CylinderCollider::SupportFnImpl,
+                               &b, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestCylinderConvex(const CylinderCollider& c,
+                                            const ConvexHullCollider& hull,
+                                            ContactPoint& out)
+    {
+        return GJKEPAToContact(&c,    CylinderCollider::SupportFnImpl,
                                &hull, ConvexHullCollider::SupportFnImpl, out);
     }
 
@@ -1935,28 +2232,67 @@ namespace fbzz::physics
     }
 
     bool PhysicsSolver::TestCapsuleTriangleMesh(const CapsuleCollider& c,
-                                                 const TriangleMeshCollider& mesh,
-                                                 ContactPoint& out)
+                                                  const TriangleMeshCollider& mesh,
+                                                  ContactPoint& out)
     {
         // カプセルの AABB で BVH をクエリ
         const AABB queryAABB = c.GetAABB();
-        bool    found    = false;
-        float   maxDepth = -1.0f;
-        ContactPoint best;
+        std::vector<ContactPoint> candidates;
+        candidates.reserve(8);
 
         mesh.GetBVH().Query(queryAABB, [&](const Triangle& tri)
         {
             ContactPoint cp;
-            if (TestCapsuleTriangle(c, tri, cp) && cp.depth > maxDepth)
-            {
-                maxDepth = cp.depth;
-                best     = cp;
-                found    = true;
-            }
+            if (TestCapsuleTriangle(c, tri, cp))
+                candidates.push_back(cp);
         });
 
-        if (found) out = best;
-        return found;
+        if (candidates.empty()) return false;
+
+        // 最深接触を基準に、同じ接触パッチに属する三角形だけをマージする。
+        // WHY: MeshCollider は三角形ごとに法線を持つため、境界を跨ぐたびに
+        //      最深の1枚を選ぶと接触法線・摩擦方向がフレーム単位で切り替わる。
+        //      法線差が大きい面まで平均すると鋭い角を丸めてしまうため、
+        //      近い接触点かつ近い法線の候補に限定する。
+        auto deepest = std::max_element(candidates.begin(), candidates.end(),
+            [](const ContactPoint& lhs, const ContactPoint& rhs) {
+                return lhs.depth < rhs.depth;
+            });
+        const float maxDepth = deepest->depth;
+        const math::Vector3 referencePoint = deepest->point;
+        const math::Vector3 referenceNormal = deepest->normal;
+        const float mergeRadius = std::max(0.05f, c.m_radius * 0.5f);
+        const float mergeRadiusSq = mergeRadius * mergeRadius;
+        constexpr float DEPTH_TOLERANCE = 0.02f;
+        constexpr float NORMAL_MERGE_DOT = 0.96f;
+
+        math::Vector3 normalSum = math::Vector3::ZERO;
+        math::Vector3 pointSum = math::Vector3::ZERO;
+        float weightSum = 0.0f;
+        int mergedCount = 0;
+        for (const ContactPoint& candidate : candidates)
+        {
+            if (maxDepth - candidate.depth > DEPTH_TOLERANCE) continue;
+            if ((candidate.point - referencePoint).LengthSq() > mergeRadiusSq) continue;
+            if (math::Vector3::Dot(candidate.normal, referenceNormal) < NORMAL_MERGE_DOT) continue;
+
+            // 深い接触ほど大きく反映し、接触点・法線の急な切り替わりを抑える。
+            const float weight = std::max(candidate.depth, 1e-4f);
+            normalSum += candidate.normal * weight;
+            pointSum += candidate.point * weight;
+            weightSum += weight;
+            ++mergedCount;
+        }
+
+        out = *deepest;
+        if (mergedCount > 1 && weightSum > 0.0f && normalSum.LengthSq() > 1e-8f)
+        {
+            out.normal = normalSum.Normalized();
+            out.point = pointSum * (1.0f / weightSum);
+            // 深度は最大値を残す。平均すると位置補正が不足して再び貫通するため。
+            out.depth = maxDepth;
+        }
+        return true;
     }
 
     bool PhysicsSolver::TestOBBTriangleMesh(const OBBCollider& b,
@@ -2006,6 +2342,30 @@ namespace fbzz::physics
         {
             ContactPoint cp;
             if (GJKEPAToContact(&hull, ConvexHullCollider::SupportFnImpl,
+                                &tri, SupportTriangle, cp) && cp.depth > maxDepth)
+            {
+                maxDepth = cp.depth;
+                best = cp;
+                found = true;
+            }
+        });
+
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestCylinderTriangleMesh(const CylinderCollider& c,
+                                                  const TriangleMeshCollider& mesh,
+                                                  ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+
+        mesh.GetBVH().Query(c.GetAABB(), [&](const Triangle& tri)
+        {
+            ContactPoint cp;
+            if (GJKEPAToContact(&c, CylinderCollider::SupportFnImpl,
                                 &tri, SupportTriangle, cp) && cp.depth > maxDepth)
             {
                 maxDepth = cp.depth;
@@ -2117,6 +2477,24 @@ namespace fbzz::physics
         hf.GetBVH().Query(hull.GetAABB(), [&](const Triangle& tri) {
             ContactPoint cp;
             if (GJKEPAToContact(&hull, ConvexHullCollider::SupportFnImpl,
+                                &tri, SupportTriangle, cp) && cp.depth > maxDepth) {
+                maxDepth = cp.depth; best = cp; found = true;
+            }
+        });
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestCylinderHeightField(const CylinderCollider& c,
+                                                 const HeightFieldCollider& hf,
+                                                 ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+        hf.GetBVH().Query(c.GetAABB(), [&](const Triangle& tri) {
+            ContactPoint cp;
+            if (GJKEPAToContact(&c, CylinderCollider::SupportFnImpl,
                                 &tri, SupportTriangle, cp) && cp.depth > maxDepth) {
                 maxDepth = cp.depth; best = cp; found = true;
             }

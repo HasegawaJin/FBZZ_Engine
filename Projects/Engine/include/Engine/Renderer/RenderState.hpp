@@ -1,8 +1,10 @@
-// FBZZ Engine
-// RenderState.hpp | fbzz::renderer
-// Renderer のパイプライン状態記述
-// トポロジー・ブレンド・深度・カリングなどをバックエンド非依存で表す。
-// PipelineState の生成キーとして使うため、値型として扱う。
+/// @file    RenderState.hpp
+/// @brief   Renderer のパイプライン状態記述。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// トポロジー・ブレンド・深度・カリングなどをバックエンド非依存で表す。
+/// PipelineState の生成キーとして使うため、値型として扱う。
 #pragma once
 
 // wingdi.h が OPAQUE=2 を定義するため、公開 API 名には接尾辞を付ける。
@@ -17,10 +19,35 @@ namespace fbzz::renderer {
         SOLID_FRONT_CULL, // 選択アウトライン用
     };
 
+    // ブレンド方程式の唯一の正本。DX11PipelineState / DX12PsoCache は「ここに書いてある式を
+    // それぞれの API 語彙へ翻訳するだけ」であって、片方だけ別の式を選んではならない。
+    //
+    //   OPAQUE_BLEND  : ブレンドなし
+    //   ALPHA_BLEND   : rgb = src.rgb * src.a + dst.rgb * (1 - src.a)
+    //   ADDITIVE      : rgb = src.rgb * src.a + dst.rgb
+    //   PREMULTIPLIED : rgb = src.rgb         + dst.rgb * (1 - src.a)
+    //   アルファは 3 モード共通で a = src.a + dst.a * (1 - src.a)
+    //
+    // WHY ADDITIVE が src.a を «掛ける» 側か (ONE ではない):
+    //   同じピクセルシェーダーが blendMode の指定だけで 3 モードに差し替わる
+    //   (Particle.hlsl と particlePSO / particleAlphaPSO / particlePremultipliedPSO)。
+    //   出力を非事前乗算に統一しておかないと、1 本の PS が 3 モードで正しく描けない。
+    //   事前乗算した値を出したいシェーダーのための口が PREMULTIPLIED で、
+    //   ADDITIVE を ONE にするとその 2 つが区別できなくなる。
+    // NOTE: 2026-08-24 まで DX12 だけ ADDITIVE の SrcBlend が ONE になっていた。
+    //       出力アルファがブレンド方程式から消えるため、加算パーティクルが寿命フェードを
+    //       失って重なり枚数ぶん明るくなり続ける (白飛び) 一方、alpha=0 を返していた
+    //       LensFlare は DX11 でだけ完全に消えていた。式を 1 つに揃えて両方を閉じる。
     enum class BlendMode {
         OPAQUE_BLEND, // 不透明 (デフォルト)
         ALPHA_BLEND, // アルファブレンド (半透明)
         ADDITIVE,    // 加算合成 (パーティクル・エフェクト)
+        // 事前乗算アルファ: out = src.rgb + dst.rgb * (1 - src.a)
+        // WHY: 1 枚のテクスチャの中で「発光する芯」と「煙のように背景を隠す縁」を
+        //      同時に表現できる (alpha=0 かつ RGB>0 の画素が加算として振る舞う)。
+        //      Alpha と Additive を別エミッターに分けて重ねる必要がなくなり、
+        //      爆炎のようにコアと煙が連続する表現でソート順の破綻も減る。
+        PREMULTIPLIED,
     };
 
     enum class DepthMode {

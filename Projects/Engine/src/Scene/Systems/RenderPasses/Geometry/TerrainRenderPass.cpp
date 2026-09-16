@@ -1,25 +1,27 @@
-// FBZZ Engine
-// RenderPasses/Geometry/TerrainRenderPass.cpp | fbzz::scene
-// TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)
-//
-// テクスチャスロット (Terrain.hlsl と同期すること):
-//   t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
-//   t1-t4   = layer0-3 ディフューズ
-//   t5-t8   = layer0-3 法線
-//   t9-t12  = layer0-3 AO/Roughness (R=AO, G=Roughness)
-//   t13     = shadow depth
-//
-// サンプラースロット (Terrain.hlsl と同期すること):
-//   s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
-//   s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
-//   s2 = CLAMP_LINEAR      スプラットマップ用
-//
-// 設計上の注意:
-//   - シングルスレッド前提。static ローカルによる遅延初期化を使う。
-//   - GPU バッファは ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
-//   - heightDirty: 全チャンクを削除して再構築
-//   - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
+/// @file    RenderPasses/Geometry/TerrainRenderPass.cpp
+/// @brief   TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// テクスチャスロット (Terrain.hlsl と同期すること):
+/// t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
+/// t1-t4   = layer0-3 ディフューズ
+/// t5-t8   = layer0-3 法線
+/// t9-t12  = layer0-3 AO/Roughness (R=AO, G=Roughness)
+/// t13     = shadow depth
+///
+/// サンプラースロット (Terrain.hlsl と同期すること):
+/// s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
+/// s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
+/// s2 = CLAMP_LINEAR      スプラットマップ用
+///
+/// 設計上の注意:
+/// - シングルスレッド前提。static ローカルによる遅延初期化を使う。
+/// - GPU バッファは ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
+/// - heightDirty: 全チャンクを削除して再構築
+/// - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
+#include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
@@ -34,7 +36,6 @@
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
-#include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector2.hpp>
@@ -108,6 +109,9 @@ struct TerrainTextures {
 
 static std::unordered_map<TerrainChunkKey, TerrainChunk> g_chunkCache;
 static std::unordered_map<uint32_t, TerrainTextures>    g_texCache;
+// レイヤーマテリアルのテクスチャパス署名。Material インスペクタでテクスチャを差し替えたときだけ
+// テクスチャを再構築するための変更検出に使う（毎フレーム GPU 再アップロードを避ける）。
+static std::unordered_map<uint32_t, size_t>             g_texSigCache;
 
 struct TerrainNeighbors {
     const TerrainComponent* north = nullptr;
@@ -127,7 +131,9 @@ struct TerrainCameraFrameCB {
     math::Matrix4 viewProjection;
     math::Matrix4 invViewProjection;
     math::Vector3 cameraPos; float nearZ;
-    float         farZ;      float _pad[3];
+    // LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること。
+    float         farZ;      float _reserved;
+    float         isOrthographic; float _pad;
 };
 static_assert(sizeof(TerrainCameraFrameCB) == 288, "PerFrameCB size mismatch");
 
@@ -141,8 +147,12 @@ struct TerrainObjectCB {
     math::Vector4 layerTextureFlags;
     math::Vector4 layerAutoHeight[4];
     math::Vector4 layerAutoSlope[4];
+    // 天候 (x=wetness, y=darkening, z=puddleAmount)。
+    // WHY b8 から読まないか: 地形シェーダーは b1 を TerrainCB として使うため
+    //     AdvancedGraphicsConstants を宣言できない。値はここで手渡す。
+    math::Vector4 weather;
 };
-static_assert(sizeof(TerrainObjectCB) == 416, "TerrainObjectCB size mismatch");
+static_assert(sizeof(TerrainObjectCB) == 432, "TerrainObjectCB size mismatch");
 
 static std::unordered_map<uint32_t, TerrainObjectCB> g_cbParamCache;
 
@@ -285,40 +295,55 @@ static TerrainNeighbors ResolveTerrainNeighbors(
     return neighbors;
 }
 
-static void EraseTerrainChunkCache(EntityID eid)
+// チャンクが保持する GPU 頂点・インデックスバッファを明示解放する。
+// WHY: ResourceHandle は RAII ではなく明示解放が必要（このファイルの texCache 解放や
+//      末尾の GC 経路と同じ規約）。キャッシュからチャンクを破棄する前に必ず呼ばないと、
+//      スカルプト中は heightDirty が毎フレーム立ってチャンクを作り直すため、
+//      編集するほど GPU バッファがリークし続けてフレームが重くなる。
+static void ReleaseChunkBuffers(renderer::ResourceManager& resources, TerrainChunk& chunk)
 {
-    std::erase_if(g_chunkCache, [&eid](const auto& kv) {
-        return kv.first.entityId == eid;
+    resources.Release(chunk.vertexBuffer);
+    for (auto& ib : chunk.indexBufferLOD)
+        resources.Release(ib);
+}
+
+static void EraseTerrainChunkCache(renderer::ResourceManager& resources, EntityID eid)
+{
+    std::erase_if(g_chunkCache, [&](auto& kv) {
+        if (kv.first.entityId != eid)
+            return false;
+        ReleaseChunkBuffers(resources, kv.second);
+        return true;
     });
 }
 
-static void EraseTerrainChunkCacheForComponent(Scene& scene, const TerrainComponent* terrain)
+static void EraseTerrainChunkCacheForComponent(Scene& scene, renderer::ResourceManager& resources, const TerrainComponent* terrain)
 {
     if (!terrain)
         return;
 
     for (EntityID candidate : scene.GetEntities<TerrainComponent>()) {
         if (scene.GetComponent<TerrainComponent>(candidate) == terrain) {
-            EraseTerrainChunkCache(candidate);
+            EraseTerrainChunkCache(resources, candidate);
             return;
         }
     }
 }
 
-static void EraseNeighborTerrainChunkCaches(Scene& scene, const TerrainNeighbors& neighbors)
+static void EraseNeighborTerrainChunkCaches(Scene& scene, renderer::ResourceManager& resources, const TerrainNeighbors& neighbors)
 {
     // WHY: 境界頂点は隣接 Terrain の高さを参照して構築されるため、
     //      自身の高さが変わったときは隣接側の GPU キャッシュも無効化する。
     //      heightDirty を相互に立てると隣接同士で毎フレーム再 dirty 化されるため、
-    //      ここではキャッシュだけを直接破棄する。
-    EraseTerrainChunkCacheForComponent(scene, neighbors.north);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.south);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.west);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.east);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.northWest);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.northEast);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.southWest);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.southEast);
+    //      ここではキャッシュだけを直接破棄する（GPU バッファは解放する）。
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.north);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.south);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.west);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.east);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.northWest);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.northEast);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.southWest);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.southEast);
 }
 
 static void BuildChunk(
@@ -519,18 +544,27 @@ static TerrainTextures BuildTextureSet(
 
 // ─── IRenderPass ──────────────────────────────────────────────────────────
 
-std::string_view TerrainRenderPass::Name() const { return "TerrainForward"; }
-
-std::vector<renderer::RenderGraph::ResourceAccess> TerrainRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+std::string_view TerrainRenderPass::Name() const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "ShadowMap", U::Read }, { "HDR", U::ReadWrite } };
+    return m_mode == TerrainDrawMode::GBuffer ? "TerrainGBuffer" : "TerrainForward";
 }
 
-void TerrainRenderPass::Execute(RenderPassContext& ctx)
+void TerrainRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+    // 影と Cookie の束縛は GBuffer / Forward で分岐していない (Execute の t13 / t28 / t31)。
+    // 以前は Deferred のときだけ申告から抜けていて、依存辺が張られないまま
+    // «同じ GBuffer を書く DeferredGBuffer が先に走るから» という偶然で順序が保たれていた。
+    builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+
+    // GBuffer へ書けば DeferredLighting/GTAO/SSAO/SSR/ContactShadows に地形が含まれる。
+    // Forward では HDR へ直接ライティング結果を描く。
+    const char* const target = m_mode == TerrainDrawMode::GBuffer ? "GBuffer" : "HDR";
+    builder.ReadWrite(target).SetAutoTarget(target);
+}
+
+void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    // 描き先の束縛は Setup の SetAutoTarget が済ませている。
 
     // エイリアス: TerrainRenderSystem の旧シグネチャ変数名を ctx から引く
     Scene&                     scene               = ctx.scene;
@@ -538,7 +572,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     renderer::ResourceManager& resources           = ctx.resources;
     const renderer::Camera&    camera              = ctx.camera;
     const renderer::RenderSettings* settings       = &ctx.settings;
-    auto shadowDepthTexture = ctx.resources.GetDepthTexture(ctx.handles.shadowMapRT);
+    auto shadowDepthTexture = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     auto shadowCB           = ctx.handles.shadowCB;
     auto lightCB            = ctx.handles.lightCB;
 
@@ -546,6 +580,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     //      場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
     static uint64_t s_resetVersion = resources.GetResetVersion();
     static auto terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+    // Deferred 用: GBuffer(MRT) へ albedo/roughness/normal/metallic を書き出す地形シェーダ。
+    static auto terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
     static auto terrainPSO    = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
@@ -579,6 +615,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     if (s_resetVersion != resources.GetResetVersion()) {
         s_resetVersion      = resources.GetResetVersion();
         terrainShader       = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+        terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
         terrainPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,     renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         terrainWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         cameraCBH           = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
@@ -610,23 +647,29 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         std::erase_if(g_cbParamCache, [&validIndices](auto& kv) {
             return !validIndices.count(kv.first);
         });
+        std::erase_if(g_texSigCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
     }
 
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC_4X);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
+
+    // TAA ジッターを地形にも乗せる。乗せないと地形だけ AA されないうえ、b0 経由で描く
+    // 他の不透明物とサブピクセル単位でずれた深度になり、TAA の再投影が濁る。
+    const math::Matrix4 jitteredProj =
+        MakeJitteredProjection(camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    const math::Matrix4 jitteredVP = jitteredProj * camera.GetViewMatrix();
 
     {
-        const math::Matrix4 vp  = camera.GetViewProjection();
-        const math::Matrix4 ivp = math::Matrix4::Inverse(vp);
         TerrainCameraFrameCB camData{};
         camData.view              = camera.GetViewMatrix();
-        camData.projection        = camera.GetProjectionMatrix();
-        camData.viewProjection    = vp;
-        camData.invViewProjection = ivp;
+        camData.projection        = jitteredProj;
+        camData.viewProjection    = jitteredVP;
+        camData.invViewProjection = math::Matrix4::Inverse(jitteredVP);
         camData.cameraPos         = camera.m_position;
         camData.nearZ             = camera.m_near;
         camData.farZ              = camera.m_far;
+        camData.isOrthographic    =
+            camera.m_projection == renderer::ProjectionMode::Orthographic ? 1.0f : 0.0f;
         resources.Update(cameraCBH, &camData, sizeof(camData));
     }
 
@@ -638,6 +681,9 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         if (!gridEntities.empty())
             terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
     }
+
+    // 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
+    const ActiveWeather weather = FindActiveWeather(scene);
 
     for (auto [terrain, transform] : scene.View<TerrainComponent, Transform>()) {
         if (!terrain.enabled || terrain.heightData.empty()) continue;
@@ -670,8 +716,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         }
 
         if (terrain.heightDirty) {
-            EraseTerrainChunkCache(eid);
-            EraseNeighborTerrainChunkCaches(scene, neighbors);
+            EraseTerrainChunkCache(resources, eid);
+            EraseNeighborTerrainChunkCaches(scene, resources, neighbors);
             terrain.heightDirty = false;
         }
 
@@ -704,7 +750,36 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             g_cbParamCache[eid.index] = cb;
         };
 
-        const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index);
+        // マテリアルパラメータ CB は毎フレーム再構築する。
+        // WHY: レイヤーマテリアル(.mat)を Material インスペクタで直接編集しても terrain 側の
+        //      materialParamDirty は立たないため、従来は roughness/tiling/normalStrength/autoBlend 等の
+        //      変更が既存地形へ反映されなかった。パラメータ抽出は安価（map 参照のみ）なので毎フレーム
+        //      読み直し、マテリアル編集を即座に地形へ反映する。Deferred 地形は CB 経由でこれらを使う。
+        RebuildCBParams();
+        terrain.materialParamDirty = false;
+
+        // レイヤーマテリアルのテクスチャパス署名を計算し、変化したときだけテクスチャを再構築する。
+        // WHY: GPU 再アップロードは高価なので毎フレームは避けつつ、Material でテクスチャを差し替えたら反映する。
+        size_t texSig = 1469598103934665603ull; // FNV-1a offset basis
+        for (int li = 0; li < 4; ++li) {
+            const asset::MaterialAsset* m = layerMats[li];
+            auto mixPath = [&](const char* key) {
+                if (m) {
+                    const auto it = m->textures.find(key);
+                    if (it != m->textures.end())
+                        for (unsigned char c : it->second) { texSig ^= c; texSig *= 1099511628211ull; }
+                }
+                texSig ^= 0x9Eu; texSig *= 1099511628211ull; // レイヤー/キー境界
+            };
+            mixPath("diffuse");
+            mixPath("normal");
+            mixPath("ao_roughness");
+        }
+        const auto sigIt = g_texSigCache.find(eid.index);
+        const bool texChanged = (sigIt == g_texSigCache.end()) || sigIt->second != texSig;
+        g_texSigCache[eid.index] = texSig;
+
+        const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index) || texChanged;
         if (needTexRebuild) {
             auto& cachedTextures = g_texCache[eid.index];
             // WHY: ペイント更新のたびに生成 splatmap を上書きすると旧 GPU Texture が残るため、
@@ -714,25 +789,21 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             cachedTextures = BuildTextureSet(layerMats, terrain, resources,
                                              s_splatFallback, s_whiteTex,
                                              s_flatNormalTex, s_blackTex);
-            RebuildCBParams();
             terrain.splatDirty = false;
-        }
-
-        if (terrain.materialParamDirty) {
-            RebuildCBParams();
-            terrain.materialParamDirty = false;
         }
         const TerrainTextures& textures = g_texCache.at(eid.index);
 
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
 
-        const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
         TerrainObjectCB terrainCBData = g_cbParamCache.count(eid.index)
                                       ? g_cbParamCache.at(eid.index)
                                       : TerrainObjectCB{};
         terrainCBData.worldMatrix = world;
-        terrainCBData.wvpMatrix   = camera.GetViewProjection() * world;
+        terrainCBData.wvpMatrix   = jitteredVP * world;
+        // 天候はフレームごとに動くので、レイヤーパラメータのキャッシュには載せない。
+        terrainCBData.weather = { weather.wetness, weather.darkening, weather.puddleAmount, 0.0f };
 
         // WHY: TerrainObjectCB は全チャンクで同一内容のため、チャンクごとに Update するのは無駄。
         resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
@@ -741,8 +812,16 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             for (int cx = 0; cx < chunkCountX; ++cx) {
                 const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, neighbors, resources);
 
-                if (!IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax))
+                // 地形チャンクはそれぞれ独立にカリングされる描画候補なので、
+                // メッシュと同じ粒度で統計に数える。
+                ++ctx.statsTotalObjects;
+                // カメラの Frustum Culling を切っている間はチャンクも落とさない。
+                // WHY: メッシュだけ全部出て地形だけ消えると、切り分けの道具として成立しない。
+                if (ctx.frustumCullingEnabled &&
+                    !IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax)) {
+                    ++ctx.statsFrustumCulled;
                     continue;
+                }
 
                 const math::Vector3 localCenter = {
                     (chunk.aabbMin.x + chunk.aabbMax.x) * 0.5f,
@@ -765,7 +844,9 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 renderer::DrawCall call;
                 call.vertexBuffer  = chunk.vertexBuffer;
                 call.indexBuffer   = chunk.indexBufferLOD[lod];
-                call.shader        = terrainShader;
+                // Deferred: GBuffer 書き込みシェーダ。Forward: 自前ライティングシェーダ。
+                call.shader        = m_mode == TerrainDrawMode::GBuffer ? terrainGBufferShader
+                                                                        : terrainShader;
                 call.pipelineState = (settings && settings->IsWireframe()) ? terrainWireframePSO : terrainPSO;
                 call.indexCount    = chunk.indexCountLOD[lod];
                 call.layer         = renderer::RenderLayer::OPAQUE_LAYER;
@@ -775,6 +856,9 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 call.constantBuffers[1] = terrainCBH;
                 call.constantBuffers[3] = lightCB;
                 call.constantBuffers[4] = shadowCB;
+                // b8: 画面空間 AO / 接触影の強度。Forward の地形がこれを読む。
+                call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
+                BindForwardShadingResources(call, ctx);
 
                 call.textures[0]  = textures.splatmap;
                 call.textures[1]  = textures.diffuse[0];
@@ -791,7 +875,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 call.textures[12] = textures.aoRoughness[3];
                 call.textures[13] = shadowDepthTexture;
 
-                renderer.Submit(call, resources);
+                SubmitCounted(ctx, call);
             }
         }
     }
@@ -800,9 +884,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
 // ─── SubmitTerrainShadowCasters ───────────────────────────────────────────
 
 void SubmitTerrainShadowCasters(
-    Scene&                                        scene,
-    renderer::IRenderer&                          renderer,
-    renderer::ResourceManager&                    resources,
+    RenderPassContext&                            ctx,
     const math::Frustum&                          lightFrustum,
     renderer::ResourceHandle<renderer::ShaderTag> shadowShader,
     renderer::ResourceHandle<renderer::PipelineStateTag> pipelineState,
@@ -813,6 +895,9 @@ void SubmitTerrainShadowCasters(
     //      こちらは「指定されたライト視錐台へ描けるチャンクを提出する」だけにする。
     if (!shadowShader.IsValid() || !pipelineState.IsValid())
         return;
+
+    Scene&                     scene     = ctx.scene;
+    renderer::ResourceManager& resources = ctx.resources;
 
     TerrainGridComponent* terrainGrid = nullptr;
     {
@@ -826,7 +911,16 @@ void SubmitTerrainShadowCasters(
         math::Matrix4 worldInvTranspose;
     };
 
-    for (auto [terrain, transform] : scene.View<TerrainComponent, Transform>()) {
+    // WHY: View<TerrainComponent, Transform> はエンティティ ID を返さないため、以前は
+    //      コンポーネントのアドレス一致で ID を逆引きしていた (地形 1 個につき全地形を走査)。
+    //      エンティティ側から引けば逆引きは要らず、O(n²) が消える。
+    for (EntityID eid : scene.GetEntities<TerrainComponent>()) {
+        auto* terrainPtr = scene.GetComponent<TerrainComponent>(eid);
+        auto* gameObject = scene.GetGameObject(eid);
+        if (!terrainPtr || !gameObject) continue;
+
+        TerrainComponent& terrain   = *terrainPtr;
+        Transform&        transform = gameObject->transform;
         if (!terrain.enabled || terrain.heightData.empty())
             continue;
 
@@ -834,15 +928,6 @@ void SubmitTerrainShadowCasters(
                                           * static_cast<size_t>(terrain.rows));
         assert(terrain.chunkSize > 0);
 
-        EntityID eid{};
-        for (EntityID candidate : scene.GetEntities<TerrainComponent>()) {
-            if (scene.GetComponent<TerrainComponent>(candidate) == &terrain) {
-                eid = candidate;
-                break;
-            }
-        }
-        if (!scene.IsValid(eid))
-            continue;
         {
             const auto* go = scene.GetGameObject(eid);
             if (!go || !go->activeInHierarchy()) continue;
@@ -850,18 +935,18 @@ void SubmitTerrainShadowCasters(
 
         if (terrain.heightDirty) {
             const TerrainNeighbors dirtyNeighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
-            EraseTerrainChunkCache(eid);
-            EraseNeighborTerrainChunkCaches(scene, dirtyNeighbors);
+            EraseTerrainChunkCache(resources, eid);
+            EraseNeighborTerrainChunkCaches(scene, resources, dirtyNeighbors);
             terrain.heightDirty = false;
         }
 
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
-        const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
 
         ShadowObjectCB objData{};
         objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         resources.Update(objectCB, &objData, sizeof(objData));
 
         const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
@@ -871,17 +956,25 @@ void SubmitTerrainShadowCasters(
                 if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
+                // シャドウ用は 1 段粗い LOD (格子ステップ 2 = 三角形数 1/4) を使う。
+                // WHY: 影の形はシャドウマップのテクセルと PCF カーネルで既に鈍っており、
+                //      地形の最密メッシュを光源視点でもう一度流しても輪郭は変わらない。
+                //      落ちるのは頂点処理と極小三角形のラスタライズだけなので、
+                //      見た目を保ったまま地形シャドウのコストを大きく削れる。
+                // NOTE: 粗い LOD が未生成のチャンクは LOD0 へフォールバックする。
+                const int lod = (chunk.indexCountLOD[1] > 0 && chunk.indexBufferLOD[1].IsValid()) ? 1 : 0;
+
                 renderer::DrawCall dc;
                 dc.vertexBuffer       = chunk.vertexBuffer;
-                dc.indexBuffer        = chunk.indexBufferLOD[0];
-                dc.indexCount         = chunk.indexCountLOD[0];
+                dc.indexBuffer        = chunk.indexBufferLOD[lod];
+                dc.indexCount         = chunk.indexCountLOD[lod];
                 dc.shader             = shadowShader;
                 dc.pipelineState      = pipelineState;
                 dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
                 dc.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
                 dc.constantBuffers[0] = frameCB;
                 dc.constantBuffers[1] = objectCB;
-                renderer.Submit(dc, resources);
+                SubmitCountedShadow(ctx, dc);
             }
         }
     }
@@ -920,10 +1013,10 @@ void TerrainSelectionMaskSystem(RenderPassContext& ctx)
         }
         if (!selected) continue;
 
-        const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         for (auto& [key, chunk] : g_chunkCache) {

@@ -1,12 +1,14 @@
-// FBZZ Engine
-// SkelSubExporter.cpp | fbzz::editor
-// FBX シーンノード階層を [baseName].skel バイナリに書き出す。
-// スキンあり FBX: ノード階層 + メッシュボーンのオフセット行列を含む。
-// スキンなし FBX: ノード階層のみ (boneCount=0) を出力する。
-//   → Mixamo アニメーション専用 FBX はメッシュボーンを持たないため、
-//     アニメーショントラック名と骨ノード名を対応付けるだけの骨階層を提供する。
+/// @file    SkelSubExporter.cpp
+/// @brief   FBX シーンノード階層を [baseName].skel バイナリに書き出す。
+/// @author  Hasegawa Jin
+/// @date    2026-06-19
+///
+/// スキンあり FBX: ノード階層 + メッシュボーンのオフセット行列を含む。
+/// スキンなし FBX: ノード階層のみ (boneCount=0) を出力する。
+/// → Mixamo アニメーション専用 FBX はメッシュボーンを持たないため、
+/// アニメーショントラック名と骨ノード名を対応付けるだけの骨階層を提供する。
 #include <Editor/Import/SkelSubExporter.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/scene.h>
 #include <cstring>
@@ -95,6 +97,12 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
     nodes.reserve(128);
     TraverseNodes(scene->mRootNode, -1, ctx.unitScale, nodeIndexMap, nodes);
 
+    // ModelSubExporter がスキンメッシュ頂点へ焼き込んだバインド回転 R を
+    // offsetMatrix 側で打ち消す (offset·R⁻¹)。両者は必ず同じ R を使うこと。
+    const aiQuaternion bakeInvQ(ctx.bindBakeRotation[3], -ctx.bindBakeRotation[0],
+                                -ctx.bindBakeRotation[1], -ctx.bindBakeRotation[2]);
+    const aiMatrix4x4 bakeInv(bakeInvQ.GetMatrix());
+
     // ボーン収集 (全メッシュのボーン情報をマージ)
     // スキンなし FBX ではボーンがないため空になる。その場合でもノード階層は書き出す。
     std::vector<BoneEntry> bones;
@@ -109,7 +117,7 @@ bool SkelSubExporter::Export(FbxImportContext& ctx)
             BoneEntry be;
             be.name = bname;
             be.nodeIndex = nodeIndexMap.count(bname) ? nodeIndexMap.at(bname) : -1;
-            CopyMatrix(bone->mOffsetMatrix, be.offsetMatrix, ctx.unitScale);
+            CopyMatrix(bone->mOffsetMatrix * bakeInv, be.offsetMatrix, ctx.unitScale);
             // 対応ノードに boneIndex を書き込む
             if (be.nodeIndex >= 0)
                 nodes[static_cast<size_t>(be.nodeIndex)].boneIndex =

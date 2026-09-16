@@ -1,9 +1,11 @@
-// FBZZ Engine
-// Compiler.cpp | fbzz::editor
-// RuntimeBuild 用の CMake 子プロセス管理
+/// @file    Compiler.cpp
+/// @brief   RuntimeBuild 用の CMake 子プロセス管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #include <Editor/Compiler.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
+#include <string>
 
 namespace fbzz::editor {
 
@@ -30,15 +32,32 @@ bool Compiler::Start(const Config& config)
         return false;
     SetHandleInformation(m_hStdoutRead, HANDLE_FLAG_INHERIT, 0);
 
-    std::wstring command =
-        L"\"" + config.cmakeExe.wstring() + L"\""
-        L" --build \"" + config.buildDir.wstring() + L"\""
-        L" --target " + util::StringUtils::ToWide(config.target) +
-        L" --config " + util::StringUtils::ToWide(config.configuration) +
-        L" --parallel";  // MSBuild: /m — 全 CPU コアで並列コンパイル
+    const bool usesExplicitCommand = !config.commandLine.empty();
+    std::wstring command = config.commandLine;
+    if (!usesExplicitCommand) {
+        command =
+            L"\"" + config.cmakeExe.wstring() + L"\""
+            L" --build \"" + config.buildDir.wstring() + L"\""
+            L" --target " + util::StringUtils::ToWide(config.target) +
+            L" --config " + util::StringUtils::ToWide(config.configuration) +
+            // WHY (--parallel 1): cl.exe 側の並列度はルート CMakeLists.txt の
+            //      /MP${FBZZ_BUILD_JOBS} で既に上限が入っている。ここで MSBuild の
+            //      ノード並列 (/m) まで開けると「プロジェクト数 × /MP」の cl.exe が
+            //      同時に走り、メモリ使用量が掛け算で膨らむ。エディタからのビルドは
+            //      裏で走るビルドなので、手動ビルドや実行中のエディタを止めないよう
+            //      プロジェクト単位の多重化はしない。
+            L" --parallel 1";
+    }
 
-    if (config.skipDeps)
-        command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
+    if (!usesExplicitCommand && (config.skipDeps || config.rebuild)) {
+        command += L" --";
+        if (config.rebuild) command += L" /t:Rebuild";
+        if (config.skipDeps)
+            command += L" /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
+    }
+
+    // WHY: 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
+    m_log += "> " + util::StringUtils::ToNarrow(command) + "\n";
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
@@ -48,8 +67,54 @@ bool Compiler::Start(const Config& config)
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
 
     PROCESS_INFORMATION pi{};
+    // WHY: 既存の GameHub プロジェクトは CMake 再構成前だと /FS が vcxproj に入っていないことがある。
+    //      MSBuild /m と cl.exe の並列実行が同じ PDB へ書くと C1041 が発生するため、
+    //      子プロセスの CL 環境変数へ /FS を一時的に追加して古い生成物でも安定させる。
+    std::wstring oldCl;
+    const DWORD oldClSize = GetEnvironmentVariableW(L"CL", nullptr, 0);
+    if (oldClSize > 0) {
+        oldCl.resize(static_cast<size_t>(oldClSize));
+        GetEnvironmentVariableW(L"CL", oldCl.data(), oldClSize);
+        if (!oldCl.empty() && oldCl.back() == L'\0')
+            oldCl.pop_back();
+    }
+    std::wstring childCl = oldCl;
+    if (childCl.find(L"/FS") == std::wstring::npos && childCl.find(L"-FS") == std::wstring::npos) {
+        if (!childCl.empty())
+            childCl += L" ";
+        childCl += L"/FS";
+    }
+    SetEnvironmentVariableW(L"CL", childCl.c_str());
+
+    std::wstring oldSdkRoot;
+    const DWORD oldSdkRootSize = GetEnvironmentVariableW(L"FBZZ_SDK_ROOT", nullptr, 0);
+    if (oldSdkRootSize > 0) {
+        oldSdkRoot.resize(static_cast<size_t>(oldSdkRootSize));
+        GetEnvironmentVariableW(L"FBZZ_SDK_ROOT", oldSdkRoot.data(), oldSdkRootSize);
+        if (!oldSdkRoot.empty() && oldSdkRoot.back() == L'\0') oldSdkRoot.pop_back();
+    }
+    if (!config.sdkRoot.empty()) {
+        const std::wstring sdkRoot = util::StringUtils::ToWide(config.sdkRoot);
+        SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", sdkRoot.c_str());
+    }
+
+    const std::wstring workingDirectory = config.workingDirectory.wstring();
+    // WHY (BELOW_NORMAL_PRIORITY_CLASS): 優先度クラスは cmake → MSBuild → cl.exe と
+    //      子プロセスへ継承される。エディタからのビルドは裏方なので、Visual Studio /
+    //      VSCode の手動ビルドやエディタ自身の描画スレッドから CPU を奪わないようにする。
     const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
-                                   CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+                                   CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
+                                   workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
+                                   &si, &pi);
+    if (oldClSize > 0)
+        SetEnvironmentVariableW(L"CL", oldCl.c_str());
+    else
+        SetEnvironmentVariableW(L"CL", nullptr);
+    if (oldSdkRootSize > 0)
+        SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", oldSdkRoot.c_str());
+    else if (!config.sdkRoot.empty())
+        SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", nullptr);
+
     CloseHandle(stdoutWrite);
 
     if (!ok) {

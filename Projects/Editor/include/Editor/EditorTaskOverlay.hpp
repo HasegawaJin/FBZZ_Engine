@@ -1,9 +1,11 @@
-// FBZZ Engine
-// EditorTaskOverlay.hpp | fbzz::editor
-// 重い処理の実行中に全 ImGui 入力をブロックするモーダルオーバーレイ
-// WHY: FBX インポート・シェーダーコンパイル・DLL リロードなど秒単位の処理中に
-//      シーン操作が入ると中間状態を掴んで壊れるため、処理完了まで全操作を遮断する。
-//      BuildPipeline（分単位）は別途ノンブロッキング進捗パネルで扱う。
+/// @file    EditorTaskOverlay.hpp
+/// @brief   重い処理の実行中に全 ImGui 入力をブロックするモーダルオーバーレイ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// WHY: FBX インポート・シェーダーコンパイル・DLL リロードなど秒単位の処理中に
+/// シーン操作が入ると中間状態を掴んで壊れるため、処理完了まで全操作を遮断する。
+/// BuildPipeline（分単位）は別途ノンブロッキング進捗パネルで扱う。
 #pragma once
 
 namespace fbzz::editor {

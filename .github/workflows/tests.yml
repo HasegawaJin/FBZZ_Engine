@@ -1,0 +1,174 @@
+name: Tests
+
+# GoogleTest による自動テストと、OpenCppCoverage による行カバレッジ計測。
+#
+# WHY プリセットを使わないか: CMakePresets.json は開発機の Visual Studio 18 / Windows SDK
+#      10.0.26100 を指している。ランナーの構成は違うので、CI は世代を固定せず自前で configure する。
+#
+# WHY CI で測るのが行 (C0) までか: MSVC + OpenCppCoverage は行カバレッジしか出せない。
+#      分岐 (C1) 以降は clang-cl + llvm-cov の 2 本目のツールチェーンが要り、
+#      エンジン全体を clang-cl で再ビルドすることになる。CI の所要時間が倍になる割に
+#      «PR ごとに見る数字» としては行で足りるため、分岐は手元の
+#      Tools/RunCoverageLLVM.ps1 (VS Code タスク "Coverage: Branch + MC/DC (clang-cl)")
+#      で必要な時だけ測る。規約は Docs/conventions/test.md の «13. カバレッジ»。
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# 同じブランチ / PR へ続けて push したとき、追い越された実行を打ち切る。
+# WHY: 1 回 40〜70 分かかるうえ Windows ランナーは課金分数が 2 倍で、
+#      結果を誰も見ない古い実行を最後まで回すと無料枠がそれだけで溶ける。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build/ci
+  BUILD_CONFIG: Debug
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    # Engine + Editor のフルビルド (EditorAuto が FBZZEditor をリンクするため) と、
+    # 素の ctest + OpenCppCoverage 計装の 2 周で 40〜70 分かかる。既定の上限は 360 分で、
+    # ハング 1 件に 6 時間ぶん持っていかれるため «正常な最長» の倍あたりで切る。
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # WHY generator を総当たりするか: ランナーイメージが載せる Visual Studio の世代は
+      #      予告なく入れ替わる。1 つに固定すると «その世代が消えた日» に configure ごと落ちる。
+      #      枯れている順に試し、最初に通ったものを使う。失敗した generator は CMakeCache に
+      #      残って次の試行を汚すため、build ディレクトリごと消してから次へ進む。
+      #      世代を足すときは «古い順» を崩さないこと (新しい方を先に試すと、過渡期の
+      #      ランナーで毎回 1 回分の configure が無駄に走る)。
+      - name: Configure
+        shell: pwsh
+        run: |
+          $generators = @(
+            "Visual Studio 17 2022",
+            "Visual Studio 18 2026"
+          )
+
+          $configured = $false
+          foreach ($gen in $generators) {
+            Write-Host "Trying CMake generator: $gen"
+            cmake -S . -B "$env:BUILD_DIR" `
+              -G "$gen" -A x64 `
+              -DFBZZ_BUILD_TESTS=ON `
+              -DFBZZ_ENABLE_SOURCE_REBUILD=OFF `
+              -DFBZZ_BUILD_JOBS=4
+
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Configured with generator: $gen"
+              $configured = $true
+              break
+            }
+
+            Remove-Item -Recurse -Force "$env:BUILD_DIR" -ErrorAction SilentlyContinue
+          }
+
+          if (-not $configured) {
+            Write-Error "No supported Visual Studio generator found on runner."
+            exit 1
+          }
+
+      # テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
+      # WHY Editor が混ざるか: EditorAuto は FBZZEditor をリンクするため、その分だけは
+      #     依存として建つ。AI 連携や import 判定は «起動しないと分からない» 壊れ方をし、
+      #     CI で押さえないと手元でしか気づけない。
+      #
+      # スイートを足したら --target にも足すこと。書き漏らすと «ビルドされないだけ» で
+      # 通ってしまい、CTest には NOT_BUILT のプレースホルダーが 1 件出るだけになる。
+      - name: Build test targets
+        shell: pwsh
+        run: |
+          cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
+
+      # --timeout: 止まったテストがあってもそこで打ち切り、残りを最後まで走らせる。
+      #   これが無いと、1 件のハングでジョブがワークフローの上限まで待ち続ける。
+      # --no-tests=error: テストが 1 件も登録されていない状態を «成功» にしない。
+      - name: Run tests
+        shell: pwsh
+        run: >
+          ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG
+          --output-on-failure --timeout 30 --no-tests=error
+
+      - name: Install OpenCppCoverage
+        shell: pwsh
+        run: |
+          choco install opencppcoverage --no-progress -y
+          echo "C:\Program Files\OpenCppCoverage" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # --cover_children で ctest が起動する各テスト exe まで追う。
+      # 計測対象は «自作で、テストを書くと決めた» 3 つに絞る。Renderer / Editor を混ぜると、
+      # テストしないと決めた領域が分母に入って数値が意味を失う。
+      - name: Measure coverage
+        shell: pwsh
+        run: |
+          OpenCppCoverage.exe `
+            --cover_children `
+            --sources "Projects\Math" `
+            --sources "Projects\Physics" `
+            --sources "Projects\Engine\src\Core" `
+            --excluded_sources "Projects\Tests" `
+            --excluded_sources "ThirdParty" `
+            --export_type "cobertura:coverage.xml" `
+            --export_type "html:coverage-html" `
+            -- ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG --timeout 30
+
+      # OpenCppCoverage が書くパスは «ランナーのユーザー名を含む絶対パス»。
+      # 直さないと PR コメントの表がランナーの絶対パスで埋まり、
+      # アーティファクトの coverage.xml もランナー上でしか解決できない形のまま残る。
+      - name: Normalise coverage paths
+        shell: pwsh
+        run: ./Tools/NormalizeCoverageXml.ps1 -CoberturaPath coverage.xml
+
+      - name: Summarise coverage
+        id: coverage
+        shell: pwsh
+        run: ./Tools/CoverageReport.ps1 -CoberturaPath coverage.xml -OutputPath coverage-comment.md
+
+      - name: Publish summary
+        shell: pwsh
+        run: Get-Content coverage-comment.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Comment on pull request
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.number }} --body-file coverage-comment.md
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: |
+            coverage-html/
+            coverage.xml
+
+      # しきい値はリポジトリ変数 FBZZ_COVERAGE_MIN で設定する (未設定なら 0 = 素通り)。
+      # WHY 最初から高い値を入れないか: 落ちるのが当たり前の CI は誰も見なくなる。
+      #     初回の実測値を見てから、下回ったら気づく水準に置くこと。
+      - name: Enforce minimum coverage
+        shell: pwsh
+        run: |
+          $minimum = [double]("${{ vars.FBZZ_COVERAGE_MIN }}" -replace '^$', '0')
+          $actual  = [double]"${{ steps.coverage.outputs.line-rate-percent }}"
+          Write-Host "行カバレッジ $actual% (下限 $minimum%)"
+          if ($actual -lt $minimum) {
+            Write-Error "行カバレッジが下限を下回りました"
+            exit 1
+          }

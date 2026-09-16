@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AABBCollider.cpp | fbzz::physics
-// 軸整合バウンディングボックスコライダー
+/// @file    AABBCollider.cpp
+/// @brief   軸整合バウンディングボックスコライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/AABBCollider.hpp>
 
 namespace fbzz::physics 
@@ -9,6 +10,11 @@ namespace fbzz::physics
     AABBCollider::AABBCollider(const math::Vector3& halfExtents)
         : m_halfExtents(halfExtents)
     {}
+
+    float AABBCollider::ComputeVolume() const
+    {
+        return 8.0f * m_halfExtents.x * m_halfExtents.y * m_halfExtents.z;
+    }
 
     AABB AABBCollider::GetAABB() const
     {

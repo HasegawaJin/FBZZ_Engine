@@ -1,8 +1,10 @@
-// FBZZ Engine
-// RenderDebugOverlay.hpp | fbzz::renderer
-// パスごとの RT サムネイルと CPU タイミングを表示する ImGui デバッグオーバーレイ。
-// RenderSettings::passViewerEnabled が true のとき RenderSystem の末尾から呼ばれる。
-// ImGui フレーム内 (ImGui::NewFrame() と ImGui::Render() の間) での呼び出しが前提。
+/// @file    RenderDebugOverlay.hpp
+/// @brief   パスごとの RT サムネイルと CPU タイミングを表示する ImGui デバッグオーバーレイ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
+///
+/// RenderSettings::passViewerEnabled が true のとき RenderSystem の末尾から呼ばれる。
+/// ImGui フレーム内 (ImGui::NewFrame() と ImGui::Render() の間) での呼び出しが前提。
 #pragma once
 
 #include "ResourceHandle.hpp"
@@ -29,9 +31,17 @@ public:
         int totalObjects    = 0; // カリング前の描画候補オブジェクト数
         int frustumCulled   = 0; // フラスタムカリングで除外した数
         int occlusionCulled = 0; // オクルージョンカリングで除外した数
-        int drawCalls       = 0; // 実際に発行した DrawCall 数 (不透明・半透明合計)
+        int distanceCulled    = 0; // 描画距離 (Max Draw Distance / Layer Cull Distances) で除外した数
+        int smallObjectCulled = 0; // 画面上で小さすぎるとして除外した数
+        int drawCalls       = 0; // カメラ視点で実際に発行した DrawCall 数 (不透明・半透明合計)
         int vertexCount     = 0; // 描画した総頂点数
         int triangleCount   = 0; // 描画した総三角形数 (indexCount / 3)
+        uint64_t skinningVertexCount = 0; // SkinningComputePass の処理頂点数
+        uint32_t skinningDispatchCount = 0; // SkinningComputePass の Dispatch 数
+        // シャドウマップは同じジオメトリを光源視点で再描画する別パスのため、
+        // カメラ統計に混ぜず内訳として分けて表示する。
+        int shadowDrawCalls     = 0;
+        int shadowTriangleCount = 0;
     };
 
     struct Snapshot {
@@ -54,6 +64,13 @@ public:
 
         // レンダリング統計 (Stats UI で使用)
         RenderStats renderStats;
+
+        // RenderGraph::DescribeLastPlan() の結果。実行順・カリング・エイリアス割り当てを
+        // 1 行 1 項目で並べたテキストで、計測値は含まない。
+        // WHY 計測値を混ぜないか: 実行順が変わったことは絵を見ても分からないので、
+        //     «差分が取れること» が唯一の価値。毎フレーム動く数字が混ざると差分が埋もれる。
+        // パス構成が変わったフレームだけ更新されるので、そのままでは前回の内容が残る。
+        std::string planDescription;
     };
 
     // 最後の UpdateSnapshot() で保存されたスナップショットを返す。

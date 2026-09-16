@@ -1,0 +1,20 @@
+file_format_version = 1
+
+[meta]
+guid = '618138c0857a45cfb3ab51508cc6cd8f'
+
+[model]
+clips = []
+default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 4
+normal_map_convention = 'OpenGL'
+root_motion_node = ''
+selected_animations = []
+selected_meshes = []
+source_dcc = 'Blender'
+unit_scale_multiplier = 1.0
+up_axis = 0

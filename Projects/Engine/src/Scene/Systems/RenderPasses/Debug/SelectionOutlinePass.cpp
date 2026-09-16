@@ -1,15 +1,16 @@
-// FBZZ Engine
-// SelectionOutlinePass.cpp | fbzz::scene
-// Selection outline render pass implementation
+/// @file    SelectionOutlinePass.cpp
+/// @brief   Selection outline render pass implementation.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 
 namespace fbzz::scene {
 
-void ExecuteSelectionOutlinePass(RenderPassContext& ctx)
+void ExecuteSelectionOutlinePass(PassResources& res, RenderPassContext& ctx)
 {
-    if (!ctx.selectionOutlineEnabled || !ctx.handles.outlineRT.IsValid()) return;
+    if (!ctx.selectionOutlineEnabled || !res.Target("Outline").IsValid()) return;
 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
@@ -26,7 +27,12 @@ void ExecuteSelectionOutlinePass(RenderPassContext& ctx)
     outlineData.width = rs.outlineWidth;
     resources.Update(h.outlineCB, &outlineData, sizeof(OutlineCB));
 
-    r.SetRenderTarget(rs.postProcess.fxaaEnabled ? h.outlineRT : ctx.outputRT, resources);
+    // SelectionOutline.hlsl はマスク探索の 1 タップ幅を b5 の texelSize で決める。
+    // WHY: 直前に b5 を書いたパス頼みだと、ポストプロセスチェーンの構成次第で輪郭幅が変わる。
+    const PostProcCB outlinePostData = MakeScreenPostProcCB(ctx.width, ctx.height);
+    resources.Update(h.postprocCB, &outlinePostData, sizeof(PostProcCB));
+
+    r.SetRenderTarget(rs.postProcess.fxaaEnabled ? res.Target("Outline") : ctx.chainOutputRT, resources);
 
     renderer::DrawCall outlineDC;
     outlineDC.shader = h.selectionOutlineShader;
@@ -36,13 +42,13 @@ void ExecuteSelectionOutlinePass(RenderPassContext& ctx)
     outlineDC.constantBuffers[5] = h.postprocCB;
     outlineDC.textures[5] = h.postProcessInput.IsValid()
         ? h.postProcessInput
-        : resources.GetColorTexture(h.ldrRT, 0);
-    outlineDC.textures[6] = resources.GetColorTexture(h.selectionMaskRT, 0);
-    outlineDC.textures[7] = resources.GetDepthTexture(h.hdrRT);
-    outlineDC.textures[8] = resources.GetDepthTexture(h.selectionMaskRT);
+        : resources.GetColorTexture(ctx.Res().Target("LDR"), 0);
+    outlineDC.textures[6] = resources.GetColorTexture(res.Target("SelectionMask"), 0);
+    outlineDC.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    outlineDC.textures[8] = resources.GetDepthTexture(res.Target("SelectionMask"));
     r.Submit(outlineDC, resources);
 
-    h.fxaaInput = resources.GetColorTexture(h.outlineRT, 0);
+    h.fxaaInput = resources.GetColorTexture(res.Target("Outline"), 0);
 }
 
 } // namespace fbzz::scene

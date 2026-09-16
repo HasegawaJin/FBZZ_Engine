@@ -1,6 +1,7 @@
-// FBZZ Engine
-// OBBCollider.cpp | fbzz::physics
-// Oriented bounding box collider
+/// @file    OBBCollider.cpp
+/// @brief   Oriented bounding box collider.
+/// @author  Hasegawa Jin
+/// @date    2026-05-25
 #include <Physics/OBBCollider.hpp>
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,11 @@ namespace fbzz::physics
     OBBCollider::OBBCollider(const math::Vector3& halfExtents)
         : m_halfExtents(halfExtents)
     {
+    }
+
+    float OBBCollider::ComputeVolume() const
+    {
+        return 8.0f * m_halfExtents.x * m_halfExtents.y * m_halfExtents.z;
     }
 
     AABB OBBCollider::GetAABB() const

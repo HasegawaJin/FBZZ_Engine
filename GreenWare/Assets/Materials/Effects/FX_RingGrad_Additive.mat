@@ -1,0 +1,25 @@
+# FBZZ Engine
+# FX_RingGrad_Additive.mat
+# 素材: Assets/VFX/Textures/T_Ring_Grad.png
+# 衝撃波リング。地面に寝かせるため renderMode = 2 (Horizontal Billboard) で使う。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:b53ea65b2b499a07d4629d478c024322"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+# 床に寝かせると受け面と平行になり、深度差がリング全域でほぼ 0 になる。
+# 既定のフェード距離ではリングごと薄まって消えるため、絞って «縁が床へ刺さる» 分だけに効かせる。
+emissive_scale = 1.8
+soft_particles = true
+soft_particle_fade_distance = 0.15

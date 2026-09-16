@@ -1,0 +1,32 @@
+{
+    "name": "fbzz-editor-mcp",
+    "version": "0.1.0",
+    "private": true,
+    "description": "FBZZ Editor MCP server — Claude が Windows Named Pipe 経由で現行 ImGui エディターを知覚・操作する stdio MCP サーバ。",
+    "type": "module",
+    "main": "dist/server.js",
+    "bin": {
+        "fbzz-editor-mcp": "dist/stdio.js"
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc --watch",
+        "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+        "test": "npm run build && node --test \"dist/tests/*.test.js\"",
+        "start": "node dist/stdio.js"
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0",
+        "zod": "^4.4.3"
+    },
+    "devDependencies": {
+        "@types/node": "^26.1.1",
+        "typescript": "^7.0.2"
+    }
+}

@@ -1,0 +1,101 @@
+# 魔法陣から立つ靄 — glow シェーディングと発光ランプの見本。
+# 輪の湧き口から出た靄を attract で中心へ吸い寄せ、noise の力が細かく捻る。
+# 発光色は温度ではなく emission_ramp が決めるので、火とは別の «冷たい光» になる。
+version = 2
+kind = "gas"
+seed = 21
+
+[gas]
+buoyancy = 0.9
+weight = 0.05
+vorticity = 0.65
+turbulence = 0.18
+turbulence_scale = 6.0
+density_dissipation = 0.62
+temperature_dissipation = 0.5
+
+[[source]]
+name = "Circle"
+shape = "ring"
+center = [0.0, -0.68, 0.0]
+size = [0.44, 0.06, 0.44]
+direction = [0.0, 1.0, 0.0]
+density = 3.4
+temperature = 1.6
+noise = 0.45
+velocity = [0.0, 0.85, 0.0]
+duration = 0.0
+
+[[source]]
+name = "Core"
+shape = "sphere"
+center = [0.0, -0.5, 0.0]
+size = [0.14, 0.14, 0.14]
+density = 2.2
+temperature = 2.4
+noise = 0.3
+velocity = [0.0, 1.2, 0.0]
+start_time = 0.45
+duration = 0.0
+
+[[force]]
+name = "Pull"
+type = "attract"
+center = [0.0, 0.15, 0.0]
+strength = 1.4
+radius = 0.9
+falloff_power = 1.2
+
+[[force]]
+name = "Weave"
+type = "noise"
+strength = 0.9
+noise_frequency = 3.2
+noise_speed = 0.8
+
+[render]
+shading = "glow"
+smoke_color = [0.32, 0.48, 0.78, 1.0]
+shadow_color = [0.06, 0.08, 0.16, 1.0]
+opacity = 1.9
+self_shadow = 0.9
+detail_strength = 0.337
+detail_scale = 7.0
+use_emission_ramp = true
+
+    [[render.emission_ramp]]
+    color = [0.02, 0.05, 0.12]
+    position = 0.0
+
+    [[render.emission_ramp]]
+    color = [0.1, 0.35, 0.9]
+    position = 0.4
+
+    [[render.emission_ramp]]
+    color = [0.45, 0.85, 1.6]
+    position = 0.75
+
+    [[render.emission_ramp]]
+    color = [1.6, 2.2, 3.0]
+    position = 1.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 2.4
+warmup = 1.0
+loop = true
+motion_vectors = true
+
+[bake]
+mode = "3d"
+volume_resolution = 128
+ray_steps = 256
+shadow_steps = 24
+solver = "gpu"
+six_way_lightmaps = true
+blackbody_emission = false
+scattering_octaves = 5
+emission_intensity = 5.0

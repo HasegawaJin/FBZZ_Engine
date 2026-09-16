@@ -1,11 +1,13 @@
-// FBZZ Engine
-// RigidBody.cpp | fbzz::physics
-// 剛体の状態と力の積分
+/// @file    RigidBody.cpp
+/// @brief   剛体の状態と力の積分。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/RigidBody.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <algorithm>
 
 namespace fbzz::physics {
@@ -51,6 +53,17 @@ void RigidBody::ApplyImpulse(const math::Vector3& impulse)
     m_velocity = ApplyPositionFreeze(m_velocity + impulse * m_invMass, math::Vector3::ZERO);
 }
 
+void RigidBody::ApplyImpulseAtPoint(const math::Vector3& impulse,
+                                    const math::Vector3& worldPoint)
+{
+    if (impulse.LengthSq() <= 1e-12f) return;
+    WakeUp();
+    m_velocity = ApplyPositionFreeze(m_velocity + impulse * m_invMass, math::Vector3::ZERO);
+    m_angularVelocity = ApplyRotationFreeze(
+        m_angularVelocity +
+        ApplyInvInertia(math::Vector3::Cross(worldPoint - m_position, impulse)));
+}
+
 void RigidBody::ApplyAngularImpulse(const math::Vector3& angularImpulse)
 {
     if (angularImpulse.LengthSq() > 1e-12f) WakeUp();
@@ -60,6 +73,11 @@ void RigidBody::ApplyAngularImpulse(const math::Vector3& angularImpulse)
 void RigidBody::ApplyTorque(const math::Vector3& torque)
 {
     if (torque.LengthSq() > 1e-12f) WakeUp();
+    m_torque += ApplyRotationFreeze(torque);
+}
+
+void RigidBody::ApplyTorqueNoWake(const math::Vector3& torque)
+{
     m_torque += ApplyRotationFreeze(torque);
 }
 
@@ -269,6 +287,20 @@ void RigidBody::RecomputeInertia()
         const auto* capsule = static_cast<const CapsuleCollider*>(m_inertiaCollider);
         const float r = capsule->m_radius;
         const float h = capsule->m_halfHeight * 2.0f;
+        const float ixz = (m * (3.0f * r * r + h * h)) / 12.0f;
+        const float iy = 0.5f * m * r * r;
+        m_invInertiaDiag = {
+            ixz == 0.0f ? 0.0f : 1.0f / ixz,
+            iy == 0.0f ? 0.0f : 1.0f / iy,
+            ixz == 0.0f ? 0.0f : 1.0f / ixz
+        };
+    }
+    else if (type == ColliderType::CYLINDER)
+    {
+        // 中実円柱: 軸周り 1/2 m r²、軸に垂直な 2 軸は 1/12 m (3r² + h²)。
+        const auto* cylinder = static_cast<const CylinderCollider*>(m_inertiaCollider);
+        const float r = cylinder->m_radius;
+        const float h = cylinder->m_halfHeight * 2.0f;
         const float ixz = (m * (3.0f * r * r + h * h)) / 12.0f;
         const float iy = 0.5f * m * r * r;
         m_invInertiaDiag = {

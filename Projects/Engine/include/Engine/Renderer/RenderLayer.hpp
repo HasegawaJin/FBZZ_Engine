@@ -1,7 +1,9 @@
-// FBZZ Engine
-// RenderLayer.hpp | fbzz::renderer
-// 描画レイヤーの分類
-// RenderLayer と Unity 風 RenderQueue の基準値を定義する。
+/// @file    RenderLayer.hpp
+/// @brief   描画レイヤーの分類。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// RenderLayer と Unity 風 RenderQueue の基準値を定義する。
 #pragma once
 #include <cstdint>
 

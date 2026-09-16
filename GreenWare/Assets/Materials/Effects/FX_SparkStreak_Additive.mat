@@ -1,0 +1,22 @@
+# FBZZ Engine
+# FX_SparkStreak_Additive.mat
+# 素材: Assets/VFX/Textures/T_Spark_Streak.png (頭が X=80%、尾が左へ伸びる)
+# 頭と尾が横方向に決まっているため、使う側は renderMode = 1 (Stretched Billboard) で
+# 速度方向へ寝かせること。Billboard のまま出すと尾の向きが速度と無関係になる。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:f9cad361ad264858cf3cc0c0e5f50851"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.2

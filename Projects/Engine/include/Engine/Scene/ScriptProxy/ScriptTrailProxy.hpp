@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptTrailProxy.hpp | fbzz::scene
-// Script から TrailComponent を操作するショートハンド
+/// @file    ScriptTrailProxy.hpp
+/// @brief   Script から TrailComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Math/Vector3.hpp>
@@ -28,6 +29,10 @@ struct ScriptTrailProxy {
     // SetDuration — 軌跡が残る秒数を設定する。
     void SetDuration(float seconds) const;
 
+    // SetMaxPoints — Trail が保持する制御点数を設定する。
+    // WHY: 剣閃のように短時間で大きく動く用途では Script 側から密度を調整したい。
+    void SetMaxPoints(int maxPoints) const;
+
     // SetSampling — 制御点の追加頻度と最小移動距離を設定する。
     void SetSampling(float sampleInterval, float minVertexDist) const;
 
@@ -40,8 +45,8 @@ struct ScriptTrailProxy {
     // SetColor — 最新点と最古点の色を設定する。
     void SetColor(const math::Vector4& start, const math::Vector4& end) const;
 
-    // SetTexture — Trail テクスチャと UV スクロールを設定する。
-    void SetTexture(std::string_view texturePath, float uvTiling = 1.0f, float uvScrollSpeed = 0.0f) const;
+    // SetMaterial — Trail 用 .mat アセットを指定する。空文字で materialPath を解除する。
+    void SetMaterial(std::string_view materialPath) const;
 
     // SetUVMode — U 座標を Stretch / Tile のどちらで生成するかを設定する。
     void SetUVMode(TrailUVMode mode) const;
@@ -63,6 +68,13 @@ struct ScriptTrailProxy {
 
     // ClearAttachBone — ボーン追従を解除し、GameObject 原点から Trail を発生させる。
     void ClearAttachBone() const;
+
+    // SetEnabled(false, false) で記録だけ止めた場合、enabled は false のまま
+    // 制御点が duration 経過まで残る。剣閃が完全に消えたかは GetPointCount() で見る。
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetDuration() const;
+    // 現在保持している制御点数。0 なら描画するものが残っていない。
+    [[nodiscard]] int   GetPointCount() const;
 };
 
 } // namespace fbzz::scene

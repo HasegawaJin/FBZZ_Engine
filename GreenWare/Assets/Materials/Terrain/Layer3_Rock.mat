@@ -1,0 +1,36 @@
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+shader = ''
+version = 1
+
+[params]
+ambientOcclusion = 1.0
+autoBlendEnabled = 0.0
+autoBlendStrength = 1.0
+autoHeightFade = 1.0
+autoMaxHeight = 10000.0
+autoMaxSlope = 1.0
+autoMinHeight = -10000.0
+autoMinSlope = 0.0
+autoSlopeFade = 0.10000000149011612
+normalStrength = 1.0
+roughness = 0.800000011920929
+tilingX = 8.0
+tilingZ = 8.0
+
+[textures]
+albedo = ''
+ao = ''
+ao_roughness = 'guid:9d580e973a734d0ab2bf2cf667074ccf|Assets/Textures/Terrain/Rock/Rock_AmbientOcclusion.png'
+diffuse = 'guid:05cbce5312f9482fb6f943039bb1b7aa|Assets/Textures/Terrain/Rock/Rock_Color.png'
+emissive = ''
+metallic = ''
+normal = 'guid:c693df4f1aa54809bfa6a5fee0788eae|Assets/Textures/Terrain/Rock/Rock_Normal.png'
+tex5 = ''
+tex6 = ''
+tex7 = ''

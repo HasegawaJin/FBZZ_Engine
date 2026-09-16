@@ -1,5 +1,7 @@
-// FBZZ Engine
-// TpsCameraComponent.hpp | sandbox
+/// @file    TpsCameraComponent.hpp
+/// @brief   プレイヤーを追う三人称カメラのスクリプト。
+/// @author  Hasegawa Jin
+/// @date    2026-06-19
 #pragma once
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -38,29 +40,22 @@ private:
     bool        m_hasCameraPosition = false;
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(TpsCameraComponent)
 
-#include "TpsCameraComponent.generated.hpp"
-
-// ── 実装 ────────────────────────────────────────────────────────────────────
-#ifndef TpsCameraComponent_IMPL
-#define TpsCameraComponent_IMPL
-
-namespace sandbox {
-
-void TpsCameraComponent::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void TpsCameraComponent::OnStart()
 {
     FindTarget();
     m_hasCameraPosition = false;
 }
 
-void TpsCameraComponent::OnLateUpdate()
+inline void TpsCameraComponent::OnLateUpdate()
 {
     if (!transform) return;
     if (!m_target || !m_target->IsValid()) FindTarget();
     if (!m_target) return;
 
-    if (mouseOrbit && input.MouseButton(1)) {
+        if (mouseOrbit && input.MouseButton(MouseBtn::Right)) {
         const Vector2 delta = input.GetMouseDelta();
         yaw   += delta.x * mouseSensitivity;
         pitch  = Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);
@@ -87,10 +82,9 @@ void TpsCameraComponent::OnLateUpdate()
     m_hasCameraPosition     = true;
 }
 
-void TpsCameraComponent::FindTarget()
+inline void TpsCameraComponent::FindTarget()
 {
     m_target = targetTag.empty() ? nullptr : scene.FindWithTag(targetTag);
 }
 
 } // namespace sandbox
-#endif

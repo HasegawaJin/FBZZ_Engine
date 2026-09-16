@@ -1,0 +1,374 @@
+[autosave]
+enabled = true
+fluid_editor = true
+interval_sec = 300
+
+[build]
+development = false
+icon = 'Assets/Icons/GreenWare.ico'
+output_dir = 'Builds/実行ファイル'
+product_name = 'GreenWare'
+strip_editor_assets = true
+version = '1.0.0'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Load.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Options.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Result.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Stage_01.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Stage_02.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Stage_03.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/StageSelect.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Title.scene'
+
+[debug]
+navmesh_draw_distance = 120.0
+navmesh_draw_mode = 0
+show_colliders = false
+show_decal_bounds = false
+show_nav_sensors = false
+show_navmesh = false
+show_terrain_collision = false
+show_ui_rects = false
+view_mode = 0
+
+[fluid_editor]
+follow_selection = true
+
+[game_view]
+aspect = 6
+play_focus_mode = 1
+
+[gizmo]
+mode = 0
+pivot = 0
+space = 1
+
+[hierarchy]
+show_generated_objects = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 559
+name = 'scene.new'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 560
+name = 'scene.open'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 564
+name = 'scene.save'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 564
+name = 'scene.save_as'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 571
+name = 'edit.undo'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 570
+name = 'edit.redo'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 571
+name = 'Redo (Alt)'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 522
+name = 'edit.delete_selected'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 549
+name = 'edit.duplicate'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 548
+name = 'edit.copy'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 567
+name = 'edit.paste'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 567
+name = 'edit.paste_as_child'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 573
+name = 'edit.rename'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 546
+name = 'select.all'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 526
+name = 'select.clear'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 513
+name = 'select.back'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 514
+name = 'select.forward'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 551
+name = 'view.frame_selected'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 560
+name = 'view.toggle_projection'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 537
+name = 'view.axis_front'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 538
+name = 'view.axis_back'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 539
+name = 'view.axis_left'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 540
+name = 'view.axis_right'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 541
+name = 'view.axis_top'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 542
+name = 'view.axis_bottom'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 568
+name = 'gizmo.move'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 550
+name = 'gizmo.rotate'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 563
+name = 'gizmo.scale'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 562
+name = 'gizmo.toggle_space'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 571
+name = 'gizmo.toggle_pivot'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 569
+name = 'gizmo.toggle_snap'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 561
+name = 'play.toggle'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 561
+name = 'play.pause'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 547
+name = 'tools.build_settings'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 556
+name = 'panel.command_palette'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 572
+name = 'panel.shortcut_list'
+shift = false
+
+[import]
+default_compression = 0
+generate_normals = true
+generate_tangents = true
+generate_tex_descriptors = true
+normal_map_convention = 0
+source_dcc = 0
+unit_scale_multiplier = 1.0
+up_axis = 0
+
+[map_mode]
+active_tool = 0
+hierarchy_filter = true
+inspector_filter = true
+
+[misc]
+ai_command_bus = true
+hot_reload = true
+sweep_orphaned_baked = true
+
+[snap]
+enabled = false
+pos = 1.0
+rot = 15.0
+scale = 0.25
+
+[terrain_tool]
+brush_falloff = 1
+brush_radius = 42.5
+brush_strength = 1.0
+paint_layer = 0
+sculpt_mode = 4
+
+[tools]
+show_terrain = false
+
+[ui]
+language = 'ja'
+multi_viewport = false
+scale = 1.0
+
+[view]
+grid_size = 1.0
+scene_view_occlusion_culling = false
+show_grid = false
+show_light_range = false
+show_ragdoll = false
+show_skeleton = false
+show_stats = false
+show_vfx_gizmos = false
+surface_snap_align_to_normal = true

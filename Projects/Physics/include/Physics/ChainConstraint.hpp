@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ChainConstraint.hpp | fbzz::physics
-// 複数剛体を固定距離でつなぐ鎖制約
+/// @file    ChainConstraint.hpp
+/// @brief   複数剛体を固定距離でつなぐ鎖制約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/Constraint.hpp>
 #include <vector>
@@ -20,9 +21,12 @@ namespace fbzz::physics
 
         const std::vector<RigidBody*>& GetBodies() const { return m_bodies; }
 
-    private:
-        std::vector<RigidBody*> m_bodies;
+        // WHY 公開するか: 他の制約 (m_distance / m_maxLength / m_stiffness) と同じく、
+        //     張ったあとに調整する値。連なりだけは並びの整合が要るので private に残す。
         float m_segmentLength = 1.0f;
         int m_solverIterations = 4;
+
+    private:
+        std::vector<RigidBody*> m_bodies;
     };
 } // namespace fbzz::physics

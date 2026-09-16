@@ -1,0 +1,2058 @@
+[scene]
+format_version = 2
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000001'
+layer = 0
+name = 'Canvas'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    faceCamera = false
+    matchWidthOrHeight = 0.0
+    navigationEnabled = false
+    navigationRepeatDelay = 0.4
+    navigationRepeatInterval = 0.12
+    planeDistance = 2.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    safeArea = [ 0.0, 0.0, 0.0, 0.0 ]
+    scaleMode = 1
+    sortOrder = 0
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000002'
+layer = 0
+name = 'Backdrop'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:f1625738ab6293eee66b06ad81751287|Assets/Materials/UI/UITitleBackdrop.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:df80da884cfc442bdea050c4b8dc6747|Assets/UI/Title/BG_base.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1920.0, 1080.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000003'
+layer = 0
+name = 'Logo_Mark'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:3de4dea882723240704c981f756c1cd2|Assets/UI/Title/Logo_Mark.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 248.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 174.0, 128.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000004'
+layer = 0
+name = 'Logo_Word'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:c606097425317cbad1e07355db79cda5|Assets/UI/Title/Logo_Word.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 306.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 931.0, 216.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000005'
+layer = 0
+name = 'Logo_Rule'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:c458a78d0944a568e3715de982a0eb9c|Assets/UI/Title/Logo_Rule.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 447.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 786.0, 100.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c357ac08-f617-4f2b-81c2-fe27f90321e1'
+layer = 0
+name = 'Logo_Arc'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:ebee499293db4752897d80c934b397cb|Assets/Materials/UI/UIElectricLine.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:c458a78d0944a568e3715de982a0eb9c|Assets/UI/Title/Logo_Rule.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 447.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 786.0, 100.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000006'
+layer = 0
+name = 'Law_Icon'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:b61f67e1136efb2286aa450c6faf56ee|Assets/UI/Title/Law_Icon.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 83.0, 906.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 223.0, 118.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000008'
+layer = 0
+name = 'MenuRow_START'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 59.0, 605.22998, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 630.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-0000000000b1'
+layer = 0
+name = 'Band'
+parent = 'MenuRow_START'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000008'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:80598c4f0d2044a59c8f48571a0f579b|Assets/Materials/UI/UIMenuBand.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:affe2fcad3d54c98a229268a01909d26|Assets/Textures/UI/T_UI_MenuBand.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -14.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 644.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000009'
+layer = 0
+name = 'Bar'
+parent = 'MenuRow_START'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000008'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:6781edd7d9f87040c4a2c5614ce9011b|Assets/Materials/UI/UIMenuItem.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:9a22589dcdb7864d03617050fbf0f610|Assets/UI/Title/Menu_Bar_red.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, -57.229965, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 151.5, 184.5, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000010'
+layer = 0
+name = 'Label'
+parent = 'MenuRow_START'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000008'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.462745, 0.454902, 0.439216, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 54.0
+    letterSpacing = 11.7
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = 'START'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 106.5, -1.429965, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 191.474991, 54.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000011'
+layer = 0
+name = 'MenuRow_OPTIONS'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 59.0, 690.72998, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 630.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-0000000000b2'
+layer = 0
+name = 'Band'
+parent = 'MenuRow_OPTIONS'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000011'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:80598c4f0d2044a59c8f48571a0f579b|Assets/Materials/UI/UIMenuBand.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:affe2fcad3d54c98a229268a01909d26|Assets/Textures/UI/T_UI_MenuBand.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -14.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 644.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000012'
+layer = 0
+name = 'Bar'
+parent = 'MenuRow_OPTIONS'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000011'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:6781edd7d9f87040c4a2c5614ce9011b|Assets/Materials/UI/UIMenuItem.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:9a22589dcdb7864d03617050fbf0f610|Assets/UI/Title/Menu_Bar_red.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, -57.229965, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 151.5, 184.5, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000013'
+layer = 0
+name = 'Label'
+parent = 'MenuRow_OPTIONS'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000011'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.462745, 0.454902, 0.439216, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 54.0
+    letterSpacing = 11.7
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = 'OPTIONS'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 106.5, -1.429965, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 275.445007, 54.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000014'
+layer = 0
+name = 'MenuRow_EXIT'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    clickSound = ''
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoverSound = ''
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.transform]
+    position = [ 59.0, 776.22998, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 630.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-0000000000b3'
+layer = 0
+name = 'Band'
+parent = 'MenuRow_EXIT'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000014'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:80598c4f0d2044a59c8f48571a0f579b|Assets/Materials/UI/UIMenuBand.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:affe2fcad3d54c98a229268a01909d26|Assets/Textures/UI/T_UI_MenuBand.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -14.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 644.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000015'
+layer = 0
+name = 'Bar'
+parent = 'MenuRow_EXIT'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000014'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:6781edd7d9f87040c4a2c5614ce9011b|Assets/Materials/UI/UIMenuItem.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:9a22589dcdb7864d03617050fbf0f610|Assets/UI/Title/Menu_Bar_red.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, -57.229965, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 151.5, 184.5, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000016'
+layer = 0
+name = 'Label'
+parent = 'MenuRow_EXIT'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000014'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.462745, 0.454902, 0.439216, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 54.0
+    letterSpacing = 11.7
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = 'EXIT'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 106.5, -1.429965, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 139.230011, 54.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'a1000001-0000-0000-0000-000000000017'
+layer = 0
+name = 'LawText'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.556863, 0.545098, 0.521569, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 18.0
+    letterSpacing = 3.3
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    text = '斬撃では崩れない。崩すのは弾きだけ'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 274.0, 954.599976, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 328.649963, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '605bc126-68b1-4926-aaa0-6bf349cfe32d'
+layer = 0
+name = 'HintIcon_0'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_82'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1700.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '03e3446e-4ad3-468e-86a4-0c6d6bfddda0'
+layer = 0
+name = 'HintText_0'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1740.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1df5b3fa-6c01-4351-9a1a-2b41d2a3928d'
+layer = 0
+name = 'HintIcon_1'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3b47d37d-2b6b-4441-a362-d2d3a489ff5e|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_20'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1500.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '14bf5cd5-69d6-461a-adca-254f9dd03b89'
+layer = 0
+name = 'HintText_1'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1540.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '36c4c505-e595-4323-a644-8a805fd32211'
+layer = 0
+name = 'HintIcon_2'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b|Assets/Sprites/HUD/xbox-series_sheet_default.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1300.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'a7543dd7-bd18-4508-a666-9e417d1bee72'
+layer = 0
+name = 'HintText_2'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1340.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000018'
+layer = 0
+name = 'TitleMenu'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'TitleMenuComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        blendSeconds = 0.09
+        debugHovered = '-'
+        debugIntro = 0.0
+        hoverNudge = 10.0
+        introDelay = 0.55
+        introSeconds = 0.46
+        introSlide = -40.0
+        introStagger = 0.09
+        labelActiveColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        labelDimColor = [ 0.462745, 0.454902, 0.439216, 1.0 ]
+        optionsScene = 'Options'
+        releaseSeconds = 0.18
+        startScene = 'StageSelect'
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ScreenDressingComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        arcName = 'Logo_Arc'
+        backdropCoverage = 0.1
+        backdropName = 'Backdrop'
+        backdropSpeed = 1.0
+        crackleInterval = 5.5
+        crackleSeconds = 0.32
+        crackleStrength = 0.85
+        debugPhase = 0.0
+        debugSheen = 0.0
+        debugTargets = 0
+        revealDelay = 0.2
+        revealSeconds = 0.9
+        revealStagger = 0.12
+        sheenInterval = 6.5
+        sheenSeconds = 1.1
+        sheenStagger = 0.13
+        sheenTargets = [ 'Logo_Word', 'Logo_Mark', 'Logo_Rule' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiRevealComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugElapsed = 0.0
+        debugSlots = 0
+        delay = 0.12
+        duration = 0.42
+        fromX = -28.0
+        fromY = 0.0
+        includeChildren = false
+        stagger = 0.06
+        targets = [ 'Logo_Mark', 'Logo_Word', 'Logo_Rule', 'Version', 'Law_Icon', 'LawText' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHintBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bottomMargin = 58.0
+        debugBuilt = 0
+        debugPad = false
+        entries = [ 'Confirm:決定', 'Navigate:選択' ]
+        fontSize = 28.0
+        gapEntries = 45.0
+        gapIconText = 12.0
+        hitColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        iconSize = 45.0
+        introDelay = 0.9
+        introSeconds = 0.45
+        rightMargin = 132.0
+        textColor = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000019'
+layer = 0
+name = 'Cursor'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 100
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:a755a35867c1424c050b74987a0bab75|Assets/Sprites/HUD/pointer_c_shaded.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1568.686646, 275.592804, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 36.0, 36.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'GameCursorComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugDevice = 'Mouse'
+        padAccelPower = 2.0
+        padDeadzone = 0.18
+        padSpeed = 1400.0
+        spriteOffset = [ 10.0, 10.0 ]
+        useHardwareCursor = true
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000020'
+layer = 0
+name = 'GameSettings'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'GameSettingsComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        configFolder = 'GreenWare'
+        debugConfigPath = '-'
+        debugQuality = 'High'
+        debugResolution = '1904x973 -> 1904x973 (fullscreen)'
+        perUserConfig = true
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000021'
+layer = 0
+name = 'MainCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'MainCamera'
+
+    [gameobjects.AudioListenerComponent]
+    enabled = true
+    priority = 0
+    volume = 1.0
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777379
+    backgroundColor = [ 0.0, 0.0, 0.0, 1.0 ]
+    clearMode = 0
+    cullDistanceSpherical = true
+    cullingBoundsPadding = 0.0
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 1000.0
+    fovY = 74.0
+    frustumCulling = true
+    isMain = true
+    maxDrawDistance = 0.0
+    nearZ = 0.1
+    occlusionCulling = true
+    smallObjectScreenHeight = 0.0
+
+    [gameobjects.transform]
+    position = [ 4.0, 2.994095, -4.829629 ]
+    rotation = [ 0.130526, 0.0, 0.0, 0.991445 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000022'
+layer = 0
+name = 'ElectrodePlus_00'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Player'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    bursts = []
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 1.0, 0.12, 0.14, 0.0 ]
+    colorStart = [ 1.0, 0.12, 0.14, 1.0 ]
+    colorVariation = 0.0
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = true
+    deathSubEmitter = ''
+    duration = 0.0
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 120.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 1
+    inheritVelocity = 0.0
+    lifetime = 1.0
+    lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    lodEnabled = true
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = 'guid:bb4a69ff2e2be26600132fa848c7c9cd|Assets/Materials/Effects/ElectricChargePlusGPU.mat'
+    maxParticles = 1000
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = true
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 0
+    screenCoverageThreshold = 0.0
+    shape = 1
+    simulationMode = 1
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.03
+    sizeStart = 0.1
+    sortMode = 0
+    speedRange = 10.0
+    sphereRadius = 0.35
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = true
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = true
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.9
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [
+            [ 0.0, 1.5, 0.18, 0.21, 1.0 ],
+            [ 0.18, 1.0, 0.12, 0.14, 1.0 ],
+            [ 0.55, 0.6, 0.072, 0.084, 0.8 ],
+            [ 1.0, 0.2, 0.024, 0.028, 0.0 ]
+        ]
+        space = 1
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.85 ], [ 0.12, 0.0 ], [ 0.75, 0.1 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ 8.650194, 3.580898, 0.933818 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ElectricPlusParticleComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        arcAmplitude = 0.55
+        arcBreakup = 0.55
+        arcIntensity = 1.6
+        arcRange = 7.0
+        arcStrands = 3
+        arcStrikeRate = 22.0
+        arcWidth = 0.1
+        collisionGlow = 0.0
+        coreIntensity = 2.6
+        corePulseDepth = 0.22
+        corePulseRate = 1.6
+        coreRingBeads = 5.0
+        coreRingScale = 1.0
+        coreRingTravel = 1.2
+        coreSize = 0.1
+        coreThickness = 0.28
+        coupling = 5.0
+        crackle = 3.0
+        emitRate = 120.0
+        fieldLineBeads = 4.0
+        fieldLineCount = 16
+        fieldLineIntensity = 1.15
+        fieldLineLength = 3.2
+        fieldLineSegments = 44
+        fieldLineSpin = -8.0
+        fieldLineStart = 1.15
+        fieldLineTravel = 2.5
+        fieldLineWidth = 0.07
+        fieldRadius = 10.0
+        followCursor = true
+        followMinX = 0.5
+        followResponse = 12.0
+        homeSpring = 2.0
+        hotCore = 1.5
+        lifetime = 1.0
+        maxParticles = 1000
+        minSeparation = 1.6
+        orbitSpeed = 8.0
+        particleSize = 0.1
+        pullStrength = 26.0
+        pushStrength = 10.0
+        radialBurst = 3.0
+        simulationMode = 1
+        spawnRadius = 0.35
+        spin = 2.0
+        swirlStrength = 4.0
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000023'
+layer = 0
+name = 'ElectrodeMinus_00'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    bursts = []
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 0.1, 0.35, 1.0, 0.0 ]
+    colorStart = [ 0.1, 0.35, 1.0, 1.0 ]
+    colorVariation = 0.0
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = true
+    deathSubEmitter = ''
+    duration = 0.0
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 120.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 2
+    inheritVelocity = 0.0
+    lifetime = 1.0
+    lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    lodEnabled = true
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = 'guid:46d1920d0f5e7622467b814d5aeb31f8|Assets/Materials/Effects/ElectricChargeMinusGPU.mat'
+    maxParticles = 1000
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = true
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 0
+    screenCoverageThreshold = 0.0
+    shape = 1
+    simulationMode = 1
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.03
+    sizeStart = 0.1
+    sortMode = 0
+    speedRange = 10.0
+    sphereRadius = 0.35
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = true
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = true
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.9
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [
+            [ 0.0, 0.15, 0.525, 1.5, 1.0 ],
+            [ 0.18, 0.1, 0.35, 1.0, 1.0 ],
+            [ 0.55, 0.06, 0.21, 0.6, 0.8 ],
+            [ 1.0, 0.02, 0.07, 0.2, 0.0 ]
+        ]
+        space = 1
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.85 ], [ 0.12, 0.0 ], [ 0.75, 0.1 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = -2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ 7.296653, 0.32256, 0.817395 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ElectricMinusParticleComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        collisionGlow = 0.0
+        coreIntensity = 2.6
+        corePulseDepth = 0.22
+        corePulseRate = 1.6
+        coreRingBeads = 5.0
+        coreRingScale = 1.0
+        coreRingTravel = -1.2
+        coreSize = 0.1
+        coreThickness = 0.28
+        coupling = 5.0
+        crackle = 3.0
+        emitRate = 120.0
+        fieldLineBeads = 4.0
+        fieldLineCount = 16
+        fieldLineIntensity = 1.15
+        fieldLineLength = 3.2
+        fieldLineSegments = 44
+        fieldLineSpin = -8.0
+        fieldLineStart = 1.15
+        fieldLineTravel = 2.5
+        fieldLineWidth = 0.07
+        fieldRadius = 10.0
+        homeSpring = 2.0
+        hotCore = 1.5
+        lifetime = 1.0
+        maxParticles = 1000
+        minSeparation = 1.6
+        orbitSpeed = 8.0
+        particleSize = 0.1
+        pullStrength = 26.0
+        pushStrength = 10.0
+        radialBurst = 3.0
+        simulationMode = 1
+        spawnRadius = 0.35
+        spin = -2.0
+        swirlStrength = -4.0
+
+[[gameobjects]]
+active = true
+instanceId = '83f19a9d-7bc3-4c7a-bae1-34305a98db89'
+layer = 0
+name = 'ElectrodeMinus_01'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    bursts = []
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 0.1, 0.35, 1.0, 0.0 ]
+    colorStart = [ 0.1, 0.35, 1.0, 1.0 ]
+    colorVariation = 0.0
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = true
+    deathSubEmitter = ''
+    duration = 0.0
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 120.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    forceFieldChannels = 2
+    inheritVelocity = 0.0
+    lifetime = 1.0
+    lifetimeRandom = 0.35
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    lodEnabled = true
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = 'guid:46d1920d0f5e7622467b814d5aeb31f8|Assets/Materials/Effects/ElectricChargeMinusGPU.mat'
+    maxParticles = 1000
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = true
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    renderPriority = 0
+    screenCoverageThreshold = 0.0
+    shape = 1
+    simulationMode = 1
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.03
+    sizeStart = 0.1
+    sortMode = 0
+    speedRange = 10.0
+    sphereRadius = 0.35
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = true
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = true
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.9
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [
+            [ 0.0, 0.15, 0.525, 1.5, 1.0 ],
+            [ 0.18, 0.1, 0.35, 1.0, 1.0 ],
+            [ 0.55, 0.06, 0.21, 0.6, 0.8 ],
+            [ 1.0, 0.02, 0.07, 0.2, 0.0 ]
+        ]
+        space = 1
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 2
+        keys = [ [ 0.0, 0.85 ], [ 0.12, 0.0 ], [ 0.75, 0.1 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.5
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 1.2
+        noiseSpeed = 2.0
+        radius = 0.0
+        space = 0
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 3
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = -2.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 2
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 1
+        strength = 3.0
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+    [gameobjects.transform]
+    position = [ 4.747179, 0.097828, -0.135671 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ElectricMinusParticleComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        collisionGlow = 0.0
+        coreIntensity = 2.6
+        corePulseDepth = 0.22
+        corePulseRate = 1.6
+        coreRingBeads = 5.0
+        coreRingScale = 1.0
+        coreRingTravel = -1.2
+        coreSize = 0.1
+        coreThickness = 0.28
+        coupling = 5.0
+        crackle = 3.0
+        emitRate = 120.0
+        fieldLineBeads = 4.0
+        fieldLineCount = 16
+        fieldLineIntensity = 1.15
+        fieldLineLength = 3.2
+        fieldLineSegments = 44
+        fieldLineSpin = -8.0
+        fieldLineStart = 1.15
+        fieldLineTravel = 2.5
+        fieldLineWidth = 0.07
+        fieldRadius = 10.0
+        homeSpring = 2.0
+        hotCore = 1.5
+        lifetime = 1.0
+        maxParticles = 1000
+        minSeparation = 1.6
+        orbitSpeed = 8.0
+        particleSize = 0.1
+        pullStrength = 26.0
+        pushStrength = 10.0
+        radialBurst = 3.0
+        simulationMode = 1
+        spawnRadius = 0.35
+        spin = -2.0
+        swirlStrength = -4.0
+
+[[gameobjects]]
+active = true
+instanceId = '3b7692b4-2d69-408d-a293-fe10adb0c5c5'
+layer = 0
+name = 'Post Process Volume'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:42a080b1689b1639699ce5fc43a53d4a|Assets/PostProcess/Title.fzdata'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000030'
+layer = 0
+name = 'FieldGrid'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:9f42c7b13e8a4d05b6ce1f70a2d95c38|Assets/Materials/Title/FieldGrid.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = false
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ 4.0, 2.994095, -4.829629 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 600.0, 600.0, 600.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'TitleFieldGridComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugElectrodes = 0

@@ -1,0 +1,36 @@
+# FX_BLD_SpinRing.mat — 回転斬りの «一周» の輪 (SlashCut.hlsl)
+# SpinSlashFxComponent が BeamTrailRendererComponent::ShowPath 経由で張る帯に使う。
+# coreWidth / edgeFalloff / coreBoost / tiling / scroll / muzzleFade / tipFade は
+# スクリプトが毎フレーム上書きする。ここで効くのは taper / detail / intensity と素材。
+#
+# WHY FX_BLD_Cut と分けるか: 一閃は «短い 1 本» なので両端を針まで尖らせる (taper 0.9)。
+# 輪は «長く続く 1 周» で、同じ尖りを掛けると中央だけが光って «回った跡» が繋がらない。
+# 形の話しか違わないので、シェーダーと素材は一閃と同じものを指す。
+version = 1
+name = 'FX_BLD_SpinRing'
+shader = 'guid:6b059fca913a0c59b20388abc71e7e86'
+blend_mode = 'Premultiplied'
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[textures]
+albedo = "guid:f33357a61cce4698b1a289ee8c06cdef"
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+
+coreWidth = 0.26
+edgeFalloff = 1.9
+coreBoost = 2.2
+intensity = 0.9
+
+tiling = 0.35
+scroll = 0.0
+muzzleFade = 0.22
+tipFade = 0.02
+
+taper = 0.25
+detail = 0.5

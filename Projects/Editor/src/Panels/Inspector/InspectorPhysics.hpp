@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorPhysics.hpp | fbzz::editor
-// Physics 系 Component の Inspector 描画
+/// @file    InspectorPhysics.hpp
+/// @brief   Physics 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include "InspectorCommon.hpp"

@@ -1,0 +1,21 @@
+# GreenWare
+# M_ArmorGrey.mat
+# プレイヤーと刀の灰色の装甲板。«灰 / 暗色 = 地金、白 / 有彩色 = 塗装» の切り分けで、
+# こちらは地金として扱う (塗装側は M_ArmorWhite)。
+version = 1
+name = 'M_ArmorGrey'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.30, 0.31, 0.34, 1.0 ]
+metallic = 1.0
+roughness = 0.40
+anisotropy = 0.0
+# 板の上の薄い艶。下地の粗さとは別に鋭いハイライトがもう 1 枚乗るので、
+# «磨いた板» と «削り出しの塊» が描き分けられる。
+clearcoat = 0.30
+clearcoatRoughness = 0.14
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

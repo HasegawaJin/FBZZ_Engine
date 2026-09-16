@@ -1,0 +1,39 @@
+# FBZZ Engine
+# ElectricChargePlusGPU.mat
+# ＋極の電荷パーティクル (GPU シミュレーション用)。
+# ElectricChargePlus.mat と shader 以外まったく同じで、絵も同一
+# (どちらの .hlsl も ElectricChargeCommon.hlsli の PSMain を使う)。
+#
+# WHY 経路ごとに .mat を分けるか:
+#   差すシェーダーを決めるのは .mat の shader だけで、simulationMode では切り替わらない。
+#   GPU 経路は頂点バッファを持たないため、CPU 用シェーダーのまま Gpu にすると
+#   «縮退した» とも言われないまま粒が 1 つも出ない (ElectricChargeGPU.hlsl の WHY)。
+version = 1
+name = 'ElectricChargePlusGPU'
+shader = 'Assets/Shaders/Material/Effects/ElectricChargeGPU.hlsl'
+blend_mode = 'Additive'
+double_sided = true
+render_path = 'particle'
+render_queue = 3000
+mesh_type = 'surface'
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+chargeSign = 1.0
+signScale = 0.68
+signWeight = 0.24
+signGlow = 3.2
+
+[particle]
+emissive_scale = 1.4
+lighting_strength = 0.0
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

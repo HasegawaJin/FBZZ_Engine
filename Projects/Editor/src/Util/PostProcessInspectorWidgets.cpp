@@ -1,510 +1,447 @@
-// FBZZ Engine
-// PostProcessInspectorWidgets.cpp | fbzz::editor
-// ポストプロセス設定の共通 Inspector 実装
+/// @file    PostProcessInspectorWidgets.cpp
+/// @brief   PostProcessProfile のオーバーライド編集 UI の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// 画面構成 (上から):
+/// 1. サマリーバー   — 何個の効果が効いているか、排他スロットの競合が無いか
+/// 2. Add Override   — カテゴリ別ポップアップ。検索付き。追加済みは選べない
+/// 3. オーバーライドカード — Inspector のコンポーネントカードと同じ見た目
+/// 4. 空状態のプレースホルダ
+///
+/// WHY コンポーネントカードと同じ見た目にそろえるか:
+/// Inspector には既に「左に色帯 + チェック + 折りたたみ」というカードの語彙がある。
+/// ここだけ独自の見た目にすると、同じ画面に 2 つの規則が並ぶことになる。
+/// 色帯の色だけを効果カテゴリのものに差し替え、構造は共有する。
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
+#include <Editor/ImGuiReflector.hpp>
+#include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Engine/Asset/PostProcessProfile.hpp>
+#include <Engine/Asset/VolumeOverride.hpp>
+#include <Engine/Renderer/PipelineDiagnostics.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
-#include <string>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Renderer/IShader.hpp>
-#include <Engine/Renderer/ShaderDescriptor.hpp>
-#include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
+#include <algorithm>
+#include <cctype>
+#include <charconv>
+#include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace fbzz::editor {
+
 namespace {
 
-// 個別エフェクトの開閉見出しと有効化チェックを同じ ImGui ID スコープで開始する。
-bool BeginEffect(const char* name, bool& enabled, bool& changed, bool defaultOpen = false)
-{
-    ImGui::PushID(name);
-    const ImGuiTreeNodeFlags flags = defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0;
-    const bool open = ImGui::CollapsingHeader(name, flags);
-    if (open) changed |= ImGui::Checkbox("Enabled", &enabled);
-    return open;
-}
+using asset::VolumeOverride;
+using asset::VolumeOverrideCategory;
+using asset::VolumeOverrideFactory;
 
-// BeginEffect が開始した ImGui ID スコープを終了する。
-void EndEffect()
+// カテゴリ別のアクセント色。コンポーネントカードの帯と同じ役割。
+// WHY 色を割り当てるか: プロファイルには 10 枚以上のカードが積まれうる。
+//     「青系 = 色まわり」「橙系 = レンズ」と系統で拾えれば、名前を読まずに辿れる。
+ImU32 CategoryAccent(VolumeOverrideCategory category)
 {
-    ImGui::PopID();
-}
-
-// HLSL アセットのドラッグ＆ドロップを受け入れ、変更時だけ true を返す。
-bool AcceptShaderDrop(std::string& path)
-{
-    if (!ImGui::BeginDragDropTarget()) return false;
-    bool changed = false;
-    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-        const std::string dropped = static_cast<const char*>(payload->Data);
-        if (util::StringUtils::EndsWith(dropped, ".hlsl")) {
-            path = dropped;
-            changed = true;
-        }
+    switch (category) {
+    case VolumeOverrideCategory::Exposure:         return IM_COL32(245, 210, 110, 255);
+    case VolumeOverrideCategory::AntiAliasing:     return IM_COL32(150, 155, 170, 255);
+    case VolumeOverrideCategory::AmbientOcclusion: return IM_COL32(130, 140, 165, 255);
+    case VolumeOverrideCategory::Color:            return IM_COL32( 90, 160, 245, 255);
+    case VolumeOverrideCategory::Lens:             return IM_COL32(235, 165,  95, 255);
+    case VolumeOverrideCategory::Atmosphere:       return IM_COL32(140, 200, 235, 255);
+    case VolumeOverrideCategory::Shadowing:        return IM_COL32(120, 205, 140, 255);
+    case VolumeOverrideCategory::Stylize:          return IM_COL32(210, 130, 235, 255);
+    case VolumeOverrideCategory::Custom:           return IM_COL32(240, 140, 180, 255);
     }
-    ImGui::EndDragDropTarget();
-    return changed;
+    return IM_COL32(150, 155, 170, 255);
 }
 
-// キャッシュ済みシェーダーを解決し、Inspector生成用Descriptorを返す。
-const renderer::ShaderDescriptor* LoadDescriptor(const std::string& path)
+// 部分一致 (大文字小文字を無視)。Add Override の検索に使う。
+bool ContainsFold(std::string_view haystack, std::string_view needle)
 {
-    auto* resources = renderer::ResourceManager::Active();
-    if (!resources || path.empty()) return nullptr;
-    const auto handle = resources->LoadShader(path);
-    if (!handle.IsValid()) return nullptr;
-    const auto* shader = resources->Get(handle);
-    return shader ? &shader->GetDescriptor() : nullptr;
+    if (needle.empty()) return true;
+    if (needle.size() > haystack.size()) return false;
+    const auto lower = [](char c) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    };
+    for (std::size_t i = 0; i + needle.size() <= haystack.size(); ++i) {
+        std::size_t j = 0;
+        while (j < needle.size() && lower(haystack[i + j]) == lower(needle[j])) ++j;
+        if (j == needle.size()) return true;
+    }
+    return false;
+}
+
+// このプロファイルで実際に効いている効果の数 (active なもの)。
+int CountActive(const asset::PostProcessProfile& profile)
+{
+    int count = 0;
+    for (const auto& entry : profile.overrides)
+        if (entry && entry->active) ++count;
+    return count;
+}
+
+// 排他スロットの競合を検出する。
+// WHY 追加時に弾かないか: 「FXAA を試したあと TAA に差し替える」作業では、
+//     一時的に両方リストに載っている状態を通る。追加を禁止するより、
+//     並んでいる状態を見せて片方を外させる方が操作が素直になる。
+struct SlotConflicts {
+    bool antiAliasing = false;  // FXAA + TAA
+    bool ambientOcclusion = false;  // SSAO + GTAO
+};
+
+SlotConflicts DetectConflicts(const asset::PostProcessProfile& profile)
+{
+    bool fxaa = false, taa = false, ssao = false, gtao = false;
+    for (const auto& entry : profile.overrides) {
+        if (!entry || !entry->active) continue;
+        const char* type = entry->GetTypeName();
+        if (std::strcmp(type, "FXAA") == 0) fxaa = true;
+        else if (std::strcmp(type, "TAA")  == 0) taa  = true;
+        else if (std::strcmp(type, "SSAO") == 0) ssao = true;
+        else if (std::strcmp(type, "GTAO") == 0) gtao = true;
+    }
+    return { fxaa && taa, ssao && gtao };
+}
+
+// ── サマリーバー ────────────────────────────────────────────────────────
+// 「このプロファイルが今なにをしているか」を 1 行で示す。
+// WHY 必要か: カードが増えると全体像がスクロールの向こうへ消える。
+//     効いている数と競合の有無だけでも先頭に出しておけば、
+//     「効かない」と感じたときに最初に見る場所が定まる。
+void DrawSummaryBar(const asset::PostProcessProfile& profile)
+{
+    const int total  = static_cast<int>(profile.overrides.size());
+    const int active = CountActive(profile);
+
+    const widgets::ComponentBodyScope card = widgets::BeginCard();
+    if (total == 0) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::TextMuted),
+                           "オーバーライドなし — このプロファイルは画面を変えません");
+    } else if (active == total) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Text),
+                           "%d 個の効果を上書き中", active);
+    } else {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Text),
+                           "%d 個の効果を上書き中", active);
+        ImGui::SameLine();
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::TextFaint),
+                           "(%d 個は一時無効)", total - active);
+    }
+
+    const SlotConflicts conflicts = DetectConflicts(profile);
+    if (conflicts.antiAliasing) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+            "FXAA と TAA は同じ AA スロットです — 描画時は FXAA が優先されます");
+    }
+    if (conflicts.ambientOcclusion) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+            "SSAO と GTAO は同じ AO スロットです — 描画時は SSAO が優先されます");
+    }
+    widgets::EndCard(card);
+}
+
+// ── Add Override ポップアップ ───────────────────────────────────────────
+// 追加された型名を返す (何も選ばなければ空文字列)。
+std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
+{
+    static char s_filter[64] = "";
+    std::string picked;
+
+    // ポップアップを開いた直後は検索欄へフォーカスを置く。
+    // WHY: 27 種あるので、開いてすぐ打ち始められるかどうかで体感がまるで違う。
+    if (ImGui::IsWindowAppearing()) {
+        s_filter[0] = '\0';
+        ImGui::SetKeyboardFocusHere();
+    }
+    ImGui::SetNextItemWidth(240.0f);
+    ImGui::InputTextWithHint("##addOverrideFilter", "効果名で検索...", s_filter, sizeof(s_filter));
+    ImGui::Separator();
+
+    ImGui::BeginChild("##addOverrideList", ImVec2(240.0f, 320.0f), false);
+
+    VolumeOverrideCategory currentCategory = VolumeOverrideCategory::Exposure;
+    bool firstCategory = true;
+    bool anyVisible = false;
+
+    for (const auto& entry : VolumeOverrideFactory::RegisteredEntries()) {
+        if (!ContainsFold(entry.displayName, s_filter)) continue;
+        anyVisible = true;
+
+        if (firstCategory || entry.category != currentCategory) {
+            currentCategory = entry.category;
+            firstCategory = false;
+            ImGui::Spacing();
+            // カテゴリ見出しにも帯の色を小さく添えて、カードの色と対応付ける。
+            const ImVec2 dotMin = ImGui::GetCursorScreenPos();
+            const float  dotH   = ImGui::GetTextLineHeight();
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                ImVec2(dotMin.x, dotMin.y + 2.0f),
+                ImVec2(dotMin.x + 3.0f, dotMin.y + dotH - 2.0f),
+                CategoryAccent(entry.category), 1.5f);
+            ImGui::Dummy(ImVec2(8.0f, 0.0f));
+            ImGui::SameLine(0.0f, 0.0f);
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::TextFaint),
+                               "%s", asset::ToString(entry.category));
+        }
+
+        // 既に入っている型は選べない (Custom Effect だけは複数可)。
+        const bool alreadyAdded = !entry.allowsMultiple && profile.Contains(entry.typeName.c_str());
+        ImGui::BeginDisabled(alreadyAdded);
+        if (ImGui::Selectable(entry.displayName.c_str()))
+            picked = entry.typeName;
+        ImGui::EndDisabled();
+        if (alreadyAdded && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("既に追加されています");
+    }
+
+    if (!anyVisible) {
+        ImGui::Spacing();
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::TextFaint), "該当なし");
+    }
+
+    ImGui::EndChild();
+
+    if (!picked.empty()) ImGui::CloseCurrentPopup();
+    return picked;
+}
+
+// カード 1 枚に対する操作要求。ループ内で即座にリストを触ると
+// イテレータが壊れるため、要求だけ集めて後段でまとめて適用する。
+enum class CardAction { None, Remove, MoveUp, MoveDown, Reset };
+
+// カードのドラッグ結果。適用は一覧を描き終えてから行う。
+struct CardDragResult {
+    int from = -1;
+    int to   = -1;
+    bool Valid() const { return from >= 0 && to >= 0 && from != to; }
+};
+
+// 「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
+// 抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
+int ResolveDropDestination(int dragged, int target, bool insertAfter)
+{
+    int destination = insertAfter ? target + 1 : target;
+    if (dragged < destination) --destination;
+    return destination;
+}
+
+// ── オーバーライドカード ────────────────────────────────────────────────
+CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
+                            ImGuiReflector& reflector, bool& changed,
+                            CardDragResult& drag,
+                            const renderer::RenderSettings* renderSettings)
+{
+    CardAction action = CardAction::None;
+
+    // ImGui ID は表示名だけだと Custom Effect が複数あるとき衝突する。
+    ImGui::PushID(index);
+
+    const ImU32 accent = CategoryAccent(entry.GetCategory());
+    const bool activeBefore = entry.active;
+
+    // ドラッグでも並び替えられるようにする。
+    // WHY 追加したか: 適用順は Bloom → Tonemap のように結果が変わる要素なのに、
+    //   これまで ⋯ メニューの Move Up / Move Down しか無く、離れた位置へ動かすには
+    //   メニューを何度も開き直す必要があった。dragKey は同名カード (Custom Effect) を
+    //   区別するため index を使う。
+    const std::string dragKey = std::to_string(index);
+    widgets::ComponentReorderTarget reorder;
+    reorder.scope   = "POSTFX";
+    reorder.dragKey = dragKey.c_str();
+    reorder.onDrop  = [&drag, index](std::string_view draggedKey, bool insertAfter) {
+        int dragged = 0;
+        const char* begin = draggedKey.data();
+        const char* end   = draggedKey.data() + draggedKey.size();
+        const auto [ptr, ec] = std::from_chars(begin, end, dragged);
+        if (ec != std::errc{} || ptr != end || dragged < 0) return;
+        drag.from = dragged;
+        drag.to   = ResolveDropDestination(dragged, index, insertAfter);
+    };
+
+    widgets::ComponentHeaderResult header =
+        widgets::ComponentHeader(entry.GetDisplayName(), accent, &entry.active,
+                                 true, reorder);
+    if (entry.active != activeBefore) changed = true;
+
+    // ⋯ メニュー / ヘッダー右クリック。
+    if (header.menuClicked) ImGui::OpenPopup("##overrideMenu");
+    if (ImGui::BeginPopup("##overrideMenu")) {
+        if (ImGui::MenuItem("Reset", nullptr, false))        action = CardAction::Reset;
+        ImGui::Separator();
+        if (ImGui::MenuItem("Move Up", nullptr, false, index > 0))
+            action = CardAction::MoveUp;
+        if (ImGui::MenuItem("Move Down", nullptr, false, index + 1 < count))
+            action = CardAction::MoveDown;
+        ImGui::Separator();
+        if (ImGui::MenuItem("Remove"))                       action = CardAction::Remove;
+        ImGui::EndPopup();
+    }
+
+    // 現在のパイプラインでは効かない効果に、その旨と直し方を出す。
+    //
+    // WHY 折りたたんでいても出すか: 効かないことに気づけるのが目的なので、
+    //     カードを開かないと見えないのでは意味がない。ヘッダーの直下へ出す。
+    // NOTE: entry.active が false のときは黙る。ユーザーが自分で切っているものに
+    //       「効きません」と言っても、直すべきことは何も無い。
+    const char* inertReason =
+        (renderSettings && entry.active && entry.GetTypeName())
+            ? renderer::DescribeInertOverride(*renderSettings, entry.GetTypeName())
+            : nullptr;
+    if (inertReason) {
+        ImGui::Indent();
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                           "このパイプラインでは効きません");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s\n→ Project Settings > Rendering > Pipeline", inertReason);
+        ImGui::Unindent();
+    }
+
+    if (header.open) {
+        const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
+
+        if (inertReason) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s", inertReason);
+            ImGui::TextDisabled("Project Settings > Rendering > Pipeline を "
+                                "Deferred / Deferred+ にすると有効になります");
+            ImGui::Spacing();
+        }
+
+        // 無効化中は本文をグレーアウトする。値は見えるが、効いていないことが分かる。
+        ImGui::BeginDisabled(!entry.active);
+        reflector.m_changed = false;
+        entry.Reflect(reflector);
+        if (reflector.m_changed) changed = true;
+
+        // パラメーターを持たない効果 (FXAA) は本文が空になる。
+        // 空のカードは「壊れている」ように見えるので、そうでないことを書いておく。
+        if (entry.GetTypeName() && std::strcmp(entry.GetTypeName(), "FXAA") == 0) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::TextFaint),
+                               "調整するパラメーターはありません。");
+        }
+        ImGui::EndDisabled();
+
+        widgets::EndComponentBody(body);
+    }
+
+    ImGui::PopID();
+    return action;
+}
+
+// ── 空状態 ──────────────────────────────────────────────────────────────
+// WHY 専用の見た目を用意するか: 新規プロファイルは必ずここから始まる。
+//     何もない領域を見せるより、次にやることを 1 行で示す方が短く済む。
+void DrawEmptyState()
+{
+    const widgets::ComponentBodyScope card = widgets::BeginCard();
+    ImGui::Spacing();
+    ImGui::TextColored(EditorTheme::Color(ThemeColor::TextMuted),
+                       "まだ効果がありません");
+    ImGui::TextColored(EditorTheme::Color(ThemeColor::TextFaint),
+                       "上の [+ Add Override] から Bloom や Fog を追加すると、\n"
+                       "このプロファイルを参照している Post Process Volume に反映されます。");
+    ImGui::Spacing();
+    widgets::EndCard(card);
 }
 
 } // namespace
 
-// 組み込み効果とカスタム効果を一つの共通Inspectorとして描画する。
-// ctx が非 null のとき、TAA/GTAO との排他スロット競合を検出してグレーアウトする。
-PostProcessInspectorResult DrawPostProcessInspector(
-    renderer::PostProcessSettings& p,
-    const renderer::RenderSettings* ctx)
+PostProcessInspectorResult DrawVolumeOverrideListInspector(
+    asset::PostProcessProfile& profile, ImGuiReflector& reflector,
+    const renderer::RenderSettings* renderSettings)
 {
     PostProcessInspectorResult result;
-    auto changed = [&](bool value) { result.changed |= value; };
 
-    ImGui::PushID("PostProcessInspector");
-    if (ImGui::CollapsingHeader("Base", ImGuiTreeNodeFlags_DefaultOpen)) {
-        changed(ImGui::DragFloat("Exposure", &p.exposure, 0.01f, 0.0f, 8.0f));
+    ImGui::PushID("VolumeOverrides");
 
-        // WHY: FXAA と TAA は同じ AA スロットを使用するため同時には有効化できない。
-        //      TAA が有効な場合は FXAA をグレーアウトし、Pipeline Slots への誘導を表示する。
-        const bool fxaaLockedByTAA = ctx && ctx->taa.enabled;
-        ImGui::BeginDisabled(fxaaLockedByTAA);
-        changed(ImGui::Checkbox("FXAA", &p.fxaaEnabled));
-        ImGui::EndDisabled();
-        if (fxaaLockedByTAA) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("(TAA 有効中 — Advanced Graphics > Pipeline Slots で変更)");
-        }
-    }
+    DrawSummaryBar(profile);
+    ImGui::Spacing();
 
-    // WHY: SSAO と GTAO は同じ AO スロットを使用するため同時には有効化できない。
-    //      GTAO が有効な場合は SSAO をグレーアウトし、Pipeline Slots への誘導を表示する。
-    const bool aoLockedByGTAO = ctx && ctx->gtao.enabled;
-    if (aoLockedByGTAO) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        if (ImGui::CollapsingHeader("Ambient Occlusion"))
-            ImGui::TextDisabled("GTAO が有効なため無効です (Advanced Graphics > Pipeline Slots で変更)");
-        ImGui::PopStyleColor();
-    } else {
-        if (BeginEffect("Ambient Occlusion", p.ambientOcclusion.enabled, result.changed, true)) {
-            ImGui::BeginDisabled(!p.ambientOcclusion.enabled);
-            changed(ImGui::DragFloat("Intensity", &p.ambientOcclusion.intensity, 0.01f, 0.0f, 3.0f));
-            ImGui::EndDisabled();
-        }
-        EndEffect();
-    }
+    // ── Add Override ───────────────────────────────────────────────────
+    // 幅いっぱいのボタンにする。カードの横幅と端をそろえると、
+    // 「このボタンは下のリストに対する操作だ」が形で伝わる。
+    ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::AccentSoft));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::AccentHover));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+    if (ImGui::Button("+  Add Override", ImVec2(-1.0f, 0.0f)))
+        ImGui::OpenPopup("##addOverride");
+    ImGui::PopStyleColor(3);
 
-    if (BeginEffect("Bloom", p.bloom.enabled, result.changed, true)) {
-        ImGui::BeginDisabled(!p.bloom.enabled);
-        changed(ImGui::DragFloat("Intensity", &p.bloom.intensity, 0.01f, 0.0f, 10.0f));
-        changed(ImGui::DragFloat("Threshold", &p.bloom.threshold, 0.01f, 0.0f, 2.0f));
-        changed(ImGui::DragFloat("Soft Knee", &p.bloom.softKnee, 0.01f, 0.0f, 1.0f));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    if (BeginEffect("Fog", p.fog.enabled, result.changed)) {
-        ImGui::BeginDisabled(!p.fog.enabled);
-        changed(ImGui::DragFloat("Density", &p.fog.density, 0.001f, 0.0f, 1.0f));
-        changed(ImGui::DragFloat("Far", &p.fog.farDistance, 0.5f, 0.0f, 500.0f));
-        changed(ImGui::ColorEdit3("Color", p.fog.color));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    if (BeginEffect("Color Grading", p.colorGrading.enabled, result.changed, true)) {
-        ImGui::BeginDisabled(!p.colorGrading.enabled);
-        changed(ImGui::DragFloat("Contrast", &p.colorGrading.contrast, 0.01f, -1.0f, 1.0f));
-        changed(ImGui::DragFloat("Saturation", &p.colorGrading.saturation, 0.01f, 0.0f, 3.0f));
-        changed(ImGui::DragFloat("Hue Shift", &p.colorGrading.hueShift, 0.5f, -180.0f, 180.0f));
-        changed(ImGui::DragFloat("Temperature", &p.colorGrading.temperature, 0.01f, -1.0f, 1.0f));
-        changed(ImGui::DragFloat("Tint", &p.colorGrading.tint, 0.01f, -1.0f, 1.0f));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    if (BeginEffect("Vignette", p.vignette.enabled, result.changed)) {
-        ImGui::BeginDisabled(!p.vignette.enabled);
-        changed(ImGui::DragFloat("Intensity", &p.vignette.intensity, 0.01f, 0.0f, 1.0f));
-        changed(ImGui::DragFloat("Smoothness", &p.vignette.smoothness, 0.01f, 0.0f, 1.0f));
-        changed(ImGui::DragFloat("Roundness", &p.vignette.roundness, 0.01f, 0.0f, 1.0f));
-        changed(ImGui::ColorEdit3("Color", p.vignette.color));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    if (BeginEffect("Film Grain", p.filmGrain.enabled, result.changed)) {
-        ImGui::BeginDisabled(!p.filmGrain.enabled);
-        changed(ImGui::DragFloat("Intensity", &p.filmGrain.intensity, 0.001f, 0.0f, 0.5f));
-        changed(ImGui::DragFloat("Response", &p.filmGrain.response, 0.01f, 0.0f, 1.0f));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    if (BeginEffect("Sharpen", p.sharpen.enabled, result.changed)) {
-        ImGui::BeginDisabled(!p.sharpen.enabled);
-        changed(ImGui::DragFloat("Strength", &p.sharpen.strength, 0.01f, 0.0f, 2.0f));
-        changed(ImGui::DragFloat("Radius", &p.sharpen.radius, 0.01f, 0.25f, 4.0f));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    if (BeginEffect("Depth of Field", p.depthOfField.enabled, result.changed)) {
-        ImGui::BeginDisabled(!p.depthOfField.enabled);
-        changed(ImGui::DragFloat("Focus Distance", &p.depthOfField.focusDistance, 0.1f, 0.1f, 100.0f));
-        changed(ImGui::DragFloat("Focus Range", &p.depthOfField.focusRange, 0.1f, 0.1f, 50.0f));
-        changed(ImGui::DragFloat("Blur Radius", &p.depthOfField.blurRadius, 0.1f, 0.0f, 20.0f));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    if (ImGui::CollapsingHeader("Lens")) {
-        changed(ImGui::Checkbox("Chromatic Aberration", &p.lens.chromaticAberrationEnabled));
-        ImGui::BeginDisabled(!p.lens.chromaticAberrationEnabled);
-        changed(ImGui::DragFloat("CA Amount", &p.lens.chromaticAberration, 0.001f, 0.0f, 0.05f));
-        ImGui::EndDisabled();
-        changed(ImGui::Checkbox("Lens Distortion", &p.lens.distortionEnabled));
-        ImGui::BeginDisabled(!p.lens.distortionEnabled);
-        changed(ImGui::DragFloat("Distortion", &p.lens.distortion, 0.001f, -0.5f, 0.5f));
-        ImGui::EndDisabled();
-    }
-
-    if (ImGui::CollapsingHeader("Stylized")) {
-        changed(ImGui::Checkbox("Sepia", &p.stylized.sepiaEnabled));
-        changed(ImGui::DragFloat("Sepia Intensity", &p.stylized.sepiaIntensity, 0.01f, 0.0f, 1.0f));
-        changed(ImGui::Checkbox("Invert", &p.stylized.invertEnabled));
-        changed(ImGui::DragFloat("Invert Intensity", &p.stylized.invertIntensity, 0.01f, 0.0f, 1.0f));
-        changed(ImGui::Checkbox("Posterize", &p.stylized.posterizeEnabled));
-        changed(ImGui::DragFloat("Posterize Levels", &p.stylized.posterizeLevels, 0.5f, 2.0f, 32.0f));
-        changed(ImGui::Checkbox("Pixelate", &p.stylized.pixelateEnabled));
-        changed(ImGui::DragFloat("Pixel Size", &p.stylized.pixelSize, 0.5f, 1.0f, 32.0f));
-    }
-
-    if (ImGui::CollapsingHeader("Image Quality")) {
-        changed(ImGui::Checkbox("Clarity", &p.imageQuality.clarityEnabled));
-        changed(ImGui::DragFloat("Clarity Strength", &p.imageQuality.clarityStrength, 0.01f, 0.0f, 1.0f));
-        changed(ImGui::DragFloat("Clarity Radius", &p.imageQuality.clarityRadius, 0.1f, 0.5f, 8.0f));
-        changed(ImGui::Checkbox("Shadow / Highlight", &p.imageQuality.shadowHighlightEnabled));
-        changed(ImGui::DragFloat("Shadow Lift", &p.imageQuality.shadowLift, 0.01f, 0.0f, 0.5f));
-        changed(ImGui::DragFloat("Highlight Compression", &p.imageQuality.highlightCompression, 0.01f, 0.0f, 0.5f));
-        changed(ImGui::Checkbox("Color Filter", &p.imageQuality.colorFilterEnabled));
-        changed(ImGui::ColorEdit3("Filter Color", p.imageQuality.colorFilter));
-        changed(ImGui::DragFloat("Filter Intensity", &p.imageQuality.colorFilterIntensity, 0.01f, 0.0f, 1.0f));
-    }
-
-    if (ImGui::CollapsingHeader("Custom Effects", ImGuiTreeNodeFlags_DefaultOpen)) {
-        int removeIndex = -1;
-        for (int i = 0; i < static_cast<int>(p.customEffects.size()); ++i) {
-            auto& effect = p.customEffects[static_cast<size_t>(i)];
-            ImGui::PushID(i);
-            const std::string header = effect.name + (effect.enabled ? "" : " (off)");
-            if (ImGui::TreeNodeEx("CustomEffect", ImGuiTreeNodeFlags_DefaultOpen, "%s", header.c_str())) {
-                changed(ImGui::Checkbox("Enabled", &effect.enabled));
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Remove")) removeIndex = i;
-
-                char name[96];
-                std::snprintf(name, sizeof(name), "%s", effect.name.c_str());
-                if (ImGui::InputText("Name", name, sizeof(name))) { effect.name = name; result.changed = true; }
-                char shaderPath[512];
-                std::snprintf(shaderPath, sizeof(shaderPath), "%s", effect.shaderPath.c_str());
-                if (ImGui::InputText("Shader", shaderPath, sizeof(shaderPath))) { effect.shaderPath = shaderPath; result.changed = true; }
-                changed(AcceptShaderDrop(effect.shaderPath));
-
-                ImGui::BeginDisabled(!effect.enabled);
-                const auto* descriptor = LoadDescriptor(effect.shaderPath);
-                const bool hasIntensity = !descriptor || descriptor->FindPostProcessVar("customIntensity");
-                const bool hasBlend = !descriptor || descriptor->FindPostProcessVar("customBlend");
-                const auto* parameters = descriptor ? descriptor->FindPostProcessVar("customParameters") : nullptr;
-                if (hasIntensity) changed(ImGui::DragFloat("Intensity", &effect.intensity, 0.01f, 0.0f, 4.0f));
-                if (hasBlend) changed(ImGui::DragFloat("Blend", &effect.blend, 0.01f, 0.0f, 1.0f));
-                if (!descriptor || (parameters && parameters->varType == renderer::ShaderVarType::Float))
-                    changed(ImGui::DragFloat4(parameters ? parameters->name.c_str() : "Parameters", effect.parameters, 0.01f));
-                if (descriptor && descriptor->postProcessVars.empty())
-                    ImGui::TextDisabled("Shader does not use custom post-process parameters.");
-                ImGui::EndDisabled();
-                ImGui::TreePop();
+    if (ImGui::BeginPopup("##addOverride")) {
+        const std::string picked = DrawAddOverridePopup(profile);
+        if (!picked.empty()) {
+            if (auto created = VolumeOverrideFactory::Create(picked)) {
+                profile.overrides.push_back(std::move(created));
+                result.changed = result.structureChanged = true;
             }
-            ImGui::PopID();
         }
-        if (removeIndex >= 0) {
-            p.customEffects.erase(p.customEffects.begin() + removeIndex);
+        ImGui::EndPopup();
+    }
+
+    ImGui::Spacing();
+
+    // ── カード一覧 ─────────────────────────────────────────────────────
+    if (profile.overrides.empty()) {
+        DrawEmptyState();
+        ImGui::PopID();
+        return result;
+    }
+
+    int removeIndex = -1;
+    int swapIndex   = -1;   // この要素と swapIndex+1 を入れ替える
+    int resetIndex  = -1;
+    CardDragResult drag;
+
+    const int count = static_cast<int>(profile.overrides.size());
+    for (int i = 0; i < count; ++i) {
+        VolumeOverride* entry = profile.overrides[static_cast<std::size_t>(i)].get();
+        if (!entry) continue;
+
+        switch (DrawOverrideCard(*entry, i, count, reflector, result.changed, drag,
+                                 renderSettings)) {
+        case CardAction::Remove:   removeIndex = i; break;
+        case CardAction::MoveUp:   swapIndex   = i - 1; break;
+        case CardAction::MoveDown: swapIndex   = i; break;
+        case CardAction::Reset:    resetIndex  = i; break;
+        case CardAction::None:     break;
+        }
+        ImGui::Spacing();
+    }
+
+    // ── 収集した操作の適用 ─────────────────────────────────────────────
+    if (resetIndex >= 0) {
+        // 同じ型を作り直して差し替える = 既定値へ戻す。
+        // active は「表示上の状態」なので引き継ぐ (リセットで勝手に有効化しない)。
+        auto& slot = profile.overrides[static_cast<std::size_t>(resetIndex)];
+        if (auto fresh = VolumeOverrideFactory::Create(slot->GetTypeName())) {
+            fresh->active = slot->active;
+            slot = std::move(fresh);
             result.changed = true;
-            result.structureChanged = true;
-        }
-        if (ImGui::SmallButton("Add Custom Effect")) {
-            p.customEffects.emplace_back();
-            result.changed = true;
-            result.structureChanged = true;
         }
     }
-    ImGui::PopID();
-    return result;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DrawAdvancedGraphicsInspector
-// ─────────────────────────────────────────────────────────────────────────────
-
-namespace {
-
-// ファイルパス入力フィールド。ドラッグ＆ドロップにも対応する。
-// WHY: PostProcessInspectorWidgets は InspectorCommon に依存しないため
-//      widgets::AssetPathField が使えず、最小限の同等実装を内包する。
-bool PathField(const char* label, std::string& path, const char* tooltip = nullptr)
-{
-    char buf[512];
-    std::snprintf(buf, sizeof(buf), "%s", path.c_str());
-    bool changed = false;
-    ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputText(label, buf, sizeof(buf)))
-    {
-        path    = buf;
-        changed = true;
-    }
-    if (tooltip && ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", tooltip);
-
-    // Asset ブラウザからのドラッグ＆ドロップ受け入れ
-    if (ImGui::BeginDragDropTarget())
-    {
-        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH"))
-        {
-            path    = static_cast<const char*>(p->Data);
-            changed = true;
-        }
-        ImGui::EndDragDropTarget();
-    }
-    return changed;
-}
-
-} // anonymous namespace
-
-PostProcessInspectorResult DrawAdvancedGraphicsInspector(renderer::RenderSettings& r)
-{
-    PostProcessInspectorResult result;
-    auto changed = [&](bool v) { result.changed |= v; };
-
-    ImGui::PushID("AdvancedGraphics");
-
-    // TOML や外部コードが作った競合も、共通ルールで既存の安定パスへ正規化する。
-    const uint32_t normalizedConflicts = r.NormalizeExclusivePipelineSlots();
-    if (normalizedConflicts != renderer::RenderSettings::PIPELINE_CONFLICT_NONE)
+    if (swapIndex >= 0 && swapIndex + 1 < count) {
+        std::swap(profile.overrides[static_cast<std::size_t>(swapIndex)],
+                  profile.overrides[static_cast<std::size_t>(swapIndex + 1)]);
         result.changed = result.structureChanged = true;
-
-    if (ImGui::CollapsingHeader("Pipeline Compatibility", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        ImGui::TextDisabled("排他スロット");
-        ImGui::BulletText("Anti-Aliasing: FXAA / TAA のどちらか一方");
-        ImGui::BulletText("Ambient Occlusion: SSAO / GTAO のどちらか一方");
-        ImGui::Spacing();
-        ImGui::TextDisabled("必須条件");
-        ImGui::BulletText("SSR / GTAO / Contact Shadows: Deferred Pipeline 専用");
-        ImGui::BulletText("IBL: Irradiance + Prefiltered Cubemap の両方が必要");
-        ImGui::Spacing();
-        ImGui::TextDisabled("同時利用可能");
-        ImGui::BulletText("SSR + Contact Shadows: UAV u3 を逐次再利用するため競合しません");
-
-        if (r.pipeline != renderer::RenderingPipeline::Deferred &&
-            (r.ssr.enabled || r.gtao.enabled || r.contactShadow.enabled))
-            ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.2f, 1.0f),
-                "警告: Deferred 専用パスは現在の Forward Pipeline では実行されません");
-        if (r.ibl.enabled && !r.HasValidIblAssets())
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.25f, 1.0f),
-                "エラー: IBL の2つのCubemapを指定してください");
     }
-
-    ImGui::Spacing();
-
-    // ─── パイプラインスロット ─────────────────────────────────────────────
-    // WHY: FXAA と TAA は同じ「AA スロット」を、SSAO と GTAO は同じ「AO スロット」を
-    //      使用する。複数のパスを同一スロットに割り当てると二重適用による画質劣化が
-    //      生じるため、コンボボックスで排他的に選択させる。
-    if (ImGui::CollapsingHeader("Pipeline Slots", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        ImGui::TextDisabled("各スロットには 1 パスのみ割り当て可能です");
-        ImGui::Spacing();
-
-        // ── Anti-Aliasing スロット ──────────────────────────────────────────
-        {
-            int aaMode = 0; // None
-            if (r.taa.enabled)                  aaMode = 2;
-            else if (r.postProcess.fxaaEnabled) aaMode = 1;
-
-            ImGui::Text("Anti-Aliasing");
-            ImGui::SameLine();
-            ImGui::TextDisabled("(FXAA / TAA は同一スロット)");
-            const char* aaModes[] = { "None", "FXAA", "TAA (Temporal)" };
-            ImGui::SetNextItemWidth(200.0f);
-            if (ImGui::Combo("##aa_slot", &aaMode, aaModes, 3))
-            {
-                r.postProcess.fxaaEnabled = (aaMode == 1);
-                r.taa.enabled             = (aaMode == 2);
-                result.changed = result.structureChanged = true;
-            }
-            // TAA 固有パラメーターをスロット直下にインライン表示
-            if (aaMode == 2)
-            {
-                ImGui::Indent();
-                changed(ImGui::SliderFloat("Feedback##taa", &r.taa.feedback, 0.0f, 1.0f));
-                ImGui::SameLine();
-                ImGui::TextDisabled("0=off  0.9=標準  1=完全履歴");
-                ImGui::Unindent();
-            }
-        }
-
-        ImGui::Spacing();
-
-        // ── Ambient Occlusion スロット ──────────────────────────────────────
-        {
-            int aoMode = 0; // None
-            if (r.gtao.enabled)                               aoMode = 2;
-            else if (r.postProcess.ambientOcclusion.enabled)  aoMode = 1;
-
-            ImGui::Text("Ambient Occlusion");
-            ImGui::SameLine();
-            ImGui::TextDisabled("(SSAO / GTAO は同一スロット)");
-            const char* aoModes[] = { "None", "SSAO (Simple)", "GTAO (Advanced)" };
-            ImGui::SetNextItemWidth(200.0f);
-            if (ImGui::Combo("##ao_slot", &aoMode, aoModes, 3))
-            {
-                r.postProcess.ambientOcclusion.enabled = (aoMode == 1);
-                r.gtao.enabled                         = (aoMode == 2);
-                result.changed = result.structureChanged = true;
-            }
-            // 選択中の AO エフェクトのパラメーターをスロット直下にインライン表示
-            if (aoMode == 1) // SSAO
-            {
-                ImGui::Indent();
-                changed(ImGui::DragFloat("Intensity##ssao_slot", &r.postProcess.ambientOcclusion.intensity, 0.01f, 0.0f, 3.0f));
-                ImGui::Unindent();
-            }
-            else if (aoMode == 2) // GTAO
-            {
-                ImGui::Indent();
-                changed(ImGui::DragFloat("Intensity##gtao_slot",    &r.gtao.intensity,     0.01f, 0.0f, 4.0f));
-                changed(ImGui::DragFloat("Radius##gtao_slot",       &r.gtao.radius,        0.05f, 0.1f, 10.0f));
-                changed(ImGui::SliderInt("Slices##gtao_slot",       &r.gtao.slices,        1, 8));
-                changed(ImGui::SliderInt("Steps / Slice##gtao_slot",&r.gtao.stepsPerSlice, 1, 16));
-                ImGui::Unindent();
-            }
-        }
+    // ドラッグでの移動。unique_ptr の配列なので 1 要素だけを回転させて移す。
+    if (drag.Valid() && drag.from < count && drag.to < count) {
+        const auto begin = profile.overrides.begin();
+        if (drag.from < drag.to)
+            std::rotate(begin + drag.from, begin + drag.from + 1, begin + drag.to + 1);
+        else
+            std::rotate(begin + drag.to, begin + drag.from, begin + drag.from + 1);
+        result.changed = result.structureChanged = true;
     }
-
-    ImGui::Spacing();
-
-    // ─── IBL (Image-Based Lighting) ───────────────────────────────────────
-    // WHY: 定数 ambient を物理的に正確な環境光で置き換える。
-    //      cubemap ファイルが設定されていない場合は自動的に無効化される。
-    if (BeginEffect("IBL (Image-Based Lighting)", r.ibl.enabled, result.changed, true))
-    {
-        ImGui::BeginDisabled(!r.ibl.enabled);
-        changed(ImGui::DragFloat("Intensity##ibl",       &r.ibl.intensity,     0.01f, 0.0f, 8.0f));
-        changed(ImGui::DragFloat("Diffuse Scale##ibl",   &r.ibl.diffuseScale,  0.01f, 0.0f, 4.0f));
-        changed(ImGui::DragFloat("Specular Scale##ibl",  &r.ibl.specularScale, 0.01f, 0.0f, 4.0f));
-        changed(ImGui::SliderInt("Max Mip Level##ibl",   &r.ibl.maxMipLevel,   1, 12));
-
-        ImGui::SeparatorText("Cubemap Assets");
-        ImGui::TextDisabled("Irradiance (.dds, cubemap)");
-        changed(PathField("##ibl_irr", r.ibl.irradiancePath,
-            "Diffuse irradiance cubemap (.dds)\n"
-            "例: Assets/IBL/sky_irradiance.dds"));
-        ImGui::TextDisabled("Prefiltered Specular (.dds, cubemap)");
-        changed(PathField("##ibl_pref", r.ibl.prefilterPath,
-            "Specular prefiltered cubemap (.dds)\n"
-            "例: Assets/IBL/sky_prefilter.dds"));
-        ImGui::EndDisabled();
+    if (removeIndex >= 0) {
+        profile.overrides.erase(
+            profile.overrides.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+        result.changed = result.structureChanged = true;
     }
-    EndEffect();
-
-    // ─── SSR (Screen Space Reflections) ───────────────────────────────────
-    // WHY: 動的オブジェクトの映り込みをリアルタイムに表現する。
-    // NOTE: SSR は UAV スロット u3 を使用する。Contact Shadows も同スロットを
-    //       時分割で再利用するが、逐次実行のため同時有効化しても GPU 競合は生じない。
-    if (BeginEffect("SSR (Screen Space Reflections)", r.ssr.enabled, result.changed, true))
-    {
-        ImGui::BeginDisabled(!r.ssr.enabled);
-        changed(ImGui::DragFloat("Intensity##ssr",     &r.ssr.intensity,    0.01f, 0.0f, 1.0f));
-        changed(ImGui::DragFloat("Max Distance##ssr",  &r.ssr.maxDistance,  0.5f,  1.0f, 200.0f));
-        changed(ImGui::DragFloat("Thickness##ssr",     &r.ssr.thickness,    0.01f, 0.01f, 2.0f));
-        changed(ImGui::SliderInt("Steps##ssr",         &r.ssr.steps,        8, 128));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    // ─── Contact Shadows ──────────────────────────────────────────────────
-    // WHY: 通常シャドウマップが届かない小物直下の接触影を補完する。
-    // NOTE: Contact Shadows は UAV スロット u3 を SSR と時分割で再利用する。
-    //       逐次実行のため同時有効化しても GPU 競合は生じない。
-    if (BeginEffect("Contact Shadows", r.contactShadow.enabled, result.changed))
-    {
-        ImGui::BeginDisabled(!r.contactShadow.enabled);
-        changed(ImGui::DragFloat("Strength##cs",    &r.contactShadow.strength,  0.01f, 0.0f, 1.0f));
-        changed(ImGui::DragFloat("Ray Length##cs",  &r.contactShadow.rayLength, 0.05f, 0.1f, 20.0f));
-        changed(ImGui::SliderInt("Steps##cs",       &r.contactShadow.steps,     4, 64));
-        changed(ImGui::DragFloat("Thickness##cs",   &r.contactShadow.thickness, 0.01f, 0.01f, 2.0f));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    // ─── Motion Blur ──────────────────────────────────────────────────────
-    if (BeginEffect("Motion Blur", r.motionBlur.enabled, result.changed))
-    {
-        ImGui::BeginDisabled(!r.motionBlur.enabled);
-        changed(ImGui::DragFloat("Strength##mb",  &r.motionBlur.strength, 0.01f, 0.0f, 4.0f));
-        changed(ImGui::SliderInt("Samples##mb",   &r.motionBlur.samples,  2, 32));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    // ─── Volumetric Light ─────────────────────────────────────────────────
-    if (BeginEffect("Volumetric Light", r.volumetricLight.enabled, result.changed))
-    {
-        ImGui::BeginDisabled(!r.volumetricLight.enabled);
-        changed(ImGui::DragFloat("Intensity##vol",   &r.volumetricLight.intensity,  0.01f, 0.0f, 8.0f));
-        changed(ImGui::DragFloat("Scattering##vol",  &r.volumetricLight.scattering, 0.01f, 0.0f, 1.0f));
-        changed(ImGui::DragFloat("Max Dist##vol",    &r.volumetricLight.maxDist,    0.5f,  1.0f, 200.0f));
-        changed(ImGui::SliderInt("Steps##vol",       &r.volumetricLight.steps,      4, 128));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    // ─── Lens Flare ───────────────────────────────────────────────────────
-    if (BeginEffect("Lens Flare", r.lensFlare.enabled, result.changed))
-    {
-        ImGui::BeginDisabled(!r.lensFlare.enabled);
-        changed(ImGui::DragFloat("Intensity##lf",   &r.lensFlare.intensity,  0.01f, 0.0f, 4.0f));
-        changed(ImGui::DragFloat("Halo Width##lf",  &r.lensFlare.haloWidth,  0.01f, 0.0f, 2.0f));
-        changed(ImGui::DragFloat("Distortion##lf",  &r.lensFlare.distortion, 0.01f, 0.0f, 4.0f));
-        changed(ImGui::SliderInt("Ghost Count##lf", &r.lensFlare.ghostCount, 1, 16));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
-
-    // ─── LUT Color Grading ────────────────────────────────────────────────
-    // WHY: 外部DDSの色空間・軸順・サイズ差を排除し、Rendererが期待するRGB軸の
-    //      32^3 Texture3DをCPU生成することで、どのプロジェクトでも同じルックを再現する。
-    if (BeginEffect("Procedural LUT Color Grading", r.lutColorGrading.enabled, result.changed, true))
-    {
-        ImGui::BeginDisabled(!r.lutColorGrading.enabled);
-        ImGui::TextDisabled("32x32x32 RGBA8 / RGB axis / LDR sRGB input");
-        changed(ImGui::SliderFloat("Blend##lut",      &r.lutColorGrading.blend,       0.0f, 1.0f));
-        changed(ImGui::DragFloat("Contrast##lut",    &r.lutColorGrading.contrast,    0.01f, -1.0f, 2.0f));
-        changed(ImGui::DragFloat("Saturation##lut",  &r.lutColorGrading.saturation,  0.01f, 0.0f, 3.0f));
-        changed(ImGui::DragFloat("Hue Shift##lut",   &r.lutColorGrading.hueShift,    0.5f, -180.0f, 180.0f, "%.1f deg"));
-        changed(ImGui::DragFloat("Temperature##lut", &r.lutColorGrading.temperature, 0.01f, -2.0f, 2.0f));
-        changed(ImGui::DragFloat("Tint##lut",        &r.lutColorGrading.tint,        0.01f, -2.0f, 2.0f));
-        ImGui::EndDisabled();
-    }
-    EndEffect();
 
     ImGui::PopID();
     return result;

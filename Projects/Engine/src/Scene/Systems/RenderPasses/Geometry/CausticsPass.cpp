@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPasses/CausticsPass.cpp | fbzz::scene
-// 水中コースティクスを HDR バッファへ加算合成するポストプロセスパス
+/// @file    RenderPasses/CausticsPass.cpp
+/// @brief   水面越しの投影コースティクスを HDR バッファへ加算合成するポストプロセスパス。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "../PostProcess/PostProcessPasses.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -8,7 +9,6 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
@@ -28,6 +28,13 @@ struct CausticsSource {
     float tiling = 1.0f;
     float surfaceY = 0.0f;
     float timeOffset = 0.0f;
+    float centerX = 0.0f;
+    float centerZ = 0.0f;
+    float halfExtentX = 0.0f;
+    float halfExtentZ = 0.0f;
+    float waveAmp = 0.0f;
+    float waveFreq = 0.12f;
+    float waveSpeed = 1.0f;
     std::string texturePath;
 };
 
@@ -62,7 +69,16 @@ CausticsSource FindCausticsSource(RenderPassContext& ctx)
         const float intensity = getF("causticsIntensity", 1.0f);
         if (intensity <= 0.0f) continue;
 
-        // 複数水面は最も強い設定を代表値として扱う
+        float totalAmp = 0.0f;
+        float weightedWaveFreq = 0.0f;
+        for (const auto& wave : water.waves) {
+            if (wave.amplitude <= 0.0f || wave.wavelength <= math::EPSILON) continue;
+            totalAmp += wave.amplitude;
+            weightedWaveFreq += (math::TWO_PI / wave.wavelength) * wave.amplitude;
+        }
+
+        // 複数水面は最も強い設定を代表値として扱う。
+        // WHY: 1 回のフルスクリーン加算で済ませるため、Phase C-2 では代表水面のみを投影元にする。
         if (result.enabled && intensity <= result.intensity) continue;
 
         result.enabled     = true;
@@ -70,6 +86,13 @@ CausticsSource FindCausticsSource(RenderPassContext& ctx)
         result.tiling      = getF("causticsTiling", 4.0f);
         result.surfaceY    = transform.position.y;
         result.timeOffset  = Time::time * getF("causticsSpeed", 0.5f);
+        result.centerX     = transform.position.x;
+        result.centerZ     = transform.position.z;
+        result.halfExtentX = water.extentX * 0.5f;
+        result.halfExtentZ = water.extentZ * 0.5f;
+        result.waveAmp     = getF("causticsWaveAmp", math::Clamp(totalAmp * 0.12f, 0.015f, 0.18f));
+        result.waveFreq    = getF("causticsWaveFreq", totalAmp > math::EPSILON ? weightedWaveFreq / totalAmp : 0.12f);
+        result.waveSpeed   = getF("causticsWaveSpeed", 1.0f);
         result.texturePath = getTex("causticsTex");
     }
     return result;
@@ -112,6 +135,23 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     static auto fallbackCaustics = CreateProceduralCaustics(ctx.resources);
     static std::string s_loadedPath;
     static renderer::ResourceHandle<renderer::TextureTag> s_loadedTexture;
+    static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+    static uint64_t s_resetVersion = 0;
+    // 深度のコピー先はビューが持つ (RenderPassHandles::causticsDepthRT の WHY)。
+    if (!ctx.handles.causticsDepthRT) return;
+    renderer::SizedRenderTarget& s_causticsDepthRT = *ctx.handles.causticsDepthRT;
+
+    if (s_resetVersion != ctx.resources.GetResetVersion()) {
+        s_resetVersion = ctx.resources.GetResetVersion();
+        fallbackCaustics = CreateProceduralCaustics(ctx.resources);
+        if (!source.texturePath.empty()) {
+            s_loadedPath.clear();
+            s_loadedTexture = {};
+        }
+        depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+    }
+
+    (void)s_causticsDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, 0);
 
     renderer::ResourceHandle<renderer::TextureTag> causticsTex = fallbackCaustics;
     if (!source.texturePath.empty()) {
@@ -129,12 +169,29 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     postData.customParameters[1] = source.tiling;
     postData.customParameters[2] = source.surfaceY;
     postData.customParameters[3] = source.timeOffset;
+    postData.causticsCenterX = source.centerX;
+    postData.causticsCenterZ = source.centerZ;
+    postData.causticsHalfExtentX = source.halfExtentX;
+    postData.causticsHalfExtentZ = source.halfExtentZ;
+    postData.causticsWaveAmp = source.waveAmp;
+    postData.causticsWaveFreq = source.waveFreq;
+    postData.causticsWaveSpeed = source.waveSpeed;
     ctx.resources.Update(ctx.handles.postprocCB, &postData, sizeof(PostProcCB));
 
-    // WHAT: HDR の色は読まず、深度から復元したワールド座標だけを使って光模様を計算し、加算合成する。
-    // WHY: DX11 では同じ HDR RT を SRV と RTV に同時バインドできないため、コピー用 RT を増やさない設計にしている。
-    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
+    // WHAT: HDR の depth を専用 RT へコピーし、PS ではコピー後の SRV からワールド座標を復元する。
+    // WHY: hdrRT を RTV/DSV として加算先にしながら同じ depth を SRV(t7) で読むと DX11 の read/write 競合になる。
+    ctx.renderer.SetRenderTarget(s_causticsDepthRT, ctx.resources);
+    ctx.renderer.ClearDepth();
+    if (depthCopyShader.IsValid()) {
+        renderer::DrawCall depthDC;
+        depthDC.shader = depthCopyShader;
+        depthDC.pipelineState = ctx.handles.defaultPSO;
+        depthDC.vertexCount = 3;
+        depthDC.textures[7] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
+        ctx.renderer.Submit(depthDC, ctx.resources);
+    }
+
+    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
 
     renderer::DrawCall dc;
     dc.shader = ctx.handles.causticsShader;
@@ -143,9 +200,7 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     dc.constantBuffers[0] = ctx.handles.frameCB;
     dc.constantBuffers[5] = ctx.handles.postprocCB;
     dc.textures[0] = causticsTex;
-    // WHY: hdrRT を RTV/DSV としてバインドしたまま、その depth を SRV(t7) として読むことは DX11 で禁止。
-    //      必要な場合は Water と同様に、描画前の depth を別リソースへコピーしてから t7 に渡す。
-    dc.textures[7] = {};
+    dc.textures[7] = ctx.resources.GetDepthTexture(s_causticsDepthRT);
     ctx.renderer.Submit(dc, ctx.resources);
 }
 

@@ -1,12 +1,8 @@
-// FBZZ Engine
-// HdriLoader.cpp | fbzz::editor
-// .hdr / .exr → float RGBA ピクセル読み込み
+/// @file    HdriLoader.cpp
+/// @brief   .hdr / .exr → float RGBA ピクセル読み込み。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 
-// stb_image は Engine 層の GameHub でも使われているため、実装定義ファイルを用意する。
-// WHY: STB_IMAGE_IMPLEMENTATION を複数の翻訳単位に置くと ODR 違反になる。
-//      Editor 専用のコンパイル単位を 1 つ用意して定義する。
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC // ほかの翻訳単位と名前衝突させない
 #include <stb_image.h>
 
 // TinyEXR: miniz (zlib) は CMakeLists.txt で C ソースとして別コンパイルされる。

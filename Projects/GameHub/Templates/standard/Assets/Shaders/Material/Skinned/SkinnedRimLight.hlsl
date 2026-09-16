@@ -6,7 +6,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 
@@ -68,29 +68,18 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // NOTE: スキンドメッシュは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外)。
+    //       画面空間 AO / 接触影を引くと、キャラの画素で「背景の遮蔽」を読んでしまうので使わない。
+    //       これは Deferred でも同じ (キャラは DeferredLighting を通らない) ため、差は生じない。
     float3 result = Lighting_BlinnPhong(N, V, L, col, roughness,
                                         lightColor, lightIntensity, shadow);
 
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = toLight / dist;
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_BlinnPhong_Direct(N, V, Lp, col, roughness,
-                      pointLights[pi].color, pointLights[pi].intensity * atten);
-    }
-    [loop] for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = toLight / dist;
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_BlinnPhong_Direct(N, V, Ls, col, roughness,
-                      spotLights[si].color, spotLights[si].intensity * atten * cone);
-    }
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        result += Lighting_BlinnPhong_Direct(N, V, ps.L, col, saturate(roughness + ps.roughnessBias),
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
     // リムライト: 法線と視線が直交する輪郭ほど明るくするフレネル近似。
     float NdotV = saturate(dot(N, V));

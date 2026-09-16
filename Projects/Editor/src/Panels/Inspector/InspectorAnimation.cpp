@@ -1,539 +1,568 @@
-// FBZZ Engine
-// InspectorAnimation.cpp | fbzz::editor
-// Animation / IK 系 Component の Inspector 描画
+/// @file    InspectorAnimation.cpp
+/// @brief   Animation / IK 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorAnimation.hpp"
+#include <Editor/Util/EditorTheme.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/AvatarMaskAsset.hpp>
+#include <algorithm>
 
 namespace fbzz::editor {
 
-void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
+namespace {
+
+// Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
+// Inspector のレイヤー編集も Graph の編集モデルへ反映する。
+// WHY: Controller を開いた Graph は scene component のコピーを編集しているため、Inspector
+//      側だけを書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
+void SyncOpenControllerLayers(EditorContext& ctx,
+                              const scene::AnimatorComponent& source)
 {
-    DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
-        [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
-            ImGui::SeparatorText("Controller");
-            char controllerBuffer[512]{};
-            std::snprintf(
-                controllerBuffer, sizeof(controllerBuffer), "%s", anim.controllerPath.c_str());
-            if (ImGui::InputText(
-                    "Animator Controller", controllerBuffer, sizeof(controllerBuffer))) {
-                anim.controllerPath = NormalizeAssetPath(controllerBuffer);
-                anim.loadedControllerPath.clear();
-            }
-            if (ImGui::IsItemDeactivatedAfterEdit() && ctx.markSceneDirty)
-                ctx.markSceneDirty();
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    const std::string dropped =
-                        NormalizeAssetPath(static_cast<const char*>(payload->Data));
-                    if (util::StringUtils::EndsWith(dropped, ".animcontroller")) {
-                        anim.controllerPath = dropped;
-                        anim.loadedControllerPath.clear();
-                        asset::AnimatorControllerAsset controller;
-                        if (asset::LoadAnimatorControllerAsset(dropped, controller))
-                            asset::ApplyAnimatorControllerAsset(controller, anim);
-                        if (ctx.markSceneDirty) ctx.markSceneDirty();
-                    }
-                }
-                ImGui::EndDragDropTarget();
-            }
-            ImGui::TextDisabled("Drag an Animator Controller asset here.");
-            if (ImGui::Button(
-                    "Create Controller From Current", ImVec2(-1.0f, 0.0f))) {
-                const std::string directory =
-                    ctx.projectRoot + "/Assets/Animation";
-                util::FileSystem::EnsureDirectory(directory);
-                std::string safeName = go->name.empty() ? "Animator" : go->name;
-                for (char& character : safeName) {
-                    const bool valid =
-                        std::isalnum(static_cast<unsigned char>(character)) ||
-                        character == '_' || character == '-';
-                    if (!valid) character = '_';
-                }
-                std::string path =
-                    directory + "/" + safeName + ".animcontroller";
-                for (int suffix = 1;
-                     util::FileSystem::Exists(path) && suffix < 10000;
-                     ++suffix) {
-                    path = directory + "/" + safeName + " " +
-                        std::to_string(suffix) + ".animcontroller";
-                }
-                const auto controller =
-                    asset::MakeAnimatorControllerAsset(anim);
-                if (asset::SaveAnimatorControllerAsset(path, controller)) {
-                    anim.controllerPath = NormalizeAssetPath(path);
-                    anim.loadedControllerPath = anim.controllerPath;
-                    ctx.selectedAssetPath = path;
-                    ctx.requestAssetBrowserRefresh = true;
-                    if (ctx.markSceneDirty) ctx.markSceneDirty();
-                }
-            }
-            ImGui::Separator();
+    if (!ctx.animationControllerEditor ||
+        ctx.animationControllerEditor.get() == &source ||
+        source.controllerPath.empty() ||
+        ctx.animationControllerEditorPath.empty() ||
+        asset::AssetManager::ResolveAssetPath(source.controllerPath) !=
+            ctx.animationControllerEditorPath) {
+        return;
+    }
 
-            const bool usesController = !anim.controllerPath.empty();
-            if (!usesController) {
-            // --- Clip Sources list ---
-            ImGui::Text("Clip Sources");
+    auto& target = *ctx.animationControllerEditor;
+    target.layers = source.layers;
+    target.baseLayerMask = source.baseLayerMask;
+    ctx.animationControllerDirty = true;
+}
 
-            for (int i = 0; i < static_cast<int>(anim.clipSources.size()); ++i) {
-                ImGui::PushID(i);
-                char buf[256];
-                std::snprintf(buf, sizeof(buf), "%s", anim.clipSources[i].c_str());
-                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 24.0f);
-                if (ImGui::InputText("##src", buf, sizeof(buf)))
-                    anim.clipSources[i] = NormalizeAssetPath(buf);
-                if (ImGui::IsItemDeactivatedAfterEdit())
-                    { anim.clips.clear(); anim.clipSourcePaths.clear(); anim.clipsLoaded = false; }
-                // DragDrop target must be right after InputText, before SameLine
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        anim.clipSources[i] = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        anim.clips.clear(); anim.clipsLoaded = false;
-                        anim.clipSourcePaths.clear();
-                    }
-                    ImGui::EndDragDropTarget();
+void QueueLayerRename(EditorContext& ctx,
+                      const std::string& oldName,
+                      const std::string& newName)
+{
+    if (oldName.empty() || newName.empty() || oldName == newName) return;
+    ctx.animationGraphLayerRenamedFrom = oldName;
+    ctx.animationGraphLayerRenamedTo = newName;
+    ctx.animationGraphLayerFocus = newName;
+    if (ctx.animationGraphSelection.layerName == oldName)
+        ctx.animationGraphSelection.layerName = newName;
+}
+
+// ── Root Motion ──────────────────────────────────────────────────────────────
+// WHY: 従来は "Apply Root Motion" チェックボックス 1 個しかなく、
+//      「抽出だけしてスクリプトへ渡す」「RigidBody 速度として食わせる」
+//      「トラックをノード名で指定する」といった受け取り方をどれも選べなかった。
+//      Mode / Source / 軸マスクを分けて提示し、実行中の値も併せて見せる。
+void DrawRootMotionSettings(scene::AnimatorComponent& anim)
+{
+    using scene::RootMotionMode;
+    using scene::RootMotionSource;
+
+    if (!ImGui::CollapsingHeader("Root Motion")) return;
+    ImGui::PushID("RootMotion");
+
+    static const char* kModeNames[] = {
+        "None (抽出しない)",
+        "Apply To Transform (エンジンが動かす)",
+        "Extract Only (Script が動かす)",
+        "Apply To RigidBody (速度として渡す)",
+    };
+    ImGui::Combo("Mode", reinterpret_cast<int*>(&anim.rootMotion.mode),
+                 kModeNames, IM_ARRAYSIZE(kModeNames));
+
+    switch (anim.rootMotion.mode) {
+    case RootMotionMode::ExtractOnly:
+        ImGui::TextDisabled("Script::OnAnimatorMove() で移動量を受け取って適用します。");
+        break;
+    case RootMotionMode::ApplyToRigidBody:
+        ImGui::TextDisabled("水平成分を RigidBody 速度へ渡します。落下と衝突は物理側が解きます。");
+        break;
+    case RootMotionMode::ApplyToTransform:
+        ImGui::TextDisabled("Transform を直接動かします。コライダはテレポート扱いになります。");
+        break;
+    default:
+        break;
+    }
+
+    if (anim.rootMotion.mode == RootMotionMode::None) {
+        static const char* kPoseNames[] = {
+            "Strip (その場再生)",
+            "Keep (クリップのまま前進)",
+        };
+        ImGui::Combo("Pose", reinterpret_cast<int*>(&anim.rootMotion.poseMode),
+                     kPoseNames, IM_ARRAYSIZE(kPoseNames));
+    }
+
+    static const char* kSourceNames[] = {
+        "Clip Defined (.anim の指定)",
+        "Auto Detect (候補名から推定)",
+        "Node Name (名前で指定)",
+    };
+    ImGui::Combo("Source", reinterpret_cast<int*>(&anim.rootMotion.source),
+                 kSourceNames, IM_ARRAYSIZE(kSourceNames));
+
+    if (anim.rootMotion.source == RootMotionSource::NodeName) {
+        char nodeName[128] = {};
+        std::snprintf(nodeName, sizeof(nodeName), "%s",
+                      anim.rootMotion.nodeName.c_str());
+        if (ImGui::InputText("Node", nodeName, sizeof(nodeName))) {
+            anim.rootMotion.nodeName = nodeName;
+            anim.rootMotionSamples.clear();
+        }
+        ImGui::TextDisabled("例: mixamorig:Hips / Armature|Root");
+    }
+
+    char targetPath[128] = {};
+    std::snprintf(targetPath, sizeof(targetPath), "%s",
+                  anim.rootMotion.targetPath.c_str());
+    if (ImGui::InputText("Target", targetPath, sizeof(targetPath)))
+        anim.rootMotion.targetPath = targetPath;
+    ImGui::TextDisabled("空 = この GameObject。\"..\" で親 (RigidBody が親にある構成)。");
+
+    static const char* kAxisNames[] = { "Use Clip", "Disabled", "Enabled" };
+    ImGui::Combo("Horizontal (XZ)",
+                 reinterpret_cast<int*>(&anim.rootMotion.applyXZ),
+                 kAxisNames, IM_ARRAYSIZE(kAxisNames));
+    ImGui::Combo("Vertical (Y)",
+                 reinterpret_cast<int*>(&anim.rootMotion.applyY),
+                 kAxisNames, IM_ARRAYSIZE(kAxisNames));
+    ImGui::Combo("Rotation",
+                 reinterpret_cast<int*>(&anim.rootMotion.applyRotation),
+                 kAxisNames, IM_ARRAYSIZE(kAxisNames));
+
+    ImGui::DragFloat("Position Scale", &anim.rootMotion.positionScale,
+                     0.01f, 0.0f, 10.0f);
+    ImGui::DragFloat("Rotation Scale", &anim.rootMotion.rotationScale,
+                     0.01f, 0.0f, 1.0f);
+
+    // 実行中の値。歩幅とゲーム速度が合っているかはここを見ながら詰める。
+    if (anim.rootMotion.mode != RootMotionMode::None) {
+        ImGui::SeparatorText("Runtime");
+        const auto& delta = anim.rootMotionDeltaPosition;
+        const auto& velocity = anim.rootMotionWorldVelocity;
+        ImGui::Text("Delta  %.4f, %.4f, %.4f", delta.x, delta.y, delta.z);
+        ImGui::Text("Speed  %.3f m/s (world %.3f, %.3f, %.3f)",
+                    velocity.Length(), velocity.x, velocity.y, velocity.z);
+        ImGui::TextDisabled(anim.rootMotionAppliedByEngine
+                                ? "エンジンが適用済み"
+                                : "エンジンは適用していない (Script 側の責任)");
+    }
+
+    ImGui::PopID();
+}
+
+// ── Animator Layers ──────────────────────────────────────────────────────────
+// WHY: 上半身だけ / 下半身だけの制御はレイヤーが入口になる。しかし従来 Inspector には
+//      レイヤーを作る導線が一切なく、ランタイムが対応していても実際には使えなかった。
+//      「レイヤーを足す → .mask を割り当てる → 加算にするか決める」までをここで完結させる。
+void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
+{
+    ImGui::SeparatorText("Layers");
+    ImGui::TextDisabled(
+        "Base Layer が全身のポーズを作り、各レイヤーが Mask のボーンだけを上書き / 加算します。");
+
+    const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
+    const auto markLayerDirty = [&]() {
+        SyncOpenControllerLayers(ctx, anim);
+        markDirty();
+    };
+
+    // Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
+    if (widgets::AssetPathField("Base Layer Mask", anim.baseLayerMask.path,
+                                ".mask", ctx.projectRoot)) {
+        anim.baseLayerMask.Invalidate();
+        markLayerDirty();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+        ImGui::SetTooltip(
+            "Base Layer から外したボーンはバインドポーズで固定され、\n"
+            "上のレイヤーだけが動かす形になります。空なら全身に効きます。");
+    }
+
+    int removeIndex = -1;
+    for (int i = 0; i < static_cast<int>(anim.layers.size()); ++i) {
+        auto& layer = anim.layers[static_cast<size_t>(i)];
+        ImGui::PushID(i);
+
+        // ヘッダーには実行中の状態 (weight / Slot) を出す。
+        // WHY: 上半身レイヤーが効いていない原因は大抵 weight か mask なので、
+        //      折りたたんだままでも一目で分かるようにしておく。
+        char header[192];
+        std::snprintf(header, sizeof(header), "%s  [%s %.0f%%]%s",
+                      layer.name.empty() ? "(unnamed)" : layer.name.c_str(),
+                      layer.mode == scene::AnimationLayerMode::Additive ? "Additive" : "Override",
+                      layer.weight * 100.0f,
+                      layer.slot.active ? "  (slot)" : "");
+
+        if (ImGui::Checkbox("##layer_enabled", &layer.enabled)) markLayerDirty();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("このレイヤーを評価するか");
+        ImGui::SameLine();
+
+        const bool open = ImGui::TreeNodeEx(header, ImGuiTreeNodeFlags_DefaultOpen);
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 60.0f);
+        if (ImGui::SmallButton("Remove")) removeIndex = i;
+
+        if (open) {
+            char nameBuffer[128];
+            std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", layer.name.c_str());
+            if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+                const std::string oldName = layer.name;
+                const std::string newName = nameBuffer;
+                const bool duplicate = std::any_of(
+                    anim.layers.begin(), anim.layers.end(),
+                    [&](const scene::AnimationLayer& candidate) {
+                        return &candidate != &layer && candidate.name == newName;
+                    });
+                if (!newName.empty() && !duplicate) {
+                    layer.name = newName;
+                    QueueLayerRename(ctx, oldName, newName);
+                    markLayerDirty();
                 }
+            }
+
+            // Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
+            // 足りないときの誇張がここで完結する。
+            const float weightMax = layer.mode == scene::AnimationLayerMode::Additive
+                ? scene::MAX_LAYER_WEIGHT : 1.0f;
+            if (widgets::RangeField("Weight", layer.weight, 0.0f, weightMax)) markLayerDirty();
+
+            static constexpr const char* kModeNames[] = { "Override", "Additive" };
+            int modeIndex = static_cast<int>(layer.mode);
+            if (ImGui::Combo("Blending", &modeIndex, kModeNames, 2)) {
+                layer.mode = static_cast<scene::AnimationLayerMode>(modeIndex);
+                if (layer.mode == scene::AnimationLayerMode::Override)
+                    layer.weight = std::min(layer.weight, 1.0f);
+                markLayerDirty();
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                ImGui::SetTooltip(
+                    "Override: Base のポーズを置き換える (上半身の構えなど)\n"
+                    "Additive: Base のポーズに差分を足す (呼吸・反動など)");
+            }
+
+            // ── Mask ─────────────────────────────────────────────────────
+            if (widgets::AssetPathField("Mask", layer.mask.path, ".mask", ctx.projectRoot)) {
+                // 次フレームの AnimatorSystem に読み直させる。
+                layer.mask.Invalidate();
+                markLayerDirty();
+            }
+            if (layer.mask.path.empty()) {
+                ImGui::TextDisabled("  Mask 未設定 = 全身に効きます");
+            }
+
+            // ── Additive Reference ───────────────────────────────────────
+            if (layer.mode == scene::AnimationLayerMode::Additive) {
+                ImGui::SeparatorText("Additive Reference Pose");
+                ImGui::TextDisabled("空なら加算クリップ自身の先頭フレームを基準にします。");
+                // 基準ポーズも通常の Source と同じ種類のアセットを受ける。
+                // .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
+                // (Pose_XXX.anim 等) をドロップで割り当てられない。
+                if (widgets::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
+                                            ".anim,.asset,.fzasset,.fbx", ctx.projectRoot))
+                    markLayerDirty();
+                char clipBuffer[128];
+                std::snprintf(clipBuffer, sizeof(clipBuffer), "%s",
+                              layer.additiveReference.clipName.c_str());
+                if (ImGui::InputText("Ref Clip", clipBuffer, sizeof(clipBuffer))) {
+                    layer.additiveReference.clipName = clipBuffer;
+                    markLayerDirty();
+                }
+                if (ImGui::DragFloat("Ref Time", &layer.additiveReference.time,
+                                     0.01f, 0.0f, 600.0f, "%.2f s"))
+                    markLayerDirty();
+            }
+
+            // ── State Machine ────────────────────────────────────────────
+            ImGui::SeparatorText("State Machine");
+            if (layer.states.empty()) {
+                ImGui::TextDisabled("  ステート未設定");
+            } else {
+                ImGui::Text("States: %d   Default: %s",
+                            static_cast<int>(layer.states.size()),
+                            layer.defaultStateName.empty() ? "(first)"
+                                                           : layer.defaultStateName.c_str());
+                if (!layer.runtime.currentStateName.empty()) {
+                    ImGui::TextDisabled("  Current: %s",
+                                        layer.runtime.currentStateName.c_str());
+                }
+            }
+
+            // ── Slot (ランタイム表示のみ) ─────────────────────────────────
+            if (layer.slot.active) {
+                ImGui::SeparatorText("Slot");
+                ImGui::Text("%s", layer.slot.clipName.empty()
+                            ? layer.slot.sourcePath.c_str() : layer.slot.clipName.c_str());
+                ImGui::ProgressBar(layer.slot.weight, { -1.0f, 0.0f },
+                                   layer.slot.stopping ? "fading out" : "blending in");
+                if (ImGui::SmallButton("Stop Slot")) anim.StopSlot(layer.name);
+            }
+
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+
+    if (removeIndex >= 0) {
+        const std::string removedName = anim.layers[static_cast<size_t>(removeIndex)].name;
+        anim.layers.erase(anim.layers.begin() + removeIndex);
+        if (ctx.animationGraphSelection.layerName == removedName)
+            ctx.animationGraphSelection.Clear();
+        ctx.animationGraphLayerRemoved = removedName;
+        markLayerDirty();
+    }
+
+    if (ImGui::Button("Add Layer", ImVec2(-1.0f, 0.0f))) {
+        scene::AnimationLayer layer;
+        // 同名レイヤーは名前引き API (SetLayerWeight / PlaySlot) が壊れるため採番する。
+        layer.name = "Layer " + std::to_string(anim.layers.size() + 1);
+        for (int suffix = 1; anim.FindLayer(layer.name) != nullptr && suffix < 1000; ++suffix)
+            layer.name = "Layer " + std::to_string(anim.layers.size() + 1 + suffix);
+        const std::string createdName = layer.name;
+        anim.layers.push_back(std::move(layer));
+        ctx.animationGraphLayerFocus = createdName;
+        markLayerDirty();
+    }
+}
+
+// 揺れものは「根ボーンを 1 つ指す」だけで枝全体が対象になるため、IK のような
+// ボーン名リストを持たない。編集項目もチェーンあたり数個で済む。
+void DrawSpringBoneInspector(scene::GameObject* go,
+                             EditorContext& ctx,
+                             std::any& m_componentClipboard,
+                             const std::type_info*& m_componentClipboardType)
+{
+    DrawComponentSection<scene::SpringBoneComponent>(
+        go, ctx, m_componentClipboard, m_componentClipboardType, "Spring Bone",
+        [](scene::SpringBoneComponent& spring, EditorContext&) {
+            ImGui::Checkbox("Simulate In Editor", &spring.simulateInEditor);
+            ImGui::DragFloat("Teleport Reset", &spring.teleportResetDistance,
+                             0.05f, 0.0f, 100.0f, "%.2f m");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("この距離を超えて 1 フレームで移動したら慣性を捨てる");
+
+            ImGui::SeparatorText("Chains");
+            int removeChain = -1;
+            for (int ci = 0; ci < static_cast<int>(spring.chains.size()); ++ci) {
+                auto& chain = spring.chains[static_cast<size_t>(ci)];
+                ImGui::PushID(ci);
+
+                char header[64];
+                std::snprintf(header, sizeof(header), "##springchain%d", ci);
+                const float removeW = ImGui::CalcTextSize("Remove").x +
+                                      ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float checkboxW = ImGui::GetFrameHeight();
+
+                const bool open = ImGui::TreeNodeEx(
+                    header, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap,
+                    "Chain %d  (%s)", ci,
+                    chain.rootBoneName.empty() ? "no root" : chain.rootBoneName.c_str());
+
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::Checkbox("##en", &chain.enabled);
                 ImGui::SameLine();
-                if (ImGui::SmallButton("x")) {
-                    anim.clipSources.erase(anim.clipSources.begin() + i);
-                    anim.clips.clear(); anim.clipsLoaded = false;
-                    anim.clipSourcePaths.clear();
-                    ImGui::PopID(); break;
+                ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+                if (ImGui::SmallButton("Remove")) removeChain = ci;
+                ImGui::PopStyleColor(3);
+
+                if (open) {
+                    if (!chain.enabled)
+                        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+
+                    char rootName[128];
+                    std::snprintf(rootName, sizeof(rootName), "%s", chain.rootBoneName.c_str());
+                    if (ImGui::InputText("Root Bone", rootName, sizeof(rootName))) {
+                        chain.rootBoneName = rootName;
+                        chain.nodes.clear();
+                        chain.builtSkeleton = nullptr;
+                    }
+                    if (ImGui::DragInt("Max Depth", &chain.maxDepth, 1.0f, 0, 32))
+                        chain.nodes.clear();
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("0 = 葉まで揺らす");
+
+                    ImGui::DragFloat("Stiffness", &chain.stiffness, 0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Damping",   &chain.damping,   0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Weight",    &chain.weight,    0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Gravity",   &chain.gravityPower,
+                                     0.05f, 0.0f, 50.0f, "%.2f m/s2");
+                    widgets::DragVec3("Gravity Dir", chain.gravityDirection, 0.01f, -1.0f, 1.0f);
+                    ImGui::DragFloat("Collision Radius", &chain.radius,
+                                     0.001f, 0.0f, 1.0f, "%.3f m");
+                    ImGui::DragFloat("Limit Angle", &chain.limitAngle,
+                                     1.0f, 0.0f, 180.0f, "%.1f deg");
+                    if (ImGui::DragFloat("Leaf Tail Length", &chain.leafTailLength,
+                                         0.001f, 0.001f, 1.0f, "%.3f m"))
+                        chain.nodes.clear();
+
+                    ImGui::TextDisabled("Simulated Bones: %d",
+                                        static_cast<int>(chain.nodes.size()));
+
+                    if (!chain.enabled) ImGui::PopStyleVar();
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+                ImGui::Spacing();
+            }
+            if (removeChain >= 0)
+                spring.chains.erase(spring.chains.begin() + removeChain);
+            if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f }))
+                spring.chains.push_back(scene::SpringBoneChain{});
+
+            ImGui::SeparatorText("Colliders");
+            int removeCollider = -1;
+            for (int di = 0; di < static_cast<int>(spring.colliders.size()); ++di) {
+                auto& collider = spring.colliders[static_cast<size_t>(di)];
+                ImGui::PushID(1000 + di);
+
+                char header[64];
+                std::snprintf(header, sizeof(header), "##springcol%d", di);
+                const float removeW = ImGui::CalcTextSize("Remove").x +
+                                      ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float checkboxW = ImGui::GetFrameHeight();
+
+                const bool open = ImGui::TreeNodeEx(
+                    header, ImGuiTreeNodeFlags_AllowOverlap, "Collider %d  (%s)", di,
+                    collider.boneName.empty() ? "root" : collider.boneName.c_str());
+
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::Checkbox("##en", &collider.enabled);
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+                if (ImGui::SmallButton("Remove")) removeCollider = di;
+                ImGui::PopStyleColor(3);
+
+                if (open) {
+                    char boneName[128];
+                    std::snprintf(boneName, sizeof(boneName), "%s", collider.boneName.c_str());
+                    if (ImGui::InputText("Bone", boneName, sizeof(boneName)))
+                        collider.boneName = boneName;
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("空欄でオーナー Transform 基準");
+
+                    const char* shapeNames[] = { "Sphere", "Capsule" };
+                    int shape = static_cast<int>(collider.shape);
+                    if (ImGui::Combo("Shape", &shape, shapeNames, 2))
+                        collider.shape = static_cast<scene::SpringBoneColliderShape>(shape);
+
+                    widgets::DragVec3("Offset", collider.offset, 0.005f, -10.0f, 10.0f);
+                    if (collider.shape == scene::SpringBoneColliderShape::Capsule)
+                        widgets::DragVec3("Tail Offset", collider.tailOffset,
+                                          0.005f, -10.0f, 10.0f);
+                    ImGui::DragFloat("Radius", &collider.radius, 0.005f, 0.001f, 5.0f, "%.3f m");
+                    ImGui::TreePop();
                 }
                 ImGui::PopID();
             }
-            // "+ Add Source" also acts as drop zone: drag FBX directly onto it
-            if (ImGui::Button("+ Add Source  (or drop FBX)", { -1.0f, 0.0f }))
-                anim.clipSources.emplace_back();
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    std::string path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    anim.clipSources.push_back(std::move(path));
-                    anim.clips.clear(); anim.clipsLoaded = false;
-                    anim.clipSourcePaths.clear();
-                }
-                ImGui::EndDragDropTarget();
+            if (removeCollider >= 0)
+                spring.colliders.erase(spring.colliders.begin() + removeCollider);
+            if (ImGui::Button("+ Add Collider", { -1.0f, 0.0f }))
+                spring.colliders.push_back(scene::SpringBoneCollider{});
+
+            ImGui::SeparatorText("Runtime Diagnostics");
+            ImGui::Text("Updates: %llu",
+                        static_cast<unsigned long long>(spring.runtimeUpdateCount));
+            ImGui::Text("Simulated Bones: %d", spring.runtimeSimulatedBoneCount);
+            ImGui::Text("Active Colliders: %d", spring.runtimeActiveColliderCount);
+        });
+}
+
+} // namespace
+
+void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
+{
+    // WHY: Unity の Animator コンポーネントと同じ密度に揃える。ステート/遷移/パラメーターの
+    //      編集は Animation Graph に一本化し、Inspector には Controller 参照と再生設定だけを置く。
+    //      Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
+    DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
+        [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
+            if (widgets::AssetPathField("Controller", anim.controllerPath,
+                                        ".animcontroller", ctx.projectRoot)) {
+                anim.loadedControllerPath.clear();
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
             }
 
-            ImGui::Separator();
-
-            // --- Clip selector ---
-            if (!anim.clips.empty()) {
-                const int clipCount = static_cast<int>(anim.clips.size());
-                int sel = std::clamp(anim.clipIndex, 0, clipCount - 1);
-                std::vector<const char*> names;
-                names.reserve(static_cast<size_t>(clipCount));
-                for (const auto& c : anim.clips) names.push_back(c.name.c_str());
-                if (ImGui::Combo("Clip", &sel, names.data(), clipCount)) {
-                    anim.clipIndex = sel;
-                    anim.clipName  = anim.clips[static_cast<size_t>(sel)].name;
-                    anim.time = 0.0f;
+            const bool hasController = !anim.controllerPath.empty();
+            if (!hasController) {
+                ImGui::TextColored({ 0.9f, 0.55f, 0.2f, 1.0f },
+                                   "Animator Controller が未設定です。");
+                if (ImGui::Button("Create Controller From Current", ImVec2(-1.0f, 0.0f))) {
+                    const std::string directory = ctx.projectRoot + "/Assets/Animation";
+                    util::FileSystem::EnsureDirectory(directory);
+                    std::string safeName = go->name.empty() ? "Animator" : go->name;
+                    for (char& character : safeName) {
+                        const bool valid =
+                            std::isalnum(static_cast<unsigned char>(character)) ||
+                            character == '_' || character == '-';
+                        if (!valid) character = '_';
+                    }
+                    std::string path = directory + "/" + safeName + ".animcontroller";
+                    for (int suffix = 1;
+                         util::FileSystem::Exists(path) && suffix < 10000;
+                         ++suffix) {
+                        path = directory + "/" + safeName + " " +
+                            std::to_string(suffix) + ".animcontroller";
+                    }
+                    const auto controller = asset::MakeAnimatorControllerAsset(anim);
+                    if (asset::SaveAnimatorControllerAsset(path, controller)) {
+                        anim.controllerPath = NormalizeAssetPath(path);
+                        anim.loadedControllerPath = anim.controllerPath;
+                        SelectAsset(ctx, path);
+                        ctx.requestAssetBrowserRefresh = true;
+                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    }
                 }
-                const auto& cur = anim.clips[static_cast<size_t>(sel)];
-                const float dur  = static_cast<float>(cur.GetDurationSeconds());
-                const float t    = (dur > 0.0f) ? std::clamp(anim.time / dur, 0.0f, 1.0f) : 0.0f;
-                char overlay[32];
-                std::snprintf(overlay, sizeof(overlay), "%.2f / %.2fs", anim.time, dur);
-                ImGui::ProgressBar(t, { -1.0f, 0.0f }, overlay);
-                ImGui::TextDisabled("%d clip(s) | %d tracks", clipCount,
-                                    static_cast<int>(cur.tracks.size()));
-            } else if (anim.clipsLoaded) {
-                ImGui::TextDisabled("No clips loaded");
-            } else {
-                ImGui::TextDisabled("(clips not loaded yet)");
+                return;
             }
+
+            if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f))) {
+                // WHY selectedAssetPath 任せにしないか: ここでの選択は GameObject であって
+                //     .animcontroller ではない。開くべき対象はこの Animator が指している
+                //     Controller なので、パスを明示して渡す。
+                if (ctx.openAnimationGraph) ctx.openAnimationGraph(anim.controllerPath);
+                ctx.requestOpenAnimationGraph = true;
             }
 
             ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
             ImGui::Checkbox("Playing", &anim.playing);
-            // Time / Loop はステートマシン未使用時のみ表示する（ステートマシン使用時は per-state で管理）
-            if (anim.states.empty()) {
-                ImGui::DragFloat("Time", &anim.time, 0.01f, 0.0f, 100000.0f);
-                ImGui::Checkbox("Loop", &anim.loop);
+            ImGui::Checkbox("External Pose", &anim.externalPose);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Script が骨のローカルを毎フレーム書く構成。\n"
+                    "クリップが無いフレームでもバインドポーズへ戻さず、\n"
+                    "今の骨からスキニングパレットを組み直す。\n"
+                    "クリップで表せない動き (経路に沿って形が変わる胴など) 用。");
             }
+            DrawRootMotionSettings(anim);
 
-            // ── ステートマシン UI ────────────────────────────────────────────────
-            if (usesController && !anim.currentStateName.empty()) {
+            if (!anim.currentStateName.empty()) {
                 ImGui::SeparatorText("Runtime");
                 ImGui::Text("Current: %s", anim.currentStateName.c_str());
-                const float normalizedTime = anim.GetNormalizedTime();
-                ImGui::ProgressBar(normalizedTime, { -1.0f, 0.0f });
+                ImGui::ProgressBar(anim.GetNormalizedTime(), { -1.0f, 0.0f });
                 if (!anim.blendToState.empty()) {
                     ImGui::TextDisabled(
-                        "-> %s  (blend: %.0f%%, %.3f / %.3f s)",
-                        anim.blendToState.c_str(),
-                        anim.blendWeight * 100.0f,
-                        anim.blendWeight * anim.blendDuration,
-                        anim.blendDuration);
-                }
-                ImGui::TextDisabled(
-                    "Edit nodes, sources, parameters and transitions in Animation Graph.");
-            }
-
-            if (!usesController) {
-                ImGui::Separator();
-                ImGui::TextColored({ 0.9f, 0.7f, 0.2f, 1.0f }, "State Machine");
-
-                // ── ランタイム状態表示 ─────────────────────────────────────────
-                if (!anim.currentStateName.empty()) {
-                    ImGui::Text("Current: %s", anim.currentStateName.c_str());
-                    const float nt = anim.GetNormalizedTime();
-                    char overlay[64];
-                    std::snprintf(overlay, sizeof(overlay), "%.2f", nt);
-                    ImGui::ProgressBar(nt, { -1.0f, 0.0f }, overlay);
-                    if (!anim.blendToState.empty()) {
-                        ImGui::TextDisabled(
-                            " -> %s  (blend: %.0f%%, %.3f / %.3f s)",
-                            anim.blendToState.c_str(),
-                            anim.blendWeight * 100.0f,
-                            anim.blendWeight * anim.blendDuration,
-                            anim.blendDuration);
-                    }
-                    ImGui::Separator();
-                }
-
-                // ── Default State コンボ ──────────────────────────────────────
-                if (!anim.states.empty()) {
-                    int defIdx = 0;
-                    std::vector<const char*> stateNames;
-                    stateNames.reserve(anim.states.size());
-                    for (int si = 0; si < static_cast<int>(anim.states.size()); ++si) {
-                        stateNames.push_back(anim.states[static_cast<size_t>(si)].name.c_str());
-                        if (anim.states[static_cast<size_t>(si)].name == anim.defaultStateName)
-                            defIdx = si;
-                    }
-                    if (ImGui::Combo("Default State", &defIdx,
-                                     stateNames.data(), static_cast<int>(stateNames.size()))) {
-                        anim.defaultStateName  = anim.states[static_cast<size_t>(defIdx)].name;
-                        anim.currentStateName  = "";  // 再初期化トリガー
-                    }
-                }
-
-                // ── Parameters ────────────────────────────────────────────────
-                ImGui::Separator();
-                if (ImGui::CollapsingHeader("Parameters")) {
-                    static const char* kParamTypes[] = { "Float", "Int", "Bool", "Trigger" };
-                    int removeParamIdx = -1;
-
-                    for (int pi = 0; pi < static_cast<int>(anim.parameters.size()); ++pi) {
-                        auto& param = anim.parameters[static_cast<size_t>(pi)];
-                        ImGui::PushID(pi);
-
-                        // 型コンボ（幅を絞る）
-                        ImGui::SetNextItemWidth(70.0f);
-                        int typeIdx = static_cast<int>(param.type);
-                        if (ImGui::Combo("##ptype", &typeIdx, kParamTypes, 4))
-                            param.type = static_cast<scene::ParamType>(typeIdx);
-                        ImGui::SameLine();
-
-                        // 名前入力
-                        char buf[64];
-                        std::snprintf(buf, sizeof(buf), "%s", param.name.c_str());
-                        ImGui::SetNextItemWidth(100.0f);
-                        if (ImGui::InputText("##pname", buf, sizeof(buf)))
-                            param.name = buf;
-                        ImGui::SameLine();
-
-                        // 値ウィジェット
-                        switch (param.type) {
-                        case scene::ParamType::Float:
-                            ImGui::SetNextItemWidth(80.0f);
-                            ImGui::DragFloat("##pval", &param.floatValue, 0.01f);
-                            break;
-                        case scene::ParamType::Int:
-                            ImGui::SetNextItemWidth(80.0f);
-                            ImGui::DragInt("##pval", &param.intValue);
-                            break;
-                        case scene::ParamType::Bool:
-                            ImGui::Checkbox("##pval", &param.boolValue);
-                            break;
-                        case scene::ParamType::Trigger:
-                            if (ImGui::SmallButton("Fire"))
-                                param.boolValue = true;
-                            break;
-                        }
-                        ImGui::SameLine();
-
-                        if (ImGui::SmallButton("x"))
-                            removeParamIdx = pi;
-
-                        ImGui::PopID();
-                    }
-                    if (removeParamIdx >= 0)
-                        anim.parameters.erase(anim.parameters.begin() + removeParamIdx);
-
-                    // "+ Add Parameter" ボタン（型コンボ付き）
-                    static int s_newParamType = 0;
-                    ImGui::SetNextItemWidth(70.0f);
-                    ImGui::Combo("##newptype", &s_newParamType, kParamTypes, 4);
-                    ImGui::SameLine();
-                    if (ImGui::Button("+ Add Parameter")) {
-                        scene::AnimatorParameter p;
-                        p.name = "NewParam";
-                        p.type = static_cast<scene::ParamType>(s_newParamType);
-                        anim.parameters.push_back(std::move(p));
-                    }
-                }
-
-                // ── States ────────────────────────────────────────────────────
-                ImGui::Separator();
-                if (ImGui::CollapsingHeader("States")) {
-                    // 利用可能なクリップ名リスト（Clip コンボ用）
-                    std::vector<const char*> clipNames;
-                    clipNames.push_back("(none)");
-                    for (const auto& c : anim.clips)
-                        clipNames.push_back(c.name.c_str());
-
-                    // 利用可能なステート名リスト（遷移先コンボ用）
-                    std::vector<const char*> stateNamesForTrans;
-                    for (const auto& s : anim.states)
-                        stateNamesForTrans.push_back(s.name.c_str());
-
-                    static const char* kOpNames[] = {
-                        "Greater", "Less", "Equal", "NotEqual", "True", "False"
-                    };
-
-                    int removeStateIdx = -1;
-                    for (int si = 0; si < static_cast<int>(anim.states.size()); ++si) {
-                        auto& st = anim.states[static_cast<size_t>(si)];
-                        ImGui::PushID(si);
-
-                        const bool isCurrent = (st.name == anim.currentStateName);
-                        if (isCurrent)
-                            ImGui::PushStyleColor(ImGuiCol_Header, { 0.3f, 0.6f, 0.3f, 1.0f });
-
-                        const bool open = ImGui::CollapsingHeader(st.name.c_str());
-
-                        if (isCurrent) ImGui::PopStyleColor();
-
-                        if (open) {
-                            ImGui::Indent();
-
-                            // State 名入力
-                            char nameBuf[64];
-                            std::snprintf(nameBuf, sizeof(nameBuf), "%s", st.name.c_str());
-                            if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
-                                // defaultStateName / currentStateName も追随して更新する
-                                if (anim.defaultStateName == st.name)
-                                    anim.defaultStateName = nameBuf;
-                                if (anim.currentStateName == st.name)
-                                    anim.currentStateName = nameBuf;
-                                st.name = nameBuf;
-                            }
-
-                            static const char* kStateModes[] = {
-                                "Clip", "Blend Tree 1D", "Blend Tree 2D"
-                            };
-                            int stateMode = static_cast<int>(st.mode);
-                            if (ImGui::Combo("Mode", &stateMode, kStateModes, 3))
-                                st.mode = static_cast<scene::AnimationStateMode>(stateMode);
-
-                            if (st.mode == scene::AnimationStateMode::Clip) {
-                                int clipSel = 0;
-                                for (int ci = 1; ci < static_cast<int>(clipNames.size()); ++ci)
-                                    if (st.clipName == clipNames[static_cast<size_t>(ci)])
-                                        { clipSel = ci; break; }
-                                if (ImGui::Combo("Clip", &clipSel,
-                                                 clipNames.data(),
-                                                 static_cast<int>(clipNames.size()))) {
-                                    st.clipName = (clipSel == 0)
-                                        ? ""
-                                        : clipNames[static_cast<size_t>(clipSel)];
-                                }
-                                ImGui::DragFloat("IK Weight##st", &st.ikWeight,
-                                                 0.01f, 0.0f, 1.0f);
-                            } else {
-                                auto drawMotions = [&](std::vector<scene::BlendTreeMotion>& motions,
-                                                       bool is2D) {
-                                    int removeMotion = -1;
-                                    for (int mi = 0; mi < static_cast<int>(motions.size()); ++mi) {
-                                        auto& motion = motions[static_cast<size_t>(mi)];
-                                        ImGui::PushID(mi);
-                                        char motionClip[128]{};
-                                        std::snprintf(motionClip, sizeof(motionClip), "%s",
-                                                      motion.clipName.c_str());
-                                        if (ImGui::InputText("Motion Clip", motionClip,
-                                                             sizeof(motionClip)))
-                                            motion.clipName = motionClip;
-                                        if (is2D) {
-                                            ImGui::DragFloat("X", &motion.posX, 0.01f);
-                                            ImGui::SameLine();
-                                            ImGui::DragFloat("Y", &motion.posY, 0.01f);
-                                        } else {
-                                            ImGui::DragFloat(
-                                                "Threshold", &motion.threshold, 0.01f);
-                                        }
-                                        ImGui::DragFloat(
-                                            "Motion Speed", &motion.speed,
-                                            0.01f, -10.0f, 10.0f);
-                                        ImGui::DragFloat(
-                                            "Motion IK", &motion.ikWeight,
-                                            0.01f, 0.0f, 1.0f);
-                                        if (ImGui::SmallButton("Remove Motion"))
-                                            removeMotion = mi;
-                                        ImGui::Separator();
-                                        ImGui::PopID();
-                                    }
-                                    if (removeMotion >= 0)
-                                        motions.erase(motions.begin() + removeMotion);
-                                    if (ImGui::Button("+ Motion"))
-                                        motions.emplace_back();
-                                };
-
-                                if (st.mode == scene::AnimationStateMode::BlendTree1D) {
-                                    char paramName[96]{};
-                                    std::snprintf(paramName, sizeof(paramName), "%s",
-                                                  st.blendTree1D.paramName.c_str());
-                                    if (ImGui::InputText(
-                                            "Blend Parameter", paramName, sizeof(paramName)))
-                                        st.blendTree1D.paramName = paramName;
-                                    drawMotions(st.blendTree1D.motions, false);
-                                } else {
-                                    char paramX[96]{};
-                                    char paramY[96]{};
-                                    std::snprintf(paramX, sizeof(paramX), "%s",
-                                                  st.blendTree2D.paramX.c_str());
-                                    std::snprintf(paramY, sizeof(paramY), "%s",
-                                                  st.blendTree2D.paramY.c_str());
-                                    if (ImGui::InputText("Parameter X", paramX, sizeof(paramX)))
-                                        st.blendTree2D.paramX = paramX;
-                                    if (ImGui::InputText("Parameter Y", paramY, sizeof(paramY)))
-                                        st.blendTree2D.paramY = paramY;
-                                    static const char* kBlend2DTypes[] = {
-                                        "Simple Directional", "Freeform Cartesian"
-                                    };
-                                    int blendType = static_cast<int>(st.blendTree2D.type);
-                                    if (ImGui::Combo(
-                                            "2D Type", &blendType, kBlend2DTypes, 2))
-                                        st.blendTree2D.type =
-                                            static_cast<scene::BlendTree2DType>(blendType);
-                                    drawMotions(st.blendTree2D.motions, true);
-                                }
-                            }
-                            ImGui::DragFloat("Speed##st", &st.speed, 0.01f, -10.0f, 10.0f);
-                            ImGui::Checkbox("Loop##st", &st.loop);
-
-                            // ── Transitions ──────────────────────────────────
-                            ImGui::Separator();
-                            ImGui::Text("Transitions");
-                            int removeTrIdx = -1;
-                            for (int ti = 0; ti < static_cast<int>(st.transitions.size()); ++ti) {
-                                auto& tr = st.transitions[static_cast<size_t>(ti)];
-                                ImGui::PushID(ti);
-
-                                // 遷移先コンボ
-                                int toIdx = 0;
-                                for (int xi = 0; xi < static_cast<int>(stateNamesForTrans.size()); ++xi)
-                                    if (tr.toStateName == stateNamesForTrans[static_cast<size_t>(xi)])
-                                        { toIdx = xi; break; }
-                                ImGui::SetNextItemWidth(120.0f);
-                                if (ImGui::Combo("->##to", &toIdx,
-                                                 stateNamesForTrans.data(),
-                                                 static_cast<int>(stateNamesForTrans.size())))
-                                    tr.toStateName = stateNamesForTrans[static_cast<size_t>(toIdx)];
-
-                                ImGui::SameLine();
-                                ImGui::Checkbox("ExitTime", &tr.hasExitTime);
-                                if (tr.hasExitTime) {
-                                    ImGui::SameLine();
-                                    ImGui::SetNextItemWidth(60.0f);
-                                    ImGui::DragFloat("##et", &tr.exitTime, 0.01f, 0.0f, 1.0f);
-                                }
-                                ImGui::SetNextItemWidth(80.0f);
-                                ImGui::Checkbox("Fixed Duration", &tr.fixedDuration);
-                                ImGui::SetNextItemWidth(110.0f);
-                                ImGui::DragFloat(
-                                    tr.fixedDuration ? "Duration (s)" : "Duration (Normalized)",
-                                    &tr.transitionDuration, 0.01f, 0.0f,
-                                    tr.fixedDuration ? 5.0f : 2.0f);
-
-                                // 条件リスト
-                                ImGui::Indent();
-                                int removeCondIdx = -1;
-                                for (int ci = 0; ci < static_cast<int>(tr.conditions.size()); ++ci) {
-                                    auto& cond = tr.conditions[static_cast<size_t>(ci)];
-                                    ImGui::PushID(ci);
-
-                                    // パラメーター名コンボ
-                                    std::vector<const char*> paramNamesList;
-                                    for (const auto& pp : anim.parameters)
-                                        paramNamesList.push_back(pp.name.c_str());
-                                    int pIdx = 0;
-                                    for (int xi = 0; xi < static_cast<int>(paramNamesList.size()); ++xi)
-                                        if (cond.paramName == paramNamesList[static_cast<size_t>(xi)])
-                                            { pIdx = xi; break; }
-                                    ImGui::SetNextItemWidth(90.0f);
-                                    if (!paramNamesList.empty() &&
-                                        ImGui::Combo("##cp", &pIdx,
-                                                     paramNamesList.data(),
-                                                     static_cast<int>(paramNamesList.size())))
-                                        cond.paramName = paramNamesList[static_cast<size_t>(pIdx)];
-                                    ImGui::SameLine();
-
-                                    // 演算子コンボ
-                                    int opIdx = static_cast<int>(cond.op);
-                                    ImGui::SetNextItemWidth(70.0f);
-                                    if (ImGui::Combo("##cop", &opIdx, kOpNames, 6))
-                                        cond.op = static_cast<scene::ConditionOp>(opIdx);
-                                    ImGui::SameLine();
-
-                                    // 閾値（Greater/Less/Equal/NotEqual のとき表示）
-                                    if (opIdx < 4) {
-                                        ImGui::SetNextItemWidth(60.0f);
-                                        ImGui::DragFloat("##cth", &cond.threshold, 0.01f);
-                                        ImGui::SameLine();
-                                    }
-                                    if (ImGui::SmallButton("x##cond"))
-                                        removeCondIdx = ci;
-
-                                    ImGui::PopID();
-                                }
-                                if (removeCondIdx >= 0)
-                                    tr.conditions.erase(tr.conditions.begin() + removeCondIdx);
-
-                                if (ImGui::SmallButton("+ Condition")) {
-                                    scene::AnimatorCondition c;
-                                    if (!anim.parameters.empty())
-                                        c.paramName = anim.parameters[0].name;
-                                    tr.conditions.push_back(std::move(c));
-                                }
-                                ImGui::Unindent();
-
-                                ImGui::SameLine();
-                                if (ImGui::SmallButton("x##tr"))
-                                    removeTrIdx = ti;
-
-                                ImGui::PopID();
-                            }
-                            if (removeTrIdx >= 0)
-                                st.transitions.erase(st.transitions.begin() + removeTrIdx);
-
-                            if (ImGui::Button("+ Add Transition")) {
-                                scene::AnimationTransition tr;
-                                if (!anim.states.empty())
-                                    tr.toStateName = anim.states[0].name;
-                                st.transitions.push_back(std::move(tr));
-                            }
-
-                            ImGui::Separator();
-                            if (ImGui::SmallButton("Remove State"))
-                                removeStateIdx = si;
-
-                            ImGui::Unindent();
-                        }
-                        ImGui::PopID();
-                    }
-                    if (removeStateIdx >= 0)
-                        anim.states.erase(anim.states.begin() + removeStateIdx);
-
-                    if (ImGui::Button("+ Add State")) {
-                        scene::AnimationState newSt;
-                        newSt.name = "NewState";
-                        if (anim.defaultStateName.empty())
-                            anim.defaultStateName = newSt.name;
-                        anim.states.push_back(std::move(newSt));
-                    }
+                        "-> %s  (blend: %.0f%%)",
+                        anim.blendToState.c_str(), anim.blendWeight * 100.0f);
                 }
             }
+
+            DrawAnimatorLayers(anim, ctx);
+        });
+
+    // Bone は FBX インポートで自動付与される内部コンポーネント。編集は想定しないが、
+    // ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
+    // IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
+    DrawComponentSection<scene::BoneComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Bone",
+        [](scene::BoneComponent& bone, EditorContext&) {
+            ImGui::BeginDisabled();
+            ImGui::Text("Bone Name: %s", bone.boneName.c_str());
+            ImGui::Text("Node Index: %d   Bone Index: %d", bone.nodeIndex, bone.boneIndex);
+            ImGui::Text("Generated: %s", bone.generated ? "Yes" : "No");
+            ImGui::EndDisabled();
         });
 
     DrawComponentSection<scene::IKSolverComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "IK Solver",
@@ -572,9 +601,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::Checkbox("##en", &chain.enabled);
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("Enable / Disable this chain");
                 ImGui::SameLine();
-                ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.6f, 0.15f, 0.15f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.25f, 0.25f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.9f, 0.10f, 0.10f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
                 if (ImGui::SmallButton("Remove")) removeIdx = ci;
                 ImGui::PopStyleColor(3);
 
@@ -905,6 +934,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
         });
 
+    DrawSpringBoneInspector(go, ctx, m_componentClipboard, m_componentClipboardType);
 }
 
 

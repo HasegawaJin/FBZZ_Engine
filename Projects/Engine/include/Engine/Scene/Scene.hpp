@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Scene.hpp | fbzz::scene
-// GameObject 所有と ComponentArray 管理
-// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
-// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
+/// @file    Scene.hpp
+/// @brief   GameObject 所有と ComponentArray 管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
+/// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -11,6 +13,8 @@
 #include "Transform.hpp"
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
+#include "ScriptFactory.hpp"
+#include "SceneRenderResources.hpp"
 #include <Math/Vector4.hpp>
 #include <vector>
 #include <memory>
@@ -101,6 +105,9 @@ public:
     static constexpr uint32_t MAX_ENTITIES = ComponentArray<uint8_t>::MAX;
 
     Scene() = default;
+    // WHY 明示するか: Component が個体ごとに確保した GPU リソースは ResourceManager 側の実体で、
+    //      Component が消えるだけでは返らない。畳むときに必ず返す口をここに置く。
+    ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
     Scene(Scene&& other) noexcept;
@@ -130,6 +137,14 @@ public:
     bool DestroyGameObject(EntityID id);
     bool MoveGameObject(EntityID id, int offset);
     bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
+    // ルート GO をルート同士の並び順で newRootIndex 位置へ移動する。
+    // WHY: Hierarchy のドラッグ並べ替え用。ルートの表示順はフラット配列の出現順で
+    //      決まるため、子 GO の SetSiblingIndex とは別に Scene 側で並べ替える。
+    bool SetRootSiblingIndex(EntityID id, int newRootIndex);
+    // 親の m_children 並び替え後に、フラット配列上の兄弟順序を同期させる。
+    // WHY: シリアライザ (保存 / Undo スナップショット / Play 復元) は flat 順で
+    //      SetParent を再生して子リストを再構築するため、flat 順の兄弟順序が正本になる。
+    bool SyncSiblingFlatOrder(EntityID id);
 
     // System 向け高速マルチ Component イテレータ
     template<typename... Ts>
@@ -172,6 +187,10 @@ public:
 
     // src の全 Component を dst にコピーする (Duplicate 用)
     void DuplicateComponents(EntityID src, EntityID dst);
+    // 別 Scene 上の src から dst へ全 Component をコピーする (Prefab / Clipboard 用)
+    // WHY: Prefab は一時 Scene に通常ロードしてから現在の Scene へ追加するため、
+    //      Scene 内複製だけでは全 Component 対応を共有できない。
+    void CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst);
 
     // SceneView が entity span を取得するために使う
     template<typename T>
@@ -235,12 +254,24 @@ private:
         if (arr.Has(id)) arr.Remove(id);
     }
 
+    // ScriptComponent はコピー不可 (Script は unique_ptr 所有) のため、この fold からは
+    // 落ちる。実体の作り直しとフィールド値の複製は CopyScriptComponentFrom が担う。
     template<typename T>
     static void CopyIfHas(ComponentArray<T>& arr, EntityID src, EntityID dst) {
         if constexpr (std::is_copy_constructible_v<T>) {
             if (arr.Has(src) && !arr.Has(dst)) arr.Add(dst, arr.Get(src));
         }
     }
+
+    template<typename T>
+    static void CopyFromOtherIfHas(const ComponentArray<T>& srcArr, ComponentArray<T>& dstArr,
+                                   EntityID src, EntityID dst) {
+        if constexpr (std::is_copy_constructible_v<T>) {
+            if (srcArr.Has(src) && !dstArr.Has(dst)) dstArr.Add(dst, srcArr.Get(src));
+        }
+    }
+
+    void CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst);
 
     template<typename... Ts> friend class SceneView;
     friend class GameObject;
@@ -381,6 +412,11 @@ bool Scene::HasComponent(EntityID id) const {
 
 template<typename T>
 void Scene::RemoveComponent(EntityID id) {
+    // WHY ここで返すか: Component を配列から外すと «誰がそのハンドルを持っていたか» を
+    //     辿る手段が無くなる。Inspector から 1 つ外すたびに、その個体が抱えていた
+    //     定数バッファ / 頂点バッファが GPU に残り続けていた。
+    if (T* component = GetComponent<T>(id))
+        ReleaseComponentGpuResources(*component);
     GetArray<T>().Remove(id);
 }
 
@@ -446,8 +482,12 @@ T* GameObject::GetScript() {
     if (!sc) return nullptr;
     for (auto& entry : sc->scripts) {
         if (!entry.script) continue;
-        if (std::string_view(entry.script->GetTypeName()) == T::TYPE_NAME)
-            return static_cast<T*>(entry.script.get());
+        // WHY 名前一致ではなく FbzzAsType か: 基底型やインターフェースで引けるようにするため。
+        //     MiteComponent が付いた GameObject を GetScript<EnemyAiBase>() でも
+        //     GetScript<IDamageable>() でも拾える。返るのは調整済みの番地なので、
+        //     多重継承していても正しい部分オブジェクトを指す (Script::FbzzAsType)。
+        if (void* found = entry.script->FbzzAsType(T::TYPE_NAME))
+            return static_cast<T*>(found);
     }
     return nullptr;
 }
@@ -483,7 +523,11 @@ std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
     if (!script || !script->m_scene) return {};
     // Script 派生型は ECS に登録されていないため GameObject を全走査して GetScript<T>() で探す。
     // Component 型は Scene::FindObjectsOfType<T>() (ECS) に委譲する。
-    if constexpr (std::is_base_of_v<Script, T>) {
+    //
+    // WHY is_base_of<Script, T> で判定しないか: 横断インターフェース
+    //     (FBZZ_SCRIPT_INTERFACE) は Script を継承しないため、それだと ECS 側へ
+    //     落ちてコンパイルが通らない。「FbzzAsType で引ける型か」で振り分ける。
+    if constexpr (detail::kIsScriptQueryable<T>) {
         std::vector<GameObject*> result;
         for (auto& go : script->m_scene->GameObjects())
             if (go.template GetScript<T>())
@@ -525,6 +569,18 @@ T* ScriptSceneProxy::GetComponent() const
 {
     return (script && script->m_gameObject)
         ? script->m_gameObject->GetComponent<T>() : nullptr;
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetComponent(GameObject& go) const
+{
+    return go.GetComponent<T>();
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetComponent(GameObject* go) const
+{
+    return go ? go->GetComponent<T>() : nullptr;
 }
 
 template<typename T>

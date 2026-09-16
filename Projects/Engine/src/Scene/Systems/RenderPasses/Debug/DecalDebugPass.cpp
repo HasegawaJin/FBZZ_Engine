@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DecalDebugPass.cpp | fbzz::scene
-// DecalComponent の OBB ワイヤーフレーム可視化
-// Transform の worldScale * 0.5 を halfExtents として DebugDraw::Box を呼ぶ。
-// 投影方向 (-Y) を示す矢印線も中心から描画する。
+/// @file    DecalDebugPass.cpp
+/// @brief   DecalComponent の OBB ワイヤーフレーム可視化。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// Transform の worldScale * 0.5 を halfExtents として DebugDraw::Box を呼ぶ。
+/// 投影方向 (-Y) を示す矢印線も中心から描画する。
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
@@ -15,16 +17,19 @@ namespace fbzz::scene {
 
 std::string_view DecalDebugPass::Name() const { return "DebugDecalBounds"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> DecalDebugPass::DeclareAccesses(const RenderPassContext&) const
+void DecalDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void DecalDebugPass::Execute(RenderPassContext& ctx)
+bool DecalDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showDecalBounds) return;
+    return ctx.settings.showDecalBounds;
+}
 
+void DecalDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     constexpr math::Vector4 kBoxColor   = { 1.0f, 0.5f, 0.0f, 1.0f }; // オレンジ
     constexpr math::Vector4 kArrowColor = { 1.0f, 0.8f, 0.0f, 1.0f }; // 黄
 

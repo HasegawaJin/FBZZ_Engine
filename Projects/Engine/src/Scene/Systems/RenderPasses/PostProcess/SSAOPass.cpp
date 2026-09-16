@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SSAOPass.cpp | fbzz::scene
-// Deferred GBuffer を入力に Screen Space Ambient Occlusion を生成する。
+/// @file    SSAOPass.cpp
+/// @brief   Deferred GBuffer を入力に Screen Space Ambient Occlusion を生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
@@ -16,7 +17,7 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
 
     if (!ao.enabled ||
         !h.ssaoShader.IsValid() || !h.ssaoBlurShader.IsValid() ||
-        !h.ssaoRaw.IsValid() || !h.ssaoBlur.IsValid()) {
+        !h.ssaoRaw.IsValid() || !ctx.Res().Texture("SSAO").IsValid()) {
         return;
     }
 
@@ -35,11 +36,11 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
     ssaoDC.shader = h.ssaoShader;
     ssaoDC.constantBuffers[0] = h.frameCB;
     ssaoDC.constantBuffers[5] = h.postprocCB;
-    ssaoDC.srvInputs[6] = resources.GetColorTexture(h.gbufferRT, 1);
-    ssaoDC.srvInputs[7] = resources.GetDepthTexture(h.gbufferRT);
+    ssaoDC.srvInputs[6] = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
+    ssaoDC.srvInputs[7] = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
     ssaoDC.uavOutputs[0] = h.ssaoRaw;
-    ssaoDC.dispatchX = (ctx.width + 7) / 8;
-    ssaoDC.dispatchY = (ctx.height + 7) / 8;
+    ssaoDC.dispatchX = (ctx.width / 2 + 7) / 8;
+    ssaoDC.dispatchY = (ctx.height / 2 + 7) / 8;
     ssaoDC.dispatchZ = 1;
     r.Dispatch(ssaoDC, resources);
 
@@ -47,9 +48,9 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
     blurDC.shader = h.ssaoBlurShader;
     blurDC.constantBuffers[5] = h.postprocCB;
     blurDC.srvInputs[9] = h.ssaoRaw;
-    blurDC.uavOutputs[0] = h.ssaoBlur;
-    blurDC.dispatchX = (ctx.width + 7) / 8;
-    blurDC.dispatchY = (ctx.height + 7) / 8;
+    blurDC.uavOutputs[0] = ctx.Res().Texture("SSAO");
+    blurDC.dispatchX = (ctx.width / 2 + 7) / 8;
+    blurDC.dispatchY = (ctx.height / 2 + 7) / 8;
     blurDC.dispatchZ = 1;
     r.Dispatch(blurDC, resources);
 }

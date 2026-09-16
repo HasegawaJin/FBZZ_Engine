@@ -1,0 +1,19 @@
+# GreenWare
+# M_SwordAccent.mat
+# 鍔・柄金具。刀身より一段暗く、わずかに暖色へ振って «別の金属» にする
+# (同じ鋼にすると鍔が刀身に溶けて、刃の長さが読めなくなる)。
+version = 1
+name = 'M_SwordAccent'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.52, 0.50, 0.46, 1.0 ]
+metallic = 1.0
+roughness = 0.24
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

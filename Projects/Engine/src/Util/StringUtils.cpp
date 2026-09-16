@@ -1,8 +1,10 @@
-// FBZZ Engine
-// StringUtils.cpp | fbzz::util
-// 文字列操作ユーティリティ実装
-// 検索・分割・trim・大文字小文字変換と wide / narrow 変換を扱う。
-// Win32 API 境界で必要な文字列変換をここに集約する。
+/// @file    StringUtils.cpp
+/// @brief   文字列操作ユーティリティ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 検索・分割・trim・大文字小文字変換と wide / narrow 変換を扱う。
+/// Win32 API 境界で必要な文字列変換をここに集約する。
 #include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
 #include <cctype>
@@ -18,6 +20,16 @@ bool StringUtils::Contains(const std::string& s, const std::string& sub)
 bool StringUtils::ContainsCI(const std::string& s, const std::string& sub)
 {
     return ToLower(s).find(ToLower(sub)) != std::string::npos;
+}
+
+bool StringUtils::EqualsCI(const std::string& a, const std::string& b)
+{
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i]))
+            != std::tolower(static_cast<unsigned char>(b[i]))) return false;
+    }
+    return true;
 }
 
 std::string StringUtils::ToLower(const std::string& s)
@@ -65,6 +77,19 @@ std::string StringUtils::Trim(const std::string& s)
     if (start == std::string::npos) return "";
     size_t end = s.find_last_not_of(" \t\r\n");
     return s.substr(start, end - start + 1);
+}
+
+std::string StringUtils::TruncateUtf8(const std::string& s, std::size_t maxBytes,
+                                      const std::string& ellipsis)
+{
+    if (s.size() <= maxBytes) return s;
+    // ellipsis すら入らない指定は «切れるだけ切る» に倒す。
+    const std::size_t budget = maxBytes > ellipsis.size() ? maxBytes - ellipsis.size() : 0;
+
+    // 継続バイト (0b10xxxxxx) は文字の途中。境界まで戻してから切る。
+    std::size_t cut = budget;
+    while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+    return s.substr(0, cut) + ellipsis;
 }
 
 std::wstring StringUtils::ToWide(const std::string& s)

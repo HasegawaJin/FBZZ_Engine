@@ -1,6 +1,7 @@
-// FBZZ Engine
-// IblBakePanel.cpp | fbzz::editor
-// HDRI → IBL ベイクパネル ImGui UI 実装
+/// @file    IblBakePanel.cpp
+/// @brief   HDRI → IBL ベイクパネル ImGui UI 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/Import/HdriLoader.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -14,6 +15,7 @@
 #include <shlobj.h>
 #include <cstdio>
 #include <string>
+#include <string_view>
 
 namespace fbzz::editor {
 
@@ -186,8 +188,11 @@ void IblBakePanel::DoBake(EditorContext& ctx)
     }
 
     // ── Step 3: ベイク実行 ─────────────────────────────────────────────────
-    // hlslSourceDir は "Assets/shaders/" の絶対パス。compiled/ サブディレクトリを指定する。
-    const std::string compiledDir = ctx.hlslSourceDir + "/compiled/";
+    // DX11 は DXBC、DX12 は DXIL を別ディレクトリへ生成するため、抽象 API の表示名で選ぶ。
+    // WHY: 上位レイヤーから具象 Renderer へダウンキャストせず、IBL Compute も同じ SM 契約に揃える。
+    const bool usesDx12 = std::string_view(ctx.renderer->GetBackendName()) == "DirectX 12";
+    const std::string compiledDir = ctx.hlslSourceDir
+        + (usesDx12 ? "/compiled_dx12/" : "/compiled/");
 
     renderer::IblBakeInput input;
     input.pixels              = pixels.Pixels();

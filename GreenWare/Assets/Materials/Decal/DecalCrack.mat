@@ -1,0 +1,21 @@
+version = 1
+name = 'DecalCrack'
+shader = 'Assets/Shaders/Material/Decal/Material/DecalCrack.hlsl'
+render_path = 'decal'
+blend_mode = 'AlphaBlend'
+double_sided = true
+render_queue = 3000
+
+[textures]
+
+[params]
+crackColor = [ 0.02, 0.02, 0.03, 0.9 ]
+glowColor = [ 1.0, 0.55, 0.2, 1.0 ]
+crackWidth = 0.022
+branchCount = 7.0
+# 伸びきった静的な亀裂が既定。走らせる側 (BossShockwaveComponent) が 1 枚ごとに
+# growth を 0 から進め、heat を 1 から落とす。
+growth = 1.0
+heat = 0.0
+meander = 1.0
+seed = 1.0

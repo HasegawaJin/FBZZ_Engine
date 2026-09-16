@@ -1,0 +1,90 @@
+# 転がる岩をかすめる爆風 — repulse の力と «動く障害物» の見本。
+# 球のコライダーが motion のキーで左から右へ横切り、煙をえぐって通る。
+# 障害物そのものは焼いた絵に写らない。えぐれた跡だけが残る。
+version = 2
+kind = "gas"
+seed = 31
+
+[gas]
+buoyancy = 2.6
+weight = 0.06
+vorticity = 0.7
+turbulence = 0.4
+turbulence_scale = 5.5
+density_dissipation = 0.5
+temperature_dissipation = 1.4
+burn_rate = 4.0
+burn_heat = 1.1
+burn_smoke = 0.45
+ignition_temperature = 0.2
+
+[[source]]
+name = "Blast"
+shape = "sphere"
+center = [0.0, -0.55, 0.0]
+size = [0.26, 0.26, 0.26]
+density = 5.2
+temperature = 2.8
+fuel = 3.2
+noise = 0.7
+velocity = [0.0, 2.2, 0.0]
+duration = 0.3
+
+[[force]]
+name = "Push Out"
+type = "repulse"
+center = [0.0, -0.5, 0.0]
+strength = 4.2
+radius = 0.7
+falloff_power = 1.4
+duration = 0.35
+
+[[collider]]
+name = "Rolling Rock"
+shape = "sphere"
+center = [-0.75, -0.15, 0.0]
+size = [0.24, 0.24, 0.24]
+friction = 0.5
+
+    [collider.motion]
+    inherit_velocity = false
+
+    [[collider.motion.key]]
+    time = 0.0
+    offset = [0.0, 0.0, 0.0]
+
+    [[collider.motion.key]]
+    time = 1.4
+    offset = [1.5, 0.18, 0.0]
+
+[render]
+shading = "fire"
+smoke_color = [0.3, 0.28, 0.26, 1.0]
+shadow_color = [0.05, 0.04, 0.04, 1.0]
+opacity = 2.3
+self_shadow = 1.6
+detail_strength = 0.337
+detail_scale = 7.0
+fire_intensity = 1.2
+fire_kelvin = 1500.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 1.4
+warmup = 0.0
+substeps = 4
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "3d"
+volume_resolution = 128
+ray_steps = 256
+shadow_steps = 24
+solver = "gpu"
+six_way_lightmaps = true
+blackbody_emission = true
+scattering_octaves = 5

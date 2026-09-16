@@ -1,15 +1,20 @@
-// FBZZ Engine
-// DebugDraw.cpp | fbzz::renderer
-// ワイヤーフレームのデバッグ描画実装
-// フレーム内に積まれた線分をバッチ化し、LINE_LIST の DrawCall として送る。
-// 物理・Scene の可視化から呼ばれるが、状態は描画フレーム内に閉じる。
+/// @file    DebugDraw.cpp
+/// @brief   ワイヤーフレームのデバッグ描画実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// フレーム内に積まれた線分をバッチ化し、LINE_LIST の DrawCall として送る。
+/// 物理・Scene の可視化から呼ばれるが、状態は描画フレーム内に閉じる。
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
+#include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Math/MathUtils.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 namespace fbzz::renderer {
@@ -32,6 +37,9 @@ struct DebugCamCB {
 constexpr uint32_t MAX_DEBUG_VERTICES = 65536;
 constexpr int      CIRCLE_SEGMENTS    = 24;
 constexpr float    PI                 = 3.14159265358979f;
+// 破線 1 周期のうち実線が占める割合。空きが狭すぎると下の線が見えず、
+// 広すぎると破線側の形が読めなくなる。
+constexpr float    DASH_DUTY          = 0.55f;
 
 } // namespace
 
@@ -41,41 +49,82 @@ constexpr float    PI                 = 3.14159265358979f;
 
 static IRenderer* s_renderer = nullptr;
 static ResourceManager* s_resources = nullptr;
-static ResourceHandle<BufferTag>        s_vb;
-static ResourceHandle<BufferTag>        s_triVb;
 static ResourceHandle<ShaderTag>        s_shader;
 static ResourceHandle<ConstantBufferTag> s_cameraCB;
 static ResourceHandle<PipelineStateTag> s_pso;
+static ResourceHandle<PipelineStateTag> s_depthPso;
 static ResourceHandle<PipelineStateTag> s_triPso;
 static std::vector<DebugVertex>         s_batch;
+static std::vector<DebugVertex>         s_depthBatch;
 static std::vector<DebugVertex>         s_triBatch;
+
+// Flush 1 回ぶんの頂点バッファを貸し出すプール。バッチ種別ごとに 1 つ持つ。
+// Script の Gizmo (ScriptDebugDraw パス) とコライダー可視化 (DebugColliders パス) のように
+// 1 フレームで 2 回以上 Flush する組み合わせが壊れないための仕組み
+// (理由は DynamicBufferPool.hpp を参照)。
+static DynamicVertexBufferPool s_linePool;
+static DynamicVertexBufferPool s_depthLinePool;
+static DynamicVertexBufferPool s_triPool;
 
 // =============================================================================
 // ローカルヘルパー
 // =============================================================================
 
+// ResourceManager::Reset() の世代。シェーダー / CB / PSO は実体ごと捨てられるので、
+// 世代が変わったら «IsValid だが失効しているハンドル» を握ったままになる。
+// WHY 頂点バッファのプールを気にしなくてよいか: DynamicVertexBufferPool が自分で
+//     世代を見てキャッシュを捨てる (DynamicVertexBufferPool::Acquire)。
+static uint32_t s_resetVersion = 0;
+
 static void EnsureInit(ResourceManager& resources)
 {
-    if (s_vb.IsValid()) return; // 初期化済み
+    if (s_shader.IsValid() && s_resetVersion == resources.GetResetVersion())
+        return; // 初期化済み
 
-    s_vb       = resources.CreateVertexBuffer(nullptr,
-                                       MAX_DEBUG_VERTICES * sizeof(DebugVertex),
-                                       sizeof(DebugVertex));
-    s_triVb    = resources.CreateVertexBuffer(nullptr,
-                                       MAX_DEBUG_VERTICES * sizeof(DebugVertex),
-                                       sizeof(DebugVertex));
+    s_resetVersion = resources.GetResetVersion();
     s_shader   = resources.LoadShader("Assets/Shaders/Debug/DebugDraw.hlsl");
     s_cameraCB = resources.CreateConstantBuffer(sizeof(DebugCamCB));
     s_pso      = resources.CreatePipelineState({ RasterizerMode::SOLID,
                                          BlendMode::OPAQUE_BLEND,
                                          DepthMode::DEPTH_OFF });
+    // 深度テストあり (書き込みなし) の線分用。グリッドなど「世界に置かれた線」を
+    // シーンジオメトリに遮蔽させる。深度書き込みをしないのは後続の半透明パスを乱さないため。
+    s_depthPso = resources.CreatePipelineState({ RasterizerMode::SOLID,
+                                         BlendMode::OPAQUE_BLEND,
+                                         DepthMode::DEPTH_READ });
     s_triPso   = resources.CreatePipelineState({ RasterizerMode::SOLID_NOCULL,
                                          BlendMode::ALPHA_BLEND,
                                          DepthMode::DEPTH_READ });
 
-    assert(s_vb.IsValid() && s_triVb.IsValid() && s_shader.IsValid() &&
-           s_cameraCB.IsValid() && s_pso.IsValid() && s_triPso.IsValid() &&
+    assert(s_shader.IsValid() &&
+           s_cameraCB.IsValid() && s_pso.IsValid() && s_depthPso.IsValid() && s_triPso.IsValid() &&
            "DebugDraw initialization failed");
+}
+
+// 1 バッチを貸出バッファへ載せて Submit し、バッチを空にする。
+static void SubmitBatch(std::vector<DebugVertex>& batch,
+                        DynamicVertexBufferPool& pool,
+                        ResourceHandle<PipelineStateTag> pipelineState,
+                        PrimitiveTopology topology)
+{
+    if (batch.empty()) return;
+
+    const ResourceHandle<BufferTag> vb =
+        pool.Acquire(*s_resources, batch.size(), sizeof(DebugVertex));
+    if (vb.IsValid()) {
+        s_resources->Update(vb, batch.data(), batch.size() * sizeof(DebugVertex));
+
+        DrawCall call;
+        call.vertexBuffer       = vb;
+        call.shader             = s_shader;
+        call.pipelineState      = pipelineState;
+        call.constantBuffers[0] = s_cameraCB;
+        call.vertexCount        = static_cast<uint32_t>(batch.size());
+        call.topology           = topology;
+
+        s_renderer->Submit(call, *s_resources);
+    }
+    batch.clear();
 }
 
 static void AddSegment(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color)
@@ -87,6 +136,17 @@ static void AddSegment(const math::Vector3& a, const math::Vector3& b, const mat
     }
     s_batch.push_back({ a, color });
     s_batch.push_back({ b, color });
+}
+
+static void AddSegmentDepthTested(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color)
+{
+    if (s_depthBatch.size() + 2 > MAX_DEBUG_VERTICES)
+    {
+        FBZZ_LOG_WARN("DebugDraw: depth-tested vertex batch reached max capacity (%u)", MAX_DEBUG_VERTICES);
+        return;
+    }
+    s_depthBatch.push_back({ a, color });
+    s_depthBatch.push_back({ b, color });
 }
 
 // axis1/axis2 が張る平面に円弧を追加
@@ -143,43 +203,27 @@ void DebugDraw::BeginFrame(IRenderer& r, ResourceManager& resources, const math:
     resources.Update(s_cameraCB, &cb, sizeof(cb));
 
     s_batch.clear();
+    s_depthBatch.clear();
     s_triBatch.clear();
 }
 
 void DebugDraw::Flush()
 {
-    if (!s_renderer) { s_batch.clear(); s_triBatch.clear(); return; }
+    if (!s_renderer) { s_batch.clear(); s_depthBatch.clear(); s_triBatch.clear(); return; }
 
-    if (!s_batch.empty()) {
-        s_resources->Update(s_vb, s_batch.data(), s_batch.size() * sizeof(DebugVertex));
-
-        DrawCall call;
-        call.vertexBuffer       = s_vb;
-        call.shader             = s_shader;
-        call.pipelineState      = s_pso;
-        call.constantBuffers[0] = s_cameraCB;
-        call.vertexCount        = static_cast<uint32_t>(s_batch.size());
-        call.topology           = PrimitiveTopology::LINE_LIST;
-
-        s_renderer->Submit(call, *s_resources);
-        s_batch.clear();
-    }
-
-    if (!s_triBatch.empty()) {
-        s_resources->Update(s_triVb, s_triBatch.data(), s_triBatch.size() * sizeof(DebugVertex));
-
-        DrawCall triCall;
-        triCall.vertexBuffer       = s_triVb;
-        triCall.shader             = s_shader;
-        triCall.pipelineState      = s_triPso;
-        triCall.constantBuffers[0] = s_cameraCB;
-        triCall.vertexCount        = static_cast<uint32_t>(s_triBatch.size());
-        triCall.topology           = PrimitiveTopology::TRIANGLE_LIST;
-
-        s_renderer->Submit(triCall, *s_resources);
-        s_triBatch.clear();
-    }
+    // 深度テストありの線分を先に描く。
+    // WHY: 深度なしの線 (ギズモ) を後に描くことで、グリッドとギズモが重なった場合に
+    //      「メッシュ越しでも見える」ギズモの性質を優先する。
+    SubmitBatch(s_depthBatch, s_depthLinePool, s_depthPso, PrimitiveTopology::LINE_LIST);
+    SubmitBatch(s_batch,      s_linePool,      s_pso,      PrimitiveTopology::LINE_LIST);
+    SubmitBatch(s_triBatch,   s_triPool,       s_triPso,   PrimitiveTopology::TRIANGLE_LIST);
 }
+
+size_t DebugDraw::PendingLineVertices() { return s_batch.size(); }
+
+size_t DebugDraw::PendingTriangleVertices() { return s_triBatch.size(); }
+
+size_t DebugDraw::MaxBatchVertices() { return MAX_DEBUG_VERTICES; }
 
 void DebugDraw::Line(IRenderer& /*r*/,
                      const math::Vector3& from, const math::Vector3& to,
@@ -187,6 +231,44 @@ void DebugDraw::Line(IRenderer& /*r*/,
 {
     assert(s_renderer && "DebugDraw::BeginFrame must be called first");
     AddSegment(from, to, color);
+}
+
+void DebugDraw::LineDepthTested(IRenderer& /*r*/,
+                                const math::Vector3& from, const math::Vector3& to,
+                                const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+    AddSegmentDepthTested(from, to, color);
+}
+
+void DebugDraw::LineDashed(IRenderer& /*r*/,
+                           const math::Vector3& from, const math::Vector3& to,
+                           const math::Vector4& color,
+                           float dashLength, int maxDashes)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const math::Vector3 delta = to - from;
+    const float length = delta.Length();
+    if (length <= math::EPSILON || dashLength <= 0.0f || maxDashes <= 1) {
+        AddSegment(from, to, color);
+        return;
+    }
+
+    // 実線 + 空きで 1 周期。周期数はワールド長から決め、上限で頭打ちにする。
+    const int period = std::clamp(
+        static_cast<int>(std::lround(length / (dashLength * (1.0f / DASH_DUTY)))),
+        1, maxDashes);
+    const float step = 1.0f / static_cast<float>(period);
+    for (int i = 0; i < period; ++i) {
+        const float t0 = step * static_cast<float>(i);
+        AddSegment(from + delta * t0, from + delta * (t0 + step * DASH_DUTY), color);
+    }
+}
+
+size_t DebugDraw::DashedLineMaxVertices(int maxDashes)
+{
+    return static_cast<size_t>((std::max)(maxDashes, 1)) * 2u;
 }
 
 void DebugDraw::Box(IRenderer& /*r*/,

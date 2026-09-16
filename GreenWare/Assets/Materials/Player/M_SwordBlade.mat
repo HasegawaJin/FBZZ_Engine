@@ -1,0 +1,73 @@
+# GreenWare
+# M_SwordBlade.mat
+# 刀身。焼き入れ線 (刃文) が攻撃に連動して熱を持つ鋼。
+#
+# WHY M_SwordSteel を残したまま別名で起こすか:
+#   M_SwordSteel は FBX の材質名と同じ «取り込み時の差し替え先» で、再インポートの
+#   たびに名前で拾われる。焼きの入る刀身をそこへ上書きすると、刀以外で同じ名前を
+#   持つ材質まで巻き込む上、«ただの鋼» へ戻す手が無くなる。刀身だけを .scene から
+#   こちらへ向ける (M_MetalDark と同じ判断)。
+#
+# WHY テクスチャ欄が無いか:
+#   WPN_Sword_L/R の頂点 UV は全 submesh で (0,0) — DCC が書き出していない。
+#   テクスチャを挿しても全画素が同じ 1 点を読むだけなので、この材質は最初から
+#   取らない。刃の形はローカル座標と法線から作る (SkinnedBladeSteel.hlsl)。
+#
+# ここに書いてあるのは «何も起きていないときの刀»。溜め・振り・連撃・弾きで動く
+# 値 (hamonHeat / sweepPos / temperature / rimIntensity) は BladeSteelComponent が
+# GameObject 単位の override で書き、Play を止めれば必ずこの値へ戻る。
+version = 1
+name = 'M_SwordBlade'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedBladeSteel.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+# 鋼そのものの値は M_SwordSteel から引き継ぐ (磨いた鋼の F0 = 0.56、
+# 研ぎ目が刃長方向へ走る異方性 0.55)。
+albedo = [ 0.56, 0.57, 0.60, 1.0 ]
+metallic = 1.0
+roughness = 0.16
+anisotropy = 0.55
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.0
+
+# ── 刃の座標系 ──────────────────────────────────────────────────────────────
+# 実測 (Library/Baked の submesh AABB): 刀身はローカル +Z が柄→切先で、
+# z = 0.00 (鍔の先) から z = 0.90 (切先) まで。反りは -Y 側へ落ちるので、
+# 刃 = -Y。ここは «この FBX の形» そのものなので、モデルを差し替えたら測り直すこと。
+bladeAxis = [ 0.0, 0.0, 1.0 ]
+bladeStart = 0.0
+bladeLength = 0.90
+edgeDir = [ 0.0, -1.0, 0.0 ]
+
+# ── 焼き入れ線 ──────────────────────────────────────────────────────────────
+# 待機は 0 = 焼けていない。溜めた量だけ BladeSteelComponent が持ち上げる。
+hamonColor = [ 1.0, 0.42, 0.12 ]
+hamonHeat = 0.0
+# 帯の太さ。刃へ向いた面のうち «どこまでを焼くか» のしきい値で、
+# 1.0 にすると平地まで焼けて刃文ではなく «全面発光» になる。
+hamonWidth = 0.34
+# 帯の境目のうねり。0 で直刃、1 で乱刃。
+hamonWave = 0.85
+# 刃長 1 本ぶんの波の数。
+hamonFrequency = 5.0
+# 境目のぼけ。0 に近いほど «焼き» ではなく «塗り分け» に見える。
+hamonSoftness = 0.10
+
+# ── 振った瞬間に走る帯 ──────────────────────────────────────────────────────
+# sweepPos は 0 未満で消灯。既定は消灯。
+sweepColor = [ 1.0, 0.72, 0.35 ]
+sweepPos = -1.0
+sweepWidth = 0.22
+sweepIntensity = 0.0
+
+# ── 縁 ──────────────────────────────────────────────────────────────────────
+rimColor = [ 1.0, 0.55, 0.20 ]
+rimIntensity = 0.0
+rimPower = 3.0
+
+# 上の 3 色を白へ寄せる量。連撃が進むほど «熱い» から «白い» へ。
+whiteHeat = 0.0

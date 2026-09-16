@@ -1,13 +1,15 @@
-// FBZZ Engine
-// DX11ConstantBuffer.hpp | fbzz::renderer
-// DX11 定数バッファ実装
-// IConstantBuffer を継承し、シェーダー定数転送を抽象化する。
-// ネイティブバッファは Renderer 内部だけで扱う。
-//
-// 設計方針:
-//   IConstantBuffer を継承し、シェーダー側の cbuffer レジスタに対応する。
-//   HLSL の cbuffer は 16 バイトアライメントが必須のため、Init で自動パディングする。
-//   DrawCall::constantBuffers[] (スロット 0〜3) を介して Submit 時に VS/PS 両方にバインドする。
+/// @file    DX11ConstantBuffer.hpp
+/// @brief   DX11 定数バッファ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// IConstantBuffer を継承し、シェーダー定数転送を抽象化する。
+/// ネイティブバッファは Renderer 内部だけで扱う。
+///
+/// 設計方針:
+/// IConstantBuffer を継承し、シェーダー側の cbuffer レジスタに対応する。
+/// HLSL の cbuffer は 16 バイトアライメントが必須のため、Init で自動パディングする。
+/// DrawCall::constantBuffers[] (スロット 0〜3) を介して Submit 時に VS/PS 両方にバインドする。
 #pragma once
 
 #include <d3d11.h>

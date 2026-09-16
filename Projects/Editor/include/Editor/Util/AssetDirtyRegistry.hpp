@@ -1,8 +1,10 @@
-// FBZZ Engine
-// AssetDirtyRegistry.hpp | fbzz::editor
-// Unreal 方式の未保存アセット中央レジストリ
-// WHY: シーン (SceneDirtyTracker) と同様に、マテリアル・AnimatorController など
-//      各アセットファイルの編集状態を一元管理し、Save All / 終了時確認を実現する。
+/// @file    AssetDirtyRegistry.hpp
+/// @brief   Unreal 方式の未保存アセット中央レジストリ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
+///
+/// WHY: シーン (SceneDirtyTracker) と同様に、マテリアル・AnimatorController など
+/// 各アセットファイルの編集状態を一元管理し、Save All / 終了時確認を実現する。
 #pragma once
 #include <functional>
 #include <string>
@@ -34,6 +36,12 @@ public:
     static bool IsDirty(const std::string& absPath);
     static bool HasAny();
     static const std::vector<DirtyAsset>& GetAll();
+
+    // 1 件だけ保存する。未登録 (= dirty でない) なら false。
+    // WHY: 「今開いている Animator Controller だけ保存する」を、パネルの Save ボタンと
+    //      同じ saveFunc を通して行うため。別経路で書き出すと、レイアウト情報の付与や
+    //      保存後のシーン側 Animator への反映といった手順が片方だけ抜ける。
+    static bool Save(const std::string& absPath);
 
     // 全エントリを保存する。失敗件数を返す。
     static int SaveAll();

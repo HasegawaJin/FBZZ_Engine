@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ColliderComponent.hpp | fbzz::scene
-// GameObject Transform で駆動する Collider コンポーネント
-// 形状設定を physics::Collider 生成へ渡し、Scene と physics の境界を保つ。
-// 実際の衝突判定は physics モジュールに委譲する。
+/// @file    ColliderComponent.hpp
+/// @brief   GameObject Transform で駆動する Collider コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
+///
+/// 形状設定を physics::Collider 生成へ渡し、Scene と physics の境界を保つ。
+/// 実際の衝突判定は physics モジュールに委譲する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
@@ -11,13 +13,16 @@
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/Collider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <memory>
+#include <algorithm>
 #include <string>
+#include <utility>
 
 namespace fbzz::scene {
 
@@ -26,10 +31,35 @@ struct ColliderComponent {
     //      World には Collider* (非所有) を渡す。
     std::unique_ptr<physics::Collider> collider;
     physics::ColliderHandle colliderHandle;
+
+    // 実効的な表面物性。physicsMaterialPath が設定されていれば、そこから解決した値の
+    // キャッシュになる (物理ソルバはこの値だけを見る)。空なら手打ちのインライン値。
+    //
+    // WHY 解決結果をここへ焼き戻すか: PhysicsSystem は毎フレーム &material を World へ
+    //     渡しており、その経路は共有アセット化の前後で変えたくない。アセットの内容を
+    //     このフィールドへ同期する形にすれば、ソルバ側は 1 行も変わらない。
     physics::PhysicsMaterial material = physics::PhysicsMaterial::Default;
+
+    // 共有 .physmat アセットへの参照 (Assets 起点の相対パス)。空 = インライン値を使う。
+    std::string physicsMaterialPath;
+
     math::Vector3 center = math::Vector3::ZERO;
     bool isTrigger = false;
     bool enabled = true;
+
+    // このコライダーを «祖先の剛体» へ属させる。既定 false = 自分の GameObject に
+    // RigidBody が無ければ静的コライダー。
+    //
+    // WHY 要るか: 骨に生やした当たり (BossHitboxRigComponent) のように、剛体は親に 1 つで
+    //     形だけが子に何個もぶら下がる作りがある。既定のままだと子の当たりは «世界に
+    //     固定された静的コライダー» になり、**親の剛体を押す。**ボーンは毎フレーム
+    //     瞬間移動するので、その押しは «勝手に動く / 吹き飛ぶ» という形で出る。
+    //     祖先の剛体へ属させれば、同じ剛体のコライダー同士は衝突しなくなり
+    //     (PhysicsSolver の同一ボディ除外)、自己衝突が原理的に起きない。
+    //
+    // WHY 既定を false にするか: 既存のシーンで «親が剛体・子が静的コライダー» を
+    //     意図して組んでいる場所の意味を変えないため。要る所だけが立てる。
+    bool attachToParentBody = false;
 
     ColliderComponent() = default;
     ~ColliderComponent() = default;
@@ -40,19 +70,23 @@ struct ColliderComponent {
         : collider(nullptr)
         , colliderHandle{}
         , material(o.material)
+        , physicsMaterialPath(o.physicsMaterialPath)
         , center(o.center)
         , isTrigger(o.isTrigger)
         , enabled(o.enabled)
+        , attachToParentBody(o.attachToParentBody)
     {}
     ColliderComponent& operator=(const ColliderComponent& o)
     {
         if (this != &o) {
-            collider       = nullptr;
-            colliderHandle = {};
-            material       = o.material;
-            center         = o.center;
-            isTrigger      = o.isTrigger;
-            enabled        = o.enabled;
+            collider            = nullptr;
+            colliderHandle      = {};
+            material            = o.material;
+            physicsMaterialPath = o.physicsMaterialPath;
+            center              = o.center;
+            isTrigger           = o.isTrigger;
+            enabled             = o.enabled;
+            attachToParentBody  = o.attachToParentBody;
         }
         return *this;
     }
@@ -65,11 +99,53 @@ struct ColliderComponent {
         r.Field("enabled", enabled);
         r.Field("center", center);
         r.Field("isTrigger", isTrigger);
+        r.Field("attachToParentBody", attachToParentBody);
+        r.Field("physicsMaterial", physicsMaterialPath);
+        // WHY 共有アセットを使っていてもインライン値を保存し続けるか:
+        //     .physmat が見つからない (削除された・別プロジェクトへ持ち出した) 場合に
+        //     最後に解決できた値へフォールバックできる。物理挙動が黙って既定値へ
+        //     戻るより、直前の見た目を保つ方が壊れ方として穏やか。
         r.Field("restitution", material.restitution);
         r.Field("staticFriction", material.staticFriction);
         r.Field("dynamicFriction", material.dynamicFriction);
         r.Field("density", material.density);
+        // 合成規則。.scene には保存されていたのに Reflect に無く、AI バスと汎用
+        // Inspector からだけ見えない状態だった («跳ね返りが噛み合わない» の原因を
+        // 外から確かめられない)。
+        int restitutionCombineValue = static_cast<int>(material.restitutionCombine);
+        r.Field("restitutionCombine", restitutionCombineValue);
+        // Average / GeometricMean / Minimum / Multiply / Maximum の 5 種。
+        constexpr int kCombineMax = static_cast<int>(physics::PhysicsMaterialCombine::Maximum);
+        material.restitutionCombine = static_cast<physics::PhysicsMaterialCombine>(
+            std::clamp(restitutionCombineValue, 0, kCombineMax));
+        int frictionCombineValue = static_cast<int>(material.frictionCombine);
+        r.Field("frictionCombine", frictionCombineValue);
+        material.frictionCombine = static_cast<physics::PhysicsMaterialCombine>(
+            std::clamp(frictionCombineValue, 0, kCombineMax));
     }
+
+    // Script / Editor から共通で使う安全なランタイム更新 API。
+    // WHY: Proxy 側で public フィールドを直接触ると、将来 Collider 再生成や dirty 管理が必要に
+    //      なったときに呼び出し側をすべて修正する必要があるため。
+    void SetEnabled(bool v) { enabled = v; }
+    void SetTrigger(bool v) { isTrigger = v; }
+    void SetCenter(const math::Vector3& v) { center = v; }
+    // 共有アセットの参照を切り、インライン値で上書きする。
+    void SetMaterial(const physics::PhysicsMaterial& v)
+    {
+        physicsMaterialPath.clear();
+        material = v;
+    }
+    // 共有 .physmat を割り当てる。空文字で参照を外し、直前の解決値をインライン値として残す。
+    void SetPhysicsMaterialPath(std::string path)
+    {
+        physicsMaterialPath = std::move(path);
+        ResolvePhysicsMaterial();
+    }
+    // physicsMaterialPath から material を解決する。参照が無ければ何もしない。
+    // 解決できたら true。PhysicsSystem が毎フレーム呼ぶため、.physmat を編集すると
+    // 参照している全コライダーへ即座に反映される。
+    bool ResolvePhysicsMaterial();
 };
 
 struct AabbColliderComponent : public ColliderComponent {
@@ -85,6 +161,7 @@ struct AabbColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "AABB Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("size", size); }
+    void SetSize(const math::Vector3& v) { size = v; collider = std::make_unique<physics::AABBCollider>(size * 0.5f); }
 };
 
 struct BoxColliderComponent : public ColliderComponent {
@@ -100,6 +177,7 @@ struct BoxColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "Box Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("size", size); }
+    void SetSize(const math::Vector3& v) { size = v; collider = std::make_unique<physics::OBBCollider>(size * 0.5f); }
 };
 
 struct SphereColliderComponent : public ColliderComponent {
@@ -115,6 +193,7 @@ struct SphereColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "Sphere Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("radius", radius); }
+    void SetRadius(float v) { radius = v; collider = std::make_unique<physics::SphereCollider>(radius); }
 };
 
 struct CapsuleColliderComponent : public ColliderComponent {
@@ -131,6 +210,35 @@ struct CapsuleColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "Capsule Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("radius", radius); r.Field("halfHeight", halfHeight); }
+    void SetCapsule(float newRadius, float newHalfHeight)
+    {
+        radius = newRadius;
+        halfHeight = newHalfHeight;
+        collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
+    }
+};
+
+// 天面と底面が平らな円柱。カプセルと違い縁が鋭いので、平面上に立てても倒れない。
+struct CylinderColliderComponent : public ColliderComponent {
+    float radius     = 0.5f;
+    float halfHeight = 1.0f;
+
+    CylinderColliderComponent() { collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); }
+    CylinderColliderComponent(const CylinderColliderComponent& o) : ColliderComponent(o), radius(o.radius), halfHeight(o.halfHeight)
+        { collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); }
+    CylinderColliderComponent& operator=(const CylinderColliderComponent& o)
+        { ColliderComponent::operator=(o); radius = o.radius; halfHeight = o.halfHeight; collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); return *this; }
+    CylinderColliderComponent(CylinderColliderComponent&&)            = default;
+    CylinderColliderComponent& operator=(CylinderColliderComponent&&) = default;
+
+    const char* GetTypeName() const { return "Cylinder Collider"; }
+    void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("radius", radius); r.Field("halfHeight", halfHeight); }
+    void SetCylinder(float newRadius, float newHalfHeight)
+    {
+        radius = newRadius;
+        halfHeight = newHalfHeight;
+        collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
+    }
 };
 
 struct MeshColliderComponent : public ColliderComponent {
@@ -146,6 +254,12 @@ struct MeshColliderComponent : public ColliderComponent {
         r.Field("meshIndex", meshIndex);
         r.Field("useTransformScale", useTransformScale);
     }
+    void SetMesh(std::string path, int index)
+    {
+        meshPath = std::move(path);
+        meshIndex = index;
+        collider.reset();
+    }
 };
 
 struct ConvexHullColliderComponent : public ColliderComponent {
@@ -160,6 +274,12 @@ struct ConvexHullColliderComponent : public ColliderComponent {
         r.Field("meshPath", meshPath);
         r.Field("meshIndex", meshIndex);
         r.Field("useTransformScale", useTransformScale);
+    }
+    void SetMesh(std::string path, int index)
+    {
+        meshPath = std::move(path);
+        meshIndex = index;
+        collider.reset();
     }
 };
 

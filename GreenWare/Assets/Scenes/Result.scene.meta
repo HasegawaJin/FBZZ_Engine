@@ -1,0 +1,15 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'bfcc2079-ba62-41a4-b403-4394fef34c54'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '02476264-e313-4b9f-a64d-e4535b6b6f03'
+
+[meta]
+guid = '7642084d66804976a8072cdb731aa256'

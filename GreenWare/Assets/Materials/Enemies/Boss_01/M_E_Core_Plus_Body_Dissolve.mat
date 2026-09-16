@@ -1,0 +1,28 @@
+# GreenWare
+# M_E_Core_Plus_Body_Dissolve.mat
+# 部位: 胴体（M_E_Core_Plus_Body / メッシュ分割で部位単位に分けたぶん）
+# コア / リングの発光部位を崩す版。E_CoreGlow と E_RingGlow が共有の M_GlowPart.mat を
+# 使っているので、置き場だけ Boss へ分けて «ボスの体格に合った» 範囲とノイズを持たせる。
+#
+# 発光色は BossCoreComponent が override で毎フレーム押している。差し替えを
+# 跨いで運ぶのは EnemyDeathVfxComponent の仕事なので、ここには既定値しか持たない。
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'skinned'
+name = 'M_E_Core_Plus_Body_Dissolve'
+render_path = 'auto'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedEnemyDissolve.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.055, 0.06, 0.065, 1.0 ]
+metallic = 0.0
+roughness = 0.35
+dissolveAmount = 0.0
+dissolveAxis = [ 0.0, -1.0, 0.0 ]
+dissolveRange = 7.5
+dissolveSweep = 0.7
+dissolveNoiseScale = 2.4
+dissolveEdgeWidth = 0.2
+dissolveEdgeColor = [ 0.86, 1.0, 0.92 ]
+dissolveEdgeIntensity = 13.0

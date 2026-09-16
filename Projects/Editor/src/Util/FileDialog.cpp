@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FileDialog.cpp | fbzz::editor
-// Win32 ネイティブのファイルダイアログ実装
+/// @file    FileDialog.cpp
+/// @brief   Win32 ネイティブのファイルダイアログ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/FileDialog.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>

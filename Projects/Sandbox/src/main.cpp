@@ -1,16 +1,17 @@
-// FBZZ Engine
-// main.cpp | fbzz::sandbox
-// Sandbox エディタ / スタンドアロンの起動分岐
-//
-// WHAT:
-//   sandbox.exe --project <path>              -> エディタ起動
-//   sandbox.exe --project <path> --standalone -> ゲームのみ起動
-//   sandbox.exe (exe 隣に .fbzz_proj あり)     -> 配布物として Standalone 起動
-//   sandbox.exe (引数なし)                    -> 開発用テンプレートを Editor 起動
-//
-// WHY: main.cpp は起動順序だけを読み取れる入口にする。
-//      引数解析、プロジェクト解決、Editor / Standalone のループ本体は専用ファイルへ分割し、
-//      実行モードごとの依存関係と責務を明確にする。
+/// @file    main.cpp
+/// @brief   Sandbox エディタ / スタンドアロンの起動分岐。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// WHAT:
+/// Sandbox.exe --project <path>              -> エディタ起動
+/// Sandbox.exe --project <path> --standalone -> ゲームのみ起動
+/// Sandbox.exe (exe 隣に .fbzz_proj あり)     -> 配布物として Standalone 起動
+/// Sandbox.exe (引数なし)                    -> 開発用テンプレートを Editor 起動
+///
+/// WHY: main.cpp は起動順序だけを読み取れる入口にする。
+/// 引数解析、プロジェクト解決、Editor / Standalone のループ本体は専用ファイルへ分割し、
+/// 実行モードごとの依存関係と責務を明確にする。
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
 #endif
@@ -22,6 +23,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 
@@ -45,7 +47,9 @@ using fbzz::util::FileSystem;
         return 1;
     }
 
-    if (!app.Init(scene::MakeWindowConfig(settings))) return 1;
+    // WHY: Standalone は ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する。
+    //      コマンドライン --renderer= があれば Application::Init 内でそちらが優先される。
+    if (!app.Init(scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
     auto& renderer = app.GetRenderer();
     renderer::ResourceManager resources(renderer);
@@ -65,7 +69,11 @@ using fbzz::util::FileSystem;
     (void)project;
     return 1;
 #else
-    if (!app.Init()) return 1;
+    // WHY: Editor も起動時プロジェクトの renderer 設定 (dx11/dx12) に従う (--renderer= 優先)。
+    //      レンダラーはプロジェクト読込前に生成するため、設定をここで先読みする。
+    ProjectSettings settings;
+    settings.Load(StringUtils::PathToUtf8(project.settingsFile));
+    if (!app.Init(core::Window::Config{}, settings.app.rendererBackend)) return 1;
 
     auto& renderer = app.GetRenderer();
     auto& imguiRenderer = app.GetImGuiRenderer();
@@ -88,11 +96,16 @@ using fbzz::util::FileSystem;
 
 int Run()
 {
+    // WHY: FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
+    //      新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
+    if (fbzz::core::CheckEngineFreshnessAndRelaunch())
+        return 0;
+
     const LaunchArgs args = LaunchArgs::Parse();
 
     if (args.projectPath.empty()) {
         MessageBoxW(nullptr,
-                    L"Project path was not specified and the Sandbox default project was not found.\n\nsandbox.exe --project <path>",
+                    L"Project path was not specified and the Sandbox default project was not found.\n\nSandbox.exe --project <path>",
                     L"FBZZ Sandbox", MB_OK | MB_ICONERROR);
         return 1;
     }

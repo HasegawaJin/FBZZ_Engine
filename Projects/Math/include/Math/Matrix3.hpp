@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Matrix3.hpp | fbzz::math
-// 3x3行列 (法線変換・回転抽出)
+/// @file    Matrix3.hpp
+/// @brief   3x3行列 (法線変換・回転抽出)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include "Vector3.hpp"

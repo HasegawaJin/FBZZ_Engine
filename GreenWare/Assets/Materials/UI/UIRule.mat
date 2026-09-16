@@ -1,0 +1,18 @@
+version = 1
+name = 'UIRule'
+shader = "Assets/Shaders/UI/Material/UIRule.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+# 罫線は «読ませない» 側。素材より落として、区切りとしてだけ効かせる。
+lineColor = [ 1.0, 1.0, 1.0, 0.55 ]
+# 芯は白ではなく «紙の照り»。純白を足すと線が発光して主役になる。
+coreColor = [ 0.72, 0.78, 0.88, 0.35 ]
+endFade = 0.12
+coreWidth = 0.35
+bias = 0.5

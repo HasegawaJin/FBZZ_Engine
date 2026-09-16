@@ -1,7 +1,9 @@
-// FBZZ Engine
-// SystemScheduler.hpp | fbzz
-// ISystem を Phase × DAG で管理し、フレーム内並列実行を調停するスケジューラ。
-// Build() 後に Update() / LateUpdate() を呼ぶ。
+/// @file    SystemScheduler.hpp
+/// @brief   ISystem を Phase × DAG で管理し、フレーム内並列実行を調停するスケジューラ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// Build() 後に Update() / LateUpdate() を呼ぶ。
 #pragma once
 #include "ISystem.hpp"
 #include "Phase.hpp"
@@ -9,6 +11,7 @@
 #include <array>
 #include <concepts>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 namespace fbzz {
@@ -38,14 +41,10 @@ public:
     // シミュレーション停止時に accumulator をリセット
     void ResetAccumulator();
 
-    // 型で System インスタンスを取得（エディタ統合用）
-    template<typename T>
-    T* GetSystem() const {
-        for (const auto& sys : m_systems)
-            if (auto* p = dynamic_cast<T*>(sys.get()))
-                return p;
-        return nullptr;
-    }
+    // 名前で System インスタンスを取得（エディタ統合用）。
+    // WHY: RTTI による dynamic_cast は実行時コストと DLL 境界の型依存を生むため、
+    //      公開 API では ISystem::Name() を使った明示的な検索に限定する。
+    [[nodiscard]] ISystem* FindSystem(std::string_view name) const;
 
     void DumpGraph() const;
 

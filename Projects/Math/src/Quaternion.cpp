@@ -1,11 +1,12 @@
-// FBZZ Engine
-// Quaternion.cpp | fbzz::math
-// クォータニオンの演算実装
+/// @file    Quaternion.cpp
+/// @brief   クォータニオンの演算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Quaternion.hpp"
 #include "Math/Matrix4.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>
-#include <cassert>
+#include "Math/MathContract.hpp"
 
 namespace fbzz::math {
 
@@ -34,6 +35,9 @@ Quaternion Quaternion::FromEuler(const Vector3& eulerRad) {
 }
 
 Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
+    // 「向く先が自分と同じ位置」は呼び出し側で普通に起きる (追従対象へ重なった、
+    // 速度が 0 になった等)。基底を作れないので回さないだけにし、assert で止めない。
+    if (NearlyZero(forward.LengthSq())) return Identity();
     Vector3 f = forward.Normalized();
     // forward と up が平行なとき (縮退ケース) は代替 up を使う
     // RIGHT も平行なら FORWARD を使う (forward が RIGHT 方向のとき)
@@ -124,7 +128,9 @@ float Quaternion::Length() const {
 
 Quaternion Quaternion::Normalized() const {
     float len = Length();
-    assert(!NearlyZero(len) && "Cannot normalize a zero-length quaternion");
+    FBZZ_MATH_CONTRACT(!NearlyZero(len),
+                       "zero-length quaternion normalized; returning identity");
+    if (NearlyZero(len)) return Identity();
     float inv = 1.0f / len;
     return {x * inv, y * inv, z * inv, w * inv};
 }
@@ -133,7 +139,9 @@ Quaternion Quaternion::Conjugate() const { return {-x, -y, -z, w}; }
 
 Quaternion Quaternion::Inverse() const {
     float lenSq = x * x + y * y + z * z + w * w;
-    assert(!NearlyZero(lenSq) && "Cannot invert a zero quaternion");
+    FBZZ_MATH_CONTRACT(!NearlyZero(lenSq),
+                       "zero quaternion inverted; returning identity");
+    if (NearlyZero(lenSq)) return Identity();
     float inv = 1.0f / lenSq;
     return {-x * inv, -y * inv, -z * inv, w * inv};
 }

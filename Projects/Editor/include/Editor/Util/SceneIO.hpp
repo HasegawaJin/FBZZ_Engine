@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneIO.hpp | fbzz::editor
-// シーンを TOML 形式でシリアライズ/デシリアライズ
+/// @file    SceneIO.hpp
+/// @brief   シーンを TOML 形式でシリアライズ/デシリアライズ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 #include <string>
 #include <vector>
@@ -8,6 +9,8 @@
 namespace fbzz::scene { class Scene; struct EntityID; }
 
 namespace fbzz::editor {
+
+struct EditorSceneState;
 
 class SceneIO {
 public:
@@ -24,6 +27,9 @@ public:
 
     // スナップショット用作業ディレクトリを設定する (OpenProject で呼ぶ)
     static void SetProjectRoot(const std::string& projectRoot);
+
+    // Editor 専用サイドカーを保存・復元する状態を接続する。SceneIO は非所有で参照する。
+    static void SetEditorSceneState(EditorSceneState* state);
 };
 
 } // namespace fbzz::editor

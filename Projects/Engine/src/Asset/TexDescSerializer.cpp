@@ -1,16 +1,49 @@
-// FBZZ Engine
-// TexDescSerializer.cpp | fbzz::asset
-// .tex TOML descriptor の読み書き
+/// @file    TexDescSerializer.cpp
+/// @brief   .tex TOML descriptor の読み書き。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
+#include <algorithm>
+#include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <sstream>
 
 namespace fbzz::asset {
 
 namespace {
+
+std::uint64_t HashSpriteIdentity(std::string_view value, std::uint64_t seed)
+{
+    std::uint64_t hash = seed;
+    for (const unsigned char c : value) {
+        hash ^= c;
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+// ID を持たない旧 .meta へ、パス・名前・並び順から再現可能な ID を割り当てる。
+// WHY: 読み込みのたびにランダム ID を作ると、移行保存前に生成した参照が次回起動で切れるため。
+std::string MakeSpriteId(
+    std::string_view assetIdentity, std::string_view name, std::size_t index)
+{
+    std::string key(assetIdentity);
+    key.push_back('|');
+    key.append(name);
+    key.push_back('|');
+    key.append(std::to_string(index));
+    const std::uint64_t high = HashSpriteIdentity(key, 1469598103934665603ULL);
+    const std::uint64_t low = HashSpriteIdentity(key, 1099511628211ULL);
+    char buffer[40];
+    std::snprintf(buffer, sizeof(buffer), "sprite-%016llx%016llx",
+        static_cast<unsigned long long>(high),
+        static_cast<unsigned long long>(low));
+    return buffer;
+}
 
 const char* TypeToStr(TextureType t) {
     switch (t) {
@@ -19,6 +52,7 @@ const char* TypeToStr(TextureType t) {
     case TextureType::Data:   return "data";
     case TextureType::HDR:    return "hdr";
     case TextureType::UI:     return "ui";
+    case TextureType::Sprite: return "sprite";
     }
     return "color";
 }
@@ -28,6 +62,7 @@ TextureType StrToType(std::string_view s) {
     if (s == "data")   return TextureType::Data;
     if (s == "hdr")    return TextureType::HDR;
     if (s == "ui")     return TextureType::UI;
+    if (s == "sprite") return TextureType::Sprite;
     return TextureType::Color;
 }
 
@@ -126,8 +161,29 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
 {
     const TextureImportSettings& s = asset.settings;
 
+    // 既存 .meta の [meta] セクション (guid 等) を先に読む。
+    // WHY 先に読むか: guid は Sprite ID を補完するときの種でもある。Load 側が
+    //     [meta] guid を種にしているので、ここで absPath を種にすると同じ Sprite に
+    //     別の ID が付き、書いた瞬間に全参照が切れる。
+    // WHY 引き継ぐか: guid は AssetDatabase が発行する恒久 ID。テクスチャ設定の保存で
+    //     消してしまうとこの画像への guid 参照が全て切れるため、[texture] 以外は必ず残す。
+    toml::table root;
+    std::string spriteIdentity = absPath;
+    std::string existing;
+    if (util::FileSystem::ReadText(absPath, existing)) {
+        std::istringstream iss(existing);
+        const auto parsed = toml::parse(iss);
+        if (parsed) {
+            if (const auto* meta = parsed.table()["meta"].as_table()) {
+                root.insert("meta", *meta);
+                if (auto guid = (*meta)["guid"].value<std::string>(); guid && !guid->empty())
+                    spriteIdentity = *guid;
+            }
+        }
+    }
+
     toml::table tex;
-    tex.insert("source",              asset.sourcePath);
+    // source= は持たない。元画像は "<name>.<ext>.meta" から末尾 ".meta" を除いて導出する。
     tex.insert("type",                std::string(TypeToStr(s.type)));
     tex.insert("srgb",                s.srgb);
     tex.insert("compression",         std::string(CompToStr(s.compression)));
@@ -145,13 +201,65 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     tex.insert("aniso",               static_cast<int64_t>(s.anisoLevel));
     tex.insert("alpha_mode",          std::string(AlphaModeToStr(s.alphaMode)));
     tex.insert("alpha_dither",        s.alphaDither);
+    if (s.type == TextureType::Sprite) {
+        tex.insert("sprite_mode",
+                   s.spriteMode == SpriteMode::Multiple ? "Multiple" : "Single");
+        tex.insert("pixels_per_unit", static_cast<double>(s.pixelsPerUnit));
 
-    toml::table root;
+        std::vector<SpriteRect> spriteSources = s.sprites;
+        if (spriteSources.empty()) {
+            SpriteRect sprite;
+            sprite.name = util::FileSystem::PathToUtf8(
+                util::FileSystem::PathFromUtf8(asset.sourcePath).stem());
+            if (sprite.name.empty()) sprite.name = "Sprite";
+            spriteSources.push_back(std::move(sprite));
+        }
+
+        // 名前は「別名キー」なので、テクスチャ内で一意でなければ参照が曖昧になる。
+        // 直すのは編集側 (Sprite Editor) の仕事なので、ここでは黙って書き換えず報告だけする。
+        for (std::size_t i = 0; i < spriteSources.size(); ++i) {
+            for (std::size_t j = i + 1; j < spriteSources.size(); ++j) {
+                if (spriteSources[i].name.empty()
+                    || spriteSources[i].name != spriteSources[j].name) continue;
+                FBZZ_LOG_WARN("TexDescSerializer: duplicated sprite name '%s' in [%s]. "
+                              "名前で書いた参照はどちらを指すか決まりません。",
+                              spriteSources[i].name.c_str(), absPath.c_str());
+                break;
+            }
+        }
+
+        toml::array sprites;
+        for (std::size_t index = 0; index < spriteSources.size(); ++index) {
+            const SpriteRect& source = spriteSources[index];
+            toml::table sprite;
+            sprite.insert("id", source.id.empty()
+                ? MakeSpriteId(spriteIdentity, source.name, index) : source.id);
+            sprite.insert("name", source.name);
+            sprite.insert("x", static_cast<int64_t>(source.x));
+            sprite.insert("y", static_cast<int64_t>(source.y));
+            sprite.insert("width", static_cast<int64_t>(source.width));
+            sprite.insert("height", static_cast<int64_t>(source.height));
+            sprite.insert("pivot_x", static_cast<double>(source.pivotX));
+            sprite.insert("pivot_y", static_cast<double>(source.pivotY));
+            sprite.insert("border_left", static_cast<double>(source.borderLeft));
+            sprite.insert("border_top", static_cast<double>(source.borderTop));
+            sprite.insert("border_right", static_cast<double>(source.borderRight));
+            sprite.insert("border_bottom", static_cast<double>(source.borderBottom));
+            sprites.push_back(std::move(sprite));
+        }
+        tex.insert("sprites", std::move(sprites));
+    }
+
     root.insert("texture", std::move(tex));
 
     std::ostringstream ss;
     ss << root;
-    return util::FileSystem::WriteText(absPath, ss.str());
+    if (!util::FileSystem::WriteText(absPath, ss.str())) return false;
+
+    // 書いた本人が共有キャッシュを潰す。書き込み時刻でも気付けるが、
+    // 同一秒内の連続 Apply では時刻が動かないことがある。
+    InvalidateTextureImportSettings(absPath);
+    return true;
 }
 
 bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset) const
@@ -170,17 +278,18 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     const auto& tbl = parsed.table();
     const auto* tex = tbl["texture"].as_table();
     if (!tex) {
-        FBZZ_LOG_ERROR("TexDescSerializer: missing [texture] section [%s]", absPath.c_str());
+        // guid のみの .meta ([meta] セクションだけ) は正当な形式。
+        // テクスチャ設定なし = デフォルト適用なので、エラーではなく静かに false を返す。
         return false;
     }
 
-    if (auto v = (*tex)["source"].value<std::string>()) outAsset.sourcePath = *v;
-
+    // sourcePath はサイドカーには書かれない。呼び出し元 (ImageImporter) が元画像パスを設定する。
     TextureImportSettings& s = outAsset.settings;
+    const std::string spriteIdentity = tbl["meta"]["guid"].value<std::string>()
+        .value_or(absPath);
     if (auto v = (*tex)["type"].value<std::string>())              s.type = StrToType(*v);
     // type が決まったらデフォルトを入れる (明示フィールドで上書き)
     s = DefaultSettingsForType(s.type);
-    if (auto v = (*tex)["source"].value<std::string>())            outAsset.sourcePath = *v;
 
     if (auto v = (*tex)["srgb"].value<bool>())                     s.srgb              = *v;
     if (auto v = (*tex)["compression"].value<std::string>())       s.compression       = StrToComp(*v);
@@ -198,7 +307,75 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     if (auto v = (*tex)["aniso"].value<int64_t>())                 s.anisoLevel        = static_cast<uint32_t>(*v);
     if (auto v = (*tex)["alpha_mode"].value<std::string>())        s.alphaMode         = StrToAlphaMode(*v);
     if (auto v = (*tex)["alpha_dither"].value<bool>())             s.alphaDither       = *v;
+    if (auto v = (*tex)["sprite_mode"].value<std::string>())
+        s.spriteMode = *v == "Multiple" ? SpriteMode::Multiple : SpriteMode::Single;
+    if (auto v = (*tex)["pixels_per_unit"].value<double>())
+        s.pixelsPerUnit = std::max(0.001f, static_cast<float>(*v));
+    if (const auto* sprites = (*tex)["sprites"].as_array()) {
+        s.sprites.clear();
+        std::size_t spriteIndex = 0;
+        for (const auto& node : *sprites) {
+            const auto* spriteTable = node.as_table();
+            if (spriteTable == nullptr) continue;
+            SpriteRect sprite;
+            if (auto v = (*spriteTable)["id"].value<std::string>()) sprite.id = *v;
+            if (auto v = (*spriteTable)["name"].value<std::string>()) sprite.name = *v;
+            if (auto v = (*spriteTable)["x"].value<int64_t>()) sprite.x = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["y"].value<int64_t>()) sprite.y = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["width"].value<int64_t>()) sprite.width = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["height"].value<int64_t>()) sprite.height = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["pivot_x"].value<double>()) sprite.pivotX = std::clamp(static_cast<float>(*v), 0.0f, 1.0f);
+            if (auto v = (*spriteTable)["pivot_y"].value<double>()) sprite.pivotY = std::clamp(static_cast<float>(*v), 0.0f, 1.0f);
+            if (auto v = (*spriteTable)["border_left"].value<double>()) sprite.borderLeft = std::max(0.0f, static_cast<float>(*v));
+            if (auto v = (*spriteTable)["border_top"].value<double>()) sprite.borderTop = std::max(0.0f, static_cast<float>(*v));
+            if (auto v = (*spriteTable)["border_right"].value<double>()) sprite.borderRight = std::max(0.0f, static_cast<float>(*v));
+            if (auto v = (*spriteTable)["border_bottom"].value<double>()) sprite.borderBottom = std::max(0.0f, static_cast<float>(*v));
+            if (!sprite.name.empty()) {
+                if (sprite.id.empty())
+                sprite.id = MakeSpriteId(
+                        spriteIdentity, sprite.name, spriteIndex);
+                s.sprites.push_back(std::move(sprite));
+                ++spriteIndex;
+            }
+        }
+    }
 
+    return true;
+}
+
+bool TexDescSerializer::ResolveSourcePath(
+    std::string_view texturePath, std::string& outSourcePath)
+{
+    outSourcePath.clear();
+    if (texturePath.empty()) return false;
+
+    std::string inputPath;
+    std::string spriteName;
+    (void)ParseSpriteReference(texturePath, inputPath, spriteName);
+    std::string extension = util::FileSystem::GetExtension(inputPath);
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    // 生画像は既存パスをそのままロードする。
+    if (extension != ".meta") {
+        outSourcePath = inputPath;
+        return true;
+    }
+
+    // 二重拡張子サイドカー: "Foo.png.meta" から末尾 ".meta" を除いた "Foo.png" が元画像。
+    // WHY: source= を持たず、ファイル名だけで元画像を一意に導出する (TOML パース不要で高速)。
+    constexpr std::string_view kMetaExt = ".meta";
+    outSourcePath = inputPath.substr(0, inputPath.size() - kMetaExt.size());
+
+    // メタの入れ子 ("Foo.meta.meta") や拡張子なしは不正。元画像拡張子が再び .meta なら失敗させる。
+    std::string sourceExtension = util::FileSystem::GetExtension(outSourcePath);
+    std::transform(sourceExtension.begin(), sourceExtension.end(), sourceExtension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (sourceExtension.empty() || sourceExtension == ".meta") {
+        FBZZ_LOG_ERROR("TexDescSerializer: invalid .meta source path [%s]", inputPath.c_str());
+        outSourcePath.clear();
+        return false;
+    }
     return true;
 }
 

@@ -1,7 +1,9 @@
-// FBZZ Engine
-// StackAllocator.cpp | fbzz::core
-// StackAllocator の実装
-// 確保順と逆順の Free に限定し、ヘッダー 1 個で高速に巻き戻す。
+/// @file    StackAllocator.cpp
+/// @brief   StackAllocator の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 確保順と逆順の Free に限定し、ヘッダー 1 個で高速に巻き戻す。
 #include "Engine/Core/Memory/StackAllocator.hpp"
 
 #include <cstdlib>
@@ -107,6 +109,7 @@ void* StackAllocator::Allocate(std::size_t size, std::size_t alignment)
     m_lastAllocation = payload;
     m_stats.used = m_offset;
     ++m_stats.allocationCount;
+    ++m_stats.activeCount;
     UpdatePeak(m_stats);
 
     return payload;
@@ -130,6 +133,7 @@ void StackAllocator::Free(void* ptr)
     m_offset = header->previousOffset;
     m_stats.used = m_offset;
     ++m_stats.freeCount;
+    --m_stats.activeCount;
     m_lastAllocation = header->previousAllocation;
 }
 
@@ -140,6 +144,7 @@ void StackAllocator::Reset()
     m_stats.used = 0;
     m_stats.allocationCount = 0;
     m_stats.freeCount = 0;
+    m_stats.activeCount = 0;
 }
 
 bool StackAllocator::Owns(const void* ptr) const

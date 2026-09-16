@@ -1,0 +1,20 @@
+version = 1
+name = 'UITrackFill'
+shader = "Assets/Shaders/UI/Material/UITrackFill.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+# 素材 (Track_fill_on.png) の芯に近い明度。色は素材ではなくここが持つので、
+# 行ごとに ui.SetMaterialColor(go, "fillColor", ...) で極を振り分けられる。
+fillColor = [ 0.62, 0.76, 0.95, 1.0 ]
+# 照りは «帯より明るい» だけ。純白を置くと帯が発光して値が読めなくなる。
+sheenColor = [ 0.86, 0.93, 1.0, 0.45 ]
+sheenBias = 0.32
+sheenWidth = 0.30
+headGain = 0.35
+floorDim = 0.30

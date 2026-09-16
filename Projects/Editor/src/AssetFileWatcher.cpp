@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetFileWatcher.cpp | fbzz::editor
-// ReadDirectoryChangesW を使った非同期ポーリング型ファイル監視
+/// @file    AssetFileWatcher.cpp
+/// @brief   ReadDirectoryChangesW を使った非同期ポーリング型ファイル監視。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #include <Editor/AssetFileWatcher.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -66,7 +67,9 @@ void AssetFileWatcher::Stop()
     }
 
     m_readPending = false;
+    m_overflowed  = false;
     m_queue.clear();
+    m_pendingRenameOld.clear();
 }
 
 std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
@@ -86,6 +89,7 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
         if (err == ERROR_NOTIFY_ENUM_DIR)
         {
             FBZZ_LOG_WARN("AssetFileWatcher: notification overflow — some events lost");
+            m_overflowed = true;
             ResetEvent(m_overlapped.hEvent);
             m_readPending = false;
             IssueNextRead();
@@ -95,6 +99,13 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
         FBZZ_LOG_ERROR("AssetFileWatcher: GetOverlappedResult failed (%lu)", err);
         Stop();
         return {};
+    }
+
+    // 成功しても転送量 0 は「溜めきれずバッファを捨てた」合図 (ReadDirectoryChangesW の仕様)。
+    if (transferred == 0)
+    {
+        FBZZ_LOG_WARN("AssetFileWatcher: notification buffer discarded — some events lost");
+        m_overflowed = true;
     }
 
     ParseBuffer(transferred);
@@ -138,8 +149,6 @@ void AssetFileWatcher::ParseBuffer(DWORD bytesTransferred)
     if (bytesTransferred == 0) return;
 
     const uint8_t* ptr = m_buffer;
-    std::string pendingRenameOld; // FILE_ACTION_RENAMED_OLD_NAME の記憶用
-
     for (;;)
     {
         const auto* info = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(ptr);
@@ -169,13 +178,13 @@ void AssetFileWatcher::ParseBuffer(DWORD bytesTransferred)
 
         case FILE_ACTION_RENAMED_OLD_NAME:
             // 次の通知が NEW_NAME のはず。ペアにするために記憶する。
-            pendingRenameOld = relPath;
+            m_pendingRenameOld = relPath;
             break;
 
         case FILE_ACTION_RENAMED_NEW_NAME:
-            ev = { EventType::Renamed, relPath, pendingRenameOld };
+            ev = { EventType::Renamed, relPath, m_pendingRenameOld };
             m_queue.push_back(std::move(ev));
-            pendingRenameOld.clear();
+            m_pendingRenameOld.clear();
             break;
 
         default:

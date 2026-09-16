@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Compiler.hpp | fbzz::editor
-// RuntimeBuild 用の CMake 子プロセス管理
+/// @file    Compiler.hpp
+/// @brief   RuntimeBuild とアセット生成用の非同期子プロセス管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <Windows.h>
@@ -9,7 +10,7 @@
 
 namespace fbzz::editor {
 
-/// cmake --build を非同期子プロセスとして起動し、stdout / stderr を ImGui 表示用ログへ蓄積する。
+/// CMakeビルドまたは明示コマンドを非同期子プロセスとして起動し、stdout / stderrをUIログへ蓄積する。
 /// WHY: エディタのメインスレッドをブロックしないため、Tick() ごとにパイプを短時間だけ読む。
 class Compiler {
 public:
@@ -21,9 +22,15 @@ public:
         std::filesystem::path exePath;
         std::string           target;
         std::string           configuration;
+        std::string           sdkRoot; // CMake 自動再生成時にも FBZZ_SDK_ROOT を継承させる
+        // 空でなければcmake --buildの代わりにこの完全なコマンドラインを実行する。
+        // WHY: HLSLホットリロードはCMake生成状態に依存せず、統合batを直接起動する必要がある。
+        std::wstring          commandLine;
+        std::filesystem::path workingDirectory;
         // WHY: ホットリロード時はエディタプロセスがエンジン DLL をロック中のため、
         //      依存ターゲットの再ビルドをスキップしないとリンカが失敗する。
         bool                  skipDeps = false;
+        bool                  rebuild = false;
     };
 
     Compiler() = default;
@@ -32,7 +39,7 @@ public:
     Compiler(const Compiler&)            = delete;
     Compiler& operator=(const Compiler&) = delete;
 
-    /// CMake ビルドを開始する。既にビルド中なら false を返す。
+    /// CMakeビルドまたはcommandLineを開始する。既にビルド中ならfalseを返す。
     [[nodiscard]] bool Start(const Config& config);
 
     /// stdout を回収し、子プロセス終了時に Done / Failed へ遷移する。

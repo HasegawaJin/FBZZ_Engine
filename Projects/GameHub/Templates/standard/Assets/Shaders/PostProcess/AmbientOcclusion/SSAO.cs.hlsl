@@ -5,13 +5,15 @@
 // Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1
 
 #include "Common/Constants.hlsli"
+#include "Common/Math.hlsli"
 #include "Common/Space.hlsli"
 #include "Common/Random.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D    texGBuffer1 : register(TEX_GBUFFER1);  // normal(RGB) + metallic(A)
 Texture2D    texDepth    : register(TEX_DEPTH);
-SamplerState sampDefault : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 RWTexture2D<float4> outputSSAO : register(UAV_OUTPUT);
 
@@ -23,31 +25,36 @@ static const float BIAS          = 0.025f;
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
     uint2  pixel = dtid.xy;
-    if (pixel.x >= (uint)screenSize.x || pixel.y >= (uint)screenSize.y)
+
+    // 出力 SSAO バッファ (半解像度対応) の実サイズを基準にする。
+    float2 outSize;
+    outputSSAO.GetDimensions(outSize.x, outSize.y);
+    if (pixel.x >= (uint)outSize.x || pixel.y >= (uint)outSize.y)
         return;
 
-    float2 uv    = (float2(pixel) + 0.5f) * texelSize;
+    float2 uv    = (float2(pixel) + 0.5f) / outSize;
 
-    if (uv.x > 1.0f || uv.y > 1.0f)
-    {
-        outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);
-        return;
-    }
-
-    // GBuffer から法線復元
+    // GBuffer / 深度はフル解像度なので、正規化 UV でサンプルして半解像度スレッドから読む。
+    // WHY: Load(pixel) だと半解像度 pixel でフル解像度 GBuffer の左上 1/4 しか読めず破綻する。
     float3 N = texGBuffer1.SampleLevel(sampDefault, uv, 0).rgb * 2.0f - 1.0f;
     N = normalize(N);
 
     // 深度から worldPos 復元
     float  ndcDepth = texDepth.SampleLevel(sampDefault, uv, 0).r;
+    if (ndcDepth >= 1.0f)
+    {
+        outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);
+        return;
+    }
     float3 origin   = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
+    float originDepth = LinearizeDepth(ndcDepth, nearZ, farZ, isOrthographic);
 
     // 半球サンプリング
     float occlusion = 0.0f;
     for (int i = 0; i < SAMPLE_COUNT; ++i)
     {
         // Wang ハッシュで乱数生成
-        uint  seed     = Hash(pixel.x + pixel.y * 1920u + (uint)i * 37u);
+        uint  seed     = Hash(pixel.x + pixel.y * (uint)screenSize.x + (uint)i * 37u);
         float r1       = HashToFloat(seed);
         float r2       = HashToFloat(Hash(seed));
 
@@ -67,17 +74,22 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
 
         // サンプル点をスクリーン空間へ投影
         float4 clip = mul(float4(samplePos, 1.0f), viewProjection);
+        if (abs(clip.w) < EPSILON) continue;
         clip.xyz /= clip.w;
         float2 sampleUV = NdcToUv(clip.xy);
+        if (any(sampleUV <= 0.0f) || any(sampleUV >= 1.0f)) continue;
 
         float sampleDepth = texDepth.SampleLevel(sampDefault, sampleUV, 0).r;
-        float3 sampleW2   = ReconstructWorldPos(sampleUV, sampleDepth, invViewProjection);
+        if (sampleDepth >= 1.0f) continue;
 
-        // サンプル点が遮蔽されているか (元の点より奥にあるか)
-        float rangeCheck = smoothstep(0.0f, 1.0f, SAMPLE_RADIUS / length(origin - sampleW2));
-        occlusion += (sampleW2.z <= samplePos.z - BIAS ? 1.0f : 0.0f) * rangeCheck;
+        // ワールドZではなくカメラからの線形深度で判定し、カメラ回転によるAO反転を防ぐ。
+        float sceneDepth = LinearizeDepth(sampleDepth, nearZ, farZ, isOrthographic);
+        float samplePosDepth = -mul(float4(samplePos, 1.0f), view).z;
+        float rangeCheck = smoothstep(0.0f, 1.0f,
+                                      SAMPLE_RADIUS / max(abs(originDepth - sceneDepth), EPSILON));
+        occlusion += (sceneDepth < samplePosDepth - BIAS ? 1.0f : 0.0f) * rangeCheck;
     }
 
-    const float ao = 1.0f - (occlusion / float(SAMPLE_COUNT));
+    const float ao = saturate(1.0f - (occlusion / float(SAMPLE_COUNT)));
     outputSSAO[pixel] = float4(ao, ao, ao, 1.0f);
 }

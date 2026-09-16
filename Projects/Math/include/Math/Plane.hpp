@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Plane.hpp | fbzz::math
-// 平面定義 (法線 + 原点からの符号付き距離)
+/// @file    Plane.hpp
+/// @brief   平面定義 (法線 + 原点からの符号付き距離)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 
 #include "Vector3.hpp"

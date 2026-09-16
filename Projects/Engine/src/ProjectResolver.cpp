@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectResolver.cpp | fbzz
-// .fbzz_proj と ProjectSettings から起動対象を解決する実装
+/// @file    ProjectResolver.cpp
+/// @brief   .fbzz_proj と ProjectSettings から起動対象を解決する実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
 #include <Engine/ProjectResolver.hpp>
 
 #include <Engine/Util/FileSystem.hpp>

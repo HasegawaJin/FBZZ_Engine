@@ -1,11 +1,18 @@
-// FBZZ Engine
-// DX11Shader.cpp | fbzz::renderer
-// DX11 シェーダーバイナリと InputLayout の管理
-// ビルド済み CSO を読み込み、反射情報から入力レイアウトを生成する。
-// 実行時コンパイルではなく、事前コンパイル済みシェーダーを前提にする。
+/// @file    DX11Shader.cpp
+/// @brief   DX11 シェーダーバイナリと InputLayout の管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// CSOが存在しない、またはHLSL/includeより古い場合はオンデマンドコンパイルする。
+/// WHY: DemoGame / StandaloneApp 初回起動時や compile_shaders.ps1 未実行環境でも
+/// シェーダーロードが成功するよう、ランタイムフォールバックを備える。
+/// エディター向けの本番ワークフローは compile_shaders.ps1 が担う。
 #include "DX11Shader.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
+#include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
+#include <Engine/Renderer/ShaderDependencyTracker.hpp>
+#include <Engine/Util/EngineAssetPath.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
 #include <d3dcompiler.h>
@@ -16,9 +23,213 @@
 #include <algorithm>
 #include <cctype>
 #include <string_view>
+#include <unordered_map>
 
 namespace fbzz::renderer
 {
+
+namespace {
+
+// 相対アセットパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
+// util::ResolveEngineAssetPath に集約している。
+std::wstring ResolveReadablePath(const std::string& path)
+{
+    return util::ResolveEngineAssetPath(util::StringUtils::ToWide(path)).wstring();
+}
+
+std::string NarrowSlashes(std::wstring path)
+{
+    std::string out = util::StringUtils::ToNarrow(path);
+    for (char& c : out) if (c == '\\') c = '/';
+    return out;
+}
+
+std::wstring ResolveWritableCsoPath(const std::string& csoSavePath, const std::string& resolvedHlslPath)
+{
+    std::string normalizedCso = csoSavePath;
+    for (char& c : normalizedCso) if (c == '\\') c = '/';
+    if (normalizedCso.size() > 1 && normalizedCso[1] == ':')
+        return util::StringUtils::ToWide(normalizedCso);
+
+    std::string normalizedHlsl = resolvedHlslPath;
+    for (char& c : normalizedHlsl) if (c == '\\') c = '/';
+    std::string lowerHlsl = normalizedHlsl;
+    std::transform(lowerHlsl.begin(), lowerHlsl.end(), lowerHlsl.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    const std::string anchor = "assets/shaders/";
+    const size_t a = lowerHlsl.find(anchor);
+    if (a != std::string::npos)
+        return util::StringUtils::ToWide(normalizedHlsl.substr(0, a) + normalizedCso);
+
+    return util::StringUtils::ToWide(normalizedCso);
+}
+
+// HLSL の #include を解決する include ハンドラ。
+// WHY: D3D_COMPILE_STANDARD_FILE_INCLUDE はファイル相対でしか探さないため、
+//      "PostProcess/Motion/" にあるシェーダーが "Common/Constants.hlsli" を
+//      インクルードすると失敗する。shaders ルートを起点に探すハンドラが必要。
+//
+// 解決順序 (D3D_INCLUDE_LOCAL かつ pParentData が非 null の場合):
+//   1. 親ファイルと同じディレクトリから探す
+//      WHY: Common/Constants.hlsli が #include "Binding.hlsli" するとき
+//           Binding.hlsli は Common/ にある。ルートから探すと見つからない。
+//   2. 見つからなければシェーダールートから探す
+//      WHY: Skinned/SkinnedPBR.hlsl が #include "Common/Constants.hlsli" するとき
+//           shaders ルート起点で Common/Constants.hlsli を開く。
+class ShadersRootInclude final : public ID3DInclude
+{
+public:
+    explicit ShadersRootInclude(std::wstring root) : m_root(std::move(root)) {}
+
+    HRESULT Open(D3D_INCLUDE_TYPE type, LPCSTR pFileName,
+                 LPCVOID pParentData, LPCVOID* ppData, UINT* pBytes) override
+    {
+        std::string narrow(pFileName);
+        for (char& c : narrow) if (c == '\\') c = '/';
+        const std::wstring wname = util::StringUtils::ToWide(narrow);
+
+        std::wstring fullPath;
+
+        // ローカルインクルードかつ親データがある場合、親ディレクトリを優先して探す
+        if (type == D3D_INCLUDE_LOCAL && pParentData != nullptr)
+        {
+            const auto it = m_dirByData.find(pParentData);
+            if (it != m_dirByData.end())
+            {
+                const std::wstring candidate = m_root + L"/" + it->second + L"/" + wname;
+                if (std::ifstream test(candidate, std::ios::binary); test.is_open())
+                    fullPath = candidate;
+            }
+        }
+
+        // 親ディレクトリで見つからなければシェーダールートから探す
+        if (fullPath.empty())
+            fullPath = m_root + L"/" + wname;
+
+        std::ifstream f(fullPath, std::ios::binary | std::ios::ate);
+        if (!f.is_open()) return E_FAIL;
+
+        const size_t sz = static_cast<size_t>(f.tellg());
+        f.seekg(0);
+        auto* buf = new char[sz];
+        f.read(buf, static_cast<std::streamsize>(sz));
+        *ppData = buf;
+        *pBytes = static_cast<UINT>(sz);
+
+        // このファイルが属するディレクトリを記録 (子の #include 解決に使う)
+        const std::wstring rel = fullPath.substr(m_root.size() + 1);
+        const size_t slash = rel.find_last_of(L"/\\");
+        m_dirByData[buf] = (slash != std::wstring::npos) ? rel.substr(0, slash) : L"";
+
+        return S_OK;
+    }
+
+    HRESULT Close(LPCVOID pData) override
+    {
+        m_dirByData.erase(pData);
+        delete[] static_cast<const char*>(pData);
+        return S_OK;
+    }
+
+private:
+    std::wstring                                  m_root;
+    std::unordered_map<const void*, std::wstring> m_dirByData;
+};
+
+// HLSL ソースを実行時にコンパイルし、成功時は CSO をディスクに保存して blob を返す。
+// hlslPath : "Assets/Shaders/PostProcess/Motion/MotionBlur.cs.hlsl"
+// entryPoint: "CSMain" / "VSMain" / "PSMain"
+// target    : "cs_5_0" / "vs_5_0" / "ps_5_0"
+// csoSavePath: 保存先 CSO パス (空文字なら保存しない)
+std::vector<uint8_t> CompileHlslToBlob(
+    const std::string& hlslPath,
+    const std::string& entryPoint,
+    const std::string& target,
+    const std::string& csoSavePath)
+{
+    ClearShaderCompileDiagnosticsFor(hlslPath, entryPoint, target);
+    // hlslPath から shaders/ アンカーより前を shaders ルートとする
+    const std::wstring resolvedHlslWide = ResolveReadablePath(hlslPath);
+    std::string norm = NarrowSlashes(resolvedHlslWide);
+    for (char& c : norm) if (c == '\\') c = '/';
+    std::string lower = norm;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+
+    const std::string anchor = "shaders/";
+    const size_t a = lower.find(anchor);
+    if (a == std::string::npos) {
+        const std::string message = "shaders/ がパス内に見つかりません";
+        FBZZ_LOG_ERROR("CompileHlsl: %s: %s", message.c_str(), hlslPath.c_str());
+        ReportShaderCompileDiagnostic(hlslPath, entryPoint, target, message, true);
+        return {};
+    }
+    // "Assets/Shaders" (末尾スラッシュなし)
+    const std::wstring wRoot = util::StringUtils::ToWide(norm.substr(0, a + anchor.size() - 1));
+
+    ShadersRootInclude includeHandler(wRoot);
+    const D3D_SHADER_MACRO defines[] = {
+        {"FBZZ_BACKEND_DX11", "1"},
+        {nullptr, nullptr}
+    };
+
+    Microsoft::WRL::ComPtr<ID3DBlob> codeBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> errBlob;
+
+#if defined(_DEBUG) || defined(DEBUG)
+    constexpr UINT kFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+    constexpr UINT kFlags = D3DCOMPILE_OPTIMIZATION_LEVEL1;
+#endif
+
+    const HRESULT hr = D3DCompileFromFile(
+        resolvedHlslWide.c_str(),
+        defines,
+        &includeHandler,
+        entryPoint.c_str(),
+        target.c_str(),
+        kFlags, 0,
+        codeBlob.GetAddressOf(),
+        errBlob.GetAddressOf());
+
+    if (errBlob && errBlob->GetBufferSize() > 0)
+    {
+        const char* msg = static_cast<const char*>(errBlob->GetBufferPointer());
+        std::string message(msg, errBlob->GetBufferSize());
+        while (!message.empty() && message.back() == '\0') message.pop_back();
+        if (FAILED(hr))
+            FBZZ_LOG_ERROR("[ShaderCompile] %s (%s %s)\n%s", hlslPath.c_str(), entryPoint.c_str(), target.c_str(), message.c_str());
+        else
+            FBZZ_LOG_WARN("[ShaderCompile] warning in %s: %s", hlslPath.c_str(), message.c_str());
+        ReportShaderCompileDiagnostic(hlslPath, entryPoint, target, message, FAILED(hr));
+    }
+
+    if (FAILED(hr) || !codeBlob)
+        return {};
+
+    // CSO をディスクに保存 — 次回からファイル読み込みで済む
+    if (!csoSavePath.empty())
+    {
+        // 保存先ディレクトリを作成 (失敗しても続行)
+        const std::wstring wCso = ResolveWritableCsoPath(csoSavePath, norm);
+        const size_t slash = wCso.find_last_of(L"/\\");
+        if (slash != std::wstring::npos)
+            CreateDirectoryW(wCso.substr(0, slash).c_str(), nullptr);
+
+        std::ofstream out(wCso, std::ios::binary);
+        if (out.is_open())
+        {
+            out.write(static_cast<const char*>(codeBlob->GetBufferPointer()),
+                      static_cast<std::streamsize>(codeBlob->GetBufferSize()));
+            FBZZ_LOG_INFO("[ShaderCompile] cached: %s", csoSavePath.c_str());
+        }
+    }
+
+    const auto* data = static_cast<const uint8_t*>(codeBlob->GetBufferPointer());
+    return std::vector<uint8_t>(data, data + codeBlob->GetBufferSize());
+}
+
+} // anonymous namespace
 
 // "assets/shaders/Debug/DebugDraw.hlsl"       -> "assets/shaders/compiled/Debug.DebugDraw"
 // "assets/shaders/Material/Surface/PBR.hlsl"  -> "assets/shaders/compiled/Material.Surface.PBR"
@@ -91,7 +302,8 @@ std::vector<uint8_t> DX11Shader::LoadBinary(const std::string& filePath)
 {
     // WHY: カレントディレクトリまたは shader path に日本語が含まれる配布環境でも、
     //      CSO を Unicode パスで開けるよう UTF-8 から wide path に変換する。
-    std::ifstream file(fbzz::util::StringUtils::ToWide(filePath), std::ios::binary | std::ios::ate);
+    //      CSO も HLSL と同じ解決規則に通す — SDK の共有 asset だけが実体を持つ構成があるため。
+    std::ifstream file(ResolveReadablePath(filePath), std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
         FBZZ_LOG_ERROR("Shader binary open failed: %s", filePath.c_str());
@@ -224,6 +436,8 @@ ShaderDescriptor DX11Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
 {
     m_path = path;
+    // 深度専用シャドウシェーダーの判定はここで確定させる (Submit のホットパスから外す)。
+    m_isShadowMapShader = path.find("ShadowMap") != std::string::npos;
 
     const std::string base = CompiledBase(path);
 
@@ -233,7 +447,14 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
     if (isCompute)
     {
         const std::string csPath = base + ".cso";
-        auto csBlob = LoadBinary(csPath);
+        const bool stale = shader_dependency::IsBinaryStale(path, csPath);
+        auto csBlob = stale ? std::vector<uint8_t>{} : LoadBinary(csPath);
+        // HLSLまたは依存includeが新しい場合も、古いCSOを使わず再生成する。
+        if (csBlob.empty())
+        {
+            FBZZ_LOG_WARN("[ShaderCompile] CSO missing/stale, compiling from source: %s", path.c_str());
+            csBlob = CompileHlslToBlob(path, "CSMain", "cs_5_0", csPath);
+        }
         if (csBlob.empty()) return false;
 
         FBZZ_HR_CHECK(device->CreateComputeShader(
@@ -249,7 +470,14 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
     //   CSO byte 列を CreateVertexShader に渡す。
     //   input layout のリフレクション用に vsBlob を保持する。
     // -------------------------------------------------------------------------
-    auto vsBlob = LoadBinary(vsPath);
+    const bool vsStale = shader_dependency::IsBinaryStale(path, vsPath);
+    auto vsBlob = vsStale ? std::vector<uint8_t>{} : LoadBinary(vsPath);
+    // CSO欠落だけでなく、HLSL/include更新時にもオンデマンド再コンパイルする。
+    if (vsBlob.empty())
+    {
+        FBZZ_LOG_WARN("[ShaderCompile] VS CSO missing/stale, compiling from source: %s", path.c_str());
+        vsBlob = CompileHlslToBlob(path, "VSMain", "vs_5_0", vsPath);
+    }
     if (vsBlob.empty()) return false;
 
     FBZZ_HR_CHECK(device->CreateVertexShader(
@@ -258,7 +486,13 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
     // -------------------------------------------------------------------------
     // Pixel Shader
     // -------------------------------------------------------------------------
-    auto psBlob = LoadBinary(psPath);
+    const bool psStale = shader_dependency::IsBinaryStale(path, psPath);
+    auto psBlob = psStale ? std::vector<uint8_t>{} : LoadBinary(psPath);
+    if (psBlob.empty())
+    {
+        FBZZ_LOG_WARN("[ShaderCompile] PS CSO missing/stale, compiling from source: %s", path.c_str());
+        psBlob = CompileHlslToBlob(path, "PSMain", "ps_5_0", psPath);
+    }
     if (psBlob.empty()) return false;
 
     FBZZ_HR_CHECK(device->CreatePixelShader(

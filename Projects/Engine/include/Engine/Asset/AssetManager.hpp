@@ -1,19 +1,20 @@
-// FBZZ Engine
-// AssetManager.hpp | fbzz::asset
-// 統一アセットロード API
-//
-// 新 API: AssetManager::Load<T>(path) → AssetHandle<T>
-//   対応型: ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
-//           TerrainAsset, AnimatorControllerAsset
-//   RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
-//
-// 旧 API (後方互換 — 移行中のコールサイト向け):
-//   LoadModel(path)   → Model*
-//   LoadMaterial(path)→ ResourceHandle<MaterialAssetTag>
-//   GetMaterial(h)    → MaterialAsset*
-//   テクスチャは ResourceManager::LoadTexture() を使うこと。
-//
-// 旧 API への Load<Model> シンタックスは LoadModel() に移行すること。
+/// @file    AssetManager.hpp
+/// @brief   統一アセットロード API。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 新 API: AssetManager::Load<T>(path) → AssetHandle<T>
+/// 対応型: ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
+/// TerrainAsset, AnimatorControllerAsset, SequenceAsset
+/// RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
+///
+/// 旧 API (後方互換 — 移行中のコールサイト向け):
+/// LoadModel(path)   → Model*
+/// LoadMaterial(path)→ ResourceHandle<MaterialAssetTag>
+/// GetMaterial(h)    → MaterialAsset*
+/// テクスチャは ResourceManager::LoadTexture() を使うこと。
+///
+/// 旧 API への Load<Model> シンタックスは LoadModel() に移行すること。
 #pragma once
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
@@ -24,7 +25,9 @@
 #include <cassert>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -35,6 +38,8 @@ namespace fbzz::asset {
 struct AnimationClip;
 struct AnimatorControllerAsset;
 struct ModelAsset;
+struct PhysicsMaterialAsset;
+struct SequenceAsset;
 struct TerrainAsset;
 struct TextureAsset;
 
@@ -79,6 +84,16 @@ public:
         return slots[h.id - 1u].asset.get();
     }
 
+    // ハンドルを保ったままスロットの中身だけを差し替える。
+    // WHY gen を進めないか: 差し替えの目的は「同じアセットの新しい版」を配ることなので、
+    //     既に配ったハンドルは生きたままでなければならない。gen を進めると、Scene /
+    //     Component が持つハンドルが一斉に死んで参照切れとして現れる。
+    bool Replace(AssetHandle<T> h, std::unique_ptr<T> asset_) {
+        if (!IsLive(h) || !asset_) return false;
+        slots[h.id - 1u].asset = std::move(asset_);
+        return true;
+    }
+
     void Free(AssetHandle<T> h) {
         if (!IsLive(h)) return;
         const uint32_t idx = h.id - 1u;
@@ -114,7 +129,49 @@ public:
     static void FlushFailed();
     static int  GetFlushGeneration();
 
+    /// 指定ファイルを参照しているキャッシュ済みアセットを、ハンドルを保ったまま再取り込みする。
+    /// @param absPath 監視イベントが返す絶対パス
+    /// @return 差し替えた件数。0 ならこのファイルはどのストアにも載っていない
+    ///
+    /// 取り込みに失敗した場合は既存の中身を残す。書き込み途中のファイルを掴んで
+    /// 動いていたアセットを壊さないため。
+    static int ReloadPath(const std::string& absPath);
+
+    /// ホットリロードで「その場で中身を差し替えられる」拡張子の一覧。
+    ///
+    /// WHY 1 か所に置くか:
+    ///   ReloadPath が差し替える型と、Editor 側の監視ゲートが別々のリストを持っていた。
+    ///   «並びは AssetManager::ReloadPath と一致させること» というコメントで守る運用で、
+    ///   実際 .curve / .gradient を足したときに片方だけ更新されて
+    ///   «エンジンは差し替えられるのに通知が届かない» 状態になっていた。
+    ///
+    /// @note ここに載るのは «キャッシュ済みの値を入れ替えるだけで済む» 型だけ。
+    ///       GPU 資源を持つ型 (テクスチャ・モデル) は別経路で、ここには載せない
+    ///       (ReloadPath の WHY を参照)。
+    [[nodiscard]] static std::span<const std::string_view> HotReloadableExtensions();
+
+    /// 拡張子 (先頭のドット込み・大小問わず) がホットリロード対象か。
+    [[nodiscard]] static bool IsHotReloadableExtension(std::string_view extension);
+
+    /// アセットの中身が変わるたびに進む世代番号。
+    /// クリップのコピーやマスクのように、ストアの中身から派生キャッシュを作る側が
+    /// 「作り直すべきか」を 1 つの整数比較で判断するために使う。
+    static int GetAssetGeneration();
+
+    /// ストアを通さず直読みしているアセット (.mask 等) を差し替えたときに、
+    /// 派生キャッシュへ「作り直せ」と伝えるための明示的な世代更新。
+    static void BumpAssetGeneration();
+
     [[nodiscard]] static std::string ResolveAssetPath(const std::string& path);
+
+    // 原本 FBX に対応する Library/Baked/<fbx-guid>/ の絶対パスを返す (末尾に '/' なし)。
+    // guid が引けない (Assets 外の FBX 等) 場合は空文字。
+    //
+    // WHY 公開するか: AssetBrowser がサブアセット (.anim 等) を列挙するには、
+    //     ファイル名を知らない状態で「隔離先のディレクトリ」を知る必要がある。
+    //     ResolveAssetPath は実在するファイルのパスしか返せないため、
+    //     ディレクトリを引く経路を別に用意する。
+    [[nodiscard]] static std::string BakedDirForSource(const std::string& sourceAbsPath);
 
     // ── 新統一 API ─────────────────────────────────────────────────────
 
@@ -173,6 +230,7 @@ public:
 private:
     static renderer::ResourceManager* s_resources;
     static std::string                s_basePath;
+    static std::string                s_engineBasePath;
     static bool                       s_initialized;
 
     static std::unordered_map<std::string, std::unique_ptr<Model>>    s_models;
@@ -199,6 +257,8 @@ private:
     static T* GetFromStore(AssetHandle<T> h);
     template<typename T>
     static void UnloadFromStore(const std::string& relativePath);
+    template<typename T>
+    static int ReloadFromStore(const std::string& absPath);
     static renderer::ResourceHandle<renderer::MaterialAssetTag>
         AllocMaterialSlot(std::unique_ptr<MaterialAsset>);
     static bool IsMaterialLive(renderer::ResourceHandle<renderer::MaterialAssetTag>);
@@ -216,6 +276,10 @@ template<>
 AssetHandle<TerrainAsset> AssetManager::Load<TerrainAsset>(const std::string& relativePath);
 template<>
 AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& relativePath);
+template<>
+AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath);
+template<>
+AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath);
 
 template<>
 ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h);
@@ -229,6 +293,10 @@ template<>
 TerrainAsset* AssetManager::Get<TerrainAsset>(AssetHandle<TerrainAsset> h);
 template<>
 TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h);
+template<>
+PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h);
+template<>
+SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h);
 
 template<>
 void AssetManager::Unload<ModelAsset>(const std::string& relativePath);
@@ -242,5 +310,9 @@ template<>
 void AssetManager::Unload<TerrainAsset>(const std::string& relativePath);
 template<>
 void AssetManager::Unload<TextureAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<SequenceAsset>(const std::string& relativePath);
 
 } // namespace fbzz::asset

@@ -1,22 +1,25 @@
-// FBZZ Engine
-// main.cpp | fbzz::editor_launcher
-// エディタ / スタンドアロン両対応のエントリポイント
-//
-// WHAT: コマンドライン引数を解析し、エディタモードとスタンドアロンモードを切り替える。
-//   FBZZEditor.exe --project <path>              → エディタ起動 (既存)
-//   FBZZEditor.exe --project <path> --standalone → エディタ UI なし・ゲームのみ起動
-//   FBZZEditor.exe (exe 隣に .fbzz_proj あり)     → 配布版として Standalone 起動
-//   FBZZEditor.exe (引数なし / .fbzz_proj なし)   → 開発用テンプレートを Editor 起動
-//
-// WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
-//      配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
-//
-// WHY (Util の配置): Utf8ToWide / PathToUtf8 / Exists / ReadText 等の文字列・パス変換は
-//      EditorLauncher と Sandbox の両方で必要なため Engine/Util に集約した。
-//      ここでは Engine の API を直接呼ぶことで実装の重複を排除している。
+/// @file    main.cpp
+/// @brief   エディタ / スタンドアロン両対応のエントリポイント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-25
+///
+/// WHAT: コマンドライン引数を解析し、エディタモードとスタンドアロンモードを切り替える。
+/// FBZZEditor.exe --project <path>              → エディタ起動 (既存)
+/// FBZZEditor.exe --project <path> --standalone → エディタ UI なし・ゲームのみ起動
+/// FBZZEditor.exe (exe 隣に .fbzz_proj あり)     → 配布版として Standalone 起動
+/// FBZZEditor.exe (引数なし / .fbzz_proj なし)   → 開発用テンプレートを Editor 起動
+///
+/// WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
+/// 配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
+///
+/// WHY (Util の配置): Utf8ToWide / PathToUtf8 / Exists / ReadText 等の文字列・パス変換は
+/// EditorLauncher と Sandbox の両方で必要なため Engine/Util に集約した。
+/// ここでは Engine の API を直接呼ぶことで実装の重複を排除している。
+#include "JobBreakaway.hpp"
 #include "StandaloneApp.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
@@ -38,16 +41,17 @@ namespace {
 using fbzz::util::FileSystem;
 using fbzz::util::StringUtils;
 
-// --project と --standalone フラグを格納する構造体。
+// --project / --standalone / --scripts-dll フラグを格納する構造体。
 // WHY: 引数解析結果を Run() へ渡すための軽量な値型として分離する。
 struct LaunchArgs {
     std::filesystem::path projectPath;
+    std::filesystem::path scriptsDll; // --scripts-dll で上書き指定 (省略可)
     bool                  standalone = false;
 };
 
 std::filesystem::path FindDefaultEditorProjectPath()
 {
-    // WHY: build/release/Binaries/Release/FBZZEditor.exe を直接起動する開発導線では、
+    // WHY: build/Release/Binaries/Release/FBZZEditor.exe を直接起動する開発導線では、
     //      exe 隣に .fbzz_proj が存在しない。配布物と区別し、標準テンプレートを Editor で開く。
     std::filesystem::path current = FileSystem::GetExecutableDirectory();
     for (int i = 0; i < 8 && !current.empty(); ++i) {
@@ -87,6 +91,8 @@ LaunchArgs ParseArgs()
         const std::wstring arg = argv[i];
         if (arg == L"--project" && i + 1 < argc)
             args.projectPath = argv[++i];
+        else if (arg == L"--scripts-dll" && i + 1 < argc)
+            args.scriptsDll = argv[++i];
         else if (arg == L"--standalone")
             args.standalone = true;
     }
@@ -110,6 +116,16 @@ LaunchArgs ParseArgs()
 
 int Run()
 {
+    // 起動元が「閉じたら配下ごと殺す」Job に自分を入れている場合、その外へ自分を起動し直す。
+    // WHY 最初にやるか: ウィンドウもプロジェクトも作る前なら、作り直しの副作用が無い。
+    if (RelaunchOutsideKillOnCloseJob())
+        return 0;
+
+    // WHY: FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
+    //      新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
+    if (fbzz::core::CheckEngineFreshnessAndRelaunch())
+        return 0;
+
     const LaunchArgs args = ParseArgs();
 
     fbzz::ProjectResolver resolver;
@@ -117,9 +133,21 @@ int Run()
         MessageBoxW(nullptr, resolver.ErrorMessage().c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
         return 1;
     }
-    const fbzz::LaunchProject& project = resolver.Get();
+    fbzz::LaunchProject project = resolver.Get();
+    // WHY: .fbzz_proj に scripts_dll が書かれていないプロジェクト (DemoGame 等) では
+    //      ProjectResolver が scriptsDll を空のままにする。エディタから --scripts-dll で
+    //      解決済みパスが渡された場合はそれを優先して上書きする。
+    if (!args.scriptsDll.empty() && project.scriptsDll.empty())
+        project.scriptsDll = args.scriptsDll;
 
-    SetCurrentDirectoryW(FileSystem::GetExecutableDirectory().wstring().c_str());
+    const std::filesystem::path executableDirectory = FileSystem::GetExecutableDirectory();
+    const std::filesystem::path workingDirectory = FileSystem::Exists(executableDirectory / L".fbzz_proj")
+        ? executableDirectory
+        : project.root;
+    // WHY: 配布物は exe 隣に Assets があるため exeDir を CWD にする。
+    //      Editor から別プロジェクトを --project 指定で Standalone 起動する場合は
+    //      Assets が project.root にあるため、相対 shader path が解決できるよう CWD を切り替える。
+    SetCurrentDirectoryW(workingDirectory.wstring().c_str());
 
     auto& app = core::Application::Get();
 
@@ -133,7 +161,9 @@ int Run()
             return 1;
         }
 
-        if (!app.Init(scene::MakeWindowConfig(settings))) return 1;
+        // WHY: Standalone は ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する。
+        //      コマンドライン --renderer= があれば Application::Init 内でそちらが優先される。
+        if (!app.Init(scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
         auto& renderer = app.GetRenderer();
         auto& imguiRenderer = app.GetImGuiRenderer();
@@ -148,7 +178,13 @@ int Run()
         asset::AssetManager::UnloadAll();
         resources.Reset();
     } else {
-        if (!app.Init()) return 1;
+        // WHY: Editor も起動時プロジェクトの renderer 設定 (dx11/dx12) に従う。レンダラーは
+        //      プロジェクト読込前に生成するため設定をここで先読みしてバックエンドを渡す
+        //      (ウィンドウは Editor 既定サイズ。--renderer= があればそちらが優先)。
+        //      Load 失敗時は全体既定のDX12でEditorを開く (設定の本読込はOpenProjectが行う)。
+        ProjectSettings settings;
+        settings.Load(StringUtils::PathToUtf8(project.settingsFile));
+        if (!app.Init(core::Window::Config{}, settings.app.rendererBackend)) return 1;
 
         auto& renderer    = app.GetRenderer();
         auto& imguiRenderer = app.GetImGuiRenderer();

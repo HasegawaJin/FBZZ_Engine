@@ -1,7 +1,9 @@
-// FBZZ Engine
-// FrameAllocator.cpp | fbzz::core
-// FrameAllocator の実装
-// LinearAllocator をフレーム境界で Reset する薄いラッパーとして扱う。
+/// @file    FrameAllocator.cpp
+/// @brief   FrameAllocator の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// LinearAllocator をフレーム境界で Reset する薄いラッパーとして扱う。
 #include "Engine/Core/Memory/FrameAllocator.hpp"
 
 namespace fbzz::core {
@@ -19,13 +21,13 @@ void FrameAllocator::Shutdown()
 
 void FrameAllocator::BeginFrame()
 {
-    m_allocator.Reset();
     ++m_frameIndex;
 }
 
 void FrameAllocator::EndFrame()
 {
-    // EndFrame は現時点では統計確認用の境界。実メモリの再利用は次の BeginFrame で行う。
+    // フレーム終端でメモリを一括解放し、次フレームの再利用に備える。
+    m_allocator.Reset();
 }
 
 void* FrameAllocator::Allocate(std::size_t size, std::size_t alignment)
