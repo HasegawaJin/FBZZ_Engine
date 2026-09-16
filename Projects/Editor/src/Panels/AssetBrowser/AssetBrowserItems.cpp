@@ -8,6 +8,7 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/IcoImage.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -16,14 +17,9 @@
 #include <Windows.h>
 #include <toml++/toml.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
-#include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/Mesh.hpp>
-#include <Engine/Core/Memory/MakeUnique.hpp>
-#include <Engine/Renderer/PrimitiveMesh.hpp>
-#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Util/Uuid.hpp>
 #include <algorithm>
 #include <array>
@@ -31,7 +27,6 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <limits>
 #include <memory>
 #include <string_view>
 #include <system_error>
@@ -111,7 +106,7 @@ void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
 
     // .mat はテクスチャ参照を抱えたまま別ストアに載っている。パス一致で外す。
     const std::string lowerExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(relative));
-    if (lowerExt == ".mat") asset::AssetManager::UnloadMaterial(relative);
+    if (lowerExt == ".mat") asset::AssetManager::Unload<asset::MaterialAsset>(relative);
 }
 
 std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ctx)
@@ -344,6 +339,8 @@ static constexpr ExtGroup kExtGroups[] = {
     // 物理マテリアルも「マテリアル」の一員。ラベルで見分ける。
     { { ".physmat", nullptr },                                 kFamLook,  "PHYSMAT"   },
     { { ".tex", nullptr },                                     kFamLook,  "TEXDESC"   },
+    // .ico は «アプリのアイコン» という役割で、素材テクスチャとは用途が違う。
+    { { ".ico", nullptr },                                     kFamLook,  "ICON"      },
 
     // ── Model ───────────────────────────────────────────────────────────────
     { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            kFamModel, "MESH"      },
@@ -430,7 +427,7 @@ static bool IsTextureExt(const std::string& ext)
 {
     // .dds はキューブマップ等の非 2D テクスチャを含むため 2D プレビュー対象から除外する
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
-           ext == ".bmp" || ext == ".tga";
+           ext == ".bmp" || ext == ".tga" || ext == ".ico";
 }
 
 static bool IsMeshExt(const std::string& ext)
@@ -477,249 +474,36 @@ static ImTextureID ToImTextureID(void* ptr)
     return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
 }
 
+// .ico を GPU テクスチャにする。
+// WHY ResourceManager::LoadTexture を通さないか: 下地の DirectXTex (WIC) は .ico を
+//     読めるが «先頭フレーム» しか返さない。.ico は 16px〜256px を束ねた形式なので、
+//     ファイルによっては 16px がサムネイルに出る。面積最大のフレームを自前で選ぶ。
+static renderer::ResourceHandle<renderer::TextureTag> LoadIcoTexture(
+    renderer::ResourceManager& resources,
+    const std::string& path,
+    uint32_t& outWidth,
+    uint32_t& outHeight)
+{
+    IcoImage image;
+    std::string error;
+    if (!DecodeIcoFile(util::FileSystem::PathFromUtf8(path), image, error) || !image.IsValid()) {
+        FBZZ_LOG_WARN("Icon preview failed: %s (%s)", path.c_str(), error.c_str());
+        return {};
+    }
+    outWidth  = static_cast<uint32_t>(image.width);
+    outHeight = static_cast<uint32_t>(image.height);
+    return resources.CreateTexture(image.rgba.data(), outWidth, outHeight);
+}
+
 static std::string SelectMaterialPreviewTexture(const asset::MaterialAsset& mat)
 {
-    static constexpr const char* PRIORITY_SLOTS[] = {
-        "albedo", "base_color", "diffuse", "layer0_diffuse", "foamTex"
-    };
-    for (const char* slot : PRIORITY_SLOTS) {
-        if (auto it = mat.textures.find(slot); it != mat.textures.end() && !it->second.empty()) {
-            return it->second;
-        }
-    }
-    for (const auto& [slot, path] : mat.textures) {
-        if (!path.empty()) return path;
-    }
-    return {};
+    return matpreview::RepresentativeTexturePath(mat);
 }
 
 static ImVec4 SelectMaterialColor(const asset::MaterialAsset& mat)
 {
-    const auto findColor = [&mat]() -> const std::vector<float>* {
-        if (auto it = mat.params.find("base_color"); it != mat.params.end() && it->second.size() >= 3) return &it->second;
-        if (auto it = mat.params.find("baseColor"); it != mat.params.end() && it->second.size() >= 3) return &it->second;
-        if (auto it = mat.params.find("albedo"); it != mat.params.end() && it->second.size() >= 3) return &it->second;
-        return nullptr;
-    };
-
-    if (const std::vector<float>* values = findColor()) {
-        const float alpha = values->size() >= 4 ? (*values)[3] : 1.0f;
-        return { (*values)[0], (*values)[1], (*values)[2], alpha };
-    }
-    return { 0.20f, 0.70f, 0.80f, 1.0f };
-}
-
-enum class ThumbnailShaderFlavor {
-    Surface,
-    Skinned,
-    Terrain,
-    Water,
-    Unsupported,
-};
-
-static std::string ToLowerAssetPath(std::string path)
-{
-    std::replace(path.begin(), path.end(), '\\', '/');
-    std::transform(path.begin(), path.end(), path.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return path;
-}
-
-static ThumbnailShaderFlavor DetectThumbnailShaderFlavor(std::string_view shaderPath)
-{
-    const std::string lower = ToLowerAssetPath(std::string(shaderPath));
-    if (lower.find("/material/effects/") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
-    if (lower.find("/effects/particle") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
-    if (lower.find("/effects/trail") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
-    if (lower.find("/effects/meshtrail") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
-    if (lower.find("/water/") != std::string::npos) return ThumbnailShaderFlavor::Water;
-    if (lower.find("/terrain/") != std::string::npos) return ThumbnailShaderFlavor::Terrain;
-    if (lower.find("/material/skinned/") != std::string::npos) return ThumbnailShaderFlavor::Skinned;
-    return ThumbnailShaderFlavor::Surface;
-}
-
-static ThumbnailShaderFlavor DetectMaterialThumbnailFlavor(const asset::MaterialAsset& asset)
-{
-    // Particle / Trail / UI / Decal の .mat は MeshRenderer と頂点入力も定数バッファも違う。
-    // 球メッシュのプレビューへ流すと不正な IA レイアウトでクラッシュしうる。
-    // 判定は render_path を信頼元にする (shader path からの推測はしない)。
-    if (asset.renderPath == asset::RenderPath::Particle ||
-        asset.renderPath == asset::RenderPath::Trail ||
-        asset.renderPath == asset::RenderPath::UI ||
-        asset.renderPath == asset::RenderPath::Decal ||
-        asset.renderPath == asset::RenderPath::PostProcess) {
-        return ThumbnailShaderFlavor::Unsupported;
-    }
-    if (asset.meshType == asset::MeshType::Skinned) {
-        return ThumbnailShaderFlavor::Skinned;
-    }
-    return DetectThumbnailShaderFlavor(asset.shaderPath);
-}
-
-// t0-t15 は標準 Material スロット。Terrain/Water は専用名で解決され、それ以外は
-// ここで名前フォールバックが効く。preview.textures と同じ 16 要素にしておくこと。
-constexpr std::array<const char*, 16> kMaterialTextureSlotNames = {
-    "albedo",
-    "normal",
-    "metallic",
-    "emissive",
-    "ao",
-    "tex5",
-    "tex6",
-    "tex7",
-    "tex8",
-    "tex9",
-    "tex10",
-    "tex11",
-    "tex12",
-    "tex13",
-    "tex14",
-    "tex15",
-};
-
-static const std::vector<float>* FindMaterialParam(const asset::MaterialAsset& asset, std::string_view shaderVarName)
-{
-    auto it = asset.params.find(std::string(shaderVarName));
-    if (it != asset.params.end()) return &it->second;
-
-    // WHY: .mat は PBR 寄りの名前、HLSL は shader ごとの短い変数名を使う場合がある。
-    //      サムネイルも本編描画と同じ別名吸収を行い、shaderPath を変えても色や係数を反映する。
-    if (shaderVarName == "albedo")              it = asset.params.find("base_color");
-    else if (shaderVarName == "metallic")       it = asset.params.find("metallic_factor");
-    else if (shaderVarName == "roughness")      it = asset.params.find("roughness_factor");
-    else if (shaderVarName == "normalStrength") it = asset.params.find("normal_strength");
-    else if (shaderVarName == "emissiveColor")  it = asset.params.find("emissive_color");
-    else if (shaderVarName == "emissiveScale")  it = asset.params.find("emissive_scale");
-
-    return it != asset.params.end() ? &it->second : nullptr;
-}
-
-static float MaterialParamFloat(const asset::MaterialAsset* asset, std::string_view name, float fallback)
-{
-    if (!asset) return fallback;
-    const auto* values = FindMaterialParam(*asset, name);
-    return (values && !values->empty()) ? (*values)[0] : fallback;
-}
-
-static math::Vector3 MaterialParamFloat3(const asset::MaterialAsset* asset, std::string_view name, math::Vector3 fallback)
-{
-    if (!asset) return fallback;
-    const auto* values = FindMaterialParam(*asset, name);
-    if (!values || values->size() < 3) return fallback;
-    return { (*values)[0], (*values)[1], (*values)[2] };
-}
-
-static void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vector<uint8_t>& paramData)
-{
-    const float one = 1.0f;
-    for (const auto& v : desc.vars) {
-        if (v.varType != renderer::ShaderVarType::Float) continue;
-        for (uint32_t col = 0; col < v.columns; ++col) {
-            const uint32_t byteOff = v.offset + col * sizeof(float);
-            if (byteOff + sizeof(float) <= static_cast<uint32_t>(paramData.size()))
-                std::memcpy(paramData.data() + byteOff, &one, sizeof(float));
-        }
-    }
-
-    auto setFloat = [&](std::string_view name, float value) {
-        const auto* v = desc.FindVar(name);
-        if (!v || v->varType != renderer::ShaderVarType::Float || v->columns != 1) return;
-        if (v->offset + sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
-        std::memcpy(paramData.data() + v->offset, &value, sizeof(float));
-    };
-    auto setFloat2 = [&](std::string_view name, const float value[2]) {
-        const auto* v = desc.FindVar(name);
-        if (!v || v->varType != renderer::ShaderVarType::Float || v->columns < 2) return;
-        if (v->offset + 2u * sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
-        std::memcpy(paramData.data() + v->offset, value, 2u * sizeof(float));
-    };
-    auto setFloat3 = [&](std::string_view name, const float value[3]) {
-        const auto* v = desc.FindVar(name);
-        if (!v || v->varType != renderer::ShaderVarType::Float || v->columns < 3) return;
-        if (v->offset + 3u * sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
-        std::memcpy(paramData.data() + v->offset, value, 3u * sizeof(float));
-    };
-
-    const float uvTiling[2] = { 1.0f, 1.0f };
-    const float uvOffset[2] = { 0.0f, 0.0f };
-    const float white3[3] = { 1.0f, 1.0f, 1.0f };
-    setFloat("metallic", 0.0f);
-    setFloat("roughness", 0.65f);
-    setFloat("emissiveScale", 0.0f);
-    setFloat("alphaCutoff", 0.5f);
-    setFloat2("uvTiling", uvTiling);
-    setFloat2("uvOffset", uvOffset);
-    setFloat3("emissiveColor", white3);
-}
-
-static void ApplyMaterialAssetParams(const asset::MaterialAsset& asset,
-                                     const renderer::ShaderDescriptor& desc,
-                                     std::vector<uint8_t>& paramData)
-{
-    for (const auto& v : desc.vars) {
-        if (v.varType != renderer::ShaderVarType::Float) continue;
-        if (v.offset + v.size > static_cast<uint32_t>(paramData.size())) continue;
-
-        const auto* values = FindMaterialParam(asset, v.name);
-        if (!values || values->empty()) continue;
-
-        const size_t count = std::min<size_t>(v.columns, values->size());
-        std::memcpy(paramData.data() + v.offset, values->data(), count * sizeof(float));
-    }
-}
-
-static std::string FindMaterialTexturePath(const asset::MaterialAsset& asset,
-                                           const renderer::ShaderTexBindDesc& bind)
-{
-    auto byShaderName = asset.textures.find(bind.name);
-    if (byShaderName != asset.textures.end()) return byShaderName->second;
-
-    const std::string lowerName = ToLowerAssetPath(bind.name);
-    const auto findTexture = [&asset](const char* name) -> std::string {
-        auto it = asset.textures.find(name);
-        return it != asset.textures.end() ? it->second : std::string{};
-    };
-    if (lowerName == "g_normalmap1") return findTexture("normalMap1");
-    if (lowerName == "g_normalmap2") return findTexture("normalMap2");
-    if (lowerName == "g_foamtex")    return findTexture("foamTex");
-    if (lowerName == "g_foammask")   return findTexture("foamMask");
-    if (lowerName == "g_envtex")     return findTexture("envCubemap");
-    if (lowerName == "g_flowmap")    return findTexture("flowMap");
-    if (lowerName == "g_splatmap")   return findTexture("splatmap");
-    if (lowerName.starts_with("g_diffuse") && bind.slot >= 1 && bind.slot <= 4) {
-        const std::string slot = "layer" + std::to_string(bind.slot - 1) + "_diffuse";
-        auto it = asset.textures.find(slot);
-        return it != asset.textures.end() ? it->second : std::string{};
-    }
-    if (lowerName.starts_with("g_normal") && bind.slot >= 5 && bind.slot <= 8) {
-        const std::string slot = "layer" + std::to_string(bind.slot - 5) + "_normal";
-        auto it = asset.textures.find(slot);
-        return it != asset.textures.end() ? it->second : std::string{};
-    }
-    if (lowerName.starts_with("g_aoroughness") && bind.slot >= 9 && bind.slot <= 12) {
-        const std::string slot = "layer" + std::to_string(bind.slot - 9) + "_ao_roughness";
-        auto it = asset.textures.find(slot);
-        return it != asset.textures.end() ? it->second : std::string{};
-    }
-
-    if (bind.slot < kMaterialTextureSlotNames.size()) {
-        auto byStandardName = asset.textures.find(kMaterialTextureSlotNames[bind.slot]);
-        if (byStandardName != asset.textures.end()) return byStandardName->second;
-
-        // Terrain レイヤーの fzmat はプレフィックスなし ("diffuse", "ao_roughness") を使う。
-        // WHY: Fallback/Surface シェーダーが slot 0="albedo", slot 4="ao" を期待するが、
-        //      レイヤー fzmat にはこれらが存在しないため別名でフォールバックする。
-        const std::string_view standard = kMaterialTextureSlotNames[bind.slot];
-        if (standard == "albedo") {
-            auto it = asset.textures.find("diffuse");
-            if (it != asset.textures.end() && !it->second.empty()) return it->second;
-        }
-        if (standard == "ao") {
-            auto it = asset.textures.find("ao_roughness");
-            if (it != asset.textures.end() && !it->second.empty()) return it->second;
-        }
-    }
-    return {};
+    const math::Vector4 color = matpreview::AlbedoColor(mat);
+    return { color.x, color.y, color.z, color.w };
 }
 
 } // namespace
@@ -727,133 +511,10 @@ static std::string FindMaterialTexturePath(const asset::MaterialAsset& asset,
 bool AssetBrowserPanel::RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx)
 {
     if (!ctx.resources) return false;
-
-    const bool useFallbackMaterial = preview.asset.shaderPath.empty();
-    asset::MaterialAsset fallbackAsset;
-    const asset::MaterialAsset* renderAsset = &preview.asset;
-    if (useFallbackMaterial) {
-        fallbackAsset.shaderPath = "Assets/Shaders/Material/Surface/Fallback.hlsl";
-        fallbackAsset.params["albedo"] = { 1.0f, 0.0f, 1.0f, 1.0f };
-        renderAsset = &fallbackAsset;
-    }
-
-    const std::string nextShaderPath = renderAsset->shaderPath.empty()
-        ? "Assets/Shaders/Material/Surface/Fallback.hlsl"
-        : renderAsset->shaderPath;
-    if (nextShaderPath != preview.shaderPath) {
-        preview.shaderPath = nextShaderPath;
-        preview.shader = {};
-        if (ctx.resources && preview.materialCB.IsValid()) {
-            ctx.resources->Release(preview.materialCB);
-            preview.materialCB = {};
-        }
-        preview.textures.clear();
-        preview.paramData.clear();
-    }
-
-    if (!preview.shader.IsValid())
-        preview.shader = ctx.resources->LoadShader(preview.shaderPath);
-    auto* shader = ctx.resources->Get(preview.shader);
-    if (!shader) return false;
-
-    const renderer::ShaderDescriptor& desc = shader->GetDescriptor();
-    const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(*renderAsset);
-    if (flavor == ThumbnailShaderFlavor::Unsupported) return false;
-    if (!desc.IsValid() && flavor != ThumbnailShaderFlavor::Terrain) return false;
-
-    preview.textures.assign(16, {});
-    if (!desc.textures.empty()) {
-        for (const auto& bind : desc.textures) {
-            if (bind.slot >= preview.textures.size()) continue;
-            const std::string texturePath = FindMaterialTexturePath(*renderAsset, bind);
-            if (!texturePath.empty())
-                preview.textures[bind.slot] = ctx.resources->LoadTexture(ToTextureLoadPath(texturePath, ctx));
-        }
-    }
-    if (flavor == ThumbnailShaderFlavor::Terrain) {
-        const auto loadSlot = [&](uint32_t slot, const char* name) {
-            auto it = renderAsset->textures.find(name);
-            if (it != renderAsset->textures.end() && !it->second.empty())
-                preview.textures[slot] = ctx.resources->LoadTexture(ToTextureLoadPath(it->second, ctx));
-        };
-        loadSlot(0, "splatmap");
-        for (uint32_t layer = 0; layer < 4; ++layer) {
-            const std::string prefix = "layer" + std::to_string(layer);
-            loadSlot(1 + layer, (prefix + "_diffuse").c_str());
-            loadSlot(5 + layer, (prefix + "_normal").c_str());
-            loadSlot(9 + layer, (prefix + "_ao_roughness").c_str());
-        }
-    }
-    if (!desc.IsValid()) {
-        preview.materialCB = {};
-        preview.paramData.clear();
-        return true;
-    }
-
-    preview.paramData.assign(desc.cbufferSize, 0u);
-    InitDefaultMaterialParams(desc, preview.paramData);
-    ApplyMaterialAssetParams(*renderAsset, desc, preview.paramData);
-
-    if (desc.textureMaskOffset != UINT32_MAX &&
-        desc.textureMaskOffset + sizeof(uint32_t) <= preview.paramData.size()) {
-        uint32_t mask = 0;
-        for (const auto& bind : desc.textures) {
-            if (bind.slot >= preview.textures.size()) continue;
-            const std::string texturePath = FindMaterialTexturePath(*renderAsset, bind);
-            if (texturePath.empty()) continue;
-            preview.textures[bind.slot] = ctx.resources->LoadTexture(ToTextureLoadPath(texturePath, ctx));
-            if (preview.textures[bind.slot].IsValid() && bind.slot < 8)
-                mask |= (1u << bind.slot);
-        }
-        std::memcpy(preview.paramData.data() + desc.textureMaskOffset, &mask, sizeof(uint32_t));
-    } else {
-        for (const auto& bind : desc.textures) {
-            if (bind.slot >= preview.textures.size()) continue;
-            const std::string texturePath = FindMaterialTexturePath(*renderAsset, bind);
-            if (!texturePath.empty())
-                preview.textures[bind.slot] = ctx.resources->LoadTexture(ToTextureLoadPath(texturePath, ctx));
-        }
-    }
-
-    if (!preview.materialCB.IsValid())
-        preview.materialCB = ctx.resources->CreateConstantBuffer(desc.cbufferSize);
-    if (!preview.materialCB.IsValid()) return false;
-    ctx.resources->Update(preview.materialCB, preview.paramData.data(), preview.paramData.size());
-    return true;
+    return matpreview::BuildGpuData(preview.gpu, preview.asset, *ctx.resources, ctx.projectRoot);
 }
 
 namespace {
-
-// サムネイルレンダリング用の共有 GPU リソースをまとめて保持する構造体。
-// WHY: 以前は RenderMeshThumbnail / DrawAssetPreviewIconAt の function-local static
-//      として暗黙的に共有されていた。構造体に昇格させて意図を明示する。
-struct ThumbnailRenderer {
-    renderer::ResourceHandle<renderer::ShaderTag>         shader;
-    renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
-    // Spot / Point シャドウ (b12) の無効化用。中身は 0 のまま使う。
-    // 定数バッファの束縛はドローをまたいで残るが SRV は毎回クリアされるので、
-    // シーン描画の b12 が残るとアトラス未束縛のまま「完全な影」を引いて黒くなる。
-    renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
-    // ライト供給モード (b9) の無効化用。中身は 0 = FBZZ_LIGHT_MODE_LEGACY のまま使う。
-    // b9 の束縛はドローをまたいで残るが t29 は毎回クリアされるので、渡さないと
-    // 「本数は残っているのに中身が全部ゼロ」を読んでライトが当たらない。
-    renderer::ResourceHandle<renderer::ConstantBufferTag> clusterCB;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> terrainObjectCB;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> waterObjectCB;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
-    renderer::ResourceHandle<renderer::TextureTag>        whiteTexture;
-    renderer::ResourceHandle<renderer::TextureTag>        blackTexture;
-    renderer::ResourceHandle<renderer::TextureTag>        flatNormalTexture;
-    renderer::Mesh*                                        materialSphere = nullptr;
-    renderer::Mesh*                                        skinnedMaterialSphere = nullptr;
-    renderer::Mesh*                                        waterMaterialSphere = nullptr;
-};
-static ThumbnailRenderer s_tr;
 
 static void DrawThumbnailFrame(ImVec2 origin, float sz, bool hovered)
 {
@@ -941,332 +602,10 @@ static void DrawSpriteThumbnail(void* rawID, uint32_t width, uint32_t height,
                        IM_COL32(105, 235, 135, 255), badge);
 }
 
-struct ThumbnailMaterialCB {
-    math::Vector4 albedo = math::Vector4::WHITE;
-    uint32_t textureMask = 0;
-    float _pad[3] = {};
-};
-
-struct ThumbnailTerrainCB {
-    math::Matrix4 worldMatrix;
-    math::Matrix4 wvpMatrix;
-    math::Vector4 layerTiling[4];
-    math::Vector4 layerNormalStrength;
-    math::Vector4 layerMaterial[4];
-    math::Vector4 layerTextureFlags;
-    math::Vector4 layerAutoHeight[4];
-    math::Vector4 layerAutoSlope[4];
-    // TerrainRenderPass.cpp の TerrainObjectCB と一致させること。
-    // サムネイルは常に乾いた状態で焼く (0 のまま渡す)。
-    math::Vector4 weather;
-};
-
-// Assets/Shaders/Water/Water.hlsl の WaterCB と一致させる
-// (実体は WaterRenderPass.cpp の WaterCB。レイアウトを変えたら両方直すこと)。
-struct ThumbnailWaterCB {
-    math::Matrix4 worldMatrix;
-    math::Matrix4 wvpMatrix;
-    math::Vector4 shallowColorDepth;
-    math::Vector4 deepColorDepth;
-    math::Vector4 surfaceParams;
-    math::Vector4 normalParams;
-    math::Vector4 timeParams;
-    math::Vector4 foamParams;
-    math::Vector4 refractionFlowParams;
-    math::Vector4 waveDir[4];
-    math::Vector4 waveParams[4];
-    math::Vector4 detailParams;
-    math::Vector4 sssParams;
-    math::Vector4 reflectParams;
-    math::Vector4 flowParams;
-};
-
-struct ThumbnailSkinningCB {
-    math::Matrix4 boneMatrices[128];
-};
-
-struct ThumbnailWaterVertex {
-    math::Vector3 position;
-    math::Vector2 uv;
-};
-
-static renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& resources, int segments)
-{
-    static std::unordered_map<int, std::unique_ptr<renderer::Mesh>> s_cache;
-    if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
-
-    auto* surface = renderer::PrimitiveMesh::Sphere(resources, segments);
-    if (!surface) return nullptr;
-
-    std::vector<renderer::SkinnedVertex> verts;
-    verts.reserve(surface->cpuVertices.size());
-    for (const auto& v : surface->cpuVertices) {
-        renderer::SkinnedVertex sv{};
-        sv.position = v.position;
-        sv.normal = v.normal;
-        sv.tangent = v.tangent;
-        sv.uv = v.uv;
-        sv.boneIndices[0] = 0;
-        sv.boneWeights[0] = 1.0f;
-        verts.push_back(sv);
-    }
-
-    auto mesh = core::MakeUnique<renderer::Mesh>();
-    if (!mesh) return nullptr;
-    mesh->vertexBuffer = resources.CreateVertexBuffer(verts.data(), verts.size() * sizeof(renderer::SkinnedVertex), sizeof(renderer::SkinnedVertex));
-    mesh->indexBuffer = resources.CreateIndexBuffer(surface->cpuIndices.data(), static_cast<uint32_t>(surface->cpuIndices.size()));
-    mesh->vertexCount = static_cast<uint32_t>(verts.size());
-    mesh->indexCount = static_cast<uint32_t>(surface->cpuIndices.size());
-    mesh->isSkinned = true;
-    mesh->cpuSkinnedVertices = std::move(verts);
-    mesh->cpuIndices = surface->cpuIndices;
-    mesh->ComputeBounds();
-    renderer::Mesh* result = mesh.get();
-    s_cache[segments] = std::move(mesh);
-    return result;
-}
-
-static renderer::Mesh* CreateWaterPreviewSphere(renderer::ResourceManager& resources, int segments)
-{
-    static std::unordered_map<int, std::unique_ptr<renderer::Mesh>> s_cache;
-    if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
-
-    auto* surface = renderer::PrimitiveMesh::Sphere(resources, segments);
-    if (!surface) return nullptr;
-
-    std::vector<ThumbnailWaterVertex> verts;
-    verts.reserve(surface->cpuVertices.size());
-    for (const auto& v : surface->cpuVertices)
-        verts.push_back({ v.position, v.uv });
-
-    auto mesh = core::MakeUnique<renderer::Mesh>();
-    if (!mesh) return nullptr;
-    mesh->vertexBuffer = resources.CreateVertexBuffer(verts.data(), verts.size() * sizeof(ThumbnailWaterVertex), sizeof(ThumbnailWaterVertex));
-    mesh->indexBuffer = resources.CreateIndexBuffer(surface->cpuIndices.data(), static_cast<uint32_t>(surface->cpuIndices.size()));
-    mesh->vertexCount = static_cast<uint32_t>(verts.size());
-    mesh->indexCount = static_cast<uint32_t>(surface->cpuIndices.size());
-    mesh->cpuVertices = surface->cpuVertices;
-    mesh->cpuIndices = surface->cpuIndices;
-    mesh->ComputeBounds();
-    renderer::Mesh* result = mesh.get();
-    s_cache[segments] = std::move(mesh);
-    return result;
-}
-
-static math::Vector3 MeshBoundsCenter(const renderer::Mesh& mesh)
-{
-    if (mesh.boundsRadius > 0.0f) return mesh.boundsCenter;
-
-    math::Vector3 minP{
-        std::numeric_limits<float>::max(),
-        std::numeric_limits<float>::max(),
-        std::numeric_limits<float>::max()
-    };
-    math::Vector3 maxP{
-        -std::numeric_limits<float>::max(),
-        -std::numeric_limits<float>::max(),
-        -std::numeric_limits<float>::max()
-    };
-    auto visit = [&](const math::Vector3& p) {
-        minP.x = std::min(minP.x, p.x);
-        minP.y = std::min(minP.y, p.y);
-        minP.z = std::min(minP.z, p.z);
-        maxP.x = std::max(maxP.x, p.x);
-        maxP.y = std::max(maxP.y, p.y);
-        maxP.z = std::max(maxP.z, p.z);
-    };
-    if (mesh.isSkinned) {
-        for (const auto& v : mesh.cpuSkinnedVertices) visit(v.position);
-    } else {
-        for (const auto& v : mesh.cpuVertices) visit(v.position);
-    }
-    if (minP.x > maxP.x) return {};
-    return (minP + maxP) * 0.5f;
-}
-
-static float MeshBoundsRadius(const renderer::Mesh& mesh, const math::Vector3& center)
-{
-    if (mesh.boundsRadius > 0.0f) return mesh.boundsRadius;
-
-    float radiusSq = 0.0f;
-    auto visit = [&](const math::Vector3& p) {
-        radiusSq = std::max(radiusSq, (p - center).LengthSq());
-    };
-    if (mesh.isSkinned) {
-        for (const auto& v : mesh.cpuSkinnedVertices) visit(v.position);
-    } else {
-        for (const auto& v : mesh.cpuVertices) visit(v.position);
-    }
-    return std::sqrt(std::max(radiusSq, 0.0001f));
-}
-
-static bool EnsureThumbnailDefaultTextures(renderer::ResourceManager& resources,
-                                           renderer::ResourceHandle<renderer::TextureTag>& white,
-                                           renderer::ResourceHandle<renderer::TextureTag>& black,
-                                           renderer::ResourceHandle<renderer::TextureTag>& flatNormal)
-{
-    if (!white.IsValid()) {
-        const uint8_t rgba[4] = { 255, 255, 255, 255 };
-        white = resources.CreateTexture(rgba, 1, 1);
-    }
-    if (!black.IsValid()) {
-        const uint8_t rgba[4] = { 0, 0, 0, 255 };
-        black = resources.CreateTexture(rgba, 1, 1);
-    }
-    if (!flatNormal.IsValid()) {
-        const uint8_t rgba[4] = { 128, 128, 255, 255 };
-        flatNormal = resources.CreateTexture(rgba, 1, 1);
-    }
-    return white.IsValid() && black.IsValid() && flatNormal.IsValid();
-}
-
-static renderer::ResourceHandle<renderer::TextureTag> DefaultThumbnailTextureForSlot(
-    ThumbnailShaderFlavor flavor,
-    uint32_t slot,
-    renderer::ResourceHandle<renderer::TextureTag> white,
-    renderer::ResourceHandle<renderer::TextureTag> black,
-    renderer::ResourceHandle<renderer::TextureTag> flatNormal)
-{
-    if (flavor == ThumbnailShaderFlavor::Water) {
-        if (slot == 0 || slot == 1 || slot == 7) return flatNormal;
-        if (slot == 4 || slot == 6 || slot == 8) return black;
-        return white;
-    }
-    if (flavor == ThumbnailShaderFlavor::Terrain) {
-        if (slot >= 5 && slot <= 8) return flatNormal;
-        return white;
-    }
-    return {};
-}
-
-static ThumbnailTerrainCB BuildThumbnailTerrainCB(
-    const asset::MaterialAsset* asset,
-    const math::Matrix4& viewProjection)
-{
-    ThumbnailTerrainCB cb{};
-    cb.worldMatrix = math::Matrix4::Identity();
-    cb.wvpMatrix = viewProjection;
-    for (int i = 0; i < 4; ++i) {
-        const std::string prefix = "layer" + std::to_string(i) + "_";
-        cb.layerTiling[i] = {
-            MaterialParamFloat(asset, prefix + "tilingX", 2.0f),
-            MaterialParamFloat(asset, prefix + "tilingZ", 2.0f),
-            0.0f,
-            0.0f
-        };
-        const float normalStrength = MaterialParamFloat(asset, prefix + "normalStrength", 1.0f);
-        if (i == 0) cb.layerNormalStrength.x = normalStrength;
-        else if (i == 1) cb.layerNormalStrength.y = normalStrength;
-        else if (i == 2) cb.layerNormalStrength.z = normalStrength;
-        else cb.layerNormalStrength.w = normalStrength;
-        cb.layerMaterial[i] = {
-            MaterialParamFloat(asset, prefix + "roughness", 0.8f),
-            MaterialParamFloat(asset, prefix + "ambientOcclusion", 1.0f),
-            0.0f,
-            0.0f
-        };
-        cb.layerAutoHeight[i] = {
-            MaterialParamFloat(asset, prefix + "autoMinHeight", -10000.0f),
-            MaterialParamFloat(asset, prefix + "autoMaxHeight", 10000.0f),
-            MaterialParamFloat(asset, prefix + "autoHeightFade", 1.0f),
-            MaterialParamFloat(asset, prefix + "autoBlendEnabled", 0.0f)
-        };
-        cb.layerAutoSlope[i] = {
-            MaterialParamFloat(asset, prefix + "autoMinSlope", 0.0f),
-            MaterialParamFloat(asset, prefix + "autoMaxSlope", 1.0f),
-            MaterialParamFloat(asset, prefix + "autoSlopeFade", 0.1f),
-            MaterialParamFloat(asset, prefix + "autoBlendStrength", 1.0f)
-        };
-    }
-    return cb;
-}
-
-static ThumbnailWaterCB BuildThumbnailWaterCB(
-    const asset::MaterialAsset* asset,
-    const math::Matrix4& viewProjection)
-{
-    ThumbnailWaterCB cb{};
-    cb.worldMatrix = math::Matrix4::Identity();
-    cb.wvpMatrix = viewProjection;
-    const math::Vector3 shallow = MaterialParamFloat3(asset, "shallowColor", { 0.20f, 0.60f, 0.70f });
-    const math::Vector3 deep = MaterialParamFloat3(asset, "deepColor", { 0.00f, 0.10f, 0.30f });
-    cb.shallowColorDepth = { shallow.x, shallow.y, shallow.z, MaterialParamFloat(asset, "shallowDepth", 0.5f) };
-    cb.deepColorDepth = { deep.x, deep.y, deep.z, MaterialParamFloat(asset, "deepDepth", 5.0f) };
-    cb.surfaceParams = {
-        MaterialParamFloat(asset, "opacity", 0.85f),
-        MaterialParamFloat(asset, "reflectivity", 0.35f),
-        MaterialParamFloat(asset, "fresnelBias", 0.02f),
-        MaterialParamFloat(asset, "fresnelPower", 5.0f)
-    };
-    cb.normalParams = { 0.0f, 0.0f, 0.0f, MaterialParamFloat(asset, "normalStrength", 0.75f) };
-    cb.timeParams   = { 0.0f, 0.0f, 0.0f, 0.35f };
-    cb.foamParams = {
-        MaterialParamFloat(asset, "foamThreshold", 0.3f),
-        MaterialParamFloat(asset, "foamFade", 0.5f),
-        MaterialParamFloat(asset, "foamStrength", 0.6f),
-        MaterialParamFloat(asset, "foamNoiseScale", 0.5f)
-    };
-    cb.refractionFlowParams = {
-        MaterialParamFloat(asset, "refractionStrength", 0.02f),
-        MaterialParamFloat(asset, "flowSpeed", 0.3f),
-        0.0f,
-        0.0f
-    };
-    cb.detailParams = {
-        MaterialParamFloat(asset, "detailScale", 0.35f),
-        MaterialParamFloat(asset, "detailSpeed", 0.6f),
-        MaterialParamFloat(asset, "detailStrength", 1.0f),
-        MaterialParamFloat(asset, "smoothness", 0.92f)
-    };
-    const math::Vector3 sss = MaterialParamFloat3(asset, "sssColor", { 0.12f, 0.50f, 0.46f });
-    cb.sssParams = { sss.x, sss.y, sss.z, MaterialParamFloat(asset, "sssStrength", 0.6f) };
-    // サムネイルは IBL キューブを持たないので、空反射はフラット色へフォールバックさせる。
-    cb.reflectParams = { 0.0f, 0.0f, 0.0f, 0.35f };
-    cb.flowParams    = { 1.0f, 0.0f, 0.0f, 0.0f };
-    return cb;
-}
-
-static bool EnsureThumbnailGpuResources(renderer::ResourceManager& resources,
-                                         ThumbnailRenderer& tr,
-                                         bool requireFallbackMaterial)
-{
-    if (requireFallbackMaterial && !tr.shader.IsValid())
-        tr.shader = resources.LoadShader("Assets/Shaders/Material/Surface/Lit.hlsl");
-    if (requireFallbackMaterial && !tr.shader.IsValid()) return false;
-
-    if (!tr.pso.IsValid()) {
-        tr.pso = resources.CreatePipelineState({
-            renderer::RasterizerMode::SOLID_NOCULL,
-            renderer::BlendMode::OPAQUE_BLEND,
-            renderer::DepthMode::DEPTH_ON
-        });
-    }
-    if (!tr.frameCB.IsValid())
-        tr.frameCB = resources.CreateConstantBuffer(sizeof(scene::PerFrameCB));
-    if (!tr.objectCB.IsValid())
-        tr.objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
-    if (requireFallbackMaterial && !tr.materialCB.IsValid())
-        tr.materialCB = resources.CreateConstantBuffer(sizeof(ThumbnailMaterialCB));
-    if (!tr.lightCB.IsValid())
-        tr.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
-    if (!tr.shadowCB.IsValid())
-        tr.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
-    if (!tr.punctualShadowCB.IsValid()) {
-        tr.punctualShadowCB =
-            resources.CreateConstantBuffer(sizeof(scene::PunctualShadowConstantsCB));
-        const scene::PunctualShadowConstantsCB emptyPunctual{};
-        resources.Update(tr.punctualShadowCB, &emptyPunctual, sizeof(emptyPunctual));
-    }
-    if (!tr.clusterCB.IsValid()) {
-        tr.clusterCB = resources.CreateConstantBuffer(sizeof(scene::ClusterConstantsCB));
-        const scene::ClusterConstantsCB legacyCluster{};  // clusterLightMode = 0 = LEGACY
-        resources.Update(tr.clusterCB, &legacyCluster, sizeof(legacyCluster));
-    }
-
-    return tr.pso.IsValid() && tr.frameCB.IsValid() && tr.objectCB.IsValid() &&
-           (!requireFallbackMaterial || tr.materialCB.IsValid()) && tr.lightCB.IsValid() && tr.shadowCB.IsValid();
-}
-
+// メッシュ 1 つを正方形 RT へ焼く。
+// WHY ここに残すか: 実際の描画は MaterialPreviewCore が持つ。ここは AssetBrowser の
+//     «このメッシュをこの色で» という呼び出し形をそのまま受けるだけの薄い口で、
+//     サムネイルと Inspector / Preview パネルが同じ照明・同じカメラで焼かれる。
 static bool RenderMeshThumbnail(
     renderer::IRenderer& renderer,
     renderer::ResourceManager& resources,
@@ -1274,186 +613,25 @@ static bool RenderMeshThumbnail(
     renderer::ResourceHandle<renderer::RenderTargetTag> rt,
     renderer::ResourceHandle<renderer::TextureTag> albedoTexture,
     ImVec4 albedoColor,
-    renderer::ResourceHandle<renderer::ShaderTag> materialShader = {},
-    renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB = {},
-    const std::vector<renderer::ResourceHandle<renderer::TextureTag>>* materialTextures = nullptr,
-    ThumbnailShaderFlavor flavor = ThumbnailShaderFlavor::Surface,
+    const matpreview::GpuData* materialGpu = nullptr,
+    matpreview::Flavor flavor = matpreview::Flavor::Surface,
     const asset::MaterialAsset* materialAsset = nullptr,
     bool clearRT = true,
     math::Vector3 overrideCenter = {},
     float overrideRadius = -1.0f)  // <0 = use mesh bounds
 {
-    if (!rt.IsValid() || !mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid())
-        return false;
-    const bool useMaterialOverride = materialShader.IsValid();
-    if (!EnsureThumbnailGpuResources(resources, s_tr, !useMaterialOverride))
-        return false;
-
-    const math::Vector3 center = (overrideRadius >= 0.0f) ? overrideCenter : MeshBoundsCenter(mesh);
-    const float radius = std::max(0.0001f, (overrideRadius >= 0.0f) ? overrideRadius : MeshBoundsRadius(mesh, center));
-    // WHY: 望遠 (FOV 30) + 遠距離の組み合わせはパースがほぼ消えて正射影に近づき、
-    //      球が円板のように平坦に見える。FOV を広げてカメラを寄せ、フレーミングを
-    //      ほぼ保ったまま遠近感による立体感を出す。
-    const float cameraDistance = radius * 2.9f;
-
-    renderer::Camera camera;
-    // WHY: Unity の Material Preview に近い、少し上からの 3/4 ビューにする。
-    //      真正面よりも球のハイライト・影・輪郭が読み取りやすくなる。
-    camera.m_position = {
-        center.x - radius * 2.12f,
-        center.y + radius * 1.28f,
-        center.z - cameraDistance
-    };
-    camera.m_aspect = 1.0f;
-    camera.m_fovY = 38.0f;
-    camera.m_near = 0.01f;
-    camera.m_far = std::max(10.0f, cameraDistance + radius * 6.0f);
-    camera.LookAt(center);
-
-    scene::PerFrameCB frameData{};
-    frameData.view = camera.GetViewMatrix();
-    frameData.projection = camera.GetProjectionMatrix();
-    frameData.viewProjection = camera.GetViewProjection();
-    frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
-    frameData.cameraPos = camera.m_position;
-    frameData.nearZ = camera.m_near;
-    frameData.farZ = camera.m_far;
-    resources.Update(s_tr.frameCB, &frameData, sizeof(frameData));
-
-    scene::PerObjectCB objectData{};
-    objectData.world = math::Matrix4::Identity();
-    objectData.worldInvTranspose = math::Matrix4::Identity();
-    renderer::ResourceHandle<renderer::ConstantBufferTag> objectCBForDraw = s_tr.objectCB;
-    if (flavor == ThumbnailShaderFlavor::Terrain) {
-        if (!s_tr.terrainObjectCB.IsValid())
-            s_tr.terrainObjectCB = resources.CreateConstantBuffer(sizeof(ThumbnailTerrainCB));
-        if (!s_tr.terrainObjectCB.IsValid()) return false;
-        const ThumbnailTerrainCB terrainData = BuildThumbnailTerrainCB(materialAsset, frameData.viewProjection);
-        resources.Update(s_tr.terrainObjectCB, &terrainData, sizeof(terrainData));
-        objectCBForDraw = s_tr.terrainObjectCB;
-    } else if (flavor == ThumbnailShaderFlavor::Water) {
-        if (!s_tr.waterObjectCB.IsValid())
-            s_tr.waterObjectCB = resources.CreateConstantBuffer(sizeof(ThumbnailWaterCB));
-        if (!s_tr.waterObjectCB.IsValid()) return false;
-        const ThumbnailWaterCB waterData = BuildThumbnailWaterCB(materialAsset, frameData.viewProjection);
-        resources.Update(s_tr.waterObjectCB, &waterData, sizeof(waterData));
-        objectCBForDraw = s_tr.waterObjectCB;
-    } else {
-        resources.Update(s_tr.objectCB, &objectData, sizeof(objectData));
-    }
-
-    if (flavor == ThumbnailShaderFlavor::Skinned) {
-        if (!s_tr.skinningCB.IsValid())
-            s_tr.skinningCB = resources.CreateConstantBuffer(sizeof(ThumbnailSkinningCB));
-        if (!s_tr.skinningCB.IsValid()) return false;
-        ThumbnailSkinningCB skinningData{};
-        for (auto& bone : skinningData.boneMatrices)
-            bone = math::Matrix4::Identity();
-        resources.Update(s_tr.skinningCB, &skinningData, sizeof(skinningData));
-    }
-
-    if (!useMaterialOverride) {
-        ThumbnailMaterialCB materialData{};
-        materialData.albedo = {
-            std::clamp(albedoColor.x, 0.0f, 1.0f),
-            std::clamp(albedoColor.y, 0.0f, 1.0f),
-            std::clamp(albedoColor.z, 0.0f, 1.0f),
-            std::clamp(albedoColor.w, 0.0f, 1.0f)
-        };
-        materialData.textureMask = albedoTexture.IsValid() ? 1u : 0u;
-        resources.Update(s_tr.materialCB, &materialData, sizeof(materialData));
-    }
-
-    // ── 3 点照明リグ (キー / フィル / リム) ──
-    // 単一平行光 + 高いアンビエントだと球が円板に見える。アンビエントを落として明暗差を作り、
-    // 寒色フィルで陰側の丸みを、リムで輪郭を背景から分離する。
-    renderer::LightConstantsCB lightData{};
-    const math::Vector3 keyLight = (camera.m_position + math::Vector3{ radius * 1.4f, radius * 1.8f, radius * 0.8f } - center).Normalized();
-    lightData.lightDir = { -keyLight.x, -keyLight.y, -keyLight.z };
-    lightData.lightColor = { 1.0f, 0.96f, 0.90f }; // キー: わずかに暖色
-    // 1.8 は「相殺後の最終的な明るさ」。kPreviewUnitScale の定義は下の距離補正コメント参照。
-    lightData.lightIntensity = 1.8f / 3.14159265358979323846f;
-    lightData.ambientColor = { 0.10f, 0.11f, 0.14f }; // 陰が黒潰れしない下限まで低減
-
-    // LightAttenuation は 1/dist^2 を含むので、そのままだとメッシュ半径で効きが変わる。
-    // 距離補正を強度へ掛けて、どのサイズでも同じ見た目にする。
-    // range = radius*20 に対し dist は radius*3 前後なので range 窓はほぼ 1.0、逆二乗だけ打ち消せばよい。
-    // LIGHT_UNIT_SCALE (= PI) も相殺する。targetIntensity がそのまま寄与の強さを表すので、
-    // シェーダー側の単位換算を変えてもサムネイルの見た目は動かない。
-    constexpr float kPreviewUnitScale = 3.14159265358979323846f; // Lighting.hlsli の LIGHT_UNIT_SCALE
-    const auto placeThumbnailLight = [&](renderer::PointLight& light,
-                                         const math::Vector3&  offsetFromCenter,
-                                         const math::Vector3&  color,
-                                         float                 targetIntensity) {
-        light.position = center + offsetFromCenter;
-        light.color    = color;
-        light.range    = radius * 20.0f;
-        const float dist = offsetFromCenter.Length();
-        // シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛け、
-        // 極小メッシュで補正が過剰にならないようにする。
-        light.intensity = targetIntensity * std::max(dist * dist, 0.01f) / kPreviewUnitScale;
-    };
-    // フィル: カメラ側右下から寒色を弱く当て、キーの逆サイドの形状を読ませる
-    placeThumbnailLight(lightData.pointLights[0],
-                        { radius * 2.6f, -radius * 1.4f, -radius * 2.2f },
-                        { 0.55f, 0.65f, 1.0f }, 0.4f);
-    // リム: 右上背後からの白。グレージング角のハイライトで輪郭を浮かせる
-    placeThumbnailLight(lightData.pointLights[1],
-                        { radius * 1.6f, radius * 2.4f, radius * 2.8f },
-                        { 1.0f, 1.0f, 1.0f }, 1.1f);
-    lightData.pointLightCount = 2;
-    resources.Update(s_tr.lightCB, &lightData, sizeof(lightData));
-
-    scene::ShadowConstantsCB shadowData{};
-    shadowData.lightViewProjection = math::Matrix4::Translate({ 16.0f, 16.0f, 0.0f });
-    shadowData.shadowMapTexelSize[0] = 0.0f;
-    shadowData.shadowMapTexelSize[1] = 0.0f;
-    // NDC 深度最大値 (1.0) をバイアスにすることで depth - bias <= 0 が常に成立し、
-    // SampleCmpLevelZero が必ず 1.0 (照らされている) を返してサムネイル描画でのシャドウを無効化する。
-    shadowData.shadowBias = 1.0f;
-    resources.Update(s_tr.shadowCB, &shadowData, sizeof(shadowData));
-
-    renderer.SetRenderTarget(rt, resources);
-    if (clearRT) {
-        renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
-        renderer.ClearDepth();
-    }
-
-    renderer::DrawCall dc;
-    dc.vertexBuffer = mesh.vertexBuffer;
-    dc.indexBuffer = mesh.indexBuffer;
-    dc.indexCount = mesh.indexCount;
-    dc.vertexCount = mesh.vertexCount;
-    dc.shader = useMaterialOverride ? materialShader : s_tr.shader;
-    dc.pipelineState = s_tr.pso;
-    dc.constantBuffers[0] = s_tr.frameCB;
-    dc.constantBuffers[1] = objectCBForDraw;
-    dc.constantBuffers[2] = (useMaterialOverride && materialCB.IsValid()) ? materialCB : s_tr.materialCB;
-    dc.constantBuffers[3] = s_tr.lightCB;
-    dc.constantBuffers[4] = s_tr.shadowCB;
-    dc.constantBuffers[12] = s_tr.punctualShadowCB;
-    dc.constantBuffers[9] = s_tr.clusterCB;
-    if (flavor == ThumbnailShaderFlavor::Skinned)
-        dc.constantBuffers[7] = s_tr.skinningCB;
-    if (useMaterialOverride && materialTextures) {
-        const size_t count = std::min(dc.textures.size(), materialTextures->size());
-        for (size_t i = 0; i < count; ++i)
-            dc.textures[i] = (*materialTextures)[i];
-        if ((flavor == ThumbnailShaderFlavor::Terrain || flavor == ThumbnailShaderFlavor::Water) &&
-            EnsureThumbnailDefaultTextures(resources, s_tr.whiteTexture, s_tr.blackTexture, s_tr.flatNormalTexture)) {
-            for (uint32_t i = 0; i < static_cast<uint32_t>(dc.textures.size()); ++i) {
-                if (dc.textures[i].IsValid()) continue;
-                dc.textures[i] = DefaultThumbnailTextureForSlot(flavor, i, s_tr.whiteTexture, s_tr.blackTexture, s_tr.flatNormalTexture);
-            }
-        }
-    } else {
-        dc.textures[0] = albedoTexture;
-    }
-    renderer.Submit(dc, resources);
-
-    // WHY: AssetBrowser の ImGui 描画中に一時 RT へ切り替えるため、生成後は必ずバックバッファへ戻す。
-    renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
-    return true;
+    matpreview::RenderDesc desc;
+    desc.target          = rt;
+    desc.mesh            = &mesh;
+    desc.flavor          = flavor;
+    desc.material        = materialAsset;
+    desc.gpu             = materialGpu;
+    desc.fallbackTexture = albedoTexture;
+    desc.fallbackColor   = { albedoColor.x, albedoColor.y, albedoColor.z, albedoColor.w };
+    desc.clear           = clearRT;
+    desc.overrideCenter  = overrideCenter;
+    desc.overrideRadius  = overrideRadius;
+    return matpreview::Render(renderer, resources, desc);
 }
 
 static void DrawThumbnailLabel(ImDrawList* dl, ImVec2 origin, float sz, const char* badge)
@@ -1465,59 +643,16 @@ static void DrawThumbnailLabel(ImDrawList* dl, ImVec2 origin, float sz, const ch
     dl->AddText({ bMin.x + 4.0f, bMin.y + 2.0f }, IM_COL32(235, 240, 245, 230), badge);
 }
 
-// 球に焼けない .mat (Particle / Trail / UI / Decal / PostProcess) の種別バッジ。
-// WHY 言葉で出すか: 手続き系は素材すら持たないことがあり、色見本だけだと
-//     «この材質はこういう色» なのか «焼けなかった» のかが区別できない。
+// 球に焼けない .mat の種別バッジと色見本。判定も色選びも MaterialPreviewCore と共有する。
 static const char* MaterialThumbnailBadge(const asset::MaterialAsset& asset)
 {
-    switch (asset.renderPath) {
-        case asset::RenderPath::Particle:    return "PARTICLE";
-        case asset::RenderPath::Trail:       return "TRAIL";
-        case asset::RenderPath::UI:          return "UI";
-        case asset::RenderPath::Decal:       return "DECAL";
-        case asset::RenderPath::PostProcess: return "POST";
-        default: break;
-    }
-    // render_path = 'auto' のまま Effects へ置いてある .mat はここに来る。
-    // 判定元は DetectThumbnailShaderFlavor と同じ「シェーダーの置き場所」。
-    const std::string lower = ToLowerAssetPath(asset.shaderPath);
-    if (lower.find("trail") != std::string::npos)    return "TRAIL";
-    if (lower.find("particle") != std::string::npos) return "PARTICLE";
-    return "FX";
+    return matpreview::UnsupportedBadge(asset);
 }
 
-// 色見本に使う 1 色。SelectMaterialColor が見る標準名に加えて、手続き系がよく使う
-// 名前まで拾う。HDR (1 を超える値) はそのまま塗ると白く潰れるので明るさだけ畳む。
 static ImVec4 SelectSwatchColor(const asset::MaterialAsset& asset)
 {
-    static constexpr const char* PRIORITY_PARAMS[] = {
-        "base_color", "baseColor", "albedo", "coreColor", "tint", "color",
-        "startColor", "mainColor", "emissiveColor", "edgeColor",
-    };
-    const std::vector<float>* found = nullptr;
-    for (const char* name : PRIORITY_PARAMS) {
-        if (auto it = asset.params.find(name); it != asset.params.end() && it->second.size() >= 3) {
-            found = &it->second;
-            break;
-        }
-    }
-    if (!found) {
-        // 名前が独自でも «...Color» は色として扱える。params は unordered なので、
-        // 名前の小さい方に決めておかないと起動のたびにサムネイルの色が変わる。
-        const std::string* pick = nullptr;
-        for (const auto& [name, values] : asset.params) {
-            if (values.size() < 3) continue;
-            if (!name.ends_with("Color") && !name.ends_with("color")) continue;
-            if (pick == nullptr || name < *pick) {
-                pick  = &name;
-                found = &values;
-            }
-        }
-    }
-    if (!found) return { 0.55f, 0.58f, 0.66f, 1.0f };
-
-    const float peak = (std::max)({ (*found)[0], (*found)[1], (*found)[2], 1.0f });
-    return { (*found)[0] / peak, (*found)[1] / peak, (*found)[2] / peak, 1.0f };
+    const math::Vector4 color = matpreview::SwatchColor(asset);
+    return { color.x, color.y, color.z, color.w };
 }
 
 // 3D に焼けない .mat の最後の受け皿。色と種別だけでも出して、拡張子アイコンに落とさない。
@@ -1611,14 +746,7 @@ static void ResetMaterialPreviewGpuState(T& preview, renderer::ResourceManager* 
     preview.previewTexturePath.clear();
     preview.previewTextureWidth = 0;
     preview.previewTextureHeight = 0;
-    preview.shaderPath.clear();
-    preview.shader = {};
-    if (resources && preview.materialCB.IsValid()) {
-        resources->Release(preview.materialCB);
-        preview.materialCB = {};
-    }
-    preview.textures.clear();
-    preview.paramData.clear();
+    matpreview::ResetGpuData(preview.gpu, resources);
     preview.thumbnailRendered = false;
 }
 
@@ -2247,8 +1375,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             const uint64_t revision = ctx.MaterialPreviewRevision(relPath);
             if (revision != 0 && revision != preview.liveRevision) {
                 preview.liveRevision = revision;
-                if (const auto* live = asset::AssetManager::GetMaterial(
-                        asset::AssetManager::LoadMaterial(relPath))) {
+                if (const auto* live = asset::AssetManager::Get<asset::MaterialAsset>(
+                        asset::AssetManager::Load<asset::MaterialAsset>(relPath))) {
                     preview.asset  = *live;
                     MarkPreviewSucceeded(preview);
                     preview.loaded = true;
@@ -2294,8 +1422,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
 
             // 球に焼けない .mat はここで畳む。RT も確保しない (使わないまま 1 枚寝かせる)。
             // 素材があればその絵、無ければ色見本。«何も出ない» で終わらせない。
-            const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(preview.asset);
-            if (flavor == ThumbnailShaderFlavor::Unsupported) {
+            const matpreview::Flavor flavor = matpreview::DetectFlavor(preview.asset);
+            if (flavor == matpreview::Flavor::Unsupported) {
                 const char* badge = MaterialThumbnailBadge(preview.asset);
                 if (preview.previewTexture.IsValid()) {
                     if (void* rawID = ctx.imguiRenderer->GetImTextureID(preview.previewTexture, *ctx.resources)) {
@@ -2310,33 +1438,22 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
 
             EnsureThumbnailRT(preview, ctx);
             if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
-                if (!s_tr.materialSphere)
-                    s_tr.materialSphere = renderer::PrimitiveMesh::Sphere(*ctx.resources, 64);
-                if (!s_tr.skinnedMaterialSphere)
-                    s_tr.skinnedMaterialSphere = CreateSkinnedPreviewSphere(*ctx.resources, 64);
-                if (!s_tr.waterMaterialSphere)
-                    s_tr.waterMaterialSphere = CreateWaterPreviewSphere(*ctx.resources, 64);
-                renderer::Mesh* previewMesh = nullptr;
-                if (flavor == ThumbnailShaderFlavor::Skinned)
-                    previewMesh = s_tr.skinnedMaterialSphere;
-                else if (flavor == ThumbnailShaderFlavor::Water)
-                    previewMesh = s_tr.waterMaterialSphere;
-                else if (flavor == ThumbnailShaderFlavor::Surface || flavor == ThumbnailShaderFlavor::Terrain)
-                    previewMesh = s_tr.materialSphere;
+                // 形状は MaterialPreviewCore が Flavor に合わせて選ぶ
+                // (Surface / Skinned は球、Terrain / Water は細分割した平面、
+                //  UI は ortho の矩形なのでメッシュを持たない)。
+                renderer::Mesh* previewMesh =
+                    matpreview::ShapeMesh(*ctx.resources, matpreview::Shape::Sphere, flavor);
+                const bool meshReady = previewMesh || matpreview::UsesOwnGeometry(flavor);
 
-                if (previewMesh && RebuildMaterialThumbnailGpuData(preview, ctx)) {
-                    preview.thumbnailRendered = RenderMeshThumbnail(
-                        *ctx.renderer,
-                        *ctx.resources,
-                        *previewMesh,
-                        preview.thumbnailRT,
-                        preview.previewTexture,
-                        SelectMaterialColor(preview.asset),
-                        preview.shader,
-                        preview.materialCB,
-                        &preview.textures,
-                        flavor,
-                        &preview.asset);
+                if (meshReady && RebuildMaterialThumbnailGpuData(preview, ctx)) {
+                    matpreview::RenderDesc desc;
+                    desc.target   = preview.thumbnailRT;
+                    desc.mesh     = previewMesh;
+                    desc.flavor   = flavor;
+                    desc.material = &preview.asset;
+                    desc.gpu      = &preview.gpu;
+                    preview.thumbnailRendered =
+                        matpreview::Render(*ctx.renderer, *ctx.resources, desc);
                 }
             }
             if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "MAT")) return;
@@ -2375,9 +1492,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         const auto currentWriteTime = ReadLastWriteTime(previewWritePath);
         if (currentWriteTime != preview.lastWriteTime) {
             if (m_resources)
-                for (auto& mp : preview.slotMaterials)
-                    if (mp.materialCB.IsValid())
-                        m_resources->Release(mp.materialCB);
+                for (auto& slot : preview.slotMaterials)
+                    matpreview::ResetGpuData(slot.gpu, m_resources);
             preview.slotMaterials.clear();
             preview.materialsLoaded = false;
             preview.lastWriteTime = currentWriteTime;
@@ -2461,8 +1577,12 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     if (sub.materialSlotIndex < preview.slotMaterials.size() &&
                         !preview.slotMaterials[sub.materialSlotIndex].failed) {
                         matPrev = &preview.slotMaterials[sub.materialSlotIndex];
-                        if (DetectMaterialThumbnailFlavor(matPrev->asset) == ThumbnailShaderFlavor::Unsupported ||
-                            !RebuildMaterialThumbnailGpuData(*matPrev, ctx)) {
+                        const matpreview::Flavor slotFlavor = matpreview::DetectFlavor(matPrev->asset);
+                        // メッシュ本体の形へ焼くので、板 / 矩形前提の Flavor は材質ごと落とす。
+                        if (slotFlavor != matpreview::Flavor::Surface &&
+                            slotFlavor != matpreview::Flavor::Skinned) {
+                            matPrev = nullptr;
+                        } else if (!RebuildMaterialThumbnailGpuData(*matPrev, ctx)) {
                             matPrev = nullptr;
                         }
                     }
@@ -2471,10 +1591,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         *mesh, preview.thumbnailRT,
                         renderer::ResourceHandle<renderer::TextureTag>{},
                         matPrev ? SelectMaterialColor(matPrev->asset) : ImVec4{ 0.74f, 0.78f, 0.84f, 1.0f },
-                        matPrev ? matPrev->shader : renderer::ResourceHandle<renderer::ShaderTag>{},
-                        matPrev ? matPrev->materialCB : renderer::ResourceHandle<renderer::ConstantBufferTag>{},
-                        matPrev ? &matPrev->textures : nullptr,
-                        matPrev ? DetectMaterialThumbnailFlavor(matPrev->asset) : ThumbnailShaderFlavor::Surface,
+                        matPrev ? &matPrev->gpu : nullptr,
+                        matPrev ? matpreview::DetectFlavor(matPrev->asset) : matpreview::Flavor::Surface,
                         matPrev ? &matPrev->asset : nullptr,
                         firstDraw, combinedCenter, combinedRadius);
                     if (ok) { preview.thumbnailRendered = true; firstDraw = false; }
@@ -2554,7 +1672,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         EnsureThumbnailRT(preview, ctx);
         const bool meshRetryAllowed = CanAttemptPreview(preview);
         if (!preview.model && meshRetryAllowed)
-            preview.model = asset::AssetManager::LoadModel(e.path);
+            preview.model = asset::AssetManager::LoadAndGet<asset::Model>(e.path);
         if (!preview.thumbnailRendered && meshRetryAllowed && preview.thumbnailRT.IsValid()) {
             if (preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
                 preview.thumbnailRendered = RenderMeshThumbnail(
@@ -2619,7 +1737,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     std::string absPath = preview.meshPath;
                     if (absPath.starts_with("Assets/") && !ctx.projectRoot.empty())
                         absPath = ctx.projectRoot + "/" + absPath;
-                    preview.model = asset::AssetManager::LoadModel(absPath);
+                    preview.model = asset::AssetManager::LoadAndGet<asset::Model>(absPath);
                 }
                 if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
                     if (preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
@@ -2823,19 +1941,17 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             if (preview.hasMaterial && CanAttemptPreview(preview.mat)) {
                 EnsureThumbnailRT(preview.mat, ctx);
                 if (!preview.mat.thumbnailRendered) {
-                    if (!s_tr.materialSphere)
-                        s_tr.materialSphere = renderer::PrimitiveMesh::Sphere(*ctx.resources, 64);
-                    if (s_tr.materialSphere && RebuildMaterialThumbnailGpuData(preview.mat, ctx)) {
+                    renderer::Mesh* terrainMesh = matpreview::ShapeMesh(
+                        *ctx.resources, matpreview::Shape::Plane, matpreview::Flavor::Terrain);
+                    if (terrainMesh && RebuildMaterialThumbnailGpuData(preview.mat, ctx)) {
                         preview.mat.thumbnailRendered = RenderMeshThumbnail(
                             *ctx.renderer, *ctx.resources,
-                            *s_tr.materialSphere,
+                            *terrainMesh,
                             preview.mat.thumbnailRT,
                             preview.mat.previewTexture,
                             SelectMaterialColor(preview.mat.asset),
-                            preview.mat.shader,
-                            preview.mat.materialCB,
-                            &preview.mat.textures,
-                            ThumbnailShaderFlavor::Terrain,
+                            &preview.mat.gpu,
+                            matpreview::Flavor::Terrain,
                             &preview.mat.asset);
                         if (preview.mat.thumbnailRendered) MarkPreviewSucceeded(preview.mat);
                         else                               MarkPreviewFailed(preview.mat);
@@ -2887,6 +2003,14 @@ void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
         // 再試行に回すべきエントリが二度と積み直されない。
         preview.queued = false;
         if (preview.handle.IsValid()) continue;
+        if (util::StringUtils::ToLower(util::FileSystem::GetExtension(path)) == ".ico") {
+            preview.handle = LoadIcoTexture(*ctx.resources, ToTextureLoadPath(path, ctx),
+                                            preview.width, preview.height);
+            preview.ownsTexture = preview.handle.IsValid();
+            if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
+            else                          MarkPreviewFailed(preview);
+            continue;
+        }
         preview.handle = ctx.resources->LoadTexture(ToTextureLoadPath(path, ctx));
         if (preview.handle.IsValid()) {
             MarkPreviewSucceeded(preview);
@@ -2900,8 +2024,19 @@ void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
     }
 }
 
+void AssetBrowserPanel::ReleaseOwnedTexturePreview(const std::string& path)
+{
+    auto it = m_texturePreviews.find(path);
+    if (it == m_texturePreviews.end()) return;
+    if (m_resources && it->second.ownsTexture && it->second.handle.IsValid())
+        m_resources->Release(it->second.handle);
+    it->second.handle = {};
+    it->second.ownsTexture = false;
+}
+
 void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
 {
+    ReleaseOwnedTexturePreview(path);
     m_texturePreviews.erase(path);
     m_spritePreviews.erase(path);
     auto releaseAndErase = [&](auto& map) {
@@ -2911,15 +2046,12 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
             if constexpr (requires { it->second.thumbnailRT; }) {
                 if (it->second.thumbnailRT.IsValid())
                     m_resources->Release(it->second.thumbnailRT);
-                if constexpr (requires { it->second.materialCB; }) {
-                    if (it->second.materialCB.IsValid())
-                        m_resources->Release(it->second.materialCB);
-                }
+                if constexpr (requires { it->second.gpu; })
+                    matpreview::ResetGpuData(it->second.gpu, m_resources);
             } else if constexpr (requires { it->second.mat.thumbnailRT; }) {
                 if (it->second.mat.thumbnailRT.IsValid())
                     m_resources->Release(it->second.mat.thumbnailRT);
-                if (it->second.mat.materialCB.IsValid())
-                    m_resources->Release(it->second.mat.materialCB);
+                matpreview::ResetGpuData(it->second.mat.gpu, m_resources);
             }
         }
         map.erase(it);
@@ -2932,9 +2064,8 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     {
         auto it = m_modelAssetPreviews.find(path);
         if (it != m_modelAssetPreviews.end() && m_resources)
-            for (auto& mp : it->second.slotMaterials)
-                if (mp.materialCB.IsValid())
-                    m_resources->Release(mp.materialCB);
+            for (auto& slot : it->second.slotMaterials)
+                matpreview::ResetGpuData(slot.gpu, m_resources);
     }
     releaseAndErase(m_modelAssetPreviews);
     // 合成パス (path::mesh::N) で登録されたサブメッシュプレビューもクリア
@@ -2945,9 +2076,8 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
                 if (m_resources) {
                     if (it->second.thumbnailRT.IsValid())
                         m_resources->Release(it->second.thumbnailRT);
-                    for (auto& mp : it->second.slotMaterials)
-                        if (mp.materialCB.IsValid())
-                            m_resources->Release(mp.materialCB);
+                    for (auto& slot : it->second.slotMaterials)
+                        matpreview::ResetGpuData(slot.gpu, m_resources);
                 }
                 it = m_modelAssetPreviews.erase(it);
             } else {
@@ -2967,20 +2097,16 @@ void AssetBrowserPanel::ClearAllAssetPreviews()
                 if constexpr (requires { preview.thumbnailRT; }) {
                     if (preview.thumbnailRT.IsValid())
                         m_resources->Release(preview.thumbnailRT);
-                    if constexpr (requires { preview.materialCB; }) {
-                        if (preview.materialCB.IsValid())
-                            m_resources->Release(preview.materialCB);
-                    }
+                    if constexpr (requires { preview.gpu; })
+                        matpreview::ResetGpuData(preview.gpu, m_resources);
                     if constexpr (requires { preview.slotMaterials; }) {
                         for (auto& slot : preview.slotMaterials)
-                            if (slot.materialCB.IsValid())
-                                m_resources->Release(slot.materialCB);
+                            matpreview::ResetGpuData(slot.gpu, m_resources);
                     }
                 } else if constexpr (requires { preview.mat.thumbnailRT; }) {
                     if (preview.mat.thumbnailRT.IsValid())
                         m_resources->Release(preview.mat.thumbnailRT);
-                    if (preview.mat.materialCB.IsValid())
-                        m_resources->Release(preview.mat.materialCB);
+                    matpreview::ResetGpuData(preview.mat.gpu, m_resources);
                 }
             }
         }
@@ -2991,7 +2117,12 @@ void AssetBrowserPanel::ClearAllAssetPreviews()
     releaseAll(m_prefabPreviews);
     releaseAll(m_terrainPreviews);
     releaseAll(m_modelAssetPreviews);
-    // 以下は ResourceManager 側のキャッシュを共有するだけで、自前の GPU リソースを持たない。
+    // 自前で作った実体 (.ico) だけは解放する。他は ResourceManager 側のキャッシュを共有する。
+    if (m_resources) {
+        for (auto& [path, preview] : m_texturePreviews)
+            if (preview.ownsTexture && preview.handle.IsValid())
+                m_resources->Release(preview.handle);
+    }
     m_texturePreviews.clear();
     m_texDescPreviews.clear();
     m_spritePreviews.clear();
@@ -3135,7 +2266,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
                 m_selectedFbxPath = e.path;
                 m_selectedModel   = nullptr;
                 if (renderer::ResourceManager::Active())
-                    m_selectedModel = asset::AssetManager::LoadModel(e.path);
+                    m_selectedModel = asset::AssetManager::LoadAndGet<asset::Model>(e.path);
             } else {
                 m_selectedFbxPath.clear();
                 m_selectedModel = nullptr;

@@ -6,6 +6,7 @@
 #include <Editor/AssetFileWatcher.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Panels/MaterialPreviewCore.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
@@ -415,6 +416,9 @@ private:
         uint32_t height = 0;
         bool failed = false;
         bool queued = false;
+        // .ico のように ResourceManager のパスキャッシュを通らず、このパネルが
+        // CreateTexture で作った実体を持つ場合だけ true。破棄時に解放が要る。
+        bool ownsTexture = false;
         PreviewRetry retry;
     };
     struct MaterialPreview : ThumbnailBase {
@@ -425,11 +429,9 @@ private:
         std::string previewTexturePath;
         uint32_t previewTextureWidth = 0;
         uint32_t previewTextureHeight = 0;
-        std::string shaderPath;
-        renderer::ResourceHandle<renderer::ShaderTag> shader;
-        renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
-        std::vector<renderer::ResourceHandle<renderer::TextureTag>> textures;
-        std::vector<uint8_t> paramData;
+        // シェーダー / Material CB / テクスチャは Inspector の Material Preview と同じ
+        // MaterialPreviewCore が組み立てる。ここは焼き直しの間だけ持つキャッシュ。
+        matpreview::GpuData gpu;
         bool loaded = false;
         // Inspector が最後に通知した編集リビジョン (EditorContext::materialPreviewRevisions)。
         // 0 = 未編集。ディスク由来のサムネイルと未保存編集の反映を区別するために持つ。
@@ -485,6 +487,8 @@ private:
     // .mat の shaderPath / ShaderDescriptor に合わせて、サムネイル描画用の Material CB と Texture を更新する。
     // WHY: AssetBrowser の Material サムネイルも実際のマテリアルと同じ HLSL を使い、Lit 固定による見た目のズレを避ける。
     bool RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx);
+    // このパネルが自前で作ったテクスチャ実体 (.ico) を解放する。
+    void ReleaseOwnedTexturePreview(const std::string& path);
     // AssetBrowser のファイルアイコン内 Preview 状態。
     // WHY: 専用 Preview ペインを持たず、グリッドの視線移動だけで Texture / Material を確認できるようにする。
     std::unordered_map<std::string, TexturePreview>       m_texturePreviews;

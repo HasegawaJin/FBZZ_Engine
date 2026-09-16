@@ -100,7 +100,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         util::StringUtils::ToLower(util::FileSystem::GetExtension(m_inspectedAssetPath)) == ".mat" &&
         AssetDirtyRegistry::IsDirty(m_inspectedAssetPath))
     {
-        auto* prevMat = asset::AssetManager::GetMaterial(m_inspectedMat);
+        auto* prevMat = asset::AssetManager::Get<asset::MaterialAsset>(m_inspectedMat);
         if (prevMat && asset::SaveMaterialAssetToFile(m_inspectedAssetPath, *prevMat)) {
             AssetDirtyRegistry::MarkClean(m_inspectedAssetPath);
             ctx.requestAssetBrowserRefresh = true;
@@ -115,7 +115,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const std::string relPath = NormalizeAssetPath(absPath);
         if (m_inspectedAssetPath != absPath || !m_inspectedMat.IsValid()) {
             m_inspectedAssetPath = absPath;
-            m_inspectedMat = asset::AssetManager::LoadMaterial(relPath);
+            m_inspectedMat = asset::AssetManager::Load<asset::MaterialAsset>(relPath);
         }
 
         if (!m_inspectedMat.IsValid()) {
@@ -123,7 +123,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             return;
         }
 
-        auto* matPtr = asset::AssetManager::GetMaterial(m_inspectedMat);
+        auto* matPtr = asset::AssetManager::Get<asset::MaterialAsset>(m_inspectedMat);
         if (!matPtr) {
             ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .mat");
             return;
@@ -225,7 +225,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 std::string& path = mat.textures[slot];
                 const char* filter = spriteAlbedo && std::strcmp(slot, "albedo") == 0
                     ? widgets::kSpriteAssetFilter : widgets::kTextureAssetFilter;
-                if (widgets::AssetPathField(slot, path, filter, ctx.projectRoot))
+                if (widgets::TextureSlotField(slot, path, filter, ctx.projectRoot))
                     materialDirty = true;
             };
             if (desc && !desc->textures.empty()) {
@@ -331,7 +331,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             AssetDirtyRegistry::Register(
                 capturedPath, capturedDisplay, "MAT",
                 [capturedPath, capturedHandle]() {
-                    auto* m = asset::AssetManager::GetMaterial(capturedHandle);
+                    auto* m = asset::AssetManager::Get<asset::MaterialAsset>(capturedHandle);
                     return m && asset::SaveMaterialAssetToFile(capturedPath, *m);
                 });
         }
@@ -346,7 +346,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             const std::string capturedDisplay = relPath;
             auto apply = [context, handle, capturedPath, capturedDisplay](
                              const asset::MaterialAsset& value) {
-                auto* target = asset::AssetManager::GetMaterial(handle);
+                auto* target = asset::AssetManager::Get<asset::MaterialAsset>(handle);
                 if (!target) return;
                 *target = value;
                 // Save ボタンを廃止した代わりに、Undo/Redo が確定した瞬間に即ディスクへ書く。
@@ -419,7 +419,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         // WHY: プレビューを先頭に固定すると、Shader / Params / Textures が長い材質ほど
         //      設定を開くたびにプレビューが画面を占有し、編集対象へ到達しにくくなる。
         ImGui::SeparatorText("Preview");
-        DrawMaterialPreviewWidget(ctx, mat, 240.0f);
+        m_materialPreview.Draw(ctx, mat, 240.0f);
     } else if (ext == ".vfx") {
         // .vfx の再生面は Prefab 編集モード (Docs/design/vfx-prefab.md §8.2)。
         // ここが受け持つのは «開く前に中身の見当を付ける» ところまで。
@@ -479,7 +479,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
 
             // クリップを持つスキンモデルはその場で再生確認できるようにする。
-            if (const asset::Model* previewModel = asset::AssetManager::LoadModel(absPath);
+            if (const asset::Model* previewModel = asset::AssetManager::LoadAndGet<asset::Model>(absPath);
                 previewModel && previewModel->skeleton && !previewModel->clips.empty()) {
                 ImGui::SeparatorText("Animation Preview");
                 DrawAnimationPreviewWidget(ctx, 240.0f);
@@ -547,7 +547,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
 
             // クリップを持つスキンモデルはその場で再生確認できるようにする。
-            if (const asset::Model* previewModel = asset::AssetManager::LoadModel(absPath);
+            if (const asset::Model* previewModel = asset::AssetManager::LoadAndGet<asset::Model>(absPath);
                 previewModel && previewModel->skeleton && !previewModel->clips.empty()) {
                 ImGui::SeparatorText("Animation Preview");
                 DrawAnimationPreviewWidget(ctx, 240.0f);
@@ -1430,7 +1430,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const asset::AvatarMaskAsset maskBeforeDraw = s_mask;
         const ImGuiID maskActiveBefore = ImGui::GetActiveID();
         const asset::Model* maskModel = s_mask.skeletonSourcePath.empty()
-            ? nullptr : asset::AssetManager::LoadModel(s_mask.skeletonSourcePath);
+            ? nullptr : asset::AssetManager::LoadAndGet<asset::Model>(s_mask.skeletonSourcePath);
         const asset::Skeleton* maskSkeleton =
             (maskModel && maskModel->skeleton) ? maskModel->skeleton.get() : nullptr;
         if (s_maskAnchorSourcePath != s_mask.skeletonSourcePath) {

@@ -130,8 +130,8 @@ const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& r
                 }
             }
         } else if (ext == ".mat") {
-            const auto mh = asset::AssetManager::LoadMaterial(rel);
-            if (const asset::MaterialAsset* m = asset::AssetManager::GetMaterial(mh)) {
+            const auto mh = asset::AssetManager::Load<asset::MaterialAsset>(rel);
+            if (const asset::MaterialAsset* m = asset::AssetManager::Get<asset::MaterialAsset>(mh)) {
                 // アルベドテクスチャがあればそれを、無ければアルベド色をスウォッチにする。
                 if (auto tx = m->textures.find("albedo");
                     tx != m->textures.end() && !tx->second.empty()) {
@@ -242,6 +242,93 @@ const AssignedSpriteThumb& ResolveAssignedSpriteThumb(const std::string& referen
         std::clamp(resolved.uvMax.y, 0.0f, 1.0f)
     };
     return cached;
+}
+
+/// @brief 割り当て済みテクスチャ参照を GPU プレビューへ解決した結果。
+/// @note texId が null かつ broken なら «参照はあるのに読めない»。空欄は両方とも偽。
+struct TexturePreview {
+    void*         texId  = nullptr;
+    ImVec2        uvMin  = { 0.0f, 0.0f };
+    ImVec2        uvMax  = { 1.0f, 1.0f };
+    std::uint32_t width  = 0;   ///< 0 なら解像度不明 (Sprite のコマ等)
+    std::uint32_t height = 0;
+    bool          broken = false;
+};
+
+struct TexturePreviewCacheEntry {
+    TexturePreview preview;
+    std::uint64_t  resetVersion = 0;
+    bool           resolved     = false;
+};
+std::unordered_map<std::string, TexturePreviewCacheEntry> s_texturePreviewCache;
+
+/// @brief 画像パス / Sprite 参照をサムネイル描画に必要な情報へ解決する。
+/// @return 空欄・非画像・描画器未設定なら既定値 (texId は null)。
+/// @note パス解決と GPU ハンドル取得は毎フレームやるには重いので覚える。
+///       デバイスリセットで過去のテクスチャ ID は無効になるため世代で捨てる。
+TexturePreview ResolveTexturePreview(const std::string& reference)
+{
+    if (reference.empty() || s_thumbnailResources == nullptr || s_thumbnailImGui == nullptr)
+        return {};
+
+    std::string texturePath;
+    std::string spriteName;
+    if (asset::ParseSpriteReference(reference, texturePath, spriteName)) {
+        /// @note コマの矩形と «切れている理由» は AssetPathField と同じ解決に任せる。
+        ///       別々に持つと、欄の表示とサムネイルが違うコマを指しうる。
+        const AssignedSpriteThumb& thumb = ResolveAssignedSpriteThumb(reference);
+        TexturePreview preview;
+        preview.texId  = thumb.texId;
+        preview.uvMin  = thumb.uvMin;
+        preview.uvMax  = thumb.uvMax;
+        preview.broken = !thumb.brokenReason.empty();
+        return preview;
+    }
+
+    const std::string ext =
+        util::StringUtils::ToLower(util::FileSystem::GetExtension(texturePath));
+    if (!IsImageExt(ext)) return {};
+
+    const std::uint64_t resetVersion = s_thumbnailResources->GetResetVersion();
+    TexturePreviewCacheEntry& entry = s_texturePreviewCache[reference];
+    if (entry.resolved && entry.resetVersion == resetVersion) return entry.preview;
+
+    entry = {};
+    entry.resetVersion = resetVersion;
+    entry.resolved     = true;
+    const auto handle = s_thumbnailResources->LoadTexture(
+        asset::AssetManager::ResolveAssetPath(texturePath));
+    const renderer::ITexture* texture = handle.IsValid()
+        ? s_thumbnailResources->Get(handle) : nullptr;
+    if (texture == nullptr) {
+        entry.preview.broken = true;
+        return entry.preview;
+    }
+    entry.preview.texId  = s_thumbnailImGui->GetImTextureID(handle, *s_thumbnailResources);
+    entry.preview.width  = texture->GetWidth();
+    entry.preview.height = texture->GetHeight();
+    return entry.preview;
+}
+
+/// @brief 透明部分を «黒い絵» と区別するための市松模様を敷く。
+void DrawCheckerboard(ImDrawList* dl, ImVec2 min, ImVec2 max, int cells)
+{
+    const float cellW = (max.x - min.x) / static_cast<float>(cells);
+    const float cellH = (max.y - min.y) / static_cast<float>(cells);
+    for (int y = 0; y < cells; ++y) {
+        for (int x = 0; x < cells; ++x) {
+            const ImVec2 cellMin = {
+                min.x + cellW * static_cast<float>(x),
+                min.y + cellH * static_cast<float>(y)
+            };
+            const ImVec2 cellMax = {
+                std::min(cellMin.x + cellW, max.x),
+                std::min(cellMin.y + cellH, max.y)
+            };
+            dl->AddRectFilled(cellMin, cellMax, ((x + y) & 1) == 0
+                ? IM_COL32(70, 70, 70, 255) : IM_COL32(42, 42, 42, 255));
+        }
+    }
 }
 
 // 拡張子 → バッジ色
@@ -357,8 +444,8 @@ void* ResolveAssetThumbnail(const std::string& relativePath,
     } else if (extension == ".mat") {
         // .mat は albedo を代表画にする。マテリアルを割り当てた Particle でも
         // 「どんな絵が出るのか」がノードから読めるようにするため。
-        const auto materialHandle = asset::AssetManager::LoadMaterial(relativePath);
-        if (const asset::MaterialAsset* material = asset::AssetManager::GetMaterial(materialHandle)) {
+        const auto materialHandle = asset::AssetManager::Load<asset::MaterialAsset>(relativePath);
+        if (const asset::MaterialAsset* material = asset::AssetManager::Get<asset::MaterialAsset>(materialHandle)) {
             if (auto albedo = material->textures.find("albedo");
                 albedo != material->textures.end() && !albedo->second.empty()) {
                 const auto handle = resources->LoadTexture(
@@ -599,22 +686,7 @@ bool AssetPathField(const char* label, std::string& path,
             const float previewSize = boxSize.y - 4.0f;
             const ImVec2 previewMin = { boxMin.x + 2.0f, boxMin.y + 2.0f };
             const ImVec2 previewMax = { previewMin.x + previewSize, previewMin.y + previewSize };
-            constexpr int CHECKER_COUNT = 4;
-            const float checkerSize = previewSize / static_cast<float>(CHECKER_COUNT);
-            for (int y = 0; y < CHECKER_COUNT; ++y) {
-                for (int x = 0; x < CHECKER_COUNT; ++x) {
-                    const ImVec2 cellMin = {
-                        previewMin.x + checkerSize * static_cast<float>(x),
-                        previewMin.y + checkerSize * static_cast<float>(y)
-                    };
-                    const ImVec2 cellMax = {
-                        std::min(cellMin.x + checkerSize, previewMax.x),
-                        std::min(cellMin.y + checkerSize, previewMax.y)
-                    };
-                    dl->AddRectFilled(cellMin, cellMax, ((x + y) & 1) == 0
-                        ? IM_COL32(70, 70, 70, 255) : IM_COL32(42, 42, 42, 255));
-                }
-            }
+            DrawCheckerboard(dl, previewMin, previewMax, 4);
             dl->AddImageRounded(ToImTextureID(spriteThumb.texId), previewMin, previewMax,
                                 spriteThumb.uvMin, spriteThumb.uvMax,
                                 IM_COL32_WHITE, 2.0f);
@@ -723,6 +795,127 @@ bool AssetPathField(const char* label, std::string& path,
         ImGui::TextUnformatted(label);
     }
 
+    ImGui::PopID();
+    return changed;
+}
+
+float TextureThumbnailSize()
+{
+    /// @note 行の高さから作る。px 直値だと UI スケールが文字だけを拡大したときに
+    ///       サムネイルだけ取り残されて、欄との高さが合わなくなる。
+    return std::floor(ImGui::GetFrameHeight() * 2.0f);
+}
+
+bool TextureThumbnail(std::string& path, float size, const char* filterExts)
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+    if (size <= 0.0f) size = TextureThumbnailSize();
+
+    const ImVec2 boxMin = ImGui::GetCursorScreenPos();
+    const ImVec2 boxMax = { boxMin.x + size, boxMin.y + size };
+    ImGui::InvisibleButton("##texPreview", { size, size });
+    // ホバー・押下はツールチップを描く前に確定させる (BeginTooltip 内で «直前のアイテム» が変わる)。
+    const bool hovered       = ImGui::IsItemHovered();
+    const bool clicked       = ImGui::IsItemClicked();
+    const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+
+    const TexturePreview preview = ResolveTexturePreview(path);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    DrawCheckerboard(dl, boxMin, boxMax, 4);
+    if (preview.texId != nullptr) {
+        // 縦横比を保って内接させる。引き伸ばすと «この絵で合っているか» の判断に使えない。
+        float drawW = size;
+        float drawH = size;
+        if (preview.width > 0 && preview.height > 0) {
+            const float aspect = static_cast<float>(preview.width)
+                               / static_cast<float>(preview.height);
+            if (aspect >= 1.0f) drawH = size / aspect;
+            else                drawW = size * aspect;
+        }
+        const ImVec2 imageMin = { boxMin.x + (size - drawW) * 0.5f,
+                                  boxMin.y + (size - drawH) * 0.5f };
+        dl->AddImage(ToImTextureID(preview.texId), imageMin,
+                     { imageMin.x + drawW, imageMin.y + drawH },
+                     preview.uvMin, preview.uvMax);
+    } else {
+        // 「未割り当て」と「割り当てたのに読めない」を描き分ける。
+        // WHY: どちらも «絵が出ない» で同じに見えると、パスの打ち間違いに気付けない。
+        const char*  mark     = path.empty() ? "-" : "!";
+        const ImVec2 markSize = ImGui::CalcTextSize(mark);
+        dl->AddText({ (boxMin.x + boxMax.x - markSize.x) * 0.5f,
+                      (boxMin.y + boxMax.y - markSize.y) * 0.5f },
+                    path.empty() ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
+                                 : IM_COL32(242, 89, 89, 255),
+                    mark);
+    }
+    dl->AddRect(boxMin, boxMax,
+                preview.broken ? IM_COL32(242, 89, 89, 255)
+                               : ImGui::GetColorU32(hovered ? ImGuiCol_ButtonHovered
+                                                            : ImGuiCol_Border),
+                style.FrameRounding);
+
+    bool changed = false;
+    if (filterExts != nullptr && AcceptAssetPathDrop(path, filterExts))
+        changed = true;
+
+    // ドラッグ中は AcceptAssetPathDrop 側が «受けられない理由» を出すので重ねない。
+    if (hovered && !ImGui::IsDragDropActive()) {
+        ImGui::BeginTooltip();
+        if (preview.texId != nullptr) {
+            constexpr float kLargeSize = 192.0f;
+            float largeW = kLargeSize;
+            float largeH = kLargeSize;
+            if (preview.width > 0 && preview.height > 0) {
+                const float aspect = static_cast<float>(preview.width)
+                                   / static_cast<float>(preview.height);
+                if (aspect >= 1.0f) largeH = kLargeSize / aspect;
+                else                largeW = kLargeSize * aspect;
+            }
+            ImGui::Image(ToImTextureID(preview.texId), { largeW, largeH },
+                         preview.uvMin, preview.uvMax);
+            if (preview.width > 0)
+                ImGui::TextDisabled("%u x %u", preview.width, preview.height);
+        } else if (path.empty()) {
+            ImGui::TextDisabled("未割り当て — 画像をここへドロップ");
+        } else {
+            ImGui::TextColored({ 0.95f, 0.35f, 0.35f, 1.0f }, "読み込めません");
+        }
+        if (!path.empty()) {
+            ImGui::TextUnformatted(path.c_str());
+            ImGui::TextDisabled("Click: Asset Browser で表示  /  Double-Click: 選択して Inspector へ");
+        }
+        ImGui::EndTooltip();
+    }
+
+    if (!path.empty()) {
+        if (clicked)       RequestAssetReveal(path, false);
+        if (doubleClicked) RequestAssetReveal(path, true);
+    }
+    return changed;
+}
+
+bool TextureSlotField(const char* label, std::string& path,
+                      const char* filterExts,
+                      const std::string& projectRoot,
+                      float thumbSize)
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+    if (thumbSize <= 0.0f) thumbSize = TextureThumbnailSize();
+
+    ImGui::PushID(label);
+    const float rowTopY = ImGui::GetCursorPosY();
+    bool changed = TextureThumbnail(path, thumbSize, filterExts);
+
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    // 欄はサムネイルの縦中央へ。上端に揃えると «絵と名前が同じ行» に見えない。
+    ImGui::SetCursorPosY(rowTopY + (thumbSize - ImGui::GetFrameHeight()) * 0.5f);
+    ImGui::PushItemWidth(std::max(96.0f,
+        ImGui::CalcItemWidth() - thumbSize - style.ItemSpacing.x));
+    changed |= AssetPathField(label, path, filterExts, projectRoot);
+    ImGui::PopItemWidth();
+
+    // 行の高さはサムネイルが決める。欄を中央へ下げた分だけ次の行が食い込むため置き直す。
+    ImGui::SetCursorPosY(rowTopY + thumbSize + style.ItemSpacing.y);
     ImGui::PopID();
     return changed;
 }

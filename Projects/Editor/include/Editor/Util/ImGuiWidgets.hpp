@@ -468,6 +468,27 @@ inline bool AssetPathFieldWithLoad(const char* label, std::string& path,
     return false;
 }
 
+/// @brief テクスチャ欄に添えるサムネイルの一辺 [px] (行の高さから決まる既定値)。
+[[nodiscard]] float TextureThumbnailSize();
+
+/// @brief 割り当て済みテクスチャの正方形サムネイルを 1 枚描く。D&D の受け皿も兼ねる。
+/// @param size  一辺 [px]。0 以下なら TextureThumbnailSize()。
+/// @param filterExts nullptr ならドロップを受けない (AssetPathField と同じ書式)。
+/// @return ドロップで path が変わったら true。
+/// @pre  サムネイルの解決には DrawAssetPickerModal() へ渡した ResourceManager /
+///       IImGuiRenderer を使う。渡していない場合は枠だけを描く。
+/// @pre  同じウィンドウに 2 枚以上並べる呼び手は PushID で区別すること (ID が衝突する)。
+/// @note 透明を «黒い絵» と区別するため市松模様の上に載せ、縦横比を保って内接させる。
+bool TextureThumbnail(std::string& path, float size = 0.0f, const char* filterExts = nullptr);
+
+/// @brief サムネイル付きのテクスチャパス欄 (Unity の Material Inspector と同じ並び)。
+/// @return path が変わったら true (サムネイルへのドロップを含む)。
+/// @see TextureThumbnail / AssetPathField
+bool TextureSlotField(const char* label, std::string& path,
+                      const char* filterExts,
+                      const std::string& projectRoot,
+                      float thumbSize = 0.0f);
+
 // InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ。
 // resources / imgui を渡すとピッカーに Unity 風のサムネイル可視化が有効になる
 // (画像はテクスチャプレビュー、.mat はアルベドのテクスチャ/色スウォッチ)。null でもリスト表示は動く。
