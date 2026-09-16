@@ -196,7 +196,7 @@ std::filesystem::path GetScriptScanRoot(const std::filesystem::path& scriptsSour
 }
 
 // HLSL の再コンパイル結果を現在開いているプロジェクトへ反映する。
-// WHY: compile_shaders.ps1 はエンジンソース側へDX11/DX12別のCSOを出力する。
+// WHY: compile_shaders.ps1 はエンジンソース側へ CSO を出力する。
 //      しかし実行中の renderer はプロジェクト側 Assets/shaders を読むため、
 //      ReloadAllShaders() の前に CSO を同期しないと古いバイナリを再ロードしてしまう。
 bool SyncCompiledShadersToProject(const std::filesystem::path& hlslSourceDir,
@@ -799,7 +799,68 @@ bool IsUsableSdkRoot(const std::string& sdkRoot)
         util::FileSystem::PathFromUtf8(sdkRoot) / L"cmake" / L"FBZZ" / L"FBZZConfig.cmake");
 }
 
-bool CMakeCacheUsesSdkRoot(const std::filesystem::path& buildDir, const std::string& sdkRoot)
+/// @brief SDK manifest (fbzz-sdk.toml) の `key = "value"` を 1 件読む。
+/// @param sdkRoot SDK root。manifest はこの直下に置かれる。
+/// @return manifest が読めない / キーが無いなら空文字列。
+/// @note 行頭一致に限定する。コメント中の同名文字列を拾うと、実在しない要求版数で
+///       cache を捨ててしまうため。
+std::string ReadSdkManifestValue(const std::string& sdkRoot, std::string_view key)
+{
+    if (sdkRoot.empty()) return {};
+    std::string manifest;
+    if (!util::FileSystem::ReadText(
+            util::FileSystem::PathFromUtf8(sdkRoot) / L"fbzz-sdk.toml", manifest))
+        return {};
+
+    for (std::size_t keyBegin = manifest.find(key);
+         keyBegin != std::string::npos;
+         keyBegin = manifest.find(key, keyBegin + 1)) {
+        if (keyBegin != 0 && manifest[keyBegin - 1] != '\n') continue;
+        const std::size_t quoteBegin = manifest.find('"', keyBegin + key.size());
+        if (quoteBegin == std::string::npos) return {};
+        const std::size_t quoteEnd = manifest.find('"', quoteBegin + 1);
+        if (quoteEnd == std::string::npos) return {};
+        return manifest.substr(quoteBegin + 1, quoteEnd - quoteBegin - 1);
+    }
+    return {};
+}
+
+/// @brief build tree へ固定された MSVC の版数を読む。
+/// @return 検出結果が無いなら空文字列。
+/// @note CMake はコンパイラ ID を CMakeFiles/<cmake版数>/CMakeCXXCompiler.cmake へ書いた後、
+///       再 configure しても検出をやり直さない。VS 更新後もここだけが旧版を指し続ける。
+std::string ReadCachedCompilerVersion(const std::filesystem::path& buildDir)
+{
+    static constexpr std::string_view kKey = "set(CMAKE_CXX_COMPILER_VERSION \"";
+    for (const std::filesystem::path& dir :
+         util::FileSystem::ListDirectories(buildDir / L"CMakeFiles")) {
+        std::string text;
+        if (!util::FileSystem::ReadText(dir / L"CMakeCXXCompiler.cmake", text)) continue;
+        const std::size_t keyBegin = text.find(kKey);
+        if (keyBegin == std::string::npos) continue;
+        const std::size_t valueBegin = keyBegin + kKey.size();
+        const std::size_t valueEnd   = text.find('"', valueBegin);
+        if (valueEnd == std::string::npos) continue;
+        return text.substr(valueBegin, valueEnd - valueBegin);
+    }
+    return {};
+}
+
+/// @brief cache が固定したコンパイラ版数が SDK の ABI 契約と一致するかを判定する。
+/// @note 判定材料 (manifest / 検出結果) のどちらかを欠く場合は true を返す。
+///       確証なく cache を捨てると、SDK と無関係な失敗まで毎回フル configure になる。
+bool CMakeCacheToolchainMatchesSdk(const std::filesystem::path& buildDir, const std::string& sdkRoot)
+{
+    const std::string required = ReadSdkManifestValue(sdkRoot, "compiler_version");
+    if (required.empty()) return true;
+    const std::string cached = ReadCachedCompilerVersion(buildDir);
+    if (cached.empty()) return true;
+    return cached == required;
+}
+
+/// @brief 既存 cache をそのまま使えるか (SDK root と ABI 契約の両方) を判定する。
+/// @return false なら configure をやり直す必要がある。
+bool CMakeCacheMatchesSdk(const std::filesystem::path& buildDir, const std::string& sdkRoot)
 {
     if (sdkRoot.empty()) return true;
     const std::string cachedRoot = ReadCachedSdkRoot(buildDir);
@@ -811,7 +872,11 @@ bool CMakeCacheUsesSdkRoot(const std::filesystem::path& buildDir, const std::str
     if (!util::FileSystem::SamePathText(cachedRoot, sdkRoot)) return false;
 
     // 値が一致していても SDK 実体が無ければ configure は必ず失敗するので stale 扱いにする。
-    return IsUsableSdkRoot(cachedRoot);
+    if (!IsUsableSdkRoot(cachedRoot)) return false;
+
+    // SDK は版数完全一致の ABI 契約なので、VS 更新で cache 側だけ旧版のままになると
+    // find_package(FBZZ) が FATAL_ERROR で落ちる。SDK root が一致していても stale。
+    return CMakeCacheToolchainMatchesSdk(buildDir, sdkRoot);
 }
 
 // コピーされたテンプレートのCMakeCacheは生成元を指すため、configure前に破棄する。
@@ -850,11 +915,42 @@ bool RemoveForeignCMakeCache(const std::string& projectRoot)
     return true;
 }
 
+/// @brief ツールチェーンが入れ替わった build tree から configure 状態だけを捨てる。
+/// @return 削除に失敗したら false。一致していれば何もせず true。
+/// @note 中間物 (<Target>.dir / x64) は残す。捨てるのは CMakeCache.txt と
+///       コンパイラ ID を抱えた CMakeFiles/<cmake版数>/ だけ。
+/// @warning configure のやり直しだけでは回復しない。CMake はコンパイラ ID を
+///          再検出しないため、これを消さない限り旧版数で ABI 検査へ入り続ける。
+bool RemoveStaleToolchainCache(const std::string& projectRoot, const std::string& sdkRoot)
+{
+    const std::filesystem::path projectPath =
+        util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(projectRoot));
+    const std::filesystem::path buildDir = projectPath / L"Build" / L"VS";
+    if (CMakeCacheToolchainMatchesSdk(buildDir, sdkRoot)) return true;
+
+    FBZZ_LOG_INFO("ScriptDll: toolchain changed (cache=%s, SDK=%s); dropping cached compiler id",
+                  ReadCachedCompilerVersion(buildDir).c_str(),
+                  ReadSdkManifestValue(sdkRoot, "compiler_version").c_str());
+
+    bool ok = util::FileSystem::RemoveAll(buildDir / L"CMakeCache.txt");
+    for (const std::filesystem::path& dir :
+         util::FileSystem::ListDirectories(buildDir / L"CMakeFiles")) {
+        if (!util::FileSystem::Exists(dir / L"CMakeCXXCompiler.cmake")) continue;
+        ok = util::FileSystem::RemoveAll(dir) && ok;
+    }
+    if (!ok) {
+        FBZZ_LOG_ERROR("ScriptDll: stale toolchain cache cleanup failed: %s",
+                       util::FileSystem::PathToUtf8(buildDir).c_str());
+    }
+    return ok;
+}
+
 // WHY: GameHub プロジェクトは初回開封時、または共有 SDK 移行直後に cache が古い場合がある。
 //      stale な Scripts.dll を先に読むと偽の ABI 詳細を出すため、ロード前に configure を完了させる。
 bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engineRoot)
 {
     if (!RemoveForeignCMakeCache(projectRoot)) return false;
+    if (!RemoveStaleToolchainCache(projectRoot, engineRoot)) return false;
 
     wchar_t cmakeBuf[MAX_PATH]{};
     if (!SearchPathW(nullptr, L"cmake.exe", nullptr, MAX_PATH, cmakeBuf, nullptr)) {
@@ -945,7 +1041,7 @@ void EditorApp::InitScriptDll()
     // build.config があっても、共有 SDK 移行前の cache なら configure をやり直す。
     if (!m_ctx.projectRoot.empty()) {
         const std::filesystem::path presetsJson = util::FileSystem::PathFromUtf8(m_ctx.projectRoot) / L"CMakePresets.json";
-        const bool sdkCacheMatches = toolchain.found && CMakeCacheUsesSdkRoot(toolchain.buildDir, m_ctx.engineRoot);
+        const bool sdkCacheMatches = toolchain.found && CMakeCacheMatchesSdk(toolchain.buildDir, m_ctx.engineRoot);
         if (util::FileSystem::Exists(presetsJson) && !sdkCacheMatches) {
             if (!TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot)) {
                 SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: SDK configure failed");
