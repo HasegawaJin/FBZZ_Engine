@@ -1,14 +1,14 @@
 # FBZZ Engine
 
 **C++20 で書いている自作 3D ゲームエンジン (Windows)。**
-数学と物理をゼロから実装し、レンダラーを `IRenderer` 抽象の裏に隠して **DirectX 11 / DirectX 12 の 2 バックエンド**を同居させている。RenderGraph ベースの Deferred + Forward ハイブリッド、クラスタードライティング、スクリプト DLL のホットリロード、ノードベースのアニメーショングラフ、NavMesh、地形・水面・天候、VFX / 流体オーサリング、37 パネルの ImGui エディター、そして MCP 経由の AI 連携までを 1 つのリポジトリに収めている。
+数学と物理をゼロから実装し、レンダラーを `IRenderer` 抽象の裏に隠している。**DirectX 11 / 12 の 2 バックエンドを同居させた上で、DX11 を v1.0 で撤去した** — 上位レイヤーを 1 行も変えずにバックエンドを 1 つ落とせたことが、この境界が機能している証拠になっている ([設計文書](Docs/design/dx11-removal.md))。RenderGraph ベースの Deferred + Forward ハイブリッド、クラスタードライティング、スクリプト DLL のホットリロード、ノードベースのアニメーショングラフ、NavMesh、地形・水面・天候、VFX / 流体オーサリング、37 パネルの ImGui エディター、そして MCP 経由の AI 連携までを 1 つのリポジトリに収めている。
 
 エンジンだけでは「動くもの」にならないので、**サンプルゲーム 2 本**を同梱している。エディター既定プロジェクトの TPS サンプルと、エンジンの全機能を使って制作中の剣戟アクション **GreenWare**。
 
 | | |
 |---|---|
 | 言語 / 規格 | C++20 (一部 TypeScript / HLSL / PowerShell) |
-| プラットフォーム | Windows 10 / 11・DirectX 11 / DirectX 12 |
+| プラットフォーム | Windows 10 / 11・DirectX 12 (SM 6.x) |
 | 名前空間 | `fbzz::` (`math` / `physics` / `renderer` / `scene` / `editor`) |
 | 依存方向 | `Editor / GameHub / Sandbox / GreenWare → Engine → Physics → Math` |
 | 外部数学・物理ライブラリ | **不使用** (GLM / GLFW / Bullet / PhysX / Box2D いずれも不採用) |
@@ -74,9 +74,9 @@ Vector2/3/4・Matrix3/4・Quaternion・Ray・Segment・Frustum・Plane を GLM �
 
 ### 2. バックエンドは上位から見えない
 
-`IRenderer` / `IBuffer` / `ITexture` / `IShader` / `IPipelineState` のインターフェース層 (`FBZZRHI`) があり、DX11 / DX12 の実装はそれぞれ別の OBJECT ライブラリに閉じる。**DX ヘッダーは各バックエンドの PRIVATE include にしか無く**、バックエンドが外へ出すのは `BackendEntry.hpp` の生成関数 1 つだけ。これを CMake が強制していて、`DX11Renderer*` へダウンキャストしようとしても include が通らない。
+`IRenderer` / `IBuffer` / `ITexture` / `IShader` / `IPipelineState` のインターフェース層 (`FBZZRHI`) があり、バックエンド実装は別の OBJECT ライブラリに閉じる。**DX ヘッダーは各バックエンドの PRIVATE include にしか無く**、バックエンドが外へ出すのは `BackendEntry.hpp` の生成関数 1 つだけ。これを CMake が強制していて、`DX12Renderer*` へダウンキャストしようとしても include が通らない。
 
-DX12 が既定 (`ProjectSettings::rendererBackend = DX12`)。DX11 はフォールバックとして全パスを維持している。
+DX12 が唯一のバックエンド (`ProjectSettings::rendererBackend = DX12`)。DirectX 11 サポートは v1.0 で終了し、`v0.9` が DX11 を含む最後のリリースになる。`renderer = "dx11"` が残った設定ファイルは起動を止めずに DX12 へ倒し、倒したことを警告で名指しする。
 
 ### 3. リフレクションはヘッダーに閉じる
 
@@ -140,7 +140,7 @@ FBZZ_Engine/
 ```mermaid
 graph LR
     subgraph サードパーティ
-        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 11 / DirectX 12"]
+        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 12 / DXC"]
     end
 
     subgraph コアライブラリ
@@ -176,12 +176,12 @@ graph LR
 `FBZZEngine.dll` は 1 本だが、内部は 5 つの OBJECT ライブラリへ割り、依存の向きを CMake で固定している。
 
 ```
-FBZZCore → FBZZRHI → FBZZRenderPlatform → FBZZRenderDX11 / FBZZRenderDX12 → FBZZEngine
+FBZZCore → FBZZRHI → FBZZRenderPlatform → FBZZRenderDX12 → FBZZEngine
 ```
 
 - **OBJECT であって STATIC ではない** — `__declspec(dllexport)` を持つ翻訳単位を STATIC に畳むと、リンカーがエクスポートを落とす
 - **どのモジュールにも属さないソースが出ると configure 時に落ちる** — 新しい `.cpp` を黙って取りこぼさないため
-- DX12 バックエンドは `FBZZ_ENABLE_DX12` (既定 ON) で切り離せる
+- `FBZZ_ENABLE_DX12` (既定 ON) を OFF にすると描画バックエンドを持たない構成になる (カバレッジ計測専用)
 
 ### コアエンジン
 
@@ -327,7 +327,7 @@ graph LR
 
 ### シェーダー (HLSL)
 
-`Assets/Shaders/` 以下をカテゴリで分けて置く。エディターと CMake が自動収集し、`compile_shaders.ps1` が **include 依存を含む差分だけ**をコンパイルする (DX11 は FXC、DX12 は DXC)。
+`Assets/Shaders/` 以下をカテゴリで分けて置く。エディターと CMake が自動収集し、`compile_shaders.ps1` が **include 依存を含む差分だけ**を DXC でコンパイルする (SM 6.8 / DXIL)。
 
 | カテゴリ | 内容 |
 |---|---|
@@ -341,7 +341,7 @@ graph LR
 | `Bake/` | Fluid ソルバー / VolumeFlipbook ベイク (CS) |
 | `Motion/` `Terrain/` `Water/` `UI/` `Debug/` | 速度・地形・水面・UI・デバッグ表示 |
 | `Rendering/` `Common/` | `BRDF` / `Lighting` / `ClusteredLights` / `Shadow` / `IBL` / `Atmosphere` / `Cloud` / `Fog` / `ToneMap` / `ParticleCommon` などの共通 `.hlsli` |
-| `Platform/` | `DX11.hlsli` / `DX12.hlsli` — バックエンド差を吸収する薄い層 |
+| `Platform/` | `Backend.hlsli` / `DX12.hlsli` — バックエンド機能フラグを 1 か所へ集約する薄い層 |
 
 ---
 
@@ -720,7 +720,7 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 | OS | Windows 10 / 11 |
 | Visual Studio | 2022 以降 (C++20 対応) |
 | CMake | 3.20 以上 |
-| Windows SDK | DirectX 11 / 12 同梱版 |
+| Windows SDK | DirectX 12 / DXC 同梱版 |
 | Node.js | GameHub / EditorMcp をビルドする場合のみ |
 
 ### 手順
@@ -879,8 +879,8 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 
 | ライブラリ | 用途 |
 |---|---|
-| DirectX 11 / DirectX 12 SDK | レンダリング API |
-| DXC / FXC | シェーダーコンパイラー (DX12 / DX11) |
+| DirectX 12 SDK | レンダリング API |
+| DXC | シェーダーコンパイラー (SM 6.8 / DXIL) |
 | Microsoft::WRL (ComPtr) | COM リソース RAII |
 | XAudio2 | 3D オーディオ |
 | Assimp | FBX / OBJ メッシュ・スケルタルデータ読み込み |
