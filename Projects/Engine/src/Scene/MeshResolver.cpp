@@ -48,7 +48,7 @@ renderer::Mesh* ResolveMeshPath(const std::string& path, renderer::ResourceManag
         }
     }
 
-    auto* model = asset::AssetManager::LoadModel(filePath);
+    auto* model = asset::AssetManager::LoadAndGet<asset::Model>(filePath);
     if (!model) return nullptr;
     if (meshIndex < 0 || meshIndex >= static_cast<int>(model->meshes.size())) return nullptr;
     return model->meshes[meshIndex].get();

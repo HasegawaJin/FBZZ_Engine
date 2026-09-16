@@ -51,8 +51,8 @@ UnderwaterInfo EvaluateUnderwaterInfo(const RenderPassContext& ctx)
         // 視覚パラメータは fzmat から読む。未設定時は WaterComponent のデフォルト値と揃えた定数を使う。
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {
-            const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
-            mat = asset::AssetManager::GetMaterial(handle);
+            const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath);
+            mat = asset::AssetManager::Get<asset::MaterialAsset>(handle);
         }
         auto getF = [mat](const char* name, float def) -> float {
             if (!mat) return def;

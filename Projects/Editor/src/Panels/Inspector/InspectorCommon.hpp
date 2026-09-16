@@ -1629,7 +1629,7 @@ inline renderer::Mesh* MeshFromModelPath(const std::string& path, int meshIndex)
         }
     }
 
-    auto* model = asset::AssetManager::LoadModel(filePath);
+    auto* model = asset::AssetManager::LoadAndGet<asset::Model>(filePath);
     if (!model || resolvedIndex < 0 || resolvedIndex >= static_cast<int>(model->meshes.size()))
         return nullptr;
     return model->meshes[static_cast<size_t>(resolvedIndex)].get();
@@ -1646,7 +1646,7 @@ inline renderer::Mesh* SourceMeshFromGameObject(scene::GameObject& go,
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
         if (!smr->model && !smr->modelPath.empty())
-            smr->model = asset::AssetManager::LoadModel(smr->modelPath);
+            smr->model = asset::AssetManager::LoadAndGet<asset::Model>(smr->modelPath);
         // 1 GameObject = モデル全体になったため、コライダーのソースは
         // Collider 側が持つ meshIndex (呼び出し前に設定済み) の submesh を使う。
         if (smr->model) {

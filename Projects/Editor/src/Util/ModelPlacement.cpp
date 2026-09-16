@@ -255,7 +255,7 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
 {
     if (!ctx.activeScene) return scene::EntityID::INVALID;
 
-    auto* model = asset::AssetManager::LoadModel(modelPath);
+    auto* model = asset::AssetManager::LoadAndGet<asset::Model>(modelPath);
     const auto modelAssetHandle = asset::AssetManager::Load<asset::ModelAsset>(modelPath);
     const auto* modelAsset = asset::AssetManager::Get(modelAssetHandle);
     if (!model || model->meshes.empty()) {
@@ -407,7 +407,7 @@ std::string ResolveOrImportFbxModel(const std::string& fbxAssetPath)
     const fs::path fbxLogical = util::FileSystem::PathFromUtf8(fbxAssetPath);
     const std::string stem = util::FileSystem::PathToUtf8(fbxLogical.stem());
 
-    // インポート済みなら FBX 自身を返す。LoadModel / Load<ModelAsset> が Library コンテナへ解決する。
+    // インポート済みなら FBX 自身を返す。Load<Model> / Load<ModelAsset> が Library コンテナへ解決する。
     if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid())
         return fbxAssetPath;
 

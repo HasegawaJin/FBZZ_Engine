@@ -186,7 +186,7 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
     if (!mesh) {
         if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
             if (!skinned->model && !skinned->modelPath.empty())
-                skinned->model = asset::AssetManager::LoadModel(skinned->modelPath);
+                skinned->model = asset::AssetManager::LoadAndGet<asset::Model>(skinned->modelPath);
             // コライダーのソースは明示指定の meshIndex (col.meshIndex) を優先し、
             // 無指定なら先頭 submesh を使う。
             // WHY ローカルスロット番号で引くか: この Renderer が描いていない submesh を
@@ -199,7 +199,7 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
         }
     }
     if (!mesh && !meshPath.empty()) {
-        if (auto* model = asset::AssetManager::LoadModel(meshPath)) {
+        if (auto* model = asset::AssetManager::LoadAndGet<asset::Model>(meshPath)) {
             if (meshIndex >= 0 && meshIndex < static_cast<int>(model->meshes.size()))
                 mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
         }

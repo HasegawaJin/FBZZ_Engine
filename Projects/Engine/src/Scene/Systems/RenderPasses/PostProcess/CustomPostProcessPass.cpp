@@ -67,9 +67,9 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
 {
     if (path.empty()) return nullptr;
 
-    const auto assetHandle = asset::AssetManager::LoadMaterial(path);
+    const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     const auto* matAsset = assetHandle.IsValid()
-        ? asset::AssetManager::GetMaterial(assetHandle) : nullptr;
+        ? asset::AssetManager::Get<asset::MaterialAsset>(assetHandle) : nullptr;
     if (!matAsset) {
         if (WarnCustomMaterialOnce(path))
             FBZZ_LOG_WARN("Custom pass material load failed '%s' -> falling back to shaderPath.",

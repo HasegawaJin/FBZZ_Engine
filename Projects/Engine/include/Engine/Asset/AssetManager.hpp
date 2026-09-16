@@ -3,18 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// 新 API: AssetManager::Load<T>(path) → AssetHandle<T>
-/// 対応型: ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
+/// AssetManager::Load<T>(path) → AssetHandle<T>、Get<T>(h) → T*、Unload<T>(path)。
+/// 対応型: Model, ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
 /// TerrainAsset, AnimatorControllerAsset, SequenceAsset
 /// RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
 ///
-/// 旧 API (後方互換 — 移行中のコールサイト向け):
-/// LoadModel(path)   → Model*
-/// LoadMaterial(path)→ ResourceHandle<MaterialAssetTag>
-/// GetMaterial(h)    → MaterialAsset*
-/// テクスチャは ResourceManager::LoadTexture() を使うこと。
-///
-/// 旧 API への Load<Model> シンタックスは LoadModel() に移行すること。
+/// @note テクスチャの GPU 実体は ResourceManager::LoadTexture() が持つ。
+/// @see Docs/design/ — Model は .fzasset (ModelAsset) から組み立てる旧表現で、
+///      メッシュ・マテリアル・クリップを一括保持する。新規コードは ModelAsset を使う。
 #pragma once
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
@@ -183,7 +179,7 @@ public:
     template<typename T>
     static AssetHandle<T> Load(const std::string& relativePath) {
         assert(S_init() && "AssetManager::Init() must be called first");
-        const std::string key = Normalize(relativePath);
+        const std::string key = CacheKey(relativePath);
         AssetStore<T>& store = AssetStore<T>::Get();
 
         const auto it = store.cache.find(key);
@@ -207,9 +203,17 @@ public:
         return AssetStore<T>::Get().GetPtr(h);
     }
 
+    /// Load<T>() してそのまま実体を引く。ハンドルを持ち回らない呼び出し元向け。
+    /// @return ロードに失敗したら nullptr。
+    /// @warning 返り値はストアの所有物。UnloadAll / Unload<T>() を跨いで保持しないこと。
+    template<typename T>
+    static T* LoadAndGet(const std::string& relativePath) {
+        return Get<T>(Load<T>(relativePath));
+    }
+
     template<typename T>
     static void Unload(const std::string& relativePath) {
-        const std::string key = Normalize(relativePath);
+        const std::string key = CacheKey(relativePath);
         AssetStore<T>& store = AssetStore<T>::Get();
         const auto it = store.cache.find(key);
         if (it == store.cache.end()) return;
@@ -217,34 +221,22 @@ public:
         store.cache.erase(it);
     }
 
-    // ── 旧 API (後方互換) ──────────────────────────────────────────────
-
-    // .fbx / .fzasset → Model* (呼び出し元は LoadModel に移行すること)
-    static Model* LoadModel(const std::string& relativePath);
-
-    static renderer::ResourceHandle<renderer::MaterialAssetTag>
-        LoadMaterial(const std::string& relativePath);
-    static MaterialAsset* GetMaterial(renderer::ResourceHandle<renderer::MaterialAssetTag> h);
-    static void           UnloadMaterial(const std::string& relativePath);
-
 private:
     static renderer::ResourceManager* s_resources;
     static std::string                s_basePath;
     static std::string                s_engineBasePath;
     static bool                       s_initialized;
 
-    static std::unordered_map<std::string, std::unique_ptr<Model>>    s_models;
-
-    struct MatSlot {
-        std::unique_ptr<MaterialAsset> asset;
-        uint32_t gen      = 1;
-        bool     occupied = false;
-    };
-    static std::vector<MatSlot>   s_materialSlots;
-    static std::vector<uint32_t>  s_materialFreeList;
-    static std::unordered_map<std::string, renderer::ResourceHandle<renderer::MaterialAssetTag>> s_materials;
-
     static std::string Normalize(const std::string& path);
+
+    /// キャッシュキーを 1 つに寄せる。解決できる guid 参照は "Assets/..." 相対へ畳む。
+    ///
+    /// WHY 素の Normalize では足りないか:
+    ///   シーンは "guid:<hex>|Assets/X.mat"、Inspector や D&D は "Assets/X.mat" で
+    ///   同じファイルを引く。キーが分かれるとストアに実体が 2 つでき、Inspector で
+    ///   触った編集が描画している側へ届かない (保存してホットリロードが走るまで)。
+    /// @note 解決できない参照は元のキーのまま通す。ResolvePath の «参照切れ» 報告を残すため。
+    static std::string CacheKey(const std::string& path);
     static std::string ResolvePath(const std::string& key, const std::string& basePath);
     // DLL-boundary helpers: static data members cannot cross DLL boundaries directly,
     // so the header-inline Load<T> template must call these exported functions instead.
@@ -259,11 +251,10 @@ private:
     static void UnloadFromStore(const std::string& relativePath);
     template<typename T>
     static int ReloadFromStore(const std::string& absPath);
-    static renderer::ResourceHandle<renderer::MaterialAssetTag>
-        AllocMaterialSlot(std::unique_ptr<MaterialAsset>);
-    static bool IsMaterialLive(renderer::ResourceHandle<renderer::MaterialAssetTag>);
 };
 
+template<>
+AssetHandle<Model> AssetManager::Load<Model>(const std::string& relativePath);
 template<>
 AssetHandle<ModelAsset> AssetManager::Load<ModelAsset>(const std::string& relativePath);
 template<>
@@ -282,6 +273,8 @@ template<>
 AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath);
 
 template<>
+Model* AssetManager::Get<Model>(AssetHandle<Model> h);
+template<>
 ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h);
 template<>
 AnimationClip* AssetManager::Get<AnimationClip>(AssetHandle<AnimationClip> h);
@@ -298,6 +291,8 @@ PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<Physic
 template<>
 SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h);
 
+template<>
+void AssetManager::Unload<Model>(const std::string& relativePath);
 template<>
 void AssetManager::Unload<ModelAsset>(const std::string& relativePath);
 template<>

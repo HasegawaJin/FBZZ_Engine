@@ -1813,7 +1813,7 @@ bool MaterialInstance::HasProperty(MaterialPropertyId property) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
     if (!material || !property.IsValid() || !material->EnsureMaterialAsset()) return false;
-    const auto* asset = asset::AssetManager::GetMaterial(material->materialAsset);
+    const auto* asset = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
     if (!asset) return false;
     if (asset->params.contains(std::string(property.name)) ||
         asset->textures.contains(std::string(property.name)))
@@ -1866,7 +1866,7 @@ bool MaterialInstance::ValidateProperty(
     if ((material->propertyValidationCache[property.hash] & validationBit) != 0)
         return true;
     if (!descriptor) {
-        const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+        const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
         bool valid = false;
         if (shared) {
             if (kind == PropertyKind::Texture) {
@@ -2008,7 +2008,7 @@ bool MaterialInstance::TryGetFloat(MaterialPropertyId property, float& value) co
         value = overrideIt->second[0];
         return true;
     }
-    const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+    const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
     if (!shared) return false;
     const auto it = shared->params.find(key);
     if (it == shared->params.end() || it->second.empty()) return false;
@@ -2041,7 +2041,7 @@ bool MaterialInstance::TryGetVector4(MaterialPropertyId property, math::Vector4&
     const std::vector<float>* values = overrideIt != material->paramOverrides.end()
         ? &overrideIt->second : nullptr;
     if (!values) {
-        const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+        const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
         if (!shared) return false;
         const auto sharedIt = shared->params.find(key);
         if (sharedIt == shared->params.end()) return false;
@@ -2075,7 +2075,7 @@ bool MaterialInstance::TryGetTexture(MaterialPropertyId property, TextureRef& te
         texture.SetPath(overrideIt->second);
         return true;
     }
-    const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+    const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
     if (!shared) return false;
     const auto it = shared->textures.find(key);
     if (it == shared->textures.end()) return false;
@@ -2162,8 +2162,8 @@ bool ScriptMaterialProxy::SetSharedMaterial(EntityRef target,
     if (!material) return false;
     const std::string path = materialRef.ResolvePath();
     const auto assetHandle = path.empty()
-        ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
-        : asset::AssetManager::LoadMaterial(path);
+        ? asset::AssetHandle<asset::MaterialAsset>{}
+        : asset::AssetManager::Load<asset::MaterialAsset>(path);
     if (!path.empty() && !assetHandle.IsValid()) {
         FBZZ_LOG_WARN("Shared material could not be loaded: %s", path.c_str());
         return false;
@@ -2186,9 +2186,9 @@ const asset::MaterialAsset* ResolveSharedMaterial(const MaterialRef& material)
 {
     const std::string path = material.ResolvePath();
     if (path.empty()) return nullptr;
-    const auto handle = asset::AssetManager::LoadMaterial(path);
+    const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     if (!handle.IsValid()) return nullptr;
-    return asset::AssetManager::GetMaterial(handle);
+    return asset::AssetManager::Get<asset::MaterialAsset>(handle);
 }
 
 } // namespace

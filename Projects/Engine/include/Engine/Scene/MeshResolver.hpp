@@ -16,7 +16,7 @@ namespace fbzz::scene {
 /// メッシュ参照文字列を解決する。見つからなければ nullptr。
 ///
 ///   "primitive:sphere" → PrimitiveMesh::Sphere
-///   "models/foo.fbx"   → AssetManager::LoadModel の mesh[0]
+///   "models/foo.fbx"   → AssetManager::Load<Model> の mesh[0]
 ///   "models/foo.fbx:2" → mesh[2]
 ///
 /// 返すのは生ポインタ。primitive は PrimitiveMesh の static キャッシュ、モデルは
