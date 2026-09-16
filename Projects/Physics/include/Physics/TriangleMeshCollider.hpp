@@ -54,6 +54,10 @@ namespace fbzz::physics
         void RebuildBVH(const math::Vector3&    pos,
                         const math::Quaternion& rot,
                         const math::Vector3&    scale);
+
+        // 木の構造はそのままに、現在のスケールと与えられた姿勢で三角形を置き直す。
+        // スケールが変わっていないこと (= 剛体変換であること) が前提。
+        void RefitTransform(const math::Vector3& pos, const math::Quaternion& rot);
     };
 
 } // namespace fbzz::physics

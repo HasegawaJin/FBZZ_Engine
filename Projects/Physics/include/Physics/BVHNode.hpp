@@ -39,6 +39,12 @@ namespace fbzz::physics
         // maxLeafTris は、葉ノードに格納する最大三角形数。
         void Build(std::vector<Triangle>&& tris, int maxLeafTris = 8);
 
+        // triangles の頂点を書き換えた後に、木の構造はそのままノード AABB だけ測り直す。
+        // WHY Build と分けるか: transform だけが変わったとき «どの三角形がどの葉に入るか» は
+        //     依然として妥当な空間分割で、作り直す必要があるのは境界だけ。Build は
+        //     重心ソートを伴う O(n log n) だが、こちらは葉から根への一巡で済む。
+        void Refit();
+
         // AABB と重なる三角形だけを列挙する。非再帰 DFS にして深いメッシュでも C++ の呼び出しスタックを使わない。
         // predicate: void(const Triangle&)
         template<typename Pred>

@@ -29,9 +29,10 @@ public:
     AABB         GetAABB() const override { return m_worldAABB; }
     ColliderType GetType() const override { return ColliderType::HEIGHT_FIELD; }
 
-    // Transform を BVH に反映する。heightData が変わっていなければ AABB 再計算のみ行い BVH を使い回す。
-    // WHY: 地形は静的が前提。Transform 変化のたびに BVH を全再構築すると
-    //      TriangleMeshCollider と同コストになるため、transform 変化は AABB だけ更新する。
+    // Transform を BVH に反映する。heightData が変わっていなければ木の構造は使い回し、
+    // 三角形の頂点を置き直してノード AABB を refit するだけで済ませる。
+    // WHY: 地形は静的が前提だが、エディタでギズモを掴めば動く。Transform 変化のたびに
+    //      重心ソート込みの全再構築を走らせると TriangleMeshCollider と同コストになる。
     void Update(const math::Vector3& worldPos,
                 const math::Quaternion& worldRot) override;
     void UpdateWithScale(const math::Vector3&    worldPos,
@@ -66,10 +67,15 @@ private:
     math::Quaternion m_worldRot;
     math::Vector3    m_worldScale = { 1.f, 1.f, 1.f };
 
+    // 格子点 (x, z) のローカル座標。ワールド高さ = heights[i] * maxHeight。
+    math::Vector3 LocalVertex(int x, int z) const;
+    // ローカル座標へ scale → rotation → translation を掛ける。
+    math::Vector3 ToWorld(const math::Vector3& local) const;
+
     // 現在の transform を使って BVH をフル再構築する
     void RebuildBVH();
-    // BVH の世界座標 AABB を再計算する（BVH 再構築なし）
-    AABB ComputeWorldAABB() const;
+    // 木の構造はそのままに、現在の transform で三角形を置き直して AABB を refit する。
+    void RefitTransform();
 };
 
 } // namespace fbzz::physics

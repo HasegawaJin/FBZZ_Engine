@@ -280,4 +280,90 @@ TEST_F(ConvexHullTest, CapsTheVertexCount)
               physics::ConvexHullCollider::MAX_HULL_VERTS);
 }
 
+TEST_F(ConvexHullTest, KeepsTheOutermostPointsWhenTheCloudExceedsTheCap)
+{
+    // WHY 外周の点を «後ろ» に置くか: 上限を入力の先頭から掛ける実装だと、この 8 点が
+    //     丸ごと落ちて «実際の形より小さいコライダー» が黙って出来上がる。頂点バッファの
+    //     並び順は形とは無関係なので、実データのメッシュでも普通に起きる。
+    //     上の CapsTheVertexCount は «球面上の 500 点» なので、先頭 64 点でもだいたい球に
+    //     なってしまい、この不具合を素通しする。包含関係まで見ないと固定できない。
+    std::vector<math::Vector3> cloud;
+    for (int i = 0; i < 120; ++i) cloud.push_back(Rng().NextUnitVector3() * 0.1f);
+    for (const math::Vector3& corner : CubePoints(5.0f)) cloud.push_back(corner);
+    ASSERT_GT(static_cast<int>(cloud.size()), physics::ConvexHullCollider::MAX_HULL_VERTS);
+
+    physics::ConvexHullCollider hull(cloud);
+    hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    const math::Vector3 dirs[] = {
+        math::Vector3::RIGHT,    -math::Vector3::RIGHT,
+        math::Vector3::UP,       -math::Vector3::UP,
+        math::Vector3::FORWARD,  -math::Vector3::FORWARD,
+        math::Vector3( 1.0f,  1.0f,  1.0f).Normalized(),
+        math::Vector3(-1.0f,  1.0f, -1.0f).Normalized(),
+        math::Vector3( 1.0f, -1.0f,  1.0f).Normalized(),
+    };
+    for (const math::Vector3& dir : dirs)
+        ExpectSupportsAtLeast(hull, cloud, dir);
+
+    EXPECT_LE(static_cast<int>(hull.GetWorldVertices().size()),
+              physics::ConvexHullCollider::MAX_HULL_VERTS);
+}
+
+TEST_F(ConvexHullTest, FacesReferenceRealVerticesWhenTheCloudExceedsTheCap)
+{
+    // WHY 上限に掛かる大きさで見るか: 頂点だけ切り詰めて面のインデックスを放置すると
+    //     ここが範囲外になる。World.cpp の RayConvexHull は範囲チェックなしで
+    //     verts[face[0]] を引くので、そのまま範囲外読み取りになる。
+    std::vector<math::Vector3> cloud;
+    for (int i = 0; i < 500; ++i) cloud.push_back(Rng().NextUnitVector3());
+
+    physics::ConvexHullCollider hull(std::move(cloud));
+    hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    const std::size_t vertexCount = hull.GetWorldVertices().size();
+    ASSERT_FALSE(hull.GetFaces().empty());
+
+    for (const std::array<std::uint32_t, 3>& face : hull.GetFaces()) {
+        EXPECT_LT(face[0], vertexCount);
+        EXPECT_LT(face[1], vertexCount);
+        EXPECT_LT(face[2], vertexCount);
+    }
+}
+
+TEST_F(ConvexHullTest, OrientsTetrahedronFacesOutwardForEitherWinding)
+{
+    // WHY 2 通り試すか: 4 点だけの経路は入力の並び順をそのまま面にしていた。
+    //     どちら手の四面体かで法線が 4 枚とも内向きになるので、片方の順序しか
+    //     試さないと «たまたま通る» ことがある。
+    const std::vector<math::Vector3> base = {
+        { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f },
+        { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f },
+    };
+    const std::vector<math::Vector3> mirrored = {
+        { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f },
+        { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f },
+    };
+
+    auto expectOutward = [](const std::vector<math::Vector3>& points) {
+        physics::ConvexHullCollider hull(points);
+        hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+        const std::vector<math::Vector3>& verts = hull.GetWorldVertices();
+        ASSERT_EQ(verts.size(), 4u);
+        ASSERT_EQ(hull.GetFaces().size(), 4u);
+
+        const math::Vector3 centroid = (verts[0] + verts[1] + verts[2] + verts[3]) * 0.25f;
+        for (const std::array<std::uint32_t, 3>& face : hull.GetFaces()) {
+            const math::Vector3 n = math::Vector3::Cross(verts[face[1]] - verts[face[0]],
+                                                         verts[face[2]] - verts[face[0]]);
+            // 外向きなら、面の平面から見て centroid は負の側にある。
+            EXPECT_LT(math::Vector3::Dot(n, centroid - verts[face[0]]), 0.0f);
+        }
+    };
+
+    expectOutward(base);
+    expectOutward(mirrored);
+}
+
 } // namespace fbzz::tests

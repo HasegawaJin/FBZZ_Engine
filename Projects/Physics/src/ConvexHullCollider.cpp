@@ -16,13 +16,6 @@ namespace fbzz::physics
 
     namespace
     {
-        // 点 p から直線 (a, b) への符号付き距離の 2 倍 (方向成分のみ)
-        float SignedDistToLine2D(const math::Vector3& a, const math::Vector3& b,
-                                 const math::Vector3& p, const math::Vector3& planeNormal)
-        {
-            return math::Vector3::Dot(math::Vector3::Cross(b - a, p - a), planeNormal);
-        }
-
         // 三角形の法線方向に対して正の側にある点を返す
         float DistToPlane(const math::Vector3& planeNormal, const math::Vector3& planePoint,
                           const math::Vector3& p)
@@ -51,6 +44,64 @@ namespace fbzz::physics
             return len > 1e-8f ? n * (1.0f / len) : math::Vector3::UP;
         }
 
+        // centroid が内側にある前提で、三角形の法線が外を向くように頂点順を決める。
+        std::array<uint32_t, 3> OrientOutward(const std::vector<math::Vector3>& pts,
+                                              uint32_t a, uint32_t b, uint32_t c,
+                                              const math::Vector3& centroid)
+        {
+            HullFace f;
+            f.v[0]   = static_cast<int>(a);
+            f.v[1]   = static_cast<int>(b);
+            f.v[2]   = static_cast<int>(c);
+            f.normal = FaceNormal(pts, f);
+            if (DistToPlane(f.normal, pts[f.v[0]], centroid) > 0.0f) std::swap(b, c);
+            return { a, b, c };
+        }
+
+        // 球面に散らした budget 本の方向それぞれで «最も遠い点» を拾い、その部分集合を返す。
+        //
+        // WHY 入力を «並び順» で削ってはいけないか: 頂点数の上限はサポート関数の計算量の
+        //     ためにあり、削るべきは凸包の結果であって入力ではない。配列の先頭から切ると、
+        //     どの点が残るかが «エクスポーターの吐いた頂点順» という形とは無関係なもので
+        //     決まり、実際の形より小さい当たり判定が黙って出来上がる。
+        //     向きで選べば、どの方向にも最外周の点が残る。出来る凸包は必ず真の凸包に
+        //     内接し (= 大きくなりすぎない)、誤差も方向によらず一様になる。
+        std::vector<math::Vector3> SelectExtremePoints(const std::vector<math::Vector3>& pts,
+                                                       int budget)
+        {
+            const int n = static_cast<int>(pts.size());
+
+            std::vector<int> picked;
+            picked.reserve(static_cast<size_t>(budget));
+
+            // フィボナッチ球。偏りの少ない準一様分布を三角関数 2 回だけで作れる。
+            constexpr float GOLDEN_ANGLE = 2.39996322972865332f;   // PI * (3 - sqrt(5))
+            for (int i = 0; i < budget; ++i)
+            {
+                const float y = 1.0f - (static_cast<float>(i) + 0.5f) * 2.0f / static_cast<float>(budget);
+                const float r = std::sqrt(std::max(0.0f, 1.0f - y * y));
+                const float theta = GOLDEN_ANGLE * static_cast<float>(i);
+                const math::Vector3 dir = { std::cos(theta) * r, y, std::sin(theta) * r };
+
+                // argmax <p, dir> は原点の取り方に依存しない (全点に同じ定数が乗るだけ)。
+                int   best    = 0;
+                float bestDot = -std::numeric_limits<float>::max();
+                for (int p = 0; p < n; ++p)
+                {
+                    const float d = math::Vector3::Dot(pts[p], dir);
+                    if (d > bestDot) { bestDot = d; best = p; }
+                }
+
+                if (std::find(picked.begin(), picked.end(), best) == picked.end())
+                    picked.push_back(best);
+            }
+
+            std::vector<math::Vector3> out;
+            out.reserve(picked.size());
+            for (int i : picked) out.push_back(pts[static_cast<size_t>(i)]);
+            return out;
+        }
+
         // 簡易 Quickhull: 全点を処理して凸包頂点インデックスを返す
         // ここでは Incremental 法（面を追加しながら外部点を処理）を簡略実装する
         HullBuildResult SimpleQuickhull(std::vector<math::Vector3> pts)
@@ -60,11 +111,16 @@ namespace fbzz::physics
                 HullBuildResult result;
                 result.vertices = std::move(pts);
                 if (n == 4) {
+                    // WHY 向きを測り直すか: 4 点の並びは呼び出し元の入力順そのままで、
+                    //     どちら手の四面体かは決まっていない。固定の面リストを並べるだけだと
+                    //     法線が 4 枚とも内向きになる入力がある。下の主経路と同じ基準に揃える。
+                    const math::Vector3 centroid = (result.vertices[0] + result.vertices[1]
+                                                  + result.vertices[2] + result.vertices[3]) * 0.25f;
                     result.faces = {
-                        std::array<uint32_t, 3>{ 0, 1, 2 },
-                        std::array<uint32_t, 3>{ 0, 2, 3 },
-                        std::array<uint32_t, 3>{ 0, 3, 1 },
-                        std::array<uint32_t, 3>{ 1, 3, 2 },
+                        OrientOutward(result.vertices, 0, 1, 2, centroid),
+                        OrientOutward(result.vertices, 0, 2, 3, centroid),
+                        OrientOutward(result.vertices, 0, 3, 1, centroid),
+                        OrientOutward(result.vertices, 1, 3, 2, centroid),
                     };
                 }
                 return result;
@@ -131,7 +187,6 @@ namespace fbzz::physics
             if (far2 < 0) return { std::move(pts), {} };
 
             // 4 点から凸包を構築する (簡易: 全点に対して外側テスト)
-            const std::vector<int> initIdx = {minX, maxX, far1, far2};
             std::vector<HullFace> faces;
 
             // 4 面の三角形を作成する
@@ -258,17 +313,18 @@ namespace fbzz::physics
     {
         if (points.empty()) return;
 
-        // 頂点数の上限
+        // 頂点数の上限は «どの点を凸包の材料にするか» で掛ける。
+        // SimpleQuickhull は入力より多い頂点を返さないので、これで結果も上限に収まる。
         if (static_cast<int>(points.size()) > MAX_HULL_VERTS)
-            points.resize(static_cast<size_t>(MAX_HULL_VERTS));
+            points = SelectExtremePoints(points, MAX_HULL_VERTS);
 
+        // WHY 後から m_localVerts だけ切り詰めないか: m_faces は切り詰め前のインデックスを
+        //     持ったままになり、World.cpp の RayConvexHull が範囲チェックなしで
+        //     verts[face[0]] を引くため範囲外読み取りになる。頂点と面は必ず
+        //     同じ SimpleQuickhull の出力から受け取り、後から片方だけ触らない。
         HullBuildResult hull = SimpleQuickhull(std::move(points));
         m_localVerts = std::move(hull.vertices);
-        m_faces = std::move(hull.faces);
-
-        // 上限を超えた場合はさらにトリミング (精度よりも安全を優先)
-        if (static_cast<int>(m_localVerts.size()) > MAX_HULL_VERTS)
-            m_localVerts.resize(static_cast<size_t>(MAX_HULL_VERTS));
+        m_faces      = std::move(hull.faces);
     }
 
     void ConvexHullCollider::Update(const math::Vector3& worldPos,

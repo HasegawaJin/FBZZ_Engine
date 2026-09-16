@@ -138,6 +138,58 @@ TEST_F(TriangleMeshColliderTest, IgnoresATrailingPartialTriangle)
     EXPECT_EQ(mesh.GetBVH().triangles.size(), 1u);
 }
 
+// 以下 3 本は «2 回目以降の Update»。スケールが変わらない移動・回転は BVH を組み直さず
+// refit で済ませる経路に入るので、組み直した場合と同じ結果になることを見る。
+
+TEST_F(TriangleMeshColliderTest, RefitAndRebuildAgreeAfterAMove)
+{
+    physics::TriangleMeshCollider refitted(QuadPositions(), QuadIndices());
+    refitted.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+    refitted.Update({ 10.0f, 5.0f, 0.0f }, math::Quaternion::Identity());
+
+    physics::TriangleMeshCollider rebuilt(QuadPositions(), QuadIndices());
+    rebuilt.Update({ 10.0f, 5.0f, 0.0f }, math::Quaternion::Identity());
+
+    EXPECT_EQ(refitted.GetBVH().triangles.size(), rebuilt.GetBVH().triangles.size());
+    EXPECT_VEC3_NEAR(BoundsOf(refitted.GetBVH()).min, BoundsOf(rebuilt.GetBVH()).min,
+                     testkit::kLooseTolerance);
+    EXPECT_VEC3_NEAR(BoundsOf(refitted.GetBVH()).max, BoundsOf(rebuilt.GetBVH()).max,
+                     testkit::kLooseTolerance);
+    // GetAABB() は BroadPhase が読む値。refit 後もノード AABB から引き直せていること。
+    EXPECT_VEC3_NEAR(refitted.GetAABB().min, math::Vector3(9.0f, 5.0f, -1.0f),
+                     testkit::kLooseTolerance);
+    EXPECT_VEC3_NEAR(refitted.GetAABB().max, math::Vector3(11.0f, 5.0f, 1.0f),
+                     testkit::kLooseTolerance);
+}
+
+TEST_F(TriangleMeshColliderTest, RefitFollowsARotationAfterTheFirstUpdate)
+{
+    physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
+    mesh.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    mesh.Update(math::Vector3::ZERO,
+                math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::HALF_PI));
+
+    const physics::AABB bounds = BoundsOf(mesh.GetBVH());
+    EXPECT_NEAR(bounds.max.y - bounds.min.y, 2.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(bounds.max.z - bounds.min.z, 0.0f, testkit::kLooseTolerance);
+}
+
+TEST_F(TriangleMeshColliderTest, RebuildsInsteadOfRefittingWhenTheScaleChanges)
+{
+    // WHY refit しないか: 非一様スケールは三角形どうしの相対配置ごと変えるため、
+    //     構築時に選んだ分割軸が的外れなまま残る。ここは組み直し側に落ちる。
+    physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
+    mesh.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    mesh.UpdateWithScale(math::Vector3::ZERO, math::Quaternion::Identity(), { 3.0f, 1.0f, 1.0f });
+
+    const physics::AABB bounds = BoundsOf(mesh.GetBVH());
+    EXPECT_NEAR(bounds.max.x, 3.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(bounds.max.z, 1.0f, testkit::kLooseTolerance);
+    EXPECT_EQ(mesh.GetBVH().triangles.size(), 2u);
+}
+
 // --- ハイトフィールド -------------------------------------------------------
 
 class HeightFieldColliderTest : public testkit::Fixture {};
@@ -218,6 +270,74 @@ TEST_F(HeightFieldColliderTest, RebuildCanChangeTheResolution)
 
     EXPECT_EQ(field.GetRows(), 4);
     EXPECT_EQ(field.GetBVH().triangles.size(), 18u);   // 3x3 セル
+}
+
+// 以下 4 本は «2 回目以降の Update» を見る。
+// WHY 分けて置くか: 初回の Update は BVH の «構築» 経路を通るため、1 回しか呼ばない
+//     テストでは transform 追従を確かめたことにならない。地形を置いたあとエディタで
+//     動かす経路はこちらで、ここが抜けていたせいで «当たり判定だけ元の場所に残る»
+//     不具合が通っていた。
+
+TEST_F(HeightFieldColliderTest, FollowsAMoveAfterTheFirstUpdate)
+{
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+    ASSERT_NEAR(BoundsOf(field.GetBVH()).min.x, 0.0f, testkit::kLooseTolerance);
+
+    field.Update({ 100.0f, 5.0f, -20.0f }, math::Quaternion::Identity());
+
+    const physics::AABB bounds = BoundsOf(field.GetBVH());
+    EXPECT_VEC3_NEAR(bounds.min, math::Vector3(100.0f, 5.0f, -20.0f), testkit::kLooseTolerance);
+    EXPECT_VEC3_NEAR(bounds.max, math::Vector3(102.0f, 5.0f, -18.0f), testkit::kLooseTolerance);
+}
+
+TEST_F(HeightFieldColliderTest, FollowsARotationAfterTheFirstUpdate)
+{
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    // X 軸まわりに 90 度倒すと、z∈[0,2] に広がっていた床が y 方向の壁になる。
+    field.Update(math::Vector3::ZERO,
+                 math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::HALF_PI));
+
+    const physics::AABB bounds = BoundsOf(field.GetBVH());
+    EXPECT_NEAR(bounds.max.y - bounds.min.y, 2.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(bounds.max.z - bounds.min.z, 0.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(bounds.max.x - bounds.min.x, 2.0f, testkit::kLooseTolerance);
+}
+
+TEST_F(HeightFieldColliderTest, FollowsAScaleChangeAfterTheFirstUpdate)
+{
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
+    field.UpdateWithScale(math::Vector3::ZERO, math::Quaternion::Identity(), { 1.0f, 1.0f, 1.0f });
+
+    field.UpdateWithScale(math::Vector3::ZERO, math::Quaternion::Identity(), { 3.0f, 1.0f, 3.0f });
+
+    const physics::AABB bounds = BoundsOf(field.GetBVH());
+    EXPECT_NEAR(bounds.max.x, 6.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(bounds.max.z, 6.0f, testkit::kLooseTolerance);
+}
+
+TEST_F(HeightFieldColliderTest, BVHNodesAndBoundsFollowTheMoveToo)
+{
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+    field.Update({ 100.0f, 0.0f, 0.0f }, math::Quaternion::Identity());
+
+    // WHY Query まで見るか: 三角形の頂点だけ書き換えてノード AABB の refit を忘れると、
+    //     頂点は正しい位置なのに BroadPhase が候補を 1 つも返さず «すり抜ける床» になる。
+    //     GetAABB() は World のブロードフェーズが読む値で、こちらがずれると同じ症状が出る。
+    int atOldPlace = 0;
+    field.GetBVH().Query(physics::AABB{ { -3.0f, -3.0f, -3.0f }, { 1.0f, 3.0f, 3.0f } },
+                         [&](const physics::Triangle&) { ++atOldPlace; });
+    int atNewPlace = 0;
+    field.GetBVH().Query(physics::AABB{ { 99.0f, -3.0f, -3.0f }, { 103.0f, 3.0f, 3.0f } },
+                         [&](const physics::Triangle&) { ++atNewPlace; });
+
+    EXPECT_EQ(atOldPlace, 0);
+    EXPECT_EQ(atNewPlace, 8);   // 2x2 セル
+    EXPECT_NEAR(field.GetAABB().min.x, 100.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(field.GetAABB().max.x, 102.0f, testkit::kLooseTolerance);
 }
 
 } // namespace fbzz::tests
