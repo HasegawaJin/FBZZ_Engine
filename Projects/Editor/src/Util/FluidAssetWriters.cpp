@@ -6,6 +6,7 @@
 
 #include <Editor/Util/AssetPath.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/Uuid.hpp>
@@ -21,7 +22,7 @@
 namespace fbzz::editor {
 namespace {
 
-// .mat からの参照は guid で書く。パスで書くと素材を別フォルダーへ移した瞬間に外れる。
+/// .mat からの参照は guid で書く。パスで書くと素材を別フォルダーへ移した瞬間に外れる。
 std::string GuidReference(const std::string& diskPath)
 {
     const std::string guid = asset::AssetDatabase::GuidFromPath(diskPath);
@@ -73,10 +74,10 @@ void ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& materi
 {
     const asset::VolumeFlipbookBakeResult& result = source.volume;
     material.textures["albedo"] = NormalizeAssetPath(result.colorPath);
-    // 歪みマップは MV を焼かない。前回の MV を残すと、別の流れで warp される。
+    /// @note 歪みマップは MV を焼かない。前回の MV を残すと、別の流れで warp される。
     if (!result.motionPath.empty()) material.textures["tex5"] = NormalizeAssetPath(result.motionPath);
     else                            material.textures.erase("tex5");
-    // 歪みは 2D の Distortion と同じく通常のアルファ合成で、albedo の RG を曲げる向きとして読む。
+    /// @note 歪みは 2D の Distortion と同じく通常のアルファ合成で、albedo の RG を曲げる向きとして読む。
     material.blendMode =
         source.volumeDistortion ? renderer::BlendMode::ALPHA_BLEND : renderer::BlendMode::PREMULTIPLIED;
     auto& particle = material.particle;
@@ -87,15 +88,15 @@ void ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& materi
     particle.flipbook.spriteEndFrame = result.frameCount - 1;
     particle.flipbook.spriteRandomRow = false;
     particle.flipbook.spriteRandomStartFrame = false;
-    // MV は spriteBlend が 0 だと一切効かない。
+    /// @note MV は spriteBlend が 0 だと一切効かない。
     particle.flipbook.flipbookFrameBlending = true;
     particle.flipbook.motionVectorFlipbook = !result.motionPath.empty();
     particle.flipbook.motionVectorStrength = result.motionPath.empty() ? 0.0f : result.recommendedStrength;
     particle.emissiveScale = result.suggestedEmissiveScale;
     particle.distortion = source.volumeDistortion;
     if (!source.volumeDistortion && !result.sixWayPositivePath.empty() && !result.sixWayNegativePath.empty()) {
-        // 6 方向マップを焼いたなら、色の Atlas ではなくマップで陰影を付ける (光の向きに追従する)。
-        // マップはストレートの明るさなので、合成も通常のアルファへ戻す。
+        /// @note 6 方向マップを焼いたなら、色の Atlas ではなくマップで陰影を付ける (光の向きに追従する)。
+        ///       マップはストレートの明るさなので、合成も通常のアルファへ戻す。
         material.textures["albedo"] = NormalizeAssetPath(result.sixWayPositivePath);
         material.textures["emissive"] = NormalizeAssetPath(result.sixWayNegativePath);
         material.blendMode = renderer::BlendMode::ALPHA_BLEND;
@@ -107,7 +108,7 @@ void ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& materi
         particle.emissiveScale = 1.0f;
     } else {
         particle.sixWayMaps = false;
-        // 前回 6-way で焼いた _6wayN が emissive に残ると、6-way を切った焼き直しでも光って見える。
+        /// @note 前回 6-way で焼いた _6wayN が emissive に残ると、6-way を切った焼き直しでも光って見える。
         const auto emissive = material.textures.find("emissive");
         if (emissive != material.textures.end()
             && (EndsWith(emissive->second, "_6wayN.dds") || EndsWith(emissive->second, "_6wayN.png")))
@@ -173,7 +174,7 @@ bool WriteFluidParticleMaterial(const std::string& materialPath, const FluidMate
     outCreated = false;
     asset::MaterialAsset material;
     if (util::FileSystem::Exists(materialPath)) {
-        // 読めない .mat を既定で上書きすると、人が手で直している途中のファイルを消す。
+        /// @note 読めない .mat を既定で上書きすると、人が手で直している途中のファイルを消す。
         if (!asset::LoadMaterialAssetFromFile(materialPath, material)) {
             outError = "既存のマテリアルを読み込めません: " + materialPath;
             return false;
@@ -210,8 +211,8 @@ std::vector<FluidEffectLayer> MakeFluidEffectLayers(FluidEffectTemplate preset)
         layer.recipe = asset::MakeFluidPreset(material);
         layer.startDelay = delay;
         layer.size = size;
-        // 組み合わせの初回作成は平面アトラスで揃える。各素材は後から 3D で焼き直せる。
-        layer.recipe.bake.mode = asset::FluidBakeMode::Flat2D;
+        /// @note 組み合わせの初回作成は平面アトラスで揃える。各素材は後から 3D で焼き直せる。
+        layer.recipe.bake.mode = fluid::FluidBakeMode::Flat2D;
         layer.recipe.output.frameSize = 128;
         layer.recipe.output.columns = 8;
         layer.recipe.output.rows = 4;
@@ -315,7 +316,7 @@ bool WriteSingleEmitterVfx(const std::filesystem::path& file, const std::string&
     const float life = (std::max)(lifetime, 0.01f);
     const std::string root = TomlEscape(rootName);
     char numbers[160]{};
-    // 1 粒ずつ、寿命いっぱいでアトラスを最後まで再生させる (Lifetime モード)。
+    /// @note 1 粒ずつ、寿命いっぱいでアトラスを最後まで再生させる (Lifetime モード)。
     std::snprintf(numbers, sizeof(numbers), "duration = %.4f\nemitRate = %.4f\nlifetime = %.4f\n",
                   life, 1.0f / life, life);
 
@@ -341,7 +342,7 @@ bool WriteSingleEmitterVfx(const std::filesystem::path& file, const std::string&
         << numbers
         << "loop = true\nmaxParticles = 1\nshape = 0\nsizeStart = 2.0\nsizeEnd = 2.0\nsizeCurvePower = 1.0\n"
         << "lifetimeRandom = 0.0\nemitVelocity = [0.0, 0.0, 0.0]\nvelocitySpread = 0.0\n"
-        << "velocityDamping = 0.0\ngravity = [0.0, 0.0, 0.0]\n"
+        << "flowCoupling = 0.0\ngravity = [0.0, 0.0, 0.0]\n"
         << "materialPath = \"" << TomlEscape(materialAssetPath) << "\"\n"
         << "renderMode = 0\nsortMode = 1\nangularVelocityMin = 0.0\nangularVelocityMax = 0.0\n"
         << "colorVariation = 0.0\ncolorStart = [1.0, 1.0, 1.0, 1.0]\ncolorEnd = [1.0, 1.0, 1.0, 1.0]\n"

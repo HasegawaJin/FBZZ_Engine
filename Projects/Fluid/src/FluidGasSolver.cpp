@@ -3,31 +3,31 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// 速度は全成分をセル中心に置く (collocated)。スタッガード格子より投影が緩くなるが、
-/// フリップブック用の絵としては差が見えず、2D と 3D を同じコードで扱える方を取った。
-#include <Engine/Asset/FluidSolver.hpp>
+/// @brief 速度は全成分をセル中心に置く (collocated)。スタッガード格子より投影が緩くなるが、
+/// @brief フリップブック用の絵としては差が見えず、2D と 3D を同じコードで扱える方を取った。
+#include <Fluid/FluidSolver.hpp>
 
-#include <Engine/Asset/FluidOperatorEval.hpp>
-#include <Engine/Core/CurlNoise.hpp>
+#include <Fluid/FluidOperatorEval.hpp>
+#include <Math/CurlNoise.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
 
-namespace fbzz::asset {
+namespace fbzz::fluid {
 namespace {
 
-// 注入を重ねても値が発散しないための上限。絵の上では opacity で飽和するので十分大きい。
+/// @brief 注入を重ねても値が発散しないための上限。絵の上では opacity で飽和するので十分大きい。
 constexpr float kMaxDensity     = 64.0f;
 constexpr float kMaxTemperature = 64.0f;
 constexpr int   kMaxAxisCells   = 512;
-// 鍵 = 色の量 / max(密度, これ)。GPU (FluidGpuCommon の写し) と同じ値にしておかないと焼き分けで色が変わる。
+/// @brief 鍵 = 色の量 / max(密度, これ)。GPU (FluidGpuCommon の写し) と同じ値にしておかないと焼き分けで色が変わる。
 constexpr float kColorEpsilon   = 1.0e-6f;
 
 [[nodiscard]] float Lerp(float a, float b, float t) { return a + (b - a) * t; }
 [[nodiscard]] float Saturate(float value) { return std::clamp(value, 0.0f, 1.0f); }
 [[nodiscard]] float ColorKeyOf(float mass, float density) { return Saturate(mass / (std::max)(density, kColorEpsilon)); }
 
-// 注入で走査するセルの範囲 (形を外から包む箱)。FluidSourceWeight と同じく minSize まで広げた寸法で包む。
+/// @brief 注入で走査するセルの範囲 (形を外から包む箱)。FluidSourceWeight と同じく minSize まで広げた寸法で包む。
 void SourceBounds(const FluidSource& source, const math::Vector3& center, float minSize,
                   math::Vector3& outLo, math::Vector3& outHi)
 {
@@ -44,7 +44,7 @@ void SourceBounds(const FluidSource& source, const math::Vector3& center, float 
         const float lengthSq = d.x * d.x + d.y * d.y + d.z * d.z;
         const math::Vector3 axis = lengthSq < 1.0e-12f ? math::Vector3{ 0.0f, 1.0f, 0.0f }
                                                        : d * (1.0f / std::sqrt(lengthSq));
-        // 頂点と底の中心を含む箱を、底の半径 (= 最も太い所) だけ全軸に膨らませる。
+        /// @note 頂点と底の中心を含む箱を、底の半径 (= 最も太い所) だけ全軸に膨らませる。
         const math::Vector3 tip = center + axis * sy;
         outLo = { (std::min)(center.x, tip.x) - sx, (std::min)(center.y, tip.y) - sx, (std::min)(center.z, tip.z) - sx };
         outHi = { (std::max)(center.x, tip.x) + sx, (std::max)(center.y, tip.y) + sx, (std::max)(center.z, tip.z) + sx };
@@ -54,7 +54,7 @@ void SourceBounds(const FluidSource& source, const math::Vector3& center, float 
         extent = { sx + sy, sx + sy, sx + sy };
         break;
     case FluidSourceShape::Texture: {
-        // 傾いた板 (箱) を包む軸並行の箱: 各軸へ 3 本の半軸を投影した長さの和。
+        /// @note 傾いた板 (箱) を包む軸並行の箱: 各軸へ 3 本の半軸を投影した長さの和。
         math::Vector3 right;
         math::Vector3 up;
         math::Vector3 normal;
@@ -70,7 +70,7 @@ void SourceBounds(const FluidSource& source, const math::Vector3& center, float 
         const float lengthSq = d.x * d.x + d.y * d.y + d.z * d.z;
         const math::Vector3 axis = lengthSq < 1.0e-12f ? math::Vector3{ 0.0f, 1.0f, 0.0f }
                                                        : d * (1.0f / std::sqrt(lengthSq));
-        // 芯の線分を包む箱を半径だけ全軸に膨らませる (円柱はこのカプセルの中に収まる)。
+        /// @note 芯の線分を包む箱を半径だけ全軸に膨らませる (円柱はこのカプセルの中に収まる)。
         extent = { std::fabs(axis.x) * sy + sx, std::fabs(axis.y) * sy + sx, std::fabs(axis.z) * sy + sx };
         break;
     }
@@ -87,11 +87,11 @@ void LoadSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidS
     outMasks.assign(sources.size(), FluidSourceMask{});
     for (std::size_t i = 0; i < sources.size(); ++i) {
         if (sources[i].shape != FluidSourceShape::Texture || sources[i].texture.empty()) continue;
-        if (!LoadFluidSourceMask(sources[i].texture, outMasks[i])) outMasks[i].values.clear();
+        if (!ResolveFluidSourceMask(sources[i].texture, outMasks[i])) outMasks[i].values.clear();
     }
 }
 
-// このレシピが要求する格子の 1 辺。呼び手が Reset に渡す nx を導いた値で、これが変われば別の格子になる。
+/// @brief このレシピが要求する格子の 1 辺。呼び手が Reset に渡す nx を導いた値で、これが変われば別の格子になる。
 [[nodiscard]] int GasGridRequest(const FluidRecipe& recipe, bool volumetric)
 {
     return volumetric ? recipe.output.vectorFieldResolution : ResolveGasResolution(recipe);
@@ -99,7 +99,7 @@ void LoadSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidS
 
 } // namespace
 
-// 部品 (発生源・力・障害物) とその画像だけを取り込む。Reset と ReplaceOperators で共通。
+/// @brief 部品 (発生源・力・障害物) とその画像だけを取り込む。Reset と ReplaceOperators で共通。
 void FluidGasSolver::AdoptOperators(const FluidRecipe& recipe)
 {
     m_sources.clear();
@@ -136,8 +136,8 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int nx, int ny, int nz)
     m_seed = recipe.seed;
     m_gridRequest = GasGridRequest(recipe, m_nz > 1);
 
-    // seed は «ノイズ格子のどこを切り出すか» を決める。値を変えるのではなく座標をずらす。
-    const uint32_t hash = core::PcgHash(recipe.seed * 2654435761u + 1u);
+    /// @note seed は «ノイズ格子のどこを切り出すか» を決める。値を変えるのではなく座標をずらす。
+    const uint32_t hash = math::PcgHash(recipe.seed * 2654435761u + 1u);
     m_noiseOffset = { static_cast<float>(hash % 997u) * 0.731f,
                       static_cast<float>((hash >> 10) % 997u) * 0.517f,
                       static_cast<float>((hash >> 20) % 997u) * 0.379f };
@@ -152,7 +152,7 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int nx, int ny, int nz)
                                        &m_curlX, &m_curlY, &m_curlZ, &m_curlLength })
         field->assign(count, 0.0f);
 
-    // 細部の座標は 2D (フリップブック) でだけ使う。3D (.vfield) は速度しか焼かないので持たない。
+    /// @note 細部の座標は 2D (フリップブック) でだけ使う。3D (速度場 PNG) は速度しか焼かないので持たない。
     for (int layer = 0; layer < 2; ++layer) {
         if (m_nz == 1) {
             m_detailU[layer].assign(count, 0.0f);
@@ -166,11 +166,11 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int nx, int ny, int nz)
     }
 }
 
-// 場を残せる条件は «今持っている場が、このレシピを頭から解いた途中経過だと言い張れるか»。
-//   kind        : 気体でなければ格子そのものが別物
-//   seed        : ノイズの切り出し位置 (m_noiseOffset) が変わる = 乱流も注入の揺らぎも別の流れ
-//   要求解像度  : 呼び手が Reset に渡した nx を導いた値。変われば格子の細かさが変わる
-// 逆に、刻みごとに効くだけの設定 (浮力・散逸・床・圧力反復・燃焼) は途中から差し替えてよい。
+/// @brief 場を残せる条件は «今持っている場が、このレシピを頭から解いた途中経過だと言い張れるか»。
+///   kind        : 気体でなければ格子そのものが別物
+///   seed        : ノイズの切り出し位置 (m_noiseOffset) が変わる = 乱流も注入の揺らぎも別の流れ
+///   要求解像度  : 呼び手が Reset に渡した nx を導いた値。変われば格子の細かさが変わる
+/// @brief 逆に、刻みごとに効くだけの設定 (浮力・散逸・床・圧力反復・燃焼) は途中から差し替えてよい。
 bool FluidGasSolver::ReplaceOperators(const FluidRecipe& recipe)
 {
     if (recipe.kind != FluidKind::Gas) return false;
@@ -180,13 +180,13 @@ bool FluidGasSolver::ReplaceOperators(const FluidRecipe& recipe)
     m_settings = recipe.gas;
     const bool hadColor = m_hasColor;
     AdoptOperators(recipe);
-    // 鍵の付いた発生源が 1 つも無くなったら、運んでいた色も捨てる («鍵が無ければ全部 0» を保つ)。
+    /// @note 鍵の付いた発生源が 1 つも無くなったら、運んでいた色も捨てる («鍵が無ければ全部 0» を保つ)。
     if (hadColor && !m_hasColor) {
         std::fill(m_colorMass.begin(), m_colorMass.end(), 0.0f);
         std::fill(m_fuelColorMass.begin(), m_fuelColorMass.end(), 0.0f);
         std::fill(m_colorKey.begin(), m_colorKey.end(), 0.0f);
     }
-    // 障害物は刻みの始めに組み直す。ここで忘れておかないと、消した障害物が次の 1 刻みだけ残る。
+    /// @note 障害物は刻みの始めに組み直す。ここで忘れておかないと、消した障害物が次の 1 刻みだけ残る。
     m_solid.clear();
     m_hasSolid = false;
     return true;
@@ -220,7 +220,7 @@ void FluidGasSolver::AdvectDetail(float dt)
     }
 }
 
-// 層 0 は位相 0、層 1 は位相 0.5 で初期位置へ戻す。どちらもその瞬間の重みが 0 なので継ぎ目は見えない。
+/// @brief 層 0 は位相 0、層 1 は位相 0.5 で初期位置へ戻す。どちらもその瞬間の重みが 0 なので継ぎ目は見えない。
 void FluidGasSolver::UpdateDetailEpochs()
 {
     if (!HasDetail()) return;
@@ -312,7 +312,7 @@ void FluidGasSolver::MinMaxAround(const std::vector<float>& field, float gx, flo
             }
 }
 
-// 軸方向の中心差分。縁では片側差分になり、1 セルしか無い軸 (2D の z) は 0。
+/// @brief 軸方向の中心差分。縁では片側差分になり、1 セルしか無い軸 (2D の z) は 0。
 float FluidGasSolver::Derivative(const std::vector<float>& field, int x, int y, int z, int axis) const
 {
     const int count = axis == 0 ? m_nx : (axis == 1 ? m_ny : m_nz);
@@ -336,7 +336,7 @@ float FluidGasSolver::Divergence(int x, int y, int z) const
     }
     if (m_ny > 1) {
         const float up = m_vy[Index(x, (std::min)(y + 1, m_ny - 1), z)];
-        // 床は «通り抜けられない壁»。下のゴーストは鏡映 (-vy) で、床へ向かう流れを発散として拾う。
+        /// @note 床は «通り抜けられない壁»。下のゴーストは鏡映 (-vy) で、床へ向かう流れを発散として拾う。
         const float down = y > 0 ? m_vy[Index(x, y - 1, z)]
                                  : (m_settings.floor ? -m_vy[Index(x, 0, z)] : m_vy[Index(x, 0, z)]);
         divergence += (up - down) * inverseTwoH;
@@ -384,7 +384,7 @@ float FluidGasSolver::MaxDivergence() const
     for (int z = 0; z < m_nz; ++z)
         for (int y = 0; y < m_ny; ++y)
             for (int x = 0; x < m_nx; ++x) {
-                // 障害物の中は流体ではない (投影もそこを解かない)。縁の固体セルは外の流れとの差を拾うだけ。
+                /// @note 障害物の中は流体ではない (投影もそこを解かない)。縁の固体セルは外の流れとの差を拾うだけ。
                 if (m_hasSolid && m_solid[Index(x, y, z)] != 0) continue;
                 maxDivergence = (std::max)(maxDivergence, std::fabs(Divergence(x, y, z)));
             }
@@ -404,8 +404,8 @@ void FluidGasSolver::Advance(float dt)
     float maxSpeed = 0.0f;
     for (std::size_t i = 0; i < m_vx.size(); ++i)
         maxSpeed = (std::max)(maxSpeed, std::fabs(m_vx[i]) + std::fabs(m_vy[i]) + std::fabs(m_vz[i]));
-    // 1 刻みで 2 セルまで。半ラグランジュ移流は安定だが、これを超えると細い煙が
-    // 隙間を飛び越えて «ちぎれる»。
+    /// @note 1 刻みで 2 セルまで。半ラグランジュ移流は安定だが、これを超えると細い煙が
+    ///       隙間を飛び越えて «ちぎれる»。
     const float cellsTravelled = maxSpeed * dt / m_h;
     const int steps = std::clamp(static_cast<int>(std::ceil(cellsTravelled / 2.0f)), 1, 16);
     const float stepDt = dt / static_cast<float>(steps);
@@ -422,7 +422,7 @@ void FluidGasSolver::Step(float dt)
     if (m_hasSolid) EnforceSolids(true);
     Project(&m_expansion);
     Advect(dt);
-    // 移流の補間は固体セルの隣から値を引くので、煙が障害物の中へ滲む。刻みの終わりに消す。
+    /// @note 移流の補間は固体セルの隣から値を引くので、煙が障害物の中へ滲む。刻みの終わりに消す。
     if (m_hasSolid) EnforceSolids(true);
     AdvectDetail(dt);
     Dissipate(dt);
@@ -458,7 +458,7 @@ void FluidGasSolver::BuildSolids()
                 const math::Vector3 p = { CellCenter(x, m_nx), CellCenter(y, m_ny), CellCenter(z, m_nz) };
                 for (int k = 0; k < activeCount; ++k) {
                     const std::size_t slot = static_cast<std::size_t>(k);
-                    // minSize = セル幅: それより細い障害物はどのセル中心も覆えず、素通りになる。
+                    /// @note minSize = セル幅: それより細い障害物はどのセル中心も覆えず、素通りになる。
                     if (FluidColliderDistance(m_colliders[indices[slot]], poses[slot].center, p, m_h, volumetric) >= 0.0f)
                         continue;
                     const std::size_t i = Index(x, y, z);
@@ -481,7 +481,7 @@ void FluidGasSolver::EnforceSolids(bool clearScalars)
         if (m_solid[i] == 0) continue;
         m_vx[i] = m_solidVx[i];
         m_vy[i] = m_solidVy[i];
-        // 2D は奥行きの速度を持たない (動きのキーに z があっても平面の流れには関係しない)。
+        /// @note 2D は奥行きの速度を持たない (動きのキーに z があっても平面の流れには関係しない)。
         if (volumetric) m_vz[i] = m_solidVz[i];
         if (clearScalars) {
             m_density[i] = 0.0f;
@@ -513,14 +513,14 @@ void FluidGasSolver::Inject(float dt)
         range(lo.y, hi.y, m_ny, y0, y1);
         if (volumetric) range(lo.z, hi.z, m_nz, z0, z1);
 
-        // 注ぐ «量» だけをエンベロープで揺らす (流速には掛けない — 勢いの変化は velocity と motion の担当)。
-        // GPU (PackFluidGpuStep) も同じく «基準の量 × 倍率» を定数へ詰めてから weight・dt を掛ける。
+        /// @note 注ぐ «量» だけをエンベロープで揺らす (流速には掛けない — 勢いの変化は velocity と motion の担当)。
+        ///       GPU (PackFluidGpuStep) も同じく «基準の量 × 倍率» を定数へ詰めてから weight・dt を掛ける。
         const float amount = FluidSourceAmount(source, m_time);
         const float density = source.density * amount;
         const float temperature = source.temperature * amount;
         const float fuel = source.fuel * amount;
 
-        // 動く発生源は、動く速さでも周りの煙を引きずる (motion.inheritVelocity)。
+        /// @note 動く発生源は、動く速さでも周りの煙を引きずる (motion.inheritVelocity)。
         const math::Vector3 target = source.velocity + pose.motionVelocity;
         const bool drivesVelocity = target.x != 0.0f || target.y != 0.0f || target.z != 0.0f;
         const float sourceSeed = static_cast<float>(sourceIndex) * 13.17f;
@@ -536,14 +536,14 @@ void FluidGasSolver::Inject(float dt)
                         : FluidSourceWeight(source, pose.center, p, m_h, volumetric);
                     if (weight <= 0.0f) continue;
                     if (source.noise > 0.0f) {
-                        const float n = core::ValueNoise3D({ px * 5.0f + m_noiseOffset.x + sourceSeed,
+                        const float n = math::ValueNoise3D({ px * 5.0f + m_noiseOffset.x + sourceSeed,
                                                              py * 5.0f + m_noiseOffset.y - m_time * 1.3f,
                                                              pz * 5.0f + m_noiseOffset.z });
                         weight *= (std::max)(0.0f, 1.0f + source.noise * n);
                     }
                     const std::size_t i = Index(x, y, z);
-                    // 色は «注いだ量 × 鍵» を煙と燃料の両方へ入れる。燃料の色は、後で燃えて生まれる
-                    // 煤がどの発生源から来たかを覚えておくためのもの (煙を注がない炎でも色が付く)。
+                    /// @note 色は «注いだ量 × 鍵» を煙と燃料の両方へ入れる。燃料の色は、後で燃えて生まれる
+                    ///       煤がどの発生源から来たかを覚えておくためのもの (煙を注がない炎でも色が付く)。
                     m_density[i]     = (std::min)(m_density[i] + density * weight * dt, kMaxDensity);
                     if (m_hasColor)
                         m_colorMass[i] = (std::min)(m_colorMass[i] + density * weight * dt * source.colorKey,
@@ -573,10 +573,9 @@ void FluidGasSolver::Burn(float dt)
     for (std::size_t i = 0; i < m_fuel.size(); ++i) {
         if (m_fuel[i] <= 1.0e-5f || m_temperature[i] < m_settings.ignitionTemperature) continue;
         const float burned = m_fuel[i] * fraction;
-        // 煤は «燃えた燃料の鍵» だけで生まれる (その場に既にある煙の鍵は見ない)。鍵は燃料を減らす前に
-        // 測り、燃えた分だけ燃料の色も連れて行くので、残った燃料の鍵は変わらない。
-        // WHY その場の煙へ寄せないか: 色の付いた燃料が薄く広がった所で鍵が跳ぶ。煙は自分の色のまま
-        //     残り、セルの鍵は «量で重み付けした平均» として自然に混ざる (GPU の写しも同じ規則)。
+        /// @note 煤は «燃えた燃料の鍵» だけで生まれる (既にある煙の鍵は見ない)。鍵は燃料を減らす前に測り、
+        ///       燃えた分だけ燃料の色も連れて行く。色の付いた燃料が薄く広がった所で鍵が跳ぶのを避けるため
+        ///       その場の煙へは寄せず、セルの鍵は «量で重み付けした平均» として自然に混ざる (GPU も同じ)。
         const float fuelKey = m_hasColor ? ColorKeyOf(m_fuelColorMass[i], m_fuel[i]) : 0.0f;
         m_fuel[i] -= burned;
         if (m_hasColor) m_fuelColorMass[i] = (std::max)(m_fuelColorMass[i] - burned * fuelKey, 0.0f);
@@ -584,7 +583,7 @@ void FluidGasSolver::Burn(float dt)
         m_density[i]     = (std::min)(m_density[i] + burned * m_settings.burnSmoke, kMaxDensity);
         if (m_hasColor)
             m_colorMass[i] = (std::min)(m_colorMass[i] + burned * m_settings.burnSmoke * fuelKey, kMaxDensity);
-        // 燃えた分だけガスが膨らむ。圧力解法へ «湧き出し» として渡すと、外向きの爆風になる。
+        /// @note 燃えた分だけガスが膨らむ。圧力解法へ «湧き出し» として渡すと、外向きの爆風になる。
         m_expansion[i] = burned * m_settings.burnExpansion / dt;
     }
 }
@@ -596,7 +595,7 @@ void FluidGasSolver::ApplyForces(float dt)
     const float turbulence = m_settings.turbulence;
     const float scale = (std::max)(m_settings.turbulenceScale, 0.01f);
 
-    // 力の中心・効いているか・量の倍率は刻みの始めの時刻で 1 回だけ決める (GPU は刻みごとに CPU で詰める)。
+    /// @note 力の中心・効いているか・量の倍率は刻みの始めの時刻で 1 回だけ決める (GPU は刻みごとに CPU で詰める)。
     struct ActiveForce {
         std::size_t   index = 0;
         math::Vector3 center = { 0.0f, 0.0f, 0.0f };
@@ -621,8 +620,8 @@ void FluidGasSolver::ApplyForces(float dt)
                 m_vy[i] += m_settings.wind.y * dt;
                 if (volumetric) m_vz[i] += m_settings.wind.z * dt;
                 if (turbulence != 0.0f) {
-                    // 時間でゆっくりずらして «止まった渦» にしない。
-                    const math::Vector3 curl = core::CurlNoise({
+                    /// @note 時間でゆっくりずらして «止まった渦» にしない。
+                    const math::Vector3 curl = math::CurlNoise({
                         CellCenter(x, m_nx) * scale + m_noiseOffset.x,
                         CellCenter(y, m_ny) * scale + m_noiseOffset.y - m_time * 0.35f,
                         CellCenter(z, m_nz) * scale + m_noiseOffset.z + m_time * 0.2f });
@@ -631,7 +630,7 @@ void FluidGasSolver::ApplyForces(float dt)
                     if (volumetric) m_vz[i] += curl.z * turbulence * dt;
                 }
                 if (activeCount > 0) {
-                    // 前の力を足した後の速度を次の力が見る (Drag の順番の意味を GPU と揃える)。
+                    /// @note 前の力を足した後の速度を次の力が見る (Drag の順番の意味を GPU と揃える)。
                     const math::Vector3 p = { CellCenter(x, m_nx), CellCenter(y, m_ny), CellCenter(z, m_nz) };
                     math::Vector3 v = { m_vx[i], m_vy[i], m_vz[i] };
                     for (int k = 0; k < activeCount; ++k) {
@@ -652,7 +651,7 @@ void FluidGasSolver::ApplyForces(float dt)
     if (m_settings.vorticity > 0.0f) ApplyVorticityConfinement(dt);
 }
 
-// Fedkiw et al. 2001。数値拡散で失われる細かい渦を、渦度の強い方へ押し戻す力で補う。
+/// @brief Fedkiw et al. 2001。数値拡散で失われる細かい渦を、渦度の強い方へ押し戻す力で補う。
 void FluidGasSolver::ApplyVorticityConfinement(float dt)
 {
     for (int z = 0; z < m_nz; ++z) {
@@ -683,7 +682,7 @@ void FluidGasSolver::ApplyVorticityConfinement(float dt)
                 const float ny = ey / length;
                 const float nz = ez / length;
                 const std::size_t i = Index(x, y, z);
-                // f = ε h (N × ω)
+                /// @note f = ε h (N × ω)
                 m_vx[i] += (ny * m_curlZ[i] - nz * m_curlY[i]) * strength * dt;
                 m_vy[i] += (nz * m_curlX[i] - nx * m_curlZ[i]) * strength * dt;
                 if (volumetric) m_vz[i] += (nx * m_curlY[i] - ny * m_curlX[i]) * strength * dt;
@@ -702,9 +701,9 @@ void FluidGasSolver::Project(const std::vector<float>* expansion)
                     - (expansion != nullptr ? (*expansion)[i] : 0.0f);
             }
 
-    // 境界: 開いた縁は p = 0 (流れが自由に出ていく)、床だけは ∂p/∂n = 0 (通り抜けない)。
-    // 障害物 (固体セル) も床と同じ ∂p/∂n = 0。固体セル自身は解かない (速度は障害物が決める)。
-    // 前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束がずっと進む。
+    /// @note 境界: 開いた縁は p = 0 (流れが自由に出ていく)、床だけは ∂p/∂n = 0 (通り抜けない)。
+    ///       障害物 (固体セル) も床と同じ ∂p/∂n = 0。固体セル自身は解かない (速度は障害物が決める)。
+    ///       前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束がずっと進む。
     const bool solids = m_hasSolid;
     const float h2 = m_h * m_h;
     constexpr float kOverRelaxation = 1.7f;
@@ -721,11 +720,13 @@ void FluidGasSolver::Project(const std::vector<float>* expansion)
                         const auto neighbor = [&](int ax, int ay, int az, bool solid) {
                             if (ax >= 0 && ax < m_nx && ay >= 0 && ay < m_ny && az >= 0 && az < m_nz) {
                                 const std::size_t j = Index(ax, ay, az);
-                                if (solids && m_solid[j] != 0) return; // 固体の隣は数えない (床と同じ)
+                                /// @note 固体の隣は数えない (床と同じ)
+                                if (solids && m_solid[j] != 0) return;
                                 sum += m_pressure[j];
                                 ++count;
                             } else if (!solid) {
-                                ++count; // p = 0 の外側
+                                /// @note p = 0 の外側
+                                ++count;
                             }
                         };
                         if (m_nx > 1) { neighbor(x - 1, y, z, false); neighbor(x + 1, y, z, false); }
@@ -787,8 +788,8 @@ void FluidGasSolver::Advect(float dt)
         AdvectScalar(m_fuelColorMass, dt);
     }
 
-    // 速度の自己移流は半ラグランジュのまま。MacCormack を掛けると渦の芯で振動しやすく、
-    // 形の鋭さはスカラー側で十分に出る。
+    /// @note 速度の自己移流は半ラグランジュのまま。MacCormack を掛けると渦の芯で振動しやすく、
+    ///       形の鋭さはスカラー側で十分に出る。
     const float cellsPerUnit = dt / m_h;
     for (int z = 0; z < m_nz; ++z) {
         for (int y = 0; y < m_ny; ++y) {
@@ -827,7 +828,7 @@ void FluidGasSolver::AdvectScalar(std::vector<float>& field, float dt)
         return;
     }
 
-    // MacCormack: 往復させて戻ってこなかった分 (= 数値拡散の見積もり) を半分足し戻す。
+    /// @note MacCormack: 往復させて戻ってこなかった分 (= 数値拡散の見積もり) を半分足し戻す。
     for (int z = 0; z < m_nz; ++z)
         for (int y = 0; y < m_ny; ++y)
             for (int x = 0; x < m_nx; ++x) {
@@ -840,7 +841,7 @@ void FluidGasSolver::AdvectScalar(std::vector<float>& field, float dt)
             for (int x = 0; x < m_nx; ++x) {
                 const std::size_t i = Index(x, y, z);
                 const float corrected = m_scratchA[i] + 0.5f * (field[i] - m_scratchB[i]);
-                // 補正で元の近傍の範囲を超えると振動 (縞) が出る。範囲へ押し込めて抑える。
+                /// @note 補正で元の近傍の範囲を超えると振動 (縞) が出る。範囲へ押し込めて抑える。
                 backtrace(i, x, y, z, 1.0f, gx, gy, gz);
                 float lo = 0.0f;
                 float hi = 0.0f;
@@ -857,7 +858,7 @@ void FluidGasSolver::Dissipate(float dt)
     for (std::size_t i = 0; i < m_density.size(); ++i) {
         m_density[i] *= densityKeep;
         m_temperature[i] *= temperatureKeep;
-        // 非正規化数へ落ちると演算が桁違いに遅くなる。見えない量は 0 にしてしまう。
+        /// @note 非正規化数へ落ちると演算が桁違いに遅くなる。見えない量は 0 にしてしまう。
         if (m_density[i] < 1.0e-6f) m_density[i] = 0.0f;
         if (m_temperature[i] < 1.0e-6f) m_temperature[i] = 0.0f;
         if (m_hasColor) {
@@ -874,4 +875,4 @@ void FluidGasSolver::UpdateColorKey()
         m_colorKey[i] = ColorKeyOf(m_colorMass[i], m_density[i]);
 }
 
-} // namespace fbzz::asset
+} // namespace fbzz::fluid

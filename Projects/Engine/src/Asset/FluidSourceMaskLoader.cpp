@@ -1,8 +1,8 @@
-/// @file    FluidSourceMask.cpp
+/// @file    FluidSourceMaskLoader.cpp
 /// @brief   テクスチャ発生源の濃さマスク (画像 → 256×256 の輝度 × α)
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-#include <Engine/Asset/FluidSourceMask.hpp>
+#include <Engine/Asset/FluidSourceMaskLoader.hpp>
 
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -18,9 +18,10 @@
 #include <memory>
 #include <utility>
 
-// WHY ここで展開するか: Engine の画像読み込みは Renderer 経由 (WIC / DirectXTex) で、焼きのワーカー
-//     スレッドから COM を触らせたくない。STB_IMAGE_STATIC でこの翻訳単位に閉じ、Cursor.cpp や
-//     Editor 側の stb 実装とは衝突させない。ファイルは自前で読む (非 ASCII のパスを fopen に渡さない)。
+/// @note ここで展開するのは、Engine の画像読み込みが Renderer 経由 (WIC / DirectXTex) で、焼きの
+///       ワーカースレッドから COM を触らせたくないため。STB_IMAGE_STATIC でこの翻訳単位に閉じ、
+///       Cursor.cpp や Editor 側の stb 実装とは衝突させない。ファイルは自前で読む
+///       (非 ASCII のパスを fopen に渡さない)。
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC
 #define STBI_ONLY_PNG
@@ -30,7 +31,7 @@
 #define STBI_NO_LINEAR
 #define STBI_NO_HDR
 #include <stb_image.h>
-// unity build で同じバッチの後続ファイルへ設定を漏らさない。
+/// @note unity build で同じバッチの後続ファイルへ設定を漏らさない。
 #undef STB_IMAGE_IMPLEMENTATION
 #undef STB_IMAGE_STATIC
 #undef STBI_ONLY_PNG
@@ -49,8 +50,8 @@ struct StbiPixelsDeleter {
 
 std::filesystem::path MaskImageFile(const std::string& path)
 {
-    // guid: は AssetDatabase を直に引く。ResolveAssetPath の guid 分岐は «切れた参照» の報告済み集合を
-    // ロックなしで書くので、焼きのワーカーから呼ぶと競合する (AssetDatabase の参照系はロックで守られている)。
+    /// @note guid: は AssetDatabase を直に引く。ResolveAssetPath の guid 分岐は «切れた参照» の報告済み集合を
+    ///       ロックなしで書くので、焼きのワーカーから呼ぶと競合する (AssetDatabase の参照系はロックで守られている)。
     if (AssetDatabase::IsGuidRef(path))
         return util::FileSystem::PathFromUtf8(AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(path)));
     const std::filesystem::path direct = util::FileSystem::PathFromUtf8(path);
@@ -58,7 +59,7 @@ std::filesystem::path MaskImageFile(const std::string& path)
     return util::FileSystem::PathFromUtf8(AssetManager::ResolveAssetPath(path));
 }
 
-// sRGB のまま重みを掛ける。マスクは «どれだけ湧くか» の目安で、見た目の明るさと揃っていれば足りる。
+/// sRGB のまま重みを掛ける。マスクは «どれだけ湧くか» の目安で、見た目の明るさと揃っていれば足りる。
 float MaskPixelValue(const stbi_uc* rgba)
 {
     const float luminance = 0.2126f * static_cast<float>(rgba[0]) + 0.7152f * static_cast<float>(rgba[1])
@@ -80,11 +81,10 @@ struct MaskCrop {
     int height = 0;
 };
 
-// Sprite 参照の切り抜きを .meta から引く。
-// WHY ResolveSpriteReference を使わないか: あちらは UV を返すために元画像の寸法を先に要る。
-//     ここは画像を自前で展開するので、必要なのはピクセル矩形だけ。
-// WHY 見つからないときに画像全体へ落とさないか: 切れた参照が «アトラス全面» で湧くと、
-//     板の形との区別が画面から付かない。読めなかったことにして呼び手に赤く言わせる。
+/// @brief Sprite 参照の切り抜きを .meta から引く。
+/// @note ResolveSpriteReference は UV を返すため元画像の寸法を要るが、ここは画像を自前で
+///       展開するのでピクセル矩形だけで済む。見つからないときは画像全体へ落とさず失敗を返す
+///       (切れた参照がアトラス全面で湧くと板の形と区別が画面から付かないため)。
 bool SpriteCrop(const std::string& imageFile, const std::string& token, MaskCrop& out,
                 std::string& outError)
 {
@@ -98,7 +98,7 @@ bool SpriteCrop(const std::string& imageFile, const std::string& token, MaskCrop
                 static_cast<int>(sprite->width), static_cast<int>(sprite->height) };
         return true;
     }
-    // sprites を 1 つも持たない Single は «全面 1 枚» を画像名で参照する (ResolveSpriteReference と同じ規約)。
+    /// @note sprites を 1 つも持たない Single は «全面 1 枚» を画像名で参照する (ResolveSpriteReference と同じ規約)。
     if (settings.sprites.empty() && settings.type == TextureType::Sprite
         && settings.spriteMode == SpriteMode::Single
         && token == util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(imageFile).stem())) {
@@ -117,8 +117,8 @@ std::vector<std::vector<MaskTap>> MaskResampleTaps(int sourceCount, int targetCo
     for (int i = 0; i < targetCount; ++i) {
         std::vector<MaskTap>& row = taps[static_cast<std::size_t>(i)];
         if (scale > 1.0f) {
-            // WHY 縮めるときは面積平均か: 双線形のまま大きく縮めると出力 1 画素が元の 2×2 画素しか拾わず、
-            //     細い線 (文字・魔法陣) が途切れたり消えたりする。
+            /// @note 縮めるときは面積平均にする。双線形のまま大きく縮めると出力 1 画素が元の 2×2 画素
+            ///       しか拾わず、細い線 (文字・魔法陣) が途切れたり消えたりするため。
             const float begin = static_cast<float>(i) * scale;
             const float end = begin + scale;
             const int first = static_cast<int>(std::floor(begin));
@@ -147,7 +147,7 @@ std::vector<std::vector<MaskTap>> MaskResampleTaps(int sourceCount, int targetCo
 
 } // namespace
 
-bool LoadFluidSourceMask(const std::string& path, FluidSourceMask& out, std::string* outError)
+bool LoadFluidSourceMask(const std::string& path, fluid::FluidSourceMask& out, std::string* outError)
 {
     out.values.clear();
     const auto fail = [outError](std::string message) {
@@ -183,17 +183,17 @@ bool LoadFluidSourceMask(const std::string& path, FluidSourceMask& out, std::str
         if (!SpriteCrop(util::FileSystem::PathToUtf8(file), spriteToken, crop, reason))
             return fail(std::move(reason));
     }
-    // 矩形が画像からはみ出していても中へ収める (Sprite Editor で切ったあとに元画像を差し替えられる)。
+    /// @note 矩形が画像からはみ出していても中へ収める (Sprite Editor で切ったあとに元画像を差し替えられる)。
     const int cropX = std::clamp(crop.x, 0, width - 1);
     const int cropY = std::clamp(crop.y, 0, height - 1);
     const int cropWidth = crop.width > 0 ? (std::min)(crop.width, width - cropX) : width - cropX;
     const int cropHeight = crop.height > 0 ? (std::min)(crop.height, height - cropY) : height - cropY;
 
-    const int size = kFluidSourceMaskSize;
+    const int size = fluid::kFluidSourceMaskSize;
     const std::vector<std::vector<MaskTap>> columnTaps = MaskResampleTaps(cropWidth, size);
     const std::vector<std::vector<MaskTap>> rowTaps = MaskResampleTaps(cropHeight, size);
 
-    // 横だけ size へ写した中間 (切り抜きの行数 × size)。縦横を分けると 1 画素あたりの重みが «横 + 縦» 本で済む。
+    /// @note 横だけ size へ写した中間 (切り抜きの行数 × size)。縦横を分けると 1 画素あたりの重みが «横 + 縦» 本で済む。
     std::vector<float> horizontal(static_cast<std::size_t>(cropHeight) * static_cast<std::size_t>(size), 0.0f);
     for (int y = 0; y < cropHeight; ++y) {
         const stbi_uc* sourceRow = pixels.get()
@@ -225,30 +225,20 @@ bool LoadFluidSourceMask(const std::string& path, FluidSourceMask& out, std::str
     return true;
 }
 
-float SampleFluidSourceMask(const FluidSourceMask& mask, float u, float v)
-{
-    if (!mask.IsValid()) return 1.0f;
-    // NaN を int へ落とすと未定義動作になる。
-    if (!std::isfinite(u)) u = 0.0f;
-    if (!std::isfinite(v)) v = 0.0f;
-    const int size = kFluidSourceMaskSize;
-    // テクセル中心の規則 (GPU の双線形フィルター + clamp と同じ)。
-    const float x = std::clamp(u, 0.0f, 1.0f) * static_cast<float>(size) - 0.5f;
-    const float y = std::clamp(v, 0.0f, 1.0f) * static_cast<float>(size) - 0.5f;
-    const float baseX = std::floor(x);
-    const float baseY = std::floor(y);
-    const float tx = x - baseX;
-    const float ty = y - baseY;
-    const int x0 = std::clamp(static_cast<int>(baseX), 0, size - 1);
-    const int x1 = std::clamp(static_cast<int>(baseX) + 1, 0, size - 1);
-    const int y0 = std::clamp(static_cast<int>(baseY), 0, size - 1);
-    const int y1 = std::clamp(static_cast<int>(baseY) + 1, 0, size - 1);
-    const auto at = [&mask, size](int px, int py) {
-        return mask.values[static_cast<std::size_t>(py) * static_cast<std::size_t>(size) + static_cast<std::size_t>(px)];
-    };
-    const float top = at(x0, y0) + (at(x1, y0) - at(x0, y0)) * tx;
-    const float bottom = at(x0, y1) + (at(x1, y1) - at(x0, y1)) * tx;
-    return top + (bottom - top) * ty;
-}
+namespace {
+
+/// @note ソルバー (FBZZFluid) は画像を読めないので、Engine が起動時に読み手を挿す。
+///       挿し忘れるとテクスチャ発生源が «板の形» のまま黙って解かれるため、明示的な
+///       初期化順に頼らず静的初期化子で結ぶ (FBZZ_REGISTER_VOLUME_OVERRIDE と同じ流儀。
+///       Engine の内部モジュールは OBJECT ライブラリなので、この初期化子は捨てられない)。
+[[maybe_unused]] const bool kFluidSourceMaskResolverInstalled = [] {
+    fluid::SetFluidSourceMaskResolver(
+        [](const std::string& texture, fluid::FluidSourceMask& out) {
+            return LoadFluidSourceMask(texture, out);
+        });
+    return true;
+}();
+
+} // namespace
 
 } // namespace fbzz::asset

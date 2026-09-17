@@ -8,7 +8,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
@@ -31,7 +31,7 @@
 namespace fbzz::editor {
 namespace {
 
-// ディスクの stat は 1 秒に 2 回で足りる (AI・Baker の書き込みは人の操作の速さでしか来ない)。
+/// ディスクの stat は 1 秒に 2 回で足りる (AI・Baker の書き込みは人の操作の速さでしか来ない)。
 constexpr std::chrono::milliseconds kPollInterval{ 500 };
 
 std::int64_t DiskStamp(const std::string& path)
@@ -41,7 +41,7 @@ std::int64_t DiskStamp(const std::string& path)
     return error ? 0 : static_cast<std::int64_t>(stamp.time_since_epoch().count());
 }
 
-// 同じファイルを «C:\a\b.fluid» と «c:/a/b.fluid» で持ち合っても 1 つに寄せる (Windows は大文字小文字を区別しない)。
+/// 同じファイルを «C:\a\b.fluid» と «c:/a/b.fluid» で持ち合っても 1 つに寄せる (Windows は大文字小文字を区別しない)。
 std::string RegistryKey(const std::string& path)
 {
     std::string key = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).lexically_normal());
@@ -52,9 +52,8 @@ std::string RegistryKey(const std::string& path)
     return key;
 }
 
-// Undo / Redo が «今それを開いている文書» を探すための登録簿。
-// WHY ポインタを Undo コマンドに持たせないか: 文書は閉じられ・開き直されるので、履歴に残った
-//     ポインタはすぐ宙に浮く。パスで引き直せば、閉じていればファイルへ書く経路に自然に落ちる。
+/// Undo / Redo が «今それを開いている文書» を探すための登録簿。
+/// @note ポインタを Undo コマンドに持たせない: 文書は閉じられ・開き直されるので履歴に残ったポインタはすぐ宙に浮く。パスで引き直せば閉じていてもファイルへ書く経路に自然に落ちる。
 std::unordered_map<std::string, FluidDocument*>& Registry()
 {
     static std::unordered_map<std::string, FluidDocument*> registry;
@@ -84,11 +83,9 @@ FluidDocument* FindOpenDocument(const std::string& path)
     return it != registry.end() ? it->second : nullptr;
 }
 
-// Reflect() を通した値をすべて 1 本のバイト列へ落とす。
-// WHY 手書きの項目比較にしないか: 項目が増えたときに比較へ足し忘れると «変えたのに Undo が積まれない»
-//     になる。ReflectFluidRecipe は TOML のキーと一致することを FluidRecipeBakeTests が縛っているので、
-//     これに乗れば «保存される値» と «比べる値» がずれない。kind で隠れる項目も訪問はされる (表示だけ切る)。
-// WHY float をビットで持つか: to_string の 6 桁だと、細かいドラッグの差が «変わっていない» に丸まる。
+/// Reflect() を通した値をすべて 1 本のバイト列へ落とす。
+/// @note 手書きの項目比較にしない: 増えたとき比較へ足し忘れると «変えたのに Undo が積まれない» になる。ReflectFluidRecipe は TOML キーと一致することを FluidRecipeBakeTests が縛るため、これに乗ればずれない。kind で隠れる項目も訪問はされる (表示だけ切る)。
+/// @note float はビットで持つ: to_string の 6 桁だと細かいドラッグの差が «変わっていない» に丸まる。
 class RecipeDigest final : public scene::IReflector {
 public:
     [[nodiscard]] const std::string& Result() const { return m_out; }
@@ -102,7 +99,7 @@ public:
     void Field(const char*, math::Quaternion& v) override { Floats({ v.x, v.y, v.z, v.w }); }
     void Field(const char*, std::string& v) override
     {
-        // 長さを先に書く。書かないと "ab"+"c" と "a"+"bc" が同じ列になる。
+        /// @note 長さを先に書く。書かないと "ab"+"c" と "a"+"bc" が同じ列になる。
         const std::size_t length = v.size();
         Bytes(&length, sizeof(length));
         m_out += v;
@@ -132,16 +129,16 @@ private:
     std::string m_out;
 };
 
-std::string Digest(const asset::FluidRecipe& recipe)
+std::string Digest(const fluid::FluidRecipe& recipe)
 {
-    // ReflectFluidRecipe は非 const を取る (上限を超えた部品を切る等)。比べるだけで元を変えないよう写しに通す。
-    asset::FluidRecipe copy = recipe;
+    /// @note ReflectFluidRecipe は非 const を取る (上限を超えた部品を切る等)。比べるだけで元を変えないよう写しに通す。
+    fluid::FluidRecipe copy = recipe;
     RecipeDigest digest;
     asset::ReflectFluidRecipe(copy, digest);
     return digest.Result();
 }
 
-bool RecipesEqual(const asset::FluidRecipe& a, const asset::FluidRecipe& b)
+bool RecipesEqual(const fluid::FluidRecipe& a, const fluid::FluidRecipe& b)
 {
     if (a.sources.size() != b.sources.size() || a.forces.size() != b.forces.size()
         || a.colliders.size() != b.colliders.size())
@@ -149,7 +146,7 @@ bool RecipesEqual(const asset::FluidRecipe& a, const asset::FluidRecipe& b)
     return Digest(a) == Digest(b);
 }
 
-int ListCount(const asset::FluidRecipe& recipe, FluidSelectionKind list)
+int ListCount(const fluid::FluidRecipe& recipe, FluidSelectionKind list)
 {
     switch (list) {
     case FluidSelectionKind::Source: return static_cast<int>(recipe.sources.size());
@@ -159,8 +156,8 @@ int ListCount(const asset::FluidRecipe& recipe, FluidSelectionKind list)
     }
 }
 
-// Undo で部品が減ると選択の添字が範囲外になる。Outliner / Properties が範囲外を引かないよう寄せる。
-void ClampSelection(FluidSelection& selection, const asset::FluidRecipe& recipe)
+/// Undo で部品が減ると選択の添字が範囲外になる。Outliner / Properties が範囲外を引かないよう寄せる。
+void ClampSelection(FluidSelection& selection, const fluid::FluidRecipe& recipe)
 {
     if (!selection.IsPart()) return;
     const int count = ListCount(recipe, selection.kind);
@@ -191,7 +188,7 @@ FluidDocument::~FluidDocument()
 bool FluidDocument::Open(const std::string& absPath, std::string& outError)
 {
     Close();
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     if (!asset::LoadFluidRecipe(absPath, recipe, &outError)) {
         if (outError.empty()) outError = "読み込めませんでした: " + absPath;
         return false;
@@ -199,7 +196,7 @@ bool FluidDocument::Open(const std::string& absPath, std::string& outError)
     m_path = absPath;
     m_recipe = std::move(recipe);
     m_diskStamp = DiskStamp(absPath);
-    // 通番は 0 に戻さない。別の文書へ開き直したときにプレビューのキャッシュが同じ鍵で当たらないように。
+    /// @note 通番は 0 に戻さない。別の文書へ開き直したときにプレビューのキャッシュが同じ鍵で当たらないように。
     ++m_revision;
     m_open = true;
     m_dirty = false;
@@ -220,9 +217,9 @@ void FluidDocument::Close()
     if (m_open) ++m_revision;
     m_open = false;
     m_path.clear();
-    m_recipe = asset::FluidRecipe{};
-    m_interactiveBefore = asset::FluidRecipe{};
-    m_commitBefore = asset::FluidRecipe{};
+    m_recipe = fluid::FluidRecipe{};
+    m_interactiveBefore = fluid::FluidRecipe{};
+    m_commitBefore = fluid::FluidRecipe{};
     m_commitLabel.clear();
     m_diskStamp = 0;
     m_dirty = false;
@@ -234,25 +231,25 @@ void FluidDocument::Close()
     selection = FluidSelection{};
 }
 
-bool FluidDocument::Edit(EditorContext& ctx, const char* label, const std::function<void(asset::FluidRecipe&)>& fn)
+bool FluidDocument::Edit(EditorContext& ctx, const char* label, const std::function<void(fluid::FluidRecipe&)>& fn)
 {
     if (!m_open || !fn) return false;
 
-    // 操作中のまとまりが残っていたら先に閉じる。閉じないと、まとまりの «前» がこの編集より前になり、
-    // まとまりを Undo するとこの編集まで一緒に戻る。
+    /// @note 操作中のまとまりが残っていたら先に閉じる。閉じないと、まとまりの «前» がこの編集より前になり、
+    ///       まとまりを Undo するとこの編集まで一緒に戻る。
     if (m_commitActive) {
         m_commitActive = false;
         if (!RecipesEqual(m_commitBefore, m_recipe))
             PushUndo(ctx, m_commitLabel.c_str(), m_commitBefore, m_recipe);
     }
 
-    asset::FluidRecipe after = m_recipe;
+    fluid::FluidRecipe after = m_recipe;
     fn(after);
     if (RecipesEqual(m_recipe, after)) {
         ClampSelection(selection, m_recipe);
         return false;
     }
-    asset::FluidRecipe before = std::move(m_recipe);
+    fluid::FluidRecipe before = std::move(m_recipe);
     m_recipe = std::move(after);
     ++m_revision;
     m_dirty = true;
@@ -261,13 +258,13 @@ bool FluidDocument::Edit(EditorContext& ctx, const char* label, const std::funct
     return true;
 }
 
-void FluidDocument::Commit(EditorContext& ctx, const char* label, const asset::FluidRecipe& working, bool changed)
+void FluidDocument::Commit(EditorContext& ctx, const char* label, const fluid::FluidRecipe& working, bool changed)
 {
     if (!m_open) {
         m_commitActive = false;
         return;
     }
-    // ImGui の文脈が無い (テスト・起動直後) ときは «操作中ではない» として扱う。
+    /// @note ImGui の文脈が無い (テスト・起動直後) ときは «操作中ではない» として扱う。
     const bool active = ImGui::GetCurrentContext() != nullptr && ImGui::IsAnyItemActive();
 
     if (changed && active) {
@@ -284,8 +281,8 @@ void FluidDocument::Commit(EditorContext& ctx, const char* label, const asset::F
     }
 
     if (changed) {
-        // 手を離したフレームにも値が来る (InputText の確定など)。まとまりがあれば同じ 1 つに入れる。
-        const asset::FluidRecipe before = m_commitActive ? m_commitBefore : m_recipe;
+        /// @note 手を離したフレームにも値が来る (InputText の確定など)。まとまりがあれば同じ 1 つに入れる。
+        const fluid::FluidRecipe before = m_commitActive ? m_commitBefore : m_recipe;
         const std::string groupLabel = m_commitActive ? m_commitLabel : std::string(LabelOr(label));
         m_commitActive = false;
         const bool differsFromCurrent = !RecipesEqual(m_recipe, working);
@@ -313,10 +310,10 @@ void FluidDocument::BeginInteractiveEdit()
     m_interactive = true;
 }
 
-void FluidDocument::ApplyInteractive(const asset::FluidRecipe& working)
+void FluidDocument::ApplyInteractive(const fluid::FluidRecipe& working)
 {
     if (!m_open) return;
-    // Begin を呼び忘れても操作前を失わないよう、最初の Apply で覚える。
+    /// @note Begin を呼び忘れても操作前を失わないよう、最初の Apply で覚える。
     if (!m_interactive) BeginInteractiveEdit();
     m_recipe = working;
     ++m_revision;
@@ -339,9 +336,9 @@ bool FluidDocument::Save(EditorContext& ctx, std::string& outError)
         outError = "開いている .fluid がありません";
         return false;
     }
-    // 書く直前にもう一度ディスクを見る。PollExternalChange は間を置いてしか見ないので、その隙に
-    // 外 (AI の fluid.set・Baker パネル) が書いていると、気づかないまま上書きしてしまう。
-    // 自動保存もここを通るので、«3 秒の無操作» が他人の書き込みを飲み込むことはない。
+    /// @note 書く直前にもう一度ディスクを見る。PollExternalChange は間を置いてしか見ないので、その隙に
+    ///       外 (AI の fluid.set・Baker パネル) が書いていると、気づかないまま上書きしてしまう。
+    ///       自動保存もここを通るので、«3 秒の無操作» が他人の書き込みを飲み込むことはない。
     if (const std::int64_t stamp = DiskStamp(m_path); stamp != 0 && m_diskStamp != 0 && stamp != m_diskStamp) {
         m_conflict = true;
         outError = "外で書き換えられています。読み直すか手元を残すかを選んでください: " + m_path;
@@ -353,7 +350,7 @@ bool FluidDocument::Save(EditorContext& ctx, std::string& outError)
     }
     m_dirty = false;
     m_conflict = false;
-    // 自分の書き込みを «外からの変更» と取り違えないよう、書いた直後の時刻を覚え直す。
+    /// @note 自分の書き込みを «外からの変更» と取り違えないよう、書いた直後の時刻を覚え直す。
     m_diskStamp = DiskStamp(m_path);
     LastPolls().erase(this);
     (void)asset::AssetManager::ReloadPath(m_path);
@@ -370,15 +367,15 @@ void FluidDocument::PollExternalChange()
     polls[this] = now;
 
     const std::int64_t stamp = DiskStamp(m_path);
-    // 0 は消えた・掴めない。書き込み途中のことがあるので、手元はそのまま次の問い合わせを待つ。
+    /// @note 0 は消えた・掴めない。書き込み途中のことがあるので、手元はそのまま次の問い合わせを待つ。
     if (stamp == 0 || stamp == m_diskStamp) return;
     if (m_dirty) {
-        // m_diskStamp は進めない。KeepLocal / ReloadFromDisk で決着するまで衝突を出し続ける。
+        /// @note m_diskStamp は進めない。KeepLocal / ReloadFromDisk で決着するまで衝突を出し続ける。
         m_conflict = true;
         return;
     }
-    asset::FluidRecipe recipe;
-    // 読めなければ書き込み途中とみなし、時刻を進めずに次で読み直す。
+    fluid::FluidRecipe recipe;
+    /// @note 読めなければ書き込み途中とみなし、時刻を進めずに次で読み直す。
     if (!asset::LoadFluidRecipe(m_path, recipe)) return;
     ReplaceRecipe(recipe, false);
     m_diskStamp = stamp;
@@ -395,7 +392,7 @@ bool FluidDocument::HasUnsavedChanges(const std::string& absPath)
 void FluidDocument::ReloadFromDisk()
 {
     if (!m_open) return;
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     if (!asset::LoadFluidRecipe(m_path, recipe)) return;
     ReplaceRecipe(recipe, false);
     m_diskStamp = DiskStamp(m_path);
@@ -406,7 +403,7 @@ void FluidDocument::ReloadFromDisk()
 void FluidDocument::KeepLocal()
 {
     if (!m_open) return;
-    // 今のディスクの時刻を «見た» ことにする。次に外から書かれるまで衝突は出ない。
+    /// @note 今のディスクの時刻を «見た» ことにする。次に外から書かれるまで衝突は出ない。
     m_diskStamp = DiskStamp(m_path);
     m_conflict = false;
     m_dirty = true;
@@ -457,7 +454,7 @@ void FluidDocument::RemapVisibility(FluidSelectionKind list, const std::function
 
 void FluidDocument::RemapVisibilityAfterInsert(FluidSelectionKind list, int insertedIndex)
 {
-    // 挿し込んだ部品そのものは «印なし» で始まる (挿した場所以降の印だけを 1 つ後ろへ送る)。
+    /// @note 挿し込んだ部品そのものは «印なし» で始まる (挿した場所以降の印だけを 1 つ後ろへ送る)。
     RemapVisibility(list, [insertedIndex](int index) { return index >= insertedIndex ? index + 1 : index; });
 }
 
@@ -472,7 +469,7 @@ void FluidDocument::RemapVisibilityAfterRemove(FluidSelectionKind list, int remo
 void FluidDocument::RemapVisibilityAfterMove(FluidSelectionKind list, int from, int to)
 {
     if (from == to) return;
-    // FixSelectionAfterMove (FluidEditorCommon) と同じ写し方。間に挟まれた部品が 1 つずつずれる。
+    /// @note FixSelectionAfterMove (FluidEditorCommon) と同じ写し方。間に挟まれた部品が 1 つずつずれる。
     RemapVisibility(list, [from, to](int index) {
         if (index == from) return to;
         if (from < index && index <= to) return index - 1;
@@ -481,12 +478,12 @@ void FluidDocument::RemapVisibilityAfterMove(FluidSelectionKind list, int from, 
     });
 }
 
-asset::FluidRecipe FluidDocument::PreviewRecipe() const
+fluid::FluidRecipe FluidDocument::PreviewRecipe() const
 {
-    asset::FluidRecipe preview = m_recipe;
+    fluid::FluidRecipe preview = m_recipe;
     const auto apply = [this](auto& parts, FluidSelectionKind list) {
         const int count = static_cast<int>(parts.size());
-        // 消えた部品を指したままのソロは無視する (リストが丸ごと消えて見えるより分かりやすい)。
+        /// @note 消えた部品を指したままのソロは無視する (リストが丸ごと消えて見えるより分かりやすい)。
         const bool soloHere = m_solo.first == static_cast<int>(list) && m_solo.second >= 0 && m_solo.second < count;
         for (int i = 0; i < count; ++i) {
             if (IsHidden(list, i) || (soloHere && i != m_solo.second))
@@ -499,26 +496,26 @@ asset::FluidRecipe FluidDocument::PreviewRecipe() const
     return preview;
 }
 
-void FluidDocument::ReplaceRecipe(const asset::FluidRecipe& recipe, bool markDirty)
+void FluidDocument::ReplaceRecipe(const fluid::FluidRecipe& recipe, bool markDirty)
 {
     m_recipe = recipe;
     ++m_revision;
     m_dirty = markDirty;
-    // 操作の途中で中身が差し替わったら、そのまとまりは捨てる (差し替え前を «前» にして積むと別物に戻る)。
+    /// @note 操作の途中で中身が差し替わったら、そのまとまりは捨てる (差し替え前を «前» にして積むと別物に戻る)。
     m_commitActive = false;
     m_interactive = false;
     ClampSelection(selection, m_recipe);
 }
 
-void FluidDocument::PushUndo(EditorContext& ctx, const char* label, const asset::FluidRecipe& before,
-                             const asset::FluidRecipe& after)
+void FluidDocument::PushUndo(EditorContext& ctx, const char* label, const fluid::FluidRecipe& before,
+                             const fluid::FluidRecipe& after)
 {
     if (ctx.undoStack == nullptr) return;
 
     EditorContext* context = &ctx;
     const std::string path = m_path;
-    // メンバー関数の中のラムダなので private の ReplaceRecipe を呼べる。
-    const auto applySnapshot = [context, path](const asset::FluidRecipe& snapshot) {
+    /// @note メンバー関数の中のラムダなので private の ReplaceRecipe を呼べる。
+    const auto applySnapshot = [context, path](const fluid::FluidRecipe& snapshot) {
         if (FluidDocument* doc = FindOpenDocument(path)) {
             doc->ReplaceRecipe(snapshot, true);
             return;

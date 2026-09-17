@@ -3,15 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// Play 中はアクティブシーンが差し替わる。SceneManager::CurrentScene() は
-/// m_externalScene と m_active の «どちらも無い» 瞬間に nullptr を返し、EditorApp は
-/// その値をそのまま EditorContext::activeScene へ入れる (Play 中の LoadScene がまさにこれ)。
-/// 一方 DrainRequests は毎フレーム走るので、その瞬間に届いた AI コマンドは
-/// nullptr のシーンを掴む。ここで «落ちずにエラーを返す» ことを 1 コマンドずつ固定する。
-///
-/// WHY 網羅するか: ハンドラは 137 個あり、シーンを触るものと触らないものが混在している。
-///     どれか 1 つでもガードを忘れると «Play 中に AI から操作するとエディターが落ちる» に
-///     なるが、落ちるまでどれが穴かは分からない。1 つずつ投げて確かめるしかない。
+/// @note Play 中はアクティブシーンが差し替わり、SceneManager::CurrentScene() は m_externalScene/m_active のどちらも無い瞬間に nullptr を返し EditorContext::activeScene へそのまま入る (Play 中の LoadScene)。
+/// @note DrainRequests は毎フレーム走るため、その瞬間に届いた AI コマンドは nullptr のシーンを掴みうる。ここで落ちずにエラーを返すことを 1 コマンドずつ固定する。
+/// @note ハンドラは 137 個あり、シーン操作の有無が混在する。1 つでもガードを忘れると Play 中の AI 操作で落ちるが、どれが穴かは事前に分からないため 1 つずつ投げて確かめる。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 
@@ -20,7 +14,7 @@
 #include <Editor/Ai/Json.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/UndoStack.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -36,7 +30,7 @@ using editor::ai::JsonValue;
 using editor::ai::ParseJson;
 using editor::ai::SerializeJson;
 
-// 実運用と同じ NDJSON エンベロープを 1 行組み立てる。
+/// 実運用と同じ NDJSON エンベロープを 1 行組み立てる。
 std::string MakeRequest(const std::string& type, const std::string& kind = "query",
                         bool dryRun = true)
 {
@@ -52,8 +46,8 @@ std::string MakeRequest(const std::string& type, const std::string& kind = "quer
     return SerializeJson(root);
 }
 
-// 応答が «プロトコルとして読める» ことまで見る。落ちないだけでは足りない
-// (空文字や壊れた JSON を返すと、MCP 側が固まる)。
+/// 応答が «プロトコルとして読める» ことまで見る。落ちないだけでは足りない
+/// (空文字や壊れた JSON を返すと、MCP 側が固まる)。
 void ExpectWellFormedResponse(const std::string& line, const std::string& what)
 {
     ASSERT_FALSE(line.empty()) << what << ": 応答が空";
@@ -72,12 +66,12 @@ void ExpectWellFormedResponse(const std::string& line, const std::string& what)
     EXPECT_EQ(id->AsString(), "test-1") << what << ": 相関 id が返らない";
 }
 
-// Dispatcher が受け付ける payload.t の一覧。
-// NOTE: 実装の文字列リテラルから拾った 137 種。増えたらここへ足す。
+/// @brief Dispatcher が受け付ける payload.t の一覧。
+/// @note 実装の文字列リテラルから拾った 137 種。増えたらここへ足す。
 const std::vector<std::string>& AllCommandTypes()
 {
     static const std::vector<std::string> types = {
-        // @@COMMANDS_BEGIN
+        /// @note @@COMMANDS_BEGIN
         "animation.addLayer", "animation.addMotion", "animation.addParameter",
         "animation.addState", "animation.addTransition", "animation.blendTree",
         "animation.control", "animation.graph", "animation.playSlot", "animation.pose",
@@ -111,19 +105,21 @@ const std::vector<std::string>& AllCommandTypes()
         "terrain.paint", "terrain.sample", "terrain.sculpt", "terrain.setLayerMaterial",
         "transform.set", "ui.inspect", "vfx.generateMotionVectors", "viewport.camera",
         "viewport.capture", "viewport.semantic",
-        // @@COMMANDS_END
+        "editor.bus.list", "input.record", "playtest.cancel", "playtest.list", "playtest.run",
+        "playtest.status", "visual.compare",
+        /// @note @@COMMANDS_END
     };
     return types;
 }
 
 } // namespace
 
-// 既定は «何も繋がっていない» 文脈。Play 中にシーンが差し替わる谷間そのもの。
+/// 既定は «何も繋がっていない» 文脈。Play 中にシーンが差し替わる谷間そのもの。
 class EditorBusDispatcherTest : public testkit::EditorFixture {};
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
 {
-    // 本題。1 つでもガードが抜けていれば、ここでプロセスごと落ちる。
+    /// @note 本題。1 つでもガードが抜けていれば、ここでプロセスごと落ちる。
     EditorBusDispatcher dispatcher(Context());
     ASSERT_EQ(Context().activeScene, nullptr);
 
@@ -136,7 +132,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandAsADryRunCommand)
 {
-    // query だけでなく command 側の分岐も通す。dryRun なので実変更は起きない。
+    /// @note query だけでなく command 側の分岐も通す。dryRun なので実変更は起きない。
     EditorBusDispatcher dispatcher(Context());
 
     for (const std::string& type : AllCommandTypes()) {
@@ -149,8 +145,8 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandAsADryRunCommand)
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
 {
-    // シーンが «有る» 側も通す。無い側だけ守っても、シーンはあるが中身が空という
-    // 状態 (開いた直後・遷移直後) で落ちれば同じこと。
+    /// @note シーンが «有る» 側も通す。無い側だけ守っても、シーンはあるが中身が空という
+    ///       状態 (開いた直後・遷移直後) で落ちれば同じこと。
     scene::Scene& scene = AttachScene();
     scene.CreateGameObject("Player");
 
@@ -164,7 +160,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
 {
-    // GameObject が 1 つも無いシーン。«先頭を取る» 類の実装がここで落ちる。
+    /// @note GameObject が 1 つも無いシーン。«先頭を取る» 類の実装がここで落ちる。
     AttachScene();
 
     EditorBusDispatcher dispatcher(Context());
@@ -177,7 +173,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
 
 TEST_F(EditorBusDispatcherTest, SurvivesWhenTheSceneIsDetachedMidSession)
 {
-    // Play 中の LoadScene が起こす順序。繋がった状態で一度使ってから切れる。
+    /// @note Play 中の LoadScene が起こす順序。繋がった状態で一度使ってから切れる。
     scene::Scene& scene = AttachScene();
     scene.CreateGameObject("Player");
 
@@ -207,8 +203,8 @@ TEST_F(EditorBusDispatcherTest, ReportsAnErrorForAnUnknownCommand)
 
 TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
 {
-    // 相関 id を取り出せなくても «壊れている» ことは返す。黙ると送信側は
-    // timeout まで固まり、しかも «届いていない» のか «壊れていた» のか分からない。
+    /// @note 相関 id を取り出せなくても «壊れている» ことは返す。黙ると送信側は
+    ///       timeout まで固まり、しかも «届いていない» のか «壊れていた» のか分からない。
     EditorBusDispatcher dispatcher(Context());
 
     const std::string response = dispatcher.Handle("this is not json {{{");
@@ -223,7 +219,7 @@ TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
 
 TEST_F(EditorBusDispatcherTest, StaysSilentOnABlankLine)
 {
-    // 空行は NDJSON の区切りとして正常。要求ではないのでエラーを返さない。
+    /// @note 空行は NDJSON の区切りとして正常。要求ではないのでエラーを返さない。
     EditorBusDispatcher dispatcher(Context());
 
     EXPECT_TRUE(dispatcher.Handle("").empty());
@@ -233,14 +229,15 @@ TEST_F(EditorBusDispatcherTest, StaysSilentOnABlankLine)
 
 TEST_F(EditorBusDispatcherTest, AnswersWithAnErrorWhenTheIdIsReadable)
 {
-    // エンベロープが壊れていても、id が読めればそれを載せて «誰への失敗か» を言う。
-    // 読めない場合 (上のテスト) は id 空で返す。相関できるかの差だけで、
-    // どちらも «応答は返す» 側に倒す。
+    /// @note エンベロープが壊れていても、id が読めればそれを載せて «誰への失敗か» を言う。
+    ///       読めない場合 (上のテスト) は id 空で返す。相関できるかの差だけで、
+    ///       どちらも «応答は返す» 側に倒す。
     EditorBusDispatcher dispatcher(Context());
 
     JsonValue root = JsonValue::MakeObject();
     root.Set("id", JsonValue("test-1"));
-    root.Set("kind", JsonValue("query"));   // protocol と payload が無い
+    /// @note protocol と payload が無い
+    root.Set("kind", JsonValue("query"));
 
     const std::string response = dispatcher.Handle(SerializeJson(root));
 
@@ -253,7 +250,7 @@ TEST_F(EditorBusDispatcherTest, AnswersWithAnErrorWhenTheIdIsReadable)
 
 TEST_F(EditorBusDispatcherTest, KeepsWorkingAfterAFailedRequest)
 {
-    // 1 回の失敗で内部状態が壊れると、以降 «何を送っても落ちる» になる。
+    /// @note 1 回の失敗で内部状態が壊れると、以降 «何を送っても落ちる» になる。
     EditorBusDispatcher dispatcher(Context());
 
     dispatcher.Handle("garbage");
@@ -264,7 +261,7 @@ TEST_F(EditorBusDispatcherTest, KeepsWorkingAfterAFailedRequest)
 
 TEST_F(EditorBusDispatcherTest, HandlesTheSameCommandRepeatedly)
 {
-    // MCP は同じ問い合わせを繰り返す。呼ぶたびに状態が積み上がらないこと。
+    /// @note MCP は同じ問い合わせを繰り返す。呼ぶたびに状態が積み上がらないこと。
     EditorBusDispatcher dispatcher(Context());
 
     for (int i = 0; i < 5; ++i)
@@ -274,12 +271,13 @@ TEST_F(EditorBusDispatcherTest, HandlesTheSameCommandRepeatedly)
 
 TEST_F(EditorBusDispatcherTest, SurvivesACommandCarryingUnexpectedFields)
 {
-    // 送信側が新しい項目を足しても、古いエディターが落ちてはいけない。
+    /// @note 送信側が新しい項目を足しても、古いエディターが落ちてはいけない。
     EditorBusDispatcher dispatcher(Context());
 
     JsonValue payload = JsonValue::MakeObject();
     payload.Set("t", JsonValue("editor.catalog"));
-    payload.Set("id", JsonValue(12345));            // 文字列を期待している所へ数値
+    /// @note 文字列を期待している所へ数値
+    payload.Set("id", JsonValue(12345));
     payload.Set("futureField", JsonValue(true));
     payload.Set("nested", JsonValue::MakeArray());
 
@@ -292,9 +290,9 @@ TEST_F(EditorBusDispatcherTest, SurvivesACommandCarryingUnexpectedFields)
     ExpectWellFormedResponse(dispatcher.Handle(SerializeJson(root)), "extra fields");
 }
 
-// ── 流体 (.fluid) ───────────────────────────────────────────────────────────
-// AI はファイルだけで流体を作って焼く。«作る → 読む → 部分更新 → Undo» の往復と、
-// 焼きの窓口が無い文脈 (テスト・単体ツール) で黙って成功しないことを縛る。
+/// @name 流体 (.fluid)
+/// AI はファイルだけで流体を作って焼く。«作る → 読む → 部分更新 → Undo» の往復と、
+/// 焼きの窓口が無い文脈 (テスト・単体ツール) で黙って成功しないことを縛る。
 namespace {
 
 std::string MakePayloadRequest(const JsonValue& payload, const std::string& kind)
@@ -340,7 +338,7 @@ constexpr const char* kSmokePath = "Assets/VFX/Smoke.fluid";
 
 } // namespace
 
-// projectRoot と UndoStack だけを繋ぐ。FluidBakeService は繋がない (焼きは GPU とフレームが要る)。
+/// projectRoot と UndoStack だけを繋ぐ。FluidBakeService は繋がない (焼きは GPU とフレームが要る)。
 class EditorBusFluidTest : public testkit::EditorFixture {
 protected:
     void SetUp() override
@@ -365,9 +363,9 @@ protected:
         return parsed.has_value() ? *parsed : JsonValue::MakeObject();
     }
 
-    asset::FluidRecipe LoadRecipe(const std::string& relative)
+    fluid::FluidRecipe LoadRecipe(const std::string& relative)
     {
-        asset::FluidRecipe recipe;
+        fluid::FluidRecipe recipe;
         EXPECT_TRUE(asset::LoadFluidRecipe(File(relative).generic_string(), recipe)) << relative;
         return recipe;
     }
@@ -393,7 +391,7 @@ TEST_F(EditorBusFluidTest, CreatesARecipeAndReadsItBack)
     ASSERT_NE(gas->Find("buoyancy"), nullptr);
     EXPECT_NEAR(gas->Find("buoyancy")->AsNumber(),
                 asset::MakeFluidPreset(asset::FluidPreset::Smoke).gas.buoyancy, 1e-4);
-    const bool volume = asset::MakeFluidPreset(asset::FluidPreset::Smoke).bake.mode == asset::FluidBakeMode::Volume3D;
+    const bool volume = asset::MakeFluidPreset(asset::FluidPreset::Smoke).bake.mode == fluid::FluidBakeMode::Volume3D;
     EXPECT_EQ(got.Find("result")->Find("bakeMode")->AsString(), volume ? "3d" : "2d");
 }
 
@@ -406,7 +404,7 @@ TEST_F(EditorBusFluidTest, SetChangesANestedKeyAndUndoRestoresIt)
     gas.Set("buoyancy", JsonValue(3.25));
     JsonValue fields = JsonValue::MakeObject();
     fields.Set("gas", std::move(gas));
-    // ドット区切りでも同じ場所を指す。
+    /// @note ドット区切りでも同じ場所を指す。
     fields.Set("render.opacity", JsonValue(7.5));
     JsonValue payload = FluidPayload("fluid.set", kSmokePath);
     payload.Set("fields", std::move(fields));
@@ -434,7 +432,7 @@ TEST_F(EditorBusFluidTest, SetReportsUnknownKeysAndWritesNothing)
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
     const float original = LoadRecipe(kSmokePath).gas.buoyancy;
 
-    // 正しいキーが混ざっていても書かない。一部だけ効くと AI は効かなかった方を見落とす。
+    /// @note 正しいキーが混ざっていても書かない。一部だけ効くと AI は効かなかった方を見落とす。
     JsonValue gas = JsonValue::MakeObject();
     gas.Set("buoyancy", JsonValue(9.0));
     gas.Set("noSuchKey", JsonValue(1));
@@ -465,7 +463,7 @@ TEST_F(EditorBusFluidTest, CreateRefusesToOverwriteUnlessAsked)
     ASSERT_TRUE(IsOk(replaced)) << SerializeJson(replaced);
     EXPECT_TRUE(replaced.Find("result")->Find("overwrote")->AsBool());
 
-    // 上書きの Undo は消すのではなく前の中身へ戻す。
+    /// @note 上書きの Undo は消すのではなく前の中身へ戻す。
     const float fireBuoyancy = asset::MakeFluidPreset(asset::FluidPreset::Fire).gas.buoyancy;
     EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, fireBuoyancy);
     m_undo.Undo();
@@ -490,13 +488,13 @@ TEST_F(EditorBusFluidTest, BakeAndPreviewNeedTheService)
     EXPECT_EQ(ErrorCode(Send(FluidPayload("fluid.bake", kSmokePath))), "SERVICE_UNAVAILABLE");
     EXPECT_EQ(ErrorCode(Send(FluidPayload("fluid.preview", kSmokePath))), "SERVICE_UNAVAILABLE");
 
-    // 焼けないと分かっているなら .fluid も書かない (成功に見えて何も出ないのを防ぐ)。
+    /// @note 焼けないと分かっているなら .fluid も書かない (成功に見えて何も出ないのを防ぐ)。
     JsonValue effect = FluidPayload("fluid.createEffect", "");
     effect.Set("name", JsonValue("Puff"));
     EXPECT_EQ(ErrorCode(Send(effect)), "SERVICE_UNAVAILABLE");
     EXPECT_FALSE(std::filesystem::exists(File("Assets/VFX/Fluid/Puff.fluid")));
 
-    // 焼かないなら窓口が無くても作れる。
+    /// @note 焼かないなら窓口が無くても作れる。
     effect.Set("bake", JsonValue(false));
     const JsonValue created = Send(effect);
     ASSERT_TRUE(IsOk(created)) << SerializeJson(created);
@@ -519,7 +517,7 @@ TEST_F(EditorBusFluidTest, TransactionRefusesBakeButAcceptsEdits)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
 
-    // 焼きは Undo できないので、まとめて戻す transaction には入れさせない。
+    /// @note 焼きは Undo できないので、まとめて戻す transaction には入れさせない。
     JsonValue bakeCmds = JsonValue::MakeArray();
     bakeCmds.Push(FluidPayload("fluid.bake", kSmokePath));
     JsonValue bakeTransaction = JsonValue::MakeObject();
@@ -542,7 +540,7 @@ TEST_F(EditorBusFluidTest, TransactionRefusesBakeButAcceptsEdits)
     ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
     EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, 2.5f);
 
-    // 部品の追加も Undo できるファイル書き込みなので transaction に入れられる。
+    /// @note 部品の追加も Undo できるファイル書き込みなので transaction に入れられる。
     JsonValue add = FluidPayload("fluid.addOperator", kSmokePath);
     add.Set("list", JsonValue("force"));
     JsonValue addCmds = JsonValue::MakeArray();
@@ -557,7 +555,7 @@ TEST_F(EditorBusFluidTest, TransactionRefusesBakeButAcceptsEdits)
     EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), forcesBefore + 1);
 }
 
-// ── 部品 (発生源・力) ──
+/// @name 部品 (発生源・力)
 namespace {
 
 JsonValue OperatorPayload(const std::string& type, const std::string& list)
@@ -582,7 +580,7 @@ TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
     const std::size_t before = LoadRecipe(kSmokePath).sources.size();
 
-    // ラベルは大文字小文字を問わない。fields は新しい部品 1 つぶんの部分指定。
+    /// @note ラベルは大文字小文字を問わない。fields は新しい部品 1 つぶんの部分指定。
     JsonValue payload = OperatorPayload("fluid.addOperator", "source");
     payload.Set("type", JsonValue("Cone"));
     payload.Set("index", JsonValue(0));
@@ -599,22 +597,22 @@ TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
     EXPECT_EQ(result->Find("count")->AsInt(), static_cast<int>(before + 1));
     EXPECT_TRUE(ArrayHasString(result->Find("changed"), "source.0.density"));
 
-    asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    fluid::FluidRecipe recipe = LoadRecipe(kSmokePath);
     ASSERT_EQ(recipe.sources.size(), before + 1);
-    EXPECT_EQ(recipe.sources[0].shape, asset::FluidSourceShape::Cone);
+    EXPECT_EQ(recipe.sources[0].shape, fluid::FluidSourceShape::Cone);
     EXPECT_FLOAT_EQ(recipe.sources[0].density, 7.0f);
     EXPECT_EQ(recipe.sources[0].name, "Jet");
 
     m_undo.Undo();
     EXPECT_EQ(LoadRecipe(kSmokePath).sources.size(), before);
     m_undo.Redo();
-    EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, asset::FluidSourceShape::Cone);
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, fluid::FluidSourceShape::Cone);
 
-    // 力の種類もラベルで選べる (TOML と同じ綴り)。
+    /// @note 力の種類もラベルで選べる (TOML と同じ綴り)。
     JsonValue force = OperatorPayload("fluid.addOperator", "force");
     force.Set("type", JsonValue("VORTEX"));
     ASSERT_TRUE(IsOk(Send(force)));
-    EXPECT_EQ(LoadRecipe(kSmokePath).forces.back().type, asset::FluidForceType::Vortex);
+    EXPECT_EQ(LoadRecipe(kSmokePath).forces.back().type, fluid::FluidForceType::Vortex);
 }
 
 TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
@@ -625,11 +623,11 @@ TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
         add.Set("type", JsonValue(shape));
         ASSERT_TRUE(IsOk(Send(add)));
     }
-    const asset::FluidRecipe original = LoadRecipe(kSmokePath);
+    const fluid::FluidRecipe original = LoadRecipe(kSmokePath);
     const std::size_t count = original.sources.size();
     ASSERT_GE(count, 2u);
 
-    // 末尾 (ring) を先頭へ。
+    /// @note 末尾 (ring) を先頭へ。
     JsonValue move = OperatorPayload("fluid.moveOperator", "source");
     move.Set("from", JsonValue(static_cast<int>(count - 1)));
     move.Set("to", JsonValue(0));
@@ -637,9 +635,9 @@ TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
     ASSERT_TRUE(IsOk(moved)) << SerializeJson(moved);
     EXPECT_EQ(moved.Find("result")->Find("from")->AsInt(), static_cast<int>(count - 1));
     EXPECT_EQ(moved.Find("result")->Find("to")->AsInt(), 0);
-    EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, asset::FluidSourceShape::Ring);
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, fluid::FluidSourceShape::Ring);
     m_undo.Undo();
-    EXPECT_EQ(LoadRecipe(kSmokePath).sources[count - 1].shape, asset::FluidSourceShape::Ring);
+    EXPECT_EQ(LoadRecipe(kSmokePath).sources[count - 1].shape, fluid::FluidSourceShape::Ring);
     EXPECT_EQ(LoadRecipe(kSmokePath).sources[0].shape, original.sources[0].shape);
 
     JsonValue remove = OperatorPayload("fluid.removeOperator", "source");
@@ -648,15 +646,15 @@ TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
     ASSERT_TRUE(IsOk(removed)) << SerializeJson(removed);
     EXPECT_EQ(removed.Find("result")->Find("removed")->AsInt(), static_cast<int>(count - 2));
     EXPECT_EQ(removed.Find("result")->Find("count")->AsInt(), static_cast<int>(count - 1));
-    asset::FluidRecipe afterRemove = LoadRecipe(kSmokePath);
+    fluid::FluidRecipe afterRemove = LoadRecipe(kSmokePath);
     ASSERT_EQ(afterRemove.sources.size(), count - 1);
-    EXPECT_EQ(afterRemove.sources.back().shape, asset::FluidSourceShape::Ring);
+    EXPECT_EQ(afterRemove.sources.back().shape, fluid::FluidSourceShape::Ring);
     m_undo.Undo();
-    asset::FluidRecipe restored = LoadRecipe(kSmokePath);
+    fluid::FluidRecipe restored = LoadRecipe(kSmokePath);
     ASSERT_EQ(restored.sources.size(), count);
-    EXPECT_EQ(restored.sources[count - 2].shape, asset::FluidSourceShape::Box);
+    EXPECT_EQ(restored.sources[count - 2].shape, fluid::FluidSourceShape::Box);
 
-    // 範囲外は何も書かずに BAD_ARG。
+    /// @note 範囲外は何も書かずに BAD_ARG。
     remove.Set("index", JsonValue(static_cast<int>(count)));
     EXPECT_EQ(ErrorCode(Send(remove)), "BAD_ARG");
     move.Set("from", JsonValue(static_cast<int>(count)));
@@ -673,9 +671,9 @@ TEST_F(EditorBusFluidTest, AddOperatorRejectsUnknownListsTypesAndAFullList)
     badType.Set("type", JsonValue("tornado"));
     EXPECT_EQ(ErrorCode(Send(badType)), "BAD_ARG");
 
-    // 配列ごと渡すと上限で切り詰め、何を落としたかを返す。
+    /// @note 配列ごと渡すと上限で切り詰め、何を落としたかを返す。
     JsonValue many = JsonValue::MakeArray();
-    for (int i = 0; i < asset::kMaxFluidForces + 2; ++i) many.Push(JsonValue::MakeObject());
+    for (int i = 0; i < fluid::kMaxFluidForces + 2; ++i) many.Push(JsonValue::MakeObject());
     JsonValue fields = JsonValue::MakeObject();
     fields.Set("force", std::move(many));
     JsonValue set = FluidPayload("fluid.set", kSmokePath);
@@ -683,12 +681,12 @@ TEST_F(EditorBusFluidTest, AddOperatorRejectsUnknownListsTypesAndAFullList)
     const JsonValue filled = Send(set);
     ASSERT_TRUE(IsOk(filled)) << SerializeJson(filled);
     EXPECT_NE(filled.Find("result")->Find("clamped"), nullptr) << SerializeJson(filled);
-    EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), static_cast<std::size_t>(asset::kMaxFluidForces));
+    EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), static_cast<std::size_t>(fluid::kMaxFluidForces));
 
     const JsonValue full = Send(OperatorPayload("fluid.addOperator", "force"));
     EXPECT_FALSE(IsOk(full));
     EXPECT_EQ(ErrorCode(full), "OPERATOR_LIMIT");
-    EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), static_cast<std::size_t>(asset::kMaxFluidForces));
+    EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), static_cast<std::size_t>(fluid::kMaxFluidForces));
 }
 
 TEST_F(EditorBusFluidTest, SetAcceptsForceTypeLabelsAndMotionKeyArrays)
@@ -720,8 +718,8 @@ TEST_F(EditorBusFluidTest, SetAcceptsForceTypeLabelsAndMotionKeyArrays)
 
     const JsonValue response = Send(payload);
     ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
-    const asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
-    EXPECT_EQ(recipe.forces[forceIndex].type, asset::FluidForceType::Vortex);
+    const fluid::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    EXPECT_EQ(recipe.forces[forceIndex].type, fluid::FluidForceType::Vortex);
     ASSERT_EQ(recipe.sources[0].motion.keys.size(), 2u);
     EXPECT_FLOAT_EQ(recipe.sources[0].motion.keys[1].time, 1.0f);
     EXPECT_FLOAT_EQ(recipe.sources[0].motion.keys[1].offset.x, 0.5f);
@@ -744,14 +742,14 @@ TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
     EXPECT_TRUE(ArrayHasString(shapes, "texture"));
     EXPECT_TRUE(ArrayHasString(shapes, "capsule"));
     EXPECT_TRUE(ArrayHasString(shapes, "cylinder"));
-    // カプセルは芯の軸を direction で持つ形。種類ごとの一覧にその項目が見えていること。
+    /// @note カプセルは芯の軸を direction で持つ形。種類ごとの一覧にその項目が見えていること。
     const JsonValue* capsule = source->Find("fields")->Find("capsule");
     ASSERT_NE(capsule, nullptr);
     EXPECT_TRUE(ArrayHasString(capsule, "direction")) << SerializeJson(*capsule);
     const JsonValue* textureShape = source->Find("fields")->Find("texture");
     ASSERT_NE(textureShape, nullptr);
     EXPECT_TRUE(ArrayHasString(textureShape, "texture")) << SerializeJson(*textureShape);
-    // cone は向きを持つ形。種類ごとの一覧にその項目が見えていること。
+    /// @note cone は向きを持つ形。種類ごとの一覧にその項目が見えていること。
     const JsonValue* cone = source->Find("fields")->Find("cone");
     ASSERT_NE(cone, nullptr);
     EXPECT_FALSE(cone->AsArray().empty());
@@ -770,17 +768,17 @@ TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
     const JsonValue* collider = operators->Find("collider");
     ASSERT_NE(collider, nullptr);
     EXPECT_EQ(collider->Find("typeField")->AsString(), "shape");
-    EXPECT_EQ(collider->Find("limit")->AsInt(), asset::kMaxFluidColliders);
+    EXPECT_EQ(collider->Find("limit")->AsInt(), fluid::kMaxFluidColliders);
     const JsonValue* colliderShapes = collider->Find("types");
     ASSERT_NE(colliderShapes, nullptr);
     EXPECT_EQ(colliderShapes->AsArray().size(), 5u);
     for (const char* shape : { "sphere", "box", "plane", "capsule", "cylinder" })
         EXPECT_TRUE(ArrayHasString(colliderShapes, shape)) << shape;
-    // plane は法線 (direction) で向きが決まる形。
+    /// @note plane は法線 (direction) で向きが決まる形。
     const JsonValue* plane = collider->Find("fields")->Find("plane");
     ASSERT_NE(plane, nullptr);
     EXPECT_TRUE(ArrayHasString(plane, "direction")) << SerializeJson(*plane);
-    // カプセルは芯の軸 (direction) と大きさ (size) の両方を持つ。
+    /// @note カプセルは芯の軸 (direction) と大きさ (size) の両方を持つ。
     const JsonValue* capsuleCollider = collider->Find("fields")->Find("capsule");
     ASSERT_NE(capsuleCollider, nullptr);
     EXPECT_TRUE(ArrayHasString(capsuleCollider, "direction")) << SerializeJson(*capsuleCollider);
@@ -789,7 +787,7 @@ TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
     const JsonValue* limits = response.Find("result")->Find("limits");
     ASSERT_NE(limits, nullptr);
     ASSERT_NE(limits->Find("collider"), nullptr);
-    EXPECT_EQ(limits->Find("collider")->AsInt(), asset::kMaxFluidColliders);
+    EXPECT_EQ(limits->Find("collider")->AsInt(), fluid::kMaxFluidColliders);
 }
 
 TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
@@ -811,9 +809,9 @@ TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
     EXPECT_EQ(added.Find("result")->Find("index")->AsInt(), static_cast<int>(before));
     EXPECT_EQ(added.Find("result")->Find("count")->AsInt(), static_cast<int>(before + 1));
 
-    asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    fluid::FluidRecipe recipe = LoadRecipe(kSmokePath);
     ASSERT_EQ(recipe.colliders.size(), before + 1);
-    EXPECT_EQ(recipe.colliders.back().shape, asset::FluidColliderShape::Plane);
+    EXPECT_EQ(recipe.colliders.back().shape, fluid::FluidColliderShape::Plane);
     EXPECT_FLOAT_EQ(recipe.colliders.back().direction.z, 1.0f);
     EXPECT_FLOAT_EQ(recipe.colliders.back().friction, 0.75f);
     m_undo.Undo();
@@ -821,7 +819,7 @@ TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
     m_undo.Redo();
     ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), before + 1);
 
-    // 末尾に box を足して先頭へ回す。
+    /// @note 末尾に box を足して先頭へ回す。
     JsonValue box = OperatorPayload("fluid.addOperator", "collider");
     box.Set("type", JsonValue("box"));
     ASSERT_TRUE(IsOk(Send(box)));
@@ -831,25 +829,25 @@ TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
     move.Set("to", JsonValue(0));
     const JsonValue moved = Send(move);
     ASSERT_TRUE(IsOk(moved)) << SerializeJson(moved);
-    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[0].shape, asset::FluidColliderShape::Box);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[0].shape, fluid::FluidColliderShape::Box);
     m_undo.Undo();
-    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[count - 1].shape, asset::FluidColliderShape::Box);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[count - 1].shape, fluid::FluidColliderShape::Box);
 
     JsonValue remove = OperatorPayload("fluid.removeOperator", "collider");
     remove.Set("index", JsonValue(static_cast<int>(count - 1)));
     const JsonValue removed = Send(remove);
     ASSERT_TRUE(IsOk(removed)) << SerializeJson(removed);
     ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), count - 1);
-    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.back().shape, asset::FluidColliderShape::Plane);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.back().shape, fluid::FluidColliderShape::Plane);
     m_undo.Undo();
     ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), count);
-    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.back().shape, asset::FluidColliderShape::Box);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders.back().shape, fluid::FluidColliderShape::Box);
 }
 
 TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
-    const std::size_t limit = static_cast<std::size_t>(asset::kMaxFluidColliders);
+    const std::size_t limit = static_cast<std::size_t>(fluid::kMaxFluidColliders);
     for (std::size_t i = LoadRecipe(kSmokePath).colliders.size(); i < limit; ++i)
         ASSERT_TRUE(IsOk(Send(OperatorPayload("fluid.addOperator", "collider")))) << i;
     ASSERT_EQ(LoadRecipe(kSmokePath).colliders.size(), limit);
@@ -859,7 +857,7 @@ TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
     EXPECT_EQ(ErrorCode(full), "OPERATOR_LIMIT");
     EXPECT_EQ(LoadRecipe(kSmokePath).colliders.size(), limit);
 
-    // 形のラベルは TOML と同じ綴りで、保存するときは添字になる。
+    /// @note 形のラベルは TOML と同じ綴りで、保存するときは添字になる。
     JsonValue fields = JsonValue::MakeObject();
     fields.Set("collider.0.shape", JsonValue("plane"));
     JsonValue set = FluidPayload("fluid.set", kSmokePath);
@@ -867,9 +865,9 @@ TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
     const JsonValue response = Send(set);
     ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
     EXPECT_TRUE(ArrayHasString(response.Find("result")->Find("changed"), "collider.0.shape"));
-    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[0].shape, asset::FluidColliderShape::Plane);
+    EXPECT_EQ(LoadRecipe(kSmokePath).colliders[0].shape, fluid::FluidColliderShape::Plane);
 
-    // 配列ごと渡すと上限で切り詰めて clamped に載る。
+    /// @note 配列ごと渡すと上限で切り詰めて clamped に載る。
     JsonValue many = JsonValue::MakeArray();
     for (std::size_t i = 0; i < limit + 3; ++i) many.Push(JsonValue::MakeObject());
     JsonValue arrayFields = JsonValue::MakeObject();
@@ -886,7 +884,7 @@ TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
 
-    // 画像は後から置くことがあるので、無くても書いて warnings で知らせる。
+    /// @note 画像は後から置くことがあるので、無くても書いて warnings で知らせる。
     JsonValue payload = OperatorPayload("fluid.addOperator", "source");
     payload.Set("type", JsonValue("texture"));
     JsonValue fields = JsonValue::MakeObject();
@@ -900,12 +898,12 @@ TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
     EXPECT_NE(warnings->AsArray()[0].AsString().find("texture not found"), std::string::npos)
         << warnings->AsArray()[0].AsString();
 
-    asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    fluid::FluidRecipe recipe = LoadRecipe(kSmokePath);
     const std::size_t index = recipe.sources.size() - 1;
-    EXPECT_EQ(recipe.sources[index].shape, asset::FluidSourceShape::Texture);
+    EXPECT_EQ(recipe.sources[index].shape, fluid::FluidSourceShape::Texture);
     EXPECT_EQ(recipe.sources[index].texture, "Assets/Textures/Missing.png");
 
-    // 置いた画像を指せば warnings は出ない (中身は見ず、在るかだけを見る)。
+    /// @note 置いた画像を指せば warnings は出ない (中身は見ず、在るかだけを見る)。
     std::filesystem::create_directories(File("Assets/Textures"));
     { std::ofstream(File("Assets/Textures/Logo.png"), std::ios::binary) << "png"; }
     JsonValue found = JsonValue::MakeObject();
@@ -917,7 +915,7 @@ TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
     EXPECT_EQ(updated.Find("result")->Find("warnings"), nullptr) << SerializeJson(updated);
     EXPECT_EQ(LoadRecipe(kSmokePath).sources[index].texture, "Assets/Textures/Logo.png");
 
-    // projectRoot の外は書かない。
+    /// @note projectRoot の外は書かない。
     JsonValue outside = JsonValue::MakeObject();
     outside.Set("source." + std::to_string(index) + ".texture", JsonValue("../Outside.png"));
     JsonValue escape = FluidPayload("fluid.set", kSmokePath);
@@ -931,8 +929,7 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
     ASSERT_TRUE(IsOk(Send(OperatorPayload("fluid.addOperator", "source"))));
 
-    // Undo が «直前の状態» へ戻すことを見たいので、開始状態はテスト自身で決める。
-    // WHY: プリセットの既定に頼ると、絵を派手にした (煙を 2 色にした) だけでここが落ちる。
+    /// @note Undo が直前の状態へ戻すことを見たいので開始状態はテスト自身で決める。プリセット既定に頼ると、絵を派手にした (煙を 2 色にした) だけでここが落ちる。
     {
         JsonValue off = JsonValue::MakeObject();
         off.Set("render.use_albedo_ramp", JsonValue(false));
@@ -942,7 +939,7 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
         ASSERT_FALSE(LoadRecipe(kSmokePath).render.useAlbedoRamp);
     }
 
-    // 発生源ごとの色は «鍵 + ランプ» の 2 か所。どちらかが書けないと AI は色を塗り分けられない。
+    /// @note 発生源ごとの色は «鍵 + ランプ» の 2 か所。どちらかが書けないと AI は色を塗り分けられない。
     JsonValue red = JsonValue::MakeArray();
     for (double v : { 1.0, 0.0, 0.0 }) red.Push(JsonValue(v));
     JsonValue fields = JsonValue::MakeObject();
@@ -958,7 +955,7 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
     EXPECT_TRUE(ArrayHasString(changed, "source.0.color_key")) << SerializeJson(response);
     EXPECT_TRUE(ArrayHasString(changed, "render.use_albedo_ramp")) << SerializeJson(response);
 
-    const asset::FluidRecipe recipe = LoadRecipe(kSmokePath);
+    const fluid::FluidRecipe recipe = LoadRecipe(kSmokePath);
     ASSERT_FALSE(recipe.sources.empty());
     EXPECT_FLOAT_EQ(recipe.sources[0].colorKey, 0.75f);
     EXPECT_TRUE(recipe.render.useAlbedoRamp);
@@ -968,7 +965,7 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
     m_undo.Undo();
     EXPECT_FALSE(LoadRecipe(kSmokePath).render.useAlbedoRamp);
 
-    // color_key はどの形の発生源にも効く項目としてスキーマに載る。
+    /// @note color_key はどの形の発生源にも効く項目としてスキーマに載る。
     const JsonValue schema = Send(FluidPayload("fluid.schema", ""), "query");
     ASSERT_TRUE(IsOk(schema)) << SerializeJson(schema);
     const JsonValue* sphere = schema.Find("result")->Find("operators")->Find("source")->Find("fields")->Find("sphere");

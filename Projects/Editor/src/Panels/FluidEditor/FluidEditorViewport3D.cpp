@@ -3,14 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 共有 Baker をそのまま使うか:
-///   3D の絵を出せる経路は VolumeFlipbookBaker だけで、160³ の GPU 資源を 2 つ抱える余裕はない。
-///   FluidBakeService が持つ 1 つを、焼きが使っていないフレームだけ借りる (取られている間は 2D を映す)。
-///
-/// WHY ギズモの座標系が «そのまま» でよいか:
-///   レシピの座標は領域 [-1,1]³ の正規化単位で、これは焼きの bake 空間と同じ。カメラは
-///   VolumeRaymarch.hlsl と同じ «原点から forward の手前へ引いた平行投影» を組み直せば、
-///   絵とギズモが 1 画素もずれない (ワールド行列は平行移動と拡大だけで足りる)。
+/// @note 共有 Baker (VolumeFlipbookBaker) をそのまま使う: 3D 絵の経路はここだけで、160³ の GPU 資源を
+///       2 つ持つ余裕はない。FluidBakeService の 1 つを、焼きが使っていないフレームだけ借りる。
+/// @note ギズモの座標系はレシピの正規化単位 [-1,1]³ (焼きの bake 空間と同じ) をそのまま使う。カメラは
+///       VolumeRaymarch.hlsl と同じ平行投影を組み直せば、絵とギズモが 1 画素もずれない。
 #include "FluidEditorInternal.hpp"
 
 #include <Editor/EditorContext.hpp>
@@ -32,8 +28,8 @@
 namespace fbzz::editor::fluideditor {
 namespace {
 
-// WHY 名前に 3D を入れるか: Editor は Unity Build なので、同じ名前空間の無名 namespace が
-//     FluidEditorViewport.cpp と 1 つの翻訳単位に混ざる。定数名がぶつかると再定義になる。
+/// @note 名前に 3D を入れるのは、Editor が Unity Build で同じ名前空間の無名 namespace が
+///       FluidEditorViewport.cpp と 1 つの翻訳単位に混ざり、定数名がぶつかると再定義になるため。
 constexpr ImU32 kCanvas3DColor = IM_COL32(22, 22, 25, 255);
 constexpr ImU32 kHint3DText = IM_COL32(200, 200, 205, 160);
 constexpr ImU32 kBusy3DText = IM_COL32(255, 200, 80, 255);
@@ -61,16 +57,14 @@ struct GizmoPartPose {
 };
 
 /// 画面に出す一辺 (画素) から、プレビューのタイル解像度を決める。
-///
-/// WHY 画面に合わせるか: タイルが表示サイズより小さいと拡大されてテクセルが四角く見える。
-///     レシピの frame_size (既定 256) は «焼くときのコマの大きさ» であって、
-///     パネルで何画素に出すかとは無関係。
-/// WHY 64 画素に丸めるか: この値はプレビューの鍵に入っている。窓の伸縮やズームで 1 画素変わるたびに
-///     鍵が変わると、そのつどソルバーを開き直して解き直しになる。
+/// @note 画面に合わせるのは、表示サイズよりタイルが小さいと拡大されてテクセルが四角く見えるため
+///       (frame_size は «焼くときのコマの大きさ» で表示画素数とは無関係)。64 画素刻みに丸めるのは、
+///       この値がプレビューの鍵に入っており、1 画素変わるたび鍵が変わって解き直しになるため。
 int PreviewTileSize(float viewSide, int cap)
 {
     constexpr int kStep = 64;
-    if (viewSide <= 0.0f) return cap;   // まだ一度も描いていない
+    /// @note まだ一度も描いていない
+    if (viewSide <= 0.0f) return cap;
     const int wanted = static_cast<int>(std::ceil(viewSide / static_cast<float>(kStep))) * kStep;
     return std::clamp(wanted, 128, cap);
 }
@@ -79,7 +73,7 @@ asset::VolumeFlipbookBakeSettings VolumePreviewSettings(const State& state)
 {
     asset::VolumeFlipbookBakeSettings settings =
         asset::MakeVolumeBakeSettings(state.document.Recipe(), state.document.Path());
-    // 焼きと同じ重さで毎フレーム解くとエディターごと止まる。2D と同じ Draft / Normal / Final で落とす。
+    /// @note 焼きと同じ重さで毎フレーム解くとエディターごと止まる。2D と同じ Draft / Normal / Final で落とす。
     switch (state.preview.Quality()) {
     case FluidPreviewQuality::Draft:
         settings.volumeResolution = (std::min)(settings.volumeResolution, 48);
@@ -94,14 +88,14 @@ asset::VolumeFlipbookBakeSettings VolumePreviewSettings(const State& state)
         settings.shadowSteps = (std::min)(settings.shadowSteps, 12);
         break;
     case FluidPreviewQuality::Final:
-        // WHY プレビューだけ 128 で止めるか: CPU ソルバーは 96 が上限 (kMaxFluidResolution) なので、
-        //     ここを素通しにすると «切り替えただけ» でセル数が 4.6 倍に跳ね、追いつきの Dispatch が
-        //     GPU のウォッチドッグに掛かる。160 を使ってよいのは焼き (Begin) だけ。
+        /// @note プレビューだけ 128 で止めるのは、CPU ソルバーの上限が 96 (kMaxFluidResolution) で、
+        ///       素通しにすると «切り替えただけ» でセル数が 4.6 倍に跳ね、追いつきの Dispatch が
+        ///       GPU のウォッチドッグに掛かるため。160 を使ってよいのは焼き (Begin) だけ。
         settings.volumeResolution = (std::min)(settings.volumeResolution, 128);
         settings.tileSize = PreviewTileSize(state.volumeViewSide, 512);
         break;
     }
-    // 見るのは色のタイル 1 枚。6-way と supersampling は見えない所に時間を使うだけ。
+    /// @note 見るのは色のタイル 1 枚。6-way と supersampling は見えない所に時間を使うだけ。
     settings.sixWayLightmaps = false;
     settings.supersampling = 1;
     return settings;
@@ -153,7 +147,7 @@ math::Vector3 ExtractMatrixScale(const math::Matrix4& row)
     return { axis(0), axis(1), axis(2) };
 }
 
-GizmoPartPose ReadGizmoPose(const asset::FluidRecipe& recipe, const FluidSelection& selection, int keyIndex,
+GizmoPartPose ReadGizmoPose(const fluid::FluidRecipe& recipe, const FluidSelection& selection, int keyIndex,
                             float solverTime)
 {
     GizmoPartPose pose;
@@ -165,30 +159,30 @@ GizmoPartPose ReadGizmoPose(const asset::FluidRecipe& recipe, const FluidSelecti
         else
             pose.position = part.center + MotionOffsetAt(part.motion, solverTime);
         pose.direction = part.direction;
-        if constexpr (std::is_same_v<Part, asset::FluidForce>) {
-            // 半径 0 は «領域全体に一様» なので、掴める大きさが無い。
+        if constexpr (std::is_same_v<Part, fluid::FluidForce>) {
+            /// @note 半径 0 は «領域全体に一様» なので、掴める大きさが無い。
             pose.canScale = part.radius > 0.0f;
             const float radius = (std::max)(part.radius, kMinGizmoSize);
             pose.size = { radius, radius, radius };
-            pose.canRotate = part.type == asset::FluidForceType::Wind || part.type == asset::FluidForceType::Vortex;
-        } else if constexpr (std::is_same_v<Part, asset::FluidCollider>) {
+            pose.canRotate = part.type == fluid::FluidForceType::Wind || part.type == fluid::FluidForceType::Vortex;
+        } else if constexpr (std::is_same_v<Part, fluid::FluidCollider>) {
             pose.size = part.size;
-            pose.canScale = part.shape != asset::FluidColliderShape::Plane;
-            // 平面は法線、カプセルと円柱は芯の軸を direction で持つ。
-            pose.canRotate = part.shape == asset::FluidColliderShape::Plane
-                          || part.shape == asset::FluidColliderShape::Capsule
-                          || part.shape == asset::FluidColliderShape::Cylinder;
+            pose.canScale = part.shape != fluid::FluidColliderShape::Plane;
+            /// @note 平面は法線、カプセルと円柱は芯の軸を direction で持つ。
+            pose.canRotate = part.shape == fluid::FluidColliderShape::Plane
+                          || part.shape == fluid::FluidColliderShape::Capsule
+                          || part.shape == fluid::FluidColliderShape::Cylinder;
         } else {
             pose.size = part.size;
             pose.canScale = true;
-            pose.canRotate = part.shape != asset::FluidSourceShape::Sphere
-                          && part.shape != asset::FluidSourceShape::Box;
+            pose.canRotate = part.shape != fluid::FluidSourceShape::Sphere
+                          && part.shape != fluid::FluidSourceShape::Box;
         }
     });
     return pose;
 }
 
-void ApplyGizmoEdit(asset::FluidRecipe& recipe, const FluidSelection& selection, int keyIndex, GizmoOp op,
+void ApplyGizmoEdit(fluid::FluidRecipe& recipe, const FluidSelection& selection, int keyIndex, GizmoOp op,
                     const math::Matrix4& worldRow, float solverTime)
 {
     VisitPart(recipe, selection.kind, selection.index, [&](auto& part) {
@@ -203,17 +197,17 @@ void ApplyGizmoEdit(asset::FluidRecipe& recipe, const FluidSelection& selection,
         }
         if (op == GizmoOp::Scale) {
             const math::Vector3 scale = ExtractMatrixScale(worldRow);
-            if constexpr (std::is_same_v<Part, asset::FluidForce>) {
+            if constexpr (std::is_same_v<Part, fluid::FluidForce>) {
                 part.radius = (std::max)((scale.x + scale.y + scale.z) / 3.0f, kMinGizmoSize);
             } else {
                 math::Vector3 next{ (std::max)(scale.x, kMinGizmoSize), (std::max)(scale.y, kMinGizmoSize),
                                     (std::max)(scale.z, kMinGizmoSize) };
-                // 球は size.x しか読まれない。3 軸がばらけると «絵は変わらないのに数字だけ動く» になる。
+                /// @note 球は size.x しか読まれない。3 軸がばらけると «絵は変わらないのに数字だけ動く» になる。
                 bool uniform = false;
-                if constexpr (std::is_same_v<Part, asset::FluidCollider>)
-                    uniform = part.shape == asset::FluidColliderShape::Sphere;
+                if constexpr (std::is_same_v<Part, fluid::FluidCollider>)
+                    uniform = part.shape == fluid::FluidColliderShape::Sphere;
                 else
-                    uniform = part.shape == asset::FluidSourceShape::Sphere;
+                    uniform = part.shape == fluid::FluidSourceShape::Sphere;
                 if (uniform) {
                     const float side = (next.x + next.y + next.z) / 3.0f;
                     next = { side, side, side };
@@ -247,7 +241,7 @@ FluidSelection DrawVolumePartMarkers(ImDrawList* drawList, const State& state, c
                                               FluidSelectionKind::Collider };
     constexpr float kPickRadius = 10.0f;
     const FluidDocument& document = state.document;
-    const asset::FluidRecipe& recipe = document.Recipe();
+    const fluid::FluidRecipe& recipe = document.Recipe();
     FluidSelection nearest;
     float nearestDistance = kPickRadius;
 
@@ -280,9 +274,9 @@ void TickVolumePreview(EditorContext& ctx, State& state)
     state.volumeSwitchPending = false;
     state.volumeStale = false;
     if (!state.document.IsOpen()) return;
-    // 描く前にここで決めておくと、3D で焼くレシピは開いた 1 コマ目から 3D の絵が出る。
+    /// @note 描く前にここで決めておくと、3D で焼くレシピは開いた 1 コマ目から 3D の絵が出る。
     if (!state.viewModeChosen) {
-        state.viewMode = state.document.Recipe().bake.mode == asset::FluidBakeMode::Volume3D
+        state.viewMode = state.document.Recipe().bake.mode == fluid::FluidBakeMode::Volume3D
             ? ViewportMode::Volume3D
             : ViewportMode::Flat2D;
         state.viewModeChosen = true;
@@ -296,21 +290,21 @@ void TickVolumePreview(EditorContext& ctx, State& state)
         return;
     }
 
-    // hide / solo は文書の Revision を進めない。2D と同じく表示の通番を混ぜた鍵で解き直しを決める。
-    // +1 は «まだ組んでいない» の 0 と、版数 0・通番 0 の初回を分けるため。
+    /// @note hide / solo は文書の Revision を進めない。2D と同じく表示の通番を混ぜた鍵で解き直しを決める。
+    ///       +1 は «まだ組んでいない» の 0 と、版数 0・通番 0 の初回を分けるため。
     const std::uint64_t key = state.document.Revision() * 1000003ull + state.visibilityGeneration + 1ull;
     if (key != state.volumeRecipeKey) {
         state.volumeRecipe = state.document.PreviewRecipe();
         state.volumeRecipeKey = key;
     }
 
-    // ソルバーが入れ替わると絵の中身も入れ替わる。再生の途中でそれをやると «同じ一続きの動き» が
-    // 途中で別物にすり替わるので、折り返し (playhead が戻るフレーム) まで前のソルバーで通す。
-    // 止まっているときは待つ理由が無い ── その場で切り替える。
+    /// @note ソルバーが入れ替わると絵の中身も入れ替わる。再生の途中でそれをやると «同じ一続きの動き» が
+    ///       途中で別物にすり替わるので、折り返し (playhead が戻るフレーム) まで前のソルバーで通す。
+    ///       止まっているときは待つ理由が無い ── その場で切り替える。
     const bool wrapped = state.playhead < state.volumeSwitchPlayhead;
-    // WHY 期限を切るか: loop = false のレシピは折り返しが永遠に来ない (テンプレートの半分がそれ)。
-    //     «折り返しまで待つ» だけだと再生中に切り替えたときゲートが開かず、3D の絵が出ないままになる。
-    //     待つのは «続きの動きを守るため» なので、少し待って来なければ諦めて当てるのが正しい。
+    /// @note 期限を切るのは、loop = false のレシピは折り返しが永遠に来ないため (テンプレートの半分がそれ)。
+    ///       «折り返しまで待つ» だけだと再生中の切り替えでゲートが開かず絵が出ないままになる。
+    ///       待つのは続きの動きを守るためなので、少し待って来なければ諦めて当てる。
     if (service.VolumePreviewSwitchPending())
         state.volumeSwitchWait += ImGui::GetIO().DeltaTime;
     else
@@ -334,7 +328,7 @@ void TickVolumePreview(EditorContext& ctx, State& state)
 void DrawViewport3D(EditorContext& ctx, State& state)
 {
     FluidDocument& document = state.document;
-    const asset::FluidRecipe& recipe = document.Recipe();
+    const fluid::FluidRecipe& recipe = document.Recipe();
     const ImGuiIO& io = ImGui::GetIO();
 
     static constexpr const char* kOpLabels[] = { "Move##fe3d_move", "Rotate##fe3d_rotate", "Scale##fe3d_scale" };
@@ -366,9 +360,9 @@ void DrawViewport3D(EditorContext& ctx, State& state)
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const ImVec2 canvasSize{ (std::max)(avail.x, 32.0f), (std::max)(avail.y, 32.0f) };
     const ImVec2 canvasMax{ canvasMin.x + canvasSize.x, canvasMin.y + canvasSize.y };
-    // WHY InvisibleButton にしないか: ImGuizmo は «どの ImGui 項目にも乗っていない» ときしか掴めない
-    //     (CanActivate が IsAnyItemHovered を見る)。当たり判定を持たない Dummy で場所だけ取り、
-    //     視点操作は矩形との当たりで自前に見る。
+    /// @note InvisibleButton にしないのは、ImGuizmo は «どの ImGui 項目にも乗っていない» ときしか掴めない
+    ///       (CanActivate が IsAnyItemHovered を見る) ため。当たり判定を持たない Dummy で場所だけ取り、
+    ///       視点操作は矩形との当たりで自前に見る。
     ImGui::Dummy(canvasSize);
     const bool hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(canvasMin, canvasMax);
 
@@ -378,7 +372,7 @@ void DrawViewport3D(EditorContext& ctx, State& state)
 
     const ImVec2 canvasCenter{ canvasMin.x + canvasSize.x * 0.5f, canvasMin.y + canvasSize.y * 0.5f };
     const float side = (std::max)((std::min)(canvasSize.x, canvasSize.y) * 0.96f * state.zoom, 8.0f);
-    // 次のフレームのプレビュー解像度はこの大きさで決まる (PreviewTileSize)。
+    /// @note 次のフレームのプレビュー解像度はこの大きさで決まる (PreviewTileSize)。
     state.volumeViewSide = side;
     const ImVec2 squareMin{ canvasCenter.x + state.pan.x - side * 0.5f, canvasCenter.y + state.pan.y - side * 0.5f };
     const ImVec2 squareMax{ squareMin.x + side, squareMin.y + side };
@@ -393,15 +387,15 @@ void DrawViewport3D(EditorContext& ctx, State& state)
                            { kColorTileU1, 1.0f });
         drawList->AddRect(squareMin, squareMax, IM_COL32(255, 255, 255, 48));
     } else {
-        // 3D をまだ出せない (焼きに取られている・レンダラーが無い・切り替えを待っている)。
-        // ビューポートを空にはしない。
+        /// @note 3D をまだ出せない (焼きに取られている・レンダラーが無い・切り替えを待っている)。
+        ///       ビューポートを空にはしない。
         DrawFluidPreviewSquare(drawList, state, squareMin, side,
                                state.volumeSwitchPending ? "ソルバーを切り替えています (次のループで適用)"
                                                          : "3D を待っています...");
     }
 
-    // 切り替えに失敗すると «黙って前の絵のまま» になる。理由は共有 Baker しか知らないので、
-    // Volume Flipbook Baker パネルを開いていなくてもここで読めるようにする。
+    /// @note 切り替えに失敗すると «黙って前の絵のまま» になる。理由は共有 Baker しか知らないので、
+    ///       Volume Flipbook Baker パネルを開いていなくてもここで読めるようにする。
     if (!state.volumeBusy && ctx.fluidBake != nullptr) {
         const std::string& note = ctx.fluidBake->VolumePreviewNote();
         if (!note.empty()) {
@@ -419,7 +413,7 @@ void DrawViewport3D(EditorContext& ctx, State& state)
         pickTarget = DrawVolumePartMarkers(drawList, state, camera, squareMin, side, io.MousePos, solverTime);
     drawList->PopClipRect();
 
-    // ── ギズモ ──
+    /// @name ギズモ
     bool overGizmo = false;
     bool usingGizmo = false;
     const GizmoPartPose pose = document.selection.IsPart()
@@ -440,7 +434,7 @@ void DrawViewport3D(EditorContext& ctx, State& state)
         math::Matrix4 projCol = math::Matrix4::Transpose(camera.projRow);
         math::Matrix4 worldCol = math::Matrix4::Transpose(worldRow);
 
-        // ID を積むと «同じフレームに 2 つ目のギズモ» (Scene View) と掴んでいる状態を取り違えない。
+        /// @note ID を積むと «同じフレームに 2 つ目のギズモ» (Scene View) と掴んでいる状態を取り違えない。
         ImGuizmo::PushID("fluid_editor_3d");
         ImGuizmo::SetDrawlist();
         ImGuizmo::Enable(true);
@@ -458,17 +452,17 @@ void DrawViewport3D(EditorContext& ctx, State& state)
         if (usingGizmo && !state.gizmoActive) {
             state.gizmoActive = true;
             state.gizmoUndoLabel = GizmoUndoLabel(op);
-            // WHY 再生を止めないか: 動いている絵を見ながら位置を詰めたい。掴んだ瞬間に止まると
-            //     «その一瞬の姿» でしか合わせられない。再生を止めるのは «時間そのものを操る操作»
-            //     (スクラブ・コマ送り・先頭へ) だけにしてある。
+            /// @note 再生を止めないのは、動いている絵を見ながら位置を詰めたいため。掴んだ瞬間に止まると
+            ///       «その一瞬の姿» でしか合わせられない。再生を止めるのは «時間そのものを操る操作»
+            ///       (スクラブ・コマ送り・先頭へ) だけにしてある。
             document.BeginInteractiveEdit();
         }
         if (manipulated && state.gizmoActive && document.InInteractiveEdit()) {
-            asset::FluidRecipe working = recipe;
+            fluid::FluidRecipe working = recipe;
             ApplyGizmoEdit(working, document.selection, activeKey, op, math::Matrix4::Transpose(worldCol), solverTime);
             document.ApplyInteractive(working);
         }
-        // 通常は EndStaleDrags が閉じる。ここは «掴んだまま何も動かさずに離した» の保険。
+        /// @note 通常は EndStaleDrags が閉じる。ここは «掴んだまま何も動かさずに離した» の保険。
         if (!usingGizmo && state.gizmoActive) {
             const char* label = state.gizmoUndoLabel;
             state.gizmoActive = false;
@@ -481,14 +475,14 @@ void DrawViewport3D(EditorContext& ctx, State& state)
         drawList->AddText({ canvasCenter.x - textSize.x * 0.5f, squareMax.y - textSize.y - 6.0f }, kHint3DText, reason);
     }
 
-    // ── 選ぶ ──
+    /// @name 選ぶ
     if (hovered && !overGizmo && !usingGizmo && !state.gizmoActive
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && pickTarget.kind != FluidSelectionKind::None) {
         document.selection = pickTarget;
         state.selectedKey = -1;
     }
 
-    // ── 視点 (絵の拡大と位置。カメラの向きは [bake] の Camera Yaw が正本) ──
+    /// @name 視点 (絵の拡大と位置。カメラの向きは [bake] の Camera Yaw が正本)
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) state.panning = true;
     if (state.panning) {
         if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {

@@ -1,9 +1,9 @@
-/// @file    Inspector/InspectorPanel_Asset.cpp
+/// @file    InspectorPanel_Asset.cpp
 /// @brief   Asset Browser から選択したファイル用 Inspector。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 ///
-/// Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
+/// @brief Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
 #include "InspectorCommon.hpp"
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
@@ -39,7 +39,7 @@
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
-#include <Engine/Asset/VectorFieldAsset.hpp>
+#include <Engine/Asset/VectorFieldFile.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
@@ -80,21 +80,21 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         sourceExt == ".fbx" || sourceExt == ".obj" ||
         sourceExt == ".gltf" || sourceExt == ".glb";
     const bool isTextureSource =
-        sourceExt == ".png" || sourceExt == ".jpg" || sourceExt == ".jpeg" ||
+        (sourceExt == ".png" && !asset::IsVectorFieldPng(assetPath)) || sourceExt == ".jpg" || sourceExt == ".jpeg" ||
         sourceExt == ".dds" || sourceExt == ".tga" || sourceExt == ".bmp" ||
         sourceExt == ".hdr" || sourceExt == ".exr";
 
-    // Unity と同様に、Project で原本を選択したまま隣接 .meta の Import Settings を描画する。
-    // WHY: 非表示 sidecar を選び直す操作や別ウィンドウを挟まず、全 raw 形式で同じ編集体験にする。
+    /// @note Unity と同様に、Project で原本を選択したまま隣接 .meta の Import Settings を描画する。
+    ///       非表示 sidecar を選び直す操作や別ウィンドウを挟まず、全 raw 形式で同じ編集体験にする。
     const std::string absPath =
         (isModelSource || isTextureSource) ? assetPath + ".meta" : assetPath;
     const std::string filename = util::FileSystem::GetFilename(assetPath);
     const std::string ext =
         util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
 
-    // deselect 自動保存: 前回の .mat が dirty のまま別アセットへ移動したとき保存する。
-    // WHY: 「Save ボタンを押し忘れる」問題を解消しつつ、mid-drag 中の大量書き込みを避けるため
-    //      選択が外れたタイミング (= 本関数が別パスで呼ばれた瞬間) に保存する。
+    /// @note deselect 自動保存: 前回の .mat が dirty のまま別アセットへ移動したときに保存する。
+    ///       Save 押し忘れを解消しつつ mid-drag 中の大量書き込みを避けるため、選択が外れたタイミング
+    ///       (本関数が別パスで呼ばれた瞬間) に保存する。
     if (!m_inspectedAssetPath.empty() &&
         m_inspectedAssetPath != absPath &&
         util::StringUtils::ToLower(util::FileSystem::GetExtension(m_inspectedAssetPath)) == ".mat" &&
@@ -179,10 +179,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             materialDirty |= ImGui::Checkbox("Double Sided",  &mat.doubleSided);
             materialDirty |= ImGui::DragInt  ("Render Queue", &mat.renderQueue, 1.0f, 0, 5000);
             {
-                // 通常の Forward / Deferred はプロジェクト設定で決まる。
-                // ここでは専用レンダーパスの用途だけを指定する。
-                // LAYOUT: asset::RenderPath と同じ並びにすること。欠けた用途は
-                //         Combo を触った瞬間に別の値へ化ける。
+                /// @note 通常の Forward / Deferred はプロジェクト設定で決まる。
+                ///       ここでは専用レンダーパスの用途だけを指定する。
+                ///       LAYOUT: asset::RenderPath と同じ並びにすること。欠けた用途は
+                ///       Combo を触った瞬間に別の値へ化ける。
                 static constexpr const char* kMaterialUsageNames[] = {
                     "Auto", "Particle", "Trail", "UI", "Decal" };
                 int usageIndex = static_cast<int>(mat.renderPath);
@@ -218,8 +218,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             static constexpr std::array<const char*, 8> kCanonicalSlots = {
                 "albedo", "normal", "metallic", "emissive", "ao", "tex5", "tex6", "tex7"
             };
-            // Sprite のコマを受けるのはメッシュ描画 (Auto) の albedo だけ
-            // (理由は InspectorMaterial.cpp の同じ場所)。
+            /// @note Sprite のコマを受けるのはメッシュ描画 (Auto) の albedo だけ
+            ///       (理由は InspectorMaterial.cpp の同じ場所)。
             const bool spriteAlbedo = mat.renderPath == asset::RenderPath::Auto;
             auto drawTexSlot = [&](const char* slot) {
                 std::string& path = mat.textures[slot];
@@ -298,11 +298,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // パーティクルの «見た目» はこの .mat が正本。ParticleEmitter からは編集できない。
+        /// @note パーティクルの «見た目» はこの .mat が正本。ParticleEmitter からは編集できない。
         if (mat.renderPath == asset::RenderPath::Particle)
             materialDirty |= DrawParticleMaterialInspector(mat, ctx.projectRoot, ctx.resources, ctx.imguiRenderer);
 
-        // AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
+        /// @note AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
         if (materialDirty)
             ctx.BumpMaterialPreviewRevision(relPath);
 
@@ -323,7 +323,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // dirty になったら Registry に登録 (deselect 時 or Save All で一括保存できるようにする)
+        /// @note dirty になったら Registry に登録 (deselect 時 or Save All で一括保存できるようにする)
         if (materialDirty) {
             const std::string capturedPath   = absPath;
             const std::string capturedDisplay = NormalizeAssetPath(absPath);
@@ -349,11 +349,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 auto* target = asset::AssetManager::Get<asset::MaterialAsset>(handle);
                 if (!target) return;
                 *target = value;
-                // Save ボタンを廃止した代わりに、Undo/Redo が確定した瞬間に即ディスクへ書く。
-                // WHY: メモリ上の値と .mat ファイルが常に一致していないと、Undo で戻した
-                //      つもりが再読み込み後に元に戻ってしまう (=見た目だけの Undo) という
-                //      事故が起きる。書き込み自体はここ (ウィジェット確定時) 1 回だけなので、
-                //      ドラッグ中の連続フレーム書き込みにはならない。
+                /// @note Save ボタンを廃止した代わりに、Undo/Redo が確定した瞬間に即ディスクへ書く。
+                ///       メモリ上の値と .mat が食い違うと、Undo で戻したつもりが再読み込みで元に戻る
+                ///       (見た目だけの Undo) 事故が起きる。書き込みはウィジェット確定時の 1 回だけ。
                 asset::SaveMaterialAssetToFile(capturedPath, *target);
                 AssetDirtyRegistry::MarkClean(capturedPath);
                 if (context->activeScene) {
@@ -379,9 +377,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 "Edit Material Asset",
                 [apply, after]() { apply(after); },
                 [apply, before]() { apply(before); }));
-            // UndoStack::Push は記録するだけで Do() を呼ばない (mat は既にウィジェットで
-            // 直接編集済みのため)。よってここで確定時点の保存を明示的に行う。apply() 内の
-            // 保存は Undo/Redo 実行時にのみ効く。
+            /// @note UndoStack::Push は記録するだけで Do() を呼ばない (mat は既にウィジェットで
+            ///       直接編集済みのため)。よってここで確定時点の保存を明示的に行う。apply() 内の
+            ///       保存は Undo/Redo 実行時にのみ効く。
             asset::SaveMaterialAssetToFile(capturedPath, after);
             AssetDirtyRegistry::MarkClean(capturedPath);
             context->requestAssetBrowserRefresh = true;
@@ -404,9 +402,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             pushMaterialCommand(materialBeforeDraw, mat);
         }
 
-        // Save ボタンは廃止 (Unity ライク: 編集を確定した瞬間に自動保存し、Undo/Redo で
-        // 巻き戻せる)。ウィジェットがアクティブな間 (ドラッグ中など) だけ "Modified" を
-        // 表示し、フォーカスが外れて pushMaterialCommand が確定すると同時に消える。
+        /// @note Save ボタンは廃止 (Unity ライク: 編集を確定した瞬間に自動保存し、Undo/Redo で
+        ///       巻き戻せる)。ウィジェットがアクティブな間 (ドラッグ中など) だけ "Modified" を
+        ///       表示し、フォーカスが外れて pushMaterialCommand が確定すると同時に消える。
         ImGui::Separator();
         const bool isMaterialDirtyNow = AssetDirtyRegistry::IsDirty(absPath);
         if (isMaterialDirtyNow) {
@@ -415,18 +413,18 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextDisabled("Saved");
         }
 
-        // AnimationPreview と同じく、編集項目を確認した後の Inspector 最下部へ置く。
-        // WHY: プレビューを先頭に固定すると、Shader / Params / Textures が長い材質ほど
-        //      設定を開くたびにプレビューが画面を占有し、編集対象へ到達しにくくなる。
+        /// @note AnimationPreview と同じく、編集項目を確認した後の Inspector 最下部へ置く。
+        ///       先頭固定だと Shader / Params / Textures が長い材質ほどプレビューが画面を占有し、
+        ///       編集対象へ到達しにくくなる。
         ImGui::SeparatorText("Preview");
         m_materialPreview.Draw(ctx, mat, 240.0f);
     } else if (ext == ".vfx") {
-        // .vfx の再生面は Prefab 編集モード (Docs/design/vfx-prefab.md §8.2)。
-        // ここが受け持つのは «開く前に中身の見当を付ける» ところまで。
+        /// @note .vfx の再生面は Prefab 編集モード (Docs/design/vfx-prefab.md §8.2)。
+        ///       ここが受け持つのは «開く前に中身の見当を付ける» ところまで。
         DrawVfxAssetInspector(ctx, absPath);
     } else if (ext == ".animcontroller") {
         if (DrawAnimationGraphAssetInspector(ctx)) {
-            // Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
+            /// @note Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
             ImGui::SeparatorText("Preview");
             DrawAnimationPreviewWidget(ctx, 240.0f);
         } else {
@@ -434,11 +432,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::Spacing();
             ImGui::TextDisabled("The controller can be edited without selecting a Hierarchy object.");
         }
-        // 未保存表示は他のアセット型と同じ規約に揃える。
-        // WHY absPath ではなく editorPath で判定するか: Inspector が今表示している
-        //     .animcontroller と、Animation Graph が開いているドキュメントは別物でありうる
-        //     (ブラウザーで別のコントローラーを選んでも編集対象は切り替わらないため)。
-        //     dirty なのは「開いている方」なので、そちらと一致するときだけ Modified を出す。
+        /// @note 未保存表示は他のアセット型と同じ規約に揃える。absPath でなく editorPath で判定するのは、
+        ///       Inspector が表示中の .animcontroller と Animation Graph が開いているドキュメントは
+        ///       別物でありうるため (ブラウザーで別コントローラーを選んでも編集対象は切り替わらない)。
+        ///       dirty なのは「開いている方」なので、そちらと一致するときだけ Modified を出す。
         const bool isThisControllerOpen =
             NormalizeAssetPath(ctx.animationControllerEditorPath) == NormalizeAssetPath(absPath);
         ImGui::Separator();
@@ -454,7 +451,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         namespace fs = std::filesystem;
         const fs::path    p         = util::FileSystem::PathFromUtf8(absPath);
         const std::string stem      = util::FileSystem::PathToUtf8(p.stem());
-        // 物理 .fzasset は Library/Baked に隔離されているため、論理パスの解決を通して確認する。
+        /// @note 物理 .fzasset は Library/Baked に隔離されているため、論理パスの解決を通して確認する。
         const bool imported = util::FileSystem::Exists(
             asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(
                 p.parent_path() / p.stem() / (stem + ".fzasset"))));
@@ -478,7 +475,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     ImGui::LabelText("Skeleton Nodes", "%zu", m->skeleton->nodes.size());
             }
 
-            // クリップを持つスキンモデルはその場で再生確認できるようにする。
+            /// @note クリップを持つスキンモデルはその場で再生確認できるようにする。
             if (const asset::Model* previewModel = asset::AssetManager::LoadAndGet<asset::Model>(absPath);
                 previewModel && previewModel->skeleton && !previewModel->clips.empty()) {
                 ImGui::SeparatorText("Animation Preview");
@@ -491,7 +488,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ctx.requestOpenImportModal = absPath;
         }
     } else if (ext == ".fzasset") {
-        // ── .model バイナリ ──────────────────────────────────────────────
+        /// @name .model バイナリ
         ImGui::TextDisabled("Type: FBZZ Model Asset");
         ImGui::Spacing();
 
@@ -504,13 +501,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::LabelText("Skinned",   "%s",  m->IsSkinned() ? "Yes" : "No");
             ImGui::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
 
-            // ── スケルトン情報 ─────────────────────────────────────────
+            /// @name スケルトン情報
             if (m->IsSkinned() && m->skeleton) {
                 ImGui::SeparatorText("Skeleton");
                 ImGui::LabelText("Nodes", "%zu", m->skeleton->nodes.size());
             }
 
-            // ── LOD / サブメッシュ一覧 ─────────────────────────────────
+            /// @name LOD / サブメッシュ一覧
             ImGui::SeparatorText("Meshes");
             for (uint32_t lodIdx = 0; lodIdx < m->LodCount(); ++lodIdx) {
                 const auto& lod = m->lods[lodIdx];
@@ -539,14 +536,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 }
             }
 
-            // ── マテリアルスロット ─────────────────────────────────────
+            /// @name マテリアルスロット
             if (!m->materialSlotNames.empty()) {
                 ImGui::SeparatorText("Material Slots");
                 for (const auto& slotName : m->materialSlotNames)
                     ImGui::TextDisabled("  %s  ->  (unbound)", slotName.c_str());
             }
 
-            // クリップを持つスキンモデルはその場で再生確認できるようにする。
+            /// @note クリップを持つスキンモデルはその場で再生確認できるようにする。
             if (const asset::Model* previewModel = asset::AssetManager::LoadAndGet<asset::Model>(absPath);
                 previewModel && previewModel->skeleton && !previewModel->clips.empty()) {
                 ImGui::SeparatorText("Animation Preview");
@@ -554,7 +551,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // ── Reimport ───────────────────────────────────────────────────
+        /// @name Reimport
         ImGui::Spacing();
         ImGui::Separator();
         {
@@ -579,7 +576,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
     } else if (ext == ".anim") {
-        // ── .anim バイナリ ───────────────────────────────────────────────
+        /// @name .anim バイナリ
         ImGui::TextDisabled("Type: Animation Clip");
         ImGui::Spacing();
 
@@ -592,16 +589,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::LabelText("Duration",     "%.3f s", clip->GetDurationSeconds());
             ImGui::LabelText("FPS",          "%.1f",  clip->frameRate);
             ImGui::LabelText("Tracks",       "%zu",   clip->tracks.size());
-            // Loop Time は .anim へ焼かれた値。編集は原本の FBX 側で行う。
-            // WHY ここで編集させないか: .anim は再インポートで上書きされる生成物なので、
-            //     ここに書いても次の再インポートで消える。設定の在り処を明示する。
+            /// @note Loop Time は .anim へ焼かれた値。.anim は再インポートで上書きされる生成物のため
+            ///       ここでは編集させず、原本の FBX 側で行う設定であることだけ明示する。
             ImGui::LabelText("Loop Time", "%s", clip->loop ? "On" : "Off");
             ImGui::TextDisabled("Edit in the source FBX > Animation.");
 
-            // ── Root Motion ────────────────────────────────────────────
-            // WHY: 以前は "Yes / No" しか出しておらず、No のとき「専用ノードが
-            //      無いのか、名前が候補に入っていないのか」を切り分けられなかった。
-            //      解決済みノード名と自動検出の候補を並べて提示する。
+            /// @name Root Motion
+            /// @note "Yes / No" だけだと No のとき専用ノード不在か候補未検出かを切り分けられないため、
+            ///       解決済みノード名と自動検出の候補を並べて提示する。
             ImGui::LabelText("Root Motion", "%s",
                              clip->hasRootMotion ? "Yes (clip defined)" : "No");
             if (clip->hasRootMotion) {
@@ -626,7 +621,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 }
             }
 
-            // ── Events テーブル ────────────────────────────────────────
+            /// @name Events テーブル
             if (!clip->events.empty()) {
                 ImGui::SeparatorText("Events");
                 if (ImGui::BeginTable("##anim_events", 4,
@@ -657,14 +652,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // ── Reimport ───────────────────────────────────────────────────
+        /// @name Reimport
         ImGui::Spacing();
         ImGui::Separator();
         {
             namespace fs = std::filesystem;
             const fs::path animPath  = util::FileSystem::PathFromUtf8(absPath);
             const fs::path parentDir = animPath.parent_path();
-            // "Model@Clip.anim" → "Model" が FBX stem
+            /// @note "Model@Clip.anim" → "Model" が FBX stem
             const std::string stem = util::FileSystem::PathToUtf8(animPath.stem());
             const std::string baseStem = stem.find('@') != std::string::npos
                 ? stem.substr(0, stem.find('@')) : stem;
@@ -685,8 +680,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // ── Preview ────────────────────────────────────────────────────
-        // 同じフォルダー階層のモデル (.fbx / .fzasset) を自動解決してクリップを再生する。
+        /// @name Preview
+        /// @note 同じフォルダー階層のモデル (.fbx / .fzasset) を自動解決してクリップを再生する。
         ImGui::SeparatorText("Preview");
         if (!DrawAnimationPreviewWidget(ctx, 240.0f))
             ImGui::TextDisabled("No companion model found for this clip.");
@@ -763,14 +758,12 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 dirty = true;
             }
 
-            // ── Animation (Unity の Model Import Settings > Animation 相当) ──
-            //
-            // WHY 一覧を FBX のスキャンから引くか: .fbx.meta には既定から外れた設定しか
-            //     書かないため、meta だけを見てもクリップの全体像が出ない。原本を軽量
-            //     スキャンして名前を並べ、meta の値を重ねて表示する。
+            /// @name Animation (Unity の Model Import Settings > Animation 相当)
+            /// @note .fbx.meta には既定から外れた設定しか書かないため、meta だけではクリップの
+            ///       全体像が出ない。原本を軽量スキャンして名前を並べ、meta の値を重ねて表示する。
             ImGui::SeparatorText("Animation");
             {
-                // スキャン結果は FBX ごとにキャッシュする。毎フレーム開くと重い。
+                /// @note スキャン結果は FBX ごとにキャッシュする。毎フレーム開くと重い。
                 static std::string   s_scannedFbxPath;
                 static FbxScanResult s_scan;
                 if (s_scannedFbxPath != sourcePath) {
@@ -859,9 +852,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     }
                 }
 
-                // Root Motion の抽出元を Inspector から直接指定する。
-                // WHY: 自動判定だけではリグ固有の移動ノードを拾えないため、
-                //      .anim を生成する前の原本設定として .meta に保存する。
+                /// @note Root Motion の抽出元を Inspector から直接指定する。自動判定だけでは
+                ///       リグ固有の移動ノードを拾えないため、.anim 生成前の原本設定として .meta に保存する。
                 ImGui::Spacing();
                 char rootMotionBuffer[256] = {};
                 std::snprintf(rootMotionBuffer, sizeof(rootMotionBuffer), "%s",
@@ -885,7 +877,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     ImGui::TextDisabled("%s", label);
                     ImGui::SameLine();
                     if (ImGui::SmallButton("All")) {
-                        // 空の配列はインポーター上で「全選択」を意味する。
+                        /// @note 空の配列はインポーター上で「全選択」を意味する。
                         selectedNames.clear();
                         dirty = true;
                     }
@@ -896,7 +888,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                             std::find(selectedNames.begin(), selectedNames.end(), name)
                                 != selectedNames.end();
                         bool checked = selected;
-                        // FBX のメッシュ名は重複しうる ("Cube" が何個も並ぶ)。
+                        /// @note FBX のメッシュ名は重複しうる ("Cube" が何個も並ぶ)。
                         ImGui::PushID(&name);
                         const bool toggled = ImGui::Checkbox(name.c_str(), &checked);
                         ImGui::PopID();
@@ -957,11 +949,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
             return;
         }
-        // ── .tex descriptor ──────────────────────────────────────────────
+        /// @name .tex descriptor
         ImGui::TextDisabled("Type: Texture Import Settings");
         ImGui::Spacing();
 
-        // TexDescSerializer で読み込んで設定を表示・編集できるようにする
+        /// @note TexDescSerializer で読み込んで設定を表示・編集できるようにする
         static asset::TextureAsset s_texAsset;
         static std::string         s_texPath;
         static std::filesystem::file_time_type s_texWriteTime{};
@@ -970,8 +962,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const bool externallyUpdated = !texTimeError
             && currentTexWriteTime != s_texWriteTime
             && !AssetDirtyRegistry::IsDirty(absPath);
-        // 「今フレームでディスクから読み直したか」。Sanitize はこのタイミングだけ走らせる。
-        // WHY: 毎フレーム正すと、ユーザーが値を触っている最中に書き戻してしまう。
+        /// @note 「今フレームでディスクから読み直したか」。Sanitize はこのタイミングだけ走らせる
+        ///       (毎フレーム正すと、値を触っている最中に書き戻してしまう)。
         bool texJustLoaded = false;
         if (s_texPath != absPath || externallyUpdated) {
             s_texPath = absPath;
@@ -993,10 +985,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SeparatorText("Import Settings");
         auto& s = s_texAsset.settings;
 
-        // 元画像の拡張子で分類し、この分類で意味を持つ項目だけを描く。
-        // WHY: 以前は全項目を無条件に並べていたため、.hdr に sRGB / BC7、.dds に
-        //      Mipmap 生成や Max Size といった「効きようがない設定」が出ていた。
-        //      表示の絞り込みと保存値の整合 (Sanitize) を同じ判定表から導く。
+        /// @note 元画像の拡張子で分類し、この分類で意味を持つ項目だけを描く。全項目を無条件に
+        ///       並べると .hdr に sRGB/BC7 のような効きようがない設定が出る。表示の絞り込みと
+        ///       保存値の整合 (Sanitize) を同じ判定表から導く。
         const ImportCategory texCategory = CategoryForExtension(
             util::StringUtils::ToLower(util::FileSystem::GetExtension(sourcePath)));
         if (texJustLoaded) SanitizeTextureSettings(texCategory, s);
@@ -1004,11 +995,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         ImGui::TextDisabled("Category: %s", ImportCategoryLabel(texCategory));
 
-        // 画像選択から Sprite Editor までを 1 クリックにする。
-        // WHY: Unity の Sprite Editor 導線と同様に、Texture Type の変更と .meta 作成を
-        //      ユーザーへ別々に要求せず、必要な前処理を安全にまとめて行うため。
-        // Sprite として扱えない分類 (.hdr / .exr / .dds) では導線ごと出さない。
-        // WHY: 押しても Sanitize で Sprite 型が戻されるだけで、何も起きないボタンになる。
+        /// @note 画像選択から Sprite Editor までを 1 クリックにする (Unity の Sprite Editor 導線と同様)。
+        ///       Texture Type の変更と .meta 作成を別々に要求せず、前処理を安全にまとめて行う。
+        ///       Sprite として扱えない分類 (.hdr / .exr / .dds) では導線ごと出さない。押しても
+        ///       Sanitize で Sprite 型が戻されるだけで、何も起きないボタンになるため。
         if (ctx.openSpriteEditor && IsTextureTypeAllowed(texCategory, asset::TextureType::Sprite)) {
             const bool hasPendingInspectorEdits = AssetDirtyRegistry::IsDirty(absPath);
             if (hasPendingInspectorEdits) ImGui::BeginDisabled();
@@ -1042,11 +1032,12 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
 
         if (DrawTextureTypeCombo("Type", texCategory, s.type)) {
-            s = asset::DefaultSettingsForType(s.type); // デフォルトを再適用
+            /// @note デフォルトを再適用
+            s = asset::DefaultSettingsForType(s.type);
             SanitizeTextureSettings(texCategory, s);
             dirty = true;
         }
-        // sRGB はガンマ付きカラーにしか意味がない。法線・データマスク・HDR では出さない。
+        /// @note sRGB はガンマ付きカラーにしか意味がない。法線・データマスク・HDR では出さない。
         if (texMask.srgb)
             dirty |= ImGui::Checkbox("sRGB", &s.srgb);
 
@@ -1204,11 +1195,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // ── Compression ───────────────────────────────────────────────
-        // .dds は既にブロック圧縮済みで再エンコード経路を持たないため、セクションごと出さない。
+        /// @name Compression
+        /// @note .dds は既にブロック圧縮済みで再エンコード経路を持たないため、セクションごと出さない。
         if (texMask.compression) {
             ImGui::SeparatorText("Compression");
-            // 選択肢は型ごとに絞る (法線に BC1、HDR に BC7 等は破綻するため出さない)。
+            /// @note 選択肢は型ごとに絞る (法線に BC1、HDR に BC7 等は破綻するため出さない)。
             if (DrawCompressionCombo("Format", texCategory, s.type, s.compression))
                 dirty = true;
             static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
@@ -1219,7 +1210,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // ── Mipmaps ───────────────────────────────────────────────────
+        /// @name Mipmaps
         if (texMask.mipmaps) {
             ImGui::SeparatorText("Mipmaps");
             dirty |= ImGui::Checkbox("Mipmaps", &s.mipmaps);
@@ -1233,19 +1224,19 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 dirty |= ImGui::DragFloat("Mip Sharpen", &s.mipSharpen, 0.01f, 0.0f, 4.0f);
                 dirty |= ImGui::DragFloat("Mip Bias",    &s.mipBias,    0.01f, -4.0f, 4.0f);
             }
-            // 縮小で崩れた法線の再正規化。法線マップ以外では効果がない。
+            /// @note 縮小で崩れた法線の再正規化。法線マップ以外では効果がない。
             if (texMask.normalizeMips)
                 dirty |= ImGui::Checkbox("Normalize Mipmaps", &s.normalizeMipmaps);
         }
 
-        // ── Normal Map ────────────────────────────────────────────────
+        /// @name Normal Map
         if (texMask.flipGreen) {
             ImGui::SeparatorText("Normal Map");
             dirty |= ImGui::Checkbox("Flip Green (OpenGL)", &s.flipGreen);
         }
 
-        // ── Sampling ─────────────────────────────────────────────────
-        // サンプラー状態は .dds でも実行時に効くので、圧縮を出さない分類でも表示する。
+        /// @name Sampling
+        /// @note サンプラー状態は .dds でも実行時に効くので、圧縮を出さない分類でも表示する。
         if (texMask.sampling) {
             ImGui::SeparatorText("Sampling");
             static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
@@ -1260,7 +1251,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // ── Resolution ────────────────────────────────────────────────
+        /// @name Resolution
         if (texMask.maxSize) {
             ImGui::SeparatorText("Resolution");
             int maxSize = static_cast<int>(s.maxSize);
@@ -1270,8 +1261,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        // ── Alpha ─────────────────────────────────────────────────────
-        // 法線・データマスクのアルファはチャンネルとして使うだけで、合成方式の概念がない。
+        /// @name Alpha
+        /// @note 法線・データマスクのアルファはチャンネルとして使うだけで、合成方式の概念がない。
         if (texMask.alpha) {
             ImGui::SeparatorText("Alpha");
             static constexpr const char* kAlphaNames[] = { "Straight", "Premultiplied", "None" };
@@ -1318,13 +1309,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::SameLine();
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
-    } else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
+    } else if ((ext == ".png" && !asset::IsVectorFieldPng(absPath)) || ext == ".jpg" || ext == ".jpeg" ||
                ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
                ext == ".hdr" || ext == ".exr") {
         ImGui::TextDisabled("Type: Texture (%s)", ext.c_str());
         ImGui::Spacing();
 
-        // 元画像の隣に "<画像>.meta" サイドカーが存在するか確認 (二重拡張子)
+        /// @note 元画像の隣に "<画像>.meta" サイドカーが存在するか確認 (二重拡張子)
         const std::string texDescPath = absPath + ".meta";
         const bool hasTexDesc = util::FileSystem::Exists(
             util::FileSystem::PathFromUtf8(texDescPath));
@@ -1364,7 +1355,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 "mipmaps and other import settings.");
             ImGui::Spacing();
             if (ImGui::Button("Create .meta...")) {
-                // GuessTextureType でデフォルト設定を生成して "<画像>.meta" を書き出す
+                /// @note GuessTextureType でデフォルト設定を生成して "<画像>.meta" を書き出す
                 const asset::TextureType guessedType =
                     asset::GuessTextureType(util::FileSystem::GetFilename(absPath));
                 asset::TextureAsset newAsset;
@@ -1380,9 +1371,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 "Or drag directly to a material slot to use with default settings.");
         }
     } else if (ext == ".mask") {
-        // ── Avatar Mask (.mask) ───────────────────────────────────────────
-        // WHY: 上半身だけ / 下半身だけの制御はこのアセットが入口。ボーンパスを手書きさせず、
-        //      Humanoid プリセットで一括生成し、必要なら個別に weight と blendDepth を詰める。
+        /// @name Avatar Mask (.mask)
+        /// @note 上半身だけ / 下半身だけの制御はこのアセットが入口。ボーンパスを手書きさせず、
+        ///       Humanoid プリセットで一括生成し、必要なら個別に weight と blendDepth を詰める。
         ImGui::TextDisabled("Type: Avatar Mask");
         ImGui::Spacing();
 
@@ -1414,10 +1405,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             s_maskSelectedPath = std::move(previewSelectionPath);
         bool maskDirty = false;
 
-        // .mask も他の Inspector アセットと同じく、1 回のウィジェット操作を 1 件の
-        // Undo コマンドとして記録する。
-        // WHY: 毎フレーム履歴へ積むと Weight の入力中に中間値が大量に残り、また
-        //      Apply 前の編集を Undo/Redo したときに表示と保存先が食い違うため。
+        /// @note .mask も他の Inspector アセットと同じく、1 回のウィジェット操作を 1 件の Undo
+        ///       コマンドとして記録する。毎フレーム積むと Weight 入力中に中間値が大量に残り、
+        ///       Apply 前の編集を Undo/Redo したとき表示と保存先が食い違う。
         struct MaskUndoTracker {
             std::string            path;
             asset::AvatarMaskAsset before;
@@ -1458,10 +1448,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             !sourceSignatureMissing && !currentSourceSignature.empty() &&
             currentSourceSignature != s_mask.skeletonSourceSignature;
         const auto prepareMaskForSave = [&]() {
-            // UI で skeletonSourcePath 自体が変更された場合も、描画開始時の古い署名を
-            // 保存しないように、その時点のパスから再計算する。
-            // 重複した Bone パスは Advanced Rules の直接編集で発生し得るため、保存前に
-            // 正規化して「削除したのに同じルールが残る」状態も防ぐ。
+            /// @note UI で skeletonSourcePath 自体が変更された場合も、描画開始時の古い署名を
+            ///       保存しないように、その時点のパスから再計算する。
+            ///       重複した Bone パスは Advanced Rules の直接編集で発生し得るため、保存前に
+            ///       正規化して「削除したのに同じルールが残る」状態も防ぐ。
             asset::CompressAvatarMaskEntries(s_mask);
             s_mask.skeletonSourceSignature = sourceSignature(s_mask.skeletonSourcePath);
         };
@@ -1535,9 +1525,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 s_mask.entries.end());
         };
         const auto applyBranchRule = [&](int nodeIndex, MaskRuleState state) {
-            // いったん配下の明示ルールを消してから親へ設定する。
-            // WHY: Include 済みの親に子の Exclude が残っていると、表示が Mixed のまま
-            //      になり、Include → Exclude → Inherit の循環が成立しないため。
+            /// @note いったん配下の明示ルールを消してから親へ設定する。Include 済みの親に子の Exclude が
+            ///       残ると表示が Mixed のままになり、Include → Exclude → Inherit の循環が成立しない。
             clearBranchEntries(nodeIndex);
             if (state != MaskRuleState::Inherit)
                 setNodeRule(nodeIndex, state);
@@ -1647,8 +1636,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         };
 
         ImGui::SeparatorText("Mask");
-        // defaultInclude を切り替えると「列挙したボーンだけ有効」と「列挙したボーンだけ無効」が
-        // 反転する。上半身マスクは前者、指だけ抜くマスクは後者が書きやすい。
+        /// @note defaultInclude を切り替えると「列挙したボーンだけ有効」と「列挙したボーンだけ無効」が
+        ///       反転する。上半身マスクは前者、指だけ抜くマスクは後者が書きやすい。
         if (ImGui::Checkbox("Default Include (未列挙のボーンも有効にする)", &s_mask.defaultInclude))
             maskDirty = true;
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -1657,9 +1646,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 "ON : 下の一覧に無いボーンは weight 1 (指だけ除外、などに使う)");
         }
 
-        // ── Humanoid プリセット ───────────────────────────────────────────
-        // FBX を指定すると同じスケルトンをツリーで編集できる。AssetPathField は
-        // ピッカー・拡張子検証・Asset Browser からの D&D を共通で提供する。
+        /// @name Humanoid プリセット
+        /// @note FBX を指定すると同じスケルトンをツリーで編集できる。AssetPathField は
+        ///       ピッカー・拡張子検証・Asset Browser からの D&D を共通で提供する。
         ImGui::SeparatorText("Skeleton Source");
         if (widgets::AssetPathField("Skeleton Source", s_mask.skeletonSourcePath,
                                      ".fbx", ctx.projectRoot)) {
@@ -1751,7 +1740,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             maskDirty = true;
         }
 
-        // ── エントリ一覧 ──────────────────────────────────────────────────
+        /// @name エントリ一覧
         ImGui::SeparatorText("Hierarchy");
         auto drawDropZone = [&](const char* label, MaskRuleState state) {
             ImGui::Button(label, { ImGui::GetContentRegionAvail().x, 30.0f });
@@ -1837,9 +1826,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     a.w + (b.w - a.w) * t);
             };
             const auto weightColor = [&](float weight) {
-                // 0.0 = 危険色、0.5 = 注意色、1.0 = 有効色の信号機配色にする。
-                // WHY: 現在の薄い灰色では「除外」と「未設定」を見分けにくく、
-                //      メッシュ Preview の色とも対応しなかったため。
+                /// @note 0.0 = 危険色、0.5 = 注意色、1.0 = 有効色の信号機配色にする。薄い灰色だと
+                ///       「除外」と「未設定」を見分けにくく、メッシュ Preview の色とも対応しなかった。
                 if (weight < 0.5f) {
                     return mixColor(EditorTheme::Color(ThemeColor::Danger),
                                     EditorTheme::Color(ThemeColor::Warning), weight * 2.0f);
@@ -1857,7 +1845,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 case MaskRuleState::Mixed:
                     return EditorTheme::Color(ThemeColor::Warning);
                 case MaskRuleState::Inherit:
-                    // 親の Include を継承して効いているノードは青、未適用はミュート。
+                    /// @note 親の Include を継承して効いているノードは青、未適用はミュート。
                     return effectiveWeight > 0.001f
                         ? EditorTheme::Color(ThemeColor::Accent)
                         : EditorTheme::Color(ThemeColor::TextMuted);
@@ -1942,16 +1930,16 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 const bool matchesSearch = !searchText.empty()
                     && (lowerCopy(node.name).find(searchText) != std::string::npos
                         || lowerPath.find(searchText) != std::string::npos);
-                // SpanAvailWidth はテーブルの固定操作列まで TreeNode の矩形に含めるため、
-                //      長いノード名が Weight 入力欄の上へ描画される。ノード列のクリップに任せる。
+                /// @note SpanAvailWidth はテーブルの固定操作列まで TreeNode の矩形に含めるため、
+                ///       長いノード名が Weight 入力欄の上へ描画される。ノード列のクリップに任せる。
                 ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
                 if (node.children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
                 if (!searchText.empty() || s_maskChangedOnly)
                     flags |= ImGuiTreeNodeFlags_DefaultOpen;
                 if (matchesSearch || s_maskSelectedPath == path)
                     flags |= ImGuiTreeNodeFlags_Selected;
-                // TreePush はテーブル全体の横幅を狭めて固定操作列へ侵入するため使わず、
-                //      Bone 列の中だけへ深さを描画する。これで深い階層でも Weight 列を守る。
+                /// @note TreePush はテーブル全体の横幅を狭めて固定操作列へ侵入するため使わず、
+                ///       Bone 列の中だけへ深さを描画する。これで深い階層でも Weight 列を守る。
                 flags |= ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
                 const ImVec4 nodeColor = stateColor(state, effectiveWeight);
@@ -2021,8 +2009,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     const bool weightEdited = ImGui::InputFloat(
                         "##weight", &editedWeight, 0.01f, 0.1f, "%.2f");
                     if (weightEdited) {
-                        // ImGui の直接入力・ステップ操作・貼り付けのどの経路でも、
-                        // NaN や上限超過を .mask へ渡さず 0..1 に確定させる。
+                        /// @note ImGui の直接入力・ステップ操作・貼り付けのどの経路でも、
+                        ///       NaN や上限超過を .mask へ渡さず 0..1 に確定させる。
                         editedWeight = std::isfinite(editedWeight)
                             ? std::clamp(editedWeight, 0.0f, 1.0f)
                             : effectiveWeight;
@@ -2040,8 +2028,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
                     ImGui::TableNextColumn();
                     ImGui::TextColored(nodeColor, "%s", ruleName(state));
-                    // 同じ骨に複数エントリが当たると、勝つのは specificity が最大の 1 件だけ。
-                    // 残りは一度も効かないまま .mask に残り続けるため、ここで見えるようにする。
+                    /// @note 同じ骨に複数エントリが当たると、勝つのは specificity が最大の 1 件だけ。
+                    ///       残りは一度も効かないまま .mask に残り続けるため、ここで見えるようにする。
                     if (const auto matches =
                             asset::MatchAvatarMaskEntries(s_mask, path, node.name);
                         matches.size() > 1) {
@@ -2087,8 +2075,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 }
             };
 
-            // 1 本も拾えていないマスクは、レイヤーへ割り当てても何も動かさない。
-            // 「設定はしてあるのに効かない」は画面から判別できないので、ここで名指しする。
+            /// @note 1 本も拾えていないマスクは、レイヤーへ割り当てても何も動かさない。
+            ///       「設定はしてあるのに効かない」は画面から判別できないので、ここで名指しする。
             if (!s_mask.entries.empty() && !s_mask.defaultInclude &&
                 maskaudit::CountMaskedBones(*maskSkeleton, s_mask) == 0) {
                 ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger),
@@ -2163,11 +2151,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                         "起点の骨は weight に届かなくなります (右の Ramp 列が実効値)。");
                 }
 
-                // ── ランプの実効値 ──────────────────────────────────────────
-                // WHY 表示するか: RampedWeight は weight×(depth+1)/(blendDepth+1) で、
-                //     「Chest に weight 1.0 / depth 2 を入れたら Chest は 0.33」になる。
-                //     この数字がどこにも出ていなかったため、上半身レイヤーが 67% ベースの
-                //     ままだったことに誰も気付けなかった。編集した場所へそのまま出す。
+                /// @name ランプの実効値
+                /// @note RampedWeight = weight×(depth+1)/(blendDepth+1)。「Chest に weight 1.0 /
+                ///       depth 2」は実効 0.33 になるが、この数字がどこにも出ていなかったため、
+                ///       編集した場所へそのまま出す。
                 ImGui::TableNextColumn();
                 {
                     const std::vector<float> ramp =
@@ -2218,9 +2205,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             maskDirty = true;
         }
 
-        // ── スケルトンのボーンツリー (実効ウェイトのプレビュー) ─────────────
+        /// @name スケルトンのボーンツリー (実効ウェイトのプレビュー)
 
-        // ── 保存 ─────────────────────────────────────────────────────────
+        /// @name 保存
         const ImGuiID maskActiveAfter = ImGui::GetActiveID();
         auto pushMaskCommand = [&](const asset::AvatarMaskAsset& before,
                                    const asset::AvatarMaskAsset& after) {
@@ -2236,7 +2223,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             auto* liveWriteTime = &s_maskWriteTime;
             auto apply = [context, capturedPath, liveMask, livePath, liveWriteTime](
                              const asset::AvatarMaskAsset& value) {
-                // 別の .mask を選択中に古い履歴を実行しても、現在表示中の値を壊さない。
+                /// @note 別の .mask を選択中に古い履歴を実行しても、現在表示中の値を壊さない。
                 if (*livePath == capturedPath)
                     *liveMask = value;
                 if (!asset::SaveAvatarMaskAsset(capturedPath, value)) return;
@@ -2259,7 +2246,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             s_maskUndo.active = false;
             s_maskUndo.changed = false;
         } else {
-            // アセットを切り替えたときに、前の .mask の操作と現在の操作を混ぜない。
+            /// @note アセットを切り替えたときに、前の .mask の操作と現在の操作を混ぜない。
             if (s_maskUndo.active && s_maskUndo.path != absPath)
                 s_maskUndo.active = false;
 
@@ -2271,13 +2258,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     s_maskUndo.active = true;
                     s_maskUndo.changed = maskDirty;
                 } else if (maskDirty) {
-                    // プリセット適用、ノードの一括変更、追加/削除などの即時操作。
+                    /// @note プリセット適用、ノードの一括変更、追加/削除などの即時操作。
                     pushMaskCommand(maskBeforeDraw, s_mask);
                 }
             } else if (maskActiveAfter == s_maskUndo.activeId) {
                 s_maskUndo.changed |= maskDirty;
             } else {
-                // 入力を離したフレームで、操作全体の before/after を 1 件に確定する。
+                /// @note 入力を離したフレームで、操作全体の before/after を 1 件に確定する。
                 s_maskUndo.changed |= maskDirty;
                 if (s_maskUndo.changed)
                     pushMaskCommand(s_maskUndo.before, s_mask);
@@ -2334,9 +2321,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextColored({ 1.0f, 0.8f, 0.2f, 1.0f }, "Modified");
         }
 
-        // .mask 選択時は Inspector の最下部で、現在の編集状態をそのまま可視化する。
-        // WHY: 別 Preview ウィンドウへ切り替えずに、木構造の変更結果とメッシュの色を
-        //      同じ視線で確認できるようにする。保存前の s_mask を渡すため即時反映される。
+        /// @note .mask 選択時は Inspector の最下部で、現在の編集状態をそのまま可視化する。
+        ///       別 Preview ウィンドウへ切り替えずに、木構造の変更結果とメッシュの色を同じ視線で
+        ///       確認できるようにする。保存前の s_mask を渡すため即時反映される。
         ImGui::SeparatorText("Animation Mask Preview");
         ImGui::TextDisabled("FBX mesh is colored by effective mask weight.");
         ImGui::TextColored(ImVec4(0.90f, 0.20f, 0.20f, 1.0f), "0.0 Excluded");
@@ -2351,12 +2338,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (!s_animationMaskPreview.DrawPreview(ctx, absPath, s_mask, previewHeight))
             ImGui::TextDisabled("FBX と .mask を指定するとプレビューできます。");
     } else if (ext == ".terrain") {
-        // ── .terrain アセット ─────────────────────────────────────────────
-        // WHY: 実際のオンディスク形式は scene::TerrainAssetSerializer が読み書きする TOML。
-        //      SceneSerializer / ランタイムもこのシリアライザ経由でロードするため、
-        //      Inspector も同じ TerrainAssetSerializer を使って読み書きを一致させる。
-        //      （旧 asset::FzTerrainSerializer はバイナリ "FZTN" 形式で、TOML の .terrain を
-        //        読めず "Load failed"、保存すると TOML ファイルをバイナリに破壊していた。）
+        /// @name .terrain アセット
+        /// @note オンディスク形式は scene::TerrainAssetSerializer が読み書きする TOML。SceneSerializer /
+        ///       ランタイムも同じ経路でロードするため Inspector もこれを使う。旧 asset::FzTerrainSerializer は
+        ///       バイナリ "FZTN" 形式で、TOML を読めず保存するとファイルを破壊する。
         ImGui::TextDisabled("Type: Terrain Asset");
         ImGui::Spacing();
 
@@ -2431,7 +2416,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
     } else if (ext == ".fzdata") {
-        // ── DataAsset (純共有 ScriptableObject) ───────────────────────────
+        /// @name DataAsset (純共有 ScriptableObject)
         const std::string relPath = NormalizeAssetPath(absPath);
         asset::DataAsset* data = asset::DataAssetRegistry::Resolve(relPath);
         if (!data) {
@@ -2443,44 +2428,39 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Type: %s", data->GetTypeName());
         ImGui::Separator();
 
-        // 編集前の状態を控える。DataAsset は多態基底で値コピーできないため、
-        // .mat のような「構造体まるごとのコピー」ではなく TOML 直列化を控えに使う。
-        // WHY 毎フレーム取るか: どのウィジェットが掴まれるかは描画前には分からず、
-        //     掴まれた瞬間に「その直前の値」が必要になる。文字列 1 本ぶんの
-        //     コストで、選択中の 1 アセットに対してだけ走る。
+        /// @note 編集前の状態を控える。DataAsset は多態基底で値コピーできないため、.mat のような
+        ///       構造体まるごとのコピーでなく TOML 直列化を控えに使う。どのウィジェットが掴まれるかは
+        ///       描画前には分からないため毎フレーム取るが、選択中の 1 アセットに対する文字列 1 本ぶんで済む。
         const bool canRecordFzDataUndo = CanRecordEditorUndo(ctx);
         const std::string fzdataBeforeDraw = canRecordFzDataUndo
             ? asset::DataAssetRegistry::Snapshot(relPath)
             : std::string{};
         const ImGuiID fzdataActiveBefore = ImGui::GetActiveID();
 
-        // 各オーバーライドのパラメーターは共通リフレクタで描く。
-        // WHY 共通のものを使うか: Reflect() が既にレンジとカラーヒントを持っており、
-        //     ImGuiReflector はそれをプロパティ行・カラーピッカー・ファイルスロットへ
-        //     翻訳する。効果ごとの専用 UI を書かずに済み、効果の追加は Engine 側だけで閉じる。
+        /// @note 各オーバーライドのパラメーターは共通リフレクタで描く。Reflect() が既にレンジと
+        ///       カラーヒントを持ち、ImGuiReflector がそれをプロパティ行・カラーピッカー・ファイル
+        ///       スロットへ翻訳するため、効果ごとの専用 UI が要らず効果の追加は Engine 側だけで閉じる。
         ImGuiReflector reflector;
         reflector.m_projectRoot = ctx.projectRoot;
 
         bool editedByCustomUi = false;
         if (auto* profile = dynamic_cast<asset::PostProcessProfile*>(data)) {
-            // PostProcessProfile だけは専用 UI を使う。
-            // WHY 汎用リフレクタに任せないか: 中身は「効果のリスト」で、
-            //     追加・削除・並べ替え・一時無効化という配列固有の操作が要る。
-            //     汎用のフィールド列挙ではそれらを表現できない。
-            //     編集対象は Registry の共有実体そのものなので、変更は全参照へ即反映される。
-            // レンダー設定を渡すと「このパイプラインでは効かない」効果に警告が出る。
+            /// @note PostProcessProfile だけは専用 UI を使う。中身は「効果のリスト」で、追加・削除・
+            ///       並べ替え・一時無効化という配列固有の操作は汎用のフィールド列挙では表現できない。
+            ///       編集対象は Registry の共有実体そのものなので、変更は全参照へ即反映される。
+            ///       レンダー設定を渡すと「このパイプラインでは効かない」効果に警告が出る。
             const PostProcessInspectorResult inspectorResult =
                 DrawVolumeOverrideListInspector(*profile, reflector,
                                                 &ctx.projectSettings.render);
             editedByCustomUi = inspectorResult.changed;
         } else {
-            // Inspector の共通リフレクタでフィールドを描画する (スクリプトと同じ UI)。
+            /// @note Inspector の共通リフレクタでフィールドを描画する (スクリプトと同じ UI)。
             data->Reflect(reflector);
         }
 
-        // 自動保存: 値が編集され、かつ操作 (ドラッグ/入力) が終わった瞬間にディスクへ書き戻す。
-        // WHY: ScriptableObject 的な「いじったら保存されている」体験にする。連続ドラッグ中の
-        //      大量書き込みは避けたいので、アクティブ操作が無くなったフレームでだけ保存する。
+        /// @note 自動保存: 値が編集され、操作 (ドラッグ/入力) が終わった瞬間にディスクへ書き戻す
+        ///       (ScriptableObject 的な「いじったら保存されている」体験)。連続ドラッグ中の大量書き込みを
+        ///       避けるため、アクティブ操作が無くなったフレームでだけ保存する。
         const bool editedThisFrame =
             (GImGui && GImGui->ActiveIdHasBeenEditedThisFrame) || editedByCustomUi;
         static bool        s_fzdataDirty = false;
@@ -2495,14 +2475,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             s_fzdataDirty = false;
         }
 
-        // ── Undo 記録 ────────────────────────────────────────────────────────
-        // WHY: .fzdata だけ Undo が一切効かず、しかも自動保存でディスクへ即書き戻すため、
-        //      値を壊すと戻す手段が無かった (Ctrl+Z を押しても無関係な履歴が戻るだけ)。
-        //      記録の粒度は .mat と同じ「ウィジェットを掴んでから離すまで = 1 操作」。
-        //      フレーム単位で積むとドラッグ 1 回が数十件の中間値で履歴を埋めてしまう。
+        /// @name Undo 記録
+        /// @note .fzdata は自動保存でディスクへ即書き戻すため、Undo が無いと値を壊しても戻せない。
+        ///       記録の粒度は .mat と同じ「ウィジェットを掴んでから離すまで = 1 操作」。
+        ///       フレーム単位で積むとドラッグ 1 回が数十件の中間値で履歴を埋めてしまう。
         struct FzDataUndoTracker {
-            std::string path;      // どの .fzdata に対する記録か
-            std::string before;    // 掴んだ直前のスナップショット
+            std::string path;      ///< @brief どの .fzdata に対する記録か
+            std::string before;    ///< @brief 掴んだ直前のスナップショット
             ImGuiID     activeId = 0;
             bool        active   = false;
             bool        changed  = false;
@@ -2517,10 +2496,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             const std::string capturedPath = relPath;
             auto apply = [context, capturedPath](const std::string& snapshot) {
                 if (!asset::DataAssetRegistry::RestoreSnapshot(capturedPath, snapshot)) return;
-                // 復元した値はディスクへも書き戻す。
-                // WHY: .fzdata は編集確定ごとに自動保存される。メモリだけ戻すと
-                //      次のロードやホットリロードで巻き戻り、「Undo したのに直っていない」
-                //      という一番たちの悪い壊れ方になる (.mat と同じ規則へ揃える)。
+                /// @note 復元した値はディスクへも書き戻す。.fzdata は編集確定ごとに自動保存されるため、
+                ///       メモリだけ戻すと次のロードやホットリロードで巻き戻る (.mat と同じ規則へ揃える)。
                 asset::DataAssetRegistry::Save(capturedPath);
                 context->requestAssetBrowserRefresh = true;
             };
@@ -2533,8 +2510,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (!canRecordFzDataUndo) {
             fzdataUndo.active = false;
         } else {
-            // 選択が別の .fzdata へ移ったら記録途中の操作は捨てる
-            // (別アセットの値で before/after が混ざるのを防ぐ)。
+            /// @note 選択が別の .fzdata へ移ったら記録途中の操作は捨てる
+            ///       (別アセットの値で before/after が混ざるのを防ぐ)。
             if (fzdataUndo.active && fzdataUndo.path != relPath)
                 fzdataUndo.active = false;
 
@@ -2546,22 +2523,23 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     fzdataUndo.active   = true;
                     fzdataUndo.changed  = editedThisFrame;
                 } else if (editedThisFrame) {
-                    // 掴まずに 1 フレームで確定した編集 (オーバーライドの追加・削除など)。
-                    // 掴み→離しの経路に乗らないので、その場で 1 操作として積む。
+                    /// @note 掴まずに 1 フレームで確定した編集 (オーバーライドの追加・削除など)。
+                    ///       掴み→離しの経路に乗らないので、その場で 1 操作として積む。
                     pushFzDataCommand(fzdataBeforeDraw,
                                       asset::DataAssetRegistry::Snapshot(relPath));
                 }
             } else if (fzdataActiveAfter == fzdataUndo.activeId) {
-                fzdataUndo.changed |= editedThisFrame;   // ドラッグ継続中
+                /// @note ドラッグ継続中
+                fzdataUndo.changed |= editedThisFrame;
             } else {
-                // 離したフレーム。ボタンは「離した瞬間」に効くので、この 1 回ぶんも拾う。
+                /// @note 離したフレーム。ボタンは「離した瞬間」に効くので、この 1 回ぶんも拾う。
                 fzdataUndo.changed |= editedThisFrame;
                 if (fzdataUndo.changed)
                     pushFzDataCommand(fzdataUndo.before,
                                       asset::DataAssetRegistry::Snapshot(relPath));
                 fzdataUndo.active  = false;
                 fzdataUndo.changed = false;
-                // 離した直後に別ウィジェットを掴んでいたら、そこから記録し直す。
+                /// @note 離した直後に別ウィジェットを掴んでいたら、そこから記録し直す。
                 if (fzdataActiveAfter != 0) {
                     fzdataUndo.path     = relPath;
                     fzdataUndo.before   = asset::DataAssetRegistry::Snapshot(relPath);
@@ -2573,17 +2551,15 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         ImGui::Spacing();
         ImGui::Separator();
-        // 保険の手動保存 (自動保存があるので通常は不要)。
+        /// @note 保険の手動保存 (自動保存があるので通常は不要)。
         if (ImGui::Button("Save .fzdata"))
             asset::DataAssetRegistry::Save(relPath);
         ImGui::SameLine();
         ImGui::TextDisabled(s_fzdataDirty && s_fzdataDirtyPath == relPath
                             ? "Saving on release..." : "Auto-saved");
     } else if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".flac") {
-        // 録音素材の試聴。
-        // WHY Inspector に置くか: これまで音声アセットは選んでも何も出ず、
-        //     どんな音かはゲームを走らせるまで分からなかった。テクスチャに
-        //     プレビューがあって音だけ無いのは、探す手間が桁違いに変わる。
+        /// @note 録音素材の試聴。テクスチャにプレビューがあって音だけ無いと、どんな音かは
+        ///       ゲームを走らせるまで分からず探す手間が桁違いになる。
         static std::string        s_audioPath;
         static std::vector<float> s_audioWave;
         static uint32_t           s_audioVoice = 0;
@@ -2596,8 +2572,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         auto* manager = core::Application::Get().GetAudioManager();
 
         if (s_audioPath != absPath) {
-            // 別のアセットへ移ったら試聴も止める。裏で鳴り続けると、どのファイルの
-            // 音を聞いているのか分からなくなる。
+            /// @note 別のアセットへ移ったら試聴も止める。裏で鳴り続けると、どのファイルの
+            ///       音を聞いているのか分からなくなる。
             if (manager && s_audioVoice != 0) manager->StopVoice(s_audioVoice);
             s_audioVoice = 0;
             s_audioPath  = absPath;
@@ -2613,9 +2589,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const uintmax_t sizeOnDisk = sizeError ? 0 : fileBytes;
         ImGui::Text("File: %.1f KB", static_cast<double>(sizeOnDisk) / 1024.0);
 
-        // WHY 大きいファイルを自動で開かないか: デコード結果は AudioManager の
-        //     キャッシュに載り、Shutdown まで解放されない。数分の BGM を並べた
-        //     フォルダをクリックして回るだけで数百 MB 積み上がる。
+        /// @note 大きいファイルを自動デコードしないのは、デコード結果が AudioManager のキャッシュに
+        ///       載り Shutdown まで解放されないため。数分の BGM フォルダを見て回るだけで数百 MB 積み上がる。
         constexpr uintmax_t kAutoDecodeLimit = 2u * 1024u * 1024u;
         const bool wantDecode = s_audioDecoded || sizeOnDisk <= kAutoDecodeLimit;
 
@@ -2624,7 +2599,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         } else {
             if (!s_audioDecoded && !wantDecode) {
                 if (ImGui::Button("Load Preview"))
-                    s_audioDecoded = true;   // 次のフレームで復号する
+                    /// @note 次のフレームで復号する
+                    s_audioDecoded = true;
                 ImGui::SameLine();
                 ImGui::TextDisabled("(2 MB 超のためクリックで読み込み)");
             }
@@ -2641,7 +2617,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                                   info.fmt.sampleRate, info.fmt.channels, info.fmt.bitsPerSample);
                     s_audioFormat = formatText;
 
-                    // 16bit 以外は波形描画を諦める (再生はできる)。
+                    /// @note 16bit 以外は波形描画を諦める (再生はできる)。
                     if (info.fmt.bitsPerSample == 16 && info.fmt.channels > 0) {
                         const size_t frames =
                             info.bytes / (2u * static_cast<size_t>(info.fmt.channels));
@@ -2654,7 +2630,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                             int peak = 0;
                             int peakMagnitude = 0;
                             for (size_t f = begin; f < end && f < frames; ++f) {
-                                // 先頭チャンネルのみ。左右差より「どこで鳴っているか」が知りたい。
+                                /// @note 先頭チャンネルのみ。左右差より「どこで鳴っているか」が知りたい。
                                 const size_t at = f * stride;
                                 const auto lo = static_cast<uint16_t>(info.pcm[at]);
                                 const auto hi = static_cast<uint16_t>(info.pcm[at + 1]);
@@ -2696,7 +2672,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 }
                 ImGui::SameLine();
                 if (ImGui::Checkbox("Loop", &s_audioLoop) && s_audioVoice != 0) {
-                    // ループ指定は voice 生成時にしか渡せないため、鳴らし直す。
+                    /// @note ループ指定は voice 生成時にしか渡せないため、鳴らし直す。
                     manager->StopVoice(s_audioVoice);
                     s_audioVoice = manager->PlayVoice(relPath, s_audioLoop,
                                                       manager->FindBus("UI"));
@@ -2704,10 +2680,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
     } else if (ext == ".synth") {
-        // WHY ここでは編集させないか: SFX Editor が同じファイルの内容をメモリに持って
-        //     編集する。両方から書けるようにすると、片方の未保存の変更をもう片方が
-        //     黙って上書きする。ここは「今どんな音か」を確かめ、必要なら編集面へ
-        //     移るための面に絞る。
+        /// @note ここでは編集させない。SFX Editor が同じファイルの内容をメモリに持って編集するため、
+        ///       両方から書けると片方の未保存の変更をもう片方が黙って上書きする。ここは「今どんな音か」
+        ///       を確かめ、必要なら編集面へ移るための面に絞る。
         static std::string       s_synthPath;
         static asset::SynthAsset s_synth;
         static bool              s_synthValid = false;
@@ -2745,11 +2720,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SameLine();
         if (ImGui::SmallButton("Reload")) s_synthPath.clear();
     } else if (ext == ".physmat") {
-        // ── PhysicsMaterial (共有物理マテリアル) ──────────────────────────
-        // WHY AssetManager 上の実体を直接編集するか:
-        //     ColliderComponent::ResolvePhysicsMaterial() が毎フレーム同じキャッシュから
-        //     値を引いている。ここを書き換えれば、参照している全コライダーの物性が
-        //     再ロードもシーン再生も挟まずにその場で変わる (アセットを共有にした本来の狙い)。
+        /// @name PhysicsMaterial (共有物理マテリアル)
+        /// @note AssetManager 上の実体を直接編集する。ColliderComponent::ResolvePhysicsMaterial() が
+        ///       毎フレーム同じキャッシュから値を引くため、書き換えれば参照している全コライダーの
+        ///       物性が再ロードもシーン再生も挟まずその場で変わる (アセットを共有にした本来の狙い)。
         const std::string relPath = NormalizeAssetPath(absPath);
         const auto handle = asset::AssetManager::Load<asset::PhysicsMaterialAsset>(relPath);
         auto* physicsMaterial = asset::AssetManager::Get<asset::PhysicsMaterialAsset>(handle);
@@ -2758,8 +2732,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             return;
         }
 
-        // 掴む直前の値を毎フレーム控える (.fzdata と同じ理由: どのウィジェットが
-        // 掴まれるかは描画前に分からない)。中身は float 数個なのでコピーは無視できる。
+        /// @note 掴む直前の値を毎フレーム控える (.fzdata と同じ理由: どのウィジェットが
+        ///       掴まれるかは描画前に分からない)。中身は float 数個なのでコピーは無視できる。
         const bool canRecordUndo = CanRecordEditorUndo(ctx);
         const asset::PhysicsMaterialAsset beforeDraw = *physicsMaterial;
         const ImGuiID activeBefore = ImGui::GetActiveID();
@@ -2781,7 +2755,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
         ImGui::Separator();
 
-        // フィールドは共通リフレクタで描く (Inspector と TOML 出力で同じ Reflect を共有)。
+        /// @note フィールドは共通リフレクタで描く (Inspector と TOML 出力で同じ Reflect を共有)。
         ImGuiReflector reflector;
         reflector.m_projectRoot = ctx.projectRoot;
         physicsMaterial->Reflect(reflector);
@@ -2790,7 +2764,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("合成規則が異なる材質同士では、優先度の高い側が採用される");
         ImGui::TextDisabled("(Average < Geometric Mean < Minimum < Multiply < Maximum)");
 
-        // 自動保存 (.fzdata と同じ規則: 操作が終わったフレームで書き戻す)。
+        /// @note 自動保存 (.fzdata と同じ規則: 操作が終わったフレームで書き戻す)。
         const bool editedThisFrame =
             (GImGui && GImGui->ActiveIdHasBeenEditedThisFrame) || editedByPreset;
         static bool        s_physmatDirty = false;
@@ -2798,7 +2772,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (editedThisFrame) {
             s_physmatDirty     = true;
             s_physmatDirtyPath = relPath;
-            // プリセット以外の手編集はプリセット由来の表示を外す。
+            /// @note プリセット以外の手編集はプリセット由来の表示を外す。
             if (!editedByPreset) physicsMaterial->presetName.clear();
         }
         if (s_physmatDirty && s_physmatDirtyPath == relPath && !ImGui::IsAnyItemActive()) {
@@ -2807,7 +2781,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             s_physmatDirty = false;
         }
 
-        // Undo: 掴んでから離すまでを 1 操作として積む (.mat / .fzdata と同じ粒度)。
+        /// @note Undo: 掴んでから離すまでを 1 操作として積む (.mat / .fzdata と同じ粒度)。
         struct PhysMatUndoTracker {
             std::string                  path;
             asset::PhysicsMaterialAsset  before;
@@ -2829,7 +2803,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 auto* target = asset::AssetManager::Get<asset::PhysicsMaterialAsset>(h);
                 if (!target) return;
                 *target = value;
-                // メモリだけ戻すと次のロードで巻き戻るため、ディスクへも書き戻す。
+                /// @note メモリだけ戻すと次のロードで巻き戻るため、ディスクへも書き戻す。
                 (void)asset::SavePhysicsMaterialAssetToFile(capturedAbs, value);
                 context->requestAssetBrowserRefresh = true;
             };
@@ -2852,11 +2826,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     physmatUndo.activeId = activeAfter;
                     physmatUndo.active   = true;
                 } else if (editedByPreset) {
-                    // プリセット適用は掴み→離しの経路に乗らないため、その場で 1 操作にする。
+                    /// @note プリセット適用は掴み→離しの経路に乗らないため、その場で 1 操作にする。
                     pushPhysMatCommand(beforeDraw, *physicsMaterial);
                 }
             } else if (activeAfter != physmatUndo.activeId) {
-                // 掴んでいたウィジェットから手が離れた = 1 操作の終わり。
+                /// @note 掴んでいたウィジェットから手が離れた = 1 操作の終わり。
                 pushPhysMatCommand(physmatUndo.before, *physicsMaterial);
                 physmatUndo.active = false;
             }
@@ -2871,14 +2845,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                             ? "Saving on release..." : "Auto-saved");
     } else if (ext == ".fluid") {
         DrawFluidAssetInspector(absPath, ctx.resources, ctx.imguiRenderer, &ctx.requestVolumeFlipbookFluid);
-    } else if (ext == ".vfield" || ext == ".fga") {
-        // ── VectorField (焼いた速度場) ────────────────────────────────────
-        // 焼き直しは «レシピ → グリッド» の一方通行で、元のレシピはファイルに残らない
-        // (残すと «ファイルの中身とレシピのどちらが正か» が生まれる)。ここはあくまで
-        // «この設定で焼き直す» ボタンで、開くたびに既定のレシピが表示される。
+    } else if (ext == ".fga" || asset::IsVectorFieldPng(absPath)) {
+        /// @name VectorField (焼いた速度場)
+        /// @note 焼き直しは «レシピ → グリッド» の一方通行で、元のレシピはファイルに残らない
+        ///       (残すと «ファイルの中身とレシピのどちらが正か» が生まれる)。ここはあくまで
+        ///       «この設定で焼き直す» ボタンで、開くたびに既定のレシピが表示される。
         const std::string relPath = NormalizeAssetPath(absPath);
-        const auto handle = asset::AssetManager::Load<asset::VectorFieldAsset>(relPath);
-        auto* field = asset::AssetManager::Get<asset::VectorFieldAsset>(handle);
+        const auto handle = asset::AssetManager::Load<fluid::VectorFieldAsset>(relPath);
+        auto* field = asset::AssetManager::Get<fluid::VectorFieldAsset>(handle);
         if (!field) {
             ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load %s", ext.c_str());
             return;
@@ -2890,9 +2864,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     field->boundsMin.x, field->boundsMin.y, field->boundsMin.z,
                     field->boundsMax.x, field->boundsMax.y, field->boundsMax.z);
         ImGui::Text("Max magnitude: %.3f", field->maxMagnitude);
-        // 取り込みで固定解像度へ揃えるので、焼いた解像度と表示は一致しないことがある。
+        /// @note 取り込みで固定解像度へ揃えるので、焼いた解像度と表示は一致しないことがある。
         ImGui::TextDisabled("取り込み時に %u³ へ揃えられます (GPU アトラスのタイル寸法)",
-                            asset::kVelocityFieldTileResolution);
+                            fluid::kVelocityFieldTileResolution);
 
         ImGui::Spacing();
         ImGui::SeparatorText("Re-bake");
@@ -2914,20 +2888,20 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::DragFloat("Strength", &s_strength, 0.01f, -100.0f, 100.0f);
 
         if (ImGui::Button("Bake and Save")) {
-            asset::VectorFieldAsset baked;
-            asset::BakeVectorField(static_cast<asset::VectorFieldRecipe>(s_recipe),
+            fluid::VectorFieldAsset baked;
+            fluid::BakeVectorField(static_cast<fluid::VectorFieldRecipe>(s_recipe),
                                    static_cast<uint32_t>(s_resolution),
                                    { s_extents[0], s_extents[1], s_extents[2] },
                                    static_cast<uint32_t>(s_seed), s_strength, baked);
-            // 拡張子が .fga でも書き出しは .vfield 形式。読み込みだけが両対応で、
-            // «Unreal の形式で書き戻す» 用途は無い。
+            /// @note 拡張子が .fga でも書き出しは PNG 形式。読み込みだけが両対応で、
+            ///       «Unreal の形式で書き戻す» 用途は無い。
             std::string savePath = absPath;
-            if (ext == ".fga") savePath = absPath.substr(0, absPath.size() - 4) + ".vfield";
+            if (ext == ".fga") savePath = absPath.substr(0, absPath.size() - 4) + "_Velocity.png";
             if (asset::SaveVectorField(savePath, baked)) {
-                // ストア上の実体を差し替える。GPU テクスチャは古い物が残るが、
-                // ここで手放すと同じフレームに描いているパスが無効ハンドルを引く。
-                // 差し替えの正しい手順はプロジェクトの再読み込み。
-                asset::AssetManager::Unload<asset::VectorFieldAsset>(
+                /// @note ストア上の実体を差し替える。GPU テクスチャは古い物が残るが、
+                ///       ここで手放すと同じフレームに描いているパスが無効ハンドルを引く。
+                ///       差し替えの正しい手順はプロジェクトの再読み込み。
+                asset::AssetManager::Unload<fluid::VectorFieldAsset>(
                     NormalizeAssetPath(savePath));
                 asset::AssetManager::BumpAssetGeneration();
             }

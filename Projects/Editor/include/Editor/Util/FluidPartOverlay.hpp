@@ -8,7 +8,7 @@
 #pragma once
 
 #include <Editor/Util/FluidDocument.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 #include <Math/Vector3.hpp>
 #include <imgui.h>
 
@@ -56,12 +56,12 @@ using FluidPartVisibility = std::function<bool(FluidSelectionKind list, int inde
 
 /// 部品の形・向き・動きの道筋・キーを描く。選択中の部品は強調し、ハンドルも描く。time は warmup の後を 0 とする秒。
 /// warmup は recipe.output.warmup (動きの評価は warmup + time で行う — ソルバーの時計と同じ)。
-void DrawFluidPartOverlays(ImDrawList* drawList, const FluidViewMapping& mapping, const asset::FluidRecipe& recipe,
+void DrawFluidPartOverlays(ImDrawList* drawList, const FluidViewMapping& mapping, const fluid::FluidRecipe& recipe,
                            float time, const FluidSelection& selection, const FluidPartVisibility& visible);
 
 /// 今つかめる点の一覧。選択中の部品は全ハンドル、それ以外は Center だけ (つかむと選択が移る)。
 [[nodiscard]] std::vector<FluidPartHandle> CollectFluidPartHandles(const FluidViewMapping& mapping,
-                                                                   const asset::FluidRecipe& recipe, float time,
+                                                                   const fluid::FluidRecipe& recipe, float time,
                                                                    const FluidSelection& selection,
                                                                    const FluidPartVisibility& visible);
 
@@ -70,11 +70,11 @@ void DrawFluidPartOverlays(ImDrawList* drawList, const FluidViewMapping& mapping
 
 /// ハンドルを domainPosition (領域座標。z は呼び手が元の値を残して渡す) まで動かしたときのレシピの書き換え。
 /// Center は動きがあっても基準の center を «今の見かけの位置が domainPosition になる» ように動かす。
-void ApplyFluidHandleDrag(asset::FluidRecipe& recipe, const FluidPartHandle& handle,
+void ApplyFluidHandleDrag(fluid::FluidRecipe& recipe, const FluidPartHandle& handle,
                           const math::Vector3& domainPosition, float time);
 
 /// 画面上の点が部品の形の上か (Center のハンドルが隠れていても形をクリックして選べるように)。一番上の部品を返す。
-[[nodiscard]] FluidSelection PickFluidPart(const FluidViewMapping& mapping, const asset::FluidRecipe& recipe,
+[[nodiscard]] FluidSelection PickFluidPart(const FluidViewMapping& mapping, const fluid::FluidRecipe& recipe,
                                            float time, ImVec2 mouse, const FluidPartVisibility& visible);
 
 } // namespace fbzz::editor

@@ -12,9 +12,9 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/BakeFingerprint.hpp>
 #include <Engine/Asset/FluidBaker.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
-#include <Engine/Asset/FluidSolver.hpp>
-#include <Engine/Asset/FluidStepping.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Fluid/FluidSolver.hpp>
+#include <Fluid/FluidStepping.hpp>
 #include <Engine/Asset/FluidVolumeBake.hpp>
 #include <Engine/Asset/VolumeFlipbookBaker.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -44,13 +44,13 @@ namespace fbzz::editor {
 namespace {
 
 constexpr std::size_t kFinishedJobsKept = 32;
-// 3D プレビューは CPU で解く液体だと 1 コマ目まで数十秒かかる。これを超えたら諦める。
+/// 3D プレビューは CPU で解く液体だと 1 コマ目まで数十秒かかる。これを超えたら諦める。
 constexpr float kVolumePreviewTimeoutSeconds = 180.0f;
-// 解けたのに読み戻せない (RT が作れていない) まま回り続けないよう、連続失敗の上限を置く。
+/// 解けたのに読み戻せない (RT が作れていない) まま回り続けないよう、連続失敗の上限を置く。
 constexpr int kVolumePreviewReadbackRetries = 4;
 
-// WIC は呼び出しスレッドで COM が初期化されている必要がある。自分が初期化した分だけ戻す
-// (メインスレッドの STA では RPC_E_CHANGED_MODE で素通りする)。
+/// WIC は呼び出しスレッドで COM が初期化されている必要がある。自分が初期化した分だけ戻す
+/// (メインスレッドの STA では RPC_E_CHANGED_MODE で素通りする)。
 class ComScope {
 public:
     ComScope() : m_result(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
@@ -105,18 +105,18 @@ struct PreviewOutcome {
     std::uint32_t seed = 0;
 };
 
-asset::FluidShading EffectiveShading(const asset::FluidRecipe& recipe)
+fluid::FluidShading EffectiveShading(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == asset::FluidKind::Liquid) return asset::FluidShading::Liquid;
-    return recipe.render.shading == asset::FluidShading::Liquid ? asset::FluidShading::Smoke : recipe.render.shading;
+    if (recipe.kind == fluid::FluidKind::Liquid) return fluid::FluidShading::Liquid;
+    return recipe.render.shading == fluid::FluidShading::Liquid ? fluid::FluidShading::Smoke : recipe.render.shading;
 }
 
-// Inspector のプレビューと同じ式で市松の上へ合成した、不透明な 8bit の絵にする。
-// WHY 透過のまま出さないか: 読む側 (AI・画像ビューアー) ごとに下地が違い、同じ PNG が別の絵に見える。
-std::vector<std::uint8_t> CompositeFrame(const asset::FluidFrameImage& frame, asset::FluidShading shading)
+/// Inspector のプレビューと同じ式で市松の上へ合成した、不透明な 8bit の絵にする。
+/// @note 透過のまま出さない: 読む側 (AI・画像ビューアー) ごとに下地が違い、同じ PNG が別の絵に見える。
+std::vector<std::uint8_t> CompositeFrame(const asset::FluidFrameImage& frame, fluid::FluidShading shading)
 {
     const bool premultiplied = asset::FluidShadingIsPremultiplied(shading);
-    const bool additive = shading == asset::FluidShading::Glow;
+    const bool additive = shading == fluid::FluidShading::Glow;
     const int size = frame.size;
     const int checker = (std::max)(size / 16, 1);
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(size) * size * 4);
@@ -138,7 +138,7 @@ std::vector<std::uint8_t> CompositeFrame(const asset::FluidFrameImage& frame, as
     return pixels;
 }
 
-// 合成済みのタイルをシートの (originX, originY) へ貼る。
+/// 合成済みのタイルをシートの (originX, originY) へ貼る。
 void BlitTile(const std::vector<std::uint8_t>& tile, int tileSize, int sheetWidth, int originX, int originY,
               std::vector<std::uint8_t>& sheet)
 {
@@ -152,21 +152,21 @@ void BlitTile(const std::vector<std::uint8_t>& tile, int tileSize, int sheetWidt
     }
 }
 
-// 2D のプレビュー (別スレッド)。**焼きと同じ入口** (RenderFluidBakeFrames) でコマを解くので、
-// 見えている絵は焼いたアトラスのそのコマと 1 画素まで同じ。
-PreviewOutcome RunFlatPreview(const asset::FluidRecipe& source, const FluidPreviewRequest& request,
+/// 2D のプレビュー (別スレッド)。**焼きと同じ入口** (RenderFluidBakeFrames) でコマを解くので、
+/// 見えている絵は焼いたアトラスのそのコマと 1 画素まで同じ。
+PreviewOutcome RunFlatPreview(const fluid::FluidRecipe& source, const FluidPreviewRequest& request,
                               const std::filesystem::path& pngPath, std::atomic<float>& progress,
                               const std::atomic<bool>& cancel)
 {
-    asset::FluidRecipe recipe = source;
+    fluid::FluidRecipe recipe = source;
     if (request.seed != 0) recipe.seed = request.seed;
-    const asset::FluidStepPlan plan = asset::MakeFluidStepPlan(recipe);
+    const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(recipe);
     const int frame = request.frame >= 0 ? std::clamp(request.frame, 0, plan.frameCount - 1)
                                          : plan.FrameOfTime(request.time);
     const int variants = std::clamp(request.variants, 1, 16);
     const bool seedSheet = request.contactSheet && variants > 1;
     const int sheetSize = std::clamp(request.size, 32, 2048);
-    const asset::FluidShading shading = EffectiveShading(recipe);
+    const fluid::FluidShading shading = EffectiveShading(recipe);
 
     int columns = 1;
     int rows = 1;
@@ -190,11 +190,11 @@ PreviewOutcome RunFlatPreview(const asset::FluidRecipe& source, const FluidPrevi
     };
 
     if (seedSheet) {
-        // seed だけを振った試し。«ばらつきが欲しい» は乱数ではなく seed の並べ方で満たす —
-        // 気に入った 1 枚の seed をそのまま .fluid へ書けば、同じ絵が何度でも焼ける。
+        /// @note seed だけを振った試し。«ばらつきが欲しい» は乱数ではなく seed の並べ方で満たす —
+        ///       気に入った 1 枚の seed をそのまま .fluid へ書けば、同じ絵が何度でも焼ける。
         for (int i = 0; i < variants; ++i) {
             if (cancel.load(std::memory_order_relaxed)) return { false, "キャンセルしました" };
-            asset::FluidRecipe variant = recipe;
+            fluid::FluidRecipe variant = recipe;
             variant.seed = recipe.seed + static_cast<std::uint32_t>(i);
             asset::FluidFrameImage image;
             std::atomic<float> inner{ 0.0f };
@@ -245,7 +245,7 @@ struct FluidBakeService::Impl {
         std::string key;
         std::string fluidAbs;
         std::string projectRoot;
-        asset::FluidRecipe recipe;
+        fluid::FluidRecipe recipe;
         bool volume = false;
         FluidBakeRequest bakeRequest;
         std::vector<FluidEffectLayer> effectLayers;
@@ -256,8 +256,7 @@ struct FluidBakeService::Impl {
         FluidPreviewRequest previewRequest;
         asset::VolumeFlipbookBakeSettings volumeSettings;
 
-        // WHY shared_ptr か: キャンセルした 2D ジョブのスレッドは止められないので、
-        //     Job を捨てた後もスレッドが書き続けられるよう寿命をスレッド側にも持たせる。
+        /// @note shared_ptr にする: キャンセルした 2D ジョブのスレッドは止められないため、Job を捨てた後もスレッドが書き続けられるよう寿命をスレッド側にも持たせる。
         std::shared_ptr<std::atomic<float>> progress = std::make_shared<std::atomic<float>>(0.0f);
         std::shared_ptr<std::atomic<bool>> cancel = std::make_shared<std::atomic<bool>>(false);
         std::future<asset::FluidBakeResult> flatBake;
@@ -347,7 +346,7 @@ struct FluidBakeService::Impl {
         Retire(job, {});
     }
 
-    // 焼いた .fluid の隣の .mat と、頼まれていれば 1 層の .vfx を書く。失敗は message に足す (焼き自体は成功)。
+    /// 焼いた .fluid の隣の .mat と、頼まれていれば 1 層の .vfx を書く。失敗は message に足す (焼き自体は成功)。
     void WriteDerivedAssets(Job& job, const FluidMaterialSource& source, float lifetime, EditorContext& ctx)
     {
         const std::string sibling = SiblingMaterialPath(job.fluidAbs);
@@ -403,7 +402,7 @@ struct FluidBakeService::Impl {
             Retire(job, std::move(record));
             return;
         }
-        // 同じパスへ上書きしたので、読み込み済みのテクスチャ / 場を差し替える。
+        /// @note 同じパスへ上書きしたので、読み込み済みのテクスチャ / 場を差し替える。
         for (const std::string* path : { &result.albedoPath, &result.motionVectorPath, &result.vectorFieldPath }) {
             if (path->empty()) continue;
             job.status.outputs.push_back(*path);
@@ -475,7 +474,7 @@ struct FluidBakeService::Impl {
             if (path->empty()) continue;
             job.status.outputs.push_back(*path);
             asset::AssetManager::ReloadPath(*path);
-            // PNG は «直せる原本» として DDS の隣に書かれている。
+            /// @note PNG は «直せる原本» として DDS の隣に書かれている。
             std::filesystem::path png = util::FileSystem::PathFromUtf8(*path);
             png.replace_extension(".png");
             if (util::FileSystem::Exists(png)) job.status.outputs.push_back(util::FileSystem::PathToUtf8(png));
@@ -507,7 +506,7 @@ struct FluidBakeService::Impl {
             Fail(job, error);
             return;
         }
-        // Begin で baker の前の Atlas は捨てられる。
+        /// @note Begin で baker の前の Atlas は捨てられる。
         bakerResultJob = 0;
         job.status.state = FluidJobState::Running;
         job.status.message = "焼いています";
@@ -527,7 +526,7 @@ struct FluidBakeService::Impl {
         if (!baker.IsBusy()) FinishVolumeBake(job, ctx);
     }
 
-    // RecordPreview で描いた次のフレームで読み戻す (読み戻しの WHY は VolumeFlipbookBaker.hpp)。
+    /// @note RecordPreview で描いた次のフレームで読み戻す (理由は VolumeFlipbookBaker.hpp を参照)。
     void TickVolumePreview(Job& job, EditorContext& ctx)
     {
         const float elapsed =
@@ -575,7 +574,7 @@ struct FluidBakeService::Impl {
     {
         job.started = std::chrono::steady_clock::now();
         job.status.state = FluidJobState::Running;
-        const asset::FluidRecipe recipe = job.recipe;
+        const fluid::FluidRecipe recipe = job.recipe;
         std::shared_ptr<std::atomic<float>> progress = job.progress;
         if (job.status.kind == FluidJobKind::Bake) {
             const std::filesystem::path base = util::FileSystem::PathFromUtf8(job.fluidAbs).replace_extension();
@@ -597,9 +596,9 @@ struct FluidBakeService::Impl {
         });
     }
 
-    // 読み込み前の検証。成功したら outAbs / outRecipe を埋める。
+    /// 読み込み前の検証。成功したら outAbs / outRecipe を埋める。
     [[nodiscard]] bool ResolveFluid(const EditorContext& ctx, const std::string& path, std::string& outAbs,
-                                    asset::FluidRecipe& outRecipe, FluidJobError& outError) const
+                                    fluid::FluidRecipe& outRecipe, FluidJobError& outError) const
     {
         std::string abs = path.empty() ? std::string{} : asset::AssetManager::ResolveAssetPath(path);
         if ((abs.empty() || !util::FileSystem::Exists(abs)) && !path.empty()) {
@@ -638,15 +637,15 @@ std::uint32_t FluidBakeService::EnqueueBake(const EditorContext& ctx, const Flui
                                             FluidJobError& outError)
 {
     std::string abs;
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     if (!m_impl->ResolveFluid(ctx, request.fluidPath, abs, recipe, outError)) return 0;
-    const bool volume = recipe.bake.mode == asset::FluidBakeMode::Volume3D;
+    const bool volume = recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     if (volume && (ctx.renderer == nullptr || ctx.resources == nullptr)) {
         outError = { "NO_RENDERER", "3D の焼きにはレンダラーが要ります" };
         return 0;
     }
-    // 3D は Baker がパスから .fluid を読み直すので、メモリ上の seed 差し替えは効かない。
-    // 黙って «指定と違う seed» で焼くより、できないと言う。
+    /// @note 3D は Baker がパスから .fluid を読み直すので、メモリ上の seed 差し替えは効かない。
+    ///       黙って «指定と違う seed» で焼くより、できないと言う。
     if (volume && request.seed != 0) {
         outError = { "BAD_ARG", "3D の焼きは seed の差し替えに対応していません (.fluid の seed を変えてください)" };
         return 0;
@@ -722,9 +721,9 @@ std::uint32_t FluidBakeService::EnqueuePreview(const EditorContext& ctx, const F
                                                FluidJobError& outError)
 {
     std::string abs;
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     if (!m_impl->ResolveFluid(ctx, request.fluidPath, abs, recipe, outError)) return 0;
-    const bool volume = recipe.bake.mode == asset::FluidBakeMode::Volume3D;
+    const bool volume = recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     if (volume && (ctx.renderer == nullptr || ctx.resources == nullptr)) {
         outError = { "NO_RENDERER", "3D のプレビューにはレンダラーが要ります" };
         return 0;
@@ -747,8 +746,8 @@ std::uint32_t FluidBakeService::EnqueuePreview(const EditorContext& ctx, const F
     job->volume = volume;
     job->previewRequest = request;
     job->previewRequest.size = std::clamp(request.size, 32, 2048);
-    // 見るコマはここで決めてしまう。2D も 3D も «焼きの第 n コマ» を指す 1 つの番号で話す。
-    const asset::FluidStepPlan plan = asset::MakeFluidStepPlan(job->recipe);
+    /// @note 見るコマはここで決めてしまう。2D も 3D も «焼きの第 n コマ» を指す 1 つの番号で話す。
+    const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(job->recipe);
     job->previewRequest.frame = request.frame >= 0 ? std::clamp(request.frame, 0, plan.frameCount - 1)
                                                    : plan.FrameOfTime(request.time);
     job->previewRequest.time = plan.TimeOfFrame(job->previewRequest.frame);
@@ -794,7 +793,7 @@ bool FluidBakeService::Cancel(std::uint32_t id)
     if (job.status.state != FluidJobState::Queued) {
         if (impl.volumeJob == &job && job.status.kind == FluidJobKind::Bake) impl.baker.Cancel();
         if (job.flatBake.valid() || job.flatPreview.valid()) {
-            // BakeFluid は途中で止められない。書き終わるまで IsBusy に残す。
+            /// @note BakeFluid は途中で止められない。書き終わるまで IsBusy に残す。
             impl.orphans.push_back({ job.effectLayers.empty() ? job.key : PathKey(job.fluidAbs),
                                      std::move(job.flatBake), std::move(job.flatPreview) });
         }
@@ -829,8 +828,8 @@ bool FluidBakeService::IsAnyBusy() const
 void FluidBakeService::Tick(EditorContext& ctx)
 {
     Impl& impl = *m_impl;
-    // 門を閉じた本人 (Fluid Editor) が居なくなったら開け直す。閉じたまま残ると、次にプレビューを
-    // 見る誰かが «前のソルバーのまま» 動かなくなる。
+    /// @note 門を閉じた本人 (Fluid Editor) が居なくなったら開け直す。閉じたまま残ると、次にプレビューを
+    ///       見る誰かが «前のソルバーのまま» 動かなくなる。
     if (!impl.previewSwitchAsked && !impl.previewSwitchAllowed) {
         impl.previewSwitchAllowed = true;
         impl.baker.AllowPreviewSwitch(true);
@@ -844,7 +843,7 @@ void FluidBakeService::Tick(EditorContext& ctx)
         return ready(orphan.bake) && ready(orphan.preview);
     });
 
-    // Retire が active を縮めるので、id を控えてから 1 件ずつ引き直す。
+    /// @note Retire が active を縮めるので、id を控えてから 1 件ずつ引き直す。
     std::vector<std::uint32_t> ids;
     ids.reserve(impl.active.size());
     for (const auto& job : impl.active) ids.push_back(job->status.id);
@@ -888,7 +887,7 @@ void FluidBakeService::Tick(EditorContext& ctx)
         for (const auto& job : impl.active) {
             if (!job->volume || job->status.state != FluidJobState::Queued) continue;
             impl.StartVolumeJob(*job, ctx);
-            // Begin に失敗したジョブは Retire 済みで、active のイテレーターは無効になっている。
+            /// @note Begin に失敗したジョブは Retire 済みで、active のイテレーターは無効になっている。
             break;
         }
     }
@@ -908,7 +907,7 @@ void FluidBakeService::Shutdown(EditorContext& ctx)
     if (resources != nullptr) impl.baker.Release(*resources);
     else                      impl.baker.Cancel();
     impl.bakerResources = nullptr;
-    // 止められない 2D のスレッドはここで待つ (future の破棄が完了を待つ)。
+    /// @note 止められない 2D のスレッドはここで待つ (future の破棄が完了を待つ)。
     impl.orphans.clear();
 }
 
@@ -944,7 +943,7 @@ bool FluidBakeService::RecordVolumePreview(EditorContext& ctx, const asset::Volu
 
 bool FluidBakeService::RecordVolumePreview(EditorContext& ctx, const asset::VolumeFlipbookBakeSettings& settings,
                                            float time, const asset::VolumePreviewOptions& options,
-                                           const asset::FluidRecipe* recipe, std::uint64_t recipeRevision)
+                                           const fluid::FluidRecipe* recipe, std::uint64_t recipeRevision)
 {
     if (!IsVolumeBakerFree() || ctx.renderer == nullptr || ctx.resources == nullptr) return false;
     m_impl->bakerResources = ctx.resources;
@@ -961,7 +960,7 @@ void FluidBakeService::AllowVolumePreviewSwitch(bool allow)
 {
     Impl& impl = *m_impl;
     impl.previewSwitchAsked = true;
-    // 焼きが握っている間の切り替えはその焼きのもの。プレビューの都合で止めない。
+    /// @note 焼きが握っている間の切り替えはその焼きのもの。プレビューの都合で止めない。
     if (!IsVolumeBakerFree()) return;
     impl.previewSwitchAllowed = allow;
     impl.baker.AllowPreviewSwitch(allow);

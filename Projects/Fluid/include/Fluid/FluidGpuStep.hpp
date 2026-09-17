@@ -3,21 +3,20 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// WHY 詰め方を純関数にするか: 発生源の «今は出ているか»・散逸の刻み幅への換算・seed のずらし方は
-///     CPU ソルバー (FluidGasSolver) と同じ規則でなければならない。GPU の結果は読み戻さないので、
-///     ずれてもテストでしか気付けない。
-///
-/// 部品の動き (FluidMotion) はここで CPU が評価し、中心と速度を «今の値» として詰める (GPU は動きを知らない)。
+/// @note 詰め方を純関数にする理由: 発生源の「今は出ているか」・散逸の刻み幅換算・seed のずらし方は
+///       CPU ソルバー (FluidGasSolver) と同じ規則でなければならない。GPU の結果は読み戻さないため、
+///       ずれてもテストでしか気付けない。
+/// @note 部品の動き (FluidMotion) はここで CPU が評価し、中心と速度を「今の値」として詰める (GPU は動きを知らない)。
 #pragma once
 
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 #include <Math/Vector3.hpp>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace fbzz::asset {
+namespace fbzz::fluid {
 
 /// cbuffer に載せる部品の数 (レシピの上限と同じ)。
 inline constexpr int kMaxFluidGpuSources = kMaxFluidSources;
@@ -84,4 +83,4 @@ static_assert(sizeof(FluidGpuStepConstants)
 /// FluidGpuSolver はこの順にマスクを読み、タイル (t % 4, t / 4) × kFluidSourceMaskSize に置く。
 [[nodiscard]] std::vector<std::string> FluidGpuMaskPaths(const FluidRecipe& recipe);
 
-} // namespace fbzz::asset
+} // namespace fbzz::fluid

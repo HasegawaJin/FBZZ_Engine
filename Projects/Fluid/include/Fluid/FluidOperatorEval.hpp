@@ -12,11 +12,11 @@
 /// 位置の差の z を 0 として扱い、結果の z も 0 にする。
 #pragma once
 
-#include <Engine/Asset/FluidRecipe.hpp>
-#include <Engine/Asset/FluidSourceMask.hpp>
+#include <Fluid/FluidRecipe.hpp>
+#include <Fluid/FluidSourceMask.hpp>
 #include <Math/Vector3.hpp>
 
-namespace fbzz::asset {
+namespace fbzz::fluid {
 
 struct FluidMotionSample {
     math::Vector3 offset;
@@ -61,35 +61,23 @@ struct FluidOperatorPose {
 /// 力が time に効いているか (FluidSourceEmitting と同じ規則)。
 [[nodiscard]] bool FluidForceActive(const FluidForce& force, float time);
 
-/// 発生源の形の中での注入の重み [0,1]。形の外は 0。ノイズによる揺らぎは含まない (ソルバー側で掛ける)。
-/// minSize: これより小さい寸法はこの値まで広げる (格子ならセル幅。広げないと 1 セルにも入らない)。
-/// d = p − center (2D は d.z = 0)。a = normalize(direction) (長さ 0 なら (0,1,0))。
-///   Sphere: r = max(size.x, minSize)。q² = |d|²/r²。w = (1 − q²)²
-///   Box   : h = max(size, minSize) (各軸)。q = max(|d.x|/h.x, |d.y|/h.y, |d.z|/h.z)。w = saturate((1 − q) × 4)
-///   Cone  : L = max(size.y, minSize)、R = max(size.x, minSize)。t = dot(d, a)。t < 0 か t > L なら 0。
-///           半径 ρ = |d − a t|、その高さでの許容半径 rt = max(R t / L, minSize × 0.5)。q² = ρ²/rt²。
-///           w = (1 − q²)² × saturate((1 − t/L) × 4)   (底の縁でなめらかに 0)
-///   Ring  : R = max(size.x, minSize)、r = max(size.y, minSize)。h = dot(d, a)、ρ = |d − a h| − R。
-///           q² = (ρ² + h²)/r²。w = (1 − q²)²
-///   Capsule : R = max(size.x, minSize)、H = max(size.y, minSize)。hc = clamp(dot(d, a), −H, H)。
-///           ρ = |d − a hc| (= 芯の線分への距離)。q² = ρ²/R²。w = (1 − q²)²
-///           (H = 0 なら芯が 1 点なので球と同じ形になる — 端が半球であることの裏付け)
-///   Cylinder: R = max(size.x, minSize)、H = max(size.y, minSize)。h = dot(d, a)。|h| > H なら 0。
-///           ρ = |d − a h| (= 芯の «直線» への距離)。q² = ρ²/R²。
-///           w = (1 − q²)² × saturate((1 − |h|/H) × 4)   (両端でなめらかに 0。Cone の底と同じ流儀)
-/// いずれも q² >= 1 (Box は q >= 1) なら 0。
+/// 発生源の形の中での注入の重み [0,1] (形の外は 0。ノイズ揺らぎは含まない)。
+/// minSize: これより小さい寸法はこの値まで広げる (格子ならセル幅)。d = p − center (2D は d.z = 0)、
+/// a = normalize(direction) (長さ 0 なら (0,1,0))。
+///   Sphere r=max(size.x,minSize): q²=|d|²/r²、w=(1−q²)²。Box h=max(size,minSize)各軸: q=max(|d|/h)、w=saturate((1−q)×4)
+///   Cone L,R=size.y,size.x: t=dot(d,a)、[0,L]外は0、ρ=|d−at|、rt=max(Rt/L,minSize/2)、w=(1−ρ²/rt²)²×saturate((1−t/L)×4)
+///   Ring R,r=size.x,size.y: h=dot(d,a)、ρ=|d−ah|−R、w=(1−(ρ²+h²)/r²)²
+///   Capsule/Cylinder R,H=size.x,size.y: hc=clamp(dot(d,a),±H) (Cylinder は |h|>H で 0)、ρ=|d−ahc|、w=(1−ρ²/R²)²
+/// いずれも境界で q² (Box は q) >= 1 なら 0。
 [[nodiscard]] float FluidSourceWeight(const FluidSource& source, const math::Vector3& center, const math::Vector3& p,
                                       float minSize, bool volumetric);
 
-/// 液体の粒子を湧かせる位置: 形の中でほぼ一様な点。u0..u2 は [0,1) の乱数。
-/// 2D では z = center.z の断面から選ぶ。Texture は板 (箱) の中の一様な点 (マスクは見ない — 下の関数を使う)。
-///
-/// Capsule / Cylinder の 3D は体積一様:
-///   Cylinder: h = H(2u0 − 1)、r = R√u1、φ = 2π u2。offset = a h + e1 r cosφ + e2 r sinφ
-///   Capsule : 円柱 (体積 2πR²H) と両端の半球 (合わせて球 1 つ = 4/3 πR³) を体積比で選び分け、
-///             半球側は球の中の一様な点を取って、軸方向の符号の側の端 (±a H) へ平行移動する
-/// 2D は z = center.z の断面 («面内の軸方向 α» と «それに直交する β») から取る。α を全長に一様、
-/// β をその α での半幅に一様に選ぶ (必ず形の中に入るが、細くなる端がわずかに濃くなる — SampleRing2D と同じ流儀)。
+/// 液体の粒子を湧かせる位置: 形の中でほぼ一様な点。u0..u2 は [0,1) の乱数。2D では z = center.z の
+/// 断面から選ぶ。Texture は板 (箱) の中の一様な点 (マスクは見ない — 下の関数を使う)。
+/// Capsule / Cylinder の 3D は体積一様: Cylinder は h=H(2u0−1)、r=R√u1、φ=2πu2 の円柱座標。
+/// Capsule は円柱と両端半球を体積比で選び分け、半球側は球内の一様点を軸端 (±aH) へ平行移動する。
+/// 2D は断面の軸方向 α に一様、直交方向 β を α での半幅に一様に選ぶ (端がわずかに濃くなる —
+/// SampleRing2D と同じ流儀)。
 [[nodiscard]] math::Vector3 SampleFluidSourcePoint(const FluidSource& source, const math::Vector3& center,
                                                    float u0, float u1, float u2, bool volumetric);
 
@@ -113,9 +101,9 @@ void FluidTextureSourceBasis(const FluidSource& source, math::Vector3& outRight,
                                                  const FluidSourceMask& mask, float u0, float u1, float u2,
                                                  float accept, bool volumetric, math::Vector3& outPoint);
 
-/// 液体の発生源が «詰まりすぎ» を避けるために内部で広げる倍率 (1 = そのまま広げない)。
+/// 液体の発生源が詰まりすぎるのを避けるために内部で広げる倍率 (1 = そのまま広げない)。
 /// 同時に発生源の中に居る粒が静止密度の 2 倍までで収まる大きさへ、形を中心から相似に拡大する。
-/// WHY 公開するか: 広げたことが UI に出ないと、Inspector の半径 0.06 と実際に湧く大きさが食い違って見える。
+/// @note 公開する理由: 広げたことが UI に出ないと、Inspector の半径 0.06 と実際に湧く大きさが食い違って見える。
 [[nodiscard]] float FluidLiquidEmitScale(const FluidSource& source, const FluidLiquidSettings& liquid,
                                          bool volumetric);
 
@@ -123,55 +111,36 @@ void FluidTextureSourceBasis(const FluidSource& source, math::Vector3& outRight,
 [[nodiscard]] FluidOperatorPose PoseFluidCollider(const FluidCollider& collider, float time);
 [[nodiscard]] bool FluidColliderActive(const FluidCollider& collider, float time);
 
-/// 障害物への符号付き距離 (外が正・中が負)。d = p − center (2D は d.z = 0)。
-///   Sphere: |d| − max(size.x, minSize)
-///   Box   : h = max(size, minSize) (各軸)、q = |d| − h (各軸)。|max(q, 0)| + min(max(q.x, q.y, q.z), 0)
-///   Plane : dot(d, n)。n = normalize(direction) (長さ 0 なら (0,1,0))。法線の側が外
-///   Capsule : a = normalize(direction) (長さ 0 なら (0,1,0))、R = max(size.x, minSize)、H = max(size.y, minSize)。
-///           hc = clamp(dot(d, a), −H, H)。|d − a hc| − R
-///   Cylinder: 同じ R・H・a で h = dot(d, a)、ρ = |d − a h|。dr = ρ − R、dh = |h| − H。
-///           |max((dr, dh), 0)| + min(max(dr, dh), 0)   (Box を «半径と軸» の 2 軸で測った形)
-/// 気体の格子はセル中心の距離が 0 未満のセルを固体とする。
+/// 障害物への符号付き距離 (外が正・中が負)。d = p − center (2D は d.z = 0)。気体の格子はセル中心の
+/// 距離が 0 未満のセルを固体とする。
+///   Sphere: |d| − max(size.x, minSize)。Box h=max(size,minSize)各軸: q=|d|−h、|max(q,0)|+min(max(q),0)
+///   Plane : dot(d,n) (n=normalize(direction)、長さ0なら(0,1,0))。法線側が外
+///   Capsule R,H=size.x,size.y、a=normalize(direction): hc=clamp(dot(d,a),±H)、|d−a hc|−R
+///   Cylinder: 同じ R・H・a で h=dot(d,a)、ρ=|d−ah|、dr=ρ−R、dh=|h|−H、|max((dr,dh),0)|+min(max(dr,dh),0)
 [[nodiscard]] float FluidColliderDistance(const FluidCollider& collider, const math::Vector3& center,
                                           const math::Vector3& p, float minSize, bool volumetric);
 
-/// 表面の外向き単位法線 (距離の勾配)。
-///   Sphere: d/|d| (|d| < 1e-6 なら (0,1,0))
-///   Box   : 外 (距離 > 0) なら max(q, 0) × sign(d) を正規化、中なら q が最大の軸について sign(d) の単位軸
+/// 表面の外向き単位法線 (距離の勾配)。2D では z を 0 にして正規化し直す (長さ 0 なら (0,1,0))。
+///   Sphere: d/|d| (|d|<1e-6 なら (0,1,0))。Box: 外なら max(q,0)×sign(d) を正規化、中なら q 最大軸の sign(d)
 ///   Plane : n
-///   Capsule : (d − a hc)/|d − a hc|。長さが 1e-6 未満 (芯の上) なら軸に直交する既定の向き e1
-///           (e1 = normalize(cross(a, |a.x| < 0.9 ? (1,0,0) : (0,1,0)))。芯の上は «どちら向きでもよい» ので
-///            決まった手順で 1 つ選ぶ。up を返すと軸が上向きのとき芯に沿って押してしまう)
-///   Cylinder: 半径の向き u = (d − a h)/|d − a h| (芯の上なら e1)、軸の向き ±a。
-///           外 (max(dr, dh) > 0) なら u max(dr, 0) + a sign(h) max(dh, 0) を正規化、
-///           中なら dr >= dh で u、そうでなければ a sign(h) (Box の «同じ深さなら先の軸» と同じ規則)
-/// 2D では z を 0 にして正規化し直す (長さ 0 になったら (0,1,0))。
+///   Capsule: (d−a hc)/|d−a hc|。芯の上 (長さ<1e-6) は e1=normalize(cross(a, |a.x|<0.9?(1,0,0):(0,1,0)))
+///           (決まった手順で 1 つ選ぶ。up を返すと軸が上向きのとき芯に沿って押してしまう)
+///   Cylinder: u=(d−ah)/|d−ah| (芯の上なら e1)。外なら u max(dr,0)+a sign(h) max(dh,0) を正規化、
+///           中なら dr>=dh で u、そうでなければ a sign(h) (Box の同じ規則)
 [[nodiscard]] math::Vector3 FluidColliderNormal(const FluidCollider& collider, const math::Vector3& center,
                                                 const math::Vector3& p, float minSize, bool volumetric);
 
-/// 力が dt 秒で与える速度の変化 Δv。forceIndex はノイズの切り出し位置をずらすのに使う
-/// (有効な部品だけを数えた添字。GPU は有効な部品だけを詰めた順で数えるので、それに揃える)。
-/// 力はリストの順に、浮力・全体の風・乱流の後、減衰の前に足す (Drag は途中まで足した速度を見る)。
-/// time は刻みの開始時刻。
-/// noiseOffset は seed から決まる格子の切り出し位置 (FluidNoiseOffset。液体は 0 でよい)。
-/// strengthScale は量のエンベロープの倍率 (FluidForceAmount)。1 を渡せば掛けないのと同じ。
-/// WHY 強さに掛けてから influence を掛けるか: GPU は詰める段で strength × 倍率 を定数へ入れ、
-///     シェーダーが influence を掛ける。同じ順で掛けないと丸めの分だけ CPU と GPU の絵がずれる。
-/// d = p − center (2D は d.z = 0)、dist = |d|。
-/// strength = force.strength × strengthScale (0 なら Δv = 0)。
-/// influence = radius > 0 ? (dist >= radius ? 0 : (1 − dist/radius)^falloffPower) : 1。
-/// a = normalize(direction) (長さ 0 なら (1,0,0))、s = strength × influence。
-///   Wind   : Δv = a × s × dt
-///   Attract: Δv = −(d/dist) × s × dt        (dist < 1e-5 なら 0)
-///   Repulse: Δv = +(d/dist) × s × dt        (dist < 1e-5 なら 0)
-///   Vortex : 軸 k = volumetric ? a : (0,0,1)。t = cross(k, d)。|t| < 1e-5 なら 0。Δv = (t/|t|) × s × dt
-///   Noise  : q = p × noiseFrequency + noiseOffset + (forceIndex × 17.31, −time × noiseSpeed, forceIndex × 5.73)。
-///            Δv = CurlNoise(q) × s × dt     (core::CurlNoise / HLSL FluidCurlNoise)
-///   Drag   : Δv = −velocity × (1 − exp(−max(s, 0) × dt))   (dt が大きくても振動しない。負の強さは効かない)
-/// 2D では Δv.z = 0。
+/// @brief 力が dt 秒で与える速度の変化 Δv。forceIndex は有効な部品だけを数えた添字 (GPU も同じ順で数える)。
+/// @note 呼び出し順: 浮力・全体風・乱流の後、減衰の前に足す (Drag は途中まで足した速度を見る)。
+/// @note 強さ→influence の順で掛ける: GPU は定数へ strength×倍率を入れシェーダーが influence を掛けるため、
+///       同じ順でないと丸めの分だけ CPU と GPU の絵がずれる。
+///   d=p−center (2D はd.z=0)、influence=radius>0?(1−dist/radius)^falloffPower:1 (dist>=radius なら0)、
+///   s=strength×strengthScale×influence、a=normalize(direction) (長さ0なら(1,0,0))。2D は Δv.z=0。
+///   Wind:a×s×dt  Attract/Repulse:∓(d/dist)×s×dt (dist<1e-5で0)  Vortex:(cross(k,d)正規化)×s×dt
+///   Noise:CurlNoise(p×freq+noiseOffset+idx依存オフセット)×s×dt  Drag:−velocity×(1−exp(−max(s,0)×dt))
 [[nodiscard]] math::Vector3 FluidForceDelta(const FluidForce& force, const math::Vector3& center,
                                             const math::Vector3& p, const math::Vector3& velocity, float time,
                                             float dt, const math::Vector3& noiseOffset, int forceIndex,
                                             bool volumetric, float strengthScale);
 
-} // namespace fbzz::asset
+} // namespace fbzz::fluid

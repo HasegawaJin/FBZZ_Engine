@@ -3,19 +3,18 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-14
 ///
-/// WHY 刻み方を 1 か所に集めるか:
-///   同じ .fluid でも «2D の焼き» と «プレビュー» と «GPU» で warmup の進め方が違っていた
-///   (前者は substeps を掛けない 1 刻み、後者は通常コマと同じ分割)。substeps は既定 2・
-///   プリセットは 3〜4 なので、AI がプレビューで見た絵と焼いた絵は別のシミュレーションだった。
-///   刻みはここだけが決め、4 つのソルバー経路 (2D CPU・3D CPU・GPU 気体・GPU 液体) が必ず通る。
+/// @note 刻み方を 1 か所に集める理由: 同じ .fluid でも「2D の焼き」と「プレビュー」と「GPU」で
+///       warmup の進め方が違っていた (前者は substeps を掛けない 1 刻み、後者は通常コマと同じ分割)。
+///       substeps は既定 2・プリセットは 3〜4 なので、AI がプレビューで見た絵と焼いた絵は別の
+///       シミュレーションだった。刻みはここだけが決め、4 つのソルバー経路が必ず通る。
 ///
 /// 決め事: **warmup も «普通のコマ» として解く**。端数は切り上げてコマ数に丸める。
 ///   こうすると「焼きの第 n コマ」= 「warmupFrames + n コマ進めた状態」で、どの経路でも一致する。
 #pragma once
 
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 
-namespace fbzz::asset {
+namespace fbzz::fluid {
 
 /// 1 本のレシピを解く刻み。
 struct FluidStepPlan {
@@ -70,4 +69,4 @@ void AdvanceFluidWarmup(Solver& solver, const FluidStepPlan& plan)
     AdvanceFluidFrames(solver, plan, plan.warmupFrames);
 }
 
-} // namespace fbzz::asset
+} // namespace fbzz::fluid

@@ -2,12 +2,12 @@
 /// @brief   .fluid を解く刻みの正本の実装
 /// @author  Hasegawa Jin
 /// @date    2026-09-14
-#include <Engine/Asset/FluidStepping.hpp>
+#include <Fluid/FluidStepping.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace fbzz::asset {
+namespace fbzz::fluid {
 
 int FluidStepPlan::FrameOfTime(float seconds) const
 {
@@ -32,7 +32,7 @@ void NormalizeFluidOutput(FluidOutputSettings& output)
 int FluidWarmupFrames(float warmupSeconds, float frameDt)
 {
     if (frameDt <= 0.0f) return 0;
-    // 1e-4 を引くのは «ちょうど割り切れる warmup» で 1 コマ余分に数えないため (2.0 / 0.03125 = 64.0)。
+    /// @note 1e-4 を引くのは «ちょうど割り切れる warmup» で 1 コマ余分に数えないため (2.0 / 0.03125 = 64.0)。
     const float frames = std::ceil((std::max)(warmupSeconds, 0.0f) / frameDt - 1.0e-4f);
     return frames > 0.0f ? static_cast<int>(frames) : 0;
 }
@@ -51,4 +51,4 @@ FluidStepPlan MakeFluidStepPlan(const FluidRecipe& recipe)
     return plan;
 }
 
-} // namespace fbzz::asset
+} // namespace fbzz::fluid
