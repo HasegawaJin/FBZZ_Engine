@@ -6,6 +6,7 @@
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <algorithm>
+#include <string>
 
 namespace fbzz::editor {
 
@@ -84,13 +85,40 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (ImGui::IsItemDeactivatedAfterEdit()) tc.heightDirty = true;
             ImGui::DragInt("Chunk Size", &tc.chunkSize, 1.0f, 8, 256);
 
-            /// @name Layer Materials (.mat × 4)
+            /// @name Layer Materials (.mat × 可変)
+            /// @note 追加・削除・並べ替えは TerrainComponent の関数を通す。スプラットの番号付け替えと
+            ///       dirty 要求を 1 か所に保ち、Undo は DrawComponentSection の前後スナップショットが持つ。
+            /// @see Docs/design/terrain-layers.md
             ImGui::SeparatorText("Layer Materials");
-            static const char* kLayerNames[] = { "Layer 0", "Layer 1", "Layer 2", "Layer 3" };
-            for (int li = 0; li < 4; ++li) {
+            if (ImGui::SliderFloat("Height Blend Depth", &tc.heightBlendDepth, 0.01f, 1.0f, "%.2f"))
+                tc.RequestMaterialRebuild();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("高さブレンドで高い層が境界を押し広げる幅。\n"
+                                  "各層の .mat の Height Blend が 0 のときは効きません。");
+            int pendingMoveFrom = -1;
+            int pendingMoveTo   = -1;
+            int pendingRemove   = -1;
+            const int layerCount = tc.LayerCount();
+            for (int li = 0; li < layerCount; ++li) {
                 ImGui::PushID(li);
-                if (widgets::AssetPathField(kLayerNames[li], tc.layerMaterials[li], ".mat", ctx.projectRoot))
-                    tc.splatDirty = true;
+                const std::string layerLabel = "Layer " + std::to_string(li);
+                if (widgets::AssetPathField(layerLabel.c_str(), tc.layerMaterials[li], ".mat", ctx.projectRoot))
+                    tc.RequestSplatRebuild();
+
+                ImGui::BeginDisabled(li == 0);
+                if (ImGui::SmallButton("Up"))   { pendingMoveFrom = li; pendingMoveTo = li - 1; }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::BeginDisabled(li + 1 >= layerCount);
+                if (ImGui::SmallButton("Down")) { pendingMoveFrom = li; pendingMoveTo = li + 1; }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::BeginDisabled(layerCount <= 1);
+                if (ImGui::SmallButton("Remove")) pendingRemove = li;
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("層を削除します。この層の塗りは残りの層で分け直されます。");
+
                 if (!tc.layerMaterials[li].empty()) {
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Clear")) {
@@ -118,15 +146,37 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                         ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
                                            "Missing: %s", tc.layerMaterials[li].c_str());
                     }
-                } else {
-                    if (ImGui::Button("Use Default")) {
-                        tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
-                        tc.splatDirty = true;
-                    }
+                } else if (const char* defaultPath = DefaultTerrainLayerMaterialPath(li); defaultPath[0] != '\0') {
+                    if (ImGui::Button("Use Default"))
+                        tc.SetLayerMaterial(li, defaultPath);
                 }
                 ImGui::PopID();
                 ImGui::Spacing();
             }
+            /// @note ループ中に並びを変えると添字と PushID がずれるので、押された操作は描画後に 1 つだけ当てる。
+            if (pendingRemove >= 0)
+                tc.RemoveLayer(pendingRemove);
+            else if (pendingMoveFrom >= 0)
+                tc.MoveLayer(pendingMoveFrom, pendingMoveTo);
+
+            ImGui::BeginDisabled(tc.LayerCount() >= scene::TERRAIN_MAX_LAYERS);
+            if (ImGui::Button("Add Layer"))
+                tc.AddLayer(DefaultTerrainLayerMaterialPath(tc.LayerCount()));
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("%d layers", tc.LayerCount());
+
+            /// @name 穴
+            ImGui::SeparatorText("Holes");
+            const size_t holeCount = tc.CountHoles();
+            ImGui::Text("Hole Cells: %zu", holeCount);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(holeCount == 0);
+            if (ImGui::Button("Clear Holes")) {
+                tc.holeData.clear();
+                tc.RequestHoleRebuild();
+            }
+            ImGui::EndDisabled();
 
             /// @name ハイトマップ初期化
             ImGui::SeparatorText("Heightmap");

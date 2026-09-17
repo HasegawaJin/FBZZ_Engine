@@ -162,6 +162,8 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('scene_save'), false);
         assert.equal(names.includes('terrain_sculpt'), false);
         assert.equal(names.includes('terrain_paint'), false);
+        assert.equal(names.includes('terrain_ramp'), false);
+        assert.equal(names.includes('terrain_hole'), false);
         assert.equal(names.includes('navmesh_bake'), false);
         assert.equal(names.includes('audio_control'), false);
         assert.equal(names.includes('build_run'), false);
@@ -898,6 +900,18 @@ test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像�
             name: 'terrain_set_layer_material',
             arguments: { id: terrainId, layer: 1, material: 'Assets/Materials/Grass.mat' },
         });
+        // 新しい op の固有引数は指定したものだけ payload へ載る。
+        await harness.client.callTool({
+            name: 'terrain_sculpt',
+            arguments: { position: [5, 0, 5], op: 'hydraulicErosion', seed: 7, droplets: 96, iterations: 4 },
+        });
+        // 層数ぶんの番号 (layer == layerCount で追加) を受ける。上限は C++ 側で層数と照合する。
+        await harness.client.callTool({
+            name: 'terrain_set_layer_material',
+            arguments: { id: terrainId, layer: 4, material: 'Assets/Materials/Snow.mat' },
+        });
+        await harness.client.callTool({ name: 'terrain_ramp', arguments: { start: [0, 0, 0], end: [10, 3, 0] } });
+        await harness.client.callTool({ name: 'terrain_hole', arguments: { position: [5, 0, 5], id: terrainId } });
         await harness.client.callTool({ name: 'navmesh_bake', arguments: {} });
         await harness.client.callTool({ name: 'audio_control', arguments: { id: terrainId, action: 'play' } });
         await harness.client.callTool({ name: 'scene_save', arguments: {} });
@@ -912,6 +926,10 @@ test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像�
             { command: { t: 'terrain.sculpt', position: [5, 0, 5], op: 'flatten', radius: 8, strength: 0.05, falloff: 'smooth', iterations: 20, targetHeight: 2 }, dryRun: false },
             { command: { t: 'terrain.paint', position: [5, 0, 5], layer: 1, radius: 4, strength: 0.5, falloff: 'smooth', iterations: 1 }, dryRun: false },
             { command: { t: 'terrain.setLayerMaterial', id: terrainId, layer: 1, material: 'Assets/Materials/Grass.mat' }, dryRun: false },
+            { command: { t: 'terrain.sculpt', position: [5, 0, 5], op: 'hydraulicErosion', radius: 5, strength: 0.05, falloff: 'smooth', iterations: 4, seed: 7, droplets: 96 }, dryRun: false },
+            { command: { t: 'terrain.setLayerMaterial', id: terrainId, layer: 4, material: 'Assets/Materials/Snow.mat' }, dryRun: false },
+            { command: { t: 'terrain.ramp', start: [0, 0, 0], end: [10, 3, 0], radius: 3, strength: 1, falloff: 'smooth' }, dryRun: false },
+            { command: { t: 'terrain.hole', position: [5, 0, 5], radius: 2, erase: false, id: terrainId }, dryRun: false },
             { command: { t: 'navmesh.bake' }, dryRun: false },
             { command: { t: 'audio.control', id: terrainId, action: 'play' }, dryRun: false },
             { command: { t: 'scene.save' }, dryRun: false },

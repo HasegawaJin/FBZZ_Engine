@@ -46,8 +46,9 @@ namespace {
 
 /// @name Terrain
 
-/// @brief heightData / splatData の統計を返す。
+/// @brief heightData / スプラット / 穴の統計を返す。
 /// @note 値そのもの (65x65 で 4225 個) は返さず起伏の要約のみ。実値は terrain.sample で読む。
+/// @see Docs/design/terrain-layers.md
 JsonValue TerrainStatsJson(const scene::TerrainComponent& terrain)
 {
     JsonValue stats = JsonValue::MakeObject();
@@ -69,17 +70,20 @@ JsonValue TerrainStatsJson(const scene::TerrainComponent& terrain)
         stats.Set("meanHeight", JsonValue(sum / static_cast<double>(expected) * terrain.maxHeight));
         stats.Set("flat", JsonValue((maxValue - minValue) * terrain.maxHeight < 0.001f));
     }
-    const bool hasSplat = terrain.splatData.size() == expected * 4u && expected > 0;
+    const bool hasSplat = terrain.HasValidSplat() && expected > 0;
     stats.Set("hasSplatData", JsonValue(hasSplat));
     if (hasSplat) {
-        double channelSum[4] = { 0.0, 0.0, 0.0, 0.0 };
-        for (size_t i = 0; i < expected; ++i) {
-            for (int c = 0; c < 4; ++c)
-                channelSum[c] += static_cast<double>(terrain.splatData[i * 4u + static_cast<size_t>(c)]);
+        /// @note 層ごとの «重みの総和 / 頂点数»。4 枠に入らない層は 0 になる。
+        std::vector<double> layerSum(static_cast<size_t>(terrain.LayerCount()), 0.0);
+        const size_t slots = static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS);
+        for (size_t i = 0; i < expected * slots; ++i) {
+            const size_t layer = terrain.splatIndices[i];
+            if (terrain.splatWeights[i] != 0 && layer < layerSum.size())
+                layerSum[layer] += static_cast<double>(terrain.splatWeights[i]);
         }
         JsonValue coverage = JsonValue::MakeArray();
-        for (int c = 0; c < 4; ++c)
-            coverage.Push(JsonValue(channelSum[c] / (static_cast<double>(expected) * 255.0)));
+        for (double sum : layerSum)
+            coverage.Push(JsonValue(sum / (static_cast<double>(expected) * 255.0)));
         stats.Set("layerCoverage", std::move(coverage));
     }
     return stats;
@@ -114,8 +118,11 @@ Outcome DoTerrainInspect(editor::EditorContext& ctx, const JsonValue& payload)
             terrain->maxHeight,
             static_cast<float>(terrain->rows - 1) * terrain->cellSize }));
         entry.Set("worldOrigin", VectorToJson(go->transform.worldPosition));
+        entry.Set("heightBlendDepth", JsonValue(terrain->heightBlendDepth));
+        entry.Set("layerCount", JsonValue(terrain->LayerCount()));
+        entry.Set("holeCount", JsonValue(static_cast<int>(terrain->CountHoles())));
         JsonValue layers = JsonValue::MakeArray();
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < terrain->LayerCount(); ++i) {
             JsonValue layer = JsonValue::MakeObject();
             layer.Set("index", JsonValue(i));
             layer.Set("material", JsonValue(terrain->layerMaterials[static_cast<size_t>(i)]));
@@ -207,15 +214,22 @@ Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
         /// @note 斜度は NavMesh の歩行可否と直結するので、法線から算出して添える。
         sample.Set("slopeDegrees", JsonValue(math::ToDeg(std::acos(
             std::clamp(localNormal.y, -1.0f, 1.0f)))));
-        const size_t expected = static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows);
-        if (terrain.splatData.size() == expected * 4u && expected > 0) {
+        sample.Set("hole", JsonValue(terrain.IsHoleAtLocal(hit.local.x, hit.local.z)));
+        if (terrain.HasValidSplat() && terrain.cellSize > 0.0f) {
+            /// @note 最寄り頂点の 4 枠のうち重みを持つ層だけを返す。正準形なので重みの降順に並ぶ。
             const int gx = std::clamp(static_cast<int>(hit.local.x / terrain.cellSize + 0.5f), 0, terrain.columns - 1);
             const int gz = std::clamp(static_cast<int>(hit.local.z / terrain.cellSize + 0.5f), 0, terrain.rows - 1);
             const size_t base = (static_cast<size_t>(gz) * static_cast<size_t>(terrain.columns)
-                               + static_cast<size_t>(gx)) * 4u;
+                               + static_cast<size_t>(gx)) * static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS);
             JsonValue weights = JsonValue::MakeArray();
-            for (int c = 0; c < 4; ++c)
-                weights.Push(JsonValue(static_cast<float>(terrain.splatData[base + static_cast<size_t>(c)]) / 255.0f));
+            for (size_t slot = 0; slot < static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS); ++slot) {
+                const std::uint8_t weight = terrain.splatWeights[base + slot];
+                if (weight == 0) continue;
+                JsonValue layerWeight = JsonValue::MakeObject();
+                layerWeight.Set("layer", JsonValue(static_cast<int>(terrain.splatIndices[base + slot])));
+                layerWeight.Set("weight", JsonValue(static_cast<float>(weight) / 255.0f));
+                weights.Push(std::move(layerWeight));
+            }
             sample.Set("layerWeights", std::move(weights));
         }
         samples.Push(std::move(sample));
@@ -250,8 +264,51 @@ bool ReadTerrainBrush(const JsonValue& payload, TerrainBrush& outBrush, std::str
     return true;
 }
 
+/// @brief sculpt の op 固有パラメーター (ノイズ・侵食・段々) を読む。未指定は TerrainBrush の既定値のまま。
+/// @see https://history.siggraph.org/learning/the-synthesis-and-rendering-of-eroded-fractal-terrains-by-musgrave-kolb-and-mace/
+/// @see https://www.firespark.de/resources/downloads/implementation%20of%20a%20methode%20for%20hydraulic%20erosion.pdf
+bool ReadTerrainSculptParams(const JsonValue& payload, TerrainBrush& outBrush, std::string& outError)
+{
+    const auto readNumber = [&payload](const char* key, double& out) {
+        const JsonValue* v = payload.Find(key);
+        if (v == nullptr || !v->IsNumber()) return false;
+        out = v->AsNumber();
+        return true;
+    };
+    double value = 0.0;
+    if (readNumber("noiseScale", value)) {
+        if (!(value > 0.0) || value > 1000.0) { outError = "noiseScale は 0 より大きく 1000 以下 [m] で指定してください"; return false; }
+        outBrush.noiseScale = static_cast<float>(value);
+    }
+    if (readNumber("noiseOctaves", value)) {
+        if (value < 1.0 || value > 8.0) { outError = "noiseOctaves は 1〜8 で指定してください"; return false; }
+        outBrush.noiseOctaves = static_cast<int>(value);
+    }
+    if (readNumber("seed", value)) {
+        if (value < 0.0 || value > 4294967295.0) { outError = "seed は 0〜4294967295 の整数で指定してください"; return false; }
+        outBrush.seed = static_cast<std::uint32_t>(value);
+    }
+    if (readNumber("terraceStep", value)) {
+        if (!(value > 0.0) || value > 1000.0) { outError = "terraceStep は 0 より大きく 1000 以下 [m] で指定してください"; return false; }
+        outBrush.terraceStep = static_cast<float>(value);
+    }
+    if (readNumber("terraceSharpness", value)) {
+        if (value < 0.0 || value > 1.0) { outError = "terraceSharpness は 0〜1 で指定してください"; return false; }
+        outBrush.terraceSharpness = static_cast<float>(value);
+    }
+    if (readNumber("talus", value)) {
+        if (!(value > 0.0) || !(value < 90.0)) { outError = "talus は 0 より大きく 90 未満 [度] で指定してください"; return false; }
+        outBrush.talusDegrees = static_cast<float>(value);
+    }
+    if (readNumber("droplets", value)) {
+        if (value < 1.0 || value > 4096.0) { outError = "droplets は 1〜4096 で指定してください"; return false; }
+        outBrush.erosionDroplets = static_cast<int>(value);
+    }
+    return true;
+}
+
 /// @brief Terrain の Undo 単位。触れた Terrain を丸ごとスナップショットして戻す (TerrainTool と同じ方式)。
-/// @note heightData / splatData は差分記述が複雑なため、部分復元でなくストローク単位のコピーで揃える。
+/// @note 高さ・スプラット・穴は差分記述が複雑なため、部分復元でなくストローク単位のコピーで揃える。
 struct TerrainSnapshot {
     std::string             instanceId;
     scene::TerrainComponent component;
@@ -272,6 +329,7 @@ std::unique_ptr<ICommand> MakeTerrainEditCommand(scene::Scene* activeScene,
             *component = snapshot.component;
             component->heightDirty = true;
             component->splatDirty = true;
+            component->materialParamDirty = true;
             component->colliderDirty = true;
         }
         if (markDirty) markDirty();
@@ -817,7 +875,17 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
             else if (op == "smooth")           sculptOp = TerrainSculptOp::Smooth;
             else if (op == "flatten")          sculptOp = TerrainSculptOp::Flatten;
             else if (op == "stamp")            sculptOp = TerrainSculptOp::Stamp;
-            else { err = Outcome::Err("BAD_ARG", "op は raise/lower/smooth/flatten/stamp です"); return nullptr; }
+            else if (op == "noise")            sculptOp = TerrainSculptOp::Noise;
+            else if (op == "thermalerosion")   sculptOp = TerrainSculptOp::ThermalErosion;
+            else if (op == "hydraulicerosion") sculptOp = TerrainSculptOp::HydraulicErosion;
+            else if (op == "terrace")          sculptOp = TerrainSculptOp::Terrace;
+            else {
+                err = Outcome::Err("BAD_ARG",
+                    "op は raise/lower/smooth/flatten/stamp/noise/thermalErosion/hydraulicErosion/terrace です");
+                return nullptr;
+            }
+            std::string paramError;
+            if (!ReadTerrainSculptParams(payload, brush, paramError)) { err = Outcome::Err("BAD_ARG", paramError); return nullptr; }
             if (sculptOp == TerrainSculptOp::Flatten) {
                 /// @note 対話ツールは最初にクリックした高さを基準にする。AI にはクリックが無いため、明示指定が無ければブラシ中心の現在高さを基準にする (同じ意味論)。
                 if (const JsonValue* v = payload.Find("targetHeight"); v != nullptr && v->IsNumber()) {
@@ -829,11 +897,22 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
             }
         } else {
             const JsonValue* layerValue = payload.Find("layer");
+            /// @note 層数は Terrain ごとに可変。番号の範囲は基準になる先頭の Terrain で決める。
+            const int layerCount = hits.front().terrain->LayerCount();
+            if (layerCount <= 0) {
+                err = Outcome::Err("NO_LAYER", "Terrain に層がありません。terrain_set_layer_material で layer=0 を追加してください");
+                return nullptr;
+            }
+            const std::string layerRange = "0〜" + std::to_string(layerCount - 1);
             if (layerValue == nullptr || !layerValue->IsNumber()) {
-                err = Outcome::Err("BAD_ARG", "layer (0〜3) が必要です"); return nullptr;
+                err = Outcome::Err("BAD_ARG", "layer (" + layerRange + ") が必要です"); return nullptr;
             }
             paintLayer = layerValue->AsInt();
-            if (paintLayer < 0 || paintLayer > 3) { err = Outcome::Err("BAD_ARG", "layer は 0〜3 です"); return nullptr; }
+            if (paintLayer < 0 || paintLayer >= layerCount) {
+                err = Outcome::Err("BAD_ARG", "layer は " + layerRange + " です (Terrain " + hits.front().go->instanceId
+                    + " の層数 " + std::to_string(layerCount) + ")");
+                return nullptr;
+            }
         }
 
         /// @note Paint は Terrain ごとに塗る層を解決する。隣接 Terrain は layerMaterials の並びが異なり得るため、同じ index を塗ると別マテリアルへ塗ってしまう (TerrainTool と同じ規則)。
@@ -855,8 +934,10 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
             }
             before.push_back({ hit.go->instanceId, *hit.terrain });
             scene::TerrainComponent edited = *hit.terrain;
+            /// @note 反復番号を strokeStep に渡す。侵食の乱数が人の長押しと同じ列になる。
             for (int i = 0; i < iterations; ++i) {
-                if (isSculpt) ApplyTerrainSculpt(edited, hit.local, brush, sculptOp, flattenTarget, 1.0f);
+                if (isSculpt) ApplyTerrainSculpt(edited, hit.local, brush, sculptOp, flattenTarget, 1.0f,
+                                                 static_cast<std::uint32_t>(i));
                 else          ApplyTerrainPaint(edited, hit.local, brush, layerForThisTerrain, 1.0f);
             }
             after.push_back({ hit.go->instanceId, std::move(edited) });
@@ -879,6 +960,111 @@ std::unique_ptr<ICommand> BuildTerrainBrushCommand([[maybe_unused]] editor::Edit
                                       std::move(before), std::move(after), markDirty);
     }
 
+    /// @name Terrain: 坂
+    /// @note 人の Ramp ツールは «押した点から離した点まで» の 1 ストロークで 1 回だけ当てる。AI も両端を渡して 1 回で済ませる。
+    /// @see Docs/design/terrain-layers.md
+    if (type == "terrain.ramp") {
+        math::Vector3 start;
+        math::Vector3 end;
+        if (!ReadVec3(payload, "start", start) || !ReadVec3(payload, "end", end)) {
+            err = Outcome::Err("BAD_ARG", "start と end ([x,y,z] ワールド座標) が必要です"); return nullptr;
+        }
+        TerrainBrush brush;
+        std::string brushError;
+        if (!ReadTerrainBrush(payload, brush, brushError)) { err = Outcome::Err("BAD_ARG", brushError); return nullptr; }
+        const math::Vector3 delta = end - start;
+        const float horizontalLength = std::sqrt(delta.x * delta.x + delta.z * delta.z);
+        if (!(horizontalLength > 0.001f)) {
+            err = Outcome::Err("BAD_ARG", "start と end が水平方向に同じ位置です (坂の向きが決まりません)"); return nullptr;
+        }
+        if (horizontalLength > 5000.0f) {
+            err = Outcome::Err("BAD_ARG", "start と end の水平距離は 5000 m 以下で指定してください"); return nullptr;
+        }
+
+        /// @note 線分を包む円 (中点 + 半長 + radius) で重なる Terrain を拾う。多めに拾っても坂の外は変わらない。
+        const math::Vector3 middle = (start + end) * 0.5f;
+        const std::string restrictTo = StringField(payload, "id");
+        std::vector<TerrainHit> hits =
+            CollectTerrainsUnderBrush(*scene, middle, horizontalLength * 0.5f + brush.radius, restrictTo);
+        if (hits.empty()) {
+            err = Outcome::Err("NO_TERRAIN", restrictTo.empty()
+                ? "坂の範囲に重なる TerrainComponent がありません"
+                : "指定ノードの Terrain は坂の範囲と重なりません: " + restrictTo);
+            return nullptr;
+        }
+
+        std::vector<TerrainSnapshot> before;
+        std::vector<TerrainSnapshot> after;
+        JsonValue terrainIds = JsonValue::MakeArray();
+        for (const TerrainHit& hit : hits) {
+            before.push_back({ hit.go->instanceId, *hit.terrain });
+            scene::TerrainComponent edited = *hit.terrain;
+            ApplyTerrainRamp(edited,
+                             ToTerrainLocal(hit.go->transform, start),
+                             ToTerrainLocal(hit.go->transform, end),
+                             brush);
+            after.push_back({ hit.go->instanceId, std::move(edited) });
+            terrainIds.Push(JsonValue(hit.go->instanceId));
+        }
+        if (detailSink != nullptr) {
+            detailSink->Set("terrains", std::move(terrainIds));
+            detailSink->Set("length", JsonValue(horizontalLength));
+        }
+        return MakeTerrainEditCommand(scene, "AI: Ramp Terrain", std::move(before), std::move(after), markDirty);
+    }
+
+    /// @name Terrain: 穴
+    /// @note 穴は三角形を作らないことで表すので、描画・物理・NavMesh が同じ holeData を読む。掘った後は navmesh.bake が要る。
+    if (type == "terrain.hole") {
+        math::Vector3 center;
+        if (!ReadVec3(payload, "position", center)) {
+            err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です"); return nullptr;
+        }
+        TerrainBrush brush;
+        if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
+            brush.radius = static_cast<float>(v->AsNumber());
+        if (!(brush.radius > 0.0f) || brush.radius > 500.0f) {
+            err = Outcome::Err("BAD_ARG", "radius は 0 より大きく 500 以下で指定してください"); return nullptr;
+        }
+        bool erase = false;
+        if (const JsonValue* v = payload.Find("erase"); v != nullptr) {
+            if (!v->IsBool()) { err = Outcome::Err("BAD_ARG", "erase は true / false で指定してください"); return nullptr; }
+            erase = v->AsBool();
+        }
+
+        const std::string restrictTo = StringField(payload, "id");
+        std::vector<TerrainHit> hits = CollectTerrainsUnderBrush(*scene, center, brush.radius, restrictTo);
+        if (hits.empty()) {
+            err = Outcome::Err("NO_TERRAIN", restrictTo.empty()
+                ? "その位置に重なる TerrainComponent がありません"
+                : "指定ノードの Terrain はブラシ範囲と重なりません: " + restrictTo);
+            return nullptr;
+        }
+
+        std::vector<TerrainSnapshot> before;
+        std::vector<TerrainSnapshot> after;
+        JsonValue terrainIds = JsonValue::MakeArray();
+        for (const TerrainHit& hit : hits) {
+            scene::TerrainComponent edited = *hit.terrain;
+            if (!ApplyTerrainHole(edited, hit.local, brush, !erase)) continue;
+            before.push_back({ hit.go->instanceId, *hit.terrain });
+            after.push_back({ hit.go->instanceId, std::move(edited) });
+            terrainIds.Push(JsonValue(hit.go->instanceId));
+        }
+        if (after.empty()) {
+            err = Outcome::Err("NO_CHANGE", erase
+                ? "ブラシ範囲に消せる穴がありません (セル中心が円に入るセルだけが対象です)"
+                : "ブラシ範囲に新しく穴を開けるセルがありません (既に穴か、radius がセルより小さい)");
+            return nullptr;
+        }
+        if (detailSink != nullptr) {
+            detailSink->Set("terrains", std::move(terrainIds));
+            detailSink->Set("erase", JsonValue(erase));
+        }
+        return MakeTerrainEditCommand(scene, erase ? "AI: Fill Terrain Holes" : "AI: Cut Terrain Holes",
+                                      std::move(before), std::move(after), markDirty);
+    }
+
     err = Outcome::Err("UNSUPPORTED", "この Command は transaction 内で使用できません: " + type);
     return nullptr;
 }
@@ -898,10 +1084,24 @@ std::unique_ptr<ICommand> BuildTerrainLayerMaterialCommand([[maybe_unused]] edit
         if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
         auto* terrain = go->GetComponent<scene::TerrainComponent>();
         if (terrain == nullptr) { err = Outcome::Err("NOT_PRESENT", "TerrainComponent が装着されていません"); return nullptr; }
+        /// @note layer == 層数 は末尾への追加。Undo は追加した層を消す (差し替えなら旧 .mat へ戻す)。
+        const int layerCount = terrain->LayerCount();
+        const std::string layerRange = "0〜" + std::to_string(layerCount);
         const JsonValue* layerValue = payload.Find("layer");
-        if (layerValue == nullptr || !layerValue->IsNumber()) { err = Outcome::Err("BAD_ARG", "layer (0〜3) が必要です"); return nullptr; }
+        if (layerValue == nullptr || !layerValue->IsNumber()) {
+            err = Outcome::Err("BAD_ARG", "layer (" + layerRange + "。" + std::to_string(layerCount) + " で末尾に追加) が必要です");
+            return nullptr;
+        }
         const int layer = layerValue->AsInt();
-        if (layer < 0 || layer > 3) { err = Outcome::Err("BAD_ARG", "layer は 0〜3 です"); return nullptr; }
+        if (layer < 0 || layer > layerCount) {
+            err = Outcome::Err("BAD_ARG", "layer は " + layerRange + " です (" + std::to_string(layerCount) + " で末尾に追加)");
+            return nullptr;
+        }
+        const bool appends = (layer == layerCount);
+        if (appends && layerCount >= scene::TERRAIN_MAX_LAYERS) {
+            err = Outcome::Err("LAYER_LIMIT", "層数が上限 (" + std::to_string(scene::TERRAIN_MAX_LAYERS) + ") に達しています");
+            return nullptr;
+        }
         const std::string materialPath = StringField(payload, "material");
         if (!materialPath.empty()) {
             std::filesystem::path resolved;
@@ -915,16 +1115,25 @@ std::unique_ptr<ICommand> BuildTerrainLayerMaterialCommand([[maybe_unused]] edit
                 err = Outcome::Err("MATERIAL_NOT_FOUND", "マテリアルが見つかりません: " + relative); return nullptr;
             }
         }
-        const std::string oldMaterial = terrain->layerMaterials[static_cast<size_t>(layer)];
-        return std::make_unique<LambdaCommand>("AI: Set Terrain Layer Material",
+        const std::string oldMaterial = appends ? std::string{} : terrain->layerMaterials[static_cast<size_t>(layer)];
+        if (detailSink != nullptr) {
+            detailSink->Set("appended", JsonValue(appends));
+            detailSink->Set("layerCount", JsonValue(appends ? layerCount + 1 : layerCount));
+        }
+        return std::make_unique<LambdaCommand>(appends ? "AI: Add Terrain Layer" : "AI: Set Terrain Layer Material",
             [scene, id, layer, materialPath, markDirty]() {
                 if (GameObject* g = scene->FindByGuid(id))
                     if (auto* t = g->GetComponent<scene::TerrainComponent>()) t->SetLayerMaterial(layer, materialPath);
                 markDirty();
             },
-            [scene, id, layer, oldMaterial, markDirty]() {
-                if (GameObject* g = scene->FindByGuid(id))
-                    if (auto* t = g->GetComponent<scene::TerrainComponent>()) t->SetLayerMaterial(layer, oldMaterial);
+            [scene, id, layer, appends, oldMaterial, markDirty]() {
+                if (GameObject* g = scene->FindByGuid(id)) {
+                    if (auto* t = g->GetComponent<scene::TerrainComponent>()) {
+                        /// @note 追加の取り消しは «末尾がまだこの層» のときだけ消す。後続の編集で並びが変わっていたら触らない。
+                        if (!appends)                              t->SetLayerMaterial(layer, oldMaterial);
+                        else if (t->LayerCount() == layer + 1)     t->RemoveLayer(layer);
+                    }
+                }
                 markDirty();
             });
     }
@@ -1042,6 +1251,8 @@ void RegisterWorldHandlers(BusHandlerTable& table)
 
     table.AddBuilder("terrain.sculpt", BuildTerrainBrushCommand);
     table.AddBuilder("terrain.paint", BuildTerrainBrushCommand);
+    table.AddBuilder("terrain.ramp", BuildTerrainBrushCommand);
+    table.AddBuilder("terrain.hole", BuildTerrainBrushCommand);
     table.AddBuilder("terrain.setLayerMaterial", BuildTerrainLayerMaterialCommand);
     table.AddBuilder("navmesh.bake", BuildNavMeshBakeCommand);
     table.AddBuilder("audio.control", BuildAudioControlCommand);

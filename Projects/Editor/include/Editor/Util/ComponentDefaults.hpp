@@ -246,8 +246,8 @@ template<typename T>
         terrain.cellSize = 2.0f;
         terrain.maxHeight = 20.0f;
         terrain.chunkSize = 32;
-        for (int layer = 0; layer < 4; ++layer)
-            terrain.layerMaterials[layer] = DefaultTerrainLayerMaterialPath(layer);
+        for (int layer = 0; layer < terrain.LayerCount(); ++layer)
+            terrain.layerMaterials[static_cast<size_t>(layer)] = DefaultTerrainLayerMaterialPath(layer);
         terrain.InitFlat(0.0f);
         terrain.heightDirty = true;
         terrain.splatDirty = true;

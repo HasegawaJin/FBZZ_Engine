@@ -1942,7 +1942,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         return;
     }
 
-    /// @note .terrain: layerMaterials[0] を読み取って layer0 diffuse でサムネイル、なければ丘アイコン
+    /// @note .terrain: 最初に .mat を持つ層の diffuse でサムネイル、なければ丘アイコン
     if (e.ext == ".terrain") {
         if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
             TerrainPreview& preview = m_terrainPreviews[e.path];
@@ -1960,9 +1960,13 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         const toml::table* terrainTbl = result.table()["terrain"].as_table();
                         if (!terrainTbl) terrainTbl = &result.table();
                         std::string matPath;
-                        if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array();
-                            layerArr && !layerArr->empty())
-                            matPath = (*layerArr)[0].value_or(std::string{});
+                        /// @note 層数は可変で、先頭の層が空 (既定の白) のこともある。最初に .mat を持つ層で描く。
+                        if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {
+                            for (const toml::node& layerNode : *layerArr) {
+                                matPath = layerNode.value_or(std::string{});
+                                if (!matPath.empty()) break;
+                            }
+                        }
                         if (!matPath.empty()) {
                             std::string absMatPath = matPath;
                             if (absMatPath.starts_with("Assets/") && !ctx.projectRoot.empty())

@@ -412,7 +412,7 @@ scene::GameObject* MakeTerrain(EditorContext& ctx)
     auto& go = ctx.activeScene->CreateGameObject("Terrain");
     scene::TerrainComponent terrain;
     terrain.InitFlat(0.0f);
-    for (int layer = 0; layer < 4; ++layer)
+    for (int layer = 0; layer < terrain.LayerCount(); ++layer)
         terrain.layerMaterials[static_cast<size_t>(layer)] = DefaultTerrainLayerMaterialPath(layer);
     terrain.heightDirty   = true;
     terrain.colliderDirty = true;

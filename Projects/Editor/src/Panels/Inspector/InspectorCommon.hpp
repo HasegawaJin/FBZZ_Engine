@@ -149,6 +149,7 @@ void PushComponentValueCommand(scene::GameObject& go,
                 if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
                     component->heightDirty = true;
                     component->splatDirty = true;
+                    component->materialParamDirty = true;
                     component->colliderDirty = true;
                 } else if constexpr (std::is_same_v<T, scene::WaterComponent>) {
                     component->meshDirty = true;
@@ -449,14 +450,17 @@ struct ComponentUndoCompare<scene::NavMeshPatrolComponent> {
     }
 };
 
-/// layerMaterials は string 配列のため Reflect に載らない。
-/// heightData / splatData は地形ツールが塗るデータで、Inspector の編集対象ではない
-/// (ツール側が専用の Undo を持つ)。ここで比較すると巨大配列の走査が入るだけなので除く。
+/// @brief Terrain の Inspector 編集が Undo に積むべき差分か判定する。
+/// @note layerMaterials は string 配列のため Reflect に載らない。層の削除・並べ替えと «Clear Holes» は
+///       splat / holeData を書き換えるので比較に含める。heightData は地形ツールが専用の Undo を持つので除く。
 template<>
 struct ComponentUndoCompare<scene::TerrainComponent> {
     static bool UserValuesEqual(scene::TerrainComponent& a, scene::TerrainComponent& b)
     {
         return a.layerMaterials == b.layerMaterials
+            && a.splatIndices == b.splatIndices
+            && a.splatWeights == b.splatWeights
+            && a.holeData == b.holeData
             && CaptureComponentDigest(a) == CaptureComponentDigest(b);
     }
 };

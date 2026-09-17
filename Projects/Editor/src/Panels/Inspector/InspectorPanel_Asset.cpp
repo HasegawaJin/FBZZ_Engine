@@ -313,7 +313,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
             for (auto [terrain] : ctx.activeScene->View<scene::TerrainComponent>()) {
                 for (const auto& lm : terrain.layerMaterials)
-                    if (NormalizeAssetPath(lm) == relPath) { terrain.splatDirty = true; break; }
+                    if (NormalizeAssetPath(lm) == relPath) {
+                        terrain.RequestSplatRebuild();
+                        terrain.RequestMaterialRebuild();
+                        break;
+                    }
             }
             for (auto [water] : ctx.activeScene->View<scene::WaterComponent>()) {
                 if (NormalizeAssetPath(water.materialPath) == relPath) {
@@ -361,7 +365,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     }
                     for (auto [terrain] : context->activeScene->View<scene::TerrainComponent>()) {
                         for (const auto& lm : terrain.layerMaterials)
-                            if (NormalizeAssetPath(lm) == capturedDisplay) { terrain.splatDirty = true; break; }
+                            if (NormalizeAssetPath(lm) == capturedDisplay) {
+                                terrain.RequestSplatRebuild();
+                                terrain.RequestMaterialRebuild();
+                                break;
+                            }
                     }
                     for (auto [water] : context->activeScene->View<scene::WaterComponent>()) {
                         if (NormalizeAssetPath(water.materialPath) == capturedDisplay) {
@@ -2384,14 +2392,31 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ImGui::LabelText("Max",    "%.2f m", hMax * hRange);
             }
 
+            ImGui::SeparatorText("Holes");
+            ImGui::LabelText("Hole Cells", "%zu / %zu", ta.CountHoles(), ta.CellCount());
+
             ImGui::SeparatorText("Layer Materials");
-            for (int li = 0; li < static_cast<int>(ta.layerMaterials.size()); ++li) {
+            ImGui::LabelText("Layers", "%d", ta.LayerCount());
+            if (ImGui::SliderFloat("Height Blend Depth", &ta.heightBlendDepth, 0.01f, 1.0f, "%.2f"))
+                terrainDirty = true;
+            int pendingRemove = -1;
+            for (int li = 0; li < ta.LayerCount(); ++li) {
                 ImGui::PushID(li);
                 const std::string layerLabel = "Layer " + std::to_string(li);
-                if (widgets::AssetPathField(layerLabel.c_str(), ta.layerMaterials[li], ".mat", ctx.projectRoot))
+                if (widgets::AssetPathField(layerLabel.c_str(), ta.layerMaterials[static_cast<size_t>(li)], ".mat", ctx.projectRoot))
                     terrainDirty = true;
+                ImGui::BeginDisabled(ta.LayerCount() <= 1);
+                if (ImGui::SmallButton("Remove")) pendingRemove = li;
+                ImGui::EndDisabled();
                 ImGui::PopID();
             }
+            /// @note 添字と PushID がずれないよう、削除はループの外で 1 つだけ当てる。
+            if (pendingRemove >= 0 && ta.RemoveLayer(pendingRemove))
+                terrainDirty = true;
+            ImGui::BeginDisabled(ta.LayerCount() >= scene::TERRAIN_MAX_LAYERS);
+            if (ImGui::Button("Add Layer") && ta.AddLayer(DefaultTerrainLayerMaterialPath(ta.LayerCount())) >= 0)
+                terrainDirty = true;
+            ImGui::EndDisabled();
 
             if (terrainDirty) {
                 AssetDirtyRegistry::Register(
