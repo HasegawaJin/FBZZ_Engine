@@ -1,6 +1,9 @@
-// FBZZ GameHub
-// main.ts | main
-// Electronのライフサイクルと安全なBrowserWindow生成を担当するエントリポイント
+/**
+ * @file main.ts
+ * @brief Electron のライフサイクルと安全な BrowserWindow 生成を担当するエントリポイント。
+ * @author Hasegawa Jin
+ * @date 2026/07/19
+ */
 
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';

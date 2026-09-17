@@ -1,6 +1,9 @@
-// FBZZ GameHub
-// configStore.ts | main
-// C++版と共通のhub_config.tomlを読み書きする永続化層
+/**
+ * @file configStore.ts
+ * @brief hub_config.toml を読み書きする永続化層と SDK の自動検出。
+ * @author Hasegawa Jin
+ * @date 2026/07/19
+ */
 
 import { app } from 'electron';
 import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';

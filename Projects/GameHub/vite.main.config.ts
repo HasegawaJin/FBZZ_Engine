@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { CreateViteBuildOptions } from './build.config';
+import { CreateViteBuildOptions, CreateViteDefine } from './build.config';
 
 // mainプロセスもrendererと同じ構成名でソースマップと圧縮方針を統一する。
-export default defineConfig({ build: CreateViteBuildOptions() });
+export default defineConfig({ build: CreateViteBuildOptions(), define: CreateViteDefine() });

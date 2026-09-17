@@ -1,12 +1,16 @@
-// FBZZ Engine
-// SdkFreshness.mjs | GameHub
-// 現在のソースに対応するSDKが公開済みかを検証する
+/**
+ * @file SdkFreshness.mjs
+ * @brief 現在のソースに対応する SDK が公開済みかを検証する。
+ * @author Hasegawa Jin
+ * @date 2026/08/16
+ */
 
 import { execFile } from 'node:child_process';
 import { access, readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parse } from 'smol-toml';
+import { ReadEngineVersion } from './EngineVersion.mjs';
 
 const ExecuteFile = promisify(execFile);
 const GIT_OUTPUT_LIMIT = 64 * 1024 * 1024;
@@ -69,16 +73,13 @@ async function NewestModifiedTime(target) {
  * 「公開後に編集されていないか」はIDでは判定できないので、変更ファイル一覧も返す。
  */
 export async function ResolveExpectedSdkId(repositoryRoot) {
-  const [cmakeText, revisionOutput, statusOutput] = await Promise.all([
-    readFile(path.join(repositoryRoot, 'CMakeLists.txt'), 'utf8'),
+  const [revisionOutput, statusOutput] = await Promise.all([
     RunGit(repositoryRoot, ['rev-parse', '--short=12', 'HEAD']),
     RunGit(repositoryRoot, ['status', '--porcelain', '-z']),
   ]);
-  const versionMatch = cmakeText.match(/\bproject\s*\(\s*FBZZEngine\s+VERSION\s+([0-9]+(?:\.[0-9]+){2})\b/i);
-  if (!versionMatch) throw new Error('CMakeLists.txtからFBZZ Engine versionを取得できません。');
 
   return {
-    sdkId: versionMatch[1],
+    sdkId: ReadEngineVersion(repositoryRoot),
     revision: revisionOutput.trim() || 'unknown',
     changedPaths: ParseChangedPaths(statusOutput),
   };

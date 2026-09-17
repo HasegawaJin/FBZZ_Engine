@@ -1,14 +1,20 @@
-// FBZZ GameHub
-// projectService.ts | main
-// プロジェクト検証、サムネイル取得、Editor起動をOS権限側へ集約する
+/**
+ * @file projectService.ts
+ * @brief プロジェクト検証、サムネイル取得、Editor 起動を OS 権限側へ集約する。
+ * @author Hasegawa Jin
+ * @date 2026/07/19
+ */
 
 import { shell } from 'electron';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { spawn, type SpawnOptions } from 'node:child_process';
+import { execFile, spawn, type SpawnOptions } from 'node:child_process';
+import { promisify } from 'node:util';
 import { parse } from 'smol-toml';
 import { ENGINE_VERSION, type HubSettings, type ProjectEntry } from '../shared/contracts';
 import type { ConfigProject } from './configStore';
+
+const execFileAsync = promisify(execFile);
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -23,7 +29,14 @@ function stringField(table: Record<string, unknown>, key: string, fallback = '')
   return typeof table[key] === 'string' ? table[key] as string : fallback;
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export class ProjectService {
+  // 起動処理中のプロジェクト。spawn が返るまでの連打を弾く。
+  private readonly launching = new Set<string>();
+
   createPendingProjects(configProjects: ConfigProject[]): ProjectEntry[] {
     return configProjects
       .map((project) => {
@@ -105,11 +118,31 @@ export class ProjectService {
   }
 
   async openProject(projectPath: string, settings: HubSettings, sdkRoot: string): Promise<void> {
-    if (!sdkRoot) throw new Error('プロジェクトが要求するFBZZ SDKがSDK storeにありません。');
-    const editorPath = await this.resolveEditorPath(settings, sdkRoot);
-    if (!editorPath) throw new Error(`SDK ${settings.sdkConfiguration}用FBZZEditor.exeが見つかりません。`);
-    await new Promise<void>((resolve, reject) => {
-      const editorArgs = ['--project', path.resolve(projectPath)];
+    const projectRoot = path.resolve(projectPath);
+    if (this.launching.has(projectRoot)) throw new Error('このプロジェクトは起動処理中です。');
+    this.launching.add(projectRoot);
+    try {
+      if (!sdkRoot) throw new Error('プロジェクトが要求するFBZZ SDKがSDK storeにありません。');
+      const editorPath = await this.resolveEditorPath(settings, sdkRoot);
+      if (!editorPath) throw new Error(`SDK ${settings.sdkConfiguration}用FBZZEditor.exeが見つかりません。`);
+      // WHY: 同じプロジェクトを 2 つの Editor で開くと .meta とシーンの書き換えが競合する。
+      if (await this.isOpenInEditor(editorPath, projectRoot)) {
+        throw new Error(`${path.basename(projectRoot)} は既に Editor で開いています。先に閉じてください。`);
+      }
+      await this.spawnEditor(editorPath, projectRoot, sdkRoot);
+    } finally {
+      this.launching.delete(projectRoot);
+    }
+  }
+
+  async revealProject(projectPath: string): Promise<void> {
+    const error = await shell.openPath(path.resolve(projectPath));
+    if (error) throw new Error(error);
+  }
+
+  private spawnEditor(editorPath: string, projectRoot: string, sdkRoot: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const editorArgs = ['--project', projectRoot];
       const launchOptions: SpawnOptions = {
         detached: true,
         stdio: 'ignore',
@@ -139,9 +172,29 @@ export class ProjectService {
     });
   }
 
-  async revealProject(projectPath: string): Promise<void> {
-    const error = await shell.openPath(path.resolve(projectPath));
-    if (error) throw new Error(error);
+  /**
+   * 同じプロジェクトを `--project` で開いている Editor プロセスがあるか。
+   * Windows 以外と問い合わせ失敗時は false (起動を止める根拠が無いので通す)。
+   */
+  private async isOpenInEditor(editorPath: string, projectRoot: string): Promise<boolean> {
+    if (process.platform !== 'win32') return false;
+    const executableName = path.basename(editorPath).replaceAll("'", "''");
+    // 非 ASCII のプロジェクトパスが OEM コードページで化けて照合に失敗しないよう UTF-8 で受ける。
+    const script = '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; '
+      + `Get-CimInstance Win32_Process -Filter "Name='${executableName}'" | ForEach-Object { $_.CommandLine }`;
+    try {
+      const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        windowsHide: true,
+        timeout: 5_000,
+        encoding: 'utf8',
+      });
+      // 前後を空白か引用符で区切り、`C:\Games\Foo` が `C:\Games\FooBar` に一致しないようにする。
+      const pattern = new RegExp(`(^|[\\s"])${escapeRegExp(projectRoot)}("|\\s|$)`, 'i');
+      return stdout.split(/\r?\n/).some((line) => pattern.test(line));
+    } catch (error) {
+      console.warn('起動中の Editor を確認できませんでした。', error);
+      return false;
+    }
   }
 
   private async loadThumbnail(projectRoot: string): Promise<string> {
