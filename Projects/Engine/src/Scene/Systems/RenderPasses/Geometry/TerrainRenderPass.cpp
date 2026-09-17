@@ -1,25 +1,25 @@
-/// @file    RenderPasses/Geometry/TerrainRenderPass.cpp
+/// @file    TerrainRenderPass.cpp
 /// @brief   TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
-/// テクスチャスロット (Terrain.hlsl と同期すること):
-/// t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
-/// t1-t4   = layer0-3 ディフューズ
-/// t5-t8   = layer0-3 法線
-/// t9-t12  = layer0-3 AO/Roughness (R=AO, G=Roughness)
-/// t13     = shadow depth
-///
-/// サンプラースロット (Terrain.hlsl と同期すること):
-/// s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
-/// s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
-/// s2 = CLAMP_LINEAR      スプラットマップ用
-///
-/// 設計上の注意:
-/// - シングルスレッド前提。static ローカルによる遅延初期化を使う。
-/// - GPU バッファは ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
-/// - heightDirty: 全チャンクを削除して再構築
-/// - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
+/// @note 
+/// @note テクスチャスロット (Terrain.hlsl と同期すること):
+/// @note t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
+/// @note t1-t4   = layer0-3 ディフューズ
+/// @note t5-t8   = layer0-3 法線
+/// @note t9-t12  = layer0-3 AO/Roughness (R=AO, G=Roughness)
+/// @note t13     = shadow depth
+/// @note 
+/// @note サンプラースロット (Terrain.hlsl と同期すること):
+/// @note s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
+/// @note s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
+/// @note s2 = CLAMP_LINEAR      スプラットマップ用
+/// @note 
+/// @note 設計上の注意:
+/// @note - シングルスレッド前提。static ローカルによる遅延初期化を使う。
+/// @note - GPU バッファは ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
+/// @note - heightDirty: 全チャンクを削除して再構築
+/// @note - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
@@ -28,6 +28,7 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
+#include <Engine/Scene/Components/FiberComponent.hpp>
 #include "Engine/Scene/Components/TerrainGridComponent.hpp"
 #include "Engine/Scene/Entity.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
@@ -53,12 +54,12 @@
 
 namespace fbzz::scene {
 
-// GPU 頂点レイアウト。HLSL の TerrainVSInput と完全に一致させること。
-//   POSITION  : float3  offset  0  (12 bytes)
-//   NORMAL    : float3  offset 12  (12 bytes)
-//   TANGENT   : float3  offset 24  (12 bytes)
-//   TEXCOORD0 : float2  offset 36  ( 8 bytes)
-//   stride = 44 bytes
+/// @note GPU 頂点レイアウト。HLSL の TerrainVSInput と完全に一致させること。
+/// @note POSITION  : float3  offset  0  (12 bytes)
+/// @note NORMAL    : float3  offset 12  (12 bytes)
+/// @note TANGENT   : float3  offset 24  (12 bytes)
+/// @note TEXCOORD0 : float2  offset 36  ( 8 bytes)
+/// @note stride = 44 bytes
 struct TerrainVertex {
     math::Vector3 position;
     math::Vector3 normal;
@@ -109,8 +110,8 @@ struct TerrainTextures {
 
 static std::unordered_map<TerrainChunkKey, TerrainChunk> g_chunkCache;
 static std::unordered_map<uint32_t, TerrainTextures>    g_texCache;
-// レイヤーマテリアルのテクスチャパス署名。Material インスペクタでテクスチャを差し替えたときだけ
-// テクスチャを再構築するための変更検出に使う（毎フレーム GPU 再アップロードを避ける）。
+/// @note レイヤーマテリアルのテクスチャパス署名。Material インスペクタでテクスチャを差し替えたときだけ
+/// @note テクスチャを再構築するための変更検出に使う（毎フレーム GPU 再アップロードを避ける）。
 static std::unordered_map<uint32_t, size_t>             g_texSigCache;
 
 struct TerrainNeighbors {
@@ -124,22 +125,21 @@ struct TerrainNeighbors {
     const TerrainComponent* southEast = nullptr;
 };
 
-// CameraConstants (b0)
+/// @note CameraConstants (b0)
 struct TerrainCameraFrameCB {
     math::Matrix4 view;
     math::Matrix4 projection;
     math::Matrix4 viewProjection;
     math::Matrix4 invViewProjection;
     math::Vector3 cameraPos; float nearZ;
-    // LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること。
+    /// @note LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること。
     float         farZ;      float _reserved;
     float         isOrthographic; float _pad;
 };
 static_assert(sizeof(TerrainCameraFrameCB) == 288, "PerFrameCB size mismatch");
 
-// TerrainObjectCB (b1) の定義は RenderPassContext.hpp。
-// WHY そちらか: エディタのマテリアルプレビューが «本編と同じ絵» を焼くために同じ
-//      レイアウトを要る。ここに置くと写しが 2 つになり、黙ってずれる。
+/// @note TerrainObjectCB (b1) の定義は RenderPassContext.hpp。エディタのマテリアルプレビューが
+/// @note 本編と同じ絵を焼くために同じレイアウトを要るため、ここに置くと写しが 2 つになり黙ってずれる。
 
 static std::unordered_map<uint32_t, TerrainObjectCB> g_cbParamCache;
 
@@ -168,9 +168,9 @@ static float SampleStitchedTerrainHeight(
     int                     x,
     int                     z)
 {
-    // WHY: TerrainGrid の境界では複数 Terrain が同じワールド頂点を持つ。
-    //      描画用メッシュではその共有頂点を平均して、保存データを破壊せずに隙間を隠す。
-    //      角は最大 4 Terrain が交差するため、斜め隣接も平均に含める。
+    /// @note TerrainGrid の境界では複数 Terrain が同じワールド頂点を持つ。描画用メッシュでは
+    /// @note その共有頂点を平均し、保存データを破壊せずに隙間を隠す。角は最大 4 Terrain が
+    /// @note 交差するため、斜め隣接も平均に含める。
     float sum = 0.0f;
     int count = 0;
 
@@ -238,9 +238,9 @@ static math::Vector3 ComputeStitchedNormal(
     int                     x,
     int                     z)
 {
-    // WHAT: 補正済み高さで中心差分を取る。頂点位置だけでなく陰影も隣接 Terrain と連続させる。
-    // WHY: TerrainComponent::ComputeNormal() は単体 Terrain 用に端を clamp するため、
-    //      TerrainGrid では境界法線が隣の傾斜を見ず、継ぎ目が暗線として残る。
+    /// @note 補正済み高さで中心差分を取り、頂点位置だけでなく陰影も隣接 Terrain と連続させる。
+    /// @note `TerrainComponent::ComputeNormal()` は単体 Terrain 用に端を clamp するため、
+    /// @note TerrainGrid では境界法線が隣の傾斜を見ず、継ぎ目が暗線として残ってしまう。
     const float dhdx = (SampleStitchedTerrainHeight(terrain, neighbors, x + 1, z)
                       - SampleStitchedTerrainHeight(terrain, neighbors, x - 1, z))
                      / (2.0f * terrain.cellSize);
@@ -282,11 +282,10 @@ static TerrainNeighbors ResolveTerrainNeighbors(
     return neighbors;
 }
 
-// チャンクが保持する GPU 頂点・インデックスバッファを明示解放する。
-// WHY: ResourceHandle は RAII ではなく明示解放が必要（このファイルの texCache 解放や
-//      末尾の GC 経路と同じ規約）。キャッシュからチャンクを破棄する前に必ず呼ばないと、
-//      スカルプト中は heightDirty が毎フレーム立ってチャンクを作り直すため、
-//      編集するほど GPU バッファがリークし続けてフレームが重くなる。
+/// @note チャンクが保持する GPU 頂点・インデックスバッファを明示解放する。ResourceHandle は RAII
+/// @note ではなく明示解放が必要 (このファイルの texCache 解放や末尾の GC 経路と同じ規約)。キャッシュ
+/// @note からチャンクを破棄する前に必ず呼ばないと、スカルプト中は heightDirty が毎フレーム立って
+/// @note チャンクを作り直すため、編集するほど GPU バッファがリークし続けてフレームが重くなる。
 static void ReleaseChunkBuffers(renderer::ResourceManager& resources, TerrainChunk& chunk)
 {
     resources.Release(chunk.vertexBuffer);
@@ -319,10 +318,9 @@ static void EraseTerrainChunkCacheForComponent(Scene& scene, renderer::ResourceM
 
 static void EraseNeighborTerrainChunkCaches(Scene& scene, renderer::ResourceManager& resources, const TerrainNeighbors& neighbors)
 {
-    // WHY: 境界頂点は隣接 Terrain の高さを参照して構築されるため、
-    //      自身の高さが変わったときは隣接側の GPU キャッシュも無効化する。
-    //      heightDirty を相互に立てると隣接同士で毎フレーム再 dirty 化されるため、
-    //      ここではキャッシュだけを直接破棄する（GPU バッファは解放する）。
+    /// @note 境界頂点は隣接 Terrain の高さを参照して構築されるため、自身の高さが変わったときは
+    /// @note 隣接側の GPU キャッシュも無効化する。heightDirty を相互に立てると隣接同士で毎フレーム
+    /// @note 再 dirty 化されるため、ここではキャッシュだけを直接破棄する (GPU バッファは解放する)。
     EraseTerrainChunkCacheForComponent(scene, resources, neighbors.north);
     EraseTerrainChunkCacheForComponent(scene, resources, neighbors.south);
     EraseTerrainChunkCacheForComponent(scene, resources, neighbors.west);
@@ -529,7 +527,7 @@ static TerrainTextures BuildTextureSet(
     return ts;
 }
 
-// ─── IRenderPass ──────────────────────────────────────────────────────────
+/// @name IRenderPass
 
 std::string_view TerrainRenderPass::Name() const
 {
@@ -538,22 +536,22 @@ std::string_view TerrainRenderPass::Name() const
 
 void TerrainRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    // 影と Cookie の束縛は GBuffer / Forward で分岐していない (Execute の t13 / t28 / t31)。
-    // 以前は Deferred のときだけ申告から抜けていて、依存辺が張られないまま
-    // «同じ GBuffer を書く DeferredGBuffer が先に走るから» という偶然で順序が保たれていた。
+    /// @note 影と Cookie の束縛は GBuffer / Forward で分岐していない (Execute の t13 / t28 / t31)。
+    /// @note 以前は Deferred のときだけ申告から抜けていて、依存辺が張られないまま
+    /// @note «同じ GBuffer を書く DeferredGBuffer が先に走るから» という偶然で順序が保たれていた。
     builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
 
-    // GBuffer へ書けば DeferredLighting/GTAO/SSAO/SSR/ContactShadows に地形が含まれる。
-    // Forward では HDR へ直接ライティング結果を描く。
+    /// @note GBuffer へ書けば DeferredLighting/GTAO/SSAO/SSR/ContactShadows に地形が含まれる。
+    /// @note Forward では HDR へ直接ライティング結果を描く。
     const char* const target = m_mode == TerrainDrawMode::GBuffer ? "GBuffer" : "HDR";
     builder.ReadWrite(target).SetAutoTarget(target);
 }
 
 void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    // 描き先の束縛は Setup の SetAutoTarget が済ませている。
+    /// @note 描き先の束縛は Setup の SetAutoTarget が済ませている。
 
-    // エイリアス: TerrainRenderSystem の旧シグネチャ変数名を ctx から引く
+    /// @note エイリアス: TerrainRenderSystem の旧シグネチャ変数名を ctx から引く
     Scene&                     scene               = ctx.scene;
     renderer::IRenderer&       renderer            = ctx.renderer;
     renderer::ResourceManager& resources           = ctx.resources;
@@ -563,11 +561,11 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     auto shadowCB           = ctx.handles.shadowCB;
     auto lightCB            = ctx.handles.lightCB;
 
-    // WHY: static ローカルは初回のみ初期化される。ResourceManager::Reset() で世代が変わった
-    //      場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
+    /// @note static ローカルは初回のみ初期化される。ResourceManager::Reset() で世代が変わった
+    /// @note 場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
     static uint64_t s_resetVersion = resources.GetResetVersion();
     static auto terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
-    // Deferred 用: GBuffer(MRT) へ albedo/roughness/normal/metallic を書き出す地形シェーダ。
+    /// @note Deferred 用: GBuffer(MRT) へ albedo/roughness/normal/metallic を書き出す地形シェーダ。
     static auto terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
     static auto terrainPSO    = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
@@ -640,8 +638,8 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     }
 
 
-    // TAA ジッターを地形にも乗せる。乗せないと地形だけ AA されないうえ、b0 経由で描く
-    // 他の不透明物とサブピクセル単位でずれた深度になり、TAA の再投影が濁る。
+    /// @note TAA ジッターを地形にも乗せる。乗せないと地形だけ AA されないうえ、b0 経由で描く
+    /// @note 他の不透明物とサブピクセル単位でずれた深度になり、TAA の再投影が濁る。
     const math::Matrix4 jitteredProj =
         MakeJitteredProjection(camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     const math::Matrix4 jitteredVP = jitteredProj * camera.GetViewMatrix();
@@ -669,7 +667,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
     }
 
-    // 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
+    /// @note 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
     const ActiveWeather weather = FindActiveWeather(scene);
 
     for (auto [terrain, transform] : scene.View<TerrainComponent, Transform>()) {
@@ -737,17 +735,18 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             g_cbParamCache[eid.index] = cb;
         };
 
-        // マテリアルパラメータ CB は毎フレーム再構築する。
-        // WHY: レイヤーマテリアル(.mat)を Material インスペクタで直接編集しても terrain 側の
-        //      materialParamDirty は立たないため、従来は roughness/tiling/normalStrength/autoBlend 等の
-        //      変更が既存地形へ反映されなかった。パラメータ抽出は安価（map 参照のみ）なので毎フレーム
-        //      読み直し、マテリアル編集を即座に地形へ反映する。Deferred 地形は CB 経由でこれらを使う。
+        /// @note マテリアルパラメータ CB は毎フレーム再構築する。
+        /// @note レイヤーマテリアル(.mat)を Material インスペクタで直接編集しても terrain 側の
+        /// @note materialParamDirty は立たないため、従来は roughness/tiling/normalStrength/autoBlend 等の
+        /// @note 変更が既存地形へ反映されなかった。パラメータ抽出は安価（map 参照のみ）なので毎フレーム
+        /// @note 読み直し、マテリアル編集を即座に地形へ反映する。Deferred 地形は CB 経由でこれらを使う。
         RebuildCBParams();
         terrain.materialParamDirty = false;
 
-        // レイヤーマテリアルのテクスチャパス署名を計算し、変化したときだけテクスチャを再構築する。
-        // WHY: GPU 再アップロードは高価なので毎フレームは避けつつ、Material でテクスチャを差し替えたら反映する。
-        size_t texSig = 1469598103934665603ull; // FNV-1a offset basis
+        /// @note レイヤーマテリアルのテクスチャパス署名を計算し、変化したときだけテクスチャを再構築する。
+        /// @note GPU 再アップロードは高価なので毎フレームは避けつつ、Material でテクスチャを差し替えたら反映する。
+        /// @note FNV-1a offset basis
+        size_t texSig = 1469598103934665603ull;
         for (int li = 0; li < 4; ++li) {
             const asset::MaterialAsset* m = layerMats[li];
             auto mixPath = [&](const char* key) {
@@ -756,7 +755,8 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                     if (it != m->textures.end())
                         for (unsigned char c : it->second) { texSig ^= c; texSig *= 1099511628211ull; }
                 }
-                texSig ^= 0x9Eu; texSig *= 1099511628211ull; // レイヤー/キー境界
+                /// @note レイヤー/キー境界
+                texSig ^= 0x9Eu; texSig *= 1099511628211ull;
             };
             mixPath("diffuse");
             mixPath("normal");
@@ -769,8 +769,8 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index) || texChanged;
         if (needTexRebuild) {
             auto& cachedTextures = g_texCache[eid.index];
-            // WHY: ペイント更新のたびに生成 splatmap を上書きすると旧 GPU Texture が残るため、
-            //      パスキャッシュで共有されない所有テクスチャだけを再構築前に解放する。
+            /// @note ペイント更新のたびに生成 splatmap を上書きすると旧 GPU Texture が残るため、
+            /// @note パスキャッシュで共有されない所有テクスチャだけを再構築前に解放する。
             if (cachedTextures.splatmap.IsValid() && cachedTextures.splatmap != s_splatFallback)
                 resources.Release(cachedTextures.splatmap);
             cachedTextures = BuildTextureSet(layerMats, terrain, resources,
@@ -789,21 +789,21 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                                       : TerrainObjectCB{};
         terrainCBData.worldMatrix = world;
         terrainCBData.wvpMatrix   = jitteredVP * world;
-        // 天候はフレームごとに動くので、レイヤーパラメータのキャッシュには載せない。
+        /// @note 天候はフレームごとに動くので、レイヤーパラメータのキャッシュには載せない。
         terrainCBData.weather = { weather.wetness, weather.darkening, weather.puddleAmount, 0.0f };
 
-        // WHY: TerrainObjectCB は全チャンクで同一内容のため、チャンクごとに Update するのは無駄。
+        /// @note TerrainObjectCB は全チャンクで同一内容のため、チャンクごとに Update するのは無駄。
         resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
 
         for (int cz = 0; cz < chunkCountZ; ++cz) {
             for (int cx = 0; cx < chunkCountX; ++cx) {
                 const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, neighbors, resources);
 
-                // 地形チャンクはそれぞれ独立にカリングされる描画候補なので、
-                // メッシュと同じ粒度で統計に数える。
+                /// @note 地形チャンクはそれぞれ独立にカリングされる描画候補なので、
+                /// @note メッシュと同じ粒度で統計に数える。
                 ++ctx.statsTotalObjects;
-                // カメラの Frustum Culling を切っている間はチャンクも落とさない。
-                // WHY: メッシュだけ全部出て地形だけ消えると、切り分けの道具として成立しない。
+                /// @note カメラの Frustum Culling を切っている間はチャンクも落とさない。
+                /// @note メッシュだけ全部出て地形だけ消えると、切り分けの道具として成立しない。
                 if (ctx.frustumCullingEnabled &&
                     !IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax)) {
                     ++ctx.statsFrustumCulled;
@@ -824,14 +824,16 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 const float chunkWorldSize = static_cast<float>(terrain.chunkSize) * terrain.cellSize;
                 const float d0 = chunkWorldSize * 2.0f;
                 const float d1 = chunkWorldSize * 6.0f;
-                const int lod = (distSq < d0 * d0) ? 0
-                              : (distSq < d1 * d1) ? 1
-                              : 2;
+                const auto* fiber=scene.GetComponent<FiberComponent>(eid);
+                /// @note 繊維の根元は最高解像度の高さに固定するため、被覆地形も同じ三角形を使う。
+                const bool fiberSurface=fiber && fiber->m_enabled && !fiber->m_materialPath.empty();
+                const int lod = fiberSurface ? 0 : (distSq < d0 * d0) ? 0
+                              : (distSq < d1 * d1) ? 1 : 2;
 
                 renderer::DrawCall call;
                 call.vertexBuffer  = chunk.vertexBuffer;
                 call.indexBuffer   = chunk.indexBufferLOD[lod];
-                // Deferred: GBuffer 書き込みシェーダ。Forward: 自前ライティングシェーダ。
+                /// @note Deferred: GBuffer 書き込みシェーダ。Forward: 自前ライティングシェーダ。
                 call.shader        = m_mode == TerrainDrawMode::GBuffer ? terrainGBufferShader
                                                                         : terrainShader;
                 call.pipelineState = (settings && settings->IsWireframe()) ? terrainWireframePSO : terrainPSO;
@@ -843,7 +845,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 call.constantBuffers[1] = terrainCBH;
                 call.constantBuffers[3] = lightCB;
                 call.constantBuffers[4] = shadowCB;
-                // b8: 画面空間 AO / 接触影の強度。Forward の地形がこれを読む。
+                /// @note b8: 画面空間 AO / 接触影の強度。Forward の地形がこれを読む。
                 call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
                 BindForwardShadingResources(call, ctx);
 
@@ -868,7 +870,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     }
 }
 
-// ─── SubmitTerrainShadowCasters ───────────────────────────────────────────
+/// @name SubmitTerrainShadowCasters
 
 void SubmitTerrainShadowCasters(
     RenderPassContext&                            ctx,
@@ -878,8 +880,8 @@ void SubmitTerrainShadowCasters(
     renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB,
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB)
 {
-    // WHY: ライト種別・shadow atlas・cascade の選択は ShadowPass 側に閉じ込め、
-    //      こちらは「指定されたライト視錐台へ描けるチャンクを提出する」だけにする。
+    /// @note ライト種別・shadow atlas・cascade の選択は ShadowPass 側に閉じ込め、
+    /// @note こちらは「指定されたライト視錐台へ描けるチャンクを提出する」だけにする。
     if (!shadowShader.IsValid() || !pipelineState.IsValid())
         return;
 
@@ -898,9 +900,9 @@ void SubmitTerrainShadowCasters(
         math::Matrix4 worldInvTranspose;
     };
 
-    // WHY: View<TerrainComponent, Transform> はエンティティ ID を返さないため、以前は
-    //      コンポーネントのアドレス一致で ID を逆引きしていた (地形 1 個につき全地形を走査)。
-    //      エンティティ側から引けば逆引きは要らず、O(n²) が消える。
+    /// @note View<TerrainComponent, Transform> はエンティティ ID を返さないため、以前は
+    /// @note コンポーネントのアドレス一致で ID を逆引きしていた (地形 1 個につき全地形を走査)。
+    /// @note エンティティ側から引けば逆引きは要らず、O(n²) が消える。
     for (EntityID eid : scene.GetEntities<TerrainComponent>()) {
         auto* terrainPtr = scene.GetComponent<TerrainComponent>(eid);
         auto* gameObject = scene.GetGameObject(eid);
@@ -943,13 +945,15 @@ void SubmitTerrainShadowCasters(
                 if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
-                // シャドウ用は 1 段粗い LOD (格子ステップ 2 = 三角形数 1/4) を使う。
-                // WHY: 影の形はシャドウマップのテクセルと PCF カーネルで既に鈍っており、
-                //      地形の最密メッシュを光源視点でもう一度流しても輪郭は変わらない。
-                //      落ちるのは頂点処理と極小三角形のラスタライズだけなので、
-                //      見た目を保ったまま地形シャドウのコストを大きく削れる。
-                // NOTE: 粗い LOD が未生成のチャンクは LOD0 へフォールバックする。
-                const int lod = (chunk.indexCountLOD[1] > 0 && chunk.indexBufferLOD[1].IsValid()) ? 1 : 0;
+                /// @note シャドウ用は 1 段粗い LOD (格子ステップ 2 = 三角形数 1/4) を使う。
+                /// @note 影の形はシャドウマップのテクセルと PCF カーネルで既に鈍っており、
+                /// @note 地形の最密メッシュを光源視点でもう一度流しても輪郭は変わらない。
+                /// @note 落ちるのは頂点処理と極小三角形のラスタライズだけなので、
+                /// @note 見た目を保ったまま地形シャドウのコストを大きく削れる。
+                /// @note 粗い LOD が未生成のチャンクは LOD0 へフォールバックする。
+                const auto* fiber=gameObject->GetComponent<FiberComponent>();
+                const bool fiberSurface=fiber && fiber->m_enabled && !fiber->m_materialPath.empty();
+                const int lod = !fiberSurface && chunk.indexCountLOD[1]>0 && chunk.indexBufferLOD[1].IsValid() ? 1 : 0;
 
                 renderer::DrawCall dc;
                 dc.vertexBuffer       = chunk.vertexBuffer;
@@ -967,7 +971,7 @@ void SubmitTerrainShadowCasters(
     }
 }
 
-// ─── TerrainSelectionMaskSystem ───────────────────────────────────────────
+/// @name TerrainSelectionMaskSystem
 
 void TerrainSelectionMaskSystem(RenderPassContext& ctx)
 {

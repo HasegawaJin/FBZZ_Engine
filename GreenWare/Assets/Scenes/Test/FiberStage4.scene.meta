@@ -1,0 +1,27 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Fiber (Fur / Grass)' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f003'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Fiber (Fur / Grass)' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f004'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f009'
+
+    [[editor.game_objects]]
+    component_order = [ 'Fiber (Fur / Grass)', 'Terrain' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f008'
+
+    [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f00c'
+
+[meta]
+guid = 'ef2ab3f9392b4d1085b3274dedff27f9'

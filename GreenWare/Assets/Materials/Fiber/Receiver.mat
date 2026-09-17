@@ -1,0 +1,8 @@
+# @file    Receiver.mat
+# @brief   繊維の投射影を観察する灰色の受影面。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+shader = 'guid:b8a759120fac41289126bed4eabc9a3d|Assets/Shaders/Material/Surface/Lit.hlsl'
+[params]
+albedo = [0.35,0.35,0.35,1.0]
+roughness = [0.9]

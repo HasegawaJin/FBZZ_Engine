@@ -1,0 +1,15 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Fiber (Fur / Grass)' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f008'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Fiber (Fur / Grass)' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f004'
+
+[meta]
+guid = 'b3b7a685abf24b8398d73bebf826bd4b'
