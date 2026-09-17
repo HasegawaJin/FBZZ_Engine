@@ -4,6 +4,7 @@
 /// @date    2026-09-15
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -51,7 +52,21 @@ public:
 };
 }
 
-class SceneManagerTest : public testkit::EngineFixture {};
+class SceneManagerTest : public testkit::EngineFixture {
+protected:
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        /// @note 本物の SystemScheduler は並列バッチをワーカーへ投げる。プールが無いと Submit が落ちる。
+        TaskSystem::Init(2);
+    }
+
+    void TearDown() override
+    {
+        TaskSystem::Shutdown();
+        EngineFixture::TearDown();
+    }
+};
 
 TEST_F(SceneManagerTest, TransitionDestroysPreviousScriptsBeforeStartingNextScene)
 {
