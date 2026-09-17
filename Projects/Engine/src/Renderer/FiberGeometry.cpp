@@ -163,7 +163,8 @@ int FiberLodShellCount(int maximum, int minimum, float distance, float nearDista
     return std::max(level, 1);
 }
 
-bool BuildFiberBlades(const Mesh& mesh, float density, float width, uint32_t seed, std::vector<FiberBladeRoot>& out)
+bool BuildFiberBlades(const Mesh& mesh, float density, float width, uint32_t seed, std::vector<FiberBladeRoot>& out,
+                      bool densityFromVertexAlpha)
 {
     if (mesh.isSkinned || mesh.cpuIndices.size() % 3 != 0 || mesh.cpuIndices.size() > 600000
         || !std::isfinite(density) || density <= 0 || !std::isfinite(width) || width <= 0) return false;
@@ -196,6 +197,11 @@ bool BuildFiberBlades(const Mesh& mesh, float density, float width, uint32_t see
         const auto& c = mesh.cpuVertices[mesh.cpuIndices[triangle*3+2]];
         const float u = std::sqrt(random()), v = random();
         const float wa = 1-u, wb = u*(1-v), wc = u*v;
+        if (densityFromVertexAlpha) {
+            /// @note A がほぼ 1 なら乱数を引かない。全面 1 のメッシュでは flag false と同じ根元になる。
+            const float alpha = a.color.w*wa + b.color.w*wb + c.color.w*wc;
+            if (alpha < 0.999f && random() >= alpha) continue;
+        }
         const auto root = a.position*wa + b.position*wb + c.position*wc;
         auto normal = a.normal*wa + b.normal*wb + c.normal*wc;
         normal = normal.LengthSq() > 1.0e-12f ? normal.Normalized() : math::Vector3{0,1,0};
