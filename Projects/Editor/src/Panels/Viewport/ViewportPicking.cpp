@@ -27,9 +27,7 @@ math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin
     const math::Matrix4 invVP = math::Matrix4::Inverse(
         ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix());
 
-    // 正投影の視線はすべて平行で、カメラ位置を通らない。原点はカーソル位置の近平面上の点。
-    // WHY 分けるか: Ray::FromNDC はカメラ位置を原点に固定するため、正投影では
-    //     画面中央以外のクリックが常に中央付近を貫くレイになり、まるで当たらない。
+    /// @note 正投影の視線は平行でカメラ位置を通らない。Ray::FromNDC は原点をカメラに固定するので、原点をカーソル下の近平面上へ置き直す。
     if (ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic) {
         math::Vector4 nearWorld = invVP * math::Vector4{ nx, ny, 0.0f, 1.0f };
         if (std::fabs(nearWorld.w) > 1e-6f) nearWorld = nearWorld * (1.0f / nearWorld.w);
@@ -78,7 +76,7 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
     const math::Vector3 position = PrefabDropPosition(ctx, viewportMin);
     const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath));
 
-    // .fbx は Unity と同じく直接ドロップ可能。未インポートならその場で自動インポートする。
+    /// @note .fbx は直接ドロップ可能。未インポートならその場で自動インポートする。
     std::string modelPath;
     if (ext == ".fbx") {
         modelPath = ResolveOrImportFbxModel(assetPath);
@@ -91,8 +89,7 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
         return true;
     }
 
-    // .mat のドロップは UpdateMaterialDragPreview / CommitMaterialDragPreview 側で
-    // ホバープレビュー付きで処理するため、ここでは扱わない。
+    /// @note .mat は UpdateMaterialDragPreview / CommitMaterialDragPreview がホバープレビュー付きで扱う。
     if (ext == ".mat") return false;
 
     if (!IsInstantiableAssetExtension(ext)) return false;
@@ -116,17 +113,14 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
     float           bestT        = 1e30f;
     scene::EntityID bestFallback = scene::EntityID::INVALID;
     float           bestFallbackT = 1e30f;
-    float           bestFallbackDistSq = 1e30f; // カーソルからの画面距離^2 (主キー)
+    float           bestFallbackDistSq = 1e30f;
     scene::EntityID iconHit      = scene::EntityID::INVALID;
     float           iconBestDistSq = 1e30f;
-    // 三角形の厳密ヒットが取れなかった細かい/薄いオブジェクト用の救済ヒット。
-    // WHY: 遠くのフェンス支柱や小道具は画面上の投影が数ピクセルしかなく、
-    //      ピクセル単位の三角形レイキャストではまず当たらない。バウンディング球を
-    //      画面空間へ投影し、最低 kMinClickPx の当たり半径を保証することで
-    //      Unity のコライダーピッキング相当の「多少それても拾ってくれる」体験にする。
+    /// @note 三角形ヒットが取れない細い/遠い物の救済。バウンディング球を画面へ投影し、最低 kMinClickPx の当たり半径を保証する。
+    /// @note 救済・フォールバックの順位は «カーソルとの画面距離» が主キー、深度 t は同着時だけ。t 主キーだと密集した子の先頭が固定で選ばれていた。
     scene::EntityID nearMissHit       = scene::EntityID::INVALID;
-    float           nearMissBestDistSq = 1e30f; // カーソルからの画面距離^2 (主キー)
-    float           nearMissBestT      = 1e30f; // 同距離の場合のみ深度で決着
+    float           nearMissBestDistSq = 1e30f;
+    float           nearMissBestT      = 1e30f;
 
     auto transformPoint = [](const math::Matrix4& m, const math::Vector3& p) {
         math::Vector4 v = m * math::Vector4{ p.x, p.y, p.z, 1.0f };
@@ -134,7 +128,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         return math::Vector3{ v.x, v.y, v.z };
     };
 
-    // レイと球の交差 (原点が球内でもヒット扱い)。三角形総当たり前の事前カットに使う。
+    /// @note レイと球の交差 (原点が球内でもヒット)。三角形総当たり前の事前カット。
     auto sphereHit = [&ray](const math::Vector3& c, float r) {
         const math::Vector3 toC = { c.x - ray.origin.x, c.y - ray.origin.y, c.z - ray.origin.z };
         if (toC.Length() <= r) return true;
@@ -161,23 +155,19 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
             float t = 0.0f;
             if (!ray.IntersectTriangle(v0, v1, v2, t)) continue;
 
+            /// @note 僅差 (親子で重なるジオメトリ) は走査順に引っ張られないよう、Unity と同じく子孫側を優先する。
             if (t < bestT) {
-                // ほぼ同距離 (親子で重なる/重複したジオメトリ) の場合、単純な t 比較だと
-                // GameObjects() の走査順 (多くの場合、親が先に生成される) に選択が
-                // 引っ張られてしまう。Unity と同じく、僅差の場合は子孫側を優先する。
                 const float eps = (std::max)(bestT, t) * 1e-4f + 1e-5f;
                 if (best.IsValid() && (bestT - t) < eps) {
                     auto* currentGo = ctx.activeScene->GetGameObject(best);
                     auto* newGo     = ctx.activeScene->GetGameObject(id);
                     if (currentGo && newGo && currentGo->IsDescendantOf(*newGo)) {
-                        // 現在の best が新候補の子孫 = 既に子供が勝っている。維持する。
                         continue;
                     }
                 }
                 bestT = t;
                 best  = id;
             } else if (best.IsValid() && best != id) {
-                // best の方が僅かに近いが、新候補がその子孫なら子を優先して奪う。
                 const float eps = (std::max)(bestT, t) * 1e-4f + 1e-5f;
                 if ((t - bestT) < eps) {
                     auto* currentGo = ctx.activeScene->GetGameObject(best);
@@ -191,9 +181,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
     };
 
-    // メッシュのバウンディング球 (ローカル) をワールドへ変換して事前カットする。
-    // WHY: 三角形総当たりは大規模シーンでクリックごとにヒッチを起こす。
-    //      球テストで外れたメッシュの頂点走査を丸ごと省略する。
+    /// @note 三角形総当たりは大規模シーンでクリックごとにヒッチする。球で外れたメッシュの頂点走査を丸ごと省く。
     auto testMeshWithBounds = [&](const renderer::Mesh& mesh,
                                   const auto& verts,
                                   const math::Matrix4& world,
@@ -210,8 +198,6 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         testMesh(verts, mesh.cpuIndices, world, id);
     };
 
-    // 三角形ヒットが得られなかった場合の救済判定。バウンディング球の中心・半径を
-    // スクリーン空間へ投影し、最低 kMinClickPx px の当たり判定円をカーソルに与える。
     auto considerNearMiss = [&](const math::Vector3& centerLocal, float radiusLocal,
                                 const math::Matrix4& world, const scene::Transform& tf,
                                 scene::EntityID id) {
@@ -243,12 +229,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         const float t = math::Vector3::Dot(toCenter, ray.direction);
         if (t <= 0.0f) return;
 
-        // 主キーは「カーソルにどれだけ近いか (画面距離)」。深度 (t) は同着に近い場合の
-        // タイブレークにのみ使う。以前は t だけで比較していたため、複数の子オブジェクトが
-        // 近接しているとカーソル位置に関係なく常にカメラへ最も近い1個 (=多くの場合、
-        // 生成順が早く GameObjects() の先頭に近いオブジェクト) が固定的に選ばれてしまい、
-        // 「一番上の子が強制選択される」ように見えていた。
-        constexpr float kDistTieToleranceSq = 4.0f * 4.0f; // 4px 以内は同着とみなす
+        constexpr float kDistTieToleranceSq = 4.0f * 4.0f;
         const bool closerOnScreen = distSq < nearMissBestDistSq - kDistTieToleranceSq;
         const bool tiedOnScreen   = distSq < nearMissBestDistSq + kDistTieToleranceSq;
         if (closerOnScreen || (tiedOnScreen && t < nearMissBestT)) {
@@ -258,13 +239,32 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
     };
 
+    /// @note アイコンはスクリーン固定サイズなので 3D レイでなくアイコン中心との画面距離で判定する。描画と同じ表・同じ投影結果を使う。
+    std::vector<SceneIconInstance> icons;
+    CollectSceneIcons(ctx, viewportMin, vpSize, icons);
+    std::vector<uint64_t> iconOwners;
+    iconOwners.reserve(icons.size());
+    for (const SceneIconInstance& icon : icons) {
+        iconOwners.push_back((static_cast<uint64_t>(icon.id.index) << 32) | icon.id.generation);
+        const float hitRadius = SceneIconHitRadius(icon);
+        const float dx = mouse.x - icon.screenPos.x;
+        const float dy = mouse.y - icon.screenPos.y;
+        const float distSq = dx * dx + dy * dy;
+        if (distSq < hitRadius * hitRadius && distSq < iconBestDistSq) {
+            iconBestDistSq = distSq;
+            iconHit = icon.id;
+        }
+    }
+    std::sort(iconOwners.begin(), iconOwners.end());
+
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (!go.activeInHierarchy()) continue;
 
         auto* mr  = go.GetComponent<scene::MeshRenderer>();
         auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>();
-        auto* light  = go.GetComponent<scene::LightComponent>();
-        auto* camera = go.GetComponent<scene::CameraComponent>();
+        const scene::EntityID goId = go.GetID();
+        const bool hasIcon = std::binary_search(iconOwners.begin(), iconOwners.end(),
+            (static_cast<uint64_t>(goId.index) << 32) | goId.generation);
         const math::Matrix4 world = go.transform.GetWorldMatrix();
 
         if (mr && mr->mesh) {
@@ -273,49 +273,24 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
 
         if (smr && smr->model) {
-            // どの submesh に当たっても選ばれるのはこの Renderer の GameObject 自身。
-            // 描画されていない (非表示スロットの) submesh は判定から外す。
-            // mi はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
+            /// @note 非表示スロットの submesh は判定から外す。mi はローカルスロット番号でマテリアルスロットと一致する。
+            /// @note スキンは動きでバインドポーズの外へ出るので、事前カットの球を 2 倍に膨らませる。
             const auto* mat = go.GetComponent<scene::MaterialComponent>();
             for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
                 const renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                 if (!meshPtr) continue;
                 if (mat && !mat->SlotAt(mi).visible) continue;
-                // WHY: スキンメッシュはアニメーションでバインドポーズより外へ動くため、
-                //      バウンディング球を 2 倍に膨らませて事前カットの取りこぼしを防ぐ。
                 testMeshWithBounds(*meshPtr, meshPtr->cpuSkinnedVertices, world, go.transform, go.GetID(), 2.0f);
                 considerNearMiss(meshPtr->boundsCenter, meshPtr->boundsRadius, world, go.transform, go.GetID());
             }
         }
 
-        // ライト / カメラはスクリーン固定サイズのアイコンで描かれるため、
-        // 3D レイではなくアイコン中心とのスクリーン距離でヒットテストする (Unity 互換)。
-        if (light || camera) {
-            ImVec2 sp;
-            if (WorldToScreen(go.transform.position, ctx, viewportMin, vpSize, sp)) {
-                constexpr float kIconRadius = 14.0f;
-                const float dx = mouse.x - sp.x;
-                const float dy = mouse.y - sp.y;
-                const float distSq = dx * dx + dy * dy;
-                if (distSq < kIconRadius * kIconRadius && distSq < iconBestDistSq) {
-                    iconBestDistSq = distSq;
-                    iconHit = go.GetID();
-                }
-            }
-        }
-
-        // メッシュもアイコンも無い空 GO だけ、原点近くの小球でフォールバック選択を許す。
-        // WHY: 以前は全 GO を球判定していたため、メッシュの背後にある無関係な空 GO が
-        //      クリックで選ばれてしまうことがあった。
-        if (!mr && !smr && !light && !camera) {
-            const math::Vector3 center = go.transform.position;
+        /// @note メッシュもアイコンも無い GO だけ原点の小球でフォールバック選択を許す。全 GO を球判定するとメッシュの背後の空 GO が選ばれる。
+        if (!mr && !smr && !hasIcon) {
+            const math::Vector3 center = go.transform.worldPosition;
             const float radius = (std::max)(0.5f, go.transform.worldScale.Length() / 3.0f);
             float t = 0.0f;
             if (ray.IntersectSphere(center, radius, t) && t > 0.0f) {
-                // ランク付けの主キーは「カーソルとの画面距離」。以前は t (カメラからの
-                // 距離) だけで比較していたため、空 GO の子が密集している場面(スポーン地点、
-                // アイテムスロット等)では、クリック位置に関係なく常にカメラへ最も近い1個
-                // (=多くの場合、生成順が早いオブジェクト) が固定的に選ばれてしまっていた。
                 ImVec2 sp;
                 if (WorldToScreen(center, ctx, viewportMin, vpSize, sp)) {
                     const float dx = mouse.x - sp.x;
@@ -330,7 +305,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
                         bestFallback       = go.GetID();
                     }
                 } else if (t < bestFallbackT) {
-                    // 画面外 (カメラ背面等) への投影に失敗した場合は従来通り深度のみで比較する。
+                    /// @note カメラ背面などで投影できなければ深度だけで比べる。
                     bestFallbackT = t;
                     bestFallback  = go.GetID();
                 }
@@ -338,8 +313,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
     }
 
-    // Terrain: DDA レイキャストで正確に拾う (TerrainTool の実装を共用)。
-    // ツールで編集中はブラシ操作を優先し、選択を変えない。
+    /// @note Terrain は TerrainTool の DDA レイキャストを共用する。ツール編集中はブラシを優先して選択を変えない。
     if (ctx.terrainTool && !ctx.terrainTool->IsActive()) {
         math::Vector3 hitWorld{};
         scene::GameObject* hitGO = nullptr;
@@ -355,7 +329,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
     }
 
-    // Water: 中心原点 ±extent/2 の水平面としてヒットテストする。
+    /// @note Water は中心原点 ±extent/2 の水平面として判定し、ローカル t をワールド距離へ換算して比べる。
     for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::WaterComponent>()) {
         auto* water = ctx.activeScene->GetComponent<scene::WaterComponent>(eid);
         auto* go    = ctx.activeScene->GetGameObject(eid);
@@ -371,7 +345,6 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         const float lz = lo.z + ld.z * tLocal;
         if (std::abs(lx) > water->extentX * 0.5f || std::abs(lz) > water->extentZ * 0.5f) continue;
 
-        // ローカル t をワールド距離へ換算して他の候補と比較する
         const math::Vector3 hitLocal = { lx, 0.0f, lz };
         const math::Vector3 hitWorld = transformPoint(go->transform.GetWorldMatrix(), hitLocal);
         const math::Vector3 toHit = {
@@ -383,7 +356,6 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
     }
 
-    // 三角形の厳密ヒットが無ければ、画面空間の救済判定 (小さいオブジェクト) を採用する。
     if (!best.IsValid() && nearMissHit.IsValid()) {
         best = nearMissHit;
         bestT = nearMissBestT;
@@ -394,7 +366,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         bestT = bestFallbackT;
     }
 
-    // アイコンはスクリーン固定サイズで最前面に描かれるため、メッシュより優先する
+    /// @note アイコンは最前面に描かれるのでメッシュより優先する。
     if (iconHit.IsValid())
         best = iconHit;
 
@@ -403,27 +375,26 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
 
 namespace {
 
-// マテリアルを受け取れるのはメッシュを描画するオブジェクトだけ。
-// WHY: ピッキングはライト等のアイコンにもヒットするため、そのまま適用すると
-//      見た目が何も変わらない MaterialComponent がライトに生えてしまう。
+/// @return メッシュを描くオブジェクトだけ true。
+/// @note ピッキングはアイコンにも当たるので、弾かないと見た目の変わらない MaterialComponent がライト等に生える。
 bool AcceptsMaterialDrop(scene::GameObject& go)
 {
     return go.GetComponent<scene::MeshRenderer>() != nullptr
         || go.GetComponent<scene::SkinnedMeshRenderer>() != nullptr;
 }
 
-// .mat のパスを GameObject へ適用する (プレビュー / 確定 / Undo で共用)。
+/// @brief .mat のパスを適用する (プレビュー / 確定 / Undo で共用)。
+/// @note ハンドルとキャッシュを捨て、次フレームの SyncMaterial に新パスを解決させる。
 void AssignMaterialPath(scene::GameObject& go, const std::string& materialPath)
 {
     auto* mc = go.GetComponent<scene::MaterialComponent>();
     if (!mc) mc = &go.AddComponent<scene::MaterialComponent>();
     mc->materialPath = materialPath;
-    // ハンドルとキャッシュを無効化して次フレームの SyncMaterial に新パスを再解決させる。
     mc->materialAsset = {};
     mc->material.reset();
 }
 
-// 仮適用を巻き戻す。元々 MaterialComponent が無かった場合はコンポーネントごと取り除く。
+/// @brief 仮適用を巻き戻す。元々 MaterialComponent が無ければコンポーネントごと取り除く。
 void RevertMaterialPreview(EditorContext& ctx, MaterialDragPreviewState& state)
 {
     if (state.applied && ctx.activeScene) {
@@ -466,7 +437,6 @@ void UpdateMaterialDragPreview(EditorContext& ctx,
             hovered = scene::EntityID::INVALID;
     }
 
-    // 同じ対象へ同じ .mat を仮適用済みなら何もしない (毎フレームの再解決を避ける)。
     if (state.applied && state.target == hovered && state.materialPath == materialPath)
         return;
 
@@ -504,7 +474,6 @@ bool CommitMaterialDragPreview(EditorContext& ctx, MaterialDragPreviewState& sta
     const std::string     oldPath     = state.previousPath;
     const bool            hadComponent = state.hadComponent;
 
-    // 仮適用の状態をそのまま確定させる (見た目はドラッグ中から変わらない)。
     state.applied = false;
     state.target  = scene::EntityID::INVALID;
     state.previousPath.clear();
@@ -539,7 +508,6 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     const scene::EntityID best = RaycastEntityAtMouse(ctx, viewportMin);
 
     if (best.IsValid() && !ctx.IsLocked(best)) {
-        // Ctrl+クリック: 未選択なら追加、選択済みなら解除 (Unity 互換のトグル)
         if (ImGui::GetIO().KeyCtrl) ToggleSelection(ctx, best);
         else                        SelectEntity(ctx, best);
         return true;
@@ -560,7 +528,6 @@ void RectSelectEntities(EditorContext& ctx,
     const ImVec2 rectMin = { (std::min)(rectA.x, rectB.x), (std::min)(rectA.y, rectB.y) };
     const ImVec2 rectMax = { (std::max)(rectA.x, rectB.x), (std::max)(rectA.y, rectB.y) };
 
-    // Ctrl なしは置き換え、Ctrl ありは追加 (Unity の矩形選択と同じ)
     std::vector<scene::EntityID> picked;
     if (ImGui::GetIO().KeyCtrl) picked = ctx.selectedEntities;
 
@@ -570,15 +537,14 @@ void RectSelectEntities(EditorContext& ctx,
         if (ctx.IsLocked(id)) continue;
 
         ImVec2 sp;
-        if (!WorldToScreen(go.transform.position, ctx, vpMin, vpSize, sp)) continue;
+        if (!WorldToScreen(go.transform.worldPosition, ctx, vpMin, vpSize, sp)) continue;
         if (sp.x < rectMin.x || sp.x > rectMax.x || sp.y < rectMin.y || sp.y > rectMax.y) continue;
 
         if (std::find(picked.begin(), picked.end(), id) == picked.end())
             picked.push_back(id);
     }
 
-    // 矩形選択は「今見えている範囲を囲った」操作なので、Hierarchy を先頭要素へ
-    // 飛ばさない (数十件を選んだ直後にツリーが跳ねる方が邪魔になる)。
+    /// @note 矩形選択では Hierarchy を先頭要素へ飛ばさない。数十件を選んだ直後にツリーが跳ねる方が邪魔になる。
     SelectEntities(ctx, std::move(picked), SelectionReveal::Skip);
 }
 

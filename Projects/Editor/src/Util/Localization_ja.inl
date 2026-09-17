@@ -1,19 +1,18 @@
-// @file    Localization_ja.inl
-// @brief   エディター UI の日本語訳。原文 (英語) が鍵。
-// @author  Hasegawa Jin
-// @date    2026-09-08
-//
-// Localization.cpp からのみ include される Pair の初期化子リスト。
-//
-// 訳を足すとき:
-//   1. 原文は**呼び出し側の文字列と 1 文字も違わないこと**。空白・"..." ・大文字小文字まで
-//      一致しないと引けない (鍵は原文そのものなので、綴りが違えば別の項目になる)。
-//   2. 訳が無い文字列は英語のまま出る。壊れはしないので、埋まっていない箇所は
-//      Project Settings > Editor の «未訳» 一覧で確認して順に足していく。
-//   3. ウィジェットのラベルは Localization.cpp が "###原文" を付ける。ここには
-//      訳だけを書くこと。
+/// @file    Localization_ja.inl
+/// @brief   エディター UI の日本語訳。原文 (英語) が鍵。
+/// @author  Hasegawa Jin
+/// @date    2026-09-08
+///
+/// Localization.cpp からのみ include される Pair の初期化子リスト。
+///
+/// 訳を足すとき:
+///   1. 原文は**呼び出し側の文字列と 1 文字も違わないこと**。空白・"..." ・大文字小文字まで
+///      一致しないと引けない (鍵は原文そのものなので、綴りが違えば別の項目になる)。
+///   2. 訳が無い文字列は英語のまま出る。壊れはしないので、埋まっていない箇所は
+///      Project Settings > Editor の «未訳» 一覧で確認して順に足していく。
+///   3. ウィジェットのラベルは Localization.cpp が "###原文" を付ける。ここには
+///      訳だけを書くこと。
 
-// ── パネル ─────────────────────────────────────────────────────────────────
 { "AI Settings",               "AI 設定" },
 { "Analysis",                  "解析" },
 { "Animation Graph",           "アニメーショングラフ" },
@@ -43,7 +42,6 @@
 { "Scene View",                "シーンビュー" },
 { "Game View",                 "ゲームビュー" },
 
-// ── メニューの見出し ────────────────────────────────────────────────────────
 { "File",                      "ファイル" },
 { "Edit",                      "編集" },
 { "View",                      "表示" },
@@ -67,7 +65,6 @@
 { "Terrain",                   "地形" },
 { "AssetBrowser",              "" },
 
-// ── ファイル操作 ────────────────────────────────────────────────────────────
 { "New Scene",                 "新規シーン" },
 { "Open Scene...",             "シーンを開く..." },
 { "Save",                      "保存" },
@@ -81,7 +78,6 @@
 { "Open Asset Import Settings", "インポート設定を開く" },
 { "Exit",                      "終了" },
 
-// ── 編集操作 ────────────────────────────────────────────────────────────────
 { "Undo",                      "元に戻す" },
 { "Redo",                      "やり直す" },
 { "Copy",                      "コピー" },
@@ -102,7 +98,6 @@
 { "Move Component Up",         "コンポーネントを上へ" },
 { "Move Component Down",       "コンポーネントを下へ" },
 
-// ── 表示・カメラ ────────────────────────────────────────────────────────────
 { "Frame Selected",            "選択を画面に収める" },
 { "Toggle Orthographic",       "平行投影を切り替え" },
 { "View Front",                "正面" },
@@ -120,7 +115,6 @@
 { "Command Palette",           "コマンドパレット" },
 { "Shortcut List",             "ショートカット一覧" },
 
-// ── 再生 ────────────────────────────────────────────────────────────────────
 { "Play",                      "再生" },
 { "Play / Stop",               "再生 / 停止" },
 { "Pause",                     "一時停止" },
@@ -128,8 +122,8 @@
 { "Stop",                      "停止" },
 { "Reload Scripts",            "スクリプトを再読み込み" },
 { "Hot Reload",                "ホットリロード" },
+{ "Hot Reload Sound",          "ホットリロード完了音" },
 
-// ── ギズモとスナップ ────────────────────────────────────────────────────────
 { "Gizmo: Move",               "ギズモ: 移動" },
 { "Gizmo: Rotate",             "ギズモ: 回転" },
 { "Gizmo: Scale",              "ギズモ: 拡縮" },
@@ -137,13 +131,20 @@
 { "Gizmo: Pivot / Center",     "ギズモ: ピボット / 中心" },
 { "Toggle Grid Snap",          "グリッドスナップを切り替え" },
 
-// ── デバッグ表示 ────────────────────────────────────────────────────────────
 { "Grid",                      "グリッド" },
 { "Show Grid",                 "グリッドを表示" },
 { "Light Range",               "ライトの範囲" },
 { "Show Light Range",          "ライトの範囲を表示" },
-{ "VFX Force Fields / Emitters", "VFX の力場 / エミッター" },
+{ "VFX Emitters",              "VFX エミッター" },
 { "Show VFX Gizmos",           "VFX ギズモを表示" },
+{ "Flow Fields",               "流れの場" },
+{ "Show Flow Fields",          "流れの場を表示" },
+{ "Flow Samples",              "流速のサンプル" },
+{ "Show Flow Samples",         "流速のサンプルを表示" },
+{ "Physics Volumes",           "物理ボリューム" },
+{ "Show Physics Volumes",      "物理ボリュームを表示" },
+{ "Water Flow",                "水流" },
+{ "Show Water Flow",           "水流を表示" },
 { "Skeleton",                  "スケルトン" },
 { "Show Skeleton",             "スケルトンを表示" },
 { "Show Ragdoll",              "ラグドールを表示" },
@@ -175,7 +176,6 @@
 { "Wireframe Unlit",           "ワイヤーフレーム (ライトなし)" },
 { "Set View Mode",             "描画モードを設定" },
 
-// ── ツール ──────────────────────────────────────────────────────────────────
 { "Map Editing Mode",          "マップ編集モード" },
 { "Terrain Tool",              "地形ツール" },
 { "Water Tool",                "水面ツール" },
@@ -206,7 +206,6 @@
 { "Set SFX Wave",              "SFX の波形を設定" },
 { "Export SFX to .wav",        "SFX を .wav へ書き出し" },
 
-// ── Project Settings パネル ────────────────────────────────────────────────
 { "Application",               "アプリケーション" },
 { "Graphics",                  "グラフィックス" },
 { "Physics",                   "物理" },
@@ -247,18 +246,170 @@
   "訳したいパネルを開いてから、ここに出た原文を Localization_ja.inl へ足してください。" },
 { "Copy to Clipboard",         "クリップボードへコピー" },
 
-// ── コンポーネントのカード名: 訳さない ──────────────────────────────────────
-// Transform / Rigid Body / Mesh Renderer は «読む文章» ではなく «打つ・検索する
-// 識別子» で、GetComponent<RigidBodyComponent>() ・.scene の中身・エラーメッセージ・
-// 資料と同じ綴りである価値が、訳す価値より大きい。「メッシュレンダラー」は
-// "Mesh Renderer" より長いだけで、分かりやすさは増えない。
-//
-// 同じ理由でエンジン / グラフィックスの専門語 (Bloom, Exposure, Roughness, Metallic,
-// LOD, IBL, NavMesh, TAA, Substep, Compliance …) も英語のまま置く。訳すのは
-// それらを «説明する文章» の方 ── 用語を訳すと文献やコードと照合できなくなる。
-//
-// 訳を "" にすると «英語のままにすると決めた» 印になり、未訳リストに出なくなる。
-// 決めたことを書き残しておかないと、次に見た人が同じ判断をやり直すことになる。
+/// @name Project Settings: 枠・保存・検索
+{ "Preferences",               "環境設定" },
+{ "PROJECT",                   "プロジェクト" },
+{ "EDITOR",                    "エディター" },
+{ "Frame rate, startup scenes, screen size and cursor images.", "フレームレート・起動シーン・画面サイズ・カーソル画像。" },
+{ "Rendering pipeline, shadows and debug overlays.", "描画パイプライン・影・デバッグ表示。" },
+{ "Simulation rate, gravity and which layers collide.", "更新頻度・重力・レイヤー同士の衝突。" },
+{ "Game input bindings, saved to Input.inputactions.", "ゲーム入力のバインド。Input.inputactions に保存されます。" },
+{ "Master volume, voice limit and mixer buses.", "全体音量・同時発音数・ミキサーバス。" },
+{ "Names used to classify GameObjects.", "GameObject を分類する名前。" },
+{ "Defaults and presets for new FBX imports.", "FBX を取り込むときの既定値とプリセット。" },
+{ "Your personal editor settings, saved to editor_settings.toml.", "エディターの個人設定。editor_settings.toml に保存されます。" },
+{ "Search settings...",        "設定を検索..." },
+{ "Searches every section by name, description and value names (Ctrl+F).",
+  "全セクションを項目名・説明・値の名前で検索します (Ctrl+F)。" },
+{ "Saving...",                 "保存中..." },
+{ "Saved at",                  "保存済み" },
+{ "All changes are saved",     "変更はすべて保存済み" },
+{ "Saved automatically to editor_settings.toml", "editor_settings.toml に自動保存" },
+{ "Input bindings are saved",  "入力バインドは保存済み" },
+{ "Input bindings saved at",   "入力バインドを保存" },
+{ "Waiting for the rebind to finish before saving...", "リバインドの完了を待ってから保存します..." },
+{ "Could not save Input.inputactions", "Input.inputactions を保存できませんでした" },
+{ "Could not save ProjectSettings.toml", "ProjectSettings.toml を保存できませんでした" },
+{ "Retry",                     "再試行" },
+{ "Changes are saved automatically about a second after you stop editing.",
+  "編集の手を止めて約 1 秒後に自動で保存されます。" },
+{ "Right-click a value to reset it", "値を右クリックで既定値に戻せます" },
+{ "Open",                      "開く" },
+{ "No settings match",         "一致する設定はありません" },
+{ "Try a different word, or clear the search.", "別の語で探すか、検索を解除してください。" },
+{ "Clear Search",              "検索を解除" },
+{ "Reset to Default",          "既定値に戻す" },
+{ "Changed from the default. Right-click the value to reset it.", "既定値から変更されています。値を右クリックで戻せます。" },
+{ "Reset",                     "リセット" },
+
+/// @name Project Settings: 見出しと項目
+{ "Frame Rate",                "フレームレート" },
+{ "Target FPS",                "目標 FPS" },
+{ "Default Scene",             "既定シーン" },
+{ "Start Scene",               "開始シーン" },
+{ "Width",                     "幅" },
+{ "Height",                    "高さ" },
+{ "Hardware Cursor",           "ハードウェアカーソル" },
+{ "Hotspot",                   "ホットスポット" },
+{ "Images are loaded when Play starts.", "画像は Play 開始時に読み込まれます。" },
+{ "Pipeline",                  "パイプライン" },
+{ "Settings ignored by this pipeline", "このパイプラインで無効になる設定" },
+{ "Clustered Lights",          "クラスタライト" },
+{ "Cluster Distance",          "クラスタ距離" },
+{ "Cluster Heatmap",           "クラスタのヒートマップ" },
+{ "Force All Lights",          "全ライトを評価" },
+{ "View Mode",                 "表示モード" },
+{ "Player Options Preview",    "プレイヤー設定のプレビュー" },
+{ "Debug Overlays",            "デバッグ表示" },
+{ "Post processing is configured per area with a Post Process Volume and a Post Process Profile (.fzdata).",
+  "ポストプロセスは Post Process Volume と Post Process Profile (.fzdata) で場所ごとに設定します。" },
+{ "Atlas Resolution",          "アトラス解像度" },
+{ "Shadow Distance",           "影の距離" },
+{ "Cascades",                  "カスケード数" },
+{ "Split Lambda",              "分割ラムダ" },
+{ "Cascade Blend",             "カスケードのブレンド" },
+{ "Visualize Cascades",        "カスケードを色分け" },
+{ "Cascade Texel Density",     "カスケードのテクセル密度" },
+{ "PCSS Light Radius",         "PCSS の光源半径" },
+{ "Values owned by the in-game Options screen. Changes here are not saved.",
+  "ゲーム内の Option 画面が持つ値です。ここでの変更は保存されません。" },
+{ "Brightness",                "明るさ" },
+{ "Render Scale",              "描画スケール" },
+{ "Scene View Resolution",     "Scene View の解像度" },
+{ "Terrain Collision",         "地形コリジョン" },
+{ "AI Sensors",                "AI センサー" },
+{ "UI Rects",                  "UI 矩形" },
+{ "Decal Bounds",              "デカール範囲" },
+{ "Outline Width",             "輪郭の太さ" },
+{ "Outline Color",             "輪郭の色" },
+{ "Particle Budget",           "パーティクル上限" },
+{ "Particle Budget Count",     "パーティクル上限数" },
+{ "Simulation",                "シミュレーション" },
+{ "Fixed Rate",                "固定更新レート" },
+{ "Substeps",                  "サブステップ" },
+{ "Gravity",                   "重力" },
+{ "Reload from Disk",          "ディスクから再読込" },
+{ "Reset to Defaults...",      "既定に戻す..." },
+{ "Replace every binding with the engine defaults?", "すべてのバインドをエンジンの既定値に置き換えますか?" },
+{ "Waiting for input. Press the key or button to assign (Esc to cancel).",
+  "入力待ち。割り当てるキーかボタンを押してください (Esc で取消)。" },
+{ "< Press an input... (Esc to cancel) >", "< 入力してください... (Esc で取消) >" },
+{ "Preview",                   "プレビュー" },
+{ "Live Preview",              "ライブプレビュー" },
+{ "Test Vibration",            "振動テスト" },
+{ "No gamepads are connected.", "接続されているゲームパッドはありません。" },
+{ "Dead Zone",                 "デッドゾーン" },
+{ "Sensitivity",               "感度" },
+{ "Current Value",             "現在値" },
+{ "Positive (+1 while held)",  "正方向 (押している間 +1)" },
+{ "Negative (-1 while held)",  "負方向 (押している間 -1)" },
+{ "Analog (stick / mouse axis)", "アナログ (スティック / マウス軸)" },
+{ "Rebind",                    "割り当て" },
+{ "+ Add Binding",             "+ バインドを追加" },
+{ "Remove Axis",               "軸を削除" },
+{ "New axis name",             "新しい軸の名前" },
+{ "Add Axis",                  "軸を追加" },
+{ "Bindings",                  "バインド" },
+{ "Remove Action",             "アクションを削除" },
+{ "New action name",           "新しいアクションの名前" },
+{ "Add Action",                "アクションを追加" },
+{ "Output",                    "出力" },
+{ "Master Volume",             "マスター音量" },
+{ "Voice Limit",               "同時発音数" },
+{ "Active Voices",             "発音中" },
+{ "Mixer Buses",               "ミキサーバス" },
+{ "AudioSource Bus Name and audio.SetBusVolume() refer to these names.",
+  "AudioSource の Bus Name と audio.SetBusVolume() はここの名前を指します。" },
+{ "Parent",                    "親" },
+{ "Low-pass",                  "ローパス" },
+{ "Reverb",                    "残響" },
+{ "(output)",                  "(出力)" },
+{ "Remove bus",                "バスを削除" },
+{ "+ Add Bus",                 "+ バスを追加" },
+{ "Another tag has the same name.", "同じ名前のタグがあります。" },
+{ "New tag name",              "新しいタグの名前" },
+{ "Add Tag",                   "タグを追加" },
+{ "A tag with this name already exists.", "この名前のタグは既にあります。" },
+{ "Reset to Unity Preset...",  "Unity の既定に戻す..." },
+{ "Replace all tags with the Unity preset? Custom tags are removed.",
+  "すべてのタグを Unity の既定に置き換えますか? 追加したタグは消えます。" },
+{ "Replace all layer names with the Unity preset? Scenes keep their layer numbers.",
+  "すべてのレイヤー名を Unity の既定に置き換えますか? シーンのレイヤー番号はそのままです。" },
+{ "Source DCC",                "書き出し元ツール" },
+{ "Source Up Axis",            "書き出し元の上方向" },
+{ "Unit Scale",                "単位スケール" },
+{ "Generate Normals",          "法線を生成" },
+{ "Generate Tangents",         "接線を生成" },
+{ "Normal Map Convention",     "法線マップの形式" },
+{ "Texture Sidecars",          "テクスチャの .meta" },
+{ "Default Compression",       "既定の圧縮形式" },
+{ "No presets in Assets/.import_presets/.", "Assets/.import_presets/ にプリセットはありません。" },
+{ "Create one from the Import Settings dialog (right-click an FBX > Import with Settings...).",
+  "インポート設定ダイアログから作れます (FBX を右クリック > Import with Settings...)。" },
+{ "Settings",                  "設定" },
+{ "Use as Default",            "既定値にする" },
+{ "Copy this preset into FBX Defaults above.", "このプリセットを上の FBX の既定値へ写します。" },
+{ "Delete...",                 "削除..." },
+{ "Delete this preset file? This cannot be undone.", "このプリセットファイルを削除しますか? 元に戻せません。" },
+{ "Files whose name ends with these suffixes are skipped (built in):",
+  "名前がこれらで終わるファイルは取り込みません (組み込み):" },
+{ "Display Language",          "表示言語" },
+{ "Untranslated strings",      "未訳の文字列" },
+{ "Watch Scripts & Shaders",   "スクリプトとシェーダーを監視" },
+{ "Completion Sound",          "完了音" },
+{ "Scene Auto Save",           "シーンのオートセーブ" },
+{ "Enabled",                   "有効" },
+{ "Interval",                  "間隔" },
+{ "Next Auto Save",            "次のオートセーブ" },
+{ "Not scheduled (no unsaved changes)", "予定なし (未保存の変更なし)" },
+{ "Auto-saving the scene in %d s", "%d 秒後にシーンをオートセーブします" },
+{ "Auto-save will run when you finish the current edit...", "今の操作が終わったらオートセーブします..." },
+{ "Save Now",                  "今すぐ保存" },
+{ "Postpone",                  "延期" },
+
+/// @note Transform / Rigid Body / Mesh Renderer 等は «読む文章» でなく «打つ・検索する識別子» で、`GetComponent<RigidBodyComponent>()` ・.scene の中身・エラーメッセージ・資料と綴りを揃える価値が訳す価値より大きい。
+/// @note 同じ理由でエンジン / グラフィックスの専門語 (Bloom, Exposure, Roughness, Metallic, LOD, IBL, NavMesh, TAA, Substep, Compliance …) も英語のまま置く。訳すのはそれらを説明する文章の方 (用語を訳すと文献やコードと照合できなくなる)。
+/// @note 訳を "" にすると «英語のままにすると決めた» 印になり未訳リストに出なくなる。決めたことは書き残す。
 { "Transform",                 "" },
 { "Camera",                    "" },
 { "Light",                     "" },
@@ -280,7 +431,7 @@
 { "Cylinder Collider",         "" },
 { "Terrain Collider",          "" },
 { "Particle Emitter",          "" },
-{ "Particle Force Field",      "" },
+{ "Flow Field",                "" },
 { "Trail",                     "" },
 { "Mesh Trail",                "" },
 { "Decal",                     "" },
@@ -290,7 +441,11 @@
 { "Volumetric Cloud",          "" },
 { "Sky Renderer",              "" },
 { "Sun Moon Renderer",         "" },
-{ "Wind Zone",                 "" },
+{ "Ambient Wind",              "環境風" },
+{ "Scene Environment",         "シーン環境" },
+{ "Speed [m/s]",               "速さ [m/s]" },
+{ "Turbulence [m/s]",          "乱れ [m/s]" },
+{ "Pulse Frequency",           "脈動の速さ" },
 { "Water",                     "" },
 { "Volume",                    "" },
 { "Terrain Grid",              "" },
@@ -305,19 +460,8 @@
 { "Move Up",                   "上へ" },
 { "Move Down",                 "下へ" },
 
-// ── ユーザープロジェクトの語彙は、ここには置かない ─────────────────────────
-// GreenWare のフィールド名・グループ名 (溜め / のけぞり / 弾き / 予告 …) は
-// «そのゲームの語彙» であって、エンジンが訳語を持つ筋合いのものではない。
-// ここに溜めると、別のプロジェクトを開いてもそのゲームの訳が効いてしまうし、
-// エンジンのリポジトリが特定タイトルの用語集を抱えることになる。
-//
-// プロジェクト側は表示名を最初から自国語で書けばよい:
-//     FBZZ_FIELD_RANGE(float, hitRadius, 1.2f, "当たり半径", 0.0f, 5.0f)
-//     FBZZ_GROUP("溜め")
-// ImGuiReflector::HumanizeName は非 ASCII の表示名を素通しする (整形も辞書引きも
-// しない) ので、そのまま Inspector へ出る。2026-09-08 に GreenWare の 938 箇所を
-// この形へ移し、ここにあった 260 行を消した。
-// ── 共通の語 ────────────────────────────────────────────────────────────────
+/// @note GreenWare のフィールド名・グループ名 (溜め / のけぞり / 弾き / 予告 …) は «そのゲームの語彙» で、エンジンが訳語を持つ筋合いではない。ここに溜めると別プロジェクトを開いてもそのゲームの訳が効き、エンジンのリポジトリが特定タイトルの用語集を抱えることになる。
+/// @note プロジェクト側は表示名を最初から自国語で書く: `FBZZ_GROUP("溜め")` / `FBZZ_FIELD_RANGE(float, hitRadius, 1.2f, "当たり半径", 0.0f, 5.0f)`。`ImGuiReflector::HumanizeName` は非 ASCII の表示名を素通しする (整形も辞書引きもしない) のでそのまま Inspector へ出る。
 { "Add",                       "追加" },
 { "Remove",                    "削除" },
 { "Reset",                     "リセット" },
