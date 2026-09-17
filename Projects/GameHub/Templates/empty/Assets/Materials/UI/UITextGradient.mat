@@ -1,0 +1,15 @@
+version = 1
+shader = "Assets/Shaders/UI/Material/UITextGradient.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+topColor = [ 1.0, 1.0, 1.0, 1.0 ]
+bottomColor = [ 0.55, 0.78, 0.95, 1.0 ]
+outlineColor = [ 0.02, 0.03, 0.05, 0.9 ]
+outlineWidth = [ 0.9 ]
+gradientPower = [ 1.0 ]

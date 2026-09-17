@@ -1,0 +1,19 @@
+version = 1
+shader = "Assets/Shaders/UI/Material/UIPanel.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+fillColor = [ 0.03, 0.04, 0.06, 0.85 ]
+borderColor = [ 0.16, 0.89, 0.77, 0.9 ]
+cornerRadius = [ 10.0, 10.0, 10.0, 10.0 ]
+borderWidth = [ 2.0 ]
+gradientStrength = [ 0.35 ]
+gradientAngle = [ 1.5707963 ]
+shadowSoftness = [ 0.0 ]
+shadowOffset = [ 0.0, 3.0 ]
+shadowAlpha = [ 0.0 ]
