@@ -1,0 +1,21 @@
+# @file    FiberTemporal.fzdata
+# @brief   繊維の GBuffer と速度バッファを消費する検証用プロファイル。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+type = 'PostProcessProfile'
+[[overrides]]
+type = 'TAA'
+active = true
+feedback = 0.9
+[[overrides]]
+type = 'MotionBlur'
+active = true
+strength = 0.5
+samples = 8
+[[overrides]]
+type = 'GTAO'
+active = true
+intensity = 1.0
+radius = 0.3
+slices = 4
+stepsPerSlice = 4

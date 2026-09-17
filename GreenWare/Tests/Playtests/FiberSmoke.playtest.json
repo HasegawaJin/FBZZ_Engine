@@ -1,0 +1,84 @@
+{
+  "name": "FiberSmoke",
+  "scene": "Assets/Scenes/Test/FiberTest.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    {
+      "do": "waitUntil",
+      "query": { "t": "editor.state" },
+      "path": "scriptReloadBusy",
+      "op": "==",
+      "value": false,
+      "timeoutFrames": 36000
+    },
+    {
+      "do": "play"
+    },
+    {
+      "do": "waitUntil",
+      "query": {
+        "t": "editor.state"
+      },
+      "path": "playState",
+      "op": "==",
+      "op": "==",
+      "value": "playing",
+      "timeoutFrames": 120
+    },
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "comp": "FiberComponent"
+      },
+      "path": "matches",
+      "op": "length==",
+      "value": 6
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "shader.diagnostics"
+      },
+      "path": "errorCount",
+      "op": "==",
+      "op": "==",
+      "value": 0
+    },
+    {
+      "do": "compareImage",
+      "view": "game",
+      "baseline": "Fiber_30f",
+      "maxMeanDiff": 0.025,
+      "maxBadPixelRatio": 0.03
+    },
+    {
+      "do": "stop"
+    },
+    {
+      "do": "waitUntil",
+      "query": {
+        "t": "editor.state"
+      },
+      "path": "playState",
+      "op": "==",
+      "op": "==",
+      "value": "editor",
+      "timeoutFrames": 120
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "comp": "FiberComponent"
+      },
+      "path": "matches",
+      "op": "length==",
+      "value": 6
+    }
+  ]
+}

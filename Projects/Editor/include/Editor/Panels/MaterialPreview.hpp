@@ -25,11 +25,9 @@ enum class MaterialPreviewBackground {
 };
 
 /// パネル 1 つぶんのプレビュー状態と描画。
-///
-/// WHY インスタンスを持たせるか:
-///   以前は static 1 個を Inspector と Preview パネルが共有しており、片方でズームや
-///   回転をすると、もう片方の見え方まで同時に変わっていた。2 つ並べて比べる、という
-///   プレビューの一番素直な使い方ができなかった。
+/// @note 以前は static 1 個を Inspector と Preview パネルが共有しており、片方でズームや回転を
+///       すると、もう片方の見え方まで同時に変わっていた。2 つ並べて比べる用途ができなかったため、
+///       インスタンスとして持たせる。
 class MaterialPreviewView {
 public:
     /// .mat を選択中の形状へ適用して描画する。焼けたら true。
@@ -57,8 +55,16 @@ private:
     MaterialPreviewBackground m_background = MaterialPreviewBackground::Gradient;
     float m_solidColor[3] = { 0.13f, 0.14f, 0.17f };
 
-    /// Water の波を進めるか。止めると波形を静止させて法線マップを読める。
+    /// Water の波・Fiber の突風を進めるか。止めると波形を静止させて法線マップを読める。
     bool m_animateWater = true;
+
+    /// @name Fiber
+    /// @note .mat は描画方式を持たないため、プレビュー側で選んで見比べる。層数と風は FiberComponent の既定から始める。
+    /// @{
+    matpreview::FiberMode m_fiberMode = matpreview::FiberMode::Shell;
+    int   m_fiberShellCount = 24;
+    float m_fiberWind = 0.0f;
+    /// @}
 
     /// 3D へ焼けない .mat (Particle / Trail / Decal …) の代表テクスチャ。
     renderer::ResourceHandle<renderer::TextureTag> m_fallbackTexture;

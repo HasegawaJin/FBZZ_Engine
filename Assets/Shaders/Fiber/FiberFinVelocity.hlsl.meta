@@ -1,0 +1,6 @@
+# @file    FiberFinVelocity.hlsl.meta
+# @brief   繊維シェーダーの固定 GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+[meta]
+guid = "9888ebe3acf24f5898fd71913f7f106e"
