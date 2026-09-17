@@ -9,6 +9,7 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
@@ -59,6 +60,22 @@ scene::EntityID CopyHierarchyToSceneRecursive(const scene::Scene& srcScene,
     return dst.GetID();
 }
 
+/// @return id が Canvas を指していなければ空。
+std::string UICanvasGuidOf(scene::Scene& targetScene, scene::EntityID id)
+{
+    if (!id.IsValid()) return {};
+    const scene::GameObject* canvas = targetScene.GetGameObject(id);
+    return canvas != nullptr ? canvas->instanceId : std::string{};
+}
+
+/// @return guid の GameObject が UICanvas を持たなければ無効値。
+scene::EntityID FindUICanvasByGuid(scene::Scene& targetScene, const std::string& guid)
+{
+    scene::GameObject* canvas = targetScene.FindByGuid(guid);
+    if (canvas == nullptr || canvas->GetComponent<scene::UICanvas>() == nullptr) return scene::EntityID::INVALID;
+    return canvas->GetID();
+}
+
 } // namespace
 
 std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
@@ -70,7 +87,7 @@ std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
     const bool canRecordUndo =
         ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
     if (!canRecordUndo) {
-        // Play 中などは履歴を残さない。編集そのものは行う。
+        /// @note Play 中などは履歴を残さない。編集そのものは行う。
         edit();
         if (ctx.markSceneDirty) ctx.markSceneDirty();
         return nullptr;
@@ -81,7 +98,7 @@ std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
     edit();
     const std::string after = SceneIO::Serialize(*ctx.activeScene);
 
-    // Reparent 等が専用コマンドを追加済みなら、全シーンコマンドとの二重登録を避ける。
+    /// @note Reparent 等が専用コマンドを追加済みなら、全シーンコマンドとの二重登録を避ける。
     if (before == after ||
         ctx.undoStack->GetRevision() != historyRevisionBefore) {
         if (before != after && ctx.markSceneDirty) ctx.markSceneDirty();
@@ -91,10 +108,12 @@ std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
     scene::Scene* scene = ctx.activeScene;
     EditorContext* context = &ctx;
     const auto markDirty = ctx.markSceneDirty;
+    /// @note Deserialize で EntityID は振り直されるが instanceId は残るので、編集対象 Canvas は guid で引き直す。
     auto restore = [scene, context, markDirty](const std::string& snapshot) {
+        const std::string canvasGuid = UICanvasGuidOf(*scene, context->activeUICanvas);
         if (SceneIO::Deserialize(*scene, snapshot)) {
             ClearEntitySelection(*context);
-            context->activeUICanvas = {};
+            context->activeUICanvas = FindUICanvasByGuid(*scene, canvasGuid);
             if (markDirty) markDirty();
         }
     };
@@ -199,9 +218,8 @@ std::unique_ptr<ICommand> MakeRenameNodeCommand(EditorContext& ctx,
     scene::GameObject* go = ctx.activeScene->GetGameObject(id);
     if (go == nullptr || go->name == newName) return nullptr;
 
-    // ポインタではなく EntityID を捕捉して毎回引き直す。
-    // WHY: Undo/Redo の途中でシーンが差し替わっても対象を取り違えず、
-    //      解放後参照にもならない。
+    /// @note ポインタではなく EntityID を捕捉して毎回引き直す。Undo/Redo の途中でシーンが差し替わっても
+    ///       対象を取り違えず、解放後参照にもならない。
     scene::Scene* scene = ctx.activeScene;
     const auto markDirty = ctx.markSceneDirty;
     const std::string oldName = go->name;
@@ -276,13 +294,15 @@ void PasteClipboardWithUndo(EditorContext& ctx, scene::EntityID parentId)
 
 namespace {
 
-// 2 つの球を包含する最小球へ球 0 を拡張する
+/// 2 つの球を包含する最小球へ球 0 を拡張する
 void MergeSpheres(math::Vector3& c0, float& r0, const math::Vector3& c1, float r1)
 {
     const math::Vector3 d = { c1.x - c0.x, c1.y - c0.y, c1.z - c0.z };
     const float dist = d.Length();
-    if (dist + r1 <= r0) return;                          // 球1 は球0 に内包
-    if (dist + r0 <= r1) { c0 = c1; r0 = r1; return; }    // 球0 は球1 に内包
+    /// @note 球1 は球0 に内包
+    if (dist + r1 <= r0) return;
+    /// @note 球0 は球1 に内包
+    if (dist + r0 <= r1) { c0 = c1; r0 = r1; return; }
     const float newR = (dist + r0 + r1) * 0.5f;
     const float t = (dist > 0.0001f) ? (newR - r0) / dist : 0.0f;
     c0 = { c0.x + d.x * t, c0.y + d.y * t, c0.z + d.z * t };
@@ -305,7 +325,7 @@ void ComputeGameObjectBounds(scene::GameObject& go,
         return math::Vector3{ v.x, v.y, v.z };
     };
 
-    // メッシュバウンズが無い GO (空・ライト等) は原点+固定半径で扱う
+    /// @note メッシュバウンズが無い GO (空・ライト等) は原点+固定半径で扱う
     outCenter = worldPoint({ 0.0f, 0.0f, 0.0f });
     outRadius = 0.5f;
     bool found = false;
@@ -318,9 +338,9 @@ void ComputeGameObjectBounds(scene::GameObject& go,
     }
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-        // この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
-        // 非表示スロットの submesh は描画されないので境界にも含めない。
-        // i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
+        /// @note この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
+        ///       非表示スロットの submesh は描画されないので境界にも含めない。
+        ///       i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
         for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
             const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);

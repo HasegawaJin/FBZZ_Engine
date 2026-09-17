@@ -1,35 +1,34 @@
 /// @file    ObjectPresets.cpp
-/// @brief   Add Object プリセットの実体。SceneHierarchyPanel のメニューと AI (preset.create) が同じ表を使う。
+/// @brief   Create プリセットの実体。Hierarchy・メインメニュー・Operator・AI が同じ表を使う。
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
-#include <Engine/Scene/Components/VFXLineComponent.hpp>
-#include <Engine/Scene/VFXLineGeometry.hpp>
 #include <Editor/Util/ObjectPresets.hpp>
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ColliderFit.hpp>
-#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
-// 全コンポーネント型の登録表。個別 include を並べるより、追加時に漏れが出ない。
+#include <Engine/Renderer/PrimitiveMesh.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
-#include <Engine/Renderer/PrimitiveMesh.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/VFXLineGeometry.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
+#include <Physics/RigidBody.hpp>
 
-#include <array>
 #include <iterator>
+#include <memory>
 #include <utility>
 
 namespace fbzz::editor {
 
 namespace {
 
-// ── プリミティブ ────────────────────────────────────────────────────────────
+/// @name プリミティブ
 
 enum class PrimitiveKind { Cube, Sphere, Plane, Quad, Cylinder, Cone, Torus, Capsule };
 
@@ -65,9 +64,8 @@ const char* PrimitiveMeshPath(PrimitiveKind kind)
     return "";
 }
 
-// WHY: 固定寸法テンプレートだとメッシュの実寸 (Capsule 等) とズレる。
-//      colliderfit がアタッチ済みメッシュの bounds から寸法を自動計算するため、
-//      プリミティブの形状を変更してもここは修正不要になる。
+/// @brief 付いているメッシュの bounds から寸法を決めたコライダーを付ける。
+/// @note 固定寸法だとプリミティブの実寸 (Capsule 等) とずれる。
 void AttachFittedCollider(scene::GameObject& go, PrimitiveKind kind)
 {
     switch (kind) {
@@ -86,7 +84,7 @@ void AttachFittedCollider(scene::GameObject& go, PrimitiveKind kind)
     }
 }
 
-// 描画に必要な MeshRenderer + MaterialComponent を付ける。コライダーは呼び出し側の選択。
+/// @brief MeshRenderer + Lit マテリアル (+ 任意でフィットしたコライダー) を持つ GameObject。
 scene::GameObject& NewPrimitive(EditorContext& ctx, const char* name, PrimitiveKind kind,
                                 bool withCollider = true)
 {
@@ -105,7 +103,17 @@ scene::GameObject& NewPrimitive(EditorContext& ctx, const char* name, PrimitiveK
     return go;
 }
 
-// Quad だけは常にカメラを向く必要があるため、専用スクリプトを付ける (従来の挙動を維持)。
+/// @brief 質量 1 の剛体。
+/// @note 既定構築の RigidBodyComponent は rigidBody が null で、物理にも保存にも乗らない
+///       (PhysicsSystem と SceneSerializer は null を飛ばす)。Add Component と同じ中身にする。
+scene::RigidBodyComponent MakePresetRigidBody()
+{
+    scene::RigidBodyComponent body;
+    body.rigidBody = std::make_unique<physics::RigidBody>();
+    body.rigidBody->SetMass(1.0f);
+    return body;
+}
+
 void AttachQuadBillboardScript(EditorContext& ctx, scene::GameObject& go)
 {
     auto script = scene::ScriptFactory::Create("QuadBillboardComponent");
@@ -120,8 +128,16 @@ void AttachQuadBillboardScript(EditorContext& ctx, scene::GameObject& go)
     go.AddComponent<scene::ScriptComponent>(std::move(sc));
 }
 
-// ── 生成関数 ────────────────────────────────────────────────────────────────
-// 表 (kPresets) から関数ポインタで呼ぶため、すべて同じシグネチャにする。
+/// @brief 子を作って parentId の下へ入れる。
+/// @note 2 個目を作った後は先に得た参照を使わず EntityID で引き直す。
+scene::GameObject& NewPresetChild(EditorContext& ctx, scene::EntityID parentId, const char* name)
+{
+    auto& child = ctx.activeScene->CreateGameObject(name);
+    if (auto* parent = ctx.activeScene->GetGameObject(parentId)) child.SetParent(parent);
+    return child;
+}
+
+/// @name 生成関数
 
 scene::GameObject* MakeEmpty(EditorContext& ctx)
 {
@@ -146,15 +162,39 @@ scene::GameObject* MakeQuad(EditorContext& ctx)
 
 scene::GameObject* MakeLight(EditorContext& ctx, const char* name, scene::LightComponent::Type type)
 {
+    using Type = scene::LightComponent::Type;
     auto& go = ctx.activeScene->CreateGameObject(name);
     scene::LightComponent light;
     light.type = type;
-    if (type == scene::LightComponent::Type::Point) {
+    switch (type) {
+    case Type::Point:
         light.intensity = 4.0f;
         light.range     = 8.0f;
-    } else if (type == scene::LightComponent::Type::Spot) {
+        break;
+    case Type::Spot:
         light.intensity = 5.0f;
         light.range     = 12.0f;
+        break;
+    case Type::Area:
+        /// @note Area の intensity は輝度で、Point の感覚の数値ではほぼ見えない (LightComponent.hpp)。
+        light.intensity  = 150.0f;
+        light.range      = 12.0f;
+        light.areaWidth  = 2.0f;
+        light.areaHeight = 1.0f;
+        break;
+    case Type::Sphere:
+        light.intensity    = 4.0f;
+        light.range        = 8.0f;
+        light.sourceRadius = 0.25f;
+        break;
+    case Type::Tube:
+        light.intensity    = 4.0f;
+        light.range        = 8.0f;
+        light.sourceRadius = 0.05f;
+        light.sourceLength = 1.0f;
+        break;
+    case Type::Directional:
+        break;
     }
     go.AddComponent<scene::LightComponent>(light);
     return &go;
@@ -163,20 +203,39 @@ scene::GameObject* MakeLight(EditorContext& ctx, const char* name, scene::LightC
 scene::GameObject* MakeDirectionalLight(EditorContext& ctx) { return MakeLight(ctx, "Directional Light", scene::LightComponent::Type::Directional); }
 scene::GameObject* MakePointLight(EditorContext& ctx)       { return MakeLight(ctx, "Point Light", scene::LightComponent::Type::Point); }
 scene::GameObject* MakeSpotLight(EditorContext& ctx)        { return MakeLight(ctx, "Spot Light", scene::LightComponent::Type::Spot); }
+scene::GameObject* MakeAreaLight(EditorContext& ctx)        { return MakeLight(ctx, "Area Light", scene::LightComponent::Type::Area); }
+scene::GameObject* MakeSphereLight(EditorContext& ctx)      { return MakeLight(ctx, "Sphere Light", scene::LightComponent::Type::Sphere); }
+scene::GameObject* MakeTubeLight(EditorContext& ctx)        { return MakeLight(ctx, "Tube Light", scene::LightComponent::Type::Tube); }
 
+/// @note AudioListener も付ける。Listener が無いシーンでは 3D 音の減衰が黙って効かない。
 scene::GameObject* MakeCamera(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Camera");
     go.transform.position = { 0.0f, 2.0f, -5.0f };
     go.AddComponent<scene::CameraComponent>();
-    // WHY Listener も付けるか: Listener が 1 つも無いシーンでは 3D 音の距離減衰が
-    //     まるごと効かないのに、エラーも警告も出ない。カメラは受聴点として最も
-    //     自然な既定で、複数あっても AudioListener::priority で選ばれる。
     go.AddComponent<scene::AudioListenerComponent>();
     return &go;
 }
 
-// ── Rendering ──────────────────────────────────────────────────────────────
+/// @note VirtualCamera は同じ GameObject の CameraComponent を main に切り替える (GameplayComponentSystems)。
+scene::GameObject* MakeVirtualCamera(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Virtual Camera");
+    go.AddComponent<scene::CameraComponent>();
+    go.AddComponent<scene::VirtualCameraComponent>();
+    return &go;
+}
+
+scene::GameObject* MakeFollowCamera(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Follow Camera");
+    go.AddComponent<scene::CameraComponent>();
+    go.AddComponent<scene::VirtualCameraComponent>();
+    go.AddComponent<scene::CameraFollowComponent>();
+    return &go;
+}
+
+/// @name Rendering
 
 scene::GameObject* MakeSprite(EditorContext& ctx)
 {
@@ -185,12 +244,11 @@ scene::GameObject* MakeSprite(EditorContext& ctx)
     return &go;
 }
 
+/// @note points が空だと何も描かれず、置いた直後に壊れて見えるので 2 点入れる。
 scene::GameObject* MakeLineRenderer(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Line");
     scene::LineRendererComponent line;
-    // WHY 2 点を入れるか: points が空だと何も描かれず、置いた直後は「壊れている」ようにしか
-    //      見えない。始点と終点があれば Scene View に線が出て、そこから編集を始められる。
     line.points = { math::Vector3{ 0.0f, 0.0f, 0.0f }, math::Vector3{ 0.0f, 0.0f, 3.0f } };
     go.AddComponent<scene::LineRendererComponent>(std::move(line));
     return &go;
@@ -217,7 +275,14 @@ scene::GameObject* MakeLODGroup(EditorContext& ctx)
     return &go;
 }
 
-// ── Environment ────────────────────────────────────────────────────────────
+scene::GameObject* MakeSortingGroup(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Sorting Group");
+    go.AddComponent<scene::SortingGroupComponent>();
+    return &go;
+}
+
+/// @name Environment
 
 scene::GameObject* MakeSky(EditorContext& ctx)
 {
@@ -254,16 +319,12 @@ scene::GameObject* MakeVolumetricCloud(EditorContext& ctx)
     return &go;
 }
 
+/// @note 未割り当てのボリュームは何も適用しないので、同梱の既定プロファイルを最初から挿す。
+///       パスが無いプロジェクトでは解決に失敗し、Inspector が警告を出す。
 scene::GameObject* MakePostProcessVolume(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Post Process Volume");
     auto& ppv = go.AddComponent<scene::PostProcessVolumeComponent>();
-
-    // プロジェクト同梱の既定プロファイルを最初から挿しておく。
-    // WHY: 未アサインのボリュームは何も適用しないため、置いた直後は
-    //      「追加したのに何も起きない」状態になる。テンプレートが必ず持っている
-    //      既定プロファイルを指しておけば、その場で値をいじって効果を確認できる。
-    //      パスが無いプロジェクトでは単に解決に失敗し、Inspector が警告を出す。
     ppv.profile.ref.path = "Assets/PostProcess/DefaultPostProcess.fzdata";
     return &go;
 }
@@ -275,76 +336,65 @@ scene::GameObject* MakeReflectionProbe(EditorContext& ctx)
     return &go;
 }
 
-// 環境風。専用コンポーネントは廃止し、«radius 0 の Wind + Turbulence» という
-// 力場 2 本のプリセットになった。置いたときの操作感は従来どおり。
-scene::GameObject* MakeWindZone(EditorContext& ctx)
+/// @brief 環境流を有効にする。**GameObject は作らない。**
+/// @return 常に nullptr。生成コマンド (ObjectCreation.cpp) はこれを «シーン設定だけを変えた» と読み、
+///         Undo で SceneEnvironment を元の値へ戻す。
+/// @note 環境流はシーン設定 (SceneEnvironment) で、置き場所を持たない。GameObject にすると
+///       «どれが環境風か» が並び順で決まる沈黙のバグが戻る (flow-field.md §6)。
+scene::GameObject* MakeAmbientWind(EditorContext& ctx)
 {
-    auto& go = ctx.activeScene->CreateGameObject("Wind Zone");
-    scene::ForceField field{};
-    field.forces = scene::MakeAmbientWindForces();
-    go.AddComponent<scene::ForceField>(field);
-    return &go;
+    if (ctx.activeScene == nullptr) return nullptr;
+    scene::SceneEnvironment& environment = ctx.activeScene->Environment();
+    environment.enabled = true;
+    /// @note 置いた瞬間に何も起きないと «壊れている» と映るので、そよ風ぶんの速さを入れる。
+    if (environment.speed <= 0.0f) environment.speed = 5.0f;
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    return nullptr;
 }
 
-// 天候ルート + 雨エミッター。
-// WHY 1 個の導線にまとめるか: 濡れだけ置いても «雨が降っていないのに地面が濡れている»
-//      絵にしかならず、雨だけ置いても路面が乾いたままで嘘に見える。両方揃って天候になる。
-//      雨量は WeatherComponent.rainIntensity が正本で、子のエミッターは
-//      WeatherSystem が毎フレーム駆動する。
+/// @brief 天候ルート + 子の雨エミッター。
+/// @note 雨量の正本は WeatherComponent.rainIntensity で、子のエミッターは WeatherSystem が毎フレーム駆動する。
+///       既定の rainIntensity 0 では置いても何も起きないので、降っている状態で置く。
 scene::GameObject* MakeWeather(EditorContext& ctx)
 {
     auto& weatherGo = ctx.activeScene->CreateGameObject("Weather");
-    // 既定の rainIntensity は 0 (＝雨も濡れも出ない)。置いた瞬間に何も起きないと
-    // «壊れている» と映るので、この導線からは降っている状態で置く。
     scene::WeatherComponent weather;
     weather.rainIntensity = 0.5f;
     weatherGo.AddComponent<scene::WeatherComponent>(weather);
     const scene::EntityID weatherId = weatherGo.GetID();
 
-    auto& rainGo = ctx.activeScene->CreateGameObject("Rain");
+    auto& rainGo = NewPresetChild(ctx, weatherId, "Rain");
 
     scene::ParticleEmitter rain;
     auto& s = rain.settings;
-    s.shape      = scene::ParticleEmitterShape::Box;
-    // 頭上に広く薄い板を張り、そこから落とす。厚みを持たせると降り始めの高さが
-    // 粒ごとにばらつき、地面へ届くタイミングが揃わない。
-    s.boxExtents   = { 20.0f, 0.5f, 20.0f };
-    s.emitPosition = { 0.0f, 12.0f, 0.0f };
-    s.emitVelocity = { 0.0f, -14.0f, 0.0f };
+    s.shape          = scene::ParticleEmitterShape::Box;
+    s.boxExtents     = { 20.0f, 0.5f, 20.0f };
+    s.emitPosition   = { 0.0f, 12.0f, 0.0f };
+    s.emitVelocity   = { 0.0f, -14.0f, 0.0f };
     s.velocitySpread = 0.6f;
     s.SetGravityAcceleration({ 0.0f, -9.0f, 0.0f });
     s.lifetime       = 1.6f;
     s.lifetimeRandom = 0.2f;
-    // 発生量は WeatherSystem が rainIntensity から毎フレーム上書きするので、
-    // ここの値は最初の 1 フレームぶんしか意味を持たない。
-    s.emitRate     = 0.0f;
-    s.maxParticles = 8000;
-    s.sizeStart    = 0.05f;
-    s.sizeEnd      = 0.05f;
-    // 速度方向へ伸ばす。この renderMode でないと RainDrop.hlsl は縦棒しか描けない。
-    s.renderMode              = scene::ParticleRenderMode::StretchedBillboard;
-    s.stretchedLengthScale    = 0.6f;
-    s.stretchedVelocityScale  = 0.06f;
-    // World 空間。Local だと親を動かした瞬間に降っている粒ごと平行移動する。
+    s.emitRate       = 0.0f;
+    s.maxParticles   = 8000;
+    s.sizeStart      = 0.05f;
+    s.sizeEnd        = 0.05f;
+    /// @note RainDrop.hlsl は StretchedBillboard でないと縦棒を描けない。
+    s.renderMode             = scene::ParticleRenderMode::StretchedBillboard;
+    s.stretchedLengthScale   = 0.6f;
+    s.stretchedVelocityScale = 0.06f;
+    /// @note Local だと親を動かした瞬間に降っている粒ごと平行移動する。
     s.simulationSpace = scene::ParticleSimulationSpace::World;
-    s.colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
-    s.colorEnd   = { 1.0f, 1.0f, 1.0f, 1.0f };
+    s.colorStart   = { 1.0f, 1.0f, 1.0f, 1.0f };
+    s.colorEnd     = { 1.0f, 1.0f, 1.0f, 1.0f };
     s.materialPath = "Assets/Materials/Particles/Rain_Alpha.mat";
-    s.loop = true;
+    s.loop         = true;
     rainGo.AddComponent<scene::ParticleEmitter>(std::move(rain));
-
-    const scene::EntityID rainId = rainGo.GetID();
-    // CreateGameObject でコンテナが再確保され得るので、参照は取り直す。
-    if (auto* parent = ctx.activeScene->GetGameObject(weatherId))
-        if (auto* child = ctx.activeScene->GetGameObject(rainId))
-            child->SetParent(parent);
 
     return ctx.activeScene->GetGameObject(weatherId);
 }
 
-// 空・太陽・大気・IBL をまとめた 1 個の環境ルート。
-// WHY: 屋外シーンはこの 4 つが揃って初めて成立する。1 個ずつ置く導線しか無いと、
-//      どれか 1 つを忘れた状態 (太陽はあるが空が黒い等) が普通に起きる。
+/// @brief 空・太陽・大気・IBL をまとめた屋外シーンの環境ルート。
 scene::GameObject* MakeSkySystem(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Sky System");
@@ -355,14 +405,13 @@ scene::GameObject* MakeSkySystem(EditorContext& ctx)
     return &go;
 }
 
-// ── Terrain / Water ────────────────────────────────────────────────────────
+/// @name Terrain / Water
 
 scene::GameObject* MakeTerrain(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Terrain");
     scene::TerrainComponent terrain;
     terrain.InitFlat(0.0f);
-    // レイヤーマテリアルの既定は Map Editor のセル生成と同じ表を使う (見た目を揃える)。
     for (int layer = 0; layer < 4; ++layer)
         terrain.layerMaterials[static_cast<size_t>(layer)] = DefaultTerrainLayerMaterialPath(layer);
     terrain.heightDirty   = true;
@@ -396,15 +445,12 @@ scene::GameObject* MakeWater(EditorContext& ctx)
     return &go;
 }
 
-// ── Navigation / AI ────────────────────────────────────────────────────────
+/// @name Navigation / AI
 
+/// @note needsBake は立てない。AddComponent 直後の自動ベイクでエディタが固まるのを防ぐ既定 (false) に従う。
 scene::GameObject* MakeNavMeshSurface(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("NavMesh Surface");
-    // WHY needsBake を立てないか: NavMeshSurfaceComponent は「AddComponent 直後に自動ベイクが
-    //      走ってエディタが固まるのを防ぐため」既定 false と決められている。置いた直後は
-    //      polygons が空なので、ベイクは Tools > Navigation / Inspector / navmesh_bake から
-    //      明示的に実行する。
     go.AddComponent<scene::NavMeshSurfaceComponent>();
     return &go;
 }
@@ -430,9 +476,7 @@ scene::GameObject* MakeOffMeshLink(EditorContext& ctx)
     return &go;
 }
 
-// 巡回する敵の骨格。Agent + Patrol + Sensor + BehaviorTree を 1 セットで置く。
-// WHY: この 4 つは「敵 1 体」として常に一緒に要る。個別に足す導線しか無いと、
-//      Sensor だけ忘れて「BT の条件が永久に偽」という最も追いにくい壊れ方をする。
+/// @note 4 つを 1 セットで置く。Sensor だけ忘れると BT の条件が永久に偽になり、最も追いにくい。
 scene::GameObject* MakeAIAgent(EditorContext& ctx)
 {
     auto& go = NewPrimitive(ctx, "AI Agent", PrimitiveKind::Capsule, /*withCollider=*/false);
@@ -443,7 +487,7 @@ scene::GameObject* MakeAIAgent(EditorContext& ctx)
     return &go;
 }
 
-// ── Effects ────────────────────────────────────────────────────────────────
+/// @name Effects
 
 scene::GameObject* MakeParticleEmitter(EditorContext& ctx)
 {
@@ -452,10 +496,10 @@ scene::GameObject* MakeParticleEmitter(EditorContext& ctx)
     return &go;
 }
 
-scene::GameObject* MakeForceField(EditorContext& ctx)
+scene::GameObject* MakeFlowField(EditorContext& ctx)
 {
-    auto& go = ctx.activeScene->CreateGameObject("Force Field");
-    go.AddComponent<scene::ForceField>();
+    auto& go = ctx.activeScene->CreateGameObject("Flow Field");
+    go.AddComponent<scene::FlowField>();
     return &go;
 }
 
@@ -466,9 +510,16 @@ scene::GameObject* MakeTrail(EditorContext& ctx)
     return &go;
 }
 
-// ── VFX (.vfx プレハブ) の部品 ──────────────────────────────────────────────
+scene::GameObject* MakeMeshTrail(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Mesh Trail");
+    go.AddComponent<scene::MeshTrailComponent>();
+    return &go;
+}
 
-// 立ち上がり 0.1 → ピーク → 減衰。閃光・画面フラッシュの既定の重み。
+/// @name VFX (.vfx プレハブ) の部品
+
+/// @brief 立ち上がり 0.1 → ピーク → 減衰。閃光・画面フラッシュの重み。
 scene::ParticleCurve MakeFlashWeightCurve()
 {
     scene::ParticleCurve curve;
@@ -480,7 +531,7 @@ scene::ParticleCurve MakeFlashWeightCurve()
     return curve;
 }
 
-// 頭でっかちに減衰する。カメラ揺れの既定 (旧 falloffPower = 2 相当)。
+/// @brief 頭でっかちに減衰する。カメラ揺れの重み (旧 falloffPower = 2 相当)。
 scene::ParticleCurve MakeDecayWeightCurve()
 {
     scene::ParticleCurve curve;
@@ -494,11 +545,6 @@ scene::ParticleCurve MakeDecayWeightCurve()
     return curve;
 }
 
-// WHY 既存の fx.* と分けるか: シーンに常設するエフェクト (焚き火・煙突) と、
-//     1 発鳴らして消える演出では既定値が正反対になる。前者は loop = true で
-//     出しっぱなし、後者は loop = false・duration 有限で、終わったら自分で畳む。
-//     同じプリセットに両方を兼ねさせると、置いた直後の挙動がどちらでも間違う。
-
 scene::GameObject* MakeVFXRoot(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("VFX");
@@ -506,32 +552,32 @@ scene::GameObject* MakeVFXRoot(EditorContext& ctx)
     return &go;
 }
 
+/// @brief 層のまとまり。Transform だけを持ち、時間には関与しない。
 scene::GameObject* MakeVFXGroup(EditorContext& ctx)
 {
-    // 層のまとまり。Transform だけを持ち、時間には関与しない。
     return &ctx.activeScene->CreateGameObject("Layer");
 }
 
+/// @note 常設の fx.particle と違い、1 発鳴らして自分で畳む前提 (loop なし・有限の duration)。
 scene::GameObject* MakeVFXParticle(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Particle");
     scene::ParticleEmitter emitter;
-    emitter.settings.loop = false;
+    emitter.settings.loop     = false;
     emitter.settings.duration = 1.0f;
     emitter.settings.lifetime = 0.8f;
     go.AddComponent<scene::ParticleEmitter>(std::move(emitter));
     return &go;
 }
 
+/// @note 影は切る。点光源の影は 6 面描くので、一瞬光らせるだけで目に見えて重くなる。
 scene::GameObject* MakeVFXLightFlash(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Light Flash");
     scene::LightComponent light;
-    light.type = scene::LightComponent::Type::Point;
-    light.intensity = 20.0f;
-    light.range = 8.0f;
-    // 一瞬の閃光に影は要らない。点光源の影は 6 面ぶん描くので、
-    // 既定で有効なままだと «光らせただけ» で目に見えて重くなる。
+    light.type        = scene::LightComponent::Type::Point;
+    light.intensity   = 20.0f;
+    light.range       = 8.0f;
     light.castShadows = false;
     go.AddComponent<scene::LightComponent>(light);
     scene::VFXElement element;
@@ -558,48 +604,48 @@ scene::GameObject* MakeVFXMeshShell(EditorContext& ctx)
     return &go;
 }
 
-scene::GameObject* MakeVFXForceField(EditorContext& ctx)
+scene::GameObject* MakeVFXFlowField(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Blast Push");
-    scene::ForceFieldSettings push;
-    push.fieldType = scene::ForceFieldType::Repulse;
-    push.strength = 20.0f;
-    push.radius = 4.5f;
-    scene::ForceField field;
+    scene::FlowFieldSettings push;
+    push.fieldType = scene::FlowFieldType::Source;
+    /// @note 流速 [m/s]。爆風の «押しのける» は 4 m/s あれば十分に見える。
+    push.strength  = 4.0f;
+    push.radius    = 4.5f;
+    scene::FlowField field;
     field.forces = { push };
-    go.AddComponent<scene::ForceField>(std::move(field));
+    go.AddComponent<scene::FlowField>(std::move(field));
     scene::VFXElement element;
     element.duration = 0.25f;
     go.AddComponent<scene::VFXElement>(std::move(element));
     return &go;
 }
 
+/// @note 明るさだけでは «押し出された» にならないので radialBlur を少し足す。
 scene::GameObject* MakeVFXScreenEffect(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Screen Flash");
     scene::VFXScreenEffect effect;
     effect.flashIntensity = 0.35f;
-    effect.bloomBoost = 0.4f;
-    // 明るさだけでは «押し出された» にならないので、動きも少しだけ足す。
-    effect.radialBlur = 0.05f;
+    effect.bloomBoost     = 0.4f;
+    effect.radialBlur     = 0.05f;
     go.AddComponent<scene::VFXScreenEffect>(std::move(effect));
     scene::VFXElement element;
-    element.duration = 0.3f;
-    // 立ち上がり 0.03 秒 → 減衰 0.25 秒。定数の重みでは «一瞬だけ» にならない。
+    element.duration    = 0.3f;
     element.weightCurve = MakeFlashWeightCurve();
     go.AddComponent<scene::VFXElement>(std::move(element));
     return &go;
 }
 
+/// @note 揺れだけでは «揺れた» で終わるので、発生源から押しのける kick を少し入れる。
 scene::GameObject* MakeVFXCameraShake(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Camera Shake");
     scene::VFXCameraShake shake;
-    // 揺れだけでは «揺れた» で終わる。発生源から押しのけられる成分を既定で少し入れる。
     shake.kick = 0.06f;
     go.AddComponent<scene::VFXCameraShake>(std::move(shake));
     scene::VFXElement element;
-    element.duration = 0.35f;
+    element.duration    = 0.35f;
     element.weightCurve = MakeDecayWeightCurve();
     go.AddComponent<scene::VFXElement>(std::move(element));
     return &go;
@@ -615,22 +661,37 @@ scene::GameObject* MakeVFXTimeScale(EditorContext& ctx)
     return &go;
 }
 
+/// @brief 生存窓に沿って音量を動かす音。音量カーブの基準は AudioSource.volume。
+scene::GameObject* MakeVFXAudio(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Audio");
+    scene::AudioSourceComponent audio;
+    audio.playOnAwake = true;
+    go.AddComponent<scene::AudioSourceComponent>(std::move(audio));
+    scene::VFXElement element;
+    element.duration = 1.0f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    go.AddComponent<scene::VFXAudioEnvelope>();
+    return &go;
+}
+
+/// @note 見た目は Trail が持ち、経路だけ VFXBeam が毎フレーム書く。
+///       先細ると «飛んだ跡» に見えるので幅は一定、流れる向きで引かれる方向を出す。
 scene::GameObject* MakeVFXBeam(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Beam");
-    // 見た目は Trail が持つ。経路だけ VFXBeam が毎フレーム書く。
     scene::TrailComponent trail;
-    trail.beamMode = true;
-    trail.widthStart = 0.12f;
-    trail.widthEnd = 0.12f;   // 引き寄せの線は先細らせない。先細ると «飛んだ跡» に見える
-    trail.uvMode = scene::TrailUVMode::Tile;
-    trail.uvTiling = 4.0f;
-    trail.uvScrollSpeed = -2.0f; // 流れる向きで «どちらへ引かれているか» を出す
+    trail.beamMode      = true;
+    trail.widthStart    = 0.12f;
+    trail.widthEnd      = 0.12f;
+    trail.uvMode        = scene::TrailUVMode::Tile;
+    trail.uvTiling      = 4.0f;
+    trail.uvScrollSpeed = -2.0f;
     go.AddComponent<scene::TrailComponent>(std::move(trail));
 
     scene::VFXBeamComponent beam;
     beam.segments = 12;
-    beam.jitter = 0.08f;
+    beam.jitter   = 0.08f;
     go.AddComponent<scene::VFXBeamComponent>(std::move(beam));
     return &go;
 }
@@ -644,11 +705,11 @@ scene::GameObject* MakeVFXLine(EditorContext& ctx, scene::VFXLinePreset preset, 
     return &go;
 }
 
-scene::GameObject* MakeVFXLightning(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Lightning, "Lightning"); }
+scene::GameObject* MakeVFXLightning(EditorContext& ctx)   { return MakeVFXLine(ctx, scene::VFXLinePreset::Lightning, "Lightning"); }
 scene::GameObject* MakeVFXElectricArc(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::ElectricArc, "Electric Arc"); }
-scene::GameObject* MakeVFXLaser(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Laser, "Laser"); }
-scene::GameObject* MakeVFXEnergyBeam(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::EnergyBeam, "Energy Beam"); }
-scene::GameObject* MakeVFXTether(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Tether, "Tether"); }
+scene::GameObject* MakeVFXLaser(EditorContext& ctx)       { return MakeVFXLine(ctx, scene::VFXLinePreset::Laser, "Laser"); }
+scene::GameObject* MakeVFXEnergyBeam(EditorContext& ctx)  { return MakeVFXLine(ctx, scene::VFXLinePreset::EnergyBeam, "Energy Beam"); }
+scene::GameObject* MakeVFXTether(EditorContext& ctx)      { return MakeVFXLine(ctx, scene::VFXLinePreset::Tether, "Tether"); }
 
 scene::GameObject* MakeVFXDecal(EditorContext& ctx)
 {
@@ -662,14 +723,8 @@ scene::GameObject* MakeVFXDecal(EditorContext& ctx)
     return &go;
 }
 
-scene::GameObject* MakeMeshTrail(EditorContext& ctx)
-{
-    auto& go = ctx.activeScene->CreateGameObject("Mesh Trail");
-    go.AddComponent<scene::MeshTrailComponent>();
-    return &go;
-}
-
-// デカール投影ボリューム: X/Z が投影面サイズ、Y が投影深度
+/// @param sizeXZ 投影面の一辺 [m]。
+/// @param depth  投影の深さ [m]。
 scene::GameObject* MakeDecal(EditorContext& ctx, const char* name, float sizeXZ, float depth)
 {
     auto& go = ctx.activeScene->CreateGameObject(name);
@@ -682,13 +737,14 @@ scene::GameObject* MakeDecalMedium(EditorContext& ctx) { return MakeDecal(ctx, "
 scene::GameObject* MakeDecalSmall(EditorContext& ctx)  { return MakeDecal(ctx, "Decal (Small)", 1.0f, 0.3f); }
 scene::GameObject* MakeDecalLarge(EditorContext& ctx)  { return MakeDecal(ctx, "Decal (Large)", 5.0f, 1.0f); }
 
-// ── Physics ────────────────────────────────────────────────────────────────
+/// @name Physics
 
+/// @note y=3 はルートに置いたときだけ効く (子に置くと親の原点へ置き直される)。
 scene::GameObject* MakeRigidBodyCube(EditorContext& ctx)
 {
     auto& go = NewPrimitive(ctx, "Rigid Body", PrimitiveKind::Cube);
     go.transform.position = { 0.0f, 3.0f, 0.0f };
-    go.AddComponent<scene::RigidBodyComponent>();
+    go.AddComponent<scene::RigidBodyComponent>(MakePresetRigidBody());
     return &go;
 }
 
@@ -708,6 +764,53 @@ scene::GameObject* MakeTriggerVolume(EditorContext& ctx)
     return &go;
 }
 
+scene::GameObject* MakeSphereTrigger(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Sphere Trigger");
+    scene::SphereColliderComponent sphere;
+    sphere.isTrigger = true;
+    go.AddComponent<scene::SphereColliderComponent>(std::move(sphere));
+    return &go;
+}
+
+scene::GameObject* MakeCapsuleTrigger(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Capsule Trigger");
+    scene::CapsuleColliderComponent capsule;
+    capsule.isTrigger = true;
+    go.AddComponent<scene::CapsuleColliderComponent>(std::move(capsule));
+    return &go;
+}
+
+/// @note meshPath は空のままにする。ColliderSync は同じ GameObject の MeshRenderer を先に見る。
+scene::GameObject* MakeMeshColliderObject(EditorContext& ctx)
+{
+    auto& go = NewPrimitive(ctx, "Mesh Collider", PrimitiveKind::Torus, /*withCollider=*/false);
+    go.AddComponent<scene::MeshColliderComponent>();
+    return &go;
+}
+
+scene::GameObject* MakeConvexHullObject(EditorContext& ctx)
+{
+    auto& go = NewPrimitive(ctx, "Convex Hull Collider", PrimitiveKind::Cone, /*withCollider=*/false);
+    go.AddComponent<scene::ConvexHullColliderComponent>();
+    return &go;
+}
+
+/// @note 相手は connectToParent で祖先の剛体を探す。ルートに置いただけでは繋がらない。
+scene::GameObject* MakeRopeJoint(EditorContext& ctx)
+{
+    auto& go = NewPrimitive(ctx, "Joint", PrimitiveKind::Cube);
+    go.transform.scale = { 0.5f, 0.5f, 0.5f };
+    go.AddComponent<scene::RigidBodyComponent>(MakePresetRigidBody());
+    scene::JointComponent joint;
+    joint.type            = scene::JointType::Rope;
+    joint.connectToParent = true;
+    joint.autoDistance    = true;
+    go.AddComponent<scene::JointComponent>(std::move(joint));
+    return &go;
+}
+
 scene::GameObject* MakeForceVolume(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Force Volume");
@@ -715,7 +818,7 @@ scene::GameObject* MakeForceVolume(EditorContext& ctx)
     return &go;
 }
 
-// ── Audio ──────────────────────────────────────────────────────────────────
+/// @name Audio
 
 scene::GameObject* MakeAudioSource(EditorContext& ctx)
 {
@@ -731,13 +834,43 @@ scene::GameObject* MakeAudioListener(EditorContext& ctx)
     return &go;
 }
 
-// ── Spline ─────────────────────────────────────────────────────────────────
+scene::GameObject* MakeAudioReverbZone(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Audio Reverb Zone");
+    go.AddComponent<scene::AudioReverbZoneComponent>();
+    return &go;
+}
 
+/// @name Animation
+
+scene::GameObject* MakeSequencePlayer(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Sequence Player");
+    go.AddComponent<scene::SequencePlayerComponent>();
+    return &go;
+}
+
+scene::GameObject* MakeSocketAttachment(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Socket Attachment");
+    go.AddComponent<scene::SocketAttachmentComponent>();
+    return &go;
+}
+
+scene::GameObject* MakeTransformConstraint(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Transform Constraint");
+    go.AddComponent<scene::TransformConstraintComponent>();
+    return &go;
+}
+
+/// @name Spline
+
+/// @note 点が無いと Scene View に編集の起点が出ないので、直線 3 点を入れる。
 scene::GameObject* MakeSpline(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Spline");
     scene::SplineComponent spline;
-    // 点が無いと Scene View に何も出ず編集の起点が無いため、直線 3 点を入れておく。
     spline.points = {
         math::Vector3{ 0.0f, 0.0f, 0.0f },
         math::Vector3{ 5.0f, 0.0f, 0.0f },
@@ -754,18 +887,19 @@ scene::GameObject* MakeSplineFollower(EditorContext& ctx)
     return &go;
 }
 
-// ── UI ─────────────────────────────────────────────────────────────────────
+/// @name UI
 
+/// @note UIViewport の編集対象 Canvas をこれに確定させる。
 scene::GameObject* MakeUICanvas(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Canvas");
     go.AddComponent<scene::UICanvas>();
-    // 編集対象 Canvas を確定させる (UIViewport の操作対象と一致させる)。
     ctx.activeUICanvas = go.GetID();
     return &go;
 }
 
-// UIImage のみのシンプルな画像要素。サイズは transform.scale.xy で制御する。
+/// @param w 幅 (Canvas 単位)。UI 要素の大きさは transform.scale.xy が正本 (UIRect.hpp)。
+/// @param h 高さ (Canvas 単位)。
 scene::GameObject* MakeUIImageObject(EditorContext& ctx, const char* name,
                                      const math::Vector4& color, float w, float h)
 {
@@ -777,12 +911,20 @@ scene::GameObject* MakeUIImageObject(EditorContext& ctx, const char* name,
     return &go;
 }
 
+scene::UIText MakeUILabelText(const char* text, float fontSize, const math::Vector4& color)
+{
+    scene::UIText txt;
+    txt.text     = text;
+    txt.fontSize = fontSize;
+    txt.color    = color;
+    return txt;
+}
+
 scene::GameObject* MakeUIImage(EditorContext& ctx)
 {
     return MakeUIImageObject(ctx, "Image", { 1.0f, 1.0f, 1.0f, 1.0f }, 100.0f, 100.0f);
 }
 
-// 半透明グレーで canvas 全体を覆う背景パネル
 scene::GameObject* MakeUIPanel(EditorContext& ctx)
 {
     return MakeUIImageObject(ctx, "Panel", { 0.20f, 0.20f, 0.20f, 0.80f }, 1920.0f, 1080.0f);
@@ -791,38 +933,79 @@ scene::GameObject* MakeUIPanel(EditorContext& ctx)
 scene::GameObject* MakeUIText(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Text");
-    scene::UIText txt;
-    txt.text     = "Text";
-    txt.fontSize = 42.0f;
-    txt.color    = { 1.0f, 1.0f, 1.0f, 1.0f };
-    go.AddComponent<scene::UIText>(txt);
+    go.AddComponent<scene::UIText>(MakeUILabelText("Text", 42.0f, { 1.0f, 1.0f, 1.0f, 1.0f }));
     return &go;
 }
 
-// UIButton: 背景 Image + Button コンポーネントを親に、ラベル Text を子として持つ標準構成。
 scene::GameObject* MakeUIButton(EditorContext& ctx)
 {
-    auto& go = ctx.activeScene->CreateGameObject("Button");
-    const scene::EntityID buttonId = go.GetID();
-    go.transform.scale = { 160.0f, 40.0f, 1.0f };
+    auto* button = MakeUIImageObject(ctx, "Button", { 0.90f, 0.90f, 0.90f, 1.0f }, 160.0f, 40.0f);
+    button->AddComponent<scene::UIButton>();
+    const scene::EntityID buttonId = button->GetID();
 
-    scene::UIImage img;
-    img.color = { 0.90f, 0.90f, 0.90f, 1.0f };
-    go.AddComponent<scene::UIImage>(img);
-    go.AddComponent<scene::UIButton>();
-
-    // ラベル: 暗めテキストで中央配置 (位置は inspector で調整)
-    auto& label = ctx.activeScene->CreateGameObject("Label");
-    scene::UIText txt;
-    txt.text     = "Button";
-    txt.fontSize = 24.0f;
-    txt.color    = { 0.20f, 0.20f, 0.20f, 1.0f };
-    label.AddComponent<scene::UIText>(txt);
-    // WHY 引き直すか: CreateGameObject は GameObject 配列を再確保し得るため、
-    //      2 個目を作った後の go 参照は使わない。
-    if (auto* button = ctx.activeScene->GetGameObject(buttonId)) label.SetParent(button);
-
+    auto& label = NewPresetChild(ctx, buttonId, "Label");
+    label.AddComponent<scene::UIText>(MakeUILabelText("Button", 24.0f, { 0.20f, 0.20f, 0.20f, 1.0f }));
     return ctx.activeScene->GetGameObject(buttonId);
+}
+
+/// @note UISystem はドラッグ中に同じ GameObject の UIImage.fillAmount を値で書き換える。
+scene::GameObject* MakeUISlider(EditorContext& ctx)
+{
+    auto* go = MakeUIImageObject(ctx, "Slider", { 0.35f, 0.65f, 1.0f, 1.0f }, 200.0f, 20.0f);
+    scene::UISlider slider;
+    slider.value = 0.5f;
+    go->AddComponent<scene::UISlider>(slider);
+    if (auto* image = go->GetComponent<scene::UIImage>()) image->fillAmount = slider.value;
+    return go;
+}
+
+scene::GameObject* MakeUIToggle(EditorContext& ctx)
+{
+    auto* toggle = MakeUIImageObject(ctx, "Toggle", { 1.0f, 1.0f, 1.0f, 1.0f }, 24.0f, 24.0f);
+    toggle->AddComponent<scene::UIToggle>();
+    const scene::EntityID toggleId = toggle->GetID();
+
+    auto& label = NewPresetChild(ctx, toggleId, "Label");
+    label.transform.position = { 32.0f, 0.0f, 0.0f };
+    label.AddComponent<scene::UIText>(MakeUILabelText("Toggle", 20.0f, { 1.0f, 1.0f, 1.0f, 1.0f }));
+    return ctx.activeScene->GetGameObject(toggleId);
+}
+
+/// @brief 背景 + スクロール + マスク。子の Content を縦に並べる。
+scene::GameObject* MakeUIScrollView(EditorContext& ctx)
+{
+    auto* view = MakeUIImageObject(ctx, "Scroll View", { 0.15f, 0.15f, 0.15f, 0.90f }, 300.0f, 300.0f);
+    scene::UIScrollView scroll;
+    scroll.contentSize = { 300.0f, 600.0f };
+    view->AddComponent<scene::UIScrollView>(scroll);
+    view->AddComponent<scene::UIMask>();
+    const scene::EntityID viewId = view->GetID();
+
+    auto& content = NewPresetChild(ctx, viewId, "Content");
+    content.transform.scale = { 300.0f, 600.0f, 1.0f };
+    scene::UILayoutGroup layout;
+    layout.axis    = scene::UILayoutAxis::Vertical;
+    layout.spacing = 8.0f;
+    content.AddComponent<scene::UILayoutGroup>(layout);
+    return ctx.activeScene->GetGameObject(viewId);
+}
+
+scene::GameObject* MakeUIMask(EditorContext& ctx)
+{
+    auto* go = MakeUIImageObject(ctx, "Mask", { 1.0f, 1.0f, 1.0f, 1.0f }, 200.0f, 200.0f);
+    go->AddComponent<scene::UIMask>();
+    return go;
+}
+
+/// @note UISystem は入力内容 (空なら placeholder) を同じ GameObject の UIText へ書く。
+scene::GameObject* MakeUIInputField(EditorContext& ctx)
+{
+    auto* go = MakeUIImageObject(ctx, "Input Field", { 0.95f, 0.95f, 0.95f, 1.0f }, 240.0f, 40.0f);
+    scene::UIInputField field;
+    field.placeholder = "Enter text...";
+    go->AddComponent<scene::UIInputField>(field);
+    go->AddComponent<scene::UIText>(MakeUILabelText("Enter text...", 24.0f, { 0.20f, 0.20f, 0.20f, 1.0f }));
+    return go;
 }
 
 scene::GameObject* MakeUILayoutGroup(EditorContext& ctx, const char* name, scene::UILayoutAxis axis)
@@ -831,6 +1014,11 @@ scene::GameObject* MakeUILayoutGroup(EditorContext& ctx, const char* name, scene
     scene::UILayoutGroup layout;
     layout.axis    = axis;
     layout.spacing = 8.0f;
+    if (axis == scene::UILayoutAxis::Grid) {
+        go.transform.scale  = { 320.0f, 320.0f, 1.0f };
+        layout.spacingCross = 8.0f;
+        layout.cellSize     = { 100.0f, 100.0f };
+    }
     go.AddComponent<scene::UILayoutGroup>(layout);
     return &go;
 }
@@ -845,8 +1033,26 @@ scene::GameObject* MakeUIVerticalLayout(EditorContext& ctx)
     return MakeUILayoutGroup(ctx, "Vertical Layout Group", scene::UILayoutAxis::Vertical);
 }
 
-// ── 登録表 ──────────────────────────────────────────────────────────────────
-// 並び順がそのままメニューの並びになる。カテゴリは連続して並べること。
+scene::GameObject* MakeUIGridLayout(EditorContext& ctx)
+{
+    return MakeUILayoutGroup(ctx, "Grid Layout Group", scene::UILayoutAxis::Grid);
+}
+
+scene::GameObject* MakeUICanvasGroup(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Canvas Group");
+    go.AddComponent<scene::UICanvasGroup>();
+    return &go;
+}
+
+/// @name 登録表
+
+using PresetPlace = PresetPlacement;
+
+/// @brief 並び順がそのままメニューの並びになる。
+/// @note vfx.* は vfx.root の子として組む部品 (Docs/design/vfx-prefab.md)。
+/// @note Ragdoll と Procedural Mesh は載せない。前者は骨格を持つモデルへ足すもので単体では働かず、
+///       後者は保存されない内部コンポーネント (FBZZ_INTERNAL_COMPONENT) で保存や Play で消える。
 constexpr ObjectPreset kPresets[] = {
     { "empty", "", "Empty", "コンポーネントを持たない空の GameObject", &MakeEmpty },
 
@@ -859,17 +1065,24 @@ constexpr ObjectPreset kPresets[] = {
     { "3d.torus",    "3D Object", "Torus",    "MeshRenderer(torus) + Lit マテリアル + Box Collider", &MakeTorus },
     { "3d.capsule",  "3D Object", "Capsule",  "MeshRenderer(capsule) + Lit マテリアル + Capsule Collider", &MakeCapsule },
 
-    { "rendering.sprite",    "Rendering", "Sprite",    "SpriteRenderer。spritePath を設定して 2D 画像を表示する", &MakeSprite },
-    { "rendering.line",      "Rendering", "Line",      "LineRenderer。始点と終点の 2 点を入れた状態で生成する", &MakeLineRenderer },
-    { "rendering.billboard", "Rendering", "Billboard", "Quad メッシュ + Billboard。常にカメラを向く板", &MakeBillboard },
-    { "rendering.projector", "Rendering", "Projector", "Projector。テクスチャを面へ投影する", &MakeProjector },
-    { "rendering.lodGroup",  "Rendering", "LOD Group", "LODGroup。子オブジェクトを距離で切り替える親", &MakeLODGroup },
+    { "rendering.sprite",       "Rendering", "Sprite",        "SpriteRenderer。spritePath を設定して 2D 画像を表示する", &MakeSprite },
+    { "rendering.line",         "Rendering", "Line",          "LineRenderer。始点と終点の 2 点を入れた状態で生成する", &MakeLineRenderer },
+    { "rendering.billboard",    "Rendering", "Billboard",     "Quad メッシュ + Billboard。常にカメラを向く板", &MakeBillboard },
+    { "rendering.projector",    "Rendering", "Projector",     "Projector。テクスチャを面へ投影する", &MakeProjector },
+    { "rendering.lodGroup",     "Rendering", "LOD Group",     "LODGroup。子オブジェクトを距離で切り替える親", &MakeLODGroup },
+    { "rendering.sortingGroup", "Rendering", "Sorting Group", "SortingGroup。子の Sprite の描画順をまとめて決める親", &MakeSortingGroup },
 
     { "light.directional", "Light", "Directional Light", "太陽光。向きだけが効き、位置は影響しない", &MakeDirectionalLight },
     { "light.point",       "Light", "Point Light",       "点光源 (intensity 4 / range 8)", &MakePointLight },
     { "light.spot",        "Light", "Spot Light",        "スポットライト (intensity 5 / range 12)", &MakeSpotLight },
+    { "light.area",        "Light", "Area Light",        "矩形の面光源 2m x 1m。intensity は輝度 (150)。面は +Z を向く", &MakeAreaLight },
+    { "light.sphere",      "Light", "Sphere Light",      "半径 0.25m の球光源 (intensity 4 / range 8)", &MakeSphereLight },
+    { "light.tube",        "Light", "Tube Light",        "長さ 1m のカプセル光源 (intensity 4 / range 8)", &MakeTubeLight },
 
-    { "camera", "", "Camera", "CameraComponent。Game View の描画元になる", &MakeCamera },
+    { "camera", "", "Camera", "CameraComponent + AudioListener。Game View の描画元になる", &MakeCamera },
+
+    { "camera.virtual", "Camera Rig", "Virtual Camera", "Camera + VirtualCamera。priority が最大のものが main になる", &MakeVirtualCamera },
+    { "camera.follow",  "Camera Rig", "Follow Camera",  "Camera + VirtualCamera + CameraFollow。target を Inspector で指定する", &MakeFollowCamera },
 
     { "env.skySystem",        "Environment", "Sky System",             "Sky + Sun/Moon + 大気散乱 + 環境光(IBL) をまとめた屋外シーンの環境ルート", &MakeSkySystem },
     { "env.sky",              "Environment", "Sky",                    "SkyRenderer 単体", &MakeSky },
@@ -879,64 +1092,81 @@ constexpr ObjectPreset kPresets[] = {
     { "env.volumetricCloud",  "Environment", "Volumetric Cloud",       "ボリューメトリック雲", &MakeVolumetricCloud },
     { "env.postProcess",      "Environment", "Post Process Volume",    "ルック設定 (Post Process Profile を割り当てて使う)", &MakePostProcessVolume },
     { "env.reflectionProbe",  "Environment", "Reflection Probe",       "反射プローブ。周囲をキューブマップへ焼く", &MakeReflectionProbe },
-    { "env.windZone",         "Environment", "Wind Zone",              "環境風 (Wind + 乱れの力場)。雲と粒子が同じ向きへ流れる", &MakeWindZone },
+    { "env.ambientWind",      "Environment", "Ambient Wind",           "シーン設定の環境流を有効にする (GameObject は作らない)。雲・水面・粒子が同じ流れに乗る", &MakeAmbientWind },
     { "env.weather",          "Environment", "Weather",                "天候。雨量と路面の濡れ (雨エミッターを子に持つ)", &MakeWeather },
 
     { "terrain.terrain", "Terrain", "Terrain",      "平坦な地形 (65x65) + Terrain Collider + 既定レイヤーマテリアル", &MakeTerrain },
     { "terrain.grid",    "Terrain", "Terrain Grid", "Terrain セルを並べて広い地形を作る親", &MakeTerrainGrid },
     { "terrain.water",   "Terrain", "Water",        "水面 (80m x 80m / 96x96 分割)", &MakeWater },
 
-    { "nav.surface",    "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは Tools > Navigation で明示的に実行する", &MakeNavMeshSurface },
-    { "nav.agent",      "Navigation", "NavMesh Agent",    "Capsule メッシュ + NavMeshAgent。経路移動する実体", &MakeNavMeshAgent },
-    { "nav.modifier",   "Navigation", "NavMesh Modifier", "Cube + Collider + NavMeshModifier。歩行可否とエリアコストを上書きする", &MakeNavMeshModifier },
-    { "nav.offMeshLink", "Navigation", "Off-Mesh Link",   "離れた 2 点をつなぐジャンプ経路", &MakeOffMeshLink },
-    { "nav.aiAgent",    "Navigation", "AI Agent",         "Agent + Sensor + Patrol + BehaviorTree。敵 1 体の骨格一式", &MakeAIAgent },
+    { "nav.surface",     "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは Tools > Navigation で明示的に実行する", &MakeNavMeshSurface },
+    { "nav.agent",       "Navigation", "NavMesh Agent",    "Capsule メッシュ + NavMeshAgent。経路移動する実体", &MakeNavMeshAgent },
+    { "nav.modifier",    "Navigation", "NavMesh Modifier", "Cube + Collider + NavMeshModifier。歩行可否とエリアコストを上書きする", &MakeNavMeshModifier },
+    { "nav.offMeshLink", "Navigation", "Off-Mesh Link",    "離れた 2 点をつなぐジャンプ経路", &MakeOffMeshLink },
+    { "nav.aiAgent",     "Navigation", "AI Agent",         "Agent + Sensor + Patrol + BehaviorTree。敵 1 体の骨格一式", &MakeAIAgent },
 
-    { "fx.particle",   "Effects", "Particle Emitter",     "ParticleEmitter 単体", &MakeParticleEmitter },
-    { "fx.forceField", "Effects", "Force Field",           "粒子・雲・風に働く力の場", &MakeForceField },
-    { "fx.trail",      "Effects", "Trail",                "移動軌跡を帯で描く", &MakeTrail },
-    { "fx.meshTrail",  "Effects", "Mesh Trail",           "メッシュの残像を残す", &MakeMeshTrail },
+    { "fx.particle",   "Effects", "Particle Emitter", "ParticleEmitter 単体", &MakeParticleEmitter },
+    { "fx.flowField",  "Effects", "Flow Field",       "媒質の流れ [m/s]。粒子・雲・水面が同じ場を読む", &MakeFlowField },
+    { "fx.trail",      "Effects", "Trail",            "移動軌跡を帯で描く", &MakeTrail },
+    { "fx.meshTrail",  "Effects", "Mesh Trail",       "メッシュの残像を残す", &MakeMeshTrail },
 
-    // .vfx プレハブの部品。vfx.root の子として組む (Docs/design/vfx-prefab.md)。
-    { "vfx.root",         "VFX", "VFX Root",      "VFXComponent。これを .vfx として保存する。子が層になる", &MakeVFXRoot },
-    { "vfx.group",        "VFX", "Layer",         "空 GameObject。層のまとまり。時間には関与しない", &MakeVFXGroup },
-    { "vfx.particle",     "VFX", "Particle",      "1 発ぶんの ParticleEmitter (loop なし・duration 1 秒)", &MakeVFXParticle },
-    { "vfx.lightFlash",   "VFX", "Light Flash",   "点光源 + 生存窓 + 明るさカーブ。影は落とさない", &MakeVFXLightFlash },
-    { "vfx.meshShell",    "VFX", "Mesh Shell",    "球シェル + 膨張カーブ + 色フェード。衝撃波・斬撃に使う", &MakeVFXMeshShell },
-    { "vfx.forceField",   "VFX", "Force Field",   "爆風。周囲のパーティクルを押しのける", &MakeVFXForceField },
-    { "vfx.decal",        "VFX", "Ground Mark",   "床の跡。濃さのカーブ付き", &MakeVFXDecal },
+    { "vfx.root",         "VFX", "VFX Root",          "VFXComponent。これを .vfx として保存する。子が層になる", &MakeVFXRoot },
+    { "vfx.group",        "VFX", "Layer",             "空 GameObject。層のまとまり。時間には関与しない", &MakeVFXGroup },
+    { "vfx.particle",     "VFX", "Particle",          "1 発ぶんの ParticleEmitter (loop なし・duration 1 秒)", &MakeVFXParticle },
+    { "vfx.lightFlash",   "VFX", "Light Flash",       "点光源 + 生存窓 + 明るさカーブ。影は落とさない", &MakeVFXLightFlash },
+    { "vfx.meshShell",    "VFX", "Mesh Shell",        "球シェル + 膨張カーブ + 色フェード。衝撃波・斬撃に使う", &MakeVFXMeshShell },
+    { "vfx.flowField",    "VFX", "Flow Field",        "爆風。周囲のパーティクルを押しのける", &MakeVFXFlowField },
+    { "vfx.decal",        "VFX", "Ground Mark",       "床の跡。濃さのカーブ付き", &MakeVFXDecal },
+    { "vfx.audio",        "VFX", "Audio",             "AudioSource + 生存窓 (1 秒) + 音量カーブ。clipPath を設定して使う", &MakeVFXAudio },
     { "vfx.beam",         "VFX", "Beam (2 点を結ぶ)", "Trail + VFXBeam。2 つの実体を結ぶ。引き寄せの線・電弧に使う", &MakeVFXBeam },
-    { "vfx.lightning",    "VFX", "Lightning (雷)",   "VFX Line。本流と枝を毎秒十数回打ち直す雷", &MakeVFXLightning },
-    { "vfx.electricArc",  "VFX", "Electric Arc",     "VFX Line。電極の間を細かく走る放電", &MakeVFXElectricArc },
-    { "vfx.laser",        "VFX", "Laser",            "VFX Line。まっすぐな光線 (芯とグロー)", &MakeVFXLaser },
-    { "vfx.energyBeam",   "VFX", "Energy Beam",      "VFX Line。うねりと流れる輝点を持つ太いビーム", &MakeVFXEnergyBeam },
-    { "vfx.tether",       "VFX", "Tether",           "VFX Line。垂れて揺れる引き寄せの線", &MakeVFXTether },
-    { "vfx.screenEffect", "VFX", "Screen Flash",  "画面フラッシュ + ブルーム上乗せ", &MakeVFXScreenEffect },
-    { "vfx.cameraShake",  "VFX", "Camera Shake",  "カメラ揺れ。頭でっかちに減衰する", &MakeVFXCameraShake },
-    { "vfx.timeScale",    "VFX", "Hit Stop",      "一瞬の時間減速", &MakeVFXTimeScale },
+    { "vfx.lightning",    "VFX", "Lightning (雷)",    "VFX Line。本流と枝を毎秒十数回打ち直す雷", &MakeVFXLightning },
+    { "vfx.electricArc",  "VFX", "Electric Arc",      "VFX Line。電極の間を細かく走る放電", &MakeVFXElectricArc },
+    { "vfx.laser",        "VFX", "Laser",             "VFX Line。まっすぐな光線 (芯とグロー)", &MakeVFXLaser },
+    { "vfx.energyBeam",   "VFX", "Energy Beam",       "VFX Line。うねりと流れる輝点を持つ太いビーム", &MakeVFXEnergyBeam },
+    { "vfx.tether",       "VFX", "Tether",            "VFX Line。垂れて揺れる引き寄せの線", &MakeVFXTether },
+    { "vfx.screenEffect", "VFX", "Screen Flash",      "画面フラッシュ + ブルーム上乗せ", &MakeVFXScreenEffect },
+    { "vfx.cameraShake",  "VFX", "Camera Shake",      "カメラ揺れ。頭でっかちに減衰する", &MakeVFXCameraShake },
+    { "vfx.timeScale",    "VFX", "Hit Stop",          "一瞬の時間減速", &MakeVFXTimeScale },
 
     { "decal.medium", "Decal", "Decal (2m x 2m)", "デカール投影ボリューム", &MakeDecalMedium },
     { "decal.small",  "Decal", "Decal (1m x 1m)", "小さいデカール投影ボリューム", &MakeDecalSmall },
     { "decal.large",  "Decal", "Decal (5m x 5m)", "大きいデカール投影ボリューム", &MakeDecalLarge },
 
-    { "physics.rigidBody",          "Physics", "Rigid Body",          "Cube + Box Collider + RigidBody。y=3 から落下する", &MakeRigidBodyCube },
+    { "physics.rigidBody",           "Physics", "Rigid Body",           "Cube + Box Collider + RigidBody (質量 1)。ルートに置くと注視点の 3m 上から落ちる", &MakeRigidBodyCube },
     { "physics.characterController", "Physics", "Character Controller", "Capsule + Collider + CharacterController", &MakeCharacterController },
-    { "physics.trigger",            "Physics", "Trigger",             "isTrigger の Box Collider。侵入検知に使う", &MakeTriggerVolume },
-    { "physics.forceVolume",        "Physics", "Force Volume",        "重力・磁力などの力場ボリューム", &MakeForceVolume },
+    { "physics.trigger",             "Physics", "Trigger",              "isTrigger の Box Collider。侵入検知に使う", &MakeTriggerVolume },
+    { "physics.triggerSphere",       "Physics", "Sphere Trigger",       "isTrigger の Sphere Collider", &MakeSphereTrigger },
+    { "physics.triggerCapsule",      "Physics", "Capsule Trigger",      "isTrigger の Capsule Collider", &MakeCapsuleTrigger },
+    { "physics.meshCollider",        "Physics", "Mesh Collider",        "Torus メッシュ + Mesh Collider。表示メッシュそのままの凹形状の当たり", &MakeMeshColliderObject },
+    { "physics.convexHull",          "Physics", "Convex Hull Collider", "Cone メッシュ + Convex Hull Collider。表示メッシュを包む凸包の当たり", &MakeConvexHullObject },
+    { "physics.joint",               "Physics", "Joint (Rope)",         "小さな Cube + RigidBody + Joint(Rope)。剛体を持つ親の子に置くとぶら下がる", &MakeRopeJoint },
+    { "physics.forceVolume",         "Physics", "Force Volume",         "重力・磁力などの力場ボリューム", &MakeForceVolume },
 
-    { "audio.source",   "Audio", "Audio Source",   "AudioSource。clipPath を設定して鳴らす", &MakeAudioSource },
-    { "audio.listener", "Audio", "Audio Listener", "AudioListener。3D 音の距離減衰の基準点", &MakeAudioListener },
+    { "audio.source",     "Audio", "Audio Source",      "AudioSource。clipPath を設定して鳴らす", &MakeAudioSource },
+    { "audio.listener",   "Audio", "Audio Listener",    "AudioListener。3D 音の距離減衰の基準点", &MakeAudioListener },
+    { "audio.reverbZone", "Audio", "Audio Reverb Zone", "残響ゾーン (inner 2m / outer 10m)", &MakeAudioReverbZone },
+
+    { "animation.sequencePlayer",      "Animation", "Sequence Player",      "SequencePlayer。sequencePath に .sequence を設定して再生する", &MakeSequencePlayer },
+    { "animation.socketAttachment",    "Animation", "Socket Attachment",    "SocketAttachment。骨や子のソケットへ追従する (target 省略時は祖先から探す)", &MakeSocketAttachment },
+    { "animation.transformConstraint", "Animation", "Transform Constraint", "TransformConstraint。target の位置・回転・スケールへ拘束する", &MakeTransformConstraint },
 
     { "spline.spline",   "Spline", "Spline",          "3 点の直線スプライン。制御点は Inspector で編集する", &MakeSpline },
     { "spline.follower", "Spline", "Spline Follower", "Cube + SplineFollower。Spline を参照させて走らせる", &MakeSplineFollower },
 
-    { "ui.canvas",           "UI", "Canvas",                  "UI のルート。生成すると編集対象 Canvas になる", &MakeUICanvas },
-    { "ui.image",            "UI", "Image",                   "白い 100x100 の UIImage", &MakeUIImage },
-    { "ui.text",             "UI", "Text",                    "白文字 42px の UIText", &MakeUIText },
-    { "ui.button",           "UI", "Button",                  "背景 Image + Button + 子 Label の標準構成", &MakeUIButton },
-    { "ui.panel",            "UI", "Panel",                   "画面を覆う半透明の背景パネル", &MakeUIPanel },
-    { "ui.layoutHorizontal", "UI", "Horizontal Layout Group", "子を横に並べる (spacing 8)", &MakeUIHorizontalLayout },
-    { "ui.layoutVertical",   "UI", "Vertical Layout Group",   "子を縦に並べる (spacing 8)", &MakeUIVerticalLayout },
+    { "ui.canvas",           "UI", "Canvas",                  "UI のルート。生成すると編集対象 Canvas になる", &MakeUICanvas, PresetPlace::Screen },
+    { "ui.image",            "UI", "Image",                   "白い 100x100 の UIImage", &MakeUIImage, PresetPlace::UIElement },
+    { "ui.text",             "UI", "Text",                    "白文字 42px の UIText", &MakeUIText, PresetPlace::UIElement },
+    { "ui.button",           "UI", "Button",                  "背景 Image + Button + 子 Label の標準構成", &MakeUIButton, PresetPlace::UIElement },
+    { "ui.toggle",           "UI", "Toggle",                  "24x24 の Image + Toggle + 子 Label。isOn の見た目はスクリプトで付ける", &MakeUIToggle, PresetPlace::UIElement },
+    { "ui.slider",           "UI", "Slider",                  "200x20 の Image + Slider。値に応じて Image の fillAmount が変わる", &MakeUISlider, PresetPlace::UIElement },
+    { "ui.inputField",       "UI", "Input Field",             "背景 Image + InputField + Text。入力内容が同じ Text へ書かれる", &MakeUIInputField, PresetPlace::UIElement },
+    { "ui.scrollView",       "UI", "Scroll View",             "背景 Image + ScrollView + Mask + 縦並びの子 Content", &MakeUIScrollView, PresetPlace::UIElement },
+    { "ui.mask",             "UI", "Mask",                    "200x200 の Image + Mask。子を矩形で切り抜く", &MakeUIMask, PresetPlace::UIElement },
+    { "ui.panel",            "UI", "Panel",                   "画面を覆う半透明の背景パネル", &MakeUIPanel, PresetPlace::UIElement },
+    { "ui.layoutHorizontal", "UI", "Horizontal Layout Group", "子を横に並べる (spacing 8)", &MakeUIHorizontalLayout, PresetPlace::UIElement },
+    { "ui.layoutVertical",   "UI", "Vertical Layout Group",   "子を縦に並べる (spacing 8)", &MakeUIVerticalLayout, PresetPlace::UIElement },
+    { "ui.layoutGrid",       "UI", "Grid Layout Group",       "子を 100x100 のマスで折り返して並べる (spacing 8)", &MakeUIGridLayout, PresetPlace::UIElement },
+    { "ui.canvasGroup",      "UI", "Canvas Group",            "CanvasGroup。配下の UI をまとめて薄くする・触れなくする", &MakeUICanvasGroup, PresetPlace::UIElement },
 };
 
 } // namespace
@@ -952,27 +1182,6 @@ const ObjectPreset* FindObjectPreset(std::string_view id)
         if (preset.id == id) return &preset;
     }
     return nullptr;
-}
-
-scene::GameObject* CreateObjectFromPreset(EditorContext& ctx, std::string_view id, scene::EntityID parent)
-{
-    if (ctx.activeScene == nullptr) return nullptr;
-    const ObjectPreset* preset = FindObjectPreset(id);
-    if (preset == nullptr || preset->create == nullptr) return nullptr;
-
-    scene::GameObject* created = preset->create(ctx);
-    if (created == nullptr) return nullptr;
-
-    // 生成後に EntityID で引き直す。プリセットによっては内部で更に GameObject を作るため、
-    // 直前に得たポインタは配列再確保で無効になり得る。
-    const scene::EntityID createdId = created->GetID();
-    if (parent.IsValid()) {
-        if (auto* parentObject = ctx.activeScene->GetGameObject(parent)) {
-            if (auto* child = ctx.activeScene->GetGameObject(createdId)) child->SetParent(parentObject);
-        }
-    }
-    SelectEntity(ctx, createdId);
-    return ctx.activeScene->GetGameObject(createdId);
 }
 
 } // namespace fbzz::editor
