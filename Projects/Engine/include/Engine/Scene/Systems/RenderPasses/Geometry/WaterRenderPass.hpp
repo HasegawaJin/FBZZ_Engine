@@ -36,20 +36,22 @@ struct WaterDetailNoise {
 /// @see Docs/design/water-waves.md
 [[nodiscard]] const WaterDetailNoise& GetWaterDetailNoise(renderer::ResourceManager& resources);
 
-// AddWaterRipple — 水面ローカル UV [0,1] に動的なリング波紋を追加する。
-void AddWaterRipple(
-    EntityID      waterEntity,
-    math::Vector2 positionUV,
-    float         amplitude = 0.5f,
-    float         speed     = 0.25f,
-    float         decayRate = 1.5f,
-    float         waveWidth = 0.038f);
+/// @note 輪を積む入口は WaterSystem の EmitWaterRipple。正本は WaterComponent::ripples で、
+///       このパスはそれを読んで波紋テクスチャを焼くだけになった (旧 AddWaterRipple は廃止)。
 
-// QueueWaterSplash — ワールド座標に水しぶきパーティクルバーストをキューに積む。
-// WHY: PhysicsSystem / IKSystem は Scene を直接操作しないため、キュー経由で委譲する。
+/// QueueWaterSplash — ワールド座標に水しぶきパーティクルバーストをキューに積む。
+/// @note PhysicsSystem / IKSystem は Scene を直接操作しないため、キュー経由で委譲する。
 void QueueWaterSplash(const math::Vector3& worldPos, float intensity);
 
-// WorldToWaterUV — ワールド座標を水面 UV [0,1] に変換する。
+class Scene;
+/// @brief 積まれた水しぶきを GameObject として生成し、鳴り終わったものを破棄する。
+/// @pre 描画中に呼ばないこと。生成・破棄はコンポーネント配列を詰め替えるので、
+///      同じフレームの後続パスが握っているエミッターを別物にすり替える。
+/// @note WaterSystem::Update が毎フレーム呼ぶ。しぶきはシーン内の名前と
+///       runtimeGenerated で見分けるので、Play 停止やシーン遷移をまたいで別シーンを消さない。
+void UpdateWaterSplashes(Scene& scene);
+
+/// WorldToWaterUV — ワールド座標を水面 UV [0,1] に変換する。
 inline math::Vector2 WorldToWaterUV(
     const math::Vector3&  worldPos,
     const WaterComponent& water,
@@ -64,7 +66,7 @@ inline math::Vector2 WorldToWaterUV(
 struct RenderPassContext;
 void WaterSelectionMaskSystem(RenderPassContext& ctx);
 
-// IRenderPass 実装 — RenderPipeline::AddPass<WaterRenderPass>() で登録する。
+/// IRenderPass 実装 — RenderPipeline::`AddPass<WaterRenderPass>()` で登録する。
 class WaterRenderPass final : public IRenderPass {
 public:
     std::string_view Name() const override;
