@@ -1,0 +1,22 @@
+version = 1
+name = 'DecalScorch'
+shader = 'Assets/Shaders/Material/Decal/Material/DecalScorch.hlsl'
+render_path = 'decal'
+blend_mode = 'AlphaBlend'
+double_sided = true
+render_queue = 3000
+
+[textures]
+
+[params]
+scorchColor = [ 0.04, 0.03, 0.03, 0.85 ]
+rimColor = [ 1.0, 0.42, 0.12, 1.0 ]
+edgeSoftness = 0.45
+rimIntensity = 0.9
+coverage = 1.0
+# 冷え切った跡が既定。焼けた瞬間の白熱は BeamScorchComponent が 1 枚ごとに
+# cooled を 0 から進めることで入る (静的に置いた跡は最初から冷えている)。
+cooled = 1.0
+edgeBreakup = 1.0
+sootSpread = 1.0
+seed = 1.0
