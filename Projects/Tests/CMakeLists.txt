@@ -172,6 +172,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/DebugDrawBatchTests.cpp
         Engine/Auto/SceneSerializerTests.cpp
         Engine/Auto/SceneManagerTests.cpp
+        Engine/Auto/TerrainSplatTests.cpp
         Engine/Auto/TrailMultiKeyTests.cpp
         Engine/Auto/UIRectTests.cpp
         Engine/Auto/WaterWaveTests.cpp
