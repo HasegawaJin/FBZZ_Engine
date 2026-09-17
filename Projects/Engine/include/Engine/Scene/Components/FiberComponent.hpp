@@ -27,6 +27,11 @@ struct FiberComponent {
     float m_bladeWidth = 0.015f;
     int m_seed = 1;
     int m_terrainPatchCells = 2;
+    /// @note 地形の層番号。-1 は全面、0 以上はその層の重みで葉を間引く。
+    /// @see Docs/design/terrain-layers.md §5 Fiber を層で制御する
+    int m_terrainLayer = -1;
+    /// @note 4 隅の層の重みの最大値がこれ未満のセルはパッチから省く [0, 1]。
+    float m_terrainLayerThreshold = 0.25f;
     /// @note 受け取る FlowField のチャンネル (ビットマスク)。-1 は全チャンネル、0 は局所の場を受けない。環境風は常に受ける。
     int m_flowChannels = -1;
     /// @note 反射・保存の対象外。Play 復元時に古いビューの変形履歴を持ち越さない。
@@ -53,6 +58,10 @@ struct FiberComponent {
         r.FloatRange("bladeWidth", m_bladeWidth, 0.001f, 0.5f);
         r.IntRange("seed", m_seed, 0, 65535);
         r.IntRange("terrainPatchCells", m_terrainPatchCells, 1, 32);
+        r.IntRange("terrainLayer", m_terrainLayer, -1, 254);
+        r.Tooltip("Terrain の層番号。-1 = 地形全体。0 以上ならその層の重みで生やします。");
+        r.FloatRange("terrainLayerThreshold", m_terrainLayerThreshold, 0.0f, 1.0f);
+        r.Tooltip("セルの 4 隅の層の重みの最大値がこの値未満なら、そのセルには生やしません。");
         r.Field("flowChannels", m_flowChannels);
         r.Tooltip("受け取る Flow Field のチャンネル (ビットマスク)。-1 で全チャンネル、0 で局所の場を無視します。環境風は常に受けます。");
         r.FileField("materialPath", m_materialPath, ".mat");

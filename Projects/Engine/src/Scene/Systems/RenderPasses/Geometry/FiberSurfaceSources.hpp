@@ -68,30 +68,50 @@ void ReleaseFiberTerrain(FiberTerrainCache& cache, renderer::ResourceManager& re
     cache.m_patches.clear();
 }
 
+/// @brief 地形を patchCells 四方のパッチへ分け、Fiber の根元面として GPU へ置く。
+/// @param terrainLayer 0 以上ならその層の重みで生やす。-1 は全面。
+/// @param layerThreshold 4 隅の層の重みの最大値がこれ未満のセルを省く (terrainLayer >= 0 のときだけ)。
 /// @note dirty フラグは Terrain パスが消費するため共有しない。1 フレーム 1 回の内容署名で編集を検出する。
+/// @note 頂点色 A は層の重み (全面なら 1)。穴セルと三角形 0 枚のパッチは作らない。
+/// @see Docs/design/terrain-layers.md §5 Fiber を層で制御する
 void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrain, int patchCells,
-                        renderer::ResourceManager& resources)
+                        int terrainLayer, float layerThreshold, renderer::ResourceManager& resources)
 {
     cache.m_seen=Time::frameCount;
     if (cache.m_frame==Time::frameCount) return;
     cache.m_frame=Time::frameCount;
     const int patch=std::clamp(patchCells,1,32);
+    const int layer=terrainLayer<0 ? -1 : terrainLayer;
+    const float threshold=std::isfinite(layerThreshold) ? std::clamp(layerThreshold,0.0f,1.0f) : 0.0f;
     uint64_t hash=1469598103934665603ull;
     /// @note 64bit 語単位で混ぜる。回転で上位ビットの変化も下位へ回し、打ち消し合う編集を起こりにくくする。
     const auto add=[&hash](uint64_t value){hash=(std::rotl(hash,29)^value)*1099511628211ull;};
+    /// @note 毎フレーム全標本を読むため、8 バイトずつ 1 語で処理して 1 標本あたりの乗算を減らす。
+    const auto addBytes=[&add](const void* data,size_t size){
+        const auto* bytes=static_cast<const unsigned char*>(data);
+        size_t offset=0;
+        for (;offset+8<=size;offset+=8) {
+            uint64_t word=0;
+            std::memcpy(&word,bytes+offset,sizeof(word));
+            add(word);
+        }
+        if (offset<size) {
+            uint64_t word=0;
+            std::memcpy(&word,bytes+offset,size-offset);
+            add(word);
+        }
+        add(size);
+    };
     add(static_cast<uint32_t>(terrain.columns));add(static_cast<uint32_t>(terrain.rows));add(static_cast<uint32_t>(patch));
     add(std::bit_cast<uint32_t>(terrain.cellSize));add(std::bit_cast<uint32_t>(terrain.maxHeight));
-    /// @note 毎フレーム全標本を読むため、float 2 個ずつ 1 語で処理して 1 標本あたりの乗算を半分にする。
-    const size_t samples=terrain.heightData.size();
-    const float* heights=terrain.heightData.data();
-    size_t sample=0;
-    for (;sample+1<samples;sample+=2) {
-        uint64_t word=0;
-        std::memcpy(&word,heights+sample,sizeof(word));
-        add(word);
+    add(static_cast<uint32_t>(layer));add(std::bit_cast<uint32_t>(threshold));
+    addBytes(terrain.heightData.data(),terrain.heightData.size()*sizeof(float));
+    addBytes(terrain.holeData.data(),terrain.holeData.size());
+    /// @note 全面 (layer < 0) では重みを読まないので、塗りの編集でパッチを作り直さない。
+    if (layer>=0) {
+        addBytes(terrain.splatIndices.data(),terrain.splatIndices.size());
+        addBytes(terrain.splatWeights.data(),terrain.splatWeights.size());
     }
-    if (sample<samples) add(std::bit_cast<uint32_t>(heights[sample]));
-    add(samples);
     if (cache.m_signature==hash) return;
     cache.m_signature=hash;
     ReleaseFiberTerrain(cache,resources);
@@ -99,9 +119,19 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
         || terrain.heightData.size()!=static_cast<size_t>(terrain.columns)*terrain.rows
         || !std::isfinite(terrain.cellSize)||terrain.cellSize<=0||!std::isfinite(terrain.maxHeight)) return;
     for (float value:terrain.heightData) if (!std::isfinite(value)) return;
+    const bool holes=terrain.holeData.size()==terrain.CellCount();
+    const auto weightAt=[&](int gx,int gz){return layer<0 ? 1.0f : terrain.GetLayerWeightAtGrid(gx,gz,layer);};
     for (int z=0;z<terrain.rows-1;z+=patch) for (int x=0;x<terrain.columns-1;x+=patch) {
         const int nx=std::min(patch,terrain.columns-1-x), nz=std::min(patch,terrain.rows-1-z);
         renderer::Mesh mesh;
+        for (int iz=0;iz<nz;++iz) for (int ix=0;ix<nx;++ix) {
+            const int cx=x+ix, cz=z+iz;
+            if (holes && terrain.IsHoleCell(cx,cz)) continue;
+            if (layer>=0 && std::max({weightAt(cx,cz),weightAt(cx+1,cz),weightAt(cx,cz+1),weightAt(cx+1,cz+1)})<threshold) continue;
+            const uint32_t a=static_cast<uint32_t>(iz*(nx+1)+ix), b=a+static_cast<uint32_t>(nx+1);
+            mesh.cpuIndices.insert(mesh.cpuIndices.end(),{a,b,a+1,a+1,b,b+1});
+        }
+        if (mesh.cpuIndices.empty()) continue;
         for (int iz=0;iz<=nz;++iz) for (int ix=0;ix<=nx;++ix) {
             renderer::Vertex vertex;
             vertex.position={static_cast<float>(x+ix)*terrain.cellSize,
@@ -110,11 +140,8 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
             vertex.normal=terrain.ComputeNormal(x+ix,z+iz);
             vertex.tangent={1,0,0};
             vertex.uv={vertex.position.x,vertex.position.z};
+            vertex.color.w=weightAt(x+ix,z+iz);
             mesh.cpuVertices.push_back(vertex);
-        }
-        for (int iz=0;iz<nz;++iz) for (int ix=0;ix<nx;++ix) {
-            const uint32_t a=static_cast<uint32_t>(iz*(nx+1)+ix), b=a+static_cast<uint32_t>(nx+1);
-            mesh.cpuIndices.insert(mesh.cpuIndices.end(),{a,b,a+1,a+1,b,b+1});
         }
         mesh.ComputeBounds();
         mesh.vertexCount=static_cast<uint32_t>(mesh.cpuVertices.size());

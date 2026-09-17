@@ -280,6 +280,35 @@ TEST_F(FiberTest, BuildsContinuousBladesOverTriangleInterior)
     EXPECT_EQ(sizeof(renderer::FiberBladeRoot),64u);
 }
 
+TEST_F(FiberTest, VertexAlphaDensityKeepsWhiteMeshRootsIdentical)
+{
+    const auto mesh=FiberTriangle();
+    std::vector<renderer::FiberBladeRoot> legacy;
+    std::vector<renderer::FiberBladeRoot> flagOff;
+    std::vector<renderer::FiberBladeRoot> flagOn;
+    ASSERT_TRUE(renderer::BuildFiberBlades(mesh,40,0.02f,17,legacy));
+    ASSERT_TRUE(renderer::BuildFiberBlades(mesh,40,0.02f,17,flagOff,false));
+    ASSERT_TRUE(renderer::BuildFiberBlades(mesh,40,0.02f,17,flagOn,true));
+    ASSERT_EQ(flagOff.size(),legacy.size());
+    ASSERT_EQ(flagOn.size(),legacy.size()) << "A = 1 の面では棄却の乱数を引かない";
+    for (size_t i=0;i<legacy.size();++i) {
+        EXPECT_EQ(std::memcmp(&legacy[i],&flagOff[i],sizeof(renderer::FiberBladeRoot)),0);
+        EXPECT_EQ(std::memcmp(&legacy[i],&flagOn[i],sizeof(renderer::FiberBladeRoot)),0);
+    }
+}
+
+TEST_F(FiberTest, VertexAlphaDensityDropsBladesWhereAlphaIsZero)
+{
+    auto mesh=FiberTriangle();
+    for (auto& vertex:mesh.cpuVertices) vertex.color.w=0.0f;
+    std::vector<renderer::FiberBladeRoot> blades;
+    ASSERT_TRUE(renderer::BuildFiberBlades(mesh,40,0.02f,17,blades,true));
+    EXPECT_TRUE(blades.empty());
+    std::vector<renderer::FiberBladeRoot> ignored;
+    ASSERT_TRUE(renderer::BuildFiberBlades(mesh,40,0.02f,17,ignored,false));
+    EXPECT_EQ(ignored.size(),20u) << "フラグが false なら A を読まない";
+}
+
 TEST_F(FiberTest, RejectsInvalidBladeInputWithoutReplacingOutput)
 {
     auto mesh=FiberTriangle();
@@ -345,6 +374,8 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     fiber.m_bladeDensity=600;
     fiber.m_bladeWidth=0.025f;
     fiber.m_terrainPatchCells=3;
+    fiber.m_terrainLayer=2;
+    fiber.m_terrainLayerThreshold=0.6f;
     fiber.m_flowChannels=0b101;
     auto& actor=go.AddComponent<scene::FiberInteractorComponent>();
     actor.m_radius=0.7f;
@@ -361,8 +392,12 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     EXPECT_TRUE(loaded->m_distanceLod);
     EXPECT_FLOAT_EQ(loaded->m_bladeDensity,600);
     EXPECT_EQ(loaded->m_terrainPatchCells,3);
+    EXPECT_EQ(loaded->m_terrainLayer,2);
+    EXPECT_FLOAT_EQ(loaded->m_terrainLayerThreshold,0.6f);
     EXPECT_EQ(loaded->m_flowChannels,0b101);
     EXPECT_EQ(scene::FiberComponent{}.m_flowChannels,-1);
+    EXPECT_EQ(scene::FiberComponent{}.m_terrainLayer,-1) << "既定は地形全体";
+    EXPECT_FLOAT_EQ(scene::FiberComponent{}.m_terrainLayerThreshold,0.25f);
     const auto* contact=restored->GetComponent<scene::FiberInteractorComponent>(entities[0]);
     ASSERT_NE(contact,nullptr);
     EXPECT_FLOAT_EQ(contact->m_radius,0.7f);

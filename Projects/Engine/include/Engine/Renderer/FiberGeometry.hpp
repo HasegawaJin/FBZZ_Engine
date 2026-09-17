@@ -62,10 +62,13 @@ struct FiberFinMesh {
 
 /// @note 三角形面積に比例した決定的な根元分布。幅はローカル座標、密度はローカル面積あたり。
 /// @note 頂点は作らず根元だけを返す (1 葉 64 バイト)。形状は FiberSurface.hlsli が SV_VertexID から組み立てる。
-/// @return 不正な入力または生成上限超過は false。out は失敗時に変更しない。
+/// @param densityFromVertexAlpha true なら補間した頂点色 A を採択確率として根元を棄却法で間引く。false では A を読まず乱数の消費順も従来のまま。
+/// @return 不正な入力または生成上限超過は false。out は失敗時に変更しない。上限は間引く前の本数で判定する。
 /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-7-rendering-countless-blades-waving-grass
+/// @see https://en.wikipedia.org/wiki/Rejection_sampling (Rejection sampling)
+/// @see Docs/design/terrain-layers.md §5 Fiber を層で制御する
 [[nodiscard]] bool BuildFiberBlades(const Mesh& mesh, float density, float width, uint32_t seed,
-                                    std::vector<FiberBladeRoot>& out);
+                                    std::vector<FiberBladeRoot>& out, bool densityFromVertexAlpha = false);
 
 /// @note 近距離では最大品質、遠距離では段階的に層数を減らす。距離・境界はワールド m。
 [[nodiscard]] int FiberLodShellCount(int maximum, int minimum, float distance, float nearDistance, float farDistance);

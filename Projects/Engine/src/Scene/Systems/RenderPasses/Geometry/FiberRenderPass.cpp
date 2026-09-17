@@ -247,7 +247,8 @@ FiberResources& GetFiberResources(renderer::ResourceManager& resources)
 }
 
 const FiberFinBuffers& GetFiberFinBuffers(FiberResources& cache, renderer::ResourceManager& resources,
-                                         const renderer::Mesh& mesh, const FiberComponent& fiber, bool blades)
+                                         const renderer::Mesh& mesh, const FiberComponent& fiber, bool blades,
+                                         bool densityFromAlpha = false)
 {
     const std::array<uint32_t,8> key{mesh.vertexBuffer.id,mesh.vertexBuffer.gen,mesh.indexBuffer.id,mesh.indexBuffer.gen,
         blades ? 1u : 0u, blades ? std::bit_cast<uint32_t>(fiber.m_bladeDensity) : 0u,
@@ -259,7 +260,8 @@ const FiberFinBuffers& GetFiberFinBuffers(FiberResources& cache, renderer::Resou
     if (blades) {
         /// @note 頂点は GPU で SV_VertexID から組み立てる。CPU で作って送るのは 1 葉 64 バイトの根元だけ。
         std::vector<renderer::FiberBladeRoot> roots;
-        if (!renderer::BuildFiberBlades(mesh, fiber.m_bladeDensity, fiber.m_bladeWidth, static_cast<uint32_t>(fiber.m_seed), roots)) {
+        if (!renderer::BuildFiberBlades(mesh, fiber.m_bladeDensity, fiber.m_bladeWidth, static_cast<uint32_t>(fiber.m_seed), roots,
+                densityFromAlpha)) {
             core::Logger::Warn("Fiber: blade roots rejected invalid input or budget above 32768; reduce density/patch size");
             return result;
         }
@@ -384,6 +386,7 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         bool cast=true;
         bool validPreviousSkin=true;
         float dither=0;
+        bool densityFromAlpha=false;  ///< 地形の層指定時だけ true。葉の密度を頂点色 A で間引く
     };
     static std::vector<Surface> surfaces;
     for (auto* fiberObject : objects) {
@@ -411,8 +414,9 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         }
         if (auto* terrain=go.GetComponent<TerrainComponent>(); terrain && terrain->enabled) {
             auto& patches=cache.m_terrains[{&ctx.scene,go.instanceId}];
-            UpdateFiberTerrain(patches,*terrain,fiber.m_terrainPatchCells,resources);
-            for (auto& mesh:patches.m_patches) surfaces.push_back({&mesh,mesh.vertexBuffer});
+            UpdateFiberTerrain(patches,*terrain,fiber.m_terrainPatchCells,fiber.m_terrainLayer,fiber.m_terrainLayerThreshold,resources);
+            const bool layered=fiber.m_terrainLayer>=0;
+            for (auto& mesh:patches.m_patches) surfaces.push_back({&mesh,mesh.vertexBuffer,{},{},true,true,0,layered});
         }
         if (surfaces.empty()) continue;
         const bool drawFins = fiber.m_mode == FiberRenderMode::FIN || fiber.m_mode == FiberRenderMode::HYBRID;
@@ -544,7 +548,7 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             else SubmitCounted(ctx, call);
         }
         if (bladeShader.IsValid()) {
-            const auto& blades=GetFiberFinBuffers(cache,resources,*mesh,fiber,true);
+            const auto& blades=GetFiberFinBuffers(cache,resources,*mesh,fiber,true,surface.densityFromAlpha);
             if (blades.m_blades.IsValid() && blades.m_bladeCount > 0) {
                 /// @note 頂点バッファなしの非インデックス描画。距離 LOD は先頭から提出本数を減らす。
                 call.shader=bladeShader;
