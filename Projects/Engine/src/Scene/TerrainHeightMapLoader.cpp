@@ -1,25 +1,42 @@
 /// @file    TerrainHeightMapLoader.cpp
-/// @brief   DirectXTex を使って画像ファイルを heightData[] に変換する。
+/// @brief   DirectXTex で画像ファイルと heightData[] を相互変換する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-06
 ///
-/// 処理フロー:
-/// 1. 拡張子で LoadFromDDSFile / LoadFromTGAFile / LoadFromWICFile を選択
-/// 2. R32_FLOAT に変換（グレースケール・カラー問わず R チャンネルを使用）
-/// 3. 地形サイズと異なる場合は三次補間でリサイズ
-/// 4. 画素値 [0, 1] を heightData の正規化モードに応じてマッピング
-/// @note DirectXTex の WIC コーデックに ole32.lib (COM 初期化) が要る。
+/// @note 読み込み: 拡張子でローダーを選ぶ → R32_FLOAT へ変換 → 地形サイズへ三次補間 → 正規化モードで写す。
+/// @note DirectXTex の WIC コーデックに ole32.lib (COM) が要る。
+/// @see https://github.com/microsoft/DirectXTex/wiki/WIC-I-O-Functions (DirectXTex Wiki, "WIC I/O Functions")
 #pragma comment(lib, "ole32.lib")
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
 #include <Windows.h>
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
 #include <string>
 
 namespace fbzz::scene {
+
+namespace {
+
+/// @brief 呼び出しスレッドで COM を使える状態にする。
+/// @return COM が使えるか。既に別モード (STA) で初期化済みの RPC_E_CHANGED_MODE も使える扱い。
+/// @note CoUninitialize は呼ばない。DirectXTex は WIC ファクトリをプロセス全体でキャッシュするため、
+///       最後の参照で COM を畳むと次回の呼び出しが解放済みのファクトリを掴む。
+/// @see https://learn.microsoft.com/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex (CoInitializeEx, Return value)
+bool HeightMapEnsureCom()
+{
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
+}
+
+} // namespace
 
 bool LoadHeightMapFromFile(
     const std::string& path,
@@ -31,7 +48,8 @@ bool LoadHeightMapFromFile(
     if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) return false;
     const std::wstring wpath = util::StringUtils::ToWide(sourcePath);
 
-    /// @note 1. 拡張子でローダーを選択
+    if (!HeightMapEnsureCom()) return false;
+
     DirectX::ScratchImage image;
     HRESULT hr;
     if (sourcePath.ends_with(".dds") || sourcePath.ends_with(".DDS"))
@@ -43,10 +61,7 @@ bool LoadHeightMapFromFile(
 
     if (FAILED(hr)) return false;
 
-    /// @note 2. R32_FLOAT に変換する。
-    ///       グレースケール PNG (R8_UNORM / R16_UNORM) もカラー PNG (R8G8B8A8) も
-    ///       R チャンネルをそのまま使用する。ハイトマップは通常グレースケールで用意するため
-    ///       R=G=B が等しく、R チャンネルだけ取れば十分。
+    /// @note グレースケール (R8/R16) もカラー (R8G8B8A8) も R チャンネルだけを高さとして使う。
     DirectX::ScratchImage converted;
     hr = DirectX::Convert(
         *image.GetImage(0, 0, 0),
@@ -56,7 +71,6 @@ bool LoadHeightMapFromFile(
         converted);
     if (FAILED(hr)) return false;
 
-    /// @note 3. 地形サイズに合わせてリサイズ（三次補間）
     const DirectX::Image* src = converted.GetImage(0, 0, 0);
     DirectX::ScratchImage resized;
     const size_t targetW = static_cast<size_t>(terrain.columns);
@@ -67,18 +81,63 @@ bool LoadHeightMapFromFile(
         src = resized.GetImage(0, 0, 0);
     }
 
-    /// @note 4. 画素値 → heightData にマッピング
-    const float* pixels = reinterpret_cast<const float*>(src->pixels);
-    const size_t count  = targetW * targetH;
+    const size_t count = targetW * targetH;
     terrain.heightData.resize(count);
-    for (size_t i = 0; i < count; ++i) {
-        const float p = std::clamp(pixels[i], 0.0f, 1.0f);
-        terrain.heightData[i] = unipolar ? p : (p * 2.0f - 1.0f);
+    for (size_t z = 0; z < targetH; ++z) {
+        const std::uint8_t* row = src->pixels + z * src->rowPitch;
+        for (size_t x = 0; x < targetW; ++x) {
+            float value = 0.0f;
+            std::memcpy(&value, row + x * sizeof(float), sizeof(float));
+            const float p = std::clamp(value, 0.0f, 1.0f);
+            terrain.heightData[z * targetW + x] = unipolar ? p : (p * 2.0f - 1.0f);
+        }
     }
 
     terrain.heightDirty   = true;
     terrain.colliderDirty = true;
     return true;
+}
+
+bool SaveHeightMapToFile(
+    const std::string&      path,
+    const TerrainComponent& terrain,
+    bool                    unipolar)
+{
+    if (path.empty() || terrain.columns <= 0 || terrain.rows <= 0
+        || terrain.heightData.size() != terrain.VertexCount())
+        return false;
+
+    const size_t width  = static_cast<size_t>(terrain.columns);
+    const size_t height = static_cast<size_t>(terrain.rows);
+
+    DirectX::ScratchImage image;
+    if (FAILED(image.Initialize2D(DXGI_FORMAT_R16_UNORM, width, height, 1, 1))) return false;
+    const DirectX::Image* dst = image.GetImage(0, 0, 0);
+    if (!dst) return false;
+
+    for (size_t z = 0; z < height; ++z) {
+        std::uint8_t* row = dst->pixels + z * dst->rowPitch;
+        for (size_t x = 0; x < width; ++x) {
+            const float h = terrain.heightData[z * width + x];
+            /// @note LoadHeightMapFromFile の逆写像: unipolar は p = h、bipolar は p = h * 0.5 + 0.5。
+            const float p = std::clamp(unipolar ? h : h * 0.5f + 0.5f, 0.0f, 1.0f);
+            const std::uint16_t value = static_cast<std::uint16_t>(std::lround(p * 65535.0f));
+            std::memcpy(row + x * sizeof(std::uint16_t), &value, sizeof(std::uint16_t));
+        }
+    }
+
+    const std::filesystem::path fsPath(util::StringUtils::ToWide(path));
+    if (fsPath.has_parent_path())
+        (void)util::FileSystem::EnsureParentDirectory(fsPath);
+
+    if (!HeightMapEnsureCom()) return false;
+
+    /// @note R16_UNORM は WIC の 16bppGray へ写り、PNG エンコーダーはそのまま 16 bit グレースケールで保存する。
+    const HRESULT hr = DirectX::SaveToWICFile(
+        *dst, DirectX::WIC_FLAGS_NONE,
+        DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
+        fsPath.c_str());
+    return SUCCEEDED(hr);
 }
 
 } // namespace fbzz::scene

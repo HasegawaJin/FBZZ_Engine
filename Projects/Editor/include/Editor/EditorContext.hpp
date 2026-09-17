@@ -293,7 +293,8 @@ struct EditorContext {
     enum class MapTool {
         TerrainSculpt,
         TerrainPaint,
-        Grid
+        Grid,
+        TerrainHole, ///< 保存済み int 値を変えないため末尾に置く
     };
     MapTool mapActiveTool = MapTool::TerrainSculpt;
     bool  mapHierarchyFilter = true; ///< Map Mode 中に TerrainGrid/Terrain/Water だけ表示

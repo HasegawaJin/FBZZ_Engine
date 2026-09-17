@@ -48,23 +48,17 @@ void DrawMapToolOverlay(EditorContext& ctx, const ImVec2& viewportMin)
     }
 
     /// @note 右側: 現在のサブモード / ブラシ径を常時表示する。
-    if (ctx.terrainTool
-        && (ctx.mapActiveTool == EditorContext::MapTool::TerrainSculpt
-            || ctx.mapActiveTool == EditorContext::MapTool::TerrainPaint)) {
+    if (ctx.terrainTool && IsTerrainMapTool(ctx.mapActiveTool)) {
         char info[64];
-        if (ctx.mapActiveTool == EditorContext::MapTool::TerrainSculpt) {
-            static const char* kSub[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
-            std::snprintf(info, sizeof(info), "  %s  |  Brush %.1f",
-                          kSub[static_cast<int>(ctx.terrainTool->GetSculptMode())],
-                          ctx.terrainTool->GetBrush().radius);
-        } else {
-            std::snprintf(info, sizeof(info), "  Layer %u  |  Brush %.1f",
-                          ctx.terrainTool->GetPaintLayer(),
-                          ctx.terrainTool->GetBrush().radius);
-        }
+        std::snprintf(info, sizeof(info), "  %s  |  Brush %.1f",
+                      ctx.terrainTool->StatusLabel().c_str(),
+                      ctx.terrainTool->GetBrush().radius);
         ImGui::TextColored({ 0.95f, 0.85f, 0.4f, 1.0f }, "%s", info);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Shift+drag: Smooth   Ctrl+drag: Lower   [ ]: brush size");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", ctx.mapActiveTool == EditorContext::MapTool::TerrainHole
+                ? "Ctrl+drag: invert Cut / Fill   [ ]: brush size"
+                : "Shift+drag: Smooth   Ctrl+drag: Lower   [ ]: brush size");
+        }
     }
 
     ImGui::PopStyleVar(2);

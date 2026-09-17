@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// @note Terrain の columns/rows は heightData/splatData のサイズと一体で、数値だけ変えると TerrainRenderPass/PhysicsSystem が不整合な配列を読む。Inspector と同じく TerrainComponent::Resize() を通し、変更前後を丸ごと Undo へ保持する。
+/// @note Terrain の columns/rows は heightData / splatIndices / splatWeights / holeData のサイズと一体で、数値だけ変えると TerrainRenderPass/PhysicsSystem が不整合な配列を読む。Inspector と同じく TerrainComponent::Resize() を通し、変更前後を丸ごと Undo へ保持する。
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 

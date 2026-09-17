@@ -902,7 +902,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_ctx.showGeneratedObjects     = m_settings.showGeneratedObjects;
         m_ctx.mapActiveTool      = static_cast<EditorContext::MapTool>(
             std::clamp(m_settings.mapActiveTool,
-                       0, static_cast<int>(EditorContext::MapTool::Grid)));
+                       0, static_cast<int>(EditorContext::MapTool::TerrainHole)));
         m_ctx.cameraSpeed        = m_settings.cameraSpeed;
         m_ctx.cameraSensitivity  = m_settings.cameraSensitivity;
         if (m_ctx.editorCamera) {
@@ -950,7 +950,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
             m_terrainTool->SetSculptMode(
                 static_cast<TerrainTool::SculptMode>(
                     std::clamp(m_settings.terrainSculptMode,
-                               0, static_cast<int>(TerrainSculptOp::Stamp))));
+                               0, static_cast<int>(TerrainSculptOp::Terrace))));
             m_terrainTool->SetPaintLayer(m_settings.terrainPaintLayer);
         }
 
