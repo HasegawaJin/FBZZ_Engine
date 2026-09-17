@@ -14,7 +14,7 @@
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
-#include <Engine/Scene/Components/ForceField.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
@@ -40,7 +40,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// 配下に何も窓を持たないときに VFXSystem が使う既定の尺 (VFXSystem.cpp と同値)。
+/// 配下に何も窓を持たないときに VFXSystem が使う既定の尺 (VFXSystem.cpp と同値)。
 constexpr float kVfxFallbackDuration = 1.0f;
 
 std::filesystem::file_time_type ReadVfxWriteTime(const std::string& path)
@@ -50,8 +50,8 @@ std::filesystem::file_time_type ReadVfxWriteTime(const std::string& path)
     return ec ? std::filesystem::file_time_type{} : time;
 }
 
-// .mat の [particle] は GPU 判定に効く (フリップブック補間・モーションベクター・自己影)。
-// 解決できないときは null を渡す — その 3 つが判定から外れるだけで、残りは同じ答えになる。
+/// .mat の [particle] は GPU 判定に効く (フリップブック補間・モーションベクター・自己影)。
+/// 解決できないときは null を渡す — その 3 つが判定から外れるだけで、残りは同じ答えになる。
 const asset::ParticleMaterialSettings* ResolveVfxParticleMaterial(const std::string& materialPath)
 {
     if (materialPath.empty()) return nullptr;
@@ -77,10 +77,9 @@ std::string CollectVfxScriptNames(scene::GameObject& gameObject)
     return names;
 }
 
-// 1 オブジェクトを 1 行に畳む。窓の式は VFXSystem::ObjectEndTime と同じものを写す。
-// WHY 写すか: あちらは «生きているシーンの GameObject» に対する評価で、ここは
-//      アセットを開く前の読み取り。共有すると VFXSystem がエディタ都合の
-//      引数を持つことになるため、式だけを揃える (VFXSystem.cpp:77)。
+/// @brief 1 オブジェクトを 1 行に畳む。窓の式は VFXSystem::ObjectEndTime と同じものを写す (VFXSystem.cpp:77)。
+/// @note あちらはシーンの GameObject に対する評価、ここはアセットを開く前の読み取り。共有すると
+///       VFXSystem がエディタ都合の引数を持つことになるため、式だけを揃える。
 VfxSummaryEntry MakeVfxEntry(scene::GameObject& gameObject, int depth)
 {
     VfxSummaryEntry entry;
@@ -129,7 +128,7 @@ VfxSummaryEntry MakeVfxEntry(scene::GameObject& gameObject, int depth)
     if (entry.kind.empty()) {
         if (gameObject.GetComponent<scene::VFXComponent>())            entry.kind = "VFX (nested)";
         else if (gameObject.GetComponent<scene::LightComponent>())     entry.kind = "Light";
-        else if (gameObject.GetComponent<scene::ForceField>())         entry.kind = "Force Field";
+        else if (gameObject.GetComponent<scene::FlowField>())         entry.kind = "Flow Field";
         else if (gameObject.GetComponent<scene::VFXScreenEffect>())    entry.kind = "Screen Effect";
         else if (gameObject.GetComponent<scene::VFXCameraShake>())     entry.kind = "Camera Shake";
         else if (gameObject.GetComponent<scene::VFXTimeScale>())       entry.kind = "Time Scale";
@@ -157,7 +156,7 @@ void CollectVfxEntries(scene::GameObject& parent, int depth, VfxAssetSummary& su
         summary.effectiveDuration = (std::max)(summary.effectiveDuration, entry.end);
         summary.entries.push_back(std::move(entry));
 
-        // 入れ子 VFX の内側は自前の時間軸を持つので降りない (VFXTimelinePanel と同じ規約)。
+        /// @note 入れ子 VFX の内側は自前の時間軸を持つので降りない (VFXTimelinePanel と同じ規約)。
         if (child->GetComponent<scene::VFXComponent>() == nullptr)
             CollectVfxEntries(*child, depth + 1, summary);
     }
@@ -167,8 +166,8 @@ VfxAssetSummary BuildVfxSummary(const std::string& diskPath)
 {
     VfxAssetSummary summary;
 
-    // 一時シーンはこの関数から出さない。ParticleEmitter の runtime は空のままで、
-    // 生かしたまま持ち回ると ParticlePass が GPU ハンドルを掴んで取り残す。
+    /// @note 一時シーンはこの関数から出さない。ParticleEmitter の runtime は空のままで、
+    ///       生かしたまま持ち回ると ParticlePass が GPU ハンドルを掴んで取り残す。
     scene::Scene scene;
     std::vector<scene::EntityID> roots;
     if (!PrefabSerializer::Instantiate(scene, diskPath, roots) || roots.empty()) {
@@ -193,8 +192,8 @@ VfxAssetSummary BuildVfxSummary(const std::string& diskPath)
     }
 
     if (summary.authoredDuration > 0.0f) {
-        // 尺を明示した VFX は配下がループしていてもその長さで終わる。
-        // VFXSystem が配下から算出するのは duration <= 0 のときだけ (VFXSystem.cpp:112)。
+        /// @note 尺を明示した VFX は配下がループしていてもその長さで終わる。
+        ///       VFXSystem が配下から算出するのは duration <= 0 のときだけ (VFXSystem.cpp:112)。
         summary.effectiveDuration = summary.authoredDuration;
         summary.endless           = summary.rootLoop;
     } else if (summary.effectiveDuration <= 0.0f) {
@@ -205,7 +204,7 @@ VfxAssetSummary BuildVfxSummary(const std::string& diskPath)
     return summary;
 }
 
-// 展開に失敗した .vfx を選んでいる間、引き直しを空ける間隔 [秒]。
+/// 展開に失敗した .vfx を選んでいる間、引き直しを空ける間隔 [秒]。
 constexpr double kVfxSummaryRetryInterval = 0.5;
 
 struct VfxSummaryCache {
@@ -235,9 +234,9 @@ const VfxAssetSummary& GetVfxAssetSummary(const std::string& diskPath)
     const bool sameAsset = g_vfxSummaryCache.path == diskPath && g_vfxSummaryCache.writeTime == writeTime;
     if (sameAsset && g_vfxSummaryCache.summary.valid) return g_vfxSummaryCache.summary;
 
-    // 失敗は覚えない。ホットリロードで型が戻ってもファイルは変わらないので、覚えると
-    // «壊れた .vfx» の表示から抜け出せなくなる。ただし毎フレーム引き直すと展開と
-    // ログを延々と繰り返すので、間隔だけ空ける。
+    /// @note 失敗は覚えない。ホットリロードで型が戻ってもファイルは変わらないので、覚えると
+    ///       «壊れた .vfx» の表示から抜け出せなくなる。ただし毎フレーム引き直すと展開と
+    ///       ログを延々と繰り返すので、間隔だけ空ける。
     if (sameAsset && ImGui::GetTime() < g_vfxSummaryCache.nextRetryTime) return g_vfxSummaryCache.summary;
 
     g_vfxSummaryCache.path          = diskPath;
@@ -265,7 +264,7 @@ void DrawVfxAssetInspector(EditorContext& ctx, const std::string& diskPath)
     if (playing)
         ImGui::TextDisabled("Play 中は開けません (先に停止してください)。");
     else if (inPrefabEdit)
-        // 編集中でも切り替えられる。今のプレハブは保存してから閉じる。
+        /// @note 編集中でも切り替えられる。今のプレハブは保存してから閉じる。
         ImGui::TextDisabled("今のプレハブを保存して、こちらへ切り替えます。");
     else
         ImGui::TextDisabled("今のシーンを一時退避して中身を再生します。尺は VFX Timeline で詰めます。");
@@ -289,7 +288,7 @@ void DrawVfxAssetInspector(EditorContext& ctx, const std::string& diskPath)
             ImGui::TextDisabled("尺: %s%s", FormatVfxSeconds(summary.effectiveDuration).c_str(),
                                 summary.authoredDuration > 0.0f ? " (指定)" : " (配下から算出)");
     } else {
-        // ルートに VFXComponent が無いと VFXSystem が時刻を配らず、何も鳴らない。
+        /// @note ルートに VFXComponent が無いと VFXSystem が時刻を配らず、何も鳴らない。
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
                            "ルートに VFX コンポーネントがありません。");
     }
@@ -326,8 +325,8 @@ void DrawVfxAssetInspector(EditorContext& ctx, const std::string& diskPath)
             if (entry.gpuActive) {
                 ImGui::TextDisabled("[GPU]");
             } else {
-                // 黙って CPU へ落ちるのが GPU シミュレーションの主な事故なので、
-                // 開く前に «どの設定で落ちたか» まで出す (ParticleGpuSimulation.hpp の趣旨)。
+                /// @note 黙って CPU へ落ちるのが GPU シミュレーションの主な事故なので、
+                ///       開く前に «どの設定で落ちたか» まで出す (ParticleGpuSimulation.hpp の趣旨)。
                 ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "[CPU]");
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("GPU を要求していますが %s のため CPU で回ります",
@@ -344,7 +343,7 @@ void DrawVfxAssetInspector(EditorContext& ctx, const std::string& diskPath)
             ImGui::TextDisabled("%s - %s", FormatVfxSeconds(entry.start).c_str(),
                                 FormatVfxSeconds(entry.end).c_str());
         else if (entry.hasWindow)
-            // VFXElement の duration <= 0 は「ルートが終わるまで開いたまま」。
+            /// @note VFXElement の duration <= 0 は「ルートが終わるまで開いたまま」。
             ImGui::TextDisabled("%s - ルート終了", FormatVfxSeconds(entry.start).c_str());
         else
             ImGui::TextDisabled("-");

@@ -20,7 +20,7 @@
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptVFXProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptForceFieldProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptFlowFieldProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptCloudProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptSunMoonProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPatrolProxy.hpp>

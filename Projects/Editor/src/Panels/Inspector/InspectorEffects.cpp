@@ -16,38 +16,37 @@ namespace fbzz::editor {
 
 void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
-    // ParticleEmitter は Shuriken 式のモジュールスタックで描画する。
-    // WHY: 約 80 項目あり、素直に並べると «どこを触ればよいか» が読めなくなる。
-    //      Undo は DrawComponentSection の ActiveID 追跡がそのまま効く。
+    /// @note ParticleEmitter は Shuriken 式のモジュールスタックで描画する。約 80 項目を素直に並べると
+    ///       «どこを触ればよいか» が読めなくなるため。Undo は DrawComponentSection の ActiveID 追跡がそのまま効く。
     DrawComponentSection<scene::ParticleEmitter>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Emitter",
         [](scene::ParticleEmitter& pe, EditorContext& ctx) {
-            // 戻り値は「どれか 1 つでも変わった」。捨てるとモジュール側の編集が
-            // シーンの dirty マークへ伝わらず、保存し忘れて消える。
+            /// @note 戻り値は「どれか 1 つでも変わった」。捨てるとモジュール側の編集が
+            ///       シーンの dirty マークへ伝わらず、保存し忘れて消える。
             if (DrawParticleEmitterModules(pe.settings, ctx, &pe) && ctx.markSceneDirty)
                 ctx.markSceneDirty();
         });
 
 
-    DrawComponentSection<scene::ForceField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Force Field",
-        [](scene::ForceField& ff, EditorContext& ctx) {
-            // 力のリストはエミッター内蔵の力と同じ UI。座標系は GameObject の Transform が
-            // 決めるので選択は出さない。
-            DrawForceFieldList(ff.forces, ctx, /*showSpace=*/false);
-            // channels はシーンに置いた力場だけの概念 (内蔵の力は相手が決まっている)。
-            // 力ごとに持てるが、束ねて置く用途では全部同じにしたいことが多いので
-            // «先頭に合わせて全部へ» 配る。個別に分けたいなら GameObject を分ける。
+    DrawComponentSection<scene::FlowField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Flow Field",
+        [](scene::FlowField& ff, EditorContext& ctx) {
+            /// @note 流れのリストはエミッター内蔵の流れと同じ UI。座標系は GameObject の Transform が
+            ///       決めるので選択は出さない。
+            DrawFlowFieldList(ff.forces, ctx, /*showSpace=*/false);
+            /// @note channels はシーンに置いた場だけの概念 (内蔵の流れは相手が決まっている)。
+            ///       流れごとに持てるが、束ねて置く用途では全部同じにしたいことが多いので
+            ///       «先頭に合わせて全部へ» 配る。個別に分けたいなら GameObject を分ける。
             if (!ff.forces.empty()) {
                 std::uint32_t mask = ff.forces.front().channels;
-                if (widgets::ForceFieldChannelMask("Channels", mask))
+                if (widgets::FlowFieldChannelMask("Channels", mask))
                     for (auto& force : ff.forces) force.channels = mask;
                 if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Only emitters sharing a bit with this mask receive these forces.");
+                    ImGui::SetTooltip("Only emitters sharing a bit with this mask receive these flows.");
             }
         });
 
-    // 雷・ビーム。プリセットと «形が動くプレビュー» を上に置き、細かい値は Reflect の行で出す。
-    // WHY 専用にするか: 40 近い値のうち «どれを触ると枝が増えるか» は数値の列からは読めない。
-    //      触ったその場で形が変わるのを見せないと、雷は作れない。
+    /// @note 雷・ビーム。プリセットと «形が動くプレビュー» を上に置き、細かい値は Reflect の行で出す。
+    ///       40 近い値のうち «どれを触ると枝が増えるか» は数値の列からは読めず、触ったその場で形が
+    ///       変わるのを見せないと雷は作れないため専用にした。
     DrawComponentSection<scene::VFXLineComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "VFX Line",
         [](scene::VFXLineComponent& line, EditorContext& ctx) {
             if (DrawVFXLinePresetBar(line) && ctx.markSceneDirty) ctx.markSceneDirty();
@@ -63,17 +62,14 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             ImGui::DragInt("Max Points", &trail.maxPoints, 1, 2, 512);
             ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
             ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
-            // 瞬間移動の切断。0 は «切らない» で、既存シーンの見た目を保つ既定。
+            /// @note 瞬間移動の切断。0 は «切らない» で、既存シーンの見た目を保つ既定。
             ImGui::DragFloat("Break Distance", &trail.breakDistance, 0.01f, 0.0f, 500.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Cut the trail when it jumps farther than this in one frame. 0 = never cut.");
 
-            // 幅は «2 点 + イージング» と «多キーカーブ» の二択。両方出すと
-            // どちらが効いているのか読めないので、有効な側だけを見せる。
-            //
-            // WHY キャンバスの戻り値を拾うか: カーブ / グラデーションはキーを
-            //     ドラッグして編集するため、ImGui の ActiveID 追跡では «変わった» を
-            //     取り切れない。捨てるとシーンの dirty が立たず、保存し忘れで消える。
+            /// @note 幅は «2 点 + イージング» と «多キーカーブ» の二択で、有効な側だけを見せる。
+            ///       curveChanged を拾うのは、カーブ / グラデーションのキードラッグ編集は ImGui の
+            ///       ActiveID 追跡が拾えず、捨てると dirty マークが立たず保存し忘れで消えるため。
             bool curveChanged = false;
             ImGui::Checkbox("Use Width Curve", &trail.widthCurveEnabled);
             if (trail.widthCurveEnabled) {
@@ -113,8 +109,8 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 trail.attachBone = boneBuf;
             widgets::DragVec3("Attach Offset", trail.attachOffset, 0.001f);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
-            // .mat アセット参照。albedo テクスチャを .mat から解決する。
-            // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            /// @note .mat アセット参照。albedo テクスチャを .mat から解決する。
+            ///       変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
                 trail.loadedMaterialPath.clear();
                 trail.texture = {};
@@ -144,8 +140,8 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
             ImGui::Checkbox("Double Sided", &trail.doubleSided);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
-            // .mat アセット参照。albedo テクスチャと doubleSided を .mat から解決する。
-            // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            /// @note .mat アセット参照。albedo テクスチャと doubleSided を .mat から解決する。
+            ///       変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
                 trail.loadedMaterialPath.clear();
                 trail.texture = {};
