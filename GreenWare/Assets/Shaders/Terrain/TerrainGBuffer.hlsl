@@ -30,9 +30,11 @@ cbuffer TerrainCB : register(CB_OBJECT)
 
 // テクスチャ・サンプラーは Terrain.hlsl と同一スロット (C++ TerrainRenderPass のバインドと一致)。
 FBZZ_TEX2D(g_splatmap, 0);
-Texture2D    g_diffuse[4]   : register(t1);  // t1..t4
-Texture2D    g_normal[4]    : register(t5);  // t5..t8
-Texture2D    g_aoRoughness[4] : register(t9); // t9..t12 (R=AO, G=Roughness)
+/// @brief レイヤー i のテクスチャ。枠は旧 t1..t4 / t5..t8 / t9..t12 (TerrainRenderPass が textures[1..12] へ差す)。
+/// @note テーブル撤去後は register(tN) の配列を束縛できないため、枠番号から添字を引く。
+Texture2D TerrainDiffuse(uint i)     { return ResourceDescriptorHeap[NonUniformResourceIndex(FbzzPixelSlot(1u + i))]; }
+Texture2D TerrainNormal(uint i)      { return ResourceDescriptorHeap[NonUniformResourceIndex(FbzzPixelSlot(5u + i))]; }
+Texture2D TerrainAoRoughness(uint i) { return ResourceDescriptorHeap[NonUniformResourceIndex(FbzzPixelSlot(9u + i))]; }
 // 地形レイヤーはワールド座標でタイリングするので wrap。異方性は x4。
 // WHY x16 の s0 を使わないか: 地形は画面を広く覆い、レイヤーごとに 3 枚を引くので
 //     x16 のコストが枚数ぶん乗る。x4 で見た目はほぼ変わらず約 1/3 のコストで済む。
@@ -97,7 +99,7 @@ float3 BlendTerrainNormal(float3 worldTangent, float3 geometricNormal, float2 uv
     for (int i = 0; i < 4; ++i)
     {
         float2 tiledUV = uv * layerTiling[i].xy;
-        float3 tn = g_normal[i].Sample(g_sampler, tiledUV).xyz * 2.0f - 1.0f;
+        float3 tn = TerrainNormal(i).Sample(g_sampler, tiledUV).xyz * 2.0f - 1.0f;
         tn.xy *= layerNormalStrength[i] * kTerrainNormalBoost;
         tn = normalize(tn);
         blended += normalize(T * tn.x + B * tn.y + Ng * tn.z) * splat[i];
@@ -165,8 +167,8 @@ GBufferOut PSMain(TerrainPSInput p)
     for (int i = 0; i < 4; ++i)
     {
         float2 tiledUV = p.uv * layerTiling[i].xy;
-        float3 d       = SRGBToLinear(g_diffuse[i].Sample(g_sampler, tiledUV).rgb);
-        float2 aoRough = g_aoRoughness[i].Sample(g_sampler, tiledUV).rg;
+        float3 d       = SRGBToLinear(TerrainDiffuse(i).Sample(g_sampler, tiledUV).rgb);
+        float2 aoRough = TerrainAoRoughness(i).Sample(g_sampler, tiledUV).rg;
         float  hasTex  = saturate(layerTextureFlags[i]);
         float  layerRough = lerp(saturate(layerMaterial[i].x), aoRough.g, hasTex);
         albedo    += d * splat[i];

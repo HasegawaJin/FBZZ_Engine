@@ -46,13 +46,12 @@ cbuffer UIConstants : register(CB_UI)
 //       float4 tintColor;   // offset  0
 //       float  cornerRadius;// offset 16
 //       ...
-
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
-    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
-    uint texAlbedoIndex;
 //   };
 
-FBZZ_MATERIAL_TEX(g_Texture, texAlbedoIndex);
+/// @note 添字は MaterialConstants ではなく描画ごとの添字ブロック (b14) の t0 枠から引く。
+///       UISystem は既定シェーダーにもマテリアルにも call.textures[0] でアトラス / 画像を差す。
+///       既定シェーダーは MaterialConstants を持たないので、そちらに添字を置くと誰も書かない。
+FBZZ_TEX2D(g_Texture, TEX_ALBEDO_SLOT);
 SamplerState g_Sampler : register(SAMPLER_UI);
 
 struct UIVertexInput

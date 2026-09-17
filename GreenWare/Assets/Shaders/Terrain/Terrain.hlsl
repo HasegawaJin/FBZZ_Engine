@@ -126,9 +126,11 @@ cbuffer LightConstants : register(CB_LIGHT)
 // s2 = スプラットマップ用 Clamp Linear（UV が [0,1] を超えた場合に端値を維持）
 // ============================================================================
 FBZZ_TEX2D(g_splatmap, 0);
-Texture2D    g_diffuse[4]    : register(t1); // t1, t2, t3, t4
-Texture2D    g_normal[4]     : register(t5); // t5, t6, t7, t8
-Texture2D    g_aoRoughness[4] : register(t9); // R=AO, G=Roughness
+/// @brief レイヤー i のテクスチャ。枠は旧 t1..t4 / t5..t8 / t9..t12 (TerrainRenderPass が textures[1..12] へ差す)。
+/// @note テーブル撤去後は register(tN) の配列を束縛できないため、枠番号から添字を引く。
+Texture2D TerrainDiffuse(uint i)     { return ResourceDescriptorHeap[NonUniformResourceIndex(FbzzPixelSlot(1u + i))]; }
+Texture2D TerrainNormal(uint i)      { return ResourceDescriptorHeap[NonUniformResourceIndex(FbzzPixelSlot(5u + i))]; }
+Texture2D TerrainAoRoughness(uint i) { return ResourceDescriptorHeap[NonUniformResourceIndex(FbzzPixelSlot(9u + i))]; }
 FBZZ_TEX2D_T(float, g_shadowMap, 13);
 // 地形レイヤーはワールド座標でタイリングするので wrap。異方性は x4。
 // WHY x16 の s0 を使わないか: 地形は画面を広く覆い、レイヤーごとに diffuse / normal /
@@ -286,9 +288,9 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
             float2 tiledUV = p.uv * layerTiling[i].xy;
             float2 gradX   = duvdx * layerTiling[i].xy;
             float2 gradY   = duvdy * layerTiling[i].xy;
-            float3 d       = g_diffuse[i].SampleGrad(g_sampler, tiledUV, gradX, gradY).rgb;
-            float2 aoRoughnessTex = g_aoRoughness[i].SampleGrad(g_sampler, tiledUV, gradX, gradY).rg;
-            float3 tn      = g_normal[i].SampleGrad(g_sampler, tiledUV, gradX, gradY).xyz * 2.0f - 1.0f;
+            float3 d       = TerrainDiffuse(i).SampleGrad(g_sampler, tiledUV, gradX, gradY).rgb;
+            float2 aoRoughnessTex = TerrainAoRoughness(i).SampleGrad(g_sampler, tiledUV, gradX, gradY).rg;
+            float3 tn      = TerrainNormal(i).SampleGrad(g_sampler, tiledUV, gradX, gradY).xyz * 2.0f - 1.0f;
             tn.xy *= layerNormalStrength[i];
             tn = normalize(tn);
             float hasAoRoughnessTex = saturate(layerTextureFlags[i]);
