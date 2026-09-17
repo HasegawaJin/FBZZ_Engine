@@ -929,25 +929,54 @@ inline constexpr std::uint32_t kTrailFlagSrgbTexture = 1u;
 [[nodiscard]] bool IsEffectTextureSrgb(const std::string& texturePath);
 static_assert(sizeof(TrailCB) == 224, "TrailCB layout mismatch");
 
-/// TerrainObjectCB — Terrain シェーダーの b1。
-/// LAYOUT: Assets/Shaders/Terrain/Terrain.hlsl の TerrainCB と完全に一致させること。
-/// @note b1 が PerObjectCB でない理由: 地形はレイヤーごとのタイリングと自動ブレンド範囲を
-///       毎ドロー渡す必要があり、world / worldInvTranspose の 2 枠には収まらない。
+/// @brief Terrain シェーダーの b1。
+/// @note LAYOUT: Assets/Shaders/Terrain/TerrainSurface.hlsli の TerrainCB と完全に一致させること。
+/// @note 層ごとの値は StructuredBuffer (TerrainLayerGpu) へ移した。CB の固定長配列では層数に上限が残る。
+/// @see Docs/design/terrain-layers.md
 struct TerrainObjectCB {
     math::Matrix4 worldMatrix;
     math::Matrix4 wvpMatrix;
-    math::Vector4 layerTiling[4];
-    math::Vector4 layerNormalStrength;
-    math::Vector4 layerMaterial[4];
-    math::Vector4 layerTextureFlags;
-    math::Vector4 layerAutoHeight[4];
-    math::Vector4 layerAutoSlope[4];
-    /// 天候 (x=wetness, y=darkening, z=puddleAmount)。
-    /// @note b8 から読まない理由: 地形シェーダーは b1 を TerrainCB として使うため
-    ///       AdvancedGraphicsConstants を宣言できない。値はここで手渡す。
+    /// @brief 天候 (x=wetness, y=darkening, z=puddleAmount)。
+    /// @note 地形シェーダーは b1 を TerrainCB に使うため b8 を宣言できず、値はここで手渡す。
     math::Vector4 weather;
+    /// @brief x=ローカル幅 X [m], y=ローカル奥行 Z [m], z=heightBlendDepth, w=自動ブレンドを持つ層があるか (0/1)。
+    math::Vector4 terrainParams;
+    std::uint32_t layerBufferIndex = 0xFFFFFFFFu; ///< TerrainLayerGpu 配列の bindless 添字
+    std::uint32_t layerCount       = 0;
+    std::uint32_t splatColumns     = 1;
+    std::uint32_t splatRows        = 1;
 };
-static_assert(sizeof(TerrainObjectCB) == 432, "TerrainObjectCB size mismatch");
+static_assert(sizeof(TerrainObjectCB) == 176, "TerrainObjectCB size mismatch");
+
+/// @brief 地形 1 層ぶんの GPU パラメーター (StructuredBuffer の 1 要素)。
+/// @note LAYOUT: TerrainSurface.hlsli の TerrainLayer と一致させること。テクスチャ添字に無効値を入れない。
+struct TerrainLayerGpu {
+    std::uint32_t diffuseIndex     = 0;
+    std::uint32_t normalIndex      = 0;
+    std::uint32_t aoRoughnessIndex = 0;
+    std::uint32_t heightIndex      = 0;
+    float tilingX            = 8.0f;
+    float tilingZ            = 8.0f;
+    float normalStrength     = 1.0f;
+    float roughness          = 0.8f;
+    float ambientOcclusion   = 1.0f;
+    float hasAoRoughness     = 0.0f;
+    float hasHeight          = 0.0f;
+    float heightBlend        = 0.0f;
+    float autoMinHeight      = -10000.0f;
+    float autoMaxHeight      = 10000.0f;
+    float autoHeightFade     = 1.0f;
+    float autoBlendEnabled   = 0.0f;
+    float autoMinSlope       = 0.0f;
+    float autoMaxSlope       = 1.0f;
+    float autoSlopeFade      = 0.1f;
+    float autoBlendStrength  = 1.0f;
+    float triplanar          = 0.0f;
+    float triplanarSharpness = 4.0f;
+    float macroScale         = 0.1f;
+    float macroStrength      = 0.0f;
+};
+static_assert(sizeof(TerrainLayerGpu) == 96, "TerrainLayerGpu size mismatch");
 
 /// WaterVertex — Assets/Shaders/Water/Water.hlsl の WaterVSInput と一致する頂点。
 struct WaterVertex {

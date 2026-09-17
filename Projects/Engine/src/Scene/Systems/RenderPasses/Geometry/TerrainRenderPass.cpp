@@ -2,24 +2,12 @@
 /// @brief   TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-/// @note 
-/// @note テクスチャスロット (Terrain.hlsl と同期すること):
-/// @note t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
-/// @note t1-t4   = layer0-3 ディフューズ
-/// @note t5-t8   = layer0-3 法線
-/// @note t9-t12  = layer0-3 AO/Roughness (R=AO, G=Roughness)
-/// @note t13     = shadow depth
-/// @note 
-/// @note サンプラースロット (Terrain.hlsl と同期すること):
-/// @note s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
-/// @note s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
-/// @note s2 = CLAMP_LINEAR      スプラットマップ用
-/// @note 
-/// @note 設計上の注意:
-/// @note - シングルスレッド前提。static ローカルによる遅延初期化を使う。
-/// @note - GPU バッファは ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
-/// @note - heightDirty: 全チャンクを削除して再構築
-/// @note - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
+///
+/// @note 枠 (TerrainSurface.hlsli と同期): t0 = 層番号マップ、t1 = 重みマップ、t13 = 影。層テクスチャと層パラメーターは
+///       StructuredBuffer (TerrainLayerGpu) と bindless 添字で渡す。
+/// @note シングルスレッド前提。GPU 資源は ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
+///       heightDirty (穴を含む) でチャンクを、splatDirty で番号 / 重みマップを作り直す。
+/// @see Docs/design/terrain-layers.md
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
@@ -28,6 +16,8 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
+#include <Engine/Renderer/ITexture.hpp>
+#include <Engine/Renderer/IStructuredBuffer.hpp>
 #include <Engine/Scene/Components/FiberComponent.hpp>
 #include "Engine/Scene/Components/TerrainGridComponent.hpp"
 #include "Engine/Scene/Entity.hpp"
@@ -101,18 +91,18 @@ struct std::hash<fbzz::scene::TerrainChunkKey> {
 
 namespace fbzz::scene {
 
-struct TerrainTextures {
-    renderer::ResourceHandle<renderer::TextureTag> splatmap;
-    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> diffuse;
-    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> normal;
-    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> aoRoughness;
+/// @brief 地形 1 つぶんの GPU 資源。層テクスチャは LoadTexture のパスキャッシュが所有するので持たない。
+struct TerrainGpuState {
+    renderer::ResourceHandle<renderer::TextureTag> splatIndices;   ///< 所有
+    renderer::ResourceHandle<renderer::TextureTag> splatWeights;   ///< 所有
+    renderer::ResourceHandle<renderer::StructuredBufferTag> layerBuffer; ///< 所有
+    uint32_t layerCapacity = 0;
+    /// @note 直前に転送したバイト列。同じなら Update を省く。
+    std::vector<TerrainLayerGpu> uploadedLayers;
 };
 
 static std::unordered_map<TerrainChunkKey, TerrainChunk> g_chunkCache;
-static std::unordered_map<uint32_t, TerrainTextures>    g_texCache;
-/// @note レイヤーマテリアルのテクスチャパス署名。Material インスペクタでテクスチャを差し替えたときだけ
-/// @note テクスチャを再構築するための変更検出に使う（毎フレーム GPU 再アップロードを避ける）。
-static std::unordered_map<uint32_t, size_t>             g_texSigCache;
+static std::unordered_map<uint32_t, TerrainGpuState>     g_gpuCache;
 
 struct TerrainNeighbors {
     const TerrainComponent* north = nullptr;
@@ -138,10 +128,8 @@ struct TerrainCameraFrameCB {
 };
 static_assert(sizeof(TerrainCameraFrameCB) == 288, "PerFrameCB size mismatch");
 
-/// @note TerrainObjectCB (b1) の定義は RenderPassContext.hpp。エディタのマテリアルプレビューが
-/// @note 本編と同じ絵を焼くために同じレイアウトを要るため、ここに置くと写しが 2 つになり黙ってずれる。
-
-static std::unordered_map<uint32_t, TerrainObjectCB> g_cbParamCache;
+/// @note TerrainObjectCB (b1) と TerrainLayerGpu の定義は RenderPassContext.hpp。エディタのマテリアルプレビューが
+///       本編と同じ絵を焼くために同じレイアウトを要るため、ここに置くと写しが 2 つになり黙ってずれる。
 
 static bool TryAddTerrainHeightSample(
     const TerrainComponent* terrain,
@@ -388,7 +376,11 @@ static void BuildChunk(
     }
 }
 
+/// @brief チャンクの LOD インデックスを作る。穴のセルは三角形を作らない。
+/// @note 粗い LOD のブロックに穴が 1 つでもあれば、そのブロックは LOD0 の三角形で埋める。
+///       粗い三角形で穴を丸ごと塞ぐか広げるかの二択にすると、遠景で穴の形が変わって見える。
 static void BuildChunkLODIndices(
+    const TerrainComponent& terrain,
     int                    x0,
     int                    z0,
     int                    x1,
@@ -397,16 +389,33 @@ static void BuildChunkLODIndices(
     std::vector<uint32_t>& outIndices)
 {
     const int w = x1 - x0 + 1;
+    const bool hasHoles = terrain.holeData.size() == terrain.CellCount();
+    auto pushQuad = [&](int x, int z, int xNext, int zNext) {
+        const uint32_t i00 = static_cast<uint32_t>(z     * w + x);
+        const uint32_t i10 = static_cast<uint32_t>(z     * w + xNext);
+        const uint32_t i01 = static_cast<uint32_t>(zNext * w + x);
+        const uint32_t i11 = static_cast<uint32_t>(zNext * w + xNext);
+        outIndices.push_back(i00); outIndices.push_back(i01); outIndices.push_back(i10);
+        outIndices.push_back(i10); outIndices.push_back(i01); outIndices.push_back(i11);
+    };
     for (int z = 0; z < (z1 - z0); z += step) {
         for (int x = 0; x < (x1 - x0); x += step) {
             const int zNext = std::min(z + step, z1 - z0);
             const int xNext = std::min(x + step, x1 - x0);
-            const uint32_t i00 = static_cast<uint32_t>(z     * w + x);
-            const uint32_t i10 = static_cast<uint32_t>(z     * w + xNext);
-            const uint32_t i01 = static_cast<uint32_t>(zNext * w + x);
-            const uint32_t i11 = static_cast<uint32_t>(zNext * w + xNext);
-            outIndices.push_back(i00); outIndices.push_back(i01); outIndices.push_back(i10);
-            outIndices.push_back(i10); outIndices.push_back(i01); outIndices.push_back(i11);
+            bool blockHasHole = false;
+            if (hasHoles) {
+                for (int cz = z; cz < zNext && !blockHasHole; ++cz)
+                    for (int cx = x; cx < xNext && !blockHasHole; ++cx)
+                        blockHasHole = terrain.IsHoleCell(x0 + cx, z0 + cz);
+            }
+            if (!blockHasHole) {
+                pushQuad(x, z, xNext, zNext);
+                continue;
+            }
+            for (int cz = z; cz < zNext; ++cz)
+                for (int cx = x; cx < xNext; ++cx)
+                    if (!terrain.IsHoleCell(x0 + cx, z0 + cz))
+                        pushQuad(cx, cz, cx + 1, cz + 1);
         }
     }
 }
@@ -436,9 +445,11 @@ static TerrainChunk& EnsureTerrainChunk(
 
         for (int lod = 0; lod < kLODCount; ++lod) {
             std::vector<uint32_t> indices;
-            BuildChunkLODIndices(x0, z0, x1, z1, kLODSteps[lod], indices);
+            BuildChunkLODIndices(terrain, x0, z0, x1, z1, kLODSteps[lod], indices);
             chunk.indexCountLOD[lod] = static_cast<uint32_t>(indices.size());
-            chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), chunk.indexCountLOD[lod]);
+            /// @note 全セルが穴のチャンクはインデックス 0 本。空バッファは作らず、描画側で飛ばす。
+            if (chunk.indexCountLOD[lod] > 0)
+                chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), chunk.indexCountLOD[lod]);
         }
         g_chunkCache[key] = std::move(chunk);
     }
@@ -474,21 +485,6 @@ static bool IsChunkVisible(
     return frustum.IntersectsAABB(center, extents);
 }
 
-static renderer::ResourceHandle<renderer::TextureTag> BuildSplatmapTexture(
-    const TerrainComponent&    terrain,
-    renderer::ResourceManager& resources,
-    renderer::ResourceHandle<renderer::TextureTag> fallback)
-{
-    if (terrain.splatData.empty()) return fallback;
-    if (terrain.splatData.size() !=
-        static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows) * 4u)
-        return fallback;
-    return resources.CreateTexture(
-        terrain.splatData.data(),
-        static_cast<uint32_t>(terrain.columns),
-        static_cast<uint32_t>(terrain.rows));
-}
-
 static float TGetF(const asset::MaterialAsset* m, const std::string& name, float def)
 {
     if (!m) return def;
@@ -504,27 +500,142 @@ static std::string TGetTex(const asset::MaterialAsset* m, const std::string& nam
     return {};
 }
 
-static TerrainTextures BuildTextureSet(
-    const std::array<const asset::MaterialAsset*, 4>& layerMats,
-    const TerrainComponent&    terrain,
-    renderer::ResourceManager& resources,
-    renderer::ResourceHandle<renderer::TextureTag> splatFallback,
-    renderer::ResourceHandle<renderer::TextureTag> whiteTex,
-    renderer::ResourceHandle<renderer::TextureTag> flatNormalTex,
-    renderer::ResourceHandle<renderer::TextureTag> blackTex)
+TerrainLayerGpu ReadTerrainLayerParams(const asset::MaterialAsset* material, std::string_view keyPrefix)
 {
-    TerrainTextures ts;
-    ts.splatmap = BuildSplatmapTexture(terrain, resources, splatFallback);
+    const std::string prefix(keyPrefix);
+    const auto get = [&](const char* key, float def) { return TGetF(material, prefix + key, def); };
+    TerrainLayerGpu layer;
+    layer.tilingX            = get("tilingX", 8.0f);
+    layer.tilingZ            = get("tilingZ", 8.0f);
+    layer.normalStrength     = get("normalStrength", 1.0f);
+    layer.roughness          = get("roughness", 0.8f);
+    layer.ambientOcclusion   = get("ambientOcclusion", 1.0f);
+    layer.hasAoRoughness     = TGetTex(material, prefix + "ao_roughness").empty() ? 0.0f : 1.0f;
+    layer.hasHeight          = TGetTex(material, prefix + "height").empty() ? 0.0f : 1.0f;
+    layer.heightBlend        = get("heightBlend", 0.0f);
+    layer.autoMinHeight      = get("autoMinHeight", -10000.0f);
+    layer.autoMaxHeight      = get("autoMaxHeight", 10000.0f);
+    layer.autoHeightFade     = get("autoHeightFade", 1.0f);
+    layer.autoBlendEnabled   = get("autoBlendEnabled", 0.0f);
+    layer.autoMinSlope       = get("autoMinSlope", 0.0f);
+    layer.autoMaxSlope       = get("autoMaxSlope", 1.0f);
+    layer.autoSlopeFade      = get("autoSlopeFade", 0.1f);
+    layer.autoBlendStrength  = get("autoBlendStrength", 1.0f);
+    layer.triplanar          = get("triplanar", 0.0f);
+    layer.triplanarSharpness = get("triplanarSharpness", 4.0f);
+    layer.macroScale         = get("macroScale", 0.1f);
+    layer.macroStrength      = get("macroStrength", 0.0f);
+    return layer;
+}
 
-    for (int i = 0; i < 4; ++i) {
-        const std::string diffusePath     = TGetTex(layerMats[i], "diffuse");
-        const std::string normalPath      = TGetTex(layerMats[i], "normal");
-        const std::string aoRoughnessPath = TGetTex(layerMats[i], "ao_roughness");
-        ts.diffuse[i]     = diffusePath.empty()     ? whiteTex      : resources.LoadTexture(diffusePath);
-        ts.normal[i]      = normalPath.empty()       ? flatNormalTex : resources.LoadTexture(normalPath);
-        ts.aoRoughness[i] = aoRoughnessPath.empty()  ? blackTex      : resources.LoadTexture(aoRoughnessPath);
+bool TerrainFallbackTextures::IsValid() const
+{
+    return white.IsValid() && flatNormal.IsValid() && black.IsValid() && gray.IsValid();
+}
+
+TerrainFallbackTextures CreateTerrainFallbackTextures(renderer::ResourceManager& resources)
+{
+    TerrainFallbackTextures t;
+    const uint8_t white[4]  = { 255, 255, 255, 255 };
+    const uint8_t normal[4] = { 128, 128, 255, 255 };
+    const uint8_t black[4]  = {   0,   0,   0, 255 };
+    const uint8_t gray[4]   = { 128, 128, 128, 255 };
+    t.white      = resources.CreateTexture(white, 1, 1);
+    t.flatNormal = resources.CreateTexture(normal, 1, 1);
+    t.black      = resources.CreateTexture(black, 1, 1);
+    t.gray       = resources.CreateTexture(gray, 1, 1);
+    return t;
+}
+
+void ReleaseTerrainFallbackTextures(renderer::ResourceManager& resources, TerrainFallbackTextures& textures)
+{
+    resources.Release(textures.white);
+    resources.Release(textures.flatNormal);
+    resources.Release(textures.black);
+    resources.Release(textures.gray);
+    textures = {};
+}
+
+/// @return テクスチャの bindless 添字。未ロード・発行失敗なら代替の添字。
+static uint32_t BindlessIndexOr(renderer::ResourceManager& resources,
+                                renderer::ResourceHandle<renderer::TextureTag> texture,
+                                renderer::ResourceHandle<renderer::TextureTag> fallback)
+{
+    if (const renderer::ITexture* t = resources.Get(texture)) {
+        const uint32_t index = t->GetBindlessIndex();
+        if (index != renderer::INVALID_BINDLESS_INDEX) return index;
     }
-    return ts;
+    if (const renderer::ITexture* f = resources.Get(fallback))
+        return f->GetBindlessIndex();
+    return renderer::INVALID_BINDLESS_INDEX;
+}
+
+void FillTerrainLayerTextureIndices(renderer::ResourceManager& resources,
+                                    const asset::MaterialAsset* material,
+                                    std::string_view keyPrefix,
+                                    const TerrainFallbackTextures& fallback,
+                                    TerrainLayerGpu& layer)
+{
+    const std::string prefix(keyPrefix);
+    const auto load = [&](const char* key) {
+        const std::string path = TGetTex(material, prefix + key);
+        return path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.LoadTexture(path);
+    };
+    layer.diffuseIndex     = BindlessIndexOr(resources, load("diffuse"), fallback.white);
+    layer.normalIndex      = BindlessIndexOr(resources, load("normal"), fallback.flatNormal);
+    layer.aoRoughnessIndex = BindlessIndexOr(resources, load("ao_roughness"), fallback.black);
+    layer.heightIndex      = BindlessIndexOr(resources, load("height"), fallback.gray);
+}
+
+/// @brief 番号 / 重みマップを作り直す。どちらも頂点 1 つ = RGBA8 1 画素なので配列をそのまま渡せる。
+static void RebuildSplatTextures(TerrainGpuState& state, const TerrainComponent& terrain,
+                                 renderer::ResourceManager& resources)
+{
+    resources.Release(state.splatIndices);
+    resources.Release(state.splatWeights);
+    state.splatIndices = {};
+    state.splatWeights = {};
+    if (terrain.HasValidSplat()) {
+        state.splatIndices = resources.CreateTexture(terrain.splatIndices.data(),
+            static_cast<uint32_t>(terrain.columns), static_cast<uint32_t>(terrain.rows));
+        state.splatWeights = resources.CreateTexture(terrain.splatWeights.data(),
+            static_cast<uint32_t>(terrain.columns), static_cast<uint32_t>(terrain.rows));
+        return;
+    }
+    /// @note スプラット未初期化の地形は «全頂点が層 0» の 1x1 で描く。
+    const uint8_t indices[4] = { 0, 0, 0, 0 };
+    const uint8_t weights[4] = { 255, 0, 0, 0 };
+    state.splatIndices = resources.CreateTexture(indices, 1, 1);
+    state.splatWeights = resources.CreateTexture(weights, 1, 1);
+}
+
+static void ReleaseTerrainGpuState(TerrainGpuState& state, renderer::ResourceManager& resources)
+{
+    resources.Release(state.splatIndices);
+    resources.Release(state.splatWeights);
+    resources.Release(state.layerBuffer);
+    state = {};
+}
+
+/// @brief 層配列を StructuredBuffer へ置く。層数が変わったら作り直し、内容が同じなら転送しない。
+static void UploadLayerBuffer(TerrainGpuState& state, const std::vector<TerrainLayerGpu>& layers,
+                              renderer::ResourceManager& resources)
+{
+    const uint32_t count = static_cast<uint32_t>(layers.size());
+    const size_t bytes = layers.size() * sizeof(TerrainLayerGpu);
+    if (!state.layerBuffer.IsValid() || state.layerCapacity != count) {
+        resources.Release(state.layerBuffer);
+        state.layerBuffer = resources.CreateStructuredBuffer(layers.data(), count,
+                                                             static_cast<uint32_t>(sizeof(TerrainLayerGpu)));
+        state.layerCapacity = count;
+        state.uploadedLayers = layers;
+        return;
+    }
+    if (state.uploadedLayers.size() == layers.size()
+        && std::memcmp(state.uploadedLayers.data(), layers.data(), bytes) == 0)
+        return;
+    resources.Update(state.layerBuffer, layers.data(), bytes);
+    state.uploadedLayers = layers;
 }
 
 /// @name IRenderPass
@@ -580,22 +691,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     static auto cameraCBH  = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
     static auto terrainCBH = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
 
-    static auto s_whiteTex = [&] {
-        const uint8_t w[4] = { 255, 255, 255, 255 };
-        return resources.CreateTexture(w, 1, 1);
-    }();
-    static auto s_splatFallback = [&] {
-        const uint8_t s[4] = { 255, 0, 0, 0 };
-        return resources.CreateTexture(s, 1, 1);
-    }();
-    static auto s_flatNormalTex = [&] {
-        const uint8_t n[4] = { 128, 128, 255, 255 };
-        return resources.CreateTexture(n, 1, 1);
-    }();
-    static auto s_blackTex = [&] {
-        const uint8_t b[4] = { 0, 0, 0, 255 };
-        return resources.CreateTexture(b, 1, 1);
-    }();
+    static TerrainFallbackTextures s_fallback = CreateTerrainFallbackTextures(resources);
 
     if (s_resetVersion != resources.GetResetVersion()) {
         s_resetVersion      = resources.GetResetVersion();
@@ -605,10 +701,9 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         terrainWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         cameraCBH           = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
         terrainCBH          = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
-        s_whiteTex      = [&] { const uint8_t w[4] = { 255, 255, 255, 255 }; return resources.CreateTexture(w, 1, 1); }();
-        s_splatFallback = [&] { const uint8_t s[4] = { 255,   0,   0,   0 }; return resources.CreateTexture(s, 1, 1); }();
-        s_flatNormalTex = [&] { const uint8_t n[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(n, 1, 1); }();
-        s_blackTex      = [&] { const uint8_t b[4] = {   0,   0,   0, 255 }; return resources.CreateTexture(b, 1, 1); }();
+        s_fallback          = CreateTerrainFallbackTextures(resources);
+        /// @note Reset 後の旧ハンドルは失効済み。解放せずキャッシュごと捨てて作り直させる。
+        g_gpuCache.clear();
     }
 
     {
@@ -623,17 +718,10 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 resources.Release(ib);
             return true;
         });
-        std::erase_if(g_texCache, [&validIndices, &resources](auto& kv) {
+        std::erase_if(g_gpuCache, [&validIndices, &resources](auto& kv) {
             if (validIndices.count(kv.first)) return false;
-            if (kv.second.splatmap.IsValid() && kv.second.splatmap != s_splatFallback)
-                resources.Release(kv.second.splatmap);
+            ReleaseTerrainGpuState(kv.second, resources);
             return true;
-        });
-        std::erase_if(g_cbParamCache, [&validIndices](auto& kv) {
-            return !validIndices.count(kv.first);
-        });
-        std::erase_if(g_texSigCache, [&validIndices](auto& kv) {
-            return !validIndices.count(kv.first);
         });
     }
 
@@ -692,105 +780,65 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 
         const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
 
-        std::array<const asset::MaterialAsset*, 4> layerMats = {};
-        for (int li = 0; li < 4; ++li) {
-            if (!terrain.layerMaterials[li].empty()) {
-                const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(terrain.layerMaterials[li]);
-                layerMats[li] = asset::AssetManager::Get<asset::MaterialAsset>(handle);
-            }
-        }
-
         if (terrain.heightDirty) {
             EraseTerrainChunkCache(resources, eid);
             EraseNeighborTerrainChunkCaches(scene, resources, neighbors);
             terrain.heightDirty = false;
         }
 
-        auto RebuildCBParams = [&]() {
-            TerrainObjectCB cb{};
-            float normalStr[4]            = { 1.0f, 1.0f, 1.0f, 1.0f };
-            float materialTextureFlags[4] = {};
-            for (int li = 0; li < 4; ++li) {
-                const asset::MaterialAsset* m = layerMats[li];
-                normalStr[li]             = TGetF(m, "normalStrength", 1.0f);
-                const bool hasAoTex       = m && m->textures.count("ao_roughness") &&
-                                            !m->textures.at("ao_roughness").empty();
-                materialTextureFlags[li]  = hasAoTex ? 1.0f : 0.0f;
-                cb.layerTiling[li]        = { TGetF(m, "tilingX", 8.0f),
-                                              TGetF(m, "tilingZ", 8.0f), 0.0f, 0.0f };
-                cb.layerMaterial[li]      = { TGetF(m, "roughness",        0.8f),
-                                              TGetF(m, "ambientOcclusion", 1.0f), 0.0f, 0.0f };
-                cb.layerAutoHeight[li]    = { TGetF(m, "autoMinHeight",    -10000.0f),
-                                              TGetF(m, "autoMaxHeight",     10000.0f),
-                                              TGetF(m, "autoHeightFade",    1.0f),
-                                              TGetF(m, "autoBlendEnabled",  0.0f) };
-                cb.layerAutoSlope[li]     = { TGetF(m, "autoMinSlope",      0.0f),
-                                              TGetF(m, "autoMaxSlope",      1.0f),
-                                              TGetF(m, "autoSlopeFade",     0.1f),
-                                              TGetF(m, "autoBlendStrength", 1.0f) };
-            }
-            cb.layerNormalStrength = { normalStr[0], normalStr[1], normalStr[2], normalStr[3] };
-            cb.layerTextureFlags   = { materialTextureFlags[0], materialTextureFlags[1],
-                                       materialTextureFlags[2], materialTextureFlags[3] };
-            g_cbParamCache[eid.index] = cb;
-        };
-
-        /// @note マテリアルパラメータ CB は毎フレーム再構築する。
-        /// @note レイヤーマテリアル(.mat)を Material インスペクタで直接編集しても terrain 側の
-        /// @note materialParamDirty は立たないため、従来は roughness/tiling/normalStrength/autoBlend 等の
-        /// @note 変更が既存地形へ反映されなかった。パラメータ抽出は安価（map 参照のみ）なので毎フレーム
-        /// @note 読み直し、マテリアル編集を即座に地形へ反映する。Deferred 地形は CB 経由でこれらを使う。
-        RebuildCBParams();
-        terrain.materialParamDirty = false;
-
-        /// @note レイヤーマテリアルのテクスチャパス署名を計算し、変化したときだけテクスチャを再構築する。
-        /// @note GPU 再アップロードは高価なので毎フレームは避けつつ、Material でテクスチャを差し替えたら反映する。
-        /// @note FNV-1a offset basis
-        size_t texSig = 1469598103934665603ull;
-        for (int li = 0; li < 4; ++li) {
-            const asset::MaterialAsset* m = layerMats[li];
-            auto mixPath = [&](const char* key) {
-                if (m) {
-                    const auto it = m->textures.find(key);
-                    if (it != m->textures.end())
-                        for (unsigned char c : it->second) { texSig ^= c; texSig *= 1099511628211ull; }
-                }
-                /// @note レイヤー/キー境界
-                texSig ^= 0x9Eu; texSig *= 1099511628211ull;
-            };
-            mixPath("diffuse");
-            mixPath("normal");
-            mixPath("ao_roughness");
-        }
-        const auto sigIt = g_texSigCache.find(eid.index);
-        const bool texChanged = (sigIt == g_texSigCache.end()) || sigIt->second != texSig;
-        g_texSigCache[eid.index] = texSig;
-
-        const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index) || texChanged;
-        if (needTexRebuild) {
-            auto& cachedTextures = g_texCache[eid.index];
-            /// @note ペイント更新のたびに生成 splatmap を上書きすると旧 GPU Texture が残るため、
-            /// @note パスキャッシュで共有されない所有テクスチャだけを再構築前に解放する。
-            if (cachedTextures.splatmap.IsValid() && cachedTextures.splatmap != s_splatFallback)
-                resources.Release(cachedTextures.splatmap);
-            cachedTextures = BuildTextureSet(layerMats, terrain, resources,
-                                             s_splatFallback, s_whiteTex,
-                                             s_flatNormalTex, s_blackTex);
+        TerrainGpuState& gpu = g_gpuCache[eid.index];
+        if (terrain.splatDirty || !gpu.splatIndices.IsValid() || !gpu.splatWeights.IsValid()) {
+            RebuildSplatTextures(gpu, terrain, resources);
             terrain.splatDirty = false;
         }
-        const TerrainTextures& textures = g_texCache.at(eid.index);
+
+        /// @note 層パラメーターは毎フレーム .mat から読み直す。Material インスペクタで .mat を直接編集しても
+        ///       地形側の dirty は立たないため。抽出は map 参照だけで安く、内容が同じなら転送もしない。
+        /// @note bindless 添字も毎フレーム引く。差し替え・ホットリロードで変わるため (Material::Upload と同じ方針)。
+        std::vector<TerrainLayerGpu> layers;
+        layers.reserve(static_cast<size_t>((std::max)(terrain.LayerCount(), 1)));
+        bool anyAutoBlend = false;
+        for (const std::string& path : terrain.layerMaterials) {
+            const asset::MaterialAsset* material = nullptr;
+            if (!path.empty())
+                material = asset::AssetManager::Get<asset::MaterialAsset>(
+                    asset::AssetManager::Load<asset::MaterialAsset>(path));
+            TerrainLayerGpu layer = ReadTerrainLayerParams(material);
+            FillTerrainLayerTextureIndices(resources, material, {}, s_fallback, layer);
+            anyAutoBlend |= layer.autoBlendEnabled > 0.0f && layer.autoBlendStrength > 0.0f;
+            layers.push_back(layer);
+        }
+        if (layers.empty()) {
+            /// @note 層 0 枚の地形は白い既定層 1 枚で描く。シェーダーは layerCount >= 1 を前提にする。
+            TerrainLayerGpu layer;
+            FillTerrainLayerTextureIndices(resources, nullptr, {}, s_fallback, layer);
+            layers.push_back(layer);
+        }
+        UploadLayerBuffer(gpu, layers, resources);
+        terrain.materialParamDirty = false;
+
+        const renderer::IStructuredBuffer* layerBuffer = resources.Get(gpu.layerBuffer);
+        const uint32_t layerBufferIndex = layerBuffer ? layerBuffer->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
+        /// @note 添字が無いと ResourceDescriptorHeap の範囲外を読む。描かない方が原因を切り分けやすい。
+        if (layerBufferIndex == renderer::INVALID_BINDLESS_INDEX) continue;
 
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
 
-    const math::Matrix4 world = transform.GetWorldMatrix();
-        TerrainObjectCB terrainCBData = g_cbParamCache.count(eid.index)
-                                      ? g_cbParamCache.at(eid.index)
-                                      : TerrainObjectCB{};
+        const math::Matrix4 world = transform.GetWorldMatrix();
+        TerrainObjectCB terrainCBData{};
         terrainCBData.worldMatrix = world;
         terrainCBData.wvpMatrix   = jitteredVP * world;
-        /// @note 天候はフレームごとに動くので、レイヤーパラメータのキャッシュには載せない。
         terrainCBData.weather = { weather.wetness, weather.darkening, weather.puddleAmount, 0.0f };
+        terrainCBData.terrainParams = {
+            static_cast<float>(terrain.columns - 1) * terrain.cellSize,
+            static_cast<float>(terrain.rows - 1) * terrain.cellSize,
+            terrain.heightBlendDepth,
+            anyAutoBlend ? 1.0f : 0.0f };
+        terrainCBData.layerBufferIndex = layerBufferIndex;
+        terrainCBData.layerCount       = static_cast<uint32_t>(layers.size());
+        terrainCBData.splatColumns     = terrain.HasValidSplat() ? static_cast<uint32_t>(terrain.columns) : 1u;
+        terrainCBData.splatRows        = terrain.HasValidSplat() ? static_cast<uint32_t>(terrain.rows) : 1u;
 
         /// @note TerrainObjectCB は全チャンクで同一内容のため、チャンクごとに Update するのは無駄。
         resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
@@ -829,6 +877,8 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 const bool fiberSurface=fiber && fiber->m_enabled && !fiber->m_materialPath.empty();
                 const int lod = fiberSurface ? 0 : (distSq < d0 * d0) ? 0
                               : (distSq < d1 * d1) ? 1 : 2;
+                /// @note 全セルが穴のチャンクはインデックスが 0 本。
+                if (chunk.indexCountLOD[lod] == 0) continue;
 
                 renderer::DrawCall call;
                 call.vertexBuffer  = chunk.vertexBuffer;
@@ -849,19 +899,8 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
                 BindForwardShadingResources(call, ctx);
 
-                call.textures[0]  = textures.splatmap;
-                call.textures[1]  = textures.diffuse[0];
-                call.textures[2]  = textures.diffuse[1];
-                call.textures[3]  = textures.diffuse[2];
-                call.textures[4]  = textures.diffuse[3];
-                call.textures[5]  = textures.normal[0];
-                call.textures[6]  = textures.normal[1];
-                call.textures[7]  = textures.normal[2];
-                call.textures[8]  = textures.normal[3];
-                call.textures[9]  = textures.aoRoughness[0];
-                call.textures[10] = textures.aoRoughness[1];
-                call.textures[11] = textures.aoRoughness[2];
-                call.textures[12] = textures.aoRoughness[3];
+                call.textures[0]  = gpu.splatIndices;
+                call.textures[1]  = gpu.splatWeights;
                 call.textures[13] = shadowDepthTexture;
 
                 SubmitCounted(ctx, call);
@@ -954,6 +993,7 @@ void SubmitTerrainShadowCasters(
                 const auto* fiber=gameObject->GetComponent<FiberComponent>();
                 const bool fiberSurface=fiber && fiber->m_enabled && !fiber->m_materialPath.empty();
                 const int lod = !fiberSurface && chunk.indexCountLOD[1]>0 && chunk.indexBufferLOD[1].IsValid() ? 1 : 0;
+                if (chunk.indexCountLOD[lod] == 0) continue;
 
                 renderer::DrawCall dc;
                 dc.vertexBuffer       = chunk.vertexBuffer;
@@ -1011,7 +1051,7 @@ void TerrainSelectionMaskSystem(RenderPassContext& ctx)
         ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         for (auto& [key, chunk] : g_chunkCache) {
-            if (key.entityId != eid) continue;
+            if (key.entityId != eid || chunk.indexCountLOD[0] == 0) continue;
 
             renderer::DrawCall dc;
             dc.vertexBuffer       = chunk.vertexBuffer;

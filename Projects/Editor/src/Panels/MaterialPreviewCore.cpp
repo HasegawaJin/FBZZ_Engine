@@ -8,6 +8,8 @@
 #include <Engine/Asset/VelocityFieldAtlas.hpp>
 #include <Engine/Renderer/FiberGeometry.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
+#include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
+#include <Engine/Renderer/IStructuredBuffer.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -123,6 +125,13 @@ struct SharedResources {
     ///       クリアされるため、渡さないと «本数は残っているのに中身が全部ゼロ» を読み光が当たらない。
     renderer::ResourceHandle<renderer::ConstantBufferTag> clusterCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> terrainCB;
+    /// @name 地形 (本編と同じ層配列 + 番号 / 重みマップ)
+    scene::TerrainFallbackTextures                         terrainFallback;
+    renderer::ResourceHandle<renderer::StructuredBufferTag> terrainLayerBuffer;
+    std::uint32_t                                          terrainLayerCount = 0;
+    /// @note 1x1 の «全面が層 0»。プレビューは層ごとに 1 枚の平面なので塗り分けを持たない。
+    renderer::ResourceHandle<renderer::TextureTag>        terrainSplatIndices;
+    renderer::ResourceHandle<renderer::TextureTag>        terrainSplatWeights;
     renderer::ResourceHandle<renderer::ConstantBufferTag> waterCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> uiCB;
@@ -513,7 +522,9 @@ renderer::ResourceHandle<renderer::TextureTag> DefaultTextureForSlot(Flavor flav
         return g_shared.whiteTexture;
     }
     if (flavor == Flavor::Terrain) {
-        if (slot >= 5 && slot <= 8) return g_shared.flatNormalTexture;
+        /// @note t0 / t1 は層番号 / 重みマップ。«全面が層 0» の 1x1 を差す。
+        if (slot == 0) return g_shared.terrainSplatIndices;
+        if (slot == 1) return g_shared.terrainSplatWeights;
         return g_shared.whiteTexture;
     }
     return {};
@@ -564,32 +575,72 @@ bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
 
 /// @name Terrain / Water の定数
 
-TerrainObjectCB BuildTerrainCB(const asset::MaterialAsset* material, const math::Matrix4& viewProjection)
+/// @brief プレビュー用の層配列を StructuredBuffer へ置き、b1 を組む。
+/// @note 層 .mat (Layer0_Ground.mat 等) は接頭辞なしのキーを持つので 1 層として焼く。
+///       旧形式の «layer0_diffuse» のような接頭辞付きキーを持つ .mat は、続く番号がある限り層を並べる。
+/// @return 層配列を置けなかったら false。
+bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialAsset* material,
+                    const math::Matrix4& viewProjection, TerrainObjectCB& outCb)
 {
-    TerrainObjectCB cb{};
-    cb.worldMatrix = math::Matrix4::Identity();
-    cb.wvpMatrix = viewProjection;
-    for (int i = 0; i < 4; ++i) {
-        const std::string prefix = "layer" + std::to_string(i) + "_";
-        cb.layerTiling[i] = { ParamFloat(material, prefix + "tilingX", 2.0f),
-                              ParamFloat(material, prefix + "tilingZ", 2.0f), 0.0f, 0.0f };
-        const float normalStrength = ParamFloat(material, prefix + "normalStrength", 1.0f);
-        if (i == 0)      cb.layerNormalStrength.x = normalStrength;
-        else if (i == 1) cb.layerNormalStrength.y = normalStrength;
-        else if (i == 2) cb.layerNormalStrength.z = normalStrength;
-        else             cb.layerNormalStrength.w = normalStrength;
-        cb.layerMaterial[i] = { ParamFloat(material, prefix + "roughness", 0.8f),
-                                ParamFloat(material, prefix + "ambientOcclusion", 1.0f), 0.0f, 0.0f };
-        cb.layerAutoHeight[i] = { ParamFloat(material, prefix + "autoMinHeight", -10000.0f),
-                                  ParamFloat(material, prefix + "autoMaxHeight", 10000.0f),
-                                  ParamFloat(material, prefix + "autoHeightFade", 1.0f),
-                                  ParamFloat(material, prefix + "autoBlendEnabled", 0.0f) };
-        cb.layerAutoSlope[i] = { ParamFloat(material, prefix + "autoMinSlope", 0.0f),
-                                 ParamFloat(material, prefix + "autoMaxSlope", 1.0f),
-                                 ParamFloat(material, prefix + "autoSlopeFade", 0.1f),
-                                 ParamFloat(material, prefix + "autoBlendStrength", 1.0f) };
+    if (!g_shared.terrainFallback.IsValid())
+        g_shared.terrainFallback = scene::CreateTerrainFallbackTextures(resources);
+    if (!g_shared.terrainSplatIndices.IsValid()) {
+        const std::uint8_t indices[4] = { 0, 0, 0, 0 };
+        g_shared.terrainSplatIndices = resources.CreateTexture(indices, 1, 1);
     }
-    return cb;
+    if (!g_shared.terrainSplatWeights.IsValid()) {
+        const std::uint8_t weights[4] = { 255, 0, 0, 0 };
+        g_shared.terrainSplatWeights = resources.CreateTexture(weights, 1, 1);
+    }
+
+    const auto hasPrefix = [material](const std::string& prefix) {
+        if (!material) return false;
+        for (const auto& [key, value] : material->textures)
+            if (key.starts_with(prefix)) return true;
+        for (const auto& [key, value] : material->params)
+            if (key.starts_with(prefix)) return true;
+        return false;
+    };
+    std::vector<scene::TerrainLayerGpu> layers;
+    for (int i = 0; hasPrefix("layer" + std::to_string(i) + "_"); ++i) {
+        const std::string prefix = "layer" + std::to_string(i) + "_";
+        scene::TerrainLayerGpu layer = scene::ReadTerrainLayerParams(material, prefix);
+        scene::FillTerrainLayerTextureIndices(resources, material, prefix, g_shared.terrainFallback, layer);
+        layers.push_back(layer);
+    }
+    if (layers.empty()) {
+        scene::TerrainLayerGpu layer = scene::ReadTerrainLayerParams(material);
+        scene::FillTerrainLayerTextureIndices(resources, material, {}, g_shared.terrainFallback, layer);
+        layers.push_back(layer);
+    }
+
+    const std::uint32_t count = static_cast<std::uint32_t>(layers.size());
+    const std::size_t bytes = layers.size() * sizeof(scene::TerrainLayerGpu);
+    if (!g_shared.terrainLayerBuffer.IsValid() || g_shared.terrainLayerCount != count) {
+        resources.Release(g_shared.terrainLayerBuffer);
+        g_shared.terrainLayerBuffer = resources.CreateStructuredBuffer(
+            layers.data(), count, static_cast<std::uint32_t>(sizeof(scene::TerrainLayerGpu)));
+        g_shared.terrainLayerCount = count;
+    } else {
+        resources.Update(g_shared.terrainLayerBuffer, layers.data(), bytes);
+    }
+    const renderer::IStructuredBuffer* buffer = resources.Get(g_shared.terrainLayerBuffer);
+    if (!buffer || buffer->GetBindlessIndex() == renderer::INVALID_BINDLESS_INDEX) return false;
+
+    bool anyAutoBlend = false;
+    for (const auto& layer : layers)
+        anyAutoBlend |= layer.autoBlendEnabled > 0.0f && layer.autoBlendStrength > 0.0f;
+
+    /// @note GridMesh は 1 × 1 のローカル平面。三方向投影の «1 m あたり» の換算もこの寸法で行う。
+    outCb = TerrainObjectCB{};
+    outCb.worldMatrix      = math::Matrix4::Identity();
+    outCb.wvpMatrix        = viewProjection;
+    outCb.terrainParams    = { 1.0f, 1.0f, 0.2f, anyAutoBlend ? 1.0f : 0.0f };
+    outCb.layerBufferIndex = buffer->GetBindlessIndex();
+    outCb.layerCount       = count;
+    outCb.splatColumns     = 1;
+    outCb.splatRows        = 1;
+    return true;
 }
 
 WaterCB BuildWaterCB(const asset::MaterialAsset* material,
@@ -1809,20 +1860,7 @@ bool BuildGpuData(GpuData& gpu,
                 gpu.textures[slot] = resources.LoadTexture(TextureLoadPath(it->second, projectRoot));
         }
     }
-    if (flavor == Flavor::Terrain) {
-        const auto loadSlot = [&](std::uint32_t slot, const std::string& name) {
-            auto it = renderAsset->textures.find(name);
-            if (it != renderAsset->textures.end() && !it->second.empty())
-                gpu.textures[slot] = resources.LoadTexture(TextureLoadPath(it->second, projectRoot));
-        };
-        loadSlot(0, "splatmap");
-        for (std::uint32_t layer = 0; layer < 4; ++layer) {
-            const std::string prefix = "layer" + std::to_string(layer);
-            loadSlot(1 + layer, prefix + "_diffuse");
-            loadSlot(5 + layer, prefix + "_normal");
-            loadSlot(9 + layer, prefix + "_ao_roughness");
-        }
-    }
+    /// @note 地形の層テクスチャは BuildTerrainCB が bindless 添字として層配列へ詰める。枠へは差さない。
 
     if (!descriptor.IsValid()) {
         if (gpu.materialCB.IsValid()) resources.Release(gpu.materialCB);
@@ -1911,7 +1949,8 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
         if (!g_shared.terrainCB.IsValid())
             g_shared.terrainCB = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
         if (!g_shared.terrainCB.IsValid()) return false;
-        const TerrainObjectCB terrainData = BuildTerrainCB(desc.material, frameData.viewProjection);
+        TerrainObjectCB terrainData{};
+        if (!BuildTerrainCB(resources, desc.material, frameData.viewProjection, terrainData)) return false;
         resources.Update(g_shared.terrainCB, &terrainData, sizeof(terrainData));
         objectCBForDraw = g_shared.terrainCB;
     } else if (desc.flavor == Flavor::Water && !channelReady) {
