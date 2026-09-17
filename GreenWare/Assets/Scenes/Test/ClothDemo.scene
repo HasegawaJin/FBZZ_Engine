@@ -1,0 +1,247 @@
+[environment]
+windDirection = [ 0.7071, 0.0, 0.7071 ]
+windEnabled = false
+windPulseFrequency = 1.0
+windSpeed = 0.0
+windTurbulence = 0.0
+
+[scene]
+format_version = 2
+
+[[gameobjects]]
+active = true
+instanceId = 'b7681fe2-f2ea-465a-99b7-589d82fc3021'
+layer = 0
+name = 'ClothCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'MainCamera'
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777267
+    backgroundColor = [ 0.03, 0.04, 0.06, 1.0 ]
+    clearMode = 0
+    cullDistanceSpherical = true
+    cullingBoundsPadding = 0.0
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 100.0
+    fovY = 50.0
+    frustumCulling = true
+    isMain = true
+    maxDrawDistance = 0.0
+    nearZ = 0.1
+    occlusionCulling = false
+    smallObjectScreenHeight = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.8, -7.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'eaab5e48-adbb-414a-9915-ab9a75d2ed4e'
+layer = 0
+name = 'ClothKeyLight'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = true
+    color = [ 1.0, 0.94, 0.85 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 5.0
+    outerCone = 30.0
+    range = 10.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 0
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 5.0, -4.0 ]
+    rotation = [ 0.258819, 0.0, 0.0, 0.965926 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '966aa69a-3f5e-4bf1-8565-2c9fcefa7dca'
+layer = 0
+name = 'Curtain'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ClothComponent]
+    airDensity = 1.225
+    attachments = []
+    bendCompliance = 0.001
+    clothAssetPath = 'guid:a9aeb8679ee541b88b1a3544a89ef0db|Assets/Cloth/TaperedCurtain.cloth'
+    collideWithCapsules = true
+    collideWithSpheres = true
+    damping = 1.0
+    dragCoefficient = 1.0
+    enabled = true
+    friction = 0.3
+    gravity = [ 0.0, -9.81, 0.0 ]
+    groundEnabled = true
+    groundHeight = 0.0
+    height = 2.0
+    iterations = 2
+    materialPath = 'guid:732e0b24798a45baa3285d0c867a0fec|Assets/Materials/Surface/Cloth.mat'
+    overridePins = false
+    pinLeft = false
+    pinTop = true
+    pinnedParticles = []
+    segments = 16
+    stretchCompliance = 1e-06
+    substeps = 8
+    surfaceDensity = 0.2
+    teleportDistance = 5.0
+    thickness = 0.005
+    width = 2.0
+    windVelocity = [ 0.5, 0.0, 2.0 ]
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:732e0b24798a45baa3285d0c867a0fec|Assets/Materials/Surface/Cloth.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = ''
+
+    [gameobjects.transform]
+    position = [ -1.3, 3.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3f523baa-d03a-4f42-a2e8-868d9605093f'
+layer = 0
+name = 'Flag'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ClothComponent]
+    airDensity = 1.225
+    attachments = []
+    bendCompliance = 0.001
+    clothAssetPath = ''
+    collideWithCapsules = true
+    collideWithSpheres = true
+    damping = 1.0
+    dragCoefficient = 1.0
+    enabled = true
+    friction = 0.3
+    gravity = [ 0.0, -9.81, 0.0 ]
+    groundEnabled = false
+    groundHeight = 0.0
+    height = 1.4
+    iterations = 2
+    materialPath = 'guid:732e0b24798a45baa3285d0c867a0fec|Assets/Materials/Surface/Cloth.mat'
+    overridePins = false
+    pinLeft = true
+    pinTop = false
+    pinnedParticles = []
+    segments = 16
+    stretchCompliance = 1e-06
+    substeps = 8
+    surfaceDensity = 0.2
+    teleportDistance = 5.0
+    thickness = 0.005
+    width = 2.0
+    windVelocity = [ 2.0, 0.0, 2.0 ]
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:732e0b24798a45baa3285d0c867a0fec|Assets/Materials/Surface/Cloth.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = ''
+
+    [gameobjects.transform]
+    position = [ 1.3, 3.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b0dffbcf-c49e-49b4-aa83-7a257ea69b71'
+layer = 0
+name = 'ClothContactSphere'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:732e0b24798a45baa3285d0c867a0fec|Assets/Materials/Surface/Cloth.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.SphereColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.SphereColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
+
+        [gameobjects.SphereColliderComponent.shape]
+        radius = 0.5
+        type = 'Sphere'
+
+    [gameobjects.transform]
+    position = [ -1.3, 1.5, 0.3 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// AssetManager::Load<T>(path) → AssetHandle<T>、Get<T>(h) → T*、Unload<T>(path)。
+/// `AssetManager::Load<T>(path)` → `AssetHandle<T>`、`Get<T>(h)` → `T*`、`Unload<T>(path)`。
 /// 対応型: Model, ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
 /// TerrainAsset, AnimatorControllerAsset, SequenceAsset
 /// RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
@@ -35,12 +35,13 @@ struct AnimationClip;
 struct AnimatorControllerAsset;
 struct ModelAsset;
 struct PhysicsMaterialAsset;
+struct ClothAsset;
 struct SequenceAsset;
 struct TerrainAsset;
 struct TextureAsset;
 
-// ── 型ごとスロットプール (Meyers シングルトン) ─────────────────────────────
-// ヘッダーに置いて Load<T> を完全インライン化。type_index マップを使わない。
+/// @brief 型ごとスロットプール (Meyers シングルトン)。
+/// @note ヘッダーに置いて Load<T> を完全インライン化する。type_index マップは使わない。
 template<typename T>
 class AssetStore {
 public:
@@ -52,7 +53,7 @@ public:
 
     static AssetStore& Get() { static AssetStore s; return s; }
 
-    // id=0 を Null として予約するため、内部インデックスに +1 のオフセットを掛ける
+    /// @brief id=0 を Null として予約するため、内部インデックスへ +1 のオフセットを掛けて確保する。
     AssetHandle<T> Alloc(std::unique_ptr<T> asset_) {
         uint32_t idx = 0;
         if (!freeList.empty()) {
@@ -80,10 +81,8 @@ public:
         return slots[h.id - 1u].asset.get();
     }
 
-    // ハンドルを保ったままスロットの中身だけを差し替える。
-    // WHY gen を進めないか: 差し替えの目的は「同じアセットの新しい版」を配ることなので、
-    //     既に配ったハンドルは生きたままでなければならない。gen を進めると、Scene /
-    //     Component が持つハンドルが一斉に死んで参照切れとして現れる。
+    /// @brief ハンドルを保ったままスロットの中身だけを差し替える。
+    /// @note gen は進めない。進めると Scene / Component が持つ既存ハンドルが一斉に死に、参照切れとして現れる。
     bool Replace(AssetHandle<T> h, std::unique_ptr<T> asset_) {
         if (!IsLive(h) || !asset_) return false;
         slots[h.id - 1u].asset = std::move(asset_);
@@ -116,8 +115,6 @@ private:
     AssetStore() = default;
 };
 
-// ── AssetManager ────────────────────────────────────────────────────────────
-
 class AssetManager {
 public:
     static void Init(renderer::ResourceManager& resources, const std::string& basePath = "assets/");
@@ -133,43 +130,30 @@ public:
     /// 動いていたアセットを壊さないため。
     static int ReloadPath(const std::string& absPath);
 
-    /// ホットリロードで「その場で中身を差し替えられる」拡張子の一覧。
-    ///
-    /// WHY 1 か所に置くか:
-    ///   ReloadPath が差し替える型と、Editor 側の監視ゲートが別々のリストを持っていた。
-    ///   «並びは AssetManager::ReloadPath と一致させること» というコメントで守る運用で、
-    ///   実際 .curve / .gradient を足したときに片方だけ更新されて
-    ///   «エンジンは差し替えられるのに通知が届かない» 状態になっていた。
-    ///
-    /// @note ここに載るのは «キャッシュ済みの値を入れ替えるだけで済む» 型だけ。
-    ///       GPU 資源を持つ型 (テクスチャ・モデル) は別経路で、ここには載せない
-    ///       (ReloadPath の WHY を参照)。
+    /// @brief ホットリロードで「その場で中身を差し替えられる」拡張子の一覧。
+    /// @note ReloadPath が差し替える型と Editor 側の監視ゲートが共有する、唯一の正本リスト。
+    /// @note ここに載るのは «キャッシュ済みの値を入れ替えるだけで済む» 型だけ。GPU 資源を持つ型 (テクスチャ・モデル) は別経路で、ここには載せない。
     [[nodiscard]] static std::span<const std::string_view> HotReloadableExtensions();
 
-    /// 拡張子 (先頭のドット込み・大小問わず) がホットリロード対象か。
+    /// @brief 拡張子 (先頭のドット込み・大小問わず) がホットリロード対象か。
     [[nodiscard]] static bool IsHotReloadableExtension(std::string_view extension);
 
-    /// アセットの中身が変わるたびに進む世代番号。
-    /// クリップのコピーやマスクのように、ストアの中身から派生キャッシュを作る側が
-    /// 「作り直すべきか」を 1 つの整数比較で判断するために使う。
+    /// @brief アセットの中身が変わるたびに進む世代番号。
+    /// @note 派生キャッシュを持つ側 (クリップのコピー・マスク等) が「作り直すべきか」を整数比較 1 つで判断するために使う。
     static int GetAssetGeneration();
 
-    /// ストアを通さず直読みしているアセット (.mask 等) を差し替えたときに、
-    /// 派生キャッシュへ「作り直せ」と伝えるための明示的な世代更新。
+    /// @brief ストアを通さず直読みしているアセット (.mask 等) を差し替えたときの、派生キャッシュへの明示的な世代更新。
     static void BumpAssetGeneration();
 
     [[nodiscard]] static std::string ResolveAssetPath(const std::string& path);
 
-    // 原本 FBX に対応する Library/Baked/<fbx-guid>/ の絶対パスを返す (末尾に '/' なし)。
-    // guid が引けない (Assets 外の FBX 等) 場合は空文字。
-    //
-    // WHY 公開するか: AssetBrowser がサブアセット (.anim 等) を列挙するには、
-    //     ファイル名を知らない状態で「隔離先のディレクトリ」を知る必要がある。
-    //     ResolveAssetPath は実在するファイルのパスしか返せないため、
-    //     ディレクトリを引く経路を別に用意する。
+    /// @brief 原本 FBX に対応する `Library/Baked/<fbx-guid>/` の絶対パスを返す (末尾 '/' なし)。
+    /// @return guid が引けない (Assets 外の FBX 等) なら空文字。
+    /// @note AssetBrowser がファイル名を知らない状態でサブアセット (.anim 等) の隔離先ディレクトリを列挙するために使う。ResolveAssetPath は実在ファイルしか返せない。
     [[nodiscard]] static std::string BakedDirForSource(const std::string& sourceAbsPath);
 
-    // ── 新統一 API ─────────────────────────────────────────────────────
+    /// @name 新統一 API
+    /// @{
 
     template<typename T>
     static void RegisterImporter(std::unique_ptr<IAssetImporter<T>> imp) {
@@ -221,6 +205,8 @@ public:
         store.cache.erase(it);
     }
 
+    /// @}
+
 private:
     static renderer::ResourceManager* s_resources;
     static std::string                s_basePath;
@@ -229,17 +215,15 @@ private:
 
     static std::string Normalize(const std::string& path);
 
-    /// キャッシュキーを 1 つに寄せる。解決できる guid 参照は "Assets/..." 相対へ畳む。
-    ///
-    /// WHY 素の Normalize では足りないか:
-    ///   シーンは "guid:<hex>|Assets/X.mat"、Inspector や D&D は "Assets/X.mat" で
-    ///   同じファイルを引く。キーが分かれるとストアに実体が 2 つでき、Inspector で
-    ///   触った編集が描画している側へ届かない (保存してホットリロードが走るまで)。
+    /// @brief キャッシュキーを 1 つに寄せる。解決できる guid 参照は `"Assets/..."` 相対へ畳む。
+    /// @note シーンは `"guid:<hex>|Assets/X.mat"`、Inspector/D&D は `"Assets/X.mat"` で同じファイルを引く。キーが分かれるとストアに実体が 2 つでき、Inspector の編集が描画側へ届かない。
     /// @note 解決できない参照は元のキーのまま通す。ResolvePath の «参照切れ» 報告を残すため。
     static std::string CacheKey(const std::string& path);
     static std::string ResolvePath(const std::string& key, const std::string& basePath);
-    // DLL-boundary helpers: static data members cannot cross DLL boundaries directly,
-    // so the header-inline Load<T> template must call these exported functions instead.
+
+    /// @name DLL 境界ヘルパー
+    /// @note static データメンバーは DLL 境界を直接越えられないため、ヘッダーインラインの Load<T> 等はこれらのエクスポート関数を呼ぶ。
+    /// @{
     static bool                        S_init() noexcept;
     static const std::string&          S_base() noexcept;
     static renderer::ResourceManager*  S_res()  noexcept;
@@ -251,6 +235,7 @@ private:
     static void UnloadFromStore(const std::string& relativePath);
     template<typename T>
     static int ReloadFromStore(const std::string& absPath);
+    /// @}
 };
 
 template<>
@@ -269,6 +254,8 @@ template<>
 AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& relativePath);
 template<>
 AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath);
+template<>
+AssetHandle<ClothAsset> AssetManager::Load<ClothAsset>(const std::string& relativePath);
 template<>
 AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath);
 
@@ -289,6 +276,8 @@ TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h);
 template<>
 PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h);
 template<>
+ClothAsset* AssetManager::Get<ClothAsset>(AssetHandle<ClothAsset> h);
+template<>
 SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h);
 
 template<>
@@ -307,6 +296,8 @@ template<>
 void AssetManager::Unload<TextureAsset>(const std::string& relativePath);
 template<>
 void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<ClothAsset>(const std::string& relativePath);
 template<>
 void AssetManager::Unload<SequenceAsset>(const std::string& relativePath);
 
