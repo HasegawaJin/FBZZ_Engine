@@ -183,6 +183,9 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('fluid.schema') }).strict(),
     z.object({ t: z.literal('fluid.get'), path: FluidPathSchema }).strict(),
     z.object({ t: z.literal('fluid.jobStatus'), job: FluidJobIdSchema, includeImage: z.boolean().optional() }).strict(),
+    z.object({ t: z.literal('playtest.status') }).strict(),
+    z.object({ t: z.literal('playtest.list') }).strict(),
+    z.object({ t: z.literal('editor.bus.list') }).strict(),
 ]);
 const CommandNameSchema = z.string().min(1).max(128);
 const ComponentNameSchema = z.string().min(1).max(128);
@@ -656,6 +659,29 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         preset: FluidPresetSchema.optional(),
         fields: FluidFieldsSchema.optional(),
         bake: z.boolean().optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('playtest.run'),
+        path: z.string().min(1).max(1024).optional(),
+        scenario: z.record(z.string(), JsonValueSchema).optional(),
+        updateBaselines: z.boolean().optional(),
+        skipImages: z.boolean().optional(),
+    }).strict().refine((value) => value.path !== undefined || value.scenario !== undefined, {
+        message: 'path か scenario のどちらかが必要です',
+    }),
+    z.object({ t: z.literal('playtest.cancel') }).strict(),
+    z.object({
+        t: z.literal('input.record'),
+        action: z.enum(['start', 'stop']),
+        path: z.string().min(1).max(1024).optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('visual.compare'),
+        // Tests/Golden 相対・拡張子なし。".." を許すと基準画像の置き場の外へ書ける。
+        baseline: z.string().min(1).max(128).regex(/^[A-Za-z0-9_\-/]+$/),
+        view: z.enum(['game', 'scene']).optional(),
+        updateBaseline: z.boolean().optional(),
+        pixelThreshold: z.number().min(0).max(1).optional(),
     }).strict(),
     z.object({
         t: z.literal('editor.transaction'),

@@ -226,6 +226,12 @@ export type EditorQuery = {
     t: 'fluid.jobStatus';
     job: number;
     includeImage?: boolean | undefined;
+} | {
+    t: 'playtest.status';
+} | {
+    t: 'playtest.list';
+} | {
+    t: 'editor.bus.list';
 };
 export declare const EditorQuerySchema: z.ZodType<EditorQuery>;
 export type EditorCommand = {
@@ -705,6 +711,24 @@ export type EditorCommand = {
     preset?: string | undefined;
     fields?: Record<string, JsonValue> | undefined;
     bake?: boolean | undefined;
+} | {
+    t: 'playtest.run';
+    path?: string | undefined;
+    scenario?: Record<string, JsonValue> | undefined;
+    updateBaselines?: boolean | undefined;
+    skipImages?: boolean | undefined;
+} | {
+    t: 'playtest.cancel';
+} | {
+    t: 'input.record';
+    action: 'start' | 'stop';
+    path?: string | undefined;
+} | {
+    t: 'visual.compare';
+    baseline: string;
+    view?: 'game' | 'scene' | undefined;
+    updateBaseline?: boolean | undefined;
+    pixelThreshold?: number | undefined;
 } | {
     t: 'editor.transaction';
     label: string;

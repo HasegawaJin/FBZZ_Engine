@@ -147,7 +147,12 @@ export type EditorQuery =
     // プレビュー画像もここに載る (includeImage 省略 = 載せる、は C++ 側の既定)。
     | { t: 'fluid.schema' }
     | { t: 'fluid.get'; path: string }
-    | { t: 'fluid.jobStatus'; job: number; includeImage?: boolean | undefined };
+    | { t: 'fluid.jobStatus'; job: number; includeImage?: boolean | undefined }
+    // ── 検証ループ (Docs/design/ai-verification-loop.md) ──
+    | { t: 'playtest.status' }
+    | { t: 'playtest.list' }
+    // 登録済みの型名一覧。契約と Editor 実装の食い違いを調べる。
+    | { t: 'editor.bus.list' };
 export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t', [
     z.object({ t: z.literal('editor.catalog') }).strict(),
     z.object({
@@ -290,6 +295,9 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     z.object({ t: z.literal('fluid.schema') }).strict(),
     z.object({ t: z.literal('fluid.get'), path: FluidPathSchema }).strict(),
     z.object({ t: z.literal('fluid.jobStatus'), job: FluidJobIdSchema, includeImage: z.boolean().optional() }).strict(),
+    z.object({ t: z.literal('playtest.status') }).strict(),
+    z.object({ t: z.literal('playtest.list') }).strict(),
+    z.object({ t: z.literal('editor.bus.list') }).strict(),
 ]);
 
 const CommandNameSchema = z.string().min(1).max(128);
@@ -420,6 +428,14 @@ export type EditorCommand =
     | { t: 'fluid.cancel'; job: number }
     | { t: 'fluid.createEffect'; name: string; dir?: string | undefined; preset?: string | undefined;
         fields?: Record<string, JsonValue> | undefined; bake?: boolean | undefined }
+    // ── 検証ループ ──
+    // playtest.run はシナリオを開始してすぐ戻る。完了は playtest.status のポーリングで確認する。
+    | { t: 'playtest.run'; path?: string | undefined; scenario?: Record<string, JsonValue> | undefined;
+        updateBaselines?: boolean | undefined; skipImages?: boolean | undefined }
+    | { t: 'playtest.cancel' }
+    | { t: 'input.record'; action: 'start' | 'stop'; path?: string | undefined }
+    | { t: 'visual.compare'; baseline: string; view?: 'game' | 'scene' | undefined;
+        updateBaseline?: boolean | undefined; pixelThreshold?: number | undefined }
     | { t: 'editor.transaction'; label: string; cmds: EditorCommand[] };
 export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
     z.discriminatedUnion('t', [
@@ -891,6 +907,29 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             preset: FluidPresetSchema.optional(),
             fields: FluidFieldsSchema.optional(),
             bake: z.boolean().optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('playtest.run'),
+            path: z.string().min(1).max(1024).optional(),
+            scenario: z.record(z.string(), JsonValueSchema).optional(),
+            updateBaselines: z.boolean().optional(),
+            skipImages: z.boolean().optional(),
+        }).strict().refine((value) => value.path !== undefined || value.scenario !== undefined, {
+            message: 'path か scenario のどちらかが必要です',
+        }),
+        z.object({ t: z.literal('playtest.cancel') }).strict(),
+        z.object({
+            t: z.literal('input.record'),
+            action: z.enum(['start', 'stop']),
+            path: z.string().min(1).max(1024).optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('visual.compare'),
+            // Tests/Golden 相対・拡張子なし。".." を許すと基準画像の置き場の外へ書ける。
+            baseline: z.string().min(1).max(128).regex(/^[A-Za-z0-9_\-/]+$/),
+            view: z.enum(['game', 'scene']).optional(),
+            updateBaseline: z.boolean().optional(),
+            pixelThreshold: z.number().min(0).max(1).optional(),
         }).strict(),
         z.object({
             t: z.literal('editor.transaction'),
