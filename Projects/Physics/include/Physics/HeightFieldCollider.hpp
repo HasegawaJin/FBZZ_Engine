@@ -11,6 +11,7 @@
 #include <Physics/Collider.hpp>
 #include <Physics/BVHNode.hpp>
 #include <Math/Vector3.hpp>
+#include <cstdint>
 #include <vector>
 
 namespace fbzz::physics
@@ -20,9 +21,12 @@ class HeightFieldCollider : public Collider
 {
 public:
     /// @param heights row-major、値域 [-1, 1]、index = z * cols + x。ワールド高さ = heights[i] * maxHeight。
+    /// @param holes セル単位の穴 (index = cz * (cols - 1) + cx、非 0 = 穴)。空なら穴なし。大きさが合わなければ無視する。
+    /// @see Docs/design/terrain-layers.md §4 穴
     HeightFieldCollider(const std::vector<float>& heights,
                         int rows, int cols,
-                        float cellSize, float maxHeight);
+                        float cellSize, float maxHeight,
+                        std::vector<std::uint8_t> holes = {});
 
     AABB         GetAABB() const override { return m_worldAABB; }
     ColliderType GetType() const override { return ColliderType::HEIGHT_FIELD; }
@@ -38,11 +42,18 @@ public:
                          const math::Vector3&    worldScale);
 
     /// @brief heightData が変更されたとき (地形彫刻後) に呼ぶ。BVH をフル再構築する。
+    /// @param holes コンストラクタと同じ規約。空なら穴なし。
     void Rebuild(const std::vector<float>& heights,
                  int rows, int cols,
-                 float cellSize, float maxHeight);
+                 float cellSize, float maxHeight,
+                 std::vector<std::uint8_t> holes = {});
 
     const BVHTree& GetBVH() const { return m_bvh; }
+
+    /// @return セル (cx, cz) が穴なら true。範囲外は false。
+    [[nodiscard]] bool IsHoleCell(int cx, int cz) const;
+    /// @return 穴マスク。穴なしなら空。
+    const std::vector<std::uint8_t>& GetHoles() const { return m_holes; }
 
     int   GetRows()      const { return m_rows; }
     int   GetCols()      const { return m_cols; }
@@ -56,6 +67,7 @@ private:
     float m_maxHeight = 1.0f;
 
     std::vector<float> m_heights;  ///< ローカル空間の高さデータ (positions/indices バッファは持たない)
+    std::vector<std::uint8_t> m_holes;  ///< セル単位の穴。空 = 穴なし (大きさはセル数と一致を保証)
 
     BVHTree m_bvh;
     AABB    m_worldAABB;
@@ -69,6 +81,8 @@ private:
     /// @brief ローカル座標へ scale → rotation → translation を掛ける。
     math::Vector3 ToWorld(const math::Vector3& local) const;
 
+    /// @brief 穴マスクの大きさがセル数と違う、または穴が 1 つも無いなら空にする。
+    void SanitizeHoles();
     /// @brief 現在の transform を使って BVH をフル再構築する。
     void RebuildBVH();
     /// @brief 木の構造はそのままに、現在の transform で三角形を置き直して AABB を refit する。

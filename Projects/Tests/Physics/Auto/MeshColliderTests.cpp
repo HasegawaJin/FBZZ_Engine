@@ -339,4 +339,63 @@ TEST_F(HeightFieldColliderTest, BVHNodesAndBoundsFollowTheMoveToo)
     EXPECT_NEAR(field.GetAABB().max.x, 102.0f, testkit::kLooseTolerance);
 }
 
+/// @name 穴
+/// @see Docs/design/terrain-layers.md §4 穴
+
+TEST_F(HeightFieldColliderTest, HoleCellsBuildNoTriangles)
+{
+    /// @note 2x2 セルのうち (1, 0) だけ穴。index = cz * (cols - 1) + cx。
+    const std::vector<std::uint8_t> holes{ 0, 1, 0, 0 };
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f, holes);
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    EXPECT_EQ(field.GetBVH().triangles.size(), 6u);
+    EXPECT_TRUE(field.IsHoleCell(1, 0));
+    EXPECT_FALSE(field.IsHoleCell(0, 0));
+    for (const physics::Triangle& tri : field.GetBVH().triangles)
+        EXPECT_NE(tri.index / 2u, 1u) << "穴セルの三角形が残っている";
+}
+
+TEST_F(HeightFieldColliderTest, MismatchedHoleMaskIsIgnored)
+{
+    /// @note セル数と合わない穴マスクを部分的に読むと格子とずれた位置に穴が開く。
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f, { 1, 1 });
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    EXPECT_EQ(field.GetBVH().triangles.size(), 8u);
+    EXPECT_TRUE(field.GetHoles().empty());
+}
+
+TEST_F(HeightFieldColliderTest, RefitAfterMoveKeepsHoleCellsEmpty)
+{
+    /// @note RefitTransform は Triangle::index から格子を逆算する。穴で index を進め忘れると
+    ///       移動後に三角形が隣のセルへずれ、穴の位置が動く。
+    const std::vector<std::uint8_t> holes{ 1, 0, 0, 0 };
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f, holes);
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+    field.Update({ 100.0f, 0.0f, 0.0f }, math::Quaternion::Identity());
+
+    int inHole = 0;
+    field.GetBVH().Query(physics::AABB{ { 100.1f, -1.0f, 0.1f }, { 100.9f, 1.0f, 0.9f } },
+                         [&](const physics::Triangle&) { ++inHole; });
+    int inNeighbor = 0;
+    field.GetBVH().Query(physics::AABB{ { 101.1f, -1.0f, 0.1f }, { 101.9f, 1.0f, 0.9f } },
+                         [&](const physics::Triangle&) { ++inNeighbor; });
+
+    EXPECT_EQ(inHole, 0);
+    EXPECT_EQ(inNeighbor, 2);
+    EXPECT_EQ(field.GetBVH().triangles.size(), 6u);
+}
+
+TEST_F(HeightFieldColliderTest, RebuildCanClearHoles)
+{
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f, { 1, 1, 1, 1 });
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+    ASSERT_TRUE(field.GetBVH().triangles.empty());
+
+    field.Rebuild(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
+
+    EXPECT_EQ(field.GetBVH().triangles.size(), 8u);
+}
+
 } // namespace fbzz::tests

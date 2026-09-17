@@ -408,20 +408,26 @@ void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent&
 
     if (terrain->colliderDirty || !col.collider) {
         const std::vector<float> colliderHeights = BuildColliderHeightData(scene, go, *terrain);
+        /// @note 大きさの合わない穴マスクは «穴なし» として渡さない。
+        /// @see Docs/design/terrain-layers.md §4 穴
+        std::vector<std::uint8_t> colliderHoles;
+        if (terrain->holeData.size() == terrain->CellCount())
+            colliderHoles = terrain->holeData;
         if (auto* hf = col.collider
                 && col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
                 ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
                 : nullptr) {
-            /// @note 既存 HeightFieldCollider に補完済み heightData を再適用し BVH を再構築する。
-            ///       オブジェクト生成コストを省き、WorldHandle を維持できる。
+            /// @note 既存 HeightFieldCollider に再適用して BVH を再構築する (WorldHandle を維持できる)。
             hf->Rebuild(colliderHeights,
                         terrain->rows, terrain->columns,
-                        terrain->cellSize, terrain->maxHeight);
+                        terrain->cellSize, terrain->maxHeight,
+                        std::move(colliderHoles));
         } else {
             col.collider = std::make_unique<physics::HeightFieldCollider>(
                 colliderHeights,
                 terrain->rows, terrain->columns,
-                terrain->cellSize, terrain->maxHeight);
+                terrain->cellSize, terrain->maxHeight,
+                std::move(colliderHoles));
         }
         terrain->colliderDirty = false;
     }

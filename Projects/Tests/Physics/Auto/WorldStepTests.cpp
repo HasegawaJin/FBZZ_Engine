@@ -566,6 +566,40 @@ TEST_F(WorldStepTest, PairsABodyWithABodylessHeightField)
     EXPECT_TRUE(event.colliderA == &field || event.colliderB == &field);
 }
 
+TEST_F(WorldStepTest, BodyOverAHeightFieldHoleDoesNotTouchTheGround)
+{
+    /// @note 上のテストと同じ配置で、球の真下 2x2 セルを穴にする。球は穴の内側に収まる。
+    /// @see Docs/design/terrain-layers.md §4 穴
+    std::vector<std::uint8_t> holes(16, 0);
+    for (int cz = 1; cz <= 2; ++cz)
+        for (int cx = 1; cx <= 2; ++cx)
+            holes[static_cast<size_t>(cz * 4 + cx)] = 1;
+    physics::HeightFieldCollider field(std::vector<float>(25, 0.0f), 5, 5, 1.0f, 1.0f, holes);
+    field.Update(math::Vector3(-2.0f, 0.0f, -2.0f), math::Quaternion::Identity());
+
+    physics::RigidBody body;
+    body.SetMass(1.0f);
+    body.SetPosition(math::Vector3(0.0f, 0.4f, 0.0f));
+    physics::SphereCollider sphere(0.5f);
+
+    physics::ColliderInstance ground;
+    ground.collider = &field;
+
+    physics::ColliderInstance falling;
+    falling.collider = &sphere;
+    falling.body     = &body;
+
+    world.BeginSceneSync();
+    world.SyncBody({}, &body);
+    world.SyncCollider({}, ground);
+    world.SyncCollider({}, falling);
+    world.EndSceneSync();
+
+    world.Step(testkit::kFixedDeltaTime);
+
+    EXPECT_TRUE(world.GetEnterEvents().empty());
+}
+
 /// @name CCD
 
 TEST_F(WorldStepTest, ClampsTheVelocityOfAFastBodyToItsTimeOfImpact)

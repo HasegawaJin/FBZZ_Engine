@@ -238,6 +238,20 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsAHeightField)
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
+TEST_F(WorldRaycastShapeTest, RaycastFallsThroughAHeightFieldHoleButHitsTheNeighborCell)
+{
+    /// @note セル (0, 0) だけ穴。穴は三角形を作らないことで表す。
+    /// @see Docs/design/terrain-layers.md §4 穴
+    const std::vector<float> flat(9, 0.0f);
+    physics::HeightFieldCollider field(flat, 3, 3, 1.0f, 1.0f, { 1, 0, 0, 0 });
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+    Register({ Instance(field) });
+
+    EXPECT_FALSE(world.Raycast(math::Vector3(0.3f, 5.0f, 0.3f), kDown, 100.0f, hit));
+    ASSERT_TRUE(world.Raycast(math::Vector3(1.3f, 5.0f, 0.3f), kDown, 100.0f, hit));
+    EXPECT_NEAR(hit.distance, 5.0f, testkit::kLooseTolerance);
+}
+
 /// @name 凸包
 
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheFaceOfAConvexHull)
