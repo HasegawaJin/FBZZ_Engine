@@ -23,6 +23,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 #include <string>
 
 namespace fbzz::editor {
@@ -186,8 +187,9 @@ scene::EntityID CreateTerrainInGridCell(EditorContext& ctx, scene::Scene& scene,
     tc.cellSize  = grid->defaultCellSize;
     tc.chunkSize = grid->defaultChunkSize;
     tc.InitFlat(0.0f);
+    tc.layerMaterials.resize(4);
     for (int li = 0; li < 4; ++li)
-        tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
+        tc.layerMaterials[static_cast<size_t>(li)] = DefaultTerrainLayerMaterialPath(li);
     tc.heightDirty   = true;
     tc.colliderDirty = true;
     newGo.AddComponent<scene::TerrainComponent>(tc);
@@ -271,26 +273,20 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
             if (def.tool == ctx.mapActiveTool)
                 toolName = def.label;
         std::string status = toolName;
-        if (ctx.terrainTool) {
-            if (ctx.mapActiveTool == EditorContext::MapTool::TerrainSculpt) {
-                static const char* kSub[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
-                status += "  -  ";
-                status += kSub[static_cast<int>(ctx.terrainTool->GetSculptMode())];
-            } else if (ctx.mapActiveTool == EditorContext::MapTool::TerrainPaint) {
-                status += "  -  Layer " + std::to_string(ctx.terrainTool->GetPaintLayer());
-            }
-        }
+        if (ctx.terrainTool && IsTerrainMapTool(ctx.mapActiveTool))
+            status += "  -  " + ctx.terrainTool->StatusLabel();
         ImGui::TextDisabled("Active:");
         ImGui::SameLine();
         ImGui::TextColored({ 0.95f, 0.85f, 0.4f, 1.0f }, "%s", status.c_str());
     }
 
-    /// @name ツール選択: 3列のコンパクトグリッド
-    /// @note 全幅縦積みだと画面の1/3を占有しブラシ設定・レイヤー選択が下へ押し出されるため、
-    ///       3列に畳んで設定領域を最大化する。
+    /// @name ツール選択: 1 行のコンパクトグリッド
+    /// @note 全幅縦積みだと画面の 1/3 を占有しブラシ設定・レイヤー選択が下へ押し出されるため、横に畳んで設定領域を最大化する。
     {
+        constexpr int kColumns = static_cast<int>(std::size(kMapToolDefs));
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float buttonW = (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f;
+        const float buttonW = (ImGui::GetContentRegionAvail().x - spacing * static_cast<float>(kColumns - 1))
+                            / static_cast<float>(kColumns);
         int column = 0;
         for (const MapToolDef& def : kMapToolDefs) {
             if (column > 0) ImGui::SameLine();
@@ -305,10 +301,11 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::SetTooltip("%s\nShortcut: %s (Scene View)", def.tooltip, def.shortcut);
             if (active)
                 ImGui::PopStyleColor();
-            column = (column + 1) % 3;
+            column = (column + 1) % kColumns;
         }
     }
-    ImGui::TextDisabled("Keys 1-3 switch tools while the Scene View is focused");
+    ImGui::TextDisabled("Keys 1-%d switch tools while the Scene View is focused",
+                        static_cast<int>(std::size(kMapToolDefs)));
 
     ImGui::Separator();
     ImGui::BeginChild("##MapToolSettings", { 0.0f, 0.0f }, false);
@@ -326,6 +323,13 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
     case EditorContext::MapTool::TerrainPaint:
         if (ctx.terrainTool) {
             ctx.terrainTool->DrawPaintContent(
+                *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
+            ctx.terrainTool->DrawBrushSettings();
+        }
+        break;
+    case EditorContext::MapTool::TerrainHole:
+        if (ctx.terrainTool) {
+            ctx.terrainTool->DrawHoleContent(
                 *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
             ctx.terrainTool->DrawBrushSettings();
         }
@@ -576,8 +580,9 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             if (const auto* tc = scene.GetComponent<scene::TerrainComponent>(selId)) {
                 ImGui::Text("Size: %d x %d  cellSize: %.2f",
                     tc->columns, tc->rows, tc->cellSize);
-                ImGui::Text("Layer 0: %s",
-                    tc->layerMaterials[0].empty() ? "(none)" : tc->layerMaterials[0].c_str());
+                const bool hasLayer0 = tc->LayerCount() > 0 && !tc->layerMaterials[0].empty();
+                ImGui::Text("Layers: %d  Layer 0: %s", tc->LayerCount(),
+                    hasLayer0 ? tc->layerMaterials[0].c_str() : "(none)");
             }
             const auto& p = go->transform.worldPosition;
             ImGui::Text("World: %.1f, %.1f, %.1f", p.x, p.y, p.z);
