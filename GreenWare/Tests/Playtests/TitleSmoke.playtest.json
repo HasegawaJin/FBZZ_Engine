@@ -1,0 +1,14 @@
+{
+  "name": "TitleSmoke",
+  "scene": "Assets/Scenes/Title.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    { "do": "play" },
+    { "do": "waitUntil", "query": { "t": "editor.state" }, "path": "playState", "op": "==", "value": "playing", "timeoutFrames": 30 },
+    { "do": "frames", "count": 90 },
+    { "do": "assert", "query": { "t": "scene.tree" }, "path": "roots", "op": "length>=", "value": 1 },
+    { "do": "compareImage", "view": "game", "baseline": "Title_90f", "maxMeanDiff": 0.02, "maxBadPixelRatio": 0.01 },
+    { "do": "stop" },
+    { "do": "waitUntil", "query": { "t": "editor.state" }, "path": "playState", "op": "==", "value": "editor", "timeoutFrames": 30 }
+  ]
+}

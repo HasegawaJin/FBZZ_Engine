@@ -778,6 +778,28 @@ function RegisterQueryTools(server, bus) {
         inputSchema: { limit: z.number().int().min(1).max(20).default(5) },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ limit }) => Safely(async () => TextResult(await bus.Query({ t: 'build.status', limit }))));
+    // ── 検証ループ (Docs/design/ai-verification-loop.md) ──
+    // WHY: 操作の口だけでは «直った» を言えない。シナリオの合否・絵の差分・Editor が実際に
+    //      受け付ける型の一覧を読めて初めて、AI が自分の変更を自分で検証できる。
+    server.registerTool('scenario_status', {
+        description: 'Playtest シナリオの進捗と結果を返します。state は running / passed / failed / idle。'
+            + 'failed のときは failure が最初に落ちた手順の理由、steps が手順ごとの記録、images が絵の比較結果'
+            + '(meanDiff / badPixelRatio / 差分画像 diff のパス) です。scenario_run の後は state が running でなくなるまでここを呼びます。',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => Safely(async () => TextResult(await bus.Query({ t: 'playtest.status' }))));
+    server.registerTool('scenario_list', {
+        description: 'プロジェクトの Tests/Playtests 以下にある *.playtest.json を列挙します。scenario_run の path に渡せます。',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => Safely(async () => TextResult(await bus.Query({ t: 'playtest.list' }))));
+    server.registerTool('editor_bus_list', {
+        description: 'Editor が受け付ける Command Bus の型名と種別 (query / command / undoable) を返します。'
+            + 'undoable と transaction=true の型だけが editor_transaction に混ぜられます。'
+            + 'ツールが UNKNOWN_COMMAND / UNKNOWN_QUERY で失敗したら、Editor のビルドが MCP より古い可能性をここで確かめます。',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => Safely(async () => TextResult(await bus.Query({ t: 'editor.bus.list' }))));
     // ── 流体 (.fluid) ──
     // WHY 絵を返す照会まで用意するか: 流体の見た目は数値からは予測できない (浮力を 2 倍にしても
     //     「2 倍上がる」とは限らない)。AI が自分で絵を見て直す反復が回らないと、
@@ -2004,6 +2026,71 @@ function RegisterCommandTools(server, bus, permission) {
         inputSchema: { target: z.literal('script').default('script') },
         annotations: writeAnnotations,
     }, ({ target }) => run({ t: 'build.run', target }));
+    // ── 検証ループ ──
+    server.registerTool('scenario_run', {
+        description: 'Playtest シナリオを Editor 側で開始します (すぐ戻ります)。playtest_run (MCP 側で実時間待機する簡易版) と違い、'
+            + 'フレーム単位で進むのでビルドの速さに結果が左右されず、ファイルに残して --batch / CI でも同じものを回せます。'
+            + 'path は projectRoot 相対の .playtest.json、'
+            + 'または scenario にシナリオ本体を直接渡します。手順 (steps[].do) は play / stop / pause / resume / frames / '
+            + 'bus / input / assert / waitUntil / replay / capture / compareImage / log。assert と waitUntil は '
+            + '{query:{t:...}, path:"a.0.b", op:"==|!=|<|<=|>|>=|exists|missing|contains|length==|length>=|length<=", value} で'
+            + 'バスの Query 結果を表明します。lockstep (既定 1/60) の間は実時間に依らず 1 フレーム = lockstep 秒で進みます。'
+            + '基準画像は Tests/Golden/<baseline>.png。無いと失敗するので、初回は updateBaselines=true で作り、絵を目で確かめてから使います。'
+            + '完了は scenario_status で確認します。',
+        inputSchema: {
+            path: z.string().min(1).max(1024).optional().describe('例: Tests/Playtests/Stage01_Start.playtest.json'),
+            scenario: z.record(z.string(), JsonValueSchema).optional().describe('インラインのシナリオ {name, scene?, lockstep?, steps:[...]}'),
+            updateBaselines: z.boolean().optional().describe('compareImage の基準画像を実画像で作り直す'),
+            skipImages: z.boolean().optional().describe('compareImage を飛ばす'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, scenario, updateBaselines, skipImages }) => run({
+        t: 'playtest.run',
+        ...(path === undefined ? {} : { path }),
+        ...(scenario === undefined ? {} : { scenario }),
+        ...(updateBaselines === undefined ? {} : { updateBaselines }),
+        ...(skipImages === undefined ? {} : { skipImages }),
+    }));
+    server.registerTool('scenario_cancel', {
+        description: '実行中の Playtest を中断します。Play は止まり、結果は failed として残ります。',
+        inputSchema: {},
+        annotations: writeAnnotations,
+    }, () => run({ t: 'playtest.cancel' }));
+    server.registerTool('input_record', {
+        description: 'Play 中の人の操作を記録します。action=start で開始、stop で projectRoot 相対の path '
+            + '(省略時 Tests/Playtests/Recordings/<日時>.inputrec.json) へ書き出します。'
+            + '書き出した列はシナリオの {"do":"replay","file":"..."} で同じフレーム番号に再生されます。'
+            + '再生の決定性は保証しません (乱数・非同期ロード)。結果は assert で見ます。',
+        inputSchema: {
+            action: z.enum(['start', 'stop']),
+            path: z.string().min(1).max(1024).optional(),
+        },
+        annotations: writeAnnotations,
+    }, ({ action, path }) => run({ t: 'input.record', action, ...(path === undefined ? {} : { path }) }));
+    server.registerTool('visual_compare', {
+        description: '今のビューポートを基準画像 Tests/Golden/<baseline>.png と 1 回だけ比べ、meanDiff (全画素の平均差 0..1) と'
+            + 'badPixelRatio (差が pixelThreshold を越えた画素の割合) と、違う画素を赤で塗った差分画像を返します。'
+            + 'シナリオの compareImage に書く閾値を決める前の下見に使います。updateBaseline=true で基準画像を今の絵で作り直します。',
+        inputSchema: {
+            baseline: z.string().min(1).max(128).regex(/^[A-Za-z0-9_\-/]+$/),
+            view: z.enum(['game', 'scene']).default('game'),
+            updateBaseline: z.boolean().optional(),
+            pixelThreshold: z.number().min(0).max(1).optional(),
+        },
+        annotations: writeAnnotations,
+    }, ({ baseline, view, updateBaseline, pixelThreshold }) => Safely(async () => {
+        const raw = await bus.Command(EditorCommandSchema.parse({
+            t: 'visual.compare', baseline, view,
+            ...(updateBaseline === undefined ? {} : { updateBaseline }),
+            ...(pixelThreshold === undefined ? {} : { pixelThreshold }),
+        }), dryRun);
+        const { diffBase64, ...summary } = raw ?? {};
+        const content = [{ type: 'text', text: JSON.stringify(summary, null, 2) }];
+        if (typeof diffBase64 === 'string' && diffBase64.length > 0) {
+            content.push({ type: 'image', data: diffBase64, mimeType: 'image/png' });
+        }
+        return { content };
+    }));
     // ── 流体 (.fluid) ──
     server.registerTool('fluid_create', {
         description: 'プリセットから .fluid レシピを 1 つ作ります (テクスチャはまだ焼きません)。'

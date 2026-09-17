@@ -1,0 +1,27 @@
+{
+  "enabledPlugins": {
+    "clangd-lsp@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 *)",
+      "PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 *)",
+      "Bash(node Tools/AgentLint/lint.mjs *)",
+      "PowerShell(node Tools/AgentLint/lint.mjs *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/Tools/AgentLint/lint.mjs\" --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

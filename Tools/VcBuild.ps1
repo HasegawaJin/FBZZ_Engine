@@ -39,6 +39,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# --- コンソールを UTF-8 に揃える ---------------------------------------------
+# WHY: CMake は message() を UTF-8 で書くが、日本語 Windows のコンソールは CP932 なので
+#      VS Code のタスク端末では "-- FBZZ: 荳ｦ蛻・.." と化ける。cl.exe はコンソールの
+#      コードページに従って出力する (chcp 932 なら CP932、65001 なら UTF-8 で書くことを
+#      実測で確認) ので、ここで 65001 にすれば CMake と MSVC の両方が UTF-8 で揃い、
+#      端末側は一様に読める。子プロセス (cmake / cl / ctest) はこの設定を引き継ぐ。
+#      [Console]::OutputEncoding は PowerShell 自身の Write-Host のぶん。
+chcp 65001 | Out-Null
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 $RepositoryRoot = Split-Path -Parent $PSScriptRoot
 
 # --- CMakePresets.json との対応表 ------------------------------------------
@@ -72,42 +82,8 @@ if ($Verb -eq 'build' -and [string]::IsNullOrWhiteSpace($BuildPreset)) {
 }
 
 # --- Visual Studio 開発者環境の取り込み ------------------------------------
-# vswhere.exe は VS インストーラーが必ずこの固定パスへ置く、唯一安定した入口。
-function Import-VisualStudioEnvironment {
-    $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    if (-not (Test-Path -LiteralPath $vsWhere)) {
-        throw "vswhere.exe が見つかりません: $vsWhere`nVisual Studio と C++ ワークロードをインストールしてください。"
-    }
-
-    # C++ x64 ツールチェーンを実際に持つインストールだけを候補にし、最新版を選ぶ。
-    $installPath = & $vsWhere -latest -prerelease -products * `
-        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-        -property installationPath | Select-Object -Last 1
-    if ([string]::IsNullOrWhiteSpace($installPath)) {
-        throw 'C++ ワークロードを持つ Visual Studio が見つかりません。'
-    }
-
-    $vcvars = Join-Path $installPath 'VC/Auxiliary/Build/vcvars64.bat'
-    if (-not (Test-Path -LiteralPath $vcvars)) {
-        throw "vcvars64.bat が見つかりません: $vcvars"
-    }
-
-    # WHY: vcvars64.bat はバッチでしか環境を作れないため、cmd 側で実行して
-    #      その結果の環境変数一式を読み戻し、この PowerShell セッションへ反映する。
-    #      こうしないと cl.exe / link.exe が PATH に載らない。
-    $captured = & cmd.exe /d /c "call `"$vcvars`" >nul 2>&1 && set"
-    if ($LASTEXITCODE -ne 0) {
-        throw "vcvars64.bat の実行に失敗しました: $vcvars"
-    }
-    foreach ($line in $captured) {
-        $separator = $line.IndexOf('=')
-        if ($separator -gt 0) {
-            $name = $line.Substring(0, $separator)
-            $value = $line.Substring($separator + 1)
-            Set-Item -LiteralPath "Env:$name" -Value $value
-        }
-    }
-}
+# 手順の本体は VsEnvironment.ps1 (AgentBuild.ps1 と共有する)。
+. (Join-Path $PSScriptRoot 'VsEnvironment.ps1')
 
 try {
     Import-VisualStudioEnvironment

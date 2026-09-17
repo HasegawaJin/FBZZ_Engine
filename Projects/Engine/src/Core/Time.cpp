@@ -14,20 +14,19 @@ float    Time::unscaledDeltaTime = 0.0f;
 float    Time::time              = 0.0f;
 float    Time::unscaledTime      = 0.0f;
 uint64_t Time::frameCount        = 0;
-// 既定値は SceneManager が設定する Phase::Physics の 60Hz と一致させる。
-// 実際の値は固定ステップ実行時に FixedScriptSystem が毎回上書きする。
+/// @note 既定値は SceneManager が設定する Phase::Physics の 60Hz と一致させる。実値は FixedScriptSystem が毎回上書きする。
 float    Time::fixedDeltaTime    = 1.0f / 60.0f;
 float    Time::timeScale         = 1.0f;
 float    Time::vfxTimeScale      = 1.0f;
 int      Time::targetFps         = 0;
 int64_t  Time::s_lastCount       = 0;
 int64_t  Time::s_frequency       = 0;
+float    Time::s_lockstepDelta   = 0.0f;
 
 void Time::Tick()
 {
-    // FPS キャップ: 目標フレーム時間になるまで待機してから delta を計測
-    // sleep で大半を消費し、最後の 2ms はビジーウェイトで精度を確保する
-    if (targetFps > 0 && s_frequency > 0) {
+    /// @note FPS キャップは sleep で大半を消費し、最後の 2ms はビジーウェイトで精度を確保する。ロックステップ中は待たない。
+    if (targetFps > 0 && s_frequency > 0 && s_lockstepDelta <= 0.0f) {
         const int   clamped     = std::max(targetFps, 30);
         const int64_t targetTicks = s_frequency / clamped;
         LARGE_INTEGER cur;
@@ -56,12 +55,11 @@ void Time::Tick()
 
     const float raw = static_cast<float>(now.QuadPart - s_lastCount)
                     / static_cast<float>(s_frequency);
+    /// @note ロックステップ中も基準時刻は進める。解除した最初のフレームに «止めていた間» の実時間が載らないように。
     s_lastCount = now.QuadPart;
 
-    // デバッガで止めたとき等の暴走防止: 50ms キャップ
-    unscaledDeltaTime  = std::min(raw, 0.05f);
-    // 2 本の倍率を掛ける。ゲーム側 (timeScale) と VFX 側 (vfxTimeScale) は
-    // 互いを知らずに自分の枠だけを書く ─ 同じ変数を奪い合わせない (Time.hpp の WHY)。
+    /// @note 50ms キャップはデバッガで止めたとき等の暴走防止。
+    unscaledDeltaTime  = s_lockstepDelta > 0.0f ? s_lockstepDelta : std::min(raw, 0.05f);
     deltaTime          = unscaledDeltaTime * GetEffectiveTimeScale();
     time              += deltaTime;
     unscaledTime      += unscaledDeltaTime;
@@ -73,13 +71,7 @@ void Time::Reset()
     time         = 0.0f;
     unscaledTime = 0.0f;
     frameCount   = 0;
-    // VFX の枠だけ素へ戻す。
-    //
-    // WHY timeScale は触らないか: あちらはゲームと Editor の設定で、リセットの
-    //     たびに 1.0 へ倒すと Inspector のスロー再生が黙って解除される。
-    //     こちらはエンジンが握っている一時的な要求なので、シーンをリセットした
-    //     時点で «誰も要求していない» が正しい ── 止めたまま Play を抜けた .vfx の
-    //     要求が残って «次の Play が最初から遅い» のを防ぐ。
+    /// @note VFX の枠だけ素へ戻す。止めたまま Play を抜けた .vfx の要求が残ると «次の Play が最初から遅い» になる。
     vfxTimeScale = 1.0f;
 }
 
@@ -106,6 +98,16 @@ void Time::SetTargetFps(int fps)
 int Time::GetTargetFps()
 {
     return targetFps;
+}
+
+void Time::SetLockstepDelta(float seconds)
+{
+    s_lockstepDelta = seconds > 0.0f ? std::min(seconds, 0.25f) : 0.0f;
+}
+
+float Time::GetLockstepDelta()
+{
+    return s_lockstepDelta;
 }
 
 } // namespace fbzz

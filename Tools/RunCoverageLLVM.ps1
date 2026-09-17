@@ -76,7 +76,7 @@ if ($testExecutables.Count -eq 0) {
 
 # 計装したコードを «含んでいる» バイナリだけを llvm-cov へ渡す。テスト exe 自身は
 # 計装対象外 (CMakeLists.txt の fbzz_instrument_for_coverage を参照) なので渡さない。
-$instrumentedNames = @('FBZZMath.dll', 'FBZZPhysics.dll', 'FBZZEngine.dll')
+$instrumentedNames = @('FBZZMath.dll', 'FBZZPhysics.dll', 'FBZZFluid.dll', 'FBZZEngine.dll')
 $instrumented = @()
 foreach ($name in $instrumentedNames) {
     $path = Join-Path $testDir $name
