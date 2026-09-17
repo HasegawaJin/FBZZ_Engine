@@ -4,7 +4,7 @@
 /// @date    2026-09-12
 #include <Engine/Scene/Systems/VFXLineSystem.hpp>
 
-#include <Engine/Core/CurlNoise.hpp>
+#include <Math/CurlNoise.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -28,7 +28,7 @@ math::Vector3 DivideSafe(const math::Vector3& value, const math::Vector3& scale)
     return { divide(value.x, scale.x), divide(value.y, scale.y), divide(value.z, scale.z) };
 }
 
-// 線を出さないフレームは帯を畳む。前の形が残って «消したのに光っている» にならないように。
+/// 線を出さないフレームは帯を畳む。前の形が残って «消したのに光っている» にならないように。
 void Hide(GameObject& go)
 {
     if (auto* procedural = go.GetComponent<ProceduralMeshComponent>()) procedural->enabled = false;
@@ -43,7 +43,7 @@ ComponentAccess VFXLineSystem::GetAccess() const
 
 OrderingHints VFXLineSystem::GetOrder() const
 {
-    // 端点は «今フレームのワールド位置»。VFXSystem が生存窓で有効 / 無効を決めた後に形を作る。
+    /// @note 端点は «今フレームのワールド位置»。VFXSystem が生存窓で有効 / 無効を決めた後に形を作る。
     return OrderingHints{}.After<VFXSystem>();
 }
 
@@ -61,7 +61,7 @@ void VFXLineSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        // 端点。実体を指していて見つからないときだけ «消えた» とみなす (最初から座標指定は消えない)。
+        /// @note 端点。実体を指していて見つからないときだけ «消えた» とみなす (最初から座標指定は消えない)。
         const Transform& tf = go->transform;
         bool missing = false;
         math::Vector3 from = tf.worldPosition + line.fromOffset;
@@ -96,7 +96,7 @@ void VFXLineSystem::Update(SystemContext& ctx)
         }
         if (line.mode == VFXLineMode::Lightning) {
             const std::uint32_t strikeSeed =
-                core::PcgHash(static_cast<std::uint32_t>(line.seed) * 9781u + line.strikeIndex * 6271u);
+                math::PcgHash(static_cast<std::uint32_t>(line.seed) * 9781u + line.strikeIndex * 6271u);
             GenerateLightning(line, from, to, strikeSeed, line.time, strands);
         } else {
             GenerateBeam(line, from, to, line.time, strands);
@@ -107,8 +107,8 @@ void VFXLineSystem::Update(SystemContext& ctx)
         procedural->enabled = true;
         procedural->materialPath = line.materialPath;
 
-        // 中心線だけを積む。帯へ広げるのは VS (VFXLine.hlsl) で、描いているビューのカメラへ向ける。
-        //   NORMAL = 線の向き / TANGENT.x = 半幅 / UV = (進み, 左右) / COLOR = 本流と枝の明るさ
+        /// @note 中心線だけを積む。帯へ広げるのは VS (VFXLine.hlsl) で、描いているビューのカメラへ向ける。
+        ///       NORMAL = 線の向き / TANGENT.x = 半幅 / UV = (進み, 左右) / COLOR = 本流と枝の明るさ
         MeshBuilder& builder = procedural->builder;
         builder.Clear();
         const math::Quaternion inverseRotation = tf.worldRotation.Inverse();
@@ -142,7 +142,7 @@ void VFXLineSystem::Update(SystemContext& ctx)
         }
         procedural->dirty = MeshDirty::All;
 
-        // 色と時刻は per-instance の上書きで渡す (同じ .mat を共有する線どうしが汚し合わない)。
+        /// @note 色と時刻は per-instance の上書きで渡す (同じ .mat を共有する線どうしが汚し合わない)。
         auto* material = go->GetComponent<MaterialComponent>();
         if (material == nullptr) material = &go->AddComponent<MaterialComponent>();
         const float brightness = VFXLineBrightness(line, line.time, line.strikeIndex, line.strikeClock);

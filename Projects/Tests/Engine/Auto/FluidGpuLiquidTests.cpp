@@ -9,7 +9,7 @@
 
 #include <Engine/Asset/FluidGpuLiquidPack.hpp>
 #include <Engine/Asset/FluidGpuLiquidSolver.hpp>
-#include <Engine/Asset/FluidSolver.hpp>
+#include <Fluid/FluidSolver.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -19,18 +19,18 @@
 namespace fbzz::tests {
 namespace {
 
-asset::FluidRecipe LiquidRecipe()
+fluid::FluidRecipe LiquidRecipe()
 {
-    asset::FluidRecipe recipe;
-    recipe.kind = asset::FluidKind::Liquid;
+    fluid::FluidRecipe recipe;
+    recipe.kind = fluid::FluidKind::Liquid;
     recipe.liquid.maxParticles = 100000;
     return recipe;
 }
 
-asset::FluidSource StillSphere(const math::Vector3& center, float radius, int count)
+fluid::FluidSource StillSphere(const math::Vector3& center, float radius, int count)
 {
-    asset::FluidSource source;
-    source.shape = asset::FluidSourceShape::Sphere;
+    fluid::FluidSource source;
+    source.shape = fluid::FluidSourceShape::Sphere;
     source.center = center;
     source.size = { radius, radius, radius };
     source.velocity = { 0.0f, 0.0f, 0.0f };
@@ -50,10 +50,10 @@ float DistanceTo(const asset::GpuLiquidSpawn& spawn, const math::Vector3& center
 
 TEST(FluidGpuLiquidTest, CapacityIsTheSumOfEnabledCountsClamped)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    const asset::FluidSource a = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 300);
-    const asset::FluidSource b = StillSphere({ 0.5f, 0.0f, 0.0f }, 0.2f, 200);
-    asset::FluidSource off = a;
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    const fluid::FluidSource a = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 300);
+    const fluid::FluidSource b = StillSphere({ 0.5f, 0.0f, 0.0f }, 0.2f, 200);
+    fluid::FluidSource off = a;
     off.enabled = false;
     off.count = 999;
     recipe.sources = { a, off, b };
@@ -71,8 +71,8 @@ TEST(FluidGpuLiquidTest, CapacityIsTheSumOfEnabledCountsClamped)
 
 TEST(FluidGpuLiquidTest, BurstSpawnsEveryParticleAtTheStartTime)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    asset::FluidSource burst = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 40);
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidSource burst = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 40);
     burst.startTime = 0.3f;
     burst.duration = 0.0f;
     recipe.sources = { burst };
@@ -84,13 +84,13 @@ TEST(FluidGpuLiquidTest, BurstSpawnsEveryParticleAtTheStartTime)
 
 TEST(FluidGpuLiquidTest, TimedSourceSpreadsSpawnsOverItsDuration)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    asset::FluidSource stream = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 4);
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidSource stream = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 4);
     stream.startTime = 0.5f;
     stream.duration = 2.0f;
     recipe.sources = { stream };
 
-    // CPU は «count × 経過割合» を切り捨てた数だけ出すので、k 番目は start + duration × (k + 1) / count で出る。
+    /// @note CPU は «count × 経過割合» を切り捨てた数だけ出すので、k 番目は start + duration × (k + 1) / count で出る。
     const auto spawns = asset::BuildGpuLiquidEmission(recipe, 1000);
     ASSERT_EQ(spawns.size(), 4u);
     EXPECT_NEAR(spawns[0].positionTime[3], 1.0f, 1.0e-6f);
@@ -101,10 +101,10 @@ TEST(FluidGpuLiquidTest, TimedSourceSpreadsSpawnsOverItsDuration)
 
 TEST(FluidGpuLiquidTest, EarliestSpawnsTakeTheSlotsWhenTheyRunOut)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    asset::FluidSource late = StillSphere({ 0.5f, 0.0f, 0.0f }, 0.2f, 10);
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidSource late = StillSphere({ 0.5f, 0.0f, 0.0f }, 0.2f, 10);
     late.startTime = 2.0f;
-    asset::FluidSource early = StillSphere({ -0.5f, 0.0f, 0.0f }, 0.2f, 10);
+    fluid::FluidSource early = StillSphere({ -0.5f, 0.0f, 0.0f }, 0.2f, 10);
     early.startTime = 0.0f;
     early.duration = 1.0f;
     recipe.sources = { late, early };
@@ -113,7 +113,7 @@ TEST(FluidGpuLiquidTest, EarliestSpawnsTakeTheSlotsWhenTheyRunOut)
     ASSERT_EQ(spawns.size(), 12u);
     for (std::size_t i = 1; i < spawns.size(); ++i)
         EXPECT_LE(spawns[i - 1].positionTime[3], spawns[i].positionTime[3]);
-    // 先に出る 10 粒 (early) が全部入り、残りの 2 枠が late に回る。
+    /// @note 先に出る 10 粒 (early) が全部入り、残りの 2 枠が late に回る。
     EXPECT_NEAR(spawns[0].positionTime[3], 0.1f, 1.0e-6f);
     EXPECT_NEAR(spawns[9].positionTime[3], 1.0f, 1.0e-6f);
     EXPECT_EQ(spawns[10].positionTime[3], 2.0f);
@@ -122,9 +122,9 @@ TEST(FluidGpuLiquidTest, EarliestSpawnsTakeTheSlotsWhenTheyRunOut)
 
 TEST(FluidGpuLiquidTest, SphereSpawnsStayInsideTheShapeAndCarryTheColorKey)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidRecipe recipe = LiquidRecipe();
     const math::Vector3 center = { 0.1f, -0.3f, 0.2f };
-    asset::FluidSource ball = StillSphere(center, 0.25f, 50);
+    fluid::FluidSource ball = StillSphere(center, 0.25f, 50);
     ball.colorKey = 0.7f;
     recipe.sources = { ball };
 
@@ -141,9 +141,9 @@ TEST(FluidGpuLiquidTest, SphereSpawnsStayInsideTheShapeAndCarryTheColorKey)
 
 TEST(FluidGpuLiquidTest, BoxSpawnsStayInsideTheBoxAndLaunchWithTheSourceVelocity)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    asset::FluidSource box;
-    box.shape = asset::FluidSourceShape::Box;
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidSource box;
+    box.shape = fluid::FluidSourceShape::Box;
     box.center = { 0.0f, -0.5f, 0.0f };
     box.size = { 0.3f, 0.1f, 0.2f };
     box.velocity = { 0.0f, 2.0f, 0.0f };
@@ -157,7 +157,7 @@ TEST(FluidGpuLiquidTest, BoxSpawnsStayInsideTheBoxAndLaunchWithTheSourceVelocity
         EXPECT_LE(std::fabs(spawn.positionTime[0] - 0.0f), 0.3f + 1.0e-5f);
         EXPECT_LE(std::fabs(spawn.positionTime[1] + 0.5f), 0.1f + 1.0e-5f);
         EXPECT_LE(std::fabs(spawn.positionTime[2] - 0.0f), 0.2f + 1.0e-5f);
-        // spread = 0 ならばらつきは 0。撃ち出す速度そのまま。
+        /// @note spread = 0 ならばらつきは 0。撃ち出す速度そのまま。
         EXPECT_FLOAT_EQ(spawn.velocityKey[0], 0.0f);
         EXPECT_FLOAT_EQ(spawn.velocityKey[1], 2.0f);
         EXPECT_FLOAT_EQ(spawn.velocityKey[2], 0.0f);
@@ -166,8 +166,8 @@ TEST(FluidGpuLiquidTest, BoxSpawnsStayInsideTheBoxAndLaunchWithTheSourceVelocity
 
 TEST(FluidGpuLiquidTest, SameSeedGivesTheSameSpawnsAndAnotherSeedDiffers)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    asset::FluidSource ball = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 30);
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidSource ball = StillSphere({ 0.0f, 0.0f, 0.0f }, 0.2f, 30);
     ball.velocity = { 0.5f, 1.0f, 0.0f };
     ball.spread = 0.5f;
     recipe.sources = { ball };
@@ -194,15 +194,15 @@ TEST(FluidGpuLiquidTest, SameSeedGivesTheSameSpawnsAndAnotherSeedDiffers)
 
 TEST(FluidGpuLiquidTest, OvercrowdedSourceIsWidenedLikeTheCpuSolver)
 {
-    // Blood Burst の形 (半径 0.06 に 650 粒)。そのまま出すと静止密度の何十倍にも詰まって爆ぜる。
-    asset::FluidRecipe recipe = LiquidRecipe();
+    /// @note Blood Burst の形 (半径 0.06 に 650 粒)。そのまま出すと静止密度の何十倍にも詰まって爆ぜる。
+    fluid::FluidRecipe recipe = LiquidRecipe();
     recipe.liquid.particleRadius = 0.012f;
     const math::Vector3 center = { 0.0f, 0.0f, 0.0f };
     recipe.sources = { StillSphere(center, 0.06f, 650) };
 
     const auto spawns = asset::BuildGpuLiquidEmission(recipe, 1000);
     ASSERT_EQ(spawns.size(), 650u);
-    // 同時に中に居る粒 325 (= 650 / kEmitPacking) が直径の間隔で収まる半径 ≈ 0.06 × 1.706。
+    /// @note 同時に中に居る粒 325 (= 650 / kEmitPacking) が直径の間隔で収まる半径 ≈ 0.06 × 1.706。
     float farthest = 0.0f;
     for (const auto& spawn : spawns) farthest = (std::max)(farthest, DistanceTo(spawn, center));
     EXPECT_GT(farthest, 0.08f);
@@ -211,9 +211,9 @@ TEST(FluidGpuLiquidTest, OvercrowdedSourceIsWidenedLikeTheCpuSolver)
 
 TEST(FluidGpuLiquidTest, KernelMatchesTheCpuSolver)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidRecipe recipe = LiquidRecipe();
     recipe.liquid.particleRadius = 0.015f;
-    asset::FluidLiquidSolver solver;
+    fluid::FluidLiquidSolver solver;
     solver.Reset(recipe, /*volumetric=*/true);
 
     const asset::GpuLiquidKernel kernel = asset::MakeGpuLiquidKernel(recipe.liquid.particleRadius);
@@ -232,24 +232,26 @@ TEST(FluidGpuLiquidTest, GridCoversTheCpuBoundsWithCellsOfH)
 {
     const asset::GpuLiquidGrid grid = asset::MakeGpuLiquidGrid(0.012f);
     EXPECT_NEAR(grid.cellSize, 0.048f, 1.0e-7f);
-    EXPECT_EQ(grid.cellsX, 67);  // 3.2 / 0.048 = 66.7
-    EXPECT_EQ(grid.cellsY, 96);  // 4.6 / 0.048 = 95.8
+    /// @note 3.2 / 0.048 = 66.7
+    EXPECT_EQ(grid.cellsX, 67);
+    /// @note 4.6 / 0.048 = 95.8
+    EXPECT_EQ(grid.cellsY, 96);
     EXPECT_EQ(grid.cellsZ, 67);
     EXPECT_EQ(grid.boundsMin[1], -1.6f);
     EXPECT_EQ(grid.boundsMax[1], 3.0f);
     EXPECT_EQ(grid.boundsMax[0], 1.6f);
 
-    // 粒子半径は核と同じ丸め方をする。
+    /// @note 粒子半径は核と同じ丸め方をする。
     EXPECT_NEAR(asset::MakeGpuLiquidGrid(5.0f).cellSize, 0.4f, 1.0e-7f);
 }
 
 TEST(FluidGpuLiquidTest, ForcesPackOnlyWhileActive)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    asset::FluidForce off;
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidForce off;
     off.enabled = false;
-    asset::FluidForce wind;
-    wind.type = asset::FluidForceType::Wind;
+    fluid::FluidForce wind;
+    wind.type = fluid::FluidForceType::Wind;
     wind.direction = { 0.0f, 0.0f, 2.0f };
     wind.strength = 3.0f;
     wind.radius = 0.5f;
@@ -258,11 +260,11 @@ TEST(FluidGpuLiquidTest, ForcesPackOnlyWhileActive)
     wind.duration = 1.0f;
     recipe.forces = { off, wind };
 
-    asset::FluidGpuForce forces[asset::kMaxFluidGpuForces]{};
+    fluid::FluidGpuForce forces[fluid::kMaxFluidGpuForces]{};
     ASSERT_EQ(asset::PackGpuLiquidForces(recipe, 0.5f, forces), 1);
     EXPECT_EQ(forces[0].directionStrength[3], 0.0f);
     EXPECT_NEAR(forces[0].directionStrength[2], 1.0f, 1.0e-6f);
-    EXPECT_EQ(forces[0].centerType[3], static_cast<float>(asset::FluidForceType::Wind));
+    EXPECT_EQ(forces[0].centerType[3], static_cast<float>(fluid::FluidForceType::Wind));
 
     ASSERT_EQ(asset::PackGpuLiquidForces(recipe, 1.5f, forces), 1);
     EXPECT_EQ(forces[0].directionStrength[3], 3.0f);
@@ -274,23 +276,23 @@ TEST(FluidGpuLiquidTest, ForcesPackOnlyWhileActive)
 
 TEST(FluidGpuLiquidTest, CollidersPackUnwidenedSizesAndFrictionKeep)
 {
-    asset::FluidRecipe recipe = LiquidRecipe();
-    asset::FluidCollider ball;
-    ball.shape = asset::FluidColliderShape::Sphere;
+    fluid::FluidRecipe recipe = LiquidRecipe();
+    fluid::FluidCollider ball;
+    ball.shape = fluid::FluidColliderShape::Sphere;
     ball.size = { 0.001f, 0.5f, 0.9f };
     ball.friction = 0.4f;
-    asset::FluidCollider box;
-    box.shape = asset::FluidColliderShape::Box;
+    fluid::FluidCollider box;
+    box.shape = fluid::FluidColliderShape::Box;
     box.size = { 0.3f, 0.001f, 0.4f };
-    asset::FluidCollider slope;
-    slope.shape = asset::FluidColliderShape::Plane;
+    fluid::FluidCollider slope;
+    slope.shape = fluid::FluidColliderShape::Plane;
     slope.direction = { 3.0f, 0.0f, 4.0f };
     slope.startTime = 1.0f;
     recipe.colliders = { ball, box, slope };
 
-    asset::FluidGpuCollider colliders[asset::kMaxFluidGpuColliders]{};
+    fluid::FluidGpuCollider colliders[fluid::kMaxFluidGpuColliders]{};
     ASSERT_EQ(asset::PackGpuLiquidColliders(recipe, 0.0f, 0.01f, colliders), 3);
-    // 液体は minSize = 0 で測る (気体のようにセル幅まで広げない)。
+    /// @note 液体は minSize = 0 で測る (気体のようにセル幅まで広げない)。
     EXPECT_EQ(colliders[0].sizeActive[0], 0.001f);
     EXPECT_EQ(colliders[0].sizeActive[1], 0.001f);
     EXPECT_EQ(colliders[0].sizeActive[2], 0.001f);

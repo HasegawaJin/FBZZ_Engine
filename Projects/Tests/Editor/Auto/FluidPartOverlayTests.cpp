@@ -8,8 +8,8 @@
 #include <TestKit/TestKit.hpp>
 
 #include <Editor/Util/FluidPartOverlay.hpp>
-#include <Engine/Asset/FluidOperatorEval.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidOperatorEval.hpp>
+#include <Fluid/FluidRecipe.hpp>
 
 #include <vector>
 
@@ -34,9 +34,9 @@ FluidViewMapping MakeMapping()
     return mapping;
 }
 
-asset::FluidSource MakeSource(asset::FluidSourceShape shape, const math::Vector3& center, const math::Vector3& size)
+fluid::FluidSource MakeSource(fluid::FluidSourceShape shape, const math::Vector3& center, const math::Vector3& size)
 {
-    asset::FluidSource source;
+    fluid::FluidSource source;
     source.shape = shape;
     source.center = center;
     source.size = size;
@@ -87,9 +87,9 @@ TEST(FluidPartOverlay, MappingRoundTripsAndPutsTheDomainCornersOnTheSquare)
 TEST(FluidPartOverlay, SelectedSphereSourceHasCenterAndSizeButNoDirection)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { 0.2f, -0.1f, 0.0f }, { 0.25f, 0.25f, 0.25f }));
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { -0.5f, 0.5f, 0.0f }, { 0.1f, 0.1f, 0.1f }));
+    fluid::FluidRecipe recipe;
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.2f, -0.1f, 0.0f }, { 0.25f, 0.25f, 0.25f }));
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { -0.5f, 0.5f, 0.0f }, { 0.1f, 0.1f, 0.1f }));
 
     const std::vector<FluidPartHandle> handles = editor::CollectFluidPartHandles(
         mapping, recipe, 0.0f, Select(FluidSelectionKind::Source, 0), FluidPartVisibility{});
@@ -104,7 +104,7 @@ TEST(FluidPartOverlay, SelectedSphereSourceHasCenterAndSizeButNoDirection)
     ExpectScreenNear(size->screen, mapping.ToScreen({ 0.45f, -0.1f, 0.0f }));
     EXPECT_EQ(FindHandle(handles, FluidSelectionKind::Source, 0, FluidHandleKind::Direction), nullptr);
 
-    // 選ばれていない部品は Center だけ (つかむと選択が移る)。
+    /// @note 選ばれていない部品は Center だけ (つかむと選択が移る)。
     EXPECT_NE(FindHandle(handles, FluidSelectionKind::Source, 1, FluidHandleKind::Center), nullptr);
     EXPECT_EQ(FindHandle(handles, FluidSelectionKind::Source, 1, FluidHandleKind::Size), nullptr);
 }
@@ -112,10 +112,10 @@ TEST(FluidPartOverlay, SelectedSphereSourceHasCenterAndSizeButNoDirection)
 TEST(FluidPartOverlay, PicksTheNearestHandleAndPrefersTheSelectedPartOnTies)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { 0.0f, 0.0f, 0.0f }, { 0.3f, 0.3f, 0.3f }));
-    // 選んでいない発生源の中心を、選んだ発生源の大きさのハンドルにちょうど重ねる。
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { 0.3f, 0.0f, 0.0f }, { 0.1f, 0.1f, 0.1f }));
+    fluid::FluidRecipe recipe;
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.0f, 0.0f, 0.0f }, { 0.3f, 0.3f, 0.3f }));
+    /// @note 選んでいない発生源の中心を、選んだ発生源の大きさのハンドルにちょうど重ねる。
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.3f, 0.0f, 0.0f }, { 0.1f, 0.1f, 0.1f }));
     const std::vector<FluidPartHandle> handles = editor::CollectFluidPartHandles(
         mapping, recipe, 0.0f, Select(FluidSelectionKind::Source, 0), FluidPartVisibility{});
 
@@ -135,8 +135,8 @@ TEST(FluidPartOverlay, PicksTheNearestHandleAndPrefersTheSelectedPartOnTies)
 TEST(FluidPartOverlay, DraggingTheCenterPutsThePartUnderTheCursorAndKeepsDepth)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { 0.1f, 0.2f, 0.35f }, { 0.2f, 0.2f, 0.2f }));
+    fluid::FluidRecipe recipe;
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.1f, 0.2f, 0.35f }, { 0.2f, 0.2f, 0.2f }));
     const std::vector<FluidPartHandle> handles = editor::CollectFluidPartHandles(
         mapping, recipe, 0.0f, Select(FluidSelectionKind::Source, 0), FluidPartVisibility{});
     const FluidPartHandle* center = FindHandle(handles, FluidSelectionKind::Source, 0, FluidHandleKind::Center);
@@ -151,11 +151,11 @@ TEST(FluidPartOverlay, DraggingTheCenterPutsThePartUnderTheCursorAndKeepsDepth)
 TEST(FluidPartOverlay, DraggingTheCenterOfAMovingPartLandsItsCurrentPoseOnTheCursor)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    // time は warmup の後を 0 とする。動きは warmup + time (= 0.5) で評価する。
+    fluid::FluidRecipe recipe;
+    /// @note time は warmup の後を 0 とする。動きは warmup + time (= 0.5) で評価する。
     recipe.output.warmup = 0.25f;
-    asset::FluidSource source =
-        MakeSource(asset::FluidSourceShape::Sphere, { 0.0f, -0.6f, 0.2f }, { 0.2f, 0.2f, 0.2f });
+    fluid::FluidSource source =
+        MakeSource(fluid::FluidSourceShape::Sphere, { 0.0f, -0.6f, 0.2f }, { 0.2f, 0.2f, 0.2f });
     source.motion.keys.push_back({ 0.0f, { 0.0f, 0.0f, 0.0f } });
     source.motion.keys.push_back({ 1.0f, { 0.4f, 0.2f, 0.0f } });
     recipe.sources.push_back(source);
@@ -168,11 +168,11 @@ TEST(FluidPartOverlay, DraggingTheCenterOfAMovingPartLandsItsCurrentPoseOnTheCur
     ExpectScreenNear(center->screen, mapping.ToScreen({ 0.2f, -0.5f, 0.2f }));
 
     editor::ApplyFluidHandleDrag(recipe, *center, { 0.1f, 0.3f, 0.2f }, time);
-    const math::Vector3 posed = asset::PoseFluidSource(recipe.sources[0], 0.5f).center;
+    const math::Vector3 posed = fluid::PoseFluidSource(recipe.sources[0], 0.5f).center;
     EXPECT_NEAR(posed.x, 0.1f, kDomainEps);
     EXPECT_NEAR(posed.y, 0.3f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].center.z, 0.2f, kDomainEps);
-    // 動きそのもの (キー) は触らない。
+    /// @note 動きそのもの (キー) は触らない。
     EXPECT_NEAR(recipe.sources[0].motion.keys[1].offset.x, 0.4f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].motion.keys[1].offset.y, 0.2f, kDomainEps);
 }
@@ -180,8 +180,8 @@ TEST(FluidPartOverlay, DraggingTheCenterOfAMovingPartLandsItsCurrentPoseOnTheCur
 TEST(FluidPartOverlay, ResizesASphereFromTheDistanceAndClampsAtTheCenter)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { 0.1f, 0.1f, 0.0f }, { 0.2f, 0.2f, 0.2f }));
+    fluid::FluidRecipe recipe;
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.1f, 0.1f, 0.0f }, { 0.2f, 0.2f, 0.2f }));
     const std::vector<FluidPartHandle> handles = editor::CollectFluidPartHandles(
         mapping, recipe, 0.0f, Select(FluidSelectionKind::Source, 0), FluidPartVisibility{});
     const FluidPartHandle* size = FindHandle(handles, FluidSelectionKind::Source, 0, FluidHandleKind::Size);
@@ -197,8 +197,8 @@ TEST(FluidPartOverlay, ResizesASphereFromTheDistanceAndClampsAtTheCenter)
 TEST(FluidPartOverlay, ResizesABoxPerAxisAndKeepsDepth)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Box, { 0.1f, 0.1f, 0.0f }, { 0.2f, 0.2f, 0.3f }));
+    fluid::FluidRecipe recipe;
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Box, { 0.1f, 0.1f, 0.0f }, { 0.2f, 0.2f, 0.3f }));
     const std::vector<FluidPartHandle> handles = editor::CollectFluidPartHandles(
         mapping, recipe, 0.0f, Select(FluidSelectionKind::Source, 0), FluidPartVisibility{});
     const FluidPartHandle* size = FindHandle(handles, FluidSelectionKind::Source, 0, FluidHandleKind::Size);
@@ -214,8 +214,8 @@ TEST(FluidPartOverlay, ResizesABoxPerAxisAndKeepsDepth)
 TEST(FluidPartOverlay, RotatesAConeFromTheHandleAtItsBase)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    asset::FluidSource cone = MakeSource(asset::FluidSourceShape::Cone, { 0.0f, 0.0f, 0.0f }, { 0.1f, 0.5f, 0.0f });
+    fluid::FluidRecipe recipe;
+    fluid::FluidSource cone = MakeSource(fluid::FluidSourceShape::Cone, { 0.0f, 0.0f, 0.0f }, { 0.1f, 0.5f, 0.0f });
     cone.direction = { 0.0f, 1.0f, 0.0f };
     recipe.sources.push_back(cone);
     const std::vector<FluidPartHandle> handles = editor::CollectFluidPartHandles(
@@ -229,18 +229,18 @@ TEST(FluidPartOverlay, RotatesAConeFromTheHandleAtItsBase)
     EXPECT_NEAR(d.x, 1.0f, kDomainEps);
     EXPECT_NEAR(d.y, 0.0f, kDomainEps);
     EXPECT_NEAR(d.z, 0.0f, kDomainEps);
-    // 底がカーソルに残るよう、長さもカーソルまでの距離になる。底の半径は変えない。
+    /// @note 底がカーソルに残るよう、長さもカーソルまでの距離になる。底の半径は変えない。
     EXPECT_NEAR(recipe.sources[0].size.y, 0.3f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].size.x, 0.1f, kDomainEps);
 }
 
 TEST(FluidPartOverlay, DirectionDragKeepsTheDepthComponentUnlessItFacesTheView)
 {
-    asset::FluidRecipe recipe;
-    asset::FluidSource tilted = MakeSource(asset::FluidSourceShape::Cone, { 0.0f, 0.0f, 0.0f }, { 0.1f, 0.5f, 0.0f });
+    fluid::FluidRecipe recipe;
+    fluid::FluidSource tilted = MakeSource(fluid::FluidSourceShape::Cone, { 0.0f, 0.0f, 0.0f }, { 0.1f, 0.5f, 0.0f });
     tilted.direction = { 0.0f, 0.6f, 0.8f };
     recipe.sources.push_back(tilted);
-    asset::FluidSource facing = tilted;
+    fluid::FluidSource facing = tilted;
     facing.direction = { 0.0f, 0.0f, 2.0f };
     recipe.sources.push_back(facing);
 
@@ -253,7 +253,7 @@ TEST(FluidPartOverlay, DirectionDragKeepsTheDepthComponentUnlessItFacesTheView)
     EXPECT_NEAR(recipe.sources[0].direction.y, 0.0f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].direction.z, 0.8f, kDomainEps);
 
-    // 真正面を向いた向きは z を捨てて画面内へ倒す (長さは保つ)。
+    /// @note 真正面を向いた向きは z を捨てて画面内へ倒す (長さは保つ)。
     handle.index = 1;
     editor::ApplyFluidHandleDrag(recipe, handle, { -0.4f, 0.0f, 0.0f }, 0.0f);
     EXPECT_NEAR(recipe.sources[1].direction.x, -2.0f, kDomainEps);
@@ -264,9 +264,9 @@ TEST(FluidPartOverlay, DirectionDragKeepsTheDepthComponentUnlessItFacesTheView)
 TEST(FluidPartOverlay, MovesAMotionKeyRelativeToTheBaseCenter)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    asset::FluidSource source =
-        MakeSource(asset::FluidSourceShape::Sphere, { 0.0f, -0.6f, 0.2f }, { 0.2f, 0.2f, 0.2f });
+    fluid::FluidRecipe recipe;
+    fluid::FluidSource source =
+        MakeSource(fluid::FluidSourceShape::Sphere, { 0.0f, -0.6f, 0.2f }, { 0.2f, 0.2f, 0.2f });
     source.motion.keys.push_back({ 0.0f, { 0.0f, 0.0f, 0.1f } });
     source.motion.keys.push_back({ 1.0f, { 0.4f, 0.0f, 0.1f } });
     recipe.sources.push_back(source);
@@ -278,14 +278,14 @@ TEST(FluidPartOverlay, MovesAMotionKeyRelativeToTheBaseCenter)
     ExpectScreenNear(key->screen, mapping.ToScreen({ 0.4f, -0.6f, 0.0f }));
 
     editor::ApplyFluidHandleDrag(recipe, *key, { 0.5f, 0.5f, 0.0f }, 0.0f);
-    const asset::FluidMotion& motion = recipe.sources[0].motion;
+    const fluid::FluidMotion& motion = recipe.sources[0].motion;
     EXPECT_NEAR(motion.keys[1].offset.x, 0.5f, kDomainEps);
     EXPECT_NEAR(motion.keys[1].offset.y, 1.1f, kDomainEps);
     EXPECT_NEAR(motion.keys[1].offset.z, 0.1f, kDomainEps);
     EXPECT_NEAR(motion.keys[0].offset.x, 0.0f, kDomainEps);
     EXPECT_NEAR(recipe.sources[0].center.y, -0.6f, kDomainEps);
 
-    const math::Vector3 posed = asset::PoseFluidSource(recipe.sources[0], 1.0f).center;
+    const math::Vector3 posed = fluid::PoseFluidSource(recipe.sources[0], 1.0f).center;
     EXPECT_NEAR(posed.x, 0.5f, kDomainEps);
     EXPECT_NEAR(posed.y, 0.5f, kDomainEps);
 }
@@ -293,10 +293,10 @@ TEST(FluidPartOverlay, MovesAMotionKeyRelativeToTheBaseCenter)
 TEST(FluidPartOverlay, PicksTheSourceDrawnAboveAColliderAndNothingOutside)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { 0.0f, 0.0f, 0.0f }, { 0.2f, 0.2f, 0.2f }));
-    asset::FluidCollider box;
-    box.shape = asset::FluidColliderShape::Box;
+    fluid::FluidRecipe recipe;
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.0f, 0.0f, 0.0f }, { 0.2f, 0.2f, 0.2f }));
+    fluid::FluidCollider box;
+    box.shape = fluid::FluidColliderShape::Box;
     box.center = { 0.0f, 0.0f, 0.0f };
     box.size = { 0.5f, 0.5f, 0.5f };
     recipe.colliders.push_back(box);
@@ -319,8 +319,8 @@ TEST(FluidPartOverlay, PicksTheSourceDrawnAboveAColliderAndNothingOutside)
 TEST(FluidPartOverlay, HiddenPartsCannotBePickedOrGrabbed)
 {
     const FluidViewMapping mapping = MakeMapping();
-    asset::FluidRecipe recipe;
-    recipe.sources.push_back(MakeSource(asset::FluidSourceShape::Sphere, { 0.0f, 0.0f, 0.0f }, { 0.2f, 0.2f, 0.2f }));
+    fluid::FluidRecipe recipe;
+    recipe.sources.push_back(MakeSource(fluid::FluidSourceShape::Sphere, { 0.0f, 0.0f, 0.0f }, { 0.2f, 0.2f, 0.2f }));
     const FluidPartVisibility visible = [](FluidSelectionKind list, int index) {
         return !(list == FluidSelectionKind::Source && index == 0);
     };

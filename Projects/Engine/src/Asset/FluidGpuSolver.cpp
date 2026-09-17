@@ -5,9 +5,9 @@
 #include <Engine/Asset/FluidGpuSolver.hpp>
 
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/FluidGpuStep.hpp>
-#include <Engine/Asset/FluidSourceMask.hpp>
-#include <Engine/Asset/FluidStepping.hpp>
+#include <Fluid/FluidGpuStep.hpp>
+#include <Engine/Asset/FluidSourceMaskLoader.hpp>
+#include <Fluid/FluidStepping.hpp>
 #include <Engine/Asset/VolumeFlipbookFluid.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
@@ -38,7 +38,7 @@ constexpr const char* kKernelPaths[] = {
     "Assets/Shaders/Bake/Fluid/FluidSolid.cs.hlsl",
 };
 
-// FluidGpuCommon.hlsli の FluidPassConstants と 1:1。
+/// FluidGpuCommon.hlsli の FluidPassConstants と 1:1。
 struct alignas(16) PassConstants {
     float advectSign;
     float pad[3];
@@ -46,14 +46,14 @@ struct alignas(16) PassConstants {
 
 } // namespace
 
-bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const FluidRecipe& recipe, int resolution,
+bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const fluid::FluidRecipe& recipe, int resolution,
                                 float frameDt, float densityScale, std::string& outError)
 {
-    if (recipe.kind != FluidKind::Gas) {
+    if (recipe.kind != fluid::FluidKind::Gas) {
         outError = "3D で解けるのは気体 (kind = gas) のレシピだけです";
         return false;
     }
-    // デバイスリセット後の古いハンドルは返せない (実体ごと消えている)。捨てて作り直す。
+    /// @note デバイスリセット後の古いハンドルは返せない (実体ごと消えている)。捨てて作り直す。
     if (m_resetVersion != resources.GetResetVersion()) {
         m_kernels = {};
         m_velocity = {};
@@ -112,7 +112,7 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const Flui
 
     const std::size_t constantCount = static_cast<std::size_t>(kMaxFramesPerTick) * kMaxSubsteps;
     while (m_stepConstants.size() < constantCount)
-        m_stepConstants.push_back(resources.CreateConstantBuffer(sizeof(FluidGpuStepConstants)));
+        m_stepConstants.push_back(resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants)));
     if (!m_forwardConstants.IsValid()) {
         m_forwardConstants = resources.CreateConstantBuffer(sizeof(PassConstants));
         const PassConstants forward{ 1.0f, { 0.0f, 0.0f, 0.0f } };
@@ -124,11 +124,11 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const Flui
         resources.Update(m_backwardConstants, &backward, sizeof(backward));
     }
     if (!m_outputConstants.IsValid())
-        m_outputConstants = resources.CreateConstantBuffer(sizeof(FluidGpuStepConstants));
+        m_outputConstants = resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants));
 
-    // WHY ここで確かめるか: 確保に失敗しても size() は増えるので、見ないと «半端に成功» のまま
-    //     m_ready = true まで進む。無効な定数バッファは束縛が飛ばされ、直前のパスが b0 に残した
-    //     別物の定数でシェーダーが走る (= 解像度すら別の値で読む)。落とすなら開く前に落とす。
+    /// @note 確保に失敗しても size() は増えるので、ここで確かめないと «半端に成功» のまま
+    ///       m_ready = true まで進む。無効な定数バッファは束縛が飛ばされ、直前のパスが b0 に残した
+    ///       別物の定数でシェーダーが走る (= 解像度すら別の値で読む)。落とすなら開く前に落とす。
     const bool constantsReady =
         std::all_of(m_stepConstants.begin(), m_stepConstants.end(),
                     [](const ConstantHandle& handle) { return handle.IsValid(); })
@@ -141,11 +141,11 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const Flui
     m_recipe = recipe;
     m_frameDt = (std::max)(frameDt, 1.0e-4f);
     m_substeps = std::clamp(recipe.output.substeps, 1, kMaxSubsteps);
-    // Jacobi は SOR より収束が遅い。CPU と同じ反復回数では圧力が抜けきらず、煙が膨らんで見える。
+    /// @note Jacobi は SOR より収束が遅い。CPU と同じ反復回数では圧力が抜けきらず、煙が膨らんで見える。
     m_pressureIterations = std::clamp(recipe.gas.pressureIterations * 2, 20, 400);
     m_densityScale = (std::max)(densityScale, 0.0f);
     m_temperatureScale = FluidRecipeTemperatureScale(recipe);
-    m_warmupFrames = FluidWarmupFrames(recipe.output.warmup, m_frameDt);
+    m_warmupFrames = fluid::FluidWarmupFrames(recipe.output.warmup, m_frameDt);
     m_ready = true;
     Restart();
     return true;
@@ -169,21 +169,21 @@ void FluidGpuSolver::ReleaseTextures(renderer::ResourceManager& resources)
     m_resolution = 0;
 }
 
-void FluidGpuSolver::BuildMaskAtlas(renderer::ResourceManager& resources, const FluidRecipe& recipe)
+void FluidGpuSolver::BuildMaskAtlas(renderer::ResourceManager& resources, const fluid::FluidRecipe& recipe)
 {
     if (m_maskAtlas.IsValid() && m_resetVersion == resources.GetResetVersion()) resources.Release(m_maskAtlas);
     m_maskAtlas = {};
-    const std::vector<std::string> paths = FluidGpuMaskPaths(recipe);
+    const std::vector<std::string> paths = fluid::FluidGpuMaskPaths(recipe);
     if (paths.empty()) return;
 
-    constexpr int kTile = kFluidSourceMaskSize;
-    constexpr int kColumns = kFluidSourceMaskAtlasColumns;
+    constexpr int kTile = fluid::kFluidSourceMaskSize;
+    constexpr int kColumns = fluid::kFluidSourceMaskAtlasColumns;
     constexpr int kAtlasSize = kTile * kColumns;
-    // 読めなかったタイル・使わないタイルは 1 (白)。SampleFluidSourceMask の «無効なら 1» と同じく板の形に湧く。
+    /// @note 読めなかったタイル・使わないタイルは 1 (白)。SampleFluidSourceMask の «無効なら 1» と同じく板の形に湧く。
     std::vector<std::uint8_t> rgba(static_cast<std::size_t>(kAtlasSize) * kAtlasSize * 4u, 255u);
     const std::size_t tileCount = (std::min)(paths.size(), static_cast<std::size_t>(kColumns * kColumns));
     for (std::size_t tile = 0; tile < tileCount; ++tile) {
-        FluidSourceMask mask;
+        fluid::FluidSourceMask mask;
         std::string error;
         if (!LoadFluidSourceMask(paths[tile], mask, &error) || !mask.IsValid()) {
             FBZZ_LOG_WARN("FluidGpuSolver: マスクを読めないので板の形で湧かせます (%s): %s", paths[tile].c_str(),
@@ -207,7 +207,7 @@ void FluidGpuSolver::BuildMaskAtlas(renderer::ResourceManager& resources, const 
 void FluidGpuSolver::Release(renderer::ResourceManager& resources)
 {
     ReleaseTextures(resources);
-    // デバイスリセット後のハンドルは既に実体が無い。返しに行くと別のリソースを消しかねない。
+    /// @note デバイスリセット後のハンドルは既に実体が無い。返しに行くと別のリソースを消しかねない。
     if (m_resetVersion == resources.GetResetVersion()) {
         for (const auto& constants : m_stepConstants)
             if (constants.IsValid()) resources.Release(constants);
@@ -240,7 +240,7 @@ void FluidGpuSolver::BeginTick()
 
 int FluidGpuSolver::DispatchesPerFrame() const
 {
-    // 1 刻みの内訳: 固体/注入/力 3 + 渦度 2 + 発散 1 + 圧力 m_pressureIterations + 投影/移流/補正 8。
+    /// @note 1 刻みの内訳: 固体/注入/力 3 + 渦度 2 + 発散 1 + 圧力 m_pressureIterations + 投影/移流/補正 8。
     constexpr int kFixedPerStep = 14;
     return (std::max)(m_substeps, 1) * (kFixedPerStep + (std::max)(m_pressureIterations, 0));
 }
@@ -266,17 +266,17 @@ bool FluidGpuSolver::StepFrame(renderer::IRenderer& renderer, renderer::Resource
 {
     if (!m_ready || m_nextStepConstant + static_cast<std::size_t>(m_substeps) > m_stepConstants.size())
         return false;
-    // 1 コマ目は予算を超えても必ず通す (通さないと «永久に追いつかない» になる)。2 コマ目からは
-    // 本数とコマ数の両方で止める。止めても呼び手は次の Tick で続きを解くので、絵が遅れるだけで済む。
+    /// @note 1 コマ目は予算を超えても必ず通す (通さないと «永久に追いつかない» になる)。2 コマ目からは
+    ///       本数とコマ数の両方で止める。止めても呼び手は次の Tick で続きを解くので、絵が遅れるだけで済む。
     if (m_framesThisTick > 0) {
         if (m_framesThisTick >= kMaxFramesPerTick) return false;
         if (m_dispatchesThisTick + DispatchesPerFrame() > kDispatchBudgetPerTick) return false;
     }
     if (m_needsClear) {
-        // 作ったばかりの 3D テクスチャの中身は未定義。場は 0 から始める。
+        /// @note 作ったばかりの 3D テクスチャの中身は未定義。場は 0 から始める。
         const ConstantHandle constants = m_stepConstants[m_nextStepConstant];
-        const FluidGpuStepConstants cleared =
-            PackFluidGpuStep(m_recipe, m_resolution, 0.0f, 0.0f, m_densityScale, m_temperatureScale);
+        const fluid::FluidGpuStepConstants cleared =
+            fluid::PackFluidGpuStep(m_recipe, m_resolution, 0.0f, 0.0f, m_densityScale, m_temperatureScale);
         resources.Update(constants, &cleared, sizeof(cleared));
         Run(renderer, resources, m_kernels[Clear], constants, {}, { m_velocity[0], m_velocity[1] });
         Run(renderer, resources, m_kernels[Clear], constants, {}, { m_scalars[0], m_scalars[1] });
@@ -297,8 +297,8 @@ bool FluidGpuSolver::StepFrame(renderer::IRenderer& renderer, renderer::Resource
 void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManager& resources, float dt)
 {
     const ConstantHandle constants = m_stepConstants[m_nextStepConstant++];
-    const FluidGpuStepConstants packed =
-        PackFluidGpuStep(m_recipe, m_resolution, m_time, dt, m_densityScale, m_temperatureScale);
+    const fluid::FluidGpuStepConstants packed =
+        fluid::PackFluidGpuStep(m_recipe, m_resolution, m_time, dt, m_densityScale, m_temperatureScale);
     resources.Update(constants, &packed, sizeof(packed));
 
     std::size_t current = m_currentVelocity;
@@ -310,13 +310,13 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
         spare = m_velocity[1 - current];
     };
 
-    // 固体は刻みの頭に 1 回だけ作り、以降の段はすべて同じものを見る (段ごとに作ると動く障害物の位置が段でずれる)。
-    // 障害物が無ければ全セル 0 になり、以降の段は障害物を足す前と同じ結果を出す。
+    /// @note 固体は刻みの頭に 1 回だけ作り、以降の段はすべて同じものを見る (段ごとに作ると動く障害物の位置が段でずれる)。
+    ///       障害物が無ければ全セル 0 になり、以降の段は障害物を足す前と同じ結果を出す。
     Run(renderer, resources, m_kernels[Solid], constants, {}, { m_solid });
-    // Inject の t3 を空のまま Dispatch させない。白ならどのタイルを引いてもマスク 1 = 板の形。
+    /// @note Inject の t3 を空のまま Dispatch させない。白ならどのタイルを引いてもマスク 1 = 板の形。
     const TextureHandle masks = m_maskAtlas.IsValid() ? m_maskAtlas : resources.GetWhiteTexture();
 
-    // 注入 + 燃焼: 今の場 (scalars[0]) → 注入後 (scalars[1])。速度も発生源の流速へ寄せる。
+    /// @note 注入 + 燃焼: 今の場 (scalars[0]) → 注入後 (scalars[1])。速度も発生源の流速へ寄せる。
     Run(renderer, resources, m_kernels[Inject], constants, { m_scalars[0], velocity, m_solid, masks, m_fuelColor[0] },
         { m_scalars[1], spare, m_expansion, m_fuelColor[1] });
     swapVelocity();
@@ -328,7 +328,7 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
         swapVelocity();
     }
 
-    // 圧力投影。前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束が進む。
+    /// @note 圧力投影。前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束が進む。
     Run(renderer, resources, m_kernels[Divergence], constants, { velocity, m_expansion, m_solid }, { m_aux });
     for (int iteration = 0; iteration < m_pressureIterations; ++iteration) {
         Run(renderer, resources, m_kernels[Jacobi], constants, { m_pressure[m_currentPressure], m_aux, m_solid },
@@ -339,7 +339,7 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
         { spare });
     swapVelocity();
 
-    // 移流は投影後の速度で運ぶ (CPU と同じ)。スカラーは MacCormack で往復させ、補正して今の場へ戻す。
+    /// @note 移流は投影後の速度で運ぶ (CPU と同じ)。スカラーは MacCormack で往復させ、補正して今の場へ戻す。
     Run(renderer, resources, m_kernels[AdvectScalar], constants, { m_scalars[1], velocity }, { m_scalars[2] },
         m_forwardConstants);
     if (packed.sharp != 0u)
@@ -349,8 +349,8 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
         { m_scalars[1], m_scalars[2], packed.sharp != 0u ? m_scalars[3] : m_scalars[2], velocity, m_solid },
         { m_scalars[0] });
 
-    // 燃料の色も燃料と同じ速度・同じ往復で運ぶ (Correct の z の規則がそのまま燃料の散逸規則になる)。
-    // WHY 作業場を借りるか: scalars[2]/[3] は直前の Correct で用済み。専用に 2 枚増やすと 192³ で 100 MB 余分に要る。
+    /// @note 燃料の色も燃料と同じ速度・同じ往復で運ぶ (Correct の z の規則がそのまま燃料の散逸規則になる)。
+    ///       作業場は scalars[2]/[3] を借用する。直前の Correct で用済みで、専用に 2 枚増やすと 192³ で 100 MB 余分に要る。
     Run(renderer, resources, m_kernels[AdvectScalar], constants, { m_fuelColor[1], velocity }, { m_scalars[2] },
         m_forwardConstants);
     if (packed.sharp != 0u)
@@ -371,8 +371,8 @@ void FluidGpuSolver::WriteVolumes(renderer::IRenderer& renderer, renderer::Resou
                                   TextureHandle medium, TextureHandle velocity)
 {
     if (!m_ready || !medium.IsValid() || !velocity.IsValid()) return;
-    const FluidGpuStepConstants packed =
-        PackFluidGpuStep(m_recipe, m_resolution, m_time, 0.0f, m_densityScale, m_temperatureScale);
+    const fluid::FluidGpuStepConstants packed =
+        fluid::PackFluidGpuStep(m_recipe, m_resolution, m_time, 0.0f, m_densityScale, m_temperatureScale);
     resources.Update(m_outputConstants, &packed, sizeof(packed));
     Run(renderer, resources, m_kernels[Output], m_outputConstants,
         { m_scalars[0], m_velocity[m_currentVelocity] }, { medium, velocity });

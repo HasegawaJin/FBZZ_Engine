@@ -16,7 +16,7 @@ namespace fbzz::editor::fluideditor {
 
 float ClampF(float value, float lo, float hi)
 {
-    // std::clamp は lo > hi で未定義。パネルが極端に狭いと上限が下限を割るので自前で持つ。
+    /// @note std::clamp は lo > hi で未定義。パネルが極端に狭いと上限が下限を割るので自前で持つ。
     return (std::max)(lo, (std::min)(value, hi));
 }
 
@@ -44,16 +44,16 @@ ImU32 ListColor(FluidSelectionKind list, float alpha)
 int MaxParts(FluidSelectionKind list)
 {
     switch (list) {
-    case FluidSelectionKind::Source:   return asset::kMaxFluidSources;
-    case FluidSelectionKind::Force:    return asset::kMaxFluidForces;
-    case FluidSelectionKind::Collider: return asset::kMaxFluidColliders;
+    case FluidSelectionKind::Source:   return fluid::kMaxFluidSources;
+    case FluidSelectionKind::Force:    return fluid::kMaxFluidForces;
+    case FluidSelectionKind::Collider: return fluid::kMaxFluidColliders;
     default:                           return 0;
     }
 }
 
-math::Vector3 MotionOffsetAt(const asset::FluidMotion& motion, float solverTime)
+math::Vector3 MotionOffsetAt(const fluid::FluidMotion& motion, float solverTime)
 {
-    const std::vector<asset::FluidMotionKey>& keys = motion.keys;
+    const std::vector<fluid::FluidMotionKey>& keys = motion.keys;
     if (keys.empty()) return {};
     if (solverTime <= keys.front().time) return keys.front().offset;
     if (solverTime >= keys.back().time) return keys.back().offset;
@@ -75,12 +75,12 @@ bool PartShownInPreview(const FluidDocument& document, FluidSelectionKind list, 
     return true;
 }
 
-float TimelineDuration(const asset::FluidRecipe& recipe)
+float TimelineDuration(const fluid::FluidRecipe& recipe)
 {
     return (std::max)(recipe.output.duration, 1.0e-3f);
 }
 
-float TimelineFrameDt(const State& state, const asset::FluidRecipe& recipe)
+float TimelineFrameDt(const State& state, const fluid::FluidRecipe& recipe)
 {
     const float fromPreview = state.preview.FrameDt();
     if (fromPreview > 0.0f) return fromPreview;
@@ -90,7 +90,7 @@ float TimelineFrameDt(const State& state, const asset::FluidRecipe& recipe)
 
 void StepFrame(State& state, int delta)
 {
-    const asset::FluidRecipe& recipe = state.document.Recipe();
+    const fluid::FluidRecipe& recipe = state.document.Recipe();
     const float duration = TimelineDuration(recipe);
     const float frameDt = TimelineFrameDt(state, recipe);
     const float frame = std::floor(state.playhead / frameDt + 0.5f) + static_cast<float>(delta);
@@ -164,14 +164,14 @@ bool RemoveSelectedPart(EditorContext& ctx, State& state)
     FluidDocument& document = state.document;
     const FluidSelection selection = document.selection;
     if (!selection.IsPart()) return false;
-    const bool removed = document.Edit(ctx, "Delete Fluid Part", [&selection](asset::FluidRecipe& recipe) {
+    const bool removed = document.Edit(ctx, "Delete Fluid Part", [&selection](fluid::FluidRecipe& recipe) {
         fluidui::RemovePart(recipe, selection.kind, selection.index);
     });
     if (removed) {
         FixSelectionAfterRemove(document.selection, selection.kind, selection.index,
                                 fluidui::PartCount(document.Recipe(), selection.kind));
-        // hide/solo は (list, index) で覚えているので、詰まった添字へ印を追随させる。
-        // 忘れると «隠したはずの渦ではない方が消える»。Outliner のメニュー削除と同じ扱い。
+        /// @note hide/solo は (list, index) で覚えているので、詰まった添字へ印を追随させる。
+        ///       忘れると «隠したはずの渦ではない方が消える»。Outliner のメニュー削除と同じ扱い。
         document.RemapVisibilityAfterRemove(selection.kind, selection.index);
         ++state.visibilityGeneration;
     }
@@ -186,37 +186,37 @@ bool InsertMotionKeyAtPlayhead(EditorContext& ctx, State& state)
         SetStatus(state, "キーを打つ部品を Outliner で選んでください (Sources / Forces / Colliders)", true);
         return false;
     }
-    const asset::FluidRecipe& current = document.Recipe();
+    const fluid::FluidRecipe& current = document.Recipe();
     const float solverTime = current.output.warmup + state.playhead;
-    // 同じコマに打ち直したのを «置き換え» とみなす幅。これより狭いと 1 コマに 2 つ重なる。
+    /// @note 同じコマに打ち直したのを «置き換え» とみなす幅。これより狭いと 1 コマに 2 つ重なる。
     const float sameFrame = 0.5f * TimelineFrameDt(state, current);
     bool full = false;
-    const bool changed = document.Edit(ctx, "Insert Fluid Motion Key", [&](asset::FluidRecipe& recipe) {
+    const bool changed = document.Edit(ctx, "Insert Fluid Motion Key", [&](fluid::FluidRecipe& recipe) {
         VisitPart(recipe, selection.kind, selection.index, [&](auto& part) {
-            std::vector<asset::FluidMotionKey>& keys = part.motion.keys;
+            std::vector<fluid::FluidMotionKey>& keys = part.motion.keys;
             const math::Vector3 offset = MotionOffsetAt(part.motion, solverTime);
-            for (asset::FluidMotionKey& key : keys) {
+            for (fluid::FluidMotionKey& key : keys) {
                 if (std::fabs(key.time - solverTime) <= sameFrame) {
                     key.time = solverTime;
                     key.offset = offset;
                     return;
                 }
             }
-            if (static_cast<int>(keys.size()) >= asset::kMaxFluidMotionKeys) {
+            if (static_cast<int>(keys.size()) >= fluid::kMaxFluidMotionKeys) {
                 full = true;
                 return;
             }
-            asset::FluidMotionKey key;
+            fluid::FluidMotionKey key;
             key.time = solverTime;
             key.offset = offset;
             const auto at = std::upper_bound(keys.begin(), keys.end(), solverTime,
-                                             [](float t, const asset::FluidMotionKey& k) { return t < k.time; });
+                                             [](float t, const fluid::FluidMotionKey& k) { return t < k.time; });
             keys.insert(at, key);
         });
     });
     if (full) {
         char text[96]{};
-        std::snprintf(text, sizeof(text), "動きのキーは 1 部品 %d 個までです", asset::kMaxFluidMotionKeys);
+        std::snprintf(text, sizeof(text), "動きのキーは 1 部品 %d 個までです", fluid::kMaxFluidMotionKeys);
         SetStatus(state, text, true);
         return false;
     }
@@ -242,10 +242,10 @@ void EndStaleDrags(EditorContext& ctx, State& state)
 {
     FluidDocument& document = state.document;
 
-    // Undo や外からの読み直しで文書が操作中の編集を捨てたら、こちらも黙って畳む (End を呼ぶと空の Undo が積まれうる)。
+    /// @note Undo や外からの読み直しで文書が操作中の編集を捨てたら、こちらも黙って畳む (End を呼ぶと空の Undo が積まれうる)。
     if (state.viewDrag.active && !document.InInteractiveEdit()) state.viewDrag = {};
-    // ギズモは 3D のビューポートを描いたフレームにしか終わりを見られない。2D へ切り替えた・タブが
-    // 背面に回ったなどで描かれなくなったら、ここで畳んでおかないと編集が開きっぱなしになる。
+    /// @note ギズモは 3D のビューポートを描いたフレームにしか終わりを見られない。2D へ切り替えた・タブが
+    ///       背面に回ったなどで描かれなくなったら、ここで畳んでおかないと編集が開きっぱなしになる。
     if (state.gizmoActive && (!document.InInteractiveEdit() || !ImGui::IsMouseDown(ImGuiMouseButton_Left))) {
         const char* label = state.gizmoUndoLabel;
         const bool pending = document.InInteractiveEdit();

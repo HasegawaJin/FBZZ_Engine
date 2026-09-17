@@ -177,6 +177,8 @@ endif()
 add_subdirectory(ThirdParty)
 add_subdirectory(Projects/Math)
 add_subdirectory(Projects/Physics)
+# WHY Physics の直後か: Fluid は Physics の兄弟で、Math しか見ない (Docs/design/fluid-library.md)。
+add_subdirectory(Projects/Fluid)
 add_subdirectory(Projects/Engine)
 add_subdirectory(Projects/Editor)
 add_subdirectory(Projects/EditorLauncher)
@@ -199,6 +201,6 @@ endif()
 # FBZZCore は Engine/src/Core の OBJECT ライブラリで、成果物は FBZZEngine.dll に入る。
 # そのため «計装するのは FBZZCore、実行時ライブラリを要るのは FBZZEngine» とずれる。
 if(FBZZ_COVERAGE)
-    fbzz_instrument_for_coverage(FBZZMath FBZZPhysics FBZZCore)
-    fbzz_link_coverage_runtime(FBZZMath FBZZPhysics FBZZEngine)
+    fbzz_instrument_for_coverage(FBZZMath FBZZPhysics FBZZFluid FBZZCore)
+    fbzz_link_coverage_runtime(FBZZMath FBZZPhysics FBZZFluid FBZZEngine)
 endif()

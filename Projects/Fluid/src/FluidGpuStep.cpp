@@ -2,19 +2,19 @@
 /// @brief   GPU 流体ソルバーの刻みの定数を詰める
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-#include <Engine/Asset/FluidGpuStep.hpp>
+#include <Fluid/FluidGpuStep.hpp>
 
-#include <Engine/Asset/FluidOperatorEval.hpp>
-#include <Engine/Core/CurlNoise.hpp>
+#include <Fluid/FluidOperatorEval.hpp>
+#include <Math/CurlNoise.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace fbzz::asset {
+namespace fbzz::fluid {
 namespace {
 
-// PackFluidGpuStep と FluidGpuMaskPaths の «どの発生源を詰めるか» を 1 か所に置く。
-// タイル番号はこの順で数えるので、両者で絞り込みがずれるとマスクが別の発生源に貼られる。
+/// PackFluidGpuStep と FluidGpuMaskPaths の «どの発生源を詰めるか» を 1 か所に置く。
+/// タイル番号はこの順で数えるので、両者で絞り込みがずれるとマスクが別の発生源に貼られる。
 template <typename Visit>
 void ForEachPackedSource(const FluidRecipe& recipe, Visit&& visit)
 {
@@ -30,7 +30,7 @@ void ForEachPackedSource(const FluidRecipe& recipe, Visit&& visit)
 
 math::Vector3 FluidNoiseOffset(std::uint32_t seed)
 {
-    const std::uint32_t hash = core::PcgHash(seed * 2654435761u + 1u);
+    const std::uint32_t hash = math::PcgHash(seed * 2654435761u + 1u);
     return { static_cast<float>(hash % 997u) * 0.731f, static_cast<float>((hash >> 10) % 997u) * 0.517f,
              static_cast<float>((hash >> 20) % 997u) * 0.379f };
 }
@@ -76,7 +76,7 @@ FluidGpuStepConstants PackFluidGpuStep(const FluidRecipe& recipe, int resolution
         FluidGpuSource& out = c.sources[index];
         const FluidOperatorPose pose = PoseFluidSource(source, time);
         const bool sphere = source.shape == FluidSourceShape::Sphere;
-        // FluidSourceWeight の minSize と同じく、1 セルより小さい寸法はセル幅まで広げる (でないと何も入らない)。
+        /// @note FluidSourceWeight の minSize と同じく、1 セルより小さい寸法はセル幅まで広げる (でないと何も入らない)。
         const float sizeX = (std::max)(source.size.x, c.cellSize);
         out.centerShape[0] = pose.center.x;
         out.centerShape[1] = pose.center.y;
@@ -86,8 +86,8 @@ FluidGpuStepConstants PackFluidGpuStep(const FluidRecipe& recipe, int resolution
         out.sizeNoise[1] = sphere ? sizeX : (std::max)(source.size.y, c.cellSize);
         out.sizeNoise[2] = sphere ? sizeX : (std::max)(source.size.z, c.cellSize);
         out.sizeNoise[3] = source.noise;
-        // 量のエンベロープはここで畳む。シェーダーは «基準の量 × 倍率» を受け取るだけなので、
-        // 定数バッファの形も FluidInject.cs.hlsl も変わらない (動きの中心と同じ流儀)。
+        /// @note 量のエンベロープはここで畳む。シェーダーは «基準の量 × 倍率» を受け取るだけなので、
+        ///       定数バッファの形も FluidInject.cs.hlsl も変わらない (動きの中心と同じ流儀)。
         const float amount = FluidSourceAmount(source, time);
         out.amounts[0] = source.density * amount;
         out.amounts[1] = source.temperature * amount;
@@ -102,7 +102,7 @@ FluidGpuStepConstants PackFluidGpuStep(const FluidRecipe& recipe, int resolution
         math::Vector3 axis = source.direction.NormalizedOr({ 0.0f, 1.0f, 0.0f });
         float tile = -1.0f;
         if (source.shape == FluidSourceShape::Texture) {
-            // Texture は長さ 0 の向きを «手前向き» に倒す (Cone / Ring の上向きとは違う)。規則は Basis が正本。
+            /// @note Texture は長さ 0 の向きを «手前向き» に倒す (Cone / Ring の上向きとは違う)。規則は Basis が正本。
             math::Vector3 right;
             math::Vector3 up;
             FluidTextureSourceBasis(source, right, up, axis);
@@ -133,9 +133,9 @@ FluidGpuStepConstants PackFluidGpuStep(const FluidRecipe& recipe, int resolution
         out.directionStrength[0] = direction.x;
         out.directionStrength[1] = direction.y;
         out.directionStrength[2] = direction.z;
-        // 効いていない刻みは強さ 0 で送る (Drag も 1 − exp(0) = 0 で素通りになる)。
-        // 量のエンベロープは強さへ畳む。シェーダーはこの後 influence を掛けるので、CPU 側
-        // (FluidForceDelta の strengthScale) と掛ける順が揃う。
+        /// @note 効いていない刻みは強さ 0 で送る (Drag も 1 − exp(0) = 0 で素通りになる)。
+        ///       量のエンベロープは強さへ畳む。シェーダーはこの後 influence を掛けるので、CPU 側
+        ///       (FluidForceDelta の strengthScale) と掛ける順が揃う。
         out.directionStrength[3] =
             FluidForceActive(force, time) ? force.strength * FluidForceAmount(force, time) : 0.0f;
         out.params[0] = force.radius;
@@ -152,7 +152,7 @@ FluidGpuStepConstants PackFluidGpuStep(const FluidRecipe& recipe, int resolution
         FluidGpuCollider& out = c.colliders[colliderCount++];
         const FluidOperatorPose pose = PoseFluidCollider(collider, time);
         const bool sphere = collider.shape == FluidColliderShape::Sphere;
-        // FluidColliderDistance の minSize と同じ広げ方。1 セルより細い障害物はどのセル中心も覆えず、素通りになる。
+        /// @note FluidColliderDistance の minSize と同じ広げ方。1 セルより細い障害物はどのセル中心も覆えず、素通りになる。
         const float sizeX = (std::max)(collider.size.x, c.cellSize);
         out.centerShape[0] = pose.center.x;
         out.centerShape[1] = pose.center.y;
@@ -187,4 +187,4 @@ std::vector<std::string> FluidGpuMaskPaths(const FluidRecipe& recipe)
     return paths;
 }
 
-} // namespace fbzz::asset
+} // namespace fbzz::fluid
