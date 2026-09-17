@@ -1758,15 +1758,15 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 TerrainAssetSerializer::Save(*tc, terrainDiskPath);
             }
             toml::array layerMatArr;
-            for (int li = 0; li < 4; ++li) {
-                layerMatArr.push_back(tc->layerMaterials[li]);
+            for (const std::string& layerMaterial : tc->layerMaterials) {
+                layerMatArr.push_back(layerMaterial);
                 /// @note 保存先が決まっているときだけ、レイヤーマテリアルを実ファイルへ書く。
                 ///       scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
-                if (!path.empty() && !tc->layerMaterials[li].empty()) {
-                    auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(tc->layerMaterials[li]);
+                if (!path.empty() && !layerMaterial.empty()) {
+                    auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(layerMaterial);
                     if (auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
                         const std::string matDiskPath =
-                            ResolveAssetDiskPathForScene(path, tc->layerMaterials[li]);
+                            ResolveAssetDiskPathForScene(path, layerMaterial);
                         (void)asset::SaveMaterialAssetToFile(matDiskPath, *mat);
                     }
                 }
@@ -2680,8 +2680,11 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 tc.InitFlat(0.0f);
             }
 
+            /// @note 層数は可変。配列の長さをそのまま層数にする (番号が層数を超える頂点は描画が既定層で補う)。
             if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {
-                for (int li = 0; li < 4 && li < static_cast<int>(layerArr->size()); ++li)
+                const size_t layerCount = (std::min)(layerArr->size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
+                tc.layerMaterials.resize(layerCount);
+                for (size_t li = 0; li < layerCount; ++li)
                     tc.layerMaterials[li] = (*layerArr)[li].value_or(std::string{});
             }
 
