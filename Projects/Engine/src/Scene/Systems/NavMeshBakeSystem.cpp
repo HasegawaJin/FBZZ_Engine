@@ -170,10 +170,10 @@ bool TryGetWalkableSurface(Scene& scene, EntityID eid, const GameObject& go, Wal
 
 /// @name Terrain 高さサンプリング
 
-/// バックグラウンドスレッドに渡すための自己完結 Terrain データ。
-/// TerrainComponent の heightData をコピーして保持し、ポインタ参照を持たない。
+/// @brief バックグラウンドスレッドに渡すための自己完結 Terrain データ (TerrainComponent から複製し参照を持たない)。
 struct TerrainBakeData {
     std::vector<float> heightData;
+    std::vector<std::uint8_t> holeData;  ///< セル単位の穴。空 = 穴なし (大きさはセル数と一致するときだけ複製)
     int           columns  = 0;
     int           rows     = 0;
     float         cellSize = 1.0f;
@@ -216,9 +216,19 @@ struct TerrainBakeData {
             n00.z*(1-fx)*(1-fz)+n10.z*fx*(1-fz)+n01.z*(1-fx)*fz+n11.z*fx*fz,
         }.Normalized();
     }
+    /// @return 局所座標が穴セルに入っていれば true。地形の外と穴なしは false。
+    bool IsHoleAtLocal(float lx, float lz) const {
+        if (holeData.empty() || cellSize <= 0.0f || lx < 0.0f || lz < 0.0f) return false;
+        const int cx = static_cast<int>(lx / cellSize);
+        const int cz = static_cast<int>(lz / cellSize);
+        if (cx >= columns - 1 || cz >= rows - 1) return false;
+        return holeData[static_cast<size_t>(cz) * static_cast<size_t>(columns - 1) + static_cast<size_t>(cx)] != 0;
+    }
 };
 
-/// Terrain の局所 XZ 範囲内かを確認してから高さを返す。範囲外は kNoSurface。
+/// @brief 地形の局所 XZ 範囲内なら高さを返す。
+/// @return 範囲外と穴セルは kNoSurface。
+/// @see Docs/design/terrain-layers.md §4 穴
 float SampleTerrainHeight(const TerrainBakeData& td, float wx, float wz)
 {
     const float localX = wx - td.origin.x;
@@ -226,6 +236,8 @@ float SampleTerrainHeight(const TerrainBakeData& td, float wx, float wz)
     const float maxX   = static_cast<float>(td.columns - 1) * td.cellSize;
     const float maxZ   = static_cast<float>(td.rows    - 1) * td.cellSize;
     if (localX < 0.0f || localX > maxX || localZ < 0.0f || localZ > maxZ)
+        return kNoSurface;
+    if (td.IsHoleAtLocal(localX, localZ))
         return kNoSurface;
     return td.GetHeightAt(localX, localZ) + td.origin.y;
 }
@@ -961,6 +973,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
             if (auto* t = scene.GetComponent<TerrainComponent>(eid)) {
                 TerrainBakeData tbd;
                 tbd.heightData = t->heightData;
+                if (t->holeData.size() == t->CellCount()) tbd.holeData = t->holeData;
                 tbd.columns    = t->columns;
                 tbd.rows       = t->rows;
                 tbd.cellSize   = t->cellSize;
@@ -975,6 +988,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 if (!t || !tg) continue;
                 TerrainBakeData tbd;
                 tbd.heightData = t->heightData;
+                if (t->holeData.size() == t->CellCount()) tbd.holeData = t->holeData;
                 tbd.columns    = t->columns;
                 tbd.rows       = t->rows;
                 tbd.cellSize   = t->cellSize;

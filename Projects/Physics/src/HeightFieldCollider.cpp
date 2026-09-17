@@ -14,15 +14,18 @@ namespace fbzz::physics
 
 HeightFieldCollider::HeightFieldCollider(const std::vector<float>& heights,
                                          int rows, int cols,
-                                         float cellSize, float maxHeight)
+                                         float cellSize, float maxHeight,
+                                         std::vector<std::uint8_t> holes)
     : m_rows(rows)
     , m_cols(cols)
     , m_cellSize(cellSize)
     , m_maxHeight(maxHeight)
     , m_heights(heights)
+    , m_holes(std::move(holes))
 {
     assert(rows >= 2 && cols >= 2);
     assert(static_cast<int>(heights.size()) == rows * cols);
+    SanitizeHoles();
     /// @note BVH 三角形はワールド座標で格納するため構築を UpdateWithScale() の初回呼び出しまで
     ///       遅延する。ここで RebuildBVH() すると m_worldPos={0,0,0} のまま原点に配置され、
     ///       以後 UpdateWithScale() が «BVH あり» と判断して位置修正をスキップしてしまう。
@@ -66,7 +69,8 @@ void HeightFieldCollider::UpdateWithScale(const math::Vector3&    worldPos,
 
 void HeightFieldCollider::Rebuild(const std::vector<float>& heights,
                                    int rows, int cols,
-                                   float cellSize, float maxHeight)
+                                   float cellSize, float maxHeight,
+                                   std::vector<std::uint8_t> holes)
 {
     assert(rows >= 2 && cols >= 2);
     assert(static_cast<int>(heights.size()) == rows * cols);
@@ -75,7 +79,24 @@ void HeightFieldCollider::Rebuild(const std::vector<float>& heights,
     m_cellSize  = cellSize;
     m_maxHeight = maxHeight;
     m_heights   = heights;
+    m_holes     = std::move(holes);
+    SanitizeHoles();
     RebuildBVH();
+}
+
+bool HeightFieldCollider::IsHoleCell(int cx, int cz) const
+{
+    if (m_holes.empty() || cx < 0 || cz < 0 || cx >= m_cols - 1 || cz >= m_rows - 1) return false;
+    return m_holes[static_cast<size_t>(cz) * static_cast<size_t>(m_cols - 1) + static_cast<size_t>(cx)] != 0;
+}
+
+void HeightFieldCollider::SanitizeHoles()
+{
+    const size_t cellCount = (m_rows >= 2 && m_cols >= 2)
+        ? static_cast<size_t>(m_rows - 1) * static_cast<size_t>(m_cols - 1) : 0;
+    const bool anyHole = std::any_of(m_holes.begin(), m_holes.end(), [](std::uint8_t h) { return h != 0; });
+    /// @note 大きさ違いは «穴なし» として扱う。部分的に読むと格子とずれた位置に穴が開く。
+    if (m_holes.size() != cellCount || !anyHole) m_holes.clear();
 }
 
 void HeightFieldCollider::RebuildBVH()
@@ -96,6 +117,11 @@ void HeightFieldCollider::RebuildBVH()
     uint32_t triIdx = 0;
     for (int z = 0; z < m_rows - 1; ++z) {
         for (int x = 0; x < m_cols - 1; ++x) {
+            /// @note 穴セルは三角形を作らないが index は 2 つ進める (RefitTransform が index から格子を逆算する)。
+            if (IsHoleCell(x, z)) {
+                triIdx += 2u;
+                continue;
+            }
             const math::Vector3 v00 = ToWorld(LocalVertex(x,     z    ));
             const math::Vector3 v10 = ToWorld(LocalVertex(x + 1, z    ));
             const math::Vector3 v01 = ToWorld(LocalVertex(x,     z + 1));
@@ -147,6 +173,11 @@ void HeightFieldCollider::RebuildBVH()
         }
     }
 
+    /// @note 全セルが穴だと AABB が反転したまま残るので原点 1 点へ潰す。
+    if (tris.empty()) {
+        m_worldAABB.min = m_worldPos;
+        m_worldAABB.max = m_worldPos;
+    }
     m_bvh.Build(std::move(tris));
 }
 
