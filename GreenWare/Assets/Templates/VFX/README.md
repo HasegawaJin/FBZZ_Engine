@@ -125,7 +125,7 @@ Y 軸が壁の法線を向くように倒す。`scale` は [横幅, 投影の厚
 - **`localForces` は必ず書く。** 省くと «内蔵の力が個別フィールドだった頃» の移行処理が走り、
   旧 `gravity` の既定 (下向き 5 m/s²) が入る。重力なしにしたいなら `localForces = []`。
   種類は `fieldType`: 0 Wind (= 重力・一定風) / 1 Attract / 2 Repulse / 3 Vortex /
-  4 Turbulence / 5 Drag / 6 VectorField (`.vfield`)。`radius = 0` は減衰なしで全体へ。
+  4 Turbulence / 5 Drag / 6 VectorField (`速度場 PNG`)。`radius = 0` は減衰なしで全体へ。
 - **SubEmitter の名前はエフェクトの中で一意に。** 参照は GameObject の名前で、探索範囲は
   VFX ルート配下 (`VFXSystem` が頭出しのときに `subEmitterScopeRoot` を配る)。同じ名前が
   枝の中に 2 つあると、先に見つかった方が吹く。

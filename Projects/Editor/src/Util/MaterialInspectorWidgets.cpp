@@ -262,8 +262,8 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
     ImGui::SeparatorText("Wind & Current");
     ImGui::PushID("WaterWindCurrent");
     dirty |= DrawMaterialFloat(mat, "Wind Response", kWindResponse, 0.0f, 0.01f, 0.0f, 1.0f);
-    Tooltip("シーンの環境風 (半径 0 の Wind ForceField) で波がどれだけ育つか。\n"
-            "風と同じ向きの波が大きく、向かい風の波は小さくなります。\n"
+    Tooltip("シーンの環境流 (Scene Environment) で波がどれだけ育つか。\n"
+            "風速 10 m/s でこの倍率ぶん上乗せされ、向かい風の波は小さくなります。\n"
             "目安: 外洋 1 / 湖 0.4 / 川 0.2 / 池 0");
     dirty |= DrawMaterialFloat(mat, "Current Speed", kCurrentSpeed, 0.0f, 0.01f, 0.0f, 20.0f);
     Tooltip("浮いている物体を Flow Direction の向きへ押し流す水流の速さ [m/s]。");
