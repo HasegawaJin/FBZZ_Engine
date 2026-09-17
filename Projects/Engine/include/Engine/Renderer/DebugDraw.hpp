@@ -2,9 +2,6 @@
 /// @brief   ワイヤーフレームのデバッグ描画ユーティリティ。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// Line / Box / Sphere / Capsule をフレーム内バッチとして集めて一括送信する。
-/// 描画は BeginFrame から Flush までの間だけ有効。
 #pragma once
 
 #include "IRenderer.hpp"
@@ -13,85 +10,119 @@
 #include <Math/Vector4.hpp>
 #include <Math/Matrix4.hpp>
 #include <cstddef>
+#include <cstdint>
+#include <span>
+#include <vector>
 
 namespace fbzz::renderer {
 
 class ResourceManager;
 
-// 使い方:
-//   毎フレーム先頭で BeginFrame() を呼び、描画命令を積み、フレーム末尾で Flush() を呼ぶ。
-//   Line / Box / Sphere / Capsule は内部バッチに追記するだけで即座には描画しない。
-//   Flush() がバッチをまとめて LINE_LIST DrawCall として Submit する。
+/// @brief デバッグ描画 1 頂点。DebugDraw.hlsl の頂点入力と一致させること。
+struct DebugDrawVertex {
+    math::Vector3 position;
+    math::Vector4 color;
+};
+
+/// @brief Replay で流し直す層。
+enum class DebugDrawLayer : uint8_t {
+    Overlay     = 1, ///< 深度なしの線
+    DepthTested = 2, ///< 深度テストありの線と塗りつぶし三角形
+    All         = 3,
+};
+
+/// @brief BeginCapture〜EndCapture の間に積まれた頂点。GPU へは出していない。
+struct DebugDrawCapture {
+    std::vector<DebugDrawVertex> overlayLines;
+    std::vector<DebugDrawVertex> depthLines;
+    std::vector<DebugDrawVertex> triangles;
+
+    void Clear() { overlayLines.clear(); depthLines.clear(); triangles.clear(); }
+    [[nodiscard]] bool Empty() const
+    {
+        return overlayLines.empty() && depthLines.empty() && triangles.empty();
+    }
+};
+
+/// @brief 線分・箱・球などをフレーム内バッチへ集め、Flush で LINE_LIST としてまとめて描く。
+/// @note 描画命令は BeginFrame〜Flush の区間 (または BeginCapture〜EndCapture) でだけ有効。
+/// @note バッチが満杯になると自動で Flush してから積む。呼び出し側の見積もりは不要。
 class DebugDraw {
 public:
-    // フレーム先頭で呼ぶ。リソースを遅延初期化し、カメラ VP 行列を設定する
+    /// @brief リソースを遅延初期化し、VP 行列を設定してバッチを空にする。深度テストは off に戻る。
     static void BeginFrame(IRenderer& r, ResourceManager& resources, const math::Matrix4& viewProjection);
-    // フレーム末尾で呼ぶ。蓄積した頂点を一括 Submit し、バッチをクリアする。
-    // 1 フレーム内で何度呼んでもよい (パスごとの描画・溢れそうな時の中間 Flush 用)。
-    // Flush ごとに別の頂点バッファを貸し出すため、後の Flush が先に記録した Draw の
-    // 頂点を上書きすることはない (DX12 は Submit が記録でしかなく、この保証がないと壊れる)。
+    /// @brief 蓄積した頂点を Submit してバッチを空にする。1 フレームに何度呼んでもよい。
+    /// @note Flush ごとに別の頂点バッファを借りる (DX12 は Submit が記録なので上書きすると壊れる)。
     static void Flush();
 
-    // 深度なし線分バッチの現在の頂点数と上限。
-    // WHY: バッチが満杯になると以降の Line() は黙って捨てられる。大量のラインを出すパス
-    //      (コライダー可視化・NavMesh 等) が「溢れる前に Flush する」判断をするために公開する。
+    /// @brief 以降の描画命令を GPU へ出さず out へ記録する。上限なし。
+    /// @note 別ビューのパス実行中に呼ばないこと (バッチ先が差し替わる)。
+    static void BeginCapture(DebugDrawCapture& out);
+    static void EndCapture();
+    /// @brief 記録した頂点のうち layers をバッチへ積み直す。BeginFrame の区間内で呼ぶ。
+    static void Replay(IRenderer& r, const DebugDrawCapture& capture, DebugDrawLayer layers);
+
+    /// @brief true の間、線を深度テストありのバッチへ積む。
+    static void SetDepthTest(bool enabled);
+    [[nodiscard]] static bool IsDepthTest();
+
     [[nodiscard]] static size_t PendingLineVertices();
-    // 塗りつぶし三角形バッチの現在の頂点数。線分とは別枠で溢れるため、FilledPolygon を
-    // 大量に積むパス (NavMesh の面・ボクセル) はこちらも見て中間 Flush を判断する。
     [[nodiscard]] static size_t PendingTriangleVertices();
     [[nodiscard]] static size_t MaxBatchVertices();
 
     static void Line(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                      const math::Vector4& color = {1,1,1,1});
-    // 深度テストありの線分。シーンジオメトリに正しく遮蔽される。
-    // WHY: Line (深度なし) はコライダーギズモ等をメッシュ越しに見せるための仕様。
-    //      一方でエディターのグリッド線のような「世界に置かれた線」は、メッシュの
-    //      手前に浮いて見えると空間の前後関係が壊れるため、遮蔽される版を分ける。
+    /// @brief 深度テストありの線分。グリッドのような «世界に置かれた線» 用。
     static void LineDepthTested(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                                 const math::Vector4& color = {1,1,1,1});
 
-    // 破線。実線のワイヤーと同じ位置に重なっても、両方が読めるようにするための線種。
-    //
-    // WHY 必要か: デバッグ線はすべて深度オフの 1px ラインで、同じ形が 2 つ重なると
-    //     (例: Script の Gizmo が描く球と、その下にある SphereCollider の可視化)
-    //     どちらのピクセルが出るかがサブピクセルの被り方で決まる。カメラが少し動くたびに
-    //     取り合いの結果が入れ替わり、線がちらつく。深度では解決できない (両方とも深度オフ)。
-    //     片方を破線にして最後に描けば、隙間から下の実線が見えて両方とも読める。
-    //
-    // dashLength: 実線 1 本ぶんのワールド長の目安。線が短ければ 1 本に丸める。
-    // maxDashes : 1 線分あたりの分割上限。長い辺で頂点数が跳ね上がるのを止める。
+    /// @brief 破線。同じ形の実線と重なっても両方読めるようにする線種。
+    /// @param dashLength 実線 1 本ぶんのワールド長の目安 [m]。
+    /// @param maxDashes  1 線分あたりの分割上限。
     static void LineDashed(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                            const math::Vector4& color = {1,1,1,1},
                            float dashLength = 0.06f, int maxDashes = 8);
-    // LineDashed 1 本が最悪いくつの頂点を積むか。バッチ上限の見積もりに使う。
     [[nodiscard]] static size_t DashedLineMaxVertices(int maxDashes = 8);
+
+    /// @brief 折れ線。closed で末尾→先頭も結ぶ。
+    static void Polyline(IRenderer& r, std::span<const math::Vector3> points, bool closed = false,
+                         const math::Vector4& color = {1,1,1,1});
+
     static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,
                     const math::Vector4& color = {0,1,0,1});
     static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,
                     const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
     static void Sphere(IRenderer& r, const math::Vector3& center, float radius,
                        const math::Vector4& color = {0,1,0,1});
+    /// @param halfHeight 両端の半球中心までの距離 (半球は含まない)。軸はローカル Y。
     static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Vector4& color = {0,1,0,1});
     static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
 
-    // from → to の方向を示す矢印 (シャフト + コーン型ヘッド)。
-    // headLength: ヘッド部分のワールド単位の長さ (シャフト全体を超えるとクランプする)
-    // headRadius: ヘッドの底面半径
+    /// @brief normal に直交する平面上の円。
+    /// @param normal 長さ 0 のときは描かない。
+    static void Circle(IRenderer& r, const math::Vector3& center, const math::Vector3& normal,
+                       float radius, const math::Vector4& color = {1,1,1,1});
+    /// @brief normal まわりに fromDirection から angleRadians だけ回る円弧 (右手系で正方向)。
+    /// @param fromDirection normal に射影して使う。平行なら描かない。
+    static void Arc(IRenderer& r, const math::Vector3& center, const math::Vector3& normal,
+                    const math::Vector3& fromDirection, float radius, float angleRadians,
+                    const math::Vector4& color = {1,1,1,1});
+
+    /// @param headLength ヘッドのワールド長。シャフトを超えるとクランプする。
     static void Arrow(IRenderer& r,
                       const math::Vector3& from, const math::Vector3& to,
                       float headLength = 0.2f, float headRadius = 0.05f,
                       const math::Vector4& color = {1,1,0,1});
 
-    // ワイヤーフレームのコーン。
-    // apex: 頂点、direction: 底面方向の正規化ベクトル、height: 高さ、baseRadius: 底面半径
+    /// @param direction 頂点から底面への向き。正規化不要、長さ 0 なら描かない。
     static void Cone(IRenderer& r,
                      const math::Vector3& apex, const math::Vector3& direction,
                      float height, float baseRadius,
                      const math::Vector4& color = {1,1,0,1});
 
-    // 凸ポリゴンを半透明塗りつぶしで描く (fan 三角分割、TRIANGLE_LIST + ALPHA_BLEND)
+    /// @brief 凸ポリゴンを半透明で塗る (fan 分割・深度テストあり)。
     static void FilledPolygon(IRenderer& r, const math::Vector3* vertices, size_t count,
                               const math::Vector4& color = {0.12f, 0.35f, 0.90f, 0.30f});
 };
