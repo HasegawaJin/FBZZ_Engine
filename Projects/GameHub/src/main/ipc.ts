@@ -1,6 +1,9 @@
-// FBZZ GameHub
-// ipc.ts | main
-// rendererへ公開する操作をホワイトリスト化したIPCハンドラー
+/**
+ * @file ipc.ts
+ * @brief renderer へ公開する操作をホワイトリスト化した IPC ハンドラー。
+ * @author Hasegawa Jin
+ * @date 2026/07/19
+ */
 
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
@@ -26,19 +29,29 @@ function success<T>(value?: T): OperationResult<T> {
   return { ok: true, value };
 }
 
+function cancelled(): OperationResult<never> {
+  return { ok: true, cancelled: true };
+}
+
 function failure(error: unknown): OperationResult<never> {
   return { ok: false, error: error instanceof Error ? error.message : String(error) };
+}
+
+/**
+ * main 側の settings を全ウィンドウへ通知する。
+ * WHY: renderer は最後に受け取った settings を bootstrap の値より優先する。起動時の自動検出
+ *      だけでなく保存後にも送らないと、保存した値が起動時の検出結果へ巻き戻って見える。
+ */
+function broadcastSettings(settings: HubSettings): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('hub:settings-updated', settings);
+  }
 }
 
 function publishResolvedSettings(): void {
   void ensureConfigLoaded()
     .then(() => configStore.ensureSdkResolved())
-    .then(() => {
-      const settings = configStore.snapshot().settings;
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.send('hub:settings-updated', settings);
-      }
-    });
+    .then(() => broadcastSettings(configStore.snapshot().settings));
 }
 
 async function bootstrap(): Promise<BootstrapData> {
@@ -79,7 +92,7 @@ export function registerIpcHandlers(): void {
     try {
       await ensureConfigLoaded();
       const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
-      if (result.canceled || !result.filePaths[0]) return failure('プロジェクトの追加をキャンセルしました。');
+      if (result.canceled || !result.filePaths[0]) return cancelled();
       const projectPath = path.resolve(result.filePaths[0]);
       const entry = await projectService.inspectProject({ path: projectPath, lastOpened: '' });
       if (!entry.projectFileValid) throw new Error('選択したフォルダーに有効な.fbzz_projがありません。');
@@ -93,7 +106,7 @@ export function registerIpcHandlers(): void {
       await configStore.ensureSdkResolved();
       const settings = configStore.snapshot().settings;
       if (!settings.sdkId) throw new Error('新規プロジェクトを作成する前にFBZZ SDKを選択してください。');
-      const projectPath = await templateService.create(request, settings.sdkId, ENGINE_VERSION);
+      const projectPath = await templateService.create(request, settings.sdkId);
       const lastOpened = await configStore.touchProject(projectPath);
       return success(await projectService.inspectProject({ path: projectPath, lastOpened }));
     } catch (error) { return failure(error); }
@@ -123,6 +136,7 @@ export function registerIpcHandlers(): void {
     try {
       await ensureConfigLoaded();
       await configStore.setSettings(settings);
+      broadcastSettings(configStore.snapshot().settings);
       return success(await bootstrap());
     } catch (error) { return failure(error); }
   });

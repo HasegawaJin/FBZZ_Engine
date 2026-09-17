@@ -31,7 +31,15 @@ foreach(TEMPLATE_KIND standard empty)
         message(FATAL_ERROR "${TEMPLATE_KIND}: SDK selection metadata is missing")
     endif()
 
+    # Engine シェーダーは SDK の share/fbzz/Assets を共有する。テンプレートへ複製すると
+    # 新規プロジェクトが SDK と食い違ったコピーを抱え、エンジン側の修正が届かなくなる。
+    # 自前のシェーダーを持ちたいプロジェクトは後から Assets/Shaders を丸ごとコピーする (Editor の HLSL ホットリロードはその所有者判定で切り替わる)。
+    if(EXISTS "${TEMPLATE_ROOT}/Assets/Shaders")
+        message(FATAL_ERROR "${TEMPLATE_KIND}: Assets/Shaders must not exist in a template (engine shaders come from the SDK)")
+    endif()
+
     if(TEMPLATE_KIND STREQUAL "standard")
+        # プロジェクトが自前のシェーダーツリーを持ったときに Standalone ビルドへ組み込む経路は残す。
         foreach(REQUIRED_SHADER_TEXT "add_custom_target(CompileShaders"
                                      "Assets/Shaders/*.hlsli"
                                      "add_dependencies({{TARGET_NAME}}Standalone CompileShaders)")
@@ -40,23 +48,5 @@ foreach(TEMPLATE_KIND standard empty)
                 message(FATAL_ERROR "standard: shader build integration is missing ${REQUIRED_SHADER_TEXT}")
             endif()
         endforeach()
-
-        set(SHADER_SCRIPT "${TEMPLATE_ROOT}/Assets/Shaders/compile_shaders.ps1")
-        if(NOT EXISTS "${SHADER_SCRIPT}")
-            message(FATAL_ERROR "standard: compile_shaders.ps1 is missing")
-        endif()
-        file(READ "${SHADER_SCRIPT}" SHADER_SCRIPT_TEXT)
-        foreach(REQUIRED_SCRIPT_TEXT "Get-ChildItem" "Get-ShaderDependencyInfo" "PlanOnly" "orphan")
-            string(FIND "${SHADER_SCRIPT_TEXT}" "${REQUIRED_SCRIPT_TEXT}" SCRIPT_TEXT_POS)
-            if(SCRIPT_TEXT_POS EQUAL -1)
-                message(FATAL_ERROR "standard: incremental shader script is missing ${REQUIRED_SCRIPT_TEXT}")
-            endif()
-        endforeach()
-        if(EXISTS "${TEMPLATE_ROOT}/Assets/Shaders/compile_shaders.bat")
-            message(FATAL_ERROR "standard: legacy compile_shaders.bat must not exist")
-        endif()
-        if(EXISTS "${TEMPLATE_ROOT}/Assets/Shaders/compile_ui_shaders.bat")
-            message(FATAL_ERROR "standard: legacy compile_ui_shaders.bat must not exist")
-        endif()
     endif()
 endforeach()
