@@ -47,32 +47,24 @@ bool MatSubExporter::Export(FbxImportContext& ctx)
 {
     const aiScene* ms = ctx.meshScene;
     if (!ms) return true;
-    // マテリアルが 1 つも無い FBX では何も書き出さない。
-    // WHY: 以前はここを抜けて materials/ と textures/ を先に掘っていたため、
-    //      書き出すものが無くても空フォルダだけが残っていた。
+    /// @note マテリアルが 1 つも無い FBX では何も書き出さない (先にフォルダを掘ると空のまま残るため)。
     if (ms->mNumMaterials == 0) return true;
 
     namespace fs = std::filesystem;
-    // .mat / textures とも Library 側へ出す (隠蔽)。GUID は原本 FBX の GUID と
-    // コンテナ内の相対パス ("materials/<name>.mat" / "textures/<name>.png") から
-    // 決定論的に導出されるため、.meta も Library の永続性も要らない。
-    //
-    // NOTE (textures の再生成条件): 埋め込みテクスチャは FBX 自体から復元できる。
-    //   外部参照は FBX の隣 (fbxDir) と "<FBX名>.fbm/" から再コピーされるため、
-    //   原本が Assets 内にあれば復元できる。
-    //   FBX がプロジェクト外の絶対パスを参照し、実体もそのどちらにも無い場合だけは復元できない。
-    //
-    // WHY (ディレクトリを事前に作らない): materials/ は .mat を書く FileSystem::WriteText が、
-    //   textures/ は DumpEmbeddedAsPng と FileSystem::CopyFile が、それぞれ書き込み直前に
-    //   親ディレクトリを作る。ここで先に掘ると、テクスチャを 1 枚も持たない FBX で
-    //   空の textures/ が必ず残ってしまう (実際に Boss モデル等で発生していた)。
+    /// @note .mat / textures は Library 側へ出す。GUID は原本 FBX の GUID とコンテナ内の相対パス
+    ///       (`"materials/<name>.mat"` 等) から決定論的に導出するため .meta は不要。
+    /// @note 埋め込みテクスチャは FBX から、外部参照は fbxDir または "<FBX名>.fbm/" から再コピーできるため
+    ///       復元可能。プロジェクト外の絶対パス参照で実体がどちらにも無い場合だけ復元できない。
+    /// @note materials/ と textures/ はここで事前に掘らない。書き込み側 (WriteText / DumpEmbeddedAsPng /
+    ///       CopyFile) が書き込み直前に親ディレクトリを作るため、先に掘るとテクスチャ 0 枚の FBX で
+    ///       空の textures/ が残ってしまう。
     const fs::path matDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "materials";
     const fs::path texDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "textures";
 
     std::unordered_map<std::string, uint32_t> usedNames;
     for (uint32_t matIdx = 0; matIdx < ms->mNumMaterials; ++matIdx) {
-        // WHY: Unity と同じく FBX 内の material を index 順で全て .mat 化する。
-        //      配置時は .fzasset の material slot index から同じ命名規則で .mat を引く。
+        /// @note FBX 内の material を index 順で全て .mat 化する。配置時は .fzasset の
+        ///       material slot index から同じ命名規則で .mat を引く。
         const bool skinned = ctx.hasSkin;
         std::string fileStem = SanitizeMaterialFileName(
             GetMaterialName(ms->mMaterials[matIdx], matIdx), matIdx);

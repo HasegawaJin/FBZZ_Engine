@@ -3,19 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// WHY 専用の MCP ツールではなく Operator にするか:
-///   editor.op.list / invoke / query は登録簿を総当たりで公開するので、ここへ
-///   足した操作はそのまま AI から呼べる。専用ツールを起こすと contracts /
-///   tools.ts / C++ ハンドラの 3 箇所へ同じ意味を書くことになり、
-///   人の面 (パレット) には出ないまま層が増える。
-///   必須引数を持つ操作はコマンドパレットが自動で除外するため、
-///   sfx.set_param のような AI 向けの粒度を登録しても人の面は汚れない
-///   (EditorApp_CommandPalette.cpp の singleEnumParam / hasRequiredParam 判定)。
-///
-/// WHY 対象を「編集中の下書き」に固定するか:
-///   Behavior Tree / Animation Graph と同じ理由。パスを引数に取ってファイルへ
-///   直接書くと、SFX Editor が抱えている編集中の値と 2 つの真実ができる。
-///   編集中の実体は EditorContext::sfxEditorSpec ただ 1 つで、パネルはそれを描く面。
+/// @note 専用 MCP ツールでなく Operator にする理由: editor.op.list/invoke/query が登録簿を総当たりで公開するため、専用ツールだと contracts/tools.ts/C++ ハンドラの 3 箇所へ同じ意味を書く二重管理になる。
+/// @note 必須引数を持つ操作はコマンドパレットが自動で除外するので、sfx.set_param のような AI 向けの粒度を登録しても人の面は汚れない (EditorApp_CommandPalette.cpp の singleEnumParam/hasRequiredParam)。
+/// @note 対象を編集中の下書きに固定する理由: パスを引数にしてファイルへ直接書くと SFX Editor の編集中の値と 2 つの真実ができる。編集中の実体は EditorContext::sfxEditorSpec のみ。
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -35,10 +25,8 @@
 namespace fbzz::editor {
 namespace {
 
-// set_param が受け付ける名前。SynthSpec の float フィールドと 1:1 で対応する。
-// WHY 表にするか: enumValues として宣言すれば op.list が候補をそのまま返し、
-//     AI が綴りを推測しなくて済む。範囲も同じ表から引くので、
-//     「設定はできるのに検問だけ別の値」という食い違いが起きない。
+/// @brief set_param が受け付ける名前。SynthSpec の float フィールドと 1:1 で対応する。
+/// @note enumValues として宣言すると op.list が候補をそのまま返し、AI が綴りを推測せずに済む。範囲も同じ表から引くので検問との食い違いが起きない。
 struct SpecField {
     const char* name;
     float       min;
@@ -122,11 +110,11 @@ void PreviewSpec(const audio::SynthSpec& spec)
     const auto clip = manager->AcquireGeneratedClip(spec);
     if (clip == 0) return;
     (void)manager->PlayClipVoice(clip, false, manager->FindBus("UI"));
-    // 再生中は voice が実体を押さえる。Application::Update が終了後に回収する。
+    /// @note 再生中は voice が実体を押さえる。Application::Update が終了後に回収する。
     manager->ReleaseClip(clip);
 }
 
-// "Assets/..." もプロジェクト外の絶対パスも受け取れるようにする。
+/// "Assets/..." もプロジェクト外の絶対パスも受け取れるようにする。
 std::string ResolveSavePath(const EditorContext& ctx, const std::string& path)
 {
     if (path.empty()) return {};
@@ -135,7 +123,7 @@ std::string ResolveSavePath(const EditorContext& ctx, const std::string& path)
     return ctx.projectRoot + "/" + path;
 }
 
-// 呼ぶたびに違う結果が欲しい探索操作 (Randomize / Mutate) の既定シード。
+/// 呼ぶたびに違う結果が欲しい探索操作 (Randomize / Mutate) の既定シード。
 uint32_t NextExplorationSeed()
 {
     static uint32_t seed = 1;
@@ -160,8 +148,8 @@ OpParam MakeSeedParam()
 
 void RegisterSfxOperators(OperatorRegistry& registry)
 {
-    // 下書きは常に存在する (既定構築の SynthSpec)。「開いていないから使えない」を
-    // 作らないことで、AI はパネルを開かずに音を作って保存まで到達できる。
+    /// @note 下書きは常に存在する (既定構築の SynthSpec)。「開いていないから使えない」を
+    ///       作らないことで、AI はパネルを開かずに音を作って保存まで到達できる。
     const auto hasSavePath = [](const OpContext& c, const OpArgs& args) {
         return !args.GetString("path").empty() || !c.ctx.sfxEditorPath.empty();
     };
@@ -225,7 +213,7 @@ void RegisterSfxOperators(OperatorRegistry& registry)
     }
 
     {
-        // 必須引数が 2 つあるためコマンドパレットには出ない (AI 向けの粒度)。
+        /// @note 必須引数が 2 つあるためコマンドパレットには出ない (AI 向けの粒度)。
         EditorOperator op;
         op.id       = "sfx.set_param";
         op.label    = "Set SFX Parameter";
@@ -240,8 +228,7 @@ void RegisterSfxOperators(OperatorRegistry& registry)
         nameParam.desc       = "パラメーター名";
         nameParam.enumValues = SpecFieldNames();
 
-        // WHY value に range を宣言しないか: 許容範囲は name ごとに違う。
-        //     1 つの宣言では表せないので、exec 側で表を引いて弾く。
+        /// @note 許容範囲は name ごとに違い、1 つの range 宣言では表せないので exec 側で表を引いて弾く。
         OpParam valueParam;
         valueParam.name = "value";
         valueParam.type = OpParamType::Float;
@@ -256,8 +243,7 @@ void RegisterSfxOperators(OperatorRegistry& registry)
 
             const float value = args.GetFloat("value");
             if (value < field->min || value > field->max) {
-                // WHY クランプせず弾くか: 黙って丸めると「受理されたのに指定値と違う」
-                //     という食い違いになり、AI は次の一手を誤った前提で決める。
+                /// @note クランプせず弾く: 黙って丸めると受理値が指定値と食い違い、AI が誤った前提で次の一手を決める。
                 return OpResult::Err(
                     "BAD_ARG", name + " の範囲は " + std::to_string(field->min) + " 〜 "
                                    + std::to_string(field->max));
@@ -339,7 +325,7 @@ void RegisterSfxOperators(OperatorRegistry& registry)
     }
 
     {
-        // Query。パレットには出ず、AI の read 権限で呼べる。
+        /// @note Query。パレットには出ず、AI の read 権限で呼べる。
         EditorOperator op;
         op.id       = "sfx.inspect";
         op.label    = "Inspect SFX";
@@ -394,7 +380,8 @@ void RegisterSfxOperators(OperatorRegistry& registry)
         op.category = "SFX";
         op.desc     = "編集中の音を .synth へ保存する。path を渡すと保存先を変え、"
                       "以後の編集対象もそちらへ移る。";
-        op.kind     = OpKind::Action;   // ファイル I/O。Undo には載せない
+        /// @note ファイル I/O。Undo には載せない
+        op.kind     = OpKind::Action;
 
         OpParam pathParam;
         pathParam.name     = "path";

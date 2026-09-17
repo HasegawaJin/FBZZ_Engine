@@ -33,7 +33,7 @@ math::Vector3 TransformDirection(const math::Matrix4& m, const math::Vector3& d)
 
 class Matrix4Test : public testkit::Fixture {};
 
-// --- 基本の変換 -------------------------------------------------------------
+/// @name 基本の変換
 
 TEST_F(Matrix4Test, IdentityLeavesPointsUnchanged)
 {
@@ -70,7 +70,7 @@ TEST_F(Matrix4Test, RotateAgreesWithTheQuaternionItWasBuiltFrom)
     }
 }
 
-// --- 合成順 -----------------------------------------------------------------
+/// @name 合成順
 
 TEST_F(Matrix4Test, TRSAppliesScaleThenRotationThenTranslation)
 {
@@ -80,7 +80,7 @@ TEST_F(Matrix4Test, TRSAppliesScaleThenRotationThenTranslation)
 
     const math::Vector3 point(1.0f, 0.0f, 0.0f);
 
-    // 期待: (1,0,0) -> スケールで (2,0,0) -> Y 回りに 90 度で (0,0,-2) -> 平行移動で (5,0,-2)
+    /// @note 期待: (1,0,0) -> スケールで (2,0,0) -> Y 回りに 90 度で (0,0,-2) -> 平行移動で (5,0,-2)
     EXPECT_VEC3_NEAR(TransformPoint(math::Matrix4::TRS(t, r, s), point),
                      t + (r * (point * 2.0f)), testkit::kLooseTolerance);
 }
@@ -100,16 +100,16 @@ TEST_F(Matrix4Test, MultiplicationAppliesTheRightOperandFirst)
     const math::Matrix4 scale     = math::Matrix4::Scale(math::Vector3(2.0f, 2.0f, 2.0f));
     const math::Vector3 point(1.0f, 0.0f, 0.0f);
 
-    // Translate * Scale なら «拡大してから移動» で (3,0,0)。逆順なら (4,0,0) になる。
+    /// @note Translate * Scale なら «拡大してから移動» で (3,0,0)。逆順なら (4,0,0) になる。
     EXPECT_VEC3_NEAR(TransformPoint(translate * scale, point), math::Vector3(3.0f, 0.0f, 0.0f),
                      testkit::kTolerance);
 }
 
-// --- 逆行列と転置 -----------------------------------------------------------
+/// @name 逆行列と転置
 
 TEST_F(Matrix4Test, InverseTimesOriginalIsIdentity)
 {
-    // 引数の評価順は未規定なので、乱数は必ず別の文で取り出す。
+    /// @note 引数の評価順は未規定なので、乱数は必ず別の文で取り出す。
     const math::Vector3    translation = Rng().NextVector3(-5.0f, 5.0f);
     const math::Quaternion rotation    = Rng().NextRotation();
     const math::Matrix4    m = math::Matrix4::TRS(translation, rotation,
@@ -148,14 +148,14 @@ TEST_F(Matrix4Test, InverseTransposeAffineMatchesTheUpperLeftOfTheFullInverseTra
 
 TEST_F(Matrix4Test, InverseTransposeAffineReturnsIdentityForADegenerateScale)
 {
-    // スケール 0 はエディタ操作として普通に起きる。停止せず素通しする契約。
+    /// @note スケール 0 はエディタ操作として普通に起きる。停止せず素通しする契約。
     const math::Matrix4 m = math::Matrix4::Scale(math::Vector3(1.0f, 0.0f, 1.0f));
 
     EXPECT_MAT4_NEAR(math::Matrix4::InverseTransposeAffine(m), math::Matrix4::Identity(),
                      testkit::kTolerance);
 }
 
-// --- ビューと投影 -----------------------------------------------------------
+/// @name ビューと投影
 
 TEST_F(Matrix4Test, LookAtPlacesTheEyeAtTheViewOrigin)
 {
@@ -167,7 +167,7 @@ TEST_F(Matrix4Test, LookAtPlacesTheEyeAtTheViewOrigin)
 
 TEST_F(Matrix4Test, LookAtPutsTheTargetOnThePositiveZAxis)
 {
-    // 左手系なので «見ている先» はビュー空間の +Z。距離はそのまま残る。
+    /// @note 左手系なので «見ている先» はビュー空間の +Z。距離はそのまま残る。
     const math::Vector3 eye(0.0f, 0.0f, -5.0f);
     const math::Matrix4 view = math::Matrix4::LookAt(eye, math::Vector3::ZERO, math::Vector3::UP);
 
@@ -177,7 +177,7 @@ TEST_F(Matrix4Test, LookAtPutsTheTargetOnThePositiveZAxis)
 
 TEST_F(Matrix4Test, PerspectiveMapsTheNearPlaneToZeroAndTheFarPlaneToOne)
 {
-    // DirectX の深度範囲は 0..1。OpenGL の -1..1 と取り違えると近景だけが破綻する。
+    /// @note DirectX の深度範囲は 0..1。OpenGL の -1..1 と取り違えると近景だけが破綻する。
     constexpr float     kNear = 0.1f;
     constexpr float     kFar  = 100.0f;
     const math::Matrix4 proj  = math::Matrix4::Perspective(math::ToRad(60.0f), 16.0f / 9.0f,

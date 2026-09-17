@@ -69,13 +69,13 @@ bool DecodePngFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out)
     return true;
 }
 
-// 4 バイト境界へ切り上げた 1 行のバイト数。DIB の行はこの単位で詰まっている。
+/// 4 バイト境界へ切り上げた 1 行のバイト数。DIB の行はこの単位で詰まっている。
 std::size_t DibStride(std::int32_t width, std::uint16_t bitCount)
 {
     return ((static_cast<std::size_t>(width) * bitCount + 31u) / 32u) * 4u;
 }
 
-// パレット参照 (1 / 4 / 8bpp) のインデックスを取り出す。
+/// パレット参照 (1 / 4 / 8bpp) のインデックスを取り出す。
 std::uint32_t PaletteIndexAt(const std::uint8_t* row, std::int32_t x, std::uint16_t bitCount)
 {
     switch (bitCount) {
@@ -99,7 +99,8 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
         return false;
     }
     const std::int32_t width  = header.width;
-    const std::int32_t height = header.height / 2; // AND マスクぶんを落とす
+    /// @note AND マスクぶんを落とす
+    const std::int32_t height = header.height / 2;
     if (width <= 0 || height <= 0) {
         outError = "invalid icon bitmap size";
         return false;
@@ -125,7 +126,7 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
     }
     const std::uint8_t* palette = indexed ? bytes + header.size : nullptr;
     const std::uint8_t* xorData = bytes + pixelOffset;
-    // AND マスクは欠けている .ico もある。無ければ «全画素不透明» とみなす。
+    /// @note AND マスクは欠けている .ico もある。無ければ «全画素不透明» とみなす。
     const std::size_t andOffset = pixelOffset + xorStride * height;
     const bool hasAndMask = andOffset + andStride * height <= size;
     const std::uint8_t* andData = hasAndMask ? bytes + andOffset : nullptr;
@@ -134,7 +135,7 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
     out.height = height;
     out.rgba.assign(static_cast<std::size_t>(width) * height * 4u, 0u);
 
-    // 32bpp でもアルファを一切書かない .ico がある。その場合だけ AND マスクへ倒す。
+    /// @note 32bpp でもアルファを一切書かない .ico がある。その場合だけ AND マスクへ倒す。
     bool hasAlphaChannel = false;
     if (header.bitCount == 32) {
         for (std::int32_t y = 0; y < height && !hasAlphaChannel; ++y) {
@@ -171,7 +172,7 @@ bool DecodeDibFrame(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
                     r = palette[index * 4 + 2];
                 }
             }
-            // AND マスクは «1 = 背景を透かす»。32bpp でアルファを持つ絵には掛けない。
+            /// @note AND マスクは «1 = 背景を透かす»。32bpp でアルファを持つ絵には掛けない。
             if (andRow && !hasAlphaChannel && ((andRow[x / 8] >> (7 - (x & 7))) & 0x01u))
                 a = 0;
 
@@ -222,8 +223,8 @@ bool DecodeIcoBytes(const std::uint8_t* bytes, std::size_t size, IcoImage& out, 
         return false;
     }
 
-    // 面積が同じなら色深度が深い方を採る。16 色版と 32bit 版が同居する .ico で
-    // «小さくもないのに色が潰れている» サムネイルを出さないため。
+    /// @note 面積が同じなら色深度が深い方を採る。16 色版と 32bit 版が同居する .ico で
+    ///       «小さくもないのに色が潰れている» サムネイルを出さないため。
     for (const IconDirEntry& entry : entries) {
         const std::uint32_t w = entry.width  == 0 ? 256u : entry.width;
         const std::uint32_t h = entry.height == 0 ? 256u : entry.height;

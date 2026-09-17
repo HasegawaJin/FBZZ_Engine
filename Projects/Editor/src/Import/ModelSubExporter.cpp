@@ -23,7 +23,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// ── 頂点レイアウト (renderer と同じビット列) ──────────────────────────────
+/// @name 頂点レイアウト (renderer と同じビット列)
 struct Vertex {
     float position[3];
     float normal[3];
@@ -63,7 +63,7 @@ Vertex ConvertVertex(const aiMesh* mesh, uint32_t i, float scale)
         v.uv[0] = mesh->mTextureCoords[0][i].x;
         v.uv[1] = mesh->mTextureCoords[0][i].y;
     }
-    // DCC が頂点カラーを持たない方が普通なので、既定は「色を持たない」= 白。
+    /// @note DCC が頂点カラーを持たない方が普通なので、既定は「色を持たない」= 白。
     if (mesh->HasVertexColors(0)) {
         const aiColor4D& c = mesh->mColors[0][i];
         v.color[0] = c.r; v.color[1] = c.g; v.color[2] = c.b; v.color[3] = c.a;
@@ -215,9 +215,9 @@ bool WriteMorphTargets(std::ofstream& out,
                        bool applyAxisFix,
                        const aiQuaternion& axisInvQ,
                        float axisInvScale,
-                       // スキンメッシュ頂点へ焼いたバインド回転。デルタにも同じ回転を
-                       // 掛けないとモーフだけ元の Z-up 方向へずれる。静的メッシュは
-                       // transform 側で既に回っているので identity を渡す。
+                       /// スキンメッシュ頂点へ焼いたバインド回転。デルタにも同じ回転を
+                       /// 掛けないとモーフだけ元の Z-up 方向へずれる。静的メッシュは
+                       /// transform 側で既に回っているので identity を渡す。
                        const aiQuaternion& bakeQ)
 {
     using namespace asset;
@@ -286,7 +286,7 @@ bool WriteMorphTargets(std::ofstream& out,
     return out.good();
 }
 
-// ── スケルトン書き出し ────────────────────────────────────────────────────
+/// @name スケルトン書き出し
 struct NodeEntry {
     std::string name;
     int         parentIndex = -1;
@@ -350,25 +350,26 @@ void TraverseNodes(const aiNode* node, int parentIdx, float us,
         TraverseNodes(node->mChildren[c], myIdx, us, indexMap, nodes);
 }
 
-// 頂点/法線/接線へバインド回転を焼き込む (float[3] インプレース)。
+/// 頂点/法線/接線へバインド回転を焼き込む (float[3] インプレース)。
 void RotateInPlace(float v[3], const aiQuaternion& q)
 {
     const aiVector3D r = q.Rotate(aiVector3D(v[0], v[1], v[2]));
     v[0] = r.x; v[1] = r.y; v[2] = r.z;
 }
 
-// バインド回転 R の逆行列。offsetMatrix を offset·R⁻¹ へ補正するのに使う。
+/// バインド回転 R の逆行列。offsetMatrix を offset·R⁻¹ へ補正するのに使う。
 aiMatrix4x4 InverseBakeMatrix(const float q[4])
 {
-    const aiQuaternion inv(q[3], -q[0], -q[1], -q[2]); // 単位クォータニオンの共役
+    /// @note 単位クォータニオンの共役
+    const aiQuaternion inv(q[3], -q[0], -q[1], -q[2]);
     return aiMatrix4x4(inv.GetMatrix());
 }
 
-// DCC のノード階層を FZND チャンクとして書き出す。
-//
-// submeshRemap は「aiMesh の添字 → 出力 submesh の添字」。選択的インポートと
-// 頂点 0 件のメッシュで出力側が飛ぶため、aiNode::mMeshes をそのまま書くと
-// 存在しない submesh を指すノードができる。除外されたメッシュはここで落とす。
+/// DCC のノード階層を FZND チャンクとして書き出す。
+///
+/// submeshRemap は「aiMesh の添字 → 出力 submesh の添字」。選択的インポートと
+/// 頂点 0 件のメッシュで出力側が飛ぶため、aiNode::mMeshes をそのまま書くと
+/// 存在しない submesh を指すノードができる。除外されたメッシュはここで落とす。
 bool WriteModelNodes(std::ofstream& out,
                      const aiScene* scene,
                      float unitScale,
@@ -385,8 +386,8 @@ bool WriteModelNodes(std::ofstream& out,
     std::vector<Entry> entries;
     entries.reserve(128);
 
-    // 幅優先で番号を振る。再帰にすると children の添字を親へ書き戻すのに
-    // 二度走査が必要になるため、キューで順に確定させる。
+    /// @note 幅優先で番号を振る。再帰にすると children の添字を親へ書き戻すのに
+    ///       二度走査が必要になるため、キューで順に確定させる。
     std::vector<std::pair<const aiNode*, int>> queue{ { scene->mRootNode, -1 } };
     while (!queue.empty()) {
         const auto [node, parentIndex] = queue.front();
@@ -427,7 +428,7 @@ bool WriteModelNodes(std::ofstream& out,
                                            static_cast<size_t>(FZMODEL_NODE_NAME_LEN - 1));
         std::memcpy(nd.name, name.data(), nameLength);
         nd.parentIndex = entry.parentIndex;
-        // 平行移動だけが長さの次元を持つ。回転・スケールは無次元。
+        /// @note 平行移動だけが長さの次元を持つ。回転・スケールは無次元。
         nd.localTranslation[0] = position.x * unitScale;
         nd.localTranslation[1] = position.y * unitScale;
         nd.localTranslation[2] = position.z * unitScale;
@@ -463,7 +464,7 @@ bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us,
     nodes.reserve(128);
     TraverseNodes(scene->mRootNode, -1, us, nodeIndexMap, nodes);
 
-    // ボーン収集 (全メッシュ分をマージ)
+    /// @note ボーン収集 (全メッシュ分をマージ)
     std::vector<BoneEntry> bones;
     std::unordered_map<std::string, size_t> boneMap;
     for (uint32_t mi=0; mi<scene->mNumMeshes; ++mi) {
@@ -476,7 +477,7 @@ bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us,
             BoneEntry be;
             be.name = bname;
             be.nodeIndex = nodeIndexMap.count(bname) ? nodeIndexMap.at(bname) : -1;
-            // offset·R⁻¹: 頂点側に焼いた R を打ち消し、アニメ結果を不変に保つ
+            /// @note offset·R⁻¹: 頂点側に焼いた R を打ち消し、アニメ結果を不変に保つ
             CopyMatrix(bone->mOffsetMatrix * bakeInv, be.offsetMatrix, us);
             bones.push_back(std::move(be));
             if (be.nodeIndex >= 0)
@@ -484,16 +485,18 @@ bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us,
         }
     }
 
-    // ルートノードを探す
-    int rootIdx = 0; // デフォルトは 0 番
+    /// @note ルートノードを探す
+    /// @note デフォルトは 0 番
+    int rootIdx = 0;
     for (size_t ni=0; ni<nodes.size(); ++ni)
         if (nodes[ni].parentIndex < 0) { rootIdx = static_cast<int>(ni); break; }
 
-    // ルートの逆変換行列
+    /// @note ルートの逆変換行列
     aiMatrix4x4 rootInv = scene->mRootNode->mTransformation;
     rootInv.Inverse();
     float rootInvData[16];
-    CopyMatrix(rootInv, rootInvData, 1.0f); // 回転のみなのでスケールしない
+    /// @note 回転のみなのでスケールしない
+    CopyMatrix(rootInv, rootInvData, 1.0f);
 
     FzSkelHeader skelHdr{};
     skelHdr.magic[0]='F'; skelHdr.magic[1]='Z'; skelHdr.magic[2]='S'; skelHdr.magic[3]='K';
@@ -567,8 +570,8 @@ bool WriteMergedMesh(
         const bool applyStaticAxisFix = ctx && ctx->applyStaticNodeTransforms;
         const aiQuaternion axisInvQ;
         const float axisInvS = ctx ? (1.0f / ctx->axisFixScale) : 1.0f;
-        // スキンメッシュは .fzasset 側と同じバインド回転を焼く。ここを揃えないと
-        // 統合 .mesh (CPU 側コピー) だけ Z-up のまま残る。
+        /// @note スキンメッシュは .fzasset 側と同じバインド回転を焼く。ここを揃えないと
+        ///       統合 .mesh (CPU 側コピー) だけ Z-up のまま残る。
         const bool bakeThisMesh = ctx && mesh->HasBones();
         const aiQuaternion bakeQ = bakeThisMesh
             ? aiQuaternion(ctx->bindBakeRotation[3], ctx->bindBakeRotation[0],
@@ -649,14 +652,15 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
 {
     using namespace asset;
 
-    const aiScene* ms = ctx.meshScene; // 静的: PreTransformVertices 済み
+    /// @note 静的: PreTransformVertices 済み
+    const aiScene* ms = ctx.meshScene;
     if (!ms) return false;
 
     const bool skinned = ctx.hasSkin;
     const auto globalBoneIndices = skinned ? CollectGlobalBoneIndices(ctx.scene) :
                                              std::unordered_map<std::string, uint32_t>{};
 
-    // ── マテリアルスロット名 (材質インデックスの文字列化) ──────────────────
+    /// @name マテリアルスロット名 (材質インデックスの文字列化)
     std::vector<std::string> slotNames(ms->mNumMaterials);
     for (uint32_t matIdx = 0; matIdx < ms->mNumMaterials; ++matIdx) {
         slotNames[matIdx] = "Material_" + std::to_string(matIdx);
@@ -670,10 +674,10 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         while (slotNames.size() <= matIdx) slotNames.push_back("Material_" + std::to_string(slotNames.size()));
     }
 
-    // ── 出力パス ────────────────────────────────────────────────────────
+    /// @name 出力パス
     namespace fs = std::filesystem;
-    // .fzasset も materials/anims/textures と同じ import 生成物フォルダ内へ置く。
-    // WHY: Foo/Foo.fzasset 構造に統一すると、移動・削除・再 import の単位が Foo/ だけで完結する。
+    /// @note .fzasset も materials/anims/textures と同じ import 生成物フォルダ内へ置く。Foo/Foo.fzasset
+    ///       構造に統一すると、移動・削除・再 import の単位が Foo/ だけで完結する。
     const std::string outputPath = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(ctx.manifestDir) / (ctx.baseName + ".fzasset"));
     const std::string mergedMeshPath = util::FileSystem::PathToUtf8(
@@ -692,19 +696,18 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
     std::ofstream out(tempOutputPath, std::ios::binary);
     if (!out) return false;
 
-    // ── FzModelHeader ────────────────────────────────────────────────────
+    /// @name FzModelHeader
     FzModelHeader modelHdr{};
     modelHdr.magic[0]='F'; modelHdr.magic[1]='Z'; modelHdr.magic[2]='M'; modelHdr.magic[3]='D';
     modelHdr.version          = FZMODEL_VERSION;
     modelHdr.flags            = skinned ? FZMODEL_FLAG_SKINNED : 0u;
-    // ノード階層を書けるなら必ず書く。配置側が「DCC 上の 1 オブジェクト = 1 GameObject」を
-    // 復元するための唯一の情報源で、これが無いと submesh を平坦に扱うしかなくなる。
-    //
-    // ノード階層は常に保存するが、頂点変換のベイクは静的インポートだけに限定する:
-    //   静的   — PreTransformVertices / applyStaticNodeTransforms で頂点がモデル空間
-    //   スキンド — ボーン付きメッシュはパレット、剛体メッシュはノード行列で動かす
-    // WHY: アニメーション付き FBX に混在する「ボーンを持たない剛体メッシュ」まで
-    //      BAKED と宣言すると、Preview / ランタイムがノード変換を二重に打ち消してしまう。
+    /// @note ノード階層を書けるなら必ず書く。配置側が「DCC 上の 1 オブジェクト = 1 GameObject」を
+    ///       復元する唯一の情報源で、無いと submesh を平坦に扱うしかない。
+    /// @note ノード階層は常に保存するが、頂点変換のベイクは静的インポートだけに限定する (静的は
+    ///       PreTransformVertices / applyStaticNodeTransforms で頂点がモデル空間、スキンドはボーン付き
+    ///       メッシュをパレット、剛体メッシュをノード行列で動かす)。アニメーション付き FBX に混在する
+    ///       「ボーンを持たない剛体メッシュ」まで BAKED と宣言すると、ランタイムがノード変換を二重に
+    ///       打ち消してしまう。
     if (ms && ms->mRootNode) {
         modelHdr.flags |= FZMODEL_FLAG_NODES;
         if (!skinned)
@@ -714,7 +717,7 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
     modelHdr.materialSlotCount = static_cast<uint32_t>(slotNames.size());
     out.write(reinterpret_cast<const char*>(&modelHdr), sizeof(modelHdr));
 
-    // ── マテリアルスロット名 ─────────────────────────────────────────────
+    /// @name マテリアルスロット名
     for (const auto& name : slotNames) {
         char nameBuf[FZMODEL_SLOT_NAME_LEN]{};
         const size_t len = std::min(name.size(), static_cast<size_t>(FZMODEL_SLOT_NAME_LEN-1));
@@ -722,8 +725,8 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         out.write(nameBuf, FZMODEL_SLOT_NAME_LEN);
     }
 
-    // ── LOD0 ─────────────────────────────────────────────────────────────
-    // 選択的インポートフィルタ
+    /// @name LOD0
+    /// @note 選択的インポートフィルタ
     auto isMeshSelected = [&](const aiMesh* mesh) -> bool {
         if (ctx.selectedMeshNames.empty()) return true;
         const std::string name = mesh->mName.C_Str();
@@ -743,11 +746,10 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
     FzLodHeader lodHdr{ 0.0f, submeshCount };
     out.write(reinterpret_cast<const char*>(&lodHdr), sizeof(lodHdr));
 
-    // モデル全体のバウンズは各サブメッシュの境界球を包含して求め、
-    // 全サブメッシュを書き終えてからヘッダーへ書き戻す (ヘッダーはファイル先頭で
-    // 既に出力済みのため、この時点では値が確定していない)。
-    // WHY: 未設定だと center=(0,0,0) / radius=0 のままになり、視錐台カリングが
-    //      原点の点として判定してモデルが消える。
+    /// @note モデル全体のバウンズは各サブメッシュの境界球を包含して求め、全サブメッシュを書き終えて
+    ///       からヘッダーへ書き戻す (ヘッダーはファイル先頭で既に出力済みのため、この時点では値が
+    ///       確定していない)。未設定のままだと center=(0,0,0)/radius=0 になり、視錐台カリングが
+    ///       原点の点として判定してモデルが消える。
     bool  boundsValid = false;
     float boundsMin[3]{}, boundsMax[3]{};
     auto accumulateBounds = [&](const float center[3], float radius) {
@@ -764,9 +766,8 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         boundsValid = true;
     };
 
-    // aiMesh の添字 → 出力 submesh の添字。ノードチャンクが submesh を指すのに使う。
-    // WHY 別に持つか: 下のループは未選択メッシュと頂点 0 件を飛ばすため、
-    //     出力側の連番と aiMesh の添字が一致しない。
+    /// @note aiMesh の添字 → 出力 submesh の添字。ノードチャンクが submesh を指すのに使う (下のループは
+    ///       未選択メッシュと頂点 0 件を飛ばすため、出力側の連番と aiMesh の添字が一致しないため)。
     std::unordered_map<uint32_t, uint32_t> submeshRemap;
     uint32_t writtenSubmeshIndex = 0;
 
@@ -776,7 +777,7 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         if (mesh->mNumVertices == 0) continue;
         submeshRemap[mi] = writtenSubmeshIndex++;
 
-        // インデックス
+        /// @note インデックス
         std::vector<uint32_t> indices;
         indices.reserve(static_cast<size_t>(mesh->mNumFaces) * 3);
         for (uint32_t fi=0; fi<mesh->mNumFaces; ++fi) {
@@ -833,9 +834,9 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
             }
             for (auto& inf : infl) inf.Normalize();
 
-            // バインド回転を頂点へ焼き込む (offsetMatrix 側で R⁻¹ を打ち消し済み)。
-            // これで「ボーン行列 = identity」がそのままバインドポーズになり、
-            // サムネイル / AnimatorComponent 無しの描画でも正しい向きになる。
+            /// @note バインド回転を頂点へ焼き込む (offsetMatrix 側で R⁻¹ を打ち消し済み)。
+            ///       これで「ボーン行列 = identity」がそのままバインドポーズになり、
+            ///       サムネイル / AnimatorComponent 無しの描画でも正しい向きになる。
             const aiQuaternion bakeQ(ctx.bindBakeRotation[3], ctx.bindBakeRotation[0],
                                      ctx.bindBakeRotation[1], ctx.bindBakeRotation[2]);
             std::vector<SkinnedVertex> verts(mesh->mNumVertices);
@@ -865,8 +866,8 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         const bool applyNodeTransform = transformIt != staticMeshTransforms.end();
         const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
         const aiQuaternion axisInvQ;
-        // 静的メッシュは transform 側で既に回っているのでモーフの追加回転は不要。
-        // スキンメッシュのみ、頂点へ焼いた R を同じくデルタへ適用する。
+        /// @note 静的メッシュは transform 側で既に回っているのでモーフの追加回転は不要。
+        ///       スキンメッシュのみ、頂点へ焼いた R を同じくデルタへ適用する。
         const bool meshIsSkinned = skinned && mesh->HasBones();
         const aiQuaternion morphBakeQ = meshIsSkinned
             ? aiQuaternion(ctx.bindBakeRotation[3], ctx.bindBakeRotation[0],
@@ -877,20 +878,20 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
                                1.0f / ctx.axisFixScale, morphBakeQ)) return false;
     }
 
-    // ── スケルトン ────────────────────────────────────────────────────────
+    /// @name スケルトン
     if (skinned && ctx.scene) {
         if (!WriteSkeleton(out, ctx.scene, ctx.unitScale, ctx.bindBakeRotation)) return false;
     }
 
-    // ── ノード階層 (v4) ───────────────────────────────────────────────────
-    // 最後に置く。既存チャンクのオフセットに触れずに拡張できるため。
+    /// @name ノード階層 (v4)
+    /// @note 最後に置く。既存チャンクのオフセットに触れずに拡張できるため。
     if ((modelHdr.flags & FZMODEL_FLAG_NODES) != 0u) {
         if (!WriteModelNodes(out, ms, ctx.unitScale, submeshRemap)) return false;
     }
 
-    // ── モデル全体バウンズをヘッダーへ書き戻す ────────────────────────────
-    // スキンドの場合はバインド姿勢の頂点から求めた保守的な球。アニメで
-    // これを超える動きをするクリップは別途スケール係数で膨らませる想定。
+    /// @name モデル全体バウンズをヘッダーへ書き戻す
+    /// @note スキンドの場合はバインド姿勢の頂点から求めた保守的な球。アニメで
+    ///       これを超える動きをするクリップは別途スケール係数で膨らませる想定。
     if (boundsValid) {
         float radiusSq = 0.0f;
         for (int a = 0; a < 3; ++a) {

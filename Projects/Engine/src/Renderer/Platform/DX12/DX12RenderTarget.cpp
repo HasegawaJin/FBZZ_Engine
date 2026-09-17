@@ -83,7 +83,7 @@ bool DX12RenderTarget::InitCubemap(
     return true;
 }
 
-// Format → DXGI。DX11 側 (DX11RenderTarget.cpp) と同じ対応にすること。
+/// Format → DXGI。DX11 側 (DX11RenderTarget.cpp) と同じ対応にすること。
 static DXGI_FORMAT ToDxgi(Format format)
 {
     switch (format) {
@@ -184,7 +184,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetRtv(uint32_t index) const
     return handle;
 }
 
-// 深度を持たない RT では DSV ヒープ自体を作らない。呼び出し側は HasDepth() で分岐する。
+/// 深度を持たない RT では DSV ヒープ自体を作らない。呼び出し側は HasDepth() で分岐する。
 D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetDsv() const
 {
     return m_dsvHeap ? m_dsvHeap->GetCPUDescriptorHandleForHeapStart()

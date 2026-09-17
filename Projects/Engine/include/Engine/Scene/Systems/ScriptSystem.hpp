@@ -9,9 +9,9 @@
 
 namespace fbzz::scene {
 
-// WHY RunMode::Always か: FBZZ_EXECUTE_ALWAYS を宣言した Script は編集中も回す。
-//     System 単位で SimOnly にすると「シーンに 1 つでも編集中実行の Script が居るか」を
-//     ShouldRun で毎フレーム走査することになるので、選別は Script 単位で Update 内に置く。
+/// @note RunMode::Always: FBZZ_EXECUTE_ALWAYS の Script は編集中も回す。System 単位で SimOnly
+///       にすると「編集中実行の Script が居るか」を ShouldRun で毎フレーム走査することになる
+///       ため、選別は Script 単位で Update 内に置く。
 class ScriptSystem final : public ISystem {
 public:
     std::string_view Name()       const override { return "ScriptSystem"; }
@@ -21,17 +21,12 @@ public:
     void Update(SystemContext& ctx) override;
 };
 
-// 固定ステップでスクリプトの OnFixedUpdate() を回す。
-//
-// WHY Phase::Physics に置くか: このフェーズだけが SystemScheduler の固定ステップ
-//     ループ (アキュムレータ) の対象になっており、1 フレームに 0〜N 回実行される。
-//     Phase::Script 側に置くと描画フレームと同じ可変回数になり、固定ステップの
-//     意味が消える。PhysicsSystem より前に走るよう OrderingHints で明示することで、
-//     スクリプトが加えた力が「同じステップ」で積分される。
-//
-// WHY FBZZ_EXECUTE_ALWAYS でも編集中に回さないか: PhysicsSystem は SimOnly のままなので、
-//     編集中に OnFixedUpdate だけ呼んでも加えた力を積分する相手が居ない。呼べば
-//     「効かない AddForce」が積み上がるだけで、動かない理由が現場から消える。
+/// 固定ステップでスクリプトの OnFixedUpdate() を回す。
+/// @note Phase::Physics に置く: SystemScheduler の固定ステップ (アキュムレータ) の対象は
+///       ここだけで、1 フレームに 0〜N 回実行される。PhysicsSystem より前に走らせることで
+///       スクリプトが加えた力が同じステップで積分される。
+/// @note FBZZ_EXECUTE_ALWAYS でも編集中は回さない: PhysicsSystem が SimOnly のため、
+///       積分する相手が居ず「効かない AddForce」が積み上がるだけになる。
 class FixedScriptSystem final : public ISystem {
 public:
     std::string_view Name()       const override { return "FixedScriptSystem"; }
@@ -42,7 +37,7 @@ public:
     void Update(SystemContext& ctx) override;
 };
 
-// Physics 後に実行するスクリプト更新。カメラ追従など物理適用後の位置を必要とする処理に使う。
+/// Physics 後に実行するスクリプト更新。カメラ追従など物理適用後の位置を必要とする処理に使う。
 class LateScriptSystem final : public ISystem {
 public:
     std::string_view Name()       const override { return "LateScriptSystem"; }

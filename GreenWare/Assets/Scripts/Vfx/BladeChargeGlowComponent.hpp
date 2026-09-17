@@ -6,30 +6,11 @@
 /// シーンへは付けない。PlayerComponent が内部モジュールとして持つ。
 /// BladeComponent へ問い合わせるだけで、剣の挙動は一切触らない。
 ///
-/// WHY 要るか (2026-09-06 に見つけた穴):
-///   溜めは 0.75 秒こらえて足を鈍らせる技で、その間の手触りは体の震え・パッド・
-///   画面の歪み・音程で作ってある (DriveCharge)。ところが «剣» には何も起きていない。
-///   BladeComponent::ChargeRatio のコメントは «HUD と剣の発光が読める» と
-///   書いているのに、実際にこれを読んでいるものが 1 つも無かった ─ 溜めているあいだ
-///   握っている 2 本の刀は最初から最後まで同じ見た目のままだった。
-///
-/// WHY 極性色を «ここでは» 使うか:
-///   軌跡 (BladeTrail) から赤青を外したのは、毎振り画面いっぱいに撒くと盤面の極が
-///   埋もれるため (企画書 12.2)。こちらは刀身の芯という小さく限られた場所で、しかも
-///   伝えたい情報がまさに «次に乗る極» そのもの。左右どちらの剣が光っているかで
-///   «今 ＋ を溜めている» が分かるので、色を落とすと情報ごと消える。
-///
-/// WHY 明滅させないか:
-///   GlowPartComponent が 2026-08-26 に pulse を撤去したのと同じ理由 ─ 自発光を
-///   上下させてもトーンマップとブルームが振れ幅を潰すので、画面には出ない。
-///   «溜まっている量» は明るさの絶対値で、«溜まり切った» はブルームのしきい値を
-///   跨ぐかどうかで出す。段が 2 つあれば «そろそろ» と «来た» は読み分けられる。
-///
-/// WHY スロットを名前で引くか:
-///   刀は 8 枚の材質へ分かれていて、光らせたいのは芯 (M_SwordCore_*) と刻印
-///   (M_SwordMark_*) だけ。番号で持つと FBX を差し替えて順番が変わった瞬間に
-///   «鋼が光ってしまう» が起きるが、番号は無効にならないので気付けない
-///   (WeaponSockets.hpp が名前で裏を取っているのと同じ判断)。
+/// @note 2026-09-06: 溜め中の震え・パッド・歪み・音程 (DriveCharge) はあるのに刀自体は
+///       変わらなかった穴を埋める。軌跡で封じた極性色をあえて芯で使うのは、左右どちらが
+///       光るかで «次に乗る極» を伝える限られた場所だから。明滅はさせず、量は明るさの
+///       絶対値、上限到達はブルームのしきい値越え (GlowPartComponent と同じ理由)。スロットは
+///       番号でなく名前 (M_SwordCore_* / M_SwordMark_*) で拾い、FBX 差し替えでの事故を防ぐ。
 #pragma once
 
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -75,9 +56,9 @@ public:
                  "軌跡 (BladeTrail) が出るのは刃の «跡» なので、刀身そのものは別に灯す")
     FBZZ_FIELD_RANGE(float, bladeGlowSwingSeconds, 0.20f, "Swing Flare Time", 0.0f, 0.8f)
 
-    // WHY 溜め比をそのまま使わないか: 震え・パッド・歪みはすべて比の 2 乗で立ち上がる
-    //     (DriveCharge)。発光だけ線形にすると、前半は «光っているのに何も起きていない»、
-    //     終盤は «手だけ来て絵が追いつかない» になる。同じ曲線に乗せる。
+    /// @note 震え・パッド・歪みは比の 2 乗で立ち上がる (DriveCharge) ため、発光も同じ曲線に
+    ///       乗せる。線形だと前半 «光っているのに何も起きない»、終盤 «手だけ来て絵が
+    ///       追いつかない» になる。
     FBZZ_FIELD_RANGE(float, bladeGlowCurve, 2.0f, "Curve", 0.5f, 4.0f)
     FBZZ_TOOLTIP("溜め比に掛ける指数。2 で DriveCharge の震え・パッドと同じ立ち上がり")
 
@@ -167,8 +148,8 @@ inline void BladeChargeGlowComponent::Collect(HandSide hand)
     auto* materials = sword->GetComponent<MaterialComponent>();
     if (!materials) return;
 
-    // スロット 0 は MaterialComponent 自身、1 以降が extraSlots (ScriptMaterialProxy の
-    // GetSlotCount と同じ数え方)。番号ではなく .mat のパスで選ぶ。
+    /// @note スロット 0 は MaterialComponent 自身、1 以降が extraSlots (ScriptMaterialProxy の
+    ///       GetSlotCount と同じ数え方)。番号ではなく .mat のパスで選ぶ。
     const std::size_t count = materials->SlotCount();
     for (std::size_t i = 0; i < count; ++i) {
         if (!Matches(materials->RawSlotAt(i).materialPath)) continue;
@@ -177,7 +158,7 @@ inline void BladeChargeGlowComponent::Collect(HandSide hand)
                     Vector3::ZERO, 0.0f };
         const MaterialInstance instance = material.Instance(entry.target, entry.slot);
         if (!instance.IsValid()) continue;
-        // 元の値が読めない材質もある (自発光を持たない)。0 から始めて 0 へ戻す。
+        /// @note 元の値が読めない材質もある (自発光を持たない)。0 から始めて 0 へ戻す。
         (void)instance.TryGetVector3(kEmissiveColorId, entry.baseColor);
         (void)instance.TryGetFloat(kEmissiveScaleId, entry.baseScale);
         blade.slots.push_back(entry);
@@ -189,7 +170,8 @@ inline void BladeChargeGlowComponent::Drive(HandSide hand, const Vector4& color,
     Blade& blade = m_hands[HandIndex(hand)];
 
     const bool want = level > 0.0f;
-    if (!want && !blade.writing) return;   // 書いていないなら戻すものも無い
+    /// @note 書いていないなら戻すものも無い
+    if (!want && !blade.writing) return;
 
     for (const Slot& entry : blade.slots) {
         const MaterialInstance instance = material.Instance(entry.target, entry.slot);
@@ -211,7 +193,7 @@ inline void BladeChargeGlowComponent::OnUpdate()
 
     const float dt = Max(Time::deltaTime, 0.0f);
 
-    // 抜刀で後から現れる。空のあいだだけ探しに行き、見つかったら止まる。
+    /// @note 抜刀で後から現れる。空のあいだだけ探しに行き、見つかったら止まる。
     const HandSide hands[] = { HandSide::Right };
     int found = 0;
     for (const HandSide hand : hands) {
@@ -220,14 +202,14 @@ inline void BladeChargeGlowComponent::OnUpdate()
     }
     debugBladeGlowSlots = found;
 
-    // ── 振った瞬間 ──────────────────────────────────────────────────────────
-    // WHY 立ち上がりで取るか: 振っている «あいだ» 灯し続けると、硬直のあいだも
-    //     光ったままになって «次が振れる» と読み違える。灯りは一撃ごとに 1 回。
+    /// @name 振った瞬間
+    /// @note 立ち上がりで取る。振っている «あいだ» 灯し続けると硬直中も光ったままで
+    ///       «次が振れる» と読み違えるため、灯りは一撃ごとに 1 回。
     const bool swinging = m_blades->IsSwinging();
     if (swinging && !m_wasSwinging) {
         const BladeSide swung = m_blades->SwingSide();
-        // 溜め斬りは体ごと回る全周の一撃なので、枠を左右とも灯す。刀は 1 本なので
-        // 片方は空振りするが、灯し損ねるより害が無い (両手剣へ替えた名残)。
+        /// @note 溜め斬りは体ごと回る全周の一撃なので、枠を左右とも灯す。刀は 1 本なので
+        ///       片方は空振りするが、灯し損ねるより害が無い (両手剣へ替えた名残)。
         if (m_blades->IsCharged()) {
             m_hands[0].flare = 1.0f;
             m_hands[1].flare = 1.0f;
@@ -237,10 +219,10 @@ inline void BladeChargeGlowComponent::OnUpdate()
     }
     m_wasSwinging = swinging;
 
-    // ── 溜め ────────────────────────────────────────────────────────────────
+    /// @name 溜め
     const float    ratio   = Clamp01(m_blades->ChargeRatio());
     const BladeSide holding = m_blades->ChargingSide();
-    // 満溜めへ «届いた» 1 フレーム。耳と手には既に合図が出ている (NotifyChargeFull)。
+    /// @note 満溜めへ «届いた» 1 フレーム。耳と手には既に合図が出ている (NotifyChargeFull)。
     const bool     reached = ratio >= 1.0f && m_lastRatio < 1.0f;
     m_lastRatio = ratio;
 
@@ -258,28 +240,26 @@ inline void BladeChargeGlowComponent::OnUpdate()
             ? Max(blade.flare - dt / Max(bladeGlowSwingSeconds, 1.0e-3f), 0.0f)
             : 0.0f;
 
-        // WHY 溜めている剣«だけ» を光らせるか: 左右どちらが光っているかが
-        //     «次にどちらの極が乗るか» そのもの。両方光らせるとその情報が消える。
-        //
-        // WHY Flux (押していない満溜め) だけ両方光らせるか: ジャスト回避の報酬は
-        //     «次に押した一振りが満溜め» で、まだどちらを振るか決まっていない。
-        //     両方灯すのが状態として正しく、«どちらを選んでもいい» とも読める。
+        /// @note 溜めている剣«だけ»を光らせる。左右どちらが光るかが «次にどちらの極が
+        ///       乗るか» そのものなので、両方光らせると情報が消える。Flux (押していない
+        ///       満溜め) だけはまだどちらを振るか決まっていないため両方灯し «どちらでも
+        ///       いい» を表す。
         const bool charging = holding != BladeSide::None
                             ? (HandOf(holding) == hand) : (ratio > 0.0f);
 
-        // 灯りは «足す» のではなく最も明るいものを採る。足すと溜め切って振った
-        // 瞬間だけ 2 段ぶん跳ねて、そこだけ白飛びする。
+        /// @note 灯りは «足す» のではなく最も明るいものを採る。足すと溜め切って振った
+        ///       瞬間だけ 2 段ぶん跳ねて、そこだけ白飛びする。
         float level = Max(bladeGlowIdle, 0.0f);
         if (charging) level = Max(level, Max(charged, flash));
         level = Max(level, Max(bladeGlowSwing, 0.0f) * blade.flare);
 
-        // 色は «その剣の» 極。左右で固定なので、溜めていないときの控えめな灯りでも
-        // どちらが ＋ でどちらが − かが常に読める。
-        // 刃は左右を名乗らない (BladeColors.hpp の PlayerBladeColor を参照)。
+        /// @note 色は «その剣の» 極。左右で固定なので、溜めていないときの控えめな灯りでも
+        ///       どちらが ＋ でどちらが − かが常に読める。
+        ///       刃は左右を名乗らない (BladeColors.hpp の PlayerBladeColor を参照)。
         Vector4 color = PlayerBladeColor();
         (void)hand;
-        // 満溜めの瞬間だけ白へ寄せる。極性色のまま明るくすると、赤は «もっと赤い» に
-        // しかならず «上限に着いた» が出ない。
+        /// @note 満溜めの瞬間だけ白へ寄せる。極性色のまま明るくすると、赤は «もっと赤い» に
+        ///       しかならず «上限に着いた» が出ない。
         if (charging && flash > 0.0f) {
             const float toWhite = Clamp01(flash / Max(bladeGlowFlash, 1.0e-3f));
             color = Vector4{ Lerp(color.x, 1.0f, toWhite), Lerp(color.y, 1.0f, toWhite),

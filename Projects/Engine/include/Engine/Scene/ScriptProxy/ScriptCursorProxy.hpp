@@ -16,23 +16,9 @@ using CursorLockMode = core::CursorLockMode;
 using CursorShape    = core::CursorShape;
 namespace CursorPriority = core::CursorPriority;
 
-/// カーソルの要求 1 件。この変数が生きている間だけ効く。
-///
-/// WHY 値を «持つ» 形にするか: cursor.SetLockMode で直接書くと、状態を元へ戻す責任が
-///     呼んだ側に残る。ポーズを閉じたときに «開く前が何だったか» を覚えておく必要が
-///     あり、画面が増えるほど戻し漏れが起きる。スクリプトのメンバーとして持てば、
-///     破棄・シーン遷移・DLL リロードのどれで消えても要求は自動的に畳まれ、
-///     残っている中で最も強い要求へ戻る。
-///
-/// 使い方:
-/// @code
-/// class PauseMenu : public Script {
-///     CursorRequest m_cursor;
-///     void OnStart() override {
-///         m_cursor = cursor.Push(CursorLockMode::Confined, true, CursorPriority::Modal);
-///     }
-/// };
-/// @endcode
+/// @brief カーソルの要求 1 件。この変数が生きている間だけ効く。
+/// @note RAII 管理。破棄・シーン遷移・DLL リロードのどれで消えても要求は自動的に畳まれ、
+///       残る中で最も強い要求へ戻る (直接 SetLockMode を書くと戻す責任が呼び出し側に残る)。
 class CursorRequest {
 public:
     CursorRequest() = default;

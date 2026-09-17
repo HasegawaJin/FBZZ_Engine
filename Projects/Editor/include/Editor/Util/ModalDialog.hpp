@@ -10,7 +10,7 @@ namespace fbzz::editor {
 
 class ModalDialog {
 public:
-    // 次フレームから表示するモーダルを予約する
+    /// 次フレームから表示するモーダルを予約する
     static void OpenConfirm(const std::string& title,
                             const std::string& message,
                             std::function<void()> onConfirm);
@@ -19,28 +19,31 @@ public:
                                    std::function<bool()> onSave,
                                    std::function<void()> onDiscard);
 
-    // テキスト入力モーダル。Confirm 時に入力文字列を渡す。
-    // hint: InputText のデフォルト値。note: フィールド下に薄く表示する補足テキスト (省略可)
+    /// テキスト入力モーダル。Confirm 時に入力文字列を渡す。
+    /// hint: InputText のデフォルト値。note: フィールド下に薄く表示する補足テキスト (省略可)
     static void OpenInput(const std::string& title,
                           const std::string& hint,
                           std::function<void(const std::string& input)> onConfirm,
                           const std::string& note = {});
 
-    // 毎フレーム EditorApp から呼ぶ
+    /// 毎フレーム EditorApp から呼ぶ
     static void OnRender();
 
 private:
     struct State {
         std::string           title;
         std::string           message;
-        std::string           note;          // OpenInput 用補足テキスト
+        /// @note OpenInput 用補足テキスト
+        std::string           note;
         std::function<void()> onConfirm;
         std::function<bool()> onSave;
         std::function<void()> onDiscard;
-        std::function<void(const std::string&)> onInput;  // OpenInput 用コールバック
+        /// @note OpenInput 用コールバック
+        std::function<void(const std::string&)> onInput;
         char                  inputBuf[256] = {};
         bool                  isInput       = false;
-        bool                  inputNeedsFocus = false;  // 初回フォーカスを1度だけ当てる
+        /// @note 初回フォーカスを1度だけ当てる
+        bool                  inputNeedsFocus = false;
         bool                  pending  = false;
         bool                  opened   = false;
     };

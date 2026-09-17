@@ -44,7 +44,7 @@ bool Contains(const std::vector<audio::BusDesc>& buses, std::string_view name)
 
 class AudioBusTest : public testkit::EngineFixture {};
 
-// --- 既定の構成 -------------------------------------------------------------
+/// @name 既定の構成
 
 TEST_F(AudioBusTest, DefaultLayoutStartsWithMaster)
 {
@@ -75,7 +75,7 @@ TEST_F(AudioBusTest, DefaultLayoutIsAlreadyNormalised)
     for (std::size_t i = 0; i < layout.size(); ++i) EXPECT_EQ(normalised[i].name, layout[i].name);
 }
 
-// --- 並べ替え ---------------------------------------------------------------
+/// @name 並べ替え
 
 TEST_F(AudioBusTest, PutsMasterFirstEvenIfItWasDeclaredLast)
 {
@@ -90,7 +90,7 @@ TEST_F(AudioBusTest, PutsMasterFirstEvenIfItWasDeclaredLast)
 
 TEST_F(AudioBusTest, PlacesEveryParentBeforeItsChild)
 {
-    // submix は親が先に無いと繋げられない。ここが唯一の順序保証。
+    /// @note submix は親が先に無いと繋げられない。ここが唯一の順序保証。
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
         Bus("Footsteps", "SE"),
         Bus("SE", audio::kMasterBusName),
@@ -117,11 +117,11 @@ TEST_F(AudioBusTest, KeepsDeepChainsInOrder)
     EXPECT_LT(IndexOf(normalised, "C"), IndexOf(normalised, "D"));
 }
 
-// --- 壊れた構成 -------------------------------------------------------------
+/// @name 壊れた構成
 
 TEST_F(AudioBusTest, TreatsAMissingParentAsMaster)
 {
-    // プロジェクト設定を手で書き換えれば普通に起きる。落とさず拾い上げる。
+    /// @note プロジェクト設定を手で書き換えれば普通に起きる。落とさず拾い上げる。
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
         Bus(audio::kMasterBusName),
         Bus("Orphan", "DoesNotExist"),
@@ -133,7 +133,7 @@ TEST_F(AudioBusTest, TreatsAMissingParentAsMaster)
 
 TEST_F(AudioBusTest, BreaksACycleInsteadOfHanging)
 {
-    // A→B→A。並べ替えが素朴だと無限ループになる場所。
+    /// @note A→B→A。並べ替えが素朴だと無限ループになる場所。
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
         Bus(audio::kMasterBusName),
         Bus("A", "B"),
@@ -162,7 +162,7 @@ TEST_F(AudioBusTest, CollapsesDuplicateNamesToTheLastOne)
 
 TEST_F(AudioBusTest, AddsMasterWhenItIsMissing)
 {
-    // Master が無い構成は «最終出力が無い» ので鳴らせない。補って成立させる。
+    /// @note Master が無い構成は «最終出力が無い» ので鳴らせない。補って成立させる。
     const std::vector<audio::BusDesc> normalised =
         audio::NormalizeBusLayout({ Bus("SE", audio::kMasterBusName) });
 
@@ -180,7 +180,7 @@ TEST_F(AudioBusTest, AnEmptyLayoutStillYieldsMaster)
 
 TEST_F(AudioBusTest, KeepsTheSettingsOfEachBus)
 {
-    // 並べ替えで音量や残響の設定が落ちないこと。
+    /// @note 並べ替えで音量や残響の設定が落ちないこと。
     audio::BusDesc se = Bus("SE", audio::kMasterBusName);
     se.volume        = 0.5f;
     se.lowPassCutoff = 0.25f;

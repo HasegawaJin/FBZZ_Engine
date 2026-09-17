@@ -15,16 +15,13 @@ namespace fbzz::renderer {
 
 namespace {
 
-// 静的サンプラーはシェーダーレジスタ (s0〜) 単位で決まる。Assets/Shaders/Common/Binding.hlsli の
-// SAMPLER_* 定義と 1:1 で対応させること。
-//
-// WHY: DX12 は Root Signature へ焼き込む静的サンプラーなので、レジスタごとに 1 つの意味へ
-//      固定するしかない。この制約に両バックエンドを合わせるため、パス単位でサンプラーを
-//      差し替える API (旧 IRenderer::SetSampler) は廃止した。以前は
-//      SamplerMode の列挙順をそのままレジスタ番号として並べていたため、s1 が比較サンプラーでなく
-//      通常 Linear (ComparisonFunc=NEVER) に、s4 が wrap でなく clamp になっていた。
-//      前者は SampleCmpLevelZero が常に 0 を返して全面影に、後者はタイラブルな 3D ノイズが
-//      端テクセルへ張り付いて雲が一枚の白い板になる。
+/// 静的サンプラーはシェーダーレジスタ (s0〜) 単位で決まる。Assets/Shaders/Common/Binding.hlsli の
+/// SAMPLER_* 定義と 1:1 で対応させること。
+/// @note DX12 は Root Signature へ焼き込む静的サンプラーのため、レジスタごとに 1 つの意味に固定
+///       するしかない。両バックエンドをこの制約に合わせ、パス単位でサンプラーを差し替える API
+///       (旧 IRenderer::SetSampler) は廃止した。以前は SamplerMode の列挙順をそのままレジスタ
+///       番号にしていたため、s1 が比較サンプラーでなく通常 Linear に、s4 が wrap でなく clamp に
+///       ずれ、前者は影が全面に出て後者は 3D ノイズが端に張り付いていた。配列の並びを崩さないこと。
 std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
 {
     struct Preset {
@@ -33,24 +30,24 @@ std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
         UINT maxAnisotropy;
         D3D12_COMPARISON_FUNC comparison;
     };
-    // s6 / s8 は現状どのシェーダーも宣言していない予約枠。
+    /// @note s6 / s8 は現状どのシェーダーも宣言していない予約枠。
     constexpr Preset kPresets[9] = {
-        // s0 SAMPLER_DEFAULT      : メッシュテクスチャのタイリングが主用途
+        /// @note s0 SAMPLER_DEFAULT      : メッシュテクスチャのタイリングが主用途
         { D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,   16, D3D12_COMPARISON_FUNC_NEVER },
-        // s1 SAMPLER_SHADOW       : SamplerComparisonState (PCF)
+        /// @note s1 SAMPLER_SHADOW       : SamplerComparisonState (PCF)
         { D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
-        // s2 SAMPLER_LINEAR_CLAMP : IBL BRDF LUT / 3D LUT / スプラットマップ
+        /// @note s2 SAMPLER_LINEAR_CLAMP : IBL BRDF LUT / 3D LUT / スプラットマップ
         { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
-        // s3 SAMPLER_POINT_CLAMP  : TAA 再投影ルックアップ
+        /// @note s3 SAMPLER_POINT_CLAMP  : TAA 再投影ルックアップ
         { D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
-        // s4 SAMPLER_WRAP_LINEAR  : ボリューメトリック雲のタイラブル 3D ノイズ
+        /// @note s4 SAMPLER_WRAP_LINEAR  : ボリューメトリック雲のタイラブル 3D ノイズ
         { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_WRAP,    1, D3D12_COMPARISON_FUNC_NEVER },
-        // s5                      : UI スプライト / テキスト
+        /// @note s5                      : UI スプライト / テキスト
         { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
         { D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
-        // s7 SAMPLER_SHADOW_PUNCTUAL : Spot / Point 用の 2 本目の比較サンプラー。
-        // 設定は s1 と同一。別スロットにするのは、共有ヘッダー (PunctualShadow.hlsli) が
-        // 自前の名前で宣言する必要があり、s1 は各マテリアルシェーダーが既に占有しているため。
+        /// @note s7 SAMPLER_SHADOW_PUNCTUAL : Spot / Point 用の 2 本目の比較サンプラー。
+        ///       設定は s1 と同一。別スロットにするのは、共有ヘッダー (PunctualShadow.hlsli) が
+        ///       自前の名前で宣言する必要があり、s1 は各マテリアルシェーダーが既に占有しているため。
         { D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
         { D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,    4, D3D12_COMPARISON_FUNC_NEVER },
     };
@@ -62,7 +59,7 @@ std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
         sampler.AddressU = sampler.AddressV = sampler.AddressW = kPresets[slot].address;
         sampler.MaxAnisotropy = kPresets[slot].maxAnisotropy;
         sampler.ComparisonFunc = kPresets[slot].comparison;
-        // ライト錐台外のシャドウサンプルは「照らされている」に倒す。
+        /// @note ライト錐台外のシャドウサンプルは「照らされている」に倒す。
         sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
         sampler.MaxLOD = D3D12_FLOAT32_MAX;
         sampler.ShaderRegister = slot;
@@ -95,9 +92,9 @@ bool DX12PsoCache::Initialize(ID3D12Device* device, bool bindlessEnabled)
 
 D3D12_ROOT_SIGNATURE_FLAGS DX12PsoCache::BaseRootSignatureFlags() const
 {
-    // WHY 既存のディスクリプタテーブルを残したまま立てるか: このフラグは «ヒープを直接引ける»
-    //     という許可を足すだけで、テーブル経由の束縛を無効化しない。144 本のシェーダーを
-    //     一斉に書き換えずに、bindless へ移したものから順に切り替えられる。
+    /// @note 既存のディスクリプタテーブルを残したまま立てる理由: このフラグは «ヒープを直接引ける»
+    ///       という許可を足すだけで、テーブル経由の束縛を無効化しない。144 本のシェーダーを
+    ///       一斉に書き換えずに、bindless へ移したものから順に切り替えられる。
     return m_bindlessEnabled
         ? D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED
         : D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -119,8 +116,8 @@ void DX12PsoCache::ClearPipelines()
 
 bool DX12PsoCache::CreateComputeRootSignature()
 {
-    // 並びは描画側と揃える (param 14 = bindless 添字ブロック b14)。
-    // SRV / UAV テーブルは撤去済み。CS も ResourceDescriptorHeap から直接引く。
+    /// @note 並びは描画側と揃える (param 14 = bindless 添字ブロック b14)。
+    ///       SRV / UAV テーブルは撤去済み。CS も ResourceDescriptorHeap から直接引く。
     std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
     for (UINT slot = 0; slot < 14; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -153,13 +150,13 @@ bool DX12PsoCache::CreateComputeRootSignature()
 
 bool DX12PsoCache::CreateRootSignature()
 {
-    // param 0〜13 : 定数バッファ b0〜b13 (root CBV)
-    // param 14    : bindless 添字ブロック b14 (root CBV)
-    //
-    // かつてここに «ピクセル SRV テーブル (t0〜t31)» と «頂点 SRV テーブル» があったが、
-    // 全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
-    // ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
-    // @see Docs/design/bindless.md
+    /// @note param 0〜13 : 定数バッファ b0〜b13 (root CBV)
+    ///       param 14    : bindless 添字ブロック b14 (root CBV)
+    ///
+    ///       かつてここに «ピクセル SRV テーブル (t0〜t31)» と «頂点 SRV テーブル» があったが、
+    ///       全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
+    ///       ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
+    ///       @see Docs/design/bindless.md
     std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
     for (UINT slot = 0; slot < 14; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -167,7 +164,7 @@ bool DX12PsoCache::CreateRootSignature()
         parameters[slot].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
         parameters[slot].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     }
-    // bindless 添字ブロック (b14)。VS / PS / GS のどこからでも引くので ALL 可視。
+    /// @note bindless 添字ブロック (b14)。VS / PS / GS のどこからでも引くので ALL 可視。
     parameters[kBindlessIndicesRootParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     parameters[kBindlessIndicesRootParam].Descriptor.ShaderRegister = kBindlessIndicesRegister;
     parameters[kBindlessIndicesRootParam].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
@@ -228,20 +225,20 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     desc.RasterizerState.FrontCounterClockwise = FALSE;
     desc.RasterizerState.DepthClipEnable = TRUE;
 
-    // WHAT: GBufferなどのMRTはRT1以降にも法線・材質値を書き込む。
-    // D3D12の初期値はWriteMask=0なので、RT0だけ設定するとDeferred Lighting入力が消える。
+    /// @note GBuffer などの MRT は RT1 以降にも法線・材質値を書き込む。D3D12 の初期値は
+    ///       WriteMask=0 なので、RT0 だけ設定すると Deferred Lighting 入力が消える。
     for (uint32_t index = 0; index < renderTargetCount; ++index) {
         auto& blend = desc.BlendState.RenderTarget[index];
         blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         if (state.blend != BlendMode::OPAQUE_BLEND) {
             blend.BlendEnable = TRUE;
-            // 方程式は RenderState.hpp の BlendMode が正本。ここはその翻訳でしかない。
-            // PREMULTIPLIED は src.rgb に alpha が乗った値なので SrcBlend=ONE、
-            // 背景側は (1-src.a) で残す (DX11 側の同名ケースと同じ方程式)。
+            /// @note 方程式は RenderState.hpp の BlendMode が正本。ここはその翻訳でしかない。
+            ///       PREMULTIPLIED は src.rgb に alpha が乗った値なので SrcBlend=ONE、
+            ///       背景側は (1-src.a) で残す (DX11 側の同名ケースと同じ方程式)。
             switch (state.blend) {
             case BlendMode::ADDITIVE:
-                // SrcBlend は ONE ではない。ONE にすると出力アルファがブレンド方程式から
-                // 消え、非事前乗算で書かれた PS (Particle.hlsl 等) が寿命フェードを失う。
+                /// @note SrcBlend は ONE ではない。ONE にすると出力アルファがブレンド方程式から
+                ///       消え、非事前乗算で書かれた PS (Particle.hlsl 等) が寿命フェードを失う。
                 blend.SrcBlend  = D3D12_BLEND_SRC_ALPHA;
                 blend.DestBlend = D3D12_BLEND_ONE;
                 break;
@@ -249,7 +246,8 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
                 blend.SrcBlend  = D3D12_BLEND_ONE;
                 blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
                 break;
-            default: // ALPHA_BLEND
+            /// @note ALPHA_BLEND
+            default:
                 blend.SrcBlend  = D3D12_BLEND_SRC_ALPHA;
                 blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
                 break;

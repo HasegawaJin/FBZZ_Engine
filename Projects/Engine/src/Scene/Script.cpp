@@ -34,10 +34,8 @@ void Script::SetPrefabInstantiationCallback(PrefabInstantiateFn fn)
 
 bool Script::InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
 {
-    // WHY 既定を持つか: 以前はコールバック未設定で無条件に false を返していたため、
-    //     コールバックを注入するのが Editor だけだったスタンドアロン実行では
-    //     プレファブ生成が丸ごと動かなかった (PrefabPool::Spawn も必ず失敗する)。
-    //     Editor は差分 (override) 付きの生成を注入して上書きする。
+    /// @note コールバックを注入するのは Editor だけなので、未設定時は既定実装 (InstantiatePrefabAsset)
+    ///       にフォールバックする。Editor は差分 (override) 付きの生成を注入して上書きする。
     if (!s_instantiateFn) return InstantiatePrefabAsset(scene, path, roots);
     return s_instantiateFn(scene, path, roots);
 }
@@ -47,7 +45,7 @@ Script::~Script()
     CancelEventSubscriptions();
 }
 
-// ── コンテキスト設定 ────────────────────────────────────────────────────────
+/// @name コンテキスト設定
 
 void Script::SetContext(Scene* scene, GameObject* gameObject)
 {
@@ -57,9 +55,9 @@ void Script::SetContext(Scene* scene, GameObject* gameObject)
 
 namespace {
 
-// Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
-// WHY: 空の Ref<T> を誤って operator-> で使った場合、MSVC はアクセス違反を SEH として通知する。
-//      C++ 例外ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
+/// Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
+/// @note 空の Ref<T> を誤って operator-> で使うと MSVC はアクセス違反を SEH として通知する。C++ 例外
+///       ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
 void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
 {
     script.enabled = false;
@@ -230,8 +228,8 @@ bool Script::ResumeCoroutine(Coroutine& coroutine)
         coroutine.Step();
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        // WHY 破棄せず手放すか: 巻き戻したフレームは中断点に居らず、以降 done() も
-        //     destroy() も呼べない。畳もうとすると障害を握った意味がなくなる。
+        /// @note 巻き戻したフレームは中断点に居らず、以降 done() も destroy() も呼べないため、
+        ///       畳まず手放す。畳もうとすると障害を握った意味がなくなる。
         coroutine.Release();
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, "Coroutine step");
@@ -245,9 +243,8 @@ bool Script::ResumeCoroutine(Coroutine& coroutine)
 
 void Script::SynchronizeEnabledState(bool gameObjectActive)
 {
-    // WHY: enabled は public 互換性を維持するため setter 化しない。
-    //      その代わり ScriptSystem の同期点で GameObject の有効状態と合わせて比較し、
-    //      変化した瞬間だけ通知する。
+    /// @note enabled は public 互換性を維持するため setter 化しない。代わりに ScriptSystem の
+    ///       同期点で GameObject の有効状態と合わせて比較し、変化した瞬間だけ通知する。
     const bool effectiveEnabled = enabled && gameObjectActive;
     if (!m_enableStateInitialized) {
         m_lastEnabled = effectiveEnabled;
@@ -328,8 +325,8 @@ void Script::UpdateInvocations(float dt)
         else
             entry.canceled = true;
 
-        // WHAT: callback 内から Invoke / CancelInvoke が呼ばれてもよい。
-        //      fn はコピーしてから呼び、vector の再配置や canceled 更新の影響を受けないようにする。
+        /// @note callback 内から Invoke / CancelInvoke が呼ばれてもよいよう、fn はコピーしてから呼び、
+        ///       vector の再配置や canceled 更新の影響を受けないようにする。
         if (fn && !ExecuteCallback(fn, "deferred callback"))
             break;
     }
@@ -354,7 +351,7 @@ void Script::UpdateFrameDelays()
 {
     if (m_frameDelays.empty()) return;
 
-    // Swap out so fn() callbacks can safely call FrameDelay() without invalidating our iterator.
+    /// @note Swap out so fn() callbacks can safely call FrameDelay() without invalidating our iterator.
     std::vector<FrameDelayEntry> current;
     current.swap(m_frameDelays);
 
@@ -372,8 +369,9 @@ void Script::UpdateFrameDelays()
 
 void Script::StartCoroutine(Coroutine co)
 {
-    if (co.Done()) return; // 即完了した (co_await を一度もしなかった) コルーチンは保持しない
-    // Tick 中に開始された場合は再配置を避けるため保留バッファへ積む。
+    /// @note 即完了した (co_await を一度もしなかった) コルーチンは保持しない
+    if (co.Done()) return;
+    /// @note Tick 中に開始された場合は再配置を避けるため保留バッファへ積む。
     if (m_isTickingCoroutines)
         m_pendingCoroutines.push_back(std::move(co));
     else
@@ -383,8 +381,8 @@ void Script::StartCoroutine(Coroutine co)
 void Script::StopAllCoroutines()
 {
     m_pendingCoroutines.clear();
-    // WHY 遅延させるか: コルーチンの中から呼ばれると、今 resume している
-    //     ハンドル自身を破棄することになる。ループを抜けてから畳む。
+    /// @note コルーチンの中から呼ばれると、今 resume しているハンドル自身を破棄することになる
+    ///       ため、ループを抜けてから畳む。
     if (m_isTickingCoroutines) {
         m_stopAllCoroutinesRequested = true;
         return;
@@ -397,15 +395,15 @@ void Script::UpdateCoroutines()
     if (m_coroutines.empty() && m_pendingCoroutines.empty()) return;
 
     m_isTickingCoroutines = true;
-    // WHY: 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回り、
-    //      m_coroutines は本ループ中に再確保されない。
+    /// @note 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回るため、
+    ///       m_coroutines は本ループ中に再確保されない。
     for (size_t i = 0; i < m_coroutines.size(); ++i) {
         if (!ResumeCoroutine(m_coroutines[i])) break;
         if (m_stopAllCoroutinesRequested) break;
     }
     m_isTickingCoroutines = false;
 
-    // 再開したコルーチンは次の中断点まで進んで戻っているため、ここでなら安全に畳める。
+    /// @note 再開したコルーチンは次の中断点まで進んで戻っているため、ここでなら安全に畳める。
     if (m_stopAllCoroutinesRequested) {
         m_stopAllCoroutinesRequested = false;
         m_coroutines.clear();
@@ -413,13 +411,13 @@ void Script::UpdateCoroutines()
         return;
     }
 
-    // 完了したコルーチンを除去する。
+    /// @note 完了したコルーチンを除去する。
     m_coroutines.erase(
         std::remove_if(m_coroutines.begin(), m_coroutines.end(),
             [](const Coroutine& c) { return c.Done(); }),
         m_coroutines.end());
 
-    // ティック中に開始されたコルーチンを取り込む。
+    /// @note ティック中に開始されたコルーチンを取り込む。
     for (auto& c : m_pendingCoroutines)
         m_coroutines.push_back(std::move(c));
     m_pendingCoroutines.clear();
@@ -427,12 +425,11 @@ void Script::UpdateCoroutines()
 
 void Script::CancelEventSubscriptions()
 {
-    // ScriptEventBus の購読はオーナー単位で一括解除する。
-    // WHY ここで必ず行うか: ~Script から通るこの経路が、DLL ホットリロードで
-    //     解放されるコードを指すハンドラがバスに残らないことの唯一の保証になる。
+    /// @note ScriptEventBus の購読はオーナー単位で一括解除する。~Script から通るこの経路が、DLL
+    ///       ホットリロードで解放されるコードを指すハンドラがバスに残らないことの唯一の保証になる。
     ScriptEventBus::UnsubscribeOwner(this);
 
-    // 個別に登録された解除処理 (将来の別バス用の拡張点)。
+    /// @note 個別に登録された解除処理 (将来の別バス用の拡張点)。
     for (auto& unsubscribe : m_eventUnsubscribers) {
         if (unsubscribe) unsubscribe(this);
     }
@@ -459,24 +456,24 @@ void Script::ResetLifecycleState()
     CancelInvoke();
     StopAllCoroutines();
     CancelEventSubscriptions();
-    // 次の OnEnable を「初回」として扱わせる。モードをまたぐ直前に OnDisable を
-    // 出し終えているため、ここを残すと新しいモードの最初の OnEnable が落ちる。
+    /// @note 次の OnEnable を「初回」として扱わせる。モードをまたぐ直前に OnDisable を
+    ///       出し終えているため、ここを残すと新しいモードの最初の OnEnable が落ちる。
     m_enableStateInitialized = false;
     m_lastEnabled            = true;
-    // 障害ラッチは畳んだライフサイクルのもの。次の OnAwake からやり直す。
-    // NOTE: 障害時に落とされた enabled はここでは戻さない。ユーザーが自分で切った
-    //       のか障害で落ちたのかを区別できず、切ったつもりの Script が復活するため。
+    /// @note 障害ラッチは畳んだライフサイクルのもの。次の OnAwake からやり直す。
+    /// @note 障害時に落とされた enabled はここでは戻さない。ユーザーが自分で切ったのか障害で
+    ///       落ちたのかを区別できず、切ったつもりの Script が復活するため。
     m_runtimeFaulted = false;
 }
 
-// ── シーン操作ショートハンド ────────────────────────────────────────────────
+/// @name シーン操作ショートハンド
 
 
 
-// ── Unity: Object.Destroy ───────────────────────────────────────────────────
+/// @name Unity: Object.Destroy
 
 
-// ── Animator ショートハンド ─────────────────────────────────────────────────
+/// @name Animator ショートハンド
 
 void Script::QueueRenderPass(UserRenderPassDesc desc) const
 {
@@ -490,15 +487,15 @@ const renderer::ShaderDescriptor* Script::GetShaderDescriptor(std::string_view s
     auto* resources = renderer::ResourceManager::Active();
     if (!resources) return nullptr;
 
-    // WHY: Script は ResourceManager を直接所有しない。ここで解決だけを代行し、
-    //      MaterialComponent は渡された Descriptor に従って純粋にバイト列を書き換える。
+    /// @note Script は ResourceManager を直接所有しないためここで解決だけを代行し、
+    ///       MaterialComponent は渡された Descriptor に従って純粋にバイト列を書き換える。
     const auto handle = resources->LoadShader(std::string(shaderPath));
     if (const auto* shader = resources->Get(handle))
         return &shader->GetDescriptor();
     return nullptr;
 }
 
-// ── PostProcess ─────────────────────────────────────────────────────────────
+/// @name PostProcess
 
 renderer::PostProcessSettings& Script::GetRuntimePostProcessSettings()
 {

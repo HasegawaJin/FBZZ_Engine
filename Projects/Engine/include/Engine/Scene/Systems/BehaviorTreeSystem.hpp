@@ -3,15 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// 実行位置 (Phase::Navigation):
-/// NavMeshSensorSystem → (PerceptionSystem) → BehaviorTreeSystem → NavMeshPatrolSystem → NavigationSystem
-///
-/// WHY Patrol より前か: NavMeshPatrolSystem は `agent->target.IsValid()` で
-/// 追跡中の巡回を止める。BT が先に SetTarget を呼べば同じフレームで巡回が抑止される。
-/// 逆順だと Patrol の SetDestination (target を INVALID にする) と
-/// 毎フレーム上書きし合って振動する。
-///
-/// WHY Sensor より後か: 条件ノードはそのフレームに書かれた知覚結果を読む必要がある。
+/// 実行順 (Phase::Navigation): NavMeshSensorSystem → BehaviorTreeSystem → NavMeshPatrolSystem → NavigationSystem
+/// @note Patrol より前: BT が先に `SetTarget` を呼べば同フレームで巡回を抑止できる。逆順だと
+///       Patrol の `SetDestination` (target を INVALID にする) と毎フレーム上書きし合い振動する。
+/// @note Sensor より後: 条件ノードはそのフレームに書かれた知覚結果を読む必要がある。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

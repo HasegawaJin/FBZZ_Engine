@@ -1,4 +1,4 @@
-/// @file    RenderPasses/Geometry/TrailRenderPass.cpp
+/// @file    TrailRenderPass.cpp
 /// @brief   TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
@@ -30,20 +30,17 @@ namespace fbzz::scene {
 
 namespace {
 
-// TrailVertex / TrailCB の定義は GeometryPasses.hpp。
-// WHY: per-particle Trail のリボン (ParticlePass.cpp) が同じ頂点・同じ CB・同じシェーダーを使う。
-//      ここに閉じたままだと、片方だけ直して「Trail ノードは正しいが粒子の帯は崩れる」形で壊れる。
+/// TrailVertex / TrailCB の定義は GeometryPasses.hpp。
+/// @note per-particle Trail (ParticlePass.cpp) と共有。片方だけ直すと頂点・CB・シェーダーが食い違う。
 
-// TrailDrawItem — Trail の透明描画をカメラから遠い順へ並べるための一時データ。
+/// TrailDrawItem — Trail の透明描画をカメラから遠い順へ並べるための一時データ。
 struct TrailDrawItem {
     renderer::DrawCall drawCall;
     float distanceSq = 0.0f;
 };
 
-// 帯の頂点バッファ。Component に 1 本持たせず、描くたびにプールから借りる。
-// WHY: 帯はカメラへ正対するのでビューごとに形が変わる。1 本だと Scene View と Game View が
-//      同じ実体を 2 回書き、DX12 では先に記録した Scene View の Draw まで Game View の形を読む。
-//      前フレームの GPU がまだ読んでいる実体を書き直す問題もある (詳細は DynamicBufferPool.hpp)。
+/// @brief 帯の頂点バッファプール。Component に 1 本持たせず、描くたびに借りる。
+/// @note ビュー依存で形が変わるため 1 本共有だと DX12 で他 View の形を読み、GPU 使用中の実体も上書きする (`DynamicBufferPool.hpp`)。
 renderer::DynamicVertexBufferPool g_trailVertexPool;
 
 void InitTrailStorage(TrailComponent& trail)
@@ -203,12 +200,8 @@ void BuildTrailVertices(
     if (points.size() < 2)
         return;
 
-    // 各点の幅方向。マイター接合そのものは粒子リボンと共通で、Trail だけが
-    // alignment (View / Local / Velocity) で幅方向の決め方を変える。
-    //
-    // NOTE: 長さ 0 の線分の扱いが変わった。以前は FORWARD へ倒して «向きがある» ものと
-    //       して扱っていたが、共通版では寄与しない。重なった点は minVertexDist で
-    //       間引かれるので実データでは出ないが、出れば «前後の向きだけで決まる» 側になる。
+    /// @note 各点の幅方向はマイター接合が粒子リボンと共通、alignment (View/Local/Velocity) だけ Trail 固有。
+    ///       長さ 0 の線分は前後の向きだけで決まる (minVertexDist で間引かれ実データでは出ない)。
     std::vector<math::Vector3> positions;
     positions.reserve(points.size());
     for (const TrailPoint& point : points) positions.push_back(point.position);
@@ -255,8 +248,8 @@ void BuildTrailVertices(
     }
 }
 
-// 多キー色を CB へ詰める。キーが足りなければ何も書かず、シェーダーは
-// colorStart / colorEnd の 2 点へ落ちる (既存シーンの見た目を変えないため)。
+/// 多キー色を CB へ詰める。キーが足りなければ何も書かず、シェーダーは
+/// colorStart / colorEnd の 2 点へ落ちる (既存シーンの見た目を変えないため)。
 void FillTrailGradient(const TrailComponent& trail, TrailCB& cb)
 {
     if (!TrailUsesColorGradient(trail)) return;
@@ -265,7 +258,7 @@ void FillTrailGradient(const TrailComponent& trail, TrailCB& cb)
     for (uint32_t i = 0; i < count; ++i) {
         const ParticleGradientKey& key = trail.colorGradient.keys[i];
         cb.gradientColors[i] = ParticleSrgbToLinear(key.color);
-        // 時刻は float4 × 2 に詰めてある (HLSL の float 配列は 1 要素 16 バイトを食う)。
+        /// @note 時刻は float4 × 2 に詰めてある (HLSL の float 配列は 1 要素 16 バイトを食う)。
         math::Vector4& slot = cb.gradientTimes[i / 4];
         switch (i % 4) {
         case 0:  slot.x = key.time; break;
@@ -294,7 +287,7 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
     if (!trail.trailCB.IsValid())
         trail.trailCB = resources.CreateConstantBuffer(sizeof(TrailCB));
 
-    // materialPath が設定されている場合: .mat の albedo テクスチャを優先する。
+    /// @note materialPath が設定されている場合: .mat の albedo テクスチャを優先する。
     if (!trail.materialPath.empty()) {
         const bool matChanged = (trail.loadedMaterialPath != trail.materialPath);
         if (matChanged) {
@@ -315,7 +308,7 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
             }
         }
     } else if (!trail.texture.IsValid()) {
-        // 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
+        /// @note 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
         trail.texture = resources.GetWhiteTexture();
         trail.loadedTexturePath.clear();
     }
@@ -355,8 +348,8 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, f
 {
     RingExpireOld(trail, currentTime);
 
-    // 瞬間移動の切断。sampleInterval の «待ち» より前に判定する ─ 跳んだフレームを
-    // 待たせると、その 1 フレームのあいだ古い点と新しい点が 1 本の筋でつながる。
+    /// @note 瞬間移動の切断。sampleInterval の «待ち» より前に判定する ─ 跳んだフレームを
+    ///       待たせると、その 1 フレームのあいだ古い点と新しい点が 1 本の筋でつながる。
     if (trail.ringCount > 0
         && TrailIsDiscontinuous(trail, RingAt(trail, trail.ringCount - 1).position, currentPos)) {
         ClearRing(trail);
@@ -379,7 +372,7 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, f
 
 } // namespace
 
-// ─── IRenderPass ──────────────────────────────────────────────────────────────
+/// @name IRenderPass
 
 std::string_view TrailRenderPass::Name() const { return "Trail"; }
 
@@ -431,7 +424,7 @@ void TrailRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             trail->ringHead = 0;
             trail->ringTail = 0;
             trail->ringCount = 0;
-            // 折れ線が与えられていればそれを、無ければ従来どおり 2 端点を描く。
+            /// @note 折れ線が与えられていればそれを、無ければ従来どおり 2 端点を描く。
             if (trail->beamPoints.size() >= 2) {
                 for (const math::Vector3& point : trail->beamPoints)
                     RingPushBack(*trail, { transformPoint(point), currentTime });
@@ -465,7 +458,7 @@ void TrailRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         resources.Update(vertexBuffer, vertices.data(), uploadVertices * sizeof(TrailVertex));
 
         TrailCB cb{};
-        // オーサリング値 (sRGB) → リニア。素材のリニア化はシェーダー側が行う。
+        /// @note オーサリング値 (sRGB) → リニア。素材のリニア化はシェーダー側が行う。
         cb.colorStart = ParticleSrgbToLinear(trail->colorStart);
         cb.colorEnd = ParticleSrgbToLinear(trail->colorEnd);
         FillTrailGradient(*trail, cb);

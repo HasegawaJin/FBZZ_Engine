@@ -3,16 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// WHY 専用パネルにするか:
-///   合成パラメーターは Inspector の縦 1 列に並べても「どれを動かすと何が変わるか」が
-///   分からない。プリセットから始めて Randomize / Mutate で当たりを引き、波形を見ながら
-///   詰める、という探索の手順そのものを UI にする必要がある。
-///
-/// WHY 状態を自前で持たないか:
-///   編集中の値は EditorContext::sfxEditorSpec が唯一の実体で、このパネルはそれを
-///   描く面。プリセット読み込み・Randomize・保存などはすべて sfx.* Operator を
-///   呼ぶだけにしてあり、人がボタンを押しても AI が editor.op.invoke を呼んでも
-///   同じ実装を通る (Docs/design/editor-operator-model.md)。
+/// @note 合成パラメーターは Inspector の縦 1 列では「どれを動かすと何が変わるか」が分からないため、
+///       プリセットから始めて Randomize / Mutate で当たりを引き波形を見ながら詰める UI にする。
+///       編集中の値は EditorContext::sfxEditorSpec が唯一の実体で、このパネルはそれを描く面。
+///       読み込み・Randomize・保存は sfx.* Operator を通し、人の操作も AI の editor.op.invoke も
+///       同じ実装を通る (Docs/design/editor-operator-model.md)。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <cstdint>
@@ -50,7 +45,7 @@ private:
     size_t             m_sampleCount      = 0;
 
     bool m_autoPreview = true;
-    // 値が変わったが、まだ鳴らしていない。操作を離してから 1 度だけ鳴らす。
+    /// 値が変わったが、まだ鳴らしていない。操作を離してから 1 度だけ鳴らす。
     bool m_previewPending = false;
 };
 

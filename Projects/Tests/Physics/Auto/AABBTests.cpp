@@ -23,7 +23,7 @@ physics::AABB Box(const math::Vector3& center, float halfSize)
 
 class AABBTest : public testkit::Fixture {};
 
-// --- 重なり判定 -------------------------------------------------------------
+/// @name 重なり判定
 
 TEST_F(AABBTest, OverlapsIsTrueForBoxesThatShareVolume)
 {
@@ -32,7 +32,7 @@ TEST_F(AABBTest, OverlapsIsTrueForBoxesThatShareVolume)
 
 TEST_F(AABBTest, OverlapsTreatsTouchingFacesAsOverlapping)
 {
-    // 境界は閉区間。ちょうど面が接している状態を «重なっている» 側に倒す。
+    /// @note 境界は閉区間。ちょうど面が接している状態を «重なっている» 側に倒す。
     const physics::AABB a = Box(math::Vector3::ZERO, 1.0f);
     const physics::AABB b = Box(math::Vector3(2.0f, 0.0f, 0.0f), 1.0f);
 
@@ -51,8 +51,8 @@ TEST_F(AABBTest, OverlapsIsFalseWhenSeparatedOnTheYAxis)
 
 TEST_F(AABBTest, OverlapsIsFalseWhenSeparatedOnTheZAxis)
 {
-    // 1 軸でも離れていれば非重なり。3 軸それぞれを別のテストにしているのは、
-    // 判定式の軸を書き間違えたときに «どの軸か» がテスト名で分かるようにするため。
+    /// @note 1 軸でも離れていれば非重なり。3 軸それぞれを別のテストにしているのは、
+    ///       判定式の軸を書き間違えたときに «どの軸か» がテスト名で分かるようにするため。
     EXPECT_FALSE(Box(math::Vector3::ZERO, 1.0f).Overlaps(Box(math::Vector3(0.0f, 0.0f, 2.1f), 1.0f)));
 }
 
@@ -73,7 +73,7 @@ TEST_F(AABBTest, OverlapsIsSymmetric)
     }
 }
 
-// --- 合成 -------------------------------------------------------------------
+/// @name 合成
 
 TEST_F(AABBTest, MergeContainsBothInputs)
 {
@@ -123,7 +123,7 @@ TEST_F(AABBTest, MergedBoxOverlapsBothInputs)
     }
 }
 
-// --- 中心と半径 -------------------------------------------------------------
+/// @name 中心と半径
 
 TEST_F(AABBTest, CenterAndExtentsReconstructTheOriginalBounds)
 {

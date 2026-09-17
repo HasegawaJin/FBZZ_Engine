@@ -41,11 +41,11 @@ std::vector<asset::FloatKey> FloatRamp()
 
 class AnimationSamplingTest : public testkit::EngineFixture {};
 
-// --- 空・1 本 ---------------------------------------------------------------
+/// @name 空・1 本
 
 TEST_F(AnimationSamplingTest, EmptyKeysFallBackToTheGivenValue)
 {
-    // キーが無いチャンネルは «触らない» が正。0 を返すとボーンが原点へ吸われる。
+    /// @note キーが無いチャンネルは «触らない» が正。0 を返すとボーンが原点へ吸われる。
     const math::Vector3 fallback{ 1.0f, 2.0f, 3.0f };
 
     EXPECT_VEC3_NEAR(asset::SampleVectorKeys({}, 5.0, fallback), fallback,
@@ -65,7 +65,7 @@ TEST_F(AnimationSamplingTest, ASingleKeyHoldsItsValueForever)
                      math::Vector3(7.0f, 8.0f, 9.0f), testkit::kTolerance);
 }
 
-// --- 端点と範囲外 -----------------------------------------------------------
+/// @name 端点と範囲外
 
 TEST_F(AnimationSamplingTest, ReturnsTheEndpointsExactly)
 {
@@ -79,7 +79,7 @@ TEST_F(AnimationSamplingTest, ReturnsTheEndpointsExactly)
 
 TEST_F(AnimationSamplingTest, ClampsOutsideTheKeyRange)
 {
-    // 尺の外を «ループの先頭» や «外挿» にしない。繰り返しは呼び出し側の仕事。
+    /// @note 尺の外を «ループの先頭» や «外挿» にしない。繰り返しは呼び出し側の仕事。
     const auto keys = VectorRamp();
 
     EXPECT_VEC3_NEAR(asset::SampleVectorKeys(keys, -50.0, math::Vector3::ZERO),
@@ -88,7 +88,7 @@ TEST_F(AnimationSamplingTest, ClampsOutsideTheKeyRange)
                      math::Vector3(10.0f, 20.0f, -30.0f), testkit::kTolerance);
 }
 
-// --- 補間 -------------------------------------------------------------------
+/// @name 補間
 
 TEST_F(AnimationSamplingTest, InterpolatesLinearlyBetweenTwoKeys)
 {
@@ -102,7 +102,7 @@ TEST_F(AnimationSamplingTest, InterpolatesLinearlyBetweenTwoKeys)
 
 TEST_F(AnimationSamplingTest, StepInterpolationHoldsThePreviousKey)
 {
-    // 表情の切り替えやフラグは «途中の値» を作ってはいけない。
+    /// @note 表情の切り替えやフラグは «途中の値» を作ってはいけない。
     const auto keys = VectorRamp();
 
     EXPECT_VEC3_NEAR(
@@ -112,7 +112,7 @@ TEST_F(AnimationSamplingTest, StepInterpolationHoldsThePreviousKey)
 
 TEST_F(AnimationSamplingTest, PicksTheRightSegmentAmongManyKeys)
 {
-    // upper_bound の境界。1 つずれると «常に前のキーの値» になる。
+    /// @note upper_bound の境界。1 つずれると «常に前のキーの値» になる。
     const std::vector<asset::VectorKey> keys{
         { 0.0, { 0.0f, 0.0f, 0.0f } },
         { 1.0, { 10.0f, 0.0f, 0.0f } },
@@ -130,7 +130,7 @@ TEST_F(AnimationSamplingTest, PicksTheRightSegmentAmongManyKeys)
 
 TEST_F(AnimationSamplingTest, SurvivesTwoKeysAtTheSameTime)
 {
-    // 書き出し側が同じ時刻へ 2 本置くことがある。0 除算で NaN を返さないこと。
+    /// @note 書き出し側が同じ時刻へ 2 本置くことがある。0 除算で NaN を返さないこと。
     const std::vector<asset::VectorKey> keys{
         { 0.0, { 0.0f, 0.0f, 0.0f } },
         { 1.0, { 10.0f, 0.0f, 0.0f } },
@@ -143,7 +143,7 @@ TEST_F(AnimationSamplingTest, SurvivesTwoKeysAtTheSameTime)
     EXPECT_FALSE(std::isnan(sampled.x));
 }
 
-// --- クォータニオン ---------------------------------------------------------
+/// @name クォータニオン
 
 TEST_F(AnimationSamplingTest, SlerpsRotationsAndKeepsThemNormalised)
 {
@@ -173,7 +173,7 @@ TEST_F(AnimationSamplingTest, RotationStepHoldsThePreviousKey)
                      math::Quaternion::Identity(), testkit::kTolerance);
 }
 
-// --- スカラー ---------------------------------------------------------------
+/// @name スカラー
 
 TEST_F(AnimationSamplingTest, SamplesFloatsLinearly)
 {
@@ -191,7 +191,7 @@ TEST_F(AnimationSamplingTest, EmptyFloatKeysGiveZero)
 
 TEST_F(AnimationSamplingTest, CubicMatchesLinearAtTheKeysThemselves)
 {
-    // 接線が何であれ、キー上の値はキーの値。ここがずれると «キーを打った瞬間だけ飛ぶ»。
+    /// @note 接線が何であれ、キー上の値はキーの値。ここがずれると «キーを打った瞬間だけ飛ぶ»。
     const auto keys = FloatRamp();
 
     EXPECT_NEAR(asset::SampleFloatKeys(keys, 0.0, asset::AnimInterp::Cubic), 0.0f,
@@ -202,8 +202,8 @@ TEST_F(AnimationSamplingTest, CubicMatchesLinearAtTheKeysThemselves)
 
 TEST_F(AnimationSamplingTest, CubicWithFlatTangentsStaysInsideTheRange)
 {
-    // 接線 0 の Hermite は行き過ぎない。オーバーシュートすると
-    // «クリップに無いポーズ» が 1 フレームだけ出る。
+    /// @note 接線 0 の Hermite は行き過ぎない。オーバーシュートすると
+    ///       «クリップに無いポーズ» が 1 フレームだけ出る。
     const auto keys = FloatRamp();
 
     for (int step = 0; step <= 20; ++step) {

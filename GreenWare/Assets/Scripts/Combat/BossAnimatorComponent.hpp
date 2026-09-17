@@ -3,23 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY AI と Animator の間に 1 枚挟むか:
-///   Boss.animcontroller のパラメーター名は 14 個あり、しかも「Charge は Trigger で
-///   Charging は Bool」のように 1 つの行動が 2 本のパラメーターで表される。AI が
-///   SetTrigger("Charge") と SetBool("Charging", true) を直接叩く形にすると、綴りを
-///   間違えても SetTrigger は黙って何もしないうえ、片方だけ書き忘れると「突進の溜めまでは
-///   出るが走らない」という、コードを読んでも原因の出ない壊れ方をする。行動 1 つを
-///   関数 1 つに閉じて、パラメーター名をこのファイルの外へ出さない。
-///
-/// WHY 全クリップがインプレースである前提を持つか:
-///   Assets/Models/Boss/README.md の契約。21 クリップすべて root motion = zero で、
-///   移動・旋回・ジャンプの放物線はエンジン側の Root が担当する。だからこのスクリプトは
-///   Animator に「今どれくらいの速さで動いているか」を教えるだけで、逆に Animator から
-///   移動量をもらうことは一切しない (Animator の Root Motion Mode は None)。
-///
-/// WHY 速度を Transform の差分から取るか:
-///   Boss の移動を最終的に何が駆動するか (RigidBody / CharacterController / AI の直書き)
-///   はまだ決まっていない。ワールド位置の差分なら、そのどれになっても同じ値が出る。
+/// @note AI と Animator の間に挟む理由。14 個のパラメーター名を AI に直接叩かせると、
+///       綴りミスは黙って無視され、対のパラメーターの片方だけ書き忘れても気付けない。
+///       行動 1 つを関数 1 つに閉じ、パラメーター名はこのファイルの外へ出さない。
+/// @note 全 21 クリップは root motion = zero が前提 (Assets/Models/Boss/README.md)。
+///       移動・旋回はエンジン側の Root が担当するため、速度は Transform の位置差分から
+///       取る (駆動方式が RigidBody / CharacterController のどれでも同じ値になる)。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -73,11 +62,8 @@ public:
     FBZZ_FIELD_RANGE(float, aimFadeIn, 0.25f, "フェードイン", 0.0f, 2.0f)
     FBZZ_FIELD_RANGE(float, aimFadeOut, 0.35f, "フェードアウト", 0.0f, 2.0f)
 
-    // WHY 深さを重みで持つか (2026-09-06):
-    //   被弾の加算レイヤーは締めと弾きでしか鳴らしておらず、1〜4 段目の斬撃では
-    //   «斬られた側» の芝居が一切出ていなかった (止めと火花だけ)。毎段鳴らすと
-    //   同じ深さの仰け反りが連続して «痙攣» に見えるので、軽い一撃は重みを下げて
-    //   «触れた» に留め、締めだけ満額で «効いた» を出す。
+    /// @note 深さは重みで持つ。毎段満額で鳴らすと同じ深さの仰け反りが連続して «痙攣» に
+    ///       見えるため、軽い一撃は重みを下げて «触れた» に留め、締めだけ満額にする。
     FBZZ_GROUP("Hit Layer")
     FBZZ_FIELD(std::string, hitLayerName, "Add_Hit", "レイヤー名")
     FBZZ_TOOLTIP("Hit_Add を加算する Additive レイヤー。Trigger «Hit» で 1 発鳴る")
@@ -102,18 +88,10 @@ public:
     FBZZ_FIELD_RANGE(float, previewHoldTime, 2.5f, "Hold Time", 0.0f, 12.0f)
     FBZZ_TOOLTIP("Charge / Beam プレビューでループを回し続ける秒数")
 
-    // WHY 再生速度を実速へ比例させるか (2026-09-11):
-    //   Locomotion のブレンドツリーは Speed で Idle → Walk_Crawl を混ぜるだけで、
-    //   クリップの再生速度は 1.0 固定だった。歩調は «しきい値の 2 m/s» で作って
-    //   あるので、それより速く動かすと **脚は同じ速さで掻いているのに体だけ滑る**。
-    //   突進 (Charge_Run) も同じで、速さを上げるほど «氷の上を滑る重機» になる。
-    //   体の実速をクリップの想定速度で割って再生速度にすれば、速さを何 m/s に
-    //   変えても足の運びが付いてくる ── 速さの調整とアニメーションの調整が
-    //   別々の数字にならない。
-    //
-    // WHY 攻撃中は掛けないか: 踏みつけ・照射・跳躍は «当たる時刻» を Inspector の
-    //   秒数とクリップのフレームで合わせて作ってある (README の f23 等)。
-    //   再生速度を触ると判定と絵がずれる ── 走りと突進だけが対象。
+    /// @note 再生速度は実速に比例させる。クリップは 1.0 固定で歩調がしきい値 2 m/s 基準の
+    ///       ため、速く動かすと脚は同じ速さで掻くのに体だけ滑る。実速 ÷ 想定速度で追従させる。
+    /// @note 対象は走りと突進だけ。踏みつけ・照射・跳躍は当たる時刻をクリップのフレームと
+    ///       秒数で合わせてある (README の f23 等) ため、速度を変えると判定と絵がずれる。
     FBZZ_GROUP("再生速度")
     FBZZ_FIELD(bool, scaleClipToSpeed, true, "速さに再生を比例させる")
     FBZZ_TOOLTIP("走り / 突進の再生速度を «実速 ÷ 想定速度» にする。"
@@ -138,7 +116,8 @@ public:
     void OnStart()  override;
     void OnUpdate() override;
 
-    // ── AI から呼ぶ入口 ─────────────────────────────────────────────────────
+    /// @name AI から呼ぶ入口
+    /// @{
 
     /// Speed / Turn を明示的に与える。Auto Drive を切っているときに使う。
     /// yawRate は度/秒で、正が左回り。
@@ -149,8 +128,8 @@ public:
 
     /// 大ジャンプの踏み切り。JumpUp → FallIdle (滞空) と繋がる。
     /// 上向き初速を与えるのは JumpUp の f33 = 1.07 秒後。
-    /// WHY 接地を同時に落とすか: Grounded を true のまま跳ぶと、JumpUp が終わった
-    ///     次のフレームに FallIdle → Land が成立して、滞空せずに着地モーションへ落ちる。
+    /// @note 接地も同時に落とす。Grounded を true のまま跳ぶと、JumpUp が終わった
+    ///       次のフレームに FallIdle → Land が成立して滞空せず着地モーションへ落ちる。
     void Jump();
 
     /// 接地状態。false の間 FallIdle を回し、true にした瞬間 Land へ入る。
@@ -173,28 +152,21 @@ public:
 
     /// 被弾リアクション。加算レイヤーへ 1 発差し込む。strength は一撃の重さ [0,1] で、
     /// レイヤーの重み (Light Weight 〜 1) になる。
-    ///
-    /// WHY 再生中の重ね掛けを気にしなくてよいか: Add_Hit の Hit ステートは自分自身への
-    ///     遷移を始めない (AnimatorSystem の自己遷移スキップ) ので、鳴っている最中の
-    ///     Trigger は HitIdle へ戻った直後に 1 発として出る。取りこぼしではなく後回し。
+    /// @note Add_Hit の Hit ステートは自己遷移しない (AnimatorSystem の自己遷移スキップ) ため、
+    ///       鳴っている最中の Trigger は HitIdle へ戻った直後に後回しで 1 発として出る。
     void ReactToHit(float strength = 1.0f);
 
     /// 撃破。Death は崩れたまま最終フレームで止まり、Idle へは戻らない。
     void SetDead(bool dead);
 
     /// 盤面のテンポ (BossAiComponent の Tempo) を預ける。
-    ///
-    /// WHY AI から直に Animator の速度を書かせないか: 再生速度は 1 つしか無く、
-    ///     こちらは足の運びを実速へ合わせるために同じ値を書く。2 か所から書くと
-    ///     後から書いた方が相手を消す ── テンポが効かなくなるか、足が滑るかの
-    ///     どちらかが «たまに» 起きる。掛け合わせる場所を 1 つに決める。
+    /// @note 再生速度は 1 つしか無く、足の運びを実速へ合わせる値と 2 か所から書くと
+    ///       後から書いた方が相手を消す。掛け合わせる場所をここ 1 つに決める。
     void SetTempo(float tempo) { m_tempo = std::max(tempo, 0.0f); }
 
     /// 今の移動速度 [m/s]。歩容を選ぶのに使った «均した後» の値。
-    ///
-    /// WHY 公開するか: 足音も同じ速さで歩容 (巡回クロール / 突進クロール) を選ぶ。
-    ///     音の側が生の速度から選び直すと、平滑化の分だけ境目がずれ、脚が巡回の
-    ///     動きをしているのに音だけ突進へ切り替わるフレームができる。
+    /// @note 足音も同じ値で歩容を選ぶ。音の側が生の速度から選び直すと平滑化の分だけ境目が
+    ///       ずれ、脚は巡回のまま音だけ突進へ切り替わるフレームができる。
     [[nodiscard]] float Speed() const { return m_speed; }
 
     [[nodiscard]] bool IsDead()     const { return m_dead; }
@@ -203,6 +175,7 @@ public:
     [[nodiscard]] bool IsGrounded() const { return m_grounded; }
     /// Locomotion / その場旋回のいずれでもない = 何かのモーション中。
     [[nodiscard]] bool IsBusy() const;
+    /// @}
 
 private:
     /// ワールド位置と向きの差分から Speed / Turn を求める。
@@ -250,14 +223,14 @@ inline void BossAnimatorComponent::OnStart()
     m_previewRemaining = -1.0f;
     m_previewPending   = PreviewPending::None;
 
-    // Play をまたぐと Animator は Controller の初期値へ戻る。こちらの真偽値と
-    // 食い違ったまま始まると、「立ち上がりだけ照射している」ような状態が残る。
+    /// @note Play をまたぐと Animator は Controller の初期値へ戻る。こちらの真偽値と
+    ///       食い違ったまま始まると、「立ち上がりだけ照射している」ような状態が残る。
     animator.SetBool(bossanim::kGrounded, true);
     animator.SetBool(bossanim::kCharging, false);
     animator.SetBool(bossanim::kBeaming,  false);
     animator.SetBool(bossanim::kIsDead,   false);
     animator.SetLayerWeight(aimLayerName, 0.0f);
-    // 被弾レイヤーは満額から。前の Play が軽い一撃で終わっていても、最初の被弾が浅くならない。
+    /// @note 被弾レイヤーは満額から。前の Play が軽い一撃で終わっていても、最初の被弾が浅くならない。
     if (!hitLayerName.empty()) animator.SetLayerWeight(hitLayerName, 1.0f);
 }
 
@@ -276,35 +249,28 @@ inline void BossAnimatorComponent::OnUpdate()
     debugSpeed = m_speed;
     debugTurn  = m_turn;
 
-    // 対象は «走っている» 状態だけ。突進は Locomotion ではない別のステートなので、
-    // 走り (IsBusy() が false) と突進 (m_charging) の 2 つを明示的に採る。
+    /// @note 対象は «走っている» 状態だけ。突進は Locomotion ではない別のステートなので、
+    ///       走り (IsBusy() が false) と突進 (m_charging) の 2 つを明示的に採る。
     float scale = 1.0f;
-    // 止まっているときに比を掛けると Idle の呼吸まで遅くなる。
-    // 動いていない間は素の 1.0 に戻す。
+    /// @note 止まっているときに比を掛けると Idle の呼吸まで遅くなる。
+    ///       動いていない間は素の 1.0 に戻す。
     if (scaleClipToSpeed && (m_charging || !IsBusy()) && m_speed > 0.2f) {
         const float reference = std::max(m_charging ? chargeClipSpeed : walkClipSpeed, 0.1f);
         scale = std::clamp(m_speed / reference,
                            std::max(clipSpeedMin, 0.01f), std::max(clipSpeedMax, 0.01f));
     }
-    // 当事者の凍結 (ヒットストップの手応え) が掛かっている間は書かない。
-    //
-    // WHY 要るか (2026-09-11): 凍結は «この相手の再生速度を 0 にする» で作られている
-    //     ので、こちらが毎フレーム書き続けると **次のフレームで解けて凍結が
-    //     一切効かない**。斬った手応えの担当 (animMaxSeconds、既定 0.18 秒) が
-    //     丸ごと死ぬ ── しかも «少し軽い» ではなく «無い» になるので、
-    //     ヒットストップを触っても何も変わらないという迷い方をする。
-    //     秒数を数えるのは固めた側の仕事なので、こちらは «今固まっているか» だけ聞く。
+    /// @note 当事者の凍結 (ヒットストップの手応え) が掛かっている間は書かない。凍結は
+    ///       «再生速度を 0 にする» で作られているため、毎フレーム書き続けると次のフレームで
+    ///       解けて丸ごと効かなくなる。秒数を数えるのは固めた側の仕事、ここは状態だけ聞く。
     const auto* stop = HitstopManagerComponent::Instance();
     if (stop && stop->IsAnimationFrozen(scene.Self())) {
         debugClipSpeed = 0.0f;
         return;
     }
 
-    // WHY テンポを掛けて «ここだけ» が書くか: Animator の再生速度は 1 つしか無いのに、
-    //     書きたい理由が 2 つある (盤面のテンポと足の運び)。別々に書くと後から
-    //     書いた方が相手を消すので、AI はテンポを SetTempo で預け、掛け合わせるのは
-    //     この 1 か所に閉じる。比を掛けない構成 (トグル off) でもここが書くので、
-    //     テンポが «黙って 1.0 に戻る» 経路が残らない。
+    /// @note テンポと足の運びの比を掛け合わせるのはここ 1 か所に閉じる。再生速度は 1 つしか
+    ///       無く、別々に書くと後から書いた方が相手を消すため。トグル off でもここが書くので
+    ///       テンポが «黙って 1.0 に戻る» 経路は残らない。
     animator.SetSpeed(m_tempo * scale);
     debugClipSpeed = scale;
 }
@@ -313,8 +279,8 @@ inline void BossAnimatorComponent::SampleLocomotion(float dt)
 {
     const Vector3 position = transform.worldPosition;
     const Vector3 facing   = transform.worldRotation * Vector3::FORWARD;
-    // 真上・真下を向いた姿勢では平面成分が消える。Normalized() は長さ 0 で assert
-    // するので、前フレームの向きへ落として «回っていない» 扱いにする。
+    /// @note 真上・真下を向いた姿勢では平面成分が消える。Normalized() は長さ 0 で assert
+    ///       するので、前フレームの向きへ落として «回っていない» 扱いにする。
     const Vector3 forward  = Vector3{ facing.x, 0.0f, facing.z }.NormalizedOr(m_lastForward);
 
     if (!m_hasLastPose || dt <= 0.0f) {
@@ -327,7 +293,7 @@ inline void BossAnimatorComponent::SampleLocomotion(float dt)
     const Vector3 delta{ position.x - m_lastPosition.x, 0.0f, position.z - m_lastPosition.z };
     const float   speed = delta.Length() / dt;
 
-    // 平面上の符号付き回転角。Cross の y 成分が回転方向をそのまま持っている。
+    /// @note 平面上の符号付き回転角。Cross の y 成分が回転方向をそのまま持っている。
     const float   cross = Vector3::Cross(m_lastForward, forward).y;
     const float   dot   = std::clamp(Vector3::Dot(m_lastForward, forward), -1.0f, 1.0f);
     const float   yawRate = std::atan2(cross, dot) * RAD2DEG / dt;
@@ -335,8 +301,8 @@ inline void BossAnimatorComponent::SampleLocomotion(float dt)
     m_lastPosition = position;
     m_lastForward  = forward;
 
-    // 差分から取った値は 1 フレーム単位で跳ねる。指数補間で均さないと、止まっている
-    // はずの Boss が Idle と Walk の間で震え続ける。
+    /// @note 差分から取った値は 1 フレーム単位で跳ねる。指数補間で均さないと、止まっている
+    ///       はずの Boss が Idle と Walk の間で震え続ける。
     const float alpha = 1.0f - std::exp(-std::max(motionDamping, 0.0f) * dt);
     m_speed += (speed - m_speed) * std::clamp(alpha, 0.0f, 1.0f);
     m_turn  += (std::clamp(yawRate / std::max(turnFullRate, 1.0f), -1.0f, 1.0f) - m_turn) *
@@ -421,10 +387,10 @@ inline void BossAnimatorComponent::EndCharge()
 
 inline void BossAnimatorComponent::Crash()
 {
-    // 激突した時点で突進は終わっている。Charging を残すと Crash_Stun を抜けた直後に
-    // Charge_Run へ戻る経路は無いが、AI 側が「まだ突進中」と読む余地を残さない。
+    /// @note 激突した時点で突進は終わっている。Charging を残すと Crash_Stun を抜けた直後に
+    ///       Charge_Run へ戻る経路は無いが、AI 側が「まだ突進中」と読む余地を残さない。
     EndCharge();
-    // スタンのゲーム状態はAIが保持する。見た目は立ったまま衝撃をこらえる。
+    /// @note スタンのゲーム状態はAIが保持する。見た目は立ったまま衝撃をこらえる。
     ReactToHit(1.0f);
     ragdoll.BeginActive();
     PushRagdollReaction(ragdoll, -(transform.worldRotation * Vector3::FORWARD) * 3.0f, 1.5f);
@@ -445,8 +411,8 @@ inline void BossAnimatorComponent::EndBeam()
 
 inline void BossAnimatorComponent::ReactToHit(float strength)
 {
-    // 重みは «次の 1 発» の深さ。鳴り終わりまで持ち越すので、軽い一撃の直後に
-    // 締めが来れば深く、逆なら浅くなる (同時には鳴らないので取り合いは起きない)。
+    /// @note 重みは «次の 1 発» の深さ。鳴り終わりまで持ち越すので、軽い一撃の直後に
+    ///       締めが来れば深く、逆なら浅くなる (同時には鳴らないので取り合いは起きない)。
     if (!hitLayerName.empty())
         animator.SetLayerWeight(hitLayerName,
                                 Lerp(std::clamp(hitLightWeight, 0.0f, 1.0f), 1.0f,
@@ -458,12 +424,12 @@ inline void BossAnimatorComponent::SetDead(bool dead)
 {
     m_dead = dead;
     if (dead) {
-        // 倒れる前に回っていたループを畳む。Beaming を残すと Death へ入った後も
-        // 上半身の照準レイヤーが立ち上がったままになる。
+        /// @note 倒れる前に回っていたループを畳む。Beaming を残すと Death へ入った後も
+        ///       上半身の照準レイヤーが立ち上がったままになる。
         EndBeam();
         EndCharge();
     }
-    // 撃破後も倒れない演出。死亡と消滅の進行は m_dead とゲーム側に残す。
+    /// @note 撃破後も倒れない演出。死亡と消滅の進行は m_dead とゲーム側に残す。
     animator.SetBool(bossanim::kIsDead, false);
 }
 

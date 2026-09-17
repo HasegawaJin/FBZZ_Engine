@@ -21,10 +21,9 @@ namespace {
 
 constexpr std::string_view kSpriteMarker = "::sprite::";
 
-// .meta 1 件の解析結果と、ID / 名前からの索引。
-// WHY 索引まで持つか: シート 1 枚に 272 コマ入ることがあり、線形探索を毎ドロー
-//     走らせると «文字列比較 272 回 × 描画対象数» になる。読むのは 1 回きりなので
-//     索引もそのとき作る。
+/// .meta 1 件の解析結果と、ID / 名前からの索引。シート 1 枚に 272 コマ入ることがあり、
+/// 線形探索を毎ドロー走らせると «文字列比較 272 回 × 描画対象数» になる。読むのは
+/// 1 回きりなので索引もそのとき作る。
 struct CachedMeta {
     std::filesystem::file_time_type writeTime{};
     bool                            valid = false;
@@ -45,17 +44,17 @@ std::unordered_map<std::string, CachedMeta>& MetaCache()
     return cache;
 }
 
-// 壊れた参照は解決のたび (= 毎フレーム) に通るため、同じ参照は 1 度だけ報告する。
-// AssetManager の guid 参照と同じ方針 (Console のリングバッファを埋めない)。
+/// 壊れた参照は解決のたび (= 毎フレーム) に通るため、同じ参照は 1 度だけ報告する。
+/// AssetManager の guid 参照と同じ方針 (Console のリングバッファを埋めない)。
 std::unordered_set<std::string>& BrokenSpriteReports()
 {
     static std::unordered_set<std::string> reported;
     return reported;
 }
 
-// 元画像パス / Sprite 参照 / .meta パスのどれを渡しても .meta の実パスを返す。
-// WHY 3 種類受けるか: 呼ぶ側は «今持っている文字列» を渡すだけにしたい。
-//     ここで受けないと、書き込んだ側が ".meta.meta" を作るような取り違えが起きる。
+/// 元画像パス / Sprite 参照 / .meta パスのどれを渡しても .meta の実パスを返す。呼ぶ側は
+/// «今持っている文字列» を渡すだけにしたいため 3 種類を受ける。ここで受けないと、
+/// 書き込んだ側が `.meta.meta` を作るような取り違えが起きる。
 std::string MetaPathFor(std::string_view texturePathOrRef)
 {
     std::string texturePath;
@@ -66,7 +65,7 @@ std::string MetaPathFor(std::string_view texturePathOrRef)
     return AssetManager::ResolveAssetPath(texturePath);
 }
 
-// 呼び出し側は MetaCacheMutex() を保持していること。
+/// 呼び出し側は MetaCacheMutex() を保持していること。
 const CachedMeta* AcquireMeta(const std::string& metaPath)
 {
     if (metaPath.empty()) return nullptr;
@@ -75,8 +74,8 @@ const CachedMeta* AcquireMeta(const std::string& metaPath)
     const auto writeTime = std::filesystem::last_write_time(
         util::FileSystem::PathFromUtf8(metaPath), ec);
 
-    // 読めなかった場合の writeTime は既定値。「無いまま」も同じ値で一致するので、
-    // 存在しない .meta を毎フレーム開き直さずに済む。
+    /// @note 読めなかった場合の writeTime は既定値。「無いまま」も同じ値で一致するので、
+    ///       存在しない .meta を毎フレーム開き直さずに済む。
     auto& cache = MetaCache();
     const auto found = cache.find(metaPath);
     if (found != cache.end() && found->second.writeTime == writeTime)
@@ -95,14 +94,14 @@ const CachedMeta* AcquireMeta(const std::string& metaPath)
         if (!sprite.id.empty())   entry.byId.emplace(sprite.id, i);
         if (!sprite.name.empty()) entry.byName.emplace(sprite.name, i);
     }
-    // 読み直したなら、この .meta 由来の «壊れている» 報告も出し直させる。
-    // 直したのに Console が沈黙したままだと、直った確認ができない。
+    /// @note 読み直したなら、この .meta 由来の «壊れている» 報告も出し直させる。
+    ///       直したのに Console が沈黙したままだと、直った確認ができない。
     if (found != cache.end()) BrokenSpriteReports().clear();
 
     return &(cache[metaPath] = std::move(entry));
 }
 
-// 索引付きの検索。ID を先に見る (FindSprite と同じ順序)。
+/// 索引付きの検索。ID を先に見る (FindSprite と同じ順序)。
 const SpriteRect* FindInMeta(const CachedMeta& meta, const std::string& token, bool& outById)
 {
     if (const auto byId = meta.byId.find(token); byId != meta.byId.end()) {
@@ -134,7 +133,8 @@ TextureImportSettings DefaultSettingsForType(TextureType type)
     case TextureType::Color:
         s.type        = TextureType::Color;
         s.srgb        = true;
-        s.compression = TextureCompression::Auto; // BC1/BC3 depending on alpha
+        /// @note BC1/BC3 depending on alpha
+        s.compression = TextureCompression::Auto;
         s.mipmaps     = true;
         s.mipFilter   = MipFilter::Kaiser;
         s.filter      = TextureFilter::Anisotropic;
@@ -189,7 +189,7 @@ TextureImportSettings DefaultSettingsForType(TextureType type)
         break;
 
     case TextureType::Sprite:
-        // SpriteはUIと同じサンプリング既定値を使い、矩形境界からの色漏れを防ぐ。
+        /// @note SpriteはUIと同じサンプリング既定値を使い、矩形境界からの色漏れを防ぐ。
         s.type          = TextureType::Sprite;
         s.srgb          = true;
         s.compression   = TextureCompression::BC3;
@@ -208,47 +208,49 @@ TextureImportSettings DefaultSettingsForType(TextureType type)
 
 TextureType GuessTextureType(std::string_view filename)
 {
-    // ファイル名末尾のステムを小文字で検索する。
-    // 例: "wall_n.png" → stem = "wall_n" → Normal
+    /// @note ファイル名末尾のステムを小文字で検索する。
+    ///       例: "wall_n.png" → stem = "wall_n" → Normal
     std::string lower;
     lower.reserve(filename.size());
     for (char c : filename) lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
 
-    // 拡張子を除く
+    /// @note 拡張子を除く
     const auto dotPos = lower.rfind('.');
     std::string_view stem = (dotPos != std::string_view::npos)
         ? std::string_view(lower).substr(0, dotPos)
         : std::string_view(lower);
 
-    // HDR ファイルは拡張子で判定
+    /// @note HDR ファイルは拡張子で判定
     if (lower.ends_with(".hdr") || lower.ends_with(".exr"))
         return TextureType::HDR;
 
-    // UI hint
+    /// @note UI hint
     if (stem.ends_with("_ui") || stem.ends_with("_icon") ||
         stem.ends_with("_hud") || stem.starts_with("ui_"))
         return TextureType::UI;
 
-    // Normal map suffixes
+    /// @note Normal map suffixes
     static constexpr std::string_view kNormalSuffixes[] = {
         "_n", "_nrm", "_normal", "_nmap", "_bump", "_normalmap"
     };
     for (auto& suf : kNormalSuffixes)
         if (stem.ends_with(suf)) return TextureType::Normal;
 
-    // Data / linear map suffixes (roughness, metallic, AO, opacity, mask, emissive mask)
+    /// @note Data / linear map suffixes (roughness, metallic, AO, opacity, mask, emissive mask)
     static constexpr std::string_view kDataSuffixes[] = {
         "_r", "_rough", "_roughness",
         "_m", "_metal", "_metallic",
         "_ao", "_occlusion", "_occ",
         "_mask", "_opacity", "_alpha",
-        "_d",  // displacement
-        "_h",  // height
+        /// @note displacement
+        "_d",
+        /// @note height
+        "_h",
     };
     for (auto& suf : kDataSuffixes)
         if (stem.ends_with(suf)) return TextureType::Data;
 
-    // Emissive is still sRGB color
+    /// @note Emissive is still sRGB color
     if (stem.ends_with("_e") || stem.ends_with("_emissive") || stem.ends_with("_emission"))
         return TextureType::Color;
 
@@ -310,7 +312,7 @@ void InvalidateTextureImportSettings(std::string_view texturePathOrRef)
 {
     const std::lock_guard lock(MetaCacheMutex());
     MetaCache().erase(MetaPathFor(texturePathOrRef));
-    // 切り直した直後は «壊れている» の判定もやり直す。
+    /// @note 切り直した直後は «壊れている» の判定もやり直す。
     BrokenSpriteReports().clear();
 }
 
@@ -342,14 +344,14 @@ ResolvedSprite ResolveSpriteReference(
         ParseSpriteReference(reference, result.texturePath, result.spriteId);
 
     const bool hasTextureSize = textureWidth > 0.0f && textureHeight > 0.0f;
-    // Sprite でない画像の「切り抜き」は画像そのもの。ここを埋めておけば、
-    // 呼ぶ側は Sprite かどうかで分岐せずに原寸やタイル寸法を出せる。
+    /// @note Sprite でない画像の「切り抜き」は画像そのもの。ここを埋めておけば、
+    ///       呼ぶ側は Sprite かどうかで分岐せずに原寸やタイル寸法を出せる。
     if (hasTextureSize) result.sizePixels = { textureWidth, textureHeight };
     if (!result.isSpriteReference) {
         result.status = SpriteResolveStatus::NotASpriteReference;
         return result;
     }
-    // 元画像がまだ読めていないだけ。待てば直るので «壊れている» とは言わない。
+    /// @note 元画像がまだ読めていないだけ。待てば直るので «壊れている» とは言わない。
     if (!hasTextureSize) {
         result.status = SpriteResolveStatus::TextureSizeUnknown;
         return result;
@@ -366,8 +368,8 @@ ResolvedSprite ResolveSpriteReference(
     bool matchedById = false;
     const SpriteRect* sprite = FindInMeta(*meta, result.spriteId, matchedById);
 
-    // sprites を 1 つも持たない Single Texture は «全面 1 枚» を暗黙で持つ。
-    // 画像名で参照できるようにしておかないと、Single だけ参照の書き方が変わる。
+    /// @note sprites を 1 つも持たない Single Texture は «全面 1 枚» を暗黙で持つ。
+    ///       画像名で参照できるようにしておかないと、Single だけ参照の書き方が変わる。
     SpriteRect implicitSingle;
     if (sprite == nullptr
         && meta->settings.type == TextureType::Sprite
@@ -390,7 +392,7 @@ ResolvedSprite ResolveSpriteReference(
         return result;
     }
 
-    // 幅 / 高さ 0 は「画像全体」を意味する (SpriteRect のコメント参照)。
+    /// @note 幅 / 高さ 0 は「画像全体」を意味する (SpriteRect のコメント参照)。
     const float spriteWidth  = sprite->width  > 0 ? static_cast<float>(sprite->width)  : textureWidth;
     const float spriteHeight = sprite->height > 0 ? static_cast<float>(sprite->height) : textureHeight;
 

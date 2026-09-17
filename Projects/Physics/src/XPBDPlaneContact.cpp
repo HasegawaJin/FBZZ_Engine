@@ -42,8 +42,8 @@ namespace fbzz::physics
         const math::Vector3 world = m_body->GetPosition() + r;
         const float depth = m_offset + m_radius - math::Vector3::Dot(m_normal, world);
 
-        // 片側拘束。離れている間は λ も動かさない ─ 引き戻す力を持たせると床が
-        // 磁石になり、跳ねずに貼り付く。
+        /// @note 片側拘束。離れている間は λ も動かさない ─ 引き戻す力を持たせると床が
+        ///       磁石になり、跳ねずに貼り付く。
         if (depth <= 0.0f) {
             m_previousPoint    = world;
             m_hasPreviousPoint = true;
@@ -51,7 +51,7 @@ namespace fbzz::physics
         }
         m_penetration = depth;
 
-        // SolvePositional は correction の «逆» へ動かすので、法線の逆向きに深さを渡す。
+        /// @note SolvePositional は correction の «逆» へ動かすので、法線の逆向きに深さを渡す。
         SolvePositional(m_body, nullptr, r, math::Vector3::ZERO,
                         m_normal * -depth, 0.0f, h, m_lambda);
 
@@ -62,17 +62,12 @@ namespace fbzz::physics
         m_hasPreviousPoint = true;
     }
 
-    // 位置パスが押し返した «跳ね上がり» を打ち消す。
-    //
-    // WHY 要るか: substep 末の速度は (位置 - 直前の位置) / h で作り直される。位置パスが
-    //     深い潜りを一気に押し戻すと、その補正量がまるごと «上向きの速度» に化ける。
-    //     深さ 4m を刻み h で戻せば 4/h m/s ── 床を動かした瞬間 (SetPlane) や、
-    //     めり込んだ状態から捕獲した瞬間に、体が空へ射出される。
-    //
-    //     位置パスは «めり込みを消す» ためのもので «跳ね返す» ためのものではないので、
-    //     接触している間の法線速度は 0 にする (XPBD の速度パスで e = 0 とするのと同じ)。
-    //     離れている substep では m_penetration が 0 なので何もしない ── 跳んで抜けたり
-    //     地面を蹴ったりする動きは妨げない。
+    /// @brief 位置パスが押し返した «跳ね上がり» を打ち消す。
+    /// @note substep 末の速度は (位置-直前位置)/h で作り直されるため、位置パスが深い潜りを
+    ///       一気に戻すと補正量が丸ごと上向き速度に化ける (SetPlane 直後や捕獲直後に射出される)。
+    ///       位置パスは «めり込みを消す» ためのものであり «跳ね返す» ためのものではないので、
+    ///       接触中の法線速度は 0 にする (速度パスで e=0 とするのと同じ)。m_penetration が 0
+    ///       の substep では何もせず、跳んで抜ける・地面を蹴る動きは妨げない。
     void XPBDPlaneContact::SolveVelocity(float h)
     {
         if (!m_body || m_penetration <= 0.0f || h <= 0.0f) return;
@@ -88,9 +83,9 @@ namespace fbzz::physics
                                    m_normal * normalSpeed);
     }
 
-    // 静摩擦を位置パスで解く。速度パスで «接線速度を削る» 形にすると、倒れた体が
-    // 止まった後もじりじり滑る ── 削るのは速度で、既にずれた位置は戻らないため。
-    // この substep で滑った距離そのものを打ち消し、上限だけをクーロンに従わせる。
+    /// 静摩擦を位置パスで解く。速度パスで «接線速度を削る» 形にすると、倒れた体が
+    /// 止まった後もじりじり滑る ── 削るのは速度で、既にずれた位置は戻らないため。
+    /// この substep で滑った距離そのものを打ち消し、上限だけをクーロンに従わせる。
     void XPBDPlaneContact::SolveFriction(float h)
     {
         if (m_friction <= 0.0f || !m_hasPreviousPoint) return;

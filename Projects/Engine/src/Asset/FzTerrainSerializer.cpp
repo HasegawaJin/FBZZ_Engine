@@ -33,7 +33,7 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
     hdr.layerCount = layerCount;
     f.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
 
-    // レイヤーマテリアルパス (固定 4 スロット)
+    /// @note レイヤーマテリアルパス (固定 4 スロット)
     for (uint32_t li = 0; li < layerCount; ++li) {
         char pathBuf[FZTERRAIN_PATH_LEN]{};
         if (li < std::size(asset.layerMaterialPaths)) {
@@ -49,8 +49,8 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
         f.write(reinterpret_cast<const char*>(asset.heightData.data()),
                 static_cast<std::streamsize>(heightCount * sizeof(float)));
     } else {
-        // WHY: 不完全な TerrainAsset を保存してもロード不能な .terrain にしないため、
-        //      欠けた高さはフラット地形として 0 で埋める。
+        /// @note 不完全な TerrainAsset を保存してもロード不能な .terrain にしないため、
+        ///       欠けた高さはフラット地形として 0 で埋める。
         const std::vector<float> defaultHeights(heightCount, 0.0f);
         f.write(reinterpret_cast<const char*>(defaultHeights.data()),
                 static_cast<std::streamsize>(heightCount * sizeof(float)));
@@ -61,8 +61,8 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
         f.write(reinterpret_cast<const char*>(asset.splatData.data()),
                 static_cast<std::streamsize>(splatCount));
     } else {
-        // WHY: PaintTool は各頂点に RGBA の重みが必ず存在する前提で編集するため、
-        //      未初期化データは layer0=100% の正規化済み splat として保存する。
+        /// @note PaintTool は各頂点に RGBA の重みが必ず存在する前提で編集するため、
+        ///       未初期化データは layer0=100% の正規化済み splat として保存する。
         std::vector<uint8_t> defaultSplat(splatCount, 0u);
         for (size_t i = 0; i < heightCount; ++i)
             defaultSplat[i * layerCount] = 255u;
@@ -75,7 +75,7 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
 
 bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsset) const
 {
-    // TerrainImporter と同じロジック。Serializer 単体でも使えるようここに読み取り処理を持つ。
+    /// @note TerrainImporter と同じロジック。Serializer 単体でも使えるようここに読み取り処理を持つ。
     std::ifstream f(absPath, std::ios::binary | std::ios::ate);
     if (!f) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: cannot open [%s]", absPath.c_str());

@@ -39,7 +39,7 @@ std::optional<BusRequest> ParseBusRequest(const JsonValue& root, std::string* er
     request.id      = id->AsString();
     request.kind    = kindValue;
     request.payload = *payload;
-    // dryRun は Command のみ意味を持つ。欠落や非 bool は安全側 (試算) の true にする。
+    /// @note dryRun は Command のみ意味を持つ。欠落や非 bool は安全側 (試算) の true にする。
     const JsonValue* dryRun = root.Find("dryRun");
     request.dryRun = (dryRun != nullptr && dryRun->IsBool()) ? dryRun->AsBool() : true;
     return request;

@@ -8,8 +8,8 @@ namespace fbzz::renderer {
 
 namespace {
 
-// 登録側 (AssetManager.cpp) は静的初期化で呼ぶ。名前空間スコープの変数にすると
-// 翻訳単位間の初期化順が未規定で、登録済みの値を空で上書きしうる。
+/// 登録側 (AssetManager.cpp) は静的初期化で呼ぶ。名前空間スコープの変数にすると
+/// 翻訳単位間の初期化順が未規定で、登録済みの値を空で上書きしうる。
 AssetPathService& Service()
 {
     static AssetPathService service{};

@@ -8,7 +8,7 @@
 
 namespace fbzz::scene {
 
-// ParticleSimulationSystem — Particleの再生状態とEmissionスケジュールをLateUpdateで一度だけ進める。
+/// ParticleSimulationSystem — Particleの再生状態とEmissionスケジュールをLateUpdateで一度だけ進める。
 class ParticleSimulationSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "ParticleSimulationSystem"; }

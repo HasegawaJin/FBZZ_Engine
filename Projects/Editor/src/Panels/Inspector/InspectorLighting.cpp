@@ -8,8 +8,8 @@ namespace fbzz::editor {
 
 namespace {
 
-// 名前なしレイヤーは既定で 26 個あり、空文字のままウィジェットへ渡すと
-// ImGui の ID が全部同じになる (空ラベル = 親と同じ ID)。表示名を必ず埋める。
+/// 名前なしレイヤーは既定で 26 個あり、空文字のままウィジェットへ渡すと
+/// ImGui の ID が全部同じになる (空ラベル = 親と同じ ID)。表示名を必ず埋める。
 std::string LayerDisplayName(const ProjectSettings& settings, int layer)
 {
     const std::string& name = settings.game.layerNames[layer];
@@ -22,7 +22,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 {
     DrawComponentSection<scene::LightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light",
         [go](scene::LightComponent& lc, EditorContext& c) {
-            // 昼夜カーブは先頭の有効な SkyRenderer が持つ (RenderSystem の採用規則と同じ)。
+            /// @note 昼夜カーブは先頭の有効な SkyRenderer が持つ (RenderSystem の採用規則と同じ)。
             bool dayNightDriven = false;
             if (c.activeScene) {
                 for (auto& other : c.activeScene->GameObjects()) {
@@ -73,9 +73,8 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                                   : cc.cullingMask == fbzz::Layer::Nothing    ? "Nothing"
                                   : "Mixed...";
             const bool maskComboOpen = ImGui::BeginCombo("Culling Mask", maskLabel);
-            // ホバー判定はコンボを開く前に取る。
-            // WHY: BeginCombo が true を返した後は「直前のアイテム」が中身のチェックボックスへ
-            //      移るため、EndCombo の後に IsItemHovered() を呼んでも本体を指さない。
+            /// @note ホバー判定はコンボを開く前に取る。BeginCombo が true を返すと「直前のアイテム」が
+            ///       中身のチェックボックスへ移り、EndCombo 後の IsItemHovered() は本体を指さない。
             const bool maskHovered = ImGui::IsItemHovered();
             if (maskComboOpen) {
                 bool all = cc.cullingMask == fbzz::Layer::Everything;
@@ -115,8 +114,8 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     "Check the actual counts in Analysis > Rendering.");
             }
 
-            // 余白は「バインドポーズ球からはみ出すモーション」への実務的な逃げ道。
-            // Inspector からしか触れないと気付けないので、意図をツールチップに残す。
+            /// @note 余白は「バインドポーズ球からはみ出すモーション」への実務的な逃げ道。
+            ///       Inspector からしか触れないと気付けないので、意図をツールチップに残す。
             ImGui::DragFloat("Culling Bounds Padding", &cc.cullingBoundsPadding,
                              0.05f, 0.0f, 50.0f, "%.2f m");
             if (cc.cullingBoundsPadding < 0.0f) cc.cullingBoundsPadding = 0.0f;
@@ -132,7 +131,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 
             ImGui::Spacing();
 
-            // ---- 距離カリング ----
+            /// @name 距離カリング
             ImGui::DragFloat("Max Draw Distance", &cc.maxDrawDistance,
                              1.0f, 0.0f, 100000.0f, "%.0f m");
             if (cc.maxDrawDistance < 0.0f) cc.maxDrawDistance = 0.0f;
@@ -159,9 +158,8 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     "survive further out, but panning the camera can pop them in and out.");
             }
 
-            // レイヤー別の距離は 32 行あるので既定で畳んでおく。
-            // WHY 個別に持てるようにするか: 「小物は 30m、建物は 500m」が距離カリングの実用形で、
-            //      オブジェクトごとに設定して回るのは現実的でない (Unity の layerCullDistances 相当)。
+            /// @note 既定で畳む (32 行分)。距離カリングはレイヤー単位 (小物 30m・建物 500m 等) が
+            ///       実用的な粒度で、オブジェクトごとの設定は運用に耐えない (Unity の layerCullDistances 相当)。
             if (ImGui::TreeNode("Layer Cull Distances")) {
                 ImGui::TextDisabled("0 = use Max Draw Distance");
                 if (ImGui::SmallButton("Clear All")) {
@@ -184,7 +182,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 
             ImGui::Spacing();
 
-            // ---- 極小オブジェクトカリング ----
+            /// @name 極小オブジェクトカリング
             ImGui::DragFloat("Small Object Culling", &cc.smallObjectScreenHeight,
                              0.0005f, 0.0f, 0.5f, "%.4f");
             if (cc.smallObjectScreenHeight < 0.0f) cc.smallObjectScreenHeight = 0.0f;

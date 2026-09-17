@@ -3,17 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY PlayGroundDust では出せなかったか:
-///   あちらは «床が横へ押し退けられた» 絵で、噴出は層のローカル +Z (水平) が主役。
-///   向きは VfxManager が LookRotation で渡すが、その手前で y 成分を捨ててから
-///   正規化するため、Vector3::UP を渡すと退化して +Z へ落ちる。つまり «真上» は
-///   引数では表せない ─ 突き上げが «縦の柱» になっていなかったのはこれが原因。
-///   噴き上がりは «上» が主役で横は裾なので、配分ごと別の層として持つ。
-///
-/// WHY 突き上げと «胴が口を通る» で同じグラフを使うか:
-///   どちらも «この穴から何かが噴き上がった» という 1 つの出来事で、違うのは
-///   規模だけ。枠 (VfxManager の Pool) はタグで分けてあるので、攻撃の一発が
-///   出入りの土煙を押し出すことはない。
+/// @note PlayGroundDust は使えない。あちらの向きは VfxManager の LookRotation が渡すが、
+///       渡す前に y 成分を捨てて正規化するため Vector3::UP が +Z へ退化し «真上» を
+///       表せない。噴き上がりは «上» が主役なので別の層として持つ。
+/// @note 突き上げと «胴が口を通る» は同じグラフを使う (どちらも «穴から噴き上がった»
+///       で規模が違うだけ)。枠 (VfxManager の Pool) はタグで分けてあり干渉しない。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -67,18 +61,18 @@ inline void SerpentGeyserVfxComponent::Apply()
 
     vfxbind::ParticleColor(root, "Column Smoke", dustColor);
     vfxbind::ParticleColor(root, "Skirt",        dustColor);
-    // 砂粒は «物» なので不透明のまま (RunDustVfxComponent と同じ理由)。
+    /// @note 砂粒は «物» なので不透明のまま (RunDustVfxComponent と同じ理由)。
     vfxbind::ParticleColor(root, "Grit", Vector4{ dustColor.x, dustColor.y, dustColor.z, 1.0f });
     vfxbind::ParticleColor(root, "Embers", rimColor);
 
-    // 縦は «速さ» が作る。層のローカル +Y をそのまま上に取ってあるので、
-    // ここは 3 軸のうち y だけを持ち上げれば柱になる。
+    /// @note 縦は «速さ» が作る。層のローカル +Y をそのまま上に取ってあるので、
+    ///       ここは 3 軸のうち y だけを持ち上げれば柱になる。
     vfxbind::ParticleEmitVelocity(root, "Column Smoke", { 0.0f, rise, 0.0f });
     vfxbind::ParticleEmitVelocity(root, "Grit",         { 0.0f, rise * 1.45f, 0.0f });
     vfxbind::ParticleEmitVelocity(root, "Embers",
                                   { 0.0f, (std::max)(emberPower, 0.0f), 0.0f });
-    // 裾は «全方位» へ。固定の向きを与えると、噴き上がりの根元が 1 方向だけ濃くなり、
-    // «横から風が吹いた» に見える。放射は粒ごとに向きが違わなければ成立しない。
+    /// @note 裾は «全方位» へ。固定の向きを与えると、噴き上がりの根元が 1 方向だけ濃くなり、
+    ///       «横から風が吹いた» に見える。放射は粒ごとに向きが違わなければ成立しない。
     vfxbind::ParticleEmitVelocity(root, "Skirt", { 0.0f, rise * 0.10f, 0.0f });
     vfxbind::ParticleRadialVelocity(root, "Skirt", (std::max)(skirtSpread, 0.0f) * 3.0f);
 

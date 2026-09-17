@@ -17,19 +17,17 @@
 #include <limits>
 #include <utility>
 
-// ── レイキャスト交差判定ヘルパー (匿名 namespace) ─────────────────────────────
+/// @name レイキャスト交差判定ヘルパー (匿名 namespace)
 namespace {
 
 using namespace fbzz::math;
 using namespace fbzz::physics;
 
-// 符号を返す (+1 or -1、0 のときは +1)
+/// 符号を返す (+1 or -1、0 のときは +1)
 static inline float Sign(float v) { return v >= 0.0f ? 1.0f : -1.0f; }
 
-// -----------------------------------------------------------------
-// Ray vs Sphere
-// WHAT: oc = origin - center とし、二次方程式 |oc + t*d|^2 = r^2 を解く
-// -----------------------------------------------------------------
+/// @brief Ray vs Sphere。
+/// @note oc = origin - center とし、二次方程式 |oc + t*d|^2 = r^2 を解く。
 static bool RaySphere(const Vector3& o, const Vector3& d, float maxDist,
                       const Vector3& center, float radius,
                       float& tOut, Vector3& normalOut)
@@ -48,11 +46,9 @@ static bool RaySphere(const Vector3& o, const Vector3& d, float maxDist,
     return true;
 }
 
-// -----------------------------------------------------------------
-// Ray vs AABB (スラブ法)
-// WHAT: 各軸のスラブ [min, max] にレイが入る/出る時刻 tMin/tMax を計算し
-//       全軸の tMin の最大と tMax の最小が [0, maxDist] に収まるか確認する
-// -----------------------------------------------------------------
+/// @brief Ray vs AABB (スラブ法)。
+/// @note 各軸のスラブ [min, max] にレイが入る/出る時刻 tMin/tMax を計算し、全軸の tMin の
+///       最大と tMax の最小が [0, maxDist] に収まるか確認する。
 static bool RayAABB(const Vector3& o, const Vector3& d, float maxDist,
                     const Vector3& aabbMin, const Vector3& aabbMax,
                     float& tOut, Vector3& normalOut)
@@ -69,7 +65,7 @@ static bool RayAABB(const Vector3& o, const Vector3& d, float maxDist,
 
     for (int i = 0; i < 3; ++i) {
         if (std::abs(dArr[i]) < 1e-8f) {
-            // レイが軸に平行: スラブ外なら miss
+            /// @note レイが軸に平行: スラブ外なら miss
             if (oArr[i] < minArr[i] || oArr[i] > maxArr[i]) return false;
         } else {
             float t1 = (minArr[i] - oArr[i]) / dArr[i];
@@ -84,17 +80,15 @@ static bool RayAABB(const Vector3& o, const Vector3& d, float maxDist,
     if (tNear < 0.0f || tNear > maxDist) return false;
 
     tOut = tNear;
-    // 法線: ヒット面の外向き (hitAxis 軸、レイが +→- なら外側は + 方向)
+    /// @note 法線: ヒット面の外向き (hitAxis 軸、レイが +→- なら外側は + 方向)
     float normArr[3] = { 0.0f, 0.0f, 0.0f };
     normArr[hitAxis] = hitNeg ? 1.0f : -1.0f;
     normalOut = Vector3(normArr[0], normArr[1], normArr[2]);
     return true;
 }
 
-// -----------------------------------------------------------------
-// Ray vs OBB
-// WHAT: レイを OBB ローカル空間へ変換して AABB 判定に帰着させ、法線をワールドへ戻す
-// -----------------------------------------------------------------
+/// @brief Ray vs OBB。
+/// @note レイを OBB ローカル空間へ変換して AABB 判定に帰着させ、法線をワールドへ戻す。
 static bool RayOBB(const Vector3& o, const Vector3& d, float maxDist,
                    const OBBCollider& obb,
                    float& tOut, Vector3& normalOut)
@@ -103,7 +97,7 @@ static bool RayOBB(const Vector3& o, const Vector3& d, float maxDist,
     const Quaternion rot    = obb.GetRotation();
     const Quaternion invRot = rot.Inverse();
 
-    // レイをローカル空間へ
+    /// @note レイをローカル空間へ
     const Vector3 lo = invRot * (o - center);
     const Vector3 ld = invRot * d;
     const Vector3& he = obb.m_halfExtents;
@@ -117,11 +111,9 @@ static bool RayOBB(const Vector3& o, const Vector3& d, float maxDist,
     return true;
 }
 
-// -----------------------------------------------------------------
-// Ray vs Capsule (無限円柱 + 端球)
-// WHAT: カプセルの中心軸を線分 [start, end] とし、
-//       まず無限円柱との交差を求め次に両端の半球を確認して最近点を返す
-// -----------------------------------------------------------------
+/// @brief Ray vs Capsule (無限円柱 + 端球)。
+/// @note カプセルの中心軸を線分 [start, end] とし、まず無限円柱との交差を求め、
+///       次に両端の半球を確認して最近点を返す。
 static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
                        const CapsuleCollider& cap,
                        float& tOut, Vector3& normalOut)
@@ -133,12 +125,13 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
     const Vector3 ao  = o - pa;
     const float   abLen2 = Vector3::Dot(ab, ab);
 
-    // 無限円柱テスト
-    // WHAT: d と ab の平面に投影して 2D のレイ vs 円問題に帰着させる
+    /// @note 無限円柱テスト: d と ab の平面に投影して 2D のレイ vs 円問題に帰着させる。
     const float m  = Vector3::Dot(d, ab) / abLen2;
     const float n  = Vector3::Dot(ao, ab) / abLen2;
-    const Vector3 q = d  - ab * m;   // 投影後の方向
-    const Vector3 s = ao - ab * n;   // 投影後の原点
+    /// @note 投影後の方向
+    const Vector3 q = d  - ab * m;
+    /// @note 投影後の原点
+    const Vector3 s = ao - ab * n;
     const float a2 = Vector3::Dot(q, q);
     const float b2 = 2.0f * Vector3::Dot(q, s);
     const float c2 = Vector3::Dot(s, s) - r * r;
@@ -152,7 +145,7 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
             float t = (-b2 - std::sqrt(disc)) / (2.0f * a2);
             if (t < 0.0f) t = (-b2 + std::sqrt(disc)) / (2.0f * a2);
             if (t >= 0.0f && t < maxDist) {
-                // カプセル軸上のパラメータ: 端球の外側なら棄却
+                /// @note カプセル軸上のパラメータ: 端球の外側なら棄却
                 const float tAxis = m * t + n;
                 if (tAxis >= 0.0f && tAxis <= 1.0f) {
                     const Vector3 hitPt = o + d * t;
@@ -164,7 +157,7 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
         }
     }
 
-    // 端球テスト
+    /// @note 端球テスト
     float ts, ts2;
     Vector3 ns, ns2;
     if (RaySphere(o, d, maxDist, pa, r, ts, ns) && ts < bestT) { bestT = ts; bestN = ns; }
@@ -176,11 +169,9 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
     return true;
 }
 
-// -----------------------------------------------------------------
-// Ray vs Cylinder (側面 + 上下の円板)
-// WHAT: 軸方向成分を抜いて 2D のレイ vs 円に帰着させ側面の交点を求め、
-//       軸に垂直な 2 枚の円板は平面交点が半径内かで判定して最も手前を返す
-// -----------------------------------------------------------------
+/// @brief Ray vs Cylinder (側面 + 上下の円板)。
+/// @note 軸方向成分を抜いて 2D のレイ vs 円に帰着させ側面の交点を求め、軸に垂直な 2 枚の円板は
+///       平面交点が半径内かで判定して最も手前を返す。
 static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
                         const CylinderCollider& cyl,
                         float& tOut, Vector3& normalOut)
@@ -199,7 +190,7 @@ static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
     float   bestT = maxDist + 1.0f;
     Vector3 bestN;
 
-    // 側面: 無限円柱との交点のうち、円板の間に収まるものだけ採用する
+    /// @note 側面: 無限円柱との交点のうち、円板の間に収まるものだけ採用する
     const float a = Vector3::Dot(dPerp, dPerp);
     if (a > 1e-8f) {
         const float b    = 2.0f * Vector3::Dot(dPerp, ocPerp);
@@ -207,7 +198,7 @@ static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
         const float disc = b * b - 4.0f * a * c;
         if (disc >= 0.0f) {
             const float sqrtDisc = std::sqrt(disc);
-            // a > 0 なので 2 根は昇順。手前から見て最初に条件を満たしたものが最近点。
+            /// @note a > 0 なので 2 根は昇順。手前から見て最初に条件を満たしたものが最近点。
             const float roots[2] = { (-b - sqrtDisc) / (2.0f * a),
                                      (-b + sqrtDisc) / (2.0f * a) };
             for (const float t : roots) {
@@ -221,7 +212,7 @@ static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
         }
     }
 
-    // 上下の円板
+    /// @note 上下の円板
     if (std::abs(dAxial) > 1e-8f) {
         for (int sign = -1; sign <= 1; sign += 2) {
             const float capAxial = h * static_cast<float>(sign);
@@ -239,10 +230,8 @@ static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
     return true;
 }
 
-// -----------------------------------------------------------------
-// Ray vs Triangle (Möller–Trumbore)
-// 戻り値: ヒットした t (負なら miss)
-// -----------------------------------------------------------------
+/// Ray vs Triangle (Möller–Trumbore)
+/// 戻り値: ヒットした t (負なら miss)
 static float RayTriangle(const Vector3& o, const Vector3& d,
                          const Vector3& v0, const Vector3& v1, const Vector3& v2)
 {
@@ -262,14 +251,12 @@ static float RayTriangle(const Vector3& o, const Vector3& d,
     return f * Vector3::Dot(e2, q);
 }
 
-// -----------------------------------------------------------------
-// Ray vs TriangleMesh (BVH トラバーサル)
-// -----------------------------------------------------------------
+/// Ray vs TriangleMesh (BVH トラバーサル)
 static bool RayTriangleMesh(const Vector3& o, const Vector3& d, float maxDist,
                              const TriangleMeshCollider& mesh,
                              float& tOut, Vector3& normalOut)
 {
-    // BVH クエリ用 AABB: レイを包む細長いボックスで粗いカリングをかける
+    /// @note BVH クエリ用 AABB: レイを包む細長いボックスで粗いカリングをかける
     const Vector3 end = o + d * maxDist;
     AABB queryBox;
     queryBox.min = Vector3(std::min(o.x, end.x), std::min(o.y, end.y), std::min(o.z, end.z));
@@ -282,7 +269,7 @@ static bool RayTriangleMesh(const Vector3& o, const Vector3& d, float maxDist,
         const float t = RayTriangle(o, d, tri.v[0], tri.v[1], tri.v[2]);
         if (t > 0.0f && t < bestT) {
             bestT = t;
-            // フロント/バック 両面対応: 法線がレイと逆向きなら反転
+            /// @note フロント/バック 両面対応: 法線がレイと逆向きなら反転
             bestN = Vector3::Dot(tri.normal, d) < 0.0f ? tri.normal : -tri.normal;
         }
     });
@@ -293,9 +280,7 @@ static bool RayTriangleMesh(const Vector3& o, const Vector3& d, float maxDist,
     return true;
 }
 
-// -----------------------------------------------------------------
-// Ray vs ConvexHull (面ごとに三角形テスト)
-// -----------------------------------------------------------------
+/// Ray vs ConvexHull (面ごとに三角形テスト)
 static bool RayConvexHull(const Vector3& o, const Vector3& d, float maxDist,
                            const ConvexHullCollider& hull,
                            float& tOut, Vector3& normalOut)
@@ -328,9 +313,7 @@ static bool RayConvexHull(const Vector3& o, const Vector3& d, float maxDist,
     return true;
 }
 
-// -----------------------------------------------------------------
-// ColliderInstance に対してレイキャストを行い、ヒット結果を出力する
-// -----------------------------------------------------------------
+/// ColliderInstance に対してレイキャストを行い、ヒット結果を出力する
 static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
                              const ColliderInstance& inst,
                              float& tOut, Vector3& normalOut)
@@ -367,9 +350,9 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
         return RayConvexHull(o, d, maxDist, *hull, tOut, normalOut);
     }
     case ColliderType::HEIGHT_FIELD: {
-        // WHY: HeightFieldCollider の BVH は TriangleMeshCollider と同一の BVHTree<Triangle> 構造を持つ。
-        //      RayTriangleMesh は TriangleMeshCollider を受け取るため直接呼べないが、
-        //      GetBVH() で同じクエリを実行できる。
+        /// @note HeightFieldCollider の BVH は TriangleMeshCollider と同一の `BVHTree<Triangle>` 構造を
+        ///       持つ。RayTriangleMesh は TriangleMeshCollider を受け取るため直接呼べないが、
+        ///       GetBVH() で同じクエリを実行できる。
         const auto* hf = static_cast<const HeightFieldCollider*>(inst.collider);
         const Vector3 hfEnd = o + d * maxDist;
         AABB hfQueryBox;
@@ -394,10 +377,8 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
     }
 }
 
-// -----------------------------------------------------------------
-// Sphere vs ColliderInstance (OverlapSphere 用)
-// WHAT: 球の中心からコライダーへの最近点距離を求め、半径以内かを確認する
-// -----------------------------------------------------------------
+/// @brief Sphere vs ColliderInstance (OverlapSphere 用)。
+/// @note 球の中心からコライダーへの最近点距離を求め、半径以内かを確認する。
 static bool SphereOverlapsInstance(const Vector3& center, float radius,
                                    const ColliderInstance& inst)
 {
@@ -414,7 +395,7 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
     case ColliderType::OBB:
     case ColliderType::TRIANGLE_MESH:
     case ColliderType::CONVEX_HULL: {
-        // AABB での保守的判定: 球の中心から AABB 上の最近点への距離
+        /// @note AABB での保守的判定: 球の中心から AABB 上の最近点への距離
         const AABB aabb = inst.collider->GetAABB();
         float dist2 = 0.0f;
         const float* cArr   = &center.x;
@@ -450,7 +431,7 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
     }
 }
 
-} // anonymous namespace
+} // namespace
 
 namespace fbzz::physics
 {
@@ -494,10 +475,9 @@ namespace fbzz::physics
 
         for (size_t i = 0; i < m_bodyPool.size(); ++i) {
             if (m_bodyPool[i].body == body && !m_bodyPool[i].touched) {
-                // WHY: Handle は Scene 側 Component に保持されるが、Component のコピー・再生成・
-                //      初期化順によって stale/invalid になる可能性がある。
-                //      その場合でも同じ RigidBody* が既に World にあるなら、
-                //      新規 slot を作らず既存 slot を再接続して pool の肥大化を防ぐ。
+                /// @note Handle は Scene 側 Component に保持されるが、コピー・再生成・初期化順で
+                ///       stale/invalid になりうる。同じ RigidBody* が既に World にあるなら新規
+                ///       slot を作らず既存 slot を再接続し、pool の肥大化を防ぐ。
                 m_bodyPool[i].touched = true;
                 return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
             }
@@ -526,9 +506,9 @@ namespace fbzz::physics
 
         if (collider.body)
         {
-            // ColliderInstance は Physics 単体利用時にも Body と形状の対応を持つ入口になる。
-            // Engine 側の PhysicsSystem だけに慣性設定を任せると、Tests のように World を直接使う経路で
-            // AABB の「軸整合なので回転させない」という制約が抜けるため、同期時に必ず形状から慣性を更新する。
+            /// @note ColliderInstance は Physics 単体利用時にも Body と形状の対応を持つ入口になる。
+            ///       Engine 側の PhysicsSystem だけに慣性設定を任せると、Tests のように World を直接使う経路で
+            ///       AABB の「軸整合なので回転させない」という制約が抜けるため、同期時に必ず形状から慣性を更新する。
             collider.body->SetInertiaFromCollider(collider.collider);
         }
 
@@ -550,9 +530,9 @@ namespace fbzz::physics
                 m_colliderPool[i].collider.collider == collider.collider &&
                 !m_colliderPool[i].touched)
             {
-                // WHY: ColliderHandle が stale になっても Collider* が同じなら
-                //      Scene 上は同じ ColliderComponent である。既存 slot を再接続し、
-                //      handle 不整合が毎フレームの重複登録へ発展するのを防ぐ。
+                /// @note ColliderHandle が stale になっても Collider* が同じなら Scene 上は
+                ///       同じ ColliderComponent。既存 slot を再接続し、handle 不整合が毎フレーム
+                ///       の重複登録へ発展するのを防ぐ。
                 m_colliderPool[i].collider = std::move(collider);
                 m_colliderPool[i].touched = true;
                 return { static_cast<uint32_t>(i + 1u), m_colliderPool[i].generation };
@@ -619,8 +599,8 @@ namespace fbzz::physics
             if (slot.touched && slot.body) {
                 m_bodies.push_back(slot.body);
             } else if (slot.body) {
-                // WHY: 所有権は Component 側にあるため World はポインタを null するだけ。
-                //      Component が破棄されれば unique_ptr により自動解放される。
+                /// @note 所有権は Component 側にあるため World はポインタを null するだけ。
+                ///       Component が破棄されれば unique_ptr により自動解放される。
                 slot.body = nullptr;
                 slot.generation = NextGeneration(slot.generation);
                 m_sceneSyncChanged = true;
@@ -644,7 +624,8 @@ namespace fbzz::physics
             if (slot.touched && slot.volume) {
                 m_volumes.push_back(slot.volume.get());
             } else if (slot.volume) {
-                slot.volume.reset(); // World が所有しているので直接破棄する
+                /// @note World が所有しているので直接破棄する
+                slot.volume.reset();
                 slot.generation = NextGeneration(slot.generation);
                 m_sceneSyncChanged = true;
             }
@@ -652,7 +633,8 @@ namespace fbzz::physics
 
         for (auto& slot : m_constraintPool) {
             if (slot.touched || !slot.constraint) continue;
-            slot.constraint.reset(); // World が所有しているので直接破棄する
+            /// @note World が所有しているので直接破棄する
+            slot.constraint.reset();
             slot.generation = NextGeneration(slot.generation);
             m_sceneSyncChanged = true;
         }
@@ -766,13 +748,13 @@ namespace fbzz::physics
     void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
         m_layerFilter = layerFilter ? std::move(layerFilter) : m_defaultLayerFilter;
-        // WHY: Sleep 済みのシーンでは接触集合が変わらないため、毎 substep の
-        //      UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない。
-        //      Terrain/TriangleMesh がある resting scene ではここが World::Step の主な CPU 負荷になる。
-        // WHAT: Scene 同期で追加・削除がなく、動いている非 Static body もない場合は、
-        //       前回 contacts から Stay/Exit 分類だけを更新して collision pipeline を省略する。
-        // 衝突の強さはフレーム単位で集計する。止まっているシーンの早期 return でも
-        // 前フレームの値が残らないよう、分岐より前に落とす。
+        /// @note Sleep 済みのシーンでは接触集合が変わらず、毎 substep の
+        ///       UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない
+        ///       (Terrain/TriangleMesh がある resting scene での主な CPU 負荷)。Scene 同期で
+        ///       追加・削除がなく動いている非 Static body も無ければ、前回 contacts から
+        ///       Stay/Exit 分類だけ更新して collision pipeline を省略する。
+        /// @note m_frameImpacts のクリアは分岐より前に置く。早期 return でも前フレームの値が
+        ///       残らないようにするため。
         m_frameImpacts.clear();
 
         if (!m_sceneSyncChanged && !HasActiveSimulationBodies()) {
@@ -796,17 +778,18 @@ namespace fbzz::physics
             SolveConstraintPositions(subDt);
             UpdateColliders();
             BroadPhase();
-            NarrowPhase(s == 0); // WarmStart は最初のサブステップのみ
-            // Resolve は速度を書き換えるため、「ぶつかった勢い」はこの時点でしか取れない。
+            /// @note WarmStart は最初のサブステップのみ
+            NarrowPhase(s == 0);
+            /// @note Resolve は速度を書き換えるため、「ぶつかった勢い」はこの時点でしか取れない。
             RecordApproachVelocities();
             WakeSleepingContacts();
             Resolve();
-            // 実際に加わったインパルスは解決後に確定する。
+            /// @note 実際に加わったインパルスは解決後に確定する。
             RecordContactImpulses();
             UpdateSleepStates(subDt);
         }
 
-        // フレーム末尾に蓄積インパルスを保存し古いキャッシュを削除する
+        /// @note フレーム末尾に蓄積インパルスを保存し古いキャッシュを削除する
         m_contactCache.UpdateCache(m_contacts);
         m_contactCache.PurgeStale();
 
@@ -934,8 +917,8 @@ namespace fbzz::physics
         for (auto& cp : m_contacts)
         {
             if (cp.isTrigger) continue;
-            // 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
-            // 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
+            /// @note 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
+            ///       法線インパルス側の処理は続けられるよう、既定軸を入れておく。
             math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
             if (t0.LengthSq() < 1e-6f)
                 t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
@@ -985,9 +968,9 @@ namespace fbzz::physics
     void World::CCDPhase(float dt)
     {
         if (dt <= 0.0f) return;
-        // m_useCCD が true かつ速度が十分に速い物体について、
-        // 他の球コライダー持ち物体との TOI を計算し速度をクランプする。
-        // この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
+        /// @note m_useCCD が true かつ速度が十分に速い物体について、
+        ///       他の球コライダー持ち物体との TOI を計算し速度をクランプする。
+        ///       この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
         for (size_t i = 0; i < m_bodies.size(); ++i)
         {
             auto& bodyA = m_bodies[i];
@@ -996,7 +979,7 @@ namespace fbzz::physics
             const float localDtA = m_effectiveDts[i];
             if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, localDtA)) continue;
 
-            // bodyA に紐づくコライダーを探す (SphereCollider のみ対応)
+            /// @note bodyA に紐づくコライダーを探す (SphereCollider のみ対応)
             const SphereCollider* sphereA = nullptr;
             for (const auto& inst : m_colliders)
             {
@@ -1014,13 +997,13 @@ namespace fbzz::physics
             const float         radiusA = sphereA->m_radius;
             float minToi = 1.0f;
 
-            // 全ボディと TOI を計算し最小値を採用する
+            /// @note 全ボディと TOI を計算し最小値を採用する
             for (size_t j = 0; j < m_bodies.size(); ++j)
             {
                 if (i == j) continue;
                 auto& bodyB = m_bodies[j];
 
-                // bodyB の SphereCollider を探す
+                /// @note bodyB の SphereCollider を探す
                 const SphereCollider* sphereB = nullptr;
                 for (const auto& inst : m_colliders)
                 {
@@ -1037,7 +1020,7 @@ namespace fbzz::physics
                 const math::Vector3 centerB = sphereB->GetAABB().Center();
                 const float         radiusB = sphereB->m_radius;
 
-                // 相対速度を使った Swept Sphere テスト
+                /// @note 相対速度を使った Swept Sphere テスト
                 const math::Vector3 relVel = bodyA->GetVelocity() * (localDtA / dt)
                                             - (bodyB->IsStatic() ? math::Vector3::ZERO
                                                                   : bodyB->GetVelocity() * (m_effectiveDts[j] / dt));
@@ -1048,8 +1031,8 @@ namespace fbzz::physics
                     minToi = res.toi;
             }
 
-            // 速度を TOI でスケールし、衝突時点までしか進まないようにする
-            // 残りの速度解決は通常の NarrowPhase/Resolve が担う
+            /// @note 速度を TOI でスケールし、衝突時点までしか進まないようにする
+            ///       残りの速度解決は通常の NarrowPhase/Resolve が担う
             if (minToi < 1.0f)
                 bodyA->SetVelocity(bodyA->GetVelocity() * minToi);
         }
@@ -1062,10 +1045,11 @@ namespace fbzz::physics
             if (cp.isTrigger) continue;
 
             const math::Vector3 vRel = PhysicsSolver::RelativeVelocityAt(cp);
-            // normal は b → a 向きなので、近づいているとき Dot は負になる。
-            // ゲーム側が扱いやすいよう「正 = 接近」へ符号を反転する。
+            /// @note normal は b → a 向きなので、近づいているとき Dot は負になる。
+            ///       ゲーム側が扱いやすいよう「正 = 接近」へ符号を反転する。
             const float approach = -math::Vector3::Dot(vRel, cp.normal);
-            if (approach <= 0.0f) continue;   // 離れていく接触は衝突ではない
+            /// @note 離れていく接触は衝突ではない
+            if (approach <= 0.0f) continue;
 
             const Collider* a = cp.colliderA;
             const Collider* b = cp.colliderB;
@@ -1089,9 +1073,9 @@ namespace fbzz::physics
             const Collider* b = cp.colliderB;
             if (a > b) std::swap(a, b);
 
-            // WHY find か: 接近していない接触 (床に載っているだけ等) は
-            //      RecordApproachVelocities が積んでいない。そこへインパルスだけを
-            //      入れると「速度 0 なのに強い衝突」に見えるエントリができる。
+            /// @note 接近していない接触 (床に載っているだけ等) は RecordApproachVelocities が
+            ///       積んでいない。そこへインパルスだけを入れると «速度 0 なのに強い衝突» に
+            ///       見えるエントリができるため find で確認してから加える。
             const auto it = m_frameImpacts.find(ColliderPair{ a, b });
             if (it == m_frameImpacts.end()) continue;
 
@@ -1117,8 +1101,8 @@ namespace fbzz::physics
                 cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB,
                 cp.point, cp.normal, cp.depth, cp.isTrigger
             };
-            // このフレーム中に観測した衝突の強さを載せる。
-            // 接触が継続しているだけ (Stay) なら 0 のままになる。
+            /// @note このフレーム中に観測した衝突の強さを載せる。
+            ///       接触が継続しているだけ (Stay) なら 0 のままになる。
             if (const auto impact = m_frameImpacts.find(pair); impact != m_frameImpacts.end()) {
                 event.relativeVelocity = impact->second.relativeVelocity;
                 event.approachSpeed    = impact->second.approachSpeed;
@@ -1139,8 +1123,8 @@ namespace fbzz::physics
         {
             if (currentEvents.count(pair) != 0) continue;
 
-            // 離れた瞬間のイベントに「ぶつかった強さ」は無い。前フレームの値を
-            // そのまま残すと、Exit を見ているスクリプトが古い衝突速度を読んでしまう。
+            /// @note 離れた瞬間のイベントに「ぶつかった強さ」は無い。前フレームの値を
+            ///       そのまま残すと、Exit を見ているスクリプトが古い衝突速度を読んでしまう。
             CollisionEvent exitEvent = event;
             exitEvent.relativeVelocity = math::Vector3::ZERO;
             exitEvent.approachSpeed    = 0.0f;
@@ -1155,7 +1139,7 @@ namespace fbzz::physics
     const std::vector<CollisionEvent>& World::GetStayEvents()  const { return m_stayEvents;  }
     const std::vector<CollisionEvent>& World::GetExitEvents()  const { return m_exitEvents;  }
 
-    // ── Raycast ─────────────────────────────────────────────────────────────
+    /// @name Raycast
 
     bool World::Raycast(const math::Vector3& origin,
                         const math::Vector3& direction,
@@ -1163,8 +1147,8 @@ namespace fbzz::physics
                         RaycastHit&          hit,
                         ColliderFilter        filter) const
     {
-        // 向きの無いレイは何にも当たらない。スクリプトから 0 ベクトルが来るのは
-        // 「対象と重なっている」等で普通に起きるため、当たり無しとして返す。
+        /// @note 向きの無いレイは何にも当たらない。スクリプトから 0 ベクトルが来るのは
+        ///       「対象と重なっている」等で普通に起きるため、当たり無しとして返す。
         if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
         float   bestT = maxDistance + 1.0f;
@@ -1225,12 +1209,9 @@ namespace fbzz::physics
                            RaycastHit&          hit,
                            ColliderFilter        filter) const
     {
-        // WHAT: Minkowski 和による膨張。各コライダーを球半径分だけ広げてから通常のレイキャストを行う。
-        //       膨張した形状は各コライダー種に応じて近似する:
-        //         Sphere       → 半径を加算
-        //         AABB/OBB     → AABB を各辺方向へ radius だけ広げる
-        //         Capsule      → カプセル半径を加算
-        //         Cylinder/Mesh/Convex → AABB 近似
+        /// @note Minkowski 和による膨張: 各コライダーを球半径分だけ広げてから通常のレイキャストを行う。
+        ///       膨張した形状はコライダー種ごとに近似する — Sphere: 半径を加算 / AABB,OBB: 各辺
+        ///       方向へ radius だけ広げる / Capsule: カプセル半径を加算 / Cylinder,Mesh,Convex: AABB 近似。
 
         if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
@@ -1252,17 +1233,17 @@ namespace fbzz::physics
                 break;
             }
             case ColliderType::CAPSULE: {
-                // CapsuleCollider の半径を膨張させて再判定
-                // WHAT: 一時オブジェクトを作らずに既存関数の radius 引数を拡張して再利用する
+                /// @note CapsuleCollider の半径を膨張させて再判定する。一時オブジェクトを作らず
+                ///       既存関数の radius 引数を拡張して再利用する。
                 const auto* cap = static_cast<const CapsuleCollider*>(inst.collider);
-                // 軸両端の球を膨張
+                /// @note 軸両端の球を膨張
                 float tA; math::Vector3 nA;
                 float tB; math::Vector3 nB;
                 bool hitA = RaySphere(origin, d, maxDistance,
                                       cap->GetSegmentStart(), cap->m_radius + radius, tA, nA);
                 bool hitB = RaySphere(origin, d, maxDistance,
                                       cap->GetSegmentEnd(),   cap->m_radius + radius, tB, nB);
-                // 膨張 AABB でもテスト (保守的)
+                /// @note 膨張 AABB でもテスト (保守的)
                 AABB aabb = inst.collider->GetAABB();
                 const math::Vector3 expand(radius, radius, radius);
                 aabb.min = aabb.min - expand;
@@ -1275,7 +1256,7 @@ namespace fbzz::physics
                 break;
             }
             default: {
-                // AABB を radius 分だけ膨張させてレイテスト
+                /// @note AABB を radius 分だけ膨張させてレイテスト
                 AABB aabb = inst.collider->GetAABB();
                 const math::Vector3 expand(radius, radius, radius);
                 aabb.min = aabb.min - expand;

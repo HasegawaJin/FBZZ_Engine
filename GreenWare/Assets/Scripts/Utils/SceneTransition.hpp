@@ -8,19 +8,14 @@
 ///   transition::Tick(dt, scene)            … 毎フレーム 1 回。誰かが進める (下記)
 ///   transition::PushWipe(pp)               … 今フレームの覆いを PostProcessSettings へ載せる
 ///
-/// WHY 静的な状態で持つか:
-///   遷移は «シーンをまたぐ» 出来事で、塗った側のスクリプトは LoadScene で消える。
-///   剥がすのは次のシーンの誰かで、その誰かが «剥がすべき覆いがある» ことを知るには、
-///   シーンに属さない場所に置くしかない (SceneManagerScript の s_fadeIn と同じ理由)。
-///
-/// WHY 進める人と描く人を分けるか:
-///   ランタイムの PostProcessSettings は «まるごと差し替え» の器で、書き手は 1 人でないと
-///   互いを消す (ScreenEffectManagerComponent のヘッダー)。遊びのシーンでは
-///   ScreenEffectManager が書き手なので、遷移はそこへ «載せてもらう» (PushWipe)。
-///   マネージャーが居ないメニューでは SceneManagerScript が自分で書く。
-///   どちらのシーンでも進めるのは Tick で、同じフレームに 2 人が呼んでも 1 回しか進まない。
-///
-/// WHY 黒の lerp (screenFadeAlpha) をやめたか: ScreenWipe.hlsl のヘッダー。
+/// @note 静的な状態で持つ。遷移はシーンをまたぐ出来事で塗った側のスクリプトは LoadScene で
+///       消えるため、剥がす次のシーンの誰かが «剥がすべき覆いがある» と知るにはシーンに
+///       属さない場所しかない (SceneManagerScript の s_fadeIn と同じ理由)。進める人と描く人は
+///       分ける: PostProcessSettings はまるごと差し替えの器で書き手は 1 人でないと互いを
+///       消すため、ScreenEffectManager が居るシーンでは PushWipe で載せてもらい、居ない
+///       メニューでは SceneManagerScript が自分で書く。進めるのはどちらも Tick (同フレーム
+///       2 人が呼んでも 1 回だけ)。黒の lerp (screenFadeAlpha) をやめた理由は
+///       ScreenWipe.hlsl のヘッダーを参照。
 #pragma once
 
 #include <Engine/Core/Time.hpp>
@@ -62,13 +57,10 @@ struct State {
     std::string target;
     std::string nextScene;
     /// 直前に LoadScene が失敗した行き先。同じ所へは «出来なかった» と返し続ける。
-    ///
-    /// WHY 覚えるか: 失敗しても扉は Idle へ戻るだけなので、呼ぶ側の
-    ///     `if (transition::Active()) return;` が翌フレームには通り、また塗り始める。
-    ///     Begin が true を返している限り呼ぶ側は «始まった» と思っているので、
-    ///     **扉が延々と閉じては開くのに画面には何も出ない** ─ 一番追いにくい形になる。
-    ///     ここで覚えて false を返せば、各所の «読み込めませんでした» の分岐が
-    ///     書いた人の意図どおりに効く (それまでは 6 か所とも到達しない死んだ枝だった)。
+    /// @note 覚えないと、失敗して Idle へ戻った扉を呼ぶ側の `if (transition::Active())
+    ///       return;` が翌フレームに素通りして塗り直し、«閉じては開くが画面には何も出ない»
+    ///       が延々と続く。ここで false を返すことで各所の «読み込めませんでした» 分岐が
+    ///       意図どおりに効く (それまでは到達しない死んだ枝だった)。
     std::string failedTarget;
     Style       style;
     std::uint64_t tickedFrame = ~std::uint64_t{ 0 };
@@ -89,7 +81,7 @@ inline Style& StyleRef() { return Mutable().style; }
 [[nodiscard]] inline bool  Busy()     { return Mutable().phase == Phase::Out || Mutable().phase == Phase::Hold; }
 
 /// 塗り始める。既に塗っている最中なら無視 (二重発火の防止はここが持つ)。
-/// 直前に読み込めなかった行き先も false で返す (State::failedTarget の WHY)。
+/// 直前に読み込めなかった行き先も false で返す (理由は State::failedTarget を参照)。
 /// throughLoading はステージ選択から出撃するときと、戦闘からリザルトへ移るときだけ指定する。
 inline bool Begin(const std::string& targetScene, bool throughLoading = false)
 {
@@ -99,15 +91,15 @@ inline bool Begin(const std::string& targetScene, bool throughLoading = false)
     if (!s.failedTarget.empty() && s.failedTarget == targetScene) return false;
 
     s.phase = Phase::Out;
-    // 剥がしている途中 (Phase::In) から塗り直すことがある ─ Busy() は In では
-    // false なので、扉が開きかけの間もメニューは押せる。elapsed だけ 0 に戻すと
-    // 次の Tick で cover が ease(0) = 0 へ飛び、**扉が 1 コマ全開してから閉じ直す**。
-    // 今の覆いに対応する時刻から始めれば、開きかけの位置からそのまま閉じる。
+    /// @note 剥がしている途中 (Phase::In) から塗り直すことがある ─ Busy() は In では
+    ///       false なので、扉が開きかけの間もメニューは押せる。elapsed だけ 0 に戻すと
+    ///       次の Tick で cover が ease(0) = 0 へ飛び、**扉が 1 コマ全開してから閉じ直す**。
+    ///       今の覆いに対応する時刻から始めれば、開きかけの位置からそのまま閉じる。
     const float cover = fbzz::math::Clamp01(s.cover);
     s.elapsed = (1.0f - std::sqrt(std::max(1.0f - cover, 0.0f)))
               * std::max(s.style.outSeconds, 0.01f);
     s.cover         = cover;
-    // 中継からの退出だけは直行し、Loadを再び経由する循環を防ぐ。
+    /// @note 中継からの退出だけは直行し、Loadを再び経由する循環を防ぐ。
     const bool relay = throughLoading && targetScene != "Load";
     s.target        = relay ? "Load" : targetScene;
     s.nextScene     = relay ? targetScene : std::string{};
@@ -145,7 +137,7 @@ inline void Tick(float dt, const fbzz::scene::ScriptSceneProxy& scene)
     dt = std::max(dt, 0.0f);
     const Style& st = s.style;
 
-    // 進みは «速く入って緩く止まる»。等速だと機械が塗っているように見える。
+    /// @note 進みは «速く入って緩く止まる»。等速だと機械が塗っているように見える。
     const auto ease = [](float t) { return 1.0f - (1.0f - t) * (1.0f - t); };
 
     switch (s.phase) {
@@ -165,7 +157,7 @@ inline void Tick(float dt, const fbzz::scene::ScriptSceneProxy& scene)
         if (s.elapsed < st.hold) break;
         if (!s.loadRequested) {
             s.loadRequested = true;
-            // 次のシーンの Tick が剥がす。LoadScene が失敗しても覆いを残さない。
+            /// @note 次のシーンの Tick が剥がす。LoadScene が失敗しても覆いを残さない。
             const std::string target = s.target;
             const std::string requested = s.nextScene.empty() ? target : s.nextScene;
             if (target == "Load") s.style.inSeconds = 0.18f;
@@ -173,8 +165,8 @@ inline void Tick(float dt, const fbzz::scene::ScriptSceneProxy& scene)
             if (!scene.LoadScene(target)) {
                 s.phase        = Phase::Idle;
                 s.cover        = 0.0f;
-                // 覚えておく。次に同じ所を頼まれたら Begin が false を返し、
-                // 呼ぶ側の «読み込めませんでした» が出る (それまでは無言で回り続けた)。
+                /// @note 覚えておく。次に同じ所を頼まれたら Begin が false を返し、
+                ///       呼ぶ側の «読み込めませんでした» が出る (それまでは無言で回り続けた)。
                 s.failedTarget = requested;
                 s.nextScene.clear();
             }
@@ -239,11 +231,11 @@ inline bool Drive(float unscaledDt, const fbzz::scene::ScriptSceneProxy& scene,
                 writing = false;
             }
         } else {
-            // 既存のランタイム設定 (自分が書いたものでなければ) を引き継いで扉だけ載せる。
+            /// @note 既存のランタイム設定 (自分が書いたものでなければ) を引き継いで扉だけ載せる。
             fbzz::renderer::PostProcessSettings pp =
                 (!writing && postprocess.TryGet()) ? *postprocess.TryGet()
                                                    : fbzz::renderer::PostProcessSettings{};
-            // 前フレームに誰かが載せた扉は捨てて、今フレームの覆いで載せ直す。
+            /// @note 前フレームに誰かが載せた扉は捨てて、今フレームの覆いで載せ直す。
             std::erase_if(pp.customEffects,
                           [](const fbzz::renderer::CustomPostProcessSettings& e) {
                               return e.name == kWipeEffectName;

@@ -26,7 +26,7 @@
 namespace fbzz::editor {
 namespace {
 
-// VFX Editor のタイムラインと同じ刻み。エディタ内で「1 コマ」の意味を揃える。
+/// VFX Editor のタイムラインと同じ刻み。エディタ内で「1 コマ」の意味を揃える。
 constexpr float  kScrubStep   = 1.0f / 60.0f;
 constexpr float  kRowHeight   = 22.0f;
 constexpr float  kLabelWidth  = 172.0f;
@@ -37,15 +37,17 @@ constexpr double kMinBarSpan  = 0.02;
 using asset::SequenceTrack;
 using asset::SequenceTrackType;
 
-// ── 列 (channel) ────────────────────────────────────────────────────────────
-// 1 行に複数系統を重ねて描くのは TransformTrack と PropertyTrack だけ。
-// 行を系統ごとに増やすと、位置しか打っていないトラックでも 3 行占有してしまう。
+/// @name 列 (channel)
+/// 1 行に複数系統を重ねて描くのは TransformTrack と PropertyTrack だけ。
+/// 行を系統ごとに増やすと、位置しか打っていないトラックでも 3 行占有してしまう。
 
 int ChannelCount(SequenceTrackType type)
 {
     switch (type) {
-    case SequenceTrackType::Transform: return 3;   // position / rotation / scale
-    case SequenceTrackType::Property:  return 6;   // float / v2 / v3 / v4 / int / bool
+    /// @note position / rotation / scale
+    case SequenceTrackType::Transform: return 3;
+    /// @note float / v2 / v3 / v4 / int / bool
+    case SequenceTrackType::Property:  return 6;
     default:                           return 1;
     }
 }
@@ -86,8 +88,8 @@ ImU32 TrackColor(SequenceTrackType type)
     return IM_COL32(120, 120, 120, 255);
 }
 
-// 同じ行に重なる系統を色で見分ける。Transform の 3 軸系統は Inspector の
-// Position/Rotation/Scale と同じ並びなので、色の意味を覚え直さずに済む。
+/// 同じ行に重なる系統を色で見分ける。Transform の 3 軸系統は Inspector の
+/// Position/Rotation/Scale と同じ並びなので、色の意味を覚え直さずに済む。
 ImU32 ChannelColor(SequenceTrackType type, int channel)
 {
     if (type == SequenceTrackType::Transform) {
@@ -100,10 +102,8 @@ ImU32 ChannelColor(SequenceTrackType type, int channel)
     return TrackColor(type);
 }
 
-/// 列の実体へアクセスする唯一の分岐点。
-///
-/// WHY 1 か所に集めるか: 「個数」「時刻」「削除」「追加」を種別ごとに書くと
-///     同じ switch が 5 つ並び、列を 1 つ足すたびに全部を直す羽目になる。
+/// 列の実体へアクセスする唯一の分岐点。「個数」「時刻」「削除」「追加」を種別ごとに書くと
+/// 同じ switch が 5 つ並び、列を 1 つ足すたびに全部を直す羽目になる。
 template<typename Fn>
 void WithChannel(SequenceTrack& track, int channel, Fn&& fn)
 {
@@ -185,8 +185,8 @@ ItemSpan SpanOf(const SequenceTrack& track, int channel, std::size_t index, doub
         if (index >= track.animationClips.size()) break;
         const auto& clip = track.animationClips[index];
         span.start = clip.start;
-        // 尺を書いていないクリップは次のクリップの頭まで。最後なら演出の終わりまで。
-        // 実際のクリップ長は Animator がロードしないと分からないので、ここでは出さない。
+        /// @note 尺を書いていないクリップは次のクリップの頭まで。最後なら演出の終わりまで。
+        ///       実際のクリップ長は Animator がロードしないと分からないので、ここでは出さない。
         span.end = clip.duration > 0.0 ? clip.start + clip.duration
                  : (index + 1 < track.animationClips.size()
                         ? track.animationClips[index + 1].start
@@ -203,7 +203,7 @@ ItemSpan SpanOf(const SequenceTrack& track, int channel, std::size_t index, doub
         if (index >= track.audioClips.size()) break;
         const auto& clip = track.audioClips[index];
         span.start = clip.start;
-        // one-shot は「その瞬間に鳴る」だけなので点。帯にすると尺を持つように見える。
+        /// @note one-shot は「その瞬間に鳴る」だけなので点。帯にすると尺を持つように見える。
         span.end = clip.loop ? (clip.end > clip.start ? clip.end : sequenceDuration) : -1.0;
         break;
     }
@@ -286,11 +286,8 @@ void ResizeItem(SequenceTrack& track, std::size_t index, double newEnd)
     }
 }
 
-// 時刻順に並べ直す。
-//
-// WHY 必要か: サンプリングは std::upper_bound でキーを引く。キーを隣より後ろへ
-//     ドラッグしたまま並びが崩れていると、二分探索が別のキー区間を返し、
-//     「打った値と違う姿勢が出る」という追いにくい形で壊れる。
+/// 時刻順に並べ直す。サンプリングは std::upper_bound でキーを引くため、キーを隣より後ろへ
+/// ドラッグしたまま並びが崩れていると二分探索が別のキー区間を返し「打った値と違う姿勢が出る」。
 void SortChannel(SequenceTrack& track, int channel)
 {
     WithChannel(track, channel, [](auto& values) {
@@ -308,9 +305,8 @@ void EraseItem(SequenceTrack& track, int channel, std::size_t index)
     });
 }
 
-// 直近の Transform キーを複製せず、既定値で作る。
-// WHY: 直前のキーを複製すると「動かないキー」が増え、打ったのに何も変わらない
-//      という形で詰まる。値は Inspector で入れる前提にする。
+/// 直近の Transform キーを複製せず、既定値で作る。複製すると「動かないキー」が増え打っても
+/// 何も変わらない形で詰まるため、値は Inspector で入れる前提にする。
 void InsertItem(SequenceTrack& track, int channel, double time)
 {
     switch (track.type) {
@@ -351,8 +347,8 @@ void InsertItem(SequenceTrack& track, int channel, double time)
             Element element{};
             SetElementStart(element, time);
             values.push_back(std::move(element));
-            // WHY ElementStart で比べるか: この generic lambda は switch の全分岐ぶん
-            //     実体化されるため、キー型にしか無い .time を直接書くと clip 型で落ちる。
+            /// @note ElementStart で比べる: この generic lambda は switch の全分岐ぶん実体化されるため、
+            ///       キー型にしか無い .time を直接書くと clip 型で落ちる。
             std::stable_sort(values.begin(), values.end(),
                              [](const Element& a, const Element& b) {
                                  return ElementStart(a) < ElementStart(b);
@@ -372,7 +368,7 @@ std::string TrackRowLabel(const SequenceTrack& track)
 
 } // namespace
 
-// ── ドキュメント ────────────────────────────────────────────────────────────
+/// @name ドキュメント
 
 bool SequencePanel::Load(const std::string& path)
 {
@@ -400,8 +396,8 @@ bool SequencePanel::Load(const std::string& path)
 bool SequencePanel::Save()
 {
     if (m_path.empty()) return false;
-    // ディスクへ出す前に必ず時刻順へ整える。ドラッグ中は並べ替えずに済ませているため、
-    // 保存だけが「並びの崩れたまま書かれる」経路になりうる。
+    /// @note ディスクへ出す前に必ず時刻順へ整える。ドラッグ中は並べ替えずに済ませているため、
+    ///       保存だけが「並びの崩れたまま書かれる」経路になりうる。
     for (auto& track : m_asset.tracks)
         for (int channel = 0; channel < ChannelCount(track.type); ++channel)
             SortChannel(track, channel);
@@ -464,14 +460,14 @@ double SequencePanel::Duration() const
 
 double SequencePanel::ApplySnap(double seconds) const
 {
-    // Shift でスナップを一時反転する (VFX Editor のタイムラインと同じ約束)。
+    /// @note Shift でスナップを一時反転する (VFX Editor のタイムラインと同じ約束)。
     const bool snapping = m_snap != ImGui::GetIO().KeyShift;
     if (!snapping || m_snapStep <= 0.0f) return seconds;
     const double step = static_cast<double>(m_snapStep);
     return std::round(seconds / step) * step;
 }
 
-// ── プレビュー ──────────────────────────────────────────────────────────────
+/// @name プレビュー
 
 scene::SequencePlayerComponent* SequencePanel::ResolvePreviewPlayer(
     EditorContext& ctx, scene::EntityID& outEntity) const
@@ -492,9 +488,8 @@ scene::SequencePlayerComponent* SequencePanel::ResolvePreviewPlayer(
     }
     if (auto* player = accept(ctx.GetSelectedGO())) return player;
 
-    // 最後に、この .sequence を指している Player を探す。
-    // WHY 選択より後か: 「今いじっているオブジェクト」を優先しないと、
-    //     同じ演出を複数の敵が持つ盤面でプレビュー先が勝手に移る。
+    /// @note 最後に、この .sequence を指している Player を探す。「今いじっているオブジェクト」を
+    ///       優先しないと、同じ演出を複数の敵が持つ盤面でプレビュー先が勝手に移る。
     if (m_assetPath.empty()) return nullptr;
     for (auto* go : ctx.activeScene->FindObjectsOfType<scene::SequencePlayerComponent>()) {
         if (!go) continue;
@@ -511,12 +506,12 @@ void SequencePanel::PushPreview(EditorContext& ctx)
     scene::EntityID entity = scene::EntityID::INVALID;
     scene::SequencePlayerComponent* player = ResolvePreviewPlayer(ctx, entity);
 
-    // プレビュー先が移ったら、前の相手を必ず元へ戻してから乗り換える。
+    /// @note プレビュー先が移ったら、前の相手を必ず元へ戻してから乗り換える。
     if (m_previewEntity.IsValid() && m_previewEntity != entity) ReleasePreview(ctx);
     if (!player) { m_previewEntity = scene::EntityID::INVALID; return; }
 
     if (m_pushedRevision != m_localRevision || !player->authoringSequence) {
-        // 版数を進めると SequenceSystem が「触ったものを戻して撮り直す」。
+        /// @note 版数を進めると SequenceSystem が「触ったものを戻して撮り直す」。
         player->authoringSequence = std::make_shared<const asset::SequenceAsset>(m_asset);
         ++player->authoringRevision;
         m_pushedRevision = m_localRevision;
@@ -534,7 +529,7 @@ void SequencePanel::ReleasePreview(EditorContext& ctx)
     if (ctx.activeScene->IsValid(m_previewEntity)) {
         if (auto* go = ctx.activeScene->GetGameObject(m_previewEntity)) {
             if (auto* player = go->GetComponent<scene::SequencePlayerComponent>()) {
-                // scrub を負へ戻すと SequenceSystem が復帰を 1 回だけ流す。
+                /// @note scrub を負へ戻すと SequenceSystem が復帰を 1 回だけ流す。
                 player->editorScrubTime = -1.0f;
                 player->authoringSequence.reset();
                 ++player->authoringRevision;
@@ -547,20 +542,20 @@ void SequencePanel::ReleasePreview(EditorContext& ctx)
 
 void SequencePanel::OnShutdown()
 {
-    // ここでは EditorContext を貰えない。scrub は保存されないうえ、
-    // Play/Stop の往復でコンポーネントごと作り直されるため残留しない。
+    /// @note ここでは EditorContext を貰えない。scrub は保存されないうえ、
+    ///       Play/Stop の往復でコンポーネントごと作り直されるため残留しない。
     m_previewEntity = scene::EntityID::INVALID;
 }
 
 void SequencePanel::OnAfterEnd(EditorContext& ctx)
 {
-    // ウィンドウを閉じた / タブが隠れたフレームでもここは呼ばれる。
-    // 閉じた瞬間にスクラブを畳まないと、編集用の姿勢がシーンに残ったままになる。
+    /// @note ウィンドウを閉じた / タブが隠れたフレームでもここは呼ばれる。
+    ///       閉じた瞬間にスクラブを畳まないと、編集用の姿勢がシーンに残ったままになる。
     if ((!visible || !WasContentRendered()) && m_previewEntity.IsValid())
         ReleasePreview(ctx);
 }
 
-// ── ツールバー ──────────────────────────────────────────────────────────────
+/// @name ツールバー
 
 void SequencePanel::DrawToolbar(EditorContext& ctx)
 {
@@ -568,7 +563,7 @@ void SequencePanel::DrawToolbar(EditorContext& ctx)
     ImGui::SetNextItemWidth(360.0f);
     if (widgets::AssetPathField("Sequence", path, ".sequence", ctx.projectRoot)) {
         if (!path.empty() && path != m_path) {
-            // 別の演出へ移る前に、今出しているスクラブを畳んで姿勢を戻す。
+            /// @note 別の演出へ移る前に、今出しているスクラブを畳んで姿勢を戻す。
             ReleasePreview(ctx);
             Load(path);
         }
@@ -588,7 +583,7 @@ void SequencePanel::DrawToolbar(EditorContext& ctx)
 
     if (m_path.empty()) return;
 
-    // ── 演出そのものの設定 ──
+    /// @name 演出そのものの設定
     float duration = static_cast<float>(m_asset.duration);
     ImGui::SetNextItemWidth(90.0f);
     if (ImGui::DragFloat("Duration", &duration, 0.05f, 0.0f, 600.0f, "%.2fs")) {
@@ -667,8 +662,8 @@ void SequencePanel::DrawTransport(EditorContext& ctx)
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.4f, 1.0f), "Play 中はスクラブしません");
     }
 
-    // Play 中はシーンの権威がゲーム側にある。そこへスクラブを重ねると、
-    // 演出が動いているのか自分が動かしているのか区別できなくなる。
+    /// @note Play 中はシーンの権威がゲーム側にある。そこへスクラブを重ねると、
+    ///       演出が動いているのか自分が動かしているのか区別できなくなる。
     if (inPlay) { m_playing = false; return; }
 
     if (m_playing) {
@@ -683,7 +678,7 @@ void SequencePanel::DrawTransport(EditorContext& ctx)
     }
 }
 
-// ── タイムライン ────────────────────────────────────────────────────────────
+/// @name タイムライン
 
 void SequencePanel::DrawTimeline(EditorContext& ctx)
 {
@@ -711,7 +706,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
     draw->AddRectFilled(origin, { origin.x + availableWidth, origin.y + contentHeight },
                         IM_COL32(20, 23, 30, 255));
 
-    // 目盛り
+    /// @note 目盛り
     for (int i = 0; i <= 10; ++i) {
         const float ratio = static_cast<float>(i) / 10.0f;
         const float x = trackLeft + trackWidth * ratio;
@@ -747,9 +742,9 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                                                : IM_COL32(180, 188, 205, 255);
         draw->AddText({ origin.x + 6.0f, rowTop + 4.0f }, labelColor, label.c_str());
 
-        // 行に乗っていれば、項目の上でなくてもそのトラックを指しているものとして扱う。
-        // WHY: キーを打つ操作は「その行の、その時刻で右クリック」なので、
-        //      既存の項目の上でしか行を掴めないと、最初の 1 個が置けない。
+        /// @note 行に乗っていれば、項目の上でなくてもそのトラックを指しているものとして扱う。
+        ///       キーを打つ操作は「その行の、その時刻で右クリック」なので、既存の項目の上でしか
+        ///       行を掴めないと最初の 1 個が置けない。
         const bool rowHot = canvasHovered && mouse.y >= rowTop && mouse.y < rowTop + kRowHeight;
         if (rowHot) hovered = { static_cast<int>(t), 0, -1 };
 
@@ -772,7 +767,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                                   3.0f, 0, selected ? 2.0f : 1.0f);
                     if (rowHot && mouse.x >= left - 4.0f && mouse.x <= right + 4.0f) {
                         hovered = { static_cast<int>(t), c, static_cast<int>(i) };
-                        // 右端 6px は尺のハンドル。掴み分けはカーソルでも示す。
+                        /// @note 右端 6px は尺のハンドル。掴み分けはカーソルでも示す。
                         hoveredKind = (mouse.x >= right - 6.0f) ? 1 : 0;
                     }
                 } else {
@@ -782,7 +777,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                         hovered = { static_cast<int>(t), c, static_cast<int>(i) };
                         hoveredKind = 0;
                     }
-                    // 菱形。帯と形で区別が付くので、色が同系でも取り違えない。
+                    /// @note 菱形。帯と形で区別が付くので、色が同系でも取り違えない。
                     const ImU32 keyColor = (selected || hot)
                         ? IM_COL32(255, 235, 150, 255) : color;
                     draw->AddQuadFilled({ x, centerY - kKeyRadius }, { x + kKeyRadius, centerY },
@@ -797,17 +792,17 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
         ImGui::SetMouseCursor(hoveredKind == 1 ? ImGuiMouseCursor_ResizeEW
                                                : ImGuiMouseCursor_ResizeAll);
 
-    // 再生ヘッド
+    /// @note 再生ヘッド
     const float headX = timeToX(m_playhead);
     draw->AddLine({ headX, origin.y }, { headX, origin.y + contentHeight },
                   IM_COL32(255, 96, 96, 220), 1.5f);
 
-    // ── 入力 ──
+    /// @name 入力
     const bool overRuler = canvasHovered && mouse.y < origin.y + kRulerHeight;
     if (overRuler && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) m_scrubbingRuler = true;
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) m_scrubbingRuler = false;
     if (m_scrubbingRuler) {
-        // 掴んだら離すまで追う。行の上へ外れた瞬間に止まると、掴み直しが要る。
+        /// @note 掴んだら離すまで追う。行の上へ外れた瞬間に止まると、掴み直しが要る。
         m_playhead = ApplySnap(xToTime(mouse.x));
         m_playing  = false;
     }
@@ -828,8 +823,8 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
 
     if (m_drag.HasItem()) {
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-            // 掴んでいる間は並べ替えない (添字が動くと掴んだ対象が入れ替わる)。
-            // 離した時点で 1 回だけ整える。
+            /// @note 掴んでいる間は並べ替えない (添字が動くと掴んだ対象が入れ替わる)。
+            ///       離した時点で 1 回だけ整える。
             SortChannelKeepingSelection(m_drag.track, m_drag.channel, m_dragLastValue);
             m_drag = {};
             m_dragKind = -1;
@@ -841,7 +836,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                                             static_cast<std::size_t>(m_drag.index), span);
             const double before = m_dragKind == 1 ? current.end : current.start;
             if (std::fabs(next - before) > 1.0e-6) {
-                // 1 操作分をまとめて戻せるよう、動き始めた瞬間に 1 回だけ撮る。
+                /// @note 1 操作分をまとめて戻せるよう、動き始めた瞬間に 1 回だけ撮る。
                 if (!m_dragPushedUndo) { PushUndo(); m_dragPushedUndo = true; }
                 if (m_dragKind == 1)
                     ResizeItem(track, static_cast<std::size_t>(m_drag.index), next);
@@ -850,7 +845,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
                              static_cast<std::size_t>(m_drag.index), next);
                 MarkEdited();
             }
-            // 並べ替え後に選び直すための手掛かり。移動なら新しい開始時刻そのもの。
+            /// @note 並べ替え後に選び直すための手掛かり。移動なら新しい開始時刻そのもの。
             m_dragLastValue = m_dragKind == 1
                 ? SpanOf(track, m_drag.channel,
                          static_cast<std::size_t>(m_drag.index), span).start
@@ -859,7 +854,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
         }
     }
 
-    // 行の右クリックで、その時刻へ項目を足す / トラックを操作する。
+    /// @note 行の右クリックで、その時刻へ項目を足す / トラックを操作する。
     if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !overRuler) {
         m_selection    = hovered;
         m_contextTrack = hovered.track;
@@ -921,7 +916,7 @@ void SequencePanel::DrawTrackContextMenu(EditorContext& ctx)
     ImGui::EndPopup();
 }
 
-// ── Inspector ───────────────────────────────────────────────────────────────
+/// @name Inspector
 
 void SequencePanel::DrawTrackHeaderFields(SequenceTrack& track)
 {
@@ -1002,7 +997,7 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
             m_pendingSortTime    = value;
         }
     };
-    // 値の編集はどれも「掴んだ瞬間に 1 回撮って、変わったら dirty」で同じ形になる。
+    /// @note 値の編集はどれも「掴んだ瞬間に 1 回撮って、変わったら dirty」で同じ形になる。
     const auto edited = [&](bool changed) {
         SnapshotOnActivate();
         if (changed) MarkEdited();
@@ -1162,8 +1157,8 @@ void SequencePanel::DrawInspector(EditorContext& ctx)
         ImGui::TextDisabled("Item #%d", m_selection.index);
     DrawSelectedItemFields(track);
 
-    // プレビュー先の表示。どのオブジェクトへ出しているのか分からないと、
-    // 「絵が変わらない」がバインド漏れなのか値の問題なのか切り分けられない。
+    /// @note プレビュー先の表示。どのオブジェクトへ出しているのか分からないと、
+    ///       「絵が変わらない」がバインド漏れなのか値の問題なのか切り分けられない。
     ImGui::Separator();
     if (m_previewEntity.IsValid() && ctx.activeScene) {
         if (auto* go = ctx.activeScene->GetGameObject(m_previewEntity))
@@ -1174,7 +1169,7 @@ void SequencePanel::DrawInspector(EditorContext& ctx)
     }
 }
 
-// ── トラック操作 ────────────────────────────────────────────────────────────
+/// @name トラック操作
 
 void SequencePanel::SortChannelKeepingSelection(int track, int channel, double keepTime)
 {
@@ -1183,7 +1178,7 @@ void SequencePanel::SortChannelKeepingSelection(int track, int channel, double k
     SortChannel(target, channel);
 
     if (m_selection.track != track || m_selection.channel != channel) return;
-    // 並べ替えで添字が動くので、掴んでいた時刻に最も近いものを選び直す。
+    /// @note 並べ替えで添字が動くので、掴んでいた時刻に最も近いものを選び直す。
     const std::size_t count = ChannelSize(target, channel);
     int best = -1;
     double bestDelta = 1.0e18;
@@ -1202,8 +1197,8 @@ void SequencePanel::AddTrack(SequenceTrackType type)
     SequenceTrack track;
     track.type = type;
     track.name = asset::SequenceTrackTypeName(type);
-    // Event 以外はターゲットが要る。空欄のままだと黙って何も起きないので、
-    // 最初から埋めておいて「ここを直す」と分かる形にする。
+    /// @note Event 以外はターゲットが要る。空欄のままだと黙って何も起きないので、
+    ///       最初から埋めておいて「ここを直す」と分かる形にする。
     if (type != SequenceTrackType::Event) track.binding = "$self";
     m_asset.tracks.push_back(std::move(track));
     m_selection = { static_cast<int>(m_asset.tracks.size()) - 1, 0, -1 };
@@ -1226,7 +1221,7 @@ void SequencePanel::AddItemAt(SequenceTrack& track, int channel, double time)
     MarkEdited();
 }
 
-// ── 本体 ────────────────────────────────────────────────────────────────────
+/// @name 本体
 
 void SequencePanel::OnRenderContent(EditorContext& ctx)
 {
@@ -1298,14 +1293,14 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
         m_pendingSortTrack = -1;
     }
 
-    // スクラブの反映はこのフレームの最後で行う。ツールバーで済ませると、
-    // 直後のタイムラインで動かした再生ヘッドが 1 フレーム遅れて絵に出る。
+    /// @note スクラブの反映はこのフレームの最後で行う。ツールバーで済ませると、
+    ///       直後のタイムラインで動かした再生ヘッドが 1 フレーム遅れて絵に出る。
     const bool inPlay = ctx.playMode && !ctx.playMode->IsInEditor();
     if (m_previewing && !inPlay) PushPreview(ctx);
     else if (m_previewEntity.IsValid()) ReleasePreview(ctx);
 
-    // 未保存を保存待ちアセットへ載せる。終了時の一括保存ダイアログがこれを見るため、
-    // 載せ忘れると編集だけが黙って捨てられる。
+    /// @note 未保存を保存待ちアセットへ載せる。終了時の一括保存ダイアログがこれを見るため、
+    ///       載せ忘れると編集だけが黙って捨てられる。
     if (m_dirty)
         AssetDirtyRegistry::Register(m_path, m_assetPath, "Sequence",
                                      [this]() { return Save(); });

@@ -16,9 +16,8 @@ namespace fbzz::scene {
 
 namespace {
 
-// 動的な RenderPass 名を ProfilerRecord の寿命より長く保持する。
-// WHY: ProfilerMarker は const char* を保持するため、フレーム末尾で破棄される
-//      RenderGraph 内部文字列を直接渡すと AnalysisPanel がダングリングポインターを読む。
+/// @brief 動的な RenderPass 名を ProfilerRecord の寿命より長く保持する。
+/// @note ProfilerMarker は const char* を保持するため、フレーム末尾で破棄される RenderGraph 内部文字列を直接渡すと AnalysisPanel がダングリングポインターを読む。
 const char* InternRenderPassProfileName(std::string_view name)
 {
     static std::unordered_set<std::string> names;
@@ -31,8 +30,7 @@ const char* InternRenderPassProfileName(std::string_view name)
 
 void RenderPipeline::BeginBuild()
 {
-    // WHAT: パス本体と raw pass のラムダは RenderPassContext を参照するため毎フレーム破棄する。
-    // WHY: Plan 結果は別の永続状態として残すことで、構成不変フレームの依存解析を省略できる。
+    /// @note パス本体と raw pass のラムダは RenderPassContext を参照するため毎フレーム破棄する。Plan 結果は別の永続状態として残し、構成不変フレームでは依存解析を省略できる。
     m_entries.clear();
     m_resources.clear();
     m_outputs.clear();
@@ -59,8 +57,8 @@ void RenderPipeline::DeclareTarget(std::string_view name,
                                     renderer::ResourceHandle<renderer::RenderTargetTag> handle,
                                     renderer::RenderGraph::ResourceDesc desc)
 {
-    // 確保はしない。実体は呼び出し側 (ViewRenderTargets) が持ち、ここは «その名前が
-    // どれを指すか» を申告と一緒に預かるだけ。記述の変更検出は Execute() の指紋が行う。
+    /// @note 確保はしない。実体は呼び出し側 (ViewRenderTargets) が持ち、ここは «その名前が
+    ///       どれを指すか» を申告と一緒に預かるだけ。記述の変更検出は Execute() の指紋が行う。
     m_resources.push_back({ std::string(name), desc, handle, {} });
 }
 
@@ -73,7 +71,7 @@ void RenderPipeline::DeclareTexture(std::string_view name,
 
 void RenderPipeline::BindDeclaredResources(RenderPassContext& ctx) const
 {
-    // 登録簿はこのフレームの宣言から «導かれる» もの。別に持ち回らない。
+    /// @note 登録簿はこのフレームの宣言から «導かれる» もの。別に持ち回らない。
     ctx.resourceRegistry.Clear();
     for (const auto& resource : m_resources) {
         if (resource.target.IsValid())
@@ -129,8 +127,8 @@ void RenderPipeline::SetGpuProfilerHooks(std::function<void(std::string_view)> b
 
 void RenderPipeline::ReleaseViewResources(renderer::ResourceManager& resources)
 {
-    // 毒用の RT は呼び出し元 (ReleaseViewRenderTargets) がこの直後に RenderPipeline ごと
-    // 作り直すので、ここで返さないとハンドルを握ったまま消える。
+    /// @note 毒用の RT は呼び出し元 (ReleaseViewRenderTargets) がこの直後に RenderPipeline ごと
+    ///       作り直すので、ここで返さないとハンドルを握ったまま消える。
     m_bindingPoisonRT.Release(resources);
 }
 
@@ -147,10 +145,8 @@ std::vector<size_t> RenderPipeline::CollectEnabledSetups(RenderPassContext& ctx)
         enabled.push_back(i);
     }
 
-    // 申告はこのフレームで 1 回だけ引く。Setup は Execute からも参照するので、
-    // グラフへ渡した後も生き続ける場所へ置く (ラムダは参照で掴む)。
-    // WHY 要素ごと作り直さないか: assign すると全パスぶんの vector / string を毎フレーム
-    //     確保し直すことになる。中身だけ空にして容量は残す。
+    /// @note 申告はこのフレームで 1 回だけ引く。Setup は Execute からも参照するので、グラフへ渡した後も生き続ける場所へ置く (ラムダは参照で掴む)。
+    /// @note 要素ごと作り直さない。assign すると全パスぶんの vector / string を毎フレーム確保し直すことになるため、中身だけ空にして容量は残す。
     m_setups.resize(m_entries.size());
     for (auto& setup : m_setups) {
         setup.accesses.clear();
@@ -241,8 +237,8 @@ void RenderPipeline::BuildGraph(renderer::RenderGraph& graph,
 {
     FBZZ_PROFILE_SCOPE("RenderPipeline::BuildGraph");
 
-    // 束縛毒 (RenderBindingGuard)。立っているときだけ 1x1 の RT を用意し、
-    // 各パスの実行直前に束縛して «前のパスが残した RT» を当てにできなくする。
+    /// @note 束縛毒 (RenderBindingGuard)。立っているときだけ 1x1 の RT を用意し、
+    ///       各パスの実行直前に束縛して «前のパスが残した RT» を当てにできなくする。
     const bool poisonBindings = renderer::bindingguard::IsEnabled();
     if (poisonBindings)
         m_bindingPoisonRT.Ensure(ctx.resources, 1, 1, 1);
@@ -267,15 +263,15 @@ void RenderPipeline::BuildGraph(renderer::RenderGraph& graph,
             [pass, &s, &ctx, poisonBindings, poison] {
                 if (poisonBindings)
                     ctx.renderer.SetRenderTarget(poison, ctx.resources);
-                // 申告した書き先を自動束縛する (SetAutoTarget を呼んだパスだけ)。
+                /// @note 申告した書き先を自動束縛する (SetAutoTarget を呼んだパスだけ)。
                 if (!s.autoTarget.empty()) {
                     const auto target = ctx.resourceRegistry.Target(s.autoTarget);
                     if (target.IsValid())
                         ctx.renderer.SetRenderTarget(target, ctx.resources);
                 }
                 PassResources resources(ctx.resourceRegistry, s.accesses, pass->Name());
-                // 自由関数へ散ったパス本体からも ctx.Res() で引けるようにする。
-                // パスは順に実行されるので、実行中の 1 本だけが差さっている。
+                /// @note 自由関数へ散ったパス本体からも ctx.Res() で引けるようにする。
+                ///       パスは順に実行されるので、実行中の 1 本だけが差さっている。
                 ctx.passResources = &resources;
                 pass->Execute(resources, ctx);
                 ctx.passResources = nullptr;
@@ -299,7 +295,7 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
     renderer::RenderGraph graph;
     BuildGraph(graph, ctx, enabledNow);
 
-    // 各 RenderGraph パスをCPU Profilerにも流し、ドライバー待機が発生したパスを特定する。
+    /// @note 各 RenderGraph パスをCPU Profilerにも流し、ドライバー待機が発生したパスを特定する。
     graph.SetProfilerHooks(
         [](std::string_view name) {
             profiler::Profiler::BeginSample(
@@ -309,14 +305,14 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
     graph.SetDebugLogHook([](const char* msg) { FBZZ_LOG_ERROR("%s", msg); });
     graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
 
-    // Phase 1: Plan — トポロジが変わった場合のみ依存解決・カリング・ライフタイム解析を実行する。
-    // トポロジ不変フレームでは前フレームの結果を注入して Plan() をスキップする。
+    /// @note Phase 1: Plan — トポロジが変わった場合のみ依存解決・カリング・ライフタイム解析を実行する。
+    ///       トポロジ不変フレームでは前フレームの結果を注入して Plan() をスキップする。
     {
         FBZZ_PROFILE_SCOPE("RenderPipeline::Plan");
         if (topologyChanged) {
             if (!graph.Plan()) {
                 m_planValid = false;
-                // どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
+                /// @note どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
                 FBZZ_LOG_ERROR("RenderGraph::Plan() failed — dependency cycle or missing resource writer.");
                 for (size_t i : enabledNow) {
                     const std::string_view name = m_entries[i]->Name();
@@ -326,13 +322,11 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
                 return false;
             }
             m_planValid = true;
-            // 構成が変わったときだけ作る。毎フレーム作ると文字列連結が乗るうえ、
-            // 差分を見たいのは «変わった瞬間» だけ。
+            /// @note 構成が変わったときだけ作る。毎フレーム作ると文字列連結が乗るうえ、
+            ///       差分を見たいのは «変わった瞬間» だけ。
             m_lastPlanDescription = graph.DescribeLastPlan();
 
-            // WHY ここで鍵を控えるか: 控え忘れていたため «前フレームと同じ» が永久に
-            //     成立せず、構成不変フレームでも Plan と構成テキスト生成が毎フレーム
-            //     走っていた (InjectPlan は一度も通っていなかった)。
+            /// @note 鍵はここで控える。控え忘れると «前フレームと同じ» が永久に成立せず、構成不変フレームでも Plan と構成テキスト生成が毎フレーム走る (InjectPlan が一度も通らない)。
             m_lastEnabledEntryIndices = enabledNow;
             m_lastGraphFingerprint    = fingerprint;
         } else {

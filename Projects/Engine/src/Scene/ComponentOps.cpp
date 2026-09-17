@@ -13,9 +13,8 @@ namespace fbzz::scene {
 
 namespace {
 
-// WHY 関数内 static か: ComponentRegistry の畳み込みは型ごとの関数ポインタ生成を伴う。
-//     名前空間スコープの静的初期化に置くと、他 TU の静的初期化順序に依存しうる。
-//     初回アクセス時に一度だけ組み立てれば順序問題が起きない。
+/// @note 型ごとの関数ポインタ生成を伴うため、名前空間スコープの静的初期化に置くと他 TU の
+///       初期化順序に依存する。初回アクセス時に一度だけ組み立てて順序依存を避ける。
 const std::vector<ComponentOps>& BuildTable()
 {
     static const std::vector<ComponentOps> table = [] {

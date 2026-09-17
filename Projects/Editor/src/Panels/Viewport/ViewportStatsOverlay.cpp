@@ -3,10 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 ///
-/// 役割は「絵を見ながら横目で確認する層」に限定する。
-/// WHY: 内訳の一覧は Analysis > Rendering が表と GPU パス履歴で持っている。
-///      同じ数字をビューポート上へ並べ直すと、確認したい絵そのものを HUD が覆う。
-///      ここに置くのは「playing 中に視線を外さず追う値」だけに絞る。
+/// @note 役割は「絵を見ながら横目で確認する層」に限定する。内訳の一覧は Analysis > Rendering が
+///       表と GPU パス履歴で持つため、同じ数字を並べ直さない。ここは「playing 中に視線を
+///       外さず追う値」だけに絞る。
 #include "ViewportCommon.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/FrameTimeGraph.hpp>
@@ -15,7 +14,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// カリング要因の識別色。内訳の対応は Analysis 側で読む前提で、ここでは割合だけ見せる。
+/// カリング要因の識別色。内訳の対応は Analysis 側で読む前提で、ここでは割合だけ見せる。
 ImU32 CullColor(int index)
 {
     switch (index) {
@@ -26,7 +25,7 @@ ImU32 CullColor(int index)
     }
 }
 
-// 桁が伸びても値の列幅が暴れないよう K / M へ丸める。
+/// 桁が伸びても値の列幅が暴れないよう K / M へ丸める。
 void FormatCount(char* buf, size_t size, uint64_t value)
 {
     if (value >= 1000000)
@@ -37,10 +36,9 @@ void FormatCount(char* buf, size_t size, uint64_t value)
         std::snprintf(buf, size, "%llu", static_cast<unsigned long long>(value));
 }
 
-// 1 行 = 左にラベル / 右端へ値 (+ 淡い単位)。
-// WHY: 旧実装はラベルを空白で埋めて桁を揃えていたが、UI フォントは
-//      プロポーショナルの Roboto なので値の頭が行ごとにずれる。
-//      右端で揃えれば桁数が変わっても数字の列が動かない。
+/// @brief 1 行 = 左にラベル / 右端へ値 (+ 淡い単位)。
+/// @note 旧実装はラベルを空白で埋めて桁を揃えていたが、UI フォントはプロポーショナルの Roboto
+///       なので値の頭が行ごとにずれる。右端で揃えれば桁数が変わっても数字の列が動かない。
 void StatRow(const char* label, const char* value, const ImVec4& valueColor, const char* unit = nullptr)
 {
     const float fontH  = ImGui::GetFontSize();
@@ -59,7 +57,7 @@ void StatRow(const char* label, const char* value, const ImVec4& valueColor, con
     }
 }
 
-// カリング内訳の積み上げバー。残りが実際に描いた分。
+/// カリング内訳の積み上げバー。残りが実際に描いた分。
 void CullBar(const int* culled, int count, int total, float height)
 {
     const float  width  = ImGui::GetContentRegionAvail().x;
@@ -78,7 +76,7 @@ void CullBar(const int* culled, int count, int total, float height)
         dl->AddRectFilled({ x, origin.y }, { x + w, origin.y + height }, CullColor(i));
         x += w;
     }
-    // 描画された分は溝の色のまま残し、境界だけ立てて「ここから先が実描画」を示す。
+    /// @note 描画された分は溝の色のまま残し、境界だけ立てて「ここから先が実描画」を示す。
     if (x > origin.x + 0.5f)
         dl->AddLine({ x, origin.y }, { x, origin.y + height },
                     EditorTheme::ColorU32(ThemeColor::Canvas), 1.0f);
@@ -99,19 +97,19 @@ void DrawStatsOverlay(EditorContext& ctx)
     const auto& snapshot = renderer::RenderDebugOverlay::GetLastSnapshot();
     const auto& rs       = snapshot.renderStats;
 
-    // 目標フレーム時間を「予算」として扱う。色分けもグラフの基準線もこれ 1 本に揃える。
+    /// @note 目標フレーム時間を「予算」として扱う。色分けもグラフの基準線もこれ 1 本に揃える。
     const int   targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
     const float targetMs  = 1000.0f / static_cast<float>(targetFps);
 
-    // 左下に配置 (タブバー・ツールバーと重ならないよう上マージンを考慮)
-    // WHY: 右上は ImGuizmo のビューキューブと重なりやすく、
-    //      左下はほぼ空きスペースになるため視認性が高い。
+    /// @note 左下に配置 (タブバー・ツールバーと重ならないよう上マージンを考慮)。右上は ImGuizmo の
+    ///       ビューキューブと重なりやすく、左下はほぼ空きスペースになるため視認性が高い。
     const float  fontH   = ImGui::GetFontSize();
     const float  margin  = fontH * 0.7f;
     const ImVec2 winPos  = ImGui::GetWindowPos();
     const ImVec2 winSize = ImGui::GetWindowSize();
     ImGui::SetNextWindowPos({ winPos.x + margin, winPos.y + winSize.y - margin },
-                            ImGuiCond_Always, { 0.0f, 1.0f }); // pivot: 左下
+                            /// @note pivot: 左下
+                            ImGuiCond_Always, { 0.0f, 1.0f });
     ImGui::SetNextWindowSize({ fontH * 14.5f, 0.0f }, ImGuiCond_Always);
 
     ImVec4 panelBg = EditorTheme::Color(ThemeColor::Surface);
@@ -136,17 +134,17 @@ void DrawStatsOverlay(EditorContext& ctx)
         char buf[32];
         char value[48];
 
-        // フレーム時間は Analysis > Rendering と同じ部品・同じ履歴で描く。
+        /// @note フレーム時間は Analysis > Rendering と同じ部品・同じ履歴で描く。
         widgets::FrameTimeHero(targetMs);
         widgets::FrameTimeGraph(targetMs, fontH * 1.7f);
 
-        // GPU 時間だけは内訳を開かずに見たい。CPU 待ちか GPU 律速かの一次切り分けになる。
+        /// @note GPU 時間だけは内訳を開かずに見たい。CPU 待ちか GPU 律速かの一次切り分けになる。
         if (const float gpuMs = SumMilliseconds(snapshot.gpuPassTimings); gpuMs > 0.0f) {
             std::snprintf(value, sizeof(value), "%.2f", gpuMs);
             StatRow("GPU", value, EditorTheme::Color(ThemeColor::Text), "ms");
         }
 
-        // 視点を動かすたびに動く 3 つ。ここだけは絵を見ながら追う価値がある。
+        /// @note 視点を動かすたびに動く 3 つ。ここだけは絵を見ながら追う価値がある。
         std::snprintf(value, sizeof(value), "%d", rs.drawCalls);
         StatRow("Draw calls", value, EditorTheme::Color(ThemeColor::Text));
         FormatCount(value, sizeof(value), static_cast<uint64_t>(std::max(rs.triangleCount, 0)));
@@ -154,8 +152,8 @@ void DrawStatsOverlay(EditorContext& ctx)
         FormatCount(value, sizeof(value), static_cast<uint64_t>(std::max(rs.vertexCount, 0)));
         StatRow("Vertices", value, EditorTheme::Color(ThemeColor::Text));
 
-        // ── カリング (率のみ) ──────────────────────────────────────────
-        // 要因別の件数は Analysis > Rendering の表で読む。ここでは効いているかだけ見る。
+        /// @name カリング (率のみ)
+        /// @note 要因別の件数は Analysis > Rendering の表で読む。ここでは効いているかだけ見る。
         const int culled[4] = { rs.frustumCulled, rs.occlusionCulled,
                                 rs.distanceCulled, rs.smallObjectCulled };
         const int totalCulled = culled[0] + culled[1] + culled[2] + culled[3];

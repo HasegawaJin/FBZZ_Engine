@@ -13,17 +13,17 @@ class Script;
 struct ScriptLifetimeProxy {
     Script* script = nullptr;
 
-    // 残り寿命 [秒] を設定する。正値で指定時間後に GO が破棄される。
+    /// @brief 残り寿命 [秒] を設定する。正値で指定時間後に GO が破棄される。
     void  SetRemaining(float seconds) const;
     float GetRemaining() const;
 
     void SetEnabled(bool enabled) const;
     bool IsEnabled() const;
-    // LifetimeComponent 自体が付いているか。付いていない GO では GetRemaining() が
-    // 0 を返すため、「寿命 0」と「寿命を持たない」を区別するのに要る。
+    /// @return LifetimeComponent 自体が付いているか。付いていない GO では GetRemaining() が
+    ///         0 を返すため、「寿命 0」と「寿命を持たない」の区別に要る。
     bool HasLifetime() const;
 
-    // remaining を 0 にして次フレームで即座に GO を破棄させる。
+    /// @brief remaining を 0 にして次フレームで即座に GO を破棄させる。
     void Kill() const;
 };
 

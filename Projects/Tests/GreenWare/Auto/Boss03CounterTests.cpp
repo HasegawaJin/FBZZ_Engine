@@ -122,7 +122,7 @@ TEST_F(Boss03CounterTest, BodyHealthAlsoAdvancesPhaseAndCocoonRejectsDamage)
 {
     m_health->ApplyDamage(701);
     EXPECT_EQ(m_ai->CurrentPhase(), 2);
-    // 繭へ入るのは待機を撃ち切った次の手を選ぶ瞬間。待機より短く進めても開いたまま。
+    /// @note 繭へ入るのは待機を撃ち切った次の手を選ぶ瞬間。待機より短く進めても開いたまま。
     Step(m_ai->idleSeconds + 0.01f);
     const int before = m_health->Current();
     EXPECT_FALSE(m_body->CanBeHit());

@@ -17,15 +17,15 @@ namespace fbzz::input {
 
 namespace {
 
-// バインドは仮想キーコードの生値で持つ。KeyCode の値は VK_* と一致する。
+/// バインドは仮想キーコードの生値で持つ。KeyCode の値は VK_* と一致する。
 constexpr uint32_t Vk(KeyCode key) noexcept
 {
     return static_cast<uint32_t>(key);
 }
 
-// std::string_view で unordered_map を引くための透過ハッシュ。
-// WHY: GetAction は 1 フレームに数十回呼ばれる。毎回 std::string を構築すると
-//      ヒープ確保がホットパスに乗る。C++20 の異種検索でこれを回避する。
+/// @brief std::string_view で unordered_map を引くための透過ハッシュ。
+/// @note GetAction は 1 フレームに数十回呼ばれ、毎回 std::string を構築するとヒープ確保が
+///       ホットパスに乗るため、C++20 の異種検索でこれを回避する。
 struct TransparentStringHash {
     using is_transparent = void;
     [[nodiscard]] size_t operator()(std::string_view value) const noexcept
@@ -47,22 +47,21 @@ struct ActionRuntime {
 };
 
 struct AxisRuntime {
-    float rawAnalog = 0.0f; // デッドゾーン適用前のアナログ生値
-    float keyValue  = 0.0f; // デジタル入力を平滑化した値
-    float value     = 0.0f; // 最終値
+    float rawAnalog = 0.0f; ///< デッドゾーン適用前のアナログ生値
+    float keyValue  = 0.0f; ///< デジタル入力を平滑化した値
+    float value     = 0.0f; ///< 最終値
 };
 
-// リバインドの進行状態。
+/// リバインドの進行状態。
 struct RebindState {
     bool        active       = false;
     bool        isAxis       = false;
     std::string targetName;
-    int         slot         = 0;  // 軸のみ: 0=positive / 1=negative / 2=analog
+    int         slot         = 0;  ///< 軸のみ: 0=positive / 1=negative / 2=analog
     int         bindingIndex = 0;
 
-    // BeginRebind を呼ばせた「クリックそのもの」を捕捉しないために 1 フレーム待つ。
-    // WHY: UI ボタンを押して開始した場合、同フレームの WM_LBUTTONDOWN が
-    //      そのまま新しいバインドとして登録されてしまう。
+    /// BeginRebind を呼ばせた「クリックそのもの」を捕捉しないために 1 フレーム待つ。UI ボタンを
+    /// 押して開始すると、同フレームの WM_LBUTTONDOWN がそのまま新しいバインドとして登録される。
     int skipFrames = 1;
 };
 
@@ -83,18 +82,18 @@ struct MapContext {
     bool enabled = true;
 };
 
-// WHY 関数内 static か: fbzz_engine は SHARED ライブラリで、
-//     WINDOWS_EXPORT_ALL_SYMBOLS はデータシンボルを自動エクスポートしない。
-//     状態への参照は必ずエクスポート済み関数を経由させる (AssetManager と同方針)。
+/// @brief fbzz_engine の状態を保持する関数内 static。
+/// @note SHARED ライブラリの WINDOWS_EXPORT_ALL_SYMBOLS はデータシンボルを自動エクスポートしない
+///       ため、状態への参照は必ずエクスポート済み関数を経由させる (AssetManager と同方針)。
 MapContext& Ctx()
 {
     static MapContext context;
     return context;
 }
 
-// バインドが指すゲームパッドのスロットを解決する。
-// -1 (既定) は「接続中の最初のパッド」。1 台も無い場合は 0 を返す
-// (未接続スロットへの問い合わせは false / 0 を返すため無害)。
+/// バインドが指すゲームパッドのスロットを解決する。
+/// -1 (既定) は「接続中の最初のパッド」。1 台も無い場合は 0 を返す
+/// (未接続スロットへの問い合わせは false / 0 を返すため無害)。
 int ResolvePad(int padIndex)
 {
     if (padIndex >= 0) return padIndex;
@@ -112,7 +111,7 @@ float MouseAxisValue(uint32_t code)
     }
 }
 
-// バインドをアナログ値として評価する。デジタルソースは押下時に scale を返す。
+/// バインドをアナログ値として評価する。デジタルソースは押下時に scale を返す。
 float EvaluateAnalog(const InputBinding& binding)
 {
     switch (binding.source) {
@@ -134,7 +133,7 @@ float EvaluateAnalog(const InputBinding& binding)
     }
 }
 
-// バインドをボタンとして評価する (押されているか)。
+/// バインドをボタンとして評価する (押されているか)。
 bool EvaluateHeld(const InputBinding& binding)
 {
     switch (binding.source) {
@@ -147,15 +146,15 @@ bool EvaluateHeld(const InputBinding& binding)
                                    ResolvePad(binding.padIndex));
     case BindingSource::GAMEPAD_AXIS:
     case BindingSource::MOUSE_AXIS:
-        // 軸をボタンとして使う場合、scale を掛けた値が閾値を超えたら押下とみなす。
-        // scale が -1 なら負方向に倒したときに発火する。
+        /// @note 軸をボタンとして使う場合、scale を掛けた値が閾値を超えたら押下とみなす。
+        ///       scale が -1 なら負方向に倒したときに発火する。
         return EvaluateAnalog(binding) >= binding.buttonThreshold;
     default:
         return false;
     }
 }
 
-// current を target へ maxDelta だけ近づける。
+/// current を target へ maxDelta だけ近づける。
 float MoveTowards(float current, float target, float maxDelta)
 {
     const float diff = target - current;
@@ -163,9 +162,9 @@ float MoveTowards(float current, float target, float maxDelta)
     return current + (diff > 0.0f ? maxDelta : -maxDelta);
 }
 
-// デッドゾーンを適用し、残りの範囲を 0..1 へ線形に引き伸ばす。
-// WHY 引き伸ばすか: 単に切り捨てるだけだと、デッドゾーンを抜けた瞬間に
-//     値が 0 から deadZone へ不連続に飛び、動き出しがカクつく。
+/// @brief デッドゾーンを適用し、残りの範囲を 0..1 へ線形に引き伸ばす。
+/// @note 単に切り捨てるだけだと、デッドゾーンを抜けた瞬間に値が 0 から deadZone へ不連続に飛び、
+///       動き出しがカクつくため引き伸ばす。
 float ApplyDeadZone(float value, float deadZone)
 {
     const float magnitude = std::fabs(value);
@@ -176,9 +175,9 @@ float ApplyDeadZone(float value, float deadZone)
     return value < 0.0f ? -remapped : remapped;
 }
 
-// 複数のアナログバインドのうち、絶対値が最大のものを採用する。
-// WHY 加算しないか: 左スティックとマウスを同時に定義した軸で、両方が半分ずつ
-//     入力されたときに合計が 1 を超えて暴れる。「実際に動かしている側が勝つ」が自然。
+/// @brief 複数のアナログバインドのうち、絶対値が最大のものを採用する。
+/// @note 左スティックとマウスを同時に定義した軸で両方が半分ずつ入力されると、加算では合計が
+///       1 を超えて暴れる。「実際に動かしている側が勝つ」が自然なため最大値を採る。
 float SelectStrongestAnalog(const std::vector<InputBinding>& bindings)
 {
     float best = 0.0f;
@@ -232,16 +231,16 @@ const AxisRuntime* FindAxisRuntime(std::string_view name)
     return &context.axisRuntime[it->second];
 }
 
-// --- リバインド用: 今フレーム新たに押された入力を 1 つ探す ---
+/// @name リバインド用: 今フレーム新たに押された入力を 1 つ探す
 bool CaptureFirstPressedInput(InputBinding& out)
 {
-    // キーボード / マウスボタン。
-    // ESC はリバインドの取消に予約するため捕捉しない。
+    /// @note キーボード / マウスボタン。
+    ///       ESC はリバインドの取消に予約するため捕捉しない。
     for (uint32_t code = 1; code < 256; ++code) {
         if (code == Vk(KeyCode::ESCAPE)) continue;
         if (!Input::KeyDown(static_cast<KeyCode>(code))) continue;
 
-        // マウスボタンはキー配列にも入るため、マウスボタンとして記録する。
+        /// @note マウスボタンはキー配列にも入るため、マウスボタンとして記録する。
         if (code == Vk(KeyCode::MouseLeft) || code == Vk(KeyCode::MouseRight)
             || code == Vk(KeyCode::MouseMiddle)) {
             out = InputBinding{};
@@ -256,7 +255,7 @@ bool CaptureFirstPressedInput(InputBinding& out)
         return true;
     }
 
-    // ゲームパッドのボタン。
+    /// @note ゲームパッドのボタン。
     for (int pad = 0; pad < Gamepad::MAX_PADS; ++pad) {
         if (!Gamepad::IsConnected(pad)) continue;
         for (uint16_t index = 0; index < static_cast<uint16_t>(GamepadButton::COUNT); ++index) {
@@ -264,14 +263,14 @@ bool CaptureFirstPressedInput(InputBinding& out)
             out = InputBinding{};
             out.source   = BindingSource::GAMEPAD_BUTTON;
             out.code     = index;
-            out.padIndex = -1; // 特定スロットに固定しない
+            /// @note 特定スロットに固定しない
+            out.padIndex = -1;
             return true;
         }
     }
 
-    // ゲームパッドのスティック。大きく倒した場合のみ軸として捕捉する。
-    // WHY 0.7 か: 通常操作で通過しうる値 (0.3〜0.5) を拾うと、
-    //     リバインド待機中にスティックへ軽く触れただけで確定してしまう。
+    /// @note ゲームパッドのスティック。大きく倒した場合のみ軸として捕捉する。通常操作で通過しうる
+    ///       値 (0.3〜0.5) を拾うと、リバインド待機中にスティックへ軽く触れただけで確定してしまう。
     constexpr float AXIS_CAPTURE_THRESHOLD = 0.7f;
     for (int pad = 0; pad < Gamepad::MAX_PADS; ++pad) {
         if (!Gamepad::IsConnected(pad)) continue;
@@ -315,8 +314,8 @@ void ApplyCapturedBinding(const InputBinding& binding)
     }
 
     if (target) {
-        // 軸の positive / negative へ割り当てる場合、捕捉時の scale (倒した向き) は
-        // デジタル扱いでは意味を持たないため 1.0 に戻す。
+        /// @note 軸の positive / negative へ割り当てる場合、捕捉時の scale (倒した向き) は
+        ///       デジタル扱いでは意味を持たないため 1.0 に戻す。
         InputBinding stored = binding;
         if (rebind.isAxis && rebind.slot != 2) stored.scale = 1.0f;
 
@@ -335,7 +334,7 @@ void ApplyCapturedBinding(const InputBinding& binding)
 
 } // namespace
 
-// ── ライフサイクル ───────────────────────────────────────────────────────────
+/// @name ライフサイクル
 
 void InputActionMap::Clear()
 {
@@ -397,7 +396,7 @@ void InputActionMap::LoadDefaults()
         return binding;
     };
 
-    // --- 移動 ---
+    /// @name 移動
     {
         InputAxis axis{};
         axis.name     = "MoveX";
@@ -415,9 +414,9 @@ void InputActionMap::LoadDefaults()
         context.axes.push_back(axis);
     }
 
-    // --- 視点 ---
-    // WHY raw = true か: マウス Delta は既にフレーム間の移動量であり、
-    //     -1..1 への正規化やデッドゾーン、平滑化を掛けると視点操作が破綻する。
+    /// @name 視点
+    /// @note マウス Delta は既にフレーム間の移動量であり、-1..1 への正規化やデッドゾーン、
+    ///       平滑化を掛けると視点操作が破綻するため raw = true にする。
     {
         InputAxis axis{};
         axis.name     = "LookX";
@@ -428,7 +427,7 @@ void InputActionMap::LoadDefaults()
         context.axes.push_back(axis);
     }
     {
-        // 画面座標系の Y は下向きが正。上に動かしたら上を向くよう scale = -1 で反転する。
+        /// @note 画面座標系の Y は下向きが正。上に動かしたら上を向くよう scale = -1 で反転する。
         InputAxis axis{};
         axis.name     = "LookY";
         axis.raw      = true;
@@ -438,7 +437,7 @@ void InputActionMap::LoadDefaults()
         context.axes.push_back(axis);
     }
 
-    // --- ボタンアクション ---
+    /// @name ボタンアクション
     const struct { const char* name; InputBinding keyboard; InputBinding pad; } DEFAULT_ACTIONS[] = {
         { "Jump",     key(Vk(KeyCode::SPACE)),  padButton(GamepadButton::A) },
         { "Attack",   mouseButton(0),           padButton(GamepadButton::X) },
@@ -462,8 +461,8 @@ void InputActionMap::SetEnabled(bool enabled)
     if (context.enabled == enabled) return;
     context.enabled = enabled;
 
-    // 無効化時に押下状態を残すと、再有効化した最初のフレームで
-    // 押しっぱなしの Down/Up が誤って発火する。
+    /// @note 無効化時に押下状態を残すと、再有効化した最初のフレームで
+    ///       押しっぱなしの Down/Up が誤って発火する。
     for (ActionRuntime& runtime : context.actionRuntime) runtime = ActionRuntime{};
     for (AxisRuntime& runtime : context.axisRuntime)     runtime = AxisRuntime{};
 }
@@ -473,16 +472,16 @@ bool InputActionMap::IsEnabled()
     return Ctx().enabled;
 }
 
-// ── 毎フレーム更新 ───────────────────────────────────────────────────────────
+/// @name 毎フレーム更新
 
 void InputActionMap::Update(float dt)
 {
     MapContext& context = Ctx();
     context.rebindCompleted = false;
 
-    // --- リバインド待機中は通常評価を止める ---
-    // WHY: 割り当て中に押したキーがそのままゲーム操作としても発火すると、
-    //      「決定キーを割り当てた瞬間にメニューが閉じる」といった事故になる。
+    /// @name リバインド待機中は通常評価を止める
+    /// @note 割り当て中に押したキーがそのままゲーム操作としても発火すると、「決定キーを割り当てた
+    ///       瞬間にメニューが閉じる」といった事故になる。
     if (context.rebind.active) {
         if (context.rebind.skipFrames > 0) {
             --context.rebind.skipFrames;
@@ -512,40 +511,38 @@ void InputActionMap::Update(float dt)
         return;
     }
 
-    // --- アクション ---
+    /// @name アクション
     for (size_t i = 0; i < context.actions.size() && i < context.actionRuntime.size(); ++i) {
         const InputAction& action  = context.actions[i];
         ActionRuntime&     runtime = context.actionRuntime[i];
 
         runtime.previous = runtime.current;
 
-        // 全バインドの OR を取ってからアクション単位で差分を取る。
-        // WHY: バインドごとに Down を判定すると、キーとパッドを同時に押した際に
-        //      Down が 2 回発火し、二段ジャンプなどの不具合になる。
+        /// @note 全バインドの OR を取ってからアクション単位で差分を取る。バインドごとに Down を
+        ///       判定すると、キーとパッドを同時に押した際に Down が 2 回発火し二段ジャンプになる。
         bool held = AnyHeld(action.bindings);
 
-        // AI 自動プレイテストの注入をアクション層にも合流させる。
-        // WHY: EditorMCP がアクション名で操作できないと、入力抽象を導入した途端に
-        //      自動テストがゲームを操作できなくなる。
+        /// @note AI 自動プレイテストの注入をアクション層にも合流させる。EditorMCP がアクション名で
+        ///       操作できないと、入力抽象の導入で自動テストがゲームを操作できなくなる。
         if (Input::GetVirtualButton(action.name)) held = true;
 
         runtime.current = held;
     }
 
-    // --- 軸 ---
+    /// @name 軸
     for (size_t i = 0; i < context.axes.size() && i < context.axisRuntime.size(); ++i) {
         const InputAxis& axis    = context.axes[i];
         AxisRuntime&     runtime = context.axisRuntime[i];
 
         runtime.rawAnalog = SelectStrongestAnalog(axis.analog);
 
-        // デジタル入力の目標値を作る。両方押されている場合は打ち消し合って 0。
+        /// @note デジタル入力の目標値を作る。両方押されている場合は打ち消し合って 0。
         float digitalTarget = 0.0f;
         if (AnyHeld(axis.positive)) digitalTarget += 1.0f;
         if (AnyHeld(axis.negative)) digitalTarget -= 1.0f;
 
         if (digitalTarget != 0.0f) {
-            // 逆方向へ切り返した瞬間に 0 を経由させ、反応の鈍さを消す。
+            /// @note 逆方向へ切り返した瞬間に 0 を経由させ、反応の鈍さを消す。
             if (axis.snap && runtime.keyValue != 0.0f
                 && (runtime.keyValue > 0.0f) != (digitalTarget > 0.0f)) {
                 runtime.keyValue = 0.0f;
@@ -558,23 +555,23 @@ void InputActionMap::Update(float dt)
         }
 
         if (axis.raw) {
-            // 生値モードはデッドゾーンも平滑化も掛けない。
-            // アナログが無入力ならデジタル値をそのまま使う。
+            /// @note 生値モードはデッドゾーンも平滑化も掛けない。
+            ///       アナログが無入力ならデジタル値をそのまま使う。
             runtime.value = runtime.rawAnalog != 0.0f ? runtime.rawAnalog : runtime.keyValue;
         } else {
             const float analog = ApplyDeadZone(runtime.rawAnalog, axis.deadZone);
             runtime.value = analog != 0.0f ? analog : runtime.keyValue;
         }
 
-        // AI 注入の軸値があれば優先する。
-        // 制約: GetVirtualAxis は「未設定」と「0 に設定」を区別できないため、
-        //       0 以外が設定されている場合のみ上書きする。
+        /// @note AI 注入の軸値があれば優先する。
+        ///       制約: GetVirtualAxis は「未設定」と「0 に設定」を区別できないため、
+        ///       0 以外が設定されている場合のみ上書きする。
         const float injected = Input::GetVirtualAxis(axis.name);
         if (injected != 0.0f) runtime.value = injected;
     }
 }
 
-// ── 照会 ─────────────────────────────────────────────────────────────────────
+/// @name 照会
 
 bool InputActionMap::GetAction(std::string_view name)
 {
@@ -614,12 +611,11 @@ math::Vector2 InputActionMap::GetAxis2D(std::string_view xName, std::string_view
     const AxisRuntime& runX  = context.axisRuntime[xIt->second];
     const AxisRuntime& runY  = context.axisRuntime[yIt->second];
 
-    // 生値モードの軸は再マップせずそのまま返す (マウス Delta など)。
+    /// @note 生値モードの軸は再マップせずそのまま返す (マウス Delta など)。
     if (axisX.raw || axisY.raw) return { runX.value, runY.value };
 
-    // 半径方向のデッドゾーン。
-    // WHY: 軸ごとに独立して切ると正方形のデッドゾーンになり、
-    //      スティックを斜めに倒したときの実効感度が方向によって変わる。
+    /// @note 半径方向のデッドゾーン。軸ごとに独立して切ると正方形のデッドゾーンになり、
+    ///       スティックを斜めに倒したときの実効感度が方向によって変わる。
     const float deadZone = std::max(axisX.deadZone, axisY.deadZone);
     const float length   = std::sqrt(runX.rawAnalog * runX.rawAnalog
                                      + runY.rawAnalog * runY.rawAnalog);
@@ -631,11 +627,11 @@ math::Vector2 InputActionMap::GetAxis2D(std::string_view xName, std::string_view
         return { runX.rawAnalog * inverse, runY.rawAnalog * inverse };
     }
 
-    // アナログがデッドゾーン内ならデジタル入力を使う。
+    /// @note アナログがデッドゾーン内ならデジタル入力を使う。
     return { runX.keyValue, runY.keyValue };
 }
 
-// ── 編集 ─────────────────────────────────────────────────────────────────────
+/// @name 編集
 
 const std::vector<InputAction>& InputActionMap::GetActions() { return Ctx().actions; }
 const std::vector<InputAxis>&   InputActionMap::GetAxes()    { return Ctx().axes; }
@@ -710,7 +706,7 @@ bool InputActionMap::RemoveAxis(std::string_view name)
     return true;
 }
 
-// ── リバインド ───────────────────────────────────────────────────────────────
+/// @name リバインド
 
 void InputActionMap::BeginRebindAction(std::string_view actionName, int bindingIndex)
 {
@@ -750,7 +746,7 @@ bool InputActionMap::IsRebindTarget(std::string_view name, int slot, int binding
     if (rebind.targetName != name) return false;
     if (rebind.bindingIndex != bindingIndex) return false;
 
-    // 軸のバインドは slot まで一致していること。アクションは slot < 0 で問い合わせる。
+    /// @note 軸のバインドは slot まで一致していること。アクションは slot < 0 で問い合わせる。
     return rebind.isAxis ? (rebind.slot == slot) : (slot < 0);
 }
 
@@ -769,12 +765,12 @@ bool InputActionMap::ConsumeRebindCompleted()
     return completed;
 }
 
-// ── 表示用文字列 ─────────────────────────────────────────────────────────────
+/// @name 表示用文字列
 
 namespace {
 
-// 主要な仮想キーの表示名。網羅は目指さず、既定バインドと
-// 一般的なキーコンフィグ対象を優先する。未知のキーは 16 進表記へフォールバックする。
+/// 主要な仮想キーの表示名。網羅は目指さず、既定バインドと
+/// 一般的なキーコンフィグ対象を優先する。未知のキーは 16 進表記へフォールバックする。
 const char* DescribeKeyCode(uint32_t code)
 {
     switch (code) {

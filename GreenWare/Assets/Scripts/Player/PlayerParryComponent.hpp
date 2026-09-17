@@ -3,32 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-04
 ///
-/// WHY 弾きと とどめ を 1 つのボタンにするか:
-///   ボスが立っている間に要るのは «受ける» で、倒れている間に要るのは «仕留める»。
-///   同時に要ることは無い。ボタンを分けると、倒れた 5 秒の最初の 1 秒を
-///   «どのボタンだったか» に使わせることになる。押した瞬間にボスの状態で決まる方が速い。
-///
-/// WHY 窓を «押した瞬間から» 開けるか (クリップの受け姿勢に合わせないか):
-///   構えが出来上がるのはクリップの終盤だが、そこまで待つと «押したのに弾けない»
-///   0.1 秒が生まれる。弾きで一番大事なのは入力と結果が同じ瞬間にあることなので、
-///   窓は 0 秒から開き、クリップは速く流して絵を判定へ寄せる (斬撃と同じ判断)。
-///
-/// WHY クリップを 3 本に分けるか (2026-09-14):
-///   両手剣のモーションセットは «構える / 受け止める / 解く» が最初から別クリップで
-///   入っている (ToBlocking / GuardHit / BlockingToIdle)。1 本を再生速度で 3 つに
-///   切り刻んでいた旧 Katana_Parry と違い、弾きの 3 相がそのままクリップの境になる。
-///   速度は «各クリップの尺 ÷ その相の秒数» で決まるので、相の長さを触れば絵も付いてくる。
-///
-/// WHY 空振りに硬直を置くか:
-///   硬直が無いと弾きを連打するのが最適になり、予兆を読む理由が消える。
-///   «外したらその手は受けられない» 重さは残しつつ、硬直は回避で打ち切れる
-///   (2026-09-11)。0.55 秒の «何もできない» は押すこと自体をためらわせていたので、
-///   0.40 秒へ縮め、代わりに «外したら転がって逃げる» という手を返した。
-///
-/// WHY 回避 > 弾き > 斬撃 の順か:
-///   3 つとも上半身の同じ Slot を使う。優先が決まっていないと、弾きの絵の裏で斬撃の
-///   判定が出る・転がりながら上半身だけ構える、が起きる。逃げる意思 (回避) が最も強く、
-///   受ける意思 (弾き) は振っている最中でも通す。
+/// @note 弾きととどめは同じボタン。ボスが立っている間は「受ける」、倒れている間は「仕留める」で同時に要ることが無く、押した瞬間のボスの状態で振り分ける方が速い。
+/// @note 窓は「押した瞬間」から開く (クリップの受け姿勢完成を待たない)。待つと «押したのに弾けない» 0.1 秒が生まれるため、クリップは速く流して絵を判定に合わせる (斬撃と同じ判断)。
+/// @note クリップは ToBlocking/GuardHit/BlockingToIdle の 3 本 (2026-09-14)。両手剣モーションセットが元々この 3 相で分かれているため、弾きの相をそのままクリップの境に合わせる。速度は各クリップの尺÷その相の秒数で決まる。
+/// @note 空振りに硬直を置く。無いと弾き連打が最適になり予兆を読む理由が消えるため。硬直は回避で打ち切れる (2026-09-11) ようにし、0.55 秒から 0.40 秒へ短縮した。
+/// @note 優先順位は 回避 > 弾き > 斬撃。3 つとも上半身の同じ Slot を使うため、優先が無いと弾きの裏で斬撃判定が出るなどの事故が起きる。
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
@@ -69,22 +48,13 @@ class PlayerParryComponent : public Script {
     FBZZ_SCRIPT(PlayerParryComponent)
 
 public:
-    // 斬撃と同じ Override レイヤーへ差し込む。レイヤーの重みは BladeComponent が
-    // Slot の重みから毎フレーム流しているので、ここは Slot を鳴らすだけでよい。
+    /// 斬撃と同じ Override レイヤーへ差し込む。レイヤーの重みは BladeComponent が
+    /// Slot の重みから毎フレーム流しているので、ここは Slot を鳴らすだけでよい。
     FBZZ_GROUP("動き")
     FBZZ_FIELD(std::string, layerName, "Attack", "Layer")
-    // WHY 既定で 2 枚目を使わないか (2026-09-14):
-    //   弾きの 3 本は **1 つの連続した動作の途中経過** ── 構える (ToBlocking) →
-    //   受け止める (GuardHit) / 下ろす (BlockingToIdle) で、継ぎ目のポーズは一致する
-    //   (Guard Pose At をクリップ終端に置いているのはこのため)。一致している継ぎ目は
-    //   ハードカットでも見えない。
-    //
-    //   そこを 2 枚でクロスフェードすると、腕が **同じ動作の 2 つの時点の平均** を
-    //   通ることになり «カクッとズレる» が出る。連撃 (BladeComponent) が 2 枚を使うのは
-    //   段どうしが別々の大きな動きだからで、こちらとは事情が違う。
-    //
-    //   «ガードが 2 回出る» の原因も 2 枚 / 1 枚ではなく、**一致しない時点で切っていた**
-    //   ことだった (構えの途中から、完成した構えへ飛んでいた)。
+    /// @brief 埋めると相の繋ぎを 2 枚でクロスフェードする (既定は空 = 1 枚)。
+    /// @note 弾きの 3 本は 1 つの連続動作の途中経過で継ぎ目のポーズが一致するため、ハードカットでも見えない (2026-09-14)。2 枚でクロスフェードすると同じ動作の 2 時点の平均を通り «カクッとズレる»。
+    /// @note 「ガードが 2 回出る」不具合の原因は枚数でなく、一致しない時点で切り替えていたことだった (構えの途中から完成形へ飛んでいた)。
     FBZZ_FIELD(std::string, layerNameB, "", "Layer (B)")
     FBZZ_TOOLTIP("埋めると相の繋ぎを 2 枚でクロスフェードする。**通常は空のまま** ─ "
                  "弾きは 1 続きの動作なので、継ぎ目で混ぜると姿勢がズレる")
@@ -108,37 +78,27 @@ public:
         "guid:c55e17d2f4e684fe09033647649cdf2c|Library/Baked/f4205f13cfbc4cf1bb7fe14e63d366ad/anims/BlockingToIdle.anim",
         "Release Clip", ".anim,.fbx")
     FBZZ_FIELD(std::string, releaseClipName, "BlockingToIdle", "Release Clip Name")
-    // BlockingToIdle は 0.50s。空振りの硬直 0.40 秒へ収めるので 0.50 / 0.40 = 1.25。
+    /// BlockingToIdle は 0.50s。空振りの硬直 0.40 秒へ収めるので 0.50 / 0.40 = 1.25。
     FBZZ_FIELD_RANGE(float, parrySpeed, 1.25f, "Release Speed", 0.5f, 3.0f)
     FBZZ_TOOLTIP("空振りの硬直の再生速度。構え・弾き返しは «緩急» の値で流れる")
     FBZZ_FIELD_FILE(executeClipFile,
         "guid:f318903764723f31bc36144d69bd49cf|Library/Baked/5c122d77aced43388c7a0712f05e5587/anims/SlideAttack.anim",
         "Execute Clip", ".anim,.fbx")
     FBZZ_FIELD(std::string, executeClipName, "SlideAttack", "Execute Clip Name")
-    // SlideAttack は 2.13s。踏み込んで斬るので、とどめ (膝下へ寄って斬る) の形に一番近い。
+    /// SlideAttack は 2.13s。踏み込んで斬るので、とどめ (膝下へ寄って斬る) の形に一番近い。
     FBZZ_FIELD_RANGE(float, executeHitTime, 0.90f, "Execute Hit Time", 0.05f, 3.0f)
     FBZZ_TOOLTIP("踏み込んで斬り抜けるクリップ秒数。ここに ResolveExecute の時刻を合わせる")
     FBZZ_FIELD_RANGE(float, executeSpeed, 1.5f, "Execute Speed", 0.5f, 3.0f)
     FBZZ_TOOLTIP("とどめの再生速度。1 だと斬り抜けまで 0.90 秒 ─ 倒れている 5 秒に対して重すぎる")
     FBZZ_FIELD_RANGE(float, fadeIn,  0.03f, "フェードイン",  0.0f, 0.5f)
-    // WHY 0.06 まで詰めるか (2026-09-14): **ループしない Slot は、クリップの末尾
-    //     `fadeOut` 秒に達した瞬間に自動でフェードアウトへ入る** (AnimatorSystem)。
-    //     0.15 だと 0.50 秒の ToBlocking は 0.35 秒ぶんしか出ない ─ 構えが完成する前に
-    //     抜け始め、次のクリップでまた立ち上がるので **同じ動きが 2 回**見える。
-    //     ここはフェードの長さであると同時に **«クリップの末尾から捨てる量»**。
+    /// @note 0.06 まで詰める (2026-09-14)。ループしない Slot はクリップ末尾の `fadeOut` 秒に達した瞬間に自動でフェードアウトへ入るため (AnimatorSystem)、大きいと構えが完成する前に抜け始め「同じ動きが 2 回」見える。フェードの長さ = クリップ末尾から捨てる量。
     FBZZ_FIELD_RANGE(float, fadeOut, 0.06f, "フェードアウト", 0.0f, 0.5f)
     FBZZ_TOOLTIP("ワンショットのクリップは末尾この秒数ぶんが «抜ける時間» に使われる。"
                  "長くすると振り終わりが出ないまま消える")
 
-    // WHY 構えを等速で流さないか: ToBlocking は 0.50 秒あり、窓は 0.22 秒しかない。
-    //     等速だと窓が閉じるまで構えが出来上がらず、«押したのに構えていない» 絵で
-    //     弾くことになる。構えまでは一気に、出来上がったら窓の終わりまで留める。
+    /// @note 構えを等速で流さない。ToBlocking は 0.50 秒、窓は 0.22 秒しか無いため、等速だと窓が閉じるまでに構えが出来上がらない。構えまでは一気に、出来上がったら窓の終わりまで留める。
     FBZZ_GROUP("緩急")
-    // WHY 既定をクリップの «終端» に置くか (2026-09-14): 構えが何秒目で出来上がるかは
-    //     クリップの中を見ないと分からない。途中の秒数を当て推量で置くと、窓のあいだ
-    //     ずっと «振り上げ途中» の姿勢が出続ける ─ 弾いているのに構えていない絵になる。
-    //     終端まで駆け抜けてそこで留めれば、どこで完成していようと «構え切った姿勢» で
-    //     窓を待てる。ToBlocking を別のクリップへ差し替えても壊れない。
+    /// @note 既定はクリップの終端に置く (2026-09-14)。構えが何秒目で出来上がるかはクリップの中を見ないと分からず、途中の秒数を当て推量で置くと窓の間ずっと振り上げ途中の姿勢が出る。終端まで駆け抜けて留めれば、クリップを差し替えても壊れない。
     FBZZ_FIELD_RANGE(float, parryGuardTime, 0.50f, "Guard Pose At [s]", 0.0f, 1.0f)
     FBZZ_TOOLTIP("構えが出来上がるクリップ秒数。既定はクリップの終端 (ToBlocking = 0.50s)。"
                  "ここまでを Guard Snap で駆け抜け、以降を Guard Hold で留める")
@@ -146,33 +106,18 @@ public:
     FBZZ_TOOLTIP("押してから受けの姿勢までの再生速度。押した瞬間に «構えた» が見える速さ")
     FBZZ_FIELD_RANGE(float, parryHoldSpeed, 0.50f, "Guard Hold", 0.05f, 2.0f)
     FBZZ_TOOLTIP("受付時間のあいだの再生速度。出来上がった構えを窓の終わりまで保つ")
-    // GuardHit は 0.50s。弾けた後の硬直 0.22 秒へ収めるので 0.50 / 0.22 = 2.3。
+    /// GuardHit は 0.50s。弾けた後の硬直 0.22 秒へ収めるので 0.50 / 0.22 = 2.3。
     FBZZ_FIELD_RANGE(float, parryRiposteSpeed, 2.3f, "Riposte Speed", 0.5f, 4.0f)
     FBZZ_TOOLTIP("弾き返し (GuardHit) の再生速度。Hit Recovery に収まる速さ")
-    // WHY とどめを «溜めて一閃» にするか: 仕留める一撃は踏み込むまでの静と斬り抜ける
-    //     瞬間の動の落差そのもの。等速だとただ前へ滑って斬る絵になる。
-    //     溜めるのは踏み込みまでで、斬り抜けの時刻 (Execute Hit Time) は変えない。
+    /// @note とどめは「溜めて一閃」にする。仕留める一撃は踏み込むまでの静と斬り抜ける瞬間の動の落差そのもので、等速だとただ滑って斬る絵になる。溜めるのは踏み込みまでで、斬り抜けの時刻 (Execute Hit Time) は変えない。
     FBZZ_FIELD_RANGE(float, executeWindup, 0.55f, "Execute Windup", 0.1f, 1.0f)
     FBZZ_FIELD_RANGE(float, executeWindupPower, 3.0f, "Execute Strike Curve", 0.5f, 6.0f)
     FBZZ_FIELD_RANGE(float, executeFollowEnd, 0.4f, "Execute Zanshin Speed", 0.05f, 2.0f)
     FBZZ_TOOLTIP("斬り下ろした後の残心の再生速度 [Execute Speed に対する比]。0.35 秒かけてここまで落とす")
 
-    // WHY 通常ガードを置き直したか (2026-09-14):
-    //   «押した 0.22 秒だけが受け» という形は、外した瞬間に無防備な 0.40 秒が来る。
-    //   予兆を読み違えるたびに «押したせいで余計に食らう» ので、覚える前の段階では
-    //   押すこと自体が損になり、結局ボタンに触らなくなる。
-    //   押し続ければ止まる床を敷いた上で、**その頭 0.22 秒だけを弾きにする**と、
-    //   «とりあえず構える» から «引き付けて合わせる» へ地続きで上がっていける。
-    //
-    // WHY ガードでは崩しを 1 も溜めないか:
-    //   溜まるなら «押しっぱなしで崩せる» になり、Docs/break-parry.md の芯
-    //   («崩すのは弾きだけ») がまた壊れる。ガードの見返りは «止まる» ことだけ。
-    //   止めている間は斬れず足も鈍く、崩しは減衰していく ── 戦いは 1 ミリも進まない。
-    //
-    // WHY 削り (chip) を入れないか: HP は 5 しかないので、1 でも削ると «ガードは
-    //   ほぼ被弾» になって床の意味が消える。押しっぱなしを咎めるのは
-    //   **弾けない手** (ビーム・パルス・扇) の役目で、そちらは Unblockable なので
-    //   構えていても素通りする。
+    /// @note ガードを再導入 (2026-09-14)。「押した 0.22 秒だけが受け」だと外した瞬間に無防備な 0.40 秒が来て、押すこと自体が損になる。押し続ければ止まる床を敷いた上で頭 0.22 秒だけを弾きにすると、«とりあえず構える» から «引き付けて合わせる» へ地続きに上がれる。
+    /// @note ガードでは崩しを 1 も溜めない。溜まると Docs/break-parry.md の芯 (崩すのは弾きだけ) が壊れる。見返りは «止まる» ことだけで、止めている間は斬れず足も鈍り、崩しは減衰する。
+    /// @note 削り (chip) は入れない。HP は 5 しかないので 1 削ると «ガードはほぼ被弾» になり床の意味が消える。押しっぱなしを咎めるのは Unblockable な手 (ビーム・パルス・扇) の役目。
     FBZZ_GROUP("ガード")
     FBZZ_FIELD(bool, holdToGuard, true, "押しっぱなしで防ぐ")
     FBZZ_TOOLTIP("切ると «窓 0.22 秒だけ» の弾き専用へ戻る")
@@ -181,10 +126,7 @@ public:
     FBZZ_FIELD_RANGE(float, guardShake, 0.22f, "揺れ", 0.0f, 1.0f)
     FBZZ_TOOLTIP("受け止めた瞬間の揺れ。弾き (0.50) より弱くして «止めただけ» を伝える")
     FBZZ_FIELD_RANGE(float, guardHitStop, 0.35f, "ヒットストップ", 0.0f, 1.0f)
-    // WHY 削りの代わりに息で咎めるか (2026-09-14): 上の «削りを入れない» は今も
-    //   正しいが、押しっぱなしのコストが «止まっていること» だけだと、弾けない手が
-    //   来ない局面では構えたままで居られる。息 (PlayerTuning の Breath) が尽きると
-    //   構えが割れる ── 痛みは無いまま、守り続けることだけができなくなる。
+    /// @note 削りの代わりに息で咎める (2026-09-14)。押しっぱなしのコストが「止まっていること」だけだと弾けない手が来ない局面で構え続けられてしまうため、息 (Breath) が尽きると構えが割れる (痛みは無いが守り続けられなくなる)。
     FBZZ_FIELD_RANGE(float, guardBreakRecovery, 0.90f, "割れた硬直 [s]", 0.05f, 3.0f)
     FBZZ_TOOLTIP("息が尽きて構えが割れたときの硬直。外した硬直 (0.40) より長い ─ "
                  "«間に合わなかった» より «押し切られた» の方が重い")
@@ -193,10 +135,7 @@ public:
     FBZZ_FIELD_RANGE(float, windowSeconds, 0.22f, "受付時間", 0.05f, 1.0f)
     FBZZ_TOOLTIP("押してから弾ける時間。踏みつけの叩きつけは 0.10 秒なので、"
                  "予兆 (静止 0.13 秒) の途中で押せば必ず入る長さ")
-    // WHY 窓の «頭» ではなく «尻» を Just にするか:
-    //   窓は押した瞬間から開く。攻撃が来る «直前» に押すほど、当たるのは窓の
-    //   早い時刻になる ─ つまり窓の頭で受けた弾きが «ぎりぎりまで引き付けた» 弾き。
-    //   早押しで開けておいた窓の尻で拾う弾きは、読んだのではなく保険を掛けた弾き。
+    /// @note Just は窓の «頭» 側で判定する。窓は押した瞬間から開くため、攻撃直前に押すほど窓の早い時刻で当たり «ぎりぎりまで引き付けた» 弾きになる。早押しして窓の後半で拾う弾きは保険を掛けた弾きで、読み切りではない。
     FBZZ_FIELD_RANGE(float, justParrySeconds, 0.08f, "Just Window", 0.0f, 0.3f)
     FBZZ_TOOLTIP("押してからこの秒数以内に受けた弾きは «Just»。崩しが多く溜まり、"
                  "スローと閃光が深くなる。0 で無効")
@@ -204,8 +143,7 @@ public:
     FBZZ_TOOLTIP("外したときの硬直。連打を最適にしないための重さ。回避で打ち切れる")
     FBZZ_FIELD_RANGE(float, successRecovery, 0.22f, "Hit Recovery", 0.0f, 1.0f)
     FBZZ_TOOLTIP("弾けたときの硬直。攻撃ボタンで打ち切って斬り返せる")
-    // WHY 預かるか: 弾きは一番タイミングを狙って押すボタンなのに、硬直中・回避中の
-    //     押下を捨てていた。明ける直前に押して何も出ないのが、手触りを一番損ねる。
+    /// @note 押下を預かる (バッファ)。弾きは一番タイミングを狙って押すボタンなのに硬直中・回避中の押下を捨てていた。明ける直前に押して何も出ないのが手触りを一番損ねるため。
     FBZZ_FIELD_RANGE(float, parryBufferSeconds, 0.12f, "Parry Buffer", 0.0f, 0.4f)
     FBZZ_TOOLTIP("硬直中・回避中に押した弾きを預かる秒数。明けた瞬間に構える。"
                  "長くすると «早押しの保険» になるので短く")
@@ -213,16 +151,14 @@ public:
     FBZZ_TOOLTIP("とどめの間、他の入力を受け付けない時間。斬り下ろしより少し長く")
     FBZZ_FIELD_RANGE(float, executeRange, 3.4f, "Execute Range", 0.5f, 10.0f)
     FBZZ_TOOLTIP("倒れたボスの部位からこの距離以内なら、押した瞬間にとどめへ入る")
-    // WHY 高さの帯が要るか (2026-09-10): 届くかどうかは水平距離だけで測っている。
-    //     背のコアが とどめ の的になったので、地上に立っていても «真上 5m の
-    //     コア» が水平 0m として届いてしまい、何も無い空へ居合が出る。
+    /// @note 高さの帯が要る (2026-09-10)。届くかは水平距離だけで測るため、背のコアが的になったことで地上に立っていても «真上 5m のコア» が水平 0m として届いてしまい、何も無い空へ居合が出ていた。
     FBZZ_FIELD_RANGE(float, executeHeight, 3.0f, "Execute Height", 0.5f, 20.0f)
     FBZZ_TOOLTIP("足元からこの高さの帯にある部位だけが とどめ の的になる。"
                  "甲板 (足元から +5m 上) のコアと地上の脚を混ぜないための仕切り")
     FBZZ_FIELD_RANGE(float, moveScale, 0.35f, "Move Scale (busy)", 0.05f, 1.0f)
 
-    // «パキッ» の配分。止め・閃光・破片は一瞬で、余韻を残さない。
-    // ビネットや収差 (Distort) は使わない ─ 画面の縁が暗くなるのは «受けた» の語。
+    /// «パキッ» の配分。止め・閃光・破片は一瞬で、余韻を残さない。
+    /// ビネットや収差 (Distort) は使わない ─ 画面の縁が暗くなるのは «受けた» の語。
     FBZZ_GROUP("Parry Feel")
     FBZZ_FIELD_RANGE(float, parryHitStop, 0.85f, "ヒットストップ", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, parryShake, 0.50f, "揺れ", 0.0f, 1.0f)
@@ -270,11 +206,9 @@ public:
     /// 構え・硬直を打ち切り、上半身のクリップも畳む。とどめは演出ごと預かっているので切らない。
     void Cancel();
 
-    // ── 出来事の回数 ────────────────────────────────────────────────────────
-    // WHY «起きた» を伝える通知ではなく回数で返すか:
-    //     弾きは 1 フレームの出来事で、見ている側 (刃の焼き・HUD) は自分の更新順で
-    //     読む。通知を配ると受け手ごとに «取り逃した / 二重に受けた» が出るが、
-    //     回数なら前フレームとの差だけで «今フレームに何回起きたか» が誰にでも出る。
+    /// @name 出来事の回数
+    /// @{
+    /// @note 通知でなく回数で返す。弾きは 1 フレームの出来事で受け手 (刃の焼き・HUD) は自分の更新順で読むため、通知だと取り逃し・二重受けが起きる。回数なら前フレームとの差で今フレームの発生回数が誰にでも出る。
     [[nodiscard]] int ParryCount() const { return m_parries; }
     /// 読み切って弾いた回数。ParryCount の内数。
     [[nodiscard]] int JustParryCount() const { return m_justParries; }
@@ -290,7 +224,7 @@ public:
     bool TryExecute();
 
     void SetController(PlayerControllerComponent* controller) { m_controller = controller; }
-    // 構えを保つ息の出どころ。未設定なら息を見ずに構え続けられる。
+    /// 構えを保つ息の出どころ。未設定なら息を見ずに構え続けられる。
     void SetBreath(PlayerBreathComponent* breath) { m_breath = breath; }
 
     void OnStart()  override;
@@ -300,6 +234,7 @@ public:
     FBZZ_FIELD_RANGE(float, rushWorldScale, 0.25f, "世界の速度", 0.125f, 1.0f)
     FBZZ_FIELD_RANGE(float, rushAttackSpeed, 1.65f, "連撃速度", 1.0f, 3.0f)
     void OnUpdate() override;
+    /// @}
 
 private:
     /// Window は «押した頭の 0.22 秒» で弾ける。そこを過ぎて押し続けていると Guard へ
@@ -312,8 +247,7 @@ private:
     float m_rushHudPulse = 0.0f;
     /// 窓を過ぎても押し続けている ─ 構えを保つ層へ移る。
     void BeginGuard();
-    /// 構えが出来上がるまでの秒数。**末尾 fadeOut ぶんは自動フェードに食われる**ので、
-    /// そこへ届く前にループへ渡す (fadeOut の WHY)。
+    /// 構えが出来上がるまでの秒数。末尾 fadeOut ぶんは自動フェードに食われるので、そこへ届く前にループへ渡す (fadeOut フィールドの @note 参照)。
     [[nodiscard]] float HandoffSeconds() const
     {
         const float usable = std::max(parryGuardTime - fadeOut, 0.02f);
@@ -343,11 +277,8 @@ private:
     [[nodiscard]] GameObject* FindExecutablePart(GameObject*& outRoot) const;
     /// 部位からボス本体を引く。4 足と蛇でリグが違うので両方試す。
     [[nodiscard]] static GameObject* RootOf(GameObject* part);
-    /// 今戦っているボスの本体。居なければ nullptr。
-    ///
-    /// WHY 一番近い相手か: 相手が 2 体立っている盤面 (Stage_02) で名簿の «どれか 1 体»
-    ///     を引くと、構えの向きも止めも毎回別の相手に掛かる。弾いているのは
-    ///     手が届く所に居る相手なので、近さで選べば «弾いた相手» と一致する。
+    /// @brief 今戦っているボスの本体。居なければ nullptr。
+    /// @note 一番近い相手を選ぶ。相手が 2 体立っている盤面 (Stage_02) で名簿のどれか 1 体を引くと、構えの向きも止めも毎回別の相手に掛かるため、近さで選び «弾いた相手» と一致させる。
     [[nodiscard]] GameObject* Boss() const
     {
         return FindNearestBossOnBoard(scene, transform.worldPosition);
@@ -439,12 +370,12 @@ inline GameObject* PlayerParryComponent::FindExecutablePart(GameObject*& outRoot
 {
     outRoot = nullptr;
 
-    // とどめが通るのは «倒れている» 相手だけ。2 体立っている盤面で代表の 1 体を
-    // 見ると、倒れているのがもう片方のときにとどめが一切通らなくなる ─
-    // 部位ごとに持ち主を引いて、その持ち主が倒れているかで決める。
-    //
-    // 部位の当たり判定 (脚の膝下・蛇の節) の中で一番近いもの。部位はレンダラーを
-    // 持たないので、太さは部位が申告している hitRadius を足す。
+    /// @note とどめが通るのは «倒れている» 相手だけ。2 体立っている盤面で代表の 1 体を
+    ///       見ると、倒れているのがもう片方のときにとどめが一切通らなくなる ─
+    ///       部位ごとに持ち主を引いて、その持ち主が倒れているかで決める。
+    ///
+    ///       部位の当たり判定 (脚の膝下・蛇の節) の中で一番近いもの。部位はレンダラーを
+    ///       持たないので、太さは部位が申告している hitRadius を足す。
     const Vector3 origin = transform.worldPosition;
     const float   reach  = std::max(executeRange, 0.1f);
 
@@ -467,10 +398,7 @@ inline GameObject* PlayerParryComponent::FindExecutablePart(GameObject*& outRoot
         flat.y = 0.0f;
         if (flat.Length() - radius > reach) continue;
 
-        // WHY 選ぶのは 3 次元の近さか (2026-09-10): 届くかどうかは水平で測る
-        //     (脚の膝下は胸の高さにあり、3D で測ると立ち位置で届かなくなる) が、
-        //     «どれを斬るか» まで水平で決めると、甲板に立ったとき真下 5m の脚と
-        //     目の前のコアが同じ «0m» になる。届く的の中から一番近いものを選ぶ。
+        /// @note 選ぶのは 3 次元の近さ (2026-09-10)。届くかは水平で測る (脚の膝下は胸の高さにあり 3D だと立ち位置で届かなくなるため) が、それだけで «どれを斬るか» を決めると甲板の真下 5m の脚と目の前のコアが同じ «0m» になるため、届く的の中から 3D で一番近いものを選ぶ。
         const float distance = delta.Length() - radius;
         if (!best || distance < bestDist) {
             best     = object;
@@ -484,8 +412,7 @@ inline GameObject* PlayerParryComponent::FindExecutablePart(GameObject*& outRoot
 
 inline bool PlayerParryComponent::TryExecute()
 {
-    // 構えている最中は破って出す。とどめは «倒れている 9 秒» にしか存在しない機会で、
-    // そこを «まずガードを離す» から始めさせない (BladeComponent の呼び出し側の WHY)。
+    /// @note 構えている最中は破って出す。とどめは «倒れている 9 秒» にしか存在しない機会で、そこを «まずガードを離す» から始めさせない (BladeComponent の呼び出し側と同じ理由)。
     if (IsBusy() && m_phase != Phase::Guard) return false;
 
     GameObject* root = nullptr;
@@ -501,7 +428,7 @@ inline bool PlayerParryComponent::TryExecute()
     SetPhase(Phase::Execute, std::max(executeLock, 0.2f));
     if (auto* manager = TimeManagerComponent::Instance()) manager->EndParryRush();
 
-    // 斬る相手を向く。居合は正面へ振り下ろすので、向いていないと空を斬る。
+    /// @note 斬る相手を向く。居合は正面へ振り下ろすので、向いていないと空を斬る。
     if (m_controller) {
         Vector3 to = part->transform.worldPosition - transform.worldPosition;
         to.y = 0.0f;
@@ -510,7 +437,7 @@ inline bool PlayerParryComponent::TryExecute()
 
     PlayClip(executeClipFile, executeClipName, executeSpeed);
 
-    // 切断面へ寄るカットイン。居合の尺だけ預かり、もげたら返る。
+    /// @note 切断面へ寄るカットイン。居合の尺だけ預かり、もげたら返る。
     if (auto* camera = BossCameraDirectorComponent::Instance())
         camera->PlayAt(BossShot::Execute, part->transform.worldPosition);
 
@@ -530,14 +457,14 @@ inline void PlayerParryComponent::PlayClip(const std::string& file, const std::s
 {
     if (file.empty() || name.empty()) return;
 
-    // 乗せる先を入れ替える。1 枚に重ねるとハードカットになる (フィールドの WHY)。
+    /// @note 乗せる先を入れ替える。1 枚に重ねるとハードカットになる (layerNameB フィールドの @note 参照)。
     if (!layerNameB.empty() && layerNameB != layerName) m_flip = !m_flip;
 
     const std::string& layer = ActiveLayer();
     if (layer.empty()) return;
 
-    // 前の相は «weight 0 で消す» のではなく fadeOut で抜けさせる。0 にすると、
-    // 2 枚に分けた意味が無くなって繋ぎがハードカットへ戻る。
+    /// @note 前の相は «weight 0 で消す» のではなく fadeOut で抜けさせる。0 にすると、
+    ///       2 枚に分けた意味が無くなって繋ぎがハードカットへ戻る。
     if (!layerName.empty()  && layerName  != layer) animator.StopSlot(layerName,  fadeOut);
     if (!layerNameB.empty() && layerNameB != layer) animator.StopSlot(layerNameB, fadeOut);
 
@@ -546,8 +473,8 @@ inline void PlayerParryComponent::PlayClip(const std::string& file, const std::s
 
 inline void PlayerParryComponent::BeginGuard()
 {
-    // 構えのループは «出来上がった時点» で既に回っている (OnUpdate の受け渡し)。
-    // ここで鳴らし直さないのが肝 ─ 鳴らし直すと、そこでまた立ち上がりが 1 回出る。
+    /// @note 構えのループは «出来上がった時点» で既に回っている (OnUpdate の受け渡し)。
+    ///       ここで鳴らし直さないのが肝 ─ 鳴らし直すと、そこでまた立ち上がりが 1 回出る。
     SetPhase(Phase::Guard, 0.0f);
     m_succeeded = false;
     m_guardHit  = 0.0f;
@@ -559,8 +486,8 @@ inline void PlayerParryComponent::BeginRelease()
     SetPhase(Phase::Recovery, recoverySeconds);
     m_guardHit    = 0.0f;
     m_holdPlaying = false;
-    // 構えを解くところまで見せる ─ 硬直を «止まっているだけ» にすると、
-    // 押した本人には «入力が消えた» としか映らない。
+    /// @note 構えを解くところまで見せる ─ 硬直を «止まっているだけ» にすると、
+    ///       押した本人には «入力が消えた» としか映らない。
     PlayClip(releaseClipFile, releaseClipName, parrySpeed);
 }
 
@@ -572,8 +499,8 @@ inline void PlayerParryComponent::BreakGuard()
     m_holdPlaying = false;
     PlayClip(releaseClipFile, releaseClipName, parrySpeed);
 
-    // 受け止めた «ゴッ» と同じ音で、閃光も画角も付けない ── 押し負けた側の出来事なので、
-    // 手応えは «重い» だけでよい。崩しゲージは当然どちらにも動かない。
+    /// @note 受け止めた «ゴッ» と同じ音で、閃光も画角も付けない ── 押し負けた側の出来事なので、
+    ///       手応えは «重い» だけでよい。崩しゲージは当然どちらにも動かない。
     if (auto* shake = CameraShakeManagerComponent::Instance())
         shake->Shake(Clamp01(guardShake) * 1.4f);
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.7f, 0.4f, 0.18f);
@@ -590,7 +517,7 @@ inline void PlayerParryComponent::BeginParry()
 
     PlayClip(parryClipFile, parryClipName, parrySnapSpeed);
 
-    // 構える «シャッ»。当たったかどうかとは別に、構えたこと自体を返す。
+    /// @note 構える «シャッ»。当たったかどうかとは別に、構えたこと自体を返す。
     se::Play(audio, se::kSwordReady);
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.0f, 0.18f, 0.05f);
 }
@@ -601,18 +528,18 @@ inline void PlayerParryComponent::OnParried(int amount, const Vector3* from)
     debugParries = m_parries;
 
     const bool heavy = amount >= std::max(heavyDamageAt, 1);
-    // 窓の頭で受けたか。m_timer は窓の残りなので、経過 = 窓 − 残り。
+    /// @note 窓の頭で受けたか。m_timer は窓の残りなので、経過 = 窓 − 残り。
     const float elapsed = std::max(windowSeconds, 0.05f) - std::max(m_timer, 0.0f);
     const bool  just    = justParrySeconds > 0.0f && elapsed <= justParrySeconds;
     if (just) {
         ++m_justParries;
         debugJustParries = m_justParries;
     }
-    // Just は手触りも一段深い。止めは同じ (これ以上は操作が重い) で、
-    // 戻りのスローと閃光と画角で «読み切った» を言う。
+    /// @note Just は手触りも一段深い。止めは同じ (これ以上は操作が重い) で、
+    ///       戻りのスローと閃光と画角で «読み切った» を言う。
     const float feel = just ? 1.6f : 1.0f;
 
-    // 弾いた «場所»。刃は正面にあるので、自分から攻撃してきた側へ少し出た所。
+    /// @note 弾いた «場所»。刃は正面にあるので、自分から攻撃してきた側へ少し出た所。
     Vector3 toward = transform.worldRotation * Vector3::FORWARD;
     if (from) {
         Vector3 d = *from - transform.worldPosition;
@@ -627,14 +554,14 @@ inline void PlayerParryComponent::OnParried(int amount, const Vector3* from)
     GameObject* boss = Boss();
     if (auto* follow = CameraFollowManagerComponent::Instance()) follow->FrameParry(boss);
 
-    // 止め。世界を一瞬固め、当事者 2 体の芝居も固める ─ «噛み合った» が出るのは
-    // 刃と脚が同じ 1 コマで止まるからで、片方だけだと «すり抜けた» に見える。
+    /// @note 止め。世界を一瞬固め、当事者 2 体の芝居も固める ─ «噛み合った» が出るのは
+    ///       刃と脚が同じ 1 コマで止まるからで、片方だけだと «すり抜けた» に見える。
     if (auto* stop = HitstopManagerComponent::Instance()) {
         stop->Hit(Clamp01(parryHitStop));
         stop->FreezeAnimation(scene.Self(), Clamp01(parryHitStop));
         if (boss) stop->FreezeAnimation(boss, Clamp01(parryHitStop));
     }
-    // 成功の停止が解けてから連撃時間を数える。演出スローの要求とは別枠で保持する。
+    /// @note 成功の停止が解けてから連撃時間を数える。演出スローの要求とは別枠で保持する。
     if (auto* timeManager = TimeManagerComponent::Instance()) {
         const float seconds = just ? rushJustSeconds : rushSeconds;
         if (seconds > 0.0f)
@@ -642,15 +569,15 @@ inline void PlayerParryComponent::OnParried(int amount, const Vector3* from)
         else if (parrySlowSeconds > 0.0f && parrySlowScale < 1.0f)
             timeManager->SlowFor(parrySlowScale, parrySlowSeconds * feel, 0.0f);
     }
-    // 閃光は白。画面全体を一瞬だけ持ち上げる。縁を暗くする Distort / Surge は使わない
-    // (ビネットは «受けた» の語で、弾きは «防いだ» の語)。
+    /// @note 閃光は白。画面全体を一瞬だけ持ち上げる。縁を暗くする Distort / Surge は使わない
+    ///       (ビネットは «受けた» の語で、弾きは «防いだ» の語)。
     if (auto* screen = ScreenEffectManagerComponent::Instance())
         screen->Flash(parryFlashColor, Clamp01(parryFlash * feel),
                       std::max(parryFlashSeconds, 0.01f) * feel);
     if (auto* shake = CameraShakeManagerComponent::Instance())
         shake->Shake(Clamp01(parryShake) * (heavy ? 1.3f : 1.0f));
-    // 画角を弾いた側へ «開く»。刃と攻撃が触れた瞬間に画面が一瞬広がると、
-    // 止めの後に世界が戻る速さが «弾き返した» 勢いとして読める。
+    /// @note 画角を弾いた側へ «開く»。刃と攻撃が触れた瞬間に画面が一瞬広がると、
+    ///       止めの後に世界が戻る速さが «弾き返した» 勢いとして読める。
     if (parryFov > 0.0f)
         if (auto* follow = CameraFollowManagerComponent::Instance())
             follow->PunchFov(Clamp01(parryFov) * (heavy ? 1.6f : 1.0f) * feel);
@@ -659,24 +586,24 @@ inline void PlayerParryComponent::OnParried(int amount, const Vector3* from)
     if (auto* vfx = VfxManagerComponent::Instance())
         vfx->PlayParry(point, -toward, just ? 1.0f : (heavy ? 1.0f : 0.5f), just);
 
-    // 接触と澄んだ響きを専用素材にまとめ、Justでも斬撃音を重ねない。
+    /// @note 接触と澄んだ響きを専用素材にまとめ、Justでも斬撃音を重ねない。
     se::Play(audio, just ? se::kSwordParryJust : se::kSwordParry,
              heavy ? 1.0f : 0.85f);
 
-    // 息が戻る。読み切った弾きほど厚い ─ 上手いほど長く構えていられる。
+    /// @note 息が戻る。読み切った弾きほど厚い ─ 上手いほど長く構えていられる。
     if (m_breath) m_breath->GainParry(just);
 
-    // 崩しを溜め、ボスへ «弾かれた» を渡す。脚が跳ね上がる・突進が転ぶのはボスの側。
+    /// @note 崩しを溜め、ボスへ «弾かれた» を渡す。脚が跳ね上がる・突進が転ぶのはボスの側。
     if (boss) {
         if (auto* brk = scene.GetScript<BossBreakComponent>(boss)) brk->AddParry(heavy, just);
         if (auto* iboss = IBoss::Of(boss)) iboss->OnParried(point);
     }
 
-    // 弾けたら短い硬直で次へ。窓の残りは捨てる (1 回の構えで 2 発は受けない)。
+    /// @note 弾けたら短い硬直で次へ。窓の残りは捨てる (1 回の構えで 2 発は受けない)。
     SetPhase(Phase::Recovery, successRecovery);
     m_succeeded = true;
-    // 受け止めた «パキッ» はここで初めて絵になる。構えのまま硬直へ入ると、
-    // 止めも閃光も出ているのに体だけ何も起きていないように見える。
+    /// @note 受け止めた «パキッ» はここで初めて絵になる。構えのまま硬直へ入ると、
+    ///       止めも閃光も出ているのに体だけ何も起きていないように見える。
     m_holdPlaying = false;
     PlayClip(guardHitClipFile, guardHitClipName, parryRiposteSpeed);
 }
@@ -686,11 +613,8 @@ inline void PlayerParryComponent::OnGuarded(int amount, const Vector3* from)
     ++m_guards;
     debugGuards = m_guards;
 
-    // 受け止めた «ゴッ»。弾きの «パキッ» とは別物として鳴らす ── 同じ手応えを返すと、
-    // 崩しが溜まっていないことに気付けないまま押しっぱなしが最適解になる。
-    //
-    // WHY 閃光も画角も出さないか: あれは «読み切った» の語。止めただけの一撃に
-    //     乗せると、弾きの報酬が «いつもの音» に薄まる。
+    /// @note 受け止めた «ゴッ»。弾きの «パキッ» とは別物として鳴らす (同じ手応えだと崩しが溜まっていないことに気付けないまま押しっぱなしが最適解になる)。
+    /// @note 閃光・画角は出さない。あれは «読み切った» の語で、止めただけの一撃に乗せると弾きの報酬が «いつもの音» に薄まる。
     if (auto* stop = HitstopManagerComponent::Instance()) {
         stop->Hit(Clamp01(guardHitStop));
         stop->FreezeAnimation(scene.Self(), Clamp01(guardHitStop));
@@ -702,8 +626,8 @@ inline void PlayerParryComponent::OnGuarded(int amount, const Vector3* from)
     (void)amount;
     (void)from;
 
-    // 崩しゲージは触らない。**ここが弾きとの唯一で最大の違い。**
-    // 受け止めた絵だけ差して、構えはそのまま続く。
+    /// @note 崩しゲージは触らない。**ここが弾きとの唯一で最大の違い。**
+    ///       受け止めた絵だけ差して、構えはそのまま続く。
     m_guardHit    = std::max(guardHitSeconds, 0.05f);
     m_holdPlaying = false;
     PlayClip(guardHitClipFile, guardHitClipName, parryRiposteSpeed);
@@ -717,7 +641,7 @@ inline void PlayerParryComponent::Cancel()
     m_succeeded   = false;
     m_guardHit    = 0.0f;
     m_holdPlaying = false;
-    // 2 枚とも畳む。乗っている側だけ止めると、抜けかけのもう 1 枚が残って被さる。
+    /// @note 2 枚とも畳む。乗っている側だけ止めると、抜けかけのもう 1 枚が残って被さる。
     StopBoth(fadeOut);
 }
 
@@ -729,7 +653,7 @@ inline void PlayerParryComponent::ResolveExecute()
     GameObject* root = m_executeRoot.Resolve(scene);
     IBoss*      boss = root ? IBoss::Of(root) : nullptr;
 
-    // 起き上がられていたら空振り。斬り下ろしの絵は最後まで流す。
+    /// @note 起き上がられていたら空振り。斬り下ろしの絵は最後まで流す。
     if (!part || !boss || !boss->IsToppled() || !boss->Execute(part, transform.worldPosition)) {
         return;
     }
@@ -757,21 +681,21 @@ inline void PlayerParryComponent::ResolveExecute()
 
 inline void PlayerParryComponent::DriveTempo(float dt)
 {
-    // 速さを掛けるのは «今乗っている» 1 枚だけ。抜けかけのもう 1 枚は fadeOut に
-    // 任せる ─ 両方に掛けると、抜けていく側が速度を変えながら残って二重に見える。
+    /// @note 速さを掛けるのは «今乗っている» 1 枚だけ。抜けかけのもう 1 枚は fadeOut に
+    ///       任せる ─ 両方に掛けると、抜けていく側が速度を変えながら残って二重に見える。
     const std::string& layer = ActiveLayer();
     if (layer.empty() || !animator.IsSlotPlaying(layer)) return;
 
     switch (m_phase) {
     case Phase::Window:
-        // 構えへ駆け上がる間だけ速さを掛ける。ループへ渡した後に掛けると
-        // «構えが揺れる» ─ 止まっているべき姿勢が回り続けることになる。
+        /// @note 構えへ駆け上がる間だけ速さを掛ける。ループへ渡した後に掛けると
+        ///       «構えが揺れる» ─ 止まっているべき姿勢が回り続けることになる。
         if (!m_holdPlaying) animator.SetSlotSpeed(layer, parrySnapSpeed);
         break;
 
     case Phase::Guard:
-        // 構えのループは等速。受け止めの絵 (GuardHit) を出している間だけ、
-        // その速さを保つ。ここで速度を掛け直すと «構えが揺れる» に見える。
+        /// @note 構えのループは等速。受け止めの絵 (GuardHit) を出している間だけ、
+        ///       その速さを保つ。ここで速度を掛け直すと «構えが揺れる» に見える。
         break;
 
     case Phase::Recovery:
@@ -784,7 +708,7 @@ inline void PlayerParryComponent::DriveTempo(float dt)
         const float hitAt   = std::max(executeHitTime, 0.01f) / speed;
         const float elapsed = lock - m_timer;
         if (elapsed < hitAt) {
-            // 斬り下ろしの時刻 (ResolveExecute) にクリップの斬り下ろしがちょうど来る。
+            /// @note 斬り下ろしの時刻 (ResolveExecute) にクリップの斬り下ろしがちょうど来る。
             const float target = executeHitTime
                 * tempo::WindupProgress(elapsed / hitAt, executeWindup, executeWindupPower);
             animator.SetSlotSpeed(layer, tempo::SpeedToReach(
@@ -836,14 +760,14 @@ inline void PlayerParryComponent::OnUpdate()
 {
     if (!enabled) return;
     if (auto* manager = TimeManagerComponent::Instance(); manager && manager->IsPaused()) {
-        // Controller が前フレームの拘束要求を消費し終えるまで、解除扱いにしない。
+        /// @note Controller が前フレームの拘束要求を消費し終えるまで、解除扱いにしない。
         m_rushResumeFrames = 2;
         DriveRushHud();
         return;
     }
     const float dt = TimeManagerComponent::PlayerDeltaTime();
 
-    // 登攀のように数秒またぐ拘束は cutscene には乗らない (BladeComponent と同じ理由)。
+    /// @note 登攀のように数秒またぐ拘束は cutscene には乗らない (BladeComponent と同じ理由)。
     const bool held = cutscene::HoldsPlayer(Time::unscaledTime)
                    || (m_controller && m_controller->IsInputLocked());
     const bool dodging = m_controller && m_controller->IsDodging();
@@ -853,7 +777,7 @@ inline void PlayerParryComponent::OnUpdate()
         if (auto* manager = TimeManagerComponent::Instance()) manager->EndParryRush();
     DriveRushHud();
 
-    // 回避は弾きより優先する。構えていても硬直中でも、転がった瞬間に畳む。
+    /// @note 回避は弾きより優先する。構えていても硬直中でも、転がった瞬間に畳む。
     if (dodging) Cancel();
 
     if (held) m_buffer = 0.0f;
@@ -862,11 +786,8 @@ inline void PlayerParryComponent::OnUpdate()
 
     if (m_buffer > 0.0f && !IsBusy() && !dodging) {
         m_buffer = 0.0f;
-        // 倒れている相手が届く所に居れば とどめ。居なければ弾き。
-        //
-        // WHY とどめには息が要らないか: 転倒の 9 秒は見返りの側にある機会で、
-        //     そこを «息が足りなくて逃した» にすると、攻めた結果が攻める資源に
-        //     阻まれることになる。息が縛るのは «守り» だけ。
+        /// @note 倒れている相手が届く所に居れば とどめ。居なければ弾き。
+        /// @note とどめには息が要らない。転倒の 9 秒は見返りの側にある機会で、«息が足りなくて逃した» にすると攻めた結果が攻める資源に阻まれる。息が縛るのは «守り» だけ。
         if (!TryExecute()) {
             if (m_breath && !m_breath->CanAct()) m_breath->Deny();
             else                                 BeginParry();
@@ -876,18 +797,18 @@ inline void PlayerParryComponent::OnUpdate()
 
     if (m_phase == Phase::Idle) return;
 
-    // ボタンを押し続けているか。拘束中は «離した» 扱いにして、演出が明けたときに
-    // 構えたままにならないようにする。
+    /// @note ボタンを押し続けているか。拘束中は «離した» 扱いにして、演出が明けたときに
+    ///       構えたままにならないようにする。
     const bool stillHeld = !held && input.GetAction(actions::kParry);
 
-    // 構えている間は足を鈍らせる。全速で走りながら弾けると «受けた» に見えない。
+    /// @note 構えている間は足を鈍らせる。全速で走りながら弾けると «受けた» に見えない。
     if (m_controller) m_controller->RequestMoveSpeedScale(std::max(moveScale, 0.05f));
 
-    // 構えは攻撃してきた側へ向く。向いていない弾きは «偶然当たった» に見える。
+    /// @note 構えは攻撃してきた側へ向く。向いていない弾きは «偶然当たった» に見える。
     if (m_phase == Phase::Window && m_controller)
         if (GameObject* boss = Boss()) {
-            // 蛇はルートが原点に据え置きで、動くのは胴だけ。ルートの位置へ向くと
-            // «攻撃してきた側» ではなく盤面の決まった一点を向く (IBoss::FocusPoint)。
+            /// @note 蛇はルートが原点に据え置きで、動くのは胴だけ。ルートの位置へ向くと
+            ///       «攻撃してきた側» ではなく盤面の決まった一点を向く (IBoss::FocusPoint)。
             Vector3 at = boss->transform.worldPosition;
             if (const IBoss* iboss = IBoss::Of(boss)) (void)iboss->FocusPoint(at);
             Vector3 to = at - transform.worldPosition;
@@ -897,13 +818,7 @@ inline void PlayerParryComponent::OnUpdate()
 
     m_timer -= dt;
 
-    // 構えが出来上がったらループへ渡す。**相ではなく時刻で切り替えるのが要点。**
-    //
-    // WHY 窓が閉じるのを待たないか: ワンショットの Slot はクリップの末尾 fadeOut 秒に
-    //     達した瞬間に自動で抜け始める (AnimatorSystem)。窓 (0.22 秒) はそれより長いので、
-    //     待っていると **構えが一度消えてから次のクリップでまた立ち上がる** ──
-    //     «同じモーションが 2 回» の正体がこれだった。
-    //     抜け始める前にループを被せてしまえば、以後は姿勢が 1 ミリも動かない。
+    /// @note 構えが出来上がったらループへ渡す。相ではなく時刻で切り替えるのが要点。ワンショットの Slot はクリップ末尾の fadeOut 秒に達した瞬間に自動で抜け始めるため (AnimatorSystem)、窓 (0.22 秒) より短いまま待つと構えが一度消えて次のクリップでまた立ち上がる («同じモーションが 2 回» の正体)。抜け始める前にループを被せれば以後は姿勢が動かない。
     if (!m_holdPlaying && m_guardHit <= 0.0f
         && (m_phase == Phase::Window || m_phase == Phase::Guard)) {
         m_toHold -= dt;
@@ -913,13 +828,13 @@ inline void PlayerParryComponent::OnUpdate()
     switch (m_phase) {
     case Phase::Window:
         if (m_timer <= 0.0f) {
-            // 窓が閉じた。まだ押しているならガードへ落ちる ─ 止められるが崩しは
-            // 溜まらない。離していれば «外した» なので構えを解く。
+            /// @note 窓が閉じた。まだ押しているならガードへ落ちる ─ 止められるが崩しは
+            ///       溜まらない。離していれば «外した» なので構えを解く。
             if (holdToGuard && stillHeld) {
                 BeginGuard();
             } else {
-                // 外した構えにだけ息を払わせる。弾けた構えは見返りの側なので取らない
-                // (PlayerTuning の Breath > 空振りの消費)。
+                /// @note 外した構えにだけ息を払わせる。弾けた構えは見返りの側なので取らない
+                ///       (PlayerTuning の Breath > 空振りの消費)。
                 if (m_breath) m_breath->SpendParryWhiff();
                 BeginRelease();
             }
@@ -927,12 +842,12 @@ inline void PlayerParryComponent::OnUpdate()
         break;
 
     case Phase::Guard:
-        // 構え続けるには息が要る。尽きたら押し負けて割れる。
+        /// @note 構え続けるには息が要る。尽きたら押し負けて割れる。
         if (m_breath && m_breath->DrainGuard(dt)) {
             BreakGuard();
             break;
         }
-        // 受け止めた絵が明けたら構えへ戻す。戻さないと GuardHit の最終コマで固まる。
+        /// @note 受け止めた絵が明けたら構えへ戻す。戻さないと GuardHit の最終コマで固まる。
         if (m_guardHit > 0.0f) {
             m_guardHit -= dt;
             if (m_guardHit <= 0.0f && stillHeld) PlayHoldLoop();
@@ -954,7 +869,7 @@ inline void PlayerParryComponent::OnUpdate()
         }
         if (!m_executeResolved && elapsed >= hitAt) ResolveExecute();
         if (m_timer <= 0.0f) {
-            // とどめのクリップは 2 秒超ある。斬り抜けが済んだら残心を待たずに畳む。
+            /// @note とどめのクリップは 2 秒超ある。斬り抜けが済んだら残心を待たずに畳む。
             StopBoth(fadeOut);
             SetPhase(Phase::Idle, 0.0f);
         }

@@ -29,17 +29,17 @@ namespace fbzz::audio
 {
 namespace {
 
-// 生成クリップの合計サイズ上限。超えても警告だけで生成は続ける。
-// 止めると「音が急に鳴らなくなる」という原因の追いにくい形で現れる。
+/// 生成クリップの合計サイズ上限。超えても警告だけで生成は続ける。
+/// 止めると「音が急に鳴らなくなる」という原因の追いにくい形で現れる。
 constexpr size_t kGeneratedBudgetBytes = 32u * 1024u * 1024u;
 
-// StopVoice の立ち下がり。「プツッ」を消せる最小限で、遅れは耳に分からない。
+/// StopVoice の立ち下がり。「プツッ」を消せる最小限で、遅れは耳に分からない。
 constexpr float kStopFadeSeconds = 0.02f;
 
-// BGM はスティールしない。ループ音なので元から除外されるが、意図を数値でも残す。
+/// BGM はスティールしない。ループ音なので元から除外されるが、意図を数値でも残す。
 constexpr int kBgmPriority = 100;
 
-// ---- RIFF/WAV ヘッダ構造体 (リトルエンディアン前提) ----
+/// @name RIFF/WAV ヘッダ構造体 (リトルエンディアン前提)
 #pragma pack(push, 1)
 struct RiffHeader  { char id[4]; uint32_t size; char type[4]; };
 struct ChunkHeader { char id[4]; uint32_t size; };
@@ -64,8 +64,8 @@ std::string LowerExtension(const std::string& path)
     return ext;
 }
 
-// 論理パス ("Assets/...") とリネーム後の実体を AssetManager の規則で解決する。
-// 生のまま ifstream へ渡すと、カレントディレクトリ次第で読めない。
+/// 論理パス ("Assets/...") とリネーム後の実体を AssetManager の規則で解決する。
+/// 生のまま ifstream へ渡すと、カレントディレクトリ次第で読めない。
 std::string ResolveClipPath(const std::string& path)
 {
     const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
@@ -120,7 +120,7 @@ void AudioManager::Update(float dt)
 {
     dt = (std::max)(dt, 0.0f);
 
-    // 停止はクリップの解放まで連鎖して m_voices を書き換えるので、走査中には畳めない。
+    /// @note 停止はクリップの解放まで連鎖して m_voices を書き換えるので、走査中には畳めない。
     std::vector<uint32_t> fadedOut;
     std::vector<uint32_t> finished;
     for (auto& [voiceId, state] : m_voices) {
@@ -138,7 +138,7 @@ void AudioManager::Update(float dt)
     }
 
     for (uint32_t voiceId : fadedOut) StopVoiceImmediate(voiceId);
-    // IsPlaying が false の時点でデバイス側は破棄済み。参照を戻すだけでよい。
+    /// @note IsPlaying が false の時点でデバイス側は破棄済み。参照を戻すだけでよい。
     for (uint32_t voiceId : finished) ForgetVoice(voiceId);
 }
 
@@ -155,7 +155,7 @@ bool AudioManager::MakeRoomForVoice(int priority)
     int      victimPriority = 0;
     uint64_t victimSequence = 0;
     for (const auto& [voiceId, state] : m_voices) {
-        // ループ音は「鳴り続けること」が役目なので奪わない。
+        /// @note ループ音は「鳴り続けること」が役目なので奪わない。
         if (state.loop || voiceId == m_bgmVoiceId) continue;
         if (victim == 0 || state.priority < victimPriority
             || (state.priority == victimPriority && state.sequence < victimSequence)) {
@@ -165,8 +165,8 @@ bool AudioManager::MakeRoomForVoice(int priority)
         }
     }
 
-    // 奪える相手が居ない、または相手の方が大事なら、新しい音の方を捨てる。
-    // 上限に達するのは同種の音が湧いた場面で、そこで大事な音を消す方が痛い。
+    /// @note 奪える相手が居ない、または相手の方が大事なら、新しい音の方を捨てる。
+    ///       上限に達するのは同種の音が湧いた場面で、そこで大事な音を消す方が痛い。
     if (victim == 0 || victimPriority > priority) return false;
 
     StopVoiceImmediate(victim);
@@ -178,7 +178,7 @@ void AudioManager::ApplyVoiceGain(uint32_t voiceId, const VoiceState& state)
     m_device.SetVolume(voiceId, state.volume * state.fadeGain);
 }
 
-// ---- バス ----
+/// @name バス
 
 void AudioManager::ApplyBusLayout(const std::vector<BusDesc>& buses)
 {
@@ -187,7 +187,7 @@ void AudioManager::ApplyBusLayout(const std::vector<BusDesc>& buses)
     if (!m_device.RebuildBuses(m_busLayout.data(), m_busLayout.size()))
         FBZZ_LOG_ERROR("AudioManager: bus layout rebuild failed (%zu buses)", m_busLayout.size());
 
-    // submix ごと作り直したので残響は初期状態。次の更新を素通りさせない。
+    /// @note submix ごと作り直したので残響は初期状態。次の更新を素通りさせない。
     m_reverbWet = -1.0f;
 }
 
@@ -237,7 +237,7 @@ void AudioManager::SetBusLowPass(std::string_view name, float normalizedCutoff)
     m_device.SetBusLowPass(bus, m_busLayout[bus].lowPassCutoff);
 }
 
-// ---- クリップ ----
+/// @name クリップ
 
 AudioManager::ClipId AudioManager::InternClip(const WaveFormat& fmt,
                                               std::vector<uint8_t>&& pcm,
@@ -317,7 +317,7 @@ void AudioManager::DropClipIfUnused(ClipId clip)
     const auto it = m_clips.find(clip);
     if (it == m_clips.end()) return;
     const ClipEntry& entry = it->second;
-    // XAudio2 は PCM をポインタで参照し続ける。鳴っている最中に捨てると解放済みメモリを鳴らす。
+    /// @note XAudio2 は PCM をポインタで参照し続ける。鳴っている最中に捨てると解放済みメモリを鳴らす。
     if (entry.persistent || entry.refCount > 0 || entry.voiceCount > 0) return;
 
     m_generatedBytes -= (std::min)(m_generatedBytes, entry.pcm.size());
@@ -325,12 +325,12 @@ void AudioManager::DropClipIfUnused(ClipId clip)
     m_clips.erase(it);
 }
 
-// ---- 再生 ----
+/// @name 再生
 
 uint32_t AudioManager::PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
                                      const PlayParams& params)
 {
-    // スティールはクリップの解放まで連鎖するので、m_clips のイテレーターより先に済ませる。
+    /// @note スティールはクリップの解放まで連鎖するので、m_clips のイテレーターより先に済ませる。
     if (m_clips.find(clip) == m_clips.end()) return 0;
     if (!MakeRoomForVoice(params.priority)) return 0;
 
@@ -415,7 +415,7 @@ void AudioManager::FadeOutAndStop(uint32_t voiceId, float seconds)
 {
     if (voiceId == 0) return;
     const auto it = m_voices.find(voiceId);
-    // 追跡していない voice はフェードを掛ける先が無いので、そのまま畳む。
+    /// @note 追跡していない voice はフェードを掛ける先が無いので、そのまま畳む。
     if (it == m_voices.end()) { m_device.StopBuffer(voiceId); return; }
     if (seconds <= 0.0f) { StopVoiceImmediate(voiceId); return; }
 
@@ -470,7 +470,7 @@ bool AudioManager::DescribeClip(ClipId clip, ClipInfo& out) const
 
 void AudioManager::StopAllVoices()
 {
-    // 引き取られなかった位置指定要求も参照を握ったままなので、ここで手放す。
+    /// @note 引き取られなかった位置指定要求も参照を握ったままなので、ここで手放す。
     for (const PositionalRequest& request : m_positional)
         if (request.clip != 0) ReleaseClip(request.clip);
     m_positional.clear();
@@ -480,9 +480,9 @@ void AudioManager::StopAllVoices()
         m_device.StopBuffer(tracked.first);
     m_voices.clear();
 
-    // 生成クリップは参照数によらず全部捨てる。一括停止が起きる Play→Stop と Shutdown では
-    // スクリプト DLL ごと作り直され、ハンドルの持ち主が消えているため。
-    // (ScriptAudioProxy::SynthClip のコメントと対)
+    /// @note 生成クリップは参照数によらず全部捨てる。一括停止が起きる Play→Stop と Shutdown では
+    ///       スクリプト DLL ごと作り直され、ハンドルの持ち主が消えているため。
+    ///       (ScriptAudioProxy::SynthClip のコメントと対)
     for (auto it = m_clips.begin(); it != m_clips.end();) {
         if (it->second.persistent) { it->second.voiceCount = 0; ++it; continue; }
         if (it->second.specHash != 0) m_specToClip.erase(it->second.specHash);
@@ -525,11 +525,11 @@ bool AudioManager::IsVoicePlaying(uint32_t voiceId)
     return false;
 }
 
-// ---- BGM / SE ----
+/// @name BGM / SE
 
 void AudioManager::PlayBGM(const std::string& path, bool loop, float fadeSeconds)
 {
-    // クロスフェード中は新旧 2 本が鳴るが、BGM スロットが指すのは常に新しい方。
+    /// @note クロスフェード中は新旧 2 本が鳴るが、BGM スロットが指すのは常に新しい方。
     const uint32_t previous = m_bgmVoiceId;
     m_bgmVoiceId = 0;
     if (previous != 0) {
@@ -562,7 +562,7 @@ void AudioManager::SetSEVolume(float volume)  { SetBusVolume("SE",  volume); }
 float AudioManager::GetBGMVolume() const      { return GetBusVolume("BGM"); }
 float AudioManager::GetSEVolume() const       { return GetBusVolume("SE"); }
 
-// ---- 読み込み ----
+/// @name 読み込み
 
 bool AudioManager::LoadClipData(const std::string& path,
                                 WaveFormat& outFmt, std::vector<uint8_t>& outPcm)
@@ -608,7 +608,8 @@ bool AudioManager::LoadWav(const std::string& path,
             file.read(reinterpret_cast<char*>(&fmt), sizeof(fmt));
             if (chunk.size > sizeof(fmt))
                 file.seekg(chunk.size - sizeof(fmt), std::ios::cur);
-            if (fmt.audioFormat != 1) return false;  // PCM のみ対応
+            /// @note PCM のみ対応
+            if (fmt.audioFormat != 1) return false;
             outFmt.sampleRate    = fmt.sampleRate;
             outFmt.channels      = fmt.channels;
             outFmt.bitsPerSample = fmt.bitsPerSample;
@@ -627,7 +628,7 @@ bool AudioManager::LoadWav(const std::string& path,
 bool AudioManager::LoadWithMediaFoundation(const std::string& path,
                                            WaveFormat& outFmt, std::vector<uint8_t>& outPcm)
 {
-    // path は UTF-8。日本語フォルダへ移した配布版でも MF が正しく受け取れるようにする。
+    /// @note path は UTF-8。日本語フォルダへ移した配布版でも MF が正しく受け取れるようにする。
     const std::wstring wpath = fbzz::util::StringUtils::ToWide(path);
 
     Microsoft::WRL::ComPtr<IMFSourceReader> reader;
@@ -637,7 +638,7 @@ bool AudioManager::LoadWithMediaFoundation(const std::string& path,
         return false;
     }
 
-    // デコード出力を PCM に固定
+    /// @note デコード出力を PCM に固定
     Microsoft::WRL::ComPtr<IMFMediaType> pcmType;
     MFCreateMediaType(&pcmType);
     pcmType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);

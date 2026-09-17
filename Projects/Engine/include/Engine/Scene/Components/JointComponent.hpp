@@ -6,12 +6,9 @@
 /// Physics 側の制約は実装済みだったが Scene からの入口が無く、吊り下げ物も鎖も
 /// スクリプトから組み立てるしかなかった。ここが «シーンに置いて保存できる» 唯一の入口。
 ///
-/// WHY ConstraintComponents.hpp へ相乗りしないか:
-///   同名だが別物。あちらの SocketAttachment / TransformConstraint は骨追従と
-///   Transform 拘束 (Animation カテゴリ) で、剛体の関節ではない。混ぜると
-///   «Constraint を足したのに物理が効かない» の取り違えが必ず起きる。
-///   Physics カテゴリのコンポーネントは 1 型 1 ファイルが既存の分け方 (RigidBodyComponent /
-///   VolumeComponent / CharacterControllerComponent)。
+/// @note ConstraintComponents.hpp の SocketAttachment / TransformConstraint とは別物
+///       (骨追従・Transform 拘束の Animation カテゴリで、剛体の関節ではない)。
+///       Physics カテゴリは 1 型 1 ファイルの既存の分け方に揃える。
 #pragma once
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -42,15 +39,13 @@ struct JointComponent {
 
     /// 相手の剛体を持つ GameObject。Chain 以外で使う。
     ///
-    /// WHY 名前ではなく EntityRef か: シーン内の特定 GameObject を指す参照は
-    ///     EntityRef が既存の流儀 (SocketAttachmentComponent::target /
-    ///     TransformConstraintComponent::target)。保存は instanceId なので
-    ///     GameObject を改名しても切れず、Inspector も Hierarchy からのドロップで繋げる。
+    /// @note EntityRef は既存の流儀 (SocketAttachmentComponent::target 等) に揃える。
+    ///       保存は instanceId なので GameObject を改名しても参照が切れない。
     EntityRef connectedBody;
     /// connectedBody が空のとき、祖先方向で最初に見つかった剛体を相手にする。
     ///
-    /// WHY 要るか: EntityRef はシーン内参照なので Prefab に保存できない。必須にすると
-    ///     «鎖 1 節の Prefab» が原理的に作れず、繋ぎ込みをスクリプトに書くしかなくなる。
+    /// @note EntityRef はシーン内参照なので Prefab に保存できない。必須にすると
+    ///       «鎖 1 節の Prefab» が作れなくなる。
     bool connectToParent = true;
 
     /// Chain の連なり。先頭は常にこの GameObject 自身で、ここには 2 節目以降を並べる。
@@ -60,8 +55,8 @@ struct JointComponent {
 
     /// 張った瞬間の相手との間隔を距離として採る。
     ///
-    /// WHY 既定で入れるか: 吊り下げ物は «置いた位置のまま垂れる» のが期待で、
-    ///     数値を手で合わせると配置を動かすたびに古くなる。
+    /// @note 吊り下げ物は «置いた位置のまま垂れる» のが期待で、数値を手で合わせると
+    ///       配置を動かすたびに古くなるため既定 true。
     bool  autoDistance = true;
     /// Distance = 保つ距離 / Rope = 最大距離 / Spring = 自然長 / Chain = 節間距離 [m]。
     float distance = 1.0f;
@@ -85,7 +80,8 @@ struct JointComponent {
     float motorSpeed      = 0.0f;
     float motorMaxTorque  = 0.0f;
 
-    // ── ランタイム専用 (シリアライズしない) ──────────────────────────────
+    /// @name ランタイム専用 (シリアライズしない)
+    /// @{
     /// physics::World が持つ制約への世代付き参照。所有は World 側。
     physics::ConstraintHandle constraintHandle;
     /// 実際に物理へ張れているか。相手が見つからない・剛体が無いときは false。
@@ -95,9 +91,8 @@ struct JointComponent {
 
     JointComponent() = default;
     ~JointComponent() = default;
-    // WHY ハンドルを引き継がないか: 複製 (Copy Component / GameObject の複製) で
-    //     同じスロットを 2 つのコンポーネントが指すと、両方が同じ制約へパラメーターを
-    //     書き、片方を消したときにもう片方の関節が黙って消える。
+    /// @note 複製 (Copy Component / GameObject の複製) でハンドルを引き継ぐと、同じスロットを
+    ///       2 つのコンポーネントが指し、片方を消すともう片方の関節が黙って消える。
     JointComponent(const JointComponent& o) { CopyAuthoredFrom(o); }
     JointComponent& operator=(const JointComponent& o)
     {
@@ -171,6 +166,7 @@ struct JointComponent {
         r.FieldIf("motorSpeed", motorSpeed, hinge);
         r.FieldIf("motorMaxTorque", motorMaxTorque, hinge);
     }
+    /// @}
 
 private:
     void CopyAuthoredFrom(const JointComponent& o)

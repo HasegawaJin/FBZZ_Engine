@@ -3,17 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
 ///
-/// WHY 1 箇所へ集めるか:
-///   «Seg07 の骨» と «S07 の部位» と «HB_Seg07 の当たり» は同じ 1 つの節を指しているのに、
-///   綴りが別々の場所にあると、片方だけ直したときの症状が «その節だけ当たらない» /
-///   «その節だけ輪郭が出ない» という、絵を見ても原因の分からない形で出る。
-///   骨を並べる側 (Spine)・当たりを生やす側 (HitboxRig)・輪郭を描く側 (SerpentRig) が
-///   同じ関数から名前を引く。
-///
-/// WHY 頭からの添字にするか:
-///   骨の親子は尾が根 (Root → Seg28 → … → Seg01 → Head) だが、経路を進むのは頭で、
-///   節が減るのも «頭から数えて何本目» で効く。番号の向きを 2 つ持つと、
-///   ループのたびにどちらの向きだったかを読み直すことになる。
+/// @note 節の名前 (`Seg07`/`S07`/`HB_Seg07`) が骨・当たり・輪郭の 3 者で食い違うと
+///       «その節だけ» 反応しないバグになる。Spine・HitboxRig・SerpentRig は必ず
+///       ここの関数から名前を引く。
+/// @note 添字は頭からの本数。骨の親子は尾が根 (Root → Seg28 → … → Head) だが、
+///       経路も節の欠けも «頭から何本目» で効くため、向きを 2 つ持たない。
 #pragma once
 
 #include <Math/MathUtils.hpp>
@@ -69,8 +63,8 @@ inline constexpr int kBoneCount = kSegmentCount + 1;
 
 /// 節 1 本の当たり半径。前 (S06〜S07) が最も太く、尾へ細る (boss-serpent.md「体」)。
 ///
-/// WHY 等間隔に細らせないか: 一定の割合で細らせるとホースに見える。前を重くして
-///     «持ち上げている» が読める形にしたモデルの太さに、当たりの側も合わせる。
+/// @note 等間隔に細らせない。一定割合で細るとホースに見えるため、モデルの太さ
+///       (前を重くして «持ち上げている» と読める形) に当たりの半径も合わせる。
 [[nodiscard]] inline float SegmentRadius(int headIndex, float neck, float peak, float tail)
 {
     if (headIndex <= 0) return peak;
@@ -85,8 +79,8 @@ inline constexpr int kBoneCount = kSegmentCount + 1;
 
 /// ローカル +Y を direction へ向ける回転。
 ///
-/// WHY +Y か: 書き出された骨は子が必ずローカル (0, L, 0) に居る。つまり «次の関節へ
-///     向かう向き» が骨の +Y そのもので、そこを合わせれば鎖が経路に乗る。
+/// @note 書き出された骨は子が必ずローカル (0, L, 0) に居るため、骨の +Y がそのまま
+///       «次の関節への向き» になる。そこを合わせれば鎖が経路に乗る。
 [[nodiscard]] inline fbzz::math::Quaternion AlignUpTo(const fbzz::math::Vector3& direction)
 {
     using namespace fbzz::math;
@@ -100,10 +94,9 @@ inline constexpr int kBoneCount = kSegmentCount + 1;
 
 /// from を to へ重ねる最小の回転。
 ///
-/// WHY 関節ごとに «前の骨からの差分» で積むか: 向きだけを合わせる回転にはねじれの
-///     自由度が残る。関節ごとに独立に解くと、経路が少し動いただけで節が軸まわりに
-///     跳ね、背びれが毎フレーム別の方向を向く。前の骨から最小回転で送れば
-///     ねじれは伝わるだけになり、胴が «1 本の鎖» に見える。
+/// @note 関節ごとに前の骨からの最小回転で積む。向きだけ独立に解くとねじれの自由度が
+///       残り、経路が少し動いただけで節が軸まわりに跳ねて背びれが暴れる。前から
+///       送ればねじれは伝わるだけになり、胴が 1 本の鎖に見える。
 [[nodiscard]] inline fbzz::math::Quaternion ShortestArc(const fbzz::math::Vector3& from,
                                                         const fbzz::math::Vector3& to)
 {
@@ -113,7 +106,7 @@ inline constexpr int kBoneCount = kSegmentCount + 1;
     const float   dot = std::clamp(Vector3::Dot(a, b), -1.0f, 1.0f);
     if (dot > 0.99999f) return Quaternion::Identity();
     if (dot < -0.99999f) {
-        // 真後ろ。軸が定まらないので a に直交する適当な軸で半回転する。
+        /// @note 真後ろ。軸が定まらないので a に直交する適当な軸で半回転する。
         Vector3 axis = Vector3::Cross(a, Vector3::UP);
         if (axis.LengthSq() < 1.0e-6f) axis = Vector3::Cross(a, Vector3::RIGHT);
         return Quaternion::FromAxisAngle(axis.NormalizedOr(Vector3::RIGHT), PI);

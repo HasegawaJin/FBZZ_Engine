@@ -27,11 +27,11 @@ protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
-    std::array<char, 512> m_hdriPath  = {};  // ソース HDRI の絶対パス
-    std::array<char, 512> m_outputDir = {};  // 出力先ディレクトリ絶対パス
-    std::array<char, 128> m_baseName  = {};  // 出力ファイルのベース名 (例: "sky")
+    std::array<char, 512> m_hdriPath  = {};  ///< ソース HDRI の絶対パス
+    std::array<char, 512> m_outputDir = {};  ///< 出力先ディレクトリ絶対パス
+    std::array<char, 128> m_baseName  = {};  ///< 出力ファイルのベース名 (例: "sky")
 
-    // ベイク設定 (デフォルト値は IblBakeInput のデフォルトに合わせる)
+    /// ベイク設定 (デフォルト値は IblBakeInput のデフォルトに合わせる)
     int m_envCubemapSize  = 2048;
     int m_irradianceSize  = 32;
     int m_prefilteredSize = 512;
@@ -43,7 +43,7 @@ private:
     Status      m_status = Status::Idle;
     std::string m_statusMsg;
 
-    // ベイク実行 (同期。大きい HDRI の場合 UI がフリーズする点に注意)
+    /// ベイク実行 (同期。大きい HDRI の場合 UI がフリーズする点に注意)
     void DoBake(EditorContext& ctx);
 };
 

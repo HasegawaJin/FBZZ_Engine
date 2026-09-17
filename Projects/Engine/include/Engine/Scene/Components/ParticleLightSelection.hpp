@@ -27,8 +27,8 @@ struct ParticleLightEmission {
 /// light に従って光らせる粒子を選び、明るい順に out へ積む (out は先に空にする)。
 /// 選ばれるのは lightRatio を通った粒子のうち、明るい上位 min(lightMaxCount, budget) 個。
 /// 明るさが同じなら配列の前にある粒子を先にする (決定論的)。
-/// WHY 明るい順か: ライト配列の枠 (kMaxPunctualLights) は LightComponent と共有で、
-///     溢れた分は捨てるしかない。捨てるなら画面への寄与が小さいものから。
+/// @note ライト配列の枠 (kMaxPunctualLights) は LightComponent と共有で、溢れた分は捨てる
+///       しかない。捨てるなら画面への寄与が小さいものから。
 /// @param budget ライト配列の残り枠
 void SelectParticleLights(const ParticleLightSettings& light, const std::vector<Particle>& particles,
                           std::size_t budget, std::vector<ParticleLightEmission>& out);

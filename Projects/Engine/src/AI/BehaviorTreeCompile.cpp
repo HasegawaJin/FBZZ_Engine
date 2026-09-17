@@ -16,18 +16,16 @@ void SetError(std::string* outError, const std::string& message)
     if (outError) *outError = message;
 }
 
-// 予約キーを先頭に固定した Blackboard 定義列を作る。
-//
-// WHY アセットの blackboard をそのまま使わないか:
-//   手書きの .behaviortree や古いアセットでは予約キーが欠けている / 順序が違う
-//   可能性がある。bb::Self 等の固定添字はランタイムの前提なので、
-//   ここで必ず成立させる。ユーザー定義キーは予約キーの後ろへ寄せる。
+/// @brief 予約キーを先頭に固定した Blackboard 定義列を作る。
+/// @note 手書きの .behaviortree や古いアセットは予約キーが欠ける/順序が違うことがあるが、
+///       bb::Self 等の固定添字はランタイムの前提のためここで必ず成立させる。
+///       ユーザー定義キーは予約キーの後ろへ寄せる。
 std::vector<BlackboardDef> BuildBlackboard(const BehaviorTreeAsset& asset)
 {
     std::vector<BlackboardDef> result = ReservedBlackboardDefs();
 
     for (const BlackboardDef& def : asset.blackboard) {
-        // 予約キーと同名のものはアセット側の定義を捨てる (型を勝手に変えられると壊れる)。
+        /// @note 予約キーと同名のものはアセット側の定義を捨てる (型を勝手に変えられると壊れる)。
         const bool isReserved = std::any_of(result.begin(), result.end(),
             [&def](const BlackboardDef& reserved) { return reserved.name == def.name; });
         if (isReserved) continue;
@@ -78,7 +76,7 @@ BTNodeParams MakeParams(const BTNodeDef& def, const std::vector<BlackboardDef>& 
     params.childWeights = def.childWeights;
     params.authoringId  = def.id;
 
-    // 種別ごとに 1 本しか使わない文字列を text に畳む。
+    /// @note 種別ごとに 1 本しか使わない文字列を text に畳む。
     switch (def.type) {
     case BTNodeType::PlayAnimation: params.text = def.animatorTrigger; break;
     case BTNodeType::PlayAudio:     params.text = def.soundPath;       break;
@@ -86,7 +84,7 @@ BTNodeParams MakeParams(const BTNodeDef& def, const std::vector<BlackboardDef>& 
     default: break;
     }
 
-    // Blackboard キーの解決。失敗しても compile を落とさず警告に積む。
+    /// @note Blackboard キーの解決。失敗しても compile を落とさず警告に積む。
     if (!def.keyName.empty()) {
         params.key = ResolveKey(blackboard, def.keyName);
         if (params.key == kInvalidBlackboardKey) {
@@ -128,7 +126,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         return false;
     }
 
-    // ── id → アセット添字 ────────────────────────────────────────────────────
+    /// @name id → アセット添字
     std::unordered_map<int, std::size_t> indexOfId;
     indexOfId.reserve(asset.nodes.size());
     for (std::size_t i = 0; i < asset.nodes.size(); ++i) {
@@ -143,7 +141,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         }
     }
 
-    // ── 子リストの構築 (order 昇順、同値は id 昇順で安定化) ──────────────────
+    /// @name 子リストの構築 (order 昇順、同値は id 昇順で安定化)
     std::vector<std::vector<std::size_t>> children(asset.nodes.size());
     std::vector<std::size_t> roots;
 
@@ -188,10 +186,9 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         }
     }
 
-    // ── DFS pre-order でフラット化 ──────────────────────────────────────────
-    // WHY pre-order か: 「index が小さいほど左 = 高優先度」と
-    //     「部分木が連続区間になる」の 2 つが同時に成立する唯一の順序。
-    //     observerAborts の区間判定がこの性質に依存している。
+    /// @name DFS pre-order でフラット化
+    /// @note pre-order は「index が小さいほど左=高優先度」と「部分木が連続区間になる」が
+    ///       同時に成立する唯一の順序。observerAborts の区間判定がこの性質に依存する。
     const std::vector<BlackboardDef> blackboard = BuildBlackboard(asset);
 
     out.nodes.reserve(asset.nodes.size());
@@ -202,7 +199,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
 
     std::vector<bool> visited(asset.nodes.size(), false);
 
-    // 明示スタックによる DFS。再帰にしないのは深い木でのスタック溢れを避けるため。
+    /// @note 明示スタックによる DFS。再帰にしないのは深い木でのスタック溢れを避けるため。
     struct Frame {
         std::size_t   assetIndex;
         std::uint16_t emittedIndex;
@@ -218,12 +215,14 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         node.type       = def.type;
         node.firstChild = 0;
         node.childCount = 0;
-        node.paramIndex = emitted;   // params は nodes と同じ並び
+        /// @note params は nodes と同じ並び
+        node.paramIndex = emitted;
         out.nodes.push_back(node);
 
         out.params.push_back(MakeParams(def, blackboard, out.compileWarnings));
         out.parent.push_back(parentIndex);
-        out.subtreeEnd.push_back(0);   // DFS の復路で確定させる
+        /// @note DFS の復路で確定させる
+        out.subtreeEnd.push_back(0);
         out.authoringIdOf.push_back(def.id);
         return emitted;
     };
@@ -248,7 +247,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
 
             const std::uint16_t childEmitted = emit(childAsset, frame.emittedIndex);
 
-            // 最初の子を記録し、以降は連番になることを利用して個数だけ数える。
+            /// @note 最初の子を記録し、以降は連番になることを利用して個数だけ数える。
             BTNode& parentNode = out.nodes[frame.emittedIndex];
             if (parentNode.childCount == 0) parentNode.firstChild = childEmitted;
             ++parentNode.childCount;
@@ -257,13 +256,13 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
             continue;
         }
 
-        // 全ての子を出し終えた = この部分木の終端が確定した。
+        /// @note 全ての子を出し終えた = この部分木の終端が確定した。
         out.subtreeEnd[frame.emittedIndex] = static_cast<std::uint16_t>(out.nodes.size());
         stack.pop_back();
     }
 
-    // 到達できなかったノードは木から切り離されている。落とさず警告に留める。
-    // WHY: エディタで枝を一時的に外して試すことがあり、その状態で保存されうる。
+    /// @note 到達できなかったノードは木から切り離されている。エディタで枝を一時的に外して
+    ///       試した状態のまま保存されうるため、落とさず警告に留める。
     for (std::size_t i = 0; i < visited.size(); ++i) {
         if (!visited[i]) {
             out.compileWarnings.push_back("ルートから到達できないノードを無視しました (id "
@@ -275,11 +274,11 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
     out.keyNames.reserve(blackboard.size());
     for (const BlackboardDef& def : blackboard) out.keyNames.push_back(def.name);
 
-    // ── observerAborts の中断候補を事前計算 ────────────────────────────────
+    /// @name observerAborts の中断候補を事前計算
     const auto isPriorityComposite = [&out](std::uint16_t index) {
         const BTNodeType type = out.nodes[index].type;
-        // 左→右の優先順位を持つのは Sequence / Selector だけ。
-        // Parallel / RandomSelector は子の順序に意味がないので連鎖をここで打ち切る。
+        /// @note 左→右の優先順位を持つのは Sequence / Selector だけ。
+        ///       Parallel / RandomSelector は子の順序に意味がないので連鎖をここで打ち切る。
         return type == BTNodeType::Sequence || type == BTNodeType::Selector;
     };
 
@@ -287,15 +286,9 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         const BTNodeParams& params = out.params[out.nodes[i].paramIndex];
         if (params.abortMode == AbortMode::None) continue;
 
-        // 監視条件が守る範囲を決める。
-        //   Decorator の場合 : 自分の部分木 (子を含む)
-        //   リーフ条件の場合 : 自分を含む親 Composite の部分木
-        //
-        // WHY リーフで親をスコープにするか:
-        //   Sequence[HasTarget, Chase] と書いたとき、HasTarget は
-        //   「この Sequence 全体を守るガード」として読むのが自然。
-        //   自分自身 (1 ノード) をスコープにすると、Chase が Running 中に
-        //   条件が偽へ落ちても中断されず、意図と食い違う。
+        /// @note 監視条件が守る範囲: Decorator は自分の部分木、リーフ条件は自分を含む親 Composite の
+        ///       部分木。Sequence[HasTarget, Chase] の HasTarget は「Sequence 全体を守るガード」であり、
+        ///       自分 1 ノードだけをスコープにすると Chase が Running 中の条件不成立で中断されない。
         std::uint16_t scope = i;
         if (!BTNodeIsDecorator(out.nodes[i].type) && out.parent[i] != kInvalidNode)
             scope = out.parent[i];
@@ -306,7 +299,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         candidate.selfLo = scope;
         candidate.selfHi = out.subtreeEnd[scope];
 
-        // 自分より右 (低優先度) の領域を、優先度連鎖が続く限り上へ広げる。
+        /// @note 自分より右 (低優先度) の領域を、優先度連鎖が続く限り上へ広げる。
         std::uint16_t lo = out.subtreeEnd[scope];
         std::uint16_t hi = out.subtreeEnd[scope];
         std::uint16_t cur = scope;
@@ -322,7 +315,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         out.abortCandidates.push_back(candidate);
     }
 
-    // node index 昇順 = 優先度の高い順。最初に成立した中断が勝つ。
+    /// @note node index 昇順 = 優先度の高い順。最初に成立した中断が勝つ。
     std::sort(out.abortCandidates.begin(), out.abortCandidates.end(),
               [](const BTAbortCandidate& a, const BTAbortCandidate& b) { return a.node < b.node; });
 

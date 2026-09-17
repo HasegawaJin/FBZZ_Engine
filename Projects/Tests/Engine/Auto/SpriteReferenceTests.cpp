@@ -31,7 +31,7 @@ asset::SpriteRect MakeRect(std::string id, std::string name)
 
 class SpriteReferenceTest : public testkit::EngineFixture {};
 
-// --- 組み立てと分解 ---------------------------------------------------------
+/// @name 組み立てと分解
 
 TEST_F(SpriteReferenceTest, RoundTripsThroughMakeAndParse)
 {
@@ -48,8 +48,8 @@ TEST_F(SpriteReferenceTest, RoundTripsThroughMakeAndParse)
 
 TEST_F(SpriteReferenceTest, KeepsThePathIntactWhenTheStringIsNotASpriteReference)
 {
-    // «Sprite 参照ではない» と答えるときも、入力のパスはそのまま返す。
-    // ここで空にすると、ただのテクスチャ参照が全部壊れる。
+    /// @note «Sprite 参照ではない» と答えるときも、入力のパスはそのまま返す。
+    ///       ここで空にすると、ただのテクスチャ参照が全部壊れる。
     std::string texturePath;
     std::string token;
 
@@ -78,7 +78,7 @@ TEST_F(SpriteReferenceTest, RejectsAMarkerWithNothingBeforeIt)
 
 TEST_F(SpriteReferenceTest, AcceptsATokenThatContainsColons)
 {
-    // ID は UUID、名前は人が付ける。区切りの後ろは最後まで丸ごとトークンとして扱う。
+    /// @note ID は UUID、名前は人が付ける。区切りの後ろは最後まで丸ごとトークンとして扱う。
     std::string texturePath;
     std::string token;
     ASSERT_TRUE(asset::ParseSpriteReference("Assets/A.png::sprite::a:b:c", texturePath, token));
@@ -95,7 +95,7 @@ TEST_F(SpriteReferenceTest, ParsesAnEmptyStringAsNotAReference)
     EXPECT_TRUE(texturePath.empty());
 }
 
-// --- 検索 -------------------------------------------------------------------
+/// @name 検索
 
 TEST_F(SpriteReferenceTest, FindsASpriteById)
 {
@@ -111,8 +111,8 @@ TEST_F(SpriteReferenceTest, FindsASpriteById)
 
 TEST_F(SpriteReferenceTest, FindsASpriteByName)
 {
-    // ID は UUID なので人も AI も手では書けない。名前でも引けないと、
-    // 手で書いた参照が «エラーにならずアトラス全面» に化ける。
+    /// @note ID は UUID なので人も AI も手では書けない。名前でも引けないと、
+    ///       手で書いた参照が «エラーにならずアトラス全面» に化ける。
     asset::TextureImportSettings settings;
     settings.sprites.push_back(MakeRect("836d2b4d", "Key_W"));
 
@@ -124,7 +124,7 @@ TEST_F(SpriteReferenceTest, FindsASpriteByName)
 
 TEST_F(SpriteReferenceTest, PrefersTheIdWhenANameCollidesWithAnotherId)
 {
-    // ID を先に見る契約。名前が偶然ほかの ID と一致しても、ID の方を返す。
+    /// @note ID を先に見る契約。名前が偶然ほかの ID と一致しても、ID の方を返す。
     asset::TextureImportSettings settings;
     settings.sprites.push_back(MakeRect("alpha", "beta"));
     settings.sprites.push_back(MakeRect("beta", "gamma"));
@@ -145,7 +145,7 @@ TEST_F(SpriteReferenceTest, FindsNothingForAnUnknownToken)
 
 TEST_F(SpriteReferenceTest, FindsNothingForAnEmptyToken)
 {
-    // 空の id / name を持つ矩形に «空トークン» が当たると、無関係な 1 枚を返してしまう。
+    /// @note 空の id / name を持つ矩形に «空トークン» が当たると、無関係な 1 枚を返してしまう。
     asset::TextureImportSettings settings;
     settings.sprites.push_back(MakeRect("", ""));
 
@@ -159,7 +159,7 @@ TEST_F(SpriteReferenceTest, FindsNothingWhenThereAreNoSprites)
     EXPECT_EQ(asset::FindSprite(settings, "Key_W"), nullptr);
 }
 
-// --- 型の推定 ---------------------------------------------------------------
+/// @name 型の推定
 
 TEST_F(SpriteReferenceTest, GuessesTheTextureTypeFromTheFileNameSuffix)
 {
@@ -177,7 +177,7 @@ TEST_F(SpriteReferenceTest, GuessingIgnoresCase)
 
 TEST_F(SpriteReferenceTest, DefaultSettingsMatchTheGuessedType)
 {
-    // 法線マップを sRGB で読むと明るさが変わる。既定値がここで決まる。
+    /// @note 法線マップを sRGB で読むと明るさが変わる。既定値がここで決まる。
     const asset::TextureImportSettings normal =
         asset::DefaultSettingsForType(asset::TextureType::Normal);
     const asset::TextureImportSettings color =

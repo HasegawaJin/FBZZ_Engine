@@ -15,7 +15,7 @@ const std::vector<float>* FindMaterialParam(const MaterialAsset& asset,
     auto it = asset.params.find(std::string(shaderVarName));
     if (it != asset.params.end()) return &it->second;
 
-    // snake_case 別名 (手書き .mat 向け)
+    /// @note snake_case 別名 (手書き .mat 向け)
     if (shaderVarName == "normalStrength") it = asset.params.find("normal_strength");
     else if (shaderVarName == "emissiveColor")  it = asset.params.find("emissive_color");
     else if (shaderVarName == "emissiveScale")  it = asset.params.find("emissive_scale");
@@ -28,9 +28,9 @@ const std::vector<float>* FindMaterialParam(const MaterialAsset& asset,
 void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc,
                                std::vector<uint8_t>& paramData)
 {
-    // Step 1: シェーダーの全 float 変数を 1.0f で初期化する。
-    // WHY: 未知のカスタムパラメータが 0 のままだと乗算スケール系変数が非表示になる。
-    //      1.0f は乗算の単位元であり、加算オフセット (uvOffset 等) は次ステップで 0 に上書きされる。
+    /// @note シェーダーの全 float 変数をまず 1.0f で初期化する。未知のカスタムパラメータが
+    ///       0 のままだと乗算スケール系変数が非表示になるため。1.0f は乗算の単位元であり、
+    ///       加算オフセット (uvOffset 等) は次ステップで 0 に上書きされる。
     const float one = 1.0f;
     for (const auto& v : desc.vars) {
         if (v.varType != renderer::ShaderVarType::Float) continue;
@@ -41,7 +41,7 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc,
         }
     }
 
-    // Step 2: 標準 PBR パラメータを正しいデフォルト値で上書きする。
+    /// @note Step 2: 標準 PBR パラメータを正しいデフォルト値で上書きする。
     auto setFloat = [&](std::string_view name, float value) {
         const auto* v = desc.FindVar(name);
         if (!v || v->varType != renderer::ShaderVarType::Float || v->columns != 1) return;
@@ -67,8 +67,8 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc,
     const float white3[3] = { 1.0f, 1.0f, 1.0f };
     setFloat("metallic",       0.0f);
     setFloat("roughness",      0.65f);
-    // 拡張 PBR ローブは既定で無効にする。1.0f のままだと既存マテリアルの見た目と
-    // エネルギー配分が変わるため、明示的に有効化された場合だけ Forward へ送る。
+    /// @note 拡張 PBR ローブは既定で無効にする。1.0f のままだと既存マテリアルの見た目と
+    ///       エネルギー配分が変わるため、明示的に有効化された場合だけ Forward へ送る。
     setFloat("clearcoat",             0.0f);
     setFloat("clearcoatRoughness",    0.10f);
     setFloat("sheen",                 0.0f);

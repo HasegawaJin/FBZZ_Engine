@@ -3,15 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 締め上げ (FX_SRP_Snap) と分けるか:
-///   以前はどちらも «中心に爆発 1 発 + 両側に土煙 2 発» で、向きの意味まで同じだった。
-///   叩きつけは «線» が落ちてくる手で、危険なのは 2 つの口を結ぶ帯そのもの。
-///   締め上げは «角» が寄る手で、危険なのは角から外へ広がる側。同じ絵で出すと、
-///   予兆のデカールを見ていないと 2 つを区別する手掛かりが 1 つも無くなる。
-///
-/// WHY 1 発を «長い» 層で作るか (点を並べないか):
-///   呼ぶ側が 11 m ぶんの点を撒くと、枠 (VfxManager の Pool) をその数だけ食う。
-///   帯は 1 枚の水平ビルボードを弦の長さまで伸ばせば済み、粒はその上に散らすだけでよい。
+/// @note 締め上げ (FX_SRP_Snap) とは絵を分ける。叩きつけは «線» が落ちてくる手で
+///       危険は 2 つの口を結ぶ帯そのもの、締め上げは «角» が寄る手で危険は外へ広がる
+///       側 ─ 同じ絵だと予兆のデカールを見ていないと区別できない。
+/// @note 1 発を長い層で作る (点を並べない)。11 m ぶんの点を撒くと枠 (VfxManager の
+///       Pool) をその数だけ食うため、水平ビルボード 1 枚を弦の長さまで伸ばす。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -72,7 +68,7 @@ inline void SerpentSlamVfxComponent::Apply()
     vfxbind::ParticleColor(root, "Wing Right", dustColor);
     vfxbind::ParticleColor(root, "Grit", Vector4{ dustColor.x, dustColor.y, dustColor.z, 1.0f });
 
-    // 球では胴の長さぶん左右・地下にも湧く。接地線に沿う薄い箱へ限定する。
+    /// @note 球では胴の長さぶん左右・地下にも湧く。接地線に沿う薄い箱へ限定する。
     constexpr const char* nodes[] = { "Band Smoke", "Grit", "Wing Left", "Wing Right" };
     for (const char* node : nodes) {
         if (GameObject* target = vfxbind::Find(root, node)) {
@@ -88,7 +84,7 @@ inline void SerpentSlamVfxComponent::Apply()
     vfxbind::NodePosition(root, "Wing Right", { width * 0.5f, 0.12f, 0.0f });
     vfxbind::ParticleSizeEnd(root, "Band Smoke", width * 1.1f);
 
-    // 脇へ逃がす。左右で符号だけが違う ─ 同じ向きにすると «横へ滑った» になる。
+    /// @note 脇へ逃がす。左右で符号だけが違う ─ 同じ向きにすると «横へ滑った» になる。
     vfxbind::ParticleEmitVelocity(root, "Wing Left",  { -kick, kick * 0.30f, 0.0f });
     vfxbind::ParticleEmitVelocity(root, "Wing Right", {  kick, kick * 0.30f, 0.0f });
     vfxbind::ParticleEmitVelocity(root, "Grit",       { 0.0f, kick * 0.95f, 0.0f });

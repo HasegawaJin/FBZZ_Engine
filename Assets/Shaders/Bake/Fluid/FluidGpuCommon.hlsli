@@ -37,7 +37,7 @@ struct FluidGpuCollider
     float4 velocity;    // xyz 動きの速度 (継がない設定なら 0) / w 未使用
 };
 
-// LAYOUT: Engine/Asset/FluidGpuStep.hpp の FluidGpuStepConstants と 1:1。
+// LAYOUT: Fluid/FluidGpuStep.hpp の FluidGpuStepConstants と 1:1。
 //   ヘッダー 128 B (最後の行 112〜127 = gForceCount / gColliderCount / gCountPad)
 //   + gSources 96 B × 16 (128〜1663) + gForces 48 B × 8 (1664〜2047) + gColliders 64 B × 8 (2048〜2559) = 2560 B。
 cbuffer FluidStepConstants : register(b0)
@@ -129,7 +129,7 @@ float3 FluidCurlNoise(float3 p)
     return float3(dp3dy - dp2dz, dp1dz - dp3dx, dp2dx - dp1dy);
 }
 
-// 以下は Engine/Asset/FluidOperatorEval.hpp の FluidSourceWeight / FluidTextureSourceWeight /
+// 以下は Fluid/FluidOperatorEval.hpp の FluidSourceWeight / FluidTextureSourceWeight /
 // FluidColliderDistance / FluidForceDelta の写し (GPU の格子は常に 3D なので volumetric = true の枝だけ)。
 // 式を変えるときは両方を直す。
 

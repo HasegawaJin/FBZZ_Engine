@@ -7,8 +7,7 @@
 /// 含める範囲を間違えると子だけのプレハブができ、id が毎回変わると既存インスタンスの
 /// prefabSourceId が行き先を失って override の対応が切れる。
 ///
-/// NOTE: 読み戻し (Instantiate) は ResourceManager::Active() を要求するため、
-///       GPU 無しのテストからは呼べない。ここでは書き出したアセットの中身を直接読む。
+/// @note 読み戻し (Instantiate) は ResourceManager::Active() を要求するため GPU 無しのテストからは呼べない。ここでは書き出したアセットの中身を直接読む。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 
@@ -37,7 +36,7 @@ std::string ReadFile(const std::filesystem::path& path)
     return ss.str();
 }
 
-// 書き出した .prefab の gameobjects 配列から、名前の一覧を取り出す。
+/// 書き出した .prefab の gameobjects 配列から、名前の一覧を取り出す。
 std::vector<std::string> ObjectNames(const std::string& text)
 {
     std::vector<std::string> names;
@@ -61,8 +60,8 @@ bool ContainsName(const std::vector<std::string>& names, const std::string& name
 
 } // namespace
 
-// SaveSelection は SceneIO::Serialize でシーンを直列化する。その一時ファイルの
-// 置き場所が要るため EditorFixture に載せる (無いと空文字が返り、保存が失敗する)。
+/// SaveSelection は SceneIO::Serialize でシーンを直列化する。その一時ファイルの
+/// 置き場所が要るため EditorFixture に載せる (無いと空文字が返り、保存が失敗する)。
 class PrefabSaveTest : public testkit::EditorFixture {
 protected:
     std::filesystem::path PrefabPath(const std::string& name = "Test.prefab") const
@@ -121,7 +120,7 @@ TEST_F(PrefabSaveTest, RecordsThePrefabFormatHeader)
 
 TEST_F(PrefabSaveTest, IncludesDescendantsOfTheSelectedRoot)
 {
-    // 親だけ選んでも、子はプレハブの一部として付いてこなければならない。
+    /// @note 親だけ選んでも、子はプレハブの一部として付いてこなければならない。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -147,8 +146,8 @@ TEST_F(PrefabSaveTest, ExcludesObjectsOutsideTheSelection)
 
 TEST_F(PrefabSaveTest, CountsOnlyTopLevelRootsWhenAWholeBranchIsSelected)
 {
-    // 親と子を «両方» 選んでも、プレハブの根は親 1 つ。
-    // 子まで根に数えると、開いたときに同じ枝が二重に生える。
+    /// @note 親と子を «両方» 選んでも、プレハブの根は親 1 つ。
+    ///       子まで根に数えると、開いたときに同じ枝が二重に生える。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -178,7 +177,7 @@ TEST_F(PrefabSaveTest, CountsSeveralIndependentRoots)
 
 TEST_F(PrefabSaveTest, SavingOnlyAChildMakesThatChildTheRoot)
 {
-    // 子だけを選んだら、その子が根のプレハブになる (親は含まれない)。
+    /// @note 子だけを選んだら、その子が根のプレハブになる (親は含まれない)。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -193,8 +192,8 @@ TEST_F(PrefabSaveTest, SavingOnlyAChildMakesThatChildTheRoot)
 
 TEST_F(PrefabSaveTest, KeepsTheAssetIdOfAnAlreadyConnectedObject)
 {
-    // Apply を繰り返してもアセット側の id が入れ替わらないこと。ここが動くと、
-    // 他インスタンスの prefabSourceId が行き先を失い override の対応が切れる。
+    /// @note Apply を繰り返してもアセット側の id が入れ替わらないこと。ここが動くと、
+    ///       他インスタンスの prefabSourceId が行き先を失い override の対応が切れる。
     scene::Scene scene;
     scene::GameObject& player = scene.CreateGameObject("Player");
     player.prefabSourceId = "stable-asset-id";
@@ -213,8 +212,8 @@ TEST_F(PrefabSaveTest, KeepsTheAssetIdOfAnAlreadyConnectedObject)
 
 TEST_F(PrefabSaveTest, DoesNotReuseTheSameAssetIdTwice)
 {
-    // インスタンス内で子を複製すると prefabSourceId が重複する。
-    // 両方に同じ id を振ると、アセット側で 1 つに潰れて片方が消える。
+    /// @note インスタンス内で子を複製すると prefabSourceId が重複する。
+    ///       両方に同じ id を振ると、アセット側で 1 つに潰れて片方が消える。
     scene::Scene scene;
     scene::GameObject& first  = scene.CreateGameObject("First");
     scene::GameObject& second = scene.CreateGameObject("Second");
@@ -239,7 +238,7 @@ TEST_F(PrefabSaveTest, DoesNotReuseTheSameAssetIdTwice)
 
 TEST_F(PrefabSaveTest, ProducesTheSameFileForTheSameScene)
 {
-    // 保存し直すたびに中身が揺れると、触っていないプレハブが git の差分に出る。
+    /// @note 保存し直すたびに中身が揺れると、触っていないプレハブが git の差分に出る。
     scene::Scene scene;
     scene::GameObject& parent = scene.CreateGameObject("Parent");
     scene::GameObject& child  = scene.CreateGameObject("Child");
@@ -261,7 +260,7 @@ TEST_F(PrefabSaveTest, KeepsTheTransformOfTheSavedObject)
 
     ASSERT_TRUE(PrefabSerializer::SaveSelection(scene, { player.GetID() }, PrefabPathUtf8()));
 
-    // 値そのものはシーンの直列化と同じ経路なので、ここでは «落ちていない» ことだけ見る。
+    /// @note 値そのものはシーンの直列化と同じ経路なので、ここでは «落ちていない» ことだけ見る。
     const std::string text = SavedText();
     EXPECT_NE(text.find("1.5"), std::string::npos) << text;
 }

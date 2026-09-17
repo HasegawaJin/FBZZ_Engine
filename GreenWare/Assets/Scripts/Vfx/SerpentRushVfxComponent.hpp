@@ -3,15 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 走行の土煙 (FX_PLR_RunDust) や重量の土煙 (FX_BOSS_ShockDust) を流用しないか:
-///   どちらも «1 点で起きた» 絵で、寿命のあいだその場に留まる。走りは 0.12 秒ごとに
-///   1.8 m 間隔で置かれるので、1 発が留まると点が数珠に並んで «足跡» に見える。
-///   ここは «後ろへ流れて薄れる» を 1 発の中で作り、置いた点が線として読めるようにする。
-///
-/// WHY 火花を混ぜるか:
-///   煙だけだと «速い» が出ない。装甲が床を削って散る火花は速度そのものの表示で、
-///   遅い胴 (斬ってよい) と速い胴 (触れると痛い、8 m/s が境) を絵で分ける唯一の手掛かり。
-///   色は開口の縁と同じ琥珀 ─ 熱色なので 12.2 の «火花は無彩色と熱色» の内側。
+/// @note 走行の土煙 (FX_PLR_RunDust) や重量の土煙 (FX_BOSS_ShockDust) は流用しない。
+///       どちらも «1 点で起きた» 絵でその場に留まるが、ここは «後ろへ流れて薄れる»
+///       を 1 発の中で作り、0.12 秒ごとに置いた点が線として読めるようにする。
+/// @note 火花を混ぜる。煙だけでは «速い» が出ず、装甲が床を削る火花が遅い胴 (斬れる)
+///       と速い胴 (8 m/s 境、触れると痛い) を分ける唯一の手掛かりになる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -66,11 +62,11 @@ inline void SerpentRushVfxComponent::Apply()
                            Vector4{ dustColor.x, dustColor.y, dustColor.z, 1.0f });
     vfxbind::ParticleColor(root, "Sparks", sparkColor);
 
-    // 層は «ローカル +Z が走っている向き» で置いてある。後ろへ流すので符号は負。
+    /// @note 層は «ローカル +Z が走っている向き» で置いてある。後ろへ流すので符号は負。
     vfxbind::ParticleEmitVelocity(root, "Wake Smoke",  { 0.0f, wake * 0.30f, -wake });
     vfxbind::ParticleEmitVelocity(root, "Scrape Grit", { 0.0f, wake * 0.55f, -wake * 1.2f });
-    // 火花だけは «削った点から前方へも» 飛ぶ。全部後ろへ流すと、削っている場所が
-    // 胴の «後ろ» にあるように見える。
+    /// @note 火花だけは «削った点から前方へも» 飛ぶ。全部後ろへ流すと、削っている場所が
+    ///       胴の «後ろ» にあるように見える。
     vfxbind::ParticleEmitVelocity(root, "Sparks", { 0.0f, spark * 0.45f, -spark * 0.35f });
 
     vfxbind::ParticleSizeEnd(root, "Wake Smoke", (std::max)(puffSize, 0.05f));

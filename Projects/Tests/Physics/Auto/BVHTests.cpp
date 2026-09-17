@@ -76,7 +76,7 @@ physics::AABB Box(const math::Vector3& min, const math::Vector3& max) { return {
 
 class BVHTest : public testkit::Fixture {};
 
-// --- 構築 -------------------------------------------------------------------
+/// @name 構築
 
 TEST_F(BVHTest, BuildProducesNoNodesForAnEmptyMesh)
 {
@@ -118,8 +118,8 @@ TEST_F(BVHTest, RootBoundsEncloseEveryTriangle)
 
 TEST_F(BVHTest, EveryTriangleAppearsInExactlyOneLeaf)
 {
-    // 重複して入っていると同じ三角形と 2 回衝突判定し、押し戻しが二重に効く。
-    // 抜けていると、その面だけすり抜ける。
+    /// @note 重複して入っていると同じ三角形と 2 回衝突判定し、押し戻しが二重に効く。
+    ///       抜けていると、その面だけすり抜ける。
     physics::BVHTree tree;
     tree.Build(TriangleStrip(50), 4);
 
@@ -177,7 +177,7 @@ TEST_F(BVHTest, ChildBoundsAreContainedInTheirParent)
     }
 }
 
-// --- 問い合わせ -------------------------------------------------------------
+/// @name 問い合わせ
 
 TEST_F(BVHTest, QueryOnAnEmptyTreeVisitsNothing)
 {
@@ -214,7 +214,7 @@ TEST_F(BVHTest, QueryFindsEveryTriangleWhenTheBoxCoversTheMesh)
 
 TEST_F(BVHTest, QueryFindsOnlyTheTrianglesUnderTheBox)
 {
-    // 三角形 i は x 方向に [i, i+0.8]。問い合わせ [4.9, 5.5] と重なるのは 5 番だけ。
+    /// @note 三角形 i は x 方向に [i, i+0.8]。問い合わせ [4.9, 5.5] と重なるのは 5 番だけ。
     physics::BVHTree tree;
     tree.Build(TriangleStrip(32), 4);
 
@@ -226,7 +226,7 @@ TEST_F(BVHTest, QueryFindsOnlyTheTrianglesUnderTheBox)
 
 TEST_F(BVHTest, QueryMatchesABruteForceScanForRandomBoxes)
 {
-    // BVH の枝刈りが «結果を変えない» ことが本質。総当たりと突き合わせる。
+    /// @note BVH の枝刈りが «結果を変えない» ことが本質。総当たりと突き合わせる。
     physics::BVHTree                     tree;
     const std::vector<physics::Triangle> triangles = TriangleStrip(64);
     tree.Build(std::vector<physics::Triangle>(triangles), 4);
@@ -244,7 +244,7 @@ TEST_F(BVHTest, QueryMatchesABruteForceScanForRandomBoxes)
 
 TEST_F(BVHTest, QueryMatchesABruteForceScanForASingleTriangle)
 {
-    // 三角形 1 枚は «根がそのまま葉» という最小構成。境界条件が壊れやすい。
+    /// @note 三角形 1 枚は «根がそのまま葉» という最小構成。境界条件が壊れやすい。
     physics::BVHTree                     tree;
     const std::vector<physics::Triangle> triangles = TriangleStrip(1);
     tree.Build(std::vector<physics::Triangle>(triangles));

@@ -3,19 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-28
 ///
-/// WHY 要るか (Docs/arena.md「中央ハザード」):
-///   反発は位置を変えるだけでダメージを持たない。押した先に «倒せる場所» が無いと、
-///   押しは «盤面を整える» だけの手に留まり、明確な使い道を持てない。
-///   ハザードは «押せば倒せる» を成立させる 1 点で、同時に盤面の中央を削るノブでもある。
-///
-/// WHY 敵は即撃破・プレイヤーは被弾か:
-///   同じ場所が両者にとって同じ意味だと «近づかない» が唯一の正解になり、
-///   盤面の中央がただ消える。敵にとっては死で、プレイヤーにとっては痛いが通れる、
-///   という非対称にして初めて «自分は縁に立ち、敵だけを落とす» という手が生まれる。
-///
-/// WHY 撃破を CombatManagerComponent へ通すか:
-///   撃破数の集計と撃破コアの生成は «倒れた» という 1 つの出来事に紐づいている。
-///   ここで直接 HP を 0 にすると、ハザードで倒した敵だけコアを残さない。
+/// @note 反発は位置を変えるだけでダメージを持たない。押した先に倒せる場所が無いと盤面整理の手にしかならないため、中央にハザードを置き「押せば倒せる」を成立させる (Docs/arena.md)。
+/// @note 敵は即撃破・プレイヤーは被弾の非対称にする。同じ意味だと「近づかない」が唯一の正解になり中央が死地として機能しなくなる。
+/// @note 撃破は `CombatManagerComponent` 経由。ここで直接 HP を 0 にすると撃破数の集計と撃破コアの生成から漏れる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -36,16 +26,14 @@ class ArenaHazardComponent : public Script {
 
 public:
     FBZZ_GROUP("Area")
-    // WHY 円で持つか: アリーナが円形なので、中央を «削る» 形も円が素直に読める。
-    //     コライダーで取ると、その形をシーンで編集できてしまい、
-    //     «どこまでが危険か» の答えがシーンとコードの 2 つになる。
+    /// @note コライダーでなく円で持つ。コライダーだとシーン側で形を編集でき、危険範囲の答えがシーンとコードの 2 つになる。
     FBZZ_FIELD_RANGE(float, radius, 6.0f, "半径", 0.0f, 30.0f)
     FBZZ_TOOLTIP("このスクリプトの位置を中心とした危険半径 [m]")
     FBZZ_FIELD_RANGE(float, height, 3.0f, "高さ", 0.0f, 20.0f)
     FBZZ_TOOLTIP("この高さまでを «中に居る» と見なす。跳び越えられる高さにしない")
 
     FBZZ_GROUP("状態")
-    // Wave3 以降で作動させる。作動前は無害な床として見えているのが正しい。
+    /// Wave3 以降で作動させる。作動前は無害な床として見えているのが正しい。
     FBZZ_FIELD(bool, activeOnStart, false, "Active On Start")
     FBZZ_TOOLTIP("開始時から作動させるか。Wave 進行から SetActiveHazard で切り替える")
     FBZZ_FIELD_RANGE(float, warmupSeconds, 1.2f, "Warmup", 0.0f, 6.0f)
@@ -97,7 +85,6 @@ private:
 
 FBZZ_REFLECT(ArenaHazardComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline void ArenaHazardComponent::OnStart()
 {
@@ -110,7 +97,7 @@ inline void ArenaHazardComponent::OnStart()
     debugPushKills = 0;
     debugArmed     = IsArmed();
 
-    // 落ちた «場所» で鳴らす。画面の別の場所を見ていても、何が起きたか方向で分かる。
+    /// @note 落ちた «場所» で鳴らす。画面の別の場所を見ていても、何が起きたか方向で分かる。
     se::EnsureSource(scene, "SE", 1.0f);
 }
 
@@ -118,7 +105,7 @@ inline void ArenaHazardComponent::SetHazardActive(bool active)
 {
     if (m_active == active) return;
     m_active = active;
-    // 予告の間は «作動を宣言したが、まだ効かない» 状態。切るときは即座でよい。
+    /// @note 予告の間は «作動を宣言したが、まだ効かない» 状態。切るときは即座でよい。
     m_warmup = active ? std::max(warmupSeconds, 0.0f) : 0.0f;
 }
 
@@ -141,7 +128,7 @@ inline void ArenaHazardComponent::OnUpdate()
 
     auto* combat = CombatManagerComponent::Instance();
 
-    // 敵。落ちた時点で終わり。«押し込めば倒せる» が読めるよう、削らずに落とす。
+    /// @note 敵。落ちた時点で終わり。«押し込めば倒せる» が読めるよう、削らずに落とす。
     for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
         if (!Contains(object->transform.worldPosition)) continue;
@@ -149,20 +136,19 @@ inline void ArenaHazardComponent::OnUpdate()
         const auto* health = scene.GetScript<EnemyHealthComponent>(object);
         if (!health || !health->IsAlive()) continue;
 
-        // WHY マネージャー越しに殺すか: 撃破数もコアもあちらが持っている。
-        //     ここで HP を直接 0 にすると、ハザードで倒した分だけ的が残らない。
+        /// @note マネージャー越しに殺す。撃破数とコア生成はあちらが持つため、直接 HP を 0 にすると倒した分だけ的が残らない。
         if (!combat) continue;
         if (!combat->DamageEnemyDirect(object, std::max(enemyDamage, 1))) continue;
 
-        // ランク評価の «押し込み撃破» は 1 箇所で数える。ここで自前に数えるだけだと、
-        // 壁への押し込みと合算されずに評価が半分になる。
+        /// @note ランク評価の «押し込み撃破» は 1 箇所で数える。ここで自前に数えるだけだと、
+        ///       壁への押し込みと合算されずに評価が半分になる。
         combat->AddPushKill();
         ++m_pushKills;
         debugPushKills = m_pushKills;
         se::PlayAt(audio, se::kImpactPushKill, object->transform.worldPosition);
     }
 
-    // プレイヤー。痛いが通れる。即死にすると «縁に立って敵だけ落とす» が消える。
+    /// @note プレイヤー。痛いが通れる。即死にすると «縁に立って敵だけ落とす» が消える。
     m_playerTick = std::max(0.0f, m_playerTick - Time::deltaTime);
     if (playerDamage <= 0 || m_playerTick > 0.0f) return;
 
@@ -171,16 +157,15 @@ inline void ArenaHazardComponent::OnUpdate()
 
     m_playerTick = std::max(playerTickSeconds, 0.05f);
     if (combat) (void)combat->DamagePlayer(player, playerDamage);
-    // WHY 音が要るか: ハザードは «痛いが通れる» ので、通り抜けている間ずっと
-    //     削られる。画面はボスを見ているので、削られていることは耳でしか分からない。
+    /// @note 通り抜けている間ずっと削られるが、画面はボスを見ているため削られていることは音でしか分からない。
     se::Play(audio, se::kEnvHazardDamage, hazardVolume);
 }
 
 inline void ArenaHazardComponent::OnDrawGizmos()
 {
     if (!drawArea) return;
-    // 作動しているかを色で分ける。切ってあるのに «危険» に見えると、
-    // 配置を確かめている最中に判断を誤る。
+    /// @note 作動しているかを色で分ける。切ってあるのに «危険» に見えると、
+    ///       配置を確かめている最中に判断を誤る。
     const Vector4 color = IsArmed() ? Vector4{ 1.0f, 0.35f, 0.15f, 1.0f }
                                     : Vector4{ 0.45f, 0.45f, 0.50f, 1.0f };
     debug.DrawSphere(transform.worldPosition, std::max(radius, 0.0f), color);

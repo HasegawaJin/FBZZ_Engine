@@ -16,8 +16,8 @@ namespace fbzz::asset {
 
 namespace {
 
-// GeometryPassHelpers の kTextureSlotNames (t0-t7) と一致させる。
-// t5-t7 は "tex5"/"tex6"/"tex7" という汎用キーでカスタムシェーダーが自由に利用できる。
+/// GeometryPassHelpers の kTextureSlotNames (t0-t7) と一致させる。
+/// t5-t7 は "tex5"/"tex6"/"tex7" という汎用キーでカスタムシェーダーが自由に利用できる。
 constexpr std::array<const char*, 8> kTextureSlots = {
     "albedo",
     "normal",
@@ -38,15 +38,15 @@ std::string ResolveTexturePath(std::string_view materialPath, std::string value)
     if (value.find('/') != std::string::npos)
         return value;
 
-    // WHY: FBX インポートは materials/<MaterialName>.mat と textures/foo.png を sibling に出す。
-    //      旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
+    /// @note FBX インポートは `materials/<MaterialName>.mat` と `textures/foo.png` を sibling に出す。
+    ///       旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
     const std::filesystem::path materialDir = std::filesystem::path(std::string(materialPath)).parent_path();
     return (materialDir.parent_path() / "textures" / value).string();
 }
 
-// WHY 綴りの揺れを受けるか: 未知の綴りは Opaque へ落ちる。半透明のつもりで書いた .mat が
-//     不透明で描かれても «濃く出る» だけなので、綴り違いだと気付けないまま調整を続けることになる。
-//     手書きされる綴りは受け付けて、意図と結果がずれる経路を塞ぐ。
+/// @note 手書きされる綴りの揺れを受ける。未知の綴りは Opaque へ落ち、半透明のつもりで書いた
+///       .mat が不透明で描かれても «濃く出る» だけなので綴り違いに気付けないまま調整を続けて
+///       しまう。意図と結果がずれる経路を塞ぐ。
 renderer::BlendMode BlendModeFromString(std::string_view value)
 {
     if (value == "AlphaBlend" || value == "Alpha Blend" || value == "Alpha" || value == "Transparent")
@@ -185,10 +185,10 @@ void ReadParamsTable(const toml::table& table, MaterialAsset& asset)
     }
 }
 
-// ── [particle] テーブル ──
-// WHY 列挙を文字列で持つか: .mat は人が読み書きするので、alpha_source = 1 より
-//     alpha_source = "luminance" の方が «何が起きるか» が読んで分かる。
-//     未知の綴りは既定へ落とす (壊れた .mat でも描画は続く)。
+/// @name [particle] テーブル
+/// @note 列挙は文字列で持つ。.mat は人が読み書きするので `alpha_source = 1` より
+///       `alpha_source = "luminance"` の方が «何が起きるか» が読んで分かる。未知の綴りは
+///       既定へ落とす (壊れた .mat でも描画は続く)。
 
 scene::ParticleAlphaSource AlphaSourceFromString(std::string_view value)
 {
@@ -295,9 +295,9 @@ void ReadParticleTable(const toml::table& table, ParticleMaterialSettings& out)
     out.emissiveScale = flt("emissive_scale", d.emissiveScale);
 }
 
-// 既定値と同じものは書かない。
-// WHY: 31 個を全部書き出すと、手で開いたときに «この素材で実際に効いている設定» が
-//      既定値の海に埋もれる。差分だけ残せば .mat が意図の記録になる。
+/// @brief 既定値と同じものは書かない。
+/// @note 31 個を全部書き出すと、手で開いたときに «この素材で実際に効いている設定» が既定値の
+///       海に埋もれる。差分だけ残せば .mat が意図の記録になる。
 void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
 {
     const ParticleMaterialSettings d{};
@@ -382,9 +382,9 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
         return false;
     }
 
-    // WHY: toml::parse_file(std::string_view) に Editor 側の一時パス表現を直接渡すと、
-    //      Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れる。
-    //      Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
+    /// @note `toml::parse_file(std::string_view)` に Editor 側の一時パス表現を直接渡すと、
+    ///       Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れるため、
+    ///       Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
     toml::parse_result parsed = toml::parse(text, pathString);
     if (!parsed) {
         FBZZ_LOG_WARN("MaterialAsset: parse failed [%s]", pathString.c_str());
@@ -392,7 +392,7 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
     }
 
     MaterialAsset asset;
-    // guid: 参照を "Assets/..." パスへ戻してから読む (ランタイムは常にパスを持つ)。
+    /// @note guid: 参照を "Assets/..." パスへ戻してから読む (ランタイムは常にパスを持つ)。
     DecodeGuidRefs(parsed.table());
     const toml::table& table = parsed.table();
     asset.shaderPath = table["shader"].value_or(std::string{});
@@ -416,10 +416,9 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
         asset.textures[slot] = {};
 
     if (auto* textures = table["textures"].as_table()) {
-        // WHY: Terrain / Water などの専用シェーダーは標準 t0-t7 以外の意味名
-        //      (layer0_diffuse, normalMap1 など) を .mat に保存する。
-        //      固定スロットだけを読むと、専用マテリアルを Inspector で保存した時に
-        //      テクスチャ参照が消えるため、textures テーブルの全キーを保持する。
+        /// @note Terrain / Water などの専用シェーダーは標準 t0-t7 以外の意味名 (`layer0_diffuse`,
+        ///       `normalMap1` など) を .mat に保存する。固定スロットだけを読むと、専用マテリアルを
+        ///       Inspector で保存した時にテクスチャ参照が消えるため、textures テーブルの全キーを保持する。
         for (const auto& [key, node] : *textures) {
             const std::string name = std::string(key);
             const auto texturePath = node.value<std::string>();
@@ -430,7 +429,7 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
     if (auto* params = table["params"].as_table())
         ReadParamsTable(*params, asset);
 
-    // 未記載のキーは既定値のまま (テーブルごと無くても壊れない)。
+    /// @note 未記載のキーは既定値のまま (テーブルごと無くても壊れない)。
     if (auto* particle = table["particle"].as_table())
         ReadParticleTable(*particle, asset.particle);
 
@@ -460,8 +459,8 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
     }
 
     toml::table textures;
-    // WHY: ロードと同じく、標準スロットに限定せず MaterialAsset が持つ全キーを保存する。
-    //      これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
+    /// @note ロードと同じく、標準スロットに限定せず MaterialAsset が持つ全キーを保存する。
+    ///       これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
     for (const auto& [slot, texturePath] : asset.textures)
         textures.insert(slot, texturePath);
     for (const char* slot : kTextureSlots) {
@@ -479,14 +478,14 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
     }
     table.insert("params", std::move(params));
 
-    // パーティクル用の .mat だけ [particle] を書く。既定のままの項目は省く。
+    /// @note パーティクル用の .mat だけ [particle] を書く。既定のままの項目は省く。
     if (asset.renderPath == RenderPath::Particle) {
         toml::table particle;
         WriteParticleTable(asset.particle, particle);
         if (!particle.empty()) table.insert("particle", std::move(particle));
     }
 
-    // ディスク上のテクスチャ / シェーダー参照は guid: 形式にする (リネーム・移動耐性)。
+    /// @note ディスク上のテクスチャ / シェーダー参照は guid: 形式にする (リネーム・移動耐性)。
     EncodeGuidRefs(table);
 
     std::ostringstream out;

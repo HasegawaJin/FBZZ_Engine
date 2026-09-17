@@ -23,7 +23,7 @@ constexpr math::Vector2 kParent{ 1000.0f, 600.0f };
 
 class UIRectTest : public testkit::EngineFixture {};
 
-// --- 矩形そのもの -----------------------------------------------------------
+/// @name 矩形そのもの
 
 TEST_F(UIRectTest, CentreIsTheMiddleOfTheRect)
 {
@@ -34,7 +34,7 @@ TEST_F(UIRectTest, CentreIsTheMiddleOfTheRect)
 
 TEST_F(UIRectTest, PointAtMapsNormalisedCoordinates)
 {
-    // (0,0)=左上 〜 (1,1)=右下。y が下向きであることも含めて固定する。
+    /// @note (0,0)=左上 〜 (1,1)=右下。y が下向きであることも含めて固定する。
     const scene::UIRect rect{ { 10.0f, 20.0f }, { 100.0f, 50.0f } };
 
     EXPECT_VEC2_NEAR(rect.PointAt({ 0.0f, 0.0f }), math::Vector2(10.0f, 20.0f),
@@ -54,12 +54,12 @@ TEST_F(UIRectTest, ContainsIncludesTheEdges)
     EXPECT_FALSE(rect.Contains({ 50.0f, 50.1f }));
 }
 
-// --- 既定値 (アンカー導入前との一致) ----------------------------------------
+/// @name 既定値 (アンカー導入前との一致)
 
 TEST_F(UIRectTest, DefaultAnchoringPlacesTheRectAtTheLocalPosition)
 {
-    // 既定は「親の左上を基準に、自分の左上を合わせる」。ここが動くと
-    // アンカーを設定していない既存シーンが全部ずれる。
+    /// @note 既定は「親の左上を基準に、自分の左上を合わせる」。ここが動くと
+    ///       アンカーを設定していない既存シーンが全部ずれる。
     const scene::UIAnchor anchoring;
 
     const scene::UIRect rect =
@@ -69,12 +69,13 @@ TEST_F(UIRectTest, DefaultAnchoringPlacesTheRectAtTheLocalPosition)
     EXPECT_VEC2_NEAR(rect.size, math::Vector2(200.0f, 100.0f), testkit::kTolerance);
 }
 
-// --- 点アンカー -------------------------------------------------------------
+/// @name 点アンカー
 
 TEST_F(UIRectTest, AnchorPicksTheReferencePointInTheParent)
 {
     scene::UIAnchor anchoring;
-    anchoring.anchor = { 1.0f, 1.0f };   // 親の右下
+    /// @note 親の右下
+    anchoring.anchor = { 1.0f, 1.0f };
 
     const scene::UIRect rect =
         scene::ResolveUIRect(kParent, math::Vector2::ZERO, { 200.0f, 100.0f }, anchoring);
@@ -84,7 +85,7 @@ TEST_F(UIRectTest, AnchorPicksTheReferencePointInTheParent)
 
 TEST_F(UIRectTest, PivotPicksWhichCornerMeetsTheAnchor)
 {
-    // 右下基準・右下合わせ = 画面の右下にぴったり収まる。
+    /// @note 右下基準・右下合わせ = 画面の右下にぴったり収まる。
     scene::UIAnchor anchoring;
     anchoring.anchor = { 1.0f, 1.0f };
     anchoring.pivot  = { 1.0f, 1.0f };
@@ -110,7 +111,7 @@ TEST_F(UIRectTest, CentreAnchorWithCentrePivotSitsInTheMiddle)
 
 TEST_F(UIRectTest, LocalPositionOffsetsFromTheAnchor)
 {
-    // 「右下から左へ 20px」がアンカーとピボットを分けた理由そのもの。
+    /// @note 「右下から左へ 20px」がアンカーとピボットを分けた理由そのもの。
     scene::UIAnchor anchoring;
     anchoring.anchor = { 1.0f, 1.0f };
     anchoring.pivot  = { 1.0f, 1.0f };
@@ -123,7 +124,7 @@ TEST_F(UIRectTest, LocalPositionOffsetsFromTheAnchor)
 
 TEST_F(UIRectTest, AnchoredLayoutFollowsAResizedParent)
 {
-    // Canvas の解像度が変わっても «右下からの距離» が保たれること。
+    /// @note Canvas の解像度が変わっても «右下からの距離» が保たれること。
     scene::UIAnchor anchoring;
     anchoring.anchor = { 1.0f, 1.0f };
     anchoring.pivot  = { 1.0f, 1.0f };
@@ -150,7 +151,7 @@ TEST_F(UIRectTest, PivotDoesNotChangeTheSize)
     EXPECT_VEC2_NEAR(rect.size, math::Vector2(200.0f, 100.0f), testkit::kTolerance);
 }
 
-// --- ストレッチ -------------------------------------------------------------
+/// @name ストレッチ
 
 TEST_F(UIRectTest, StretchingSpansTheParentWidth)
 {
@@ -168,7 +169,7 @@ TEST_F(UIRectTest, StretchingSpansTheParentWidth)
 
 TEST_F(UIRectTest, StretchingUsesTheMarginsOnBothSides)
 {
-    // 「左右 40px を空けた帯」。下限側は position、上限側は offsetMax が担う。
+    /// @note 「左右 40px を空けた帯」。下限側は position、上限側は offsetMax が担う。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.anchorMax = { 1.0f, 1.0f };
@@ -183,7 +184,7 @@ TEST_F(UIRectTest, StretchingUsesTheMarginsOnBothSides)
 
 TEST_F(UIRectTest, StretchingIsPerAxis)
 {
-    // 横だけ伸ばして高さは指定どおり、が実用上いちばん多い構成。
+    /// @note 横だけ伸ばして高さは指定どおり、が実用上いちばん多い構成。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.stretchY  = false;
@@ -198,7 +199,7 @@ TEST_F(UIRectTest, StretchingIsPerAxis)
 
 TEST_F(UIRectTest, StretchingIgnoresThePivot)
 {
-    // ストレッチした軸では «自分のどこを合わせるか» という問いが消える。
+    /// @note ストレッチした軸では «自分のどこを合わせるか» という問いが消える。
     scene::UIAnchor withPivot;
     withPivot.stretchX  = true;
     withPivot.anchorMax = { 1.0f, 1.0f };
@@ -234,7 +235,7 @@ TEST_F(UIRectTest, StretchingFollowsAResizedParent)
 
 TEST_F(UIRectTest, NeverProducesANegativeSize)
 {
-    // 余白どうしが行き違ったとき。裏返ると当たり判定が «常に当たる» 側へ倒れる。
+    /// @note 余白どうしが行き違ったとき。裏返ると当たり判定が «常に当たる» 側へ倒れる。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.anchorMax = { 1.0f, 1.0f };
@@ -249,7 +250,7 @@ TEST_F(UIRectTest, NeverProducesANegativeSize)
 
 TEST_F(UIRectTest, StretchingBetweenPartialAnchorsUsesThatSpan)
 {
-    // 親の中央 50% を占める帯。
+    /// @note 親の中央 50% を占める帯。
     scene::UIAnchor anchoring;
     anchoring.stretchX  = true;
     anchoring.anchor    = { 0.25f, 0.0f };

@@ -1,11 +1,11 @@
-﻿/// @file    TerrainGridComponent.hpp
+/// @file    TerrainGridComponent.hpp
 /// @brief   cellCountX × cellCountZ のグリッドで TerrainComponent エンティティを管理する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-16
 ///
-/// WHY: 複数 Terrain を手動でリンクするとセル数が増えるほどリンク数が二乗で増える。
-/// Grid 座標から隣接を自動解決することで、ユーザーはセル追加/削除だけに集中できる。
-/// TerrainRenderPass はこのグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
+/// 複数 Terrain を手動でリンクするとセル数が増えるほどリンク数が二乗で増える。Grid 座標から
+/// 隣接を自動解決することで、ユーザーはセル追加/削除だけに集中できる。TerrainRenderPass は
+/// このグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -21,20 +21,19 @@ struct TerrainGridComponent {
     int cellCountX = 4;
     int cellCountZ = 4;
 
-    // 新規セル作成時のデフォルト設定。
-    // MapEditorPanel の "Add New Terrain Here" および Inspector の "Apply to All Cells" が参照する。
+    /// @brief 新規セル作成時のデフォルト設定。
+    /// @note MapEditorPanel の "Add New Terrain Here" および Inspector の "Apply to All Cells" が参照する。
     int   defaultColumns   = 65;
     int   defaultRows      = 65;
     float defaultCellSize  = 2.0f;
     int   defaultChunkSize = 32;
 
-    // row-major: cells[gz * cellCountX + gx]
-    // ランタイム解決済み EntityID。シリアライズは cellInstanceIds で行う。
-    // WHY: EntityID は起動ごとに変わる可能性があるため GUID を正規データとして保持し、
-    //      ロード後に ResolveFromScene() で変換する。
+    /// @brief row-major: cells[gz * cellCountX + gx]。ランタイム解決済み EntityID。
+    /// @note EntityID は起動ごとに変わり得るため、GUID (cellInstanceIds) を正規データとして保持し
+    ///       ロード後に ResolveFromScene() で変換する。
     std::vector<EntityID> cells;
 
-    // 保存/復元用 GUID 配列。SceneSerializer が読み書きし、Load 後に ResolveFromScene() で解決する。
+    /// @brief 保存/復元用 GUID 配列。SceneSerializer が読み書きし、Load 後に ResolveFromScene() で解決する。
     std::vector<std::string> cellInstanceIds;
 
     const char* GetTypeName() const { return "TerrainGrid"; }
@@ -46,10 +45,11 @@ struct TerrainGridComponent {
         r.Field("defaultRows",      defaultRows);
         r.Field("defaultCellSize",  defaultCellSize);
         r.Field("defaultChunkSize", defaultChunkSize);
-        // cells / cellInstanceIds は SceneSerializer の専用コードで処理する
+        /// @note cells / cellInstanceIds は SceneSerializer の専用コードで処理する。
     }
 
-    // (gx, gz) のエンティティを返す。範囲外・空なら INVALID
+    /// @brief (gx, gz) のエンティティを返す。
+    /// @return 範囲外・空なら INVALID。
     EntityID GetCell(int gx, int gz) const {
         if (gx < 0 || gx >= cellCountX || gz < 0 || gz >= cellCountZ)
             return EntityID::INVALID;
@@ -67,7 +67,8 @@ struct TerrainGridComponent {
 
     void ClearCell(int gx, int gz) { SetCell(gx, gz, EntityID::INVALID); }
 
-    // entityId → グリッド座標の逆引き。見つからなければ false
+    /// @brief entityId → グリッド座標の逆引き。
+    /// @return 見つからなければ false。
     bool TryGetGridPos(EntityID id, int& outGx, int& outGz) const {
         for (int z = 0; z < cellCountZ; ++z)
             for (int x = 0; x < cellCountX; ++x)
@@ -80,10 +81,10 @@ struct TerrainGridComponent {
         if (cells.size() < need) cells.resize(need, EntityID::INVALID);
     }
 
-    // SceneSerializer の Load 後に呼ぶ。cellInstanceIds → cells を解決する。
+    /// @brief SceneSerializer の Load 後に呼ぶ。cellInstanceIds → cells を解決する。
     void ResolveFromScene(const Scene& scene);
 
-    // Save 前に呼ぶ。cells → cellInstanceIds を同期する。
+    /// @brief Save 前に呼ぶ。cells → cellInstanceIds を同期する。
     void SyncInstanceIds(const Scene& scene);
 };
 

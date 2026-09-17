@@ -1,7 +1,7 @@
-// FBZZ Engine
-// SunMoon.hlsl | Material/Sky
-// スカイドーム上へ太陽・月ディスクだけを加算描画する
-
+/// @file    SunMoon.hlsl
+/// @brief   スカイドームの上へ太陽・月ディスクだけを加算描画する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Atmosphere.hlsli"
@@ -32,7 +32,8 @@ float4 PSMain(SkyPSInput p) : SV_Target0
     float3 ray    = normalize(p.rayDir);
     float3 sunDir = normalize(-lightDir);
 
-    // skyDimmer で昼夜の明るさを取る (Skydome と同じ軸に揃え、太陽ディスクと空を一致させる)。
+    /// @note 明るさは skyDimmer で取る。Skydome と同じ軸に揃え、太陽ディスクと空の明るさを一致させる。
+    /// @note 地平線より下は SunDisk / MoonDisk が画素ごとに隠す (Atmosphere.hlsli の HorizonMask)。
     float3 color = SunDisk(ray, sunDir, sunIntensity * skyDimmer);
     if (moonEnabled > 0.5f)
     {

@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// WHY src 内に閉じるか: DirectXTex に依存する実装詳細で、Engine の公開 API にする理由が無い。
-///   同じ処理が生成器ごとの無名名前空間に 3 通り重複していたため、ここへ寄せる。
+/// DirectXTex に依存する実装詳細で、Engine の公開 API にする理由が無いため src 内に閉じる。
+/// 同じ処理が生成器ごとの無名名前空間に 3 通り重複していたため、ここへ寄せた。
 #pragma once
 
 #include <Engine/Asset/FlipbookMips.hpp>

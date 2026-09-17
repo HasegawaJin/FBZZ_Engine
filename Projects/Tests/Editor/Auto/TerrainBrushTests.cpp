@@ -33,7 +33,7 @@ constexpr float kEps = 1e-4f;
 
 } // namespace
 
-// --- 減衰カーブ -------------------------------------------------------------
+/// @name 減衰カーブ
 
 TEST(TerrainBrushWeightTest, IsFullStrengthAtTheCentre)
 {
@@ -45,7 +45,7 @@ TEST(TerrainBrushWeightTest, IsFullStrengthAtTheCentre)
 
 TEST(TerrainBrushWeightTest, IsZeroAtAndBeyondTheEdge)
 {
-    // 縁で 0 にならないと、塗った範囲の外周に段差が残る。
+    /// @note 縁で 0 にならないと、塗った範囲の外周に段差が残る。
     for (const auto falloff : { TerrainFalloff::Linear, TerrainFalloff::Smooth,
                                 TerrainFalloff::Gaussian }) {
         const TerrainBrush brush = MakeBrush(5.0f, falloff);
@@ -80,19 +80,20 @@ TEST(TerrainBrushWeightTest, LinearFallsOffProportionally)
 
 TEST(TerrainBrushWeightTest, SmoothIsFlatAtBothEnds)
 {
-    // smoothstep の要点は端の傾きが 0 になること。中心と縁で «急に変わらない»。
+    /// @note smoothstep の要点は端の傾きが 0 になること。中心と縁で «急に変わらない»。
     const TerrainBrush brush = MakeBrush(10.0f, TerrainFalloff::Smooth);
 
-    EXPECT_NEAR(TerrainBrushWeight(brush, 5.0f), 0.5f, kEps);   // 中間は 0.5
+    /// @note 中間は 0.5
+    EXPECT_NEAR(TerrainBrushWeight(brush, 5.0f), 0.5f, kEps);
 
-    // 中心付近の落ち込みは線形より緩い。
+    /// @note 中心付近の落ち込みは線形より緩い。
     EXPECT_GT(TerrainBrushWeight(brush, 1.0f),
               TerrainBrushWeight(MakeBrush(10.0f, TerrainFalloff::Linear), 1.0f));
 }
 
 TEST(TerrainBrushWeightTest, GaussianKeepsAThinTailAtTheEdge)
 {
-    // exp(-3) ≒ 0.0498。縁を «0 にする» 側の打ち切りが効いていることも同時に見る。
+    /// @note exp(-3) ≒ 0.0498。縁を «0 にする» 側の打ち切りが効いていることも同時に見る。
     const TerrainBrush brush = MakeBrush(10.0f, TerrainFalloff::Gaussian);
 
     EXPECT_NEAR(TerrainBrushWeight(brush, 9.99f), 0.0498f, 1e-3f);
@@ -101,7 +102,7 @@ TEST(TerrainBrushWeightTest, GaussianKeepsAThinTailAtTheEdge)
 
 TEST(TerrainBrushWeightTest, ScalesWithTheRadius)
 {
-    // 同じ «相対位置» なら半径が変わっても重みは同じ。
+    /// @note 同じ «相対位置» なら半径が変わっても重みは同じ。
     const float small = TerrainBrushWeight(MakeBrush(2.0f,  TerrainFalloff::Linear), 1.0f);
     const float large = TerrainBrushWeight(MakeBrush(20.0f, TerrainFalloff::Linear), 10.0f);
 
@@ -110,7 +111,7 @@ TEST(TerrainBrushWeightTest, ScalesWithTheRadius)
 
 TEST(TerrainBrushWeightTest, IsZeroForADegenerateRadius)
 {
-    // 半径 0 で 1.0 を返すと、1 点だけ無限に盛り上がる。
+    /// @note 半径 0 で 1.0 を返すと、1 点だけ無限に盛り上がる。
     EXPECT_FLOAT_EQ(TerrainBrushWeight(MakeBrush(0.0f, TerrainFalloff::Linear), 0.0f), 0.0f);
     EXPECT_FLOAT_EQ(TerrainBrushWeight(MakeBrush(-1.0f, TerrainFalloff::Smooth), 0.0f), 0.0f);
 }
@@ -128,7 +129,7 @@ TEST(TerrainBrushWeightTest, StaysWithinTheUnitRange)
     }
 }
 
-// --- 座標変換 ---------------------------------------------------------------
+/// @name 座標変換
 
 TEST(TerrainTransform, IsIdentityForAnUntransformedTerrain)
 {
@@ -155,7 +156,7 @@ TEST(TerrainTransform, SubtractsTheTerrainPosition)
 
 TEST(TerrainTransform, RoundTripsThroughLocalAndBack)
 {
-    // 片道でもずれると «クリックした場所と盛り上がる場所» が食い違う。
+    /// @note 片道でもずれると «クリックした場所と盛り上がる場所» が食い違う。
     scene::Transform transform;
     transform.worldPosition = { 7.0f, 2.0f, -3.0f };
     transform.worldRotation =

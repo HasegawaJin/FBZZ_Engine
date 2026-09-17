@@ -94,7 +94,7 @@ TEST_F(VolumeFlipbookFramingTest, DefaultFireRampMatchesTheOldPiecewiseRamp)
     const asset::VolumeColorRamp ramp = asset::DefaultFireRamp();
 
     EXPECT_VEC3_NEAR(asset::EvaluateVolumeRamp(ramp, 0.0f), (math::Vector3{ 0.0f, 0.0f, 0.0f }), testkit::kTolerance);
-    // 旧 FireRamp: t = 0.5 は c1 と c2 の中間。
+    /// @note 旧 FireRamp: t = 0.5 は c1 と c2 の中間。
     EXPECT_VEC3_NEAR(asset::EvaluateVolumeRamp(ramp, 0.5f), (math::Vector3{ 0.95f, 0.265f, 0.035f }),
                      testkit::kLooseTolerance);
     EXPECT_VEC3_NEAR(asset::EvaluateVolumeRamp(ramp, 1.0f), (math::Vector3{ 1.0f, 0.9f, 0.6f }), testkit::kTolerance);
@@ -104,7 +104,7 @@ TEST_F(VolumeFlipbookFramingTest, RampPositionsThatGoBackwardsAreHeldInPlace)
 {
     asset::VolumeColorRamp ramp = asset::EvenVolumeRamp({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f },
                                                         { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f });
-    // 3 点目が 2 点目より手前にある。2 点目の位置 (1/3) へ寄せて扱う。
+    /// @note 3 点目が 2 点目より手前にある。2 点目の位置 (1/3) へ寄せて扱う。
     ramp.stops[2].position = 0.1f;
 
     const math::Vector3 color = asset::EvaluateVolumeRamp(ramp, 0.6f);
@@ -129,7 +129,7 @@ TEST_F(VolumeFlipbookFramingTest, SourceLookIsAppliedAndResetBetweenSources)
     EXPECT_NEAR(settings.liquid.extinction, defaults.liquid.extinction, testkit::kTolerance);
 }
 
-// 流体のループは 2D の FluidBaker (output.loop) と同じ «コマ数 / 4 (最低 1) を余分に解いて重ねる»。
+/// 流体のループは 2D の FluidBaker (output.loop) と同じ «コマ数 / 4 (最低 1) を余分に解いて重ねる»。
 TEST_F(VolumeFlipbookFramingTest, FluidLoopOverlapMatchesTheFlatBaker)
 {
     asset::VolumeFlipbookBakeSettings settings;
@@ -144,13 +144,13 @@ TEST_F(VolumeFlipbookFramingTest, FluidLoopOverlapMatchesTheFlatBaker)
     settings.source.frameCount = 3;
     EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 1);
 
-    // 解析ソースのループは puff の湧き方で閉じる。流体の重ねは使わない。
+    /// @note 解析ソースのループは puff の湧き方で閉じる。流体の重ねは使わない。
     settings.sourceKind = asset::VolumeSourceKind::Analytic;
     settings.source.frameCount = 32;
     EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 0);
 }
 
-// 0 コマ目ほど «最終コマの続き» を多く混ぜ、重ねの最後で元のコマへ戻る。
+/// 0 コマ目ほど «最終コマの続き» を多く混ぜ、重ねの最後で元のコマへ戻る。
 TEST_F(VolumeFlipbookFramingTest, LoopKeepWeightRisesFromTheTailToTheHead)
 {
     constexpr int overlap = 4;
@@ -161,7 +161,7 @@ TEST_F(VolumeFlipbookFramingTest, LoopKeepWeightRisesFromTheTailToTheHead)
     EXPECT_FLOAT_EQ(asset::VolumeLoopKeepWeight(0, 0), 1.0f);
 }
 
-// 2D の Distortion と同じ符号化: RG = 0.5 + (右, 下) の変位、B = 0.5、A = 覆い。
+/// 2D の Distortion と同じ符号化: RG = 0.5 + (右, 下) の変位、B = 0.5、A = 覆い。
 TEST_F(VolumeFlipbookFramingTest, DistortionEncodingMatchesTheFlatBakerConvention)
 {
     const math::Vector4 still = asset::EncodeVolumeDistortion({ 0.0f, 0.0f }, 0.25f, 0.42f);
@@ -170,26 +170,27 @@ TEST_F(VolumeFlipbookFramingTest, DistortionEncodingMatchesTheFlatBakerConventio
     EXPECT_NEAR(still.z, 0.5f, testkit::kTolerance);
     EXPECT_NEAR(still.w, 0.25f, testkit::kTolerance);
 
-    // 上へ動く流れは画像の −V。G は減る (2D の g = 0.5 − vy と同じ)。
+    /// @note 上へ動く流れは画像の −V。G は減る (2D の g = 0.5 − vy と同じ)。
     const math::Vector4 upRight = asset::EncodeVolumeDistortion({ 0.5f, 0.5f }, 1.0f, 0.42f);
     EXPECT_NEAR(upRight.x, 0.5f + 0.21f, testkit::kTolerance);
     EXPECT_NEAR(upRight.y, 0.5f - 0.21f, testkit::kTolerance);
 
-    // 速すぎる流れは向きを保ったまま長さ 0.5 で頭打ち。
+    /// @note 速すぎる流れは向きを保ったまま長さ 0.5 で頭打ち。
     const math::Vector4 fast = asset::EncodeVolumeDistortion({ 10.0f, 0.0f }, 1.0f, 1.0f);
     EXPECT_NEAR(fast.x, 1.0f, testkit::kTolerance);
     EXPECT_NEAR(fast.y, 0.5f, testkit::kTolerance);
 }
 
-// 同じ画面速度なら 2D で焼いても 3D で焼いても同じ RG になること。
-// WHY 速さ 3 を見るか: 3D だけ速さをそのまま掛けていた頃は、速さ 1 を超えたところから 2D と離れ、
-//     符号化の上限 (長さ 0.5) に当たるまで歪みが伸び続けていた。
+/// @note 速さ 3 を含めるのは回帰検出のため。3D が速さをそのまま掛けていた頃は速さ 1 を超えると
+///       2D と乖離し、符号化上限 (長さ 0.5) に当たるまで歪みが伸び続けていた。
 TEST_F(VolumeFlipbookFramingTest, DistortionEncodingAgreesWithTheFlatBakerAtEverySpeed)
 {
-    constexpr float kScale = 0.42f; // MakeVolumeBakeSettings が 2D に合わせて渡す倍率。
+    /// @note MakeVolumeBakeSettings が 2D に合わせて渡す倍率。
+    constexpr float kScale = 0.42f;
 
     for (const float speed : { 0.5f, 1.0f, 3.0f }) {
-        const float axis = speed * 0.70710678f; // 斜めでも向きが保たれるか見るための右上・左上向き。
+        /// @note 斜めでも向きが保たれるか見るための右上・左上向き。
+        const float axis = speed * 0.70710678f;
         const math::Vector2 samples[] = { { speed, 0.0f }, { 0.0f, speed }, { axis, axis }, { -axis, axis } };
         for (const math::Vector2& velocity : samples) {
             const math::Vector2 flat = FlatDistortionRg(velocity);
@@ -200,7 +201,7 @@ TEST_F(VolumeFlipbookFramingTest, DistortionEncodingAgreesWithTheFlatBakerAtEver
         }
     }
 
-    // 速さ 1 と 3 は同じ長さ (= scale) で、伸び続けない。
+    /// @note 速さ 1 と 3 は同じ長さ (= scale) で、伸び続けない。
     const math::Vector4 one = asset::EncodeVolumeDistortion({ 1.0f, 0.0f }, 1.0f, kScale);
     const math::Vector4 three = asset::EncodeVolumeDistortion({ 3.0f, 0.0f }, 1.0f, kScale);
     EXPECT_NEAR(one.x, 0.5f + kScale, testkit::kTolerance);

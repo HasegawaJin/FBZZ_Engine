@@ -21,7 +21,7 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
 {
     auto asset = std::make_unique<TextureAsset>();
 
-    // 元画像パスを確定する。".meta" を直接渡された場合も元画像へ解決する。
+    /// @note 元画像パスを確定する。".meta" を直接渡された場合も元画像へ解決する。
     std::string sourcePath;
     if (!TexDescSerializer::ResolveSourcePath(absPath, sourcePath) || sourcePath.empty()) {
         FBZZ_LOG_WARN("ImageImporter: source resolution failed [%s]", absPath.c_str());
@@ -29,13 +29,13 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
     }
     asset->sourcePath = sourcePath;
 
-    // 元画像の隣にある "<画像>.meta" サイドカーがあればインポート設定を読む。
-    // 無ければファイル名からタイプを推定してデフォルト設定を適用する。
+    /// @note 元画像の隣にある "<画像>.meta" サイドカーがあればインポート設定を読む。
+    ///       無ければファイル名からタイプを推定してデフォルト設定を適用する。
     const std::string metaPath = sourcePath + ".meta";
     bool settingsLoaded = false;
     if (util::FileSystem::Exists(metaPath)) {
-        // guid のみの .meta ([texture] セクションなし) は false が返り、デフォルト設定に落ちる。
-        // 破損 TOML の警告は TexDescSerializer 側が出すためここでは扱わない。
+        /// @note guid のみの .meta ([texture] セクションなし) は false が返り、デフォルト設定に落ちる。
+        ///       破損 TOML の警告は TexDescSerializer 側が出すためここでは扱わない。
         TexDescSerializer ser;
         settingsLoaded = ser.Load(metaPath, *asset);
     }
@@ -44,7 +44,7 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
         asset->settings = DefaultSettingsForType(guessed);
     }
 
-    // GPU テクスチャロード (キャッシュキーは常に元画像パスで安定させる)
+    /// @note GPU テクスチャロード (キャッシュキーは常に元画像パスで安定させる)
     if (resources) {
         asset->gpuHandle = resources->LoadTexture(asset->sourcePath);
         if (!asset->gpuHandle.IsValid())

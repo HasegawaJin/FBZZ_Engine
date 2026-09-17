@@ -98,18 +98,17 @@ std::vector<std::string> ReadStringArray(const toml::array* arr)
     return values;
 }
 
-// クリップ設定を TOML の配列テーブルへ。
-//
-// WHY 既定値のエントリを書かないか: FBX には数十本のクリップが入ることがあり、
-//     全部を書くと .meta が「何も設定していないのに長大」になって差分が読めなくなる。
-//     既定から外れたものだけを残せば、.meta を見ればどこを触ったかが分かる。
+/// @brief クリップ設定を TOML の配列テーブルへ。
+/// @note 既定値のエントリは書かない。FBX には数十本のクリップが入ることがあり、全部書くと
+///       .meta が「何も設定していないのに長大」になり差分が読めなくなる。
 toml::array ToTomlArray(const std::vector<AnimationClipImportSettings>& clips)
 {
     toml::array arr;
     for (const AnimationClipImportSettings& clip : clips) {
         if (clip.name.empty()) continue;
         if (!clip.loop && clip.startFrame == 0.0 && clip.endFrame < 0.0 && clip.outputName.empty())
-            continue; // 既定と同じなら省略
+            /// @note 既定と同じなら省略
+            continue;
         toml::table entry;
         entry.insert("name", clip.name);
         entry.insert("loop", clip.loop);
@@ -159,8 +158,8 @@ std::string Hex64(uint64_t value)
 
 std::string ComputeSettingsHash(const FbxImportOptions& options)
 {
-    // インポータ版数をハッシュへ含める。これで版数を上げると settings_hash が変わり、
-    // Library/Baked のコンテナも別キーになるので古い Bake が再利用されない。
+    /// @note インポータ版数をハッシュへ含める。これで版数を上げると settings_hash が変わり、
+    ///       Library/Baked のコンテナも別キーになるので古い Bake が再利用されない。
     uint64_t hash = Fnv1a("iv:" + std::to_string(FbxMetaSerializer::kModelImporterVersion));
     hash = Fnv1a(FbxSourceDccToString(options.sourceDcc), hash);
     hash = Fnv1a(std::to_string(static_cast<int>(options.upAxis)), hash);
@@ -175,11 +174,11 @@ std::string ComputeSettingsHash(const FbxImportOptions& options)
         hash = Fnv1a("mesh:" + meshName, hash);
     for (const std::string& animName : options.selectedAnimNames)
         hash = Fnv1a("anim:" + animName, hash);
-    // クリップ設定もハッシュへ含める。これで Loop Time を切り替えるだけで
-    // settings_hash が変わり、既存の再インポート判定がそのまま走る
-    // (専用の「再インポートが要るか」判定を足さなくて済む)。
+    /// @note クリップ設定もハッシュへ含める。これで Loop Time を切り替えるだけで
+    ///       settings_hash が変わり、既存の再インポート判定がそのまま走る
+    ///       (専用の「再インポートが要るか」判定を足さなくて済む)。
     for (const AnimationClipImportSettings& clip : options.clipSettings) {
-        // 既定値のクリップは .meta にもハッシュにも不要。
+        /// @note 既定値のクリップは .meta にもハッシュにも不要。
         if (!clip.loop && clip.startFrame == 0.0 && clip.endFrame < 0.0 && clip.outputName.empty())
             continue;
         hash = Fnv1a("clip:" + clip.name, hash);
@@ -191,11 +190,9 @@ std::string ComputeSettingsHash(const FbxImportOptions& options)
     return Hex64(hash);
 }
 
-// 原本を丸ごと読んでハッシュする。
-//
-// WHY サイズと更新時刻ではなく中身か: それらは «触られたか» しか表さない。
-//     git pull / clone / コピーはどれも中身を変えずに両方を動かすので、
-//     1 バイトも違わない FBX で全件焼き直しが走っていた。
+/// @brief 原本を丸ごと読んでハッシュする。
+/// @note サイズと更新時刻は «触られたか» しか表さない。git pull / clone / コピーは中身を変えずに
+///       両方を動かすため、それらだけで判定すると 1 バイトも違わない FBX でも全件焼き直しが走る。
 std::string ComputeContentHash(const std::string& fbxAbsPath)
 {
     std::ifstream in(util::FileSystem::PathFromUtf8(fbxAbsPath), std::ios::binary);
@@ -211,13 +208,14 @@ std::string ComputeContentHash(const std::string& fbxAbsPath)
             hash *= 1099511628211ull;
         }
         total += static_cast<uint64_t>(read);
-        if (!in) break;   // 最終ブロックを読み終えた (eofbit が立っている)
+        /// @note 最終ブロックを読み終えた (eofbit が立っている)
+        if (!in) break;
     }
-    // 長さも混ぜる。FNV は末尾のゼロ埋めに鈍いので、伸びただけの差を落とさないため。
+    /// @note 長さも混ぜる。FNV は末尾のゼロ埋めに鈍いので、伸びただけの差を落とさないため。
     return Hex64(Fnv1a(std::to_string(total), hash));
 }
 
-// 旧形式の fingerprint。移行判定にだけ使う。
+/// 旧形式の fingerprint。移行判定にだけ使う。
 std::string ComputeLegacyStampHash(const std::string& fbxAbsPath)
 {
     namespace fs = std::filesystem;
@@ -297,9 +295,9 @@ bool FbxMetaSerializer::LoadOptions(const std::string& fbxAbsPath, FbxImportOpti
         outOptions.upAxis = static_cast<FbxUpAxis>(*value);
     if (auto value = (*model)["normal_map_convention"].value<std::string>())
         outOptions.normalMapConvention = StringToNormalMapConvention(*value);
-    // toml++ は保存時の C++ 型を保持するため、float で保存した既存 .meta は
-    // value<double>() では取得できない。float / double の両方を受け入れ、
-    // 保存形式に依存せず FBXImport へ設定値を渡す。
+    /// @note toml++ は保存時の C++ 型を保持するため、float で保存した既存 .meta は
+    ///       `value<double>()` では取得できない。float / double の両方を受け入れ、
+    ///       保存形式に依存せず FBXImport へ設定値を渡す。
     if (auto value = (*model)["unit_scale_multiplier"].value<float>())
         outOptions.unitScaleMultiplier = *value;
     else if (auto value = (*model)["unit_scale_multiplier"].value<double>())
@@ -341,9 +339,8 @@ bool FbxMetaSerializer::SaveOptions(const std::string& fbxAbsPath, const FbxImpo
 
 bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxImportOptions& options)
 {
-    // guid の確定を .meta の読み込みより先に済ませる。
-    // WHY: GuidFromPath は guid が無ければ .meta を書いて発行する。後から呼ぶと、
-    //      その書き込み前に読んだ root で上書きしてしまい、発行した guid が消える。
+    /// @note guid の確定を .meta の読み込みより先に済ませる。GuidFromPath は guid が無ければ .meta を
+    ///       書いて発行するため、後から呼ぶとその書き込み前に読んだ root で上書きし発行した guid が消える。
     const std::string guid = asset::AssetDatabase::GuidFromPath(fbxAbsPath);
 
     ImportCacheStore::Entry entry;
@@ -351,14 +348,14 @@ bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxIm
     entry.settingsHash = ComputeSettingsHash(options);
     (void)SourceStamp(fbxAbsPath, entry.size, entry.mtime);
     if (!ImportCacheStore::Save(guid, entry)) {
-        // 記録できないと IsOutdated が mtime 比較へ落ちるだけで、import 自体は成功している。
+        /// @note 記録できないと IsOutdated が mtime 比較へ落ちるだけで、import 自体は成功している。
         FBZZ_LOG_WARN("FbxMetaSerializer: import cache not recorded [%s]", fbxAbsPath.c_str());
     }
 
     const std::string metaPath = MetaPathForSource(fbxAbsPath);
     toml::table root = LoadExistingRoot(metaPath);
     WriteOptionsToRoot(root, options);
-    // 旧形式で .meta へ焼かれていた [cache] を落とし、保管場所を Library へ一本化する。
+    /// @note 旧形式で .meta へ焼かれていた [cache] を落とし、保管場所を Library へ一本化する。
     root.erase("cache");
 
     return WriteRoot(metaPath, root);
@@ -366,21 +363,21 @@ bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxIm
 
 FbxMetaSerializer::CacheInfo FbxMetaSerializer::LoadCacheInfo(const std::string& fbxAbsPath)
 {
-    // TryGetGuidFromPath を使う。判定のためだけに未 import の FBX へ .meta を発行しない。
+    /// @note TryGetGuidFromPath を使う。判定のためだけに未 import の FBX へ .meta を発行しない。
     const ImportCacheStore::Entry entry =
         ImportCacheStore::Load(asset::AssetDatabase::TryGetGuidFromPath(fbxAbsPath));
     if (!entry.Empty())
         return { entry.contentHash, entry.settingsHash, entry.size, entry.mtime,
                  entry.legacyStamp };
 
-    // 移行フォールバック: Library へ移す前は .meta の [cache] に焼いていた。
-    // 記録が残っていれば読み、既存プロジェクトを丸ごと焼き直さずに済ませる。
-    // 次の import で [cache] は落ちるので、以降この経路は通らない。
+    /// @note 移行フォールバック: Library へ移す前は .meta の [cache] に焼いていた。
+    ///       記録が残っていれば読み、既存プロジェクトを丸ごと焼き直さずに済ませる。
+    ///       次の import で [cache] は落ちるので、以降この経路は通らない。
     CacheInfo info;
     const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
     const toml::table* cache = root["cache"].as_table();
     if (!cache) return info;
-    // .meta 時代の source_hash も «パス + サイズ + 更新時刻» 形式。移行枠で受ける。
+    /// @note .meta 時代の source_hash も «パス + サイズ + 更新時刻» 形式。移行枠で受ける。
     info.legacyStamp  = (*cache)["source_hash"].value_or(std::string{});
     info.settingsHash = (*cache)["settings_hash"].value_or(std::string{});
     return info;

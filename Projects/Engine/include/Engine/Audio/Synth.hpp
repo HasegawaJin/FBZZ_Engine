@@ -13,7 +13,7 @@ namespace fbzz::audio {
 
 /// spec から 16bit モノラル PCM を生成する。
 /// @param outFmt 生成した PCM の形式。spec.sampleRate が 0 なら 44100 を入れて返す。
-/// @ret  総再生長が 0 以下、または amplitude が 0 以下なら空。outFmt は未定義。
+/// @return  総再生長が 0 以下、または amplitude が 0 以下なら空。outFmt は未定義。
 [[nodiscard]] std::vector<uint8_t> Render(const SynthSpec& spec, WaveFormat& outFmt);
 
 /// プリセットの基準 spec。seed が 0 以外なら Mutate を軽く掛けた派生を返す。
@@ -35,10 +35,8 @@ namespace fbzz::audio {
 
 /// 合成結果の客観的な特徴量。
 ///
-/// WHY 必要か: AI は音を聴けない。パラメーターを動かした結果が「重くなったのか
-///     軽くなったのか」を判断する手がかりが無いと、反復オーサリングが
-///     当てずっぽうになる。数値で返せば「brightnessHz を下げる」という
-///     目標に対して spec を詰められる (Docs/design/audio-system.md §9)。
+/// @note AI は音を聴けないため、パラメーターを動かした結果が重くなったか軽くなったかを判断する手がかりが要る。数値で返せば「brightnessHz を下げる」という目標に対して spec を詰められる。
+/// @see Docs/design/audio-system.md §9
 struct SynthAnalysis {
     float    durationSeconds   = 0.0f;
     float    peakAmplitude     = 0.0f;  ///< 0-1

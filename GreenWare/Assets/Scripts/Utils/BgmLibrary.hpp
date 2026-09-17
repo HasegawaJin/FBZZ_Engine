@@ -3,23 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-14
 ///
-/// WHY 表をコードに持つか:
-///   SeLibrary.hpp と同じ理由 ─ «どの画面でどの曲か» は素材のファイル名がすでに
-///   宣言している (_Title / _StageSelect / _Option / _Boss01)。画面ごとに Inspector の
-///   スロットを置くと、シーンを作り直すたびに割り当て直しになる。
-///   ただしステージだけは «どの曲か» が盤面ごとに変わるので、そこは
-///   GameFlowComponent のフィールドが持つ (曲の差し替えに再ビルドを要らなくする)。
-///
-/// WHY 掛け替えをここへ閉じるか:
-///   BGM は AudioManager の «常に 1 本» のスロットで、PlayBGM を呼び直すと頭から鳴る。
-///   Title → Options → Title のように «画面は変わるが曲は続く» 経路があるので、
-///   各画面が素直に呼ぶと画面を行き来するたびに曲が頭へ戻る。
-///   いま何を鳴らしていると宣言したかを 1 か所で覚え、同じ曲なら何もしない。
-///
-/// WHY 静的に覚えるか:
-///   曲はシーンをまたいで鳴り続ける (LoadScene は voice を止めない)。覚える側が
-///   シーンに属していると、宣言した当人が消えた後は誰も «同じ曲か» を答えられない
-///   (SceneTransition.hpp の State と同じ理由)。
+/// @note «どの画面でどの曲か» は素材のファイル名がすでに宣言している
+///       (_Title/_StageSelect/_Option/_Boss01) ため、表はコードに持つ (SeLibrary.hpp と
+///       同じ理由)。ステージだけは盤面ごとに曲が変わるので GameFlowComponent の
+///       フィールドが持つ。BGM は AudioManager の «常に 1 本» のスロットで PlayBGM を
+///       呼び直すと頭から鳴るため、掛け替えはここへ閉じる ─ 今の曲を 1 か所で覚え、
+///       同じ曲なら何もしない。覚える側を静的にする ─ 曲はシーンをまたいで鳴り続ける
+///       (LoadScene は voice を止めない) ため、シーンに属すと宣言者が消えた後に
+///       «同じ曲か» を誰も答えられない (SceneTransition.hpp の State と同じ理由)。
 #pragma once
 
 #include <Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp>
@@ -48,10 +39,9 @@ inline constexpr std::string_view kBoss03 =
     "Assets/Sound/BGM/maou_game_lastboss01_Boss03.mp3";
 /// 決着の画面の曲。**どちらも数秒の «締め» で、繰り返さない** (PlayOnce)。
 ///
-/// WHY 画面の表がこの 2 本を持つか (ステージの曲はフィールドなのに):
-///   勝ち負けはステージごとに変わらない。どの盤面から来ても «勝った / 負けた» は
-///   同じ 1 つの出来事なので、盤面ごとのスロットにすると 3 か所へ同じ曲を割り当てる
-///   ことになり、増やすたびに «1 つだけ空» という壊れ方をする。
+/// @note ステージの曲はフィールドだが、この 2 本は表が持つ。勝ち負けはステージごとに
+///       変わらず、どの盤面から来ても «勝った/負けた» は同じ 1 つの出来事なので、盤面
+///       ごとのスロットにすると増やすたびに «1 つだけ空» という壊れ方をする。
 inline constexpr std::string_view kResultClear =
     "Assets/Sound/BGM/maou_game_jingle01_Result_Clear.mp3";
 inline constexpr std::string_view kResultFailed =
@@ -91,9 +81,8 @@ inline void Play(const fbzz::scene::ScriptAudioProxy& audio, std::string_view pa
         return;
     }
 
-    // WHY 覚えている曲名«だけ»で判断しないか: Play→Stop も一括停止 (StopAllVoices) も
-    //     voice を黙って畳むので、宣言だけが残って «鳴っているつもり» になる。
-    //     症状は «2 回目の再生から BGM が無い» で、画面には何も出ない。
+    /// @note 覚えている曲名«だけ»では判断しない。Play→Stop も一括停止 (StopAllVoices) も
+    ///       voice を黙って畳むため、宣言だけが残って «鳴っているつもり» になる。
     std::string& declared = detail::Declared();
     if (declared == path && audio.IsBGMPlaying()) return;
 
@@ -103,14 +92,11 @@ inline void Play(const fbzz::scene::ScriptAudioProxy& audio, std::string_view pa
 
 /// 1 度だけ鳴らす «締め» を流す (リザルトのジングル)。
 ///
-/// WHY Play と分けるか: Play は «同じ曲が鳴っていれば何もしない» で場面の継続を守るが、
-///     鳴り終わったジングルは `IsBGMPlaying()` が false なので、同じ画面でもう一度
-///     宣言されると頭から鳴り直してしまう。**一度きり**はそれ自体が意味なので、
-///     宣言を «鳴らし終えた» ままにできる別の口にする。
-///
-/// WHY それでも BGM スロットを使うか: リザルトは前の画面の曲を必ず断つ場面で、
-///     SE として重ねると «戦闘の曲の上にジングル» になりうる。1 本きりの枠へ置けば
-///     «前の曲は止まり、これが鳴る» が枠の性質として保証される。
+/// @note Play とは分ける。Play は «同じ曲が鳴っていれば何もしない» だが、鳴り終わった
+///       ジングルは `IsBGMPlaying()` が false になるため、Play のままだと同じ画面で
+///       もう一度宣言されて頭から鳴り直す。BGM スロットは使い続ける ─ SE として重ねると
+///       «戦闘の曲の上にジングル» になりうるため、1 本きりの枠で «前の曲は止まり、
+///       これが鳴る» を保証する。
 inline void PlayOnce(const fbzz::scene::ScriptAudioProxy& audio, std::string_view path,
                      float fadeSeconds = 0.0f)
 {

@@ -3,24 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// WHY 電極ではなく「2 点」を受け取るか:
-///   放電は極の持ち物ではなく対の持ち物で、どちらか一方に属させると必ず所有権が
-///   ねじれる。端点だけを受ける形にしておけば持ち主の型を知らずに済み、
-///   タイトルの電極・銃のビーム・盤面の引力が同じ 1 実装を共有できる。
-///
-/// WHY Title ではなく Utils に置くか:
-///   放電はタイトル画面の飾りではなく、この作品の «電気» そのものの描き方。
-///   タイトルに置いたままだと、ゲームプレイ側 (銃・引力) が演出のために
-///   Title を include することになり、依存が逆流する。
-///
-/// WHY 形を毎フレーム作り直さないか:
-///   フレームごとに折れ線を引き直すと、60Hz の白色雑音になって「放電」ではなく
-///   «震えるノイズの帯» に見える。人が稲妻として読めるのは 15〜30Hz あたりなので、
-///   strikeRate の間隔で形を固定し、その間は明るさだけを減衰させる。
-///
-/// WHY 芯の明るさをアルファでなく HDR の RGB で出すか:
-///   ElectricArc.mat はアルファ合成を選んでいる。1 を超える RGB を出せば、
-///   アルファ合成のままでもブルームは拾う。詳細は ElectricArc.hlsl のヘッダー。
+/// @note 端点 (2 点) だけを受け取り、電極を持たない。放電は極ではなく対の持ち物なので、
+///       タイトルの電極・銃のビーム・盤面の引力が持ち主の型を知らずに同じ実装を共有できる。
+///       Title ではなく Utils に置くのも同じ理由で、演出側が Title へ依存するのを避ける。
+/// @note 形は strikeRate の間隔で固定し、その間は明るさだけ減衰させる。毎フレーム引き直すと
+///       60Hz の白色雑音になり、人が稲妻と読める 15〜30Hz の明滅に見えない。
+/// @note ElectricArc.mat はアルファ合成のため、芯の明るさは 1 を超える HDR の RGB で出す
+///       (アルファのままでもブルームは拾う。詳細は ElectricArc.hlsl のヘッダー)。
 #pragma once
 
 #include <Engine/Scene/Components/PresentationComponents.hpp>
@@ -51,8 +40,8 @@ struct ElectricArcStyle {
     float amplitude   = 0.55f;
     /// 振れが最大になる位置 [0,1]。0.5 で中央、1 に寄せると終点側で暴れる。
     ///
-    /// WHY 要るか: 電極どうしの放電は «間» で暴れるが、ビームの放電は着弾点で
-    ///     暴れてほしい。同じ束で両方を出すには、膨らむ場所を選べる必要がある。
+    /// @note 電極どうしの放電は «間» で暴れ、ビームの放電は着弾点で暴れてほしい。同じ束で
+    ///       両方を出すため、膨らむ場所を選べるようにしている。
     float taperBias   = 0.5f;
     /// 帯の太さ [m]。
     float width       = 0.10f;
@@ -63,7 +52,8 @@ struct ElectricArcStyle {
     /// 描画の並び。ビームの層と重ねるときだけ触る。
     int   orderInLayer = 0;
 
-    // ── シェーダーへ渡す形と明るさ ──
+    /// @name シェーダーへ渡す形と明るさ
+    /// @{
     float intensity   = 1.6f;
     float coreWidth   = 0.18f;
     float glowFalloff = 2.6f;
@@ -81,11 +71,12 @@ struct ElectricArcStyle {
     Vector4 coreColor = { 6.0f, 5.4f, 5.0f, 1.0f };
 
     std::string materialPath = "Assets/Materials/Effects/ElectricArc.mat";
+    /// @}
 };
 
-// WHY 名前空間で包まないか: fbzz::scene にも detail があり、using namespace 下で
-//     sandbox::detail を足すと読む側が «どちらの detail か» を毎回確かめることになる。
-//     Arc 接頭辞で衝突は避けられるので、入れ子を増やさない。
+/// @note 名前空間で包まない。fbzz::scene にも detail があり、using namespace 下で
+///       sandbox::detail を足すと «どちらの detail か» を毎回確かめることになる。
+///       Arc 接頭辞で衝突は避けられるので、入れ子を増やさない。
 [[nodiscard]] inline float ArcHash01(uint32_t x)
 {
     x ^= x >> 16; x *= 0x7feb352du;
@@ -119,10 +110,10 @@ class ElectricArcBundle {
 public:
     /// 筋の GameObject 名に使う識別子。同じ束が毎回同じ名前を掴むための鍵。
     ///
-    /// WHY 要るか: スクリプト DLL をリロードすると持ち主の Script は作り直され、
-    ///     この束の m_strands は空に戻る。一方で筋の GameObject は Scene 側に
-    ///     残っているため、名前で拾い直せないとリロードのたびに筋が増え続ける。
-    ///     持ち主・極・番号を混ぜた鍵を渡すこと (束どうしで衝突すると奪い合う)。
+    /// @note スクリプト DLL をリロードすると持ち主の Script は作り直され m_strands は
+    ///       空に戻るが、筋の GameObject は Scene 側に残る。名前で拾い直せないとリロードの
+    ///       たびに筋が増え続けるため、持ち主・極・番号を混ぜた鍵を渡すこと
+    ///       (束どうしで衝突すると奪い合う)。
     void SetKey(std::string key) { m_key = std::move(key); }
 
     /// 毎フレーム呼ぶ。端点はワールド座標。
@@ -153,12 +144,11 @@ private:
 
     std::string          m_key = "Arc";
     std::vector<Strand>  m_strands;
-    std::vector<Vector3> m_points;   // 毎フレームの再確保を避けるための作業領域
+    std::vector<Vector3> m_points;   ///< 毎フレームの再確保を避けるための作業領域
     float                m_strikeTimer = 0.0f;
     uint32_t             m_seedCounter = 1u;
 };
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline std::string ElectricArcBundle::StrandName(std::size_t index) const
 {
@@ -168,7 +158,7 @@ inline std::string ElectricArcBundle::StrandName(std::size_t index) const
 inline void ElectricArcBundle::EnsureStrands(Script& owner, int count,
                                              const ElectricArcStyle& style)
 {
-    // math::Clamp は float 版しか無い。本数を float 経由で丸めると境界で 1 本ぶれる。
+    /// @note math::Clamp は float 版しか無い。本数を float 経由で丸めると境界で 1 本ぶれる。
     const int wanted = (std::max)(0, (std::min)(count, 16));
 
     while (static_cast<int>(m_strands.size()) > wanted) {
@@ -180,9 +170,9 @@ inline void ElectricArcBundle::EnsureStrands(Script& owner, int count,
     while (static_cast<int>(m_strands.size()) < wanted) {
         const std::string name = StrandName(m_strands.size());
 
-        // WHY 先に拾い直すか: スクリプト DLL をリロードすると持ち主の Script は作り直され、
-        //     m_strands は空に戻る。一方で筋の GameObject は Scene 側に残っているため、
-        //     拾わずに作るとリロードのたびに筋が増えていく。
+        /// @note スクリプト DLL をリロードすると持ち主の Script は作り直され m_strands は
+        ///       空に戻るが、筋の GameObject は Scene 側に残る。拾わずに作るとリロードの
+        ///       たびに筋が増えていく。
         GameObject* object = owner.scene.Find(name);
         if (!object) object = &owner.scene.Create(name);
         const EntityID id = object->GetID();
@@ -194,15 +184,15 @@ inline void ElectricArcBundle::EnsureStrands(Script& owner, int count,
         ++m_seedCounter;
         m_strands.push_back(strand);
 
-        // Create / AddComponent がコンポーネント配列を伸ばしうるので、設定は ID から
-        // 引き直す。拾い直した個体にも毎回入れ直す — 同名の GameObject がシーンに
-        // 残っていても «枠だけあって描かれない» にはさせない。
+        /// @note Create / AddComponent がコンポーネント配列を伸ばしうるので、設定は ID から
+        ///       引き直す。拾い直した個体にも毎回入れ直す — 同名の GameObject がシーンに
+        ///       残っていても «枠だけあって描かれない» にはさせない。
         GameObject* created = owner.scene.GetGameObject(id);
         if (!created) continue;
 
-        // WHY 原点・無回転のルートへ置くか: LineRenderer の World 空間は、渡した
-        //     ワールド点を所有 GameObject のローカルへ引き戻してからメッシュにする。
-        //     親に付けたり回したりすると、その変換ぶんだけ端点がずれる。
+        /// @note LineRenderer の World 空間は、渡したワールド点を所有 GameObject のローカルへ
+        ///       引き戻してからメッシュにするため、原点・無回転のルートへ置く。親に付けたり
+        ///       回したりすると、その変換ぶんだけ端点がずれる。
         created->runtimeGenerated   = true;
         created->transform.position = Vector3::ZERO;
 
@@ -234,16 +224,16 @@ inline void ElectricArcBundle::BuildPath(std::vector<Vector3>& out,
     }
     const Vector3 axis = delta * (1.0f / length);
 
-    // 軸に垂直な 2 軸。軸が真上に近いときだけ基準を前方へ倒す (外積が縮退するため)。
+    /// @note 軸に垂直な 2 軸。軸が真上に近いときだけ基準を前方へ倒す (外積が縮退するため)。
     const Vector3 reference = Abs(axis.y) > 0.9f ? Vector3::FORWARD : Vector3::UP;
     const Vector3 side = Vector3::Cross(axis, reference).Normalized();
     const Vector3 up   = Vector3::Cross(side, axis);
 
     for (int i = 0; i <= count; ++i) {
         const float t = static_cast<float>(i) / static_cast<float>(count);
-        // 端は電極に刺さっていてほしいので振れを 0 に落とす。
+        /// @note 端は電極に刺さっていてほしいので振れを 0 に落とす。
         const float taper = ArcTaper(t, style.taperBias);
-        // 2 オクターブ。1 本調子の波にせず、粗い折れの上に細かいギザギザを乗せる。
+        /// @note 2 オクターブ。1 本調子の波にせず、粗い折れの上に細かいギザギザを乗せる。
         const float nx = ArcNoise(strand.seed,          t * 4.0f) * 0.65f
                        + ArcNoise(strand.seed + 7919u,  t * 11.0f) * 0.35f;
         const float ny = ArcNoise(strand.seed + 104729u, t * 4.0f) * 0.65f
@@ -259,11 +249,10 @@ inline void ElectricArcBundle::PushMaterial(const Script& owner, const Strand& s
 {
     const MaterialInstance instance = owner.material.Instance(EntityRef{ strand.id });
 
-    // WHY HasProperty で先に門を閉めるか:
-    //   MaterialComponent を張るのは LineRenderer 側 (Phase::LateUpdate) なので、
-    //   最初の 1 フレームはまだ存在しない。Set 系は空振りのたびに警告を出すため、
-    //   そのまま呼ぶと «毎フレーム × 筋の本数 × プロパティ数» のログで埋まる。
-    //   HasProperty は無言で false を返すので、揃うまで静かに待てる。
+    /// @note MaterialComponent を張るのは LineRenderer 側 (Phase::LateUpdate) なので、
+    ///       最初の 1 フレームはまだ存在しない。Set 系は空振りのたびに警告を出すため、
+    ///       先に HasProperty (無言で false) で待たないと毎フレーム × 筋の本数 ×
+    ///       プロパティ数のログで埋まる。
     if (!instance.HasProperty(MaterialPropertyId("coreColor"))) return;
 
     instance.SetVector4(MaterialPropertyId("coreColor"), style.coreColor);
@@ -286,8 +275,8 @@ inline void ElectricArcBundle::Update(Script& owner, const Vector3& from, const 
     EnsureStrands(owner, style.strandCount, style);
     if (m_strands.empty()) return;
 
-    // 距離が開くほど暗く、strikeRange で消える。端点が近づいたときだけ放電が
-    // 立つので、対象どうしの運動がそのまま «溜まって放電する» 演出になる。
+    /// @note 距離が開くほど暗く、strikeRange で消える。端点が近づいたときだけ放電が
+    ///       立つので、対象どうしの運動がそのまま «溜まって放電する» 演出になる。
     const float distance = (to - from).Length();
     float reach = 1.0f;
     if (style.strikeRange > 0.0f)
@@ -297,17 +286,18 @@ inline void ElectricArcBundle::Update(Script& owner, const Vector3& from, const 
         return;
     }
 
-    // 形の組み替え。間隔の間は形を保ち、明るさだけ減衰させる。
+    /// @note 形の組み替え。間隔の間は形を保ち、明るさだけ減衰させる。
     m_strikeTimer -= dt;
     const bool struck = m_strikeTimer <= 0.0f;
     if (struck) {
         m_strikeTimer += 1.0f / Max(style.strikeRate, 0.01f);
-        if (m_strikeTimer < 0.0f) m_strikeTimer = 0.0f; // 大きな dt で溜め込まない
+        /// @note 大きな dt で溜め込まない
+        if (m_strikeTimer < 0.0f) m_strikeTimer = 0.0f;
         for (Strand& strand : m_strands) {
             strand.seed  = strand.seed * 1664525u + 1013904223u;
             strand.life  = 1.0f;
-            // 位相は巻き取る。シェーダー側の frac(sin(x * 12.9898)) は x が大きくなるほど
-            // 精度を失い、放置した画面で数十分後にノイズが縞へ潰れる。
+            /// @note 位相は巻き取る。シェーダー側の frac(sin(x * 12.9898)) は x が大きくなるほど
+            ///       精度を失い、放置した画面で数十分後にノイズが縞へ潰れる。
             strand.phase = std::fmod(strand.phase + 0.37f + ArcHash01(strand.seed) * 0.5f,
                                      1024.0f);
         }
@@ -321,7 +311,7 @@ inline void ElectricArcBundle::Update(Script& owner, const Vector3& from, const 
         auto* line = object->GetComponent<LineRendererComponent>();
         if (!line) continue;
 
-        // 副筋ほど大きく振れさせて細くする。主筋 1 本の «太い線» に見せないため。
+        /// @note 副筋ほど大きく振れさせて細くする。主筋 1 本の «太い線» に見せないため。
         const float rankFade = 1.0f / (1.0f + strand.rank * 0.85f);
         const float spread   = style.amplitude * (1.0f + strand.rank * 0.6f);
         BuildPath(m_points, from, to, style, strand, spread);
@@ -333,14 +323,14 @@ inline void ElectricArcBundle::Update(Script& owner, const Vector3& from, const 
         line->space        = LineSpace::World;
         line->billboard    = true;
         line->orderInLayer = style.orderInLayer;
-        // startColor は LineRenderer が albedo へ流す = シェーダーの始点側の色。
-        // 明るさは intensity 側で振るので、ここは色と不透明度だけを持たせる。
+        /// @note startColor は LineRenderer が albedo へ流す = シェーダーの始点側の色。
+        ///       明るさは intensity 側で振るので、ここは色と不透明度だけを持たせる。
         line->startColor = { style.fromColor.x, style.fromColor.y, style.fromColor.z,
                              style.fromColor.w * reach };
         line->endColor   = style.toColor;
 
-        // 走った直後が最も明るく、次の strike までに落ちる。0.35 は消えきらない下限で、
-        // 完全に 0 にすると筋が明滅ではなく点滅して見える。
+        /// @note 走った直後が最も明るく、次の strike までに落ちる。0.35 は消えきらない下限で、
+        ///       完全に 0 にすると筋が明滅ではなく点滅して見える。
         const float brightness = (0.35f + 0.65f * strand.life) * rankFade * reach;
         PushMaterial(owner, strand, style, brightness);
     }

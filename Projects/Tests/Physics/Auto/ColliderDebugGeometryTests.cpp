@@ -114,7 +114,7 @@ std::vector<math::Vector3> CubePoints(float half)
 
 class ColliderDebugGeometryTest : public testkit::Fixture {};
 
-// --- 箱 ---------------------------------------------------------------------
+/// @name 箱
 
 TEST_F(ColliderDebugGeometryTest, DrawsTwelveEdgesOnTheCornersOfAnAABB)
 {
@@ -137,8 +137,8 @@ TEST_F(ColliderDebugGeometryTest, DrawsTheRotatedCornersOfAnOBB)
     const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(obb);
 
     ASSERT_EQ(geometry.lines.size(), kBoxEdgeCount);
-    // OBB を外接 AABB で描くと «回した箱» が軸整合のまま太って見え、
-    // 実際の当たり判定より広い場所を信じてしまう。角そのものを使うことを固定する。
+    /// @note OBB を外接 AABB で描くと «回した箱» が軸整合のまま太って見え、
+    ///       実際の当たり判定より広い場所を信じてしまう。角そのものを使うことを固定する。
     const std::array<math::Vector3, 8> corners = obb.GetCorners();
     for (const math::Vector3& point : Endpoints(geometry)) {
         const bool matchesACorner = std::any_of(corners.begin(), corners.end(),
@@ -149,7 +149,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsTheRotatedCornersOfAnOBB)
     }
 }
 
-// --- 球 ---------------------------------------------------------------------
+/// @name 球
 
 TEST_F(ColliderDebugGeometryTest, DrawsThreeClosedCirclesOnTheSphereSurface)
 {
@@ -171,7 +171,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsTheThreeSphereCirclesOnOrthogonalPlanes)
 
     const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(sphere);
 
-    // 3 本とも同じ平面に出ると «球ではなく円» に見える。各軸に垂直な輪が 1 本ずつ要る。
+    /// @note 3 本とも同じ平面に出ると «球ではなく円» に見える。各軸に垂直な輪が 1 本ずつ要る。
     const auto CountInPlaneNormalTo = [&](int axis) {
         return std::count_if(geometry.lines.begin(), geometry.lines.end(),
             [&](const physics::DebugLine& line) {
@@ -185,7 +185,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsTheThreeSphereCirclesOnOrthogonalPlanes)
     EXPECT_EQ(CountInPlaneNormalTo(2), kCircleSegments);
 }
 
-// --- カプセル ---------------------------------------------------------------
+/// @name カプセル
 
 TEST_F(ColliderDebugGeometryTest, KeepsEveryCapsuleEndpointOnTheCapsuleSurface)
 {
@@ -195,7 +195,7 @@ TEST_F(ColliderDebugGeometryTest, KeepsEveryCapsuleEndpointOnTheCapsuleSurface)
 
     const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(capsule);
 
-    // 2 本の輪 + 4 本の縦アーク + 4 本の側線。回転させても «中心線から半径ちょうど» が崩れない。
+    /// @note 2 本の輪 + 4 本の縦アーク + 4 本の側線。回転させても «中心線から半径ちょうど» が崩れない。
     EXPECT_EQ(geometry.lines.size(),
               static_cast<std::size_t>(2 * kCircleSegments + 4 * kArcSegments + 4));
     for (const math::Vector3& point : Endpoints(geometry)) {
@@ -210,12 +210,12 @@ TEST_F(ColliderDebugGeometryTest, FallsBackToABoxWhenTheCapsuleAxisIsDegenerate)
     physics::CapsuleCollider capsule(0.5f, 0.0f);
     capsule.Update(math::Vector3::ZERO, math::Quaternion::Identity());
 
-    // 中心線が 1 点に潰れると直交基底が作れない。正規化に突っ込むと NaN の線が出るため、
-    // 箱表示へ落とすことを契約にする。
+    /// @note 中心線が 1 点に潰れると直交基底が作れない。正規化に突っ込むと NaN の線が出るため、
+    ///       箱表示へ落とすことを契約にする。
     EXPECT_EQ(physics::BuildColliderDebugGeometry(capsule).lines.size(), kBoxEdgeCount);
 }
 
-// --- 円柱 -------------------------------------------------------------------
+/// @name 円柱
 
 TEST_F(ColliderDebugGeometryTest, KeepsEveryCylinderEndpointOnTheCapRims)
 {
@@ -224,7 +224,7 @@ TEST_F(ColliderDebugGeometryTest, KeepsEveryCylinderEndpointOnTheCapRims)
 
     const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(cylinder);
 
-    // 2 本の輪 + 4 本の側線。カプセルと違い縁が鋭いので、端点はすべて上下の円周上に乗る。
+    /// @note 2 本の輪 + 4 本の側線。カプセルと違い縁が鋭いので、端点はすべて上下の円周上に乗る。
     EXPECT_EQ(geometry.lines.size(), static_cast<std::size_t>(2 * kCircleSegments + 4));
     for (const math::Vector3& point : Endpoints(geometry)) {
         const math::Vector3 offset = point - cylinder.GetCenter();
@@ -244,7 +244,7 @@ TEST_F(ColliderDebugGeometryTest, FallsBackToABoxWhenTheCylinderAxisIsDegenerate
     EXPECT_EQ(physics::BuildColliderDebugGeometry(cylinder).lines.size(), kBoxEdgeCount);
 }
 
-// --- 三角メッシュ / ハイトフィールド ----------------------------------------
+/// @name 三角メッシュ / ハイトフィールド
 
 TEST_F(ColliderDebugGeometryTest, DrawsThreeEdgesPerTriangleOfASmallMesh)
 {
@@ -272,13 +272,14 @@ TEST_F(ColliderDebugGeometryTest, SamplesALargeMeshDownToTheLineBudget)
 {
     std::vector<math::Vector3> positions;
     std::vector<std::uint32_t> indices;
-    BuildGrid(40, positions, indices); // 3200 三角形 = 9600 本ぶん。上限を超える。
+    /// @note 3200 三角形 = 9600 本ぶん。上限を超える。
+    BuildGrid(40, positions, indices);
     physics::TriangleMeshCollider mesh(positions, indices);
     mesh.Update(math::Vector3::ZERO, math::Quaternion::Identity());
 
     const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(mesh);
 
-    // 全三角形を描くとエディターが止まる。間引いて上限ちょうどで頭打ちにする。
+    /// @note 全三角形を描くとエディターが止まる。間引いて上限ちょうどで頭打ちにする。
     ASSERT_GT(mesh.GetBVH().triangles.size() * 3, kMeshLineCap);
     EXPECT_EQ(geometry.lines.size(), kMeshLineCap);
 }
@@ -295,7 +296,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsThreeEdgesPerTriangleOfAHeightField)
     EXPECT_EQ(geometry.lines.size(), field.GetBVH().triangles.size() * 3);
 }
 
-// --- 凸包 -------------------------------------------------------------------
+/// @name 凸包
 
 TEST_F(ColliderDebugGeometryTest, DrawsEachConvexHullEdgeOnlyOnce)
 {
@@ -304,8 +305,8 @@ TEST_F(ColliderDebugGeometryTest, DrawsEachConvexHullEdgeOnlyOnce)
 
     const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(hull);
 
-    // 隣り合う面は稜線を共有する。素直に面ごとに 3 辺を出すと全稜線が二重に描かれ、
-    // 線の本数が形状の複雑さの 2 倍で増える。
+    /// @note 隣り合う面は稜線を共有する。素直に面ごとに 3 辺を出すと全稜線が二重に描かれ、
+    ///       線の本数が形状の複雑さの 2 倍で増える。
     const std::vector<math::Vector3>& vertices = hull.GetWorldVertices();
     ASSERT_FALSE(geometry.lines.empty());
 

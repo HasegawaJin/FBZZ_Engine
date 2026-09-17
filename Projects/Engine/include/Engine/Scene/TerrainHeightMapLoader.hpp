@@ -14,7 +14,7 @@ struct TerrainComponent;
 
 /// @param unipolar true なら画素値 [0,1] を heightData [0,1] へ (黒=基準面)。
 ///        false なら [-1,1] へ (黒=-maxHeight、灰=基準面、白=+maxHeight)。
-/// @ret 読み込みに失敗したら false。
+/// @return 読み込みに失敗したら false。
 bool LoadHeightMapFromFile(
     const std::string&  path,
     TerrainComponent&   terrain,

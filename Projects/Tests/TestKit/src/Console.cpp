@@ -43,9 +43,8 @@ int EnvInt(const char* name, int fallback)
     return value > 0 ? value : fallback;
 }
 
-/// 画面の DPI に合わせて文字の高さを決める。
-/// WHY: CONSOLE_FONT_INFOEX の高さは論理 px なので、4K の高 DPI 環境では
-///      96dpi 想定の値をそのまま渡すと «読めないほど小さい» ままになる。
+/// @brief 画面の DPI に合わせて文字の高さを決める。
+/// @note CONSOLE_FONT_INFOEX の高さは論理 px なので、4K の高 DPI 環境で 96dpi 想定の値をそのまま渡すと «読めないほど小さい» ままになる。
 int ScaledFontHeight(HWND console, int baseHeight)
 {
     int dpi = 96;
@@ -80,8 +79,7 @@ void ApplyBufferSize(HANDLE output, int bufferLines)
     CONSOLE_SCREEN_BUFFER_INFO info = {};
     if (!GetConsoleScreenBufferInfo(output, &info)) return;
 
-    // WHY 窓を先に縮めるか: バッファは常に窓以上でなければならず、順序を誤ると
-    //     どちらの API も «引数が不正» で黙って失敗する。
+    /// @note バッファは常に窓以上でなければならず、窓を先に縮めないと順序次第でどちらの API も «引数が不正» で黙って失敗する。
     SMALL_RECT collapsed = {0, 0, 1, 1};
     SetConsoleWindowInfo(output, TRUE, &collapsed);
 
@@ -95,17 +93,13 @@ void ApplyBufferSize(HANDLE output, int bufferLines)
     SetConsoleWindowInfo(output, TRUE, &restored);
 }
 
-/// このコンソールに繋がっているプロセスが自分だけか。
-/// WHY: 「自分がコンソールを作ったか」だけでは足りない。Visual Studio が F5 で
-///      起動したコンソールアプリは OS がコンソールを用意するので AllocConsole を
-///      通らないが、繋がっているのは自分だけなので終了と同時に窓が消える。
-///      ターミナルや VS Code のタスクから起動した場合はシェルも繋がっているため
-///      窓は残る ─ そこで入力待ちすると、かえって邪魔になる。
+/// @brief このコンソールに繋がっているプロセスが自分だけか。
+/// @note 「自分がコンソールを作ったか」だけでは足りない。VS が F5 で起動したコンソールアプリは AllocConsole を通らないが自分だけが繋がるため終了と同時に窓が消える。ターミナル/VS Code のタスクから起動した場合はシェルも繋がるため窓が残り、そこで入力待ちすると邪魔になる。
 bool IsSoleConsoleOwner()
 {
     DWORD       processIds[8] = {};
     const DWORD count = GetConsoleProcessList(processIds, static_cast<DWORD>(std::size(processIds)));
-    // 0 は「コンソールに繋がっていない」= 呼び出し失敗。閉じる想定で扱う。
+    /// @note 0 は「コンソールに繋がっていない」= 呼び出し失敗。閉じる想定で扱う。
     return count <= 1;
 }
 
@@ -116,8 +110,8 @@ void RedirectStandardStreams()
     freopen_s(&stream, "CONOUT$", "w", stderr);
     freopen_s(&stream, "CONIN$", "r", stdin);
 
-    // gtest は printf 経由で書く。バッファに溜めたまま落ちると出力が消えるので、
-    // 行単位で吐かせる。テストの実行時間に対して無視できるコスト。
+    /// @note gtest は printf 経由で書く。バッファに溜めたまま落ちると出力が消えるので、
+    ///       行単位で吐かせる。テストの実行時間に対して無視できるコスト。
     setvbuf(stdout, nullptr, _IOLBF, 4096);
 }
 
@@ -125,7 +119,7 @@ void RedirectStandardStreams()
 
 bool IsAutomatedRun(int argc, char** argv)
 {
-    // CTest は起動する全テストにこれを立てる。
+    /// @note CTest は起動する全テストにこれを立てる。
     if (HasEnv("CTEST_INTERACTIVE_DEBUG_MODE")) return true;
     if (HasEnv("CI")) return true;
     if (HasEnv("FBZZ_TEST_NO_PAUSE")) return true;
@@ -134,9 +128,9 @@ bool IsAutomatedRun(int argc, char** argv)
         if (!argv[i]) continue;
         const std::string_view argument{argv[i]};
 
-        // gtest_discover_tests がビルド中に走らせる列挙。ここで止まるとビルドがハングする。
+        /// @note gtest_discover_tests がビルド中に走らせる列挙。ここで止まるとビルドがハングする。
         if (argument.starts_with("--gtest_list_tests")) return true;
-        // レポート出力を要求している = 誰かが機械で読む実行。
+        /// @note レポート出力を要求している = 誰かが機械で読む実行。
         if (argument.starts_with("--gtest_output")) return true;
     }
     return false;
@@ -147,8 +141,8 @@ bool EnsureConsole(const ConsoleOptions& options)
     bool ownsConsole = false;
 
     if (GetConsoleWindow() == nullptr) {
-        // 親のコンソール (VS の出力先や cmd) があればそれを借りる。
-        // 無ければ自前で作る ─ このときだけ、終了と同時に窓が消える。
+        /// @note 親のコンソール (VS の出力先や cmd) があればそれを借りる。
+        ///       無ければ自前で作る ─ このときだけ、終了と同時に窓が消える。
         if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
             if (!AllocConsole()) return false;
             ownsConsole = true;
@@ -156,15 +150,15 @@ bool EnsureConsole(const ConsoleOptions& options)
         RedirectStandardStreams();
     }
 
-    // 自分で作った場合はもちろん、OS / デバッガが用意したコンソールでも
-    // 繋がっているのが自分だけなら終了と同時に消える。どちらも入力待ちが要る。
+    /// @note 自分で作った場合はもちろん、OS / デバッガが用意したコンソールでも
+    ///       繋がっているのが自分だけなら終了と同時に消える。どちらも入力待ちが要る。
     const bool closesWithUs = ownsConsole || IsSoleConsoleOwner();
 
     const HANDLE output  = GetStdHandle(STD_OUTPUT_HANDLE);
     const HWND   console = GetConsoleWindow();
     if (output == INVALID_HANDLE_VALUE) return closesWithUs;
 
-    // 日本語のテスト説明とファイル名を化けさせない。
+    /// @note 日本語のテスト説明とファイル名を化けさせない。
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 
@@ -185,16 +179,14 @@ void WaitForKey(const char* message)
 
 void SuppressBlockingErrorDialogs()
 {
-    // クリティカルエラーと «アプリケーションエラー» の窓を出さずに終了させる。
+    /// @note クリティカルエラーと «アプリケーションエラー» の窓を出さずに終了させる。
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 
-    // abort() の «Debug Error!» ダイアログを止め、メッセージだけ stderr へ残す。
+    /// @note abort() の «Debug Error!» ダイアログを止め、メッセージだけ stderr へ残す。
     _set_abort_behavior(_WRITE_ABORT_MSG, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 
 #ifdef _DEBUG
-    // assert 失敗の報告先をダイアログから stderr へ切り替える。
-    // WHY 3 種類とも指定するか: assert は _CRT_ASSERT だが、CRT の内部検査
-    //     (イテレーターの範囲外・二重解放) は _CRT_ERROR で上がる。どちらも止まる。
+    /// @note assert 失敗の報告先をダイアログから stderr へ切り替える。assert は _CRT_ASSERT だが、CRT の内部検査 (イテレーターの範囲外・二重解放) は _CRT_ERROR で上がるため両方指定する。
     for (const int reportType : { _CRT_ASSERT, _CRT_ERROR, _CRT_WARN }) {
         _CrtSetReportMode(reportType, _CRTDBG_MODE_FILE);
         _CrtSetReportFile(reportType, _CRTDBG_FILE_STDERR);

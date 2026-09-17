@@ -110,7 +110,7 @@ public:
 
     void DetectAnomalies(AnomalyLog& log) override
     {
-        // 枝刈りが結果を変えていないこと。BVH の契約はこれ 1 つに尽きる。
+        /// @note 枝刈りが結果を変えていないこと。BVH の契約はこれ 1 つに尽きる。
         for (const uint32_t index : m_bruteForce)
             log.ReportIf(m_hits.count(index) == 0, Severity::Error,
                          "三角形 %u を取りこぼした (総当たりでは当たる)", index);
@@ -118,8 +118,8 @@ public:
             log.ReportIf(m_bruteForce.count(index) == 0, Severity::Error,
                          "三角形 %u を誤って返した (総当たりでは当たらない)", index);
 
-        // 木の不変条件。子が親からはみ出すと、親で枝を切った瞬間に取りこぼす。
-        // 結果が合っている «今の» 問い合わせ位置では見えないので、木そのものを見る。
+        /// @note 木の不変条件。子が親からはみ出すと、親で枝を切った瞬間に取りこぼす。
+        ///       結果が合っている «今の» 問い合わせ位置では見えないので、木そのものを見る。
         const int nodeCount = static_cast<int>(m_tree.nodes.size());
         for (int i = 0; i < nodeCount; ++i) {
             const physics::BVHNode& node = m_tree.nodes[static_cast<size_t>(i)];
@@ -197,9 +197,9 @@ private:
         m_hits.clear();
         m_tree.Query(query, [this](const physics::Triangle& tri) { m_hits.insert(tri.index); });
 
-        // 総当たりと突き合わせ、枝刈りが結果を変えていないことをその場で示す。
-        // 件数ではなく «どの三角形か» で持つ ── 取りこぼしと偽陽性が 1 枚ずつ起きると
-        // 件数は一致したまま中身が入れ替わる。
+        /// @note 総当たりと突き合わせ、枝刈りが結果を変えていないことをその場で示す。
+        ///       件数ではなく «どの三角形か» で持つ ── 取りこぼしと偽陽性が 1 枚ずつ起きると
+        ///       件数は一致したまま中身が入れ替わる。
         m_bruteForce.clear();
         for (const physics::Triangle& tri : m_tree.triangles)
             if (TriangleBounds(tri).Overlaps(query)) m_bruteForce.insert(tri.index);

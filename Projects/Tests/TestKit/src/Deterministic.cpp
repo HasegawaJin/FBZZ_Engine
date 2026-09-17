@@ -32,8 +32,8 @@ std::uint32_t DeterministicRng::NextUInt()
 
 float DeterministicRng::NextFloat()
 {
-    // 仮数部 24bit ぶんだけ使う。float に収まらない下位ビットを捨てることで
-    // 1.0 に丸め上がって [0,1) の約束が破れるのを防ぐ。
+    /// @note 仮数部 24bit ぶんだけ使う。float に収まらない下位ビットを捨てることで
+    ///       1.0 に丸め上がって [0,1) の約束が破れるのを防ぐ。
     return static_cast<float>(NextUInt() >> 8) * (1.0f / 16777216.0f);
 }
 
@@ -66,8 +66,8 @@ math::Vector3 DeterministicRng::NextVector3(float minValue, float maxValue)
 
 math::Vector3 DeterministicRng::NextUnitVector3()
 {
-    // z を一様に取ってから方位角を振る (アルキメデスの定理)。
-    // 成分を個別に振って正規化すると、立方体の角方向が濃くなって一様にならない。
+    /// @note z を一様に取ってから方位角を振る (アルキメデスの定理)。
+    ///       成分を個別に振って正規化すると、立方体の角方向が濃くなって一様にならない。
     const float z     = NextFloat(-1.0f, 1.0f);
     const float theta = NextFloat(0.0f, kTwoPi);
     const float rSq   = 1.0f - z * z;
@@ -77,7 +77,7 @@ math::Vector3 DeterministicRng::NextUnitVector3()
 
 math::Quaternion DeterministicRng::NextRotation()
 {
-    // Shoemake の方法。4 成分を個別に振って正規化するより回転が一様に散る。
+    /// @note Shoemake の方法。4 成分を個別に振って正規化するより回転が一様に散る。
     const float u1 = NextFloat();
     const float u2 = NextFloat(0.0f, kTwoPi);
     const float u3 = NextFloat(0.0f, kTwoPi);

@@ -11,7 +11,7 @@ namespace fbzz::physics
 
     namespace
     {
-        // 交差確定後、EPA 用に simplex を四面体まで拡張する
+        /// 交差確定後、EPA 用に simplex を四面体まで拡張する
         void ExpandToTetrahedron(Simplex& s,
                                   const void* shapeA, SupportFn supportA,
                                   const void* shapeB, SupportFn supportB)
@@ -27,7 +27,7 @@ namespace fbzz::physics
                 return v;
             };
 
-            // 線分 → 三角形: ab に垂直な軸でサポート点を追加
+            /// @note 線分 → 三角形: ab に垂直な軸でサポート点を追加
             if (s.size == 2)
             {
                 const math::Vector3 ab = s.verts[0].point - s.verts[1].point;
@@ -36,14 +36,14 @@ namespace fbzz::physics
                 s.Add(MakeVertex(math::Vector3::Cross(ab, aux)));
             }
 
-            // 三角形 → 四面体: 面法線方向でサポート点を追加
+            /// @note 三角形 → 四面体: 面法線方向でサポート点を追加
             if (s.size == 3)
             {
                 const math::Vector3 ab = s.verts[1].point - s.verts[0].point;
                 const math::Vector3 ac = s.verts[2].point - s.verts[0].point;
                 const math::Vector3 n  = math::Vector3::Cross(ab, ac);
                 Simplex::Vertex v = MakeVertex(n);
-                // 同一平面上なら逆方向を試す
+                /// @note 同一平面上なら逆方向を試す
                 if (std::abs(math::Vector3::Dot(v.point - s.verts[0].point, n)) < 1e-6f)
                     v = MakeVertex({ -n.x, -n.y, -n.z });
                 s.Add(v);
@@ -51,18 +51,19 @@ namespace fbzz::physics
         }
 
 
-        // 3D の線分単体 (2 頂点) から原点への最短方向を求める
+        /// 3D の線分単体 (2 頂点) から原点への最短方向を求める
         bool DoSimplexLine(Simplex& s, math::Vector3& dir)
         {
             const math::Vector3 b = s.verts[0].point;
-            const math::Vector3 a = s.verts[1].point; // 最後に追加した点
+            /// @note 最後に追加した点
+            const math::Vector3 a = s.verts[1].point;
             const math::Vector3 ab = b - a;
             const math::Vector3 ao = -a;
 
             if (math::Vector3::Dot(ab, ao) > 0.0f)
             {
                 const math::Vector3 perp = math::Vector3::Cross(math::Vector3::Cross(ab, ao), ab);
-                // ab と ao が平行 (原点がセグメント上) → 内包
+                /// @note ab と ao が平行 (原点がセグメント上) → 内包
                 if (perp.LengthSq() < 1e-10f) return true;
                 dir = perp;
             }
@@ -74,7 +75,7 @@ namespace fbzz::physics
             return false;
         }
 
-        // 三角形単体 (3 頂点) から原点への最短方向を求める
+        /// 三角形単体 (3 頂点) から原点への最短方向を求める
         bool DoSimplexTriangle(Simplex& s, math::Vector3& dir)
         {
             const math::Vector3 a  = s.verts[2].point;
@@ -118,7 +119,7 @@ namespace fbzz::physics
             return false;
         }
 
-        // 四面体単体 (4 頂点) から原点を含むか判定し含まなければ方向を更新する
+        /// 四面体単体 (4 頂点) から原点を含むか判定し含まなければ方向を更新する
         bool DoSimplexTetrahedron(Simplex& s, math::Vector3& dir)
         {
             const math::Vector3 a  = s.verts[3].point;
@@ -149,23 +150,22 @@ namespace fbzz::physics
                 s.Set(s.verts[0], s.verts[2], s.verts[3]);
                 return DoSimplexTriangle(s, dir);
             }
-            return true; // 原点が四面体の内部
+            /// @note 原点が四面体の内部
+            return true;
         }
 
-        // ------------------------------------------------------------------
-        // 非交差時の最近傍点
-        // ------------------------------------------------------------------
-        // GJK が «これ以上原点に近づけない» と判断した時点の単体は、Minkowski 差空間で
-        // 原点に最も近い «特徴» (点・辺・面) そのものになっている。その上で原点に最も
-        // 近い点を重心座標で表し、同じ重みで suppA / suppB を混ぜると、元の 2 形状の上の
-        // 最近傍点が復元できる ─ 差空間の点が suppA - suppB の線形結合だから。
+        /// 非交差時の最近傍点
+        /// GJK が «これ以上原点に近づけない» と判断した時点の単体は、Minkowski 差空間で
+        /// 原点に最も近い «特徴» (点・辺・面) そのものになっている。その上で原点に最も
+        /// 近い点を重心座標で表し、同じ重みで suppA / suppB を混ぜると、元の 2 形状の上の
+        /// 最近傍点が復元できる ─ 差空間の点が suppA - suppB の線形結合だから。
 
         struct Barycentric
         {
             float weight[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         };
 
-        // 線分 ab 上で原点に最も近い点の重み。
+        /// 線分 ab 上で原点に最も近い点の重み。
         void ClosestOnSegment(const math::Vector3& a, const math::Vector3& b,
                               float& outWa, float& outWb)
         {
@@ -184,8 +184,8 @@ namespace fbzz::physics
             outWb = t;
         }
 
-        // 三角形 abc 上で原点に最も近い点の重心座標 (Ericson の領域判定)。
-        // 辺や頂点の外側に落ちる場合もそのまま扱えるので、面の内外で分岐を書かずに済む。
+        /// 三角形 abc 上で原点に最も近い点の重心座標 (Ericson の領域判定)。
+        /// 辺や頂点の外側に落ちる場合もそのまま扱えるので、面の内外で分岐を書かずに済む。
         void ClosestOnTriangle(const math::Vector3& a, const math::Vector3& b,
                                const math::Vector3& c,
                                float& outWa, float& outWb, float& outWc)
@@ -232,7 +232,7 @@ namespace fbzz::physics
             const float sum = va + vb + vc;
             if (std::abs(sum) < 1e-20f)
             {
-                // 面積が潰れた三角形。最長の辺へ落として重みを決める。
+                /// @note 面積が潰れた三角形。最長の辺へ落として重みを決める。
                 ClosestOnSegment(a, b, outWa, outWb);
                 outWc = 0.0f;
                 return;
@@ -265,8 +265,8 @@ namespace fbzz::physics
 
             case 4:
             {
-                // 反復上限に達した場合だけここへ来る (原点を含む四面体は交差として抜ける)。
-                // 4 つの面のうち原点に最も近いものを採る。
+                /// @note 反復上限に達した場合だけここへ来る (原点を含む四面体は交差として抜ける)。
+                ///       4 つの面のうち原点に最も近いものを採る。
                 static constexpr int kFaces[4][3] = { {0,1,2}, {0,1,3}, {0,2,3}, {1,2,3} };
                 float bestDistSq = std::numeric_limits<float>::max();
 
@@ -298,7 +298,7 @@ namespace fbzz::physics
             return result;
         }
 
-        // 非交差で終わった単体から closestA / closestB / distance を埋める。
+        /// 非交差で終わった単体から closestA / closestB / distance を埋める。
         void FillClosestPoints(const Simplex& s, GJKResult& out)
         {
             if (s.size <= 0) return;
@@ -317,7 +317,7 @@ namespace fbzz::physics
             out.closestB = closestB;
             out.distance = (closestA - closestB).Length();
         }
-    } // anonymous namespace
+    } // namespace
 
     bool DoSimplex(Simplex& simplex, math::Vector3& direction)
     {
@@ -337,7 +337,7 @@ namespace fbzz::physics
     {
         GJKResult result;
 
-        // 初期方向: A - B (ゼロの場合は UP)
+        /// @note 初期方向: A - B (ゼロの場合は UP)
         math::Vector3 dir = supportA(shapeA, math::Vector3::RIGHT)
                           - supportB(shapeB, math::Vector3::RIGHT);
         if (dir.LengthSq() < 1e-10f)
@@ -364,7 +364,7 @@ namespace fbzz::physics
             const Simplex::Vertex newVert = MakeVertex(dir);
             if (math::Vector3::Dot(newVert.point, dir) < 0.0f)
             {
-                // 新しいサポート点が原点より遠ければ交差なし
+                /// @note 新しいサポート点が原点より遠ければ交差なし
                 result.intersects = false;
                 return result;
             }
@@ -390,13 +390,13 @@ namespace fbzz::physics
         const void* shapeB, SupportFn supportB,
         int maxIter, float tolerance)
     {
-        // WHY 先に交差判定を通すか: 距離の反復は «離れている» ことを前提に収束が保証される。
-        //     深く重なった配置では単体が原点を跨いで振動し、収束判定や重複打ち切りで
-        //     «交差していない» と答えてしまう。真偽は入口を GJK_Intersect 一本に絞り、
-        //     ここは隙間を測ることに専念する。両者の答えが食い違う余地を無くす。
+        /// @note 距離の反復は «離れている» 前提で収束が保証される。深く重なった配置では単体が
+        ///       原点を跨いで振動し «交差していない» と誤答しうるため、真偽判定は
+        ///       GJK_Intersect 一本に絞り、ここは隙間を測ることに専念する。
         GJKResult result = GJK_Intersect(shapeA, supportA, shapeB, supportB, maxIter);
         if (result.intersects)
-            return result;   // simplex もそのまま残るので、必要なら EPA へ渡せる
+            /// @note simplex もそのまま残るので、必要なら EPA へ渡せる
+            return result;
 
         auto MakeVertex = [&](const math::Vector3& d) -> Simplex::Vertex
         {
@@ -414,21 +414,21 @@ namespace fbzz::physics
         for (int iter = 0; iter < maxIter; ++iter)
         {
             const float distSq = closestPoint.LengthSq();
-            // 非交差は確定しているので、ここへ来るのは数値誤差で原点に載った場合だけ。
-            // これ以上詰められないので、そのときの単体で最近傍点を出す。
+            /// @note 非交差は確定しているので、ここへ来るのは数値誤差で原点に載った場合だけ。
+            ///       これ以上詰められないので、そのときの単体で最近傍点を出す。
             if (distSq < 1e-12f) break;
 
             const math::Vector3   dir = -closestPoint;
             const Simplex::Vertex w   = MakeVertex(dir);
 
-            // 現在の単体が与える上界 |v| と、サポート点が与える下界 dot(w,v)/|v| の差が
-            // tolerance を切ったら «これ以上縮まらない» とみなす。
-            // 両辺に |v| を掛けた形で比較し、平方根を 1 回で済ませる。
+            /// @note 現在の単体が与える上界 |v| と、サポート点が与える下界 dot(w,v)/|v| の差が
+            ///       tolerance を切ったら «これ以上縮まらない» とみなす。
+            ///       両辺に |v| を掛けた形で比較し、平方根を 1 回で済ませる。
             const float distance = std::sqrt(distSq);
             if (distSq - math::Vector3::Dot(w.point, closestPoint) <= tolerance * distance)
                 break;
 
-            // 同じサポート点が返ったら、方向を変えても進めない (数値誤差での停滞)。
+            /// @note 同じサポート点が返ったら、方向を変えても進めない (数値誤差での停滞)。
             bool duplicate = false;
             for (int i = 0; i < simplex.size; ++i)
             {
@@ -442,13 +442,13 @@ namespace fbzz::physics
 
             simplex.Add(w);
 
-            // DoSimplex は原点を含むかを判定しつつ、単体を «原点に最も近い特徴» へ削る。
-            // 交差判定と同じ経路を使うことで、両者の «どこが最近傍か» の解釈を揃える。
+            /// @note DoSimplex は原点を含むかを判定しつつ、単体を «原点に最も近い特徴» へ削る。
+            ///       交差判定と同じ経路を使うことで、両者の «どこが最近傍か» の解釈を揃える。
             math::Vector3 unusedDirection;
             if (DoSimplex(simplex, unusedDirection))
             {
-                // GJK_Intersect が «離れている» と答えた後にここへ来るのは、
-                // 境界ぎわで単体が原点を含んだと判定した場合。隙間 0 として扱う。
+                /// @note GJK_Intersect が «離れている» と答えた後にここへ来るのは、
+                ///       境界ぎわで単体が原点を含んだと判定した場合。隙間 0 として扱う。
                 break;
             }
 

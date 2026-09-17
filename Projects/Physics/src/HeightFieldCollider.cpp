@@ -23,10 +23,9 @@ HeightFieldCollider::HeightFieldCollider(const std::vector<float>& heights,
 {
     assert(rows >= 2 && cols >= 2);
     assert(static_cast<int>(heights.size()) == rows * cols);
-    // WHY: BVH 三角形はワールド座標で格納するため、m_worldPos が確定する
-    //      UpdateWithScale() の初回呼び出しまで構築を遅延する。
-    //      ここで RebuildBVH() すると m_worldPos={0,0,0} のまま原点に三角形が配置され、
-    //      その後の UpdateWithScale() が「BVH あり」と判断して位置修正をスキップしてしまう。
+    /// @note BVH 三角形はワールド座標で格納するため構築を UpdateWithScale() の初回呼び出しまで
+    ///       遅延する。ここで RebuildBVH() すると m_worldPos={0,0,0} のまま原点に配置され、
+    ///       以後 UpdateWithScale() が «BVH あり» と判断して位置修正をスキップしてしまう。
 }
 
 void HeightFieldCollider::Update(const math::Vector3& worldPos,
@@ -49,8 +48,8 @@ void HeightFieldCollider::UpdateWithScale(const math::Vector3&    worldPos,
     m_worldRot   = worldRot;
     m_worldScale = worldScale;
 
-    // WHY: 初回呼び出し時は transform 変化がなくても BVH を構築する必要がある。
-    //      コンストラクタで構築しないため、ここが唯一の初期化パスになる。
+    /// @note コンストラクタでは構築しないため、初回呼び出しは transform 変化が無くても
+    ///       ここが唯一の初期化パスになる。
     if (m_bvh.triangles.empty()) {
         RebuildBVH();
         return;
@@ -58,14 +57,10 @@ void HeightFieldCollider::UpdateWithScale(const math::Vector3&    worldPos,
 
     if (!posChanged && !rotChanged && !scaleChanged) return;
 
-    // WHY 全再構築しないか: heightData が同じなら «どの三角形がどの葉に入るか» は
-    //      transform を掛けても妥当な空間分割のままで、作り直す必要があるのは境界だけ。
-    //      重心ソートを省いた分、13 万三角形でも一巡で済む。
-    //
-    //      以前はここで AABB «だけ» を測り直していたが、その計算は BVH に入っている
-    //      ワールド座標の頂点をそのまま舐めるだけで、新しい transform をどこにも通して
-    //      いなかった。結果として三角形も AABB も古い位置に居座り、エディタで地形を
-    //      動かすと当たり判定だけが元の場所に残っていた。
+    /// @note heightData が同じなら «どの三角形がどの葉に入るか» は transform を掛けても妥当な
+    ///       空間分割のままで、作り直すのは境界だけ。重心ソートを省き 13 万三角形でも一巡で済む。
+    /// @warning AABB だけを測り直す実装は避ける。BVH のワールド座標頂点をそのまま舐めるだけで
+    ///       新しい transform を反映せず、三角形も AABB も古い位置に残る。
     RefitTransform();
 }
 
@@ -106,7 +101,7 @@ void HeightFieldCollider::RebuildBVH()
             const math::Vector3 v01 = ToWorld(LocalVertex(x,     z + 1));
             const math::Vector3 v11 = ToWorld(LocalVertex(x + 1, z + 1));
 
-            // 下三角 (00, 01, 10)
+            /// @note 下三角 (00, 01, 10)
             {
                 Triangle tri;
                 tri.v[0] = v00; tri.v[1] = v01; tri.v[2] = v10;
@@ -128,7 +123,7 @@ void HeightFieldCollider::RebuildBVH()
                 }
             }
 
-            // 上三角 (10, 01, 11)
+            /// @note 上三角 (10, 01, 11)
             {
                 Triangle tri;
                 tri.v[0] = v10; tri.v[1] = v01; tri.v[2] = v11;
@@ -183,10 +178,9 @@ void HeightFieldCollider::RefitTransform()
     const int      cellsX  = m_cols - 1;
     const uint32_t cellMax = static_cast<uint32_t>(cellsX) * static_cast<uint32_t>(m_rows - 1);
 
-    // WHY index からセル位置を戻せるか: RebuildBVH は 1 セルにつき «下三角 → 上三角» の順で
-    //     index を振り、縮退三角形を捨てる場合でもカウンタは進める。BVHTree::Build は
-    //     triangles の並びを変えず、葉が持つインデックスだけを並べ替える。
-    //     つまり index は heightData の格子と 1:1 のままで、頂点を引き直せる。
+    /// @note RebuildBVH は 1 セルにつき «下三角→上三角» の順で index を振り、縮退三角形を
+    ///       捨てても index は進める。BVHTree::Build も triangles の並びを変えないため、
+    ///       index は heightData の格子と 1:1 のまま頂点を引き直せる。
     for (Triangle& tri : m_bvh.triangles) {
         const uint32_t cell = tri.index / 2u;
         if (cell >= cellMax) continue;
@@ -195,20 +189,20 @@ void HeightFieldCollider::RefitTransform()
         const int z = static_cast<int>(cell / static_cast<uint32_t>(cellsX));
 
         if ((tri.index % 2u) == 0u) {
-            // 下三角 (00, 01, 10)
+            /// @note 下三角 (00, 01, 10)
             tri.v[0] = ToWorld(LocalVertex(x,     z    ));
             tri.v[1] = ToWorld(LocalVertex(x,     z + 1));
             tri.v[2] = ToWorld(LocalVertex(x + 1, z    ));
         } else {
-            // 上三角 (10, 01, 11)
+            /// @note 上三角 (10, 01, 11)
             tri.v[0] = ToWorld(LocalVertex(x + 1, z    ));
             tri.v[1] = ToWorld(LocalVertex(x,     z + 1));
             tri.v[2] = ToWorld(LocalVertex(x + 1, z + 1));
         }
 
         const math::Vector3 cross = math::Vector3::Cross(tri.v[1] - tri.v[0], tri.v[2] - tri.v[0]);
-        // 縮退したものは BVH に入っていないが、スケール 0 を通ると一時的にここへ来る。
-        // 前の法線を残す方が «向きが未定義の面» より扱いを間違えにくい。
+        /// @note 縮退したものは BVH に入っていないが、スケール 0 を通ると一時的にここへ来る。
+        ///       前の法線を残す方が «向きが未定義の面» より扱いを間違えにくい。
         if (cross.LengthSq() >= 1e-10f) tri.normal = cross.Normalized();
     }
 

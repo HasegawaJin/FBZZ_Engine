@@ -22,7 +22,7 @@ protected:
     physics::RigidBody body;
 };
 
-// --- 積分 -------------------------------------------------------------------
+/// @name 積分
 
 TEST_F(RigidBodyTest, IntegratesVelocityFromTheAccumulatedForce)
 {
@@ -36,7 +36,7 @@ TEST_F(RigidBodyTest, IntegratesVelocityFromTheAccumulatedForce)
 
 TEST_F(RigidBodyTest, AdvancesPositionWithTheUpdatedVelocity)
 {
-    // 半陰的オイラー: 位置は «更新後» の速度で進む。陽的オイラーなら初速 0 のまま動かない。
+    /// @note 半陰的オイラー: 位置は «更新後» の速度で進む。陽的オイラーなら初速 0 のまま動かない。
     body.SetMass(1.0f);
     body.ApplyForce({10.0f, 0.0f, 0.0f});
 
@@ -47,7 +47,7 @@ TEST_F(RigidBodyTest, AdvancesPositionWithTheUpdatedVelocity)
 
 TEST_F(RigidBodyTest, ConsumesTheForceAfterASingleStep)
 {
-    // 力は «そのフレームだけ» の入力。持ち越すと押し続けたように加速していく。
+    /// @note 力は «そのフレームだけ» の入力。持ち越すと押し続けたように加速していく。
     body.SetMass(1.0f);
     body.ApplyForce({10.0f, 0.0f, 0.0f});
     body.Integrate(0.1f);
@@ -91,7 +91,7 @@ TEST_F(RigidBodyTest, StaticBodiesDoNotIntegrate)
 
 TEST_F(RigidBodyTest, KeepsTheRotationNormalizedWhileSpinning)
 {
-    // q_dot の加算は正規性を壊す。放置すると回転行列がスケールを持ち、モデルが伸びる。
+    /// @note q_dot の加算は正規性を壊す。放置すると回転行列がスケールを持ち、モデルが伸びる。
     body.SetAngularVelocity({0.0f, 10.0f, 0.0f});
 
     testkit::StepFixed([this](float dt) { body.Integrate(dt); }, 120);
@@ -99,7 +99,7 @@ TEST_F(RigidBodyTest, KeepsTheRotationNormalizedWhileSpinning)
     EXPECT_NEAR(body.GetRotation().Length(), 1.0f, testkit::kLooseTolerance);
 }
 
-// --- 質量 -------------------------------------------------------------------
+/// @name 質量
 
 TEST_F(RigidBodyTest, InverseMassIsTheReciprocalOfMass)
 {
@@ -126,7 +126,7 @@ TEST_F(RigidBodyTest, StaticBodiesReportZeroInverseMass)
 
 TEST_F(RigidBodyTest, NegativeMassAcceleratesAgainstTheAppliedForce)
 {
-    // 反重力演出のために負の質量を許している。0 に丸めていないことを固定する。
+    /// @note 反重力演出のために負の質量を許している。0 に丸めていないことを固定する。
     body.SetMass(-2.0f);
     body.ApplyForce({10.0f, 0.0f, 0.0f});
 
@@ -135,7 +135,7 @@ TEST_F(RigidBodyTest, NegativeMassAcceleratesAgainstTheAppliedForce)
     EXPECT_LT(body.GetVelocity().x, 0.0f);
 }
 
-// --- インパルス -------------------------------------------------------------
+/// @name インパルス
 
 TEST_F(RigidBodyTest, ImpulseChangesVelocityImmediately)
 {
@@ -157,7 +157,7 @@ TEST_F(RigidBodyTest, ImpulseAtTheCenterOfMassDoesNotSpinTheBody)
 
 TEST_F(RigidBodyTest, ImpulseOffTheCenterOfMassSpinsTheBody)
 {
-    // «端を殴れば回る»。重心へ入れると回らずに滑るだけになる。
+    /// @note «端を殴れば回る»。重心へ入れると回らずに滑るだけになる。
     body.SetMass(1.0f);
 
     body.ApplyImpulseAtPoint({0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
@@ -188,7 +188,7 @@ TEST_F(RigidBodyTest, ForceAtAPointAddsBothForceAndTorque)
     EXPECT_GT(body.GetAngularVelocity().LengthSq(), 0.0f);
 }
 
-// --- 慣性 -------------------------------------------------------------------
+/// @name 慣性
 
 TEST_F(RigidBodyTest, InertiaFromASphereIsIsotropic)
 {
@@ -204,7 +204,7 @@ TEST_F(RigidBodyTest, InertiaFromASphereIsIsotropic)
 
 TEST_F(RigidBodyTest, InertiaFromABoxResistsTheLongAxisTheLeast)
 {
-    // 細長い箱は «長い軸まわり» が一番回りやすい。ここが逆だと転倒の見た目が不自然になる。
+    /// @note 細長い箱は «長い軸まわり» が一番回りやすい。ここが逆だと転倒の見た目が不自然になる。
     physics::OBBCollider box({0.5f, 4.0f, 0.5f});
     body.SetMass(1.0f);
     body.SetInertiaFromCollider(&box);
@@ -224,7 +224,7 @@ TEST_F(RigidBodyTest, StaticBodiesHaveNoInverseInertia)
                      testkit::kTolerance);
 }
 
-// --- 軸ロック ---------------------------------------------------------------
+/// @name 軸ロック
 
 TEST_F(RigidBodyTest, FreezingAnAxisStopsMotionAlongIt)
 {
@@ -269,7 +269,7 @@ TEST_F(RigidBodyTest, SetPositionKeepsTheFrozenAxisWhereItWas)
     EXPECT_VEC3_NEAR(body.GetPosition(), math::Vector3(1.0f, 5.0f, 0.0f), testkit::kTolerance);
 }
 
-// --- スリープ ---------------------------------------------------------------
+/// @name スリープ
 
 TEST_F(RigidBodyTest, FallsAsleepOnlyAfterStayingSlowForTheFullDuration)
 {
@@ -301,7 +301,7 @@ TEST_F(RigidBodyTest, NeverSleepsWhenSleepingIsDisabled)
 
 TEST_F(RigidBodyTest, SleepingBodiesReportZeroInverseMass)
 {
-    // ソルバーは «動かせない相手» として扱う。ここが 0 でないと寝た剛体が押し返される。
+    /// @note ソルバーは «動かせない相手» として扱う。ここが 0 でないと寝た剛体が押し返される。
     body.SetMass(1.0f);
 
     body.Sleep();
@@ -344,7 +344,7 @@ TEST_F(RigidBodyTest, ApplyForceWakesASleepingBody)
 
 TEST_F(RigidBodyTest, GravityDoesNotWakeASleepingBody)
 {
-    // ApplyForceNoWake が起こしてしまうと、接地した剛体が永久に眠れない。
+    /// @note ApplyForceNoWake が起こしてしまうと、接地した剛体が永久に眠れない。
     body.Sleep();
 
     body.ApplyForceNoWake({0.0f, -9.81f, 0.0f});
@@ -361,7 +361,7 @@ TEST_F(RigidBodyTest, StaticBodiesNeverSleep)
     EXPECT_FALSE(body.IsSleeping());
 }
 
-// --- 回転の正規化 -----------------------------------------------------------
+/// @name 回転の正規化
 
 TEST_F(RigidBodyTest, SetRotationNormalizesTheGivenQuaternion)
 {

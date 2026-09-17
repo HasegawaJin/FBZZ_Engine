@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// WHY: プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得る。
-/// そのため更新間隔と明示リクエストで更新を間引き、昼夜変化だけを追従したい用途には
-/// DynamicSky、室内・配置物の反射には DynamicScene を提供する。
+/// プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得るため、更新間隔と
+/// 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
+/// DynamicScene を使う。
 #include "GeometryPasses.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -88,9 +88,9 @@ void RenderSkyFace(RenderPassContext& ctx, const math::Vector3& position, uint32
 void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
                      const math::Vector3& position, uint32_t face)
 {
-    // WHAT: DynamicScene は通常 MeshRenderer の不透明・半透明マテリアルを既存 MaterialComponent
-    //       経路で描く。キャプチャ自身は反射へ混入させない。スキンドメッシュ・粒子・UI は時間依存で
-    //       コストも大きいため対象外とし、必要なら更新間隔を短くした専用プローブを配置する。
+    /// @note DynamicScene は MeshRenderer の不透明・半透明マテリアルを既存 MaterialComponent 経路で
+    ///       描く。キャプチャ自身は反射へ混入させない。スキンドメッシュ・粒子・UI は時間依存でコストも
+    ///       大きいため対象外とし、必要なら更新間隔を短くした専用プローブを配置する。
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
     const math::Matrix4 projection = math::Matrix4::Perspective(math::ToRad(90.0f), 1.0f, 0.1f, 500.0f);
@@ -136,17 +136,13 @@ void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
         for (size_t i = 0; i < gpuMaterial->textures.size() && i < 8; ++i)
             if (gpuMaterial->textures[i].IsValid()) draw.textures[i] = gpuMaterial->textures[i];
         draw.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-        // 点光源まわり (b9 / t29 / t30 / b12 / t28 / t31) をまとめて束縛する。
-        //
-        // WHY プローブ捕捉でも要るか: ここで描くのは通常のマテリアルシェーダーで、
-        //     定数バッファの束縛は直前のパスのものが残る一方、テクスチャ SRV は
-        //     ドローごとにクリアされる。片方だけ生きている状態になると、
-        //     シャドウなら「深度 0 = 完全な影」で捕捉結果が真っ黒になり、
-        //     ライト配列なら「本数は残っているのに中身が全部ゼロ」で点光源が消える。
-        //
-        // WHY Linear を強制するか: ここはキューブ面ごとにプローブ位置から描いており、
-        //     メインカメラの視錐台に対して作られたクラスタリストとは対応が取れない。
-        //     そのまま引くと、画面の別の場所のライトが焼き込まれる。
+        /// @note 点光源まわり (b9/t29/t30/b12/t28/t31) を明示的に束縛し直す。定数バッファは直前
+        ///       パスのものが残る一方 SRV はドローごとにクリアされるため、片方だけ残ると影が
+        ///       全て黒 (深度 0) になったり、点光源の本数だけ残って中身がゼロになったりする。
+        ///
+        /// @note forceLinearLights=true でクラスタリングを使わない。ここはキューブ面ごとに
+        ///       プローブ位置から描くため、メインカメラの視錐台向けクラスタリストとは対応が
+        ///       取れず、そのまま使うと画面の別の場所のライトが焼き込まれる。
         BindForwardShadingResources(draw, ctx, /*forceLinearLights=*/true);
         ctx.renderer.Submit(draw, resources);
     }

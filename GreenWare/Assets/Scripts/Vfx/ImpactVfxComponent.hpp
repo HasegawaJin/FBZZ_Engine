@@ -3,16 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY .vfx 側の «公開パラメーター» を廃してスクリプトにするか:
-///   旧実装は文字列 (`schemaPath`) でノードのフィールドを指しており、型が効かなかった。
-///   スクリプトの公開フィールドにすると、範囲・ツールチップ・グループの宣言も
-///   ここ 1 箇所で決まり、Inspector と呼び出し側が同じ定義を見る。
-///
-/// WHY OnStart ではなく Apply() で当てるか:
-///   この演出はプールから借りて何度も鳴らす。生成時に 1 度だけ当てる作りだと、
-///   2 発目以降は 1 発目の色と強さのまま鳴る (旧実装が毎回 reloadRequested を
-///   立てていたのはこの問題を «作り直す» ことで回避していた)。
-///   撃つ側が値を書いてから Apply() を呼ぶ形にすれば、作り直さずに済む。
+/// @note .vfx 側の «公開パラメーター» ではなくスクリプトの公開フィールドで持つ。
+///       型・範囲・ツールチップの宣言がここ 1 箇所で決まり、Inspector と呼び出し側が
+///       同じ定義を見る。
+/// @note OnStart ではなく Apply() で当てる。この演出はプールから借りて何度も鳴らすため、
+///       生成時に 1 度だけ当てる作りだと 2 発目以降が 1 発目の値のまま鳴る。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -55,8 +50,8 @@ inline void ImpactVfxComponent::Apply()
     if (self == nullptr) return;
     GameObject& root = *self;
 
-    // 色が乗るのは «光っている» 層だけ。火花 (Sparks) と煙 (Debris Smoke) は
-    // 熱を持って飛ぶ «物» なので無彩色のまま残す。
+    /// @note 色が乗るのは «光っている» 層だけ。火花 (Sparks) と煙 (Debris Smoke) は
+    ///       熱を持って飛ぶ «物» なので無彩色のまま残す。
     vfxbind::ParticleColor(root, "Flash Core", tintColor);
     vfxbind::ParticleColor(root, "Splash",     tintColor);
     vfxbind::ParticleColor(root, "Blast Core", tintColor);

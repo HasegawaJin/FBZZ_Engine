@@ -23,7 +23,7 @@ std::string LowerCopy(std::string_view s)
 
 std::vector<BusDesc> DefaultBusLayout()
 {
-    // SE と Voice だけが残響を受ける。BGM と UI は空間に置かれた音ではないので素通し。
+    /// @note SE と Voice だけが残響を受ける。BGM と UI は空間に置かれた音ではないので素通し。
     return {
         BusDesc{ kMasterBusName, {},             1.0f, 1.0f, false },
         BusDesc{ "BGM",          kMasterBusName, 1.0f, 1.0f, false },
@@ -38,7 +38,7 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
     std::vector<BusDesc> unique;
     std::unordered_map<std::string, size_t> indexByName;
 
-    // Master は必ず先頭に 1 本だけ存在させる。入力に無ければ既定値で補う。
+    /// @note Master は必ず先頭に 1 本だけ存在させる。入力に無ければ既定値で補う。
     unique.push_back(BusDesc{ kMasterBusName, {}, 1.0f, 1.0f, false });
     indexByName[LowerCopy(kMasterBusName)] = 0;
 
@@ -59,10 +59,8 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
     }
     unique[0].parent.clear();
 
-    // 親を先に出す順序へ並べ替える。親が未解決のまま一巡したら Master 直下へ倒す。
-    // WHY 倒すか: 綴り違いや循環で 1 本でも構築に失敗すると、そのバスへ送る音が
-    //     まるごと無音になる。設定ミスは「意図しない場所で鳴る」で済ませ、
-    //     「原因の分からない無音」にはしない。
+    /// @note 親を先に出す順序へ並べ替え、親が未解決のまま一巡したら Master 直下へ倒す。
+    ///       綴り違いや循環による無音を「意図しない場所で鳴る」で済ませるため。
     std::vector<BusDesc> ordered;
     std::vector<bool> emitted(unique.size(), false);
     ordered.reserve(unique.size());

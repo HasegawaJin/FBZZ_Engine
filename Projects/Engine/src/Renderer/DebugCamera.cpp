@@ -14,7 +14,7 @@ namespace fbzz::renderer {
 
 namespace {
 
-// 縦画角の半分の tangent。正投影の「見えている縦幅」と焦点距離の換算に使う。
+/// 縦画角の半分の tangent。正投影の「見えている縦幅」と焦点距離の換算に使う。
 float HalfFovTan(float fovYDeg) {
     return std::tan(math::ToRad(fovYDeg) * 0.5f);
 }
@@ -29,7 +29,7 @@ void DebugCamera::LookAt(const math::Vector3& target) {
     m_pivot         = target;
     m_dollyVelocity = 0.0f;
     ApplyRotation();
-    // 正投影は「引き」がそのまま near クリップの余裕なので、狙った点を中央へ置き直す。
+    /// @note 正投影は「引き」がそのまま near クリップの余裕なので、狙った点を中央へ置き直す。
     if (camera.m_projection == ProjectionMode::Orthographic)
         RepositionFromPivot();
 }
@@ -51,8 +51,8 @@ void DebugCamera::RepositionFromPivot() {
 void DebugCamera::SetProjection(ProjectionMode mode) {
     if (camera.m_projection == mode) return;
 
-    // WHY 画角を引き継ぐか: 切り替えた瞬間に対象の大きさが変わると、
-    //     どこを見ているのか分からなくなる。ピボット位置での見かけの縦幅を保つ。
+    /// @note 切り替えた瞬間に対象の大きさが変わると迷子になるため、画角を引き継ぎ
+    ///       ピボット位置での見かけの縦幅を保つ。
     const float halfTan = HalfFovTan(camera.m_fovY);
     if (mode == ProjectionMode::Orthographic) {
         camera.m_orthoHeight = math::Max(0.01f, 2.0f * m_focusDistance * halfTan);
@@ -73,8 +73,8 @@ void DebugCamera::ApplyRotation() {
 }
 
 void DebugCamera::ApplyDolly(float dt) {
-    // 正投影は前後移動で見え方が変わらないため、ホイールはズーム (m_orthoHeight) が
-    // 受け持つ。ここでドリーを効かせると「動いているのに何も起きない」操作になる。
+    /// @note 正投影は前後移動で見え方が変わらないため、ホイールはズーム (m_orthoHeight) が
+    ///       受け持つ。ここでドリーを効かせると「動いているのに何も起きない」操作になる。
     if (camera.m_projection == ProjectionMode::Orthographic) {
         m_dollyVelocity = 0.0f;
         return;
@@ -105,7 +105,7 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
 
     if (viewportHovered) {
         if (ortho) {
-            // 倍率で拡縮する。引き算にすると、寄るほど 1 ノッチの効きが荒くなる。
+            /// @note 倍率で拡縮する。引き算にすると、寄るほど 1 ノッチの効きが荒くなる。
             camera.m_orthoHeight = math::Clamp(
                 camera.m_orthoHeight * std::exp(-scroll * 0.15f), 0.01f, 100000.0f);
         } else {
@@ -113,10 +113,10 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         }
     }
 
-    // パンの効き。正投影では焦点距離が画角と無関係になるので、見えている縦幅を基準にする。
+    /// @note パンの効き。正投影では焦点距離が画角と無関係になるので、見えている縦幅を基準にする。
     const float panRef = ortho ? camera.m_orthoHeight * 0.5f : m_focusDistance;
 
-    // --- 中ドラッグ : オービット回転 / Shift+中 : パン ---
+    /// @name 中ドラッグ : オービット回転 / Shift+中 : パン
     if (mmb) {
         if (shiftHeld) {
             const float panScale = panRef * panSensitivity;
@@ -134,7 +134,7 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         return;
     }
 
-    // --- Alt + 左ドラッグ : オービット回転 (Unity 互換) ---
+    /// @name Alt + 左ドラッグ : オービット回転 (Unity 互換)
     if (altHeld && lmb) {
         m_yaw   += mouseDelta.x * mouseSens;
         m_pitch += mouseDelta.y * mouseSens;
@@ -145,7 +145,7 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         return;
     }
 
-    // --- 右ドラッグ : FPS ルック + フライ ---
+    /// @name 右ドラッグ : FPS ルック + フライ
     if (rmb) {
         m_yaw   += mouseDelta.x * mouseSens;
         m_pitch += mouseDelta.y * mouseSens;
@@ -174,7 +174,7 @@ void DebugCamera::Update(float dt, bool viewportHovered) {
         return;
     }
 
-    // --- フリー : ドリーのみ ---
+    /// @name フリー : ドリーのみ
     m_pivot = camera.m_position + camera.GetForward() * ViewDistance();
     ApplyDolly(dt);
 }

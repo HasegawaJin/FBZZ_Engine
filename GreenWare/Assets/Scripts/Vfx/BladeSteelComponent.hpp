@@ -6,23 +6,11 @@
 /// シーンへは付けない。PlayerComponent が内部モジュールとして持つ。
 /// BladeComponent と PlayerParryComponent へ問い合わせるだけで、どちらの挙動にも触らない。
 ///
-/// WHY BladeChargeGlow と分けるか:
-///   あちらが書くのは芯 (M_SwordCore) と刻印 (M_SwordMark) の «自発光の強さ» で、
-///   材質は SkinnedPBR ─ 光るか光らないかしかない。こちらが書くのは刀身
-///   (M_SwordBlade / SkinnedBladeSteel) の刃文・帯・縁で、扱う量も材質も別。
-///   1 つに混ぜると «芯だけ光らせたい» と «刃だけ焼きたい» が同じスロット探索を
-///   奪い合い、どちらかが必ず相手の材質へ書こうとして黙って捨てられる。
-///
-/// WHY 4 つの状態を «熱» という 1 本の軸へ集めるか:
-///   溜め・振り・連撃・弾きはそれぞれ別の出来事だが、画面に出る場所は同じ刀身 1 本。
-///   別々の色と別々の見せ方を割り当てると、4 つが重なったフレームで刀が
-///   «何色でもない明るい棒» になる。強さ (熱) は足し合わせても意味が壊れず、
-///   上限へ着いたことは色ではなく白 (whiteHeat) で言う。
-///
-/// WHY 振りだけ «位置» を持つか:
-///   溜めも連撃も «量» なので明るさで足りるが、振りは方向のある出来事で、
-///   量にすると «振った» と «溜めた» が同じ顔になる。柄から切先へ抜ける帯は
-///   刃の向きそのものを描くので、量では出せない情報を 1 つだけ持つ。
+/// @note BladeChargeGlow とは書く材質・量が別のため分ける (あちらは芯/刻印の自発光の
+///       強さのみ、こちらは刀身の刃文・帯・縁)。混ぜると同じスロット探索を奪い合い黙って
+///       捨てられる。溜め・振り・連撃・弾きは同じ刀身 1 本に出るため熱という 1 軸に足し
+///       合わせ、上限到達は色でなく白 (whiteHeat) で言う。振りだけは «位置» を持つ: 柄から
+///       切先へ抜ける帯が量では出せない刃の向きを描くため。
 #pragma once
 
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -43,11 +31,11 @@ using fbzz::Time;
 
 namespace sandbox {
 
-// SkinnedBladeSteel.hlsl の cbuffer 変数名。
-//
-// WHY 名前を 1 箇所へ置くか: MaterialInstance はシェーダーのリフレクション名を
-//     検証して、合わなければ «黙って» 書き込みを捨てる。綴りが散ると、直した
-//     つもりの片方だけが効かないという形で壊れる (GlowMaterial.hpp と同じ判断)。
+/// SkinnedBladeSteel.hlsl の cbuffer 変数名。
+///
+/// @note MaterialInstance はシェーダーのリフレクション名を検証し合わなければ黙って
+///       書き込みを捨てるため、綴りが散ると直したつもりの片方だけ効かない壊れ方をする
+///       (GlowMaterial.hpp と同じ判断)。名前を 1 箇所へ置く。
 inline constexpr MaterialPropertyId kHamonHeatId     { "hamonHeat" };
 inline constexpr MaterialPropertyId kWhiteHeatId     { "whiteHeat" };
 inline constexpr MaterialPropertyId kSweepPosId      { "sweepPos" };
@@ -68,9 +56,9 @@ public:
     FBZZ_FIELD_RANGE(float, steelHamonFlash, 5.2f, "Full Flash", 0.0f, 20.0f)
     FBZZ_TOOLTIP("満溜めに «届いた瞬間» だけの焼き。しきい値を越えるので刃が滲む")
     FBZZ_FIELD_RANGE(float, steelHamonFlashSeconds, 0.14f, "Full Flash Time", 0.0f, 0.6f)
-    // WHY 溜め比をそのまま使わないか: 震え・パッド・歪み・芯の発光はすべて比の 2 乗で
-    //     立ち上がる (DriveCharge / BladeChargeGlow)。刃だけ線形にすると、前半は
-    //     «焼けているのに何も起きない»、終盤は «手だけ来て刃が追いつかない» になる。
+    /// @note 震え・パッド・歪み・芯の発光は比の 2 乗で立ち上がる (DriveCharge /
+    ///       BladeChargeGlow) ため、刃も同じ曲線に乗せる。線形だと前半 «焼けているのに
+    ///       何も起きない»、終盤 «手だけ来て刃が追いつかない» になる。
     FBZZ_FIELD_RANGE(float, steelHamonCurve, 2.0f, "Curve", 0.5f, 4.0f)
 
     FBZZ_GROUP("Blade Steel — 振り")
@@ -100,8 +88,8 @@ public:
     FBZZ_FIELD_RANGE(float, steelParryFlashSeconds, 0.22f, "弾きの残り [秒]", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, steelExecuteFlash, 8.4f, "とどめ", 0.0f, 24.0f)
     FBZZ_FIELD_RANGE(float, steelExecuteFlashSeconds, 0.45f, "とどめの残り [秒]", 0.0f, 2.0f)
-    // WHY 拍に乗った一振りでも刃を光らせるか: 拍の合図が音だけだと、音を切って遊ぶ人には
-    //     «今のは乗った» が届かない。目が向いている刃そのものが一瞬白むと、見るだけで分かる。
+    /// @note 拍の合図が音だけだと、音を切って遊ぶ人には «今のは乗った» が届かないため、
+    ///       目が向いている刃そのものを一瞬白ませて見るだけで分かるようにする。
     FBZZ_FIELD_RANGE(float, steelBeatFlash, 3.2f, "拍に乗った", 0.0f, 20.0f)
     FBZZ_FIELD_RANGE(float, steelBeatFlashSeconds, 0.12f, "拍の残り [秒]", 0.0f, 1.0f)
 
@@ -197,9 +185,9 @@ inline void BladeSteelComponent::OnStart()
     m_fullFlash   = 0.0f;
     m_eventFlash  = 0.0f;
     m_eventLevel  = 0.0f;
-    // WHY 0 から始めず今の回数を控えるか: 弾きの回数はステージを跨いでも
-    //     リセットされない。0 から始めると、シーンを読み直した最初のフレームに
-    //     «これまでの全部» が一度に起きたことになって刀が白く飛ぶ。
+    /// @note 0 からでなく今の回数を控える。弾きの回数はステージを跨いでもリセットされない
+    ///       ため、0 から始めるとシーンを読み直した最初のフレームに «これまでの全部» が
+    ///       一度に起きたことになり刀が白く飛ぶ。
     m_lastParries    = m_parry ? m_parry->ParryCount()     : 0;
     m_lastJust       = m_parry ? m_parry->JustParryCount() : 0;
     m_lastExecutions = m_parry ? m_parry->ExecuteCount()   : 0;
@@ -224,9 +212,9 @@ inline void BladeSteelComponent::Collect(HandSide hand)
     auto* materials = sword->GetComponent<MaterialComponent>();
     if (!materials) return;
 
-    // スロット 0 は MaterialComponent 自身、1 以降が extraSlots。番号ではなく
-    // .mat のパスで選ぶ ─ FBX を差し替えて submesh の順が変わっても、番号は
-    // 無効にならないので «鋼でない所へ書いている» に気付けない。
+    /// @note スロット 0 は MaterialComponent 自身、1 以降が extraSlots。番号ではなく
+    ///       .mat のパスで選ぶ ─ FBX を差し替えて submesh の順が変わっても、番号は
+    ///       無効にならないので «鋼でない所へ書いている» に気付けない。
     const std::size_t count = materials->SlotCount();
     for (std::size_t i = 0; i < count; ++i) {
         if (!Matches(materials->RawSlotAt(i).materialPath)) continue;
@@ -234,8 +222,8 @@ inline void BladeSteelComponent::Collect(HandSide hand)
         Slot entry{ EntityRef{ sword->GetID() }, static_cast<uint32_t>(i) };
         const MaterialInstance instance = material.Instance(entry.target, entry.slot);
         if (!instance.IsValid()) continue;
-        // 刀身以外の材質が同じ名前で引っ掛かっても、SkinnedBladeSteel の変数を
-        // 持たない限りここで落ちる (書いても捨てられるスロットを抱えない)。
+        /// @note 刀身以外の材質が同じ名前で引っ掛かっても、SkinnedBladeSteel の変数を
+        ///       持たない限りここで落ちる (書いても捨てられるスロットを抱えない)。
         if (!instance.HasProperty(kHamonHeatId)) continue;
         (void)instance.TryGetFloat(kHamonHeatId,      entry.baseHeat);
         (void)instance.TryGetFloat(kWhiteHeatId,    entry.baseTemperature);
@@ -252,10 +240,11 @@ inline void BladeSteelComponent::Drive(HandSide hand, float heat, float temperat
 
     const bool running = blade.sweep >= 0.0f && steelSweepSeconds > 0.0f;
     const bool want = heat > 0.0f || temperature > 0.0f || rim > 0.0f || running;
-    if (!want && !blade.writing) return;   // 書いていないなら戻すものも無い
+    /// @note 書いていないなら戻すものも無い
+    if (!want && !blade.writing) return;
 
-    // 帯は柄の少し手前から切先の少し先まで抜ける。端で丁度 0/1 に止めると、
-    // 出る瞬間と消える瞬間に «刃の端で光が湧く» が見えてしまう。
+    /// @note 帯は柄の少し手前から切先の少し先まで抜ける。端で丁度 0/1 に止めると、
+    ///       出る瞬間と消える瞬間に «刃の端で光が湧く» が見えてしまう。
     float sweepPos = -1.0f;
     if (running) {
         const float t = Clamp01(blade.sweep / Max(steelSweepSeconds, 1.0e-3f));
@@ -288,7 +277,7 @@ inline void BladeSteelComponent::OnUpdate()
 
     const float dt = Max(Time::deltaTime, 0.0f);
 
-    // 抜刀で後から現れる。空のあいだだけ探しに行き、見つかったら止まる。
+    /// @note 抜刀で後から現れる。空のあいだだけ探しに行き、見つかったら止まる。
     const HandSide hands[] = { HandSide::Right };
     int found = 0;
     for (const HandSide hand : hands) {
@@ -297,19 +286,15 @@ inline void BladeSteelComponent::OnUpdate()
     }
     debugSteelSlots = found;
 
-    // ── 振った瞬間 ──────────────────────────────────────────────────────────
-    // 帯は一撃につき 1 本。振っている «あいだ» 流し続けると、硬直のあいだも
-    // 走り続けて «次が振れる» と読み違える。
-    //
-    // WHY «振っているか» の立ち上がりではなく振り出しの番号で取るか (2026-09-12):
-    //     連撃では硬直が明けたフレームのうちに次の段が振り出されるので、IsSwinging は
-    //     一度も false にならない。立ち上がりで取っていた頃は、帯が 1 段目にしか走らず
-    //     2 段目以降の刃は冷たいままだった。
+    /// @name 振った瞬間
+    /// @note 帯は一撃につき 1 本、振り出しの番号 (SwingSerial) が変わったフレームで走らせる。
+    ///       連撃は硬直明けの同フレームで次段へ入り IsSwinging が常に true のままなので、
+    ///       立ち上がり検出では帯が 1 段目にしか走らなかった (2026-09-12)。
     const bool swinging = m_blades->IsSwinging();
     const int  serial   = m_blades->SwingSerial();
     if (serial != m_lastSwingSerial) {
         m_lastSwingSerial = serial;
-        // 拍に乗った振り出しは刃が一瞬白む。弾き・とどめの閃光が走っている間はそちらに譲る。
+        /// @note 拍に乗った振り出しは刃が一瞬白む。弾き・とどめの閃光が走っている間はそちらに譲る。
         if (m_blades->IsOnBeatSwing() && m_eventFlash <= 0.0f
             && steelBeatFlash > 0.0f && steelBeatFlashSeconds > 0.0f) {
             m_eventLevel        = steelBeatFlash;
@@ -317,8 +302,8 @@ inline void BladeSteelComponent::OnUpdate()
             m_eventFlash        = steelBeatFlashSeconds;
         }
         const BladeSide swung = m_blades->SwingSide();
-        // 溜め斬りは体ごと回る全周の一撃なので、枠を左右とも走らせる。刀は 1 本なので
-        // 片方は空振りするが、走らせ損ねるより害が無い (両手剣へ替えた名残)。
+        /// @note 溜め斬りは体ごと回る全周の一撃なので、枠を左右とも走らせる。刀は 1 本なので
+        ///       片方は空振りするが、走らせ損ねるより害が無い (両手剣へ替えた名残)。
         if (m_blades->IsCharged()) {
             for (Blade& blade : m_hands) blade.sweep = 0.0f;
         } else if (swung != BladeSide::None) {
@@ -327,7 +312,7 @@ inline void BladeSteelComponent::OnUpdate()
     }
     m_wasSwinging = swinging;
 
-    // ── 溜め ────────────────────────────────────────────────────────────────
+    /// @name 溜め
     const float     ratio   = Clamp01(m_blades->ChargeRatio());
     const BladeSide holding = m_blades->ChargingSide();
     const bool      reached = ratio >= 1.0f && m_lastRatio < 1.0f;
@@ -342,15 +327,15 @@ inline void BladeSteelComponent::OnUpdate()
         ? Max(steelHamonFlash, 0.0f) * (m_fullFlash / Max(steelHamonFlashSeconds, 1.0e-3f))
         : 0.0f;
 
-    // ── 弾き / とどめ ───────────────────────────────────────────────────────
-    // WHY 回数の差で取るか: どちらも 1 フレームの出来事で、通知を受け取る形にすると
-    //     更新順によって取り逃がす。差なら «今フレームに起きたか» が順に依らない。
+    /// @name 弾き / とどめ
+    /// @note 回数の差で取る。どちらも 1 フレームの出来事で通知を受け取る形にすると更新順
+    ///       によって取り逃がすが、差なら «今フレームに起きたか» が順に依らない。
     if (m_parry) {
         const int parries    = m_parry->ParryCount();
         const int justs      = m_parry->JustParryCount();
         const int executions = m_parry->ExecuteCount();
-        // とどめ > 読み切り > 弾き。同じフレームに 2 つ起きたら重い方だけを出す ─
-        // 足すと «とどめ + 弾き» のフレームだけ 2 段跳ねて、そこだけ白飛びする。
+        /// @note とどめ > 読み切り > 弾き。同じフレームに 2 つ起きたら重い方だけを出す ─
+        ///       足すと «とどめ + 弾き» のフレームだけ 2 段跳ねて、そこだけ白飛びする。
         float level   = 0.0f;
         float seconds = 0.0f;
         if (executions > m_lastExecutions) {
@@ -378,9 +363,9 @@ inline void BladeSteelComponent::OnUpdate()
         : 0.0f;
     const bool guarding = m_parry && m_parry->IsParryActive();
 
-    // ── 連撃 ────────────────────────────────────────────────────────────────
-    // 段は振っているあいだだけ読む。硬直で段が残っていても刀は冷めていくので、
-    // «続いている» の絵は帯が置いた熱 (afterHeat) が持つ。
+    /// @name 連撃
+    /// @note 段は振っているあいだだけ読む。硬直で段が残っていても刀は冷めていくので、
+    ///       «続いている» の絵は帯が置いた熱 (afterHeat) が持つ。
     const int   step      = swinging ? Max(m_blades->ComboStep(), 0) : 0;
     const bool  finisher  = swinging && m_blades->IsFinisherSwing();
     const float comboHeat = static_cast<float>(step) * Max(steelComboHeat, 0.0f);
@@ -396,22 +381,22 @@ inline void BladeSteelComponent::OnUpdate()
             blade.sweep += dt;
             if (steelSweepSeconds <= 0.0f || blade.sweep > steelSweepSeconds) {
                 blade.sweep = -1.0f;
-                // 抜け切った帯は刃へ熱を置いていく。ここで初めて «温まった» が残る。
+                /// @note 抜け切った帯は刃へ熱を置いていく。ここで初めて «温まった» が残る。
                 blade.afterHeat = 1.0f;
             }
         }
-        // 置かれた熱は帯と同じ時間で引く。長く残すと、連撃の間に冷めきらず
-        // «振っていないのに焼けている» が定常になって、溜めとの差が消える。
+        /// @note 置かれた熱は帯と同じ時間で引く。長く残すと、連撃の間に冷めきらず
+        ///       «振っていないのに焼けている» が定常になって、溜めとの差が消える。
         blade.afterHeat = steelSweepSeconds > 0.0f
             ? Max(blade.afterHeat - dt / Max(steelSweepSeconds * 3.0f, 1.0e-3f), 0.0f)
             : 0.0f;
 
-        // 溜めているのは片手だけ。Flux (押していない満溜め) はまだどちらを振るか
-        // 決まっていないので両手 ─ BladeChargeGlow の芯の色と同じ扱いにする。
+        /// @note 溜めているのは片手だけ。Flux (押していない満溜め) はまだどちらを振るか
+        ///       決まっていないので両手 ─ BladeChargeGlow の芯の色と同じ扱いにする。
         const bool charging = holding != BladeSide::None
                             ? (HandOf(holding) == hand) : (ratio > 0.0f);
 
-        // 熱は «最も強いもの» を採る。足すと溜め切って振った瞬間だけ 2 段跳ねる。
+        /// @note 熱は «最も強いもの» を採る。足すと溜め切って振った瞬間だけ 2 段跳ねる。
         float heat = Max(steelHamonIdle, 0.0f);
         if (charging) heat = Max(heat, Max(charged, fullFlash));
         heat = Max(heat, blade.afterHeat * Max(steelSweepHeat, 0.0f));
@@ -419,15 +404,15 @@ inline void BladeSteelComponent::OnUpdate()
         if (guarding) heat = Max(heat, Max(steelGuardHeat, 0.0f));
         heat = Max(heat, eventFlash);
 
-        // 白へ寄せるのは «上限に着いた» ときだけ。溜め切り・締め・弾きの閃光が
-        // それに当たる。橙のまま明るくしても «もっと熱い» にしかならない。
+        /// @note 白へ寄せるのは «上限に着いた» ときだけ。溜め切り・締め・弾きの閃光が
+        ///       それに当たる。橙のまま明るくしても «もっと熱い» にしかならない。
         float temperature = comboTemp;
         if (charging && fullFlash > 0.0f)
             temperature = Max(temperature, Clamp01(fullFlash / Max(steelHamonFlash, 1.0e-3f)));
         if (eventFlash > 0.0f)
             temperature = Max(temperature, Clamp01(eventFlash / Max(m_eventLevel, 1.0e-3f)));
 
-        // 縁は «次の一振りが重い» の札。Flux は押していなくても立つ。
+        /// @note 縁は «次の一振りが重い» の札。Flux は押していなくても立つ。
         const float rim = (charging && (ratio >= 1.0f || m_blades->HasFlux()))
                         ? Max(steelRimReady, 0.0f) : 0.0f;
 

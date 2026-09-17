@@ -3,14 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
 ///
-/// WHY: 屋外シーンに広い起伏地形を置くには、個別の MeshRenderer では頂点データ管理と
-/// 高さクエリ（キャラクター・Physics）が分散してしまう。
-/// TerrainComponent に heightData / splatData を一元管理させ、
-/// TerrainRenderPass がチャンク分割と GPU 転送を行う構造にすることで
-/// 「データ所有」と「描画戦略」を分離する。
-///
-/// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .mat で管理する。
-/// WHY: レイヤーごとに独立した .mat にすることで複数地形間でマテリアルを再利用できる。
+/// TerrainComponent が heightData / splatData を一元管理し、TerrainRenderPass がチャンク分割と
+/// GPU 転送を行うことで「データ所有」と「描画戦略」を分離する。各レイヤーのテクスチャ・
+/// タイリング・roughness 等は layerMaterials[4] が指す .mat で管理し、地形間で再利用できる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -26,56 +21,55 @@
 
 namespace fbzz::scene {
 
-// =============================================================================
-// TerrainComponent — 地形の全データ
-// =============================================================================
+/// @brief 地形の全データ。
 struct TerrainComponent {
-    // ── ハイトマップ (CPU) ─────────────────────────────────────────────────────
-    // row-major: index = z * columns + x
-    // 値域 [-1, 1] → ワールド高さ = value * maxHeight
-    // WHY: 0 を「フラットな基準面」とし、Lower ブラシで地面を基準面より下へ掘れるようにする。
-    //      maxHeight は正負両方向の最大振幅として扱う。
+    /// @name ハイトマップ (CPU)
+    /// @{
+    /// @brief row-major: index = z * columns + x。値域 [-1, 1] → ワールド高さ = value * maxHeight。
+    /// @note 0 を「フラットな基準面」とし、Lower ブラシで基準面より下へ掘れるようにする。
+    ///       maxHeight は正負両方向の最大振幅として扱う。
     std::vector<float> heightData;
 
-    int   columns   = 65;    // X 方向の頂点数（2^n + 1 推奨: チャンク境界整合・LOD 二分割容易）
-    int   rows      = 65;    // Z 方向の頂点数
-    float cellSize  = 2.0f;  // 1 マスのワールド単位幅 [m]
-    float maxHeight = 20.0f; // heightData=1 のときのワールド高さ [m]
+    int   columns   = 65;    ///< X 方向の頂点数 (2^n + 1 推奨: チャンク境界整合・LOD 二分割容易)
+    int   rows      = 65;    ///< Z 方向の頂点数
+    float cellSize  = 2.0f;  ///< 1 マスのワールド単位幅 [m]
+    float maxHeight = 20.0f; ///< heightData=1 のときのワールド高さ [m]
+    /// @}
 
-    // ── スプラットマップ (CPU, RGBA8 unorm) ────────────────────────────────────
-    // index = (z * columns + x) * 4 + channel  (0=R 1=G 2=B 3=A)
-    // R=layer0, G=layer1, B=layer2, A=layer3, 各チャンネルは [0, 255]
-    // WHY: 4 チャンネルの合計が 255 になるよう正規化する。
-    //      シェーダーが除算するため float 変換は描画時に行い、CPU では uint8 のまま保持する。
+    /// @name スプラットマップ (CPU, RGBA8 unorm)
+    /// @{
+    /// @brief index = (z * columns + x) * 4 + channel (0=R 1=G 2=B 3=A)。R=layer0, G=layer1,
+    ///        B=layer2, A=layer3、各チャンネルは [0, 255]。
+    /// @note 4 チャンネルの合計が 255 になるよう正規化する。シェーダーが除算するため float 変換は
+    ///       描画時に行い、CPU では uint8 のまま保持する。
     std::vector<uint8_t> splatData;
+    /// @}
 
-    // ── 外部 Terrain Asset ─────────────────────────────────────────────────────
-    // Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
-    // WHY: 大きい地形では heightData / splatData がシーンファイルを肥大化させるため、
-    //      Prefab や Scene には参照だけを残し、重い編集データは専用アセットへ分離する。
+    /// @brief Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
+    /// @note 大きい地形では heightData / splatData がシーンファイルを肥大化させるため、
+    ///       Prefab や Scene には参照だけを残し、重い編集データは専用アセットへ分離する。
     std::string terrainAssetPath;
 
-    // ── レイヤーマテリアル参照 (4 レイヤー) ───────────────────────────────────
-    // 各要素が独立した .mat を指す。fzmat keys: "diffuse", "normal", "ao_roughness",
-    // "tilingX", "tilingZ", "normalStrength", "roughness", "ambientOcclusion",
-    // "autoBlendEnabled", "autoBlendStrength", "autoMinHeight", "autoMaxHeight",
-    // "autoHeightFade", "autoMinSlope", "autoMaxSlope", "autoSlopeFade"
+    /// @brief レイヤーマテリアル参照 (4 レイヤー)。各要素が独立した .mat を指す。
+    /// @note fzmat keys: diffuse/normal/ao_roughness/tilingX/tilingZ/normalStrength/roughness/
+    ///       ambientOcclusion/autoBlendEnabled/autoBlendStrength/autoMinHeight/autoMaxHeight/
+    ///       autoHeightFade/autoMinSlope/autoMaxSlope/autoSlopeFade
     std::array<std::string, 4> layerMaterials;
 
-    // ── チャンク設定 ────────────────────────────────────────────────────────────
-    // 地形を chunkSize × chunkSize マスのブロックに分割して描画。
-    // チャンクあたりの頂点数 = (chunkSize + 1)^2
-    // WHY: 大規模地形で全頂点を 1 DrawCall にまとめると GPU 転送量が爆発する。
-    //      チャンク単位でフラスタムカリングを掛けることで不可視領域を排除する。
+    /// @brief 地形を chunkSize × chunkSize マスのブロックに分割して描画する。チャンクあたりの
+    ///        頂点数 = (chunkSize + 1)^2。
+    /// @note 大規模地形で全頂点を 1 DrawCall にまとめると GPU 転送量が爆発するため、チャンク単位で
+    ///       フラスタムカリングを掛けて不可視領域を排除する。
     int chunkSize = 32;
 
     bool enabled      = true;
-    bool heightDirty        = false; // true → TerrainRenderPass がメッシュを再構築する
-    bool splatDirty         = false; // true → スプラットマップテクスチャ + レイヤーテクスチャを再アップロードする
-    bool materialParamDirty = false; // true → マテリアルパラメータ CB のみ再構築（テクスチャ再アップロード不要）
-    bool colliderDirty = true; // true → PhysicsSystem がコライダーを再構築する（初期値 true で初回自動構築）
+    bool heightDirty        = false; ///< true → TerrainRenderPass がメッシュを再構築する
+    bool splatDirty         = false; ///< true → スプラットマップ + レイヤーテクスチャを再アップロードする
+    bool materialParamDirty = false; ///< true → マテリアルパラメータ CB のみ再構築 (テクスチャ再アップロード不要)
+    bool colliderDirty = true; ///< true → PhysicsSystem がコライダーを再構築する (初期値 true で初回自動構築)
 
-    // ── Reflection (Inspector / Serializer 対応) ─────────────────────────────
+    /// @name Reflection (Inspector / Serializer 対応)
+    /// @{
     const char* GetTypeName() const { return "Terrain"; }
     void Reflect(IReflector& r)
     {
@@ -86,15 +80,17 @@ struct TerrainComponent {
         r.Field("maxHeight",  maxHeight);
         r.Field("chunkSize",  chunkSize);
         r.Field("terrainAssetPath", terrainAssetPath);
-        // layerMaterials は string 配列のため SceneSerializer が専用コードで読み書きする。
-        // heightData / splatData は IReflector の対応型（float/int/bool/string）に
-        // 収まらないため、SceneSerializer が TerrainComponent を直接扱う専用コードで読み書きする。
+        /// @note layerMaterials は string 配列のため SceneSerializer が専用コードで読み書きする。
+        ///       heightData / splatData も IReflector の対応型に収まらず、SceneSerializer が
+        ///       TerrainComponent を直接扱う専用コードで読み書きする。
     }
+    /// @}
 
-    // ── ハイトマップ初期化ヘルパー ────────────────────────────────────────────
-    // スプラットマップを layer0=100% の初期状態へ戻す。
-    // WHY: Terrain は splatData が空のまま保存されると .terrain が不完全になり、
-    //      PaintTool や TerrainRenderPass が「4チャンネル正規化済み」という前提を満たせなくなるため。
+    /// @name ハイトマップ初期化ヘルパー
+    /// @{
+    /// @brief スプラットマップを layer0=100% の初期状態へ戻す。
+    /// @note splatData が空のまま保存されると .terrain が不完全になり、PaintTool や
+    ///       TerrainRenderPass の「4チャンネル正規化済み」という前提を満たせなくなる。
     void InitDefaultSplat()
     {
         const size_t vertexCount = static_cast<size_t>(columns) * static_cast<size_t>(rows);
@@ -103,17 +99,18 @@ struct TerrainComponent {
             splatData[i * 4u] = 255u;
     }
 
-    // 呼び出し後に heightDirty = true を立てること。
+    /// @note 呼び出し後に heightDirty = true を立てること。
     void InitFlat(float height = 0.0f)
     {
         heightData.assign(static_cast<size_t>(columns) * static_cast<size_t>(rows), height / maxHeight);
         InitDefaultSplat();
     }
+    /// @}
 
-    // グリッドサイズを変更する。heightData / splatData を 2D コピー（切り捨て／パディング）で引き継ぐ。
-    // WHY: columns/rows を直接書き換えただけでは heightData のサイズが合わなくなり
-    //      TerrainRenderPass の assert が火を吹くため、必ずこの関数で一括変更する。
-    // 呼び出し後に heightDirty / splatDirty / colliderDirty を立てること。
+    /// @brief グリッドサイズを変更する。heightData / splatData を 2D コピー (切り捨て/パディング) で引き継ぐ。
+    /// @note columns/rows を直接書き換えるだけでは heightData のサイズが合わず
+    ///       TerrainRenderPass の assert が落ちるため、必ずこの関数で一括変更する。
+    ///       呼び出し後に heightDirty / splatDirty / colliderDirty を立てること。
     void Resize(int newColumns, int newRows)
     {
         const int copyCols = (std::min)(columns, newColumns);
@@ -137,7 +134,7 @@ struct TerrainComponent {
             }
         }
 
-        // コピー範囲外の新規領域を layer0=100% で初期化
+        /// @note コピー範囲外の新規領域を layer0=100% で初期化する。
         for (int z = 0; z < newRows; ++z) {
             for (int x = 0; x < newColumns; ++x) {
                 if (z < copyRows && x < copyCols) continue;
@@ -152,25 +149,23 @@ struct TerrainComponent {
         splatData  = std::move(newSplat);
     }
 
-    // ── 高さクエリ (バイリニア補間) ──────────────────────────────────────────
-    // (localX, localZ) はテレインローカル座標（Transform 適用前）。
-    // 範囲外はクランプして継続（assert せず、Physics・足 IK から呼ばれるため）。
+    /// @brief 高さをバイリニア補間で取得する。
+    /// @param localX テレインローカル座標 X (Transform 適用前)。
+    /// @param localZ テレインローカル座標 Z (Transform 適用前)。
+    /// @note 範囲外はクランプして継続する (assert せず、Physics・足 IK から呼ばれるため)。
     float GetHeightAt(float localX, float localZ) const;
 
-    // ── 法線クエリ (バイリニア補間) ──────────────────────────────────────────
-    // 有限差分で計算した法線をバイリニア補間して返す。
+    /// @brief 有限差分で計算した法線をバイリニア補間して返す。
     math::Vector3 GetNormalAt(float localX, float localZ) const;
 
-    // ── グリッド座標ベースの法線計算 ─────────────────────────────────────────
-    // 整数グリッド座標 (x, z) に対して有限差分で法線を計算する。
-    // TerrainRenderPass の BuildChunk からも呼ばれるため public にする。
-    // WHY: friend 宣言で TerrainRenderPass に密結合させるより、
-    //      汎用的な計算関数として公開する方がテスト・拡張しやすい。
+    /// @brief 整数グリッド座標 (x, z) に対して有限差分で法線を計算する。
+    /// @note TerrainRenderPass の BuildChunk からも呼ばれるため public。friend で密結合させるより
+    ///       汎用的な計算関数として公開する方がテスト・拡張しやすい。
     math::Vector3 ComputeNormal(int x, int z) const;
 
-    // Script / Tool から地形データを変更するための安全な入口。
-    // WHY: heightData / splatData を直接編集すると RenderPass と PhysicsSystem が参照する
-    //      dirty フラグを立て忘れやすいため、データ更新と再構築要求を同時に行う。
+    /// @brief Script / Tool から地形データを変更するための安全な入口。
+    /// @note heightData / splatData を直接編集すると dirty フラグを立て忘れやすいため、
+    ///       データ更新と再構築要求をここで同時に行う。
     void RequestHeightRebuild()
     {
         heightDirty = true;
@@ -245,7 +240,7 @@ struct TerrainComponent {
 
 private:
 
-    // 1 点の高さをインデックスから取得する（クランプ境界）。
+    /// @brief 1 点の高さをインデックスから取得する (クランプ境界)。
     float SampleHeight(int x, int z) const
     {
         x = (std::clamp)(x, 0, columns - 1);

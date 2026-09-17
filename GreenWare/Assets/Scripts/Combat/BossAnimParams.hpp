@@ -3,20 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 定数にするか:
-///   SetFloat / SetTrigger は名前が違っても黙って何もしない。綴りを間違えた症状が
-///   「アニメーションだけ動かない」で、コードを読んでも原因が出ない。.animcontroller
-///   側の綴りと突き合わせる場所を 1 箇所へ閉じる。WeaponSockets.hpp と同じ理由。
-///
-/// WHY BossAnimatorComponent.hpp に同居させないか:
-///   ScriptCodeGen はスクリプト登録マクロの直前に現れた «最後の namespace 行» を
-///   そのまま登録名前空間として採る (閉じ括弧を追わない)。スクリプト本体の手前に
-///   入れ子の名前空間を書くと存在しない名前空間で登録され、ScriptList.inl が
-///   コンパイルできなくなる。定数側をファイルごと外へ出す。
-///
-/// NOTE: 同じ理由で、この階層のヘッダーのコメントに登録マクロを «そのままの綴りで»
-///       書いてはいけない。ScriptCodeGen はコメントを読み飛ばさないため、説明のつもりの
-///       1 行がクラス名として登録される。
+/// @note `SetFloat`/`SetTrigger` は綴りが違っても黙って無視するため、`.animcontroller` 側との突き合わせ箇所を 1 箇所に閉じる。`WeaponSockets.hpp` と同じ理由。
+/// @note ScriptCodeGen はスクリプト登録マクロ直前の最後の namespace 行をそのまま登録名に採る。`BossAnimatorComponent.hpp` に同居させ入れ子 namespace を書くと存在しない名前空間で登録され `ScriptList.inl` が壊れる。
+/// @note 同じ理由でこの階層のヘッダーのコメントに登録マクロをそのままの綴りで書かない。ScriptCodeGen はコメントも読むため、説明のつもりの 1 行がクラス名として登録される。
 #pragma once
 
 namespace sandbox {

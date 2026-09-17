@@ -32,12 +32,12 @@ constexpr ImVec4 kErrColor  = { 1.00f, 0.42f, 0.35f, 1.00f };
 constexpr ImVec4 kOkColor   = { 0.45f, 0.90f, 0.55f, 1.00f };
 constexpr ImVec4 kDimColor  = { 0.62f, 0.62f, 0.62f, 1.00f };
 
-// ハッシュ再計算の間隔 [秒]。Terrain の heightData 全体を畳むので毎フレームは回さない。
+/// ハッシュ再計算の間隔 [秒]。Terrain の heightData 全体を畳むので毎フレームは回さない。
 constexpr double kStaleCheckInterval = 0.5;
 
 const char* kDrawModeNames[] = { "Solid", "Transparent", "Areas", "Portals", "Voxels" };
 
-// 描画モードごとの凡例。色の意味を絵の外に置かないと、Voxels の 5 色は当てずっぽうになる。
+/// 描画モードごとの凡例。色の意味を絵の外に置かないと、Voxels の 5 色は当てずっぽうになる。
 void DrawLegend(renderer::NavMeshDrawMode mode)
 {
     struct Entry { ImVec4 color; const char* text; };
@@ -97,8 +97,8 @@ const char* BakeStateLabel(const scene::NavMeshSurfaceComponent& surface, ImVec4
     return "Not baked";
 }
 
-// Agent Radius が Cell Size に対して小さすぎると侵食が 1 セルも起きない。
-// Recast と同じく削り幅は整数セル単位なので、設定した値が黙って無視される。
+/// Agent Radius が Cell Size に対して小さすぎると侵食が 1 セルも起きない。
+/// Recast と同じく削り幅は整数セル単位なので、設定した値が黙って無視される。
 bool ErosionIsInactive(const scene::NavMeshSurfaceComponent& surface)
 {
     const float cellSize = std::max(0.1f, surface.cellSize);
@@ -370,8 +370,8 @@ void NavigationPanel::DrawAgentDiagnostics(EditorContext& ctx)
     ImGui::TextColored(kDimColor, "Agents %d   Modifiers %d   Off-Mesh Links %d",
                        agentCount, modifierCount, linkCount);
 
-    // WHY ここで警告するか: agentTypeId が食い違うと A* は静かに経路なしを返す。
-    //     Agent 側にも Surface 側にもエラーは出ないので、両方を並べて見るこの画面が唯一の気付き所。
+    /// @note agentTypeId が食い違うと A* は静かに経路なしを返す。Agent 側にも Surface 側にも
+    ///       エラーは出ないので、両方を並べて見るこの画面が唯一の気付き所。
     for (int type : orphanTypes) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(kWarnColor,

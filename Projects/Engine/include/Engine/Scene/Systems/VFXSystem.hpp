@@ -19,10 +19,9 @@ public:
 
 private:
     /// VFXTimeScale の要求で Time::timeScale を書いた状態か。
-    ///
-    /// WHY 関数ローカルの static にしないか: Play を止めても値が残り、次の Play の
-    ///     1 フレーム目に «誰も要求していないのに等速へ書き戻す» が起きる。
-    ///     System はシーンと寿命を共にするので、ここに置けば Play ごとに初期化される。
+    /// @note 関数ローカルの static にしない理由: Play を止めても値が残り、次の Play の 1 フレーム目に
+    ///       «誰も要求していないのに等速へ書き戻す» が起きる。System はシーンと寿命を共にするので、
+    ///       ここに置けば Play ごとに初期化される。
     bool m_ownsTimeScale = false;
 };
 

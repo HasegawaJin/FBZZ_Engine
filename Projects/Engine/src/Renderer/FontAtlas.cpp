@@ -3,29 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
 ///
-/// 対応する 2 形式:
-///
-/// (1) AngelCode BMFont テキスト形式 — 新しい正の形式
-///     info face="Roboto" size=48 ... padding=4,4,4,4
-///     common lineHeight=57 base=45 scaleW=512 scaleH=1024 pages=1
-///     page id=0 file="Roboto_0.png"
-///     chars count=95
-///     char id=65 x=112 y=60 width=33 height=35 xoffset=-1 yoffset=10 xadvance=31 page=0
-///     kernings count=1
-///     kerning first=65 second=86 amount=-2
-///
-/// (2) gen_font_atlas.py が吐く旧独自形式 — 互換のために読み続ける
-///     line_height <px>
-///     base        <px>
-///     cell_w      <px>
-///     glyph <ascii_code> <u0> <v0> <u1> <v1> <advance>
-///
-/// WHY (2 形式併存): 既存フォントは生成元 TTF がリポジトリに無く焼き直せないため、
-///      旧形式を切ると Title / Result / Load シーンの文字が全滅する。
-///      旧形式は「均一セルの BMFont」に正規化して読み込み、以降の描画パスを 1 本化する。
-///
-/// WHY (画素がカバレッジか距離場かを .fnt に書かせないか): UIText.hlsl の 1px AA 式が
-///      両方をそのまま扱えるため、宣言させても描画側に分岐先が無い。FontAtlas.hpp 参照。
+/// AngelCode BMFont テキスト形式と、gen_font_atlas.py が吐く旧独自形式 (互換維持) の両方を読み、
+/// 旧形式は「均一セルの BMFont」に正規化して 1 本の描画パスに通す (焼き直せないフォントがあるため)。
+/// @note 画素がカバレッジか距離場かを .fnt に書かせないのは、UIText.hlsl の 1px AA 式が両方を
+///       そのまま扱え、描画側に分岐先が無いため (`FontAtlas.hpp` 参照)。
 #include <Engine/Renderer/FontAtlas.hpp>
 #include <Engine/Renderer/DynamicFontSource.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -45,13 +26,13 @@ namespace fbzz::renderer {
 
 namespace {
 
-// 空白文字か。BMFont 行のトークン区切り判定に使う。
+/// 空白文字か。BMFont 行のトークン区切り判定に使う。
 bool IsSpace(char c)
 {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
-// 行頭の空白を読み飛ばしつつ、次のトークン (空白まで) を返す。
+/// 行頭の空白を読み飛ばしつつ、次のトークン (空白まで) を返す。
 std::string_view NextToken(std::string_view line, std::size_t& offset)
 {
     while (offset < line.size() && IsSpace(line[offset])) ++offset;
@@ -60,9 +41,9 @@ std::string_view NextToken(std::string_view line, std::size_t& offset)
     return line.substr(start, offset - start);
 }
 
-// BMFont の `key=value` を 1 組取り出す。
-// value がダブルクォートで囲まれている場合は、内部の空白を含めて 1 つの値として扱う
-// (例: face="Noto Sans JP")。取り出せなければ false。
+/// BMFont の `key=value` を 1 組取り出す。
+/// value がダブルクォートで囲まれている場合は、内部の空白を含めて 1 つの値として扱う
+/// (例: face="Noto Sans JP")。取り出せなければ false。
 bool NextAttribute(std::string_view line,
                    std::size_t&     offset,
                    std::string_view& key,
@@ -75,19 +56,22 @@ bool NextAttribute(std::string_view line,
     while (offset < line.size() && line[offset] != '=' && !IsSpace(line[offset])) ++offset;
     key = line.substr(keyStart, offset - keyStart);
 
-    // '=' が無い単独トークンは属性ではない (値なしフラグ)。空の値で返す。
+    /// @note '=' が無い単独トークンは属性ではない (値なしフラグ)。空の値で返す。
     if (offset >= line.size() || line[offset] != '=') {
         value = {};
         return !key.empty();
     }
-    ++offset;   // '=' を消費
+    /// @note '=' を消費
+    ++offset;
 
     if (offset < line.size() && line[offset] == '"') {
-        ++offset;   // 開きクォートを消費
+        /// @note 開きクォートを消費
+        ++offset;
         const std::size_t valueStart = offset;
         while (offset < line.size() && line[offset] != '"') ++offset;
         value = line.substr(valueStart, offset - valueStart);
-        if (offset < line.size()) ++offset;   // 閉じクォートを消費
+        /// @note 閉じクォートを消費
+        if (offset < line.size()) ++offset;
     } else {
         const std::size_t valueStart = offset;
         while (offset < line.size() && !IsSpace(line[offset])) ++offset;
@@ -96,9 +80,9 @@ bool NextAttribute(std::string_view line,
     return !key.empty();
 }
 
-// 例外を投げない数値変換。
-// WHY: std::stoi / std::stof は不正入力で例外を投げるが、AGENTS.md で throw は禁止。
-//      strtol / strtof は失敗時に 0 を返すだけで済む。
+/// 例外を投げない数値変換。
+/// @note std::stoi/std::stof は不正入力で例外を投げるが、AGENTS.md で throw は禁止。
+///       strtol/strtof は失敗時に 0 を返すだけで済む。
 long ToLong(std::string_view s)
 {
     const std::string buffer(s);
@@ -111,8 +95,8 @@ float ToFloat(std::string_view s)
     return std::strtof(buffer.c_str(), nullptr);
 }
 
-// パスからディレクトリ部分 (末尾の区切りを含まない) を取り出す。
-// 区切りが無ければ空文字列を返す。
+/// パスからディレクトリ部分 (末尾の区切りを含まない) を取り出す。
+/// 区切りが無ければ空文字列を返す。
 std::string DirectoryOf(const std::string& path)
 {
     const std::size_t slash = path.find_last_of("/\\");
@@ -120,7 +104,7 @@ std::string DirectoryOf(const std::string& path)
     return path.substr(0, slash);
 }
 
-// .fnt の最初の意味のある行の先頭トークンで形式を判別する。
+/// .fnt の最初の意味のある行の先頭トークンで形式を判別する。
 bool LooksLikeBMFont(const std::string& fntText)
 {
     std::istringstream stream(fntText);
@@ -138,14 +122,12 @@ bool LooksLikeBMFont(const std::string& fntText)
     return false;
 }
 
-// 動的アトラスへ焼く解像度の段 (em px)。
-//
-// WHY 48 を含むか: 既存の静的アトラスが 48px 生成であり、fontSize は行高さ基準で
-//      正規化されるため、この段に載る指定では静的フォントと動的フォントで線の太さの
-//      印象が揃う。実質すべての既定サイズ (fontSize 36〜48) が等倍でここへ落ちる。
-// WHY 段の間隔をこの粗さにするか: 段が細かいほど「要求どおりの解像度」に近づくが、
-//      アトラスの実体はその数だけ増える。1 段の差は最大 1.5 倍で、SDF の縮小耐性
-//      (padding 4px ぶん) に十分収まる。
+/// 動的アトラスへ焼く解像度の段 (em px)。
+/// @note 48 を含む理由: 既存の静的アトラスが 48px 生成であり、fontSize は行高さ基準で
+///       正規化されるため、この段では静的/動的フォントで線の太さの印象が揃う。実質すべての
+///       既定サイズ (fontSize 36〜48) が等倍でここへ落ちる。
+/// @note 段の粗さ: 細かいほど要求解像度に近づくがアトラス実体も増える。1 段の差は最大 1.5 倍で、
+///       SDF の縮小耐性 (padding 4px ぶん) に十分収まる。
 constexpr float RASTER_PIXEL_HEIGHT_STEPS[] = {
     24.0f, 32.0f, 48.0f, 64.0f, 96.0f, 128.0f, 192.0f, 256.0f
 };
@@ -157,21 +139,20 @@ FontAtlas::FontAtlas(FontAtlas&&) noexcept              = default;
 
 FontAtlas::~FontAtlas()
 {
-    // WHY Active() を使うか: アトラスはキャッシュ (UISystemContext) の要素として畳まれるため、
-    //     破棄地点へ ResourceManager& を渡す経路が無い。Material と同じ扱い。
-    //     ResourceManager より後に消えるアトラスでは Active() が空で、そのときは
-    //     返す先そのものが既に無いので何もしないのが正しい。
+    /// @note Active() を使う理由: アトラスはキャッシュ (UISystemContext) の要素として畳まれ、
+    ///       破棄地点へ ResourceManager& を渡す経路が無い (Material と同じ扱い)。ResourceManager
+    ///       より後に消えるアトラスでは Active() が空で、そのときは返す先が無いので何もしない。
     if (ResourceManager* resources = ResourceManager::Active())
         ReleaseGpuResources(*resources);
 }
 
-// NOTE: メンバーを足したらここにも足すこと (既定のムーブに任せられないのは、
-//       上書きされる側のページを先に返す必要があるため)。
+/// @note メンバーを足したらここにも足すこと (既定のムーブに任せられないのは、
+///       上書きされる側のページを先に返す必要があるため)。
 FontAtlas& FontAtlas::operator=(FontAtlas&& other) noexcept
 {
     if (this == &other) return *this;
-    // 上書きされる側のページを先に返す。ムーブ代入で «元のページを捨てる» のは
-    // フォントを焼き直したときに通る (同じキーへ新しいアトラスを入れ直す)。
+    /// @note 上書きされる側のページを先に返す。ムーブ代入で «元のページを捨てる» のは
+    ///       フォントを焼き直したときに通る (同じキーへ新しいアトラスを入れ直す)。
     if (ResourceManager* resources = ResourceManager::Active())
         ReleaseGpuResources(*resources);
 
@@ -216,17 +197,16 @@ float FontAtlas::ResolveRasterPixelHeight(float desiredPixelHeight)
 
 bool FontAtlas::Load(const std::string& path, ResourceManager& resources, float rasterPixelHeight)
 {
-    // TTF/TTC/OTF を直接指定された場合は動的モード。
-    // WHY: 日本語フォントは字種が多く静的アトラスに載せきれないため、
-    //      「.ttf を fontPath に書けばそのまま出る」導線を用意する。
+    /// @note TTF/TTC/OTF を直接指定された場合は動的モード。日本語フォントは字種が多く
+    ///       静的アトラスに載せきれないため、`.ttf` を fontPath に書けばそのまま出る導線を用意する。
     if (IsDynamicFontPath(path))
         return LoadDynamic(path, rasterPixelHeight);
 
     const std::string basePath = path;
     const std::string fntPath  = basePath + ".fnt";
 
-    // WHY (旧実装からの順序変更): BMFont はページ PNG のファイル名を .fnt 内の
-    //      `page ... file="..."` で宣言するため、テクスチャより先にメタデータを読む必要がある。
+    /// @note 旧実装から順序を変更: BMFont はページ PNG のファイル名を .fnt 内の
+    ///       `page ... file="..."` で宣言するため、テクスチャより先にメタデータを読む必要がある。
     std::string fntText;
     if (!util::FileSystem::ReadText(fntPath, fntText)) {
         FBZZ_LOG_ERROR("FontAtlas: failed to load FNT file: %s", fntPath.c_str());
@@ -256,11 +236,11 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
 {
     const std::string directory = DirectoryOf(fntPath);
 
-    // scaleW / scaleH はアトラス寸法。char の x/y/width/height を UV へ正規化するのに使う。
+    /// @note scaleW / scaleH はアトラス寸法。char の x/y/width/height を UV へ正規化するのに使う。
     float scaleW = 0.0f;
     float scaleH = 0.0f;
 
-    // ページ番号は宣言順とは限らないため、id をインデックスとして疎に埋める。
+    /// @note ページ番号は宣言順とは限らないため、id をインデックスとして疎に埋める。
     std::vector<std::string> pageFiles;
 
     std::istringstream stream(fntText);
@@ -311,7 +291,7 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
                 else if (key == "page")     glyph.page    = static_cast<int>(ToLong(value));
             }
 
-            // UV は char の画素矩形をアトラス寸法で割って求める。
+            /// @note UV は char の画素矩形をアトラス寸法で割って求める。
             if (scaleW > 0.0f && scaleH > 0.0f) {
                 glyph.u0 = x / scaleW;
                 glyph.v0 = y / scaleH;
@@ -342,7 +322,7 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
         return false;
     }
 
-    // ページ PNG は .fnt からの相対パスで書かれているので、.fnt のディレクトリを前置する。
+    /// @note ページ PNG は .fnt からの相対パスで書かれているので、.fnt のディレクトリを前置する。
     m_pages.reserve(pageFiles.size());
     for (const std::string& file : pageFiles) {
         if (file.empty()) {
@@ -356,7 +336,7 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
         m_pages.push_back(texture);
     }
 
-    // 未登録グリフの送り幅は半角スペースを基準にする。無ければ行高さの 1/4。
+    /// @note 未登録グリフの送り幅は半角スペースを基準にする。無ければ行高さの 1/4。
     if (const FontGlyph* space = GetGlyph(U' '); space && space->advance > 0.0f)
         m_fallbackAdvance = space->advance;
     else
@@ -369,7 +349,7 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
                             const std::string& basePath,
                             ResourceManager&   resources)
 {
-    // 旧形式は単一ページ固定で、テクスチャ名は basePath + ".png"。
+    /// @note 旧形式は単一ページ固定で、テクスチャ名は basePath + ".png"。
     const std::string pngPath = basePath + ".png";
     ResourceHandle<TextureTag> texture = resources.LoadTexture(pngPath);
     if (!texture.IsValid()) {
@@ -378,8 +358,8 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
     }
     m_pages.push_back(texture);
 
-    // 旧形式は全グリフが同じセルを占めるため、cell_w / line_height を
-    // そのまま各グリフの width / height として展開する。
+    /// @note 旧形式は全グリフが同じセルを占めるため、cell_w / line_height を
+    ///       そのまま各グリフの width / height として展開する。
     float cellW = 0.0f;
 
     struct LegacyGlyph { char32_t code; FontGlyph glyph; };
@@ -412,13 +392,13 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
             glyph.v1      = v1;
             glyph.advance = advance;
             glyph.page    = 0;
-            // width / height は cell_w / line_height を読み終えてから埋める
+            /// @note width / height は cell_w / line_height を読み終えてから埋める
             pending.push_back({ static_cast<char32_t>(code), glyph });
         }
     }
 
-    // WHY: cell_w / line_height が glyph 行より後ろに現れても正しく展開できるよう、
-    //      グリフ矩形の確定を全行読み終えた後に回している。
+    /// @note cell_w/line_height が glyph 行より後ろに現れても正しく展開できるよう、
+    ///       グリフ矩形の確定は全行読み終えた後に回している。
     for (LegacyGlyph& entry : pending) {
         entry.glyph.width   = cellW;
         entry.glyph.height  = m_lineHeight;
@@ -427,7 +407,7 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
         m_glyphs[entry.code] = entry.glyph;
     }
 
-    // 旧 UISystem は未登録グリフに cellW * 0.5 を送っていた。その挙動を保つ。
+    /// @note 旧 UISystem は未登録グリフに cellW * 0.5 を送っていた。その挙動を保つ。
     m_fallbackAdvance = cellW * 0.5f;
     return true;
 }
@@ -445,7 +425,7 @@ bool FontAtlas::LoadDynamic(const std::string& fontPath, float rasterPixelHeight
     m_fallbackAdvance = source->GetFallbackAdvance();
     m_dynamic         = std::move(source);
 
-    // この時点ではまだグリフもテクスチャも無い。最初の PrepareText で作られる。
+    /// @note この時点ではまだグリフもテクスチャも無い。最初の PrepareText で作られる。
     return true;
 }
 
@@ -453,7 +433,7 @@ void FontAtlas::PrepareText(std::string_view utf8Text, ResourceManager& resource
 {
     if (!m_dynamic || utf8Text.empty()) return;
 
-    // 未登録のコードポイントだけを集める。
+    /// @note 未登録のコードポイントだけを集める。
     std::vector<char32_t> missing;
     std::size_t offset = 0;
     while (offset < utf8Text.size()) {
@@ -464,7 +444,7 @@ void FontAtlas::PrepareText(std::string_view utf8Text, ResourceManager& resource
     }
     if (missing.empty()) return;
 
-    // 同じ文字が何度も出るテキストで重複ラスタライズしないよう畳む。
+    /// @note 同じ文字が何度も出るテキストで重複ラスタライズしないよう畳む。
     std::sort(missing.begin(), missing.end());
     missing.erase(std::unique(missing.begin(), missing.end()), missing.end());
 
@@ -473,8 +453,8 @@ void FontAtlas::PrepareText(std::string_view utf8Text, ResourceManager& resource
 
 bool FontAtlas::IsValid() const
 {
-    // 動的モードは最初の PrepareText までページを持たないため、
-    // ソースが開けている時点で有効とみなす (そうしないと初回の描画がまるごと落ちる)。
+    /// @note 動的モードは最初の PrepareText までページを持たないため、
+    ///       ソースが開けている時点で有効とみなす (そうしないと初回の描画がまるごと落ちる)。
     if (m_dynamic) return m_dynamic->IsValid();
 
     for (const ResourceHandle<TextureTag>& page : m_pages)
@@ -490,7 +470,7 @@ const FontGlyph* FontAtlas::GetGlyph(char32_t codePoint) const
 
 float FontAtlas::GetKerning(char32_t previous, char32_t next) const
 {
-    // 動的モードはフォントの kern テーブルを直接引く (.fnt のカーニング表を持たない)。
+    /// @note 動的モードはフォントの kern テーブルを直接引く (.fnt のカーニング表を持たない)。
     if (m_dynamic) return m_dynamic->GetKerning(previous, next);
 
     if (m_kernings.empty()) return 0.0f;

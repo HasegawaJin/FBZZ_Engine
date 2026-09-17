@@ -3,14 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-29
 ///
-/// WHY 本体の HP と別に持つか:
-///   部位を落とすのは HP を削るのとは別の勝ち筋で、目盛りが 1 桁違う
-///   (本体 800 に対して部位は数発ぶん)。同じ数字を分け合うと、«脚を落とす» と
-///   «倒す» のどちらを進めているのかが画面から読めなくなる。
-///
-/// WHY 部位が «斬られた合図» まで持つか:
-///   光るのは «斬られた部位» であって脚 4 本ではない。リグ側に秒数を置くと、
-///   どの部位が今光っているかをリグが別に覚えることになる。
+/// @note 本体 HP とは別の目盛り (本体 800 に対し部位は数発ぶん)。«脚を落とす» と «倒す»
+///       を同じ数字で分け合うと、どちらを進めているか画面から読めなくなるため。
+/// @note 斬られた合図の秒数は部位側が持つ。リグへ置くと «どれが今光っているか» を
+///       リグが別に覚え直すことになる。
 #pragma once
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 
@@ -33,23 +29,21 @@ class BossPartComponent : public Script {
 
 public:
     FBZZ_GROUP("Hit")
-    // WHY 判定用の半径を自前で持つか: 斬撃の扇は bodybounds (描画バウンズ) で
-    //     相手の太さを足しているが、部位はレンダラーを持たない当たり判定なので
-    //     そこから寸法が出ない。届く太さをここで宣言する。
+    /// @note 斬撃の扇は通常 bodybounds (描画バウンズ) で相手の太さを足すが、部位は
+    ///       レンダラーを持たない当たり判定なので寸法が出ない。届く太さをここで宣言する。
     FBZZ_FIELD_RANGE(float, hitRadius, 1.20f, "当たり半径", 0.1f, 5.0f)
     FBZZ_TOOLTIP("斬撃の扇へ足す太さ。脚は細いので、素の中心距離だけでは «見えているのに当たらない» になる")
 
-    // 斬られた直後に輪郭が «叩かれた白» へ寄っている長さ。読む側は BossRigComponent /
-    // SerpentRigComponent の DriveOutline で、寄せ具合は DamageFlash() の残り比。
+    /// 斬られた直後に輪郭が «叩かれた白» へ寄っている長さ。読む側は BossRigComponent /
+    /// SerpentRigComponent の DriveOutline で、寄せ具合は DamageFlash() の残り比。
     FBZZ_FIELD_RANGE(float, damageFlashSeconds, 0.18f, "閃光", 0.0f, 1.0f)
     FBZZ_TOOLTIP("斬られた部位の輪郭が白へ寄っている秒数。0 で光らない")
 
-    // 吸い付きの当て先に選ばれている «あいだ» の保持時間。斬撃側が毎フレーム置き直す。
-    //
-    // WHY 真偽値を毎フレーム消さずに «保持» にするか: 置く側 (BladeComponent) と
-    //     読む側 (BossRigComponent の DriveOutline) の実行順は保証されていない。
-    //     フレーム頭で false に戻す形にすると、読む順によって 1 フレームおきに
-    //     消えて輪郭がちらつく。少しだけ持たせれば順番に依らない。
+    /// 吸い付きの当て先に選ばれている «あいだ» の保持時間。斬撃側が毎フレーム置き直す。
+    ///
+    /// @note 真偽値でなく «保持» にする。置く側 (BladeComponent) と読む側
+    ///       (BossRigComponent の DriveOutline) の実行順は保証されておらず、フレーム頭で
+    ///       false に戻すと読む順によって 1 フレームおきに消えて輪郭がちらつく。
     FBZZ_FIELD_RANGE(float, aimHoldSeconds, 0.10f, "狙い保持", 0.0f, 1.0f)
     FBZZ_TOOLTIP("吸い付きの当て先として光っている合図の保持秒数。"
                  "置く側と読む側の実行順に依らせないための猶予なので、短くて足りる")
@@ -59,15 +53,15 @@ public:
     FBZZ_TOOLTIP("この部位を削り切るのに要る量。斬撃 1 発は BladeTuning の Damage (既定 25)")
 
     FBZZ_GROUP("デバッグ")
-    // どの脚に属する部位か ("_FR" など)。BossHitboxRigComponent が生成時に入れる。
-    //
-    // WHY GameObject 名から切り出さないか: 名前は «当たり判定の名前» で、部位の
-    //     識別子ではない。命名を変えた瞬間に IK のボーン名解決が黙って外れる。
+    /// どの脚に属する部位か ("_FR" など)。BossHitboxRigComponent が生成時に入れる。
+    ///
+    /// @note GameObject 名からは切り出さない。名前は «当たり判定の名前» で部位の
+    ///       識別子ではなく、命名を変えた瞬間に IK のボーン名解決が黙って外れるため。
     FBZZ_FIELD_READ_ONLY(std::string, legSuffix, "", "脚")
     FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "HP")
     FBZZ_FIELD_READ_ONLY(bool, debugBroken, false, "Broken")
-    // 輪郭が出ないときの切り分け用。ここが false なら斬撃側が当て先に選んでいない、
-    // true なのに画面に何も無いなら BossRigComponent 以降 (脚の対応 / ポストプロセス)。
+    /// 輪郭が出ないときの切り分け用。ここが false なら斬撃側が当て先に選んでいない、
+    /// true なのに画面に何も無いなら BossRigComponent 以降 (脚の対応 / ポストプロセス)。
     FBZZ_FIELD_READ_ONLY(bool, debugAimed, false, "Aimed")
 
     /// 切り離して飛ぶ部位だけが設定する。通常の部位は親階層から解決する。
@@ -93,8 +87,8 @@ public:
     void Break();
     /// 壊れた部位を «無かったこと» にして耐久を満たす (脚の再生)。
     ///
-    /// WHY 耐久まで戻すか: 壊れた印だけ下ろすと、残り 0 の部位が的として戻ってくる。
-    ///     1 撃で再び落ちるので、再生したのに «触った瞬間また壊れる» になる。
+    /// @note 壊れた印だけ下ろすと、残り 0 の部位が的として戻り 1 撃で再び落ちる。
+    ///       «触った瞬間また壊れる» にならないよう耐久まで戻す。
     void Restore()
     {
         m_broken     = false;
@@ -105,8 +99,8 @@ public:
 
     /// 斬られて削る。**削り切った呼び出しだけ** true を返す。
     ///
-    /// WHY 残量ではなく «削り切った瞬間» を返すか: 呼び手 (斬撃) は毎フレーム来る。
-    ///     0 かどうかを外から見て壊す形にすると、次の一振りでもう一度壊すことになる。
+    /// @note 残量でなく «削り切った瞬間» を返す。呼び手 (斬撃) は毎フレーム来るので、
+    ///       0 かどうかを外から見て壊す形にすると次の一振りでもう一度壊すことになる。
     bool Damage(int amount);
 
     /// 斬られた合図を出す。削れたかどうかとは独立に光る ─ 削り切った部位を
@@ -142,8 +136,8 @@ private:
     float m_flash  = 0.0f;
     /// 狙われている合図の残り [秒]。
     float m_aimed  = 0.0f;
-    // -1 = 未初期化。BossHitboxRigComponent が実行時に組むので、OnStart より先に
-    // 斬られうる (同じフレームに扇が通る)。
+    /// -1 = 未初期化。BossHitboxRigComponent が実行時に組むので、OnStart より先に
+    /// 斬られうる (同じフレームに扇が通る)。
     int   m_health = -1;
 };
 
@@ -194,8 +188,8 @@ inline void BossPartComponent::OnStart()
 inline float BossPartComponent::AimHighlight() const
 {
     if (m_aimed <= 0.0f || aimHoldSeconds <= 0.0f) return 0.0f;
-    // 残り比を返さず «出ているか» だけを返す。保持は実行順を吸収するための猶予で、
-    // 減っていく様子を絵に出すと «狙いが外れかけている» ように見える。
+    /// @note 残り比を返さず «出ているか» だけを返す。保持は実行順を吸収するための猶予で、
+    ///       減っていく様子を絵に出すと «狙いが外れかけている» ように見える。
     return 1.0f;
 }
 

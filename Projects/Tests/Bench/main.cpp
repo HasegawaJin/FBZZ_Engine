@@ -20,8 +20,8 @@
 
 int main()
 {
-    // 起動に失敗したときのログを読ませる。コンソールが無いまま落ちると
-    // «何も起きなかった» としか見えない。
+    /// @note 起動に失敗したときのログを読ませる。コンソールが無いまま落ちると
+    ///       «何も起きなかった» としか見えない。
     const bool ownsConsole = fbzz::testkit::EnsureConsole();
 
     auto& app = fbzz::core::Application::Get();

@@ -3,26 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-29
 ///
-/// WHY Wave 進行をやめてこちらにするか:
-///   Wave 制は «盤面が空になった» を数えて次を出す作りで、進行の主導権が時間の側に
-///   あった。プレイヤーは片付け終わるのを待つだけで、いつ次が来るかを選べない。
-///   部屋で区切ると、戦いの開始をプレイヤーが踏み込んで決めることになる。
-///   «まだ入らない» という選択が生まれる時点で、待ち時間が準備の時間に変わる。
-///
-/// WHY ボス自身が持つか (別の当たり判定オブジェクトではなく):
-///   «いつ起きるか» はこのボスの性質で、部屋はその条件を書くための座標にすぎない。
-///   トリガーを別オブジェクトへ出すと、ボスを別のシーンへ持っていくたびに
-///   «起こす仕掛け» を作り直すことになる。ボス 1 体で完結させる。
-///
-/// WHY コライダーではなく距離で見るか:
-///   ボスは既に胴体のカプセルを 1 つ持っていて、そこへ «部屋» のトリガーを重ねられない
-///   (別 GameObject へ逃がすと上の WHY に反する)。加えてボスの判定は BossAiComponent の
-///   冒頭のとおり、この盤面では一貫して «物理の接触» ではなく座標で書いてある。
-///
-/// WHY 眠っている間もボスを «消さない» か:
-///   居ることが分かっていて、まだ起きていない — その状態こそが «入るかどうか» を
-///   選ばせる。姿ごと消すと、部屋は空き部屋にしか見えず、踏み込む判断が生まれない。
-///   止めるのは行動 (BossAiComponent) だけで、姿と音の土台はそのまま残す。
+/// @note Wave 進行 (盤面が空になったら次) をやめ部屋制にした。開始をプレイヤーが
+///       踏み込んで決められるよう、進行の主導権を時間側から渡す。
+/// @note トリガーはボス自身が持つ。別オブジェクトへ出すとシーンを移すたびに作り直しに
+///       なるため。判定は座標で見る ─ 胴体カプセルに部屋のトリガーを重ねられず、
+///       この盤面のボス判定は一貫して座標ベースのため (BossAiComponent と同じ)。
+/// @note 眠っている間もボスの姿は消さない。«居るがまだ起きていない» が踏み込む判断を
+///       生む。止めるのは行動 (BossAiComponent) だけで、姿と音は残す。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -62,9 +49,9 @@ public:
                  "この間もバーと弾薬の供給は始まっているので、身構える時間になる")
 
     FBZZ_GROUP("デバッグ")
-    // 既定は消しておく。他のデバッグ表示 (drawDebugRanges / drawDebugFeet …) はどれも
-    // 既定 off なのに、ここだけ on だった ─ 半径を触った人が «見えるように» 立てたまま
-    // 保存すると、ゲーム画面に黄色い球が出たまま配布される。
+    /// 既定は消しておく。他のデバッグ表示 (drawDebugRanges / drawDebugFeet …) はどれも
+    /// 既定 off なのに、ここだけ on だった ─ 半径を触った人が «見えるように» 立てたまま
+    /// 保存すると、ゲーム画面に黄色い球が出たまま配布される。
     FBZZ_FIELD(bool, drawRoom, false, "Draw Room")
     FBZZ_FIELD_READ_ONLY(bool, debugEngaged, false, "交戦中")
     FBZZ_FIELD_READ_ONLY(float, debugDistance, 0.0f, "距離")
@@ -91,7 +78,6 @@ private:
 
 FBZZ_REFLECT(BossRoomTriggerComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline void BossRoomTriggerComponent::SetAiRunning(bool running) const
 {
@@ -114,8 +100,8 @@ inline void BossRoomTriggerComponent::OnStart()
     PublishEngaged();
 
     if (!scene.GetScript<BossCoreComponent>()) {
-        // 交戦中かどうかを盤面へ公開する口が無いと、体力バーも弾薬の供給も
-        // «まだ» のまま止まる。症状は «部屋に入っても何も始まらない» だけになる。
+        /// @note 交戦中かどうかを盤面へ公開する口が無いと、体力バーも弾薬の供給も
+        ///       «まだ» のまま止まる。症状は «部屋に入っても何も始まらない» だけになる。
         debug.LogError("BossRoomTriggerComponent requires a BossCoreComponent on the "
                        "same object (it is what publishes the engaged state to the board).");
     }
@@ -127,8 +113,8 @@ inline bool BossRoomTriggerComponent::PlayerInside()
     if (!player) return false;
 
     const Vector3 delta = player->transform.worldPosition - RoomCenter();
-    // 水平と垂直を分けて見る。球で見ると «真上の通路» と «部屋の縁» が同じ距離になり、
-    // 上を通っただけで起きる部屋ができる。
+    /// @note 水平と垂直を分けて見る。球で見ると «真上の通路» と «部屋の縁» が同じ距離になり、
+    ///       上を通っただけで起きる部屋ができる。
     const float horizontal = Vector3{ delta.x, 0.0f, delta.z }.Length();
     debugDistance = horizontal;
 
@@ -143,16 +129,16 @@ inline void BossRoomTriggerComponent::Engage()
     debugEngaged = true;
     m_delayRemaining = std::max(wakeDelay, 0.0f);
 
-    // 交戦の «開始» はここで盤面へ通る。体力バーも弾薬の供給も、この 1 行から始まる。
+    /// @note 交戦の «開始» はここで盤面へ通る。体力バーも弾薬の供給も、この 1 行から始まる。
     PublishEngaged();
 
-    // 登場音はこの瞬間に鳴らす。開始と同時に鳴らしてしまうと、部屋の外に居るあいだに
-    // 5 秒の登場が終わり、踏み込んだときには何も起きていないことになる
-    // (BossAudioComponent の Play Appear は切っておくこと)。
+    /// @note 登場音はこの瞬間に鳴らす。開始と同時に鳴らしてしまうと、部屋の外に居るあいだに
+    ///       5 秒の登場が終わり、踏み込んだときには何も起きていないことになる
+    ///       (BossAudioComponent の Play Appear は切っておくこと)。
     if (auto* sfx = scene.GetScript<BossAudioComponent>()) sfx->Appear();
 
-    // 見上げてボスの全身を見せる。ここが «何と戦うか» を伝える唯一の機会で、
-    // 戦いはまだ始まっていないので操作を取り上げても失うものが無い。
+    /// @note 見上げてボスの全身を見せる。ここが «何と戦うか» を伝える唯一の機会で、
+    ///       戦いはまだ始まっていないので操作を取り上げても失うものが無い。
     if (auto* camera = BossCameraDirectorComponent::Instance())
         camera->Play(BossShot::Intro);
 }
@@ -160,8 +146,8 @@ inline void BossRoomTriggerComponent::Engage()
 inline void BossRoomTriggerComponent::OnUpdate()
 {
     if (!m_engaged) {
-        // 交戦していないことは毎フレーム押し直す。他のスクリプトの OnStart 順に
-        // 関係なく «まだ» が保たれる (BossCoreComponent の m_engaged の WHY)。
+        /// @note 交戦していないことは毎フレーム押し直す。他のスクリプトの OnStart 順に
+        ///       関係なく «まだ» が保たれる (理由は BossCoreComponent の m_engaged を参照)。
         PublishEngaged();
         if (PlayerInside()) Engage();
         return;
@@ -169,13 +155,13 @@ inline void BossRoomTriggerComponent::OnUpdate()
 
     if (m_delayRemaining <= 0.0f) return;
 
-    // 登場の画が流れているあいだは数えない。Delay は «画が終わってから身構える間»。
-    // 画より先に数え切ると、見上げている最中に踏まれる。
+    /// @note 登場の画が流れているあいだは数えない。Delay は «画が終わってから身構える間»。
+    ///       画より先に数え切ると、見上げている最中に踏まれる。
     if (auto* camera = BossCameraDirectorComponent::Instance())
         if (camera->Current() == BossShot::Intro) return;
 
-    // WHY 実時間ではなくスケール時間か: 身構える «間» は盤面の時間の一部で、
-    //     踏み込んだ瞬間にヒットストップが入ればその間も一緒に止まってよい。
+    /// @note 実時間でなくスケール時間を使う。身構える «間» は盤面の時間の一部で、
+    ///       踏み込んだ瞬間にヒットストップが入ればその間も一緒に止まってよい。
     m_delayRemaining = std::max(0.0f, m_delayRemaining - Time::deltaTime);
     if (m_delayRemaining <= 0.0f) SetAiRunning(true);
 }

@@ -53,20 +53,20 @@ std::unique_ptr<TerrainAsset> TerrainImporter::Import(
     terrain->maxHeight = hdr.maxHeight;
     terrain->chunkSize = hdr.chunkSize;
 
-    // レイヤーマテリアルパス
+    /// @note レイヤーマテリアルパス
     const uint32_t layerCount = std::min(hdr.layerCount, 4u);
     for (uint32_t li = 0; li < layerCount; ++li) {
         char pathBuf[FZTERRAIN_PATH_LEN]{};
         if (!readBytes(pathBuf, FZTERRAIN_PATH_LEN)) return nullptr;
         if (li < 4) terrain->layerMaterialPaths[li] = pathBuf;
     }
-    // 追加レイヤー (layerCount > 4) はスキップ
+    /// @note 追加レイヤー (layerCount > 4) はスキップ
     for (uint32_t li = layerCount; li < hdr.layerCount; ++li) {
         if (pos + FZTERRAIN_PATH_LEN > data.size()) return nullptr;
         pos += FZTERRAIN_PATH_LEN;
     }
 
-    // 高さデータ
+    /// @note 高さデータ
     const size_t heightCount = static_cast<size_t>(hdr.columns) * hdr.rows;
     terrain->heightData.resize(heightCount);
     if (!readBytes(terrain->heightData.data(), heightCount * sizeof(float))) {
@@ -74,7 +74,7 @@ std::unique_ptr<TerrainAsset> TerrainImporter::Import(
         return nullptr;
     }
 
-    // スプラットデータ
+    /// @note スプラットデータ
     const size_t splatCount = heightCount * hdr.layerCount;
     terrain->splatData.resize(splatCount);
     if (!readBytes(terrain->splatData.data(), splatCount)) {

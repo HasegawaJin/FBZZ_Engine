@@ -15,7 +15,7 @@ namespace fbzz::tests {
 
 class Vector4Test : public testkit::Fixture {};
 
-// --- Vector3 との相互変換 ---------------------------------------------------
+/// @name Vector3 との相互変換
 
 TEST_F(Vector4Test, ConstructionFromVector3KeepsTheGivenW)
 {
@@ -40,11 +40,11 @@ TEST_F(Vector4Test, XYZRoundTripsThroughTheVector3Constructor)
     EXPECT_VEC4_NEAR(math::Vector4(v.XYZ(), v.w), v, testkit::kTolerance);
 }
 
-// --- 長さと正規化 -----------------------------------------------------------
+/// @name 長さと正規化
 
 TEST_F(Vector4Test, LengthIncludesTheWComponent)
 {
-    // w を落として計算していたら 1.0 になる。4 成分を見ていることを固定する。
+    /// @note w を落として計算していたら 1.0 になる。4 成分を見ていることを固定する。
     const math::Vector4 v(1.0f, 0.0f, 0.0f, 1.0f);
 
     EXPECT_NEAR(v.Length(), math::Sqrt(2.0f), testkit::kTolerance);
@@ -65,7 +65,7 @@ TEST_F(Vector4Test, NormalizedPreservesTheComponentRatios)
                      testkit::kTolerance);
 }
 
-// --- 演算子 -----------------------------------------------------------------
+/// @name 演算子
 
 TEST_F(Vector4Test, AdditionAndSubtractionAreComponentWise)
 {
@@ -99,11 +99,11 @@ TEST_F(Vector4Test, EqualityRejectsDifferencesAboveEpsilon)
     EXPECT_FALSE(a == b);
 }
 
-// --- 色定数 -----------------------------------------------------------------
+/// @name 色定数
 
 TEST_F(Vector4Test, ColorConstantsAreOpaque)
 {
-    // 色として使う定数は alpha = 1。ZERO / ONE は «数» なので対象外。
+    /// @note 色として使う定数は alpha = 1。ZERO / ONE は «数» なので対象外。
     EXPECT_NEAR(math::Vector4::WHITE.w, 1.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Vector4::BLACK.w, 1.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Vector4::RED.w, 1.0f, testkit::kTolerance);

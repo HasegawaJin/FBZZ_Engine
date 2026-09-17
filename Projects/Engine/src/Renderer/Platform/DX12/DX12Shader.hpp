@@ -21,15 +21,15 @@ public:
     D3D12_SHADER_BYTECODE GetComputeBytecode() const;
     bool IsCompute() const { return !m_computeBlob.empty(); }
     const std::vector<D3D12_INPUT_ELEMENT_DESC>& GetInputLayout() const { return m_inputElements; }
-    // リフレクションで密詰め (tightly packed) を仮定して算出した頂点ストライド。
-    // 実際の頂点バッファのストライドと一致しない場合、入力レイアウトのオフセットがずれて
-    // ジオメトリが壊れる (描画ゼロピクセル化) ため、Submit 側で照合診断に使う。
+    /// リフレクションで密詰め (tightly packed) を仮定して算出した頂点ストライド。
+    /// 実際の頂点バッファのストライドと一致しない場合、入力レイアウトのオフセットがずれて
+    /// ジオメトリが壊れる (描画ゼロピクセル化) ため、Submit 側で照合診断に使う。
     uint32_t GetReflectedStride() const { return m_reflectedStride; }
 
 private:
     static std::string CompiledBase(const std::string& path);
     static std::vector<uint8_t> LoadBinary(const std::string& path);
-    // PS バイトコード (DXBC / DXIL) から定数とテクスチャバインドをリフレクションする。
+    /// PS バイトコード (DXBC / DXIL) から定数とテクスチャバインドをリフレクションする。
     static ShaderDescriptor BuildDescriptor(const std::vector<uint8_t>& psBlob);
     bool ReflectVertexInput();
 

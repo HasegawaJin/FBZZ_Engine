@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Physics/PhysicsMaterial.hpp>
-#include <algorithm> // std::min, std::max
-#include <cmath>     // std::sqrt
-#include <cstring>   // std::strcmp
+#include <algorithm>
+#include <cmath>
+#include <cstring>
 
 namespace fbzz::physics
 {
@@ -24,8 +24,8 @@ namespace fbzz::physics
     PhysicsMaterialCombine PhysicsMaterial::ResolveCombine(PhysicsMaterialCombine a,
                                                           PhysicsMaterialCombine b)
     {
-        // 列挙の並び順をそのまま優先度として使う (後ろほど強い)。
-        // Average < GeometricMean < Minimum < Multiply < Maximum
+        /// @note 列挙の並び順をそのまま優先度として使う (後ろほど強い)。
+        ///       Average < GeometricMean < Minimum < Multiply < Maximum
         return static_cast<uint8_t>(a) >= static_cast<uint8_t>(b) ? a : b;
     }
 
@@ -47,8 +47,8 @@ namespace fbzz::physics
                        a.staticFriction, b.staticFriction);
     }
 
-    // restitution, staticFriction, dynamicFriction, density の順。
-    // 合成規則は既定 (反発=Minimum / 摩擦=GeometricMean) をそのまま使う。
+    /// restitution, staticFriction, dynamicFriction, density の順。
+    /// 合成規則は既定 (反発=Minimum / 摩擦=GeometricMean) をそのまま使う。
     const PhysicsMaterial PhysicsMaterial::Default = { 0.3f, 0.6f, 0.4f, 1.0f };
     const PhysicsMaterial PhysicsMaterial::Rubber  = { 0.8f, 1.0f, 0.9f, 1.2f };
     const PhysicsMaterial PhysicsMaterial::Ice     = { 0.05f, 0.05f, 0.02f, 0.9f };
@@ -57,7 +57,7 @@ namespace fbzz::physics
     const PhysicsMaterial PhysicsMaterial::Stone   = { 0.1f, 0.9f, 0.8f, 2.5f };
 
     namespace {
-        // 名前とプリセットの対応表。Editor のメニュー順もこの並びに従う。
+        /// 名前とプリセットの対応表。Editor のメニュー順もこの並びに従う。
         const char* const kPresetNames[PhysicsMaterial::PRESET_COUNT] = {
             "Default", "Rubber", "Ice", "Metal", "Wood", "Stone"
         };

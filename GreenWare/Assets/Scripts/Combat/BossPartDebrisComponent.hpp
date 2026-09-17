@@ -3,29 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// ボス 2 体が同じ物を使う（Docs/part-break.md）。
-///   - コア（Spider）: とどめでもげた**脚 1 本**（`BossRigComponent::SpawnLegDebris`）
-///   - サーペント     : とどめで潰れた**節 1 本**（`SerpentBodyComponent::DropDebris`）
-///
-/// 生成側が「部位の分割メッシュを静的メッシュとして写した GameObject」＋剛体＋
-/// コライダーまで組んでから、このスクリプトを載せて `Setup` を呼ぶ。
-/// こちらが持つのは **一生（落ちる → 床に居る → 拾われる → 飛ぶ → また床）** だけ。
-///
-/// WHY «落として消す» をやめたか (2026-09-11):
-///   もげた脚は 2.6 秒で砕いて消していた（盤面を汚さないため）。だが消してしまうと
-///   **部位破壊が «相手が減る» ことしか生まない** ── 終盤ほど盤面が静かになる。
-///   床に残せば、同じ 1 つの物が «プレイヤーの遮蔽» と «ボスの弾» の両方になり、
-///   落とした数がそのまま盤面の濃さになる。
-///
-/// WHY 飛んでくる部位を «弾ける» 一撃にするか:
-///   落とした数 = 弾ける機会の数。終盤ほど飛んでくる物が増え、同時に終盤ほど
-///   崩しが速く溜まる。圧と手応えが同じ 1 つの仕掛けから出る。
-///   `Parryable` で撃てば Just 窓・連続弾き・土壇場・閃光まで既存の経路が丸ごと乗る。
-///
-/// WHY 剛体を捨てて transform を直に運ばないか:
-///   浮いている間・飛んでいる間も床と壁に当たり続けてほしい。速度だけ書いて
-///   重力の掛かり方（SetGravityScale）を切り替えれば、落ちる・浮く・飛ぶが
-///   1 つの剛体のまま繋がり、最後はまた普通に床へ落ち着く。
+/// @note ボス 2 体が共有 (Docs/part-break.md)。生成側がメッシュ+剛体+コライダーを組んでから
+///       `Setup` を呼ぶ。持つのは 落下→静止→拾われる→飛ぶ→静止 の一生のみ。
+/// @note 部位は消さず床に残し、`Parryable` として撃ち返せるようにする (終盤ほど遮蔽と
+///       弾数が増える設計)。剛体は捨てず SetGravityScale の切替だけで各状態を繋ぐ。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -63,7 +44,7 @@ public:
     FBZZ_TOOLTIP("どこかで転がり続けても、この時間で «落ち着いた» 扱いにする。"
                  "**入れないと、坂や隙間で震え続ける 1 本が永久に拾われない**")
 
-    // 磁力パルスの予兆 (0.85 秒) の間に浮き上がる。コアだけが使う。
+    /// 磁力パルスの予兆 (0.85 秒) の間に浮き上がる。コアだけが使う。
     FBZZ_GROUP("引き寄せ")
     FBZZ_FIELD_RANGE(float, drawHeight, 3.4f, "浮く高さ [m]", 0.5f, 12.0f)
     FBZZ_TOOLTIP("プレイヤーの背 (2.5m) より上に置く ─ 低いと «浮いた» が «滑っている» に見える")
@@ -113,11 +94,8 @@ public:
     /// 磁力で吸い上げ始める。コアの `BeginPulse` が呼ぶ。
     void Draw(const Vector3& bossPosition);
 
-    /// 部位を target へ撃ち出す。浮いていても床に居ても撃てる。
-    ///
-    /// WHY 床からも直接撃てるようにするか: コアは磁力で «吸い上げてから» 撃つが、
-    ///     蛇に磁力は無い ─ 突き上げと薙ぎが床の部位を **叩いて飛ばす**。
-    ///     溜めの絵が違うだけで、飛んでからのことは同じなので入口を 1 つにする。
+    /// @brief 部位を target へ撃ち出す。浮いていても床に居ても撃てる。
+    /// @note 蛇に磁力は無く、突き上げ/薙ぎが床の部位を直接叩き飛ばすため、入口を 1 つにする。
     void Launch(const Vector3& target);
 
     void OnStart() override;
@@ -132,12 +110,9 @@ private:
     /// 重力を戻して落下へ帰す。
     void FallBack();
 
-    /// 部位を «押しのける物» にするか、すり抜ける物にするか。
-    ///
-    /// WHY 浮いている間と飛んでいる間はすり抜けさせるか: 吸い上げ中はボスの体の
-    ///     すぐ横に居るので、押し合うと部位もボスも小刻みに震える。飛んでいる間も、
-    ///     当たりは距離で見ている (ResolveHit) ので剛体の接触は要らない。
-    ///     **床に落ち着いている間だけ固い** ＝ そのときだけ遮蔽・足場・口の栓になる。
+    /// @brief 部位を「押しのける物」にするか、すり抜ける物にするか。
+    /// @note 床に落ち着いている間だけ固くする。浮遊/飛翔中は押し合うと震えるうえ、
+    ///       当たりは距離判定 (ResolveHit) で行うため剛体接触は不要。
     void SetSolid(bool solid) const
     {
         if (auto* box = scene.GetComponent<BoxColliderComponent>()) box->SetTrigger(!solid);
@@ -162,7 +137,7 @@ FBZZ_REFLECT(BossPartDebrisComponent)
 
 inline void BossPartDebrisComponent::OnStart()
 {
-    // Setup が控えた勢いをここで当てる (上の ⚠ を参照)。
+    /// @note Setup が控えた勢いをここで当てる (上の ⚠ を参照)。
     if (auto* rb = scene.GetComponent<RigidBodyComponent>())
         if (rb->rigidBody) {
             rb->rigidBody->SetVelocity(m_velocity);
@@ -174,7 +149,7 @@ inline void BossPartDebrisComponent::Draw(const Vector3& bossPosition)
 {
     if (m_phase != Phase::Resting) return;
 
-    // 吸い寄せ先はボスの «横» 上空。真上へ集めると 3 本が同じ点で重なって 1 本に見える。
+    /// @note 吸い寄せ先はボスの «横» 上空。真上へ集めると 3 本が同じ点で重なって 1 本に見える。
     Vector3 out = transform.worldPosition - bossPosition;
     out.y = 0.0f;
     const Vector3 dir = out.NormalizedOr(Vector3::FORWARD);
@@ -189,7 +164,7 @@ inline void BossPartDebrisComponent::Draw(const Vector3& bossPosition)
     SetSolid(false);
     physics.SetGravityScale(0.0f);
     physics.SetAngularVelocity(Vector3::UP * std::max(drawSpin, 0.0f));
-    // 吸われ始めたことは音でしか気付けない ── 部位は足元ではなく背後にも落ちている。
+    /// @note 吸われ始めたことは音でしか気付けない ── 部位は足元ではなく背後にも落ちている。
     se::Play(audio, se::kEnvHazardWarn, 0.55f);
 }
 
@@ -198,16 +173,13 @@ inline void BossPartDebrisComponent::Launch(const Vector3& target)
     if (m_phase != Phase::Resting && m_phase != Phase::Drawn) return;
 
     Vector3 to = target - transform.worldPosition;
-    // 狙いは水平へ寄せる。真下へ叩き付けると回避も弾きも間に合わない角度になる。
+    /// @note 狙いは水平へ寄せる。真下へ叩き付けると回避も弾きも間に合わない角度になる。
     to.y *= 0.35f;
     const float reach = to.Length();
     m_flyDir = to.NormalizedOr(Vector3::FORWARD);
 
-    // 狙った所を通り過ぎたら落とす。
-    //
-    // WHY 一定時間飛ばさないか: 部位は飛んでいる間すり抜けるので、外した 1 本は
-    //     闘技場の壁も抜けて場外へ出る ── **弾いても外しても盤面から 1 本減る**
-    //     ことになり、置いた資源が戦っているうちに消える。届く時間だけ飛ばして床へ返す。
+    /// @note 届く時間だけ飛ばして床へ返す: 飛行中はすり抜けるため、無期限に飛ばすと外れた
+    ///       1 本が壁を抜けて場外へ出て資源が減ってしまう。
     m_flyTime  = std::min(reach / std::max(launchSpeed, 0.1f) + 0.35f,
                           std::max(launchLifetime, 0.3f));
     m_phase    = Phase::Flying;
@@ -218,7 +190,7 @@ inline void BossPartDebrisComponent::Launch(const Vector3& target)
     SetSolid(false);
     physics.SetGravityScale(0.0f);
     physics.SetVelocity(m_flyDir * std::max(launchSpeed, 0.1f));
-    // 回転は進行方向まわりに。縦に回すと «飛んでいる» が輪郭で読めなくなる。
+    /// @note 回転は進行方向まわりに。縦に回すと «飛んでいる» が輪郭で読めなくなる。
     physics.SetAngularVelocity(m_flyDir * std::max(drawSpin, 0.0f) * 1.6f);
     se::Play(audio, se::kImpactWall, 0.7f);
 }
@@ -250,14 +222,14 @@ inline void BossPartDebrisComponent::ResolveHit()
     auto* combat = CombatManagerComponent::Instance();
     if (!combat) return;
 
-    // 押しは «部位が来た向き»。飛んできた物に弾かれる形が正しい。
+    /// @note 押しは «部位が来た向き»。飛んできた物に弾かれる形が正しい。
     const Vector3 source = at - m_flyDir;
     const PlayerHitResult result =
         combat->HitPlayer(player, std::max(damage, 0), &source, PlayerHitKind::Parryable);
 
     if (result == PlayerHitResult::Parried) {
-        // 弾かれた部位は資源に戻る。跳ね返して落とすだけで、崩し・閃光・止めは
-        // すべて PlayerParryComponent 側が既に返している。
+        /// @note 弾かれた部位は資源に戻る。跳ね返して落とすだけで、崩し・閃光・止めは
+        ///       すべて PlayerParryComponent 側が既に返している。
         FallBack();
         physics.SetVelocity(-m_flyDir * std::max(launchSpeed, 0.1f) * Clamp01(parryBounce)
                             + Vector3::UP * 3.0f);
@@ -277,7 +249,7 @@ inline void BossPartDebrisComponent::OnUpdate()
 
     switch (m_phase) {
     case Phase::Falling: {
-        // 跳ねている途中の «頂点で一瞬遅くなる» は数えない。
+        /// @note 跳ねている途中の «頂点で一瞬遅くなる» は数えない。
         m_slowFor = Speed() < std::max(settleSpeed, 0.0f) ? m_slowFor + dt : 0.0f;
         if (m_slowFor >= std::max(settleSeconds, 0.0f) ||
             m_phaseAge >= std::max(settleTimeout, 1.0f)) {
@@ -293,7 +265,7 @@ inline void BossPartDebrisComponent::OnUpdate()
         break;
 
     case Phase::Drawn: {
-        // 目標へ比例で寄せる。着いたら止まるので «吸い上げられて漂う» になる。
+        /// @note 目標へ比例で寄せる。着いたら止まるので «吸い上げられて漂う» になる。
         const Vector3 delta = m_anchor - transform.worldPosition;
         Vector3       want  = delta * std::max(drawGain, 0.1f);
         const float   speed = want.Length();
@@ -305,7 +277,7 @@ inline void BossPartDebrisComponent::OnUpdate()
     }
 
     case Phase::Flying: {
-        // 速さは毎フレーム押し直す。壁を擦ったときに減速したまま «漂う» にしない。
+        /// @note 速さは毎フレーム押し直す。壁を擦ったときに減速したまま «漂う» にしない。
         physics.SetVelocity(m_flyDir * std::max(launchSpeed, 0.1f));
         ResolveHit();
         if (m_phase == Phase::Flying && m_phaseAge >= m_flyTime) FallBack();

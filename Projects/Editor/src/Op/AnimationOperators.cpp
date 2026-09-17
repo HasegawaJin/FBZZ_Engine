@@ -3,16 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY: 移行前、AI は Animator の構造 (state / transition / motion / parameter / layer) を
-/// 一通り編集できたのに、**保存する手段が 1 つも無かった**。
-/// `asset_save_all` に相当するものは Editor の Save All メニューにしか無く、
-/// AI から見ると「編集は成功したのに、次に開くと元に戻っている」という形でしか
-/// 現れない。しかも編集の直後に viewport を見ても違いは正しく出るので、
-/// 観察による反復では永久に気づけない種類の欠落だった。
-///
-/// 同様にキャンバスの自動整列もパネル内部に閉じており、AI が足したステートは
-/// 既存ノードと重なった位置に残り続けていた。
-/// Docs/design/editor-operator-model.md
+/// 移行前は AI が Animator の構造を編集できても保存する手段が無く、「編集は成功したのに次に開くと
+/// 元に戻っている」形でしか気づけなかった。キャンバスの自動整列も同様にパネル内部に閉じていた。
+/// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -31,10 +24,9 @@ namespace fbzz::editor {
 
 namespace {
 
-// Animation Graph パネルが開いている Controller ドキュメント。
-// WHY パスではなく開いているモデルを対象にするか: レイアウト (graphLayouts) も
-//     dirty 登録も「今開いているドキュメント」を単位にしており、閉じたファイルへ
-//     直接書くと、パネルが保持している編集中モデルと食い違う 2 つの真実ができる。
+/// @brief Animation Graph パネルが開いている Controller ドキュメント。
+/// @note レイアウト (graphLayouts) も dirty 登録も「今開いているドキュメント」単位で、閉じたファイルへ
+///       直接書くとパネルの編集中モデルと食い違う 2 つの真実ができる。
 scene::AnimatorComponent* OpenController(const OpContext& c, std::string* pathOut)
 {
     if (!c.ctx.animationControllerEditor) return nullptr;
@@ -122,8 +114,8 @@ void RegisterAnimationOperators(OperatorRegistry& registry)
                                      "Animation Graph で .animcontroller を開いてください");
 
             const std::string stateName = args.GetString("state");
-            // 実在しないステート名を黙って受けると、座標だけが亡霊として layout に残り、
-            // 「設定したのに動かない」という形でしか現れない。
+            /// @note 実在しないステート名を黙って受けると、座標だけが亡霊として layout に残り、
+            ///       「設定したのに動かない」という形でしか現れない。
             const bool exists = std::any_of(
                 animator->states.begin(), animator->states.end(),
                 [&stateName](const scene::AnimationState& s) { return s.name == stateName; });
@@ -148,8 +140,8 @@ void RegisterAnimationOperators(OperatorRegistry& registry)
                 },
                 [context, path, stateName, before, hadPosition]() {
                     auto& positions = context->graphLayouts[path].nodePositions;
-                    // 元々座標を持っていなかったノードは「未配置」へ戻す。
-                    // 0,0 を書き戻すと、Undo するたび左上へ寄る挙動になる。
+                    /// @note 元々座標を持っていなかったノードは「未配置」へ戻す。
+                    ///       0,0 を書き戻すと、Undo するたび左上へ寄る挙動になる。
                     if (hadPosition) positions[stateName] = before;
                     else             positions.erase(stateName);
                 });
@@ -169,7 +161,8 @@ void RegisterAssetOperators(OperatorRegistry& registry)
                   "Animation Graph が開いている Controller を保存する。"
                   "Editor の Save ボタンと同じ保存関数を通るので、"
                   "Animator のキャンバス配置など保存時にだけ書き出される情報も欠落しない。";
-    op.kind     = OpKind::Action;   // ファイル I/O は Undo に載せない (Undo で保存が巻き戻る事故になる)
+    /// @note ファイル I/O は Undo に載せない (Undo で保存が巻き戻る事故になる)
+    op.kind     = OpKind::Action;
 
     OpParam pathParam;
     pathParam.name     = "path";
@@ -178,12 +171,11 @@ void RegisterAssetOperators(OperatorRegistry& registry)
     pathParam.required = false;
     op.params = { pathParam };
 
-    // 保存対象が 1 つも無いときに「押せるのに何も起きない」を作らない。
+    /// @note 保存対象が 1 つも無いときに「押せるのに何も起きない」を作らない。
     op.poll = [](const OpContext& context, const OpArgs& args) {
         const std::string path = args.GetString("path");
-        // path を指定した AI 呼び出しは、そのアセットだけを可否判定する。
-        // WHY: 以前は別アセットが dirty なら対象外の path も available になり、
-        //      dry-run と実行結果の意味がずれていた。
+        /// @note path を指定した AI 呼び出しは、そのアセットだけを可否判定する。別アセットが dirty
+        ///       なら対象外の path も available になると、dry-run と実行結果の意味がずれる。
         return path.empty() ? AssetDirtyRegistry::HasAny()
                             : AssetDirtyRegistry::IsDirty(path);
     };
@@ -196,7 +188,7 @@ void RegisterAssetOperators(OperatorRegistry& registry)
                                  "path を指定するか、Animation Graph でアセットを開いてください");
 
         if (!AssetDirtyRegistry::IsDirty(path)) {
-            // 「保存できない」と「保存するものが無い」は別。後者はエラーにしない。
+            /// @note 「保存できない」と「保存するものが無い」は別。後者はエラーにしない。
             OpResult result;
             result.message = "未保存の変更がありません: " + path;
             return result;

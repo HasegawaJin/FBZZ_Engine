@@ -68,14 +68,12 @@ const char* LayerDisplayName(const std::string& path)
     return slash == std::string::npos ? path.c_str() : path.c_str() + slash + 1;
 }
 
-// ToTerrainLocal / ToTerrainWorld / BrushOverlapsTerrainXZ は TerrainBrush.hpp が提供する
-// (AI 側の terrain.sculpt / terrain.paint と同じ実体を使うため)。
+/// ToTerrainLocal / ToTerrainWorld / BrushOverlapsTerrainXZ は TerrainBrush.hpp が提供する
+/// (AI 側の terrain.sculpt / terrain.paint と同じ実体を使うため)。
 
 } // namespace
 
-// =============================================================================
-// Update — メイン入力処理
-// =============================================================================
+/// Update — メイン入力処理
 
 void TerrainTool::Update(
     scene::Scene&               scene,
@@ -87,21 +85,20 @@ void TerrainTool::Update(
     const std::function<void()>& markDirty,
     UndoStack*                   undoStack)
 {
-    // ビューポート外ではレイキャストしない
-    // 非アクティブ時はブラシ入力・プレビューをすべてスキップする
+    /// @note ビューポート外ではレイキャストしない
+    ///       非アクティブ時はブラシ入力・プレビューをすべてスキップする
     if (!m_active || !viewportHovered) {
         m_isHovering = false;
         m_hitTerrain = nullptr;
         if (!m_strokeActive) return;
     }
 
-    // ブラシサイズ・強度のホットキー調整。[ / ] で半径、Shift+[ / Shift+] で強度。
-    // WHY: 多くの地形エディタ標準の操作で、パネルのスライダーへ視線を移さずブラシを連続調整できる。
-    //      マウスホイールはビューポートのカメラ操作と競合するため、競合しないブラケットキーを使う。
-    //      viewportHovered のときだけ拾うので、InputText 等にフォーカスがある場面では誤爆しない。
+    /// @note ブラシサイズ・強度のホットキー調整。[ / ] で半径、Shift+[ / Shift+] で強度。
+    /// @note マウスホイールはビューポートのカメラ操作と競合するためブラケットキーを使う。viewportHovered のときだけ拾うので InputText 等にフォーカスがある場面では誤爆しない。
     if (viewportHovered) {
         const bool  shift        = ImGui::GetIO().KeyShift;
-        const float radiusStep   = std::max(0.5f, m_brush.radius * 0.1f); // 大きいブラシほど粗く刻む
+        /// @note 大きいブラシほど粗く刻む
+        const float radiusStep   = std::max(0.5f, m_brush.radius * 0.1f);
         const float strengthStep = 0.02f;
         if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, /*repeat=*/true)) {
             if (shift) m_brush.strength = std::clamp(m_brush.strength - strengthStep, 0.001f, 1.0f);
@@ -113,10 +110,8 @@ void TerrainTool::Update(
         }
     }
 
-    // 修飾キーによる Sculpt サブモードの一時上書き (Unity Terrain 互換)。
-    // Shift+drag = Smooth / Ctrl+drag = Lower。修飾を離せば選択中のサブモード(m_sculpt)に戻る。
-    // WHY: 平滑化・掘り下げは頻繁に切り替えるため、パネルのラジオボタンへ視線を戻さず手元で操作できるようにする。
-    //      Ctrl を優先し、Ctrl+Shift 同時押しは Lower とする。
+    /// @note 修飾キーによる Sculpt サブモードの一時上書き (Unity Terrain 互換)。Shift+drag = Smooth / Ctrl+drag = Lower。修飾を離せば選択中のサブモード (m_sculpt) に戻る。
+    /// @note Ctrl を優先し、Ctrl+Shift 同時押しは Lower とする。
     m_activeSculpt = m_sculpt;
     if (m_mode == Mode::Sculpt && viewportHovered) {
         const ImGuiIO& io = ImGui::GetIO();
@@ -124,7 +119,7 @@ void TerrainTool::Update(
         else if (io.KeyShift) m_activeSculpt = SculptMode::Smooth;
     }
 
-    // レイキャストで地形ヒット判定
+    /// @note レイキャストで地形ヒット判定
     math::Vector3     hitWorld;
     scene::GameObject* hitGO = nullptr;
     m_isHovering = RaycastTerrain(scene, camera, viewportMin, viewportSize, hitWorld, hitGO);
@@ -134,10 +129,10 @@ void TerrainTool::Update(
         m_hitTerrain = hitGO;
     } else {
         m_hitTerrain = nullptr;
-        // ヒットなしでもブラシ円は最後のヒット位置に残す（移動の遅延を自然に見せる）
+        /// @note ヒットなしでもブラシ円は最後のヒット位置に残す（移動の遅延を自然に見せる）
     }
 
-    // -- マウスボタンが押されている間だけ編集を適用 --
+    /// @note -- マウスボタンが押されている間だけ編集を適用 --
     const bool mouseHeld     = ImGui::IsMouseDown(ImGuiMouseButton_Left);
     const bool mouseReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
 
@@ -165,24 +160,21 @@ void TerrainTool::Update(
         };
         captureTerrainBefore(m_hitTerrain, terrainComp);
 
-        // 描画と同じ World Matrix の逆変換で Terrain ローカル座標へ変換する。
+        /// @note 描画と同じ World Matrix の逆変換で Terrain ローカル座標へ変換する。
         const scene::Transform& tf = m_hitTerrain->transform;
         const math::Vector3 hitLocal = ToTerrainLocal(tf, m_hitPoint);
 
-        // Flatten モード: 最初のクリックで基準高さを固定する
+        /// @note Flatten モード: 最初のクリックで基準高さを固定する
         if (m_mode == Mode::Sculpt && m_activeSculpt == SculptMode::Flatten && !m_flattenLocked) {
             m_flattenTarget = terrainComp->GetHeightAt(hitLocal.x, hitLocal.z);
             m_flattenLocked = true;
         }
 
-        // ブラシ範囲にワールド空間で重なる「全 Terrain」を編集対象にする。
-        // WHY: 各 Terrain は独立した heightData / splatData を持つため、ブラシ半径が境界を越えても
-        //      カーソル下の 1 つだけを編集すると、隣の境界列が取り残されて段差・継ぎ目が残る。
-        //      共有境界の頂点は隣接 Terrain 同士で同一のワールド点なので、各 Terrain のローカル空間へ
-        //      ブラシ中心を変換して当てれば同一のデルタが入り、グリッド登録の有無に関係なく連続する。
+        /// @note ブラシ範囲にワールド空間で重なる全 Terrain を編集対象にする。各 Terrain は独立した heightData/splatData を持つため、カーソル下の 1 つだけ編集すると境界に段差・継ぎ目が残る。
+        /// @note 共有境界の頂点は隣接 Terrain 同士で同一のワールド点なので、各 Terrain のローカル空間へブラシ中心を変換して当てれば同一のデルタが入る。
         switch (m_mode) {
             case Mode::Sculpt:
-                // colliderDirty はここでは立てない（毎フレーム BVH 再構築を避け、確定時に 1 回だけ）。
+                /// @note colliderDirty はここでは立てない（毎フレーム BVH 再構築を避け、確定時に 1 回だけ）。
                 for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
                     auto* go = scene.GetGameObject(eid);
                     auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
@@ -207,11 +199,8 @@ void TerrainTool::Update(
                     const math::Vector3 localN = ToTerrainLocal(go->transform, m_hitPoint);
                     if (!BrushOverlapsTerrainXZ(*tc, localN, m_brush.radius))
                         continue;
-                    // ヒットした Terrain は選択レイヤーをそのまま塗る。
-                    // WHY: マテリアル解決を通すと、複数レイヤーが同じ material path を共有していたり
-                    //      未割り当て(空)だった場合に選択レイヤーと違う層へ解決され、狙ったレイヤーを
-                    //      塗れなくなる。隣接 Terrain だけは layerMaterials の並びが異なり得るため、
-                    //      同じ material path のレイヤーを探して塗り、見つからなければスキップする。
+                    /// @note ヒットした Terrain は選択レイヤーをそのまま塗る。マテリアル解決を通すと、レイヤー共有・未割り当て時に狙ったレイヤーへ塗れなくなる。
+                    /// @note 隣接 Terrain は layerMaterials の並びが異なり得るため、同じ material path のレイヤーを探して塗り、見つからなければスキップする。
                     int layer = paintLayer;
                     if (tc != terrainComp) {
                         layer = ResolvePaintLayerForTerrain(*tc, sourceMaterial, paintLayer);
@@ -229,13 +218,12 @@ void TerrainTool::Update(
         markDirty();
     }
 
-    // マウスボタンを離したら Flatten の固定を解除する
+    /// @note マウスボタンを離したら Flatten の固定を解除する
     if (mouseReleased) {
         m_flattenLocked = false;
         if (m_strokeActive) {
-            // ストローク確定時に、このストロークで触れた全 Terrain のコライダーを一度だけ再構築する。
-            // WHY: Sculpt は高さを変えるため物理形状の更新が要る。Paint(スプラット)は形状に影響しない
-            //      ので colliderDirty は不要。押下中ではなくここで立てることで毎フレーム再構築を避ける。
+            /// @note ストローク確定時に、このストロークで触れた全 Terrain のコライダーを一度だけ再構築する。
+            /// @note Sculpt は高さを変えるため物理形状の更新が要るが、Paint (スプラット) は形状に影響せず colliderDirty は不要。押下中でなくここで立てて毎フレーム再構築を避ける。
             if (m_mode == Mode::Sculpt) {
                 for (const TerrainStrokeSnapshot& snapshot : m_strokeBeforeTerrains) {
                     if (auto* target = scene.FindByGuid(snapshot.instanceId))
@@ -278,14 +266,12 @@ void TerrainTool::Update(
         }
     }
 
-    // ブラシ円をビューポートに投影描画
+    /// @note ブラシ円をビューポートに投影描画
     if (m_isHovering)
         DrawBrushPreview(viewportMin, viewportSize, camera);
 }
 
-// =============================================================================
-// レイキャスト
-// =============================================================================
+/// レイキャスト
 
 bool TerrainTool::RaycastTerrain(
     scene::Scene&           scene,
@@ -295,17 +281,17 @@ bool TerrainTool::RaycastTerrain(
     math::Vector3&          outHitWorld,
     scene::GameObject*&     outGO) const
 {
-    // マウス位置 → NDC 変換
+    /// @note マウス位置 → NDC 変換
     ImVec2 mouse = ImGui::GetMousePos();
     const float ndcX = ((mouse.x - viewportMin.x) / viewportSize.x) * 2.0f - 1.0f;
     const float ndcY = 1.0f - ((mouse.y - viewportMin.y) / viewportSize.y) * 2.0f;
 
-    // NDC → カメラレイ
+    /// @note NDC → カメラレイ
     const math::Matrix4 invVP = math::Matrix4::Inverse(
         camera.GetProjectionMatrix() * camera.GetViewMatrix());
     const math::Ray ray = math::Ray::FromNDC(ndcX, ndcY, camera.m_position, invVP);
 
-    // シーン内の全 TerrainComponent に対してレイキャスト
+    /// @note シーン内の全 TerrainComponent に対してレイキャスト
     float bestT = 1e30f;
     scene::GameObject* bestGO = nullptr;
     math::Vector3 bestLocalHit;
@@ -318,7 +304,7 @@ bool TerrainTool::RaycastTerrain(
         math::Vector3 localHit;
         if (!RaycastSingleTerrain(ray, *tc, go->transform, localHit)) continue;
 
-        // ヒット位置のワールド t を求めて最近傍を選ぶ
+        /// @note ヒット位置のワールド t を求めて最近傍を選ぶ
         const math::Vector3 hitWorld = ToTerrainWorld(go->transform, localHit);
         const math::Vector3 toHit = {
             hitWorld.x - ray.origin.x,
@@ -340,15 +326,14 @@ bool TerrainTool::RaycastTerrain(
     return true;
 }
 
-// DDA + 二分探法による単一地形へのレイキャスト
+/// DDA + 二分探法による単一地形へのレイキャスト
 bool TerrainTool::RaycastSingleTerrain(
     const math::Ray&               ray,
     const scene::TerrainComponent& terrain,
     const scene::Transform&        tf,
     math::Vector3&                 outLocalHit) const
 {
-    // Terrain 描画と同じ World Matrix の逆変換でレイをローカル化する。
-    // WHAT: 方向は w=0 で変換し、平行移動の影響を除外する。
+    /// @note Terrain 描画と同じ World Matrix の逆変換でレイをローカル化する。方向は w=0 で変換し平行移動の影響を除外する。
     const math::Matrix4 invWorld = math::Matrix4::Inverse(tf.GetWorldMatrix());
     const math::Vector4 localOrigin =
         invWorld * math::Vector4{ ray.origin.x, ray.origin.y, ray.origin.z, 1.0f };
@@ -359,13 +344,13 @@ bool TerrainTool::RaycastSingleTerrain(
         localDirection.x, localDirection.y, localDirection.z
     }.Normalized();
 
-    // テレイン全体の AABB（ローカル空間）
+    /// @note テレイン全体の AABB（ローカル空間）
     const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
     const float terrainD = static_cast<float>(terrain.rows    - 1) * terrain.cellSize;
     const float minH     = std::min(0.0f, TerrainMinWorldHeight(terrain));
     const float maxH     = terrain.maxHeight;
 
-    // AABB スラブテスト
+    /// @note AABB スラブテスト
     auto slab = [](float origin, float dir, float lo, float hi, float& tMin, float& tMax) {
         if (std::abs(dir) < 1e-6f) {
             if (origin < lo || origin > hi) return false;
@@ -386,14 +371,13 @@ bool TerrainTool::RaycastSingleTerrain(
     if (tMax <= 0.0f) return false;
     tMin = std::max(tMin, 0.0f);
 
-    // DDA: cellSize ごとにステップして地形との交差セルを探す
-    // WHY: ハイトマップは離散グリッドなので cellSize 単位のステップが最も効率的。
-    //      距離ベースのレイマーチより少ないイテレーションで正確に交差セルを検出できる。
+    /// @note DDA: cellSize ごとにステップして地形との交差セルを探す。離散グリッドなのでこの単位が最も効率的で、距離ベースのレイマーチより少ないイテレーションで交差セルを検出できる。
     const float stepT   = terrain.cellSize / std::max(std::abs(rayDir.x), std::abs(rayDir.z));
     const int   maxStep = static_cast<int>((tMax - tMin) / stepT) + 2;
 
     float prevT = tMin;
-    float prevH = -1.0f; // 未使用の初期値
+    /// @note 未使用の初期値
+    float prevH = -1.0f;
     bool  foundBracket = false;
     float bracketLo = tMin, bracketHi = tMin;
 
@@ -409,7 +393,7 @@ bool TerrainTool::RaycastSingleTerrain(
         const float terrainH = terrain.GetHeightAt(p.x, p.z);
 
         if (step > 0) {
-            // 前のステップではレイが地面より上、今は下 → 交差区間を発見
+            /// @note 前のステップではレイが地面より上、今は下 → 交差区間を発見
             if (prevH > 0.0f && (p.y <= terrainH) && (prevT < tMax)) {
                 foundBracket = true;
                 bracketLo    = prevT;
@@ -418,15 +402,15 @@ bool TerrainTool::RaycastSingleTerrain(
             }
         }
         prevT = tClamped;
-        prevH = p.y - terrainH; // 正なら地面より上
+        /// @note 正なら地面より上
+        prevH = p.y - terrainH;
 
         if (tClamped >= tMax) break;
     }
 
     if (!foundBracket) return false;
 
-    // 二分探法（8 回）で交差点を精密化
-    // WHY: DDA で見つけた区間は cellSize 精度なので、さらに二分で誤差を 1/256 に縮める。
+    /// @note 二分探法 (8 回) で交差点を精密化する。DDA の区間は cellSize 精度なので、二分で誤差を 1/256 に縮める。
     for (int i = 0; i < 8; ++i) {
         const float mid = (bracketLo + bracketHi) * 0.5f;
         const math::Vector3 p = {
@@ -452,16 +436,14 @@ bool TerrainTool::RaycastSingleTerrain(
     return true;
 }
 
-// =============================================================================
-// ブラシ円プレビュー（スクリーン空間投影）
-// =============================================================================
+/// ブラシ円プレビュー（スクリーン空間投影）
 
 void TerrainTool::DrawBrushPreview(
     const ImVec2&           viewportMin,
     const ImVec2&           viewportSize,
     const renderer::Camera& camera) const
 {
-    // ワールド座標を 2D スクリーン座標に変換するローカルラムダ
+    /// @note ワールド座標を 2D スクリーン座標に変換するローカルラムダ
     const math::Matrix4 vp = camera.GetViewProjection();
     auto project = [&](const math::Vector3& p) -> ImVec2 {
         const math::Vector4 clip = vp * math::Vector4{ p.x, p.y, p.z, 1.0f };
@@ -474,13 +456,8 @@ void TerrainTool::DrawBrushPreview(
         };
     };
 
-    // ブラシ半径のリング: Terrain ローカル XZ 平面上で分割し、各点の地表高をサンプリングする。
-    // WHY: 中心の高さだけで水平な円を描くと、斜面や凹凸で実際の編集範囲から浮いて見える。
-    //      ApplyTerrainSculpt / ApplyTerrainPaint と同じローカル座標系を使うことで表示と編集範囲を一致させる。
-    // WHY: DebugDraw は GPU コマンドなので ImGui DrawList と混在しづらい。
-    //      ImGui DrawList の 2D ラインで代替する方が実装がシンプルで確実。
-    // GetForegroundDrawList でウィンドウスタックの最前面に描画する。
-    // GetWindowDrawList だとビューポート画像の裏に隠れる可能性がある。
+    /// @note ブラシ半径のリングは Terrain ローカル XZ 平面で分割し各点の地表高をサンプリングする。中心の高さだけで水平円を描くと斜面・凹凸で編集範囲から浮いて見えるため、ApplyTerrainSculpt/Paint と同じローカル座標系で一致させる。
+    /// @note DebugDraw (GPU コマンド) は ImGui DrawList と混在しづらいため 2D ラインで代替する。GetForegroundDrawList を使うのは、GetWindowDrawList だとビューポート画像の裏に隠れうるため。
     if (!m_hitTerrain)
         return;
 
@@ -493,8 +470,10 @@ void TerrainTool::DrawBrushPreview(
     const int   segs    = 64;
     constexpr float kPi = 3.14159265f;
     const ImU32 col     = (m_mode == Mode::Sculpt)
-                        ? IM_COL32(255, 220, 50,  220)  // Sculpt: 黄色
-                        : IM_COL32(50,  200, 255, 220);  // Paint: 水色
+                        /// @note Sculpt: 黄色
+                        ? IM_COL32(255, 220, 50,  220)
+                        /// @note Paint: 水色
+                        : IM_COL32(50,  200, 255, 220);
 
     const math::Vector3 hitLocal = ToTerrainLocal(m_hitTerrain->transform, m_hitPoint);
     auto ringPoint = [&](float angle) {
@@ -516,14 +495,10 @@ void TerrainTool::DrawBrushPreview(
     }
 }
 
-// =============================================================================
-// ImGui UI
-// =============================================================================
+/// ImGui UI
 
-// =============================================================================
-// DrawSculptContent / DrawPaintContent / DrawImportSection
-// NatureTool のタブ内から呼ぶためのウィンドウなし描画メソッド
-// =============================================================================
+/// DrawSculptContent / DrawPaintContent / DrawImportSection
+/// NatureTool のタブ内から呼ぶためのウィンドウなし描画メソッド
 
 void TerrainTool::DrawSculptContent(
     scene::Scene& /*scene*/, UndoStack* /*undoStack*/, const std::function<void()>& /*markDirty*/)
@@ -650,9 +625,7 @@ void TerrainTool::DrawImportSection(
     }
 }
 
-// =============================================================================
-// OnEditorGUI — スタンドアローン用ウィンドウ (既存互換)
-// =============================================================================
+/// OnEditorGUI — スタンドアローン用ウィンドウ (既存互換)
 
 void TerrainTool::OnEditorGUI(
     scene::Scene& scene,

@@ -3,11 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 専用のプレビュー面を作らないか:
-///   `.vfx` の再生面は Prefab 編集モードそのもの (Docs/design/vfx-prefab.md §8.2)。
-///   隔離シーンを別に立てると «もう 1 つのエディタ» になり、旧 VFXEditor を
-///   捨てた理由をそのまま作り直すことになる。Inspector が受け持つのは
-///   「開く前に中身の見当を付ける」ところまで。
+/// @note `.vfx` の再生面は Prefab 編集モードそのもの (Docs/design/vfx-prefab.md §8.2)。隔離シーンを
+///       別に立てると «もう 1 つのエディタ» になり、旧 VFXEditor を捨てた理由を作り直すことになる。
+///       Inspector が受け持つのは「開く前に中身の見当を付ける」ところまで。
 #pragma once
 #include <string>
 #include <vector>

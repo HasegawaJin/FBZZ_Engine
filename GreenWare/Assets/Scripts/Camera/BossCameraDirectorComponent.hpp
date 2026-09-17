@@ -3,41 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
 ///
-/// WHY 遊びのカメラと別に持つか:
-///   TpsCameraComponent は «プレイヤーを追う» ことだけを仕事にしていて、そこへ
-///   «たまにボスを見せる» を足すと、追従の式に演出用の分岐が混ざる。カメラが
-///   おかしいときに «追従が悪いのか演出が悪いのか» を切り分けられなくなる。
-///   預かっている間は追従を止め、返すときに位置と向きを引き継ぐ、と境界を 1 本引く。
-///
-/// WHY VirtualCamera の仕組みに乗せないか:
-///   エンジンには優先度で選ぶ仮想カメラ (CameraRigComponents) があるが、この作品の
-///   遊びのカメラはスクリプト (TpsCamera) が transform を直接書く作りで、リグの
-///   選択には参加していない。片方だけリグへ載せると «どちらが最後に書いたか» で
-///   絵が決まる状態になる。書き手は 1 人、という今の形を保つ。
-///
-/// WHY 3 つに絞るか:
-///   カメラを取り上げられるのはプレイヤーにとって «操作できない時間» で、多用すると
-///   ボス戦がムービーの連続になる。取り上げてよいのは «操作しても意味が無い瞬間» ─
-///   まだ戦いが始まっていない (登場)、ボスが倒れて手出しが要らない (転倒・撃破) ─
-///   の 3 つだけに限る。
-///
-/// WHY 撃破だけ操作を返さないか:
-///   撃破の後はリザルトへ行くだけで、プレイヤーに returns する遊びが無い。
-///   そこだけは最後まで演出が持ったまま画面を渡す。
-///
-/// WHY 演出中に盤面を止めるか (2026-09-07):
-///   登場の 2.6 秒のあいだにボスが動き出すと、«何と戦うか» を見せている最中に
-///   踏まれる。カメラを預かるということは操作を取り上げることで、取り上げた側は
-///   その間に盤面が進まないことまで引き受けないといけない。止める相手は演出ごとに
-///   違う ─ 登場は両方、転倒はどちらも止めない (5 秒の隙は遊び)、撃破と とどめ は
-///   プレイヤーだけ。申告は cutscene::Publish (葉のヘッダー) に置き、ボス AI と
-///   プレイヤーの入力がそれぞれ読む。カメラがボスや入力を直接触らないのは、
-///   «誰が止めたか» を 1 か所に留めるため。
-///
-/// WHY とどめ (Execute) を足したか:
-///   脚がもげる瞬間はこの戦いで一番大きな «形の変化» なのに、プレイヤーの後ろからの
-///   画では脚が体の陰に入る。居合の 0.58 秒だけ切断面へ寄る。倒れているボスは
-///   手を出さないので、取り上げても失うものが無い (Inspector で切れる)。
+/// @note 遊びの TpsCameraComponent とは分離する。追従の式へ演出分岐を混ぜると「追従が悪いのか演出が悪いのか」を切り分けられなくなるため、預かる間は追従を止め、返すときに位置・向きだけ引き継ぐ。
+/// @note VirtualCamera (優先度制) には乗せない。遊びのカメラは TpsCamera がスクリプトで transform を直書きする作りで、片方だけリグに載せると「最後に書いた方」で絵が決まる状態になる。
+/// @note 演出は Intro/Topple/Death/Execute の 3 種+とどめに限る。操作を取り上げてよいのは「操作しても意味が無い瞬間」だけ。
+/// @note 撃破だけは操作を返さない。リザルトへ直行するだけで、その先に遊びが無いため。
+/// @note 演出中に盤面を止める相手は演出ごとに違う (登場は両方・転倒はどちらも止めない・撃破ととどめはプレイヤーのみ)。申告は cutscene::Publish 経由でボス AI と入力側が読み、カメラは直接触らない (「誰が止めたか」を 1 箇所に置くため)。
+/// @note とどめ (Execute) は脚が千切れる瞬間だけ切断面へ 0.58 秒寄る。プレイヤー視点だと脚が体の陰になるため。倒れたボスは動かないので取り上げても失うものが無い。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
@@ -81,9 +52,7 @@ public:
     FBZZ_FIELD_RANGE(float, focusHeight, 3.2f, "注視の高さ", 0.0f, 12.0f)
     FBZZ_TOOLTIP("ボスの足元から何 m 上を画面の中心に置くか。全高 6m の胴の中心あたり")
 
-    // WHY 登場だけ長いか: ここは «これから何と戦うか» を伝える唯一の機会で、
-    //     全高 6m を下から上まで見せるには時間が要る。転倒と撃破は «今起きたこと» の
-    //     確認なので、長いと «見せられている» に変わる。
+    /// @note 登場だけ長い。「これから何と戦うか」を伝える唯一の機会で全高 6m を見せるには時間が要る。転倒・撃破は「今起きたこと」の確認なので長いと冗長になる。
     FBZZ_GROUP("登場タイトル")
     FBZZ_FIELD(std::string, introTitle, "IRON WARDEN", "タイトル")
     FBZZ_FIELD(std::string, introSubtitle, "鉄骸の番人", "異名")
@@ -116,8 +85,8 @@ public:
     FBZZ_FIELD_RANGE(float, toppleRise, -0.6f, "立ち上がり", -8.0f, 8.0f)
     FBZZ_FIELD_RANGE(float, toppleOrbit, -8.0f, "旋回", -180.0f, 180.0f)
     FBZZ_FIELD_RANGE(float, toppleFov, 0.0f, "FOV のオフセット", -30.0f, 30.0f)
-    // 転倒は 5 秒の «隙» そのもの。カメラを預かる 1.15 秒も入力は生かす ─ 寄っている
-    // 間に走り寄れないと、隙の 1/4 を演出が食う。
+    /// 転倒は 5 秒の «隙» そのもの。カメラを預かる 1.15 秒も入力は生かす ─ 寄っている
+    /// 間に走り寄れないと、隙の 1/4 を演出が食う。
     FBZZ_FIELD(bool, toppleHoldPlayer, false, "プレイヤーを固める")
 
     FBZZ_GROUP("撃破")
@@ -134,8 +103,7 @@ public:
     FBZZ_FIELD_RANGE(float, deathFov, -4.0f, "FOV のオフセット", -30.0f, 30.0f)
     FBZZ_FIELD(bool, deathHoldPlayer, true, "プレイヤーを固める")
 
-    // WHY 短いか: 居合は 0.58 秒で、その間だけ寄って戻す。長いとボスが起き上がる
-    //     動きまで «見せられる» ことになり、次の手が読めないまま操作が返る。
+    /// @note 短い。居合は 0.58 秒で寄って戻すだけ。長いとボスが起き上がる動きまで見せることになり、次の手が読めないまま操作が返る。
     FBZZ_GROUP("とどめ")
     FBZZ_FIELD(bool, executeEnabled, true, "有効")
     FBZZ_FIELD_RANGE(float, executeSeconds, 0.62f, "秒数", 0.1f, 3.0f)
@@ -159,9 +127,9 @@ public:
     FBZZ_TOOLTIP("遊びの画から演出の画へ寄せる秒数。0 で切り替え (カット)")
     FBZZ_FIELD_RANGE(float, executeBlendIn, 0.10f, "In (Execute)", 0.0f, 1.0f)
     FBZZ_TOOLTIP("とどめだけ速く寄せる。0.35 では寄り切る前に居合が終わる")
-    // NOTE: 返す側の «出» は持たない。ResumeFrom で演出の姿勢を追従へ渡すので、
-    //       そこから先は追従自身の Follow Speed が遊びの画へ寄せていく。
-    //       ここに 2 つ目の時定数を置くと、同じ «戻り» を 2 か所で調整することになる。
+    /// @note 返す側の «出» は持たない。ResumeFrom で演出の姿勢を追従へ渡すので、
+    ///       そこから先は追従自身の Follow Speed が遊びの画へ寄せていく。
+    ///       ここに 2 つ目の時定数を置くと、同じ «戻り» を 2 か所で調整することになる。
 
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_ENUM(BossShot, previewShot, BossShot::None, "プレビュー",
@@ -172,16 +140,11 @@ public:
 
     [[nodiscard]] static BossCameraDirectorComponent* Instance() { return s_instance; }
 
-    /// 演出を 1 つ流す。既に流れているものがあれば置き換える。
-    ///
-    /// WHY 置き換えるか (待たせないか): 転倒中に撃破が決まることがある。待たせると
-    ///     «倒れたのに寄りの画のまま数秒» になり、決着の瞬間を見逃す。後から来た
-    ///     出来事の方が必ず新しいので、そちらを見せる。
+    /// @brief 演出を 1 つ流す。既に流れているものがあれば置き換える。
+    /// @note 待たせない。転倒中に撃破が決まることがあり、後から来た出来事の方が必ず新しいので、そちらを優先して見せる。
     void Play(BossShot shot);
-    /// 見つめる点を指定して流す (とどめ = 切断面、蛇 = 頭)。点は演出のあいだ動かない。
-    ///
-    /// WHY 点で受けるか: 蛇は根 (Boss02) が闘技場の中心に居て、見せたい頭はそこに無い。
-    ///     ボスごとに «どこを見るか» の規則を持たせるより、呼ぶ側が点を渡す方が短い。
+    /// @brief 見つめる点を指定して流す (とどめ = 切断面、蛇 = 頭)。点は演出のあいだ動かない。
+    /// @note 点で受け取る。蛇は根 (Boss02) が中心に居て頭がそこに無いため、ボスごとの規則より呼ぶ側が点を渡す方が短い。
     void PlayAt(BossShot shot, const Vector3& focus);
     /// 今すぐ遊びのカメラへ返す。
     void Release();
@@ -239,10 +202,7 @@ private:
     /// 演出を始めた時点のカメラ姿勢。ここから blendIn で寄せる。
     Vector3    m_fromPos{};
     Quaternion m_fromRot = Quaternion::Identity();
-    /// 演出を始めた時点の «ボスから見た方角» [度]。回り込みはここを起点にする。
-    ///
-    /// WHY 開始時に固定するか: 毎フレーム «今の» 方角から組むと、ボスが動くたびに
-    ///     カメラが回り込みの角ぶん飛ぶ。演出中の構図は始まった瞬間に決まる。
+    /// @note 演出を始めた時点の「ボスから見た方角」[度] に固定する (回り込みの起点)。毎フレーム今の方角から組むとボスが動くたびカメラが飛ぶため。
     float m_baseYaw = 0.0f;
 
     TpsCameraComponent* m_tps = nullptr;
@@ -266,7 +226,7 @@ inline void BossCameraDirectorComponent::OnStart()
     m_elapsed = 0.0f;
     debugShot = "-";
 
-    // 追従は同じ GameObject に居る前提 (どちらもカメラの振る舞い)。
+    /// @note 追従は同じ GameObject に居る前提 (どちらもカメラの振る舞い)。
     m_tps = scene.GetScript<TpsCameraComponent>();
     if (!m_tps) {
         debug.LogWarning("BossCameraDirectorComponent: 同じ GameObject に "
@@ -298,7 +258,7 @@ BossCameraDirectorComponent::Build(BossShot shot) const
                  toppleFov, blendIn, false, toppleHoldPlayer };
         break;
     case BossShot::Death:
-        // 撃破だけ返さない (ヘッダーの WHY)。
+        /// @note 撃破だけ操作を返さない (release=false)。リザルトへ直行し、その先に遊びが無いため。
         form = { deathSeconds, deathDistance, deathPitch, deathRise, deathOrbit,
                  deathPullBack, false, deathFov, blendIn, false, deathHoldPlayer };
         break;
@@ -353,8 +313,8 @@ inline void BossCameraDirectorComponent::Begin(BossShot shot, const Shot& formIn
                                                    : executeEnabled;
     if (!allowed || (shot == BossShot::Intro && m_introPlayed)) return;
 
-    // 撃破は最後まで持つ。その上に とどめ や転倒が来ても (同フレームの順序次第で
-    // 起きうる) 決着の画を捨てない。
+    /// @note 撃破は最後まで持つ。その上に とどめ や転倒が来ても (同フレームの順序次第で
+    ///       起きうる) 決着の画を捨てない。
     if (m_shot == BossShot::Death && shot != BossShot::Death) return;
 
     GameObject* boss = Boss();
@@ -375,18 +335,18 @@ inline void BossCameraDirectorComponent::Begin(BossShot shot, const Shot& formIn
     m_elapsed = 0.0f;
     debugShot = NameOf(shot);
 
-    // とどめの入りだけ遅くする。実時間で数えるので、演出の尺 (スケール時間) より
-    // 短く置かないと、戻る前に居合が終わる。
+    /// @note とどめの入りだけ遅くする。実時間で数えるので、演出の尺 (スケール時間) より
+    ///       短く置かないと、戻る前に居合が終わる。
     if (shot == BossShot::Execute && executeSlowSeconds > 0.0f && executeSlow < 1.0f)
         if (auto* timeManager = TimeManagerComponent::Instance())
             timeManager->SlowFor(Clamp01(executeSlow), executeSlowSeconds, 0.0f);
 
-    // 始まりの画は «今映っている画»。ここを控えずに組むと、どの演出も
-    // 決まった位置から始まることになり、直前の状況と繋がらない。
+    /// @note 始まりの画は «今映っている画»。ここを控えずに組むと、どの演出も
+    ///       決まった位置から始まることになり、直前の状況と繋がらない。
     m_fromPos = transform.worldPosition;
     m_fromRot = transform.worldRotation;
 
-    // 構図の起点。ボスから «今カメラが居る方角» を採り、そこから orbit ぶん回す。
+    /// @note 構図の起点。ボスから «今カメラが居る方角» を採り、そこから orbit ぶん回す。
     const Vector3 focus = m_form.focusFixed
         ? m_form.focusPoint + Vector3::UP * m_form.focusLift
         : Focus(*boss);
@@ -395,8 +355,8 @@ inline void BossCameraDirectorComponent::Begin(BossShot shot, const Shot& formIn
               ? 0.0f
               : ToDeg(std::atan2(away.x, away.z));
 
-    // 追従を切るのは演出の «入り» の 1 度だけ。演出の途中で別の演出へ置き換わったときに
-    // «切った時点の enabled» をもう一度読むと、false を元の値として覚えてしまう。
+    /// @note 追従を切るのは演出の «入り» の 1 度だけ。演出の途中で別の演出へ置き換わったときに
+    ///       «切った時点の enabled» をもう一度読むと、false を元の値として覚えてしまう。
     if (m_tps && !wasPlaying) {
         m_tpsWasEnabled = m_tps->enabled;
         m_tps->enabled  = false;
@@ -412,12 +372,12 @@ inline void BossCameraDirectorComponent::Release()
     UpdateTitle(0.0f);
     debugShot = "-";
 
-    // 画角を設定の値へ戻す。追従は次のフレームから自分で書くが、その 1 フレームだけ
-    // 演出の画角が残ると «一瞬ズームが跳ねた» に見える。
+    /// @note 画角を設定の値へ戻す。追従は次のフレームから自分で書くが、その 1 フレームだけ
+    ///       演出の画角が残ると «一瞬ズームが跳ねた» に見える。
     ApplyFov(0.0f);
     cutscene::Publish(false, false, Time::unscaledTime);
 
-    // 位置と向きを引き継いでから返す。これが無いと演出の画から 1 フレームで飛ぶ。
+    /// @note 位置と向きを引き継いでから返す。これが無いと演出の画から 1 フレームで飛ぶ。
     if (m_tps && transform) {
         m_tps->ResumeFrom(transform.worldPosition, transform.worldRotation);
         m_tps->enabled = m_tpsWasEnabled;
@@ -434,7 +394,7 @@ inline void BossCameraDirectorComponent::Pose(float t, Vector3& position,
         ? m_form.focusPoint + Vector3::UP * m_form.focusLift
         : Focus(*boss);
 
-    // 回り込みと昇りは «演出のあいだに» 進む。始点で 0、終点で満額。
+    /// @note 回り込みと昇りは «演出のあいだに» 進む。始点で 0、終点で満額。
     const float yaw   = m_baseYaw + m_form.orbit * t;
     const float dist  = std::max(m_form.distance + m_form.pullBack * t, 0.5f);
     const float rise  = m_form.rise * t;
@@ -446,20 +406,13 @@ inline void BossCameraDirectorComponent::Pose(float t, Vector3& position,
                         focus.y + rise,
                         focus.z + dir.z * dist };
 
-    // 向きは «見つめる点» から作る。距離や昇りを変えても中心が外れない。
-    //
-    // WHY 符号を反転しないか: カメラは focus から dir 方向へ dist だけ離れた所に居るので、
-    //     見るべき向きは «focus へ戻る» 側 = toFocus そのもの。ここを -toFocus で
-    //     組むと、カメラは正しい位置に居るまま «ボスに背を向ける» ことになり、
-    //     «演出が始まっているのにボスが映らない» という形でしか症状が出ない。
-    //
-    // WHY atan2(x, z) の順か: yaw は UP まわりの回転で、FORWARD(0,0,1) を回すと
-    //     (sin, 0, cos) になる。x が第 1 引数でなければ 90 度ずれる。
+    /// @note 向きは見つめる点から作る (距離・昇りを変えても中心が外れない)。符号は反転しない: 見るべき向きは focus へ戻る側 = toFocus そのもの。-toFocus にするとボスに背を向けたまま位置だけ正しくなり、症状は「演出中なのにボスが映らない」としてしか出ない。
+    /// @note atan2(x, z) の順を守る。yaw は UP まわりの回転で FORWARD(0,0,1) を回すと (sin, 0, cos) になるため、x を第 1 引数にしないと 90 度ずれる。
     const Vector3 toFocus = focus - position;
     const float   flat    = std::sqrt(toFocus.x * toFocus.x + toFocus.z * toFocus.z);
     const float   look    = ToDeg(std::atan2(toFocus.x, toFocus.z));
-    // pitch は «見下ろし正» の慣習に揃える (TpsCamera と同じ)。
-    // カメラが上に居れば toFocus.y は負で、tilt は正 = 見下ろしになる。
+    /// @note pitch は «見下ろし正» の慣習に揃える (TpsCamera と同じ)。
+    ///       カメラが上に居れば toFocus.y は負で、tilt は正 = 見下ろしになる。
     const float   tilt    = ToDeg(std::atan2(-toFocus.y, std::max(flat, 0.001f)));
 
     const Quaternion yawRot   = Quaternion::FromAxisAngle(Vector3::UP,    ToRad(look));
@@ -490,25 +443,24 @@ inline void BossCameraDirectorComponent::UpdateTitle(float alpha)
 
 inline void BossCameraDirectorComponent::OnLateUpdate()
 {
-    // Inspector からの確認。Play 中に選んだら 1 回流して None へ戻す。
+    /// @note Inspector からの確認。Play 中に選んだら 1 回流して None へ戻す。
     if (previewShot != BossShot::None) {
         const BossShot requested = previewShot;
         previewShot = BossShot::None;
         Play(requested);
     }
 
-    // 入室トリガーを持たないボスも、交戦公開後に1度だけ登場させる。
+    /// @note 入室トリガーを持たないボスも、交戦公開後に1度だけ登場させる。
     if (!m_introPlayed && m_shot == BossShot::None)
         if (auto* owner = Boss())
             if (auto* boss = IBoss::Of(owner); boss && boss->IsEngaged()) Play(BossShot::Intro);
     if (m_shot == BossShot::None) return;
     if (!transform) return;
 
-    // 止めているものは毎フレーム申告し直す (読む側は古い申告を捨てる)。
+    /// @note 止めているものは毎フレーム申告し直す (読む側は古い申告を捨てる)。
     cutscene::Publish(m_form.holdBoss, m_form.holdPlayer, Time::unscaledTime);
 
-    // WHY スケール時間か: 転倒も撃破もヒットストップと同じ «盤面の出来事» で、
-    //     止まっている画面の上でカメラだけ動くと、止めが効いていないように見える。
+    /// @note スケール時間を使う。転倒・撃破はヒットストップと同じ「盤面の出来事」で、止まっている画面の上でカメラだけ動くと止めが効いていないように見える。
     if (auto* manager = TimeManagerComponent::Instance(); manager && manager->IsPaused()) {
         UpdateTitle(0.0f);
         return;
@@ -518,14 +470,14 @@ inline void BossCameraDirectorComponent::OnLateUpdate()
 
     const float total = std::max(m_form.seconds, 0.05f);
     const float t     = Clamp01(m_elapsed / total);
-    // 動きは «速く入って緩く止まる»。等速だと機械が回しているように見える。
+    /// @note 動きは «速く入って緩く止まる»。等速だと機械が回しているように見える。
     const float ease  = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
 
     Vector3    position = transform.worldPosition;
     Quaternion rotation = transform.worldRotation;
     Pose(ease, position, rotation);
 
-    // 入りだけ «直前の画» から寄せる。カットしたいときは Blend In を 0 にする。
+    /// @note 入りだけ «直前の画» から寄せる。カットしたいときは Blend In を 0 にする。
     const float blend = std::max(m_form.blendIn, 0.0f);
     if (blend > 0.0f && m_elapsed < blend) {
         const float k = Clamp01(m_elapsed / blend);
@@ -545,20 +497,18 @@ inline void BossCameraDirectorComponent::OnLateUpdate()
         UpdateTitle(alpha);
     }
 
-    // WHY ローカルへ書くか: worldRotation は proxy が put を持たない (world は
-    //     TransformSystem が local から作る派生値)。カメラはルートに置いてあるので
-    //     ローカル = ワールドで、書き先は TpsCamera と同じ 2 つで足りる。
+    /// @note ローカルへ書く。worldRotation は proxy に setter が無く (world は TransformSystem が local から作る派生値)。カメラはルート直下でローカル=ワールドなので、TpsCamera と同じ 2 つの書き先で足りる。
     transform.position = position;
     transform.rotation = rotation;
 
-    // 画角も «寄せ» と同じ坂で入れる。位置だけ寄って画角が一瞬で変わると、
-    // 寄りの途中でカットが 1 回入ったように見える。
+    /// @note 画角も «寄せ» と同じ坂で入れる。位置だけ寄って画角が一瞬で変わると、
+    ///       寄りの途中でカットが 1 回入ったように見える。
     const float fovIn = blend > 0.0f ? Clamp01(m_elapsed / blend) : 1.0f;
     ApplyFov(m_form.fov * fovIn * (2.0f - fovIn) * (1.0f - returnBlend));
 
     if (t < 1.0f) return;
 
-    // 終わり。返さない演出 (撃破) は姿勢を保ったまま居座る。
+    /// @note 終わり。返さない演出 (撃破) は姿勢を保ったまま居座る。
     if (m_form.release) Release();
 }
 

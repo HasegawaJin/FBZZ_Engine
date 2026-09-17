@@ -3,13 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY: 選択は Hierarchy / Scene View / 検索 / コマンドパレット / Map / AI Operator と
-///      多くの面から起きるのに、これまでは各面が ctx.selectedEntities を直に書いていた。
-///      選択に伴う後始末 (アセット選択との排他・Animation Graph 選択の解除・
-///      Hierarchy への反映) は Hierarchy パネルの中にしか無く、他の面から選ぶと
-///      「Inspector が前に選んだアセットを映したまま」「Viewport で掴んだ子が
-///      Hierarchy では畳まれたまま見つからない」という取りこぼしが残っていた。
-///      副作用をここへ集約し、どの面から選んでも同じ状態へ収束させる。
+/// @note 選択は Hierarchy/Scene View/検索/コマンドパレット/Map/AI Operator の多くの面から起きるが、
+///       選択に伴う後始末 (アセット選択との排他・Hierarchy への反映等) は Hierarchy パネルにしか
+///       無く、他の面から選ぶと取りこぼしが残っていた。副作用をここへ集約し同じ状態へ収束させる。
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

@@ -11,8 +11,8 @@
 
 namespace fbzz::core {
 
-// メモリ使用量を分類する固定タグ。
-// WHY: 動的な文字列マップを使わず、エンジン初期段階でも追加アロケーションなしで集計できる。
+/// @brief メモリ使用量を分類する固定タグ。
+/// @note 動的な文字列マップを使わず、エンジン初期段階でも追加アロケーションなしで集計できるようにする。
 enum class MemoryTag : std::size_t {
     UNKNOWN = 0,
     CORE,
@@ -25,8 +25,8 @@ enum class MemoryTag : std::size_t {
     COUNT
 };
 
-// 1 回の Allocate に対応する追跡情報。
-// WHAT: pointer が nullptr なら空スロット。file/line は呼び出し元を特定するための非所有文字列参照。
+/// @brief 1 回の Allocate に対応する追跡情報。
+/// @note pointer が nullptr なら空スロット。file/line は呼び出し元を特定するための非所有文字列参照。
 struct AllocationInfo {
     void*       pointer = nullptr;
     std::size_t size = 0;

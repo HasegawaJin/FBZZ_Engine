@@ -10,8 +10,8 @@ namespace fbzz::editor {
 
 struct EditorContext;
 
-// 複数の GameObject が選択されているときの Inspector 本体を描画する。
-// ids の先頭がプライマリ (値の表示基準)。
+/// 複数の GameObject が選択されているときの Inspector 本体を描画する。
+/// ids の先頭がプライマリ (値の表示基準)。
 void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::EntityID>& ids);
 
 } // namespace fbzz::editor

@@ -32,7 +32,7 @@ math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
     return { a.x * b.x, a.y * b.y, a.z * b.z };
 }
 
-// 隣接する地形タイル。境界の高さを平均するために保持する。
+/// 隣接する地形タイル。境界の高さを平均するために保持する。
 struct TerrainNeighbors {
     const TerrainComponent* north = nullptr;
     const TerrainComponent* south = nullptr;
@@ -67,9 +67,9 @@ float SampleStitchedTerrainHeight(const TerrainComponent& terrain,
                                   int                     x,
                                   int                     z)
 {
-    // WHY: 描画メッシュだけ境界平均を行うと、見た目は繋がっていても HeightFieldCollider は
-    //      元 heightData の段差を保持する。Physics へ渡す一時データも同じ平均を使い、
-    //      保存データを破壊せずに接触形状を見た目へ合わせる。
+    /// @note 描画メッシュだけ境界平均すると HeightFieldCollider は元 heightData の段差を
+    ///       保持したままになる。Physics へ渡す一時データも同じ平均を使い、保存データは
+    ///       破壊せずに接触形状を見た目へ合わせる。
     float sum = 0.0f;
     int count = 0;
 
@@ -174,8 +174,8 @@ std::vector<float> BuildColliderHeightData(Scene& scene, GameObject& go, const T
     return heights;
 }
 
-// MeshCollider / ConvexHullCollider が使うソースメッシュを解決する。
-// 優先順位は MeshRenderer → SkinnedMeshRenderer → 明示指定の meshPath。
+/// MeshCollider / ConvexHullCollider が使うソースメッシュを解決する。
+/// 優先順位は MeshRenderer → SkinnedMeshRenderer → 明示指定の meshPath。
 const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
                                                 const std::string& meshPath,
                                                 int                meshIndex)
@@ -187,11 +187,10 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
         if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
             if (!skinned->model && !skinned->modelPath.empty())
                 skinned->model = asset::AssetManager::LoadAndGet<asset::Model>(skinned->modelPath);
-            // コライダーのソースは明示指定の meshIndex (col.meshIndex) を優先し、
-            // 無指定なら先頭 submesh を使う。
-            // WHY ローカルスロット番号で引くか: この Renderer が描いていない submesh を
-            //     コライダーにすると、見えている形と当たり判定が別物になる。
-            //     Inspector に出る番号も「この Renderer の何番目か」に揃える。
+            /// @note コライダーのソースは明示指定の meshIndex (col.meshIndex) を優先し、
+            ///       無指定なら先頭 submesh を使う。この Renderer が描いていない submesh を
+            ///       コライダーにすると見た目と当たり判定が別物になるため、この Renderer
+            ///       内でのローカルスロット番号で引く (Inspector の番号もこれに揃える)。
             if (skinned->model) {
                 const size_t submesh = meshIndex >= 0 ? static_cast<size_t>(meshIndex) : 0u;
                 mesh = skinned->SubmeshMesh(submesh);
@@ -226,15 +225,15 @@ math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent&
 
 namespace {
 
-// 反転スケール (-1 等) でも寸法は正のまま扱う。負の半径は物理側で意味を持たない。
+/// 反転スケール (-1 等) でも寸法は正のまま扱う。負の半径は物理側で意味を持たない。
 [[nodiscard]] math::Vector3 AbsScale(const math::Vector3& scale)
 {
     return { std::abs(scale.x), std::abs(scale.y), std::abs(scale.z) };
 }
 
-// 球のように 1 つの半径しか持てない形状へ非一様スケールを掛けるときの代表値。
-// WHY 最大値か: 小さい軸に合わせると、大きい軸の側でメッシュがコライダーから
-//     はみ出して壁をすり抜ける。包む方向へ倒す。
+/// 球のように 1 つの半径しか持てない形状へ非一様スケールを掛けるときの代表値。
+/// @note 最大値を採る。小さい軸に合わせると、大きい軸の側でメッシュがコライダーから
+///       はみ出して壁をすり抜ける。
 [[nodiscard]] float MaxAxis(const math::Vector3& v)
 {
     return std::max({ v.x, v.y, v.z });
@@ -326,7 +325,7 @@ void SyncColliderShape(BoxColliderComponent& col, const math::Vector3& worldScal
 
 void SyncColliderShape(SphereColliderComponent& col, const math::Vector3& worldScale)
 {
-    // 球は半径 1 つしか持てない。非一様スケールでは最大軸に合わせて包む。
+    /// @note 球は半径 1 つしか持てない。非一様スケールでは最大軸に合わせて包む。
     const float radius = MakePrimitiveShape(col, worldScale).m_radius;
     auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::SPHERE
         ? static_cast<physics::SphereCollider*>(col.collider.get())
@@ -340,7 +339,7 @@ void SyncColliderShape(SphereColliderComponent& col, const math::Vector3& worldS
 
 void SyncColliderShape(CapsuleColliderComponent& col, const math::Vector3& worldScale)
 {
-    // Y 軸カプセル。半径は水平 2 軸の大きい方、円柱半長は Y。
+    /// @note Y 軸カプセル。半径は水平 2 軸の大きい方、円柱半長は Y。
     const auto scaled = MakePrimitiveShape(col, worldScale);
     const float radius = scaled.m_radius;
     const float halfHeight = scaled.m_halfHeight;
@@ -358,7 +357,7 @@ void SyncColliderShape(CapsuleColliderComponent& col, const math::Vector3& world
 
 void SyncColliderShape(CylinderColliderComponent& col, const math::Vector3& worldScale)
 {
-    // Y 軸円柱。半径は水平 2 軸の大きい方、半長は Y。
+    /// @note Y 軸円柱。半径は水平 2 軸の大きい方、半長は Y。
     const auto scaled = MakePrimitiveShape(col, worldScale);
     const float radius = scaled.m_radius;
     const float halfHeight = scaled.m_halfHeight;
@@ -413,8 +412,8 @@ void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent&
                 && col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
                 ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
                 : nullptr) {
-            // 既存 HeightFieldCollider に補完済み heightData を再適用し BVH を再構築する。
-            // WHY: オブジェクト生成コストを省き、WorldHandle を維持したまま再構築できる。
+            /// @note 既存 HeightFieldCollider に補完済み heightData を再適用し BVH を再構築する。
+            ///       オブジェクト生成コストを省き、WorldHandle を維持できる。
             hf->Rebuild(colliderHeights,
                         terrain->rows, terrain->columns,
                         terrain->cellSize, terrain->maxHeight);
@@ -445,13 +444,13 @@ void UpdateColliderPose(const GameObject& go, ColliderComponent& col, bool useTr
             ->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
         break;
     case physics::ColliderType::HEIGHT_FIELD:
-        // 地形は useTransformScale を持たないため常に Transform スケールを適用する。
+        /// @note 地形は useTransformScale を持たないため常に Transform スケールを適用する。
         static_cast<physics::HeightFieldCollider*>(col.collider.get())
             ->UpdateWithScale(worldCenter, go.transform.worldRotation, go.transform.worldScale);
         break;
     default:
-        // 基本形状は寸法自体に既にスケールが焼かれている (SyncColliderShape)。
-        // ここで重ねて掛けると二乗になる。
+        /// @note 基本形状は寸法自体に既にスケールが焼かれている (SyncColliderShape)。
+        ///       ここで重ねて掛けると二乗になる。
         col.collider->Update(worldCenter, go.transform.worldRotation);
         break;
     }

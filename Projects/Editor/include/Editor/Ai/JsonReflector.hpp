@@ -3,17 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-20
 ///
-/// 設計 (WHY):
-/// Inspector の ImGuiReflector・SceneSerializer の TOML リフレクタと同じ IReflector ビジターを
-/// AI 境界にも通す。これにより component.set / node.components が既存の FBZZ_FIELD 宣言に自動追従し、
-/// コンポーネントごとの手書き JSON マッピングを排除する (単一の真実)。
-///
-/// 対応範囲は数値・真偽・文字列・ベクトル・クォータニオン (= AI が調整したい大半のパラメータ)。
-/// EntityID/参照型はシーン解決を要するため本リフレクタでは扱わず (読みは省略・書きは無視)、
-/// 構造的な変更は node.reparent 等の専用 Command 側に委ねる。
+/// @note Inspector の ImGuiReflector・SceneSerializer の TOML リフレクタと同じ IReflector ビジターを AI 境界にも
+///       通し、component.set / node.components を既存の FBZZ_FIELD 宣言に自動追従させる。
+/// @note 対応範囲は数値・真偽・文字列・ベクトル・クォータニオン。EntityID/参照型はシーン解決が要るため読みは省略・
+///       書きは無視し、構造的な変更は node.reparent 等の専用 Command 側に委ねる。
 #pragma once
 #include <Editor/Ai/Json.hpp>
-#include <Engine/Scene/Script.hpp> // IReflector
+#include <Engine/Scene/Script.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -27,10 +23,10 @@
 
 namespace fbzz::editor::ai {
 
-// コンポーネントの Reflect() を1回通し、フィールドを JSON オブジェクトへ吸い出す (読み取り専用)。
+/// コンポーネントの Reflect() を1回通し、フィールドを JSON オブジェクトへ吸い出す (読み取り専用)。
 class JsonReadReflector final : public scene::IReflector {
 public:
-    // 収集済みの {フィールド名: 値} オブジェクトを返す。
+    /// 収集済みの {フィールド名: 値} オブジェクトを返す。
     const JsonValue& Result() const { return m_result; }
 
     void Field(const char* name, float& v) override        { Current().Set(PersistentKey(name), JsonValue(static_cast<double>(v))); }
@@ -117,14 +113,11 @@ public:
         }
         Current().Set(PersistentKey(name), std::move(array));
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
-    // ── 入れ子オブジェクト / 構造体配列 ─────────────────────────────────────
-    // WHY 「子を完成させてから親へ Set する」方式か:
-    //     JsonValue::Object は std::vector で members を持つため、Set のたびに
-    //     再確保が起きて既存要素へのポインタが無効化されうる。
-    //     書き込み先をポインタで覚えるのではなく、子を丸ごと積んで
-    //     EndObject の時点で親へ move する方が安全。
+    /// @name 入れ子オブジェクト / 構造体配列
+    /// @{
+    /// @note JsonValue::Object は std::vector で members を持つため、Set のたびに再確保が起きて既存要素へのポインタが無効化されうる。書き込み先をポインタで覚えず、子を丸ごと積んで EndObject の時点で親へ move する。
     void BeginObject(const char* name) override
     {
         m_pending.emplace_back(PersistentKey(name), JsonValue::MakeObject());
@@ -147,7 +140,7 @@ public:
     void BeginObjectElement(std::size_t index) override
     {
         (void)index;
-        // 配列要素はキーを持たない。空キーで積み、EndObjectElement で配列へ Push する。
+        /// @note 配列要素はキーを持たない。空キーで積み、EndObjectElement で配列へ Push する。
         m_pending.emplace_back(std::string{}, JsonValue::MakeObject());
     }
 
@@ -166,7 +159,8 @@ public:
         auto entry = std::move(m_pendingLists.back());
         m_pendingLists.pop_back();
         Current().Set(std::move(entry.first), std::move(entry.second));
-        return NO_REMOVE;   // 観測専用のリフレクタは要素を削除しない
+        /// @note 観測専用のリフレクタは要素を削除しない
+        return NO_REMOVE;
     }
 
     void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override
@@ -181,10 +175,11 @@ public:
         Current().Set(PersistentKey(name), std::move(reference));
     }
 
-    // Readonly (計算値) も AI の観測材料として含める。
+    /// Readonly (計算値) も AI の観測材料として含める。
     void Readonly(const char* name, const std::string& v) override { Current().Set(name, JsonValue(v)); }
     void Readonly(const char* name, float v) override { Current().Set(name, JsonValue(static_cast<double>(v))); }
     void Readonly(const char* name, int v) override { Current().Set(name, JsonValue(v)); }
+    /// @}
 
 private:
     static JsonValue MakeVec(std::initializer_list<float> components)
@@ -194,7 +189,7 @@ private:
         return array;
     }
 
-    // 現在の書き込み先。入れ子スコープの内側なら構築中の子オブジェクト。
+    /// 現在の書き込み先。入れ子スコープの内側なら構築中の子オブジェクト。
     JsonValue& Current()
     {
         return m_pending.empty() ? m_result : m_pending.back().second;
@@ -202,14 +197,13 @@ private:
 
     JsonValue m_result = JsonValue::MakeObject();
 
-    // 構築中の入れ子オブジェクト (キー, 値)。配列要素はキーが空。
+    /// 構築中の入れ子オブジェクト (キー, 値)。配列要素はキーが空。
     std::vector<std::pair<std::string, JsonValue>> m_pending;
     std::vector<std::pair<std::string, JsonValue>> m_pendingLists;
 };
 
-// Reflect() が公開する編集契約を値ではなくスキーマとして収集する。
-// WHY: Inspector と同じ IReflector を正本にすることで、AI 向けカタログがフィールド追加や
-//      enum/range 変更へ自動追従し、名前や許容値を推測する必要をなくす。
+/// Reflect() が公開する編集契約を値ではなくスキーマとして収集する。
+/// @note Inspector と同じ IReflector を正本にすることで、AI 向けカタログがフィールド追加や enum/range 変更へ自動追従し、名前や許容値を推測する必要をなくす。
 class JsonCatalogReflector final : public scene::IReflector {
 public:
     const JsonValue& Result() const { return m_fields; }
@@ -275,10 +269,11 @@ public:
         field.Set("count", JsonValue(static_cast<int>(values.size())));
         CurrentFields().Push(std::move(field));
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
-    // ── 入れ子オブジェクト / 構造体配列 ─────────────────────────────────────
-    // スキーマ収集も値収集と同じく「子を完成させてから親へ積む」方式にする。
+    /// @name 入れ子オブジェクト / 構造体配列
+    /// @{
+    /// スキーマ収集も値収集と同じく「子を完成させてから親へ積む」方式にする。
     void BeginObject(const char* name) override
     {
         m_pending.emplace_back(PersistentKey(name), JsonValue::MakeArray());
@@ -297,9 +292,7 @@ public:
 
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
-        // 配列は「要素 1 個ぶんのスキーマ」だけを記述する。
-        // WHY: AI に渡すのは編集契約であって値ではない。全要素を列挙しても
-        //      同じ構造が繰り返されるだけで、トークンを浪費する。
+        /// @note 配列は「要素 1 個ぶんのスキーマ」だけを記述する。AI に渡すのは編集契約であって値ではなく、全要素を列挙しても同じ構造が繰り返されるだけでトークンを浪費するため。
         m_pending.emplace_back(PersistentKey(name), JsonValue::MakeArray());
         m_listElementCaptured.push_back(false);
         m_listCounts.push_back(count);
@@ -308,7 +301,7 @@ public:
 
     void BeginObjectElement(std::size_t index) override
     {
-        // 先頭要素のスキーマだけを収集し、以降は捨てる。
+        /// @note 先頭要素のスキーマだけを収集し、以降は捨てる。
         const bool capture = !m_listElementCaptured.empty()
             && !m_listElementCaptured.back() && index == 0;
         m_captureDepth.push_back(capture);
@@ -324,7 +317,7 @@ public:
             if (!m_listElementCaptured.empty()) m_listElementCaptured.back() = true;
         } else if (m_suppress > 0) {
             m_suppress -= 1;
-            // 捨てたスキーマを溜め込まない (長い配列でメモリが膨らむのを防ぐ)。
+            /// @note 捨てたスキーマを溜め込まない (長い配列でメモリが膨らむのを防ぐ)。
             if (m_suppress == 0) m_discard = JsonValue::MakeArray();
         }
     }
@@ -395,6 +388,7 @@ public:
     {
         m_group = label != nullptr ? label : "";
     }
+    /// @}
 
 private:
     static const char* AssetTypeName(scene::ScriptAssetType type)
@@ -461,8 +455,8 @@ private:
         CurrentFields().Push(std::move(field));
     }
 
-    // 現在スキーマを積む先。入れ子スコープの内側なら構築中の子配列。
-    // 抑制中 (配列の 2 要素目以降) は捨てるためのスクラッチを返す。
+    /// 現在スキーマを積む先。入れ子スコープの内側なら構築中の子配列。
+    /// 抑制中 (配列の 2 要素目以降) は捨てるためのスクラッチを返す。
     JsonValue& CurrentFields()
     {
         if (m_suppress > 0) return m_discard;
@@ -472,10 +466,10 @@ private:
     JsonValue   m_fields = JsonValue::MakeArray();
     std::string m_group;
 
-    // 構築中の入れ子スキーマ (フィールド名, フィールド配列)
+    /// 構築中の入れ子スキーマ (フィールド名, フィールド配列)
     std::vector<std::pair<std::string, JsonValue>> m_pending;
 
-    // 配列は先頭要素のスキーマだけを採る。2 要素目以降はここへ捨てる。
+    /// 配列は先頭要素のスキーマだけを採る。2 要素目以降はここへ捨てる。
     JsonValue m_discard = JsonValue::MakeArray();
     int       m_suppress = 0;
 
@@ -484,15 +478,15 @@ private:
     std::vector<bool>        m_captureDepth;
 };
 
-// 目標フィールド名に一致した1フィールドだけを JSON から書き込む。他フィールドは素通しする。
+/// 目標フィールド名に一致した1フィールドだけを JSON から書き込む。他フィールドは素通しする。
 class JsonWriteReflector final : public scene::IReflector {
 public:
     JsonWriteReflector(std::string targetField, const JsonValue& value)
         : m_target(std::move(targetField)), m_value(value) {}
 
-    // 目標フィールドを発見し値を代入できたか。
+    /// 目標フィールドを発見し値を代入できたか。
     bool Applied() const { return m_applied; }
-    // 発見したが型不一致で代入しなかった場合の理由 (空 = なし)。
+    /// 発見したが型不一致で代入しなかった場合の理由 (空 = なし)。
     const std::string& Error() const { return m_error; }
 
     void Field(const char* name, float& v) override
@@ -667,16 +661,12 @@ public:
         values = std::move(result);
         m_applied = true;
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
-    // ── 入れ子オブジェクト / 構造体配列 ─────────────────────────────────────
-    // このリフレクタは「ドット区切りのパスで指定された 1 フィールドだけを書く」設計。
-    // スコープに入るたびに m_target の先頭セグメントを削り、抜けるときに戻す。
-    // 配列要素は "customEffects.0.intensity" のように索引をセグメントとして扱う。
-    //
-    // WHY 子リフレクタ (ApplyNested) を作らないか: スコープ対は「同じリフレクタが
-    //     状態を変えながら潜る」形なので、子オブジェクトを作れない。
-    //     代わりに m_target を退避・復元する。
+    /// @name 入れ子オブジェクト / 構造体配列
+    /// @{
+    /// このリフレクタは「ドット区切りのパスで指定された 1 フィールドだけを書く」設計。スコープに入るたびに m_target の先頭セグメントを削り、抜けるときに戻す。配列要素は `"customEffects.0.intensity"` のように索引をセグメントとして扱う。
+    /// @note スコープ対は「同じリフレクタが状態を変えながら潜る」形のため子リフレクタ (ApplyNested) を作れず、代わりに m_target を退避・復元する。
     void BeginObject(const char* name) override
     {
         EnterSegment(PersistentKey(name));
@@ -690,7 +680,8 @@ public:
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
         EnterSegment(PersistentKey(name));
-        return count;   // AI からの要素数変更は別コマンドで扱う
+        /// @note AI からの要素数変更は別コマンドで扱う
+        return count;
     }
 
     void BeginObjectElement(std::size_t index) override
@@ -745,6 +736,7 @@ public:
             m_applied = true;
         } else TypeError("number");
     }
+    /// @}
 
 private:
     template<typename Callback>
@@ -758,12 +750,8 @@ private:
         m_error = child.m_error;
     }
 
-    // スコープに入る。target が "<segment>." で始まっていればその分だけ削り、
-    // そうでなければ target を空にしてスコープ内の全フィールドをマッチさせない。
-    //
-    // WHY マッチしない場合も必ずスタックへ積むか: BeginObject / EndObject は
-    //     必ず対で呼ばれる。積まずに抜けると EndObject でスタックが破綻し、
-    //     以降のスコープ復元がすべてずれる。
+    /// スコープに入る。target が `"<segment>."` で始まっていればその分だけ削り、そうでなければ target を空にしてスコープ内の全フィールドをマッチさせない。
+    /// @note マッチしない場合も必ずスタックへ積む。BeginObject / EndObject は必ず対で呼ばれるため、積まずに抜けると EndObject でスタックが破綻し、以降のスコープ復元がすべてずれる。
     void EnterSegment(const std::string& segment)
     {
         m_segmentStack.push_back(m_target);
@@ -869,7 +857,7 @@ private:
         return false;
     }
 
-    // JsonValue 配列の先頭 count 要素を数値として out[0..count) へ読む。要素不足・非数値なら false。
+    /// JsonValue 配列の先頭 count 要素を数値として out[0..count) へ読む。要素不足・非数値なら false。
     bool ReadNumbers(int count, float out[4]) const
     {
         if (!m_value.IsArray()) return false;

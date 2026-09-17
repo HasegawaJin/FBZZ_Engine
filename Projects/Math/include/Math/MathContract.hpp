@@ -9,8 +9,8 @@
 namespace fbzz::math {
 
 struct ContractViolation {
-    const char* expr     = nullptr;  // 破られた条件式
-    const char* message  = nullptr;  // 何が起きたか / 代わりに返した値
+    const char* expr     = nullptr;  ///< 破られた条件式。
+    const char* message  = nullptr;  ///< 何が起きたか / 代わりに返した値。
     const char* function = nullptr;
     const char* file     = nullptr;
     int         line     = 0;
@@ -18,19 +18,18 @@ struct ContractViolation {
 
 using ContractHandler = void (*)(const ContractViolation&);
 
-/// 違反の報告先を差し替える。既定 (nullptr) では何もしない。
-/// Engine 側が Logger へ流すハンドラーを起動時に 1 度だけ差す。
+/// @brief 違反の報告先を差し替える。
+/// @note 既定 (nullptr) は何もしない。Engine が起動時に Logger 連携ハンドラーを 1 度だけ差す。
 void SetContractHandler(ContractHandler handler);
 
-/// FBZZ_MATH_CONTRACT から呼ぶ。alreadyReported が立っていれば何もしない。
-/// WHY 1 度だけか: 違反は毎フレーム同じ場所から出る。抑止しないと Console が
-///     1 件で埋まり、他のログが押し出されて «別の問題» が見えなくなる。
+/// @brief 契約違反を報告する。FBZZ_MATH_CONTRACT から呼ぶ。
+/// @note alreadyReported が立っていれば何もしない。同じ箇所からの連続報告で Console が埋まるのを防ぐ。
 void ReportContract(const ContractViolation& violation, std::atomic<bool>& alreadyReported);
 
 } // namespace fbzz::math
 
-/// 契約違反を報告する (実行は止めない)。呼び出し側は直後に安全な値を返すこと。
-/// 抑止フラグは展開ごとに別実体なので、報告は «呼び出し位置ごとに 1 度» になる。
+/// @brief 契約違反を報告する (実行は止めない)。呼び出し側は直後に安全な値を返すこと。
+/// @note 抑止フラグは展開ごとに別実体になるため、報告は呼び出し位置ごとに 1 度になる。
 #define FBZZ_MATH_CONTRACT(cond, msg)                                             \
     do {                                                                          \
         if (!(cond)) {                                                            \

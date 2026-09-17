@@ -3,13 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
 ///
-/// WHY std::make_unique を使わないか:
-///   本エンジンは throw / std::exception を使わない規約で、`/EHsc` の下でも受け手が居ない。
-///   std::make_unique は確保に失敗すると std::bad_alloc を投げるため、そこだけ規約の外に
-///   なる (受け取れないまま std::terminate)。«失敗したら nullptr» に揃えて、
-///   呼び出し側が普段の «作れなかった» と同じ形で扱えるようにする。
-///
-/// NOTE: 素の `new` を書いてよいのはこのファイルだけ。ほかは MakeUnique / MakeUniqueArray を使う。
+/// @note 本エンジンは throw/std::exception を使わない規約で、std::make_unique は確保失敗時に std::bad_alloc を投げ規約の外になる (受け取れないまま std::terminate) ため使わない。«失敗したら nullptr» に揃え、呼び出し側が普段の «作れなかった» と同じ形で扱えるようにする。
+/// @note 素の `new` を書いてよいのはこのファイルだけ。ほかは MakeUnique / MakeUniqueArray を使う。
 #pragma once
 
 #include <cstddef>

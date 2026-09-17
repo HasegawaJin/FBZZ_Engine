@@ -6,22 +6,15 @@
 /// シーンへは付けない。PlayerComponent が内部モジュールとして持ち、BladeComponent が
 /// 当たったときだけ Play を呼ぶ。丸ごと外しても斬撃の芯は全部成立する。
 ///
-/// WHY 当たりに «線» が要るか:
-///   刀の軌跡 (BladeTrail) は «振った» を、火花と光条 (FX_BLD_SlashHit) は «何かに当たった» を
-///   言う。«斬れた» ─ 刃が相手を通り抜けた ─ を言っている絵はどこにも無かった。
-///   当たり点を斬った向きに横切る 1 本の線が白く焼けて、細い切れ目として冷めていくと、
-///   止め (ヒットストップ) の間じゅう «今そこを斬った» が画面の真ん中に残る。
-///
-/// WHY パーティクルではなく帯 (LineRenderer) で張るか:
-///   パーティクルは発生時に回転が乱数で入る (伸びたビルボードでも角が回る) ので、
-///   «斬った向き» を持った線は描けない。帯は両端をワールド座標で渡せば向きがそのまま決まり、
-///   カメラへは帯が正対してくれる。張るのは BeamTrailRendererComponent (ボスの線と同じ部品)、
-///   断面は SlashCut.hlsl。
-///
-/// WHY 時計がスケール時間か:
-///   閃光は止めの «中» にいちばん見えていてほしい。世界の止め (timeScale 0.05) の間は線も
-///   閃光のまま留まり、止めが明けてから切れ目へ冷める。実時間で回すと止めの 0.08 秒で
-///   閃光が終わってしまい、止まった画面に線が映らない。
+/// @note 当たりに «線» が要る。刀の軌跡 (BladeTrail) は «振った»、火花と光条
+///       (FX_BLD_SlashHit) は «当たった» を言うが、«斬れた» を言う絵が無かった。
+///       当たり点を斬った向きに横切る線が白熱→冷めることで «今そこを斬った» が
+///       ヒットストップの間じゅう画面に残る。
+/// @note パーティクルでなく帯 (BeamTrailRendererComponent、断面は SlashCut.hlsl) で
+///       張る。パーティクルは発生時の回転が乱数で入り «斬った向き» を持てないが、
+///       帯は両端をワールド座標で渡せば向きが決まりカメラへ正対する。
+/// @note 時計はスケール時間で進める。世界の止め (timeScale 0.05) の間も線を閃光の
+///       まま留めたい。実時間で回すと止めの 0.08 秒で閃光が終わり画面に映らない。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
@@ -46,8 +39,8 @@ class SlashCutFxComponent : public Script {
     FBZZ_SCRIPT(SlashCutFxComponent)
 
 public:
-    // WHY 名前に cut を付けるか: PlayerComponent は全モジュールの Reflect を 1 つの
-    //     名前空間へ平らに並べる。length / width のような汎用名は必ずどこかと衝突する。
+    /// @note フィールド名に cut を付ける。PlayerComponent は全モジュールの Reflect を
+    ///       1 つの名前空間へ平らに並べるため、length/width のような汎用名は衝突する。
     FBZZ_GROUP("Slash Cut")
     FBZZ_FIELD_FILE(cutMaterial, "Assets/Materials/Effects/FX_BLD_Cut.mat", "Material", ".mat")
     FBZZ_FIELD_RANGE(float, cutLengthMin, 2.4f, "Length (light)", 0.2f, 8.0f)
@@ -111,19 +104,19 @@ FBZZ_REFLECT(SlashCutFxComponent)
 inline GameObject* SlashCutFxComponent::EnsureObject(int index)
 {
     const std::string name = "SlashCut_" + std::to_string(index);
-    // WHY 先に拾い直すか: DLL をリロードするとこの Script は作り直されるが、線の
-    //     GameObject はシーンに残る。拾わずに作るとリロードのたびに枠が増えていく。
+    /// @note 先に拾い直す。DLL リロードでこの Script は作り直されるが、線の GameObject
+    ///       はシーンに残るため、拾わず作るとリロードのたびに枠が増える。
     GameObject* object = scene.Find(name);
     if (!object) {
-        // WHY 誰の子にもしないか: LineRenderer はワールド点を所有者のローカルへ引き戻して
-        //     焼くので、親の移動・回転がそのまま端点のずれになる。ルートの原点に置く。
+        /// @note 誰の子にもしない。LineRenderer はワールド点を所有者のローカルへ引き戻して
+        ///       焼くため、親の移動・回転がそのまま端点のずれになる。
         GameObject& created = scene.Create(name);
         created.runtimeGenerated = true;
         object = &created;
     }
     if (!scene.GetScript<BeamTrailRendererComponent>(object))
         object->AddScript<BeamTrailRendererComponent>();
-    // Create / AddScript はシーンの配列を伸ばしうる。返すのは名前から引き直した個体。
+    /// @note Create / AddScript はシーンの配列を伸ばしうる。返すのは名前から引き直した個体。
     return scene.Find(name);
 }
 
@@ -135,9 +128,9 @@ inline BeamTrailRendererComponent* SlashCutFxComponent::RendererOf(const Slot& s
 
 inline void SlashCutFxComponent::OnStart()
 {
-    // WHY 最初に全部作るか: 実行時に足した Script は、次のフレームに ScriptSystem が
-    //     OnStart を通すまで帯を張れない (IsReady)。当たった瞬間に作ると、いちばん
-    //     見せたい 1 コマ目が必ず抜ける。
+    /// @note 最初に全部作る。実行時に足した Script は、次のフレームに ScriptSystem が
+    ///       OnStart を通すまで帯を張れない (IsReady) ため、当たった瞬間に作ると
+    ///       いちばん見せたい 1 コマ目が抜ける。
     const int count = std::clamp(cutSlots, 1, 8);
     m_slots.assign(static_cast<std::size_t>(count), Slot{});
     for (int i = 0; i < count; ++i)
@@ -148,7 +141,7 @@ inline void SlashCutFxComponent::OnStart()
 
 inline void SlashCutFxComponent::OnDestroy()
 {
-    // 枠はルートに置いてあるので、このスクリプトが消えても一緒には消えない。
+    /// @note 枠はルートに置いてあるので、このスクリプトが消えても一緒には消えない。
     for (Slot& slot : m_slots)
         if (GameObject* object = slot.ref.Resolve(scene)) scene.Destroy(*object);
     m_slots.clear();
@@ -184,7 +177,7 @@ inline void SlashCutFxComponent::Play(const Vector3& point, const Vector3& axis,
 {
     if (!enabled || m_slots.empty()) return;
 
-    // カメラ側へ寄せる。部位の中心は脚の中なので、そこで張ると帯が深度で隠れる。
+    /// @note カメラ側へ寄せる。部位の中心は脚の中なので、そこで張ると帯が深度で隠れる。
     Vector3 center = point;
     Vector3 view   = Vector3::FORWARD;
     if (GameObject* camera = scene.GetMainCameraObject()) {
@@ -203,8 +196,8 @@ inline void SlashCutFxComponent::Play(const Vector3& point, const Vector3& axis,
         return;
     }
 
-    // 交差は視線のまわりで開く。画面の上で «X» に見えることが目的なので、
-    // ワールドの上軸で回すと、見下ろしたときに 2 本が重なって 1 本に潰れる。
+    /// @note 交差は視線のまわりで開く。画面の上で «X» に見えることが目的なので、
+    ///       ワールドの上軸で回すと、見下ろしたときに 2 本が重なって 1 本に潰れる。
     const float half = ToRad(Clamp(cutCrossDegrees, 0.0f, 90.0f) * 0.5f);
     Launch(center, (Quaternion::FromAxisAngle(view,  half) * line).NormalizedOr(line), strength, tint);
     Launch(center, (Quaternion::FromAxisAngle(view, -half) * line).NormalizedOr(line), strength, tint);
@@ -226,7 +219,7 @@ inline void SlashCutFxComponent::OnUpdate()
             slot.live = false;
             continue;
         }
-        // まだ張れない枠は時計を進めずに待つ。進めると 1 コマ目の閃光を捨てることになる。
+        /// @note まだ張れない枠は時計を進めずに待つ。進めると 1 コマ目の閃光を捨てることになる。
         if (!renderer->IsReady()) continue;
 
         slot.age += dt;
@@ -242,13 +235,13 @@ inline void SlashCutFxComponent::OnUpdate()
         float coreBoost = 3.2f;
         float white     = 0.85f;
         if (slot.age < flash) {
-            // 閃光: 一瞬で太り、少しだけ伸びる。
+            /// @note 閃光: 一瞬で太り、少しだけ伸びる。
             const float k    = flash > 0.0f ? slot.age / flash : 1.0f;
             const float ease = 1.0f - (1.0f - k) * (1.0f - k);
             width  = slot.width  * Lerp(0.7f, 1.0f, ease);
             length = slot.length * Lerp(1.0f - Clamp01(cutGrow), 1.0f, ease);
         } else {
-            // 切れ目: すぐ細り、白熱から刀の色へ冷めながら消える。
+            /// @note 切れ目: すぐ細り、白熱から刀の色へ冷めながら消える。
             const float s    = Clamp01((slot.age - flash) / seam);
             const float ease = 1.0f - (1.0f - s) * (1.0f - s);
             width     = slot.width * Lerp(1.0f, Clamp01(cutSeamWidth), ease);
@@ -256,7 +249,7 @@ inline void SlashCutFxComponent::OnUpdate()
             coreBoost = Lerp(2.4f, 1.2f, s);
             white     = Lerp(0.6f, 0.0f, s);
         }
-        // 強い当たりほど明るい。形 (長さ・太さ) だけで差を付けると、遠くで見たときに差が消える。
+        /// @note 強い当たりほど明るい。形 (長さ・太さ) だけで差を付けると、遠くで見たときに差が消える。
         intensity *= Lerp(0.8f, 1.25f, slot.strength);
 
         const Vector4& tint = slot.tint;
@@ -267,10 +260,10 @@ inline void SlashCutFxComponent::OnUpdate()
                                       Lerp(tint.y, 1.0f, white) * intensity,
                                       Lerp(tint.z, 1.0f, white) * intensity, 1.0f };
         style.isCore       = true;
-        // 火花・光条より手前。後ろへ回ると加算の粒に芯が埋もれる。
+        /// @note 火花・光条より手前。後ろへ回ると加算の粒に芯が埋もれる。
         style.orderInLayer = 6;
         style.shape        = LineShape::Ribbon;
-        // 直線のまま張る。揺らすと «切った線» ではなく «放電» に見える。
+        /// @note 直線のまま張る。揺らすと «切った線» ではなく «放電» に見える。
         style.wobble           = 0.0f;
         style.wobbleFrequency  = 0.0f;
         style.segmentsPerMeter = 1.0f;
@@ -280,7 +273,7 @@ inline void SlashCutFxComponent::OnUpdate()
         style.muzzleFade  = 0.06f;
         style.tipFade     = 0.06f;
         style.tiling      = 0.6f;
-        // 切れ目の揺らぎをゆっくり流し、冷めていく間も «燻っている» ように見せる。
+        /// @note 切れ目の揺らぎをゆっくり流し、冷めていく間も «燻っている» ように見せる。
         style.scroll      = slot.age * 0.8f;
 
         const Vector3 half = slot.axis * (length * 0.5f);

@@ -54,19 +54,14 @@ public:
     FBZZ_TOOLTIP("幕 1 の合格条件。ボスの手をこの回数、被弾せずにやり過ごす。"
                  "**被弾すると数え直し** ─ そこが «避けられていない» の境目")
 
-    // 着弾の直前に、世界を落として画面を沈め、指示を画面の真ん中へ持ってくる層。
-    //
-    // WHY 要るか: 予兆は «足元» に出るが、ボス 1 は 10m あって近づくほど足元が本体に
-    //   隠れる (BossTelegraph.hpp)。初見のプレイヤーは «見るべき所» も «押す瞬間» も
-    //   知らないので、床の絵だけでは «今» が届かない。**一度だけ世界を止めて、
-    //   目線の中央で言い切る**のが、覚える前の相手に «今» を渡す唯一の形。
-    //
-    // WHY 回数を打ち切るか: 毎回スローが入る戦いは «教わっている» ままで終わる。
-    //   数回で消せば、同じ瞬間を今度は自分の目で捉えることになる ─
-    //   **合図が消えたことに気付かないのが一番良い覚え方。**
-    //
-    // WHY 実時間で数えるか: この層は世界を遅くしている当人なので、スケール時間で
-    //   数えると自分の掛けたスローぶんだけ伸びて戻ってこない。
+    /// @brief 着弾の直前に、世界を落として画面を沈め、指示を画面の真ん中へ持ってくる層。
+    /// @note 予兆は «足元» に出るがボス 1 は 10m あって近づくほど足元が本体に隠れる
+    ///       (BossTelegraph.hpp)。初見は «見るべき所» も «押す瞬間» も知らないため、
+    ///       一度だけ世界を止めて目線の中央で言い切る形にする。
+    /// @note 回数を打ち切る。毎回スローが入る戦いは «教わっている» ままで終わるため、
+    ///       数回で消し合図が消えたことに気付かせないのが良い覚え方。
+    /// @note 実時間で数える。この層は世界を遅くしている当人なので、スケール時間で
+    ///       数えると自分の掛けたスローぶんだけ伸びて戻ってこない。
     FBZZ_GROUP("教える瞬間")
     FBZZ_FIELD(bool, cueEnabled, true, "着弾の直前に «ここだ» を出す")
     FBZZ_FIELD_RANGE(float, cueAt, 0.55f, "合図の時刻 [0,1]", 0.1f, 0.95f)
@@ -79,8 +74,8 @@ public:
     FBZZ_FIELD_RANGE_INT(int, cueMaxPerAct, 3, "1 幕あたりの回数", 0, 20)
     FBZZ_TOOLTIP("この回数を過ぎたら合図を出さない。**消えたことに気付かないのが良い**")
 
-    // 出来たことを返す層。段が進んだのを «文字が変わった» だけで伝えると、
-    // 成功したのか勝手に進んだのか分からない ─ **手応えが無い成功は成功に見えない。**
+    /// 出来たことを返す層。段が進んだのを «文字が変わった» だけで伝えると、
+    /// 成功したのか勝手に進んだのか分からない ─ **手応えが無い成功は成功に見えない。**
     FBZZ_GROUP("出来たときの手応え")
     FBZZ_FIELD_RANGE(float, successFlash, 0.34f, "閃光", 0.0f, 1.0f)
     FBZZ_FIELD_COLOR(successFlashColor, (Vector4{ 1.0f, 0.97f, 0.86f, 1.0f }), "閃光の色")
@@ -115,10 +110,8 @@ public:
     /// 今出している 1 行。
     [[nodiscard]] const std::string& Objective() const { return m_objective; }
     /// 今この幕で押させたい操作の論理名。空なら «押させたいボタンは無い»。
-    ///
-    /// WHY 合格した後も残すか: 成功のセリフ はそのボタンを押して出来たことへの返事なので、
-    ///     押したアイコンが隣に残っている方が «これで合っていた» が伝わる。
-    ///     消してしまうと、褒められているのが何に対してか分からない。
+    /// @note 合格した後も残す。成功のセリフはそのボタンを押して出来たことへの返事
+    ///       なので、押したアイコンが隣に残っている方が «これで合っていた» が伝わる。
     [[nodiscard]] bool StaminaFocusActive() const { return m_focusRemaining > 0.0f; }
     [[nodiscard]] const char* PromptAction() const
     {
@@ -162,7 +155,7 @@ public:
     void OnStart() override;
     void OnUpdate() override;
     void OnLateUpdate() override;
-    // 沈めたまま消えると画面が暗いまま戻らない。持ち主が必ず戻す。
+    /// 沈めたまま消えると画面が暗いまま戻らない。持ち主が必ず戻す。
     void OnDestroy() override
     {
         ClearDim();
@@ -198,11 +191,9 @@ private:
         /// 体力の下限を掛けるか。
         bool protect;
         /// 今この幕で «押させたい» 操作 (InputActions の論理名)。空なら出さない。
-        ///
-        /// WHY 目的の 1 行と別に持つか: 目的は «何をするか» だけを言い、どのキーかは
-        ///     言わない (割り当ては OPTIONS で差し替えられるので、文言に焼くと嘘になる)。
-        ///     だが教える段では «どのボタンか» こそが要る。文言は文言のまま残し、
-        ///     ボタンはアイコンで別に出す ── 出す場所も役目も違う 2 つとして分ける。
+        /// @note 目的の 1 行とは別に持つ。目的は «何をするか» だけを言い、どのキーかは
+        ///       言わない (割り当ては OPTIONS で差し替えられるので文言に焼くと嘘になる)。
+        ///       教える段では «どのボタンか» が要るため、ボタンはアイコンで別に出す。
         const char* promptAction;
         /// アイコンの隣に出す短い動詞。
         const char* promptLabel;
@@ -225,21 +216,16 @@ private:
         return "お見事！";
     }
     /// 今フレームの盤面に合わせて言い換えた 1 行。
-    ///
-    /// WHY 幕ごとの固定文にしないか:
-    ///   固定の 1 行は «標識» であって説明ではない。「印が出たら離れろ」を
-    ///   ずっと出していても、印を一度も見ていない相手には何のことか分からず、
-    ///   印が出ている最中には «今» が言えない。
-    ///   **説明は起きていないときに、命令は起きている瞬間に出す。**
-    ///   同じ 1 行が状況で言い換わるなら、読む場所は 1 つのままで済む。
+    /// @note 幕ごとの固定文にはしない。固定の 1 行は «標識» であって説明でなく、
+    ///       「印が出たら離れろ」をずっと出していても印を見ていない相手には伝わらず、
+    ///       印が出ている最中には «今» が言えない。説明は起きていないときに、命令は
+    ///       起きている瞬間に出す。同じ 1 行が状況で言い換わるなら読む場所は 1 つで済む。
     [[nodiscard]] const char* LiveObjective(const BossAiComponent* ai) const;
 
-    /// アイコンの隣の短い動詞。**そのとき本当に出せる手だけを名乗る。**
-    ///
-    /// WHY 固定で «弾き / とどめ» と書かないか: とどめ は倒れている 9 秒にしか
-    ///   存在しない。立っている相手の前で «とどめ» と出ていると、プレイヤーは
-    ///   **無い手を探して押す** ─ 押しても出ないので «壊れている» と読む。
-    ///   名乗るのは «今そのボタンで起きること» だけにする。
+    /// アイコンの隣の短い動詞。そのとき本当に出せる手だけを名乗る。
+    /// @note 固定で «弾き / とどめ» と書かない。とどめは倒れている 9 秒にしか存在せず、
+    ///       立っている相手の前で «とどめ» と出ていると無い手を探して押され «壊れて
+    ///       いる» と読まれる。名乗るのは «今そのボタンで起きること» だけにする。
     [[nodiscard]] const char* LivePromptLabel() const
     {
         if (m_act == Act::Execute) {
@@ -270,7 +256,7 @@ private:
     float m_praise  = 0.0f;   ///< 合格してから次の幕へ移るまでの残り [秒]
     bool  m_passed  = false;  ///< 今の幕は合格済みか (praise を数えている最中)
 
-    // 幕の始まりで控える «基準の数»。合格はここからの差で見る。
+    /// 幕の始まりで控える «基準の数»。合格はここからの差で見る。
     int m_baseMoves   = 0;
     int m_baseDodges  = 0;
     int m_baseDamage  = 0;
@@ -302,7 +288,8 @@ private:
     /// 「部位の数が読めない」を 1 度だけ言うためのラッチ。
     bool m_warnedNoParts = false;
 
-    // ── 教える瞬間 ──────────────────────────────────────────────────────────
+    /// @name 教える瞬間
+    /// @{
     /// 合図の残り [実時間 秒]。
     float m_cue = 0.0f;
     /// 今の合図の長さ [秒]。強さはこれで割る (教えると出来たで尺が違う)。
@@ -332,6 +319,7 @@ private:
     void FireSuccess();
 
     static inline TutorialDirectorComponent* s_instance = nullptr;
+    /// @}
 };
 
 FBZZ_REFLECT(TutorialDirectorComponent)
@@ -344,9 +332,9 @@ inline BossAiComponent* TutorialDirectorComponent::Ai() const
 
 inline GameFlowComponent* TutorialDirectorComponent::Flow() const
 {
-    // WHY 掴んで持たないか: GameFlow は別の子オブジェクトに居るので、どちらの OnStart が
-    //     先に走るかはシーンの並び次第になる。1 度きりで掴むと、並び順を変えただけで
-    //     目的の 1 行が二度と出なくなる (GameFlowComponent の Combat() と同じ判断)。
+    /// @note 掴んで持たない。GameFlow は別の子オブジェクトに居るのでどちらの OnStart が
+    ///       先に走るかはシーンの並び次第になり、1 度きりで掴むと並び順を変えただけで
+    ///       目的の 1 行が二度と出なくなる (GameFlowComponent の Combat() と同じ判断)。
     for (GameObject* object : scene.FindObjectsOfType<GameFlowComponent>())
         if (auto* flow = scene.GetScript<GameFlowComponent>(object)) return flow;
     return nullptr;
@@ -359,9 +347,8 @@ inline PlayerComponent* TutorialDirectorComponent::Player() const
 }
 
 /// 残っている部位。«分からない» は -1 で返す (IBoss の既定がそう返す)。
-///
-/// WHY 0 で誤魔化さないか: 0 として扱うと «脚が 1 本も無い» と読まれ、幕 4 が
-///     開始と同時に合格してしまう。分からないことは分からないまま上へ渡す。
+/// @note 0 で誤魔化さない。0 として扱うと «脚が 1 本も無い» と読まれ幕 4 が開始と
+///       同時に合格してしまうため、分からないことは分からないまま上へ渡す。
 inline int TutorialDirectorComponent::PartsLeft() const
 {
     GameObject* boss = BossObject();
@@ -407,8 +394,8 @@ inline const TutorialDirectorComponent::Step& TutorialDirectorComponent::Current
 
 inline const char* TutorialDirectorComponent::LiveObjective(const BossAiComponent* ai) const
 {
-    // 予兆が «今フレーム出ているか» と «着弾がすぐそこか»。
-    // shape が None なら何も来ていない (BossTelegraph.hpp)。
+    /// @note 予兆が «今フレーム出ているか» と «着弾がすぐそこか»。
+    ///       shape が None なら何も来ていない (BossTelegraph.hpp)。
     const BossTelegraph tel = ai ? ai->CurrentTelegraph() : BossTelegraph{};
     const bool incoming = tel.shape != BossTelegraphShape::None;
     const bool imminent = incoming && tel.progress >= 0.55f;
@@ -430,24 +417,23 @@ inline const char* TutorialDirectorComponent::LiveObjective(const BossAiComponen
             ? "今はキミが速く動ける！ 印の脚へ連撃！"
             : "もう一度弾こう！ 弾いた直後が連撃のチャンス";
     case Act::Slash:
-        // 1 発当たったら «繋ぐ» へ言い換える。当てる前に «繋げ» と言っても、
-        // まだ 1 度も当たっていない相手には何を繋ぐのか分からない。
+        /// @note 1 発当たったら «繋ぐ» へ言い換える。当てる前に «繋げ» と言っても、
+        ///       まだ 1 度も当たっていない相手には何を繋ぐのか分からない。
         if (brk && brk->Ratio() > 0.0f) return "その調子！ 続けて斬りつなごう！";
         return "脚を狙って！ 続けて押すと連撃になるよ";
 
     case Act::Dodge:
-        // 予兆を一度も見ていない相手に «印» と言っても通じない。
-        // 出ていないときに «何が起きるか» を、出ている最中に «今どうするか» を言う。
+        /// @note 予兆を一度も見ていない相手に «印» と言っても通じない。
+        ///       出ていないときに «何が起きるか» を、出ている最中に «今どうするか» を言う。
         if (imminent) return "今だ、横へかわして！";
         if (incoming) return "足元が光った！ そこに落ちてくるよ！";
         return "足元の光を見て。踏みつけが来るよ！";
 
     case Act::Parry:
-        // WHY «押しっぱなしでも防げる» をここで言わないか (2026-09-14):
-        //   この幕は **弾き 1 回** で通す。押しっぱなしのガードでは崩しが溜まらず、
-        //   通過条件の `Parries()` も増えない ── つまり «防げる» と教えると、
-        //   教えたとおりに遊んだ人が**永遠に合格しない**。
-        //   ガードは死ねるようになる幕 4 で教える。
+        /// @note «押しっぱなしでも防げる» とはここで言わない。この幕は弾き 1 回で通し、
+        ///       押しっぱなしのガードでは崩しが溜まらず通過条件の `Parries()` も増えない
+        ///       ため、«防げる» と教えると教えたとおりに遊んだ人が永遠に合格しない。
+        ///       ガードは死ねるようになる幕 4 で教える。
         if (imminent) return "今だ、弾いて！";
         if (incoming) return "まだだよ…当たる瞬間を狙って！";
         return "当たる瞬間に押して、踏みつけを弾こう！";
@@ -461,8 +447,8 @@ inline const char* TutorialDirectorComponent::LiveObjective(const BossAiComponen
 
     case Act::Range:
         if (down) return "今がチャンス！ 脚にとどめを！";
-        // 守りが外れた最初の一言は «何が変わったか»。手が増えたことより、
-        // **もう守られていない** ことの方が先に伝わらないといけない。
+        /// @note 守りが外れた最初の一言は «何が変わったか»。手が増えたことより、
+        ///       **もう守られていない** ことの方が先に伝わらないといけない。
         if (m_justUnprotected) return "ここからは致命傷に注意！ 次の脚を狙おう！";
         if (incoming) return "踏みつけは弾こう！ 衝撃波は回避しよう！";
         return "危ないときは長押しでガード！ 崩すなら弾こう";
@@ -488,8 +474,8 @@ inline void TutorialDirectorComponent::ClearDim()
 inline void TutorialDirectorComponent::FireCue(float seconds, float timeScale, bool dims)
 {
     m_cue      = std::max(seconds, 0.05f);
-    // WHY 長さを控えるか: 合図は «教える» と «出来た» で尺が違う。CueStrength を
-    //     いつも cueSeconds で割ると、短い方は 1.0 へ届かず中央まで寄り切らない。
+    /// @note 長さは控えて持つ。合図は «教える» と «出来た» で尺が違うため、CueStrength を
+    ///       いつも cueSeconds で割ると短い方は 1.0 へ届かず中央まで寄り切らない。
     m_cueTotal = m_cue;
     m_cueDims  = dims;
     if (auto* clock = TimeManagerComponent::Instance())
@@ -498,9 +484,9 @@ inline void TutorialDirectorComponent::FireCue(float seconds, float timeScale, b
 
 inline void TutorialDirectorComponent::FireSuccess()
 {
-    // WHY 弾きと同じ «白» を使わないか: 弾きの閃光は «防いだ» の語で、1 戦のあいだ
-    //   何十回も出る。段を越えた合図が同じ色で来ると、いつもの防御に埋もれる。
-    //   暖かい側へ寄せると «いつもと違うことが起きた» が色だけで伝わる。
+    /// @note 弾きと同じ «白» は使わない。弾きの閃光は «防いだ» の語で 1 戦のあいだ何十回も
+    ///       出るため、段を越えた合図が同じ色だといつもの防御に埋もれる。暖かい側へ
+    ///       寄せると «いつもと違うことが起きた» が色だけで伝わる。
     if (successFlash > 0.0f)
         if (auto* screen = ScreenEffectManagerComponent::Instance())
             screen->Flash(successFlashColor, std::clamp(successFlash, 0.0f, 1.0f), 0.14f);
@@ -511,26 +497,26 @@ inline void TutorialDirectorComponent::FireSuccess()
         if (auto* follow = CameraFollowManagerComponent::Instance())
             follow->PunchFov(std::clamp(successFov, 0.0f, 1.0f));
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.25f, 0.55f, 0.16f);
-    // 連撃が伸びたときの上がり音。«良いことが起きた» として既に耳が覚えている。
+    /// @note 連撃が伸びたときの上がり音。«良いことが起きた» として既に耳が覚えている。
     se::Play(audio, se::kUiComboHigh);
 
-    // 手応えのあいだだけ中央へ出す。教える合図より短く・浅く ─ 長いと
-    // «褒められている時間» が戦いを止める。
+    /// @note 手応えのあいだだけ中央へ出す。教える合図より短く・浅く ─ 長いと
+    ///       «褒められている時間» が戦いを止める。
     if (successCueSeconds > 0.0f) FireCue(successCueSeconds, successSlow, /*dims=*/false);
 }
 
 inline void TutorialDirectorComponent::DriveCue(const BossAiComponent* ai, float unscaledDt)
 {
-    // 教える 3 幕でだけ。合格した後 (成功のセリフ の間) は出さない ─ 済んだことを
-    // もう一度止めて見せるのは、褒めているのか直させたいのか分からなくなる。
+    /// @note 教える 3 幕でだけ。合格した後 (成功のセリフ の間) は出さない ─ 済んだことを
+    ///       もう一度止めて見せるのは、褒めているのか直させたいのか分からなくなる。
     const bool teaching = teach && cueEnabled && !m_passed
                        && (m_act == Act::Dodge || m_act == Act::Parry || m_act == Act::Execute);
 
     const BossTelegraph tel = ai ? ai->CurrentTelegraph() : BossTelegraph{};
     const bool incoming = tel.shape != BossTelegraphShape::None;
 
-    // 予兆が消えたら次の手のために札を下ろす。**進みではなく «消えたか» で下ろす**
-    // ─ 進みは手ごとに 0 から数え直すので、同じ手が連続すると下ろし損ねる。
+    /// @note 予兆が消えたら次の手のために札を下ろす。**進みではなく «消えたか» で下ろす**
+    ///       ─ 進みは手ごとに 0 から数え直すので、同じ手が連続すると下ろし損ねる。
     if (!incoming) m_cueArmed = false;
 
     if (teaching && incoming && !m_cueArmed && tel.progress >= cueAt
@@ -540,11 +526,10 @@ inline void TutorialDirectorComponent::DriveCue(const BossAiComponent* ai, float
         FireCue(cueSeconds, cueTimeScale, /*dims=*/true);
     }
 
-    // 倒れた «瞬間» も教える機会。予兆が無いので上の経路では拾えないが、
-    // とどめ を知らない相手にとってはここが一番教えるべき 1 秒になる。
-    //
-    // WHY 立ち上がりで見るか: 転倒は 9 秒あるので «倒れている間» で焚くと
-    //     毎フレーム焚き直すことになる。変わった瞬間だけを取る。
+    /// @note 倒れた «瞬間» も教える機会。予兆が無いので上の経路では拾えないが、
+    ///       とどめを知らない相手にとってはここが一番教えるべき 1 秒になる。立ち上がり
+    ///       (変わった瞬間) だけを取る ─ 転倒は 9 秒あるので «倒れている間» で焚くと
+    ///       毎フレーム焚き直すことになる。
     {
         GameObject*  boss  = BossObject();
         const IBoss* iboss = boss ? IBoss::Of(boss) : nullptr;
@@ -560,11 +545,11 @@ inline void TutorialDirectorComponent::DriveCue(const BossAiComponent* ai, float
     if (m_cue <= 0.0f) { ClearDim(); return; }
     m_cue = std::max(0.0f, m_cue - unscaledDt);
 
-    // 沈むのは «教える» 合図だけ。出来たときは暖色で閃かせているので、同時に
-    // 沈めると «褒めながら暗くする» という読めない画になる。
+    /// @note 沈むのは «教える» 合図だけ。出来たときは暖色で閃かせているので、同時に
+    ///       沈めると «褒めながら暗くする» という読めない画になる。
     if (!m_cueDims) { ClearDim(); return; }
 
-    // 沈みは合図の強さへ素直に付ける。出るのは速く、引くのはゆっくり。
+    /// @note 沈みは合図の強さへ素直に付ける。出るのは速く、引くのはゆっくり。
     const float t = CueStrength();
     const float dim = std::clamp(cueDim, 0.0f, 1.0f) * (t * (2.0f - t));
     if (auto* screen = ScreenEffectManagerComponent::Instance()) {
@@ -592,8 +577,8 @@ inline void TutorialDirectorComponent::EnterAct(Act act)
     m_baseBladeHits = combat ? combat->BladeHitSerial() : 0;
     m_baseRushHits = combat ? combat->RushHitSerial() : 0;
     m_baseGuardSpent = player ? player->GuardStaminaSpent() : 0.0f;
-    // 合図の回数は幕ごとに数え直す。前の幕で使い切った状態で次の «初めて» を
-    // 迎えると、教えるべき瞬間に何も出ない。
+    /// @note 合図の回数は幕ごとに数え直す。前の幕で使い切った状態で次の «初めて» を
+    ///       迎えると、教えるべき瞬間に何も出ない。
     m_cueCount = 0;
     m_cueArmed = false;
 
@@ -616,17 +601,17 @@ inline bool TutorialDirectorComponent::Passed()
 
     switch (m_act) {
     case Act::Approach: {
-        // 起きたかどうかを持っているのはボス自身 (BossRoomTriggerComponent)。
+        /// @note 起きたかどうかを持っているのはボス自身 (BossRoomTriggerComponent)。
         GameObject* boss = BossObject();
         const auto* room = boss ? scene.GetScript<BossRoomTriggerComponent>(boss) : nullptr;
-        // 部屋の仕掛けが無い盤面 (検証用シーンなど) は、この幕を素通りさせる。
-        // ここで止めると «何をしても始まらない» になり、原因は画面に出ない。
+        /// @note 部屋の仕掛けが無い盤面 (検証用シーンなど) は、この幕を素通りさせる。
+        ///       ここで止めると «何をしても始まらない» になり、原因は画面に出ない。
         return !room || room->IsEngaged();
     }
 
     case Act::Slash:
-        // 繋いだ最長で見る。«N 回当てた» だと 1 発ずつ間を空けても通るので、
-        // **押し続けると繋がる** という一番覚えてほしいことが伝わらない。
+        /// @note 繋いだ最長で見る。«N 回当てた» だと 1 発ずつ間を空けても通るので、
+        ///       **押し続けると繋がる** という一番覚えてほしいことが伝わらない。
         debugProgress = combat && combat->BladeHitSerial() > m_baseBladeHits ? combat->ChainCount() : 0;
         return debugProgress >= std::max(slashChain, 1);
 
@@ -636,8 +621,8 @@ inline bool TutorialDirectorComponent::Passed()
         const int moves  = ai ? ai->MoveSerial() - m_baseMoves : 0;
         const int dodges = player ? player->DodgeSerial() - m_baseDodges : 0;
         const int hurt   = combat ? combat->DamageTaken() - m_baseDamage : 0;
-        // 食らったら数え直し。«避けられた手» だけを数えないと、突っ立っていても
-        // 手が出た回数で段が進んでしまう。
+        /// @note 食らったら数え直し。«避けられた手» だけを数えないと、突っ立っていても
+        ///       手が出た回数で段が進んでしまう。
         if (hurt > 0) {
             m_baseMoves  = ai ? ai->MoveSerial() : 0;
             m_baseDodges = player ? player->DodgeSerial() : 0;
@@ -645,10 +630,9 @@ inline bool TutorialDirectorComponent::Passed()
             debugProgress = 0;
             return false;
         }
-        // WHY 回避の回数も要るか (2026-09-14): 手の数だけを見ていると、**射程の外に
-        //     立っているだけで合格できた** ── 教えているのは回避なのに、回避を
-        //     一度も使わずに «避ける» の幕を抜けられる。促しているボタン
-        //     (プロンプトの «回避») と、通す条件が食い違っていた。
+        /// @note 回避の回数も要る。手の数だけを見ていると射程の外に立っているだけで
+        ///       合格でき、回避を一度も使わずに «避ける» の幕を抜けられてしまう。
+        ///       促しているボタン (プロンプトの «回避») と通す条件を揃える。
         const int need = std::max(surviveMoves, 1);
         debugProgress = std::min(moves, dodges);
         return moves >= need && dodges >= need;
@@ -668,7 +652,7 @@ inline bool TutorialDirectorComponent::Passed()
         return debugProgress >= 1;
 
     case Act::Execute: {
-        // 脚が 1 本減った ＝ 崩して倒し、とどめまで通った。
+        /// @note 脚が 1 本減った ＝ 崩して倒し、とどめまで通った。
         const int left = PartsLeft();
         if (left < 0 || m_baseParts < 0) { WarnNoParts(); return false; }
         debugProgress = m_baseParts - left;
@@ -676,7 +660,7 @@ inline bool TutorialDirectorComponent::Passed()
     }
 
     case Act::Range: {
-        // 据え付け化した後も、最後の脚まで案内を続ける。
+        /// @note 据え付け化した後も、最後の脚まで案内を続ける。
         const int left = PartsLeft();
         if (left < 0) { WarnNoParts(); return false; }
         debugProgress = left;
@@ -800,7 +784,7 @@ inline void TutorialDirectorComponent::OnStart()
     }
     m_objective.clear();
     m_wasToppled = false;
-    // 段を越えた合図は «画面の出来事» なので UI バスの 2D で鳴らす (GameFlow と同じ)。
+    /// @note 段を越えた合図は «画面の出来事» なので UI バスの 2D で鳴らす (GameFlow と同じ)。
     se::EnsureSource(scene, "UI");
     EnterAct(Act::Approach);
     if (!teach) EnterAct(Act::Free);
@@ -826,13 +810,13 @@ inline void TutorialDirectorComponent::OnUpdate()
         }
     }
 
-    // 門は毎フレーム渡し直す。1 度きりにすると、ボスが眠っていて AI をまだ引けない
-    // 最初の数フレームで渡し損ね、そのまま «絞っていない» 状態で戦いが始まる
-    // (BossRoomTrigger が «まだ» を毎フレーム押し直しているのと同じ理由)。
+    /// @note 門は毎フレーム渡し直す。1 度きりにすると、ボスが眠っていて AI をまだ引けない
+    ///       最初の数フレームで渡し損ね、そのまま «絞っていない» 状態で戦いが始まる
+    ///       (BossRoomTrigger が «まだ» を毎フレーム押し直しているのと同じ理由)。
     if (ai) {
         BossMoveGate gate = teach ? Current().gate : BossMoveGate{};
-        // テンポは表に書かず、Inspector の 2 つから引く。幕ごとに数字を撒くと、
-        // 遅さを 0.05 直すのに表の 3 行を触ることになる。
+        /// @note テンポは表に書かず、Inspector の 2 つから引く。幕ごとに数字を撒くと、
+        ///       遅さを 0.05 直すのに表の 3 行を触ることになる。
         if (m_act == Act::Dodge || m_act == Act::Parry) gate.tempo = teachTempo;
         else if (m_act == Act::Execute)                 gate.tempo = executeTempo;
         if (teach) {
@@ -848,10 +832,10 @@ inline void TutorialDirectorComponent::OnUpdate()
         ai->SetMoveGate(gate);
     }
 
-    // 守りも毎フレーム。押し続けている間だけ効く «1 フレームぶんの要求»。
+    /// @note 守りも毎フレーム。押し続けている間だけ効く «1 フレームぶんの要求»。
     const bool protect = protectWhileTeaching && teach;
-    // 守りが «外れた» ことは、手が増えたことより先に伝えないといけない。
-    // 黙って外すと、次の 1 回の被弾が «理不尽» として読まれる。
+    /// @note 守りが «外れた» ことは、手が増えたことより先に伝えないといけない。
+    ///       黙って外すと、次の 1 回の被弾が «理不尽» として読まれる。
     if (m_wasProtected && !protect) m_justUnprotected = 3.0f;
     m_wasProtected = protect;
     m_justUnprotected = std::max(0.0f, m_justUnprotected - std::max(Time::deltaTime, 0.0f));
@@ -860,7 +844,7 @@ inline void TutorialDirectorComponent::OnUpdate()
     if (protect)
         if (auto* player = Player()) player->RequestDamageFloor(1);
 
-    // 合格の判定 → «出来た» を読ませる間 → 次の幕。
+    /// @note 合格の判定 → «出来た» を読ませる間 → 次の幕。
     if (!m_passed && !StaminaFocusActive() && Passed()) {
         m_passed = true;
         m_praise = std::max(praiseSeconds, 0.0f);
@@ -872,29 +856,24 @@ inline void TutorialDirectorComponent::OnUpdate()
         if (m_praise <= 0.0f) Advance();
     }
 
-    // 目的の 1 行。幕 5 だけは盤面の状態で言い換える ── 教えるのをやめた後も
-    // «今どうすればいいか» は返し続ける (通しで教える、という方針)。
+    /// @note 目的の 1 行。幕 5 だけは盤面の状態で言い換える ── 教えるのをやめた後も
+    ///       «今どうすればいいか» は返し続ける (通しで教える、という方針)。
     m_objective = m_passed && m_act < Act::Free ? SuccessLine() : LiveObjective(ai);
 
-    // «ここだ» の層。文言を決めた後に回す ─ 合図の最中は、この 1 行がそのまま
-    // 画面の真ん中へ出る (PromptLabel)。
+    /// @note «ここだ» の層。文言を決めた後に回す ─ 合図の最中は、この 1 行がそのまま
+    ///       画面の真ん中へ出る (PromptLabel)。
     if (!StaminaFocusActive()) DriveCue(ai, std::max(time.UnscaledDeltaTime(), 0.0f));
 
     if (auto* flow = Flow()) {
-        // 上の 1 行と中央は **別のことを言う**。
-        //
-        // WHY 同じ文を両方へ出さないか (2026-09-14): 合図の最中は中央へ
-        //     «今だ、横へ逃げろ» が出る。上にも同じ文が並ぶと、画面に同じ命令が
-        //     2 つあるだけで情報は増えないうえ、読ませたい中央から目線が割れる。
-        //     合図の間、上は «この幕で何を覚えるのか» という据え置きの説明に戻す。
+        /// @note 上の 1 行と中央は別のことを言う。合図の最中は中央へ «今だ、横へ逃げろ»
+        ///       が出るため、上にも同じ文を出すと情報が増えず中央から目線が割れる。
+        ///       合図の間、上は «この幕で何を覚えるのか» という据え置きの説明に戻す。
         flow->SetObjective(m_cue > 0.0f && !m_passed ? Current().objective : m_objective);
-        // 守りが外れて手が全部出るところが «ここからが本番»。曲を持っているのは
-        // 盤面 (GameFlow の BGM 欄) なので、こちらは境目だけを告げる。
-        //
-        // WHY 幕が変わった瞬間に 1 度ではなく毎フレームか: 進行は別の子オブジェクトに
-        //     居るので、どちらの OnStart が先に走るかはシーンの並び次第になる。
-        //     teach を切った盤面は開始と同時にこの段へ入るため、1 度きりで渡すと
-        //     «先に言ってしまって届かない» が起こる (門を毎フレーム渡し直すのと同じ)。
+        /// @note 守りが外れて手が全部出るところが «ここからが本番»。曲を持っているのは
+        ///       盤面 (GameFlow の BGM 欄) なので、こちらは境目だけを告げる。幕が変わった
+        ///       瞬間でなく毎フレーム渡す ─ 進行は別の子オブジェクトに居てどちらの
+        ///       OnStart が先に走るかはシーンの並び次第で、1 度きりだと «先に言って
+        ///       しまって届かない» が起こる (門を毎フレーム渡し直すのと同じ)。
         if (m_act >= Act::Range) flow->BeginBattleBgm();
     }
 }

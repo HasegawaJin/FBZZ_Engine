@@ -57,7 +57,7 @@ protected:
     physics::World world;
 };
 
-// --- 剛体 -------------------------------------------------------------------
+/// @name 剛体
 
 TEST_F(WorldSceneSyncTest, SyncBodyRejectsANullBody)
 {
@@ -93,8 +93,8 @@ TEST_F(WorldSceneSyncTest, SyncBodyReattachesAKnownBodyWhenTheHandleIsLost)
     const physics::BodyHandle first = world.SyncBody({}, &body);
     world.EndSceneSync();
 
-    // Component のコピーや初期化順でハンドルが失われることがある。同じ RigidBody* が
-    // すでに World に居るなら、新しい slot を切らずに元の slot へ繋ぎ直す。
+    /// @note Component のコピーや初期化順でハンドルが失われることがある。同じ RigidBody* が
+    ///       すでに World に居るなら、新しい slot を切らずに元の slot へ繋ぎ直す。
     world.BeginSceneSync();
     const physics::BodyHandle rebound = world.SyncBody(physics::BodyHandle{ 99u, 99u }, &body);
     world.EndSceneSync();
@@ -111,20 +111,21 @@ TEST_F(WorldSceneSyncTest, EndSceneSyncReleasesTheSlotOfABodyThatStoppedSyncing)
     const physics::BodyHandle first = world.SyncBody({}, &removed);
     world.EndSceneSync();
 
-    world.BeginSceneSync();   // removed を流さない = シーンから消えた
+    /// @note removed を流さない = シーンから消えた
+    world.BeginSceneSync();
     world.EndSceneSync();
 
     world.BeginSceneSync();
     const physics::BodyHandle reused = world.SyncBody({}, &added);
     world.EndSceneSync();
 
-    // slot は再利用するが世代を上げる。上げないと、消えた側の古いハンドルが
-    // 新しい剛体を指してしまい «別のオブジェクトを操作する» ことになる。
+    /// @note slot は再利用するが世代を上げる。上げないと、消えた側の古いハンドルが
+    ///       新しい剛体を指してしまい «別のオブジェクトを操作する» ことになる。
     EXPECT_EQ(reused.slot, first.slot);
     EXPECT_NE(reused.generation, first.generation);
 }
 
-// --- コライダー -------------------------------------------------------------
+/// @name コライダー
 
 TEST_F(WorldSceneSyncTest, SyncColliderRejectsAnInstanceWithoutAShape)
 {
@@ -160,7 +161,7 @@ TEST_F(WorldSceneSyncTest, SyncColliderReattachesAKnownShapeWhenTheHandleIsLost)
     const physics::ColliderHandle first = world.SyncCollider({}, Instance(sphere));
     world.EndSceneSync();
 
-    // 繋ぎ直さないと、毎フレーム新しい slot が積まれて同じ形状が二重に衝突判定へ載る。
+    /// @note 繋ぎ直さないと、毎フレーム新しい slot が積まれて同じ形状が二重に衝突判定へ載る。
     world.BeginSceneSync();
     const physics::ColliderHandle rebound =
         world.SyncCollider(physics::ColliderHandle{ 99u, 99u }, Instance(sphere));
@@ -206,12 +207,12 @@ TEST_F(WorldSceneSyncTest, SyncColliderPushesTheShapeInertiaIntoItsBody)
     smallBody.ApplyAngularImpulse(math::Vector3::UP);
     largeBody.ApplyAngularImpulse(math::Vector3::UP);
 
-    // 形状を渡さないと «質量だけの等方慣性» のままで、大きい球も小さい球も同じ勢いで回る。
-    // 同期の時点で形状由来の慣性を入れ直すのが World の役目。
+    /// @note 形状を渡さないと «質量だけの等方慣性» のままで、大きい球も小さい球も同じ勢いで回る。
+    ///       同期の時点で形状由来の慣性を入れ直すのが World の役目。
     EXPECT_GT(smallBody.GetAngularVelocity().y, largeBody.GetAngularVelocity().y);
 }
 
-// --- Volume -----------------------------------------------------------------
+/// @name Volume
 
 TEST_F(WorldSceneSyncTest, SyncVolumeRejectsANullVolume)
 {
@@ -234,8 +235,8 @@ TEST_F(WorldSceneSyncTest, EndSceneSyncDestroysVolumesThatStoppedSyncing)
     world.BeginSceneSync();
     world.EndSceneSync();
 
-    // Volume は PhysicsSystem が毎フレーム作り直す使い捨て。流れて来なくなった時点で
-    // World が捨てないと、消えた VolumeComponent の効果が世界に残り続ける。
+    /// @note Volume は PhysicsSystem が毎フレーム作り直す使い捨て。流れて来なくなった時点で
+    ///       World が捨てないと、消えた VolumeComponent の効果が世界に残り続ける。
     EXPECT_EQ(alive, 0);
 }
 
@@ -254,11 +255,11 @@ TEST_F(WorldSceneSyncTest, SyncVolumeReplacesTheInstanceInThatSlotWithoutLeaking
 
     EXPECT_EQ(second.slot, first.slot);
     EXPECT_EQ(second.generation, first.generation);
-    // 毎フレーム作り直しても生存数は 1 のまま。増えるなら前フレームぶんが捨てられていない。
+    /// @note 毎フレーム作り直しても生存数は 1 のまま。増えるなら前フレームぶんが捨てられていない。
     EXPECT_EQ(alive, 1);
 }
 
-// --- 制約 -------------------------------------------------------------------
+/// @name 制約
 
 TEST_F(WorldSceneSyncTest, AddConstraintTakesOwnershipOfTheConstraint)
 {
@@ -274,8 +275,8 @@ TEST_F(WorldSceneSyncTest, AddConstraintTakesOwnershipOfTheConstraint)
 
 TEST_F(WorldSceneSyncTest, AddConstraintSurvivesASceneSync)
 {
-    // AddConstraint は «置いたら消えない» 側。同期の掃除に巻き込まれると、
-    // Physics 単体で組んだ拘束 (Tests / ベンチ) が最初のフレームで全部消える。
+    /// @note AddConstraint は «置いたら消えない» 側。同期の掃除に巻き込まれると、
+    ///       Physics 単体で組んだ拘束 (Tests / ベンチ) が最初のフレームで全部消える。
     physics::RigidBody a;
     physics::RigidBody b;
     world.AddConstraint(std::make_unique<physics::DistanceConstraint>(&a, &b, 1.0f));
@@ -297,8 +298,8 @@ TEST_F(WorldSceneSyncTest, SyncConstraintReusesTheSameSlotEveryFrame)
     world.EndSceneSync();
     ASSERT_TRUE(first.IsValid());
 
-    // 2 フレーム目は «そのまま生かす» 申告だけ。作り直さないので基準姿勢を抱える
-    // Fixed / Hinge が効き続ける。
+    /// @note 2 フレーム目は «そのまま生かす» 申告だけ。作り直さないので基準姿勢を抱える
+    ///       Fixed / Hinge が効き続ける。
     physics::Constraint* live = world.FindConstraint(first);
     world.BeginSceneSync();
     EXPECT_TRUE(world.KeepConstraint(first));
@@ -319,13 +320,13 @@ TEST_F(WorldSceneSyncTest, AnUnclaimedSyncedConstraintIsDropped)
     world.EndSceneSync();
     ASSERT_EQ(world.GetConstraints().size(), 1u);
 
-    // 申告しないフレームを 1 回挟むだけで解放される。Scene 側に «外す» 経路は要らない。
+    /// @note 申告しないフレームを 1 回挟むだけで解放される。Scene 側に «外す» 経路は要らない。
     world.BeginSceneSync();
     world.EndSceneSync();
 
     EXPECT_TRUE(world.GetConstraints().empty());
     EXPECT_EQ(world.FindConstraint(handle), nullptr);
-    // 世代が進むので、古いハンドルで生かし直すことはできない。
+    /// @note 世代が進むので、古いハンドルで生かし直すことはできない。
     EXPECT_FALSE(world.KeepConstraint(handle));
 }
 
@@ -344,7 +345,7 @@ TEST_F(WorldSceneSyncTest, RemoveConstraintFreesTheSlotForReuse)
 
     EXPECT_EQ(second.slot, first.slot);
     EXPECT_NE(second.generation, first.generation);
-    // 空いた枠を使い回す。フレームごとに増えるなら pool が肥大化している。
+    /// @note 空いた枠を使い回す。フレームごとに増えるなら pool が肥大化している。
     EXPECT_EQ(world.GetConstraints().size(), 1u);
 }
 

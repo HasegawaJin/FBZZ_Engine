@@ -18,8 +18,8 @@ class Script;
 struct ScriptMaterialProxy;
 struct UserRenderPassDesc;
 
-// Shader property名をconstexpr hashへ変換する軽量ID。
-// nameも保持し、Shader reflection検証と衝突時の照合に使う。
+/// @brief Shader property 名を constexpr hash へ変換する軽量 ID。
+/// @note name も保持し、Shader reflection 検証と衝突時の照合に使う。
 struct MaterialPropertyId {
     uint64_t hash = 0;
     std::string_view name;
@@ -51,9 +51,9 @@ enum class MaterialBlendMode {
     Additive,
 };
 
-// MaterialComponentをDLL境界へ公開しないopaque runtime handle。
-// slot は submesh 番号に対応する。SkinnedMeshRenderer は 1 GameObject で
-// モデル全体を描くため、submesh ごとの見た目はこの slot で指定する。
+/// @brief MaterialComponent を DLL 境界へ公開しない opaque runtime handle。
+/// @note slot は submesh 番号に対応する。SkinnedMeshRenderer は 1 GameObject で
+///       モデル全体を描くため、submesh ごとの見た目はこの slot で指定する。
 class MaterialInstance {
 public:
     MaterialInstance() = default;
@@ -85,9 +85,9 @@ private:
     enum class PropertyKind { Float, Int, Vector3, Vector4, Texture };
     MaterialInstance(Script* owner, EntityRef target, uint32_t slot)
         : m_script(owner), m_target(target), m_slot(slot) {}
-    // 戻り値は MaterialSlot* (DLL 境界へ型を出さないため void*)。
+    /// @return MaterialSlot* (DLL 境界へ型を出さないため void*)。
     [[nodiscard]] void* ResolveComponent(bool ensure) const;
-    // スロットを所有する MaterialComponent。コンポーネント全体の操作に使う。
+    /// @return スロットを所有する MaterialComponent。コンポーネント全体の操作に使う。
     [[nodiscard]] struct MaterialComponent* ResolveOwner(bool ensure) const;
     [[nodiscard]] bool ValidateProperty(MaterialPropertyId property, PropertyKind kind) const;
     [[nodiscard]] const std::string& ResolvePropertyName(void* component,
@@ -103,20 +103,20 @@ struct ScriptMaterialProxy {
     [[nodiscard]] MaterialInstance Instance(uint32_t slot = 0) const;
     [[nodiscard]] MaterialInstance Instance(EntityRef target, uint32_t slot = 0) const;
 
-    // 共有.mat参照の割当だけを行う。runtime property変更はInstance()へ分離する。
+    /// @brief 共有 .mat 参照の割当だけを行う。runtime property 変更は Instance() へ分離する。
     bool SetSharedMaterial(const MaterialRef& material, uint32_t slot = 0) const;
     bool SetSharedMaterial(EntityRef target,
                            const MaterialRef& material,
                            uint32_t slot = 0) const;
 
-    // ── 共有 .mat アセットの読み取り (書き込みは提供しない) ────────────────
-    // 差し替え候補の .mat に書かれている値を、実際に適用する前に参照するためのもの。
-    // 例: 「被弾マテリアルの発光色を読んで、その色でヒットエフェクトを出す」。
-    //
-    // WHY 書き込み版が無いか: .mat は参照する全 GameObject が共有する実体で、
-    //     ランタイムに書き換えると 1 体だけ光らせたい演出が全体へ波及する。
-    //     さらに変更は AssetManager 上のメモリにしか残らず Play 停止でも戻らないため、
-    //     エディタセッションを汚染する。オブジェクト単位の変更は Instance() を使うこと。
+    /// @name 共有 .mat アセットの読み取り (書き込みは提供しない)
+    /// 差し替え候補の .mat に書かれている値を、実際に適用する前に参照するためのもの。
+    /// 例: 「被弾マテリアルの発光色を読んで、その色でヒットエフェクトを出す」。
+    /// @note .mat は参照する全 GameObject が共有する実体。ランタイムに書き換えると
+    ///       1 体だけ光らせたい演出が全体へ波及し、変更は AssetManager 上のメモリにしか
+    ///       残らず Play 停止でも戻らないためエディタセッションを汚染する。オブジェクト
+    ///       単位の変更は Instance() を使うこと。
+    ///@{
     [[nodiscard]] bool HasSharedProperty(const MaterialRef& material,
                                          MaterialPropertyId property) const;
     [[nodiscard]] bool TryGetSharedFloat(const MaterialRef& material,
@@ -129,6 +129,7 @@ struct ScriptMaterialProxy {
                                          MaterialPropertyId property, math::Vector4& value) const;
     [[nodiscard]] bool TryGetSharedTexture(const MaterialRef& material,
                                            MaterialPropertyId property, TextureRef& texture) const;
+    ///@}
 
     bool EnsureMaterial(std::string_view materialPath) const;
     bool HasParam(std::string_view param) const;
@@ -141,31 +142,29 @@ struct ScriptMaterialProxy {
     int GetInt(std::string_view param) const;
     math::Vector3 GetVector3(std::string_view param) const;
     math::Vector4 GetVector4(std::string_view param) const;
-    // コンポーネント全体の有効/無効。
+    /// @brief コンポーネント全体の有効/無効。
     bool SetEnabled(bool enabled) const;
     [[nodiscard]] bool IsEnabled() const;
-    // submesh (スロット) 単位の表示切替。
-    // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体を描くようになったため、
-    //      「装備の一部だけ隠す」といった操作はスロット番号で行う。
+    /// @brief submesh (スロット) 単位の表示切替。
+    /// @note SkinnedMeshRenderer は 1 GameObject でモデル全体を描くため、
+    ///       「装備の一部だけ隠す」といった操作はスロット番号で行う。
     bool SetSlotVisible(uint32_t slot, bool visible) const;
     [[nodiscard]] bool IsSlotVisible(uint32_t slot) const;
-    // 指定 submesh だけを表示する。slot < 0 で全 submesh を表示。
+    /// @brief 指定 submesh だけを表示する。slot < 0 で全 submesh を表示。
     bool SetOnlyVisibleSlot(int slot) const;
     bool SetBlendMode(MaterialBlendMode blendMode) const;
     bool SetDoubleSided(bool doubleSided) const;
     bool SetRenderQueue(int32_t renderQueue) const;
-    // 上書きが無ければ共有 .mat の値を返す (実際に描画へ使われる値)。
+    /// @note 上書きが無ければ共有 .mat の値を返す (実際に描画へ使われる値)。
     [[nodiscard]] bool    IsDoubleSided() const;
     [[nodiscard]] int32_t GetRenderQueue() const;
-    // 割り当てられている共有 .mat のパス。未割り当てなら空文字列。
+    /// @return 割り当てられている共有 .mat のパス。未割り当てなら空文字列。
     [[nodiscard]] std::string GetSharedMaterialPath(uint32_t slot = 0) const;
-    // 別 GameObject のスロットに割り当てられている共有 .mat のパス。
-    // WHY: 部位ごとに GameObject が分かれたキャラクターでは、親のスクリプトが
-    //      «今どの材質で描かれているか» を見て差し替え先を決める必要がある。
-    //      Instance / SetSharedMaterial には EntityRef 版があるのに、読み取りだけ
-    //      自分自身に限られていた。
+    /// @return 別 GameObject のスロットに割り当てられている共有 .mat のパス。
+    /// @note 部位ごとに GameObject が分かれたキャラクターで、親のスクリプトが
+    ///       「今どの材質で描かれているか」を見て差し替え先を決める用途。
     [[nodiscard]] std::string GetSharedMaterialPath(EntityRef target, uint32_t slot) const;
-    // MaterialComponent が持つ submesh スロット数。
+    /// @return MaterialComponent が持つ submesh スロット数。
     [[nodiscard]] uint32_t GetSlotCount() const;
 
     void QueueRenderPass(UserRenderPassDesc desc) const;

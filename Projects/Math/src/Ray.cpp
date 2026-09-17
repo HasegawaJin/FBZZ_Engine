@@ -23,7 +23,7 @@ bool Ray::IntersectPlane(const Plane& plane, float& outT) const
 
 bool Ray::IntersectSphere(const Vector3& center, float radius, float& outT) const
 {
-    // direction は正規化済みのため二次方程式の a = 1、半 b 形式で計算
+    /// @note direction は正規化済みのため二次方程式の a = 1、半 b 形式で計算する。
     Vector3 oc   = origin - center;
     float   b    = Vector3::Dot(oc, direction);
     float   c    = Vector3::Dot(oc, oc) - radius * radius;
@@ -41,7 +41,7 @@ bool Ray::IntersectSphere(const Vector3& center, float radius, float& outT) cons
 bool Ray::IntersectTriangle(const Vector3& v0, const Vector3& v1, const Vector3& v2,
                             float& outT) const
 {
-    // Möller–Trumbore アルゴリズム
+    /// @note Möller-Trumbore アルゴリズム。
     Vector3 e1  = v1 - v0;
     Vector3 e2  = v2 - v0;
     Vector3 p   = Vector3::Cross(direction, e2);

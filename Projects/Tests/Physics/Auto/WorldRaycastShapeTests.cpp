@@ -74,7 +74,7 @@ protected:
     physics::World::RaycastHit hit;
 };
 
-// --- AABB -------------------------------------------------------------------
+/// @name AABB
 
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheNearFaceOfABox)
 {
@@ -85,7 +85,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheNearFaceOfABox)
     ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 4.0f, testkit::kLooseTolerance);
-    // 法線は «レイが入ってきた面の外向き»。裏返ると、跳ね返りも接地判定も逆を向く。
+    /// @note 法線は «レイが入ってきた面の外向き»。裏返ると、跳ね返りも接地判定も逆を向く。
     EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::FORWARD, testkit::kLooseTolerance);
 }
 
@@ -95,8 +95,8 @@ TEST_F(WorldRaycastShapeTest, RaycastMissesABoxWhenTravellingAlongsideAnAxis)
     box.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(box) });
 
-    // 軸に平行なレイでは、その軸のスラブに «入る時刻» が計算できない。
-    // 0 除算を避けたつもりで «常に当たる» 側へ倒すと、箱の真横を通る弾が全部当たる。
+    /// @note 軸に平行なレイでは、その軸のスラブに «入る時刻» が計算できない。
+    ///       0 除算を避けたつもりで «常に当たる» 側へ倒すと、箱の真横を通る弾が全部当たる。
     EXPECT_FALSE(world.Raycast(math::Vector3(0.0f, 5.0f, 0.0f),
                                math::Vector3::RIGHT, 100.0f, hit));
 }
@@ -107,14 +107,14 @@ TEST_F(WorldRaycastShapeTest, RaycastReportsZeroDistanceFromInsideABox)
     box.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(box) });
 
-    // めり込んだ状態から撃つのはよくある (足元判定・脱出方向探し)。当たり無しにすると
-    // «埋まっているときだけ何も検出できない» という一番困る挙動になる。
+    /// @note めり込んだ状態から撃つのはよくある (足元判定・脱出方向探し)。当たり無しにすると
+    ///       «埋まっているときだけ何も検出できない» という一番困る挙動になる。
     ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::RIGHT, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 0.0f, testkit::kLooseTolerance);
 }
 
-// --- OBB --------------------------------------------------------------------
+/// @name OBB
 
 TEST_F(WorldRaycastShapeTest, RaycastFollowsTheRotationOfAnOBB)
 {
@@ -126,14 +126,14 @@ TEST_F(WorldRaycastShapeTest, RaycastFollowsTheRotationOfAnOBB)
     ASSERT_TRUE(world.Raycast(math::Vector3(0.0f, 0.0f, -5.0f),
                               math::Vector3::FORWARD, 100.0f, hit));
 
-    // 45° 回した立方体は角がレイ側へ出る。外接 AABB で判定していると 4.0 になり、
-    // 回転を無視していることがここで露見する。
+    /// @note 45° 回した立方体は角がレイ側へ出る。外接 AABB で判定していると 4.0 になり、
+    ///       回転を無視していることがここで露見する。
     EXPECT_NEAR(hit.distance, 5.0f - std::sqrt(2.0f), testkit::kLooseTolerance);
     EXPECT_UNIT_LENGTH(hit.normal, testkit::kLooseTolerance);
     EXPECT_LT(math::Vector3::Dot(hit.normal, math::Vector3::FORWARD), 0.0f);
 }
 
-// --- カプセル ---------------------------------------------------------------
+/// @name カプセル
 
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheCylindricalSideOfACapsule)
 {
@@ -154,15 +154,15 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheRoundedEndOfACapsule)
     capsule.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(capsule) });
 
-    // 中心線の «外» にある半球。無限円柱の解だけを見ていると軸の外側で棄却され、
-    // 頭の上から撃った弾がすり抜ける。
+    /// @note 中心線の «外» にある半球。無限円柱の解だけを見ていると軸の外側で棄却され、
+    ///       頭の上から撃った弾がすり抜ける。
     ASSERT_TRUE(world.Raycast(math::Vector3(0.0f, 5.0f, 0.0f), kDown, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 3.5f, testkit::kLooseTolerance);
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
-// --- 円柱 -------------------------------------------------------------------
+/// @name 円柱
 
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheSideOfACylinder)
 {
@@ -183,7 +183,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheFlatCapOfACylinder)
     cylinder.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(cylinder) });
 
-    // 円柱をカプセルで代用すると天面が丸くなり、ここが 3.5 付近へずれる。
+    /// @note 円柱をカプセルで代用すると天面が丸くなり、ここが 3.5 付近へずれる。
     ASSERT_TRUE(world.Raycast(math::Vector3(0.0f, 5.0f, 0.0f), kDown, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 4.0f, testkit::kLooseTolerance);
@@ -196,11 +196,11 @@ TEST_F(WorldRaycastShapeTest, RaycastMissesACylinderOutsideItsRim)
     cylinder.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(cylinder) });
 
-    // 軸に平行で半径の外。円板の平面との交点だけを見て半径を確かめ忘れると当たってしまう。
+    /// @note 軸に平行で半径の外。円板の平面との交点だけを見て半径を確かめ忘れると当たってしまう。
     EXPECT_FALSE(world.Raycast(math::Vector3(0.0f, 5.0f, 2.0f), kDown, 100.0f, hit));
 }
 
-// --- 三角メッシュ / ハイトフィールド ----------------------------------------
+/// @name 三角メッシュ / ハイトフィールド
 
 TEST_F(WorldRaycastShapeTest, RaycastHitsATriangleMeshThroughItsBVH)
 {
@@ -211,7 +211,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsATriangleMeshThroughItsBVH)
     ASSERT_TRUE(world.Raycast(math::Vector3(0.3f, 5.0f, 0.3f), kDown, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 5.0f, testkit::kLooseTolerance);
-    // 面の向きに関わらず、法線はレイを迎える側へ揃える。裏から撃っても «床» として扱える。
+    /// @note 面の向きに関わらず、法線はレイを迎える側へ揃える。裏から撃っても «床» として扱える。
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
@@ -231,14 +231,14 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsAHeightField)
     field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(field) });
 
-    // 地形は接地判定の受け皿。ここが抜けると «地面はあるのに落ち続ける» になる。
+    /// @note 地形は接地判定の受け皿。ここが抜けると «地面はあるのに落ち続ける» になる。
     ASSERT_TRUE(world.Raycast(math::Vector3(0.3f, 5.0f, 0.3f), kDown, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 5.0f, testkit::kLooseTolerance);
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
-// --- 凸包 -------------------------------------------------------------------
+/// @name 凸包
 
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheFaceOfAConvexHull)
 {
@@ -253,7 +253,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheFaceOfAConvexHull)
     EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
 
-// --- SphereCast -------------------------------------------------------------
+/// @name SphereCast
 
 TEST_F(WorldRaycastShapeTest, SphereCastFindsABoxThatAZeroWidthRayPassesBeside)
 {
@@ -264,8 +264,8 @@ TEST_F(WorldRaycastShapeTest, SphereCastFindsABoxThatAZeroWidthRayPassesBeside)
     const math::Vector3 origin(0.0f, 1.5f, 0.0f);
     ASSERT_FALSE(world.Raycast(origin, math::Vector3::FORWARD, 100.0f, hit));
 
-    // 太さのあるキャラクターの移動判定はこちらを使う。箱を半径ぶん膨らませるので、
-    // 手前の面 (z = 9) が半径 1 だけ手前 (z = 8) へせり出す。
+    /// @note 太さのあるキャラクターの移動判定はこちらを使う。箱を半径ぶん膨らませるので、
+    ///       手前の面 (z = 9) が半径 1 だけ手前 (z = 8) へせり出す。
     ASSERT_TRUE(world.SphereCast(origin, 1.0f, math::Vector3::FORWARD, 100.0f, hit));
     EXPECT_NEAR(hit.distance, 8.0f, testkit::kLooseTolerance);
 }
@@ -289,12 +289,12 @@ TEST_F(WorldRaycastShapeTest, SphereCastStillMissesWhatIsFartherThanTheCastRadiu
     box.Update(math::Vector3(0.0f, 0.0f, 10.0f), math::Quaternion::Identity());
     Register({ Instance(box) });
 
-    // 膨張がそのまま «全部当たる» にならないこと。ここが緩いと壁抜け判定が常時真になる。
+    /// @note 膨張がそのまま «全部当たる» にならないこと。ここが緩いと壁抜け判定が常時真になる。
     EXPECT_FALSE(world.SphereCast(math::Vector3(0.0f, 5.0f, 0.0f), 1.0f,
                                   math::Vector3::FORWARD, 100.0f, hit));
 }
 
-// --- OverlapSphere ----------------------------------------------------------
+/// @name OverlapSphere
 
 TEST_F(WorldRaycastShapeTest, OverlapSphereMeasuresTheNearestPointOnABox)
 {
@@ -302,7 +302,7 @@ TEST_F(WorldRaycastShapeTest, OverlapSphereMeasuresTheNearestPointOnABox)
     box.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(box) });
 
-    // 中心間距離で判定していると、角に寄った球を «遠い» と誤判定する。
+    /// @note 中心間距離で判定していると、角に寄った球を «遠い» と誤判定する。
     EXPECT_EQ(world.OverlapSphere(math::Vector3(2.5f, 0.0f, 0.0f), 2.0f).size(), 1u);
     EXPECT_TRUE(world.OverlapSphere(math::Vector3(2.5f, 0.0f, 0.0f), 1.0f).empty());
 }
@@ -333,7 +333,7 @@ TEST_F(WorldRaycastShapeTest, OverlapSphereApproximatesAConvexHullWithItsBounds)
     hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
     Register({ Instance(hull) });
 
-    // 凸包は外接箱で保守的に判定する。取りこぼしはしないが、角の外側でも拾う。
+    /// @note 凸包は外接箱で保守的に判定する。取りこぼしはしないが、角の外側でも拾う。
     EXPECT_EQ(world.OverlapSphere(math::Vector3(1.5f, 0.0f, 0.0f), 0.6f).size(), 1u);
     EXPECT_TRUE(world.OverlapSphere(math::Vector3(3.0f, 0.0f, 0.0f), 0.5f).empty());
 }

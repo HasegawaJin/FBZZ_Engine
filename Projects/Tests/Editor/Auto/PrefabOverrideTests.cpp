@@ -21,7 +21,7 @@ using editor::PrefabOverrideSet;
 using scene::FindNodeAtPath;
 using scene::SetNodeAtPath;
 
-// transform.position.x のように 3 段で辿れるテーブルを作る。
+/// transform.position.x のように 3 段で辿れるテーブルを作る。
 toml::table MakeNestedTable()
 {
     toml::table position;
@@ -48,7 +48,7 @@ PrefabOverride MakeOverride(const char* sourceId, const char* path)
 
 } // namespace
 
-// --- パス解決 (読み) --------------------------------------------------------
+/// @name パス解決 (読み)
 
 TEST(PrefabPathLookup, FindsATopLevelKey)
 {
@@ -91,7 +91,7 @@ TEST(PrefabPathLookup, ReturnsNullForAMissingKey)
 
 TEST(PrefabPathLookup, ReturnsNullWhenAMidSegmentIsNotATable)
 {
-    // "name" は文字列。その先を辿ろうとしたら «無い» と答えるしかない。
+    /// @note "name" は文字列。その先を辿ろうとしたら «無い» と答えるしかない。
     const toml::table table = MakeNestedTable();
 
     EXPECT_EQ(FindNodeAtPath(table, "name.x"), nullptr);
@@ -104,7 +104,7 @@ TEST(PrefabPathLookup, ReturnsNullForAnEmptyPath)
     EXPECT_EQ(FindNodeAtPath(table, ""), nullptr);
 }
 
-// --- パス解決 (書き) --------------------------------------------------------
+/// @name パス解決 (書き)
 
 TEST(PrefabPathAssign, ReplacesATopLevelValue)
 {
@@ -128,7 +128,7 @@ TEST(PrefabPathAssign, ReplacesANestedValue)
 
 TEST(PrefabPathAssign, LeavesSiblingsAlone)
 {
-    // 1 つ書き換えたときに隣の値まで消えると、差分適用で他の項目が既定値へ戻る。
+    /// @note 1 つ書き換えたときに隣の値まで消えると、差分適用で他の項目が既定値へ戻る。
     toml::table table = MakeNestedTable();
     const toml::value<double> replacement{ 42.0 };
 
@@ -140,7 +140,7 @@ TEST(PrefabPathAssign, LeavesSiblingsAlone)
 
 TEST(PrefabPathAssign, AddsAMissingLeafKey)
 {
-    // 末尾のキーは無くても作る (プレハブに無い項目をインスタンスが持つ場合)。
+    /// @note 末尾のキーは無くても作る (プレハブに無い項目をインスタンスが持つ場合)。
     toml::table table = MakeNestedTable();
     const toml::value<double> value{ 3.0 };
 
@@ -151,7 +151,7 @@ TEST(PrefabPathAssign, AddsAMissingLeafKey)
 
 TEST(PrefabPathAssign, ChangesTheValueType)
 {
-    // 型が変わっても «置き換え» として通ること (bool だった項目が文字列になる等)。
+    /// @note 型が変わっても «置き換え» として通ること (bool だった項目が文字列になる等)。
     toml::table table = MakeNestedTable();
     const toml::value<std::string> replacement{ std::string("yes") };
 
@@ -162,7 +162,7 @@ TEST(PrefabPathAssign, ChangesTheValueType)
 
 TEST(PrefabPathAssign, RefusesToCreateMissingIntermediateTables)
 {
-    // 途中のテーブルまで作ると «想定外の形» を静かに生やす。ここは失敗させる。
+    /// @note 途中のテーブルまで作ると «想定外の形» を静かに生やす。ここは失敗させる。
     toml::table table = MakeNestedTable();
     const toml::value<double> value{ 1.0 };
 
@@ -190,7 +190,7 @@ TEST(PrefabPathAssign, RoundTripsThroughFind)
     EXPECT_DOUBLE_EQ(node->value_or(0.0), 7.5);
 }
 
-// --- 差分一覧 ---------------------------------------------------------------
+/// @name 差分一覧
 
 TEST(PrefabOverrideSetOps, RemovesTheMatchingEntry)
 {
@@ -208,7 +208,7 @@ TEST(PrefabOverrideSetOps, RemovesTheMatchingEntry)
 
 TEST(PrefabOverrideSetOps, KeepsEntriesWithTheSamePathOnAnotherObject)
 {
-    // パスだけで消すと、別オブジェクトの同名プロパティまで巻き添えになる。
+    /// @note パスだけで消すと、別オブジェクトの同名プロパティまで巻き添えになる。
     PrefabOverrideSet set;
     set.entries.push_back(MakeOverride("go-1", "name"));
     set.entries.push_back(MakeOverride("go-2", "name"));
@@ -252,13 +252,14 @@ TEST(PrefabOverrideSetOps, EmptyReflectsTheEntryCountOnly)
     EXPECT_TRUE(set.Empty());
 
     set.instanceTables["go-1"] = toml::table{};
-    EXPECT_TRUE(set.Empty());   // テーブルがあっても差分が無ければ空
+    /// @note テーブルがあっても差分が無ければ空
+    EXPECT_TRUE(set.Empty());
 
     set.entries.push_back(MakeOverride("go-1", "name"));
     EXPECT_FALSE(set.Empty());
 }
 
-// --- 表示整形 ---------------------------------------------------------------
+/// @name 表示整形
 
 TEST(PrefabOverrideDisplay, ShowsAPlaceholderForAMissingNode)
 {
@@ -278,7 +279,7 @@ TEST(PrefabOverrideDisplay, RendersScalarValues)
 
 TEST(PrefabOverrideDisplay, CollapsesAValueOntoOneLine)
 {
-    // 差分一覧は 1 行で並ぶ。改行が残ると行が崩れて後続が読めなくなる。
+    /// @note 差分一覧は 1 行で並ぶ。改行が残ると行が崩れて後続が読めなくなる。
     toml::table inner;
     inner.insert("x", 1.0);
     inner.insert("y", 2.0);
@@ -301,14 +302,15 @@ TEST(PrefabOverrideDisplay, TruncatesALongValue)
 
 TEST(PrefabOverrideDisplay, DoesNotCutInTheMiddleOfAMultiByteCharacter)
 {
-    // バイトで切ると日本語の値が «□» で終わる。文字境界まで戻すこと。
+    /// @note バイトで切ると日本語の値が «□» で終わる。文字境界まで戻すこと。
     std::string japanese;
-    for (int i = 0; i < 60; ++i) japanese += "あ";   // 3 バイト x 60
+    /// @note 3 バイト x 60
+    for (int i = 0; i < 60; ++i) japanese += "あ";
     const toml::value<std::string> text{ japanese };
 
     const std::string shown = FormatNodeForDisplay(&text);
 
-    // 末尾が UTF-8 の継続バイト (0b10xxxxxx) で終わっていないこと。
+    /// @note 末尾が UTF-8 の継続バイト (0b10xxxxxx) で終わっていないこと。
     ASSERT_FALSE(shown.empty());
     const auto last = static_cast<unsigned char>(shown.back());
     EXPECT_NE(last & 0xC0, 0x80) << shown;

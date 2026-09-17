@@ -10,15 +10,9 @@ namespace fbzz::renderer {
 
 void Mesh::ComputeBounds()
 {
-    // CPU 頂点配列 (スキンドメッシュ優先) から AABB を求め、
-    // 中心点と全頂点の最大距離 (バウンディング球半径) を算出する。
-    //
-    // WHY: Frustum/Occlusion カリングで球テストを使う理由は分岐削減。
-    //      AABB テストは 6 平面 × 比較が必要だが、球テストは平面ごとに
-    //      dot(normal, center) - d と radius を比較するだけで済む。
-    //      スキンアニメーション時は CPU 上のバインドポーズ球を使うため、
-    //      アニメーション伸縮を考慮した保守的な球になることがある。
-    //      厳密な精度より実装コストの低さを優先している。
+    /// @note CPU 頂点配列 (スキンドメッシュ優先) から AABB と、中心からの最大距離 (球半径) を求める。
+    ///       Frustum/Occlusion カリングは AABB (6 平面比較) より分岐が少ない球テストで行うため。
+    ///       スキン時はバインドポーズ球を使うため、アニメーション伸縮に対して保守的な球になりうる。
 
     const bool hasSkinned = !cpuSkinnedVertices.empty();
     const bool hasStatic  = !cpuVertices.empty();
@@ -55,7 +49,7 @@ void Mesh::ComputeBounds()
     boundsCenter  = (vmin + vmax) * 0.5f;
     boundsExtents = (vmax - vmin) * 0.5f;
 
-    // AABB 中心から最遠頂点までの距離を半径とする。
+    /// @note AABB 中心から最遠頂点までの距離を半径とする。
     float maxR2 = 0.0f;
     if (hasSkinned) {
         for (const auto& v : cpuSkinnedVertices) {

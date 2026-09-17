@@ -3,15 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// WHAT:
-/// Sandbox.exe --project <path>              -> エディタ起動
-/// Sandbox.exe --project <path> --standalone -> ゲームのみ起動
-/// Sandbox.exe (exe 隣に .fbzz_proj あり)     -> 配布物として Standalone 起動
-/// Sandbox.exe (引数なし)                    -> 開発用テンプレートを Editor 起動
-///
-/// WHY: main.cpp は起動順序だけを読み取れる入口にする。
-/// 引数解析、プロジェクト解決、Editor / Standalone のループ本体は専用ファイルへ分割し、
-/// 実行モードごとの依存関係と責務を明確にする。
+/// @note 起動モード: `Sandbox.exe --project <path>` はエディタ起動、`--standalone` 併用でゲームのみ起動、
+///       exe 隣に `.fbzz_proj` があれば配布物として Standalone 起動、引数なしなら開発用テンプレートを Editor 起動。
+/// @note main.cpp は起動順序だけを読み取れる入口にする。引数解析・プロジェクト解決・Editor/Standalone のループ本体は
+///       専用ファイルへ分割し、実行モードごとの依存関係と責務を分ける。
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
 #endif
@@ -47,8 +42,8 @@ using fbzz::util::FileSystem;
         return 1;
     }
 
-    // WHY: Standalone は ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する。
-    //      コマンドライン --renderer= があれば Application::Init 内でそちらが優先される。
+    /// @note Standalone は ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する。
+    ///       コマンドライン --renderer= があれば Application::Init 内でそちらが優先される。
     if (!app.Init(scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
     auto& renderer = app.GetRenderer();
@@ -69,8 +64,8 @@ using fbzz::util::FileSystem;
     (void)project;
     return 1;
 #else
-    // WHY: Editor も起動時プロジェクトの renderer 設定 (dx11/dx12) に従う (--renderer= 優先)。
-    //      レンダラーはプロジェクト読込前に生成するため、設定をここで先読みする。
+    /// @note Editor も起動時プロジェクトの renderer 設定 (dx11/dx12) に従う (--renderer= 優先)。
+    ///       レンダラーはプロジェクト読込前に生成するため、設定をここで先読みする。
     ProjectSettings settings;
     settings.Load(StringUtils::PathToUtf8(project.settingsFile));
     if (!app.Init(core::Window::Config{}, settings.app.rendererBackend)) return 1;
@@ -96,8 +91,8 @@ using fbzz::util::FileSystem;
 
 int Run()
 {
-    // WHY: FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
-    //      新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
+    /// @note FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
+    ///       新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
     if (fbzz::core::CheckEngineFreshnessAndRelaunch())
         return 0;
 
@@ -121,7 +116,7 @@ int Run()
 
     auto& app = core::Application::Get();
 #ifdef FBZZ_STANDALONE_TARGET
-    // WHY: 配布用 exe は --standalone の指定漏れや引数なし起動でも必ずゲーム本体として起動する。
+    /// @note 配布用 exe は --standalone の指定漏れや引数なし起動でも必ずゲーム本体として起動する。
     const int result = RunStandalone(app, project);
 #else
     const int result = args.standalone ? RunStandalone(app, project) : RunEditor(app, project);

@@ -24,7 +24,7 @@ struct EntityID {
 
 inline const EntityID EntityID::INVALID = {};
 
-// if constexpr の else 節で使う依存 false
+/// if constexpr の else 節で使う依存 false
 template<typename T>
 inline constexpr bool AlwaysFalse = false;
 

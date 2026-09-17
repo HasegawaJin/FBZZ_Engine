@@ -3,23 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY 視線を 1 箇所で作るか:
-///   照準の点は カメラ追従・首の向き・斬撃の吸い付き の 3 者が同じものを見ないと
-///   成立しない。読む側がそれぞれカメラから引き直すと、同じフレームでも 1 つずつ
-///   違う点を持つことになり、«体は敵を向いているのに刃は画面の奥へ抜ける» という
-///   食い違いが、どこで生まれたのか追えなくなる。
-///
-/// WHY 視線 (カメラ) から引くか:
-///   TPS でプレイヤーの体から引くと、カメラと体の横ずれのぶんだけ画面中央と
-///   照準がずれ、遠いほど開く。画面の中央が狙っている先である方が読みやすい。
-///
-/// WHY «どれを狙うか» を照準の点への近さで決めるか (2026-09-15):
-///   長らく盤面に立っているのはボス 1 体だけで、名簿 (IBoss) が返す 1 体を
-///   そのまま相手にしていた。Stage_02 が蛇を 2 体置いたことで «どれか 1 体» が
-///   毎フレーム入れ替わるようになり、枠・首の向き・吸い付きの先が同じフレームでも
-///   ばらけるようになった。基準は照準の点 ─ 画面の中央が狙っている先である、
-///   というこのファイルの前提をそのまま «相手» の選び方にも使う。
-///   近さは IBoss::FocusPoint で測る。蛇はルートが据え置きで、胴だけが動く。
+/// @note 視線はカメラ追従・首の向き・斬撃の吸い付きが共有する 1 点。各自がカメラから
+///       引き直すと同じフレームでも点がずれるため、ここで一度だけ計算する。TPS では
+///       体でなくカメラから引くことで、画面中央が狙う先と一致する。
+/// @note «どれを狙うか» も照準の点への近さ (IBoss::FocusPoint) で決める。蛇はルートが
+///       据え置きで胴だけ動くため、名簿の並び順ではなく位置で選ぶ。
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>
@@ -40,8 +28,8 @@ class PlayerAimComponent : public Script {
 
 public:
     FBZZ_GROUP("Aim")
-    // WHY 既定で地形に止めるか: 照準の点は «見ている先» なので、壁を素通りすると
-    //     首も体も壁の向こうを向く。壁に貼り付いた点の方が、見ている絵と一致する。
+    /// @note 照準は «見ている先» なので、壁を素通りすると首も体も壁の向こうを向く。
+    ///       壁で止めた方が見ている絵と一致するため既定で有効にする。
     FBZZ_FIELD(bool, stopOnGeometry, true, "Stop On Geometry")
     FBZZ_TOOLTIP("地形に当たったところで照準を止める。切ると壁越しの点になる")
     FBZZ_FIELD_RANGE(float, aimRange, 40.0f, "Aim Range", 5.0f, 120.0f)
@@ -49,13 +37,13 @@ public:
                  "近すぎると空を見上げたときだけ首の向きが手前へ折れる")
 
     FBZZ_GROUP("デバッグ")
-    // WHY 名前を他のモジュールと重ねられないか: PlayerComponent は内部モジュールの
-    //     項目を 1 枚のカードへ平らに並べるため、同名のフィールドはシーンの保存で
-    //     互いを上書きし合う。モジュールを跨いだ名前の重複は作れない。
+    /// @note PlayerComponent は内部モジュールの項目を 1 枚のカードへ平らに並べるため、
+    ///       同名フィールドはシーン保存時に互いを上書きする。モジュールを跨ぐ名前の重複は不可。
     FBZZ_FIELD(bool, drawDebugAim, false, "Draw Debug Aim")
     FBZZ_FIELD_READ_ONLY(std::string, debugAimTarget, "", "対象")
 
-    // ── 今フレームの照準 ────────────────────────────────────────────────
+    /// @name 今フレームの照準
+    /// @{
     /// カメラが取れないフレームは線が引けない。読む側は必ずここで分岐する。
     [[nodiscard]] bool HasAim() const { return m_hasAim; }
     /// 照準の届いた先。地形に当たればその点、当たらなければ射程いっぱい。
@@ -73,11 +61,11 @@ public:
     [[nodiscard]] GameObject* CurrentTarget() const { return m_target; }
 
     void OnStart()      override;
-    // WHY Script ではなく LateScript か: カメラの向きは TpsCameraComponent が Script
-    //     フェーズで確定させるが、同じフェーズ内のスクリプトの実行順は決まっていない。
-    //     ここで読むと前フレームの向きを掴むことがあり、マウスを振ったフレームだけ
-    //     線がクロスヘアから外れる。フェーズを 1 つ下げれば順序に依らず確定済みになる。
+    /// @note カメラの向きは TpsCameraComponent が Script フェーズで確定するが、同一フェーズ内の
+    ///       実行順は不定。ここで読むと前フレームの向きを掴み線がクロスヘアから外れるため、
+    ///       1 つ下のフェーズで読む。
     void OnLateUpdate() override;
+    /// @}
 
 private:
     /// 視線の起点と向き。TPS なのでプレイヤーではなくカメラから引く。
@@ -100,13 +88,12 @@ private:
 
     GameObject* m_target = nullptr;
 
-    // 前フレームに指していた 1 体。変わり目を見るためだけに持つ。
+    /// 前フレームに指していた 1 体。変わり目を見るためだけに持つ。
     EntityID m_lastTarget{};
 };
 
 FBZZ_REFLECT(PlayerAimComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline void PlayerAimComponent::OnStart()
 {
@@ -125,8 +112,8 @@ inline void PlayerAimComponent::ReportTargetChange()
     if (targetId == m_lastTarget) return;
     m_lastTarget = targetId;
 
-    // WHY 毎フレームではなく変わり目だけか: 相手は戦っている間ずっと居る。
-    //     そのつど流すと «見つけた» 顔が貼り付き、外した瞬間も読めなくなる。
+    /// @note 相手は戦っている間ずっと居る。毎フレーム通知すると «見つけた» 演出が貼り付き、
+    ///       外した瞬間も読めなくなるため、変わり目だけ通知する。
     if (auto* combat = CombatManagerComponent::Instance()) {
         combat->Notify(scene.Self(),
                        m_target ? CharacterEvent::Spotted : CharacterEvent::Recovered);
@@ -150,9 +137,8 @@ inline PlayerAimComponent::GeometryHit PlayerAimComponent::ResolveGeometry(
     result.distance = Max(aimRange, 1.0f);
     if (!stopOnGeometry) return result;
 
-    // WHY 最初のヒットで決めないか: TPS のカメラはプレイヤーの後ろにあるため、
-    //     視線を張ると必ず自分のカプセルを最初に貫く。それを地形として扱うと、
-    //     照準が常に足元で切れる。
+    /// @note TPS のカメラはプレイヤーの後ろにあるため、視線は必ず自分のカプセルを最初に
+    ///       貫く。最初のヒットを採用すると照準が常に足元で切れるため除外する。
     for (const RaycastHit& hit : physics.RaycastAll(eyePos, eyeForward, result.distance)) {
         if (!hit.gameObject || hit.gameObject == scene.Self()) continue;
 
@@ -182,7 +168,7 @@ inline void PlayerAimComponent::OnLateUpdate()
     m_hitGeometry   = geometry.hit;
     m_surfaceNormal = geometry.normal;
 
-    // 照準の点に一番近い相手。1 体しか立っていない盤面では今までどおり «その 1 体»。
+    /// @note 照準の点に一番近い相手。1 体しか立っていない盤面では今までどおり «その 1 体»。
     m_target = FindNearestBossOnBoard(scene, m_aimPoint);
     if (m_target) debugAimTarget = m_target->name;
     ReportTargetChange();

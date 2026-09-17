@@ -5,10 +5,8 @@
 
 #include <stb_image.h>
 
-// TinyEXR: miniz (zlib) は CMakeLists.txt で C ソースとして別コンパイルされる。
-// WHY: miniz.c は C の tentative definition を使っているため、
-//      C++ 翻訳単位から #include するとMSVC C2086 (再定義) になる。
-//      C コンパイラで別翻訳単位としてビルドすることで問題を回避する。
+/// @note miniz (zlib) は CMakeLists.txt で C ソースとして別コンパイルする。miniz.c の C tentative
+///       definition を C++ 翻訳単位から #include すると MSVC C2086 (再定義) になるため。
 #define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>
 
@@ -32,7 +30,7 @@ std::string LowerExt(const std::string& absPath)
     return ext;
 }
 
-// RGB float → RGBA float 変換 (TinyEXR は RGB で返すことがある)
+/// RGB float → RGBA float 変換 (TinyEXR は RGB で返すことがある)
 std::unique_ptr<float[]> RGBToRGBA(const float* rgb, uint32_t w, uint32_t h)
 {
     const uint32_t n = w * h;
@@ -53,11 +51,11 @@ HdriPixels HdriLoader::Load(const std::string& absPath)
 {
     const std::string ext = LowerExt(absPath);
 
-    // ── .hdr (Radiance RGBE) ─────────────────────────────────────────────
+    /// @name .hdr (Radiance RGBE)
     if (ext == ".hdr")
     {
         int w = 0, h = 0, ch = 0;
-        // stbi_loadf は RGBE を float RGBA にデコードする。4ch を要求する。
+        /// @note stbi_loadf は RGBE を float RGBA にデコードする。4ch を要求する。
         float* raw = stbi_loadf(absPath.c_str(), &w, &h, &ch, 4);
         if (!raw) {
             FBZZ_LOG_ERROR("HdriLoader: .hdr 読み込み失敗 [%s] %s",
@@ -72,23 +70,24 @@ HdriPixels HdriLoader::Load(const std::string& absPath)
         return result;
     }
 
-    // ── .exr (OpenEXR) ───────────────────────────────────────────────────
+    /// @name .exr (OpenEXR)
     if (ext == ".exr")
     {
         float*      raw  = nullptr;
         int         w    = 0, h = 0;
         const char* err  = nullptr;
 
-        // LoadEXR は RGBA float* を malloc で確保して返す。失敗時は err にメッセージを設定。
+        /// @note LoadEXR は RGBA float* を malloc で確保して返す。失敗時は err にメッセージを設定。
         const int ret = LoadEXR(&raw, &w, &h, absPath.c_str(), &err);
         if (ret != TINYEXR_SUCCESS) {
             FBZZ_LOG_ERROR("HdriLoader: .exr 読み込み失敗 [%s] %s",
                            absPath.c_str(), err ? err : "(不明なエラー)");
-            FreeEXRErrorMessage(err); // TinyEXR のエラーメッセージを解放
+            /// @note TinyEXR のエラーメッセージを解放
+            FreeEXRErrorMessage(err);
             return {};
         }
 
-        // TinyEXR v1.x は RGBA float を返す (4ch)
+        /// @note TinyEXR v1.x は RGBA float を返す (4ch)
         HdriPixels result;
         result.data  = { raw, [](void* p){ free(p); } };
         result.width  = static_cast<uint32_t>(w);

@@ -28,16 +28,11 @@ struct ScriptEntry {
     ScriptEntry& operator=(ScriptEntry&&) noexcept = default;
 
     std::unique_ptr<Script> script;
-    // WHY: エディタ起動直後や DLL ビルド失敗時は ScriptFactory が未登録で、
-    //      .fbzz 内の Script をインスタンス化できないことがある。
-    //      その状態で保存しても Script 情報を失わないよう、元の type/fields を保持する。
+    /// @note エディタ起動直後や DLL ビルド失敗時は ScriptFactory が未登録で `.fbzz` 内の Script をインスタンス化できないことがある。その状態で保存しても情報を失わないよう元の type/fields を保持する。
     std::unique_ptr<SerializedScriptData> serialized;
     bool m_awoken = false;
     bool m_started = false;
-    // OnAwake を通したとき Play 中だったか (FBZZ_EXECUTE_ALWAYS 用)。
-    // WHY: Play の開始・停止では Script インスタンスが作り直されないため、編集中に
-    //      立てた m_awoken / m_started がそのまま残り、Play を押しても OnStart が
-    //      二度と呼ばれない。初期化したモードを覚えておき、食い違ったら張り直す。
+    /// @note OnAwake を通したとき Play 中だったか (FBZZ_EXECUTE_ALWAYS 用)。Play の開始・停止では Script インスタンスが作り直されないため編集中に立てた m_awoken/m_started がそのまま残り OnStart が呼ばれなくなる。初期化したモードを覚えておき、食い違ったら張り直す。
     bool m_lifecyclePlayMode = false;
 };
 
@@ -48,8 +43,7 @@ struct ScriptComponent {
     ScriptComponent(ScriptComponent&&) noexcept = default;
     ScriptComponent& operator=(ScriptComponent&&) noexcept = default;
 
-    // scripts — 1 GameObject に複数 Script をアタッチするための実体配列。
-    // WHY: ComponentArray は型ごとに 1 Component の dense 配列なので、ScriptComponent 内部で多重化する。
+    /// @note 1 GameObject に複数 Script をアタッチするための実体配列。ComponentArray は型ごとに 1 Component の dense 配列なので ScriptComponent 内部で多重化する。
     std::vector<ScriptEntry> scripts;
 };
 

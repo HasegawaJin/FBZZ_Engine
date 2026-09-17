@@ -24,16 +24,14 @@ namespace fbzz::physics
             auto it = m_cache.find(key);
             if (it == m_cache.end()) continue;
 
-            // 接触点の近傍にある前フレームのエントリを探す
+            /// @note 接触点の近傍にある前フレームのエントリを探す
             for (auto& entry : it->second)
             {
                 const float distSq = (cp.point - entry.point).LengthSq();
                 if (distSq > MATCH_RADIUS_SQ) continue;
 
-                // WHY: 摩擦インパルスは接触法線に依存するため、前フレームの
-                // 接線係数を現在の接線へそのまま渡すと、床の三角形境界などで
-                // 前後方向の速度を誤って注入する。法線が大きく変わった接触は
-                // キャッシュを使わず、安定した接触から再構築する。
+                /// @note 摩擦インパルスは接触法線に依存する。法線が大きく変わった接触
+                ///       (床の三角形境界など) は前フレームの接線係数を使わず再構築する。
                 if (entry.normal.LengthSq() <= 1e-6f ||
                     math::Vector3::Dot(entry.normal, cp.normal) < 0.98f)
                 {
@@ -50,7 +48,7 @@ namespace fbzz::physics
                 cp.cachedTangentImpulse[0]  = math::Vector3::Dot(cachedImpulse, cp.tangent[0]);
                 cp.cachedTangentImpulse[1]  = math::Vector3::Dot(cachedImpulse, cp.tangent[1]);
 
-                // Warm Start: 蓄積済みインパルスを即時適用
+                /// @note Warm Start: 蓄積済みインパルスを即時適用
                 if (!cp.isTrigger)
                 {
                     const math::Vector3 normalImpulseVec = cp.normal * cp.cachedNormalImpulse;
@@ -79,7 +77,7 @@ namespace fbzz::physics
                 break;
             }
 
-            // age をインクリメント (UpdateCache が呼ばれるまで増え続ける)
+            /// @note age をインクリメント (UpdateCache が呼ばれるまで増え続ける)
             for (auto& entry : it->second)
                 entry.age++;
         }
@@ -87,8 +85,8 @@ namespace fbzz::physics
 
     void ContactCache::UpdateCache(const std::vector<ContactPoint>& contacts)
     {
-        // 今フレームの接触結果でキャッシュを更新する
-        // 既存エントリを上書き、なければ新規追加
+        /// @note 今フレームの接触結果でキャッシュを更新する
+        ///       既存エントリを上書き、なければ新規追加
         for (const auto& cp : contacts)
         {
             if (cp.isTrigger) continue;
@@ -107,7 +105,7 @@ namespace fbzz::physics
 
             auto& entries = m_cache[key];
 
-            // 近傍エントリを検索して更新
+            /// @note 近傍エントリを検索して更新
             bool found = false;
             for (auto& entry : entries)
             {

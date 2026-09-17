@@ -11,8 +11,8 @@
 namespace fbzz::editor {
 
 namespace {
-// FileFilter 配列を OPENFILENAME.lpstrFilter 形式に変換する
-// 形式: "名前\0*.ext\0...\0\0"
+/// FileFilter 配列を OPENFILENAME.lpstrFilter 形式に変換する
+/// 形式: "名前\0*.ext\0...\0\0"
 std::wstring BuildFilterString(const std::vector<FileFilter>& filters)
 {
     std::wstring result;

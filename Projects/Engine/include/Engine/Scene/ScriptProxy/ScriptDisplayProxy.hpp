@@ -3,18 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// 設計意図 (WHY app と分けるか):
-///   app は「アプリの生死と実行モード」を答える場所。表示設定を混ぜると
-///   IsPlaying() を探すのに 20 個の setter を読むことになる。
-///
-///   フレームレート上限は time.SetTargetFps() に既にあるのでここには置かない。
-///   画質と明るさは graphics プロキシ。
-///
-/// Editor で Play しているあいだ、窓の形態と解像度を変える要求は届かない。
-/// 相手が Editor 自身の窓になってしまうためで、Editor は常にウィンドウモード。
-/// SetFullscreen() の値だけは覚えており、IsFullscreen() は Standalone と同じ答えを返す。
-///
-/// 詳細は Docs/design/game-settings.md。
+/// @note app は生死と実行モード、graphics は画質と明るさが担当。表示設定はここに集約する。
+/// @note Editor の Play 中は窓の形態・解像度の変更要求が届かない (相手が Editor 自身の窓に
+///       なるため)。SetFullscreen() の値だけは覚え、IsFullscreen() は Standalone と同じ値を返す。
+/// @see Docs/design/game-settings.md
 #pragma once
 
 #include <cstdint>

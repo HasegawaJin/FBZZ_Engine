@@ -18,9 +18,9 @@
 namespace fbzz::scene {
 namespace {
 
-// 端点 1 つを解決する。実体があればそのワールド位置、無ければ与えられた座標。
-// outMissing は「実体を指しているのに見つからない」ときだけ立つ
-// (最初から座標指定の端点は «消えた» ではない)。
+/// 端点 1 つを解決する。実体があればそのワールド位置、無ければ与えられた座標。
+/// outMissing は「実体を指しているのに見つからない」ときだけ立つ
+/// (最初から座標指定の端点は «消えた» ではない)。
 [[nodiscard]] math::Vector3 ResolveEndpoint(Scene& scene, const EntityRef& ref,
                                             const math::Vector3& fallback,
                                             const math::Vector3& offset,
@@ -33,9 +33,9 @@ namespace {
     return fallback + offset;
 }
 
-// 線に直交する 2 軸。横ゆれをどちら向きへ出すかを決める。
-// WHY 上方向を固定で使わないか: 真上・真下へ伸びるビーム (落雷・吸い上げ) で
-//     外積が退化し、揺れが消えるか軸が飛ぶ。
+/// @brief 線に直交する 2 軸。横ゆれをどちら向きへ出すかを決める。
+/// @note 上方向を固定で使うと、真上・真下へ伸びるビーム (落雷・吸い上げ) で外積が退化し、
+///       揺れが消えるか軸が飛ぶ。
 void BuildBasis(const math::Vector3& direction, math::Vector3& outRight, math::Vector3& outUp)
 {
     const math::Vector3 reference = std::abs(math::Vector3::Dot(direction, math::Vector3::UP)) > 0.99f
@@ -53,8 +53,8 @@ ComponentAccess VFXBeamSystem::GetAccess() const
 
 OrderingHints VFXBeamSystem::GetOrder() const
 {
-    // 端点は «今フレームのワールド位置»。VFXSystem が生存窓で Trail を
-    // 起こした後に経路を書かないと、開いた最初のフレームだけ前回の形が出る。
+    /// @note 端点は «今フレームのワールド位置»。VFXSystem が生存窓で Trail を
+    ///       起こした後に経路を書かないと、開いた最初のフレームだけ前回の形が出る。
     return OrderingHints{}.After<VFXSystem>();
 }
 
@@ -67,8 +67,8 @@ void VFXBeamSystem::Update(SystemContext& ctx)
         if (!owner->activeInHierarchy()) continue;
         VFXBeamComponent& beam = *beamPtr;
 
-        // 見た目は同じ GameObject の Trail が持つ。片方だけ置いても «何も出ない» で済み、
-        // 描画側を書き換える必要がない。
+        /// @note 見た目は同じ GameObject の Trail が持つ。片方だけ置いても «何も出ない» で済み、
+        ///       描画側を書き換える必要がない。
         auto* trail = owner->GetComponent<TrailComponent>();
         if (trail == nullptr) continue;
 
@@ -113,12 +113,12 @@ void VFXBeamSystem::Update(SystemContext& ctx)
             const float t = static_cast<float>(index) / static_cast<float>(segments);
             math::Vector3 point = from + delta * t;
 
-            // たるみは両端で 0、中央で最大。sin では «張った紐» に見えないので
-            // 放物線 (4t(1-t)) を使う。
+            /// @note たるみは両端で 0、中央で最大。sin では «張った紐» に見えないので
+            ///       放物線 (4t(1-t)) を使う。
             if (beam.sag != 0.0f)
                 point.y -= beam.sag * 4.0f * t * (1.0f - t);
 
-            // 横ゆれも両端を固定する。端が揺れると «繋がっていない» に見える。
+            /// @note 横ゆれも両端を固定する。端が揺れると «繋がっていない» に見える。
             if (beam.jitter != 0.0f) {
                 const float taper = 4.0f * t * (1.0f - t);
                 const float wave = t * beam.jitterWaves * 6.2831853f;

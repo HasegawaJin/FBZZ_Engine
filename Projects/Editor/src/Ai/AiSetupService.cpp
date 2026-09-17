@@ -18,7 +18,8 @@
 #include <shellapi.h>
 #include <tlhelp32.h>
 
-#pragma comment(lib, "shell32.lib") // ShellExecuteW (Claude Desktop 起動)
+/// @note ShellExecuteW (Claude Desktop 起動) に必要。
+#pragma comment(lib, "shell32.lib")
 
 namespace fbzz::editor::ai {
 
@@ -33,7 +34,7 @@ std::string GetEnvVar(const char* name)
     return (length > 0 && length < sizeof(buffer)) ? std::string(buffer, length) : std::string{};
 }
 
-// claude_desktop_config.json の場所 (%APPDATA%\Claude\)。APPDATA 未設定なら空を返す。
+/// claude_desktop_config.json の場所 (%APPDATA%\Claude\)。APPDATA 未設定なら空を返す。
 fs::path DesktopConfigPath()
 {
     const std::string appData = GetEnvVar("APPDATA");
@@ -41,7 +42,7 @@ fs::path DesktopConfigPath()
     return fs::path(appData) / "Claude" / "claude_desktop_config.json";
 }
 
-// Editor 実行ファイルのあるディレクトリ。EditorMcp 探索の起点にする。
+/// Editor 実行ファイルのあるディレクトリ。EditorMcp 探索の起点にする。
 fs::path ExecutableDir()
 {
     wchar_t buffer[MAX_PATH];
@@ -50,9 +51,9 @@ fs::path ExecutableDir()
     return fs::path(buffer).parent_path();
 }
 
-// engineRoot ヒントと exe 位置の親探索で EditorMcp/dist/stdio.js を解決する。
-// WHY: Editor は <repo>/build/<cfg>/Binaries/<cfg>/Editor/ から起動されるため、
-//      リポジトリルートは実行時に確定しない。GameHub の Editor 探索と同じ遡り方式を使う。
+/// @brief engineRoot ヒントと exe 位置の親探索で EditorMcp/dist/stdio.js を解決する。
+/// @note Editor は `<repo>/build/<cfg>/Binaries/<cfg>/Editor/` から起動されるため、
+///       リポジトリルートは実行時に確定しない。GameHub の Editor 探索と同じ遡り方式を使う。
 std::string ResolveMcpStdioPath(const std::string& engineRootHint)
 {
     std::error_code ec;
@@ -75,7 +76,7 @@ std::string ResolveMcpStdioPath(const std::string& engineRootHint)
     return {};
 }
 
-// ファイル全体を読む。失敗時は nullopt ではなく空文字 (存在チェックは呼び出し側で済ませる)。
+/// ファイル全体を読む。失敗時は nullopt ではなく空文字 (存在チェックは呼び出し側で済ませる)。
 std::string ReadTextFile(const fs::path& path)
 {
     std::ifstream input(path, std::ios::binary);
@@ -85,9 +86,9 @@ std::string ReadTextFile(const fs::path& path)
     return buffer.str();
 }
 
-// 通常インストーラ版 claude.exe の候補パスを広めに列挙する。
-// WHY: インストーラ版は %LOCALAPPDATA%\AnthropicClaude\claude.exe 直下だけでなく、
-//      squirrel 形式の "app-<version>\claude.exe" サブフォルダに置かれる場合がある。
+/// @brief 通常インストーラ版 claude.exe の候補パスを広めに列挙する。
+/// @note インストーラ版は %LOCALAPPDATA%\AnthropicClaude\claude.exe 直下だけでなく、
+///       squirrel 形式の `"app-<version>\claude.exe"` サブフォルダに置かれる場合がある。
 std::vector<fs::path> ClaudeExeCandidates(const std::string& localAppData)
 {
     std::vector<fs::path> out;
@@ -106,11 +107,10 @@ std::vector<fs::path> ClaudeExeCandidates(const std::string& localAppData)
     return out;
 }
 
-// PowerShell の Get-StartApps を経由して Claude を起動する (フォールバック)。
-// WHY: Microsoft Store (MSIX) 版は claude.exe への直接パスが存在せず、実体は
-//      権限制限された WindowsApps 配下にあるため直接探索できない。Get-StartApps は
-//      アプリの種別 (Win32/MSIX) を問わず Start メニュー登録から AppID を引けるため、
-//      shell:AppsFolder\<AppID> 経由で確実に起動できる。
+/// @brief PowerShell の Get-StartApps を経由して Claude を起動する (フォールバック)。
+/// @note Microsoft Store (MSIX) 版は claude.exe への直接パスが存在せず、実体は権限制限された
+///       WindowsApps 配下にあるため直接探索できない。Get-StartApps はアプリの種別を問わず
+///       Start メニュー登録から AppID を引け、`shell:AppsFolder\<AppID>` 経由で起動できる。
 bool LaunchViaStartApps()
 {
     std::wstring command =
@@ -129,10 +129,10 @@ bool LaunchViaStartApps()
     return true;
 }
 
-// 実行中プロセス一覧から "claude.exe" / "Claude.exe" を探し、PID を返す (未検出は 0)。
-// WHY: Claude Desktop を多重起動すると GPUCache フォルダの取り合いになり
-//      "Unable to move the cache" / ERROR_ACCESS_DENIED (0x5) を引き起こすことがある。
-//      起動前に既存プロセスの有無を確認し、あれば新規起動ではなく前面表示に切り替える。
+/// @brief 実行中プロセス一覧から "claude.exe" / "Claude.exe" を探し、PID を返す (未検出は 0)。
+/// @note Claude Desktop を多重起動すると GPUCache フォルダの取り合いになり "Unable to move
+///       the cache" / ERROR_ACCESS_DENIED (0x5) を引き起こすことがある。起動前に既存プロセスの
+///       有無を確認し、あれば新規起動ではなく前面表示に切り替える。
 DWORD FindRunningClaudeProcessId()
 {
     const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -165,12 +165,13 @@ BOOL CALLBACK FindTopWindowForProcess(HWND hwnd, LPARAM lParam)
     GetWindowThreadProcessId(hwnd, &windowPid);
     if (windowPid == context->targetPid && IsWindowVisible(hwnd)) {
         context->found = hwnd;
-        return FALSE; // 発見したので列挙を打ち切る
+        /// @note 発見したので列挙を打ち切る
+        return FALSE;
     }
     return TRUE;
 }
 
-// 既に起動している Claude Desktop のトップウィンドウを前面に出す。ウィンドウが見つからない場合は false。
+/// 既に起動している Claude Desktop のトップウィンドウを前面に出す。ウィンドウが見つからない場合は false。
 bool FocusRunningClaudeWindow(DWORD pid)
 {
     FindWindowContext context;
@@ -189,7 +190,7 @@ AiSetupStatus AiSetupService::Inspect(const std::string& engineRootHint)
 {
     AiSetupStatus status;
 
-    // node.exe: Claude クライアントが MCP サーバを spawn するのに必要。
+    /// @note node.exe: Claude クライアントが MCP サーバを spawn するのに必要。
     wchar_t nodePath[MAX_PATH];
     status.nodeFound = SearchPathW(nullptr, L"node.exe", nullptr, MAX_PATH, nodePath, nullptr) > 0;
 
@@ -231,14 +232,14 @@ bool AiSetupService::RegisterClaudeDesktop(const std::string& stdioJsPath,
         return false;
     }
 
-    // 既存 config を読み、他の MCP サーバ登録を保持したまま fbzz-editor だけ更新する。
+    /// @note 既存 config を読み、他の MCP サーバ登録を保持したまま fbzz-editor だけ更新する。
     JsonValue root = JsonValue::MakeObject();
     std::error_code ec;
     if (fs::exists(configPath, ec)) {
         std::string parseError;
         const std::optional<JsonValue> parsed = ParseJson(ReadTextFile(configPath), &parseError);
         if (!parsed.has_value() || !parsed->IsObject()) {
-            // 解析不能な既存設定を上書きすると他ツールの登録を壊すため、安全側で中止する。
+            /// @note 解析不能な既存設定を上書きすると他ツールの登録を壊すため、安全側で中止する。
             error = "既存の claude_desktop_config.json を解析できないため中止しました: " + parseError;
             return false;
         }
@@ -285,11 +286,12 @@ std::string AiSetupService::BuildClaudeCodeCommand(const std::string& stdioJsPat
 
 bool AiSetupService::LaunchClaudeDesktop(std::string& error)
 {
-    // 0. 既に起動中なら多重起動しない。二重起動は GPUCache フォルダの取り合いで
-    //    "Unable to move the cache" (ERROR_ACCESS_DENIED) の原因になるため、
-    //    既存プロセスのウィンドウを前面に出すだけに留める。
+    /// @note 0. 既に起動中なら多重起動しない。二重起動は GPUCache フォルダの取り合いで
+    ///       "Unable to move the cache" (ERROR_ACCESS_DENIED) の原因になるため、
+    ///       既存プロセスのウィンドウを前面に出すだけに留める。
     if (const DWORD runningPid = FindRunningClaudeProcessId(); runningPid != 0) {
-        FocusRunningClaudeWindow(runningPid); // 失敗してもタスクバーには存在するので致命的ではない
+        /// @note 失敗してもタスクバーには存在するので致命的ではない
+        FocusRunningClaudeWindow(runningPid);
         return true;
     }
 
@@ -299,16 +301,17 @@ bool AiSetupService::LaunchClaudeDesktop(std::string& error)
         return false;
     }
 
-    // 1. 通常インストーラ版: claude.exe への直接パスが見つかればそれを起動する。
+    /// @note 1. 通常インストーラ版: claude.exe への直接パスが見つかればそれを起動する。
     std::error_code ec;
     for (const fs::path& candidate : ClaudeExeCandidates(localAppData)) {
         if (fs::exists(candidate, ec)) {
             const HINSTANCE result = ShellExecuteW(nullptr, L"open", candidate.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            if (reinterpret_cast<INT_PTR>(result) > 32) return true; // ShellExecute は 32 以下がエラー
+            /// @note ShellExecute は 32 以下がエラー
+            if (reinterpret_cast<INT_PTR>(result) > 32) return true;
         }
     }
 
-    // 2. Microsoft Store (MSIX) 版などのフォールバック。
+    /// @note 2. Microsoft Store (MSIX) 版などのフォールバック。
     if (LaunchViaStartApps()) return true;
 
     error = "Claude Desktop の実行ファイルが見つかりません。手動で起動してください";

@@ -40,7 +40,7 @@ public:
     }
     void OnUpdate() override
     {
-        // 初回に全員が原点だと、ボスの押し出しが出現座標を上書きしていた。
+        /// @note 初回に全員が原点だと、ボスの押し出しが出現座標を上書きしていた。
         if (auto* boss = scene.Find("Boss")) {
             if ((transform.worldPosition - boss->transform.worldPosition).LengthSq() < 1.0f) {
                 transform.position = math::Vector3{0.0f, 0.0f, 1.0f};
@@ -117,7 +117,7 @@ TEST_F(SceneManagerTest, RuntimeTransitionResolvesRootAndChildPosesBeforeFirstSc
 
     for (const char* name : {"StageSelect", "Load", "Stage03"}) {
         ASSERT_TRUE(manager.LoadScene(name));
-        // 固定ステップが走らないフレームでも、初期化時の座標は有効である必要がある。
+        /// @note 固定ステップが走らないフレームでも、初期化時の座標は有効である必要がある。
         manager.Update(0.0f, world);
     }
     auto* actor = manager.GetActive()->Find("Player");

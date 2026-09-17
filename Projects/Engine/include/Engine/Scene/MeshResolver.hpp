@@ -13,18 +13,10 @@ class ResourceManager;
 
 namespace fbzz::scene {
 
-/// メッシュ参照文字列を解決する。見つからなければ nullptr。
-///
-///   "primitive:sphere" → PrimitiveMesh::Sphere
-///   "models/foo.fbx"   → AssetManager::Load<Model> の mesh[0]
-///   "models/foo.fbx:2" → mesh[2]
-///
-/// 返すのは生ポインタ。primitive は PrimitiveMesh の static キャッシュ、モデルは
-/// AssetManager がそれぞれ所有し続けるので、呼び出し側は解放しない。
-///
-/// WHY 独立した関数か: 以前は SceneSerializer.cpp の無名名前空間にあり、シーン読み込み時に
-///      しか呼べなかった。そのため実行中に meshPath を書き換えても «文字列だけ変わって
-///      形は変わらない» 状態になっていた (ScriptMeshProxy::SetMeshPath)。
+/// @brief メッシュ参照文字列を解決する。見つからなければ nullptr。
+/// @note 形式: `"primitive:sphere"` → PrimitiveMesh::Sphere / `"models/foo.fbx"` → `AssetManager::Load<Model>` の mesh[0] / `"models/foo.fbx:2"` → mesh[2]
+/// @note 返すのは生ポインタ。primitive は PrimitiveMesh の static キャッシュ、モデルは AssetManager が所有し続けるので呼び出し側は解放しない。
+/// @note SceneSerializer.cpp の無名名前空間から独立させた。以前はシーン読み込み時にしか解決できず、実行中に meshPath を書き換えても見た目が変わらなかった (ScriptMeshProxy::SetMeshPath)。
 renderer::Mesh* ResolveMeshPath(const std::string& path, renderer::ResourceManager& resources);
 
 } // namespace fbzz::scene

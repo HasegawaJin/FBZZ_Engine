@@ -3,15 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
-/// 処理の流れ (1 グリフあたり):
-/// 1. stbtt_GetCodepointSDF で符号付き距離場ビットマップを得る (padding ぶん外側へ広がる)
-/// 2. stbrp_pack_rects でアトラス上の空き矩形へ配置する
-/// 3. CPU 側のページバッファへコピーし、ページのダーティ矩形を広げる
-/// 4. 全グリフを処理し終えたら、ページごとに 1 回だけ ITexture::UpdateRegion で転送する
-///
-/// WHY (ダーティ矩形をまとめる): DX12 のリージョン転送は同期 Flush を伴うため、
-/// グリフ 1 個ごとに転送すると日本語 1 行の初出で数十回 GPU を待つことになる。
-/// ページ単位でまとめると、どれだけ文字が増えてもフレームあたり「ページ数」回で済む。
+/// 処理の流れ: stbtt_GetCodepointSDF で SDF ビットマップを得る → stbrp_pack_rects で
+/// アトラス上の空き矩形へ配置 → CPU ページバッファへコピー → ページごとに 1 回だけ
+/// ITexture::UpdateRegion で転送する。
+/// @note ページ単位でまとめる理由: DX12 のリージョン転送は同期 Flush を伴うため、グリフ
+///       1 個ごとに転送すると日本語 1 行の初出で数十回 GPU を待つ。
 #include <Engine/Renderer/DynamicFontSource.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/ITexture.hpp>
@@ -29,49 +25,40 @@ namespace fbzz::renderer {
 
 namespace {
 
-// アトラス 1 ページの一辺の上限 (px)。R8 なので 2048x2048 で 4MB。
-// WHY: 日本語の常用漢字 (約 2,100 字) を 48px SDF + パディングで焼くと
-//      1 ページにはやや足りない。足りなくなったらページを増やす設計にしてあるため、
-//      初期確保を無駄に大きくせず、この値から始める。
+/// アトラス 1 ページの一辺の上限 (px)。R8 なので 2048x2048 で 4MB。
+/// @note 常用漢字約 2,100 字を 48px SDF+パディングで焼くと 1 ページにはやや足りない。
+///       足りなければページを増やす設計のため、初期確保はこの値から始める。
 constexpr int   ATLAS_SIZE_MAX = 2048;
 constexpr int   ATLAS_SIZE_MIN = 512;
 
-// 一辺に並べるグリフの目安数。ページの一辺はラスタライズ解像度からこれで決める。
-// WHY 解像度に追従させるか: 同じフォントを解像度別に焼き分けるようになったため、
-//      一辺を固定にすると小さく焼いたアトラスまで 4MB を占める。1 ページあたりの
-//      収容字数を揃えたまま、実体だけを解像度なりの大きさにする。
+/// 一辺に並べるグリフの目安数。ページの一辺はラスタライズ解像度からこれで決める。
+/// @note 固定サイズだと小さく焼いたアトラスまで 4MB を占めるため、収容字数を揃えたまま
+///       実体は解像度なりの大きさにする。
 constexpr int   ATLAS_GLYPHS_PER_SIDE = 32;
 
-// SDF の広がり (px)。輪郭からこの距離までが 0〜255 にマップされる。
-// WHY: 大きいほど太い縁取りやシャドウを距離場から作れるが、グリフ 1 個の占有面積が
-//      (2 * padding)^2 ぶん増える。UI テキストの AA と軽い縁取りには 4px で足りる。
+/// SDF の広がり (px)。輪郭からこの距離までが 0〜255 にマップされる。
+/// @note 大きいほど太い縁取りを作れるが占有面積は (2*padding)^2 で増える。UI テキストの
+///       AA と軽い縁取りには 4px で足りる。
 constexpr int   SDF_PADDING = 4;
 
-// 輪郭を表す値。UNORM 化すると 128/255 ≒ 0.502 となり、シェーダーの 0.5 判定と一致する。
+/// 輪郭を表す値。UNORM 化すると 128/255 ≒ 0.502 となり、シェーダーの 0.5 判定と一致する。
 constexpr unsigned char SDF_ONEDGE_VALUE = 128;
 
-// 距離 1px あたりの階調。padding px で 0 または 255 に飽和するよう設定する。
+/// 距離 1px あたりの階調。padding px で 0 または 255 に飽和するよう設定する。
 constexpr float SDF_PIXEL_DIST_SCALE =
     static_cast<float>(SDF_ONEDGE_VALUE) / static_cast<float>(SDF_PADDING);
 
-// 1em あたりの行高さ。UISystem の scale は fontSize / lineHeight で決まるため、
-// この値が「同じ fontSize を指定したときの字の大きさ」を決める。
-//
-// WHY (フォントの縦メトリクスを使わない): hhea の ascent - descent はフォントごとの
-//   ばらつきが極端に大きい。実測で Roboto = 1.19em に対し Noto Sans JP = 1.45em、
-//   Yu Gothic = 1.10em。これをそのまま基準にすると、同じ fontSize でも
-//   和文フォントだけ 2 割小さく描画され、欧文と混植した UI で揃わない。
-//   組版で一般的な 1.2 (CSS の normal 相当) に固定すると、
-//   どのフォントでも 1em の描画サイズが一致し、既存の静的 Roboto アトラス
-//   (48px 生成 / lineHeight 57 = 1.1875em) ともほぼ同じ大きさに揃う。
-//
-// NOTE: 行高さより ascent が大きいフォントでは字が行送りより上へはみ出すが、
-//   lineHeight はクリップには使われず「拡大率と改行の送り量」の基準でしかないため、
-//   描画が欠けることはない。
+/// 1em あたりの行高さ。同じ fontSize での字の大きさを決める (UISystem の scale は fontSize/lineHeight)。
+/// @note hhea の ascent-descent はフォントごとのばらつきが大きい (Roboto 1.19em / Noto Sans JP
+///       1.45em / Yu Gothic 1.10em) ため、基準にすると和文だけ 2 割小さくなる。組版で一般的な
+///       1.2 (CSS normal 相当) に固定すると揃い、既存の静的 Roboto アトラス (48px/lineHeight57
+///       ≒1.1875em) ともほぼ一致する。
+/// @note ascent が lineHeight より大きいフォントは字が行送りより上へはみ出すが、lineHeight は
+///       拡大率と改行送りの基準でしかなくクリップに使われないため描画は欠けない。
 constexpr float LINE_HEIGHT_PER_EM = 1.2f;
 
-// ラスタライズ解像度からページの一辺を決める。DX12 のリージョン転送が行頭を
-// 256B 境界で扱うため、一辺も 256 の倍数へ丸める。
+/// ラスタライズ解像度からページの一辺を決める。DX12 のリージョン転送が行頭を
+/// 256B 境界で扱うため、一辺も 256 の倍数へ丸める。
 int ResolveAtlasSize(float pixelHeight)
 {
     const int cell    = static_cast<int>(pixelHeight) + 2 * SDF_PADDING;
@@ -81,23 +68,20 @@ int ResolveAtlasSize(float pixelHeight)
 
 } // namespace
 
-// ── 内部実装 ──────────────────────────────────────────────────────────────────
-// WHY (pimpl): stb_truetype / stb_rect_pack の型をヘッダーへ露出させないため。
-//      FontAtlas.hpp は UISystem からも include されるので、そこへ 20 万行の
-//      シングルヘッダを持ち込みたくない。
+/// @name 内部実装
+/// @note stb_truetype/stb_rect_pack の型をヘッダーへ露出させないための pimpl。FontAtlas.hpp は
+///       UISystem からも include されるため、20 万行のシングルヘッダーを持ち込みたくない。
 struct DynamicFontSource::Impl {
-    // アトラス 1 ページぶんの CPU 実体と GPU ハンドル。
-    //
-    // WHY (unique_ptr で持つ): stbrp_context は nodes 配列への生ポインタを内部に握る。
-    //      Page を vector に値で入れると再確保のたびにポインタが宙を指すため、
-    //      アドレスが動かない形で保持する必要がある。
+    /// アトラス 1 ページぶんの CPU 実体と GPU ハンドル。
+    /// @note unique_ptr で持つ理由: stbrp_context は nodes 配列への生ポインタを内部に握るため、
+    ///       vector に値で入れると再確保のたびにポインタが宙を指す。アドレスが動かない形が必要。
     struct Page {
-        std::vector<std::uint8_t>  pixels;       // R8 のアトラス実体
+        std::vector<std::uint8_t>  pixels;       ///< R8 のアトラス実体
         ResourceHandle<TextureTag> texture;
         stbrp_context              packer{};
         std::vector<stbrp_node>    nodes;
 
-        // このフレームで書き換えた領域 (半開区間 [x0, x1) × [y0, y1))
+        /// このフレームで書き換えた領域 (半開区間 [x0, x1) × [y0, y1))
         std::uint32_t dirtyX0 = 0, dirtyY0 = 0, dirtyX1 = 0, dirtyY1 = 0;
         bool          dirty   = false;
 
@@ -116,20 +100,20 @@ struct DynamicFontSource::Impl {
         }
     };
 
-    std::vector<std::uint8_t>           fontData;   // TTF/TTC の生バイト (font が参照し続ける)
+    std::vector<std::uint8_t>           fontData;   ///< TTF/TTC の生バイト (font が参照し続ける)
     stbtt_fontinfo                      font{};
     bool                                valid = false;
 
-    float scale      = 0.0f;   // フォント単位 → px の変換係数
+    float scale      = 0.0f;   ///< フォント単位 → px の変換係数
     float lineHeight = 0.0f;
-    float base       = 0.0f;   // 行の上端からベースラインまで
+    float base       = 0.0f;   ///< 行の上端からベースラインまで
     float fallbackAdvance = 0.0f;
-    int   atlasSize  = ATLAS_SIZE_MAX;   // ページ 1 枚の一辺 (px)。Load で解像度から決める
+    int   atlasSize  = ATLAS_SIZE_MAX;   ///< ページ 1 枚の一辺 (px)。Load で解像度から決める
 
     std::vector<std::unique_ptr<Page>> pages;
 
-    // 新しいページを確保して CPU バッファとパッカーを初期化する。
-    // GPU テクスチャは呼び出し側 (AddGlyphs) が作って結び付ける。
+    /// 新しいページを確保して CPU バッファとパッカーを初期化する。
+    /// GPU テクスチャは呼び出し側 (AddGlyphs) が作って結び付ける。
     Page& AppendPage()
     {
         auto page = std::make_unique<Page>();
@@ -151,16 +135,16 @@ bool DynamicFontSource::Load(const std::string& fontPath, float pixelHeight)
 {
     if (pixelHeight <= 0.0f) return false;
 
-    // WHY (PathFromUtf8 を通す): Windows の filesystem::path は std::string を
-    //   ANSI コードページとして解釈するため、日本語を含むパスでは直接渡すと開けない。
+    /// @note PathFromUtf8 を通す理由: Windows の filesystem::path は std::string を ANSI
+    ///       コードページとして解釈するため、日本語パスは直接渡すと開けない。
     const std::filesystem::path fsPath = util::FileSystem::PathFromUtf8(fontPath);
     if (!util::FileSystem::ReadBinary(fsPath, m_impl->fontData) || m_impl->fontData.empty()) {
         FBZZ_LOG_ERROR("DynamicFontSource: フォントファイルを読めません: %s", fontPath.c_str());
         return false;
     }
 
-    // .ttc (TrueType Collection) は複数フォントを内包するため、先頭フォントのオフセットを引く。
-    // 単体 .ttf/.otf でも 0 が返るので分岐は不要。
+    /// @note .ttc (TrueType Collection) は複数フォントを内包するため、先頭フォントのオフセットを引く。
+    ///       単体 .ttf/.otf でも 0 が返るので分岐は不要。
     const int offset = stbtt_GetFontOffsetForIndex(m_impl->fontData.data(), 0);
     if (offset < 0 || !stbtt_InitFont(&m_impl->font, m_impl->fontData.data(), offset)) {
         FBZZ_LOG_ERROR("DynamicFontSource: フォントを解釈できません: %s", fontPath.c_str());
@@ -168,26 +152,22 @@ bool DynamicFontSource::Load(const std::string& fontPath, float pixelHeight)
         return false;
     }
 
-    // WHY (ScaleForPixelHeight ではなく ScaleForMappingEmToPixels):
-    //   静的アトラスを焼いている gen_font_atlas.py は Pillow の
-    //   ImageFont.truetype(path, size) を使っており、これは「em サイズ = size」という意味。
-    //   一方 stbtt_ScaleForPixelHeight は「ascent - descent = 指定 px」を基準にするため、
-    //   同じ数値を渡しても両者で字の大きさが 2 割ほどずれる。
-    //   em 基準に揃えることで、静的フォントと動的フォントを同じ fontSize で並べても
-    //   線の太さと字面の印象が一致する。
+    /// @note ScaleForMappingEmToPixels を使う理由: 静的アトラス生成 (gen_font_atlas.py, Pillow) は
+    ///       em サイズ基準だが、stbtt_ScaleForPixelHeight は ascent-descent 基準で字の大きさが
+    ///       2 割ほどずれる。em 基準に揃えることで静的/動的フォントの印象が一致する。
     m_impl->scale     = stbtt_ScaleForMappingEmToPixels(&m_impl->font, pixelHeight);
     m_impl->atlasSize = ResolveAtlasSize(pixelHeight);
 
     int ascent = 0, descent = 0, lineGap = 0;
     stbtt_GetFontVMetrics(&m_impl->font, &ascent, &descent, &lineGap);
 
-    // 行高さは em に対する固定比で決める (理由は LINE_HEIGHT_PER_EM のコメント)。
+    /// @note 行高さは em に対する固定比で決める (理由は LINE_HEIGHT_PER_EM のコメント)。
     m_impl->lineHeight = pixelHeight * LINE_HEIGHT_PER_EM;
-    // ベースラインの位置だけは実フォントの ascent を使う。
-    // ここを固定比にすると、字が行の中で上下にずれて見える。
+    /// @note ベースラインの位置だけは実フォントの ascent を使う。
+    ///       ここを固定比にすると、字が行の中で上下にずれて見える。
     m_impl->base       = static_cast<float>(ascent) * m_impl->scale;
 
-    // 未登録グリフ用の送り幅は半角スペースを基準にする。
+    /// @note 未登録グリフ用の送り幅は半角スペースを基準にする。
     int spaceAdvance = 0, spaceLsb = 0;
     stbtt_GetCodepointHMetrics(&m_impl->font, ' ', &spaceAdvance, &spaceLsb);
     m_impl->fallbackAdvance = (spaceAdvance > 0)
@@ -225,14 +205,14 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
     for (const char32_t code : codePoints) {
         if (glyphTable.find(code) != glyphTable.end()) continue;
 
-        // 送り幅はビットマップの有無に関わらず必要 (スペースなど図形を持たない文字がある)。
+        /// @note 送り幅はビットマップの有無に関わらず必要 (スペースなど図形を持たない文字がある)。
         int rawAdvance = 0, rawLsb = 0;
         stbtt_GetCodepointHMetrics(&m_impl->font, static_cast<int>(code), &rawAdvance, &rawLsb);
 
         FontGlyph glyph{};
         glyph.advance = static_cast<float>(rawAdvance) * m_impl->scale;
 
-        // 符号付き距離場を生成する。図形を持たない文字 (スペース等) では nullptr が返る。
+        /// @note 符号付き距離場を生成する。図形を持たない文字 (スペース等) では nullptr が返る。
         int width = 0, height = 0, xoff = 0, yoff = 0;
         unsigned char* sdf = stbtt_GetCodepointSDF(
             &m_impl->font, m_impl->scale, static_cast<int>(code),
@@ -240,14 +220,14 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
             &width, &height, &xoff, &yoff);
 
         if (!sdf || width <= 0 || height <= 0) {
-            // 図形なし。送り幅だけ持つ空グリフとして登録し、次フレーム以降の再試行を防ぐ。
+            /// @note 図形なし。送り幅だけ持つ空グリフとして登録し、次フレーム以降の再試行を防ぐ。
             if (sdf) stbtt_FreeSDF(sdf, nullptr);
             glyphTable[code] = glyph;
             addedAny = true;
             continue;
         }
 
-        // 空きのあるページを探す。どこにも入らなければ新しいページを足す。
+        /// @note 空きのあるページを探す。どこにも入らなければ新しいページを足す。
         stbrp_rect rect{};
         rect.w = static_cast<stbrp_coord>(width);
         rect.h = static_cast<stbrp_coord>(height);
@@ -260,11 +240,12 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
         }
         if (!target) {
             if (width > m_impl->atlasSize || height > m_impl->atlasSize) {
-                // 1 ページに収まらない巨大グリフ。ラスタライズ解像度の設定ミス。
+                /// @note 1 ページに収まらない巨大グリフ。ラスタライズ解像度の設定ミス。
                 FBZZ_LOG_ERROR("DynamicFontSource: グリフ U+%04X (%dx%d) がアトラス %d を超えています",
                                static_cast<unsigned>(code), width, height, m_impl->atlasSize);
                 stbtt_FreeSDF(sdf, nullptr);
-                glyphTable[code] = glyph;   // 空グリフとして登録し、毎フレームの再試行を防ぐ
+                /// @note 空グリフとして登録し、毎フレームの再試行を防ぐ
+                glyphTable[code] = glyph;
                 addedAny = true;
                 continue;
             }
@@ -282,7 +263,7 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
             target = &fresh;
         }
 
-        // CPU バッファへ 1 行ずつ転写する。
+        /// @note CPU バッファへ 1 行ずつ転写する。
         const auto destX = static_cast<std::uint32_t>(rect.x);
         const auto destY = static_cast<std::uint32_t>(rect.y);
         for (int row = 0; row < height; ++row) {
@@ -295,7 +276,7 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
                           static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
         stbtt_FreeSDF(sdf, nullptr);
 
-        // ページ番号は m_impl->pages のインデックス。FontAtlas の pages 配列と一致させる。
+        /// @note ページ番号は m_impl->pages のインデックス。FontAtlas の pages 配列と一致させる。
         int pageIndex = 0;
         for (std::size_t i = 0; i < m_impl->pages.size(); ++i)
             if (m_impl->pages[i].get() == target) { pageIndex = static_cast<int>(i); break; }
@@ -307,8 +288,8 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
         glyph.v1 = static_cast<float>(destY + height) / atlasSizeF;
         glyph.width   = static_cast<float>(width);
         glyph.height  = static_cast<float>(height);
-        // stbtt の xoff/yoff はベースライン原点からの相対値 (yoff は上方向が負)。
-        // レイアウトは行の上端を基準に組むため、yOffset へは base を足して変換する。
+        /// @note stbtt の xoff/yoff はベースライン原点からの相対値 (yoff は上方向が負)。
+        ///       レイアウトは行の上端を基準に組むため、yOffset へは base を足して変換する。
         glyph.xOffset = static_cast<float>(xoff);
         glyph.yOffset = m_impl->base + static_cast<float>(yoff);
         glyph.page    = pageIndex;
@@ -319,7 +300,7 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
 
     if (!addedAny) return false;
 
-    // ページのテクスチャを必要なぶんだけ作り、FontAtlas 側の配列と長さを揃える。
+    /// @note ページのテクスチャを必要なぶんだけ作り、FontAtlas 側の配列と長さを揃える。
     for (std::size_t i = 0; i < m_impl->pages.size(); ++i) {
         Impl::Page& page = *m_impl->pages[i];
         if (!page.texture.IsValid()) {
@@ -335,7 +316,7 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
         pages[i] = page.texture;
     }
 
-    // ダーティ矩形をページごとに 1 回だけ転送する。
+    /// @note ダーティ矩形をページごとに 1 回だけ転送する。
     for (auto& pagePtr : m_impl->pages) {
         Impl::Page& page = *pagePtr;
         if (!page.dirty) continue;
@@ -345,8 +326,8 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
 
         const std::uint32_t w = page.dirtyX1 - page.dirtyX0;
         const std::uint32_t h = page.dirtyY1 - page.dirtyY0;
-        // CPU バッファはアトラス全面なので、矩形の左上画素を先頭として
-        // 行ピッチにアトラス幅をそのまま渡せば部分矩形を転送できる。
+        /// @note CPU バッファはアトラス全面なので、矩形の左上画素を先頭として
+        ///       行ピッチにアトラス幅をそのまま渡せば部分矩形を転送できる。
         const std::uint8_t* origin =
             page.pixels.data() + static_cast<std::size_t>(page.dirtyY0) * m_impl->atlasSize + page.dirtyX0;
         texture->UpdateRegion(page.dirtyX0, page.dirtyY0, w, h, origin,

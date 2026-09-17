@@ -30,7 +30,7 @@ math::Matrix3 MakeAsymmetric()
 
 class Matrix3Test : public testkit::Fixture {};
 
-// --- 単位元と積 -------------------------------------------------------------
+/// @name 単位元と積
 
 TEST_F(Matrix3Test, IdentityLeavesAMatrixUnchanged)
 {
@@ -49,7 +49,7 @@ TEST_F(Matrix3Test, IdentityLeavesAVectorUnchanged)
 
 TEST_F(Matrix3Test, MultiplicationAppliesTheRightHandOperandFirst)
 {
-    // (A * B) * v == A * (B * v)。ここが逆だと変換の適用順が全部裏返る。
+    /// @note (A * B) * v == A * (B * v)。ここが逆だと変換の適用順が全部裏返る。
     const math::Matrix3 a = math::Matrix3::FromMatrix4(
         math::Matrix4::Rotate(math::Quaternion::FromAxisAngle(math::Vector3::UP,
                                                              math::ToRad(90.0f))));
@@ -69,7 +69,7 @@ TEST_F(Matrix3Test, MultiplicationIsAssociative)
     EXPECT_MAT3_NEAR((a * b) * c, a * (b * c), testkit::kTolerance);
 }
 
-// --- 転置 -------------------------------------------------------------------
+/// @name 転置
 
 TEST_F(Matrix3Test, TransposeSwapsRowsAndColumns)
 {
@@ -109,7 +109,7 @@ TEST_F(Matrix3Test, TransposeOfARotationIsItsInverse)
                      testkit::kTolerance);
 }
 
-// --- Matrix4 からの切り出し -------------------------------------------------
+/// @name Matrix4 からの切り出し
 
 TEST_F(Matrix3Test, FromMatrix4TakesTheUpperLeftBlock)
 {
@@ -126,7 +126,7 @@ TEST_F(Matrix3Test, FromMatrix4TakesTheUpperLeftBlock)
 
 TEST_F(Matrix3Test, FromMatrix4DiscardsTranslation)
 {
-    // 法線変換に使う型なので、平行移動を拾ってはならない。
+    /// @note 法線変換に使う型なので、平行移動を拾ってはならない。
     const math::Matrix4 translation = math::Matrix4::Translate({10.0f, -20.0f, 30.0f});
 
     EXPECT_MAT3_NEAR(math::Matrix3::FromMatrix4(translation), math::Matrix3::Identity(),

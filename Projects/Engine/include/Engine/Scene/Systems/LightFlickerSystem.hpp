@@ -3,12 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// 揺れの形は LightComponent が持ち (flickerMode / flickerAmplitude / flickerFrequency /
-/// flickerNoise / flickerPhase / flickerSeed / flickerCurve)、ここは «掛けて書く» だけを担う。
-///
-/// WHY Play 中だけ動かすか: 明滅は intensity という «保存される» フィールドを書き換える。
-///     編集中も動かすと、揺れている途中の値をシーンへ保存してしまい、オーサリングした
-///     ピークが二度と戻らない。Play を抜ける瞬間に必ず捕獲した値へ戻す。
+/// 揺れの形は LightComponent (flickerMode/Amplitude/Frequency/Noise/Phase/Seed/Curve) が持ち、
+/// ここは «掛けて書く» だけを担う。
+/// @note Play 中だけ動かす理由: intensity は保存されるフィールドのため、編集中も動かすと揺れの
+///       途中値をシーンへ保存してしまい、オーサリングしたピークが戻らなくなる。
 #pragma once
 
 #include <Engine/Core/Scheduler/ISystem.hpp>

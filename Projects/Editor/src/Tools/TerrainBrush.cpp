@@ -15,7 +15,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// Smooth モードで使う上下左右 4 近傍平均（正規化高さのまま）。
+/// Smooth モードで使う上下左右 4 近傍平均（正規化高さのまま）。
 float SampleAvg4(const scene::TerrainComponent& terrain, int x, int z)
 {
     auto h = [&](int xi, int zi) {
@@ -59,15 +59,16 @@ float TerrainBrushWeight(const TerrainBrush& brush, float dist)
 {
     const float r = brush.radius;
     if (r <= 0.0f || dist >= r) return 0.0f;
-    const float t = dist / r; // [0, 1)
+    /// @note [0, 1)
+    const float t = dist / r;
     switch (brush.falloff) {
         case TerrainFalloff::Linear:
             return 1.0f - t;
         case TerrainFalloff::Smooth:
-            // smoothstep: t²(3 - 2t)
+            /// @note smoothstep: t²(3 - 2t)
             return 1.0f - t * t * (3.0f - 2.0f * t);
         case TerrainFalloff::Gaussian:
-            // exp(-3 * t²) → t=0 で 1、t=1 で exp(-3) ≒ 0.05
+            /// @note exp(-3 * t²) → t=0 で 1、t=1 で exp(-3) ≒ 0.05
             return std::exp(-3.0f * t * t);
     }
     return 0.0f;
@@ -79,7 +80,7 @@ int ResolvePaintLayerForTerrain(const scene::TerrainComponent& terrain,
 {
     preferredLayer = std::clamp(preferredLayer, 0, 3);
 
-    // material path がある場合は各 Terrain 内で同じ path のレイヤーへ解決する。
+    /// @note material path がある場合は各 Terrain 内で同じ path のレイヤーへ解決する。
     if (!sourceMaterial.empty()) {
         for (int li = 0; li < 4; ++li) {
             if (terrain.layerMaterials[static_cast<size_t>(li)] == sourceMaterial)
@@ -99,7 +100,7 @@ void ApplyTerrainSculpt(scene::TerrainComponent& terrain,
                         float                    dt)
 {
     if (terrain.columns <= 0 || terrain.rows <= 0) return;
-    // heightData が未初期化のまま書くと添字が飛ぶ。ブラシ側で平坦化して整合を取る。
+    /// @note heightData が未初期化のまま書くと添字が飛ぶ。ブラシ側で平坦化して整合を取る。
     if (terrain.heightData.size()
         != static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows)) {
         terrain.InitFlat();
@@ -131,8 +132,7 @@ void ApplyTerrainSculpt(scene::TerrainComponent& terrain,
                     h = std::clamp(h + brush.strength * w * dt, -1.0f, 1.0f);
                     break;
                 case TerrainSculptOp::Lower:
-                    // heightData=0 はフラットな基準面。Lower は負値を許可して地形を掘り下げる。
-                    // WHY: 0 でクランプすると、平坦な Terrain から溝・川床・クレーターを作れない。
+                    /// @note heightData=0 はフラットな基準面。0 でクランプすると溝・川床・クレーターを作れないため、Lower は負値を許可する。
                     h = std::clamp(h - brush.strength * w * dt, -1.0f, 1.0f);
                     break;
                 case TerrainSculptOp::Flatten: {
@@ -147,8 +147,7 @@ void ApplyTerrainSculpt(scene::TerrainComponent& terrain,
                     break;
                 }
                 case TerrainSculptOp::Stamp:
-                    // ブラシ中心が最高点になるよう、既存高さと weight の最大値を取る
-                    // WHY: Stamp は「押し付け」なので既存の高い部分は下げない。
+                    /// @note ブラシ中心が最高点になるよう既存高さと weight の最大値を取る。Stamp は押し付けなので既存の高い部分は下げない。
                     h = std::max(h, w);
                     break;
             }
@@ -172,7 +171,7 @@ void ApplyTerrainPaint(scene::TerrainComponent& terrain,
     const int cz = static_cast<int>(hitLocal.z / terrain.cellSize);
     const int ri = static_cast<int>(brush.radius / terrain.cellSize) + 1;
 
-    // 呼び出し側で Terrain ごとの layerMaterials へ解決した index を受け取る。
+    /// @note 呼び出し側で Terrain ごとの layerMaterials へ解決した index を受け取る。
     const int layerIdx = std::clamp(layerIndex, 0, 3);
 
     for (int z = cz - ri; z <= cz + ri; ++z) {
@@ -198,9 +197,7 @@ void ApplyTerrainPaint(scene::TerrainComponent& terrain,
                 totalWeight += weights[i];
             }
 
-            // WHAT: 8-bit の最小単位である 1/255 以上を進め、押下中の変化を確実に蓄積する。
-            // WHY: strength * dt が 1/255 未満だと、float から uint8 へ戻すたびに 0 へ丸められ、
-            //      長押ししても Paint が一度も進まないため。
+            /// @note 8-bit の最小単位 1/255 以上を必ず進める。strength*dt が 1/255 未満だと float→uint8 変換で毎回 0 に丸められ、長押ししても Paint が進まない。
             const float requestedDelta = brush.strength * w * dt * 255.0f;
             if (requestedDelta <= 0.0f)
                 continue;
@@ -214,8 +211,7 @@ void ApplyTerrainPaint(scene::TerrainComponent& terrain,
             if (selectedWeight == weights[layerIdx] && totalWeight == 255u)
                 continue;
 
-            // 選択レイヤーを増やした分だけ他レイヤーを比率維持で縮小する。
-            // WHAT: 端数は余りの大きいレイヤーから配り、4 チャンネルの整数合計を常に 255 に保つ。
+            /// @note 選択レイヤーを増やした分だけ他レイヤーを比率維持で縮小する。端数は余りの大きいレイヤーから配り、4 チャンネルの整数合計を常に 255 に保つ。
             const std::uint32_t targetOtherWeight = 255u - selectedWeight;
             std::uint32_t distributedWeight = 0u;
             std::uint32_t remainders[4] = {};

@@ -14,7 +14,7 @@ namespace {
 
 constexpr std::size_t MAX_RESPONSE_BYTES = 64u * 1024u * 1024u;
 
-// 部分書き込みを吸収し、要求行を最後まで送信する。
+/// 部分書き込みを吸収し、要求行を最後まで送信する。
 bool WriteAll(HANDLE pipe, const std::string& bytes)
 {
     std::size_t offset = 0;

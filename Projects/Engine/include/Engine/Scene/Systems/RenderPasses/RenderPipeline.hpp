@@ -35,17 +35,11 @@ struct RenderPassContext;
 class RenderPassCapture;
 
 /// ラムダ式で書かれたパスを IRenderPass 契約へ載せるアダプタ。
-///
-/// @note 恒久的な «第 2 の登録形式» であって、移行中の足場ではない。
-///       スクリプトから来るパス (UserRenderPassDesc::execute は
-///       std::function) と、名前が実行時に決まるパス (CustomHDR の連番など) は
-///       クラスに書けないので、この経路が無くなることはない。
-///
-/// WHY それでもエンジン自身のパスは型付きにするか: ラムダで登録すると申告が
-///     登録側 (RenderSystem) に残り、本体のあるファイルから離れる。本体が新しい
-///     テクスチャを読み始めても申告を直す場所が視界に入らず、実際 Terrain と
-///     DeferredLighting で «読んでいるのに申告していない» が起きた。申告を
-///     本体の隣へ置けるものは置く。
+/// @note 恒久的な «第 2 の登録形式»。スクリプト由来のパス (std::function) や名前が実行時
+///       に決まるパス (CustomHDR の連番など) はクラスに書けないため無くならない。
+/// @note それでもエンジン自身のパスを型付きにするのは、ラムダ登録だと申告が登録側
+///       (RenderSystem) に残り本体から離れ、実際に Terrain / DeferredLighting で
+///       «読んでいるのに申告していない» が起きたため。申告は本体の隣へ置く。
 class LambdaPass final : public IRenderPass {
 public:
     /// 申告した名前から実体を引く本体。移行の済んだパスはこちらを使う。
@@ -121,27 +115,25 @@ public:
                               std::vector<renderer::RenderGraph::ResourceAccess>& accesses,
                               bool& allowCulling);
 
-    // 前フレームの登録内容だけを破棄し、Plan とトランジェント RT のキャッシュは維持する。
-    // WHY: Scene/Game View ごとに RenderPipeline を永続化しつつ、フレーム固有のラムダが
-    //      前フレームの RenderPassContext を参照し続けないよう毎フレーム登録し直す。
+    /// 前フレームの登録内容だけを破棄し、Plan とトランジェント RT のキャッシュは維持する。
+    /// @note Scene/Game View ごとに RenderPipeline を永続化しつつ、フレーム固有のラムダが
+    ///       前フレームの RenderPassContext を参照し続けないよう毎フレーム登録し直す。
     void BeginBuild();
 
-    // 型付きパスを末尾に追加する。コンストラクタ引数を渡せる。
+    /// 型付きパスを末尾に追加する。コンストラクタ引数を渡せる。
     template<typename T, typename... Args>
     void AddPass(Args&&... args)
     {
         m_entries.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     }
 
-    // ラムダ式パス。申告の書き方 (reads/writes ・ initializer_list ・ vector) だけが違い、
-    // 本体は «引数なし» と «PassResources を受け取る» の両方を受け付ける。
-    //
-    // WHY 本体の型でオーバーロードを分けないか: std::function の変換制約により、
-    //     引数なしのラムダは PassFn へ、PassResources を取るラムダは ExecuteFn へ
-    //     «変換できない»。どちらの契約かは LambdaPass のコンストラクタ選択で決まるので、
-    //     ここで場合分けすると同じ本体を 2 度書くだけになる。
+    /// ラムダ式パス。申告の書き方 (reads/writes ・ initializer_list ・ vector) だけが違い、
+    /// 本体は «引数なし» と «PassResources を受け取る» の両方を受け付ける。
+    /// @note オーバーロードを本体の型で分けないのは、std::function の変換制約で引数なしの
+    ///       ラムダは PassFn、PassResources を取るラムダは ExecuteFn へしか «変換できない»
+    ///       ため。契約は LambdaPass のコンストラクタ選択で決まる。
 
-    // reads + writes を initializer_list<string_view> で指定
+    /// reads + writes を `initializer_list<string_view>` で指定
     template<typename Fn>
     void AddRawPass(std::string_view name,
                     std::initializer_list<std::string_view> reads,
@@ -152,7 +144,7 @@ public:
         Emplace(name, MakeAccesses(reads, writes), std::forward<Fn>(fn), allowCulling);
     }
 
-    // accesses を initializer_list<ResourceAccess> で指定 — ReadWrite 混在時
+    /// accesses を `initializer_list<ResourceAccess>` で指定 — ReadWrite 混在時
     template<typename Fn>
     void AddRawPass(std::string_view name,
                     std::initializer_list<renderer::RenderGraph::ResourceAccess> accesses,
@@ -164,7 +156,7 @@ public:
                 std::forward<Fn>(fn), allowCulling);
     }
 
-    // accesses を vector<ResourceAccess> で指定 — UserRenderPassDesc 経由
+    /// accesses を `vector<ResourceAccess>` で指定 — UserRenderPassDesc 経由
     template<typename Fn>
     void AddRawPass(std::string_view name,
                     std::vector<renderer::RenderGraph::ResourceAccess> accesses,
@@ -174,16 +166,12 @@ public:
         Emplace(name, std::move(accesses), std::forward<Fn>(fn), allowCulling);
     }
 
-    // 論理リソースを «申告» と «実体» を揃えて登録する。
-    //
-    // WHY 2 つを 1 つの呼び出しにするか: 以前は DeclareResource (依存解析用の申告) と
-    //     RenderResourceRegistry::BindTarget (実体の登録) が別々の場所で手で維持されて
-    //     いた。片方だけ書いても Plan は通るので、«申告したのに実体が無い» も
-    //     «実体はあるが誰も申告していない» も静かに成立した。同じ引数列に並べれば
-    //     片方だけ書くこと自体ができなくなる。
-    //
-    // 束縛は Execute() の冒頭でまとめて登録簿へ流す。実体を差し替えるパス
-    // (TAA の ping-pong) はその後で上書きすればよい。
+    /// 論理リソースを «申告» と «実体» を揃えて登録する。
+    /// @note 以前は DeclareResource (依存解析用の申告) と RenderResourceRegistry::BindTarget
+    ///       (実体の登録) が別々に維持され、片方だけ書いても Plan は通るため «申告したのに
+    ///       実体が無い» が静かに成立した。同じ引数列に並べ片方だけ書けなくする。
+    /// 束縛は Execute() の冒頭でまとめて登録簿へ流す。実体を差し替えるパス
+    /// (TAA の ping-pong) はその後で上書きすればよい。
     void DeclareTarget(std::string_view name,
                        renderer::ResourceHandle<renderer::RenderTargetTag> handle,
                        renderer::RenderGraph::ResourceDesc desc);
@@ -193,11 +181,11 @@ public:
 
     void SetOutputs(std::initializer_list<std::string_view> outputs);
 
-    // エディターからのパス単位の上書き。BeginBuild では消えない (登録ではなく設定)。
-    //
-    // allowCulling は «false でだけ効く»。パス自身が false を返しているものを
-    // true にはできない。SkinningCompute のように «刈られては困る» と自分で言っている
-    // パスを、UI の既定値が黙って刈れるようにしてしまうため。
+    /// エディターからのパス単位の上書き。BeginBuild では消えない (登録ではなく設定)。
+    ///
+    /// allowCulling は «false でだけ効く»。パス自身が false を返しているものを
+    /// true にはできない。SkinningCompute のように «刈られては困る» と自分で言っている
+    /// パスを、UI の既定値が黙って刈れるようにしてしまうため。
     void SetPassOverrides(std::vector<renderer::RenderPassOverride> overrides);
 
     /// 実行順の決め方。次の Plan から効く。
@@ -206,23 +194,23 @@ public:
     void SetGpuProfilerHooks(std::function<void(std::string_view)> begin,
                               std::function<void(std::string_view)> end);
 
-    // 登録されたすべてのパスを RenderGraph に組み込んで実行する。
-    // IsEnabled が false のパスはスキップされる。
+    /// 登録されたすべてのパスを RenderGraph に組み込んで実行する。
+    /// IsEnabled が false のパスはスキップされる。
     bool Execute(RenderPassContext& ctx, RenderPassCapture* capture = nullptr);
 
     const renderer::RenderGraph::ExecutionReport& LastReport() const { return m_lastReport; }
 
-    // 直近に Plan をやり直したときの構成テキスト (RenderGraph::DescribeLastPlan)。
-    // 毎フレームは作らない — トポロジが変わったフレームだけ更新する。
-    // 差分を取れば «絵は同じだが実行順が変わった» を捕まえられる。
+    /// 直近に Plan をやり直したときの構成テキスト (RenderGraph::DescribeLastPlan)。
+    /// 毎フレームは作らない — トポロジが変わったフレームだけ更新する。
+    /// 差分を取れば «絵は同じだが実行順が変わった» を捕まえられる。
     const std::string& LastPlanDescription() const { return m_lastPlanDescription; }
 
-    // 保持している GPU リソースを ResourceManager へ返す。
-    // WHAT: Viewport のリサイズなど、実体を直ちに破棄すべき境界で呼び出す。
+    /// 保持している GPU リソースを ResourceManager へ返す。
+    /// @note Viewport のリサイズなど、実体を直ちに破棄すべき境界で呼び出す。
     void ReleaseViewResources(renderer::ResourceManager& resources);
 
 private:
-    // 契約は 1 つ。ラムダ式パスも LambdaPass として同じ列に並ぶ。
+    /// 契約は 1 つ。ラムダ式パスも LambdaPass として同じ列に並ぶ。
     using Entry = std::unique_ptr<IRenderPass>;
 
     static std::vector<renderer::RenderGraph::ResourceAccess>
@@ -239,14 +227,14 @@ private:
             name, std::move(accesses), std::forward<Fn>(fn), allowCulling));
     }
 
-    // 宣言された実体を登録簿へ流す。パス本体が名前から引けるのはここを通ったものだけ。
+    /// 宣言された実体を登録簿へ流す。パス本体が名前から引けるのはここを通ったものだけ。
     void BindDeclaredResources(RenderPassContext& ctx) const;
 
-    // このフレームに載せるパスの添字列を確定し、同時に Setup を引き直す。
+    /// このフレームに載せるパスの添字列を確定し、同時に Setup を引き直す。
     std::vector<size_t> CollectEnabledSetups(RenderPassContext& ctx);
 
-    // 申告 (リソース記述 / 出力 / パス名 / accesses / allowCulling) の FNV-1a 指紋。
-    // 前フレームと一致すれば Plan の結果をそのまま使い回せる。
+    /// 申告 (リソース記述 / 出力 / パス名 / accesses / allowCulling) の FNV-1a 指紋。
+    /// 前フレームと一致すれば Plan の結果をそのまま使い回せる。
     uint64_t ComputeGraphFingerprint(const std::vector<size_t>& enabled) const;
 
     void BuildGraph(renderer::RenderGraph& graph,
@@ -255,8 +243,8 @@ private:
 
     const renderer::RenderPassOverride* FindOverride(std::string_view name) const;
 
-    // Setup が返した申告に上書きを適用した «このフレームの確定値»。グラフへ渡すラムダが
-    // 参照で掴むので、Execute の間ずっと生きている場所へ置く。添字は m_entries と揃える。
+    /// Setup が返した申告に上書きを適用した «このフレームの確定値»。グラフへ渡すラムダが
+    /// 参照で掴むので、Execute の間ずっと生きている場所へ置く。添字は m_entries と揃える。
     struct PassSetup {
         std::vector<renderer::RenderGraph::ResourceAccess> accesses;
         std::string                                        autoTarget;
@@ -264,20 +252,16 @@ private:
     };
     std::vector<PassSetup> m_setups;
 
-    // NOTE: ここには «aliasGroup ごとに物理リソースを確保して貸し回す» プールがあった。
-    //
-    // WHY 消したか: 貸出先が 1 つも無いまま、alias グループの数だけ実体を確保していた。
-    //     実測 (Artifacts/RenderGraph の構成テキスト) では、トランジェント 7 個が
-    //     7 グループに分かれて «1 枚も共有できていない» 状態で、それでも 7 枚ぶんの
-    //     VRAM (1 ビュー約 34MB) を握っていた。節約ゼロで消費だけがある状態だったので、
-    //     使う当てができるまで確保しない。
-    //
-    //     寿命とエイリアスグループの解析そのものは RenderGraph::AnalyzeLifetimes に
-    //     残っている (構成テキストの alias= がそれ)。パスが増えて寿命が分かれたら、
-    //     まず構成テキストで «何枚浮くか» を測ってから作り直すこと。
+    /// @note ここには «aliasGroup ごとに物理リソースを確保して貸し回す» プールがあった。
+    ///       貸出先が 1 つも無いまま alias グループの数だけ実体を確保しており、実測では
+    ///       トランジェント 7 個が 7 グループに分かれて «1 枚も共有できていない» まま
+    ///       7 枚ぶんの VRAM (1 ビュー約 34MB) を握っていたため削除した。使う当てが
+    ///       できるまで確保しない。寿命とエイリアスグループの解析自体は
+    ///       RenderGraph::AnalyzeLifetimes に残る (構成テキストの alias= がそれ)。パスが
+    ///       増えて寿命が分かれたら、まず構成テキストで «何枚浮くか» を測ってから作り直す。
 
-    // 1 つの論理リソースについて «申告» と «実体» を同じ行に持つ。
-    // target / texture はどちらか片方だけが有効になる (ResourceDesc::kind に対応)。
+    /// 1 つの論理リソースについて «申告» と «実体» を同じ行に持つ。
+    /// target / texture はどちらか片方だけが有効になる (ResourceDesc::kind に対応)。
     struct ResourceEntry {
         std::string                                         name;
         renderer::RenderGraph::ResourceDesc                 desc;
@@ -293,16 +277,16 @@ private:
     renderer::RenderGraph::ExecutionReport m_lastReport;
     std::string m_lastPlanDescription;
 
-    // 束縛毒用の 1x1 RT (RenderBindingGuard)。診断を立てたときだけ確保する。
+    /// 束縛毒用の 1x1 RT (RenderBindingGuard)。診断を立てたときだけ確保する。
     renderer::SizedRenderTarget m_bindingPoisonRT;
     std::function<void(std::string_view)> m_gpuBegin;
     std::function<void(std::string_view)> m_gpuEnd;
 
-    // Plan キャッシュ: 有効パスのインデックス列と依存宣言の指紋が変わらなければ
-    // 毎フレームの Plan() をスキップし、前フレームの実行順を注入する。
+    /// Plan キャッシュ: 有効パスのインデックス列と依存宣言の指紋が変わらなければ
+    /// 毎フレームの Plan() をスキップし、前フレームの実行順を注入する。
     std::vector<size_t> m_lastEnabledEntryIndices;
-    // リソース記述 + outputs + パス名 + accesses + allowCulling の FNV-1a ハッシュ。
-    // WHY: index 列だけでは Setup() の申告内容の変化 (設定トグル等) を検出できない。
+    /// リソース記述 + outputs + パス名 + accesses + allowCulling の FNV-1a ハッシュ。
+    /// @note index 列だけでは Setup() の申告内容の変化 (設定トグル等) を検出できない。
     uint64_t m_lastGraphFingerprint = 0;
     bool m_planValid = false;
 };

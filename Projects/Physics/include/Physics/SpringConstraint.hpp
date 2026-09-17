@@ -7,7 +7,7 @@
 
 namespace fbzz::physics
 {
-    // 位置補正ではなく力として解くため、揺れや減衰を含む柔らかい接続に使う。
+    /// @brief 位置補正ではなく力として解くため、揺れや減衰を含む柔らかい接続に使う Hooke 則バネ。
     class SpringConstraint : public Constraint
     {
     public:

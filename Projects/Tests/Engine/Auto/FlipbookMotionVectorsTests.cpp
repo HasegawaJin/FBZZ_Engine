@@ -23,7 +23,7 @@ constexpr std::uint32_t kAtlasWidth = kTile * 2;
 constexpr std::uint32_t kAtlasHeight = kTile;
 constexpr int kShift = 4;
 
-// 模様付きの 8x8 の四角。平坦だとブロックマッチングの同点が «静止» 側へ倒れてしまう。
+/// 模様付きの 8x8 の四角。平坦だとブロックマッチングの同点が «静止» 側へ倒れてしまう。
 void PaintSquare(std::vector<float>& rgba, std::uint32_t originX, std::uint32_t originY)
 {
     for (std::uint32_t y = 0; y < 8; ++y) {

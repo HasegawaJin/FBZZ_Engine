@@ -19,11 +19,11 @@ using util::Color;
 
 class ColorTest : public testkit::EngineFixture {};
 
-// --- 32bit 表現 -------------------------------------------------------------
+/// @name 32bit 表現
 
 TEST_F(ColorTest, PacksAndUnpacksInRgbaOrder)
 {
-    // 並びが 1 つずれると赤と青が入れ替わる。0xRRGGBBAA の順を固定する。
+    /// @note 並びが 1 つずれると赤と青が入れ替わる。0xRRGGBBAA の順を固定する。
     const Color color = Color::FromRGBA32(0xFF8000C0u);
 
     EXPECT_NEAR(color.r, 1.0f, 1.0f / 255.0f);
@@ -42,7 +42,7 @@ TEST_F(ColorTest, RoundTripsThrough32Bit)
 
 TEST_F(ColorTest, ClampsOutOfRangeChannelsWhenPacking)
 {
-    // HDR の色をそのまま 8bit へ落とす経路がある。折り返して暗くなってはいけない。
+    /// @note HDR の色をそのまま 8bit へ落とす経路がある。折り返して暗くなってはいけない。
     const Color overBright{ 4.0f, -1.0f, 0.5f, 1.0f };
 
     const uint32_t packed = overBright.ToRGBA32();
@@ -51,7 +51,7 @@ TEST_F(ColorTest, ClampsOutOfRangeChannelsWhenPacking)
     EXPECT_EQ((packed >> 16) & 0xFFu, 0u);
 }
 
-// --- 16 進数文字列 ----------------------------------------------------------
+/// @name 16 進数文字列
 
 TEST_F(ColorTest, ParsesSixAndEightDigitHex)
 {
@@ -59,7 +59,8 @@ TEST_F(ColorTest, ParsesSixAndEightDigitHex)
     const Color rgba = Color::FromHex("#FF000080");
 
     EXPECT_NEAR(rgb.r, 1.0f, 1.0f / 255.0f);
-    EXPECT_NEAR(rgb.a, 1.0f, 1.0f / 255.0f);   // 省略時は不透明
+    /// @note 省略時は不透明
+    EXPECT_NEAR(rgb.a, 1.0f, 1.0f / 255.0f);
     EXPECT_NEAR(rgba.a, 128.0f / 255.0f, 1.0f / 255.0f);
 }
 
@@ -69,7 +70,7 @@ TEST_F(ColorTest, HexParsingIgnoresCaseAndAcceptsNoHash)
     EXPECT_NEAR(Color::FromHex("00FF00").g, 1.0f, 1.0f / 255.0f);
 }
 
-// --- Vector4 との往復 -------------------------------------------------------
+/// @name Vector4 との往復
 
 TEST_F(ColorTest, RoundTripsThroughVector4)
 {
@@ -83,7 +84,7 @@ TEST_F(ColorTest, RoundTripsThroughVector4)
     EXPECT_NEAR(back.a, original.a, testkit::kTolerance);
 }
 
-// --- HSV --------------------------------------------------------------------
+/// @name HSV
 
 TEST_F(ColorTest, BuildsThePrimariesFromHue)
 {
@@ -103,7 +104,7 @@ TEST_F(ColorTest, ZeroSaturationIsGrey)
 
 TEST_F(ColorTest, RoundTripsThroughHSV)
 {
-    // カラーピッカーは RGB ↔ HSV を往復し続ける。ずれると触るたびに色が流れる。
+    /// @note カラーピッカーは RGB ↔ HSV を往復し続ける。ずれると触るたびに色が流れる。
     const Color original{ 0.2f, 0.6f, 0.4f, 1.0f };
 
     float h = 0.0f, s = 0.0f, v = 0.0f;
@@ -125,7 +126,7 @@ TEST_F(ColorTest, HueWrapsAroundTheColourWheel)
     EXPECT_NEAR(atZero.b, atFull.b, testkit::kLooseTolerance);
 }
 
-// --- 補間 -------------------------------------------------------------------
+/// @name 補間
 
 TEST_F(ColorTest, LerpReturnsTheEndpoints)
 {
@@ -135,7 +136,7 @@ TEST_F(ColorTest, LerpReturnsTheEndpoints)
 
 TEST_F(ColorTest, LerpClampsOutsideTheUnitInterval)
 {
-    // フェードの t は経過時間から作るので、1 を少し超えることが普通に起きる。
+    /// @note フェードの t は経過時間から作るので、1 を少し超えることが普通に起きる。
     const Color beyond = Color::Lerp(Color::Black, Color::White, 2.0f);
 
     EXPECT_NEAR(beyond.r, 1.0f, testkit::kTolerance);

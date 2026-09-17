@@ -10,7 +10,7 @@ namespace fbzz::asset {
 
 namespace {
 
-// 再帰でバインド TRS を積み上げ、ボーンごとのリファレンス行列を求める。
+/// 再帰でバインド TRS を積み上げ、ボーンごとのリファレンス行列を求める。
 void BuildReferencePoseRecursive(Skeleton& skeleton,
                                  int nodeIndex,
                                  const math::Matrix4& parentGlobal)
@@ -75,8 +75,8 @@ math::Matrix4 ToMatrix4(const aiMatrix4x4& m, float unitScale)
 
 float ReadUnitScale(const aiScene* scene)
 {
-    // WHY: FBX の原点単位はセンチメートルが多い。UnitScaleFactor は「1 単位 = x cm」の値なので
-    //      0.01 を掛けることでメートルに換算する。値がない場合も同じデフォルトを使う。
+    /// @note FBX の原点単位はセンチメートルが多い。UnitScaleFactor は「1 単位 = x cm」の値なので
+    ///       0.01 を掛けることでメートルに換算する。値がない場合も同じデフォルトを使う。
     float unitScale = 0.01f;
     if (!scene || !scene->mMetaData) return unitScale;
 
@@ -111,7 +111,7 @@ renderer::Vertex ImportVertex(const aiMesh* mesh, uint32_t i, float unitScale)
         : math::Vector3{ 1.0f, 0.0f, 0.0f };
     if (mesh->mTextureCoords[0])
         v.uv = { mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y };
-    // 頂点カラーを持つ DCC データはそのまま採る。無ければ既定の白 (= 色を持たない) のまま。
+    /// @note 頂点カラーを持つ DCC データはそのまま採る。無ければ既定の白 (= 色を持たない) のまま。
     if (mesh->HasVertexColors(0)) {
         const aiColor4D& c = mesh->mColors[0][i];
         v.color = { c.r, c.g, c.b, c.a };
@@ -138,13 +138,13 @@ std::unique_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
                                                     renderer::ResourceManager& resources)
 {
     auto mat = std::make_unique<renderer::Material>();
-    // paramData はシェーダー確定後に SyncMaterial が初期化するため、ここでは設定しない。
-    // assimp の diffuse color は MaterialComponent 経由で設定する必要がある。
+    /// @note paramData はシェーダー確定後に SyncMaterial が初期化するため、ここでは設定しない。
+    ///       assimp の diffuse color は MaterialComponent 経由で設定する必要がある。
     (void)resources;
     return mat;
 }
 
-// ── ノード階層 ─────────────────────────────────────────────────
+/// @name ノード階層
 
 namespace {
 
@@ -160,9 +160,9 @@ void ImportModelNodesRecursive(const aiNode* node,
     out.name        = NormalizeName(node->mName);
     out.parentIndex = parentIndex;
 
-    // WHY TRS へ分解して持つか: 生成先が GameObject::transform (position/rotation/scale) で、
-    //     行列のままでは代入できない。SkeletonNode のバインド TRS と同じ分解を使うことで、
-    //     ボーンノードとメッシュノードが同じ FBX ノードを指す場合に位置がずれない。
+    /// @note TRS へ分解して持つ。生成先が GameObject::transform (position/rotation/scale) で、
+    ///       行列のままでは代入できない。SkeletonNode のバインド TRS と同じ分解を使うことで、
+    ///       ボーンノードとメッシュノードが同じ FBX ノードを指す場合に位置がずれない。
     aiVector3D   scaling;
     aiVector3D   position;
     aiQuaternion rotation;
@@ -171,8 +171,8 @@ void ImportModelNodesRecursive(const aiNode* node,
     out.localRotation    = ToQuaternion(rotation);
     out.localScale       = { scaling.x, scaling.y, scaling.z };
 
-    // aiNode::mMeshes はこのノードが描く aiMesh の添字列。Assimp のマテリアル分割で
-    // 複数件になるが、DCC 上では 1 個のオブジェクトなのでノードへ束ねたまま保つ。
+    /// @note aiNode::mMeshes はこのノードが描く aiMesh の添字列。Assimp のマテリアル分割で
+    ///       複数件になるが、DCC 上では 1 個のオブジェクトなのでノードへ束ねたまま保つ。
     out.meshIndices.reserve(node->mNumMeshes);
     for (uint32_t i = 0; i < node->mNumMeshes; ++i)
         out.meshIndices.push_back(node->mMeshes[i]);

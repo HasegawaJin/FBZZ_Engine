@@ -9,14 +9,8 @@
 
 namespace fbzz::scene {
 
-// 音声クリップとして選べる拡張子。.synth は手続き効果音の定義で、
-// AudioManager が読み込み時に合成するため再生側は他のクリップと区別しない。
-//
-// WHY Engine 側に置くか: Editor のアセットピッカー (widgets::kAudioClipAssetFilter) と
-//     スクリプトの FBZZ_FIELD_AUDIO が同じ集合を指す必要がある。以前は Editor 側にだけ
-//     定数があり、スクリプトは ".wav,.ogg" を各フィールドへ手書きしていた。結果、
-//     対応形式を増やしても既存フィールドには反映されず、.mp3 も .synth も
-//     Inspector から選べないままだった。
+/// @brief 音声クリップとして選べる拡張子。 `.synth` は手続き効果音の定義で、AudioManager が読み込み時に合成するため再生側は他のクリップと区別しない。
+/// @note Editor のアセットピッカー (widgets::kAudioClipAssetFilter) とスクリプトの FBZZ_FIELD_AUDIO が同じ集合を指す必要があるため Engine 側に置く。
 inline constexpr const char* kAudioClipExtensions = ".wav,.mp3,.ogg,.flac,.synth";
 
 enum class ScriptAssetType {
@@ -27,12 +21,11 @@ enum class ScriptAssetType {
     AnimationClip,
     Scene,
     Shader,
-    // .vfx GraphをSerializeFieldへ型安全に保持する。
-    VFX,
+    VFX, ///< `.vfx` Graph を SerializeField へ型安全に保持する。
 };
 
-// GUIDを正本、pathをEditor表示と未登録Asset用fallbackとして保持する。
-// WHY: ファイル移動後も参照を維持しつつ、AssetDatabase未初期化のstandalone実行にも耐える。
+/// @brief GUID を正本、path を Editor 表示と未登録 Asset 用 fallback として保持する。
+/// @note ファイル移動後も参照を維持しつつ、AssetDatabase 未初期化の standalone 実行にも耐える。
 struct ScriptAssetReference {
     std::string guid;
     std::string path;

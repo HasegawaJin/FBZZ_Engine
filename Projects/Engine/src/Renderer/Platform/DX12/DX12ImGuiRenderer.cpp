@@ -19,7 +19,7 @@ namespace fbzz::renderer {
 
 namespace {
 
-// Phase 1 ではフォント 1 枚だけを使う。Phase 3 でフリーリストアロケーターへ置き換える。
+/// Phase 1 ではフォント 1 枚だけを使う。Phase 3 でフリーリストアロケーターへ置き換える。
 void AllocateSrv(ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* cpu,
                  D3D12_GPU_DESCRIPTOR_HANDLE* gpu)
 {
@@ -89,11 +89,10 @@ void DX12ImGuiRenderer::ImGuiShutdown()
 {
     if (!m_imguiInitialized)
         return;
-    // WHY: 直前フレームのコマンドリストが GPU 実行中のままバックエンドを破棄すると、
-    //      フォントテクスチャやマルチビューポートのスワップチェーンが final-release され、
-    //      OBJECT_DELETED_WHILE_STILL_IN_USE (EXECUTION ERROR #921) → Debug Layer の
-    //      BREAK で終了時クラッシュになる。破棄前に必ず GPU 完了を待つ。
-    //      (DX11 はランタイムが参照を保持するため不要だった DX12 特有の同期点)
+    /// @note 直前フレームのコマンドリストが GPU 実行中のままバックエンドを破棄すると、フォント
+    ///       テクスチャやスワップチェーンが final-release され OBJECT_DELETED_WHILE_STILL_IN_USE
+    ///       (EXECUTION ERROR #921) → Debug Layer の BREAK で終了時クラッシュになる。破棄前に
+    ///       必ず GPU 完了を待つ (DX11 はランタイムが参照を保持するため不要だった同期点)。
     if (m_context)
         m_context->Flush();
     ImGui_ImplDX12_Shutdown();
@@ -121,15 +120,15 @@ void DX12ImGuiRenderer::ImGuiRenderDrawData()
 {
     if (!m_imguiInitialized || !m_context->IsFrameOpen())
         return;
-    // ImGui はここから自前のルートシグネチャ・PSO・ヒープを共有コマンドリストへ設定する。
-    // DX12Renderer::Submit が持つ「直前に束縛した状態」のキャッシュを無効化させる。
+    /// @note ImGui はここから自前のルートシグネチャ・PSO・ヒープを共有コマンドリストへ設定する。
+    ///       DX12Renderer::Submit が持つ「直前に束縛した状態」のキャッシュを無効化させる。
     m_context->MarkPipelineStateDirty();
     ID3D12DescriptorHeap* heaps[] = {m_context->GetImGuiSrvHeap()};
     m_context->GetCommandList()->SetDescriptorHeaps(1, heaps);
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_context->GetCommandList());
 }
 
-// ImGui DX12 backend が追加 Window ごとに管理する SwapChain と CommandList を描画する。
+/// ImGui DX12 backend が追加 Window ごとに管理する SwapChain と CommandList を描画する。
 void DX12ImGuiRenderer::ImGuiRenderPlatformWindows()
 {
     if (!m_imguiInitialized
@@ -140,14 +139,11 @@ void DX12ImGuiRenderer::ImGuiRenderPlatformWindows()
     ImGui::RenderPlatformWindowsDefault();
 }
 
-// 解放済みリソースが握ったままのディスクリプタを回収する。
-//
-// WHY 要るか: ImGui 可視ヒープは 4096 枚しかないのに、キャッシュのキーはハンドル
-//     (id + 世代) で、寸法が変わるたびに作り直されるビューポート RT も、読み直すたびに
-//     別ハンドルになるサムネイルも、そのつど新しい 1 枚を «永久に» 取っていた。
-//     枯渇すると以降 CacheDescriptor が nullptr を返すため、作り直した側のビューポートだけ
-//     絵が出なくなり、ハンドルが据え置きのビューポートは映ったままになる
-//     (Scene View だけ消えて Game View は無事、という形で出た)。
+/// 解放済みリソースが握ったままのディスクリプタを回収する。
+/// @note ImGui 可視ヒープは 4096 枚しかないが、キャッシュのキーはハンドル (id+世代) のため、
+///       寸法変更で作り直されるビューポート RT や、読み直すたびに別ハンドルになるサムネイルが
+///       そのつど新しい 1 枚を «永久に» 取っていた。枯渇すると CacheDescriptor が nullptr を
+///       返し、作り直した側のビューポートだけ絵が出なくなる。
 void DX12ImGuiRenderer::SweepReleasedDescriptors()
 {
     if (ResourceManager* resources = ResourceManager::Active()) {
@@ -165,9 +161,9 @@ void DX12ImGuiRenderer::SweepReleasedDescriptors()
         }
     }
 
-    // WHY すぐ再利用へ回さないか: ディスクリプタの中身が読まれるのはコマンドリストの
-    //     実行時で、まだ GPU が走っているフレームの分を上書きするとその絵が壊れる。
-    //     CPU は FRAME_COUNT フレームより先へは進めないので、それを越えたものだけ返す。
+    /// @note すぐ再利用へ回さない理由: ディスクリプタの中身が読まれるのはコマンドリストの
+    ///       実行時で、まだ GPU が走っているフレームの分を上書きするとその絵が壊れる。
+    ///       CPU は FRAME_COUNT フレームより先へは進めないので、それを越えたものだけ返す。
     size_t reclaimed = 0;
     while (reclaimed < m_retiredDescriptors.size()
            && m_frameCounter >= m_retiredDescriptors[reclaimed].frame + DX12Context::FRAME_COUNT + 1) {
@@ -181,8 +177,8 @@ void DX12ImGuiRenderer::SweepReleasedDescriptors()
 bool DX12ImGuiRenderer::AllocateDescriptor(
     uint32_t& index, D3D12_CPU_DESCRIPTOR_HANDLE& cpu, D3D12_GPU_DESCRIPTOR_HANDLE& gpu)
 {
-    // 定期回収を待たずに枯渇したときの最後の一手。回収分が再利用可能になるまで数フレーム
-    // かかるので今回の割り当ては失敗しうるが、恒久的な «絵が出ない» 状態にはならない。
+    /// @note 定期回収を待たずに枯渇したときの最後の一手。回収分が再利用可能になるまで数フレーム
+    ///       かかるので今回の割り当ては失敗しうるが、恒久的な «絵が出ない» 状態にはならない。
     if (m_freeDescriptors.empty() && m_context
         && m_nextDescriptor >= m_context->GetImGuiDescriptorCapacity()) {
         SweepReleasedDescriptors();

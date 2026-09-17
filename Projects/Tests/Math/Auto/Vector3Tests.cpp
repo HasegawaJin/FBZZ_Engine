@@ -14,7 +14,7 @@ namespace fbzz::tests {
 
 class Vector3Test : public testkit::Fixture {};
 
-// --- 長さと正規化 -----------------------------------------------------------
+/// @name 長さと正規化
 
 TEST_F(Vector3Test, LengthSquaredMatchesLengthSquared)
 {
@@ -56,7 +56,7 @@ TEST_F(Vector3Test, NormalizedOrNormalizesNonDegenerateInput)
                      testkit::kTolerance);
 }
 
-// --- 内積 -------------------------------------------------------------------
+/// @name 内積
 
 TEST_F(Vector3Test, DotIsZeroForPerpendicularAxes)
 {
@@ -83,11 +83,11 @@ TEST_F(Vector3Test, DotIsCommutative)
     }
 }
 
-// --- 外積 -------------------------------------------------------------------
+/// @name 外積
 
 TEST_F(Vector3Test, CrossOfRightAndUpIsForward)
 {
-    // 基底の向きの定義そのもの。ここが反転すると法線・接空間・カメラ基底が全部裏返る。
+    /// @note 基底の向きの定義そのもの。ここが反転すると法線・接空間・カメラ基底が全部裏返る。
     EXPECT_VEC3_NEAR(math::Vector3::Cross(math::Vector3::RIGHT, math::Vector3::UP),
                      math::Vector3::FORWARD, testkit::kTolerance);
     EXPECT_VEC3_NEAR(math::Vector3::Cross(math::Vector3::UP, math::Vector3::FORWARD),
@@ -113,7 +113,8 @@ TEST_F(Vector3Test, CrossIsPerpendicularToBothOperands)
         const math::Vector3 a = Rng().NextUnitVector3();
         const math::Vector3 b = Rng().NextUnitVector3();
         const math::Vector3 c = math::Vector3::Cross(a, b);
-        if (c.LengthSq() < math::EPSILON) continue; // 平行な組は直交性を語れない
+        /// @note 平行な組は直交性を語れない
+        if (c.LengthSq() < math::EPSILON) continue;
 
         EXPECT_NEAR(math::Vector3::Dot(c, a), 0.0f, testkit::kTolerance);
         EXPECT_NEAR(math::Vector3::Dot(c, b), 0.0f, testkit::kTolerance);
@@ -127,7 +128,7 @@ TEST_F(Vector3Test, CrossOfParallelVectorsIsZero)
     EXPECT_VEC3_NEAR(math::Vector3::Cross(v, v * 3.0f), math::Vector3::ZERO, testkit::kTolerance);
 }
 
-// --- 補間と演算子 -----------------------------------------------------------
+/// @name 補間と演算子
 
 TEST_F(Vector3Test, LerpReturnsTheEndpointsAtZeroAndOne)
 {
@@ -168,11 +169,11 @@ TEST_F(Vector3Test, NegationEqualsScalingByMinusOne)
     EXPECT_VEC3_NEAR(-v, v * -1.0f, testkit::kTolerance);
 }
 
-// --- 等値判定 ---------------------------------------------------------------
+/// @name 等値判定
 
 TEST_F(Vector3Test, EqualityToleratesDifferencesBelowEpsilon)
 {
-    // operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
+    /// @note operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
     const math::Vector3 a(0.0f, 0.0f, 0.0f);
     const math::Vector3 b(math::EPSILON * 0.5f, 0.0f, 0.0f);
 

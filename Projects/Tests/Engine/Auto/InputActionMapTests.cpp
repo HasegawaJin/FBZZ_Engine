@@ -51,7 +51,7 @@ protected:
 
     void TearDown() override
     {
-        // 静的な状態なので、有効フラグまで含めて必ず戻す。
+        /// @note 静的な状態なので、有効フラグまで含めて必ず戻す。
         input::InputActionMap::SetEnabled(true);
         input::InputActionMap::Clear();
         testkit::EngineFixture::TearDown();
@@ -72,11 +72,11 @@ private:
     testkit::TempDir m_temp{"inputmap"};
 };
 
-// --- 既定のバインド ---------------------------------------------------------
+/// @name 既定のバインド
 
 TEST_F(InputActionMapTest, DefaultsProvideSomethingToPlayWith)
 {
-    // 設定ファイルが無い状態でも遊べること。空のまま起動すると何も動かせない。
+    /// @note 設定ファイルが無い状態でも遊べること。空のまま起動すると何も動かせない。
     input::InputActionMap::LoadDefaults();
 
     EXPECT_FALSE(input::InputActionMap::GetActions().empty());
@@ -120,7 +120,7 @@ TEST_F(InputActionMapTest, ClearRemovesEverything)
     EXPECT_TRUE(input::InputActionMap::GetAxes().empty());
 }
 
-// --- 往復 -------------------------------------------------------------------
+/// @name 往復
 
 TEST_F(InputActionMapTest, SavesAndReloadsTheDefaultBindings)
 {
@@ -178,7 +178,7 @@ TEST_F(InputActionMapTest, KeepsActionNamesThroughARoundTrip)
 
 TEST_F(InputActionMapTest, KeepsTheBindingsOfEachAction)
 {
-    // 名前だけ残ってバインドが空だと、«設定はあるのに反応しない» になる。
+    /// @note 名前だけ残ってバインドが空だと、«設定はあるのに反応しない» になる。
     input::InputActionMap::LoadDefaults();
     const std::size_t bindings = input::InputActionMap::GetActions().front().bindings.size();
     ASSERT_GT(bindings, 0u);
@@ -192,7 +192,7 @@ TEST_F(InputActionMapTest, KeepsTheBindingsOfEachAction)
 
 TEST_F(InputActionMapTest, KeepsTheAxisTuningThroughARoundTrip)
 {
-    // デッドゾーンや戻り速度が落ちると «パッドの効きが変わった» と感じる。
+    /// @note デッドゾーンや戻り速度が落ちると «パッドの効きが変わった» と感じる。
     input::InputActionMap::LoadDefaults();
     const input::InputAxis original = input::InputActionMap::GetAxes().front();
     ASSERT_TRUE(input::InputActionMap::SaveToFile(File("keys.inputactions")));
@@ -207,7 +207,7 @@ TEST_F(InputActionMapTest, KeepsTheAxisTuningThroughARoundTrip)
 
 TEST_F(InputActionMapTest, SavingTwiceProducesTheSameFile)
 {
-    // 触っていないのに設定ファイルの差分が出ると、コミットのたびに紛れ込む。
+    /// @note 触っていないのに設定ファイルの差分が出ると、コミットのたびに紛れ込む。
     input::InputActionMap::LoadDefaults();
     ASSERT_TRUE(input::InputActionMap::SaveToFile(File("a.inputactions")));
     ASSERT_TRUE(input::InputActionMap::SaveToFile(File("b.inputactions")));
@@ -220,7 +220,7 @@ TEST_F(InputActionMapTest, SavingTwiceProducesTheSameFile)
     EXPECT_EQ(read(File("a.inputactions")), read(File("b.inputactions")));
 }
 
-// --- 壊れた設定 -------------------------------------------------------------
+/// @name 壊れた設定
 
 TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsMissing)
 {
@@ -234,7 +234,7 @@ TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsMissing)
 
 TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsBroken)
 {
-    // 壊れた設定で «全操作不能» にしない。直前のバインドで動き続ける。
+    /// @note 壊れた設定で «全操作不能» にしない。直前のバインドで動き続ける。
     input::InputActionMap::LoadDefaults();
     const std::size_t before = input::InputActionMap::GetActions().size();
     WriteText("broken.inputactions", "{{{ this is not toml ]]]");
@@ -244,11 +244,11 @@ TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsBroken)
     EXPECT_EQ(input::InputActionMap::GetActions().size(), before);
 }
 
-// --- 有効・無効 -------------------------------------------------------------
+/// @name 有効・無効
 
 TEST_F(InputActionMapTest, DisablingSilencesEveryAction)
 {
-    // 編集中に W を押してプレイヤーが歩き出す事故を防ぐための口。
+    /// @note 編集中に W を押してプレイヤーが歩き出す事故を防ぐための口。
     input::InputActionMap::LoadDefaults();
     const std::string action = input::InputActionMap::GetActions().front().name;
 
@@ -265,7 +265,7 @@ TEST_F(InputActionMapTest, DisablingSilencesEveryAction)
 
 TEST_F(InputActionMapTest, UnknownNamesAreSilentRatherThanFatal)
 {
-    // スクリプトの綴り間違いは普通に起きる。落とさず «押されていない» を返す。
+    /// @note スクリプトの綴り間違いは普通に起きる。落とさず «押されていない» を返す。
     input::InputActionMap::LoadDefaults();
 
     EXPECT_FALSE(input::InputActionMap::GetAction("NoSuchAction"));

@@ -16,31 +16,29 @@
 
 int main(int argc, char** argv)
 {
-    // WHY InitGoogleMock より前に判定するか: Init は認識したフラグを argv から取り除く。
-    //     後で見ると --gtest_list_tests が消えていて、ビルド中の列挙で入力待ちに入る。
+    /// @note InitGoogleMock より前に判定する。Init は認識したフラグを argv から取り除くため、後で見ると --gtest_list_tests が消えていて列挙中に入力待ちへ入る。
     const bool automated = fbzz::testkit::IsAutomatedRun(argc, argv);
 
     bool ownsConsole = false;
     if (automated) {
-        // 人が居ない実行では «押されるまで消えないダイアログ» が即ハングになる。
-        // 1 件の assert / クラッシュで残り全部が走らなくなるのを防ぐ。
+        /// @note 人が居ない実行では «押されるまで消えないダイアログ» が即ハングになる。
+        ///       1 件の assert / クラッシュで残り全部が走らなくなるのを防ぐ。
         fbzz::testkit::SuppressBlockingErrorDialogs();
     } else {
         ownsConsole = fbzz::testkit::EnsureConsole();
     }
 
-    // InitGoogleMock は内部で InitGoogleTest も呼ぶ。--gtest_* / --gmock_* の両方が効く。
+    /// @note InitGoogleMock は内部で InitGoogleTest も呼ぶ。--gtest_* / --gmock_* の両方が効く。
     ::testing::InitGoogleMock(&argc, argv);
 
-    // EXPECT_CALL を一つも書いていないメソッドが呼ばれたら «警告» ではなく «失敗» にする。
-    // WHY: 既定 (kWarn) では想定外の呼び出しが標準出力に流れるだけで CI は緑のまま通る。
-    //      素の mock を StrictMock と同じ扱いにし、緩めたいテストだけ NiceMock<> を明示させる
-    //      (Docs/conventions/test.md «GoogleMock を使う基準»)。
-    GMOCK_FLAG_SET(default_mock_behavior, 2); // 0=kAllow, 1=kWarn, 2=kFail
+    /// @note EXPECT_CALL を書いていないメソッドが呼ばれたら «警告» でなく «失敗» にする。既定 (kWarn) だと想定外の呼び出しが標準出力に流れるだけで CI は緑のまま通る。
+    /// @note 素の mock を StrictMock と同じ扱いにし、緩めたいテストだけ NiceMock<> を明示させる (Docs/conventions/test.md «GoogleMock を使う基準»)。
+    /// @note 0=kAllow, 1=kWarn, 2=kFail
+    GMOCK_FLAG_SET(default_mock_behavior, 2);
 
     const int result = RUN_ALL_TESTS();
 
-    // 自分で作ったコンソールは終了と同時に消える。読む前に閉じさせない。
+    /// @note 自分で作ったコンソールは終了と同時に消える。読む前に閉じさせない。
     if (ownsConsole) {
         std::printf("\n===== %s =====\n", result == 0 ? "すべて成功" : "失敗あり");
         fbzz::testkit::WaitForKey();

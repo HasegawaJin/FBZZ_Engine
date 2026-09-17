@@ -30,7 +30,7 @@ class ProbeScript final : public scene::Script {};
 /// GameObject へ繋がっていないプロキシ。スクリプトが «居ない相手» を触った状態。
 class DetachedTransformProxyTest : public testkit::EngineFixture {
 protected:
-    scene::ScriptTransformProxy transform{};   // script == nullptr
+    scene::ScriptTransformProxy transform{};   ///< script == nullptr
 };
 
 TEST_F(DetachedTransformProxyTest, ResolvesToNothing)
@@ -41,8 +41,8 @@ TEST_F(DetachedTransformProxyTest, ResolvesToNothing)
 
 TEST_F(DetachedTransformProxyTest, ReadsBackNeutralValues)
 {
-    // 「0 と単位元」を返す契約。ここで未初期化のゴミを返すと、呼び出し側の
-    // 座標計算が NaN になって描画が丸ごと消える。
+    /// @note 「0 と単位元」を返す契約。ここで未初期化のゴミを返すと、呼び出し側の
+    ///       座標計算が NaN になって描画が丸ごと消える。
     EXPECT_VEC3_NEAR(transform.position, math::Vector3::ZERO, testkit::kTolerance);
     EXPECT_VEC3_NEAR(transform.worldPosition, math::Vector3::ZERO, testkit::kTolerance);
     EXPECT_VEC3_NEAR(transform.scale, math::Vector3::ONE, testkit::kTolerance);
@@ -59,7 +59,7 @@ TEST_F(DetachedTransformProxyTest, ReadsBackTheWorldBasisAsTheIdentityAxes)
 
 TEST_F(DetachedTransformProxyTest, SwallowsEveryWrite)
 {
-    // 書き込みは «何も起きない» のが正。スクリプト側に null チェックを強制しない。
+    /// @note 書き込みは «何も起きない» のが正。スクリプト側に null チェックを強制しない。
     transform.position      = { 1.0f, 2.0f, 3.0f };
     transform.worldPosition = { 4.0f, 5.0f, 6.0f };
     transform.scale         = { 2.0f, 2.0f, 2.0f };
@@ -95,7 +95,7 @@ protected:
     scene::ScriptTransformProxy transform{};
 };
 
-// --- ローカル / ワールドの割り当て ------------------------------------------
+/// @name ローカル / ワールドの割り当て
 
 TEST_F(TransformProxyTest, WritesAndReadsTheLocalTransform)
 {
@@ -110,8 +110,8 @@ TEST_F(TransformProxyTest, WritesAndReadsTheLocalTransform)
 
 TEST_F(TransformProxyTest, KeepsTheLocalAndWorldPositionSeparate)
 {
-    // position はローカル、worldPosition はワールド。TransformSystem が後者を毎フレーム
-    // 作り直すので、片方に書いてもう片方が動いたら、親子付けした瞬間に破綻する。
+    /// @note position はローカル、worldPosition はワールド。TransformSystem が後者を毎フレーム
+    ///       作り直すので、片方に書いてもう片方が動いたら、親子付けした瞬間に破綻する。
     m_object.transform.worldPosition = { 10.0f, 0.0f, 0.0f };
 
     transform.position = { 1.0f, 0.0f, 0.0f };
@@ -122,7 +122,7 @@ TEST_F(TransformProxyTest, KeepsTheLocalAndWorldPositionSeparate)
 
 TEST_F(TransformProxyTest, WritesTheWorldPositionThrough)
 {
-    // 物理 / IK が «ワールドで置き直す» ための口。
+    /// @note 物理 / IK が «ワールドで置き直す» ための口。
     transform.worldPosition = { 4.0f, 5.0f, 6.0f };
 
     EXPECT_VEC3_NEAR(m_object.transform.worldPosition, math::Vector3(4.0f, 5.0f, 6.0f),
@@ -131,7 +131,7 @@ TEST_F(TransformProxyTest, WritesTheWorldPositionThrough)
 
 TEST_F(TransformProxyTest, DerivesTheBasisFromTheWorldRotation)
 {
-    // forward / up / right はローカル回転ではなくワールド回転から作る。
+    /// @note forward / up / right はローカル回転ではなくワールド回転から作る。
     m_object.transform.worldRotation =
         math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(90.0f));
 
@@ -148,12 +148,12 @@ TEST_F(TransformProxyTest, BasisVectorsStayUnitLength)
     EXPECT_UNIT_LENGTH(transform.right, testkit::kLooseTolerance);
 }
 
-// --- Translate --------------------------------------------------------------
+/// @name Translate
 
 TEST_F(TransformProxyTest, TranslatesAlongTheObjectsOwnAxes)
 {
-    // 既定はローカル空間。«前へ 1 進む» が向きに従わないと、キャラクターが
-    // 常にワールド +Z へ滑る。
+    /// @note 既定はローカル空間。«前へ 1 進む» が向きに従わないと、キャラクターが
+    ///       常にワールド +Z へ滑る。
     m_object.transform.rotation =
         math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(90.0f));
 
@@ -172,11 +172,11 @@ TEST_F(TransformProxyTest, TranslateAccumulatesOntoTheCurrentPosition)
     EXPECT_VEC3_NEAR(transform.position, math::Vector3(1.0f, 4.0f, 0.0f), testkit::kTolerance);
 }
 
-// --- Rotate -----------------------------------------------------------------
+/// @name Rotate
 
 TEST_F(TransformProxyTest, RotateTakesDegrees)
 {
-    // ラジアンで解釈していると 90 が 1 回転以上になり、«少しだけ回る» はずが暴れる。
+    /// @note ラジアンで解釈していると 90 が 1 回転以上になり、«少しだけ回る» はずが暴れる。
     transform.Rotate(math::Vector3::UP, 90.0f);
 
     EXPECT_QUAT_NEAR(m_object.transform.rotation,
@@ -203,8 +203,8 @@ TEST_F(TransformProxyTest, RotateNormalisesTheResult)
 
 TEST_F(TransformProxyTest, RotateIgnoresADegenerateAxis)
 {
-    // 長さ 0 の軸は Normalized() の契約違反になる。回転させずに素通しし、
-    // スクリプトの引数ミスが姿勢を壊さないようにするための門。
+    /// @note 長さ 0 の軸は Normalized() の契約違反になる。回転させずに素通しし、
+    ///       スクリプトの引数ミスが姿勢を壊さないようにするための門。
     const math::Quaternion before = m_object.transform.rotation;
 
     transform.Rotate(math::Vector3::ZERO, 90.0f);
@@ -221,12 +221,12 @@ TEST_F(TransformProxyTest, RotateAcceptsAnUnnormalisedAxis)
                      testkit::kLooseTolerance);
 }
 
-// --- LookAt -----------------------------------------------------------------
+/// @name LookAt
 
 TEST_F(TransformProxyTest, LookAtPointsTheForwardAxisAtTheTarget)
 {
     transform.LookAt({ 10.0f, 0.0f, 0.0f });
-    // ルート (親なし) では local == world。基底を作り直して向きを確かめる。
+    /// @note ルート (親なし) では local == world。基底を作り直して向きを確かめる。
     m_object.transform.worldRotation = m_object.transform.rotation;
 
     EXPECT_VEC3_NEAR(transform.forward, math::Vector3::RIGHT, testkit::kLooseTolerance);
@@ -234,7 +234,7 @@ TEST_F(TransformProxyTest, LookAtPointsTheForwardAxisAtTheTarget)
 
 TEST_F(TransformProxyTest, LookAtIgnoresATargetAtItsOwnPosition)
 {
-    // 追従対象と重なるのは普通に起きる。向きが決まらないだけで、落としてはいけない。
+    /// @note 追従対象と重なるのは普通に起きる。向きが決まらないだけで、落としてはいけない。
     const math::Quaternion before = m_object.transform.rotation;
 
     transform.LookAt(m_object.transform.worldPosition);
@@ -242,7 +242,7 @@ TEST_F(TransformProxyTest, LookAtIgnoresATargetAtItsOwnPosition)
     EXPECT_QUAT_NEAR(m_object.transform.rotation, before, testkit::kTolerance);
 }
 
-// --- 他オブジェクトとの関係 -------------------------------------------------
+/// @name 他オブジェクトとの関係
 
 TEST_F(TransformProxyTest, MeasuresDistanceInWorldSpace)
 {
@@ -263,7 +263,7 @@ TEST_F(TransformProxyTest, PointsTowardsAnotherObjectWithAUnitVector)
 
 TEST_F(TransformProxyTest, HasNoDirectionTowardsAnOverlappingObject)
 {
-    // 距離 0 は追跡や射撃で普通に通る。正規化で落とさず «方向なし» を返す。
+    /// @note 距離 0 は追跡や射撃で普通に通る。正規化で落とさず «方向なし» を返す。
     scene::GameObject other;
     other.transform.worldPosition = m_object.transform.worldPosition;
 

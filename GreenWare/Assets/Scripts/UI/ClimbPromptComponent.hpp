@@ -3,30 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// WHY 案内が要るか:
-///   登れる条件は «ボスが倒れている» かつ «脚の足から 3.6m 以内» の 2 つで、
-///   どちらも画面には出ていない。転倒は絵で分かるが «もう届く距離か» は分からず、
-///   専用キーなので «とりあえず押してみる» も起きない。窓は転倒の数秒しかないので、
-///   届いた瞬間に言わないと、そのまま起き上がられる。
-///
-/// WHY 条件を自分で測らないか:
-///   押せるかどうかを決めているのは PlayerClimbComponent で、間合いもあちらの値。
-///   ここで測り直すと、間合いを変えたときに «出ているのに登れない» が生まれる。
-///   聞くのは CanMount() ただ 1 つ。
-///
-/// WHY 出し入れを «透明度» でやるか (SetActive だけにしないか):
-///   取り付ける距離の縁を歩くと、フレームごとに出たり消えたりする。
-///   立ち上がりと消えに時間を持たせれば、縁で滲むだけで点滅にはならない。
-///
-/// シーン側に要るもの: Canvas の下に UIImage 1 つと UIText 1 つ。
-///   名前は iconName / labelName で指す。位置と大きさはここが毎フレーム決めるので、
-///   シーンの値は仮でよい (UiHintBarComponent と同じ約束)。
+/// @note 登れる判定は PlayerClimbComponent::CanMount() に一任する (間合いの二重管理を避ける)。
+/// @note 出し入れは SetActive でなく透明度でフェードする (境界の出入りで点滅させないため)。
+/// @note 要 Canvas 配下: iconName の UIImage と labelName の UIText。位置・大きさは毎フレームここが決める。
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/GameObject.hpp>
-// WHY Scene.hpp まで要るか: GetScript の template 本体は Scene.hpp の末尾にある
-//     (GameObject.hpp では Scene が前方宣言しかされていない)。
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
@@ -38,6 +21,8 @@
 #include <string>
 #include <string_view>
 
+/// @note Scene.hpp が要る: GetScript の template 本体は Scene.hpp の末尾にあり、
+///       GameObject.hpp では Scene が前方宣言のみのため解決できない。
 using namespace fbzz::scene;
 using namespace fbzz::math;
 using fbzz::Time;
@@ -111,7 +96,8 @@ inline void ClimbPromptComponent::OnStart()
     m_icon = {}; m_label = {};
     m_reveal = 0.0f;
     m_padKnown = false;
-    m_shown = true;          // 最初の 1 回は必ず «畳む» を書かせる
+    /// @note 最初の 1 回は必ず «畳む» を書かせる
+    m_shown = true;
     debugCanMount = false;
     debugReveal   = 0.0f;
 }
@@ -152,8 +138,8 @@ inline void ClimbPromptComponent::Layout(float reveal)
     }
     if (!show) return;
 
-    // 入力機器が替わったときだけ絵を貼り直す。毎フレーム貼るとテクスチャの
-    // 引き直しが入り、案内 1 つのために毎フレームアセットを触ることになる。
+    /// @note 入力機器が替わったときだけ絵を貼り直す。毎フレーム貼るとテクスチャの
+    ///       引き直しが入り、案内 1 つのために毎フレームアセットを触ることになる。
     const bool pad = UsingPad();
     if (!m_padKnown || pad != m_pad) {
         m_pad = pad;
@@ -166,13 +152,13 @@ inline void ClimbPromptComponent::Layout(float reveal)
     const float alpha = uimotion::OutQuint(Clamp01(reveal * 1.25f));
     const float y     = baseY + std::max(lift, 0.0f) * (1.0f - ease);
 
-    // 文字の幅は実測 (transform.scale.x)。まだ測れていないフレームは字数から
-    // 見積もる ─ 1 フレームだけ中心がずれるが、次で直る (UiHintBar と同じ)。
+    /// @note 文字の幅は実測 (transform.scale.x)。まだ測れていないフレームは字数から
+    ///       見積もる ─ 1 フレームだけ中心がずれるが、次で直る (UiHintBar と同じ)。
     float textW = text->transform.scale.x;
     if (textW <= 1.0f)
         textW = fontSize * static_cast<float>(label.size() / 3 + 1);
 
-    // アイコンと文字を «対» として中央へ寄せる。
+    /// @note アイコンと文字を «対» として中央へ寄せる。
     const float total = iconSize + std::max(gap, 0.0f) + textW;
     const float left  = centerX - total * 0.5f;
 
@@ -195,8 +181,8 @@ inline void ClimbPromptComponent::OnUpdate()
     debugCanMount = can;
 
     const float seconds = can ? std::max(fadeInSeconds, 0.0f) : std::max(fadeOutSeconds, 0.0f);
-    // 尺が 0 なら即座に振り切る。割り算を避けるためだけの分岐ではなく、
-    // «演出を切る» を Inspector から選べるようにするため。
+    /// @note 尺が 0 なら即座に振り切る。割り算を避けるためだけの分岐ではなく、
+    ///       «演出を切る» を Inspector から選べるようにするため。
     if (seconds <= 0.0f) m_reveal = can ? 1.0f : 0.0f;
     else                 m_reveal = Clamp01(m_reveal + (can ? dt : -dt) / seconds);
     debugReveal = m_reveal;

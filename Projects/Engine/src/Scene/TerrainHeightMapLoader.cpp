@@ -8,7 +8,8 @@
 /// 2. R32_FLOAT に変換（グレースケール・カラー問わず R チャンネルを使用）
 /// 3. 地形サイズと異なる場合は三次補間でリサイズ
 /// 4. 画素値 [0, 1] を heightData の正規化モードに応じてマッピング
-#pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
+/// @note DirectXTex の WIC コーデックに ole32.lib (COM 初期化) が要る。
+#pragma comment(lib, "ole32.lib")
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -25,12 +26,12 @@ bool LoadHeightMapFromFile(
     TerrainComponent&  terrain,
     bool               unipolar)
 {
-    // ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
+    /// @note ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
     std::string sourcePath;
     if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) return false;
     const std::wstring wpath = util::StringUtils::ToWide(sourcePath);
 
-    // 1. 拡張子でローダーを選択
+    /// @note 1. 拡張子でローダーを選択
     DirectX::ScratchImage image;
     HRESULT hr;
     if (sourcePath.ends_with(".dds") || sourcePath.ends_with(".DDS"))
@@ -42,10 +43,10 @@ bool LoadHeightMapFromFile(
 
     if (FAILED(hr)) return false;
 
-    // 2. R32_FLOAT に変換する。
-    //    グレースケール PNG (R8_UNORM / R16_UNORM) もカラー PNG (R8G8B8A8) も
-    //    R チャンネルをそのまま使用する。ハイトマップは通常グレースケールで用意するため
-    //    R=G=B が等しく、R チャンネルだけ取れば十分。
+    /// @note 2. R32_FLOAT に変換する。
+    ///       グレースケール PNG (R8_UNORM / R16_UNORM) もカラー PNG (R8G8B8A8) も
+    ///       R チャンネルをそのまま使用する。ハイトマップは通常グレースケールで用意するため
+    ///       R=G=B が等しく、R チャンネルだけ取れば十分。
     DirectX::ScratchImage converted;
     hr = DirectX::Convert(
         *image.GetImage(0, 0, 0),
@@ -55,7 +56,7 @@ bool LoadHeightMapFromFile(
         converted);
     if (FAILED(hr)) return false;
 
-    // 3. 地形サイズに合わせてリサイズ（三次補間）
+    /// @note 3. 地形サイズに合わせてリサイズ（三次補間）
     const DirectX::Image* src = converted.GetImage(0, 0, 0);
     DirectX::ScratchImage resized;
     const size_t targetW = static_cast<size_t>(terrain.columns);
@@ -66,7 +67,7 @@ bool LoadHeightMapFromFile(
         src = resized.GetImage(0, 0, 0);
     }
 
-    // 4. 画素値 → heightData にマッピング
+    /// @note 4. 画素値 → heightData にマッピング
     const float* pixels = reinterpret_cast<const float*>(src->pixels);
     const size_t count  = targetW * targetH;
     terrain.heightData.resize(count);

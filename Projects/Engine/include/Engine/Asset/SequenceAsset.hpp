@@ -82,13 +82,10 @@ struct SequenceEventKey {
 };
 
 /// 1 つの binding キーに対する 1 系統の変化。
-///
-/// WHY 種別ごとの派生型にせず 1 つの struct へ畳むか:
-///   トラックは 7 種しかなく、増える見込みも小さい。派生型にすると
-///   vector<unique_ptr<Track>> になり、アセットのコピー・保存・Editor の
-///   並べ替えがすべてポインタ経由になる。型ごとの分岐はどのみち評価側に
-///   1 か所必要なので、データを平たく持ったほうが読む場所が減る。
-///   type が選ばなかった種別のフィールドは、常に空のまま使わない。
+/// @note トラックは 7 種しかなく増える見込みも小さいため、種別ごとの派生型にせず 1 つの struct
+///       へ畳んだ。派生型にすると `vector<unique_ptr<Track>>` になりコピー・保存・Editor の
+///       並べ替えがすべてポインタ経由になる。型ごとの分岐はどのみち評価側に 1 か所必要なので、
+///       データを平たく持つほうが読む場所が減る。type が選ばなかった種別のフィールドは常に空。
 struct SequenceTrack {
     SequenceTrackType type = SequenceTrackType::Event;
     std::string       name;          ///< 表示名 (エディタのみ)
@@ -97,32 +94,46 @@ struct SequenceTrack {
     /// 触った値を停止時に戻すか。Audio / VFX / Event は戻せないので無視される。
     bool              restoreOnStop = true;
 
-    // --- Animation ---
+    /// @name Animation
+    /// @{
     std::string                        layerName = "Base";
     std::vector<SequenceAnimationClip> animationClips;   ///< start 昇順・重なりなし
+    /// @}
 
-    // --- Transform ---
+    /// @name Transform
+    /// @{
     SequenceTransformSpace      space  = SequenceTransformSpace::Local;
     AnimInterp                  interp = AnimInterp::Cubic;
     std::vector<VectorKey>      positions;
     std::vector<QuaternionKey>  rotations;
     std::vector<VectorKey>      scales;
+    /// @}
 
-    // --- Property ---
+    /// @name Property
+    /// @{
     /// targetPath は使わず binding で解決する。それ以外は .anim と同じ意味。
     PropertyAnimationTrack property;
+    /// @}
 
-    // --- Activation ---
+    /// @name Activation
+    /// @{
     std::vector<SequenceRange> ranges;
+    /// @}
 
-    // --- Audio ---
+    /// @name Audio
+    /// @{
     std::vector<SequenceAudioClip> audioClips;
+    /// @}
 
-    // --- VFX ---
+    /// @name VFX
+    /// @{
     std::vector<SequenceVfxClip> vfxClips;
+    /// @}
 
-    // --- Event ---
+    /// @name Event
+    /// @{
     std::vector<SequenceEventKey> eventKeys;
+    /// @}
 };
 
 /// 演出 1 本。シーンを知らないので、別のシーンでも同じものを再生できる。

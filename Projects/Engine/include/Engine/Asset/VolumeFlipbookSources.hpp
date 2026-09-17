@@ -139,7 +139,8 @@ void RegisterVolumeSource(VolumeSourceDesc desc);
 /// カメラ・解像度・出力先は触らない。
 void ApplyVolumeSourceLook(VolumeFlipbookBakeSettings& settings);
 
-// ---- ソースを書くための道具 -------------------------------------------------
+/// @name ソースを書くための道具
+/// @{
 
 /// 決定的な乱数 [0,1)。seed・index・channel が同じなら常に同じ値。
 [[nodiscard]] float VolumeHash01(std::uint32_t seed, std::uint32_t index, std::uint32_t channel);
@@ -158,5 +159,6 @@ void AppendPeriodicVolumePuffs(const VolumeSourceSettings& settings, const Volum
                                float period, float maxLifetime,
                                const std::function<VolumePuff(std::uint32_t variant, float birthTime)>& make,
                                std::vector<VolumePuff>& out);
+/// @}
 
 } // namespace fbzz::asset
