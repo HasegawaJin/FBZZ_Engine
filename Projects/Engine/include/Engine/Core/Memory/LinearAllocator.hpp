@@ -12,8 +12,8 @@
 
 namespace fbzz::core {
 
-// Allocate のたびに末尾を進め、Reset で先頭へ戻すアロケータ。
-// WHY: 一時メモリでは個別 Free の管理コストが不要で、一括再利用により断片化を避けられる。
+/// @brief Allocate のたびに末尾を進め、Reset で先頭へ戻すアロケータ。
+/// @note 一時メモリでは個別 Free の管理コストが不要で、一括再利用により断片化を避けられる。
 class LinearAllocator final : public Allocator {
 public:
     LinearAllocator() = default;

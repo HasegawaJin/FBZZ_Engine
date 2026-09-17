@@ -48,9 +48,8 @@ private:
     std::uint64_t m_state;
 };
 
-/// 固定刻みで step を frames 回呼ぶ。
-/// WHY: 各テストが自前の for ループを書くと dt の既定値がばらつき、
-///      «あのテストだけ 1/30 で回っていた» という差が後から効いてくる。
+/// @brief 固定刻みで step を frames 回呼ぶ。
+/// @note 各テストが自前の for ループを書くと dt の既定値がばらつき «あのテストだけ 1/30 で回っていた» という差が後から効いてくる。
 template <typename StepFn>
 void StepFixed(StepFn&& step, int frames, float dt = kFixedDeltaTime)
 {

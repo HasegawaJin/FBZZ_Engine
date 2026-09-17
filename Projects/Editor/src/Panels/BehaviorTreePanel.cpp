@@ -5,8 +5,6 @@
 #include <Editor/Panels/BehaviorTreePanel.hpp>
 
 #include <Editor/EditorContext.hpp>
-// NOTE: GraphLayoutAlgo / GraphSubgraphOps への直接依存は BehaviorTreeOps へ移った
-//       (整列・部分木抽出はそちらが呼ぶ)。
 #include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -29,40 +27,43 @@
 namespace fbzz::editor {
 namespace {
 
-// ノード本体の最小幅 [論理px]。
-// WHY 幅を揃えるか: ImNodes のノード幅は中身の最大幅でしか決まらないため、
-//     何もしないと "Selector" のような短い名前のノードだけ極端に細くなり、
-//     木の構造ではなく文字数でノードの大きさが決まってしまう。優先度で並ぶ
-//     BT は「兄弟が同じ大きさで縦に並ぶ」ことが読みやすさの前提なので下限を張る。
-//     値は AnimationGraphPanel の State ノード (本文 "Parameters: X / Y" 相当で
-//     およそ 200px) に合わせ、同じエディタ内でノードの大きさの感覚を統一する。
+/// @note GraphLayoutAlgo / GraphSubgraphOps への直接依存は BehaviorTreeOps へ移った
+///       (整列・部分木抽出はそちらが呼ぶ)。
+
+/// ノード本体の最小幅 [論理px]。
+/// @note ImNodes は中身の最大幅でしか幅を決めないため、下限が無いと "Selector" のような
+///       短い名前のノードだけ極端に細くなる。兄弟が同じ大きさで並ぶことが BT の読みやすさの前提。
+///       AnimationGraphPanel の State ノード (~200px) に合わせ、エディタ間で感覚を揃える。
 constexpr float NODE_MIN_WIDTH = 196.0f;
 
-// 深さ 1 段ぶんの横間隔。ノード幅より僅かに広いだけだとリンクが隣のノードへ
-// 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
-// AutoLayout と「Add Child」の初期配置が同じ値を使うので、手で足した子も列が揃う。
-constexpr float NODE_COLUMN_STEP = NODE_MIN_WIDTH + 104.0f;   // 300: テンプレートの手置き座標と一致
+/// 深さ 1 段ぶんの横間隔。ノード幅より僅かに広いだけだとリンクが隣のノードへ
+/// 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
+/// AutoLayout と「Add Child」の初期配置が同じ値を使うので、手で足した子も列が揃う。
+constexpr float NODE_COLUMN_STEP = NODE_MIN_WIDTH + 104.0f;   ///< 300: テンプレートの手置き座標と一致
 
-// ピンの色。AnimationGraphPanel の State ノードと同じ配色にして、
-// 「青が入力・橙が出力」という読み方をエディタ全体で共通にする。
+/// ピンの色。AnimationGraphPanel の State ノードと同じ配色にして、
+/// 「青が入力・橙が出力」という読み方をエディタ全体で共通にする。
 constexpr ImU32 PIN_IN_COLOR          = IM_COL32(82, 164, 255, 255);
 constexpr ImU32 PIN_IN_HOVERED_COLOR  = IM_COL32(132, 210, 255, 255);
 constexpr ImU32 PIN_OUT_COLOR         = IM_COL32(255, 156, 72, 255);
 constexpr ImU32 PIN_OUT_HOVERED_COLOR = IM_COL32(255, 202, 118, 255);
 
-// ノード種別の系統ごとの色。タイトル帯 = 静的な状態、という共通規約に従う。
-// WHY 系統で色を分けるか: BT は「どこが分岐でどこが行動か」が読めれば構造が判る。
-//     種別ごとに全部違う色にすると、色の意味が覚えられず飾りになる。
+/// ノード種別の系統ごとの色。タイトル帯 = 静的な状態、という共通規約に従う。
+/// @note 系統だけで色分けする: BT は分岐か行動かが読めれば構造が判る。全種別を別色にすると意味を覚えられず飾りになる。
 ImU32 TitleColorOf(fbzz::ai::BTNodeType type)
 {
-    if (fbzz::ai::BTNodeIsComposite(type)) return IM_COL32(58, 92, 138, 255);  // 青系: 分岐
-    if (fbzz::ai::BTNodeIsDecorator(type)) return IM_COL32(112, 82, 140, 255); // 紫系: 修飾
-    if (fbzz::ai::BTNodeIsPureCondition(type)) return IM_COL32(126, 104, 46, 255); // 黄系: 条件
-    return IM_COL32(52, 106, 82, 255);                                   // 緑系: 行動
+    /// @note 青系: 分岐
+    if (fbzz::ai::BTNodeIsComposite(type)) return IM_COL32(58, 92, 138, 255);
+    /// @note 紫系: 修飾
+    if (fbzz::ai::BTNodeIsDecorator(type)) return IM_COL32(112, 82, 140, 255);
+    /// @note 黄系: 条件
+    if (fbzz::ai::BTNodeIsPureCondition(type)) return IM_COL32(126, 104, 46, 255);
+    /// @note 緑系: 行動
+    return IM_COL32(52, 106, 82, 255);
 }
 
-// 系統名。AnimationGraphPanel が本体の 1 行目へ StateMode を出すのと同じ役割で、
-// タイトル帯の色が何を意味していたのかを文字でも読めるようにする。
+/// 系統名。AnimationGraphPanel が本体の 1 行目へ StateMode を出すのと同じ役割で、
+/// タイトル帯の色が何を意味していたのかを文字でも読めるようにする。
 const char* CategoryNameOf(fbzz::ai::BTNodeType type)
 {
     if (fbzz::ai::BTNodeIsComposite(type)) return "COMPOSITE";
@@ -71,7 +72,7 @@ const char* CategoryNameOf(fbzz::ai::BTNodeType type)
     return "ACTION";
 }
 
-// TitleColorOf と同じ系統のまま、帯の上で文字として読める明度へ持ち上げた色。
+/// TitleColorOf と同じ系統のまま、帯の上で文字として読める明度へ持ち上げた色。
 ImVec4 CategoryTextColorOf(fbzz::ai::BTNodeType type)
 {
     if (fbzz::ai::BTNodeIsComposite(type)) return { 0.55f, 0.76f, 1.00f, 1.0f };
@@ -80,13 +81,16 @@ ImVec4 CategoryTextColorOf(fbzz::ai::BTNodeType type)
     return { 0.53f, 0.90f, 0.68f, 1.0f };
 }
 
-// 実行状態の色。背景 = 実行中の状態、という共通規約に従う。
+/// 実行状態の色。背景 = 実行中の状態、という共通規約に従う。
 ImU32 StatusBackgroundOf(std::uint8_t status)
 {
     switch (status) {
-    case 1:  return IM_COL32(34, 74, 48, 255);   // Success
-    case 2:  return IM_COL32(78, 40, 40, 255);   // Failure
-    case 3:  return IM_COL32(30, 66, 96, 255);   // Running
+    /// @note Success
+    case 1:  return IM_COL32(34, 74, 48, 255);
+    /// @note Failure
+    case 2:  return IM_COL32(78, 40, 40, 255);
+    /// @note Running
+    case 3:  return IM_COL32(30, 66, 96, 255);
     default: return 0;
     }
 }
@@ -102,12 +106,9 @@ const char* AbortModeName(fbzz::ai::AbortMode mode)
     return "None";
 }
 
-// NOTE: ChildrenOf / IsDescendant と、追加・削除・親付け・複製の実体は
-//       Editor/GraphEditor/BehaviorTreeOps.hpp へ移した。
-//       WHY: 同じ規則が AI の EditorBusDispatcher にも手で書かれており、
-//            向こうには「Editor の TryReparent と同じ規則で食い違いを作らない」
-//            というコメントまであった = 手で揃え続けていた。実際に文言は既にずれていた。
-//       Docs/design/editor-operator-model.md
+/// @note ChildrenOf / IsDescendant と、追加・削除・親付け・複製の実体は `BehaviorTreeOps.hpp` へ移した。
+///       EditorBusDispatcher にも同じ規則が手書きで複製されており、Editor の TryReparent と
+///       食い違わないよう手で揃え続けていたが、実際には文言が既にずれていた。
 using btops::ChildrenOf;
 using btops::IsDescendant;
 
@@ -122,8 +123,8 @@ bool BehaviorTreePanel::LoadTree(const std::string& path)
 {
     fbzz::ai::BehaviorTreeAsset loaded;
     std::string error;
-    // Parse 側を使う。壊れた木でもエディタで開いて直せなければ、
-    // 直す手段が TOML の手書きしか無くなる (Validate 済みしか開けない設計にしない)。
+    /// @note Parse 側を使う。壊れた木でもエディタで開いて直せなければ、
+    ///       直す手段が TOML の手書きしか無くなる (Validate 済みしか開けない設計にしない)。
     if (!fbzz::ai::ParseBehaviorTreeAsset(path, loaded, &error)) {
         m_error = error.empty() ? "Behavior Tree を読み込めませんでした: " + path : error;
         return false;
@@ -150,8 +151,8 @@ bool BehaviorTreePanel::SaveTree()
     if (m_path.empty()) return false;
     std::string error;
     if (!fbzz::ai::SaveBehaviorTreeAsset(m_path, m_asset, &error)) {
-        // 保存を拒否されたら理由を原因ノードごと光らせる。木のどこが悪いのか
-        // メッセージだけで探させると、20 ノードを超えた時点で追えなくなる。
+        /// @note 保存を拒否されたら理由を原因ノードごと光らせる。木のどこが悪いのか
+        ///       メッセージだけで探させると、20 ノードを超えた時点で追えなくなる。
         m_error = error;
         m_graphCanvas.ReportError(error, {});
         return false;
@@ -207,9 +208,9 @@ void BehaviorTreePanel::RefreshValidation()
 }
 
 
-// 木の不変条件を保ったまま親を張り替える。
-// 検査規則は AI (bt.node.setParent) と共有する — 「AI からは繋げるが UI では弾かれる」
-// という食い違いを作らないため。
+/// 木の不変条件を保ったまま親を張り替える。
+/// 検査規則は AI (bt.node.setParent) と共有する — 「AI からは繋げるが UI では弾かれる」
+/// という食い違いを作らないため。
 std::string BehaviorTreePanel::TryReparent(int childId, int newParentId)
 {
     return btops::TryReparentNode(m_asset, childId, newParentId);
@@ -219,8 +220,8 @@ std::string BehaviorTreePanel::TryReparent(int childId, int newParentId)
 void BehaviorTreePanel::AddNode(fbzz::ai::BTNodeType type, float gridX, float gridY, int parentId)
 {
     PushUndo();
-    // orphanOnReject=true: 対話的な編集なので、繋げなくてもノードは残す。
-    // 作った直後に消えると「追加できなかった」のか「見えていない」のか区別できない。
+    /// @note orphanOnReject=true: 対話的な編集なので、繋げなくてもノードは残す。
+    ///       作った直後に消えると「追加できなかった」のか「見えていない」のか区別できない。
     const btops::AddNodeResult added =
         btops::AddNode(m_asset, type, {}, parentId, gridX, gridY, /*orphanOnReject=*/true);
 
@@ -248,7 +249,7 @@ void BehaviorTreePanel::DeleteNode(int nodeId)
 
 void BehaviorTreePanel::DuplicateSubtree(int nodeId)
 {
-    // ルート複製の拒否は共有実装が判定する。PushUndo の前に一度試して弾く。
+    /// @note ルート複製の拒否は共有実装が判定する。PushUndo の前に一度試して弾く。
     const fbzz::ai::BTNodeDef* source = m_asset.FindNode(nodeId);
     if (source == nullptr) return;
     if (source->parentId == 0) {
@@ -275,9 +276,9 @@ void BehaviorTreePanel::AutoLayout()
 {
     if (m_asset.nodes.empty()) return;
     PushUndo();
-    // 間隔の定数ごと共有実装へ移した。移行前は Editor 側が NODE_COLUMN_STEP、
-    // AI 側が 300.0f 直書きで、たまたま同じ値であることに依存していた
-    // (ノード幅を変えた瞬間にずれる)。
+    /// @note 間隔の定数ごと共有実装へ移した。移行前は Editor 側が NODE_COLUMN_STEP、
+    ///       AI 側が 300.0f 直書きで、たまたま同じ値であることに依存していた
+    ///       (ノード幅を変えた瞬間にずれる)。
     btops::AutoLayout(m_asset);
     m_dirty = true;
     m_graphCanvas.RequestFrameAll();
@@ -288,9 +289,8 @@ const scene::BehaviorTreeComponent* BehaviorTreePanel::FindRuntime(EditorContext
 {
     if (ctx.activeScene == nullptr || m_path.empty()) return nullptr;
     const std::string normalized = NormalizeAssetPath(m_path);
-    // 「今開いている木を実際に走らせているエージェント」を 1 体だけ拾う。
-    // WHY 選択に限定しないか: Play 中にグラフを見たい理由は「なぜこの枝が選ばれたか」
-    //     であって、Hierarchy で選び直す手間を挟むと観察の流れが切れる。
+    /// @note 「今開いている木を実際に走らせているエージェント」を 1 体だけ拾う。選択に限定しないのは、
+    ///       Play 中に見たいのが「なぜこの枝が選ばれたか」であり、Hierarchy で選び直すと観察が途切れるため。
     for (scene::GameObject* gameObject :
          ctx.activeScene->FindObjectsOfType<scene::BehaviorTreeComponent>()) {
         if (gameObject == nullptr) continue;
@@ -309,8 +309,8 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
     (void)ctx;
     GraphView view;
 
-    // 実行状態を authoring id 単位へ写す。runtime は DFS 配列なので
-    // authoringIdOf を通さないと、どのノードが Running か対応が付かない。
+    /// @note 実行状態を authoring id 単位へ写す。runtime は DFS 配列なので
+    ///       authoringIdOf を通さないと、どのノードが Running か対応が付かない。
     std::unordered_map<int, std::uint8_t> statusOf;
     if (runtime != nullptr && runtime->runtime != nullptr) {
         const auto& ids = runtime->runtime->authoringIdOf;
@@ -325,7 +325,7 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
         item.position = ImVec2{ node.editorX, node.editorY };
         item.title = node.name.empty() ? fbzz::ai::BTNodeTypeName(node.type) : node.name;
         item.titleColor = TitleColorOf(node.type);
-        // 大きさと文字の階層は Animation の State ノードへ揃える。
+        /// @note 大きさと文字の階層は Animation の State ノードへ揃える。
         item.minWidth = NODE_MIN_WIDTH;
         item.titleFontScale = 1.05f;
         if (const auto found = statusOf.find(node.id); found != statusOf.end())
@@ -334,15 +334,14 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
             item.outlineColor = IM_COL32(240, 200, 90, 255);
             item.outlineThickness = 2.0f;
         }
-        // 検証警告のあるノードはタイトル帯を赤へ寄せる (静的な状態は帯、が共通規約)。
+        /// @note 検証警告のあるノードはタイトル帯を赤へ寄せる (静的な状態は帯、が共通規約)。
         const bool warned = std::any_of(m_warnings.begin(), m_warnings.end(),
             [&node](const fbzz::ai::BTWarning& warning) { return warning.nodeId == node.id; });
         if (warned) item.titleColor = IM_COL32(150, 74, 60, 255);
 
-        // ルート以外は入力ピンを持つ。子を持てない葉は出力ピンを持たない。
-        // WHY ラベルを付けるか: ImNodes のピン位置は「属性の矩形の縦中央」なので、
-        //     中身が空だと高さ 0 の行になり、ピンがタイトル帯や本文の境界へ貼り付く。
-        //     Animation の State ノードと同じく 1 行分の高さを持たせて位置を安定させる。
+        /// @note ルート以外は入力ピンを持つ。子を持てない葉は出力ピンを持たない。ラベル文字を入れるのは、
+        ///       ImNodes のピン位置が属性矩形の縦中央になるため: 空だと高さ 0 になりピンが境界へ貼り付く。
+        ///       Animation の State ノードと同じ 1 行分の高さを持たせて位置を安定させる。
         if (node.parentId != 0 || m_asset.nodes.size() > 1)
             item.inputs.push_back({ GraphIds::InputPin(node.id), "IN",
                                     PIN_IN_COLOR, PIN_IN_HOVERED_COLOR,
@@ -352,7 +351,7 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
                                      PIN_OUT_COLOR, PIN_OUT_HOVERED_COLOR,
                                      GraphPinShape::TriangleFilled });
 
-        // ノード本体は「優先度」と種別ごとの要点だけ。詳細は Inspector が持つ。
+        /// @note ノード本体は「優先度」と種別ごとの要点だけ。詳細は Inspector が持つ。
         const int order = node.order;
         const fbzz::ai::BTNodeType type = node.type;
         const std::string detail = [&node, type]() -> std::string {
@@ -360,8 +359,8 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
             case fbzz::ai::BTNodeType::Wait:
             case fbzz::ai::BTNodeType::Cooldown:
             case fbzz::ai::BTNodeType::TimeLimit: {
-                // std::to_string(float) は "2.000000" になり、ノードの幅を
-                // 意味のない桁で押し広げてしまう。表示は 2 桁で足りる。
+                /// @note std::to_string(float) は "2.000000" になり、ノードの幅を
+                ///       意味のない桁で押し広げてしまう。表示は 2 桁で足りる。
                 char buffer[32]{};
                 std::snprintf(buffer, sizeof(buffer), "%.2f s",
                               static_cast<double>(node.duration));
@@ -392,8 +391,8 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
         const int childCount = static_cast<int>(ChildrenOf(m_asset, node.id).size());
         const int maxChildren = fbzz::ai::BTNodeMaxChildren(node.type);
 
-        // タイトル帯は「名前 + 木の中での立場」。State ノードの [Current] / [Default]
-        // バッジと同じ役割で、ルートがどれかを一目で判るようにする。
+        /// @note タイトル帯は「名前 + 木の中での立場」。State ノードの [Current] / [Default]
+        ///       バッジと同じ役割で、ルートがどれかを一目で判るようにする。
         const bool isRoot = node.parentId == 0;
         const std::string titleText = item.title;
         item.drawTitle = [titleText, isRoot]() {
@@ -409,14 +408,14 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
             ImGui::TextUnformatted(fbzz::ai::BTNodeTypeName(type));
             if (!detail.empty()) ImGui::TextDisabled("%s", detail.c_str());
             ImGui::Spacing();
-            // 優先度は BT で最も重要な情報なので必ず出す。
+            /// @note 優先度は BT で最も重要な情報なので必ず出す。
             if (maxChildren == 0) {
                 ImGui::TextDisabled("priority %d | leaf", order);
             } else if (maxChildren < 0) {
                 ImGui::TextDisabled("priority %d | %d child%s", order, childCount,
                                     childCount == 1 ? "" : "ren");
             } else {
-                // 子数に上限がある種別は「あと何個繋げるか」まで出す。
+                /// @note 子数に上限がある種別は「あと何個繋げるか」まで出す。
                 ImGui::TextDisabled("priority %d | %d/%d child%s", order, childCount,
                                     maxChildren, maxChildren == 1 ? "" : "ren");
             }
@@ -425,18 +424,19 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
                                    abortText.c_str());
         };
 
-        // ノード幅を揃えた分、長い名前やキーは本体で切り詰まって見える。
-        // ホバーで全文を出し、Inspector を開かずに確認できるようにする。
+        /// @note ノード幅を揃えた分、長い名前やキーは本体で切り詰まって見える。
+        ///       ホバーで全文を出し、Inspector を開かずに確認できるようにする。
         item.tooltip = item.title + " (" + fbzz::ai::BTNodeTypeName(node.type) + ")";
         if (!detail.empty()) item.tooltip += "\n" + detail;
 
-        // 実行中は残り時間を進捗として出す。Wait / Cooldown / TimeLimit は
-        // 「止まっているのか待っているのか」が画面から区別できないため。
+        /// @note 実行中は残り時間を進捗として出す。Wait / Cooldown / TimeLimit は
+        ///       「止まっているのか待っているのか」が画面から区別できないため。
         if (const auto found = statusOf.find(node.id);
             found != statusOf.end() && found->second == 3
             && (type == fbzz::ai::BTNodeType::Wait || type == fbzz::ai::BTNodeType::TimeLimit)
             && node.duration > 0.0f) {
-            item.progress = 0.0f; // 実測値はランタイムが持たないため「実行中」だけを示す
+            /// @note 実測値はランタイムが持たないため「実行中」だけを示す
+            item.progress = 0.0f;
             item.progressColor = IM_COL32(120, 210, 255, 235);
         }
 
@@ -449,7 +449,7 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
         link.id = LinkIdOf(node.id);
         link.fromPin = GraphIds::OutputPin(node.parentId);
         link.toPin = GraphIds::InputPin(node.id);
-        // 実行中の枝を太くする。色だけだと、線が細いので遠目で追えない。
+        /// @note 実行中の枝を太くする。色だけだと、線が細いので遠目で追えない。
         if (const auto found = statusOf.find(node.id);
             found != statusOf.end() && found->second == 3) {
             link.color = IM_COL32(120, 210, 255, 235);
@@ -458,15 +458,13 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
         view.links.push_back(std::move(link));
     }
 
-    // 接続ドラッグ中に「繋げない親」を減光する。
-    // WHY ここで書けるか: 判定は木のルール (子数上限・循環・葉に子を付けない) で
-    //     ツールの知識だが、減光の描画は BeginNodeEditor の内側なので
-    //     キャンバスにしか書けない。判定だけを渡して描画は任せる。
+    /// @note 接続ドラッグ中に「繋げない親」を減光する。判定 (子数上限・循環・葉に子を付けない) はツールの知識だが、
+    ///       描画は BeginNodeEditor の内側でしか書けないため、判定だけをキャンバスへ渡し描画は任せる。
     view.linkDragFilter = [this](int fromPin, int toPin) {
         const int fromNode = GraphIds::NodeOfPin(fromPin);
         const int toNode = GraphIds::NodeOfPin(toPin);
         if (fromNode == 0 || toNode == 0) return false;
-        // 親ピン (出力) から掴んだか、子ピン (入力) から掴んだかで役割が入れ替わる。
+        /// @note 親ピン (出力) から掴んだか、子ピン (入力) から掴んだかで役割が入れ替わる。
         const int parentId = GraphIds::IsOutputPin(fromPin) ? fromNode : toNode;
         const int childId  = GraphIds::IsOutputPin(fromPin) ? toNode : fromNode;
         if (GraphIds::IsOutputPin(fromPin) == GraphIds::IsOutputPin(toPin)) return false;
@@ -492,7 +490,7 @@ void BehaviorTreePanel::ApplyInteraction(EditorContext& ctx, const GraphInteract
     if (interaction.selectionChanged)
         m_selectedNode = interaction.selectedNodes.empty() ? 0 : interaction.selectedNodes.front();
 
-    // 接続。キャンバスが持ち主のノード id まで返すので、ピンからの逆引きは不要。
+    /// @note 接続。キャンバスが持ち主のノード id まで返すので、ピンからの逆引きは不要。
     if (interaction.linkCreated) {
         const bool fromIsOutput = GraphIds::IsOutputPin(interaction.createdFromPin);
         const int parentId = fromIsOutput ? interaction.createdFromNode : interaction.createdToNode;
@@ -508,9 +506,8 @@ void BehaviorTreePanel::ApplyInteraction(EditorContext& ctx, const GraphInteract
         RefreshValidation();
     }
 
-    // リンクを切る = 親を外して孤立させる。
-    // WHY 消さないか: 枝を一時的に外して試す操作は BT の作業で頻繁に起きる。
-    //     切った瞬間にノードごと消えると、外して戻すだけで作り直しになる。
+    /// @note リンクを切る = 親を外して孤立させる (ノードは消さない)。枝を外して試す操作は頻繁に起きるため、
+    ///       切った瞬間に消えると外して戻すだけで作り直しになる。
     for (const int linkId : interaction.destroyedLinks) {
         fbzz::ai::BTNodeDef* child = m_asset.FindNode(linkId);
         if (child == nullptr || child->parentId == 0) continue;
@@ -534,7 +531,7 @@ void BehaviorTreePanel::ApplyInteraction(EditorContext& ctx, const GraphInteract
         ImGui::OpenPopup("##BTNodeMenu");
     }
 
-    // ノードの移動はレイアウトだけの変更。1 ドラッグを 1 Undo にまとめる。
+    /// @note ノードの移動はレイアウトだけの変更。1 ドラッグを 1 Undo にまとめる。
     if (interaction.dragStarted) PushUndo();
     for (const GraphNodeMove& move : interaction.movedNodes) {
         fbzz::ai::BTNodeDef* node = m_asset.FindNode(move.nodeId);
@@ -614,7 +611,7 @@ void BehaviorTreePanel::DrawValidationBanner()
         ImGui::PopStyleColor();
     }
     if (m_warnings.empty()) return;
-    // 警告は保存を止めないが、放置すると「動くが意図どおりでない」木になる。
+    /// @note 警告は保存を止めないが、放置すると「動くが意図どおりでない」木になる。
     if (!ImGui::CollapsingHeader((std::to_string(m_warnings.size()) + " warnings###BTWarn").c_str()))
         return;
     for (const auto& warning : m_warnings) {
@@ -663,8 +660,8 @@ void BehaviorTreePanel::DrawBlackboardSidebar()
         fbzz::ai::BlackboardDef& def = m_asset.blackboard[index];
         ImGui::PushID(static_cast<int>(index));
         if (def.reserved) {
-            // 予約キーは PerceptionSystem 等が固定添字で書き込む。改名・削除を許すと
-            // 実行時に別のキーへ書かれ、原因の判らない不具合になる。
+            /// @note 予約キーは PerceptionSystem 等が固定添字で書き込む。改名・削除を許すと
+            ///       実行時に別のキーへ書かれ、原因の判らない不具合になる。
             ImGui::TextDisabled("%s : %s (reserved)", def.name.c_str(),
                                 fbzz::ai::BlackboardTypeName(def.type));
         } else {
@@ -714,14 +711,14 @@ void BehaviorTreePanel::DrawInspector()
     ImGui::Separator();
     if (widgets::InputString("Name", node->name, 128)) m_dirty = true;
 
-    // order = 優先度。BT で最も重要な値なので必ず前面に出す。
+    /// @note order = 優先度。BT で最も重要な値なので必ず前面に出す。
     if (ImGui::InputInt("Priority (order)", &node->order)) m_dirty = true;
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("同じ親の中での左→右の順序。小さいほど先に評価されます。\n"
                           "Selector ではこれが「やりたいことの優先順位」そのものです。");
 
-    // abortMode は純粋条件にしか付けられない。理由まで出さないと、
-    // なぜグレーアウトしているのか判らない。
+    /// @note abortMode は純粋条件にしか付けられない。理由まで出さないと、
+    ///       なぜグレーアウトしているのか判らない。
     const bool pureCondition = fbzz::ai::BTNodeIsPureCondition(node->type)
                             || node->type == fbzz::ai::BTNodeType::BlackboardCondition;
     if (pureCondition) {
@@ -763,8 +760,8 @@ void BehaviorTreePanel::DrawInspector()
     case fbzz::ai::BTNodeType::BlackboardCondition:
     case fbzz::ai::BTNodeType::BlackboardCompare:
     case fbzz::ai::BTNodeType::SetBlackboard: {
-        // キーは実在するものから選ばせる。手打ちだと綴り違いが Compile 警告
-        // (実行時に効かない) という最も気づきにくい形で現れる。
+        /// @note キーは実在するものから選ばせる。手打ちだと綴り違いが Compile 警告
+        ///       (実行時に効かない) という最も気づきにくい形で現れる。
         std::vector<const char*> keys;
         int current = -1;
         for (std::size_t index = 0; index < m_asset.blackboard.size(); ++index) {
@@ -806,9 +803,8 @@ void BehaviorTreePanel::DrawInspector()
         if (ImGui::Checkbox("Chase Entity", &node->chaseEntity)) m_dirty = true;
         if (ImGui::DragFloat("Repath (s)", &node->repathInterval, 0.05f, 0.0f, 5.0f)) m_dirty = true;
         break;
-    // WHY 2 つを分けるか: ランタイムが読むのは LookAt が turnSpeedDeg、
-    //     IsTargetInRange が range だけ。両方出すと「設定したのに効かない」項目を
-    //     人にもAI (bt.schema) にも見せることになり、原因の判らない調整を誘発する。
+    /// @note LookAt と IsTargetInRange を分ける: ランタイムは LookAt が turnSpeedDeg、IsTargetInRange が
+    ///       range だけを読む。両方出すと「設定したのに効かない」項目を見せることになり、原因不明の調整を誘発する。
     case fbzz::ai::BTNodeType::LookAt:
         if (ImGui::DragFloat("Turn Speed", &node->turnSpeedDeg, 1.0f, 0.0f, 3600.0f, "%.0f deg/s")) m_dirty = true;
         break;
@@ -840,7 +836,7 @@ void BehaviorTreePanel::DrawInspector()
 void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
 {
     m_projectRoot = ctx.projectRoot;
-    // AssetBrowser で .behaviortree が選ばれたら追従する。
+    /// @note AssetBrowser で .behaviortree が選ばれたら追従する。
     if (!m_requestedPath.empty()) {
         const std::string requested = m_requestedPath;
         m_requestedPath.clear();
@@ -850,9 +846,9 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
         (void)LoadTree(ctx.selectedAssetPath);
     }
 
-    // 開いているドキュメントを公開する。Operator (bt.auto_layout) の poll が
-    // 「今整列できるか」をこれで判定する。パネルの内部状態を外へ晒さずに済ませたいので、
-    // 公開するのはパスだけにして、実行はワンショット要求で受ける。
+    /// @note 開いているドキュメントを公開する。Operator (bt.auto_layout) の poll が
+    ///       「今整列できるか」をこれで判定する。パネルの内部状態を外へ晒さずに済ませたいので、
+    ///       公開するのはパスだけにして、実行はワンショット要求で受ける。
     ctx.behaviorTreeEditorPath = m_path;
 
     if (m_path.empty()) {
@@ -861,9 +857,8 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    // Operator / メニュー / コマンドパレットからの整列要求。
-    // WHY 要求経由か: 整列は PushUndo を通す必要があり、Undo スタックはこのパネルが
-    //     持っている。外から m_asset だけ書き換えると整列前へ戻せなくなる。
+    /// @note Operator / メニュー / コマンドパレットからの整列要求。要求経由にするのは、整列が PushUndo を
+    ///       通す必要があり Undo スタックをこのパネルが持つため。外から m_asset だけ書き換えると元に戻せない。
     if (ctx.requestBehaviorTreeAutoLayout) {
         ctx.requestBehaviorTreeAutoLayout = false;
         AutoLayout();
@@ -883,7 +878,7 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
     const GraphView view = BuildView(ctx, runtime);
     GraphCanvas::Config config;
     config.id = "##BehaviorTreeCanvas";
-    // Play 中は監視専用。木を書き換えると走っているエージェントと食い違う。
+    /// @note Play 中は監視専用。木を書き換えると走っているエージェントと食い違う。
     config.editable = ctx.playMode == nullptr || ctx.playMode->IsInEditor();
     const GraphInteraction interaction = m_graphCanvas.Draw(view, config);
     if (config.editable) ApplyInteraction(ctx, interaction);
@@ -915,14 +910,14 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
     ImGui::SameLine();
     DrawInspector();
 
-    // ショートカット。キャンバスは意図だけを返すので、Undo はここが持つ。
+    /// @note ショートカット。キャンバスは意図だけを返すので、Undo はここが持つ。
     if (config.editable && !ImGui::GetIO().WantTextInput) {
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z)) Undo();
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y)) Redo();
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S)) (void)SaveTree();
     }
-    // 未保存を「保存待ちアセット」へ載せる。エディタ終了時の一括保存ダイアログが
-    // これを見るため、載せ忘れると木の編集だけ黙って捨てられる。
+    /// @note 未保存を「保存待ちアセット」へ載せる。エディタ終了時の一括保存ダイアログが
+    ///       これを見るため、載せ忘れると木の編集だけ黙って捨てられる。
     if (m_dirty)
         AssetDirtyRegistry::Register(m_path, m_path, "Behavior Tree",
                                      [this]() { return SaveTree(); });

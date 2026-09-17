@@ -25,10 +25,10 @@ void SearchEverythingPanel::OnBeforeBegin(EditorContext&)
 
 void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
 {
-    // 索引は AssetSearch が保持する。ルートが変わったときだけ作り直される。
+    /// @note 索引は AssetSearch が保持する。ルートが変わったときだけ作り直される。
     AssetSearch::SetProjectRoot(ctx.projectRoot);
 
-    // ── 検索欄 + 更新ボタン ─────────────────────────────────────────────────
+    /// @name 検索欄 + 更新ボタン
     if (m_refocusInput) {
         ImGui::SetKeyboardFocusHere();
         m_refocusInput = false;
@@ -52,7 +52,7 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
     ImGui::Separator();
     ImGui::BeginChild("##results");
 
-    // ── GameObject 検索 (名前一致) ──────────────────────────────────────────
+    /// @name GameObject 検索 (名前一致)
     if (ctx.activeScene) {
         std::vector<scene::GameObject*> hits;
         for (auto& go : ctx.activeScene->GameObjects()) {
@@ -75,8 +75,8 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
         }
     }
 
-    // ── アセット検索 (共通 AssetSearch 経由) ────────────────────────────────
-    // スコア順に並ぶため、完全一致・前方一致が上に来る。
+    /// @name アセット検索 (共通 AssetSearch 経由)
+    /// @note スコア順に並ぶため、完全一致・前方一致が上に来る。
     {
         constexpr std::size_t MAX_ASSET_RESULTS = 200;
         const auto hits = AssetSearch::Query(query, {}, MAX_ASSET_RESULTS);
@@ -88,16 +88,14 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
             if (!headerDrawn) { ImGui::SeparatorText("Assets"); headerDrawn = true; }
 
             ImGui::PushID(path.c_str());
-            // 開き方の振り分けは asset.open operator が持つ。
-            // WHY: 同じ拡張子分岐がここ・コマンドパレット・AssetBrowser のダブルクリックへ
-            //      写されており、.behaviortree はこの 2 つから開けない (分岐が抜けている)
-            //      状態だった。写しではなく 1 つの実体を呼ぶ。
+            /// @note 開き方の振り分けは asset.open operator が持つ。同じ拡張子分岐を複数箇所に
+            ///       写すと欠落が起きる (過去に .behaviortree が抜けていた) ため実体を 1 つに保つ。
             if (ImGui::Selectable(name.c_str())) {
                 OpArgs args;
                 args.Set("path", path);
                 InvokeOperator(ctx, "asset.open", args);
             }
-            // 相対パスを添えて、同名ファイルをその場で区別できるようにする。
+            /// @note 相対パスを添えて、同名ファイルをその場で区別できるようにする。
             ImGui::SameLine();
             ImGui::TextDisabled("%s", hit.entry->relativePath.c_str());
             if (ImGui::IsItemHovered())

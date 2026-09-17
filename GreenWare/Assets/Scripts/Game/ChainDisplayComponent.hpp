@@ -3,18 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 ///
-/// WHY 数えるのは CombatManager か:
-///   連鎖の長さは衝突を数えた結果で、戦果の一種。表示側が数えると、HUD を切った
-///   だけで記録まで消える。ここは受け取った数を文字にするところまでを持つ。
-///
-/// WHY 1 のときは出さないか:
-///   1 は「1 体に当たった」でしかなく、連鎖ではない。当たるたびに数字が出ると、
-///   出ていること自体が情報でなくなり、本当に繋がったときの 5 や 6 が埋もれる。
-///
-/// WHY 猶予の終わりで消すか:
-///   連鎖が切れた瞬間に数字が消えると、何連鎖で終わったのかを読む時間が無い。
-///   猶予の残りに合わせて薄くしていけば、消えていく過程がそのまま
-///   「もう次を当てないと切れる」という残り時間の表示になる。
+/// @note 連鎖数は `CombatManagerComponent` が数える。表示側が数えると HUD を切っただけで記録まで消えるため、ここは受け取った数を文字にするだけ。
+/// @note 1 は「1 体に当たった」でしかなく連鎖ではない。毎回出すと本当に繋がった 5 や 6 が埋もれるため出さない。
+/// @note 猶予の残りに合わせて薄くする。切れた瞬間に消すと何連鎖で終わったか読む時間が無い。
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
@@ -51,9 +42,8 @@ public:
     FBZZ_TOOLTIP("数字が伸びた瞬間の明るさの上乗せ。0 で光らせない")
     FBZZ_FIELD_RANGE(float, popSeconds, 0.14f, "Pop Seconds", 0.0f, 1.0f)
 
-    // WHY 連鎖の隣で拍を見せるか: 拍に乗ったかどうかは音と刃の白みでも返しているが、
-    //     «いま何段乗っているか» (あと何発で揃うか) は瞬間の合図からは読めない。
-    //     連鎖の数字の後ろへ 1 段ずつ印を並べれば、目の端で数えられる。
+    /// @note 拍に乗ったかは音と刃の白みでも示すが、いま何段乗っているかは瞬間の合図では読めない。
+    ///       連鎖の数字の後ろへ 1 段ずつ印を並べて数えられるようにする。
     FBZZ_GROUP("拍")
     FBZZ_FIELD(std::string, beatMark, ">", "Beat Mark")
     FBZZ_TOOLTIP("拍に乗って繋いだ段ごとに数字の後ろへ並べる印。空で出さない")
@@ -96,8 +86,8 @@ inline GameObject* ChainDisplayComponent::Count() const
 
 inline void ChainDisplayComponent::OnStart()
 {
-    // 参照の解決は 1 度だけ。毎フレーム名前で探すと、見つからない構成のときに
-    // 静かにシーン全体の走査を続けることになる。
+    /// @note 参照の解決は 1 度だけ。毎フレーム名前で探すと、見つからない構成のときに
+    ///       静かにシーン全体の走査を続けることになる。
     GameObject* text = countText.Get();
     if (!text) text = scene.Find(kCountName);
     if (!text) {
@@ -122,16 +112,15 @@ inline void ChainDisplayComponent::OnLateUpdate()
     GameObject* text = Count();
     if (!text) return;
 
-    // WHY 実時間か: 連鎖が伸びる瞬間には必ずヒットストップが掛かる。縮んだ時間で
-    //     光らせると、一番見せたい一撃の立ち上がりだけが遅れて出る。
+    /// @note 実時間で数える。ヒットストップで時間が縮むと、見せたい一撃の立ち上がりが遅れる。
     const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
     m_popRemaining = std::max(0.0f, m_popRemaining - dt);
 
     const auto* combat = CombatManagerComponent::Instance();
     const int chain = combat ? combat->ChainCount() : 0;
 
-    // 拍と揃えた締めは «回数の差» で取る。表示していない間も控えは進めておく ─
-    // 止めておくと、連鎖が 2 に届いて表示が出た瞬間に «溜まっていた合図» が弾ける。
+    /// @note 拍と揃えた締めは «回数の差» で取る。表示していない間も控えは進めておく ─
+    ///       止めておくと、連鎖が 2 に届いて表示が出た瞬間に «溜まっていた合図» が弾ける。
     m_beatPop          = std::max(0.0f, m_beatPop - dt);
     m_perfectRemaining = std::max(0.0f, m_perfectRemaining - dt);
     if (combat) {
@@ -172,7 +161,7 @@ inline void ChainDisplayComponent::OnLateUpdate()
     if (m_perfectRemaining > 0.0f) label += perfectText;
     ui.SetText(text, label);
 
-    // 猶予の残りが fadeBelow を切ってから薄くする。それまでは濃さを変えない。
+    /// @note 猶予の残りが fadeBelow を切ってから薄くする。それまでは濃さを変えない。
     const float remaining = combat ? combat->ChainRemaining01() : 0.0f;
     const float fade = fadeBelow <= EPSILON ? 1.0f
                                             : Clamp01(remaining / std::max(fadeBelow, EPSILON));
@@ -181,7 +170,7 @@ inline void ChainDisplayComponent::OnLateUpdate()
     const float beatPop  = popSeconds > EPSILON ? Clamp01(m_beatPop / popSeconds) : 0.0f;
     const float brightness = 1.0f + popBoost * std::max(chainPop, beatPop);
 
-    // 揃えた締め > 拍 > 素の色。拍の色は弾けた瞬間だけ寄せて、すぐ素の色へ戻す。
+    /// @note 揃えた締め > 拍 > 素の色。拍の色は弾けた瞬間だけ寄せて、すぐ素の色へ戻す。
     Vector4 tint = color;
     if (m_perfectRemaining > 0.0f) {
         tint = perfectColor;

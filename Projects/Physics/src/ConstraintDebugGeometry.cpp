@@ -35,8 +35,10 @@ namespace
         const math::Vector3 center = (anchorA + anchorB) * 0.5f;
         const math::Vector3 axis = hinge.m_axis.Normalized() * 0.35f;
 
-        out.lines.push_back({ anchorA, anchorB });        // 2 つのアンカーのずれ
-        out.lines.push_back({ center - axis, center + axis }); // ヒンジ軸の向き
+        /// @note 2 つのアンカーのずれ
+        out.lines.push_back({ anchorA, anchorB });
+        /// @note ヒンジ軸の向き
+        out.lines.push_back({ center - axis, center + axis });
     }
 } // namespace
 

@@ -11,7 +11,7 @@
 namespace fbzz::editor {
 
 /// CMakeビルドまたは明示コマンドを非同期子プロセスとして起動し、stdout / stderrをUIログへ蓄積する。
-/// WHY: エディタのメインスレッドをブロックしないため、Tick() ごとにパイプを短時間だけ読む。
+/// @note メインスレッドをブロックしないため、Tick() ごとにパイプを短時間だけ読む。
 class Compiler {
 public:
     enum class State { Idle, Building, Done, Failed, Cancelled };
@@ -22,13 +22,12 @@ public:
         std::filesystem::path exePath;
         std::string           target;
         std::string           configuration;
-        std::string           sdkRoot; // CMake 自動再生成時にも FBZZ_SDK_ROOT を継承させる
-        // 空でなければcmake --buildの代わりにこの完全なコマンドラインを実行する。
-        // WHY: HLSLホットリロードはCMake生成状態に依存せず、統合batを直接起動する必要がある。
+        std::string           sdkRoot; ///< CMake 自動再生成時にも FBZZ_SDK_ROOT を継承させる
+        /// 空でなければcmake --buildの代わりにこの完全なコマンドラインを実行する。
+        /// @note HLSL ホットリロードは CMake 生成状態に依存せず、統合 bat を直接起動する必要がある。
         std::wstring          commandLine;
         std::filesystem::path workingDirectory;
-        // WHY: ホットリロード時はエディタプロセスがエンジン DLL をロック中のため、
-        //      依存ターゲットの再ビルドをスキップしないとリンカが失敗する。
+        /// @note ホットリロード時はエディタプロセスがエンジン DLL をロック中のため、依存ターゲットの再ビルドをスキップしないとリンカが失敗する。
         bool                  skipDeps = false;
         bool                  rebuild = false;
     };

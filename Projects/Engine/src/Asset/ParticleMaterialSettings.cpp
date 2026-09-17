@@ -12,7 +12,7 @@
 namespace fbzz::asset {
 namespace {
 
-// Particle 用 .mat の置き場。テンプレートが同梱している 25 枚もここにある。
+/// Particle 用 .mat の置き場。テンプレートが同梱している 25 枚もここにある。
 constexpr const char* kParticleMaterialDir = "Assets/Materials/Particles";
 
 constexpr std::array<std::string_view, 5> kTextureExtensions = {
@@ -26,8 +26,8 @@ constexpr std::array<std::string_view, 5> kTextureExtensions = {
     return value;
 }
 
-// ファイル名に使う短い識別子。.mat 本文の正式名 ("AlphaBlend") とは別で、
-// ファイル名は既存アセットと揃う短い名 ("Alpha") を使う。
+/// ファイル名に使う短い識別子。.mat 本文の正式名 ("AlphaBlend") とは別で、
+/// ファイル名は既存アセットと揃う短い名 ("Alpha") を使う。
 [[nodiscard]] const char* BlendFileSuffix(scene::ParticleBlendMode blend)
 {
     switch (blend) {
@@ -37,9 +37,9 @@ constexpr std::array<std::string_view, 5> kTextureExtensions = {
     }
 }
 
-// "flame_03" -> "Flame03"。区切りを落として各語の頭を大文字にするだけの決定的な変換。
-// WHY: 同梱の 25 枚と同じ名前へ落ちることで、テンプレートが既に使っている .mat を
-//      作り直さずそのまま再利用できる。命名がぶれると同じ素材の .mat が二重に増える。
+/// "flame_03" -> "Flame03"。区切りを落として各語の頭を大文字にするだけの決定的な変換。
+/// @note 同梱の 25 枚と同じ名前へ落ちることで、テンプレートが既に使っている .mat を
+///       作り直さずそのまま再利用できる。命名がぶれると同じ素材の .mat が二重に増える。
 [[nodiscard]] std::string ToMaterialStem(std::string_view textureStem)
 {
     std::string result;
@@ -119,9 +119,9 @@ FlipbookFrameSample EvaluateFlipbookFrame(const ParticleFlipbookSettings& flipbo
     const FlipbookFrameRange range = ResolveFlipbookRange(flipbook);
     int startFrame = range.first;
     int endFrame   = range.last;
-    // Random Row: アトラスの各行を «1 本のアニメーションのバリエーション» として扱い、
-    // 粒子ごとに 1 行を選んでその中だけで再生する。1 枚のアトラスで見た目の異なる
-    // 煙・爆炎を混ぜられる (AAA のアトラスはこの構成が標準)。
+    /// @note Random Row: アトラスの各行を «1 本のアニメーションのバリエーション» として扱い、
+    ///       粒子ごとに 1 行を選んでその中だけで再生する。1 枚のアトラスで見た目の異なる
+    ///       煙・爆炎を混ぜられる (AAA のアトラスはこの構成が標準)。
     if (flipbook.spriteRandomRow && range.rows > 1) {
         const int row = std::clamp(
             static_cast<int>(Clamp01(spriteSeed) * static_cast<float>(range.rows)), 0, range.rows - 1);
@@ -152,13 +152,13 @@ FlipbookFrameSample EvaluateFlipbookFrame(const ParticleFlipbookSettings& flipbo
         framePosition = Clamp01(normalizedAge) * static_cast<float>(span);
         break;
     }
-    // Random Start Frame: 再生位相を粒子ごとにずらす。
-    // これが無いと同時に湧いた煙が全部同じコマで回り、群れが一枚の板に見えてしまう。
-    // RandomFrame はコマ自体がランダムなので位相ずらしは適用しない。
+    /// @note Random Start Frame: 再生位相を粒子ごとにずらす。
+    ///       これが無いと同時に湧いた煙が全部同じコマで回り、群れが一枚の板に見えてしまう。
+    ///       RandomFrame はコマ自体がランダムなので位相ずらしは適用しない。
     if (flipbook.spriteRandomStartFrame && span > 0
         && flipbook.flipbookMode != scene::ParticleFlipbookMode::RandomFrame) {
-        // 行選択と同じ seed をそのまま使うと «行と位相» が相関して規則性が見えるため、
-        // 係数でずらしてから小数部を取り、独立した第 2 の乱数として扱う。
+        /// @note 行選択と同じ seed をそのまま使うと «行と位相» が相関して規則性が見えるため、
+        ///       係数でずらしてから小数部を取り、独立した第 2 の乱数として扱う。
         const float phaseSeed    = Clamp01(spriteSeed) * 7.13f + 0.37f;
         const float decorrelated = phaseSeed - std::floor(phaseSeed);
         const float cycle        = static_cast<float>(span + 1);

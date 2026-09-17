@@ -18,10 +18,10 @@ enum class ShaderVarType  { Float, Int, UInt, Bool };
 
 struct ShaderVarDesc {
     std::string    name;
-    uint32_t       offset;   // CB_MATERIAL 内のバイトオフセット
-    uint32_t       size;     // バイトサイズ (変数全体)
-    uint8_t        rows;     // scalar/vector は 1
-    uint8_t        columns;  // コンポーネント数 (1=float, 2=float2, 3=float3, 4=float4)
+    uint32_t       offset;   ///< CB_MATERIAL 内のバイトオフセット
+    uint32_t       size;     ///< バイトサイズ (変数全体)
+    uint8_t        rows;     ///< scalar/vector は 1
+    uint8_t        columns;  ///< コンポーネント数 (1=float, 2=float2, 3=float3, 4=float4)
     ShaderVarClass varClass;
     ShaderVarType  varType;
 };
@@ -46,9 +46,8 @@ struct ShaderTexBindDesc {
 /// LAYOUT: 3 つは必ず同じ並びであること。
 ///   - HLSL 側: MaterialConstants の `uint <field>;` (Common/MaterialTextures.hlsli)
 ///   - Editor : Inspector が .mat の [textures] キーとして使う名前
-/// WHY 1 か所へ置くか: 以前は HLSL の変数名・Inspector の kCanonicalSlots・.mat のキーが
-///      それぞれ別ファイルに書かれており、ずれても «別のテクスチャが貼られる» としてしか
-///      現れなかった。並びを 1 つにして、ずれようがなくする。
+/// @note HLSL の変数名・Inspector の kCanonicalSlots・.mat のキーが別ファイルに分かれていると、
+///       ずれても «別のテクスチャが貼られる» としてしか現れない。1 か所へ置いてずれようがなくする。
 struct MaterialTextureSlot {
     const char* field;  ///< MaterialConstants の添字フィールド名
     const char* key;    ///< .mat の [textures] キー
@@ -67,11 +66,11 @@ inline constexpr uint32_t kMaterialTextureSlotCount =
     static_cast<uint32_t>(sizeof(kMaterialTextureSlots) / sizeof(kMaterialTextureSlots[0]));
 
 struct ShaderDescriptor {
-    std::vector<ShaderVarDesc>     vars;               // textureMask・パディングを除いた編集可能変数
-    std::vector<ShaderVarDesc>     postProcessVars;    // PostProcConstants (b5) の custom* 編集変数
-    std::vector<ShaderTexBindDesc> textures;            // slot 昇順
+    std::vector<ShaderVarDesc>     vars;               ///< textureMask・パディングを除いた編集可能変数
+    std::vector<ShaderVarDesc>     postProcessVars;    ///< PostProcConstants (b5) の custom* 編集変数
+    std::vector<ShaderTexBindDesc> textures;            ///< slot 昇順
     uint32_t                       cbufferSize      = 0;
-    uint32_t                       textureMaskOffset = UINT32_MAX; // UINT32_MAX = 未存在
+    uint32_t                       textureMaskOffset = UINT32_MAX; ///< UINT32_MAX = 未存在
 
     bool IsValid() const { return cbufferSize > 0; }
 
@@ -82,7 +81,7 @@ struct ShaderDescriptor {
         return nullptr;
     }
 
-    // PostProcConstants のカスタムエフェクト用変数を名前で検索する。
+    /// PostProcConstants のカスタムエフェクト用変数を名前で検索する。
     const ShaderVarDesc* FindPostProcessVar(std::string_view name) const
     {
         for (const auto& v : postProcessVars)

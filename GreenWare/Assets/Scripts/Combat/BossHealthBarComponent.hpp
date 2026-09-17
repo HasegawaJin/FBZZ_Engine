@@ -3,23 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-28
 ///
-/// WHY プレイヤーのバーと同じ作りにするか:
-///   PlayerHealthBarComponent と同じく «シーンに置いた実体をスクリプトが更新する» 形。
-///   位置も太さも絵合わせで何度も触るので、ランタイムで組むと Canvas Editor で
-///   掴めなくなる (あちらの冒頭の WHY)。敵の頭上バーだけがランタイム生成なのは、
-///   対象ごとに 1 枚要るから。ボスは «画面に固定の 1 枚» なので置く側。
-///
-/// WHY ボットが居ないときに «隠す» か:
-///   Main 以外のシーンや、ボスを置いていない検証用の配置でも同じ HUD を使う。
-///   0 のまま出しっぱなしにすると «倒し切ったのにバーが残っている» に見える。
-///
-/// WHY 減り方を敵の頭上バーと揃えるか:
-///   Drain (遅れて追いつく帯) の理屈が、ボスでは
-///   もっと強く効く。ボスへ通る 1 発は «帯電した雑魚を叩き込んだ» という数十秒の
-///   組み立ての成果で、盤面で一番貴重な出来事なのに、長さが飛ぶだけだと «入った»
-///   ことしか分からない。削れた量が数フレーム残れば «どれだけ入ったか» まで返る。
-///   数値も挙動もあちらと同じ名前で持つ (片方だけ違う減り方をすると、同じ画面に
-///   出ている 2 種類のバーが別の規則で動いているように見える)。
+/// @note シーンに置いた実体をスクリプトが更新する作り (PlayerHealthBarComponent と同型):
+///       位置/太さを絵合わせで頻繁に触るため、ランタイム生成だと Canvas Editor で掴めない。
+/// @note ボット不在時は隠す (0 のまま出しっぱなしだと倒し切ったのに残って見える)。減り方は
+///       敵の頭上バー (Drain) と同じ名前・規則で揃える (片方だけ違うと画面内で規則が割れる)。
 #pragma once
 
 #include <Engine/Scene/Components/UIImage.hpp>
@@ -47,16 +34,13 @@ class BossHealthBarComponent : public Script {
 
 public:
     FBZZ_GROUP("ボス")
-    // WHY 名簿で探すだけにしないか:
-    //   IBoss の名簿 (IBoss.hpp) は «盤面に居るボス» を引く汎用の口で、ボスが
-    //   1 体しか居ないこの盤面ではそれで足りる。ただしボス側が名乗り忘れると
-    //   症状は «バーが出ない» だけになり、UI 側を疑って探し回ることになる。
-    //   明示の割り当てを先に見て、空のときだけ名簿で探す。
+    /// @note 明示の割り当てを先に見て、空のときだけ IBoss 名簿で探す。ボス側が名乗り忘れると
+    ///       症状は「バーが出ない」だけになり、UI 側を疑って探し回ることになるため。
     FBZZ_REF(GameObject, bossObject, "ボス")
     FBZZ_TOOLTIP("体力を出す相手。未設定なら IBoss を実装したオブジェクトを盤面から探す")
 
     FBZZ_GROUP("HUD")
-    // 未設定なら名前で拾う。シーンを作り直しても既定の構成なら動く。
+    /// 未設定なら名前で拾う。シーンを作り直しても既定の構成なら動く。
     FBZZ_REF(GameObject, bossFill, "Boss Fill")
     FBZZ_TOOLTIP("残量で塗り潰す UIImage。Fill Origin は Left にしておく")
     FBZZ_REF(GameObject, bossDrain, "Boss Drain")
@@ -76,8 +60,8 @@ public:
     FBZZ_FIELD_COLOR(neutralNameColor, (Vector4{ 0.62f, 0.66f, 0.72f, 1.00f }), "Name (No BladeSide)")
     FBZZ_TOOLTIP("無極のときのボス名の色。極が乗ると 12.2 の極性色へ切り替わる")
 
-    // 倒れている間 (Docs/presentation.md)。残り部位とは別に攻める猶予を表示する
-    // 琥珀色はとどめを狙える時間にだけ使う。
+    /// 倒れている間 (Docs/presentation.md)。残り部位とは別に攻める猶予を表示する
+    /// 琥珀色はとどめを狙える時間にだけ使う。
     FBZZ_GROUP("Toppled")
     FBZZ_FIELD_COLOR(toppledColor,    (Vector4{ 1.00f, 0.84f, 0.30f, 1.00f }), "Toppled")
     FBZZ_TOOLTIP("倒れている間の色。琥珀は «今が攻め時» の色 (予兆の色と同じ語)")
@@ -105,8 +89,8 @@ public:
     void OnLateUpdate() override;
 
 private:
-    // 追従帯が «追いつき切った» とみなす残差。1 ピクセルに満たない差のために
-    // 撃破後のバーを画面へ残し続けないための床。
+    /// 追従帯が «追いつき切った» とみなす残差。1 ピクセルに満たない差のために
+    /// 撃破後のバーを画面へ残し続けないための床。
     static constexpr float kDrainSettled = 0.002f;
 
     static constexpr const char* kFillName       = "HUD_BossFill";
@@ -134,13 +118,12 @@ private:
     EntityRef m_breakLabel[2];
     void RefreshBreakRows(const std::vector<GameObject*>& bosses);
 
-    // 追従帯の現在値と、被弾を検出するための前フレームの残量。
+    /// 追従帯の現在値と、被弾を検出するための前フレームの残量。
     float m_drainRatio    = 1.0f;
     float m_lastRatio     = 1.0f;
     float m_holdRemaining = 0.0f;
     /// 「ボスが見つからない」を 1 度だけ言うためのラッチ。
-    /// WHY 要るか: 見つからないと Hide() が毎フレーム走るだけで、画面には «何も出ない»
-    ///     としか現れない。UI を疑って探すことになるので、探す先をここで名指しする。
+    /// @note 見つからないと Hide() が毎フレーム走るだけで画面には何も出ないため、探す先を明示する。
     bool m_warnedNoBoss = false;
 };
 
@@ -167,8 +150,8 @@ inline void BossHealthBarComponent::OnStart()
         if (auto* object = scene.Find("HUD_BreakLabel" + suffix)) m_breakLabel[i] = EntityRef{ object->GetID() };
     }
 
-    // 参照の解決は Play 開始時に 1 度だけ。毎フレーム名前で探すと、見つからない構成で
-    // 静かに全シーン走査を続けることになる。
+    /// @note 参照の解決は Play 開始時に 1 度だけ。毎フレーム名前で探すと、見つからない構成で
+    ///       静かに全シーン走査を続けることになる。
     GameObject* fill = Resolve(bossFill, kFillName);
     if (!fill) {
         debug.LogError("BossHealthBarComponent: boss fill UIImage not found "
@@ -177,8 +160,8 @@ inline void BossHealthBarComponent::OnStart()
     }
     m_fill = EntityRef{ fill->GetID() };
 
-    // 帯は欠けていても «量» は読める。無い構成でもバーは動かす (雑魚と違い、
-    // こちらは 3 枚をシーンに置く形なので、1 枚足し忘れただけで HUD が死ぬのは重い)。
+    /// @note 帯は欠けていても «量» は読める。無い構成でもバーは動かす (雑魚と違い、
+    ///       こちらは 3 枚をシーンに置く形なので、1 枚足し忘れただけで HUD が死ぬのは重い)。
     if (GameObject* drain = Resolve(bossDrain, kDrainName))
         m_drain = EntityRef{ drain->GetID() };
     if (GameObject* background = Resolve(bossBackground, kBackgroundName))
@@ -186,8 +169,8 @@ inline void BossHealthBarComponent::OnStart()
     if (GameObject* label = Resolve(bossName, kNameName))
         m_name = EntityRef{ label->GetID() };
 
-    // 追従帯は «今の残量» から始める。満タンから始めると、DLL リロードや
-    // 途中参加の構成で «開始と同時に大ダメージが入った» という嘘が 1 回流れる。
+    /// @note 追従帯は «今の残量» から始める。満タンから始めると、DLL リロードや
+    ///       途中参加の構成で «開始と同時に大ダメージが入った» という嘘が 1 回流れる。
     GameObject* boss = FindBoss();
     const auto* health = boss ? scene.GetScript<EnemyHealthComponent>(boss) : nullptr;
     m_drainRatio    = health ? health->Normalized() : 1.0f;
@@ -202,11 +185,11 @@ inline float BossHealthBarComponent::AdvanceDrain(float ratio)
     const float dt = std::max(Time::deltaTime, 0.0f);
 
     if (ratio >= m_drainRatio) {
-        // 回復と初期化。遅らせる理由がないので即座に合わせる。
+        /// @note 回復と初期化。遅らせる理由がないので即座に合わせる。
         m_drainRatio    = ratio;
         m_holdRemaining = 0.0f;
     } else {
-        // 新しく減った瞬間だけ保持時間を入れ直す。連続で入れても毎回「溜め」が入る。
+        /// @note 新しく減った瞬間だけ保持時間を入れ直す。連続で入れても毎回「溜め」が入る。
         if (ratio < m_lastRatio) m_holdRemaining = std::max(drainHold, 0.0f);
         if (m_holdRemaining > 0.0f)
             m_holdRemaining = std::max(0.0f, m_holdRemaining - dt);
@@ -220,16 +203,10 @@ inline float BossHealthBarComponent::AdvanceDrain(float ratio)
 
 inline GameObject* BossHealthBarComponent::FindBoss() const
 {
-    // 出てくる前のボスは «居ない»。畳まれている間もバーを出すと、Wave を戦っている
-    // あいだじゅう «まだ見ぬ相手の満タンの体力» が画面上部に居座る。
-    //
-    // WHY 割り当てがあっても «出てきたか» を見るか: ここを素通しにすると、参照を
-    //     張った瞬間から満タンのバーが出っぱなしになる。探し方 (全走査 / 名指し) を
-    //     変えても «いつ出るか» は変わらない、という関係を保つ。
-    //
-    // WHY IBoss を引けないときは通すか: 名指しされている以上、それがボスであることは
-    //     オーサリングの意思。インターフェースを引けないのは組み方の問題で、
-    //     «バーを出さない» で黙らせると原因が画面から消える。
+    /// @note 出てくる前のボスは「居ない」として扱う: 畳まれている間もバーを出すと、
+    ///       まだ見ぬ相手の満タン体力が画面に居座る。明示割り当てでも同じ判定を通す
+    ///       (探し方が変わっても「いつ出るか」は変えない)。IBoss を引けなくても通す:
+    ///       名指しされている以上ボスという意図は明らかで、黙らせると原因が画面から消える。
     if (GameObject* assigned = bossObject.Get()) {
         if (!assigned->activeInHierarchy()) return nullptr;
         const auto* boss = IBoss::Of(assigned);
@@ -244,12 +221,8 @@ inline void BossHealthBarComponent::Hide()
     debugVisible = false;
     debugRatio   = 0.0f;
 
-    // WHY 表示スイッチで消すか (アルファ 0 ではなく):
-    //   アルファで消すと «消えている» が色の値でしか表せない。誰かが色を書き戻した
-    //   瞬間に出てしまうし、逆に何かの拍子に enabled が落ちていると、こちらが色を
-    //   戻しても二度と出てこない (出ない側に倒れる不具合は原因が画面に出ない)。
-    //   表示は表示のスイッチで持つ。幅を 0 にしないのは、次に出るときへ向けて
-    //   «枠» の寸法を保つため。
+    /// @note 表示はアルファでなく表示スイッチで消す: アルファだと「消えている」を色の値でしか
+    ///       表せず誰かが色を書き戻すと出てしまう。幅は 0 にしない (次に出る枠の寸法を保つ)。
     if (GameObject* fill = m_fill.Resolve(scene))       ui.SetImageEnabled(fill, false);
     if (GameObject* drain = m_drain.Resolve(scene))     ui.SetImageEnabled(drain, false);
     if (GameObject* back = m_background.Resolve(scene)) ui.SetImageEnabled(back, false);
@@ -307,13 +280,13 @@ inline void BossHealthBarComponent::OnLateUpdate()
     const auto* health = boss ? scene.GetScript<EnemyHealthComponent>(boss) : nullptr;
     debugBoss = boss ? boss->name : std::string{};
 
-    // 出ていないのと、居ないのと、倒し切ったのは別の話。
-    //   出ていない … 最終 Wave まで畳まれている正しい状態。黙って隠す
-    //   居ない     … 組み方の間違い。畳まれたものすら 1 体も無いときだけ名指しで言う
-    //   倒し切った … 下で 0 まで減らしてから引く
+    /// @note 出ていないのと、居ないのと、倒し切ったのは別の話。
+    ///       出ていない … 最終 Wave まで畳まれている正しい状態。黙って隠す
+    ///       居ない     … 組み方の間違い。畳まれたものすら 1 体も無いときだけ名指しで言う
+    ///       倒し切った … 下で 0 まで減らしてから引く
     if (!boss || !health) {
         if (!m_warnedNoBoss) {
-            // 割り当てがあるなら «まだ出ていないだけ»。全走査はそこで打ち切る。
+            /// @note 割り当てがあるなら «まだ出ていないだけ»。全走査はそこで打ち切る。
             const bool authored = bossObject.IsAssigned()
                                || !IBoss::Registry().empty();
             if (!authored || boss) {
@@ -328,23 +301,15 @@ inline void BossHealthBarComponent::OnLateUpdate()
         Hide();
         return;
     }
-    // WHY 倒れてすぐ引かないか:
-    //   最後の 1 発だけがバーに出ないと、«倒した» のが自分の一撃だったのか、
-    //   時間切れや別の何かだったのかが画面から分からなくなる。ボスの HP が減るのは
-    //   帯電した雑魚を叩き込んだときだけなので、この最後の 1 発こそ一番返したい。
-    //   0 まで «減り切る» のを見せ、追従帯が追いついてから引く (畳むまでの猶予は
-    //   BossDeathVfxComponent の崩壊が持っているので、この間バーだけが浮くことはない)。
+    /// @note 倒れてすぐ引かない: 最後の 1 発だけ非表示だと自分の一撃で倒したか判別できない。
+    ///       0 まで減り切るのを見せてから追従帯が追いつくのを待つ (畳むまでの猶予は
+    ///       BossDeathVfxComponent の崩壊が持つ)。
     const auto* bossScript = IBoss::Of(boss);
 
-    // バーが描くのは «残り部位»。脚を全部落とすことが勝利条件そのものなので、
-    // «あとどれだけか» はここにしか無い。
-    //
-    // WHY HP へ落ちる道を残すか: 部位を持たない構成 (Serpent 以外の将来のボス) では
-    //     PartsTotal が 0 で返る。そこで 0 除算せず、従来どおり HP を描く。
-    // WHY 1 本のバーに «盤面の全員» を足すか (2026-09-15): Stage_02 は蛇を 2 体置く。
-    //     代表の 1 体だけを描くと、片方を倒し切った瞬間にバーがもう 1 体の満タンへ
-    //     跳ね上がり、積み上げた戦いがそこで巻き戻ったように見える。
-    //     長さが表すのは «この戦いがあとどれだけ残っているか» で、相手の頭数ではない。
+    /// @note バーが描くのは「残り部位」(脚を全部落とすのが勝利条件)。PartsTotal が 0 の
+    ///       構成 (Serpent 以外の将来のボス) では 0 除算せず従来どおり HP を描く。1 本の
+    ///       バーに盤面の全員を足す (2026-09-15): 代表 1 体だけ描くと片方を倒した瞬間に
+    ///       もう 1 体の満タンへ跳ね上がり、積み上げた戦いが巻き戻って見える。
     int   bossCount  = 0;
     int   aliveCount = 0;
     int   partsLeft  = 0;
@@ -356,7 +321,7 @@ inline void BossHealthBarComponent::OnLateUpdate()
 
     std::vector<GameObject*> bosses;
     CollectBossesOnBoard(scene, bosses);
-    // 名乗っていない相手を明示で割り当てている構成 (FindBoss の WHY) では名簿に居ない。
+    /// @note 名乗っていない相手を明示で割り当てている構成 (FindBoss の @note 参照) では名簿に居ない。
     if (std::find(bosses.begin(), bosses.end(), boss) == bosses.end()) bosses.push_back(boss);
     std::sort(bosses.begin(), bosses.end(), [](const GameObject* left, const GameObject* right) {
         return left->name < right->name;
@@ -375,8 +340,8 @@ inline void BossHealthBarComponent::OnLateUpdate()
         const int   left   = script ? script->PartsRemaining() : -1;
         if (total > 0 && left >= 0) {
             partsTotal += total;
-            // 倒した相手は 0 本。残り節は最小値で止まる (SerpentBody の minSegments) ので、
-            // 生死を見ないと «倒したのにまだ 6 本ある» がバーに残る。
+            /// @note 倒した相手は 0 本。残り節は最小値で止まる (SerpentBody の minSegments) ので、
+            ///       生死を見ないと «倒したのにまだ 6 本ある» がバーに残る。
             partsLeft += otherAlive ? left : 0;
         }
         healthSum += otherAlive ? otherHealth->Normalized() : 0.0f;
@@ -410,13 +375,13 @@ inline void BossHealthBarComponent::OnLateUpdate()
         : emptyColor + (fullColor - emptyColor) * ratio;
 
     float pulse = 1.0f;
-    // 倒れている間は «今が攻め時» の明滅。残り時間が減る動きと重なって急かす。
+    /// @note 倒れている間は «今が攻め時» の明滅。残り時間が減る動きと重なって急かす。
     if (toppled && toppledPulseHz > 0.0f) {
         const float phase = Time::unscaledTime * toppledPulseHz * TWO_PI;
         pulse = 1.0f + std::sin(phase) * 0.22f;
     }
 
-    // アルファは動かさない。透けると背景の明暗でバーの読みが変わる。
+    /// @note アルファは動かさない。透けると背景の明暗でバーの読みが変わる。
     const Vector4 color{ base.x * pulse, base.y * pulse, base.z * pulse, base.w };
 
     if (GameObject* back = m_background.Resolve(scene)) {
@@ -424,12 +389,9 @@ inline void BossHealthBarComponent::OnLateUpdate()
         ui.SetImageColor(back, backgroundColor);
     }
 
-    // 帯は «さっきまであった量» なので、本体より下 (Sort Order を小さく) に敷いて
-    // 減った区間だけをはみ出させる。重なり順を決めるのはシーンの Sort Order で、
-    // ここの呼び出し順ではない (背景 0 / 帯 1 / 本体 2)。
-    // WHY 帯だけ明滅させないか: 明滅は «撃ち込める窓が開いている» を表す語で、
-    //     帯が表しているのは «直前に入った量»。同じ動きを 2 つの意味に使うと、
-    //     どちらの合図なのかが読めなくなる。
+    /// @note 帯は「さっきまであった量」なので本体より下 (Sort Order 小: 背景 0 / 帯 1 / 本体 2)
+    ///       に敷いて減った区間をはみ出させる。帯は明滅させない: 明滅は「撃ち込める窓」を
+    ///       表す語で、帯 (直前に入った量) に使うと合図が 2 つの意味に割れる。
     if (GameObject* drainObject = m_drain.Resolve(scene)) {
         ui.SetImageEnabled(drainObject, true);
         ui.SetImageFillAmount(drainObject, drain);
@@ -440,8 +402,8 @@ inline void BossHealthBarComponent::OnLateUpdate()
             ui.SetMaterialColor(drainObject, materialColorParam, drainColor);
     }
 
-    // 表示は毎フレーム押し直す。Hide() が落としたスイッチを戻すのはここだけで、
-    // «バーが一度も出ない» の芽をこの 1 行に閉じ込めておく。
+    /// @note 表示は毎フレーム押し直す。Hide() が落としたスイッチを戻すのはここだけで、
+    ///       «バーが一度も出ない» の芽をこの 1 行に閉じ込めておく。
     ui.SetImageEnabled(fill, true);
     ui.SetImageFillAmount(fill, ratio);
     ui.SetImageColor(fill, color);

@@ -6,9 +6,8 @@
 /// 組み立ても運動も ElectrodeRig が持つ。ここが決めるのは極の符号と調整値だけで、
 /// ElectricMinusParticleComponent とは符号以外まったく同じ振る舞いをする。
 ///
-/// WHY 色をここで持たないか:
-///   赤 = ＋ / 青 = − は ElectrodePole.hpp が全アセット共通の制約として持っている。
-///   タイトル画面だけ別の赤を選べるようにすると、盤面の色の意味とタイトルの色が食い違う。
+/// @note 色をここで持たない理由: 赤 = ＋ / 青 = − は ElectrodePole.hpp が全アセット
+///       共通の制約として持つ。タイトルだけ別の色を選べると盤面の色の意味と食い違う。
 #pragma once
 
 #include <Scripts/Title/ElectrodeRig.hpp>
@@ -150,7 +149,7 @@ private:
         tuning.lifetime      = lifetime;
         tuning.sizeStart     = particleSize;
         tuning.spawnRadius   = spawnRadius;
-        // 記号が読めなくなる手前で止める。0 まで絞ると開く / 畳む瞬間が «点滅» に見える。
+        /// @note 記号が読めなくなる手前で止める。0 まで絞ると開く / 畳む瞬間が «点滅» に見える。
         tuning.sizeEnd       = particleSize * 0.30f;
         tuning.crackle       = crackle;
         tuning.radialBurst   = radialBurst;

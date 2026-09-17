@@ -55,8 +55,8 @@ toml::table WriteTerrainData(const TerrainComponent& tc)
         layerMatArr.push_back(p);
     terrainTbl.insert("layerMaterials", std::move(layerMatArr));
 
-    // WHAT: heightData は正負の正規化高さ [-1, 1] をそのまま保存する。
-    // WHY: maxHeight を変更しても元データの相対形状を保てるため、編集途中の Terrain を再利用しやすい。
+    /// @note heightData は正負の正規化高さ [-1, 1] をそのまま保存する。maxHeight を変更しても
+    ///       元データの相対形状を保てるため、編集途中の Terrain を再利用しやすい。
     toml::array heightArr;
     for (float h : tc.heightData)
         heightArr.push_back(static_cast<double>(h));
@@ -68,8 +68,8 @@ toml::table WriteTerrainData(const TerrainComponent& tc)
         for (uint8_t s : tc.splatData)
             splatArr.push_back(static_cast<int64_t>(s));
     } else {
-        // WHY: splatData が空の Terrain をそのまま保存すると、次回ロード時に PaintTool が
-        //      レイヤー重みの前提を失うため、保存データ上も layer0=100% に正規化する。
+        /// @note splatData が空の Terrain をそのまま保存すると、次回ロード時に PaintTool が
+        ///       レイヤー重みの前提を失うため、保存データ上も layer0=100% に正規化する。
         const size_t vertexCount = static_cast<size_t>(tc.columns) * static_cast<size_t>(tc.rows);
         for (size_t i = 0; i < vertexCount; ++i) {
             splatArr.push_back(int64_t{255});
@@ -134,7 +134,7 @@ bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::
 
     NormalizeTomlFloats(doc);
 
-    // レイヤー .mat / ハイトマップ等の参照を guid: 形式で保存する (リネーム・移動耐性)。
+    /// @note レイヤー .mat / ハイトマップ等の参照を guid: 形式で保存する (リネーム・移動耐性)。
     asset::EncodeGuidRefs(doc);
 
     std::ostringstream ss;
@@ -169,7 +169,7 @@ bool TerrainAssetSerializer::Load(const std::string& path, TerrainComponent& com
     }
 
     toml::table doc = result.table();
-    // guid: 参照を "Assets/..." パスへ戻してから読む。
+    /// @note guid: 参照を "Assets/..." パスへ戻してから読む。
     asset::DecodeGuidRefs(doc);
     const toml::table* terrainTbl = doc["terrain"].as_table();
     if (!terrainTbl)

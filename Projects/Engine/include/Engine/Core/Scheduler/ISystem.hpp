@@ -27,9 +27,9 @@ public:
     virtual void OnInit()     {}
     virtual void OnShutdown() {}
 
-    // RunIf: false を返すとそのフレームはスキップ（デフォルト常に実行）
+    /// @brief RunIf。false を返すとそのフレームはスキップ (デフォルト常に実行)。
     virtual bool ShouldRun(const SystemContext&) const { return true; }
-    // RunEvery(N): N フレームに 1 回実行（デフォルト毎フレーム）
+    /// @brief RunEvery(N)。N フレームに 1 回実行 (デフォルト毎フレーム)。
     virtual int  RunInterval() const { return 1; }
 };
 

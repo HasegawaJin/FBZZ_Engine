@@ -24,7 +24,7 @@ namespace {
 
 constexpr float kGravity = -9.81f;
 
-// 1 秒ぶんを 60 フレームに割って回す。dt はゲーム側の固定刻みに合わせてある。
+/// 1 秒ぶんを 60 フレームに割って回す。dt はゲーム側の固定刻みに合わせてある。
 void Simulate(physics::XPBDSolver& solver, int frames, float dt = 1.0f / 60.0f)
 {
     for (int i = 0; i < frames; ++i) solver.Step(dt);
@@ -50,8 +50,8 @@ TEST_F(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
 
     Simulate(solver, 60);
 
-    // 半陰的オイラーは解析解より 0.5·g·h·t だけ余分に落ちる。substep を細かくすると
-    // その差は縮む ─ ここでは «おおよそ自由落下している» ことだけ確認する。
+    /// @note 半陰的オイラーは解析解より 0.5·g·h·t だけ余分に落ちる。substep を細かくすると
+    ///       その差は縮む ─ ここでは «おおよそ自由落下している» ことだけ確認する。
     const float expected = 10.0f + 0.5f * kGravity * 1.0f;
     EXPECT_NEAR(body->GetPosition().y, expected, 0.15f);
 
@@ -71,13 +71,13 @@ TEST_F(XPBDSolverTest, PlaneContactStopsTheBody)
     Simulate(solver, 180);
 
     EXPECT_NEAR(body->GetPosition().y, 0.5f, 1.0e-3f);
-    // 位置から速度を出し直しているので、静止していれば速度も 0 になる。
+    /// @note 位置から速度を出し直しているので、静止していれば速度も 0 になる。
     EXPECT_LT(body->GetVelocity().Length(), 1.0e-2f);
 
     solver.ClearBodies();
 }
 
-// M1 の核心。刻みを変えても釣り合いの位置が動かないこと。
+/// M1 の核心。刻みを変えても釣り合いの位置が動かないこと。
 TEST_F(XPBDSolverTest, RestingHeightIsIndependentOfSubstepCount)
 {
     const auto restingHeight = [](int substeps) {
@@ -108,7 +108,7 @@ TEST_F(XPBDSolverTest, OffCenterContactGeneratesRotation)
 
     auto body = MakeBody({ 0.0f, 1.0f, 0.0f });
     solver.AddBody(body.get());
-    // 重心から外れた 1 点だけで支える。トルクが立たなければ姿勢は変わらない。
+    /// @note 重心から外れた 1 点だけで支える。トルクが立たなければ姿勢は変わらない。
     solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
         body.get(), math::Vector3{ 0.6f, 0.0f, 0.0f }, 0.1f, math::Vector3::UP, 0.0f));
 

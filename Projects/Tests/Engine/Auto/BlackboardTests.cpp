@@ -54,7 +54,7 @@ protected:
     ai::Blackboard board;
 };
 
-// --- 領域 -------------------------------------------------------------------
+/// @name 領域
 
 TEST_F(BlackboardTest, ResetCreatesOneEntryPerDefinition)
 {
@@ -77,7 +77,7 @@ TEST_F(BlackboardTest, ResetReplacesTheWholeLayout)
     EXPECT_FALSE(board.IsValidKey(1));
 }
 
-// --- 読み書き ---------------------------------------------------------------
+/// @name 読み書き
 
 TEST_F(BlackboardTest, ReadsBackEveryTypeItWrote)
 {
@@ -121,12 +121,12 @@ TEST_F(BlackboardTest, OverwritingKeepsTheLatestValue)
     EXPECT_EQ(count, 2);
 }
 
-// --- 型の守り -------------------------------------------------------------
+/// @name 型の守り
 
 TEST_F(BlackboardTest, RefusesToWriteTheWrongType)
 {
-    // アセットとスクリプトが別々に編集された結果のオーサリングミス。
-    // assert で落とさず false を返し、値も書き換えない。
+    /// @note アセットとスクリプトが別々に編集された結果のオーサリングミス。
+    ///       assert で落とさず false を返し、値も書き換えない。
     ASSERT_TRUE(board.SetFloat(kFloat, 1.5f));
 
     EXPECT_FALSE(board.SetBool(kFloat, true));
@@ -156,11 +156,11 @@ TEST_F(BlackboardTest, RejectsKeysOutsideTheLayout)
     EXPECT_FALSE(board.GetBool(missing, flag));
 }
 
-// --- 未設定の区別 -----------------------------------------------------------
+/// @name 未設定の区別
 
 TEST_F(BlackboardTest, StartsWithNothingWritten)
 {
-    // 「まだ一度も見ていない」と「見て false だった」は別の状態。
+    /// @note 「まだ一度も見ていない」と「見て false だった」は別の状態。
     EXPECT_FALSE(board.IsSet(kBool));
     EXPECT_EQ(board.GetLastWriteTick(kBool), 0u);
     EXPECT_NEAR(board.GetLastWriteTime(kBool), 0.0f, testkit::kTolerance);
@@ -168,7 +168,8 @@ TEST_F(BlackboardTest, StartsWithNothingWritten)
 
 TEST_F(BlackboardTest, MarksAKeyAsSetOnceItIsWritten)
 {
-    board.SetBool(kBool, false);   // 値が false でも «書かれた» ことは残る
+    /// @note 値が false でも «書かれた» ことは残る
+    board.SetBool(kBool, false);
 
     EXPECT_TRUE(board.IsSet(kBool));
 }
@@ -189,11 +190,11 @@ TEST_F(BlackboardTest, ARejectedWriteDoesNotMarkTheKeyAsSet)
     EXPECT_FALSE(board.IsSet(kFloat));
 }
 
-// --- 書き込み時刻 -----------------------------------------------------------
+/// @name 書き込み時刻
 
 TEST_F(BlackboardTest, StampsTheCurrentTickAndTimeOnWrite)
 {
-    // 「最後にプレイヤーを見てから 5 秒」を各ノードが自前タイマーで持たずに済ませるための値。
+    /// @note 「最後にプレイヤーを見てから 5 秒」を各ノードが自前タイマーで持たずに済ませるための値。
     board.SetTick(12);
     board.SetTime(3.5f);
 
@@ -219,7 +220,7 @@ TEST_F(BlackboardTest, TheStampMovesForwardWithEachWrite)
 
 TEST_F(BlackboardTest, ReadingDoesNotRefreshTheStamp)
 {
-    // 読んだだけで «新しい情報» になってしまうと、記憶の減衰が働かない。
+    /// @note 読んだだけで «新しい情報» になってしまうと、記憶の減衰が働かない。
     board.SetTick(5);
     board.SetTime(0.5f);
     board.SetFloat(kFloat, 1.0f);
@@ -241,12 +242,12 @@ TEST_F(BlackboardTest, TracksTheClockIndependentlyOfWrites)
     EXPECT_NEAR(board.GetTime(), 0.5f, testkit::kTolerance);
 }
 
-// --- 予約キー ---------------------------------------------------------------
+/// @name 予約キー
 
 TEST_F(BlackboardTest, ReservedKeysSitAtTheirFixedIndices)
 {
-    // PerceptionSystem は名前検索を避けてこの添字へ直接書く。
-    // 並びが変わると «別のキーへ書き込む» ことになる。
+    /// @note PerceptionSystem は名前検索を避けてこの添字へ直接書く。
+    ///       並びが変わると «別のキーへ書き込む» ことになる。
     const std::vector<ai::BlackboardDef>& reserved = ai::ReservedBlackboardDefs();
 
     ASSERT_EQ(reserved.size(), ai::bb::ReservedCount);
@@ -258,7 +259,7 @@ TEST_F(BlackboardTest, ReservedKeysSitAtTheirFixedIndices)
 
 TEST_F(BlackboardTest, ReservedKeysAreMarkedReserved)
 {
-    // エディタは予約キーの名前変更と削除を禁じる。その印がここで立っている。
+    /// @note エディタは予約キーの名前変更と削除を禁じる。その印がここで立っている。
     for (const ai::BlackboardDef& def : ai::ReservedBlackboardDefs())
         EXPECT_TRUE(def.reserved) << def.name;
 }

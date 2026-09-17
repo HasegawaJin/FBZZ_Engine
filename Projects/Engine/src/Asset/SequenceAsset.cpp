@@ -21,9 +21,9 @@ namespace {
 
 constexpr int64_t kSequenceFormatVersion = 1;
 
-// ── 列挙 ⇄ 文字列 ───────────────────────────────────────────────────────────
-// WHY 数値ではなく名前で書くか: .sequence は人が読んで尺を追う対象で、diff にも出る。
-//     type = 3 では何のトラックか分からず、列挙へ値を挿し込んだ瞬間に全ファイルがずれる。
+/// @name 列挙 ⇄ 文字列
+/// @note .sequence は人が読んで尺を追う対象で diff にも出るため、数値ではなく名前で書く。
+///       type = 3 では何のトラックか分からず、列挙へ値を挿し込んだ瞬間に全ファイルがずれる。
 
 struct EnumName {
     const char* name;
@@ -93,7 +93,7 @@ constexpr EnumName kValueTypes[] = {
     { "Bool",    static_cast<int>(AnimValueType::Bool)    },
 };
 
-// ── 読み書きの小道具 ────────────────────────────────────────────────────────
+/// @name 読み書きの小道具
 
 double ReadDouble(const toml::table& table, std::string_view key, double fallback)
 {
@@ -112,7 +112,7 @@ toml::array WriteFloats(std::initializer_list<float> values)
     return array;
 }
 
-// キー配列の要素は { time = .., value = [..] } の形で統一する。
+/// キー配列の要素は { time = .., value = [..] } の形で統一する。
 template<typename Key, typename ReadValue>
 void ReadKeys(const toml::table& table, std::string_view name,
               std::vector<Key>& outKeys, ReadValue readValue)
@@ -161,7 +161,7 @@ math::Vector2 ReadVector2(const toml::table& table, std::string_view key)
              static_cast<float>((*array)[1].value_or(0.0)) };
 }
 
-// ── Property トラック ───────────────────────────────────────────────────────
+/// @name Property トラック
 
 void ReadPropertyTrack(const toml::table& table, PropertyAnimationTrack& out)
 {
@@ -247,7 +247,7 @@ void WritePropertyTrack(const PropertyAnimationTrack& track, toml::table& out)
     });
 }
 
-// ── トラック ────────────────────────────────────────────────────────────────
+/// @name トラック
 
 SequenceTrack ReadTrack(const toml::table& table)
 {
@@ -502,8 +502,8 @@ double SequenceAsset::GetDurationSeconds() const
 {
     if (duration > 0.0) return duration;
 
-    // WHY 導出まで持つか: 尺を書き忘れた .sequence が「再生した瞬間に終わる」形で
-    //     壊れると、原因がトラック側に見えて追いにくい。最も遅いキーまでは必ず回す。
+    /// @note 尺を書き忘れた .sequence が「再生した瞬間に終わる」形で壊れると、原因が
+    ///       トラック側に見えて追いにくいため、最も遅いキーまでは必ず回して導出する。
     double derived = 0.0;
     for (const auto& track : tracks) {
         derived = MaxTime(track.animationClips,
@@ -590,7 +590,7 @@ bool SaveSequenceAsset(const std::string& path, const SequenceAsset& asset)
         tracks.push_back(WriteTrack(track));
     root.insert("tracks", std::move(tracks));
 
-    // クリップ・音源の参照を guid: へ寄せる (リネーム・移動耐性)。
+    /// @note クリップ・音源の参照を guid: へ寄せる (リネーム・移動耐性)。
     EncodeGuidRefs(root);
 
     std::ostringstream stream;

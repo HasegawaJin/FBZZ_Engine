@@ -12,8 +12,8 @@
 
 namespace fbzz::core {
 
-// 最後に確保した領域から順に Free するアロケータ。
-// WHY: LinearAllocator より細かく戻せるが、任意順解放を許さないことで実装とコストを小さく保つ。
+/// @brief 最後に確保した領域から順に Free するアロケータ。
+/// @note LinearAllocator より細かく戻せるが、任意順解放を許さないことで実装とコストを小さく保つ。
 class StackAllocator final : public Allocator {
 public:
     StackAllocator() = default;

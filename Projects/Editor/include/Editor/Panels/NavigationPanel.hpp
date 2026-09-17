@@ -2,11 +2,10 @@
 /// @brief   シーン内の NavMesh Surface を一覧し、ベイク・診断・オーバーレイ設定をまとめるパネル。
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
-//
-// WHY 専用パネルを持つか: ベイクの入口が Inspector しか無かったため、「どの GO に
-// Surface が付いているか」を知らないとベイクにたどり着けず、シーン全体を焼き直す
-// 手段がエディタ側に存在しなかった (MCP の navmesh_bake だけが持っていた)。
-// 一覧・一括ベイク・古さの検知・失敗理由を 1 か所へ集める。
+///
+/// @note ベイクの入口が Inspector しか無く、「どの GO に Surface が付いているか」を知らないと
+///       たどり着けなかった (MCP の navmesh_bake だけが持っていた)。一覧・一括ベイク・古さの検知・
+///       失敗理由を 1 か所へ集める。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/Scene/Entity.hpp>
@@ -29,8 +28,8 @@ private:
     void DrawSurfaceList(EditorContext& ctx);
     void DrawAgentDiagnostics(EditorContext& ctx);
 
-    // ベイクソースのハッシュは Terrain の高さ全体を畳むため、パネルが開いている間だけ
-    // 間引いて更新する。キーは EntityID::index。
+    /// ベイクソースのハッシュは Terrain の高さ全体を畳むため、パネルが開いている間だけ
+    /// 間引いて更新する。キーは EntityID::index。
     void RefreshStaleCache(EditorContext& ctx);
 
     std::unordered_map<uint32_t, uint64_t> m_sourceHashes;

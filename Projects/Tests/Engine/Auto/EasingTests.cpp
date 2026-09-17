@@ -69,11 +69,11 @@ std::vector<Curve> AllCurves()
 
 class EasingTest : public testkit::EngineFixture {};
 
-// --- 端点 -------------------------------------------------------------------
+/// @name 端点
 
 TEST_F(EasingTest, EveryCurveStartsAtZeroAndEndsAtOne)
 {
-    // ここが崩れると、演出の開始か終了で必ず 1 フレーム «飛ぶ»。
+    /// @note ここが崩れると、演出の開始か終了で必ず 1 フレーム «飛ぶ»。
     for (const Curve& curve : AllCurves()) {
         EXPECT_NEAR(curve.fn(0.0f), 0.0f, testkit::kLooseTolerance) << curve.name;
         EXPECT_NEAR(curve.fn(1.0f), 1.0f, testkit::kLooseTolerance) << curve.name;
@@ -95,8 +95,8 @@ TEST_F(EasingTest, EveryCurveIsFiniteAcrossTheUnitInterval)
 
 TEST_F(EasingTest, PlainCurvesStayInsideTheUnitRange)
 {
-    // 行き過ぎるのは Back / Elastic / Bounce だけ。ほかが 1 を超えると
-    // «フェードが一瞬白飛びする» ような形で出る。
+    /// @note 行き過ぎるのは Back / Elastic / Bounce だけ。ほかが 1 を超えると
+    ///       «フェードが一瞬白飛びする» ような形で出る。
     for (const Curve& curve : AllCurves()) {
         if (!curve.monotonic) continue;
 
@@ -125,11 +125,11 @@ TEST_F(EasingTest, PlainCurvesNeverGoBackwards)
     }
 }
 
-// --- In と Out の関係 -------------------------------------------------------
+/// @name In と Out の関係
 
 TEST_F(EasingTest, InAndOutAreMirrorImages)
 {
-    // Out(t) == 1 - In(1-t) が «同じ形の裏返し» の定義。片方だけ式を直すとここで落ちる。
+    /// @note Out(t) == 1 - In(1-t) が «同じ形の裏返し» の定義。片方だけ式を直すとここで落ちる。
     const std::pair<EaseFn, EaseFn> pairs[] = {
         { util::Easing::EaseInQuad,   util::Easing::EaseOutQuad   },
         { util::Easing::EaseInCubic,  util::Easing::EaseOutCubic  },
@@ -164,7 +164,7 @@ TEST_F(EasingTest, InOutCurvesPassThroughTheMidpoint)
 
 TEST_F(EasingTest, EaseInStartsSlowerThanLinear)
 {
-    // «In» は出だしが遅い。逆になっていると加速と減速が入れ替わる。
+    /// @note «In» は出だしが遅い。逆になっていると加速と減速が入れ替わる。
     EXPECT_LT(util::Easing::EaseInQuad(0.25f), 0.25f);
     EXPECT_LT(util::Easing::EaseInCubic(0.25f), 0.25f);
     EXPECT_GT(util::Easing::EaseOutQuad(0.25f), 0.25f);
@@ -173,8 +173,8 @@ TEST_F(EasingTest, EaseInStartsSlowerThanLinear)
 
 TEST_F(EasingTest, HigherPowersBiteHarder)
 {
-    // Quad < Cubic < Quart < Quint の順に «出だしが遅い»。式の写し間違いで
-    // 次数が入れ替わっても端点は通るので、ここでしか捕まらない。
+    /// @note Quad < Cubic < Quart < Quint の順に «出だしが遅い»。式の写し間違いで
+    ///       次数が入れ替わっても端点は通るので、ここでしか捕まらない。
     const float t = 0.4f;
 
     EXPECT_GT(util::Easing::EaseInQuad(t), util::Easing::EaseInCubic(t));
@@ -184,7 +184,7 @@ TEST_F(EasingTest, HigherPowersBiteHarder)
 
 TEST_F(EasingTest, BackOvershootsPastTheEnds)
 {
-    // 行き過ぎることが Back の存在理由。抑えると «ただの Cubic» になる。
+    /// @note 行き過ぎることが Back の存在理由。抑えると «ただの Cubic» になる。
     EXPECT_LT(util::Easing::EaseInBack(0.3f), 0.0f);
     EXPECT_GT(util::Easing::EaseOutBack(0.7f), 1.0f);
 }

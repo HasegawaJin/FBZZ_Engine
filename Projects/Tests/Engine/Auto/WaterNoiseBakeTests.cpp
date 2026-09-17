@@ -36,11 +36,11 @@ class WaterNoiseBakeTest : public testkit::Fixture {};
 
 } // namespace
 
-// --- ノイズそのもの ----------------------------------------------------------
+/// @name ノイズそのもの
 
 TEST_F(WaterNoiseBakeTest, GradientNoiseRepeatsExactlyAtThePeriod)
 {
-    // タイルは WRAP でサンプルされる。周期でぴったり折り返さないと、水面に格子状の継ぎ目が出る。
+    /// @note タイルは WRAP でサンプルされる。周期でぴったり折り返さないと、水面に格子状の継ぎ目が出る。
     constexpr std::int32_t period = 16;
     for (int i = 0; i < 12; ++i) {
         const float x = -3.7f + static_cast<float>(i) * 1.31f;
@@ -60,8 +60,8 @@ TEST_F(WaterNoiseBakeTest, GradientNoiseRepeatsExactlyAtThePeriod)
 
 TEST_F(WaterNoiseBakeTest, GradientNoiseReturnsItsOwnAnalyticDerivative)
 {
-    // 勾配は «値を 3 回引いて差分を取る» 代わりに解析で返している。ここがずれると
-    // 法線だけが静かに間違い、絵では «光り方がおかしい» としか分からない。
+    /// @note 勾配は «値を 3 回引いて差分を取る» 代わりに解析で返している。ここがずれると
+    ///       法線だけが静かに間違い、絵では «光り方がおかしい» としか分からない。
     constexpr std::int32_t period = 16;
     constexpr float h = 1.0e-3f;
     for (int i = 0; i < 12; ++i) {
@@ -81,7 +81,7 @@ TEST_F(WaterNoiseBakeTest, GradientNoiseReturnsItsOwnAnalyticDerivative)
     }
 }
 
-// --- 焼き上がったタイル ------------------------------------------------------
+/// @name 焼き上がったタイル
 
 TEST_F(WaterNoiseBakeTest, MipChainHalvesDownToASingleTexel)
 {
@@ -99,8 +99,8 @@ TEST_F(WaterNoiseBakeTest, MipChainHalvesDownToASingleTexel)
 
 TEST_F(WaterNoiseBakeTest, EachMipIsTheBoxAverageOfThePreviousLevel)
 {
-    // «縮小 = 勾配の平均» が成り立つことが LOD の土台。ここが別のフィルタになると、
-    // 遠景の水面が «平坦» ではなく «別の傾き» へ収束する。
+    /// @note «縮小 = 勾配の平均» が成り立つことが LOD の土台。ここが別のフィルタになると、
+    ///       遠景の水面が «平坦» ではなく «別の傾き» へ収束する。
     const wn::Tile& tile = SharedTile();
     ASSERT_GE(tile.mips.size(), 2u);
 
@@ -127,13 +127,13 @@ TEST_F(WaterNoiseBakeTest, EachMipIsTheBoxAverageOfThePreviousLevel)
 
 TEST_F(WaterNoiseBakeTest, TheSmallestMipDecodesToAFlatSurface)
 {
-    // 周期関数の勾配は 1 周期で積分するとゼロ。最小ミップ = タイル全体の平均なので、
-    // «一番遠い水面» はどの向きにも傾いていない = 鏡になる。
+    /// @note 周期関数の勾配は 1 周期で積分するとゼロ。最小ミップ = タイル全体の平均なので、
+    ///       «一番遠い水面» はどの向きにも傾いていない = 鏡になる。
     const wn::Tile& tile = SharedTile();
     const auto& last = tile.mips.back();
     ASSERT_EQ(last.size(), 4u);
 
-    // 許容は «典型的な勾配の 1/4»。厳密にゼロにならないのは、各段の 8bit 丸めが 9 回積もるため。
+    /// @note 許容は «典型的な勾配の 1/4»。厳密にゼロにならないのは、各段の 8bit 丸めが 9 回積もるため。
     const float tolerance = wn::kGradientRms * 0.25f;
     EXPECT_LT(std::abs(DecodeDerivative(last[0], tile.derivativeScale)), tolerance);
     EXPECT_LT(std::abs(DecodeDerivative(last[1], tile.derivativeScale)), tolerance);
@@ -141,8 +141,8 @@ TEST_F(WaterNoiseBakeTest, TheSmallestMipDecodesToAFlatSurface)
 
 TEST_F(WaterNoiseBakeTest, GradientRmsMatchesTheTargetSoDetailStrengthKeepsItsMeaning)
 {
-    // 旧・値ノイズと同じ RMS へ正規化してある。ずれると、ノイズを差し替えただけで
-    // 既存 .mat の detailStrength が別の強さを意味してしまう。
+    /// @note 旧・値ノイズと同じ RMS へ正規化してある。ずれると、ノイズを差し替えただけで
+    ///       既存 .mat の detailStrength が別の強さを意味してしまう。
     const wn::Tile& tile = SharedTile();
     const auto& mip0 = tile.mips.front();
 
@@ -159,8 +159,8 @@ TEST_F(WaterNoiseBakeTest, GradientRmsMatchesTheTargetSoDetailStrengthKeepsItsMe
 
 TEST_F(WaterNoiseBakeTest, DerivativeScaleIsExactlyTheLargestBakedGradient)
 {
-    // 復号係数は «実際に出た最大» でなければならない。大きすぎると 8bit の分解能を捨て、
-    // 小さいと山と谷が飽和して «平らな筋» になる。最大の成分がちょうど端へ張り付く。
+    /// @note 復号係数は «実際に出た最大» でなければならない。大きすぎると 8bit の分解能を捨て、
+    ///       小さいと山と谷が飽和して «平らな筋» になる。最大の成分がちょうど端へ張り付く。
     const wn::Tile& tile = SharedTile();
     const auto& mip0 = tile.mips.front();
 
@@ -174,7 +174,7 @@ TEST_F(WaterNoiseBakeTest, DerivativeScaleIsExactlyTheLargestBakedGradient)
             highest = (std::max)(highest, value);
         }
     }
-    // 最大絶対値を取った成分の符号によって、張り付く端が変わる。
+    /// @note 最大絶対値を取った成分の符号によって、張り付く端が変わる。
     EXPECT_TRUE(highest == 255 || lowest == 0) << "lowest=" << lowest << " highest=" << highest;
 }
 

@@ -54,7 +54,7 @@ private:
     testkit::TempDir m_temp{"guidref"};
 };
 
-// --- Encode -----------------------------------------------------------------
+/// @name Encode
 
 TEST_F(GuidRefCodecTest, EncodesAKnownAssetIntoAGuidReference)
 {
@@ -70,7 +70,7 @@ TEST_F(GuidRefCodecTest, EncodesAKnownAssetIntoAGuidReference)
 
 TEST_F(GuidRefCodecTest, WritesTheProjectRelativePathAsAHint)
 {
-    // guid だけだと «どのファイルか» をファイルの中から辿れない。人と grep のために併記する。
+    /// @note guid だけだと «どのファイルか» をファイルの中から辿れない。人と grep のために併記する。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
 
@@ -81,7 +81,7 @@ TEST_F(GuidRefCodecTest, WritesTheProjectRelativePathAsAHint)
 
 TEST_F(GuidRefCodecTest, EncodingIsIdempotent)
 {
-    // Save のたびに掛かる。2 度掛けて "guid:guid:..." になってはいけない。
+    /// @note Save のたびに掛かる。2 度掛けて "guid:guid:..." になってはいけない。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
     const std::string once = asset::EncodeGuidRef(texture);
@@ -91,7 +91,7 @@ TEST_F(GuidRefCodecTest, EncodingIsIdempotent)
 
 TEST_F(GuidRefCodecTest, LeavesValuesThatAreNotAssetPathsAlone)
 {
-    // 文書中の全文字列に掛かるため、ここが緩いとスクリプトの設定値が書き換わる。
+    /// @note 文書中の全文字列に掛かるため、ここが緩いとスクリプトの設定値が書き換わる。
     InitDatabase();
 
     EXPECT_EQ(asset::EncodeGuidRef("Player.001"), "Player.001");
@@ -102,19 +102,19 @@ TEST_F(GuidRefCodecTest, LeavesValuesThatAreNotAssetPathsAlone)
 
 TEST_F(GuidRefCodecTest, LeavesPathsThatAreNotRegisteredAlone)
 {
-    // 実体が無い / Assets の外。データを勝手に捨てず、そのまま通す。
+    /// @note 実体が無い / Assets の外。データを勝手に捨てず、そのまま通す。
     InitDatabase();
 
     EXPECT_EQ(asset::EncodeGuidRef("Assets/Textures/Missing.png"),
               "Assets/Textures/Missing.png");
 }
 
-// --- Decode -----------------------------------------------------------------
+/// @name Decode
 
 TEST_F(GuidRefCodecTest, DecodesBackToTheRuntimeRelativePath)
 {
-    // ランタイムと Inspector は "Assets/..." 前提。ここだけ絶対パスを返すと
-    // 同じアセットが 2 通りの文字列で流通する。
+    /// @note ランタイムと Inspector は "Assets/..." 前提。ここだけ絶対パスを返すと
+    ///       同じアセットが 2 通りの文字列で流通する。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
 
@@ -134,7 +134,7 @@ TEST_F(GuidRefCodecTest, DecodingLeavesPlainPathsAlone)
 
 TEST_F(GuidRefCodecTest, RecoversAnUnresolvableGuidThroughItsPathHint)
 {
-    // .meta を作り直すと guid が変わる。ヒントの実体が残っていれば参照を生かす。
+    /// @note .meta を作り直すと guid が変わる。ヒントの実体が残っていれば参照を生かす。
     CreateAsset("Textures/Player.png");
     InitDatabase();
 
@@ -146,7 +146,7 @@ TEST_F(GuidRefCodecTest, RecoversAnUnresolvableGuidThroughItsPathHint)
 
 TEST_F(GuidRefCodecTest, KeepsAnUnresolvableReferenceWhenNothingCanBeRecovered)
 {
-    // 引けず、ヒントの実体も無い。空にすると «何を指していたか» が永久に失われる。
+    /// @note 引けず、ヒントの実体も無い。空にすると «何を指していたか» が永久に失われる。
     InitDatabase();
     const std::string broken =
         "guid:00000000000000000000000000000000|Assets/Textures/Gone.png";
@@ -165,12 +165,12 @@ TEST_F(GuidRefCodecTest, SurvivesTheFullRoundTripTwice)
     EXPECT_EQ(second, first);
 }
 
-// --- TOML ツリー全体 --------------------------------------------------------
+/// @name TOML ツリー全体
 
 TEST_F(GuidRefCodecTest, WalksNestedTablesAndArrays)
 {
-    // Save 直前に文書全体へ掛ける。入れ子や配列の中の参照を取りこぼすと、
-    // その 1 つだけリネームに弱いまま残る。
+    /// @note Save 直前に文書全体へ掛ける。入れ子や配列の中の参照を取りこぼすと、
+    ///       その 1 つだけリネームに弱いまま残る。
     const std::string texture = CreateAsset("Textures/Player.png");
     InitDatabase();
 

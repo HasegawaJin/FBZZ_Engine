@@ -114,10 +114,9 @@ namespace fbzz::physics
         body->SetVelocity(velocity);
         body->SetPosition(state.prevPosition + velocity * h);
 
-        // WHY ジャイロ項 (ω × Iω) を積まないか: 明示的に積むと高速回転で発散しやすく、
-        //     PhysX も既定で切っている。関節で拘束された肢では効きが小さいので、
-        //     安定と引き換えに落とす。自由回転する単体剛体では «テニスラケットの定理»
-        //     が出ないという既知の差になる。
+        /// @note ジャイロ項 (ω × Iω) は積まない。明示的に積むと高速回転で発散しやすく PhysX も
+        ///       既定で切っている。関節で拘束された肢では効きが小さいため安定と引き換えに
+        ///       落とし、自由回転する単体剛体では «テニスラケットの定理» が出ない既知の差になる。
         const math::Vector3 angularVelocity =
             body->GetAngularVelocity() *
             (1.0f / (1.0f + std::max(body->m_angularDrag, 0.0f) * h));

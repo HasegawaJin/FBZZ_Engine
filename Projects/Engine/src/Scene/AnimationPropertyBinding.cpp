@@ -15,7 +15,7 @@
 namespace fbzz::scene {
 namespace {
 
-// Reflect() を一度だけ巡回して、一致する永続キーへ値を書き込む。
+/// Reflect() を一度だけ巡回して、一致する永続キーへ値を書き込む。
 class PropertyWriteReflector final : public IReflector {
 public:
     PropertyWriteReflector(const asset::PropertyAnimationTrack& track, double ticks)
@@ -56,7 +56,7 @@ private:
     double m_ticks = 0.0;
 };
 
-// 現在値を 1 件だけ拾う。
+/// 現在値を 1 件だけ拾う。
 class PropertyCaptureReflector final : public IReflector {
 public:
     PropertyCaptureReflector(const asset::PropertyAnimationTrack& track,
@@ -114,7 +114,7 @@ private:
     AnimationPropertySample& m_sample;
 };
 
-// スナップショットを書き戻す。型は捕まえたときのものを使う。
+/// スナップショットを書き戻す。型は捕まえたときのものを使う。
 class PropertyRestoreReflector final : public IReflector {
 public:
     PropertyRestoreReflector(const asset::PropertyAnimationTrack& track,
@@ -155,7 +155,7 @@ private:
     const AnimationPropertySample& m_sample;
 };
 
-// componentType が指す実体 (登録コンポーネント → Script) へリフレクタを流す。
+/// componentType が指す実体 (登録コンポーネント → Script) へリフレクタを流す。
 template<typename Reflector>
 void VisitComponent(GameObject& target,
                     const asset::PropertyAnimationTrack& track,
@@ -202,7 +202,7 @@ void ApplyMaterialProperty(GameObject& target,
 {
     MaterialComponent* material = target.GetComponent<MaterialComponent>();
     if (!material || track.propertyName.empty()) return;
-    // materialSlot が submesh (= マテリアルスロット) を選ぶ。負値は主スロット。
+    /// @note materialSlot が submesh (= マテリアルスロット) を選ぶ。負値は主スロット。
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
     auto& values = material->SlotAt(slotIndex).paramOverrides[track.propertyName];
     switch (track.valueType) {
@@ -285,7 +285,7 @@ void RestoreMaterialProperty(GameObject& target,
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
     if (slotIndex >= material->SlotCount()) return;
     auto& overrides = material->SlotAt(slotIndex).paramOverrides;
-    // 演出が付けた override は、演出が終わったら跡形もなく消えるのが正しい。
+    /// @note 演出が付けた override は、演出が終わったら跡形もなく消えるのが正しい。
     if (!hadOverride) overrides.erase(track.propertyName);
     else              overrides[track.propertyName] = values;
 }

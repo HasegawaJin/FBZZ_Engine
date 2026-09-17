@@ -3,34 +3,24 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
 ///
-/// WHY 経路が必ず円弧か (boss-serpent.md「検算」):
-///   同じ «弦と弧長» を満たす形のうち最大曲率が最小になるのは曲率一定の円弧で、
-///   正弦の山だと曲がりが頂上へ集中して 2 倍近く折れる (内→内で 30.2度 対 58.9度)。
-///   装甲の限界は «1 関節あたり 12 度» なので、どこか 1 箇所でも超えれば破綻する ─
-///   均す形を選ぶしかない。
-///
-/// WHY 経路を «張り替え» ずに継ぎ足すか:
-///   1 本の弧だけを持って口から口へ張り替えると、渡り終えた瞬間に鎖の弧長が 0 へ戻る。
-///   胴は «頭の弧長 − 累積» で置いているので、これは 24 m の胴が 1 フレームで
-///   前後ひっくり返るということ ─ しかも張り替えてよいのは «全身が床下に入りきってから»
-///   なので、蛇が盤面から完全に消える時間が毎回できる。
-///   弧を継ぎ足して s を伸ばし続ければ、頭が次の口から出てくる頃に尾はまだ前の弧に居る。
-///   出入りが «糸を通す» 形になり、跳ぶ瞬間も消える瞬間も無くなる。
-///
-/// WHY 口と口を繋ぐ床下リンクが要るか:
-///   継ぎ足すには «入った口から出る口まで» の床下の道が要る。端の接線を延ばすだけでは
-///   道にならない (次の口へ着かない)。ここでは口での接線を保ったまま繋ぐ 3 次曲線を
-///   1 本張り、弧長の表を作って «長さで» 引けるようにしてある。
-///
-/// WHY リンクを浅く保つか:
-///   胴が途切れずに見えているのは «リンクが胴より短いあいだ» だけ。深さ 6.2 m で
-///   寝かせる端の延長 (Tail Depth) と同じ作りにすると片道 15 m を超え、渡っている
-///   最中に全身が床下へ入る。リンクは «床スラブを抜けるだけ» の深さで足りる。
-///
-/// WHY エンジンと Blender で同じ式を持つか:
-///   `serpent_arena.py` の arch() / route() / at() が «この寸法で胴が渡れるか» を
-///   検算している。式が 2 通りあると、検算が通っているのに実機で折れる。
-///   片方を直したらもう片方も直すこと (検算しているのは地上の弧の側)。
+/// @note 経路は必ず円弧にする (boss-serpent.md「検算」)。同じ弦と弧長を満たす形の
+///       うち最大曲率が最小になるのは曲率一定の円弧で、正弦の山だと曲がりが頂上へ
+///       集中して 2 倍近く折れる (内→内で 30.2度 対 58.9度)。装甲の限界は 1 関節
+///       あたり 12 度で、超えれば破綻する。
+/// @note 経路は張り替えず継ぎ足す。1 本の弧を口から口へ張り替えると、胴は «頭の弧長
+///       − 累積» で置いているため渡り終えた瞬間に 24 m の胴が 1 フレームで前後反転し、
+///       かつ張り替えは «全身が床下に入りきってから» としか行えず盤面から消える時間が
+///       できる。弧を継ぎ足して弧長を伸ばし続ければ、頭が次の口から出る頃も尾は前の
+///       弧に居るので «糸を通す» ように出入りできる。
+/// @note 口と口の間は床下リンクで繋ぐ。端の接線を延ばすだけでは次の口へ着かないため、
+///       口での接線を保ったまま繋ぐ 3 次曲線を張り、弧長の表を作って «長さで» 引ける
+///       ようにしてある。
+/// @note リンクは浅く保つ。胴が途切れずに見えるのは «リンクが胴より短いあいだ» だけで、
+///       端の延長 (Tail Depth, 6.2 m) と同じ深さにすると片道 15 m を超え渡走中に全身
+///       が床下へ入ってしまう。床スラブを抜けるだけの深さで足りる。
+/// @note エンジンと Blender (`serpent_arena.py` の arch()/route()/at()) は同じ式を
+///       持つ。式が 2 通りあると検算が通っているのに実機で折れるため、片方を直したら
+///       もう片方も直すこと (検算対象は地上の弧の側)。
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>
@@ -52,14 +42,11 @@ class SerpentPathComponent : public Script {
 
 public:
     FBZZ_GROUP("受付時間")
-    // 渡れる間隔には上下の窓がある。狭いと折れ角が上限を超える。
-    //
-    // WHY 上限が «露出長より短く» なければならないか (企画の 11.5 m から下げた理由):
-    //   弧長は露出長 (11.2 m) で固定なので、弦がそれに近づくほど弧は伸びきって直線になる。
-    //   実測した口の組のうち 11.39 m の 4 組 (I2-O1 / I3-O5 / I5-O6 / I6-O10) は
-    //   弦の方が弧より長く、丸めで «山 0 m・半径 56000 m» ─ つまり床に寝た棒になっていた。
-    //   «渡っている» に見える最低限の山 (約 2 m) を残すには弦を露出長の 9 割あたりで切る。
-    //   10.5 m で切っても各口に 2〜4 本の渡り先が残る (グラフは連結のまま)。
+    /// @brief 渡れる間隔には上下の窓がある。狭いと折れ角が上限を超える。
+    /// @note 上限は露出長 (11.2 m) より必ず短くする。近づくほど弧は伸びきって直線になり、
+    ///       11.39 m の組 (I2-O1 / I3-O5 / I5-O6 / I6-O10) は «山 0 m» の棒になっていた。
+    ///       «渡っている» に見える最低限の山 (約 2 m) を残すため、露出長の 9 割 (10.5 m)
+    ///       で切る (各口に 2〜4 本の渡り先が残りグラフは連結のまま)。
     FBZZ_FIELD_RANGE(float, minChord, 8.0f, "Min Chord", 1.0f, 30.0f)
     FBZZ_FIELD_RANGE(float, maxChord, 10.5f, "Max Chord", 1.0f, 40.0f)
     FBZZ_TOOLTIP("胴が渡れる穴の間隔。外れた組を渡そうとしたら名指しで警告する。"
@@ -67,11 +54,10 @@ public:
     FBZZ_FIELD(bool, warnOutOfWindow, true, "Warn Out Of Window")
 
     FBZZ_GROUP("Underground")
-    // 経路の «端» ─ 尾の先と、まだ次を決めていない頭の先。
-    //
-    // WHY 接線のまま延ばさないか: 弦 8 m の経路は口での接線が水平から 78 度もあり、
-    //     接線のまま 11.2 m 延ばすと胴は y = -11 m まで潜る。床下スラブ (ARENA_Pit) は
-    //     -7.4 m にあるので、開いた口を覗くと胴がその床を突き抜けているのが見える。
+    /// @brief 経路の «端» ─ 尾の先と、まだ次を決めていない頭の先。
+    /// @note 接線のまま延ばさない。弦 8 m の経路は口での接線が水平から 78 度もあり、
+    ///       接線のまま 11.2 m 延ばすと y = -11 m まで潜って床下スラブ (ARENA_Pit,
+    ///       -7.4 m) を突き抜けて見えてしまう。
     FBZZ_FIELD_RANGE(float, undergroundDepth, 6.2f, "Tail Depth", 0.5f, 20.0f)
     FBZZ_TOOLTIP("経路の端で水平になるまでに降りる深さ。床下スラブ (-7.4 m) より浅くすること")
     FBZZ_FIELD_RANGE(float, linkDepth, 2.6f, "Link Depth", 0.5f, 7.0f)
@@ -93,7 +79,7 @@ public:
     void BeginRoute(const std::string& from, const std::string& to,
                     const Vector3& fromCenter, const Vector3& toCenter, float exposedMeters);
     /// 今の終端の口から床下を通って exit の口まで潜り、そこから to へ弧を継ぎ足す。
-    /// @ret 足せたら true。
+    /// @return 足せたら true。
     bool AppendRoute(const std::string& exitHole, const Vector3& exitCenter,
                      const std::string& to, const Vector3& toCenter, float exposedMeters);
     /// 現在の終端から床上だけを走る弧を継ぎ足す。穴を開けずに地上移動を続けるために使う。
@@ -102,12 +88,12 @@ public:
     /// 経路を持っているか。張る前は At() が原点を返すだけになる。
     [[nodiscard]] bool Valid() const { return !m_pieces.empty(); }
 
-    /// 最後の弧の «弧長» だけを差し替える。口 (弦) は動かさない。@ret 直せたら true。
-    ///
-    /// WHY これがせり上がりになるか: 弦が固定のまま弧を伸ばすと、伸びたぶんは
-    ///     まるごと «山の高さ» になる (弧長 11.2 m で山 3.3 m、16 m で山 5.6 m)。
-    ///     胴は弧長で置いてあるので、経路を伸ばすだけで蛇が持ち上がる。
-    ///     半径は弧と一緒に育つので、折れ角は 11 度前後のまま増えない。
+    /// @brief 最後の弧の «弧長» だけを差し替える。口 (弦) は動かさない。
+    /// @return 直せたら true。
+    /// @note 弦固定のまま弧を伸ばすと伸びたぶんが丸ごと «山の高さ» になる
+    ///       (弧長 11.2 m で山 3.3 m、16 m で山 5.6 m)。胴は弧長で置くため、
+    ///       経路を伸ばすだけで蛇が持ち上がる。半径は弧と一緒に育つので折れ角は
+    ///       11 度前後のまま増えない。
     bool ReshapeLast(float exposedMeters);
 
     /// 弧長 s の位置。両端の外は床下へ寝かせながら延ばす。
@@ -137,10 +123,9 @@ public:
     [[nodiscard]] float LastArcLength() const { return LastArcEnd() - LastArcStart(); }
     /// 最後の弧の 2 口の中点 (床面)。叩きつけの着弾はここで見る。
     [[nodiscard]] Vector3 LastArcGroundCenter() const;
-    /// 点を最後の弧へ落としたときの弧長。頭が «プレイヤーの正面» へ滑るのに使う。
-    ///
-    /// WHY 弦へ落とすだけで足りるか: 弧は 2 口を通る垂直な面の中にあるので、
-    ///     床への影はちょうど 2 口を結ぶ線分になる。上下の分は頭の狙いが持つ。
+    /// @brief 点を最後の弧へ落としたときの弧長。頭が «プレイヤーの正面» へ滑るのに使う。
+    /// @note 弦へ落とすだけで足りる。弧は 2 口を通る垂直な面の中にあるため、床への
+    ///       影はちょうど 2 口を結ぶ線分になる (上下の分は頭の狙いが持つ)。
     [[nodiscard]] float ProjectOnLastArc(const Vector3& point) const;
     /// 最後の弧の山の高さ [m]。
     [[nodiscard]] float ApexHeight() const;
@@ -164,7 +149,7 @@ private:
         float       start   = 0.0f;   ///< 経路全体での弧長
         float       length  = 0.0f;
 
-        // 地上の弧
+        /// @note 地上の弧
         std::string from;
         std::string to;
         Vector3     a{};              ///< 出る口 (床面)
@@ -175,30 +160,28 @@ private:
         float       theta  = 0.0f;    ///< 半開角 [rad]
         float       apex   = 0.0f;
 
-        // 床下のリンク。3 次曲線を等分割し、弧長で引けるようにしてある。
+        /// @note 床下のリンク。3 次曲線を等分割し、弧長で引けるようにしてある。
         std::vector<Vector3> samples;
         std::vector<float>   arcs;
     };
 
     static constexpr int kLinkSamples = 48;
 
-    /// sin(θ)/θ = ratio を満たす θ を二分法で解く。ratio は (0,1)。
-    ///
-    /// WHY 閉じた形で解かないか: sin(θ)/θ = c に初等関数の逆は無い。二分法は
-    ///     単調な区間 (0,π) で 40 回も回せば float の精度に収まる。
+    /// @brief sin(θ)/θ = ratio を満たす θ を二分法で解く。ratio は (0,1)。
+    /// @note 閉じた形では解けない (sin(θ)/θ = c に初等関数の逆は無い)。二分法なら
+    ///       単調な区間 (0,π) で 40 回も回せば float の精度に収まる。
     [[nodiscard]] static float SolveHalfAngle(float ratio);
 
-    /// 2 口から地上の弧を組む。@ret 組めたら true。
+    /// 2 口から地上の弧を組む。@return 組めたら true。
     /// @param warn 窓を外れた組を名指しするか。せり上がりのように毎フレーム組み直す
     ///             ときは切る ─ 同じ警告が 60 回/秒 出てログが読めなくなる。
     bool ShapeArc(Piece& piece, const std::string& from, const std::string& to,
                   const Vector3& a, const Vector3& b, float exposedMeters, bool warn = true);
-    /// prev の入る口から next の出る口までを床下で繋ぐ。
-    ///
-    /// WHY 3 次曲線か: 口での向きは弧が既に決めていて (下向き 48〜78 度)、
-    ///     そこを外すと胴が口の縁を舐める。両端の «点と向き» を固定して繋げる
-    ///     一番低い次数がエルミートの 3 次で、深さは接線の長さだけで決まる
-    ///     (最深 = 0.25 · 接線長 · sinθ なので、欲しい深さから逆に解ける)。
+    /// @brief prev の入る口から next の出る口までを床下で繋ぐ。
+    /// @note 3 次曲線を使う。口での向きは弧が既に決めていて (下向き 48〜78 度)、
+    ///       外すと胴が口の縁を舐める。両端の点と向きを固定して繋げる一番低い次数が
+    ///       エルミートの 3 次で、深さは接線の長さだけで決まる
+    ///       (最深 = 0.25 · 接線長 · sinθ なので欲しい深さから逆に解ける)。
     void BuildLink(Piece& link, const Piece& prev, const Piece& next);
 
     [[nodiscard]] static Vector3 ArcAt(const Piece& piece, float local);
@@ -229,7 +212,7 @@ inline float SerpentPathComponent::SolveHalfAngle(float ratio)
     float high = PI - 1.0e-4f;
     for (int i = 0; i < 48; ++i) {
         const float mid = (low + high) * 0.5f;
-        // sin(θ)/θ は (0, π) で単調に減る。
+        /// @note sin(θ)/θ は (0, π) で単調に減る。
         if (std::sin(mid) / mid > target) low = mid;
         else                              high = mid;
     }
@@ -257,20 +240,20 @@ inline bool SerpentPathComponent::ShapeArc(Piece& piece, const std::string& from
     piece.u = delta / chord;
 
     if (warn && warnOutOfWindow && (chord < minChord || chord > maxChord)) {
-        // 狭いと折れすぎ、広いと胴が床に埋まる。どちらも «なんとなく変» にしか
-        // 見えないので、渡る前に名指しで言う。
+        /// @note 狭いと折れすぎ、広いと胴が床に埋まる。どちらも «なんとなく変» にしか
+        ///       見えないので、渡る前に名指しで言う。
         debug.LogWarning("SerpentPathComponent: route " + from + " -> " + to + " spans " +
                          std::to_string(chord) + " m, outside the " + std::to_string(minChord) +
                          "-" + std::to_string(maxChord) +
                          " m window that the body can arch over.");
     }
 
-    // 弧は弦より必ず長い。等しいと直線になり、山が立たない。
+    /// @note 弧は弦より必ず長い。等しいと直線になり、山が立たない。
     piece.length = Max(exposedMeters, chord * 1.02f);
     piece.theta  = SolveHalfAngle(chord / piece.length);
     piece.radius = piece.length / (2.0f * Max(piece.theta, 1.0e-4f));
 
-    // 中心は弦の中点から «下» へ R·cosθ。山は上へ R(1-cosθ)。
+    /// @note 中心は弦の中点から «下» へ R·cosθ。山は上へ R(1-cosθ)。
     const Vector3 mid{ (a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (a.z + b.z) * 0.5f };
     piece.center = mid - Vector3::UP * (piece.radius * std::cos(piece.theta));
     piece.apex   = piece.radius * (1.0f - std::cos(piece.theta));
@@ -285,12 +268,16 @@ inline void SerpentPathComponent::BuildLink(Piece& link, const Piece& prev, cons
 {
     link.surface = false;
 
-    const Vector3 p0 = prev.b;                        // 潜る口
-    const Vector3 p1 = next.a;                        // 出る口
-    const Vector3 t0 = ArcTangent(prev, prev.length); // 下向き
-    const Vector3 t1 = ArcTangent(next, 0.0f);        // 上向き
+    /// @note 潜る口
+    const Vector3 p0 = prev.b;
+    /// @note 出る口
+    const Vector3 p1 = next.a;
+    /// @note 下向き
+    const Vector3 t0 = ArcTangent(prev, prev.length);
+    /// @note 上向き
+    const Vector3 t1 = ArcTangent(next, 0.0f);
 
-    // 最深は 0.25 · scale · sinθ。欲しい深さから接線の長さを逆に出す。
+    /// @note 最深は 0.25 · scale · sinθ。欲しい深さから接線の長さを逆に出す。
     const float sinAvg = Max((std::sin(prev.theta) + std::sin(next.theta)) * 0.5f, 0.05f);
     const float scale  = 4.0f * Max(linkDepth, 0.2f) / sinAvg;
 
@@ -375,7 +362,7 @@ inline bool SerpentPathComponent::ReshapeLast(float exposedMeters)
 {
     if (m_pieces.empty()) return false;
 
-    // 自分の値を引数に渡すことになるので、先に控えてから組み直す。
+    /// @note 自分の値を引数に渡すことになるので、先に控えてから組み直す。
     Piece&            piece = m_pieces.back();
     const std::string from  = piece.from;
     const std::string to    = piece.to;
@@ -390,8 +377,8 @@ inline bool SerpentPathComponent::ReshapeLast(float exposedMeters)
 
 inline void SerpentPathComponent::PruneBefore(float keep)
 {
-    // 先頭は必ず地上の弧にしておく ─ 経路より手前は «その弧の口から床下へ» 延ばすので、
-    // リンクが先頭に来ると尾の先が置けなくなる。弧とリンクを 2 つ 1 組で捨てる。
+    /// @note 先頭は必ず地上の弧にしておく ─ 経路より手前は «その弧の口から床下へ» 延ばすので、
+    ///       リンクが先頭に来ると尾の先が置けなくなる。弧とリンクを 2 つ 1 組で捨てる。
     while (m_pieces.size() >= 3 && m_pieces[1].start + m_pieces[1].length < keep)
         m_pieces.erase(m_pieces.begin(), m_pieces.begin() + 2);
     debugPieces = static_cast<int>(m_pieces.size());
@@ -438,7 +425,7 @@ inline void SerpentPathComponent::Underground(float u, const Vector3& mouth, con
                                               float theta, Vector3* outPosition,
                                               Vector3* outTangent) const
 {
-    // ほぼ直線の経路では口の接線が水平に近い。寝かせる余地が無いのでそのまま延ばす。
+    /// @note ほぼ直線の経路では口の接線が水平に近い。寝かせる余地が無いのでそのまま延ばす。
     if (theta < 0.05f) {
         const Vector3 dir = (hDir - Vector3::UP * std::tan(theta)).NormalizedOr(hDir);
         if (outPosition) *outPosition = mouth + dir * u;
@@ -498,7 +485,7 @@ inline Vector3 SerpentPathComponent::Tangent(float s) const
     if (m_pieces.empty()) return Vector3{ 0.0f, 0.0f, 1.0f };
 
     const Piece& first = m_pieces.front();
-    // 床下でも向きは進行方向で返す。手前側は «来た方向» なので符号を反転する。
+    /// @note 床下でも向きは進行方向で返す。手前側は «来た方向» なので符号を反転する。
     if (s < first.start) {
         Vector3 out{};
         Underground(first.start - s, first.a, -first.u, first.theta, nullptr, &out);
@@ -595,7 +582,7 @@ inline void SerpentPathComponent::OnUpdate()
 
     constexpr int kSteps = 32;
     for (const Piece& piece : m_pieces) {
-        // 床下のリンクも引く。«どこを通って次の口へ行くか» はここでしか見えない。
+        /// @note 床下のリンクも引く。«どこを通って次の口へ行くか» はここでしか見えない。
         const Vector4 color = piece.surface ? Vector4{ 0.25f, 0.85f, 1.0f, 1.0f }
                                             : Vector4{ 0.35f, 0.40f, 0.55f, 1.0f };
         for (int i = 0; i < kSteps; ++i) {

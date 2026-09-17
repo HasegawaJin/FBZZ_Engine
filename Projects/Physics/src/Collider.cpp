@@ -23,7 +23,7 @@ namespace fbzz::physics
         };
     }
 
-    // 既定の体積は外接箱。基本形状は各派生クラスが厳密値で override する。
+    /// 既定の体積は外接箱。基本形状は各派生クラスが厳密値で override する。
     float Collider::ComputeVolume() const
     {
         const AABB bounds = GetAABB();

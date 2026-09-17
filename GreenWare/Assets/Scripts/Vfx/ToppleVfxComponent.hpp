@@ -3,13 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 衝突の爆発 (FX_IMP_Explosion) を流用しないか:
-///   爆発は «物がぶつかって壊れた» で、閃光と熱が主役。転倒は «6m の重機が床に落ちた»
-///   で、主役は床の側 ─ 走る輪・押し出される土煙・砕けた床のひび。明るさで重さを
-///   出すと 12.2 (発光の白飛び) に正面からぶつかるので、光は «影が一瞬動く» 程度に絞る。
-///
-/// WHY 極性色を乗せないか:
-///   転倒は極の出来事ではない (break-parry.md)。土煙・砂・破片は 12.2 の無彩色側。
+/// @note 衝突の爆発 (FX_IMP_Explosion) は流用しない。爆発は閃光と熱が主役だが、転倒は
+///       «重機が床に落ちた» で主役は床の側 (走る輪・土煙・ひび)。明るさで重さを出すと
+///       企画書 12.2 (発光の白飛び) にぶつかるため、光は «影が一瞬動く» 程度に絞る。
+/// @note 極性色は乗せない。転倒は極の出来事ではなく (break-parry.md)、土煙・砂・破片は
+///       12.2 の無彩色側。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -52,10 +50,10 @@ inline void ToppleVfxComponent::Apply()
 
     vfxbind::ParticleColor(root, "Dust Wall", Vector4{ dustColor.x, dustColor.y, dustColor.z, dustColor.w * 0.65f });
     vfxbind::ParticleColor(root, "Dust Settle", Vector4{ dustColor.x, dustColor.y, dustColor.z, dustColor.w * 0.4f });
-    // 砂粒は «物» なので不透明のまま (RunDustVfxComponent と同じ理由)。
+    /// @note 砂粒は «物» なので不透明のまま (RunDustVfxComponent と同じ理由)。
     vfxbind::ParticleColor(root, "Grit", Vector4{ dustColor.x, dustColor.y, dustColor.z, 1.0f });
 
-    // 大きさに効く層だけ拡縮する。数 (bursts) は変えない ─ 枚数が増えると重なりで白く抜ける。
+    /// @note 大きさに効く層だけ拡縮する。数 (bursts) は変えない ─ 枚数が増えると重なりで白く抜ける。
     vfxbind::ParticleSizeEnd(root, "Ground Ring", 14.0f * s);
     vfxbind::ParticleSizeEnd(root, "Dust Wall",   3.8f * s);
     vfxbind::ParticleSizeEnd(root, "Dust Column", 3.2f * s);

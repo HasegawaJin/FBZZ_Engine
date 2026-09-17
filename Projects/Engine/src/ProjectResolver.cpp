@@ -25,8 +25,8 @@ bool IsTemplatePlaceholder(const std::filesystem::path& path)
     return value.size() >= 4 && value.rfind(L"{{", 0) == 0;
 }
 
-// 絶対パスが root 直下に存在しない場合 (プロジェクト移動後) に
-// パスの末尾からサフィックスを順に試して root 相対でファイルを探す。
+/// 絶対パスが root 直下に存在しない場合 (プロジェクト移動後) に
+/// パスの末尾からサフィックスを順に試して root 相対でファイルを探す。
 std::filesystem::path ResolvePathUnderRoot(const std::filesystem::path& filePath,
                                            const std::filesystem::path& root)
 {
@@ -36,7 +36,7 @@ std::filesystem::path ResolvePathUnderRoot(const std::filesystem::path& filePath
     if (util::FileSystem::Exists(filePath))
         return filePath;
 
-    // WHY: 移動後プロジェクトの .fbzz_proj に絶対パスが残っている場合でも、末尾成分を root 配下へ寄せて復旧する。
+    /// @note 移動後プロジェクトの .fbzz_proj に絶対パスが残っていても、末尾成分を root 配下へ寄せて復旧する。
     std::filesystem::path suffix;
     std::filesystem::path p = filePath;
     while (p.has_relative_path()) {
@@ -126,9 +126,8 @@ bool ProjectResolver::Resolve(const std::filesystem::path& projectPath)
         return false;
     }
 
-    // scripts_dll は省略可。指定がある場合のみ解決する。
-    // WHY: 開発環境では .fbzz_proj に scripts_dll を書かず exe 隣の DLL を使うケースがある。
-    //      配布ビルドでは BuildPipeline が必ず書き出すため、ここでは存在チェックをしない。
+    /// @note scripts_dll は省略可。開発環境では .fbzz_proj に書かず exe 隣の DLL を使うケースがあり、
+    ///       配布ビルドでは BuildPipeline が必ず書き出すため、ここでは存在チェックをしない。
     if (!scriptsDllRel.empty())
         m_project.scriptsDll = ResolvePathUnderRoot(scriptsDllRel, m_project.root);
 

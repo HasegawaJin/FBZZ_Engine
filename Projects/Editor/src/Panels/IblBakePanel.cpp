@@ -21,9 +21,8 @@ namespace fbzz::editor {
 
 namespace {
 
-// フォルダ選択ダイアログ (Win32 SHBrowseForFolder)
-// WHY: FileDialog は OpenFile/SaveFile のみ提供しているため、
-//      フォルダ選択は Win32 API を直接呼ぶ必要がある。
+/// フォルダ選択ダイアログ (Win32 SHBrowseForFolder)。
+/// @note FileDialog は OpenFile/SaveFile のみ提供するため、フォルダ選択は Win32 API を直接呼ぶ。
 bool BrowseForFolder(std::string& outPath)
 {
     BROWSEINFOW bi{};
@@ -36,7 +35,7 @@ bool BrowseForFolder(std::string& outPath)
     SHGetPathFromIDListW(pidl, path);
     CoTaskMemFree(pidl);
 
-    // wchar_t → UTF-8
+    /// @note wchar_t → UTF-8
     const int size = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
     if (size <= 0) return false;
     outPath.assign(static_cast<size_t>(size - 1), '\0');
@@ -48,7 +47,7 @@ bool BrowseForFolder(std::string& outPath)
 
 void IblBakePanel::OnRenderContent(EditorContext& ctx)
 {
-    // ── HDRI ファイル ───────────────────────────────────────────────────────
+    /// @name HDRI ファイル
     ImGui::Text("HDRI File (.hdr / .exr)");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 88.0f);
     ImGui::InputText("##hdriPath", m_hdriPath.data(), m_hdriPath.size());
@@ -63,14 +62,14 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
                 chosen))
         {
             snprintf(m_hdriPath.data(), m_hdriPath.size(), "%s", chosen.c_str());
-            // ステータスをリセット
+            /// @note ステータスをリセット
             m_status    = Status::Idle;
             m_statusMsg = "";
         }
     }
     ImGui::Spacing();
 
-    // ── 出力ディレクトリ ────────────────────────────────────────────────────
+    /// @name 出力ディレクトリ
     ImGui::Text("Output Directory");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 88.0f);
     ImGui::InputText("##outDir", m_outputDir.data(), m_outputDir.size());
@@ -82,7 +81,7 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
     }
     ImGui::Spacing();
 
-    // ── ベース名 ────────────────────────────────────────────────────────────
+    /// @name ベース名
     ImGui::Text("Base Name");
     ImGui::SetNextItemWidth(200.0f);
     ImGui::InputText("##baseName", m_baseName.data(), m_baseName.size());
@@ -91,32 +90,35 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::Separator();
 
-    // ── 詳細設定 ────────────────────────────────────────────────────────────
+    /// @name 詳細設定
     if (ImGui::CollapsingHeader("Advanced Settings")) {
         static const char* s_cubeSizeLabels[] = { "512", "1024", "2048", "4096" };
         static const int   s_cubeSizeVals[]   = { 512, 1024, 2048, 4096 };
         static const char* s_irrSizeLabels[]  = { "16", "32", "64" };
         static const int   s_irrSizeVals[]    = { 16, 32, 64 };
 
-        // Env Cubemap サイズ
+        /// @note Env Cubemap サイズ
         {
-            int sel = 2; // デフォルト 2048
+            /// @note デフォルト 2048
+            int sel = 2;
             for (int i = 0; i < 4; ++i) if (s_cubeSizeVals[i] == m_envCubemapSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
             if (ImGui::Combo("Env Cubemap Size", &sel, s_cubeSizeLabels, 4))
                 m_envCubemapSize = s_cubeSizeVals[sel];
         }
-        // Irradiance サイズ
+        /// @note Irradiance サイズ
         {
-            int sel = 1; // デフォルト 32
+            /// @note デフォルト 32
+            int sel = 1;
             for (int i = 0; i < 3; ++i) if (s_irrSizeVals[i] == m_irradianceSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
             if (ImGui::Combo("Irradiance Size", &sel, s_irrSizeLabels, 3))
                 m_irradianceSize = s_irrSizeVals[sel];
         }
-        // Prefiltered サイズ
+        /// @note Prefiltered サイズ
         {
-            int sel = 1; // デフォルト 512
+            /// @note デフォルト 512
+            int sel = 1;
             for (int i = 0; i < 4; ++i) if (s_cubeSizeVals[i] == m_prefilteredSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
             if (ImGui::Combo("Prefiltered Size", &sel, s_cubeSizeLabels, 4))
@@ -137,7 +139,7 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
     ImGui::Separator();
     ImGui::Spacing();
 
-    // ── ベイクボタン ────────────────────────────────────────────────────────
+    /// @name ベイクボタン
     const bool canBake = m_hdriPath[0] != '\0'
                       && m_outputDir[0] != '\0'
                       && m_baseName[0]  != '\0'
@@ -149,7 +151,7 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
         DoBake(ctx);
     ImGui::EndDisabled();
 
-    // ステータス表示
+    /// @note ステータス表示
     if (!m_statusMsg.empty()) {
         ImGui::SameLine();
         const ImVec4 green = ImVec4(0.3f, 1.0f, 0.3f, 1.0f);
@@ -167,7 +169,7 @@ void IblBakePanel::DoBake(EditorContext& ctx)
     m_status    = Status::Baking;
     m_statusMsg = "ベイク中...";
 
-    // ── Step 1: HDRI 読み込み ───────────────────────────────────────────────
+    /// @name Step 1: HDRI 読み込み
     HdriPixels pixels = HdriLoader::Load(m_hdriPath.data());
     if (!pixels.IsValid()) {
         FBZZ_LOG_ERROR("IblBakePanel: HDRI 読み込み失敗 [%s]", m_hdriPath.data());
@@ -176,7 +178,7 @@ void IblBakePanel::DoBake(EditorContext& ctx)
         return;
     }
 
-    // ── Step 2: IblBaker 生成 ───────────────────────────────────────────────
+    /// @name Step 2: IblBaker 生成
     /// @note 具象は各バックエンドが返す。上位レイヤーは IIblBaker* としてだけ扱う。
     auto baker = ctx.renderer->CreateIblBaker();
     if (!baker) {
@@ -186,7 +188,7 @@ void IblBakePanel::DoBake(EditorContext& ctx)
         return;
     }
 
-    // ── Step 3: ベイク実行 ─────────────────────────────────────────────────
+    /// @name Step 3: ベイク実行
     /// @note DXIL の出力先。DX11 (DXBC を compiled/ へ出していた) を v1.0 で撤去したため
     ///       分岐は無くなったが、出力先の決定をここへ残しておく。
     /// @see  Docs/design/dx11-removal.md
@@ -211,8 +213,8 @@ void IblBakePanel::DoBake(EditorContext& ctx)
         return;
     }
 
-    // 同名 DDS を上書きした場合も、実行中のビューポートへ新しいベイク結果を即時反映する。
-    // WHY: LoadTexture のパスキャッシュを放置すると、ディスク更新後も古い IBL が表示され続ける。
+    /// @note 同名 DDS を上書きした場合も新しいベイク結果を即時反映する。LoadTexture のパスキャッシュを
+    ///       放置すると、ディスク更新後も古い IBL が表示され続ける。
     if (ctx.resources) {
         ctx.resources->ReloadTexture(output.envCubemapPath);
         ctx.resources->ReloadTexture(output.irradiancePath);

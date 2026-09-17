@@ -1,18 +1,10 @@
-/**
- * @file    AnimatorMaskAudit.hpp
- * @brief   複数レイヤーのマスクを重ねた結果を数値化し、破綻を検出する
- * @author  Hasegawa Jin
- * @date    2026-08-22
- *
- * WHY このモジュールが要るか:
- *   .mask アセットを 1 枚開いても分かるのは「そのマスクの実効ウェイト」までで、
- *   実際に画面へ出るのは layerWeight × maskWeight を Override レイヤー順に
- *   補間した結果になる。Base Layer がどれだけ残るかは、どのマスクにも書いていない。
- *   実際に M_UpperBody が blendDepth=2 のせいで Chest 0.33 になり、上半身の 67% が
- *   Base の Idle/Run のままだった件を、Editor のどの画面からも読み取れなかった。
- *   合成規則をここへ 1 本化して、可視化 (Composition) と警告 (Audit) の両方が
- *   同じ計算を見るようにする。
- */
+/// @file    AnimatorMaskAudit.hpp
+/// @brief   複数レイヤーのマスクを重ねた結果を数値化し、破綻を検出する
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// @note 画面に出るのは layerWeight × maskWeight を Override レイヤー順に補間した結果で、Base Layer の残り方はどの .mask にも書かれていない。
+/// @note 合成規則をここへ 1 本化し、可視化 (Composition) と警告 (Audit) が同じ計算を見る。
 #pragma once
 
 #include <Engine/Asset/AvatarMaskAsset.hpp>
@@ -75,8 +67,8 @@ struct Issue {
                                        const std::vector<LayerInfo>& layers);
 
 /// blendDepth が作るランプを "0.33 / 0.67 / 1.00" の形で返す (深さ 0 から blendDepth まで)。
-/// WHY: AvatarMaskRampedWeight は「指定した骨自身が weight に届かない」規則で、
-///      Inspector の数値入力欄からは読み取れない。エントリを編集する場所へそのまま出す。
+/// @note AvatarMaskRampedWeight は指定した骨自身が weight に届かない規則。
+///       Inspector の数値入力欄からは読み取れないため、ここでそのまま返す。
 [[nodiscard]] std::vector<float> BlendDepthRamp(float weight, int blendDepth);
 
 /// スケルトンのうち、そのマスクが 1 つでもエントリで拾えたボーンの本数。

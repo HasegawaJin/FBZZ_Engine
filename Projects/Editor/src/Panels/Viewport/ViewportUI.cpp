@@ -47,7 +47,7 @@ bool IsUnderCanvas(scene::GameObject& go, scene::EntityID canvasID)
 struct UITransform2D {
     math::Vector2 position = math::Vector2::ZERO;
     float rotationZ = 0.0f;
-    // 親要素の矩形サイズ。アンカーはこれに対する割合。
+    /// 親要素の矩形サイズ。アンカーはこれに対する割合。
     math::Vector2 parentSize = math::Vector2::ZERO;
 };
 
@@ -67,11 +67,10 @@ math::Vector2 RotateUIVector(const math::Vector2& v, float angle)
 UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Transform& local,
                                  const math::Vector2& parentSize)
 {
-    // WHY: UI の scale.xy は矩形サイズであり、親サイズを子の移動量へ掛けると
-    //      Editor と Play の双方で子要素が親から大きく外れる。
-    // WHAT: 親の位置・回転だけを UI 階層として合成し、サイズは各要素の scale.xy を使う。
-    // アンカー / ピボットの解釈はここではせず、Engine 側と同じ
-    // scene::ResolveUIRect() に一本化する (式が 2 つに分かれると必ず食い違う)。
+    /// @note UI の scale.xy は矩形サイズであり、親サイズを子の移動量へ掛けると Editor と Play の
+    ///       双方で子要素が親から大きく外れるため、親の位置・回転だけを合成しサイズは各要素の
+    ///       scale.xy を使う。アンカー/ピボットの解釈は scene::ResolveUIRect() に一本化する
+    ///       (式が 2 つに分かれると必ず食い違う)。
     const math::Vector2 localPos = { local.position.x, local.position.y };
     UITransform2D result{};
     result.position = parent.position + RotateUIVector(localPos, parent.rotationZ);
@@ -80,7 +79,7 @@ UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Trans
     return result;
 }
 
-// 要素の矩形サイズ。画像は scale.xy、文字は UISystem が書き戻した実測値。
+/// 要素の矩形サイズ。画像は scale.xy、文字は UISystem が書き戻した実測値。
 math::Vector2 UIElementSize(scene::GameObject& go)
 {
     const math::Vector2 scaleSize = { go.transform.scale.x, go.transform.scale.y };
@@ -99,8 +98,8 @@ scene::UIAnchor UIElementAnchoring(scene::GameObject& go)
     return {};
 }
 
-// 書き込み用。ストレッチ軸のリサイズは scale ではなく余白を動かすので、
-// ギズモは実体へ書き戻す必要がある。
+/// 書き込み用。ストレッチ軸のリサイズは scale ではなく余白を動かすので、
+/// ギズモは実体へ書き戻す必要がある。
 scene::UIAnchor* UIElementAnchoringMutable(scene::GameObject& go)
 {
     if (auto* image = go.GetComponent<scene::UIImage>()) return &image->anchoring;
@@ -108,12 +107,12 @@ scene::UIAnchor* UIElementAnchoringMutable(scene::GameObject& go)
     return nullptr;
 }
 
-// ドラッグ開始時点の余白。ストレッチ軸のリサイズはここからの差分で作り直す。
-// WHY ファイルスコープか: 掴めるのは 1 要素の 1 ハンドルだけで、寿命は
-//     マウスを離すまで。呼び出し側へ引数を 2 本足すほどの状態ではない。
+/// @brief ドラッグ開始時点の余白。ストレッチ軸のリサイズはここからの差分で作り直す。
+/// @note ファイルスコープなのは、掴めるのが 1 要素の 1 ハンドルだけで寿命がマウスを離すまでのため。
+///       呼び出し側へ引数を 2 本足すほどの状態ではない。
 math::Vector2 s_dragStartOffsetMax{};
 
-// ── 兄弟へのスナップ ─────────────────────────────────────────────────────────
+/// @name 兄弟へのスナップ
 struct UISnapGuide {
     math::Vector2 from{};
     math::Vector2 to{};
@@ -125,11 +124,9 @@ struct UISnapResult {
     int           guideCount = 0;
 };
 
-// 兄弟要素の 左/中央/右 (と 上/中央/下) の線へ、画面上で一定距離まで近づいたら吸着する。
-//
-// WHY 画面距離で判定するか: Canvas 座標の固定値にすると、拡大表示では吸着範囲が
-//     見た目に広すぎ、縮小表示では狭すぎる。掴んでいるのは画面上のマウスなので、
-//     吸着の感度も画面基準で決める。
+/// @brief 兄弟要素の 左/中央/右 (と 上/中央/下) の線へ、画面上で一定距離まで近づいたら吸着する。
+/// @note 画面距離で判定するのは、Canvas 座標の固定値だと拡大表示で吸着範囲が広すぎ縮小表示では
+///       狭すぎるため。掴んでいるのは画面上のマウスなので、感度も画面基準で決める。
 UISnapResult SnapToSiblings(scene::GameObject& go,
                             const UITransform2D& parentResolved,
                             const scene::UIAnchor& anchoring,
@@ -144,7 +141,7 @@ UISnapResult SnapToSiblings(scene::GameObject& go,
     scene::GameObject* parent = go.GetParent();
     if (!parent) return result;
 
-    // 吸着の許容量 (画面 8px 相当) を Canvas 単位へ戻す。
+    /// @note 吸着の許容量 (画面 8px 相当) を Canvas 単位へ戻す。
     const float tolX = scaleX > 0.0001f ? 8.0f / scaleX : 0.0f;
     const float tolY = scaleY > 0.0001f ? 8.0f / scaleY : 0.0f;
 
@@ -166,8 +163,8 @@ UISnapResult SnapToSiblings(scene::GameObject& go,
             { sibling->transform.position.x, sibling->transform.position.y },
             siblingSize, UIElementAnchoring(*sibling));
 
-        // 左端どうし / 中央どうし / 右端どうし。相手の辺に自分のどの辺を合わせるかは
-        // 同じ種類どうしだけにする (左端を相手の右端へ吸わせると意図しない重なりが増える)。
+        /// @note 左端どうし / 中央どうし / 右端どうし。相手の辺に自分のどの辺を合わせるかは
+        ///       同じ種類どうしだけにする (左端を相手の右端へ吸わせると意図しない重なりが増える)。
         const float selfX[3]  = { self.position.x,  self.position.x  + self.size.x  * 0.5f,
                                   self.position.x  + self.size.x };
         const float otherX[3] = { other.position.x, other.position.x + other.size.x * 0.5f,
@@ -226,18 +223,15 @@ UITransform2D ResolveUITransform(const EditorContext& ctx, scene::GameObject& go
     }
 
     UITransform2D resolved{};
-    // Canvas 直下の子から見た「親」は Canvas そのもの。
-    // ここを 0 のままにするとアンカーが常に左上へ潰れて、設定しても何も起きない。
-    // WHY canvasWidth を直接読まないか: ScaleWithScreenSize では実際に見えている
-    //     Canvas 範囲が viewport / scale で決まり、canvasHeight と一致しない。
-    //     ビューポートの座標変換も GetCanvasEditorSize() でやっているので、親サイズも
-    //     同じ出所へ揃える (Engine 側 ResolveCanvasRectSize と同じ値)。
+    /// @note Canvas 直下の子から見た「親」は Canvas そのもの (0 のままだとアンカーが左上へ潰れる)。
+    ///       canvasWidth を直接読まないのは、ScaleWithScreenSize では実際に見える Canvas 範囲が
+    ///       viewport/scale で決まり canvasHeight と一致しないため。GetCanvasEditorSize() と同じ出所へ揃える。
     if (current && current->GetComponent<scene::UICanvas>()) {
         float canvasW = 1920.0f, canvasH = 1080.0f;
         GetCanvasEditorSize(ctx, canvasW, canvasH);
         resolved.parentSize = { canvasW, canvasH };
     }
-    // Canvas 直下から降りる。親サイズは 1 つ上の要素の矩形。
+    /// @note Canvas 直下から降りる。親サイズは 1 つ上の要素の矩形。
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         const math::Vector2 parentSize = resolved.parentSize;
         resolved = ComposeUITransform(resolved, (*it)->transform, parentSize);
@@ -250,9 +244,9 @@ const scene::UICanvas* FindCanvasEditorCanvas(const EditorContext& ctx)
 {
     if (!ctx.activeScene) return nullptr;
 
-    // WHY: Canvas Editor は ScreenSpace UI を編集するビューとして扱う。
-    //      activeUICanvas → 選択中 Canvas → 最初の ScreenSpace 系 Canvas の順に決めることで、
-    //      複数 Canvas の編集対象がフレームごとに揺れない。
+    /// @note Canvas Editor は ScreenSpace UI を編集するビューとして扱う。activeUICanvas → 選択中
+    ///       Canvas → 最初の ScreenSpace 系 Canvas の順に決め、複数 Canvas の編集対象が
+    ///       フレームごとに揺れないようにする。
     if (ctx.activeUICanvas.IsValid()) {
         if (scene::GameObject* go = ctx.activeScene->GetGameObject(ctx.activeUICanvas)) {
             if (auto* canvas = go->GetComponent<scene::UICanvas>(); canvas && IsCanvasEditorCanvas(*canvas))
@@ -278,9 +272,8 @@ const scene::UICanvas* FindCanvasEditorCanvas(const EditorContext& ctx)
 
 float ResolveCanvasEditorScale(const scene::UICanvas& canvas, float viewportWidth, float viewportHeight)
 {
-    // WHY: Editor の gizmo / pick と実描画で Canvas Scaler の解釈が分かれると、
-    //      UI Viewport で合わせた位置が Play 開始時にずれて見える。
-    // WHAT: UISystem::ResolveCanvasScale と同じ式で、Game RT 上の論理 Canvas 範囲を求める。
+    /// @note UISystem::ResolveCanvasScale と同じ式で Game RT 上の論理 Canvas 範囲を求める。式が
+    ///       分かれると、UI Viewport で合わせた位置が Play 開始時にずれて見える。
     if (canvas.scaleMode != scene::UICanvasScaleMode::ScaleWithScreenSize)
         return 1.0f;
 
@@ -297,11 +290,9 @@ void GetCanvasEditorSize(const EditorContext& ctx, float& canvasW, float& canvas
     canvasW = 1920.0f;
     canvasH = 1080.0f;
     if (const scene::UICanvas* canvas = FindCanvasEditorCanvas(ctx)) {
-        // Canvas Scaler が効くのは Overlay だけ。
-        // WHY: ScreenSpaceCamera はカメラ前方 planeDistance に置いた
-        //      canvasWidth x canvasHeight の板で、板の広さは画面の広さと関係が無い
-        //      (Engine 側 ResolveCanvasRectSize と同じ切り分け)。ここでスケーラーを
-        //      掛けると、編集中の矩形だけが実描画と違う寸法になる。
+        /// @note Canvas Scaler が効くのは Overlay だけ。ScreenSpaceCamera はカメラ前方 planeDistance に
+        ///       置いた canvasWidth x canvasHeight の板で、広さは画面と関係が無い (Engine 側
+        ///       ResolveCanvasRectSize と同じ切り分け)。ここでスケーラーを掛けると編集中の矩形だけ実描画とずれる。
         if (canvas->renderMode == scene::UIRenderMode::ScreenSpaceOverlay &&
             canvas->scaleMode == scene::UICanvasScaleMode::ScaleWithScreenSize) {
             const float viewportW = ctx.gameViewportWidth > 1.0f ? ctx.gameViewportWidth : ctx.uiViewportWidth;
@@ -327,8 +318,8 @@ void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const
     const ImU32 border = IM_COL32(120, 180, 255, 180);
     const ImU32 guide  = IM_COL32(120, 180, 255, 70);
 
-    // WHAT: Canvas 外周、中央線、一般的な Safe Area 目安を描く。
-    // WHY: UI 実描画は RT 側、編集補助は ImGui 側に分離すると、Game 出力へガイドが混入しない。
+    /// @note Canvas 外周・中央線・Safe Area 目安を描く。UI 実描画は RT 側、編集補助は ImGui 側に
+    ///       分離することで、Game 出力へガイドが混入しない。
     dl->AddRect(viewportMin, viewportMax, border, 0.0f, 0, 1.5f);
     dl->AddLine({ viewportMin.x + viewportSize.x * 0.5f, viewportMin.y },
                 { viewportMin.x + viewportSize.x * 0.5f, viewportMax.y }, guide, 1.0f);
@@ -344,7 +335,7 @@ void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const
                 IM_COL32(120, 255, 180, 90), 0.0f, 0, 1.0f);
 }
 
-// Pick the topmost UI element clicked in the UI viewport.
+/// Pick the topmost UI element clicked in the UI viewport.
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
 {
     if (!ctx.activeScene) return;
@@ -366,9 +357,9 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
 
         if (auto* canvas = go.GetComponent<scene::UICanvas>();
             canvas && IsCanvasEditorCanvas(*canvas)) {
-            // 当たりは canvasWidth ではなく、いま見えている Canvas 範囲。
-            // cx / cy がこの空間の値なので、素の canvasHeight と比べると
-            // ScaleWithScreenSize で参照解像度と違うアスペクトのとき下端がずれる。
+            /// @note 当たりは canvasWidth ではなく、いま見えている Canvas 範囲。
+            ///       cx / cy がこの空間の値なので、素の canvasHeight と比べると
+            ///       ScaleWithScreenSize で参照解像度と違うアスペクトのとき下端がずれる。
             if (cx >= 0.0f && cx <= canvasW && cy >= 0.0f && cy <= canvasH) {
                 const float area = canvasW * canvasH;
                 if (area < bestArea) { bestArea = area; best = go.GetID(); }
@@ -377,9 +368,8 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
         }
         if (!scene::IsUIElement(go)) continue;
 
-        // 当たり矩形はギズモが描くものと同じ式で解く。
-        // WHY: ここだけ「resolved.position = 矩形の左上」で当てていたので、
-        //      アンカーやピボットを動かすと絵と当たり判定が別の場所に居た。
+        /// @note 当たり矩形はギズモが描くものと同じ式で解く。ここだけ「resolved.position = 矩形の左上」
+        ///       で当てていたため、アンカーやピボットを動かすと絵と当たり判定が別の場所に居た。
         const UITransform2D parentResolved = ResolveUITransform(ctx, go, false);
         const UITransform2D resolved =
             ComposeUITransform(parentResolved, go.transform, parentResolved.parentSize);
@@ -387,9 +377,9 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
             parentResolved.parentSize, resolved.position,
             UIElementSize(go), UIElementAnchoring(go));
 
-        // 絵を持たない要素は寸法が 0 のまま置かれることがある (空の入れ物として
-        // 置いた Mask など)。面積が無いと二度と掴めないので、代わりに基準点の
-        // まわりを当たりにして Hierarchy 以外からも選べるようにする。
+        /// @note 絵を持たない要素は寸法が 0 のまま置かれることがある (空の入れ物として
+        ///       置いた Mask など)。面積が無いと二度と掴めないので、代わりに基準点の
+        ///       まわりを当たりにして Hierarchy 以外からも選べるようにする。
         if (rect.size.x <= 0.0f || rect.size.y <= 0.0f) {
             constexpr float kHitR = 20.0f;
             const math::Vector2 point = rect.PointAt({ 0.5f, 0.5f });
@@ -423,9 +413,9 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
     }
 }
 
-// --- UI gizmo helpers ---
+/// @name UI gizmo helpers
 
-// Colors.
+/// Colors.
 constexpr ImU32 kUIColX       = IM_COL32(220,  60,  60, 255);
 constexpr ImU32 kUIColXHov    = IM_COL32(255, 160, 160, 255);
 constexpr ImU32 kUIColY       = IM_COL32( 60, 200,  60, 255);
@@ -436,26 +426,21 @@ constexpr ImU32 kUIColHandle  = IM_COL32(  0, 200, 255, 220);
 constexpr ImU32 kUIColHndHov  = IM_COL32(255, 255, 255, 255);
 constexpr ImU32 kUIColRing    = IM_COL32(  0, 200, 255, 200);
 constexpr ImU32 kUIColOutline = IM_COL32(  0, 180, 255, 140);
-// アンカー / ピボットは移動ハンドル (シアン) と色で切り分ける。
-// 掴めるものと、状態を示すだけのものが同じ色だと触れると思って空振りする。
+/// アンカー / ピボットは移動ハンドル (シアン) と色で切り分ける。
+/// 掴めるものと、状態を示すだけのものが同じ色だと触れると思って空振りする。
 constexpr ImU32 kUIColAnchor     = IM_COL32(255, 190,  60, 230);
 constexpr ImU32 kUIColAnchorLink = IM_COL32(255, 190,  60, 110);
 constexpr ImU32 kUIColPivot      = IM_COL32(255, 120, 200, 230);
-// 吸着した線。一時的に出るだけなので、他のどれとも違う色にして見落とさないようにする。
+/// 吸着した線。一時的に出るだけなので、他のどれとも違う色にして見落とさないようにする。
 constexpr ImU32 kUIColSnap       = IM_COL32(120, 255, 160, 220);
-constexpr float kUIArrowLen   = 55.0f;  // screen px
+constexpr float kUIArrowLen   = 55.0f;  ///< screen px
 constexpr float kUIHandleR    = 5.0f;
 constexpr float kUICenterR    = 6.0f;
 
-// 選択中の UI 要素の矩形をまとめて描く。
-//
-// WHY ギズモと分けるか: ギズモが面倒を見るのは「いま掴めるもの」= 選択の先頭
-//     1 つだけ。複数選んだときに矩形も 1 つしか出ないと、何が選択に入っているのか
-//     Hierarchy を見に行かないと分からない。
-// WHY Engine の選択マスクへ寄せないか: UI Viewport は Game View の完成済み RT を
-//     そのまま映しているので、ゲーム出力へエディタの輪郭を焼き込むことになる。
-//     ScreenSpace UI の輪郭はこの ImGui 側にしか置けない (WorldSpace Canvas は
-//     Scene View に映るので、そちらは 3D と同じ選択マスクが拾う)。
+/// @brief 選択中の UI 要素の矩形をまとめて描く。
+/// @note ギズモは選択の先頭 1 つしか面倒を見ないため複数選択を可視化する。UI Viewport は
+///       Game View の完成済み RT を映すため Engine の選択マスクは使えず、ScreenSpace UI の
+///       輪郭は ImGui 側にしか置けない (WorldSpace は Scene View の 3D マスクが拾う)。
 void DrawUISelectionOutlines(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
 {
     if (!ctx.activeScene) return;
@@ -469,7 +454,7 @@ void DrawUISelectionOutlines(EditorContext& ctx, const ImVec2& viewportMin, cons
     for (const scene::EntityID id : ctx.selectedEntities) {
         scene::GameObject* go = ctx.activeScene->GetGameObject(id);
         if (!go || !scene::IsUIElement(*go)) continue;
-        // 別 Canvas の要素は今の Canvas の縮尺で描くと違う場所に出る。
+        /// @note 別 Canvas の要素は今の Canvas の縮尺で描くと違う場所に出る。
         if (!IsUnderCanvas(*go, ctx.activeUICanvas)) continue;
 
         const UITransform2D parentResolved = ResolveUITransform(ctx, *go, false);
@@ -492,7 +477,7 @@ void DrawUISelectionOutlines(EditorContext& ctx, const ImVec2& viewportMin, cons
         };
         const ImVec2 c[4] = { corner(-hW, -hH), corner(hW, -hH), corner(hW, hH), corner(-hW, hH) };
 
-        // 文字は実測なので破線にして「掴んで広げられる矩形ではない」ことを示す。
+        /// @note 文字は実測なので破線にして「掴んで広げられる矩形ではない」ことを示す。
         if (scene::HasMeasuredUISize(*go)) {
             for (int i = 0; i < 4; ++i) {
                 const ImVec2 a = c[i], b = c[(i + 1) % 4];
@@ -538,12 +523,12 @@ bool IsMouseNearLine(ImVec2 a, ImVec2 b, float tol = 7.0f)
     return (m.x-cx)*(m.x-cx) + (m.y-cy)*(m.y-cy) < tol*tol;
 }
 
-// 2D gizmo for UI viewport. Uses the same Q/W/E/R controls as the 3D gizmo.
-//   W = translate, with constrained X/Y axes and free center drag
-//   E = rotate around Z using the ring
-//   R = resize with 8 handles (実測サイズの文字を除く)
-//   Q = toggle World/Local space
-// Returns true when the gizmo consumed mouse input.
+/// 2D gizmo for UI viewport. Uses the same Q/W/E/R controls as the 3D gizmo.
+///   W = translate, with constrained X/Y axes and free center drag
+///   E = rotate around Z using the ring
+///   R = resize with 8 handles (実測サイズの文字を除く)
+///   Q = toggle World/Local space
+/// Returns true when the gizmo consumed mouse input.
 bool DrawUIGizmo(EditorContext& ctx,
                  const ImVec2& viewportMin,
                  const ImVec2& viewportSize,
@@ -561,8 +546,8 @@ bool DrawUIGizmo(EditorContext& ctx,
     if (!go || !ctx.activeScene) return false;
 
     if (!scene::IsUIElement(*go)) return false;
-    // 掴んで広げられるか (実測サイズの文字だけは広げられない)。矩形の描き方と
-    // R のハンドルの有無はこれ 1 つで決まる。
+    /// @note 掴んで広げられるか (実測サイズの文字だけは広げられない)。矩形の描き方と
+    ///       R のハンドルの有無はこれ 1 つで決まる。
     const bool measuredSize = scene::HasMeasuredUISize(*go);
 
     float canvasW = 1920.0f, canvasH = 1080.0f;
@@ -588,10 +573,9 @@ bool DrawUIGizmo(EditorContext& ctx,
         ComposeUITransform(parentResolved, t, parentResolved.parentSize);
     const float localPx = t.position.x, localPy = t.position.y;
 
-    // 矩形は Engine と同じ 1 本の式で解く。
-    // WHY: 以前は Editor 側だけが「position = 矩形の左上」を前提にしていて、
-    //      文字は sw/sh が 0 のまま原点に十字を描くだけだった。何を掴んでいるのか
-    //      画面から読めず、アンカーを変えても表示は一切変わらなかった。
+    /// @note 矩形は Engine と同じ 1 本の式で解く。以前は Editor 側だけ「position = 矩形の左上」を
+    ///       前提にしていたため、sw/sh が 0 のまま原点に十字を描くだけで、アンカーを変えても
+    ///       表示は一切変わらなかった。
     const scene::UIAnchor anchoring = UIElementAnchoring(*go);
     const math::Vector2   elementSize = UIElementSize(*go);
     const math::Vector2   parentSize  = parentResolved.parentSize;
@@ -601,41 +585,41 @@ bool DrawUIGizmo(EditorContext& ctx,
     const float sw = elementSize.x;
     const float sh = elementSize.y;
 
-    // Extract Z rotation from the quaternion.
+    /// @note Extract Z rotation from the quaternion.
     const math::Quaternion& q = t.rotation;
     const float localZAngle = ExtractUIZRotation(q);
     const float zAngle = resolved.rotationZ;
     const float cosZ = std::cosf(zAngle), sinZ = std::sinf(zAngle);
 
-    // Rectangle center in canvas and screen space.
+    /// @note Rectangle center in canvas and screen space.
     const float cenCX = px + sw * 0.5f, cenCY = py + sh * 0.5f;
     const ImVec2 centerScr = toScreen(cenCX, cenCY);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     bool wantsMouse = false;
 
-    // drag stores the active UI gizmo operation across frames:
-    //   -1  = none
-    //    0  = free translate from center
-    //    1  = constrained X-axis translate
-    //    2  = constrained Y-axis translate
-    //  3-10 = resize handles 0-7
-    //   20  = rotation ring
+    /// @note drag stores the active UI gizmo operation across frames:
+    ///       -1  = none
+    ///       0  = free translate from center
+    ///       1  = constrained X-axis translate
+    ///       2  = constrained Y-axis translate
+    ///       3-10 = resize handles 0-7
+    ///       20  = rotation ring
     const EditorContext::GizmoMode mode = ctx.gizmoMode;
 
-    // Rotated rectangle outline.
+    /// @note Rotated rectangle outline.
     auto rotOfs = [&](float lx, float ly) -> ImVec2 {
         return {
             centerScr.x + (lx*cosZ - ly*sinZ) * scaleX,
             centerScr.y + (lx*sinZ + ly*cosZ) * scaleY
         };
     };
-    // 選択中の矩形は DrawUISelectionOutlines がまとめて描く。ここは掴めるものだけ。
+    /// @note 選択中の矩形は DrawUISelectionOutlines がまとめて描く。ここは掴めるものだけ。
 
-    // ── アンカーとピボット ───────────────────────────────────────────────
-    // WHY 両方描くか: 「親のどこを基準にしているか」と「自分のどこがその点に
-    //     合っているか」は別で、片方だけ見ても要素が動く理由が分からない。
-    //     2 点を線で結ぶと、ローカル位置がその線の長さだとひと目で読める。
+    /// @name アンカーとピボット
+    /// @note 「親のどこを基準にしているか」と「自分のどこがその点に合っているか」は別で、
+    ///       片方だけでは要素が動く理由が分からない。2 点を線で結ぶとローカル位置がその
+    ///       線の長さだとひと目で読める。
     {
         const math::Vector2 anchorCanvas = {
             parentResolved.position.x + parentSize.x * anchoring.anchor.x,
@@ -645,24 +629,24 @@ bool DrawUIGizmo(EditorContext& ctx,
         const math::Vector2 pivotCanvas = rect.PointAt(anchoring.pivot);
         const ImVec2 pivotScr = toScreen(pivotCanvas.x, pivotCanvas.y);
 
-        // アンカー: 親の中の基準点。折れた十字で「親側の点」だと分かるようにする。
+        /// @note アンカー: 親の中の基準点。折れた十字で「親側の点」だと分かるようにする。
         constexpr float kAnchorArm = 7.0f;
         dl->AddLine({ anchorScr.x - kAnchorArm, anchorScr.y }, { anchorScr.x + kAnchorArm, anchorScr.y },
                     kUIColAnchor, 1.5f);
         dl->AddLine({ anchorScr.x, anchorScr.y - kAnchorArm }, { anchorScr.x, anchorScr.y + kAnchorArm },
                     kUIColAnchor, 1.5f);
 
-        // 基準点 → ピボット。これがローカル位置そのもの。
+        /// @note 基準点 → ピボット。これがローカル位置そのもの。
         const float dx = pivotScr.x - anchorScr.x, dy = pivotScr.y - anchorScr.y;
         if (dx * dx + dy * dy > 4.0f)
             dl->AddLine(anchorScr, pivotScr, kUIColAnchorLink, 1.0f);
 
-        // ピボット: 回転と拡縮の中心でもある点。中空の丸で矩形上の点だと示す。
+        /// @note ピボット: 回転と拡縮の中心でもある点。中空の丸で矩形上の点だと示す。
         dl->AddCircleFilled(pivotScr, 3.5f, kUIColPivot);
         dl->AddCircle(pivotScr, 5.5f, kUIColPivot, 0, 1.5f);
     }
 
-    // Local axes converted to unit vectors in screen space.
+    /// @note Local axes converted to unit vectors in screen space.
     auto screenUnitAxis = [&](float ax, float ay) -> ImVec2 {
         ImVec2 v = { ax * scaleX, ay * scaleY };
         const float len = std::sqrt(v.x*v.x + v.y*v.y);
@@ -673,9 +657,7 @@ bool DrawUIGizmo(EditorContext& ctx,
     const ImVec2 tipX = { centerScr.x + dirX.x * kUIArrowLen, centerScr.y + dirX.y * kUIArrowLen };
     const ImVec2 tipY = { centerScr.x + dirY.x * kUIArrowLen, centerScr.y + dirY.y * kUIArrowLen };
 
-    // ==============================
-    // W: translate mode.
-    // ==============================
+    /// @note W: translate mode.
     if (mode == EditorContext::GizmoMode::Translate) {
         const bool hovX = IsMouseNearLine(centerScr, tipX, 7.0f);
         const ImVec2 mp = ImGui::GetMousePos();
@@ -690,10 +672,9 @@ bool DrawUIGizmo(EditorContext& ctx,
         dl->AddCircleFilled(centerScr, kUICenterR, hovC ? kUIColCtrHov : kUIColCtr);
         dl->AddCircle(centerScr, kUICenterR + 1.0f, IM_COL32(0,0,0,120));
 
-        // 矩形の寸法がまだ無いときだけ、基準点に十字を出す。
-        // WHY 残すか: サイズが 0 だと矩形が線に潰れて選択できているのか分からない。
-        //     文字なら描画後に矩形が出るので「まだ測れていない」の合図になり、
-        //     絵を持たない要素なら「サイズを入れないと掴めない」の合図になる。
+        /// @note 矩形の寸法がまだ無いときだけ、基準点に十字を出す。サイズが 0 だと矩形が線に潰れて
+        ///       選択できているのか分からないため、「まだ測れていない/サイズを入れないと掴めない」の
+        ///       合図として残す。
         if (sw <= 0.0f || sh <= 0.0f) {
             constexpr float kR = 10.0f;
             dl->AddLine({ centerScr.x - kR, centerScr.y }, { centerScr.x + kR, centerScr.y }, IM_COL32(0,200,255,180), 1.5f);
@@ -727,16 +708,12 @@ bool DrawUIGizmo(EditorContext& ctx,
             const math::Vector2 localMove = RotateUIVector(canvasMove, -parentResolved.rotationZ);
             newX = startX + localMove.x;
             newY = startY + localMove.y;
-            // Ctrl 押下中はモーメンタリスナップ (Unity 互換)
+            /// @note Ctrl 押下中はモーメンタリスナップ (Unity 互換)
             if (ctx.snapEnabled || ImGui::GetIO().KeyCtrl) { newX = std::round(newX); newY = std::round(newY); }
 
-            // 兄弟要素の辺・中心へ吸着する。
-            //
-            // WHY 数値の丸めだけでは足りないか: 1px 単位に丸めても「隣のパネルと
-            //     左端が揃っているか」は分からない。UI で揃えたいのは座標の
-            //     キリの良さではなく、他の要素との関係。
-            // WHY Alt で切れるようにするか: 吸着があると「あと 1px だけずらす」が
-            //     できなくなる。最後の詰めは必ず手でやりたくなる。
+            /// @note 兄弟要素の辺・中心へ吸着する。1px 丸めだけでは「隣のパネルと左端が揃っているか」
+            ///       は分からず、UI で揃えたいのは座標のキリの良さでなく他要素との関係。Alt で
+            ///       切れるようにするのは、吸着があると「あと 1px だけずらす」最後の詰めができないため。
             UISnapResult snap{};
             if (!ImGui::GetIO().KeyAlt) {
                 snap = SnapToSiblings(*go, parentResolved, anchoring, elementSize,
@@ -747,7 +724,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             t.position.x = newX;
             t.position.y = newY;
 
-            // 吸着した線を出す。何に揃ったのかが見えないと、狙って使えない。
+            /// @note 吸着した線を出す。何に揃ったのかが見えないと、狙って使えない。
             for (int i = 0; i < snap.guideCount; ++i) {
                 const UISnapGuide& guide = snap.guides[i];
                 const ImVec2 a = toScreen(guide.from.x, guide.from.y);
@@ -756,9 +733,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             }
         }
     }
-    // ==============================
-    // E: rotate mode.
-    // ==============================
+    /// @note E: rotate mode.
     else if (mode == EditorContext::GizmoMode::Rotate) {
         const float hW = sw * 0.5f * scaleX, hH = sh * 0.5f * scaleY;
         const float ringR = std::sqrt(hW*hW + hH*hH) + 22.0f;
@@ -773,7 +748,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             wantsMouse = true;
         }
 
-        // Angle indicator.
+        /// @note Angle indicator.
         const ImVec2 rotTip = { centerScr.x + cosZ * ringR, centerScr.y + sinZ * ringR };
         dl->AddLine(centerScr, rotTip, IM_COL32(0,200,255,180), 1.5f);
         dl->AddCircleFilled(rotTip, 4.0f, IM_COL32(0,200,255,255));
@@ -795,15 +770,13 @@ bool DrawUIGizmo(EditorContext& ctx,
             t.rotation = math::Quaternion::FromEuler({ 0.0f, 0.0f, newZ });
         }
 
-        // Angle label.
+        /// @note Angle label.
         char buf[32];
         snprintf(buf, sizeof(buf), "%.1f deg", zAngle * (180.0f / 3.14159265f));
         dl->AddText({ centerScr.x + ringR + 6.0f, centerScr.y - 7.0f },
                     IM_COL32(200, 220, 255, 200), buf);
     }
-    // ==============================
-    // R: resize. 実測サイズの文字以外は transform.scale.xy が矩形そのもの。
-    // ==============================
+    /// @note R: resize. 実測サイズの文字以外は transform.scale.xy が矩形そのもの。
     else if (mode == EditorContext::GizmoMode::Scale && !measuredSize) {
         const float hW = sw * 0.5f, hH = sh * 0.5f;
         const ImVec2 handles[8] = {
@@ -822,10 +795,9 @@ bool DrawUIGizmo(EditorContext& ctx,
             if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                 drag = 3 + i; dragStart = ImGui::GetMousePos();
                 startX = localPx; startY = localPy; startWidth = sw; startHeight = sh;
-                // ストレッチ軸は余白を動かすので、その開始値も控える。
-                // WHY 差分の積み上げにしないか: ドラッグ中は毎フレーム
-                //     「掴んだ時点からの総移動量」で作り直す。積み上げると
-                //     フレーム数に比例して滑る。
+                /// @note ストレッチ軸は余白を動かすので、その開始値も控える。ドラッグ中は毎フレーム
+                ///       「掴んだ時点からの総移動量」で作り直す (差分を積み上げるとフレーム数に
+                ///       比例して滑る)。
                 if (const scene::UIAnchor* a = UIElementAnchoringMutable(*go))
                     s_dragStartOffsetMax = a->offsetMax;
             }
@@ -835,26 +807,27 @@ bool DrawUIGizmo(EditorContext& ctx,
             const ImVec2 mm = ImGui::GetMousePos();
             const float dcx = (mm.x - dragStart.x) / scaleX;
             const float dcy = (mm.y - dragStart.y) / scaleY;
-            // Project mouse delta onto local axes.
+            /// @note Project mouse delta onto local axes.
             const float projX =  dcx * cosZ + dcy * sinZ;
             const float projY = -dcx * sinZ + dcy * cosZ;
 
             const int hi = drag - 3;
             float nw = startWidth, nh = startHeight;
-            if (hi == 0 || hi == 3 || hi == 5) nw = startWidth - projX; // left
-            if (hi == 2 || hi == 4 || hi == 7) nw = startWidth + projX; // right
-            if (hi == 0 || hi == 1 || hi == 2) nh = startHeight - projY; // top
-            if (hi == 5 || hi == 6 || hi == 7) nh = startHeight + projY; // bottom
+            /// @note left
+            if (hi == 0 || hi == 3 || hi == 5) nw = startWidth - projX;
+            /// @note right
+            if (hi == 2 || hi == 4 || hi == 7) nw = startWidth + projX;
+            /// @note top
+            if (hi == 0 || hi == 1 || hi == 2) nh = startHeight - projY;
+            /// @note bottom
+            if (hi == 5 || hi == 6 || hi == 7) nh = startHeight + projY;
             nw = (std::max)(1.0f, nw);
             nh = (std::max)(1.0f, nh);
             if (ctx.snapEnabled || ImGui::GetIO().KeyCtrl) { nw = std::round(nw); nh = std::round(nh); }
 
-            // ストレッチしている軸では、幅は親から決まるので scale を書いても
-            // 次のフレームに戻される。動かすべきは「どちら側の余白か」。
-            //
-            // WHY 掴んだハンドルで側を決めるか: 左の辺を掴んだなら左の余白、
-            //     右の辺なら右の余白を動かすのが、掴んだ場所と結果が一致する
-            //     唯一の対応。中央のハンドルは幅を変えないので何もしない。
+            /// @note ストレッチしている軸では幅は親から決まるため scale を書いても次のフレームに
+            ///       戻される。動かすべきは「どちら側の余白か」で、掴んだ辺と同じ側の余白を
+            ///       動かすのが掴んだ場所と結果が一致する唯一の対応 (中央ハンドルは幅を変えない)。
             scene::UIAnchor* liveAnchor = UIElementAnchoringMutable(*go);
             const bool stretchX = liveAnchor && liveAnchor->stretchX;
             const bool stretchY = liveAnchor && liveAnchor->stretchY;
@@ -864,17 +837,17 @@ bool DrawUIGizmo(EditorContext& ctx,
             const bool grabBottom = (hi == 5 || hi == 6 || hi == 7);
 
             if (stretchX) {
-                // 幅の変化ぶんを、掴んだ側の余白へそのまま移す。
+                /// @note 幅の変化ぶんを、掴んだ側の余白へそのまま移す。
                 if (grabLeft)
                     t.position.x = startX + (startWidth - nw);
                 else if (grabRight)
                     liveAnchor->offsetMax.x = s_dragStartOffsetMax.x + (startWidth - nw);
             } else {
-                // ハンドルでの拡縮は矩形の中心を動かさない。
-                //
-                // 矩形中心 = 基準点 + ローカル位置 + サイズ × (0.5 - pivot) なので、
-                // 中心を保つには サイズの変化ぶん × (0.5 - pivot) をローカル位置へ戻す。
-                // pivot = (0,0) では従来の式 (サイズ変化の半分) と一致する。
+                /// @note ハンドルでの拡縮は矩形の中心を動かさない。
+                ///
+                ///       矩形中心 = 基準点 + ローカル位置 + サイズ × (0.5 - pivot) なので、
+                ///       中心を保つには サイズの変化ぶん × (0.5 - pivot) をローカル位置へ戻す。
+                ///       pivot = (0,0) では従来の式 (サイズ変化の半分) と一致する。
                 t.scale.x = nw;
                 t.position.x = startX + (startWidth - nw) * (0.5f - anchoring.pivot.x);
             }
@@ -926,14 +899,14 @@ bool DrawUIGizmo(EditorContext& ctx,
     return wantsMouse || drag != -1;
 }
 
-// 矢印キーで選択中 UI 要素を微移動する。
-// WHY: ピクセル単位の位置合わせはマウスドラッグだと細かすぎて合わせづらい。多くの UI エディタ標準の
-//      矢印キー nudge（1px、Shift で 10px）を用意し、Inspector の数値入力を介さず微調整できるようにする。
+/// @brief 矢印キーで選択中 UI 要素を微移動する。
+/// @note マウスドラッグはピクセル単位の位置合わせには細かすぎるため、矢印キー nudge
+///       (1px、Shift で 10px) で Inspector の数値入力を介さず微調整できるようにする。
 void HandleUINudge(EditorContext& ctx, bool allowed)
 {
     if (!allowed || !ctx.activeScene)
         return;
-    // テキスト入力中（リネーム・数値入力等）は矢印キーをそちらへ譲る。
+    /// @note テキスト入力中（リネーム・数値入力等）は矢印キーをそちらへ譲る。
     if (ImGui::GetIO().WantTextInput)
         return;
 
@@ -941,8 +914,8 @@ void HandleUINudge(EditorContext& ctx, bool allowed)
     if (!go || !scene::IsUIElement(*go))
         return;
 
-    // 離散押下のみ拾う。WHY: repeat を許可すると押しっぱなしで毎フレーム undo 履歴が積もり、
-    //      数回の微移動で履歴が埋まってしまう。1 タップ = 1 nudge = 1 undo に保つ。
+    /// @note 離散押下のみ拾う。repeat を許可すると押しっぱなしで毎フレーム undo 履歴が積もるため、
+    ///       1 タップ = 1 nudge = 1 undo に保つ。
     float dx = 0.0f, dy = 0.0f;
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow,  /*repeat=*/false)) dx -= 1.0f;
     if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, /*repeat=*/false)) dx += 1.0f;

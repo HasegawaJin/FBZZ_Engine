@@ -43,11 +43,7 @@ bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
     auto* go = ctx.activeScene->GetGameObject(droppedId);
     if (!go) return false;
 
-    // ドラッグ中の GO が現在の選択に含まれるなら選択全体を、そうでなければその 1 体だけを
-    // プレファブ化する。
-    // WHY: Unity と同様、複数選択したまま 1 体を掴んで AssetBrowser へ落とすと選択全体が
-    //      1 つのプレファブになる。ドラッグ payload は掴んだ 1 体しか運ばないため、ここで
-    //      選択集合と突き合わせて対象を決める。命名は掴んだ GO を代表名にする。
+    /// @note ドラッグ中の GO が現在の選択に含まれるなら選択全体を、そうでなければその 1 体だけをプレファブ化する (Unity と同様)。ドラッグ payload は掴んだ 1 体しか運ばないため、ここで選択集合と突き合わせて対象を決める。命名は掴んだ GO を代表名にする。
     std::vector<scene::EntityID> selection;
     if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), droppedId)
         != ctx.selectedEntities.end())
@@ -63,11 +59,7 @@ bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
     const std::string relPath = NormalizeAssetPath(path);
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 
-    // シーン側のリンク (prefabAssetPath) だけを Undo 対象にする。
-    // WHY .prefab ファイル自体を戻さないか: 旧実装の Undo は RemoveAll(path) で
-    //     .prefab を削除していた。プレファブを作ってから中身を編集し、その後
-    //     無関係な作業のあとで Ctrl+Z を重ねると、編集ぶんごとファイルが消える。
-    //     ファイルの存在は Undo の対象にせず、消したいときは Delete でごみ箱へ送る。
+    /// @note シーン側のリンク (prefabAssetPath) だけを Undo 対象にする。旧実装は .prefab ファイル自体を RemoveAll(path) で戻していたため、無関係な作業のあとで Ctrl+Z を重ねると編集ぶんごとファイルが消えた。ファイルの存在は Undo 対象にせず、消したいときは Delete でごみ箱へ送る。
     if (ctx.undoStack && ctx.activeScene) {
         EditorContext* context = &ctx;
         const std::vector<scene::EntityID> roots = connectedRoots;
@@ -94,21 +86,20 @@ ImVec4 Lighten(ImVec4 c) {
 
 std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx)
 {
-    // WHY: Asset Browser の内部パスは実ファイル操作のため絶対パスを保持するが、
-    //      Scene / Prefab に保存する payload は配布後も壊れない Assets 起点の相対パスにする。
+    /// @note Asset Browser の内部パスは実ファイル操作のため絶対パスを保持するが、Scene / Prefab に保存する payload は配布後も壊れない Assets 起点の相対パスにする。
     const std::string normalized = util::FileSystem::NormalizePathSeparators(path);
     const std::string projectAssets = util::FileSystem::NormalizePathSeparators(
         ctx.projectRoot + "/Assets");
     if (util::FileSystem::IsChildPathText(normalized, projectAssets))
         return NormalizeAssetPath(normalized);
 
-    // 外部マウントはプロジェクト相対へ変換できないため、実パスを保持する。
+    /// @note 外部マウントはプロジェクト相対へ変換できないため、実パスを保持する。
     return normalized;
 }
 
 std::string ToAssetDragPayloadPath(const std::string& path, const EditorContext& ctx)
 {
-    // ASSET_PATH は内部移動にも使うため、外部マウントを見失わない形式を選ぶ。
+    /// @note ASSET_PATH は内部移動にも使うため、外部マウントを見失わない形式を選ぶ。
     return ToProjectAssetPath(path, ctx);
 }
 
@@ -133,9 +124,7 @@ std::filesystem::path GetPackageModelPath(const std::filesystem::path& dirPath)
 
 bool IsModelPackageDirectory(const std::filesystem::path& dirPath)
 {
-    // WHAT: Foo.fbx の従属生成物フォルダ Foo/ は Browser では隠し、FBX ノードの展開で見せる。
-    // WHY: ユーザーの正規アセットは原本 .fbx であり、内部コンテナ .fzasset や従属フォルダを
-    //      第一級アセットとして操作させないため。
+    /// @note Foo.fbx の従属生成物フォルダ Foo/ は Browser では隠し、FBX ノードの展開で見せる。ユーザーの正規アセットは原本 .fbx であり、内部コンテナ .fzasset や従属フォルダを第一級アセットとして操作させない。
     const std::filesystem::path fbxPath = dirPath.parent_path() / (util::FileSystem::PathToUtf8(dirPath.filename()) + ".fbx");
     if (!util::FileSystem::Exists(fbxPath)) return false;
     const std::string logical = util::FileSystem::PathToUtf8(GetPackageModelPath(dirPath));
@@ -143,16 +132,13 @@ bool IsModelPackageDirectory(const std::filesystem::path& dirPath)
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
 
 AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath, std::size_t instanceIndex)
     : m_rootPath(util::FileSystem::NormalizePathSeparators(rootPath)),
       m_currentPath(util::FileSystem::NormalizePathSeparators(rootPath)),
       m_instanceIndex(instanceIndex)
 {
-    // 2 枚目以降は "Asset Browser 2" のように番号を付ける。
-    // WHY 名前を実体に持たせるか: ImGui はウィンドウを名前で識別するので、
-    //     同名のパネルが 2 枚あるとドッキング配置も可視状態も混ざる。
+    /// @note 2 枚目以降は "Asset Browser 2" のように番号を付ける。ImGui はウィンドウを名前で識別するので、同名のパネルが 2 枚あるとドッキング配置も可視状態も混ざる。
     m_windowName = instanceIndex == 0
         ? "Asset Browser"
         : "Asset Browser " + std::to_string(instanceIndex + 1);
@@ -170,9 +156,7 @@ void AssetBrowserPanel::OnInit(EditorContext& ctx)
 
 void AssetBrowserPanel::OnLoadSettings(const EditorSettings& settings)
 {
-    // WHY OnInit ではなくここか (不具合修正): OnInit は projectRoot が決まる前に走るため、
-    //     そこで読める EditorContext はまだ既定値のまま。アイコンサイズとツリー幅は
-    //     保存だけされて復元されず、毎起動で 84 / 180 に戻っていた。
+    /// @note OnInit は projectRoot が決まる前に走り EditorContext がまだ既定値のため、ここで読む。以前はここで読まず、アイコンサイズとツリー幅が保存だけされて復元されず毎起動で 84 / 180 に戻っていた。
     const EditorSettings::AssetBrowserPanelState state =
         settings.AssetBrowserPanelAt(m_instanceIndex);
 
@@ -181,16 +165,16 @@ void AssetBrowserPanel::OnLoadSettings(const EditorSettings& settings)
 
     m_viewMode   = static_cast<ViewMode>(std::clamp(state.viewMode, 0, 1));
     m_sortMode   = static_cast<SortMode>(std::clamp(state.sortMode, 0, 3));
-    // All (bit 0) は「絞り込みなし」の番兵なので、ビットとしては常に落とす。
+    /// @note All (bit 0) は「絞り込みなし」の番兵なので、ビットとしては常に落とす。
     constexpr uint32_t kValidFilterBits =
         ((1u << static_cast<int>(TypeFilter::COUNT)) - 1u) & ~1u;
     m_typeFilterMask   = state.typeFilterMask & kValidFilterBits;
     m_searchAllFolders = state.searchAllFolders;
     m_treeShowFiles    = state.treeShowFiles;
 
-    // 前回のフォルダは「今のプロジェクトの中に実在する」ときだけ復元する。
-    // プロジェクトを開き直した直後は SetRootPath がルートへ戻した状態なので、
-    // 解決できない保存値は黙って捨ててルート表示のままにする。
+    /// @note 前回のフォルダは「今のプロジェクトの中に実在する」ときだけ復元する。
+    ///       プロジェクトを開き直した直後は SetRootPath がルートへ戻した状態なので、
+    ///       解決できない保存値は黙って捨ててルート表示のままにする。
     const std::string folder =
         util::FileSystem::NormalizePathSeparators(state.currentFolder);
     if (!folder.empty() && !m_rootPath.empty()
@@ -223,7 +207,7 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
     m_pendingNavigate.clear();
     m_mounts.clear();
     m_pendingImports.clear();
-    // 旧プロジェクトのパスを持ち越さない。監視先が変わった時点で待機中の候補は無効。
+    /// @note 旧プロジェクトのパスを持ち越さない。監視先が変わった時点で待機中の候補は無効。
     m_scheduledReimports.clear();
     if (IsAssetPipelineOwner()) m_watcher.Start(m_rootPath);
     RefreshDirectory();
@@ -232,8 +216,8 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
 
 namespace {
 
-// FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
-// ナビゲート先やパス比較に使う前に落とす。
+/// FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
+/// ナビゲート先やパス比較に使う前に落とす。
 std::string DirectoryOfPath(const std::string& path)
 {
     std::string directory = util::FileSystem::GetDirectory(path);
@@ -248,44 +232,43 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
 {
     if (ctx.requestRevealAssetPath.empty()) return;
 
-    // 要求は 1 回で消費する。解決に失敗しても再挑戦させない (毎フレーム同じ探索を繰り返さないため)。
+    /// @note 要求は 1 回で消費する。解決に失敗しても再挑戦させない (毎フレーム同じ探索を繰り返さないため)。
     const std::string request           = ctx.requestRevealAssetPath;
     const bool        selectForInspector = ctx.requestRevealAssetSelect;
     ctx.requestRevealAssetPath.clear();
     ctx.requestRevealAssetSelect = false;
 
-    // Sprite 参照 ("<画像>::sprite::<id>") は元画像の位置を示す。
+    /// @note Sprite 参照 (`<画像>::sprite::<id>`) は元画像の位置を示す。
     std::string logicalPath;
     std::string spriteName;
     (void)asset::ParseSpriteReference(request, logicalPath, spriteName);
 
-    // 参照欄が持つのは Assets 起点の相対パス、ブラウザは実ファイル操作のため絶対パス。
+    /// @note 参照欄が持つのは Assets 起点の相対パス、ブラウザは実ファイル操作のため絶対パス。
     const std::string absolute = util::FileSystem::NormalizePathSeparators(
         asset::AssetManager::ResolveAssetPath(logicalPath));
     if (absolute.empty() || !util::FileSystem::Exists(absolute)) {
         FBZZ_LOG_WARN("AssetBrowser: reveal target not found [%s]", request.c_str());
         return;
     }
-    // エンジン内蔵アセットへフォールバック解決された場合、実体はプロジェクトの Assets の外にある。
-    // ブラウザの表示範囲 (ルート + マウント) の外へは移動しない — 出たところで戻る導線がない。
+    /// @note エンジン内蔵アセットへフォールバック解決された場合、実体はプロジェクトの Assets の外にある。ブラウザの表示範囲 (ルート + マウント) の外へは移動しない (出たところで戻る導線がない)。
     if (!IsRootOrMountedPath(DirectoryOfPath(absolute))) {
         FBZZ_LOG_WARN("AssetBrowser: reveal target is outside the browsable roots [%s]",
                       absolute.c_str());
         return;
     }
 
-    // 横断検索の結果を出したままだと現在フォルダの一覧に切り替わらないため解除する。
+    /// @note 横断検索の結果を出したままだと現在フォルダの一覧に切り替わらないため解除する。
     if (IsGlobalSearchActive()) {
         m_searchBuf.fill('\0');
         m_searchResults.clear();
         m_searchResultsQuery.clear();
         m_searchResultsTypeFilter = -1;
     }
-    // タイプフィルタで除外されていると選択しても見えないので、Reveal では常に外す。
+    /// @note タイプフィルタで除外されていると選択しても見えないので、Reveal では常に外す。
     m_typeFilterMask = 0;
 
-    // FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
-    // 原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
+    /// @note FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
+    ///       原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
     std::string navigateDir = DirectoryOfPath(absolute);
     for (std::filesystem::path dir = util::FileSystem::PathFromUtf8(navigateDir);
          !dir.empty() && dir.has_parent_path() && dir != dir.parent_path();
@@ -301,9 +284,10 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
 
     if (!util::FileSystem::SamePathText(navigateDir, m_currentPath))
         m_currentPath = navigateDir;
-    RefreshDirectory();   // 展開状態を反映した一覧に組み直す
-    // RefreshDirectory は「フォルダを移動したら先頭へ戻す」ため m_resetScroll を立てる。
-    // Reveal は逆に対象タイルの位置までスクロールさせたいので、その要求だけ取り下げる。
+    /// @note 展開状態を反映した一覧に組み直す
+    RefreshDirectory();
+    /// @note RefreshDirectory は「フォルダを移動したら先頭へ戻す」ため m_resetScroll を立てる。
+    ///       Reveal は逆に対象タイルの位置までスクロールさせたいので、その要求だけ取り下げる。
     m_resetScroll = false;
 
     m_selectedPaths.clear();
@@ -314,14 +298,8 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
     m_pingPath      = absolute;
     m_pingStartTime = static_cast<float>(ImGui::GetTime());
 
-    // ダブルクリック相当のときは一覧側の選択も合わせる (Unity の Ping と選択の違い)。
-    //
-    // WHY Inspector の表示対象をここで触らないか:
-    //   ctx.selectedAssetPath は EditorApp が要求を受けた時点で確定させている。
-    //   この関数は OnRenderContent の中にあり、非アクティブなドッキングタブでは
-    //   1 度も呼ばれない。ここが唯一の書き手だった頃は、Asset Browser が Inspector と
-    //   同じドックノードに居るだけで参照を辿れなくなっていた。
-    //   上の 2 つの early return (ファイル欠落 / ルート外) でも同じ形で選択が消えていた。
+    /// @note ダブルクリック相当のときは一覧側の選択も合わせる (Unity の Ping と選択の違い)。
+    /// @note Inspector の表示対象はここで触らない。ctx.selectedAssetPath は EditorApp が要求を受けた時点で確定させている。この関数は非アクティブなドッキングタブでは呼ばれないため、ここを唯一の書き手にすると Asset Browser が Inspector と同じドックノードに居るだけで参照を辿れなくなる。
     if (selectForInspector)
         ClearEntitySelection(ctx);
 }
@@ -336,8 +314,7 @@ void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
         const std::string normalizedPath = util::FileSystem::NormalizePathSeparators(path);
         const std::string rootChild = util::FileSystem::NormalizePathSeparators(m_rootPath + "/" + name);
 
-        // WHY: プロジェクト Assets 側に実フォルダがある場合はそれを正とする。
-        //      ただし空フォルダだけがあるケースでは、実体側 Scripts/HLSL が見えなくなるためマウントを許可する。
+        /// @note プロジェクト Assets 側に実フォルダがある場合はそれを正とする。ただし空フォルダだけがあるケースでは、実体側 Scripts/HLSL が見えなくなるためマウントを許可する。
         if (util::FileSystem::IsDirectory(rootChild) &&
             !util::FileSystem::ListAll(rootChild).empty()) {
             return;
@@ -350,8 +327,7 @@ void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
         next.push_back({ name, normalizedPath });
     };
 
-    // WHY: Scripts / shaders はプロジェクトテンプレート、エンジン内蔵 Assets、
-    //      外部プロジェクト Assets のどこに置かれても編集対象として見える必要がある。
+    /// @note Scripts / shaders はプロジェクトテンプレート、エンジン内蔵 Assets、外部プロジェクト Assets のどこに置かれても編集対象として見える必要がある。
     const std::string scriptsDir = ctx.scriptsSourceDir.empty()
         ? ResolveFallbackAssetDir("Scripts")
         : ctx.scriptsSourceDir;
@@ -373,8 +349,7 @@ void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
     if (!IsRootOrMountedPath(m_currentPath))
         m_currentPath = m_rootPath;
     RefreshDirectory();
-    // WHY: マウントパスは OnInit 時点ではまだ未確定なため ScanAndQueueUnimported の対象外だった。
-    //      マウントが追加・変更されたタイミングで改めてスキャンする (2-5 / 3-3)。
+    /// @note マウントパスは OnInit 時点ではまだ未確定なため ScanAndQueueUnimported の対象外だった。マウントが追加・変更されたタイミングで改めてスキャンする (2-5 / 3-3)。
     for (const AssetMount& mount : m_mounts)
         ScanAndQueueUnimported(mount.path);
 }
@@ -390,9 +365,7 @@ void AssetBrowserPanel::RefreshDirectory()
     m_packageAssetPaths.clear();
     m_lastClickedPath.clear();
 
-    // カレントフォルダにないプレビューキャッシュを破棄して GPU リソースを解放する。
-    // WHY: フォルダ移動を繰り返すとキャッシュが無制限に増加するため、
-    //      ディレクトリ更新のタイミングで不要エントリを削除する。
+    /// @note カレントフォルダにないプレビューキャッシュを破棄して GPU リソースを解放する。フォルダ移動を繰り返すとキャッシュが無制限に増加するため、ディレクトリ更新のタイミングで不要エントリを削除する。
     auto evictStaleEntries = [&](auto& map) {
         std::vector<std::string> toRemove;
         toRemove.reserve(map.size());
@@ -420,7 +393,7 @@ void AssetBrowserPanel::RefreshDirectory()
                         m_resources->Release(it->second.mat.thumbnailRT);
                     matpreview::ResetGpuData(it->second.mat.gpu, m_resources);
                 }
-                // .ico のようにこのパネルが自前で作ったテクスチャは実体ごと解放する。
+                /// @note .ico のようにこのパネルが自前で作ったテクスチャは実体ごと解放する。
                 if constexpr (requires { it->second.ownsTexture; }) {
                     if (it->second.ownsTexture && it->second.handle.IsValid())
                         m_resources->Release(it->second.handle);
@@ -437,11 +410,7 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_terrainPreviews);
     evictStaleEntries(m_spritePreviews);
 
-    // キューを空にしたら「積んである」印も落とす。
-    // WHY: 印を残したまま待ち行列だけ捨てると、そのテクスチャは二度と積み直されず
-    //      サムネイルが永久に出ない。素材を一括で入れた直後はファイル監視が
-    //      毎フレーム RefreshDirectory を呼ぶため、3 件/フレームの読み込みが
-    //      追いつく前にほぼ全部がこの状態に落ちる (再起動するまで直らなかった原因)。
+    /// @note キューを空にしたら「積んである」印も落とす。印を残したまま待ち行列だけ捨てると、そのテクスチャは二度と積み直されずサムネイルが永久に出ない。素材を一括で入れた直後はファイル監視が毎フレーム RefreshDirectory を呼ぶため、3 件/フレームの読み込みが追いつく前にほぼ全部がこの状態に落ちていた (再起動するまで直らなかった原因)。
     m_texLoadQueue.clear();
     for (auto& entry : m_texturePreviews)
         if (!entry.second.handle.IsValid()) entry.second.queued = false;
@@ -477,17 +446,18 @@ void AssetBrowserPanel::RefreshDirectory()
     }
 
     std::stable_sort(m_entries.begin(), m_entries.end(), [this](const Entry& a, const Entry& b) {
-        if (a.isDir != b.isDir) return a.isDir > b.isDir; // dirs first
+        /// @note dirs first
+        if (a.isDir != b.isDir) return a.isDir > b.isDir;
         switch (m_sortMode) {
         case SortMode::NameDesc:    return a.name > b.name;
         case SortMode::Type:        return a.ext < b.ext;
-        case SortMode::Modified:    return a.name < b.name; // fallback: name (file_time requires filesystem call)
+        /// @note fallback: name (file_time requires filesystem call)
+        case SortMode::Modified:    return a.name < b.name;
         default:                    return a.name < b.name;
         }
     });
 
-    // 展開済み FBX / Sprite Texture のサブエントリを元素材の直後に挿入する。
-    // WHY: 元画像と切り抜かれた各 Sprite を同時に見せ、atlas 内の見た目を一覧で比較できるようにする。
+    /// @note 展開済み FBX / Sprite Texture のサブエントリを元素材の直後に挿入する。元画像と切り抜かれた各 Sprite を同時に見せ、atlas 内の見た目を一覧で比較できるようにする。
     if (!m_expandedAssets.empty()) {
         std::vector<Entry> withSubs;
         withSubs.reserve(m_entries.size() * 2);
@@ -509,25 +479,21 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     const std::string lowerPath = util::StringUtils::ToLower(
         util::FileSystem::NormalizePathSeparators(path));
 
-    // WHAT: OS・VCS の管理ファイルはアセットではないため、ドット始まりを共通で隠す。
+    /// @note OS・VCS の管理ファイルはアセットではないため、ドット始まりを共通で隠す。
     if (!lowerName.empty() && lowerName.front() == '.') return false;
 
-    // WHY: compiled は HLSL から再生成できる実行時バイナリ置き場であり、
-    //      ユーザーが Asset Browser から開いたり移動したりする対象ではない。
+    /// @note compiled は HLSL から再生成できる実行時バイナリ置き場であり、ユーザーが Asset Browser から開いたり移動したりする対象ではない。
     if (isDir) {
         if (util::StringUtils::EndsWith(lowerPath, "/shaders/compiled")) return false;
         if (IsModelPackageDirectory(util::FileSystem::PathFromUtf8(path))) return false;
         return true;
     }
 
-    // WHAT: Header Tool、FBX importer、Shader compiler が生成する派生ファイルを隠し、
-    //       原本の .hpp / .fbx / .hlsl だけを操作対象にする。
+    /// @note Header Tool、FBX importer、Shader compiler が生成する派生ファイルを隠し、原本の .hpp / .fbx / .hlsl だけを操作対象にする。
     static constexpr const char* kGeneratedSuffixes[] = {
         ".generated.hpp",
-        // .meta はインポート設定サイドカー。元画像を第一級アセットとして扱うため非表示にする。
-        ".meta",
-        // .anim は新パイプラインで第一級アセットになったため非表示から除外
-        ".fzasset",
+        ".meta",  ///< インポート設定サイドカー。元画像を第一級アセットとして扱うため非表示にする
+        ".fzasset",  ///< .anim は新パイプラインで第一級アセットになったため非表示から除外
         ".mesh",
         ".skel",
         ".cso",
@@ -543,7 +509,7 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
         if (util::StringUtils::EndsWith(lowerName, suffix)) return false;
     }
 
-    // シェーダー配布物を作る補助スクリプトとログはエディタ内部の保守用ファイル。
+    /// @note シェーダー配布物を作る補助スクリプトとログはエディタ内部の保守用ファイル。
     static constexpr const char* kShaderToolFiles[] = {
         "compile_shaders.ps1",
         "compile_log.txt",
@@ -558,7 +524,7 @@ void AssetBrowserPanel::InvalidateTreeCache(const std::string& dirPath)
 {
     const std::string norm = util::FileSystem::NormalizePathSeparators(dirPath);
     m_treeCache.erase(norm);
-    // also invalidate ancestors so the tree reflects the change
+    /// @note also invalidate ancestors so the tree reflects the change
     std::string cur = norm;
     while (true) {
         const size_t pos = cur.find_last_of('/');
@@ -611,10 +577,7 @@ std::string AssetBrowserPanel::ResolveFallbackAssetDir(const std::string& childD
     std::filesystem::path current = util::FileSystem::PathFromUtf8(
         util::FileSystem::NormalizePathSeparators(m_rootPath));
 
-    // WHY: ctx.scriptsSourceDir は hot reload の ToolchainLocator 成功後にだけ入る
-    //      (ctx.hlslSourceDir は ToolchainLocator に依存しなくなったが、hotReloadEnabled が
-    //      false なら依然として空)。AssetBrowser は hot reload なしでも使うため、現在の
-    //      Assets ルートから親をたどってリポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
+    /// @note ctx.scriptsSourceDir は hot reload の ToolchainLocator 成功後にだけ入る (ctx.hlslSourceDir は ToolchainLocator に依存しなくなったが、hotReloadEnabled が false なら依然として空)。AssetBrowser は hot reload なしでも使うため、現在の Assets ルートから親をたどってリポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
     for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
         const std::filesystem::path candidate = current / "Assets" / childDirName;
         if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(candidate)))
@@ -675,8 +638,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
             textureAsset.settings.type != asset::TextureType::Sprite)
             return cached.items;
 
-        // WHAT: 各 SpriteRect を永続 ID 付き参照へ変換し、実ファイルを増やさず Unity 風の
-        //       サブアセットとして公開する。Single / Multiple のどちらも同じ表示規則にする。
+        /// @note 各 SpriteRect を永続 ID 付き参照へ変換し、実ファイルを増やさず Unity 風のサブアセットとして公開する。Single / Multiple のどちらも同じ表示規則にする。
         for (size_t index = 0; index < textureAsset.settings.sprites.size(); ++index) {
             const asset::SpriteRect& sprite = textureAsset.settings.sprites[index];
             const std::string token = sprite.id.empty() ? sprite.name : sprite.id;
@@ -698,8 +660,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
     if (modelExt != ".fbx" && modelExt != ".fzasset")
         return cached.items;
 
-    // .fbx は Unity のように展開可能なモデルノードとして扱う。
-    // WHY: 内部 .fzasset コンテナは Library の再生成物であり、UI と保存パスは原本 .fbx に一本化する。
+    /// @note .fbx は Unity のように展開可能なモデルノードとして扱う。内部 .fzasset コンテナは Library の再生成物であり、UI と保存パスは原本 .fbx に一本化する。
     const std::filesystem::path sourcePath = util::FileSystem::PathFromUtf8(sourceAssetPath);
     const std::filesystem::path packageDir = (modelExt == ".fbx")
         ? sourcePath.parent_path() / sourcePath.stem()
@@ -712,20 +673,14 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         if (util::FileSystem::Exists(containerResolved))
             modelWritePath = containerResolved;
     }
-    // ファイル更新時刻でキャッシュ有効性を確認する。
-    // WHY: 未インポート時の空展開 cache を、Library コンテナ生成後に必ず更新するため。
+    /// @note ファイル更新時刻でキャッシュ有効性を確認する。未インポート時の空展開 cache を、Library コンテナ生成後に必ず更新するため。
     const std::filesystem::file_time_type currentWriteTime =
         util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(modelWritePath));
-    // .mesh の物理実体も Library に居る可能性があるため論理パスを解決してから存在確認する。
+    /// @note .mesh の物理実体も Library に居る可能性があるため論理パスを解決してから存在確認する。
     const std::filesystem::path mergedMeshPath = util::FileSystem::PathFromUtf8(
         asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(
             packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".mesh"))));
-    // anims/ と materials/ は Library/Baked/<fbx-guid>/ へ隔離済み。
-    // WHY 旧配置もフォールバックで見るか: 隔離を入れる前にインポートしたモデルは
-    //     Assets 側にこれらを持ったままになる。再インポートするまでは
-    //     そちらを見せないとクリップとマテリアルが一覧から消えてしまう。
-    //     Extract で Assets へ取り出した実体も、この経路では出てこない
-    //     (取り出した先は原本 FBX の隣なので、通常のエントリとして並ぶ)。
+    /// @note anims/ と materials/ は `Library/Baked/<fbx-guid>/` へ隔離済み。隔離を入れる前にインポートしたモデルは Assets 側にこれらを持ったままなので、再インポートするまでは旧配置もフォールバックで見ないとクリップとマテリアルが一覧から消える。Extract で Assets へ取り出した実体は原本 FBX の隣に置かれるため、通常のエントリとして並びこの経路では出てこない。
     const auto resolveGeneratedDir = [&](const char* name) {
         std::filesystem::path dir = packageDir / name;
         if (modelExt != ".fbx") return dir;
@@ -788,11 +743,9 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         cached.items.push_back(std::move(e));
     }
 
-    // サブメッシュエントリを先に追加 (Unity FBX 展開: メッシュ→アニメの順)
-    // WHY: ResourceManager 未初期化時に Load を呼ぶと GPU バッファなしでキャッシュされるため必ずガードする
+    /// @note サブメッシュエントリを先に追加 (Unity FBX 展開: メッシュ→アニメの順)。ResourceManager 未初期化時に Load を呼ぶと GPU バッファなしでキャッシュされるため必ずガードする。
     if (renderer::ResourceManager::Active()) {
-        // WHY: .fzasset 生成前に一度失敗した Null cache が残っていると、
-        //      ファイル更新後もサブアセット展開が importer まで到達しない。
+        /// @note .fzasset 生成前に一度失敗した Null cache が残っていると、ファイル更新後もサブアセット展開が importer まで到達しない。
         asset::AssetManager::FlushFailed();
         auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(sourceAssetPath);
         if (const auto* model = asset::AssetManager::Get(modelHandle)) {
@@ -822,7 +775,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         e.ext        = ".mat";
         e.isDir      = false;
         e.isSubAsset = true;
-        // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        /// @note 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
         e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
@@ -830,18 +783,17 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
     for (const std::string& absPath : util::FileSystem::ListFiles(animDirStr, ".anim")) {
         Entry e;
         e.path      = util::FileSystem::NormalizePathSeparators(absPath);
-        e.name      = util::FileSystem::GetFilename(absPath); // 拡張子込み: rename バッファに使われるため
+        /// @note 拡張子込み: rename バッファに使われるため
+        e.name      = util::FileSystem::GetFilename(absPath);
         e.ext       = ".anim";
         e.isDir     = false;
         e.isSubAsset = true;
-        // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        /// @note 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
         e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
 
-    // textures/ の元画像そのものをサブアセットとして見せる。
-    // WHY: .tex descriptor を廃止し、インポート設定は隣の "<画像>.meta" (非表示) が担うため、
-    //      第一級アセットは元画像に一本化する。
+    /// @note textures/ の元画像そのものをサブアセットとして見せる。.tex descriptor を廃止し、インポート設定は隣の `<画像>.meta` (非表示) が担うため、第一級アセットは元画像に一本化する。
     static constexpr const char* kTextureExts[] = {
         ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr", ".exr", ".bmp"
     };
@@ -853,7 +805,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
             e.ext        = imageExt;
             e.isDir      = false;
             e.isSubAsset = true;
-            // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+            /// @note 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
             e.sourceAssetPath = sourceAssetPath;
             cached.items.push_back(std::move(e));
         }

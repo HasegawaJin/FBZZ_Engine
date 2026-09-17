@@ -8,9 +8,9 @@
 
 namespace fbzz::editor {
 
-// Animation Mask の確認に特化した独立パネル。
-// WHY: Inspector はルール編集、Preview は結果確認に分け、長時間の調整でも
-//      階層と最終結果を同時に見失わないようにする。
+/// @brief Animation Mask の確認に特化した独立パネル。
+/// @note Inspector はルール編集、Preview は結果確認に分け、長時間の調整でも
+///       階層と最終結果を同時に見失わないようにする。
 class AnimationMaskPreviewPanel final : public IPanel {
 public:
     const char* GetWindowName() const override { return "Animation Mask Preview"; }

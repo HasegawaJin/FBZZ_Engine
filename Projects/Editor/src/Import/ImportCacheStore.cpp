@@ -22,9 +22,9 @@
 namespace fbzz::editor {
 namespace {
 
-// std::map なので書き出しは常に guid 順で安定する。差分としても読める。
+/// std::map なので書き出しは常に guid 順で安定する。差分としても読める。
 std::map<std::string, ImportCacheStore::Entry> s_importCacheEntries;
-// 読み込み済みプロジェクトの root。変わっていれば別プロジェクトなので読み直す。
+/// 読み込み済みプロジェクトの root。変わっていれば別プロジェクトなので読み直す。
 std::string s_importCacheProjectRoot;
 bool        s_importCacheLoaded = false;
 std::mutex  s_importCacheMutex;
@@ -34,8 +34,8 @@ std::string ImportCacheFilePath(const std::string& projectRoot)
     return projectRoot + "Library/ImportCache.toml";
 }
 
-// s_importCacheMutex 取得済み前提。開いているプロジェクトが変わっていれば読み直す。
-// @return 現在のプロジェクト root。AssetDatabase 未初期化なら空文字列。
+/// s_importCacheMutex 取得済み前提。開いているプロジェクトが変わっていれば読み直す。
+/// @return 現在のプロジェクト root。AssetDatabase 未初期化なら空文字列。
 std::string EnsureImportCacheLoaded()
 {
     const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
@@ -53,7 +53,7 @@ std::string EnsureImportCacheLoaded()
     std::istringstream iss(text);
     const auto parsed = toml::parse(iss);
     if (!parsed) {
-        // 壊れていても復旧は要らない。空から作り直せば、次の走査で焼き直されるだけ。
+        /// @note 壊れていても復旧は要らない。空から作り直せば、次の走査で焼き直されるだけ。
         FBZZ_LOG_WARN("ImportCacheStore: parse failed, starting empty [%s]", path.c_str());
         return projectRoot;
     }
@@ -66,12 +66,12 @@ std::string EnsureImportCacheLoaded()
         ImportCacheStore::Entry loaded;
         loaded.contentHash  = (*entry)["content"].value_or(std::string{});
         loaded.settingsHash = (*entry)["settings"].value_or(std::string{});
-        // TOML の整数は int64_t。負値は «壊れた記録» なので目印を捨てる (0 = 未記録)。
+        /// @note TOML の整数は int64_t。負値は «壊れた記録» なので目印を捨てる (0 = 未記録)。
         const int64_t rawSize = (*entry)["size"].value_or(int64_t{0});
         loaded.size  = rawSize > 0 ? static_cast<uint64_t>(rawSize) : 0;
         loaded.mtime = (*entry)["mtime"].value_or(int64_t{0});
-        // 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値としては
-        // 使えないので、移行判定用の別枠で持つ。
+        /// @note 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値としては
+        ///       使えないので、移行判定用の別枠で持つ。
         if (loaded.contentHash.empty())
             loaded.legacyStamp = (*entry)["source"].value_or(std::string{});
         if (loaded.Empty()) continue;
@@ -80,7 +80,7 @@ std::string EnsureImportCacheLoaded()
     return projectRoot;
 }
 
-// s_importCacheMutex 取得済み前提。
+/// s_importCacheMutex 取得済み前提。
 bool WriteImportCacheFile(const std::string& projectRoot)
 {
     std::ostringstream out;
@@ -95,7 +95,7 @@ bool WriteImportCacheFile(const std::string& projectRoot)
            "# WHY .meta ではなくここか: size / mtime は人・マシン・clone ごとに違う。\n"
            "#     git 追跡下の .meta へ書くと、同じプロジェクトを触る全員の手元が常に差分になる。\n\n";
     out << "count = " << s_importCacheEntries.size() << "\n\n[hashes]\n";
-    // guid も hash も hex に限定済みなので、リテラル文字列でエスケープが要らない。
+    /// @note guid も hash も hex に限定済みなので、リテラル文字列でエスケープが要らない。
     for (const auto& [guid, entry] : s_importCacheEntries) {
         out << '\'' << guid << "' = { content = '" << entry.contentHash
             << "', settings = '" << entry.settingsHash
@@ -110,8 +110,8 @@ bool WriteImportCacheFile(const std::string& projectRoot)
     return false;
 }
 
-// 32 桁 hex か。引用符やセクション記号が混ざった guid をそのまま書くと
-// ファイルごと壊れて、他の全アセットの fingerprint まで道連れになる。
+/// 32 桁 hex か。引用符やセクション記号が混ざった guid をそのまま書くと
+/// ファイルごと壊れて、他の全アセットの fingerprint まで道連れになる。
 bool IsWellFormedGuid(const std::string& guid)
 {
     return guid.size() == 32
@@ -195,7 +195,8 @@ bool ImportCacheStore::Rekey(const std::string& oldGuid, const std::string& newG
     if (projectRoot.empty()) return false;
 
     const auto it = s_importCacheEntries.find(oldGuid);
-    if (it == s_importCacheEntries.end()) return true;  // 未記録なら移すものが無い
+    /// @note 未記録なら移すものが無い
+    if (it == s_importCacheEntries.end()) return true;
 
     s_importCacheEntries[newGuid] = it->second;
     s_importCacheEntries.erase(it);

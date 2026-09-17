@@ -8,7 +8,7 @@ namespace fbzz::ai {
 
 const std::vector<BlackboardDef>& ReservedBlackboardDefs()
 {
-    // bb:: の添字と 1 対 1 で対応させること。順序を変えると固定添字が壊れる。
+    /// @note bb:: の添字と 1 対 1 で対応させること。順序を変えると固定添字が壊れる。
     static const std::vector<BlackboardDef> kDefs = [] {
         std::vector<BlackboardDef> defs;
         const auto add = [&defs](const char* name, BlackboardType type) {
@@ -18,15 +18,24 @@ const std::vector<BlackboardDef>& ReservedBlackboardDefs()
             def.reserved = true;
             defs.push_back(std::move(def));
         };
-        add("Self",              BlackboardType::Entity);   // bb::Self              = 0
-        add("TargetEntity",      BlackboardType::Entity);   // bb::TargetEntity      = 1
-        add("TargetPosition",    BlackboardType::Vector3);  // bb::TargetPosition    = 2
-        add("LastKnownPosition", BlackboardType::Vector3);  // bb::LastKnownPosition = 3
-        add("HasTarget",         BlackboardType::Bool);     // bb::HasTarget         = 4
-        add("HomePosition",      BlackboardType::Vector3);  // bb::HomePosition      = 5
-        add("Health01",          BlackboardType::Float);    // bb::Health01          = 6
-        add("Awareness",         BlackboardType::Float);    // bb::Awareness         = 7
-        add("NoisePosition",     BlackboardType::Vector3);  // bb::NoisePosition     = 8
+        /// @note bb::Self              = 0
+        add("Self",              BlackboardType::Entity);
+        /// @note bb::TargetEntity      = 1
+        add("TargetEntity",      BlackboardType::Entity);
+        /// @note bb::TargetPosition    = 2
+        add("TargetPosition",    BlackboardType::Vector3);
+        /// @note bb::LastKnownPosition = 3
+        add("LastKnownPosition", BlackboardType::Vector3);
+        /// @note bb::HasTarget         = 4
+        add("HasTarget",         BlackboardType::Bool);
+        /// @note bb::HomePosition      = 5
+        add("HomePosition",      BlackboardType::Vector3);
+        /// @note bb::Health01          = 6
+        add("Health01",          BlackboardType::Float);
+        /// @note bb::Awareness         = 7
+        add("Awareness",         BlackboardType::Float);
+        /// @note bb::NoisePosition     = 8
+        add("NoisePosition",     BlackboardType::Vector3);
         return defs;
     }();
 
@@ -50,10 +59,8 @@ void Blackboard::Reset(const std::vector<BlackboardDef>& defs)
         entry.lastWriteTick = 0;
         entry.lastWriteTime = 0.0f;
 
-        // 既定値は「書き込み」として扱わない。
-        // WHY: IsSet() / GetLastWriteTick() は「実行中に誰かが書いたか」を
-        //      問うためのもの。既定値で埋めた時点で書かれた扱いにすると、
-        //      「一度もターゲットを見ていない」を判定できなくなる。
+        /// @note 既定値は書き込み扱いにしない。IsSet()/GetLastWriteTick() は「実行中に誰かが書いたか」を
+        ///       判定するため、既定値埋めを書込み扱いにすると「一度も見ていない」を判定できなくなる。
         entry.b = def.defaultBool;
         entry.i = def.defaultInt;
         entry.f = def.defaultFloat;
@@ -83,7 +90,7 @@ const Blackboard::Entry* Blackboard::Peek(BlackboardKey key, BlackboardType expe
     return &entry;
 }
 
-// ── 書き込み ─────────────────────────────────────────────────────────────────
+/// @name 書き込み
 
 bool Blackboard::SetBool(BlackboardKey key, bool value)
 {
@@ -133,7 +140,7 @@ bool Blackboard::SetString(BlackboardKey key, std::string_view value)
     return true;
 }
 
-// ── 読み出し ─────────────────────────────────────────────────────────────────
+/// @name 読み出し
 
 bool Blackboard::GetBool(BlackboardKey key, bool& out) const
 {
@@ -183,7 +190,7 @@ bool Blackboard::GetString(BlackboardKey key, std::string& out) const
     return true;
 }
 
-// ── 書き込み履歴 ─────────────────────────────────────────────────────────────
+/// @name 書き込み履歴
 
 std::uint32_t Blackboard::GetLastWriteTick(BlackboardKey key) const
 {

@@ -32,9 +32,11 @@ void Fill(std::vector<std::uint8_t>& rgba, std::uint32_t width, std::uint32_t x0
 
 TEST(FlipbookMipsTest, LevelCountStopsBeforeTilesGetTooSmallOrOdd)
 {
-    EXPECT_EQ(asset::FlipbookMipLevelCount(256, 256), 7u); // 256 → 4
+    /// @note 256 → 4
+    EXPECT_EQ(asset::FlipbookMipLevelCount(256, 256), 7u);
     EXPECT_EQ(asset::FlipbookMipLevelCount(8, 8), 2u);
-    EXPECT_EQ(asset::FlipbookMipLevelCount(24, 24), 3u);   // 24 → 12 → 6 (次は 3 で奇数)
+    /// @note 24 → 12 → 6 (次は 3 で奇数)
+    EXPECT_EQ(asset::FlipbookMipLevelCount(24, 24), 3u);
     EXPECT_EQ(asset::FlipbookMipLevelCount(6, 6), 1u);
 }
 
@@ -42,8 +44,10 @@ TEST(FlipbookMipsTest, NeighbouringTilesDoNotBleed)
 {
     constexpr std::uint32_t kWidth = 16, kHeight = 8;
     std::vector<std::uint8_t> rgba(kWidth * kHeight * 4, 0);
-    Fill(rgba, kWidth, 0, 0, 8, 8, 255, 0, 0, 255);   // 左のコマ = 赤
-    Fill(rgba, kWidth, 8, 0, 8, 8, 0, 0, 255, 255);   // 右のコマ = 青
+    /// @note 左のコマ = 赤
+    Fill(rgba, kWidth, 0, 0, 8, 8, 255, 0, 0, 255);
+    /// @note 右のコマ = 青
+    Fill(rgba, kWidth, 8, 0, 8, 8, 0, 0, 255, 255);
     const auto levels = asset::BuildFlipbookMips(rgba, kWidth, kHeight, 8, 8, asset::FlipbookMipContent::Plain);
     ASSERT_EQ(levels.size(), 2u);
     const auto& mip = levels[1];
@@ -61,7 +65,7 @@ TEST(FlipbookMipsTest, NeighbouringTilesDoNotBleed)
 
 TEST(FlipbookMipsTest, StraightAlphaIgnoresTheColourOfTransparentTexels)
 {
-    // 2x2 のうち 1 画素だけ不透明な白、残りは透明な黒。素直に平均すると灰色の縁になる。
+    /// @note 2x2 のうち 1 画素だけ不透明な白、残りは透明な黒。素直に平均すると灰色の縁になる。
     std::vector<std::uint8_t> rgba(8 * 8 * 4, 0);
     Fill(rgba, 8, 0, 0, 1, 1, 255, 255, 255, 255);
     const auto levels = asset::BuildFlipbookMips(rgba, 8, 8, 8, 8, asset::FlipbookMipContent::StraightSrgb);
@@ -74,11 +78,12 @@ TEST(FlipbookMipsTest, PremultipliedColourIsAveragedInLinearSpace)
 {
     std::vector<std::uint8_t> rgba(8 * 8 * 4, 0);
     Fill(rgba, 8, 0, 0, 8, 8, 0, 0, 0, 255);
-    Fill(rgba, 8, 0, 0, 1, 2, 255, 255, 255, 255);   // 2x2 の左半分が白
+    /// @note 2x2 の左半分が白
+    Fill(rgba, 8, 0, 0, 1, 2, 255, 255, 255, 255);
     const auto levels =
         asset::BuildFlipbookMips(rgba, 8, 8, 8, 8, asset::FlipbookMipContent::PremultipliedSrgb);
     ASSERT_EQ(levels.size(), 2u);
-    // リニアで 0.5 → sRGB で 188。sRGB のまま平均すると 128 になり、縮めるほど暗く沈む。
+    /// @note リニアで 0.5 → sRGB で 188。sRGB のまま平均すると 128 になり、縮めるほど暗く沈む。
     EXPECT_NEAR(static_cast<int>(levels[1].rgba[0]), 188, 1);
     EXPECT_EQ(levels[1].rgba[3], 255);
 }

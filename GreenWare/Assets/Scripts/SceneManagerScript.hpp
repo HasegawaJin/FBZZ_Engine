@@ -18,10 +18,9 @@
 /// 塗ってから切り替え、遷移先で剥がす。fadeDuration は塗り (出) の秒数。
 /// 状態はシーンをまたぐ静的な transition::State が持つ。
 ///
-/// WHY: シーンごとに個別コントローラーを作らず、1 スクリプトで全遷移パターンを賄う。
-/// 進めるのは transition::Tick で、ScreenEffectManager の居るシーンでは絵をそちらへ
-/// 載せてもらい、居ないシーン (メニュー) では自分で PostProcessSettings を書く。
-/// 2026-09-07 に黒の lerp (screenFadeAlpha) からマスクのワイプへ移した (ScreenWipe.hlsl の WHY)。
+/// @note シーンごとに個別コントローラーを作らず、1 スクリプトで全遷移パターンを賄う。進めるのは
+///       transition::Tick で、ScreenEffectManager が居るシーンでは絵をそちらへ載せてもらい、
+///       居ないシーン (メニュー) では自分で PostProcessSettings を書く。
 #pragma once
 
 #include <Engine/Renderer/RenderSettings.hpp>
@@ -46,60 +45,54 @@ namespace sandbox {
 class SceneManagerScript : public Script {
     FBZZ_SCRIPT(SceneManagerScript)
 
-    // ボタンモードでのみ UIButton を読む (autoTransition=true の Load.scene 用途では不要)。
-    // 「どちらの使い方でも成立する」ので必須にはできない。付け忘れたときに
-    // 気付けるよう、任意として名前だけ出しておく。
+    /// ボタンモードでのみ UIButton を読む (autoTransition=true の Load.scene 用途では不要)。
+    /// 「どちらの使い方でも成立する」ので必須にはできない。付け忘れたときに
+    /// 気付けるよう、任意として名前だけ出しておく。
     FBZZ_OPTIONAL_COMPONENT(UIButton)
 
 public:
-    // 遷移先シーン名。autoTransition=true の場合は OnStart で s_next から上書きされる。
+    /// 遷移先シーン名。autoTransition=true の場合は OnStart で s_next から上書きされる。
     FBZZ_FIELD(std::string, targetScene,    "", "Target Scene")
-    // 中継シーン名。非空のとき s_next=targetScene を設定してからこのシーンをロードする。
+    /// 中継シーン名。非空のとき s_next=targetScene を設定してからこのシーンをロードする。
     FBZZ_FIELD(std::string, viaScene,       "", "Via Scene")
-    // true のとき autoDelay 秒後に targetScene へ自動遷移 (Load.scene 用)
+    /// true のとき autoDelay 秒後に targetScene へ自動遷移 (Load.scene 用)
     FBZZ_FIELD(bool,  autoTransition, false, "Auto Transition")
     FBZZ_FIELD(float, autoDelay,      1.5f,  "Auto Delay")
-    // ワイプの有効/無効と塗り (出) の長さ (秒)。剥がし (入) は 1.2 倍
+    /// ワイプの有効/無効と塗り (出) の長さ (秒)。剥がし (入) は 1.2 倍
     FBZZ_FIELD(bool,  fadeEnabled,    true,  "Wipe Enabled")
     FBZZ_FIELD(float, fadeDuration,   0.55f, "Wipe Seconds")
-    // ボタンモードで、クリックの代わりにこのアクションでも遷移させる。
-    //
-    // WHY フォーカス移動ではなくボタンごとに割り当てるか:
-    //   UIButton はマウス座標で判定するため、パッドだけでは 1 つも押せない。
-    //   本作のメニューはタイトルに 1 つ、リザルトに 2 つしかないので、
-    //   カーソル移動と選択状態を作り込むより「A で再挑戦 / B でタイトル」と
-    //   ボタンへ直接割り当てる方が、実装も操作も短くなる。
-    //   空欄ならこれまでどおりクリックのみ。
+    /// ボタンモードで、クリックの代わりにこのアクションでも遷移させる。空欄ならクリックのみ。
+    /// @note UIButton はマウス座標で判定するためパッドだけでは押せない。本作のメニューはタイトルに
+    ///       1 つ、リザルトに 2 つしかないため、カーソル移動を作り込むよりボタンへ直接割り当てる。
     FBZZ_FIELD(std::string, triggerAction, "", "Trigger Action")
     FBZZ_TOOLTIP("ProjectSettings/Input.inputactions のアクション名。"
                  "Submit / Cancel を割り当てるとパッドとキーボードで押せるようになる")
 
-    // 中継シーンへ «本当の目的地» を渡す静的変数。
-    // WHY: LoadScene でシーンが切り替わると現スクリプトも破棄されるため、
-    //      次シーンの OnStart が読める静的変数で引き継ぐ。ワイプの状態は
-    //      transition::State (同じ理由で静的) が持つ。
+    /// 中継シーンへ «本当の目的地» を渡す静的変数。
+    /// @note LoadScene でシーンが切り替わると現スクリプトも破棄されるため、次シーンの OnStart が
+    ///       読める静的変数で引き継ぐ。ワイプの状態は transition::State (同じ理由で静的) が持つ。
     static inline std::string s_next;
 
     void OnStart()  override;
     void OnUpdate() override;
 
 private:
-    // 塗り始める。fadeEnabled=false なら即 ExecuteLoad() へ。
+    /// 塗り始める。fadeEnabled=false なら即 ExecuteLoad() へ。
     void BeginFadeOut();
-    // LoadScene を実際に呼ぶ (ワイプ無しの経路)。viaScene がある場合は中継シーンを経由する。
+    /// LoadScene を実際に呼ぶ (ワイプ無しの経路)。viaScene がある場合は中継シーンを経由する。
     void ExecuteLoad();
-    // マネージャーが居ないシーンで、今フレームの覆いを PostProcessSettings へ書く。
+    /// マネージャーが居ないシーンで、今フレームの覆いを PostProcessSettings へ書く。
     void ApplyWipe();
     void TickFusion();
     void StartFusion(const Vector3& position);
     void UpdateFusionVisual();
-    // 遷移先。viaScene があればそちら (目的地は s_next へ)。
+    /// 遷移先。viaScene があればそちら (目的地は s_next へ)。
     [[nodiscard]] std::string Destination();
 
     UIButton*  m_btn       = nullptr;
     float      m_elapsed   = 0.0f;
-    bool       m_fired     = false; // ボタン / タイマー二重発火防止
-    bool       m_writing   = false; // 自分で postprocess を書いた (マネージャー無し)
+    bool       m_fired     = false; ///< ボタン / タイマー二重発火防止
+    bool       m_writing   = false; ///< 自分で postprocess を書いた (マネージャー無し)
     float      m_loadingElapsed = 0.0f;
     int        m_loadingDots = -1;
     bool       m_fusionStarted = false;
@@ -110,13 +103,12 @@ private:
 
 FBZZ_REFLECT(SceneManagerScript)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 inline void SceneManagerScript::OnStart()
 {
     if (autoTransition) {
         const std::string next = transition::TakeNextScene();
         if (!next.empty()) targetScene = next;
-        // Load.scene モード: 静的変数から遷移先を受け取る
+        /// @note Load.scene モード: 静的変数から遷移先を受け取る
         else if (!s_next.empty())
             targetScene = s_next;
         s_next.clear();
@@ -128,16 +120,16 @@ inline void SceneManagerScript::OnStart()
         m_fusionElapsed = 0.0f;
         m_fusionParts.clear();
     } else {
-        // ボタンモード: 同 GO の UIButton をキャッシュ
+        /// @note ボタンモード: 同 GO の UIButton をキャッシュ
         m_btn = scene.GetComponent<UIButton>();
     }
-    // 塗られたまま来た (前のシーンが塗った) なら、最初のフレームから覆いを出す。
+    /// @note 塗られたまま来た (前のシーンが塗った) なら、最初のフレームから覆いを出す。
     ApplyWipe();
 }
 
 inline void SceneManagerScript::OnUpdate()
 {
-    // 扉は実時間で進める。同じフレームに ScreenEffectManager も呼ぶが、進むのは 1 回。
+    /// @note 扉は実時間で進める。同じフレームに ScreenEffectManager も呼ぶが、進むのは 1 回。
     ApplyWipe();
 
     if (autoTransition) TickFusion();
@@ -153,7 +145,7 @@ inline void SceneManagerScript::OnUpdate()
         }
     }
 
-    // 塗っている / 剥がしている最中は押せない (押した瞬間にもう 1 枚扉が開く)。
+    /// @note 塗っている / 剥がしている最中は押せない (押した瞬間にもう 1 枚扉が開く)。
     if (transition::Busy()) return;
     if (m_fired) {
         if (autoTransition && !transition::Active()
@@ -170,7 +162,7 @@ inline void SceneManagerScript::OnUpdate()
     }
 
     if (autoTransition) {
-        // 剥がし切ってから数える。剥がしている最中に数えると «見えた瞬間に去る» になる。
+        /// @note 剥がし切ってから数える。剥がしている最中に数えると «見えた瞬間に去る» になる。
         if (transition::Active()) return;
         m_elapsed += std::max(time.UnscaledDeltaTime(), 0.0f);
         const bool fusionSettled = !ElectrodeRig::IsFusionApproaching()
@@ -289,7 +281,7 @@ inline void SceneManagerScript::UpdateFusionVisual()
                 const float alpha = reveal * envelope * envelope * 0.75f;
                 line->startWidth = 0.007f;
                 line->endWidth = 0.035f + envelope * 0.015f;
-                // ElectricArc は頂点色でなく startColor のアルファを帯全体へ使う。
+                /// @note ElectricArc は頂点色でなく startColor のアルファを帯全体へ使う。
                 line->startColor = { green.x, green.y, green.z, alpha };
                 line->endColor = { 0.3f, 1.0f, 0.55f, alpha };
                 for (int point = 0; point <= 6; ++point) {
@@ -346,17 +338,16 @@ inline void SceneManagerScript::UpdateFusionVisual()
 
 inline void SceneManagerScript::ApplyWipe()
 {
-    // WHY マネージャーがあれば描かないか:
-    //   ランタイムの PostProcessSettings は「まるごと差し替える」器なので、書き手は
-    //   1 人でないと互いを消す。ScreenEffectManagerComponent を置いたシーンでは
-    //   あちらが transition::PushWipe で載せる。進めるのはどちらでも 1 回だけ。
+    /// @note ランタイムの PostProcessSettings は「まるごと差し替える」器なので書き手は 1 人でないと
+    ///       互いを消す。ScreenEffectManagerComponent を置いたシーンでは transition::PushWipe で
+    ///       あちらが載せる。進めるのはどちらでも 1 回だけ。
     (void)transition::Drive(std::max(time.UnscaledDeltaTime(), 0.0f), scene, postprocess,
                             m_writing, ScreenEffectManagerComponent::Instance() != nullptr);
 }
 
 inline std::string SceneManagerScript::Destination()
 {
-    // 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
+    /// @note 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
     if (!viaScene.empty()) s_next = targetScene;
     return viaScene.empty() ? targetScene : viaScene;
 }
@@ -364,7 +355,7 @@ inline std::string SceneManagerScript::Destination()
 inline void SceneManagerScript::BeginFadeOut()
 {
     if (!fadeEnabled) {
-        // ワイプなし: 即座に遷移
+        /// @note ワイプなし: 即座に遷移
         ExecuteLoad();
         return;
     }
@@ -372,7 +363,7 @@ inline void SceneManagerScript::BeginFadeOut()
     style.outSeconds = std::max(fadeDuration, 0.05f);
     style.inSeconds  = std::max(fadeDuration, 0.05f) * 1.2f;
     if (!transition::Begin(Destination())) {
-        // 既に扉が動いている。押した事実だけ戻して、次に任せる。
+        /// @note 既に扉が動いている。押した事実だけ戻して、次に任せる。
         m_fired = false;
     }
 }
@@ -382,8 +373,8 @@ inline void SceneManagerScript::ExecuteLoad()
     const std::string destination = Destination();
     if (scene.LoadScene(destination)) return;
 
-    // WHY 失敗をここで拾うか: 要求が通らなかった場合、何も起きない画面が残り、
-    //     操作も効かないので原因が読めない。入力の受付を戻して理由をログへ出す。
+    /// @note 要求が通らなかった場合、何も起きない画面が残り操作も効かず原因が読めないため、
+    ///       入力の受付を戻して理由をログへ出す。
     debug.LogError("SceneManagerScript: could not switch to scene '" + destination
                    + "'. Staying here (the SceneManager error above has the reason).");
     s_next.clear();

@@ -26,7 +26,7 @@ struct ScopeTimer {
     ScopeTimer(const ScopeTimer&)            = delete;
     ScopeTimer& operator=(const ScopeTimer&) = delete;
 
-    // 経過時間を ms で取得 (スコープ終了前に参照したいとき)
+    /// 経過時間を ms で取得 (スコープ終了前に参照したいとき)
     float ElapsedMs() const {
         auto now = std::chrono::high_resolution_clock::now();
         return std::chrono::duration<float, std::milli>(now - m_start).count();

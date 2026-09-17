@@ -27,10 +27,10 @@ protected:
 private:
     void Scan(const std::string& assetPath, const std::string& rootPath);
 
-    std::string         m_scannedPath;    // 最後にスキャンしたアセットパス
-    std::string         m_scannedGuid;    // その guid (空 = guid 未発行)
-    std::string         m_pendingNavDir;  // クリック後に AssetBrowser へ通知するディレクトリ
-    std::vector<RefHit> m_results;        // 参照元一覧
+    std::string         m_scannedPath;    ///< 最後にスキャンしたアセットパス
+    std::string         m_scannedGuid;    ///< その guid (空 = guid 未発行)
+    std::string         m_pendingNavDir;  ///< クリック後に AssetBrowser へ通知するディレクトリ
+    std::vector<RefHit> m_results;        ///< 参照元一覧
     bool                m_scanning = false;
 };
 

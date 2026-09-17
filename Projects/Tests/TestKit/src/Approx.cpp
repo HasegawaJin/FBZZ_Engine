@@ -132,7 +132,7 @@ std::string Describe(const T& value)
                                              const math::Quaternion& expected,
                                              float tolerance)
 {
-    // 符号を揃える。q と -q は同じ回転なので、成分を直に引くと «正しいのに落ちる»。
+    /// @note 符号を揃える。q と -q は同じ回転なので、成分を直に引くと «正しいのに落ちる»。
     const float sign = (math::Quaternion::Dot(actual, expected) < 0.0f) ? -1.0f : 1.0f;
     const math::Quaternion aligned{expected.x * sign, expected.y * sign,
                                    expected.z * sign, expected.w * sign};

@@ -3,16 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 1 つのグラフで溜めと着弾の両方を持つか:
-///   噛みつきは «喉が溜まって → 突っ込む» の 1 続きで、外した瞬間の突っ込みは
-///   溜めた光がそこで途切れることに意味がある。2 本に割ると «溜めだけ出て着弾が
-///   出ない» / «着弾だけ出て溜めが無い» という組み合わせが作れてしまう。
-///   鳴らす側は Charge / Impact のどちらの姿かを bite=true/false で選ぶ。
-///
-/// WHY 頭が地上に居る唯一の時間にだけ絵を足すか (boss-serpent.md「撃破までの形」):
-///   終盤まで頭は床下にいて触れず、«頭を斬りたい» だけが動機として置かれている。
-///   その頭が唯一こちら側へ出てくるのが噛みつきなので、ここに何も無いと
-///   «近づいてよい 1 秒» がプレイヤーに伝わらない。
+/// @note 1 つのグラフで溜めと着弾の両方を持つ。噛みつきは «溜まって → 突っ込む» の
+///       1 続きで、2 本に割ると «溜めだけ» / «着弾だけ» の組み合わせが作れてしまう。
+///       鳴らす側は Charge/Impact のどちらの姿かを bite=true/false で選ぶ。
+/// @note 頭が地上に居る唯一の時間にだけ絵を足す (boss-serpent.md「撃破までの形」)。
+///       終盤まで頭は床下に居るため、ここに何も無いと «近づいてよい 1 秒» が伝わらない。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -67,8 +62,8 @@ inline void SerpentBiteVfxComponent::Apply()
     if (self == nullptr) return;
     GameObject& root = *self;
 
-    // 要らない側は «畳む»。層を残したまま量を 0 にすると、枠を借りたときに
-    // 前回の姿の粒が 1 フレームだけ出る。
+    /// @note 要らない側は «畳む»。層を残したまま量を 0 にすると、枠を借りたときに
+    ///       前回の姿の粒が 1 フレームだけ出る。
     const auto pose = [&](const char* node, bool live) {
         if (GameObject* target = vfxbind::Find(root, node))
             if (target->activeSelf() != live) target->SetActive(live);
@@ -89,8 +84,8 @@ inline void SerpentBiteVfxComponent::Apply()
 
     vfxbind::ParticleSizeEnd(root, "Throat Core", (std::max)(throatSize, 0.05f));
     vfxbind::ParticleSphereRadius(root, "Throat Intake", (std::max)(throatSize, 0.05f) * 2.4f);
-    // 吸い込みは «外から内» なので放射が負。固定の向きだと 1 方向からしか吸わず、
-    // «溜めている» ではなく «横から流れてきた» に見える。
+    /// @note 吸い込みは «外から内» なので放射が負。固定の向きだと 1 方向からしか吸わず、
+    ///       «溜めている» ではなく «横から流れてきた» に見える。
     vfxbind::ParticleRadialVelocity(root, "Throat Intake", -(std::max)(intakeSpeed, 0.0f) * 2.5f);
 
     const float kick = (std::max)(impactKick, 0.0f);

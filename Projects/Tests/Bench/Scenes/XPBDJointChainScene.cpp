@@ -102,7 +102,7 @@ public:
             std::snprintf(label, sizeof(label), "骨 %zu の位置", i);
             if (!log.CheckFinite(label, position, 1.0e4f)) return;
 
-            // ソケットは «長さ» の拘束そのもの。伸びたらそこが解けていない。
+            /// @note ソケットは «長さ» の拘束そのもの。伸びたらそこが解けていない。
             const float span  = (position - previous).Length();
             const float error = std::fabs(span - kBoneSpan);
             log.ReportIf(error > kBoneSpan * kSpanTolerance, Severity::Error,
@@ -114,7 +114,7 @@ public:
 
         if (!m_limitsEnabled) return;
 
-        // 有効にした可動域を越えているなら、制限そのものが解けていない。
+        /// @note 有効にした可動域を越えているなら、制限そのものが解けていない。
         const float limit = m_swingLimitDeg / kRadToDeg + kLimitSlack;
         for (size_t i = 0; i < m_joints.size(); ++i) {
             const float swing = std::fabs(m_joints[i]->GetSwingAngleZ());
@@ -207,8 +207,7 @@ private:
         drive.target     = math::Quaternion::Identity();
     }
 
-    /// WHY 明示的に順序を決めるか: 拘束は剛体を生ポインタで持つ。剛体を先に壊すと
-    ///     ソルバが破棄済みの剛体を触る。必ず拘束 → ボディ登録 → 実体、の順で外す。
+    /// @note 拘束は剛体を生ポインタで持つ。剛体を先に壊すとソルバが破棄済みの剛体を触るため、必ず拘束→ボディ登録→実体の順で外す。
     void Teardown()
     {
         m_solver.ClearConstraints();

@@ -17,23 +17,23 @@ class GameObject;
 struct ScriptIKProxy {
     Script* script = nullptr;
 
-    // ターゲット名でチェーンを探して有効/無効を切り替える。
+    /// @brief ターゲット名でチェーンを探して有効/無効を切り替える。
     void SetChainEnabled(std::string_view targetName, bool enabled) const;
-    // 名前が一致するチェーンが無ければ false。
+    /// @return 名前が一致するチェーンが無ければ false。
     bool IsChainEnabled(std::string_view targetName) const;
     bool HasChain(std::string_view targetName) const;
-    // 全チェーンの有効/無効をまとめて切り替える。
+    /// @brief 全チェーンの有効/無効をまとめて切り替える。
     void SetAllEnabled(bool enabled) const;
 
-    // ブレンドウェイトを設定する [0, 1]。0 で FK のみ、1 で完全 IK 適用。
+    /// @brief ブレンドウェイトを設定する [0, 1]。0 で FK のみ、1 で完全 IK 適用。
     void SetChainWeight(std::string_view targetName, float weight) const;
     float GetChainWeight(std::string_view targetName) const;
 
-    // IK ターゲット GameObject を動的に差し替える。
+    /// @brief IK ターゲット GameObject を動的に差し替える。
     void SetChainTarget(std::string_view targetName, EntityID target) const;
     void SetChainTarget(std::string_view targetName, const GameObject& target) const;
 
-    // IKSolverComponent 自体の有効/無効。
+    /// @brief IKSolverComponent 自体の有効/無効。
     void SetEnabled(bool enabled) const;
     bool IsEnabled() const;
 };

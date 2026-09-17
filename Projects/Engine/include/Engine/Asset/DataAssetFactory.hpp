@@ -15,13 +15,10 @@
 
 namespace fbzz::asset {
 
-/// 登録には「スクリプト DLL 由来」と「Engine 組み込み」の 2 系統がある。
-///
-/// WHY 区別が要るか: DLL アンロード時にレジストリを全消しすると、DLL 側の型は
-///     次のロードで静的初期化が走り直して復活するが、Engine 側の静的初期化は
-///     プロセス起動時の 1 回きりで二度と走らない。区別せずに消していたため、
-///     スクリプトをホットリロードすると PostProcessProfile が恒久的に失われ、
-///     .fzdata が「型が未登録」で読めなくなっていた。
+/// @brief スクリプト DLL 由来と Engine 組み込みの型を分けて管理するレジストリ。
+/// @note DLL アンロード時に全消しすると、DLL 側は次ロードの静的初期化で復活するが、
+///       Engine 側の静的初期化はプロセス起動時の 1 回きりで復活しない。区別せず消すと
+///       PostProcessProfile 等が恒久的に失われ `.fzdata` が読めなくなる。
 class DataAssetFactory {
 public:
     using Factory = std::function<std::unique_ptr<DataAsset>()>;
@@ -59,7 +56,7 @@ public:
 
 } // namespace fbzz::asset
 
-// DataAsset 型を DataAssetFactory に静的登録するマクロ (FBZZ_REGISTER_SCRIPT と同方針)。
+/// @brief DataAsset 型を DataAssetFactory に静的登録するマクロ (FBZZ_REGISTER_SCRIPT と同方針)。
 #define FBZZ_DATA_ASSET_FACTORY_CONCAT_INNER(a, b) a##b
 #define FBZZ_DATA_ASSET_FACTORY_CONCAT(a, b) FBZZ_DATA_ASSET_FACTORY_CONCAT_INNER(a, b)
 #define FBZZ_REGISTER_DATA_ASSET(T) \
@@ -70,10 +67,9 @@ public:
         }(); \
     }
 
-// Engine 組み込みの DataAsset 型を静的登録するマクロ。
-// Engine 内の .cpp からのみ使う。スクリプト側 (Assets/Scripts) は
-// FBZZ_REGISTER_DATA_ASSET を使うこと — こちらで登録すると
-// DLL アンロード後も解放済みコードを指す factory が残る。
+/// @brief Engine 組み込みの DataAsset 型を静的登録するマクロ。Engine 内の `.cpp` 専用。
+/// @note スクリプト側は FBZZ_REGISTER_DATA_ASSET を使うこと。ここで登録すると
+///       DLL アンロード後も解放済みコードを指す factory が残る。
 #define FBZZ_REGISTER_BUILTIN_DATA_ASSET(T) \
     namespace { \
         [[maybe_unused]] const bool FBZZ_DATA_ASSET_FACTORY_CONCAT(s_fbzzBuiltinDataAssetRegistered_, __COUNTER__) = []() { \

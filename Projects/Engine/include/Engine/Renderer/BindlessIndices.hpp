@@ -14,7 +14,8 @@
 #include <array>
 #include <cstdint>
 
-#include "ITexture.hpp" // INVALID_BINDLESS_INDEX
+/// @note INVALID_BINDLESS_INDEX は ITexture.hpp が正本。
+#include "ITexture.hpp"
 
 namespace fbzz::renderer {
 

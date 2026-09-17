@@ -41,25 +41,24 @@ void EditorTaskOverlay::SetProgress(float progress)
 void EditorTaskOverlay::End()
 {
     s_active = false;
-    // ImGui::CloseCurrentPopup は Render() 内で処理する
+    /// @note ImGui::CloseCurrentPopup は Render() 内で処理する
 }
 
 void EditorTaskOverlay::Render()
 {
-    // BeginPopupModal は OpenPopup を呼んだフレームと同じフレームで開く必要がある
+    /// @note BeginPopupModal は OpenPopup を呼んだフレームと同じフレームで開く必要がある
     if (s_needOpen)
     {
         ImGui::OpenPopup("##EditorTaskOverlay");
         s_needOpen = false;
     }
 
-    // ポップアップが開いていない かつ 非アクティブなら何もしない
+    /// @note ポップアップが開いていない かつ 非アクティブなら何もしない
     if (!ImGui::IsPopupOpen("##EditorTaskOverlay"))
         return;
 
-    // 背景を暗く塗りつぶす
-    // WHY: BeginPopupModal のデフォルト暗幕は DimBgFactor で制御できるが
-    //      エディターテーマ依存になるため、ForegroundDrawList で確実に描画する。
+    /// @note 背景を暗く塗りつぶす。BeginPopupModal のデフォルト暗幕は DimBgFactor で制御できるが
+    ///       エディターテーマ依存になるため、ForegroundDrawList で確実に描画する。
     {
         const ImVec2 dmax = ImGui::GetIO().DisplaySize;
         ImGui::GetForegroundDrawList()->AddRectFilled(
@@ -78,7 +77,7 @@ void EditorTaskOverlay::Render()
 
     if (ImGui::BeginPopupModal("##EditorTaskOverlay", nullptr, kFlags))
     {
-        // タイトル
+        /// @note タイトル
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
         ImGui::TextUnformatted(s_taskName);
         ImGui::PopStyleColor();
@@ -86,7 +85,7 @@ void EditorTaskOverlay::Render()
         ImGui::Separator();
         ImGui::Spacing();
 
-        // ステータステキスト
+        /// @note ステータステキスト
         if (s_status[0] != '\0')
             ImGui::TextUnformatted(s_status);
         else
@@ -94,8 +93,8 @@ void EditorTaskOverlay::Render()
 
         ImGui::Spacing();
 
-        // プログレスバー
-        // s_progress < 0 のとき: 時間に基づいてループするアニメーションを表示
+        /// @note プログレスバー
+        ///       s_progress < 0 のとき: 時間に基づいてループするアニメーションを表示
         if (s_progress >= 0.0f)
         {
             char buf[16];
@@ -104,7 +103,7 @@ void EditorTaskOverlay::Render()
         }
         else
         {
-            // インジケーター: 0→1→0 をループ
+            /// @note インジケーター: 0→1→0 をループ
             const float t    = std::fmod(static_cast<float>(ImGui::GetTime()) * 1.2f, 2.0f);
             const float frac = t < 1.0f ? t : 2.0f - t;
             ImGui::ProgressBar(frac, {-1.0f, 0.0f}, "");
@@ -112,7 +111,7 @@ void EditorTaskOverlay::Render()
 
         ImGui::Spacing();
 
-        // 処理完了したらここでポップアップを閉じる
+        /// @note 処理完了したらここでポップアップを閉じる
         if (!s_active)
             ImGui::CloseCurrentPopup();
 

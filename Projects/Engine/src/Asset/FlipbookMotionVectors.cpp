@@ -2,7 +2,8 @@
 /// @brief   フリップブックアトラス → モーションベクターアトラス生成の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
+/// @note DirectXTex の WIC コーデックに必要。
+#pragma comment(lib, "ole32.lib")
 
 #include <Engine/Asset/FlipbookMotionVectors.hpp>
 
@@ -23,8 +24,8 @@
 namespace fbzz::asset {
 namespace {
 
-// 1 コマ分のグレースケール輝度。マッチングは輝度だけで足りる
-// (色差までは見なくても炎・煙の動きは追える)。
+/// 1 コマ分のグレースケール輝度。マッチングは輝度だけで足りる
+/// (色差までは見なくても炎・煙の動きは追える)。
 struct FramePixels {
     int width = 0;
     int height = 0;
@@ -32,7 +33,7 @@ struct FramePixels {
 
     [[nodiscard]] float At(int x, int y) const
     {
-        // 範囲外は端の値を延長する。0 で埋めるとコマの縁に偽の動きが出る。
+        /// @note 範囲外は端の値を延長する。0 で埋めるとコマの縁に偽の動きが出る。
         const int cx = std::clamp(x, 0, width - 1);
         const int cy = std::clamp(y, 0, height - 1);
         return luminance[static_cast<std::size_t>(cy) * width + cx];
@@ -64,7 +65,7 @@ FramePixels ExtractFrame(std::span<const float> rgba, std::uint32_t atlasWidth,
             const float g = rgba[index + 1];
             const float b = rgba[index + 2];
             const float a = rgba[index + 3];
-            // アルファを掛けておく。透明部分に残ったゴミ色へ引っ張られないようにする。
+            /// @note アルファを掛けておく。透明部分に残ったゴミ色へ引っ張られないようにする。
             frame.luminance[static_cast<std::size_t>(y) * frameWidth + x] =
                 (0.299f * r + 0.587f * g + 0.114f * b) * a;
         }
@@ -72,8 +73,8 @@ FramePixels ExtractFrame(std::span<const float> rgba, std::uint32_t atlasWidth,
     return frame;
 }
 
-// ブロックマッチング: current の各画素まわりの窓が next のどこへ移ったかを探す。
-// 返すのは「current → next」の移動量 [px]。
+/// ブロックマッチング: current の各画素まわりの窓が next のどこへ移ったかを探す。
+/// 返すのは「current → next」の移動量 [px]。
 FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& next,
                                 int blockRadius, int searchRadius)
 {
@@ -83,8 +84,8 @@ FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& n
     flow.dx.assign(static_cast<std::size_t>(flow.width) * flow.height, 0.0f);
     flow.dy.assign(static_cast<std::size_t>(flow.width) * flow.height, 0.0f);
 
-    // 全画素で全探索すると O(W*H*S^2*B^2) になる。ブロック単位で 1 回だけ探索し、
-    // 結果をブロック内へ配る (フリップブックの解像度なら十分な粒度)。
+    /// @note 全画素で全探索すると O(W*H*S^2*B^2) になる。ブロック単位で 1 回だけ探索し、
+    ///       結果をブロック内へ配る (フリップブックの解像度なら十分な粒度)。
     const int step = (std::max)(blockRadius, 1);
     for (int blockY = 0; blockY < current.height; blockY += step) {
         for (int blockX = 0; blockX < current.width; blockX += step) {
@@ -93,7 +94,7 @@ FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& n
             int bestDy = 0;
             for (int offsetY = -searchRadius; offsetY <= searchRadius; ++offsetY) {
                 for (int offsetX = -searchRadius; offsetX <= searchRadius; ++offsetX) {
-                    // SAD (絶対差の総和) を最小化する。符号を反転してスコア最大化に揃える。
+                    /// @note SAD (絶対差の総和) を最小化する。符号を反転してスコア最大化に揃える。
                     float difference = 0.0f;
                     for (int y = -blockRadius; y <= blockRadius; ++y) {
                         for (int x = -blockRadius; x <= blockRadius; ++x) {
@@ -103,7 +104,7 @@ FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& n
                         }
                     }
                     const float score = -difference;
-                    // 同スコアなら移動量の小さい方を採る (静止部分が暴れないように)。
+                    /// @note 同スコアなら移動量の小さい方を採る (静止部分が暴れないように)。
                     if (score > bestScore
                         || (score == bestScore
                             && offsetX * offsetX + offsetY * offsetY < bestDx * bestDx + bestDy * bestDy)) {
@@ -125,8 +126,8 @@ FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& n
     return flow;
 }
 
-// 3x3 平均でフロー場を均す。ブロック単位の探索結果はそのままだと
-// ブロック境界で段差になり、warp したときにタイル状の継ぎ目が見える。
+/// 3x3 平均でフロー場を均す。ブロック単位の探索結果はそのままだと
+/// ブロック境界で段差になり、warp したときにタイル状の継ぎ目が見える。
 void SmoothFlow(FlowField& flow, int iterations)
 {
     if (iterations <= 0) return;
@@ -208,7 +209,7 @@ FlipbookMotionAnalysis AnalyzeFlipbookMotion(std::span<const float> rgba, std::u
         const int nextFrame = settings.rowSequences
             ? row * columns + (column + 1) % columns
             : (frame + 1) % frameCount;
-        // 行を独立列として扱う場合、非ループの終端判定も各行末尾で行う。
+        /// @note 行を独立列として扱う場合、非ループの終端判定も各行末尾で行う。
         const bool hasNext = settings.rowSequences
             ? (settings.loop || column + 1 < columns)
             : (settings.loop || frame + 1 < frameCount);
@@ -234,7 +235,7 @@ FlipbookMotionAnalysis AnalyzeFlipbookMotion(std::span<const float> rgba, std::u
         }
     }
 
-    // 1 画素も動かないアトラスでも S が 0 にならないよう、下限を 1 画素ぶりにする。
+    /// @note 1 画素も動かないアトラスでも S が 0 にならないよう、下限を 1 画素ぶりにする。
     analysis.recommendedStrength = ComputeRecommendedStrength(
         analysis.displacementUv, 1.0f / static_cast<float>((std::max)(width, height)));
     analysis.success = true;
@@ -259,7 +260,7 @@ FlipbookMotionVectorResult GenerateFlipbookMotionVectors(
         hr = DirectX::LoadFromWICFile(widePath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, loaded);
     if (FAILED(hr)) return Fail("テクスチャを読み込めません: " + resolvedPath);
 
-    // 以降の解析は float で行う。8bit のまま差分を取ると量子化で動きが潰れる。
+    /// @note 以降の解析は float で行う。8bit のまま差分を取ると量子化で動きが潰れる。
     DirectX::ScratchImage converted;
     hr = DirectX::Convert(*loaded.GetImage(0, 0, 0), DXGI_FORMAT_R32G32B32A32_FLOAT,
                           DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, converted);
@@ -294,8 +295,8 @@ FlipbookMotionVectorResult GenerateFlipbookMotionVectors(
     std::string saveError;
     if (!detail::SavePngRgba8(destination, width, height, encoded, saveError))
         return Fail(saveError);
-    // RG は色ではなく速度なので sRGB 変換を禁止し、2 チャンネルを保持できる BC5 で扱う。
-    // Mip 生成はフレーム境界の速度を混ぜるため無効にする。
+    /// @note RG は色ではなく速度なので sRGB 変換を禁止し、2 チャンネルを保持できる BC5 で扱う。
+    ///       Mip 生成はフレーム境界の速度を混ぜるため無効にする。
     if (!detail::SaveTextureMeta(destination, TextureType::Data, TextureCompression::BC5,
                                  AlphaMode::None, false, saveError))
         return Fail(saveError);
@@ -308,8 +309,8 @@ FlipbookMotionVectorResult GenerateFlipbookMotionVectors(
     result.recommendedStrength = analysis.recommendedStrength;
     char strengthText[32]{};
     std::snprintf(strengthText, sizeof(strengthText), "%.4f", analysis.recommendedStrength);
-    // 探索半径に張り付いている = 実際の動きが探索範囲を超えている可能性が高い。
-    // 使う側が半径を上げる判断をできるよう、要約に必ず出す。
+    /// @note 探索半径に張り付いている = 実際の動きが探索範囲を超えている可能性が高い。
+    ///       使う側が半径を上げる判断をできるよう、要約に必ず出す。
     result.message = "生成しました: " + std::to_string(analysis.frameCount) + " コマ / 最大移動量 "
         + std::to_string(static_cast<int>(analysis.maxObservedFlow)) + "px (探索半径 "
         + std::to_string(analysis.searchRadius) + "px) / Motion Strength " + strengthText;

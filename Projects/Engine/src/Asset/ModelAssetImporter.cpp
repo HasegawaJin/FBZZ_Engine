@@ -81,12 +81,12 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
         bone.offsetMatrix = FromFloatArray(bd.offsetMatrix);
         skel.boneMap[bone.name] = static_cast<int>(bi);
     }
-    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    /// @note 無アニメ時の既定パレット。単位行列を使わないための前提データ。
     BuildReferencePose(skel);
     return true;
 }
 
-// v4 のノード階層チャンクを読む。ファイル末尾に置かれている。
+/// v4 のノード階層チャンクを読む。ファイル末尾に置かれている。
 bool ReadNodes(BinaryReader& r, ModelAsset& out, const std::string& path)
 {
     FzModelNodeChunkHeader hdr{};
@@ -159,7 +159,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
         return nullptr;
     }
 
-    // v4 以前は静的頂点に色が無いだけで、他のチャンクは同一レイアウト。
+    /// @note v4 以前は静的頂点に色が無いだけで、他のチャンクは同一レイアウト。
     if (hdr.version < FZMODEL_VERSION_PRE_VERTEX_COLOR || hdr.version > FZMODEL_VERSION
         || hdr.lodCount == 0) {
         FBZZ_LOG_ERROR("ModelAssetImporter: unsupported header version=%u lodCount=%u [%s]",
@@ -171,7 +171,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
     auto model = std::make_unique<ModelAsset>();
     const bool skinned = (hdr.flags & FZMODEL_FLAG_SKINNED) != 0;
 
-    // マテリアルスロット名
+    /// @note マテリアルスロット名
     model->materialSlotNames.resize(hdr.materialSlotCount);
     for (uint32_t i = 0; i < hdr.materialSlotCount; ++i) {
         char nameBuf[FZMODEL_SLOT_NAME_LEN]{};
@@ -182,7 +182,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
         model->materialSlotNames[i] = nameBuf;
     }
 
-    // LOD ループ
+    /// @note LOD ループ
     model->lods.resize(hdr.lodCount);
     for (uint32_t li = 0; li < hdr.lodCount; ++li) {
         FzLodHeader lodHdr{};
@@ -258,7 +258,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
                                li, si, smHdr.indexCount, absPath.c_str());
                 return nullptr;
             }
-            // ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
+            /// @note ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
             mesh->ComputeBoundsExtents();
             if (resources)
                 mesh->indexBuffer = resources->CreateIndexBuffer(
@@ -297,15 +297,15 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
         }
     }
 
-    // スケルトン
+    /// @note スケルトン
     if (skinned) {
         if (!ReadSkeleton(r, *model, absPath)) {
             FBZZ_LOG_WARN("ModelAssetImporter: skeleton read failed [%s]", absPath.c_str());
         }
     }
 
-    // ノード階層 (v4)。読めなくても配置側が「全 submesh を 1 GameObject」へ
-    // フォールバックできるため、失敗は警告に留めてモデル自体は返す。
+    /// @note ノード階層 (v4)。読めなくても配置側が「全 submesh を 1 GameObject」へ
+    ///       フォールバックできるため、失敗は警告に留めてモデル自体は返す。
     if ((hdr.flags & FZMODEL_FLAG_NODES) != 0u) {
         model->nodeTransformsBaked =
             (hdr.flags & FZMODEL_FLAG_NODE_TRANSFORMS_BAKED) != 0u;

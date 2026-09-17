@@ -121,7 +121,7 @@ public:
             highest = (std::max)(highest, position.y);
         }
 
-        // 落ち着くまでは差が出てよい。固定するのは «静止位置» だけ。
+        /// @note 落ち着くまでは差が出てよい。固定するのは «静止位置» だけ。
         if (m_elapsed < kSettleSeconds || !Settled()) return;
 
         log.ReportIf(highest - lowest > kSettleSpread, Severity::Error,
@@ -167,7 +167,7 @@ public:
         for (const Column& column : m_columns) {
             const math::Vector3 position = column.body->GetPosition();
             view.DrawCircle(position, kRadius, colors::kBody, true);
-            // 静止すべき高さ。球の底がここに触れていれば正しい。
+            /// @note 静止すべき高さ。球の底がここに触れていれば正しい。
             view.DrawLine({position.x - 0.5f, kRadius, 0.0f}, {position.x + 0.5f, kRadius, 0.0f},
                           colors::kNormal, 1.0f);
 

@@ -3,10 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY パラメーター操作 (SetFloat / SetColor / SetAsset …) を持たないか:
-///   .vfx がプレハブになり、公開パラメーターは «ルートに載せたスクリプトの公開
-///   フィールド» へ移った (Docs/design/vfx-prefab.md §6)。名前で値を差すのは
-///   型が効かず、綴り違いが黙って通る。値の受け口はスクリプト自身が持つ。
+/// パラメーター操作 (SetFloat/SetColor/SetAsset 等) は持たない。.vfx はプレハブになり、
+/// 公開パラメーターはルートスクリプトの公開フィールドへ移った (名前渡しは型が効かず
+/// 綴り違いが黙って通るため)。
+/// @see Docs/design/vfx-prefab.md §6
 #pragma once
 
 #include <string_view>

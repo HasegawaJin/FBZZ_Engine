@@ -44,25 +44,24 @@ public:
         ReadWrite
     };
 
-    // 依存を満たす実行順が複数あるとき、どれを選ぶかの方針。
-    //
-    // どちらを選んでも «依存として申告された制約» は必ず守られる。違うのは、制約が
-    // 何も言っていない部分をどう埋めるか。
+    /// 依存を満たす実行順が複数あるとき、どれを選ぶかの方針。
+    ///
+    /// どちらを選んでも «依存として申告された制約» は必ず守られる。違うのは、制約が
+    /// 何も言っていない部分をどう埋めるか。
     enum class SchedulePolicy {
-        // 実行可能なパスのうち常に登録順が最小のものを出す。既定。
-        // 申告が正しい限り実行順は登録順に一致するので、既存のパイプラインは動かない。
+        /// 実行可能なパスのうち常に登録順が最小のものを出す。既定。
+        /// 申告が正しい限り実行順は登録順に一致するので、既存のパイプラインは動かない。
         RegistrationOrder,
-        // 生きているリソースの本数をなるべく低く保つ。同時に生存する中間 RT が減るので
-        // エイリアスが効きやすくなる代わりに、実行順が登録順から離れる。
-        // 申告漏れのあるパス (読むと言っていないリソースを束縛するパス) は即座に壊れる。
+        /// 生きているリソースの本数をなるべく低く保つ。同時に生存する中間 RT が減るので
+        /// エイリアスが効きやすくなる代わりに、実行順が登録順から離れる。
+        /// 申告漏れのあるパス (読むと言っていないリソースを束縛するパス) は即座に壊れる。
         MinimizeLifetimes
     };
 
     /// リソースの «形»。エイリアシングはこれが一致するかどうかだけで判断する。
-    ///
-    /// WHY colorCount と withDepth まで持つか: 寸法と形式だけを見ていた頃は、
-    ///     深度専用 RT (colorCount=0) とカラーマスクが «同型» と判定されていた。
-    ///     実体の作られ方に効く項目が抜けていると、貸し回した先で別物になる。
+    /// @note colorCount と withDepth まで持つのは、寸法と形式だけでは深度専用 RT (colorCount=0)
+    ///       とカラーマスクが «同型» と誤判定されていたため。実体の作られ方に効く項目が
+    ///       抜けていると、貸し回した先で別物になる。
     struct ResourceDesc {
         ResourceKind kind = ResourceKind::Unknown;
         uint32_t width = 0;
@@ -119,7 +118,7 @@ public:
     struct PassProfile {
         std::string name;
         double cpuMilliseconds = 0.0;
-        // -1.0 = 未計測 (GPU フックが未設定 or まだ latency 待ち)
+        /// -1.0 = 未計測 (GPU フックが未設定 or まだ latency 待ち)
         double gpuMilliseconds = -1.0;
     };
 
@@ -170,7 +169,7 @@ public:
                 std::move(execute), allowCulling);
     }
 
-    // すべてのオーバーロードはここへ集まる。
+    /// すべてのオーバーロードはここへ集まる。
     void AddPass(std::string_view name,
                  std::vector<ResourceAccess> accesses,
                  ExecuteFn execute,
@@ -197,7 +196,7 @@ public:
             m_outputs.push_back(std::string(output));
     }
 
-    // RenderPipeline など動的にパスを構築する側から呼ぶ。SetOutputs のクリア不要版。
+    /// RenderPipeline など動的にパスを構築する側から呼ぶ。SetOutputs のクリア不要版。
     void AddOutput(std::string_view name)
     {
         m_outputs.emplace_back(name);
@@ -209,11 +208,10 @@ public:
         return BuildExecutionOrder(nullptr, &order);
     }
 
-    // Plan: パス実行なしで依存解決・カリング・ライフタイム解析だけを行う。
-    // WHY: TransientRTPool が毎フレームの Execute() より前にリソース割り当てを確定するために、
-    //      「何が実行されるか・どのリソースがどのパス間で生きているか」を事前に知る必要がある。
-    //      Plan() → プール再構築 → Execute() の 2 フェーズにすることで
-    //      Execute 時にはすでにトランジェント RT が確保済みになる。
+    /// Plan: パス実行なしで依存解決・カリング・ライフタイム解析だけを行う。
+    /// @note TransientRTPool が Execute() より前にリソース割り当てを確定できるよう、何が実行され
+    ///       どのリソースがどのパス間で生きているかを事前に知る必要がある。Plan() → プール再構築
+    ///       → Execute() の 2 フェーズにすることで、Execute 時にはトランジェント RT が確保済みになる。
     [[nodiscard]] bool Plan()
     {
         m_report = {};
@@ -227,19 +225,19 @@ public:
         return true;
     }
 
-    // 外部で計算済みの ExecutionReport を注入して次回 Execute() の Plan() をスキップさせる。
-    // profiles は Execute() が毎回書き直すためここでクリアする。
+    /// 外部で計算済みの ExecutionReport を注入して次回 Execute() の Plan() をスキップさせる。
+    /// profiles は Execute() が毎回書き直すためここでクリアする。
     void InjectPlan(ExecutionReport rep)
     {
         rep.profiles.clear();
         m_report = std::move(rep);
     }
 
-    // Execute: Plan() 済みの実行順でパスコールバックを呼ぶ。
-    // Plan() が未呼び出しの場合は内部で Plan() を実行してから進む。
+    /// Execute: Plan() 済みの実行順でパスコールバックを呼ぶ。
+    /// Plan() が未呼び出しの場合は内部で Plan() を実行してから進む。
     [[nodiscard]] bool Execute()
     {
-        // 前フレームのプランが残っていない (executionOrder 空) 場合は Plan を走らせる。
+        /// @note 前フレームのプランが残っていない (executionOrder 空) 場合は Plan を走らせる。
         if (m_report.executionOrder.empty()) {
             if (!Plan()) return false;
         }
@@ -291,7 +289,7 @@ public:
     /// コールバックからグラフを変更しないこと。
     void SetPassCompletedHook(std::function<void(size_t)> hook) { m_passCompleted = std::move(hook); }
 
-    // WHY: CPU フックとは独立した GPU 専用フック。旧実装は SetProfilerHooks を上書きしていた。
+    /// @note CPU フックとは独立した GPU 専用フック。旧実装は SetProfilerHooks を上書きしていた。
     void SetGpuProfilerHooks(std::function<void(std::string_view)> begin,
                              std::function<void(std::string_view)> end)
     {
@@ -299,10 +297,10 @@ public:
         m_gpuProfilerEnd   = std::move(end);
     }
 
-    // Plan() 失敗時にどのリソース依存が壊れているかを報告するデバッグフック。
+    /// Plan() 失敗時にどのリソース依存が壊れているかを報告するデバッグフック。
     void SetDebugLogHook(std::function<void(const char*)> fn) { m_debugLog = std::move(fn); }
 
-    // 実行順の決め方を切り替える。次の Plan() から効く。
+    /// 実行順の決め方を切り替える。次の Plan() から効く。
     void SetSchedulePolicy(SchedulePolicy policy) { m_policy = policy; }
 
     [[nodiscard]] SchedulePolicy GetSchedulePolicy() const { return m_policy; }
@@ -332,10 +330,9 @@ public:
     }
 
     /// 直前の Plan の結果を «差分の取れる» テキストにする。
-    ///
-    /// WHY: 実行順やエイリアスの割り当てが変わったことは、絵を見ても分からない。
-    ///      パスを作り替える改修で «絵は同じだが順序が変わった» を捕まえられる唯一の手掛かり。
-    /// @note 計測値は入れない。毎フレーム変わるので差分が意味を失う。
+    /// @note 実行順やエイリアスの割り当てが変わったことは絵を見ても分からない。パスを作り替える
+    ///       改修で «絵は同じだが順序が変わった» を捕まえられる唯一の手掛かり。計測値は入れない
+    ///       (毎フレーム変わるので差分が意味を失う)。
     [[nodiscard]] std::string DescribeLastPlan() const
     {
         const auto passName = [this](size_t passIndex) -> std::string {
@@ -347,10 +344,9 @@ public:
                                                                : "RegistrationOrder";
         out += '\n';
 
-        // WHY '+' で繋がず += を並べるか: const char* と std::string と char が混ざった
-        //     長い連鎖は、オーバーロード解決の候補が組み合わせで膨らむ。実際に MSVC が
-        //     「'+' を std::string に適用できない」と別の型を挙げて落ちた。
-        //     += の並びなら 1 手ずつ解決され、読み手にとっても足す順序がそのまま見える。
+        /// @note '+' で繋がず += を並べるのは、const char* / std::string / char が混ざる長い連鎖だと
+        ///       オーバーロード解決の候補が組み合わせで膨らむため。実際に MSVC が「'+' を std::string
+        ///       に適用できない」と落ちた。+= の並びなら 1 手ずつ解決され足す順序もそのまま見える。
         for (size_t index = 0; index < m_report.executionOrder.size(); ++index) {
             out += "pass ";
             out += std::to_string(index);
@@ -416,18 +412,18 @@ private:
         return infos;
     }
 
-    // 依存グラフを «登録順から独立に» 組み、実行順を導く。
-    //
-    // 同じリソースへ複数のパスが書く場合、その «世代» の順序だけは登録順が決める。
-    // これは事故ではなく仕様そのもの (Sky は Geometry の上に描く) なので動かさない。
-    // 動かせるのは «世代が競合しないパス同士» の相対順序で、そこはスケジューラーが決める。
+    /// 依存グラフを «登録順から独立に» 組み、実行順を導く。
+    ///
+    /// 同じリソースへ複数のパスが書く場合、その «世代» の順序だけは登録順が決める。
+    /// これは事故ではなく仕様そのもの (Sky は Geometry の上に描く) なので動かさない。
+    /// 動かせるのは «世代が競合しないパス同士» の相対順序で、そこはスケジューラーが決める。
     [[nodiscard]] bool BuildExecutionOrder(std::vector<size_t>* culledPasses,
                                            std::vector<size_t>* outOrder) const
     {
         const size_t passCount = m_passes.size();
         const auto infos = BuildPassInfos();
 
-        // --- 1. 書き手を登録順に集める。これがリソースの世代になる ---
+        /// @name 1. 書き手を登録順に集める。これがリソースの世代になる
         std::unordered_map<std::string, std::vector<size_t>> writersOf;
         for (size_t pass = 0; pass < passCount; ++pass) {
             for (const auto& write : infos[pass].writes) {
@@ -437,17 +433,16 @@ private:
             }
         }
 
-        // --- 2. 読み手を世代へ束ね、RAW の依存を張る ---
-        // readersOfGeneration[R][g] = 世代 g を読むパス。g == 0 はフレーム開始時の中身。
+        /// @name 2. 読み手を世代へ束ね、RAW の依存を張る
+        /// @note readersOfGeneration[R][g] = 世代 g を読むパス。g == 0 はフレーム開始時の中身。
         std::vector<std::vector<size_t>> rawDeps(passCount);
         std::unordered_map<std::string, std::vector<std::vector<size_t>>> readersOfGeneration;
         for (const auto& [name, writers] : writersOf)
             readersOfGeneration[name].resize(writers.size() + 1);
 
-        // 生産者の居ない読み取り。ここでは «記録するだけ» にして、生存判定の後に
-        // 生きているパスのぶんだけ落とす。
-        // WHY: 刈られるパスの申告漏れまで Plan を失敗させると、設定を切った途端に
-        //      «画面が出ない» になる。実際に実行されるパスの申告だけを契約とする。
+        /// @note 生産者の居ない読み取りは «記録するだけ» にして生存判定の後に生きているパスのぶんだけ
+        ///       落とす。刈られるパスの申告漏れまで Plan を失敗させると設定を切った途端に画面が出なく
+        ///       なるため、実際に実行されるパスの申告だけを契約とする。
         std::vector<std::pair<size_t, std::string>> unresolvedReads;
 
         for (size_t pass = 0; pass < passCount; ++pass) {
@@ -464,9 +459,9 @@ private:
                 for (size_t index = 0; index < writers.size() && writers[index] < pass; ++index)
                     generation = index + 1;
 
-                // 自分より前に書き手が居ない場合。imported ならフレーム開始時の中身を
-                // 読む意図として通す。そうでなければ最初の書き手へ繋ぐ ── ここが
-                // «並べ替え» の入口で、登録位置が生産者より前でも順序を作れる。
+                /// @note 自分より前に書き手が居ない場合。imported ならフレーム開始時の中身を
+                ///       読む意図として通す。そうでなければ最初の書き手へ繋ぐ ── ここが
+                ///       «並べ替え» の入口で、登録位置が生産者より前でも順序を作れる。
                 if (generation == 0 && !IsImportedResource(read))
                     generation = 1;
 
@@ -479,9 +474,9 @@ private:
             }
         }
 
-        // --- 3. 生存判定。出力へ «データが流れ込むか» だけで決める ---
-        // WHY RAW だけを辿るか: WAW/WAR は «順序» の制約であって «必要性» ではない。
-        //     後続が全面的に上書きするパスは、その結果を誰も読まないなら要らない。
+        /// @name 3. 生存判定。出力へ «データが流れ込むか» だけで決める
+        /// @note RAW だけを辿るのは、WAW/WAR が «順序» の制約であって «必要性» ではないため。
+        ///       後続が全面的に上書きするパスは、その結果を誰も読まないなら要らない。
         std::vector<bool> live(passCount, m_outputs.empty());
         if (!m_outputs.empty()) {
             std::vector<size_t> pending;
@@ -500,13 +495,13 @@ private:
             for (const auto& output : m_outputs) {
                 const auto it = writersOf.find(output);
                 if (it == writersOf.end() || it->second.empty()) {
-                    // WHY: デバッグ用。どの output resource に writer がいないか特定する。
+                    /// @note デバッグ用。どの output resource に writer がいないか特定する。
                     if (m_debugLog)
                         m_debugLog(("RenderGraph: no live pass writes required output \""
                             + output + "\"").c_str());
                     return false;
                 }
-                // 出力に残るのは最後の世代。それを作る書き手が起点になる。
+                /// @note 出力に残るのは最後の世代。それを作る書き手が起点になる。
                 mark(it->second.back());
             }
 
@@ -521,7 +516,7 @@ private:
         for (const auto& [pass, read] : unresolvedReads) {
             if (!live[pass])
                 continue;
-            // WHY: デバッグ用。どのリソースに producer がいないか特定する。
+            /// @note デバッグ用。どのリソースに producer がいないか特定する。
             if (m_debugLog)
                 m_debugLog(("RenderGraph: pass \"" + m_passes[pass].name
                     + "\" reads \"" + read
@@ -536,7 +531,7 @@ private:
             }
         }
 
-        // --- 4. 辺を張る (生きているパスだけ) ---
+        /// @name 4. 辺を張る (生きているパスだけ)
         std::vector<std::unordered_set<size_t>> dependencies(passCount);
         const auto addEdge = [&dependencies, &live](size_t from, size_t to) {
             if (from == to || !live[from] || !live[to])
@@ -552,7 +547,7 @@ private:
         }
 
         for (const auto& [name, writers] : writersOf) {
-            // WAW: 世代の順序は登録順が決める。生きている書き手だけを鎖にする。
+            /// @note WAW: 世代の順序は登録順が決める。生きている書き手だけを鎖にする。
             std::vector<size_t> liveWriters;
             for (const size_t writer : writers) {
                 if (live[writer])
@@ -561,7 +556,7 @@ private:
             for (size_t index = 1; index < liveWriters.size(); ++index)
                 addEdge(liveWriters[index - 1], liveWriters[index]);
 
-            // WAR: 世代 g を読むパスは、次の世代を書くパスより前に置く。
+            /// @note WAR: 世代 g を読むパスは、次の世代を書くパスより前に置く。
             const auto& generations = readersOfGeneration.at(name);
             for (size_t generation = 0; generation < writers.size(); ++generation) {
                 for (const size_t reader : generations[generation])
@@ -577,11 +572,11 @@ private:
                 ++indegree[pass];
             }
         }
-        // dependencies は unordered_set なので走査順が決まらない。ここで登録順へ揃える。
+        /// @note dependencies は unordered_set なので走査順が決まらない。ここで登録順へ揃える。
         for (auto& targets : edges)
             std::sort(targets.begin(), targets.end());
 
-        // --- 5. トポロジカルソート ---
+        /// @name 5. トポロジカルソート
         size_t liveCount = 0;
         for (const bool isLive : live) {
             if (isLive)
@@ -594,7 +589,7 @@ private:
                 ready.push_back(pass);
         }
 
-        // MinimizeLifetimes の帳簿。remainingUses が 0 になった時点でそのリソースは死ぬ。
+        /// @note MinimizeLifetimes の帳簿。remainingUses が 0 になった時点でそのリソースは死ぬ。
         std::unordered_map<std::string, size_t> remainingUses;
         std::vector<std::vector<std::string>> touches(passCount);
         if (m_policy == SchedulePolicy::MinimizeLifetimes) {
@@ -636,8 +631,8 @@ private:
                     }
                 }
             } else {
-                // 依存が同じなら常に登録順が最小のものを出す。
-                // これにより «申告が正しければ実行順は登録順に一致する» が保たれる。
+                /// @note 依存が同じなら常に登録順が最小のものを出す。
+                ///       これにより «申告が正しければ実行順は登録順に一致する» が保たれる。
                 for (size_t index = 1; index < ready.size(); ++index) {
                     if (ready[index] < ready[chosen])
                         chosen = index;
@@ -664,7 +659,7 @@ private:
         }
 
         if (outOrder->size() != liveCount) {
-            // 依存が循環すると indegree が 0 に戻らないパスが残る。
+            /// @note 依存が循環すると indegree が 0 に戻らないパスが残る。
             if (m_debugLog)
                 m_debugLog("RenderGraph: dependency cycle detected - some passes never became ready.");
             return false;
@@ -743,8 +738,8 @@ private:
         return lifetimes;
     }
 
-    // 貸し回してよいのは «実体の作られ方が完全に同じ» ときだけ。
-    // 1 項目でも違えば別グループにする (寸法だけ見ていた頃の取りこぼしを塞ぐ)。
+    /// 貸し回してよいのは «実体の作られ方が完全に同じ» ときだけ。
+    /// 1 項目でも違えば別グループにする (寸法だけ見ていた頃の取りこぼしを塞ぐ)。
     [[nodiscard]] static bool CanAlias(const ResourceDesc& a, const ResourceDesc& b)
     {
         return a.kind == b.kind &&
@@ -764,7 +759,7 @@ private:
     std::function<void(std::string_view)> m_profilerEnd;
     std::function<void(std::string_view)> m_gpuProfilerBegin;
     std::function<void(std::string_view)> m_gpuProfilerEnd;
-    std::function<void(const char*)>      m_debugLog;  // Plan() 失敗診断用
+    std::function<void(const char*)>      m_debugLog;  ///< Plan() 失敗診断用
     SchedulePolicy                        m_policy = SchedulePolicy::RegistrationOrder;
 };
 

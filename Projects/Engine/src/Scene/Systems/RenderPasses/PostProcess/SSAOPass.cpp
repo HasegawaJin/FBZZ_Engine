@@ -21,9 +21,8 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
         return;
     }
 
-    // WHAT: SSAO.cs.hlsl は GBuffer 法線と深度から遮蔽率を生成し、Blur で 4x4 平滑化する。
-    // WHY: DeferredLighting は 1 枚の AO テクスチャだけを読む形にすると、Lighting pass の責務を
-    //      PBR 合成に集中でき、Compute の UAV/SRV 競合もこのパス内に閉じられる。
+    /// @note DeferredLighting が読むのは AO テクスチャ 1 枚。責務を PBR 合成に集中させ、
+    ///       Compute の UAV/SRV 競合もこのパス内に閉じるため。
     PostProcCB postData{};
     postData.texelSize[0] = 1.0f / static_cast<float>(ctx.width);
     postData.texelSize[1] = 1.0f / static_cast<float>(ctx.height);

@@ -10,8 +10,8 @@
 
 namespace fbzz::renderer {
 
-// 1回のシェーダーコンパイルが返した診断。
-// WHY: Logger だけでは Console 生成前のエラーを拾えず、Console を持たないアプリでも表示できない。
+/// 1回のシェーダーコンパイルが返した診断。
+/// @note Logger だけでは Console 生成前のエラーを拾えず、Console を持たないアプリでも表示できない。
 struct ShaderCompileDiagnostic {
     std::uint64_t sequence = 0;
     std::string path;
@@ -21,22 +21,22 @@ struct ShaderCompileDiagnostic {
     bool isError = true;
 };
 
-// コンパイラ境界から診断を登録する。Renderer backend間で同じ表示面を使うための唯一の入口。
+/// コンパイラ境界から診断を登録する。Renderer backend間で同じ表示面を使うための唯一の入口。
 void ReportShaderCompileDiagnostic(const std::string& path,
                                    const std::string& entryPoint,
                                    const std::string& target,
                                    const std::string& message,
                                    bool isError);
 
-// UI描画中にロックを保持しないよう、現在の診断をスナップショットで返す。
+/// UI描画中にロックを保持しないよう、現在の診断をスナップショットで返す。
 [[nodiscard]] std::vector<ShaderCompileDiagnostic> GetShaderCompileDiagnostics();
 
-// 同じshader stageの再試行前に古い結果だけを除き、修正済みエラーを表示へ残さない。
+/// 同じshader stageの再試行前に古い結果だけを除き、修正済みエラーを表示へ残さない。
 void ClearShaderCompileDiagnosticsFor(const std::string& path,
                                       const std::string& entryPoint,
                                       const std::string& target);
 
-// 明示的な再コンパイル開始時、またはDebugメニューのClearから過去の診断を破棄する。
+/// 明示的な再コンパイル開始時、またはDebugメニューのClearから過去の診断を破棄する。
 void ClearShaderCompileDiagnostics();
 
 } // namespace fbzz::renderer

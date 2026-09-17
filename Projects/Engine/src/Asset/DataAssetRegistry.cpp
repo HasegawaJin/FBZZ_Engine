@@ -8,7 +8,8 @@
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Scene/Script.hpp>           // scene::IReflector / DataAssetRef
+/// @note scene::IReflector / DataAssetRef を使う。
+#include <Engine/Scene/Script.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Scene/TomlReflector.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -29,7 +30,7 @@ namespace fbzz::asset {
 
 namespace {
 
-// ── パスキー正規化 (区切りを / に統一) ──────────────────────────────────────
+/// @name パスキー正規化 (区切りを / に統一)
 std::string NormalizeKey(const std::string& path)
 {
     std::string key = path;
@@ -38,19 +39,19 @@ std::string NormalizeKey(const std::string& path)
     return key;
 }
 
-// 値型と入れ子スコープの TOML 変換は util の共通リフレクタへ委譲する。
-// DataAsset が扱うのは値型 + 参照パス文字列だけなので、派生は要らない
-// (DataAssetRef は IReflector の既定実装で path 文字列として往復する)。
+/// 値型と入れ子スコープの TOML 変換は util の共通リフレクタへ委譲する。
+/// DataAsset が扱うのは値型 + 参照パス文字列だけなので、派生は要らない
+/// (DataAssetRef は IReflector の既定実装で path 文字列として往復する)。
 using util::TomlReadReflector;
 using util::TomlWriteReflector;
 
-// ── キャッシュ ───────────────────────────────────────────────────────────────
+/// @name キャッシュ
 struct CacheEntry {
     std::unique_ptr<DataAsset> asset;
     std::string typeName;
 
-    // ロードを試みた時点の型登録の世代。asset == nullptr のときだけ意味を持ち、
-    // 「同じ登録状態なら結果も変わらない」判定に使う (Resolve の再試行条件)。
+    /// ロードを試みた時点の型登録の世代。asset == nullptr のときだけ意味を持ち、
+    /// 「同じ登録状態なら結果も変わらない」判定に使う (Resolve の再試行条件)。
     std::uint64_t factoryEpoch = 0;
 };
 
@@ -60,11 +61,11 @@ std::unordered_map<std::string, CacheEntry>& Cache()
     return cache;
 }
 
-// .fzdata をパースして型生成 + フィールド読み込みを行う。失敗時 nullptr。
+/// .fzdata をパースして型生成 + フィールド読み込みを行う。失敗時 nullptr。
 CacheEntry LoadFromDisk(const std::string& path)
 {
-    // 失敗して返すエントリにも世代を刻む。Resolve はこの値を見て
-    // 「型登録が変わったのでもう一度試す価値がある」かを判断する。
+    /// @note 失敗して返すエントリにも世代を刻む。Resolve はこの値を見て
+    ///       「型登録が変わったのでもう一度試す価値がある」かを判断する。
     CacheEntry failed{ nullptr, {}, DataAssetFactory::RegistrationEpoch() };
 
     const std::string absPath = AssetManager::ResolveAssetPath(path);
@@ -74,7 +75,7 @@ CacheEntry LoadFromDisk(const std::string& path)
         return failed;
     }
 
-    // toml++ は例外無効ビルド (TOML_EXCEPTIONS=0) のため parse_result を真偽で判定する。
+    /// @note toml++ は例外無効ビルド (TOML_EXCEPTIONS=0) のため parse_result を真偽で判定する。
     auto result = toml::parse(text);
     if (!result) {
         FBZZ_LOG_ERROR("DataAssetRegistry: TOML parse failed -> %s", path.c_str());
@@ -99,7 +100,7 @@ CacheEntry LoadFromDisk(const std::string& path)
     return { std::move(asset), typeName, DataAssetFactory::RegistrationEpoch() };
 }
 
-// DataAsset を toml::table へ書き出し (type キー + 全フィールド)。
+/// DataAsset を toml::table へ書き出し (type キー + 全フィールド)。
 toml::table BuildTable(DataAsset& asset)
 {
     toml::table table;
@@ -114,17 +115,17 @@ bool WriteTableToDisk(const std::string& path, const toml::table& table)
     std::ostringstream oss;
     oss << table;
 
-    // 参照が guid 形式のままここへ来て索引が引けないと、絶対パスが空になる。
-    // 黙って書き損じると「編集したのに保存されていない」に化けるので必ず報告する。
+    /// @note 参照が guid 形式のままここへ来て索引が引けないと、絶対パスが空になる。
+    ///       黙って書き損じると「編集したのに保存されていない」に化けるので必ず報告する。
     const std::string absPath = AssetManager::ResolveAssetPath(path);
     if (absPath.empty()) {
         FBZZ_LOG_ERROR("DataAssetRegistry: cannot resolve save path -> %s", path.c_str());
         return false;
     }
 
-    // WHY アトミック版か: .fzdata は Inspector のウィジェットを離すたびに自動保存される。
-    //      通常の上書きだと切り詰め済みの状態が一瞬でも露出し、そこで落ちる・掴まれると
-    //      壊れたファイルが原本として残る。置き換え方式なら旧版か新版のどちらかになる。
+    /// @note .fzdata は Inspector のウィジェットを離すたびに自動保存される。通常の上書きだと
+    ///       切り詰め済みの状態が一瞬でも露出し、そこで落ちる・掴まれると壊れたファイルが
+    ///       原本として残る。アトミック置き換えなら旧版か新版のどちらかになる。
     if (!util::FileSystem::WriteTextAtomic(absPath, oss.str())) {
         FBZZ_LOG_ERROR("DataAssetRegistry: save failed -> %s", absPath.c_str());
         return false;
@@ -143,10 +144,10 @@ DataAsset* DataAssetRegistry::Resolve(const std::string& path)
     if (auto it = cache.find(key); it != cache.end()) {
         if (it->second.asset) return it->second.asset.get();
 
-        // 失敗 (nullptr) もキャッシュして毎フレームのディスクアクセス・ログ連打を防ぐ。
-        // ただし型登録が変わっていれば結果が変わりうるので、そのときだけ引き直す。
-        // WHY: 型が登録される前に一度 Resolve されただけで参照が永久に死ぬのを防ぐ。
-        //      DLL ロード順やホットリロードの過渡状態で普通に起こる。
+        /// @note 失敗 (nullptr) もキャッシュして毎フレームのディスクアクセス・ログ連打を防ぐ。
+        ///       型登録が変わっていれば結果が変わりうるのでそのときだけ引き直す。型が登録される
+        ///       前に一度 Resolve されただけで参照が永久に死ぬのを防ぐ (DLL ロード順やホット
+        ///       リロードの過渡状態で普通に起こる)。
         if (it->second.factoryEpoch == DataAssetFactory::RegistrationEpoch())
             return nullptr;
 
@@ -189,7 +190,7 @@ bool DataAssetRegistry::Create(const std::string& path, const std::string& typeN
     const toml::table table = BuildTable(*asset);
     if (!WriteTableToDisk(key, table)) return false;
 
-    // 生成直後の実体をそのままキャッシュへ載せる (次の Resolve でディスク再読込しない)。
+    /// @note 生成直後の実体をそのままキャッシュへ載せる (次の Resolve でディスク再読込しない)。
     Cache().insert_or_assign(
         key, CacheEntry{ std::move(asset), typeName, DataAssetFactory::RegistrationEpoch() });
     return true;
@@ -222,10 +223,10 @@ bool DataAssetRegistry::RestoreSnapshot(const std::string& path, const std::stri
         return false;
     }
 
-    // "type" キーは読み飛ばす。復元先は常に「今キャッシュされている実体」であり、
-    // スナップショットで型を差し替えることはしない (型が変わる操作は Undo 対象外)。
-    // 構造体配列は BeginObjectList が保存時の要素数を返し、呼び出し側がその値で
-    // resize するため、スナップショットより要素が増えている状態からでも正しく縮む。
+    /// @note "type" キーは読み飛ばす。復元先は常に「今キャッシュされている実体」であり、
+    ///       スナップショットで型を差し替えることはしない (型が変わる操作は Undo 対象外)。
+    ///       構造体配列は BeginObjectList が保存時の要素数を返し、呼び出し側がその値で
+    ///       resize するため、スナップショットより要素が増えている状態からでも正しく縮む。
     TomlReadReflector reader(result.table());
     it->second.asset->Reflect(reader);
     return true;
@@ -235,8 +236,8 @@ int DataAssetRegistry::ReloadFile(const std::string& absPath)
 {
     if (absPath.empty()) return 0;
 
-    // キャッシュキーは "Assets/..." 相対と guid 参照が混在する。監視イベントは絶対パス
-    // なので、キーを解決してから区切り文字と大小を無視して突き合わせる。
+    /// @note キャッシュキーは "Assets/..." 相対と guid 参照が混在する。監視イベントは絶対パス
+    ///       なので、キーを解決してから区切り文字と大小を無視して突き合わせる。
     const auto samePath = [](const std::string& a, const std::string& b) {
         if (a.size() != b.size()) return false;
         const auto fold = [](char c) {
@@ -258,14 +259,14 @@ int DataAssetRegistry::ReloadFile(const std::string& absPath)
 
         auto parsed = toml::parse(text);
         if (!parsed) {
-            // 書き込み途中を掴んだ可能性がある。動いている値は残す。
+            /// @note 書き込み途中を掴んだ可能性がある。動いている値は残す。
             FBZZ_LOG_WARN("DataAssetRegistry: reload failed, keeping previous -> %s", key.c_str());
             continue;
         }
         const toml::table& table = parsed.table();
         const std::string typeName = table["type"].value_or(std::string{});
 
-        // 型が同じなら実体は作り直さず、フィールドだけ上書きする。
+        /// @note 型が同じなら実体は作り直さず、フィールドだけ上書きする。
         if (entry.asset && !typeName.empty() && entry.typeName == typeName) {
             TomlReadReflector reader(table);
             entry.asset->Reflect(reader);
@@ -273,7 +274,7 @@ int DataAssetRegistry::ReloadFile(const std::string& absPath)
             continue;
         }
 
-        // 型が変わった / 前回のロードに失敗していた場合だけ実体を差し替える。
+        /// @note 型が変わった / 前回のロードに失敗していた場合だけ実体を差し替える。
         CacheEntry fresh = LoadFromDisk(key);
         if (!fresh.asset) continue;
         entry = std::move(fresh);

@@ -1,6 +1,7 @@
 # FBZZ Engine — Doxygen 設定
-# 実行: リポジトリ直下で `doxygen Docs/Doxyfile` → build/docs/html/index.html
-# 対象は公開ヘッダーのみ。AGENTS.md のコメント規約 (各タグ 1 行・契約のみ) が守られているかを
+# 実行: リポジトリ直下で `doxygen Docs/Doxyfile` → build/docs/html/index.html と build/docs/xml/
+# AI 向けの圧縮 Markdown は `python Tools/ApiReference.py` が XML から build/docs/api/ へ作る。
+# 対象は公開ヘッダーのみ。規約 (Docs/conventions/comments.md) が守られているかを
 # WARN_IF_DOC_ERROR で検出する。未文書化は警告しない (書かない規約のため)。
 
 PROJECT_NAME           = "FBZZ Engine"
@@ -11,6 +12,7 @@ INPUT_ENCODING         = UTF-8
 
 INPUT                  = Projects/Math/include \
                          Projects/Physics/include \
+                         Projects/Fluid/include \
                          Projects/Engine/include \
                          Projects/Editor/include
 RECURSIVE              = YES
@@ -20,9 +22,17 @@ EXCLUDE_PATTERNS       = */ScriptProxyMembers.inl \
 
 STRIP_FROM_PATH        = Projects/Math/include \
                          Projects/Physics/include \
+                         Projects/Fluid/include \
                          Projects/Engine/include \
                          Projects/Editor/include
-STRIP_FROM_INC_PATH    = $(STRIP_FROM_PATH)
+# $(...) は環境変数の展開で、他タグは参照できない。同じ一覧を繰り返す
+STRIP_FROM_INC_PATH    = Projects/Math/include \
+                         Projects/Physics/include \
+                         Projects/Fluid/include \
+                         Projects/Engine/include \
+                         Projects/Editor/include
+# 実装詳細の名前空間はリファレンスに出さない
+EXCLUDE_SYMBOLS        = *::detail
 
 EXTRACT_ALL            = NO
 EXTRACT_PRIVATE        = NO
@@ -34,8 +44,6 @@ QT_AUTOBRIEF           = NO
 MARKDOWN_SUPPORT       = YES
 BUILTIN_STL_SUPPORT    = YES
 SORT_MEMBER_DOCS       = NO
-# 旧コメントの独自タグ @ret を @return として読む (新規コードは @return を使う)
-ALIASES                = "ret=\return"
 
 ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
@@ -43,11 +51,15 @@ EXPAND_ONLY_PREDEF     = YES
 SKIP_FUNCTION_MACROS   = YES
 PREDEFINED             = FBZZ_ENABLE_DX12 \
                          "__declspec(x)=" \
+                         "FBZZ_ENGINE_API=" \
+                         "FBZZ_PHYSICS_API=" \
                          "FBZZ_SCRIPT(T)=" \
                          "FBZZ_REFLECT(T)=" \
                          "FBZZ_REQUIRE_COMPONENT(...)=" \
                          "FBZZ_OPTIONAL_COMPONENT(...)=" \
                          "FBZZ_EXECUTE_ALWAYS()="
+# 中に public: を含むため、消すと後続メンバーが private 扱いで隠れる
+EXPAND_AS_DEFINED      = FBZZ_VOLUME_OVERRIDE_BODY
 
 WARNINGS               = YES
 WARN_IF_UNDOCUMENTED   = NO
@@ -61,5 +73,20 @@ GENERATE_HTML          = YES
 HTML_OUTPUT            = html
 GENERATE_TREEVIEW      = YES
 GENERATE_LATEX         = NO
-GENERATE_XML           = NO
+# Tools/ApiReference.py の入力。XML_PROGRAMLISTING を切ると出力が数分の一になる
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+XML_PROGRAMLISTING     = NO
+
+# クラス図は Graphviz (dot) が要る。PATH に無い環境 (Git Bash 等) は既定のインストール先を見る。
+# 見つからないと «Failed to rename *.dot.svg» が図の数だけ警告ログを埋める
+HAVE_DOT               = YES
+DOT_PATH               = "C:/Program Files/Graphviz/bin"
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
+DOT_GRAPH_MAX_NODES    = 50
 QUIET                  = YES

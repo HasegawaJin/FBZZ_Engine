@@ -43,7 +43,7 @@ protected:
     }
 };
 
-// --- 配信 -------------------------------------------------------------------
+/// @name 配信
 
 TEST_F(EventBusTest, DeliversThePublishedEventToItsSubscriber)
 {
@@ -85,7 +85,7 @@ TEST_F(EventBusTest, DeliversInSubscriptionOrder)
 
 TEST_F(EventBusTest, DoesNotDeliverToSubscribersOfAnotherType)
 {
-    // 型が違えば別の箱。ここが混ざると、無関係な購読者が壊れたデータを読む。
+    /// @note 型が違えば別の箱。ここが混ざると、無関係な購読者が壊れたデータを読む。
     int damage = 0;
     util::EventBus::Subscribe<DamageTaken>([&damage](const DamageTaken& e) {
         damage = e.amount;
@@ -113,7 +113,7 @@ TEST_F(EventBusTest, PassesThePayloadThroughUnchanged)
     EXPECT_EQ(stage, "Stage_02");
 }
 
-// --- 解除 -------------------------------------------------------------------
+/// @name 解除
 
 TEST_F(EventBusTest, StopsDeliveringAfterUnsubscribe)
 {
@@ -144,7 +144,7 @@ TEST_F(EventBusTest, UnsubscribeRemovesOnlyTheGivenSubscriber)
 
 TEST_F(EventBusTest, SubscriberIdsAreUniqueAcrossTypes)
 {
-    // ID が型をまたいで衝突すると、解除が別の型の購読者を巻き込む。
+    /// @note ID が型をまたいで衝突すると、解除が別の型の購読者を巻き込む。
     int survivor = 0;
     const auto damageId = util::EventBus::Subscribe<DamageTaken>([](const DamageTaken&) {});
     util::EventBus::Subscribe<StageCleared>([&survivor](const StageCleared&) { ++survivor; });
@@ -168,7 +168,7 @@ TEST_F(EventBusTest, UnsubscribingAnUnknownIdIsHarmless)
 
 TEST_F(EventBusTest, UnsubscribingDuringDeliveryStillFinishesTheCurrentPublish)
 {
-    // 配信中の解除で購読者リストが再確保されると、走査中の参照が壊れる。
+    /// @note 配信中の解除で購読者リストが再確保されると、走査中の参照が壊れる。
     int calls = 0;
     util::EventBus::SubscriberID self = 0;
     self = util::EventBus::Subscribe<DamageTaken>([&](const DamageTaken&) {
@@ -184,7 +184,7 @@ TEST_F(EventBusTest, UnsubscribingDuringDeliveryStillFinishesTheCurrentPublish)
 
 TEST_F(EventBusTest, SubscribingDuringDeliveryDoesNotReceiveTheSameEvent)
 {
-    // 配信中に増えた購読者へその場で配ると、同じイベントで無限に増えうる。
+    /// @note 配信中に増えた購読者へその場で配ると、同じイベントで無限に増えうる。
     int lateCalls = 0;
     util::EventBus::Subscribe<DamageTaken>([&lateCalls](const DamageTaken&) {
         util::EventBus::Subscribe<DamageTaken>([&lateCalls](const DamageTaken&) {
@@ -197,11 +197,11 @@ TEST_F(EventBusTest, SubscribingDuringDeliveryDoesNotReceiveTheSameEvent)
     EXPECT_EQ(lateCalls, 0);
 }
 
-// --- 一括解除 ---------------------------------------------------------------
+/// @name 一括解除
 
 TEST_F(EventBusTest, ClearRemovesSubscribersOfEveryType)
 {
-    // Play モードの開始 / 終了で必ず呼ぶ。残ると破棄済みのシーンへ配信される。
+    /// @note Play モードの開始 / 終了で必ず呼ぶ。残ると破棄済みのシーンへ配信される。
     int damage = 0;
     int stages = 0;
     util::EventBus::Subscribe<DamageTaken>([&damage](const DamageTaken&) { ++damage; });

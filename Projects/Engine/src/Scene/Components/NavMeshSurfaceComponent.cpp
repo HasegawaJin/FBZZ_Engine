@@ -14,8 +14,8 @@ math::Vector3 NavMeshPolygon::Center() const
     return vertices.empty() ? sum : sum / static_cast<float>(vertices.size());
 }
 
-// Crossing number 法: 点から +X 方向への半直線とポリゴン各エッジの交差回数を数え、
-// 奇数なら内部・偶数なら外部と判定する。
+/// Crossing number 法: 点から +X 方向への半直線とポリゴン各エッジの交差回数を数え、
+/// 奇数なら内部・偶数なら外部と判定する。
 bool NavMeshPolygon::ContainsXZ(float x, float z) const
 {
     bool inside = false;
@@ -31,7 +31,7 @@ bool NavMeshPolygon::ContainsXZ(float x, float z) const
     return inside;
 }
 
-// 各エッジ (線分) までの XZ 平面上の距離の 2 乗のうち最小値を返す。
+/// 各エッジ (線分) までの XZ 平面上の距離の 2 乗のうち最小値を返す。
 float NavMeshPolygon::DistanceSqXZ(float x, float z) const
 {
     float best = std::numeric_limits<float>::max();

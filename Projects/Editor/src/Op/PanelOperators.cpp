@@ -3,18 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY: これらは「二重管理が無いから Operator にしない」として意図的に外してあった。
-/// パネルの表示トグルは m_panels という単一の出所から View メニューとコマンド
-/// パレットが導出しているので、確かに実装は重複していない。
-/// しかしその判断は **人が使う 2 面しか数えていなかった**。AI から見ると、
-/// パネルは「存在すら列挙できない対象」で、開くことも閉じることもできない。
-/// viewport_capture が撮るのは Scene / Game の RT なので、Console や Inspector の
-/// 中身は撮れず、「今どのパネルが開いているか」を知る手段も無い。
-/// 重複が無いことは Operator にしない理由になるが、**AI から到達できない理由には
-/// ならない**。ここでは実装を複製せず、m_panels をそのまま引数で引ける
-/// 1 つの操作として公開する (パネルが増えても操作は増えない)。
-///
-/// 設計: Docs/design/editor-operator-model.md §7
+/// @note 表示トグルは m_panels 単一の出所から View メニューと AI が導出するが、AI にはパネルを列挙・開閉する手段が無かった。
+/// @note viewport_capture が撮るのは Scene/Game の RT のみで、Console 等の中身や「今何が開いているか」は分からない。
+/// @note m_panels を複製せず、そのまま引数で引ける操作として公開する (パネルが増えても操作は増えない)。
+/// @see Docs/design/editor-operator-model.md §7
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
@@ -35,20 +27,15 @@ namespace fbzz::editor {
 
 namespace {
 
-// UI スケールの許容範囲。**ここが唯一の定義場所**で、View メニューのスライダーは
-// operator の params 宣言 (hasRange / minValue / maxValue) から読み取る。
-// WHY: スライダー側にも書くと、片方だけ広げたときに「人は 0.5x にできるのに
-//      AI からは BAD_ARG で弾かれる」= 同じ操作の限界が面ごとに違う状態になり、
-//      この設計が消したいはずのずれが範囲という形で再発する。
+/// @brief UI スケールの許容範囲。唯一の定義場所で、View メニューのスライダーは operator の params 宣言 (hasRange / minValue / maxValue) から読み取る。
+/// @note スライダー側に別定義すると人と AI で範囲がずれ、AI 側だけ BAD_ARG になりうる。
 constexpr float kUiScaleMin = 0.7f;
 constexpr float kUiScaleMax = 2.0f;
 
 } // namespace
 
-// パネルを名前で引く。ウィンドウ名 → View メニュー名の順に、大小無視の完全一致。
-// WHY 部分一致にしないか: "Console" が "Build Output Console" にも当たると、
-//     AI は当てたつもりの無いパネルを閉じる。候補は panel.list で全部返しているので、
-//     曖昧一致で救う必要がない。
+/// @brief パネルを名前で引く。ウィンドウ名 → View メニュー名の順に、大小無視の完全一致。
+/// @note 部分一致にすると意図しないパネルに当たりうる。候補は panel.list で全部返すので曖昧一致は不要。
 IPanel* EditorApp::FindPanelByName(const std::string& name) const
 {
     for (const auto& panel : m_panels)
@@ -60,8 +47,8 @@ IPanel* EditorApp::FindPanelByName(const std::string& name) const
 
 void EditorApp::CaptureNormalPanelVisibility()
 {
-    // Map Mode / Play Maximized 中は panel->visible がその一時レイアウト用に潰されている。
-    // 入る前に控えたスナップショットがあるなら、そちらが「通常の開閉状態」。
+    /// @note Map Mode / Play Maximized 中は panel->visible がその一時レイアウト用に潰されている。
+    ///       入る前に控えたスナップショットがあるなら、そちらが「通常の開閉状態」。
     const std::vector<bool>* snapshot = nullptr;
     if (m_playViewportLayoutActive && m_playPanelVisibility.size() == m_panels.size())
         snapshot = &m_playPanelVisibility;
@@ -71,8 +58,8 @@ void EditorApp::CaptureNormalPanelVisibility()
     m_settings.panelVisibility.clear();
     for (std::size_t index = 0; index < m_panels.size(); ++index) {
         const IPanel& panel = *m_panels[index];
-        // View > Panels に出ないパネル (Build Settings / IBL Bake / Map Editor) は
-        // 開閉が操作や編集モードに従属する。復元すると自分で開いた覚えの無い窓が出る。
+        /// @note View > Panels に出ないパネル (Build Settings / IBL Bake / Map Editor) は
+        ///       開閉が操作や編集モードに従属する。復元すると自分で開いた覚えの無い窓が出る。
         if (!panel.ShowInViewMenu()) continue;
         const bool open = snapshot ? (*snapshot)[index] : panel.visible;
         m_settings.panelVisibility.emplace_back(panel.GetWindowName(), open);
@@ -89,7 +76,7 @@ void EditorApp::RestorePanelVisibility()
         const auto it = std::find_if(
             m_settings.panelVisibility.begin(), m_settings.panelVisibility.end(),
             [&name](const auto& entry) { return entry.first == name; });
-        // 保存に無いパネル (このバージョンで増えたもの) は既定の表示のままにする。
+        /// @note 保存に無いパネル (このバージョンで増えたもの) は既定の表示のままにする。
         if (it != m_settings.panelVisibility.end())
             panel->visible = it->second;
     }
@@ -105,10 +92,8 @@ void EditorApp::InvokePanelFocus(IPanel* panel)
 
 void EditorApp::RegisterPanelOperators()
 {
-    // ── パネルの目録 (Query) ────────────────────────────────────────────────
-    // WHY Query が要るか: 名前を知らなければ panel.set_visible は呼べない。
-    //     ウィンドウ名は表示ラベルと違うことがある (View メニュー名は別に持てる)
-    //     ので、AI が画面の文言から推測すると外す。
+    /// @name パネルの目録 (Query)
+    /// @note 名前を知らなければ panel.set_visible は呼べない。ウィンドウ名と表示ラベルは別物なので、AI が画面の文言から推測すると外す。
     {
         EditorOperator op;
         op.id       = "panel.list";
@@ -124,9 +109,9 @@ void EditorApp::RegisterPanelOperators()
                 entry.Set("name", OpData(std::string(panel->GetWindowName())));
                 entry.Set("label", OpData(std::string(panel->GetViewMenuName())));
                 entry.Set("visible", OpData(panel->visible));
-                // visible と「実際に描かれたか」は別物。ドッキングされたタブが
-                // 非アクティブなら visible は true のまま中身は 1 px も出ない。
-                // 見えている前提で撮ると、無い画を探すことになる。
+                /// @note visible と「実際に描かれたか」は別物。ドッキングされたタブが
+                ///       非アクティブなら visible は true のまま中身は 1 px も出ない。
+                ///       見えている前提で撮ると、無い画を探すことになる。
                 entry.Set("contentRendered", OpData(panel->WasContentRendered()));
                 entry.Set("inViewMenu", OpData(panel->ShowInViewMenu()));
                 panels.Push(std::move(entry));
@@ -139,7 +124,7 @@ void EditorApp::RegisterPanelOperators()
         m_operators.Register(std::move(op));
     }
 
-    // ── 表示の切り替え ──────────────────────────────────────────────────────
+    /// @name 表示の切り替え
     {
         EditorOperator op;
         op.id       = "panel.set_visible";
@@ -160,8 +145,8 @@ void EditorApp::RegisterPanelOperators()
         op.params = { panelParam, visibleParam };
 
         op.poll = [this](const OpContext&, const OpArgs& args) {
-            // 引数なしの評価 (メニュー / パレット) では「操作自体は使える」と答える。
-            // 対象が決まらないうちに false を返すと、パレットで常に淡色表示になる。
+            /// @note 引数なしの評価 (メニュー / パレット) では「操作自体は使える」と答える。
+            ///       対象が決まらないうちに false を返すと、パレットで常に淡色表示になる。
             if (!args.Has("panel")) return true;
             return FindPanelByName(args.GetString("panel")) != nullptr;
         };
@@ -186,10 +171,8 @@ void EditorApp::RegisterPanelOperators()
         m_operators.Register(std::move(op));
     }
 
-    // ── フォーカス ──────────────────────────────────────────────────────────
-    // WHY set_visible と分けるか: 表示済みでもドッキングされたタブが背面だと
-    //     中身は描かれない (IPanel::WasContentRendered)。「開いたのに映らない」の
-    //     直し方が「もう一度 visible=true にする」ではないので、別の操作にする。
+    /// @name フォーカス
+    /// @note set_visible と分ける理由: 表示済みでも背面タブは描かれない (IPanel::WasContentRendered)。直し方が再表示でなく前面化なので別操作にする。
     {
         EditorOperator op;
         op.id       = "panel.focus";
@@ -217,18 +200,16 @@ void EditorApp::RegisterPanelOperators()
                 return OpResult::Err("UNKNOWN_PANEL",
                                      "そのパネルはありません: " + name + " (panel.list で一覧できます)");
             panel->visible = true;
-            // AI バスの drain は ImGui::NewFrame の後 (EditorApp::OnUpdate) なので、
-            // ここから ImGui を呼んでよい。次のフレームまで持ち越す必要がない。
+            /// @note AI バスの drain は ImGui::NewFrame の後 (EditorApp::OnUpdate) なので、
+            ///       ここから ImGui を呼んでよい。次のフレームまで持ち越す必要がない。
             ImGui::SetWindowFocus(panel->GetWindowName());
             return OpResult::Ok();
         };
         m_operators.Register(std::move(op));
     }
 
-    // ── UI スケール ─────────────────────────────────────────────────────────
-    // WHY AI に要るか: viewport_capture ではなくエディター全体のスクリーンショットを
-    //     読むとき、既定スケールでは文字が潰れて読めないことがある。
-    //     View メニューのスライダーにしか無いと、AI は撮り直す手段を持たない。
+    /// @name UI スケール
+    /// @note View メニューのスライダーにしか無いと、エディター全体のスクリーンショットで文字が潰れたとき AI に撮り直す手段が無い。
     {
         EditorOperator op;
         op.id       = "view.set_ui_scale";
@@ -273,13 +254,9 @@ void EditorApp::RegisterPanelOperators()
         m_operators.Register(std::move(op));
     }
 
-    // ── Prefab 編集モードの離脱 ─────────────────────────────────────────────
-    // WHY: File メニューに「Close Prefab」があるのに operator が無く、
-    //      Prefab 編集中は scene.open / scene.new が poll で拒否されるため、
-    //      AI が Prefab 編集へ入ると **出る手段が 1 つも無い** 状態だった。
-    //      (要求は ProcessPrefabEditRequests がフレーム先頭で処理する。
-    //       パネル描画の途中でシーンを差し替えると、以降のパネルが
-    //       破棄済みの GameObject を掴むため、ここでは要求だけを立てる。)
+    /// @name Prefab 編集モードの離脱
+    /// @note File メニューの Close Prefab に operator が無く、Prefab 編集中は scene.open/new が poll で拒否されるため、AI に出る手段が無かった。
+    /// @note 要求は ProcessPrefabEditRequests がフレーム先頭で処理する。パネル描画中にシーンを差し替えると破棄済み GameObject を掴むため、ここでは要求のみ立てる。
     {
         EditorOperator op;
         op.id       = "prefab.close";

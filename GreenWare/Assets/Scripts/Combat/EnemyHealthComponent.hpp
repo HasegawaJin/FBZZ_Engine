@@ -25,9 +25,9 @@ public:
     FBZZ_FIELD_RANGE_INT(int, maxHealth, 100, "最大 HP", 1, 10000)
 
     FBZZ_GROUP("撃破")
-    // 上限が 5 秒だとボスに足りない。ボスは撃破からリザルトへ移るまで数秒あり
-    // (GameFlowComponent の Boss End Delay)、その間より先に消えると «倒した相手が
-    // 居ないまま結果を待つ» 画になる。待ちを伸ばすときは必ずこちらも一緒に伸ばす。
+    /// 上限が 5 秒だとボスに足りない。ボスは撃破からリザルトへ移るまで数秒あり
+    /// (GameFlowComponent の Boss End Delay)、その間より先に消えると «倒した相手が
+    /// 居ないまま結果を待つ» 画になる。待ちを伸ばすときは必ずこちらも一緒に伸ばす。
     FBZZ_FIELD_RANGE(float, destroyDelay, 0.05f, "Destroy Delay", 0.0f, 12.0f)
     FBZZ_TOOLTIP("倒れてから GameObject を畳むまでの秒数。撃破演出が付いていれば"
                  "その長さの方が優先される («最低でもこれだけは残す» の意味)")
@@ -39,7 +39,8 @@ public:
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "HP")
 
-    // ── IDamageable ─────────────────────────────────────────────────────────
+    /// @name IDamageable
+    /// @{
     bool ApplyDamage(int amount) override;
     [[nodiscard]] int  CurrentHealth() const override { return m_health; }
     [[nodiscard]] int  MaxHealth()     const override { return std::max(maxHealth, 1); }
@@ -56,33 +57,29 @@ public:
 
     /// 撃破音を相手ごとの束へ差し替える。相手側が起動時に自分の束を預ける。
     ///
-    /// WHY Inspector の欄で足りないか: sfxDeath は 1 本しか持てないので、変奏を
-    ///     持たせられない。かといってここが相手のスクリプトを知ると、相手が
-    ///     EnemyHealth を見ている今の向きと合わせて include が輪になる。
-    ///     «束を預ける» 向きだけにすれば、知る側は 1 方向で済む。
+    /// @note `sfxDeath` は 1 本しか持てず変奏できない。相手のスクリプトを直接参照すると
+    ///       include が輪になるため、«束を預ける» 片方向の依存にする。
     void SetDestroyVoice(const se::Bank* bank) { m_destroyVoice = bank; }
 
     /// 被弾音を差し替える。撃破音と同じ «預ける» 向き。
     ///
-    /// WHY 必要か: 共通の束 (kEnemyFlinch) は軽い装甲が鳴る音で、ボスに当てると
-    ///     «同じくらいのものに当たった» と読める。ボスへ通る一撃はとどめだけなので、
-    ///     その 1 撃の重さが伝わらないと «今の攻め方で合っているのか» が
-    ///     耳から判断できなくなる。
+    /// @note 共通束 (kEnemyFlinch) は軽装甲が鳴る音で、ボスに当てると軽い一撃に聞こえてしまう。
     void SetFlinchVoice(const se::Bank* bank) { m_flinchVoice = bank; }
     void ResetHealth();
     void OnDestroy() override { IDamageable::Unbind(scene.Self(), this); }
     void OnStart() override
     {
         ResetHealth();
-        // «殴られる側» として名乗る (IDamageable::Of のコメント参照)。
+        /// @note «殴られる側» として名乗る (IDamageable::Of のコメント参照)。
         IDamageable::Bind(scene.Self(), this);
-        // ボスは盤面を動き回る。どの方向で何が起きたかが分かる必要があるので 3D。
+        /// @note ボスは盤面を動き回る。どの方向で何が起きたかが分かる必要があるので 3D。
         se::EnsureSource(scene, "SE", 1.0f);
     }
+    /// @}
 
 private:
     /// 量が決まった後の適用。ひるみ / 撃破の反応もここで返す。
-    /// @ret この呼び出しで死亡したら true。
+    /// @return この呼び出しで死亡したら true。
     bool Deal(int damage);
 
     int m_health = 0;
@@ -116,17 +113,13 @@ inline bool EnemyHealthComponent::Deal(int damage)
         return false;
     }
 
-    // WHY 自分ではなく位置で鳴らすか: destroyDelay の後にこの GameObject は消える。
-    //     自分の AudioSource で鳴らすと、撃破音が鳴り終わる前に音源ごと消えて
-    //     途中で切れる。撃破は「そこで起きたこと」なので、場所に残す。
+    /// @note `destroyDelay` 後に GameObject が消えるため、自分の AudioSource では音が途中で切れる。位置に残す。
     if (!sfxDeath.empty()) audio.PlayAtPoint(sfxDeath, transform.worldPosition);
     else                   se::PlayAt(audio, m_destroyVoice ? *m_destroyVoice : se::kEnemyDestroy,
                                       transform.worldPosition);
 
-    // 撃破の «見え» はここでは作らない。演出が付いていればそれに任せる。
-    // WHY 消えるまでの時間を演出に合わせるか: 粒はエミッターが持っているので、
-    //     GameObject を先に畳むと、まだ空中に居る粒までその瞬間に消える。
-    //     destroyDelay は «最低でもこれだけは残す» の意味になる。
+    /// @note 撃破演出はここでは作らない。粒はエミッターが持つため、先に GameObject を畳むと
+    ///       空中の粒も消える。`destroyDelay` は «最低でもこれだけは残す» の意味。
     float delay = std::max(destroyDelay, 0.0f);
     if (auto* deathVfx = scene.GetScript<EnemyDeathVfxComponent>()) {
         deathVfx->Begin();

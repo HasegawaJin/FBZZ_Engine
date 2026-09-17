@@ -3,27 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
 ///
-/// WHY リグもクリップも使わないか (boss-serpent.md「開口の動き」):
-///   16 口を 1 つのアーマチュアに載せるとクリップが全口を同時に動かす。1 口ずつ開ける
-///   ならクリップ 16 本かマスク 16 レイヤで、剛体の板 16 枚のために 16 個の何かが増える。
-///   ここは «沈む → 滑る» の平行移動と «口の中心まわりの» 回転しかしない。
-///
-/// WHY Tween コルーチンではなく 1 本のタイムラインを進めるか:
-///   ScriptTweenProxy は «自分の GameObject» を動かす口で、16 口 × 3 部品を別々に
-///   走らせるには Value() へラムダを 48 本渡すことになる。しかも開いている途中で
-///   閉じ直す (潜る先を変える) と、走っているコルーチンを止める手段が要る。
-///   口ごとに «進み» を 1 つの float で持てば、途中で向きが変わっても同じ経路を
-///   逆に戻るだけで済み、DLL リロードで走行中の状態が消えることもない。
-///   曲線は同じものを使う (ScriptTweenProxy::Evaluate)。
-///
-/// WHY 口の位置を輪の式から出すか:
-///   `ARENA_Rim_<口>` のノードは取り込み時に変換を頂点へ焼かれていて、Transform は
-///   16 口とも原点 (0,0,0)。worldPosition から引くと 16 口が全部アリーナの中心に
-///   重なる。位置を持っているのはメッシュだけで、そこはスクリプトから読めない。
-///   ここでは «輪の半径・口数・位相» を公開フィールドにして、そこから解く ─
-///   既定値は書き出し済みメッシュの実測と一致している (I1 = (8, ·, 0) /
-///   O1 = (15.2169, ·, 4.9443))。ビルダー側 (`serpent_map_build.py` の RINGS) を
-///   直したらここも直すこと。
+/// @note 16 口は共有クリップでなく口ごとの進み 1 float で開閉を表す (進みを逆に戻す
+///       だけで反転でき、DLL リロードでも消えない。曲線は `ScriptTweenProxy::Evaluate`)。
+///       位置は輪の半径・口数・位相の式から解く ─ `ARENA_Rim_<口>` は取り込み時に変換を
+///       頂点へ焼かれ Transform が全口原点。既定値は実測 (I1=(8,·,0)/O1=(15.2169,·,
+///       4.9443)) と一致。`serpent_map_build.py` の RINGS を直したら要追随。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -56,7 +40,7 @@ class SerpentApertureComponent : public Script {
     FBZZ_SCRIPT(SerpentApertureComponent)
 
 public:
-    // 30fps 前提のフレーム数を秒へ直した値 (boss-serpent.md「開口の動き」)。
+    /// 30fps 前提のフレーム数を秒へ直した値 (boss-serpent.md「開口の動き」)。
     FBZZ_GROUP("タイミング")
     FBZZ_FIELD_RANGE(float, telegraphSeconds, 0.60f, "予告", 0.0f, 3.0f)
     FBZZ_TOOLTIP("縁が灯りきるまで。18F。«ここが開く» を読む時間そのもの")
@@ -88,7 +72,7 @@ public:
     FBZZ_FIELD_RANGE(float, glowPulseHz, 4.0f, "脈動の周波数 [Hz]", 0.0f, 16.0f)
     FBZZ_TOOLTIP("灯りきるまでの明滅。0 で滑らかに上がるだけ")
 
-    // 輪の作り。既定はビルダー (serpent_map_build.py の RINGS) と同じ。
+    /// 輪の作り。既定はビルダー (serpent_map_build.py の RINGS) と同じ。
     FBZZ_GROUP("Rings")
     FBZZ_FIELD_RANGE_INT(int, innerCount, 6, "Inner Count", 1, 24)
     FBZZ_FIELD_RANGE(float, innerRadius, 8.0f, "Inner Radius", 1.0f, 40.0f)
@@ -98,11 +82,9 @@ public:
     FBZZ_FIELD_RANGE(float, outerPhaseDegrees, 18.0f, "Outer Phase", -180.0f, 180.0f)
     FBZZ_TOOLTIP("外輪は内輪の口の間へ来るよう半ピッチずらしてある (π/10)")
 
-    // 口は «場の設備» なので、動くたびに機械の音と埃を返す。
-    //
-    // WHY 段ごとに別の音を鳴らすか: 開くまでの 1.2 秒はほぼ全部が予兆で、その間に
-    //     プレイヤーが決めるのは «そこから離れるか» の 1 点。歯が外れる音・羽が滑る音・
-    //     閉じ切る音が別々に鳴れば、画面の外の口でも «いまどこまで進んだか» が耳で読める。
+    /// 口は «場の設備» なので、動くたびに機械の音と埃を返す。
+    /// @note 段ごとに別の音を鳴らす: 開くまでの 1.2 秒はほぼ予兆で、画面外の口でも
+    ///       段の進みが歯・羽・閉じ切りの音で耳から読める。
     FBZZ_GROUP("手触り")
     FBZZ_FIELD(bool, playSound, true, "Sound")
     FBZZ_FIELD_RANGE(float, soundVolume, 0.85f, "Volume", 0.0f, 2.0f)
@@ -113,16 +95,10 @@ public:
     FBZZ_TOOLTIP("隣り合う口でカラーの回る向きを逆にする。16 個が同じ向きに回ると"
                  "«1 つの仕掛けのコピー» に見える")
 
-    // 胴が口を «通っている» 間の絵。
-    //
-    // WHY 羽の埃だけでは足りないか: 埃は羽が滑り出した 1 フレームにしか出ない。
-    //     そこから先、11 m の胴が床を突き破って出てきて、また潜っていく ─
-    //     戦闘中いちばん多く見る動作 (約 7 秒ごと) に粒が 1 つも無かった。
-    //     しかも羽は «蛇が来る前» に開くので、埃と胴の出入りは時間的に重なりもしない。
-    //
-    // WHY 口の側が持つか: どの口を今どの弧長で使っているかは AI が知っているが、
-    //     «縁がどこにあるか» を持っているのはここだけ。AI へ書くと、口を増やす
-    //     たびに演出の側も直すことになる。
+    /// 胴が口を «通っている» 間の絵。
+    /// @note 羽の埃は滑り出した 1 フレームだけで、11m の胴の出入り (約 7 秒ごと、戦闘中
+    ///       最頻の動作) には出ない。«縁の位置» を知るのは口側だけなのでここで持つ
+    ///       (AI へ書くと口を増やすたびに演出側も直すことになる)。
     FBZZ_GROUP("Passage")
     FBZZ_FIELD(bool, passageDust, true, "Body Dust")
     FBZZ_TOOLTIP("胴が縁を出入りしている間、口から土煙を吹く")
@@ -139,21 +115,12 @@ public:
     FBZZ_TOOLTIP("閉じている間だけ COL_Shutter_<口> を床として有効にする。"
                  "切ると 16 口が最初から穴になり、乗ると落ちる")
 
-    // 開いた口へプレイヤーが落ちたときの後始末。
-    //
-    // WHY «無条件で撃破» にしないか (2026-09-11):
-    //   穴が開くのはプレイヤーの操作と無関係に起きる。渡りは入る前に次の口を開けて
-    //   おくし (PrepareNextExit)、突き上げに至っては «足元とその周りの 3 口» を開ける
-    //   のが手そのものなので、**予兆なしで足元が抜ける瞬間が原理的にありうる。**
-    //   そのうえプレイヤーの体力は 5 で、踏みつけ 2 / 突進 3 / 突き上げ 1 と
-    //   «3 発は耐える» 前提で目盛りが組んである ─ ここに即死を 1 つ混ぜると、
-    //   他の攻撃の数字が全部意味を失う。
-    //   «立てる場所を消す» のは蛇の仕事で、消された場所に落ちるのは
-    //   **蛇の手が通った結果** ＝ 重い一撃であって、死ではない。
-    //
-    // WHY 縦坑の底で歩かせないか: 坑は半径 2.2m・深さ 7m で四方が壁。落ちたら
-    //   出る手段が無い ─ 撃破より悪い «動けるが何もできない» で止まる。
-    //   実際、落下の受け皿は 2026-09-11 まで 1 つも無かった。
+    /// 開いた口へプレイヤーが落ちたときの後始末。
+    /// @note 即死にしない (2026-09-11): HP は 5 で踏みつけ2/突進3/突き上げ1の前提で
+    ///       組んであり、無条件即死を混ぜると他攻撃の目盛りが壊れる。落下はダメージ
+    ///       のみ扱う。
+    /// @note 坑は半径2.2m・深さ7mの四方壁で自力脱出不可 (2026-09-11 まで受け皿無し)
+    ///       のため引き上げが必須。
     FBZZ_GROUP("落ちたとき")
     FBZZ_FIELD(bool, rescueFallen, true, "落ちたら引き上げる")
     FBZZ_TOOLTIP("開いた口へ落ちたプレイヤーへダメージを入れ、床へ引き上げる。"
@@ -206,11 +173,8 @@ public:
     [[nodiscard]] std::string NearestHole(const Vector3& point) const;
 
     /// この口を «今、胴が通っている»。AI が経路の口ごとに毎フレーム申告する。
-    ///
-    /// WHY 押し込む形にするか: 通っているかは «その口の弧長と、頭 / 尾の弧長» を
-    ///     突き合わせないと分からず、経路を持っているのは AI だけ。ここが自分で
-    ///     調べようとすると、口の側が経路の形まで知ることになる。
-    ///     押されなかった口は自然に止まる (SetAim / SetUndulationScale と同じ約束)。
+    /// @note 押し込む形にする: 弧長の突き合わせは経路を持つ AI だけができる。押されな
+    ///       かった口は自然に止まる (SetAim / SetUndulationScale と同じ約束)。
     void ReportPassage(const std::string& hole);
 
     /// 今プレイヤーを引き上げている最中か。演出・AI が «触るな» を読むための窓。
@@ -236,10 +200,8 @@ private:
         Vector3     normal{ 1.0f, 0.0f, 0.0f };
         /// 開閉の進み [0, Total()]。目標へ向かって実時間で進む。
         float       phase   = 0.0f;
-        /// 前フレームの進み。段をまたいだ «瞬間» を拾うために持つ。
-        ///
-        /// WHY 進みだけで足りないか: 音と埃は «その段に入った 1 フレーム» で 1 度だけ
-        ///     鳴らしたい。閾値との大小比較だけだと、開いている間ずっと鳴り続ける。
+        /// 前フレームの進み。段をまたいだ瞬間を 1 度だけ拾うため保持 (閾値の大小比較
+        /// だけだと開いている間ずっと鳴り続ける)。
         float       lastPhase = 0.0f;
         bool        wantOpen = false;
         /// カラーの回る向き。隣どうしで逆にする。
@@ -297,7 +259,7 @@ inline void SerpentApertureComponent::OnStart()
 {
     m_builtSignature = -1.0f;
     BuildHoles();
-    // 口は盤面のあちこちにある。どの方向で何が起きたかが分かる必要があるので 3D。
+    /// @note 口は盤面のあちこちにある。どの方向で何が起きたかが分かる必要があるので 3D。
     se::EnsureSource(scene, "SE", 1.0f);
 }
 
@@ -305,7 +267,7 @@ inline bool SerpentApertureComponent::OverOpenHole(const Vector3& at, float marg
 {
     const float reach = Max(holeRadius, 0.1f) + Max(margin, 0.0f);
     for (const Hole& hole : m_holes) {
-        // 閉じきっている口は «床»。開いている口と、開閉の途中 (羽が沈んでいる) は避ける。
+        /// @note 閉じきっている口は «床»。開いている口と、開閉の途中 (羽が沈んでいる) は避ける。
         if (!IsOpen(hole.id) && !IsBusy(hole.id)) continue;
         const Vector3 c = HoleCenter(hole.id);
         if (Vector3{ at.x - c.x, 0.0f, at.z - c.z }.Length() <= reach) return true;
@@ -325,12 +287,9 @@ inline Vector3 SerpentApertureComponent::SafeSpot(const Vector3& from) const
     const Vector3 mouth = HoleCenter(hole);
     const float   out   = Max(holeRadius, 0.1f) + Max(rescueMargin, 0.0f);
 
-    // 落ちた口のまわりを 8 方向。«壁の内側» で «他のどの開いた口にも掛からない»
-    // 最初の点を採る。
-    //
-    // WHY 1 方向で済ませないか: 内輪の口は隣と 8.0m しか離れておらず、突き上げは
-    //     3 口を同時に開ける。決め打ちの向きだと隣の開いた口の上へ置いてしまい、
-    //     **引き上げた次の 1 歩でまた落ちる。**
+    /// @note 8 方向を試し、壁の内側かつ他の開いた口に掛からない最初の点を採る。内輪の
+    ///       口は隣と 8.0m しかなく、決め打ちの1方向だと突き上げの隣口の上に置いて
+    ///       次の1歩でまた落ちる。
     for (int i = 0; i < 8; ++i) {
         const float   angle = TWO_PI * static_cast<float>(i) / 8.0f;
         const Vector3 at{ mouth.x + std::cos(angle) * out, lift,
@@ -341,8 +300,8 @@ inline Vector3 SerpentApertureComponent::SafeSpot(const Vector3& from) const
         return at;
     }
 
-    // 8 方向とも塞がっている。場の中心は内輪 (r=8) の内側なので口が無い ─
-    // どこにも置けないときの最後の床になる。
+    /// @note 8 方向とも塞がっている。場の中心は内輪 (r=8) の内側なので口が無い ─
+    ///       どこにも置けないときの最後の床になる。
     return Vector3{ center.x, lift, center.z };
 }
 
@@ -357,23 +316,18 @@ inline void SerpentApertureComponent::DriveFallRescue(float dt)
         m_rescueTime += dt;
         const float t = Clamp01(m_rescueTime / Max(rescueSeconds, 0.05f));
 
-        // 拘束は毎フレーム言い直す。RequestSuspend は «1 フレームぶんの要求» で、
-        // 押し続けている間だけ効く。
-        //
-        // WHY PlayerControllerComponent を直に引かないか: あれは PlayerComponent の
-        //     **内部メンバー**で、GameObject に別スクリプトとして載っていない ─
-        //     `scene.GetScript<PlayerControllerComponent>()` は空を返す。
-        //     外から触る口は Player の公開 API だけ、という約束にも合う。
+        /// @note 拘束は毎フレーム言い直す (RequestSuspend は1フレームぶんの要求)。
+        ///       PlayerControllerComponent は PlayerComponent の内部メンバーで別スクリプト
+        ///       として載らないため `scene.GetScript<PlayerControllerComponent>()` は空。
         if (auto* control = scene.GetScript<PlayerComponent>(player))
             control->RequestSuspend(true);
         physics.SetVelocity(player, Vector3::ZERO);
 
         Vector3 at = Vector3::Lerp(m_rescueFrom, m_rescueTo, t);
-        // 縦は山を描く。直線だと坑の壁を斜めに突き抜けて上がる。
+        /// @note 縦は山を描く。直線だと坑の壁を斜めに突き抜けて上がる。
         at.y += std::sin(t * PI) * Max(rescueArc, 0.0f);
-        // WHY position も書くか: 置き直した worldPosition は、次の PrePhysics が
-        //     local から組み直した時点で捨てられる。両方書いて初めて «そこへ置いた»
-        //     になる (プレイヤーを動かすときの共通の落とし穴)。
+        /// @note position も書く: worldPosition だけだと次の PrePhysics が local から
+        ///       組み直した時点で捨てられる (プレイヤーを動かす際の共通の落とし穴)。
         player->transform.position      = at;
         player->transform.worldPosition = at;
 
@@ -389,9 +343,8 @@ inline void SerpentApertureComponent::DriveFallRescue(float dt)
     m_rescueTime = 0.0f;
     debugRescue  = "Lifting";
 
-    // WHY 押し (source) を渡さないか: 押しは «殴られた向きへ流される» ための物で、
-    //     引き上げの軌道と正面から喧嘩する。落下は向きを持たない出来事なので、
-    //     ダメージだけを入れる。
+    /// @note 押し (source) は渡さない: 殴られた向きへ流す仕組みで、引き上げの軌道と
+    ///       喧嘩する。落下は向きを持たない出来事としてダメージのみ入れる。
     if (auto* combat = CombatManagerComponent::Instance())
         (void)combat->HitPlayer(player, std::max(fallDamage, 0), nullptr,
                                 PlayerHitKind::Unblockable);
@@ -403,25 +356,25 @@ inline void SerpentApertureComponent::DriveFallRescue(float dt)
 
 inline void SerpentApertureComponent::ReportStages(const Hole& hole)
 {
-    // 上りと下りで別の段を報告する。開くのは 3 段の機械音、閉じるのは «噛んだ» 1 発。
+    /// @note 上りと下りで別の段を報告する。開くのは 3 段の機械音、閉じるのは «噛んだ» 1 発。
     const auto rose    = [&](float at) { return hole.lastPhase < at && hole.phase >= at; };
     const auto fellTo0 = hole.lastPhase > 0.0f && hole.phase <= 0.0f;
 
     const Vector3 center = HoleCenter(hole.id);
 
     if (playSound) {
-        // 歯が外れる。予兆の «終わり» を告げる音なので、ここが一番耳を引く必要がある。
+        /// @note 歯が外れる。予兆の «終わり» を告げる音なので、ここが一番耳を引く必要がある。
         if (rose(TelegraphEnd())) se::PlayAt(audio, se::kImpactLight, center, soundVolume);
-        // 羽が滑り出す。
+        /// @note 羽が滑り出す。
         if (rose(SinkEnd()))      se::PlayAt(audio, se::kImpactDebris, center, soundVolume);
-        // 閉じ切って噛む。開くときより重く鳴らして «もう通れない» を返す。
+        /// @note 閉じ切って噛む。開くときより重く鳴らして «もう通れない» を返す。
         if (fellTo0)              se::PlayAt(audio, se::kImpactMid, center, soundVolume);
     }
 
-    // 埃は滑り出しの 1 度だけ。開いている間ずっと吹くと «煙が出ている穴» になる。
+    /// @note 埃は滑り出しの 1 度だけ。開いている間ずっと吹くと «煙が出ている穴» になる。
     if (playDust && rose(SinkEnd())) {
         if (auto* vfx = VfxManagerComponent::Instance()) {
-            // 床が押し退けられた側 ─ つまり羽が逃げていく向きへ吹かせる。
+            /// @note 床が押し退けられた側 ─ つまり羽が逃げていく向きへ吹かせる。
             vfx->PlayGroundDust(center, hole.normal, Clamp01(dustStrength), 1.4f);
             vfx->PlayGroundDust(center, -hole.normal, Clamp01(dustStrength), 1.4f);
         }
@@ -435,7 +388,7 @@ inline void SerpentApertureComponent::ReportPassage(const std::string& hole)
 
 inline void SerpentApertureComponent::TickPassage(Hole& hole, float dt)
 {
-    // 押されなかったフレームは «通っていない»。次に通り始めたときへ向けて畳む。
+    /// @note 押されなかったフレームは «通っていない»。次に通り始めたときへ向けて畳む。
     const bool passing = hole.passing;
     hole.passing = false;
 
@@ -445,7 +398,7 @@ inline void SerpentApertureComponent::TickPassage(Hole& hole, float dt)
         return;
     }
 
-    // 通り始めの 1 発は «頭が縁を割った» 瞬間なので、続きの刻みより強く出す。
+    /// @note 通り始めの 1 発は «頭が縁を割った» 瞬間なので、続きの刻みより強く出す。
     const bool first = !hole.wasPassing;
     hole.wasPassing = true;
 
@@ -464,16 +417,16 @@ inline void SerpentApertureComponent::TickPassage(Hole& hole, float dt)
 
 inline void SerpentApertureComponent::BuildHoles()
 {
-    // 輪の作りを 1 つの値に畳んで «変わったか» を見る。Inspector で半径を触った
-    // ときにその場で並び直ってほしいので、開始時だけの組み立てにはしない。
+    /// @note 輪の作りを 1 つの値に畳んで «変わったか» を見る。Inspector で半径を触った
+    ///       ときにその場で並び直ってほしいので、開始時だけの組み立てにはしない。
     const float signature = static_cast<float>(innerCount) * 1000.0f + innerRadius * 7.0f +
                             innerPhaseDegrees * 0.5f + static_cast<float>(outerCount) * 13.0f +
                             outerRadius * 11.0f + outerPhaseDegrees * 0.25f;
     if (std::fabs(signature - m_builtSignature) < 1.0e-4f && !m_holes.empty()) return;
     m_builtSignature = signature;
 
-    // 開き途中の口は覚えておく。半径を触っただけで開いていた口が閉じると、
-    // 調整中に蛇が床へ埋まる。
+    /// @note 開き途中の口は覚えておく。半径を触っただけで開いていた口が閉じると、
+    ///       調整中に蛇が床へ埋まる。
     std::vector<std::pair<std::string, float>> previous;
     for (const Hole& hole : m_holes) previous.emplace_back(hole.id, hole.phase);
 
@@ -492,10 +445,10 @@ inline void SerpentApertureComponent::BuildHoles()
                                 TWO_PI * static_cast<float>(i) / static_cast<float>(ring.count);
             Hole hole;
             hole.id = std::string(ring.tag) + std::to_string(i + 1);
-            // Blender の (x, y) が取り込みで (x, z) になる。cos が x / sin が z。
+            /// @note Blender の (x, y) が取り込みで (x, z) になる。cos が x / sin が z。
             hole.center = Vector3{ ring.radius * std::cos(angle), 0.0f,
                                    ring.radius * std::sin(angle) };
-            // 羽が逃げる向きは «輪の接線に直交する水平» = 中心を向く放射。
+            /// @note 羽が逃げる向きは «輪の接線に直交する水平» = 中心を向く放射。
             hole.normal = Vector3{ -hole.center.x, 0.0f, -hole.center.z }
                               .NormalizedOr(Vector3{ 1.0f, 0.0f, 0.0f });
             hole.spin = (!alternateCollar || (i % 2) == 0) ? 1.0f : -1.0f;
@@ -537,20 +490,14 @@ inline Vector3 SerpentApertureComponent::ToLocalOffset(const Vector3& worldOffse
                     worldOffset.z / (std::fabs(s.z) > EPSILON ? s.z : 1.0f) };
 }
 
-// WHY 親のスケールを «掛けない» か (2026-09-05・蛇が出てこなかった原因):
-//   Inner / Outer Radius は builder (serpent_map_build.py の RINGS) と同じ **メートル**
-//   で、8.0m / 16.0m は闘技場の実効半径 22m の内側に置いた実寸そのもの。
-//   一方 Boss02_Arena_Map のルートには取り込みの unit scale 100 が残っている
-//   (Stage_01 の Boss_Arena_Map も同じ)。ここで掛けると口が 800m / 1600m へ飛び、
-//   口どうしの間隔も 100 倍になる。
-//
-//   間隔が壊れると «蛇が渡れる窓» (SerpentPathComponent の Min/Max Chord 8.0〜10.5m)
-//   に入る口が 1 つも無くなり、BeginFirstRoute() が毎秒失敗し続ける。
-//   蛇は Dormant のまま床下 40m (parkDepth) に居座るので、**画面には何も出ず、
-//   エラーも «口が窓の中に無い» という間接的な警告しか出ない。**
-//
-//   すぐ上の ToLocalOffset() が «スケールを割り戻して移動量をメートルに保つ» と
-//   書いているとおり、この系の値はすべてメートル。位置と向きだけ親から借りる。
+/// @note 親のスケールを掛けない (2026-09-05・蛇が出てこなかった原因): Inner/Outer
+///       Radius (8.0m/16.0m) はアリーナ実効半径22mの内側に置いた実寸そのものだが、
+///       Boss02_Arena_Map のルートには取り込みの unit scale 100 が残る (Stage_01の
+///       Boss_Arena_Map も同じ)。掛けると口が800m/1600mへ飛び、SerpentPathComponent の
+///       渡れる窓 (Min/Max Chord 8.0〜10.5m) に入る口が無くなり BeginFirstRoute() が
+///       毎秒失敗し続ける ─ 蛇は parkDepth 40m の床下に居座り、画面には何も出ず
+///       間接的な警告しか出ない。ToLocalOffset() と同様、この系の値はすべてメートルで
+///       位置と向きだけ親から借りる。
 inline Vector3 SerpentApertureComponent::HoleCenter(const std::string& hole) const
 {
     const Hole* found = Find(hole);
@@ -615,8 +562,8 @@ inline float SerpentApertureComponent::OpenRatio(const std::string& hole) const
 
 inline void SerpentApertureComponent::ResolveNodes(Hole& hole)
 {
-    // WHY 毎フレーム確かめ直すか: スクリプト DLL をリロードすると Script は作り直され、
-    //     EntityRef は空へ戻る。「引いた」を覚えたままだと、以後どの口も動かない。
+    /// @note 毎フレーム確かめ直す: スクリプト DLL リロードで Script は作り直され
+    ///       EntityRef は空へ戻る。覚えたままだと以後どの口も動かない。
     if (hole.rim.Resolve(scene) && hole.collar.Resolve(scene) &&
         hole.leafA.Resolve(scene) && hole.leafB.Resolve(scene))
         return;
@@ -648,11 +595,9 @@ inline void SerpentApertureComponent::EnsureShutterFloor(Hole& hole)
     GameObject* floor = hole.floorCollision.Resolve(scene);
     if (!floor) return;
 
-    // 既に置いてあればそれを使う。無ければ «描いているメッシュ» から床を起こす。
-    //
-    // WHY スクリプトから生やすか: COL_Shutter_<口> は 16 枚とも同じ形の板で、
-    //     シーンに手で 16 個コライダーを置くと、口を作り直すたびに置き直しになる。
-    //     どのサブメッシュを見るかは描画側が既に知っているので、そこから写す。
+    /// @note 既に置いてあればそれを使う。無ければ描画メッシュから床を起こす ─
+    ///       `COL_Shutter_<口>` は16枚とも同じ形の板で、シーンに手で置くと作り直す
+    ///       たびに置き直しになるため。
     if (!floor->GetComponent<MeshColliderComponent>()) {
         if (const auto* renderer = floor->GetComponent<MeshRenderer>()) {
             auto& collider = floor->AddComponent<MeshColliderComponent>();
@@ -674,7 +619,7 @@ inline void SerpentApertureComponent::ApplyHole(Hole& hole)
     const float sink01   = Clamp01((hole.phase - t2) / Max(sinkSeconds, 0.01f));
     const float slide01  = Clamp01((hole.phase - t3) / Max(slideSeconds, 0.01f));
 
-    // 縁。«まだ間に合う» と «もう開く» を明滅の速さで分ける。
+    /// @note 縁。«まだ間に合う» と «もう開く» を明滅の速さで分ける。
     if (GameObject* rim = hole.rim.Resolve(scene)) {
         float gain = Lerp(Max(glowIdle, 0.0f), glowStrength, glow01);
         if (glowPulseHz > 0.0f && glow01 > 0.0f && glow01 < 1.0f) {
@@ -686,8 +631,8 @@ inline void SerpentApertureComponent::ApplyHole(Hole& hole)
         instance.SetFloat(kEmissiveScaleId, gain);
     }
 
-    // カラーは口の中心まわりに回す。取り込んだノードの原点はワールド原点なので、
-    // T(P)·R·T(-P) を «回転 + 位置» の 2 つへ畳んで入れる。
+    /// @note カラーは口の中心まわりに回す。取り込んだノードの原点はワールド原点なので、
+    ///       T(P)·R·T(-P) を «回転 + 位置» の 2 つへ畳んで入れる。
     if (GameObject* collar = hole.collar.Resolve(scene)) {
         const float      rad   = ToRad(lockDegrees) * hole.spin *
                                  ScriptTweenProxy::Evaluate(TweenEase::OutCubic, unlock01);
@@ -697,7 +642,7 @@ inline void SerpentApertureComponent::ApplyHole(Hole& hole)
         collar->transform.position = hole.center - moved;
     }
 
-    // 羽は «下げてから外へ»。真横へ滑らせると床スラブと交差する。
+    /// @note 羽は «下げてから外へ»。真横へ滑らせると床スラブと交差する。
     const float sinkEase  = ScriptTweenProxy::Evaluate(TweenEase::OutQuad, sink01);
     const float slideEase = ScriptTweenProxy::Evaluate(TweenEase::InOutCubic, slide01);
     const Vector3 drop{ 0.0f, -sinkMeters * sinkEase, 0.0f };
@@ -708,8 +653,8 @@ inline void SerpentApertureComponent::ApplyHole(Hole& hole)
     if (GameObject* leaf = hole.leafB.Resolve(scene))
         leaf->transform.position = ToLocalOffset(drop - slide);
 
-    // 床は «完全に閉じている間» だけ。開き始めた瞬間に切らないと、沈んだ羽の上に
-    // 見えない床が残って、開いた口の上を歩けてしまう。
+    /// @note 床は «完全に閉じている間» だけ。開き始めた瞬間に切らないと、沈んだ羽の上に
+    ///       見えない床が残って、開いた口の上を歩けてしまう。
     if (driveShutterCollision) {
         if (GameObject* floor = hole.floorCollision.Resolve(scene)) {
             const bool active = hole.phase <= t1 + 1.0e-4f;
@@ -766,11 +711,11 @@ inline void SerpentApertureComponent::OnUpdate()
 
     debugOpen = open.empty() ? "-" : open;
 
-    // 落ちた後始末は口を全部進めてから。開閉の途中の口を «避けるべき穴» として
-    // 数えるので、この 1 フレームの開き具合が確定した後でないと 1 コマぶんずれる。
+    /// @note 落ちた後始末は口を全部進めてから。開閉の途中の口を «避けるべき穴» として
+    ///       数えるので、この 1 フレームの開き具合が確定した後でないと 1 コマぶんずれる。
     DriveFallRescue(dt);
 
-    // 名前が 1 つでも外れると «その口だけ開かない» という形でしか出ない。名指しで言う。
+    /// @note 名前が 1 つでも外れると «その口だけ開かない» という形でしか出ない。名指しで言う。
     if (debugMissing > 0)
         debug.LogError("SerpentApertureComponent could not find " +
                        std::to_string(debugMissing) +

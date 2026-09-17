@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 ///
-/// WHY: ツールの SetActive 切替がパネルごとに分散すると、片方から切り替えたときに
-/// もう片方の表示状態と食い違うため、唯一の切替関数をここに置く。
+/// ツールの SetActive 切替がパネルごとに分散すると片方から切り替えたときにもう片方の表示状態と
+/// 食い違うため、唯一の切替関数をここに置く。
 #pragma once
 
 #include <Editor/EditorContext.hpp>
@@ -12,11 +12,11 @@
 
 namespace fbzz::editor {
 
-// Map ツール定義 (ラベル・ツールチップ・ホットキー表示)。オーバーレイとパネルの両方が使う。
+/// Map ツール定義 (ラベル・ツールチップ・ホットキー表示)。オーバーレイとパネルの両方が使う。
 struct MapToolDef {
     EditorContext::MapTool tool;
     const char*            label;
-    const char*            shortcut; // 数字キー表示 ("1" 等)
+    const char*            shortcut; ///< 数字キー表示 ("1" 等)
     const char*            tooltip;
 };
 
@@ -26,7 +26,7 @@ inline constexpr MapToolDef kMapToolDefs[] = {
     { EditorContext::MapTool::Grid,          "Grid",    "3", "Manage terrain grid layout and cell assignment" },
 };
 
-// ツールを切り替え、各ツールのアクティブ状態を同期する。
+/// ツールを切り替え、各ツールのアクティブ状態を同期する。
 inline void ActivateMapTool(EditorContext& ctx, EditorContext::MapTool tool)
 {
     ctx.mapActiveTool = tool;

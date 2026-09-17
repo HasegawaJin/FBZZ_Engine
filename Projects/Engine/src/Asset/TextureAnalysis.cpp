@@ -8,7 +8,8 @@
 /// 2. 原寸のまま flipbook のコマ割りを推定 (縮小すると境界が潰れるため)
 /// 3. 統計用に縮小し、アルファ・輝度・形状の特徴量を取る
 /// 4. 特徴量から blendMode / alphaSource / sprite 設定などの推奨値を組み立てる
-#pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
+/// @note DirectXTex の WIC コーデックに必要。
+#pragma comment(lib, "ole32.lib")
 
 #include <Engine/Asset/TextureAnalysis.hpp>
 
@@ -35,11 +36,11 @@ TextureAnalysis Fail(std::string message)
     return result;
 }
 
-// RGBA float の平面。解析は全てこの形に落としてから行う。
+/// RGBA float の平面。解析は全てこの形に落としてから行う。
 struct Pixels {
     int width = 0;
     int height = 0;
-    std::vector<float> rgba; // width * height * 4
+    std::vector<float> rgba; ///< width * height * 4
 
     [[nodiscard]] const float* At(int x, int y) const
     {
@@ -72,7 +73,7 @@ Pixels ToPixels(const DirectX::Image& image)
     return result;
 }
 
-// ボックスフィルタで縮小する。統計量を取るだけなので品質より速度と単純さを優先する。
+/// ボックスフィルタで縮小する。統計量を取るだけなので品質より速度と単純さを優先する。
 Pixels Downsample(const Pixels& source, int maxDimension)
 {
     const int longest = (std::max)(source.width, source.height);
@@ -103,12 +104,10 @@ Pixels Downsample(const Pixels& source, int maxDimension)
     return result;
 }
 
-// 指定グリッドで切ったときの「タイル境界のまたぎ差」と「コマ間の内容量の揃い方」を測る。
-// WHY: フリップブックは各コマが独立した絵なので、正しい境界では隣り合う画素が
-//      不連続になる。逆に 1 枚絵を誤って切ると境界は連続したままになる。
-//      つまり seamScore は「大きいほどそのグリッドらしい」。
-//      ただし境界が偶然目立つだけの 1 枚絵も拾ってしまうため、
-//      各コマの内容量 (アルファ総和) が揃っていることを uniformity で併せて要求する。
+/// 指定グリッドで切ったときの「タイル境界のまたぎ差」と「コマ間の内容量の揃い方」を測る。
+/// @note 正しい境界では隣り合う画素が不連続になるが、1 枚絵を誤って切ると境界は連続したまま
+///       残る (seamScore は大きいほどそのグリッドらしい)。ただし偶然目立つ 1 枚絵も拾うため、
+///       各コマの内容量 (アルファ総和) が揃っていることを uniformity で併せて要求する。
 FlipbookGridCandidate ScoreGrid(const Pixels& image, int columns, int rows)
 {
     FlipbookGridCandidate candidate;
@@ -119,8 +118,8 @@ FlipbookGridCandidate ScoreGrid(const Pixels& image, int columns, int rows)
     const int tileHeight = image.height / rows;
     if (tileWidth < 4 || tileHeight < 4) return candidate;
 
-    // 縦の境界線をまたぐ差 / 同じ位置の 1 画素内側の差、の比を取る。
-    // 生の差分だと絵の細かさで値が変わるため、周辺の変化量で正規化する。
+    /// @note 縦の境界線をまたぐ差 / 同じ位置の 1 画素内側の差、の比を取る。
+    ///       生の差分だと絵の細かさで値が変わるため、周辺の変化量で正規化する。
     float seamSum = 0.0f;
     float interiorSum = 0.0f;
     int seamCount = 0;
@@ -149,7 +148,7 @@ FlipbookGridCandidate ScoreGrid(const Pixels& image, int columns, int rows)
     const float interiorMean = interiorSum / static_cast<float>(seamCount);
     candidate.seamScore = seamMean / (std::max)(interiorMean, 1.0e-5f);
 
-    // 各コマの内容量。フリップブックなら全コマに絵があり、総和が極端にばらつかない。
+    /// @note 各コマの内容量。フリップブックなら全コマに絵があり、総和が極端にばらつかない。
     std::vector<float> tileMass(static_cast<std::size_t>(columns) * rows, 0.0f);
     for (int r = 0; r < rows; ++r)
         for (int c = 0; c < columns; ++c) {
@@ -169,19 +168,18 @@ FlipbookGridCandidate ScoreGrid(const Pixels& image, int columns, int rows)
     float variance = 0.0f;
     for (const float mass : tileMass) variance += (mass - massMean) * (mass - massMean);
     variance /= static_cast<float>(tileMass.size());
-    // 変動係数が小さいほど揃っている。1 - CV を [0,1] へ clamp して使う。
+    /// @note 変動係数が小さいほど揃っている。1 - CV を [0,1] へ clamp して使う。
     const float cv = std::sqrt(variance) / massMean;
     candidate.uniformity = std::clamp(1.0f - cv, 0.0f, 1.0f);
-    // 空コマがあるアトラスは「割り方が違う」と判断する。
+    /// @note 空コマがあるアトラスは「割り方が違う」と判断する。
     for (const float mass : tileMass)
         if (mass < massMean * 0.05f) candidate.uniformity = 0.0f;
     return candidate;
 }
 
-// アトラスらしいコマ割りを探す。2^n 分割と一般的な段組だけを候補にする。
-// WHY: 総当たりすると 1x2 や 2x1 のような「切っても切らなくても同じ」候補が
-//      上位に紛れ、判定がぶれる。実際に使われるのは正方に近い等分割なので、
-//      候補を絞った方が精度も速度も上がる。
+/// アトラスらしいコマ割りを探す。2^n 分割と一般的な段組だけを候補にする。
+/// @note 総当たりすると 1x2 や 2x1 のような「切っても切らなくても同じ」候補が上位に紛れ、
+///       判定がぶれる。実際に使われるのは正方に近い等分割なので、候補を絞った方が精度も速度も上がる。
 std::vector<FlipbookGridCandidate> DetectFlipbook(const Pixels& image)
 {
     static constexpr std::array<int, 6> kDivisors = { 2, 3, 4, 5, 6, 8 };
@@ -189,20 +187,19 @@ std::vector<FlipbookGridCandidate> DetectFlipbook(const Pixels& image)
     for (const int columns : kDivisors) {
         for (const int rows : kDivisors) {
             if (image.width % columns != 0 || image.height % rows != 0) continue;
-            // 極端に細長いコマは実素材ではまず使わない。
+            /// @note 極端に細長いコマは実素材ではまず使わない。
             const float tileAspect = static_cast<float>(image.width / columns)
                                    / static_cast<float>(image.height / rows);
             if (tileAspect < 0.5f || tileAspect > 2.0f) continue;
             const FlipbookGridCandidate candidate = ScoreGrid(image, columns, rows);
-            // 境界が周囲より明確に不連続で、かつ全コマが揃っているものだけ残す。
+            /// @note 境界が周囲より明確に不連続で、かつ全コマが揃っているものだけ残す。
             if (candidate.seamScore < 1.6f || candidate.uniformity < 0.5f) continue;
             candidates.push_back(candidate);
         }
     }
-    // コマ数が少ない方を優先しつつ、境界の明確さで並べる。
-    // WHY: 4x4 が正しいアトラスは 2x2 でも境界が立つ (4x4 の境界を含むため)。
-    //      分割数が大きいほど seamScore は上がりやすいので、素点だけで並べると
-    //      常に最大分割が勝ってしまう。コマ数で割って正規化する。
+    /// @note コマ数が少ない方を優先しつつ、境界の明確さで並べる。4x4 が正しいアトラスは
+    ///       2x2 でも境界が立つため (4x4 の境界を含む)、分割数が大きいほど seamScore は
+    ///       上がりやすく、素点だけで並べると常に最大分割が勝ってしまう。コマ数で割って正規化する。
     std::sort(candidates.begin(), candidates.end(),
         [](const FlipbookGridCandidate& a, const FlipbookGridCandidate& b) {
             const float scoreA = a.seamScore * a.uniformity / std::sqrt(static_cast<float>(a.columns * a.rows));
@@ -228,8 +225,8 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
     std::size_t transparent = 0;
     std::size_t opaque = 0;
     std::size_t covered = 0;
-    // 事前乗算判定は「RGB が A を超える画素が 1 つも無い」ことで見る。
-    // 単純な閾値だと 8bit 由来の丸めで誤検出するため、わずかな超過は許す。
+    /// @note 事前乗算判定は「RGB が A を超える画素が 1 つも無い」ことで見る。
+    ///       単純な閾値だと 8bit 由来の丸めで誤検出するため、わずかな超過は許す。
     bool anyRgbAboveAlpha = false;
     bool anyPartialAlpha = false;
 
@@ -252,7 +249,7 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
         const float minChannel = (std::min)({ pixel[0], pixel[1], pixel[2] });
         if (maxChannel > 1.0e-4f) saturationSum += (maxChannel - minChannel) / maxChannel;
 
-        // 色は「見える部分」の平均。透明部分の色は最終的な絵に出ない。
+        /// @note 色は「見える部分」の平均。透明部分の色は最終的な絵に出ない。
         const double weight = static_cast<double>(alpha);
         for (int c = 0; c < 3; ++c) colorSum[c] += pixel[c] * weight;
         colorWeight += weight;
@@ -270,12 +267,12 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
         for (int c = 0; c < 3; ++c)
             out.averageColor[c] = static_cast<float>(colorSum[c] / colorWeight);
     }
-    // アルファが全画素同じなら実質「アルファ無し」。マスクとして機能していない。
+    /// @note アルファが全画素同じなら実質「アルファ無し」。マスクとして機能していない。
     out.alphaIsMeaningful = (out.alphaMax - out.alphaMin) > 0.05f;
-    // 事前乗算はストレート素材との判別が目的なので、中間アルファが存在する素材でのみ意味を持つ。
+    /// @note 事前乗算はストレート素材との判別が目的なので、中間アルファが存在する素材でのみ意味を持つ。
     out.likelyPremultiplied = out.alphaIsMeaningful && anyPartialAlpha && !anyRgbAboveAlpha;
 
-    // 中心 1/3 と外周の輝度比。発光する芯を持つ素材で大きくなる。
+    /// @note 中心 1/3 と外周の輝度比。発光する芯を持つ素材で大きくなる。
     const int cx0 = image.width / 3, cx1 = image.width * 2 / 3;
     const int cy0 = image.height / 3, cy1 = image.height * 2 / 3;
     double centerSum = 0.0, edgeSum = 0.0;
@@ -283,7 +280,7 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
     for (int y = 0; y < image.height; ++y)
         for (int x = 0; x < image.width; ++x) {
             const float* pixel = image.At(x, y);
-            // アルファを掛けた「実際に見える明るさ」で比べる。
+            /// @note アルファを掛けた「実際に見える明るさ」で比べる。
             const float visible = Luminance(pixel) * (out.alphaIsMeaningful ? pixel[3] : 1.0f);
             if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) { centerSum += visible; ++centerCount; }
             else { edgeSum += visible; ++edgeCount; }
@@ -292,7 +289,7 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
     const float edgeMean = edgeCount > 0 ? static_cast<float>(edgeSum / edgeCount) : 0.0f;
     out.coreHotspot = centerMean / (std::max)(edgeMean, 1.0e-4f);
 
-    // 中心対称性: 180 度回転したものとの一致度。放射状の puff / glow で高くなる。
+    /// @note 中心対称性: 180 度回転したものとの一致度。放射状の puff / glow で高くなる。
     double symmetryDiff = 0.0;
     for (int y = 0; y < image.height; ++y)
         for (int x = 0; x < image.width; ++x) {
@@ -303,8 +300,8 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
     out.radialSymmetry = std::clamp(
         1.0f - static_cast<float>(symmetryDiff / static_cast<double>(total)) * 4.0f, 0.0f, 1.0f);
 
-    // 縁の硬さ: 半透明画素におけるアルファ勾配の平均。
-    // 切り抜き素材は 0 と 1 の間が数画素しかないため勾配が大きい。
+    /// @note 縁の硬さ: 半透明画素におけるアルファ勾配の平均。
+    ///       切り抜き素材は 0 と 1 の間が数画素しかないため勾配が大きい。
     double gradientSum = 0.0;
     std::size_t gradientCount = 0;
     for (int y = 1; y < image.height - 1; ++y)
@@ -319,7 +316,7 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
     out.edgeHardness = gradientCount > 0
         ? static_cast<float>(gradientSum / static_cast<double>(gradientCount)) : 0.0f;
 
-    // タイリング可否: 対向する端どうしの一致度。
+    /// @note タイリング可否: 対向する端どうしの一致度。
     double seamDiff = 0.0;
     for (int y = 0; y < image.height; ++y)
         seamDiff += std::abs(Luminance(image.At(0, y)) - Luminance(image.At(image.width - 1, y)));
@@ -329,8 +326,8 @@ void AnalyzeStatistics(const Pixels& image, TextureAnalysis& out)
     out.seamlessScore = std::clamp(1.0f - static_cast<float>(seamDiff / seamSamples) * 4.0f, 0.0f, 1.0f);
 }
 
-// 観測から設定を決める。ここが「解析」を「オーサリング支援」に変えている部分で、
-// 判断基準は vfx.guide の規約と一致させてある (別基準にすると助言が食い違う)。
+/// 観測から設定を決める。ここが「解析」を「オーサリング支援」に変えている部分で、
+/// 判断基準は vfx.guide の規約と一致させてある (別基準にすると助言が食い違う)。
 void BuildRecommendations(TextureAnalysis& out)
 {
     const auto add = [&out](std::string schemaPath, std::string value, std::string reason) {
@@ -351,7 +348,7 @@ void BuildRecommendations(TextureAnalysis& out)
             "同時に湧いた粒子が全部同じコマで回るのを防ぎます");
     }
 
-    // alphaSource — アルファが機能していない素材は輝度から抜くしかない。
+    /// @note alphaSource — アルファが機能していない素材は輝度から抜くしかない。
     if (!out.alphaIsMeaningful) {
         add("material.particle.alphaSource", "1",
             "アルファチャンネルが実データを持たない (min=" + std::to_string(out.alphaMin).substr(0, 4)
@@ -360,7 +357,7 @@ void BuildRecommendations(TextureAnalysis& out)
                   "TextureAlpha のままだと矩形の板として描かれます");
     }
 
-    // blend_mode — 事前乗算 > 発光する芯 > それ以外の順で決まる。
+    /// @note blend_mode — 事前乗算 > 発光する芯 > それ以外の順で決まる。
     if (out.likelyPremultiplied) {
         add("material.blend_mode", "Premultiplied",
             "全画素で RGB <= A が成り立つ事前乗算済み素材です。"
@@ -378,14 +375,14 @@ void BuildRecommendations(TextureAnalysis& out)
             "Alpha ブレンドは描画順で結果が変わるため BackToFront が必須です");
     }
 
-    // softParticles — 硬い縁の素材は交差面が線として見える。
+    /// @note softParticles — 硬い縁の素材は交差面が線として見える。
     if (out.edgeHardness > 0.35f && out.alphaIsMeaningful) {
         add("material.particle.softParticles", "true",
             "縁のアルファ勾配が大きい (硬い) 素材です。地面や壁と交差したとき"
             "切り口が直線として出るため、深度フェードで隠します");
     }
 
-    // 分類。層構成のどこへ置く素材かを一言で示す。
+    /// @note 分類。層構成のどこへ置く素材かを一言で示す。
     if (isFlipbook) out.classification = "flipbook";
     else if (out.coreHotspot > 2.2f && out.radialSymmetry > 0.6f) out.classification = "glow";
     else if (out.coverage > 0.45f && out.edgeHardness < 0.3f) out.classification = "smoke";
@@ -429,18 +426,18 @@ TextureAnalysis AnalyzeTexture(const std::string& sourcePath, int maxSampleDimen
         && (result.height & (result.height - 1)) == 0;
     result.hasAlphaChannel = DirectX::HasAlpha(metadata.format);
 
-    // DDS は事前乗算をメタデータで宣言できる。宣言があるなら画素の推測より確実なので、
-    // 統計を取り終えた後に上書きする (declaredAlphaMode で分岐する)。
+    /// @note DDS は事前乗算をメタデータで宣言できる。宣言があるなら画素の推測より確実なので、
+    ///       統計を取り終えた後に上書きする (declaredAlphaMode で分岐する)。
     const DirectX::TEX_ALPHA_MODE declaredAlphaMode = metadata.GetAlphaMode();
 
     const Pixels full = ToPixels(*converted.GetImage(0, 0, 0));
-    // コマ割りの判定は原寸で行う。縮小すると境界の不連続が平均化されて消える。
+    /// @note コマ割りの判定は原寸で行う。縮小すると境界の不連続が平均化されて消える。
     result.flipbookCandidates = DetectFlipbook(full);
-    // 統計は縮小して取る。4K を原寸で何周も走査するとエディター操作としては遅すぎる。
+    /// @note 統計は縮小して取る。4K を原寸で何周も走査するとエディター操作としては遅すぎる。
     const Pixels sampled = Downsample(full, maxSampleDimension);
     AnalyzeStatistics(sampled, result);
-    // 宣言があるならそれが正。画素からの推測 (RGB <= A) は、たまたま暗い素材を
-    // 事前乗算と誤判定しうるため、明示情報がある場合は必ず優先する。
+    /// @note 宣言があるならそれが正。画素からの推測 (RGB <= A) は、たまたま暗い素材を
+    ///       事前乗算と誤判定しうるため、明示情報がある場合は必ず優先する。
     if (declaredAlphaMode == DirectX::TEX_ALPHA_MODE_PREMULTIPLIED) result.likelyPremultiplied = true;
     else if (declaredAlphaMode == DirectX::TEX_ALPHA_MODE_STRAIGHT) result.likelyPremultiplied = false;
     BuildRecommendations(result);
@@ -516,15 +513,15 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
         result.recommendations.push_back({ std::move(schemaPath), std::move(value), std::move(reason) });
     };
 
-    // ── ParticleEmitter へ割り当てる前提での診断 ──
+    /// @name ParticleEmitter へ割り当てる前提での診断
 
-    // render_path が particle でないと ParticlePass のシェーダー変数と噛み合わない。
+    /// @note render_path が particle でないと ParticlePass のシェーダー変数と噛み合わない。
     if (material.renderPath != RenderPath::Particle)
         addFinding("render_path が \"" + result.renderPath
                    + "\" です。ParticleEmitter へ割り当てるなら \"particle\" にしてください "
                      "(ParticlePass が albedo と blendMode を読む経路が変わります)");
 
-    // 不透明のままの .mat をパーティクルへ割り当てると、粒子が板として重なる。
+    /// @note 不透明のままの .mat をパーティクルへ割り当てると、粒子が板として重なる。
     if (material.blendMode == renderer::BlendMode::OPAQUE_BLEND)
         addFinding("blend_mode が Opaque です。パーティクルは半透明前提なので、"
                    "Alpha / Additive / Premultiplied のいずれかにしてください");
@@ -536,9 +533,9 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
         addFinding("albedo テクスチャを解析できません: " + result.albedoAnalysis.message);
     } else {
         const TextureAnalysis& texture = result.albedoAnalysis;
-        // テクスチャの中身が要求する blend_mode と .mat の宣言を突き合わせる。
-        // WHY: ここが「テクスチャ単体の推測」と「実際の描画設定」の差が出る唯一の場所。
-        //      ブレンドは .mat が唯一の正本なので、直すのは常に .mat 側になる。
+        /// @note テクスチャの中身が要求する blend_mode と .mat の宣言を突き合わせる。ここが
+        ///       「テクスチャ単体の推測」と「実際の描画設定」の差が出る唯一の場所で、ブレンドは
+        ///       .mat が唯一の正本なので、直すのは常に .mat 側になる。
         std::string wanted;
         std::string why;
         if (texture.likelyPremultiplied) {
@@ -560,7 +557,7 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
                          "ブレンドは .mat が唯一の正本なので、直すのはこの .mat です");
         }
 
-        // アルファの取り出し方も .mat の [particle]。
+        /// @note アルファの取り出し方も .mat の [particle]。
         if (!texture.alphaIsMeaningful)
             addRecommendation("material.particle.alphaSource", "1",
                               "albedo テクスチャのアルファが実データを持たない (min="
@@ -568,7 +565,7 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
                                   + std::to_string(texture.alphaMax).substr(0, 4)
                                   + ")。この .mat の [particle] へ設定します");
 
-        // flipbook のコマ割りも .mat の [particle]。
+        /// @note flipbook のコマ割りも .mat の [particle]。
         if (!texture.flipbookCandidates.empty()) {
             const auto& best = texture.flipbookCandidates.front();
             addRecommendation("material.particle.flipbook.spriteColumns", std::to_string(best.columns),
@@ -579,7 +576,7 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
                               std::to_string(best.columns * best.rows - 1), "全コマを再生する終端");
         }
 
-        // 描画順だけは «いつどこに出すか» の側なので Emitter が持つ。
+        /// @note 描画順だけは «いつどこに出すか» の側なので Emitter が持つ。
         if (material.blendMode == renderer::BlendMode::ALPHA_BLEND
             || material.blendMode == renderer::BlendMode::PREMULTIPLIED)
             addRecommendation("particle.sortMode", "1",

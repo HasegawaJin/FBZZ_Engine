@@ -11,8 +11,8 @@
 
 namespace fbzz::renderer {
 
-// CommandList への UI 描画記録は通常描画と同じフレーム内で行うため、ImGui へは
-// Device 単体ではなく実行コンテキスト全体を渡す。
+/// CommandList への UI 描画記録は通常描画と同じフレーム内で行うため、ImGui へは
+/// Device 単体ではなく実行コンテキスト全体を渡す。
 RendererBundle CreateDX12Backend(void* hwnd, uint32_t width, uint32_t height)
 {
     FBZZ_LOG_INFO("RendererFactory: DX12 バックエンド生成開始 (hwnd=%p %ux%u)", hwnd, width, height);

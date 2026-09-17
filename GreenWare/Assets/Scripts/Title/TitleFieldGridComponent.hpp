@@ -9,15 +9,10 @@
 ///   - 時間             — ジオメトリ描画では PostProcConstants (b6) の time が束縛されない
 ///   - 極性色           — [[ElectrodePole]] が正本。.mat へ写すと 12.2 の配色が二重管理になる
 ///
-/// WHY 電極を型で探さないか:
-///   ＋と−は別のコンポーネントなので、型で引くと 2 回走査したうえ «どちらが先か» で
-///   スロット番号が入れ替わる。ElectrodeRig::All() は両極が 1 本の配列へ登録される
-///   窓口で、盤面に何本居ても順番が変わらない。
-///
-/// WHY ドームをカメラへ貼り付けるか:
-///   球はワールドの一部ではなく «画面を埋めるための代理» で、床は視線と平面の交点から
-///   作られる (FieldGrid.hlsl)。中心がカメラに一致してさえいれば半径も位置も絵に効かない。
-///   シーンでカメラを動かしたときに背景が破綻しないよう、位置合わせをここへ閉じる。
+/// @note 電極を型で探さない: 型で引くと 2 回走査したうえ «どちらが先か» でスロット番号が
+///       入れ替わる。ElectrodeRig::All() は両極が 1 本の配列へ登録される窓口で順番が変わらない。
+/// @note ドームはワールドの一部でなく «画面を埋める代理» で、床は視線と平面の交点から作る
+///       (FieldGrid.hlsl)。中心がカメラに一致していれば半径・位置は絵に効かない。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
@@ -70,8 +65,8 @@ inline void TitleFieldGridComponent::OnUpdate()
     const MaterialInstance instance = material.Instance();
     if (!instance.IsValid()) return;
 
-    // WHY 毎フレーム送り直すか: 色は変わらないが、Play/Stop の往復や .mat の再読み込みで
-    //     per-instance の上書きが落ちる。書き込み 2 回で «落ちたら戻る» が保証できる。
+    /// @note 色自体は変わらないが、Play/Stop の往復や .mat 再読み込みで per-instance の
+    ///       上書きが落ちることがあるため毎フレーム送り直す。
     instance.SetVector4(kFieldGridPlusId,  kColorRight);
     instance.SetVector4(kFieldGridMinusId, kColorLeft);
 
@@ -97,8 +92,8 @@ inline void TitleFieldGridComponent::OnUpdate()
         instance.SetFloat(MaterialPropertyId("ringStrength"), 0.3f + accent * 0.9f);
     }
 
-    // WHY 巻き取らないか: phase は輪の進み (r - phase * speed) にしか入らない。
-    //     ハッシュへ渡す Beam の phase と違い、大きくしても縞へ潰れる場所が無い。
+    /// @note phase は輪の進み (r - phase * speed) にしか使わないため巻き取らない。
+    ///       ハッシュへ渡す Beam の phase と違い、大きくしても縞へ潰れる場所が無い。
     instance.SetFloat(kFieldGridPhaseId, time.UnscaledTime());
 
     const auto& rigs = ElectrodeRig::All();
@@ -108,8 +103,8 @@ inline void TitleFieldGridComponent::OnUpdate()
             ? rigs[static_cast<std::size_t>(slot)]
             : nullptr;
 
-        // w = 0 のスロットは歪みも光も出さない。空きを «無効» として使えるので、
-        // 電極が 4 本に満たなくても分岐が要らない。
+        /// @note w = 0 のスロットは歪みも光も出さない。空きを «無効» として使えるので、
+        ///       電極が 4 本に満たなくても分岐が要らない。
         Vector4 packed{ 0.0f, 0.0f, 0.0f, 0.0f };
         if (rig) {
             const Vector3 position = rig->Position();

@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// この索引のキーは guid で、生成物の置き場所 Library/Baked/<guid>/ と対になっている。
+/// この索引のキーは guid で、生成物の置き場所 `Library/Baked/<guid>/` と対になっている。
 /// 片方だけ動かすと «記録はあるのに焼き上がりが無い» / «焼き上がりはあるのに記録が無い» に
 /// なり、どちらも起動のたびの焼き直しとして表に出る。対で動くことをここで固定する。
 #include <TestKit/TestKit.hpp>
@@ -60,7 +60,7 @@ protected:
         testkit::EngineFixture::SetUp();
         ASSERT_TRUE(m_temp.IsValid());
         std::filesystem::create_directories(AssetsRoot());
-        // ImportCacheStore は AssetDatabase::ProjectRoot() から保存先を決める。
+        /// @note ImportCacheStore は AssetDatabase::ProjectRoot() から保存先を決める。
         asset::AssetDatabase::Init(AssetsRoot().generic_string());
     }
 
@@ -110,7 +110,7 @@ TEST_F(ImportCacheStoreTest, UnknownGuidReadsBackEmpty)
 
 TEST_F(ImportCacheStoreTest, RejectsAGuidThatIsNot32Hex)
 {
-    // guid をそのまま TOML のキーとして書くため、壊れた値を通すとファイルごと道連れになる。
+    /// @note guid をそのまま TOML のキーとして書くため、壊れた値を通すとファイルごと道連れになる。
     EXPECT_FALSE(ImportCacheStore::Save("not-a-guid", MakeEntry("c0ffee", "5e771465")));
     EXPECT_FALSE(ImportCacheStore::Save("'; drop = 1", MakeEntry("c0ffee", "5e771465")));
 }
@@ -128,8 +128,7 @@ TEST_F(ImportCacheStoreTest, RejectsAnIncompleteEntry)
 
 TEST_F(ImportCacheStoreTest, RekeyMovesTheRecordToTheNewGuid)
 {
-    // guid を振り直すときは生成物 (Library/Baked/<guid>/) も移る。記録が付いていかないと、
-    // 焼き上がりが揃っているのに «未 import» と判定される。
+    /// @note guid を振り直すときは生成物 (`Library/Baked/<guid>/`) も移る。記録が付いていかないと焼き上がりが揃っているのに «未 import» と判定される。
     ASSERT_TRUE(ImportCacheStore::Save(kGuidA, MakeEntry("c0ffee", "5e771465")));
 
     EXPECT_TRUE(ImportCacheStore::Rekey(kGuidA, kGuidB));
@@ -157,14 +156,15 @@ TEST_F(ImportCacheStoreTest, ForgetDropsOnlyTheNamedRecords)
 
 TEST_F(ImportCacheStoreTest, RefreshStampMovesTheMarkerButKeepsTheHash)
 {
-    // 中身を読んで «変わっていなかった» と分かった直後の更新。ここで新しい時刻を覚えないと、
-    // touch されたファイルを以降ずっと読み直すことになる。
+    /// @note 中身を読んで «変わっていなかった» と分かった直後の更新。ここで新しい時刻を覚えないと、
+    ///       touch されたファイルを以降ずっと読み直すことになる。
     ASSERT_TRUE(ImportCacheStore::Save(kGuidA, MakeEntry("c0ffee", "5e771465", 100, 1000)));
 
     EXPECT_TRUE(ImportCacheStore::RefreshStamp(kGuidA, 100, 2000));
 
     const ImportCacheStore::Entry loaded = ImportCacheStore::Load(kGuidA);
-    EXPECT_EQ(loaded.contentHash, "c0ffee");   // fingerprint は触らない
+    /// @note fingerprint は触らない
+    EXPECT_EQ(loaded.contentHash, "c0ffee");
     EXPECT_EQ(loaded.mtime, 2000);
 }
 
@@ -175,9 +175,9 @@ TEST_F(ImportCacheStoreTest, RefreshStampOfAnUnknownGuidDoesNothing)
 
 TEST_F(ImportCacheStoreTest, ReadsTheLegacyFormatIntoTheMigrationSlot)
 {
-    // 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値として使えないので、
-    // contentHash ではなく移行用の枠で受ける。ここを取り違えると、中身が変わっていないのに
-    // «一致しない» と判定して全件焼き直しになる。
+    /// @note 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値として使えないので、
+    ///       contentHash ではなく移行用の枠で受ける。ここを取り違えると、中身が変わっていないのに
+    ///       «一致しない» と判定して全件焼き直しになる。
     WriteFile(CacheFile(),
               "count = 1\n\n[hashes]\n"
               "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' = "
@@ -192,7 +192,7 @@ TEST_F(ImportCacheStoreTest, ReadsTheLegacyFormatIntoTheMigrationSlot)
 
 TEST_F(ImportCacheStoreTest, SurvivesACorruptCacheFile)
 {
-    // 壊れていても復旧は要らない。空から作り直せば、次の走査で焼き直されるだけ。
+    /// @note 壊れていても復旧は要らない。空から作り直せば、次の走査で焼き直されるだけ。
     WriteFile(CacheFile(), "this is not = = toml [[[");
 
     EXPECT_TRUE(ImportCacheStore::Load(kGuidA).Empty());

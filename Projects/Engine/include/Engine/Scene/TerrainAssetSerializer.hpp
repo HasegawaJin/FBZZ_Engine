@@ -10,15 +10,16 @@ namespace fbzz::scene {
 
 struct TerrainComponent;
 
-// TerrainAssetSerializer — Terrain の height/splat/layer データを外部アセット化する。
-// WHY: Scene / Prefab に巨大な配列を直接持たせると差分確認と読み込みが重くなるため、
-//      地形データだけを Assets/Terrain/*.terrain に分離して参照保存できるようにする。
+/// @brief Terrain の height/splat/layer データを外部アセット化する。
+/// @note Scene/Prefab に巨大な配列を直接持たせると差分確認と読み込みが重くなるため、地形データだけを `Assets/Terrain/*.terrain` へ分離して参照保存する。
 class TerrainAssetSerializer {
 public:
-    // component の現在の地形編集データを path に保存する。失敗時は false。
+    /// @brief component の現在の地形編集データを path に保存する。
+    /// @return 失敗時は false。
     static bool Save(const TerrainComponent& component, const std::string& path);
 
-    // path から component に地形編集データを読み込む。読み込み後は再構築 dirty を立てる。
+    /// @brief path から component に地形編集データを読み込む。
+    /// @note 読み込み後は再構築 dirty を立てる。
     static bool Load(const std::string& path, TerrainComponent& component);
 };
 

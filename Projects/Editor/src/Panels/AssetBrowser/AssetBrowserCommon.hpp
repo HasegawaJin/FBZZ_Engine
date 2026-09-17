@@ -1,4 +1,4 @@
-﻿/// @file    AssetBrowserCommon.hpp
+/// @file    AssetBrowserCommon.hpp
 /// @brief   AssetBrowserPanel の分割ファイルで共有するファイル操作・描画ヘルパー。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
@@ -35,9 +35,8 @@
 
 namespace fbzz::editor {
 
-// ファイルアイコンのポリゴン + ドッグイアを描画する共通ヘルパー。
-// WHY: DrawFileIconAt (AssetBrowserItems) と drawSubIcon (AssetBrowserCreate) で
-//      同一コードが重複していたため、ここに集約する。ラベルは呼び出し側で描画する。
+/// ファイルアイコンのポリゴン + ドッグイアを描画する共通ヘルパー。
+/// @note DrawFileIconAt (AssetBrowserItems) と drawSubIcon (AssetBrowserCreate) の重複コードをここに集約した。ラベルは呼び出し側で描画する。
 inline void DrawFileIconPolygon(ImDrawList* dl, ImVec2 origin, float sz, ImU32 cFill, ImU32 cDark)
 {
     const float bodyH = sz * 0.85f;
@@ -64,11 +63,10 @@ std::string UniquePrefabPathInDir(const std::string& dir, const std::string& obj
 bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload, EditorContext& ctx, const std::string& targetDir);
 ImVec4 Lighten(ImVec4 c);
 std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx);
-// ドラッグ中のパスを、プロジェクト内は Assets 起点、外部マウントは絶対パスで保持する。
-// WHY: 単純な文字列変換では外部プロジェクトの ".../Assets/..." まで自プロジェクトの
-//      Assets と誤認し、移動元を壊れたパスへ解決してしまう。
+/// ドラッグ中のパスを、プロジェクト内は Assets 起点、外部マウントは絶対パスで保持する。
+/// @note 単純な文字列変換では外部プロジェクトの ".../Assets/..." まで自プロジェクトの Assets と誤認し、移動元を壊れたパスへ解決してしまう。
 std::string ToAssetDragPayloadPath(const std::string& path, const EditorContext& ctx);
-// ImGui payload の終端を検証して、安全に ASSET_PATH 文字列を取り出す。
+/// ImGui payload の終端を検証して、安全に ASSET_PATH 文字列を取り出す。
 bool ReadAssetDragPayload(const ImGuiPayload* payload, std::string& outPath);
 
 } // namespace fbzz::editor

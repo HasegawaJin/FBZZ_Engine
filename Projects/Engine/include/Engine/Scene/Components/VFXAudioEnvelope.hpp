@@ -3,18 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 必要か:
-///   VFXElement が weight を配る先は VFXScreenEffect / VFXCameraShake / VFXTimeScale の
-///   3 つしか無く、音は «窓が閉じた瞬間に止まる» しかなかった。ワンショットなら
-///   それでよいが、ループ音 (チャージ・ビームの持続音) は必ずぶつ切りになる。
-///   立ち上がりと消え際を持てないと、鳴り始めと鳴り終わりだけが浮く。
-///
-/// WHY AudioSource に curve を足さないか:
-///   AudioSourceComponent はシーンに常設する BGM・環境音でも使う型で、
-///   そちらは «VFX の生存窓» を持たない。時間の駆動元を持つ側 (VFX) に
-///   エンベロープを置く方が、駆動されない場面での意味が明確になる。
+/// @note VFXElement は weight を VFXScreenEffect/CameraShake/TimeScale の 3 つにしか配れず、
+///       音は窓が閉じた瞬間に止まっていた。ループ音の立ち上がり・消え際を持たせるために追加。
+/// @note AudioSourceComponent は BGM 等 VFX の生存窓を持たない常設音源も扱うため、エンベロープは
+///       時間の駆動元 (VFX) 側に置く。
 #pragma once
-#include <Engine/Scene/Components/VFXElement.hpp>  // VFXCaptured
+#include <Engine/Scene/Components/VFXElement.hpp>
 #include <Engine/Scene/ParticleCurve.hpp>
 #include <Engine/Scene/Script.hpp>
 
@@ -37,9 +31,10 @@ struct VFXAudioEnvelope {
            {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f} }},
         2, ParticleCurveInterpolation::Linear };
 
-    // --- ランタイム ---
-    // 捕獲した基準値。VFXLightEnvelope と同じ理由で、掴み直すと
-    // «下げた後の音量» を新しい基準にしてしまい、鳴らすたびに小さくなる。
+    /// @name ランタイム
+    /// @{
+    /// 捕獲した基準値。VFXLightEnvelope と同じ理由で、掴み直すと
+    /// «下げた後の音量» を新しい基準にしてしまい、鳴らすたびに小さくなる。
     struct Base {
         float volume = 1.0f;
         float pitch  = 1.0f;
@@ -55,6 +50,7 @@ struct VFXAudioEnvelope {
         r.Field("usePitchCurve", usePitchCurve);
         r.Field("pitchCurve", pitchCurve);
     }
+    /// @}
 };
 
 } // namespace fbzz::scene

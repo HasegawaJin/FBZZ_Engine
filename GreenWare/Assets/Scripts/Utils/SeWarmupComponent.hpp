@@ -3,20 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
 ///
-/// WHY 要るか:
-///   AudioManager::AcquireClip はパス単位のキャッシュで、**初回だけ**その場で
-///   ファイルを読んで PCM へ展開する (src/Audio/AudioManager.cpp)。呼んでいるのは
-///   再生を要求したスレッド ─ つまり戦闘中のメインスレッドで、読み込みが終わるまで
-///   フレームが進まない。
-///
-///   斬撃はこれに一番刺さる。Bank::Pick() は «直前 2 つと同じ変奏を引かない» ので、
-///   最初の十数発は毎回まだ読んでいないファイルに当たる。**斬った瞬間に固まる**のは
-///   これで、素材を作り直してファイルが 1.7 倍になったぶん悪化していた。
-///
-/// WHY 1 フレームで全部やらないか:
-///   190 本を一度に読むと、その 1 フレームが数百 ms 伸びる。読み込み画面なら
-///   許されるが、ここはステージが始まった直後で、プレイヤーはもう操作できる。
-///   1 フレームあたり perFrame 本ずつ流して、山を作らない。
+/// @note AudioManager::AcquireClip はパス単位のキャッシュで、初回だけその場でファイルを
+///       読んで PCM へ展開する (src/Audio/AudioManager.cpp)。呼ぶのは再生を要求したスレッド
+///       ─ 戦闘中のメインスレッドで、読み込みが終わるまでフレームが進まない。斬撃は
+///       Bank::Pick() が «直前 2 つと同じ変奏を引かない» ため最初の十数発が毎回未読の
+///       ファイルに当たり、斬った瞬間に固まる。190 本を 1 フレームで読むとそのフレームが
+///       数百 ms 伸びるため、perFrame 本ずつ流して山を作らない。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -151,7 +143,7 @@ inline void SeWarmupComponent::OnUpdate()
     debugDone = static_cast<int>(m_head);
 
     if (m_head >= m_queue.size()) {
-        // 一度読めば AudioManager の m_pathToClip に残る。もう仕事は無い。
+        /// @note 一度読めば AudioManager の m_pathToClip に残る。もう仕事は無い。
         m_queue.clear();
         m_queue.shrink_to_fit();
     }

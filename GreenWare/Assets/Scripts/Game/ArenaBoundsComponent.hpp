@@ -3,20 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-28
 ///
-/// WHY 実効半径を絞るか (Docs/arena.md「実効半径を20mに絞る」):
-///   引力の作用半径は 12m (帯電数で最大 20m)。床が半径 40m あると、遠い敵は
-///   «近づいて組む» 対象ですらなく、寄ってくるまで無視するのが最適になる。
-///   待ちが正解のアクションゲームは成立しない。
-///
-/// WHY モデルを作り直さず座標で閉じるか:
-///   外側 20m ぶんは崩れた床・瓦礫・観客席として見える背景になる。屋根の輪
-///   (内半径 17.3m) が実効範囲とほぼ一致しているので、«屋根の切れ目より内側が戦場»
-///   という読み方がモデルの側から既に成立している。壁を建て直す必要が無い。
-///
-/// WHY 押し戻しであって «壁» ではないか:
-///   反発で弾かれた敵は必ず外へ飛ぶ。硬い壁だと «弾いたのに跳ね返って戻る» になり、
-///   押しが位置を変える手として働かない。縁では速度の外向き成分だけを殺して、
-///   «そこから先へは行かない» に留める。
+/// @note 引力の作用半径は最大 20m (帯電時)。床の実体 40m のままだと遠い敵を待つのが最適解になり、待ちゲーが成立してしまう (Docs/arena.md)。
+/// @note 外側 20m は瓦礫として残る背景。屋根の内半径 17.3m が実効範囲とほぼ一致するため、モデルを作り直さず座標で閉じるだけで絵と整合する。
+/// @note 壁でなく押し戻し。弾かれた敵は外へ飛ぶため硬い壁だと跳ね返って見える。縁では外向き速度成分だけを殺し、押しを機能させる。
 #pragma once
 
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
@@ -60,8 +49,7 @@ public:
 
     void OnStart() override { s_instance = this; }
     void OnDestroy() override { if (s_instance == this) s_instance = nullptr; }
-    // WHY 固定ステップか: 速度を書き換えるので、物理ステップの直前でないと
-    //     書いた直後に 1 ステップぶん外向きの運動が積まれる。
+    /// @note 速度を書き換えるため固定ステップの直前でないと、書いた直後に 1 ステップぶん外向きの運動が積まれる。
     void OnFixedUpdate() override;
     void OnDrawGizmos() override;
 
@@ -74,7 +62,6 @@ private:
 
 FBZZ_REFLECT(ArenaBoundsComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline bool ArenaBoundsComponent::Hold(GameObject& object) const
 {
@@ -92,15 +79,15 @@ inline bool ArenaBoundsComponent::Hold(GameObject& object) const
     const Vector3 outward = offset / distance;
     Vector3 velocity = rb->rigidBody->GetVelocity();
 
-    // 外向きの成分だけを殺す。内向きの動きまで削ると、縁に沿って走れなくなる。
+    /// @note 外向きの成分だけを殺す。内向きの動きまで削ると、縁に沿って走れなくなる。
     const float outwardSpeed = velocity.x * outward.x + velocity.z * outward.z;
     if (outwardSpeed > 0.0f) {
         velocity.x -= outward.x * outwardSpeed;
         velocity.z -= outward.z * outwardSpeed;
     }
 
-    // 縁を越えた分だけ内向きへ押す。手前 (soft〜radius) では 0 から立ち上がるので、
-    // «だんだん重くなる» という手触りになり、見えない壁に当たった感じにならない。
+    /// @note 縁を越えた分だけ内向きへ押す。手前 (soft〜radius) では 0 から立ち上がるので、
+    ///       «だんだん重くなる» という手触りになり、見えない壁に当たった感じにならない。
     const float over = Clamp01((distance - soft) / std::max(Radius() - soft, EPSILON));
     velocity.x -= outward.x * std::max(pushBack, 0.0f) * over;
     velocity.z -= outward.z * std::max(pushBack, 0.0f) * over;

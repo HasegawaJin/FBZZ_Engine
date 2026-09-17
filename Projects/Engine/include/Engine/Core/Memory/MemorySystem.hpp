@@ -11,8 +11,8 @@
 
 namespace fbzz::core {
 
-// メモリ関連サービスをまとめる所有型システム。
-// WHY: グローバル変数を増やさず、上位の Application が寿命を管理できる形で導入する。
+/// @brief メモリ関連サービスをまとめる所有型システム。
+/// @note グローバル変数を増やさず、上位の Application が寿命を管理できる形で導入する。
 class MemorySystem {
 public:
     MemorySystem() = default;

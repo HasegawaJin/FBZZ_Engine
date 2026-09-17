@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 ///
-/// WHY: 「巡回して敵を見つけたら追跡」は最も基本的なゲーム AI パターンのため、
-/// NavMeshAgentComponent の SetDestination を毎ウェイポイントで呼ぶだけの薄い
-/// System として用意し、ユーザー Script から手動で呼ぶ必要がないようにする。
+/// @note NavMeshAgentComponent の SetDestination を毎ウェイポイントで呼ぶだけの薄い System として
+///       用意し、最も基本的な「巡回して敵を見つけたら追跡」パターンをユーザー Script から手動で
+///       呼ぶ必要がないようにする。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
@@ -17,36 +17,38 @@ namespace fbzz::scene {
 
 struct NavMeshPatrolComponent {
     enum class Mode : uint8_t {
-        LOOP,      // 最後のウェイポイントの次は先頭へ戻る
-        PING_PONG, // 最後まで進んだら逆順に戻る
+        LOOP,      ///< 最後のウェイポイントの次は先頭へ戻る
+        PING_PONG, ///< 最後まで進んだら逆順に戻る
     };
 
-    std::vector<math::Vector3> waypoints; // ワールド座標
-    // ウェイポイントごとの個別待機時間 [s]。waypoints と同サイズのとき waypoints[i] 到達後に使う。
-    // サイズが異なる/空のときは共通の waitTime を使う。
+    std::vector<math::Vector3> waypoints; ///< ワールド座標
+    /// ウェイポイントごとの個別待機時間 [s]。waypoints と同サイズのとき waypoints[i] 到達後に使う。
+    /// サイズが異なる/空のときは共通の waitTime を使う。
     std::vector<float> waypointWaitTimes;
-    // ウェイポイントごとの移動速度オーバーライド [m/s]。0 以下 = Agent のデフォルト速度を使う。
+    /// ウェイポイントごとの移動速度オーバーライド [m/s]。0 以下 = Agent のデフォルト速度を使う。
     std::vector<float> waypointSpeeds;
 
     Mode  mode     = Mode::LOOP;
-    float waitTime = 0.0f; // 各ウェイポイント到達後の待機時間 [s]
+    float waitTime = 0.0f; ///< 各ウェイポイント到達後の待機時間 [s]
 
     bool enabled = true;
 
-    // ── ランタイム状態 (NavMeshPatrolSystem が管理。非永続化) ────────────────
+    /// @name ランタイム状態 (NavMeshPatrolSystem が管理。非永続化)
+    /// @{
     size_t currentIndex = 0;
-    int    direction    = 1; // PING_PONG 用: +1 または -1
+    int    direction    = 1; ///< PING_PONG 用: +1 または -1
     bool   waiting       = false;
     float  waitTimer     = 0.0f;
-    bool   started       = false; // 最初のウェイポイントへまだ向かっていない
+    bool   started       = false; ///< 最初のウェイポイントへまだ向かっていない
 
     const char* GetTypeName() const { return "NavMesh Patrol"; }
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
         r.Field("waitTime", waitTime);
-        // waypoints は vector<Vector3> のため SceneSerializer が専用コードで読み書きする。
+        /// @note waypoints は vector<Vector3> のため SceneSerializer が専用コードで読み書きする。
     }
+    /// @}
 };
 
 } // namespace fbzz::scene

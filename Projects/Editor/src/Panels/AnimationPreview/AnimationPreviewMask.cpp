@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 ///
-/// WHY 分けるか: 通常の Animation Preview と GPU・カメラは共有するが、
-/// 「対象は .mask とその骨格 FBX」「再生しない」「色は Weight」と入口も出口も別物。
-/// 同じファイルに置くと、どちらの都合で書かれた分岐かが読めなくなる。
+/// 通常の Animation Preview と GPU・カメラは共有するが、「対象は .mask とその骨格 FBX」
+/// 「再生しない」「色は Weight」と入口も出口も別物。同じファイルに置くと、
+/// どちらの都合で書かれた分岐かが読めなくなるため分ける。
 #include "AnimationPreviewInternal.hpp"
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -103,7 +103,7 @@ void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
     static std::string maskPath;
     static std::string lastSelectedAsset;
 
-    // 外部からの指定は選択追従より強い。押した本人が「今これを見たい」と言っている。
+    /// @note 外部からの指定は選択追従より強い。押した本人が「今これを見たい」と言っている。
     if (g_maskPreviewRequest.pending) {
         g_maskPreviewRequest.pending = false;
         maskPath = NormalizeAssetPath(g_maskPreviewRequest.maskPath);
@@ -140,13 +140,13 @@ void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
     }
 
     ImGui::TextColored(ImVec4(0.55f, 0.80f, 1.0f, 1.0f), "Animation Mask Preview");
-    // スキンメッシュは「そのメッシュのノード」ではなく「頂点を動かすボーン」で色が決まる。
-    // メッシュノードで引くと、マスク対象がアーマチュアの外にあるため常に 0 になっていた。
+    /// @note スキンメッシュは「そのメッシュのノード」ではなく「頂点を動かすボーン」で色が決まる。
+    ///       メッシュノードで引くと、マスク対象がアーマチュアの外にあるため常に 0 になっていた。
     ImGui::TextDisabled("Skinned mesh is colored by the mask weight of the bones that skin it.");
     widgets::AssetPathField("FBX", modelPath, ".fbx,.fzasset,.asset", ctx.projectRoot);
     widgets::AssetPathField("Mask", maskPath, ".mask,.maskpreset", ctx.projectRoot);
 
-    // ウェイトの読み方を色見本で示す。数値を出すより «赤 = 効かない» が一目で通る。
+    /// @note ウェイトの読み方を色見本で示す。数値を出すより «赤 = 効かない» が一目で通る。
     const struct { float weight; const char* label; } legend[] = {
         { 0.0f, "0.0 Excluded" }, { 0.5f, "0.5 Blended" }, { 1.0f, "1.0 Included" }
     };

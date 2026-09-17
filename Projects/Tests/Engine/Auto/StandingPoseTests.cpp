@@ -118,7 +118,7 @@ TEST_F(StandingPoseTest, ExcludedDescendantsInheritTheFinalParentTransform)
     asset::Skeleton skeleton;
     skeleton.rootNodeIndex = 2;
     skeleton.nodes.resize(3);
-    // インデックス順に依存せず、深さ制限・除外の先の孫まで伝播すること。
+    /// @note インデックス順に依存せず、深さ制限・除外の先の孫まで伝播すること。
     skeleton.nodes[2].children = {0};
     skeleton.nodes[0].parentIndex = 2;
     skeleton.nodes[0].children = {1};

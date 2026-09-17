@@ -18,12 +18,12 @@
 namespace fbzz::asset {
 
 struct IblAsset {
-    renderer::ResourceHandle<renderer::TextureTag> environmentCubemap; // 参照用 (skybox 兼用)
-    renderer::ResourceHandle<renderer::TextureTag> irradianceCubemap;  // t16
-    renderer::ResourceHandle<renderer::TextureTag> prefilteredCubemap; // t17
-    renderer::ResourceHandle<renderer::TextureTag> brdfLut;            // t18
+    renderer::ResourceHandle<renderer::TextureTag> environmentCubemap; ///< 参照用 (skybox 兼用)
+    renderer::ResourceHandle<renderer::TextureTag> irradianceCubemap;  ///< t16
+    renderer::ResourceHandle<renderer::TextureTag> prefilteredCubemap; ///< t17
+    renderer::ResourceHandle<renderer::TextureTag> brdfLut;            ///< t18
 
-    // PBR シェーダーで prefilterMap.SampleLevel(samp, R, mip) に渡す最大 mip レベル
+    /// PBR シェーダーで prefilterMap.SampleLevel(samp, R, mip) に渡す最大 mip レベル
     uint32_t prefilteredMipCount = 5;
 
     bool IsValid() const {

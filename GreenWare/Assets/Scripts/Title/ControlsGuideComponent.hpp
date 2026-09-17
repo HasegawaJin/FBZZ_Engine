@@ -5,32 +5,22 @@
 ///
 /// 画面の作り (Options.scene の既存要素 + ここが実行時に足すもの):
 ///   Ctrl_Rule / CtrlTitle                   見出し (UiReveal が出す)
-///   CtrlDiv_<key> (UIButton) / CtrlL_<key>  行の当たりと左の文言 … ここが出現とホバーを持つ
+///   `CtrlDiv_<key>` (UIButton) / `CtrlL_<key>`  行の当たりと左の文言 … ここが出現とホバーを持つ
 ///   CtrlIcon_* / CtrlR_*                    右のアイコンと補足 (OptionsScreen が中身を持つ)
 ///   CtrlGuide_Device                        見出しの右端に «今の機器» (richText)
 ///   CtrlGuide_Box / _Tag / _Body            一覧の下の解説欄。乗った行の説明を解読風に出す
 ///                                           (Box は UIPanel.mat、Body は richText)
 ///
-/// WHY 解説欄を実行時に作らないか:
-///   scene.Create は GameObject 配列を再確保する。同じ GameObject に居る
-///   OptionsScreenComponent は行の GameObject* を掴んで持つので、こちらが後から
-///   作ると、あちらの指し先が消える。置き場所はシーン、ここは «見つけて動かす» だけ。
-///
-/// WHY 解説欄を足すか:
-///   一覧は «どのキーか» しか言わない。この作品の操作は «斬っても倒れない、
-///   崩すのは弾き、倒れた 5 秒に とどめ» と、ボタンの意味が分からないと遊べない。
-///   乗った行の意味を 2 行で言う欄があれば、OPTIONS が操作説明の場所を兼ねる。
-///
-/// WHY OptionsScreenComponent に足さないか:
-///   あちらは «設定の値の読み書き» が仕事で、既に 700 行ある。行の解説と出現は
-///   値に触らないので、別のスクリプトに切り出して同じ GameObject へ並べる。
-///   触る要素も分けてある: あちらは CtrlR_* / CtrlIcon_* の中身、こちらは
-///   CtrlDiv_* / CtrlL_* の位置と色、右側の α だけ。
-///
-/// WHY 説明を解読風に出すか:
-///   行を移るたびに文が «パッと» 入れ替わると、読み始める前に前の文が消えた感じが
-///   残る。左から確定していけば «今この行の説明が来た» と目で追える。0.3 秒で
-///   出し切る ─ 長いと読めるまで待たされる。
+/// @note 解説欄を実行時に作らない理由: scene.Create は GameObject 配列を再確保する。
+///       同じ GameObject に居る OptionsScreenComponent は行の GameObject* を掴んで
+///       持つので、こちらが後から作るとあちらの指し先が消える。
+/// @note 解説欄を足す理由: 一覧は «どのキーか» しか言わない。乗った行の意味を 2 行で
+///       言う欄があれば、OPTIONS が操作説明の場所を兼ねる。
+/// @note OptionsScreenComponent と分ける理由: あちらは «設定の値の読み書き» が仕事。
+///       触る要素も分けてある ─ あちらは CtrlR_* / CtrlIcon_* の中身、こちらは
+///       CtrlDiv_* / CtrlL_* の位置と色、右側の α だけ。
+/// @note 説明を解読風に出す理由: 文が «パッと» 入れ替わると読み始める前に前の文が
+///       消えた感じが残る。左から確定していけば «今来た» と目で追える。
 #pragma once
 
 #include <Engine/Scene/Components/UIElement.hpp>
@@ -67,7 +57,7 @@ public:
 
     FBZZ_GROUP("Guide Box")
     FBZZ_FIELD(float, boxX, 1268.0f, "X")
-    // 一覧の最後の行 (y = 730) の下。行を増減したら 1 行ぶん (44px) 動かす。
+    /// 一覧の最後の行 (y = 730) の下。行を増減したら 1 行ぶん (44px) 動かす。
     FBZZ_FIELD(float, boxY, 806.0f, "Y")
     FBZZ_FIELD(float, boxW, 520.0f, "W")
     FBZZ_FIELD(float, boxH, 132.0f, "H")
@@ -106,8 +96,8 @@ private:
 
     struct Row {
         std::string key;
-        GameObject* hit   = nullptr;   ///< CtrlDiv_<key>
-        GameObject* label = nullptr;   ///< CtrlL_<key>
+        GameObject* hit   = nullptr;   ///< `CtrlDiv_<key>`
+        GameObject* label = nullptr;   ///< `CtrlL_<key>`
         Vector3 hitOrigin   = {};
         Vector3 labelOrigin = {};
         Vector4 hitColor    = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -149,7 +139,7 @@ inline bool ControlsGuideComponent::UsingPad() const
 
 inline void ControlsGuideComponent::CaptureSlot(std::vector<uimotion::Slot>& into, GameObject* go)
 {
-    // 無い要素も空の枠として積む。«1 行 = 10 枠» の並びで行番号を割り出すため。
+    /// @note 無い要素も空の枠として積む。«1 行 = 10 枠» の並びで行番号を割り出すため。
     uimotion::Slot s;
     if (!go) { into.push_back(s); return; }
     s.go     = go;
@@ -179,7 +169,7 @@ inline void ControlsGuideComponent::OnStart()
         if (auto* img = r.hit->GetComponent<UIImage>()) r.hitColor = img->color;
         m_rows.push_back(r);
 
-        // 右側は機器ごとに 2 組ある。両方控えて、出ている方だけ描かれる。
+        /// @note 右側は機器ごとに 2 組ある。両方控えて、出ている方だけ描かれる。
         for (const char* group : { "KBM", "PAD" }) {
             CaptureSlot(m_right, scene.Find(std::string("CtrlR_") + group + "_" + cr.key));
             for (int i = 0; i < 4; ++i)
@@ -205,15 +195,15 @@ inline void ControlsGuideComponent::Bind()
     if (!m_box || !m_tag || !m_body || !m_device)
         debug.LogWarning("ControlsGuide: CtrlGuide_Box / _Tag / _Body / _Device のどれかがシーンにありません");
 
-    // 色付きの文字列を流し込むので、richText はスクリプト側でも立てておく
-    // (シーンで外されていても動く)。
+    /// @note 色付きの文字列を流し込むので、richText はスクリプト側でも立てておく
+    ///       (シーンで外されていても動く)。
     if (m_body)   if (auto* t = m_body->GetComponent<UIText>())   t->richText = true;
     if (m_device) if (auto* t = m_device->GetComponent<UIText>()) t->richText = true;
 
     if (m_box) {
         m_box->transform.position = { boxX, boxY, 0.0f };
         m_box->transform.scale    = { boxW, boxH, 1.0f };
-        // 解説欄は «枠のある紙» ではなく «一覧の続きの薄い面»。枠は 1px、角は小さく。
+        /// @note 解説欄は «枠のある紙» ではなく «一覧の続きの薄い面»。枠は 1px、角は小さく。
         ui.SetMaterialColor(m_box, "fillColor",   { 0.055f, 0.060f, 0.072f, 0.80f });
         ui.SetMaterialColor(m_box, "borderColor", { 0.25f, 0.26f, 0.29f, 0.9f });
         ui.SetMaterialVector4(m_box, "cornerRadius", { 3.0f, 3.0f, 3.0f, 3.0f });
@@ -227,8 +217,8 @@ inline void ControlsGuideComponent::RefreshDevice()
 {
     GameObject* go = m_device;
     if (!go) return;
-    // 極の色で機器を言う。パッドは −、キーボードは ＋ … ではなく、どちらも
-    // «今つながっている» という 1 つの事実なので、白系 + 薄い極色の走査だけ。
+    /// @note 極の色で機器を言う。パッドは −、キーボードは ＋ … ではなく、どちらも
+    ///       «今つながっている» という 1 つの事実なので、白系 + 薄い極色の走査だけ。
     const std::string label = m_pad ? "GAMEPAD" : "KEYBOARD & MOUSE";
     ui.SetText(go, textfx::TwoTone(label, PoleColor(Pole::Plus),
                                     { 0.62f, 0.61f, 0.58f, 1.0f },
@@ -266,8 +256,8 @@ inline void ControlsGuideComponent::PaintRows(float dt)
             (labelDimColor.w + (labelActiveColor.w - labelDimColor.w) * a) * alpha,
         });
     }
-    // 右側の α。行の番号は名前から引かず、順に並んでいる前提で 1 行あたり
-    // (1 + 4) × 2 組。出現は行と同じ拍にしたいので行の index を割り出す。
+    /// @note 右側の α。行の番号は名前から引かず、順に並んでいる前提で 1 行あたり
+    ///       (1 + 4) × 2 組。出現は行と同じ拍にしたいので行の index を割り出す。
     const std::size_t perRow = 10;
     for (std::size_t i = 0; i < m_right.size(); ++i) {
         uimotion::Slot& s = m_right[i];
@@ -283,7 +273,7 @@ inline void ControlsGuideComponent::PaintRows(float dt)
 
 inline void ControlsGuideComponent::PaintGuide(float dt)
 {
-    // 欄そのものは一覧の最後の行の後に出る。
+    /// @note 欄そのものは一覧の最後の行の後に出る。
     const int   last  = static_cast<int>(m_rows.size());
     const float t     = uimotion::Stagger(m_intro - introDelay, last, introStagger, introSeconds);
     const float e     = uimotion::OutCubic(t);
@@ -299,7 +289,7 @@ inline void ControlsGuideComponent::PaintGuide(float dt)
     if (GameObject* go = m_device)
         ui.SetTextColor(go, { 1.0f, 1.0f, 1.0f, alpha });
 
-    // 本文の解読。tick は 1/30 秒ごとに進める (毎フレームだと速すぎて «ノイズ» に見える)。
+    /// @note 本文の解読。tick は 1/30 秒ごとに進める (毎フレームだと速すぎて «ノイズ» に見える)。
     m_decode += dt;
     m_tick = static_cast<std::uint32_t>(m_decode * 30.0f);
     const float p = std::clamp(m_decode / (std::max)(decodeSeconds, 0.05f), 0.0f, 1.0f);
@@ -322,15 +312,15 @@ inline void ControlsGuideComponent::OnUpdate()
     const bool pad = UsingPad();
     if (pad != m_pad) { m_pad = pad; RefreshDevice(); }
 
-    // どの行に乗っているか。行を押したら «割り当て待ち» の案内へ (OptionsScreen が
-    // 実際の差し替えを持つ。ここは案内の文だけ)。
+    /// @note どの行に乗っているか。行を押したら «割り当て待ち» の案内へ (OptionsScreen が
+    ///       実際の差し替えを持つ。ここは案内の文だけ)。
     m_hovered = -1;
     debugRow  = "-";
     for (std::size_t i = 0; i < m_rows.size(); ++i) {
         Row& r = m_rows[i];
         if (ui.IsHovered(r.hit) || ui.IsPressed(r.hit)) { m_hovered = static_cast<int>(i); debugRow = r.key; }
         if (ui.WasClicked(r.hit)) {
-            // 軸 (移動・カメラ) は差し替えられない (InputActions の ControlRow.action が空)。
+            /// @note 軸 (移動・カメラ) は差し替えられない (InputActions の ControlRow.action が空)。
             bool rebindable = false;
             for (const actions::ControlRow& cr : actions::kControlRows)
                 if (r.key == cr.key && cr.action && *cr.action) rebindable = true;

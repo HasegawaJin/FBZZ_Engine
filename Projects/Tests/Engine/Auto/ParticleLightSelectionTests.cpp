@@ -56,12 +56,12 @@ TEST(ParticleLightSelectionTest, KeepsTheBrightestWithinMaxCountAndBudget)
     std::vector<scene::ParticleLightEmission> out;
     scene::SelectParticleLights(light, particles, 16, out);
     ASSERT_EQ(out.size(), 4u);
-    // アルファで強さが落ちるので、アルファの大きい順 (= 配列の後ろから) に並ぶ。
+    /// @note アルファで強さが落ちるので、アルファの大きい順 (= 配列の後ろから) に並ぶ。
     EXPECT_NEAR(out[0].intensity, 1.0f, 1.0e-5f);
     EXPECT_NEAR(out[1].intensity, 0.9f, 1.0e-5f);
     EXPECT_NEAR(out[3].intensity, 0.7f, 1.0e-5f);
 
-    // 残り枠が上限より少なければ、そちらで打ち切る。
+    /// @note 残り枠が上限より少なければ、そちらで打ち切る。
     scene::SelectParticleLights(light, particles, 2, out);
     EXPECT_EQ(out.size(), 2u);
 }

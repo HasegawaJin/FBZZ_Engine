@@ -111,7 +111,7 @@ int GameObject::GetSiblingIndex() const
         }
         return 0;
     }
-    // ルート: Scene のルート一覧における出現順
+    /// @note ルート: Scene のルート一覧における出現順
     int index = 0;
     for (auto* root : m_scene->GetRootGameObjects()) {
         if (root == this) return index;
@@ -134,12 +134,12 @@ bool GameObject::SetSiblingIndex(int index)
         if (clamped == current) return false;
         siblings.erase(it);
         siblings.insert(siblings.begin() + clamped, m_id);
-        // WHY: シリアライザは flat 順で親子を再構築するため、m_children の並び替えだけでは
-        //      保存 / Undo スナップショット / Play 復元で順序が元に戻ってしまう。
+        /// @note シリアライザは flat 順で親子を再構築するため、m_children の並び替えだけでは
+        ///       保存 / Undo スナップショット / Play 復元で順序が元に戻る。
         m_scene->SyncSiblingFlatOrder(m_id);
         return true;
     }
-    // ルート: フラット配列上のルート順序を Scene 側で並べ替える
+    /// @note ルート: フラット配列上のルート順序を Scene 側で並べ替える
     return m_scene->SetRootSiblingIndex(m_id, index);
 }
 

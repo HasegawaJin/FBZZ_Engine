@@ -3,18 +3,16 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-03
 ///
-/// WHY 接触の «検出» を自前で書かないか:
-///   "Small Steps in Physics Simulation" (Macklin 2019) の主張は解法ではなく刻みの話で、
-///   接触の作り方を変える必要はない。既存の PhysicsSolver::NarrowPhase が返す
-///   ContactPoint をそのまま拘束に包めば、カプセル vs 三角メッシュも地形も
-///   1 行も書かずに効く。M5 で World 全体を substep 化するときも、変わるのは
-///   «誰が NarrowPhase を呼ぶか» だけになる (Docs/design/active-ragdoll.md)。
-///
-/// WHY 相手を «解く / 解かない» で分けるか:
-///   ラグドールの骨どうしは同じソルバが積分しているので双方を動かしてよい。だが
-///   World が積分している瓦礫を substep の中で動かすと、同じフレームで 2 回進むことに
-///   なる。相手が World 側の剛体のときは «動かない壁» として解き、こちらが受けた
-///   反作用を力積として溜めて、フレーム末に 1 回だけ返す。
+/// @note 接触の «検出» を自前で書かない理由: "Small Steps in Physics Simulation"
+///       (Macklin 2019) の主張は解法ではなく刻みの話で、接触の作り方を変える必要はない。
+///       既存の PhysicsSolver::NarrowPhase が返す ContactPoint をそのまま拘束に包めば、
+///       カプセル vs 三角メッシュも地形も 1 行も書かずに効く。M5 で World 全体を
+///       substep 化するときも、変わるのは «誰が NarrowPhase を呼ぶか» だけになる
+///       (Docs/design/active-ragdoll.md)。
+/// @note 相手を «解く / 解かない» で分ける理由: ラグドールの骨どうしは同じソルバが積分している
+///       ので双方を動かしてよい。だが World が積分している瓦礫を substep の中で動かすと
+///       同じフレームで 2 回進むことになるため、相手が World 側の剛体のときは «動かない壁»
+///       として解き、こちらが受けた反作用を力積として溜めてフレーム末に 1 回だけ返す。
 #pragma once
 
 #include <Physics/XPBDConstraint.hpp>

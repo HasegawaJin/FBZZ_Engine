@@ -3,17 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
 ///
-/// WHY 実際のコライダーと NarrowPhase を通すか:
-///   以前ここは «球と箱を模した支持関数» を自前で書き、GJK/EPA だけを直接叩いていた。
-///   それでは «エンジンが実際にどう答えるか» を一切見ていない ── 形状ごとの解析解
-///   (TestSphereAABB / TestAABBCapsule …) も、どの関数へ振り分けるかの dispatch も
-///   通らないので、そこが壊れていても画面は正しいままになる。
-///   実際に見つかった不具合はいずれもその層にあった:
-///     ・球の中心が箱の内部にあると、形状に関係なく真上へ押し出していた
-///     ・カプセルが箱を貫くと、拾った 1 点次第で «下へ抜ける» と答えていた
-///     ・ConvexHull × HeightField が dispatch から漏れ、当たり判定ごと消えていた
-///   どれも «たまにすり抜ける / 変な向きへ弾かれる» としか見えず、数値でも掴みにくい。
-///   ここで見たいのはまさにそれなので、ゲームと同じ経路を通す。
+/// @note 以前は «球と箱を模した支持関数» で GJK/EPA を直接叩いていたが、それではエンジンが実際にどう答えるかを見ておらず、解析解や dispatch の不具合を検出できなかった。
+/// @note 実際に見つかった不具合: 球が箱内部で真上へ押し出す、カプセル貫通で «下へ抜ける» と誤判定、ConvexHull×HeightField が dispatch から漏れる、など数値でも掴みにくい症状ばかりだった。
+/// @note ゲームと同じ経路 (実コライダー + NarrowPhase) を通して見る。
 #include "Scenes.hpp"
 
 #include <Physics/AABBCollider.hpp>
@@ -157,12 +149,10 @@ public:
         const physics::AABB boundsB = m_b.collider->GetAABB();
         const bool          overlap = boundsA.Overlaps(boundsB);
 
-        // WHY «AABB は重なるのに接触 0» をここへ入れないか: 球どうしを斜めに置くだけで
-        //     普通に起きる。いつも点いている警告は読まれなくなるので、人の判断が要る話は
-        //     設定欄の説明文に残し、ここには白黒つくものだけ置く。
+        /// @note «AABB は重なるのに接触 0» はここに入れない。球を斜めに置くだけで普通に起きるため、いつも点く警告は読まれなくなる。人の判断が要る話は設定欄の説明文に残し、ここには白黒つくものだけ置く。
         if (m_contacts.empty()) return;
 
-        // AABB が離れていれば形も必ず離れている。ここで接触が出るのは偽陽性。
+        /// @note AABB が離れていれば形も必ず離れている。ここで接触が出るのは偽陽性。
         log.ReportIf(!overlap, Severity::Error,
                      "AABB が離れているのに接触が %zu 点出ている", m_contacts.size());
 
@@ -177,7 +167,7 @@ public:
             log.ReportIf(std::fabs(length - 1.0f) > 1.0e-3f, Severity::Error,
                          "法線が単位長でない (|n| = %.5f)", length);
 
-            // 逆を向いた法線は、押し出しではなく相手への吸い込みになる。
+            /// @note 逆を向いた法線は、押し出しではなく相手への吸い込みになる。
             log.ReportIf(math::Vector3::Dot(contact.normal, bToA) < 0.0f, Severity::Error,
                          "法線が B→A の逆を向いている (%+.3f, %+.3f, %+.3f)",
                          contact.normal.x, contact.normal.y, contact.normal.z);
@@ -211,15 +201,15 @@ public:
             m_b.position = { position[0], position[1], 0.0f };
             dirty = true;
         }
-        // 回転を触れないと OBB とカプセルの «向きに追従するか» が一切見えない。
+        /// @note 回転を触れないと OBB とカプセルの «向きに追従するか» が一切見えない。
         if (ImGui::SliderFloat("B の角度", &m_b.angleDegrees, -180.0f, 180.0f, "%.1f 度"))
             dirty = true;
         if (ImGui::SliderFloat("A の角度", &m_a.angleDegrees, -180.0f, 180.0f, "%.1f 度"))
             dirty = true;
         ImGui::Checkbox("A のまわりを回す", &m_orbit);
 
-        // 触った結果をこのフレームのうちに反映する。次フレームまで待つと、
-        // スライダーを動かしている間だけ «1 つ前の答え» を見ることになる。
+        /// @note 触った結果をこのフレームのうちに反映する。次フレームまで待つと、
+        ///       スライダーを動かしている間だけ «1 つ前の答え» を見ることになる。
         if (dirty) Sync();
 
         ImGui::Separator();
@@ -228,7 +218,7 @@ public:
 
         if (m_contacts.empty()) {
             if (boundsOverlap) {
-                // BroadPhase を通る配置なのに接触が出ない = 実際に起きた不具合の形。
+                /// @note BroadPhase を通る配置なのに接触が出ない = 実際に起きた不具合の形。
                 ImGui::TextColored({ 1.0f, 0.36f, 0.41f, 1.0f },
                                    "接触なし (AABB は重なっている)");
                 ImGui::TextWrapped("形状が離れているならこれで正しい。食い込んで見えるなら、"
@@ -256,7 +246,7 @@ public:
                 ImGui::TableNextColumn();
                 ImGui::Text("%.4f", contact.depth);
                 ImGui::TableNextColumn();
-                // 押し出す向きが «B から A» を向いているか。数値で見えないと判断できない。
+                /// @note 押し出す向きが «B から A» を向いているか。数値で見えないと判断できない。
                 const float agreement = math::Vector3::Dot(contact.normal, bToA);
                 if (agreement >= 0.0f) ImGui::TextUnformatted("B→A");
                 else ImGui::TextColored({ 1.0f, 0.36f, 0.41f, 1.0f }, "逆向き");
@@ -273,7 +263,7 @@ public:
         DrawActor(view, m_b, colors::kBodyAlt);
 
         for (const physics::ContactPoint& contact : m_contacts) {
-            // 矢印の長さは «見える» 固定倍率。深さは赤い線の長さで別に見せる。
+            /// @note 矢印の長さは «見える» 固定倍率。深さは赤い線の長さで別に見せる。
             view.DrawArrow(contact.point, contact.point + contact.normal * 1.0f,
                            colors::kNormal, 2.5f);
             view.DrawLine(contact.point, contact.point - contact.normal * contact.depth,
@@ -305,8 +295,8 @@ private:
 
         switch (actor.kind) {
         case ShapeKind::Sphere: {
-            // 半径はコライダーから読む。描画と判定が別の値を見ていると、
-            // «絵では当たっていないのに接触が出る» という嘘の疑いを生む。
+            /// @note 半径はコライダーから読む。描画と判定が別の値を見ていると、
+            ///       «絵では当たっていないのに接触が出る» という嘘の疑いを生む。
             const auto& sphere = static_cast<const physics::SphereCollider&>(*actor.collider);
             view.DrawCircle(bounds.Center(), sphere.m_radius, color);
             break;
@@ -326,7 +316,7 @@ private:
         }
         case ShapeKind::OrientedBox: {
             const auto& box = static_cast<const physics::OBBCollider&>(*actor.collider);
-            // 回した箱は AABB では読めない。角そのものを打つ。
+            /// @note 回した箱は AABB では読めない。角そのものを打つ。
             for (const math::Vector3& corner : box.GetCorners())
                 view.DrawPoint(corner, color, 3.0f);
             break;

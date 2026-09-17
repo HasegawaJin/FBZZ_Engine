@@ -6,8 +6,8 @@
 
 namespace fbzz::editor {
 
-// RegistryでAutomatic指定された全コンポーネントを共通Reflectorへ接続する。
-// WHY: 新しい単純コンポーネントは専用Inspector関数を追加せず、自動的にここへ入る。
+/// @brief RegistryでAutomatic指定された全コンポーネントを共通Reflectorへ接続する。
+/// @note 新しい単純コンポーネントは専用Inspector関数を追加せず、自動的にここへ入る。
 void DrawAutomaticInspectors(scene::ComponentCategory category,
                              scene::GameObject* go,
                              EditorContext& ctx,

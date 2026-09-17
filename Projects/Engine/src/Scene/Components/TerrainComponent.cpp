@@ -1,4 +1,4 @@
-﻿/// @file    TerrainComponent.cpp
+/// @file    TerrainComponent.cpp
 /// @brief   ハイトマップ地形コンポーネントのメソッド実装。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
@@ -12,16 +12,13 @@
 
 namespace fbzz::scene {
 
-// -----------------------------------------------------------------------------
-// ComputeNormal — 有限差分で 1 グリッド頂点の法線を計算する
-// -----------------------------------------------------------------------------
-// 境界外インデックスはクランプサンプリングで対応する。
-//
-//   dh/dx = (h(x+1, z) - h(x-1, z)) / (2 * cellSize)
-//   dh/dz = (h(x, z+1) - h(x, z-1)) / (2 * cellSize)
-//   normal = normalize( (-dh/dx, 1, -dh/dz) )   [Y 上向き座標系]
-//
-// WHY 中心差分: 片側差分より精度が高く、境界でも clamp サンプリングで安定する。
+/// ComputeNormal — 有限差分で 1 グリッド頂点の法線を計算する
+/// 境界外インデックスはクランプサンプリングで対応する。
+///
+///   dh/dx = (h(x+1, z) - h(x-1, z)) / (2 * cellSize)
+///   dh/dz = (h(x, z+1) - h(x, z-1)) / (2 * cellSize)
+///   normal = normalize( (-dh/dx, 1, -dh/dz) )   [Y 上向き座標系]
+/// @note 片側差分より精度が高く、境界でも clamp サンプリングで安定するため中心差分を使う。
 math::Vector3 TerrainComponent::ComputeNormal(int x, int z) const
 {
     float dhdx = (SampleHeight(x + 1, z) - SampleHeight(x - 1, z)) / (2.0f * cellSize);
@@ -29,11 +26,9 @@ math::Vector3 TerrainComponent::ComputeNormal(int x, int z) const
     return math::Vector3{ -dhdx, 1.0f, -dhdz }.Normalized();
 }
 
-// -----------------------------------------------------------------------------
-// GetHeightAt — 描画メッシュ・MeshCollider と同じ2三角形分割で高さを補間する
-// WHY: バイリニア補間は非平面セル内で三角形面と一致せず、Detail や足 IK が地面から浮くため。
-// -----------------------------------------------------------------------------
-// 範囲外座標はクランプして継続する（assert せず、Physics・足 IK から呼ばれるため）。
+/// GetHeightAt — 描画メッシュ・MeshCollider と同じ2三角形分割で高さを補間する
+/// @note バイリニア補間は非平面セル内で三角形面と一致せず、Detail や足 IK が地面から浮くため
+///       この分割を使う。範囲外座標はクランプして継続する（assert せず、Physics・足 IK から呼ばれるため）。
 float TerrainComponent::GetHeightAt(float localX, float localZ) const
 {
     if (heightData.empty()) return 0.0f;
@@ -56,8 +51,8 @@ float TerrainComponent::GetHeightAt(float localX, float localZ) const
     float h01 = h(x0,     z0 + 1);
     float h11 = h(x0 + 1, z0 + 1);
 
-    // TerrainRenderPass / PhysicsSystem のインデックス分割:
-    //   lower: i00, i01, i10 / upper: i10, i01, i11
+    /// @note TerrainRenderPass / PhysicsSystem のインデックス分割:
+    ///       lower: i00, i01, i10 / upper: i10, i01, i11
     if (fx + fz <= 1.0f)
         return h00 + fx * (h10 - h00) + fz * (h01 - h00);
 
@@ -66,11 +61,9 @@ float TerrainComponent::GetHeightAt(float localX, float localZ) const
          + h11 * (fx + fz - 1.0f);
 }
 
-// -----------------------------------------------------------------------------
-// GetNormalAt — ローカル座標から補間法線を返す
-// -----------------------------------------------------------------------------
-// 隣接グリッド頂点の法線をバイリニア補間して返す。
-// 有限差分の局所的なノイズが補間によって滑らかになる効果もある。
+/// GetNormalAt — ローカル座標から補間法線を返す
+/// 隣接グリッド頂点の法線をバイリニア補間して返す。
+/// 有限差分の局所的なノイズが補間によって滑らかになる効果もある。
 math::Vector3 TerrainComponent::GetNormalAt(float localX, float localZ) const
 {
     if (heightData.empty()) return { 0.0f, 1.0f, 0.0f };

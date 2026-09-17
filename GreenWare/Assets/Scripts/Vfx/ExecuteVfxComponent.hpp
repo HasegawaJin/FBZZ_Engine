@@ -3,14 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 切断面の «赤熱 → 冷める» を芯にするか:
-///   とどめは 5 秒の転倒の中で 1 回だけ起きる、盤面の形が変わる出来事 (break-parry.md)。
-///   火花と破片は衝突の爆発にもあるので、それだけでは «壊れた» と読み分けられない。
-///   «斬った面が熱を持って冷める» は刀にしか無い絵で、これが «斬り落とした» の語になる。
-///
-/// WHY 色は白〜熱色で、極性色を乗せないか:
-///   とどめは極の出来事ではない (極性の色合わせは 2026-09-04 に捨てた)。
-///   火花・火の粉・切断面は 12.2 の «熱色のまま» の側。
+/// @note 切断面の «赤熱 → 冷める» を芯にする。火花と破片は衝突の爆発にもあるため、
+///       それだけでは «壊れた» と読み分けられない (break-parry.md)。
+/// @note 色は白〜熱色で、極性色は乗せない (とどめは極の出来事ではない。企画書 12.2)。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -52,7 +47,7 @@ inline void ExecuteVfxComponent::Apply()
     vfxbind::ParticleSizeStart(root, "Cut Flash", cutSize * 0.45f);
     vfxbind::ParticleSizeEnd(root,   "Cut Arc", cutSize);
     vfxbind::ParticleSizeStart(root, "Cut Arc", cutSize * 0.55f);
-    // 縫い目の長さは弧に追従させる (sizeStart が基準寸法)。
+    /// @note 縫い目の長さは弧に追従させる (sizeStart が基準寸法)。
     vfxbind::ParticleSizeStart(root, "Cut Seam", cutSize * 0.38f);
     vfxbind::ParticleSizeEnd(root,   "Cut Seam", cutSize * 0.44f);
     vfxbind::ParticleEmitVelocity(root, "Molten Sparks", Vector3{ 0.0f, sparkPower * 0.15f, sparkPower * 0.65f });

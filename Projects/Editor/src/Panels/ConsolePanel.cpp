@@ -25,7 +25,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// ログレベルを表す色 (左のバー・バッジ・件数トグルが共有する)。
+/// ログレベルを表す色 (左のバー・バッジ・件数トグルが共有する)。
 ImVec4 LogLevelColor(core::LogLevel level)
 {
     switch (level) {
@@ -37,12 +37,8 @@ ImVec4 LogLevelColor(core::LogLevel level)
     }
 }
 
-// 本文そのものの色。
-// WHY レベル色で塗らないか: 以前は本文全体をレベル色にしていたため、大多数を占める
-//     INFO が地の文と同じ白でベタ一面になり、その中の WARNING / ERROR も
-//     「色が付いた文字列」でしかなかった。本文は読むための色 (通常色) に固定し、
-//     重大度は行の左バーとバッジという別の手がかりに逃がす。そうすると
-//     WARNING / ERROR だけが面として浮き、走査で拾えるようになる。
+/// 本文そのものの色。
+/// @note 重大度は行の左バーとバッジで示すため、本文は常に通常色に固定する。
 ImVec4 LogMessageColor(core::LogLevel level)
 {
     switch (level) {
@@ -54,11 +50,12 @@ ImVec4 LogMessageColor(core::LogLevel level)
     }
 }
 
-// 行の背景。警告とエラーだけ、レベル色をごく薄く敷いて面として目立たせる。
-// 0 を返す行は背景を描かない。
+/// 行の背景。警告とエラーだけ、レベル色をごく薄く敷いて面として目立たせる。
+/// 0 を返す行は背景を描かない。
 ImU32 LogRowTint(core::LogLevel level, bool selected)
 {
-    if (selected) return 0; // 選択色を濁らせない
+    /// @note 選択色を濁らせない
+    if (selected) return 0;
     switch (level) {
     case core::LogLevel::WARNING:   return EditorTheme::ColorU32(ThemeColor::Warning, 0.10f);
     case core::LogLevel::LOG_ERROR: return EditorTheme::ColorU32(ThemeColor::Danger,  0.14f);
@@ -66,18 +63,16 @@ ImU32 LogRowTint(core::LogLevel level, bool selected)
     }
 }
 
-// 一覧 1 行の高さ。
-// WHY 既定の行送りを使わないか: Selectable の既定は行間 0 で、数十行並ぶと
-//     文字が帯になって走査できない。少しだけ広げて 1 行ずつ読めるようにする。
-//     ImGuiListClipper は等高を前提に間引くので、この値を Begin へも渡すこと。
+/// 一覧 1 行の高さ。
+/// @note Selectable の既定行間 0 だと文字が帯状になるため広げる。
+/// @note ImGuiListClipper は等高前提で間引くので、この値を Begin へも渡すこと。
 float ConsoleRowHeight()
 {
     return ImGui::GetTextLineHeight() + 6.0f;
 }
 
-// 色に頼らずレベルを読めるようにするバッジ。記号が使えない環境では 1 文字へ落ちる。
-// WHY 記号を優先するか: ログは «流し読みして異常だけ拾う» 画面で、形の違いは
-//     文字の違いより速く目に入る。色覚に依らない手がかりでもある。
+/// 色に頼らずレベルを読めるようにするバッジ。記号が使えない環境では 1 文字へ落ちる。
+/// @note 形の違いは色より速く目に入るため、色覚に依らない手がかりとして優先する。
 const char* LogLevelBadge(core::LogLevel level)
 {
     switch (level) {
@@ -89,13 +84,13 @@ const char* LogLevelBadge(core::LogLevel level)
     }
 }
 
-// バッジ列の幅。記号は 1 文字より広いので、本文の開始 X をここで決める。
+/// バッジ列の幅。記号は 1 文字より広いので、本文の開始 X をここで決める。
 float LogLevelBadgeWidth()
 {
     return ImGui::CalcTextSize(LogLevelBadge(core::LogLevel::WARNING)).x;
 }
 
-// 詳細ペインの見出しに出すレベル名。
+/// 詳細ペインの見出しに出すレベル名。
 const char* LogLevelName(core::LogLevel level)
 {
     switch (level) {
@@ -107,10 +102,8 @@ const char* LogLevelName(core::LogLevel level)
     }
 }
 
-// 幅 width に収まるよう改行を挿し込んだ文字列を返す。
-// WHY: 詳細の本文は範囲選択できる InputTextMultiline で出すが、あれは折り返しを
-//      持たないため長い 1 行が横スクロール送りになる。表示の直前に自前で折って
-//      渡すことで、折り返しと選択・部分コピーを両立させる。
+/// 幅 width に収まるよう改行を挿し込んだ文字列を返す。
+/// @note InputTextMultiline は折り返しを持たないため、表示直前に自前で折る。
 std::string WrapText(const std::string& text, float width)
 {
     if (width <= 1.0f) return text;
@@ -125,14 +118,14 @@ std::string WrapText(const std::string& text, float width)
     const char* end    = cursor + text.size();
     while (cursor < end) {
         const char* lineEnd = std::find(cursor, end, '\n');
-        // 論理行 1 本を、収まる幅ごとに切り出す。
+        /// @note 論理行 1 本を、収まる幅ごとに切り出す。
         while (cursor < lineEnd) {
             const char* wrap = font->CalcWordWrapPosition(fontSize, cursor, lineEnd, width);
-            // 1 文字も置けない幅のときは無限ループになるので、最低 1 文字は進める。
+            /// @note 1 文字も置けない幅のときは無限ループになるので、最低 1 文字は進める。
             if (wrap == cursor) ++wrap;
             out.append(cursor, wrap);
             cursor = wrap;
-            // 折り返し位置の空白は行頭に残さない。
+            /// @note 折り返し位置の空白は行頭に残さない。
             while (cursor < lineEnd && *cursor == ' ') ++cursor;
             if (cursor < lineEnd) out += '\n';
         }
@@ -144,9 +137,8 @@ std::string WrapText(const std::string& text, float width)
     return out;
 }
 
-// 一覧では 1 行に収めたいので、改行以降を省略した 1 行表現を作る。
-// WHY: 複数行のログ (スタックダンプ等) がそのまま並ぶとリストの行高が不揃いになり、
-//      ImGuiListClipper の等高前提も崩れる。全文は詳細ペインで読ませる。
+/// 一覧では 1 行に収めたいので、改行以降を省略した 1 行表現を作る。
+/// @note 複数行だと ImGuiListClipper の等高前提が崩れるため。全文は詳細ペインで読ませる。
 std::string FirstLineOf(const std::string& message)
 {
     const std::size_t nl = message.find('\n');
@@ -207,24 +199,23 @@ bool ConsolePanel::FiltersChanged() const
 void ConsolePanel::RebuildRows()
 {
     const std::string filter(m_filterBuf.data());
-    // GetEntries()[i] の通し番号は oldest + i。リングバッファから押し出された行は
-    // ここより小さい番号になるので、選択から落とす判定にも使える。
+    /// @note GetEntries()[i] の通し番号は oldest + i。リングバッファから押し出された行は
+    ///       ここより小さい番号になるので、選択から落とす判定にも使える。
     const std::uint64_t oldest = m_sink.GetOldestSequence();
 
     m_rows.clear();
     m_visibleLogText.clear();
     m_levelCounts.fill(0);
 
-    // Collapse 時の集約先を引くための索引。key はレベルと本文の組。
-    // WHY: Unity の Collapse は連続した重複だけでなく、離れて出た同一メッセージも
-    //      1 行へまとめて件数を出す。ループ中に前方の行を引き直す必要があるため索引を持つ。
+    /// @note Collapse 時の集約先を引くための索引。key はレベルと本文の組。
+    /// @note 連続していない同一メッセージも 1 行へまとめるため、前方の行を引き直す索引が要る。
     std::unordered_map<std::string, std::size_t> collapseIndex;
 
     const auto& entries = m_sink.GetEntries();
     for (std::size_t i = 0; i < entries.size(); ++i) {
         const core::LogEntry& entry = entries[i];
 
-        // 件数はフィルタと無関係に数える (フィルタで隠しても総数は把握したい)。
+        /// @note 件数はフィルタと無関係に数える (フィルタで隠しても総数は把握したい)。
         const int levelIndex = static_cast<int>(entry.level);
         if (levelIndex >= 0 && levelIndex < static_cast<int>(m_levelCounts.size()))
             ++m_levelCounts[static_cast<std::size_t>(levelIndex)];
@@ -233,15 +224,15 @@ void ConsolePanel::RebuildRows()
         if (entry.level == core::LogLevel::INFO      && !m_showInfo)  continue;
         if (entry.level == core::LogLevel::WARNING   && !m_showWarn)  continue;
         if (entry.level == core::LogLevel::LOG_ERROR && !m_showError) continue;
-        // WHY: 他の検索欄 (Add Component / Asset Browser) は ContainsCI で
-        //      大文字小文字を無視する。Console だけ区別すると挙動が食い違う。
+        /// @note 他の検索欄 (Add Component / Asset Browser) と同じく大文字小文字を無視する。
         if (!filter.empty() && !util::StringUtils::ContainsCI(entry.message, filter)) continue;
 
         if (m_collapse) {
             std::string key;
             key.reserve(entry.message.size() + 2);
             key += static_cast<char>('0' + static_cast<int>(entry.level));
-            key += '\x1f';   // レベルと本文の区切り (本文に現れない制御文字)
+            /// @note レベルと本文の区切り (本文に現れない制御文字)
+            key += '\x1f';
             key += entry.message;
 
             const auto it = collapseIndex.find(key);
@@ -265,8 +256,7 @@ void ConsolePanel::RebuildRows()
     m_cachedShowError = m_showError;
     m_cachedCollapse  = m_collapse;
 
-    // WHY フィルタで消えた行を選択から外さないか: レベルトグルを切り替えて戻したときに
-    //      選択が生き残っていてほしい。捨てるのは実体がバッファから消えた行だけにする。
+    /// @note フィルタで隠れただけの行は選択を保つ。捨てるのはバッファから消えた行だけ。
     std::erase_if(m_selection, [oldest](std::uint64_t sequence) { return sequence < oldest; });
     if (m_anchorSequence < oldest) m_anchorSequence = 0;
     if (m_detailSequence < oldest) m_detailSequence = 0;
@@ -299,8 +289,7 @@ void ConsolePanel::ApplyRowClick(int row)
     const int anchor = RowIndexOf(m_anchorSequence);
 
     if (io.KeyShift && anchor >= 0) {
-        // WHY 起点を動かさないか: 動かすと Shift クリックのたびに範囲が「そこから」に
-        //     なり、行き過ぎたぶんを戻して選び直せない。起点は素のクリックだけが決める。
+        /// @note 起点を動かすと Shift クリックのたびに範囲が「そこから」になり選び直せない。
         SelectRange(anchor, row, io.KeyCtrl);
     } else if (io.KeyCtrl) {
         if (!m_selection.insert(sequence).second) m_selection.erase(sequence);
@@ -317,7 +306,7 @@ std::string ConsolePanel::SelectedText() const
 {
     const auto& entries = m_sink.GetEntries();
     std::string text;
-    // m_rows の順で拾う。選択は集合なので、そのまま回すと画面と並びが変わる。
+    /// @note m_rows の順で拾う。選択は集合なので、そのまま回すと画面と並びが変わる。
     for (const Row& row : m_rows) {
         if (!m_selection.contains(row.sequence)) continue;
         if (row.entryIndex >= entries.size()) continue;
@@ -340,7 +329,7 @@ void ConsolePanel::JumpToSource(EditorContext& ctx, const std::string& message)
     std::size_t bodyOffset = 0;
     if (!ParseLogLocationPrefix(message, file, line, bodyOffset)) return;
 
-    // Logger はベース名しか残さないため、プロジェクトとエンジンのソースツリーから引き直す。
+    /// @note Logger はベース名しか残さないため、プロジェクトとエンジンのソースツリーから引き直す。
     const std::vector<std::string> roots = {
         ctx.scriptsSourceDir,
         ctx.projectRoot,
@@ -377,9 +366,8 @@ void ConsolePanel::DrawDetailPane(EditorContext& ctx)
     std::size_t bodyOffset = 0;
     const bool hasLocation = ParseLogLocationPrefix(entry.message, file, line, bodyOffset);
 
-    // --- 見出し: レベル / 件数 / 発生位置 / 操作 ---
-    // WHY: 以前は本文だけが置かれていて、「これはどのレベルの何段目か」「どこで出たか」を
-    //      一覧側と見比べないと分からなかった。読む前に要る情報は本文の外へ出す。
+    /// @name 見出し: レベル / 件数 / 発生位置 / 操作
+    /// @note 読む前に要る情報 (レベル・件数・発生位置) は本文の外へ出す。
     ImGui::PushStyleColor(ImGuiCol_Text, LogLevelColor(entry.level));
     ImGui::TextUnformatted(LogLevelName(entry.level));
     ImGui::PopStyleColor();
@@ -403,13 +391,9 @@ void ConsolePanel::DrawDetailPane(EditorContext& ctx)
 
     ImGui::Separator();
 
-    // --- 本文 ---
-    // WHY 色をレベルで塗らないか: 一覧と同じ理由。詳細は「読む」ための面なので
-    //     本文は通常色に固定し、重大度は上の見出しが担う。DEBUG を淡色で塗ると
-    //     いちばん細かく読みたいメッセージがいちばん読めなくなっていた。
-    // WHY InputTextMultiline か: TextWrapped は範囲選択もマウスコピーもできず、
-    //     長いメッセージの一部だけ拾って検索することができなかった。読み取り専用の
-    //     入力欄にすると、選択・部分コピー・内部スクロールがそのまま手に入る。
+    /// @name 本文
+    /// @note 重大度は見出しが担うため本文は通常色に固定する。
+    /// @note TextWrapped は選択・部分コピーができないため、読み取り専用の InputTextMultiline を使う。
     const float avail = ImGui::GetContentRegionAvail().x
                       - ImGui::GetStyle().FramePadding.x * 2.0f
                       - ImGui::GetStyle().ScrollbarSize;
@@ -437,7 +421,7 @@ void ConsolePanel::DrawDetailSplitter()
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
 
     if (ImGui::IsItemActive()) {
-        // 掴んだ量をパネル高で正規化する。パネルを広げても掴み心地が変わらない。
+        /// @note 掴んだ量をパネル高で正規化する。パネルを広げても掴み心地が変わらない。
         const float panelH = std::max(ImGui::GetWindowHeight(), 1.0f);
         m_detailRatio = std::clamp(m_detailRatio - ImGui::GetIO().MouseDelta.y / panelH,
                                    0.10f, 0.80f);
@@ -461,9 +445,8 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
 
     const float rowH = ConsoleRowHeight();
 
-    // WHY: メッセージ本文をそのまま Selectable のラベルにすると、"##" を含む
-    //      ログ (シェーダー診断など) で以降が表示されなくなる。行の当たり判定は
-    //      ID だけの Selectable に任せ、本文は自前で重ね描きする。
+    /// @note 本文をそのまま Selectable のラベルにすると "##" を含むログ (シェーダー診断等) で
+    ///       以降が表示されなくなる。当たり判定は ID だけの Selectable に任せ本文は重ね描きする。
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     if (ImGui::Selectable("##row", selected,
                           ImGuiSelectableFlags_AllowDoubleClick, { 0.0f, rowH }))
@@ -473,27 +456,26 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
     const ImVec2 rowMax = ImGui::GetItemRectMax();
     ImDrawList*  dl     = ImGui::GetWindowDrawList();
 
-    // 警告・エラーだけ面で塗り、走査で拾えるようにする。
+    /// @note 警告・エラーだけ面で塗り、走査で拾えるようにする。
     if (const ImU32 tint = LogRowTint(r.level, selected); tint != 0)
         dl->AddRectFilled(rowMin, rowMax, tint);
 
-    // 左端のレベルバー。色が読めない環境でも次のバッジ文字で判別できる。
+    /// @note 左端のレベルバー。色が読めない環境でも次のバッジ文字で判別できる。
     const ImVec4 levelColor = LogLevelColor(r.level);
     dl->AddRectFilled(rowMin, { rowMin.x + 3.0f, rowMax.y },
                       ImGui::ColorConvertFloat4ToU32(levelColor));
 
-    // --- 押下・ドラッグ・右クリックの取り回し (見た目より前に判定を済ませる) ---
-    // WHY 押した瞬間に起点を取るか: Selectable が true を返すのは離した時なので、
-    //     そこまで待つとドラッグの開始行が分からず、なぞって範囲を作れない。
+    /// @name 押下・ドラッグ・右クリックの取り回し (見た目より前に判定を済ませる)
+    /// @note Selectable は離した時に true を返すため、それを待たず押下の瞬間に起点を取る。
     const ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
         && !io.KeyShift && !io.KeyCtrl)
         m_anchorSequence = r.sequence;
 
-    // 押したままなぞって範囲を伸ばす。飛ばした行も起点からの範囲で埋まるため、
-    // クリッパーが間引いた行が選択から抜け落ちることはない。
-    // WHY AllowWhenBlockedByActiveItem が要るか: ドラッグ中は押した行が
-    //     ActiveId を握っており、素の IsItemHovered は他の行で false を返す。
+    /// @note 押したままなぞって範囲を伸ばす。飛ばした行も起点からの範囲で埋まるため、
+    ///       クリッパーが間引いた行が選択から抜け落ちることはない。
+    /// @note ドラッグ中は押した行が ActiveId を握るため、他の行の IsItemHovered には
+    ///       AllowWhenBlockedByActiveItem が要る。
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
         && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const int anchor = RowIndexOf(m_anchorSequence);
@@ -503,9 +485,9 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
         }
     }
 
-    // 右クリックは選択外の行なら選び直す。選択内ならまとめて扱いたいので触らない。
-    // WHY ポップアップの中で選択を触らないか: 中身は開いている間ずっと毎フレーム
-    //     走るため、そこで選び直すと複数選択が毎フレーム 1 行へ潰れる。
+    /// @note 右クリックは選択外の行なら選び直す。選択内ならまとめて扱いたいので触らない。
+    /// @note ポップアップは開いている間ずっと毎フレーム走るため、そこで選び直すと
+    ///       複数選択が毎フレーム 1 行へ潰れる。
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         if (!m_selection.contains(r.sequence)) {
             m_selection.clear();
@@ -520,18 +502,16 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
         JumpToSource(ctx, entry.message);
     }
 
-    // --- 本文 ---
+    /// @name 本文
     const float textY = origin.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f;
     float x = rowMin.x + 10.0f;
 
-    // レベルバッジ。固定幅で置き、本文の開始位置を揃える。
+    /// @note レベルバッジ。固定幅で置き、本文の開始位置を揃える。
     const char* badge = LogLevelBadge(r.level);
     dl->AddText({ x, textY }, ImGui::ColorConvertFloat4ToU32(levelColor), badge);
     x += LogLevelBadgeWidth() + 8.0f;
 
-    // "[File.cpp:123]" は本文と分けて淡色で出す。
-    // WHY: 位置は「どこで出たか」の手がかりであって読む文ではない。本文と同じ濃さで
-    //      前置きされると、行ごとに毎回そこを読み飛ばす手間がかかる。
+    /// @note "[File.cpp:123]" は本文と分けて淡色で出す。本文と同じ濃さだと毎行読み飛ばす手間がかかる。
     std::string file;
     int         line = 0;
     std::size_t bodyOffset = 0;
@@ -548,7 +528,7 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
     dl->AddText({ x, textY }, ImGui::ColorConvertFloat4ToU32(LogMessageColor(r.level)),
                 body.c_str(), body.c_str() + body.size());
 
-    // Collapse 件数バッジを行の右端へ重ねる。
+    /// @note Collapse 件数バッジを行の右端へ重ねる。
     if (r.count > 1) {
         char countText[16];
         std::snprintf(countText, sizeof(countText), "%d", r.count);
@@ -587,10 +567,7 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
 
 void ConsolePanel::DrawLevelToggle(const char* label, core::LogLevel level, bool& enabled)
 {
-    // 押下状態 = そのレベルを表示中。件数を同じボタンに載せる。
-    // WHY チェックボックスをやめたか: 4 つ並ぶ四角と文字は形が同じで、どれが ON かを
-    //     読むのに毎回フォーカスが要る。さらに件数が別の場所にあり、
-    //     「ERROR が何件か」と「ERROR を表示しているか」を 2 か所で確認していた。
+    /// @note 押下状態 = そのレベルを表示中。件数を同じボタンに載せ、件数と表示可否を 1 か所で確認できるようにする。
     const int count = m_levelCounts[static_cast<std::size_t>(level)];
     char text[32];
     std::snprintf(text, sizeof(text), "%s %d", label, count);
@@ -621,8 +598,8 @@ bool ConsolePanel::DrawToolbar()
         return ImGui::CalcTextSize(s).x + st.FramePadding.x * 2.0f;
     };
 
-    // レベルのトグル。DEBUG は表示フィルタであると同時に Logger の収集レベルも動かす
-    // (収集していないものは表示しようがない)。実際に変わったフレームだけ反映する。
+    /// @note レベルのトグル。DEBUG は表示フィルタであると同時に Logger の収集レベルも動かす
+    ///       (収集していないものは表示しようがない)。実際に変わったフレームだけ反映する。
     const bool debugBefore = m_showDebug;
     DrawLevelToggle("D", core::LogLevel::DEBUG, m_showDebug);
     if (m_showDebug != debugBefore)
@@ -632,9 +609,7 @@ bool ConsolePanel::DrawToolbar()
     DrawLevelToggle("W", core::LogLevel::WARNING,   m_showWarn);  ImGui::SameLine(0.0f, 4.0f);
     DrawLevelToggle("E", core::LogLevel::LOG_ERROR, m_showError); ImGui::SameLine(0.0f, sp);
 
-    // 右側のクラスタ幅を実測し、検索欄を残り全部へ伸ばす。
-    // WHY 固定 200px をやめたか: パネルを広げても検索欄が伸びず、長い検索語の
-    //     全体が見えないままだった。
+    /// @note 右側のクラスタ幅を実測し、検索欄を残り全部へ伸ばす (固定幅だと長い検索語の全体が見えない)。
     const int selectedCount = static_cast<int>(m_selection.size());
     char copyLabel[64];
     std::snprintf(copyLabel, sizeof(copyLabel), "Copy (%d)###console_copy_selected",
@@ -650,9 +625,7 @@ bool ConsolePanel::DrawToolbar()
                              m_filterBuf.data(), m_filterBuf.size());
     ImGui::SameLine(0.0f, sp);
 
-    // 表示オプションは 1 つのポップアップへ畳む。
-    // WHY: Collapse / Clear on Play / Auto Scroll / Details の 4 つは一度決めたら
-    //      ほとんど触らない。常時 2 段目を占有させるより、一覧の高さに回す。
+    /// @note 表示オプション 4 つは一度決めたらほとんど触らないため 1 つのポップアップへ畳む。
     if (ImGui::Button("Options")) ImGui::OpenPopup("##console_options");
     if (ImGui::BeginPopup("##console_options")) {
         ImGui::Checkbox("Collapse", &m_collapse);
@@ -666,8 +639,8 @@ bool ConsolePanel::DrawToolbar()
     ImGui::SameLine(0.0f, sp);
 
     ImGui::BeginDisabled(selectedCount == 0);
-    // "###" 以降が ID。件数で表示は変わっても ID は動かさない
-    // (ラベルがそのまま ID だと、件数が変わった瞬間に別ボタン扱いになる)。
+    /// @note "###" 以降が ID。件数で表示は変わっても ID は動かさない
+    ///       (ラベルがそのまま ID だと、件数が変わった瞬間に別ボタン扱いになる)。
     const bool copySelected = ImGui::Button(copyLabel);
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -689,9 +662,8 @@ bool ConsolePanel::DrawToolbar()
 
 void ConsolePanel::OnRenderContent(EditorContext& ctx)
 {
-    // --- Clear on Play: 編集中 → Play へ遷移した瞬間だけ消す ---
-    // WHY: Play 中に出たログだけを見たい場面が多い。毎フレーム状態を比較して
-    //      エッジでのみ実行し、Play 中の再入で消え続けないようにする。
+    /// @name Clear on Play: 編集中 → Play へ遷移した瞬間だけ消す
+    /// @note 毎フレーム状態を比較しエッジでのみ実行する。Play 中の再入で消え続けないようにする。
     const bool inEditor = (ctx.playMode == nullptr) || ctx.playMode->IsInEditor();
     if (m_clearOnPlay && m_wasInEditor && !inEditor) {
         m_sink.Clear();
@@ -704,21 +676,21 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     const bool copySelectedRequested = DrawToolbar();
     ImGui::Separator();
 
-    // フィルタ条件かログ内容が変わったときだけ、表示行を作り直す。
-    // WHY: logChanged は Auto Scroll の追従判定にも使う。行数比較では、リングバッファが
-    //      満杯で「古い行が落ちて新しい行が入る」状況を新着として検出できない。
+    /// @note フィルタ条件かログ内容が変わったときだけ、表示行を作り直す。
+    /// @note logChanged は Auto Scroll の追従判定にも使う。行数比較だと、リングバッファが満杯で
+    ///       「古い行が落ちて新しい行が入る」状況を新着として検出できない。
     const bool logChanged = (m_cachedRevision != m_sink.GetRevision());
     if (logChanged || FiltersChanged())
         RebuildRows();
 
-    // WHY 押した瞬間にコピーしないか: ツールバーは RebuildRows より前に描くので、
-    //     その時点の m_visibleLogText / 選択は 1 フレーム古い可能性がある。
+    /// @note ツールバーは RebuildRows より前に描くため、押した瞬間の m_visibleLogText / 選択は
+    ///       1 フレーム古い可能性がある。コピーは RebuildRows の後で行う。
     if (copySelectedRequested)
         CopySelection();
 
-    // --- ログ一覧 ---
-    // WHY: ImVec2(0, 0) は「残り全部」を意味するが、詳細ペインを出すぶんの高さを
-    //      先に引いておかないと一覧が下端まで伸びて詳細が押し出される。
+    /// @name ログ一覧
+    /// @note ImVec2(0, 0) は「残り全部」を意味するため、詳細ペイン分の高さを先に引いておかないと
+    ///       一覧が下端まで伸びて詳細が押し出される。
     const float splitterH = m_showDetail ? 4.0f + ImGui::GetStyle().ItemSpacing.y * 2.0f : 0.0f;
     const float detailH   = m_showDetail
                           ? ImGui::GetContentRegionAvail().y * m_detailRatio + splitterH
@@ -738,10 +710,8 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     } else {
         const auto& entries = m_sink.GetEntries();
 
-        // WHY: 512 行でも毎フレーム全行を ImGui へ積むと、フィルタ解除時に
-        //      無駄な文字列処理とジオメトリ生成が走る。可視範囲だけ描く。
-        // 行と行の間は 1px だけ空ける。行の高さ自体を ConsoleRowHeight が確保しており、
-        // ここへ既定の行送り (5px) を足すと隙間が空きすぎて 1 画面に入る行数が減る。
+        /// @note 全行を毎フレーム ImGui へ積むと無駄な文字列処理とジオメトリ生成が走るため、
+        ///       可視範囲だけ描く。行間は 1px のみ (既定の 5px を足すと 1 画面の行数が減る)。
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                             ImVec2(ImGui::GetStyle().ItemSpacing.x, 1.0f));
 
@@ -761,15 +731,11 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
         ImGui::PopStyleVar();
     }
 
-    // Ctrl+C / Ctrl+A は Console にフォーカスがある間だけ拾う。
-    // WHY 自前で見るか: HotkeyManager の edit.copy / select.all は Scene View と
-    //     Hierarchy のスコープに閉じており、Console では発火しない。取り合いにならない。
-    // WHY WantTextInput で降りるか: 検索欄を編集中の Ctrl+C は入力欄のコピーであって
-    //     ログのコピーではない。文字入力を待っているフレームは横取りしない。
-    // WHY Shortcut() ではなく素の IsKeyPressed か: Shortcut のルーティングは
-    //     「今の子ウィンドウが focused か」で決まるため、ツールバーを触った直後の
-    //     ように一覧側へフォーカスが入っていないフレームで黙って落ちる。
-    //     フォーカス判定はここで明示しているので、キーはそのまま見れば足りる。
+    /// @note Ctrl+C / Ctrl+A は Console にフォーカスがある間だけ拾う。HotkeyManager の
+    ///       edit.copy / select.all は Scene View / Hierarchy に閉じ、Console では発火しない。
+    /// @note WantTextInput で降りる: 検索欄編集中の Ctrl+C は入力欄のコピー。
+    /// @note Shortcut() でなく素の IsKeyPressed を使う: Shortcut は子ウィンドウの focused 状態で
+    ///       決まり、ツールバー操作直後など一覧側へフォーカスが入っていないフレームで落ちるため。
     const ImGuiIO& shortcutIo = ImGui::GetIO();
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
         && !shortcutIo.WantTextInput && shortcutIo.KeyCtrl) {
@@ -779,16 +745,14 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
             SelectRange(0, static_cast<int>(m_rows.size()) - 1, false);
     }
 
-    // Auto Scroll: 最下部に居るときだけ追従する。
-    // WHY: 無条件に SetScrollHereY(1.0f) を呼ぶと、ユーザーが過去ログを読もうと
-    //      上へスクロールしても毎フレーム下端へ引き戻されてしまう。逆に自分で
-    //      下端まで戻せば追従が再開する (Unity / VSCode の出力ペインと同じ挙動)。
+    /// @note Auto Scroll: 最下部に居るときだけ追従する。無条件だと過去ログを読もうと
+    ///       上へスクロールしても毎フレーム引き戻される (Unity / VSCode の出力ペインと同じ挙動)。
     if (m_autoScroll && logChanged && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
         ImGui::SetScrollHereY(1.0f);
 
     ImGui::EndChild();
 
-    // --- 詳細ペイン ---
+    /// @name 詳細ペイン
     if (m_showDetail) {
         DrawDetailSplitter();
         ImGui::BeginChild("##log_detail", ImVec2(0, 0), true);

@@ -3,23 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2025-01-01
 ///
-/// 設計意図 (WHY 手続き生成をここへ置くか):
-///   録音素材を 1 つも用意しなくても効果音を鳴らせるようにするため。パラメーターから
-///   PCM を合成できると、1 つのプリセットを Mutate するだけで「毎回わずかに違う」
-///   足音や被弾音が作れる。素材の枚数ではなくコードで音のバリエーションを増やせる。
-///
-///   .synth アセットとして保存した音は clipPath で参照できるので、
-///   「アセットで基準を決めて、スクリプトで毎回揺らす」が基本の使い方になる:
-///
-///     void OnStart() override {
-///         if (!audio.LoadSpec(m_shotSynth, m_shotSpec))
-///             m_shotSpec = audio.MakeSpec(audio::SynthPreset::Laser);
-///     }
-///     void Fire() {
-///         audio.PlaySynth(audio.MutateSpec(m_shotSpec, 0.12f, random.Range(0, 9999)));
-///     }
-///
-/// 詳細は Docs/design/audio-system.md。
+/// @note 手続き生成はパラメーターから PCM を合成するので、素材を用意せずに
+///       Mutate だけで「毎回わずかに違う」音を作れる。.synth を基準にスクリプトで
+///       揺らすのが基本の使い方。詳細は Docs/design/audio-system.md。
 #pragma once
 
 #include <Engine/Audio/SynthSpec.hpp>
@@ -37,8 +23,8 @@ class Script;
 ///
 /// Play を抜けると無効になる。Play→Stop では合成済み PCM をまとめて捨てるため、
 /// メンバーに持ち越さず OnStart で作り直すこと。
-/// WHY 捨てるか: Play の終わりでスクリプト DLL ごと作り直されるので、
-///     ハンドルの持ち主が消えて誰も解放できなくなる。
+/// @note Play の終わりでスクリプト DLL ごと作り直されるため、持ち越すとハンドルの
+///       持ち主が消えて誰も解放できなくなる。
 struct SynthClip {
     uint32_t id = 0;
     [[nodiscard]] bool IsValid() const { return id != 0; }
@@ -131,7 +117,7 @@ struct ScriptAudioProxy {
     [[nodiscard]] audio::SynthSpec MutateSpec(const audio::SynthSpec& base,
                                               float amount, uint32_t seed) const;
     /// .synth アセットのパラメーターを可変コピーとして取り出す。
-    /// @ret 読めなければ false。out は変更しない。
+    /// @return 読めなければ false。out は変更しない。
     [[nodiscard]] bool LoadSpec(const AudioClipRef& synthAsset, audio::SynthSpec& out) const;
     [[nodiscard]] bool LoadSpec(std::string_view synthAssetPath, audio::SynthSpec& out) const;
 

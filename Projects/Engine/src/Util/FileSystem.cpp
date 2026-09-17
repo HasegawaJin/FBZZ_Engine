@@ -9,9 +9,9 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
 
-// WHY: Windows.h は CopyFile / GetCurrentDirectory を A / W サフィックス付き関数へ置換する。
-//      FileSystem のメンバー関数名まで置換されると、ヘッダ宣言と実装名がずれて
-//      MSVC が FileSystem::CopyFileA などを探してしまうため、Win32 API を直接呼ばない本ファイルでは解除する。
+/// @note Windows.h は CopyFile / GetCurrentDirectory を A/W サフィックス付き関数へ置換する。
+///       FileSystem のメンバー関数名まで置換されるとヘッダ宣言と実装名がずれ、MSVC が
+///       FileSystem::CopyFileA などを探してしまうため、Win32 API を直接呼ばない本ファイルでは解除する。
 #ifdef CopyFile
 #undef CopyFile
 #endif
@@ -27,17 +27,16 @@
 #include <string>
 
 namespace {
-// UTF-8 文字列をワイド文字列に変換する。
-// WHY: std::ifstream(std::string) は Windows ANSI (CP_ACP) でパスを解釈するため、
-//      UTF-8 の多バイト文字を含むパスが正しく開けない。
-//      ワイド文字列を使うと Win32 Unicode API 経由で開くため常に正しく動く。
+/// @brief UTF-8 文字列をワイド文字列に変換する。
+/// @note std::ifstream(std::string) は Windows ANSI (CP_ACP) でパスを解釈するため、UTF-8 の
+///       多バイト文字を含むパスが正しく開けない。ワイド文字列なら Win32 Unicode API 経由で開ける。
 std::wstring Utf8ToWide(const std::string& s)
 {
     if (s.empty()) return {};
     const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
     if (n <= 0) return {};
-    // WHY: MultiByteToWideChar は -1 指定時に終端 NUL も含めて n 文字を書き込む。
-    //      n - 1 だけ確保して n を渡すと 1 文字分オーバーランし、ReadText などの呼び出し元でクラッシュする。
+    /// @note MultiByteToWideChar は -1 指定時に終端 NUL も含めて n 文字を書き込むため、n - 1 だけ
+    ///       確保して n を渡すと 1 文字分オーバーランし、ReadText などの呼び出し元でクラッシュする。
     std::wstring w(static_cast<size_t>(n), L'\0');
     const int written = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
     if (written <= 0) return {};
@@ -50,7 +49,7 @@ std::string WideToUtf8(const std::wstring& w)
     if (w.empty()) return {};
     const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
     if (n <= 0) return {};
-    // WHY: WideCharToMultiByte も終端 NUL を含めて n バイトを書き込むため、同じく n 分を確保してから縮める。
+    /// @note WideCharToMultiByte も終端 NUL を含めて n バイトを書き込むため、同じく n 分を確保してから縮める。
     std::string s(static_cast<size_t>(n), '\0');
     const int written = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
     if (written <= 0) return {};
@@ -213,11 +212,9 @@ std::vector<std::string> FileSystem::ListAll(const std::string& dir)
 
 bool FileSystem::EnsureDirectory(const std::string& path)
 {
-    // WHY 委譲するか: 以前はここだけ CreateDirectoryW を 1 回呼んでおり、
-    //     中間ディレクトリを作らなかった。path 版は create_directories で
-    //     掘るので、同じ名前の関数が «引数の型によって深さが違う» 状態だった。
-    //     実プロジェクトでは親が既にあるため表に出ず、空のディレクトリから
-    //     組み立てたときだけ «作ったつもりで書き込みに失敗する» 形で現れる。
+    /// @note path 版の create_directories に委譲し、中間ディレクトリも掘る。string 版だけ浅い実装だと、
+    ///       同じ名前の関数が «引数の型によって深さが違う» ことになり、空ディレクトリから組み立てた
+    ///       ときだけ «作ったつもりで書き込みに失敗する» 形で表面化する。
     return EnsureDirectory(PathFromUtf8(path));
 }
 
@@ -306,10 +303,8 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
     std::ofstream f(widePath);
     if (!f.is_open()) return false;
     f << text;
-    // WHY close() してから見るか: ストリームは破棄時にまとめて書き出すため、
-    //     ここで閉じるまで書き込み失敗 (ディスク満杯・共有違反) は現れない。
-    //     以前は無条件に true を返しており、中身が欠けたまま「保存できた」と
-    //     報告していた。
+    /// @note ストリームは破棄時にまとめて書き出すため、close() するまで書き込み失敗 (ディスク満杯・
+    ///       共有違反) は現れない。close() 後の f.good() で確認してから返す。
     f.close();
     return f.good();
 }
@@ -319,7 +314,7 @@ bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& tex
     const std::filesystem::path target = PathFromUtf8(path);
     if (target.empty()) return false;
 
-    // 同一フォルダに置く。別ボリュームだと rename がコピーになり、置き換えの原子性が崩れる。
+    /// @note 同一フォルダに置く。別ボリュームだと rename がコピーになり、置き換えの原子性が崩れる。
     const std::filesystem::path temp =
         target.parent_path() / ("." + PathToUtf8(target.filename()) + ".tmp");
 
@@ -330,7 +325,7 @@ bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& tex
     }
 
     if (!Rename(temp, target)) {
-        // 置き換えに失敗しても原本は無傷。書きかけを残さないよう掃除して失敗を返す。
+        /// @note 置き換えに失敗しても原本は無傷。書きかけを残さないよう掃除して失敗を返す。
         std::error_code ec;
         std::filesystem::remove(temp, ec);
         return false;
@@ -348,8 +343,8 @@ bool FileSystem::ReadBinary(const std::filesystem::path& path, std::vector<uint8
 {
     out.clear();
 
-    // WHY: バイナリアセットの読み込み経路を FileSystem に集約し、Hub / Editor / Engine で
-    //      Windows の wchar_t パス対応と失敗時 bool 戻り値の方針を揃える。
+    /// @note バイナリアセットの読み込み経路を FileSystem に集約し、Hub/Editor/Engine で
+    ///       Windows の wchar_t パス対応と失敗時 bool 戻り値の方針を揃える。
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f.is_open()) return false;
 
@@ -376,20 +371,20 @@ bool FileSystem::WriteBinary(const std::filesystem::path& path, const void* data
     return f.good();
 }
 
-// --- std::filesystem::path オーバーロード ---
+/// @name std::filesystem::path オーバーロード
 
 bool FileSystem::Exists(const std::filesystem::path& path)
 {
-    // WHY: filesystem::path::c_str() は Windows で const wchar_t* を返すため、
-    //      GetFileAttributesW に直接渡せて UTF-8 変換が不要。
+    /// @note filesystem::path::c_str() は Windows で const wchar_t* を返すため、
+    ///       GetFileAttributesW に直接渡せて UTF-8 変換が不要。
     DWORD attr = GetFileAttributesW(path.c_str());
     return attr != INVALID_FILE_ATTRIBUTES;
 }
 
 bool FileSystem::ReadText(const std::filesystem::path& path, std::string& out)
 {
-    // WHY: std::ifstream(filesystem::path) は Windows で wchar_t パスを使うため
-    //      マルチバイト文字を含むパスも正しく開ける。
+    /// @note std::ifstream(filesystem::path) は Windows で wchar_t パスを使うため
+    ///       マルチバイト文字を含むパスも正しく開ける。
     std::ifstream f(path, std::ios::binary);
     if (!f.is_open()) return false;
     std::ostringstream ss;
@@ -415,7 +410,7 @@ std::filesystem::path FileSystem::PathFromUtf8(const std::string& path)
 
 std::string FileSystem::PathToUtf8(const std::filesystem::path& path)
 {
-    // WHY: StringUtils::PathToUtf8 が正規化まで担うため、重複実装を排除して委譲する。
+    /// @note StringUtils::PathToUtf8 が正規化まで担うため、重複実装を排除して委譲する。
     return util::StringUtils::PathToUtf8(path);
 }
 
@@ -428,7 +423,7 @@ std::filesystem::path FileSystem::RelativePath(const std::filesystem::path& path
 
 std::filesystem::path FileSystem::MakeAbsolute(const std::filesystem::path& path)
 {
-    // WHY: 失敗時は入力をそのまま返し、呼び出し元にフォールバック処理を課さない。
+    /// @note 失敗時は入力をそのまま返し、呼び出し元にフォールバック処理を課さない。
     std::error_code ec;
     const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
     return ec ? path : absolute.lexically_normal();
@@ -472,8 +467,8 @@ std::filesystem::file_time_type FileSystem::LastWriteTime(const std::filesystem:
 
 std::filesystem::path FileSystem::GetExecutableDirectory()
 {
-    // WHY: GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。
-    //      parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
+    /// @note GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。
+    ///       parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
     wchar_t buffer[MAX_PATH]{};
     GetModuleFileNameW(nullptr, buffer, MAX_PATH);
     return std::filesystem::path(buffer).parent_path();

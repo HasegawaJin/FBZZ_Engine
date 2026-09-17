@@ -45,9 +45,7 @@ public:
     FBZZ_FIELD_COLOR(markerColor, (Vector4{ 0.20f, 1.00f, 0.45f, 1.00f }), "Marker Color")
 
     FBZZ_GROUP("Acquire")
-    // WHY 入った瞬間だけ大きく出すか: なぞっている間、枠は敵から敵へ次々と移る。枠が
-    //     瞬間移動するだけだと乗り移りに気付けず、線に入れたつもりの敵を数え間違える。
-    //     一度大きく出して縮むと、線に入ったこと自体が動きとして目に入る。
+    /// @note 乗り移った瞬間だけ lockScale 倍に出して縮める。位置の移動だけでは乗り換えに気付けない。
     FBZZ_FIELD_RANGE(float, lockScale, 1.9f, "Acquire Scale", 1.0f, 4.0f)
     FBZZ_TOOLTIP("線に入った瞬間の枠の倍率。1.0 で演出なし")
     FBZZ_FIELD_RANGE(float, lockSeconds, 0.16f, "Lock Seconds", 0.0f, 1.0f)
@@ -90,14 +88,13 @@ private:
     EntityRef m_canvas;
     std::array<EntityRef, kBarCount> m_bars{};
 
-    // 乗り換え検出。EntityRef ではなく素の ID で持つ (解決は要らず比較しかしない)。
+    /// 乗り換え検出。EntityRef ではなく素の ID で持つ (解決は要らず比較しかしない)。
     EntityID m_lastTarget{};
     float    m_lockRemaining = 0.0f;
 };
 
 FBZZ_REFLECT(AimMarkerComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline PlayerAimComponent* AimMarkerComponent::Aim() const
 {
@@ -106,8 +103,8 @@ inline PlayerAimComponent* AimMarkerComponent::Aim() const
 
 inline std::string AimMarkerComponent::CanvasName() const
 {
-    // WHY 持ち主ごとに名前を変えるか: 枠はルートに置くため、名前で拾い直すときに
-    //     同名だと 2 人目のプレイヤー (デバッグ用の複製を含む) が 1 人目の枠を奪う。
+    /// @note 枠はルートに置くため、同名だと 2 人目のプレイヤー (デバッグ複製含む) が
+    ///       1 人目の枠を拾い直してしまう。持ち主ごとに名前を分ける。
     GameObject* owner = scene.Self();
     return std::string(kCanvasName) + "_" + (owner ? owner->instanceId : std::string{});
 }
@@ -118,9 +115,8 @@ inline void AimMarkerComponent::OnStart()
     m_lockRemaining = 0.0f;
     debugTargetName.clear();
 
-    // WHY 先に拾い直すか: スクリプト DLL をリロードするとこの Script は作り直され、
-    //     下の EntityRef は空に戻る。一方 UI の GameObject は Scene 側に残っているので、
-    //     無条件に組み直すとリロードのたびに枠が 1 組ずつ増えていく。
+    /// @note スクリプト DLL リロードで Script は作り直され EntityRef は空へ戻るが、
+    ///       UI の GameObject は Scene 側に残る。無条件に組み直すとリロードのたびに枠が増える。
     if (!Adopt()) Build();
 }
 
@@ -141,10 +137,8 @@ inline bool AimMarkerComponent::Adopt()
 
 inline void AimMarkerComponent::Build()
 {
-    // WHY 対象の子にしないか: 対象はなぞるたびに乗り換わるうえ、敵は scale 2 の剛体で
-    //     物理補間も掛かる。親を張り替える設計にすると、枠の位置が親のスケール・回転・
-    //     TransformSystem の巡回順に依存して、ずれたときの切り分けができなくなる。
-    //     ルートに置いてワールド座標を直接書けば、位置は 1 式だけで決まる。
+    /// @note 対象はなぞるたびに乗り換わり、敵の剛体には物理補間も掛かる。親を張り替えると
+    ///       枠の位置が親の変換と TransformSystem の巡回順に依存しずれの切り分けができない。
     GameObject& canvasObject = scene.Create(CanvasName());
     canvasObject.runtimeGenerated = true;
     UICanvas& canvas = canvasObject.AddComponent<UICanvas>();
@@ -168,7 +162,7 @@ inline float AimMarkerComponent::FrameSize(GameObject& target) const
     const bodybounds::Extents extents = bodybounds::Of(target);
     if (!extents.measured) return std::max(fallbackBodySize, minSize);
 
-    // 体を包む一辺。高さと幅の大きい方を採らないと、縦長の相手で枠が胴体を切る。
+    /// @note 体を包む一辺。高さと幅の大きい方を採らないと、縦長の相手で枠が胴体を切る。
     const float body = std::max(extents.top - extents.bottom, extents.radius * 2.0f);
     return std::max(body + padding * 2.0f, minSize);
 }
@@ -183,12 +177,12 @@ inline void AimMarkerComponent::LayoutBars(float size)
 {
     const float half  = size * 0.5f;
     const float width = Clamp(lineWidth * kPixelsPerUnit, 1.0f, half);
-    // 角の腕。half まで伸ばすと隣の角と繋がって閉じた四角形になる。
+    /// @note 角の腕。half まで伸ばすと隣の角と繋がって閉じた四角形になる。
     const float arm   = Clamp(size * cornerRatio, width, half);
 
-    // UI 要素の position は矩形の左上、localScale.xy は倍率ではなく幅・高さ (どちらも
-    // Canvas ピクセル)。原点は Canvas の左上で y は下向き。
-    // 角は (左/右) × (上/下) の 4 通りで、それぞれ横棒と縦棒の 2 本で L 字を作る。
+    /// @note UI 要素の position は矩形の左上、localScale.xy は倍率ではなく幅・高さ (どちらも
+    ///       Canvas ピクセル)。原点は Canvas の左上で y は下向き。
+    ///       角は (左/右) × (上/下) の 4 通りで、それぞれ横棒と縦棒の 2 本で L 字を作る。
     for (int corner = 0; corner < 4; ++corner) {
         const bool right  = (corner & 1) != 0;
         const bool bottom = (corner & 2) != 0;
@@ -226,7 +220,7 @@ inline void AimMarkerComponent::OnLateUpdate()
     }
     if (canvas) canvas->enabled = true;
 
-    // 乗り移った瞬間だけ大きく出す。同じ相手を指し続けている間は演出しない。
+    /// @note 乗り移った瞬間だけ大きく出す。同じ相手を指し続けている間は演出しない。
     if (target->GetID() != m_lastTarget) {
         m_lastTarget    = target->GetID();
         m_lockRemaining = std::max(lockSeconds, 0.0f);
@@ -235,8 +229,8 @@ inline void AimMarkerComponent::OnLateUpdate()
     const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
     m_lockRemaining = std::max(0.0f, m_lockRemaining - dt);
 
-    // 掴んだ直後は lockScale 倍から等倍へ縮む。ヒットストップ中でも縮み続けるよう、
-    // 時間は実時間で数える (止まった画面で枠だけ固まると、掴んだことが伝わらない)。
+    /// @note 掴んだ直後は lockScale 倍から等倍へ縮む。ヒットストップ中でも縮み続けるよう、
+    ///       時間は実時間で数える (止まった画面で枠だけ固まると、掴んだことが伝わらない)。
     const float lockProgress = lockSeconds > 0.0f
         ? Clamp01(1.0f - m_lockRemaining / lockSeconds) : 1.0f;
     const float lockFactor   = Lerp(std::max(lockScale, 1.0f), 1.0f, lockProgress);
@@ -249,8 +243,8 @@ inline void AimMarkerComponent::OnLateUpdate()
         canvas->canvasHeight = size;
     }
 
-    // Canvas はルートなので local = world。この関数は LateScript で走り UI 描画より前なので、
-    // world まで書けば TransformSystem を待たずに同じフレームへ反映される。
+    /// @note Canvas はルートなので local = world。この関数は LateScript で走り UI 描画より前なので、
+    ///       world まで書けば TransformSystem を待たずに同じフレームへ反映される。
     const Vector3 anchor = bodybounds::CenterWorld(*target, fallbackBodySize);
     canvasObject->transform.position      = anchor;
     canvasObject->transform.worldPosition = anchor;
@@ -264,7 +258,7 @@ inline void AimMarkerComponent::OnLateUpdate()
 
 inline void AimMarkerComponent::OnDestroy()
 {
-    // ルートに置いた以上、プレイヤーと一緒には消えない。持ち主が畳む。
+    /// @note ルートに置いた以上、プレイヤーと一緒には消えない。持ち主が畳む。
     if (GameObject* canvasObject = m_canvas.Resolve(scene))
         scene.Destroy(*canvasObject);
     m_canvas = {};

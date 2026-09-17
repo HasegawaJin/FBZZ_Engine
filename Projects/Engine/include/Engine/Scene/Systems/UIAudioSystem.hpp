@@ -3,14 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-27
 ///
-/// WHY UISystem の中で鳴らさないか:
-///   UISystem はレンダーパスから呼ばれる自由関数で、AudioManager を知らない。
-///   知らせるには全 Viewport の呼び出しへ引数を足すことになり、Editor の
-///   Scene ビューを描いただけでクリック音が鳴る経路まで生まれる。
-///   鳴らすのは「ゲームの 1 フレームに 1 回だけ回るシステム」の仕事にする。
-///
-/// NOTE: UI のフラグは描画パスで立つため、鳴るのは 1 フレーム後になる。
-///       ScriptProxy が UIButton を読むときと同じ遅れで、体感には出ない。
+/// @note UISystem の中で鳴らさない理由: UISystem はレンダーパスから呼ばれる自由関数で
+///       AudioManager を知らない。全 Viewport へ引数を足すと Scene ビューを描いただけで
+///       クリック音が鳴る経路が生まれるため、«ゲームの 1 フレームに 1 回» の System にする。
+/// @note UI のフラグは描画パスで立つため鳴るのは 1 フレーム後 (ScriptProxy と同じ遅れで体感には出ない)。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

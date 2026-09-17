@@ -13,8 +13,8 @@ bool ParticlePassesLightRatio(float spriteSeed, float ratio)
 {
     if (ratio >= 1.0f) return true;
     if (ratio <= 0.0f) return false;
-    // spriteSeed はフリップブックの行と位相にも使われる。そのまま比べると «光る粒子は必ず上の行» の
-    // ように見た目と相関するので、係数でずらした小数部を独立した乱数として使う。
+    /// @note spriteSeed はフリップブックの行と位相にも使われる。そのまま比べると «光る粒子は必ず上の行» の
+    ///       ように見た目と相関するので、係数でずらした小数部を独立した乱数として使う。
     const float shifted = std::clamp(spriteSeed, 0.0f, 1.0f) * 13.37f + 0.618f;
     return shifted - std::floor(shifted) < ratio;
 }

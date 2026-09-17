@@ -26,10 +26,9 @@ namespace fbzz::physics
 
     AABB CylinderCollider::GetAABB() const
     {
-        // WHY 三角関数を使わず sqrt で出せるか:
-        //     軸の成分 a_i が分かっていれば、その軸に垂直な円板が i 方向へ張る幅は
-        //     r * sin(角度) = r * sqrt(1 - a_i²)。OBB のように 8 頂点を回すより緩みが無く、
-        //     BroadPhase の候補ペアがそのぶん減る。
+        /// @note 軸成分 a_i が分かれば、垂直な円板が i 方向へ張る幅は r * sin(角度) = r * sqrt(1 - a_i²)
+        ///       で三角関数なしに出せる。OBB のように 8 頂点を回すより緩みが無く、BroadPhase の
+        ///       候補ペアがそのぶん減る。
         const math::Vector3& axis = m_worldAxis;
         const auto Extent = [&](float axisComponent) {
             const float radial = std::sqrt(std::max(0.0f, 1.0f - axisComponent * axisComponent));
@@ -53,7 +52,7 @@ namespace fbzz::physics
         math::Vector3 result =
             m_worldCenter + m_worldAxis * (axial >= 0.0f ? m_halfHeight : -m_halfHeight);
 
-        // dir から軸成分を抜いた残りが円板上での向き。軸と平行なときは円板中心がそのまま最遠点。
+        /// @note dir から軸成分を抜いた残りが円板上での向き。軸と平行なときは円板中心がそのまま最遠点。
         const math::Vector3 radial      = dir - m_worldAxis * axial;
         const float         radialLenSq = radial.LengthSq();
         if (radialLenSq > AXIS_EPS)

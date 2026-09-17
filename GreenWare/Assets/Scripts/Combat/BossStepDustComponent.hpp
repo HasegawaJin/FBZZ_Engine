@@ -3,28 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
 ///
-/// WHY 歩いているだけの間にも演出を足すか:
-///   全高 6.6m の 4 脚が、床に何の跡も残さず滑るように近づいてくる。歩幅も接地も
-///   モーションには入っているのに、盤面がそれを受け取っていないので «重さの無い置物が
-///   寄ってくる» に見える。踏むたび床が応えて初めて、間合いを詰められること自体が
-///   圧になる。
-///
-/// WHY 足音 (BossAudioComponent) の拍に合わせないか:
-///   あちらは «歩調» を速さから逆算した周期で鳴らしていて、4 本のどの脚が着いたかは
-///   知らない。土煙は場所を持つ演出なので、周期から出すと «脚は上がっているのに
-///   その足元から煙が出る» が普通に起きる。骨の高さを直接見れば、どのクリップを
-///   どの速さで再生していても «着いた脚の下» で必ず鳴る。
-///
-/// WHY しきい値を数値で置かず、足ごとの振れ幅から出すか:
-///   «床から何 m 上» で接地を決めると、Walk_Crawl と Charge_Run で脚の上がる高さが
-///   違うぶん、片方でしか鳴らない値になる。しかも脚を折られた後は引きずるので
-///   振れ幅そのものが小さくなる。各脚の «最近の最高と最低» を追い掛けて、その間の
-///   割合で判定すれば、どのクリップでも歩幅の大小に関わらず同じ位置で鳴る。
-///
-/// WHY 振れ幅が小さい脚では鳴らさないか:
-///   引きずっている脚・持ち上げていない脚は «踏んだ» ことになっていない。割合だけで
-///   判定すると、1cm の揺れでも «上がって下りた» と読めてしまい、止まっている
-///   ボスの足元から煙が湧き続ける。
+/// @note 脚の接地に土煙を付ける。演出が無いと «重さの無い置物が寄ってくる» に見える。
+/// @note 足音の拍 (`BossAudioComponent`) には合わせない。あちらは周期のみでどの脚か知らない。骨の高さを直接見て脚ごとに判定する。
+/// @note しきい値は固定値でなく脚ごとの最近の振れ幅 (最高-最低) から出す。クリップ間で上げ幅が違うため。
+/// @note 振れ幅が小さい脚は鳴らさない。引きずり脚の微振動を «踏んだ» と誤検出するのを防ぐ。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -42,20 +24,15 @@ namespace sandbox {
 
 /// 足ごとの «最近の高さの幅» をどれだけの速さで縮めるか [m/s]。
 ///
-/// WHY 縮めるか: 一度でも大きく振れると、その最大値を覚えたままの脚は以後
-///     «その高さまで上げないと着地と認めない» になる。速さが落ちて歩幅が
-///     小さくなったときに 1 歩も鳴らなくなるので、幅は常に現在値へ寄せ続ける。
-///
-/// WHY 速く縮めないか: 脚が頂点から床へ降りるまでの 0.2 秒ほどの間にも幅は縮む。
-///     速いと «測った歩幅» が実際より小さくなり、そもそも上げ幅の小さいクリップで
-///     Min Lift を割って鳴らなくなる。
+/// @note 幅は現在値へ寄せ続ける。縮めないと大きく振れた脚が高い値を覚えたままになり、
+///       歩幅が小さくなると鳴らなくなる。速すぎると降下中の 0.2 秒ほどで幅が縮み切り、
+///       上げ幅の小さいクリップで Min Lift を割って鳴らなくなる。
 inline constexpr float kFootEnvelopeShrink = 0.35f;
 
 /// 胴体が上下に動いているとみなす速さ [m/s]。これを超えている間は跳躍中とみなす。
 ///
-/// WHY Animator の接地フラグだけに頼らないか: BossAi は着地の landContactTime «前» に
-///     接地を立てる (潰れ込みを接地へ合わせるため)。その間はまだ空中に居るので、
-///     フラグだけを見ると降りてくる脚が空中で土煙を出す。
+/// @note Animator の接地フラグだけに頼らない。`BossAi` は着地の `landContactTime` 前に
+///       接地を立てる (潰れ込みを合わせるため) ため、フラグだけでは空中の脚が土煙を出す。
 inline constexpr float kAirborneRiseSpeed = 1.0f;
 
 class BossStepDustComponent : public Script {
@@ -139,8 +116,8 @@ inline void BossStepDustComponent::Fire(const Vector3& footPoint, float rootY, f
     auto* vfx = VfxManagerComponent::Instance();
     if (!vfx) return;
 
-    // 土煙は踏んだ脚の «後ろ» へ流れる。止まりかけで向きが決まらないときは、
-    // 胴体から見て脚の外側へ逃がす ─ 体の下へ吹き込むと煙が全部隠れる。
+    /// @note 土煙は踏んだ脚の «後ろ» へ流れる。止まりかけで向きが決まらないときは、
+    ///       胴体から見て脚の外側へ逃がす ─ 体の下へ吹き込むと煙が全部隠れる。
     Vector3 flow{ -moveDirection.x, 0.0f, -moveDirection.z };
     if (flow.LengthSq() < EPSILON) {
         flow = { footPoint.x - transform.worldPosition.x, 0.0f,
@@ -186,15 +163,15 @@ inline void BossStepDustComponent::OnUpdate()
     const float   speed = move.Length() / dt;
     m_lastPosition = position;
 
-    // 1 フレームの差分は接地の押し戻しで跳ねる。均さないと、歩いている最中に
-    // 強さが毎フレーム上下して煙の大きさがちらつく。
+    /// @note 1 フレームの差分は接地の押し戻しで跳ねる。均さないと、歩いている最中に
+    ///       強さが毎フレーム上下して煙の大きさがちらつく。
     const float alpha = 1.0f - std::exp(-8.0f * dt);
     m_speed += (speed - m_speed) * std::clamp(alpha, 0.0f, 1.0f);
 
     const Vector3 direction = move.NormalizedOr(Vector3::ZERO);
     const bool    walking   = m_speed >= std::max(minSpeed, 0.0f);
-    // 跳躍中は «降りてくる脚» が空中で下がり続ける。着地そのものは衝撃波が
-    // 受け持っているので、ここは床の上に居るあいだだけ働く。
+    /// @note 跳躍中は «降りてくる脚» が空中で下がり続ける。着地そのものは衝撃波が
+    ///       受け持っているので、ここは床の上に居るあいだだけ働く。
     const bool    grounded  = rise < kAirborneRiseSpeed;
 
     float widest = 0.0f;
@@ -204,8 +181,8 @@ inline void BossStepDustComponent::OnUpdate()
         GameObject* bone = rig->FootBone(static_cast<BossLeg>(i));
         if (!bone) continue;
 
-        // 胴体の足元から見た «脚の高さ»。ワールドの Y をそのまま使うと、坂を上がる
-        // だけで 4 本まとめて «上がった» ことになる。
+        /// @note 胴体の足元から見た «脚の高さ»。ワールドの Y をそのまま使うと、坂を上がる
+        ///       だけで 4 本まとめて «上がった» ことになる。
         const float height = bone->transform.worldPosition.y - position.y;
         if (!foot.known) {
             foot.low   = height;
@@ -230,8 +207,8 @@ inline void BossStepDustComponent::OnUpdate()
 
         if (span < std::max(minLift, 0.01f)) { foot.armed = false; continue; }
 
-        // 上げきった所で構え、下がりきる手前で撃つ。«下がりきってから» にすると、
-        // 足が床に着いた 2〜3 フレーム後に煙が出て、踏んだ音とずれる。
+        /// @note 上げきった所で構え、下がりきる手前で撃つ。«下がりきってから» にすると、
+        ///       足が床に着いた 2〜3 フレーム後に煙が出て、踏んだ音とずれる。
         if (height >= foot.low + span * 0.62f) foot.armed = true;
         if (!foot.armed || height > foot.low + span * 0.28f) continue;
 

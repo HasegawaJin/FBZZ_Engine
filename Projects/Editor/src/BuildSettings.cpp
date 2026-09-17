@@ -15,19 +15,20 @@
 namespace fbzz::editor {
 
 namespace {
-// 旧形式でプロジェクトルートに置かれていた設定ファイル。
+/// 旧形式でプロジェクトルートに置かれていた設定ファイル。
 constexpr const char* LEGACY_BUILD_SETTINGS_FILE = "BuildSettings.toml";
 
-// a が b と同じか、b の祖先か。実体の有無は問わず字面だけで判定する。
+/// a が b と同じか、b の祖先か。実体の有無は問わず字面だけで判定する。
 bool ContainsOrEquals(const std::filesystem::path& a, const std::filesystem::path& b)
 {
     const std::filesystem::path rel =
         b.lexically_normal().lexically_relative(a.lexically_normal());
-    if (rel.empty()) return false;   // 別ドライブ等、そもそも関係が無い
+    /// @note 別ドライブ等、そもそも関係が無い
+    if (rel.empty()) return false;
     return *rel.begin() != "..";
 }
 
-// 出力先と重なってはいけないプロジェクトのデータディレクトリ。
+/// 出力先と重なってはいけないプロジェクトのデータディレクトリ。
 constexpr const char* kProtectedDirs[] = {
     "Assets", "Library", "ProjectSettings", "Src", "Include", "Binaries", "Build",
 };
@@ -44,8 +45,7 @@ std::vector<std::string> BuildSettings::EnabledScenes() const
 
 std::filesystem::path BuildSettings::ResolveOutputPath(const std::string& projectRoot) const
 {
-    // WHY: 絶対パスと相対パスの両方を受け付けるが、保存時は相対パスを優先する。
-    //      プロジェクトを別 PC に持っていっても動くように。
+    /// @note 絶対/相対パスどちらも受け付け、保存時は相対パスを優先する (別 PC へ移しても動くように)。
     std::filesystem::path out = util::FileSystem::PathFromUtf8(outputDirectory);
     if (out.is_absolute()) return out;
     return util::FileSystem::PathFromUtf8(projectRoot) / out;
@@ -93,9 +93,8 @@ bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::stri
         return false;
     }
 
-    // 既に中身があるフォルダは、前回の配布物 (game.manifest.toml を持つ) でない限り拒否する。
-    // WHY: Browse... でデスクトップや素材置き場を選ぶと、コミット時の remove_all が
-    //      そのフォルダを中身ごと消す。空フォルダと再ビルドだけを通す。
+    /// @note 既に中身があるフォルダは、前回の配布物 (game.manifest.toml を持つ) でない限り拒否する。
+    ///       Browse... でデスクトップ等を選ぶと、コミット時の remove_all が中身ごと消すため。
     std::error_code ec;
     if (std::filesystem::is_directory(out, ec)) {
         const bool isEmpty =

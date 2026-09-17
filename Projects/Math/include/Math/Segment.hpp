@@ -8,7 +8,9 @@
 
 namespace fbzz::math {
 
-/// 入力は同一座標系の有限値。長さが EPSILON 以下の線分は from に縮退する。
+/// @brief 線分上で点に最も近い点を返す。
+/// @pre 入力は同一座標系の有限値。
+/// @note 長さが EPSILON 以下の線分は from に縮退する。
 [[nodiscard]] inline Vector3 ClosestPointOnSegment(const Vector3& point,
     const Vector3& from, const Vector3& to)
 {
@@ -18,7 +20,9 @@ namespace fbzz::math {
     return from + segment * Clamp01(Vector3::Dot(point - from, segment) / lengthSq);
 }
 
-/// outAlong は from から最近接点までの線分上の距離。単位は入力座標と同じ。
+/// @brief 点と線分の距離を求める。
+/// @param outAlong from から最近接点までの線分上の距離。単位は入力座標と同じ。
+/// @return 点と最近接点の距離。
 [[nodiscard]] inline float DistanceToSegment(const Vector3& point,
     const Vector3& from, const Vector3& to, float& outAlong)
 {

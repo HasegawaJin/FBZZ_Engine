@@ -12,8 +12,8 @@ namespace fbzz::physics
     namespace
     {
         constexpr float kMinAngle = 1.0e-6f;
-        // 診断で «可動域に当たっている» と報告する食い込み量 [rad] ≒ 0.6°。
-        // kMinAngle で報告すると数値誤差でほぼ常に true になり、切り分けに使えない。
+        /// 診断で «可動域に当たっている» と報告する食い込み量 [rad] ≒ 0.6°。
+        /// kMinAngle で報告すると数値誤差でほぼ常に true になり、切り分けに使えない。
         constexpr float kReportAngle = 0.01f;
 
         float ClampToRange(float value, float low, float high)
@@ -26,7 +26,8 @@ namespace fbzz::physics
         {
             float x = twist.x;
             float w = twist.w;
-            if (w < 0.0f) { x = -x; w = -w; }  // 短い方の弧
+            /// @note 短い方の弧
+            if (w < 0.0f) { x = -x; w = -w; }
             return 2.0f * std::atan2(x, w);
         }
     } // namespace
@@ -46,7 +47,7 @@ namespace fbzz::physics
             m_anchorParent = inverse * (worldAnchor - m_parent->GetPosition());
             m_frameParent  = (inverse * frame).Normalized();
         } else {
-            // 親が居ない関節はワールドへ固定する。ローカル量をそのままワールド量として持つ。
+            /// @note 親が居ない関節はワールドへ固定する。ローカル量をそのままワールド量として持つ。
             m_anchorParent = worldAnchor;
             m_frameParent  = frame;
         }
@@ -86,9 +87,9 @@ namespace fbzz::physics
     {
         if (!m_child) return;
 
-        // WHY この順か: Gauss-Seidel は «後に解いたものが勝つ»。ドライブ (柔らかい目標) を
-        //     先に、可動域 (硬い壁) を次に、ソケット (伸びてはいけない) を最後に置く。
-        //     逆順だと、力み切ったドライブが関節を可動域の外へ押し出したまま残る。
+        /// @note Gauss-Seidel は «後に解いたものが勝つ»。ドライブ (柔らかい目標) を先に、可動域
+        ///       (硬い壁) を次に、ソケット (伸びてはいけない) を最後に置く。逆順だと力み切った
+        ///       ドライブが関節を可動域の外へ押し出したまま残る。
         SolveDrive(h);
         SolveLimits(h);
         SolveSocket(h);
@@ -103,21 +104,21 @@ namespace fbzz::physics
         const math::Quaternion childFrame  = ChildFrameWorld();
         const math::Quaternion goal        = (parentFrame * m_drive.target).Normalized();
 
-        // 目標フレームから «今どれだけ回っているか»。子はこの逆へ回れば目標に着く。
+        /// @note 目標フレームから «今どれだけ回っているか»。子はこの逆へ回れば目標に着く。
         const math::Vector3 correction = RotationVector((childFrame * goal.Inverse()).Normalized());
 
         const float maxLambda = m_drive.maxTorque > 0.0f ? m_drive.maxTorque * h * h : 0.0f;
         SolveAngular(m_child, m_parent, correction, m_drive.compliance, h, m_lambdaDrive, maxLambda);
 
-        // λ が上限に張り付いた ＝ 出したいトルクを出せていない ＝ 力負けしている。
+        /// @note λ が上限に張り付いた ＝ 出したいトルクを出せていない ＝ 力負けしている。
         m_driveSaturated =
             maxLambda > 0.0f && std::abs(m_lambdaDrive) >= maxLambda * 0.9999f;
     }
 
     void XPBDJoint::SolveLimits(float h)
     {
-        // 診断値はドライブの後・ソケットの前で測る。可動域に対してどこに居るかを見たいので、
-        // «押し戻す前» の値を残す。
+        /// @note 診断値はドライブの後・ソケットの前で測る。可動域に対してどこに居るかを見たいので、
+        ///       «押し戻す前» の値を残す。
         const math::Quaternion parentFrame = ParentFrameWorld();
         const math::Quaternion childFrame  = ChildFrameWorld();
         const math::Quaternion deviation   = (parentFrame.Inverse() * childFrame).Normalized();
@@ -134,8 +135,8 @@ namespace fbzz::physics
         m_limited = false;
         if (!m_limits.enabled) return;
 
-        // スイング: 軸ごとの超過分をまとめて 1 回の角度補正にする。厳密には Y と Z の
-        // 回転は交換しないが、超過は小さい前提なので合成で足りる。
+        /// @note スイング: 軸ごとの超過分をまとめて 1 回の角度補正にする。厳密には Y と Z の
+        ///       回転は交換しないが、超過は小さい前提なので合成で足りる。
         const float excessY =
             m_swingAngleY - ClampToRange(m_swingAngleY, m_limits.swingMinY, m_limits.swingMaxY);
         const float excessZ =
@@ -148,8 +149,8 @@ namespace fbzz::physics
                         std::abs(excessY) > kReportAngle || std::abs(excessZ) > kReportAngle;
         }
 
-        // ツイスト: スイングで傾いた «後» の骨の軸まわりに戻す。親フレームの X で回すと、
-        // 大きく振れているときに戻す向きがずれてスイングを増やしてしまう。
+        /// @note ツイスト: スイングで傾いた «後» の骨の軸まわりに戻す。親フレームの X で回すと、
+        ///       大きく振れているときに戻す向きがずれてスイングを増やしてしまう。
         const float excessTwist =
             m_twistAngle - ClampToRange(m_twistAngle, m_limits.twistMin, m_limits.twistMax);
         if (std::abs(excessTwist) > kMinAngle) {
@@ -171,7 +172,7 @@ namespace fbzz::physics
         math::Quaternion twist;
         DecomposeSwingTwist(deviation.Normalized(), swing, twist);
 
-        // SolveLimits が押し戻しの判定に使うのと同じ 3 つの角。
+        /// @note SolveLimits が押し戻しの判定に使うのと同じ 3 つの角。
         const math::Vector3 swingVector = RotationVector(swing);
         const float         twistAngle  = TwistAngle(twist);
 
@@ -208,11 +209,11 @@ namespace fbzz::physics
             m_parent ? m_parent->GetAngularVelocity() : math::Vector3::ZERO;
         const math::Vector3 relative = m_child->GetAngularVelocity() - parentOmega;
 
-        // 1 ステップで消せるのは «全部» まで。damping·h が 1 を超えると符号が反転して発散する。
+        /// @note 1 ステップで消せるのは «全部» まで。damping·h が 1 を超えると符号が反転して発散する。
         const float factor = std::min(m_drive.damping * h, 1.0f);
-        // 減衰も関節が出す力なので、位置パスと同じトルク上限に従わせる。従わせないと
-        // «2 N·m しか出せない関節が、減衰では 7 N·m 出して荷重を支える» ことになり、
-        // 力負けしているはずの関節がゆっくり降りるだけになる。
+        /// @note 減衰も関節が出す力なので、位置パスと同じトルク上限に従わせる。従わせないと
+        ///       «2 N·m しか出せない関節が、減衰では 7 N·m 出して荷重を支える» ことになり、
+        ///       力負けしているはずの関節がゆっくり降りるだけになる。
         const float maxImpulse = m_drive.maxTorque > 0.0f ? m_drive.maxTorque * h : 0.0f;
         ApplyAngularVelocityChange(m_child, m_parent, relative * factor, maxImpulse);
     }

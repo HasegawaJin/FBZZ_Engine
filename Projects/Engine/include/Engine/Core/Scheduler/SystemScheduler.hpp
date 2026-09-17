@@ -18,32 +18,31 @@ namespace fbzz {
 
 class SystemScheduler {
 public:
-    // Physics Phase など固定ステップを使う Phase の設定（Build() より前に呼ぶ）
+    /// @brief Physics Phase など固定ステップを使う Phase の設定 (Build() より前に呼ぶ)。
     void ConfigurePhase(Phase phase, PhaseConfig cfg);
 
-    // デフォルトコンストラクタ可能な System を登録
+    /// @brief デフォルトコンストラクタ可能な System を登録する。
     template<typename T>
     requires std::derived_from<T, ISystem> && std::default_initializable<T>
     void AddSystem() { AddSystemPtr(std::make_unique<T>()); }
 
-    // コンストラクタ引数付き System を登録
+    /// @brief コンストラクタ引数付き System を登録する。
     void AddSystemPtr(std::unique_ptr<ISystem> sys);
 
-    // 全登録後に一度呼ぶ。DAG 構築 + 循環依存チェック + OnInit() 呼び出し
+    /// @brief 全登録後に一度呼ぶ。DAG 構築 + 循環依存チェック + OnInit() 呼び出し。
     void Build();
 
-    void Update    (SystemContext ctx);   // PreScript 〜 Cleanup
-    void LateUpdate(SystemContext ctx);   // LateUpdate のみ
+    void Update    (SystemContext ctx);   ///< PreScript 〜 Cleanup
+    void LateUpdate(SystemContext ctx);   ///< LateUpdate のみ
 
-    // true にすると次の Update() で固定ステップを 1 回だけ実行し、自動で false に戻す
+    /// @brief true にすると次の Update() で固定ステップを 1 回だけ実行し、自動で false に戻す。
     void SetSingleStep(bool enabled);
 
-    // シミュレーション停止時に accumulator をリセット
+    /// @brief シミュレーション停止時に accumulator をリセットする。
     void ResetAccumulator();
 
-    // 名前で System インスタンスを取得（エディタ統合用）。
-    // WHY: RTTI による dynamic_cast は実行時コストと DLL 境界の型依存を生むため、
-    //      公開 API では ISystem::Name() を使った明示的な検索に限定する。
+    /// @brief 名前で System インスタンスを取得する (エディタ統合用)。
+    /// @note RTTI による dynamic_cast は実行時コストと DLL 境界の型依存を生むため、公開 API では ISystem::Name() を使った明示的な検索に限定する。
     [[nodiscard]] ISystem* FindSystem(std::string_view name) const;
 
     void DumpGraph() const;

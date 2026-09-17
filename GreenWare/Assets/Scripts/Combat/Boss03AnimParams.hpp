@@ -3,16 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 ///
-/// WHY 定数にするか:
-///   SetFloat / SetTrigger は名前が違っても黙って何もしない。綴りを間違えた症状が
-///   「アニメーションだけ動かない」で、コードを読んでも原因が出ない。.animcontroller
-///   側の綴りと突き合わせる場所を 1 箇所へ閉じる (BossAnimParams.hpp と同じ理由)。
-///
-/// WHY Boss03AnimatorComponent.hpp に同居させないか:
-///   ScriptCodeGen はスクリプト登録マクロの直前に現れた «最後の namespace 行» を
-///   そのまま登録名前空間として採る (閉じ括弧を追わない)。スクリプト本体の手前に
-///   入れ子の名前空間を書くと存在しない名前空間で登録され、ScriptList.inl が
-///   コンパイルできなくなる。定数側をファイルごと外へ出す。
+/// @note `SetFloat`/`SetTrigger` は綴りが違っても黙って無視するため、`.animcontroller` 側との突き合わせ箇所を 1 箇所に閉じる (`BossAnimParams.hpp` と同じ理由)。
+/// @note ScriptCodeGen はスクリプト登録マクロ直前の最後の namespace 行をそのまま登録名に採る。`Boss03AnimatorComponent.hpp` に同居させ入れ子 namespace を書くと存在しない名前空間で登録され `ScriptList.inl` が壊れる。
 #pragma once
 
 #include <string_view>
@@ -48,19 +40,13 @@ inline constexpr const char* kHitLayer = "Hit";
 
 /// モデルの «正面» が +Z からどれだけ回っているか [度]。
 ///
-/// WHY 定数で持つか (フィールドにしないか):
-///   これは調整値ではなく **Boss03.fbx の性質**。向きを使う側は 2 つ (AI の向き直りと、
-///   Animator の «前 / 左 / 右» の判定) あり、片方だけ直すと «正面を向いて後ろ歩き» に
-///   なる。1 つの定数から両方が引けば、食い違いようがない。
-///
-/// Boss03の正面はローカル-Z。AIと移動方向の判定で同じ180度補正を使う。
+/// @note `Boss03.fbx` の性質で調整値ではない。AI の向き直りと Animator の前/左/右判定の両方が参照するため定数へ集約する。
+/// @note 正面はローカル -Z。両判定で同じ 180 度補正を使う。
 inline constexpr float kBoss03FacingOffsetDegrees = 180.0f;
 
 /// 浮遊の向き。Motion は float だが値は離散で、遷移条件は Equal で引いている。
 ///
-/// WHY 実速をそのまま流さないか: Boss03.animcontroller の Hover は «前 / 左 / 右» の
-///     3 ステートで、条件が «Motion == 1 / 2 / 3» になっている。連続値を流すと
-///     どの条件にも一致せず、浮いているのに Idle から動かない。
+/// @note 実速でなく離散値を渡す。Hover は `Motion == 1/2/3` の Equal 条件で遷移するため、連続値だとどれにも一致せず Idle のまま浮く。
 enum class Boss03Motion : int {
     Hold    = 0,
     Forward = 1,
@@ -99,8 +85,7 @@ inline constexpr const char* kBoss03WingPieceName = "FX_WingPiece_";
 
 /// 名前から翼を引く。見つからなければ -1。
 ///
-/// WHY 完全一致にしないか: とどめの当て先は骨そのものではなく、骨へぶら下げた
-///     当たり判定 ("HB_Wing_L_Upper" のような名前) になる。骨名を含んでいれば同じ翼。
+/// @note 完全一致でなく部分一致。当て先は骨自体でなく骨へ提げた当たり判定 (`HB_Wing_L_Upper` 等) の名前になるため。
 [[nodiscard]] inline int Boss03WingFromName(std::string_view name)
 {
     for (int i = 0; i < kBoss03WingCount; ++i)

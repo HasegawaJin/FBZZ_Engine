@@ -126,22 +126,16 @@ struct UIInputField {
     }
 };
 
-// キーボード / ゲームパッドでフォーカスを渡り歩くための印。
-//
-// WHY ポインターを動かす形にするか (専用の選択状態を作らないか):
-//   UIButton も UISlider も UIToggle も、判定は「Canvas 空間の座標 1 つと
-//   押下状態」しか見ていない (UIPointer.hpp)。フォーカスを別系統の状態として
-//   持つと、ホバーとフォーカスという似て非なる 2 つの見た目を全ウィジェットが
-//   扱うことになる。方向キーで「ポインターをその要素の中心へ瞬間移動させる」
-//   だけにすれば、既存のウィジェットは 1 行も変えずにパッドで操作できる。
-//
-// WHY Canvas 側で有効化するか: 方向キーがフォーカス移動へ吸われると、
-//   ポインター操作前提で作った既存の画面の挙動が変わる。
-//   UICanvas.navigationEnabled を立てた Canvas でだけ働かせる。
+/// キーボード / ゲームパッドでフォーカスを渡り歩くための印。
+/// @note 専用の選択状態を作らずポインターを動かす形にするのは、UIButton / UISlider / UIToggle が
+///       すべて「Canvas 空間の座標 1 つと押下状態」しか見ていないため (UIPointer.hpp)。方向キーで
+///       ポインターを要素の中心へ瞬間移動させれば、既存ウィジェットは 1 行も変えずに操作できる。
+/// @note Canvas 側 (navigationEnabled) で有効化するのは、方向キーがフォーカス移動へ吸われると
+///       ポインター操作前提で作った既存画面の挙動が変わるため。
 enum class UINavigationMode {
-    Automatic, // 方向ごとに、その向きにある最も近い要素へ移る
-    Explicit,  // up / down / left / right の指定先だけへ移る
-    None,      // 移動先にならない (この要素で行き止まり)
+    Automatic, ///< 方向ごとに、その向きにある最も近い要素へ移る
+    Explicit,  ///< up / down / left / right の指定先だけへ移る
+    None,      ///< 移動先にならない (この要素で行き止まり)
 };
 
 struct UINavigation {
@@ -151,10 +145,10 @@ struct UINavigation {
     EntityRef down{};
     EntityRef left{};
     EntityRef right{};
-    // この Canvas でまだフォーカスが決まっていないとき、最初に置く先。
+    /// この Canvas でまだフォーカスが決まっていないとき、最初に置く先。
     bool selectOnStart = false;
 
-    // ランタイム専用: いまフォーカスが乗っているか。見た目を変えたい側が読む。
+    /// ランタイム専用: いまフォーカスが乗っているか。見た目を変えたい側が読む。
     bool focused = false;
 
     const char* GetTypeName() const { return "UI Navigation"; }
@@ -175,25 +169,23 @@ struct UINavigation {
     }
 };
 
-// 掴んで運べる要素。
-//
-// WHY UIEventTrigger と別に要るか: あちらはドラッグの「量」までしか出さない。
-//   運んだ結果として要るのは「どこへ落ちたか」で、それは落とした瞬間に
-//   ポインターの下にある受け皿を探して初めて分かる。探すには全要素の矩形が
-//   要り、それを知っているのは UISystem だけ。
+/// 掴んで運べる要素。
+/// @note UIEventTrigger はドラッグの「量」までしか出さない。運んだ結果として要るのは
+///       「どこへ落ちたか」で、落とした瞬間にポインター下の受け皿を全要素の矩形から
+///       探して初めて分かる (それを知っているのは UISystem だけ)。
 struct UIDragSource {
     bool enabled = true;
-    // ドラッグ中に要素自身をポインターへ追従させる。
-    // false なら位置は動かさず状態フラグだけが立つ (ゴーストを別に出す構成用)。
+    /// ドラッグ中に要素自身をポインターへ追従させる。
+    /// false なら位置は動かさず状態フラグだけが立つ (ゴーストを別に出す構成用)。
     bool moveWithPointer = true;
-    // 受け皿が見つからなかったとき、掴む前の位置へ戻す。
+    /// 受け皿が見つからなかったとき、掴む前の位置へ戻す。
     bool returnOnDrop = true;
-    // 受け皿が見る識別子。空なら種類なし。
+    /// 受け皿が見る識別子。空なら種類なし。
     std::string payload;
 
-    // ランタイム専用
+    /// ランタイム専用
     bool dragging = false;
-    // 1 フレーム限定。落ちた先は droppedOn (無効なら受け皿なし)。
+    /// 1 フレーム限定。落ちた先は droppedOn (無効なら受け皿なし)。
     bool dropped = false;
     EntityRef droppedOn{};
     math::Vector2 originPosition = math::Vector2::ZERO;
@@ -213,16 +205,16 @@ struct UIDragSource {
     }
 };
 
-// 落とし先。
+/// 落とし先。
 struct UIDropTarget {
     bool enabled = true;
-    // 受け付ける payload。空なら何でも受ける。
+    /// 受け付ける payload。空なら何でも受ける。
     std::string accepts;
 
-    // ランタイム専用
-    // ドラッグ中の要素がこの上にあるか (見た目を変える側が読む)。
+    /// ランタイム専用
+    /// ドラッグ中の要素がこの上にあるか (見た目を変える側が読む)。
     bool hovered = false;
-    // 1 フレーム限定。受け取った直後に立つ。
+    /// 1 フレーム限定。受け取った直後に立つ。
     bool received = false;
     EntityRef receivedFrom{};
     std::string receivedPayload;

@@ -3,26 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 ///
-/// WHY コンポーネントから切り出すか:
-///   ブレンド・フリップブック・歪み・煙・自己影は «その素材がどう見えるか» であって
-///   «いつどこに粒を出すか» ではない。同じ素材を 5 個のエミッターで使うたびに 34 個の
-///   値を貼り直すのは現実的でないうえ、以前は blendMode だけ .mat が毎フレーム
-///   コンポーネントを上書きしており、Inspector で変えても戻る・.mat の値がシーンへ
-///   焼き付く、という «正本が 2 つある» 典型的な壊れ方をしていた。
-///   見た目は .mat に 1 か所だけ持たせ、ParticleEmitter は発生と運動だけを持つ。
-///
-/// WHY [params] ではなく専用テーブルか:
-///   ここにある値の多くはシェーダーだけでなく **エンジンが分岐に使う** —
-///   フリップブックの UV 矩形は CPU シミュレーションが組み立て、distortion は
-///   パスがシーン色を退避するか決め、selfShadowStrength は専用 RT を回すか決める。
-///   [params] は «シェーダー変数名 → float 列» なので型も既定値も持てず、
-///   エンジン側が文字列で引き直すことになる。型付きで持てば Inspector にも
-///   コンボやスライダーをそのまま出せる。
-///   純粋にシェーダーだけが読む値 (カスタムシェーダーの独自パラメータ) は
-///   従来どおり [params] を使う — そちらは b2 の MaterialConstants へ名前で束縛される。
+/// @note ブレンド・フリップブック・歪み・煙・自己影は素材の «見た目» であり «いつどこに粒を
+///       出すか» ではないため、ParticleEmitter でなく .mat に 1 か所だけ持たせる。ここは
+///       [params] (シェーダー変数名 → float 列) と違い、フリップブック UV や distortion の
+///       要否など **エンジンが分岐に使う** 型付き値のため専用テーブルにした。
 #pragma once
 
-#include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp> // Particle* 列挙
+/// @note Particle* 列挙 (ParticleAlphaSource 等) を使うために ScriptParticleProxy.hpp を include する。
+#include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Math/Vector3.hpp>
 #include <string>
 #include <string_view>
@@ -31,12 +19,10 @@ namespace fbzz::asset {
 
 /// フリップブック (テクスチャシートアニメーション)。.mat の [particle] にはフラットな
 /// キー (sprite_columns ...) のまま保存する。
-///
-/// WHY 塊にするか:
-///   この 11 個は «アトラスのどのコマをいつ出すか» という 1 つの仕事にしか使われない。
-///   平たく並べていた頃は、再生範囲の丸め (end = 0 を «最後まで» と読む・範囲外を詰める) を
-///   CPU 経路と GPU 定数バッファがそれぞれ書いており、Inspector のプレビューを作ると
-///   3 本目になるところだった。型と評価関数を 1 つにして 3 者に同じ答えを出させる。
+/// @note この 11 個は «アトラスのどのコマをいつ出すか» という 1 つの仕事にしか使われない。
+///       平たく並べていた頃は再生範囲の丸めを CPU 経路と GPU 定数バッファがそれぞれ書いており、
+///       Inspector プレビューを作ると 3 本目になるところだった。型と評価関数を 1 つにして
+///       3 者に同じ答えを出させる。
 struct ParticleFlipbookSettings {
     /// アトラスの分割数。1x1 なら 1 枚絵として扱う。
     int spriteColumns = 1;
@@ -58,7 +44,7 @@ struct ParticleFlipbookSettings {
     bool motionVectorFlipbook = false;
     /// MV アトラスを作ったときの最大移動量 S (Atlas UV)。生成器が返す recommendedStrength を入れる。
     /// 典型値は 0.002〜0.02。既定の 0 は «warp しない» (普通のコマ補間と同じ)。
-    /// WHY 0 か: 旧既定の 1 は «Atlas 全幅ぶりずらす» 意味になり、MV を有効にした瞬間に絵が破綻する。
+    /// @note 旧既定の 1 は «Atlas 全幅ぶりずらす» 意味になり、MV を有効にした瞬間に絵が破綻する。
     float motionVectorStrength = 0.0f;
 
     /// 分割数 0 以下を 1 として数えたコマ数。
@@ -100,43 +86,51 @@ struct FlipbookFrameSample {
 /// .mat の [particle] テーブル。既定値は «この機能を使っていない» 状態で、
 /// 旧 ParticleEmitter の既定と一致させてある (移行しても見た目が変わらないため)。
 struct ParticleMaterialSettings {
-    // ── 合成 ──
-    // NOTE: 実際のブレンドは .mat トップレベルの blend_mode が決める。
-    //       ここには持たない (同じ意味の値を 2 か所に置かない)。
+    /// @name 合成
+    /// @{
+    /// @note 実際のブレンドは .mat トップレベルの blend_mode が決める。
+    ///       ここには持たない (同じ意味の値を 2 か所に置かない)。
+    /// @}
 
-    // ── アルファの取り出し方 ──
+    /// @name アルファの取り出し方
+    /// @{
     /// テクスチャのどこを不透明度として読むか。値は Rendering/Mask.hlsli の FBZZ_MASK_*。
     scene::ParticleAlphaSource alphaSource = scene::ParticleAlphaSource::TextureAlpha;
 
     ParticleFlipbookSettings flipbook;
+    /// @}
 
-    // ── ソフトパーティクル ──
+    /// @name ソフトパーティクル
+    /// @{
     /// 背景との交差線を深度差でぼかす。板が地面へ突き刺さって見えるのを防ぐ。
     bool softParticles = false;
     float softParticleFadeDistance = 0.5f;
+    /// @}
 
-    // ── カメラ距離フェード ──
-    /// カメラから cameraFadeNear より近い粒子を薄くする [ワールド単位]。
-    /// near で 0・far で 1 まで戻る。カメラが煙へ突っ込んだときに 1 枚の板で
-    /// 画面全体が埋まるのを防ぐ。
-    ///
-    /// near >= far (既定の 0 / 0 を含む) は «この素材は距離フェードを使わない» の意味。
-    /// WHY 有効フラグ (bool) を持たないか:
-    ///   ソフトパーティクルと違い、この 2 値はシェーダー内で分岐なしに «使わない» を
-    ///   表現できる (near >= far でフェードが常に 1)。フラグを足すと «有効なのに
-    ///   near == far» という無意味な組み合わせが Inspector に現れる。
+    /// @name カメラ距離フェード
+    /// @{
+    /// カメラから cameraFadeNear より近い粒子を薄くする [ワールド単位]。near で 0・far で 1 まで
+    /// 戻る。カメラが煙へ突っ込んだときに 1 枚の板で画面全体が埋まるのを防ぐ。
+    /// @note near >= far (既定の 0/0 を含む) は «距離フェードを使わない» の意味。ソフトパーティクル
+    ///       と違いシェーダー内で分岐なしに «使わない» を表現できるため (near >= far で常に 1)、
+    ///       有効フラグは持たない。フラグを足すと «有効なのに near == far» という無意味な
+    ///       組み合わせが Inspector に現れる。
     float cameraFadeNear = 0.0f;
     float cameraFadeFar  = 0.0f;
+    /// @}
 
-    // ── 歪み (熱陽炎) ──
+    /// @name 歪み (熱陽炎)
+    /// @{
     /// 背景を屈折させる。有効にするとパスがシーン色を退避し、合成はアルファへ倒れる。
     bool distortion = false;
     float distortionStrength = 0.015f;
     /// 色収差量 [画面 UV]。RGB を歪み方向へずらして屈折の分散を出す。0 で無効。
     float distortionChromatic = 0.0f;
     /// 歪み専用ノーマルマップは [textures] の normal に置く。未設定なら albedo の RG を使う。
+    /// @}
 
-    // ── 煙の散乱 (lit smoke) ──
+    /// @name 煙の散乱 (lit smoke)
+    /// @{
     /// ビルボードの疑似法線で照明応答させる。volumetric とは役割が重複するため排他。
     bool sixWayLighting = false;
     float lightingStrength = 1.0f;
@@ -151,42 +145,47 @@ struct ParticleMaterialSettings {
     bool sixWayMaps = false;
     /// Negative の A (発光マスク) に掛ける色 (リニア HDR)。炎の芯を影の中でも光らせる。
     math::Vector3 sixWayEmissionColor = { 0.0f, 0.0f, 0.0f };
+    /// @}
 
-    // ── ボリュメトリック煙 ──
+    /// @name ボリュメトリック煙
+    /// @{
     /// ビルボード内で球状密度場をレイマーチして厚みを出す。
     bool volumetric = false;
     int volumetricSteps = 8;
     float volumetricDensity = 1.0f;
     float volumetricAnisotropy = 0.3f;
     float volumetricNoiseScale = 2.0f;
+    /// @}
 
-    // ── 影 ──
+    /// @name 影
+    /// @{
     /// 他の物体が落とす影を受ける。
     bool receiveShadows = false;
     float shadowStrength = 1.0f;
     /// 自分自身の密度で減光する。0 で無効 (専用 RT を回さない)。
     float selfShadowStrength = 0.0f;
+    /// @}
 
-    // ── 点光源 ──
+    /// @name 点光源
+    /// @{
     /// Point / Spot / 面光源 (クラスタ) を粒子の中心で受ける。煙が近くの炎や松明に照らされる。
     /// 1 画素ごとにライト一覧を走査するので、画面を覆う煙では重くなる。
     bool punctualLighting = false;
+    /// @}
 
-    // ── 明るさ ──
+    /// @name 明るさ
+    /// @{
     /// 粒子色に掛かる倍率。HDR (1 超) にするとブルームが拾う。
     float emissiveScale = 1.0f;
+    /// @}
 };
 
-// ── materialPath はテクスチャを受けない、という規約を守るための道具 ──
-//
-// ParticleEmitter::materialPath は .mat 専用で、テクスチャは .mat の [textures] から来る。
-// ところが «貼りたいのは .png» という要求は消えないので、Editor の素材欄は
-// テクスチャを落とすと決まった名前の .mat へ包んでからパスを書く。
-//
-// WHY 命名規則をエンジン側へ置くか:
-//   包む側 (Editor) と、«テクスチャが materialPath に入ってしまった» ときに
-//   救う側 (ParticlePass) が別々に名前を組み立てると、移行先が食い違って
-//   «作った .mat があるのに見つけられない» が起きる。規則は 1 か所に置く。
+/// ParticleEmitter::materialPath は .mat 専用で、テクスチャは .mat の [textures] から来る。
+/// ところが «貼りたいのは .png» という要求は消えないので、Editor の素材欄はテクスチャを
+/// 落とすと決まった名前の .mat へ包んでからパスを書く。
+/// @note 包む側 (Editor) と «テクスチャが materialPath に入ってしまった» ときに救う側
+///       (ParticlePass) が別々に名前を組み立てると移行先が食い違うため、命名規則はエンジン側の
+///       1 か所に置く。
 
 /// パスがテクスチャか (.png / .tga / .dds / .jpg / .jpeg)。
 [[nodiscard]] bool IsParticleTexturePath(std::string_view path);

@@ -19,33 +19,33 @@ namespace fbzz::input {
 
 class Input {
 public:
-    // Window 生成後に一度呼ぶ
+    /// Window 生成後に一度呼ぶ
     static void Init();
 
-    // Play セッション切り替え時に入力状態を全てクリアする
+    /// Play セッション切り替え時に入力状態を全てクリアする
     static void Reset();
 
-    // ゲームループ先頭で呼ぶ。前フレームの状態を保存する
+    /// ゲームループ先頭で呼ぶ。前フレームの状態を保存する
     static void Update();
 
-    // キーボード
-    static bool KeyDown(KeyCode key);   // 押した瞬間 (1 フレームのみ true)
-    static bool KeyHeld(KeyCode key);   // 押し続け
-    static bool KeyUp  (KeyCode key);   // 離した瞬間 (1 フレームのみ true)
+    /// キーボード
+    static bool KeyDown(KeyCode key);   ///< 押した瞬間 (1 フレームのみ true)
+    static bool KeyHeld(KeyCode key);   ///< 押し続け
+    static bool KeyUp  (KeyCode key);   ///< 離した瞬間 (1 フレームのみ true)
 
-    // マウスボタン (0=左, 1=右, 2=中)
+    /// マウスボタン (0=左, 1=右, 2=中)
     static bool MouseButton    (int button);
     static bool MouseButtonDown(int button);
     static bool MouseButtonUp  (int button);
 
-    // マウス座標 (クライアント座標)
+    /// マウス座標 (クライアント座標)
     static math::Vector2 MousePosition();
     static math::Vector2 MouseDelta();
-    // CursorLockMode::Locked 用に OS カーソルを中央へ戻す前の移動量を注入する。
-    // WHY: SetCursorPos によるワープを通常の座標差分へ混ぜると、ゲームカメラのデルタが相殺されるため。
+    /// CursorLockMode::Locked 用に OS カーソルを中央へ戻す前の移動量を注入する。
+    /// @note SetCursorPos のワープ量を通常の座標差分に混ぜるとカメラデルタが相殺されるため分離する。
     static void OverrideMouseDelta(const math::Vector2& delta);
 
-    // マウスホイール (1ノッチ = +1.0 / -1.0)
+    /// マウスホイール (1ノッチ = +1.0 / -1.0)
     static float MouseScrollDelta();
 
     /// @name Window::WndProc から呼ぶ内部関数
@@ -61,8 +61,8 @@ public:
     static std::string_view TextInput();
     ///@}
 
-    // AI 自動プレイテスト用の入力注入。通常入力と同じフレーム状態へ合成する。
-    // WHY: EditorMCP が Pause+Step と組み合わせてゲームを決定的に操作できるようにする。
+    /// AI 自動プレイテスト用の入力注入。通常入力と同じフレーム状態へ合成する。
+    /// @note EditorMCP が Pause+Step と組み合わせ、決定的にゲームを操作するために使う。
     static bool InjectKey(uint32_t virtualKey, bool pressed);
     static bool InjectMouseButton(int button, bool pressed);
     static void InjectMousePosition(const math::Vector2& position);

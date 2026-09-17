@@ -39,11 +39,9 @@ struct MemoryLeakReport {
     std::string               label;          ///< 基準を取った文脈 ("Play" / "Manual")
     std::vector<MemoryLeakRow> rows;          ///< 増えた発生位置のみ。bytesDelta 降順
     /// 減った発生位置のみ。bytesDelta 昇順 (いちばん大きく減った行が先頭)。
-    ///
-    /// WHY 要るか: 合計は増えた行と減った行の和なので、増えた行だけを見せると
-    ///     「-92 MB / +109 本」のように符号が食い違って読めなくなる。RT は
-    ///     SizedRenderTarget::Ensure が «Release してから作り直す» ため、
-    ///     ビューポートを縮めるだけで数十 MB がここへ落ちる。
+    /// @note 合計は増減の和なので増えた行だけでは符号が食い違う。RT は
+    ///       `SizedRenderTarget::Ensure` が Release してから作り直すため、
+    ///       ビューポートを縮めるだけで数十 MB がここへ落ちる。
     std::vector<MemoryLeakRow> shrunkRows;
     std::ptrdiff_t            totalBytesDelta = 0;
     std::ptrdiff_t            totalCountDelta = 0;
@@ -58,10 +56,8 @@ struct MemoryLeakReport {
 };
 
 /// 生存中の Renderer リソースを「発生位置ごとの本数」に畳んで基準と比べる。
-///
-/// WHY 個体 (allocationId) で比べないか: Play/Stop はシーンを丸ごと作り直すため、
-///     同じ役目のリソースでも別の id になる。個体単位の差分では「作り直しただけ」の
-///     ものが全部リークに見えてしまう。同じ file:line の本数が増えたときだけ残す。
+/// @note 個体 (allocationId) でなく発生位置で比べる。Play/Stop はシーンを作り直すため
+///       同じ役目でも id が変わり、個体単位では作り直しただけでリークに見えてしまう。
 class MemoryLeakDiff {
 public:
     void CaptureBaseline(const renderer::ResourceManager& resources, std::string label);
@@ -78,21 +74,17 @@ public:
     [[nodiscard]] const MemoryLeakReport& GetPinnedReport() const { return m_pinned; }
 
     /// @name セッション基準 (最初の Play からの累計)
-    ///
-    /// WHY 1 往復の差分だけでは足りないか: キャッシュ (LoadTexture / LoadShader /
-    ///     .mat 解決) は «初回の Play で 1 度だけ» 増える。1 往復ぶんの差分では、
-    ///     それとリークが同じ «+N» に見えてしまう。最初の Play を基準に据えて累計を並べれば、
-    ///     往復のたびに比例して伸びるものだけがリークだと分かる。
+    /// @note キャッシュ (LoadTexture / LoadShader / .mat 解決) は初回の Play で 1 度だけ増える。
+    ///       1 往復ぶんの差分ではリークと同じ «+N» に見えるため、最初の Play を基準に
+    ///       累計を並べ、往復のたびに比例して伸びるものだけを見る。
     ///@{
     void CaptureSessionBaselineIfAbsent(const renderer::ResourceManager& resources);
     [[nodiscard]] bool HasSessionBaseline() const { return m_hasSession; }
     [[nodiscard]] int  GetCycleCount() const { return m_cycleCount; }
 
     /// 直近 1 往復ぶんの増減 (前の往復の累計との差)。
-    ///
-    /// WHY 累計 ÷ 往復回数ではないか: 平均には «初回だけの充填» と «RT の張り直し» が
-    ///     混ざる。一度きりの -90 MB を 3 で割れば「毎回 -30 MB」という有りもしない
-    ///     傾向が出る。リークの判定に要るのは前の往復との差だけ。
+    /// @note 累計 ÷ 往復回数にしない。平均には初回だけの充填と RT の張り直しが混ざり、
+    ///       一度きりの -90 MB を 3 で割ると「毎回 -30 MB」という無い傾向が出る。
     [[nodiscard]] std::ptrdiff_t GetLastCycleCountDelta() const { return m_lastCycleCountDelta; }
     [[nodiscard]] std::ptrdiff_t GetLastCycleBytesDelta() const { return m_lastCycleBytesDelta; }
     void NoteCycleCompleted() { ++m_cycleCount; }
@@ -102,10 +94,10 @@ public:
     ///@}
 
     /// frames フレーム後に比較し、結果を保持してログへ出す。
-    /// WHY 即座に比べないか: 解放はフレーム境界をまたぐ (復元直後のシーンはまだ描画中の
-    ///     リソースを掴んでいるし、DX12 の実解放はフェンス待ちの後)。落ち着いてから数える。
+    /// @note 即座に比べない。解放はフレーム境界をまたぐ (復元直後のシーンはまだ描画中の
+    ///       リソースを掴み、DX12 の実解放はフェンス待ちの後) ため、落ち着いてから数える。
     void ScheduleCompare(int frames, std::string label);
-    /// 毎フレーム呼ぶ。予約が満了したフレームで比較する。@ret 比較したら true。
+    /// 毎フレーム呼ぶ。予約が満了したフレームで比較する。@return 比較したら true。
     bool Tick(const renderer::ResourceManager& resources);
 
     /// Console へ 1 行サマリ + 上位行を出す。
@@ -146,9 +138,8 @@ private:
     const renderer::ResourceManager& resources);
 
 /// 貼り付け用のテキスト一式 (合計・発生位置ごとの一覧・基準からの差分)。
-///
-/// WHY 要るか: リークの相談は «どの発生位置が何本» が揃って初めて始まる。
-///     パネルの表を人が読んで書き写すと、いちばん要る行が落ちる。
+/// @note リークの相談は «どの発生位置が何本» が揃って初めて始まる。パネルの表を
+///       人が読んで書き写すと、いちばん要る行が落ちる。
 [[nodiscard]] std::string FormatMemoryReport(const renderer::ResourceManager& resources,
                                              const MemoryLeakDiff& diff);
 

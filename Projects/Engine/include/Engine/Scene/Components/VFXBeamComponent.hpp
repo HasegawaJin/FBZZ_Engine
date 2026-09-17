@@ -3,16 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 描画を持たないか:
-///   «結ぶ» のは座標の問題で、«どう見えるか» は既に TrailComponent が持っている
-///   (幅の先細り・色・マテリアル・UV スクロール・カメラ追従)。描画をもう 1 つ書くと、
-///   ビームだけマテリアルの効かない別経路になる。このコンポーネントは
-///   同じ GameObject の TrailComponent へ毎フレーム経路を書き込むだけにする。
-///
-/// WHY TrailComponent の beamStart / beamEnd を直接使わないか:
-///   あれはローカル座標の «手で置いた 2 点» で、オーサリング時に固定される値。
-///   こちらは «いまどこに居るか» を毎フレーム引き直す。同じフィールドに
-///   両方の意味を持たせると、手で置いた値がいつ上書きされるのか読めなくなる。
+/// @note 描画は既に TrailComponent が持つ (幅の先細り・色・マテリアル・UV スクロール・カメラ追従)。
+///       このコンポーネントは同じ GameObject の TrailComponent へ毎フレーム経路を書くだけにする。
+/// @note beamStart/beamEnd (手で置いた固定値) とは別に持つ。同じフィールドに「毎フレーム引き直す
+///       今の位置」も持たせると、いつ上書きされるか読めなくなる。
 #pragma once
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -51,11 +45,11 @@ struct VFXBeamComponent {
     float jitterWaves = 3.0f;
 
     /// 端点の実体が消えたらビームを畳む。
-    /// WHY 既定で畳むか: 敵が死んだ後も線が «誰も居ない場所» へ伸び続けると、
-    ///     盤面に無い関係を描いていることになる。
+    /// @note 既定 true: 敵が死んだ後も線が誰も居ない場所へ伸び続けると、盤面に無い関係を描くことになる。
     bool disableWhenEndpointMissing = true;
 
-    // --- ランタイム ---
+    /// @name ランタイム
+    /// @{
     float phase = 0.0f;
 
     const char* GetTypeName() const { return "VFX Beam"; }
@@ -76,6 +70,7 @@ struct VFXBeamComponent {
         r.Field("jitterWaves", jitterWaves);
         r.Field("disableWhenEndpointMissing", disableWhenEndpointMissing);
     }
+    /// @}
 };
 
 } // namespace fbzz::scene

@@ -3,9 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// DXGI_FORMAT は各バックエンドの PRIVATE include にしか無いので、上位レイヤーが
-/// 形式を指定する手段が無かった。RT は RGBA16F + D32 の決め打ちで、
-/// «深度を一度も読まないポストプロセスの中継 RT» まで全画面ぶんの深度を抱えていた。
+/// @note DXGI_FORMAT は各バックエンドの PRIVATE include にしか無いため、上位レイヤーが RT の
+///       形式や深度有無を指定する手段としてこの列挙と RenderTargetDesc を置く。
 #pragma once
 
 #include <cstdint>
@@ -28,11 +27,9 @@ struct RenderTargetDesc {
     uint32_t colorCount = 1;
     /// カラーの形式。colorCount = 0 のときは意味を持たない。
     Format   format = Format::RGBA16F;
-    /// 深度バッファを持つか。
-    ///
-    /// WHY 既定を true にするか: 既存の CreateRenderTarget は «必ず深度が付く» 前提で
-    ///     書かれている。既定を false にすると、深度を読んでいる箇所が黙って壊れる。
-    ///     要らないと分かった RT から明示的に false へ倒していく。
+    /// @brief 深度バッファを持つか。
+    /// @note 既定を true にするのは、CreateRenderTarget の呼び出し側の多くが «必ず深度が付く»
+    ///       前提で書かれているため。不要と分かった RT から明示的に false へ倒していく。
     bool     withDepth = true;
 };
 

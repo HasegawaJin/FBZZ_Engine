@@ -8,9 +8,8 @@ namespace fbzz::editor::icons {
 
 namespace detail {
 
-// EditorTheme::Apply() が merge の成否を書く。
-// WHY ヘッダーに出さないか: 書くのはフォントを積む 1 か所だけで、
-//     それ以外から触れると «アイコンがあることにする» 抜け道ができる。
+/// EditorTheme::Apply() が merge の成否を書く。
+/// @note ヘッダーに出さない: 書くのはフォントを積む 1 か所だけで、それ以外から触れると «アイコンがあることにする» 抜け道ができる。
 bool g_iconFontLoaded = false;
 
 } // namespace detail

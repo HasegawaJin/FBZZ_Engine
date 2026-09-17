@@ -16,82 +16,74 @@ void ExecuteSSAOPass(RenderPassContext& ctx);
 void ExecuteCausticsPass(RenderPassContext& ctx);
 void ExecuteCompositePass(RenderPassContext& ctx);
 void ExecuteFxaaPass(RenderPassContext& ctx);
-// 内部解像度で仕上がった ctx.chainOutputRT を ctx.outputRT の実寸へ解像する。
-// 等倍のフレームでは登録されない (チェーンが outputRT へ直接書き終えている)。
+/// 内部解像度で仕上がった ctx.chainOutputRT を ctx.outputRT の実寸へ解像する。
+/// 等倍のフレームでは登録されない (チェーンが outputRT へ直接書き終えている)。
 void ExecuteUpscalePass(RenderPassContext& ctx);
-// UI を outputRT へ合成する。ポストプロセスではないが «最終出力へ載せる» 段の一員。
-// ctx.uiOptions が null / 無効なら何もしない。
+/// UI を outputRT へ合成する。ポストプロセスではないが «最終出力へ載せる» 段の一員。
+/// ctx.uiOptions が null / 無効なら何もしない。
 void ExecuteUIPass(RenderPassContext& ctx);
 void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, uint32_t outputIndex);
-// HDR の段 (AfterOpaque / SceneHDR) のユーザーシェーダーを hdrRT へ適用する。
-// blendMode が OPAQUE_BLEND なら «退避 → 描き戻し»、それ以外は直接。
-// iterations / downscale が効くのはこちらだけ (CustomPostProcessPass.cpp の WHY)。
+/// HDR の段 (AfterOpaque / SceneHDR) のユーザーシェーダーを hdrRT へ適用する。
+/// blendMode が OPAQUE_BLEND なら «退避 → 描き戻し»、それ以外は直接。
+/// iterations / downscale が効くのはこちらだけ (理由は CustomPostProcessPass.cpp を参照)。
 void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex);
-// .mat をキーにした解決済みマテリアルのキャッシュを破棄する。
-// シーン切り替えやリソースリセットの際に呼ぶこと。
+/// .mat をキーにした解決済みマテリアルのキャッシュを破棄する。
+/// シーン切り替えやリソースリセットの際に呼ぶこと。
 void ReleaseCustomPassMaterialCache();
 
-// ---- Advanced Graphics Passes ----
 
-// IBL BRDF LUT をスタートアップ時に一度だけ焼く Compute パス。
-// WHY: 512x512 の積分テーブルは全シーン共通で変わらないため、初回フレームのみ実行する。
+/// IBL BRDF LUT をスタートアップ時に一度だけ焼く Compute パス。
+/// @note 512x512 の積分テーブルは全シーン共通で変わらないため、初回フレームのみ実行する。
 void ExecuteIBLBakeBrdfLutPass(RenderPassContext& ctx);
 
-// GTAO — SSAO の代替。Horizon-Based AO で接触部の陰を自然に表現する。
+/// GTAO — SSAO の代替。Horizon-Based AO で接触部の陰を自然に表現する。
 void ExecuteGTAOPass(RenderPassContext& ctx);
 
-// SSR — スクリーンスペース反射。金属・濡れた床の映り込みをリアルタイムに計算する。
+/// SSR — スクリーンスペース反射。金属・濡れた床の映り込みをリアルタイムに計算する。
 void ExecuteSSRPass(RenderPassContext& ctx);
 
-// Volumetric Lighting — レイマーチで体積光（ゴッドレイ・光柱）を生成する。
+/// Volumetric Lighting — レイマーチで体積光（ゴッドレイ・光柱）を生成する。
 void ExecuteVolumetricLightPass(RenderPassContext& ctx);
-// フロクセル ボリューメトリック フォグ。視錐台の 3D グリッドへ霧を焼いて Z 積分する。
-// Shadow より後、Composite より前に走らせること (シャドウマップを読む)。
+/// フロクセル ボリューメトリック フォグ。視錐台の 3D グリッドへ霧を焼いて Z 積分する。
+/// Shadow より後、Composite より前に走らせること (シャドウマップを読む)。
 void ExecuteFroxelFogPass(RenderPassContext& ctx);
-// 自動露出 (眼の順応)。HDR が出揃ってから Composite より前に走らせること。
-// 結果は handles.exposureResult に残り、Composite が t29 で読む。
+/// 自動露出 (眼の順応)。HDR が出揃ってから Composite より前に走らせること。
+/// 結果は handles.exposureResult に残り、Composite が t29 で読む。
 void ExecuteAutoExposurePass(RenderPassContext& ctx);
-// 次のフレームで順応を飛ばして即座に露出を合わせる。シーン切り替えやカット割りで呼ぶ。
+/// 次のフレームで順応を飛ばして即座に露出を合わせる。シーン切り替えやカット割りで呼ぶ。
 void RequestAutoExposureReset();
 
-// Volumetric Cloud — 深度で遮蔽しながら雲層をレイマーチし、HDR へ合成する。
+/// Volumetric Cloud — 深度で遮蔽しながら雲層をレイマーチし、HDR へ合成する。
 void ExecuteVolumetricCloudPass(RenderPassContext& ctx);
 
-// 雲パラメータ CB (b2) を現在のシーンから更新し、有効な雲があれば true を返す。
-// WHY: 体積光パスも同じ密度場を引いて雲の切れ間の光芒を作るため、雲パス実行の有無に
-//      依らず CB の内容が保証されている必要がある。
+/// 雲パラメータ CB (b2) を現在のシーンから更新し、有効な雲があれば true を返す。
+/// @note 体積光パスも同じ密度場を引いて雲の切れ間の光芒を作るため、雲パス実行の有無に
+///       依らず CB の内容が保証されている必要がある。
 bool UpdateVolumetricCloudConstants(RenderPassContext& ctx);
 
-// Contact Shadows — スクリーンスペースで小物直下の接触影を高精度に生成する。
+/// Contact Shadows — スクリーンスペースで小物直下の接触影を高精度に生成する。
 void ExecuteContactShadowsPass(RenderPassContext& ctx);
 
-// TAA — テンポラルアンチエイリアシング。前フレームバッファと現フレームをブレンドする。
+/// TAA — テンポラルアンチエイリアシング。前フレームバッファと現フレームをブレンドする。
 void ExecuteTAAPass(RenderPassContext& ctx);
 
-// TAA_Blit — TAA 出力 (fxaaInput = taaHistoryA/B) を OutputRT に転送する。
-// WHY: TAA は ping-pong 履歴バッファにのみ書き OutputRT には書かない。
-//      FXAA が後続にない場合、この blit なしでは viewport が黒になる。
+/// TAA_Blit — TAA 出力 (fxaaInput = taaHistoryA/B) を OutputRT に転送する。
+/// @note TAA は ping-pong 履歴バッファにのみ書き OutputRT には書かない。
+///       FXAA が後続にない場合、この blit なしでは viewport が黒になる。
 void ExecuteTAABlitPass(RenderPassContext& ctx);
 
-// Motion Blur — カメラモーションブラー。深度再投影でモーションベクトルを生成して適用する。
+/// Motion Blur — カメラモーションブラー。深度再投影でモーションベクトルを生成して適用する。
 void ExecuteMotionBlurPass(RenderPassContext& ctx);
 
-// Lens Flare — スクリーンスペースレンズフレア。加算合成で HDR バッファに合成する。
-// 光源抽出のため bloomHalf を作業バッファとして上書きする (Bloom より前に走る前提)。
+/// Lens Flare — スクリーンスペースレンズフレア。加算合成で HDR バッファに合成する。
+/// 光源抽出のため bloomHalf を作業バッファとして上書きする (Bloom より前に走る前提)。
 void ExecuteLensFlarePass(RenderPassContext& ctx);
 
-// ---- 画面空間パス (IRenderPass) --------------------------------------------
-//
-// どれも Forward のプリパス経路と Deferred 経路の両方に登録される。違うのは
-// «実行順のどこに置くか» だけで、申告も有効条件も本体も同じ。
-//
-// WHY クラスにするか: ラムダで登録していた頃は申告が RenderSystem 側に 2 か所並び、
-//     本体 (このディレクトリの .cpp) から 200 行以上離れていた。本体が新しい
-//     テクスチャを読み始めても申告を直す場所が視界に入らず、実際 Terrain と
-//     DeferredLighting で «読んでいるのに申告していない» が起きている。
-// WHY 有効条件も持たせるか: 同じ式を 2 か所へ書かずに済み、登録側には
-//     «どの経路のどの位置か» だけが残る。
-// @note 描き先の束縛は各本体が行う。SetAutoTarget は呼ばない。
+/// どれも Forward のプリパス経路と Deferred 経路の両方に登録される。違うのは
+/// «実行順のどこに置くか» だけで、申告も有効条件も本体も同じ。
+/// @note ラムダでなくクラスにする理由: 申告と有効条件と本体を 1 箇所へまとめ、«読んでいるのに
+///       申告していない» (Terrain/DeferredLighting で実際に発生) を防ぐ。
+/// @note 描き先の束縛は各本体が行う。SetAutoTarget は呼ばない。
 
 class GTAOPass final : public IRenderPass {
 public:

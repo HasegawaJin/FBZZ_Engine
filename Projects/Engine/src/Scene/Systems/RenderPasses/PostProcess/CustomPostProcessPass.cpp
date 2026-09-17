@@ -3,21 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 ///
-/// WHY 段があるか (CustomPassStage の WHY と対):
-///   PostProcess 段は «最終画を作り直す» 直列チェーンで、トーンマップ後の LDR。
-///   ここで足した光は 1 で頭打ちなので滲まないし、露出とも噛み合わない。
-///   HDR の段 (AfterOpaque / SceneHDR) はトーンマップ前なので、書いた値がそのまま
-///   ブルームと露出へ流れる。
-///
-/// WHY «置き換え» だけ余計に 1 パス掛かるか:
-///   描き先を読みながら書くことはできない。置き換えるシェーダーは入力の色が要るので、
-///   一度どこかへ写してから描き戻すしかない。加算で載せるだけの効果は入力を読まない
-///   ので、そのまま 1 パスで済む。
-///
-/// WHY 縮小と反復を HDR の段だけで許すか:
-///   縮小結果や反復の途中経過を置く RT が要る。HDR の段では ping-pong 用の 2 枚が
-///   まだ誰にも使われていないので借りられるが、PostProcess 段ではその 2 枚を
-///   チェーン自身が入力と出力に使っていて、3 枚目が無い。
+/// @note PostProcess 段は最終画を作り直す直列チェーン (トーンマップ後の LDR) で、足した光は
+///       1 で頭打ちのため滲まず露出とも噛み合わない。HDR の段 (AfterOpaque/SceneHDR) は
+///       トーンマップ前で、書いた値がそのままブルームと露出へ流れる。
+/// @note 「置き換え」だけ 1 パス余計に掛かるのは描き先を読みながら書けないため (一度写して
+///       描き戻す)。加算は入力を読まないので 1 パスで済む。縮小・反復は途中経過を置く RT が
+///       要り、HDR 段の ping-pong 用 2 枚は借りられるが PostProcess 段はその 2 枚を入出力に
+///       使い切っていて 3 枚目が無いため HDR 段限定にする。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -41,9 +33,9 @@ namespace {
 constexpr int kMaxCustomIterations = 8;
 constexpr int kMaxCustomDownscale  = 8;
 
-// ── .mat の解決 ────────────────────────────────────────────────────────────
-// 解決はシェーダーのロードとリフレクションを伴うので毎ドローやる値段ではない。
-// フレームに 1 度だけやり直して、.mat の編集をその場で絵へ出す (DecalPass と同じ作り)。
+/// @name .mat の解決
+/// 解決はシェーダーのロードとリフレクションを伴うので毎ドローやる値段ではない。
+/// フレームに 1 度だけやり直して、.mat の編集をその場で絵へ出す (DecalPass と同じ作り)。
 struct CustomMaterialBinding {
     renderer::Material         material;
     renderer::ShaderDescriptor descriptor;
@@ -60,8 +52,8 @@ bool WarnCustomMaterialOnce(const std::string& path)
     return g_warnedCustomMaterials.insert(path).second;
 }
 
-// materialPath から «シェーダー + テクスチャ + b2» を揃える。解決できなければ nullptr
-// (呼び出し側は shaderPath の経路へ落ちる)。
+/// materialPath から «シェーダー + テクスチャ + b2» を揃える。解決できなければ nullptr
+/// (呼び出し側は shaderPath の経路へ落ちる)。
 CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resources,
                                              const std::string& path)
 {
@@ -76,9 +68,9 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
                           path.c_str());
         return nullptr;
     }
-    // WHY 用途を検査するか: メッシュ用の .mat は頂点入力を前提にしたシェーダーを指す。
-    //     カスタムパスは頂点バッファを持たない SV_VertexID 描画なので、割り当てると
-    //     入力レイアウト不一致で何も出ないか画面が塗り潰される。絵からは原因が読めない。
+    /// @note 用途を検査するのは、メッシュ用の .mat が頂点入力を前提にしたシェーダーを指す
+    ///       ため。カスタムパスは頂点バッファを持たない SV_VertexID 描画なので、割り当てると
+    ///       入力レイアウト不一致で何も出ないか画面が塗り潰され、絵からは原因が読めない。
     if (matAsset->renderPath != asset::RenderPath::PostProcess) {
         if (WarnCustomMaterialOnce(path))
             FBZZ_LOG_WARN("Custom pass material '%s' is not declared for post process "
@@ -109,8 +101,8 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
         return nullptr;
     }
 
-    // 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
-    // ポインタで持つと解決時の中身と食い違う瞬間ができる。
+    /// @note 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
+    ///       ポインタで持つと解決時の中身と食い違う瞬間ができる。
     binding.descriptor = {};
     if (auto* shader = resources.Get(material.shader))
         binding.descriptor = shader->GetDescriptor();
@@ -137,7 +129,7 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
     return &binding;
 }
 
-// ── 共通の組み立て ─────────────────────────────────────────────────────────
+/// @name 共通の組み立て
 
 /// b5 をカスタムパスの内容で埋める。段が変わっても «同じ名前で同じ意味» にする。
 PostProcCB MakeCustomPostProcCB(const renderer::CustomPostProcessSettings& custom,
@@ -159,18 +151,13 @@ PostProcCB MakeCustomPostProcCB(const renderer::CustomPostProcessSettings& custo
     return postData;
 }
 
-/// 宣言された追加入力だけを束ねる。
-///
-/// WHY 全部を無条件に渡さないか:
-///   Velocity / GBuffer は «有効なフレームにしか存在しない» リソースで、無条件に
-///   束縛すると «たまたま動いていた» 依存が生まれる。宣言させておけば、足りない
-///   ものが何かを設定から読み取れる。
-///
-/// WHY HDR の段では深度を渡さないか:
-///   あの段の描き先は hdrRT で、その深度は描画先として束縛されている。同じリソースを
-///   同時に SRV として読むことはできない (API が黙って外す)。«読めているつもりで
-///   全部 0» という壊れ方をするくらいなら、渡さない方が原因が見える。
-///   遮蔽の判定が要るなら、マスクを描く側で済ませておくこと (ObjectMaskPass)。
+/// @brief 宣言された追加入力だけを束ねる。
+/// @note 全部を無条件に渡さないのは、Velocity/GBuffer が有効なフレームにしか存在しない
+///       リソースで、無条件束縛は「たまたま動いていた」依存を生むため。宣言させれば足りない
+///       ものが設定から読み取れる。
+/// @note HDR の段では深度を渡さない。その段の描き先は hdrRT で深度は描画先として束縛済み
+///       のため、同じリソースを同時に SRV で読めない (API が黙って外し「読めているつもりで
+///       全部 0」という壊れ方をする)。遮蔽判定が要るならマスク側 (ObjectMaskPass) で済ませる。
 void BindDeclaredInputs(renderer::DrawCall& dc, RenderPassContext& ctx,
                         uint32_t inputs, bool allowDepth)
 {
@@ -241,7 +228,7 @@ ResolvedCustomPass ResolveCustomPass(RenderPassContext& ctx, uint32_t customInde
     if (auto* binding = ResolveCustomMaterial(ctx.resources, custom.materialPath)) {
         resolved.material  = binding;
         resolved.shader    = binding->material.shader;
-        // .mat が合成方法まで持っているなら、それが書き手の意図。設定側は補欠。
+        /// @note .mat が合成方法まで持っているなら、それが書き手の意図。設定側は補欠。
         resolved.blendMode = binding->blendMode;
         return resolved;
     }
@@ -270,8 +257,8 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     const auto& custom = pp.customEffects[customIndex];
     const ResolvedCustomPass resolved = ResolveCustomPass(ctx, customIndex);
     if (!resolved.IsValid()) {
-        // シェーダーも .mat も解決できない要求は、今までここで黙って捨てていた。
-        // 症状が «その効果だけ何も起きない» なので、パス名を名指しで出す。
+        /// @note シェーダーも .mat も解決できない要求は、今までここで黙って捨てていた。
+        ///       症状が «その効果だけ何も起きない» なので、パス名を名指しで出す。
         static std::string sLastUnresolved;
         if (sLastUnresolved != custom.name) {
             sLastUnresolved = custom.name;
@@ -291,7 +278,7 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     auto& resources = ctx.resources;
     r.SetRenderTarget(needsIntermediate ? h.customPostProcessRT[outputIndex] : ctx.chainOutputRT, resources);
 
-    // 縮小も反復もこの段では効かない (ファイル冒頭の WHY)。uvScale は常に 1。
+    /// @note 縮小も反復もこの段では効かない (理由はファイル冒頭を参照)。uvScale は常に 1。
     const PostProcCB postData = MakeCustomPostProcCB(custom, ctx.width, ctx.height, 1.0f, 0, 1);
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
@@ -331,11 +318,10 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
     const int  downscale  = std::clamp(custom.downscale, 1, kMaxCustomDownscale);
     const bool reduced    = downscale > 1;
 
-    // WHY 専用の RT を作らずポストプロセスの ping-pong 枠を借りるか:
-    //   全 RenderTarget は RGBA16F (DX11RenderTarget::Init) なので、LDR チェーン用の
-    //   枠がそのまま HDR の受け皿になる。あちらが使うのは Composite より後で、
-    //   しかも毎回全画面を書き直すため、ここで踏んだ中身は誰にも読まれない。
-    //   専用に 2 枚持つと、使っていないプロジェクトでも全解像度ぶんの VRAM を払う。
+    /// @note 専用の RT を作らずポストプロセスの ping-pong 枠を借りるのは、全 RenderTarget が
+    ///       RGBA16F (`DX11RenderTarget::Init`) で LDR チェーン用の枠がそのまま HDR の受け皿に
+    ///       なり、あちらの使用は Composite より後で毎回全画面を書き直すため踏んだ中身が誰にも
+    ///       読まれないから。専用に 2 枚持つと使わないプロジェクトでも全解像度分の VRAM を払う。
     const auto scratchA = h.customPostProcessRT[0];
     const auto scratchB = h.customPostProcessRT[1];
     const bool needsScratch = replaces || reduced;
@@ -361,7 +347,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
                 MakeCustomPostProcCB(custom, ctx.width, ctx.height, 1.0f, i, iterations);
             resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
-            // 置き換えるなら «今の HDR» を退避してから描き戻す。
+            /// @note 置き換えるなら «今の HDR» を退避してから描き戻す。
             if (replaces) {
                 r.SetRenderTarget(scratchA, resources);
                 drawCopy(resources.GetColorTexture(ctx.Res().Target("HDR"), 0));
@@ -381,17 +367,16 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
         return;
     }
 
-    // 縮小して走る。入力を縮小コピー → 反復 → 実寸へ拡大合成。
-    //
-    // WHY 縮小側を消しておくか: 加算で合成する場合、書かれていない画素は «足さない»
-    //     でなければならない。前フレームの残りが入っていると、その分がそのまま光る。
+    /// @note 縮小して走る。入力を縮小コピー → 反復 → 実寸へ拡大合成。縮小側を先に消すのは、
+    ///       加算合成で書かれていない画素は「足さない」でなければならず、前フレームの残りが
+    ///       入っているとその分がそのまま光ってしまうため。
     r.SetRenderTarget(scratchA, resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
     r.SetRenderTarget(scratchB, resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     {
-        // 入力の縮小コピー。UV は 0..1 のまま全画面を読み、小さいビューポートへ書く。
+        /// @note 入力の縮小コピー。UV は 0..1 のまま全画面を読み、小さいビューポートへ書く。
         const PostProcCB postData =
             MakeCustomPostProcCB(custom, reducedW, reducedH, uvScale, 0, iterations);
         resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
@@ -412,7 +397,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
 
         renderer::DrawCall dc;
         dc.shader = resolved.shader;
-        // 縮小側は必ず置き換えで書く。加算するかどうかは最後の合成で決まる。
+        /// @note 縮小側は必ず置き換えで書く。加算するかどうかは最後の合成で決まる。
         dc.pipelineState = h.postprocPSO;
         dc.vertexCount = 3;
         dc.constantBuffers[5] = h.postprocCB;
@@ -424,7 +409,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
         source = target;
     }
 
-    // 実寸へ戻す。ここで初めて blendMode が効く (加算ならこの 1 枚を足す)。
+    /// @note 実寸へ戻す。ここで初めて blendMode が効く (加算ならこの 1 枚を足す)。
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     renderer::DrawCall composeDC;
     composeDC.shader = h.customComposeShader;

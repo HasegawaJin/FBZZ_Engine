@@ -46,7 +46,7 @@ physics::RigidBody MakeDynamicAt(const math::Vector3& position, float mass = 1.0
 
 class ConstraintTest : public testkit::Fixture {};
 
-// --- 距離 -------------------------------------------------------------------
+/// @name 距離
 
 TEST_F(ConstraintTest, DistancePullsTheDynamicBodyToTheRestLength)
 {
@@ -75,7 +75,7 @@ TEST_F(ConstraintTest, DistancePushesApartWhenTooClose)
 
 TEST_F(ConstraintTest, DistanceSplitsTheCorrectionByInverseMass)
 {
-    // 重い側ほど動かない。等質量なら半分ずつ。
+    /// @note 重い側ほど動かない。等質量なら半分ずつ。
     physics::RigidBody light = MakeDynamicAt(math::Vector3::ZERO, 1.0f);
     physics::RigidBody heavy = MakeDynamicAt({4.0f, 0.0f, 0.0f}, 3.0f);
     physics::DistanceConstraint constraint(&light, &heavy, 2.0f);
@@ -109,11 +109,11 @@ TEST_F(ConstraintTest, DistanceReportsItsType)
     EXPECT_EQ(constraint.GetBodyB(), &b);
 }
 
-// --- ロープ -----------------------------------------------------------------
+/// @name ロープ
 
 TEST_F(ConstraintTest, RopeLeavesSlackAlone)
 {
-    // たるみを表現できることがロープの存在理由。縮めたら «棒» になる。
+    /// @note たるみを表現できることがロープの存在理由。縮めたら «棒» になる。
     physics::RigidBody anchor  = MakeStaticAt(math::Vector3::ZERO);
     physics::RigidBody hanging = MakeDynamicAt({0.5f, 0.0f, 0.0f});
     physics::RopeConstraint constraint(&anchor, &hanging, 2.0f);
@@ -136,7 +136,7 @@ TEST_F(ConstraintTest, RopeClampsToTheMaximumLength)
                      testkit::kTolerance);
 }
 
-// --- バネ -------------------------------------------------------------------
+/// @name バネ
 
 TEST_F(ConstraintTest, SpringIsAtRestAtTheRestLength)
 {
@@ -182,7 +182,7 @@ TEST_F(ConstraintTest, SpringPushesTheBodiesApartWhenCompressed)
 
 TEST_F(ConstraintTest, SpringDampingOpposesTheSeparationSpeed)
 {
-    // 伸びは 0 なのでバネ力は 0。残るのは減衰だけで、離れる動きを止める向きに働く。
+    /// @note 伸びは 0 なのでバネ力は 0。残るのは減衰だけで、離れる動きを止める向きに働く。
     physics::RigidBody a = MakeDynamicAt(math::Vector3::ZERO);
     physics::RigidBody b = MakeDynamicAt({1.0f, 0.0f, 0.0f});
     b.SetVelocity({2.0f, 0.0f, 0.0f});
@@ -194,7 +194,7 @@ TEST_F(ConstraintTest, SpringDampingOpposesTheSeparationSpeed)
     EXPECT_LT(b.GetVelocity().x, 2.0f);
 }
 
-// --- 鎖 ---------------------------------------------------------------------
+/// @name 鎖
 
 TEST_F(ConstraintTest, ChainConvergesToTheSegmentLengthBetweenNeighbours)
 {
@@ -211,7 +211,7 @@ TEST_F(ConstraintTest, ChainConvergesToTheSegmentLengthBetweenNeighbours)
 
 TEST_F(ConstraintTest, ChainKeepsTheCentreOfMassWhenEveryBodyIsDynamic)
 {
-    // 補正は逆質量の比で分けるので、外力なしに全体が横滑りしてはいけない。
+    /// @note 補正は逆質量の比で分けるので、外力なしに全体が横滑りしてはいけない。
     physics::RigidBody a = MakeDynamicAt(math::Vector3::ZERO);
     physics::RigidBody b = MakeDynamicAt({5.0f, 0.0f, 0.0f});
     physics::ChainConstraint chain(std::vector<physics::RigidBody*>{&a, &b}, 1.0f, 8);
@@ -233,7 +233,7 @@ TEST_F(ConstraintTest, ChainIgnoresNullAndSingleBodyConfigurations)
     EXPECT_VEC3_NEAR(only.GetPosition(), math::Vector3(5.0f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
-// --- スライダー -------------------------------------------------------------
+/// @name スライダー
 
 TEST_F(ConstraintTest, SliderRemovesTheOffAxisOffsetAndKeepsTheAxialOne)
 {
@@ -266,7 +266,8 @@ TEST_F(ConstraintTest, SliderLimitsAreOrderIndependent)
     physics::RigidBody carriage = MakeDynamicAt({5.0f, 0.0f, 0.0f});
     physics::SliderConstraint constraint(&rail, &carriage, math::Vector3::RIGHT);
 
-    constraint.SetLimits(1.0f, 0.0f);   // 逆順に渡しても同じ区間になる
+    /// @note 逆順に渡しても同じ区間になる
+    constraint.SetLimits(1.0f, 0.0f);
 
     EXPECT_NEAR(constraint.m_minDistance, 0.0f, testkit::kTolerance);
     EXPECT_NEAR(constraint.m_maxDistance, 1.0f, testkit::kTolerance);
@@ -286,7 +287,7 @@ TEST_F(ConstraintTest, SliderTravelIsUnboundedAfterClearingLimits)
                      testkit::kTolerance);
 }
 
-// --- 溶接 -------------------------------------------------------------------
+/// @name 溶接
 
 TEST_F(ConstraintTest, FixedRestoresTheOffsetCapturedAtConstruction)
 {
@@ -328,7 +329,7 @@ TEST_F(ConstraintTest, FixedKeepsTheStaticParentInPlace)
     EXPECT_VEC3_NEAR(parent.GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
-// --- ヒンジ -----------------------------------------------------------------
+/// @name ヒンジ
 
 TEST_F(ConstraintTest, HingeBringsBothAnchorsToTheSameWorldPoint)
 {
@@ -371,7 +372,7 @@ TEST_F(ConstraintTest, HingeRotatesTheBodyBackInsideItsAngularLimit)
     door.SetRotation(math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(60.0f)));
     constraint.SolvePosition(testkit::kFixedDeltaTime);
 
-    // 制限まで戻す。行き過ぎて逆側へ回してはいけない。
+    /// @note 制限まで戻す。行き過ぎて逆側へ回してはいけない。
     const math::Vector3 swung = door.GetRotation() * math::Vector3::FORWARD;
     const float angle = math::ToDeg(std::acos(
         math::Clamp(math::Vector3::Dot(swung, math::Vector3::FORWARD), -1.0f, 1.0f)));

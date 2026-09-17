@@ -11,7 +11,7 @@
 
 namespace fbzz::physics
 {
-    // Renderer へ直接依存しないよう、Physics は線分リストだけを返す。
+    /// Renderer へ直接依存しないよう、Physics は線分リストだけを返す。
     struct DebugLine
     {
         math::Vector3 from;
@@ -20,9 +20,9 @@ namespace fbzz::physics
 
     /// 可視化の視点。BVH を持つコライダー (TriangleMesh / HeightField) の詳細度をカメラで決める。
     ///
-    /// WHY 必要か: BVH コライダーは 1 個で 10 万三角形を超える。視点なしでは
-    ///     「全域から等間隔に間引く」以外に選びようがなく、地形いっぱいに
-    ///     繋がらない三角形が散るだけで面の形もカメラ手前の当たり判定も読めなかった。
+    /// @note BVH コライダーは 1 個で 10 万三角形を超える。視点なしでは全域から等間隔に間引く以外の
+    ///       選びようがなく、地形いっぱいに繋がらない三角形が散るだけで、面の形もカメラ手前の
+    ///       当たり判定も読めなかった。
     struct ColliderDebugView
     {
         math::Vector3 cameraPosition{};
@@ -37,8 +37,8 @@ namespace fbzz::physics
         std::vector<DebugLine> lines;
 
         /// lines の先頭 detailLineCount 本が三角形ワイヤー、残りが BVH ノードの箱。
-        /// WHY 並び順で表すか: 線ごとに種別フラグを持たせると、10 万本規模で
-        ///     線分リスト自体が倍近く太る。2 色に塗り分けたいだけなので境界 1 個で足りる。
+        /// @note 並び順で表す理由: 線ごとに種別フラグを持たせると 10 万本規模で線分リスト自体が
+        ///       倍近く太る。2 色に塗り分けたいだけなので境界 1 個で足りる。
         std::size_t detailLineCount = 0;
     };
 

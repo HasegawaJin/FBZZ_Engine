@@ -3,33 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2025-01-01
 ///
-/// 設計意図 (WHY):
-///   Script は Engine 実装へ直接依存させない方針なので、util::SaveStore をそのまま
-///   include させず、他のプロキシと同じ形で薄く転送する。
-///
-///   Save() を明示的に呼ばせるのは意図的。オート保存にすると「どのタイミングで
-///   ディスクに落ちたか」がゲーム側から見えなくなり、チェックポイント演出
-///   (セーブ中アイコンの表示など) が書けなくなる。
-///
-///   WHY save と config を分けるか:
-///     セーブ枠の切り替え (SetSlot + Load) はテーブルを丸ごと置き換える。音量や解像度を
-///     save 側へ書くと、別のセーブをロードした瞬間に設定が消える。進行データと
-///     環境設定はストアごと分ける。
-///
-///   ユーザー定義型は Write / Read で往復させる。コンポーネントの Reflect と
-///   同じ書き方なので、覚えることが増えない:
-///
-///     struct PlayerSave : scene::IScriptSerializable {
-///         int level = 1;
-///         std::vector<std::string> items;
-///         void Reflect(scene::IReflector& r) override {
-///             r.Field("level", level);
-///             r.ListField("items", items);
-///         }
-///     };
-///     save.Write("player", data);  save.Save();
-///
-/// 詳細は Docs/design/game-settings.md。
+/// Save() は明示呼び出し。オート保存にすると保存タイミングがゲーム側から見えなくなり、
+/// チェックポイント演出 (セーブ中アイコン等) が書けない。save (進行データ) と config
+/// (環境設定) はストアが別: セーブ枠の切り替えはテーブルごと置き換わるため、環境設定を
+/// save 側に置くと別セーブのロードで消えてしまう。ユーザー定義型は Reflect() で Write/Read
+/// する (コンポーネントと同じ書き方)。
+/// @see Docs/design/game-settings.md
 #pragma once
 
 #include <Math/Vector2.hpp>
@@ -44,9 +23,8 @@ namespace fbzz::scene {
 class Script;
 struct IScriptSerializable;
 
-/// どちらの永続化ストアを指すか。
-/// WHY プロキシごとに別の型を作らないか: API はまったく同じで、違うのは保存先だけ。
-///     2 つ書くと、片方にだけメソッドを足す形の取りこぼしが起きる。
+/// どちらの永続化ストアを指すか。API は共通で保存先だけが違う (別型にすると片方にだけ
+/// メソッドを足す取りこぼしが起きるため、共有基底 + kind で表す)。
 enum class SaveStoreKind : uint8_t {
     Slot,     ///< 進行データ。SetPath でセーブ枠を切り替える
     Config,   ///< 環境設定。枠に依らず常に 1 本
@@ -68,7 +46,7 @@ struct ScriptStoreProxyBase {
     ///@{
     bool Write(std::string_view key, IScriptSerializable& object) const;
     /// key のテーブルに無いフィールドは object の値を保つ (フィールド追加は前方互換)。
-    /// @ret テーブル自体が無ければ false。object は変更しない。
+    /// @return テーブル自体が無ければ false。object は変更しない。
     bool Read(std::string_view key, IScriptSerializable& object) const;
     ///@}
 
@@ -119,10 +97,8 @@ struct ScriptSaveProxy : ScriptStoreProxyBase {
 };
 
 /// 環境設定 (Option)。既定の保存先は実行ファイル隣の "Config/settings.toml"。
-///
-/// エンジンはこの中身を解釈しない。キー名も構造もゲームが決める。
-/// WHY: エンジンが読むなら "fullscreen" というキー名をエンジンが固定することになる。
-///      機構はエンジン、方針はゲーム、で揃える (Docs/design/game-settings.md §10.1)。
+/// @note 中身はゲームが決める (エンジンは解釈しない)。エンジンが読むとキー名をエンジン側で
+///       固定することになるため、機構はエンジン・方針はゲームで揃える (同 §10.1)。
 struct ScriptConfigProxy : ScriptStoreProxyBase {
     explicit ScriptConfigProxy(Script* owner)
     {

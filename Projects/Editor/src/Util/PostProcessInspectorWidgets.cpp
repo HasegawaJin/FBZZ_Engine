@@ -3,16 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-22
 ///
-/// 画面構成 (上から):
-/// 1. サマリーバー   — 何個の効果が効いているか、排他スロットの競合が無いか
-/// 2. Add Override   — カテゴリ別ポップアップ。検索付き。追加済みは選べない
-/// 3. オーバーライドカード — Inspector のコンポーネントカードと同じ見た目
-/// 4. 空状態のプレースホルダ
-///
-/// WHY コンポーネントカードと同じ見た目にそろえるか:
-/// Inspector には既に「左に色帯 + チェック + 折りたたみ」というカードの語彙がある。
-/// ここだけ独自の見た目にすると、同じ画面に 2 つの規則が並ぶことになる。
-/// 色帯の色だけを効果カテゴリのものに差し替え、構造は共有する。
+/// @note オーバーライドカードは Inspector のコンポーネントカード (色帯+チェック+折りたたみ) と
+///       同じ見た目を再利用する。独自の見た目にすると同じ画面に 2 つの規則が並ぶため。
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -41,9 +33,8 @@ using asset::VolumeOverride;
 using asset::VolumeOverrideCategory;
 using asset::VolumeOverrideFactory;
 
-// カテゴリ別のアクセント色。コンポーネントカードの帯と同じ役割。
-// WHY 色を割り当てるか: プロファイルには 10 枚以上のカードが積まれうる。
-//     「青系 = 色まわり」「橙系 = レンズ」と系統で拾えれば、名前を読まずに辿れる。
+/// @brief カテゴリ別のアクセント色。コンポーネントカードの帯と同じ役割。
+/// @note 系統色 (青=色まわり、橙=レンズ等) でまとめ、名前を読まずに辿れるようにする。
 ImU32 CategoryAccent(VolumeOverrideCategory category)
 {
     switch (category) {
@@ -60,7 +51,7 @@ ImU32 CategoryAccent(VolumeOverrideCategory category)
     return IM_COL32(150, 155, 170, 255);
 }
 
-// 部分一致 (大文字小文字を無視)。Add Override の検索に使う。
+/// 部分一致 (大文字小文字を無視)。Add Override の検索に使う。
 bool ContainsFold(std::string_view haystack, std::string_view needle)
 {
     if (needle.empty()) return true;
@@ -76,7 +67,7 @@ bool ContainsFold(std::string_view haystack, std::string_view needle)
     return false;
 }
 
-// このプロファイルで実際に効いている効果の数 (active なもの)。
+/// このプロファイルで実際に効いている効果の数 (active なもの)。
 int CountActive(const asset::PostProcessProfile& profile)
 {
     int count = 0;
@@ -85,13 +76,12 @@ int CountActive(const asset::PostProcessProfile& profile)
     return count;
 }
 
-// 排他スロットの競合を検出する。
-// WHY 追加時に弾かないか: 「FXAA を試したあと TAA に差し替える」作業では、
-//     一時的に両方リストに載っている状態を通る。追加を禁止するより、
-//     並んでいる状態を見せて片方を外させる方が操作が素直になる。
+/// @brief 排他スロットの競合を検出する。
+/// @note 追加時点では弾かない。差し替え作業中は一時的に両方載る状態を通るため、
+///       競合は見せるだけにして片方を外すかはユーザーに委ねる。
 struct SlotConflicts {
-    bool antiAliasing = false;  // FXAA + TAA
-    bool ambientOcclusion = false;  // SSAO + GTAO
+    bool antiAliasing = false;  ///< FXAA + TAA
+    bool ambientOcclusion = false;  ///< SSAO + GTAO
 };
 
 SlotConflicts DetectConflicts(const asset::PostProcessProfile& profile)
@@ -108,11 +98,9 @@ SlotConflicts DetectConflicts(const asset::PostProcessProfile& profile)
     return { fxaa && taa, ssao && gtao };
 }
 
-// ── サマリーバー ────────────────────────────────────────────────────────
-// 「このプロファイルが今なにをしているか」を 1 行で示す。
-// WHY 必要か: カードが増えると全体像がスクロールの向こうへ消える。
-//     効いている数と競合の有無だけでも先頭に出しておけば、
-//     「効かない」と感じたときに最初に見る場所が定まる。
+/// @name サマリーバー
+/// @brief 「このプロファイルが今なにをしているか」を 1 行で示す。
+/// @note カードが増えると全体が見えなくなるため、効いている数と競合の有無を先頭に出す。
 void DrawSummaryBar(const asset::PostProcessProfile& profile)
 {
     const int total  = static_cast<int>(profile.overrides.size());
@@ -145,15 +133,14 @@ void DrawSummaryBar(const asset::PostProcessProfile& profile)
     widgets::EndCard(card);
 }
 
-// ── Add Override ポップアップ ───────────────────────────────────────────
-// 追加された型名を返す (何も選ばなければ空文字列)。
+/// @name Add Override ポップアップ
+/// 追加された型名を返す (何も選ばなければ空文字列)。
 std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
 {
     static char s_filter[64] = "";
     std::string picked;
 
-    // ポップアップを開いた直後は検索欄へフォーカスを置く。
-    // WHY: 27 種あるので、開いてすぐ打ち始められるかどうかで体感がまるで違う。
+    /// @note ポップアップを開いた直後は検索欄へフォーカスを置く。27 種あるため即打ち始められる方が体感が良い。
     if (ImGui::IsWindowAppearing()) {
         s_filter[0] = '\0';
         ImGui::SetKeyboardFocusHere();
@@ -176,7 +163,7 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
             currentCategory = entry.category;
             firstCategory = false;
             ImGui::Spacing();
-            // カテゴリ見出しにも帯の色を小さく添えて、カードの色と対応付ける。
+            /// @note カテゴリ見出しにも帯の色を小さく添えて、カードの色と対応付ける。
             const ImVec2 dotMin = ImGui::GetCursorScreenPos();
             const float  dotH   = ImGui::GetTextLineHeight();
             ImGui::GetWindowDrawList()->AddRectFilled(
@@ -189,7 +176,7 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
                                "%s", asset::ToString(entry.category));
         }
 
-        // 既に入っている型は選べない (Custom Effect だけは複数可)。
+        /// @note 既に入っている型は選べない (Custom Effect だけは複数可)。
         const bool alreadyAdded = !entry.allowsMultiple && profile.Contains(entry.typeName.c_str());
         ImGui::BeginDisabled(alreadyAdded);
         if (ImGui::Selectable(entry.displayName.c_str()))
@@ -210,19 +197,19 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
     return picked;
 }
 
-// カード 1 枚に対する操作要求。ループ内で即座にリストを触ると
-// イテレータが壊れるため、要求だけ集めて後段でまとめて適用する。
+/// カード 1 枚に対する操作要求。ループ内で即座にリストを触ると
+/// イテレータが壊れるため、要求だけ集めて後段でまとめて適用する。
 enum class CardAction { None, Remove, MoveUp, MoveDown, Reset };
 
-// カードのドラッグ結果。適用は一覧を描き終えてから行う。
+/// カードのドラッグ結果。適用は一覧を描き終えてから行う。
 struct CardDragResult {
     int from = -1;
     int to   = -1;
     bool Valid() const { return from >= 0 && to >= 0 && from != to; }
 };
 
-// 「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
-// 抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
+/// 「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
+/// 抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
 int ResolveDropDestination(int dragged, int target, bool insertAfter)
 {
     int destination = insertAfter ? target + 1 : target;
@@ -230,7 +217,7 @@ int ResolveDropDestination(int dragged, int target, bool insertAfter)
     return destination;
 }
 
-// ── オーバーライドカード ────────────────────────────────────────────────
+/// @name オーバーライドカード
 CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
                             ImGuiReflector& reflector, bool& changed,
                             CardDragResult& drag,
@@ -238,17 +225,14 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
 {
     CardAction action = CardAction::None;
 
-    // ImGui ID は表示名だけだと Custom Effect が複数あるとき衝突する。
+    /// @note ImGui ID は表示名だけだと Custom Effect が複数あるとき衝突する。
     ImGui::PushID(index);
 
     const ImU32 accent = CategoryAccent(entry.GetCategory());
     const bool activeBefore = entry.active;
 
-    // ドラッグでも並び替えられるようにする。
-    // WHY 追加したか: 適用順は Bloom → Tonemap のように結果が変わる要素なのに、
-    //   これまで ⋯ メニューの Move Up / Move Down しか無く、離れた位置へ動かすには
-    //   メニューを何度も開き直す必要があった。dragKey は同名カード (Custom Effect) を
-    //   区別するため index を使う。
+    /// @note 適用順は Bloom → Tonemap のように結果を左右するため、ドラッグでも並び替えられる。
+    ///       dragKey に index を使うのは、同名カード (Custom Effect) を区別するため。
     const std::string dragKey = std::to_string(index);
     widgets::ComponentReorderTarget reorder;
     reorder.scope   = "POSTFX";
@@ -268,7 +252,7 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
                                  true, reorder);
     if (entry.active != activeBefore) changed = true;
 
-    // ⋯ メニュー / ヘッダー右クリック。
+    /// @note ⋯ メニュー / ヘッダー右クリック。
     if (header.menuClicked) ImGui::OpenPopup("##overrideMenu");
     if (ImGui::BeginPopup("##overrideMenu")) {
         if (ImGui::MenuItem("Reset", nullptr, false))        action = CardAction::Reset;
@@ -282,12 +266,8 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
         ImGui::EndPopup();
     }
 
-    // 現在のパイプラインでは効かない効果に、その旨と直し方を出す。
-    //
-    // WHY 折りたたんでいても出すか: 効かないことに気づけるのが目的なので、
-    //     カードを開かないと見えないのでは意味がない。ヘッダーの直下へ出す。
-    // NOTE: entry.active が false のときは黙る。ユーザーが自分で切っているものに
-    //       「効きません」と言っても、直すべきことは何も無い。
+    /// @note 現在のパイプラインで効かない効果は、折りたたんでいてもヘッダー直下に理由と直し方を出す。
+    ///       ただし entry.active が false (ユーザーが自分で切った) のときは黙る。
     const char* inertReason =
         (renderSettings && entry.active && entry.GetTypeName())
             ? renderer::DescribeInertOverride(*renderSettings, entry.GetTypeName())
@@ -311,14 +291,14 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
             ImGui::Spacing();
         }
 
-        // 無効化中は本文をグレーアウトする。値は見えるが、効いていないことが分かる。
+        /// @note 無効化中は本文をグレーアウトする。値は見えるが、効いていないことが分かる。
         ImGui::BeginDisabled(!entry.active);
         reflector.m_changed = false;
         entry.Reflect(reflector);
         if (reflector.m_changed) changed = true;
 
-        // パラメーターを持たない効果 (FXAA) は本文が空になる。
-        // 空のカードは「壊れている」ように見えるので、そうでないことを書いておく。
+        /// @note パラメーターを持たない効果 (FXAA) は本文が空になる。
+        ///       空のカードは「壊れている」ように見えるので、そうでないことを書いておく。
         if (entry.GetTypeName() && std::strcmp(entry.GetTypeName(), "FXAA") == 0) {
             ImGui::TextColored(EditorTheme::Color(ThemeColor::TextFaint),
                                "調整するパラメーターはありません。");
@@ -332,9 +312,8 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
     return action;
 }
 
-// ── 空状態 ──────────────────────────────────────────────────────────────
-// WHY 専用の見た目を用意するか: 新規プロファイルは必ずここから始まる。
-//     何もない領域を見せるより、次にやることを 1 行で示す方が短く済む。
+/// @name 空状態
+/// @brief 新規プロファイルは必ずここから始まる。何もない領域より次にやることを示す。
 void DrawEmptyState()
 {
     const widgets::ComponentBodyScope card = widgets::BeginCard();
@@ -361,9 +340,9 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     DrawSummaryBar(profile);
     ImGui::Spacing();
 
-    // ── Add Override ───────────────────────────────────────────────────
-    // 幅いっぱいのボタンにする。カードの横幅と端をそろえると、
-    // 「このボタンは下のリストに対する操作だ」が形で伝わる。
+    /// @name Add Override
+    /// @note 幅いっぱいのボタンにする。カードの横幅と端をそろえると、
+    ///       「このボタンは下のリストに対する操作だ」が形で伝わる。
     ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::AccentSoft));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::AccentHover));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
@@ -384,7 +363,7 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
 
     ImGui::Spacing();
 
-    // ── カード一覧 ─────────────────────────────────────────────────────
+    /// @name カード一覧
     if (profile.overrides.empty()) {
         DrawEmptyState();
         ImGui::PopID();
@@ -392,7 +371,8 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     }
 
     int removeIndex = -1;
-    int swapIndex   = -1;   // この要素と swapIndex+1 を入れ替える
+    /// @note この要素と swapIndex+1 を入れ替える
+    int swapIndex   = -1;
     int resetIndex  = -1;
     CardDragResult drag;
 
@@ -412,10 +392,10 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
         ImGui::Spacing();
     }
 
-    // ── 収集した操作の適用 ─────────────────────────────────────────────
+    /// @name 収集した操作の適用
     if (resetIndex >= 0) {
-        // 同じ型を作り直して差し替える = 既定値へ戻す。
-        // active は「表示上の状態」なので引き継ぐ (リセットで勝手に有効化しない)。
+        /// @note 同じ型を作り直して差し替える = 既定値へ戻す。
+        ///       active は「表示上の状態」なので引き継ぐ (リセットで勝手に有効化しない)。
         auto& slot = profile.overrides[static_cast<std::size_t>(resetIndex)];
         if (auto fresh = VolumeOverrideFactory::Create(slot->GetTypeName())) {
             fresh->active = slot->active;
@@ -428,7 +408,7 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
                   profile.overrides[static_cast<std::size_t>(swapIndex + 1)]);
         result.changed = result.structureChanged = true;
     }
-    // ドラッグでの移動。unique_ptr の配列なので 1 要素だけを回転させて移す。
+    /// @note ドラッグでの移動。unique_ptr の配列なので 1 要素だけを回転させて移す。
     if (drag.Valid() && drag.from < count && drag.to < count) {
         const auto begin = profile.overrides.begin();
         if (drag.from < drag.to)

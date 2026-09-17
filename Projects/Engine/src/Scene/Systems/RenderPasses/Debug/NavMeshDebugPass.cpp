@@ -24,7 +24,7 @@ std::string_view NavMeshDebugPass::Name() const { return "NavMeshDebug"; }
 
 void NavMeshDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    /// @note 描き先の束縛はフレームワークが行う (SetAutoTarget)。
     builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
@@ -32,11 +32,11 @@ namespace {
 
 using renderer::NavMeshDrawMode;
 
-// 面と z-fight しない最小の持ち上げ量と、外周エッジに立てる壁の高さ。
+/// 面と z-fight しない最小の持ち上げ量と、外周エッジに立てる壁の高さ。
 constexpr float kLift    = 0.06f;
 constexpr float kRimRise = 0.30f;
 
-// Voxels 表示だけは 1 セル 1 ポリゴンになるため、他のモードより手前で打ち切る。
+/// Voxels 表示だけは 1 セル 1 ポリゴンになるため、他のモードより手前で打ち切る。
 constexpr float kVoxelMaxDistance = 60.0f;
 constexpr int   kVoxelCellBudget  = 12000;
 
@@ -50,7 +50,7 @@ constexpr math::Vector4 kStuckColor   = { 1.00f, 0.15f, 0.10f, 1.00f };
 constexpr math::Vector4 kSafeColor    = { 0.20f, 1.00f, 0.30f, 0.70f };
 constexpr math::Vector4 kDangerColor  = { 1.00f, 0.20f, 0.20f, 0.85f };
 
-// areaType 別の塗り色。index は areaType & 7。0 は他のモードと同じ青に揃える。
+/// areaType 別の塗り色。index は areaType & 7。0 は他のモードと同じ青に揃える。
 constexpr math::Vector4 kAreaFill[8] = {
     { 0.16f, 0.52f, 0.95f, 0.40f },
     { 0.30f, 0.85f, 0.40f, 0.40f },
@@ -74,9 +74,8 @@ math::Vector4 VoxelColor(NavMeshBakeCell cell)
     }
 }
 
-// 線バッチが溢れる前に中間 Flush する。
-// WHY: バッチが満杯になると以降の Line() は黙って捨てられる。以前は「広いシーンで
-//      NavMesh の遠い側だけが消える」という形でしか現れず、穴と区別が付かなかった。
+/// @brief 線バッチが溢れる前に中間 Flush する。
+/// @note バッチが満杯になると以降の Line() は黙って捨てられる。
 void ReserveLines(size_t vertexCount)
 {
     if (renderer::DebugDraw::PendingLineVertices() + vertexCount
@@ -84,8 +83,8 @@ void ReserveLines(size_t vertexCount)
         renderer::DebugDraw::Flush();
 }
 
-// 塗りつぶしは線分とは別のバッチを使うので、頂点数も別に見る。
-// polygonVertices 個の凸ポリゴンは (n - 2) * 3 頂点を積む。
+/// 塗りつぶしは線分とは別のバッチを使うので、頂点数も別に見る。
+/// polygonVertices 個の凸ポリゴンは (n - 2) * 3 頂点を積む。
 void ReserveFill(size_t polygonVertices)
 {
     if (polygonVertices < 3) return;
@@ -95,9 +94,8 @@ void ReserveFill(size_t polygonVertices)
         renderer::DebugDraw::Flush();
 }
 
-// 外周エッジ (隣接ポリゴンを持たないエッジ) に低い壁を立てる。
-// WHY: 内部エッジと同じ 1px の線では、NavMesh の「穴」も単なる分割線も同じ絵になる。
-//      Recast のデバッグ表示と同じく、外周だけ手前へ立ち上げて輪郭を読めるようにする。
+/// @brief 外周エッジ (隣接ポリゴンを持たないエッジ) に低い壁を立てる。
+/// @note 内部エッジと同じ 1px の線では NavMesh の「穴」と単なる分割線が同じ絵になるため、外周だけ手前へ立ち上げて輪郭を読めるようにする (Recast のデバッグ表示と同様)。
 void DrawBorderRim(renderer::IRenderer& r, const math::Vector3& a, const math::Vector3& b)
 {
     const math::Vector3 up = { 0.0f, kRimRise, 0.0f };
@@ -110,7 +108,7 @@ void DrawBorderRim(renderer::IRenderer& r, const math::Vector3& a, const math::V
 
 bool EdgeHasPortal(const NavMeshPolygon& poly, const math::Vector3& a, const math::Vector3& b)
 {
-    // 位置は Portal 構築時に同じ頂点配列からコピーされるので厳密一致で照合できる。
+    /// @note 位置は Portal 構築時に同じ頂点配列からコピーされるので厳密一致で照合できる。
     for (const auto& portal : poly.portals) {
         if (portal.left.x == a.x && portal.left.z == a.z
          && portal.right.x == b.x && portal.right.z == b.z)
@@ -119,7 +117,7 @@ bool EdgeHasPortal(const NavMeshPolygon& poly, const math::Vector3& a, const mat
     return false;
 }
 
-// from → to を上へ膨らませた円弧。Off-Mesh Link の「飛び移り」を 1 本の直線と区別する。
+/// from → to を上へ膨らませた円弧。Off-Mesh Link の「飛び移り」を 1 本の直線と区別する。
 void DrawLinkArc(renderer::IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                  const math::Vector4& color)
 {
@@ -139,9 +137,8 @@ void DrawLinkArc(renderer::IRenderer& r, const math::Vector3& from, const math::
     renderer::DebugDraw::Sphere(r, to,   0.15f, color);
 }
 
-// origin を頂点として forward 方向中心に angleDeg の扇形ワイヤーを distance まで描く。
-// WHY: 視野範囲を直感的に把握できる「扇形」は 3D 円錐 (DebugDraw::Cone) ではなく
-//      XZ 平面上の扁平な扇のほうが分かりやすいため、Line の組み合わせで自作する。
+/// @brief origin を頂点として forward 方向中心に angleDeg の扇形ワイヤーを distance まで描く。
+/// @note 視野範囲は 3D 円錐 (DebugDraw::Cone) でなく XZ 平面上の扁平な扇のほうが分かりやすいため、Line の組み合わせで自作する。
 void DrawVisionFan(renderer::IRenderer& renderer, const math::Vector3& origin,
                    const math::Vector3& forward, float angleDeg, float distance,
                    const math::Vector4& color, int segments = 20)
@@ -153,7 +150,7 @@ void DrawVisionFan(renderer::IRenderer& renderer, const math::Vector3& origin,
 
     const float halfAngleRad = std::clamp(angleDeg, 1.0f, 360.0f) * 0.5f * (3.14159265f / 180.0f);
 
-    // Y 軸回りの回転 (左手系: +Z が前方)。
+    /// @note Y 軸回りの回転 (左手系: +Z が前方)。
     auto rotateY = [](const math::Vector3& v, float rad) {
         const float c = std::cos(rad), s = std::sin(rad);
         return math::Vector3{ v.x * c + v.z * s, v.y, -v.x * s + v.z * c };
@@ -173,8 +170,8 @@ void DrawVisionFan(renderer::IRenderer& renderer, const math::Vector3& origin,
     }
 }
 
-// ベイクが済んでいない / 失敗した Surface は、面の代わりに対象範囲の箱を出す。
-// WHY: 何も描かないと「ベイクしていない」と「ベイクしたが空だった」が同じ絵になる。
+/// @brief ベイクが済んでいない / 失敗した Surface は、面の代わりに対象範囲の箱を出す。
+/// @note 何も描かないと「ベイクしていない」と「ベイクしたが空だった」が同じ絵になる。
 void DrawSurfacePlaceholder(RenderPassContext& ctx, EntityID eid,
                             const NavMeshSurfaceComponent& surface, const GameObject& go)
 {
@@ -278,7 +275,7 @@ void DrawVoxelGrid(RenderPassContext& ctx, const NavMeshBakeDebugGrid& grid,
             const float h10 = grid.CornerAt(x + 1, z);
             const float h11 = grid.CornerAt(x + 1, z + 1);
             const float h01 = grid.CornerAt(x,     z + 1);
-            // 角が 1 つでも欠けているセルは高さが確定しないので描かない。
+            /// @note 角が 1 つでも欠けているセルは高さが確定しないので描かない。
             if (h00 < -1.0e29f || h10 < -1.0e29f || h11 < -1.0e29f || h01 < -1.0e29f) continue;
 
             const float wx = grid.origin.x + x * grid.cellSize;
@@ -315,8 +312,8 @@ void NavMeshDebugPass::Execute(PassResources&, RenderPassContext& ctx)
         for (EntityID eid : ctx.scene.GetEntities<NavMeshSurfaceComponent>()) {
             auto* surface = ctx.scene.GetComponent<NavMeshSurfaceComponent>(eid);
             auto* go      = ctx.scene.GetGameObject(eid);
-            // 非アクティブな GO は NavigationSystem がベイクからも経路探索からも外す。
-            // 描画だけ残すと、実際には歩けない面が歩けるように見える。
+            /// @note 非アクティブな GO は NavigationSystem がベイクからも経路探索からも外す。
+            ///       描画だけ残すと、実際には歩けない面が歩けるように見える。
             if (!surface || !go || !go->activeInHierarchy()) continue;
 
             if (surface->needsBake || !surface->navMesh.IsValid()) {

@@ -528,7 +528,7 @@ DLL 境界を越えてエンジン実装型へ直接依存しないためのプ�
 | `ImportCacheStore` | 指紋による差分インポート (起動のたびに焼き直さない) |
 | `Library/Baked` | ベイク済みバイナリの隔離置き場。ソースアセットと混ざらない |
 
-**独自フォーマット**: `.fzasset` (汎用バイナリ) / `.mesh` / `.scene` / `.prefab` / `.mat` / `.tex` / `.terrain` / `.animcontroller` / `.anim` / `.skel` / `.mask` / `.physmat` / `.sequence` / `.synth` / `.fluid` / `.vfield` / `.curve` / `.gradient` / `.ibl` / `.fzdata`
+**独自フォーマット**: `.fzasset` (汎用バイナリ) / `.mesh` / `.scene` / `.prefab` / `.mat` / `.tex` / `.terrain` / `.animcontroller` / `.anim` / `.skel` / `.mask` / `.physmat` / `.sequence` / `.synth` / `.fluid` / `速度場 PNG` / `.curve` / `.gradient` / `.ibl` / `.fzdata`
 
 FBX をドラッグ & ドロップすると自動インポートし、`.mat` をドロップしてマテリアルを差し替え、Collider を自動フィットできる。
 
@@ -575,7 +575,7 @@ FBX をドラッグ & ドロップすると自動インポートし、`.mat` を
 | 見た目の分離 | 発光・6-way ライティング・フリップブック・歪みなどの表現は `.mat` の `[particle]` が正本 (34 項目) |
 | ライティング | セルフシャドウ・点光源の自動選択・6-way マップ |
 | 力場 | `ForceField` に統一 (風・渦・引力)。`channels` マスクで効く相手を選ぶ |
-| 速度場 (`.vfield`) | 32³ タイルの速度場を Texture3D として供給 |
+| 速度場 (`速度場 PNG`) | 32³ タイルの速度場を Texture3D として供給 |
 | ビーム / ライン | `VFXBeamComponent` / `VFXLineComponent`。雷や斬撃を純関数で形作り、VS でカメラへ向ける |
 | トレイル | `TrailComponent` (帯) / `MeshTrailComponent` (メッシュ残像) |
 | 流体ベイク (`.fluid`) | 気体は格子ソルバー、液体は PBF。GPU ソルバーの結果をフリップブック / ボリュームへ焼く |

@@ -3,15 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// 設計意図 (WHY):
-///   同じ「IReflector → toml::table」の変換が SceneSerializer / DataAssetRegistry /
-///   SaveStore の 3 か所で必要になる。別々に書くと ListField に型を 1 つ足すたびに
-///   3 か所を直すことになり、片方だけ対応が漏れた型は *エラーも警告もなく*
-///   保存されなくなる。値型の変換とスコープ管理はここへ一本化し、
-///   参照型 (EntityID / アセット GUID) のように文脈が要るものだけを派生で足す。
-///
-///   実体は scene::IReflector の実装なので Util ではなく Scene に置く。
-///   名前空間は呼び出し側を巻き込まないよう fbzz::util のまま据え置いている。
+/// @note IReflector→toml::table の変換を SceneSerializer/DataAssetRegistry/SaveStore の 3 箇所で共有する。別々に書くと型追加のたびに 3 箇所を直すことになり、対応漏れが無警告のまま保存されなくなる。
+/// @note 実体は scene::IReflector の実装だが、呼び出し側を巻き込まないよう名前空間は fbzz::util のまま据え置く。参照型 (EntityID/アセット GUID) のように文脈が要るものは派生で足す。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -28,8 +21,7 @@
 namespace fbzz::util {
 
 /// @name 値型 ⇔ TOML 配列
-/// 欠損・要素数不足は既定値をそのまま返す。読み込み側が「無ければ既定値」を
-/// 毎回書かずに済むようにするため。
+/// @note 欠損・要素数不足は既定値をそのまま返す。読み込み側が「無ければ既定値」を毎回書かずに済むようにするため。
 ///@{
 [[nodiscard]] toml::array Vec2ToArr(const math::Vector2& v);
 [[nodiscard]] toml::array Vec3ToArr(const math::Vector3& v);
@@ -43,17 +35,12 @@ namespace fbzz::util {
                                          math::Quaternion def = { 0.0f, 0.0f, 0.0f, 1.0f });
 ///@}
 
-/// 値型フィールドと入れ子スコープを toml::table へ書き出す。
-///
-/// 書き込み先はスタックで持つ。BeginObject / BeginObjectElement が「現在の書き込み先」を
-/// 子テーブルへ差し替えるため、任意の深さの復帰先を LIFO で覚える必要がある。
+/// @brief 値型フィールドと入れ子スコープを toml::table へ書き出す。
+/// @note 書き込み先はスタックで持つ。BeginObject/BeginObjectElement が「現在の書き込み先」を子テーブルへ差し替えるため、任意の深さの復帰先を LIFO で覚える必要がある。
 class TomlWriteReflector : public scene::IReflector {
 public:
-    /// @param overwriteDuplicates 同じキーへ 2 度書いたときに後勝ちで上書きするか。
-    ///   false なら先勝ち (toml++ の insert 既定) で、後から来た値は黙って捨てられる。
-    ///   WHY 選べるようにするか: Scene の直列化は先勝ちを前提に組まれている。
-    ///   どちらも BeginField の戻し忘れを救えないが、既存の保存結果を変えないため
-    ///   呼び出し側に選ばせる。新規の書き出し先は後勝ちでよい。
+    /// @param overwriteDuplicates 同じキーへ 2 度書いたときに後勝ちで上書きするか (false は先勝ちで toml++ の insert 既定、後から来た値は黙って捨てられる)。
+    /// @note Scene の直列化は先勝ちを前提に組まれているため選べるようにした。新規の書き出し先は後勝ちでよい。
     explicit TomlWriteReflector(toml::table& table, bool overwriteDuplicates = true)
         : m_overwrite(overwriteDuplicates)
     {
@@ -90,7 +77,7 @@ public:
 protected:
     [[nodiscard]] toml::table& Current() { return *m_stack.back(); }
 
-    /// 挿入ポリシー (先勝ち / 後勝ち) を一箇所に閉じる。
+    /// @brief 挿入ポリシー (先勝ち/後勝ち) を一箇所に閉じる。
     template<typename T>
     void Put(const char* name, T&& value)
     {
@@ -106,10 +93,8 @@ private:
     std::vector<toml::array*> m_listStack;
 };
 
-/// toml::table から値型フィールドを読み戻す。書き込み側と対称。
-///
-/// 対応するテーブルが無い入れ子は「欠損スコープ」として nullptr を積み、
-/// 中のフィールドは呼び出し側の既定値のまま残す (古いファイルでも壊れない)。
+/// @brief toml::table から値型フィールドを読み戻す。書き込み側と対称。
+/// @note 対応するテーブルが無い入れ子は「欠損スコープ」として nullptr を積み、中のフィールドは呼び出し側の既定値のまま残す (古いファイルでも壊れない)。
 class TomlReadReflector : public scene::IReflector {
 public:
     explicit TomlReadReflector(const toml::table& table) { m_stack.push_back(&table); }
