@@ -132,6 +132,9 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& m
         flags.textureDirty |= DrawMaterialTextureField(mat, "Diffuse",        "diffuse");
         flags.textureDirty |= DrawMaterialTextureField(mat, "Normal",         "normal");
         flags.textureDirty |= DrawMaterialTextureField(mat, "AO / Roughness", "ao_roughness");
+        flags.textureDirty |= DrawMaterialTextureField(mat, "Height",         "height");
+        Tooltip("高さブレンド用の高さマップ (R チャンネル)。\n"
+                "無い層は Diffuse の輝度を高さの代わりに使います。");
     }
     if (ImGui::CollapsingHeader("Surface", ImGuiTreeNodeFlags_DefaultOpen)) {
         flags.paramDirty |= DrawMaterialFloat(mat, "Tiling X",         "tilingX",         8.0f, 0.05f, 0.01f, 512.0f);
@@ -139,6 +142,25 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& m
         flags.paramDirty |= DrawMaterialFloat(mat, "Normal Strength",  "normalStrength",  1.0f, 0.01f, 0.0f,  8.0f);
         flags.paramDirty |= DrawMaterialFloat(mat, "Roughness",        "roughness",       0.8f, 0.01f, 0.0f,  1.0f);
         flags.paramDirty |= DrawMaterialFloat(mat, "Ambient Occlusion","ambientOcclusion",1.0f, 0.01f, 0.0f,  1.0f);
+    }
+    /// @note 既定値は TerrainRenderPass がキー欠落時に使う値と一致させる。EnsureFloatParam が開いた瞬間に
+    ///       欠けたキーを埋めるため、食い違うと Inspector を開いただけで地形の見た目が変わる。
+    /// @see Docs/design/terrain-layers.md
+    if (ImGui::CollapsingHeader("Blending & Projection")) {
+        /// @see https://www.gamedeveloper.com/programming/advanced-terrain-texture-splatting
+        flags.paramDirty |= DrawMaterialFloat(mat, "Height Blend", "heightBlend", 0.0f, 0.01f, 0.0f, 1.0f);
+        Tooltip("高さブレンドの効き。上げるほど、高さの高いこの層が\n"
+                "境界で他の層を押しのけます (石の隙間に砂が残る等)。0 で線形ブレンド。");
+        /// @see https://bgolus.medium.com/normal-mapping-for-a-triplanar-shader-10bf39dca05a
+        flags.paramDirty |= DrawMaterialBoolFloat(mat, "Triplanar", "triplanar", false);
+        Tooltip("三方向投影。崖でテクスチャが縦に引き伸ばされるのを防ぎます。\n"
+                "急斜面ではフェッチが 3 倍になります。");
+        flags.paramDirty |= DrawMaterialFloat(mat, "Triplanar Sharpness", "triplanarSharpness", 4.0f, 0.05f, 1.0f, 16.0f);
+        Tooltip("投影面の切り替わりの鋭さ。上げるほど継ぎ目の混ざる幅が狭くなります。");
+        flags.paramDirty |= DrawMaterialFloat(mat, "Macro Scale", "macroScale", 0.1f, 0.001f, 0.01f, 1.0f);
+        Tooltip("マクロ変化で同じテクスチャを引き伸ばす率。小さいほど大きな濃淡になります。");
+        flags.paramDirty |= DrawMaterialFloat(mat, "Macro Strength", "macroStrength", 0.0f, 0.01f, 0.0f, 1.0f);
+        Tooltip("タイルの繰り返しを隠す大きな濃淡の強さ。0 で無効 (追加フェッチなし)。");
     }
     if (ImGui::CollapsingHeader("Auto Blend")) {
         flags.paramDirty |= DrawMaterialBoolFloat(mat, "Enabled",      "autoBlendEnabled",  false);

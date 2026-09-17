@@ -5490,6 +5490,29 @@ bool ScriptTerrainProxy::SetLayerMaterial(int layer, std::string_view materialPa
     return terrain && terrain->SetLayerMaterial(layer, std::string(materialPath));
 }
 
+int ScriptTerrainProxy::GetLayerCount() const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->LayerCount() : 0;
+}
+
+float ScriptTerrainProxy::GetLayerWeightAtGrid(int x, int z, int layer) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->GetLayerWeightAtGrid(x, z, layer) : 0.0f;
+}
+
+bool ScriptTerrainProxy::SetHoleAtGrid(int cellX, int cellZ, bool hole) const
+{
+    auto* terrain = SelfTerrain(script);
+    if (!terrain) return false;
+    const bool wasHole = terrain->IsHoleCell(cellX, cellZ);
+    if (!terrain->SetHoleCell(cellX, cellZ, hole)) return false;
+    /// @note 変化の無い書き込みでメッシュとコライダーを作り直さない (毎フレーム呼ぶスクリプトを想定)。
+    if (wasHole != hole) terrain->RequestHoleRebuild();
+    return true;
+}
+
 void ScriptTerrainProxy::RequestRebuild() const
 {
     if (auto* terrain = SelfTerrain(script)) {

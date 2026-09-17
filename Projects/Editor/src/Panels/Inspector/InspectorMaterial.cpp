@@ -218,7 +218,11 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                     const std::string changedPath = NormalizeAssetPath(mc.materialPath);
                     for (auto [terrain] : ctx.activeScene->View<scene::TerrainComponent>()) {
                         for (const auto& lm : terrain.layerMaterials)
-                            if (NormalizeAssetPath(lm) == changedPath) { terrain.splatDirty = true; break; }
+                            if (NormalizeAssetPath(lm) == changedPath) {
+                                terrain.RequestSplatRebuild();
+                                terrain.RequestMaterialRebuild();
+                                break;
+                            }
                     }
                     for (auto [water] : ctx.activeScene->View<scene::WaterComponent>()) {
                         if (NormalizeAssetPath(water.materialPath) == changedPath) {
