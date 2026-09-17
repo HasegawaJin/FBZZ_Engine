@@ -38,9 +38,12 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
 
 // WHY cbuffer の後ろへ置くか: 添字フィールドを参照して初期化するため、
 //     宣言はフィールドより後ろでなければならない。
-FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
-FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);
-FBZZ_MATERIAL_TEX(texEmissive, texEmissiveIndex);
+/// @note 読むのは描画ごとの添字ブロック (b14)。cbuffer の添字フィールドは Inspector に枠を出すためだけに残す。
+///       組み込みデカールは C++ の DecalMaterialCB (添字なし) を b2 に書き、デカールごとの
+///       テクスチャ上書きも DrawCall::textures だけを差し替えるので、CB の添字は当てにならない。
+FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
+FBZZ_TEX2D(texNormal, TEX_NORMAL_SLOT);
+FBZZ_TEX2D(texEmissive, TEX_EMISSIVE_SLOT);
 
 DecalPixelInput VSMain(uint id : SV_VertexID)
 {

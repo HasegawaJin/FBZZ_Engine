@@ -16,7 +16,8 @@
 #include "DX12StructuredBuffer.hpp"
 #include <Engine/Renderer/BindlessIndices.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
+/// @note RT → PNG エンコードは AI 連携用の共通処理。
+#include "../RenderTargetCapture.hpp"
 #include <DirectXTex.h>
 #include <cstring>
 #include <algorithm>
@@ -24,8 +25,8 @@
 
 namespace fbzz::renderer {
 
-// out-of-line 定義。ここは DX12IblBaker.hpp を include 済みなので、m_iblBaker
-// (unique_ptr<DX12IblBaker>) のデリーターを完全型として実体化できる。
+/// out-of-line 定義。ここは DX12IblBaker.hpp を include 済みなので、m_iblBaker
+/// (unique_ptr<DX12IblBaker>) のデリーターを完全型として実体化できる。
 DX12Renderer::DX12Renderer() = default;
 DX12Renderer::~DX12Renderer() = default;
 
@@ -83,15 +84,14 @@ void DX12Renderer::BeginFrame()
     if (m_context.BeginFrame()) {
         m_computeBatchActive = false;
         m_computeBatchWrittenResources.clear();
-        m_currentRenderTarget = nullptr;
         m_currentRenderTargetHandle = {};
         m_currentCubeRtv = {};
         m_currentViewport = { 0.0f, 0.0f, static_cast<float>(m_context.GetWidth()),
                               static_cast<float>(m_context.GetHeight()), 0.0f, 1.0f };
         m_currentScissor = { 0, 0, static_cast<LONG>(m_context.GetWidth()),
                             static_cast<LONG>(m_context.GetHeight()) };
-        // コマンドリストは BeginFrame で Reset される = 全パイプライン状態が既定へ戻る。
-        // ここで直前値を捨てないと、実際には束縛されていない状態を「設定済み」と誤認する。
+        /// @note コマンドリストは BeginFrame で Reset される = 全パイプライン状態が既定へ戻る。
+        ///       ここで直前値を捨てないと、実際には束縛されていない状態を「設定済み」と誤認する。
         InvalidateRootCbvCache();
         m_uploadArena.BeginFrame(m_context.GetFrameIndex());
         m_nullConstantAddress = 0;
@@ -102,9 +102,9 @@ void DX12Renderer::BeginFrame()
             std::memset(nullConstant.cpu, 0, nullConstant.size);
             m_nullConstantAddress = nullConstant.gpu;
         }
-        // 全枠 INVALID の添字ブロック。アリーナが枯渇した Draw でもここを差せば、
-        // シェーダー側の有効判定で «束縛されていない» と分かる (ゼロ埋めでは添字 0 を
-        // 有効なディスクリプタとして読んでしまう)。
+        /// @note 全枠 INVALID の添字ブロック。アリーナが枯渇した Draw でもここを差せば、
+        ///       シェーダー側の有効判定で «束縛されていない» と分かる (ゼロ埋めでは添字 0 を
+        ///       有効なディスクリプタとして読んでしまう)。
         m_invalidBindlessAddress = 0;
         const auto invalidIndices = m_uploadArena.Allocate(
             sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
@@ -119,7 +119,7 @@ void DX12Renderer::BeginFrame()
 
 void DX12Renderer::EndFrame()
 {
-    // 呼び出し側が閉じ忘れても、UAV 書き込みを未同期のまま Submit しない。
+    /// @note 呼び出し側が閉じ忘れても、UAV 書き込みを未同期のまま Submit しない。
     EndComputeBatch();
     m_context.EndFrame();
 }
@@ -128,26 +128,29 @@ void DX12Renderer::Clear(const math::Vector4& color)
 {
     if (!m_context.IsFrameOpen())
         return;
+    ResourceManager* const resources = ResourceManager::Active();
+    if (IsCurrentRenderTargetLost(resources)) {
+        ReportLostRenderTarget("Clear");
+        return;
+    }
     const float clearColor[] = {color.x, color.y, color.z, color.w};
-    if (m_currentRenderTarget) {
-        if (m_currentRenderTarget->IsCubemap() && m_currentCubeRtv.ptr) {
+    if (DX12RenderTarget* const target = ResolveCurrentRenderTarget(resources)) {
+        if (target->IsCubemap() && m_currentCubeRtv.ptr) {
             m_context.GetCommandList()->ClearRenderTargetView(m_currentCubeRtv, clearColor, 0, nullptr);
             return;
         }
-        for (uint32_t index = 0; index < m_currentRenderTarget->GetColorCount(); ++index)
+        for (uint32_t index = 0; index < target->GetColorCount(); ++index)
             m_context.GetCommandList()->ClearRenderTargetView(
-                m_currentRenderTarget->GetRtv(index), clearColor, 0, nullptr);
-        // WHY: IRenderer::Clear は色と同時に深度も 1.0 へクリアする契約で、
-        //      RenderSystem は GBuffer / HDR パス開始時に Clear(色) しか呼ばない。
-        //      DX12 側で深度を残すと初期値 0 のまま LESS 比較が全滅し、
-        //      深度テストを使う全ジオメトリが 1 ピクセルも描画されない。
-        if (m_currentRenderTarget->HasDepth()) {
+                target->GetRtv(index), clearColor, 0, nullptr);
+        /// @note IRenderer::Clear は深度も 1.0 へ戻す契約。RenderSystem は Clear(色) しか呼ばないので、
+        ///       残すと初期値 0 のまま LESS 比較が全滅する。
+        if (target->HasDepth()) {
             m_context.GetCommandList()->ClearDepthStencilView(
-                m_currentRenderTarget->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+                target->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
         }
     } else {
         m_context.GetCommandList()->ClearRenderTargetView(m_context.GetCurrentRtv(), clearColor, 0, nullptr);
-        // バックバッファも DX11 と同じく色クリア時に深度を 1.0 へ戻す。
+        /// @note バックバッファも DX11 と同じく色クリア時に深度を 1.0 へ戻す。
         m_context.GetCommandList()->ClearDepthStencilView(
             m_context.GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
     }
@@ -156,17 +159,44 @@ void DX12Renderer::Clear(const math::Vector4& color)
 void DX12Renderer::ClearDepth(float depth)
 {
     if (m_context.IsFrameOpen()) {
-        if (m_currentRenderTarget && m_currentRenderTarget->IsCubemap()) return;
-        if (m_currentRenderTarget && !m_currentRenderTarget->HasDepth()) return;
-        const auto dsv = m_currentRenderTarget ? m_currentRenderTarget->GetDsv() : m_context.GetDsv();
+        ResourceManager* const resources = ResourceManager::Active();
+        if (IsCurrentRenderTargetLost(resources)) {
+            ReportLostRenderTarget("ClearDepth");
+            return;
+        }
+        DX12RenderTarget* const target = ResolveCurrentRenderTarget(resources);
+        if (target && target->IsCubemap()) return;
+        if (target && !target->HasDepth()) return;
+        const auto dsv = target ? target->GetDsv() : m_context.GetDsv();
         m_context.GetCommandList()->ClearDepthStencilView(
             dsv, D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr);
     }
 }
 
+DX12RenderTarget* DX12Renderer::ResolveCurrentRenderTarget(ResourceManager* resources) const
+{
+    if (!resources || !m_currentRenderTargetHandle.IsValid()) return nullptr;
+    auto* base = resources->Get(m_currentRenderTargetHandle);
+    return base ? static_cast<DX12RenderTarget*>(base) : nullptr;
+}
+
+bool DX12Renderer::IsCurrentRenderTargetLost(ResourceManager* resources) const
+{
+    return m_currentRenderTargetHandle.IsValid() && ResolveCurrentRenderTarget(resources) == nullptr;
+}
+
+void DX12Renderer::ReportLostRenderTarget(const char* where)
+{
+    if (m_reportedLostRenderTarget) return;
+    m_reportedLostRenderTarget = true;
+    FBZZ_LOG_WARN("DX12Renderer::%s: 束縛中の RT が解放済み (handle=%u:%u)。"
+                  "SetRenderTarget し直すまで描画を捨てます",
+                  where, m_currentRenderTargetHandle.id, m_currentRenderTargetHandle.gen);
+}
+
 bool DX12Renderer::PrepareShaderReload()
 {
-    // Flush は提出済みのコマンドだけを待つ。記録中の PSO を解放してはならない。
+    /// @note Flush は提出済みのコマンドだけを待つ。記録中の PSO を解放してはならない。
     if (m_context.IsFrameOpen()) {
         FBZZ_LOG_WARN("DX12Renderer: shader reload rejected while a frame is recording");
         return false;
@@ -195,30 +225,33 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
     auto* shader = static_cast<DX12Shader*>(shaderBase);
     auto* state = static_cast<DX12PipelineState*>(stateBase);
-    const DXGI_FORMAT renderTargetFormat = m_currentRenderTarget
-        ? m_currentRenderTarget->GetColorFormat() : DX12Context::BACK_BUFFER_FORMAT;
-    const uint32_t renderTargetCount = m_currentRenderTarget
-        ? m_currentRenderTarget->GetColorCount() : 1;
+    if (IsCurrentRenderTargetLost(&resources)) {
+        ReportLostRenderTarget("Submit");
+        return;
+    }
+    const DX12RenderTarget* const currentTarget = ResolveCurrentRenderTarget(&resources);
+    const DXGI_FORMAT renderTargetFormat = currentTarget
+        ? currentTarget->GetColorFormat() : DX12Context::BACK_BUFFER_FORMAT;
+    const uint32_t renderTargetCount = currentTarget
+        ? currentTarget->GetColorCount() : 1;
     ID3D12PipelineState* pso = m_psoCache.GetOrCreate(
         *shader, state->GetDesc(), call.topology, renderTargetFormat, renderTargetCount);
     if (!pso) return;
 
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
 
-    // 共有コマンドリストへ他所 (ImGui / IblBaker) が記録していたら状態キャッシュを捨てる。
+    /// @note 共有コマンドリストへ他所 (ImGui / IblBaker) が記録していたら状態キャッシュを捨てる。
     if (m_seenPipelineStateGeneration != m_context.GetPipelineStateGeneration()) {
         InvalidateRootCbvCache();
         m_seenPipelineStateGeneration = m_context.GetPipelineStateGeneration();
     }
 
-    // ルートシグネチャは変化したときだけ設定する。
-    // WHY 冗長設定を避けるのが必須か: SetGraphicsRootSignature は全ルート引数を無効化する契約。
-    //     毎 Draw 呼んでいると、下の root CBV 差分キャッシュが前提とする「直前に束縛した VA が
-    //     まだ生きている」が成立しなくなる。ここを絞ることでキャッシュが正しさを保てる。
+    /// @note ルートシグネチャは変化したときだけ設定する。SetGraphicsRootSignature は全ルート引数を
+    ///       無効化する契約のため、毎 Draw 呼ぶと直後の root CBV 差分キャッシュの前提が崩れる。
     ID3D12RootSignature* rootSignature = m_psoCache.GetRootSignature();
     if (m_lastGraphicsRootSignature != rootSignature) {
-        // 順序に注意: 無効化はルート引数のキャッシュを捨てると同時に直前値も nullptr へ戻すため、
-        //             先に無効化してから「今設定した」ことを記録する。
+        /// @note 順序に注意: 無効化はルート引数のキャッシュを捨てると同時に直前値も nullptr へ戻すため、
+        ///       先に無効化してから「今設定した」ことを記録する。
         InvalidateRootCbvCache();
         commands->SetGraphicsRootSignature(rootSignature);
         m_lastGraphicsRootSignature = rootSignature;
@@ -235,18 +268,17 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         m_lastDescriptorHeap = srvHeap;
     }
 
-    // 状態遷移はテーブルを再利用する場合でも必ず発行する。
-    // WHY: 同じテクスチャ集合でも、間に挟まった別パス (Compute の UAV 書き込み等) で
-    //      リソースの状態が変わっている可能性がある。コピーは省けても遷移は省けない。
+    /// @note 状態遷移はテーブル再利用時も必ず発行する。同じテクスチャ集合でも間に挟まった別パス
+    ///       (Compute の UAV 書き込み等) で状態が変わりうるため、コピーは省けても遷移は省けない。
     for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
         if (auto* textureBase = resources.Get(call.textures[slot])) {
             m_stateTracker.QueueTransition(static_cast<DX12Texture*>(textureBase)->GetResource(),
                                            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         }
     }
-    // t29〜t30 の PS-readable StructuredBuffer も同じピクセルテーブルへ入れる。
-    // クラスタライトのインデックスリストは直前に CS が UAV として書いているため、
-    // ここで PIXEL_SHADER_RESOURCE へ遷移させないと読み値が未定義になる。
+    /// @note t29〜t30 の PS-readable StructuredBuffer も同じピクセルテーブルへ入れる。
+    ///       クラスタライトのインデックスリストは直前に CS が UAV として書いているため、
+    ///       ここで PIXEL_SHADER_RESOURCE へ遷移させないと読み値が未定義になる。
     for (const auto& handle : call.psBuffers) {
         if (auto* bufferBase = resources.Get(handle)) {
             m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
@@ -254,12 +286,10 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         }
     }
 
-    // ---- bindless 添字ブロック (b14) ----
-    // WHY テーブルと併存させるか: 移行はシェーダー 1 本ずつ進める。まだ register(tN) で
-    //     読んでいるシェーダーはテーブルを、移行済みのものはこの添字を読む。両方が
-    //     同じリソースを指しているので、どちらの経路でも同じ絵になる。
-    // WHY 毎ドローで組み直すか: 添字はドローごとに変わる。前のドローの値が残ると
-    //     束縛していないテクスチャを読む (Reset() が全枠を INVALID で埋める理由)。
+    /// @name bindless 添字ブロック (b14)
+    /// @note 移行はシェーダー単位で段階的に進めるため、テーブルと添字を併存させる
+    ///       (どちらも同じリソースを指す)。添字はドローごとに変わるので毎回組み直し、
+    ///       Reset() で全枠を INVALID 埋めして前ドローの値の混入を防ぐ。
     {
         BindlessIndicesConstants indices;
         indices.Reset();
@@ -284,17 +314,16 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
             std::memcpy(block.cpu, &indices, sizeof(indices));
             commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam, block.gpu);
         } else if (m_invalidBindlessAddress) {
-            // アリーナ枯渇時のフォールバック。
-            // WHY ゼロ埋めの m_nullConstantAddress で代用しないか: 添字 0 は «ヒープ先頭の
-            //     有効なディスクリプタ» なので、全スロットが無関係なリソースを指すことになる。
-            //     全枠 INVALID の専用ブロックを差せば、シェーダー側の有効判定で弾ける。
+            /// @note アリーナ枯渇時のフォールバック。ゼロ埋めの m_nullConstantAddress は使わない
+            ///       (添字 0 はヒープ先頭の有効なディスクリプタを指すため、無関係なリソースを読んでしまう)。
+            ///       全枠 INVALID の専用ブロックを差せばシェーダー側の有効判定で弾ける。
             commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam,
                                                         m_invalidBindlessAddress);
         }
     }
 
-    // 状態遷移は bindless でも必ず要る。添字が同じでも、間に挟まった別パス
-    // (Compute の UAV 書き込み等) でリソースの状態は変わっている。
+    /// @note 状態遷移は bindless でも必ず要る。添字が同じでも、間に挟まった別パス
+    ///       (Compute の UAV 書き込み等) でリソースの状態は変わっている。
     if (auto* instanceBase = resources.Get(call.instanceBuffer))
         m_stateTracker.QueueTransition(
             static_cast<DX12StructuredBuffer*>(instanceBase)->GetResource(),
@@ -305,18 +334,17 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
                 static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-    // WHAT: テクスチャ/バッファ SRV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する。
-    //       Draw 呼び出し (このあと) より前であれば記録順の制約を満たす。
+    /// @note テクスチャ/バッファ SRV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する。
+    ///       Draw 呼び出しより前であれば記録順の制約を満たす。
     m_stateTracker.FlushBarriers(commands);
     commands->IASetPrimitiveTopology(call.topology == PrimitiveTopology::LINE_LIST
         ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     if (auto* vertexBase = resources.Get(call.vertexBuffer)) {
         auto* vertexBuffer = static_cast<DX12Buffer*>(vertexBase);
-        // コンピュートスキニングの出力を頂点として読む場合、CS が書いた直後は
-        // UNORDERED_ACCESS のままなので VERTEX_AND_CONSTANT_BUFFER へ遷移させる。
-        // WHY: DX11 と違い DX12 は状態遷移が明示的。抜けると読み出しが未定義になる
-        //      (デバッグレイヤーが警告、実機では古い内容やゴミが出る)。
+        /// @note コンピュートスキニングの出力を頂点として読む場合、CS が書いた直後は UNORDERED_ACCESS の
+        ///       ままなので VERTEX_AND_CONSTANT_BUFFER へ遷移させる。DX11 と違い DX12 は状態遷移が明示的で、
+        ///       抜けると読み出しが未定義になる (デバッグレイヤーが警告、実機では古い内容やゴミが出る)。
         if (vertexBuffer->IsGpuWritable()) {
             m_stateTracker.Transition(commands, vertexBuffer->GetResource(),
                                       D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
@@ -331,10 +359,9 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         commands->IASetIndexBuffer(&view);
     }
 
-    // b0〜b13 を差分で束縛する。未指定スロットは null CBV で埋める契約は従来どおり。
-    // WHY: 「全スロット null 埋め → 実 CB で上書き」だと 1 Draw で最大 28 回のルート設定が出る。
-    //      スロットごとに直前の GPU VA を覚えておき、変化したものだけ設定すれば、
-    //      GBuffer のように Object CB しか変わらないパスでは数回まで落ちる。
+    /// @note b0〜b13 を差分で束縛する (未指定スロットは null CBV で埋める契約は従来どおり)。
+    ///       毎 Draw 全スロット設定すると最大 28 回のルート設定が出るため、直前の GPU VA を
+    ///       スロットごとに記憶し変化分だけ設定する。
     for (uint32_t slot = 0; slot < call.constantBuffers.size(); ++slot) {
         D3D12_GPU_VIRTUAL_ADDRESS address = 0;
         if (auto* constantBase = resources.Get(call.constantBuffers[slot]))
@@ -350,11 +377,11 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
     m_rootCbvCacheValid = true;
 
-    // ---- 診断ログ ----
-    // リフレクション推定ストライドが実バッファより「大きい」場合のみ警告する。
-    // 小さい場合 (例: 44B 頂点から先頭 POSITION 12B だけ読む ShadowMap / Skydome) は、
-    // IASetVertexBuffers のストライドは実バッファ値なので正しく先頭要素を読める正当なパターン。
-    // 大きい場合は要素オフセットが頂点境界をまたぎ、ジオメトリが壊れる。
+    /// @name 診断ログ
+    /// @note リフレクション推定ストライドが実バッファより「大きい」場合のみ警告する。
+    ///       小さい場合 (例: 44B 頂点から先頭 POSITION 12B だけ読む ShadowMap / Skydome) は、
+    ///       IASetVertexBuffers のストライドは実バッファ値なので正しく先頭要素を読める正当なパターン。
+    ///       大きい場合は要素オフセットが頂点境界をまたぎ、ジオメトリが壊れる。
     auto* vertexBufferBase = resources.Get(call.vertexBuffer);
     const uint32_t actualStride = vertexBufferBase
         ? static_cast<DX12Buffer*>(vertexBufferBase)->GetStride() : 0;
@@ -383,8 +410,8 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     ID3D12PipelineState* pso = m_psoCache.GetOrCreateCompute(*shader);
     if (!pso) return;
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
-    // Compute へ切り替えるとグラフィクス側のパイプライン状態・ルート束縛は当てにできない。
-    // Submit 側の差分キャッシュをここで必ず捨てる (捨て忘れると次の Draw が束縛を省いて壊れる)。
+    /// @note Compute へ切り替えるとグラフィクス側のパイプライン状態・ルート束縛は当てにできない。
+    ///       Submit 側の差分キャッシュをここで必ず捨てる (捨て忘れると次の Draw が束縛を省いて壊れる)。
     InvalidateRootCbvCache();
     commands->SetComputeRootSignature(m_psoCache.GetComputeRootSignature());
     commands->SetPipelineState(pso);
@@ -399,8 +426,8 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         if (address) commands->SetComputeRootConstantBufferView(slot, address);
     }
 
-    // SRV の状態遷移。bindless ではディスクリプタを張らないが、遷移は従来どおり要る。
-    // WHY: 添字が同じでも、間に挟まった別パスでリソースの状態は変わっている。
+    /// @note SRV の状態遷移。bindless ではディスクリプタを張らないが、遷移は従来どおり要る
+    ///       (添字が同じでも間に挟まった別パスで状態は変わりうる)。
     for (uint32_t slot = 0; slot < kBindlessPixelSlotCount; ++slot) {
         if (auto* textureBase = resources.Get(call.srvInputs[slot]))
             m_stateTracker.QueueTransition(
@@ -412,7 +439,7 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 
-    // UAV の状態遷移と、Dispatch 後の UAV バリア対象の収集。
+    /// @note UAV の状態遷移と、Dispatch 後の UAV バリア対象の収集。
     std::array<ID3D12Resource*, 10> writtenResources{};
     uint32_t writtenCount = 0;
     for (uint32_t slot = 0; slot < kBindlessUavSlotCount; ++slot) {
@@ -428,9 +455,8 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                 writtenResources[writtenCount++] = buffer->GetResource();
             }
         }
-        // u4: GPU 書き込み可能な頂点バッファ (コンピュートスキニングの出力)。
-        // WHY: 直前のフレームでは頂点バッファとして読まれているので、
-        //      書き込む前に UNORDERED_ACCESS へ戻す遷移が要る。
+        /// @note u4: GPU 書き込み可能な頂点バッファ (コンピュートスキニングの出力)。直前フレームでは
+        ///       頂点バッファとして読まれているので、書き込む前に UNORDERED_ACCESS へ戻す遷移が要る。
         if (slot == 4) {
             if (auto* bufferBase = resources.Get(call.uavVertexBuffer)) {
                 auto* buffer = static_cast<DX12Buffer*>(bufferBase);
@@ -443,9 +469,9 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         }
     }
 
-    // ---- bindless 添字ブロック (b14) ----
-    // srvInputs / srvBuffers は同じ t0〜t31 の空間を共有する。両方が同じスロットに居たら
-    // バッファが勝つ (旧テーブル構築と同じ順序。ここを変えると絵が変わる)。
+    /// @name bindless 添字ブロック (b14)
+    /// @note srvInputs / srvBuffers は同じ t0〜t31 の空間を共有する。両方が同じスロットに居たら
+    ///       バッファが勝つ (旧テーブル構築と同じ順序。ここを変えると絵が変わる)。
     {
         BindlessIndicesConstants indices;
         indices.Reset();
@@ -477,13 +503,13 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                                                        m_invalidBindlessAddress);
         }
     }
-    // WHAT: SRV/UAV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する (Dispatch より前)。
+    /// @note SRV/UAV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する (Dispatch より前)。
     m_stateTracker.FlushBarriers(commands);
     commands->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
     if (writtenCount > 0) {
         if (m_computeBatchActive) {
-            // バッチ内 Dispatch は相互依存しない契約なので、ここでは記録だけ行う。
-            // 同じ UAV が複数回現れてもパス末尾のバリアは 1 個で十分。
+            /// @note バッチ内 Dispatch は相互依存しない契約なので、ここでは記録だけ行う。
+            ///       同じ UAV が複数回現れてもパス末尾のバリアは 1 個で十分。
             for (uint32_t index = 0; index < writtenCount; ++index) {
                 if (std::find(m_computeBatchWrittenResources.begin(),
                               m_computeBatchWrittenResources.end(),
@@ -492,7 +518,7 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                 }
             }
         } else {
-            // 通常 Dispatch は後続 Dispatch が同じ UAV を読む可能性があるため即時同期する。
+            /// @note 通常 Dispatch は後続 Dispatch が同じ UAV を読む可能性があるため即時同期する。
             std::array<D3D12_RESOURCE_BARRIER, 10> uavBarriers{};
             for (uint32_t index = 0; index < writtenCount; ++index) {
                 uavBarriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -505,7 +531,7 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
 
 void DX12Renderer::BeginComputeBatch()
 {
-    // ネストは契約外。既存バッチを安全に閉じてから新しい収集を開始する。
+    /// @note ネストは契約外。既存バッチを安全に閉じてから新しい収集を開始する。
     if (m_computeBatchActive) EndComputeBatch();
     m_computeBatchWrittenResources.clear();
     m_computeBatchActive = true;
@@ -521,7 +547,7 @@ void DX12Renderer::EndComputeBatch()
             barriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
             barriers[index].UAV.pResource = m_computeBatchWrittenResources[index];
         }
-        // WHAT: Dispatch ごとの API 呼び出しをやめ、パス全体を 1 回の UAV barrier 群で確定する。
+        /// @note Dispatch ごとの API 呼び出しをやめ、パス全体を 1 回の UAV barrier 群で確定する。
         m_context.GetCommandList()->ResourceBarrier(
             static_cast<UINT>(barriers.size()), barriers.data());
     }
@@ -549,10 +575,10 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
 {
     if (!m_context.IsFrameOpen()) return;
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
-    // 前の RT はハンドルから引き直す。生ポインタのまま触ると、束縛したあとに解放された
-    // RT (リサイズで作り直された中間 RT 等) を «読める状態へ戻す» つもりで破棄済みの
-    // オブジェクトから番地を引くことになる。解放済みなら Get が nullptr を返し、
-    // 戻し忘れたぶんの遷移は次にそのリソースを束縛する側が積み直す。
+    /// @note 前の RT はハンドルから引き直す。生ポインタのまま触ると、束縛したあとに解放された
+    ///       RT (リサイズで作り直された中間 RT 等) を «読める状態へ戻す» つもりで破棄済みの
+    ///       オブジェクトから番地を引くことになる。解放済みなら Get が nullptr を返し、
+    ///       戻し忘れたぶんの遷移は次にそのリソースを束縛する側が積み直す。
     auto* previousBase = resources.Get(m_currentRenderTargetHandle);
     auto* previous = previousBase ? static_cast<DX12RenderTarget*>(previousBase) : nullptr;
     if (previous) {
@@ -565,10 +591,10 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
         }
     }
     auto* targetBase = resources.Get(handle);
-    m_currentRenderTarget = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
-    m_currentRenderTargetHandle = targetBase ? handle : ResourceHandle<RenderTargetTag>{};
+    auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
+    m_currentRenderTargetHandle = target ? handle : ResourceHandle<RenderTargetTag>{};
     m_currentCubeRtv = {};
-    if (!m_currentRenderTarget) {
+    if (!target) {
         m_stateTracker.FlushBarriers(commands);
         const auto rtv = m_context.GetCurrentRtv();
         const auto dsv = m_context.GetDsv();
@@ -584,25 +610,25 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
         return;
     }
     std::array<D3D12_CPU_DESCRIPTOR_HANDLE, DX12RenderTarget::MAX_COLOR> rtvs{};
-    for (uint32_t index = 0; index < m_currentRenderTarget->GetColorCount(); ++index) {
-        m_stateTracker.QueueTransition(m_currentRenderTarget->GetColorResource(index),
+    for (uint32_t index = 0; index < target->GetColorCount(); ++index) {
+        m_stateTracker.QueueTransition(target->GetColorResource(index),
                                        D3D12_RESOURCE_STATE_RENDER_TARGET);
-        rtvs[index] = m_currentRenderTarget->GetRtv(index);
+        rtvs[index] = target->GetRtv(index);
     }
-    const bool hasDepth = m_currentRenderTarget->HasDepth();
+    const bool hasDepth = target->HasDepth();
     if (hasDepth) {
-        m_stateTracker.QueueTransition(m_currentRenderTarget->GetDepthResource(),
+        m_stateTracker.QueueTransition(target->GetDepthResource(),
                                        D3D12_RESOURCE_STATE_DEPTH_WRITE);
     }
-    // WHAT: 旧RTの解放遷移と新RTのバインド遷移をまとめて1回のResourceBarrierで発行する。
+    /// @note 旧 RT の解放遷移と新 RT のバインド遷移を 1 回の ResourceBarrier にまとめる。
     m_stateTracker.FlushBarriers(commands);
-    const auto dsv = m_currentRenderTarget->GetDsv();
-    commands->OMSetRenderTargets(m_currentRenderTarget->GetColorCount(), rtvs.data(), FALSE,
+    const auto dsv = target->GetDsv();
+    commands->OMSetRenderTargets(target->GetColorCount(), rtvs.data(), FALSE,
                                  hasDepth ? &dsv : nullptr);
-    D3D12_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(m_currentRenderTarget->GetWidth()),
-                            static_cast<float>(m_currentRenderTarget->GetHeight()), 0.0f, 1.0f};
-    D3D12_RECT scissor{0, 0, static_cast<LONG>(m_currentRenderTarget->GetWidth()),
-                       static_cast<LONG>(m_currentRenderTarget->GetHeight())};
+    D3D12_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(target->GetWidth()),
+                            static_cast<float>(target->GetHeight()), 0.0f, 1.0f};
+    D3D12_RECT scissor{0, 0, static_cast<LONG>(target->GetWidth()),
+                       static_cast<LONG>(target->GetHeight())};
     commands->RSSetViewports(1, &viewport);
     commands->RSSetScissorRects(1, &scissor);
     m_currentViewport = viewport;
@@ -611,16 +637,16 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
 
 void DX12Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
-    // SetRenderTarget が RT 全体へ張ったビューポートを、その一部へ絞り込む。
-    // カスケードシャドウが 1 枚のアトラスをタイル分割して使う (IRenderer::SetViewport 参照)。
+    /// @note SetRenderTarget が RT 全体へ張ったビューポートを、その一部へ絞り込む。
+    ///       カスケードシャドウが 1 枚のアトラスをタイル分割して使う (IRenderer::SetViewport 参照)。
     if (!m_context.IsFrameOpen() || width == 0u || height == 0u) return;
     auto* commands = m_context.GetCommandList();
     if (!commands) return;
 
     D3D12_VIEWPORT viewport{ static_cast<float>(x), static_cast<float>(y),
                              static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f };
-    // シザーもタイルへ合わせる。DX12 はビューポート外でもシザーが広いままだと
-    // 隣のタイルへピクセルが漏れる (DX11 と違いシザーが既定で無制限ではない)。
+    /// @note シザーもタイルへ合わせる。DX12 はビューポート外でもシザーが広いままだと
+    ///       隣のタイルへピクセルが漏れる (DX11 と違いシザーが既定で無制限ではない)。
     D3D12_RECT scissor{ static_cast<LONG>(x), static_cast<LONG>(y),
                         static_cast<LONG>(x + width), static_cast<LONG>(y + height) };
     commands->RSSetViewports(1, &viewport);
@@ -636,7 +662,6 @@ void DX12Renderer::SetRenderTargetFace(
     auto* targetBase = resources.Get(handle);
     auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
     if (!target || !target->IsCubemap() || face >= 6 || mip >= target->GetMipCount()) return;
-    m_currentRenderTarget = target;
     m_currentRenderTargetHandle = handle;
     m_currentCubeRtv = target->GetFaceRtv(face, mip);
     m_currentCubeFace = face;
@@ -673,7 +698,7 @@ bool DX12Renderer::RenderDebugPreview(const DrawCall& call, ResourceHandle<Rende
 
     SetRenderTarget(target, resources);
     Submit(call, resources);
-    // キューブ RT は通常添付の RTV を持たない。プレビューを外してから面として戻す。
+    /// @note キューブ RT は通常添付の RTV を持たない。プレビューを外してから面として戻す。
     SetRenderTarget(cube ? ResourceHandle<RenderTargetTag>{} : previous, resources);
     if (cube) SetRenderTargetFace(previous, face, mip, resources);
     auto* commands = m_context.GetCommandList();
@@ -707,11 +732,11 @@ bool DX12Renderer::BakeSkyLight(
 
 std::unique_ptr<IIblBaker> DX12Renderer::CreateIblBaker()
 {
-    // Editor が所有する一時ベイカー。m_context / m_psoCache はレンダラー寿命内で有効。
+    /// @note Editor が所有する一時ベイカー。m_context / m_psoCache はレンダラー寿命内で有効。
     return std::make_unique<DX12HdriBaker>(&m_context, &m_psoCache);
 }
 
-// RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。
+/// RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。
 static bool CaptureDX12RenderTargetImage(DX12Context& context, IRenderTarget* base,
                                          DirectX::ScratchImage& outImage)
 {
@@ -720,9 +745,9 @@ static bool CaptureDX12RenderTargetImage(DX12Context& context, IRenderTarget* ba
     ID3D12Resource* resource = target->GetColorResource(0);
     if (resource == nullptr) return false;
 
-    // Scene View RT は直前フレームで ImGui サンプリング用に PIXEL_SHADER_RESOURCE へ遷移済み。
-    // CaptureTexture は自前の CommandQueue/フェンス同期で COPY_SOURCE へ遷移→読み戻し→元状態へ戻す。
-    // 呼び出しはフレーム外 (OnUpdate) なのでレンダラーの CommandList とは競合しない。
+    /// @note Scene View RT は直前フレームで ImGui サンプリング用に PIXEL_SHADER_RESOURCE へ遷移済み。
+    ///       CaptureTexture は自前の CommandQueue/フェンス同期で COPY_SOURCE へ遷移→読み戻し→元状態へ戻す。
+    ///       呼び出しはフレーム外 (OnUpdate) なのでレンダラーの CommandList とは競合しない。
     return SUCCEEDED(DirectX::CaptureTexture(context.GetCommandQueue(), resource, /*isCubeMap*/ false, outImage,
                                              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                                              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
