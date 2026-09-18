@@ -1,0 +1,33 @@
+{
+  "schema": "fbzz-bench-report/1",
+  "title": "Math の小関数のインライン化",
+  "date": "2026-09-18",
+  "baseline": {
+    "label": "before",
+    "commit": "6403b867f7703fcfd2fedbddc775828f302b7557",
+    "dirty": false
+  },
+  "candidate": {
+    "label": "after",
+    "commit": "e5cc1da367e528bcd822dc215049eda8963322e6",
+    "dirty": false
+  },
+  "cpu": "13th Gen Intel(R) Core(TM) i7-13650HX",
+  "config": "Development",
+  "summary": {
+    "scene": {
+      "change": -0.4450402334557826,
+      "count": 6
+    },
+    "micro": {
+      "change": -0.4196926799723454,
+      "count": 6
+    }
+  },
+  "counts": {
+    "improved": 9,
+    "neutral": 3,
+    "caution": 0,
+    "regressed": 0
+  }
+}

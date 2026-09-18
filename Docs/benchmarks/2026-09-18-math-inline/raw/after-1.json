@@ -1,0 +1,29 @@
+{
+  "schema": "fbzz-bench/1",
+  "label": "after",
+  "startedAt": "2026-09-18T06:54:06Z",
+  "environment": {"commit": "e5cc1da367e528bcd822dc215049eda8963322e6", "dirty": false, "cpu": "13th Gen Intel(R) Core(TM) i7-13650HX", "logicalCores": 20, "compiler": "MSVC 19.51.36256", "config": "Development"},
+  "settings": {"steps": 600, "warmup": 120, "repeats": 7, "ops": 200000, "fixedStep": 0.0166667},
+  "results": [
+    {"kind": "scene", "name": "XPBD: 刻みと静止位置", "phase": "simulate", "unit": "us/step", "samples": [5.3585, 7.0080, 5.4140, 5.3182, 5.4272, 5.3067, 5.3130], "median": 5.3585, "min": 5.3067, "max": 7.0080},
+    {"kind": "scene", "name": "XPBD: 刻みと静止位置", "phase": "present", "unit": "us/step", "samples": [0.0012, 0.0012, 0.0010, 0.0010, 0.0010, 0.0010, 0.0008], "median": 0.0010, "min": 0.0008, "max": 0.0012},
+    {"kind": "scene", "name": "XPBD: 関節の鎖", "phase": "simulate", "unit": "us/step", "samples": [7.2703, 7.3677, 7.2272, 7.2337, 7.2342, 7.2763, 7.2420], "median": 7.2420, "min": 7.2272, "max": 7.3677},
+    {"kind": "scene", "name": "XPBD: 関節の鎖", "phase": "present", "unit": "us/step", "samples": [0.0010, 0.0010, 0.0010, 0.0008, 0.0010, 0.0010, 0.0010], "median": 0.0010, "min": 0.0008, "max": 0.0010},
+    {"kind": "scene", "name": "NarrowPhase: 接触の法線と深さ", "phase": "simulate", "unit": "us/step", "samples": [0.0455, 0.0458, 0.0457, 0.0455, 0.0455, 0.0455, 0.0455], "median": 0.0455, "min": 0.0455, "max": 0.0458},
+    {"kind": "scene", "name": "NarrowPhase: 接触の法線と深さ", "phase": "present", "unit": "us/step", "samples": [0.0010, 0.0010, 0.0010, 0.0010, 0.0010, 0.0010, 0.0010], "median": 0.0010, "min": 0.0010, "max": 0.0010},
+    {"kind": "scene", "name": "BVH: 木の形と問い合わせ", "phase": "simulate", "unit": "us/step", "samples": [0.0010, 0.0010, 0.0008, 0.0008, 0.0008, 0.0008, 0.0010], "median": 0.0008, "min": 0.0008, "max": 0.0010},
+    {"kind": "scene", "name": "BVH: 木の形と問い合わせ", "phase": "present", "unit": "us/step", "samples": [0.0010, 0.0010, 0.0008, 0.0008, 0.0010, 0.0008, 0.0008], "median": 0.0008, "min": 0.0008, "max": 0.0010},
+    {"kind": "scene", "name": "CCD: すり抜けと TOI", "phase": "simulate", "unit": "us/step", "samples": [0.0018, 0.0020, 0.0018, 0.0018, 0.0018, 0.0018, 0.0018], "median": 0.0018, "min": 0.0018, "max": 0.0020},
+    {"kind": "scene", "name": "CCD: すり抜けと TOI", "phase": "present", "unit": "us/step", "samples": [0.0010, 0.0010, 0.0008, 0.0008, 0.0008, 0.0010, 0.0008], "median": 0.0008, "min": 0.0008, "max": 0.0010},
+    {"kind": "scene", "name": "凸包: Quickhull とサポート点", "phase": "simulate", "unit": "us/step", "samples": [7.9312, 8.0825, 7.8340, 7.7795, 7.9295, 7.8972, 7.8403], "median": 7.8972, "min": 7.7795, "max": 8.0825},
+    {"kind": "scene", "name": "凸包: Quickhull とサポート点", "phase": "present", "unit": "us/step", "samples": [0.0010, 0.0010, 0.0008, 0.0010, 0.0010, 0.0010, 0.0010], "median": 0.0010, "min": 0.0008, "max": 0.0010},
+    {"kind": "scene", "name": "ラグドール: クリップと物理の差", "phase": "simulate", "unit": "us/step", "samples": [48.5803, 48.3133, 51.2493, 48.4588, 48.4108, 48.4123, 48.3165], "median": 48.4123, "min": 48.3133, "max": 51.2493},
+    {"kind": "scene", "name": "ラグドール: クリップと物理の差", "phase": "present", "unit": "us/step", "samples": [40.6280, 39.0605, 44.2627, 51.0743, 29.5065, 60.7300, 29.5670], "median": 40.6280, "min": 29.5065, "max": 60.7300},
+    {"kind": "micro", "name": "Matrix4 * Matrix4", "phase": "op", "unit": "ns/op", "samples": [10.1900, 10.3715, 10.0350, 10.0830, 10.0920, 10.0545, 10.2715], "median": 10.0920, "min": 10.0350, "max": 10.3715},
+    {"kind": "micro", "name": "Matrix4::TRS", "phase": "op", "unit": "ns/op", "samples": [44.7935, 44.7330, 45.4585, 45.8060, 44.8115, 45.1220, 44.8435], "median": 44.8435, "min": 44.7330, "max": 45.8060},
+    {"kind": "micro", "name": "Matrix4::Inverse", "phase": "op", "unit": "ns/op", "samples": [12.1290, 12.2650, 12.1660, 12.1235, 12.2075, 12.1080, 12.1065], "median": 12.1290, "min": 12.1065, "max": 12.2650},
+    {"kind": "micro", "name": "Quaternion * Vector3", "phase": "op", "unit": "ns/op", "samples": [2.1305, 2.0590, 2.0535, 2.0745, 2.0650, 2.1675, 2.0745], "median": 2.0745, "min": 2.0535, "max": 2.1675},
+    {"kind": "micro", "name": "Vector3::Normalized", "phase": "op", "unit": "ns/op", "samples": [2.0780, 2.0605, 2.0635, 2.0635, 2.0615, 2.0740, 2.2700], "median": 2.0635, "min": 2.0605, "max": 2.2700},
+    {"kind": "micro", "name": "Frustum::IntersectsAABB", "phase": "op", "unit": "ns/op", "samples": [7.4430, 7.3775, 7.3515, 7.3820, 7.3820, 7.3635, 7.4635], "median": 7.3820, "min": 7.3515, "max": 7.4635}
+  ]
+}

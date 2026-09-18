@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="fbzz-chart" viewBox="0 0 760 386" width="760" height="386" role="img" aria-labelledby="chart-title chart-desc">
+<title id="chart-title">after の before に対する変化率</title>
+<desc id="chart-desc">XPBD: 刻みと静止位置 Simulate: −46.9% (改善)。XPBD: 関節の鎖 Simulate: −44.8% (改善)。NarrowPhase: 接触の法線と深さ Simulate: −33.6% (改善)。凸包: Quickhull とサポート点 Simulate: −66.3% (改善)。ラグドール: クリップと物理の差 Simulate: −46.2% (改善)。ラグドール: クリップと物理の差 Present: −17.2% (改善)。Matrix4 * Matrix4 1 演算: −29.2% (改善)。Matrix4::TRS 1 演算: +0.3% (変化なし)。Matrix4::Inverse 1 演算: +0.0% (変化なし)。Quaternion * Vector3 1 演算: −88.5% (改善)。Vector3::Normalized 1 演算: −0.4% (変化なし)。Frustum::IntersectsAABB 1 演算: −52.9% (改善)</desc>
+<style>
+  .fbzz-chart { --improved:#1a7f37; --neutral:#8c959f; --caution:#9a6700; --regressed:#cf222e;
+                --ink:#1f2328; --muted:#59636e; --grid:#d1d9e0; font-family: system-ui, -apple-system, "Segoe UI", "Yu Gothic UI", sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    .fbzz-chart { --improved:#3fb950; --neutral:#6e7681; --caution:#d29922; --regressed:#f85149;
+                  --ink:#e6edf3; --muted:#9198a1; --grid:#3d444d; }
+  }
+  .fbzz-chart .label { fill: var(--ink); font-size: 12px; }
+  .fbzz-chart .sub { fill: var(--muted); font-size: 11px; }
+  .fbzz-chart .value { fill: var(--ink); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .fbzz-chart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .fbzz-chart .grid { stroke: var(--grid); stroke-width: 1; }
+  .fbzz-chart .zero { stroke: var(--muted); stroke-width: 1.25; }
+  .fbzz-chart .bar-improved { fill: var(--improved); }
+  .fbzz-chart .bar-neutral { fill: var(--neutral); }
+  .fbzz-chart .bar-caution { fill: var(--caution); }
+  .fbzz-chart .bar-regressed { fill: var(--regressed); }
+</style>
+<text class="sub" x="522" y="18" text-anchor="end">← 速くなった</text>
+<text class="sub" x="538" y="18">遅くなった →</text>
+<line class="grid" x1="364" x2="364" y1="32" y2="356"/>
+<text class="tick" x="364" y="374" text-anchor="middle">−100.0%</text>
+<line class="grid" x1="447" x2="447" y1="32" y2="356"/>
+<text class="tick" x="447" y="374" text-anchor="middle">−50.0%</text>
+<line class="grid" x1="613" x2="613" y1="32" y2="356"/>
+<text class="tick" x="613" y="374" text-anchor="middle">+50.0%</text>
+<line class="grid" x1="696" x2="696" y1="32" y2="356"/>
+<text class="tick" x="696" y="374" text-anchor="middle">+100.0%</text>
+<text class="tick" x="530" y="374" text-anchor="middle">0%</text>
+<text class="label" x="292" y="57" text-anchor="end">XPBD: 刻みと静止位置<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="452.2" y="46.0" width="77.8" height="14" rx="2"><title>XPBD: 刻みと静止位置 Simulate: −46.9%</title></rect>
+<text class="value" x="446.2" y="57" text-anchor="end">−46.9%</text>
+<text class="label" x="292" y="83" text-anchor="end">XPBD: 関節の鎖<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="455.6" y="72.0" width="74.4" height="14" rx="2"><title>XPBD: 関節の鎖 Simulate: −44.8%</title></rect>
+<text class="value" x="449.6" y="83" text-anchor="end">−44.8%</text>
+<text class="label" x="292" y="109" text-anchor="end">NarrowPhase: 接触の法線と深さ<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="474.3" y="98.0" width="55.7" height="14" rx="2"><title>NarrowPhase: 接触の法線と深さ Simulate: −33.6%</title></rect>
+<text class="value" x="468.3" y="109" text-anchor="end">−33.6%</text>
+<text class="label" x="292" y="135" text-anchor="end">凸包: Quickhull とサポート点<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="419.9" y="124.0" width="110.1" height="14" rx="2"><title>凸包: Quickhull とサポート点 Simulate: −66.3%</title></rect>
+<text class="value" x="413.9" y="135" text-anchor="end">−66.3%</text>
+<text class="label" x="292" y="161" text-anchor="end">ラグドール: クリップと物理の差<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="453.4" y="150.0" width="76.6" height="14" rx="2"><title>ラグドール: クリップと物理の差 Simulate: −46.2%</title></rect>
+<text class="value" x="447.4" y="161" text-anchor="end">−46.2%</text>
+<text class="label" x="292" y="187" text-anchor="end">ラグドール: クリップと物理の差<tspan class="sub"> · Present</tspan></text>
+<rect class="bar-improved" x="501.4" y="176.0" width="28.6" height="14" rx="2"><title>ラグドール: クリップと物理の差 Present: −17.2%</title></rect>
+<text class="value" x="495.4" y="187" text-anchor="end">−17.2%</text>
+<text class="label" x="292" y="213" text-anchor="end">Matrix4 * Matrix4<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="481.5" y="202.0" width="48.5" height="14" rx="2"><title>Matrix4 * Matrix4 1 演算: −29.2%</title></rect>
+<text class="value" x="475.5" y="213" text-anchor="end">−29.2%</text>
+<text class="label" x="292" y="239" text-anchor="end">Matrix4::TRS<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="530.0" y="228.0" width="1.5" height="14" rx="2"><title>Matrix4::TRS 1 演算: +0.3%</title></rect>
+<text class="value" x="537.5" y="239" text-anchor="start">+0.3%</text>
+<text class="label" x="292" y="265" text-anchor="end">Matrix4::Inverse<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="530.0" y="254.0" width="1.5" height="14" rx="2"><title>Matrix4::Inverse 1 演算: +0.0%</title></rect>
+<text class="value" x="537.5" y="265" text-anchor="start">+0.0%</text>
+<text class="label" x="292" y="291" text-anchor="end">Quaternion * Vector3<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="383.0" y="280.0" width="147.0" height="14" rx="2"><title>Quaternion * Vector3 1 演算: −88.5%</title></rect>
+<text class="value" x="377.0" y="291" text-anchor="end">−88.5%</text>
+<text class="label" x="292" y="317" text-anchor="end">Vector3::Normalized<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="528.5" y="306.0" width="1.5" height="14" rx="2"><title>Vector3::Normalized 1 演算: −0.4%</title></rect>
+<text class="value" x="522.5" y="317" text-anchor="end">−0.4%</text>
+<text class="label" x="292" y="343" text-anchor="end">Frustum::IntersectsAABB<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="442.2" y="332.0" width="87.8" height="14" rx="2"><title>Frustum::IntersectsAABB 1 演算: −52.9%</title></rect>
+<text class="value" x="436.2" y="343" text-anchor="end">−52.9%</text>
+<line class="zero" x1="530" x2="530" y1="32" y2="356"/>
+</svg>
