@@ -137,7 +137,7 @@ jobs:
         shell: pwsh
         run: |
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
 
       # --timeout: 止まったテストがあってもそこで打ち切り、残りを最後まで走らせる。
       #   これが無いと、1 件のハングでジョブがワークフローの上限まで待ち続ける。
