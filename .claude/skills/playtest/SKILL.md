@@ -30,7 +30,7 @@ description: FBZZ Engine / GreenWare の挙動や見た目の変化を Playtest 
 | `play` / `stop` / `pause` / `resume` | — | play.control。stop は復元に 2 フレーム置く |
 | `frames` | `count` | 進める |
 | `input` | `inject` (input.inject の中身) | 注入。押したら離す手順も書く |
-| `bus` | `request`, `kind?`, `expectError?` | 任意の要求 |
+| `bus` | `request`, `kind?`, `expectError?` | 任意の要求。`kind: "query"` の応答は報告の `steps[].result` に残る (計測値の取り出しに使う) |
 | `assert` | `query`, `path`, `op`, `value` | 今すぐ成立しなければ失敗 |
 | `waitUntil` | 上 + `timeoutFrames` (既定 600) | 成立まで毎フレーム評価 |
 | `replay` | `file` (シナリオからの相対) | 記録した入力を同じフレーム番号で注入 |

@@ -139,7 +139,7 @@ bool PlaytestRunner::CallBus(const PlaytestHooks& hooks, const char* kind, const
     return false;
 }
 
-void PlaytestRunner::RecordStep(bool ok, const std::string& message)
+void PlaytestRunner::RecordStep(bool ok, const std::string& message, const JsonValue* result)
 {
     const JsonValue* steps = m_scenario.Find("steps");
     JsonValue entry = JsonValue::MakeObject();
@@ -149,6 +149,7 @@ void PlaytestRunner::RecordStep(bool ok, const std::string& message)
     entry.Set("frame", JsonValue(static_cast<double>(m_frame)));
     entry.Set("ok", JsonValue(ok));
     if (!message.empty()) entry.Set("message", JsonValue(message));
+    if (result != nullptr) entry.Set("result", *result);
     m_stepLog.Push(std::move(entry));
 }
 
@@ -266,7 +267,8 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
             return StepResult::DONE;
         }
         if (!ok) return Fail(StringOf(payload, "t") + " 失敗 (" + code + "): " + message);
-        RecordStep(true, {});
+        /// @note query の応答は報告に残す。計測値 (profiler.snapshot 等) をシナリオから取り出す唯一の口。
+        RecordStep(true, {}, kind == "query" ? &result : nullptr);
         return StepResult::DONE;
     }
 
