@@ -39,7 +39,7 @@ protected:
 
     std::string ProjectRoot() const { return m_temp.Path().generic_string(); }
 
-    // outputDirectory を差し替えて検証結果だけを返す。
+    /// outputDirectory を差し替えて検証結果だけを返す。
     bool Accepts(const std::string& outputDirectory, std::string* reason = nullptr) const
     {
         BuildSettings settings;
@@ -59,7 +59,7 @@ TEST_F(BuildOutputPathTest, AcceptsTheDefaultOutputDirectory)
 
 TEST_F(BuildOutputPathTest, RejectsAnEmptyOutputDirectory)
 {
-    // 空欄は projectRoot へ解決される。ここを通すとプロジェクトごと消える。
+    /// @note 空欄は projectRoot へ解決される。ここを通すとプロジェクトごと消える。
     std::string reason;
     EXPECT_FALSE(Accepts("", &reason));
     EXPECT_FALSE(reason.empty());
@@ -73,28 +73,29 @@ TEST_F(BuildOutputPathTest, RejectsPathsThatResolveToTheProjectRoot)
 
 TEST_F(BuildOutputPathTest, RejectsAnAncestorOfTheProject)
 {
-    // 親を指すと remove_all がプロジェクトを巻き込む。
+    /// @note 親を指すと remove_all がプロジェクトを巻き込む。
     EXPECT_FALSE(Accepts(".."));
 }
 
 TEST_F(BuildOutputPathTest, RejectsProjectDataDirectories)
 {
     EXPECT_FALSE(Accepts("Assets"));
-    EXPECT_FALSE(Accepts("Assets/Dist"));   // Assets の中も同じく消える
+    /// @note Assets の中も同じく消える
+    EXPECT_FALSE(Accepts("Assets/Dist"));
     EXPECT_FALSE(Accepts("Library"));
     EXPECT_FALSE(Accepts("ProjectSettings"));
 }
 
 TEST_F(BuildOutputPathTest, AllowsADirectoryWhoseNameMerelySharesAPrefix)
 {
-    // "Build" は保護対象、"Builds" は別物。前方一致で巻き込まないこと。
+    /// @note "Build" は保護対象、"Builds" は別物。前方一致で巻き込まないこと。
     EXPECT_FALSE(Accepts("Build"));
     EXPECT_TRUE(Accepts("Builds"));
 }
 
 TEST_F(BuildOutputPathTest, RejectsAnExistingFolderThatIsNotAPreviousBuild)
 {
-    // Browse... でデスクトップや素材置き場を選んだ状況。
+    /// @note Browse... でデスクトップや素材置き場を選んだ状況。
     Touch(m_temp.Path() / "Elsewhere" / "notes.txt");
     std::string reason;
     EXPECT_FALSE(Accepts("Elsewhere", &reason));
@@ -103,7 +104,7 @@ TEST_F(BuildOutputPathTest, RejectsAnExistingFolderThatIsNotAPreviousBuild)
 
 TEST_F(BuildOutputPathTest, AcceptsAnExistingPreviousBuild)
 {
-    // 再ビルドは通す。前回の配布物は game.manifest.toml を持つ。
+    /// @note 再ビルドは通す。前回の配布物は game.manifest.toml を持つ。
     Touch(m_temp.Path() / "Dist" / "notes.txt");
     Touch(m_temp.Path() / "Dist" / "game.manifest.toml");
     EXPECT_TRUE(Accepts("Dist"));

@@ -10,8 +10,8 @@
 
 namespace fbzz::asset {
 
-// Atlasの列数と出力先を指定する。
-// WHY: 行数はフレーム数から一意に決まるため保存値を二重化せず、columns=0を自動配置とする。
+/// @brief Atlasの列数と出力先を指定する。
+/// @note 行数はフレーム数から一意に決まるため保存値を二重化せず、columns=0を自動配置とする。
 struct FlipbookAtlasBakeSettings {
     std::vector<std::string> framePaths;
     std::string outputPath;
@@ -20,7 +20,7 @@ struct FlipbookAtlasBakeSettings {
     bool generateTextureMeta = true;
 };
 
-// 生成物の参照とParticleEmitterへ設定するColumns/Rowsを呼び出し側へ返す。
+/// 生成物の参照とParticleEmitterへ設定するColumns/Rowsを呼び出し側へ返す。
 struct FlipbookAtlasBakeResult {
     bool success = false;
     std::string message;
@@ -34,8 +34,8 @@ struct FlipbookAtlasBakeResult {
     std::uint32_t atlasHeight = 0;
 };
 
-// framePathsの順序を再生順として、左上から右方向・次に下方向へ配置する。
-// 異なるフレーム寸法を暗黙に拡縮すると時間方向に画質が揺れるため、寸法不一致はエラーにする。
+/// framePathsの順序を再生順として、左上から右方向・次に下方向へ配置する。
+/// 異なるフレーム寸法を暗黙に拡縮すると時間方向に画質が揺れるため、寸法不一致はエラーにする。
 [[nodiscard]] FlipbookAtlasBakeResult BakeFlipbookAtlas(
     const FlipbookAtlasBakeSettings& settings);
 

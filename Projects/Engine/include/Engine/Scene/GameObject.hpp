@@ -18,56 +18,44 @@ class Scene;
 
 class GameObject {
 public:
-    // Unity: gameObject.name / .tag (直接変数)
+    /// Unity: gameObject.name / .tag (直接変数)
     std::string name       = "GameObject";
     std::string tag        = "Untagged";
-    // クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
-    // UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
+    /// クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
+    /// UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
     std::string instanceId;
-    // Prefab インスタンスの出所アセットパス (Assets 起点の相対パス)。
-    // WHY: Apply/Revert のために「このインスタンスがどのプレファブから生成されたか」を
-    //      GO 自身に持たせる。空文字列 = Prefab 非インスタンス (通常の GO)。
-    //      SceneSerializer が Save/Load で永続化し、PrefabSerializer::Instantiate が書き込む。
+    /// @brief Prefab インスタンスの出所アセットパス (Assets 起点の相対パス)。空文字列 = Prefab 非インスタンス。
+    /// @note Apply/Revert の判定に使う。SceneSerializer が Save/Load で永続化し、PrefabSerializer::Instantiate が書き込む。
     std::string prefabAssetPath;
-    // この GO が .prefab 内のどのオブジェクトから作られたか (プレファブ側の instanceId)。
-    // WHY: インスタンス化のたびに instanceId は新規採番されるため、これが無いと
-    //      「インスタンスの この子」と「プレファブの この子」を対応付けられない。
-    //      対応が取れて初めて、プロパティ単位の差分 (override) を計算できる。
-    //      ルートだけでなく階層内の全 GO に入る。空文字列 = プレファブ由来でない。
+    /// @brief この GO が .prefab 内のどのオブジェクトから作られたか (プレファブ側の instanceId)。空文字列 = プレファブ由来でない。
+    /// @note instanceId はインスタンス化のたびに新規採番されるため、これで対応する子を突き合わせ、プロパティ単位の override を計算する。階層内の全 GO に入る。
     std::string prefabSourceId;
     int layer = 0;
 
-    // システムが実行時に作った GO (VFX Graph のノード実体・Water splash 等)。
-    // WHY: これまでは名前を "__" で始めるという規約でシリアライズ除外を表現していたが、
-    //      規約だと「見せる名前」と「保存するか」が同じ文字列に相乗りしてしまい、
-    //      表示名を読みやすくした瞬間に保存対象へ戻るという壊れ方をする。
-    //      意図を型で持たせることで、名前は純粋に表示のためだけに使えるようになる。
-    // 効果は 2 つ:
-    //   1. SceneSerializer が保存しない (ロード時のゾンビ GO 蓄積を防ぐ)
-    //   2. Hierarchy が既定で隠す (1 エフェクト置くたびに十数行増えるのを防ぐ)
-    // NOTE: 生成側が必ず立てる。
+    /// @brief システムが実行時に作った GO か (VFX Graph のノード実体・Water splash 等)。生成側が必ず立てる。
+    /// @note 名前 "__" 接頭辞での判別をやめ意図を型で持たせた。SceneSerializer が保存対象から除外し、Hierarchy も既定で隠す。
     bool runtimeGenerated = false;
 
-    // Unity: gameObject.transform (常に存在。ComponentArray には入れない)
+    /// Unity: gameObject.transform (常に存在。ComponentArray には入れない)
     Transform transform;
 
-    // Unity: SetActive / activeSelf / activeInHierarchy
+    /// Unity: SetActive / activeSelf / activeInHierarchy
     void SetActive(bool active);
     bool activeSelf()        const;
     bool activeInHierarchy() const;
 
-    // Unity: CompareTag
+    /// Unity: CompareTag
     bool CompareTag(const std::string& t) const;
 
-    // Unity: AddComponent<T> / GetComponent<T>
-    // template 本体は Scene.hpp の末尾で定義する (Scene が完全型である必要があるため)
+    /// Unity: AddComponent<T> / GetComponent<T>
+    /// template 本体は Scene.hpp の末尾で定義する (Scene が完全型である必要があるため)
     template<typename T> T& AddComponent(T component = {});
     template<typename T> T* GetComponent();
     template<typename T> void RemoveComponent();
     template<typename T, typename... Args> T& AddScript(Args&&... args);
     template<typename T> T* GetScript();
 
-    // Unity: transform.SetParent / childCount / GetChild
+    /// Unity: transform.SetParent / childCount / GetChild
     void        SetParent(GameObject& parent);
     bool        SetParent(GameObject* parent);
     bool        ClearParent();
@@ -80,21 +68,20 @@ public:
     /// 同名は最初の1件、未検出は nullptr。戻り値は Scene が所有する非所有参照。
     [[nodiscard]] GameObject* FindInSubtree(std::string_view objectName);
 
-    // Unity: transform.GetSiblingIndex / SetSiblingIndex
-    // 兄弟内の表示順 (Hierarchy の並び)。親がいない場合はルート同士の並び順を指す。
-    // WHY: Hierarchy パネルのドラッグ並べ替え (挿入ライン) に必要。
+    /// @brief Unity: transform.GetSiblingIndex / SetSiblingIndex
+    /// @note 兄弟内の表示順 (Hierarchy の並び)。親がいない場合はルート同士の並び順を指す。Hierarchy パネルのドラッグ並べ替え (挿入ライン) に使う。
     int  GetSiblingIndex() const;
     bool SetSiblingIndex(int index);
 
-    // Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
+    /// Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
     static GameObject*              Find(const std::string& n);
     static GameObject*              FindByGuid(const std::string& guid);
     static GameObject*              FindWithTag(const std::string& t);
     template<typename T>
     static std::vector<GameObject*> FindObjectsOfType();
 
-    // Unity: Object.Destroy(go, delay)
-    // delay=0 → 次フレーム末尾で削除 / delay>0 → 毎フレーム減算後に削除
+    /// Unity: Object.Destroy(go, delay)
+    /// delay=0 → 次フレーム末尾で削除 / delay>0 → 毎フレーム減算後に削除
     static void Destroy(GameObject& go, float delay = 0.0f);
 
     bool     IsValid() const;
@@ -105,7 +92,7 @@ private:
     bool                  m_isActive = true;
     EntityID              m_parent   = EntityID::INVALID;
     std::vector<EntityID> m_children;
-    Scene*                m_scene    = nullptr; // 非所有参照
+    Scene*                m_scene    = nullptr; ///< 非所有参照
 
     friend class Scene;
 };

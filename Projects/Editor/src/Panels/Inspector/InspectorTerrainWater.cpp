@@ -6,6 +6,7 @@
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <algorithm>
+#include <string>
 
 namespace fbzz::editor {
 
@@ -13,7 +14,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 {
     DrawComponentSection<scene::TerrainComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain",
         [go](scene::TerrainComponent& tc, EditorContext& ctx) {
-            // ── 外部 Terrain Asset ─────────────────────────────────────────────
+            /// @name 外部 Terrain Asset
             ImGui::SeparatorText("Asset");
             {
                 widgets::AssetPathField("Asset Path", tc.terrainAssetPath, ".terrain", ctx.projectRoot);
@@ -47,12 +48,12 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 }
             }
 
-            // ── グリッド設定 ──────────────────────────────────────────────────
+            /// @name グリッド設定
             ImGui::SeparatorText("Grid");
-            // Columns / Rows はドラッグ中に毎フレーム heightDirty を立てると
-            // チャンク全再構築が連続発生して FPS スパイクになる。
-            // さらに heightData のサイズが columns*rows と一致しなくなり assert が火を吹く。
-            // そのため IsItemDeactivatedAfterEdit でドラッグ終了時のみ Resize() を呼ぶ。
+            /// @note Columns / Rows はドラッグ中に毎フレーム heightDirty を立てると
+            ///       チャンク全再構築が連続発生して FPS スパイクになる。
+            ///       さらに heightData のサイズが columns*rows と一致しなくなり assert が火を吹く。
+            ///       そのため IsItemDeactivatedAfterEdit でドラッグ終了時のみ Resize() を呼ぶ。
             static int s_pendingCols = -1;
             static int s_pendingRows = -1;
             {
@@ -77,20 +78,47 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                     s_pendingRows = -1;
                 }
             }
-            // CellSize / MaxHeight はサイズ変化なし。ドラッグ終了時のみ再構築して FPS スパイクを防ぐ。
+            /// @note CellSize / MaxHeight はサイズ変化なし。ドラッグ終了時のみ再構築して FPS スパイクを防ぐ。
             ImGui::DragFloat("Cell Size",  &tc.cellSize,  0.01f, 0.01f, 100.0f);
             if (ImGui::IsItemDeactivatedAfterEdit()) tc.heightDirty = true;
             ImGui::DragFloat("Max Height", &tc.maxHeight, 0.5f,  0.5f,  1000.0f);
             if (ImGui::IsItemDeactivatedAfterEdit()) tc.heightDirty = true;
             ImGui::DragInt("Chunk Size", &tc.chunkSize, 1.0f, 8, 256);
 
-            // ── Layer Materials (.mat × 4) ──────────────────────────────────
+            /// @name Layer Materials (.mat × 可変)
+            /// @note 追加・削除・並べ替えは TerrainComponent の関数を通す。スプラットの番号付け替えと
+            ///       dirty 要求を 1 か所に保ち、Undo は DrawComponentSection の前後スナップショットが持つ。
+            /// @see Docs/design/terrain-layers.md
             ImGui::SeparatorText("Layer Materials");
-            static const char* kLayerNames[] = { "Layer 0", "Layer 1", "Layer 2", "Layer 3" };
-            for (int li = 0; li < 4; ++li) {
+            if (ImGui::SliderFloat("Height Blend Depth", &tc.heightBlendDepth, 0.01f, 1.0f, "%.2f"))
+                tc.RequestMaterialRebuild();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("高さブレンドで高い層が境界を押し広げる幅。\n"
+                                  "各層の .mat の Height Blend が 0 のときは効きません。");
+            int pendingMoveFrom = -1;
+            int pendingMoveTo   = -1;
+            int pendingRemove   = -1;
+            const int layerCount = tc.LayerCount();
+            for (int li = 0; li < layerCount; ++li) {
                 ImGui::PushID(li);
-                if (widgets::AssetPathField(kLayerNames[li], tc.layerMaterials[li], ".mat", ctx.projectRoot))
-                    tc.splatDirty = true;
+                const std::string layerLabel = "Layer " + std::to_string(li);
+                if (widgets::AssetPathField(layerLabel.c_str(), tc.layerMaterials[li], ".mat", ctx.projectRoot))
+                    tc.RequestSplatRebuild();
+
+                ImGui::BeginDisabled(li == 0);
+                if (ImGui::SmallButton("Up"))   { pendingMoveFrom = li; pendingMoveTo = li - 1; }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::BeginDisabled(li + 1 >= layerCount);
+                if (ImGui::SmallButton("Down")) { pendingMoveFrom = li; pendingMoveTo = li + 1; }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::BeginDisabled(layerCount <= 1);
+                if (ImGui::SmallButton("Remove")) pendingRemove = li;
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("層を削除します。この層の塗りは残りの層で分け直されます。");
+
                 if (!tc.layerMaterials[li].empty()) {
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Clear")) {
@@ -103,9 +131,9 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                             const auto f = DrawTerrainLayerMaterialInspector(*mat);
                             if (f.textureDirty) tc.splatDirty         = true;
                             if (f.paramDirty)   tc.materialParamDirty = true;
-                            // レイヤー .mat の実体はシーン保存時に SceneSerializer が
-                            // 書き出す。編集してもシーンが dirty にならないと、保存も
-                            // 終了時の確認も素通りして値が消える。
+                            /// @note レイヤー .mat の実体はシーン保存時に SceneSerializer が
+                            ///       書き出す。編集してもシーンが dirty にならないと、保存も
+                            ///       終了時の確認も素通りして値が消える。
                             if ((f.textureDirty || f.paramDirty) && ctx.markSceneDirty)
                                 ctx.markSceneDirty();
                         }
@@ -118,17 +146,39 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                         ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
                                            "Missing: %s", tc.layerMaterials[li].c_str());
                     }
-                } else {
-                    if (ImGui::Button("Use Default")) {
-                        tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
-                        tc.splatDirty = true;
-                    }
+                } else if (const char* defaultPath = DefaultTerrainLayerMaterialPath(li); defaultPath[0] != '\0') {
+                    if (ImGui::Button("Use Default"))
+                        tc.SetLayerMaterial(li, defaultPath);
                 }
                 ImGui::PopID();
                 ImGui::Spacing();
             }
+            /// @note ループ中に並びを変えると添字と PushID がずれるので、押された操作は描画後に 1 つだけ当てる。
+            if (pendingRemove >= 0)
+                tc.RemoveLayer(pendingRemove);
+            else if (pendingMoveFrom >= 0)
+                tc.MoveLayer(pendingMoveFrom, pendingMoveTo);
 
-            // ── ハイトマップ初期化 ────────────────────────────────────────────────
+            ImGui::BeginDisabled(tc.LayerCount() >= scene::TERRAIN_MAX_LAYERS);
+            if (ImGui::Button("Add Layer"))
+                tc.AddLayer(DefaultTerrainLayerMaterialPath(tc.LayerCount()));
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("%d layers", tc.LayerCount());
+
+            /// @name 穴
+            ImGui::SeparatorText("Holes");
+            const size_t holeCount = tc.CountHoles();
+            ImGui::Text("Hole Cells: %zu", holeCount);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(holeCount == 0);
+            if (ImGui::Button("Clear Holes")) {
+                tc.holeData.clear();
+                tc.RequestHoleRebuild();
+            }
+            ImGui::EndDisabled();
+
+            /// @name ハイトマップ初期化
             ImGui::SeparatorText("Heightmap");
             if (tc.heightData.empty()) {
                 ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.1f, 1.0f), "Not initialized");
@@ -141,13 +191,13 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 tc.colliderDirty = true;
             }
 
-            // ── コライダー ─────────────────────────────────────────────────────
+            /// @name コライダー
             ImGui::SeparatorText("Collider");
             if (ImGui::Button("Rebuild Collider Now")) {
                 tc.colliderDirty = true;
             }
 
-            // ── デバッグ情報 ───────────────────────────────────────────────────
+            /// @name デバッグ情報
             ImGui::SeparatorText("Info");
             ImGui::Text("Vertices : %d", tc.columns * tc.rows);
             ImGui::Text("Triangles: %d", (tc.columns - 1) * (tc.rows - 1) * 2);
@@ -158,10 +208,10 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
         });
 
     DrawComponentSection<scene::WaterComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Water",
-        [go](scene::WaterComponent& water, EditorContext& ctx) {
-            // ── 水の種類 (.mat) ─────────────────────────────────────────────
-            // 色・波・風への反応・水流は .mat が丸ごと持つ。ここでは差し替えるだけで、
-            // 中身は .mat を選んで Inspector で編集する。
+        [](scene::WaterComponent& water, EditorContext& ctx) {
+            /// @name 水の種類 (.mat)
+            /// @note 色・波・風への反応・水流は .mat が丸ごと持つ。ここでは差し替えるだけで、
+            ///       中身は .mat を選んで Inspector で編集する。
             ImGui::SeparatorText("Water Type (.mat)");
             {
                 const std::string current = NormalizeAssetPath(water.materialPath);
@@ -186,7 +236,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                         ImGui::SetTooltip("%s\n%s", preset.tooltip, preset.path);
                 }
             }
-            // 変更時はテクスチャ・フォームキャッシュを無効化してレンダーパスに再ロードさせる。
+            /// @note 変更時はテクスチャ・フォームキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", water.materialPath, ".mat", ctx.projectRoot)) {
                 water.texDirty = true;
                 water.foamDirty = true;
@@ -194,7 +244,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (water.materialPath.empty())
                 ImGui::TextDisabled("(no material — built-in ocean waves, default look)");
 
-            // ── Geometry ─────────────────────────────────────────────────────
+            /// @name Geometry
             ImGui::Spacing();
             ImGui::SeparatorText("Geometry");
             int resX = static_cast<int>(water.resolutionX);
@@ -231,7 +281,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 ImGui::TextDisabled("(%d x %d chunks = %d draw calls)", chunks, chunks, chunks * chunks);
             }
 
-            // ── Waves ─────────────────────────────────────────────────────────
+            /// @name Waves
             ImGui::SeparatorText("Waves");
             ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
             ImGui::BeginDisabled(!water.enableGerstnerWaves);
@@ -241,7 +291,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 ImGui::SetTooltip(".mat の波の高さに掛ける倍率。\n"
                                   "同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるときに使います。");
             ImGui::EndDisabled();
-            // 実際に描かれている波 (.mat × 倍率 × 環境風)。風の効き具合をここで確かめる。
+            /// @note 実際に描かれている波 (.mat × 倍率 × 環境風)。風の効き具合をここで確かめる。
             for (size_t i = 0; i < water.waves.size(); ++i) {
                 const scene::GerstnerWave& wave = water.waves[i];
                 ImGui::TextDisabled("Wave %zu   A %.2f m   L %.1f m   Q %.2f",
@@ -250,7 +300,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f)
                 ImGui::TextDisabled("Current  %.2f m/s", currentSpeed);
 
-            // ── Physics ───────────────────────────────────────────────────────
+            /// @name Physics
             ImGui::SeparatorText("Physics");
             ImGui::Checkbox("Buoyancy", &water.buoyancyEnabled);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -272,37 +322,25 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("RigidBody が水面を通過したときに波紋としぶきを出し、\n"
                                   "水面をまたいで進む物体には航跡を引かせます。");
-
-            // 以前の «Setup Buoyancy Volume» で付けた Volume は、Water の上では無視される。
-            // 残っていると «なぜ Volume の値が効かないのか» で迷うので、ここで知らせる。
-            if (go) {
-                if (const auto* volume = go->GetComponent<scene::VolumeComponent>();
-                    volume && volume->type == physics::VolumeType::Buoyancy) {
-                    ImGui::TextColored({ 1.0f, 0.75f, 0.3f, 1.0f }, "Buoyancy Volume on this object is ignored.");
-                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                        ImGui::SetTooltip("浮力は Water 自身が持つようになりました。\n"
-                                          "Volume とトリガーコライダーは削除して構いません。");
-                }
-            }
         });
 
-    // TerrainGridComponent — グリッド全体の管理設定
+    /// @note TerrainGridComponent — グリッド全体の管理設定
     DrawComponentSection<scene::TerrainGridComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Grid",
         [](scene::TerrainGridComponent& tgc, EditorContext& ctx) {
-            // グリッドサイズは MapEditorPanel のグリッドビューで変更する
+            /// @note グリッドサイズは MapEditorPanel のグリッドビューで変更する
             ImGui::SeparatorText("Grid");
             ImGui::Text("Grid Size: %d cols x %d rows  (%d cells total)",
                 tgc.cellCountX, tgc.cellCountZ, tgc.cellCountX * tgc.cellCountZ);
             ImGui::TextDisabled("Edit grid dimensions in the Map Editor panel.");
 
-            // 新規セル・一括適用のデフォルト設定
-            // WHY: セル個別に同じ設定を繰り返すのを避け、グリッド単位で一貫した地形サイズを保つ。
-            //      新規セル追加時と "Apply to All Cells" の両方がここを参照する。
+            /// @note 新規セル・一括適用のデフォルト設定。セル個別に同じ設定を繰り返すのを避け、
+            ///       グリッド単位で一貫した地形サイズを保つ。新規セル追加時と "Apply to All Cells" の
+            ///       両方がここを参照する。
             ImGui::SeparatorText("Default Cell Settings");
             ImGui::TextDisabled("Applied when adding new cells and for batch operations.");
 
-            // Columns / Rows はドラッグ終了時のみ更新
-            // WHY: ドラッグ中毎フレーム更新すると Apply 時に意図しない中間値が残る可能性がある
+            /// @note Columns / Rows はドラッグ終了時のみ更新する。毎フレーム更新すると
+            ///       Apply 時に意図しない中間値が残る可能性がある。
             static int s_pendingCols = -1;
             static int s_pendingRows = -1;
             {
@@ -328,7 +366,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             ImGui::TextDisabled("World size per cell: %.1f m",
                 static_cast<float>(tgc.defaultColumns - 1) * tgc.defaultCellSize);
 
-            // 既存セルへの一括適用
+            /// @note 既存セルへの一括適用
             ImGui::Spacing();
             ImGui::SeparatorText("Batch Operations");
             if (ImGui::Button("Apply Defaults to All Cells")) {

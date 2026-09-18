@@ -14,7 +14,7 @@ bool AssetFileWatcher::Start(const std::string& rootPath)
 {
     Stop();
 
-    // UTF-8 → wchar_t 変換
+    /// @note UTF-8 → wchar_t 変換
     const std::wstring wpath = util::StringUtils::ToWide(rootPath);
 
     m_handle = CreateFileW(
@@ -23,8 +23,8 @@ bool AssetFileWatcher::Start(const std::string& rootPath)
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr,
         OPEN_EXISTING,
-        // WHY: FILE_FLAG_OVERLAPPED で非同期モードにし、スレッドなしでポーリングできる。
-        //      FILE_FLAG_BACKUP_SEMANTICS はディレクトリをハンドルとして開くために必要。
+        /// @note FILE_FLAG_OVERLAPPED で非同期モードにし、スレッドなしでポーリングできる。
+        ///       FILE_FLAG_BACKUP_SEMANTICS はディレクトリをハンドルとして開くために必要。
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
         nullptr);
 
@@ -78,14 +78,15 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
         return {};
 
     DWORD transferred = 0;
-    // bWait = FALSE: 完了していなければ即座に返る
+    /// @note bWait = FALSE: 完了していなければ即座に返る
     if (!GetOverlappedResult(m_handle, &m_overlapped, &transferred, FALSE))
     {
         const DWORD err = GetLastError();
         if (err == ERROR_IO_INCOMPLETE)
-            return {}; // まだ完了していない
+            /// @note まだ完了していない
+            return {};
 
-        // バッファオーバーフロー: イベントがあったがバッファが小さすぎた
+        /// @note バッファオーバーフロー: イベントがあったがバッファが小さすぎた
         if (err == ERROR_NOTIFY_ENUM_DIR)
         {
             FBZZ_LOG_WARN("AssetFileWatcher: notification overflow — some events lost");
@@ -101,7 +102,7 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
         return {};
     }
 
-    // 成功しても転送量 0 は「溜めきれずバッファを捨てた」合図 (ReadDirectoryChangesW の仕様)。
+    /// @note 成功しても転送量 0 は「溜めきれずバッファを捨てた」合図 (ReadDirectoryChangesW の仕様)。
     if (transferred == 0)
     {
         FBZZ_LOG_WARN("AssetFileWatcher: notification buffer discarded — some events lost");
@@ -121,18 +122,23 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
 void AssetFileWatcher::IssueNextRead()
 {
     constexpr DWORD kFilter =
-        FILE_NOTIFY_CHANGE_FILE_NAME  |   // 追加・削除・リネーム
+        /// @note 追加・削除・リネーム
+        FILE_NOTIFY_CHANGE_FILE_NAME  |
         FILE_NOTIFY_CHANGE_DIR_NAME   |
-        FILE_NOTIFY_CHANGE_LAST_WRITE;    // 上書き保存
+        /// @note 上書き保存
+        FILE_NOTIFY_CHANGE_LAST_WRITE;
 
     const BOOL ok = ReadDirectoryChangesW(
         m_handle,
         m_buffer, sizeof(m_buffer),
-        TRUE,        // bWatchSubtree: 再帰監視
+        /// @note bWatchSubtree: 再帰監視
+        TRUE,
         kFilter,
-        nullptr,     // lpBytesReturned: オーバーラップモードでは使用しない
+        /// @note lpBytesReturned: オーバーラップモードでは使用しない
+        nullptr,
         &m_overlapped,
-        nullptr);    // lpCompletionRoutine: イベントベースで使う
+        /// @note lpCompletionRoutine: イベントベースで使う
+        nullptr);
 
     if (!ok)
     {
@@ -153,7 +159,7 @@ void AssetFileWatcher::ParseBuffer(DWORD bytesTransferred)
     {
         const auto* info = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(ptr);
 
-        // wchar_t パス → UTF-8 相対パス
+        /// @note wchar_t パス → UTF-8 相対パス
         const std::string relPath = util::FileSystem::NormalizePathSeparators(
             util::StringUtils::ToNarrow(info->FileName, static_cast<int>(info->FileNameLength / sizeof(wchar_t))));
 
@@ -177,7 +183,7 @@ void AssetFileWatcher::ParseBuffer(DWORD bytesTransferred)
             break;
 
         case FILE_ACTION_RENAMED_OLD_NAME:
-            // 次の通知が NEW_NAME のはず。ペアにするために記憶する。
+            /// @note 次の通知が NEW_NAME のはず。ペアにするために記憶する。
             m_pendingRenameOld = relPath;
             break;
 

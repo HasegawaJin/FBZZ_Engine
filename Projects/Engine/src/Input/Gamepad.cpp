@@ -18,8 +18,8 @@ namespace fbzz::input {
 
 namespace {
 
-// XInput のボタンビットマスク → GamepadButton の対応表。
-// トリガー 2 種はアナログ値から導出するためこの表には含めない。
+/// XInput のボタンビットマスク → GamepadButton の対応表。
+/// トリガー 2 種はアナログ値から導出するためこの表には含めない。
 struct ButtonMapping {
     WORD          mask;
     GamepadButton button;
@@ -45,11 +45,10 @@ constexpr std::array<ButtonMapping, 14> BUTTON_MAPPINGS = {{
 constexpr size_t BUTTON_COUNT = static_cast<size_t>(GamepadButton::COUNT);
 constexpr size_t AXIS_COUNT   = static_cast<size_t>(GamepadAxis::COUNT);
 
-// 未接続スロットの再試行間隔 [s]。
-// WHY: XInputGetState は未接続スロットに対して ERROR_DEVICE_NOT_CONNECTED を
-//      返すまでに数百 µs かかる実装が知られている。4 スロットを毎フレーム叩くと
-//      最悪 1ms 超のフレーム食いとなり、Profiler 上で原因不明のスパイクとして現れる。
-//      接続検出が最大 0.5 秒遅れても体感上の問題はないため、間引く。
+/// 未接続スロットの再試行間隔 [s]。
+/// @note XInputGetState は未接続スロットに ERROR_DEVICE_NOT_CONNECTED を返すまで数百 µs かかる
+///       実装があり、4 スロット毎フレーム走査は最悪 1ms 超のスパイクになる。接続検出が最大 0.5 秒
+///       遅れても体感上問題ないため間引く。
 constexpr float DISCONNECTED_RETRY_INTERVAL = 0.5f;
 
 struct PadState {
@@ -59,10 +58,10 @@ struct PadState {
     std::array<bool, BUTTON_COUNT>  previous = {};
     std::array<float, AXIS_COUNT>   axes     = {};
 
-    // 未接続と判定してからの経過時間。DISCONNECTED_RETRY_INTERVAL を超えたら再試行する。
+    /// 未接続と判定してからの経過時間。DISCONNECTED_RETRY_INTERVAL を超えたら再試行する。
     float retryTimer = 0.0f;
 
-    // 振動の残り時間 [s]。0 以下で停止する。
+    /// 振動の残り時間 [s]。0 以下で停止する。
     float vibrationRemaining = 0.0f;
     bool  vibrationActive    = false;
 };
@@ -70,24 +69,23 @@ struct PadState {
 struct GamepadContext {
     std::array<PadState, Gamepad::MAX_PADS> pads = {};
 
-    // 前回 Update からの実時間を測るための QPC 値。0 は未初期化。
+    /// 前回 Update からの実時間を測るための QPC 値。0 は未初期化。
     int64_t lastCounter = 0;
 };
 
-// WHY 関数内 static か: fbzz_engine は SHARED ライブラリで WINDOWS_EXPORT_ALL_SYMBOLS を
-//     使っているが、この設定はデータシンボルを自動エクスポートしない。
-//     状態をファイルスコープの static 変数に置くと DLL 境界を越えた参照が壊れるため、
-//     必ずエクスポート済み関数を経由して触れる形にする (AssetManager の S_init() と同方針)。
+/// @brief fbzz_engine の状態を保持する関数内 static。
+/// @note SHARED ライブラリの WINDOWS_EXPORT_ALL_SYMBOLS はデータシンボルを自動エクスポートしない
+///       ため、ファイルスコープの static に置くと DLL 境界を越えた参照が壊れる。必ずエクスポート
+///       済み関数経由で触れる (AssetManager の S_init() と同方針)。
 GamepadContext& Ctx()
 {
     static GamepadContext context;
     return context;
 }
 
-// 前回呼び出しからの実経過秒を返す。
-// WHY Time::DeltaTime() を使わないか: 振動の寿命はゲーム内時間ではなく実時間で切るべきで、
-//     ポーズ中やスローモーション中に振動が伸びるのは不自然。また Input は Time より
-//     早い段階で更新されるため、依存の向きを増やさない方が安全。
+/// @brief 前回呼び出しからの実経過秒を返す。
+/// @note 振動の寿命はゲーム内時間でなく実時間で切るべきで (ポーズ・スローモーション中に伸びると
+///       不自然)、また Input は Time より早く更新されるため依存の向きを増やさない。
 float TickRealSeconds()
 {
     LARGE_INTEGER frequency{};
@@ -107,15 +105,14 @@ float TickRealSeconds()
 
     const float seconds = static_cast<float>(static_cast<double>(delta)
                                              / static_cast<double>(frequency.QuadPart));
-    // フレーム落ちやブレークポイント停止で巨大な dt が出ると振動が即座に切れる。
-    // 実用上 0.1 秒で頭打ちにしておけば十分。
+    /// @note フレーム落ちやブレークポイント停止で巨大な dt が出ると振動が即座に切れる。
+    ///       実用上 0.1 秒で頭打ちにしておけば十分。
     return std::clamp(seconds, 0.0f, 0.1f);
 }
 
-// SHORT (-32768..32767) を -1..1 に正規化する。
-// WHY 負側を 32768 で割るか: -32768 を 32767 で割ると -1.0000305 となり、
-//     範囲外の値が後段のデッドゾーン計算や平方根に混入する。符号ごとに除数を変えて
-//     厳密に -1..1 へ収める。
+/// @brief SHORT (-32768..32767) を -1..1 に正規化する。
+/// @note -32768 を 32767 で割ると -1.0000305 となり範囲外の値が後段のデッドゾーン計算や平方根に
+///       混入するため、符号ごとに除数を変えて厳密に -1..1 へ収める。
 float NormalizeStick(SHORT value)
 {
     return value < 0 ? static_cast<float>(value) / 32768.0f
@@ -142,11 +139,11 @@ void Gamepad::Update()
     for (int index = 0; index < MAX_PADS; ++index) {
         PadState& pad = context.pads[index];
 
-        // 現在状態を前フレームへ退避する。
-        // シミュレーション時も同じ経路を通ることで Down/Up の判定規則を共通化する。
+        /// @note 現在状態を前フレームへ退避する。
+        ///       シミュレーション時も同じ経路を通ることで Down/Up の判定規則を共通化する。
         pad.previous = pad.current;
 
-        // --- 振動の寿命管理 ---
+        /// @name 振動の寿命管理
         if (pad.vibrationActive) {
             pad.vibrationRemaining -= dt;
             if (pad.vibrationRemaining <= 0.0f) {
@@ -155,7 +152,7 @@ void Gamepad::Update()
         }
 
 
-        // --- 未接続スロットの再試行スロットリング ---
+        /// @name 未接続スロットの再試行スロットリング
         if (!pad.connected) {
             pad.retryTimer -= dt;
             if (pad.retryTimer > 0.0f) {
@@ -167,8 +164,8 @@ void Gamepad::Update()
         XINPUT_STATE state{};
         const DWORD result = XInputGetState(static_cast<DWORD>(index), &state);
         if (result != ERROR_SUCCESS) {
-            // 接続していたパッドが外れた場合、押しっぱなし状態が残らないよう全解除する。
-            // WHY: 残すとキャラクターが走り続けるなど、抜線後に操作不能へ見える不具合になる。
+            /// @note 接続していたパッドが外れた場合、押しっぱなし状態が残らないよう全解除する。
+            ///       残すとキャラクターが走り続けるなど、抜線後に操作不能へ見える不具合になる。
             if (pad.connected) {
                 pad.current.fill(false);
                 pad.axes.fill(0.0f);
@@ -199,7 +196,7 @@ void Gamepad::Update()
         pad.axes[static_cast<size_t>(GamepadAxis::LEFT_TRIGGER)]  = leftTrigger;
         pad.axes[static_cast<size_t>(GamepadAxis::RIGHT_TRIGGER)] = rightTrigger;
 
-        // アナログトリガーをボタンとしても公開する。
+        /// @note アナログトリガーをボタンとしても公開する。
         pad.current[static_cast<size_t>(GamepadButton::LEFT_TRIGGER)] =
             leftTrigger >= GAMEPAD_TRIGGER_BUTTON_THRESHOLD;
         pad.current[static_cast<size_t>(GamepadButton::RIGHT_TRIGGER)] =
@@ -216,7 +213,7 @@ void Gamepad::Reset()
         pad.previous.fill(false);
         pad.axes.fill(0.0f);
         pad.retryTimer = 0.0f;
-        // connected は実デバイスの状態なので保持する。次の Update で再確認される。
+        /// @note connected は実デバイスの状態なので保持する。次の Update で再確認される。
     }
 }
 
@@ -271,7 +268,7 @@ void Gamepad::SetVibration(float lowFrequency, float highFrequency,
     GamepadContext& context = Ctx();
     PadState&       state   = context.pads[static_cast<size_t>(pad)];
 
-    // 継続時間が 0 以下の要求は「振動させない」意図とみなし、実行中の振動も止める。
+    /// @note 継続時間が 0 以下の要求は「振動させない」意図とみなし、実行中の振動も止める。
     if (durationSeconds <= 0.0f) {
         StopVibration(pad);
         return;
@@ -300,7 +297,7 @@ void Gamepad::StopVibration(int pad)
     state.vibrationActive    = false;
 
 
-    // 未接続でも停止要求は投げる。抜き挿しの隙間で振動が残るのを防ぐ。
+    /// @note 未接続でも停止要求は投げる。抜き挿しの隙間で振動が残るのを防ぐ。
     XINPUT_VIBRATION vibration{};
     XInputSetState(static_cast<DWORD>(pad), &vibration);
 }
@@ -312,7 +309,7 @@ void Gamepad::StopAllVibration()
     }
 }
 
-// ── 文字列化 ─────────────────────────────────────────────────────────────────
+/// @name 文字列化
 
 const char* ToString(GamepadButton button) noexcept
 {

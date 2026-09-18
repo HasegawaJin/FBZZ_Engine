@@ -20,8 +20,8 @@
 
 namespace fbzz::input {
 
-// KeyCode.hpp は <Windows.h> を引かないため、VK_* との一致は Win32 を見る
-// この翻訳単位で検証する。KeyCode に値を足したらここにも 1 行足す。
+/// KeyCode.hpp は <Windows.h> を引かないため、VK_* との一致は Win32 を見る
+/// この翻訳単位で検証する。KeyCode に値を足したらここにも 1 行足す。
 namespace {
 consteval bool Matches(KeyCode key, int virtualKey)
 {
@@ -57,7 +57,7 @@ static_assert(Matches(KeyCode::MouseLeft,   VK_LBUTTON));
 static_assert(Matches(KeyCode::MouseRight,  VK_RBUTTON));
 static_assert(Matches(KeyCode::MouseMiddle, VK_MBUTTON));
 
-// Input.hpp が WndProc の引数を標準型で宣言できる前提。
+/// Input.hpp が WndProc の引数を標準型で宣言できる前提。
 static_assert(std::is_same_v<UINT, unsigned int>);
 static_assert(std::is_same_v<WPARAM, std::uintptr_t>);
 
@@ -100,21 +100,19 @@ void Input::Reset()
     s_previousVirtualButtons.clear();
     s_textInput.clear();
 
-    // ゲームパッドの押下状態も一緒に落とす。
-    // WHY: Play モードの開始・終了で Input だけリセットすると、パッドのボタンが
-    //      押されたままの状態で持ち越され、Play 開始直後に意図しない入力が発火する。
+    /// @note ゲームパッドの押下状態も一緒に落とす。Play モードの開始・終了で Input だけリセットすると、
+    ///       パッドのボタンが押されたままの状態で持ち越され、Play 開始直後に意図しない入力が発火する。
     Gamepad::Reset();
 }
 
 void Input::Update()
 {
-    // ゲームパッドは Win32 メッセージポンプに乗らないため、ここで明示的にポーリングする。
-    // WHY Input::Update() に内包するか: 入力更新の呼び出し点は Editor / Standalone /
-    //     Sandbox に散らばっており、それぞれへ追記させると呼び忘れで
-    //     「特定の実行経路でだけパッドが効かない」再現困難な不具合になる。
+    /// @note ゲームパッドは Win32 メッセージポンプに乗らないため、ここで明示的にポーリングする。
+    ///       入力更新の呼び出し点は Editor/Standalone/Sandbox に散らばっており、それぞれへ追記
+    ///       させると呼び忘れで「特定の実行経路でだけパッドが効かない」再現困難な不具合になる。
     Gamepad::Update();
 
-    // 物理入力とAI注入を合成した値を前フレームへ保存し、注入でもDown/Upを正しく生成する。
+    /// @note 物理入力とAI注入を合成した値を前フレームへ保存し、注入でもDown/Upを正しく生成する。
     for (size_t index = 0; index < s_current.size(); ++index) {
         s_previous[index] = s_current[index] || s_injectedKeys[index];
     }

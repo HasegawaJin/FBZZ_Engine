@@ -16,9 +16,8 @@ namespace {
 
 using fbzz::util::StringUtils;
 
-// CreateProcess を呼び出してプロセスを起動する汎用ヘルパー。
-// WHY: CreateProcess の lpCommandLine は書き込み可能バッファを要求するため、
-//      wstring のコピーを data() で渡す。
+/// @brief CreateProcess を呼び出してプロセスを起動する汎用ヘルパー。
+/// @note lpCommandLine は書き込み可能バッファを要求するため、wstring のコピーを data() で渡す。
 bool SpawnProcess(std::wstring cmdLine, const std::wstring& workingDir)
 {
     STARTUPINFOW si{};
@@ -29,7 +28,8 @@ bool SpawnProcess(std::wstring cmdLine, const std::wstring& workingDir)
 
     const BOOL ok = CreateProcessW(
         nullptr,
-        cmdLine.data(),   // コピーを渡す (書き込み可能バッファ)
+        /// @note コピーを渡す (書き込み可能バッファ)
+        cmdLine.data(),
         nullptr, nullptr,
         FALSE, 0,
         nullptr,
@@ -49,7 +49,7 @@ bool SpawnProcess(std::wstring cmdLine, const std::wstring& workingDir)
 
 bool StandaloneLauncher::LaunchExe(const std::string& exePath, const std::string& workingDir)
 {
-    // WHY: ビルド済み配布版は引数なしで起動すると .fbzz_proj を自動検出して Standalone モードになる。
+    /// @note ビルド済み配布版は引数なしで起動すると .fbzz_proj を自動検出して Standalone モードになる。
     std::wstring cmd = L"\"" + StringUtils::ToWide(exePath) + L"\"";
     return SpawnProcess(std::move(cmd), StringUtils::ToWide(workingDir));
 }

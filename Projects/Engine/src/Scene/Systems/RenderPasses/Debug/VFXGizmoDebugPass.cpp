@@ -1,86 +1,21 @@
 /// @file    VFXGizmoDebugPass.cpp
-/// @brief   パーティクル力場の影響体積とエミッター発生形状をワイヤーで描画する IRenderPass 実装。
+/// @brief   エミッターの発生形状と初速をワイヤーで描く。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// WHY: 力場もエミッター形状も「粒子の動きからしか推測できない見えない体積」で、
-/// VFX の調整で最も当て推量になりやすい部分だった。radius 3.2 と 4.0 の違いを
-/// 吹き上がり方から逆算するのは現実的でなく、「炎が横に千切れる」「上がりきらない」の
-/// 原因が力場の半径なのか強さなのか切り分けられない。形が見えれば一目で済む。
-///
-/// 表示は操作用 Preview / Scene View 限定にすること (AI capture では常に off)。
-/// 評価用の静止画にギズモが写り込むと、視覚判断が表示設定に左右されて再現しなくなる。
+/// @note 表示は操作用 Preview / Scene View 限定。AI capture の評価画像にギズモを写さない。
+/// @see FlowFieldDebugPass.cpp (流れの場はこちらから分けた)
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ForceField.hpp>
 #include <algorithm>
 #include <cmath>
 
 namespace fbzz::scene {
 
 namespace {
-
-// 力場の種別ごとに色を変える。同じ場所に複数の力場を重ねる構成 (炎の Updraft + Convection)
-// では、色が同じだとどちらの半径を触っているのか分からなくなる。
-math::Vector4 ForceFieldColor(ForceFieldType type)
-{
-    switch (type) {
-    case ForceFieldType::Wind:       return { 0.35f, 0.85f, 1.00f, 1.0f }; // 水色
-    case ForceFieldType::Attract:    return { 0.45f, 1.00f, 0.55f, 1.0f }; // 緑
-    case ForceFieldType::Repulse:    return { 1.00f, 0.55f, 0.35f, 1.0f }; // 橙
-    case ForceFieldType::Vortex:     return { 0.80f, 0.55f, 1.00f, 1.0f }; // 紫
-    case ForceFieldType::Turbulence: return { 1.00f, 0.85f, 0.35f, 1.0f }; // 黄
-    case ForceFieldType::Drag:       return { 0.65f, 0.68f, 0.75f, 1.0f }; // 灰
-    case ForceFieldType::VectorField: return { 0.35f, 1.00f, 0.90f, 1.0f }; // 水緑
-    }
-    return { 1.0f, 1.0f, 1.0f, 1.0f };
-}
-
-// 力場の「向き」を矢印で示す。Wind は風向、Vortex は回転軸。
-// それ以外 (Attract/Repulse/Turbulence/Drag) は等方なので向きを描かない
-// — 意味の無い矢印を出すと「この向きに効くのか」と誤解させる。
-bool HasDirection(ForceFieldType type)
-{
-    return type == ForceFieldType::Wind || type == ForceFieldType::Vortex;
-}
-
-void DrawForceFields(RenderPassContext& ctx)
-{
-    for (auto& object : ctx.scene.GameObjects()) {
-        if (!object.activeInHierarchy()) continue;
-        const auto* field = object.GetComponent<ForceField>();
-        if (field == nullptr) continue;
-        const math::Vector3 center = object.transform.worldPosition;
-
-        // 1 つの GameObject が複数の力を発する (環境風 = 風 + 乱れ)。全部描く。
-        for (const ForceFieldSettings& settings : field->forces) {
-            if (!settings.enabled) continue;
-            // radius <= 0 はシーン全体へ減衰なしに効く設定。描くべき境界が存在しないので、
-            // 「無限」であることが伝わるよう中心に小さなマーカーだけ置く。
-            const math::Vector4 color = ForceFieldColor(settings.fieldType);
-            if (settings.radius > 0.0f)
-                renderer::DebugDraw::Sphere(ctx.renderer, center, settings.radius, color);
-            else
-                renderer::DebugDraw::Sphere(ctx.renderer, center, 0.25f, color);
-
-            if (!HasDirection(settings.fieldType)) continue;
-            // direction はローカル指定なので、Transform の回転でワールドへ移す
-            // (ForceField.hpp の規約に合わせる — ここがずれると矢印だけ嘘になる)。
-            math::Vector3 direction = object.transform.worldRotation * settings.direction;
-            const float length = direction.Length();
-            if (length <= 1.0e-5f) continue;
-            direction = direction * (1.0f / length);
-            // 矢印の長さは影響半径に比例させる。固定長だと大きな力場で見えなくなる。
-            const float arrowLength = settings.radius > 0.0f
-                ? (std::max)(settings.radius * 0.6f, 0.3f) : 1.0f;
-            renderer::DebugDraw::Arrow(ctx.renderer, center, center + direction * arrowLength,
-                                       arrowLength * 0.18f, arrowLength * 0.06f, color);
-        }
-    }
-}
 
 void DrawEmitterShapes(RenderPassContext& ctx)
 {
@@ -91,8 +26,6 @@ void DrawEmitterShapes(RenderPassContext& ctx)
         if (!object.activeInHierarchy()) continue;
         const auto* emitter = object.GetComponent<ParticleEmitter>();
         if (emitter == nullptr || !emitter->settings.enabled) continue;
-        // 発生原点は Transform に emitPosition を足した位置。エミッターを親へぶら下げる
-        // 構成 (VFX Graph のノード) では、この差分が見えないと「なぜここから出るのか」が掴めない。
         const math::Vector3 origin = object.transform.worldPosition
             + object.transform.worldRotation * emitter->settings.emitPosition;
 
@@ -102,8 +35,7 @@ void DrawEmitterShapes(RenderPassContext& ctx)
                                         (std::max)(emitter->settings.sphereRadius, 0.001f), kShapeColor);
             break;
         case ParticleEmitterShape::Cone: {
-            // SpawnParticle は +Y をコーン軸に取る。ギズモも同じ軸で描かないと、
-            // 傾けたエミッターで見た目と実際の噴出方向がずれる。
+            /// @note SpawnParticle は +Y をコーン軸に取る。
             const math::Vector3 axis = object.transform.worldRotation * math::Vector3{ 0.0f, 1.0f, 0.0f };
             constexpr float kDeg2Rad = 3.14159265f / 180.0f;
             const float height = (std::max)(emitter->settings.coneRadius, 0.5f);
@@ -119,20 +51,15 @@ void DrawEmitterShapes(RenderPassContext& ctx)
         case ParticleEmitterShape::Point:
         case ParticleEmitterShape::MeshSurface:
         default:
-            // Point は体積を持たない。MeshSurface は形状がメッシュそのもので、
-            // それは MeshRenderer 側のギズモが担当するため、ここでは原点だけ示す。
             renderer::DebugDraw::Sphere(ctx.renderer, origin, 0.06f, kShapeColor);
             break;
         }
 
-        // 初速の向きと大きさ。上昇力を emitVelocity と gravity と力場のどこで作っているのかが
-        // 分からなくなるのが VFX で最も多い事故なので、初速だけは常に見えるようにする。
+        /// @note 初速は 1 秒後の到達点を先端にする (長さがそのまま秒速)。
         const math::Vector3 velocity = object.transform.worldRotation * emitter->settings.emitVelocity;
         const float speed = velocity.Length();
         if (speed <= 1.0e-4f) continue;
-        // 1 秒後の到達点を矢印の先端にする (「秒速いくつか」がそのまま長さで読める)。
-        const math::Vector3 tip = origin + velocity;
-        renderer::DebugDraw::Arrow(ctx.renderer, origin, tip,
+        renderer::DebugDraw::Arrow(ctx.renderer, origin, origin + velocity,
                                    (std::min)(speed * 0.18f, 0.4f),
                                    (std::min)(speed * 0.06f, 0.12f), kVelocityColor);
     }
@@ -142,12 +69,6 @@ void DrawEmitterShapes(RenderPassContext& ctx)
 
 std::string_view VFXGizmoDebugPass::Name() const { return "VFXGizmoDebug"; }
 
-void VFXGizmoDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
-{
-    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
-    builder.ReadWrite("HDR").SetAutoTarget("HDR");
-}
-
 bool VFXGizmoDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
     return ctx.settings.showVFXGizmos;
@@ -156,7 +77,6 @@ bool VFXGizmoDebugPass::IsEnabled(const RenderPassContext& ctx) const
 void VFXGizmoDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
-    DrawForceFields(ctx);
     DrawEmitterShapes(ctx);
     renderer::DebugDraw::Flush();
 }

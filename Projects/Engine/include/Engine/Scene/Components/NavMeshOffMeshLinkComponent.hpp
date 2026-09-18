@@ -12,21 +12,21 @@
 namespace fbzz::scene {
 
 struct NavMeshOffMeshLinkComponent {
-    math::Vector3 startPoint = math::Vector3::ZERO; // リンク起点（ワールド座標）
-    math::Vector3 endPoint   = math::Vector3::ZERO; // リンク終点（ワールド座標）
+    math::Vector3 startPoint = math::Vector3::ZERO; ///< リンク起点（ワールド座標）
+    math::Vector3 endPoint   = math::Vector3::ZERO; ///< リンク終点（ワールド座標）
     bool enabled        = true;
-    bool bidirectional  = true;   // true: 双方向、false: startPoint → endPoint のみ
-    bool activated      = true;   // false: A* がこのリンクを無視する
-    float traversalTime = 0.3f;   // 通過アニメーション時間 [s]（0 = 即座に移動）
-    // このリンクを使える agentTypeId のビットマスク。-1 = すべての Agent Type が通過可。
-    // 例: agentTypeId=1 の Agent のみ → agentTypeMask = (1 << 1) = 2
+    bool bidirectional  = true;   ///< true: 双方向、false: startPoint → endPoint のみ
+    bool activated      = true;   ///< false: A* がこのリンクを無視する
+    float traversalTime = 0.3f;   ///< 通過アニメーション時間 [s]（0 = 即座に移動）
+    /// このリンクを使える agentTypeId のビットマスク。-1 = すべての Agent Type が通過可。
+    /// 例: agentTypeId=1 の Agent のみ → agentTypeMask = (1 << 1) = 2
     int agentTypeMask   = -1;
 
     const char* GetTypeName() const { return "Off-Mesh Link"; }
     void Reflect(IReflector& r)
     {
-        // enabled は保存されていたのに Reflect に無く、AI バスと汎用 Inspector から
-        // だけ見えない状態だった。キー名は保存済みシーンに合わせる。
+        /// @note enabled は保存されていたのに Reflect に無く、AI バスと汎用 Inspector から
+        ///       だけ見えない状態だった。キー名は保存済みシーンに合わせる。
         r.Field("enabled",       enabled);
         r.Field("startPoint",    startPoint);
         r.Field("endPoint",      endPoint);

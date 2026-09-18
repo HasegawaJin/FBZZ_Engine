@@ -1,0 +1,239 @@
+{
+  "name": "FiberStage4",
+  "scene": "Assets/Scenes/Test/FiberStage4.scene",
+  "lockstep": 0.016666666666666666,
+  "steps": [
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "render.set_view_mode",
+        "args": {
+          "mode": "lit"
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/Overview"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "comp": "FiberComponent",
+        "properties": [
+          {
+            "comp": "FiberComponent",
+            "field": "mode",
+            "op": "equals",
+            "value": 3
+          }
+        ]
+      },
+      "path": "count",
+      "op": "==",
+      "value": 3
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f010",
+        "comp": "FiberInteractorComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/Pressed"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f010",
+        "pos": [
+          -0.35,
+          0.05,
+          -1.6
+        ]
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/Trail"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f010",
+        "comp": "FiberInteractorComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "frames",
+      "count": 140
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/Recovered"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f001",
+        "pos": [
+          -1.8,
+          0.38,
+          -2.4
+        ],
+        "rot": [
+          12,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "do": "frames",
+      "count": 15
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/NearBlades"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00a",
+        "comp": "PostProcessVolumeComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/NearTemporal"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f001",
+        "pos": [
+          0,
+          5,
+          -14
+        ],
+        "rot": [
+          12,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "do": "frames",
+      "count": 15
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/FarLod"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f001",
+        "pos": [
+          0,
+          5,
+          -25
+        ],
+        "rot": [
+          10,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "do": "frames",
+      "count": 15
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage4/CulledLod"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "selection.set",
+        "ids": [
+          "ad4d7f1c-20d8-49de-9a72-c719a9d3f007"
+        ]
+      }
+    },
+    {
+      "request": {
+        "position": [
+          0,
+          2.5,
+          -5
+        ],
+        "lookAt": [
+          0,
+          0.5,
+          -1
+        ],
+        "t": "viewport.camera"
+      },
+      "do": "bus"
+    },
+    {
+      "do": "capture",
+      "view": "scene",
+      "name": "FiberStage4/Selection"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "shader.diagnostics"
+      },
+      "path": "errorCount",
+      "op": "==",
+      "value": 0
+    }
+  ]
+}

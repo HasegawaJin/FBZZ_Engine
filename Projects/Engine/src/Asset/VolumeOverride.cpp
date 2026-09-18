@@ -30,7 +30,7 @@ namespace {
 struct RegistryData {
     std::unordered_map<std::string, VolumeOverrideFactory::Factory> factories;
     std::vector<VolumeOverrideFactory::Entry> entries;
-    // entries はメニュー描画のたびに並べ直したくないので、登録が増えたときだけ整列する。
+    /// entries はメニュー描画のたびに並べ直したくないので、登録が増えたときだけ整列する。
     bool sorted = false;
 };
 
@@ -47,10 +47,9 @@ bool VolumeOverrideFactory::Register(const std::string& typeName, Factory factor
     if (typeName.empty() || !factory) return false;
 
     auto& registry = Registry();
-    // メタ情報 (表示名・カテゴリ) は仮実体を 1 つ作って引く。
-    // WHY: Register<T>() のテンプレート側で T::DISPLAY_NAME のような静的定数を
-    //      要求すると、派生ごとに定数と仮想関数の二重定義になり食い違いうる。
-    //      仮想関数を唯一の情報源にしておけば、そのずれが起きない。
+    /// @note メタ情報 (表示名・カテゴリ) は仮実体を 1 つ作って引く。Register<T>() のテンプレート側で
+    ///       T::DISPLAY_NAME のような静的定数を要求すると、派生ごとに定数と仮想関数の二重定義に
+    ///       なり食い違いうるため、仮想関数を唯一の情報源にしておけばそのずれが起きない。
     const std::unique_ptr<VolumeOverride> probe = factory();
     if (!probe) return false;
 
@@ -73,8 +72,8 @@ const std::vector<VolumeOverrideFactory::Entry>& VolumeOverrideFactory::Register
 {
     auto& registry = Registry();
     if (!registry.sorted) {
-        // カテゴリ順 → 表示名順。静的初期化の順序は不定なので、
-        // 登録順のままだとビルドのたびにメニューの並びが変わってしまう。
+        /// @note カテゴリ順 → 表示名順。静的初期化の順序は不定なので、
+        ///       登録順のままだとビルドのたびにメニューの並びが変わってしまう。
         std::sort(registry.entries.begin(), registry.entries.end(),
             [](const Entry& lhs, const Entry& rhs) {
                 if (lhs.category != rhs.category)

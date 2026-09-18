@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-10
 ///
-/// ScriptSceneProxy が Instantiate を宣言するために ScriptProxy より早く定義が必要なため独立ヘッダとする。
+/// @note ScriptSceneProxy が Instantiate を宣言するために ScriptProxy より早く定義が必要なため独立ヘッダとする。
 #pragma once
 #include <string>
 

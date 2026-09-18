@@ -17,16 +17,15 @@ void ExecuteUpscalePass(RenderPassContext& ctx)
     const auto src = ctx.resources.GetColorTexture(ctx.chainOutputRT, 0);
     if (!src.IsValid()) return;
 
-    // 拡大は Catmull-Rom、縮小 (renderScale > 1 のスーパーサンプリング) は素の linear。
-    // WHY: Catmull-Rom の負の重みは «入力の方が細かい» 側では単なるシャープ化になり、
-    //      せっかく落としたエイリアスを縁に呼び戻す。
+    /// @note 拡大は Catmull-Rom、縮小 (renderScale > 1 のスーパーサンプリング) は素の linear。
+    ///       Catmull-Rom の負の重みは縮小側だとシャープ化になり、落としたエイリアスを縁に呼び戻すため。
     const bool magnify = ctx.width < ctx.outputWidth || ctx.height < ctx.outputHeight;
     const auto shader  = (magnify && h.upscaleShader.IsValid()) ? h.upscaleShader : h.copyColorShader;
     if (!shader.IsValid()) return;
 
     ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
 
-    // b5 に入れるのは «入力» の寸法。Upscale.hlsl はこれでテクセル格子を組む。
+    /// @note b5 に入れるのは «入力» の寸法。Upscale.hlsl はこれでテクセル格子を組む。
     const PostProcCB upscaleData = MakeScreenPostProcCB(ctx.width, ctx.height);
     ctx.resources.Update(h.postprocCB, &upscaleData, sizeof(PostProcCB));
 

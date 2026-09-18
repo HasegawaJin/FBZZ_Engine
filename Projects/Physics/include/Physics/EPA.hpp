@@ -12,20 +12,20 @@ namespace fbzz::physics
     {
         bool valid = false;
 
-        // 衝突法線 (正規化済み)。向きは **B から A へ押し戻す方向**で、
-        // ContactPoint::normal と同じ規約。RefineCardinalAxis もこの向きで軸を選ぶ。
-        // 逆に取ると、床の上に乗ったカプセルを床へ押し込む向きに解決してしまう。
+        /// 衝突法線 (正規化済み)。向きは **B から A へ押し戻す方向**で、
+        /// ContactPoint::normal と同じ規約。RefineCardinalAxis もこの向きで軸を選ぶ。
+        /// 逆に取ると、床の上に乗ったカプセルを床へ押し込む向きに解決してしまう。
         math::Vector3 normal;
 
         float         depth    = 0.0f;
-        math::Vector3 contactA;   // shape A 上の接触点
-        math::Vector3 contactB;   // shape B 上の接触点
+        math::Vector3 contactA;   ///< shape A 上の接触点
+        math::Vector3 contactB;   ///< shape B 上の接触点
     };
 
-    // GJK で交差確認済みの Simplex から EPA を実行する。
-    // 返した接触点は PhysicsSolver が ContactPoint へ変換し、PGS 解決で使う。
-    // maxIter: 反復上限
-    // tolerance: 収束判定 (新しいサポート点がポリトープ面より tolerance 以内なら収束)
+    /// GJK で交差確認済みの Simplex から EPA を実行する。
+    /// 返した接触点は PhysicsSolver が ContactPoint へ変換し、PGS 解決で使う。
+    /// maxIter: 反復上限
+    /// tolerance: 収束判定 (新しいサポート点がポリトープ面より tolerance 以内なら収束)
     EPAResult EPA_GetContactInfo(
         const void* shapeA, SupportFn supportA,
         const void* shapeB, SupportFn supportB,

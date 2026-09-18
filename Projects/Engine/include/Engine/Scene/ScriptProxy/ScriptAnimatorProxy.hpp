@@ -41,8 +41,8 @@ struct ScriptAnimatorProxy {
     std::vector<std::pair<std::string, float>> GetCurrentBlendWeights() const;
     std::string GetCurrentState() const;
     std::string GetCurrentState(GameObject* go) const;
-    // クロスフェード遷移先ステート名 (遷移中でなければ空) とその正規化時間 0..1。
-    // コンボの Slash→Slash 遷移中に次段の振りタイミングを正しく判定するために使う。
+    /// @return クロスフェード遷移先ステート名。遷移中でなければ空。
+    /// @note コンボの Slash→Slash 遷移中に次段の振りタイミングを判定するために使う。
     std::string GetBlendToState() const;
     std::string GetBlendToState(GameObject* go) const;
     float       GetBlendToNormalizedTime() const;
@@ -55,26 +55,29 @@ struct ScriptAnimatorProxy {
     void        SetSpeed(GameObject* go, float speed) const;
     float       GetSpeed(GameObject* go) const;
     void        Play(GameObject* go, std::string_view stateName) const;
-    // 時間の進行そのものを止める。SetSpeed(0) と違い、再開時に速度を覚えておく必要がない。
+    /// @brief 時間の進行そのものを止める。SetSpeed(0) と違い、再開時に速度を覚えておく必要がない。
     void        SetPlaying(bool playing) const;
     bool        IsPlaying() const;
     void        SetLayerWeight(std::string_view layerName, float weight) const;
     float       GetLayerWeight(std::string_view layerName) const;
 
-    // ── レイヤー制御 (上半身 / 下半身の出し分け) ─────────────────────────────
-    // レイヤーの現在ステート名。独自ステートマシンを持たないレイヤーは stateName を返す。
+    /// @name レイヤー制御 (上半身 / 下半身の出し分け)
+    ///@{
+    /// @return レイヤーの現在ステート名。独自ステートマシンを持たないレイヤーは stateName を返す。
     std::string GetLayerState(std::string_view layerName) const;
     bool        IsLayerInState(std::string_view layerName, std::string_view stateName) const;
-    // レイヤーのステートマシンを指定ステートへ即座に飛ばす (クロスフェードなし)。
+    /// @brief レイヤーのステートマシンを指定ステートへ即座に飛ばす (クロスフェードなし)。
     void        PlayLayerState(std::string_view layerName, std::string_view stateName) const;
-    // レイヤーのマスクを差し替える (.mask アセットのパス)。空文字列でマスク解除。
-    // WHY: 同じ上半身レイヤーを、武器種によって「腕だけ」「腕＋頭」と切り替えたいことがある。
+    /// @brief レイヤーのマスクを差し替える (.mask アセットのパス)。空文字列でマスク解除。
+    /// @note 同じ上半身レイヤーを武器種で「腕だけ」「腕＋頭」と切り替える用途がある。
     void        SetLayerMask(std::string_view layerName, std::string_view maskPath) const;
     std::string GetLayerMask(std::string_view layerName) const;
+    ///@}
 
-    // ── Slot (ワンショット差し込み) ──────────────────────────────────────────
-    // 指定レイヤーへクリップを割り込ませる。終端に達すると自動でフェードアウトする。
-    // 例: 移動を流したまま上半身レイヤーへ攻撃モーションを差し込む。
+    /// @name Slot (ワンショット差し込み)
+    /// 指定レイヤーへクリップを割り込ませる。終端に達すると自動でフェードアウトする。
+    /// 例: 移動を流したまま上半身レイヤーへ攻撃モーションを差し込む。
+    ///@{
     void  PlaySlot(std::string_view layerName, std::string_view sourcePath,
                    std::string_view clipName,
                    float fadeIn = 0.15f, float fadeOut = 0.15f,
@@ -82,49 +85,51 @@ struct ScriptAnimatorProxy {
     void  StopSlot(std::string_view layerName, float fadeOut = -1.0f) const;
     bool  IsSlotPlaying(std::string_view layerName) const;
     float GetSlotWeight(std::string_view layerName) const;
-    // 鳴っている Slot の再生速度を途中で書き換える (PlaySlot の speed を上書き)。
-    // WHY: 1 本のクリップの中に «溜めはゆっくり・斬り抜けは速く» の緩急を付けるには、
-    //      再生の途中で速度を変える必要がある。Slot が鳴っていなければ何もしない。
+    /// @brief 鳴っている Slot の再生速度を途中で書き換える (PlaySlot の speed を上書き)。
+    /// @note «溜めはゆっくり・斬り抜けは速く» のように 1 本のクリップの中で緩急を付ける用途。
+    ///       Slot が鳴っていなければ何もしない。
     void  SetSlotSpeed(std::string_view layerName, float speed) const;
-    // Slot のクリップ内の再生秒数。鳴っていなければ 0。
+    /// @return Slot のクリップ内の再生秒数。鳴っていなければ 0。
     float GetSlotTime(std::string_view layerName) const;
-    // Base Layer のステートの再生速度を実行時に書き換える (.animcontroller の speed を上書き)。
-    // WHY: SetSpeed は Animator 全体 (Slot も) に掛かる。走りを実速へ合わせる・転がりを
-    //      移動の減速に合わせる、のように «そのステートだけ» 速さを変える口が要る。
-    //      コントローラーを読み直すと .animcontroller の値へ戻る。
+    /// @brief Base Layer のステートの再生速度を実行時に書き換える (.animcontroller の speed を上書き)。
+    /// @note SetSpeed は Slot も含む Animator 全体に掛かる。走りを実速に合わせる等
+    ///       «そのステートだけ» 変えたいときに使う。コントローラーを読み直すと既定値へ戻る。
     void  SetStateSpeed(std::string_view stateName, float speed) const;
-    // 見つからなければ 1。
+    /// @return 見つからなければ 1。
     float GetStateSpeed(std::string_view stateName) const;
+    ///@}
     void        SetMorphWeight(std::string_view morphName, float weight) const;
     float       GetMorphWeight(std::string_view morphName) const;
 
-    // ── Root Motion ─────────────────────────────────────────────────────────
-    // 移動の権威を Script 側へ持ってくるときは Script::OnAnimatorMove() を使うこと。
-    // 下のアクセサは「エンジンが適用した結果を後から読む」用途で、AnimatorSystem が
-    // Phase::LateUpdate に居るため OnUpdate から呼ぶと 1 フレーム前の値になる。
-    math::Vector3    GetRootMotionDeltaPosition() const;   // ローカル空間の移動量
+    /// @name Root Motion
+    /// 移動の権威を Script 側へ持ってくるときは Script::OnAnimatorMove() を使うこと。
+    /// 下のアクセサは「エンジンが適用した結果を後から読む」用途。AnimatorSystem は
+    /// Phase::LateUpdate に居るため、OnUpdate から呼ぶと 1 フレーム前の値になる。
+    ///@{
+    math::Vector3    GetRootMotionDeltaPosition() const;   ///< ローカル空間の移動量
     math::Quaternion GetRootMotionDeltaRotation() const;
-    math::Vector3    GetRootMotionWorldDelta() const;      // ワールド空間の移動量
-    math::Vector3    GetRootMotionWorldVelocity() const;   // ワールド空間の速度 (m/s)
+    math::Vector3    GetRootMotionWorldDelta() const;      ///< ワールド空間の移動量
+    math::Vector3    GetRootMotionWorldVelocity() const;   ///< ワールド空間の速度 (m/s)
     float            GetRootMotionDeltaTime() const;
-    // エンジンが Transform / RigidBody へ適用済みか。ExtractOnly なら false。
+    /// @return エンジンが Transform / RigidBody へ適用済みか。ExtractOnly なら false。
     bool             IsRootMotionAppliedByEngine() const;
 
-    // ルートモーションの受け取り方を実行時に切り替える。
-    // mode: 0=None / 1=ApplyToTransform / 2=ExtractOnly / 3=ApplyToRigidBody
-    // WHY: 「通常移動はスクリプト制御、攻撃モーションの間だけルートモーションに任せる」
-    //      という切り替えは Inspector の固定設定では表現できない。
+    /// @brief ルートモーションの受け取り方を実行時に切り替える。
+    /// @param mode 0=None / 1=ApplyToTransform / 2=ExtractOnly / 3=ApplyToRigidBody
+    /// @note 「通常移動はスクリプト制御、攻撃中だけルートモーションに任せる」という
+    ///       切り替えは Inspector の固定設定では表現できないため実行時 API がある。
     void  SetRootMotionMode(int mode) const;
     int   GetRootMotionMode() const;
-    // 抽出したルートモーションへ掛ける倍率。アニメの歩幅とゲーム速度を合わせる調整用。
+    /// @brief 抽出したルートモーションへ掛ける倍率。アニメの歩幅とゲーム速度を合わせる調整用。
     void  SetRootMotionPositionScale(float scale) const;
     float GetRootMotionPositionScale() const;
     void  SetRootMotionRotationScale(float scale) const;
     float GetRootMotionRotationScale() const;
-    // 名前指定でルートモーショントラックを差し替える。空文字列でクリップ指定へ戻す。
+    /// @brief 名前指定でルートモーショントラックを差し替える。空文字列でクリップ指定へ戻す。
     void        SetRootMotionNodeName(std::string_view nodeName) const;
-    // 空文字列ならクリップ指定のトラックを使っている。
+    /// @return 空文字列ならクリップ指定のトラックを使っている。
     std::string GetRootMotionNodeName() const;
+    ///@}
 };
 
 } // namespace fbzz::scene

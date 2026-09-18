@@ -14,11 +14,9 @@ void DX12StateTracker::Register(ID3D12Resource* resource, D3D12_RESOURCE_STATES 
 void DX12StateTracker::Remove(ID3D12Resource* resource)
 {
     m_states.erase(resource);
-    // 溜めたまま発行していないバリアも一緒に捨てる。
-    // WHY: 消えるリソースを名指ししたバリアを残すと、次の Flush が «もう無い物» を
-    //      遷移させる。同じ番地に別のリソースが載っていれば、その新しい方が身に覚えの
-    //      ない StateBefore で遷移させられ、中身が壊れる (リサイズで RT を作り直した
-    //      直後に出る)。
+    /// @note 溜めたまま発行していないバリアも一緒に捨てる。消えるリソースを名指ししたバリアを
+    ///       残すと、次の Flush で同じ番地に載った別リソースが身に覚えのない StateBefore で
+    ///       遷移させられ中身が壊れる (リサイズで RT を作り直した直後に出る)。
     std::erase_if(m_pendingBarriers, [resource](const D3D12_RESOURCE_BARRIER& barrier) {
         return barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION
             && barrier.Transition.pResource == resource;
@@ -41,10 +39,10 @@ void DX12StateTracker::QueueTransition(ID3D12Resource* resource, D3D12_RESOURCE_
         ? found->second : D3D12_RESOURCE_STATE_COMMON;
     if (current == requiredState) return;
 
-    // 同じ Flush までに A→B→C と要求される場合、B への遷移を別バリアとして残すと
-    // D3D12 は同一 ResourceBarrier 呼び出し内の重複サブリソース遷移として警告する。
-    // GPU は Flush 前にはまだ遷移していないため、最初の StateBefore から最後の
-    // StateAfter へ 1 本に畳み込めば記録順と実際の状態が一致する。
+    /// @note 同じ Flush までに A→B→C と要求される場合、B への遷移を別バリアとして残すと
+    ///       D3D12 は同一 ResourceBarrier 呼び出し内の重複サブリソース遷移として警告する。
+    ///       GPU は Flush 前にはまだ遷移していないため、最初の StateBefore から最後の
+    ///       StateAfter へ 1 本に畳み込めば記録順と実際の状態が一致する。
     for (auto it = m_pendingBarriers.begin(); it != m_pendingBarriers.end(); ++it) {
         if (it->Type != D3D12_RESOURCE_BARRIER_TYPE_TRANSITION ||
             it->Transition.pResource != resource ||
@@ -64,8 +62,8 @@ void DX12StateTracker::QueueTransition(ID3D12Resource* resource, D3D12_RESOURCE_
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     barrier.Transition.StateBefore = current;
     barrier.Transition.StateAfter = requiredState;
-    // WHY: 同一バッチ内で同じリソースが複数回 Queue されても、m_states を即座に更新しておけば
-    //      次の呼び出しは "既に requiredState" として自然に重複除去される。
+    /// @note 同一バッチ内で同じリソースが複数回 Queue されても、m_states を即座に更新しておけば
+    ///       次の呼び出しは "既に requiredState" として自然に重複除去される。
     m_pendingBarriers.push_back(barrier);
     m_states[resource] = requiredState;
 }

@@ -18,30 +18,24 @@
 #include <chrono>
 #include <filesystem>
 
-// imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
+/// imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg,
                                                              WPARAM wParam, LPARAM lParam);
 
 namespace fbzz::bench {
 
 namespace {
-/// WHY 1/120 ではないか: 場面側 (XPBD) が自前で substep を刻むので、外側まで倍の頻度で
-///     回す必要が無い。倍の刻みは倍の負荷になり、重い場面 (ラグドール) では
-///     «1 フレームぶんの実時間を、1 フレームでは進めきれない» 側へ倒れる。
+/// @note 場面側 (XPBD) が自前で substep を刻むので外側まで倍の頻度で回す必要が無い。倍の刻みは倍の負荷になり、重い場面 (ラグドール) では «1 フレームぶんの実時間を進めきれない» 側へ倒れる。
 constexpr float kFixedStep = 1.0f / 60.0f;
 /// 1 フレームで進める上限。
 ///
-/// WHY 小さいか: ここが大きいと «遅い → 溜まる → もっと刻む → もっと遅い» の循環に入り、
-///     1 フレームに数百 ms 掛けて画面が固まる。上限を 2 にすると、負荷が刻みを
-///     追い越したとき絵は «スロー再生» になるだけで、操作は最後まで効く。
-///     どれだけ遅れているかは m_droppedFrames が申告する。
+/// @note 大きいと «遅い→溜まる→もっと刻む→もっと遅い» の循環に入り画面が固まる。上限 2 なら負荷が追い越しても絵はスロー再生になるだけで操作は効く。遅れは m_droppedFrames が申告する。
 constexpr int kMaxStepsPerFrame = 2;
 /// 1 フレームに取り込む実時間の上限 [s]。ブレークポイントで止めた後に一気に飛ぶのを防ぐ。
 constexpr float kMaxFrameDelta = 0.1f;
 /// 刻みに «あと少し» 足りないときも進めてしまう猶予 [s]。
 ///
-/// WHY 要るか: 表示が 60Hz で刻みも 1/60 だと、実測 dt のわずかな揺れで «0 回 → 2 回» が
-///     交互に来る。物理は正しいのに絵だけがガタつき、«物理が不安定» と読み違える。
+/// @note 表示 60Hz・刻み 1/60 だと実測 dt のわずかな揺れで «0 回→2 回» が交互に来て、物理は正しいのに絵だけガタつき «物理が不安定» と読み違える。
 constexpr float kStepSnap = 0.0004f;
 /// 表示用のならし係数 (1 フレームぶんの重み)。
 constexpr float kSmoothing = 0.1f;
@@ -51,14 +45,9 @@ constexpr ImVec4 kOkColor    {0.48f, 0.90f, 0.55f, 1.0f};
 constexpr ImVec4 kWarnColor  {1.00f, 0.72f, 0.36f, 1.0f};
 constexpr ImVec4 kErrorColor {1.00f, 0.36f, 0.41f, 1.0f};
 
-/// 日本語グリフを持つフォントを読む。
-///
-/// WHY 必須か: ImGui のバンドルフォントは ASCII しか持たない。入れないと場面の名前も
-///     «見るべきところ» も «???» になり、**そもそも何を見ればいいか分からない画面**に
-///     なる。合否を人が決める道具なので、文字が出ないことは機能不全と同じ。
-///
-/// WHY Editor の EditorTheme を使わないか: ベンチは Editor へ依存させない
-///     (Editor は Panel も Command も引き連れてくる)。要るのはフォント 1 枚だけ。
+/// @brief 日本語グリフを持つフォントを読む。
+/// @note ImGui のバンドルフォントは ASCII のみで、無いと場面名も見るべき箇所も «???» になり何を見ればいいか分からない画面になる。合否を人が決める道具なので文字が出ないことは機能不全と同じ。
+/// @note ベンチは Editor へ依存させない (Editor は Panel/Command も引き連れる) ため EditorTheme は使わず、要るフォント 1 枚だけをここで読む。
 ImFont* LoadJapaneseFont(ImGuiIO& io)
 {
     static constexpr const char* kCandidates[] = {
@@ -67,17 +56,22 @@ ImFont* LoadJapaneseFont(ImGuiIO& io)
         "C:/Windows/Fonts/msgothic.ttc",
     };
 
-    // BuildRanges の結果はアトラス生成 (最初の NewFrame) まで生きている必要がある。
+    /// @note BuildRanges の結果はアトラス生成 (最初の NewFrame) まで生きている必要がある。
     static ImVector<ImWchar> ranges;
     if (ranges.empty()) {
         ImFontGlyphRangesBuilder builder;
         builder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
-        builder.AddRanges(io.Fonts->GetGlyphRangesDefault()); // « » を含む Latin-1
+        /// @note « » を含む Latin-1
+        builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
         static const ImWchar kSymbols[] = {
-            0x2000, 0x206F, // 約物 (─ に使う 二重ダッシュ・…)
-            0x2190, 0x21FF, // 矢印
-            0x2500, 0x257F, // 罫線 (─)
-            0x25A0, 0x25FF, // 幾何形
+            /// @note 約物 (─ に使う 二重ダッシュ・…)
+            0x2000, 0x206F,
+            /// @note 矢印
+            0x2190, 0x21FF,
+            /// @note 罫線 (─)
+            0x2500, 0x257F,
+            /// @note 幾何形
+            0x25A0, 0x25FF,
             0,
         };
         builder.AddRanges(kSymbols);
@@ -89,7 +83,7 @@ ImFont* LoadJapaneseFont(ImGuiIO& io)
     cfg.OversampleV = 2;
 
     for (const char* path : kCandidates) {
-        // 存在確認してから渡す。ImGui は読めないファイルで IM_ASSERT する。
+        /// @note 存在確認してから渡す。ImGui は読めないファイルで IM_ASSERT する。
         std::error_code ec;
         if (!std::filesystem::exists(path, ec)) continue;
         if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, kFontSize, &cfg, ranges.Data))
@@ -111,19 +105,18 @@ bool BenchApp::OnInit()
 
     m_imguiContext = ImGui::CreateContext();
     ImGuiIO& io    = ImGui::GetIO();
-    io.IniFilename = nullptr; // 配置を保存しない。毎回同じ見え方で開く。
+    /// @note 配置を保存しない。毎回同じ見え方で開く。
+    io.IniFilename = nullptr;
     ImGui::StyleColorsDark();
 
     if (ImFont* font = LoadJapaneseFont(io)) io.FontDefault = font;
     else                                     io.Fonts->AddFontDefault();
 
-    // フォントアトラスはこの中で GPU テクスチャになる。フォントを足すのは必ずこの前。
+    /// @note フォントアトラスはこの中で GPU テクスチャになる。フォントを足すのは必ずこの前。
     core::Application::Get().GetImGuiRenderer().ImGuiInit(
         core::Application::Get().GetWindow().GetHandle());
 
-    // WHY 必須か: ImGui は Win32 のメッセージを自分では拾わない。ここを繋がないと
-    //     マウスもキーも一切届かず、«描画はされるがボタンが押せない» 画面になる。
-    //     ビューポートのパン・ズームも同じ経路なので、丸ごと死ぬ。
+    /// @note ImGui は Win32 のメッセージを自分では拾わない。ここを繋がないとマウスもキーも届かず «描画はされるがボタンが押せない» 画面になる。ビューポートのパン・ズームも同じ経路なので丸ごと死ぬ。
     core::Application::Get().GetWindow().SetWndProcHook(
         [](HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) -> bool {
             return ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam) != 0;
@@ -155,8 +148,8 @@ void BenchApp::OnUpdate(float dt)
             m_accumulator -= kFixedStep;
             ++m_stepsThisFrame;
         }
-        // 消化しきれなかったぶんは捨てる。持ち越すと次のフレームも上限に張り付き、
-        // 一度遅れたら二度と追いつけない。
+        /// @note 消化しきれなかったぶんは捨てる。持ち越すと次のフレームも上限に張り付き、
+        ///       一度遅れたら二度と追いつけない。
         if (m_accumulator >= kFixedStep - kStepSnap) {
             m_accumulator = 0.0f;
             ++m_droppedFrames;
@@ -168,15 +161,13 @@ void BenchApp::OnUpdate(float dt)
     m_simMsAvg += (simMs - m_simMsAvg) * kSmoothing;
 }
 
-/// WHY 描画中ではなくここで検査するか: DrawControls はスライダーを触った時点で場面を
-///     組み直す。描画の途中で検査すると «同じフレームの中で設定前と設定後が混ざった状態» を
-///     見ることになり、触った瞬間だけ偽の異常が出る。
+/// @note DrawControls はスライダーを触った時点で場面を組み直す。描画の途中で検査すると «設定前後が混ざった状態» を見ることになり、触った瞬間だけ偽の異常が出る。
 void BenchApp::OnLateUpdate(float)
 {
     if (m_scenes.empty()) return;
     BenchScene& scene = *m_scenes[static_cast<size_t>(m_selected)];
 
-    // 検査も描画も Present が作った «このフレームの最終状態» だけを見る。
+    /// @note 検査も描画も Present が作った «このフレームの最終状態» だけを見る。
     scene.Present();
 
     m_anomalies.BeginFrame();
@@ -205,11 +196,11 @@ void BenchApp::OnRender()
 
 void BenchApp::OnShutdown()
 {
-    // 場面が持つ剛体より先にソルバを畳ませる。破棄順は各場面のデストラクタが持つ。
+    /// @note 場面が持つ剛体より先にソルバを畳ませる。破棄順は各場面のデストラクタが持つ。
     m_scenes.clear();
 
-    // ImGui を畳む前にフックを外す。残したまま context を壊すと、終了処理中に来た
-    // 1 通のメッセージが破棄済みの context を触りに行く。
+    /// @note ImGui を畳む前にフックを外す。残したまま context を壊すと、終了処理中に来た
+    ///       1 通のメッセージが破棄済みの context を触りに行く。
     core::Application::Get().GetWindow().SetWndProcHook(nullptr);
 
     core::Application::Get().GetImGuiRenderer().ImGuiShutdown();
@@ -226,7 +217,7 @@ void BenchApp::SelectScene(int index)
     m_selected       = index;
     m_accumulator    = 0.0f;
     m_droppedFrames  = 0;
-    // 前の場面の履歴を持ち越さない。«この場面で何回出たか» が読めなくなる。
+    /// @note 前の場面の履歴を持ち越さない。«この場面で何回出たか» が読めなくなる。
     m_anomalies.BeginFrame();
     m_anomalies.ClearHistory();
 
@@ -295,8 +286,7 @@ void BenchApp::DrawSidebar()
     ImGui::EndChild();
 }
 
-/// WHY 出すか: «重い» は目で見ても «物理が変» と区別が付かない。数字が無いと、
-///     刻みが追いついていないだけの絵を «挙動がおかしい» と読んでしまう。
+/// @note «重い» は目で見ても «物理が変» と区別が付かない。数字が無いと刻みが追いついていないだけの絵を «挙動がおかしい» と読んでしまう。
 void BenchApp::DrawPerformance()
 {
     ImGui::SeparatorText("性能");
@@ -305,7 +295,7 @@ void BenchApp::DrawPerformance()
     const ImVec4 fpsColor = fps >= 50.0f ? kOkColor : (fps >= 25.0f ? kWarnColor : kErrorColor);
     ImGui::TextColored(fpsColor, "%.0f FPS  (%.2f ms/frame)", fps, m_frameMsAvg);
 
-    // 場面の負荷と «描画も含めた» 負荷の差が、物理以外に掛かっている分。
+    /// @note 場面の負荷と «描画も含めた» 負荷の差が、物理以外に掛かっている分。
     ImGui::Text("物理 %.2f ms / %d 刻み", m_simMsAvg, m_stepsThisFrame);
 
     if (m_droppedFrames > 0) {
@@ -335,7 +325,7 @@ void BenchApp::DrawAnomalies()
             ImGui::TextDisabled("ほか %d 件", m_anomalies.Suppressed());
     }
 
-    // 1 フレームだけ出て消えた異常はここにしか残らない。放置して回している間の分も拾う。
+    /// @note 1 フレームだけ出て消えた異常はここにしか残らない。放置して回している間の分も拾う。
     if (m_anomalies.Frames() > 0) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextDisabled("この場面で %d フレーム検出 / 最初: %s", m_anomalies.Frames(),

@@ -17,7 +17,7 @@ namespace fbzz::tests {
 
 class QuaternionTest : public testkit::Fixture {};
 
-// --- 回転作用 ---------------------------------------------------------------
+/// @name 回転作用
 
 TEST_F(QuaternionTest, IdentityLeavesVectorsUnchanged)
 {
@@ -28,7 +28,7 @@ TEST_F(QuaternionTest, IdentityLeavesVectorsUnchanged)
 
 TEST_F(QuaternionTest, RotationAroundRightByNinetyDegreesMapsUpToForward)
 {
-    // 左手系の基底の向きそのもの。反転するとキャラクターの前後が入れ替わる。
+    /// @note 左手系の基底の向きそのもの。反転するとキャラクターの前後が入れ替わる。
     const math::Quaternion q = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::HALF_PI);
 
     EXPECT_VEC3_NEAR(q * math::Vector3::UP, math::Vector3::FORWARD, testkit::kTolerance);
@@ -69,7 +69,7 @@ TEST_F(QuaternionTest, InverseTimesOriginalIsIdentity)
     EXPECT_QUAT_NEAR(q * q.Inverse(), math::Quaternion::Identity(), testkit::kTolerance);
 }
 
-// --- 合成 -------------------------------------------------------------------
+/// @name 合成
 
 TEST_F(QuaternionTest, MultiplicationAppliesTheRightOperandFirst)
 {
@@ -90,7 +90,7 @@ TEST_F(QuaternionTest, MultiplicationIsNotCommutative)
 
 TEST_F(QuaternionTest, FromEulerComposesYawThenPitchThenRoll)
 {
-    // YXZ 内因順 (Qy * Qx * Qz)。ここが変わるとエディタで入力した角度の意味が変わる。
+    /// @note YXZ 内因順 (Qy * Qx * Qz)。ここが変わるとエディタで入力した角度の意味が変わる。
     const math::Vector3 euler(0.3f, -0.7f, 1.1f);
 
     const math::Quaternion expected =
@@ -101,7 +101,7 @@ TEST_F(QuaternionTest, FromEulerComposesYawThenPitchThenRoll)
     EXPECT_QUAT_NEAR(math::Quaternion::FromEuler(euler), expected, testkit::kTolerance);
 }
 
-// --- 正規化 -----------------------------------------------------------------
+/// @name 正規化
 
 TEST_F(QuaternionTest, NormalizedProducesUnitLength)
 {
@@ -110,7 +110,7 @@ TEST_F(QuaternionTest, NormalizedProducesUnitLength)
     EXPECT_NEAR(q.Normalized().Length(), 1.0f, testkit::kTolerance);
 }
 
-// --- 補間 -------------------------------------------------------------------
+/// @name 補間
 
 TEST_F(QuaternionTest, SlerpReturnsTheEndpointsAtZeroAndOne)
 {
@@ -133,7 +133,7 @@ TEST_F(QuaternionTest, SlerpAtMidpointIsHalfTheAngle)
 
 TEST_F(QuaternionTest, SlerpTakesTheShorterArcWhenTheEndpointsFaceAway)
 {
-    // b は a と同じ回転を表す «符号違い»。遠回りすると 1 回転ぶん余計に回る。
+    /// @note b は a と同じ回転を表す «符号違い»。遠回りすると 1 回転ぶん余計に回る。
     const math::Quaternion a = math::Quaternion::FromAxisAngle(math::Vector3::UP, 0.2f);
     const math::Quaternion b{-a.x, -a.y, -a.z, -a.w};
 
@@ -150,7 +150,7 @@ TEST_F(QuaternionTest, LerpResultIsNormalized)
     EXPECT_NEAR(math::Quaternion::Lerp(a, b, 0.37f).Length(), 1.0f, testkit::kTolerance);
 }
 
-// --- 行列との往復 -----------------------------------------------------------
+/// @name 行列との往復
 
 TEST_F(QuaternionTest, RoundTripsThroughARotationMatrix)
 {
@@ -163,7 +163,7 @@ TEST_F(QuaternionTest, RoundTripsThroughARotationMatrix)
     }
 }
 
-// --- LookRotation -----------------------------------------------------------
+/// @name LookRotation
 
 TEST_F(QuaternionTest, LookRotationAlignsForwardWithTheGivenDirection)
 {
@@ -177,14 +177,14 @@ TEST_F(QuaternionTest, LookRotationAlignsForwardWithTheGivenDirection)
 
 TEST_F(QuaternionTest, LookRotationReturnsIdentityForAZeroDirection)
 {
-    // 追従対象へ重なった / 速度が 0 になった、は正常系に含まれる。
+    /// @note 追従対象へ重なった / 速度が 0 になった、は正常系に含まれる。
     EXPECT_QUAT_NEAR(math::Quaternion::LookRotation(math::Vector3::ZERO),
                      math::Quaternion::Identity(), testkit::kTolerance);
 }
 
 TEST_F(QuaternionTest, LookRotationStillAlignsForwardWhenTheDirectionIsParallelToUp)
 {
-    // 真上を向く。既定の up と平行なので基底が作れず、代替 up に落ちる縮退ケース。
+    /// @note 真上を向く。既定の up と平行なので基底が作れず、代替 up に落ちる縮退ケース。
     const math::Quaternion q = math::Quaternion::LookRotation(math::Vector3::UP);
 
     EXPECT_VEC3_NEAR(q * math::Vector3::FORWARD, math::Vector3::UP, testkit::kLooseTolerance);

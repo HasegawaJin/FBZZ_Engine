@@ -13,7 +13,7 @@ namespace fbzz::tests {
 
 class MathUtilsTest : public testkit::Fixture {};
 
-// --- 角度変換 ---------------------------------------------------------------
+/// @name 角度変換
 
 TEST_F(MathUtilsTest, DegreeAndRadianConversionsAreInverses)
 {
@@ -30,7 +30,7 @@ TEST_F(MathUtilsTest, HalfTurnInDegreesIsPiInRadians)
     EXPECT_NEAR(math::ToDeg(math::TWO_PI), 360.0f, 1.0e-3f);
 }
 
-// --- Clamp ------------------------------------------------------------------
+/// @name Clamp
 
 TEST_F(MathUtilsTest, ClampReturnsTheBoundsForOutOfRangeInput)
 {
@@ -59,7 +59,7 @@ TEST_F(MathUtilsTest, Clamp01MatchesClampWithUnitBounds)
     }
 }
 
-// --- 補間 -------------------------------------------------------------------
+/// @name 補間
 
 TEST_F(MathUtilsTest, LerpReturnsTheEndpointsAtZeroAndOne)
 {
@@ -69,7 +69,7 @@ TEST_F(MathUtilsTest, LerpReturnsTheEndpointsAtZeroAndOne)
 
 TEST_F(MathUtilsTest, LerpExtrapolatesBeyondTheUnitInterval)
 {
-    // t をクランプしない契約。カメラやゲージ側が «行き過ぎ» を自前で扱えるようにするため。
+    /// @note t をクランプしない契約。カメラやゲージ側が «行き過ぎ» を自前で扱えるようにするため。
     EXPECT_NEAR(math::Lerp(0.0f, 10.0f, 2.0f), 20.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Lerp(0.0f, 10.0f, -1.0f), -10.0f, testkit::kTolerance);
 }
@@ -86,7 +86,7 @@ TEST_F(MathUtilsTest, InverseLerpUndoesLerp)
 
 TEST_F(MathUtilsTest, InverseLerpReturnsZeroForAZeroWidthRange)
 {
-    // 0 除算を避けるための既定値。ヘッダーに明記された契約そのもの。
+    /// @note 0 除算を避けるための既定値。ヘッダーに明記された契約そのもの。
     EXPECT_NEAR(math::InverseLerp(5.0f, 5.0f, 5.0f), 0.0f, testkit::kTolerance);
     EXPECT_NEAR(math::InverseLerp(5.0f, 5.0f, 100.0f), 0.0f, testkit::kTolerance);
 }
@@ -103,11 +103,11 @@ TEST_F(MathUtilsTest, RemapSupportsAnInvertedOutputRange)
     EXPECT_NEAR(math::Remap(0.25f, 0.0f, 1.0f, 1.0f, 0.0f), 0.75f, testkit::kTolerance);
 }
 
-// --- 符号と丸め -------------------------------------------------------------
+/// @name 符号と丸め
 
 TEST_F(MathUtilsTest, SignReturnsZeroForZero)
 {
-    // ±1 の 2 値ではない。方向の «無し» を呼び出し側で分岐できるようにするため。
+    /// @note ±1 の 2 値ではない。方向の «無し» を呼び出し側で分岐できるようにするため。
     EXPECT_NEAR(math::Sign(0.0f), 0.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Sign(3.0f), 1.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Sign(-3.0f), -1.0f, testkit::kTolerance);
@@ -126,7 +126,8 @@ TEST_F(MathUtilsTest, RoundingHelpersFollowTheStandardDirections)
 {
     EXPECT_NEAR(math::Floor(-1.5f), -2.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Ceil(-1.5f), -1.0f, testkit::kTolerance);
-    EXPECT_NEAR(math::Round(-1.5f), -2.0f, testkit::kTolerance);   // 0 から遠い側へ
+    /// @note 0 から遠い側へ
+    EXPECT_NEAR(math::Round(-1.5f), -2.0f, testkit::kTolerance);
     EXPECT_NEAR(math::Round(1.5f), 2.0f, testkit::kTolerance);
 }
 
@@ -141,7 +142,7 @@ TEST_F(MathUtilsTest, SqrtAndPowAgreeOnTheHalfExponent)
     EXPECT_NEAR(math::Sqrt(9.0f), math::Pow(9.0f, 0.5f), testkit::kTolerance);
 }
 
-// --- 近似比較 ---------------------------------------------------------------
+/// @name 近似比較
 
 TEST_F(MathUtilsTest, NearlyEqualAcceptsDifferencesBelowEpsilon)
 {

@@ -8,7 +8,8 @@
 
 #include <cstring>
 
-#pragma comment(lib, "ole32.lib") // DirectXTex/WIC が内部で CoCreateInstance を呼ぶため
+/// @note DirectXTex/WIC が内部で CoCreateInstance を呼ぶため ole32.lib をリンクする。
+#pragma comment(lib, "ole32.lib")
 
 namespace fbzz::renderer::detail {
 
@@ -19,8 +20,8 @@ bool EncodeCapturedImageToPng(const DirectX::ScratchImage& captured,
     const DirectX::Image* source = captured.GetImage(0, 0, 0);
     if (source == nullptr) return false;
 
-    // PNG は 8bit 前提。Scene View RT は HDR (R16G16B16A16_FLOAT) なので UNORM へ変換する。
-    // 変換は [0,1] へクランプする (トーンマップは行わない ― AI へのプレビュー用途として十分)。
+    /// @note PNG は 8bit 前提。Scene View RT は HDR (R16G16B16A16_FLOAT) なので UNORM へ変換する。
+    ///       変換は [0,1] へクランプする (トーンマップは行わない ― AI へのプレビュー用途として十分)。
     DirectX::ScratchImage converted;
     const DirectX::Image* toSave = source;
     const bool alreadyByte = source->format == DXGI_FORMAT_R8G8B8A8_UNORM
@@ -54,8 +55,8 @@ bool ReadCapturedImageAsLinearRGBA(const DirectX::ScratchImage& captured,
     const DirectX::Image* source = captured.GetImage(0, 0, 0);
     if (source == nullptr) return false;
 
-    // R32G32B32A32_FLOAT へ正規化してから読む。DirectX::Convert は sRGB 形式なら
-    // 線形へ戻すので、バックエンドや RT 形式が変わっても指標の意味が揺れない。
+    /// @note R32G32B32A32_FLOAT へ正規化してから読む。DirectX::Convert は sRGB 形式なら
+    ///       線形へ戻すので、バックエンドや RT 形式が変わっても指標の意味が揺れない。
     DirectX::ScratchImage converted;
     const DirectX::Image* toRead = source;
     if (source->format != DXGI_FORMAT_R32G32B32A32_FLOAT) {
@@ -71,7 +72,7 @@ bool ReadCapturedImageAsLinearRGBA(const DirectX::ScratchImage& captured,
     if (width == 0 || height == 0 || toRead->pixels == nullptr) return false;
 
     outRgba.resize(static_cast<std::size_t>(width) * height * 4u);
-    // rowPitch はアライメントのため width*16 より大きいことがある。行ごとにコピーする。
+    /// @note rowPitch はアライメントのため width*16 より大きいことがある。行ごとにコピーする。
     for (std::uint32_t y = 0; y < height; ++y) {
         const auto* row = reinterpret_cast<const float*>(toRead->pixels + static_cast<std::size_t>(y) * toRead->rowPitch);
         std::memcpy(outRgba.data() + static_cast<std::size_t>(y) * width * 4u, row,

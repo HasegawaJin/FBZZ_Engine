@@ -1,0 +1,6 @@
+# @file    FiberShell.hlsl.meta
+# @brief   繊維アセットの固定 GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+[meta]
+guid = 'aef89576fbea4916a2a3905f4ef1ead5'

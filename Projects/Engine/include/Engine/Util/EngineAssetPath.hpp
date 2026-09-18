@@ -7,7 +7,7 @@
 
 namespace fbzz::util {
 
-/// SDK が提供する Engine アセットのルート (例: <SDK>/share/fbzz/Assets)。
+/// SDK が提供する Engine アセットのルート (例: `<SDK>/share/fbzz/Assets`)。
 /// 見つからない場合は空パスを返す。プロセス内で一度だけ解決する。
 const std::filesystem::path& EngineAssetRoot();
 

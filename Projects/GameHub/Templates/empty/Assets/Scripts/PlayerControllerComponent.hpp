@@ -66,13 +66,12 @@ private:
     Vector3 m_smoothedSpineOffset = Vector3::ZERO;
 };
 
-// Reflect() をフィールド宣言から自動生成する (旧 .generated.hpp は廃止)。
+/// Reflect() をフィールド宣言から自動生成する (旧 .generated.hpp は廃止)。
 FBZZ_REFLECT(PlayerControllerComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 inline void PlayerControllerComponent::OnStart()
 {
-    // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
+    /// @note 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
 }
 
@@ -107,8 +106,8 @@ inline void PlayerControllerComponent::OnUpdate()
         const Quaternion targetRotation =
             (Quaternion::LookRotation(moveDirection) *
              Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
-        // WHY: 線形な turnSpeed*dt はフレームレートで応答が変わるため、指数応答で
-        //      WASD の急な方向変更を滑らかにしつつ、どの FPS でも同じ旋回感を保つ。
+        /// @note 線形な turnSpeed*dt はフレームレートで応答が変わるため、指数応答で
+        ///       WASD の急な方向変更を滑らかにしつつ、どの FPS でも同じ旋回感を保つ。
         const float turnResponse = 1.0f - std::exp(
             -std::max(turnSpeed, 0.0f) * std::max(Time::deltaTime, 0.0f));
         transform.rotation = Quaternion::Slerp(
@@ -116,8 +115,8 @@ inline void PlayerControllerComponent::OnUpdate()
     }
 
     if (phy) {
-        // WHY: 水平速度を加速度補間し Y 速度は重力・接触解決に任せる。
-        //      着地直後や方向転換でも即 MaxSpeed にならず人間らしい挙動になる。
+        /// @note 水平速度を加速度補間し Y 速度は重力・接触解決に任せる。
+        ///       着地直後や方向転換でも即 MaxSpeed にならず人間らしい挙動になる。
         Vector3 vel = phy->GetVelocity();
         if (hasInput) {
             const float   speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
@@ -168,7 +167,7 @@ inline void PlayerControllerComponent::UpdateIK()
     auto* ik = scene.GetComponent<IKSolverComponent>();
     if (!ik) return;
 
-    // Use Foot IK は足チェーンだけを制御する。Solver 全体を切ると Spine と LookAt まで停止してしまう。
+    /// @note Use Foot IK は足チェーンだけを制御する。Solver 全体を切ると Spine と LookAt まで停止してしまう。
     for (auto& chain : ik->chains) {
         if (chain.type == IKSolverType::FootPlace)
             chain.enabled = useFootIK;
@@ -205,7 +204,7 @@ inline void PlayerControllerComponent::UpdateSlopeLean(
         if (moveDirection.LengthSq() > 0.01f && cc->groundNormal.y > 0.1f) {
             moveDirection = moveDirection.Normalized();
             const Vector3 normal = cc->groundNormal.Normalized();
-            // 地面法線から移動方向の上り勾配 tan(theta) を求め、上り坂だけ上体を進行方向へ倒す。
+            /// @note 地面法線から移動方向の上り勾配 tan(theta) を求め、上り坂だけ上体を進行方向へ倒す。
             const float uphillGrade = std::max(
                 0.0f, -Vector3::Dot(normal, moveDirection) / normal.y);
             constexpr float LEAN_PER_GRADE = 0.35f;
@@ -217,7 +216,7 @@ inline void PlayerControllerComponent::UpdateSlopeLean(
         }
     }
 
-    // 接触法線は物理ステップごとに微動するため、指数応答でターゲットの揺れを抑える。
+    /// @note 接触法線は物理ステップごとに微動するため、指数応答でターゲットの揺れを抑える。
     constexpr float LEAN_RESPONSE = 8.0f;
     const float response = 1.0f - std::exp(-LEAN_RESPONSE * std::max(Time::deltaTime, 0.0f));
     m_smoothedSpineOffset = Vector3::Lerp(m_smoothedSpineOffset, desiredOffset, response);

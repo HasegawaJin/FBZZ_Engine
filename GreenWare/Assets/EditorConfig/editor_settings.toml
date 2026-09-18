@@ -46,7 +46,7 @@ version = '1.0.0'
 [debug]
 navmesh_draw_distance = 120.0
 navmesh_draw_mode = 0
-show_colliders = false
+show_colliders = true
 show_decal_bounds = false
 show_nav_sensors = false
 show_navmesh = false
@@ -59,7 +59,7 @@ follow_selection = true
 
 [game_view]
 aspect = 6
-play_focus_mode = 1
+play_focus_mode = 2
 
 [gizmo]
 mode = 0
@@ -159,6 +159,13 @@ ctrl = false
 key = 573
 name = 'edit.rename'
 shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 559
+name = 'node.create_empty'
+shift = true
 
 [[hotkeys.overrides]]
 alt = false
@@ -339,6 +346,7 @@ inspector_filter = true
 [misc]
 ai_command_bus = true
 hot_reload = true
+hot_reload_sound = true
 sweep_orphaned_baked = true
 
 [snap]
@@ -364,11 +372,27 @@ scale = 1.0
 
 [view]
 grid_size = 1.0
-scene_view_occlusion_culling = false
+hidden_scene_icons = []
+scene_view_occlusion_culling = true
+show_attachments = false
+show_constraints = false
+show_flow_fields = true
+show_flow_samples = true
 show_grid = false
-show_light_range = false
+show_ik = false
+show_light_range = true
+show_lod_bounds = false
+show_physics_volumes = true
 show_ragdoll = false
+show_rigid_bodies = false
+show_scene_icons = true
+show_script_gizmos = true
 show_skeleton = false
+show_spring_bones = false
 show_stats = false
-show_vfx_gizmos = false
+show_terrain_bounds = false
+show_vfx_gizmos = true
+show_vfx_paths = false
+show_water_flow = true
+skeleton_selected_only = true
 surface_snap_align_to_normal = true

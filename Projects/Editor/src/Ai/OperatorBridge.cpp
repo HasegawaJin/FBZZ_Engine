@@ -62,8 +62,8 @@ JsonValue ParamsToJson(const EditorOperator& op)
         entry.Set("required", JsonValue(p.required));
         if (!p.desc.empty()) entry.Set("desc", JsonValue(p.desc));
 
-        // 取りうる値と範囲は宣言から出す。desc の文章に書いてあっても
-        // 機械可読ではないので、AI は綴りを推測することになる。
+        /// @note 取りうる値と範囲は宣言から出す。desc の文章に書いてあっても
+        ///       機械可読ではないので、AI は綴りを推測することになる。
         if (!p.enumValues.empty()) {
             JsonValue values = JsonValue::MakeArray();
             for (const std::string& candidate : p.enumValues)
@@ -79,9 +79,9 @@ JsonValue ParamsToJson(const EditorOperator& op)
     return params;
 }
 
-// Operator が返した構造化データを JSON へ写す。
-// WHY 変換が要るか: Op 層は AI 層 (JsonValue) を知らない契約になっている
-//     (Editor/Op/OpData.hpp)。境界であるこの層だけが両方を知る。
+/// @brief Operator が返した構造化データを JSON へ写す。
+/// @note Op 層は AI 層 (JsonValue) を知らない契約になっている (Editor/Op/OpData.hpp)。
+///       境界であるこの層だけが両方を知る。
 JsonValue OpDataToJson(const OpData& data)
 {
     switch (data.GetType()) {
@@ -91,7 +91,7 @@ JsonValue OpDataToJson(const OpData& data)
     case OpData::Type::Float:  return JsonValue(static_cast<double>(data.AsFloat()));
     case OpData::Type::String: return JsonValue(data.AsString());
     case OpData::Type::Vec3: {
-        // 読んだ形をそのまま書き戻せるよう、引数側が受ける {x,y,z} で返す。
+        /// @note 読んだ形をそのまま書き戻せるよう、引数側が受ける {x,y,z} で返す。
         const math::Vector3 v = data.AsVec3();
         JsonValue object = JsonValue::MakeObject();
         object.Set("x", JsonValue(static_cast<double>(v.x)));
@@ -115,9 +115,9 @@ JsonValue OpDataToJson(const OpData& data)
     return JsonValue(nullptr);
 }
 
-// 1 つの Vec3 引数を JSON から読む。[x,y,z] と {x,y,z} の両方を受ける。
-// WHY: 応答側 (scene.tree 等) が {x,y,z} を返す一方、AI は配列で書きたがることが多い。
-//      どちらかだけを受けると「読んだ形をそのまま書き戻す」ができない場面が出る。
+/// @brief 1 つの Vec3 引数を JSON から読む。[x,y,z] と {x,y,z} の両方を受ける。
+/// @note 応答側 (scene.tree 等) が {x,y,z} を返す一方、AI は配列で書きたがることが多い。
+///       どちらかだけを受けると「読んだ形をそのまま書き戻す」ができない場面が出る。
 bool ReadVec3(const JsonValue& value, math::Vector3& out)
 {
     if (value.IsArray()) {
@@ -144,15 +144,14 @@ bool ReadVec3(const JsonValue& value, math::Vector3& out)
     return false;
 }
 
-// 宣言された params に従って JSON を OpArgs へ変換する。
-// 未知のキーと型違いは受理せずエラーにする。
-// WHY: 「保存は通るのに実行時に黙って無視される」形の壊れ方を作らないため。
-//      shader の存在しない変数名や BT の非該当フィールドで既に踏んだ問題と同じで、
-//      綴り違いは「設定したのに何も変わらない」としてしか現れず原因に辿り着けない。
+/// @brief 宣言された params に従って JSON を OpArgs へ変換する。未知のキーと型違いは
+///        受理せずエラーにする。
+/// @note 「保存は通るのに実行時に黙って無視される」形の壊れ方を作らない。shader の存在しない
+///       変数名や BT の非該当フィールドと同じで、綴り違いは原因に辿り着けなくなる。
 bool ConvertArgs(const EditorOperator& op, const JsonValue* argsValue,
                  OpArgs& out, std::string& error)
 {
-    // 宣言されていないキーが来ていないかを先に見る。
+    /// @note 宣言されていないキーが来ていないかを先に見る。
     if (argsValue != nullptr && argsValue->IsObject()) {
         for (const JsonValue::Member& member : argsValue->AsObject()) {
             const bool declared = std::any_of(
@@ -220,12 +219,10 @@ JsonValue OperatorToJson(const EditorOperator& op, bool available,
     entry.Set("category", JsonValue(op.category));
     entry.Set("kind", JsonValue(KindName(op.kind)));
     entry.Set("available", JsonValue(available));
-    // トグル操作の現在値。メニューのチェックマークと同じ式から出る。
-    // WHY: これが無いと「切り替えられるのに今どちらか読めない」ままで、
-    //      AI は必ず ON にしたい場面で 2 回撮って比べるしかなくなる。
-    //
-    // 必須引数を持つ操作は目録では評価しない。対象が決まらないまま出す false は
-    // 「OFF である」と読めてしまい、無いより悪い (確定は invoke の dryRun で行う)。
+    /// @note トグル操作の現在値。メニューのチェックマークと同じ式から出る。無いと
+    ///       「切り替えられるのに今どちらか読めない」ままになる。必須引数を持つ操作は
+    ///       目録では評価しない。対象不定のまま false を出すと「OFF」と誤読されるため、
+    ///       確定は invoke の dryRun で行う。
     const bool checkableWithoutArgs = std::none_of(
         op.params.begin(), op.params.end(),
         [](const OpParam& p) { return p.required; });
@@ -240,7 +237,7 @@ JsonValue OperatorToJson(const EditorOperator& op, bool available,
     return entry;
 }
 
-// バス側から見た「使える状態か」。EditorApp が結線を終える前に要求が来ても落ちないようにする。
+/// バス側から見た「使える状態か」。EditorApp が結線を終える前に要求が来ても落ちないようにする。
 bool ResolveRegistry(editor::EditorContext& context,
                      OperatorRegistry*&    registry,
                      UndoStack*&           undo)
@@ -267,8 +264,8 @@ OperatorBridgeResult ListOperators(editor::EditorContext& context, const JsonVal
         (searchValue != nullptr && searchValue->IsString()) ? searchValue->AsString() : std::string{});
     const std::string category =
         (categoryValue != nullptr && categoryValue->IsString()) ? categoryValue->AsString() : std::string{};
-    // 既定で不可の操作も返す。「無い」と「今は使えない」を区別できないと、
-    // AI は存在する手段を諦めて別のやり方を組み立て始める。
+    /// @note 既定で不可の操作も返す。「無い」と「今は使えない」を区別できないと、
+    ///       AI は存在する手段を諦めて別のやり方を組み立て始める。
     const bool includeUnavailable =
         (includeValue == nullptr) ? true : includeValue->AsBool();
 
@@ -284,8 +281,8 @@ OperatorBridgeResult ListOperators(editor::EditorContext& context, const JsonVal
             && !ContainsCI(op.desc, search))
             continue;
 
-        // 目録は引数なしの評価。引数で対象を指定する操作は、その呼び出し方での
-        // 可否が変わりうるので、確定は editor.op.invoke の dryRun で行う。
+        /// @note 目録は引数なしの評価。引数で対象を指定する操作は、その呼び出し方での
+        ///       可否が変わりうるので、確定は editor.op.invoke の dryRun で行う。
         const OpArgs noArgs;
         const bool available = !op.poll || op.poll(opContext, noArgs);
         if (!available && !includeUnavailable) continue;
@@ -325,18 +322,18 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
     if (!ConvertArgs(*op, payload.Find("args"), args, argError))
         return OperatorBridgeResult::Err("BAD_ARG", argError);
 
-    // 宣言された制約 (enum / range) は dryRun でも同じ判定を返す。
-    // ここを省くと「dry-run では通ったのに実行すると BAD_ARG」になり、
-    // dry-run が「実行前に確かめる」用途を果たさなくなる。
+    /// @note 宣言された制約 (enum / range) は dryRun でも同じ判定を返す。
+    ///       ここを省くと「dry-run では通ったのに実行すると BAD_ARG」になり、
+    ///       dry-run が「実行前に確かめる」用途を果たさなくなる。
     if (const OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
         return OperatorBridgeResult::Err(argCheck.errorCode, argCheck.message);
 
     OpContext  opContext{ context, *undo };
-    // 実際に渡された args で判定する。dryRun の available もこれと同じ値になるので、
-    // 「dry-run では可だったのに実行すると NOT_AVAILABLE」が起きない。
+    /// @note 実際に渡された args で判定する。dryRun の available もこれと同じ値になるので、
+    ///       「dry-run では可だったのに実行すると NOT_AVAILABLE」が起きない。
     const bool available = !op->poll || op->poll(opContext, args);
 
-    // dryRun: 引数検証と実行可否だけを返し、シーンには一切触れない。
+    /// @note dryRun: 引数検証と実行可否だけを返し、シーンには一切触れない。
     if (dryRun) {
         JsonValue result = JsonValue::MakeObject();
         result.Set("id", JsonValue(op->id));
@@ -344,8 +341,8 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
         result.Set("kind", JsonValue(KindName(op->kind)));
         result.Set("available", JsonValue(available));
         result.Set("dryRun", JsonValue(true));
-        // 渡された引数での現在状態。排他選択 (set_view_mode 等) は
-        // 「その値が今の値か」がここで初めて確定する。
+        /// @note 渡された引数での現在状態。排他選択 (set_view_mode 等) は
+        ///       「その値が今の値か」がここで初めて確定する。
         if (op->checked) result.Set("checked", JsonValue(op->checked(opContext, args)));
         if (!op->undoLabel.empty()) result.Set("undoLabel", JsonValue(op->undoLabel));
         if (!available)
@@ -353,8 +350,8 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
         return OperatorBridgeResult::Ok(std::move(result));
     }
 
-    // poll の再評価は Invoke 側でも行われる。ここで先に返すのはエラーコードを
-    // NOT_AVAILABLE として明示し、上の available と食い違わせないため。
+    /// @note poll の再評価は Invoke 側でも行われる。ここで先に返すのはエラーコードを
+    ///       NOT_AVAILABLE として明示し、上の available と食い違わせないため。
     if (!available)
         return OperatorBridgeResult::Err("NOT_AVAILABLE",
                                          "現在の状態ではこの操作を実行できません: " + id);
@@ -372,12 +369,11 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
     result.Set("label", JsonValue(op->label));
     result.Set("kind", JsonValue(KindName(op->kind)));
     result.Set("applied", JsonValue(true));
-    // 「成功したが何も変わらなかった」を成功と区別して返す。
-    // WHY: 区別が無いと、AI は同じ要求を「効かなかった」と読んで別の値で
-    //      再試行し続ける (実際には要求どおりの状態に既になっている)。
+    /// @note 「成功したが何も変わらなかった」を成功と区別して返す。区別が無いと、AI は
+    ///       同じ要求を「効かなかった」と読んで別の値で再試行し続けてしまう。
     if (opResult.noChange) result.Set("noChange", JsonValue(true));
-    // 何が Undo 履歴に残ったかを返す。AI が editor.undoHistory と突き合わせて
-    // 自分の編集を識別できるようにするため。
+    /// @note 何が Undo 履歴に残ったかを返す。AI が editor.undoHistory と突き合わせて
+    ///       自分の編集を識別できるようにするため。
     if (undo->CanUndo()) result.Set("undoEntry", JsonValue(undo->GetUndoDescription()));
     if (!opResult.message.empty()) result.Set("message", JsonValue(opResult.message));
     if (!opResult.data.IsNull()) result.Set("data", OpDataToJson(opResult.data));
@@ -401,10 +397,9 @@ OperatorBridgeResult QueryOperator(editor::EditorContext& context, const JsonVal
         return OperatorBridgeResult::Err("UNKNOWN_OPERATOR",
                                          "未登録の操作です: " + id + " (editor.op.list で一覧できます)");
 
-    // read 権限で到達できる入口なので、ここを通せるのは Query だけ。
-    // WHY エラーにするか: 黙って実行すると、read 権限のつもりの接続から
-    //     Action / Mutation が通ってしまう。逆に黙って無視すると、
-    //     AI は「呼んだのに何も返らない」を操作の不具合として調べ始める。
+    /// @note read 権限で到達できる入口なので、ここを通せるのは Query だけ。黙って実行すると
+    ///       read 権限のつもりの接続から Action/Mutation が通ってしまい、黙って無視すると
+    ///       AI が「呼んだのに何も返らない」を不具合として調べ始めるため、エラーで返す。
     if (op->kind != OpKind::Query)
         return OperatorBridgeResult::Err("NOT_A_QUERY",
                                          "editor.op.query は kind=query の操作専用です: " + id

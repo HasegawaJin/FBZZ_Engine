@@ -1,24 +1,10 @@
-/// @file    RenderPasses/Geometry/WaterNoiseBake.hpp
+/// @file    WaterNoiseBake.hpp
 /// @brief   水面のさざ波タイル (タイラブルな勾配ノイズ + ミップ連鎖) を CPU で焼く。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 ///
-/// WHY 手続き計算をやめてテクスチャにするか:
-///   1. 精度。旧実装は `frac(sin(dot(p,k)))` をワールド由来の格子添字で引いていた。
-///      原点から数百 m 離れると sin の引数が 10^5 rad を超え、fp32 の刻みがハッシュを
-///      量子化する。海サイズの水面ではさざ波が縞や繰り返しへ崩れていた。
-///   2. エイリアシング。勾配をミップへ落とすと «平均すると平坦» が自動的に成り立ち、
-///      遠景のさざ波が総毛立つのをハードウェアのフィルタが引き受ける。
-///   3. 速度。5 オクターブ × 4 ハッシュ = 20 回の sin が消え、浮いたぶんを
-///      異方フィルタと領域ワープに回せる。
-///
-/// WHY オーサリング資産にしないか: Water.hlsl の «アセット 0 個で成立する» 前提を崩さない。
-/// タイルは起動時に 1 枚だけ焼いて全水面で共有するため、水面ごとのタイリング調整も要らない。
-///
-/// 生成物 (RGBA8, WRAP サンプル前提で完全タイラブル):
-///   R/G = ∂h/∂q (q はノイズセル単位)。0.5 中心で `derivativeScale` 倍に正規化済み
-///   B   = 高さ h を [0,1] へ写したもの (泡のムラに使う)
-///   A   = 255 (予約)
+/// @note タイルを焼く理由 (精度・エイリアシング・速度) とオーサリング資産にしない理由は `water-waves.md` §さざ波。
+///       生成物は RGBA8: R/G=∂h/∂q (0.5 中心, `derivativeScale` 倍)、B=高さ h [0,1]、A=予約 (WRAP 前提で完全タイラブル)。
 /// @see Docs/design/water-waves.md
 #pragma once
 
@@ -33,13 +19,11 @@ namespace fbzz::scene::waternoise {
 /// タイル 1 辺 [texel]。
 inline constexpr std::uint32_t kTileSize = 512u;
 /// 勾配 1 成分あたりの目標 RMS。
-/// WHY 固定値へ正規化するか: 旧実装の値ノイズ勾配の RMS がこの値だった。揃えておかないと、
-///      ノイズの種類を差し替えただけで既存 .mat の detailStrength が別の強さを意味してしまう。
+/// @note 旧・値ノイズ勾配の RMS に合わせた固定値。変えるとノイズ種を差し替えただけで既存 .mat の detailStrength の意味が変わる。
 inline constexpr float kGradientRms = 0.5f;
 /// タイル 1 辺あたりのノイズセル数。
-/// WHY 64 か: 1 セル 8 texel を確保しつつ、さざ波の «最も粗いオクターブ» の繰り返しを
-///      detailScale=0.37 で 173 m まで伸ばす。セルを増やすと texel/cell が減って
-///      勾配が階段状になり、減らすと繰り返しが目に付く。
+/// @note 64: 1 セル 8 texel を保ちつつ最粗オクターブの繰り返しを detailScale=0.37 で 173 m まで伸ばす。
+///       増やすと勾配が階段状に、減らすと繰り返しが目立つ。
 inline constexpr std::uint32_t kTileCells = 64u;
 
 /// 焼き上がったタイル。mips[0] が最大解像度。
@@ -73,9 +57,7 @@ inline void CellGradient(std::int32_t x, std::int32_t y, std::int32_t period, fl
 }
 
 /// タイラブルな 2D 勾配ノイズ (Perlin)。値と解析勾配を同時に返す。
-///
-/// WHY 値ノイズではないか: 値ノイズの勾配は格子線上でゼロになるため、«平らな筋» が
-///     碁盤目に残ってさざ波が泡状に見える。勾配ノイズは格子上でも傾きを持つ。
+/// @note 値ノイズでなく勾配ノイズを使う理由: 値ノイズは勾配が格子線上でゼロになり «平らな筋» が残って泡状に見える。
 /// @param px,py セル単位の座標。
 /// @param period 何セルで折り返すか。
 /// @param[out] dx,dy ∂h/∂px, ∂h/∂py。

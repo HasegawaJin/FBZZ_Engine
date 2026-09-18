@@ -3,12 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY Engine に置くか:
-///   生成経路は長らく Editor (PrefabSerializer) にしか無く、スタンドアロン実行では
-///   Script::InstantiatePrefab のコールバックが誰にも設定されないため、
-///   PrefabPool::Spawn が必ず失敗していた。プレファブをゲーム本体で使う以上、
-///   «読んで展開する» 側は Engine の持ち物でなければならない。
-///   保存・Apply・Revert・差分算出はオーサリング操作なので Editor に残る。
+/// @note 生成経路はもと Editor (PrefabSerializer) にしか無く、スタンドアロンでは
+///       Script::InstantiatePrefab のコールバック未設定で PrefabPool::Spawn が必ず失敗していた。
+/// @note 保存・Apply・Revert・差分算出はオーサリング操作なので Editor に残る。
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 #include <toml++/toml.hpp>
@@ -20,9 +17,8 @@ namespace fbzz::scene {
 
 class Scene;
 
-/// プレファブ定義とインスタンスの差分 1 件。
-/// path は GO テーブル内のドット区切りパス (例 "transform.position",
-/// "LightComponent.intensity")。
+/// @brief プレファブ定義とインスタンスの差分 1 件。
+/// @note path は GO テーブル内のドット区切りパス (例 `transform.position`, `LightComponent.intensity`)。
 struct PrefabOverride {
     std::string prefabSourceId; ///< プレファブ側 GO の instanceId (対応キー)
     std::string instanceGuid;   ///< インスタンス側 GO の instanceId
@@ -32,39 +28,31 @@ struct PrefabOverride {
     std::string instanceValue;  ///< 表示用の現在値
 };
 
-/// 1 インスタンス階層ぶんの差分と、パッチ適用に必要な現在値のスナップショット。
+/// @brief 1 インスタンス階層ぶんの差分と、パッチ適用に必要な現在値のスナップショット。
 struct PrefabOverrideSet {
     std::string prefabAssetPath; ///< Assets 起点の相対パス
     std::vector<PrefabOverride> entries;
-    /// prefabSourceId → そのインスタンス GO の現在のシリアライズ表現。
-    /// entries は「どのパスが違うか」しか持たないため、値の書き戻しはここから引く。
+    /// @brief prefabSourceId → そのインスタンス GO の現在のシリアライズ表現。
+    /// @note entries は「どのパスが違うか」しか持たないため、値の書き戻しはここから引く。
     std::unordered_map<std::string, toml::table> instanceTables;
 
     [[nodiscard]] bool Empty() const { return entries.empty(); }
 };
 
-/// ドット区切りパスで node を引く。見つからなければ nullptr。
+/// @brief ドット区切りパスで node を引く。
+/// @return 見つからなければ nullptr。
 [[nodiscard]] const toml::node* FindNodeAtPath(const toml::table& table, const std::string& path);
 
-/// ドット区切りパスへ node を書き込む。途中のテーブルが無い場合は作らず false を返す。
+/// @brief ドット区切りパスへ node を書き込む。
+/// @return 途中のテーブルが無い場合は作らず false。
 bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node& value);
 
-/// プレファブアセットを展開してシーンへ追加する。
-///
-/// overrides を渡すと、定義を展開したあと該当プロパティだけをその値で上書きしてから
-/// 生成する (インスタンス側の個別調整を保ったまま作り直す用)。
-///
-/// preserveGuids には「プレファブ側 instanceId → 生成後に名乗らせたい instanceId」を渡す。
-/// 既存インスタンスを作り直す経路 (Revert / Apply の伝播) で «元の実体と同じ guid» を
-/// 名乗らせるためのもの。
-/// WHY 要るか: 作り直しのたびに新しい UUID を振ると、シーンの他のオブジェクトが
-///     持つ «そのインスタンスを指す参照» (カメラの追従先・IK のターゲット・
-///     スクリプトの FBZZ_REF) が一斉に行き先を失う。表からは «プレファブを直したら
-///     カメラが動かなくなった» という形でしか見えない。
-/// 渡した guid が既にシーンで使われていないことは呼び出し側の責任 (作り直しでは
-/// 旧階層を先に破棄するため衝突しない)。表に無い分は従来どおり新規採番する。
-///
-/// path は絶対パスまたはプロジェクトルートからのパス。拡張子が無ければ .prefab を補う。
+/// @brief プレファブアセットを展開してシーンへ追加する。
+/// @param path 絶対パスまたはプロジェクトルートからのパス。拡張子が無ければ .prefab を補う。
+/// @param overrides 渡すと展開後に該当プロパティだけをその値で上書きする (個別調整を保ったまま作り直す用)。
+/// @param preserveGuids プレファブ側 instanceId → 生成後に名乗らせたい instanceId。Revert/Apply の作り直し経路で使う。
+/// @note guid を維持しないと、そのインスタンスを指す参照 (追従先・IK ターゲット・FBZZ_REF) が作り直しのたびに行き先を失う。
+/// @note 渡した guid が既にシーンで使われていないことは呼び出し側の責任。表に無い分は新規採番する。
 bool InstantiatePrefabAsset(Scene& scene,
                             const std::string& path,
                             std::vector<EntityID>& outRootEntities,

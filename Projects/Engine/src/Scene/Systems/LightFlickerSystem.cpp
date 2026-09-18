@@ -19,9 +19,9 @@ namespace {
 
 constexpr float kTwoPi = 6.28318530717958647692f;
 
-// 整数ハッシュ (lowbias32)。同じ入力からは常に同じ値しか出ない —— «同じ seed なら
-// 同じ結果» を成立させるのに、状態を持つ乱数生成器を使ってはいけない。
-// フレームを飛ばしても巻き戻しても、時刻と seed だけで揺れが決まる。
+/// 整数ハッシュ (lowbias32)。同じ入力からは常に同じ値しか出ない —— «同じ seed なら
+/// 同じ結果» を成立させるのに、状態を持つ乱数生成器を使ってはいけない。
+/// フレームを飛ばしても巻き戻しても、時刻と seed だけで揺れが決まる。
 [[nodiscard]] std::uint32_t HashU32(std::uint32_t x)
 {
     x ^= x >> 16;
@@ -37,11 +37,9 @@ constexpr float kTwoPi = 6.28318530717958647692f;
     return static_cast<float>(HashU32(x)) * (1.0f / 4294967296.0f);
 }
 
-// 整数格子の乱数を smoothstep で繋いだ value noise [0, 1]。
-//
-// WHY 白色雑音をそのまま使わないか: 毎フレーム独立の乱数はフレームレートが上がるほど
-//     速く震え、60fps と 144fps で別物の絵になる。時刻を格子で区切れば、揺れの速さは
-//     flickerFrequency だけが決める。
+/// @brief 整数格子の乱数を smoothstep で繋いだ value noise [0, 1]。
+/// @note 白色雑音は毎フレーム独立の乱数でフレームレートが上がるほど速く震え、60fps と
+///       144fps で別物の絵になる。時刻を格子で区切れば、揺れの速さは flickerFrequency だけが決める。
 [[nodiscard]] float ValueNoise01(float t, std::uint32_t seed)
 {
     const float floored = std::floor(t);
@@ -54,7 +52,7 @@ constexpr float kTwoPi = 6.28318530717958647692f;
     return a + (b - a) * w;
 }
 
-// 波形 [0, 1] 目安。Curve モードだけはカーブの値そのままなので 1 を超えうる。
+/// 波形 [0, 1] 目安。Curve モードだけはカーブの値そのままなので 1 を超えうる。
 [[nodiscard]] float FlickerWave(const LightComponent& light)
 {
     const float cycles = light.flickerTime * (std::max)(light.flickerFrequency, 0.0f)
@@ -76,12 +74,9 @@ constexpr float kTwoPi = 6.28318530717958647692f;
     return wave + (noise - wave) * noiseAmount;
 }
 
-// Play セッション中か。Pause 中も true で、編集中だけ false になる。
-//
-// WHY playing だけを見ないか: SetPlaying() を呼ばない SceneManager (Standalone の
-//     テンプレートやプレビュー用) では playing が既定の false のまま simulating だけ
-//     true になる。ScriptSystem::InPlayMode と同じ規則を使う —— ここだけ別の判定に
-//     すると «エディターでは揺れるのに配布ビルドで止まる» が起きる。
+/// @brief Play セッション中か。Pause 中も true で、編集中だけ false になる。
+/// @note SetPlaying() を呼ばない Standalone のテンプレート/プレビューでは playing が false の
+///       まま simulating だけ true になる。ScriptSystem::InPlayMode と同じ判定を使う。
 [[nodiscard]] bool InPlayMode(const SystemContext& ctx)
 {
     return ctx.simulating || ctx.playing;
@@ -94,7 +89,7 @@ constexpr float kTwoPi = 6.28318530717958647692f;
         && light.flickerAmplitude > 0.0f;
 }
 
-// 捕獲した値へ戻す。捕獲していなければ何もしない。
+/// 捕獲した値へ戻す。捕獲していなければ何もしない。
 void Restore(LightComponent& light)
 {
     if (!light.flickerCaptured) return;
@@ -112,8 +107,8 @@ ComponentAccess LightFlickerSystem::GetAccess() const
 
 OrderingHints LightFlickerSystem::GetOrder() const
 {
-    // VFXLightEnvelope も intensity を捕まえて掛け直す。先に VFX を通しておかないと、
-    // 捕獲の順番がフレームごとに入れ替わりうる (同じ光源に両方付けるのは非推奨)。
+    /// @note VFXLightEnvelope も intensity を捕まえて掛け直す。先に VFX を通しておかないと、
+    ///       捕獲の順番がフレームごとに入れ替わりうる (同じ光源に両方付けるのは非推奨)。
     return OrderingHints{}.After<VFXSystem>();
 }
 
@@ -127,16 +122,16 @@ void LightFlickerSystem::Update(SystemContext& ctx)
         if (lightPtr == nullptr) continue;
         LightComponent& light = *lightPtr;
 
-        // 編集中は書かない。intensity はシーンへ保存されるフィールドなので、
-        // 揺れている途中の値が «オーサリング値» として焼き付く。
+        /// @note 編集中は書かない。intensity はシーンへ保存されるフィールドなので、
+        ///       揺れている途中の値が «オーサリング値» として焼き付く。
         if (!playing || !FlickerActive(light)) {
             Restore(light);
             continue;
         }
 
         if (!light.flickerCaptured) {
-            // WHY 通報するか: VFXLightEnvelope も «捕まえて掛け直す» ので、同じ光源に両方付けると
-            //     互いの出力を基準として掴み合い、繰り返すたびに暗くなる。絵だけ見て原因に辿り着けない。
+            /// @note VFXLightEnvelope も «捕まえて掛け直す» ので、同じ光源に両方付けると互いの出力を
+            ///       基準として掴み合い、繰り返すたびに暗くなる。絵だけ見て原因に辿り着けない。
             if (ctx.scene.GetComponent<VFXLightEnvelope>(id) != nullptr) {
                 const GameObject* owner = ctx.scene.GetGameObject(id);
                 FBZZ_LOG_WARN("LightFlicker: '%s' は VFXLightEnvelope と同居しています。"
@@ -147,7 +142,7 @@ void LightFlickerSystem::Update(SystemContext& ctx)
             light.flickerCaptured      = true;
             light.flickerTime          = 0.0f;
         }
-        // Pause 中 (playing && !simulating) は時刻を進めず、今の明るさを保つ。
+        /// @note Pause 中 (playing && !simulating) は時刻を進めず、今の明るさを保つ。
         if (ctx.simulating) light.flickerTime += dt;
 
         const float amplitude = std::clamp(light.flickerAmplitude, 0.0f, 1.0f);

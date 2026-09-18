@@ -32,10 +32,10 @@
 namespace fbzz::scene {
 namespace {
 
-// 半開区間 (tPrev, t] の下端を、再生開始時に「時刻 0 のキーも入る」よう少しだけ下げる。
+/// 半開区間 (tPrev, t] の下端を、再生開始時に「時刻 0 のキーも入る」よう少しだけ下げる。
 constexpr double kEventEpsilon = 1.0e-6;
 
-// ── binding ────────────────────────────────────────────────────────────────
+/// @name binding
 
 GameObject* ResolveBinding(Scene& scene,
                            GameObject& owner,
@@ -43,7 +43,7 @@ GameObject* ResolveBinding(Scene& scene,
                            const asset::SequenceTrack& track)
 {
     if (track.binding.empty()) return nullptr;
-    // 予約キー。単体オブジェクトの演出をバインド無しで書ける。
+    /// @note 予約キー。単体オブジェクトの演出をバインド無しで書ける。
     if (track.binding == "$self") return &owner;
     for (const auto& binding : player.bindings) {
         if (binding.key != track.binding) continue;
@@ -52,8 +52,8 @@ GameObject* ResolveBinding(Scene& scene,
     return nullptr;
 }
 
-// 解決できないキーは、そのトラックだけを黙らせて警告を 1 回出す。
-// WHY 全体を止めないか: 演出の一部が欠けても、進行が止まるよりは被害が小さい。
+/// @brief 解決できないキーは、そのトラックだけを黙らせて警告を 1 回出す。
+/// @note 演出の一部が欠けても、全体を止めるより被害が小さい。
 GameObject* ResolveTrackTarget(Scene& scene,
                                GameObject& owner,
                                const SequencePlayerComponent& player,
@@ -75,7 +75,7 @@ GameObject* ResolveTrackTarget(Scene& scene,
     return nullptr;
 }
 
-// ── Transform ──────────────────────────────────────────────────────────────
+/// @name Transform
 
 math::Vector3 DivideComponents(const math::Vector3& value, const math::Vector3& divisor)
 {
@@ -88,9 +88,9 @@ math::Vector3 MultiplyComponents(const math::Vector3& a, const math::Vector3& b)
     return { a.x * b.x, a.y * b.y, a.z * b.z };
 }
 
-// ワールド指定の姿勢を、親を考慮したローカル値へ落とす。
-// WHY worldPosition へ直接書かないか: TransformLateUpdate が local から作り直すため、
-//     書いた値は同じフレームのうちに捨てられる。
+/// @brief ワールド指定の姿勢を、親を考慮したローカル値へ落とす。
+/// @note worldPosition へ直接書いても TransformLateUpdate が local から作り直すため、
+///       書いた値は同じフレームのうちに捨てられる。
 void ApplyWorldPose(GameObject& target,
                     const math::Vector3& worldPosition,
                     const math::Quaternion& worldRotation,
@@ -148,7 +148,7 @@ void ApplyTransformTrack(const asset::SequenceTrack& track,
     }
 }
 
-// ── Animation ──────────────────────────────────────────────────────────────
+/// @name Animation
 
 const asset::AnimationClip* FindLoadedClip(const AnimatorComponent& animator,
                                            const std::string& sourcePath,
@@ -166,9 +166,9 @@ const asset::AnimationClip* FindLoadedClip(const AnimatorComponent& animator,
     return firstFromSource;
 }
 
-// このトラックが参照するクリップを Animator のロード対象へ加える。
-// WHY: LoadClips はステートから辿れるクリップしか読まない。演出専用のクリップは
-//      どのステートからも参照されないため、宣言しておかないと Slot が空振りする。
+/// @brief このトラックが参照するクリップを Animator のロード対象へ加える。
+/// @note LoadClips はステートから辿れるクリップしか読まない。演出専用のクリップはどの
+///       ステートからも参照されないため、宣言しておかないと Slot が空振りする。
 void RegisterClipSources(AnimatorComponent& animator, const asset::SequenceTrack& track)
 {
     bool added = false;
@@ -233,8 +233,8 @@ void ApplyAnimationTrack(const asset::SequenceTrack& track,
     if (!layer) {
         if (!runtime.warnedContract) {
             runtime.warnedContract = true;
-            // Base Layer は animator.layers に入らない。Slot はレイヤーごとの機構なので、
-            // 演出でクリップを差し込むレイヤーは Controller 側に用意しておく必要がある。
+            /// @note Base Layer は animator.layers に入らない。Slot はレイヤーごとの機構なので、
+            ///       演出でクリップを差し込むレイヤーは Controller 側に用意しておく必要がある。
             FBZZ_LOG_WARN("SequenceSystem: Animator にレイヤー '%s' がありません "
                           "(track '%s')", track.layerName.c_str(), track.name.c_str());
         }
@@ -278,7 +278,7 @@ void ApplyAnimationTrack(const asset::SequenceTrack& track,
         runtime.slotActive = true;
     }
 
-    // 時刻とフェードは演出が持つ。Animator に進めさせない。
+    /// @note 時刻とフェードは演出が持つ。Animator に進めさせない。
     layer->slot.driven = true;
 
     double local = (t - regionStart) * static_cast<double>(clip.speed) + clip.clipIn;
@@ -300,7 +300,7 @@ void ApplyAnimationTrack(const asset::SequenceTrack& track,
     layer->slot.weight = std::clamp(weight, 0.0f, 1.0f);
 }
 
-// ── Audio ──────────────────────────────────────────────────────────────────
+/// @name Audio
 
 void PushOneShot(AudioSourceComponent& source, const asset::SequenceAudioClip& clip)
 {
@@ -311,9 +311,9 @@ void PushOneShot(AudioSourceComponent& source, const asset::SequenceAudioClip& c
     source.m_pendingOneShots.push_back(std::move(request));
 }
 
-// ── スナップショットと復帰 ──────────────────────────────────────────────────
+/// @name スナップショットと復帰
 
-// 復帰に要るトラック情報を runtime へ写す。キーは持ち込まない (復帰には識別だけあればよい)。
+/// 復帰に要るトラック情報を runtime へ写す。キーは持ち込まない (復帰には識別だけあればよい)。
 void CaptureRestoreBinding(const asset::SequenceTrack& track, SequenceTrackRuntime& runtime)
 {
     runtime.type          = track.type;
@@ -340,8 +340,8 @@ void SnapshotTrack(const asset::SequenceTrack& track,
 
     switch (track.type) {
     case asset::SequenceTrackType::Transform:
-        // SequenceSystem は AnimatorSystem より前に走るため、ボーンへ書いても
-        // 同じフレームのうちに上書きされる。黙って効かないより言う。
+        /// @note SequenceSystem は AnimatorSystem より前に走るため、ボーンへ書いても
+        ///       同じフレームのうちに上書きされる。黙って効かないより言う。
         if (target->GetComponent<BoneComponent>() && !runtime.warnedContract) {
             runtime.warnedContract = true;
             FBZZ_LOG_WARN("SequenceSystem: TransformTrack '%s' の対象 '%s' はボーンです。"
@@ -379,14 +379,14 @@ void SnapshotTrack(const asset::SequenceTrack& track,
     }
 }
 
-// 復帰はアセットを一切見ない。runtime に撮ってある「元の値」と「戻す先」だけで完結する。
+/// 復帰はアセットを一切見ない。runtime に撮ってある「元の値」と「戻す先」だけで完結する。
 void RestoreTrack(SequenceTrackRuntime& runtime, GameObject* target)
 {
     if (!target) { runtime.slotActive = false; runtime.loopingClip = -1; return; }
 
     switch (runtime.type) {
     case asset::SequenceTrackType::Animation:
-        // 差し込んだクリップはフェードアウトさせる。切ると姿勢が 1 フレームで飛ぶ。
+        /// @note 差し込んだクリップはフェードアウトさせる。切ると姿勢が 1 フレームで飛ぶ。
         if (auto* animator = target->GetComponent<AnimatorComponent>())
             ReleaseSlot(*animator, runtime.layerName, runtime, true);
         break;
@@ -417,8 +417,8 @@ void RestoreTrack(SequenceTrackRuntime& runtime, GameObject* target)
         break;
     }
     case asset::SequenceTrackType::Audio:
-        // 鳴らしっぱなしのループだけは責任があるので止める。
-        // 一度鳴った one-shot は戻せない出来事なので何もしない。
+        /// @note 鳴らしっぱなしのループだけは責任があるので止める。
+        ///       一度鳴った one-shot は戻せない出来事なので何もしない。
         if (runtime.loopingClip >= 0) {
             if (auto* source = target->GetComponent<AudioSourceComponent>()) {
                 source->m_pendingStop = true;
@@ -438,7 +438,7 @@ void RestoreTrack(SequenceTrackRuntime& runtime, GameObject* target)
     }
 }
 
-// ── イベント配送 ────────────────────────────────────────────────────────────
+/// @name イベント配送
 
 void DispatchSequenceEvent(GameObject* target,
                            const asset::SequenceEventKey& key,
@@ -470,7 +470,7 @@ void DispatchSequenceFinished(GameObject& owner, const std::string& sequenceName
                                               sequenceName.c_str(), "OnSequenceFinished");
 }
 
-// ── 1 プレイヤー分の評価 ────────────────────────────────────────────────────
+/// @name 1 プレイヤー分の評価
 
 struct PlayerContext {
     Scene&                       scene;
@@ -486,8 +486,8 @@ GameObject* TrackTarget(PlayerContext& pc, size_t index)
     const asset::SequenceTrack& track = pc.sequence.tracks[index];
     SequenceTrackRuntime& runtime = pc.player.trackRuntime[index];
     if (track.binding.empty()) return nullptr;
-    // 世代まで見る。破棄されたスロットが再利用されると、同じ index が別の
-    // GameObject を指したまま「有効」になり、無関係なオブジェクトを動かす。
+    /// @note 世代まで見る。破棄されたスロットが再利用されると、同じ index が別の
+    ///       GameObject を指したまま「有効」になり、無関係なオブジェクトを動かす。
     if (runtime.target.IsValid() && pc.scene.IsValid(runtime.target)) {
         if (GameObject* cached = pc.scene.GetGameObject(runtime.target)) return cached;
     }
@@ -518,7 +518,7 @@ void EvaluateContinuous(PlayerContext& pc, double t, bool scrubbing)
                 ApplyComponentProperty(*target, track.property, t);
             break;
         case asset::SequenceTrackType::Activation: {
-            // 状態なので tPrev を見ない。区間に入っていれば表示、外れていれば非表示。
+            /// @note 状態なので tPrev を見ない。区間に入っていれば表示、外れていれば非表示。
             bool inside = false;
             for (const auto& range : track.ranges) {
                 if (t >= range.start && t < range.end) { inside = true; break; }
@@ -527,7 +527,7 @@ void EvaluateContinuous(PlayerContext& pc, double t, bool scrubbing)
             break;
         }
         case asset::SequenceTrackType::VFX:
-            // スクラブ中も絵を出したいので、区間内なら決定論スクラブへ書く。
+            /// @note スクラブ中も絵を出したいので、区間内なら決定論スクラブへ書く。
             if (!scrubbing) break;
             if (auto* vfx = target->GetComponent<VFXComponent>()) {
                 bool inside = false;
@@ -535,8 +535,8 @@ void EvaluateContinuous(PlayerContext& pc, double t, bool scrubbing)
                     const double end = clip.end > 0.0 ? clip.end : pc.duration;
                     if (t < clip.start || t >= end) continue;
                     vfx->editorScrubTime = static_cast<float>(t - clip.start);
-                    // VFXSystem は «書き込みが途絶えたスクラブ» を手放すため、
-                    // 時刻と一緒に鮮度も更新しないと 2 フレームで通常再生へ戻る。
+                    /// @note VFXSystem は «書き込みが途絶えたスクラブ» を手放すため、
+                    ///       時刻と一緒に鮮度も更新しないと 2 フレームで通常再生へ戻る。
                     vfx->editorScrubFrame = Time::frameCount;
                     inside = true;
                     break;
@@ -565,8 +565,8 @@ void EvaluateDiscrete(PlayerContext& pc, double from, double to)
         case asset::SequenceTrackType::Event: {
             GameObject* target = track.binding.empty() ? nullptr : TrackTarget(pc, i);
             if (!track.binding.empty() && !target) break;
-            // 1 フレームで複数キーをまたいだら全部発火する。落ちたフレームで
-            // 「戻す合図」だけが消えると、操作が返ってこない形で壊れる。
+            /// @note 1 フレームで複数キーをまたいだら全部発火する。落ちたフレームで
+            ///       「戻す合図」だけが消えると、操作が返ってこない形で壊れる。
             for (const auto& key : track.eventKeys) {
                 if (key.time <= from || key.time > to) continue;
                 DispatchSequenceEvent(target, key, key.time, pc.displayName);
@@ -635,7 +635,7 @@ void SnapshotAll(PlayerContext& pc)
     }
 }
 
-// アセットを引数に取らない。差し替わった後でも触ったものを戻せる唯一の形。
+/// アセットを引数に取らない。差し替わった後でも触ったものを戻せる唯一の形。
 void RestoreAll(Scene& scene, SequencePlayerComponent& player)
 {
     for (auto& runtime : player.trackRuntime) {
@@ -657,24 +657,24 @@ void StopPlayback(PlayerContext& pc)
 
 void BeginPlayback(PlayerContext& pc)
 {
-    // 前の再生が残っていたら、まず元へ戻してから撮り直す。
+    /// @note 前の再生が残っていたら、まず元へ戻してから撮り直す。
     if (pc.player.playing) RestoreAll(pc.scene, pc.player);
     SnapshotAll(pc);
     pc.player.playing  = true;
     pc.player.paused   = false;
     pc.player.time     = 0.0;
-    // 時刻 0 に置いたキーを (timePrev, t] へ含める。
+    /// @note 時刻 0 に置いたキーを (timePrev, t] へ含める。
     pc.player.timePrev = -kEventEpsilon;
 }
 
 void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent& player)
 {
-    // 未保存の編集があればそちらが正本。無ければディスクの .sequence を引く。
+    /// @note 未保存の編集があればそちらが正本。無ければディスクの .sequence を引く。
     const asset::SequenceAsset* sequence = player.authoringSequence.get();
     const int assetGeneration = asset::AssetManager::GetAssetGeneration();
     if (!sequence) {
         if (player.sequencePath.empty()) {
-            // パスも編集中の中身も無い。触ったものが残っていれば戻す。
+            /// @note パスも編集中の中身も無い。触ったものが残っていれば戻す。
             if (player.appliedSequence) {
                 RestoreAll(ctx.scene, player);
                 player.trackRuntime.clear();
@@ -689,12 +689,10 @@ void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent
         if (!sequence) return;
     }
 
-    // 参照先が入れ替わったら、まず「前の演出が触ったもの」を戻してから撮り直す。
-    // 復帰はアセットを見ないので、差し替え後でも正しく戻せる。
-    //
-    // WHY 世代の比較を再生中に効かせないか: アセット世代は無関係な .mat の
-    //     再読込でも進む。再生中にそれで畳むと、シェーダーを 1 枚直しただけで
-    //     ボスの登場演出が途中で止まる。世代は「編集中の取りこぼし防止」に限る。
+    /// @note 参照先が入れ替わったら、まず「前の演出が触ったもの」を戻してから撮り直す。復帰は
+    ///       アセットを見ないので差し替え後でも正しく戻せる。世代の比較は再生中には効かせない
+    ///       (アセット世代は無関係な .mat の再読込でも進み、再生中に畳むとシェーダーを 1 枚
+    ///       直しただけで演出が途中で止まる。世代は「編集中の取りこぼし防止」に限る)。
     const bool sequenceChanged =
         player.appliedSequence != static_cast<const void*>(sequence) ||
         player.appliedAuthoringRevision != player.authoringRevision ||
@@ -719,15 +717,15 @@ void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent
     const asset::SequenceTimeMode timeMode =
         player.overrideAssetSettings ? player.timeMode : sequence->timeMode;
 
-    // ── 編集中 ────────────────────────────────────────────────────────────
+    /// @name 編集中
     if (!ctx.playing) {
         player.awakeHandled = false;
         player.pendingPlay  = false;
         player.pendingStop  = false;
         if (player.editorScrubTime >= 0.0f) {
-            // スクラブは「見るだけ」。撮り直しは 1 回きりにする。
-            // WHY: 毎フレーム撮り直すと、2 フレーム目のスナップショットが
-            //      「演出が書き替えた後の姿勢」になり、編集中のシーンが戻せなくなる。
+            /// @note スクラブは「見るだけ」。撮り直しは 1 回きりにする。毎フレーム撮り直すと、
+            ///       2 フレーム目のスナップショットが「演出が書き替えた後の姿勢」になり、
+            ///       編集中のシーンが戻せなくなる。
             if (!player.editorSnapshot) {
                 SnapshotAll(pc);
                 player.editorSnapshot = true;
@@ -744,7 +742,7 @@ void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent
         return;
     }
 
-    // ── Play セッション ───────────────────────────────────────────────────
+    /// @name Play セッション
     if (!player.awakeHandled) {
         player.awakeHandled = true;
         if (player.playOnAwake) player.pendingPlay = true;
@@ -759,7 +757,7 @@ void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent
         BeginPlayback(pc);
     }
     if (player.pendingSeek >= 0.0) {
-        // シークは「その時刻の絵」だけを出す。跨いだ合図は発火しない。
+        /// @note シークは「その時刻の絵」だけを出す。跨いだ合図は発火しない。
         player.time     = std::clamp(player.pendingSeek, 0.0, pc.duration);
         player.timePrev = player.time;
         player.pendingSeek = -1.0;
@@ -768,14 +766,14 @@ void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent
     if (!player.playing) return;
 
     if (player.paused || !ctx.simulating) {
-        // 止まっている間も絵は保つ。他のシステムが上書きした姿勢を毎フレーム引き戻す。
+        /// @note 止まっている間も絵は保つ。他のシステムが上書きした姿勢を毎フレーム引き戻す。
         EvaluateContinuous(pc, player.time, false);
         return;
     }
 
-    // Unscaled は「止まっている画面の上で進めたい」演出専用。
-    // シーケンスから timeScale は書かない — 書き手を 2 つにすると、どちらが最後に
-    // 書いたかで結果が決まる。スローをかけるのは TimeManager 側の仕事。
+    /// @note Unscaled は「止まっている画面の上で進めたい」演出専用。
+    ///       シーケンスから timeScale は書かない — 書き手を 2 つにすると、どちらが最後に
+    ///       書いたかで結果が決まる。スローをかけるのは TimeManager 側の仕事。
     const float rawDt = timeMode == asset::SequenceTimeMode::Unscaled
         ? Time::unscaledDeltaTime
         : ctx.dt;
@@ -805,7 +803,7 @@ void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent
     player.time = t;
     EvaluateContinuous(pc, t, false);
 
-    // 逆再生・巻き戻しでは離散トラックを発火しない (合図は巻き戻せない)。
+    /// @note 逆再生・巻き戻しでは離散トラックを発火しない (合図は巻き戻せない)。
     if (wrapped) {
         EvaluateDiscrete(pc, from, pc.duration);
         EvaluateDiscrete(pc, -kEventEpsilon, t);
@@ -827,9 +825,9 @@ void UpdatePlayer(SystemContext& ctx, GameObject& owner, SequencePlayerComponent
 
 ComponentAccess SequenceSystem::GetAccess() const
 {
-    // 触る先はアセットが決めるため、静的には宣言できない。
-    // WHY Unrestricted か: PropertyTrack は任意のコンポーネントへ Reflect 経由で書く。
-    //     書き込み型を並べ切れない以上、並列バッチから外すのが正しい。
+    /// @note 触る先はアセットが決めるため静的には宣言できない。PropertyTrack は任意の
+    ///       コンポーネントへ Reflect 経由で書くため、書き込み型を並べ切れない以上、
+    ///       並列バッチから外すのが正しい。
     return ComponentAccess{}.Unrestricted();
 }
 
@@ -843,8 +841,8 @@ OrderingHints SequenceSystem::GetOrder() const
 
 void SequenceSystem::Update(SystemContext& ctx)
 {
-    // EventTrack の配送はスクリプトを呼び、その中で GameObject が増減しうる。
-    // ComponentArray の span を握ったまま回すと、途中で無効化された領域を読む。
+    /// @note EventTrack の配送はスクリプトを呼び、その中で GameObject が増減しうる。
+    ///       ComponentArray の span を握ったまま回すと、途中で無効化された領域を読む。
     const auto entities = ctx.scene.GetEntities<SequencePlayerComponent>();
     if (entities.empty()) return;
     std::vector<EntityID> owners(entities.begin(), entities.end());

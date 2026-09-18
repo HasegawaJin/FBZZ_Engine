@@ -43,7 +43,7 @@ bool BTNodeIsLeaf(BTNodeType type) noexcept
 bool BTNodeIsPureCondition(BTNodeType type) noexcept
 {
     switch (type) {
-    // Blackboard と知覚結果を読むだけで、何も書き換えない。
+    /// @note Blackboard と知覚結果を読むだけで、何も書き換えない。
     case BTNodeType::BlackboardCondition:
     case BTNodeType::BlackboardCompare:
     case BTNodeType::HasTarget:
@@ -52,10 +52,8 @@ bool BTNodeIsPureCondition(BTNodeType type) noexcept
     case BTNodeType::HasLineOfSight:
         return true;
 
-    // WHY AlwaysSucceed / AlwaysFail を純粋扱いにするか:
-    //     テストで中断機構を検証する際、条件を固定値で切り替えたい。
-    //     どちらも状態を読み書きしないので安全。
-    //     AlwaysRunning は「実行中である」こと自体が状態なので含めない。
+    /// @note AlwaysSucceed/AlwaysFail は状態を読み書きしないため純粋条件に含める。
+    ///       AlwaysRunning は「実行中である」こと自体が状態なので除外する。
     case BTNodeType::AlwaysSucceed:
     case BTNodeType::AlwaysFail:
         return true;
@@ -100,9 +98,11 @@ const char* BTNodeTypeName(BTNodeType type) noexcept
 
 int BTNodeMaxChildren(BTNodeType type) noexcept
 {
-    if (BTNodeIsComposite(type)) return -1;  // 無制限
+    /// @note 無制限
+    if (BTNodeIsComposite(type)) return -1;
     if (BTNodeIsDecorator(type)) return 1;
-    return 0;                                 // リーフ
+    /// @note リーフ
+    return 0;
 }
 
 const char* BTStatusName(BTStatus status) noexcept

@@ -19,8 +19,7 @@ enum class SynthWave : uint8_t {
 /// 効果音 1 つを決めるパラメーター一式。
 ///
 /// このヘッダーは意図的に依存ゼロ (`<cstdint>` のみ) に保つ。
-/// WHY: ScriptProxy ヘッダーから include するため。Engine 実装型を引き込むと
-///      スクリプト DLL がエンジン内部へ直接依存することになる。
+/// @note ScriptProxy ヘッダーから include するため。Engine 実装型を引き込むとスクリプト DLL がエンジン内部へ直接依存することになる。
 ///
 /// 同じ SynthSpec からは常に同じ PCM が出る (Noise も seed で再現する)。
 /// 値域外は Synth::Render 側で丸めるため、呼び出し側での事前チェックは不要。

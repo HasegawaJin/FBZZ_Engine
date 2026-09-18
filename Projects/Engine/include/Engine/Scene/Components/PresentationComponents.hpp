@@ -20,26 +20,11 @@ namespace fbzz::scene {
 
 /// CPU で組み直すメッシュを 2 枚持ち、書くたびに入れ替える置き場。
 /// PresentationSystem が Sprite / Line の帯を焼くのに使う (シーンへは保存しない)。
-///
-/// WHY 1 枚を使い回さないか (DX12 でだけ壊れる):
-///   DX12Buffer::Update は永続 Map した Upload ヒープへの memcpy でしかない。
-///   DX12Context::BeginFrame が待つのは FRAME_COUNT (=2) フレーム前のフェンスなので、
-///   1 枚しか持たないと «GPU が 1 つ前のフレームで読んでいる最中の頂点» を上書きする。
-///   2 枚を交互に使えば、今書く側が最後に描かれたのは 2 フレーム前 = 待ち済みになる。
-///   DX11 は MAP_WRITE_DISCARD がバッファをリネームするため 1 枚でも無害で、
-///   バックエンドを DX12 へ切り替えたときだけ帯がちらつく形で出る。
-///
-/// WHY 毎フレーム作り直さないか (これが本題):
-///   以前は «Release して CreateBuffer し直す» ことで «GPU が読み終わるまで生かす» を
-///   実現していた。DX12 の Release は遅延解放なので正しくはあるが、線 1 本につき
-///   GPU リソース操作が毎フレーム 4 回走る。タイトル画面の電極 61 本で
-///   毎フレーム 122 回の生成 + 122 回の解放になり、それだけで 15ms 掛かっていた。
-///
-/// WHY unique_ptr か (shared_ptr をやめた理由):
-///   以前は shared_ptr で持ち、ResourceManager が weak_ptr で «誰も見なくなった Mesh» を
-///   毎フレーム拾って GPU バッファを返していた。所有者は常にこの Component 1 つなので
-///   参照カウントは要らず、«いつ返るか» が掃除の巡回まで遅れるだけだった。
-///   単独所有にして、Component が畳まれる 3 か所 (SceneRenderResources) で必ず返す。
+/// @note 2 枚必要: DX12 は BeginFrame が 2 フレーム前のフェンスまでしか待たないため、1 枚だと
+///       GPU が読んでいる最中の頂点を上書きする (DX11 は WRITE_DISCARD で無害、DX12 でのみ壊れる)。
+/// @note 毎フレーム作り直さない: 以前は Release+CreateBuffer を焼くたびに行い、電極 61 本で
+///       15ms 掛かっていた。unique_ptr 単独所有にして、複製時は「まだ焼いていない」状態から
+///       始める (次フレームで焼き直す)。所有者は常に 1 つなので shared_ptr の参照カウントは不要。
 struct DoubleBufferedMesh {
     std::unique_ptr<renderer::Mesh> slots[2];
     /// 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
@@ -52,10 +37,9 @@ struct DoubleBufferedMesh {
     DoubleBufferedMesh(DoubleBufferedMesh&&) noexcept = default;
     DoubleBufferedMesh& operator=(DoubleBufferedMesh&&) noexcept = default;
 
-    // WHY コピーで中身を連れていかないか: Component は複製・プレファブ展開で値ごとコピーされる。
-    //     GPU バッファまで写すと 2 つの GameObject が同じバッファへ交互に書き、
-    //     どちらかが畳まれた時点でもう片方が消えたバッファを描くことになる。
-    //     複製先は «まだ焼いていない» 状態から始めるのが正しい (次のフレームで焼き直す)。
+    /// @note コピーで中身を連れていかないのは、Component の複製・プレファブ展開が値コピーのため。
+    ///       GPU バッファまで写すと 2 つの GameObject が同じバッファへ交互に書き、片方が畳まれた
+    ///       時点でもう片方が消えたバッファを描く。複製先は «まだ焼いていない» 状態から始める。
     DoubleBufferedMesh(const DoubleBufferedMesh&) {}
     DoubleBufferedMesh& operator=(const DoubleBufferedMesh&) { return *this; }
 
@@ -72,14 +56,11 @@ struct SpriteRendererComponent {
     math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector2 size = { 1.0f, 1.0f };
     math::Vector2 pivot = { 0.5f, 0.5f };
-    // size と pivot を Sprite の .meta から取る (Pixels Per Unit と Pivot)。
-    //
-    // WHY 既定を false にするか: 既存シーンの size / pivot は手で決めた値で、
-    //     素材由来の値へ勝手に置き換えると全部の見た目が変わる。
-    //
-    // WHY 常時追従にするか (1 回きりのボタンにしないか):
-    //     Sprite Editor で Pivot を直したら、その絵を使っている全オブジェクトが
-    //     直ってほしい。1 回きりだと「どれを押し直したか」を人が覚えることになる。
+    /// size と pivot を Sprite の .meta から取る (Pixels Per Unit と Pivot)。
+    /// @note 既定 false: 既存シーンの size / pivot は手で決めた値で、素材由来の値へ勝手に
+    ///       置き換えると全部の見た目が変わる。
+    /// @note 1 回きりのボタンではなく常時追従にする: Sprite Editor で Pivot を直したら、
+    ///       その絵を使う全オブジェクトが直ってほしいため。
     bool useSpriteNativeSize = false;
     SpriteDrawMode drawMode = SpriteDrawMode::Simple;
     int sortingLayer = 0;
@@ -129,17 +110,10 @@ struct SortingGroupComponent {
 enum class LineSpace : int { Local = 0, World = 1 };
 
 /// 点列を «どんな断面で» 押し出すか。
-///
-/// WHY 筒を足すか:
-///   Ribbon は区間ごとに板を 1 枚張ってカメラへ向ける。線としては十分だが、
-///   «太さのあるもの» — レーザーの筒、パイプ、ケーブル — を通すと必ず紙に見える。
-///   軸に沿って視線が寄ったところで板が画面上で潰れるうえ、床へ突き刺さる端が
-///   板の切り口として出るため、地形との交差が «刺さっている» に見えない。
-///   実体のある筒なら輪郭も深度もジオメトリが持つので、どちらも起きない。
-///
-/// WHY 板を残すか:
-///   軌跡・放電・UI の線は «常にこちらを向いている» ことが読みやすさそのもので、
-///   筒にすると細い線ほど画面上で消える。用途が違うので置き換えではなく選択にする。
+/// @note Tube を足したのは、Ribbon (板 1 枚をカメラへ向ける) だと «太さのあるもの» (レーザー筒・
+///       パイプ) が視線が寄ると潰れ、地形へ突き刺さる端が板の切り口として出て刺さって見えないため。
+/// @note Ribbon も残すのは、軌跡・放電・UI の線は «常にこちらを向く» ことが読みやすさそのもので、
+///       Tube にすると細い線ほど画面上で消えるため。用途が違うので選択式にする。
 enum class LineShape : int { Ribbon = 0, Tube = 1 };
 
 struct LineRendererComponent {
@@ -211,9 +185,9 @@ enum class ProjectorShape : int { Box = 0, Perspective = 1 };
 struct ProjectorComponent {
     bool enabled = true;
     ProjectorShape shape = ProjectorShape::Box;
-    // render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡る。
-    // それ以外の .mat は albedo / normal / emissive のテクスチャだけを抜き出して
-    // 組み込みデカール描画へ載せる (旧来の Projector 設定を壊さないため)。
+    /// render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡る。
+    /// それ以外の .mat は albedo / normal / emissive のテクスチャだけを抜き出して
+    /// 組み込みデカール描画へ載せる (旧来の Projector 設定を壊さないため)。
     std::string materialPath;
     math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
     float fieldOfView = 45.0f;

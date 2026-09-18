@@ -14,7 +14,7 @@ namespace fbzz::tests {
 
 class Vector2Test : public testkit::Fixture {};
 
-// --- 長さと正規化 -----------------------------------------------------------
+/// @name 長さと正規化
 
 TEST_F(Vector2Test, LengthSquaredMatchesLengthSquared)
 {
@@ -41,7 +41,7 @@ TEST_F(Vector2Test, NormalizedPreservesDirection)
     EXPECT_VEC2_NEAR(v.Normalized(), math::Vector2(0.0f, -1.0f), testkit::kTolerance);
 }
 
-// --- 内積 -------------------------------------------------------------------
+/// @name 内積
 
 TEST_F(Vector2Test, DotIsZeroForPerpendicularAxes)
 {
@@ -65,7 +65,7 @@ TEST_F(Vector2Test, DotWithItselfEqualsLengthSquared)
     EXPECT_NEAR(math::Vector2::Dot(v, v), v.LengthSq(), testkit::kTolerance);
 }
 
-// --- 補間と演算子 -----------------------------------------------------------
+/// @name 補間と演算子
 
 TEST_F(Vector2Test, LerpReturnsTheEndpointsAtZeroAndOne)
 {
@@ -106,11 +106,11 @@ TEST_F(Vector2Test, DivisionIsTheInverseOfScaling)
     EXPECT_VEC2_NEAR((v * 4.0f) / 4.0f, v, testkit::kTolerance);
 }
 
-// --- 等値判定 ---------------------------------------------------------------
+/// @name 等値判定
 
 TEST_F(Vector2Test, EqualityToleratesDifferencesBelowEpsilon)
 {
-    // operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
+    /// @note operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
     const math::Vector2 a(0.0f, 0.0f);
     const math::Vector2 b(math::EPSILON * 0.5f, 0.0f);
 

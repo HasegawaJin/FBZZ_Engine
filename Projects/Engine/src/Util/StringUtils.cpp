@@ -83,10 +83,10 @@ std::string StringUtils::TruncateUtf8(const std::string& s, std::size_t maxBytes
                                       const std::string& ellipsis)
 {
     if (s.size() <= maxBytes) return s;
-    // ellipsis すら入らない指定は «切れるだけ切る» に倒す。
+    /// @note ellipsis すら入らない指定は «切れるだけ切る» に倒す。
     const std::size_t budget = maxBytes > ellipsis.size() ? maxBytes - ellipsis.size() : 0;
 
-    // 継続バイト (0b10xxxxxx) は文字の途中。境界まで戻してから切る。
+    /// @note 継続バイト (0b10xxxxxx) は文字の途中。境界まで戻してから切る。
     std::size_t cut = budget;
     while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
     return s.substr(0, cut) + ellipsis;
@@ -130,9 +130,8 @@ std::string StringUtils::ToNarrow(const wchar_t* s, int charCount)
 
 std::string StringUtils::PathToUtf8(const std::filesystem::path& path)
 {
-    // WHY: FileSystem::PathToUtf8 と挙動を統一する。
-    //      Windows の filesystem::path は '\' 区切りを返すため、
-    //      '/' に正規化してアセット管理などの文字列比較を一致させる。
+    /// @note Windows の filesystem::path は '\' 区切りを返すため '/' に正規化する。
+    ///       FileSystem::PathToUtf8 と挙動を統一し、アセット管理の文字列比較を一致させる。
     std::string s = ToNarrow(path.wstring());
     std::replace(s.begin(), s.end(), '\\', '/');
     return s;

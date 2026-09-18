@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace fbzz::asset {
 namespace {
@@ -75,7 +77,7 @@ void ReadCurve(const toml::table& table, const char* name, scene::ParticleCurve&
     DeserializeParticleCurve(table, name, curve);
 }
 
-toml::table WriteForce(const scene::ForceFieldSettings& force)
+toml::table WriteForce(const scene::FlowFieldSettings& force)
 {
     toml::table item;
     item.insert("enabled", force.enabled);
@@ -90,16 +92,17 @@ toml::table WriteForce(const scene::ForceFieldSettings& force)
     item.insert("channels", static_cast<std::int64_t>(force.channels));
     item.insert("vectorFieldPath", force.vectorFieldPath);
     item.insert("vectorFieldExtents", WriteVector3(force.vectorFieldExtents));
-    item.insert("vectorFieldTightness", force.vectorFieldTightness);
+    /// @note @note 旧 vectorFieldTightness は書かない。全型が緩和になり、«どれだけ場へ従わせるか» は
+    ///       ParticleEmitterSettings::flowCoupling が一手に持つ。
     return item;
 }
 
-scene::ForceFieldSettings ReadForce(const toml::table& item)
+scene::FlowFieldSettings ReadForce(const toml::table& item)
 {
-    scene::ForceFieldSettings force;
+    scene::FlowFieldSettings force;
     force.enabled = item["enabled"].value_or(force.enabled);
     force.fieldType = ReadEnum(item, "fieldType", force.fieldType,
-                               scene::kForceFieldTypeCount - 1);
+                               scene::kFlowFieldTypeCount - 1);
     force.space = ReadEnum(item, "space", force.space, 1);
     force.strength = ReadFloat(item, "strength", force.strength);
     force.radius = ReadFloat(item, "radius", force.radius);
@@ -111,83 +114,106 @@ scene::ForceFieldSettings ReadForce(const toml::table& item)
         item["channels"].value_or(static_cast<std::int64_t>(force.channels)));
     force.vectorFieldPath = item["vectorFieldPath"].value_or(force.vectorFieldPath);
     force.vectorFieldExtents = ReadVector3(item["vectorFieldExtents"], force.vectorFieldExtents);
-    force.vectorFieldTightness = ReadFloat(item, "vectorFieldTightness", force.vectorFieldTightness);
     return force;
 }
 
-// 内蔵の力が個別フィールドだった頃 (〜2026-09-11) の .scene / .particle / .vfx を読む。
-//
-// WHY 自動で移すか: 見た目のキー (.mat へ移した 34 項目) は «一度だけ警告して捨てる» で
-//     済んだ。あれは «素材側で設定し直す» という行き先が人間に見える話だったからだ。
-//     こちらは重力そのものなので、捨てると既存のエフェクトが全部その場に浮く。
-//     しかも «浮いている» は設定ミスと区別が付かない。値は移して、形だけ変える。
+/// 内蔵の力が個別フィールドだった頃 (〜2026-09-11) の .scene / .particle / .vfx を読む。
+/// @note 見た目のキー (.mat へ移した 34 項目) は警告して捨てるだけで済んだが、こちらは重力
+///       そのものなので値は移して形だけ変える。捨てると既存のエフェクトが全部その場に浮き、
+///       «浮いている» は設定ミスと区別が付かない。
+/// @note 単位はこの時点で新しい意味 (流速 [m/s]) へ揃える。読み込み側で済ませておかないと
+///       GPU へ旧単位が渡り、CPU / GPU で軌道が割れる。
 void MigrateLegacyForces(const toml::table& table, scene::ParticleEmitterSettings& emitter)
 {
-    using scene::ForceFieldSettings;
-    using scene::ForceFieldSpace;
-    using scene::ForceFieldType;
+    using scene::FlowFieldSettings;
+    using scene::FlowFieldSpace;
+    using scene::FlowFieldType;
 
-    // 既定の localForces (重力 1 本) は «新規エミッターの初期値» であって、
-    // このファイルが意図した内容ではない。旧ファイルの記述だけを正とする。
     emitter.localForces.clear();
 
-    const math::Vector3 gravity = ReadVector3(table["gravity"], math::Vector3{ 0.0f, -5.0f, 0.0f });
-    const float gravityMagnitude = gravity.Length();
-    if (gravityMagnitude > 1.0e-6f) {
-        ForceFieldSettings wind;
-        wind.fieldType = ForceFieldType::Wind;
-        wind.space     = ForceFieldSpace::World;
-        wind.direction = gravity * (1.0f / gravityMagnitude);
-        wind.strength  = gravityMagnitude;
-        wind.radius    = 0.0f;
-        emitter.localForces.push_back(wind);
-    }
+    /// @note 旧 gravity は加速度そのもの。場に相乗りしていたのをエミッターの加速度へ戻すだけで、
+    ///       単位換算は要らない。
+    emitter.gravity = ReadVector3(table["gravity"], scene::kDefaultParticleGravity);
 
-    if (const float damping = ReadFloat(table, "velocityDamping", 0.0f); damping > 0.0f) {
-        ForceFieldSettings drag;
-        drag.fieldType = ForceFieldType::Drag;
-        drag.space     = ForceFieldSpace::World;
-        drag.strength  = damping;
-        drag.radius    = 0.0f;
-        emitter.localForces.push_back(drag);
-    }
+    /// @note 旧 velocityDamping [1/s] = 新 flowCoupling。同じ単位なのでそのまま写す。
+    emitter.flowCoupling = ReadFloat(table, "velocityDamping", emitter.flowCoupling);
 
     if (const float noise = ReadFloat(table, "noiseStrength", 0.0f); noise > 0.0f) {
-        ForceFieldSettings turbulence;
-        turbulence.fieldType      = ForceFieldType::Turbulence;
-        turbulence.space          = ForceFieldSpace::World;
-        turbulence.strength       = noise;
-        turbulence.radius         = 0.0f;
-        turbulence.noiseFrequency = ReadFloat(table, "noiseFrequency", 0.5f);
-        turbulence.noiseSpeed     = ReadFloat(table, "noiseSpeed", 1.0f);
-        emitter.localForces.push_back(turbulence);
+        FlowFieldSettings curl;
+        curl.fieldType      = FlowFieldType::Curl;
+        curl.space          = FlowFieldSpace::World;
+        curl.strength       = noise * scene::kLegacyAccelerationToFlowSpeed;
+        curl.radius         = 0.0f;
+        curl.noiseFrequency = ReadFloat(table, "noiseFrequency", 0.5f);
+        curl.noiseSpeed     = ReadFloat(table, "noiseSpeed", 1.0f);
+        emitter.localForces.push_back(curl);
     }
 
     if (const float orbital = ReadFloat(table, "orbitalVelocity", 0.0f); orbital != 0.0f) {
-        ForceFieldSettings vortex;
-        vortex.fieldType = ForceFieldType::Vortex;
-        vortex.space     = ForceFieldSpace::Emitter;
+        FlowFieldSettings vortex;
+        vortex.fieldType = FlowFieldType::Vortex;
+        vortex.space     = FlowFieldSpace::Emitter;
         vortex.direction = ReadVector3(table["orbitalAxis"], math::Vector3{ 0.0f, 1.0f, 0.0f });
-        vortex.strength  = orbital;
+        vortex.strength  = orbital * scene::kLegacyAccelerationToFlowSpeed;
         vortex.radius    = 0.0f;
         emitter.localForces.push_back(vortex);
     }
 
-    // 旧 radialVelocity は «正で外向き / 負で吸い込み»。Repulse の strength と同じ符号規約
-    // なので、負のまま Repulse として持たせれば挙動が一致する (Attract へ倒す必要はない)。
+    /// @note 旧 radialVelocity は «正で外向き / 負で吸い込み»。Source の strength と同じ符号規約
+    ///       なので、負のまま Source として持たせれば挙動が一致する (Sink へ倒す必要はない)。
     if (const float radial = ReadFloat(table, "radialVelocity", 0.0f); radial != 0.0f) {
-        ForceFieldSettings repulse;
-        repulse.fieldType = ForceFieldType::Repulse;
-        repulse.space     = ForceFieldSpace::Emitter;
-        repulse.strength  = radial;
-        repulse.radius    = 0.0f;
-        emitter.localForces.push_back(repulse);
+        FlowFieldSettings source;
+        source.fieldType = FlowFieldType::Source;
+        source.space     = FlowFieldSpace::Emitter;
+        source.strength  = radial * scene::kLegacyAccelerationToFlowSpeed;
+        source.radius    = 0.0f;
+        emitter.localForces.push_back(source);
     }
+}
+
+/// «流れ» になる前 (〜2026-09-16) の localForces を新しい単位へ写す。
+///
+/// @note 旧ファイルの判定は flowCoupling キーの有無。version キーを持たない形式なので、
+///       «新しい書き手だけが必ず書くキー» を見るしかない。localForces の中身では判定できない
+///       (旧ファイルでも Drag を持たないエミッターは珍しくない)。
+void MigrateLegacyForceUnits(scene::ParticleEmitterSettings& emitter)
+{
+    using scene::FlowFieldSettings;
+    using scene::FlowFieldType;
+
+    /// @note この形式では重力も «場» の 1 本として書かれている。既定値を足しに行くと二重になる。
+    emitter.gravity = math::Vector3::ZERO;
+
+    std::vector<FlowFieldSettings> migrated;
+    migrated.reserve(emitter.localForces.size());
+    for (FlowFieldSettings& force : emitter.localForces) {
+        /// @note 旧 Drag は «型の皮をかぶった結合係数»。単位 [1/s] が同じなのでそのまま写して型を消す。
+        if (force.fieldType == FlowFieldType::LegacyDrag) {
+            emitter.flowCoupling = force.strength;
+            continue;
+        }
+        /// @note 旧 «下向きの一定加速» は重力を場へ相乗りさせていたもの。エミッターの加速度へ戻す。
+        ///       判定は «World 空間の Uniform で、向きがほぼ真下» (0.99 = 8 度以内)。
+        if (force.fieldType == FlowFieldType::Uniform
+            && force.space == scene::FlowFieldSpace::World) {
+            const float length = force.direction.Length();
+            const math::Vector3 dir = length > 1.0e-6f ? force.direction * (1.0f / length)
+                                                       : math::Vector3::ZERO;
+            if (dir.y <= -0.99f) {
+                emitter.gravity = emitter.gravity + dir * force.strength;
+                continue;
+            }
+        }
+        /// @note それ以外は加速度 [m/s^2] として書かれていた値を流速 [m/s] へ写す。
+        force.strength *= scene::kLegacyAccelerationToFlowSpeed;
+        migrated.push_back(force);
+    }
+    emitter.localForces = std::move(migrated);
 }
 
 } // namespace
 
-// カーブとグラデーションは補間モードとキー配列を 1 テーブルへまとめて保存する。
+/// カーブとグラデーションは補間モードとキー配列を 1 テーブルへまとめて保存する。
 namespace {
 
 toml::array WriteCurveKeys(const scene::ParticleCurve& curve)
@@ -200,7 +226,7 @@ toml::array WriteCurveKeys(const scene::ParticleCurve& curve)
     return array;
 }
 
-// 補間モードを int から復元する。範囲外は Linear へ倒す (壊れたアセットで落とさない)。
+/// 補間モードを int から復元する。範囲外は Linear へ倒す (壊れたアセットで落とさない)。
 scene::ParticleCurveInterpolation ReadInterpolation(const toml::node_view<const toml::node>& value)
 {
     const int mode = static_cast<int>(value.value_or(std::int64_t{0}));
@@ -208,15 +234,12 @@ scene::ParticleCurveInterpolation ReadInterpolation(const toml::node_view<const 
         std::clamp(mode, 0, static_cast<int>(scene::ParticleCurveInterpolation::Smooth)));
 }
 
-// キー配列を取り出す。2 つの表記を両方受け付ける。
-//   テーブル形式: curve = { interp = 0, keys = [[t, v], ...] }   ← Editor が書き出す形
-//   配列形式:     curve = [[t, v], ...]                          ← .scene と手書きアセットの形
-// WHY: 書き出しはテーブル形式だが、読み込みがテーブル形式しか受け付けていなかった。
-//      手書きの .vfx (Assets/VFX/Templates/*) は .scene と同じ配列形式で書かれており、
-//      colorGradient も dragCurve も丸ごと無視されて既定値のままロードされていた。
-//      既定のグラデーションは「白 → 透明」なので、テンプレートの炎も煙も魔法も
-//      すべて白い粒子として描かれる。テンプレートの色が出ない主因がこれ。
-//      配列形式を受け付ければ既存アセットは一切書き換えずに直る。
+/// キー配列を取り出す。2 つの表記を両方受け付ける。
+///   テーブル形式: curve = { interp = 0, keys = [[t, v], ...] } (Editor が書き出す形)
+///   配列形式:     curve = [[t, v], ...] (.scene と手書きアセットの形)
+/// @note 手書きの .vfx (Assets/VFX/Templates/*) は配列形式のため、テーブル形式しか
+///       受け付けなかった旧実装では既定値 (白 → 透明) のまま読まれ、テンプレートが
+///       白い粒子になっていた。配列形式を受け付ければ既存アセットは書き換えず直る。
 const toml::array* CurveKeyArray(const toml::node_view<const toml::node>& value)
 {
     if (const auto* table = value.as_table()) return (*table)["keys"].as_array();
@@ -274,7 +297,7 @@ void DeserializeParticleGradient(const toml::table& table, const char* key,
     if (array == nullptr || array->empty()) return;
     if (const auto* asTable = value.as_table()) {
         outGradient.interpolation = ReadInterpolation((*asTable)["interp"]);
-        // 未記載の既存アセットは Gamma (従来の挙動) のまま読む。
+        /// @note 未記載の既存アセットは Gamma (従来の挙動) のまま読む。
         const int space = static_cast<int>((*asTable)["space"].value_or<std::int64_t>(
             static_cast<std::int64_t>(scene::ParticleColorSpace::Gamma)));
         outGradient.colorSpace = static_cast<scene::ParticleColorSpace>(
@@ -349,7 +372,8 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     FBZZ_VFX_BOOL_IN(light, lightEnabled); FBZZ_VFX_FLOAT_IN(light, lightRatio); FBZZ_VFX_INT_IN(light, lightMaxCount);
     FBZZ_VFX_FLOAT_IN(light, lightRange); FBZZ_VFX_BOOL_IN(light, lightRangeFromSize); FBZZ_VFX_FLOAT_IN(light, lightIntensity);
     FBZZ_VFX_BOOL_IN(light, lightUseParticleColor); FBZZ_VFX_BOOL_IN(light, lightFadeWithAlpha);
-    FBZZ_VFX_BOOL(receiveForceFields);
+    FBZZ_VFX_BOOL(receiveFlowFields);
+    FBZZ_VFX_FLOAT(flowCoupling);
 #undef FBZZ_VFX_FLOAT
 #undef FBZZ_VFX_INT
 #undef FBZZ_VFX_BOOL
@@ -358,8 +382,9 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
 #undef FBZZ_VFX_INT_IN
 #undef FBZZ_VFX_BOOL_IN
 
-    // FBZZ_VFX_INT は int を経由するため 0xFFFFFFFF が符号付きで潰れる。マスクは別に書く。
-    table.insert("forceFieldChannels", static_cast<std::int64_t>(emitter.forceFieldChannels));
+    table.insert("gravity", WriteVector3(emitter.gravity));
+    /// @note FBZZ_VFX_INT は int を経由するため 0xFFFFFFFF が符号付きで潰れる。マスクは別に書く。
+    table.insert("flowFieldChannels", static_cast<std::int64_t>(emitter.flowFieldChannels));
     table.insert("collisionLayerMask", static_cast<std::int64_t>(emitter.collisionLayerMask));
     table.insert("trailColorTint", WriteVector4(emitter.trail.trailColorTint));
     table.insert("lightColor", WriteVector4(emitter.light.lightColor));
@@ -390,13 +415,11 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     return table;
 }
 
-// 見た目の設定は .mat の [particle] へ移った (2026-08-24)。
-// 旧いシーン / .vfx にはまだキーが残っているので、黙って捨てずに一度だけ知らせる。
-//
-// WHY 自動で .mat へ書き込まないか: 読み込みの副作用でアセットを書き換えると、
-//     «開いただけでプロジェクトが変わる» ことになる。しかも 1 つの .mat を複数の
-//     エミッターが共有していると、どのエミッターの値を採用すべきか決められない。
-//     どこに何が残っているかだけ示して、移す判断は担当者に任せる。
+/// 見た目の設定は .mat の [particle] へ移った (2026-08-24)。
+/// 旧いシーン / .vfx にはまだキーが残っているので、黙って捨てずに一度だけ知らせる。
+/// @note 読み込みの副作用でアセットを書き換えると «開いただけでプロジェクトが変わる» ことになり、
+///       1 つの .mat を複数のエミッターが共有していると採用すべき値も決められないため、
+///       .mat へは自動で書き込まず、どこに何が残っているかだけ示して移す判断は担当者に任せる。
 void WarnLegacyParticleLookKeys(const toml::table& table)
 {
     static constexpr const char* kLegacyKeys[] = {
@@ -437,7 +460,7 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     emitter.emitVelocity = ReadVector3(table["emitVelocity"], emitter.emitVelocity);
     emitter.colorStart = ReadVector4(table["colorStart"], emitter.colorStart);
     emitter.colorEnd = ReadVector4(table["colorEnd"], emitter.colorEnd);
-    // 旧 gravity キーは MigrateLegacyForces が localForces へ組み直す (この関数の末尾)。
+    emitter.gravity = ReadVector3(table["gravity"], emitter.gravity);
     emitter.boxExtents = ReadVector3(table["boxExtents"], emitter.boxExtents);
     emitter.sizeAxisScale = ReadVector3(table["sizeAxisScale"], emitter.sizeAxisScale);
     FBZZ_VFX_FLOAT(velocitySpread); FBZZ_VFX_FLOAT(sizeStart); FBZZ_VFX_FLOAT(sizeEnd);
@@ -484,7 +507,12 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_BOOL_IN(light, lightEnabled); FBZZ_VFX_FLOAT_IN(light, lightRatio); FBZZ_VFX_INT_IN(light, lightMaxCount);
     FBZZ_VFX_FLOAT_IN(light, lightRange); FBZZ_VFX_BOOL_IN(light, lightRangeFromSize); FBZZ_VFX_FLOAT_IN(light, lightIntensity);
     FBZZ_VFX_BOOL_IN(light, lightUseParticleColor); FBZZ_VFX_BOOL_IN(light, lightFadeWithAlpha);
-    FBZZ_VFX_BOOL(receiveForceFields);
+    /// @note 旧キー (receiveForceFields) を先に読み、新キーがあれば上書きする。
+    emitter.receiveFlowFields = table["receiveForceFields"].value_or(emitter.receiveFlowFields);
+    FBZZ_VFX_BOOL(receiveFlowFields);
+    /// @note @note ここで先に読むのは、旧形式の分岐 (MigrateLegacyForces / MigrateLegacyForceUnits) が
+    ///       «今の値» を既定として使うため。後で読むと、明示的に書かれた 0 が既定 5 へ戻る。
+    FBZZ_VFX_FLOAT(flowCoupling);
 #undef FBZZ_VFX_FLOAT
 #undef FBZZ_VFX_INT
 #undef FBZZ_VFX_BOOL
@@ -493,9 +521,12 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
 #undef FBZZ_VFX_INT_IN
 #undef FBZZ_VFX_BOOL_IN
 
-    emitter.forceFieldChannels = static_cast<std::uint32_t>(
+    emitter.flowFieldChannels = static_cast<std::uint32_t>(
         table["forceFieldChannels"].value_or(
-            static_cast<std::int64_t>(emitter.forceFieldChannels)));
+            static_cast<std::int64_t>(emitter.flowFieldChannels)));
+    emitter.flowFieldChannels = static_cast<std::uint32_t>(
+        table["flowFieldChannels"].value_or(
+            static_cast<std::int64_t>(emitter.flowFieldChannels)));
     emitter.collisionLayerMask = static_cast<std::uint32_t>(
         table["collisionLayerMask"].value_or(
             static_cast<std::int64_t>(emitter.collisionLayerMask)));
@@ -525,20 +556,24 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
         }
     }
 
-    // 内蔵の力。キーがあれば新形式、無ければ旧フィールドから組み立てる。
-    // 「空のリストを保存した」と「旧ファイル」は区別が要る。前者は力ゼロが意図なので、
-    // キーの有無で判定する (要素数では区別できない)。
+    /// @note 内蔵の流れ。キーがあれば新形式、無ければ旧フィールドから組み立てる。
+    ///       「空のリストを保存した」と「旧ファイル」は区別が要る。前者は力ゼロが意図なので、
+    ///       キーの有無で判定する (要素数では区別できない)。
     if (const auto* forces = table["localForces"].as_array()) {
         emitter.localForces.clear();
         for (const auto& node : *forces) {
             if (const auto* item = node.as_table()) emitter.localForces.push_back(ReadForce(*item));
         }
+        /// @note 単位が «加速度» だった頃 (〜2026-09-16) のリストを流速へ写す。
+        ///       判定は flowCoupling キーの有無 — 新しい書き手だけが必ず書くキーで、
+        ///       version キーを持たないこの形式ではこれが唯一の目印になる。
+        if (!table.contains("flowCoupling")) MigrateLegacyForceUnits(emitter);
     } else {
         MigrateLegacyForces(table, emitter);
     }
 
-    // ランタイム状態はここでは触れない (この型が持っていない)。
-    // コンポーネントへ流し込んだ呼び出し側が ResetPlayback() で初期化する。
+    /// @note ランタイム状態はここでは触れない (この型が持っていない)。
+    ///       コンポーネントへ流し込んだ呼び出し側が ResetPlayback() で初期化する。
 }
 
 } // namespace fbzz::asset

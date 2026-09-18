@@ -1,4 +1,4 @@
-/// @file    RenderPasses/SkyPass.cpp
+/// @file    SkyPass.cpp
 /// @brief   スカイドーム描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18

@@ -18,9 +18,8 @@ namespace fbzz::renderer { class IRenderer; class ResourceManager; }
 
 namespace fbzz::scene {
 
-/// SceneManager・Physics・Game UIを一つの実行単位として所有し、共通順序で駆動する。
-/// WHY: Moduleごとにこれらを個別所有すると、LoadSceneを受けたManagerとUpdateするManagerが
-///      分離するなど、Editor PlayとStandaloneの挙動差が発生するため。
+/// @brief SceneManager・Physics・Game UI を一つの実行単位として所有し、共通順序で駆動する。
+/// @note Module ごとに個別所有すると、LoadScene を受ける Manager と Update する Manager が分離し、Editor Play と Standalone で挙動差が出る。
 class ProjectRuntime final {
 public:
     /// ProjectSettingsをPhysics、Scheduler、Game UIへ適用する。

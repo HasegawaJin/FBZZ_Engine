@@ -9,21 +9,12 @@
 ///   位置と色へ収まる。Children を付けると、指した要素の直下の子も一緒に動く
 ///   (行 = Bar + Label のような組を 1 名で指せる)。
 ///
-/// WHY 画面ごとのスクリプトに書かないか:
-///   題字・罫線・バージョン表記・法則の一文は、どの画面でも «置いてあるだけ»
-///   で誰も触らない。その出現を各画面の Component に書くと、同じ 30 行が
-///   4 つの画面に写され、間隔を直すたびに 4 か所を開く。«誰も触らない要素の
-///   出現» だけをここへ切り出し、触る要素 (メニュー行・タブ) は各画面が持つ。
-///
-/// WHY 終わったら書くのをやめるか:
-///   出現が済んだあとも毎フレーム色を書き続けると、あとから別のスクリプトが
-///   同じ要素の色を変えたときに、どちらが勝つかがスクリプトの並び順で決まる。
-///   置き切ったら手を離す ─ その後は元の色のまま、他が触れる。
-///
-/// WHY 触ってはいけない要素があるか (使う側の約束):
-///   毎フレーム色を書く要素 (メニューの Label、タブの文字) をここに入れると、
-///   出現の最中に 2 つのスクリプトが交互に色を書いて、ちらつく。そういう要素は
-///   持ち主のスクリプトが自分の出現を持つ (TitleMenuComponent の Intro など)。
+/// @note «誰も触らない要素の出現» (題字・罫線・バージョン表記など) だけをここへ切り出す。
+///       各画面の Component に書くと同じ行が 4 画面に写され、間隔を直すたびに 4 か所を
+///       開くため。出現が済んだら書くのをやめ手を離す ─ 続けると、他のスクリプトが同じ
+///       要素の色を変えたときどちらが勝つかがスクリプトの並び順で決まる。毎フレーム色を
+///       書く要素 (メニューの Label・タブの文字) は入れない (使う側の約束) ─ 出現中に
+///       2 つのスクリプトが交互に書いてちらつく。そういう要素は持ち主が自分の出現を持つ。
 #pragma once
 
 #include <Engine/Scene/Components/UIElement.hpp>
@@ -95,8 +86,8 @@ inline void UiRevealComponent::Capture(GameObject* go, int group)
     e.slot.origin = go->transform.position;
     e.slot.image  = go->GetComponent<UIImage>() != nullptr;
     e.slot.text   = go->GetComponent<UIText>() != nullptr;
-    // 色は «置いてある» ものが正本。読めない要素 (子を束ねるだけの空の GameObject)
-    // は白のまま、位置だけ動かす。
+    /// @note 色は «置いてある» ものが正本。読めない要素 (子を束ねるだけの空の GameObject)
+    ///       は白のまま、位置だけ動かす。
     if (e.slot.image)     e.slot.color = ui.GetImageColor(go);
     else if (e.slot.text) e.slot.color = ui.GetTextColor(go);
     e.group = group;
@@ -127,8 +118,8 @@ inline void UiRevealComponent::Replay()
 {
     m_elapsed = 0.0f;
     m_done    = m_entries.empty();
-    // 1 フレーム目から «出ていない» 状態で描く。OnUpdate を待つと、シーンに
-    // 置いた位置で 1 フレームだけ見えてから引っ込む。
+    /// @note 1 フレーム目から «出ていない» 状態で描く。OnUpdate を待つと、シーンに
+    ///       置いた位置で 1 フレームだけ見えてから引っ込む。
     Write(0.0f);
 }
 
@@ -137,8 +128,8 @@ inline void UiRevealComponent::Write(float elapsed)
     const Vector3 from = { fromX, fromY, 0.0f };
     for (Entry& e : m_entries) {
         const float t = uimotion::Stagger(elapsed - delay, e.group, stagger, duration);
-        // α は位置より少し先に立ち上げる。位置と同時だと «薄いまま動いている» 時間が
-        // 長く、出現が眠く見える。
+        /// @note α は位置より少し先に立ち上げる。位置と同時だと «薄いまま動いている» 時間が
+        ///       長く、出現が眠く見える。
         const Vector4 color = uimotion::Place(e.slot, t, from, uimotion::OutQuint(t * 1.25f));
         if (e.slot.image)     ui.SetImageColor(e.slot.go, color);
         else if (e.slot.text) ui.SetTextColor(e.slot.go, color);
@@ -148,7 +139,7 @@ inline void UiRevealComponent::Write(float elapsed)
 inline void UiRevealComponent::OnUpdate()
 {
     if (m_done) return;
-    // 実時間。UI 画面はスローもヒットストップも掛からない (UiMotion.hpp の約束)。
+    /// @note 実時間。UI 画面はスローもヒットストップも掛からない (UiMotion.hpp の約束)。
     m_elapsed += (std::max)(time.UnscaledDeltaTime(), 0.0f);
     debugElapsed = m_elapsed;
 
@@ -156,7 +147,7 @@ inline void UiRevealComponent::OnUpdate()
     const float total = delay + stagger * static_cast<float>(last) + duration;
     Write(m_elapsed);
     if (m_elapsed >= total) {
-        // 置き切ったら正確に 1 で書いて手を離す (WHY はファイル頭)。
+        /// @note 置き切ったら正確に 1 で書いて手を離す (理由はファイル冒頭を参照)。
         Write(total + 1.0f);
         m_done = true;
     }

@@ -20,7 +20,7 @@ using editor::ai::JsonValue;
 using editor::ai::kEditorProtocol;
 using editor::ai::ParseBusRequest;
 
-// 既定で «通る» 要求。テストごとに 1 か所だけ壊して、そこが弾かれることを見る。
+/// 既定で «通る» 要求。テストごとに 1 か所だけ壊して、そこが弾かれることを見る。
 JsonValue MakeEnvelope(const char* kind = "query")
 {
     JsonValue payload = JsonValue::MakeObject();
@@ -59,8 +59,8 @@ TEST(EditorBusProtocol, AcceptsAWellFormedCommand)
 
 TEST(EditorBusProtocol, DefaultsDryRunToTheSafeSide)
 {
-    // dryRun の «欠落» を実変更として扱ってはいけない。壊れた送信側や古い
-    // クライアントが、黙ってシーンを書き換えることになる。
+    /// @note dryRun の «欠落» を実変更として扱ってはいけない。壊れた送信側や古い
+    ///       クライアントが、黙ってシーンを書き換えることになる。
     const auto request = ParseBusRequest(MakeEnvelope("command"), nullptr);
     ASSERT_TRUE(request.has_value());
     EXPECT_TRUE(request->dryRun);
@@ -69,7 +69,8 @@ TEST(EditorBusProtocol, DefaultsDryRunToTheSafeSide)
 TEST(EditorBusProtocol, DefaultsDryRunToTrueWhenItIsNotABool)
 {
     JsonValue root = MakeEnvelope("command");
-    root.Set("dryRun", JsonValue("yes"));   // 文字列は bool ではない
+    /// @note 文字列は bool ではない
+    root.Set("dryRun", JsonValue("yes"));
 
     const auto request = ParseBusRequest(root, nullptr);
     ASSERT_TRUE(request.has_value());
@@ -99,7 +100,8 @@ TEST(EditorBusProtocol, RejectsAMismatchedProtocol)
 TEST(EditorBusProtocol, RejectsAMissingOrEmptyId)
 {
     JsonValue missing = MakeEnvelope();
-    missing.Set("id", JsonValue());          // null
+    /// @note null
+    missing.Set("id", JsonValue());
     EXPECT_FALSE(ParseBusRequest(missing, nullptr).has_value());
 
     JsonValue empty = MakeEnvelope();
@@ -116,7 +118,8 @@ TEST(EditorBusProtocol, RejectsAnUnknownKind)
 TEST(EditorBusProtocol, RejectsAPayloadWithoutAType)
 {
     JsonValue root = MakeEnvelope();
-    root.Set("payload", JsonValue::MakeObject());   // "t" が無い
+    /// @note "t" が無い
+    root.Set("payload", JsonValue::MakeObject());
 
     EXPECT_FALSE(ParseBusRequest(root, nullptr).has_value());
 }
@@ -159,7 +162,7 @@ TEST(EditorBusProtocol, ErrorResponseCarriesCodeAndMessage)
     ASSERT_NE(response.Find("error"), nullptr);
     EXPECT_EQ(response.Find("error")->Find("code")->AsString(), "not_found");
     EXPECT_EQ(response.Find("error")->Find("message")->AsString(), "scene がありません");
-    // 失敗応答に result を混ぜない (受け手が «部分的に成功» と読む余地を残さない)。
+    /// @note 失敗応答に result を混ぜない (受け手が «部分的に成功» と読む余地を残さない)。
     EXPECT_EQ(response.Find("result"), nullptr);
 }
 

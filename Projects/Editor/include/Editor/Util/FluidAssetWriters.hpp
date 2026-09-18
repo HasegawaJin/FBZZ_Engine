@@ -3,14 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 1 か所に寄せるか:
-///   .fluid の Inspector (2D)・Volume Flipbook Baker パネル (3D)・FluidBakeService (AI) が
-///   それぞれ .mat を組むと、同じ焼き結果から違う .mat ができる。書き方はここだけが知る。
-/// レンダラーにも AssetManager にも触らない純粋なファイル書き出しなので、テストから直接呼べる。
+/// @note .fluid の Inspector (2D)・Volume Flipbook Baker パネル (3D)・FluidBakeService (AI) が
+///       それぞれ .mat を組むと同じ焼き結果から違う .mat ができるため、書き方はここだけが知る。
+///       レンダラーにも AssetManager にも触らない純粋なファイル書き出しなので、テストから直接呼べる。
 #pragma once
 
 #include <Engine/Asset/FluidBaker.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 #include <Engine/Asset/VolumeFlipbookBaker.hpp>
 
 #include <cstdint>
@@ -27,7 +26,7 @@ enum class FluidEffectTemplate : std::uint8_t { LANDING, CHARGE_RELEASE, MAGIC_E
 
 struct FluidEffectLayer {
     std::string name;
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     float startDelay = 0.0f;
     float size = 2.0f;
     math::Vector3 position = { 0.0f, 1.0f, 0.0f };
@@ -57,7 +56,7 @@ struct FluidMaterialSource {
                                                         const asset::VolumeFlipbookBakeSettings& settings);
 };
 
-/// .fluid の隣の同名 .mat (<dir>/<stem>.mat) の実パス。
+/// .fluid の隣の同名 .mat (`<dir>/<stem>.mat`) の実パス。
 [[nodiscard]] std::string SiblingMaterialPath(const std::string& fluidPath);
 
 /// 新しく作るときの Particle 用 .mat の既定 (両面・深度書き込みなし・透過キュー)。
@@ -75,8 +74,8 @@ void ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::Material
 
 /// ループするエミッター 1 つだけの .vfx。形式は既存の .vfx (プレハブ TOML) と同じ。
 /// 1 粒が寿命いっぱいでアトラスを最後まで再生する (Lifetime モードの .mat を想定)。
-/// WHY 手で書くか: PrefabSerializer は実在の Scene から保存するため、使うと編集中のシーンへ
-///     一時的な GameObject を足して消すことになる (Undo 履歴と «変更あり» 表示を汚す)。
+/// @note PrefabSerializer は実在の Scene から保存するため、使うと編集中のシーンへ一時的な
+///       GameObject を足して消すことになる (Undo 履歴と «変更あり» 表示を汚すため手で書く)。
 /// @param materialAssetPath ParticleEmitter の materialPath にそのまま書く値 (Assets 相対)
 [[nodiscard]] bool WriteSingleEmitterVfx(const std::filesystem::path& file, const std::string& rootName,
                                          const std::string& materialAssetPath, float lifetime);

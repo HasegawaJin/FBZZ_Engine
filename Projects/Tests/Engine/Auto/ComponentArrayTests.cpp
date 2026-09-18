@@ -42,11 +42,11 @@ protected:
     scene::ComponentArray<Probe> array;
 };
 
-// --- 追加と取得 -------------------------------------------------------------
+/// @name 追加と取得
 
 TEST_F(ComponentArrayTest, StartsEmptyAndAllocatesNothing)
 {
-    // 未使用の型は確保すらしない (Scene が全コンポーネント型を束ねるため)。
+    /// @note 未使用の型は確保すらしない (Scene が全コンポーネント型を束ねるため)。
     EXPECT_EQ(array.Count(), 0u);
     EXPECT_FALSE(array.Has(Entity(0)));
     EXPECT_TRUE(array.Data().empty());
@@ -98,12 +98,12 @@ TEST_F(ComponentArrayTest, RejectsIndicesBeyondTheCapacity)
     EXPECT_FALSE(array.Has(Entity(scene::ComponentArray<Probe>::MAX + 100)));
 }
 
-// --- 世代 -------------------------------------------------------------------
+/// @name 世代
 
 TEST_F(ComponentArrayTest, RejectsTheSameIndexFromAnEarlierGeneration)
 {
-    // index は再利用される。世代まで見ないと «破棄済みの参照» が生きている
-    // オブジェクトを掴む ── 一番たちの悪い壊れ方。
+    /// @note index は再利用される。世代まで見ないと «破棄済みの参照» が生きている
+    ///       オブジェクトを掴む ── 一番たちの悪い壊れ方。
     array.Add(Entity(5, 2), Probe{ 50 });
 
     EXPECT_TRUE(array.Has(Entity(5, 2)));
@@ -111,7 +111,7 @@ TEST_F(ComponentArrayTest, RejectsTheSameIndexFromAnEarlierGeneration)
     EXPECT_FALSE(array.Has(Entity(5, 3)));
 }
 
-// --- 削除 -------------------------------------------------------------------
+/// @name 削除
 
 TEST_F(ComponentArrayTest, ForgetsWhatItRemoved)
 {
@@ -125,8 +125,8 @@ TEST_F(ComponentArrayTest, ForgetsWhatItRemoved)
 
 TEST_F(ComponentArrayTest, KeepsTheOtherEntriesReachableAfterARemoval)
 {
-    // 末尾と swap して穴を埋める。swap された側の索引を直し忘れると、
-    // «消していないコンポーネントが引けなくなる»。
+    /// @note 末尾と swap して穴を埋める。swap された側の索引を直し忘れると、
+    ///       «消していないコンポーネントが引けなくなる»。
     array.Add(Entity(1), Probe{ 10 });
     array.Add(Entity(2), Probe{ 20 });
     array.Add(Entity(3), Probe{ 30 });
@@ -183,7 +183,7 @@ TEST_F(ComponentArrayTest, SurvivesRemovingEveryEntryInReverse)
 
 TEST_F(ComponentArrayTest, KeepsEveryRemainingValueThroughInterleavedRemovals)
 {
-    // 1 つ飛ばしで消す。swap が絡む一番ややこしい並びで、残りが全部引けること。
+    /// @note 1 つ飛ばしで消す。swap が絡む一番ややこしい並びで、残りが全部引けること。
     for (std::uint32_t i = 0; i < 16; ++i) array.Add(Entity(i), Probe{ static_cast<int>(i) });
 
     for (std::uint32_t i = 0; i < 16; i += 2) array.Remove(Entity(i));
@@ -195,12 +195,12 @@ TEST_F(ComponentArrayTest, KeepsEveryRemainingValueThroughInterleavedRemovals)
     }
 }
 
-// --- 走査 -------------------------------------------------------------------
+/// @name 走査
 
 TEST_F(ComponentArrayTest, DataAndEntitiesLineUp)
 {
-    // System は Data() と Entities() を添字で対応づけて走査する。ずれると
-    // «別のオブジェクトのコンポーネントを更新する» ことになる。
+    /// @note System は Data() と Entities() を添字で対応づけて走査する。ずれると
+    ///       «別のオブジェクトのコンポーネントを更新する» ことになる。
     array.Add(Entity(4), Probe{ 40 });
     array.Add(Entity(7), Probe{ 70 });
     array.Add(Entity(2), Probe{ 20 });
@@ -225,15 +225,16 @@ TEST_F(ComponentArrayTest, WalksEveryStoredEntryExactlyOnce)
 
     ASSERT_EQ(seen.size(), 9u);
     EXPECT_EQ(std::count(seen.begin(), seen.end(), 3), 0);
-    EXPECT_EQ(std::adjacent_find(seen.begin(), seen.end()), seen.end());   // 重複なし
+    /// @note 重複なし
+    EXPECT_EQ(std::adjacent_find(seen.begin(), seen.end()), seen.end());
 }
 
-// --- 参照の安定性 -----------------------------------------------------------
+/// @name 参照の安定性
 
 TEST_F(ComponentArrayTest, KeepsReferencesValidWhileOtherEntriesAreAdded)
 {
-    // 確保は初回 Add の 1 回だけで、以後は再確保しない。ここが崩れると、
-    // System が握った参照が次の Add で宙に浮く。
+    /// @note 確保は初回 Add の 1 回だけで、以後は再確保しない。ここが崩れると、
+    ///       System が握った参照が次の Add で宙に浮く。
     array.Add(Entity(1), Probe{ 10 });
     Probe& held = array.Get(Entity(1));
 
@@ -243,7 +244,7 @@ TEST_F(ComponentArrayTest, KeepsReferencesValidWhileOtherEntriesAreAdded)
     EXPECT_EQ(&held, &array.Get(Entity(1)));
 }
 
-// --- Clear と move -----------------------------------------------------------
+/// @name Clear と move
 
 TEST_F(ComponentArrayTest, ClearForgetsEverything)
 {

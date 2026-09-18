@@ -32,9 +32,9 @@ void ApplyVolumeSettings(const VolumeSettings& volume, RenderSettings& out)
     out.taa              = volume.taa;
     out.motionBlur       = volume.motionBlur;
     out.volumetricLight  = volume.volumetricLight;
-    // グリッド寸法だけは RenderSettings 側の値を残す。
-    // WHY: Volume 側は寸法を持たない (ブレンドすると解像度が毎フレーム変わり、
-    //      ボリュームの再確保が走る)。中身だけ差し替えて寸法は据え置く。
+    /// @note グリッド寸法だけは RenderSettings 側の値を残す。Volume 側は寸法を持たず、
+    ///       ブレンドすると解像度が毎フレーム変わってボリュームの再確保が走るため、
+    ///       中身だけ差し替えて寸法は据え置く。
     {
         const uint32_t gx = out.froxelFog.gridX;
         const uint32_t gy = out.froxelFog.gridY;
@@ -48,9 +48,9 @@ void ApplyVolumeSettings(const VolumeSettings& volume, RenderSettings& out)
     out.lensFlare        = volume.lensFlare;
     out.lutColorGrading  = volume.lutColorGrading;
 
-    // 別々のボリュームが別々のスロットを ON にすると、合成結果として
-    // FXAA+TAA / SSAO+GTAO が同時に立ちうる。描画へ渡す直前に、
-    // TOML・Inspector と同じ排他規則へ寄せる。
+    /// @note 別々のボリュームが別々のスロットを ON にすると、合成結果として
+    ///       FXAA+TAA / SSAO+GTAO が同時に立ちうる。描画へ渡す直前に、
+    ///       TOML・Inspector と同じ排他規則へ寄せる。
     (void)out.NormalizeExclusivePipelineSlots();
 }
 
@@ -59,8 +59,8 @@ float PostProcessVolumeDistanceWeight(float distance, float radius, float blendD
     if (radius <= 0.0f) return 0.0f;
     if (distance >= radius) return 0.0f;
 
-    // blendDistance が半径以上だと内側の「完全適用域」が消える。
-    // その場合は中心で 1、境界で 0 の単純な線形降下にする。
+    /// @note blendDistance が半径以上だと内側の「完全適用域」が消える。
+    ///       その場合は中心で 1、境界で 0 の単純な線形降下にする。
     const float fade = std::clamp(blendDistance, 0.0f, radius);
     const float solidRadius = radius - fade;
     if (distance <= solidRadius) return 1.0f;

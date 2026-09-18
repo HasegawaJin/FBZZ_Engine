@@ -3,12 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 純関数に切り出すか: GPU の結果は読み戻さないので、湧く時刻・位置・静止密度が CPU ソルバー
-///     (FluidLiquidSolver) の規則からずれても絵でしか気付けない。ここだけはテストで縛る。
+/// @note GPU の結果は読み戻さないので、湧く時刻・位置・静止密度が CPU ソルバー (FluidLiquidSolver)
+///       の規則からずれても絵でしか気付けない。ここだけ純関数に切り出しテストで縛る。
 #pragma once
 
-#include <Engine/Asset/FluidGpuStep.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidGpuStep.hpp>
+#include <Fluid/FluidRecipe.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -18,7 +18,7 @@ namespace fbzz::asset {
 /// 粒子 1 つぶんの湧かせ方。LiquidCommon.hlsli の gSpawn (float4 × 2) と 1:1。
 struct GpuLiquidSpawn {
     float positionTime[4];  ///< xyz 湧く位置 / w 湧く時刻 [秒] (湧かない枠は 3e38)
-    float velocityKey[4];   ///< xyz 初速 (ばらつき・動きの速度込み) / w 色の鍵 (FluidSource::colorKey)
+    float velocityKey[4];   ///< xyz 初速 (ばらつき・動きの速度込み) / w 色の鍵 (fluid::FluidSource::colorKey)
 };
 static_assert(sizeof(GpuLiquidSpawn) == 32);
 
@@ -54,27 +54,27 @@ struct GpuLiquidSortStage {
 /// bitonic sort の 1 グループの要素数 (LiquidSort.hlsli の LIQUID_SORT_BLOCK と一致させること)。
 inline constexpr std::uint32_t kGpuLiquidSortBlock = 256;
 
-[[nodiscard]] float GpuLiquidParticleRadius(const FluidLiquidSettings& settings);
+[[nodiscard]] float GpuLiquidParticleRadius(const fluid::FluidLiquidSettings& settings);
 [[nodiscard]] GpuLiquidKernel MakeGpuLiquidKernel(float particleRadius);
 [[nodiscard]] GpuLiquidGrid MakeGpuLiquidGrid(float particleRadius);
 
 /// 粒子の枠の数 = min(liquid.maxParticles (1 以上), limit, 有効な発生源 (先頭 kMaxFluidSources 個) の count の和)。
-[[nodiscard]] int GpuLiquidParticleCapacity(const FluidRecipe& recipe, int limit);
+[[nodiscard]] int GpuLiquidParticleCapacity(const fluid::FluidRecipe& recipe, int limit);
 
 /// 全粒子ぶんの湧かせ方を決める。要素数は GpuLiquidParticleCapacity と同じ。湧く時刻の昇順に並ぶ。
 /// 発生源の k 番目 (0 始まり) の粒子は duration <= 0 なら startTime、正なら startTime + duration × (k + 1) / count に湧く
 /// (FluidLiquidSolver::Emit の «count × 経過割合» を切り捨てた数だけ出す規則を時刻へ直したもの)。
 /// 枠が足りないときは早く湧く粒子から採る (同時刻は発生源の順)。位置・初速・詰めすぎの広げ方は CPU と同じ規則で、
 /// 乱数は recipe.seed から決まる (同じレシピなら同じ結果)。Texture 発生源はマスクを読み込んで選り分ける。
-[[nodiscard]] std::vector<GpuLiquidSpawn> BuildGpuLiquidEmission(const FluidRecipe& recipe, int limit);
+[[nodiscard]] std::vector<GpuLiquidSpawn> BuildGpuLiquidEmission(const fluid::FluidRecipe& recipe, int limit);
 
-/// time で効いている力を詰める (有効な部品を先頭から kMaxFluidGpuForces まで。効いていない刻みは強さ 0)。@ret 詰めた数。
-int PackGpuLiquidForces(const FluidRecipe& recipe, float time, FluidGpuForce (&out)[kMaxFluidGpuForces]);
+/// time で効いている力を詰める (有効な部品を先頭から kMaxFluidGpuForces まで。効いていない刻みは強さ 0)。@return 詰めた数。
+int PackGpuLiquidForces(const fluid::FluidRecipe& recipe, float time, fluid::FluidGpuForce (&out)[fluid::kMaxFluidGpuForces]);
 
 /// time の障害物を詰める。大きさは広げない (液体は minSize = 0 で測る。球は半径を 3 軸に複製)。
-/// velocity.w に «表面に沿った速度を残す割合» exp(−max(friction, 0) × 10 × dt) を入れる。@ret 詰めた数。
-int PackGpuLiquidColliders(const FluidRecipe& recipe, float time, float dt,
-                           FluidGpuCollider (&out)[kMaxFluidGpuColliders]);
+/// velocity.w に «表面に沿った速度を残す割合» exp(−max(friction, 0) × 10 × dt) を入れる。@return 詰めた数。
+int PackGpuLiquidColliders(const fluid::FluidRecipe& recipe, float time, float dt,
+                           fluid::FluidGpuCollider (&out)[fluid::kMaxFluidGpuColliders]);
 
 /// 並べ替える要素数 (particleCount 以上の 2 のべき乗。下限 kGpuLiquidSortBlock)。
 [[nodiscard]] std::uint32_t GpuLiquidSortCount(int particleCount);

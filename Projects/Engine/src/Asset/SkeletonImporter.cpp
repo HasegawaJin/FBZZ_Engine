@@ -4,8 +4,8 @@
 /// @date    2026-06-19
 ///
 /// フォーマット: FzSkelHeader (magic "FZSK") + FzSkeletonNodeData[] + FzBoneData[]
-/// WHY: ModelAssetImporter::ReadSkeleton と同じ読み込みロジックを持つが、
-/// .skel は単独ファイルとして存在し、メッシュなしのスケルトン参照を可能にする。
+/// ModelAssetImporter::ReadSkeleton と同じ読み込みロジックを持つが、.skel は単独ファイル
+/// として存在し、メッシュなしのスケルトン参照を可能にする。
 #include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Format/FzAssetFormat.hpp>
@@ -98,7 +98,7 @@ std::unique_ptr<Skeleton> SkeletonImporter::Import(
         skel->boneMap[bone.name] = static_cast<int>(bi);
     }
 
-    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    /// @note 無アニメ時の既定パレット。単位行列を使わないための前提データ。
     BuildReferencePose(*skel);
     return skel;
 }

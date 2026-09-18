@@ -55,8 +55,8 @@ bool LoadParticleCurveAssetFile(const std::string& absPath, ParticleCurveAsset& 
         asset.hasGradient = true;
     }
     if (!asset.hasCurve && !asset.hasGradient) {
-        // 中身が無いファイルを «読めた» にすると、貼っても何も起きない曲線が
-        // 静かに配られる。読めなかったものとして扱う。
+        /// @note 中身が無いファイルを «読めた» にすると、貼っても何も起きない曲線が
+        ///       静かに配られる。読めなかったものとして扱う。
         FBZZ_LOG_ERROR("ParticleCurveAsset: curve も gradient もありません: %s", absPath.c_str());
         return false;
     }

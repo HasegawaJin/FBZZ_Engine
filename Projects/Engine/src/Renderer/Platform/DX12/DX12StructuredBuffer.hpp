@@ -46,9 +46,9 @@ private:
     uint32_t m_elementCount = 0;
     uint32_t m_stride = 0;
     bool m_readWrite = false;
-    // DEFAULT Heap 上の immutable SRV。生成時の upload 後は CPU Update を受け付けない。
+    /// DEFAULT Heap 上の immutable SRV。生成時の upload 後は CPU Update を受け付けない。
     bool m_gpuLocalReadOnly = false;
-    // 永続 bindless 枠。GetBindlessIndex() の初回呼び出しで確保するため mutable。
+    /// 永続 bindless 枠。GetBindlessIndex() の初回呼び出しで確保するため mutable。
     mutable uint32_t m_bindlessIndex = INVALID_BINDLESS_INDEX;
     mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
 };

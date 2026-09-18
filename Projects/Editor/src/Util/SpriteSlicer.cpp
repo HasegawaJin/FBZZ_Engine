@@ -83,7 +83,7 @@ Result GenerateGrid(const std::string& imagePath,
             (static_cast<int>(textureHeight) - offsetY + paddingY) / (cellHeight + paddingY));
     }
 
-    // 空セルを捨てるときだけ画素が要る。捨てないなら復号そのものを省く。
+    /// @note 空セルを捨てるときだけ画素が要る。捨てないなら復号そのものを省く。
     int decodedWidth = 0;
     int decodedHeight = 0;
     int decodedChannels = 0;
@@ -237,10 +237,8 @@ std::vector<asset::SpriteRect> MergeIntoExisting(
             continue;
         }
         if (outReusedCount != nullptr) ++(*outReusedCount);
-        // Smart は矩形だけ合わせ直す。ID はもちろん、名前・pivot・Border も残す。
-        // WHY pivot まで残すか: どれも人が «この絵のための値» として詰めたもので、
-        //     切り直しの意図は «位置がずれた» の修正でしかない。既定値で上書きすると
-        //     直したはずが足元の当たりだけ静かにずれる。
+        /// @note Smart は矩形だけ合わせ直す。ID・名前・pivot・Border は人が詰めた «この絵のための値»
+        ///       なので残す。切り直しは «位置がずれた» の修正でしかなく、既定値上書きだと当たりが静かにずれる。
         if (mode == ExistingMode::Smart) {
             asset::SpriteRect& target = merged[static_cast<size_t>(bestIndex)];
             target.x      = candidate.x;

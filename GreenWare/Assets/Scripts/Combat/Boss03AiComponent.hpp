@@ -3,19 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 ///
-/// 設計は Docs/boss03.md。**読ませるのは «連撃の何拍目か»** で、ボス 1 の «どの手か»、
-/// ボス 2 の «どこから来るか» に続く 3 つ目の軸になる。
+/// 設計は `Docs/boss03.md`。読ませるのは «連撃の何拍目か» で、ボス 1 の «どの手か»、ボス 2 の «どこから来るか» に続く 3 つ目の軸になる。
 ///
-/// WHY 1 発ごとに «弾ける手» を出すか:
-///   連撃の 1 拍は CombatManager へ PlayerHitKind::Parryable で渡す。弾かれた側は
-///   OnParried が受け、その拍だけ潰して次の拍へ進む ─ 連撃は止まらない。
-///   止めてしまうと «1 回弾けば安全» になり、連続弾き (+15% × 4) が働かない。
-///
-/// WHY 翼 6 枚に対して連撃は 4 拍までか:
-///   弾き 16 / 締め 30 という値は «4 連を完璧に受けて 98.7 (満タンの 1.3 手前)» から
-///   逆算してある (Docs/boss03.md)。翼の数をそのまま拍にすると 6 連で 145 まで跳ね、
-///   3 拍目で崩れて «最後まで受ける» 動機が消える。減った翼は拍の数ではなく
-///   **拍の間隔**で返す ── 総量は変えず、読み方だけが変わる。
+/// @note 連撃は 1 拍ごとに `PlayerHitKind::Parryable` を渡す。弾かれても `OnParried` でその拍だけ潰し次へ進む。止めると «1 回弾けば安全» になり連続弾き (+15%×4) が働かない。
+/// @note 弾き 16 / 締め 30 は «4 連を完璧に受けて 98.7» から逆算 (`Docs/boss03.md`)。翼数をそのまま拍にすると 6 連で 145 まで跳ね早期に崩れるため、減った翼は拍数でなく拍の間隔で返す (総量は変えない)。
 #pragma once
 #include <Scripts/Utils/PlayerActionState.hpp>
 
@@ -79,11 +70,7 @@ public:
     FBZZ_TOOLTIP("向き直る角速度。連撃は正面へ振るので、これが遅いと背中へ回られて当たらない")
     FBZZ_FIELD_RANGE(float, orbitSpeed, 1.15f, "周回の速さ [m/s]", 0.0f, 8.0f)
     FBZZ_TOOLTIP("待機中にプレイヤーの周囲を横へ流れる速さ。攻撃の溜めに入ると正面へ戻る")
-    // WHY 床の高さを «落差» で持つか: このボスは浮いているので、原点は床ではない。
-    //   扇・衝撃波・突進の «跳んで越えられるか» はすべて床からの高さで決まるのに、
-    //   ボスの原点から測ると «3m 跳ばないと越えられない手» が出来てしまう。
-    //   レイを落として拾う手もあるが、床が無い盤面 (海の上) で拾えないと
-    //   «たまに全部当たらない» になるので、宣言で持つ。
+    /// @note ボスは浮いており原点は床でないため、扇・衝撃波・突進の «跳んで越えられるか» は床からの高さで測る必要がある。レイキャストは床の無い盤面 (海上) で拾えず «たまに全部当たらない» になるため宣言値で持つ。
     FBZZ_FIELD_RANGE(float, groundDrop, 2.0f, "床までの落差 [m]", 0.0f, 12.0f)
     FBZZ_TOOLTIP("ボスの原点から床までの距離。Stage_03 はボス y=4.0 / 島の戦闘面 y=2.0 なので 2.0。"
                  "ここが合っていないと、扇が頭の上を通り、突進が跳んでも避けられなくなる")
@@ -110,22 +97,15 @@ public:
     FBZZ_TOOLTIP("締めの前だけ拍を飛ばす溜め。連打で流しているとここで外す")
     FBZZ_FIELD_RANGE(float, beatRadius, 4.2f, "半径", 0.5f, 20.0f)
     FBZZ_FIELD_RANGE_INT(int, beatDamage, 1, "ダメージ", 0, 20)
-    // WHY 締めだけ 3 か: 弾きが «重い手» (崩し 30) と数えられるのは
-    //   **ダメージ 3 以上**のとき (PlayerParryComponent の Heavy At Damage)。
-    //   2 のままだと締めも軽い弾き (16) になり、«4 連を完璧に受けて 98.7» という
-    //   このボスの崩しの計算 (Docs/boss03.md) が丸ごと成立しない。
+    /// @note 弾きが «重い手» (崩し 30) と数えられるのはダメージ 3 以上のとき (`PlayerParryComponent` の Heavy At Damage)。2 のままだと締めも軽い弾き (16) 扱いになり «4 連で 98.7» の計算 (`Docs/boss03.md`) が成立しない。
     FBZZ_FIELD_RANGE_INT(int, finisherDamage, 3, "Damage (finisher)", 0, 20)
     FBZZ_FIELD_RANGE(float, beatRecover, 1.15f, "復帰", 0.0f, 5.0f)
     FBZZ_TOOLTIP("連撃を振り切った後の隙。ここが斬りに行く時間")
 
-    // 攻撃の 1 拍ごとに翼を 1 枚抜いて投げる。
-    //
-    // WHY 拍ごとに 1 枚か: 6 枚ある翼を順番に失わせることで、Boss03 の攻撃が
-    //   見た目にも段階的に変わる。1 拍で複数枚を抜くと攻撃の読みが崩れるので、
-    //   1 拍 1 枚に固定する。
-    //
-    // WHY 戻ってくるか: 抜けたままだと «とどめ で落とす» (＝進行) と区別が付かない。
-    //   戻る翼は盤面を汚さず、床に居る間だけ «あと何枚で連撃が元に戻るか» を見せる。
+    /// 攻撃の 1 拍ごとに翼を 1 枚抜いて投げる。
+    ///
+    /// @note 1 拍で複数枚抜くと攻撃の読みが崩れるため 1 拍 1 枚に固定し、6 枚を順に失わせて攻撃を段階的に変える。
+    /// @note 抜けたままだと «とどめで落とす» (進行) と区別が付かないため戻す。床に居る間だけ «あと何枚で連撃が元に戻るか» を見せる。
     FBZZ_GROUP("Wing Throw (攻撃ごとに投げる翼)")
     FBZZ_FIELD(bool, finisherThrowsWing, true, "攻撃ごとに翼を投げる")
     FBZZ_FIELD_RANGE(float, wingFlightSpeed, 16.0f, "飛ぶ速さ [m/s]", 1.0f, 80.0f)
@@ -142,13 +122,13 @@ public:
     FBZZ_FIELD_RANGE(float, wingHitRadius, 1.4f, "当たり半径 [m]", 0.1f, 6.0f)
     FBZZ_FIELD_RANGE_INT(int, wingHealth, 320, "落下した翼のHP", 1, 1000)
     FBZZ_FIELD_RANGE_INT(int, wingParryDamage, 80, "弾き返しダメージ", 0, 300)
-    // 飛ぶのは **本物の翼**。Boss03.fbx は翼 6 枚が別メッシュで書き出されていて
-    // (Boss03_Wing_L_Upper …)、それぞれ自分の submesh と材質を持っている。
-    // 投げるときはそのメッシュオブジェクト自体をBossから切り離して飛ばす。
+    /// 飛ぶのは **本物の翼**。Boss03.fbx は翼 6 枚が別メッシュで書き出されていて
+    /// (Boss03_Wing_L_Upper …)、それぞれ自分の submesh と材質を持っている。
+    /// 投げるときはそのメッシュオブジェクト自体をBossから切り離して飛ばす。
     FBZZ_FIELD(std::string, wingMeshPrefix, "Boss03_", "翼メッシュの接頭辞")
     FBZZ_TOOLTIP("翼のメッシュオブジェクト名 = 接頭辞 + 骨名 "
                  "(例: Boss03_ + Wing_L_Upper)。書き出しの名前を変えたらここを合わせる")
-    // 翼オブジェクト自身のSkinnedMeshRendererと材質をそのまま使う。
+    /// 翼オブジェクト自身のSkinnedMeshRendererと材質をそのまま使う。
     FBZZ_FIELD_FILE(wingThrowMaterial, "Assets/Materials/Enemies/Boss03_WingThrow.mat",
                     "飛ぶ翼の材質", ".mat")
     FBZZ_TOOLTIP("互換性のために保持している旧設定。翼Prefabの材質が正本")
@@ -166,10 +146,7 @@ public:
     FBZZ_TOOLTIP("突進の中央で地面へ沈む深さ。円弧の底を作り、浮いたまま滑る印象を消す")
     FBZZ_FIELD_RANGE_INT(int, dashDamage, 2, "ダメージ", 0, 20)
 
-    // WHY 線と当たりを LaserVolleyComponent へ預けるか:
-    //   «溜めて → 撃つ → 消す» の時間割と «描く / 測る» の一致は既にあちらが持っていて、
-    //   線の質も BeamLook 1 か所に寄せてある (Docs/boss03.md)。ここで別に張ると、
-    //   同じ «電磁の線» がボスによって違う質になる。
+    /// @note «溜めて→撃つ→消す» の時間割と描画/判定の一致は `LaserVolleyComponent` 側が持ち、線の質も `BeamLook` に寄せてある (`Docs/boss03.md`)。ここで別に張ると同じ «電磁の線» の質がボスごとに違ってしまう。
     FBZZ_GROUP("Laser (着弾と残り火)")
     FBZZ_FIELD_RANGE(float, groundFireSeconds, 5.0f, "残り火の燃焼 [秒]", 0.1f, 15.0f)
     FBZZ_FIELD_RANGE(float, groundFireRadius, 1.6f, "残り火の半径 [m]", 0.1f, 4.0f)
@@ -186,9 +163,7 @@ public:
     FBZZ_FIELD_RANGE(float, laserTick, 0.45f, "Damage Interval", 0.05f, 2.0f)
     FBZZ_TOOLTIP("焼かれている間の刻み。毎フレームだと一瞬触れただけで溶ける")
 
-    // WHY 波を BossShockwaveComponent へ預けるか: «床を走る輪» と «跳んで越えたか» の
-    //   判定を既に持っていて、跳躍の猶予 (clearHeight) の解釈もあちらが正本。
-    //   ここで円を 1 つ置くと «跳んだのに当たる» の基準が 2 つになる。
+    /// @note «床を走る輪» と «跳んで越えたか» の判定は `BossShockwaveComponent` が持ち、跳躍の猶予 (`clearHeight`) の解釈もあちらが正本。ここで別に置くと «跳んだのに当たる» の基準が 2 つになる。
     FBZZ_GROUP("Pulse (第 2 段の跳ぶ手)")
     FBZZ_FIELD_RANGE(float, pulseWindup, 0.80f, "溜め", 0.05f, 3.0f)
     FBZZ_FIELD_RANGE(float, pulseRadius, 8.0f, "半径 (波が無いとき)", 0.5f, 25.0f)
@@ -206,9 +181,9 @@ public:
     FBZZ_FIELD_RANGE(float, phase2Tempo, 1.15f, "第 2 段のテンポ", 0.5f, 3.0f)
     FBZZ_TOOLTIP("繭から開いた後に掛かる倍率。短くなった連撃を速さで埋める")
 
-    // 手応え ── 揺れと振動。距離で減衰させるのは、同じ 1 つの出来事に対して
-    // 画面と手が別々の «近さ» を測ると «静かなのに手だけ震える» 距離ができるため
-    // (BossAiComponent の PlayShock と同じ形)。
+    /// 手応え ── 揺れと振動。距離で減衰させるのは、同じ 1 つの出来事に対して
+    /// 画面と手が別々の «近さ» を測ると «静かなのに手だけ震える» 距離ができるため
+    /// (BossAiComponent の PlayShock と同じ形)。
     FBZZ_GROUP("手応え")
     FBZZ_FIELD_RANGE(float, feedbackRange, 22.0f, "減衰の範囲 [m]", 1.0f, 80.0f)
     FBZZ_FIELD_RANGE(float, feedbackNear, 6.0f, "全開になる距離 [m]", 0.0f, 20.0f)
@@ -227,11 +202,7 @@ public:
     FBZZ_FIELD_RANGE(float, tempo, 1.0f, "テンポ", 0.25f, 3.0f)
     FBZZ_TOOLTIP("全部の尺に掛かる。手触りを丸ごと速く / 遅くする唯一のつまみ")
 
-    // WHY 弾きの値をボス側から書くか (Docs/boss03.md「値をこのボスだけ下げる」):
-    //   このボスは 1 セットで弾きの機会を 4 回くれる。他のボスと同じ 40 のままだと
-    //   3 拍目でゲージが満ち、連撃を最後まで受ける動機が消える。**機会の数だけ
-    //   1 回を軽くする**のはボスの設計そのものなので、シーンの付け忘れで
-    //   «弾きゲー» に化けないよう、持ち主が起動時に宣言する。
+    /// @note このボスは 1 セットで弾きの機会を 4 回くれる。他ボスと同じ 40 のままだと 3 拍目でゲージが満ち受け切る動機が消えるため、機会の数だけ 1 回を軽くする設計値をボス側から起動時に書く (`Docs/boss03.md`)。
     FBZZ_GROUP("Break")
     FBZZ_FIELD(bool, applyParryTuning, true, "弾きの値を書く")
     FBZZ_TOOLTIP("切ると BossBreakComponent の Inspector の値がそのまま使われる")
@@ -246,7 +217,8 @@ public:
     FBZZ_FIELD_READ_ONLY(std::string, debugLastHit, "-", "直前のヒット")
     FBZZ_FIELD_READ_ONLY(std::string, debugReaction, "-", "反応")
 
-    // ---- IBoss が読む口 (Boss03BossComponent が中継する) ----
+    /// @name IBoss が読む口 (Boss03BossComponent が中継する)
+    /// @{
 
     [[nodiscard]] bool IsEngaged() const { return m_state != State::Dormant; }
     /// 硬直中。連撃を振り切った後の隙と、倒れている間。
@@ -274,9 +246,7 @@ public:
     }
     /// 今の拍で振る翼の «側»。-1 左 / +1 右 / 0 両方 (締め)。連撃中だけ意味を持つ。
     ///
-    /// WHY 翼を 1 枚に絞らないか: クリップは片側の翼をまとめて振る (Slam_L / Slam_R)。
-    ///     光る翼を 1 枚にすると、振る翼と光る翼が食い違って «どちらを見ればよいか»
-    ///     が消える。側で答えるのが絵と一致する。
+    /// @note 片側の翼をまとめて振る (Slam_L/Slam_R) ため、1 枚でなく側で答える。1 枚に絞ると振る翼と光る翼が食い違い «どちらを見ればよいか» が消える。
     [[nodiscard]] int SwingSide() const
     {
         if (!IsBeating()) return 0;
@@ -320,6 +290,7 @@ public:
             if (auto* anim = Anim()) anim->SetClosed(false);
         }
     }
+    /// @}
 
 private:
     enum class State {
@@ -370,10 +341,7 @@ private:
     }
     /// 今 «体に付いている» 翼の数。もいだ数と、投げて出払っている数を引いたもの。
     ///
-    /// WHY 拍の «数» だけこれで引き、«間隔» は m_wings のままか:
-    ///     数は «その場に何枚あるか» で、絵と一致していないと «無い翼で振っている»
-    ///     ことになる。間隔は進行の増悪 (もいだ数) で、投げて一時的に減った枚数で
-    ///     速くなってしまうと «投げるたびに強くなる» になる。軸が違う。
+    /// @note 拍の «数» はこれ (その場に何枚あるか) で引き、«間隔» は `m_wings` のまま。間隔まで一時的な減少で速くすると «投げるたびに強くなる» になるため、軸を分ける。
     [[nodiscard]] int AttachedWings() const
     {
         int out = 0;
@@ -383,9 +351,7 @@ private:
     }
     /// 翼 1 枚の «描いているオブジェクト»。骨ではなくメッシュの方。
     ///
-    /// WHY 名前だけで引かないか: 取り込んだモデルは «描くオブジェクト» と «骨ノード» に
-    ///     同じ名前が並ぶことがある。描画を持っている方を選ばないと、
-    ///     submesh も材質も読めない空のノードを掴む。
+    /// @note 名前だけで引かない。取り込んだモデルは «描くオブジェクト» と «骨ノード» に同名が並ぶことがあり、描画を持つ方を選ばないと空のノードを掴む。
     [[nodiscard]] GameObject* WingMesh(int wing) const;
 
     /// 翼の «バインド姿勢» を控える。投げた翼のメッシュをどこへ置けば
@@ -394,9 +360,7 @@ private:
 
     /// 今投げられる翼。無ければ -1。
     ///
-    /// WHY 下の翼から抜くか: 上の翼から抜くと «残った翼が下にだけある» 姿になり、
-    ///     もいだのか投げたのかが見分けにくい。下から順なら «下が欠けている間は
-    ///     投げている» と読める。
+    /// @note 下の翼から抜く。上から抜くと «残った翼が下にだけある» 姿になりもいだのか投げたのか見分けにくいが、下から順なら «下が欠けている間は投げている» と読める。
     [[nodiscard]] int PickThrowWing() const;
     /// 連撃を組み直す。拍の数は «残り翼» と上限の小さい方。
     void BeginString();
@@ -451,7 +415,7 @@ private:
     [[nodiscard]] Vector3 GroundPoint() const
     {
         Vector3 point = transform.worldPosition;
-        // 浮遊・振りかぶりの上下動で床や跳躍の基準まで動かさない。
+        /// @note 浮遊・振りかぶりの上下動で床や跳躍の基準まで動かさない。
         point.y = m_hoverBaseY - std::max(groundDrop, 0.0f);
         return point;
     }
@@ -541,7 +505,7 @@ private:
     int       m_cycle       = 0;
     bool      m_breakHooked = false;
     /// 一度でも «生きている» を見たか。体力より前に並んだときに «開幕から死んでいる»
-    /// と読まないための門 (OnUpdate の WHY)。
+    /// と読まないための門 (理由は OnUpdate を参照)。
     bool      m_sawAlive    = false;
     /// まだ繭へ入っていない。段の変わり目は 1 度きり。
     bool      m_cocoonDone  = false;
@@ -585,8 +549,8 @@ inline void Boss03AiComponent::OnStart()
     m_bodyHitFlash = m_bodyReactCooldown = 0.0f;
     m_stakeAttack = m_rollAttack = m_rollHit = false;
     m_stakeParries = 0;
-    // 音は盤面の «場所» で鳴る出来事なので 3D。2D にすると、島の反対側で起きた
-    // 叩きつけも足元と同じ音量で鳴り、どこへ避ければよいのか判らなくなる。
+    /// @note 音は盤面の «場所» で鳴る出来事なので 3D。2D にすると、島の反対側で起きた
+    ///       叩きつけも足元と同じ音量で鳴り、どこへ避ければよいのか判らなくなる。
     se::EnsureSource(scene, "SE", 1.0f);
 
     RefreshPlayer();
@@ -598,14 +562,14 @@ inline void Boss03AiComponent::OnStart()
     for (EntityRef& ref : m_thrownRef) ref = {};
     m_bindCaptured = false;
     m_hoverBaseY   = transform.position.y;
-    // 骨がまだバインド姿勢のうちに控える (Animator が姿勢を書く前)。
+    /// @note 骨がまだバインド姿勢のうちに控える (Animator が姿勢を書く前)。
     CaptureWingBind();
 
     if (auto* anim = Anim()) {
         anim->RestoreWings();
         anim->SetDead(false);
         anim->SetStaggered(false);
-        // 眠っている間は繭。起こされて初めて開く。
+        /// @note 眠っている間は繭。起こされて初めて開く。
         anim->SetClosed(!engageOnStart);
     } else {
         debug.LogError("Boss03AiComponent: no Boss03AnimatorComponent on the boss. "
@@ -624,7 +588,7 @@ inline void Boss03AiComponent::OnStart()
 
 inline void Boss03AiComponent::RefreshPlayer()
 {
-    // 毎フレーム取り直す。プレイヤーが作り直される構成でも繋がり直る。
+    /// @note 毎フレーム取り直す。プレイヤーが作り直される構成でも繋がり直る。
     if (m_player.Resolve(scene)) return;
     if (GameObject* player = scene.FindWithTag(playerTag))
         m_player = EntityRef{ player->GetID() };
@@ -641,7 +605,7 @@ inline void Boss03AiComponent::EnsureBreakHook()
     if (m_breakHooked) return;
     auto* brk = Break();
     if (!brk) return;
-    // 満ちたら倒れる。長さはゲージの側が持つ (ボスごとに違ってよい値なのでそちらへ)。
+    /// @note 満ちたら倒れる。長さはゲージの側が持つ (ボスごとに違ってよい値なのでそちらへ)。
     brk->onBreak = [this](float seconds) { Topple(seconds); };
     m_breakHooked = true;
 }
@@ -658,8 +622,8 @@ inline void Boss03AiComponent::PlayShock(const Vector3& center, float strength01
     const float strength = Clamp01(strength01);
     if (strength <= 0.0f) return;
 
-    // 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
-    // 震える距離ができて «どこで起きたか» の答えが 2 つになる。
+    /// @note 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
+    ///       震える距離ができて «どこで起きたか» の答えが 2 つになる。
     const float nearness = shock::NearnessTo(
         Player(), center, range > 0.0f ? range : std::max(feedbackRange, 1.0f),
         std::max(feedbackNear, 0.0f));
@@ -692,7 +656,7 @@ inline Vector3 Boss03AiComponent::ClampToArena(const Vector3& point) const
     const Vector3 center = bounds->Center();
     Vector3 offset{ point.x - center.x, 0.0f, point.z - center.z };
     const float distance = offset.Length();
-    // 縁ぴったりまで出ると、翼が海の上へ張り出したまま叩きつける。少し内側で止める。
+    /// @note 縁ぴったりまで出ると、翼が海の上へ張り出したまま叩きつける。少し内側で止める。
     const float limit = std::max(bounds->Radius() - std::max(dashRadius, 0.5f), 1.0f);
     if (distance <= limit) return point;
 
@@ -711,7 +675,8 @@ inline void Boss03AiComponent::Enter(State next)
 
     m_state    = next;
     m_timer    = 0.0f;
-    m_duration = 0.0f;   // 入った側が決める。0 のままなら «尺を持たない» 状態
+    /// @note 入った側が決める。0 のままなら «尺を持たない» 状態
+    m_duration = 0.0f;
     debugState = StateName(next);
     ClearTelegraph();
     if (auto* brk = Break())
@@ -724,8 +689,8 @@ inline void Boss03AiComponent::Enter(State next)
             anim->SetClosed(next == State::Dormant);
     }
 
-    // 手の «入り» に鳴らす音。ここへ集めるのは、状態が変わる場所が 1 つしか
-    // 無いから ── 各 Tick へ散らすと «入った瞬間» を自前で見張ることになる。
+    /// @note 手の «入り» に鳴らす音。ここへ集めるのは、状態が変わる場所が 1 つしか
+    ///       無いから ── 各 Tick へ散らすと «入った瞬間» を自前で見張ることになる。
     switch (next) {
     case State::Dead:
         if (previous != State::Dead) {
@@ -739,7 +704,7 @@ inline void Boss03AiComponent::Enter(State next)
         }
         break;
     case State::Appear:
-        // 繭から開くのは 2 度ある ─ 登場と、段の変わり目。別の出来事なので別の音。
+        /// @note 繭から開くのは 2 度ある ─ 登場と、段の変わり目。別の出来事なので別の音。
         if (previous == State::Cocoon) {
             se::Play(audio, se::kBossHatchOpen);
             se::Play(audio, se::kBossPhaseShift);
@@ -750,12 +715,12 @@ inline void Boss03AiComponent::Enter(State next)
 
     case State::Cocoon:
         se::Play(audio, se::kBossHatchClose);
-        // 閉じている間は手を出さない。撃ちかけの線が残ると «閉じたのに焼かれる» になる。
+        /// @note 閉じている間は手を出さない。撃ちかけの線が残ると «閉じたのに焼かれる» になる。
         StopRangedEffects();
         break;
 
     case State::BeatHold:
-        // 拍が飛ぶ «溜め»。音でも一拍空くので、連打で流していると必ず外す。
+        /// @note 拍が飛ぶ «溜め»。音でも一拍空くので、連打で流していると必ず外す。
         se::Play(audio, se::kBossStompHold);
         break;
 
@@ -774,8 +739,8 @@ inline void Boss03AiComponent::Enter(State next)
         PlayShock(GroundPoint(), dashRumble);
         break;
 
-    // 扇は «溜め» から線が出ている。手へ入った瞬間に撃たせないと、予兆が
-    // 出ないまま照射だけが始まる (音は斉射側が鳴らす)。
+    /// @note 扇は «溜め» から線が出ている。手へ入った瞬間に撃たせないと、予兆が
+    ///       出ないまま照射だけが始まる (音は斉射側が鳴らす)。
     case State::LaserWindup:
         BeginLaser();
         break;
@@ -791,8 +756,8 @@ inline void Boss03AiComponent::BeginLaser()
     auto* volley = Volley();
     if (!volley) return;
 
-    // 盤面の秒を実時間へ直す。斉射は Time::deltaTime で進むので、テンポを掛けた
-    // こちらの秒数をそのまま渡すと、テンポが 1 でないときだけ絵と拍がずれる。
+    /// @note 盤面の秒を実時間へ直す。斉射は Time::deltaTime で進むので、テンポを掛けた
+    ///       こちらの秒数をそのまま渡すと、テンポが 1 でないときだけ絵と拍がずれる。
     volley->OverrideTiming(std::max(laserWindup / m_tempoScale, 0.05f),
                            std::max(laserSeconds / m_tempoScale, 0.05f));
 
@@ -831,11 +796,11 @@ inline Vector3 Boss03AiComponent::CorePoint() const
 inline int Boss03AiComponent::PickThrowWing() const
 {
     const auto* anim = Anim();
-    // 下 → 中 → 上 の順。左右は交互に見えるよう左下・右下…と並べる。
+    /// @note 下 → 中 → 上 の順。左右は交互に見えるよう左下・右下…と並べる。
     static constexpr int kOrder[kBoss03WingCount] = { 2, 5, 1, 4, 0, 3 };
     for (int index : kOrder) {
         if (m_thrown[index]) continue;
-        // もいだ翼は «無い» ので投げられない。畳まれているかは絵の側が知っている。
+        /// @note もいだ翼は «無い» ので投げられない。畳まれているかは絵の側が知っている。
         if (anim && anim->IsWingDetached(index)) continue;
         return index;
     }
@@ -869,9 +834,7 @@ inline void Boss03AiComponent::CaptureWingBind()
     GameObject* self = scene.Self();
     if (!self || m_bindCaptured) return;
 
-    // WHY OnStart で控えるか: 骨はシーンに保存されていて、**AnimatorSystem が
-    //     最初に姿勢を書く前**ならバインド姿勢のまま立っている。1 フレームでも
-    //     動いた後に控えると、投げた翼の静的メッシュがその姿勢ぶんずれて出る。
+    /// @note AnimatorSystem が最初に姿勢を書く前は骨がバインド姿勢のまま立っている。1 フレームでも動いた後に控えると、投げた翼の静的メッシュがその姿勢ぶんずれて出る。
     const Vector3    rootPos = self->transform.worldPosition;
     const Quaternion rootInv = self->transform.worldRotation.Inverse();
 
@@ -895,24 +858,20 @@ inline bool Boss03AiComponent::ThrowWing(const Vector3& target)
     GameObject* bone = self ? FindInSubtree(*self, kBoss03WingBones[wing]) : nullptr;
     GameObject* mesh = WingMesh(wing);
     if (!self || !bone || !mesh || !m_bindCaptured) {
-        // 投げられないなら締めは普通の叩きつけへ落ちる (呼び側が false を見る)。
+        /// @note 投げられないなら締めは普通の叩きつけへ落ちる (呼び側が false を見る)。
         debug.LogWarning(std::string("Boss03AiComponent: cannot throw '") +
                          kBoss03WingBones[wing] + "' (mesh '" + wingMeshPrefix +
                          kBoss03WingBones[wing] + "' or its bone is missing).");
         return false;
     }
 
-    // 静的メッシュは «モデル空間» で描かれる。バインド姿勢の翼を今の骨へ重ねる
-    // 変換を解いて、その姿勢で置く (BossRigComponent::SpawnLegDebris と同じ形)。
+    /// @note 静的メッシュは «モデル空間» で描かれる。バインド姿勢の翼を今の骨へ重ねる
+    ///       変換を解いて、その姿勢で置く (BossRigComponent::SpawnLegDebris と同じ形)。
     Quaternion rot = (bone->transform.worldRotation * m_bindWingRot[wing].Inverse())
                           .Normalized();
     const Vector3    pos = bone->transform.worldPosition - rot * m_bindWingPos[wing];
 
-    // 狙うのは «予兆で見せた円» の中心の**胸の高さ**。
-    //
-    // WHY 床を狙わないか: 翼はここを通り過ぎたら落ちるだけで、止まる所は物理が決める。
-    //     床を狙うと «拾えない低さ» を水平に舐めることになり、当たり判定 (水平距離) が
-    //     効いている割に絵は足元をかすめる ─ 何に当たったのか読めない。
+    /// @note 狙うのは «予兆で見せた円» の中心の胸の高さ。床を狙うと当たり判定 (水平距離) が効いていても絵は足元をかすめ、何に当たったか読めなくなる。翼は通り過ぎたら落ちるだけで止まる所は物理が決める。
     Vector3 landing = target;
     landing.y = target.y + 1.2f;
     const Vector3 launchDirection = (landing - pos).NormalizedOr(Forward());
@@ -925,16 +884,16 @@ inline bool Boss03AiComponent::ThrowWing(const Vector3& target)
 
     if (auto* skin = blade->GetComponent<SkinnedMeshRenderer>()) skin->enabled = true;
     blade->ClearParent();
-    // 親を外した後にワールド姿勢を書く。ローカルを保つ実装だと原点へ落ちる。
-    // ワールド側も同時に埋める ─ 剛体はこの直後に worldPosition から作られるので、
-    // 組み直しを 1 フレーム待つと «原点から落ちてくる翼» になる。
+    /// @note 親を外した後にワールド姿勢を書く。ローカルを保つ実装だと原点へ落ちる。
+    ///       ワールド側も同時に埋める ─ 剛体はこの直後に worldPosition から作られるので、
+    ///       組み直しを 1 フレーム待つと «原点から落ちてくる翼» になる。
     blade->transform.position      = pos;
     blade->transform.rotation      = rot;
     blade->transform.worldPosition = pos;
     blade->transform.worldRotation = rot;
 
-    // 同じ翼を何度でも投げ直す。スクリプトは戻った後も付いたまま残るので、
-    // 2 回目以降は付け直さず Setup だけをやり直す。
+    /// @note 同じ翼を何度でも投げ直す。スクリプトは戻った後も付いたまま残るので、
+    ///       2 回目以降は付け直さず Setup だけをやり直す。
     auto* script = blade->GetScript<Boss03WingProjectileComponent>();
     if (!script) script = &blade->AddScript<Boss03WingProjectileComponent>();
     auto* wingPart = blade->GetScript<BossPartComponent>();
@@ -951,8 +910,9 @@ inline bool Boss03AiComponent::ThrowWing(const Vector3& target)
     script->hitRadius       = std::max(wingHitRadius, 0.1f);
     script->damage          = std::max(IsFinisher() ? finisherDamage : beatDamage, 0);
     script->spinRate        = 0.0f;
-    script->destroyOnReturn = false;   // ボスの翼そのもの。戻したら繋ぎ直す
-    // 戻ってきたら繋ぎ直す。名指しで呼び返す代わりに口を 1 本渡す (循環 include を作らない)。
+    /// @note ボスの翼そのもの。戻したら繋ぎ直す
+    script->destroyOnReturn = false;
+    /// @note 戻ってきたら繋ぎ直す。名指しで呼び返す代わりに口を 1 本渡す (循環 include を作らない)。
     script->onReturned      = [this](int returned) { OnWingReturned(returned); };
     script->onParried       = [this](int returned) { OnWingParriedHit(returned); };
     script->onBroken        = [this](int broken) { OnWingBroken(broken); };
@@ -971,12 +931,12 @@ inline void Boss03AiComponent::OnWingReturned(int wing)
     m_thrown[wing] = false;
 
     GameObject* self = scene.Self();
-    // 投げている間は親から外れているので、名前ではなく控えた参照で引く。
+    /// @note 投げている間は親から外れているので、名前ではなく控えた参照で引く。
     GameObject* blade = m_thrownRef[wing].Resolve(scene);
     m_thrownRef[wing] = {};
     if (self && blade) {
-        // 骨へ繋ぎ直す。ローカルを恒等へ戻すと、取り込んだときの姿勢に揃う
-        // (翼のオブジェクトはボス直下でローカル恒等という前提)。
+        /// @note 骨へ繋ぎ直す。ローカルを恒等へ戻すと、取り込んだときの姿勢に揃う
+        ///       (翼のオブジェクトはボス直下でローカル恒等という前提)。
         blade->SetParent(*self);
         blade->transform.position = Vector3::ZERO;
         blade->transform.rotation = Quaternion::Identity();
@@ -984,7 +944,7 @@ inline void Boss03AiComponent::OnWingReturned(int wing)
         if (auto* part = blade->GetScript<BossPartComponent>()) part->Break();
     }
 
-    // もいだ翼は戻さない ─ 進行で失った翼と、投げて帰ってきた翼を取り違えない。
+    /// @note もいだ翼は戻さない ─ 進行で失った翼と、投げて帰ってきた翼を取り違えない。
     if (m_wings > 0)
         if (auto* anim = Anim()) anim->RestoreWing(wing);
     se::Play(audio, se::kBossHatchClose, 0.8f);
@@ -1042,9 +1002,7 @@ inline void Boss03AiComponent::OnUpdate()
     m_bodyReactCooldown = std::max(0.0f, m_bodyReactCooldown - feedbackDt);
     if (!m_bindCaptured) CaptureWingBind();
 
-    // WHY 尺ではなく dt に tempo を掛けるか (BossAiComponent と同じ形):
-    //   尺の方を割ると、比較する箇所すべてで割り算が要る。dt を伸縮させれば
-    //   Inspector の秒数は «tempo 1.0 のときの秒» という 1 つの意味に固定できる。
+    /// @note 尺を割るのでなく dt に tempo を掛ける (`BossAiComponent` と同じ形)。尺側を割ると比較箇所すべてで割り算が要るが、dt を伸縮させれば Inspector の秒数は «tempo 1.0 のときの秒» に固定できる。
     const float phase = CurrentPhase() >= 2 ? std::max(phase2Tempo, 0.01f) : 1.0f;
     const float scale = std::max(tempo, 0.0f) * phase;
     const float dt    = std::max(time.DeltaTime(), 0.0f) * scale;
@@ -1056,15 +1014,12 @@ inline void Boss03AiComponent::OnUpdate()
     auto* anim = Anim();
     if (anim) anim->SetTempo(scale);
 
-    // WHY «一度でも生きていたか» を挟むか (2026-09-15 にこれで動かなくなった):
-    //   EnemyHealthComponent の体力は OnStart で初めて満たされる ─ それまでは 0、
-    //   つまり IsAlive() は false を返す。スクリプトはシーンに並べた順に開始するので、
-    //   体力より前に並んだ AI が先に回ると «開幕から倒されているボス» になり、
-    //   Dead から出る道は無いので二度と動かない。並び順に依存させない。
+    /// @note `EnemyHealthComponent` の体力は OnStart まで 0 (`IsAlive()` は false)。体力より前に並んだ AI が先に回ると «開幕から倒されているボス» になり Dead から出られなくなるため、並び順に依存させず «一度でも生きていたか» を挟む。
     const bool alive = IsAlive();
     if (alive) m_sawAlive = true;
 
-    if (!m_sawAlive) return;   // まだ体力が満ちていない。この 1 フレームは何もしない
+    /// @note まだ体力が満ちていない。この 1 フレームは何もしない
+    if (!m_sawAlive) return;
 
     if (!alive) {
         if (m_state != State::Dead) Enter(State::Dead);
@@ -1079,20 +1034,13 @@ inline void Boss03AiComponent::OnUpdate()
     debugBeats = m_beatsTotal;
     m_timer += m_state == State::BeatRecover ? std::max(time.DeltaTime(), 0.0f) : dt;
 
-    // 向き直るのは «溜めのあいだ» まで。振り出した後も回ると、突進が横滑りし、
-    // 叩きつけは予兆で見せた場所と当たる場所が別になる。
-    //
-    // WHY 連撃の溜めでは動いてよいか: 叩きつけの狙いはプレイヤーへ付いてくるので、
-    //     ボスがその場に留まると «15m 先まで翼が届く» 絵になる。逆に走って離れるだけで
-    //     連撃が丸ごと空振りするなら、弾く理由も消える。溜めのあいだだけ間合いを
-    //     詰め直せば、届く距離で振っていることと «逃げ切れない» が同時に成り立つ。
-    //     扇と波の溜めでは動かない ─ あちらは撃つ場所を先に見せる手で、
-    //     読んで移動した距離が動かれると無駄になる。
+    /// @note 向き直るのは溜めの間だけ。振り出した後も回ると突進が横滑りし、叩きつけは予兆位置とずれて当たる。
+    /// @note 連撃の溜めでは間合いを詰め直す。その場に留まると «15m 先まで届く» 絵になり、離れるだけで空振りにできると弾く理由が消えるため。扇/波の溜めは撃つ場所を先に見せる手なので動かない。
     const bool turning = m_state == State::Idle        || m_state == State::BeatRecover
                       || m_state == State::BeatWindup  || m_state == State::BeatHold
                       || m_state == State::DashWindup  || m_state == State::LaserWindup
                       || m_state == State::PulseWindup || m_state == State::Appear;
-    // 連撃後に後退すると、受け切ってから斬りに行く選択が成立しない。
+    /// @note 連撃後に後退すると、受け切ってから斬りに行く選択が成立しない。
     const bool settling = m_state == State::Idle
                        || m_state == State::BeatWindup || m_state == State::BeatHold;
     const bool beatLocked = m_state == State::BeatWindup
@@ -1145,10 +1093,10 @@ inline void Boss03AiComponent::DriveHover(float dt, bool allowTurn, bool allowMo
 
     const Vector3 direction = toPlayer / distance;
 
-    // 向き直り。角速度で回す ─ 指数補間だと残り角度が小さいほど遅くなり、
-    // «あと少しだけ正面を外している» が延々続く。
+    /// @note 向き直り。角速度で回す ─ 指数補間だと残り角度が小さいほど遅くなり、
+    ///       «あと少しだけ正面を外している» が延々続く。
     if (allowTurn) {
-        // 移動アニメーションの方向判定と同じモデル正面補正を使う。
+        /// @note 移動アニメーションの方向判定と同じモデル正面補正を使う。
         const Quaternion desired =
             Quaternion::LookRotation(direction)
             * Quaternion::FromAxisAngle(Vector3::UP, ToRad(-kBoss03FacingOffsetDegrees));
@@ -1163,7 +1111,7 @@ inline void Boss03AiComponent::DriveHover(float dt, bool allowTurn, bool allowMo
 
     if (!allowMove || hoverSpeed <= 0.0f) return;
 
-    // 間合い。遊びの内側では半径方向へ動かず、周回だけを残す。
+    /// @note 間合い。遊びの内側では半径方向へ動かず、周回だけを残す。
     const float error = distance - std::max(holdDistance, 0.0f);
     Vector3 move = Vector3::ZERO;
     if (std::fabs(error) > std::max(distanceBand, 0.0f) * 0.5f) {
@@ -1172,8 +1120,8 @@ inline void Boss03AiComponent::DriveHover(float dt, bool allowTurn, bool allowMo
         move += direction * (error > 0.0f ? travel : -travel);
     }
 
-    // 待機と復帰だけ周回する。溜め中まで横へ流すと予兆の中心を追い越すため、
-    // 攻撃へ入った瞬間に位置を固定して読み合いを成立させる。
+    /// @note 待機と復帰だけ周回する。溜め中まで横へ流すと予兆の中心を追い越すため、
+    ///       攻撃へ入った瞬間に位置を固定して読み合いを成立させる。
     const bool orbiting = m_state == State::Idle || m_state == State::BeatRecover;
     if (orbiting && orbitSpeed > 0.0f) {
         const Vector3 tangent{ -direction.z, 0.0f, direction.x };
@@ -1182,7 +1130,7 @@ inline void Boss03AiComponent::DriveHover(float dt, bool allowTurn, bool allowMo
 
     if (move.LengthSq() <= EPSILON) return;
 
-    // 水平移動だけを加える。上下は直前の安全な浮遊位置を維持する。
+    /// @note 水平移動だけを加える。上下は直前の安全な浮遊位置を維持する。
     const Vector3 next = transform.position + Vector3{ move.x, 0.0f, move.z };
     transform.position = ClampToArena(next);
 }
@@ -1268,7 +1216,7 @@ inline void Boss03AiComponent::TickIdle(float dt)
     (void)dt;
     if (m_timer < idleSeconds) return;
 
-    // 翼が半分になったら 1 度だけ繭へ。段の変わり目を «見える出来事» にする。
+    /// @note 翼が半分になったら 1 度だけ繭へ。段の変わり目を «見える出来事» にする。
     if (!m_cocoonDone && CurrentPhase() >= 2) {
         m_cocoonDone = true;
         Enter(State::Cocoon);
@@ -1276,11 +1224,8 @@ inline void Boss03AiComponent::TickIdle(float dt)
         return;
     }
 
-    // 装着翼の連撃と投擲を分け、地上技の後には反撃の隙を作る。
-    //
-    // WHY 乱数で選ばないか: このボスの読みは «連撃の何拍目か» で、手の選択そのものは
-    //     読ませたい対象ではない。乱数にすると «次に何が来るか» の不安が連撃の
-    //     数え上げに割り込む。決まった順に回せば、覚えた先に必ず答えがある。
+    /// @note 装着翼の連撃と投擲を分け、地上技の後には反撃の隙を作る。
+    /// @note 手の選択は乱数でなく固定順。読ませたいのは «連撃の何拍目か» であり、乱数だと «次に何が来るか» の不安がそれに割り込む。
     m_stakeAttack = false;
     switch (m_cycle % 6) {
     case 0:
@@ -1302,8 +1247,8 @@ inline void Boss03AiComponent::TickIdle(float dt)
 inline void Boss03AiComponent::BeginString()
 {
     m_stakeParries = 0;
-    // 拍の数は «今その場に付いている翼» の数。投げて床に刺さっている間は
-    // その 1 枚ぶん連撃が短い ── 取り返しに来る理由になる。
+    /// @note 拍の数は «今その場に付いている翼» の数。投げて床に刺さっている間は
+    ///       その 1 枚ぶん連撃が短い ── 取り返しに来る理由になる。
     m_beatsTotal = std::clamp(std::min(AttachedWings(), std::max(beatsMax, 1)), 0, 8);
     if (m_beatsTotal == 0) { Enter(State::BeatRecover); return; }
     if (m_stakeAttack) m_beatsTotal = 3;
@@ -1321,31 +1266,28 @@ inline void Boss03AiComponent::EnterBeatWindup()
     }
     if (m_attackWing < 0) { Enter(State::BeatRecover); return; }
     Enter(State::BeatWindup);
-    // WHY 1 拍目だけ長いか: 連撃の «始まり» は読ませる必要がある。2 拍目以降は
-    //     «次が来ること» が既に分かっているので、間隔がそのまま振り上げになる。
-    //     ここを全部 beatWindup にすると、拍の間隔が windup で決まってしまい、
-    //     翼が減っても速くならない。
+    /// @note 1 拍目だけ長い。連撃の始まりは読ませる必要があるが、2 拍目以降は次が来ると分かっているため間隔がそのまま振り上げになる。全部 `beatWindup` にすると拍の間隔が windup で決まり、翼が減っても速くならない。
     m_duration    = (m_beat == 0) ? std::max(beatWindup, 0.05f) : BeatInterval();
     if (m_stakeAttack) m_duration = IsFinisher() ? 0.85f : 0.65f;
     m_beatParried = false;
     if (GameObject* player = Player()) m_target = player->transform.worldPosition;
 
-    // 絵は «叩きつけが拍に重なる» 速さで鳴らす。締めは両翼 (Slam_Combo)。
+    /// @note 絵は «叩きつけが拍に重なる» 速さで鳴らす。締めは両翼 (Slam_Combo)。
     if (auto* anim = Anim()) {
         if (IsFinisher()) anim->SlamCombo(m_duration);
         else              anim->Slam(m_attackWing < 3, m_duration);
     }
 
-    // 振り上げの音を毎拍鳴らす。**拍が耳からも数えられる**ようにするのが目的で、
-    // 締めだけ大きくして «次が重い» を予告する (Docs/boss03.md「拍の見せ方」)。
+    /// @note 振り上げの音を毎拍鳴らす。**拍が耳からも数えられる**ようにするのが目的で、
+    ///       締めだけ大きくして «次が重い» を予告する (Docs/boss03.md「拍の見せ方」)。
     se::Play(audio, se::kBossStompRaise, IsFinisher() ? 1.0f : 0.7f);
 }
 
 inline void Boss03AiComponent::TickBeatWindup(float dt)
 {
     (void)dt;
-    // 叩きつけはプレイヤーへ «付いてくる»。予兆と当たる場所を同じ 1 つから引くので、
-    // 出した円の外へ出れば必ず躱せる (当てる位置は下で確定させる)。
+    /// @note 叩きつけはプレイヤーへ «付いてくる»。予兆と当たる場所を同じ 1 つから引くので、
+    ///       出した円の外へ出れば必ず躱せる (当てる位置は下で確定させる)。
     const float progress = m_duration > 0.0f ? Clamp01(m_timer / m_duration) : 1.0f;
     if (progress < Clamp01(telegraphLockProgress))
         if (GameObject* player = Player()) m_target = player->transform.worldPosition;
@@ -1373,11 +1315,11 @@ inline void Boss03AiComponent::TickBeatWindup(float dt)
 inline void Boss03AiComponent::TickBeat(float dt)
 {
     (void)dt;
-    // 振り下ろしは 1 フレームで解決する。判定を尺で持つと «もう避けたのに当たる» が出る。
+    /// @note 振り下ろしは 1 フレームで解決する。判定を尺で持つと «もう避けたのに当たる» が出る。
     const int amount = IsFinisher() ? finisherDamage : beatDamage;
 
-    // 1 拍ごとに翼を 1 枚抜いて投げる。抜けたらこの拍の当たりは翼が運ぶので、
-    // ここでは円を出さない ── 同じ 1 拍に判定が 2 つあると、弾く先が割れる。
+    /// @note 1 拍ごとに翼を 1 枚抜いて投げる。抜けたらこの拍の当たりは翼が運ぶので、
+    ///       ここでは円を出さない ── 同じ 1 拍に判定が 2 つあると、弾く先が割れる。
     if (!m_stakeAttack && finisherThrowsWing && ThrowWing(m_target)) {
         se::PlayAt(audio, se::kImpactDebris, transform.worldPosition);
         se::PlayAt(audio, se::kBossStompImpact, transform.worldPosition, 0.85f);
@@ -1386,17 +1328,17 @@ inline void Boss03AiComponent::TickBeat(float dt)
         return;
     }
 
-    // ⚠ 弾かれたかどうかを «叩く前» に見てはいけない。
-    //   OnParried はこの呼び出しの «中» で走る:
-    //     HitPlayerInSphere → CombatManager::HitPlayer → PlayerComponent::ReceiveHit
-    //       → PlayerParryComponent::OnParried → IBoss::OnParried → ここの OnParried
-    //   つまり «弾かれたから判定を出さない» は書けない。常に振って、
-    //   通ったかどうかは返り値と OnParried が決める (BossAiComponent の踏みつけと同じ形)。
+    /// @note ⚠ 弾かれたかどうかを «叩く前» に見てはいけない。
+    ///       OnParried はこの呼び出しの «中» で走る:
+    ///       HitPlayerInSphere → CombatManager::HitPlayer → PlayerComponent::ReceiveHit
+    ///       → PlayerParryComponent::OnParried → IBoss::OnParried → ここの OnParried
+    ///       つまり «弾かれたから判定を出さない» は書けない。常に振って、
+    ///       通ったかどうかは返り値と OnParried が決める (BossAiComponent の踏みつけと同じ形)。
     (void)HitPlayerInSphere(m_target, beatRadius, amount, PlayerHitKind::Parryable);
     if (m_state != State::Beat) return;
 
-    // 翼が床を叩いた «跡»。当たったかどうかに関係なく出す ── 避けた側にも
-    // «そこへ来た» が残らないと、次の拍がどこへ来るかを学習できない。
+    /// @note 翼が床を叩いた «跡»。当たったかどうかに関係なく出す ── 避けた側にも
+    ///       «そこへ来た» が残らないと、次の拍がどこへ来るかを学習できない。
     const bool  finisher = IsFinisher();
     const float weight   = finisher ? finisherRumble : beatRumble;
     Vector3 outward = m_target - transform.worldPosition;
@@ -1406,7 +1348,7 @@ inline void Boss03AiComponent::TickBeat(float dt)
     if (auto* vfx = VfxManagerComponent::Instance()) {
         vfx->PlayGroundDust(m_target, outward.NormalizedOr(Forward()), heft,
                             finisher ? 1.6f : 1.1f);
-        // 締めだけ床が砕ける。連撃の «終わり» は絵でも他の拍と違っていてほしい。
+        /// @note 締めだけ床が砕ける。連撃の «終わり» は絵でも他の拍と違っていてほしい。
         if (finisher) vfx->PlayGroundBlast(m_target, BladeSide::None, heft);
     }
     se::PlayAt(audio, se::kBossStompImpact, m_target, finisher ? 1.0f : 0.8f);
@@ -1428,8 +1370,8 @@ inline void Boss03AiComponent::AdvanceBeat()
         return;
     }
 
-    // 締めの «直前» だけ拍を飛ばす。等間隔を崩す唯一の場所 ─ 連打で流していると
-    // ここで必ず外す (Docs/boss03.md「WHY 締めだけ拍を飛ばすか」)。
+    /// @note 締めの «直前» だけ拍を飛ばす。等間隔を崩す唯一の場所 ─ 連打で流していると
+    ///       ここで必ず外す (`Docs/boss03.md` の締めだけ拍を飛ばす理由)。
     if (m_beat == m_beatsTotal - 1 && finisherHold > 0.0f) { Enter(State::BeatHold); return; }
     EnterBeatWindup();
 }
@@ -1437,7 +1379,7 @@ inline void Boss03AiComponent::AdvanceBeat()
 inline void Boss03AiComponent::TickBeatHold(float dt)
 {
     (void)dt;
-    // 翼を上げたまま止める。«来ない» ことが見えている必要があるので、予兆も出さない。
+    /// @note 翼を上げたまま止める。«来ない» ことが見えている必要があるので、予兆も出さない。
     if (m_timer >= finisherHold) EnterBeatWindup();
 }
 
@@ -1452,7 +1394,7 @@ inline void Boss03AiComponent::TickBeatRecover(float dt)
             return;
         }
     }
-    // ここが IsStaggered。斬りに行く時間 (Docs/break-parry.md)。
+    /// @note ここが IsStaggered。斬りに行く時間 (Docs/break-parry.md)。
     if (m_timer >= beatRecover) Enter(State::Idle);
 }
 
@@ -1487,8 +1429,8 @@ inline void Boss03AiComponent::TickDash(float dt)
 {
     if (m_rollAttack) { TickRoll(dt); return; }
     const Vector3 step = m_dashDir * (dashSpeed * dt);
-    // 縁で止める。剛体を持たないので ArenaBounds の押し返しは効かない ──
-    // 止めないと «海の上まで突っ切って戻ってくる» になる。
+    /// @note 縁で止める。剛体を持たないので ArenaBounds の押し返しは効かない ──
+    ///       止めないと «海の上まで突っ切って戻ってくる» になる。
     Vector3 next = ClampToArena(transform.position + Vector3{ step.x, 0.0f, step.z });
     const float t = Clamp01(m_timer / std::max(dashSeconds, 0.01f));
     const float arc = 4.0f * t * (1.0f - t);
@@ -1497,8 +1439,8 @@ inline void Boss03AiComponent::TickDash(float dt)
              std::max(dashGroundSink, 0.0f) * arc;
     transform.position = next;
 
-    // 通った跡の土煙。低空の手なので «床を擦っている» ことが見えないと、
-    // なぜ跳ばないと当たるのかが絵から読めない。
+    /// @note 通った跡の土煙。低空の手なので «床を擦っている» ことが見えないと、
+    ///       なぜ跳ばないと当たるのかが絵から読めない。
     m_dashDustLeft -= dt;
     if (m_dashDustLeft <= 0.0f) {
         m_dashDustLeft = 0.10f;
@@ -1506,11 +1448,9 @@ inline void Boss03AiComponent::TickDash(float dt)
             vfx->PlayGroundDust(GroundPoint(), -m_dashDir, 0.55f, 0.9f);
     }
 
-    // 跳んで越える手。床から dashHeight より上に居れば当たらない。
-    // WHY 高さで判定するか: 弾けない手であることを «刀が届かない低さ» で言う。
-    //     半径だけで見ると、跳んでいても足が拾われて «跳んだのに当たった» になる。
-    // WHY 中心を床へ落とすか: 原点はボスの «浮いている高さ» なので、そこから測ると
-    //     跳躍では届かない高さを要求することになり、跳んでも必ず当たる手になる。
+    /// @note 跳んで越える手。床から `dashHeight` より上に居れば当たらない。
+    /// @note 高さで判定する。半径だけだと跳んでいても足が拾われ «跳んだのに当たった» になる。
+    /// @note 中心は床へ落とす。ボス原点 (浮いている高さ) から測ると跳躍で届かない高さを要求し、跳んでも必ず当たる手になってしまう。
     (void)HitPlayerInSphere(GroundPoint(), dashRadius, dashDamage,
                             PlayerHitKind::Unblockable, dashHeight);
     if (m_state != State::Dash) return;
@@ -1563,8 +1503,8 @@ inline void Boss03AiComponent::TickRoll(float dt)
 inline void Boss03AiComponent::TickLaserWindup(float dt)
 {
     (void)dt;
-    // 実際の線が床へ落ちる位置を、そのまま地面の帯で先に見せる。
-    // 単一線なので、Playerの現在位置へ向けて逃げる方向を読ませる。
+    /// @note 実際の線が床へ落ちる位置を、そのまま地面の帯で先に見せる。
+    ///       単一線なので、Playerの現在位置へ向けて逃げる方向を読ませる。
     if (!m_volleyFired) {
         const float length = std::max(laserLength, 2.0f);
         const float progress = laserWindup > 0.0f
@@ -1590,14 +1530,14 @@ inline void Boss03AiComponent::TickLaserWindup(float dt)
 
 inline void Boss03AiComponent::TickLaser(float dt)
 {
-    // 線と当たりは斉射が持っている。ここは尺を数えるだけ。
+    /// @note 線と当たりは斉射が持っている。ここは尺を数えるだけ。
     if (m_volleyFired) {
         if (m_timer >= laserSeconds) Enter(State::Idle);
         return;
     }
 
-    // 斉射が無い構成での代わり。ボスを中心にした円を刻む ─ 扇と同じ «ここに居ると
-    // 焼かれる» を、線を張らずに言う。
+    /// @note 斉射が無い構成での代わり。ボスを中心にした円を刻む ─ 扇と同じ «ここに居ると
+    ///       焼かれる» を、線を張らずに言う。
     m_laserElapsed += dt;
     if (m_laserElapsed >= laserTick) {
         m_laserElapsed = 0.0f;
@@ -1626,12 +1566,12 @@ inline void Boss03AiComponent::TickPulse(float dt)
 {
     (void)dt;
     if (auto* shock = Shockwave()) {
-        // 床を走る輪。当たりも «跳んで越えたか» もあちらが持つので、ここでは出さない。
-        // 走り切るのを待たずに次の手へ戻る ─ 波はもうボスの都合から切り離されている。
+        /// @note 床を走る輪。当たりも «跳んで越えたか» もあちらが持つので、ここでは出さない。
+        ///       走り切るのを待たずに次の手へ戻る ─ 波はもうボスの都合から切り離されている。
         shock->Emit(GroundPoint());
     } else {
-        // 波が無い構成での代わり。輪は 1 度きり ─ 広がり切るまで判定を持つと
-        // «外へ走り切った» が報われない。高さは床から測る (突進と同じ理由)。
+        /// @note 波が無い構成での代わり。輪は 1 度きり ─ 広がり切るまで判定を持つと
+        ///       «外へ走り切った» が報われない。高さは床から測る (突進と同じ理由)。
         (void)HitPlayerInSphere(GroundPoint(), pulseRadius, pulseDamage,
                                 PlayerHitKind::Unblockable, pulseHeight);
         if (m_state != State::Pulse) return;
@@ -1644,7 +1584,7 @@ inline void Boss03AiComponent::TickCocoon(float dt)
     (void)dt;
     if (m_timer < cocoonSeconds) return;
     if (auto* anim = Anim()) anim->SetClosed(false);
-    // 開き切るまでは手を出さない。Appear と同じ尺を使う (同じ Deploy クリップ)。
+    /// @note 開き切るまでは手を出さない。Appear と同じ尺を使う (同じ Deploy クリップ)。
     Enter(State::Appear);
 }
 
@@ -1670,7 +1610,7 @@ inline bool Boss03AiComponent::ApplyBodyDamage(int amount)
 inline void Boss03AiComponent::TickToppled(float dt)
 {
     if (dt <= 0.0f) return;
-    // Stagger が骨を下げても、胴の当たりが地面に埋まらないよう接地点を保つ。
+    /// @note Stagger が骨を下げても、胴の当たりが地面に埋まらないよう接地点を保つ。
     if (m_toppleLeft > 0.0f)
         if (const auto* body = FindInSubtree(*scene.Self(), "Body"))
             m_toppleGroundY = m_toppleFloorY + 1.05f
@@ -1732,11 +1672,11 @@ inline void Boss03AiComponent::Topple(float seconds)
     m_toppleFloorY = floorY;
     m_toppleGroundY = floorY + 1.05f - bodyOffset;
     debugReaction = "Toppled";
-    // ゲージ側も «倒れている» へ入れる。入れないとバーが満タンのまま残り、
-    // 起き上がった直後の 1 回の弾きで即座に再転倒する。
+    /// @note ゲージ側も «倒れている» へ入れる。入れないとバーが満タンのまま残り、
+    ///       起き上がった直後の 1 回の弾きで即座に再転倒する。
     if (auto* brk = Break()) brk->BeginTopple(m_toppleLeft + std::max(toppleFallSeconds, 0.1f));
-    // 崩れた瞬間に手を畳む。撃ちかけの扇が残ると «崩れているのに焼かれる» になり、
-    // «倒れている間は安全に斬れる» という転倒の意味そのものが消える。
+    /// @note 崩れた瞬間に手を畳む。撃ちかけの扇が残ると «崩れているのに焼かれる» になり、
+    ///       «倒れている間は安全に斬れる» という転倒の意味そのものが消える。
     StopRangedEffects();
     se::Play(audio, se::kBossDamaged);
     PlayShock(transform.worldPosition, toppleRumble);
@@ -1745,7 +1685,7 @@ inline void Boss03AiComponent::Topple(float seconds)
 
 inline void Boss03AiComponent::EndTopple()
 {
-    // 起き上がりの音は浮上開始時に鳴らし、ここでは攻撃の再開だけを行う。
+    /// @note 起き上がりの音は浮上開始時に鳴らし、ここでは攻撃の再開だけを行う。
     if (auto* brk = Break()) brk->EndTopple();
     Enter(State::Idle);
 }
@@ -1758,8 +1698,8 @@ inline void Boss03AiComponent::OnParried(const Vector3& hitPoint)
     switch (m_state) {
     case State::BeatWindup:
     case State::Beat:
-        // その拍だけ潰す。連撃は止めない ─ 止めると «1 回弾けば安全» になり、
-        // 連続弾き (+15% × 4) が働かない (Docs/boss03.md)。
+        /// @note その拍だけ潰す。連撃は止めない ─ 止めると «1 回弾けば安全» になり、
+        ///       連続弾き (+15% × 4) が働かない (Docs/boss03.md)。
         if (m_stakeAttack && !m_beatParried) ++m_stakeParries;
         m_beatParried = true;
         if (m_stakeAttack && m_stakeParries >= 3) {
@@ -1772,21 +1712,21 @@ inline void Boss03AiComponent::OnParried(const Vector3& hitPoint)
         }
         debugReaction = IsFinisher() ? "Parried (finisher)" : "Parried (beat)";
         if (auto* anim = Anim()) anim->ReactToHit(IsFinisher() ? 1.0f : 0.0f);
-        // 弾かれた側の声。火花と止めは弾いた側 (PlayerParryComponent) が出すので、
-        // ここは «効いた» だけを返す。
+        /// @note 弾かれた側の声。火花と止めは弾いた側 (PlayerParryComponent) が出すので、
+        ///       ここは «効いた» だけを返す。
         se::Play(audio, se::kBossDamaged, IsFinisher() ? 1.0f : 0.7f);
         break;
 
     default:
-        // 投げた翼を弾かれた。飛んでいる間ボスは次の手に入っているので、
-        // 状態では «連撃中» に見えない ─ 出払っている翼があるかで判じる。
+        /// @note 投げた翼を弾かれた。飛んでいる間ボスは次の手に入っているので、
+        ///       状態では «連撃中» に見えない ─ 出払っている翼があるかで判じる。
         if (AnyWingThrown()) {
             debugReaction = "Parried (wing)";
             if (auto* anim = Anim()) anim->ReactToHit(1.0f);
             se::Play(audio, se::kBossDamaged);
             break;
         }
-        // 弾ける手は連撃と投げた翼だけ。ここへ来るのは配線の間違いなので残しておく。
+        /// @note 弾ける手は連撃と投げた翼だけ。ここへ来るのは配線の間違いなので残しておく。
         debugReaction = "Parried (?)";
         break;
     }
@@ -1794,8 +1734,8 @@ inline void Boss03AiComponent::OnParried(const Vector3& hitPoint)
 
 inline bool Boss03AiComponent::Execute(GameObject* part, const Vector3& from)
 {
-    // とどめが通るのは倒れている間だけ。判定は PlayerParryComponent が持っているが、
-    // 二重に守る ─ ここが緩むと «立っている翼がもげる» が作れてしまう。
+    /// @note とどめが通るのは倒れている間だけ。判定は PlayerParryComponent が持っているが、
+    ///       二重に守る ─ ここが緩むと «立っている翼がもげる» が作れてしまう。
     if (!IsToppled() || m_executedThisTopple || m_wings <= 0 || !part) return false;
     const auto* hitbox = part->GetScript<BossPartComponent>();
     if (!hitbox || !hitbox->IsExecutable()) return false;
@@ -1803,9 +1743,7 @@ inline bool Boss03AiComponent::Execute(GameObject* part, const Vector3& from)
     auto* anim = Anim();
     int   wing = Boss03WingFromName(part->name);
 
-    // 当たり判定に翼の名前が無い構成 (リグを組む前) でも進行だけは回す。
-    // WHY 黙って落とさないか: «名前が違うから落ちない» は画面に出ない壊れ方で、
-    //     とどめが入らない原因を AI 側に探すことになる。
+    /// @note 翼の名前が無い構成 (リグを組む前) でも進行だけは回す。黙って落とさずログを出す ── «名前が違うから落ちない» は画面に出ない壊れ方で、原因を AI 側に探すことになるため。
     if (wing < 0) {
         debug.LogWarning("Boss03AiComponent: the executed part does not carry a wing bone name "
                          "(Wing_L_Upper ...). Falling back to the first wing still attached.");
@@ -1840,14 +1778,14 @@ inline bool Boss03AiComponent::Execute(GameObject* part, const Vector3& from)
         away.y = 0.0f;
         vfx->PlayExecute(at, away.NormalizedOr(Vector3::FORWARD), 0.8f);
     }
-    // もげた «重さ»。止めと画面の引き込みは とどめ を入れた側が出すので、
-    // ここは «部位が落ちた» 音だけ (BossRigComponent の BreakLeg と同じ組み合わせ)。
+    /// @note もげた «重さ»。止めと画面の引き込みは とどめ を入れた側が出すので、
+    ///       ここは «部位が落ちた» 音だけ (BossRigComponent の BreakLeg と同じ組み合わせ)。
     se::PlayAt(audio, se::kImpactDebris, at);
     se::PlayAt(audio, se::kEnemyDestroy, at);
 
-    // 切断後も残りのダウン時間は本体への連撃に使える。
+    /// @note 切断後も残りのダウン時間は本体への連撃に使える。
     if (m_wings <= 0 || !IsAlive()) {
-        // 最後の 1 枚。進行の終わりは EnemyHealthComponent が決めるので、そちらを空にする。
+        /// @note 最後の 1 枚。進行の終わりは EnemyHealthComponent が決めるので、そちらを空にする。
         if (auto* health = scene.GetScript<EnemyHealthComponent>())
             health->ApplyDamage(health->MaxHealth());
         if (auto* brk = Break()) brk->EndTopple();
@@ -1880,7 +1818,7 @@ inline void Boss03AiComponent::PushLine(const Vector3& from, const Vector3& dire
     m_telegraph.length    = length;
     m_telegraph.radius    = halfWidth;
     m_telegraph.progress  = Clamp01(progress);
-    // 帯に沿って «走ってくる» 手。一斉に来る手ではないので、太るのではなく走らせる。
+    /// @note 帯に沿って «走ってくる» 手。一斉に来る手ではないので、太るのではなく走らせる。
     m_telegraph.travels   = true;
     m_telegraph.pips      = CuePips(windup);
 }
@@ -1903,7 +1841,7 @@ inline PlayerHitResult Boss03AiComponent::HitPlayerInSphere(const Vector3& cente
         debugLastHit = note;
         return PlayerHitResult::Ignored;
     }
-    // 跳んで越える手だけが高さを持つ。負なら «高さを見ない»。
+    /// @note 跳んで越える手だけが高さを持つ。負なら «高さを見ない»。
     if (minHeight >= 0.0f && (playerPos.y - center.y) >= minHeight) {
         std::snprintf(note, sizeof(note), "%s cleared %.2fm", debugState.c_str(),
                       playerPos.y - center.y);
@@ -1917,7 +1855,7 @@ inline PlayerHitResult Boss03AiComponent::HitPlayerInSphere(const Vector3& cente
                        "Boss 3 attacks deal no damage.");
         return PlayerHitResult::Ignored;
     }
-    // 押しはボスの位置から外へ。«ボスに弾かれた» が正しい向き。
+    /// @note 押しはボスの位置から外へ。«ボスに弾かれた» が正しい向き。
     const Vector3 source = transform.worldPosition;
     const PlayerHitResult result = combat->HitPlayer(player, amount, &source, kind);
 

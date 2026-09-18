@@ -20,6 +20,7 @@ FBZZ Engine のドキュメントは 4 か所に分かれている。**どこを
 | ファイル | 内容 |
 |---|---|
 | [build-performance.md](conventions/build-performance.md) | ビルド時間の規約。PCH / Unity ビルド・include を増やさないための判断基準 |
+| [comments.md](conventions/comments.md) | コメント規約。Doxygen タグ・書く/書かないの基準・旧コメントの移行表・AI 向け API リファレンスの生成 |
 | [git.md](conventions/git.md) | Git 運用規約。コミットの粒度とメッセージ形式・ブランチ運用 |
 | [test.md](conventions/test.md) | テスト規約。Auto / Manual / Bench の切り分け・TestKit の使い方・カバレッジ設定 |
 
@@ -34,6 +35,7 @@ FBZZ Engine のドキュメントは 4 か所に分かれている。**どこを
 
 | ファイル | 内容 |
 |---|---|
+| [ai-verification-loop.md](design/ai-verification-loop.md) | AI が変更の合否を自分で出す口。AgentBuild・Playtest シナリオ・絵の回帰・`--batch`・規約 lint・バスの分割 |
 | [audio-system.md](design/audio-system.md) | 手続き音生成 (`.synth`) と Mixer Bus の階層 |
 | [cursor.md](design/cursor.md) | カーソルの要求スタックと見た目の分離 |
 | [bindless.md](design/bindless.md) | ResourceDescriptorHeap によるディスクリプタ直引き。区画割り・枠の寿命・縮退規則 |
@@ -47,6 +49,7 @@ FBZZ Engine のドキュメントは 4 か所に分かれている。**どこを
 | ファイル | 内容 |
 |---|---|
 | [active-ragdoll.md](design/active-ragdoll.md) | XPBD 関節体への移行設計 (Draft) |
+| [cloth.md](design/cloth.md) | 布の CPU XPBD・ClothShader・シーン接続と段階的な導入 |
 | [ragdoll-api.md](design/ragdoll-api.md) | Ragdoll の汎用 API と、ゲーム側が持つべき責務の線引き |
 | [ragdoll-system-review-2026-09-13.md](design/ragdoll-system-review-2026-09-13.md) | ラグドールシステムのレビュー記録 (2026-09-13) |
 
@@ -84,7 +87,7 @@ FBZZ Engine のドキュメントは 4 か所に分かれている。**どこを
 
 ## 書くときの決まり
 
-- **設計文書は `design/` へ、規約は `conventions/` へ。** どちらでもないメモはコードのファイルヘッダーの `WHY:` ブロックに収める
+- **設計文書は `design/` へ、規約は `conventions/` へ。** どちらでもない短い理由はコードの `/// @note` 1 行に収める ([comments.md](conventions/comments.md))
 - 先頭に**状態行**を置く (`- 状態: 実装済み / 一部未着手 / Draft` など)。読む側が「これは現行の仕様か、計画か」を最初の 1 行で判別できるようにする
 - 相対日付を書かない。「先週」ではなく `2026-09-13` と書く
 - 取り下げた設計は**消さずに残し**、状態行へ取り下げた日と理由を書く。同じ案を作り直さないため

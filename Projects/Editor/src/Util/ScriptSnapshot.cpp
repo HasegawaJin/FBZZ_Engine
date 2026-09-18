@@ -38,16 +38,16 @@ toml::array QuatToArr(const math::Quaternion& q)
     return a;
 }
 
-// 配列が欠けている / 要素数が足りない場合は現在値を保つ。
-// WHY: スナップショットを取った後にスクリプトへフィールドを足す場面があり、
-//      その差で値がゼロクリアされると Undo が「壊す操作」になってしまう。
+/// @brief 配列が欠けている / 要素数が足りない場合は現在値を保つ。
+/// @note スナップショット後にフィールドが足された場合など、ゼロクリアすると Undo が
+///       「壊す操作」になってしまうため。
 float ArrAt(const toml::array* arr, std::size_t i, float fallback)
 {
     if (!arr || i >= arr->size()) return fallback;
     return static_cast<float>((*arr)[i].value_or(static_cast<double>(fallback)));
 }
 
-// ── 書き出し ─────────────────────────────────────────────────────────────────
+/// @name 書き出し
 class SnapshotWriter final : public scene::IReflector {
 public:
     explicit SnapshotWriter(toml::table& table) { m_stack.push_back(&table); }
@@ -61,8 +61,8 @@ public:
     void Field(const char* name, std::string& v) override   { Current().insert_or_assign(PersistentKey(name), v); }
     void Field(const char* name, math::Quaternion& v) override { Current().insert_or_assign(PersistentKey(name), QuatToArr(v)); }
 
-    // WHY 対応が必須か: Undo はこのスナップショットの差分で戻す。落とすとカーブだけが
-    //     「編集はできるが元に戻せない」フィールドになる。
+    /// @note Undo はこのスナップショットの差分で戻すため必須。落とすとカーブだけ
+    ///       「編集はできるが元に戻せない」フィールドになる。
     void Field(const char* name, scene::ParticleCurve& v) override
     {
         Current().insert_or_assign(PersistentKey(name), asset::SerializeParticleCurve(v));
@@ -72,9 +72,9 @@ public:
         Current().insert_or_assign(PersistentKey(name), asset::SerializeParticleGradient(v));
     }
 
-    // 参照は index / generation の組で持つ。
-    // WHY: このスナップショットは「同一セッション内の Undo」専用で、シーンの
-    //      作り直しを挟まない。EntityID はその間ずっと有効なので GUID 解決は要らない。
+    /// @brief 参照は index / generation の組で持つ。
+    /// @note このスナップショットは同一セッション内の Undo 専用でシーンの作り直しを挟まないため、
+    ///       EntityID はその間ずっと有効で GUID 解決は要らない。
     void Field(const char* name, scene::EntityID& v) override
     {
         toml::array a;
@@ -161,12 +161,11 @@ public:
         }
         Current().insert_or_assign(PersistentKey(name), std::move(array));
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
-    // ── 入れ子オブジェクト / 構造体配列 ─────────────────────────────────────
-    // WHY 対応が必須か: 未対応だと入れ子フィールドが親と同じ階層へフラット展開され、
-    //     同名フィールド同士が衝突する。スクリプトのホットリロードでは
-    //     このスナップショットから状態を復元するため、衝突すると値が失われる。
+    /// @name 入れ子オブジェクト / 構造体配列
+    /// @note 未対応だと入れ子フィールドが親と同じ階層へフラット展開され同名フィールドが衝突する。
+    ///       ホットリロードはこのスナップショットから状態を復元するため、衝突すると値が失われる。
     void BeginObject(const char* name) override
     {
         auto [iterator, inserted] =
@@ -230,7 +229,7 @@ private:
     std::vector<toml::array*> m_listStack;
 };
 
-// ── 読み戻し ─────────────────────────────────────────────────────────────────
+/// @name 読み戻し
 class SnapshotReader final : public scene::IReflector {
 public:
     explicit SnapshotReader(const toml::table& table) { m_stack.push_back(&table); }
@@ -405,14 +404,14 @@ public:
             values.push_back(std::move(value));
         }
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
-    // ── 入れ子オブジェクト / 構造体配列 ─────────────────────────────────────
+    /// @name 入れ子オブジェクト / 構造体配列
     void BeginObject(const char* name) override
     {
         const toml::node* node = FindNode(name);
-        // 見つからなければ nullptr を積む (欠損スコープ)。
-        // スコープ対は必ず EndObject と釣り合わせる必要があるため、早期 return しない。
+        /// @note 見つからなければ nullptr を積む (欠損スコープ)。
+        ///       スコープ対は必ず EndObject と釣り合わせる必要があるため、早期 return しない。
         m_stack.push_back(node ? node->as_table() : nullptr);
     }
 
@@ -473,7 +472,8 @@ private:
     [[nodiscard]] const toml::node* FindNode(const char* fallback) const
     {
         const toml::table* table = Current();
-        if (!table) return nullptr;   // 欠損スコープの内側
+        /// @note 欠損スコープの内側
+        if (!table) return nullptr;
 
         if (const toml::node* node = table->get(PersistentKey(fallback)))
             return node;
@@ -505,7 +505,7 @@ std::string CaptureScriptSnapshot(scene::Script& script)
 
 bool ApplyScriptSnapshot(scene::Script& script, const std::string& snapshot)
 {
-    // 空スナップショットは「フィールドを持たないスクリプト」なので成功扱い。
+    /// @note 空スナップショットは「フィールドを持たないスクリプト」なので成功扱い。
     if (snapshot.empty()) return true;
 
     toml::parse_result parsed = toml::parse(snapshot);

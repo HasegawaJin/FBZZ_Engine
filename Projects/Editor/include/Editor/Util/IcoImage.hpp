@@ -3,10 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 ///
-/// WHY 専用デコーダーを持つか:
-///   stb_image は .ico を読めず、DirectXTex (WIC) は読めても «先頭フレーム» しか返さない。
-///   .ico は 16px〜256px を 1 ファイルに束ねる形式なので、先頭を引くとサムネイルに
-///   16px が出てしまう。ここは面積最大のフレームを選んで返す。
+/// @note stb_image は .ico を読めず、DirectXTex (WIC) は読めても先頭フレームしか返さない。.ico は
+///       16px〜256px を束ねる形式なので先頭を引くとサムネイルに 16px が出る。ここは面積最大を選ぶ。
 #pragma once
 #include <cstdint>
 #include <filesystem>

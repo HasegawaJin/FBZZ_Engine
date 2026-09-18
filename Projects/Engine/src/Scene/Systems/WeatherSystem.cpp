@@ -14,15 +14,15 @@
 namespace fbzz::scene {
 namespace {
 
-// 雨エミッターは Weather と同じ GameObject か、その子孫に置く規約。
-// WHY 名前や専用フラグで探さないか: 雨は «降る範囲» を持つので、プレイヤーへ追従させる
-//     ために別の階層へ吊りたくなる。親子関係なら Hierarchy を見ればどれが雨か分かる。
+/// @brief 雨エミッターは Weather と同じ GameObject か、その子孫に置く規約。
+/// @note 雨は «降る範囲» を持つのでプレイヤーへ追従させたく別階層へ吊りたくなるが、
+///       親子関係なら Hierarchy を見ればどれが雨か分かる。
 void DriveRainEmitters(GameObject& go, float emitRate, bool raining)
 {
     if (auto* emitter = go.GetComponent<ParticleEmitter>()) {
         emitter->settings.emitRate = emitRate;
-        // 雨量 0 で «出続けているが 0 個» にすると、既に飛んでいる粒が消えるまで
-        // シミュレーションが走り続ける。止めるなら発生も止める。
+        /// @note 雨量 0 で «出続けているが 0 個» にすると、既に飛んでいる粒が消えるまで
+        ///       シミュレーションが走り続ける。止めるなら発生も止める。
         emitter->settings.playing = raining;
     }
     const int childCount = go.GetChildCount();
@@ -40,15 +40,15 @@ ComponentAccess WeatherSystem::GetAccess() const
 
 OrderingHints WeatherSystem::GetOrder() const
 {
-    // 同じフレームのうちに雨量を効かせる。後に回すと発生量が常に 1 フレーム遅れ、
-    // 雨脚を script で急に上げ下げしたときに一拍置いてから変わる。
+    /// @note 同じフレームのうちに雨量を効かせる。後に回すと発生量が常に 1 フレーム遅れ、
+    ///       雨脚を script で急に上げ下げしたときに一拍置いてから変わる。
     return OrderingHints{}.Before<ParticleSimulationSystem>();
 }
 
 void WeatherSystem::Update(SystemContext& ctx)
 {
-    // Pause 中 (playing かつ !simulating) は «時間を止めている» だけなので何も進めない。
-    // 編集中 (!playing) は時間が無いので、積分ではなく目標値へ即座に合わせる。
+    /// @note Pause 中 (playing かつ !simulating) は «時間を止めている» だけなので何も進めない。
+    ///       編集中 (!playing) は時間が無いので、積分ではなく目標値へ即座に合わせる。
     const bool editing = !ctx.playing;
     if (!editing && !ctx.simulating) return;
 
@@ -60,18 +60,17 @@ void WeatherSystem::Update(SystemContext& ctx)
 
         if (weather->autoWetness) {
             if (editing) {
-                // WHY 積分しないか: 編集中は dt が «再生していない時間» で、ランプに乗せると
-                //     雨量を上げても絵が変わらない。ここは «雨量をこの値にしたら最終的に
-                //     どう見えるか» を出す場所なので、到達点そのものを入れる。
-                //     手で置いた wetness を残したい場合は autoWetness を切る。
+                /// @note 編集中は dt が «再生していない時間» で、ランプに乗せると雨量を上げても
+                ///       絵が変わらない。ここは到達点そのものを入れる (手で置いた wetness を
+                ///       残したいなら autoWetness を切る)。
                 weather->wetness = rain;
             } else {
                 const bool  wetting  = rain > weather->wetness;
                 const float duration = (std::max)(
                     wetting ? weather->wetDuration : weather->dryDuration, 0.001f);
 
-                // 到達点まで duration 秒かかる線形移動。指数緩和にすると「いつまでも乾ききらない」
-                // 尻尾が残り、雨上がりの絵が止まったように見える。
+                /// @note 到達点まで duration 秒かかる線形移動。指数緩和にすると「いつまでも乾ききらない」
+                ///       尻尾が残り、雨上がりの絵が止まったように見える。
                 const float step = ctx.dt / duration;
                 weather->wetness = wetting
                     ? (std::min)(weather->wetness + step, rain)

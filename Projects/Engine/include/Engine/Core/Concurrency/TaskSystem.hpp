@@ -15,7 +15,7 @@ namespace fbzz {
 
 class TaskSystem {
 public:
-    // エンジン起動時に一度だけ呼ぶ。numWorkers=0 で hw_concurrency を使用。
+    /// @brief エンジン起動時に一度だけ呼ぶ。numWorkers=0 で hw_concurrency を使用。
     static void Init(int numWorkers = 0);
     static void Shutdown();
 

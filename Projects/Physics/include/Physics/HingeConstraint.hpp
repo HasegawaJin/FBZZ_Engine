@@ -7,7 +7,8 @@
 
 namespace fbzz::physics
 {
-    // 2 つのローカルアンカーを同じワールド位置へ寄せる。軸はデバッグ表示と将来の角度制限用に保持する。
+    /// @brief 2 つのローカルアンカーを同じワールド位置へ寄せる。
+    /// @note 軸はデバッグ表示と将来の角度制限用に保持する。
     class HingeConstraint : public Constraint
     {
     public:

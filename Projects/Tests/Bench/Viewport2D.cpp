@@ -15,8 +15,8 @@ void Viewport2D::Begin(const char* id, const ImVec2& size)
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     m_origin = ImGui::GetCursorScreenPos();
 
-    // ウィンドウを潰したときに 0 や負が来る。InvisibleButton はそこで assert するので、
-    // 最低 1px を保証してから使う。
+    /// @note ウィンドウを潰したときに 0 や負が来る。InvisibleButton はそこで assert するので、
+    ///       最低 1px を保証してから使う。
     const ImVec2 available = ImGui::GetContentRegionAvail();
     m_size = {(std::max)(1.0f, available.x), (std::max)(1.0f, available.y)};
 
@@ -39,9 +39,10 @@ void Viewport2D::HandlePanZoom()
 
     if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
-        // 画面を掴んで動かす感触にするため、世界は逆向きへずらす。
+        /// @note 画面を掴んで動かす感触にするため、世界は逆向きへずらす。
         const float dx = -delta.x / m_pixelsPerMeter;
-        const float dy = delta.y / m_pixelsPerMeter; // 画面 Y は下向き
+        /// @note 画面 Y は下向き
+        const float dy = delta.y / m_pixelsPerMeter;
 
         if (m_plane == ViewPlane::XY) {
             m_center.x += dx;
@@ -125,7 +126,7 @@ void Viewport2D::DrawArrow(const math::Vector3& from, const math::Vector3& to, I
     const float length = std::sqrt(dx * dx + dy * dy);
     if (length < 1.0f) return;
 
-    // 矢じりは画面上の固定サイズ。拡大率を変えても «向きが読める» 大きさを保つ。
+    /// @note 矢じりは画面上の固定サイズ。拡大率を変えても «向きが読める» 大きさを保つ。
     constexpr float kHead = 9.0f;
     const float     ux    = dx / length;
     const float     uy    = dy / length;

@@ -3,15 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY コマを取っておくか:
-///   以前の Inspector は値を 1 つ触るたびに t = 0 から UI スレッドで解き直していた (warmup の間は固まる)。
-///   爆発の 0.8 秒目を詰めたいのに毎回頭へ戻る。ここは解いたコマを残し、変わった部品が効き始める時刻
-///   (FluidInvalidationTime) より後だけを捨てて裏で解き直す。
-///
-/// コマの時刻は焼きと同じ刻み (output.duration ÷ columns×rows。warmup の後を 0 とする)。
+/// @note 変わった部品が効き始める時刻 (FluidInvalidationTime) より後だけを捨てて裏で解き直す。
+///       コマの時刻は焼きと同じ刻み (output.duration ÷ columns×rows。warmup の後を 0 とする)。
 #pragma once
 
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 #include <imgui.h>
 
 #include <cstdint>
@@ -32,7 +28,7 @@ enum class FluidPreviewQuality : std::uint8_t {
 /// 部品だけが変わったなら、変わった部品の startTime と動きのキーの最小 (warmup 中から効く部品なら 0)。
 /// 全体の設定 (Simulation / Output / 種類 / seed / 部品の数) が変わったら 0。Look だけの変更は描き直しだけで済むので
 /// -1 (解き直し不要) を返す。
-[[nodiscard]] float FluidInvalidationTime(const asset::FluidRecipe& before, const asset::FluidRecipe& after);
+[[nodiscard]] float FluidInvalidationTime(const fluid::FluidRecipe& before, const fluid::FluidRecipe& after);
 
 class FluidPreviewCache {
 public:
@@ -43,7 +39,7 @@ public:
 
     /// プレビューするレシピ (hide/solo を反映したもの)。revision が前と同じなら何もしない。
     /// invalidateFrom より後のコマを捨てる (0 = 全部、負 = 解き直さず描き直しだけ)。
-    void SetRecipe(const asset::FluidRecipe& recipe, std::uint64_t revision, float invalidateFrom);
+    void SetRecipe(const fluid::FluidRecipe& recipe, std::uint64_t revision, float invalidateFrom);
     void SetQuality(FluidPreviewQuality quality);
     [[nodiscard]] FluidPreviewQuality Quality() const;
 

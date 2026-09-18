@@ -13,28 +13,18 @@ namespace fbzz::scene {
 
 struct SocketAttachmentComponent {
     bool enabled = true;
-    // 追従先を含む GameObject。省略可 (無効な EntityRef のままでよい)。
-    //
-    // WHY 省略できるか:
-    //   EntityRef は「シーン内の特定 GameObject」への参照なので、Prefab には保存できない。
-    //   必須にすると「武器 Prefab 自身が追従の宣言を持つ」ことが原理的に成立せず、
-    //   宣言をスクリプトが Play 開始時に組み立てるしかなくなる。そうすると編集中は
-    //   追従が成立せず、エディタと再生で配置が食い違う。
-    //   省略した場合、ConstraintSystem は自分の祖先を根へ向かってたどり、最初に見つかった
-    //   socketName を追従先にする。ソケットに付くものは必ずそのソケットを含む階層の中に
-    //   置かれるので、この探索で十分に一意が取れる。
+    /// 追従先を含む GameObject。省略可 (無効な EntityRef のままでよい)。
+    ///
+    /// @note EntityRef は Prefab に保存できないため、必須にすると Prefab 自身が追従を宣言できない。
+    ///       省略時は ConstraintSystem が自分の祖先を根へたどり最初に見つかった socketName を使う。
     EntityRef target;
-    // 追従先ソケット。GameObject 名か BoneComponent::boneName で引く。
-    // target 指定時はその部分木から、省略時は自分の祖先方向から探す。
+    /// 追従先ソケット。GameObject 名か BoneComponent::boneName で引く。
+    /// target 指定時はその部分木から、省略時は自分の祖先方向から探す。
     std::string socketName;
-    // 自分側の合わせ点。空なら自分の原点が socketName に一致する (従来動作)。
-    //
-    // WHY 必要か:
-    //   銃を手に持たせるとき、一致させたいのは「銃の原点」ではなく「銃のグリップ」。
-    //   原点追従のままだと、グリップが原点から離れているぶん手からズレる。ズレを
-    //   positionOffset へ手で打ち込むと、モデルを修正するたびに数値が古くなり、
-    //   しかも左右で別の値になる。合わせ点をモデル側のソケットで宣言できれば、
-    //   FBX を直した瞬間に正しい位置へ追従する。
+    /// 自分側の合わせ点。空なら自分の原点が socketName に一致する (従来動作)。
+    ///
+    /// @note positionOffset への手打ちはモデル修正のたびに古くなる。合わせ点をモデル側の
+    ///       ソケットで宣言すれば FBX を直した瞬間に正しい位置へ追従する。
     std::string localSocketName;
     math::Vector3 positionOffset = math::Vector3::ZERO;
     math::Vector3 rotationOffsetDegrees = math::Vector3::ZERO;
@@ -43,22 +33,19 @@ struct SocketAttachmentComponent {
     bool followRotation = true;
     bool followScale = false;
 
-    // socketName を書き換えたとき、旧ソケットから新ソケットへこの秒数かけて移る。
-    // 0 なら即座にスナップする (従来動作)。
-    //
-    // WHY エンジン側に持たせるか:
-    //   「ホルスターから手へ移す」は親子の付け替えではなく移動として見せたい。
-    //   これをゲームスクリプトが毎フレーム補間すると、追従先の 2 つのソケットが
-    //   どちらもアニメーションで動いているため、補間元を静止ポーズで captureして
-    //   しまいがちで、キャラが歩いている間だけ銃がワールドに置き去りになる。
-    //   両ソケットの「その瞬間の」姿勢を混ぜられるのは、Animator / IK の後に走る
-    //   ConstraintSystem だけなので、補間はここで完結させる。
+    /// socketName を書き換えたとき、旧ソケットから新ソケットへこの秒数かけて移る。
+    /// 0 なら即座にスナップする (従来動作)。
+    ///
+    /// @note 両ソケットの「その瞬間の」姿勢を混ぜられるのは Animator / IK の後に走る
+    ///       ConstraintSystem だけなので、補間はここで完結させる (Script 側では静止ポーズを
+    ///       captureしがちで、歩行中に置き去りになる)。
     float blendDuration = 0.0f;
 
-    // ── ランタイム専用 (シリアライズしない) ──────────────────────────────
-    // 直近フレームで実際に適用したソケット名。socketName との差分が「切り替え」。
+    /// @name ランタイム専用 (シリアライズしない)
+    /// @{
+    /// 直近フレームで実際に適用したソケット名。socketName との差分が「切り替え」。
     std::string appliedSocketName;
-    // 補間元のソケット名。空なら補間せずスナップする。
+    /// 補間元のソケット名。空なら補間せずスナップする。
     std::string blendFromSocketName;
     float       blendRemaining = 0.0f;
 
@@ -77,6 +64,7 @@ struct SocketAttachmentComponent {
         r.Field("followScale", followScale);
         r.FloatRange("blendDuration", blendDuration, 0.0f, 2.0f);
     }
+    /// @}
 };
 
 enum class TransformConstraintMode : int {

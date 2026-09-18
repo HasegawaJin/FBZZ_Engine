@@ -3,12 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// WHY: GameHub は Editor を detached ＋ `cmd /c start` のブローカー越しに起動しており
-/// (projectService.ts)、親子関係の上では既に独立している。それでも開発起動
-/// (`npm start`) の GameHub を閉じると Editor まで道連れになるのは、プロセスツリー全体が
-/// Job Object へ入れられ、JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE で孫まで殺されるため。
-/// Job の所属は親子関係と別の軸なので、detached では抜けられない。
-/// 抜ける方法は CREATE_BREAKAWAY_FROM_JOB で «自分を作り直す» ことだけ。
+/// @note GameHub は Editor を detached + `cmd /c start` 越しに起動する (projectService.ts) が、開発起動 (`npm start`) の
+///       GameHub を閉じると Editor も道連れになる。プロセスツリー全体が Job Object に入り
+///       JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE で孫まで殺されるためで、Job の所属は親子関係と別軸なので detached では
+///       抜けられず、CREATE_BREAKAWAY_FROM_JOB で自分を作り直すしかない。
 #pragma once
 
 namespace fbzz::editor_launcher {

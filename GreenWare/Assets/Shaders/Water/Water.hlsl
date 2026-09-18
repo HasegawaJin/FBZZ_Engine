@@ -16,6 +16,19 @@
 /// @note Water SSR は PS 内で走るため、全画面 Compute SSR より低い上限にして面積負荷を抑える。
 #define WATER_SSR_MAX_STEPS 16
 
+/// @note 水面 1 枚が受け取る流れの枠数。C++ の kWaterSurfaceFlowCount と揃えること。
+#define WATER_SURFACE_FLOW_COUNT 8
+/// @note 流れの型。FlowFieldType と ParticleGpuSim.cs.hlsl の FF_* と同じ整数であること。
+#define WFF_UNIFORM 0
+#define WFF_SINK    1
+#define WFF_SOURCE  2
+#define WFF_VORTEX  3
+#define WFF_CURL    4
+#define WFF_BAKED   6
+/// @note 速度場アトラスの 1 タイルの 1 辺。VectorFieldAsset.hpp の
+///       kVelocityFieldTileResolution と一致させること。
+#define WATER_VELOCITY_FIELD_TILE 32
+
 struct PointLightData
 {
     float3 position;
@@ -61,38 +74,64 @@ cbuffer WaterCB : register(CB_OBJECT)
 {
     float4x4 g_worldMatrix;
     float4x4 g_wvpMatrix;
-    float4   g_shallowColorDepth;    ///< xyz=浅瀬色, w=浅瀬深度
-    float4   g_deepColorDepth;       ///< xyz=深部色, w=深部深度
-    float4   g_surfaceParams;        ///< x=opacity, y=reflectivity, z=fresnelBias, w=fresnelPower
-    float4   g_normalParams;         ///< xy=水面のワールド実寸 [m], z=さざ波タイルの勾配復号係数, w=normalStrength
-    float4   g_timeParams;           ///< xy=頂点グリッド 1 セルの実寸 [m], z=1/タイルのセル数, w=time
-    float4   g_foamParams;           ///< x=threshold, y=fade, z=strength, w=foamNoiseScale
-    float4   g_refractionFlowParams; ///< x=refraction, y=flowSpeed, zw=外周フェード幅 (UV 単位, 0 で無効)
-    float4   g_waveDir[4];           ///< xy=direction, z=steepness, w=enabled
-    float4   g_waveParams[4];        ///< x=amplitude, y=wavelength, z=omega, w=k
-    float4   g_detailParams;         ///< x=detailScale, y=detailSpeed, z=detailStrength, w=smoothness
-    float4   g_sssParams;            ///< xyz=透過光の色, w=強度
-    float4   g_reflectParams;        ///< x=skyReflection(0で無効), y=波の群の深さ, z=水面基準Y, w=波高合計
-    float4   g_flowParams;           ///< xy=流れ方向(正規化), z=さざ波の異方比, w=うねり追従ワープ幅 [m]
-    float4   g_waveShapeParams;      ///< x=方向広がり [0,1] (0 で 1 波 1 方向), yzw=予約
+    float4   g_shallowColorDepth;    ///< @brief xyz=浅瀬色, w=浅瀬深度
+    float4   g_deepColorDepth;       ///< @brief xyz=深部色, w=深部深度
+    float4   g_surfaceParams;        ///< @brief x=opacity, y=reflectivity, z=fresnelBias, w=fresnelPower
+    float4   g_normalParams;         ///< @brief xy=水面のワールド実寸 [m], z=さざ波タイルの勾配復号係数, w=normalStrength
+    float4   g_timeParams;           ///< @brief xy=頂点グリッド 1 セルの実寸 [m], z=1/タイルのセル数, w=time
+    float4   g_foamParams;           ///< @brief x=threshold, y=fade, z=strength, w=foamNoiseScale
+    float4   g_refractionFlowParams; ///< @brief x=refraction, y=flowSpeed, zw=外周フェード幅 (UV 単位, 0 で無効)
+    float4   g_waveDir[4];           ///< @brief xy=direction, z=steepness, w=enabled
+    float4   g_waveParams[4];        ///< @brief x=amplitude, y=wavelength, z=omega, w=k
+    float4   g_detailParams;         ///< @brief x=detailScale, y=detailSpeed, z=detailStrength, w=smoothness
+    float4   g_sssParams;            ///< @brief xyz=透過光の色, w=強度
+    float4   g_reflectParams;        ///< @brief x=skyReflection(0で無効), y=波の群の深さ, z=水面基準Y, w=波高合計
+    float4   g_flowParams;           ///< @brief xy=流れ方向(正規化), z=さざ波の異方比, w=うねり追従ワープ幅 [m]
+    float4   g_waveShapeParams;      ///< @brief x=方向広がり [0,1] (0 で 1 波 1 方向), y=流れの本数, zw=予約
+    /// @brief xy=中心のワールド XZ [m], z=影響半径 [m], w=形の変位 [m] (穴は負・山は正)
+    float4   g_surfaceFlowA[WATER_SURFACE_FLOW_COUNT];
+    /// @brief x=流速 [m/s] (渦だけ回る向きの符号つき), y=減衰の指数, z=型 (WFF_*), w=質感へ回す強さ [0,1]
+    float4   g_surfaceFlowB[WATER_SURFACE_FLOW_COUNT];
+    /// @brief xy=Uniform の XZ 向き (正規化), z=速度場アトラスのタイル番号 (-1 で無効), w=復号係数
+    float4   g_surfaceFlowC[WATER_SURFACE_FLOW_COUNT];
+    /// @brief Baked の逆回転クォータニオン (x, y, z, w)
+    float4   g_surfaceFlowD[WATER_SURFACE_FLOW_COUNT];
+    /// @brief xyz=Baked の箱の半径 [m], w=水面の基準面 Y − 場の中心 Y [m]
+    float4   g_surfaceFlowE[WATER_SURFACE_FLOW_COUNT];
 };
+
+/// @note 形の Gaussian の実効半径 / 影響半径。C++ の kWaterSurfaceFlowShapeRatio と同じ値。
+static const float kWaterFlowShapeRatio = 0.4f;
+/// @note 渦と吸い込みの «目» とみなす半径の割合。ここに泡を足す。
+static const float kWaterFlowEyeRatio = 0.3f;
+/// @note この流速 [m/s] でさざ波の向きと質感が «一様な流れ» と 1:1 で釣り合う。
+///       流速そのものではなく «重み» なので、単位を持つ .mat のつまみにはしない。
+/// @warning C++ の kWaterSurfaceFlowReference と同じ値であること。
+static const float kWaterFlowReference = 4.0f;
+/// @note Uniform の «風の足跡» と Curl の «ざわつき» がさざ波の強度を持ち上げる上限。
+static const float kWaterWindDetailGain = 0.6f;
+static const float kWaterCurlDetailGain = 0.5f;
+/// @note 波紋テクスチャの B が表せる高さの範囲 [m] (±)。
+/// @warning C++ の kWaterRippleHeightScale と同じ値であること。片方だけ変えると、
+///          見えている輪と浮力が別の高さになる。
+static const float kRippleHeightScale = 0.5f;
 
 /// @note ユーザー定義エフェクトパラメータ。MaterialComponent.paramData にマップされ、
 ///       Script から mc->SetParam<float>("rimGlowStrength", val) で動的に書き換えられる。
 /// @warning HLSL cbuffer のパッキング規則に従い 16B 境界を揃えること (48 bytes = float4 x3)。
 cbuffer MaterialConstants : register(b2)
 {
-    float  rimGlowStrength;    ///< Row0: リムグロー強度     default 0.40
-    float  minShallowAlpha;    ///<       浅瀬の最小アルファ default 0.65
+    float  rimGlowStrength;    ///< @brief Row0: 浅い角度で水の層が明るむ量 (光を受ける) default 0.40
+    float  minShallowAlpha;    ///<       水深 0 でも残る濁り [0,1] (opacity と積) default 0.65
     float  specularStrength;   ///<       スペキュラー強度   default 0.75
     /// @note 旧 specularExponent。ハイライトの鋭さは smoothness と specular AA から導出するため
     ///       廃止した。両方から指数を決めると、遠景でハイライトが 1 ピクセルに縮んで這う。
     float  _pad0;
-    float3 skyReflectTint;     ///< Row1: 空反射ベース色 RGB default (0.45, 0.82, 1.0)
+    float3 skyReflectTint;     ///< @brief Row1: 空反射ベース色 RGB default (0.45, 0.82, 1.0)
     /// @note 旧 envMapBlend。空反射の混合率は skyReflection (g_reflectParams.x) が持つ。
     ///       同じ役目のつまみが 2 つあり、片方だけ動かしても効かない状態だった。
     float  _pad1;
-    float3 rippleRingColor;    ///< Row2: 波紋リング色 RGB   default (0.88, 0.97, 1.0)
+    float3 rippleRingColor;    ///< @brief Row2: 波紋リング色 RGB   default (0.88, 0.97, 1.0)
     float  rippleRingStrength; ///<       波紋リング強度     default 0.72
 }
 
@@ -104,7 +143,9 @@ cbuffer LightConstants : register(CB_LIGHT)
     SpotLightData  spotLights[MAX_SPOT_LIGHTS];
     int            pointLightCount;
     int            spotLightCount;
-    float2         _lightPad2;
+    /// @note Common/Constants.hlsli と同じ並び。IBL が無いときの空反射の明るさに使う。
+    float          skyDimmer;
+    float          _lightPad2;
     float3         ambientColor;
     float          _ambientPad;
 };
@@ -117,19 +158,21 @@ cbuffer LightConstants : register(CB_LIGHT)
 #include "Common/BindlessIndices.hlsli"
 
 /// @note 水面が読むテクスチャは «エンジンが生成するもの» だけ。オーサリング資産は要らない。
-FBZZ_TEX2D(g_foamMask, 3); ///< 岸沿いの泡マスク (地形高さから CPU 生成)
-FBZZ_TEX2D(g_detailNoise, 4); ///< さざ波タイル (起動時に CPU で焼く。RG=勾配, B=高さ)
-FBZZ_TEX2D(g_sceneDepth, 5); ///< Water 描画直前の深度コピー
-FBZZ_TEX2D(g_sceneColor, 6); ///< Water 描画直前の HDR コピー
-FBZZ_TEX2D(g_rippleTex, 8); ///< 着水波紋 (CPU 生成)
+FBZZ_TEX2D(g_foamMask, 3); ///< @brief 岸沿いの泡マスク (地形高さから CPU 生成)
+FBZZ_TEX2D(g_detailNoise, 4); ///< @brief さざ波タイル (起動時に CPU で焼く。RG=勾配, B=高さ)
+FBZZ_TEX2D(g_sceneDepth, 5); ///< @brief Water 描画直前の深度コピー
+FBZZ_TEX2D(g_sceneColor, 6); ///< @brief Water 描画直前の HDR コピー
+FBZZ_TEX2D(g_rippleTex, 8); ///< @brief 着水波紋 (CPU 生成)
 FBZZ_TEX2D_T(float, g_shadowMap, 9);
-FBZZ_TEXCUBE(g_skyReflection, TEX_IBL_PREFILTER_SLOT); ///< 空連動 IBL の事前フィルタ済みキューブ
+FBZZ_TEXCUBE(g_skyReflection, TEX_IBL_PREFILTER_SLOT); ///< @brief 空連動 IBL の事前フィルタ済みキューブ
+/// @note 常駐中の 速度場 PNG を積んだアトラス。場が 1 枚も無くても 1x1x1 が必ず束縛される。
+FBZZ_TEX3D_T(float4, g_velocityAtlas, TEX_VELOCITY_FIELD_SLOT);
 
 /// @note サンプラーのレジスタ割り当ては Binding.hlsli の SAMPLER_* に従う。
 /// @warning DX12 は静的サンプラーを Root Signature へ焼き込むため、レジスタごとの意味は全シェーダーで
 ///          一致していなければならない。Water だけ独自番号を使うと比較サンプラーの位置がずれて影が壊れる。
 SamplerState g_sampler      : register(SAMPLER_DEFAULT);
-SamplerState g_samplerClamp : register(SAMPLER_LINEAR_CLAMP); ///< 環境反射のサンプルも兼ねる
+SamplerState g_samplerClamp : register(SAMPLER_LINEAR_CLAMP); ///< @brief 環境反射のサンプルも兼ねる
 /// @note さざ波タイルは «寝た視線で引き伸ばされる» のが常態なので異方フィルタを使う。
 SamplerState g_samplerTile  : register(SAMPLER_WRAP_ANISO4);
 SamplerComparisonState g_shadowSampler : register(SAMPLER_SHADOW);
@@ -149,8 +192,11 @@ struct WaterPSInput
     float3 tangent    : TEXCOORD3;
     float3 binormal   : TEXCOORD4;
     float4 screenPos  : TEXCOORD5;
-    /// x = 0:谷 1:うねりの山 (透過光の強さ), y = 折り畳み量 + その航跡 (白波の元)
+    /// @brief x = 0:谷 1:うねりの山 (透過光の強さ), y = 折り畳み量 + その航跡 (白波の元)
     float2 waveState  : TEXCOORD6;
+    /// @brief xy = 流向、z = さざ波強度、w = 泡のムラ。頂点で評価して補間する。
+    float4 flowDirectionDetail : TEXCOORD7;
+    float2 flowFoam : TEXCOORD8;
 };
 
 /// @brief 頂点グリッドで «刻めない» 波を寝かせる係数 [0,1]。C++ 側の WaveMeshFade と同じ式。
@@ -303,8 +349,188 @@ float WaveFoldAt(float3 basePos, float time)
 ///       残る。Gerstner の粒はその場で円を描くので、変位前の位置がそのまま粒の識別子になり、
 ///       泡は «水にくっついて» 残る。履歴バッファも CPU との同期も要らない。
 #define WATER_FOAM_TRAIL_TAPS 3
-static const float kFoamTrailStep  = 0.55f; ///< 1 タップあたり何秒さかのぼるか
-static const float kFoamTrailDecay = 0.62f; ///< 1 タップごとに残る割合
+static const float kFoamTrailStep  = 0.55f; ///< @brief 1 タップあたり何秒さかのぼるか
+static const float kFoamTrailDecay = 0.62f; ///< @brief 1 タップごとに残る割合
+
+/// @brief クォータニオン q でベクトル v を回す。CPU の math::Quaternion::operator* と同じ式。
+float3 WaterQuatRotate(float4 q, float3 v)
+{
+    const float3 t = 2.0f * cross(q.xyz, v);
+    return v + q.w * t + cross(q.xyz, t);
+}
+
+/// @brief 速度場アトラスからタイル 1 枚ぶんを引く。
+/// @param local 場のローカル正規化座標 [0,1]³。
+/// @note Z を手で補間するのは、タイルが Z 方向に積んであり、ハードウェアのトリリニアだと
+///       境界で隣の場が混ざるため。
+/// @warning ParticleGpuSim.cs.hlsl の SampleVelocityField と同じ式であること。片方だけ変えると、
+///          同じ 速度場 PNG で粒子と水面が別の流れを見る。
+float3 WaterSampleVelocityField(uint tile, float3 local, float maxMagnitude)
+{
+    uint atlasW, atlasH, atlasD;
+    g_velocityAtlas.GetDimensions(atlasW, atlasH, atlasD);
+    const float tileTexels = (float)WATER_VELOCITY_FIELD_TILE;
+
+    const float z  = local.z * tileTexels - 0.5f;
+    const float z0 = clamp(floor(z), 0.0f, tileTexels - 1.0f);
+    const float z1 = min(z0 + 1.0f, tileTexels - 1.0f);
+    const float t  = saturate(z - z0);
+
+    const float base = (float)tile * tileTexels;
+    const float3 a = g_velocityAtlas.SampleLevel(
+        g_samplerClamp, float3(local.xy, (base + z0 + 0.5f) / (float)atlasD), 0.0f).rgb;
+    const float3 b = g_velocityAtlas.SampleLevel(
+        g_samplerClamp, float3(local.xy, (base + z1 + 0.5f) / (float)atlasD), 0.0f).rgb;
+    /// @note 復元は CPU の QuantizeVectorFieldValue と同じ式。
+    return (lerp(a, b, t) * 2.0f - 1.0f) * maxMagnitude;
+}
+
+/// @brief 焼いた場 1 枚のワールド流速 [m/s]。範囲外はゼロ。
+/// @param baseXZ **変位前の** ワールド XZ。高さは g_surfaceFlowE[i].w で基準面へ固定する。
+/// @note 高さを «波を乗せた後の Y» で引くと «高さを高さで引く» 循環になる。
+/// @warning WaterComponent::WaterBakedDisplacement と同じ標本化であること。
+float3 WaterBakedVelocity(int i, float2 baseXZ)
+{
+    if (g_surfaceFlowC[i].z < 0.0f) return float3(0.0f, 0.0f, 0.0f);
+    float3 toPoint = float3(baseXZ.x - g_surfaceFlowA[i].x,
+                            g_surfaceFlowE[i].w,
+                            baseXZ.y - g_surfaceFlowA[i].y);
+    float4 invRot = g_surfaceFlowD[i];
+    float3 uvw = WaterQuatRotate(invRot, toPoint) / g_surfaceFlowE[i].xyz * 0.5f + 0.5f;
+    if (any(uvw < 0.0f) || any(uvw > 1.0f)) return float3(0.0f, 0.0f, 0.0f);
+
+    float3 value = WaterSampleVelocityField((uint)g_surfaceFlowC[i].z, uvw, g_surfaceFlowC[i].w);
+    /// @note 場は «場のローカル» で焼かれているのでワールドへ戻す。strength は無次元の倍率。
+    return WaterQuatRotate(float4(-invRot.xyz, invRot.w), value) * g_surfaceFlowB[i].x;
+}
+
+/// @brief 焼いた場 1 枚が作るへこみ [m] (0 以下)。Bernoulli を XZ 成分だけに掛ける。
+/// @warning WaterComponent::WaterBakedDisplacement と同じ式であること。
+float WaterBakedDisplacement(int i, float2 baseXZ)
+{
+    float cap = abs(g_surfaceFlowA[i].w);
+    if (cap <= 0.0001f) return 0.0f;
+    float3 v = WaterBakedVelocity(i, baseXZ);
+    return -min(dot(v.xz, v.xz) / 19.6f, cap);
+}
+
+/// @brief 中心を持つ流れ 1 本が作る変位 [m] と、その水平勾配。
+/// @param worldXZ **変位後の** ワールド XZ。形は水平変位を持たないので逆写像に入れない。
+/// @return x = 変位 [m] (穴は負・山は正), yz = (∂h/∂x, ∂h/∂z)。
+/// @note 形を Gaussian にするのは C¹ 連続だから。(1 - r/R)^p は r = R で折れ、頂点法線が
+///       1 セルだけ跳ねて縁に輪が出る。
+/// @note 勾配は Gerstner 変位を通す連鎖律を無視している (群の包絡と同じ扱い)。形の波数は
+///       うねりよりずっと小さく、法線が数 % ずれるだけで絵には出ない。
+/// @warning WaterComponent::WaterRadialDisplacement と同じ式であること。
+float3 WaterRadialDisplacement(int i, float2 worldXZ)
+{
+    float4 a = g_surfaceFlowA[i];
+    if (abs(a.w) <= 0.0001f || a.z <= 0.0001f) return float3(0.0f, 0.0f, 0.0f);
+    float  s = a.z * kWaterFlowShapeRatio;
+    float2 d = worldXZ - a.xy;
+    float  h = a.w * exp(-dot(d, d) / (s * s));
+    return float3(h, -2.0f * h * d / (s * s));
+}
+
+/// @brief PS が使う «その点の流れと質感»。
+struct WaterFlowSample
+{
+    float2 direction;  ///< @brief さざ波・きらめき・泡が流れる向き (正規化)
+    float  eye;        ///< @brief 渦と吸い込みの目への近さ [0,1]。泡へ足す
+    float  ring;       ///< @brief 湧き出しの縁への近さ [0,1]。泡の輪
+    float  detailGain; ///< @brief さざ波の強度倍率 (1 起点)
+    float  chop;       ///< @brief 泡のムラ [0,1]
+};
+
+/// @brief その点の流れの向きと、型ごとの質感を集める。
+/// @param baseXZ 変位前のワールド XZ (Baked の標本位置)。
+/// @note 減衰 pow(saturate(1 - r/radius), falloffPower) は FlowFieldEval の ResolveInfluence と
+///       同じ式。中心と同じ高さの点なら CPU の流速と一致する。
+/// @note **向きだけを曲げ、さざ波を «運ぶ» 距離は一様なまま。** 速度場で座標を積分すると、
+///       流速が場所で変わる渦ではさざ波が輪へ引き伸ばされる (直すには履歴バッファが要る)。
+/// @note Curl は向きを曲げない。ピクセルごとにカールノイズを回すことになるうえ、乱流が出したい
+///       のは «向き» ではなく «ざわつき» なので質感だけに落とす。
+WaterFlowSample SampleWaterSurfaceFlow(float2 worldXZ, float2 baseXZ)
+{
+    WaterFlowSample s;
+    s.direction  = g_flowParams.xy;
+    s.eye        = 0.0f;
+    s.ring       = 0.0f;
+    s.detailGain = 1.0f;
+    s.chop       = 0.0f;
+
+    float2 dir = g_flowParams.xy;
+    int count = (int)g_waveShapeParams.y;
+
+    [loop]
+    for (int i = 0; i < WATER_SURFACE_FLOW_COUNT; ++i)
+    {
+        if (i >= count) continue;
+        int kind = (int)g_surfaceFlowB[i].z;
+
+        if (kind == WFF_BAKED)
+        {
+            float3 v = WaterBakedVelocity(i, baseXZ);
+            dir += v.xz / kWaterFlowReference;
+            s.detailGain += kWaterWindDetailGain
+                          * saturate(length(v.xz) / kWaterFlowReference);
+            continue;
+        }
+
+        float radius = g_surfaceFlowA[i].z;
+        if (radius <= 0.0001f) continue;
+        float2 d = worldXZ - g_surfaceFlowA[i].xy;
+        float  r = length(d);
+        if (r >= radius) continue;
+
+        float influence = pow(saturate(1.0f - r / radius), g_surfaceFlowB[i].y);
+        float speed = g_surfaceFlowB[i].x;
+        float chop  = g_surfaceFlowB[i].w * influence;
+
+        if (kind == WFF_UNIFORM)
+        {
+            dir += g_surfaceFlowC[i].xy * (speed * influence / kWaterFlowReference);
+            /// @note «風の足跡»。局所の風はうねりを育てないが、さざ波はその場で立つ。
+            s.detailGain += kWaterWindDetailGain * chop;
+            continue;
+        }
+        if (kind == WFF_CURL)
+        {
+            s.detailGain += kWaterCurlDetailGain * chop;
+            s.chop = max(s.chop, chop);
+            continue;
+        }
+        if (r <= 1.0e-4f) continue;
+
+        if (kind == WFF_VORTEX)
+        {
+            /// @note cross(up, d) の XZ 成分。符号は speed が持つ (回転軸の y の符号)。
+            dir += float2(d.y, -d.x) / r * (speed * influence / kWaterFlowReference);
+            s.eye = max(s.eye, saturate(1.0f - r / (radius * kWaterFlowEyeRatio)));
+            continue;
+        }
+        /// @note Sink は内向き、Source は外向き。
+        float sign = (kind == WFF_SOURCE) ? 1.0f : -1.0f;
+        dir += d / r * (sign * speed * influence / kWaterFlowReference);
+        if (kind == WFF_SINK)
+        {
+            /// @note 排水口の中心も泡立つ。回る水ほどではないので 0.6 倍。
+            s.eye = max(s.eye, saturate(1.0f - r / (radius * kWaterFlowEyeRatio)) * 0.6f);
+        }
+        else
+        {
+            /// @note 湧き上がった水は縁で広がってぶつかる。influence は中心がいちばん強いので
+            ///       輪には使えない。半径の 0.55〜1.0 に帯を立て、強さは流速から取る。
+            float t = r / radius;
+            s.ring = max(s.ring, smoothstep(0.55f, 0.80f, t) * (1.0f - smoothstep(0.80f, 1.0f, t))
+                                 * saturate(abs(speed) / kWaterFlowReference));
+        }
+    }
+
+    float len = length(dir);
+    s.direction = len > 1.0e-4f ? dir / len : g_flowParams.xy;
+    return s;
+}
 
 WaterPSInput VSMain(WaterVSInput v)
 {
@@ -342,6 +568,40 @@ WaterPSInput VSMain(WaterVSInput v)
 
     worldPos += disp;
 
+    /// @note 流れの場が出す形。中心型は変位«後»の位置で評価する — 形は水平変位を持たないので、
+    ///       CPU の GetSurfaceHeightAt がワールド XZ をそのまま使うのと揃える。
+    /// @note Baked だけは変位«前» (basePos) で引く。焼いた場は 3D なので、波を乗せた後の高さで
+    ///       標本化すると «高さを高さで引く» 循環になる。
+    int flowCount = (int)g_waveShapeParams.y;
+    [loop]
+    for (int fi = 0; fi < WATER_SURFACE_FLOW_COUNT; ++fi)
+    {
+        if (fi >= flowCount) continue;
+        if ((int)g_surfaceFlowB[fi].z != WFF_BAKED)
+        {
+            float3 pit = WaterRadialDisplacement(fi, worldPos.xz);
+            worldPos.y += pit.x;
+            tangent.y  += pit.y;
+            binormal.y += pit.z;
+            continue;
+        }
+        /// @note 焼いた場に解析微分は無い。1 セルぶんの前進差分で勾配を取る。
+        float  cell = max(max(g_timeParams.x, g_timeParams.y), 0.05f);
+        float  h  = WaterBakedDisplacement(fi, basePos.xz);
+        float  hx = WaterBakedDisplacement(fi, basePos.xz + float2(cell, 0.0f));
+        float  hz = WaterBakedDisplacement(fi, basePos.xz + float2(0.0f, cell));
+        worldPos.y += h;
+        tangent.y  += (hx - h) / cell;
+        binormal.y += (hz - h) / cell;
+    }
+
+    /// @note 着水の輪のうち «頂点で刻める» ぶん。CPU が B チャンネルへ meshFade 込みで焼いて
+    ///       いるので、ここは読んで足すだけ (water-waves.md の «波紋の帯分け»)。
+    /// @note VS からのテクスチャ読みは SampleLevel。UV は波を乗せる前の頂点 UV で、CPU 側の
+    ///       GetSurfaceHeightAt も変位前の XZ で輪を引く。
+    worldPos.y += (g_rippleTex.SampleLevel(g_samplerClamp, v.uv, 0).b * 2.0f - 1.0f)
+                * kRippleHeightScale;
+
     /// @note 水平方向のヤコビアン。正規化前の tangent/binormal がそのまま ∂(x+d)/∂x の 2x2 になる。
     ///       1 を割るほど «波が前のめりに詰まっている»、負で «折り畳んでいる» = 崩れる波頭。
     ///       白波を高さで出すと山のてっぺんに丸く乗るが、実際の白波は波の前面に立つ。
@@ -372,6 +632,9 @@ WaterPSInput VSMain(WaterVSInput v)
     o.screenPos = o.svPosition;
     /// @note 変位そのものから山の高さを取る。親 Transform があっても基準面がずれない。
     o.waveState = float2(saturate(disp.y / max(g_reflectParams.w, 0.01f)), fold);
+    WaterFlowSample flowSample = SampleWaterSurfaceFlow(worldPos.xz, basePos.xz);
+    o.flowDirectionDetail = float4(flowSample.direction, flowSample.detailGain, flowSample.chop);
+    o.flowFoam = float2(flowSample.eye, flowSample.ring);
     return o;
 }
 
@@ -403,21 +666,22 @@ static const float kWaterDetailNorm = 2.110381f;
 
 /// @brief さざ波の高さ勾配 (∂h/∂x, ∂h/∂z) をワールド XZ で積む。
 /// @param worldXZ   ワールド XZ [m]。UV で評価すると extent の違う水面どうしで粒度が揃わない。
+/// @param flowDir   この点の流れの向き (正規化)。渦の中では接線へ曲がる。
 /// @param footprint このピクセルが覆うワールド距離 [m]。遠いほど・浅い角度ほど大きい。
 /// @param dWorldDx  worldXZ の画面 x 微分。タイルの異方フィルタへ渡す。
 /// @param dWorldDy  worldXZ の画面 y 微分。
 /// @return xy = 勾配, z = Nyquist で落とした細部の割合 (0 = 全部残った, 1 = 全部落ちた)。
 /// @note 風向に直交して座標を縮め、さざ波の «うね» を進行方向と直交させる。等方ノイズのままだと
 ///       粒の集まりにしか見えず、水というより «ブツブツした膜» になる。
-float3 WaterDetailGradient(float2 worldXZ, float time, float footprint,
+float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float time, float footprint,
                            float2 dWorldDx, float2 dWorldDy)
 {
     float scale = max(g_detailParams.x, 1.0e-4f);
     float speed = g_detailParams.y;
-    float2 flow = g_flowParams.xy * (speed * time);
+    float2 flow = flowDir * (speed * time);
 
     float  stretch = max(g_flowParams.z, 1.0f);
-    float2 alongFlow = g_flowParams.xy;
+    float2 alongFlow = flowDir;
     float2 crossFlow = float2(-alongFlow.y, alongFlow.x);
     float2x2 aniso = float2x2(alongFlow.x, alongFlow.y, crossFlow.x / stretch, crossFlow.y / stretch);
 
@@ -490,20 +754,22 @@ float2 WaterResidualWaveSlope(float2 worldXZ, float time, float footprint, out f
 
 /// @brief 接空間法線。tangent = +X(world), binormal = +Z(world) なので xy がそのまま world XZ に対応する。
 /// @param geoNormal 頂点法線 (ワールド)。うねりの斜面を読み取り、さざ波の分布へ反映する。
+/// @param detailGain 流れの場が持ち上げるさざ波の強度倍率 (1 起点)。
 /// @return xyz = 接空間法線, w = 落とした細部量 (specular AA で粗さへ回す)。
 /// @note うねりの勾配でさざ波の座標をずらす (領域ワープ)。波が «さざ波を運ぶ» ので、ワープが無いと
 ///       うねりとさざ波が別々の層として滑って見える。ワープ量は画面上でゆっくり変わるため、
 ///       異方フィルタへ渡す微分には含めていない。
-float4 SampleWaterNormal(float2 worldXZ, float2 uv, float time, float footprint,
-                         float2 dWorldDx, float2 dWorldDy, float3 geoNormal)
+float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float time, float footprint,
+                         float2 dWorldDx, float2 dWorldDy, float3 geoNormal, float detailGain)
 {
     float2 swellSlope = -geoNormal.xz / max(geoNormal.y, 0.2f);
     float2 warped = worldXZ + swellSlope * g_flowParams.w;
 
-    float3 detail = WaterDetailGradient(warped, time, footprint, dWorldDx, dWorldDy);
+    float3 detail = WaterDetailGradient(warped, flowDir, time, footprint, dWorldDx, dWorldDy);
     /// @note 風上を向いた斜面ほどさざ波が立ち、風下は凪ぐ。一様に散らすとうねりが «ただの起伏» に見える。
-    float windward = saturate(0.5f + dot(swellSlope, g_flowParams.xy));
-    float2 grad = detail.xy * max(g_detailParams.z, 0.0f) * lerp(0.55f, 1.35f, windward);
+    float windward = saturate(0.5f + dot(swellSlope, flowDir));
+    float2 grad = detail.xy * max(g_detailParams.z, 0.0f) * lerp(0.55f, 1.35f, windward)
+                * max(detailGain, 0.0f);
 
     float residualLost = 0.0f;
     grad += WaterResidualWaveSlope(worldXZ, time, footprint, residualLost);
@@ -530,7 +796,7 @@ float WaterEdgeFade(float2 uv, float2 widthUV, float2 extent, float footprint)
 {
     float2 minWidth = min(footprint * 4.0f / max(extent, 1.0e-4f), 0.05f);
     float2 w = min(max(widthUV, minWidth), 0.15f);
-    float2 d = min(uv, 1.0f - uv); ///< 最も近い縁までの距離 [0, 0.5]
+    float2 d = min(uv, 1.0f - uv); ///< @brief 最も近い縁までの距離 [0, 0.5]
     float fx = widthUV.x > 1.0e-5f ? smoothstep(0.0f, w.x, d.x) : 1.0f;
     float fy = widthUV.y > 1.0e-5f ? smoothstep(0.0f, w.y, d.y) : 1.0f;
     return fx * fy;
@@ -605,8 +871,19 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float2 footprintDY = ddy(p.worldPos.xz);
     float  footprint   = max(length(footprintDX), length(footprintDY));
 
-    float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, time, footprint,
-                                             footprintDX, footprintDY, p.normal);
+    /// @note 場の評価は頂点で行う。補間した向きは渦の中心でゼロになり得るため安全に正規化する。
+    WaterFlowSample flowSample;
+    float flowLength = length(p.flowDirectionDetail.xy);
+    flowSample.direction = flowLength > 1.0e-4f ? p.flowDirectionDetail.xy / flowLength : g_flowParams.xy;
+    flowSample.detailGain = p.flowDirectionDetail.z;
+    flowSample.chop = p.flowDirectionDetail.w;
+    flowSample.eye = p.flowFoam.x;
+    flowSample.ring = p.flowFoam.y;
+    float2 flowDir = flowSample.direction;
+
+    float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, flowDir, time, footprint,
+                                             footprintDX, footprintDY, p.normal,
+                                             flowSample.detailGain);
     float3 tangentNormal = normalSample.xyz;
     float  lostDetail    = normalSample.w;
 
@@ -622,6 +899,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note Schlick フレネル。g_surfaceParams.z を水の F0 (実測 0.02 前後) として扱う。
     /// @warning 以前の bias + (1-bias)*pow は grazing 角以外でも下駄を履かせており、真上から見た
     ///          水面まで一定量の反射が乗って «板に空が映っている» 見え方になっていた。
+    /// @see https://doi.org/10.1111/1467-8659.1330233 Schlick, "An Inexpensive BRDF Model for Physically-based Rendering" (1994)
     float f0 = saturate(g_surfaceParams.z);
     float fresnel = f0 + (1.0f - f0) * pow(saturate(1.0f - NdotV), max(g_surfaceParams.w, 1.0f));
     fresnel = saturate(fresnel * g_surfaceParams.y * 2.0f);
@@ -641,8 +919,22 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     ///       波の山も谷も同じ色になり、うねりが «色の付いた板» にしか見えない。
     ///       アルファと屈折の判定には素の depthFactor を使う (そちらは «底までの距離» の話)。
     float colorDepthFactor = saturate(depthFactor * (1.0f - p.waveState.x * 0.40f));
-    float3 waterColor = lerp(g_shallowColorDepth.xyz, g_deepColorDepth.xyz, colorDepthFactor);
-    float3 absorptionTint = lerp(float3(1.0f, 1.0f, 1.0f), g_deepColorDepth.xyz, saturate(colorDepthFactor * 0.45f));
+    /// @note 浅瀬色 / 深部色は «水の層が散乱して返す色» (反射率)。光はこの後で掛ける。
+    float3 scatterAlbedo = lerp(g_shallowColorDepth.xyz, g_deepColorDepth.xyz, colorDepthFactor);
+
+    /// @note 水底からの光は Beer–Lambert で減る。赤から先に吸われるのが «水の色» の正体なので、
+    ///       深部色の色相を 1 深部深度あたりの透過率として使い、明るさは別に e^-1 ずつ落とす。
+    /// @see https://doi.org/10.1364/AO.36.008710 Pope & Fry, "Absorption spectrum (380–700 nm) of pure water" (1997)
+    float  deepDepth = max(g_deepColorDepth.w, 1.0e-4f);
+    float  deepPeak  = max(max(g_deepColorDepth.x, g_deepColorDepth.y), max(g_deepColorDepth.z, 1.0e-4f));
+    float3 deepHue   = max(g_deepColorDepth.xyz / deepPeak, 0.02f);
+    float  opticalDepth = waterDepth / deepDepth;
+    float3 transmittance = pow(deepHue, opticalDepth) * exp(-opticalDepth) * (1.0f - backgroundMask);
+    /// @note 散乱で水の層そのものの色へ置き換わる割合。深部深度で 95%。
+    ///       opacity と minShallowAlpha は «濁り» の上限と下限として残す。
+    float  scatterOpacity = 1.0f - exp(-3.0f * opticalDepth);
+    float  murk = lerp(saturate(g_surfaceParams.x) * lerp(saturate(minShallowAlpha), 1.0f, scatterOpacity),
+                       1.0f, backgroundMask);
 
     /// @note スクリーンスペース屈折は水面法線で HDR カラー参照 UV をずらす。水底ジオメトリを
     ///       再描画せず透明水面らしい歪みを得る。現在描画中の HDR RT を直接読むと read/write
@@ -657,12 +949,8 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float refrLinearDepth = LinearizeDepth(refrRawDepth);
     if (refrLinearDepth < linearSurfDepth)
         refrUV = screenUV;
+    /// @note sceneColor はシーン側で照明・影が済んだ色なので、ここでは減衰だけを掛ける。
     float3 refractColor = g_sceneColor.Sample(g_samplerClamp, refrUV).rgb;
-    /// @note 背景 (底が見えない) ピクセルだけ水色そのものへ倒す。
-    /// @warning 以前は refractColor の輝度がゼロに近いほど waterColor へ寄せていたため、水中の
-    ///          暗い岩や影が水色に塗り潰されて沈んだ物体が見えなくなっていた。
-    float3 baseRefract = lerp(refractColor * absorptionTint, waterColor, backgroundMask);
-    waterColor = lerp(baseRefract, waterColor, saturate(depthFactor * 0.65f));
 
     /// @note 空反射は空連動 IBL の事前フィルタ済みキューブから引く (専用の環境テクスチャは不要)。
     /// @warning 反射ベクトルを水平線より下へ向けないこと。遠い水面ほど視線が寝て R は水平線すれすれを
@@ -677,20 +965,29 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     ///       平均した色で、水平線際では空に地面が混ざって沈む。実際の水面は入射が浅いほど反射ローブが
     ///       細くなるのでこちらが正しい。ハイライト側は 1 ピクセルのちらつきを避けるため据え置く。
     float  horizonSharpen = lerp(0.35f, 1.0f, NdotV);
-    float3 reflectColor = skyReflectTint;
-    /// @note 透過光の «空側» に使う、水が上から受けている光。IBL が無いときは .mat の空色へ落ちる。
-    float3 skyAmbient = skyReflectTint;
+    const float3 kLuma = float3(0.2126f, 0.7152f, 0.0722f);
+    /// @note IBL が無いときの空反射。.mat の空色を空の明るさ (skyDimmer) で落とす。Unlit 表示では
+    ///       skyDimmer が 0 になるので ambientColor (白) を下限にする。
+    float3 reflectColor = skyReflectTint * max(skyDimmer, dot(ambientColor, kLuma));
+    /// @note 水の層・泡が空から受ける放射照度 / π (Lambert の反射率に掛ければそのまま放射輝度)。
+    float3 skyIrradianceOverPi = ambientColor;
     [branch]
-    if (g_reflectParams.x > 0.001f)
+    if (g_reflectParams.x > 0.001f && iblIntensity > 0.0f)
     {
+        /// @note 通常マテリアルと同じく IBL の全体スケールと鏡面 / 拡散スケールを通す。
+        float  iblSpecular = iblIntensity * max(iblSpecularScale, 0.0f);
         float3 sky = g_skyReflection.SampleLevel(g_samplerClamp, R,
                                                  roughnessAA * horizonSharpen
                                                      * (float)max(iblMaxMipLevel, 0)).rgb;
-        reflectColor = lerp(skyReflectTint, sky, saturate(g_reflectParams.x));
-        /// @note 一番粗いミップを真上から引くと «空を広く平均した色» になる。LightConstants の
-        ///       ambientColor は Lit で 0.08 固定 / Unlit で白なので、時刻に追随しない。
-        skyAmbient = g_skyReflection.SampleLevel(g_samplerClamp, float3(0.0f, 1.0f, 0.0f),
-                                                 (float)max(iblMaxMipLevel, 0)).rgb;
+        /// @note 一番粗いミップを真上から引くと «上半球を余弦で平均した放射輝度» に近く、π 倍が
+        ///       水平面の放射照度になる。LightConstants の ambientColor は時刻に追随しない。
+        float3 skyAverage = g_skyReflection.SampleLevel(g_samplerClamp, float3(0.0f, 1.0f, 0.0f),
+                                                        (float)max(iblMaxMipLevel, 0)).rgb;
+        /// @note 空色は «色相» だけを .mat から取り、明るさは空から取る。定数のまま混ぜると夜も光る。
+        float3 tintLit = skyReflectTint * (dot(skyAverage, kLuma)
+                                           / max(dot(skyReflectTint, kLuma), 1.0e-3f));
+        reflectColor = lerp(tintLit, sky, saturate(g_reflectParams.x)) * iblSpecular;
+        skyIrradianceOverPi = skyAverage * (iblIntensity * max(iblDiffuseScale, 0.0f));
     }
 
     /// @note 反射ウェイト (フレネル) を先に求め、SSR は寄与が実際に見えるピクセルだけトレースする。
@@ -706,16 +1003,38 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         float4 ssrReflection = TraceWaterSSR(p.worldPos, N);
         reflectColor = lerp(reflectColor, ssrReflection.rgb, ssrReflection.a);
     }
-    float3 color = lerp(waterColor, reflectColor, reflectionWeight);
 
     float3 L = normalize(-lightDir);
-    /// @note Water は半透明なので影を強く乗算せず、«太陽光の弱まり» として扱う。完全な黒影にすると
-    ///       水面下の屈折色まで不自然に消える。
+    /// @note 影は «太陽が届くか» だけを表す。掛けるのは太陽由来の項 (水の層・泡・きらめき・透過光) だけ。
+    /// @warning 合成後の色全体へ掛けないこと。空の反射は影で暗くならず、屈折した水底は
+    ///          シーン側で影が済んでいるので二重に沈む。
     float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
         lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
     /// @note Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
     shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
-    color *= lerp(0.72f, 1.0f, shadow);
+
+    /// @note 太陽の放射照度 / π。通常マテリアルと同じ LIGHT_UNIT_SCALE を通し、intensity=1 で
+    ///       反射率そのままの明るさになる規約に揃える。
+    float3 sunOverPi = lightColor * (max(lightIntensity, 0.0f) * LIGHT_UNIT_SCALE * INV_PI);
+    /// @note 水の層へ入る太陽光は水平面で受けるので、さざ波の法線ではなく高度の余弦で決める。
+    float  sunCosFlat = saturate(L.y);
+
+    /// @note 局所光。水の層と泡を照らす放射照度 / π と、水面のきらめき (GGX) を分けて集める。
+    /// @warning 屈折色へ拡散光を足さないこと。水底はシーン側で局所光も受け済みで、二重に照らされる。
+    float3 punctualOverPi   = float3(0.0f, 0.0f, 0.0f);
+    float3 punctualSpecular = float3(0.0f, 0.0f, 0.0f);
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        float3 punctualRadiant = ps.color * (ps.intensity * LIGHT_UNIT_SCALE);
+        float  punctualNdotL   = saturate(dot(N, ps.L));
+        punctualOverPi   += punctualRadiant * (punctualNdotL * INV_PI);
+        punctualSpecular += BRDF_Specular(N, V, ps.L, f0.xxx, saturate(roughnessAA + ps.roughnessBias))
+                          * punctualRadiant * punctualNdotL;
+    FBZZ_PUNCTUAL_END
+
+    /// @note 水の層が返す光 = 散乱色 × (太陽 + 空 + 局所光)。定数色のまま出すと昼夜・影に追随しない。
+    float3 bodyIrradiance = sunOverPi * (sunCosFlat * shadow) + skyIrradianceOverPi + punctualOverPi;
+    float3 inscatter = scatterAlbedo * bodyIrradiance;
+    float3 body = lerp(refractColor * transmittance, inscatter, murk);
 
     /// @note 太陽のきらめきは GGX で引く。Blinn-Phong は裾が急に落ちるため、海のきらめきの
     ///       «広がった尾» が出ず、ハイライトが «板に当たった光» に見える。
@@ -723,7 +1042,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     ///       異方を反射ローブへ渡すと、きらめきが風向に沿った帯になる ── 海面の見え方そのもの。
     /// @note 接空間は «風向» で張り直す。p.tangent はワールド +X 基準なので、そのまま渡すと
     ///       異方の向きが風と無関係になる。うねの筋を横切る «風向» 側が粗い。
-    float3 flowWorld = float3(g_flowParams.x, 0.0f, g_flowParams.y);
+    float3 flowWorld = float3(flowDir.x, 0.0f, flowDir.y);
     float3 specT = flowWorld - N * dot(N, flowWorld);
     float  specTLen = length(specT);
     specT = specTLen > 1.0e-4f ? specT / specTLen : normalize(p.tangent);
@@ -738,12 +1057,10 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float sunAlphaWide = saturate(sunAlpha + 0.0023f);
     float sunEnergy = (sunAlpha / sunAlphaWide) * (sunAlpha / sunAlphaWide);
     float NdotL = saturate(dot(N, L));
-    float3 specular = BRDF_SpecularAdvanced(N, V, L, f0.xxx, sqrt(sunAlphaWide),
-                                            specT, specB, specAniso) * sunEnergy;
-    /// @note 影は «一度掛けてから» 柔らげる。lerp だけにすると、影の中の水面にも太陽の
-    ///       きらめきが残る。
-    color += lightColor * specular * NdotL * max(lightIntensity, 0.0f)
-           * specularStrength * shadow * lerp(0.65f, 1.0f, shadow);
+    /// @see https://www.graphics.cornell.edu/~bjw/microfacetbsdf.pdf Walter et al., "Microfacet Models for Refraction through Rough Surfaces" (2007) §5.2 GGX
+    float3 sunSpecular = BRDF_SpecularAdvanced(N, V, L, f0.xxx, sqrt(sunAlphaWide),
+                                               specT, specB, specAniso)
+                       * (sunEnergy * NdotL * shadow * PI) * sunOverPi;
 
     /// @note 波の背面から透ける光 (subsurface)。«光を通す液体» に見えるかはここで決まり、
     ///       反射とスペキュラだけだと金属板のような水面になる。
@@ -753,20 +1070,18 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float forwardScatter = pow(saturate(dot(V, -scatterDir)), 3.0f);
     /// @note うねりの山ほど水の層が薄く、光が通り抜ける。
     float thickness = p.waveState.x * saturate(g_sssParams.w);
-    color += g_sssParams.rgb * lightColor * (forwardScatter * thickness) * lerp(0.4f, 1.0f, shadow);
-    /// @note 空からの散乱。太陽が無くても波の内側は明るい。これが無いと曇りや夜の海だけが
-    ///       «光を通さない板» に戻る。影の影響を受けないのは、空の光は影の中にも届くから。
-    color += g_sssParams.rgb * skyAmbient * (thickness * 0.5f);
+    /// @note 空からの散乱は影を受けない (空の光は影の中にも届く)。これが無いと曇りや夜の海だけが
+    ///       «光を通さない板» に戻る。
+    body += g_sssParams.rgb * thickness
+          * (sunOverPi * (forwardScatter * shadow) + skyIrradianceOverPi * 0.5f);
 
-    /// @note Forward+ / Deferred+ の局所光。水面は透明材質なので局所光の影は共通影と分離し、
-    ///       水色の拡散寄与だけを加算する。Deferred 経路でも Water は HDR へ直接描くためここで評価する。
-    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
-        color += Lighting_Lambert_Direct(N, ps.L, waterColor,
-            ps.color, ps.intensity);
-    FBZZ_PUNCTUAL_END
-
+    /// @note 浅い角度では視線が水の層を長く通り、層の色が明るむ。自発光ではなく受けた光で出す。
     float rim = pow(1.0f - NdotV, 3.0f) * rimGlowStrength;
-    color += lerp(waterColor, skyReflectTint, 0.35f) * rim;
+    body += lerp(scatterAlbedo, skyReflectTint, 0.35f) * bodyIrradiance * rim;
+
+    /// @note 透過した水の層と反射をフレネルで分け合い、表面のきらめきは上に足す。
+    float3 color = lerp(body, reflectColor, reflectionWeight)
+                 + (sunSpecular + punctualSpecular) * specularStrength;
 
     /// @note 波打ち際 (地形と水面が交差する浅瀬) に発生する接岸泡。waterDepth が threshold より
     ///       浅いほど強くし、岸辺に沿った白い帯を作る。
@@ -777,31 +1092,36 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float foamMaskVal = g_foamMask.Sample(g_samplerClamp, p.uv).r;
     /// @note 泡のムラもさざ波タイルから引く。ワールド座標なので水面の大きさに依らず粒が揃う。
     float foamScale = max(g_foamParams.w, 1.0e-4f);
-    float2 foamP = p.worldPos.xz * foamScale + g_flowParams.xy * (time * 0.35f);
+    float2 foamP = p.worldPos.xz * foamScale + flowDir * (time * 0.35f);
+    /// @note 乱流 (Curl) はムラのコントラストを上げる。«ざわついた水» は泡の粒が揃わない。
     float foamTexVal = saturate(WaterNoiseTile(foamP, footprintDX * foamScale,
-                                               footprintDY * foamScale).z * 1.6f);
+                                               footprintDY * foamScale).z
+                                * lerp(1.6f, 3.0f, flowSample.chop));
     /// @note 崩れる白波は «Gerstner 変位が折り畳む» ところに出る。岸が無い外洋でも波が立って
     ///       見えるかはここで決まる。山の高さで出すと白が波頭に丸く乗り、波が «進んで» 見えない。
     float crestFoam = smoothstep(0.55f, 1.0f, p.waveState.y) * 0.85f;
-    float foamAmount = max(max(foamMaskVal, shoreFoam), crestFoam) * foamTexVal;
-    float foam = smoothstep(0.05f, 1.0f, foamAmount) * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
-    float3 foamColor = lerp(float3(0.72f, 0.88f, 0.92f), float3(1.0f, 1.0f, 1.0f), saturate(foamTexVal));
-    color = lerp(color, foamColor, saturate(foam));
+    /// @note 渦と排水口の目は実際に白く泡立つ。足さないと «ただ凹んだ穴» にしか見えない。
+    ///       湧き出しは縁で水がぶつかるので、輪として出す。
+    float eyeFoam = max(flowSample.eye * 0.9f, flowSample.ring * 0.7f);
+    float foamAmount = max(max(max(foamMaskVal, shoreFoam), crestFoam), eyeFoam) * foamTexVal;
+    float foam = saturate(smoothstep(0.05f, 1.0f, foamAmount) * g_foamParams.z);
+    /// @note 泡と波紋の輪は «水面に浮いた白い粗面» なので、定数色ではなく Lambert で照らす。
+    ///       太陽は泡の面の向きで受け、影の中では空と局所光だけが残る。
+    float3 surfaceIrradiance = sunOverPi * (NdotL * shadow) + skyIrradianceOverPi + punctualOverPi;
+    float3 foamAlbedo = lerp(float3(0.72f, 0.88f, 0.92f), float3(1.0f, 1.0f, 1.0f), saturate(foamTexVal));
+    color = lerp(color, foamAlbedo * surfaceIrradiance, foam);
 
     float2 rippleRG = g_rippleTex.Sample(g_samplerClamp, p.uv).rg * 2.0f - 1.0f;
     float rippleRing = saturate(length(rippleRG) * rippleRingStrength);
-    color = lerp(color, rippleRingColor, rippleRing);
+    color = lerp(color, rippleRingColor * surfaceIrradiance, rippleRing);
     /// @warning ここで色を事前圧縮しないこと。水面は HDR バッファへブレンド描画され、露出・ACES
     ///          トーンマップは Composite パスが一括で行う。事前圧縮するときらめきが Bloom に乗らない。
     color = max(color, 0.0f);
 
-    float alpha = g_surfaceParams.x * lerp(minShallowAlpha, 1.0f, depthFactor);
-    alpha = max(alpha, backgroundMask * 0.92f);
-    alpha = saturate(max(alpha, max(foam * 0.9f, rippleRing * 0.95f)));
-
-    /// @note 外周フェードは «最後に» 掛ける。上の max 群より前だと、泡や背景マスクが縁のアルファを
-    ///       持ち上げ直してしまい、切り口の線がそのまま残る。
-    alpha *= WaterEdgeFade(p.uv, g_refractionFlowParams.zw, g_normalParams.xy, footprint);
+    /// @note 屈折と濁りはこの色の中で合成済み。ブレンドで背後をもう一度混ぜると、水底が二重に
+    ///       入って反射ときらめきが薄まるので、アルファは外周フェードだけに使う。
+    /// @note 縁ではコピー前のシーンと同じ背後へ溶けるので、屈折を合成済みでも継ぎ目は出ない。
+    float alpha = WaterEdgeFade(p.uv, g_refractionFlowParams.zw, g_normalParams.xy, footprint);
     /// @note 水面は自分自身の重なりを解決するため深度を書く。フェードで見えなくなった縁がそのまま
     ///       深度を書くと、その裏の半透明やデカールを «見えない板» が遮る。絵に出ない画素は残さない。
     clip(alpha - 0.003f);

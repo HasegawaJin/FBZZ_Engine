@@ -3,26 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
 ///
-/// WHY 床の予兆だけでは足りないか:
-///   ボス 1 は全高 6m・全幅 9m で、10m の距離で画面高さの 71% を占める (boss.md の実測)。
-///   接近するほど足元の床は本体で隠れるので、いちばん危ない距離でいちばん予兆が見えない。
-///   見えているのは «ボスの体» なので、そこに出す。
-///
-/// WHY 攻撃ごとに部位を変えるか:
-///   床のデカールは円と線の 2 形しか無く、これは意図的な設計 (BossTelegraph.hpp)。
-///   だが結果として踏みつけと磁力パルスが同じ絵になり、«どう避けるか» が選べない。
-///   «どの部位が光ったか» を «何が来るか» に割り当てれば、形を増やさずに区別が付く。
-///   しかも覚えることは増えない ─ ボスを見ていれば目に入る。
-///
-/// WHY 色を攻撃ごとに変えないか:
-///   赤青は極性、琥珀は危険で既に埋まっている (企画書 12.2)。3 色目を入れると
-///   «帯電しているのか危ないのか» が読めなくなる。分けるのは色ではなく «場所»。
-///
-/// WHY 極性色を上書きしないか:
-///   ボスのコアとリングは極性色を出す担当が別に居る (BossCoreComponent)。
-///   同じスロットを両方が毎フレーム書くと、後に走った方が勝つだけの競合になる。
-///   ここが触るのは «予兆でしか光らない部位» に限り、コアとリングは
-///   emissiveScale を «足す» のではなく持ち主へ任せる。
+/// @note 床の予兆 (円/線の 2 形、BossTelegraph.hpp) だけでは近距離で本体に隠れて見えない
+///       ため、攻撃ごとに «ボスの体のどの部位が光るか» で区別する。
+/// @note 色は場所でのみ区別し攻撃ごとに変えない (赤青=極性/琥珀=危険で企画書 12.2 が既に
+///       埋めている)。極性色 (コア/リング、BossCoreComponent 担当) も上書きしない。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -91,7 +75,7 @@ public:
         const bool active = telegraph.shape != BossTelegraphShape::None
                          && telegraph.kind  != BossAttackKind::None;
 
-        // 予兆が消えた後も少しだけ残す。着弾と同時に消えると «出なかった» に見える。
+        /// @note 予兆が消えた後も少しだけ残す。着弾と同時に消えると «出なかった» に見える。
         if (active) {
             m_kind    = telegraph.kind;
             m_release = std::max(releaseSeconds, 0.0f);
@@ -104,25 +88,20 @@ public:
             ? progress
             : (releaseSeconds > 0.0f ? m_release / releaseSeconds : 0.0f);
 
-        // 拍は床のデカールと同じ言葉で刻む (BossTelegraphCue)。
-        //
-        // WHY 自前の正弦波をやめたか (2026-09-07): `sin(Time::time * hz)` は絶対時刻
-        //     なので、予兆が出た瞬間の位相が毎回違った。しかも床のデカールも別の
-        //     位相で明滅していたので、**同じ攻撃なのに足元と体が別々のリズムで光る**。
-        //     部位発光は «床が本体で隠れるとき» の保険なのに、2 つが食い違うと
-        //     どちらを信じてよいか分からなくなる。
-        // 拍数も床と同じ値を使う ── 出す側が盤面の拍で割った数を渡してくる。
-        // ここで自前の既定を使うと、床と体で «あと何拍» が違う数になる。
+        /// @note 拍は床のデカールと同じ型 (BossTelegraphCue) で刻む。`sin(Time::time * hz)`
+        ///       の自前正弦波は絶対時刻ゆえ床と位相が食い違い、足元と体が別リズムで光った。
+        ///       拍数も床と同じ値 (出す側が渡す) を使い、自前の既定は使わない。
         m_cue.pips         = telegraph.pips > 0 ? telegraph.pips : std::max(pips, 0);
         m_cue.pipGain      = pipGain;
         m_cue.strikeFrom   = Clamp01(strikeFrom);
-        m_cue.burstSeconds = 0.0f;   // 消え際は releaseSeconds が持っている
+        /// @note 消え際は releaseSeconds が持っている
+        m_cue.burstSeconds = 0.0f;
         m_cue.Tick(progress, std::max(Time::deltaTime, 0.0f), active);
 
-        // 進みの二乗で立ち上げる。線形だと予兆の «前半» から明るく、
-        // «あと少し» の情報が出ない。
+        /// @note 進みの二乗で立ち上げる。線形だと予兆の «前半» から明るく、
+        ///       «あと少し» の情報が出ない。
         float glow = envelope * envelope * std::max(peakScale, 0.0f);
-        // 回避窓では «脈» をやめて張り付かせる。明滅が止まることが «今» の合図になる。
+        /// @note 回避窓では «脈» をやめて張り付かせる。明滅が止まることが «今» の合図になる。
         if (active) glow *= m_cue.pulse * Lerp(1.0f, 1.35f, m_cue.strike);
 
         debugKind = KindName(m_kind);
@@ -160,12 +139,12 @@ private:
             Add(LegParts(m_ai->StompLeg()), glow);
             break;
         case BossAttackKind::Slam:
-            // 着地は四脚すべて。«どこへ逃げても踏まれる» を体で言う。
+            /// @note 着地は四脚すべて。«どこへ逃げても踏まれる» を体で言う。
             Add(frontRightParts, glow); Add(frontLeftParts, glow);
             Add(backRightParts,  glow); Add(backLeftParts,  glow);
             break;
         case BossAttackKind::Charge:
-            // 前脚と頭。突進は «前» が来るので、光る面が進行方向を向く。
+            /// @note 前脚と頭。突進は «前» が来るので、光る面が進行方向を向く。
             Add(frontRightParts, glow); Add(frontLeftParts, glow);
             Add(headParts, glow);
             break;
@@ -173,8 +152,8 @@ private:
             Add(bodyParts, glow);
             break;
         case BossAttackKind::Beam:
-            // コアは BossCoreComponent が極性色で握っている。
-            // ここで琥珀を重ねると «どちらの極か» が読めなくなるので触らない。
+            /// @note コアは BossCoreComponent が極性色で握っている。
+            ///       ここで琥珀を重ねると «どちらの極か» が読めなくなるので触らない。
             break;
         default:
             break;
@@ -193,9 +172,8 @@ private:
     }
 
     /// 今フレームぶんを書き込み、前フレームで光っていて今は光らない部位を消す。
-    ///
-    /// WHY 消す側を覚えておくか: 書いた部位だけを毎フレーム 0 に戻すと、
-    ///     攻撃が切り替わった瞬間に前の部位が光ったまま焼き付く。
+    /// @note 消す側を覚えておく。書いた部位だけを毎フレーム 0 に戻すと、
+    ///       攻撃が切り替わった瞬間に前の部位が光ったまま焼き付く。
     void Flush()
     {
         const auto slot = static_cast<uint32_t>(materialSlot);

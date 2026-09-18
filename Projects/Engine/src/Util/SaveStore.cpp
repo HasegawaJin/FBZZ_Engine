@@ -16,8 +16,8 @@
 
 namespace fbzz::util {
 
-// メモリ上の正本を toml::table で持つ。型ごとの variant を自前で持たずに済み、
-// 保存も oss << table で完結する。
+/// メモリ上の正本を toml::table で持つ。型ごとの variant を自前で持たずに済み、
+/// 保存も oss << table で完結する。
 struct SaveStore::Impl {
     toml::table table;
     std::string path;
@@ -27,8 +27,8 @@ struct SaveStore::Impl {
     {
         const std::filesystem::path slot = FileSystem::PathFromUtf8(path);
         if (slot.is_absolute()) return FileSystem::PathToUtf8(slot);
-        // WHY 実行ファイル基準か: カレントディレクトリはエディタ / GameHub / スタンドアロンで
-        //     それぞれ違う。保存先が起動元に依存して別ファイルになるのを避ける。
+        /// @note カレントディレクトリはエディタ/GameHub/スタンドアロンで異なるため、実行ファイルの
+        ///       ディレクトリを基準にし、保存先が起動元依存で別ファイルになるのを避ける。
         return FileSystem::PathToUtf8(FileSystem::GetExecutableDirectory() / slot);
     }
 };
@@ -64,12 +64,12 @@ SaveStore& SaveStore::operator=(SaveStore&&) noexcept = default;
 void SaveStore::SetPath(const std::string& path) { m_impl->path = path; }
 const std::string& SaveStore::GetPath() const { return m_impl->path; }
 
-// ── ユーザー定義型 ───────────────────────────────────────────────────────────
+/// @name ユーザー定義型
 
 bool SaveStore::Write(std::string_view key, scene::IScriptSerializable& object)
 {
-    // 先にルートへ空テーブルを置き、その実体へ書き込む。
-    // WHY: 組み立ててから move で挿入すると、構築中に子のアドレスを保持できない。
+    /// @note 先にルートへ空テーブルを置き、その実体へ書き込む。組み立ててから move で挿入すると
+    ///       構築中に子のアドレスを保持できない。
     auto [iterator, inserted] =
         m_impl->table.insert_or_assign(std::string(key), toml::table{});
     toml::table* target = iterator->second.as_table();
@@ -93,7 +93,7 @@ bool SaveStore::Read(std::string_view key, scene::IScriptSerializable& object)
     return true;
 }
 
-// ── スカラー書き込み ─────────────────────────────────────────────────────────
+/// @name スカラー書き込み
 
 void SaveStore::SetBool(std::string_view key, bool value)
 {
@@ -140,7 +140,7 @@ void SaveStore::SetVector4(std::string_view key, const math::Vector4& value)
     m_impl->dirty = true;
 }
 
-// ── スカラー読み出し ─────────────────────────────────────────────────────────
+/// @name スカラー読み出し
 
 bool SaveStore::GetBool(std::string_view key, bool defaultValue) const
 {
@@ -155,8 +155,8 @@ int SaveStore::GetInt(std::string_view key, int defaultValue) const
 
 float SaveStore::GetFloat(std::string_view key, float defaultValue) const
 {
-    // WHY int64 も見るか: TOML では 1.0 を書いても整数として読み戻る場合があり、
-    //      SetFloat(1.0f) → GetFloat() が既定値に落ちる事故を防ぐ。
+    /// @note TOML は 1.0 を書いても整数として読み戻る場合があるため int64 も見る。
+    ///       SetFloat(1.0f) → GetFloat() が既定値に落ちる事故を防ぐ。
     const auto node = m_impl->table[std::string(key)];
     if (const auto asDouble = node.value<double>()) return static_cast<float>(*asDouble);
     if (const auto asInt = node.value<int64_t>())   return static_cast<float>(*asInt);
@@ -183,7 +183,7 @@ math::Vector4 SaveStore::GetVector4(std::string_view key, const math::Vector4& d
     return ArrToVec4(FindArray(m_impl->table, key), defaultValue);
 }
 
-// ── 管理 ────────────────────────────────────────────────────────────────────
+/// @name 管理
 
 bool SaveStore::Has(std::string_view key) const
 {
@@ -236,7 +236,7 @@ bool SaveStore::Load()
 
     std::string text;
     if (!FileSystem::ReadText(absPath, text)) {
-        // 初回起動 = ファイル未作成。空のまま成功扱いにする。
+        /// @note 初回起動 = ファイル未作成。空のまま成功扱いにする。
         m_impl->table.clear();
         m_impl->dirty = false;
         return true;

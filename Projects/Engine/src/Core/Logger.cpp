@@ -17,18 +17,16 @@
 
 namespace fbzz::core {
 
-// デフォルトは INFO。DEBUG は ConsolePanel の DEBUG チェックボックスで有効化する。
+/// デフォルトは INFO。DEBUG は ConsolePanel の DEBUG チェックボックスで有効化する。
 LogLevel Logger::s_minLevel = LogLevel::INFO;
 std::vector<ILogSink*> Logger::s_sinks;
 
 namespace {
 
-// シンクの一覧と 1 行の出力を守る。
-//
-// WHY 要るか: ログはワーカースレッドからも出る (流体プレビューの解き・アセットの読み込み・焼き)。
-//     s_sinks の走査中にメインスレッドが AddSink/RemoveSink で vector を動かすと、消えた要素を
-//     呼びに行く。各シンク (Console パネル) も自前の行バッファへ積むので、同時に書けば壊れる。
-// WHY 再帰可能にするか: シンクの中から何かがログを出すと、非再帰の mutex では自分を待って固まる。
+/// @brief シンクの一覧と 1 行の出力を守る再帰ミューテックス。
+/// @note ログはワーカースレッド (流体プレビュー・アセット読み込み) からも出るため、走査中の
+///       AddSink/RemoveSink による vector 変更や複数シンクの同時書き込みから保護する。
+/// @note シンク内から再度ログを出しても、再帰可能なので自分を待って固まらない。
 std::recursive_mutex& LogMutex()
 {
     static std::recursive_mutex mutex;
@@ -44,9 +42,8 @@ std::string FormatLogMessage(const char* fmt, va_list args)
 {
     if (!fmt) return {};
 
-    // WHY: MSVC の vsnprintf_s(..., _TRUNCATE, ...) は切り詰め時も -1 を返す。
-    //      cmake の長いビルドログをエラー扱いにすると肝心の診断情報が失われるため、
-    //      必要サイズを先に計算して完全なログ本文を確保する。
+    /// @note MSVC の vsnprintf_s(..., _TRUNCATE, ...) は切り詰め時も -1 を返すため、必要サイズを
+    ///       先に計算して完全なログ本文を確保する (切り詰めるとビルドログの診断情報が失われる)。
     va_list countArgs;
     va_copy(countArgs, args);
     const int required = _vscprintf(fmt, countArgs);
@@ -85,7 +82,7 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 
     const std::string body = FormatLogMessage(fmt, args);
 
-    // 書式化はロックの外で済ませてある (シンクを待たせる時間を短くする)。
+    /// @note 書式化はロックの外で済ませてある (シンクを待たせる時間を短くする)。
     const std::lock_guard lock(LogMutex());
     std::string line = prefix;
     line += body;

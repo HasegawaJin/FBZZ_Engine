@@ -17,15 +17,14 @@ namespace fbzz::editor {
 
 namespace {
 
-// WHY 名前に LogList を冠するか: Editor は unity build で、Console 側の匿名名前空間にも
-//     同じ役割の関数 (LogLevelColor 等) がある。同じバッチに入ると再定義になる。
+/// @note 名前に LogList を冠する: Editor は unity build で、Console 側の匿名名前空間にも同じ役割の関数 (LogLevelColor 等) があり、同じバッチに入ると再定義になる。
 std::size_t LogListSeverityIndex(LogListSeverity severity)
 {
     return static_cast<std::size_t>(severity);
 }
 
-// 左端のバーとバッジの色。Info はビルドログの大半を占めるので、色を付けると全行が
-// 塗られて警告・エラーが浮かなくなる。淡色に落とす。
+/// 左端のバーとバッジの色。Info はビルドログの大半を占めるので、色を付けると全行が
+/// 塗られて警告・エラーが浮かなくなる。淡色に落とす。
 ImVec4 LogListSeverityColor(LogListSeverity severity)
 {
     switch (severity) {
@@ -66,7 +65,7 @@ const char* LogListBadge(LogListSeverity severity)
     }
 }
 
-// ImGuiListClipper は等高前提なので、行高はこの 1 か所で決めて Begin にも渡す。
+/// ImGuiListClipper は等高前提なので、行高はこの 1 か所で決めて Begin にも渡す。
 float LogListRowHeight()
 {
     return ImGui::GetTextLineHeight() + 6.0f;
@@ -114,7 +113,7 @@ void LogListView::PopBackLine()
 {
     if (m_lines.empty()) return;
     CountLine(m_lines.back(), -1);
-    // 選択は落とさない。呼び出し側は同じ id で行を積み直す (書きかけの末尾行の更新)。
+    /// @note 選択は落とさない。呼び出し側は同じ id で行を積み直す (書きかけの末尾行の更新)。
     m_lines.pop_back();
     m_rowsDirty = true;
 }
@@ -199,7 +198,7 @@ void LogListView::ApplyRowClick(int row)
     const int           anchor = m_hasAnchor ? RowIndexOf(m_anchorId) : -1;
 
     if (io.KeyShift && anchor >= 0) {
-        // 起点は素のクリックだけが動かす (Console と同じ。行き過ぎを戻して選び直せるように)。
+        /// @note 起点は素のクリックだけが動かす (Console と同じ。行き過ぎを戻して選び直せるように)。
         SelectRange(anchor, row, io.KeyCtrl);
     } else if (io.KeyCtrl) {
         if (!m_selection.insert(id).second) m_selection.erase(id);
@@ -216,7 +215,7 @@ void LogListView::ApplyRowClick(int row)
 std::string LogListView::SelectedText() const
 {
     std::string text;
-    // 画面の並びで拾う。選択は集合なので、そのまま回すと順序が崩れる。
+    /// @note 画面の並びで拾う。選択は集合なので、そのまま回すと順序が崩れる。
     for (const Row& row : m_rows) {
         const LogListLine& line = m_lines[row.lineIndex];
         if (!m_selection.contains(line.id)) continue;
@@ -243,7 +242,7 @@ void LogListView::DrawSeverityToggle(const char* label, LogListSeverity severity
     char text[32];
     std::snprintf(text, sizeof(text), "%s %d###sev_%s", label, count, label);
 
-    // Info のバー色は淡色だが、トグルは押下状態を読ませたいので Info 色で塗る。
+    /// @note Info のバー色は淡色だが、トグルは押下状態を読ませたいので Info 色で塗る。
     const ImVec4 color = (severity == LogListSeverity::Info)
                        ? EditorTheme::Color(ThemeColor::Info)
                        : LogListSeverityColor(severity);
@@ -291,7 +290,7 @@ void LogListView::DrawToolbar(float trailingWidth)
 
     ImGui::BeginDisabled(selectedCount == 0);
     if (ImGui::Button(copyLabel)) {
-        // 検索語を今フレームで変えた直後でも、画面と同じ並びでコピーさせる。
+        /// @note 検索語を今フレームで変えた直後でも、画面と同じ並びでコピーさせる。
         if (m_rowsDirty || m_cachedFilter != m_filter.data() || m_cachedShow != m_show)
             RebuildRows();
         const std::string text = SelectedText();
@@ -316,7 +315,7 @@ void LogListView::DrawRow(int row)
 
     ImGui::PushID(row);
 
-    // 本文をラベルにしないのは Console と同じ理由 ("##" を含む行が途中で切れる)。
+    /// @note 本文をラベルにしないのは Console と同じ理由 ("##" を含む行が途中で切れる)。
     if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_AllowDoubleClick, { 0.0f, rowH }))
         ApplyRowClick(row);
 
@@ -329,21 +328,20 @@ void LogListView::DrawRow(int row)
     const ImU32 barColor = ImGui::ColorConvertFloat4ToU32(LogListSeverityColor(line.severity));
     dl->AddRectFilled(rowMin, { rowMin.x + 3.0f, rowMax.y }, barColor);
 
-    // WHY 押した瞬間に起点を取るか: Selectable が true を返すのは離した時で、
-    //     そこまで待つとドラッグの開始行が分からない。
+    /// @note 押した瞬間に起点を取る: Selectable が true を返すのは離した時で、そこまで待つとドラッグの開始行が分からない。
     const ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
         && !io.KeyShift && !io.KeyCtrl) {
         m_anchorId  = line.id;
         m_hasAnchor = true;
     }
-    // ドラッグ中は押した行が ActiveId を握るので、他の行の hover は BlockedByActiveItem で拾う。
+    /// @note ドラッグ中は押した行が ActiveId を握るので、他の行の hover は BlockedByActiveItem で拾う。
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
         && ImGui::IsMouseDragging(ImGuiMouseButton_Left) && m_hasAnchor) {
         if (const int anchor = RowIndexOf(m_anchorId); anchor >= 0)
             SelectRange(anchor, row, false);
     }
-    // 選択の外を右クリックしたら選び直す。中ならまとめてコピーしたいので触らない。
+    /// @note 選択の外を右クリックしたら選び直す。中ならまとめてコピーしたいので触らない。
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)
         && !m_selection.contains(line.id)) {
         m_selection.clear();
@@ -369,7 +367,7 @@ void LogListView::DrawRow(int row)
                                  line.location.c_str() + line.location.size()).x + 10.0f;
     }
 
-    // 一覧は 1 行に揃える (等高前提のクリッパーのため)。全文はコピーで取る。
+    /// @note 一覧は 1 行に揃える (等高前提のクリッパーのため)。全文はコピーで取る。
     const char* bodyBegin = line.text.c_str();
     const char* bodyEnd   = bodyBegin + line.text.size();
     if (const char* nl = std::find(bodyBegin, bodyEnd, '\n'); nl != bodyEnd) bodyEnd = nl;
@@ -439,7 +437,7 @@ void LogListView::DrawList(const ImVec2& size)
             }
         }
 
-        // 行高は LogListRowHeight が持っているので、既定の行送りは 1px に詰める。
+        /// @note 行高は LogListRowHeight が持っているので、既定の行送りは 1px に詰める。
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                             ImVec2(ImGui::GetStyle().ItemSpacing.x, 1.0f));
         ImGuiListClipper clipper;
@@ -452,9 +450,7 @@ void LogListView::DrawList(const ImVec2& size)
         ImGui::PopStyleVar();
     }
 
-    // WHY この子ウィンドウのフォーカスで見るか: 1 つのパネルに一覧が 2 つ並ぶので、
-    //     パネル全体で拾うとどちらの選択をコピーするのか決まらない。
-    // 検索欄を編集中の Ctrl+C は入力欄のコピーなので横取りしない。
+    /// @note この子ウィンドウのフォーカスで見る: 1 つのパネルに一覧が 2 つ並ぶため、パネル全体で拾うとどちらの選択をコピーするか決まらない。検索欄を編集中の Ctrl+C は入力欄のコピーなので横取りしない。
     const ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) && !io.WantTextInput && io.KeyCtrl) {
         if (ImGui::IsKeyPressed(ImGuiKey_C, false) && !m_selection.empty())
@@ -463,7 +459,7 @@ void LogListView::DrawList(const ImVec2& size)
             SelectRange(0, static_cast<int>(m_rows.size()) - 1, false);
     }
 
-    // 下端に居るときだけ追従する。上へ読みに行った人を引き戻さない。
+    /// @note 下端に居るときだけ追従する。上へ読みに行った人を引き戻さない。
     if (autoScroll && linesChanged && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
         ImGui::SetScrollHereY(1.0f);
 

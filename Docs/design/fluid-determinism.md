@@ -62,7 +62,7 @@ FluidStepPlan { frameDt, substeps, warmupFrames, frameCount, loopOverlap }
 `FluidJobStatus.fingerprint` として AI に返る。前回と同じなら絵は 1 画素も変わっていない。
 「効かない値をいじり続ける」を機械的に検出できる。
 
-指紋は **人が見る絵** (色 + MV) から取る。`.vfield` は絵に出ないので混ぜない。
+指紋は **人が見る絵** (色 + MV) から取る。`速度場 PNG` は絵に出ないので混ぜない。
 
 ### 2.4 ソルバーは明示でき、落ちたら必ず言う
 

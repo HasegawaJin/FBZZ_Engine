@@ -23,19 +23,19 @@ namespace fbzz::editor {
 
 namespace {
 
-// 焼き込むサイズ。Explorer の特大アイコンから通知領域までを 1 グループで賄う。
+/// 焼き込むサイズ。Explorer の特大アイコンから通知領域までを 1 グループで賄う。
 constexpr std::array<int, 6> kAppIconSizes{ 256, 128, 64, 48, 32, 16 };
 
-// 1 グループに積む上限。ID は 1 から連番で振る。
+/// 1 グループに積む上限。ID は 1 から連番で振る。
 constexpr int kMaxIconEntries = 32;
 
 struct IconBitmap {
     int                       width  = 0;
     int                       height = 0;
-    std::vector<std::uint8_t> rgba; // 8bit RGBA、上の行から
+    std::vector<std::uint8_t> rgba; ///< 8bit RGBA、上の行から
 };
 
-// exe へ書き込む 1 枚ぶん。bytes は DIB (自前変換) か .ico 内の画像そのまま。
+/// exe へ書き込む 1 枚ぶん。bytes は DIB (自前変換) か .ico 内の画像そのまま。
 struct IconEntry {
     int                       width    = 0;
     int                       height   = 0;
@@ -59,7 +59,7 @@ struct IconFileEntry {
     std::uint32_t bytesInRes;
     std::uint32_t imageOffset;
 };
-// RT_GROUP_ICON の 1 行。ファイル内オフセットの代わりに RT_ICON の ID を持つ。
+/// RT_GROUP_ICON の 1 行。ファイル内オフセットの代わりに RT_ICON の ID を持つ。
 struct IconGroupEntry {
     std::uint8_t  width;
     std::uint8_t  height;
@@ -82,8 +82,8 @@ bool IsIcoPath(const std::filesystem::path& path)
     return util::StringUtils::ToLower(IconPathUtf8(path.extension())) == ".ico";
 }
 
-// RT_ICON / RT_GROUP_ICON は UNICODE の定義次第で LPSTR にもなるマクロで、
-// そのままでは UpdateResourceW (LPCWSTR) に渡せない。W 版の ID として持ち直す。
+/// RT_ICON / RT_GROUP_ICON は UNICODE の定義次第で LPSTR にもなるマクロで、
+/// そのままでは UpdateResourceW (LPCWSTR) に渡せない。W 版の ID として持ち直す。
 LPCWSTR RtIcon()      { return MAKEINTRESOURCEW(3); }
 LPCWSTR RtGroupIcon() { return MAKEINTRESOURCEW(14); }
 
@@ -92,7 +92,7 @@ std::string LastErrorText(const char* what)
     return std::string(what) + " (Win32 error " + std::to_string(GetLastError()) + ")";
 }
 
-// 既にある RT_ICON の 1 枚。言語まで持つのは、削除が (ID, 言語) の組で効くため。
+/// 既にある RT_ICON の 1 枚。言語まで持つのは、削除が (ID, 言語) の組で効くため。
 struct IconResourceId {
     WORD id;
     WORD language;
@@ -123,9 +123,8 @@ std::vector<IconResourceId> ExistingIcons(const std::filesystem::path& exePath)
     return icons;
 }
 
-// 面積平均で縮小する。
-// WHY アルファで重み付けするか: 透明ピクセルの RGB は多くの PNG で黒のまま残っている。
-//     単純平均すると縮小した絵の輪郭にだけ黒い縁が出る。
+/// 面積平均で縮小する。
+/// @note アルファで重み付け: 透明ピクセルの RGB は多くの PNG で黒のまま残るため、単純平均だと縮小後の輪郭に黒い縁が出る。
 IconBitmap ResizeIconBox(const IconBitmap& src, int dstW, int dstH)
 {
     IconBitmap dst;
@@ -224,9 +223,8 @@ IconBitmap ResizeIconBilinear(const IconBitmap& src, int dstW, int dstH)
     return dst;
 }
 
-// side×side の正方形に収める。
-// WHY 引き伸ばさないか: アイコンの枠は常に正方形で、横長の絵を潰すと «設定した絵と違う» に
-//     なる。縦横比は保ったまま中央へ置き、余白は透明のままにする。
+/// side×side の正方形に収める。
+/// @note 引き伸ばさない: アイコン枠は常に正方形で横長の絵を潰すと設定した絵と変わるため、縦横比を保ち中央に置き余白は透明にする。
 IconBitmap FitIconToSquare(const IconBitmap& src, int side)
 {
     const float scale = std::min(static_cast<float>(side) / static_cast<float>(src.width),
@@ -253,9 +251,8 @@ IconBitmap FitIconToSquare(const IconBitmap& src, int side)
     return out;
 }
 
-// アイコン 1 枚を 32bpp の DIB (BITMAPINFOHEADER + BGRA + AND マスク) にする。
-// WHY PNG 圧縮で焼かないか: PNG アイコンを読めるのは Vista 以降の一部の経路に限られ、
-//     エンコーダーも自前で抱えることになる。DIB ならどのサイズ・どの API でも同じに読める。
+/// アイコン 1 枚を 32bpp の DIB (BITMAPINFOHEADER + BGRA + AND マスク) にする。
+/// @note PNG 圧縮にしない: PNG アイコンを読めるのは Vista 以降の一部の経路に限られエンコーダーも要るが、DIB ならどのサイズ・API でも同じに読める。
 std::vector<std::uint8_t> EncodeIconDib(const IconBitmap& img)
 {
     const std::size_t pixelBytes = static_cast<std::size_t>(img.width) * img.height * 4;
@@ -267,7 +264,7 @@ std::vector<std::uint8_t> EncodeIconDib(const IconBitmap& img)
     BITMAPINFOHEADER header{};
     header.biSize        = sizeof(BITMAPINFOHEADER);
     header.biWidth       = img.width;
-    // WHY 2 倍か: アイコンの DIB は「XOR (絵) + AND (マスク)」の 2 枚を積んだ高さを書く約束。
+    /// @note 2 倍にする: アイコンの DIB は「XOR (絵) + AND (マスク)」の 2 枚分の高さを書く約束。
     header.biHeight      = img.height * 2;
     header.biPlanes      = 1;
     header.biBitCount    = 32;
@@ -277,7 +274,7 @@ std::vector<std::uint8_t> EncodeIconDib(const IconBitmap& img)
 
     std::uint8_t* pixels = out.data() + sizeof(BITMAPINFOHEADER);
     for (int y = 0; y < img.height; ++y) {
-        // DIB の行は下から上。
+        /// @note DIB の行は下から上。
         const std::uint8_t* srcRow =
             &img.rgba[static_cast<std::size_t>(img.height - 1 - y) * img.width * 4];
         std::uint8_t* dstRow = pixels + static_cast<std::size_t>(y) * img.width * 4;
@@ -288,7 +285,7 @@ std::vector<std::uint8_t> EncodeIconDib(const IconBitmap& img)
             dstRow[x * 4 + 3] = srcRow[x * 4 + 3];
         }
     }
-    // AND マスクは 0 のまま。32bpp では可視判定にアルファが使われる。
+    /// @note AND マスクは 0 のまま。32bpp では可視判定にアルファが使われる。
     return out;
 }
 
@@ -310,7 +307,7 @@ bool DecodeIconImage(const std::vector<std::uint8_t>& fileBytes,
     return true;
 }
 
-// .ico をそのまま配る経路。中の画像は再エンコードせず、ID を振り直して積み替えるだけ。
+/// .ico をそのまま配る経路。中の画像は再エンコードせず、ID を振り直して積み替えるだけ。
 bool SplitIcoFile(const std::vector<std::uint8_t>& fileBytes,
                   std::vector<IconEntry>& out,
                   std::string& outError)
@@ -354,7 +351,6 @@ bool SplitIcoFile(const std::vector<std::uint8_t>& fileBytes,
 
 } // namespace
 
-// =============================================================================
 
 bool AppIconWriter::Inspect(const std::filesystem::path& imagePath,
                             SourceInfo& out,
@@ -417,13 +413,11 @@ bool AppIconWriter::Apply(const std::filesystem::path& imagePath,
     if (entries.size() > static_cast<std::size_t>(kMaxIconEntries))
         entries.resize(static_cast<std::size_t>(kMaxIconEntries));
 
-    // 掃除する相手は更新を開ける前に数え上げる (LOAD_LIBRARY_AS_DATAFILE が
-    // exe を掴んだままだと BeginUpdateResource が弾かれる)。
+    /// @note 掃除する相手は更新を開ける前に数え上げる (LOAD_LIBRARY_AS_DATAFILE が
+    ///       exe を掴んだままだと BeginUpdateResource が弾かれる)。
     const std::vector<IconResourceId> stale = ExistingIcons(exePath);
 
-    // WHY 全消しにしないか: 第 2 引数 TRUE は exe の既存リソースをすべて捨てる。
-    //     DPI 対応のアプリケーションマニフェストまで落ちるため、自分が書いた
-    //     アイコンだけを消して書き直す。
+    /// @note 全消しにしない: 第 2 引数 TRUE は exe の既存リソースをすべて捨て DPI 対応マニフェストまで落ちるため、自分が書いたアイコンだけを消して書き直す。
     HANDLE update = BeginUpdateResourceW(exePath.c_str(), FALSE);
     if (!update) {
         outError = LastErrorText("BeginUpdateResource failed");
@@ -432,17 +426,14 @@ bool AppIconWriter::Apply(const std::filesystem::path& imagePath,
 
     const WORD language = MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL);
     const auto fail = [&update](std::string reason, std::string& sink) {
-        EndUpdateResourceW(update, TRUE); // 破棄
+        /// @note 破棄
+        EndUpdateResourceW(update, TRUE);
         sink = std::move(reason);
         return false;
     };
 
-    // 前回の焼き込みが今回より多くのサイズを持っていた場合の置き去りを消す。
-    //
-    // WHY 持っている物だけを消すか: 無い RT_ICON へ削除を出すと、その呼び出しが
-    //     失敗するだけでは済まず、以降この更新ハンドルへ書く物すべてが
-    //     ERROR_INTERNAL_ERROR (1359) を返すようになる。アイコンを 1 枚も持たない
-    //     exe — 焼き込む相手はたいていこれ — では 1 回目の空振りで全部落ちる。
+    /// @note 前回より多いサイズの置き去りを消す。持っている物だけ消す: 無い RT_ICON へ削除を出すと、
+    ///       以降この更新ハンドルへの書き込みが全て ERROR_INTERNAL_ERROR (1359) を返す。アイコン無しの exe (典型的な対象) は 1 回目の空振りで全部落ちる。
     for (const IconResourceId& icon : stale) {
         if (!UpdateResourceW(update, RtIcon(), MAKEINTRESOURCEW(icon.id), icon.language,
                              nullptr, 0)) {
@@ -466,7 +457,7 @@ bool AppIconWriter::Apply(const std::filesystem::path& imagePath,
         }
 
         IconGroupEntry row{};
-        // 256 は 0 で表す (1 バイトに収まらないため)。
+        /// @note 256 は 0 で表す (1 バイトに収まらないため)。
         row.width      = static_cast<std::uint8_t>(entry.width  >= 256 ? 0 : entry.width);
         row.height     = static_cast<std::uint8_t>(entry.height >= 256 ? 0 : entry.height);
         row.colorCount = 0;

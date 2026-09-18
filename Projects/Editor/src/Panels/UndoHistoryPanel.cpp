@@ -18,7 +18,7 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
 
     UndoStack& stack = *ctx.undoStack;
 
-    // Clear ボタン
+    /// @note Clear ボタン
     const bool canClear = stack.GetHistorySize() > 0;
     if (!canClear) ImGui::BeginDisabled();
     if (ImGui::Button("Clear History"))
@@ -33,7 +33,7 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
     const auto entries   = stack.GetHistory();
     const std::size_t sz = entries.size();
 
-    // 一番上に「初期状態」エントリ
+    /// @note 一番上に「初期状態」エントリ
     {
         const bool isCurrent = (stack.GetCursor() == 0);
         ImGui::PushStyleColor(ImGuiCol_Text,
@@ -49,9 +49,12 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
         const bool isApplied = e.applied;
 
         ImVec4 color;
-        if (isCurrent)      color = { 0.4f, 0.9f, 0.4f, 1.0f };   // 緑: 現在位置
-        else if (isApplied) color = { 0.85f, 0.85f, 0.85f, 1.0f }; // 白: 適用済み
-        else                color = { 0.45f, 0.45f, 0.45f, 1.0f }; // グレー: Redo 側
+        /// @note 緑: 現在位置
+        if (isCurrent)      color = { 0.4f, 0.9f, 0.4f, 1.0f };
+        /// @note 白: 適用済み
+        else if (isApplied) color = { 0.85f, 0.85f, 0.85f, 1.0f };
+        /// @note グレー: Redo 側
+        else                color = { 0.45f, 0.45f, 0.45f, 1.0f };
 
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         char label[256];
@@ -64,7 +67,7 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SetTooltip("Jump to this state");
     }
 
-    // 現在位置が画面外のとき自動スクロール
+    /// @note 現在位置が画面外のとき自動スクロール
     if (stack.GetRevision() != m_lastRevision) {
         m_lastRevision = stack.GetRevision();
         ImGui::SetScrollHereY(0.5f);

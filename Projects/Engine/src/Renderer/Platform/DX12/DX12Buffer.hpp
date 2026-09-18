@@ -22,13 +22,12 @@ public:
     ~DX12Buffer() override;
     bool Init(DX12Context* context, const void* data, size_t sizeBytes, uint32_t stride, Kind kind);
 
-    // InitGpuWritableVertex — CS が書き込み、IA が頂点として読むバッファを確保する。
-    // WHY: コンピュートスキニングの出力先。DEFAULT ヒープ + ALLOW_UNORDERED_ACCESS で作り、
-    //      UAV デスクリプタを CPU ステージング用ヒープに保持する (Dispatch 時に
-    //      shader-visible テーブルへコピーする既存方式に合わせる)。
-    // NOTE: DX12 は状態遷移が明示的なので、書くとき UNORDERED_ACCESS、
-    //       読むとき VERTEX_AND_CONSTANT_BUFFER へ遷移させる必要がある。
-    //       遷移は DX12Renderer の Dispatch / Submit が StateTracker 経由で行う。
+    /// CS が書き込み、IA が頂点として読むバッファを確保する (コンピュートスキニングの出力先)。
+    /// @note DEFAULT ヒープ+ALLOW_UNORDERED_ACCESS で作り、UAV デスクリプタは CPU ステージング用
+    ///       ヒープに保持する (Dispatch 時に shader-visible テーブルへコピーする既存方式に合わせる)。
+    /// @note DX12 は状態遷移が明示的なため、書くとき UNORDERED_ACCESS、読むとき
+    ///       VERTEX_AND_CONSTANT_BUFFER へ遷移させる必要がある。遷移は DX12Renderer の
+    ///       Dispatch/Submit が StateTracker 経由で行う。
     bool InitGpuWritableVertex(DX12Context* context, DX12StateTracker* tracker,
                                size_t sizeBytes, uint32_t stride);
 
@@ -38,7 +37,7 @@ public:
     D3D12_VERTEX_BUFFER_VIEW GetVertexView(DX12UploadArena& arena);
     D3D12_INDEX_BUFFER_VIEW GetIndexView(DX12UploadArena& arena);
 
-    // InitGpuWritableVertex で作った場合のみ有効。それ以外は nullptr / 空ハンドル。
+    /// InitGpuWritableVertex で作った場合のみ有効。それ以外は nullptr / 空ハンドル。
     ID3D12Resource*             GetResource() const { return m_resource.Get(); }
     bool                        IsGpuWritable() const { return m_descriptorHeap != nullptr; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetUav() const;
@@ -55,9 +54,9 @@ private:
     D3D12_GPU_VIRTUAL_ADDRESS m_cachedAddress = 0;
     bool m_dirty = false;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;
-    // GPU 書き込み可能バッファの UAV を置く CPU 専用ヒープ。
+    /// GPU 書き込み可能バッファの UAV を置く CPU 専用ヒープ。
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
-    // 永続 bindless 枠 (UAV)。初回参照で確保するため mutable。
+    /// 永続 bindless 枠 (UAV)。初回参照で確保するため mutable。
     mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
     DX12StateTracker* m_tracker = nullptr;
     uint8_t* m_mapped = nullptr;

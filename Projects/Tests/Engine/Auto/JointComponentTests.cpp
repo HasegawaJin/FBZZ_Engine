@@ -46,7 +46,7 @@ scene::GameObject& MakeBody(scene::Scene& scene,
 {
     scene::GameObject& go = scene.CreateGameObject(name);
     go.AddComponent<scene::RigidBodyComponent>();
-    // AddComponent の戻り参照は他の追加で無効になりうるので引き直す。
+    /// @note AddComponent の戻り参照は他の追加で無効になりうるので引き直す。
     auto* rb = go.GetComponent<scene::RigidBodyComponent>();
     rb->rigidBody = std::make_unique<physics::RigidBody>();
     rb->rigidBody->m_isStatic = isStatic;
@@ -85,7 +85,7 @@ protected:
     }
 };
 
-// --- シーン往復 -------------------------------------------------------------
+/// @name シーン往復
 
 TEST_F(JointComponentTest, KeepsEveryAuthoredFieldAcrossASave)
 {
@@ -148,8 +148,8 @@ TEST_F(JointComponentTest, KeepsEveryAuthoredFieldAcrossASave)
 
 TEST_F(JointComponentTest, KeepsTheConnectedBodyReference)
 {
-    // 相手は EntityID (実行時の添字) ではなく instanceId で保存される。
-    // ここが崩れると、開き直した瞬間に全部の関節が «相手なし» になる。
+    /// @note 相手は EntityID (実行時の添字) ではなく instanceId で保存される。
+    ///       ここが崩れると、開き直した瞬間に全部の関節が «相手なし» になる。
     scene::Scene source;
     scene::GameObject& anchor  = source.CreateGameObject("Anchor");
     scene::GameObject& hanging = source.CreateGameObject("Hanging");
@@ -208,8 +208,8 @@ TEST_F(JointComponentTest, KeepsTheChainBodyList)
 
 TEST_F(JointComponentTest, DoesNotKeepTheRuntimeHandleWhenCopied)
 {
-    // 複製で同じスロットを 2 つのコンポーネントが指すと、片方を消したときに
-    // もう片方の関節が黙って消える。
+    /// @note 複製で同じスロットを 2 つのコンポーネントが指すと、片方を消したときに
+    ///       もう片方の関節が黙って消える。
     scene::JointComponent joint{};
     joint.constraintHandle = { 3u, 1u };
     joint.connected        = true;
@@ -220,7 +220,7 @@ TEST_F(JointComponentTest, DoesNotKeepTheRuntimeHandleWhenCopied)
     EXPECT_FALSE(copy.connected);
 }
 
-// --- 物理への橋渡し ---------------------------------------------------------
+/// @name 物理への橋渡し
 
 TEST_F(JointComponentTest, RegistersOneConstraintInTheWorld)
 {
@@ -247,8 +247,8 @@ TEST_F(JointComponentTest, RegistersOneConstraintInTheWorld)
 
 TEST_F(JointComponentTest, DoesNotGrowTheConstraintCountAcrossFrames)
 {
-    // 毎フレーム «作り直す» と、基準姿勢を抱える Fixed / Hinge が効かなくなる。
-    // 数が増えないことは «同じ制約を生かし続けている» ことの外から見える証拠。
+    /// @note 毎フレーム «作り直す» と、基準姿勢を抱える Fixed / Hinge が効かなくなる。
+    ///       数が増えないことは «同じ制約を生かし続けている» ことの外から見える証拠。
     scene::Scene scene;
     physics::World world;
     scene::GameObject& anchor  = MakeBody(scene, "Anchor", math::Vector3::ZERO, true);
@@ -304,7 +304,7 @@ TEST_F(JointComponentTest, DoesNotConnectWhenThePartnerHasNoRigidBody)
     EXPECT_FALSE(hanging.GetComponent<scene::JointComponent>()->connected);
 }
 
-// --- 距離が保たれる ---------------------------------------------------------
+/// @name 距離が保たれる
 
 TEST_F(JointComponentTest, ADistanceJointHoldsTheGapWhileFalling)
 {
@@ -324,7 +324,7 @@ TEST_F(JointComponentTest, ADistanceJointHoldsTheGapWhileFalling)
 
     const physics::RigidBody* body = BodyOf(hanging);
     ASSERT_NE(body, nullptr);
-    // 静的な吊り元は動かない。距離だけが保たれる。
+    /// @note 静的な吊り元は動かない。距離だけが保たれる。
     EXPECT_VEC3_NEAR(BodyOf(anchor)->GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
     EXPECT_NEAR(body->GetPosition().Length(), 1.0f, testkit::kLooseTolerance);
 }
@@ -334,7 +334,7 @@ TEST_F(JointComponentTest, ARopeJointClampsOnlyTheMaximumLength)
     scene::Scene scene;
     physics::World world;
     scene::GameObject& anchor  = MakeBody(scene, "Anchor", math::Vector3::ZERO, true);
-    // 最大長より内側から落とす。たるんでいる間は何もせず、伸び切ったところで止まる。
+    /// @note 最大長より内側から落とす。たるんでいる間は何もせず、伸び切ったところで止まる。
     scene::GameObject& hanging = MakeBody(scene, "Hanging", { 0.0f, -0.25f, 0.0f }, false);
 
     scene::JointComponent joint{};
@@ -344,7 +344,7 @@ TEST_F(JointComponentTest, ARopeJointClampsOnlyTheMaximumLength)
     joint.distance         = 1.0f;
     hanging.AddComponent<scene::JointComponent>(joint);
 
-    // 1 フレームではまだ最大長に届かない (= 拘束が «押し戻して» いない)。
+    /// @note 1 フレームではまだ最大長に届かない (= 拘束が «押し戻して» いない)。
     StepPhysics(scene, world);
     EXPECT_LT(BodyOf(hanging)->GetPosition().Length(), 1.0f);
 
@@ -369,7 +369,7 @@ TEST_F(JointComponentTest, AutoDistanceTakesTheGapAtTheMomentItIsTied)
 
     const auto* live = hanging.GetComponent<scene::JointComponent>();
     ASSERT_NE(live, nullptr);
-    // 置いた位置の間隔をそのまま保つ。毎フレーム測り直していると «じわじわ伸びる»。
+    /// @note 置いた位置の間隔をそのまま保つ。毎フレーム測り直していると «じわじわ伸びる»。
     EXPECT_NEAR(live->resolvedDistance, 2.75f, testkit::kTolerance);
     EXPECT_NEAR(BodyOf(hanging)->GetPosition().Length(), 2.75f, testkit::kLooseTolerance);
 }
@@ -387,8 +387,8 @@ TEST_F(JointComponentTest, AChainHoldsEverySegmentLength)
     joint.chainBodies  = { scene::EntityRef{ mid.GetID() }, scene::EntityRef{ tail.GetID() } };
     joint.autoDistance = false;
     joint.distance     = 1.0f;
-    // WHY 反復を増やすか: 鎖は隣の組を順に射影する Gauss-Seidel なので、1 組を直すと
-    //     前の組がわずかに崩れる。残差は反復ごとに幾何級数で小さくなるだけで 0 にはならない。
+    /// @note 鎖は隣の組を順に射影する Gauss-Seidel なので、1 組直すと前の組がわずかに崩れる。
+    ///       残差は反復ごとに幾何級数で小さくなるだけで 0 にはならないため反復数を増やす。
     joint.solverIterations = 32;
     head.AddComponent<scene::JointComponent>(joint);
 
@@ -397,9 +397,9 @@ TEST_F(JointComponentTest, AChainHoldsEverySegmentLength)
     const math::Vector3 headPos = BodyOf(head)->GetPosition();
     const math::Vector3 midPos  = BodyOf(mid)->GetPosition();
     const math::Vector3 tailPos = BodyOf(tail)->GetPosition();
-    // 許容は «1 フレームの落下量» の桁。位置ベースの拘束は速度を消さないので、
-    // 落ち続けている鎖はこの幅の中で振れる。ここが 10cm 単位で崩れるなら
-    // 節が繋がっていない (並びが壊れている)。
+    /// @note 許容は «1 フレームの落下量» の桁。位置ベースの拘束は速度を消さないので、
+    ///       落ち続けている鎖はこの幅の中で振れる。ここが 10cm 単位で崩れるなら
+    ///       節が繋がっていない (並びが壊れている)。
     constexpr float kChainTolerance = 0.01f;
     EXPECT_NEAR((midPos - headPos).Length(), 1.0f, kChainTolerance);
     EXPECT_NEAR((tailPos - midPos).Length(), 1.0f, kChainTolerance);
@@ -407,7 +407,7 @@ TEST_F(JointComponentTest, AChainHoldsEverySegmentLength)
 
 TEST_F(JointComponentTest, FindsThePartnerThroughTheParentWhenNoneIsNamed)
 {
-    // EntityRef は Prefab に保存できないので、«吊り元は親» の宣言だけで組める必要がある。
+    /// @note EntityRef は Prefab に保存できないので、«吊り元は親» の宣言だけで組める必要がある。
     scene::Scene scene;
     physics::World world;
     scene::GameObject& anchor  = MakeBody(scene, "Anchor", math::Vector3::ZERO, true);
@@ -424,7 +424,7 @@ TEST_F(JointComponentTest, FindsThePartnerThroughTheParentWhenNoneIsNamed)
     StepPhysics(scene, world);
 
     ASSERT_EQ(world.GetConstraints().size(), 1u);
-    // 並びは [自分, 相手]。Hinge の anchor / connectedAnchor がこの順に対応する。
+    /// @note 並びは [自分, 相手]。Hinge の anchor / connectedAnchor がこの順に対応する。
     EXPECT_EQ(world.GetConstraints()[0]->GetBodyA(), BodyOf(hanging));
     EXPECT_EQ(world.GetConstraints()[0]->GetBodyB(), BodyOf(anchor));
 }

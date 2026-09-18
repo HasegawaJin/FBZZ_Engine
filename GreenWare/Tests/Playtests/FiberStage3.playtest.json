@@ -1,0 +1,580 @@
+{
+  "name": "FiberStage3",
+  "scene": "Assets/Scenes/Test/FiberStage3.scene",
+  "lockstep": 0.016666666666666666,
+  "steps": [
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/DirectionalFiber"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "shadowDrawCalls",
+      "op": ">",
+      "value": 0
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/DirectionalBase"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f002",
+        "comp": "LightComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00b",
+        "comp": "LightComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/SpotFiber"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "shadowDrawCalls",
+      "op": ">",
+      "value": 0
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/SpotBase"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00b",
+        "comp": "LightComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00c",
+        "comp": "LightComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/PointFiber"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "shadowDrawCalls",
+      "op": ">",
+      "value": 0
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/PointBase"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00c",
+        "comp": "LightComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f002",
+        "comp": "LightComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00a",
+        "comp": "PostProcessVolumeComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/TemporalStill"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "pos": [
+          -1.4,
+          0.75,
+          0.5
+        ]
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/TemporalMove6"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "pos": [
+          -0.9,
+          0.75,
+          0.5
+        ]
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/TemporalMove11"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "pos": [
+          -0.4,
+          0.75,
+          0.5
+        ]
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/TemporalMove16"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "transform.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "pos": [
+          0.1,
+          0.75,
+          0.5
+        ]
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberStage3/TemporalMove21"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "shader.diagnostics"
+      },
+      "path": "errorCount",
+      "op": "==",
+      "value": 0
+    }
+  ]
+}

@@ -4,9 +4,8 @@
 /// @date    2026-09-07
 ///
 /// Sprite Editor のパネルと AI バス (sprite.slice) が同じ結果を出すための共有実装。
-/// WHY 切り出すか: 切り直しは «ID を引き継げるか» が参照の生死を決める操作で、
-///      写経を 2 つ持つと片方だけが規則から外れたときに «AI で切ると参照が切れる»
-///      という、画面からは原因の見えない差になる。規約は Docs/design/sprite-reference.md。
+/// @note 切り直しは «ID を引き継げるか» が参照の生死を決める操作で、写経を 2 つ持つと片方だけが
+///       規則から外れ «AI で切ると参照が切れる» のような差になる。規約は Docs/design/sprite-reference.md。
 #pragma once
 #include <Engine/Asset/TextureAsset.hpp>
 #include <cstdint>

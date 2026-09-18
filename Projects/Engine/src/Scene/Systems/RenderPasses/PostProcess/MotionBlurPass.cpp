@@ -24,23 +24,27 @@ void ExecuteMotionBlurPass(RenderPassContext& ctx)
         !h.motionBlurShader.IsValid() || !h.motionBlurResult.IsValid())
         return;
 
-    // WHAT: 深度バッファ(t7)をサンプルしてピクセルのワールド位置を復元し、
-    //       前フレームの ViewProjection 行列で再投影してモーションベクトルを計算する。
-    //       ベクトル方向に motionBlurSamples 点を中心対称サンプルして UAV_MOTION_BLUR(u5) に書く。
+    /// @note 深度バッファ(t7)をサンプルしてピクセルのワールド位置を復元し、前フレームの
+    ///       ViewProjection 行列で再投影してモーションベクトルを計算する。ベクトル方向に
+    ///       motionBlurSamples 点を中心対称サンプルして UAV_MOTION_BLUR(u5) に書く。
     renderer::ComputeCall mbDC;
     mbDC.shader             = h.motionBlurShader;
-    mbDC.constantBuffers[0] = h.frameCB;            // b0: CameraConstants (invViewProjection)
-    mbDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: motionBlurStrength, motionBlurSamples, prevViewProjection
-    mbDC.srvInputs[5]       = resources.GetColorTexture(ctx.Res().Target("HDR"), 0);  // t5: 現フレーム HDR カラー
-    // t7: シーン深度からワールド位置を復元して再投影する。Terrain を含む完全な
-    //     不透明深度（hdrRT）を読む。GBuffer depth には地形が無く、地形ピクセルの速度が誤って
-    //     算出されてモーションブラーが破綻するため、Deferred でも hdrRT を使う。
+    /// @note b0: CameraConstants (invViewProjection)
+    mbDC.constantBuffers[0] = h.frameCB;
+    /// @note b8: motionBlurStrength, motionBlurSamples, prevViewProjection
+    mbDC.constantBuffers[8] = h.advancedGraphicsCB;
+    /// @note t5: 現フレーム HDR カラー
+    mbDC.srvInputs[5]       = resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
+    /// @note t7: シーン深度からワールド位置を復元して再投影する。Terrain を含む完全な
+    ///       不透明深度（hdrRT）を読む。GBuffer depth には地形が無く、地形ピクセルの速度が誤って
+    ///       算出されてモーションブラーが破綻するため、Deferred でも hdrRT を使う。
     mbDC.srvInputs[7]       = resources.GetDepthTexture(ctx.Res().Target("HDR"));
-    // t26: モーションベクター。VelocityPass が動かなかったフレームは無効ハンドルのままで、
-    //      シェーダーは B=0 を読んで深度再投影へフォールバックする。
+    /// @note t26: モーションベクター。VelocityPass が動かなかったフレームは無効ハンドルのままで、
+    ///       シェーダーは B=0 を読んで深度再投影へフォールバックする。
     if (ctx.Res().Target("Velocity").IsValid())
         mbDC.srvInputs[26]  = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
-    mbDC.uavOutputs[5]      = h.motionBlurResult;  // u5: UAV_MOTION_BLUR
+    /// @note u5: UAV_MOTION_BLUR
+    mbDC.uavOutputs[5]      = h.motionBlurResult;
     mbDC.dispatchX          = (ctx.width  + 7) / 8;
     mbDC.dispatchY          = (ctx.height + 7) / 8;
     mbDC.dispatchZ          = 1;

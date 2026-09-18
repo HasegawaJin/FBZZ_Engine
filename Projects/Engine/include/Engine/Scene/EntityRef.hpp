@@ -20,9 +20,9 @@ struct EntityRef {
 
     bool operator==(const EntityRef&) const = default;
 
-    // scene プロキシ経由で GameObject* を解決する。無効 / 未存在なら nullptr。
+    /// scene プロキシ経由で GameObject* を解決する。無効 / 未存在なら nullptr。
     GameObject* Resolve(const ScriptSceneProxy& scene) const;
-    // Scene 直接参照版 (シリアライザ・Editor から使う)
+    /// Scene 直接参照版 (シリアライザ・Editor から使う)
     GameObject* Resolve(Scene& scene) const;
 };
 

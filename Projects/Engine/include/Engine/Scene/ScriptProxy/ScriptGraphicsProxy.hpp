@@ -3,17 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// 設計意図 (WHY postprocess と分けるか):
-///   postprocess は「シーンの見た目」をスクリプトから上書きする面で、
-///   PostProcessVolume やプロファイルが自由に差し替えてよい。プレイヤーが決めた
-///   明るさをそこへ置くと、ボリュームへ入った瞬間に消える。
-///   ユーザー設定はオーサリングと別レイヤーに置く。
-///
-/// NOTE: 触る先は「実行中の RenderSettings」で、Editor では Play 中だけ登録される。
-///       編集中 (FBZZ_EXECUTE_ALWAYS のスクリプト) から呼んでも何も起きない。
-///       WHY: 編集中に書き換えると ProjectSettings.toml へ保存されてしまう。
-///
-/// 詳細は Docs/design/game-settings.md。
+/// @note postprocess は PostProcessVolume が自由に差し替える「シーンの見た目」の面。
+///       プレイヤー設定をそこへ置くとボリューム進入時に消えるため、別レイヤーに置く。
+/// @note 触る先は実行中の RenderSettings。編集中 (FBZZ_EXECUTE_ALWAYS) から呼んでも
+///       ProjectSettings.toml へ保存されてしまうため何も起きない。
+/// @see Docs/design/game-settings.md
 #pragma once
 
 #include <Engine/Renderer/RenderSettings.hpp>
@@ -32,8 +26,8 @@ struct ScriptGraphicsProxy {
     void  SetBrightness(float value) const;   ///< 0.1 - 4.0 にクランプされる
     [[nodiscard]] float GetBrightness() const;
     /// 発光の強さ。bloom.intensity へ掛ける倍率 (0 - 2)。0 で発光なし。
-    /// WHY SetBloom(bool) と別か: あちらはパスごと切る画質設定で、こちらは
-    ///     効き具合を選ぶ好みの設定。Option では別の行に出る。
+    /// @note SetBloom(bool) はパスごと切る画質設定、こちらは効き具合を選ぶ好みの設定。
+    ///       Option では別の行に出る。
     void  SetBloomScale(float value) const;
     [[nodiscard]] float GetBloomScale() const;
     ///@}
@@ -47,7 +41,7 @@ struct ScriptGraphicsProxy {
     /// 現在の内部描画解像度 (倍率と下限を適用した後の実サイズ)。
     /// Option 画面に「1920x1080 → 1344x756」のように出す用。
     ///
-    /// NOTE: 基準はウィンドウの寸法。Editor の Play ではゲームビューポートが
+    /// @note 基準はウィンドウの寸法。Editor の Play ではゲームビューポートが
     ///       ウィンドウより小さいため、表示上の数値が実際の内部 RT と一致しない
     ///       (配布ゲームでは一致する)。表示専用の値として扱うこと。
     [[nodiscard]] uint32_t GetRenderWidth() const;

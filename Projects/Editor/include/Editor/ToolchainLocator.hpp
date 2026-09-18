@@ -10,8 +10,7 @@
 namespace fbzz::editor {
 
 /// RuntimeBuild に必要な cmake.exe、CMake キャッシュ、standalone exe の場所を解決する。
-/// WHY: エディタ UI からビルドするため、ユーザーにターミナル上の CMake パスを入力させず、
-///      configure 時に生成された build.config を優先して Visual Studio のマルチ構成出力へ追従する。
+/// @note ユーザーにターミナル上の CMake パスを入力させないため、configure 時生成の build.config を優先して VS のマルチ構成出力へ追従する。
 class ToolchainLocator {
 public:
     struct Result {
@@ -20,9 +19,7 @@ public:
         std::filesystem::path exeDebug;
         std::filesystem::path exeRelease;
         std::filesystem::path exeDevelopment;
-        // スクリプト DLL のパス (build.config の scripts_dll_* から解決)
-        // WHY: DLL 名はプロジェクトごとに異なる (SandboxScripts / MyGameScripts 等) ため
-        //      build.config に記録して Editor が動的に解決できるようにする。
+        /// @note スクリプト DLL のパス (build.config の scripts_dll_* から解決)。DLL 名はプロジェクトごとに異なる (SandboxScripts / MyGameScripts 等) ため build.config に記録し動的に解決する。
         std::filesystem::path scriptsDllDebug;
         std::filesystem::path scriptsDllRelease;
         std::filesystem::path scriptsDllDevelopment;

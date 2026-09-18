@@ -23,7 +23,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// ソート用の生の時刻。読めない場合は 0 (= いちばん古い扱い) を返す。
+/// ソート用の生の時刻。読めない場合は 0 (= いちばん古い扱い) を返す。
 long long MetaWriteTicks(const std::string& assetPath)
 {
     std::error_code ec;
@@ -46,7 +46,7 @@ std::string MetaWriteText(const std::string& assetPath)
     return buf;
 }
 
-// 表示用にプロジェクトルートを落とす。落とせなければ絶対パスのまま出す。
+/// 表示用にプロジェクトルートを落とす。落とせなければ絶対パスのまま出す。
 std::string ToRelativeForDisplay(const std::string& absPath)
 {
     const std::string root = asset::AssetDatabase::ProjectRoot();
@@ -63,11 +63,9 @@ void AssetMaintenancePanel::Rescan()
     m_groups.clear();
     m_scanned = true;
 
-    // AssetDatabase は «弾かれた 1 件» 単位で記録する。同じ guid の記録をまとめ直し、
-    // 先勝ちした側も候補に含める。
-    // WHY 先勝ち側も含めるか: 索引の採用はスキャン順で決まっており、古さとは無関係。
-    //     3 つ以上が同じ guid を名乗っている場合、残すべき 1 つが «弾かれた側» に
-    //     居ることがある。
+    /// @note AssetDatabase は «弾かれた 1 件» 単位で記録する。同じ guid の記録をまとめ直し、先勝ち側も候補に含める:
+    ///       索引の採用はスキャン順で決まり古さとは無関係なので、3 つ以上が同じ guid を名乗ると
+    ///       残すべき 1 つが «弾かれた側» に居ることがある。
     std::unordered_map<std::string, std::unordered_set<std::string>> byGuid;
     for (const auto& c : asset::AssetDatabase::GuidConflicts()) {
         auto& paths = byGuid[c.guid];
@@ -82,8 +80,8 @@ void AssetMaintenancePanel::Rescan()
             group.entries.push_back({ path, ToRelativeForDisplay(path), MetaWriteText(path),
                                       util::FileSystem::Exists(path) });
         }
-        // .meta が古い順。同時刻ならパスで決める (毎回同じ並びにして、押すたびに
-        // 残る側が入れ替わらないようにする)。
+        /// @note .meta が古い順。同時刻ならパスで決める (毎回同じ並びにして、押すたびに
+        ///       残る側が入れ替わらないようにする)。
         std::sort(group.entries.begin(), group.entries.end(),
                   [](const ConflictGroup::Entry& a, const ConflictGroup::Entry& b) {
                       const long long ta = MetaWriteTicks(a.path);
@@ -101,14 +99,14 @@ void AssetMaintenancePanel::Rescan()
 int AssetMaintenancePanel::FixGroup(const ConflictGroup& group)
 {
     int fixed = 0;
-    // 先頭 (いちばん古い .meta) は触らない。既存の参照はそこへ解決されている。
+    /// @note 先頭 (いちばん古い .meta) は触らない。既存の参照はそこへ解決されている。
     for (std::size_t i = 1; i < group.entries.size(); ++i) {
         const ConflictGroup::Entry& entry = group.entries[i];
         if (!entry.exists) continue;
         std::string newGuid;
         if (!asset::AssetDatabase::ReassignGuid(entry.path, newGuid)) continue;
-        // ReassignGuid は Library/Baked/<guid>/ を連れて行く。fingerprint の索引も
-        // 同じ guid をキーにしているので、揃えて移さないと焼き直しが走る。
+        /// @note ReassignGuid は `Library/Baked/<guid>/` を連れて行く。fingerprint の索引も
+        ///       同じ guid をキーにしているので、揃えて移さないと焼き直しが走る。
         ImportCacheStore::Rekey(group.guid, newGuid);
         FBZZ_LOG_INFO("Asset Maintenance: %s  %s -> %s",
                       entry.relative.c_str(), group.guid.c_str(), newGuid.c_str());
@@ -140,8 +138,8 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
         ImGui::OpenPopup("Reassign guids?");
     ImGui::EndDisabled();
 
-    // WHY 確認を挟むか: guid の振り直しは «参照キーを書き換える» 操作で、取り消せない。
-    //     押す前に «何件が新しい guid になるのか» が分かる形にしておく。
+    /// @note 確認を挟む: guid の振り直しは «参照キーを書き換える» 操作で取り消せないため、
+    ///       押す前に «何件が新しい guid になるのか» が分かる形にしておく。
     if (ImGui::BeginPopupModal("Reassign guids?", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         int affected = 0;
@@ -192,7 +190,8 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
             Toast::Info(m_lastResult);
             Rescan();
             ImGui::PopID();
-            break;  // Rescan で m_groups が入れ替わったので、この描画は打ち切る
+            /// @note Rescan で m_groups が入れ替わったので、この描画は打ち切る
+            break;
         }
 
         constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_Borders
@@ -217,9 +216,9 @@ void AssetMaintenancePanel::OnRenderContent(EditorContext& /*ctx*/)
                 ImGui::TableSetColumnIndex(1);
                 if (entry.exists) ImGui::TextUnformatted(entry.relative.c_str());
                 else              ImGui::TextDisabled("%s (missing)", entry.relative.c_str());
-                // WHY フルパスを出すか: 表示はプロジェクトルートを落とした相対形なので、
-                //     «同じ実体を別表記で二重登録している» 類の衝突だと 2 行が同じ文字に
-                //     見えてしまい、何と何がぶつかっているのか読み取れない。
+                /// @note 表示は相対形 (プロジェクトルートを落とす) なので、«同じ実体を別表記で
+                ///       二重登録している» 類の衝突だと 2 行が同じ文字に見え区別できない。
+                ///       ホバーでフルパスを出す。
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("%s", entry.path.c_str());
 

@@ -3,26 +3,19 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY 直接 SetVibration を呼ばせないか:
-///   パッドの振動は「今この強さ」という絶対値を書き込む API で、後から呼んだ側が
-///   前の値を丸ごと置き換える。弱い連打が強い一撃を消す、という
-///   カメラ揺れとまったく同じ壊れ方をする。要求を溜めて毎フレーム合成し、
-///   実際に書き込むのはここだけにする。
-///
-/// WHY 最大値で合成するか (加算ではなく):
-///   モーターの出力は 0..1 に飽和する。足し合わせるとすぐ 1 に張り付き、
-///   強弱の差が消えて「常に最大で震えている」状態になる。最も強い要求を採る方が、
-///   一撃の重さが残る。
-///
-/// WHY 持続振動を別の器で持つか:
-///   照射は押しているあいだ続く。長さの決まった要求を毎フレーム積むと、上限に達した
-///   ところで «最も弱いものを捨てる» が働き、同じ 1 本の照射が自分自身を押し出し始める。
-///   終わりの時刻が決まっていない振動は、寿命ではなく «今の強さ» で持つ。
-///
-/// WHY 距離による強弱をここが持たないか:
-///   «どこで起きたか» はカメラ揺れも同じ数で減衰させたい値で、振動だけのものではない。
-///   規約は Utils/ShockFalloff.hpp にあり、呼び出し元が 1 度だけ近さを出して、
-///   揺れと振動の両方へ同じ数を掛ける。ここは «届いた強さ» を混ぜるだけに留める。
+/// @note 直接 SetVibration は呼ばせない。パッドの振動は「今この強さ」という絶対値を
+///       書き込む API で、後から呼んだ側が前の値を丸ごと置き換える (カメラ揺れと同じ
+///       壊れ方)。要求を溜めて毎フレーム合成し、実際に書き込むのはここだけにする。
+/// @note 合成は最大値で行う (加算ではない)。モーターの出力は 0..1 に飽和するため
+///       足し合わせるとすぐ張り付いて強弱の差が消える。最も強い要求を採る方が
+///       一撃の重さが残る。
+/// @note 持続振動は別の器で持つ。長さの決まった要求を毎フレーム積むと、上限に達した
+///       ところで «最も弱いものを捨てる» が働き同じ照射が自分自身を押し出し始めるため、
+///       終わりの時刻が決まっていない振動は寿命でなく «今の強さ» で持つ。
+/// @note 距離による強弱はここでは持たない。«どこで起きたか» はカメラ揺れも同じ数で
+///       減衰させたい値なので、規約は Utils/ShockFalloff.hpp にあり、呼び出し元が
+///       1 度だけ近さを出して揺れと振動の両方へ同じ数を掛ける。ここは «届いた強さ»
+///       を混ぜるだけに留める。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -39,9 +32,8 @@ using namespace fbzz::math;
 namespace sandbox {
 
 /// 持続振動の口。同時に鳴りうるものだけを並べる。
-///
-/// WHY 呼び出し元ごとに口を分けるか: 左右の照射は同時に走る。1 つの口を共有すると、
-///     後から書いた側が相手の強さを消し、両手で撃っているのに片手ぶんしか返らない。
+/// @note 呼び出し元ごとに口を分ける。左右の照射は同時に走るため、1 つの口を共有すると
+///       後から書いた側が相手の強さを消し、両手で撃っているのに片手ぶんしか返らない。
 enum class RumbleChannel : int {
     BeamPlus,    ///< ＋ (右) の照射
     BeamMinus,   ///< − (左) の照射
@@ -73,13 +65,13 @@ public:
 
     [[nodiscard]] static RumbleManagerComponent* Instance() { return s_instance; }
 
-    // 強さ (0..1) だけ渡す標準の呼び方。
+    /// 強さ (0..1) だけ渡す標準の呼び方。
     void Rumble(float strength01);
-    // 両モーターと長さを直接指定する版。
+    /// 両モーターと長さを直接指定する版。
     void Rumble(float low, float high, float duration);
 
-    // 終わりの時刻が決まっていない振動。呼んだ強さがそのまま «今» として残り続けるので、
-    // 止めるのは呼び出し元の責任 (照射をやめた / 銃を畳んだ / 自分が消えた)。
+    /// 終わりの時刻が決まっていない振動。呼んだ強さがそのまま «今» として残り続けるので、
+    /// 止めるのは呼び出し元の責任 (照射をやめた / 銃を畳んだ / 自分が消えた)。
     void Sustain(RumbleChannel channel, float low, float high);
     void StopSustain(RumbleChannel channel);
 
@@ -130,7 +122,7 @@ inline void RumbleManagerComponent::OnStart()
 
 inline void RumbleManagerComponent::OnDestroy()
 {
-    // 止め忘れるとシーンを抜けてもパッドが震え続ける。ゲームを閉じるまで止まらない。
+    /// @note 止め忘れるとシーンを抜けてもパッドが震え続ける。ゲームを閉じるまで止まらない。
     StopAll();
     if (s_instance == this) s_instance = nullptr;
 }
@@ -146,10 +138,9 @@ inline void RumbleManagerComponent::Rumble(float low, float high, float duration
 {
     if (!m_enabled || duration <= 0.0f) return;
 
-    // Option の「振動」。両モーターへ等しく掛ける。
-    // WHY masterScale と別に持つか: masterScale は作り手が全体の重さを決める値で、
-    //     こちらは遊ぶ人が下げる値。同じ変数にすると、プレイヤーが 50% にした状態が
-    //     作り手の調整値として保存され、次に触ったときの基準が判らなくなる。
+    /// @note Option の「振動」。両モーターへ等しく掛ける。masterScale (作り手が全体の
+    ///       重さを決める値) とは別に持つ ─ 同じ変数にすると、プレイヤーが 50% にした
+    ///       状態が作り手の調整値として保存され、次に触ったときの基準が判らなくなる。
     const float player = GameSettingsComponent::VibrationScale();
     low  *= player;
     high *= player;
@@ -173,8 +164,8 @@ inline void RumbleManagerComponent::Sustain(RumbleChannel channel, float low, fl
 {
     const auto slot = static_cast<std::size_t>(channel);
     if (slot >= m_sustain.size()) return;
-    // WHY 切ってあるときに 0 を書くか (素通りしないか): 照射中に振動を切ると、
-    //     切る前の強さがそのまま残り、押している間ずっと震え続ける。
+    /// @note 切ってあるときも素通りせず 0 を書く。照射中に振動を切ると、切る前の強さが
+    ///       そのまま残り押している間ずっと震え続けるため。
     m_sustain[slot] = m_enabled ? Level{ Clamp01(low), Clamp01(high) } : Level{};
 }
 
@@ -198,8 +189,8 @@ inline void RumbleManagerComponent::StopAll()
 
 inline void RumbleManagerComponent::OnUpdate()
 {
-    // WHY 実時間で数えるか: ヒットストップ中に振動まで止まると、最も手応えが要る瞬間に
-    //     何も返ってこない。時間を止めても振動は進める。
+    /// @note 実時間で数える。ヒットストップ中に振動まで止まると、最も手応えが要る瞬間に
+    ///       何も返ってこないため、時間を止めても振動は進める。
     const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
 
     float low = 0.0f;
@@ -210,16 +201,16 @@ inline void RumbleManagerComponent::OnUpdate()
             it = m_requests.erase(it);
             continue;
         }
-        // 終わりへ向けて落とす。切れる瞬間に最大のまま止まると、ぶつ切りに感じる。
+        /// @note 終わりへ向けて落とす。切れる瞬間に最大のまま止まると、ぶつ切りに感じる。
         const float falloff = Clamp01(it->remaining / it->duration);
         low  = std::max(low,  it->low  * falloff);
         high = std::max(high, it->high * falloff);
         ++it;
     }
 
-    // WHY 遊ぶ人の倍率をここで掛けるか (Sustain の中ではなく): 持続振動は «今の強さ» を
-    //     置いておく器なので、押しっぱなしのまま Option を動かされうる。書き込み時に
-    //     掛けると、その 1 本の照射だけ古い倍率で震え続ける。
+    /// @note 遊ぶ人の倍率は Sustain の中でなくここで掛ける。持続振動は «今の強さ» を
+    ///       置いておく器で押しっぱなしのまま Option を動かされうるため、書き込み時に
+    ///       掛けるとその 1 本の照射だけ古い倍率で震え続ける。
     const float player = GameSettingsComponent::VibrationScale();
     for (const Level& level : m_sustain) {
         low  = std::max(low,  level.low  * player);
@@ -239,9 +230,9 @@ inline void RumbleManagerComponent::OnUpdate()
         return;
     }
 
-    // WHY 毎フレーム出し直すか: SetVibration は指定秒数で自動停止する API なので、
-    //     合成結果が毎フレーム変わる使い方では「今フレームぶん」を出し続けるしかない。
-    //     少し長めに出すのは、フレーム落ちで一瞬途切れて振動がガタつくのを防ぐため。
+    /// @note 毎フレーム出し直す。SetVibration は指定秒数で自動停止する API なので、
+    ///       合成結果が毎フレーム変わる使い方では「今フレームぶん」を出し続けるしかない。
+    ///       少し長めに出すのは、フレーム落ちで一瞬途切れて振動がガタつくのを防ぐため。
     input.SetVibration(low, high, std::max(dt * 3.0f, 0.05f));
     m_driving = true;
 }

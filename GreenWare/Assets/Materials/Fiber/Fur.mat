@@ -1,0 +1,38 @@
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+shader = 'guid:aef89576fbea4916a2a3905f4ef1ead5|Assets/Shaders/Fiber/FiberShell.hlsl'
+version = 1
+
+[params]
+fiberDensity = 1.0
+fiberFrequency = 100.0
+fiberLength = 0.23999999463558197
+fiberTaper = 0.8500000238418579
+fiberThickness = 3.0
+finSilhouetteWidth = 0.3499999940395355
+grassShading = 0.0
+gravityBend = 0.009999999776482582
+maxBend = 0.03999999910593033
+rootColor = [ 1.0, 0.6638297438621521, 0.0, 1.0 ]
+rootOcclusion = 0.6499999761581421
+roughness = 0.5
+specularStrength = 0.25
+tipColor = [ 0.38723403215408325, 0.18063442409038544, 0.0049434080719947815, 1.0 ]
+transmission = 0.0
+windResponse = 0.02500000037252903
+worldMapping = 0.0
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

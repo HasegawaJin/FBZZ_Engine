@@ -34,13 +34,13 @@ std::unique_ptr<IblAsset> IblImporter::Import(
         return nullptr;
     }
 
-    // マジック検証
+    /// @note マジック検証
     if (std::strncmp(header.magic, "FZIBL", 5) != 0) {
         FBZZ_LOG_ERROR("IblImporter: 不正なマジック番号 [%s]", absPath.c_str());
         return nullptr;
     }
 
-    // DDS パスは .ibl と同一ディレクトリからの相対パスで格納されている
+    /// @note DDS パスは .ibl と同一ディレクトリからの相対パスで格納されている
     namespace fs = std::filesystem;
     const fs::path dir = util::FileSystem::PathFromUtf8(absPath).parent_path();
 
@@ -56,7 +56,7 @@ std::unique_ptr<IblAsset> IblImporter::Import(
     auto asset = std::make_unique<IblAsset>();
     asset->prefilteredMipCount = header.prefilteredMipCount;
 
-    // 既存の LoadTexture が DDS キューブマップを DirectXTex で正しく処理する
+    /// @note 既存の LoadTexture が DDS キューブマップを DirectXTex で正しく処理する
     asset->environmentCubemap = resources->LoadTexture(envPath);
     asset->irradianceCubemap  = resources->LoadTexture(irrPath);
     asset->prefilteredCubemap = resources->LoadTexture(prefilterPath);

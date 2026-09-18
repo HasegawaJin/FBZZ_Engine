@@ -28,19 +28,19 @@ bool SameImageExtensions(std::string_view withSprites, std::string_view plain)
 
 TEST(SpriteFieldFilterTest, OnlyDeclaredFieldsAcceptSpriteReferences)
 {
-    // 矩形を読む経路を持つ欄。
+    /// @note 矩形を読む経路を持つ欄。
     EXPECT_TRUE(editor::widgets::FilterAcceptsSprites(editor::widgets::kSpriteAssetFilter));
     EXPECT_TRUE(editor::widgets::FilterAcceptsSprites(scene::kSpriteFieldExtensions));
-    // 流体のテクスチャ発生源 (FluidRecipe.cpp / FluidRecipeWidgets.cpp と同じ値)。
+    /// @note 流体のテクスチャ発生源 (FluidRecipe.cpp / FluidRecipeWidgets.cpp と同じ値)。
     EXPECT_TRUE(editor::widgets::FilterAcceptsSprites(".sprite,.png,.tga,.jpg,.jpeg"));
 
-    // 画像は受けるが切り抜きは効かない欄 (Light の Cookie・Decal・歪みマップ・Flipbook の 1 枚目)。
+    /// @note 画像は受けるが切り抜きは効かない欄 (Light の Cookie・Decal・歪みマップ・Flipbook の 1 枚目)。
     EXPECT_FALSE(editor::widgets::FilterAcceptsSprites(editor::widgets::kTextureAssetFilter));
     EXPECT_FALSE(editor::widgets::FilterAcceptsSprites(".png,.jpg,.dds,.tga"));
-    // そもそも画像ではない欄。
+    /// @note そもそも画像ではない欄。
     EXPECT_FALSE(editor::widgets::FilterAcceptsSprites(".mat"));
 
-    // フィルター無し = 何でも受ける欄 (スキーマ駆動の汎用欄) はそのまま通す。
+    /// @note フィルター無し = 何でも受ける欄 (スキーマ駆動の汎用欄) はそのまま通す。
     EXPECT_TRUE(editor::widgets::FilterAcceptsSprites(""));
     EXPECT_TRUE(editor::widgets::FilterAcceptsSprites(nullptr));
 }
@@ -50,7 +50,7 @@ TEST(SpriteFieldFilterTest, SpriteFilterCarriesTheSameImageExtensions)
     EXPECT_TRUE(SameImageExtensions(editor::widgets::kSpriteAssetFilter,
                                     editor::widgets::kTextureAssetFilter))
         << editor::widgets::kSpriteAssetFilter;
-    // UI の状態別スプライト欄も «.sprite + 画像» の形で書く。
+    /// @note UI の状態別スプライト欄も «.sprite + 画像» の形で書く。
     EXPECT_TRUE(std::string_view(scene::kSpriteFieldExtensions).starts_with(".sprite,"));
 }
 

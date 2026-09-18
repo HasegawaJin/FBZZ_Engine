@@ -3,8 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-03
 ///
-/// WHY: Sandbox と EditorLauncher の両方が同じ「設定 → サブシステム反映」処理を必要とする。
-/// 重複を避けるため Engine に集約し、どの起動モジュールからも参照できるようにする。
+/// @note Sandbox と EditorLauncher の両方が同じ「設定→サブシステム反映」処理を必要とするため、Engine に集約している。
 #pragma once
 
 #include <Engine/Core/Window.hpp>
@@ -21,43 +20,37 @@ class Scene;
 
 namespace fbzz::scene {
 
-/// ProjectSettings の物理設定を physics::World へ反映する。
+/// @brief ProjectSettings の物理設定を physics::World へ反映する。
 void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings);
 
-/// ProjectSettings の UI 設定を UI システムへ反映する。
-/// ctx を渡すと defaultFontPath をそのコンテキストへ設定する。
-/// 既存呼び出しは nullptr デフォルトのまま変更不要。
+/// @brief ProjectSettings の UI 設定を UI システムへ反映する。
+/// @param ctx 渡すと defaultFontPath をそのコンテキストへ設定する。省略時 (nullptr) は設定しない。
 void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx = nullptr);
 
-/// ProjectSettings.window から Window::Config を生成する。
-/// WHY: Sandbox / EditorLauncher の両方が Application::Init() 前に同じ変換を行うため共通化する。
+/// @brief ProjectSettings.window から Window::Config を生成する。
+/// @note Sandbox/EditorLauncher の両方が Application::Init() 前に同じ変換を行うため共通化した。
 [[nodiscard]] core::Window::Config MakeWindowConfig(const ProjectSettings& settings);
 
-/// シーン内のメイン CameraComponent を renderer::Camera として解決する。
-/// WHY: Standalone / Editor の双方が「isMain フラグを持つ最初の Camera GO」を使う規約を共通化する。
-///      Main Camera が存在しない場合はアスペクト比だけ設定した既定カメラを返す。
+/// @brief シーン内のメイン CameraComponent を renderer::Camera として解決する。
+/// @note Standalone/Editor の双方が「isMain フラグを持つ最初の Camera GO」を使う規約を共通化した。
+/// @return Main Camera が存在しない場合はアスペクト比だけ設定した既定カメラ。
 [[nodiscard]] renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio);
 
-/// エディタ向け: シーン内のメイン CameraComponent を editorFallback ベースで上書きして返す。
-/// WHY: EditorModule と EditorLauncher の両方がデバッグカメラをフォールバックとする同じ解決ロジックを持っていたため共通化する。
+/// @brief エディタ向け: シーン内のメイン CameraComponent を editorFallback ベースで上書きして返す。
+/// @note EditorModule と EditorLauncher の両方がデバッグカメラをフォールバックとする同じ解決ロジックを共通化した。
 [[nodiscard]] renderer::Camera ResolveEditorGameCamera(Scene& scene,
                                                        const renderer::Camera& editorFallback,
                                                        float aspectRatio);
 
-/// シーン内のメイン CameraComponent の背景色を返す。見つからなければ既定色を返す。
-///
-/// WHY エディタの Scene View がこれを引くか:
-///   Scene View はデバッグカメラの視点なのでカリング設定は持ち込まない (見え方が
-///   ゲームカメラの都合で変わると何を編集しているのか分からなくなるため) が、
-///   背景色は «何が存在するか» ではなく «シーンがどう見えるか» そのもので、
-///   編集中に本番と違う色が出ていると背景に合わせた色設計ができない。
+/// @brief シーン内のメイン CameraComponent の背景色を返す。見つからなければ既定色を返す。
+/// @note Scene View はデバッグカメラの視点なのでカリング設定は持ち込まないが、背景色は «シーンがどう見えるか» そのものなので、この関数を通して本番と同じ色を出す。
 [[nodiscard]] math::Vector4 ResolveGameBackgroundColor(Scene& scene);
 
-/// シーン内のメイン CameraComponent の cullingMask を返す。見つからなければ Layer::Everything を返す。
+/// @brief シーン内のメイン CameraComponent の cullingMask を返す。見つからなければ Layer::Everything を返す。
 [[nodiscard]] fbzz::LayerMask ResolveGameCullingMask(Scene& scene);
 
-/// シーン内のメイン CameraComponent のカリング設定を返す。見つからなければ既定値を返す。
-/// 実体は CameraCullingSettings.hpp (RenderSystem 側と共有する POD)。
+/// @brief シーン内のメイン CameraComponent のカリング設定を返す。見つからなければ既定値を返す。
+/// @note 実体は CameraCullingSettings.hpp で定義される POD。RenderSystem 側と共有する。
 [[nodiscard]] CameraCullingSettings ResolveGameCullingSettings(Scene& scene);
 
 } // namespace fbzz::scene

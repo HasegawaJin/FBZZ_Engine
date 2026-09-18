@@ -18,17 +18,17 @@ DX12Texture::~DX12Texture()
 {
     if (m_tracker) m_tracker->Remove(m_resource.Get());
     if (m_context) {
-        // リソース本体と同じフェンスで守る。先に枠を返すと、まだこのテクスチャを読む
-        // 記録済みコマンドが、再利用された別テクスチャを読むことになる。
+        /// @note リソース本体と同じフェンスで守る。先に枠を返すと、まだこのテクスチャを読む
+        ///       記録済みコマンドが、再利用された別テクスチャを読むことになる。
         m_context->FreeBindlessSlot(m_bindlessIndex);
         m_context->FreeBindlessSlot(m_bindlessUavIndex);
         m_context->DeferRelease(m_resource);
     }
 }
 
-// 無効値は RHI 側の契約 (ITexture.hpp) とバックエンド側の台帳 (DX12Context) で
-// 同じでなければならない。ずれると «無効» が有効な添字として解釈され、無関係な
-// テクスチャが引かれる。片方だけ直したときにコンパイルで落とす。
+/// 無効値は RHI 側の契約 (ITexture.hpp) とバックエンド側の台帳 (DX12Context) で
+/// 同じでなければならない。ずれると «無効» が有効な添字として解釈され、無関係な
+/// テクスチャが引かれる。片方だけ直したときにコンパイルで落とす。
 static_assert(INVALID_BINDLESS_INDEX == DX12Context::INVALID_BINDLESS_INDEX,
               "ITexture と DX12Context の bindless 無効値が食い違っています");
 
@@ -54,8 +54,8 @@ uint32_t DX12Texture::GetBindlessUavIndex() const
 {
     if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
         return m_bindlessUavIndex;
-    // m_hasUav が false のテクスチャは GetUavCpu() が SRV 枠を指すため、ここで弾かないと
-    // 「RWTexture として書けるつもりの SRV」を配ってしまう。
+    /// @note m_hasUav が false のテクスチャは GetUavCpu() が SRV 枠を指すため、ここで弾かないと
+    ///       「RWTexture として書けるつもりの SRV」を配ってしまう。
     if (!m_context || !m_hasUav || !m_srvHeap || !m_context->SupportsBindless())
         return INVALID_BINDLESS_INDEX;
 
@@ -89,8 +89,8 @@ bool DX12Texture::Init(DX12Context* context, const std::string& path)
         return false;
     }
 
-    // DDS に入っているミップは全段転送する。フリップブックの «コマを跨がないミップ» は
-    // 焼く側でしか作れないので、ここで 0 段目だけにすると遠くの粒子がちらつく。
+    /// @note DDS に入っているミップは全段転送する。フリップブックの «コマを跨がないミップ» は
+    ///       焼く側でしか作れないので、ここで 0 段目だけにすると遠くの粒子がちらつく。
     const std::size_t mipCount = (std::max)(source.GetMetadata().mipLevels, std::size_t{ 1 });
     std::vector<DirectX::ScratchImage> converted(mipCount);
     std::vector<DX12Context::TextureMip> mips;
@@ -170,7 +170,7 @@ bool DX12Texture::InitFromData3D(
     if (!device || !context->GetCommandQueue())
         return false;
 
-    // R8G8B8A8_UNORM の 3D テクスチャを DEFAULT ヒープに作り、COPY_DEST で開始する。
+    /// @note R8G8B8A8_UNORM の 3D テクスチャを DEFAULT ヒープに作り、COPY_DEST で開始する。
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
     D3D12_RESOURCE_DESC desc{};
@@ -187,7 +187,7 @@ bool DX12Texture::InitFromData3D(
         return false;
     }
 
-    // アップロードバッファへ「深度スライス × 行」を GPU 要求ピッチ (256B) に合わせて詰める。
+    /// @note アップロードバッファへ「深度スライス × 行」を GPU 要求ピッチ (256B) に合わせて詰める。
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
     UINT rowCount = 0;
     UINT64 rowSize = 0;
@@ -211,7 +211,8 @@ bool DX12Texture::InitFromData3D(
     uint8_t* mapped = nullptr;
     if (FAILED(upload->Map(0, nullptr, reinterpret_cast<void**>(&mapped))))
         return false;
-    const size_t sourceRowPitch = static_cast<size_t>(width) * 4u; // RGBA8
+    /// @note RGBA8
+    const size_t sourceRowPitch = static_cast<size_t>(width) * 4u;
     for (uint32_t z = 0; z < depth; ++z) {
         for (uint32_t y = 0; y < rowCount; ++y) {
             std::memcpy(
@@ -223,7 +224,7 @@ bool DX12Texture::InitFromData3D(
     }
     upload->Unmap(0, nullptr);
 
-    // 専用コマンドリストで同期コピー → PIXEL_SHADER_RESOURCE へ遷移 (DX11 の即時 Immutable 相当)。
+    /// @note 専用コマンドリストで同期コピー → PIXEL_SHADER_RESOURCE へ遷移 (DX11 の即時 Immutable 相当)。
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
     if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)))
@@ -255,11 +256,11 @@ bool DX12Texture::InitFromData3D(
     m_width = width;
     m_height = height;
 
-    // Texture3D SRV。シェーダーの Texture3D スロット (雲ノイズ / 3D LUT) と次元を一致させる。
+    /// @note Texture3D SRV。シェーダーの Texture3D スロット (雲ノイズ / 3D LUT) と次元を一致させる。
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 1;
-    // WHY: CopyDescriptorsのコピー元はshader-visibleヒープにできないためCPU stagingに置く。
+    /// @note CopyDescriptors のコピー元は shader-visible ヒープにできないため CPU staging に置く。
     if (FAILED(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap))))
         return false;
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
@@ -338,7 +339,7 @@ bool DX12Texture::InitForCompute(
     desc.Height = height;
     desc.DepthOrArraySize = 1;
     desc.MipLevels = 1;
-    // WHY: Typed UAV Storeは機種依存のため、Debug Layerで拒否される形式を事前に避ける。
+    /// @note Typed UAV Store は機種依存のため、Debug Layer で拒否される形式を事前に避ける。
     m_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     D3D12_FEATURE_DATA_FORMAT_SUPPORT formatSupport{m_format};
     if (FAILED(context->GetDevice()->CheckFeatureSupport(
@@ -370,11 +371,9 @@ bool DX12Texture::InitForCompute(
     srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srv.Texture2D.MipLevels = 1;
     context->GetDevice()->CreateShaderResourceView(m_resource.Get(), &srv, GetSrvCpu());
-    // 単一Mip・単一ArrayのTexture2Dなので、既定UAVを使う。
-    // WHY: 手動ViewDimension/Format指定はGPUごとのTyped UAV制約やMip記述子不整合を
-    //      Debug Layerでエラーにしやすい。リソース記述子から生成する既定ビューなら、
-    //      実際に作成されたFormatと完全に一致する。
-    // GetUavCpu() はUAVビューの存在フラグを検査するため、生成呼び出し前に有効化する。
+    /// @note 単一 Mip・単一 Array の Texture2D なので既定 UAV を使う。手動で ViewDimension/Format を
+    ///       指定すると GPU ごとの Typed UAV 制約や Mip 記述子不整合で Debug Layer がエラーにしやすい。
+    ///       GetUavCpu() は UAV ビューの存在フラグを検査するため、生成呼び出し前に m_hasUav を有効化する。
     m_hasUav = true;
     context->GetDevice()->CreateUnorderedAccessView(
         m_resource.Get(), nullptr, nullptr, GetUavCpu());
@@ -391,7 +390,7 @@ bool DX12Texture::InitForCompute3D(
     if (!context || !tracker || width == 0 || height == 0 || depth == 0) return false;
     m_context = context;
 
-    // Typed UAV Store の対応は機種依存。2D 版と同じ順で試し、どちらも駄目なら諦める。
+    /// @note Typed UAV Store の対応は機種依存。2D 版と同じ順で試し、どちらも駄目なら諦める。
     m_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     const auto supportsTypedStore = [&](DXGI_FORMAT format) {
         D3D12_FEATURE_DATA_FORMAT_SUPPORT support{ format };
@@ -440,8 +439,8 @@ bool DX12Texture::InitForCompute3D(
     srv.Texture3D.MipLevels     = 1;
     context->GetDevice()->CreateShaderResourceView(m_resource.Get(), &srv, GetSrvCpu());
 
-    // UAV は 2D 版と同じ理由で既定ビュー (リソース記述から生成) を使う。
-    // GetUavCpu() が存在フラグを見るので、生成呼び出しより前に立てる。
+    /// @note UAV は 2D 版と同じ理由で既定ビュー (リソース記述から生成) を使う。
+    ///       GetUavCpu() が存在フラグを見るので、生成呼び出しより前に立てる。
     m_hasUav = true;
     context->GetDevice()->CreateUnorderedAccessView(
         m_resource.Get(), nullptr, nullptr, GetUavCpu());
@@ -493,7 +492,8 @@ bool DX12Texture::InitDynamic(DX12Context* context, DX12StateTracker* tracker,
     desc.Width            = width;
     desc.Height           = height;
     desc.DepthOrArraySize = 1;
-    desc.MipLevels        = 1;   // 動的アトラスはミップを持たない
+    /// @note 動的アトラスはミップを持たない
+    desc.MipLevels        = 1;
     desc.Format           = m_format;
     desc.SampleDesc.Count = 1;
     desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -507,9 +507,9 @@ bool DX12Texture::InitDynamic(DX12Context* context, DX12StateTracker* tracker,
     m_width  = width;
     m_height = height;
 
-    // 生成直後は COPY_DEST。ゼロクリアを 1 回流してから PIXEL_SHADER_RESOURCE へ移す。
-    // WHY: DEFAULT ヒープの中身は未定義であり、まだ焼いていない領域のゴミが
-    //      フォントアトラスでは「字の周りの謎の模様」として見えてしまう。
+    /// @note 生成直後は COPY_DEST。ゼロクリアを 1 回流してから PIXEL_SHADER_RESOURCE へ移す
+    ///       (DEFAULT ヒープの中身は未定義で、まだ焼いていない領域のゴミがフォントアトラスでは
+    ///       「字の周りの謎の模様」として見えてしまう)。
     RegisterState(tracker, D3D12_RESOURCE_STATE_COPY_DEST);
     const std::vector<uint8_t> zeros(
         static_cast<size_t>(width) * height * m_bytesPerPixel, 0u);
@@ -533,7 +533,7 @@ bool DX12Texture::UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t 
         return false;
     }
 
-    // 通常運用時のリソース状態は PIXEL_SHADER_RESOURCE。そこから COPY_DEST へ落として戻す。
+    /// @note 通常運用時のリソース状態は PIXEL_SHADER_RESOURCE。そこから COPY_DEST へ落として戻す。
     return UploadRegionInternal(x, y, width, height, pixels, srcRowPitch,
                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
@@ -546,9 +546,8 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
     ID3D12CommandQueue* queue = m_context->GetCommandQueue();
     if (!device || !queue) return false;
 
-    // 更新矩形ぶんだけのフットプリントを作る。
-    // WHY: アトラス全面ではなく矩形だけをアップロードバッファに詰めることで、
-    //      2048x2048 のアトラスでもグリフ 1 個の追記が数 KB の転送で済む。
+    /// @note 更新矩形ぶんだけのフットプリントを作る。アトラス全面ではなく矩形だけをアップロード
+    ///       バッファに詰めることで、2048x2048 のアトラスでもグリフ 1 個の追記が数 KB の転送で済む。
     D3D12_RESOURCE_DESC regionDesc{};
     regionDesc.Dimension        = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     regionDesc.Width            = width;
@@ -634,13 +633,12 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
     ID3D12CommandList* lists[] = { list.Get() };
     queue->ExecuteCommandLists(1, lists);
 
-    // WHY (同期 Flush): アップロードバッファをこの関数の寿命で解放するため、
-    //   GPU が読み終わるまで待つ必要がある。呼び出しはフレームに 1 回以下
-    //   (DynamicFontSource がダーティ矩形をまとめてから流す) に抑えられているため、
-    //   既存の UploadTexture2D と同じ同期方式で十分と判断した。
+    /// @note 同期 Flush。アップロードバッファをこの関数の寿命で解放するため GPU が読み終わるまで待つ。
+    ///       呼び出しはフレームに 1 回以下 (DynamicFontSource がダーティ矩形をまとめてから流す) に
+    ///       抑えられているため、既存の UploadTexture2D と同じ同期方式で十分と判断した。
     m_context->Flush();
 
-    // ステートトラッカーへ現在状態を伝え、以降のパスが二重遷移しないようにする。
+    /// @note ステートトラッカーへ現在状態を伝え、以降のパスが二重遷移しないようにする。
     if (m_tracker)
         m_tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     return true;

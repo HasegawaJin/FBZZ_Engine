@@ -7,7 +7,7 @@
 
 namespace fbzz::physics
 {
-    // m_maxLength 以下では何もしないため、たるみを表現できる。
+    /// @brief m_maxLength 以下では何もしないため、たるみを表現できる制約。
     class RopeConstraint : public Constraint
     {
     public:

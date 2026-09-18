@@ -30,7 +30,7 @@ char32_t DecodeFirst(std::string_view text)
 
 class Utf8Test : public testkit::EngineFixture {};
 
-// --- 復号 -------------------------------------------------------------------
+/// @name 復号
 
 TEST_F(Utf8Test, DecodesAsciiAsItself)
 {
@@ -40,9 +40,12 @@ TEST_F(Utf8Test, DecodesAsciiAsItself)
 
 TEST_F(Utf8Test, DecodesTwoThreeAndFourByteSequences)
 {
-    EXPECT_EQ(DecodeFirst("\xC3\xA9"), 0x00E9u);              // é
-    EXPECT_EQ(DecodeFirst("\xE3\x81\x82"), 0x3042u);          // あ
-    EXPECT_EQ(DecodeFirst("\xF0\x9F\x8E\xAE"), 0x1F3AEu);     // 🎮
+    /// @note é
+    EXPECT_EQ(DecodeFirst("\xC3\xA9"), 0x00E9u);
+    /// @note あ
+    EXPECT_EQ(DecodeFirst("\xE3\x81\x82"), 0x3042u);
+    /// @note 🎮
+    EXPECT_EQ(DecodeFirst("\xF0\x9F\x8E\xAE"), 0x1F3AEu);
 }
 
 TEST_F(Utf8Test, AdvancesTheOffsetByTheSequenceLength)
@@ -66,11 +69,11 @@ TEST_F(Utf8Test, DecodesZeroPastTheEnd)
     EXPECT_EQ(Utf8::Decode("abc", offset), 0u);
 }
 
-// --- 壊れた入力 -------------------------------------------------------------
+/// @name 壊れた入力
 
 TEST_F(Utf8Test, ReplacesAContinuationByteThatStartsASequence)
 {
-    // 文字の途中から読み始めた場合。ここで戻らずに «読めなかった» と伝える。
+    /// @note 文字の途中から読み始めた場合。ここで戻らずに «読めなかった» と伝える。
     EXPECT_EQ(DecodeFirst("\xA0"), util::UTF8_REPLACEMENT_CHAR);
 }
 
@@ -81,7 +84,7 @@ TEST_F(Utf8Test, ReplacesATruncatedSequence)
 
 TEST_F(Utf8Test, ReplacesAnOverlongEncoding)
 {
-    // "/" を 2 バイトで書いたもの。通すとパス比較をすり抜ける古典的な穴になる。
+    /// @note "/" を 2 バイトで書いたもの。通すとパス比較をすり抜ける古典的な穴になる。
     EXPECT_EQ(DecodeFirst("\xC0\xAF"), util::UTF8_REPLACEMENT_CHAR);
 }
 
@@ -97,7 +100,7 @@ TEST_F(Utf8Test, ReplacesACodePointBeyondUnicode)
 
 TEST_F(Utf8Test, AlwaysAdvancesAtLeastOneByteOnBrokenInput)
 {
-    // これが最も大事な契約。1 バイトも進めない経路があると、その文字列の描画で固まる。
+    /// @note これが最も大事な契約。1 バイトも進めない経路があると、その文字列の描画で固まる。
     const std::string broken = "\xA0\xC0\xAF\xE3\x81\xED\xA0\x80\xF5\x80";
 
     std::size_t offset = 0;
@@ -111,11 +114,11 @@ TEST_F(Utf8Test, AlwaysAdvancesAtLeastOneByteOnBrokenInput)
     }
 }
 
-// --- 文字数 -----------------------------------------------------------------
+/// @name 文字数
 
 TEST_F(Utf8Test, CountsCodePointsNotBytes)
 {
-    // "あA🎮" は 3 文字 8 バイト。バイト数で折り返すとカーソルが文字の途中へ入る。
+    /// @note "あA🎮" は 3 文字 8 バイト。バイト数で折り返すとカーソルが文字の途中へ入る。
     EXPECT_EQ(Utf8::Length("\xE3\x81\x82" "A" "\xF0\x9F\x8E\xAE"), 3u);
     EXPECT_EQ(Utf8::Length(""), 0u);
     EXPECT_EQ(Utf8::Length("abc"), 3u);
@@ -126,7 +129,7 @@ TEST_F(Utf8Test, CountsBrokenBytesAsOneCharacterEach)
     EXPECT_EQ(Utf8::Length("\xA0\xA0"), 2u);
 }
 
-// --- 符号化 -----------------------------------------------------------------
+/// @name 符号化
 
 TEST_F(Utf8Test, AppendsEachSequenceLength)
 {

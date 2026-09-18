@@ -33,7 +33,7 @@ Fluid Editor の **Open ▼ → New...**（New Fluid from Template ギャラリ�
 | `TwoToneSmoke` | 発生源ごとの `color_key` と `albedo_ramp` | gas / 3D |
 | `VentPulse` | 量のエンベロープ（`[[source.amount.key]]`）と `cylinder` の湧き口 | gas / 2D loop |
 | `WaterCurtain` | 液体の見た目 4 点（softness / extinction / gloss / fresnel） | liquid / 3D |
-| `WindField` | `output.vector_field` で `.vfield` も焼く | gas / 3D loop |
+| `WindField` | `output.vector_field` で `速度場 PNG` も焼く | gas / 3D loop |
 
 ## 選ぶときの目安
 

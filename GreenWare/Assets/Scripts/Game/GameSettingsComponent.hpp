@@ -3,27 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// WHY エンジンではなくゲームが持つか:
-///   config ストアはキー名も構造もゲームが決める前提で作られている
-///   (Docs/design/game-settings.md)。エンジンが読む形にすると "fullscreen" という
-///   キー名をエンジンが固定することになる。機構はエンジン、方針はゲーム。
-///
-/// WHY Apply と Save を分けるか:
-///   Option 画面はスライダーを動かしながら耳と目で合わせる操作で、確定前の値も
-///   即座に効かないと調整にならない。一方でディスクへ落とすのは「適用」を
-///   押したときだけにしたい。効かせる (Apply) と残す (Save) は別の操作。
-///
-/// WHY 遊ぶシーンにも置くか:
-///   表示・音量はアプリ寿命のグローバル (Time::targetFps / AudioManager /
-///   ProjectSettings.render) へ書くのでシーンをまたいでも残る。一方で視野角・カメラ揺れ・
-///   ヒットストップ・振動・感度は、遊んでいる最中に毎フレーム読まれる値で、
-///   読む側は Instance() 越しにしか辿れない。タイトルにしか置かないと
-///   「保存はされるが遊びには一切効かない」という、最も気付きにくい壊れ方をする。
-///
-/// 起動時の流れ:
-///   Load → Apply。ウィンドウは ProjectSettings の寸法で既に生成済みなので、
-///   フルスクリーンの設定が違うときだけ一瞬ウィンドウが見える。ボーダーレスなので
-///   スタイル変更と Resize 1 回で済み、スワップチェーンは作り直されない。
+/// @note config のキー名・構造はゲームが決める (Docs/design/game-settings.md)。エンジンが
+///       読むと "fullscreen" のようなキー名をエンジンが固定してしまう。
+/// @note Apply (即座に効かせる) と Save (ディスクへ残す) は別の操作。Option 画面はスライダー
+///       を動かしながら耳と目で合わせるため、確定前の値も即座に効く必要がある。
+/// @note 表示・音量はグローバルへ書きシーンをまたいで残るが、視野角・揺れ・ヒットストップ・
+///       振動・感度は Instance() 越しにしか読めないため遊ぶシーンにも置く。
+/// @note 起動時は Load → Apply。ウィンドウは ProjectSettings の寸法で生成済みのため、
+///       フルスクリーン設定が違うときだけ一瞬見える (ボーダーレスで Resize 1 回のみ)。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -54,9 +41,9 @@ struct VideoConfig : IScriptSerializable {
     float renderScale = 1.0f;
     /// -1 = 未選択。プレイヤーが画質を選ぶまでは ProjectSettings の描画設定をそのまま使う。
     ///
-    /// WHY 既定を High にしないか: プリセットの適用は影・SSR・TAA など 15 項目を
-    ///     一括で上書きする。既定値を持たせると、初回起動でプロジェクトの描画設定が
-    ///     まるごと High へ塗り替わり、作り込んだ設定が誰にも見られないまま消える。
+    /// @note 既定は High にしない。プリセット適用は影・SSR・TAA など 15 項目を一括で
+    ///       上書きするため、既定値を持たせると初回起動でプロジェクトの描画設定が
+    ///       まるごと塗り替わってしまう。
     int   quality     = -1;
     int   targetFps   = 60;
 
@@ -76,8 +63,8 @@ struct VideoConfig : IScriptSerializable {
 
 /// 入力。config の [input] テーブルへ往復する。
 ///
-/// WHY device を保存するか: パッドを挿していても「キーボードで遊ぶ」選択はありうる。
-///     接続の有無で勝手に切り替えると、Option で選んだ設定が起動ごとに変わる。
+/// @note device を保存する。パッドを挿していても「キーボードで遊ぶ」選択はありうるため、
+///       接続の有無で勝手に切り替えると Option で選んだ設定が起動ごとに変わってしまう。
 struct InputConfig : IScriptSerializable {
     int   device    = 0;      ///< 0 = マウス&キーボード, 1 = ゲームパッド
     float mouseSens = 2.4f;   ///< 0.1 - 10.0
@@ -96,9 +83,8 @@ struct InputConfig : IScriptSerializable {
 
 /// mouseSens / stickSens は画面に出る「感度の数値」で、倍率ではない。
 /// 既定値のときにちょうど 1.0 倍になるよう、この値で割って倍率へ直す。
-/// WHY 倍率として保存しないか: Option に出るのは 2.40 という数値で、これが
-///     「既定の何倍か」だと読めない。表示と保存で意味を変えると、設定ファイルを
-///     直接見たときに解釈が食い違う。
+/// @note 倍率としては保存しない。Option に出る 2.40 という数値を「既定の何倍か」に
+///       変えると、設定ファイルを直接見たときに表示と意味が食い違う。
 inline constexpr float kMouseSensReference = 2.4f;
 inline constexpr float kStickSensReference = 2.0f;
 
@@ -111,9 +97,8 @@ inline constexpr float kStickSensReference = 2.0f;
 
 /// フレームレート上限の選択肢 (添字 → fps)。0 は無制限。
 ///
-/// WHY Option 画面ではなくここに置くか: 設定の «選択肢» は設定の一部で、
-///     宣言簿への登録もここが行う。画面側に置くと、宣言する側が画面を
-///     include することになり、依存の向きが逆になる。
+/// @note Option 画面ではなくここに置く。宣言簿への登録もここが行うため、画面側に
+///       置くと宣言する側が画面を include することになり依存の向きが逆になる。
 [[nodiscard]] inline int FpsCapValue(int index)
 {
     static const int values[] = { 0, 30, 60, 120, 144, 240 };
@@ -157,16 +142,10 @@ struct AudioConfig : IScriptSerializable {
 };
 
 /// キーコンフィグ。config の [bind] テーブルへ往復する。
-///
-/// WHY 全アクションではなく「変更したものだけ」を持つか:
-///   既定の割り当ては ProjectSettings/Input.inputactions にある。全件を config へ
-///   写すと、既定を作り直したときに古い config がそれを打ち消し、新しい既定が
-///   誰にも届かなくなる。差分だけを持てば、触っていないアクションは常に最新の
-///   既定に従う。アクションを増やしても古い config はそのまま使える。
-///
-/// WHY 並列配列か: TOML の配列は型が揃っていれば素直に読める形で、しかも
-///   人が開いて意味が判る。エンジンの InputBinding をそのまま写すと
-///   scale / padIndex / 閾値まで固定してしまい、既定の調整が config に殺される。
+/// @note 「変更したものだけ」を持つ。全件を写すと既定を作り直したときに古い config が
+///       それを打ち消し、新しい既定が誰にも届かなくなる。
+/// @note 並列配列にする。TOML は型が揃っていれば素直に読めるが、エンジンの InputBinding
+///       をそのまま写すと scale / padIndex / 閾値まで固定して既定の調整が殺される。
 struct InputBindConfig : IScriptSerializable {
     std::vector<std::string> action;   ///< アクション名 ("Dodge" 等)
     std::vector<int> device;           ///< 0 = マウス&キーボード, 1 = パッド
@@ -216,14 +195,11 @@ class GameSettingsComponent : public Script {
     FBZZ_SCRIPT(GameSettingsComponent)
 
 public:
-    // 保存先。既定 (エンジン側) は «実行ファイルの隣の Config/settings.toml»。
-    //
-    // WHY 実行ファイルの隣ではいけないか: エディタ (SDK/tools/…/Editor) と配布ビルド
-    //     (Binaries/…/GreenWareStandalone) は別の exe なので、既定のままだと
-    //     **別々のファイル**になる。エディタで調整した設定はゲームを起動しても
-    //     どこにも無く、ゲームで変えた設定はエディタに出てこない ─
-    //     «ランタイムでは設定が保存できていない» はこの形で現れる。
-    //     ユーザーごとに 1 つの場所へ寄せれば、どちらから起動しても同じ設定になる。
+    /// 保存先。既定 (エンジン側) は «実行ファイルの隣の Config/settings.toml»。
+    ///
+    /// @note 実行ファイルの隣では、エディタと配布ビルドが別の exe のため既定のまま
+    ///       だと別々のファイルになり、エディタで調整した設定がゲームに出てこない。
+    ///       ユーザーごとに 1 つの場所へ寄せれば、どちらから起動しても同じ設定になる。
     FBZZ_GROUP("Storage")
     FBZZ_FIELD(bool, perUserConfig, true, "Per User")
     FBZZ_TOOLTIP("設定を %LOCALAPPDATA%/<Folder>/settings.toml へ保存する。"
@@ -266,11 +242,10 @@ public:
     void SetUiVolume(float value)     { MutableAudio().ui     = value; ApplyAudio(); }
     ///@}
 
-    /// Option 画面が行を編集するための書き込み参照。
-    /// WHY setter を並べないか: 行が 20 個以上あり、1 つずつ setter を生やすと
-    ///     行を足すたびにここも直すことになる。編集面は Option 画面 1 つしか無いので、
-    ///     構造体を直接触らせて Apply() で反映させる方が破綻しない。
-    /// 呼ばれた時点で「編集が起きた」とみなし、終了時の保存対象になる。
+    /// Option 画面が行を編集するための書き込み参照。呼ばれた時点で「編集が起きた」と
+    /// みなし、終了時の保存対象になる。
+    /// @note setter は並べない。行が 20 個以上あり、編集面は Option 画面 1 つしか無いため、
+    ///       構造体を直接触らせて Apply() で反映させる方が破綻しない。
     ///@{
     [[nodiscard]] VideoConfig& MutableVideo() { m_dirty = true; return m_video; }
     [[nodiscard]] AudioConfig& MutableAudio() { m_dirty = true; return m_audio; }
@@ -292,8 +267,8 @@ public:
 
     /// @name 遊ぶ側が読む窓口
     /// Instance() が無い場面 (マネージャーだけを単体で再生する等) でも既定値で通る。
-    /// WHY 生の Game() を配らないか: 呼ぶ側が毎回 null 判定と既定値を書くことになり、
-    ///     1 箇所書き忘れると「そこだけ設定が効かない」という探しにくい形で壊れる。
+    /// @note 生の Game() は配らない。呼ぶ側が毎回 null 判定と既定値を書くことになり、
+    ///       1 箇所書き忘れると「そこだけ設定が効かない」という探しにくい壊れ方をする。
     ///@{
     [[nodiscard]] static const GameConfig&  GameOrDefault();
     [[nodiscard]] static const InputConfig& InputOrDefault();
@@ -312,9 +287,8 @@ public:
     /// 無ければ -1。
     [[nodiscard]] int BindingIndexFor(std::string_view action, int deviceIndex) const;
     /// リバインドの結果 (bindingIndex 番目) をエンジンから読み取って差分として覚える。
-    /// WHY 添字を受け取るか: 「その機器の最初のバインド」で引き直すと、差し替えの
-    ///     結果その行が別の機器のものになった瞬間、隣の行を指してしまう。
-    ///     差し替えを始めたときの添字が唯一の正しい持ち主。
+    /// @note 添字を受け取る。「その機器の最初のバインド」で引き直すと、差し替えの結果
+    ///       その行が別の機器のものになった瞬間、隣の行を指してしまう。
     void CaptureBinding(std::string_view action, int deviceIndex, int bindingIndex);
     /// 1 つの割り当てを起動時の既定 (Input.inputactions) へ戻す。
     void ResetBinding(std::string_view action, int deviceIndex);
@@ -334,26 +308,18 @@ public:
     void ResetToDefaults();
 
     /// このコンポーネントが実際に読み書きするファイル。
-    ///
-    /// WHY 静的に切り出すか (OnStart で 1 度だけ決めないか):
-    ///   config ストアはアプリ全体で 1 本で、パスを立てるのはこのコンポーネントだけ。
-    ///   ところがシーンによっては居ない (StageSelect / Result) ので、その間に
-    ///   誰かが config.Save() を呼ぶと «実行ファイルの隣» という既定のパスへ落ちる。
-    ///   実際 SDK/tools/…/Editor/Config/settings.toml には、per-user 版と食い違う
-    ///   値の設定ファイルが取り残されていた。読むときも書くときも同じ式で
-    ///   決め直せば、いつ呼ばれても行き先が 1 つになる。
+    /// @note 静的に切り出す (OnStart で 1 度だけ決めない)。シーンによっては居ないため
+    ///       (StageSelect / Result)、その間に config.Save() を呼ぶと既定のパスへ落ちる。
+    ///       読むときも書くときも同じ式で決め直せば、いつ呼ばれても行き先が 1 つになる。
     [[nodiscard]] static std::string ResolveConfigPath(bool perUser, std::string_view folder);
 
 private:
     static inline GameSettingsComponent* s_instance = nullptr;
 
-    // WHY 最後の値を静的に控えるか:
-    //   遊びの側 (カメラ揺れ・止め・振動・感度) は Instance() 越しに読む。ところが
-    //   このコンポーネントは 7 シーン中 4 つにしか置かれておらず、StageSelect や
-    //   Result では Instance() が null → 既定値が返る。つまり «Option で 0 にした
-    //   カメラ揺れが、リザルトでだけ既定の 0.7 に戻る»。設定はシーンの持ち物では
-    //   ないので、シーンの構成で答えが変わってはいけない。Apply のたびに写しておけば、
-    //   実体が居なくなった後も最後に効いていた値をそのまま返せる。
+    /// @note 最後の値を静的に控える。このコンポーネントは 7 シーン中 4 つにしか置かれず、
+    ///       Instance() が null のシーンでは既定値が返って «Option で 0 にした揺れが
+    ///       リザルトでだけ既定に戻る» という壊れ方をする。Apply のたびに写しておけば、
+    ///       実体が居なくなった後も最後に効いていた値を返せる。
     static inline GameConfig  s_lastGame{};
     static inline InputConfig s_lastInput{};
     static inline VideoConfig s_lastVideo{};
@@ -370,16 +336,14 @@ private:
     void ApplyAudio();
     void ApplyBindings();
     /// 上書きを当てる前の割り当てを控える。「既定へ戻す」の戻り先になる。
-    /// WHY エンジンから読み直さないか: .inputactions を読んだのは Application の初期化で、
-    ///     その置き場所はゲームからは辿れない。読み直す口を足すより、上書きする直前の
-    ///     値を控えておく方が確実で、しかも 1 回で済む。
+    /// @note エンジンからは読み直さない。.inputactions を読んだのは Application の
+    ///       初期化で、その置き場所はゲームから辿れないため、上書き直前の値を控える。
     void CaptureDefaultBindings();
     void RefreshDebugText();
 
     /// スライダー位置 (0-1) を音量倍率へ変換する。
-    /// WHY 線形のまま渡さないか: 人の音量感は対数に近く、線形だとスライダーの
-    ///     真ん中が「ほぼ最大」に聞こえる。三乗は dB 変換より安く、
-    ///     0 で完全な無音になる (dB は -inf を別扱いする必要がある)。
+    /// @note 線形のまま渡さない。人の音量感は対数に近く、線形だとスライダーの真ん中が
+    ///       「ほぼ最大」に聞こえる。三乗は dB 変換より安く 0 で完全な無音になる。
     [[nodiscard]] static float ToGain(float slider)
     {
         const float t = std::clamp(slider, 0.0f, 1.0f);
@@ -401,10 +365,8 @@ private:
     int  m_appliedQuality = -1;
     /// 最後に config から読み直したときの宣言簿の版。増えていたら読み直す。
     ///
-    /// WHY 版で見るか: スクリプトが設定を宣言するのは自分の OnStart で、
-    ///     こちらの OnStart より後になりうる (開始順は保証されない)。
-    ///     «宣言が増えた» を毎フレーム安く判定できれば、宣言のタイミングに
-    ///     依存せず、増えた項目だけが保存値で埋まる。
+    /// @note 版で見る。スクリプトが設定を宣言する OnStart はこちらより後になりうる
+    ///       (開始順は保証されない) ため、«宣言が増えた» を毎フレーム安く判定する。
     int  m_registryRevision = -1;
     /// 最後に見た «値の版»。進んでいたら宣言簿の側で編集があったということ。
     int  m_registryValues   = -1;
@@ -412,11 +374,9 @@ private:
 
 FBZZ_REFLECT(GameSettingsComponent)
 
-// WHY 実体ではなく «最後に効いていた値» を返すか:
-//   実体が居るシーンでは m_game と s_lastGame は Apply のたびに一致する。
-//   居ないシーンでは s_lastGame だけが残り、直前の設定がそのまま効き続ける。
-//   実体を優先すると 1 行増えるだけで挙動は同じなので、常にこちらを返して
-//   «どのシーンでも同じ答え» を式の形で保証する。
+/// @note 実体ではなく «最後に効いていた値» を返す。実体が居るシーンでは m_game と
+///       s_lastGame は Apply のたびに一致し、居ないシーンでは s_lastGame だけが残る。
+///       常にこちらを返せば «どのシーンでも同じ答え» を式の形で保証できる。
 inline const GameConfig& GameSettingsComponent::GameOrDefault() { return s_lastGame; }
 
 inline const InputConfig& GameSettingsComponent::InputOrDefault() { return s_lastInput; }
@@ -424,7 +384,7 @@ inline const InputConfig& GameSettingsComponent::InputOrDefault() { return s_las
 inline std::string GameSettingsComponent::ResolveConfigPath(bool perUser,
                                                             std::string_view folder)
 {
-    // 既定は実行ファイルの隣。SaveStore が相対パスを exe 基準で解決する。
+    /// @note 既定は実行ファイルの隣。SaveStore が相対パスを exe 基準で解決する。
     if (!perUser) return "Config/settings.toml";
 
     const char* root = std::getenv("LOCALAPPDATA");
@@ -454,20 +414,20 @@ inline void GameSettingsComponent::OnStart()
 
     m_resolutions = display.EnumResolutions();
 
-    // 解像度の既定はモニターの実寸。1920x1080 決め打ちだと、それより小さい
-    // ノート PC で初回起動時に画面からはみ出す。
+    /// @note 解像度の既定はモニターの実寸。1920x1080 決め打ちだと、それより小さい
+    ///       ノート PC で初回起動時に画面からはみ出す。
     const DisplayResolution monitor = display.GetMonitorSize();
     if (monitor.width > 0 && monitor.height > 0) {
         m_video.width  = static_cast<int>(monitor.width);
         m_video.height = static_cast<int>(monitor.height);
     }
 
-    // 保存先を決めてから読む。SetPath はテーブルを差し替えるので、必ず Load より先。
+    /// @note 保存先を決めてから読む。SetPath はテーブルを差し替えるので、必ず Load より先。
     config.SetPath(ResolveConfigPath(perUserConfig, configFolder));
     debugConfigPath = config.GetPath();
 
-    // 読めなくても (初回起動 / 破損) 既定値で進む。config.Read はテーブルが
-    // 無ければ false を返すだけで、構造体には触らない。
+    /// @note 読めなくても (初回起動 / 破損) 既定値で進む。config.Read はテーブルが
+    ///       無ければ false を返すだけで、構造体には触らない。
     config.Load();
     config.Read("video", m_video);
     config.Read("audio", m_audio);
@@ -476,36 +436,31 @@ inline void GameSettingsComponent::OnStart()
     config.Read("bind",  m_bind);
 
     CaptureDefaultBindings();
-    // 宣言は Apply より先。組み込みの行が宣言簿に無いまま Option が開くと、
-    // 1 フレームだけ «項目が 1 つも無い» 画面になる。
+    /// @note 宣言は Apply より先。組み込みの行が宣言簿に無いまま Option が開くと、
+    ///       1 フレームだけ «項目が 1 つも無い» 画面になる。
     DeclareBuiltinSettings();
     Apply();
-    // 宣言簿の側の値を保存ファイルから埋める。組み込み項目は上の Read で
-    // 既に埋まっているので、ここで効くのはスクリプトが宣言した項目だけ。
+    /// @note 宣言簿の側の値を保存ファイルから埋める。組み込み項目は上の Read で
+    ///       既に埋まっているので、ここで効くのはスクリプトが宣言した項目だけ。
     m_registryRevision = -1;
     SyncRegistry();
-    m_dirty = false;   // 読み込んだ直後は「未編集」。終了時に無意味な書き戻しをしない
+    /// @note 読み込んだ直後は「未編集」。終了時に無意味な書き戻しをしない
+    m_dirty = false;
 }
 
-// 組み込み 24 行の宣言。
-//
-// WHY 値の置き場を宣言簿へ移さないか:
-//   表示・音量・入力の値は display / audio / input プロキシへ «効かせる» 手順と
-//   対で意味を持つ (解像度は先に決めてからモードを切り替える、画質は未選択なら
-//   触らない、など)。値だけ宣言簿へ移すと、その手順がどこにも属さなくなる。
-//   置き場は今までどおり構造体に残し、宣言簿へは «出し入れの口» だけを差す。
-//
-// WHY get が静的な控え (s_lastVideo 等) を読むか:
-//   宣言簿はシーンをまたいで生き残るので、実体が消えた後にも読まれうる。
-//   Instance() を握ると、その瞬間だけ 0 を返して宣言簿のキャッシュを潰す。
-//   Apply のたびに写している控えなら、実体の有無に関わらず最後の値が返る。
+/// 組み込み 24 行の宣言。
+/// @note 値の置き場は宣言簿へ移さない。表示・音量・入力の値は display/audio/input
+///       プロキシへ «効かせる» 手順と対で意味を持つため、構造体に残し宣言簿へは
+///       «出し入れの口» だけを差す。
+/// @note get は静的な控え (s_lastVideo 等) を読む。宣言簿はシーンをまたいで生き残る
+///       ため、Instance() を握ると実体が消えた瞬間に 0 を返してキャッシュを潰す。
 inline void GameSettingsComponent::DeclareBuiltinSettings()
 {
     using settings::Kind;
     using settings::Setting;
 
-    // 「実体が居るときだけ書く」を 1 か所へ。居ないシーンで Option は開けないので、
-    // 書けない場面は起こらないが、握った実体を素で参照しない形にしておく。
+    /// @note 「実体が居るときだけ書く」を 1 か所へ。居ないシーンで Option は開けないので、
+    ///       書けない場面は起こらないが、握った実体を素で参照しない形にしておく。
     const auto edit = [](auto&& fn) {
         if (auto* self = Instance()) { fn(*self); self->Apply(); }
     };
@@ -529,7 +484,7 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
         settings::Declare(std::move(setting));
     };
 
-    // --- INPUT ---
+    /// @name INPUT
     declare("device", "Tab_INPUT", Kind::Choice,
             [] { return static_cast<float>(s_lastInput.device); },
             [edit](float v) { edit([v](GameSettingsComponent& s) {
@@ -550,8 +505,8 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
             [edit](float v) { edit([v](GameSettingsComponent& s) {
                 s.MutableInput().curve = static_cast<int>(std::lround(v)); }); },
             0.0f, 2.0f, 0, "", { "リニア", "標準", "強め" });
-    // WHY Percent ではないか: デッドゾーンは 0-0.5 の量で、つまみ全域を 0-1 に
-    //     写すと後半が «スティックを半分倒すまで無入力» という操作にならない領域になる。
+    /// @note Percent にはしない。デッドゾーンは 0-0.5 の量で、つまみ全域を 0-1 に写すと
+    ///       後半が «スティックを半分倒すまで無入力» という操作にならない領域になる。
     declare("deadzone", "Tab_INPUT_PAD", Kind::Number,
             [] { return s_lastInput.deadzone; },
             [edit](float v) { edit([v](GameSettingsComponent& s) {
@@ -562,7 +517,7 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
             [edit](float v) { edit([v](GameSettingsComponent& s) {
                 s.MutableInput().vibration = v; }); });
 
-    // --- GAME ---
+    /// @name GAME
     declare("fov", "Tab_GAME", Kind::Number,
             [] { return s_lastGame.fov; },
             [edit](float v) { edit([v](GameSettingsComponent& s) {
@@ -581,13 +536,13 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
             [edit](float v) { edit([v](GameSettingsComponent& s) {
                 s.MutableGame().fovBurst = v >= 0.5f; }); });
 
-    // --- VIDEO ---
+    /// @name VIDEO
     declare("displayMode", "Tab_VIDEO", Kind::Choice,
             [] { return s_lastVideo.fullscreen ? 1.0f : 0.0f; },
             [edit](float v) { edit([v](GameSettingsComponent& s) {
                 s.MutableVideo().fullscreen = v >= 0.5f; }); },
             0.0f, 1.0f, 0, "", { "ウィンドウ", "フルスクリーン" });
-    // 選択肢はモニターが決めるので、宣言のたびに今の一覧から作り直す。
+    /// @note 選択肢はモニターが決めるので、宣言のたびに今の一覧から作り直す。
     {
         std::vector<std::string> modes;
         modes.reserve(m_resolutions.size());
@@ -624,8 +579,8 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
             [] { return s_lastVideo.bloom; },
             [edit](float v) { edit([v](GameSettingsComponent& s) {
                 s.MutableVideo().bloom = v; }); });
-    // 未選択 (-1) のうちは ProjectSettings の設定がそのまま効いている。保存値ではなく
-    // 実際に効いている段を出す ─ -1 をそのまま出すと «低» に見えてしまう。
+    /// @note 未選択 (-1) のうちは ProjectSettings の設定がそのまま効いている。保存値ではなく
+    ///       実際に効いている段を出す ─ -1 をそのまま出すと «低» に見えてしまう。
     declare("quality", "Tab_VIDEO", Kind::Choice,
             [] {
                 if (s_lastVideo.quality >= 0) return static_cast<float>(s_lastVideo.quality);
@@ -642,7 +597,7 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
                 s.MutableVideo().renderScale = v; }); },
             0.5f, 2.0f, 2);
 
-    // --- AUDIO ---
+    /// @name AUDIO
     declare("master", "Tab_AUDIO", Kind::Percent,
             [] { return s_lastAudio.master; },
             [edit](float v) { edit([v](GameSettingsComponent& s) {
@@ -663,31 +618,30 @@ inline void GameSettingsComponent::DeclareBuiltinSettings()
 
 inline void GameSettingsComponent::SyncRegistry()
 {
-    // 宣言簿の値が書き換わっていたら «編集された» を立てる。組み込み項目は
-    // MutableXxx() が申告するが、宣言簿が値を持つ項目にはその口が無い。
+    /// @note 宣言簿の値が書き換わっていたら «編集された» を立てる。組み込み項目は
+    ///       MutableXxx() が申告するが、宣言簿が値を持つ項目にはその口が無い。
     if (m_registryValues != settings::ValueRevision()) {
         const bool first = m_registryValues < 0;
         m_registryValues = settings::ValueRevision();
-        // 読み込みで動いた分は編集ではない。初回だけ札を立てない。
+        /// @note 読み込みで動いた分は編集ではない。初回だけ札を立てない。
         if (!first) m_dirty = true;
     }
 
     if (m_registryRevision == settings::Revision()) return;
     m_registryRevision = settings::Revision();
 
-    // 欠けているキーは既定値のまま残る (TomlReadReflector の約束)。
-    // 宣言が増えるたびに全件を読み直しても、既に入っている値は変わらない。
+    /// @note 欠けているキーは既定値のまま残る (TomlReadReflector の約束)。
+    ///       宣言が増えるたびに全件を読み直しても、既に入っている値は変わらない。
     if (config.Read("settings", settings::PersistentStore()))
         settings::PersistentStore().ApplyAll();
-    // 読み戻しで onApply が走ると値の版が進む。それは編集ではないので飲み込む。
+    /// @note 読み戻しで onApply が走ると値の版が進む。それは編集ではないので飲み込む。
     m_registryValues = settings::ValueRevision();
 }
 
 inline void GameSettingsComponent::OnDestroy()
 {
-    // WHY ここで保存するか: Option 画面から Esc で戻る経路だけが保存を持っていると、
-    //     そのまま Alt+F4 で閉じた・タイトルへ別経路で戻った、というだけで
-    //     調整した値が丸ごと消える。終了もシーン遷移も OnDestroy を必ず通る。
+    /// @note ここで保存する。Option 画面の Esc 経路だけが保存を持つと、Alt+F4 や別経路の
+    ///       タイトル遷移だけで調整した値が丸ごと消える。OnDestroy は終了・遷移を必ず通る。
     SaveIfDirty();
     if (s_instance == this) s_instance = nullptr;
 }
@@ -716,8 +670,8 @@ inline void GameSettingsComponent::Apply()
     ApplyVideo();
     ApplyAudio();
     ApplyBindings();
-    // 遊びの側が Instance() 無しでも読めるように写す (s_lastGame の WHY)。
-    // 宣言簿の組み込み項目もここから読む。
+    /// @note 遊びの側が Instance() 無しでも読めるように写す (理由は s_lastGame を参照)。
+    ///       宣言簿の組み込み項目もここから読む。
     s_lastGame  = m_game;
     s_lastInput = m_input;
     s_lastVideo = m_video;
@@ -727,20 +681,20 @@ inline void GameSettingsComponent::Apply()
 
 inline void GameSettingsComponent::ApplyVideo()
 {
-    // 解像度を先に決めてからモードを切り替える。逆にすると、フルスクリーンを
-    // 解除した瞬間に古い寸法のウィンドウが 1 フレーム出る。
+    /// @note 解像度を先に決めてからモードを切り替える。逆にすると、フルスクリーンを
+    ///       解除した瞬間に古い寸法のウィンドウが 1 フレーム出る。
     display.SetResolution(static_cast<uint32_t>(std::max(m_video.width, 640)),
                           static_cast<uint32_t>(std::max(m_video.height, 480)));
     display.SetFullscreen(m_video.fullscreen);
     display.SetVSync(m_video.vsync);
 
     graphics.SetBrightness(m_video.brightness);
-    // スライダーは 0-1。既定の 0.6 が素の bloom.intensity と一致するよう 2 倍で送る。
+    /// @note スライダーは 0-1。既定の 0.6 が素の bloom.intensity と一致するよう 2 倍で送る。
     graphics.SetBloomScale(m_video.bloom * 2.0f);
     graphics.SetRenderScale(m_video.renderScale);
 
-    // 未選択 (-1) の間は触らない。同じ値を撃ち直さないのは、プリセット適用が
-    // 影や TAA を一括で書き戻すため、当てるたびに手で詰めた設定が消えるから。
+    /// @note 未選択 (-1) の間は触らない。同じ値を撃ち直さないのは、プリセット適用が
+    ///       影や TAA を一括で書き戻すため、当てるたびに手で詰めた設定が消えるから。
     if (m_video.quality >= 0) {
         const int quality = std::clamp(m_video.quality, 0, 3);
         if (quality != m_appliedQuality) {
@@ -749,13 +703,13 @@ inline void GameSettingsComponent::ApplyVideo()
         }
     }
 
-    // VSync 中に上限を重ねると、表示周期と上限の最小公倍数でカクつく。
+    /// @note VSync 中に上限を重ねると、表示周期と上限の最小公倍数でカクつく。
     time.SetTargetFps(m_video.vsync ? 0 : std::max(m_video.targetFps, 0));
 }
 
 inline void GameSettingsComponent::ApplyAudio()
 {
-    // Master は他の 3 本の親なので、ここで掛けた分は子へも乗る。
+    /// @note Master は他の 3 本の親なので、ここで掛けた分は子へも乗る。
     audio.SetBusVolume("Master", ToGain(m_audio.master));
     audio.SetBusVolume("BGM",    ToGain(m_audio.bgm));
     audio.SetBusVolume("SE",     ToGain(m_audio.se));
@@ -764,8 +718,8 @@ inline void GameSettingsComponent::ApplyAudio()
 
 inline int GameSettingsComponent::BindingIndexFor(std::string_view action, int deviceIndex) const
 {
-    // ScriptInputBinding::source: 0=Key 1=MouseButton 2=GamepadButton 3=GamepadAxis 4=MouseAxis。
-    // キーボードとマウスは 1 つの機器として扱う (Option の「入力デバイス」がその単位)。
+    /// @note ScriptInputBinding::source: 0=Key 1=MouseButton 2=GamepadButton 3=GamepadAxis 4=MouseAxis。
+    ///       キーボードとマウスは 1 つの機器として扱う (Option の「入力デバイス」がその単位)。
     const int count = input.GetActionBindingCount(action);
     for (int i = 0; i < count; ++i) {
         const ScriptInputBinding binding = input.GetActionBinding(action, i);
@@ -805,8 +759,8 @@ inline void GameSettingsComponent::ResetBinding(std::string_view action, int dev
                                ScriptInputBinding{ m_defaultBind.source[i],
                                                    static_cast<uint32_t>(m_defaultBind.code[i]) });
 
-        // 差分の側からも消す。既定と同じ値を差分として持ち続けると、
-        // 既定を作り直したときにこの 1 件だけが古い値へ固定される。
+        /// @note 差分の側からも消す。既定と同じ値を差分として持ち続けると、
+        ///       既定を作り直したときにこの 1 件だけが古い値へ固定される。
         for (std::size_t j = 0; j < m_bind.Count(); ++j) {
             if (m_bind.action[j] != action || m_bind.device[j] != deviceIndex) continue;
             const auto at = static_cast<std::ptrdiff_t>(j);
@@ -823,7 +777,7 @@ inline void GameSettingsComponent::ResetBinding(std::string_view action, int dev
 
 inline void GameSettingsComponent::ResetBindings()
 {
-    // 控えた既定を全件当て直す。走査中に m_bind が縮むので、控えの側を回す。
+    /// @note 控えた既定を全件当て直す。走査中に m_bind が縮むので、控えの側を回す。
     for (std::size_t i = 0; i < m_defaultBind.Count(); ++i)
         ResetBinding(m_defaultBind.action[i], m_defaultBind.device[i]);
     m_bind.Clear();
@@ -850,7 +804,8 @@ inline void GameSettingsComponent::ApplyBindings()
 {
     for (std::size_t i = 0; i < m_bind.Count(); ++i) {
         const int index = BindingIndexFor(m_bind.action[i], m_bind.device[i]);
-        if (index < 0) continue;   // アクションが消えた古い config は黙って捨てる
+        /// @note アクションが消えた古い config は黙って捨てる
+        if (index < 0) continue;
         input.SetActionBinding(m_bind.action[i], index,
                                ScriptInputBinding{ m_bind.source[i],
                                                    static_cast<uint32_t>(m_bind.code[i]) });
@@ -859,9 +814,9 @@ inline void GameSettingsComponent::ApplyBindings()
 
 inline bool GameSettingsComponent::Save()
 {
-    // 書く直前に行き先を立て直す。ストアはアプリ全体で 1 本なので、
-    // このコンポーネントの居ないシーンを通ると既定のパスへ戻りうる
-    // (ResolveConfigPath の WHY)。
+    /// @note 書く直前に行き先を立て直す。ストアはアプリ全体で 1 本なので、
+    ///       このコンポーネントの居ないシーンを通ると既定のパスへ戻りうる
+    ///       (理由は ResolveConfigPath を参照)。
     config.SetPath(ResolveConfigPath(perUserConfig, configFolder));
 
     config.Write("video", m_video);
@@ -869,7 +824,7 @@ inline bool GameSettingsComponent::Save()
     config.Write("input", m_input);
     config.Write("game",  m_game);
     config.Write("bind",  m_bind);
-    // スクリプトが宣言した項目。組み込みは get/set を差してあるので書かれない。
+    /// @note スクリプトが宣言した項目。組み込みは get/set を差してあるので書かれない。
     config.Write("settings", settings::PersistentStore());
     const bool saved = config.Save();
     if (saved) {
@@ -886,8 +841,8 @@ inline void GameSettingsComponent::ResetToDefaults()
     m_input = InputConfig{};
     m_game  = GameConfig{};
     ResetBindings();
-    // スクリプトが宣言した項目も戻す。組み込みは上の 4 つで戻っているので、
-    // ここで動くのは宣言簿が値を持っている項目だけ。
+    /// @note スクリプトが宣言した項目も戻す。組み込みは上の 4 つで戻っているので、
+    ///       ここで動くのは宣言簿が値を持っている項目だけ。
     settings::ResetToDefaults();
     m_dirty = true;
     Apply();
@@ -895,8 +850,8 @@ inline void GameSettingsComponent::ResetToDefaults()
 
 inline void GameSettingsComponent::RefreshDebugText()
 {
-    // 「出力 → 内部」を並べて出す。描画スケールが効いているかはこれでしか判らない
-    // (画面の寸法は変わらないため)。
+    /// @note 「出力 → 内部」を並べて出す。描画スケールが効いているかはこれでしか判らない
+    ///       (画面の寸法は変わらないため)。
     debugResolution = std::to_string(display.GetWidth()) + "x" +
                       std::to_string(display.GetHeight()) + " -> " +
                       std::to_string(graphics.GetRenderWidth()) + "x" +

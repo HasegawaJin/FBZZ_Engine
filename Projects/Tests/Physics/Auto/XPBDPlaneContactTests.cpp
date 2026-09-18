@@ -42,11 +42,11 @@ protected:
     physics::XPBDSolver solver;
 };
 
-// --- 静止位置 ---------------------------------------------------------------
+/// @name 静止位置
 
 TEST_F(XPBDPlaneContactTest, RestsOneRadiusAboveThePlane)
 {
-    // 太さを持つ点として解く。半径を無視すると足首まで床へ埋まる。
+    /// @note 太さを持つ点として解く。半径を無視すると足首まで床へ埋まる。
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
     auto body = MakeBody({ 0.0f, 3.0f, 0.0f });
     solver.AddBody(body.get());
@@ -73,7 +73,7 @@ TEST_F(XPBDPlaneContactTest, HonoursThePlaneOffset)
 
 TEST_F(XPBDPlaneContactTest, OffsetsTheContactPointByTheLocalOffset)
 {
-    // 接触点は重心ではなく «足の裏»。ローカル offset を無視すると体が半分沈む。
+    /// @note 接触点は重心ではなく «足の裏»。ローカル offset を無視すると体が半分沈む。
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
     auto body = MakeBody({ 0.0f, 5.0f, 0.0f });
     solver.AddBody(body.get());
@@ -82,13 +82,13 @@ TEST_F(XPBDPlaneContactTest, OffsetsTheContactPointByTheLocalOffset)
 
     Simulate(solver, 120);
 
-    // 重心の 1m 下が接触点。そこが半径 0.5 で止まるので重心は 1.5。
+    /// @note 重心の 1m 下が接触点。そこが半径 0.5 で止まるので重心は 1.5。
     EXPECT_NEAR(body->GetPosition().y, 1.5f, testkit::kLooseTolerance);
 }
 
 TEST_F(XPBDPlaneContactTest, DoesNotPullTheBodyDownFromAbove)
 {
-    // 片側拘束。上に居るものを引き寄せてはいけない。
+    /// @note 片側拘束。上に居るものを引き寄せてはいけない。
     auto body = MakeBody({ 0.0f, 10.0f, 0.0f });
     solver.SetGravity(math::Vector3::ZERO);
     solver.AddBody(body.get());
@@ -100,7 +100,7 @@ TEST_F(XPBDPlaneContactTest, DoesNotPullTheBodyDownFromAbove)
     EXPECT_NEAR(body->GetPosition().y, 10.0f, testkit::kLooseTolerance);
 }
 
-// --- 貫通量の報告 -----------------------------------------------------------
+/// @name 貫通量の報告
 
 TEST_F(XPBDPlaneContactTest, ReportsNoPenetrationWhileInTheAir)
 {
@@ -119,9 +119,10 @@ TEST_F(XPBDPlaneContactTest, ReportsNoPenetrationWhileInTheAir)
 
 TEST_F(XPBDPlaneContactTest, ReportsThePenetrationItPushedBack)
 {
-    // 接地しているかの判定にそのまま使える値であること。
+    /// @note 接地しているかの判定にそのまま使える値であること。
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
-    auto body = MakeBody({ 0.0f, 0.0f, 0.0f });   // 最初から半径ぶん埋まっている
+    /// @note 最初から半径ぶん埋まっている
+    auto body = MakeBody({ 0.0f, 0.0f, 0.0f });
     solver.AddBody(body.get());
     auto contact = std::make_unique<physics::XPBDPlaneContact>(
         body.get(), math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f);
@@ -133,7 +134,7 @@ TEST_F(XPBDPlaneContactTest, ReportsThePenetrationItPushedBack)
     EXPECT_GT(probe->GetPenetration(), 0.0f);
 }
 
-// --- 摩擦 -------------------------------------------------------------------
+/// @name 摩擦
 
 TEST_F(XPBDPlaneContactTest, SlidesForeverWithoutFriction)
 {
@@ -146,7 +147,7 @@ TEST_F(XPBDPlaneContactTest, SlidesForeverWithoutFriction)
 
     Simulate(solver, 60);
 
-    // 1 秒で 4m。氷の上なので目立って減速しない。
+    /// @note 1 秒で 4m。氷の上なので目立って減速しない。
     EXPECT_GT(body->GetPosition().x, 3.0f);
 }
 
@@ -164,7 +165,8 @@ TEST_F(XPBDPlaneContactTest, FrictionShortensTheSlide)
     Simulate(solver, 60);
 
     EXPECT_LT(body->GetPosition().x, 3.0f);
-    EXPECT_GT(body->GetPosition().x, 0.0f);   // 逆走はしない
+    /// @note 逆走はしない
+    EXPECT_GT(body->GetPosition().x, 0.0f);
 }
 
 TEST_F(XPBDPlaneContactTest, FrictionDoesNotDragAStandingBodySideways)
@@ -183,11 +185,11 @@ TEST_F(XPBDPlaneContactTest, FrictionDoesNotDragAStandingBodySideways)
     EXPECT_NEAR(body->GetPosition().z, 0.0f, testkit::kLooseTolerance);
 }
 
-// --- 面を動かす -------------------------------------------------------------
+/// @name 面を動かす
 
 TEST_F(XPBDPlaneContactTest, FollowsThePlaneWhenItIsMoved)
 {
-    // 歩いているキャラクターの足元へ «床を付いて回らせる» 経路。
+    /// @note 歩いているキャラクターの足元へ «床を付いて回らせる» 経路。
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
     auto body = MakeBody({ 0.0f, 3.0f, 0.0f });
     solver.AddBody(body.get());
@@ -205,7 +207,7 @@ TEST_F(XPBDPlaneContactTest, FollowsThePlaneWhenItIsMoved)
 
 TEST_F(XPBDPlaneContactTest, SupportsANonVerticalPlane)
 {
-    // 壁として使う。法線方向にだけ押し返し、面に沿っては滑る。
+    /// @note 壁として使う。法線方向にだけ押し返し、面に沿っては滑る。
     solver.SetGravity(math::Vector3::ZERO);
     auto body = MakeBody({ -2.0f, 0.0f, 0.0f });
     body->SetVelocity({ -1.0f, 0.0f, 0.0f });

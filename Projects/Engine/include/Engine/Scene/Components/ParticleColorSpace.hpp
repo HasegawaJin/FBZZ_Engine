@@ -12,16 +12,14 @@
 namespace fbzz::scene {
 
 /// グラデーションのキー間をどの色空間で混ぜるか。
-/// WHY: どの空間で混ぜるかは「正解が 1 つに決まらない」種類の選択で、用途で使い分かれる。
-///      Gamma はカラーピッカー上の見た目どおりに繋がるが、白熱 → 橙 → 暗赤のような
-///      彩度の高いランプでは中間が濁る。Linear は光として正しく足し合わさる代わりに
-///      中間が明るく寄る。Oklab は明度と色相が知覚的に等間隔で動くため、
-///      魔法エフェクトのような色相を大きく回すランプで破綻しない。
-/// @note 値は Assets/Shaders/Rendering/ParticleCommon.hlsli の FBZZ_PGRAD_* と一致させること。
+/// @note Gamma はカラーピッカー上の見た目どおりだが彩度の高いランプで中間が濁る。Linear は
+///       光として正しく足し合わさる代わりに中間が明るく寄る。Oklab は明度と色相が知覚的に
+///       等間隔で動くため色相を大きく回すランプで破綻しない。用途で使い分ける。
+///       値は Assets/Shaders/Rendering/ParticleCommon.hlsli の FBZZ_PGRAD_* と一致させること。
 enum class ParticleColorSpace : uint8_t {
-    Gamma  = 0, // オーサリング値をそのまま線形補間 (従来の挙動)
-    Linear = 1, // リニア空間で補間
-    Oklab  = 2, // 知覚的に等間隔な OkLab で補間
+    Gamma  = 0, ///< オーサリング値をそのまま線形補間 (従来の挙動)
+    Linear = 1, ///< リニア空間で補間
+    Oklab  = 2, ///< 知覚的に等間隔な OkLab で補間
 };
 
 /// パーティクルの色をオーサリング空間 (sRGB) からリニアへ。
@@ -48,7 +46,7 @@ inline math::Vector4 ParticleLinearToSrgb(const math::Vector4& c)
     return { ParticleLinearToSrgb(c.x), ParticleLinearToSrgb(c.y), ParticleLinearToSrgb(c.z), c.w };
 }
 
-// HDR 値でも符号と単調性を保つ立方根。OkLab の LMS 圧縮に使う。
+/// HDR 値でも符号と単調性を保つ立方根。OkLab の LMS 圧縮に使う。
 inline float ParticleSignedCbrt(float v)
 {
     return v < 0.0f ? -std::cbrt(-v) : std::cbrt(v);
@@ -84,13 +82,11 @@ inline math::Vector3 ParticleOklabToLinear(const math::Vector3& lab)
              -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s };
 }
 
-// ---------------------------------------------------------------------------
-// 黒体放射
-// ---------------------------------------------------------------------------
+/// 黒体放射
 
-// CIE 1931 等色関数の区分ガウス近似 (Wyman, Sloan & Shirley 2013)。
-// WHY: 炎の色は「すす粒子の温度による黒体放射」で決まるため、正しい色を出すには
-//      プランク分布を等色関数へ積分するしかない。テーブルを持たずに済む近似式を使う。
+/// CIE 1931 等色関数の区分ガウス近似 (Wyman, Sloan & Shirley 2013)。
+/// @note 炎の色は黒体放射で決まり、正しい色にはプランク分布を等色関数へ積分する必要がある。
+///       テーブルを持たずに済む近似式を使う。
 inline float ParticlePiecewiseGaussian(float x, float peak, float mu, float sigma1, float sigma2)
 {
     const float t = (x - mu) / (x < mu ? sigma1 : sigma2);
@@ -109,16 +105,19 @@ inline math::Vector3 ParticleCieXyzBar(float nanometres)
     return { x, y, z };
 }
 
-// プランクの法則 (分光放射輝度)。λ は nm、戻り値は相対値でよいので定数倍は省く。
+/// プランクの法則 (分光放射輝度)。λ は nm、戻り値は相対値でよいので定数倍は省く。
 inline float ParticlePlanckRadiance(float nanometres, float kelvin)
 {
-    constexpr double h = 6.62607015e-34;  // Planck
-    constexpr double c = 2.99792458e8;    // 光速
-    constexpr double kB = 1.380649e-23;   // Boltzmann
+    /// @note Planck
+    constexpr double h = 6.62607015e-34;
+    /// @note 光速
+    constexpr double c = 2.99792458e8;
+    /// @note Boltzmann
+    constexpr double kB = 1.380649e-23;
     const double lambda = static_cast<double>(nanometres) * 1.0e-9;
     const double l5 = lambda * lambda * lambda * lambda * lambda;
     const double exponent = (h * c) / (lambda * kB * static_cast<double>(kelvin));
-    // exp のオーバーフローを避ける。指数が大きい領域は放射がほぼ 0 なので切ってよい。
+    /// @note exp のオーバーフローを避ける。指数が大きい領域は放射がほぼ 0 なので切ってよい。
     if (exponent > 700.0) return 0.0f;
     return static_cast<float>((2.0 * h * c * c) / (l5 * (std::exp(exponent) - 1.0)));
 }
@@ -130,20 +129,20 @@ inline math::Vector3 ParticleBlackbodyChroma(float kelvin)
 {
     const float clamped = std::clamp(kelvin, 500.0f, 40000.0f);
     math::Vector3 xyz = math::Vector3::ZERO;
-    // 5nm 刻みの矩形積分。可視域の端は寄与が小さいので、これで十分な精度が出る。
+    /// @note 5nm 刻みの矩形積分。可視域の端は寄与が小さいので、これで十分な精度が出る。
     constexpr float kStep = 5.0f;
     for (float nm = 380.0f; nm <= 780.0f; nm += kStep) {
         const float radiance = ParticlePlanckRadiance(nm, clamped);
         const math::Vector3 bar = ParticleCieXyzBar(nm);
         xyz = xyz + bar * (radiance * kStep);
     }
-    // CIE XYZ → リニア sRGB (Rec.709 原色 / D65 白色点)
+    /// @note CIE XYZ → リニア sRGB (Rec.709 原色 / D65 白色点)
     math::Vector3 rgb = {
          3.2404542f * xyz.x - 1.5371385f * xyz.y - 0.4985314f * xyz.z,
         -0.9692660f * xyz.x + 1.8760108f * xyz.y + 0.0415560f * xyz.z,
          0.0556434f * xyz.x - 0.2040259f * xyz.y + 1.0572252f * xyz.z
     };
-    // 色域外の負値は最も近い表現可能色へ寄せる (低色温度で B が負になる)。
+    /// @note 色域外の負値は最も近い表現可能色へ寄せる (低色温度で B が負になる)。
     rgb = { (std::max)(rgb.x, 0.0f), (std::max)(rgb.y, 0.0f), (std::max)(rgb.z, 0.0f) };
     const float peak = (std::max)(rgb.x, (std::max)(rgb.y, rgb.z));
     if (peak <= 1.0e-8f) return { 1.0f, 1.0f, 1.0f };

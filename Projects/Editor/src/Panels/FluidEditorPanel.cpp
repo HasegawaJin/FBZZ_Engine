@@ -18,7 +18,7 @@
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/Toast.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
@@ -160,7 +160,7 @@ void FluidEditorPanel::OnInit(EditorContext& ctx)
 
 void FluidEditorPanel::OnShutdown()
 {
-    // 保存関数は this を掴んでいる。パネルが消えた後にレジストリから呼ばれないよう外しておく。
+    /// @note 保存関数は this を掴んでいる。パネルが消えた後にレジストリから呼ばれないよう外しておく。
     if (!m_registeredDirtyPath.empty()) {
         AssetDirtyRegistry::MarkClean(m_registeredDirtyPath);
         m_registeredDirtyPath.clear();
@@ -171,7 +171,7 @@ void FluidEditorPanel::OnShutdown()
 
 void FluidEditorPanel::OnLoadSettings(const EditorSettings& settings)
 {
-    // 自動保存の入り切りは Extras 側が持っている。設定との往復はここで通す。
+    /// @note 自動保存の入り切りは Extras 側が持っている。設定との往復はここで通す。
     if (m_context != nullptr) fluideditor::SetFluidAutoSaveEnabled(*m_context, settings.fluidEditorAutoSave);
     m_followSelection = settings.fluidEditorFollowSelection;
     m_recentFluids = settings.recentFluids;
@@ -184,9 +184,7 @@ void FluidEditorPanel::OnSaveSettings(EditorSettings& settings) const
     settings.recentFluids = m_recentFluids;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 文書の開閉・保存
-// ─────────────────────────────────────────────────────────────────────────────
+/// 文書の開閉・保存
 
 void FluidEditorPanel::RequestOpen(EditorContext& ctx, const std::string& absPath)
 {
@@ -196,8 +194,8 @@ void FluidEditorPanel::RequestOpen(EditorContext& ctx, const std::string& absPat
     if (document.IsOpen() && util::FileSystem::SamePathText(document.Path(), absPath)) return;
 
     if (document.IsOpen() && document.IsDirty()) {
-        // コールバックは ModalDialog::OnRender の中で走る。そこから別のモーダルを開くと
-        // 実行中の std::function ごと状態が差し替わるので、ここでは開き直すだけにする。
+        /// @note コールバックは ModalDialog::OnRender の中で走る。そこから別のモーダルを開くと
+        ///       実行中の std::function ごと状態が差し替わるので、ここでは開き直すだけにする。
         EditorContext* context = &ctx;
         const std::string target = absPath;
         ModalDialog::OpenUnsavedChanges(
@@ -236,7 +234,7 @@ void FluidEditorPanel::OpenNow(EditorContext& ctx, const std::string& absPath)
     state.hasSent = false;
     state.selectedKey = -1;
     state.gizmoActive = false;
-    // 表示は «そのレシピが焼かれる形» から始める (次の描画で recipe.bake.mode を見る)。
+    /// @note 表示は «そのレシピが焼かれる形» から始める (次の描画で recipe.bake.mode を見る)。
     state.viewModeChosen = false;
     state.volumeRecipeKey = 0;
     RememberRecent(ctx, absPath);
@@ -246,14 +244,14 @@ void FluidEditorPanel::OpenNow(EditorContext& ctx, const std::string& absPath)
 void FluidEditorPanel::RememberRecent(EditorContext& ctx, const std::string& absPath)
 {
     if (absPath.empty()) return;
-    // 表記の違い (区切り文字) で «同じファイルが 2 本» にならないよう、入れる形を揃えてから持つ。
+    /// @note 表記の違い (区切り文字) で «同じファイルが 2 本» にならないよう、入れる形を揃えてから持つ。
     const std::string normalized = util::FileSystem::NormalizePathSeparators(absPath);
     if (!m_recentFluids.empty() && util::FileSystem::SamePathText(m_recentFluids.front(), normalized)) return;
     ForgetRecent(normalized);
     m_recentFluids.insert(m_recentFluids.begin(), normalized);
     if (m_recentFluids.size() > static_cast<std::size_t>(EditorSettings::kMaxRecentFluids))
         m_recentFluids.resize(static_cast<std::size_t>(EditorSettings::kMaxRecentFluids));
-    // 次の起動へ持ち越す値なので、終了を待たずに書かせる (落ちても «さっき開いていた» が残る)。
+    /// @note 次の起動へ持ち越す値なので、終了を待たずに書かせる (落ちても «さっき開いていた» が残る)。
     ctx.requestEditorSettingsSave = true;
 }
 
@@ -269,7 +267,7 @@ void FluidEditorPanel::FollowAssetSelection(EditorContext& ctx)
 {
     m_followBlockedPath.clear();
     if (!m_followSelection || !visible) return;
-    // 見えていないタブで対象が入れ替わると、戻ったときに何が起きたか分からない。
+    /// @note 見えていないタブで対象が入れ替わると、戻ったときに何が起きたか分からない。
     if (!WasContentRendered()) return;
 
     const std::string& picked = ctx.selectedAssetPath;
@@ -278,10 +276,9 @@ void FluidEditorPanel::FollowAssetSelection(EditorContext& ctx)
     FluidDocument& document = m_state->document;
     if (document.IsOpen() && util::FileSystem::SamePathText(document.Path(), picked)) return;
 
-    // WHY dirty なら切り替えないか: 以前 Animation Graph が selectedAssetPath へ素朴に追従していて、
-    //     «別のファイルをクリックしただけで未保存の変更が確認なしに消える» 事故を起こしている
-    //     (EditorContext.hpp の openAnimationGraph の注記)。同じ轍は踏まない。
-    //     掴んでいる最中も切らない (ギズモのドラッグが宛先を失う)。
+    /// @note dirty なら切り替えない: 素朴に追従すると別ファイルのクリックだけで未保存の変更が
+    ///       確認なしに消える事故になる (EditorContext.hpp の openAnimationGraph の注記と同種)。
+    ///       掴んでいる最中も切らない (ギズモのドラッグが宛先を失う)。
     if (document.IsOpen() && (document.IsDirty() || document.InInteractiveEdit())) {
         m_followBlockedPath = picked;
         return;
@@ -294,13 +291,13 @@ bool FluidEditorPanel::SaveDocument(EditorContext& ctx)
     fluideditor::State& state = *m_state;
     FluidDocument& document = state.document;
     if (!document.IsOpen()) return false;
-    // テンプレートを書き換えるのは «たまたま開いていた» ではなく人が選んだ結果であってほしい。
-    // 選び直す口は名前を付けて保存のモーダル (上書きもそこにある)。
+    /// @note テンプレートを書き換えるのは «たまたま開いていた» ではなく人が選んだ結果であってほしい。
+    ///       選び直す口は名前を付けて保存のモーダル (上書きもそこにある)。
     if (fluideditor::IsFluidTemplatePath(ctx, document.Path())) {
         BeginSaveAs(ctx);
         SetStatus(state, "テンプレートです。名前を付けて保存してください", false);
-        // ステータス行はパネルが描かれないと読めない。終了時の一括保存やダイアログ経由でも
-        // «保存しなかった» ことだけは必ず届くようにする。
+        /// @note ステータス行はパネルが描かれないと読めない。終了時の一括保存やダイアログ経由でも
+        ///       «保存しなかった» ことだけは必ず届くようにする。
         Toast::Warning("テンプレートは上書きしません: " + util::FileSystem::GetFilename(document.Path())
                        + " (名前を付けて保存してください)");
         return false;
@@ -332,7 +329,7 @@ void FluidEditorPanel::BeginSaveAs(EditorContext& ctx)
         ? std::string("Assets")
         : util::FileSystem::NormalizePathSeparators(ctx.projectRoot) + "/Assets";
     std::string folder = DefaultNewFolder(ctx);
-    // 既定がテンプレート置き場のままだと、そのまま確定したときに原本がもう 1 本増えるだけになる。
+    /// @note 既定がテンプレート置き場のままだと、そのまま確定したときに原本がもう 1 本増えるだけになる。
     if (folder.empty() || fluideditor::IsFluidTemplatePath(ctx, folder)) folder = assetsRoot + "/VFX/Fluid";
     fluideditor::OpenFluidSaveAsModal(m_state->document.Path(), folder);
 }
@@ -351,7 +348,7 @@ void FluidEditorPanel::FinishSaveAs(EditorContext& ctx, const fluideditor::Fluid
         m_registeredDirtyPath.clear();
     }
     ctx.requestAssetBrowserRefresh = true;
-    // 書いた先へ持ち替える。ここから先はただの .fluid なので、Save も自動保存もそのまま通る。
+    /// @note 書いた先へ持ち替える。ここから先はただの .fluid なので、Save も自動保存もそのまま通る。
     OpenNow(ctx, result.path);
     SetStatus(state, "名前を付けて保存しました: " + DisplayPath(ctx, result.path), false);
     Toast::Success("Saved " + util::FileSystem::GetFilename(result.path));
@@ -367,7 +364,7 @@ void FluidEditorPanel::SyncDirtyRegistry(EditorContext& ctx)
         m_registeredDirtyPath.clear();
     }
     if (dirty && m_registeredDirtyPath.empty()) {
-        // 終了時の一括保存ダイアログはこれを見る。載せないと Fluid Editor の編集だけ黙って捨てられる。
+        /// @note 終了時の一括保存ダイアログはこれを見る。載せないと Fluid Editor の編集だけ黙って捨てられる。
         EditorContext* context = &ctx;
         AssetDirtyRegistry::Register(current, DisplayPath(ctx, current), "FLUID",
                                      [this, context]() { return SaveDocument(*context); });
@@ -389,7 +386,7 @@ void FluidEditorPanel::BeginNewFromPreset(EditorContext& ctx)
 void FluidEditorPanel::CreateFromPreset(EditorContext& ctx, const std::string& rawName)
 {
     fluideditor::State& state = *m_state;
-    // ModalDialog の中から呼ばれるので、ここで確認のモーダルは出せない (呼び手が未保存でないことを保証する)。
+    /// @note ModalDialog の中から呼ばれるので、ここで確認のモーダルは出せない (呼び手が未保存でないことを保証する)。
     if (state.document.IsOpen() && state.document.IsDirty()) {
         SetStatus(state, "未保存の変更があります。保存してから新しく作ってください", true);
         return;
@@ -417,16 +414,14 @@ void FluidEditorPanel::CreateFromPreset(EditorContext& ctx, const std::string& r
     OpenNow(ctx, path);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 焼き
-// ─────────────────────────────────────────────────────────────────────────────
+/// 焼き
 
 void FluidEditorPanel::StartBake(EditorContext& ctx, bool makeMaterial, bool makeVfx)
 {
     fluideditor::State& state = *m_state;
     FluidDocument& document = state.document;
     if (!document.IsOpen() || ctx.fluidBake == nullptr) return;
-    // 焼きはディスクの .fluid を読む。手元の変更を焼くには先に書く。
+    /// @note 焼きはディスクの .fluid を読む。手元の変更を焼くには先に書く。
     if (document.IsDirty() && !SaveDocument(ctx)) return;
 
     FluidBakeRequest request;
@@ -472,11 +467,11 @@ void FluidEditorPanel::PollBakeJob(EditorContext& ctx)
     switch (finished) {
     case FluidJobState::Done: {
         ctx.requestAssetBrowserRefresh = true;
-        // 焼いた結果 (Flipbook / MV) を Baked タブへ渡し、そのタブを前へ出す。
+        /// @note 焼いた結果 (Flipbook / MV) を Baked タブへ渡し、そのタブを前へ出す。
         fluideditor::SetFluidBakedResult(ctx, state.document.Path());
         m_selectBakedTab = true;
         if (m_bakeMakesVfx && !vfxPath.empty()) {
-            // Volume Flipbook Baker の «Preview as VFX» と同じ道 (asset.open → Prefab 編集モード)。
+            /// @note Volume Flipbook Baker の «Preview as VFX» と同じ道 (asset.open → Prefab 編集モード)。
             OpArgs args;
             args.Set("path", vfxPath);
             const OpResult result = InvokeOperator(ctx, "asset.open", args);
@@ -506,9 +501,7 @@ void FluidEditorPanel::PollBakeJob(EditorContext& ctx)
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// プレビューと再生
-// ─────────────────────────────────────────────────────────────────────────────
+/// プレビューと再生
 
 void FluidEditorPanel::SyncPreview()
 {
@@ -519,9 +512,9 @@ void FluidEditorPanel::SyncPreview()
         && state.visibilityGeneration == state.sentVisibilityGeneration)
         return;
 
-    asset::FluidRecipe next = document.PreviewRecipe();
+    fluid::FluidRecipe next = document.PreviewRecipe();
     const float from = state.hasSent ? FluidInvalidationTime(state.sentRecipe, next) : 0.0f;
-    // hide / solo は文書の Revision を進めないので、プレビューへ渡す鍵は自前の通番にする。
+    /// @note hide / solo は文書の Revision を進めないので、プレビューへ渡す鍵は自前の通番にする。
     state.preview.SetRecipe(next, ++state.previewSerial, from);
     state.sentRecipe = std::move(next);
     state.sentDocRevision = document.Revision();
@@ -543,7 +536,7 @@ void FluidEditorPanel::AdvancePlayback()
             state.playing = false;
         }
     }
-    // 解けていない先へ進むと同じコマで止まって見える。解けた所で待ち、追いついたら進む。
+    /// @note 解けていない先へ進むと同じコマで止まって見える。解けた所で待ち、追いついたら進む。
     const float solved = state.preview.SolvedUntil();
     if (state.preview.IsSolving() && next > solved) next = (std::min)(next, (std::max)(solved, state.playhead));
     state.playhead = next;
@@ -555,11 +548,8 @@ void FluidEditorPanel::HandleShortcuts(EditorContext& ctx)
     if (!state.document.IsOpen()) return;
     if (ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive()) return;
 
-    // Ctrl+Z / Ctrl+Y は全体のホットキー (edit.undo / edit.redo) がそのまま効く (文書は同じ UndoStack へ積む)。
-    // ここで拾うと 2 回戻る。
-    // WHY ツールバーに Undo / Redo のボタンを置かないか: 上の 2 つは Scope::Global で登録されていて
-    //     (EditorApp_MenuBar の bind)、どのパネルにフォーカスがあっても発火する。Fluid Editor は
-    //     この 2 つを SuppressOperatorThisFrame していないので、キーだけで同じことができる。
+    /// @note Ctrl+Z / Ctrl+Y は Scope::Global の edit.undo / edit.redo がそのまま効く (文書は同じ
+    ///       UndoStack へ積む) ため、ここで拾うと 2 回戻る。ツールバーの Undo / Redo ボタンも不要。
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S)) (void)SaveDocument(ctx);
     if (ImGui::Shortcut(ImGuiKey_Space)) state.playing = !state.playing;
     if (ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_Repeat)) fluideditor::StepFrame(state, -1);
@@ -578,9 +568,7 @@ void FluidEditorPanel::HandleShortcuts(EditorContext& ctx)
         fluideditor::BeginRename(state, state.document.selection.kind, state.document.selection.index);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 描画
-// ─────────────────────────────────────────────────────────────────────────────
+/// 描画
 
 void FluidEditorPanel::DrawRecentEntries(EditorContext& ctx, std::string& picked)
 {
@@ -593,7 +581,7 @@ void FluidEditorPanel::DrawRecentEntries(EditorContext& ctx, std::string& picked
     if (m_recentFluids.empty()) ImGui::TextDisabled("(まだありません)");
     for (std::size_t i = 0; i < m_recentFluids.size(); ++i) {
         const std::string& path = m_recentFluids[i];
-        // 実体を見るのはメニューを開いている間だけ (閉じていれば 1 回も叩かない)。
+        /// @note 実体を見るのはメニューを開いている間だけ (閉じていれば 1 回も叩かない)。
         const bool exists = util::FileSystem::Exists(path);
         const bool current = document.IsOpen() && util::FileSystem::SamePathText(document.Path(), path);
         std::string label = DisplayPath(ctx, path);
@@ -631,7 +619,7 @@ void FluidEditorPanel::OpenRecent(EditorContext& ctx, const std::string& picked)
 {
     if (picked.empty()) return;
     if (!util::FileSystem::Exists(picked)) {
-        // 押しても何も起きないのが一番困る。理由を出したうえで、次からは並べない。
+        /// @note 押しても何も起きないのが一番困る。理由を出したうえで、次からは並べない。
         ForgetRecent(picked);
         ctx.requestEditorSettingsSave = true;
         SetStatus(*m_state, "開けません: " + DisplayPath(ctx, picked) + " (もうありません。履歴から外しました)",
@@ -653,8 +641,8 @@ void FluidEditorPanel::DrawOpenMenu(EditorContext& ctx)
                           "レシピをプリセットで置き換える",
                           EditorSettings::kMaxRecentFluids);
 
-    // 押した結果はポップアップを閉じてから効かせる。開く経路 (RequestOpen) は確認モーダルを開くことがあり、
-    // ポップアップを描いている最中にもう 1 枚開くと積み順が崩れる。
+    /// @note 押した結果はポップアップを閉じてから効かせる。開く経路 (RequestOpen) は確認モーダルを開くことがあり、
+    ///       ポップアップを描いている最中にもう 1 枚開くと積み順が崩れる。
     std::string picked;
     bool openGallery = false;
     int appliedPreset = -1;
@@ -667,11 +655,9 @@ void FluidEditorPanel::DrawOpenMenu(EditorContext& ctx)
         if (ImGui::MenuItem("New...##fe_new")) openGallery = true;
         ImGui::SetItemTooltip("テンプレートの一覧から新しい .fluid を作って開く");
 
-        // WHY BeginDisabled で囲わず enabled 引数を使うか: 子メニューの窓を挟む間に
-        //     ImGui の無効スタックを跨がせない。BeginMenu はこの形を持っている。
+        /// @note BeginDisabled でなく enabled 引数を使う: 子メニューの窓を挟む間に無効スタックを跨がせない。
         const bool presetMenu = ImGui::BeginMenu("Preset...##fe_preset", open);
-        // WHY 畳んでいるときだけ説明を出すか: BeginMenu が true を返した後は «最後の項目» が
-        //     子メニューの窓へ移っている。開いていれば一覧そのものが見えるので要らない。
+        /// @note 畳んでいるときだけ説明を出す: 開いていれば «最後の項目» が子メニューへ移り、一覧そのものが見える。
         if (!presetMenu) ImGui::SetItemTooltip("レシピ全体をプリセットで置き換える (Undo で戻せる)");
         if (presetMenu) {
             for (int i = 0; i < static_cast<int>(asset::FluidPreset::Count); ++i) {
@@ -689,7 +675,7 @@ void FluidEditorPanel::DrawOpenMenu(EditorContext& ctx)
     if (appliedPreset >= 0) {
         const auto preset = static_cast<asset::FluidPreset>(appliedPreset);
         if (document.Edit(ctx, "Apply Fluid Preset",
-                          [preset](asset::FluidRecipe& recipe) { recipe = asset::MakeFluidPreset(preset); })) {
+                          [preset](fluid::FluidRecipe& recipe) { recipe = asset::MakeFluidPreset(preset); })) {
             document.selection = FluidSelection{ FluidSelectionKind::Simulation, -1 };
             state.playhead = 0.0f;
             ++state.visibilityGeneration;
@@ -702,7 +688,7 @@ void FluidEditorPanel::DrawSettingsMenu(EditorContext& ctx)
 {
     fluideditor::State& state = *m_state;
 
-    // 記号を押しボタンのラベルにすると ID が «その字» になる。隣のアイコンボタンと衝突しないよう囲う。
+    /// @note 記号を押しボタンのラベルにすると ID が «その字» になる。隣のアイコンボタンと衝突しないよう囲う。
     ImGui::PushID("fe_settings");
     if (ImGui::Button(icons::Or(icons::kSettings, "Settings"))) ImGui::OpenPopup("##fe_settings_popup");
     ImGui::SetItemTooltip("自動保存・選択への追従・プレビューの品質");
@@ -730,8 +716,7 @@ void FluidEditorPanel::DrawSettingsMenu(EditorContext& ctx)
     }
     ImGui::PopID();
 
-    // WHY 品質だけ外に出すか: 絵の粗さが «設定» のせいなのか値のせいなのか、開かずに切り分けられないと
-    //     Draft のまま詰めてしまう。入り切りの 2 つは一度決めたら触らないのでポップアップの中で足りる。
+    /// @note 品質だけ外に出す: 開かずに切り分けられないと Draft のまま詰めてしまう。
     ImGui::SameLine();
     ImGui::TextDisabled("%s", kQualityNames[static_cast<int>(state.preview.Quality())]);
 }
@@ -751,7 +736,7 @@ void FluidEditorPanel::DrawEffectTemplates(EditorContext& ctx)
         const auto layers = MakeFluidEffectLayers(static_cast<FluidEffectTemplate>(m_effectPreset));
         for (const auto& layer : layers)
             ImGui::Text("%5.2fs  %s  (%s)", layer.startDelay, layer.name.c_str(),
-                        layer.recipe.render.shading == asset::FluidShading::Glow ? "Glow" : "Smoke");
+                        layer.recipe.render.shading == fluid::FluidShading::Glow ? "Glow" : "Smoke");
         ImGui::TextWrapped("素材ごとの .fluid と .mat を作成し、2D ベイク後に複数層の .vfx を作ります。");
         ImGui::SetNextItemWidth(390.0f);
         widgets::InputString("New Folder", m_effectDirectory, 512);
@@ -784,8 +769,8 @@ void FluidEditorPanel::DrawToolbar(EditorContext& ctx)
     FluidDocument& document = state.document;
     const bool open = document.IsOpen();
 
-    // 1 行目: 何を開いているか + その都度押すもの。
-    // ウィンドウのタイトルはドッキング配置の鍵なので変えずに、ファイル名はここへ出す。
+    /// @note 1 行目: 何を開いているか + その都度押すもの。
+    ///       ウィンドウのタイトルはドッキング配置の鍵なので変えずに、ファイル名はここへ出す。
     if (open) {
         const std::string name =
             util::FileSystem::GetFilename(document.Path()) + (document.IsDirty() ? " *" : "");
@@ -869,9 +854,9 @@ void FluidEditorPanel::DrawStatusRow(EditorContext& ctx)
         anyDrawn = true;
     };
 
-    // WHY 開いていないと読む値を出さないか: コマ番号も解けた所も焼く形も、文書が無いと指す相手が居ない。
+    /// @note 開いていないと読む値を出さない: コマ番号も解けた所も焼く形も、文書が無いと指す相手が居ない。
     if (open) {
-        const asset::FluidRecipe& recipe = document.Recipe();
+        const fluid::FluidRecipe& recipe = document.Recipe();
 
         divider();
         const int frames = fluideditor::FluidViewportLiveFrameCount(state, recipe);
@@ -893,7 +878,7 @@ void FluidEditorPanel::DrawStatusRow(EditorContext& ctx)
         ImGui::TextDisabled("%.2f s", solved);
 
         divider();
-        const bool volume = recipe.bake.mode == asset::FluidBakeMode::Volume3D;
+        const bool volume = recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
         ImGui::TextDisabled("Bake %s", volume ? "3D" : "2D");
         ImGui::SetItemTooltip("この .fluid が焼く形 ([bake] の Mode。変えるのは Outliner の Bake)。\n"
                               "ビューポートの 2D / 3D は «見せ方» で、焼く形と食い違うときはそちらが知らせます");
@@ -912,11 +897,11 @@ void FluidEditorPanel::DrawStatusRow(EditorContext& ctx)
         ImGui::PopStyleColor();
         ImGui::SetItemTooltip("%s", DisplayPath(ctx, m_followBlockedPath).c_str());
         ImGui::SameLine();
-        // 追従が止まったことは分かっても «行く手段» が無いと結局 Asset Browser へ戻ることになる。
+        /// @note 追従が止まったことは分かっても «行く手段» が無いと結局 Asset Browser へ戻ることになる。
         if (ImGui::SmallButton("Switch##fe_follow_switch")) RequestOpen(ctx, m_followBlockedPath);
         ImGui::SetItemTooltip("選んでいる .fluid へ移る (保存するか捨てるかを尋ねます)");
     }
-    // WHY 状態だけは開いていなくても出すか: «開けません» «作れません» は文書が無いときにこそ出る。
+    /// @note 状態だけは開いていなくても出す: «開けません» «作れません» は文書が無いときにこそ出る。
     if (!state.status.empty()) {
         divider();
         ImGui::PushStyleColor(ImGuiCol_Text, state.statusIsError ? kErrorColor : kOkColor);
@@ -996,8 +981,8 @@ void FluidEditorPanel::DrawProperties(EditorContext& ctx)
     ImGui::PushID(static_cast<int>(document.selection.kind));
     ImGui::PushID(document.selection.index);
 
-    // 即時モードの編集はコピーへ書き、毎フレーム Commit へ渡す (ドラッグ中の変更は 1 つの Undo にまとまる)。
-    asset::FluidRecipe working = document.Recipe();
+    /// @note 即時モードの編集はコピーへ書き、毎フレーム Commit へ渡す (ドラッグ中の変更は 1 つの Undo にまとまる)。
+    fluid::FluidRecipe working = document.Recipe();
     bool changed = false;
     const char* label = "Edit Fluid";
     const FluidSelection selection = document.selection;
@@ -1058,9 +1043,7 @@ void FluidEditorPanel::DrawProperties(EditorContext& ctx)
     ImGui::PopID();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// フレームの流れ
-// ─────────────────────────────────────────────────────────────────────────────
+/// フレームの流れ
 
 void FluidEditorPanel::OnBeforeBegin(EditorContext& ctx)
 {
@@ -1072,32 +1055,31 @@ void FluidEditorPanel::OnBeforeBegin(EditorContext& ctx)
         const std::string path = std::move(ctx.requestOpenFluidEditor);
         ctx.requestOpenFluidEditor.clear();
         RequestOpen(ctx, path);
-        // 背面のタブでも前へ出す (EditorApp は閉じているときに開くだけ)。
+        /// @note 背面のタブでも前へ出す (EditorApp は閉じているときに開くだけ)。
         ImGui::SetNextWindowFocus();
     }
     FollowAssetSelection(ctx);
 
-    // 背面のタブの間も、焼きの完了と外からの書き換えは拾っておく。
+    /// @note 背面のタブの間も、焼きの完了と外からの書き換えは拾っておく。
     PollBakeJob(ctx);
     if (m_state->document.IsOpen()) {
         m_state->document.PollExternalChange();
-        // 保存できたら dirty が下りる。レジストリからの取り下げは下の SyncDirtyRegistry がやる。
+        /// @note 保存できたら dirty が下りる。レジストリからの取り下げは下の SyncDirtyRegistry がやる。
         if (fluideditor::TickFluidAutoSave(ctx, m_state->document)) m_autoSaveNotice = 2.5f;
     }
     m_autoSaveNotice = (std::max)(m_autoSaveNotice - ImGui::GetIO().DeltaTime, 0.0f);
     SyncDirtyRegistry(ctx);
 
-    // 3D のライブプレビューは GPU を記録するので、レンダラーのフレーム内 = Begin より前に積む
-    // (Volume Flipbook Baker パネルと同じ場所)。
-    // WHY 前フレームに描いたときだけか: 共有 Baker は 1 つしかない。背面のタブからも撃つと、
-    //     Volume Flipbook Baker パネルのプレビューと毎フレーム鍵を奪い合って両方が解き直し続ける。
+    /// @note 3D のライブプレビューは GPU を記録するので、レンダラーのフレーム内 = Begin より前に積む
+    ///       (Volume Flipbook Baker パネルと同じ場所)。共有 Baker は 1 つしかなく、背面のタブからも
+    ///       撃つと Volume Flipbook Baker パネルのプレビューと鍵を奪い合って両方が解き直し続ける。
     if (WasContentRendered()) fluideditor::TickVolumePreview(ctx, *m_state);
 }
 
 HotkeyScope FluidEditorPanel::GetHotkeyScope() const
 {
-    // 何も開いていない Fluid Editor はキーの文脈を持たない。
-    // ここで名乗ると、フォーカスがあるだけで Ctrl+S がシーンへ届かなくなる。
+    /// @note 何も開いていない Fluid Editor はキーの文脈を持たない。
+    ///       ここで名乗ると、フォーカスがあるだけで Ctrl+S がシーンへ届かなくなる。
     if (m_state == nullptr || !m_state->document.IsOpen()) return HotkeyScope::None;
     return HotkeyScope::FluidEditor;
 }
@@ -1107,13 +1089,13 @@ void FluidEditorPanel::OnRenderContent(EditorContext& ctx)
     fluideditor::State& state = *m_state;
     FluidDocument& document = state.document;
 
-    // フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
+    /// @note フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
     ImGui::PushID("fluid_editor");
     fluideditor::EndStaleDrags(ctx, state);
     HandleShortcuts(ctx);
 
     DrawToolbar(ctx);
-    // テンプレート一覧は文書を開いていなくても出す (何も無い所から作り始める道)。
+    /// @note テンプレート一覧は文書を開いていなくても出す (何も無い所から作り始める道)。
     if (const std::string created = fluideditor::DrawFluidTemplateGallery(ctx, DefaultNewFolder(ctx));
         !created.empty()) {
         ctx.requestAssetBrowserRefresh = true;
@@ -1170,9 +1152,9 @@ void FluidEditorPanel::OnRenderContent(EditorContext& ctx)
             float timelineHeight = ClampF(m_timelineHeight, (std::min)(90.0f, timelineMax), timelineMax);
             const float viewportHeight =
                 (std::max)(1.0f, centerHeight - timelineHeight - kSplitterThickness - style.ItemSpacing.y * 2.0f);
-            // WHY NoMove: 3D のギズモ (ImGuizmo) は ImGui の項目を使わないので掴んでも ActiveId が立たず、
-            //             «何も無い所のドラッグ» としてウィンドウ移動が始まってしまう。移動の取り消しは
-            //             マウス下のウィンドウ (= この子) の NoMove を見るので、ここに付ければ止まる。
+            /// @note NoMove が要る: ImGuizmo は ImGui の項目を使わないので掴んでも ActiveId が立たず、
+            ///       «何も無い所のドラッグ» としてウィンドウ移動が始まる。移動の取り消しはマウス下の
+            ///       ウィンドウ (= この子) の NoMove を見るので、ここに付ければ止まる。
             ImGui::BeginChild("##fe_viewport", { 0.0f, viewportHeight }, ImGuiChildFlags_Borders,
                               ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
                                   | ImGuiWindowFlags_NoMove);

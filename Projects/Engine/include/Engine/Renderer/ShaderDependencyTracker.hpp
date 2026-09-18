@@ -15,14 +15,14 @@
 
 namespace fbzz::renderer::shader_dependency {
 
-// 実行場所がbuild配下でもAssets相対パスを解決する。CWD探索とSDKのEngine assetルート探索は
-// util::ResolveEngineAssetPath が一元管理しており、ここは呼び出し名を保つための委譲。
+/// 実行場所がbuild配下でもAssets相対パスを解決する。CWD探索とSDKのEngine assetルート探索は
+/// util::ResolveEngineAssetPath が一元管理しており、ここは呼び出し名を保つための委譲。
 inline std::filesystem::path ResolveExistingPath(const std::filesystem::path& requested)
 {
     return util::ResolveEngineAssetPath(requested);
 }
 
-// ソースの祖先からShadersディレクトリを特定し、ルートincludeの解決基準にする。
+/// ソースの祖先からShadersディレクトリを特定し、ルートincludeの解決基準にする。
 inline std::filesystem::path FindShaderRoot(const std::filesystem::path& sourcePath)
 {
     std::filesystem::path current = sourcePath.parent_path();
@@ -38,8 +38,8 @@ inline std::filesystem::path FindShaderRoot(const std::filesystem::path& sourceP
     return sourcePath.parent_path();
 }
 
-// 依存includeを再帰走査し、CSOより新しいソースが一つでもあればtrueを返す。
-// WHY: HLSL本体だけの比較ではCommon/*.hlsli変更後も古いCSOを読み続けるため。
+/// 依存includeを再帰走査し、CSOより新しいソースが一つでもあればtrueを返す。
+/// @note HLSL本体だけの比較ではCommon/*.hlsli変更後も古いCSOを読み続けるため。
 inline bool HasNewerDependency(
     const std::filesystem::path& sourcePath,
     const std::filesystem::path& shaderRoot,
@@ -80,7 +80,7 @@ inline bool HasNewerDependency(
     return false;
 }
 
-// HLSL本体または再帰includeがCSOより新しい場合、再コンパイルが必要と判定する。
+/// HLSL本体または再帰includeがCSOより新しい場合、再コンパイルが必要と判定する。
 inline bool IsBinaryStale(const std::filesystem::path& source,
                           const std::filesystem::path& binary)
 {

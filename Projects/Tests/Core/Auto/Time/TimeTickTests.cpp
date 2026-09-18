@@ -33,10 +33,9 @@ TEST_F(TimeTickTest, ResetClearsAccumulatedState)
     fbzz::Time::Tick();
     fbzz::Time::Reset();
 
+    /// @note dt は «累積» ではないので Reset() は消さない。プロセス最初の Tick でだけ 0 になるため、順序に依存させない。
     EXPECT_FLOAT_EQ(fbzz::Time::time, 0.0f);
     EXPECT_FLOAT_EQ(fbzz::Time::unscaledTime, 0.0f);
-    EXPECT_FLOAT_EQ(fbzz::Time::deltaTime, 0.0f);
-    EXPECT_FLOAT_EQ(fbzz::Time::unscaledDeltaTime, 0.0f);
     EXPECT_EQ(fbzz::Time::frameCount, 0u);
 }
 

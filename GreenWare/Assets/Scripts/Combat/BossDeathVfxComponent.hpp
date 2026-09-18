@@ -1,36 +1,13 @@
 /// @file    BossDeathVfxComponent.hpp
-/// @brief   ボスが «自壊してから» 崩れるまでの撃破演出
+/// @brief   ボスが自壊してから崩れるまでの撃破演出。
 /// @author  Hasegawa Jin
 /// @date    2026-08-29
 ///
-/// WHY 雑魚と同じ 1 発では足りないか:
-///   雑魚は EnemyDeathVfxComponent の «体が粒になって立ち昇る» 1 段だけで読める。
-///   倒れた瞬間に画面から消えても、盤面には次の敵がいるので «1 体片付いた» で足りる。
-///   ボスは戦いそのものの終わりで、しかも全高 6.6m ある。同じ 1 段だと、大きい体が
-///   何の前触れもなく消える «バグに見える終わり方» になる。終わりには «壊れていく
-///   時間» が要る。
-///
-/// WHY 段を «自壊 → 決定打 → 崩壊» に分けるか:
-///   撃破の確定 (ヒットストップ・集束) は倒した瞬間に返さないと、当てた手応えが
-///   遅れる。一方で «消える» のは遅らせたい。この 2 つは両立しないので、
-///   確定を BossAiComponent::AnnounceDeath が t=0 で返し、こちらは
-///   «確定した後の 4 秒» だけを受け持つ。
-///     0.0 秒        装甲のあちこちが順に爆ぜる (体の «あちこち» を順に見せる)
-///     buildup 秒    コアが落ちる決定打。ここが一番大きい 1 発
-///     以降          EnemyDeathVfxComponent のディゾルブが体を食っていく
-///
-/// WHY ディゾルブと粒をここが持たないか:
-///   «体そのものが崩れる» 絵は雑魚とまったく同じ仕組みでよく、実装は
-///   EnemyDeathVfxComponent が持っている。ボスに必要なのは «崩れ始めるまでの間» と
-///   «その間に何が爆ぜるか» だけなので、あちらの Delay を伸ばして噛み合わせる
-///   (シーンの Body Dissolve > Delay を buildupSeconds に合わせること)。
-///   同じ絵を 2 つの実装で持つと、雑魚を直したときにボスだけ古いままになる。
-///
-/// WHY 画面演出をここが持つか (EnemyDeathVfxComponent は持たないのに):
-///   あちらが持たないのは、配分を決めるのが ImpactFeedbackManagerComponent だから。
-///   ボスの攻撃はどれも BossAiComponent が自分で配分している (あちらの Feedback 群)
-///   ので、ボスに関しては «自分で配って良い» が既にこの盤面の規則になっている。
-///   減衰の式は shock::NearnessTo を共有するので、揺れと振動が食い違うことはない。
+/// @note 段は自壊 (装甲を順に起爆) → 決定打 (コア) → 崩壊の 3 段。撃破確定は
+///       BossAiComponent::AnnounceDeath が t=0 で返すので、ここは確定後の演出のみ持つ。
+///       崩壊 (ディゾルブ) は EnemyDeathVfxComponent と共有実装のため、buildupSeconds を
+///       そちらの Body Dissolve > Delay に揃えること。画面演出の配分は BossAiComponent が
+///       自前で行う盤面のため、ここでも自前で配ってよい。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -53,11 +30,8 @@ using fbzz::Time;
 
 namespace sandbox {
 
-// 爆ぜる順に並べたボーン名。前後・左右・上下を交互に跨ぐ並びにしてある。
-//
-// WHY 順番を固定するか: 抽選すると «同じ側で 3 連続» が普通に出て、大きい体の
-//     反対側が最後まで無傷のまま残る。«どこもかしこも壊れている» を見せたいので、
-//     跨ぐ順序そのものが演出になる。
+/// @brief 爆ぜる順に並べたボーン名。前後・左右・上下を交互に跨ぐ並び。
+/// @note 固定順にする理由: 抽選だと同じ側が連続し、反対側が無傷のまま残るため。
 inline constexpr const char* kBossBlastBones[] = {
     "Head", "Thigh_BL", "Ring", "Hock_FR", "Rear", "Thigh_FL", "Hock_BR", "Body",
 };
@@ -109,9 +83,8 @@ public:
     /// 撃破された瞬間に 1 度だけ呼ぶ。2 度目以降は無視する。
     void Begin();
 
-    /// 決定打までの秒数。撃破側はこれ以上待ってから GameObject を畳むこと。
-    /// WHY 決定打«まで»か: 決定打の後は EnemyDeathVfxComponent のディゾルブが引き継ぐ。
-    ///     どちらが長いかは調整で入れ替わるので、待つ側は両方の最大を採ること。
+    /// @brief 決定打までの秒数。撃破側はこれ以上待ってから GameObject を畳むこと。
+    /// @note 決定打の後はディゾルブ (EnemyDeathVfxComponent) が引き継ぐ。長い方を採ること。
     [[nodiscard]] float TotalSeconds() const { return std::max(buildupSeconds, 0.0f); }
 
     void OnUpdate() override;
@@ -137,7 +110,6 @@ private:
 
 FBZZ_REFLECT(BossDeathVfxComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline GameObject* BossDeathVfxComponent::FindInSubtree(GameObject& root, const char* name)
 {
@@ -152,7 +124,7 @@ inline Vector3 BossDeathVfxComponent::CorePoint() const
     }
     if (auto* self = scene.Self())
         if (auto* core = FindInSubtree(*self, "SOCKET_Core")) return core->transform.worldPosition;
-    // リグが無い構成へのフォールバック。胴体の高さだけは外さないようにする。
+    /// @note リグが無い構成へのフォールバック。胴体の高さだけは外さないようにする。
     Vector3 point = transform.worldPosition;
     point.y += 3.3f;
     return point;
@@ -172,13 +144,13 @@ inline Vector3 BossDeathVfxComponent::BlastPoint(int index) const
             point = bone->transform.worldPosition;
     }
 
-    // 黄金角で散らす。番号から一意に決まるので、同じ撃破は何度見ても同じ位置で爆ぜる
-    // (乱数だと «さっきの方が良かった» が起きて、調整の手がかりにならない)。
+    /// @note 黄金角で散らす。番号から一意に決まるので、同じ撃破は何度見ても同じ位置で爆ぜる
+    ///       (乱数だと «さっきの方が良かった» が起きて、調整の手がかりにならない)。
     const float angle  = static_cast<float>(index) * 2.39996323f;
     const float radius = std::max(blastSpread, 0.0f);
     point.x += std::cos(angle) * radius;
     point.z += std::sin(angle) * radius;
-    // 上下にも散らす。水平だけだと «腰の高さの輪» に並んで見える。
+    /// @note 上下にも散らす。水平だけだと «腰の高さの輪» に並んで見える。
     point.y += std::sin(angle * 1.7f) * radius * 0.6f;
     return point;
 }
@@ -193,8 +165,8 @@ inline void BossDeathVfxComponent::Blast(const Vector3& point, float strength01,
         vfx->PlayImpact(point, BladeSide::None, strength, /*againstAnchor=*/false);
     se::PlayAt(audio, bank, point, volume);
 
-    // 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
-    // 震える距離ができて «どこで起きたか» の答えが 2 つになる。
+    /// @note 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
+    ///       震える距離ができて «どこで起きたか» の答えが 2 つになる。
     const float nearness = shock::NearnessTo(Player(), point,
                                              std::max(feedbackRange, 1.0f),
                                              std::max(feedbackNear, 0.0f));
@@ -216,7 +188,7 @@ inline void BossDeathVfxComponent::Begin()
     debugBlastsFired = 0;
     debugStage = "Self Destruct";
 
-    // 音源はこの位置で鳴らす。爆ぜる点はどれも体の «どこか» なので方向が読める必要がある。
+    /// @note 音源はこの位置で鳴らす。爆ぜる点はどれも体の «どこか» なので方向が読める必要がある。
     se::EnsureSource(scene, "SE", 1.0f);
 }
 
@@ -224,17 +196,14 @@ inline void BossDeathVfxComponent::OnUpdate()
 {
     if (!m_running) return;
 
-    // WHY 実時間ではなくスケール時間か: 決定打はディゾルブが始まる瞬間と重なっていないと
-    //     «崩れ始めたのに何も起きない» が出る。あちら (EnemyDeathVfxComponent) が
-    //     Time::deltaTime で数えている以上、こちらだけ実時間で数えるとヒットストップの
-    //     ぶんだけ 2 つがずれる。同じ出来事を刻む時計は 1 つに揃える。
+    /// @note スケール時間で数える: 実時間だとヒットストップぶんディゾルブ (実時間非依存) とずれる。
     m_elapsed += Time::deltaTime;
 
     const int   count   = std::max(blastCount, 0);
     const float buildup = std::max(buildupSeconds, 0.0f);
 
-    // 連発。決定打の «直前» まで等間隔で置く。最後の 1 発が決定打と重なると、
-    // 一番大きい 1 発が小さい爆発に埋もれる。
+    /// @note 連発。決定打の «直前» まで等間隔で置く。最後の 1 発が決定打と重なると、
+    ///       一番大きい 1 発が小さい爆発に埋もれる。
     while (m_next < count) {
         const float at = buildup * (static_cast<float>(m_next) + 0.5f)
                        / static_cast<float>(count + 1);
@@ -250,7 +219,7 @@ inline void BossDeathVfxComponent::OnUpdate()
 
     if (m_climaxed || m_elapsed < buildup) return;
 
-    // 決定打。ここでコアが落ち、EnemyDeathVfxComponent のディゾルブが体を食い始める。
+    /// @note 決定打。ここでコアが落ち、EnemyDeathVfxComponent のディゾルブが体を食い始める。
     m_climaxed = true;
     debugStage = "Core Detonation";
 
@@ -259,9 +228,7 @@ inline void BossDeathVfxComponent::OnUpdate()
     Blast(core, climaxStrength, climaxVolume, se::kImpactFinal);
     ++debugBlastsFired;
 
-    // WHY 白いフラッシュではなくサージか: 画面を塗る白は «こちらが受けた» を表す語で、
-    //     倒した瞬間に出すと被弾と読み違える (BossAiComponent の集束と同じ判断)。
-    //     縁だけを灼く色付きの一撃なら、盤面の中央で起きたことを隠さずに済む。
+    /// @note 白フラッシュでなくサージにする: 白は被弾表現のため、倒した瞬間に使うと誤読する。
     if (climaxSurgeSeconds > 0.0f) {
         if (auto* screen = ScreenEffectManagerComponent::Instance())
             screen->Surge(climaxSurgeColor, Clamp01(climaxStrength), climaxSurgeSeconds);

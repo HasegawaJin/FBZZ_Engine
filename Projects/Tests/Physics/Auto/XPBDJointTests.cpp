@@ -21,7 +21,7 @@ class XPBDJointTest : public testkit::Fixture {};
 namespace {
 
 constexpr float kGravity  = -9.81f;
-constexpr float kBoneSpan = 1.0f;   // 関節から子の重心までの距離 [m]
+constexpr float kBoneSpan = 1.0f;   ///< 関節から子の重心までの距離 [m]
 
 /// 親 (静止) と子 (+X へ 1m) を 1 本の関節で繋いだ試験台。
 struct JointRig {
@@ -45,7 +45,7 @@ struct JointRig {
 
         auto owned = std::make_unique<physics::XPBDJoint>(parent.get(), child.get());
         joint = owned.get();
-        // 関節はワールド原点、フレームは «X が骨の向き» ＝ 無回転でよい。
+        /// @note 関節はワールド原点、フレームは «X が骨の向き» ＝ 無回転でよい。
         joint->Build(math::Vector3::ZERO, math::Quaternion::Identity());
         solver.AddConstraint(std::move(owned));
     }
@@ -65,10 +65,8 @@ struct JointRig {
     }
 
     /// 骨を水平から radians だけ垂らした姿勢に置く。関節は原点に付いたまま。
-    ///
-    /// WHY 釣り合いの «答え» から始めるテストを用意するか: 落ちきるまでの時間は減衰と
-    ///     慣性で決まり、テストが «収束待ちの秒数» に依存する。釣り合いの角度に置いて
-    ///     «動かないこと» を見れば、時間に依らず釣り合いの位置だけを固定できる。
+    /// @note 落ちきるまでの時間は減衰と慣性で決まり、収束待ちの秒数にテストが依存してしまう。
+    ///       釣り合いの角度に置いて «動かないこと» を見れば、時間に依らず位置だけを固定できる。
     void SetDroop(float radians)
     {
         child->SetRotation(math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, -radians));
@@ -100,24 +98,26 @@ TEST_F(XPBDJointTest, SocketKeepsBodiesConnected)
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
-// 脱力した関節は真下までぶら下がる。制限もドライブも無い状態の基準。
+/// 脱力した関節は真下までぶら下がる。制限もドライブも無い状態の基準。
 TEST_F(XPBDJointTest, LimplessJointHangsStraightDown)
 {
     JointRig rig;
     rig.Damp();
     rig.Simulate(600);
 
-    EXPECT_GT(rig.DroopAngle(), 1.4f);   // ほぼ π/2
+    /// @note ほぼ π/2
+    EXPECT_GT(rig.DroopAngle(), 1.4f);
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
-// 可動域は «そこで止まる» こと。膝が逆に折れないのはこの拘束。
+/// 可動域は «そこで止まる» こと。膝が逆に折れないのはこの拘束。
 TEST_F(XPBDJointTest, SwingLimitStopsTheBone)
 {
     JointRig rig;
     auto& limits = rig.joint->Limits();
     limits.enabled   = true;
-    limits.swingMinZ = -0.30f;   // 下へ垂れるのは Z 軸まわりの負回転
+    /// @note 下へ垂れるのは Z 軸まわりの負回転
+    limits.swingMinZ = -0.30f;
     limits.swingMaxZ = 0.30f;
     limits.swingMinY = -0.05f;
     limits.swingMaxY = 0.05f;
@@ -132,14 +132,16 @@ TEST_F(XPBDJointTest, SwingLimitStopsTheBone)
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
-// 非対称な可動域。«片方向にしか曲がらない» が書けることの確認。
+/// 非対称な可動域。«片方向にしか曲がらない» が書けることの確認。
 TEST_F(XPBDJointTest, AsymmetricSwingLimitIsRespected)
 {
     JointRig rig;
     auto& limits = rig.joint->Limits();
     limits.enabled   = true;
-    limits.swingMinZ = 0.0f;     // 下へは 1 度も曲がらない
-    limits.swingMaxZ = 1.20f;    // 上へは大きく曲がる
+    /// @note 下へは 1 度も曲がらない
+    limits.swingMinZ = 0.0f;
+    /// @note 上へは大きく曲がる
+    limits.swingMaxZ = 1.20f;
     limits.swingMinY = -0.05f;
     limits.swingMaxY = 0.05f;
     limits.twistMin  = -0.05f;
@@ -152,7 +154,7 @@ TEST_F(XPBDJointTest, AsymmetricSwingLimitIsRespected)
     EXPECT_NEAR(rig.DroopAngle(), 0.0f, 0.02f);
 }
 
-// ドライブは目標姿勢を保つ。定常たわみは compliance × トルクで決まる。
+/// ドライブは目標姿勢を保つ。定常たわみは compliance × トルクで決まる。
 TEST_F(XPBDJointTest, DriveHoldsTheTargetAgainstGravity)
 {
     JointRig rig;
@@ -167,7 +169,7 @@ TEST_F(XPBDJointTest, DriveHoldsTheTargetAgainstGravity)
     EXPECT_FALSE(rig.joint->IsDriveSaturated());
 }
 
-// M2 の核心その 1。支え切れずに «明らかに» 垂れること。どこまで垂れるかは下のテストが見る。
+/// M2 の核心その 1。支え切れずに «明らかに» 垂れること。どこまで垂れるかは下のテストが見る。
 TEST_F(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
 {
     JointRig rig;
@@ -175,7 +177,7 @@ TEST_F(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
     drive.enabled    = true;
     drive.compliance = 1.0e-5f;
     drive.damping    = 20.0f;
-    // 水平で支えるのに要るトルクは m·g·L = 9.81 N·m。その 1/5 しか出せない。
+    /// @note 水平で支えるのに要るトルクは m·g·L = 9.81 N·m。その 1/5 しか出せない。
     drive.maxTorque  = 2.0f;
 
     rig.Damp();
@@ -185,8 +187,8 @@ TEST_F(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
     EXPECT_TRUE(rig.joint->IsDriveSaturated());
 }
 
-// M2 の核心その 2。垂れるほど腕の «てこ» が短くなり、必要トルクが m·g·L·cos(θ) へ落ちる。
-// cos(θ) = τ_max/(m·g·L) を満たす角度で釣り合うこと ─ 上限の «値» が効いている証拠。
+/// M2 の核心その 2。垂れるほど腕の «てこ» が短くなり、必要トルクが m·g·L·cos(θ) へ落ちる。
+/// cos(θ) = τ_max/(m·g·L) を満たす角度で釣り合うこと ─ 上限の «値» が効いている証拠。
 TEST_F(XPBDJointTest, TorqueLimitBalancesAtTheAnalyticAngle)
 {
     const float balance = std::acos(2.0f / 9.81f);
@@ -206,7 +208,7 @@ TEST_F(XPBDJointTest, TorqueLimitBalancesAtTheAnalyticAngle)
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
-// 上の «動かない» が偶然でないこと。釣り合いより上に置けば落ち、下に置けば持ち上がる。
+/// 上の «動かない» が偶然でないこと。釣り合いより上に置けば落ち、下に置けば持ち上がる。
 TEST_F(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
 {
     const float balance = std::acos(2.0f / 9.81f);
@@ -225,14 +227,14 @@ TEST_F(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
         return rig.DroopAngle();
     };
 
-    // 釣り合いより «上» に置くと、2 N·m では支え切れずに落ちる。
+    /// @note 釣り合いより «上» に置くと、2 N·m では支え切れずに落ちる。
     EXPECT_GT(settle(balance - 0.40f), balance - 0.40f);
-    // «下» に置くと、必要トルクが 2 N·m を下回るので余った分で持ち上がる。
-    // 真下 (π/2) を越えると重力トルクの符号が変わるので、それより手前に置く。
+    /// @note «下» に置くと、必要トルクが 2 N·m を下回るので余った分で持ち上がる。
+    ///       真下 (π/2) を越えると重力トルクの符号が変わるので、それより手前に置く。
     EXPECT_LT(settle(balance + 0.15f), balance + 0.15f);
 }
 
-// 上限を十分に上げれば同じ設定で支え切る。上の結果がトルク上限由来だと固定する。
+/// 上限を十分に上げれば同じ設定で支え切る。上の結果がトルク上限由来だと固定する。
 TEST_F(XPBDJointTest, HighTorqueLimitStillHolds)
 {
     JointRig rig;
@@ -247,7 +249,7 @@ TEST_F(XPBDJointTest, HighTorqueLimitStillHolds)
     EXPECT_LT(std::abs(rig.DroopAngle()), 0.05f);
 }
 
-// ドライブを切れば脱力する。Passive / Active の切り替えはこのフラグだけ。
+/// ドライブを切れば脱力する。Passive / Active の切り替えはこのフラグだけ。
 TEST_F(XPBDJointTest, DisabledDriveFallsLikeLimpJoint)
 {
     JointRig rig;
@@ -261,7 +263,7 @@ TEST_F(XPBDJointTest, DisabledDriveFallsLikeLimpJoint)
     EXPECT_GT(rig.DroopAngle(), 1.4f);
 }
 
-// ドライブの目標を動かすと骨が付いてくる。Active の «クリップを追う» 経路。
+/// ドライブの目標を動かすと骨が付いてくる。Active の «クリップを追う» 経路。
 TEST_F(XPBDJointTest, DriveFollowsAMovingTarget)
 {
     JointRig rig;
@@ -270,7 +272,7 @@ TEST_F(XPBDJointTest, DriveFollowsAMovingTarget)
     drive.compliance = 1.0e-5f;
     drive.damping    = 20.0f;
 
-    // 関節フレーム Z 軸まわりに +0.5 rad ＝ 骨を上へ持ち上げる目標。
+    /// @note 関節フレーム Z 軸まわりに +0.5 rad ＝ 骨を上へ持ち上げる目標。
     drive.target = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 0.5f);
     rig.Simulate(180);
 
@@ -289,7 +291,7 @@ TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
     limits.swingMinZ = -2.0f;
     limits.swingMaxZ = 2.0f;
 
-    // 骨の軸まわりに回し続ける。制限が効かなければ 1 回転してしまう。
+    /// @note 骨の軸まわりに回し続ける。制限が効かなければ 1 回転してしまう。
     rig.Damp();
     rig.child->SetAngularVelocity({ 6.0f, 0.0f, 0.0f });
     rig.Simulate(120);
@@ -297,16 +299,15 @@ TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
     EXPECT_LT(std::abs(rig.joint->GetTwistAngle()), 0.25f);
 }
 
-// --- 外から関節を «読む» 経路 -----------------------------------------------
-//
-// 可動域のデバッグ表示 (RagdollRig) は const な関節しか持たない。ここが壊れると、
-// 崩れ方を調べるための «絵» だけが実際の関節と食い違い、コードは正しいのに
-// 見ている図が嘘という、最も切り分けの難しい状態になる。
+/// @name 外から関節を «読む» 経路
+/// 可動域のデバッグ表示 (RagdollRig) は const な関節しか持たない。ここが壊れると、
+/// 崩れ方を調べるための «絵» だけが実際の関節と食い違い、コードは正しいのに
+/// 見ている図が嘘という、最も切り分けの難しい状態になる。
 
 TEST_F(XPBDJointTest, ReportsTheParentJointFrameFollowingTheParentRotation)
 {
-    // Build() は «今の姿勢» をたわみ 0 に据える。ワールド版が組み立て時の値を返すと、
-    // 可動域の角錐が体に付いて回らず、原点に取り残された図になる。
+    /// @note Build() は «今の姿勢» をたわみ 0 に据える。ワールド版が組み立て時の値を返すと、
+    ///       可動域の角錐が体に付いて回らず、原点に取り残された図になる。
     JointRig               rig;
     const math::Quaternion turn = math::Quaternion::FromAxisAngle(math::Vector3::UP, 1.0f);
 
@@ -328,8 +329,8 @@ TEST_F(XPBDJointTest, ReportsTheChildJointFrameFollowingTheChildRotation)
 
 TEST_F(XPBDJointTest, ExposesTheSameLimitsAndDriveThroughConstAccess)
 {
-    // const 版が値のコピーを返すと «設定したのに表示は初期値» になり、調整している側からは
-    // 可動域を書き換えても効いていないようにしか見えない。
+    /// @note const 版が値のコピーを返すと «設定したのに表示は初期値» になり、調整している側からは
+    ///       可動域を書き換えても効いていないようにしか見えない。
     JointRig rig;
     rig.joint->Limits().twistMax = 0.75f;
     rig.joint->Drive().maxTorque = 12.0f;

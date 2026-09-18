@@ -14,15 +14,15 @@ namespace fbzz::editor::btops {
 
 namespace {
 
-// 深さ 1 段ぶんの横間隔。ノード幅より僅かに広いだけだとリンクが隣のノードへ
-// 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
-// 移行前は BehaviorTreePanel 側の定数と AI 側の直書き 300.0f に分かれていた。
+/// 深さ 1 段ぶんの横間隔。ノード幅より僅かに広いだけだとリンクが隣のノードへ
+/// 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
+/// 移行前は BehaviorTreePanel 側の定数と AI 側の直書き 300.0f に分かれていた。
 constexpr float kNodeMinWidth  = 196.0f;
-constexpr float kNodeColumnStep = kNodeMinWidth + 104.0f;   // 300: テンプレートの手置き座標と一致
-// ノード高さ (タイトル + 本文 4 行 + ピン 2 行) が収まる縦間隔。
+constexpr float kNodeColumnStep = kNodeMinWidth + 104.0f;   ///< 300: テンプレートの手置き座標と一致
+/// ノード高さ (タイトル + 本文 4 行 + ピン 2 行) が収まる縦間隔。
 constexpr float kNodeRowStep = 170.0f;
 
-// 親子関係を辺として取り出す。ExtractSubgraph / CollectReachable へ渡す形。
+/// 親子関係を辺として取り出す。ExtractSubgraph / CollectReachable へ渡す形。
 std::vector<GraphEdge> ParentEdges(const fbzz::ai::BehaviorTreeAsset& asset)
 {
     std::vector<GraphEdge> edges;
@@ -54,7 +54,7 @@ std::vector<const fbzz::ai::BTNodeDef*> ChildrenOf(const fbzz::ai::BehaviorTreeA
 bool IsDescendant(const fbzz::ai::BehaviorTreeAsset& asset, int ancestorId, int childId)
 {
     int current = childId;
-    // ノード数を上限にすれば、既に壊れて循環しているデータでも止まる。
+    /// @note ノード数を上限にすれば、既に壊れて循環しているデータでも止まる。
     for (std::size_t guard = 0; guard <= asset.nodes.size() && current != 0; ++guard) {
         if (current == ancestorId) return true;
         const fbzz::ai::BTNodeDef* node = asset.FindNode(current);
@@ -85,7 +85,7 @@ std::string TryReparentNode(fbzz::ai::BehaviorTreeAsset& asset, int childId, int
     if (newParentId != 0) {
         const fbzz::ai::BTNodeDef* parent = asset.FindNode(newParentId);
         if (parent == nullptr) return "親ノードが見つかりません";
-        // 子孫を親にすると循環する。BT は木なので必ず弾く。
+        /// @note 子孫を親にすると循環する。BT は木なので必ず弾く。
         if (IsDescendant(asset, childId, newParentId))
             return "自分の子孫を親にはできません (循環します)";
 
@@ -93,20 +93,20 @@ std::string TryReparentNode(fbzz::ai::BehaviorTreeAsset& asset, int childId, int
         if (maxChildren == 0)
             return std::string(fbzz::ai::BTNodeTypeName(parent->type))
                  + " は葉ノードなので子を持てません";
-        // 既に自分がその親の子なら、付け替えても数は増えない。
+        /// @note 既に自分がその親の子なら、付け替えても数は増えない。
         const bool alreadyChild = child->parentId == newParentId;
         if (maxChildren > 0 && !alreadyChild && ChildCount(asset, newParentId) >= maxChildren)
             return std::string(fbzz::ai::BTNodeTypeName(parent->type)) + " が持てる子は "
                  + std::to_string(maxChildren) + " 個までです";
     } else {
-        // 親なし = ルート。木にルートは 1 つだけ。
+        /// @note 親なし = ルート。木にルートは 1 つだけ。
         for (const auto& node : asset.nodes)
             if (node.parentId == 0 && node.id != childId)
                 return "ルートは 1 つだけです (既存のルートへ繋いでください)";
     }
 
     child->parentId = newParentId;
-    // 末尾へ追加する。優先度は order なので、後から Inspector か D&D で並べ替える。
+    /// @note 末尾へ追加する。優先度は order なので、後から Inspector か D&D で並べ替える。
     int nextOrder = 0;
     for (const auto& node : asset.nodes)
         if (node.parentId == newParentId && node.id != childId)
@@ -132,14 +132,15 @@ AddNodeResult AddNode(fbzz::ai::BehaviorTreeAsset& asset,
     node.editorX = editorX;
     node.editorY = editorY;
 
-    // ルートがまだ無ければ、指定によらず最初のノードがルートになる。
+    /// @note ルートがまだ無ければ、指定によらず最初のノードがルートになる。
     const bool hasRoot = std::any_of(asset.nodes.begin(), asset.nodes.end(),
         [](const fbzz::ai::BTNodeDef& item) { return item.parentId == 0; });
     node.parentId = 0;
     asset.nodes.push_back(node);
     result.nodeId = node.id;
 
-    if (!hasRoot) return result;   // 最初のノード = ルート。親付けは不要。
+    /// @note 最初のノード = ルート。親付けは不要。
+    if (!hasRoot) return result;
 
     if (parentId == 0) {
         result.rejectReason = "ルートは既にあります。parentId を指定してください";
@@ -149,17 +150,18 @@ AddNodeResult AddNode(fbzz::ai::BehaviorTreeAsset& asset,
     if (result.rejectReason.empty()) return result;
 
     if (orphanOnReject) {
-        // 孤立ノードとして残す。作った直後に消えると「追加できなかった」のか
-        // 「見えていない」のか区別できない。ルートが 2 つになるのは Validate が拒否し、
-        // 理由は警告バナーに出る。
+        /// @note 孤立ノードとして残す。作った直後に消えると「追加できなかった」のか
+        ///       「見えていない」のか区別できない。ルートが 2 つになるのは Validate が拒否し、
+        ///       理由は警告バナーに出る。
         result.leftOrphan = true;
         return result;
     }
 
-    // 追加そのものを取り消す。呼び出しが成否で完結してほしい API 経路向け。
+    /// @note 追加そのものを取り消す。呼び出しが成否で完結してほしい API 経路向け。
     std::erase_if(asset.nodes,
         [id = node.id](const fbzz::ai::BTNodeDef& item) { return item.id == id; });
-    asset.nextNodeId = node.id;   // 採番も戻して id に穴を空けない
+    /// @note 採番も戻して id に穴を空けない
+    asset.nextNodeId = node.id;
     result.nodeId = 0;
     return result;
 }
@@ -201,8 +203,8 @@ DuplicateResult DuplicateSubtree(fbzz::ai::BehaviorTreeAsset& asset,
     const std::vector<GraphEdge> edges = ParentEdges(asset);
     const std::vector<int> subtree = CollectReachable(std::vector<int>{ nodeId }, edges);
 
-    // id の再割当と内部リンクの保持は framework の共通実装に任せる。
-    // クリップボード・Template 取り込み・レイヤー複製と同じ規則で動く。
+    /// @note id の再割当と内部リンクの保持は framework の共通実装に任せる。
+    ///       クリップボード・Template 取り込み・レイヤー複製と同じ規則で動く。
     int nextId = asset.nextNodeId - 1;
     const GraphExtractResult extracted = ExtractSubgraph(subtree, edges, nextId);
     asset.nextNodeId = nextId + 1;
@@ -214,7 +216,7 @@ DuplicateResult DuplicateSubtree(fbzz::ai::BehaviorTreeAsset& asset,
         fbzz::ai::BTNodeDef copy = node;
         copy.id = mapped->second;
         const auto mappedParent = extracted.idMap.find(node.parentId);
-        // 部分木の根だけは元の親のまま (兄弟として並ぶ)。
+        /// @note 部分木の根だけは元の親のまま (兄弟として並ぶ)。
         copy.parentId = mappedParent == extracted.idMap.end() ? node.parentId
                                                               : mappedParent->second;
         copy.editorX += offsetX;
@@ -225,7 +227,7 @@ DuplicateResult DuplicateSubtree(fbzz::ai::BehaviorTreeAsset& asset,
 
     result.idMap = extracted.idMap;
 
-    // 複製した根を親の末尾へ回す (order を採り直す)。
+    /// @note 複製した根を親の末尾へ回す (order を採り直す)。
     const auto rootCopy = extracted.idMap.find(nodeId);
     if (rootCopy != extracted.idMap.end()) {
         result.newRootId    = rootCopy->second;
@@ -245,7 +247,7 @@ void AutoLayout(fbzz::ai::BehaviorTreeAsset& asset)
         if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
     }
 
-    // 木なので列 = 深さがそのまま階層になり、DAG より整った結果になる。
+    /// @note 木なので列 = 深さがそのまま階層になり、DAG より整った結果になる。
     const std::vector<int> roots = asset.FindRootIds();
     GraphLayoutOptions options;
     options.columnStep = kNodeColumnStep;

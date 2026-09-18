@@ -15,7 +15,7 @@
 /// Tick は **レンダラーのフレーム内** で呼ぶこと (FluidGpuSolver と同じ制約)。
 #pragma once
 
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 
 #include <memory>
@@ -40,7 +40,7 @@ public:
 
     /// kind = liquid 以外は失敗。resolution は WriteVolumes が書くボリュームの 1 辺。
     /// radiusScale は描画の半径 (粒子半径に対する倍率。render.liquidRadiusScale)。
-    [[nodiscard]] bool Initialize(renderer::ResourceManager& resources, const FluidRecipe& recipe, int resolution,
+    [[nodiscard]] bool Initialize(renderer::ResourceManager& resources, const fluid::FluidRecipe& recipe, int resolution,
                                   float frameDt, float radiusScale, std::string& outError);
     void Release(renderer::ResourceManager& resources);
 

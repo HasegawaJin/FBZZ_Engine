@@ -17,7 +17,7 @@ using util::FileSystem;
 
 class FileSystemPathTest : public testkit::EngineFixture {};
 
-// --- 分解 -------------------------------------------------------------------
+/// @name 分解
 
 TEST_F(FileSystemPathTest, ExtensionIncludesTheDot)
 {
@@ -48,7 +48,7 @@ TEST_F(FileSystemPathTest, FilenameOfABareNameIsTheNameItself)
 
 TEST_F(FileSystemPathTest, DirectoryKeepsTheTrailingSeparator)
 {
-    // 呼び出し側は連結して使う。末尾を落とすと "Assets/ScenesMain.scene" になる。
+    /// @note 呼び出し側は連結して使う。末尾を落とすと "Assets/ScenesMain.scene" になる。
     EXPECT_EQ(FileSystem::GetDirectory("Assets/Scenes/Main.scene"), "Assets/Scenes/");
     EXPECT_EQ(FileSystem::GetDirectory("Assets\\Scenes\\Main.scene"), "Assets\\Scenes\\");
 }
@@ -58,7 +58,7 @@ TEST_F(FileSystemPathTest, DirectoryIsEmptyForABareName)
     EXPECT_EQ(FileSystem::GetDirectory("Main.scene"), "");
 }
 
-// --- 区切りの正規化 ---------------------------------------------------------
+/// @name 区切りの正規化
 
 TEST_F(FileSystemPathTest, NormalisesBackslashesToForwardSlashes)
 {
@@ -73,7 +73,7 @@ TEST_F(FileSystemPathTest, TrimsTrailingSlashesByDefault)
 
 TEST_F(FileSystemPathTest, KeepsTrailingSlashesWhenAsked)
 {
-    // ルート表現 ("<proj>/Assets/") は末尾のスラッシュ込みで意味を持つ。
+    /// @note ルート表現 (`"<proj>/Assets/"`) は末尾のスラッシュ込みで意味を持つ。
     EXPECT_EQ(FileSystem::NormalizePathSeparators("Assets/Scenes/", false), "Assets/Scenes/");
 }
 
@@ -89,11 +89,11 @@ TEST_F(FileSystemPathTest, NormalisationIsIdempotent)
     EXPECT_EQ(FileSystem::NormalizePathSeparators(once), once);
 }
 
-// --- 同一判定 ---------------------------------------------------------------
+/// @name 同一判定
 
 TEST_F(FileSystemPathTest, SamePathIgnoresSeparatorStyleAndCase)
 {
-    // Windows のパスは大文字小文字を区別しない。同じ実体を別参照にしない。
+    /// @note Windows のパスは大文字小文字を区別しない。同じ実体を別参照にしない。
     EXPECT_TRUE(FileSystem::SamePathText("Assets/Scenes/Main.scene",
                                          "assets\\scenes\\MAIN.SCENE"));
 }
@@ -109,7 +109,7 @@ TEST_F(FileSystemPathTest, SamePathRejectsDifferentFiles)
                                           "Assets/Scenes/Title.scene"));
 }
 
-// --- 配下判定 ---------------------------------------------------------------
+/// @name 配下判定
 
 TEST_F(FileSystemPathTest, ChildPathAcceptsTheRootItself)
 {
@@ -124,13 +124,13 @@ TEST_F(FileSystemPathTest, ChildPathAcceptsNestedPaths)
 
 TEST_F(FileSystemPathTest, ChildPathRejectsASiblingWithASharedPrefix)
 {
-    // "Assets/Scenes2" は "Assets/Scenes" の配下ではない。素の前方一致だと通ってしまう。
+    /// @note "Assets/Scenes2" は "Assets/Scenes" の配下ではない。素の前方一致だと通ってしまう。
     EXPECT_FALSE(FileSystem::IsChildPathText("Assets/Scenes2/Main.scene", "Assets/Scenes"));
 }
 
 TEST_F(FileSystemPathTest, ChildPathRejectsAnythingWhenTheRootIsEmpty)
 {
-    // 空ルートを «全部が配下» と解釈すると、マウント外のファイルまで書き込み対象になる。
+    /// @note 空ルートを «全部が配下» と解釈すると、マウント外のファイルまで書き込み対象になる。
     EXPECT_FALSE(FileSystem::IsChildPathText("Assets/Scenes/Main.scene", ""));
 }
 

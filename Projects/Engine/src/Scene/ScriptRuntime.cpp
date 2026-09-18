@@ -14,8 +14,8 @@ ScriptRuntime* ScriptRuntime::s_override = nullptr;
 ScriptRuntime ScriptRuntime::GetCurrent()
 {
     if (s_override) {
-        // Editor のオーバーライドをそのまま使う。
-        // viewportWidth/Height が 0 のときは renderer にフォールバック。
+        /// @note Editor のオーバーライドをそのまま使う。
+        ///       viewportWidth/Height が 0 のときは renderer にフォールバック。
         ScriptRuntime rt = *s_override;
         if ((rt.viewportWidth == 0 || rt.viewportHeight == 0) && rt.renderer) {
             if (rt.viewportWidth  == 0) rt.viewportWidth  = rt.renderer->GetWidth();
@@ -24,7 +24,7 @@ ScriptRuntime ScriptRuntime::GetCurrent()
         return rt;
     }
 
-    // Standalone / デフォルト: Application のサブシステムをそのまま使う。
+    /// @note Standalone / デフォルト: Application のサブシステムをそのまま使う。
     auto& app = core::Application::Get();
     auto& ren = app.GetRenderer();
     return ScriptRuntime{

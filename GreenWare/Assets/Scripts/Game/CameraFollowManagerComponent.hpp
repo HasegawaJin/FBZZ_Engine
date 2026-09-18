@@ -3,21 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY 追従を緩めると手触りが出るか:
-///   カメラがプレイヤーへ常に密着していると、画面の中でプレイヤーはほとんど動かない。
-///   跳んでも回避しても、動いているのは背景だけになり、動作の大きさが伝わらない。
-///   その瞬間だけ追従を緩めると、プレイヤーが画面の中を移動する。跳んだ高さも
-///   回避の距離も、画面内での変位として初めて目に見える。
-///
-/// WHY 揺れと同じくカメラの外に置くか:
-///   緩めたい側 (ジャンプ・回避・被弾・ボスの登場) は、カメラが指数補間なのか
-///   バネなのかを知らなくてよい。カメラは誰がなぜ緩めたいのかを知らなくてよい。
-///   CameraShakeManagerComponent と同じ形にして、要求の出し方を 1 つに揃える。
-///
-/// WHY 緩めるのは即座・戻すのは滑らかか:
-///   踏み切りの瞬間に緩みが遅れて効くと、一番見せたい立ち上がりを逃す。
-///   逆に着地でいきなり密着へ戻すと、カメラが飛んで見える。
-///   非対称にすると、始まりは鋭く終わりは静かになる。
+/// @note カメラが常に密着しているとプレイヤーは画面内でほとんど動かず、跳躍や回避の大きさが伝わらない。瞬間的に緩めることで画面内変位として見える。
+/// @note 緩めたい側 (ジャンプ・回避・被弾・ボス登場) はカメラの補間方式を知らず、カメラも要求元を知らない。`CameraShakeManagerComponent` と同じ形に揃える。
+/// @note 緩めは即座・戻しは滑らかの非対称。立ち上がりが遅れると見せ場を逃し、戻しが急だとカメラが飛んで見える。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -46,9 +34,7 @@ public:
     FBZZ_FIELD_RANGE_INT(int, maxRequests, 8, "要求の上限", 1, 32)
     FBZZ_TOOLTIP("同時に保持する要求の本数。超えたら最も弱いものから捨てる")
 
-    // WHY 画角の張り出しもここが持つか: 「その瞬間だけ画面の見え方を広げて衝撃を伝える」
-    //     という点で、たるみとまったく同じ役割の値になる。カメラは合成済みの数字を
-    //     読むだけ、要求する側は追従の作りを知らなくてよい、という形を崩さない。
+    /// @note 画角の張り出しも「瞬間的に広げて衝撃を伝える」点でたるみと同じ役割のため、ここで一緒に持つ。カメラは合成済みの数字を読むだけの形を崩さない。
     FBZZ_GROUP("FOV の跳ね")
     FBZZ_FIELD_RANGE(float, burstDegrees, 7.0f, "Burst Degrees", 0.0f, 30.0f)
     FBZZ_TOOLTIP("強さ 1.0 の要求で広がる画角 (度)")
@@ -132,12 +118,12 @@ inline void CameraFollowManagerComponent::PunchFov(float strength01)
     const float amount = Clamp01(strength01) * std::max(burstDegrees, 0.0f);
     if (amount <= 0.0f) return;
 
-    // 強い方を採る。足すと連発で画角が開ききり、何が起きても同じ絵になる。
+    /// @note 強い方を採る。足すと連発で画角が開ききり、何が起きても同じ絵になる。
     m_fovTarget = std::max(m_fovTarget, amount);
     m_fovAttackRemaining = std::max(burstAttack, 0.0f);
 
-    // 立ち上がり 0 は「1 フレームで飛ぶ」の意味。残り時間が 0 のままだと
-    // 次の更新がいきなり戻し始めるので、ここで開いておく。
+    /// @note 立ち上がり 0 は「1 フレームで飛ぶ」の意味。残り時間が 0 のままだと
+    ///       次の更新がいきなり戻し始めるので、ここで開いておく。
     if (m_fovAttackRemaining <= 0.0f) m_fovOffset = m_fovTarget;
 }
 
@@ -148,8 +134,8 @@ inline void CameraFollowManagerComponent::Loosen(float horizontal01, float verti
     const float vertical   = Clamp01(vertical01);
     if (duration <= 0.0f || (horizontal <= 0.0f && vertical <= 0.0f)) return;
 
-    // 毎フレーム呼び直す使い方が前提なので、同じ強さの要求が溜まっても
-    // 合成は最大値で行う。本数の上限は暴走したときの保険でしかない。
+    /// @note 毎フレーム呼び直す使い方が前提なので、同じ強さの要求が溜まっても
+    ///       合成は最大値で行う。本数の上限は暴走したときの保険でしかない。
     if (static_cast<int>(m_requests.size()) >= std::max(maxRequests, 1)) {
         const auto weakest = std::min_element(
             m_requests.begin(), m_requests.end(),
@@ -167,13 +153,10 @@ inline void CameraFollowManagerComponent::Loosen(float horizontal01, float verti
 
 inline void CameraFollowManagerComponent::OnLateUpdate()
 {
-    // WHY 実時間で数えるか: ヒットストップ中に緩みまで止まると、止めが解けた瞬間に
-    //     カメラが一気に追い付く。止めている間も緩みは進めておく。
+    /// @note 実時間で進める。ヒットストップ中に緩みまで止まると、止めが解けた瞬間にカメラが一気に追い付いてしまう。
     const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
 
-    // WHY 合成が加算ではなく最大値か: たるみは倍率であって量ではない。回避と
-    //     ジャンプが重なったときに足すと 1 を超え、意味が消える。
-    //     「一番緩めたい要求」がその軸を決める、が素直な合成になる。
+    /// @note 合成は加算でなく最大値。たるみは倍率のため、回避とジャンプが重なると加算では 1 を超えて意味が消える。
     float targetHorizontal = 0.0f;
     float targetVertical   = 0.0f;
     for (auto it = m_requests.begin(); it != m_requests.end();) {
@@ -194,8 +177,8 @@ inline void CameraFollowManagerComponent::OnLateUpdate()
     m_horizontal = approach(m_horizontal, targetHorizontal);
     m_vertical   = approach(m_vertical, targetVertical);
 
-    // 画角は「素早く広がってゆっくり戻る」。たるみと同じ非対称で、
-    // 立ち上がりを逃さず、戻りでカメラが飛んで見えないようにする。
+    /// @note 画角は「素早く広がってゆっくり戻る」。たるみと同じ非対称で、
+    ///       立ち上がりを逃さず、戻りでカメラが飛んで見えないようにする。
     if (m_fovAttackRemaining > 0.0f) {
         m_fovAttackRemaining = std::max(0.0f, m_fovAttackRemaining - dt);
         const float rate = burstAttack <= EPSILON ? 1.0f

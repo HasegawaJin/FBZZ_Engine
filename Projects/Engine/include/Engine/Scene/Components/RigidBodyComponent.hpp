@@ -15,13 +15,12 @@ namespace fbzz::scene {
 
 class GameObject;
 
-// 質量の決め方。
-// WHY 既定を Manual にするか: 既存シーンの剛体はすべて手入力の質量で調整済みで、
-//     自動計算を既定にすると開いた瞬間に全部の重さが変わる。密度からの算出は
-//     「そうしたい剛体だけ」が明示的に選ぶ、オプトインの機能にする。
+/// 質量の決め方。
+/// @note 既定 Manual: 既存シーンの剛体はすべて手入力の質量で調整済みで、自動計算を既定に
+///       すると開いた瞬間に全部の重さが変わる。密度からの算出はオプトインの機能にする。
 enum class MassMode {
-    Manual = 0,     // mass を直接指定する (従来どおり)
-    FromDensity,    // コライダー体積 × PhysicsMaterial.density から毎回算出する
+    Manual = 0,     ///< mass を直接指定する (従来どおり)
+    FromDensity,    ///< コライダー体積 × PhysicsMaterial.density から毎回算出する
 };
 
 struct RigidBodyComponent {
@@ -30,17 +29,25 @@ struct RigidBodyComponent {
     bool enabled = true;
 
     MassMode massMode = MassMode::Manual;
-    // FromDensity で算出された質量の記録 (読み取り専用の表示用)。
-    // WHY 保持するか: Inspector で「密度からいくつになったか」が見えないと、
-    //     数値が妥当かどうかをオーサリング中に判断できない。
+    /// FromDensity で算出された質量の記録 (読み取り専用の表示用)。
+    /// @note Inspector で「密度からいくつになったか」が見えないと、数値が妥当かどうかを
+    ///       オーサリング中に判断できないため保持する。
     float computedMass = 0.0f;
 
-    // Transform から物理へ明示的にテレポートされたかを検出するための最後の同期姿勢。
-    // 表示用の別姿勢は持たず、world Transform と physics::RigidBody を同じ確定値で扱う。
+    /// 媒質 (風・水流) との結合係数 [1/s]。FlowVolume が F = k * m * (v_flow - v) で使う。
+    /// @note 既定 0 = 流れを受けない (オプトイン)。既定で全剛体が風に流されると、
+    ///       置いてある箱や敵が勝手に動き出す。受けるかどうかは体ごとに宣言する。
+    /// @note 正本はここ。PhysicsSystem が毎フレーム physics::RigidBody へ押し込む
+    ///       (massMode と同じ «コンポーネントが持ち、System が押し込む» 形)。
+    /// @see Docs/design/flow-field.md §2
+    float flowCoupling = 0.0f;
+
+    /// Transform から物理へ明示的にテレポートされたかを検出するための最後の同期姿勢。
+    /// 表示用の別姿勢は持たず、world Transform と physics::RigidBody を同じ確定値で扱う。
     math::Vector3 lastPhysicsPosition = math::Vector3::ZERO;
     math::Quaternion lastPhysicsRotation = math::Quaternion::Identity();
-    // 可変フレームの描画だけが fixed step の段差を跨がないよう、直前の確定姿勢を保持する。
-    // Physics / Collider は常に lastPhysics* を使い、これらは描画補間専用である。
+    /// 可変フレームの描画だけが fixed step の段差を跨がないよう、直前の確定姿勢を保持する。
+    /// Physics / Collider は常に lastPhysics* を使い、これらは描画補間専用である。
     math::Vector3 previousPhysicsPosition = math::Vector3::ZERO;
     math::Quaternion previousPhysicsRotation = math::Quaternion::Identity();
     bool hasPhysicsPoseHistory = false;
@@ -54,6 +61,7 @@ struct RigidBodyComponent {
         , enabled(o.enabled)
         , massMode(o.massMode)
         , computedMass(o.computedMass)
+        , flowCoupling(o.flowCoupling)
     {
         if (rigidBody)
             ResetPhysicsSyncState(rigidBody->GetPosition(), rigidBody->GetRotation());
@@ -66,6 +74,7 @@ struct RigidBodyComponent {
             enabled      = o.enabled;
             massMode     = o.massMode;
             computedMass = o.computedMass;
+            flowCoupling = o.flowCoupling;
             hasPhysicsSyncState = false;
             if (rigidBody)
                 ResetPhysicsSyncState(rigidBody->GetPosition(), rigidBody->GetRotation());
@@ -77,7 +86,7 @@ struct RigidBodyComponent {
 
     const char* GetTypeName() const { return "Rigid Body"; }
 
-    // 生成・複製・テレポート後の物理同期基準を現在姿勢へ揃える。
+    /// 生成・複製・テレポート後の物理同期基準を現在姿勢へ揃える。
     void ResetPhysicsSyncState(const math::Vector3& position,
                                const math::Quaternion& rotation)
     {
@@ -89,7 +98,7 @@ struct RigidBodyComponent {
         hasPhysicsSyncState = true;
     }
 
-    // 物理解決後の確定姿勢を、次回のテレポート検出基準として保存する。
+    /// 物理解決後の確定姿勢を、次回のテレポート検出基準として保存する。
     void CommitPhysicsSyncState(const math::Vector3& position,
                                 const math::Quaternion& rotation)
     {
@@ -113,11 +122,14 @@ struct RigidBodyComponent {
             r.Enum("massMode", massModeIndex, kMassModeLabels);
             massMode = static_cast<MassMode>(massModeIndex);
         }
+        /// @note 剛体の有無より前に出す。physics::RigidBody ではなくこのコンポーネントが
+        ///       持つ値なので、rigidBody がまだ無い経路でも保存・復元できる必要がある。
+        r.Field("flowCoupling", flowCoupling);
         if (!rigidBody)
             return;
 
-        // WHY: RigidBody の内部状態は private を含むため、Reflect では一度ローカル値に写し、
-        //      編集後に setter 経由で戻す。これにより質量変更時の invMass / inertia 再計算を保つ。
+        /// @note RigidBody の内部状態は private を含むため、Reflect では一度ローカル値に写し、
+        ///       編集後に setter 経由で戻す。これにより質量変更時の invMass / inertia 再計算を保つ。
         auto& body = *rigidBody;
         bool isStatic = body.IsStatic();
         float mass = body.GetMass();
@@ -127,10 +139,9 @@ struct RigidBodyComponent {
         physics::AxisLock freezeRotation = body.GetFreezeRotation();
 
         r.Field("isStatic", isStatic);
-        // WHY massMode で出し分けないか: Reflect() が返すフィールドの並びは
-        //     リフレクタ実装 (Inspector / AI ブリッジ) 共通の契約で、状態によって形が
-        //     変わると読み手側が壊れやすい。FromDensity で編集を止める UI 表現は、
-        //     実際に人が触る RigidBody の専用 Inspector 側が担当する。
+        /// @note massMode で出し分けないのは、Reflect() が返すフィールドの並びがリフレクタ実装
+        ///       (Inspector / AI ブリッジ) 共通の契約で、状態によって形が変わると読み手側が
+        ///       壊れやすいため。FromDensity で編集を止める UI 表現は専用 Inspector 側が担当する。
         r.Field("mass", mass);
         r.Field("velocity", velocity);
         r.Field("angularVelocity", angularVelocity);

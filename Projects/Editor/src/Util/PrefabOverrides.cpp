@@ -19,15 +19,10 @@ namespace fbzz::editor {
 
 namespace {
 
-// 差分の対象外にするキー。
-//
-// WHY: これらはインスタンス化のたびに必ず作り替えられるため、差分として出すと
-//      「全インスタンスが常に override だらけ」になり、一覧が意味を失う。
-//        instanceId / parentInstanceId : インスタンスごとに新規採番
-//        name / parent                 : UniqueName で "Box (1)" のように一意化される
-//        prefabAssetPath/prefabSourceId: リンク情報そのもの
-//      末尾が "Guid" のキー (targetGuid / poleGuid / skinnedMeshOwnerGuid) も
-//      Instantiate がリマップするため同様に除外する。
+/// @brief 差分の対象外にするキー。
+/// @note インスタンス化のたびに作り替えられる値 (instanceId 系の採番、name の UniqueName 化、
+///       prefab へのリンク情報、末尾が "Guid" の各種参照) を除く。含めると全インスタンスが
+///       常に override だらけになり一覧が意味を失う。
 bool IsIdentityKey(std::string_view key)
 {
     static constexpr std::string_view kExcluded[] = {
@@ -46,10 +41,9 @@ std::string JoinPath(const std::string& prefix, std::string_view key)
     return prefix + "." + std::string(key);
 }
 
-// 2 つの node を「値として同じか」で比べる。
-// WHY: toml++ の node には汎用の等値比較が無い。配列やテーブルまで含めて厳密に
-//      比較したいので、シリアライズ表現を突き合わせる。ここは差分検出のたびに
-//      走るが、対象は 1 プロパティぶんの小さな node なのでコストは問題にならない。
+/// @brief 2 つの node を「値として同じか」で比べる。
+/// @note toml++ の node に汎用の等値比較が無いため、シリアライズ表現を突き合わせる。
+///       差分検出のたびに走るが対象は 1 プロパティぶんの小さな node なのでコストは問題ない。
 std::string NodeToString(const toml::node& node)
 {
     std::ostringstream ss;
@@ -63,7 +57,7 @@ bool NodesEqual(const toml::node& lhs, const toml::node& rhs)
     return NodeToString(lhs) == NodeToString(rhs);
 }
 
-// prefabTable と instanceTable を再帰的に比べ、差分を entries へ積む。
+/// prefabTable と instanceTable を再帰的に比べ、差分を entries へ積む。
 void DiffTables(const toml::table& prefabTable,
                 const toml::table& instanceTable,
                 const std::string& pathPrefix,
@@ -72,7 +66,7 @@ void DiffTables(const toml::table& prefabTable,
                 const std::string& objectName,
                 std::vector<PrefabOverride>& entries)
 {
-    // インスタンス側にある / 変わったキーを見る。
+    /// @note インスタンス側にある / 変わったキーを見る。
     for (const auto& [keyView, instanceNode] : instanceTable) {
         const std::string_view key = keyView.str();
         if (IsIdentityKey(key)) continue;
@@ -80,7 +74,7 @@ void DiffTables(const toml::table& prefabTable,
         const std::string path = JoinPath(pathPrefix, key);
         const toml::node* prefabNode = prefabTable.get(key);
 
-        // 入れ子テーブルは 1 段掘る (コンポーネント単位ではなくプロパティ単位で出すため)。
+        /// @note 入れ子テーブルは 1 段掘る (コンポーネント単位ではなくプロパティ単位で出すため)。
         if (instanceNode.is_table() && prefabNode && prefabNode->is_table()) {
             DiffTables(*prefabNode->as_table(), *instanceNode.as_table(),
                        path, prefabSourceId, instanceGuid, objectName, entries);
@@ -99,7 +93,7 @@ void DiffTables(const toml::table& prefabTable,
         entries.push_back(std::move(ov));
     }
 
-    // プレファブ側にあってインスタンス側に無いキー (コンポーネントを外した等)。
+    /// @note プレファブ側にあってインスタンス側に無いキー (コンポーネントを外した等)。
     for (const auto& [keyView, prefabNode] : prefabTable) {
         const std::string_view key = keyView.str();
         if (IsIdentityKey(key)) continue;
@@ -116,7 +110,7 @@ void DiffTables(const toml::table& prefabTable,
     }
 }
 
-// rootEntity 以下の GO を GUID で集める。
+/// rootEntity 以下の GO を GUID で集める。
 void CollectHierarchyGuids(scene::GameObject& go, std::unordered_set<std::string>& out)
 {
     if (!go.instanceId.empty()) out.insert(go.instanceId);
@@ -132,7 +126,7 @@ std::string FormatNodeForDisplay(const toml::node* node)
     if (!node) return "(none)";
 
     std::string text = NodeToString(*node);
-    // 1 行に収める (配列やインラインテーブルの改行を潰す)。
+    /// @note 1 行に収める (配列やインラインテーブルの改行を潰す)。
     std::string oneLine;
     oneLine.reserve(text.size());
     bool lastWasSpace = false;
@@ -146,7 +140,7 @@ std::string FormatNodeForDisplay(const toml::node* node)
         }
         oneLine.push_back(ch);
     }
-    // substr はバイトで切るので、日本語の値が «□» で終わる。文字境界まで戻す。
+    /// @note substr はバイトで切るので、日本語の値が «□» で終わる。文字境界まで戻す。
     constexpr std::size_t kMaxLen = 64;
     return util::StringUtils::TruncateUtf8(oneLine, kMaxLen);
 }
@@ -162,7 +156,7 @@ bool ComputePrefabOverrides(scene::Scene& scene,
     if (!root || root->prefabAssetPath.empty()) return false;
     out.prefabAssetPath = root->prefabAssetPath;
 
-    // ── プレファブ定義を読む ────────────────────────────────────────────────
+    /// @name プレファブ定義を読む
     const std::string diskPath = ToProjectAssetDiskPath(projectRoot, root->prefabAssetPath);
     std::string prefabText;
     if (!util::FileSystem::ReadText(diskPath, prefabText)) return false;
@@ -181,9 +175,9 @@ bool ComputePrefabOverrides(scene::Scene& scene,
     }
     if (prefabById.empty()) return false;
 
-    // ── インスタンス側の現在状態をシリアライズして拾う ──────────────────────
-    // WHY: ランタイム構造体を直接比べず、保存されるのと同じ表現で比べる。
-    //      Save したら消える差分を override として出さないため。
+    /// @name インスタンス側の現在状態をシリアライズして拾う
+    /// @note ランタイム構造体を直接比べず、保存されるのと同じ表現で比べる。
+    ///       Save したら消える差分を override として出さないため。
     std::unordered_set<std::string> hierarchyGuids;
     CollectHierarchyGuids(*root, hierarchyGuids);
 
@@ -203,7 +197,8 @@ bool ComputePrefabOverrides(scene::Scene& scene,
         if (instanceGuid.empty() || !hierarchyGuids.contains(instanceGuid)) continue;
 
         const std::string sourceId = (*tbl)["prefabSourceId"].value_or(std::string{});
-        if (sourceId.empty()) continue;   // 旧アセット由来 / 手で足した子は対応先が無い
+        /// @note 旧アセット由来 / 手で足した子は対応先が無い
+        if (sourceId.empty()) continue;
 
         const auto found = prefabById.find(sourceId);
         if (found == prefabById.end()) continue;

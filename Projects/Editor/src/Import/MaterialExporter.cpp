@@ -38,9 +38,8 @@ constexpr TexSlot kTexSlots[] = {
     { aiTextureType_EMISSIVE,          "emissive"  },
 };
 
-// 圧縮済み埋め込みテクスチャをデコードする。
-// WHY: 同梱 DirectXTex.lib は WIC/TGA/HDR のメモリローダーを含まないため、
-//      DDS 以外は内部リンケージの stb_image 実装を利用する。
+/// @brief 圧縮済み埋め込みテクスチャをデコードする。
+/// @note DirectXTex.lib は WIC/TGA/HDR のメモリローダーを含まないため、DDS 以外は stb_image を使う。
 bool DecodeEmbeddedTexture(const aiTexture* texture, DirectX::ScratchImage& decoded)
 {
     std::string format(texture->achFormatHint, strnlen(texture->achFormatHint, 4));
@@ -80,13 +79,13 @@ bool DecodeEmbeddedTexture(const aiTexture* texture, DirectX::ScratchImage& deco
     return true;
 }
 
-// FBX 埋め込みテクスチャを必ず PNG として保存する。
-// WHAT: mHeight == 0 は圧縮バイト列、それ以外は aiTexel(BGRA8888) 配列として扱う。
+/// @brief FBX 埋め込みテクスチャを必ず PNG として保存する。
+/// @note mHeight == 0 は圧縮バイト列、それ以外は aiTexel (BGRA8888) 配列として扱う。
 std::string DumpEmbeddedAsPng(const aiTexture* texture,
                               int textureIndex,
                               const std::string& texturesDir)
 {
-    // 元名を残すことで normal/roughness 等の型推定を維持し、index で同名衝突を避ける。
+    /// @note 元名を残すことで normal/roughness 等の型推定を維持し、index で同名衝突を避ける。
     std::string fileStem = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(texture->mFilename.C_Str()).stem());
     if (fileStem.empty()) fileStem = "embedded";
@@ -128,9 +127,8 @@ std::string DumpEmbeddedAsPng(const aiTexture* texture,
 
     if (!image) return {};
 
-    // WHY: textures/ の作成はここまで遅延させる。呼び出し側で先に掘ってしまうと、
-    //      埋め込みテクスチャが 1 枚も無い FBX や、デコードに失敗した FBX でも
-    //      空フォルダだけが残ってしまう。実際に書き出す直前に親を用意する。
+    /// @note textures/ の作成はここまで遅延させる。先に掘ると、埋め込みテクスチャが無い/デコード失敗の
+    ///       FBX でも空フォルダだけが残るため、書き出す直前に親を用意する。
     if (!util::FileSystem::EnsureParentDirectory(outPath)) return {};
 
     if (FAILED(DirectX::SaveToWICFile(*image, DirectX::WIC_FLAGS_NONE,
@@ -139,28 +137,27 @@ std::string DumpEmbeddedAsPng(const aiTexture* texture,
     return filename;
 }
 
-// テクスチャを解決して texturesDir にコピーし、ファイル名 (basename) を返す。
+/// テクスチャを解決して texturesDir にコピーし、ファイル名 (basename) を返す。
 std::string ResolveTexture(const aiScene* scene,
                             const std::string& rawPath,
                             const std::string& fbxDir,
                             const std::string& fbxBaseName,
                             const std::string& texturesDir)
 {
-    // WHY: ここで texturesDir を掘らない。参照が解決できなければ 1 枚もコピーされず、
-    //      空フォルダだけが残る。実際の書き出しは DumpEmbeddedAsPng と
-    //      FileSystem::CopyFile が行い、どちらも書き込み直前に親ディレクトリを作る。
+    /// @note ここで texturesDir を掘らない。参照が解決できなければ空フォルダだけが残るため、書き出しを行う
+    ///       DumpEmbeddedAsPng と FileSystem::CopyFile 側で書き込み直前に親ディレクトリを作る。
 
-    // Assimp は埋め込みを "*0" または元ファイル名で返すため、両形式を公式 API で解決する。
+    /// @note Assimp は埋め込みを "*0" または元ファイル名で返すため、両形式を公式 API で解決する。
     const auto [embedded, embeddedIndex] = scene->GetEmbeddedTextureAndIndex(rawPath.c_str());
     if (embedded && embeddedIndex >= 0)
         return DumpEmbeddedAsPng(embedded, embeddedIndex, texturesDir);
 
-    // 外部ファイル → texturesDir にコピー
+    /// @note 外部ファイル → texturesDir にコピー
     fs::path srcPath = util::FileSystem::PathFromUtf8(rawPath);
     if (srcPath.is_relative()) srcPath = util::FileSystem::PathFromUtf8(fbxDir) / srcPath;
     if (!util::FileSystem::Exists(srcPath)) {
-        // WHY: DCC が絶対パスを書いた FBX では原本の場所を再現できない。実体が残っているのは
-        //      FBX の隣か、FBX SDK が埋め込みメディアを展開した "<FBX名>.fbm/" のどちらか。
+        /// @note DCC が絶対パスを書いた FBX では原本の場所を再現できない。実体は FBX の隣か、
+        ///       FBX SDK が埋め込みメディアを展開した `"<FBX名>.fbm/"` のどちらかに残っている。
         const fs::path fbxFsDir = util::FileSystem::PathFromUtf8(fbxDir);
         const fs::path candidates[] = {
             fbxFsDir / srcPath.filename(),
@@ -183,9 +180,8 @@ std::string ResolveTexture(const aiScene* scene,
     return util::FileSystem::CopyFile(srcPath, dest) ? filename : std::string{};
 }
 
-// OpenGL 形式の法線マップ (Y 下向き) を DirectX 形式 (Y 上向き) に変換する。
-// WHY: Blender/Maya のデフォルト書き出しが OpenGL 座標系のため、
-//      DirectX エンジンで使用すると法線の Y 成分が反転して凸凹が逆になる。
+/// @brief OpenGL 形式の法線マップ (Y 下向き) を DirectX 形式 (Y 上向き) に変換する。
+/// @note Blender/Maya の既定書き出しは OpenGL 座標系のため、DirectX で使うと Y 成分が反転し凸凹が逆になる。
 bool FlipNormalMapGreen(const fs::path& texPath)
 {
     DirectX::ScratchImage image;
@@ -216,10 +212,10 @@ bool MaterialExporter::Export(const aiMaterial* material,
                                   bool skinned,
                                   bool flipGreenChannel)
 {
-    // マテリアルの既知スロットに現れない画像も含め、FBX 内包テクスチャを全て PNG 化する。
-    // WHY: Assimp が UNKNOWN/HEIGHT 等へ分類した画像も import package から欠落させない。
-    // WHY (ディレクトリを掘らない): mNumTextures == 0 の FBX ではループが 1 度も回らない。
-    //      ここで EnsureDirectory すると空の textures/ だけが残る。作成は DumpEmbeddedAsPng に任せる。
+    /// @note マテリアルの既知スロットに現れない画像も含め、FBX 内包テクスチャを全て PNG 化する
+    ///       (Assimp が UNKNOWN/HEIGHT 等へ分類した画像も欠落させないため)。
+    /// @note ここでディレクトリを掘らない。mNumTextures == 0 だとループが回らず空の textures/ だけが
+    ///       残るため、作成は DumpEmbeddedAsPng に任せる。
     for (uint32_t textureIndex = 0; textureIndex < scene->mNumTextures; ++textureIndex) {
         if (DumpEmbeddedAsPng(scene->mTextures[textureIndex],
                               static_cast<int>(textureIndex), texturesDir).empty())
@@ -231,7 +227,7 @@ bool MaterialExporter::Export(const aiMaterial* material,
     tbl.insert("shader", skinned
         ? std::string{ "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl" }
         : std::string{ "Assets/Shaders/Material/Surface/PBR.hlsl" });
-    // 通常材質の描画経路はプロジェクト設定が決めるため、インポート時に固定しない。
+    /// @note 通常材質の描画経路はプロジェクト設定が決めるため、インポート時に固定しない。
     tbl.insert("render_path", std::string{ "auto" });
     tbl.insert("mesh_type", skinned ? std::string{ "skinned" } : std::string{ "surface" });
 
@@ -251,8 +247,8 @@ bool MaterialExporter::Export(const aiMaterial* material,
     material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
     paramsTbl.insert("metallic",  metallic);
     paramsTbl.insert("roughness", roughness);
-    // 拡張 PBR ローブは既存 FBX の外観を変えないよう無効値で初期化し、
-    // 必要なマテリアルだけが .mat 上で有効化できるようにする。
+    /// @note 拡張 PBR ローブは既存 FBX の外観を変えないよう無効値で初期化し、
+    ///       必要なマテリアルだけが .mat 上で有効化できるようにする。
     paramsTbl.insert("clearcoat",          0.0f);
     paramsTbl.insert("clearcoatRoughness", 0.10f);
     paramsTbl.insert("sheen",              0.0f);
@@ -272,8 +268,8 @@ bool MaterialExporter::Export(const aiMaterial* material,
                         util::FileSystem::PathFromUtf8(texturesDir) / filename;
                     FlipNormalMapGreen(fullPath);
                 }
-                // マテリアルは元画像を直接参照する。インポート設定は元画像隣の
-                // "<画像>.meta" サイドカーが担うため、.mat 側は source を指すだけでよい。
+                /// @note マテリアルは元画像を直接参照する。インポート設定は元画像隣の
+                ///       "<画像>.meta" サイドカーが担うため、.mat 側は source を指すだけでよい。
                 texTbl.insert(slot.key, filename);
             }
         }

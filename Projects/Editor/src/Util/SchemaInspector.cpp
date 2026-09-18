@@ -20,7 +20,7 @@ namespace {
 using reflection::PropertyDesc;
 using reflection::PropertyType;
 
-// leaf の値を型付きで取り出す。型が食い違う (スキーマ側の宣言ミス) 場合は fallback を返す。
+/// leaf の値を型付きで取り出す。型が食い違う (スキーマ側の宣言ミス) 場合は fallback を返す。
 template<typename T>
 T ReadValue(const PropertyDesc& property, const void* owner, const T& fallback)
 {
@@ -45,8 +45,8 @@ std::string JoinPath(std::string_view prefix, std::string_view key)
     return joined;
 }
 
-// skipPaths は前方一致で判定する。"particle.colorGradient" のような親指定で
-// その配下をまとめて手書き UI へ委ねられるようにするため。
+/// skipPaths は前方一致で判定する。"particle.colorGradient" のような親指定で
+/// その配下をまとめて手書き UI へ委ねられるようにするため。
 bool IsSkipped(const std::vector<std::string>& skipPaths, const std::string& path)
 {
     for (const std::string& skip : skipPaths) {
@@ -58,7 +58,7 @@ bool IsSkipped(const std::vector<std::string>& skipPaths, const std::string& pat
     return false;
 }
 
-// 数値レンジが宣言されていればゲージ付きフィールド、なければ自由入力の DragFloat を使う。
+/// 数値レンジが宣言されていればゲージ付きフィールド、なければ自由入力の DragFloat を使う。
 bool DrawFloat(const PropertyDesc& property, void* owner, const char* label)
 {
     float value = ReadValue<float>(property, owner, 0.0f);
@@ -73,8 +73,8 @@ bool DrawInt(const PropertyDesc& property, void* owner, const char* label)
     int value = ReadValue<int>(property, owner, 0);
     bool changed = false;
     if (property.range.enabled) {
-        // レンジ宣言があるなら float 版と同じゲージ付きフィールドで描く
-        // (同じスキーマ Inspector の中で範囲付き数値の見た目を 1 つに保つ)。
+        /// @note レンジ宣言があるなら float 版と同じゲージ付きフィールドで描く
+        ///       (同じスキーマ Inspector の中で範囲付き数値の見た目を 1 つに保つ)。
         const int minimum = static_cast<int>(property.range.minimum);
         const int maximum = static_cast<int>(property.range.maximum);
         changed = RangeField(label, value, minimum, maximum);
@@ -84,7 +84,7 @@ bool DrawInt(const PropertyDesc& property, void* owner, const char* label)
     return changed && WriteValue(property, owner, value);
 }
 
-// 値名があれば Combo、無ければ数値のまま。名前の欠落で編集不能にはしない。
+/// 値名があれば Combo、無ければ数値のまま。名前の欠落で編集不能にはしない。
 bool DrawEnum(const PropertyDesc& property, void* owner, const char* label)
 {
     int value = ReadValue<int>(property, owner, 0);
@@ -94,7 +94,7 @@ bool DrawEnum(const PropertyDesc& property, void* owner, const char* label)
     const auto nameAt = [&property](int index) -> const char* {
         if (index < 0 || static_cast<std::size_t>(index) >= property.enumNames.size())
             return "<invalid>";
-        // string_view は非終端の可能性があるが、ここは静的な文字列リテラル由来なので安全。
+        /// @note string_view は非終端の可能性があるが、ここは静的な文字列リテラル由来なので安全。
         return property.enumNames[static_cast<std::size_t>(index)].data();
     };
 
@@ -113,7 +113,7 @@ bool DrawEnum(const PropertyDesc& property, void* owner, const char* label)
 
 bool DrawLeaf(const PropertyDesc& property, void* owner, const std::string& projectRoot)
 {
-    // 表示名は string_view だが、由来は静的文字列リテラルなので data() をそのまま使える。
+    /// @note 表示名は string_view だが、由来は静的文字列リテラルなので data() をそのまま使える。
     const char* label = property.display.empty() ? property.key.data() : property.display.data();
 
     switch (property.type) {
@@ -149,7 +149,7 @@ bool DrawLeaf(const PropertyDesc& property, void* owner, const std::string& proj
     }
     case PropertyType::Curve: {
         scene::ParticleCurve value = ReadValue<scene::ParticleCurve>(property, owner, {});
-        // 縦軸の上限はレンジ宣言があればそれに合わせる (Size は 1.0、Velocity は 10.0 等)。
+        /// @note 縦軸の上限はレンジ宣言があればそれに合わせる (Size は 1.0、Velocity は 10.0 等)。
         const float maximum = property.range.enabled && property.range.maximum > 0.0f
             ? property.range.maximum : 1.0f;
         if (!CurveEditor(label, value, maximum)) return false;
@@ -161,15 +161,15 @@ bool DrawLeaf(const PropertyDesc& property, void* owner, const std::string& proj
         return WriteValue(property, owner, value);
     }
     default:
-        // Vector2 / Quaternion は VFX authoring に登場しないため未対応。
-        // 追加する場合はここへウィジェットを足すだけでよい。
+        /// @note Vector2 / Quaternion は VFX authoring に登場しないため未対応。
+        ///       追加する場合はここへウィジェットを足すだけでよい。
         ImGui::TextDisabled("%s (unsupported type)", label);
         return false;
     }
 }
 
-// 配列 leaf: 要素数の増減と、各要素の入れ子描画。
-// 要素型は常に構造体なので、描画自体は DrawSchemaProperties の再帰へ委ねる。
+/// 配列 leaf: 要素数の増減と、各要素の入れ子描画。
+/// 要素型は常に構造体なので、描画自体は DrawSchemaProperties の再帰へ委ねる。
 bool DrawArray(const PropertyDesc& property, void* owner, const std::string& projectRoot,
                const std::vector<std::string>& skipPaths, const std::string& path)
 {
@@ -189,14 +189,14 @@ bool DrawArray(const PropertyDesc& property, void* owner, const std::string& pro
         changed = property.resizeArray(owner, count + 1);
     }
     ImGui::SameLine();
-    // 空配列で "-" を押しても resize(-1) にならないよう、要素があるときだけ有効にする。
+    /// @note 空配列で "-" を押しても resize(-1) にならないよう、要素があるときだけ有効にする。
     ImGui::BeginDisabled(count == 0);
     if (ImGui::SmallButton("-")) {
         changed = property.resizeArray(owner, count - 1);
     }
     ImGui::EndDisabled();
 
-    // resize でポインタが無効化されうるため、増減があったフレームは要素描画を行わない。
+    /// @note resize でポインタが無効化されうるため、増減があったフレームは要素描画を行わない。
     if (changed) { ImGui::TreePop(); return true; }
 
     for (std::size_t index = 0; index < count; ++index) {

@@ -14,7 +14,7 @@ namespace fbzz::scene {
 
 namespace {
 
-// 1 グループ (必須 or 任意) ぶんの走査。要求名を名前引きして、持っていなければ 1 件積む。
+/// 1 グループ (必須 or 任意) ぶんの走査。要求名を名前引きして、持っていなければ 1 件積む。
 void CollectGroup(GameObject& go,
                   const Script& script,
                   std::span<const std::string> requirements,
@@ -25,7 +25,7 @@ void CollectGroup(GameObject& go,
         if (typeName.empty()) continue;
 
         const ComponentOps* ops = FindComponentOps(typeName);
-        // 登録済みで、かつ実際に付いているなら何も言うことはない。
+        /// @note 登録済みで、かつ実際に付いているなら何も言うことはない。
         if (ops && ops->has && ops->has(go)) continue;
 
         ScriptRequirementIssue issue;
@@ -65,8 +65,8 @@ std::vector<ScriptRequirementIssue> ValidateSceneScriptRequirements(Scene& scene
         if (!sc || !go) continue;
 
         for (const ScriptEntry& entry : sc->scripts) {
-            // 実体が無いもの (Missing Script) は要求を宣言しようがないので飛ばす。
-            // その状態自体は Inspector が別途「Missing Script」として表示している。
+            /// @note 実体が無いもの (Missing Script) は要求を宣言しようがないので飛ばす。
+            ///       その状態自体は Inspector が別途「Missing Script」として表示している。
             if (!entry.script) continue;
             CollectScriptRequirementIssues(*go, *entry.script, issues, includeOptional);
         }
@@ -79,7 +79,7 @@ std::string FormatScriptRequirementIssue(const ScriptRequirementIssue& issue)
 {
     std::string text = issue.objectName + " / " + issue.scriptType + ": ";
     if (issue.unknown) {
-        // 宣言側の誤り。足しても直らないので、文面もそう読めるようにする。
+        /// @note 宣言側の誤り。足しても直らないので、文面もそう読めるようにする。
         text += "unknown component type '" + issue.componentType +
                 "' in FBZZ_REQUIRE_COMPONENT";
         return text;

@@ -3,14 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
 ///
-/// WHY 1 箇所に集めるか:
-///   キャラクターの光る部位はすべて Assets/Materials/Character/M_GlowPart.mat を共有し、
-///   «何色でどれだけ光るか» だけを GameObject 単位の override で決める。
-///   プロパティ名はシェーダー側の変数名と一致していないと MaterialInstance が黙って
-///   書き込みを捨てるため、綴りが 2 箇所にあると片方だけ光らなくなる。
-///
-/// NOTE: MaterialInstance は HLSL リフレクション上の変数名を検証する。.mat 内の別名では
-///       なくシェーダー変数へ合わせること (SkinnedGlowPart.hlsl の cbuffer を参照)。
+/// @note キャラクターの光る部位はすべて Assets/Materials/Character/M_GlowPart.mat を共有し、
+///       «何色でどれだけ光るか» だけを GameObject 単位の override で決める。プロパティ名は
+///       シェーダー側の変数名 (`.mat` 内の別名ではなく SkinnedGlowPart.hlsl の cbuffer) と
+///       一致しないと MaterialInstance が黙って書き込みを捨てる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -22,10 +18,10 @@
 
 namespace sandbox {
 
-// SkinnedGlowPart.hlsl / SkinnedPBR.hlsl 共通の自発光パラメーター。
-//
-// WHY 完全修飾するか: アタッチしないユーティリティは using namespace を持たない
-//     (取り込んだ側の名前解決を汚さないため)。BladeColors.hpp と同じ方針。
+/// SkinnedGlowPart.hlsl / SkinnedPBR.hlsl 共通の自発光パラメーター。
+///
+/// @note 完全修飾する。アタッチしないユーティリティは using namespace を持たない
+///       (取り込んだ側の名前解決を汚さないため)。BladeColors.hpp と同じ方針。
 inline constexpr fbzz::scene::MaterialPropertyId kEmissiveColorId{ "emissiveColor" };
 inline constexpr fbzz::scene::MaterialPropertyId kEmissiveScaleId{ "emissiveScale" };
 
@@ -43,7 +39,7 @@ public:
             const auto& slot = m_slots[i];
             if (slot.path.find(filter) == std::string::npos ||
                 slot.meshName.find(meshFilter) == std::string::npos) continue;
-            // 撃破時の差し替え後は消失シェーダーが色と強度を所有する。
+            /// @note 撃破時の差し替え後は消失シェーダーが色と強度を所有する。
             if (proxy.GetSharedMaterialPath(slot.target, slot.index) != slot.path) continue;
             const auto instance = proxy.Instance(slot.target, slot.index);
             if (!instance.IsValid()) continue;
@@ -87,7 +83,7 @@ public:
         m_cooling += ((cooling ? 1.0f : 0.0f) - m_cooling) * blend;
         hit = std::clamp(hit, 0.0f, 1.0f);
         for (const auto& slot : m_slots) {
-            // 消失材質への切り替え後は死亡演出へ所有権を渡す。
+            /// @note 消失材質への切り替え後は死亡演出へ所有権を渡す。
             if (proxy.GetSharedMaterialPath(slot.target, slot.index) != slot.path) continue;
             const auto instance = proxy.Instance(slot.target, slot.index);
             if (!instance.IsValid()) continue;

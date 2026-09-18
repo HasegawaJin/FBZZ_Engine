@@ -17,13 +17,16 @@ set(REQUIRED_PATHS
     "share/fbzz/Assets/Shaders"
     "include/Engine/Scene/ScriptDllAbi.hpp"
     "include/Physics/World.hpp"
+    "include/Fluid/FluidSolver.hpp"
     "include/Math/Vector3.hpp"
     "lib/${CONFIG}/FBZZMath.lib"
     "lib/${CONFIG}/FBZZPhysics.lib"
+    "lib/${CONFIG}/FBZZFluid.lib"
     "lib/${CONFIG}/FBZZEngine.lib"
     "lib/${CONFIG}/imgui.lib"
     "bin/${CONFIG}/FBZZMath.dll"
     "bin/${CONFIG}/FBZZPhysics.dll"
+    "bin/${CONFIG}/FBZZFluid.dll"
     "bin/${CONFIG}/FBZZEngine.dll"
     "bin/${CONFIG}/imgui.dll"
     # WHY: 作業世代の最新性判定は公開時刻に依存するため、stampの存在もSDK契約に含める。
@@ -56,7 +59,7 @@ if(SDK_ID_POSITION EQUAL -1)
 endif()
 
 file(READ "${SDK_ROOT}/cmake/FBZZ/FBZZTargets.cmake" TARGETS_TEXT)
-foreach(IMPORTED_TARGET "FBZZ::Math" "FBZZ::Physics" "FBZZ::Engine" "FBZZ::ImGui" "FBZZ::TomlPlusPlus")
+foreach(IMPORTED_TARGET "FBZZ::Math" "FBZZ::Physics" "FBZZ::Fluid" "FBZZ::Engine" "FBZZ::ImGui" "FBZZ::TomlPlusPlus")
     string(FIND "${TARGETS_TEXT}" "${IMPORTED_TARGET}" TARGET_POS)
     if(TARGET_POS EQUAL -1)
         message(FATAL_ERROR "FBZZ SDK validation failed: ${IMPORTED_TARGET} is not exported")

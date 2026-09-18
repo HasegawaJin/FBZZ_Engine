@@ -15,7 +15,8 @@
 /// DX12 固有事情:
 /// - GenerateMips が無いため env mip 連鎖は CPU (DirectXTex) で作り GPU へ戻す。
 /// - 即時実行が無いため自前コマンドリスト + フェンスで各フェーズを完全同期する。
-#pragma comment(lib, "ole32.lib") // DirectXTex が WIC を使う経路のための保険
+/// @note DirectXTex が WIC を使う経路のための保険。
+#pragma comment(lib, "ole32.lib")
 
 #include "DX12HdriBaker.hpp"
 
@@ -27,7 +28,8 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
-#include <DirectXTex.h> // d3d12.h (DX12HdriBaker.hpp 経由) の後に include し DX12 版 API を有効化
+/// @note d3d12.h (DX12HdriBaker.hpp 経由) の後に include し DX12 版 API を有効化する。
+#include <DirectXTex.h>
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
@@ -40,11 +42,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// 定数バッファ構造体 (HLSL 側 cbuffer と 1:1 でレイアウトを合わせる)
+/// 定数バッファ構造体 (HLSL 側 cbuffer と 1:1 でレイアウトを合わせる)
 struct alignas(16) CbIblFace {
     uint32_t faceIndex;
     uint32_t textureSize;
-    uint32_t phiSteps;   // IrradianceConvolution の半球積分分割数 (Equirect は 0)
+    uint32_t phiSteps;   ///< IrradianceConvolution の半球積分分割数 (Equirect は 0)
     uint32_t thetaSteps;
 };
 struct alignas(16) CbPrefilter {
@@ -56,20 +58,20 @@ struct alignas(16) CbPrefilter {
     uint32_t pad0, pad1, pad2;
 };
 
-// Compute Root Signature の固定スロット割り当て (DX12PsoCache と一致)
-constexpr uint32_t ROOT_CB0        = 0;   // root CBV b0
-// SRV / UAV テーブルは bindless 移行で撤去済み。添字は b14 (kBindlessIndicesRootParam) で配る。
+/// Compute Root Signature の固定スロット割り当て (DX12PsoCache と一致)
+constexpr uint32_t ROOT_CB0        = 0;   ///< root CBV b0
+/// SRV / UAV テーブルは bindless 移行で撤去済み。添字は b14 (kBindlessIndicesRootParam) で配る。
 
 
 constexpr DXGI_FORMAT CUBE_FORMAT     = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr DXGI_FORMAT EQUIRECT_FORMAT = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
-// Editor DDS ベイクは高品質な半球積分 (DX11 と同じ 200×50=10000 サンプル) を使う。
+/// Editor DDS ベイクは高品質な半球積分 (DX11 と同じ 200×50=10000 サンプル) を使う。
 constexpr uint32_t IRRADIANCE_PHI   = 200;
 constexpr uint32_t IRRADIANCE_THETA = 50;
 
-// shader-visible ヒープと CB リングの容量。1 フェーズ内の全 Dispatch 分を賄えれば十分
-// (BeginRecording でリセットするため、最大フェーズ = irradiance6 + prefilter(6×最大8) + brdf1)。
+/// shader-visible ヒープと CB リングの容量。1 フェーズ内の全 Dispatch 分を賄えれば十分
+/// (BeginRecording でリセットするため、最大フェーズ = irradiance6 + prefilter(6×最大8) + brdf1)。
 constexpr uint32_t DESCRIPTOR_CAPACITY = 512;
 constexpr size_t   CONSTANT_CAPACITY   = 64u * 1024u;
 
@@ -94,7 +96,7 @@ DX12HdriBaker::~DX12HdriBaker()
     if (m_fenceEvent) CloseHandle(m_fenceEvent);
 }
 
-// メインエントリー
+/// メインエントリー
 
 bool DX12HdriBaker::Bake(
     const IblBakeInput& input, const std::string& outputDir,
@@ -118,9 +120,10 @@ bool DX12HdriBaker::Bake(
     std::error_code ec;
     fs::create_directories(util::StringUtils::ToWide(outputDir), ec);
 
-    // ---- Phase 1: Equirect → Env Cubemap mip0 ----
+    /// @name Phase 1: Equirect → Env Cubemap mip0
     Resource equirectTex;
-    Resource equirectUpload; // GPU 完了まで生存させる upload バッファ
+    /// @note GPU 完了まで生存させる upload バッファ
+    Resource equirectUpload;
     Resource envMip0 = CreateCubemap(input.envCubemapSize, 1);
     if (!envMip0) return false;
 
@@ -139,7 +142,7 @@ bool DX12HdriBaker::Bake(
     }
     if (!ExecuteAndWait()) return false;
 
-    // env mip0 を読み戻し、CPU で mip 連鎖を生成する (DX12 は GenerateMips が無いため)。
+    /// @note env mip0 を読み戻し、CPU で mip 連鎖を生成する (DX12 は GenerateMips が無いため)。
     DirectX::ScratchImage envMip0Image;
     if (FAILED(DirectX::CaptureTexture(
             m_context->GetCommandQueue(), envMip0.Get(), /*isCubeMap*/ true, envMip0Image,
@@ -147,19 +150,19 @@ bool DX12HdriBaker::Bake(
         FBZZ_LOG_ERROR("DX12HdriBaker: Env Cubemap の CaptureTexture に失敗しました");
         return false;
     }
-    // 大きい HDRI では equirect / mip0 で数百 MB になり得るため、Phase 2 の割当前に解放する
-    // (CaptureTexture は同期完了済みなので GPU が触り終えている)。
+    /// @note 大きい HDRI では equirect / mip0 で数百 MB になり得るため、Phase 2 の割当前に解放する
+    ///       (CaptureTexture は同期完了済みなので GPU が触り終えている)。
     equirectTex.Reset();
     equirectUpload.Reset();
     envMip0.Reset();
 
     DirectX::ScratchImage envChain;
-    // FANT(=box) の非 WIC パスを強制する。WIC/COM 初期化状態に依存せず、FP16 cube を確実に処理する。
+    /// @note FANT(=box) の非 WIC パスを強制する。WIC/COM 初期化状態に依存せず、FP16 cube を確実に処理する。
     const auto mipFilter = static_cast<DirectX::TEX_FILTER_FLAGS>(
         DirectX::TEX_FILTER_FANT | DirectX::TEX_FILTER_FORCE_NON_WIC);
     if (FAILED(DirectX::GenerateMipMaps(
             envMip0Image.GetImages(), envMip0Image.GetImageCount(), envMip0Image.GetMetadata(),
-            mipFilter, /*levels: 0 = full*/ 0, envChain))) {
+            mipFilter, /*levels=*/0, envChain))) {
         FBZZ_LOG_ERROR("DX12HdriBaker: Env Cubemap の GenerateMipMaps に失敗しました");
         return false;
     }
@@ -173,7 +176,7 @@ bool DX12HdriBaker::Bake(
     const std::string prefilterPath = makePath("_prefilter");
     const std::string brdfPath      = makePath("_brdf");
 
-    // *_env.dds は mip 連鎖付きで保存 (実行時の Skybox/IBL 消費側が LOD を得られるようにする)。
+    /// @note *_env.dds は mip 連鎖付きで保存 (実行時の Skybox/IBL 消費側が LOD を得られるようにする)。
     if (FAILED(DirectX::SaveToDDSFile(
             envChain.GetImages(), envChain.GetImageCount(), envChain.GetMetadata(),
             DirectX::DDS_FLAGS_NONE, util::StringUtils::ToWide(envPath).c_str()))) {
@@ -181,7 +184,7 @@ bool DX12HdriBaker::Bake(
         return false;
     }
 
-    // 畳み込み用に mip 連鎖付き env cube を GPU へ再アップロードする。
+    /// @note 畳み込み用に mip 連鎖付き env cube を GPU へ再アップロードする。
     Resource envCube = CreateCubemap(input.envCubemapSize, envMipCount);
     if (!envCube) return false;
     std::vector<D3D12_SUBRESOURCE_DATA> envSubresources;
@@ -192,15 +195,16 @@ bool DX12HdriBaker::Bake(
         return false;
     }
 
-    // ---- Phase 2: Irradiance / Prefilter / BRDF LUT ----
+    /// @name Phase 2: Irradiance / Prefilter / BRDF LUT
     Resource irradianceCube = CreateCubemap(input.irradianceSize, 1);
     Resource prefilterCube  = CreateCubemap(input.prefilteredSize, input.prefilteredMipCount);
     Resource brdfLut        = CreateLut(input.brdfLutSize);
     if (!irradianceCube || !prefilterCube || !brdfLut) return false;
 
-    Resource envUpload; // env の subresource upload バッファ (GPU 完了まで生存)
+    /// @note env の subresource upload バッファ (GPU 完了まで生存)
+    Resource envUpload;
     BeginRecording();
-    // env cube は CreateCubemap が UAV 状態で作るので、アップロードのため COPY_DEST へ戻す。
+    /// @note env cube は CreateCubemap が UAV 状態で作るので、アップロードのため COPY_DEST へ戻す。
     Transition(envCube.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
     if (!RecordUpload(envCube.Get(), envSubresources.data(),
                       static_cast<uint32_t>(envSubresources.size()), envUpload))
@@ -211,7 +215,7 @@ bool DX12HdriBaker::Bake(
     const uint32_t envSrv = CreateCubeSrv(envCube.Get(), envMipCount);
     if (envSrv == INVALID_BINDLESS_INDEX) return false;
 
-    // Irradiance (6 面)
+    /// @note Irradiance (6 面)
     for (uint32_t face = 0; face < 6; ++face) {
         const CbIblFace cb{face, input.irradianceSize, IRRADIANCE_PHI, IRRADIANCE_THETA};
         const auto cbVA = PushConstants(&cb, sizeof(cb));
@@ -219,7 +223,7 @@ bool DX12HdriBaker::Bake(
         if (!cbVA || uav == INVALID_BINDLESS_INDEX) return false;
         Dispatch(m_psoIrradiance.Get(), cbVA, envSrv, uav, input.irradianceSize);
     }
-    // Prefilter (面 × mip)。roughness は mip を [0,1] に均等割りする。
+    /// @note Prefilter (面 × mip)。roughness は mip を [0,1] に均等割りする。
     for (uint32_t mip = 0; mip < input.prefilteredMipCount; ++mip) {
         const uint32_t mipSize = (std::max)(1u, input.prefilteredSize >> mip);
         const float roughness = input.prefilteredMipCount > 1
@@ -232,7 +236,7 @@ bool DX12HdriBaker::Bake(
             Dispatch(m_psoPrefilter.Get(), cbVA, envSrv, uav, mipSize);
         }
     }
-    // BRDF LUT (1 回。CB 無し / SRV 無し。シェーダーは GetDimensions で寸法を得る)
+    /// @note BRDF LUT (1 回。CB 無し / SRV 無し。シェーダーは GetDimensions で寸法を得る)
     {
         const auto uav = CreateLutUav(brdfLut.Get());
         if (uav == INVALID_BINDLESS_INDEX) return false;
@@ -240,13 +244,13 @@ bool DX12HdriBaker::Bake(
     }
     if (!ExecuteAndWait()) return false;
 
-    // 読み戻して DDS 保存 (irradiance / prefilter は cube、brdf は 2D)。
+    /// @note 読み戻して DDS 保存 (irradiance / prefilter は cube、brdf は 2D)。
     if (!SaveDds(irradianceCube.Get(), true, irrPath)) return false;
     if (!SaveDds(prefilterCube.Get(), true, prefilterPath)) return false;
     if (!SaveDds(brdfLut.Get(), false, brdfPath)) return false;
 
-    // ---- .ibl 記述子 ----
-    // DDS パスは .ibl と同一ディレクトリからの相対パス (ファイル名のみ) で格納する。
+    /// @name .ibl 記述子
+    /// @note DDS パスは .ibl と同一ディレクトリからの相対パス (ファイル名のみ) で格納する。
     {
         asset::FzIblHeader header{};
         std::memcpy(header.magic, "FZIBL\0", 6);
@@ -279,11 +283,12 @@ bool DX12HdriBaker::Bake(
     return true;
 }
 
-// 初期化
+/// 初期化
 
 bool DX12HdriBaker::EnsureCommon()
 {
-    if (m_commandList) return true; // 構築済み
+    /// @note 構築済み
+    if (m_commandList) return true;
 
     if (FAILED(m_device->CreateCommandAllocator(
             D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_allocator)))) {
@@ -296,7 +301,8 @@ bool DX12HdriBaker::EnsureCommon()
         FBZZ_LOG_ERROR("DX12HdriBaker: コマンドリスト生成失敗");
         return false;
     }
-    m_commandList->Close(); // 記録は BeginRecording で開始する
+    /// @note 記録は BeginRecording で開始する
+    m_commandList->Close();
 
     if (FAILED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)))) {
         FBZZ_LOG_ERROR("DX12HdriBaker: フェンス生成失敗");
@@ -345,7 +351,8 @@ bool DX12HdriBaker::EnsureCommon()
 bool DX12HdriBaker::EnsurePipelines(const std::string& compiledShadersDir)
 {
     if (m_psoEquirect && m_loadedCompiledDir == compiledShadersDir)
-        return true; // 同じディレクトリで構築済み
+        /// @note 同じディレクトリで構築済み
+        return true;
 
     m_psoEquirect   = LoadComputePso(compiledShadersDir + "IBL.EquirectToCubemap.cs.cso");
     m_psoIrradiance = LoadComputePso(compiledShadersDir + "IBL.IrradianceConvolution.cs.cso");
@@ -377,7 +384,7 @@ ComPtr<ID3D12PipelineState> DX12HdriBaker::LoadComputePso(const std::string& cso
     return pso;
 }
 
-// フェーズ制御
+/// フェーズ制御
 
 void DX12HdriBaker::BeginRecording()
 {
@@ -411,14 +418,15 @@ bool DX12HdriBaker::ExecuteAndWait()
     return true;
 }
 
-// ヘルパ
+/// ヘルパ
 
 DX12HdriBaker::Descriptor DX12HdriBaker::AllocateDescriptor()
 {
     Descriptor result;
     if (m_descriptorOffset >= DESCRIPTOR_CAPACITY) {
         FBZZ_LOG_ERROR("DX12HdriBaker: ディスクリプタヒープ枯渇");
-        return result; // ptr == 0 で失敗を伝える
+        /// @note ptr == 0 で失敗を伝える
+        return result;
     }
     const SIZE_T shift = static_cast<SIZE_T>(m_descriptorOffset) * m_descriptorIncrement;
     result.cpu = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
@@ -432,7 +440,7 @@ DX12HdriBaker::Descriptor DX12HdriBaker::AllocateDescriptor()
 
 D3D12_GPU_VIRTUAL_ADDRESS DX12HdriBaker::PushConstants(const void* data, size_t size)
 {
-    // root CBV は 256B アラインが必須。
+    /// @note root CBV は 256B アラインが必須。
     constexpr size_t kAlign = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
     const size_t offset = (m_constantOffset + kAlign - 1) & ~(kAlign - 1);
     if (offset + size > CONSTANT_CAPACITY) {
@@ -474,7 +482,8 @@ DX12HdriBaker::Resource DX12HdriBaker::CreateLut(uint32_t size)
     desc.Height = size;
     desc.DepthOrArraySize = 1;
     desc.MipLevels = 1;
-    desc.Format = CUBE_FORMAT; // 実行時 ComputeTexture と同じ RGBA16F。利用側は RG のみ読む
+    /// @note 実行時 ComputeTexture と同じ RGBA16F。利用側は RG のみ読む
+    desc.Format = CUBE_FORMAT;
     desc.SampleDesc.Count = 1;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     const auto heap = HeapProps(D3D12_HEAP_TYPE_DEFAULT);
@@ -520,8 +529,8 @@ uint32_t DX12HdriBaker::CreateFaceUav(
 {
     const Descriptor slot = AllocateDescriptor();
     if (!slot.cpu.ptr) return INVALID_BINDLESS_INDEX;
-    // Cubemap の各面 = Texture2DArray の 1 スライス。シェーダーは g_output[uint3(x,y,0)] を書くため
-    // ArraySize=1 のビューにすることでスライス 0 = 対象面へ写る。
+    /// @note Cubemap の各面 = Texture2DArray の 1 スライス。シェーダーは g_output[uint3(x,y,0)] を書くため
+    ///       ArraySize=1 のビューにすることでスライス 0 = 対象面へ写る。
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
     uav.Format = CUBE_FORMAT;
     uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
@@ -577,7 +586,7 @@ bool DX12HdriBaker::RecordUpload(
         FBZZ_LOG_ERROR("DX12HdriBaker: アップロードバッファ Map 失敗");
         return false;
     }
-    // GPU の要求する行ピッチ (256B アライン) に合わせて subresource を行単位でコピーする。
+    /// @note GPU の要求する行ピッチ (256B アライン) に合わせて subresource を行単位でコピーする。
     for (uint32_t i = 0; i < count; ++i) {
         const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& layout = layouts[i];
         const auto* src = static_cast<const uint8_t*>(subs[i].pData);
@@ -625,7 +634,8 @@ bool DX12HdriBaker::UploadEquirect(
     }
     D3D12_SUBRESOURCE_DATA data{};
     data.pData = pixels;
-    data.RowPitch = static_cast<LONG_PTR>(width) * 4 * sizeof(float); // RGBA float
+    /// @note RGBA float
+    data.RowPitch = static_cast<LONG_PTR>(width) * 4 * sizeof(float);
     data.SlicePitch = data.RowPitch * height;
     if (!RecordUpload(out.Get(), &data, 1, uploadKeepAlive))
         return false;
@@ -652,8 +662,8 @@ void DX12HdriBaker::Dispatch(
 {
     m_commandList->SetPipelineState(pso);
     if (cb) m_commandList->SetComputeRootConstantBufferView(ROOT_CB0, cb);
-    // IBL の CS は SRV を t0 (pixel[0])、UAV を u0 (uav[0]) で宣言している。
-    // 添字は «このベイカーが束縛している自前ヒープ» 内の位置。
+    /// @note IBL の CS は SRV を t0 (pixel[0])、UAV を u0 (uav[0]) で宣言している。
+    ///       添字は «このベイカーが束縛している自前ヒープ» 内の位置。
     BindlessIndicesConstants indices;
     indices.Reset();
     indices.pixel[0] = srvIndex;
@@ -667,7 +677,7 @@ void DX12HdriBaker::Dispatch(
 
 bool DX12HdriBaker::SaveDds(ID3D12Resource* resource, bool isCubeMap, const std::string& absPath)
 {
-    // 直前の Dispatch 出力先。ExecuteAndWait 済みでアイドルかつ UAV 状態のまま読み戻す。
+    /// @note 直前の Dispatch 出力先。ExecuteAndWait 済みでアイドルかつ UAV 状態のまま読み戻す。
     DirectX::ScratchImage image;
     if (FAILED(DirectX::CaptureTexture(
             m_context->GetCommandQueue(), resource, isCubeMap, image,

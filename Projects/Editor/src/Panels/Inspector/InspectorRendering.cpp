@@ -4,24 +4,16 @@
 /// @date    2026-06-07
 #include "InspectorRendering.hpp"
 
+#include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
+
 namespace fbzz::editor {
 
 namespace {
 
-// マテリアルの状況を 1 行で示す。割り当てと編集は Material コンポーネント側。
-//
-// WHY 一覧をここへ置かないか (重要):
-//   以前は Renderer が「閲覧専用の Element 一覧」を、Material が「編集可能な
-//   Element 一覧」を別々に出していた。同じ情報が 2 か所に並ぶため、どちらを触れば
-//   よいのか、なぜ Element 0 だけ扱いが違うのかが読めない UI になっていた。
-//
-//   Unity は Renderer に materials 配列を出すが、あれは Unity に Material
-//   コンポーネントが存在しないからである。このエンジンではスロット配列の実体を
-//   MaterialComponent が持っているため、配置だけ真似ると「Renderer のセクションで
-//   編集しているのに、Undo トラッカーが見ているのは MaterialComponent ではない」
-//   というズレが生まれ、回避コードが必要になる。編集 UI はデータの持ち主へ置く。
-//
-//   ここに残すのは、Material コンポーネントが必要なのに無い場合の導線だけ。
+/// @brief マテリアルの状況を 1 行で示す。割り当てと編集は Material コンポーネント側。
+/// @note 閲覧専用の一覧をここにも出すと、編集可能な Material 側の一覧と重複し、どちらを
+///       触ればよいか読めなくなる。スロット配列の実体は MaterialComponent が持つため、
+///       Unity の Renderer.materials は真似ない。ここは Material コンポーネントが無い場合の導線だけ。
 void DrawRendererMaterialStatus(EditorContext& ctx, size_t submeshCount, bool skinned)
 {
     scene::GameObject* go = ctx.GetSelectedGO();
@@ -112,9 +104,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 });
 
             if (smr.model) {
-                // WHY: submesh の指定 UI は持たない。担当 submesh は FBX のノード構造から
-                //      配置時に決まる構造的な事実で、ユーザーが手で打つ値ではない
-                //      (SkinnedMeshRenderer::submeshIndices のコメント参照)。
+                /// @note submesh の指定 UI は持たない。担当は FBX のノード構造から配置時に決まる (submeshIndices 参照)。
                 const size_t meshCount = smr.SubmeshCount();
                 ImGui::TextDisabled("%zu submesh(es) of %zu | %s skeleton",
                     meshCount, smr.model->meshes.size(),
@@ -189,6 +179,19 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
         });
 
+    /// @note 形の正本はスクリプト (mesh.Apply) で保存もされないので、中身は読み取り専用で出す。
+    DrawComponentSection<scene::ProceduralMeshComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Procedural Mesh",
+        [](scene::ProceduralMeshComponent& procedural, EditorContext&) {
+            const uint32_t vertexCount = procedural.builder.VertexCount();
+            const uint32_t indexCount  = procedural.builder.IndexCount();
+            ImGui::Text("Vertices: %u   Indices: %u   Triangles: %u",
+                        vertexCount, indexCount, indexCount / 3u);
+            ImGui::Text("GPU Mesh: %s", procedural.runtimeMesh.HasMesh() ? "Uploaded" : "Not uploaded");
+            ImGui::Text("Material: %s",
+                        procedural.materialPath.empty() ? "(left to Material component)"
+                                                        : procedural.materialPath.c_str());
+            ImGui::TextDisabled("Built by script (mesh.Apply) at runtime. Not saved with the scene.");
+        });
 }
 
 

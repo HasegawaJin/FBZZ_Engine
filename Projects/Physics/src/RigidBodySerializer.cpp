@@ -54,14 +54,12 @@ math::Quaternion ArrToQuat(const toml::array* arr)
 
 } // namespace
 
-// ---------------------------------------------------------------------------
-// Serialize
-// ---------------------------------------------------------------------------
+/// Serialize
 std::string RigidBodySerializer::Serialize(const RigidBody& body)
 {
     toml::table tbl;
 
-    // 状態
+    /// @note 状態
     tbl.insert("position",         Vec3ToArr(body.GetPosition()));
     tbl.insert("velocity",         Vec3ToArr(body.GetVelocity()));
     tbl.insert("rotation",         QuatToArr(body.GetRotation()));
@@ -77,11 +75,11 @@ std::string RigidBodySerializer::Serialize(const RigidBody& body)
         body.GetFreezeRotation().z ? 1.0f : 0.0f
     }));
 
-    // 基本設定
+    /// @note 基本設定
     tbl.insert("mass",      (double)body.GetMass());
     tbl.insert("is_static", body.IsStatic());
 
-    // 拡張プロパティ (デフォルト値なら省略)
+    /// @note 拡張プロパティ (デフォルト値なら省略)
     if (!body.m_useGravity)
         tbl.insert("use_gravity", false);
     if (body.m_gravityScale != 1.0f)
@@ -110,20 +108,18 @@ std::string RigidBodySerializer::Serialize(const RigidBody& body)
     return oss.str();
 }
 
-// ---------------------------------------------------------------------------
-// Deserialize
-// ---------------------------------------------------------------------------
+/// Deserialize
 bool RigidBodySerializer::Deserialize(RigidBody& body, std::string_view tomlText)
 {
     auto result = toml::parse(tomlText);
     if (!result) return false;
     const toml::table& tbl = result.table();
 
-    // is_static を先に設定 → SetMass 内の invMass 計算に影響する
+    /// @note is_static を先に設定 → SetMass 内の invMass 計算に影響する
     body.m_isStatic = tbl["is_static"].value_or(false);
     body.SetMass((float)tbl["mass"].value_or(1.0));
 
-    // 状態
+    /// @note 状態
     body.SetPosition(ArrToVec3(tbl["position"].as_array()));
     body.SetVelocity(ArrToVec3(tbl["velocity"].as_array()));
     body.SetRotation(ArrToQuat(tbl["rotation"].as_array()));
@@ -141,7 +137,7 @@ bool RigidBodySerializer::Deserialize(RigidBody& body, std::string_view tomlText
         freezeRotation.z != 0.0f
     });
 
-    // 拡張プロパティ
+    /// @note 拡張プロパティ
     body.m_useGravity            = tbl["use_gravity"].value_or(true);
     body.m_gravityScale          = (float)tbl["gravity_scale"].value_or(1.0);
     body.m_linearDrag            = (float)tbl["linear_drag"].value_or(0.0);

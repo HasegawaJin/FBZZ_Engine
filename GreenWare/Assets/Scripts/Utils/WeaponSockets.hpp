@@ -17,7 +17,7 @@ inline constexpr const char* kSocketTip = "SOCKET_Tip";
 inline constexpr const char* kSocketTrailBase = "SOCKET_Trail_Base";
 inline constexpr const char* kSocketTrailTip = "SOCKET_Trail_Tip";
 
-// VFXの汎用チャンネルAPIを保つ。Playerは右手で一本の剣を保持する。
+/// VFXの汎用チャンネルAPIを保つ。Playerは右手で一本の剣を保持する。
 enum class HandSide : int { Left = 2, Right = 1 };
 [[nodiscard]] inline HandSide HandOf(BladeSide) { return HandSide::Right; }
 [[nodiscard]] inline const char* SwordObjectName(HandSide) { return kSwordObject; }

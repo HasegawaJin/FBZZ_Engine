@@ -10,7 +10,7 @@
 
 namespace fbzz::asset {
 
-void PackFluidVolume(const FluidGasSolver& solver, const FluidVolumeScale& scale, PackedFluidVolume& out)
+void PackFluidVolume(const fluid::FluidGasSolver& solver, const FluidVolumeScale& scale, PackedFluidVolume& out)
 {
     const int n = solver.SizeX();
     const std::size_t cells = static_cast<std::size_t>(n) * static_cast<std::size_t>(n) * static_cast<std::size_t>(n);
@@ -40,7 +40,7 @@ void PackFluidVolume(const FluidGasSolver& solver, const FluidVolumeScale& scale
     }
 }
 
-void PackLiquidVolume(const FluidLiquidSolver& solver, int resolution, float radiusScale, float lifetime,
+void PackLiquidVolume(const fluid::FluidLiquidSolver& solver, int resolution, float radiusScale, float lifetime,
                       PackedFluidVolume& out)
 {
     const int n = std::clamp(resolution, 1, 256);
@@ -50,15 +50,15 @@ void PackLiquidVolume(const FluidLiquidSolver& solver, int resolution, float rad
     out.velocity.assign(cells, { 0.0f, 0.0f, 0.0f, 0.0f });
     std::vector<float> weights(cells, 0.0f);
 
-    // bake 空間 [-1,1] の 1 辺を n セルに割る。セル中心は (i + 0.5) / n * 2 - 1。
+    /// @note bake 空間 [-1,1] の 1 辺を n セルに割る。セル中心は (i + 0.5) / n * 2 - 1。
     const float cellsPerUnit = static_cast<float>(n) * 0.5f;
     const float radius = solver.ParticleRadius() * (std::max)(radiusScale, 0.5f);
-    // WHY 塗る半径に下限を置くか: 低い解像度 (プレビューや 16³) では粒子がセルより小さく、
-    //     そのまま塗ると 1 セルにも届かず液体が丸ごと消える。半径をセル 1 つ分弱まで広げ、
-    //     広げた分だけ量を減らして体積を保つ。
+    /// @note 低い解像度 (プレビューや 16³) では粒子がセルより小さく、そのまま塗ると 1 セルにも
+    ///       届かず液体が丸ごと消えるため、半径をセル 1 つ分弱まで広げ、広げた分だけ量を
+    ///       減らして体積を保つ。
     constexpr float kMinSplatCells = 0.75f;
-    for (const FluidLiquidSolver::Particle& particle : solver.Particles()) {
-        // 寿命がある飛沫は細りながら消える。いきなり消すとコマ間でポツポツ抜けて見える (2D と同じ)。
+    for (const fluid::FluidLiquidSolver::Particle& particle : solver.Particles()) {
+        /// @note 寿命がある飛沫は細りながら消える。いきなり消すとコマ間でポツポツ抜けて見える (2D と同じ)。
         const float life = lifetime > 0.0f ? std::clamp(1.0f - particle.age / lifetime, 0.0f, 1.0f) : 1.0f;
         if (life <= 0.0f) continue;
         const float trueRadius = radius * std::sqrt(life) * cellsPerUnit;
@@ -97,7 +97,7 @@ void PackLiquidVolume(const FluidLiquidSolver& solver, int resolution, float rad
         }
     }
     for (std::size_t i = 0; i < cells; ++i) {
-        // 量を減らした粒の縁は重みが極小になる。閾値で切ると «密度はあるのに液体でないセル» ができる。
+        /// @note 量を減らした粒の縁は重みが極小になる。閾値で切ると «密度はあるのに液体でないセル» ができる。
         if (weights[i] <= 0.0f) continue;
         out.medium[i].w = 1.0f;
         const float inverse = 1.0f / weights[i];
@@ -108,10 +108,10 @@ void PackLiquidVolume(const FluidLiquidSolver& solver, int resolution, float rad
     }
 }
 
-float FluidRecipeTemperatureScale(const FluidRecipe& recipe)
+float FluidRecipeTemperatureScale(const fluid::FluidRecipe& recipe)
 {
     float peak = 0.0f;
-    for (const FluidSource& source : recipe.sources)
+    for (const fluid::FluidSource& source : recipe.sources)
         if (source.enabled) peak = (std::max)(peak, source.temperature);
     return peak > 1.0e-4f ? 1.0f / peak : 1.0f;
 }
@@ -121,7 +121,7 @@ FluidVolumeStream::~FluidVolumeStream()
     Close();
 }
 
-bool FluidVolumeStream::Open(const FluidRecipe& recipe, int resolution, float frameDt, float densityScale,
+bool FluidVolumeStream::Open(const fluid::FluidRecipe& recipe, int resolution, float frameDt, float densityScale,
                              std::string& outError)
 {
     Close();
@@ -129,15 +129,15 @@ bool FluidVolumeStream::Open(const FluidRecipe& recipe, int resolution, float fr
     m_resolution = std::clamp(resolution, 8, 128);
     m_frameDt = (std::max)(frameDt, 1.0e-4f);
     m_substeps = std::clamp(recipe.output.substeps, 1, 16);
-    m_warmupFrames = FluidWarmupFrames(recipe.output.warmup, m_frameDt);
+    m_warmupFrames = fluid::FluidWarmupFrames(recipe.output.warmup, m_frameDt);
     m_scale.density = (std::max)(densityScale, 0.0f);
     m_scale.temperature = FluidRecipeTemperatureScale(recipe);
-    if (recipe.kind == FluidKind::Liquid) {
-        m_liquid = std::make_unique<FluidLiquidSolver>();
+    if (recipe.kind == fluid::FluidKind::Liquid) {
+        m_liquid = std::make_unique<fluid::FluidLiquidSolver>();
         m_liquidRadiusScale = recipe.render.liquidRadiusScale;
         m_liquidLifetime = recipe.liquid.particleLifetime;
     } else {
-        m_solver = std::make_unique<FluidGasSolver>();
+        m_solver = std::make_unique<fluid::FluidGasSolver>();
     }
     m_advancedFrames = -1;
     (void)outError;
@@ -165,7 +165,7 @@ bool FluidVolumeStream::Request(int frame)
     if (!IsOpen() || m_job.valid()) return false;
     frame = (std::max)(frame, 0);
     const bool restart = m_advancedFrames < 0 || frame + 1 < m_advancedFrames;
-    // 旗をコマごとに作り直す。前のコマへの Cancel が次のコマまで残って «頼んだそばから畳まれる» のを防ぐ。
+    /// @note 旗をコマごとに作り直す。前のコマへの Cancel が次のコマまで残って «頼んだそばから畳まれる» のを防ぐ。
     auto cancel = std::make_shared<std::atomic<bool>>(false);
     m_cancel = cancel;
     m_job = std::async(std::launch::async, [this, frame, restart, cancel]() {
@@ -178,7 +178,7 @@ bool FluidVolumeStream::Request(int frame)
         if (restart) {
             if (m_liquid) m_liquid->Reset(m_recipe, /*volumetric=*/true);
             else          m_solver->Reset(m_recipe, m_resolution, m_resolution, m_resolution);
-            // warmup も «普通のコマ» として解く (刻みの正本は FluidStepping)。
+            /// @note warmup も «普通のコマ» として解く (刻みの正本は FluidStepping)。
             for (int i = 0; i < m_warmupFrames; ++i) {
                 for (int step = 0; step < m_substeps; ++step) {
                     if (cancelled()) return PackedFluidVolume{};
@@ -190,7 +190,7 @@ bool FluidVolumeStream::Request(int frame)
         while (m_advancedFrames < frame + 1) {
             for (int step = 0; step < m_substeps; ++step) {
                 if (cancelled()) {
-                    // 途中まで進めた場はどのコマでもない。続きの起点にせず、次の Request で頭から解き直す。
+                    /// @note 途中まで進めた場はどのコマでもない。続きの起点にせず、次の Request で頭から解き直す。
                     m_advancedFrames = -1;
                     return PackedFluidVolume{};
                 }
@@ -211,7 +211,7 @@ bool FluidVolumeStream::Poll(PackedFluidVolume& out)
 {
     if (!m_job.valid() || m_job.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
     PackedFluidVolume volume = m_job.get();
-    // 畳まれたワーカーの空手形。out を潰すと今出している絵まで消える。
+    /// @note 畳まれたワーカーの空手形。out を潰すと今出している絵まで消える。
     if (volume.frame < 0) return false;
     out = std::move(volume);
     return true;

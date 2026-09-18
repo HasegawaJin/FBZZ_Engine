@@ -8,7 +8,7 @@
 ///     Pause_Root (UIImage)               ポーズ中だけ有効になる枠。画面いっぱいの暗幕でもある
 ///       ├ Pause_Mark / Pause_Rule / Pause_Title / Pause_Hint   見出し (2 つの頁で共通)
 ///       ├ Pause_Menu                     RESUME / OPTIONS / EXIT の頁
-///       │   └ PauseRow_<NAME> (UIButton) 行全体の当たり判定
+///       │   └ PauseRow_`<NAME>` (UIButton) 行全体の当たり判定
 ///       │       ├ Band  (UIImage + UIMenuBand.mat)
 ///       │       ├ Bar   (UIImage + UIMenuItem.mat)
 ///       │       └ Label (UIText)
@@ -16,33 +16,16 @@
 ///       │   └ [[OptionsScreenComponent]] と Options 画面と同じ名前の行
 ///       └ Cursor (UIImage + [[GameCursorComponent]])
 ///
-/// WHY 暗幕を枠そのものにするか:
-///   ストレッチ (UIRect の stretchX / stretchY) は «親の矩形» に対して効くので、
-///   ただの入れ物の子に置くと親の矩形が 1x1 になり、画面の隅に 1px の点が出る。
-///   枠自身を画面いっぱいの矩形にすれば、暗幕が 1 枚減るうえ、中の行のアンカーも
-///   Canvas 直下に置いたときと同じに解ける。
-///
-/// WHY OPTIONS をシーン遷移にしないか:
-///   遊んでいる最中に音量を直すのに盤面を降ろすと、戻ってきたときには敵の位置も
-///   体力も作り直しになる。Options 画面の «行の名前» は scene.Find で引かれるだけ
-///   なので、同じ名前の行をこの枠の中に置けば、あちらのスクリプトをそのまま
-///   内側で動かせる (BGM と扉だけ standalone = false で黙らせる)。
-///
-/// WHY 時間を止めるのに Time::timeScale を直接書かないか:
-///   書き手が 2 人になった瞬間に壊れる ([[TimeManagerComponent]] のヘッダー)。
-///   ポーズは «解除するまで維持する» 層として向こうが既に持っているので、
-///   ここは要求を出すだけにする。ヒットストップ (Override) の最中に開いても、
-///   止めの解除がポーズを巻き込まない。
-///
-/// WHY 入力を «止まっているから大丈夫» としないか:
-///   timeScale が 0 でも OnUpdate は回り続ける。斬撃の入力は押した瞬間に段が進む
-///   ので、ポーズ中に押したぶんが «開けた瞬間に出る» 形で溜まる。プレイヤーには
-///   毎フレーム拘束を言い直す ([[PlayerComponent]]::RequestSuspend)。
-///
-/// WHY カーソルを別オブジェクトに持たせるか:
-///   視点操作は Locked (相対移動) で、メニューは Confined (絶対座標) と、
-///   カーソルの扱いが正反対になる。GameCursorComponent は有効な間だけ要求を積む
-///   ので、枠ごと有効・無効を切り替えれば、閉じた瞬間に視点操作の Locked へ戻る。
+/// @note 暗幕は枠自体にする。入れ物の子に置くと親矩形が 1x1 になり隅に点が出る
+///       (UIRect のストレッチは親の矩形基準)。
+/// @note OPTIONS は遷移でなくこの枠内に同名の行を置いて開く。OptionsScreenComponent は
+///       scene.Find で行を引くだけなので流用できる (BGM・扉は standalone=false で黙らせる)。
+/// @note Time::timeScale は直接書かず TimeManagerComponent へ要求する (二重の書き手を避け、
+///       ヒットストップの解除に巻き込まれない)。
+/// @note timeScale=0 でも OnUpdate は進むため、PlayerComponent::RequestSuspend を毎フレーム
+///       呼んで入力を拘束する。
+/// @note カーソルは別オブジェクト。GameCursorComponent は有効な間だけ Confined を要求する
+///       ので、枠の有効/無効の切り替えで視点操作の Locked へ戻す。
 #pragma once
 
 #include <Engine/Scene/Components/UIText.hpp>
@@ -98,11 +81,8 @@ public:
     FBZZ_FIELD_READ_ONLY(std::string, debugState, "Closed", "状態")
     FBZZ_FIELD_READ_ONLY(std::string, debugHovered, "-", "ホバー中")
 
-    /// 今ポーズが開いているか。演出を止めたい側 (カメラ・HUD) が読む。
-    ///
-    /// WHY TimeManager の IsPaused を見せないか: あちらは «時間が止まっているか» で、
-    ///     ポーズ以外の理由で止まる余地がある。«メニューが開いている» を知りたい側は
-    ///     こちらを読む。
+    /// @brief 今ポーズが開いているか。演出を止めたい側 (カメラ・HUD) が読む。
+    /// @note TimeManager::IsPaused はポーズ以外の理由でも止まりうるため、開閉の判定はこちらを使う。
     [[nodiscard]] static bool IsOpen() { return s_open; }
 
     void OnStart() override;
@@ -114,10 +94,8 @@ private:
     static constexpr int kRowCount = static_cast<int>(Row::Count);
     static constexpr const char* kRowNames[kRowCount] = { "RESUME", "OPTIONS", "EXIT" };
 
-    /// 閉じるときに巻き戻す速さ (開くときに対する倍率)。
-    ///
-    /// WHY 開閉で速さを変えるか: 開くのは «見せる» ので溜めがあってよいが、閉じるのは
-    ///     «遊びへ戻る» で、待たされた分だけ操作が遅れて感じる。
+    /// @brief 閉じるときに巻き戻す速さ (開くときに対する倍率)。
+    /// @note 開くのは演出、閉じるのは復帰操作。待たされた分だけ遅く感じるので閉じは速くする。
     static constexpr float kCloseRate = 1.8f;
 
     void Open();
@@ -209,14 +187,14 @@ inline void PauseMenuComponent::OnStart()
         }
         m_rowOrigin[i]   = m_rows[i]->transform.position;
         m_labelOrigin[i] = m_labels[i]->transform.position;
-        // 色付きの文字列を流すので richText を立てる。素の文言は控えておく。
+        /// @note 色付きの文字列を流すので richText を立てる。素の文言は控えておく。
         if (auto* text = m_labels[i]->GetComponent<UIText>()) {
             text->richText = true;
             m_text[i]      = text->text;
         }
     }
 
-    // 枠は閉じた状態で始める。シーンに有効なまま置かれていても、ここで必ず畳む。
+    /// @note 枠は閉じた状態で始める。シーンに有効なまま置かれていても、ここで必ず畳む。
     SetOptionsPage(false);
     m_root->SetActive(false);
     s_open = false;
@@ -224,8 +202,8 @@ inline void PauseMenuComponent::OnStart()
 
 inline void PauseMenuComponent::OnDestroy()
 {
-    // 開いたままシーンが降りることがある (EXIT・被弾死の直後)。止めたまま次の盤面へ
-    // 持ち込むと、新しいシーンが «最初から動かない» という形で壊れる。
+    /// @note 開いたままシーンが降りることがある (EXIT・被弾死の直後)。止めたまま次の盤面へ
+    ///       持ち込むと、新しいシーンが «最初から動かない» という形で壊れる。
     if (s_open) ApplyHold(false);
     s_open = false;
 }
@@ -244,9 +222,8 @@ inline void PauseMenuComponent::ApplyHold(bool held)
                        "メニューは開きますが盤面は動き続けます");
         m_warnedNoTime = true;
     }
-    // WHY 拘束の «解除» をここでしないか: RequestSuspend は押し続けている間だけ効く
-    //     1 フレームぶんの要求で、false を渡すのは «入力は止めずに拘束する» の意味に
-    //     なる。返すときは言うのをやめるだけでよい。
+    /// @note RequestSuspend は 1 フレームだけ効く要求。false を送るのは «入力を止めずに
+    ///       拘束する» 意味になるため、解除は呼ぶのをやめるだけでよい。
 }
 
 inline void PauseMenuComponent::Open()
@@ -258,8 +235,8 @@ inline void PauseMenuComponent::Open()
     m_clock   = 0.0f;
     s_open    = true;
     SetOptionsPage(false);
-    // 暗幕は 0 から。シーンに置いた色のまま 1 フレーム出ると、開いた瞬間に
-    // «黒が点滅した» ように見える。
+    /// @note 暗幕は 0 から。シーンに置いた色のまま 1 フレーム出ると、開いた瞬間に
+    ///       «黒が点滅した» ように見える。
     ui.SetImageColor(m_root, { 0.0f, 0.0f, 0.0f, 0.0f });
     for (int i = 0; i < kRowCount; ++i) {
         m_amount[i]   = 0.0f;
@@ -267,8 +244,8 @@ inline void PauseMenuComponent::Open()
         m_lit[i]      = false;
         m_litSince[i] = 0.0f;
         m_rich[i].clear();
-        // 1 フレーム目から «出ていない» で描く。OnUpdate を待つと、置いた位置で
-        // 1 フレームだけ見えてから引っ込む。
+        /// @note 1 フレーム目から «出ていない» で描く。OnUpdate を待つと、置いた位置で
+        ///       1 フレームだけ見えてから引っ込む。
         Paint(i, 0.0f);
     }
     ApplyHold(true);
@@ -287,10 +264,10 @@ inline void PauseMenuComponent::SetOptionsPage(bool open)
 {
     m_optionsOn = open && m_options != nullptr;
     if (m_options) m_options->SetActive(m_optionsOn);
-    // WHY 行を残さず畳むか: OPTIONS の一覧は行と同じ帯の上へ出る。薄く残すと
-    //     «押せない行» と «押せる行» が重なって、どちらを触っているのか読めない。
+    /// @note OPTIONS の一覧は行と同じ帯の上に出るため薄く残さず畳む
+    ///       (押せる行と押せない行が重なって読めなくなる)。
     if (m_menu) m_menu->SetActive(!m_optionsOn);
-    // 見出しは 2 つの頁で共通。文言だけが «今どちらに居るか» を言う。
+    /// @note 見出しは 2 つの頁で共通。文言だけが «今どちらに居るか» を言う。
     if (m_title) ui.SetText(m_title, m_optionsOn ? "OPTIONS" : "PAUSED");
 }
 
@@ -314,16 +291,16 @@ inline void PauseMenuComponent::Submit(Row row)
         debug.Log("PauseMenuComponent: EXIT の行き先が空です");
         return;
     }
-    // 設定は Option を閉じた時点でも保存するが、そこを通らずに EXIT へ抜ける経路が
-    // ある (行を触らずにタブだけ変えた、など)。降りる前にもう一度書く。
+    /// @note 設定は Option を閉じた時点でも保存するが、そこを通らずに EXIT へ抜ける経路が
+    ///       ある (行を触らずにタブだけ変えた、など)。降りる前にもう一度書く。
     if (auto* settings = GameSettingsComponent::Instance()) settings->Save();
     audio.PlayOneShot(uinav::kConfirm);
     if (!transition::Begin(exitScene)) {
         debug.LogError("PauseMenuComponent: シーンへの扉を開けません -> " + exitScene);
         return;
     }
-    // 止めたまま扉を閉じる。盤面が動き出すのは次のシーンの TimeManager が
-    // 立ち上がったとき ─ 扉の裏で 0.5 秒ぶん戦闘が進むのを防ぐ。
+    /// @note 止めたまま扉を閉じる。盤面が動き出すのは次のシーンの TimeManager が
+    ///       立ち上がったとき ─ 扉の裏で 0.5 秒ぶん戦闘が進むのを防ぐ。
     m_leaving = true;
 }
 
@@ -351,16 +328,16 @@ inline void PauseMenuComponent::Paint(int index, float reveal)
     }
     if (!m_labels[index]) return;
 
-    // 寄りは OutCubic で «押された» 形に。t は指数で寄るので、そのままだと最後が鈍い。
+    /// @note 寄りは OutCubic で «押された» 形に。t は指数で寄るので、そのままだと最後が鈍い。
     m_labels[index]->transform.position = {
         m_labelOrigin[index].x + hoverNudge * uimotion::OutCubic(t),
         m_labelOrigin[index].y, m_labelOrigin[index].z,
     };
     const Vector4 c = textfx::Mix(labelDimColor, labelActiveColor, t);
-    // 文字の色は文字列側 (UiTextFx) が持ち、UIText.color は α だけにする。
+    /// @note 文字の色は文字列側 (UiTextFx) が持ち、UIText.color は α だけにする。
     std::string rich;
     if (t > 0.01f) {
-        // 点いている間は 1.6 秒に 1 本、光が左から右へ字面を舐める (タイトルと同じ語彙)。
+        /// @note 点いている間は 1.6 秒に 1 本、光が左から右へ字面を舐める (タイトルと同じ語彙)。
         const float head = -0.45f + 1.9f * std::fmod(m_litSince[index], 1.6f) / 1.6f;
         rich = textfx::Sweep(m_text[index], c, { 1.0f, 1.0f, 1.0f, 1.0f }, head, 0.38f);
     } else {
@@ -377,12 +354,12 @@ inline void PauseMenuComponent::OnUpdate()
 {
     if (!m_root) return;
 
-    // 実時間で進める。盤面を止めている当人がゲーム時間で数えると、開いた瞬間に
-    // 自分の演出まで止まる。
+    /// @note 実時間で進める。盤面を止めている当人がゲーム時間で数えると、開いた瞬間に
+    ///       自分の演出まで止まる。
     const float dt = (std::max)(time.UnscaledDeltaTime(), 0.0f);
 
-    // 開く。扉 (ワイプ) が動いている間は受けない ─ リザルトへ落ちる途中で開くと、
-    // 止めたまま次のシーンへ渡ることになる。
+    /// @note 開く。扉 (ワイプ) が動いている間は受けない ─ リザルトへ落ちる途中で開くと、
+    ///       止めたまま次のシーンへ渡ることになる。
     const bool pressed = input.GetActionDown(actions::kPause);
     if (!s_open) {
         const bool opened = pressed && !transition::Active();
@@ -391,32 +368,32 @@ inline void PauseMenuComponent::OnUpdate()
         return;
     }
 
-    // 開いている間は «拘束している» を言い続ける。1 フレームでも途切れると、
-    // その隙に入った入力が開けた瞬間に出る。閉じ切るまで (巻き戻しの最中も) 言う。
+    /// @note 開いている間は «拘束している» を言い続ける。1 フレームでも途切れると、
+    ///       その隙に入った入力が開けた瞬間に出る。閉じ切るまで (巻き戻しの最中も) 言う。
     if (auto* player = Player()) player->RequestSuspend(true);
 
     if (m_leaving) {
-        // 扉の裏。見た目だけ書き続ける (行が固まって見えないように)。
+        /// @note 扉の裏。見た目だけ書き続ける (行が固まって見えないように)。
         m_phase += dt;
         for (int i = 0; i < kRowCount; ++i) Paint(i, RowReveal(i));
         debugState = "Leaving";
         return;
     }
 
-    // 閉じる操作は割り当て変更やアクション層の無効化で失わせない。
+    /// @note 閉じる操作は割り当て変更やアクション層の無効化で失わせない。
     const bool cancel = input.GetKeyDown(fbzz::input::KeyCode::ESCAPE);
     bool returnedFromOptions = false;
     if (pressed || cancel) {
-        // OPTIONS を開いている間の Pause は «一段戻る»。ポーズごと閉じると、
-        // 音量を直しに来ただけで盤面へ放り出される。
+        /// @note OPTIONS を開いている間の Pause は «一段戻る»。ポーズごと閉じると、
+        ///       音量を直しに来ただけで盤面へ放り出される。
         if (m_optionsOn) {
             if (auto* settings = GameSettingsComponent::Instance()) settings->Save();
             SetOptionsPage(false);
             audio.PlayOneShot(uinav::kCancel);
             returnedFromOptions = true;
         } else if (!m_opening) {
-            // 閉じかけで押し直されたら開き直す。時間はまだ止めたままなので、
-            // 巻き戻しの向きを変えるだけでよい。
+            /// @note 閉じかけで押し直されたら開き直す。時間はまだ止めたままなので、
+            ///       巻き戻しの向きを変えるだけでよい。
             m_opening = true;
             audio.PlayOneShot(uinav::kConfirm);
         } else {
@@ -427,8 +404,8 @@ inline void PauseMenuComponent::OnUpdate()
     m_clock = std::clamp(m_clock + (m_opening ? dt : -dt * kCloseRate), 0.0f,
                          rowStagger * static_cast<float>(kRowCount - 1) + rowSeconds);
     if (!m_opening && m_clock <= 0.0f) {
-        // 巻き戻し切った。ここで初めて盤面へ時間を返す ─ 行が残っているうちに
-        // 返すと、メニューの裏で 0.1 秒ぶん殴られる。
+        /// @note 巻き戻し切った。ここで初めて盤面へ時間を返す ─ 行が残っているうちに
+        ///       返すと、メニューの裏で 0.1 秒ぶん殴られる。
         m_root->SetActive(false);
         ApplyHold(false);
         s_open     = false;
@@ -449,9 +426,9 @@ inline void PauseMenuComponent::OnUpdate()
     Row submitted = Row::Count;
     for (int i = 0; i < kRowCount; ++i) {
         const float reveal = RowReveal(i);
-        // 置き切る前の行と、OPTIONS を出している間の行はカーソルを受けない。
-        // 非表示中の onClick は描画パスで更新されない。再表示したフレームで
-        // 読むと、OPTIONS を開いたクリックを再実行して戻れなくなる。
+        /// @note 置き切る前の行と、OPTIONS を出している間の行はカーソルを受けない。
+        ///       非表示中の onClick は描画パスで更新されない。再表示したフレームで
+        ///       読むと、OPTIONS を開いたクリックを再実行して戻れなくなる。
         const bool ready = reveal >= 1.0f && m_opening && !m_optionsOn && !returnedFromOptions;
         const bool lit = ready && m_rows[i] && (ui.IsHovered(m_rows[i]) || ui.IsPressed(m_rows[i]));
         if (lit) debugHovered = kRowNames[i];
@@ -469,7 +446,7 @@ inline void PauseMenuComponent::OnUpdate()
         }
         Paint(i, reveal);
     }
-    // 光った状態を今フレームに出してから畳む (押した行が消えながら光る)。
+    /// @note 光った状態を今フレームに出してから畳む (押した行が消えながら光る)。
     if (submitted != Row::Count) Submit(submitted);
 }
 

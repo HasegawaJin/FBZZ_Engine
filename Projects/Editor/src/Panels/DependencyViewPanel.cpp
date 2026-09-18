@@ -2,14 +2,6 @@
 /// @brief   選択アセットへの参照元を一覧表示する依存関係ビューパネル。
 /// @author  Hasegawa Jin
 /// @date    2026-06-16
-///
-/// WHY 探索キーが guid か (不具合修正):
-/// 以前はファイル名とステムの部分一致で探していた。ステム一致は "Player" が
-/// "PlayerHUD.mat" や UIText の文言にも当たるため誤検出し、逆に参照が guid:
-/// でエンコードされているファイルはファイル名を含まないので取りこぼしていた。
-/// AssetDatabase が guid ⇄ パスの索引を持っているのだから、32 桁 hex を直接
-/// 探すのが正確でも速くもある。guid 化前の生パス参照は、ステムではなく
-/// 「プロジェクト相対パス丸ごと」の一致で拾う。
 #include <Editor/Panels/DependencyViewPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/EditorIcons.hpp>
@@ -26,7 +18,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// 参照を書き込みうるファイル種別。ここに無い拡張子は中身を読まない。
+/// 参照を書き込みうるファイル種別。ここに無い拡張子は中身を読まない。
 constexpr std::string_view kReferrerExts[] = {
     ".scene", ".prefab", ".mat", ".animcontroller", ".animctrl",
     ".vfx", ".sequence", ".behaviortree", ".terrain", ".fzdata", ".ibl",
@@ -39,7 +31,7 @@ bool IsReferrerExt(std::string_view ext)
     return false;
 }
 
-// 絶対パスを "Assets/..." 形式へ落とす。プロジェクト外なら空文字列。
+/// 絶対パスを "Assets/..." 形式へ落とす。プロジェクト外なら空文字列。
 std::string ToProjectRelative(const std::string& absPath)
 {
     const std::string root = util::StringUtils::ToLower(asset::AssetDatabase::ProjectRoot());
@@ -52,6 +44,9 @@ std::string ToProjectRelative(const std::string& absPath)
 
 } // namespace
 
+/// @note 探索キーは guid: ファイル名/ステムの部分一致は誤検出・取りこぼしがあるため、
+///       AssetDatabase の guid ⇄ パス索引を直接引く。guid 化前の生パス参照はステムでなく
+///       プロジェクト相対パス丸ごとの一致で拾う。
 void DependencyViewPanel::Scan(const std::string& assetPath, const std::string& rootPath)
 {
     m_scannedPath = assetPath;
@@ -60,14 +55,13 @@ void DependencyViewPanel::Scan(const std::string& assetPath, const std::string& 
     m_scanning = false;
     if (assetPath.empty() || rootPath.empty()) return;
 
-    // WHY 解決を挟むか: baked サブアセット (.anim/.mat) は Asset Browser 上では
-    //     論理パス "Assets/.../Foo/Foo.anim" で選ばれるが、実体は Library/Baked にあり
-    //     guid もそちらに索引されている。生パスのまま引くと必ず空振りする。
+    /// @note baked サブアセット (.anim/.mat) は論理パスで選ばれるが実体は Library/Baked にあり、
+    ///       guid もそちらに索引される。生パスのまま引くと空振りするため解決を挟む。
     const std::string resolved = asset::AssetManager::ResolveAssetPath(assetPath);
     const std::string target   = resolved.empty() ? assetPath : resolved;
 
-    // 参照系なので .meta を新規発行しない。未 Import の FBX には guid が無く、
-    // その場合はパス一致だけで探す。
+    /// @note 参照系なので .meta を新規発行しない。未 Import の FBX には guid が無く、
+    ///       その場合はパス一致だけで探す。
     m_scannedGuid = util::StringUtils::ToLower(
         asset::AssetDatabase::TryGetGuidFromPath(target));
     const std::string relative = ToProjectRelative(target);
@@ -83,20 +77,20 @@ void DependencyViewPanel::Scan(const std::string& assetPath, const std::string& 
         const std::string ext = util::StringUtils::ToLower(
             util::FileSystem::GetExtension(scanPath));
         if (!IsReferrerExt(ext)) continue;
-        // 自分自身は参照元に数えない (.mat が自分の guid をヒントに持つ等)。
+        /// @note 自分自身は参照元に数えない (.mat が自分の guid をヒントに持つ等)。
         if (util::StringUtils::ToLower(scanPath) == selfKey) continue;
 
         std::string content;
         if (!util::FileSystem::ReadText(scanPath, content)) continue;
         const std::string lower = util::StringUtils::ToLower(content);
 
-        // guid が最優先。32 桁 hex はファイル内で他の意味を持たないので誤検出しない。
+        /// @note guid が最優先。32 桁 hex はファイル内で他の意味を持たないので誤検出しない。
         if (!m_scannedGuid.empty() && lower.find(m_scannedGuid) != std::string::npos) {
             m_results.push_back({ scanPath, true });
             continue;
         }
-        // 未エンコードの生パス参照。相対パス丸ごとで照合する
-        // (ステム一致は "Player" が別アセット名や UI 文言にも当たるため使わない)。
+        /// @note 未エンコードの生パス参照。相対パス丸ごとで照合する
+        ///       (ステム一致は "Player" が別アセット名や UI 文言にも当たるため使わない)。
         if (!relative.empty() && lower.find(relative) != std::string::npos)
             m_results.push_back({ scanPath, false });
     }
@@ -130,7 +124,7 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
     if (ImGui::SmallButton("Refresh"))
         Scan(m_scannedPath, assetsRoot);
 
-    // guid が無いアセットは「移動したら参照が切れる」状態。黙って劣化させず明示する。
+    /// @note guid が無いアセットは「移動したら参照が切れる」状態。黙って劣化させず明示する。
     if (m_scannedGuid.empty())
         ImGui::TextColored({ 0.95f, 0.7f, 0.25f, 1.0f },
                            "No GUID yet - matched by path only.");
@@ -173,7 +167,7 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
                               hit.byGuid ? "matched by guid"
                                          : "matched by path (not GUID-encoded yet)");
         ImGui::PopID();
-        // パス参照は移動・リネームで切れる。一覧の中で見分けられるようにする。
+        /// @note パス参照は移動・リネームで切れる。一覧の中で見分けられるようにする。
         if (!hit.byGuid) {
             ImGui::SameLine();
             ImGui::TextColored({ 0.95f, 0.7f, 0.25f, 1.0f }, "(path)");

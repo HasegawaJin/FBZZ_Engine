@@ -1,0 +1,6 @@
+# @file    FiberCommon.hlsli.meta
+# @brief   繊維アセットの固定 GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+[meta]
+guid = '1d6dcb6de98e4b3ab7f0df83915143cc'

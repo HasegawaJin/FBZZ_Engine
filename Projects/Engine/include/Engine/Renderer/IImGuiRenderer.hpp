@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-06
 ///
-/// WHY: IRenderer は通常描画 API の境界に限定し、エディター UI 用の ImGui 依存を別契約へ分離する。
+/// @note IRenderer は通常描画 API の境界に限定し、エディター UI 用の ImGui 依存を別契約へ分離する。
 #pragma once
 #include "ResourceHandle.hpp"
 
@@ -15,30 +15,30 @@ class IImGuiRenderer {
 public:
     virtual ~IImGuiRenderer() = default;
 
-    // ImGui の Win32 / GPU バックエンドを初期化する。
-    // hwnd は Win32 ウィンドウハンドルだが、ヘッダーの Windows.h 依存を避けるため void* で受ける。
+    /// ImGui の Win32 / GPU バックエンドを初期化する。
+    /// hwnd は Win32 ウィンドウハンドルだが、ヘッダーの Windows.h 依存を避けるため void* で受ける。
     virtual void ImGuiInit(void* hwnd) = 0;
 
-    // ImGui バックエンドを終了し、内部で保持する GPU / Win32 リソースを解放する。
+    /// ImGui バックエンドを終了し、内部で保持する GPU / Win32 リソースを解放する。
     virtual void ImGuiShutdown() = 0;
 
-    // ImGui フレーム開始前に、プラットフォーム入力と GPU バックエンド状態を更新する。
+    /// ImGui フレーム開始前に、プラットフォーム入力と GPU バックエンド状態を更新する。
     virtual void ImGuiNewFrame() = 0;
 
-    // ImGui::Render() 後の DrawData を現在のバックバッファへ送信する。
+    /// ImGui::Render() 後の DrawData を現在のバックバッファへ送信する。
     virtual void ImGuiRenderDrawData() = 0;
 
-    // Multi-Viewport で生成された追加 OS ウィンドウを更新・描画する。
-    // WHY: Editor からバックエンド関数を直接呼ばず、API 固有の実装をこの境界へ閉じ込める。
+    /// Multi-Viewport で生成された追加 OS ウィンドウを更新・描画する。
+    /// @note Editor からバックエンド関数を直接呼ばず、API 固有の実装をこの境界へ閉じ込める。
     virtual void ImGuiRenderPlatformWindows() = 0;
 
-    // RenderTarget を ImGui::Image が受け取れるテクスチャ ID へ変換する。
-    // WHY: ImGui 表示用の ID 解決は UI バックエンド固有の処理なので IRenderer から分離する。
+    /// RenderTarget を ImGui::Image が受け取れるテクスチャ ID へ変換する。
+    /// @note ImGui 表示用の ID 解決は UI バックエンド固有の処理なので IRenderer から分離する。
     virtual void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) = 0;
 
-    // Texture を ImGui::Image が受け取れるテクスチャ ID へ変換する。
-    // WHY: AssetBrowser など通常のレンダーターゲットではない GPU テクスチャも UI 上で確認したい。
-    //      SRV の具体型はバックエンド固有なので、Editor は ResourceHandle のまま抽象境界を越えない。
+    /// Texture を ImGui::Image が受け取れるテクスチャ ID へ変換する。
+    /// @note AssetBrowser など通常のレンダーターゲットではない GPU テクスチャも UI 上で確認したい。
+    ///       SRV の具体型はバックエンド固有なので、Editor は ResourceHandle のまま抽象境界を越えない。
     virtual void* GetImTextureID(ResourceHandle<TextureTag> texture, ResourceManager& resources) = 0;
 };
 

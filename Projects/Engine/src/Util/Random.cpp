@@ -36,7 +36,7 @@ int Random::Range(int min, int max)
 
 math::Vector2 Random::InsideUnitCircle()
 {
-    // rejection sampling — 平均 π/4 ≈ 1.27 試行で収束
+    /// @note rejection sampling — 平均 π/4 ≈ 1.27 試行で収束
     while (true) {
         float x = Range(-1.0f, 1.0f);
         float y = Range(-1.0f, 1.0f);
@@ -53,7 +53,7 @@ math::Vector2 Random::OnUnitCircle()
 
 math::Vector3 Random::InsideUnitSphere()
 {
-    // rejection sampling — 平均 π/6 の逆数 ≈ 1.91 試行で収束
+    /// @note rejection sampling — 平均 π/6 の逆数 ≈ 1.91 試行で収束
     while (true) {
         float x = Range(-1.0f, 1.0f);
         float y = Range(-1.0f, 1.0f);
@@ -65,7 +65,7 @@ math::Vector3 Random::InsideUnitSphere()
 
 math::Vector3 Random::OnUnitSphere()
 {
-    // Marsaglia (1972) — 一様分布が保証される
+    /// @note Marsaglia (1972) — 一様分布が保証される
     float theta = Value() * TWO_PI;
     float phi   = std::acos(1.0f - 2.0f * Value());
     float sinPhi = std::sin(phi);
@@ -81,8 +81,8 @@ void Random::SetSeed(unsigned int seed)
     s_rng.seed(seed);
 }
 
-// ── RandomStream ────────────────────────────────────────────────────────────
-// サンプリング手法は Random と同じものを、自前の状態に対して行う。
+/// @name RandomStream
+/// サンプリング手法は Random と同じものを、自前の状態に対して行う。
 
 math::Vector2 RandomStream::InsideUnitCircle()
 {
@@ -113,7 +113,7 @@ math::Vector3 RandomStream::InsideUnitSphere()
 
 math::Vector3 RandomStream::OnUnitSphere()
 {
-    // Marsaglia (1972) — 一様分布が保証される
+    /// @note Marsaglia (1972) — 一様分布が保証される
     float theta = Value() * TWO_PI;
     float phi   = std::acos(1.0f - 2.0f * Value());
     float sinPhi = std::sin(phi);

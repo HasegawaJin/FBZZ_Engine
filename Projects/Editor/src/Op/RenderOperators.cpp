@@ -3,15 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY: 移行前、これらは Debug メニュー (ImGui / ネイティブ) からしか切り替えられなかった。
-/// つまり **AI は viewport を撮れるのに、診断用の表示を出せなかった**。
-/// 「敵がここへ来ない」を調べるのに NavMesh を可視化できず、
-/// 「当たらない」を調べるのに Collider を出せず、
-/// 粒子の重なりを疑っても overdraw ビューへ切り替えられない。
-/// AI が持っていたのは「絵を撮る」手段だけで、「何を写すか」を選べなかった。
-///
-/// 表示の切り替えはシーンの内容を変えないので Undo には載せない (Action)。
-/// Docs/design/editor-operator-model.md
+/// @note 移行前は Debug メニューにしか無く、AI は viewport を撮れても NavMesh/Collider/overdraw 等の診断表示を選べなかった。
+/// @note 表示の切り替えはシーンの内容を変えないので Undo には載せない (Action)。
+/// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -26,11 +20,8 @@ namespace fbzz::editor {
 
 namespace {
 
-// 真偽値 1 つを切り替える / 明示設定する操作の共通部分。
-// enabled 引数を省略すると反転、指定すればその値にする。
-// WHY 両対応か: 人はメニューから「切り替え」たいが、AI は「必ず ON にしてから撮る」
-//     という決め方をしたい。反転しか無いと、AI は現在値を読んでから分岐する必要があり、
-//     読み取り手段が無い項目では 2 回撮って比べるしかなくなる。
+/// @brief 真偽値 1 つを切り替える / 明示設定する操作の共通部分 (enabled 省略で反転、指定でその値)。
+/// @note 反転専用だと、読み取り手段の無い項目で AI が ON を保証するには 2 回撮って比べるしかない。
 EditorOperator MakeToggleBase(const char* id, const char* label, const char* desc)
 {
     EditorOperator op;
@@ -57,7 +48,7 @@ OpResult ApplyToggle(bool& value, const OpArgs& args)
     return result;
 }
 
-// ProjectSettings 側が権威のフラグ (Collider / NavMesh / 影 など)。
+/// @brief ProjectSettings 側が権威のフラグ (Collider / NavMesh / 影 など)。
 EditorOperator MakeRenderToggle(const char* id, const char* label, const char* desc,
                                 bool renderer::RenderSettings::*field)
 {
@@ -65,18 +56,15 @@ EditorOperator MakeRenderToggle(const char* id, const char* label, const char* d
     op.exec = [field](OpContext& c, const OpArgs& args) -> OpResult {
         return ApplyToggle(c.ctx.projectSettings.render.*field, args);
     };
-    // メニューのチェックと op.list の checked が同じ式から出る。
+    /// @note メニューのチェックと op.list の checked が同じ式から出る。
     op.checked = [field](const OpContext& c, const OpArgs&) {
         return c.ctx.projectSettings.render.*field;
     };
     return op;
 }
 
-// EditorContext 側が権威のフラグ。
-// WHY 書き込み先を分けるか: Grid / Skeleton / LightRange / VFXGizmos は
-//     EditorContext が正本で、毎フレーム sceneRenderSettings へ複写される
-//     (EditorApp::RenderSceneView)。RenderSettings 側へ書いても次のフレームで
-//     上書きされ、「設定したのに何も変わらない」という形でしか現れない。
+/// @brief EditorContext 側が権威のフラグ。
+/// @note Grid/Skeleton/LightRange/VFXGizmos は EditorContext が正本で、毎フレーム sceneRenderSettings へ複写される (EditorApp::RenderSceneView)。RenderSettings 側へ書くと次フレームで上書きされる。
 EditorOperator MakeContextToggle(const char* id, const char* label, const char* desc,
                                  bool EditorContext::*field)
 {
@@ -92,7 +80,7 @@ EditorOperator MakeContextToggle(const char* id, const char* label, const char* 
 
 void RegisterRenderOperators(OperatorRegistry& registry)
 {
-    // ── EditorContext が正本のもの ──────────────────────────────────────────
+    /// @name EditorContext が正本のもの
     registry.Register(MakeContextToggle(
         "render.show_grid", "Show Grid",
         "Scene View のグリッド表示。", &EditorContext::showGrid));
@@ -109,9 +97,32 @@ void RegisterRenderOperators(OperatorRegistry& registry)
 
     registry.Register(MakeContextToggle(
         "render.show_vfx_gizmos", "Show VFX Gizmos",
-        "パーティクル力場の影響半径・向きと、エミッターの発生形状を描く。"
-        "どちらも「見えない体積」なので、値の違いを粒子の挙動から逆算するしかなかった。",
+        "エミッターの発生形状と初速を描く。流れの場は render.show_flow_fields。",
         &EditorContext::showVFXGizmos));
+
+    registry.Register(MakeContextToggle(
+        "render.show_flow_fields", "Show Flow Fields",
+        "FlowField の効く範囲 (球 / Baked の箱)・影響度 50% の破線球・流れの向きを描く。"
+        "channels を絞った場は破線、速度場 PNG が読めない Baked は赤い対角線。",
+        &EditorContext::showFlowFields));
+
+    registry.Register(MakeContextToggle(
+        "render.show_flow_samples", "Show Flow Samples",
+        "格子点で実効流速 (環境流・重ねた場の合計) を矢印で描く。色は速さ (青→赤で 0〜10 m/s)。"
+        "範囲は選択中の FlowField、無ければカメラ前方。",
+        &EditorContext::showFlowSamples));
+
+    registry.Register(MakeContextToggle(
+        "render.show_physics_volumes", "Show Physics Volumes",
+        "VolumeComponent のトリガー形状と効果 (重力・渦・爆風・時間・磁場) の向き、duration の残りを描く。"
+        "トリガーが無い・判定できない形状の Volume は赤で出る。",
+        &EditorContext::showPhysicsVolumes));
+
+    registry.Register(MakeContextToggle(
+        "render.show_water_flow", "Show Water Flow",
+        "全 WaterComponent の範囲・水流 (波面上の矢印)・渦・浮力の届く深さ (破線) を描く。"
+        "選択中だけの水面ギズモと違い、選択に依らず出る。",
+        &EditorContext::showWaterFlow));
 
     registry.Register(MakeContextToggle(
         "render.show_ragdoll", "Show Ragdoll",
@@ -119,14 +130,58 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "トルク上限に張り付いた関節が赤くなるので、どこが力負けしたかが位置で分かる。",
         &EditorContext::showRagdoll));
 
-    // WHY 追加したか: Debug メニューにありながら operator が無く、Grid や Skeleton と
-    //     同じ列に並んでいるのに AI からだけ触れない項目だった。Stats は FPS と
-    //     draw call を Game View へ焼き込むので、viewport_capture の絵に
-    //     性能値を一緒に写せる (profiler_get_snapshot と時刻を合わせる必要がない)。
+    registry.Register(MakeContextToggle(
+        "render.show_script_gizmos", "Show Script Gizmos",
+        "スクリプトの OnDrawGizmos / OnDrawGizmosSelected と debug.Draw* を Scene View に描く。"
+        "Game View と配布ビルドには出ない。", &EditorContext::showScriptGizmos));
+
+    registry.Register(MakeContextToggle(
+        "render.skeleton_selected_only", "Skeleton: Selected Only",
+        "スケルトン表示を選択中のキャラクターだけに絞る。", &EditorContext::skeletonSelectedOnly));
+
+    registry.Register(MakeContextToggle(
+        "render.show_constraints", "Show Constraints",
+        "物理拘束を描く。編集中は JointComponent の設定値 (アンカー・軸・可動域) から描く。",
+        &EditorContext::showConstraints));
+
+    registry.Register(MakeContextToggle(
+        "render.show_rigid_bodies", "Show Rigid Bodies",
+        "選択中の剛体の速度 (1 秒後の到達点)・角速度・重心を描く。", &EditorContext::showRigidBodies));
+
+    registry.Register(MakeContextToggle(
+        "render.show_ik", "Show IK Chains",
+        "IKSolver のチェーン・ターゲット・ポールを描く。", &EditorContext::showIK));
+
+    registry.Register(MakeContextToggle(
+        "render.show_spring_bones", "Show Spring Bones",
+        "SpringBone の揺れ骨とコライダーを描く。", &EditorContext::showSpringBones));
+
+    registry.Register(MakeContextToggle(
+        "render.show_attachments", "Show Attachments",
+        "SocketAttachment / TransformConstraint の追従先への線を描く。", &EditorContext::showAttachments));
+
+    registry.Register(MakeContextToggle(
+        "render.show_vfx_paths", "Show VFX Paths",
+        "選択中の Trail / MeshTrail / LineRenderer / VFXLine / VFXBeam の経路を描く。", &EditorContext::showVFXPaths));
+
+    registry.Register(MakeContextToggle(
+        "render.show_terrain_bounds", "Show Terrain Bounds",
+        "Terrain の範囲を箱で描く。", &EditorContext::showTerrainBounds));
+
+    registry.Register(MakeContextToggle(
+        "render.show_lod_bounds", "Show LOD Bounds",
+        "LODGroup の判定球を現在の LOD 段の色で描く。", &EditorContext::showLODBounds));
+
+    /// @note Debug メニューにはあるが operator が無く、Grid/Skeleton と同じ列なのに AI からだけ触れなかった。Stats は FPS/draw call を Game View へ焼き込むので、viewport_capture の絵に性能値を一緒に写せる。
     registry.Register(MakeContextToggle(
         "render.show_stats", "Show Stats",
         "Game Viewport へ FPS / draw call のオーバーレイを出す。",
         &EditorContext::showStats));
+
+    registry.Register(MakeContextToggle(
+        "render.show_scene_icons", "Show Scene Icons",
+        "Scene View のコンポーネントアイコン (ライト・カメラ・音源など)。消すとアイコンのクリック選択も止まる。",
+        &EditorContext::showSceneIcons));
 
     registry.Register(MakeContextToggle(
         "render.scene_view_occlusion_culling", "Scene View Occlusion Culling",
@@ -138,9 +193,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "編集ビューでの有効・無効はここでしか切り替えられない。",
         &EditorContext::sceneViewOcclusionCulling));
 
-    // WHY Render カテゴリに置かないか: 描画ではなくスクリプト DLL の監視。
-    //     AI が Play 前に自動リロードを止めたい場面 (途中でシーンが再構築されると
-    //     掴んでいた NodeId が無効になる) があるので、切り替え手段を出す。
+    /// @note 描画でなくスクリプト DLL の監視のため Render でなく Tools。Play 前に自動リロードを止めたい場面 (途中の再構築で NodeId が無効化) があるので切り替え手段を出す。
     {
         EditorOperator op = MakeContextToggle(
             "debug.hot_reload", "Hot Reload",
@@ -150,15 +203,22 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.category = "Tools";
         registry.Register(std::move(op));
     }
+    {
+        EditorOperator op = MakeContextToggle(
+            "debug.hot_reload_sound", "Hot Reload Sound",
+            "スクリプト / シェーダーのホットリロードが終わったとき (成功・失敗) に音を鳴らす。"
+            "エディターを見ていなくても完了に気づける。",
+            &EditorContext::hotReloadSound);
+        op.category = "Tools";
+        registry.Register(std::move(op));
+    }
 
-    // ── ProjectSettings が正本のもの ────────────────────────────────────────
-    // NOTE: showConstraints は operator にしない。毎フレーム showColliders から
-    //       導出される (RenderSceneView) ため、設定しても次のフレームで戻る。
+    /// @name ProjectSettings が正本のもの
     registry.Register(MakeRenderToggle(
         "render.show_colliders", "Show Colliders",
         "Collider の形状をワイヤーで描く。"
         "「当たらない」の原因が形状かレイヤーかを切り分ける最初の一手。"
-        "物理コンストレイントの表示もこれに追従する。",
+        "緑 = 静的 / 黄 = 動く剛体 / 暗い黄 = 眠り / 紫 = トリガー。",
         &renderer::RenderSettings::showColliders));
 
     registry.Register(MakeRenderToggle(
@@ -168,8 +228,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
     registry.Register(MakeRenderToggle(
         "render.show_navmesh", "Show NavMesh",
         "NavMesh の歩行可能面を描く。navmesh_find_path が found=false を返したとき、"
-        "穴がどこにあるのかは絵でしか判らない。"
-        "Play 中の Scene View では強制的に非表示になる (実行中の描画を邪魔しないため)。",
+        "穴がどこにあるのかは絵でしか判らない。Play 中の Scene View でも描ける。",
         &renderer::RenderSettings::showNavMesh));
 
     registry.Register(MakeRenderToggle(
@@ -194,9 +253,8 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "重なりは通常の絵からは読めない。",
         &renderer::RenderSettings::particleOverdrawView));
 
-    // ── ビューモード ────────────────────────────────────────────────────────
-    // WHY 個別の operator に割らないか: 排他選択なので、4 つの Action を並べるより
-    //     1 つの引数で受けるほうが「今どれか」を取り違えない。
+    /// @name ビューモード
+    /// @note 排他選択のため、4 つの Action より 1 引数で受けるほうが「今どれか」を取り違えない。
     {
         EditorOperator op;
         op.id       = "render.set_view_mode";
@@ -211,14 +269,14 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         modeParam.name = "mode";
         modeParam.type = OpParamType::String;
         modeParam.desc = "描画モード";
-        // 取りうる値は宣言する。以前は exec の中で 4 つの文字列と比較し、
-        // 独自のエラー文を返していた — 候補が op.list に出ないので、AI は
-        // desc の文章から綴りを起こすしかなかった。
+        /// @note 取りうる値は宣言する。以前は exec の中で 4 つの文字列と比較し、
+        ///       独自のエラー文を返していた — 候補が op.list に出ないので、AI は
+        ///       desc の文章から綴りを起こすしかなかった。
         modeParam.enumValues = { "lit", "unlit", "wireframe_lit", "wireframe_unlit" };
         op.params = { modeParam };
 
-        // 文字列 → enum の対応表。exec と checked が同じ表を読むので、
-        // 「設定はできるのに現在値の判定だけ綴りが違う」が起きない。
+        /// @note 文字列 → enum の対応表。exec と checked が同じ表を読むので、
+        ///       「設定はできるのに現在値の判定だけ綴りが違う」が起きない。
         const auto toViewMode = [](const std::string& mode) {
             if (mode == "unlit")           return renderer::ViewMode::Unlit;
             if (mode == "wireframe_lit")   return renderer::ViewMode::WireframeLit;
@@ -227,7 +285,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         };
 
         op.exec = [toViewMode](OpContext& c, const OpArgs& args) -> OpResult {
-            // 未知の綴りは ValidateArgs (enumValues) が入口で弾く。
+            /// @note 未知の綴りは ValidateArgs (enumValues) が入口で弾く。
             c.ctx.projectSettings.render.viewMode = toViewMode(args.GetString("mode"));
             return OpResult::Ok();
         };
@@ -238,9 +296,9 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 
-    // NavMesh オーバーレイの描き方。show_navmesh が「出す/出さない」だけを持ち、
-    // 「何を出すか」がどこにも無かったため、穴の位置も areaType の塗り分けも
-    // 同じ 1 枚の青い面からは読み取れなかった。
+    /// @note NavMesh オーバーレイの描き方。show_navmesh が「出す/出さない」だけを持ち、
+    ///       「何を出すか」がどこにも無かったため、穴の位置も areaType の塗り分けも
+    ///       同じ 1 枚の青い面からは読み取れなかった。
     {
         EditorOperator op;
         op.id       = "render.set_navmesh_draw_mode";
@@ -269,7 +327,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         };
         op.exec = [toDrawMode](OpContext& c, const OpArgs& args) -> OpResult {
             c.ctx.projectSettings.render.navMeshDrawMode = toDrawMode(args.GetString("mode"));
-            // 描き方だけ変えても表示が消えていれば何も起きないので、同時に点ける。
+            /// @note 描き方だけ変えても表示が消えていれば何も起きないので、同時に点ける。
             c.ctx.projectSettings.render.showNavMesh = true;
             return OpResult::Ok();
         };
@@ -280,10 +338,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 
-    // WHY Render グループに置くか: NavMesh のベイクは描画ではないが、登録先を分けるには
-    //     専用グループを 1 つ増やして EditorApp の登録列にも 1 行足す必要があり、
-    //     操作 1 つのために二重管理を作ることになる。debug.hot_reload と同じ扱いで
-    //     category だけ Tools に寄せる。
+    /// @note NavMesh のベイクは描画ではないが、登録先を分けると専用グループと EditorApp 登録列の二重管理が要る。debug.hot_reload と同じく category だけ Tools に寄せる。
     {
         EditorOperator op;
         op.id       = "navmesh.bake_all";

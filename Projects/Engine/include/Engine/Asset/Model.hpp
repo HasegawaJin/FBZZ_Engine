@@ -19,19 +19,12 @@ namespace fbzz::asset {
 
 struct Model {
     Model() = default;
-    /// メッシュの GPU バッファを返す。
-    ///
-    /// WHY Model が返すか (2026-09-01 に追加):
-    ///   `renderer::Mesh` は «形» を持つだけの構造体で ResourceManager を知らないため、
-    ///   自分ではバッファを返せない。唯一の所有者はこの Model なので、寿命を持つ側が
-    ///   返す。これが無いと、モデルを読み直すたび (アセットのホットリロード /
-    ///   プロジェクト切り替え / UnloadAll) に頂点・インデックスバッファが GPU へ
-    ///   残り続けた。
-    ///
-    /// WHY Active() を使うか:
-    ///   Model はアセットの静的キャッシュに載っていて、ResourceManager より後に
-    ///   消えることがある。そのときは Active() が空なので «返す相手が居ない» と
-    ///   分かる (プロセスが終わる場面なので実害も無い)。
+    /// @brief メッシュの GPU バッファを返す。
+    /// @note `renderer::Mesh` は ResourceManager を知らないため唯一の所有者である Model が返す。
+    ///       これが無いとモデルを読み直すたび (ホットリロード / プロジェクト切り替え / UnloadAll)
+    ///       に頂点・インデックスバッファが GPU へ残り続けた。Model はアセットの静的キャッシュに
+    ///       載っており ResourceManager より後に消えることがあるため、Active() が空なら
+    ///       「返す相手が居ない」と判断し何もしない (プロセス終了時なので実害はない)。
     ~Model();
 
     Model(const Model&)            = delete;
@@ -39,25 +32,25 @@ struct Model {
     Model(Model&&)                 = default;
     Model& operator=(Model&&)      = default;
 
-    // WHY: Model が meshes / materials の唯一の所有者。
-    //      MeshRenderer / MaterialComponent は Mesh* / Material* (非所有) を保持する。
+    /// @note Model が meshes / materials の唯一の所有者。
+    ///       MeshRenderer / MaterialComponent は Mesh* / Material* (非所有) を保持する。
     std::vector<std::unique_ptr<renderer::Mesh>>     meshes;
-    std::vector<std::unique_ptr<renderer::Material>> materials;  // meshes[i] に対応する material は materials[i]
+    std::vector<std::unique_ptr<renderer::Material>> materials;  ///< meshes[i] に対応する material は materials[i]
     std::unique_ptr<Skeleton> skeleton;
     std::vector<AnimationClip> clips;
 
-    // DCC のノード階層。meshes をどう GameObject へ配るかはここだけが知っている。
-    // 空の場合は「ノード情報なし」= 呼び出し側が meshes を平坦に扱ってよい (旧経路)。
+    /// DCC のノード階層。meshes をどう GameObject へ配るかはここだけが知っている。
+    /// 空の場合は「ノード情報なし」= 呼び出し側が meshes を平坦に扱ってよい (旧経路)。
     std::vector<ModelNode> nodes;
     int rootNodeIndex = -1;
-    // nodes の TRS が既に頂点へ焼き込まれているか。true なら配置側は Transform へ
-    // 代入してはならない (二重変換)。FzModelFormat.hpp の
-    // FZMODEL_FLAG_NODE_TRANSFORMS_BAKED を参照。
+    /// nodes の TRS が既に頂点へ焼き込まれているか。true なら配置側は Transform へ
+    /// 代入してはならない (二重変換)。FzModelFormat.hpp の
+    /// FZMODEL_FLAG_NODE_TRANSFORMS_BAKED を参照。
     bool nodeTransformsBaked = true;
 
-    // meshIndex を担当するノードを引く。見つからなければ -1。
-    // WHY: Renderer から「自分はモデルのどの部位か」を逆引きしたい箇所があるため、
-    //      線形探索を各所へ書かせず 1 箇所へ寄せる。ノード数は数十のオーダー。
+    /// meshIndex を担当するノードを引く。見つからなければ -1。
+    /// @note Renderer から「自分はモデルのどの部位か」を逆引きしたい箇所があるため、
+    ///       線形探索を各所へ書かせず 1 箇所へ寄せる。ノード数は数十のオーダー。
     [[nodiscard]] int FindNodeForMesh(uint32_t meshIndex) const
     {
         for (size_t i = 0; i < nodes.size(); ++i)
@@ -66,11 +59,10 @@ struct Model {
         return -1;
     }
 
-    // skeleton->referencePose を載せた定数バッファ。AnimatorComponent を持たない
-    // SkinnedMeshRenderer の描画で使う既定パレット。
-    // WHY Model が持つ: リファレンスポーズはスケルトン固有でインスタンス非依存。
-    //     同じモデルの全インスタンスで 1 本を共有できる。
-    //     RenderSystem が初回描画時に遅延生成する。
+    /// skeleton->referencePose を載せた定数バッファ。AnimatorComponent を持たない
+    /// SkinnedMeshRenderer の描画で使う既定パレット。
+    /// @note リファレンスポーズはスケルトン固有でインスタンス非依存のため、Model が持ち
+    ///       同じモデルの全インスタンスで 1 本を共有する。RenderSystem が初回描画時に遅延生成する。
     renderer::ResourceHandle<renderer::ConstantBufferTag> referencePoseCB;
 };
 

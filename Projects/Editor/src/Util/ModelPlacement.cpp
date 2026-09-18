@@ -76,8 +76,8 @@ std::string FindImportedMaterialPath(const std::string& modelPath,
     }
     if (duplicateCount > 0)
         fileStem += "_" + std::to_string(duplicateCount);
-    // Scene には原本 FBX から導出した論理パスを保存し、.mat の実体は AssetManager が
-    // Assets 側または Library/Baked 側から解決する。
+    /// @note Scene には原本 FBX から導出した論理パスを保存し、.mat の実体は AssetManager が
+    ///       Assets 側または Library/Baked 側から解決する。
     const std::filesystem::path matFsPath =
         modelDir / "materials" / (fileStem + ".mat");
     const std::string normalized = util::FileSystem::NormalizePathSeparators(
@@ -91,9 +91,7 @@ std::string FindImportedMaterialPath(const std::string& modelPath,
         logicalPath = normalized;
 
     if (isFbx) {
-        // FBX はシーンに保存する論理パスであり、実体の .mat は Library/Baked にある。
-        // WHY: ここで Assets 側の物理パスだけを確認すると、現在の隔離配置を見失って
-        //      常に Fallback.mat へ落ち、D&D 直後のモデルが元材質を失う。
+        /// @note FBX はシーンに保存する論理パスであり、実体の .mat は Library/Baked にある。Assets 側の物理パスだけを確認すると現在の隔離配置を見失って常に Fallback.mat へ落ち、D&D 直後のモデルが元材質を失う。
         if (!util::FileSystem::Exists(asset::AssetManager::ResolveAssetPath(logicalPath)))
             return {};
         return logicalPath;
@@ -131,7 +129,7 @@ std::string ResolveImportedMeshName(const std::string& modelPath,
             return submeshes[static_cast<size_t>(meshIndex)].name;
     }
 
-    // v2 以前の .fzasset は名前を持たないため、FBX 原本を読んで互換的に補完する。
+    /// @note v2 以前の .fzasset は名前を持たないため、FBX 原本を読んで互換的に補完する。
     if (util::StringUtils::ToLower(util::FileSystem::GetExtension(modelPath)) == ".fbx") {
         const FbxScanResult scan =
             FbxImportTool::Scan(asset::AssetManager::ResolveAssetPath(modelPath));
@@ -202,12 +200,9 @@ scene::EntityID CreateBoneHierarchyNode(scene::Scene& scene,
     return boneEntity;
 }
 
-// boneParent はボーン階層をぶら下げる GameObject。owner は BoneComponent が指す
-// 「このスケルトンを使う Renderer の代表」。
-// WHY 2 つに分けるか: ノードごとに子 GameObject へ分けた構成では、Renderer は
-//     Body / Visor といった子に付き、ボーンはモデルのルート直下 (Unity の Armature と
-//     同じ位置) へ並べたい。両者を同じ引数で兼ねると、ボーンが Body の下に潜って
-//     階層が DCC と一致しなくなる。
+/// boneParent はボーン階層をぶら下げる GameObject。owner は BoneComponent が指す
+/// 「このスケルトンを使う Renderer の代表」。
+/// @note 2 つに分ける: ノードごとに子 GameObject へ分けた構成では Renderer は Body / Visor といった子に付き、ボーンはモデルのルート直下 (Unity の Armature と同じ位置) へ並べたい。両者を同じ引数で兼ねるとボーンが Body の下に潜り階層が DCC と一致しなくなる。
 void CreateBoneHierarchyForModel(scene::Scene& scene,
                                  scene::GameObject& boneParent,
                                  scene::GameObject& owner,
@@ -229,8 +224,7 @@ void CreateBoneHierarchyForModel(scene::Scene& scene,
             if (smr) smr->skeletonRootEntity = rootEntity;
     }
 
-    // WHY: 一部 DCC は rootNodeIndex から到達できない補助ノードを含むため、
-    //      未生成ノードも parentIndex を見て階層へ接続する。
+    /// @note 一部 DCC は rootNodeIndex から到達できない補助ノードを含むため、未生成ノードも parentIndex を見て階層へ接続する。
     for (int nodeIndex = 0; nodeIndex < static_cast<int>(skeleton.nodes.size()); ++nodeIndex) {
         if (createdNodes[static_cast<size_t>(nodeIndex)] != scene::EntityID::INVALID)
             continue;
@@ -293,20 +287,14 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
     }();
 
     if (anySkinned) {
-        // DCC のノード 1 個 = 1 GameObject (Unity と同じ分割単位)。
-        // ノード内のマテリアル分割は、その Renderer の submesh 列 = マテリアルスロット列。
-        //
-        // WHY meshes を平坦に 1 個ずつ子へ配らないか:
-        //   Assimp は 1 つの DCC メッシュをマテリアルごとに分割するため、Body に 2 材質が
-        //   載っているだけで Body が 2 つの GameObject に割れる。ノードで束ねることで
-        //   階層が DCC のアウトライナと一致し、名前から部位が読める状態を保つ。
+        /// @note DCC のノード 1 個 = 1 GameObject (Unity と同じ分割単位)。ノード内のマテリアル分割は、その Renderer の submesh 列 = マテリアルスロット列。
+        /// @note meshes を平坦に 1 個ずつ子へ配らない: Assimp は 1 つの DCC メッシュをマテリアルごとに分割するため、Body に 2 材質が載っているだけで Body が 2 つの GameObject に割れる。ノードで束ねることで階層が DCC のアウトライナと一致し、名前から部位が読める状態を保つ。
         std::vector<const asset::ModelNode*> meshNodes;
         for (const auto& node : model->nodes)
             if (node.HasMeshes()) meshNodes.push_back(&node);
 
-        // Renderer 1 個ぶんを組み立てる。submeshIndices が空なら「モデル全体」。
-        // WHY MaterialComponent を必ず付けるか: 空だと GeometryPass が描画をスキップし、
-        //     D&D した結果がユーザーに見えない状態になる。既定材を必ず割り当てる。
+        /// @note Renderer 1 個ぶんを組み立てる。submeshIndices が空なら「モデル全体」。
+        /// @note MaterialComponent を必ず付ける: 空だと GeometryPass が描画をスキップし、D&D した結果がユーザーに見えない状態になるため、既定材を必ず割り当てる。
         auto addSkinnedPart = [&](scene::GameObject& target,
                                   const std::vector<uint32_t>& submeshIndices) {
             scene::SkinnedMeshRenderer smr;
@@ -316,7 +304,7 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
             skinnedRenderers.push_back(
                 &target.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr)));
 
-            // スロット数は「この Renderer が描く submesh の数」。
+            /// @note スロット数は「この Renderer が描く submesh の数」。
             const size_t slotCount = submeshIndices.empty()
                 ? static_cast<size_t>(meshCount) : submeshIndices.size();
             scene::MaterialComponent mc;
@@ -335,8 +323,8 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         };
 
         if (meshNodes.size() <= 1) {
-            // ノードが 1 個 (or ノード情報が無い v3 以前のベイク) なら、分ける意味が無い。
-            // root 自身が描画担当になり、従来と同じ 1 GameObject 構成になる。
+            /// @note ノードが 1 個 (or ノード情報が無い v3 以前のベイク) なら、分ける意味が無い。
+            ///       root 自身が描画担当になり、従来と同じ 1 GameObject 構成になる。
             addSkinnedPart(root, meshNodes.size() == 1
                 ? meshNodes[0]->meshIndices : std::vector<uint32_t>{});
             if (meshNodes.size() == 1 && !meshNodes[0]->name.empty())
@@ -347,20 +335,17 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
                     node->name.empty() ? std::string("Mesh") : node->name);
                 child.layer = root.layer;
                 child.SetParent(root);
-                // ノードの TRS は入れない。
-                // WHY: スキンド頂点はボーンパレットで変形されるため、メッシュノードの
-                //      変換は描画に使われない。ここで Transform へ入れると二重に掛かる。
-                //      詳細は FzModelFormat.hpp の FZMODEL_FLAG_NODE_TRANSFORMS_BAKED。
+                /// @note ノードの TRS は入れない: スキンド頂点はボーンパレットで変形されるためメッシュノードの変換は描画に使われず、Transform へ入れると二重に掛かる。詳細は `FzModelFormat.hpp` の `FZMODEL_FLAG_NODE_TRANSFORMS_BAKED`。
                 addSkinnedPart(child, node->meshIndices);
             }
         }
 
-        // ボーンは root 直下へ (Unity の Armature と同じ位置)。
-        // owner は代表 Renderer — BoneComponent::skinnedMeshEntity がこれを指し、
-        // AnimatorSystem が「どのスケルトンか」を辿る足がかりになる。
+        /// @note ボーンは root 直下へ (Unity の Armature と同じ位置)。
+        ///       owner は代表 Renderer — BoneComponent::skinnedMeshEntity がこれを指し、
+        ///       AnimatorSystem が「どのスケルトンか」を辿る足がかりになる。
         scene::GameObject* owner = &root;
         if (!skinnedRenderers.empty() && meshNodes.size() > 1) {
-            // 代表は最初の Renderer が付いた子。
+            /// @note 代表は最初の Renderer が付いた子。
             for (int i = 0; i < root.GetChildCount(); ++i) {
                 scene::GameObject* child = root.GetChild(i);
                 if (child && child->GetComponent<scene::SkinnedMeshRenderer>()) {
@@ -373,8 +358,8 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         return root.GetID();
     }
 
-    // 静的モデルは MeshRenderer が 1 メッシュしか持てないため、従来どおり
-    // submesh ごとに子 GameObject を作る。
+    /// @note 静的モデルは MeshRenderer が 1 メッシュしか持てないため、従来どおり
+    ///       submesh ごとに子 GameObject を作る。
     auto addStaticRenderer = [&](scene::GameObject& target, int meshIndex) {
         renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
         scene::MeshRenderer mr;
@@ -407,11 +392,11 @@ std::string ResolveOrImportFbxModel(const std::string& fbxAssetPath)
     const fs::path fbxLogical = util::FileSystem::PathFromUtf8(fbxAssetPath);
     const std::string stem = util::FileSystem::PathToUtf8(fbxLogical.stem());
 
-    // インポート済みなら FBX 自身を返す。Load<Model> / Load<ModelAsset> が Library コンテナへ解決する。
+    /// @note インポート済みなら FBX 自身を返す。`Load<Model>` / `Load<ModelAsset>` が Library コンテナへ解決する。
     if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid())
         return fbxAssetPath;
 
-    // 未インポート: デフォルト設定でその場インポートする (Unity のドロップと同じ体験)。
+    /// @note 未インポート: デフォルト設定でその場インポートする (Unity のドロップと同じ体験)。
     const std::string fbxAbs = asset::AssetManager::ResolveAssetPath(fbxAssetPath);
     if (!util::FileSystem::Exists(fbxAbs)) {
         FBZZ_LOG_WARN("ResolveOrImportFbxModel: fbx not found [%s]", fbxAssetPath.c_str());
@@ -420,21 +405,21 @@ std::string ResolveOrImportFbxModel(const std::string& fbxAssetPath)
     const std::string outputDir = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(fbxAbs).parent_path() / stem);
     FbxImportOptions options{};
-    // .meta を持たない新規 FBX は既定オプションでインポートするため、読み込み失敗は正常系。
+    /// @note .meta を持たない新規 FBX は既定オプションでインポートするため、読み込み失敗は正常系。
     (void)FbxMetaSerializer::LoadOptions(fbxAbs, options);
     FBZZ_LOG_INFO("ResolveOrImportFbxModel: auto-importing [%s]", fbxAssetPath.c_str());
     if (!FbxImportTool::Import(fbxAbs, outputDir, fbxAbs, options)) {
         FBZZ_LOG_ERROR("ResolveOrImportFbxModel: import failed [%s]", fbxAssetPath.c_str());
         return {};
     }
-    // 片方が失敗しても他方は書き切る。fingerprint だけ古いと次回の再インポート判定が狂うため。
+    /// @note 片方が失敗しても他方は書き切る。fingerprint だけ古いと次回の再インポート判定が狂うため。
     const bool optionsSaved = FbxMetaSerializer::SaveOptions(fbxAbs, options);
     const bool cacheSaved   = FbxMetaSerializer::SaveCacheInfo(fbxAbs, options);
     if (!optionsSaved || !cacheSaved) {
         FBZZ_LOG_WARN("ResolveOrImportFbxModel: .meta の更新に失敗 [%s]", fbxAssetPath.c_str());
     }
 
-    // 過去のロード失敗が Null キャッシュされていると新規 fzasset が引けないため掃除する。
+    /// @note 過去のロード失敗が Null キャッシュされていると新規 fzasset が引けないため掃除する。
     asset::AssetManager::FlushFailed();
     if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid())
         return fbxAssetPath;

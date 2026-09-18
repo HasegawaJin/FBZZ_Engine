@@ -69,8 +69,10 @@ editor_config/hub_imgui.ini
 **/Assets/EditorConfig/vfx_editor.ini.meta
 **/Assets/EditorConfig/.playmode_snapshot.scene.meta
 
-# Claude Code (ローカル設定)
-.claude/
+# Claude Code — 個人設定は追跡せず、全員に効くフック・権限 (settings.json) とスキルだけ共有する
+.claude/*
+!.claude/settings.json
+!.claude/skills/
 
 # OS
 .DS_Store

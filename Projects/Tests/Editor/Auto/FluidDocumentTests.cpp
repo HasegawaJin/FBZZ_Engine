@@ -11,7 +11,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/FluidDocument.hpp>
 #include <Editor/Util/UndoStack.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
 #include <imgui.h>
@@ -29,8 +29,8 @@ namespace {
 using editor::FluidDocument;
 using editor::FluidSelectionKind;
 
-// ImGui の «操作中» を作る。Commit は ImGui::IsAnyItemActive() を見るが、テストではフレームを回せない。
-// ActiveId を直に立てれば «ドラッグ中» と同じ判定になる。
+/// ImGui の «操作中» を作る。Commit は ImGui::IsAnyItemActive() を見るが、テストではフレームを回せない。
+/// ActiveId を直に立てれば «ドラッグ中» と同じ判定になる。
 class ScopedImGuiContext {
 public:
     ScopedImGuiContext()
@@ -54,9 +54,9 @@ private:
     ImGuiContext* m_context = nullptr;
 };
 
-asset::FluidRecipe ThreeSourcesTwoForces()
+fluid::FluidRecipe ThreeSourcesTwoForces()
 {
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     recipe.sources.resize(3);
     recipe.forces.resize(2);
     recipe.colliders.clear();
@@ -83,23 +83,23 @@ protected:
         EditorFixture::TearDown();
     }
 
-    std::string WriteRecipe(const std::string& name, const asset::FluidRecipe& recipe)
+    std::string WriteRecipe(const std::string& name, const fluid::FluidRecipe& recipe)
     {
         const std::string path = util::FileSystem::PathToUtf8(File(name));
         EXPECT_TRUE(asset::SaveFluidRecipe(path, recipe)) << path;
         return path;
     }
 
-    static asset::FluidRecipe LoadRecipe(const std::string& path)
+    static fluid::FluidRecipe LoadRecipe(const std::string& path)
     {
-        asset::FluidRecipe recipe;
+        fluid::FluidRecipe recipe;
         EXPECT_TRUE(asset::LoadFluidRecipe(path, recipe)) << path;
         return recipe;
     }
 
-    // 外の書き手 (AI・Baker) の保存を真似る。時刻の粒度は 10ms 前後あり、直後の書き込みは
-    // 同じ時刻に見えることがあるので、はっきり進めておく。
-    static void WriteExternally(const std::string& path, const asset::FluidRecipe& recipe)
+    /// 外の書き手 (AI・Baker) の保存を真似る。時刻の粒度は 10ms 前後あり、直後の書き込みは
+    /// 同じ時刻に見えることがあるので、はっきり進めておく。
+    static void WriteExternally(const std::string& path, const fluid::FluidRecipe& recipe)
     {
         ASSERT_TRUE(asset::SaveFluidRecipe(path, recipe));
         const std::filesystem::path file = util::FileSystem::PathFromUtf8(path);
@@ -112,7 +112,7 @@ protected:
 
     static void SetBuoyancy(FluidDocument& doc, editor::EditorContext& ctx, float value)
     {
-        ASSERT_TRUE(doc.Edit(ctx, "Set Buoyancy", [value](asset::FluidRecipe& r) { r.gas.buoyancy = value; }));
+        ASSERT_TRUE(doc.Edit(ctx, "Set Buoyancy", [value](fluid::FluidRecipe& r) { r.gas.buoyancy = value; }));
     }
 
     editor::UndoStack m_undo;
@@ -163,8 +163,8 @@ TEST_F(FluidDocumentTest, EditPushesOneUndoAndUndoRestores)
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
     EXPECT_EQ(m_undo.GetUndoDescription(), "Set Buoyancy");
 
-    // 何も変えない Edit は積まない (履歴が «何も起きない Undo» で埋まる)。
-    EXPECT_FALSE(doc.Edit(Context(), "No-op", [](asset::FluidRecipe&) {}));
+    /// @note 何も変えない Edit は積まない (履歴が «何も起きない Undo» で埋まる)。
+    EXPECT_FALSE(doc.Edit(Context(), "No-op", [](fluid::FluidRecipe&) {}));
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 
     m_undo.Undo();
@@ -174,7 +174,7 @@ TEST_F(FluidDocumentTest, EditPushesOneUndoAndUndoRestores)
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 3.5f);
 }
 
-// 細かい値の差も «変わった» と見る (to_string の 6 桁で比べると丸まって積まれない)。
+/// 細かい値の差も «変わった» と見る (to_string の 6 桁で比べると丸まって積まれない)。
 TEST_F(FluidDocumentTest, EditDetectsTinyFloatChanges)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -182,7 +182,7 @@ TEST_F(FluidDocumentTest, EditDetectsTinyFloatChanges)
     std::string error;
     ASSERT_TRUE(doc.Open(path, error)) << error;
 
-    EXPECT_TRUE(doc.Edit(Context(), "Nudge", [](asset::FluidRecipe& r) { r.gas.buoyancy += 1.0e-6f; }));
+    EXPECT_TRUE(doc.Edit(Context(), "Nudge", [](fluid::FluidRecipe& r) { r.gas.buoyancy += 1.0e-6f; }));
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
@@ -194,9 +194,9 @@ TEST_F(FluidDocumentTest, CommitGroupsChangesWhileAnItemIsActive)
     ASSERT_TRUE(doc.Open(path, error)) << error;
 
     ScopedImGuiContext imgui;
-    asset::FluidRecipe working = doc.Recipe();
+    fluid::FluidRecipe working = doc.Recipe();
 
-    // ドラッグ中の 3 フレーム: 値は毎フレーム取り込むが、Undo はまだ積まない。
+    /// @note ドラッグ中の 3 フレーム: 値は毎フレーム取り込むが、Undo はまだ積まない。
     imgui.SetItemActive(true);
     for (const float value : { 2.0f, 2.5f, 3.0f }) {
         working.gas.buoyancy = value;
@@ -206,17 +206,17 @@ TEST_F(FluidDocumentTest, CommitGroupsChangesWhileAnItemIsActive)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
     EXPECT_TRUE(doc.IsDirty());
 
-    // 押したままで値が来ないフレームも積まない。
+    /// @note 押したままで値が来ないフレームも積まない。
     doc.Commit(Context(), "Drag Buoyancy", doc.Recipe(), false);
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 
-    // 手を離したフレームで 1 つ積む。
+    /// @note 手を離したフレームで 1 つ積む。
     imgui.SetItemActive(false);
     doc.Commit(Context(), "Drag Buoyancy", doc.Recipe(), false);
     ASSERT_EQ(m_undo.GetHistorySize(), 1u);
     EXPECT_EQ(m_undo.GetUndoDescription(), "Drag Buoyancy");
 
-    // 操作中でない変更 (チェックボックス) はその場で 1 つ。
+    /// @note 操作中でない変更 (チェックボックス) はその場で 1 つ。
     working = doc.Recipe();
     working.gas.floor = !working.gas.floor;
     doc.Commit(Context(), "Toggle Floor", working, true);
@@ -227,7 +227,7 @@ TEST_F(FluidDocumentTest, CommitGroupsChangesWhileAnItemIsActive)
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 1.5f);
 }
 
-// ドラッグして元の値へ戻して離しただけなら積まない。
+/// ドラッグして元の値へ戻して離しただけなら積まない。
 TEST_F(FluidDocumentTest, CommitSkipsAGroupThatEndsWhereItStarted)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -236,7 +236,7 @@ TEST_F(FluidDocumentTest, CommitSkipsAGroupThatEndsWhereItStarted)
     ASSERT_TRUE(doc.Open(path, error)) << error;
 
     ScopedImGuiContext imgui;
-    asset::FluidRecipe working = doc.Recipe();
+    fluid::FluidRecipe working = doc.Recipe();
     imgui.SetItemActive(true);
     working.gas.buoyancy = 4.0f;
     doc.Commit(Context(), "Drag", working, true);
@@ -257,7 +257,7 @@ TEST_F(FluidDocumentTest, InteractiveEditPushesOnceAtEnd)
     const math::Vector3 original = doc.Recipe().sources[0].center;
     doc.BeginInteractiveEdit();
     EXPECT_TRUE(doc.InInteractiveEdit());
-    asset::FluidRecipe working = doc.Recipe();
+    fluid::FluidRecipe working = doc.Recipe();
     for (const float x : { 0.1f, 0.2f, 0.3f }) {
         working.sources[0].center.x = x;
         doc.ApplyInteractive(working);
@@ -273,7 +273,7 @@ TEST_F(FluidDocumentTest, InteractiveEditPushesOnceAtEnd)
     EXPECT_FLOAT_EQ(doc.Recipe().sources[0].center.x, original.x);
 }
 
-// 閉じた後の Undo はファイルへ書く (どこにも反映されない Undo が一番まずい)。
+/// 閉じた後の Undo はファイルへ書く (どこにも反映されない Undo が一番まずい)。
 TEST_F(FluidDocumentTest, UndoAfterCloseWritesTheFile)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -297,7 +297,7 @@ TEST_F(FluidDocumentTest, UndoAfterCloseWritesTheFile)
     EXPECT_FLOAT_EQ(LoadRecipe(path).gas.buoyancy, 3.5f);
 }
 
-// 開き直した文書へは Undo がメモリで戻る (ファイルを書き換えて手元と食い違わせない)。
+/// 開き直した文書へは Undo がメモリで戻る (ファイルを書き換えて手元と食い違わせない)。
 TEST_F(FluidDocumentTest, UndoFindsAReopenedDocument)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -323,7 +323,7 @@ TEST_F(FluidDocumentTest, UndoKeepsTheSelectionInRange)
     std::string error;
     ASSERT_TRUE(doc.Open(path, error)) << error;
 
-    ASSERT_TRUE(doc.Edit(Context(), "Add Source", [](asset::FluidRecipe& r) { r.sources.emplace_back(); }));
+    ASSERT_TRUE(doc.Edit(Context(), "Add Source", [](fluid::FluidRecipe& r) { r.sources.emplace_back(); }));
     doc.selection = { FluidSelectionKind::Source, 3 };
     m_undo.Undo();
     ASSERT_EQ(doc.Recipe().sources.size(), 3u);
@@ -339,7 +339,7 @@ TEST_F(FluidDocumentTest, ExternalChangeReloadsWhenClean)
     ASSERT_TRUE(doc.Open(path, error)) << error;
     const std::uint64_t revision = doc.Revision();
 
-    asset::FluidRecipe external = ThreeSourcesTwoForces();
+    fluid::FluidRecipe external = ThreeSourcesTwoForces();
     external.gas.buoyancy = 4.0f;
     WriteExternally(path, external);
 
@@ -358,7 +358,7 @@ TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
     ASSERT_TRUE(doc.Open(path, error)) << error;
     SetBuoyancy(doc, Context(), 3.5f);
 
-    asset::FluidRecipe external = ThreeSourcesTwoForces();
+    fluid::FluidRecipe external = ThreeSourcesTwoForces();
     external.gas.buoyancy = 4.0f;
     WriteExternally(path, external);
 
@@ -366,7 +366,7 @@ TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
     ASSERT_TRUE(doc.HasExternalConflict());
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 3.5f);
 
-    // 手元を残す: 衝突は下り、次の Save がディスクを上書きする。
+    /// @note 手元を残す: 衝突は下り、次の Save がディスクを上書きする。
     doc.KeepLocal();
     EXPECT_FALSE(doc.HasExternalConflict());
     EXPECT_TRUE(doc.IsDirty());
@@ -375,7 +375,7 @@ TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
     ASSERT_TRUE(doc.Save(Context(), error)) << error;
     EXPECT_FLOAT_EQ(LoadRecipe(path).gas.buoyancy, 3.5f);
 
-    // もう一度外から書かれたら、今度はディスクで置き換える。
+    /// @note もう一度外から書かれたら、今度はディスクで置き換える。
     SetBuoyancy(doc, Context(), 2.0f);
     external.gas.buoyancy = 5.0f;
     WriteExternally(path, external);
@@ -387,7 +387,7 @@ TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 5.0f);
 }
 
-// 自分の Save は外からの変更ではない (読み直しで Revision が進むとプレビューが無駄に解き直される)。
+/// 自分の Save は外からの変更ではない (読み直しで Revision が進むとプレビューが無駄に解き直される)。
 TEST_F(FluidDocumentTest, OwnSaveIsNotAnExternalChange)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -413,11 +413,11 @@ TEST_F(FluidDocumentTest, PreviewRecipeHonoursHideAndSolo)
     doc.SetHidden(FluidSelectionKind::Source, 1, true);
     EXPECT_TRUE(doc.IsHidden(FluidSelectionKind::Source, 1));
     EXPECT_FALSE(doc.IsHidden(FluidSelectionKind::Force, 1));
-    asset::FluidRecipe preview = doc.PreviewRecipe();
+    fluid::FluidRecipe preview = doc.PreviewRecipe();
     EXPECT_TRUE(preview.sources[0].enabled);
     EXPECT_FALSE(preview.sources[1].enabled);
     EXPECT_TRUE(preview.sources[2].enabled);
-    // 表示の切り替えはレシピ本体に触らない (保存・焼きには効かない)。
+    /// @note 表示の切り替えはレシピ本体に触らない (保存・焼きには効かない)。
     EXPECT_TRUE(doc.Recipe().sources[1].enabled);
     EXPECT_FALSE(doc.IsDirty());
 
@@ -426,7 +426,7 @@ TEST_F(FluidDocumentTest, PreviewRecipeHonoursHideAndSolo)
     preview = doc.PreviewRecipe();
     EXPECT_TRUE(preview.forces[0].enabled);
     EXPECT_FALSE(preview.forces[1].enabled);
-    // ソロは同じリストだけに効く。
+    /// @note ソロは同じリストだけに効く。
     EXPECT_TRUE(preview.sources[0].enabled);
     EXPECT_FALSE(preview.sources[1].enabled);
 
@@ -438,7 +438,7 @@ TEST_F(FluidDocumentTest, PreviewRecipeHonoursHideAndSolo)
     EXPECT_TRUE(doc.PreviewRecipe().sources[1].enabled);
 }
 
-// 部品を消した後に残った隠し・ソロの記録で落ちない (消えた部品を指すソロは無視する)。
+/// 部品を消した後に残った隠し・ソロの記録で落ちない (消えた部品を指すソロは無視する)。
 TEST_F(FluidDocumentTest, StaleHiddenAndSoloEntriesAreHarmless)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -448,9 +448,9 @@ TEST_F(FluidDocumentTest, StaleHiddenAndSoloEntriesAreHarmless)
 
     doc.SetHidden(FluidSelectionKind::Source, 2, true);
     doc.ToggleSolo(FluidSelectionKind::Source, 2);
-    ASSERT_TRUE(doc.Edit(Context(), "Remove Source", [](asset::FluidRecipe& r) { r.sources.pop_back(); }));
+    ASSERT_TRUE(doc.Edit(Context(), "Remove Source", [](fluid::FluidRecipe& r) { r.sources.pop_back(); }));
 
-    const asset::FluidRecipe preview = doc.PreviewRecipe();
+    const fluid::FluidRecipe preview = doc.PreviewRecipe();
     ASSERT_EQ(preview.sources.size(), 2u);
     EXPECT_TRUE(preview.sources[0].enabled);
     EXPECT_TRUE(preview.sources[1].enabled);

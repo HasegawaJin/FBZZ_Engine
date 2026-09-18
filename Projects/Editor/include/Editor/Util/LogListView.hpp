@@ -3,10 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// WHY: Build Output の診断 / 生ログ、Build Settings のパッケージングログは TextUnformatted の
-///      一枚貼りで、範囲選択もコピーも検索もできなかった。Console で固めた操作 (クリック / Shift /
-///      Ctrl / ドラッグ選択、Ctrl+A / Ctrl+C、右クリックメニュー、ダブルクリックでソースへ) を
-///      行データの出所に依らず使い回せるよう、表示と選択だけをここへ切り出す。
+/// @note Build Output の診断/生ログ、Build Settings のパッケージングログは元々 TextUnformatted の
+///       一枚貼りで範囲選択もコピーも検索もできなかった。Console で固めた選択操作を行データの
+///       出所に依らず使い回せるよう、表示と選択だけをここへ切り出す。
 #pragma once
 #include <array>
 #include <cstdint>

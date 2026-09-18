@@ -18,7 +18,7 @@ namespace {
 
 struct Entry {
     DataAssetFactory::Factory factory;
-    bool builtin = false;   // Engine 側の登録。DLL アンロードでも外さない
+    bool builtin = false;   ///< Engine 側の登録。DLL アンロードでも外さない
 };
 
 std::unordered_map<std::string, Entry>& Registry()
@@ -38,8 +38,8 @@ bool RegisterImpl(const std::string& typeName, DataAssetFactory::Factory factory
     if (typeName.empty() || !factory) return false;
 
     auto& registry = Registry();
-    // 組み込み型を同名のスクリプト型で上書きさせない。上書きを許すと builtin 印が落ち、
-    // 次の UnregisterScriptTypes で組み込み型ごと消えて復活しなくなる。
+    /// @note 組み込み型を同名のスクリプト型で上書きさせない。上書きを許すと builtin 印が落ち、
+    ///       次の UnregisterScriptTypes で組み込み型ごと消えて復活しなくなる。
     if (const auto it = registry.find(typeName);
         it != registry.end() && it->second.builtin && !builtin) {
         FBZZ_LOG_WARN("DataAssetFactory: '%s' is a built-in type; script registration ignored",

@@ -1,0 +1,28 @@
+version = 1
+shader = "guid:c79a18241c464630b037de3e9c8b7e20"
+blend_mode = "Opaque"
+double_sided = true
+render_queue = 2000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = ""
+normal = ""
+metallic = ""
+emissive = ""
+ao = ""
+
+[params]
+albedo = [0.12, 0.22, 0.45, 1.0]
+metallic = [0.0]
+roughness = [0.65]
+normalStrength = [1.0]
+occlusionStrength = [1.0]
+emissiveColor = [0.0, 0.0, 0.0]
+emissiveScale = [0.0]
+uvTiling = [1.0, 1.0]
+uvOffset = [0.0, 0.0]
+alphaCutoff = [0.5]
+clothSheenColor = [0.35, 0.45, 0.65]
+sheen = [1.0]

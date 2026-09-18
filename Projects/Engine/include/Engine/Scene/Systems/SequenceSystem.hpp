@@ -8,14 +8,11 @@
 
 namespace fbzz::scene {
 
-/// WHY Phase::LateScript か:
-///   ここへ置くと Transform (LateUpdate の TransformLateUpdate) も
-///   Animator の Slot も VFX も Audio も、すべて同じフレームのうちに拾われる。
-///   Phase::LateUpdate へ入れると TransformLateUpdate より後ろになり、
-///   ワールド行列が 1 フレーム古いまま描画される。
-///
-/// WHY RunMode::Always か: エディタで停止したままスクラブするため。
-///   シミュレーション中でないときは editorScrubTime が指定された Player だけを評価する。
+/// @note Phase::LateScript: Transform (TransformLateUpdate) も Animator の Slot も VFX も Audio
+///       も同じフレームで拾える。Phase::LateUpdate だと TransformLateUpdate より後ろになり、
+///       ワールド行列が 1 フレーム古いまま描画される。
+/// @note RunMode::Always: エディタ停止中もスクラブできるようにする。シミュレーション中でない
+///       ときは editorScrubTime が指定された Player だけを評価する。
 class SequenceSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "SequenceSystem"; }

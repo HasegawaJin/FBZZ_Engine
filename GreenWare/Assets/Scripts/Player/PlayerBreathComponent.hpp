@@ -3,16 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-14
 ///
-/// WHY 数字を全部ここへ寄せるか:
-///   消費も回復も PlayerTuning が正本で、読むのはこのファイルだけにしてある。
-///   呼ぶ側 (回避・弾き・斬撃) は SpendDodge() / GainParry() のように «動詞» で
-///   叩く ── 3 箇所が別々に tuning を辿ると、量を触るたびに «どこが払っているか»
-///   を追い直すことになる。
-///
-/// WHY 息切れを «0 に触れた瞬間» ではなく状態で持つか:
-///   0 で明けると、回復した 1 滴でまた転がって即座に尽きる往復になり、切れている
-///   こと自体が画面にも手にも出ない。Exhaust Recover まで戻るあいだ手を封じると、
-///   «攻めるしかない時間» として読める長さになる。
+/// @note 消費も回復も PlayerTuning が正本。呼ぶ側 (回避・弾き・斬撃) は SpendDodge() /
+///       GainParry() のように «動詞» で叩き、tuning を直接辿らせない。
+/// @note 息切れは «0 に触れた瞬間» でなく状態で持つ。0 で即明けると回復した 1 滴で
+///       また即座に尽きる往復になるため、Exhaust Recover まで手を封じ続ける。
 #pragma once
 #include <Scripts/Game/TimeManagerComponent.hpp>
 
@@ -31,14 +25,14 @@ class PlayerBreathComponent : public Script {
     FBZZ_SCRIPT(PlayerBreathComponent)
 
 public:
-    // PlayerComponent が必須 PlayerTuning を注入する。量をこの Script に複製しない。
+    /// PlayerComponent が必須 PlayerTuning を注入する。量をこの Script に複製しない。
     fbzz::Asset<PlayerTuning> tuning{};
 
     FBZZ_GROUP("息")
     FBZZ_FIELD_READ_ONLY(float, debugBreath, 0.0f, "息")
     FBZZ_FIELD_READ_ONLY(bool, debugExhausted, false, "息切れ")
 
-    // WHY Max() にしないか: math::Max を同じクラス内から呼べなくなる (名前が隠れる)。
+    /// @note math::Max と同名にすると同じクラス内から呼べなくなる (名前が隠れる)。
     [[nodiscard]] float MaxBreath() const { return tuning ? std::max(tuning->breathMax, 0.0f) : 0.0f; }
     [[nodiscard]] float Current() const { return m_breath; }
     /// HUD のバー用。1 = 満タン / 0 = 空。
@@ -72,9 +66,8 @@ public:
     void Refill();
     /// 息が無くて手が出せなかったことを記録する。HUD がバーを咎めの色で返す。
     void Deny() { m_deniedAt = Time::unscaledTime; }
-    // WHY Reset() にしないか: Script の Reset() はエディターのオーサリング用の
-    //     仮想関数で、同じ名前を書くと «コンポーネントを Reset した» が息の初期化を
-    //     呼ぶことになる (PlayerHealthComponent::ResetHealth と同じ理由)。
+    /// @note Script::Reset() はエディターのオーサリング用の仮想関数で、同名にすると
+    ///       «コンポーネントを Reset した» が息の初期化を呼ぶ (ResetHealth と同じ理由)。
     void ResetBreath();
 
     void OnStart() override;
@@ -122,9 +115,8 @@ inline void PlayerBreathComponent::ResetBreath()
 
 inline void PlayerBreathComponent::OnStart()
 {
-    // WHY ここだけ検算するか: 満タンが 0 だと開始時点で息切れ扱いになり、回避も
-    //     ガードも «押しても何も起きない» としか画面に出ない。原因は入力側にも
-    //     回避側にも見えないので、名指しで報告する。
+    /// @note 満タンが 0 だと開始時点で息切れ扱いになり、回避もガードも «押しても何も
+    ///       起きない» としか画面に出ず入力側にも回避側にも原因が見えないため、名指しで報告する。
     if (!tuning || tuning->breathMax <= 0.0f) {
         debug.LogError("PlayerBreathComponent has no usable PlayerTuning (Breath Max must be "
                        "greater than 0). Dodge and guard will never be available.");
@@ -161,9 +153,8 @@ inline bool PlayerBreathComponent::DrainGuard(float dt)
 
 inline void PlayerBreathComponent::Gain(float amount)
 {
-    // WHY 待ち時間 (m_idle) を触らないか: 攻めて戻すぶんは自然回復とは別の口で、
-    //     斬った直後に «自然回復まで止まる» と、攻めた見返りが次の呼吸を遅らせる
-    //     という逆向きの意味になる。
+    /// @note 攻めて戻すぶんは自然回復とは別の口なので待ち時間 (m_idle) は触らない。
+    ///       触ると斬った直後に自然回復まで止まり、攻めた見返りが次の呼吸を遅らせる逆効果になる。
     m_breath = std::min(MaxBreath(), m_breath + std::max(amount, 0.0f));
 }
 

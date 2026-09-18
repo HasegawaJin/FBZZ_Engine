@@ -19,9 +19,8 @@ GraphExtractResult ExtractSubgraph(std::span<const int> selected,
 {
     GraphExtractResult result;
     std::unordered_set<int> inside;
-    // 重複した選択と 0 以下の id を落としてから採番する。
-    // WHY: 選択の重複をそのまま採番すると、同じ元ノードに 2 つの新 id が付き、
-    //      リンクの写しがどちらへ繋ぐか決まらなくなる。
+    /// @note 重複した選択と 0 以下の id を落としてから採番する。重複をそのまま採番すると
+    ///       同じ元ノードに 2 つの新 id が付き、リンクの写しがどちらへ繋ぐか決まらなくなる。
     for (const int nodeId : selected) {
         if (nodeId <= 0 || !inside.insert(nodeId).second) continue;
         result.idMap[nodeId] = ++nextId;
@@ -38,10 +37,11 @@ GraphExtractResult ExtractSubgraph(std::span<const int> selected,
             result.edgeSourceIndices.push_back(index);
             continue;
         }
-        // 片側だけが選択に含まれる = 境界。
-        if (!fromInside && !toInside) continue; // どちらも外側。そもそも無関係
+        /// @note 片側だけが選択に含まれる = 境界。
+        /// @note どちらも外側。そもそも無関係
+        if (!fromInside && !toInside) continue;
         if (boundaryPolicy == GraphBoundaryPolicy::KeepSource && !fromInside && toInside) {
-            // from は元のノードのまま、to だけ新しい id へ繋ぎ替える。
+            /// @note from は元のノードのまま、to だけ新しい id へ繋ぎ替える。
             result.edges.push_back({ edge.from, to->second });
             result.edgeSourceIndices.push_back(index);
             continue;
@@ -69,7 +69,7 @@ std::vector<int> CollectReachable(std::span<const int> roots, std::span<const Gr
         result.push_back(current);
         const auto next = adjacency.find(current);
         if (next == adjacency.end()) continue;
-        // visited へ入れてから積むので、循環していても停止する。
+        /// @note visited へ入れてから積むので、循環していても停止する。
         for (const int child : next->second)
             if (visited.insert(child).second) queue.push_back(child);
     }
@@ -79,7 +79,7 @@ std::vector<int> CollectReachable(std::span<const int> roots, std::span<const Gr
 
 namespace {
 
-// 選択のうち、座標が判っているものだけを集める。
+/// 選択のうち、座標が判っているものだけを集める。
 std::vector<std::pair<int, ImVec2>> CollectKnown(
     const std::unordered_map<int, ImVec2>& positions, std::span<const int> selected)
 {
@@ -101,7 +101,8 @@ std::unordered_map<int, ImVec2> AlignNodes(const std::unordered_map<int, ImVec2>
 {
     std::unordered_map<int, ImVec2> changed;
     const std::vector<std::pair<int, ImVec2>> known = CollectKnown(positions, selected);
-    if (known.size() < 2) return changed; // 1 個では揃える相手がいない
+    /// @note 1 個では揃える相手がいない
+    if (known.size() < 2) return changed;
 
     float minX = known.front().second.x, maxX = minX;
     float minY = known.front().second.y, maxY = minY;
@@ -111,8 +112,8 @@ std::unordered_map<int, ImVec2> AlignNodes(const std::unordered_map<int, ImVec2>
         minY = (std::min)(minY, position.y);
         maxY = (std::max)(maxY, position.y);
     }
-    // 中央は「重心」ではなく「外接矩形の中心」。重心だと 1 個だけ離れたノードに
-    // 引っ張られて、揃えたつもりの列が斜めのまま残る。
+    /// @note 中央は「重心」ではなく「外接矩形の中心」。重心だと 1 個だけ離れたノードに
+    ///       引っ張られて、揃えたつもりの列が斜めのまま残る。
     const float centerX = (minX + maxX) * 0.5f;
     const float centerY = (minY + maxY) * 0.5f;
 
@@ -137,7 +138,8 @@ std::unordered_map<int, ImVec2> DistributeNodes(const std::unordered_map<int, Im
 {
     std::unordered_map<int, ImVec2> changed;
     std::vector<std::pair<int, ImVec2>> known = CollectKnown(positions, selected);
-    if (known.size() < 3) return changed; // 両端しか無ければ等間隔にする余地が無い
+    /// @note 両端しか無ければ等間隔にする余地が無い
+    if (known.size() < 3) return changed;
 
     std::sort(known.begin(), known.end(), [horizontal](const auto& a, const auto& b) {
         return horizontal ? a.second.x < b.second.x : a.second.y < b.second.y;

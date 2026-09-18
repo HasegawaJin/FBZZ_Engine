@@ -37,7 +37,7 @@ physics::RigidBody MakeDistinctBody()
 
 class RigidBodySerializerTest : public testkit::Fixture {};
 
-// --- 往復 -------------------------------------------------------------------
+/// @name 往復
 
 TEST_F(RigidBodySerializerTest, RestoresTheStateItSaved)
 {
@@ -85,7 +85,7 @@ TEST_F(RigidBodySerializerTest, RestoresTheStaticFlag)
 
 TEST_F(RigidBodySerializerTest, SavingTwiceProducesTheSameText)
 {
-    // 出力が安定していないと、何も触っていないのに .scene の差分が出る。
+    /// @note 出力が安定していないと、何も触っていないのに .scene の差分が出る。
     const physics::RigidBody original = MakeDistinctBody();
 
     EXPECT_EQ(physics::RigidBodySerializer::Serialize(original),
@@ -111,15 +111,15 @@ TEST_F(RigidBodySerializerTest, InverseMassFollowsTheRestoredMass)
     ASSERT_TRUE(physics::RigidBodySerializer::Deserialize(
         restored, physics::RigidBodySerializer::Serialize(original)));
 
-    // 質量だけ書き戻して逆質量を計算し直さないと、重さを変えても押した手応えが変わらない。
+    /// @note 質量だけ書き戻して逆質量を計算し直さないと、重さを変えても押した手応えが変わらない。
     EXPECT_NEAR(restored.GetInvMass(), 0.25f, testkit::kTolerance);
 }
 
-// --- 欠けた入力・壊れた入力 -------------------------------------------------
+/// @name 欠けた入力・壊れた入力
 
 TEST_F(RigidBodySerializerTest, FillsMissingKeysWithDefaults)
 {
-    // 古いシーンには新しいキーが無い。読めなくなるのではなく既定値で埋める。
+    /// @note 古いシーンには新しいキーが無い。読めなくなるのではなく既定値で埋める。
     physics::RigidBody body;
     ASSERT_TRUE(physics::RigidBodySerializer::Deserialize(body, "mass = 2.0\n"));
 
@@ -138,8 +138,8 @@ TEST_F(RigidBodySerializerTest, AcceptsAnEmptyDocument)
 
 TEST_F(RigidBodySerializerTest, RejectsTextThatIsNotToml)
 {
-    // 壊れたファイルは «読めなかった» と答える。既定値で上書きして
-    // 「開いたら全部リセットされていた」にしない。
+    /// @note 壊れたファイルは «読めなかった» と答える。既定値で上書きして
+    ///       「開いたら全部リセットされていた」にしない。
     physics::RigidBody body;
     body.SetMass(5.0f);
 
@@ -148,7 +148,7 @@ TEST_F(RigidBodySerializerTest, RejectsTextThatIsNotToml)
 
 TEST_F(RigidBodySerializerTest, KeepsTheRotationNormalised)
 {
-    // 保存された成分は丸められている。読んだまま使うと回転行列がスケールを持つ。
+    /// @note 保存された成分は丸められている。読んだまま使うと回転行列がスケールを持つ。
     physics::RigidBody body;
     ASSERT_TRUE(physics::RigidBodySerializer::Deserialize(
         body, "rotation = [0.0, 0.0, 0.0, 4.0]\n"));

@@ -39,8 +39,8 @@ struct RangeHint {
 
 class ITypeSchema;
 
-// 型そのものではなく、ownerから値へ到達する安全なアクセサを保持する。
-// WHY: offset/reinterpret_castに依存せず、非標準レイアウト型や入れ子にも同じ経路で到達するため。
+/// 型そのものではなく、owner から値へ到達する安全なアクセサを保持する。
+/// @note offset/reinterpret_cast に依存せず、非標準レイアウト型や入れ子にも同じ経路で到達する。
 struct PropertyDesc {
     std::string_view key;
     PropertyType type = PropertyType::Float;
@@ -54,17 +54,17 @@ struct PropertyDesc {
     const void* (*getConstChild)(const void* owner) = nullptr;
     void* (*getChild)(void* owner) = nullptr;
 
-    // PropertyType::Array 用。要素型のスキーマは childSchema を共用する。
-    // WHY: 配列そのものを std::any で出し入れすると要素型ごとに分岐が増えるため、
-    //      「要素へ降りるアクセサ」だけを持たせて leaf 解決を通常の入れ子と同じ経路に揃える。
+    /// PropertyType::Array 用。要素型のスキーマは childSchema を共用する。
+    /// @note 配列を std::any で出し入れすると分岐が増えるため、要素へ降りるアクセサのみを持たせ
+    ///       leaf 解決を通常の入れ子と同じ経路に揃える。
     std::size_t (*arraySize)(const void* owner) = nullptr;
     const void* (*getConstElement)(const void* owner, std::size_t index) = nullptr;
     void* (*getElement)(void* owner, std::size_t index) = nullptr;
     bool (*resizeArray)(void* owner, std::size_t size) = nullptr;
 
-    // PropertyType::Enum 用の値名 (index 順)。空でもよいが、あると Inspector が
-    // 生の数値ではなく名前の Combo を出せ、AI の vfx.schema も意味のある選択肢を引ける。
-    // 参照先は静的寿命であること (スキーマ自体が static なため)。
+    /// PropertyType::Enum 用の値名 (index 順)。空でもよいが、あると Inspector が
+    /// 生の数値ではなく名前の Combo を出せ、AI の vfx.schema も意味のある選択肢を引ける。
+    /// 参照先は静的寿命であること (スキーマ自体が static なため)。
     std::span<const std::string_view> enumNames;
 };
 
@@ -101,12 +101,10 @@ PropertyDesc MakeProperty(std::string_view key, PropertyType type, std::string_v
     return property;
 }
 
-// enum クラスのフィールドを「int の leaf」として公開する。
-// WHY: MakeProperty で enum 型のまま std::any へ入れると、AI (JSON 数値) や汎用 Inspector が
-//      渡す int と any_cast の型が一致せず set が必ず失敗する。境界では常に int で受け渡し、
-//      有効域 [0, MaximumValue] へ clamp してから enum へ戻すことで不正値の混入も同時に防ぐ。
-//      clamp 上限をテンプレート引数に置くのは、set がキャプチャを持てない生の関数ポインタで、
-//      通常の引数だと関数ポインタ内から参照できず clamp が黙って無効化されるため。
+/// enum クラスのフィールドを「int の leaf」として公開する。
+/// @note enum のまま std::any へ入れると AI/Inspector が渡す int と any_cast の型が合わず set が失敗するため、
+///       境界は常に int とし [0, MaximumValue] へ clamp して enum へ戻す。上限をテンプレート引数にするのは、
+///       set がキャプチャ不可の関数ポインタで通常引数を参照できないため。
 template<typename Owner, typename Enum, Enum Owner::*Member, int MaximumValue>
 PropertyDesc MakeEnumProperty(std::string_view key, std::string_view display,
                               std::string_view category,
@@ -138,10 +136,8 @@ PropertyDesc MakeEnumProperty(std::string_view key, std::string_view display,
     return property;
 }
 
-// int 以外の整数型 (uint32_t 等) を「int の leaf」として公開する。
-// WHY: MakeEnumProperty と同じ理由。std::any に uint32_t が入っていると、
-//      int を渡す AI・汎用 Inspector からは any_cast が外れて set が黙って失敗する。
-//      符号なし型には負値が入らないよう 0 で下限を切る。
+/// int 以外の整数型 (uint32_t 等) を「int の leaf」として公開する。
+/// @note MakeEnumProperty と同じ理由で、std::any には常に int を入れる。符号なし型は 0 で下限を切る。
 template<typename Owner, typename Value, Value Owner::*Member>
 PropertyDesc MakeIntProperty(std::string_view key, std::string_view display,
                              std::string_view category, bool exposable,
@@ -172,8 +168,8 @@ PropertyDesc MakeIntProperty(std::string_view key, std::string_view display,
     return property;
 }
 
-// std::vector<Element> のフィールドを配列 leaf として公開する。
-// 要素型スキーマは childSchema へ入れ、"bursts[2].count" のような添字付き path で降りる。
+/// std::vector<Element> のフィールドを配列 leaf として公開する。
+/// 要素型スキーマは childSchema へ入れ、"bursts[2].count" のような添字付き path で降りる。
 template<typename Owner, typename Container, Container Owner::*Member>
 PropertyDesc MakeArrayProperty(std::string_view key, std::string_view display,
                                std::string_view category, const ITypeSchema& elementSchema,
@@ -234,7 +230,7 @@ struct ResolvedProperty {
 
 namespace detail {
 
-// "bursts[2]" を key="bursts", index=2 へ分解する。添字が無ければ index は kNoIndex。
+/// "bursts[2]" を key="bursts", index=2 へ分解する。添字が無ければ index は kNoIndex。
 struct PathSegment {
     std::string_view key;
     std::size_t index = 0;
@@ -250,7 +246,7 @@ struct PathSegment {
         result.key = segment;
         return result;
     }
-    // "[" があるなら必ず末尾が "]" で、中身は非空の 10 進数であること。
+    /// @note "[" があるなら必ず末尾が "]" で、中身は非空の 10 進数であること。
     if (segment.empty() || segment.back() != ']' || open + 2 >= segment.size()) {
         result.valid = false;
         return result;
@@ -268,9 +264,8 @@ struct PathSegment {
     return result;
 }
 
-// const / 非 const を一本の実装で扱う。
-// WHY: 以前は同じ探索ロジックが二重に書かれており、添字対応のような拡張のたびに
-//      片方だけ直す事故が起きうる構造だった。constness だけをテンプレートで振り分ける。
+/// const / 非 const を一本の実装で扱う。
+/// @note 探索ロジックの二重実装は拡張のたびに片方だけ直す事故につながるため、constness のみテンプレートで振り分ける。
 template<typename OwnerPtr>
 [[nodiscard]] bool ResolvePropertyImpl(const ITypeSchema& schema, OwnerPtr root,
                                        std::string_view path, ResolvedProperty& output)
@@ -291,8 +286,8 @@ template<typename OwnerPtr>
         if (found == nullptr) return false;
 
         if (segment.hasIndex) {
-            // 添字は配列 leaf にしか付けられない。要素は必ず構造体なので、
-            // ここで path が終わっていたら leaf ではない (さらに .field が要る)。
+            /// @note 添字は配列 leaf にしか付けられない。要素は必ず構造体なので、
+            ///       ここで path が終わっていたら leaf ではない (さらに .field が要る)。
             if (found->type != PropertyType::Array || found->childSchema == nullptr) return false;
             if (found->arraySize == nullptr || segment.index >= found->arraySize(currentOwner))
                 return false;
@@ -310,7 +305,7 @@ template<typename OwnerPtr>
         }
 
         if (separator == std::string_view::npos) {
-            // 構造体・配列そのものは値として読み書きできないため leaf ではない。
+            /// @note 構造体・配列そのものは値として読み書きできないため leaf ではない。
             if (found->type == PropertyType::Struct || found->type == PropertyType::Array)
                 return false;
             if constexpr (kMutable) {
@@ -338,8 +333,8 @@ template<typename OwnerPtr>
 
 } // namespace detail
 
-// ドット区切りschemaPathを入れ子スキーマへ辿る。配列は "bursts[2].count" のように添字で降りる。
-// leaf以外や未解決pathはfalseを返す。
+/// ドット区切りschemaPathを入れ子スキーマへ辿る。配列は "bursts[2].count" のように添字で降りる。
+/// leaf以外や未解決pathはfalseを返す。
 [[nodiscard]] inline bool ResolveProperty(const ITypeSchema& schema, const void* root,
                                           std::string_view path, ResolvedProperty& output)
 {
@@ -352,9 +347,8 @@ template<typename OwnerPtr>
     return detail::ResolvePropertyImpl(schema, root, path, output);
 }
 
-// スキーマ内の全 leaf の schemaPath を集める。配列は owner の現在の要素数ぶん展開する。
-// WHY: 「有効な schemaPath の集合」を必要とするのは Inspector の描画対象・AI の vfx.schema 応答・
-//      dryRun 差分の走査の 3 箇所あり、別々に走査を書くと三者の見える範囲がずれる。ここを唯一の実装とする。
+/// スキーマ内の全 leaf の schemaPath を集める。配列は owner の現在の要素数ぶん展開する。
+/// @note Inspector 描画・AI の vfx.schema 応答・dryRun 差分走査の 3 箇所が使うため、ここを唯一の実装とする。
 inline void CollectLeafPaths(const ITypeSchema& schema, const void* owner,
                              std::string_view pathPrefix, std::vector<std::string>& outPaths)
 {

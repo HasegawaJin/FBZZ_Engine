@@ -199,8 +199,10 @@ FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);       // 新
 スロット定数 (`TEX_*_SLOT` 47 個 / `UAV_*_SLOT` 15 個) は `Binding.hlsli` の `t0`〜`t31` / `u0`〜`u7`
 定義から生成した数値版。
 
-**シェーダーツリーは 4 本ある** (エンジン / GreenWare / GameHub テンプレート 2 種)。エンジン側を直して
-同期しただけでは、**GreenWare 固有のシェーダー (36 本) が取り残される**。移行や一括置換のときは
+**シェーダーツリーは 2 本ある** (エンジン / GreenWare)。GameHub テンプレート 2 種にあった複製は
+2026-09-17 に削除した (新規プロジェクトは SDK の `share/fbzz/Assets` を使い、`TestSharedSDKTemplates.cmake`
+がテンプレート内の `Assets/Shaders` を禁止する)。エンジン側を直して同期しただけでは、
+**GreenWare 固有のシェーダー (36 本) が取り残される**。移行や一括置換のときは
 「エンジンを直して配る」ではなく、各ツリーを個別に走査して未変換が 0 件であることを確かめること。
 
 #### 手で直した例外

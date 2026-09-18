@@ -3,10 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY: AssetBrowser の一覧・検査・サムネイルは既に AI Query から利用できるが、
-/// 「この参照先を人間の画面でも確認する」「再インポート設定を開く」といった
-/// 検証導線は UI だけに閉じていた。EditorContext の one-shot request を共有し、
-/// パネルの所有権やファイル監視の実装を Operator 層へ漏らさない。
+/// AssetBrowser の一覧・検査・サムネイルは AI Query から既に使えるが、参照確認や再インポート設定を
+/// 開く検証導線は UI だけに閉じていた。EditorContext の one-shot request を共有し、パネルの所有権や
+/// ファイル監視の実装を Operator 層へ漏らさない。
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>

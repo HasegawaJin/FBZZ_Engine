@@ -31,7 +31,7 @@ renderer::Mesh* ResolveMeshPath(const std::string& path, renderer::ResourceManag
     std::string filePath  = path;
     int         meshIndex = 0;
 
-    // Windows のドライブ文字を誤判定しないように、最後の '/' より後ろの ':' を探す
+    /// @note Windows のドライブ文字を誤判定しないように、最後の '/' より後ろの ':' を探す
     const size_t slashPos   = path.find_last_of('/');
     const size_t searchFrom = (slashPos != std::string::npos) ? slashPos : 0;
     const size_t colonPos   = path.find(':', searchFrom);

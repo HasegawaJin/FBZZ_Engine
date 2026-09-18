@@ -35,13 +35,13 @@ struct AudioOcclusionComponent {
     int obstacleLayerMask = -1;
     float volumeAttenuation = 0.45f;
     float lowPass = 0.35f;
-    // レイキャストの間隔 (秒)。毎フレーム撃つ必要はない。
+    /// レイキャストの間隔 (秒)。毎フレーム撃つ必要はない。
     float updateInterval = 0.1f;
-    // 遮蔽の有無が切り替わったあと、実際の効きがそこへ届くまでの秒数。
-    // レイキャストの結果は 0/1 の二値なので、そのまま当てると物陰を横切るたびに音が跳ぶ。
+    /// 遮蔽の有無が切り替わったあと、実際の効きがそこへ届くまでの秒数。
+    /// レイキャストの結果は 0/1 の二値なので、そのまま当てると物陰を横切るたびに音が跳ぶ。
     float transitionTime = 0.15f;
     float currentOcclusion = 0.0f;
-    // レイキャストが最後に返した二値。currentOcclusion はここへ向かって動く。
+    /// レイキャストが最後に返した二値。currentOcclusion はここへ向かって動く。
     float m_targetOcclusion = 0.0f;
     float updateTimer = 0.0f;
 

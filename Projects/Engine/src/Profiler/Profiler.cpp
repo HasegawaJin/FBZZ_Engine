@@ -42,7 +42,7 @@ void Profiler::BeginFrame()
         return;
     }
 
-    // 前フレームの閉じ忘れがある場合は計測結果の階層が壊れるため、開発時に即検出する。
+    /// @note 前フレームの閉じ忘れがある場合は計測結果の階層が壊れるため、開発時に即検出する。
     assert(s_stack.empty());
     s_stack.clear();
     s_currentFrameRecords.clear();
@@ -55,7 +55,7 @@ void Profiler::EndFrame()
         return;
     }
 
-    // Begin/End の対応漏れは計測データだけでなく Viewer の階層表示も破壊する。
+    /// @note Begin/End の対応漏れは計測データだけでなく Viewer の階層表示も破壊する。
     assert(s_stack.empty());
     s_stack.clear();
     s_lastFrameRecords = s_currentFrameRecords;
@@ -114,7 +114,7 @@ void Profiler::PushSample(const ProfilerMarker& marker, double elapsedMs)
     record.category   = marker.category;
     record.elapsedMs  = elapsedMs;
     record.frameIndex = s_currentFrameIndex;
-    // 積む時点のスタック深さ。並列バッチを回している側のスコープの子として並ぶ。
+    /// @note 積む時点のスタック深さ。並列バッチを回している側のスコープの子として並ぶ。
     record.depth      = static_cast<uint32_t>(s_stack.size());
     record.color      = marker.color;
     s_currentFrameRecords.push_back(record);
@@ -148,9 +148,8 @@ uint64_t Profiler::GetLastFrameIndex()
 
 namespace {
 
-// ARGB 形式の uint32_t を ImGui の RGBA 色へ変換する。
-// WHY: ProfilerMarker はデバッグログなどでも扱いやすい 0xAARRGGBB として保持し、
-//      描画直前に ImGui の色順へ寄せる。
+/// @brief ARGB 形式の uint32_t を ImGui の RGBA 色へ変換する。
+/// @note ProfilerMarker はデバッグログでも扱いやすい 0xAARRGGBB で保持し、描画直前に ImGui の色順へ寄せる。
 ImU32 ToImGuiColor(uint32_t argb)
 {
     const uint32_t a = (argb >> 24) & 0xFF;

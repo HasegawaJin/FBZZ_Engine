@@ -20,7 +20,7 @@ void AnomalyLog::EndFrame()
     if (m_current.empty()) return;
 
     ++m_frames;
-    // 最初の 1 件だけ残す。以降はたいてい最初の異常の帰結で、原因から遠ざかる。
+    /// @note 最初の 1 件だけ残す。以降はたいてい最初の異常の帰結で、原因から遠ざかる。
     if (m_firstSeen.empty()) m_firstSeen = m_current.front().message;
 }
 

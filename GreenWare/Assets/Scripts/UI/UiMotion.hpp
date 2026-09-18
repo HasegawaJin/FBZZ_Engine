@@ -3,23 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 1 か所に置くか:
-///   Title / Options / StageSelect / Result は «要素が段差を付けて滑り込む»
-///   «カーソルが乗ると寄る» «押すと一度光る» という同じ語彙で動く。画面ごとに
-///   イージングを書くと、必ず 1 画面だけ拍が違う (Result だけ速い、など) 画面が
-///   できる。曲線をここへ集めれば、画面をまたいで同じ手触りになる。
-///
-/// WHY UIAnimator (エンジンの Tween) を使わないか:
-///   UIAnimator は 1 要素につき色 1 本・位置 1 本で、しかも «from / to» を
-///   絶対値で渡す。UI 画面の演出は «今の位置から 24px 左» «今の色の α だけ»
-///   のように相対で書きたい場面がほとんどで、そのたびに from を読んで to を
-///   組み立てることになる。進行度 1 つから位置と色を同時に導く方が、
-///   段差 (stagger) も途中の巻き戻しも 1 つの数で済む。
-///
-/// WHY 実時間で進めるか (呼ぶ側の約束):
-///   UI 画面はヒットストップもスローも掛からない。ゲーム時間で進めると、
-///   ポーズから戻った瞬間に出現が飛ぶ。ここの関数は dt を受けるだけで、
-///   呼ぶ側が time.UnscaledDeltaTime() を渡す。
+/// @note Title/Options/StageSelect/Result は同じ動きの語彙 (段差付きの滑り込み・
+///       カーソルで寄る・押すと光る) で動くため、曲線をここ 1 か所に集める
+///       (画面ごとに書くと拍がずれる画面が必ず出る)。UIAnimator (エンジンの Tween) は
+///       from/to を絶対値で渡すが、UI 演出は «今の位置から相対に» 書きたい場面が多いため
+///       使わない。関数は dt を受けるだけで、呼ぶ側が time.UnscaledDeltaTime() を渡す
+///       約束 ─ UI 画面はヒットストップもスローも掛からないため。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
@@ -50,8 +39,8 @@ namespace sandbox::uimotion {
 
 /// 一度行き過ぎて戻る。overshoot 1.7 で «軽く跳ねる» 程度。
 ///
-/// WHY 使う場所を限るか: 全部に付けると «ゼリーの UI» になる。
-///     跳ねるのは «物が置かれた» ことを言いたい要素 (帯・ランク) だけ。
+/// @note 使う場所は «物が置かれた» ことを言いたい要素 (帯・ランク) に限る。
+///       全部に付けると «ゼリーの UI» になる。
 [[nodiscard]] inline float OutBack(float t, float overshoot = 1.7f)
 {
     t = Clamp01(t);
@@ -77,9 +66,8 @@ namespace sandbox::uimotion {
 
 /// 段差付きの進行度。index 番目は index * delay 秒遅れて始まり、duration 秒で 1 へ。
 ///
-/// WHY 進行度で返すか: «i 行目は今どこか» を 1 つの数にしておくと、位置も α も
-///     材質の値も、同じ数から派生させられる。行ごとにタイマーを持つと、行を
-///     増やしたときに配列が増える。
+/// @note «i 行目は今どこか» を進行度 1 つの数にすれば、位置も α も材質の値も同じ数から
+///       派生させられる。行ごとにタイマーを持つと行を増やすたびに配列が増える。
 [[nodiscard]] inline float Stagger(float elapsed, int index, float delay, float duration)
 {
     const float local = elapsed - static_cast<float>((std::max)(index, 0)) * (std::max)(delay, 0.0f);
@@ -88,8 +76,8 @@ namespace sandbox::uimotion {
 
 /// 指数で目標へ寄せる。seconds は «残り 63% を詰める時間»。0 で即座。
 ///
-/// WHY 線形補間 (lerp) にしないか: フレームレートが変わると寄る速さが変わる。
-///     dt を指数に入れれば 30fps でも 144fps でも同じ秒数で寄る。
+/// @note 線形補間 (lerp) にしない。dt を指数に入れれば、フレームレートが変わっても
+///       (30fps でも 144fps でも) 同じ秒数で寄る。
 [[nodiscard]] inline float Approach(float current, float target, float dt, float seconds)
 {
     if (seconds <= 0.0f) return target;
@@ -107,9 +95,8 @@ inline float Decay(float& value, float dt, float seconds)
 
 /// 出現 1 枠。«元の位置 / 元の色» を控えて、進行度で書き戻す。
 ///
-/// WHY 元を控えるか: シーンに置いた位置と色が正本で、スクリプトは «そこから
-///     どれだけずれているか» だけを持つ。控えずに毎フレーム足し込むと、
-///     1 フレーム飛んだだけで要素が流れていく。
+/// @note シーンに置いた位置と色が正本で、スクリプトは «そこからどれだけずれているか»
+///       だけを持つ。控えずに毎フレーム足し込むと、1 フレーム飛んだだけで要素が流れる。
 struct Slot {
     ::fbzz::scene::GameObject* go     = nullptr;
     ::fbzz::math::Vector3      origin = {};        ///< 置かれていた位置
@@ -121,7 +108,7 @@ struct Slot {
 /// 進行度 t (0 = まだ出ていない, 1 = 置き切った) で 1 枠を書く。
 /// offset は «出ていないときの位置のずれ» [px]。α は元の α × alphaOf(t)。
 ///
-/// NOTE: 色は呼ぶ側が ui プロキシで書く (ここは Script ではないので ui を持たない)。
+/// @note 色は呼ぶ側が ui プロキシで書く (ここは Script ではないので ui を持たない)。
 ///       返り値は書くべき色。位置は transform へ直接書ける。
 [[nodiscard]] inline ::fbzz::math::Vector4 Place(Slot& slot, float t,
                                                   const ::fbzz::math::Vector3& offset,

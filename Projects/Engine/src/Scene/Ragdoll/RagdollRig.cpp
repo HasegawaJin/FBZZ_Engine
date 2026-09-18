@@ -44,7 +44,7 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
 
     if (d >= 1.0f - math::EPSILON) return math::Quaternion::Identity();
     if (d <= -1.0f + math::EPSILON) {
-        // 正反対。回転軸は f に直交していればどれでもよい。
+        /// @note 正反対。回転軸は f に直交していればどれでもよい。
         const math::Vector3 seed =
             std::abs(f.x) < 0.9f ? math::Vector3::RIGHT : math::Vector3::UP;
         return math::Quaternion::FromAxisAngle(
@@ -73,8 +73,8 @@ RagdollRig::~RagdollRig()
 
 void RagdollRig::Clear()
 {
-    // 剛体より先にソルバから外す。ソルバは非所有ポインタで持っているので、
-    // 順番を逆にすると «壊れた剛体の sleep フラグを書き戻す» ことになる。
+    /// @note 剛体より先にソルバから外す。ソルバは非所有ポインタで持っているので、
+    ///       順番を逆にすると «壊れた剛体の sleep フラグを書き戻す» ことになる。
     m_solver.ClearTransient();
     m_solver.ClearConstraints();
     m_solver.ClearBodies();
@@ -138,7 +138,7 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
     const std::size_t count = bones.size();
     m_boneToBody.assign(count, -1);
 
-    // 最初の子。剛体はここまでを 1 本のカプセルとして張る。
+    /// @note 最初の子。剛体はここまでを 1 本のカプセルとして張る。
     std::vector<int> firstChild(count, -1);
     for (std::size_t i = 0; i < count; ++i) {
         const int parent = bones[i].parent;
@@ -149,9 +149,10 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
 
     for (std::size_t i = 0; i < count; ++i) {
         const int child = firstChild[i];
-        if (child < 0) continue;   // 葉は剛体を持たない。親のカプセルに含める
-        // Root / Armature のような «入れ物» は枝だけ辿る。剛体を作ると、子の骨まで
-        // 数 m 離れているぶんの棒が 1 本できてしまう。
+        /// @note 葉は剛体を持たない。親のカプセルに含める
+        if (child < 0) continue;
+        /// @note Root / Armature のような «入れ物» は枝だけ辿る。剛体を作ると、子の骨まで
+        ///       数 m 離れているぶんの棒が 1 本できてしまう。
         if (profile.IsBodyless(bones[i].name)) continue;
 
         const math::Vector3 segment = bones[static_cast<std::size_t>(child)].position - bones[i].position;
@@ -172,8 +173,8 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         link.caps[1]   = std::make_unique<physics::SphereCollider>(radius);
         link.body      = std::make_unique<physics::RigidBody>();
 
-        // CapsuleCollider の中心線はローカル Y。剛体の Y を骨の向きへ合わせる。
-        // 関節フレーム (X = 骨) はこれとは別に XPBDJoint 側が持つので衝突しない。
+        /// @note CapsuleCollider の中心線はローカル Y。剛体の Y を骨の向きへ合わせる。
+        ///       関節フレーム (X = 骨) はこれとは別に XPBDJoint 側が持つので衝突しない。
         const math::Quaternion bodyRotation = AlignAxis(bones[i].rotation, math::Vector3::UP, segment);
         const math::Vector3    bodyPosition = bones[i].position + segment * 0.5f;
 
@@ -184,7 +185,7 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         link.body->SetInertiaFromCollider(link.collider.get());
         link.body->SetMass(mass);
 
-        // 骨 = 剛体 × これ。以後の捕獲も書き戻しもこの 2 つだけで往復する。
+        /// @note 骨 = 剛体 × これ。以後の捕獲も書き戻しもこの 2 つだけで往復する。
         const math::Quaternion inverseBody = bodyRotation.Inverse();
         link.boneOffset   = inverseBody * (bones[i].position - bodyPosition);
         link.boneRotation = (inverseBody * bones[i].rotation).Normalized();
@@ -195,7 +196,7 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
 
     for (BodyLink& link : m_bodies) m_solver.AddBody(link.body.get());
 
-    // 親側の剛体は、骨の親を遡って最初に見つかったもの。
+    /// @note 親側の剛体は、骨の親を遡って最初に見つかったもの。
     for (std::size_t bodyIndex = 0; bodyIndex < m_bodies.size(); ++bodyIndex) {
         const std::size_t boneIndex = static_cast<std::size_t>(m_bodies[bodyIndex].boneIndex);
         for (int ancestor = bones[boneIndex].parent; ancestor >= 0;
@@ -207,10 +208,9 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         }
     }
 
-    // 親の関節を持たない剛体をアニメーションへ繋ぎ止める。
-    //
-    // WHY 関節より «先に» 解くか: 一番柔らかいものを先に置く規約 (後に解いた方が勝つ)。
-    //     繋ぎ止めが関節や接触に勝つと、骨が伸びてでも根が目標へ寄ることになる。
+    /// @note 親の関節を持たない剛体をアニメーションへ繋ぎ止める。一番柔らかいものを先に置く
+    ///       規約 (後に解いた方が勝つ) のため関節より «先に» 解く。繋ぎ止めが関節や接触に
+    ///       勝つと、骨が伸びてでも根が目標へ寄ることになる。
     for (std::size_t bodyIndex = 0; bodyIndex < m_bodies.size(); ++bodyIndex) {
         if (m_bodies[bodyIndex].parentBody >= 0) continue;
         auto anchor = std::make_unique<physics::XPBDPoseAnchor>(m_bodies[bodyIndex].body.get());
@@ -219,17 +219,18 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         m_solver.AddConstraint(std::move(anchor));
     }
 
-    // 関節は «骨の位置» に立てる。
+    /// @note 関節は «骨の位置» に立てる。
     std::vector<int> bodyDepth(m_bodies.size(), 0);
     for (std::size_t bodyIndex = 0; bodyIndex < m_bodies.size(); ++bodyIndex) {
         const BodyLink&   link      = m_bodies[bodyIndex];
         const std::size_t boneIndex = static_cast<std::size_t>(link.boneIndex);
 
         const int parentBodyIndex = link.parentBody;
-        if (parentBodyIndex < 0) continue;   // 根は関節ではなく繋ぎ止めで支える
+        /// @note 根は関節ではなく繋ぎ止めで支える
+        if (parentBodyIndex < 0) continue;
         physics::RigidBody* parentBody = m_bodies[static_cast<std::size_t>(parentBodyIndex)].body.get();
 
-        // 骨は親が先に並んでいるので、親側の剛体の段数は既に確定している。
+        /// @note 骨は親が先に並んでいるので、親側の剛体の段数は既に確定している。
         const int parentDepth = bodyDepth[static_cast<std::size_t>(parentBodyIndex)];
         bodyDepth[bodyIndex]  = parentDepth + 1;
 
@@ -240,7 +241,7 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         auto joint = std::make_unique<physics::XPBDJoint>(parentBody, link.body.get());
         const RagdollBoneSettings& settings = profile.Resolve(bones[boneIndex].name);
         joint->Limits() = settings.limits;
-        // 関節フレームの X が骨の向き。可動域も目標姿勢もこのフレームで測る。
+        /// @note 関節フレームの X が骨の向き。可動域も目標姿勢もこのフレームで測る。
         joint->Build(bones[boneIndex].position,
                      AlignAxis(bones[boneIndex].rotation, math::Vector3::RIGHT, segment));
 
@@ -254,16 +255,15 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         m_solver.AddConstraint(std::move(joint));
     }
 
-    // 各関節が «その先を支える» のに要るトルクの素。実トルクは これ × |g|。
-    //
-    // WHY 真横の姿勢を基準にするか: バインドポーズでは脚がまっすぐ下を向いていて、
-    //     重力に垂直な腕の長さがほぼ 0 になる。それを基準にすると «必要トルク 0» と
-    //     出てしまうので、姿勢に依らず決まる «関節からの距離» を腕として採る。
+    /// @note 各関節が «その先を支える» のに要るトルクの素。実トルクは これ × |g|。バインドポーズ
+    ///       では脚がまっすぐ下を向いていて重力に垂直な腕の長さがほぼ 0 になり、真横の姿勢を
+    ///       基準にすると «必要トルク 0» と出てしまうため、姿勢に依らず決まる «関節からの
+    ///       距離» を腕として採る。
     for (JointLink& link : m_joints) {
         const math::Vector3 anchor = link.joint->GetAnchorParentWorld();
         float moment = 0.0f;
         for (std::size_t b = 0; b < m_bodies.size(); ++b) {
-            // この関節に載っているのは childBody から先の部分木だけ。
+            /// @note この関節に載っているのは childBody から先の部分木だけ。
             int ancestor = static_cast<int>(b);
             while (ancestor >= 0 && ancestor != link.childBody)
                 ancestor = m_bodies[static_cast<std::size_t>(ancestor)].parentBody;
@@ -273,13 +273,11 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         link.holdMoment = moment;
     }
 
-    // 繋ぎ止めの強さの素。**根 1 本ごとに、その根がぶら下げている部分木だけ**を数える。
-    //
-    // WHY 全身の合計にしないか: 骨の並びは 1 本の木とは限らない。壊れた脚だけを
-    //     落とす構成 (BossPolarityRigComponent) では、繋がっていない脚が 4 本
-    //     同じソルバに乗る。全身の合計を全部の根へ配ると、脚 1 本の繋ぎ止めが
-    //     «4 本ぶんを支える力» になり、脱力させたはずの脚がクリップへ吸い付く。
-    //     部分木ごとに数えれば、根が 1 本の従来の構成では合計と一致する。
+    /// @note 繋ぎ止めの強さの素。**根 1 本ごとに、その根がぶら下げている部分木だけ**を数える。
+    ///       骨の並びは 1 本の木とは限らず、壊れた脚だけを落とす構成 (BossPolarityRigComponent)
+    ///       では繋がっていない脚が 4 本同じソルバに乗るため、全身の合計を全部の根へ配ると
+    ///       脚 1 本の繋ぎ止めが «4 本ぶんを支える力» になり、脱力させたはずの脚がクリップへ
+    ///       吸い付く。部分木ごとに数えれば、根が 1 本の従来の構成では合計と一致する。
     m_anchorMass.assign(m_anchors.size(), 0.0f);
     m_anchorMoment.assign(m_anchors.size(), 0.0f);
     for (std::size_t a = 0; a < m_anchorBody.size(); ++a) {
@@ -298,11 +296,10 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
     }
     for (const BodyLink& link : m_bodies) m_totalMass += link.mass;
 
-    // 接地はカプセルの両端で取る。中心 1 点だと寝かせた胴が床へ半分めり込む。
-    //
-    // WHY 関節より後に足すか: ソルバは登録順に解き、Gauss-Seidel は後に解いた方が勝つ。
-    //     床を後にすると «骨がわずかに伸びてでも床から出る» になる。逆にすると
-    //     骨の長さを守るために足が床へ沈み、接地が毎フレーム負ける。
+    /// @note 接地はカプセルの両端で取る。中心 1 点だと寝かせた胴が床へ半分めり込む。ソルバは
+    ///       登録順に解き Gauss-Seidel は後に解いた方が勝つため、床は関節より後に足す:
+    ///       «骨がわずかに伸びてでも床から出る» になり、逆だと骨の長さを守るために
+    ///       足が床へ沈んで接地が毎フレーム負ける。
     for (const BodyLink& link : m_bodies) {
         const float radius = link.collider->m_radius;
         for (const float end : { link.collider->m_halfHeight, -link.collider->m_halfHeight }) {
@@ -317,8 +314,8 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
 
     BuildShapeInstances();
 
-    // 組んだ時点で重なっている組は自己衝突から永久に外す。関節で繋がっていなくても
-    // 肩と胸のように «元から重ねてある» 組があり、当てると起動した瞬間に押し合って自壊する。
+    /// @note 組んだ時点で重なっている組は自己衝突から永久に外す。関節で繋がっていなくても
+    ///       肩と胸のように «元から重ねてある» 組があり、当てると起動した瞬間に押し合って自壊する。
     const std::size_t bodyCount = m_bodies.size();
     m_selfOverlapAtBuild.assign(bodyCount * bodyCount, false);
     for (std::size_t a = 0; a < bodyCount; ++a) {
@@ -337,8 +334,8 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
     ApplyDrive();
 }
 
-// カプセル 1 個 + 両端の球 2 個を ColliderInstance にする。NarrowPhase はこの形でしか
-// 受け取らないので、剛体を作った直後に一度だけ組んで、以後は姿勢だけ更新する。
+/// カプセル 1 個 + 両端の球 2 個を ColliderInstance にする。NarrowPhase はこの形でしか
+/// 受け取らないので、剛体を作った直後に一度だけ組んで、以後は姿勢だけ更新する。
 void RagdollRig::BuildShapeInstances()
 {
     m_instances.clear();
@@ -368,7 +365,7 @@ void RagdollRig::ApplyDrive()
 {
     const float gravity = m_solver.GetGravity().Length();
 
-    // 繋ぎ止めもサーボと同じ «自重比» で持つ。重力を変えれば必要な力も変わる。
+    /// @note 繋ぎ止めもサーボと同じ «自重比» で持つ。重力を変えれば必要な力も変わる。
     const float anchorStrength = std::max(m_anchorScale, 0.0f);
     for (std::size_t a = 0; a < m_anchors.size(); ++a) {
         const float mass   = a < m_anchorMass.size()   ? m_anchorMass[a]   : m_totalMass;
@@ -376,7 +373,7 @@ void RagdollRig::ApplyDrive()
         m_anchors[a]->SetFiniteStrength(mass * gravity * anchorStrength,
                                   moment * gravity * anchorStrength,
                                    std::max(m_anchorSag, 0.0f), std::max(m_anchorTilt, 0.0f));
-        // XPBD の上限 0 は無制限を意味する。自重比から算出した出力 0 は明示的に切る。
+        /// @note XPBD の上限 0 は無制限を意味する。自重比から算出した出力 0 は明示的に切る。
         m_anchors[a]->SetEnabled(m_driveEnabled && anchorStrength > 0.0f && gravity > 0.0f);
     }
 
@@ -386,24 +383,25 @@ void RagdollRig::ApplyDrive()
             std::pow(std::max(m_driveFalloff, 0.0f), static_cast<float>(link.depth));
 
         physics::XPBDJointDrive& drive = link.joint->Drive();
-        const math::Quaternion target = drive.target;   // 目標は毎フレーム別に更新される
+        /// @note 目標は毎フレーム別に更新される
+        const math::Quaternion target = drive.target;
 
         drive         = physics::XPBDJointDrive{};
         drive.target  = target;
         drive.enabled = link.baseServo.enabled && m_driveEnabled && strength > 0.0f;
         if (!drive.enabled) continue;
 
-        // «その先を支えるのに要るトルク» に倍率を掛けたものが上限になる。骨格の
-        // 大きさが変わっても «どれだけ余裕があるか» が保たれる (RagdollServo の WHY)。
+        /// @note «その先を支えるのに要るトルク» に倍率を掛けたものが上限になる。骨格の
+        ///       大きさが変わっても «どれだけ余裕があるか» が保たれる (理由は RagdollServo を参照)。
         drive.maxTorque =
             link.holdMoment * gravity * std::max(link.baseServo.torqueScale, 0.0f) * strength;
         drive.enabled = drive.maxTorque > 0.0f;
         if (!drive.enabled) continue;
-        // たわみ角 θ でのトルクは θ/α。α = holdSag / maxTorque と置くと、
-        // «holdSag だけたわんだところで上限を出し切る» という一貫した意味になる。
-        //
-        // 弱くすると上限が下がり、同じ式で compliance が上がる ─ 硬いまま上限だけ
-        // 下げると、押した瞬間は耐えて限界で急に落ちる不連続な動きになる。
+        /// @note たわみ角 θ でのトルクは θ/α。α = holdSag / maxTorque と置くと、
+        ///       «holdSag だけたわんだところで上限を出し切る» という一貫した意味になる。
+        ///
+        ///       弱くすると上限が下がり、同じ式で compliance が上がる ─ 硬いまま上限だけ
+        ///       下げると、押した瞬間は耐えて限界で急に落ちる不連続な動きになる。
         drive.compliance =
             std::max(link.baseServo.holdSag, 0.0f) / std::max(drive.maxTorque, 1.0e-4f);
         drive.damping = link.baseServo.damping * std::max(m_driveDamping, 0.0f);
@@ -416,7 +414,7 @@ void RagdollRig::SetDrive(bool enabled, float scale, float falloff, float dampin
     m_driveScale   = scale;
     m_driveFalloff = falloff;
     m_driveDamping = damping;
-    // 脱力するときは繋ぎ止めも外す。残すと «力が抜けたのに胴だけ宙に留まる» になる。
+    /// @note 脱力するときは繋ぎ止めも外す。残すと «力が抜けたのに胴だけ宙に留まる» になる。
     for (physics::XPBDPoseAnchor* anchor : m_anchors) anchor->SetEnabled(enabled);
     ApplyDrive();
 }
@@ -437,8 +435,8 @@ void RagdollRig::RefreshContacts(physics::World* world)
     m_pairs.clear();
     if (m_instances.empty()) return;
 
-    // 形状を今の姿勢へ同期する。NarrowPhase はコライダーが覚えているワールド形状を見るので、
-    // ここを飛ばすと «前フレームの位置で当たり判定する» ことになる。
+    /// @note 形状を今の姿勢へ同期する。NarrowPhase はコライダーが覚えているワールド形状を見るので、
+    ///       ここを飛ばすと «前フレームの位置で当たり判定する» ことになる。
     for (const physics::ColliderInstance& instance : m_instances) {
         const math::Quaternion rotation = instance.body->GetRotation();
         instance.collider->Update(
@@ -451,7 +449,7 @@ void RagdollRig::RefreshContacts(physics::World* world)
         CollectSelfPairs();
     if (m_pairs.empty()) return;
 
-    // PhysicsSolver は状態を持たないので、呼ぶたびに作ってよい。
+    /// @note PhysicsSolver は状態を持たないので、呼ぶたびに作ってよい。
     physics::PhysicsSolver narrowPhase;
     narrowPhase.NarrowPhase(m_pairs, m_contactPoints);
     MakeContacts();
@@ -459,11 +457,10 @@ void RagdollRig::RefreshContacts(physics::World* world)
 
 void RagdollRig::CollectWorldPairs(physics::World& world)
 {
-    // 全身を包む球で 1 回だけ問い合わせる。
-    //
-    // WHY 剛体ごとに引かないか: OverlapSphere は全コライダーを線形に走査する。20 個の骨で
-    //     20 往復すると «コライダー総数 × 20» になり、アリーナ 1 枚を拾うために払う額として
-    //     割に合わない。粗く 1 回拾ってから、こちらで AABB を突き合わせる方が安い。
+    /// @note 全身を包む球で 1 回だけ問い合わせる。OverlapSphere は全コライダーを線形に走査する
+    ///       ため、剛体ごと (骨 20 個) に引くと 20 往復で «コライダー総数 × 20» になり、
+    ///       アリーナ 1 枚を拾うために払う額として割に合わない。粗く 1 回拾ってから、
+    ///       こちらで AABB を突き合わせる方が安い。
     physics::AABB bounds = m_instances.front().collider->GetAABB();
     for (const physics::ColliderInstance& instance : m_instances)
         bounds = bounds.Merge(instance.collider->GetAABB());
@@ -477,7 +474,7 @@ void RagdollRig::CollectWorldPairs(physics::World& world)
             [&](const physics::ColliderInstance& candidate) {
                 if (!candidate.collider || candidate.isTrigger) return false;
                 if (m_ignoredBody && candidate.body == m_ignoredBody) return false;
-                // 静的 = World が積分しないもの。地形も «剛体を持たないコライダー» なのでここ。
+                /// @note 静的 = World が積分しないもの。地形も «剛体を持たないコライダー» なのでここ。
                 const bool isStatic = !candidate.body || candidate.body->IsStatic();
                 if (isStatic ? !wantStatic : !wantDynamic) return false;
                 for (const physics::Collider* ignored : m_ignoredColliders)
@@ -498,10 +495,10 @@ void RagdollRig::CollectWorldPairs(physics::World& world)
 
 void RagdollRig::CollectSelfPairs()
 {
-    // 自己衝突はカプセルどうしだけを見る。両端の球まで当てると同じ重なりを 9 通り
-    // 報告することになり、押し戻しがそのぶん硬くなる。
-    // BuildShapeInstances が «剛体 1 個につきカプセル → 端 → 端» の順で並べるので、
-    // 剛体 i のカプセルは m_instances[i * 3]。
+    /// @note 自己衝突はカプセルどうしだけを見る。両端の球まで当てると同じ重なりを 9 通り
+    ///       報告することになり、押し戻しがそのぶん硬くなる。
+    ///       BuildShapeInstances が «剛体 1 個につきカプセル → 端 → 端» の順で並べるので、
+    ///       剛体 i のカプセルは m_instances[i * 3]。
     for (std::size_t a = 0; a < m_bodies.size(); ++a) {
         for (std::size_t b = a + 1; b < m_bodies.size(); ++b) {
             if (!AllowsSelfContact(static_cast<int>(a), static_cast<int>(b))) continue;
@@ -519,7 +516,7 @@ bool RagdollRig::AllowsSelfContact(int a, int b) const
         m_selfOverlapAtBuild[static_cast<std::size_t>(a) * count + static_cast<std::size_t>(b)])
         return false;
 
-    // 関節グラフ上の距離。先祖を selfSkip 段まで遡って相手に当たれば «繋がっている» 扱い。
+    /// @note 関節グラフ上の距離。先祖を selfSkip 段まで遡って相手に当たれば «繋がっている» 扱い。
     const int skip = std::max(m_contactSettings.selfSkip, 0);
     for (int side = 0; side < 2; ++side) {
         int from      = side == 0 ? a : b;
@@ -542,12 +539,12 @@ void RagdollRig::MakeContacts()
         const int indexB = OwnBodyIndex(point.bodyB);
         if (indexA < 0 && indexB < 0) continue;
 
-        // 法線は B → A。押し出される側をこちらに揃えると、拘束は片側だけを見ればよくなる。
+        /// @note 法線は B → A。押し出される側をこちらに揃えると、拘束は片側だけを見ればよくなる。
         physics::RigidBody* body   = indexA >= 0 ? point.bodyA : point.bodyB;
         physics::RigidBody* other  = indexA >= 0 ? point.bodyB : point.bodyA;
         const math::Vector3 normal = indexA >= 0 ? point.normal : -point.normal;
-        // 相手も自分の骨なら双方を動かす。World が積分している剛体は動かさない
-        // (同じフレームで 2 回進んでしまう。反作用は ApplyContactReactions で返す)。
+        /// @note 相手も自分の骨なら双方を動かす。World が積分している剛体は動かさない
+        ///       (同じフレームで 2 回進んでしまう。反作用は ApplyContactReactions で返す)。
         const bool solveOther = indexA >= 0 && indexB >= 0;
 
         const bool hasMaterials = point.materialA && point.materialB;
@@ -563,7 +560,7 @@ void RagdollRig::MakeContacts()
                               point.depth, friction, restitution);
     }
 
-    // 実体が出揃ってからソルバへ渡す。作りながら渡すと、再確保で全部が宙を指す。
+    /// @note 実体が出揃ってからソルバへ渡す。作りながら渡すと、再確保で全部が宙を指す。
     for (physics::XPBDContact& contact : m_contacts) m_solver.AddTransient(&contact);
 }
 
@@ -673,20 +670,20 @@ void RagdollRig::Capture(const std::vector<RagdollBonePose>& bones)
 
         link.body->SetPosition(position);
         link.body->SetRotation(rotation);
-        // 初速は 0 から始める。どちらへ倒したいかは呼び出し側が押して決める。
+        /// @note 初速は 0 から始める。どちらへ倒したいかは呼び出し側が押して決める。
         link.body->SetVelocity(math::Vector3::ZERO);
         link.body->SetAngularVelocity(math::Vector3::ZERO);
     }
 
-    // 剛体を «瞬間移動» させたので、接触が覚えている前フレームの位置は無効。
+    /// @note 剛体を «瞬間移動» させたので、接触が覚えている前フレームの位置は無効。
     for (physics::XPBDPlaneContact* contact : m_ground) contact->ResetHistory();
 }
 
 void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones)
 {
     if (m_standingGuard && m_standingTargets.size() == bones.size()) {
-        // 根の移動はゲーム側が所有する。目標の移動を速度差へ変換すると、歩行速度に
-        // 比例した偽の衝撃が各フレームの最初の substep に入ってしまう。
+        /// @note 根の移動はゲーム側が所有する。目標の移動を速度差へ変換すると、歩行速度に
+        ///       比例した偽の衝撃が各フレームの最初の substep に入ってしまう。
         for (const auto& link : m_bodies) {
             int root = link.boneIndex;
             while (bones[static_cast<std::size_t>(root)].parent >= 0 &&
@@ -702,9 +699,9 @@ void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones)
         }
     }
     m_standingTargets = bones;
-    // 目標は «この骨の姿勢なら関節はどれだけ曲がっているか»。剛体の «あるべき» 姿勢を
-    // 骨から作り、関節フレームへ落として相対を取る。捕獲した姿勢と同じなら Identity に
-    // なるので、無負荷での釣り合い点がそのままアニメーションになる。
+    /// @note 目標は «この骨の姿勢なら関節はどれだけ曲がっているか»。剛体の «あるべき» 姿勢を
+    ///       骨から作り、関節フレームへ落として相対を取る。捕獲した姿勢と同じなら Identity に
+    ///       なるので、無負荷での釣り合い点がそのままアニメーションになる。
     const auto rotationFromBone = [this, &bones](int bodyIndex, math::Quaternion& out) {
         if (bodyIndex < 0 || bodyIndex >= static_cast<int>(m_bodies.size())) return false;
         const int boneIndex = m_bodies[static_cast<std::size_t>(bodyIndex)].boneIndex;
@@ -715,8 +712,8 @@ void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones)
         return true;
     };
 
-    // 根は関節を持たないので、繋ぎ止めの目標をここで取り直す。これが無いと
-    // サーボが形を保ったまま全体が落ちていく。
+    /// @note 根は関節を持たないので、繋ぎ止めの目標をここで取り直す。これが無いと
+    ///       サーボが形を保ったまま全体が落ちていく。
     for (std::size_t i = 0; i < m_anchors.size(); ++i) {
         const int bodyIndex = m_anchorBody[i];
         const int boneIndex = m_bodies[static_cast<std::size_t>(bodyIndex)].boneIndex;
@@ -744,10 +741,9 @@ void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones)
 
         if (!m_learnLimits) continue;
 
-        // 角の測り方は関節側 (押し戻しに使うのと同じ分解) に任せる。
-        // WHY ここで測らないか: 学習側と検査側で分解や符号の扱いが 1 つでも違うと、
-        //     «広げたはずなのに押し戻される» という形でしか表面化しない。
-        //     測る関数を 1 つにして、食い違いようが無い状態にする。
+        /// @note 角の測り方は関節側 (押し戻しに使うのと同じ分解) に任せる。学習側と検査側で
+        ///       分解や符号の扱いが 1 つでも違うと «広げたはずなのに押し戻される» という形でしか
+        ///       表面化しないため、測る関数を 1 つにして食い違いようが無い状態にする。
         link.joint->LearnLimits(target, m_limitMargin);
     }
 }
@@ -760,16 +756,14 @@ void RagdollRig::SetLimitLearning(bool enabled, float margin)
 
     if (!m_learnLimits || wasEnabled) return;
 
-    // 有効にした «その瞬間の姿勢» は、可動域の内側であることにする。
-    //
-    // WHY 有効化の 1 回だけか: 毎フレーム今の姿勢を取り込むと、崩れて押し込まれた角まで
-    //     «許可された角» として焼き込み、可動域が時間とともに意味を失う。
-    //     ここは false → true の遷移だけなので、そうはならない
-    //     (RagdollSystem は毎フレーム同じ値で呼ぶ)。
-    // WHY それでも要るか: 有効にするのはふつう捕獲の直後で、その姿勢が既に可動域の
-    //     外まで曲がっていることがある。UpdateDriveTargets が目標から学習するより先に
-    //     1 ステップ回ると、そこで押し戻されて «学習が効く前に崩れる»。
-    //     クリップの要求値ではなく «実際に置いた姿勢» を測るので、両者がずれていても効く。
+    /// @note 有効にした «その瞬間の姿勢» は、可動域の内側であることにする。毎フレーム今の姿勢を
+    ///       取り込むと、崩れて押し込まれた角まで «許可された角» として焼き込み、可動域が時間と
+    ///       ともに意味を失うため、false → true の遷移の 1 回だけにする
+    ///       (RagdollSystem は毎フレーム同じ値で呼ぶ)。
+    /// @note 有効にするのはふつう捕獲の直後で、その姿勢が既に可動域の外まで曲がっていることが
+    ///       ある。UpdateDriveTargets が目標から学習するより先に 1 ステップ回ると、そこで
+    ///       押し戻されて «学習が効く前に崩れる» ため、クリップの要求値ではなく «実際に置いた
+    ///       姿勢» を測る (両者がずれていても効く)。
     for (JointLink& link : m_joints) link.joint->LearnLimitsFromCurrentPose(m_limitMargin);
 }
 
@@ -813,7 +807,7 @@ void RagdollRig::Step(float dt)
         m_solver.Step(dt);
         return;
     }
-    // 射影した位置から速度を導出するため、描画だけが立って物理が倒れ続けることはない。
+    /// @note 射影した位置から速度を導出するため、描画だけが立って物理が倒れ続けることはない。
     m_solver.Step(dt, [](void* context) {
         static_cast<RagdollRig*>(context)->ProjectStandingPose();
     }, this);
@@ -827,8 +821,8 @@ void RagdollRig::WritePose(const std::vector<RagdollBonePose>& fallback,
     outPositions.assign(count, math::Vector3::ZERO);
     outRotations.assign(count, math::Quaternion::Identity());
 
-    // 親が先に並んでいる前提。剛体を持たない骨は «親からの相対» を保って埋めるので、
-    // 親の結果が先に確定していなければならない。
+    /// @note 親が先に並んでいる前提。剛体を持たない骨は «親からの相対» を保って埋めるので、
+    ///       親の結果が先に確定していなければならない。
     for (std::size_t i = 0; i < count; ++i) {
         const int bodyIndex = BodyIndexOfBone(static_cast<int>(i));
         if (bodyIndex >= 0) {
@@ -904,21 +898,21 @@ void RagdollRig::BuildDebugLines(std::vector<RagdollDebugLine>& out) const
         const physics::XPBDJointLimits& limits = joint.Limits();
         const Kind kind = joint.IsDriveSaturated() ? Kind::JointSaturated : Kind::Joint;
 
-        // 骨の長さに合わせて錐の大きさを決める。固定長にすると、大きい骨では潰れ、
-        // 小さい骨では錐だけが目立って «どの関節の可動域か» が読めなくなる。
+        /// @note 骨の長さに合わせて錐の大きさを決める。固定長にすると、大きい骨では潰れ、
+        ///       小さい骨では錐だけが目立って «どの関節の可動域か» が読めなくなる。
         const float length =
             std::max(m_bodies[static_cast<std::size_t>(link.childBody)].collider->m_halfHeight,
                      0.05f);
 
-        // 中立軸 (関節フレームの X = 骨の向き)。今どこを向いているかは子フレームで出す。
+        /// @note 中立軸 (関節フレームの X = 骨の向き)。今どこを向いているかは子フレームで出す。
         push(anchor, anchor + frame * math::Vector3::RIGHT * length, kind);
         push(anchor,
              anchor + joint.GetChildFrameWorld() * math::Vector3::RIGHT * (length * 1.2f),
              kind);
         if (!limits.enabled) continue;
 
-        // 可動域の «角»。Y/Z それぞれの上下限まで中立軸を倒し、4 本を四角で結ぶ。
-        // 円錐ではなく角錐なのは、可動域そのものが軸ごとの上下限で書かれているため。
+        /// @note 可動域の «角»。Y/Z それぞれの上下限まで中立軸を倒し、4 本を四角で結ぶ。
+        ///       円錐ではなく角錐なのは、可動域そのものが軸ごとの上下限で書かれているため。
         math::Vector3 corners[4];
         const float swings[4][2] = {
             { limits.swingMinY, limits.swingMinZ }, { limits.swingMaxY, limits.swingMinZ },

@@ -2,20 +2,11 @@
 /// @brief   ボクセル化 → 侵食 → 凸ポリゴン合成による NavMesh ベイクの実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
-//
-// collectObjects == ThisObject:
-//   NavMeshSurface が付いている GO 自身の TerrainComponent だけをベイクソースにする。
-//   複数 Terrain を分けて管理したい場合は各 Terrain GO に NavMeshSurface を付ける。
-//
-// collectObjects == Volume:
-//   NavMeshSurface GO の worldPosition を中心とする size ボックス内だけを対象にする。
-//
-// パイプライン (Recast の rcConfig に対応させてある):
-//   1. Voxelize            — バウンド範囲を cellSize 格子に分割し、傾斜・段差・障害物から歩行可否を判定
-//   2. Erode               — agentRadius ぶん歩行可能面を内側へ削る (rcErodeWalkableArea 相当)
-//   3. Triangulate         — 各歩行可能セルを対角線で 2 個の三角形に分割
-//   4. Hertel-Mehlhorn 凸合成 — 隣接ポリゴンを凸性を保ったまま貪欲にマージ
-//   5. Polygon Mesh        — 生存ポリゴンを詰めて NavMeshPolygon 配列を構築し Portal を張る
+///
+/// collectObjects == ThisObject は自身の TerrainComponent だけを、Volume は worldPosition
+/// 中心の size ボックス内だけをベイクソースにする。パイプラインは Recast の rcConfig に
+/// 対応: Voxelize (歩行可否判定) → Erode (agentRadius ぶん内側へ削る) → Triangulate →
+/// Hertel-Mehlhorn 凸合成 → Polygon Mesh (NavMeshPolygon 構築 + Portal 接続)。
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
@@ -49,8 +40,8 @@ namespace {
 constexpr float kPi        = 3.14159265358979323846f;
 constexpr float kNoSurface = -1.0e30f;
 
-// NavigationSystem.cpp の同名関数と同一ロジック。
-// BakeSystem は別 TU のためローカルコピーを持つ。
+/// NavigationSystem.cpp の同名関数と同一ロジック。
+/// BakeSystem は別 TU のためローカルコピーを持つ。
 int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
 {
     int best = -1;
@@ -69,7 +60,7 @@ math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
     return { a.x * b.x, a.y * b.y, a.z * b.z };
 }
 
-// ── Obstacle ──────────────────────────────────────────────────────────────
+/// @name Obstacle
 
 struct Obstacle {
     bool             isBox = false;
@@ -95,9 +86,9 @@ bool TryGetObstacle(Scene& scene, EntityID eid, const GameObject& go, Obstacle& 
                                box->size.z * 0.5f * s.z };
         return true;
     }
-    // WHY: Mesh/ConvexHull の physics::Collider は PhysicsSystem (RunMode::SimOnly) が構築する。
-    //      Play していない状態で Bake すると nullptr のままで、障害物として無視されていた。
-    //      ここで ColliderSync の遅延構築を明示的に走らせ、停止中の Bake でも同じ結果にする。
+    /// @note Mesh/ConvexHull の physics::Collider は PhysicsSystem (RunMode::SimOnly) が構築する。
+    ///       Play していない状態で Bake すると nullptr のままで障害物として無視されるため、
+    ///       ここで ColliderSync の遅延構築を明示的に走らせ、停止中の Bake でも同じ結果にする。
     if (GameObject* mutableGo = scene.GetGameObject(eid)) {
         if (auto* meshCol = scene.GetComponent<MeshColliderComponent>(eid))
             EnsureMeshCollider(*mutableGo, *meshCol);
@@ -134,7 +125,7 @@ bool PointInObstacle(const math::Vector3& point, const Obstacle& obs)
            point.z >= obs.aabbMin.z && point.z <= obs.aabbMax.z;
 }
 
-// ── WalkableSurface ────────────────────────────────────────────────────────
+/// @name WalkableSurface
 
 struct WalkableSurface {
     math::Vector3    center;
@@ -177,12 +168,12 @@ bool TryGetWalkableSurface(Scene& scene, EntityID eid, const GameObject& go, Wal
     return false;
 }
 
-// ── Terrain 高さサンプリング ────────────────────────────────────────────────
+/// @name Terrain 高さサンプリング
 
-// バックグラウンドスレッドに渡すための自己完結 Terrain データ。
-// TerrainComponent の heightData をコピーして保持し、ポインタ参照を持たない。
+/// @brief バックグラウンドスレッドに渡すための自己完結 Terrain データ (TerrainComponent から複製し参照を持たない)。
 struct TerrainBakeData {
     std::vector<float> heightData;
+    std::vector<std::uint8_t> holeData;  ///< セル単位の穴。空 = 穴なし (大きさはセル数と一致するときだけ複製)
     int           columns  = 0;
     int           rows     = 0;
     float         cellSize = 1.0f;
@@ -225,9 +216,19 @@ struct TerrainBakeData {
             n00.z*(1-fx)*(1-fz)+n10.z*fx*(1-fz)+n01.z*(1-fx)*fz+n11.z*fx*fz,
         }.Normalized();
     }
+    /// @return 局所座標が穴セルに入っていれば true。地形の外と穴なしは false。
+    bool IsHoleAtLocal(float lx, float lz) const {
+        if (holeData.empty() || cellSize <= 0.0f || lx < 0.0f || lz < 0.0f) return false;
+        const int cx = static_cast<int>(lx / cellSize);
+        const int cz = static_cast<int>(lz / cellSize);
+        if (cx >= columns - 1 || cz >= rows - 1) return false;
+        return holeData[static_cast<size_t>(cz) * static_cast<size_t>(columns - 1) + static_cast<size_t>(cx)] != 0;
+    }
 };
 
-// Terrain の局所 XZ 範囲内かを確認してから高さを返す。範囲外は kNoSurface。
+/// @brief 地形の局所 XZ 範囲内なら高さを返す。
+/// @return 範囲外と穴セルは kNoSurface。
+/// @see Docs/design/terrain-layers.md §4 穴
 float SampleTerrainHeight(const TerrainBakeData& td, float wx, float wz)
 {
     const float localX = wx - td.origin.x;
@@ -236,10 +237,12 @@ float SampleTerrainHeight(const TerrainBakeData& td, float wx, float wz)
     const float maxZ   = static_cast<float>(td.rows    - 1) * td.cellSize;
     if (localX < 0.0f || localX > maxX || localZ < 0.0f || localZ > maxZ)
         return kNoSurface;
+    if (td.IsHoleAtLocal(localX, localZ))
+        return kNoSurface;
     return td.GetHeightAt(localX, localZ) + td.origin.y;
 }
 
-// 複数 Terrain の最大高さを返す（上側の面を優先）。
+/// 複数 Terrain の最大高さを返す（上側の面を優先）。
 float SampleAllTerrainsHeight(const std::vector<TerrainBakeData>& terrains, float wx, float wz)
 {
     float best = kNoSurface;
@@ -250,7 +253,7 @@ float SampleAllTerrainsHeight(const std::vector<TerrainBakeData>& terrains, floa
     return best;
 }
 
-// ── Bake 入力データ（スレッドに移管するためにコピーして使う）────────────────
+/// @name Bake 入力データ（スレッドに移管するためにコピーして使う）
 
 struct BakeInput {
     NavMeshCollectObjects       collectObjects = NavMeshCollectObjects::ThisObject;
@@ -266,7 +269,7 @@ struct BakeInput {
     std::vector<Obstacle>        obstacles;
 };
 
-// ── Hertel-Mehlhorn 用作業ポリゴン ────────────────────────────────────────
+/// @name Hertel-Mehlhorn 用作業ポリゴン
 
 struct WorkPoly {
     std::vector<math::Vector3> verts;
@@ -320,7 +323,7 @@ bool TryMergeConvex(const WorkPoly& A, int ei, const WorkPoly& B, int ej,
     return true;
 }
 
-// ── AllSceneObjects バウンド自動計算 ───────────────────────────────────────
+/// @name AllSceneObjects バウンド自動計算
 
 struct AutoBounds {
     math::Vector3 mn = {  1e30f,  1e30f,  1e30f };
@@ -336,8 +339,8 @@ struct AutoBounds {
     }
 };
 
-// count を hw スレッドで分割して fn(i) を並列実行する。
-// スレッド起動オーバーヘッドが無駄にならないよう count が小さい場合はシリアル実行。
+/// count を hw スレッドで分割して fn(i) を並列実行する。
+/// スレッド起動オーバーヘッドが無駄にならないよう count が小さい場合はシリアル実行。
 template<class Fn>
 static void ParallelFor(int count, Fn fn)
 {
@@ -361,9 +364,9 @@ static void ParallelFor(int count, Fn fn)
 
 } // namespace
 
-// ── バックグラウンド Bake 関数 ───────────────────────────────────────────
-// BakeInput のコピーだけを使い、シーンのいかなるポインタにも触れない純粋な計算関数。
-// std::async で任意のスレッドから呼ばれる。
+/// @name バックグラウンド Bake 関数
+/// BakeInput のコピーだけを使い、シーンのいかなるポインタにも触れない純粋な計算関数。
+/// std::async で任意のスレッドから呼ばれる。
 
 static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = nullptr)
 {
@@ -417,15 +420,15 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
     const int gridD      = std::max(1, static_cast<int>((boundsMax.z - boundsMin.z) / cellSize));
     const int cornerCols = gridW + 1;
 
-    // WHY 上限を切るか: セル 1 個につき WorkPoly を 2 個確保するので、Cell Size を 0.1 に
-    //     しただけで数 GB を要求してエディタごと落ちる。落ちる前に理由を返す。
+    /// @note セル 1 個につき WorkPoly を 2 個確保するので、Cell Size を 0.1 にしただけで
+    ///       数 GB を要求してエディタごと落ちる。落ちる前に理由を返す。
     constexpr int64_t kMaxBakeCells = 4000000;
     if (static_cast<int64_t>(gridW) * gridD > kMaxBakeCells)
         return fail("格子が大きすぎます (" + std::to_string(gridW) + " x " + std::to_string(gridD) +
                     " セル)。Cell Size を上げるか、Volume でベイク範囲を絞ってください");
 
     std::vector<float> cornerHeight(static_cast<size_t>(cornerCols) * (gridD + 1), kNoSurface);
-    // Walkable modifier に持ち上げられた角。段差判定を「箱の縁をまたぐセル」だけに絞るのに使う。
+    /// @note Walkable modifier に持ち上げられた角。段差判定を「箱の縁をまたぐセル」だけに絞るのに使う。
     std::vector<uint8_t> cornerRaised(cornerHeight.size(), 0);
     ParallelFor(gridD + 1, [&](int cz) {
         for (int cx = 0; cx <= gridW; ++cx) {
@@ -502,17 +505,17 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
                 }
             }
 
-            // WHY 段差判定を Walkable modifier の縁だけに掛けるか: 連続した Terrain では
-            //     隣り合うセルが同じ角を共有するので段差そのものが生まれず、坂の登れなさは
-            //     maxSlopeAngleDeg が受け持っている。全セルへ掛けると同じ性質を 2 つの設定が
-            //     別々の値で決めることになり、45 度を許可したはずの坂が maxClimb で先に落ちる。
+            /// @note 段差判定は Walkable modifier の縁だけに掛ける。連続した Terrain では隣り合う
+            ///       セルが同じ角を共有し段差が生まれず、坂の登れなさは maxSlopeAngleDeg が
+            ///       受け持つ。全セルへ掛けると同じ性質を 2 設定が別々に決め、45 度許可の坂が
+            ///       maxClimb で先に落ちる。
             if (state == NavMeshBakeCell::Walkable && anyRaised && maxClimb > 0.0f
              && cornerMax - cornerMin > maxClimb)
                 state = NavMeshBakeCell::TooHighStep;
 
             if (state == NavMeshBakeCell::Walkable && !obstacles.empty()) {
-                // WHY 有効な角だけで平均するか: 面の縁では kNoSurface (-1e30) が混ざり、
-                //     4 で割った高さが -2.5e29 になって障害物判定が常に外れていた。
+                /// @note 有効な角だけで平均する。面の縁では kNoSurface (-1e30) が混ざり、
+                ///       4 で割った高さが -2.5e29 になって障害物判定が常に外れていた。
                 const math::Vector3 wp = { worldX, cornerSum / static_cast<float>(cornerCount), worldZ };
                 for (const auto& obs : obstacles) {
                     if (PointInObstacle(wp, obs)) { state = NavMeshBakeCell::Obstructed; break; }
@@ -542,18 +545,18 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
     }
     setProgress(0.48f);
 
-    // ── Erode (Recast の rcErodeWalkableArea 相当) ───────────────────────────
-    // 非歩行セルからのチャンファー距離場を作り、agentRadius に満たないセルを落とす。
-    // 距離の単位は 1 セル = 2 で、直交 2 / 斜め 3 (Recast と同じ整数近似)。
+    /// @name Erode (Recast の rcErodeWalkableArea 相当)
+    /// @note 非歩行セルからのチャンファー距離場を作り、agentRadius に満たないセルを落とす。
+    ///       距離の単位は 1 セル = 2 で、直交 2 / 斜め 3 (Recast と同じ整数近似)。
     const uint16_t erodeThreshold =
         static_cast<uint16_t>((std::max(0.0f, inp.agentRadius) / cellSize) * 2.0f);
     if (erodeThreshold > 0) {
         constexpr uint16_t kFar = 0xFFFF;
         std::vector<uint16_t> dist(cellState.size(), kFar);
 
-        // WHY 格子の外を歩行可能扱いにするか: ThisObject では外周 1 マスぶんが NoSurface なので
-        //     面の縁は正しく削れる。一方 Volume では箱が地形の途中を切っているだけなので、
-        //     境界から削ると存在しない壁ぞいの隙間が空く。
+        /// @note 格子の外を歩行可能扱いにする。ThisObject では外周 1 マスぶんが NoSurface なので
+        ///       面の縁は正しく削れるが、Volume では箱が地形の途中を切っているだけなので、
+        ///       境界から削ると存在しない壁ぞいの隙間が空く。
         const auto seedNeighbor = [&](int x, int z) {
             if (x < 0 || x >= gridW || z < 0 || z >= gridD) return false;
             return cellState[static_cast<size_t>(z) * gridW + x] != kWalkable;
@@ -632,11 +635,10 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
             const size_t highId  = cellIdx * 2 + 1;
             WorkPoly& low  = polys[lowId];
             WorkPoly& high = polys[highId];
-            // WHY: TerrainRenderSystem と同じ対角線 (br→tl) で分割することで、
-            //      NavMesh 面の補間高さが Terrain 描画面と一致する。
-            //      旧実装 (bl→tr 対角) は TerrainRenderer の分割 (br→tl) と異なるため、
-            //      「谷型」地形で NavMesh 面が Terrain 面より大幅に低くなり、
-            //      エージェントが地面の裏にスナップされるバグがあった。
+            /// @note TerrainRenderSystem と同じ対角線 (br→tl) で分割し、NavMesh 面の補間高さを
+            ///       Terrain 描画面と一致させる。旧実装 (bl→tr 対角) は分割が異なるため、
+            ///       「谷型」地形で NavMesh 面が Terrain 面より大幅に低くなり、エージェントが
+            ///       地面の裏にスナップされるバグがあった。
             low.verts  = { bl, br, tl }; low.alive  = true; low.neighbors  = { -1, static_cast<int>(highId), -1 };
             high.verts = { br, tr, tl }; high.alive = true; high.neighbors = { -1, -1, static_cast<int>(lowId) };
             if (CellWalkable(ix,   iz-1)) low.neighbors[0]  = static_cast<int>((static_cast<size_t>(iz-1)*gridW+ix)*2+1);
@@ -648,7 +650,7 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
 
     setProgress(0.60f);
 
-    // WHY: マージ成功時は B の旧隣接だけを辿って参照を書き換える。全ポリゴン走査の O(N^2) を避ける。
+    /// @note マージ成功時は B の旧隣接だけを辿って参照を書き換え、全ポリゴン走査の O(N^2) を避ける。
     std::vector<int> queue;
     queue.reserve(polys.size());
     for (size_t i = 0; i < polys.size(); ++i)
@@ -741,15 +743,15 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
     return result;
 }
 
-// ── ベイクソースのハッシュ ─────────────────────────────────────────────────
+/// @name ベイクソースのハッシュ
 
 namespace {
 
 constexpr uint64_t kFnvOffset = 1469598103934665603ull;
 constexpr uint64_t kFnvPrime  = 1099511628211ull;
 
-// FNV-1a を 8 byte ずつ回したもの。求めるのは「前回のベイク以降に変わったか」だけなので、
-// 暗号強度ではなく Terrain の heightData 数 MB を数百 µs で畳めることを優先する。
+/// FNV-1a を 8 byte ずつ回したもの。求めるのは「前回のベイク以降に変わったか」だけなので、
+/// 暗号強度ではなく Terrain の heightData 数 MB を数百 µs で畳めることを優先する。
 void HashBytes(uint64_t& h, const void* data, size_t size)
 {
     const auto* p = static_cast<const unsigned char*>(data);
@@ -812,8 +814,8 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
         }
     }
 
-    // WHY 種類ごとに書き並べるか: 「ベイクが古い」の判定はここが拾い漏らすと成立しない。
-    //     ベイクソースを増やしたら、この関数にも同じものを足すこと。
+    /// @note 種類ごとに書き並べる。「ベイクが古い」の判定はここが拾い漏らすと成立しないため、
+    ///       ベイクソースを増やしたらこの関数にも同じものを足すこと。
     for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
         auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
         auto* modGo = scene.GetGameObject(meid);
@@ -846,7 +848,7 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
     return h;
 }
 
-// ── NavMeshBakeSystem ─────────────────────────────────────────────────────
+/// @name NavMeshBakeSystem
 
 ComponentAccess NavMeshBakeSystem::GetAccess() const
 {
@@ -865,7 +867,7 @@ float NavMeshBakeSystem::BakeProgress(uint32_t surfaceId) const
 void NavMeshBakeSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
-    // Phase 1: 完了した Future を適用する
+    /// @note Phase 1: 完了した Future を適用する
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto it = m_jobs.find(eid.index);
         if (it == m_jobs.end()) continue;
@@ -884,8 +886,8 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
             surface->bakeState    = NavMeshBakeState::Done;
             surface->bakeProgress = 1.0f;
 
-            // ベイク完了後に NavMeshOffMeshLinkComponent を走査してポリゴンへ接続する。
-            // activated==false のリンクは A* から無視されるためスキップする。
+            /// @note ベイク完了後に NavMeshOffMeshLinkComponent を走査してポリゴンへ接続する。
+            ///       activated==false のリンクは A* から無視されるためスキップする。
             NavMesh& nm = surface->navMesh;
             nm.offMeshLinks.clear();
             for (EntityID leid : scene.GetEntities<NavMeshOffMeshLinkComponent>()) {
@@ -907,18 +909,19 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 nm.offMeshLinks.push_back(conn);
             }
 
-            // Walkable modifier の areaType をポリゴンへ後処理で割り当てる。
-            // ポリゴン Center の XZ 座標がモディファイアの AABB 内にあれば areaType を上書きする。
-            // areaType 0 以外の modifier が優先される (数値が大きいほど後勝ち)。
+            /// @note Walkable modifier の areaType をポリゴンへ後処理で割り当てる。
+            ///       ポリゴン Center の XZ 座標がモディファイアの AABB 内にあれば areaType を上書きする。
+            ///       areaType 0 以外の modifier が優先される (数値が大きいほど後勝ち)。
             for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
                 auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
                 auto* modGo = scene.GetGameObject(meid);
                 if (!mod || !modGo || !mod->enabled) continue;
                 if (mod->mode != NavMeshModifierMode::Walkable) continue;
-                if (mod->areaType == 0) continue; // デフォルトは書き換え不要
+                /// @note デフォルトは書き換え不要
+                if (mod->areaType == 0) continue;
 
-                // モディファイアの AABB をワールド空間で簡易取得する。
-                // Collider がなければ position ± (scale/2) を使う。
+                /// @note モディファイアの AABB をワールド空間で簡易取得する。
+                ///       Collider がなければ position ± (scale/2) を使う。
                 const math::Vector3& wp = modGo->transform.worldPosition;
                 const math::Vector3& ws = modGo->transform.worldScale;
                 const float hx = std::abs(ws.x) * 0.5f + 0.05f;
@@ -933,17 +936,19 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 }
             }
         } else {
-            it->second.future.get(); // 破棄
+            /// @note 破棄
+            it->second.future.get();
         }
         m_jobs.erase(it);
     }
 
-    // Phase 2: needsBake が立っているものを非同期ジョブとして投入する
+    /// @note Phase 2: needsBake が立っているものを非同期ジョブとして投入する
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         auto* go      = scene.GetGameObject(eid);
         if (!surface || !go || !surface->needsBake) continue;
-        if (m_jobs.count(eid.index)) continue; // 既に実行中
+        /// @note 既に実行中
+        if (m_jobs.count(eid.index)) continue;
 
         surface->needsBake      = false;
         surface->bakeState      = NavMeshBakeState::Baking;
@@ -953,7 +958,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
         surface->bakeDebug      = {};
         surface->bakedSourceHash = HashNavMeshBakeSources(scene, eid);
 
-        // シーンデータをコピーして BakeInput を構築する
+        /// @note シーンデータをコピーして BakeInput を構築する
         BakeInput input;
         input.collectObjects   = surface->collectObjects;
         input.volumeCenter     = go->transform.worldPosition;
@@ -968,6 +973,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
             if (auto* t = scene.GetComponent<TerrainComponent>(eid)) {
                 TerrainBakeData tbd;
                 tbd.heightData = t->heightData;
+                if (t->holeData.size() == t->CellCount()) tbd.holeData = t->holeData;
                 tbd.columns    = t->columns;
                 tbd.rows       = t->rows;
                 tbd.cellSize   = t->cellSize;
@@ -982,6 +988,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 if (!t || !tg) continue;
                 TerrainBakeData tbd;
                 tbd.heightData = t->heightData;
+                if (t->holeData.size() == t->CellCount()) tbd.holeData = t->holeData;
                 tbd.columns    = t->columns;
                 tbd.rows       = t->rows;
                 tbd.cellSize   = t->cellSize;

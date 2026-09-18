@@ -3,17 +3,15 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
 ///
-/// TAA とモーションブラーはこれまで深度 + prevViewProjection の再投影だけを使っており、
-/// 復元できるのはカメラの動きに限られていた。動くオブジェクトは「静止している」と
-/// 判定されるため、TAA では輪郭に尾を引き、カメラを止めるとモーションブラーが
-/// 一切かからなかった。このパスが両者の欠けていた入力を供給する。
+/// @note TAA とモーションブラーはこれまで深度 + prevViewProjection の再投影だけを使っており、
+/// @note 復元できるのはカメラの動きに限られていた。動くオブジェクトは「静止している」と
+/// @note 判定されるため、TAA では輪郭に尾を引き、カメラを止めるとモーションブラーが
+/// @note 一切かからなかった。このパスが両者の欠けていた入力を供給する。
 ///
-/// WHY GBuffer の MRT へ相乗りさせないか:
-///   Forward パイプラインには GBuffer が無い。相乗りさせると Deferred のときだけ
-///   TAA が正しくなるという分かりにくい差になる。専用パスなら経路が 1 本で済む。
-///   代償は不透明ジオメトリをもう一度ラスタライズすることだが、深度と位置しか
-///   計算しないため、マテリアル評価を伴う本描画に比べれば軽い。
+/// @note Forward / Deferred の両経路へ同じ速度入力を供給するため、専用 RT を使う。
+
 #include "GeometryPasses.hpp"
+#include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
 
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
@@ -35,12 +33,10 @@ namespace fbzz::scene {
 
 namespace {
 
-// Velocity.hlsl / VelocitySkinned.hlsl の b1。ObjectConstants と同じ大きさで、
-// 2 枠目の意味だけが worldInvTranspose から prevWorld へ変わる。
-//
-// WHY 使わない objectParams を持つか: b1 は 1 本の CB を全パスで使い回す。
-//     短い構造体で Update すると末尾に前のパスの値が残り、「誰も書いていない領域」が
-//     生まれる。同じ大きさで丸ごと上書きしておけば、その曖昧さが発生しない。
+/// @note Velocity.hlsl / VelocitySkinned.hlsl の b1。ObjectConstants と同じ大きさで、
+/// @note 2 枠目の意味だけが worldInvTranspose から prevWorld へ変わる。
+///
+/// @note b1 の末尾に前パスの値を残さないよう、PerObjectCB と同じサイズで更新する。
 struct VelocityObjectCB {
     math::Matrix4 world;
     math::Matrix4 prevWorld;
@@ -49,17 +45,17 @@ struct VelocityObjectCB {
 static_assert(sizeof(VelocityObjectCB) == sizeof(PerObjectCB),
               "VelocityObjectCB must fit the ObjectConstants (b1) slot");
 
-// エンジンフレームが進んだときだけ snapshot を prev へ送る。
-// 同一フレーム内の 2 ビュー目以降は既に確定した prev をそのまま読む。
+/// @note エンジンフレームが進んだときだけ snapshot を prev へ送る。
+/// @note 同一フレーム内の 2 ビュー目以降は既に確定した prev をそのまま読む。
 template <typename RendererComponent>
 const math::Matrix4& AdvancePrevWorld(RendererComponent& component,
                                       const math::Matrix4& world,
                                       std::uint64_t frameStamp)
 {
     if (component.prevWorldFrame != frameStamp) {
-        // 直前のフレームで描かれていなければ「前フレームの位置」が存在しない。
-        // 生成直後やカリング復帰でいきなり画面を横切る速度が出るのを防ぐため、
-        // その 1 フレームだけ速度 0 (prev = curr) にする。
+        /// @note 直前のフレームで描かれていなければ「前フレームの位置」が存在しない。
+        /// @note 生成直後やカリング復帰でいきなり画面を横切る速度が出るのを防ぐため、
+        /// @note その 1 フレームだけ速度 0 (prev = curr) にする。
         component.prevWorldMatrix = (component.prevWorldFrame + 1 == frameStamp)
             ? component.worldMatrixSnapshot
             : world;
@@ -88,12 +84,12 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
     if (!ctx.Res().Target("Velocity").IsValid() || !h.velocityShader.IsValid()) return;
 
     renderer.SetRenderTarget(ctx.Res().Target("Velocity"), resources);
-    // B チャンネルが 0 の画素は「Velocity パスが触っていない」= 空・未描画。
-    // TAA / MotionBlur はそこだけ従来の深度再投影へ落ちる。
+    /// @note B チャンネルが 0 の画素は「Velocity パスが触っていない」= 空・未描画。
+    /// @note TAA / MotionBlur はそこだけ従来の深度再投影へ落ちる。
     renderer.Clear(math::Vector4{ 0.0f, 0.0f, 0.0f, 0.0f });
 
-    // ジッターを載せないこと。prevViewProjection (b8) もジッター無しで保存されており、
-    // 片側だけジッターを載せると半ピクセルの揺れがそのまま「動き」として出力される。
+    /// @note ジッターを載せないこと。prevViewProjection (b8) もジッター無しで保存されており、
+    /// @note 片側だけジッターを載せると半ピクセルの揺れがそのまま「動き」として出力される。
     const PerFrameCB frameData = MakeCameraFrameCB(ctx.camera, 0.0f, 0.0f);
     resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));
 
@@ -101,15 +97,15 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         GetOrCreateMaterialPSO(resources, renderer::BlendMode::OPAQUE_BLEND, false);
     const std::uint64_t frameStamp = Time::frameCount;
 
-    // IsMeshVisible / IsSkinnedVisible はカリング理由の統計を加算する。本描画パスと
-    // 同じオブジェクトをもう一度判定するので、そのままだと Stats パネルの
-    // 「錐台で落ちた数」が倍になる。判定ロジックは共有したいので、
-    // 加算ぶんだけパスの前後で打ち消す。描画コール数は実際に発行するので数える。
+    /// @note IsMeshVisible / IsSkinnedVisible はカリング理由の統計を加算する。本描画パスと
+    /// @note 同じオブジェクトをもう一度判定するので、そのままだと Stats パネルの
+    /// @note 「錐台で落ちた数」が倍になる。判定ロジックは共有したいので、
+    /// @note 加算ぶんだけパスの前後で打ち消す。描画コール数は実際に発行するので数える。
     const int savedFrustumCulled     = ctx.statsFrustumCulled;
     const int savedDistanceCulled    = ctx.statsDistanceCulled;
     const int savedSmallObjectCulled = ctx.statsSmallObjectCulled;
 
-    // ── 静的メッシュ ──────────────────────────────────────────────────────────
+    /// @name 静的メッシュ
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr = go.GetComponent<MeshRenderer>();
@@ -118,8 +114,8 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         if (mr->mesh->isSkinned) continue;
         if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
-        // 半透明は深度を書かないので、速度を書くと背後の不透明の速度を上書きしてしまう。
-        // 不透明だけを対象にするのは TAA / モーションブラー共通の慣行。
+        /// @note 半透明は深度を書かないので、速度を書くと背後の不透明の速度を上書きしてしまう。
+        /// @note 不透明だけを対象にするのは TAA / モーションブラー共通の慣行。
         auto* mat = go.GetComponent<MaterialComponent>();
         if (mat && mat->EnsureMaterialAsset() &&
             mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
@@ -128,20 +124,8 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         objData.world     = go.transform.GetWorldMatrix();
         objData.prevWorld = AdvancePrevWorld(*mr, objData.world, frameStamp);
 
-        // 静止している不透明は描かない。
-        //
-        // WHY 落として良いか: このパスが触っていない画素 (B = 0) は、消費側
-        //     (TAA.hlsl / MotionBlur.cs.hlsl の velocity.z > 0.5 分岐) が従来の
-        //     深度再投影へ落ちる。そして深度再投影は «動いていない物» に対しては
-        //     厳密に正しい ─ このパスが足したのは元々「オブジェクトの動き」だけで、
-        //     カメラの動きは前から復元できていた。静止した物を描くのは、
-        //     同じ答えを不透明の再ラスタライズと引き換えに得ているだけになる。
-        //     地形・アリーナ・小物は不透明の大半を占めるので、ここが丸ごと消える。
-        //
-        // WHY それでも AdvancePrevWorld を «先に» 通すか: snapshot を進めるのは
-        //     ここだけ。飛ばすと動き出した最初のフレームで prev が古いままになり、
-        //     止まっていた物が動く瞬間に嘘の速度が出る。行列は必ず進めて、
-        //     描画だけを省く。
+        /// @note 静止面のカメラ速度は、B = 0 の画素で深度再投影へフォールバックする。
+        /// @note 動き始めの履歴を保つため、描画を省く場合も AdvancePrevWorld は先に呼ぶ。
         if (SameMatrix(objData.world, objData.prevWorld)) continue;
 
         resources.Update(h.objectCB, &objData, sizeof(VelocityObjectCB));
@@ -160,7 +144,11 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         SubmitCounted(ctx, dc);
     }
 
-    // ── スキンドメッシュ ──────────────────────────────────────────────────────
+    /// @name スキンドメッシュ
+    /// @note world が静止していても風だけで繊維が動く。土台の SameMatrix 判定とは独立して提出する。
+    ExecuteFiberVelocityPass(ctx);
+    resources.Update(h.frameCB, &frameData, sizeof(frameData));
+
     if (!h.velocitySkinnedShader.IsValid()) {
         ctx.statsFrustumCulled     = savedFrustumCulled;
         ctx.statsDistanceCulled    = savedDistanceCulled;
@@ -174,8 +162,8 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) continue;
         if (!IsSkinnedVisible(ctx, go, *smr)) continue;
 
-        // 前フレームのパレットが無い間は「前フレームの頂点位置」を組めない。
-        // 速度を書かずに空けておけば、その画素は深度再投影へフォールバックする。
+        /// @note 前フレームのパレットが無い間は「前フレームの頂点位置」を組めない。
+        /// @note 速度を書かずに空けておけば、その画素は深度再投影へフォールバックする。
         auto* anim = FindAnimator(go);
         if (!anim || !anim->prevBoneMatricesValid ||
             !anim->skinningBuffer.IsValid() || !anim->prevSkinningBuffer.IsValid())
@@ -199,9 +187,8 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
             }
 
             renderer::DrawCall dc;
-            // 生のスキンド頂点 (ボーン番号とウェイトを持つレイアウト) を渡す。
-            // WHY コンピュートスキニング済みバッファを使わないか: あれは変形後の
-            //     位置しか持たず、前フレームぶんが取り出せない。VS で 2 回組み直す。
+            /// @note 生のスキンド頂点 (ボーン番号とウェイトを持つレイアウト) を渡す。
+            /// @note 変形済み VB に前フレーム位置はないため、VS で現在と過去のスキニングを評価する。
             dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
@@ -211,8 +198,10 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
             dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
-            dc.constantBuffers[2] = anim->prevSkinningBuffer; // CB_PREV_SKINNING
-            dc.constantBuffers[7] = anim->skinningBuffer;     // CB_SKINNING
+            /// @note CB_PREV_SKINNING
+            dc.constantBuffers[2] = anim->prevSkinningBuffer;
+            /// @note CB_SKINNING
+            dc.constantBuffers[7] = anim->skinningBuffer;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             SubmitCounted(ctx, dc);
         }
@@ -226,7 +215,7 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
 
 void VelocityPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    builder.Write("Velocity");
+    builder.Read("HDR").Write("Velocity");
 }
 
 void VelocityPass::Execute(PassResources&, RenderPassContext& ctx)

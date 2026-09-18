@@ -24,11 +24,12 @@ struct Vector3 {
 
     float   Length()     const;
     float   LengthSq()   const;
-    /// 長さ 0 は契約違反。ZERO を返し、発生位置つきで 1 度だけ報告する (MathContract.hpp)。
-    /// 呼ぶ側が非ゼロを保証できる場合だけ使う。
+    /// @brief 正規化したベクトルを返す。
+    /// @pre 長さが 0 でないこと。
+    /// @note 契約違反時は ZERO を返し、MathContract.hpp が発生位置つきで 1 度だけ報告する。
     Vector3 Normalized() const;
-    /// 長さ 0 なら fallback を返す。退化した入力が正常系に含まれうる箇所 (接触法線・
-    /// 進行方向・視線ベクトル) はこちらを使い、違反として報告させない。
+    /// @brief 正規化を試み、長さ 0 なら fallback を返す。
+    /// @note 接触法線・進行方向・視線ベクトルなど退化入力が正常系に含まれる箇所で使う。契約違反として報告しない。
     Vector3 NormalizedOr(const Vector3& fallback) const;
 
     static float   Dot(const Vector3& a, const Vector3& b);
@@ -39,7 +40,7 @@ struct Vector3 {
     static const Vector3 ONE;
     static const Vector3 UP;
     static const Vector3 RIGHT;
-    static const Vector3 FORWARD; // DirectX 左手系: +Z が画面奥方向 (OpenGL は -Z)
+    static const Vector3 FORWARD; ///< DirectX 左手系: +Z が画面奥方向 (OpenGL は -Z)。
 };
 
 inline const Vector3 Vector3::ZERO    = {0.0f, 0.0f, 0.0f};

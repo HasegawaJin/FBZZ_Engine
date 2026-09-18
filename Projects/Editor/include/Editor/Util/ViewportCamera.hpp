@@ -3,11 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-29
 ///
-/// WHY 直接 Camera を書かせないか:
-/// Scene View のカメラは DebugCamera が yaw / pitch / pivot / focusDistance を
-/// 別に保持している。renderer::Camera へ m_rotation や m_projection を直接書くと
-/// それらと乖離し、次のオービットやパンで視点が飛ぶ。要求フラグ経由にして、
-/// EditorApp が DebugCamera 側の内部状態ごと同期させる。
+/// @note Scene View のカメラは DebugCamera が yaw/pitch/pivot/focusDistance を別に保持しているため、
+///       renderer::Camera へ直接書くと乖離し次のオービットやパンで視点が飛ぶ。要求フラグ経由にし、
+///       EditorApp が DebugCamera 側の内部状態ごと同期させる。
 #pragma once
 
 #include <Engine/Renderer/Camera.hpp>

@@ -40,7 +40,7 @@ protected:
     physics::RigidBody      body;
 };
 
-// --- 蓄積インパルスの引き継ぎ -----------------------------------------------
+/// @name 蓄積インパルスの引き継ぎ
 
 TEST_F(ContactCacheTest, WarmStartDoesNothingForAnUnknownPair)
 {
@@ -97,7 +97,7 @@ TEST_F(ContactCacheTest, WarmStartPushesTheTwoBodiesInOppositeDirections)
 
 TEST_F(ContactCacheTest, MatchesThePairRegardlessOfColliderOrder)
 {
-    // ブロードフェーズが組を作る順は保証されない。キーは a < b に正規化される。
+    /// @note ブロードフェーズが組を作る順は保証されない。キーは a < b に正規化される。
     physics::ContactCache cache;
     std::vector<physics::ContactPoint> solved{MakeContact(5.0f)};
     cache.UpdateCache(solved);
@@ -109,7 +109,7 @@ TEST_F(ContactCacheTest, MatchesThePairRegardlessOfColliderOrder)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 5.0f, testkit::kTolerance);
 }
 
-// --- 一致しない接触 ---------------------------------------------------------
+/// @name 一致しない接触
 
 TEST_F(ContactCacheTest, DoesNotReuseAnImpulseFromADistantContactPoint)
 {
@@ -126,7 +126,7 @@ TEST_F(ContactCacheTest, DoesNotReuseAnImpulseFromADistantContactPoint)
 
 TEST_F(ContactCacheTest, ReusesTheImpulseAcrossASmallPositionJitter)
 {
-    // 静止接触の «わずかな揺れ» で毎フレーム作り直すと、warm start が一度も効かない。
+    /// @note 静止接触の «わずかな揺れ» で毎フレーム作り直すと、warm start が一度も効かない。
     physics::ContactCache cache;
     std::vector<physics::ContactPoint> solved{MakeContact(5.0f)};
     cache.UpdateCache(solved);
@@ -140,7 +140,7 @@ TEST_F(ContactCacheTest, ReusesTheImpulseAcrossASmallPositionJitter)
 
 TEST_F(ContactCacheTest, DropsTheCacheWhenTheContactNormalTurns)
 {
-    // 床の三角形の境目をまたいだ接触。前フレームの摩擦を持ち込むと横向きに射出される。
+    /// @note 床の三角形の境目をまたいだ接触。前フレームの摩擦を持ち込むと横向きに射出される。
     physics::ContactCache cache;
     std::vector<physics::ContactPoint> solved{MakeContact(5.0f)};
     cache.UpdateCache(solved);
@@ -158,7 +158,7 @@ TEST_F(ContactCacheTest, DropsTheCacheWhenTheContactNormalTurns)
 
 TEST_F(ContactCacheTest, IgnoresTriggerContactsEntirely)
 {
-    // トリガーは «通知するだけ» の接触。インパルスを蓄えたら押し返してしまう。
+    /// @note トリガーは «通知するだけ» の接触。インパルスを蓄えたら押し返してしまう。
     physics::ContactCache cache;
     std::vector<physics::ContactPoint> solved{MakeContact(5.0f)};
     solved[0].isTrigger = true;
@@ -179,7 +179,8 @@ TEST_F(ContactCacheTest, IgnoresContactsWithoutColliders)
     cache.UpdateCache(solved);
     cache.WarmStart(solved);
 
-    EXPECT_NEAR(solved[0].cachedNormalImpulse, 5.0f, testkit::kTolerance);   // 触られない
+    /// @note 触られない
+    EXPECT_NEAR(solved[0].cachedNormalImpulse, 5.0f, testkit::kTolerance);
 }
 
 TEST_F(ContactCacheTest, ForgetsThePairWhenCachingIsTurnedOff)
@@ -198,7 +199,7 @@ TEST_F(ContactCacheTest, ForgetsThePairWhenCachingIsTurnedOff)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 0.0f, testkit::kTolerance);
 }
 
-// --- 失効 -------------------------------------------------------------------
+/// @name 失効
 
 TEST_F(ContactCacheTest, KeepsTheCacheWhileTheContactIsRefreshedEveryFrame)
 {
@@ -221,14 +222,15 @@ TEST_F(ContactCacheTest, KeepsTheCacheWhileTheContactIsRefreshedEveryFrame)
 
 TEST_F(ContactCacheTest, PurgesEntriesThatWereNotRefreshed)
 {
-    // 接触が離れたのにキャッシュが残ると、次に触れた瞬間に古いインパルスが注入される。
+    /// @note 接触が離れたのにキャッシュが残ると、次に触れた瞬間に古いインパルスが注入される。
     physics::ContactCache cache;
     std::vector<physics::ContactPoint> solved{MakeContact(5.0f)};
     cache.UpdateCache(solved);
 
     for (int frame = 0; frame < 4; ++frame) {
         std::vector<physics::ContactPoint> contacts{MakeContact(0.0f)};
-        cache.WarmStart(contacts);   // 参照するだけで更新しない → age が増える
+        /// @note 参照するだけで更新しない → age が増える
+        cache.WarmStart(contacts);
         cache.PurgeStale();
     }
 

@@ -15,8 +15,8 @@ namespace fbzz::asset {
 
 namespace {
 
-// 静的メッシュ用: PreTransformVertices でノード階層をフラット化し、
-//                 JoinIdenticalVertices で重複頂点を除去する。
+/// 静的メッシュ用: PreTransformVertices でノード階層をフラット化し、
+///                 JoinIdenticalVertices で重複頂点を除去する。
 constexpr unsigned int STATIC_ASSIMP_FLAGS =
     aiProcess_Triangulate
   | aiProcess_JoinIdenticalVertices
@@ -26,8 +26,8 @@ constexpr unsigned int STATIC_ASSIMP_FLAGS =
   | aiProcess_FlipUVs
   | aiProcess_PreTransformVertices;
 
-// スキンメッシュ用: PreTransformVertices / JoinIdenticalVertices を除外し
-//                  ボーン割り当てとノード階層を保持する。
+/// スキンメッシュ用: PreTransformVertices / JoinIdenticalVertices を除外し
+///                  ボーン割り当てとノード階層を保持する。
 constexpr unsigned int SKINNED_ASSIMP_FLAGS =
     aiProcess_Triangulate
   | aiProcess_GenNormals
@@ -37,10 +37,10 @@ constexpr unsigned int SKINNED_ASSIMP_FLAGS =
 
 void ConfigureFbxImporter(Assimp::Importer& importer)
 {
-    // FBX の Pivot / PreRotation を Assimp の補助ノードとして残すと、
-    // メッシュ FBX とモーション専用 FBX でチャンネル名や階層がずれやすい。
-    // SkinnedMesh は「同じボーン名に同じアニメーションを流す」ことを優先するため、
-    // 補助ノードは Assimp 側でローカル変換へ畳み込ませる。
+    /// @note FBX の Pivot / PreRotation を Assimp の補助ノードとして残すと、
+    ///       メッシュ FBX とモーション専用 FBX でチャンネル名や階層がずれやすい。
+    ///       SkinnedMesh は「同じボーン名に同じアニメーションを流す」ことを優先するため、
+    ///       補助ノードは Assimp 側でローカル変換へ畳み込ませる。
     importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
 }
 
@@ -50,8 +50,8 @@ std::unique_ptr<Model> ModelImporter::Import(
     const std::string& path,
     renderer::ResourceManager& resources)
 {
-    // WHY: スキニング判定のためにまず SKINNED_FLAGS で読み込む (プローブ)。
-    //      静的メッシュの最終インポートには STATIC_FLAGS が必要なため、判定後に再読み込みする。
+    /// @note スキニング判定のためにまず SKINNED_FLAGS で読み込む (プローブ)。
+    ///       静的メッシュの最終インポートには STATIC_FLAGS が必要なため、判定後に再読み込みする。
     Assimp::Importer probeImporter;
     ConfigureFbxImporter(probeImporter);
     const aiScene* probeScene = probeImporter.ReadFile(path, SKINNED_ASSIMP_FLAGS);
@@ -71,7 +71,7 @@ std::unique_ptr<Model> ModelImporter::Import(
     if (skinned)
         return ImportSkinnedModel(probeScene, probeUnitScale, resources);
 
-    // 静的メッシュとして、頂点結合フラグ付きで再インポートする
+    /// @note 静的メッシュとして、頂点結合フラグ付きで再インポートする
     Assimp::Importer staticImporter;
     ConfigureFbxImporter(staticImporter);
     const aiScene* staticScene = staticImporter.ReadFile(path, STATIC_ASSIMP_FLAGS);

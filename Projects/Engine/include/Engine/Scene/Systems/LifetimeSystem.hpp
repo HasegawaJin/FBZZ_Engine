@@ -19,8 +19,8 @@ public:
     void Update(SystemContext& ctx) override;
 };
 
-// Scene::FlushDestroyQueue() を ISystem として包む。
-// ComponentAccess は Unrestricted — 任意の Component を持つ GO が破棄されうるため。
+/// Scene::FlushDestroyQueue() を ISystem として包む。
+/// ComponentAccess は Unrestricted — 任意の Component を持つ GO が破棄されうるため。
 class FlushDestroyQueueSystem final : public ISystem {
 public:
     std::string_view Name()       const override { return "FlushDestroyQueueSystem"; }

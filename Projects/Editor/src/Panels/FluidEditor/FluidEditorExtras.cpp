@@ -3,10 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 焼いた結果をディスクから読み直すか:
-///   焼きは FluidBakeService のジョブで走り、Atlas を引き取れるのは «その id を知っている 1 人» だけ
-///   (TakeBakedVolumeFlipbook は 1 度きり)。Volume Flipbook Baker パネルが同時に開いていると
-///   どちらかが空を掴む。隣に必ず残る PNG を読めば、誰が焼いても・後から開き直しても同じ絵が出る。
+/// @note 焼き上がりはディスクから読み直す。Atlas を引き取れるのは «id を知っている 1 人» だけ
+///       (TakeBakedVolumeFlipbook は 1 度きり) なので、Volume Flipbook Baker パネルと同時に開くと
+///       どちらかが空を掴む。隣に残る PNG を読めば誰が焼いても同じ絵が出る。
 #include "FluidEditorExtras.hpp"
 
 #include "FluidEditorInternal.hpp"
@@ -19,7 +18,8 @@
 #include <Editor/Util/FluidRecipeWidgets.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/FluidBaker.hpp>
-#include <Engine/Asset/FluidSolver.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Fluid/FluidSolver.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -48,9 +48,8 @@
 namespace fbzz::editor::fluideditor {
 namespace {
 
-// WHY 名前を長く取るか: Editor は Unity ビルド (複数の .cpp が 1 翻訳単位へ入る) なので、
-//     無名名前空間の名前は隣のファイルと衝突しうる。
-
+/// @note 名前を長く取るのは、Editor が Unity ビルド (複数の .cpp が 1 翻訳単位へ入る) で
+///       無名名前空間の名前が隣のファイルと衝突しうるため。
 constexpr const char* kFluidGalleryPopupId  = "New Fluid from Template##fluid_template_gallery";
 constexpr const char* kFluidSaveAsPopupId   = "Save Fluid As##fluid_save_as";
 constexpr const char* kFluidTemplateFolder  = "Assets/Templates/Fluid";
@@ -58,7 +57,7 @@ constexpr const char* kFluidTemplateFolder  = "Assets/Templates/Fluid";
 constexpr const char* kFluidTemplateRoot    = "Assets/Templates";
 constexpr const char* kFluidExtension       = ".fluid";
 
-// サムネイルは «どんな絵が出るか» が分かれば足りる。焼きと同じ格子で解くと 1 枚で数秒かかる。
+/// サムネイルは «どんな絵が出るか» が分かれば足りる。焼きと同じ格子で解くと 1 枚で数秒かかる。
 constexpr int   kFluidThumbGrid      = 40;
 constexpr int   kFluidThumbImage     = 72;
 constexpr int   kFluidThumbSteps     = 6;
@@ -68,8 +67,8 @@ constexpr int   kFluidGalleryMaxThumbs = 48;
 
 constexpr float kFluidAutoSaveDelay = 3.0f;
 
-// WIC は呼び出しスレッドで COM が初期化されている必要がある。自分が初期化した分だけ戻す
-// (メインスレッドの STA では RPC_E_CHANGED_MODE で素通りする)。
+/// WIC は呼び出しスレッドで COM が初期化されている必要がある。自分が初期化した分だけ戻す
+/// (メインスレッドの STA では RPC_E_CHANGED_MODE で素通りする)。
 class FluidExtrasComScope {
 public:
     FluidExtrasComScope() : m_result(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
@@ -100,7 +99,7 @@ std::string FluidExtrasTrim(const std::string& text)
     return text.substr(first, last - first);
 }
 
-// ── 焼いた Atlas の読み直し ──────────────────────────────────────────────────
+/// @name 焼いた Atlas の読み直し
 
 struct FluidExtrasImage {
     std::vector<std::uint8_t> rgba;
@@ -143,7 +142,7 @@ bool FluidExtrasLoadRgba8(const std::filesystem::path& file, FluidExtrasImage& o
     out.height = static_cast<std::uint32_t>(image->height);
     const std::size_t rowBytes = static_cast<std::size_t>(out.width) * 4;
     out.rgba.resize(rowBytes * out.height);
-    // 行の間隔は 4·幅 とは限らない (DirectXTex はアライメントを取る)。
+    /// @note 行の間隔は 4·幅 とは限らない (DirectXTex はアライメントを取る)。
     for (std::uint32_t y = 0; y < out.height; ++y)
         std::memcpy(out.rgba.data() + static_cast<std::size_t>(y) * rowBytes,
                     image->pixels + static_cast<std::size_t>(y) * image->rowPitch, rowBytes);
@@ -162,12 +161,12 @@ bool FluidExtrasLoadFirst(const std::vector<std::filesystem::path>& candidates, 
     return false;
 }
 
-// ── サムネイル (プリセットを数コマだけ解く) ───────────────────────────────────
+/// @name サムネイル (プリセットを数コマだけ解く)
 
 struct FluidThumbResult {
     int index = 0;
     asset::FluidFrameImage image;
-    asset::FluidShading shading = asset::FluidShading::Smoke;
+    fluid::FluidShading shading = fluid::FluidShading::Smoke;
 };
 
 struct FluidThumbChannel {
@@ -195,33 +194,33 @@ struct FluidThumbChannel {
 
 struct FluidThumbRequest {
     int index = 0;
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
 };
 
 /// 液体は Liquid でしか描けず、気体に Liquid を指定しても描けない (FluidPreviewCache と同じ丸め)。
-asset::FluidShading FluidExtrasEffectiveShading(const asset::FluidRecipe& recipe)
+fluid::FluidShading FluidExtrasEffectiveShading(const fluid::FluidRecipe& recipe)
 {
-    if (recipe.kind == asset::FluidKind::Liquid) return asset::FluidShading::Liquid;
-    return recipe.render.shading == asset::FluidShading::Liquid ? asset::FluidShading::Smoke
+    if (recipe.kind == fluid::FluidKind::Liquid) return fluid::FluidShading::Liquid;
+    return recipe.render.shading == fluid::FluidShading::Liquid ? fluid::FluidShading::Smoke
                                                                 : recipe.render.shading;
 }
 
-asset::FluidRecipe FluidExtrasThumbnailRecipe(const asset::FluidRecipe& source)
+fluid::FluidRecipe FluidExtrasThumbnailRecipe(const fluid::FluidRecipe& source)
 {
-    asset::FluidRecipe recipe = source;
+    fluid::FluidRecipe recipe = source;
     recipe.render.shading = FluidExtrasEffectiveShading(recipe);
     recipe.output.duration = (std::max)(recipe.output.duration, 0.05f);
     recipe.liquid.maxParticles = (std::min)(recipe.liquid.maxParticles, kFluidThumbParticles);
     return recipe;
 }
 
-void FluidExtrasSolveThumbnail(const asset::FluidRecipe& recipe, asset::FluidFrameImage& out)
+void FluidExtrasSolveThumbnail(const fluid::FluidRecipe& recipe, asset::FluidFrameImage& out)
 {
-    // 山場が来るあたり (尺の半ば) の 1 コマを出す。頭のコマはどのプリセットもほぼ空。
+    /// @note 山場が来るあたり (尺の半ば) の 1 コマを出す。頭のコマはどのプリセットもほぼ空。
     const float dt = recipe.output.duration / static_cast<float>(kFluidThumbSteps * 2);
     float warmup = std::clamp(recipe.output.warmup, 0.0f, kFluidThumbWarmupCap);
-    if (recipe.kind == asset::FluidKind::Gas) {
-        asset::FluidGasSolver solver;
+    if (recipe.kind == fluid::FluidKind::Gas) {
+        fluid::FluidGasSolver solver;
         solver.Reset(recipe, kFluidThumbGrid, kFluidThumbGrid, 1);
         while (warmup > 1.0e-6f) {
             const float step = (std::min)(dt, warmup);
@@ -232,7 +231,7 @@ void FluidExtrasSolveThumbnail(const asset::FluidRecipe& recipe, asset::FluidFra
         asset::RenderFluidGasFrame(solver, recipe, kFluidThumbImage, dt, out);
         return;
     }
-    asset::FluidLiquidSolver solver;
+    fluid::FluidLiquidSolver solver;
     solver.Reset(recipe);
     while (warmup > 1.0e-6f) {
         const float step = (std::min)(dt, warmup);
@@ -246,8 +245,8 @@ void FluidExtrasSolveThumbnail(const asset::FluidRecipe& recipe, asset::FluidFra
 void FluidExtrasThumbnailWorker(std::vector<FluidThumbRequest> requests,
                                 std::shared_ptr<FluidThumbChannel> channel)
 {
-    // Texture 形状の発生源は画像を WIC で読む。COM を初期化していないスレッドでは読めず、
-    // «板の形に湧く» 別の絵になってしまう。
+    /// @note Texture 形状の発生源は画像を WIC で読む。COM を初期化していないスレッドでは読めず、
+    ///       «板の形に湧く» 別の絵になってしまう。
     const FluidExtrasComScope com;
     for (const FluidThumbRequest& request : requests) {
         if (channel->Cancelled()) break;
@@ -261,11 +260,11 @@ void FluidExtrasThumbnailWorker(std::vector<FluidThumbRequest> requests,
 }
 
 /// 焼いた絵をエンジンと同じブレンドで市松の上へ重ねた不透明な色 (FluidPreviewCache と同じ式)。
-void FluidExtrasComposite(const float* rgba, int x, int y, asset::FluidShading shading, float out[3])
+void FluidExtrasComposite(const float* rgba, int x, int y, fluid::FluidShading shading, float out[3])
 {
     const float background = (((x / 8) + (y / 8)) & 1) != 0 ? 0.22f : 0.12f;
     const bool premultiplied = asset::FluidShadingIsPremultiplied(shading);
-    const bool additive = shading == asset::FluidShading::Glow;
+    const bool additive = shading == fluid::FluidShading::Glow;
     for (int c = 0; c < 3; ++c) {
         float value = 0.0f;
         if (premultiplied)   value = rgba[c] + background * (1.0f - rgba[3]);
@@ -275,7 +274,7 @@ void FluidExtrasComposite(const float* rgba, int x, int y, asset::FluidShading s
     }
 }
 
-// ── テンプレート一覧 ─────────────────────────────────────────────────────────
+/// @name テンプレート一覧
 
 enum class FluidGallerySection : std::uint8_t { Gas = 0, Liquid, User };
 
@@ -284,11 +283,11 @@ struct FluidGalleryEntry {
     std::string description;
     /// ユーザーテンプレートの元ファイル (組み込みは空)。
     std::string sourcePath;
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     FluidGallerySection section = FluidGallerySection::Gas;
     bool valid = true;
 
-    asset::FluidShading shading = asset::FluidShading::Smoke;
+    fluid::FluidShading shading = fluid::FluidShading::Smoke;
     asset::FluidFrameImage image;
     bool hasImage = false;
     bool uploaded = false;
@@ -311,7 +310,7 @@ struct FluidGalleryState {
     FluidGalleryState(const FluidGalleryState&) = delete;
     FluidGalleryState& operator=(const FluidGalleryState&) = delete;
 
-    // GPU 資源には触らない (Shutdown を呼ばずに壊されても、裏のスレッドを畳むだけで済むように)。
+    /// GPU 資源には触らない (Shutdown を呼ばずに壊されても、裏のスレッドを畳むだけで済むように)。
     ~FluidGalleryState()
     {
         if (channel != nullptr) channel->cancel.store(true, std::memory_order_relaxed);
@@ -356,11 +355,11 @@ ImU32 FluidExtrasFallbackColor(const FluidGalleryEntry& entry)
 {
     if (!entry.valid) return IM_COL32(120, 56, 48, 255);
     switch (entry.shading) {
-    case asset::FluidShading::Fire:       return IM_COL32(152, 82, 36, 255);
-    case asset::FluidShading::Glow:       return IM_COL32(92, 74, 150, 255);
-    case asset::FluidShading::Distortion: return IM_COL32(58, 108, 110, 255);
-    case asset::FluidShading::Liquid:     return IM_COL32(52, 84, 130, 255);
-    case asset::FluidShading::Smoke:
+    case fluid::FluidShading::Fire:       return IM_COL32(152, 82, 36, 255);
+    case fluid::FluidShading::Glow:       return IM_COL32(92, 74, 150, 255);
+    case fluid::FluidShading::Distortion: return IM_COL32(58, 108, 110, 255);
+    case fluid::FluidShading::Liquid:     return IM_COL32(52, 84, 130, 255);
+    case fluid::FluidShading::Smoke:
     default:                              return IM_COL32(84, 84, 90, 255);
     }
 }
@@ -375,7 +374,7 @@ void FluidExtrasStopThumbnailWorker(FluidGalleryState& gallery)
 void FluidExtrasReleaseThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
 {
     for (FluidGalleryEntry& entry : gallery.entries) {
-        // デバイスリセット後の古いハンドルは既に無効。返すと別の資源を消しかねない。
+        /// @note デバイスリセット後の古いハンドルは既に無効。返すと別の資源を消しかねない。
         if (entry.texture.IsValid() && ctx.resources != nullptr
             && entry.resetVersion == ctx.resources->GetResetVersion())
             ctx.resources->Release(entry.texture);
@@ -404,7 +403,7 @@ void FluidExtrasBuildEntries(EditorContext& ctx, FluidGalleryState& gallery)
         entry.description = FluidExtrasPresetDescription(preset);
         entry.recipe = asset::MakeFluidPreset(preset);
         entry.shading = FluidExtrasEffectiveShading(entry.recipe);
-        entry.section = entry.recipe.kind == asset::FluidKind::Liquid ? FluidGallerySection::Liquid
+        entry.section = entry.recipe.kind == fluid::FluidKind::Liquid ? FluidGallerySection::Liquid
                                                                      : FluidGallerySection::Gas;
         gallery.entries.push_back(std::move(entry));
     }
@@ -470,7 +469,7 @@ void FluidExtrasTickThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
     std::vector<std::uint8_t> pixels;
     for (FluidGalleryEntry& entry : gallery.entries) {
         if (entry.resetVersion != resetVersion) {
-            // デバイスリセットで古いハンドルは無効。載せ直せないなら色の四角へ戻す。
+            /// @note デバイスリセットで古いハンドルは無効。載せ直せないなら色の四角へ戻す。
             entry.texture = {};
             entry.textureId = nullptr;
             entry.uploaded = false;
@@ -485,7 +484,7 @@ void FluidExtrasTickThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
                                                                 renderer::DynamicTextureFormat::RGBA8);
             entry.resetVersion = resetVersion;
             if (!entry.texture.IsValid()) {
-                // 未対応バックエンド。以降は作り直さず、呼び手が色の四角を描く。
+                /// @note 未対応バックエンド。以降は作り直さず、呼び手が色の四角を描く。
                 entry.hasImage = false;
                 continue;
             }
@@ -509,7 +508,7 @@ void FluidExtrasTickThumbnails(EditorContext& ctx, FluidGalleryState& gallery)
         const auto side = static_cast<std::uint32_t>(size);
         if (!gpu->UpdateRegion(0, 0, side, side, pixels.data(), side * 4)) continue;
         entry.uploaded = true;
-        // 絵はもう GPU にある。float のコピーを抱え続けない。
+        /// @note 絵はもう GPU にある。float のコピーを抱え続けない。
         std::vector<float>().swap(entry.image.rgba);
         std::vector<float>().swap(entry.image.motion);
     }
@@ -543,7 +542,7 @@ bool FluidExtrasValidateName(const std::string& input, std::string& outFile, std
 }
 
 /// 名前とフォルダを検めてレシピを新しい .fluid へ書く。書けたら実パス、駄目なら空 (outError に理由)。
-std::string FluidExtrasWriteNewRecipe(EditorContext& ctx, const asset::FluidRecipe& recipe,
+std::string FluidExtrasWriteNewRecipe(EditorContext& ctx, const fluid::FluidRecipe& recipe,
                                       const std::string& rawName, const std::string& rawDirectory,
                                       std::string& outError)
 {
@@ -565,7 +564,7 @@ std::string FluidExtrasWriteNewRecipe(EditorContext& ctx, const asset::FluidReci
     const std::filesystem::path target = directory / util::FileSystem::PathFromUtf8(file);
     const std::string absPath = util::FileSystem::PathToUtf8(target);
     if (util::FileSystem::Exists(absPath)) {
-        // 上書きは «作る» 操作の顔をして人の作業を消す。名前を変えてもらう。
+        /// @note 上書きは «作る» 操作の顔をして人の作業を消す。名前を変えてもらう。
         outError = "A file with that name already exists.";
         return {};
     }
@@ -673,7 +672,7 @@ void FluidExtrasDrawEntries(FluidGalleryState& gallery, bool& outCreateNow)
     if (gallery.entries.empty()) ImGui::TextDisabled("No templates.");
 }
 
-// ── Baked タブ ──────────────────────────────────────────────────────────────
+/// @name Baked タブ
 
 struct FluidBakedState {
     bool has = false;
@@ -689,8 +688,8 @@ struct FluidBakedState {
     std::string message;
     bool messageIsError = false;
 
-    asset::FluidRecipe recipe;
-    asset::FluidShading shading = asset::FluidShading::Smoke;
+    fluid::FluidRecipe recipe;
+    fluid::FluidShading shading = fluid::FluidShading::Smoke;
 
     VolumeFlipbookComparePreview compare;
     bool playing = true;
@@ -706,7 +705,7 @@ FluidBakedState& FluidExtrasBaked()
     return state;
 }
 
-/// <stem> から焼き上がりの候補を組む。PNG を先に置く (BC を展開せずに読める)。
+/// `<stem>` から焼き上がりの候補を組む。PNG を先に置く (BC を展開せずに読める)。
 std::vector<std::filesystem::path> FluidExtrasOutputCandidates(const std::filesystem::path& base,
                                                                bool volume, bool motion)
 {
@@ -806,15 +805,15 @@ void FluidExtrasLoadBaked(EditorContext& ctx, FluidBakedState& baked)
     flipbook.frameDt = 1.0f / (std::max)(fps, 0.1f);
     flipbook.loop = loop;
     flipbook.motionStrength = baked.hasMotion ? strength : 0.0f;
-    // 2D は shading で事前乗算かどうかが決まる。3D は必ず事前乗算で焼いてある。
+    /// @note 2D は shading で事前乗算かどうかが決まる。3D は必ず事前乗算で焼いてある。
     if (!baked.volume && !asset::FluidShadingIsPremultiplied(baked.shading))
         FluidExtrasPremultiply(color.rgba);
     flipbook.colorRgba8 = std::move(color.rgba);
     if (baked.hasMotion) {
         flipbook.motionRgba8 = std::move(motion.rgba);
     } else {
-        // MV を焼いていないレシピでも «焼いた結果» は見せたい。強さ 0 なら warp は効かないので、
-        // 動かない MV (0.5 中心) を渡して左右を同じ絵にする。
+        /// @note MV を焼いていないレシピでも «焼いた結果» は見せたい。強さ 0 なら warp は効かないので、
+        ///       動かない MV (0.5 中心) を渡して左右を同じ絵にする。
         flipbook.motionRgba8.assign(static_cast<std::size_t>(color.width) * color.height * 4, 0);
         for (std::size_t i = 0; i + 3 < flipbook.motionRgba8.size(); i += 4) {
             flipbook.motionRgba8[i] = 128;
@@ -848,7 +847,7 @@ void FluidExtrasDrawOutputRow(const char* label, const std::string& absPath)
     ImGui::PopID();
 }
 
-// ── 名前を付けて保存 ─────────────────────────────────────────────────────────
+/// @name 名前を付けて保存
 
 struct FluidSaveAsState {
     bool openRequest = false;
@@ -866,7 +865,7 @@ FluidSaveAsState& FluidExtrasSaveAs()
     return state;
 }
 
-// ── 自動保存 ────────────────────────────────────────────────────────────────
+/// @name 自動保存
 
 struct FluidAutoSaveState {
     bool enabled = false;
@@ -882,15 +881,14 @@ FluidAutoSaveState& FluidExtrasAutoSave()
     return state;
 }
 
-// ── 部品の控え ──────────────────────────────────────────────────────────────
+/// @name 部品の控え
 
-// WHY 部品だけを取り出した型を作らず «レシピ 1 つ» に入れて持つか:
-//   3 種類の部品型をここで名指しして union / variant を組むと、部品の型が増えたときに
-//   触る場所が増える。レシピに 1 つだけ入れて抱えれば、コピーもペーストも既存の
-//   vector の値コピーで済み、型を知る場所が switch 3 本に収まる。
+/// @note 部品だけの型は作らず «レシピ 1 つ» に入れて持つ。3 種類の部品型を union / variant で
+///       名指しすると型が増えるたび触る場所が増えるが、レシピに 1 つ抱えればコピー / ペーストは
+///       既存 vector の値コピーで済み、型を知る場所は switch 3 本に収まる。
 struct FluidPartClipboardState {
     FluidSelectionKind kind = FluidSelectionKind::None;
-    asset::FluidRecipe holder;
+    fluid::FluidRecipe holder;
     std::string label;
 };
 
@@ -900,10 +898,10 @@ FluidPartClipboardState& FluidExtrasPartClipboard()
     return clipboard;
 }
 
-// list が指す vector 1 本だけを見る (3 種類に同じ処理を書かないため)。
-// 別のリストへ渡すのには使えない — 呼び手が switch で型を突き合わせる必要がある。
+/// list が指す vector 1 本だけを見る (3 種類に同じ処理を書かないため)。
+/// 別のリストへ渡すのには使えない — 呼び手が switch で型を突き合わせる必要がある。
 template <typename Fn>
-bool FluidExtrasVisitPartVector(const asset::FluidRecipe& recipe, FluidSelectionKind list, Fn&& fn)
+bool FluidExtrasVisitPartVector(const fluid::FluidRecipe& recipe, FluidSelectionKind list, Fn&& fn)
 {
     switch (list) {
     case FluidSelectionKind::Source:   fn(recipe.sources); return true;
@@ -913,7 +911,7 @@ bool FluidExtrasVisitPartVector(const asset::FluidRecipe& recipe, FluidSelection
     }
 }
 
-// "Vortex (2)" → "Vortex"。連番を足すたびに "(1) (1)" と伸びるのを防ぐ。
+/// "Vortex (2)" → "Vortex"。連番を足すたびに "(1) (1)" と伸びるのを防ぐ。
 std::string FluidExtrasStripNameCounter(const std::string& name)
 {
     if (name.size() < 4 || name.back() != ')') return name;
@@ -926,7 +924,7 @@ std::string FluidExtrasStripNameCounter(const std::string& name)
 
 } // namespace
 
-// ── テンプレートの置き場 ─────────────────────────────────────────────────────
+/// @name テンプレートの置き場
 
 bool IsFluidTemplatePath(const EditorContext& ctx, const std::string& absPath)
 {
@@ -936,7 +934,7 @@ bool IsFluidTemplatePath(const EditorContext& ctx, const std::string& absPath)
     return util::FileSystem::IsChildPathText(absPath, root);
 }
 
-// ── 名前を付けて保存 ─────────────────────────────────────────────────────────
+/// @name 名前を付けて保存
 
 void OpenFluidSaveAsModal(const std::string& sourcePath, const std::string& defaultDirectory)
 {
@@ -946,8 +944,8 @@ void OpenFluidSaveAsModal(const std::string& sourcePath, const std::string& defa
         util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(sourcePath).stem()), saveAs.directory);
     saveAs.sourceLabel = NormalizeAssetPath(sourcePath);
     saveAs.error.clear();
-    // 開くのは次に描くとき。呼び手は ImGui の ID スタックがどこにあるか分からない所 (ModalDialog の
-    // コールバックや終了時の一括保存) からも来る。
+    /// @note 開くのは次に描くとき。呼び手は ImGui の ID スタックがどこにあるか分からない所 (ModalDialog の
+    ///       コールバックや終了時の一括保存) からも来る。
     saveAs.openRequest = true;
 }
 
@@ -1012,7 +1010,7 @@ FluidSaveAsResult DrawFluidSaveAsModal(EditorContext& ctx, FluidDocument& docume
     return result;
 }
 
-// ── テンプレート一覧 ─────────────────────────────────────────────────────────
+/// @name テンプレート一覧
 
 void OpenFluidTemplateGallery()
 {
@@ -1038,7 +1036,7 @@ std::string DrawFluidTemplateGallery(EditorContext& ctx, const std::string& defa
 
     ImGui::SetNextWindowSize({ 700.0f, 560.0f }, ImGuiCond_Appearing);
     if (!ImGui::BeginPopupModal(kFluidGalleryPopupId, nullptr, ImGuiWindowFlags_NoSavedSettings)) {
-        // 閉じている間は裏の解きもサムネイルも抱えない (次に開いたときに作り直す)。
+        /// @note 閉じている間は裏の解きもサムネイルも抱えない (次に開いたときに作り直す)。
         FluidExtrasCloseGallery(ctx, gallery);
         return {};
     }
@@ -1072,7 +1070,7 @@ std::string DrawFluidTemplateGallery(EditorContext& ctx, const std::string& defa
     return created;
 }
 
-// ── Baked タブ ──────────────────────────────────────────────────────────────
+/// @name Baked タブ
 
 void SetFluidBakedResult(EditorContext& ctx, const std::string& fluidPath)
 {
@@ -1094,11 +1092,11 @@ void SetFluidBakedResult(EditorContext& ctx, const std::string& fluidPath)
         baked.messageIsError = true;
         return;
     }
-    baked.volume = baked.recipe.bake.mode == asset::FluidBakeMode::Volume3D;
+    baked.volume = baked.recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     baked.shading = FluidExtrasEffectiveShading(baked.recipe);
     baked.materialPath = SiblingMaterialPath(fluidPath);
     if (!util::FileSystem::Exists(baked.materialPath)) baked.materialPath.clear();
-    // 読むのはタブを開いたとき。Atlas は数十 MB あり、焼き終わったフレームで読むと画面が飛ぶ。
+    /// @note 読むのはタブを開いたとき。Atlas は数十 MB あり、焼き終わったフレームで読むと画面が飛ぶ。
     baked.pendingLoad = true;
 }
 
@@ -1167,7 +1165,7 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
         baked.time = std::fmod(baked.time + ImGui::GetIO().DeltaTime, (std::max)(cycle, 1.0e-3f));
     }
     if (ctx.renderer == nullptr || ctx.resources == nullptr || ctx.imguiRenderer == nullptr) return;
-    // 比較の絵はこのフレームの中で描く。ImGui が実際に描くのはフレームの終わりなので順序は保たれる。
+    /// @note 比較の絵はこのフレームの中で描く。ImGui が実際に描くのはフレームの終わりなので順序は保たれる。
     baked.compare.Render(*ctx.renderer, *ctx.resources, baked.time, baked.fps, baked.strengthScale,
                          baked.background);
     void* rawId = ctx.imguiRenderer->GetImTextureID(baked.compare.Target(), *ctx.resources, 0);
@@ -1189,7 +1187,7 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
                         baked.compare.Loops() ? "   (Loop)" : "");
     if (!baked.hasMotion)
         ImGui::TextDisabled("No motion vectors were baked, so both halves are the same.");
-    if (baked.shading == asset::FluidShading::Glow)
+    if (baked.shading == fluid::FluidShading::Glow)
         ImGui::TextDisabled("Additive shading is composited as alpha here; in game it adds to the scene.");
 }
 
@@ -1199,11 +1197,11 @@ void ShutdownFluidBakedTab(EditorContext& ctx)
     if (ctx.resources != nullptr) baked.compare.Release(*ctx.resources);
     baked.loaded = false;
     baked.pendingLoad = baked.has;
-    // 一覧のサムネイルもここで返す。GPU 資源を持つのはこの 2 つだけで、返す口は他に無い。
+    /// @note 一覧のサムネイルもここで返す。GPU 資源を持つのはこの 2 つだけで、返す口は他に無い。
     FluidExtrasCloseGallery(ctx, FluidExtrasGallery());
 }
 
-// ── 自動保存 ────────────────────────────────────────────────────────────────
+/// @name 自動保存
 
 bool TickFluidAutoSave(EditorContext& ctx, FluidDocument& document)
 {
@@ -1213,8 +1211,8 @@ bool TickFluidAutoSave(EditorContext& ctx, FluidDocument& document)
         autoSave.idle = 0.0f;
         return false;
     }
-    // テンプレートは «作り始めの原本» で、開いて値を見ただけの人も多い。3 秒の無操作で黙って書くと、
-    // 覗いただけのつもりが原本ごと別物になる (ShockRing.fluid が実際に消えた)。上書きは人が選ぶ。
+    /// @note テンプレートは «作り始めの原本» で、開いて値を見ただけの人も多い。3 秒の無操作で黙って書くと、
+    ///       覗いただけのつもりが原本ごと別物になる (ShockRing.fluid が実際に消えた)。上書きは人が選ぶ。
     if (IsFluidTemplatePath(ctx, document.Path())) return false;
     const std::uint64_t revision = document.Revision();
     if (!autoSave.hasRevision || revision != autoSave.revision) {
@@ -1225,15 +1223,15 @@ bool TickFluidAutoSave(EditorContext& ctx, FluidDocument& document)
     }
     autoSave.idle += ImGui::GetIO().DeltaTime;
     if (!autoSave.enabled || !document.IsDirty()) return false;
-    // ドラッグの途中で書くと、手を離すまでの中間の姿が .fluid に残る (Undo も 1 つに畳めていない)。
+    /// @note ドラッグの途中で書くと、手を離すまでの中間の姿が .fluid に残る (Undo も 1 つに畳めていない)。
     if (document.InInteractiveEdit()) return false;
-    // 外で書き換わったファイルへ黙って上書きすると、相手の変更が消える。解決は人が選ぶ。
+    /// @note 外で書き換わったファイルへ黙って上書きすると、相手の変更が消える。解決は人が選ぶ。
     if (document.HasExternalConflict()) return false;
     if (autoSave.idle < kFluidAutoSaveDelay) return false;
 
     std::string error;
     const bool saved = document.Save(ctx, error);
-    // 失敗しても毎フレーム書きに行かないよう、成否に関わらず間を置き直す。
+    /// @note 失敗しても毎フレーム書きに行かないよう、成否に関わらず間を置き直す。
     autoSave.idle = 0.0f;
     autoSave.revision = document.Revision();
     return saved;
@@ -1251,14 +1249,14 @@ void SetFluidAutoSaveEnabled(EditorContext& ctx, bool enabled)
     if (autoSave.enabled == enabled) return;
     autoSave.enabled = enabled;
     autoSave.idle = 0.0f;
-    // 次の起動へ持ち越す値なので、終了を待たずに editor_settings.toml へ書かせる
-    // (EditorSettings::fluidEditorAutoSave が保存先)。
+    /// @note 次の起動へ持ち越す値なので、終了を待たずに editor_settings.toml へ書かせる
+    ///       (EditorSettings::fluidEditorAutoSave が保存先)。
     ctx.requestEditorSettingsSave = true;
 }
 
-// ── 部品の控え ───────────────────────────────────────────────────────────────
+/// @name 部品の控え
 
-void SetFluidPartClipboard(const asset::FluidRecipe& recipe, FluidSelectionKind list, int index)
+void SetFluidPartClipboard(const fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
 {
     if (index < 0) return;
     const auto at = static_cast<std::size_t>(index);
@@ -1280,7 +1278,7 @@ void SetFluidPartClipboard(const asset::FluidRecipe& recipe, FluidSelectionKind 
         return;
     }
     next.kind = list;
-    // 表示名は «控えた時点» のものを持つ。元の .fluid を閉じた後でもメニューに何が入っているか出す。
+    /// @note 表示名は «控えた時点» のものを持つ。元の .fluid を閉じた後でもメニューに何が入っているか出す。
     next.label = fluidui::PartDisplayName(recipe, list, index);
     FluidExtrasPartClipboard() = std::move(next);
 }
@@ -1309,7 +1307,7 @@ std::string FluidPartClipboardLabel()
     return HasFluidPartClipboard() ? FluidExtrasPartClipboard().label : std::string{};
 }
 
-bool PasteFluidPartClipboard(asset::FluidRecipe& recipe, FluidSelectionKind list, int at)
+bool PasteFluidPartClipboard(fluid::FluidRecipe& recipe, FluidSelectionKind list, int at)
 {
     if (!FluidPartClipboardMatches(list)) return false;
     const FluidPartClipboardState& clipboard = FluidExtrasPartClipboard();
@@ -1342,10 +1340,10 @@ bool PasteFluidPartClipboard(asset::FluidRecipe& recipe, FluidSelectionKind list
     return true;
 }
 
-std::string MakeUniqueFluidPartName(const asset::FluidRecipe& recipe, FluidSelectionKind list,
+std::string MakeUniqueFluidPartName(const fluid::FluidRecipe& recipe, FluidSelectionKind list,
                                     const std::string& base, int ignoreIndex)
 {
-    // 名前が空の部品は Outliner で "Source 2 (Cone)" と添字から呼ばれる。空のまま返せば衝突しない。
+    /// @note 名前が空の部品は Outliner で "Source 2 (Cone)" と添字から呼ばれる。空のまま返せば衝突しない。
     if (base.empty()) return base;
 
     std::vector<std::string> used;
@@ -1362,7 +1360,7 @@ std::string MakeUniqueFluidPartName(const asset::FluidRecipe& recipe, FluidSelec
     if (!taken(base)) return base;
 
     const std::string stem = FluidExtrasStripNameCounter(base);
-    // 上限は部品の数 (16) で足りるが、名前だけ手で揃えた列に当たっても止まらない程度に取る。
+    /// @note 上限は部品の数 (16) で足りるが、名前だけ手で揃えた列に当たっても止まらない程度に取る。
     for (int serial = 1; serial < 1000; ++serial) {
         const std::string candidate = stem + " (" + std::to_string(serial) + ")";
         if (!taken(candidate)) return candidate;

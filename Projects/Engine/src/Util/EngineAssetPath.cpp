@@ -26,8 +26,8 @@ bool IsDirectory(const std::filesystem::path& path)
     return std::filesystem::is_directory(path, error);
 }
 
-// 先頭要素が "Assets" なら取り除く。EngineAssetRoot 自体が Assets を指すため、
-// "Assets/Shaders/..." をそのまま連結すると Assets が二重になる。
+/// 先頭要素が "Assets" なら取り除く。EngineAssetRoot 自体が Assets を指すため、
+/// "Assets/Shaders/..." をそのまま連結すると Assets が二重になる。
 std::filesystem::path StripAssetsPrefix(const std::filesystem::path& path)
 {
     auto it = path.begin();
@@ -62,7 +62,7 @@ std::filesystem::path Discover()
     const std::filesystem::path staged = executableDirectory / L"EngineAssets";
     if (IsDirectory(staged)) return staged;
 
-    // SDK Editor は tools/<Config>/Editor にあり、共有 asset は SDK root/share 配下にある。
+    /// @note SDK Editor は `tools/<Config>/Editor` にあり、共有 asset は SDK root/share 配下にある。
     const std::filesystem::path sdk =
         executableDirectory.parent_path().parent_path().parent_path()
         / L"share" / L"fbzz" / L"Assets";
@@ -94,9 +94,9 @@ std::filesystem::path ResolveEngineAssetPath(const std::filesystem::path& reques
         }
     }
 
-    // WHY: GameHub から起動した Editor は GameHub の CWD をそのまま引き継ぐうえ、
-    //      プロジェクトへ Engine シェーダーを複製しない方針 (immutable な SDK 共有 asset を使う)。
-    //      CWD 起点の探索が構造的に届かない構成があるため、最後に SDK ルートへ問い合わせる。
+    /// @note GameHub から起動した Editor は GameHub の CWD を引き継ぎ、Engine シェーダーは複製せず
+    ///       immutable な SDK 共有 asset を使う方針のため、CWD 起点の探索が届かない構成がある。
+    ///       最後に SDK ルートへ問い合わせて解決する。
     const std::filesystem::path& root = EngineAssetRoot();
     if (!root.empty()) {
         if (const std::filesystem::path stripped = StripAssetsPrefix(requested); !stripped.empty()) {

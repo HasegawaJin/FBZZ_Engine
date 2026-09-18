@@ -3,25 +3,18 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// WHY ＋と−で実体を共有するか:
-///   両極は「符号が逆なだけの同じもの」で、粒子の組み立ても極どうしの引き合いも同じ式で書ける。
-///   Plus と Minus に別々の実装を持たせると、片方だけ直したときに＋と−で挙動が食い違い、
-///   引き合っているのか反発しているのかが画面から読めなくなる。符号は 1 箇所に閉じる。
-///
-/// WHY 静的な登録簿を持つか:
-///   相互作用には相手が要るが、Plus が Minus を include すると循環する。
-///   scene.FindObjectsOfType も型を名指しするので同じ問題になる。極を 1 本の配列へ
-///   登録させれば、どちらのコンポーネントも相手の型を知らないまま盤面全体を見られる。
-///
-/// WHY 力場をチャンネルで分けるか:
-///   ForceField は本来シーン全体へ一律に効く。＋電極に Attract を 1 つ置いた瞬間、
-///   −の粒子だけでなく＋の粒子まで同じ点へ吸い込まれ、2 つの雲が中点で団子になる。
-///   ParticleEmitterSettings::forceFieldChannels と ForceField::channels を極ごとに分けて、
-///   「＋の粒子は−の電極にだけ引かれ、＋の電極からは押し返される」を成立させる。
+/// @note ＋と−で実体を共有する: 符号が逆なだけの同じものなので同じ式で書ける。別実装だと
+///       片方だけ直したときに挙動が食い違い、引き合いか反発かが画面から読めなくなる。
+/// @note 静的な登録簿を持つ: Plus が Minus を include すると循環し、型名指しの
+///       scene.FindObjectsOfType も同じ問題になる。極を 1 本の配列へ登録すれば、
+///       互いの型を知らないまま盤面全体を見られる。
+/// @note 力場はチャンネルで分ける: FlowField はシーン全体へ一律に効くので、＋電極に Sink を
+///       置くと−だけでなく＋の粒子まで同じ点へ吸い込まれる。flowFieldChannels/channels を
+///       極ごとに分け、「＋は−にだけ引かれ、＋からは押し返される」を成立させる。
 #pragma once
 
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ForceField.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -42,8 +35,8 @@ using namespace fbzz::math;
 
 namespace sandbox {
 
-// 力場チャンネルのビット割り当て。粒子とそれを動かす場を極ごとに分ける唯一の根拠なので、
-// 電極まわりで使うビットはここだけで決める。
+/// 力場チャンネルのビット割り当て。粒子とそれを動かす場を極ごとに分ける唯一の根拠なので、
+/// 電極まわりで使うビットはここだけで決める。
 inline constexpr uint32_t kElectrodeChannelPlus  = 1u << 0;
 inline constexpr uint32_t kElectrodeChannelMinus = 1u << 1;
 inline constexpr uint32_t kElectrodeChannelBoth  =
@@ -56,17 +49,14 @@ inline constexpr uint32_t kElectrodeChannelBoth  =
 
 /// 電極 1 本の調整値。Plus/Minus コンポーネントが自分の FBZZ_FIELD から詰めて渡す。
 struct ElectrodeTuning {
-    // ── 粒子 ──
-    // WHY «小さいのを大量» ではなく «大きいのを少なめ» か:
-    //   加算合成では重なり枚数がそのまま飽和に効く。細かい粒を数千枚重ねると、
-    //   1 粒がどれだけ彩度を持っていても重なった領域から白へ抜ける。
-    //   粒を大きくして枚数を落とすと、同じ画面占有でも重なりが減り、
-    //   1 粒 1 粒が «粒として» 読めるうえ色も残る。
-    // WHY エミッター側の設定なのに調整値として持つか:
-    //   電極のエミッターは Attach の GetOrAddComponent が実行時に作る。シーンには
-    //   ParticleEmitter が居ないので、Inspector で Simulation を触っても Play を止めた
-    //   時点で消える (シーンは SceneSerializer の往復で復元される)。スクリプトの
-    //   FBZZ_FIELD なら .scene に残るので、経路の指定はここが唯一の置き場になる。
+    /// @name 粒子
+    /// @{
+    /// @note «小さいのを大量» でなく «大きいのを少なめ» にする: 加算合成は重なり枚数が
+    ///       そのまま飽和に効くので、細粒を数千枚重ねると彩度があっても白へ抜ける。
+    ///       粒を大きく枚数を落とすと重なりが減り、1 粒 1 粒が «粒として» 色を保って読める。
+    /// @note エミッター側の設定なのに調整値として持つ: 電極のエミッターは Attach の
+    ///       GetOrAddComponent が実行時に作るため、シーンに居ない状態で Inspector を触っても
+    ///       Play 停止で消える。FBZZ_FIELD なら .scene に残るので、ここが唯一の置き場になる。
     ParticleSimulationMode simulationMode = ParticleSimulationMode::Cpu;
     int   maxParticles   = 1200;
     float emitRate       = 200.0f;
@@ -84,10 +74,12 @@ struct ElectrodeTuning {
     /// 生まれた瞬間の明るさ倍率。色は極性色のまま、明るさだけが立ち上がる。
     /// オーサリング空間 (sRGB) に掛かるので、リニアでは 2.2 乗で効く。
     float hotCore        = 1.2f;
-    // NOTE: 自発光は ElectricCharge*.mat の [particle] emissive_scale が持つ。
-    //       見た目は素材の性質なので、エミッター側にもここにも置かない。
+    /// @note 自発光は ElectricCharge*.mat の [particle] emissive_scale が持つ。
+    ///       見た目は素材の性質なので、エミッター側にもここにも置かない。
+    /// @}
 
-    // ── 電極が張る場 ──
+    /// @name 電極が張る場
+    /// @{
     /// 逆極の粒子を吸い込む加速度 [m/s^2]。
     float pullStrength  = 26.0f;
     /// 同極の粒子を押し出す加速度 [m/s^2]。自分の粒子が芯から湧き出して見える。
@@ -97,8 +89,10 @@ struct ElectrodeTuning {
     float falloffPower  = 1.6f;
     /// 極を軸にした渦。0 で無効。まっすぐ吸い込まれるだけの線を弧に曲げる。
     float swirlStrength = 4.0f;
+    /// @}
 
-    // ── 電極どうしの運動 ──
+    /// @name 電極どうしの運動
+    /// @{
     /// 逆極を引き・同極を押す加速度 [m/s^2]。最接近距離での値で、そこから 1/d^2 で落ちる。
     float coupling      = 5.0f;
     /// 元の配置へ戻すばね [1/s^2]。0 にすると画面外まで流れていく。
@@ -110,35 +104,35 @@ struct ElectrodeTuning {
     float collisionGlow = 0.0f;
     /// 中心のまわりをゆっくり回す角速度 [deg/s]。釣り合った後も画面が止まらないようにする。
     float orbitSpeed    = 8.0f;
+    /// @}
 
-    // ── ゲーム内カーソルへの追従 ──
-    // WHY 奥行きを «置いた位置のまま» 保つか:
-    //   カーソルは画面上の 1 点しか指さないので、奥行きは別に決めるしかない。カメラへ
-    //   寄せると粒子まで一緒に大きくなり、«カーソルに付いてきた» ではなく «近づいてきた»
-    //   に見える。シーンで置いた奥行きを保てば、画面のどこへ動かしても大きさが変わらない。
+    /// @name ゲーム内カーソルへの追従
+    /// @{
     /// ゲーム内カーソルの指す画面点へ寄っていく。
+    /// @note 奥行きは «置いた位置のまま» 保つ: カーソルは画面上の 1 点しか指さないため、
+    ///       カメラへ寄せると粒子まで大きくなり «近づいてきた» に見える。置いた奥行きを
+    ///       保てば画面のどこでも大きさが変わらない。
     bool  followCursor   = false;
     /// カーソルへの食いつき [rad/s]。臨界減衰なので、上げても行き過ぎない。
     float followResponse = 12.0f;
     /// カーソルがこの位置より右にあるときだけ追従する。画面幅の割合 (0 = 画面全体 / 0.5 = 右半分)。
-    ///
-    /// WHY 追従できる領域を絞れるようにするか:
-    ///   タイトルのメニューは画面の左に置いてある。カーソルがどこへ行っても極が付いてくると、
-    ///   項目を選びに行くたびに粒子と放電が文字の上へ乗って読めなくなる。追従を «文字の無い側»
-    ///   に閉じれば、掴んで遊べることとメニューが読めることが両立する。
+    /// @note タイトルのメニューは画面の左に置いてあるため、追従を «文字の無い側» に絞らないと
+    ///       項目を選ぶたびに粒子と放電が文字の上へ乗って読めなくなる。
     float followMinX     = 0.0f;
 
     /// 極の間に走る放電。＋極の rig だけが引き受ける。
     ElectricArcStyle arc;
+    /// @}
 
-    // ── 電荷そのものの見せ方 ──
-    // WHY 放電とは別に持つか:
-    //   放電は «対» の持ち物で、極を 1 本だけ見ても何も出ていない。記号と力線は
-    //   1 個の電荷の持ち物なので、極ごとに持って «そこに電荷がある» ことを示す。
+    /// @name 電荷そのものの見せ方
+    /// @{
     /// 芯に立てる ＋ / − の記号。
+    /// @note 放電とは別に持つ: 放電は «対» の持ち物で極 1 本だけでは出ない。記号と力線は
+    ///       1 個の電荷の持ち物なので、極ごとに持って «そこに電荷がある» ことを示す。
     ElectrodeCoreStyle  core;
     /// 芯から外へ伸びる電気力線。
     ElectrodeFieldStyle field;
+    /// @}
 };
 
 /// 電極 1 本。Plus/Minus コンポーネントが 1 つずつ値として持つ。
@@ -188,13 +182,11 @@ public:
     [[nodiscard]] static const std::vector<ElectrodeRig*>& All() { return s_rigs; }
 
 private:
-    // WHY ポインタでなく EntityID を持つか:
-    //   AddComponent は型ごとのコンポーネント配列を伸ばすことがある。3 本の力場を続けて
-    //   足すと、2 本目を足した時点で 1 本目に返ったポインタが無効になりうる。
-    //   同じことは他の電極が後から組み立てられたときにも起きる。ID なら影響を受けない。
+    /// @note ポインタでなく EntityID を持つ: AddComponent は型ごとの配列を伸ばすことがあり、
+    ///       力場を続けて足すと先に返ったポインタが無効になりうる。ID なら影響を受けない。
     EntityID MakeField(Script& owner, const char* suffix,
-                       ForceFieldType type, uint32_t channels) const;
-    [[nodiscard]] static ForceFieldSettings* ResolveField(const Script& owner, EntityID id);
+                       FlowFieldType type, uint32_t channels) const;
+    [[nodiscard]] static FlowFieldSettings* ResolveField(const Script& owner, EntityID id);
 
     /// 極とシミュレーション経路から既定の .mat を選ぶ。
     [[nodiscard]] static const char* DefaultMaterialPath(Pole pole,
@@ -218,11 +210,8 @@ private:
     void WarnGpuFallbackOnce(Script& owner);
 
     /// 追従に «入る» ときと «抜ける» ときのしきい値の差 (画面幅の割合)。
-    ///
-    /// WHY 必要か:
-    ///   境界にカーソルを置いたまま手が 1px 揺れると、行き先が «カーソル» と «定位置» の
-    ///   間で毎フレーム入れ替わり、極が細かく震える。両者は遠いので、力の向きが毎フレーム
-    ///   反転する。入りと出をずらせば、境界をまたぐ 1 回だけで切り替わる。
+    /// @note 無いと、境界で手が 1px 揺れただけで行き先が «カーソル» と «定位置» の間で
+    ///       毎フレーム入れ替わり極が震える。入りと出をずらせば 1 回の通過で切り替わる。
     static constexpr float kFollowHysteresis = 0.02f;
 
     static inline std::vector<ElectrodeRig*> s_rigs;
@@ -232,9 +221,9 @@ private:
     static inline float s_fusionRadius = 0.01f;
     static inline Vector3 s_fusionPosition = Vector3::ZERO;
 
-    /// 逆極の相手ごとに 1 束。＋極の rig だけが持つ (UpdateArcs の WHY を参照)。
+    /// 逆極の相手ごとに 1 束。＋極の rig だけが持つ (UpdateArcs の @note を参照)。
     std::vector<ElectricArcBundle> m_arcs;
-    /// 芯の記号と力線。放電と違い極ごとに持つ (ElectrodeTuning の WHY を参照)。
+    /// 芯の記号と力線。放電と違い極ごとに持つ (ElectrodeTuning::core の @note を参照)。
     ElectrodeCoreGlyph              m_core;
     ElectrodeFieldLines             m_fieldLines;
     /// 力線を曲げる盤面の電荷。毎フレームの再確保を避けるための作業領域。
@@ -254,10 +243,9 @@ private:
     Vector3 m_velocity = Vector3::ZERO;
 };
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline EntityID ElectrodeRig::MakeField(Script& owner, const char* suffix,
-                                        ForceFieldType type,
+                                        FlowFieldType type,
                                         uint32_t channels) const
 {
     GameObject* self = owner.scene.Self();
@@ -269,23 +257,23 @@ inline EntityID ElectrodeRig::MakeField(Script& owner, const char* suffix,
     fieldObject.transform.position = Vector3::ZERO;
     fieldObject.SetParent(*self);
 
-    // 力場は 1 GameObject へ複数本を持てるが、この rig は «1 オブジェクト = 1 力» で組む。
-    // 3 本を別オブジェクトへ分けるのは、極ごとに channels と位置を独立に動かすため。
-    ForceFieldSettings force;
+    /// @note 力場は 1 GameObject へ複数本を持てるが、この rig は «1 オブジェクト = 1 力» で組む。
+    ///       3 本を別オブジェクトへ分けるのは、極ごとに channels と位置を独立に動かすため。
+    FlowFieldSettings force;
     force.fieldType = type;
     force.channels  = channels;
-    // 渦の軸だけ意味を持つ。Attract / Repulse は direction を見ない。
+    /// @note 渦の軸だけ意味を持つ。Attract / Repulse は direction を見ない。
     force.direction = Vector3::UP;
-    ForceField& field = fieldObject.AddComponent<ForceField>();
+    FlowField& field = fieldObject.AddComponent<FlowField>();
     field.forces = { force };
     return id;
 }
 
-inline ForceFieldSettings* ElectrodeRig::ResolveField(const Script& owner, EntityID id)
+inline FlowFieldSettings* ElectrodeRig::ResolveField(const Script& owner, EntityID id)
 {
     if (!id.IsValid()) return nullptr;
     GameObject* object = owner.scene.GetGameObject(id);
-    ForceField* field = object ? object->GetComponent<ForceField>() : nullptr;
+    FlowField* field = object ? object->GetComponent<FlowField>() : nullptr;
     if (field == nullptr || field->forces.empty()) return nullptr;
     return &field->forces.front();
 }
@@ -313,76 +301,60 @@ inline bool ElectrodeRig::IsDefaultMaterialPath(std::string_view path)
 
 inline void ElectrodeRig::ApplySimulationMode(Script& owner, const ElectrodeTuning& tuning)
 {
-    // WHY settings へ直接書かずプロキシを通すか:
-    //   経路を切り替えた瞬間、GPU バッファには前の粒子が残ったままになる。
-    //   SetSimulationMode は差分を見て gpuClearPending を立てるので、切り替えが
-    //   1 フレームで綺麗に入る。直接代入するとその一手が抜ける。
+    /// @note settings へ直接書かずプロキシを通す: 経路切り替え直後は GPU バッファに前の粒子が
+    ///       残る。SetSimulationMode は差分を見て gpuClearPending を立てるため、直接代入だと
+    ///       その一手が抜ける。
     owner.particle.SetSimulationMode(tuning.simulationMode);
 }
 
 inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
                                            const ElectrodeTuning& tuning) const
 {
-    // 素材は «極 × シミュレーション経路» で決まる。指定が無いときと、この rig が入れた
-    // 既定のままのときだけ差し替える (エディタで別の .mat を差した選択は残す)。
-    //
-    // WHY 極ごとに別の .mat か:
-    //   1 粒は ＋ / − の記号そのもので、符号は .mat の chargeSign が決める。
-    //   ParticlePass は材質を materialPath をキーにグローバルへ 1 つだけ持ち、
-    //   GameObject ごとの上書きはパーティクルへ届かない。同じ .mat を差した瞬間、
-    //   両極の粒が同じ符号になる (詳細は ElectricChargeCommon.hlsli のヘッダー)。
-    // WHY 経路ごとにも分かれるか:
-    //   GPU 経路は頂点バッファを持たず、VS が StructuredBuffer から粒子を引く。
-    //   CPU 用シェーダーを差したまま Gpu にすると «縮退した» とも言われないまま
-    //   粒が 1 つも出ない。simulationMode に追従させて、そこを踏ませない。
+    /// @note 素材は «極 × シミュレーション経路» で決まる。指定が無いときと、この rig が入れた
+    ///       既定のままのときだけ差し替える (エディタで別の .mat を差した選択は残す)。
+    /// @note 極ごとに分ける: ParticlePass は materialPath をキーに材質をグローバルへ 1 つだけ
+    ///       持つため、同じ .mat を差すと両極の粒が同じ符号 (chargeSign) になる。
+    /// @note 経路ごとにも分ける: GPU 経路は StructuredBuffer から粒子を引くため、CPU 用
+    ///       シェーダーのまま Gpu にすると縮退の警告も無く粒が 1 つも出ない。
     if (emitter.materialPath.empty() || IsDefaultMaterialPath(emitter.materialPath))
         emitter.materialPath = DefaultMaterialPath(m_pole, emitter.simulationMode);
 
-    emitter.forceFieldChannels = ElectrodeChannelOf(m_pole);
-    emitter.receiveForceFields = true;
+    emitter.flowFieldChannels = ElectrodeChannelOf(m_pole);
+    emitter.receiveFlowFields = true;
 
     emitter.maxParticles   = (std::max)(tuning.maxParticles, 1);
     emitter.emitRate       = (std::max)(tuning.emitRate, 0.0f);
     emitter.lifetime       = (std::max)(tuning.lifetime, 0.05f);
     emitter.lifetimeRandom = 0.35f;
-    // 芯から湧き出させる。Point だと全粒子が同じ 1 点に生まれ、Repulse の向きが
-    // 決まらないまま重なるので、湧き出しの形が出ない。
+    /// @note 芯から湧き出させる。Point だと全粒子が同じ 1 点に生まれ、Repulse の向きが
+    ///       決まらないまま重なるので、湧き出しの形が出ない。
     emitter.shape          = ParticleEmitterShape::Sphere;
     emitter.sphereRadius   = (std::max)(tuning.spawnRadius, 0.01f);
     emitter.velocitySpread = tuning.velocitySpread;
     emitter.emitVelocity   = Vector3::ZERO;
     emitter.sizeStart      = tuning.sizeStart;
     emitter.sizeEnd        = tuning.sizeEnd;
-    emitter.EnsureLocalForce(ForceFieldType::Drag).strength = tuning.particleDamping;
+    emitter.flowCoupling = tuning.particleDamping;
     emitter.SetGravityAcceleration(Vector3::ZERO);
 
     const Vector4 tint = PoleColor(m_pole);
     emitter.colorStart = tint;
     emitter.colorEnd   = { tint.x, tint.y, tint.z, 0.0f };
 
-    // 寿命に沿った色。全キーが極性色の «比率» を保ち、白いキーを 1 本も置かない。
-    //
-    // WHY 白熱のキーを置かないか (ここが赤青が消える原因だった):
-    //   加算合成は HDR の比率を保つが、トーンマップは全チャンネルが 1 を超えた時点で
-    //   比率を潰して白にする。純白のキーを置くと、生まれたての粒子が湧き出し口へ
-    //   密集した瞬間にそこが白い塊になり、画面で最も明るいので全体が白へ引きずられる。
-    //   白熱は «per-particle の色» ではなく «密度» から創発させるのが正しい:
-    //   色の比率を保ったまま重なれば、芯だけが自然に飽和して白くなり、
-    //   外周は赤 / 青のまま残る。電極として物理的にも正しい出方になる。
-    //
-    // WHY 1 粒あたりを暗く抑えるか:
-    //   重なり N 枚で G は N 倍される。見積もりはリニアで取ること。キーの RGB は
-    //   オーサリング空間 (sRGB) で、赤の G = 0.12 はリニアでは 0.12^2.2 = 0.009 になる。
-    //   1 粒の実効倍率は «グラデーションの色 × hotCore × Glow × シェーダーの形» で、
-    //   ここが 0.2 前後なら 20 枚重なっても G は 0.04 に留まり赤のまま、
-    //   60 枚を超えた芯だけが白熱する。1 を超える倍率を持たせると、色を保っていても
-    //   10 枚で G が 1 を跨ぎ、ACES がチャンネルごとに潰して赤も青も同じ白になる。
+    /// @note 寿命に沿った色。全キーが極性色の «比率» を保ち、白いキーは置かない (ここが赤青が
+    ///       消える原因だった)。トーンマップは全チャンネルが 1 を超えると比率を潰して白にする
+    ///       ため、純白キーは密集直後に画面全体を白へ引きずる。白熱は密度から創発させ、
+    ///       比率を保ったまま重ねれば芯だけが飽和し外周は赤/青のまま残る。
+    /// @note 1 粒は暗めに抑える: 重なり N 枚で G は N 倍 (リニアで見積もる)。キー RGB は
+    ///       sRGB でリニア化すると赤の G=0.12 は 0.12^2.2=0.009。実効倍率 (色×hotCore×Glow×
+    ///       シェーダー形) が 0.2 前後なら 20 枚で G=0.04 に留まり 60 枚超の芯だけ白熱するが、
+    ///       1 を超えると 10 枚で ACES がチャンネルごとに潰し赤も青も同じ白になる。
     emitter.useColorGradient = true;
     ParticleGradient& gradient = emitter.colorGradient;
     gradient.keyCount      = 4;
     gradient.interpolation = ParticleCurveInterpolation::Linear;
-    // WHY Linear 空間で混ぜるか: 飽和した赤 / 青は彩度の高いランプで、Gamma で
-    //     混ぜると中間が濁る。光として足し合わせたいので Linear を選ぶ。
+    /// @note Linear 空間で混ぜる: 飽和した赤/青は彩度の高いランプで、Gamma で混ぜると
+    ///       中間が濁る。光として足し合わせたいので Linear を選ぶ。
     gradient.colorSpace    = ParticleColorSpace::Linear;
     const float hot = Max(tuning.hotCore, 0.05f);
     gradient.keys[0] = { 0.00f, { tint.x * hot,  tint.y * hot,  tint.z * hot,  1.00f } };
@@ -390,59 +362,57 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     gradient.keys[2] = { 0.55f, { tint.x * 0.6f, tint.y * 0.6f, tint.z * 0.6f, 0.80f } };
     gradient.keys[3] = { 1.00f, { tint.x * 0.2f, tint.y * 0.2f, tint.z * 0.2f, 0.00f } };
 
-    // 生まれた瞬間に立ち上がり、ほぼ最大のまま保ち、最後に畳んで消える。
-    //
-    // WHY カーブの «1» が大きさの最大ではないか (ここを取り違えると絵が反転する):
-    //   ParticlePass は size = sizeStart + (sizeEnd - sizeStart) * curve と評価する。
-    //   カーブは «大きさそのもの» ではなく sizeStart → sizeEnd の補間係数で、
-    //   sizeEnd < sizeStart のこの設定では 0 が最大・1 が最小になる。
-    //
-    // WHY «小さい時間» を作らないか:
-    //   1 粒は ＋ / − の記号そのもの (ElectricCharge.hlsl)。小さいあいだは棒が
-    //   数 px しかなく、記号ではなく «ぼやけた点» にしか見えない。読める大きさで
-    //   居る時間が寿命の大半を占めないと、記号にした意味が出ない。
+    /// @note 生まれた瞬間に立ち上がり、ほぼ最大のまま保ち、最後に畳んで消える。
+    /// @note カーブの «1» は大きさの最大ではない (取り違えると絵が反転する): ParticlePass は
+    ///       size = sizeStart + (sizeEnd - sizeStart) * curve と評価し、sizeEnd < sizeStart
+    ///       のこの設定では 0 が最大・1 が最小になる。
+    /// @note «小さい時間» を作らない: 1 粒は記号そのもの (ElectricCharge.hlsl) で、小さいと
+    ///       «ぼやけた点» にしか見えない。読める大きさで居る時間を寿命の大半にする。
     emitter.useSizeCurve = true;
     ParticleCurve& size = emitter.sizeCurve;
     size.keyCount      = 4;
     size.interpolation = ParticleCurveInterpolation::Smooth;
-    size.keys[0] = { 0.00f, 0.85f }; // 生まれは小さい
-    size.keys[1] = { 0.12f, 0.00f }; // すぐ最大まで開く
-    size.keys[2] = { 0.75f, 0.10f }; // ほぼ最大のまま保つ
-    size.keys[3] = { 1.00f, 1.00f }; // 最後に畳んで消える
+    /// @note 生まれは小さい
+    size.keys[0] = { 0.00f, 0.85f };
+    /// @note すぐ最大まで開く
+    size.keys[1] = { 0.12f, 0.00f };
+    /// @note ほぼ最大のまま保つ
+    size.keys[2] = { 0.75f, 0.10f };
+    /// @note 最後に畳んで消える
+    size.keys[3] = { 1.00f, 1.00f };
 
-    // 記号は立っていないと読めない。角速度を明示的に止める
-    // (既定に任せると、あとで «なんとなく回す» 変更が入ったときに符号が転ぶ)。
+    /// @note 記号は立っていないと読めない。角速度を明示的に止める
+    ///       (既定に任せると、あとで «なんとなく回す» 変更が入ったときに符号が転ぶ)。
     emitter.angularVelocityMin = 0.0f;
     emitter.angularVelocityMax = 0.0f;
     emitter.useRotationCurve   = false;
 
-    // NOTE: 自発光 (emissive_scale) とライティング無効 (lighting_strength = 0) は
-    //       ElectricCharge*.mat の [particle] が持つ。見た目は素材の性質なので、
-    //       スクリプトからは触らない (同じ素材を使う全エミッターで共有される)。
-    //       ブルームのしきい値 (既定 0.7) は 1 粒ではなく重なった芯が越える。
+    /// @note 自発光 (emissive_scale) とライティング無効 (lighting_strength = 0) は
+    ///       ElectricCharge*.mat の [particle] が持つ。見た目は素材の性質なので、
+    ///       スクリプトからは触らない (同じ素材を使う全エミッターで共有される)。
+    ///       ブルームのしきい値 (既定 0.7) は 1 粒ではなく重なった芯が越える。
 
-    // 芯から外向き + 極を軸にした周回。力場だけだと粒子が素直に相手へ向かうので、
-    // 湧き出し口のあたりで «巻いてから飛ぶ» 一手間を足す。
-    emitter.EnsureLocalForce(ForceFieldType::Repulse).strength = tuning.radialBurst;
+    /// @note 芯から外向き + 極を軸にした周回。力場だけだと粒子が素直に相手へ向かうので、
+    ///       湧き出し口のあたりで «巻いてから飛ぶ» 一手間を足す。
+    emitter.EnsureLocalForce(FlowFieldType::Source).strength = tuning.radialBurst;
     {
-        auto& spin = emitter.EnsureLocalForce(ForceFieldType::Vortex);
+        auto& spin = emitter.EnsureLocalForce(FlowFieldType::Vortex);
         spin.strength  = tuning.spin;
         spin.direction = Vector3::UP;
     }
 
-    // ブレンドは ElectricCharge*.mat の blend_mode (Additive) が決める。
+    /// @note ブレンドは ElectricCharge*.mat の blend_mode (Additive) が決める。
     emitter.sortMode  = ParticleSortMode::None;
     emitter.simulationSpace = ParticleSimulationSpace::World;
-    // 電極が動いても粒子が引きずられないよう World。Local だと親が動いた瞬間に
-    // 既に飛んでいる粒子ごと平行移動し、放電が電極に貼り付いて見える。
+    /// @note 電極が動いても粒子が引きずられないよう World。Local だと親が動いた瞬間に
+    ///       既に飛んでいる粒子ごと平行移動し、放電が電極に貼り付いて見える。
 
-    // WHY 速度方向へ伸ばさないか:
-    //   電荷は «点» で、伸ばすと芯が筋へ引き伸ばされて面積が増える。
-    //   面積が増えるぶんだけ明るい画素が重なり、白飛びの原因そのものになる。
-    //   流れの向きは力場と放電が示すので、粒そのものは丸のままにする。
+    /// @note 速度方向へ伸ばさない: 電荷は «点» で、伸ばすと芯が筋へ引き伸ばされ面積が増える
+    ///       ぶんだけ明るい画素が重なり白飛びの原因になる。流れの向きは力場と放電が示すので、
+    ///       粒そのものは丸のままにする。
     emitter.renderMode = ParticleRenderMode::Billboard;
 
-    auto& crackle = emitter.EnsureLocalForce(ForceFieldType::Turbulence);
+    auto& crackle = emitter.EnsureLocalForce(FlowFieldType::Curl);
     crackle.strength       = tuning.crackle;
     crackle.noiseFrequency = 1.2f;
     crackle.noiseSpeed     = 2.0f;
@@ -457,21 +427,22 @@ inline void ElectrodeRig::Attach(Script& owner, Pole pole,
     m_position = m_home;
     m_velocity = Vector3::ZERO;
 
-    // シーンで作り込んだエミッターがあればそれを使い、無ければ足す。
-    // 見た目 (マテリアル・テクスチャ) はエディタ側の仕事にして、ここは場との結線だけ持つ。
+    /// @note シーンで作り込んだエミッターがあればそれを使い、無ければ足す。
+    ///       見た目 (マテリアル・テクスチャ) はエディタ側の仕事にして、ここは場との結線だけ持つ。
     ParticleEmitter& emitter = owner.scene.GetOrAddComponent<ParticleEmitter>();
     ApplySimulationMode(owner, tuning);
     ConfigureEmitter(emitter.settings, tuning);
-    // 再生状態だけは組み立て時に一度決める。毎フレーム書き戻すと Stop() が効かなくなる。
+    /// @note 再生状態だけは組み立て時に一度決める。毎フレーム書き戻すと Stop() が効かなくなる。
     emitter.settings.loop     = true;
-    emitter.settings.duration = 0.0f; // 0 = 打ち切らない
+    /// @note 0 = 打ち切らない
+    emitter.settings.duration = 0.0f;
     emitter.settings.playing  = true;
     emitter.settings.enabled  = true;
     const uint32_t own      = ElectrodeChannelOf(m_pole);
     const uint32_t opposite = ElectrodeChannelOf(OppositePole(m_pole));
-    m_pullId  = MakeField(owner, "Pull",  ForceFieldType::Attract, opposite);
-    m_pushId  = MakeField(owner, "Push",  ForceFieldType::Repulse, own);
-    m_swirlId = MakeField(owner, "Swirl", ForceFieldType::Vortex,  kElectrodeChannelBoth);
+    m_pullId  = MakeField(owner, "Pull",  FlowFieldType::Sink, opposite);
+    m_pushId  = MakeField(owner, "Push",  FlowFieldType::Source, own);
+    m_swirlId = MakeField(owner, "Swirl", FlowFieldType::Vortex,  kElectrodeChannelBoth);
     ApplyFields(owner, tuning);
 
     if (std::find(s_rigs.begin(), s_rigs.end(), this) == s_rigs.end())
@@ -481,8 +452,8 @@ inline void ElectrodeRig::Attach(Script& owner, Pole pole,
 inline void ElectrodeRig::Detach(const Script& owner)
 {
     s_rigs.erase(std::remove(s_rigs.begin(), s_rigs.end(), this), s_rigs.end());
-    // 放電・記号・力線の子はこの極の子ではなくルート直下に居るので、GameObject の破棄に
-    // 随伴しない。明示的に畳まないとシーンに置き去りの帯が残る。
+    /// @note 放電・記号・力線の子はこの極の子ではなくルート直下に居るので、GameObject の破棄に
+    ///       随伴しない。明示的に畳まないとシーンに置き去りの帯が残る。
     for (ElectricArcBundle& bundle : m_arcs) bundle.Detach(owner);
     m_arcs.clear();
     m_core.Detach(owner);
@@ -521,22 +492,23 @@ inline bool ElectrodeRig::CursorTarget(Script& owner, const ElectrodeTuning& tun
         return false;
     }
 
-    // 入るときは followMinX、抜けるときはその手前で判定する (kFollowHysteresis の WHY)。
-    // 先に前フレームの値でしきい値を決めてから倒す。m_following は «このフレーム実際に
-    // 掴まれたか» を意味するので、以降の失敗経路でも立てたままにしない。
+    /// @note 入るときは followMinX、抜けるときはその手前で判定する (kFollowHysteresis の @note)。
+    ///       先に前フレームの値でしきい値を決めてから倒す。m_following は «このフレーム実際に
+    ///       掴まれたか» を意味するので、以降の失敗経路でも立てたままにしない。
     const float threshold = m_following ? tuning.followMinX - kFollowHysteresis
                                         : tuning.followMinX;
     m_following = false;
     if (normalized.x < threshold) return false;
 
-    // 控え付きの解決を使う。scene.GetMainCameraObject() を直接呼ぶと、電極 1 本ごとに
-    // 全 GameObject の走査が 1 回増える (WorldPointAtDepth の中でもう 1 回引くため)。
+    /// @note 控え付きの解決を使う。scene.GetMainCameraObject() を直接呼ぶと、電極 1 本ごとに
+    ///       全 GameObject の走査が 1 回増える (WorldPointAtDepth の中でもう 1 回引くため)。
     GameObject* cameraObject = GameCursorComponent::MainCameraObject(owner);
     if (!cameraObject) return false;
 
     const Vector3 toAnchor = m_anchor - cameraObject->transform.worldPosition;
     const float   depth    = Vector3::Dot(toAnchor, cameraObject->transform.forward);
-    if (depth <= EPSILON) return false;   // カメラの背後に置かれている
+    /// @note カメラの背後に置かれている
+    if (depth <= EPSILON) return false;
 
     if (!GameCursorComponent::WorldPointAtDepth(owner, depth, outTarget)) return false;
     m_following = true;
@@ -545,7 +517,7 @@ inline bool ElectrodeRig::CursorTarget(Script& owner, const ElectrodeTuning& tun
 
 inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning, float dt)
 {
-    // 収束の時間軸に反発・周回を加えると、接触する前に融合の時刻だけが来る。
+    /// @note 収束の時間軸に反発・周回を加えると、接触する前に融合の時刻だけが来る。
     if ((s_fusionApproach || s_fusionActive) && tuning.collisionGlow > 0.0f) {
         const Vector3 offset = m_anchor - s_fusionCenter;
         const float length = offset.Length();
@@ -557,14 +529,11 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
         owner.transform.position = m_position;
         return;
     }
-    // 行き先はカーソルか元の配置かのどちらか。
-    //
-    // WHY 追従には別のばねを立てるか:
-    //   Home Spring は «だいたいこの辺に居る» ための緩いばねで、行き先をカーソルへ
-    //   差し替えただけでは指先に付いてこない。硬くすれば付いてくるが、motionDamping では
-    //   止まらず行き過ぎて振れる。追従は臨界減衰 (減衰 = 2ω) にして、食いつきを 1 つの値で
-    //   決める。coupling は足したままにしてある。ずれは ω^2 で割った分しかなく画面には
-    //   出ないので、相手の極に引かれて «重い» 感じだけが残る。
+    /// @note 行き先はカーソルか元の配置かのどちらか。
+    /// @note 追従には別のばねを立てる: Home Spring は «だいたいこの辺» の緩いばねで、行き先を
+    ///       カーソルへ差し替えただけでは指に付いてこない。追従は臨界減衰 (減衰=2ω) にして
+    ///       食いつきを 1 値で決める。coupling は足したまま (ずれは ω^2 で割られ画面に出ず、
+    ///       相手の極に引かれて «重い» 感じだけが残る)。
     Vector3 cursor = Vector3::ZERO;
     const bool onCursor = CursorTarget(owner, tuning, cursor);
 
@@ -573,7 +542,7 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
         const float omega = Clamp(tuning.followResponse, 0.1f, 40.0f);
         force = (cursor - m_position) * (omega * omega) - m_velocity * (2.0f * omega);
     } else {
-        // これが無いと、釣り合わない配置のときに極が画面外へ流れ去る。
+        /// @note これが無いと、釣り合わない配置のときに極が画面外へ流れ去る。
         force = (m_home - m_position) * tuning.homeSpring;
     }
 
@@ -587,13 +556,13 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
         if (dist <= EPSILON) continue;
         const Vector3 dir = delta * (1.0f / dist);
 
-        // 最接近距離で coupling そのもの、そこから 1/d^2 で落ちる。素の 1/d^2 は
-        // 接触寸前に発散して、ぶつかった瞬間に極が画面外へ弾き飛ばされる。
+        /// @note 最接近距離で coupling そのもの、そこから 1/d^2 で落ちる。素の 1/d^2 は
+        ///       接触寸前に発散して、ぶつかった瞬間に極が画面外へ弾き飛ばされる。
         const float falloff = minGapSq / Max(dist * dist, minGapSq);
         const float sign    = ArePolesAttracting(m_pole, other->m_pole) ? 1.0f : -1.0f;
         force = force + dir * (sign * tuning.coupling * falloff);
 
-        // 逆極どうしは放っておくと重なって 1 点に潰れる。近すぎるぶんだけ押し戻す。
+        /// @note 逆極どうしは放っておくと重なって 1 点に潰れる。近すぎるぶんだけ押し戻す。
         if (dist < minGap)
             force = force - dir * ((minGap - dist) * tuning.coupling);
     }
@@ -601,16 +570,14 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
     m_velocity = (m_velocity + force * dt) * Max(0.0f, 1.0f - tuning.motionDamping * dt);
     m_position = m_position + m_velocity * dt;
 
-    // 釣り合った後も画面が静止しないよう、定位置そのものをゆっくり回す。
-    // 回すのは m_home だけで、m_position はばね経由で遅れて追従する。極が硬直せず、
-    // かつ引き合いの結果が回転で潰れない。
-    //
-    // WHY ワールド原点でなく極の重心を軸にするか:
-    //   原点を軸にすると、電極 2 本を画面の端へ寄せて配置しただけで、各極が
-    //   それぞれ別の半径で原点を周回する。組が引き裂かれ、画面を大きく薙ぎ払う。
-    //   回したいのは「2 本が互いのまわりを回ること」なので、軸は組の重心に置く。
+    /// @note 釣り合った後も画面が静止しないよう、定位置そのものをゆっくり回す。回すのは
+    ///       m_home だけで m_position はばね経由で遅れて追従し、極が硬直せず引き合いの
+    ///       結果が回転で潰れない。
+    /// @note 軸はワールド原点でなく極の重心にする: 原点軸だと電極を端へ寄せただけで各極が
+    ///       別の半径で周回し組が引き裂かれる。回したいのは «互いのまわりを回ること» なので
+    ///       軸は組の重心に置く。
     if (tuning.orbitSpeed != 0.0f) {
-        // 自分は必ず登録済みなので空にはならない。
+        /// @note 自分は必ず登録済みなので空にはならない。
         Vector3 center = Vector3::ZERO;
         for (const ElectrodeRig* rig : s_rigs) center = center + rig->m_home;
         center = center * (1.0f / static_cast<float>(s_rigs.size()));
@@ -618,7 +585,7 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
         const float step = ToRad(tuning.orbitSpeed * dt);
         const float cosA = std::cos(step);
         const float sinA = std::sin(step);
-        // Y 軸まわり。タイトルはカメラを正面に据えるので、横方向の回りが一番読める。
+        /// @note Y 軸まわり。タイトルはカメラを正面に据えるので、横方向の回りが一番読める。
         const Vector3 offset = m_home - center;
         m_home = { center.x + offset.x * cosA - offset.z * sinA,
                    m_home.y,
@@ -630,22 +597,22 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
 
 inline void ElectrodeRig::WarnGpuFallbackOnce(Script& owner)
 {
-    // 言うのは «Gpu を要求したのに CPU で回っている» ときだけ。Cpu 指定 (NotRequested) は
-    // 縮退ではないので黙る。
+    /// @note 言うのは «Gpu を要求したのに CPU で回っている» ときだけ。Cpu 指定 (NotRequested) は
+    ///       縮退ではないので黙る。
     const bool fellBack = owner.particle.GetSimulationMode() == ParticleSimulationMode::Gpu
                        && !owner.particle.IsGpuSimulated();
     if (!fellBack) {
-        // WHY 直ったら掛け金を戻すか: Inspector や DLL リロードで設定を往復させたとき、
-        //     «直した → また落とした» の 2 回目が黙ってしまうと、直したつもりのまま
-        //     CPU で回り続ける。落ちている状態 1 回につき 1 行、が欲しい粒度。
+        /// @note 直ったら掛け金を戻す: Inspector や DLL リロードで往復させたとき、«直した→
+        ///       また落とした» の 2 回目が黙ると直したつもりのまま CPU で回り続ける。
+        ///       落ちている状態 1 回につき 1 行、が欲しい粒度。
         m_gpuFallbackWarned = false;
         return;
     }
     if (m_gpuFallbackWarned) return;
     m_gpuFallbackWarned = true;
 
-    // 素材の解決は最初の描画時なので、.mat 由来の理由はここでも 1 フレーム遅れて出る
-    // (ScriptParticleProxy::GetGpuFallbackReason の NOTE)。毎フレーム見ているので拾える。
+    /// @note 素材の解決は最初の描画時なので、.mat 由来の理由はここでも 1 フレーム遅れて出る
+    ///       (ScriptParticleProxy::GetGpuFallbackReason の NOTE)。毎フレーム見ているので拾える。
     const std::string self = owner.scene.name;
     owner.debug.LogWarning(self + ": particle simulation fell back to CPU ("
                            + owner.particle.GetGpuFallbackField() + "). "
@@ -654,7 +621,7 @@ inline void ElectrodeRig::WarnGpuFallbackOnce(Script& owner)
 
 inline void ElectrodeRig::Tick(Script& owner, const ElectrodeTuning& tuning, float dt)
 {
-    // 調整値は毎フレーム流し込む。Inspector で触った値がそのまま画面へ出る。
+    /// @note 調整値は毎フレーム流し込む。Inspector で触った値がそのまま画面へ出る。
     if (auto* emitter = owner.scene.GetComponent<ParticleEmitter>()) {
         ApplySimulationMode(owner, tuning);
         ConfigureEmitter(emitter->settings, tuning);
@@ -662,9 +629,9 @@ inline void ElectrodeRig::Tick(Script& owner, const ElectrodeTuning& tuning, flo
     WarnGpuFallbackOnce(owner);
     ApplyFields(owner, tuning);
     Integrate(owner, tuning, dt);
-    // 放電は全極の位置が更新された後に張りたいが、極ごとに OnUpdate が回るため
-    // 1 フレーム古い相手位置を使う。放電は毎フレーム形が変わる演出なので、
-    // 1 フレームの遅れは見えない。
+    /// @note 放電は全極の位置が更新された後に張りたいが、極ごとに OnUpdate が回るため
+    ///       1 フレーム古い相手位置を使う。放電は毎フレーム形が変わる演出なので、
+    ///       1 フレームの遅れは見えない。
     UpdateArcs(owner, tuning, dt);
     UpdateCharge(owner, tuning, dt);
 }
@@ -688,7 +655,7 @@ inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tun
         return;
     }
 
-    // 色の対応は ElectrodePole が唯一の正本。ここで赤青を書き直さない。
+    /// @note 色の対応は ElectrodePole が唯一の正本。ここで赤青を書き直さない。
     ElectrodeCoreStyle core = tuning.core;
     const Vector4 poleColor = PoleColor(m_pole);
     float collision = 0.0f;
@@ -712,7 +679,7 @@ inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tun
     if (auto* emitter = owner.scene.GetComponent<ParticleEmitter>()) {
         emitter->settings.colorStart = core.color;
         emitter->settings.colorEnd = { core.color.x, core.color.y, core.color.z, 0.0f };
-        // 有効なグラデーションは colorStart/End より優先される。
+        /// @note 有効なグラデーションは colorStart/End より優先される。
         auto& gradient = emitter->settings.colorGradient;
         for (uint32_t index = 0; index < gradient.keyCount; ++index) {
             auto& color = gradient.keys[index].color;
@@ -722,8 +689,8 @@ inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tun
         }
     }
 
-    // 力線は盤面の全電荷が作る場をなぞる。相手の型を知らずに済むよう、
-    // 登録簿から «位置と符号» だけを写して渡す。
+    /// @note 力線は盤面の全電荷が作る場をなぞる。相手の型を知らずに済むよう、
+    ///       登録簿から «位置と符号» だけを写して渡す。
     m_charges.clear();
     m_charges.reserve(s_rigs.size());
     for (const ElectrodeRig* rig : s_rigs)
@@ -733,8 +700,8 @@ inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tun
     ElectrodeFieldStyle field = tuning.field;
     field.color    = PoleColor(m_pole);
     field.tipColor = PoleColor(OppositePole(m_pole));
-    // ＋と−で種を半間隔ずらす。同じ場の同じ族なので、揃えると同じ曲線を 2 度描く
-    // (ElectrodeFieldStyle::seedStagger の WHY を参照)。
+    /// @note ＋と−で種を半間隔ずらす。同じ場の同じ族なので、揃えると同じ曲線を 2 度描く
+    ///       (ElectrodeFieldStyle::seedStagger の @note を参照)。
     field.seedStagger = m_pole == Pole::Minus ? 0.5f : 0.0f;
     m_fieldLines.Update(owner, m_pole, m_position, m_charges, field, dt);
 }
@@ -747,10 +714,9 @@ inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tunin
         return;
     }
 
-    // WHY ＋極だけが持つか:
-    //   放電は対の持ち物で、両極が張ると同じ 2 点に 2 束が重なる。見た目は
-    //   «明るさだけ倍の 1 本» になり、本数を増やした意味が消えたうえに負荷だけ倍になる。
-    //   ＋から−へ流れる向きは電流の慣習と一致するので、担当を＋に決めるのは恣意的でない。
+    /// @note ＋極だけが持つ: 放電は対の持ち物で、両極が張ると同じ 2 点に 2 束が重なり
+    ///       «明るさだけ倍の 1 本» になって負荷だけ倍になる。＋から−へ流れる向きは電流の
+    ///       慣習と一致するので、担当を＋に決めるのは恣意的でない。
     if (m_pole != Pole::Plus) {
         if (!m_arcs.empty()) {
             for (ElectricArcBundle& bundle : m_arcs) bundle.Detach(owner);
@@ -765,12 +731,12 @@ inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tunin
 
         if (used >= m_arcs.size()) {
             m_arcs.emplace_back();
-            // 束ごとに違う鍵を渡す。同じ鍵だと 2 本目の束が 1 本目の筋を掴み、
-            // 相手が 2 極以上いる構成で放電が 1 本ぶんしか出なくなる。
+            /// @note 束ごとに違う鍵を渡す。同じ鍵だと 2 本目の束が 1 本目の筋を掴み、
+            ///       相手が 2 極以上いる構成で放電が 1 本ぶんしか出なくなる。
             m_arcs.back().SetKey("Electrode" + std::to_string(used));
         }
 
-        // 色の対応は ElectrodePole が唯一の正本。ここで赤青を書き直さない。
+        /// @note 色の対応は ElectrodePole が唯一の正本。ここで赤青を書き直さない。
         ElectricArcStyle style = tuning.arc;
         style.fromColor = PoleColor(m_pole);
         style.toColor   = PoleColor(other->m_pole);
@@ -778,7 +744,7 @@ inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tunin
         ++used;
     }
 
-    // 相手が減ったぶんを片付ける。残すと消えた極へ向かって放電が伸び続ける。
+    /// @note 相手が減ったぶんを片付ける。残すと消えた極へ向かって放電が伸び続ける。
     while (m_arcs.size() > used) {
         m_arcs.back().Detach(owner);
         m_arcs.pop_back();

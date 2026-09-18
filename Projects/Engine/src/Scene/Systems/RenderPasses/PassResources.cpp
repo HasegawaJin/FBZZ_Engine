@@ -16,14 +16,9 @@ namespace fbzz::scene {
 
 namespace {
 
-/// 未申告アクセスを «落ちる» 側に倒すか。環境変数 `FBZZ_RENDER_STRICT_DECLARATIONS`。
-///
-/// WHY 既定で落とさないか: 申告漏れは «絵は正しいが依存辺が張られていない» という形で
-///     入るので、見つけた時点で全部塞げているとは限らない。塞ぎ切る前に落とすと
-///     エディタが起動しなくなり、直す作業そのものができない。
-/// WHY 警告で終わらせないか: 依存辺が無いパスは «順序が偶然に依存している» 状態で、
-///     パスを 1 本足しただけで描き先が変わりうる。ログは流れて読まれなくなるので、
-///     塞ぎ終えた後は落ちる側へ倒せる口を用意しておく。
+/// @brief 未申告アクセスを «落ちる» 側に倒すか。環境変数 `FBZZ_RENDER_STRICT_DECLARATIONS`。
+/// @note 既定で落とさない理由: 申告漏れを見つけた時点で全部塞げているとは限らず、塞ぎ切る前に落とすとエディタが起動しなくなり直す作業自体ができない。
+/// @note 警告止まりにしない理由: 依存辺の無いパスは順序が偶然に依存する状態で、ログは流れて読まれなくなるため、塞ぎ終えた後に落ちる側へ倒せる口を用意する。
 bool StrictDeclarations()
 {
     static const bool strict = [] {
@@ -53,8 +48,8 @@ bool PassResources::IsDeclared(std::string_view name) const
 void PassResources::WarnIfUndeclared(std::string_view name) const
 {
     if (IsDeclared(name)) return;
-    // グラフの外から引いた場合 (反射プローブ捕捉など) は申告する相手が居ない。
-    // 依存も順序も存在しないので、報告する意味が無い。
+    /// @note グラフの外から引いた場合 (反射プローブ捕捉など) は申告する相手が居ない。
+    ///       依存も順序も存在しないので、報告する意味が無い。
     if (m_accesses.empty()) return;
 
     const int passLen = static_cast<int>(m_passName.size());
@@ -68,8 +63,7 @@ void PassResources::WarnIfUndeclared(std::string_view name) const
         return;
     }
 
-    // 同じ組み合わせで毎フレーム出すとログが読めなくなるので 1 回だけ。
-    // WHY static を許すか: 診断の «もう言ったか» だけで、GPU の状態は持たない。
+    /// @note 同じ組み合わせで毎フレーム出すとログが読めなくなるので 1 回だけ。static は診断の «もう言ったか» だけを持ち、GPU の状態は持たない。
     static std::unordered_set<std::string> reported;
     std::string key(m_passName);
     key += " -> ";

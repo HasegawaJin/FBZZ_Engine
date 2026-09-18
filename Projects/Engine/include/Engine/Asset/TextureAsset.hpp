@@ -24,11 +24,11 @@ enum class AlphaMode          { Straight, Premultiplied, None };
 enum class CompQuality        { Fast, Normal, High };
 enum class SpriteMode         { Single, Multiple };
 
-// Texture内の矩形を名前付きサブアセットとして公開する。
-// width/heightが0のSingle Spriteは画像全体を表し、元画像サイズへの依存をメタから排除する。
+/// @brief Texture 内の矩形を名前付きサブアセットとして公開する。
+/// @note width/height が 0 の Single Sprite は画像全体を表し、元画像サイズへの依存をメタから排除する。
 struct SpriteRect {
-    // Sprite 名を変更しても参照を維持する永続 ID。
-    // WHY: 表示名を参照キーにすると、Sprite Editor でのリネームが Scene / Material の参照切れになる。
+    /// Sprite 名を変更しても参照を維持する永続 ID。
+    /// @note 表示名を参照キーにすると、Sprite Editor でのリネームが Scene / Material の参照切れになる。
     std::string id;
     std::string name;
     uint32_t x = 0;
@@ -70,33 +70,34 @@ struct TextureImportSettings {
     bool operator==(const TextureImportSettings&) const = default;
 };
 
-// type からデフォルト設定を返す。.tex ローダーはこれを基にして TOML 値で上書きする。
+/// @brief type からデフォルト設定を返す。.tex ローダーはこれを基にして TOML 値で上書きする。
 [[nodiscard]] TextureImportSettings DefaultSettingsForType(TextureType type);
 
-// テクスチャ型のファイルパスから TextureType をヒューリスティックで推定する。
-// _n.png → Normal, _d.png → Color 等。
+/// @brief テクスチャ型のファイルパスから TextureType をヒューリスティックで推定する。
+/// @note _n.png → Normal, _d.png → Color 等。
 [[nodiscard]] TextureType GuessTextureType(std::string_view filename);
 
-// Spriteサブアセット参照は元Textureパスを壊さない文字列形式で保持する。
-// 例: "Assets/UI/Atlas.png::sprite::836d2b4d-…" / "Assets/UI/Atlas.png::sprite::Key_W"
+/// @brief Sprite サブアセット参照は元 Texture パスを壊さない文字列形式で保持する。
+/// @note 例: "Assets/UI/Atlas.png::sprite::836d2b4d-…" / "Assets/UI/Atlas.png::sprite::Key_W"
 [[nodiscard]] std::string MakeSpriteReference(
     std::string_view texturePath, std::string_view spriteToken);
 [[nodiscard]] bool ParseSpriteReference(
     std::string_view reference, std::string& outTexturePath, std::string& outSpriteToken);
 
-// トークンは ID か名前のどちらか。ID を先に見る。
-// WHY 名前でも引くか: ID は UUID で、人も AI も手では書けない。書ける形が名前しか
-//     無いのに ID しか受けないと、名前で書いた参照が «エラーにならずアトラス全面» に
-//     化ける。名前はテクスチャ内で一意 (Sprite Editor が保証) なので曖昧さは無い。
+/// @brief トークンは ID か名前のどちらか。ID を先に見る。
+/// @note ID は UUID で人も AI も手で書けない。書ける形が名前しか無いのに ID しか受けないと、名前で
+///       書いた参照が «エラーにならずアトラス全面» に化ける。名前はテクスチャ内で一意 (Sprite Editor
+///       が保証) なので曖昧さは無い。
 [[nodiscard]] const SpriteRect* FindSprite(
     const TextureImportSettings& settings, std::string_view spriteToken);
 
-// テクスチャ参照 1 件を、描く側が必要とする数値へ解決した結果。
-//
-// WHY 型にまとめるか:
-//   「参照を割って .meta を読み、矩形を UV へ直す」までを UISystem・SpriteRenderer・
-//   Inspector がそれぞれ書いており、幅 0 の Single Sprite が画像全体を指す規則のような
-//   細部が写し違いで散っていた。解決の正解を 1 箇所に置き、呼ぶ側は結果だけを見る。
+/// @name 解決結果
+/// テクスチャ参照 1 件を、描く側が必要とする数値へ解決した結果。
+/// @note 「参照を割って .meta を読み、矩形を UV へ直す」処理を UISystem・SpriteRenderer・Inspector が
+///       それぞれ書いており、幅 0 の Single Sprite が画像全体を指す規則のような細部が写し違いで散って
+///       いた。解決の正解をここへ 1 箇所に置き、呼ぶ側は結果だけを見る。
+/// @{
+
 /// 解決が「どこで決まったか」。壊れた参照を無言で全面へ落とさないために持つ。
 enum class SpriteResolveStatus {
     NotASpriteReference,      ///< "::sprite::" が無い。texturePath がそのまま絵
@@ -130,6 +131,7 @@ struct ResolvedSprite {
             || status == SpriteResolveStatus::SpriteNotFound;
     }
 };
+/// @}
 
 /// @param textureWidth  元画像の実ピクセル幅。0 以下だと UV へ直せないため矩形は解決しない。
 /// @param textureHeight 同・高さ。
@@ -146,8 +148,8 @@ struct ResolvedSprite {
     std::string_view texturePath, std::string_view spriteToken);
 
 /// .meta のインポート設定を、書き込み時刻で無効化しながら共有キャッシュから読む。
-/// WHY: Sprite の解決は毎フレーム・毎ドローで走る。素直に読むと 1 件につき
-///      数千行の TOML を毎回パースすることになる (SpriteRenderer が実際そうだった)。
+/// @note Sprite の解決は毎フレーム・毎ドローで走る。素直に読むと 1 件につき数千行の TOML を毎回
+///       パースすることになる (SpriteRenderer が実際そうだった)。
 /// @param texturePathOrRef 元画像パス。Sprite 参照を渡してもよい (接尾辞は落とす)。
 [[nodiscard]] bool GetCachedTextureImportSettings(
     std::string_view texturePathOrRef, TextureImportSettings& outSettings);
@@ -157,10 +159,10 @@ struct ResolvedSprite {
 void InvalidateTextureImportSettings(std::string_view texturePathOrRef);
 
 struct TextureAsset {
-    // .tex なら source フィールドが指す画像パス、直参照なら自身のパス
+    /// .tex なら source フィールドが指す画像パス、直参照なら自身のパス
     std::string                                    sourcePath;
     TextureImportSettings                          settings;
-    renderer::ResourceHandle<renderer::TextureTag> gpuHandle; // ロード後に設定
+    renderer::ResourceHandle<renderer::TextureTag> gpuHandle; ///< ロード後に設定
 };
 
 } // namespace fbzz::asset

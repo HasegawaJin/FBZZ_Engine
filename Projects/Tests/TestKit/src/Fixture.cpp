@@ -32,7 +32,7 @@ void Fixture::SetUp()
     const std::uint64_t seed = Fnv1a(name);
     m_rng                    = DeterministicRng(seed);
 
-    // 失敗した XML / JSON レポートからシードを読めるようにする。
+    /// @note 失敗した XML / JSON レポートからシードを読めるようにする。
     RecordProperty("rng_seed", std::to_string(seed));
 }
 

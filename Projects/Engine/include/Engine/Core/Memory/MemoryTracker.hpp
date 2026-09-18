@@ -13,8 +13,8 @@
 
 namespace fbzz::core {
 
-// タグごとの累計確保量・現在使用量・ピークを記録する。
-// WHAT: 実メモリの確保は行わず、RecordAllocation/RecordFree で統計と未解放リストを更新する。
+/// @brief タグごとの累計確保量・現在使用量・ピークを記録する。
+/// @note 実メモリの確保は行わず、RecordAllocation/RecordFree で統計と未解放リストを更新する。
 class MemoryTracker {
 public:
     static constexpr std::size_t MAX_TRACKED_ALLOCATIONS = 4096;
@@ -51,8 +51,8 @@ private:
     std::uint64_t m_nextAllocationId = 1;
 };
 
-// allocator から T を構築し、MemoryTracker に呼び出し元を記録する。
-// WHY: リーク検出では「何バイト残ったか」だけでなく、生成位置と用途タグが必要になる。
+/// @brief allocator から T を構築し、MemoryTracker に呼び出し元を記録する。
+/// @note リーク検出では「何バイト残ったか」だけでなく、生成位置と用途タグが必要になる。
 template <class T, class... Args>
 [[nodiscard]] T* CreateTrackedObject(Allocator& allocator,
                                      MemoryTracker& tracker,
@@ -79,8 +79,8 @@ template <class T, class... Args>
     return object;
 }
 
-// T を破棄し、MemoryTracker の未解放台帳から削除する。
-// WHAT: RecordFree が失敗しても、所有アロケータへは必ず Free を転送して実メモリの状態を戻す。
+/// @brief T を破棄し、MemoryTracker の未解放台帳から削除する。
+/// @note RecordFree が失敗しても、所有アロケータへは必ず Free を転送して実メモリの状態を戻す。
 template <class T>
 void DestroyTrackedObject(Allocator& allocator, MemoryTracker& tracker, T* ptr)
 {

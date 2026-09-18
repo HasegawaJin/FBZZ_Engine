@@ -1,0 +1,300 @@
+{
+  "name": "FiberWind",
+  "scene": "Assets/Scenes/Test/FiberStage3.scene",
+  "lockstep": 0.016666666666666666,
+  "steps": [
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "comp": "FiberComponent"
+      },
+      "path": "count",
+      "op": "==",
+      "value": 6
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Raw0"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Raw1"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Raw2"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Raw3"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Raw4"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Raw5"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00a",
+        "comp": "PostProcessVolumeComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "frames",
+      "count": 60
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Temporal0"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Temporal1"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Temporal2"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Temporal3"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Temporal4"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Temporal5"
+    },
+    {
+      "do": "frames",
+      "count": 12
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f00a",
+        "comp": "PostProcessVolumeComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Control0"
+    },
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "FiberWind/Control1"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f003",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f004",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f005",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f006",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f007",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "ad4d7f1c-20d8-49de-9a72-c719a9d3f008",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "shader.diagnostics"
+      },
+      "path": "errorCount",
+      "op": "==",
+      "value": 0
+    }
+  ]
+}

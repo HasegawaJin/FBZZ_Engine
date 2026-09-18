@@ -39,17 +39,17 @@ bool StandaloneProjectModule::OnInit()
     m_runtime.RegisterScenes(m_projectRoot, m_resources);
     m_runtime.LoadScene(m_startSceneFile);
     auto& app = core::Application::Get();
-    // GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
+    /// @note GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
     if (auto* audioManager = app.GetAudioManager()) {
         audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
         audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
     }
-    // graphics プロキシが触る描画設定の実体を登録する。配布ゲームでは
-    // ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
-    // ファイルへ戻ることはない。
+    /// @note graphics プロキシが触る描画設定の実体を登録する。配布ゲームでは
+    ///       ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
+    ///       ファイルへ戻ることはない。
     app.SetActiveRenderSettings(&m_settings.render);
-    // カーソルの拘束と表示はスクリプトが名乗る (cursor.Push)。設定が持つのは «絵» だけ。
+    /// @note カーソルの拘束と表示はスクリプトが名乗る (cursor.Push)。設定が持つのは «絵» だけ。
     m_settings.cursor.Apply(m_projectRoot.string());
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
@@ -58,9 +58,9 @@ bool StandaloneProjectModule::OnInit()
 
 void StandaloneProjectModule::OnUpdate(float dt)
 {
-    // WHY 毎フレーム張り直すか: Locked は中央へ戻す処理そのものがここにあり、Confined も
-    //     他アプリが ClipCursor を取ると黙って外れる。Input::Update の直後・スクリプトの前で
-    //     解くことで、Locked のマウス移動量がそのフレームのうちに読める。
+    /// @note Locked は中央へ戻す処理そのものがここにあり、Confined も他アプリが ClipCursor を
+    ///       取ると黙って外れるため毎フレーム張り直す。Input::Update の直後・スクリプトの前で
+    ///       解くことで、Locked のマウス移動量がそのフレームのうちに読める。
     core::Cursor::ApplyLock();
     m_runtime.Update(dt, m_settings, true);
 }
@@ -115,8 +115,8 @@ void StandaloneProjectModule::OnRender()
 
 void StandaloneProjectModule::OnShutdown()
 {
-    // WHY: Script DLLを解放する前にスクリプトの仮想デストラクターを実行し、
-    //      PhysicsProxyが破棄済みWorldを参照しないようコンテキストも解除する。
+    /// @note Script DLL を解放する前にスクリプトの仮想デストラクターを実行し、
+    ///       PhysicsProxy が破棄済み World を参照しないようコンテキストも解除する。
     m_runtime.Shutdown();
 }
 

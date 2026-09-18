@@ -3,12 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 ///
-/// WHY: 事前ベイクした 3D ノイズ (Shape + Detail / CloudNoiseBake) を使う本格ボリューメトリック雲。
-/// 太陽方向ライトマーチによるセルフシャドウ + 空白スキップで負荷を抑える。
-/// レンダー解像度は kCloudResShift で Full/Half を切り替える (既定 Full)。
+/// @note 事前ベイクした 3D ノイズ (Shape + Detail / CloudNoiseBake) を使う本格ボリューメトリック雲。
+///       太陽方向ライトマーチのセルフシャドウ + 空白スキップで負荷を抑える。レンダー解像度は
+///       kCloudResShift で Full/Half を切り替える (既定 Full)。
 #include "PostProcessPasses.hpp"
 #include "../Geometry/GeometryPasses.hpp"
-#include "../Geometry/ParticleForces.hpp"
+#include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -22,7 +22,7 @@ namespace fbzz::scene {
 
 namespace {
 
-// Assets/Shaders/Rendering/CloudVolume.hlsli の VolumetricCloudConstants と一致させること。
+/// Assets/Shaders/Rendering/CloudVolume.hlsli の VolumetricCloudConstants と一致させること。
 struct VolumetricCloudCB {
     math::Vector4 cloudLayer;
     math::Vector4 cloudNoise;
@@ -57,27 +57,27 @@ bool UpdateVolumetricCloudConstants(RenderPassContext& ctx)
 
     auto* cloud = FindActiveCloud(ctx);
     if (!cloud) {
-        // 有効な雲が無いフレームでも CB を既知の値にしておく。
-        // WHY: 体積光パスは前フレームの残骸を読んで、存在しない雲の影を光芒へ落としうる。
-        //      lightShaftStrength = 0 がシェーダー側の無効化スイッチになっている。
+        /// @note 有効な雲が無いフレームでも CB を既知の値にしておく。体積光パスが前フレームの残骸を
+        ///       読み、存在しない雲の影を光芒へ落とすのを防ぐ。lightShaftStrength=0 がシェーダー側の無効化スイッチ。
         VolumetricCloudCB empty{};
         ctx.resources.Update(ctx.handles.volumetricCloudCB, &empty, sizeof(empty));
         return false;
     }
 
-    // 環境風があれば雲もその向きへ流す (XZ 平面へ射影)。
-    // WHY: 粒子と雲の流れる向きを 1 か所で揃えるため。環境風は «radius 0 の Wind 力場» で、
-    //      粒子が受ける風とまったく同じものを見ている (旧 WindZoneComponent は廃止)。
-    //      風が置かれていないシーンは従来どおりコンポーネント固有の windDirection を使う。
+    /// @note 環境流があれば雲もその向き・その速さで流す (XZ 平面へ射影)。
+    ///       @note 粒子と雲の流れを 1 か所で揃えるため。環境流は SceneEnvironment が正本で、
+    ///       粒子が受けるものとまったく同じ値を見ている。
+    ///       @note 環境流が無効なシーンは従来どおりコンポーネント固有の windDirection / windSpeed。
     math::Vector2 wind = cloud->windDirection.Normalized();
     float windSpeed = cloud->windSpeed;
-    const AmbientWind ambient = FindAmbientWind(ctx.scene);
+    const AmbientWind& ambient = ctx.scene.FlowFrame().ambient;
     if (ambient.active) {
         const float xzLen = std::sqrt(ambient.direction.x * ambient.direction.x
                                     + ambient.direction.z * ambient.direction.z);
         if (xzLen > 1.0e-4f)
             wind = { ambient.direction.x / xzLen, ambient.direction.z / xzLen };
-        windSpeed = cloud->windSpeed * ambient.strength;
+        /// @note 倍率ではなく m/s。雲の高さでどれだけ乗るかは windResponse が決める。
+        windSpeed = ambient.speed * math::Clamp01(cloud->windResponse);
     }
     const float topHeight = cloud->bottomHeight + (std::max)(cloud->thickness, 1.0f);
 
@@ -88,12 +88,13 @@ bool UpdateVolumetricCloudConstants(RenderPassContext& ctx)
         (std::max)(cloud->density, 0.0f),
         math::Clamp01(cloud->coverage)
     };
-    // Inspector は「大きさ [m]」で持ち、シェーダーが要る world→noise スケールへここで直す。
+    /// @note Inspector は「大きさ [m]」で持ち、シェーダーが要る world→noise スケールへここで直す。
     const float cloudSize  = math::Clamp(cloud->cloudSize, 50.0f, 100000.0f);
     const float detailSize = math::Clamp(cloud->detailSize, 1.0f, cloudSize);
     cb.cloudNoise = {
         1.0f / cloudSize,
-        cloudSize / detailSize, // シェーダー内で 1/cloudSize と掛けて 1/detailSize になる
+        /// @note シェーダー内で 1/cloudSize と掛けて 1/detailSize になる
+        cloudSize / detailSize,
         Time::time,
         (std::max)(cloud->maxDistance, 100.0f)
     };
@@ -155,18 +156,16 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     const VolumetricCloudComponent* cloud = FindActiveCloud(ctx);
     if (!cloud) return;
 
-    // WHAT: レイ終端判定に使う depth は専用 RT へコピーしてから SRV として読む。
-    // WHY: Forward では hdrRT を出力先 RTV/DSV として使うため、同じ depth を t7 で同時に読むと DX11 の競合になる。
-    //      また Terrain は Deferred/Forward どちらでも DeferredDepthCopy 後に hdrRT の
-    //      depth へ描かれる。GBuffer depth には地形が含まれないため、そこを読むと雲が地形を貫通して
-    //      手前に描かれてしまう。常に hdrRT の depth（全不透明を含む）を終端判定に使う。
+    /// @note レイ終端判定の depth は専用 RT へコピーしてから t7 で SRV として読む。hdrRT を同時に
+    ///       RTV/DSV としても使う Forward では、同じ depth を t7 で直接読むと DX11 で競合する。
+    ///       GBuffer depth には地形が含まれないため使わず、常に hdrRT の depth (全不透明込み) を使う。
     static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     static uint64_t s_resetVersion = 0;
     if (s_resetVersion != ctx.resources.GetResetVersion()) {
         s_resetVersion = ctx.resources.GetResetVersion();
         depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     }
-    // 作業 RT はビューが持つ (RenderPassHandles::cloudRT の WHY)。
+    /// @note 作業 RT はビューが持つ (理由は RenderPassHandles::cloudRT を参照)。
     if (!ctx.handles.cloudRT || !ctx.handles.cloudDepthRT) return;
     renderer::SizedRenderTarget& cloudDepthRT = *ctx.handles.cloudDepthRT;
     renderer::SizedRenderTarget& cloudRT      = *ctx.handles.cloudRT;
@@ -182,38 +181,42 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
         ctx.renderer.Submit(depthDC, ctx.resources);
     }
 
-    // 雲のレンダー解像度。0=フル解像度(くっきり), 1=ハーフ(高速・描画ピクセル 1/4)。
-    // オフスクリーン RT(RGBA16F) に scatter.rgb + alpha を描き、後段でフル解像度へアップスケール合成する。
-    // フル解像度時は 1:1 サンプル(ピクセル中心)になるため無損失。
+    /// @note 雲のレンダー解像度。0=フル解像度(くっきり), 1=ハーフ(高速・描画ピクセル 1/4)。
+    ///       オフスクリーン RT(RGBA16F) に scatter.rgb + alpha を描き、後段でフル解像度へアップスケール合成する。
+    ///       フル解像度時は 1:1 サンプル(ピクセル中心)になるため無損失。
     const uint32_t kCloudResShift = cloud->halfResolution ? 1u : 0u;
     const uint32_t cloudW = (ctx.width  >> kCloudResShift) < 1u ? 1u : (ctx.width  >> kCloudResShift);
     const uint32_t cloudH = (ctx.height >> kCloudResShift) < 1u ? 1u : (ctx.height >> kCloudResShift);
     (void)cloudRT.Ensure(ctx.resources, cloudW, cloudH, 1);
 
-    // 1) レイマーチをオフスクリーン RT へ描く (OPAQUE 書き込み・深度オフ)。
-    //    SetRenderTarget が RT サイズへビューポートを自動調整するため解像度に依らず同じ UV で走る。
+    /// @note 1) レイマーチをオフスクリーン RT へ描く (OPAQUE 書き込み・深度オフ)。
+    ///       SetRenderTarget が RT サイズへビューポートを自動調整するため解像度に依らず同じ UV で走る。
     ctx.renderer.SetRenderTarget(cloudRT, ctx.resources);
     ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     renderer::DrawCall dc;
     dc.shader = ctx.handles.volumetricCloudShader;
-    dc.pipelineState = ctx.handles.postprocPSO;   // OPAQUE / DEPTH_OFF (オフスクリーン書き込み)
+    /// @note OPAQUE / DEPTH_OFF (オフスクリーン書き込み)
+    dc.pipelineState = ctx.handles.postprocPSO;
     dc.vertexCount = 3;
     dc.constantBuffers[0] = ctx.handles.frameCB;
     dc.constantBuffers[2] = ctx.handles.volumetricCloudCB;
     dc.constantBuffers[3] = ctx.handles.lightCB;
     dc.textures[7]  = ctx.resources.GetDepthTexture(cloudDepthRT);
-    dc.textures[26] = ctx.handles.cloudShapeTex;   // TEX_CLOUD_SHAPE
-    dc.textures[27] = ctx.handles.cloudDetailTex;  // TEX_CLOUD_DETAIL
+    /// @note TEX_CLOUD_SHAPE
+    dc.textures[26] = ctx.handles.cloudShapeTex;
+    /// @note TEX_CLOUD_DETAIL
+    dc.textures[27] = ctx.handles.cloudDetailTex;
     ctx.renderer.Submit(dc, ctx.resources);
 
-    // 2) フル解像度 HDR へアップスケールし ALPHA_BLEND 合成する。
-    //    フル解像度時(kCloudResShift=0)は 1:1 サンプルで無損失、ハーフ時はバイリニア拡大。
+    /// @note 2) フル解像度 HDR へアップスケールし ALPHA_BLEND 合成する。
+    ///       フル解像度時(kCloudResShift=0)は 1:1 サンプルで無損失、ハーフ時はバイリニア拡大。
     ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
 
     renderer::DrawCall up;
     up.shader = ctx.handles.cloudUpscaleShader;
-    up.pipelineState = ctx.handles.volumetricCloudPremultipliedPSO; // PREMULTIPLIED / DEPTH_OFF
+    /// @note PREMULTIPLIED / DEPTH_OFF
+    up.pipelineState = ctx.handles.volumetricCloudPremultipliedPSO;
     up.vertexCount = 3;
     up.textures[0] = ctx.resources.GetColorTexture(cloudRT);
     ctx.renderer.Submit(up, ctx.resources);

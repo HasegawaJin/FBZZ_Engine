@@ -57,10 +57,11 @@ Matrix4 Matrix4::TRS(const Vector3& t, const Quaternion& r, const Vector3& s) {
 }
 
 Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3& up) {
-    // DirectX 左手系 LookAt
-    Vector3 z = (target - eye).Normalized();   // forward (+Z into screen)
-    Vector3 x = Vector3::Cross(up, z).Normalized(); // right
-    Vector3 y = Vector3::Cross(z, x);              // corrected up
+    /// @note DirectX 左手系の LookAt。
+    /// @note z=forward (+Z 画面奥)、x=right、y=corrected up。
+    Vector3 z = (target - eye).Normalized();
+    Vector3 x = Vector3::Cross(up, z).Normalized();
+    Vector3 y = Vector3::Cross(z, x);
 
     Matrix4 result;
     result.m[0][0] = x.x; result.m[0][1] = x.y; result.m[0][2] = x.z;
@@ -74,9 +75,8 @@ Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3
 }
 
 Matrix4 Matrix4::Perspective(float fovY, float aspect, float nearZ, float farZ) {
-    // DirectX 左手系 透視投影 (depth: 0 to 1)
-    // 潰れたビューポート (幅 0 / 高さ 0) は編集中に普通に起きる。行列を作れないだけなので、
-    // 破綻しない最小値へ寄せて進む。止めるとレイアウト操作の途中でエディターが死ぬ。
+    /// @note DirectX 左手系の透視投影 (深度 0..1)。
+    /// @note 潰れたビューポート (幅/高さ 0) は編集中に普通に起きる。破綻しない最小値へ寄せて進む。
     FBZZ_MATH_CONTRACT(aspect > EPSILON, "degenerate aspect; clamped to 1.0");
     if (!(aspect > EPSILON)) aspect = 1.0f;
     FBZZ_MATH_CONTRACT(farZ > nearZ, "far <= near; far pushed past near");
@@ -134,7 +134,7 @@ Matrix4 Matrix4::Transpose(const Matrix4& mat) {
     return result;
 }
 
-// 余因子展開による 4x4 逆行列
+/// @brief 余因子展開による 4x4 逆行列を返す。
 Matrix4 Matrix4::Inverse(const Matrix4& mat) {
     const float* a = &mat.m[0][0];
 
@@ -152,8 +152,8 @@ Matrix4 Matrix4::Inverse(const Matrix4& mat) {
     float b11 = a[10]*a[15] - a[11]*a[14];
 
     float det = b00*b11 - b01*b10 + b02*b09 + b03*b08 - b04*b07 + b05*b06;
-    // scale に 0 が入った Transform は特異行列になる。Inspector の操作として普通に起きるので、
-    // 単位行列を返して «その変換が効かない» だけに留める (Matrix4.cpp の Decompose 側と同じ判断)。
+    /// @note scale に 0 が入った Transform は特異行列になる。Inspector の操作として普通に起きるため、
+    ///       単位行列を返し「その変換が効かない」だけに留める (Decompose 側と同じ判断)。
     FBZZ_MATH_CONTRACT(!NearlyZero(det),
                        "singular matrix inverted (zero scale?); returning identity");
     if (NearlyZero(det)) return Identity();
@@ -183,11 +183,9 @@ Matrix4 Matrix4::Inverse(const Matrix4& mat) {
 }
 
 Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
-    // アフィン行列 M = [[A, 0], [t, 1]] (行優先・行ベクトル規約) の逆行列は
-    //   M^-1 = [[A^-1, 0], [-t*A^-1, 1]]
-    // なので、その転置の左上 3x3 は (A^-1)^T になる。平行移動 t は一切効かない。
-    // さらに A^-1 = adj(A)/det = cofactor(A)^T/det より (A^-1)^T = cofactor(A)/det。
-    // つまり左上 3x3 の余因子行列を行列式で割るだけでよい。
+    /// @note アフィン行列 M=[[A,0],[t,1]] の逆行列は M^-1=[[A^-1,0],[-t*A^-1,1]]。
+    /// @note その転置の左上 3x3 は (A^-1)^T = cofactor(A)/det になる (t は寄与しない)。
+    /// @note よって左上 3x3 の余因子行列を行列式で割るだけでよい。
     const auto& a = mat.m;
 
     const float c00 = a[1][1]*a[2][2] - a[1][2]*a[2][1];
@@ -196,9 +194,7 @@ Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
 
     const float det = a[0][0]*c00 + a[0][1]*c01 + a[0][2]*c02;
     Matrix4 result = Identity();
-    // スケール 0 などで退化した場合は単位行列を返す。
-    // WHY assert しないか: Transform のスケールに 0 を入れるのはエディタ操作として普通に起きる。
-    //      描画のたびに停止させる類の異常ではないので、法線を素通しして描き続ける。
+    /// @note スケール 0 などの退化は Transform 編集で普通に起きるため assert せず、単位行列を返して進む。
     if (NearlyZero(det))
         return result;
 

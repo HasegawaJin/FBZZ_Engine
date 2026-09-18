@@ -31,7 +31,8 @@ void HotkeyManager::RegisterInfo(std::string name,
 bool HotkeyManager::ScopeActive(HotkeyScope scope) const
 {
     if (HasScope(scope, HotkeyScope::Global)) return true;
-    if (!m_scopeResolver) return false;   // 解決手段が無いなら Global 以外は発火させない
+    /// @note 解決手段が無いなら Global 以外は発火させない
+    if (!m_scopeResolver) return false;
     return m_scopeResolver(scope);
 }
 
@@ -47,32 +48,26 @@ void HotkeyManager::SuppressOperatorThisFrame(std::string_view operatorId)
 {
     if (operatorId.empty()) return;
     for (const auto& id : m_suppressedOperators)
-        if (id == operatorId) return;   // 同じフレームに何度呼ばれても 1 件
+        /// @note 同じフレームに何度呼ばれても 1 件
+        if (id == operatorId) return;
     m_suppressedOperators.emplace_back(operatorId);
 }
 
 void HotkeyManager::ProcessInput()
 {
-    // 申告は «前回の ProcessInput 以降に積まれた分» を効かせ、ここで空にする。
-    // WHY: ProcessInput は EditorApp::BeginFrame、つまりどのパネルの描画よりも前に走る。
-    //      パネルが描画中に申告できるのは «次に来る» ProcessInput に対してだけなので、
-    //      持ち越さないと «Ctrl+S を押したフレーム» には間に合わず 1 回目が素通りする。
-    //      EditorContext のフォーカス状態が 1 フレーム遅れで効くのと同じ仕組みで、
-    //      «フォーカスを持っている間ずっと申告する» 使い方と噛み合う。
-    //      早期 return の経路でも必ず空にしたいので、最初に取り出す。
+    /// @note 申告は «前回の ProcessInput 以降に積まれた分» を効かせ、ここで空にする。ProcessInput は EditorApp::BeginFrame (どのパネルの描画よりも前) で走るため、
+    ///       パネル側の申告は «次に来る» ProcessInput にしか届かず、持ち越さないと押したフレームに間に合わない。早期 return の経路でも必ず空にするため最初に取り出す。
     std::vector<std::string> suppressed;
     suppressed.swap(m_suppressedOperators);
 
-    // WHY: テキスト入力中はキーが文字として消費される。名前入力の途中で
-    //      "D" がオブジェクト複製になってはいけない。
+    /// @note テキスト入力中はキーが文字として消費される: 名前入力の途中で "D" がオブジェクト複製になってはいけない。
     if (ImGui::GetIO().WantTextInput) return;
 
     const ImGuiIO& io = ImGui::GetIO();
     for (const auto& hk : m_hotkeys) {
         if (hk.infoOnly || !hk.callback) continue;
 
-        // 修飾キーは完全一致を要求する。
-        // WHY: 部分一致にすると Ctrl+Z (Undo) が Z (Pivot 切替) も同時に発火させる。
+        /// @note 修飾キーは完全一致を要求する: 部分一致にすると Ctrl+Z (Undo) が Z (Pivot 切替) も同時に発火させる。
         if (hk.ctrl != io.KeyCtrl || hk.shift != io.KeyShift || hk.alt != io.KeyAlt)
             continue;
         if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(hk.imguiKey), false)) continue;
@@ -82,7 +77,8 @@ void HotkeyManager::ProcessInput()
             bool claimed = false;
             for (const auto& id : suppressed)
                 if (id == hk.operatorId) { claimed = true; break; }
-            if (claimed) continue;   // フォーカスのあるパネルがこのキーを自分で処理する
+            /// @note フォーカスのあるパネルがこのキーを自分で処理する
+            if (claimed) continue;
         }
 
         hk.callback();
@@ -104,7 +100,7 @@ const Hotkey* HotkeyManager::FindByOperator(std::string_view operatorId) const
 
 void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool shift, bool alt)
 {
-    // operatorId を優先し、見つからなければ表示名で引く (旧形式の設定ファイル互換)。
+    /// @note operatorId を優先し、見つからなければ表示名で引く (旧形式の設定ファイル互換)。
     for (auto& hk : m_hotkeys) {
         if (hk.operatorId.empty() || hk.operatorId != key) continue;
         if (hk.infoOnly) return;
@@ -117,7 +113,8 @@ void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool
 
     for (auto& hk : m_hotkeys) {
         if (hk.name != key) continue;
-        if (hk.infoOnly) return;   // 説明専用エントリは割り当てを持たない
+        /// @note 説明専用エントリは割り当てを持たない
+        if (hk.infoOnly) return;
         hk.imguiKey = imguiKey;
         hk.ctrl     = ctrl;
         hk.shift    = shift;
@@ -129,7 +126,7 @@ void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool
 std::string HotkeyManager::FindConflict(const std::string& name,
                                         int imguiKey, bool ctrl, bool shift, bool alt) const
 {
-    // 対象自身の scope を引く (見つからなければ Global 扱いで最も厳しく判定する)。
+    /// @note 対象自身の scope を引く (見つからなければ Global 扱いで最も厳しく判定する)。
     HotkeyScope selfScope = HotkeyScope::Global;
     for (const auto& hk : m_hotkeys)
         if (hk.name == name) { selfScope = hk.scope; break; }
@@ -139,9 +136,7 @@ std::string HotkeyManager::FindConflict(const std::string& name,
         if (hk.imguiKey != imguiKey || hk.ctrl != ctrl || hk.shift != shift || hk.alt != alt)
             continue;
 
-        // 文脈が重ならないなら共存できる。
-        // WHY: Scene View の Delete と Hierarchy の Delete は同じキーでよく、
-        //      むしろ揃っている方が自然。Global はどこでも効くので必ず衝突する。
+        /// @note 文脈が重ならないなら共存できる: Scene View の Delete と Hierarchy の Delete は同じキーでよく、揃っている方が自然。Global はどこでも効くので必ず衝突する。
         const bool conflicts =
             HasScope(hk.scope, HotkeyScope::Global) ||
             HasScope(selfScope, HotkeyScope::Global) ||

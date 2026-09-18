@@ -20,8 +20,8 @@ void ExecuteUIPass(RenderPassContext& ctx)
 
     ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
 
-    // UI はポストプロセス後に outputRT へ直接描くので描画スケールの影響を受けない。
-    // 内部解像度を使うと renderScale < 1 でレイアウトだけ縮み、UI が左上に寄る。
+    /// @note UI はポストプロセス後に outputRT へ直接描くので描画スケールの影響を受けない。
+    ///       内部解像度を使うと renderScale < 1 でレイアウトだけ縮み、UI が左上に寄る。
     const float uiWidth = ui->viewportWidth > 0.0f
         ? ui->viewportWidth
         : static_cast<float>(ctx.outputWidth);
@@ -29,8 +29,8 @@ void ExecuteUIPass(RenderPassContext& ctx)
         ? ui->viewportHeight
         : static_cast<float>(ctx.outputHeight);
 
-    // デバッグ表示の可否は RenderSettings が持つ。UISystem は設定の
-    // 所有者を知らない自由関数なので、知っている側が毎フレーム入れる。
+    /// @note デバッグ表示の可否は RenderSettings が持つ。UISystem は設定の
+    ///       所有者を知らない自由関数なので、知っている側が毎フレーム入れる。
     ui->context->showRects = ctx.settings.showUIRects;
 
     UISystem(ctx.scene,

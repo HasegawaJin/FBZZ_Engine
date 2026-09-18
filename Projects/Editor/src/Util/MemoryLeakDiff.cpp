@@ -21,7 +21,7 @@ std::string MakeOrigin(const core::AllocationInfo& info)
     return std::string(file) + ':' + std::to_string(info.line);
 }
 
-// パス全体は表に収まらないので、表示は末尾のファイル名だけにする。
+/// パス全体は表に収まらないので、表示は末尾のファイル名だけにする。
 std::string ShortOrigin(const std::string& origin)
 {
     const std::size_t slash = origin.find_last_of("/\\");
@@ -184,9 +184,9 @@ MemoryLeakReport MemoryLeakDiff::CompareTo(const Buckets& baseline,
         report.rows.push_back(std::move(row));
     }
 
-    // 減った行。基準側から引くのは、丸ごと消えた発生位置が now に居ないため。
-    // 本数が同じでもバイト数だけ減る行がある (RT の張り直し) ので、どちらかが
-    // 減っていれば載せる。
+    /// @note 減った行。基準側から引くのは、丸ごと消えた発生位置が now に居ないため。
+    ///       本数が同じでもバイト数だけ減る行がある (RT の張り直し) ので、どちらかが
+    ///       減っていれば載せる。
     for (const auto& entry : baseline) {
         const Bucket& bucket = entry.second;
         const auto it = now.find(entry.first);
@@ -209,7 +209,7 @@ MemoryLeakReport MemoryLeakDiff::CompareTo(const Buckets& baseline,
     report.totalCountDelta = nowCount - baseCount;
     report.liveCount       = static_cast<std::size_t>(nowCount);
 
-    // バイト数が同じ行が並ぶ (0 バイト計上のリソース) ので、本数を第 2 キーにする。
+    /// @note バイト数が同じ行が並ぶ (0 バイト計上のリソース) ので、本数を第 2 キーにする。
     std::sort(report.rows.begin(), report.rows.end(),
               [](const MemoryLeakRow& a, const MemoryLeakRow& b) {
                   if (a.bytesDelta != b.bytesDelta) return a.bytesDelta > b.bytesDelta;
@@ -249,8 +249,8 @@ bool MemoryLeakDiff::Tick(const renderer::ResourceManager& resources)
     m_pendingLabel.clear();
     LogReport(report);
 
-    // 累計も並べて出す。1 往復ぶんが «初回だけ» なのか «毎回» なのかは、
-    // 前の往復からどれだけ動いたかを見ないと分からない。
+    /// @note 累計も並べて出す。1 往復ぶんが «初回だけ» なのか «毎回» なのかは、
+    ///       前の往復からどれだけ動いたかを見ないと分からない。
     if (m_hasSession) {
         ++m_cycleCount;
         MemoryLeakReport session = CompareSession(resources);
@@ -267,8 +267,8 @@ bool MemoryLeakDiff::Tick(const renderer::ResourceManager& resources)
                           m_cycleCount,
                           static_cast<long long>(m_lastCycleBytesDelta),
                           static_cast<long long>(m_lastCycleCountDelta));
-            // 2 往復目以降で «まだ増えている» ものだけがリーク候補。初回の充填は
-            // 1 往復目で終わるので、ここに残り続ける行を疑えばよい。
+            /// @note 2 往復目以降で «まだ増えている» ものだけがリーク候補。初回の充填は
+            ///       1 往復目で終わるので、ここに残り続ける行を疑えばよい。
             if (m_cycleCount >= 2)
                 LogReport(session, 8);
         }
@@ -322,8 +322,7 @@ std::string FormatMemoryReport(const renderer::ResourceManager& resources,
                   totalCount, FormatBytes(totalBytes).c_str());
     out += line;
 
-    // WHY 全件出すか: 貼り付け先で «上位だけ» を切るのは読み手にもできる。
-    //     逆に落ちた行は取り戻せないので、こちらでは間引かない。
+    /// @note 全件出す: 貼り付け先で «上位だけ» を切るのは読み手にもできるが、落ちた行は取り戻せないためこちらでは間引かない。
     out += "-- live by origin (count desc) --\n";
     for (const MemoryLeakGroup& group : groups) {
         std::snprintf(line, sizeof(line), "x%-5zu %-26s %-10s %s\n",
@@ -349,7 +348,7 @@ std::string FormatMemoryReport(const renderer::ResourceManager& resources,
         AppendReportRows(out, pinned);
     }
 
-    // 累計。キャッシュの初回充填とリークを分けるのはこちら。
+    /// @note 累計。キャッシュの初回充填とリークを分けるのはこちら。
     if (diff.HasSessionBaseline()) {
         const MemoryLeakReport session = diff.CompareSession(resources);
         const int cycles = diff.GetCycleCount();
@@ -371,8 +370,8 @@ void MemoryLeakDiff::LogReport(const MemoryLeakReport& report, std::size_t maxRo
     if (!report.valid)
         return;
 
-    // 判定は MemoryLeakReport::Grew() に寄せる。行があることを条件にすると、
-    // 本数が元に戻った往復でも警告が出て Console が埋まり、本物が埋もれる。
+    /// @note 判定は MemoryLeakReport::Grew() に寄せる。行があることを条件にすると、
+    ///       本数が元に戻った往復でも警告が出て Console が埋まり、本物が埋もれる。
     if (!report.Grew()) {
         FBZZ_LOG_INFO("MemoryLeakDiff [%s]: no renderer resource growth "
                       "(%+lld bytes / %+lld resources, live %zu)",
@@ -403,7 +402,7 @@ void MemoryLeakDiff::LogReport(const MemoryLeakReport& report, std::size_t maxRo
     if (report.rows.size() > rowCount)
         FBZZ_LOG_WARN("  ... %zu more origins", report.rows.size() - rowCount);
 
-    // 合計が負なら「増えた行」だけでは読めない。返した側の上位も並べて釣り合わせる。
+    /// @note 合計が負なら「増えた行」だけでは読めない。返した側の上位も並べて釣り合わせる。
     if (report.totalBytesDelta < 0 && !report.shrunkRows.empty()) {
         constexpr std::size_t kShrunkRows = 3;
         const std::size_t shrunkCount = (std::min)(report.shrunkRows.size(), kShrunkRows);

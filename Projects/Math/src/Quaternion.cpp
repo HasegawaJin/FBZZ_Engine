@@ -21,8 +21,8 @@ Quaternion Quaternion::FromAxisAngle(const Vector3& axis, float angleRad) {
 }
 
 Quaternion Quaternion::FromEuler(const Vector3& eulerRad) {
-    // YXZ 内因順 (Qy * Qx * Qz): Y(Yaw) → X(Pitch) → Z(Roll)
-    // X が中間角になるため Pitch が ±90° に制約され、Yaw は任意範囲を扱える。
+    /// @note YXZ 内因順 (Qy * Qx * Qz): Y(Yaw) → X(Pitch) → Z(Roll)。
+    /// @note X が中間角になるため Pitch は ±90° に制約され、Yaw は任意範囲を扱える。
     float cx = std::cos(eulerRad.x * 0.5f), sx = std::sin(eulerRad.x * 0.5f);
     float cy = std::cos(eulerRad.y * 0.5f), sy = std::sin(eulerRad.y * 0.5f);
     float cz = std::cos(eulerRad.z * 0.5f), sz = std::sin(eulerRad.z * 0.5f);
@@ -35,12 +35,11 @@ Quaternion Quaternion::FromEuler(const Vector3& eulerRad) {
 }
 
 Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
-    // 「向く先が自分と同じ位置」は呼び出し側で普通に起きる (追従対象へ重なった、
-    // 速度が 0 になった等)。基底を作れないので回さないだけにし、assert で止めない。
+    /// @note forward が自分と同じ位置になるのは呼び出し側で普通に起きる (追従対象へ重なった、速度 0 等)。
+    /// @note 基底を作れないため回転を諦めるだけにし、assert で止めない。
     if (NearlyZero(forward.LengthSq())) return Identity();
     Vector3 f = forward.Normalized();
-    // forward と up が平行なとき (縮退ケース) は代替 up を使う
-    // RIGHT も平行なら FORWARD を使う (forward が RIGHT 方向のとき)
+    /// @note forward と up が平行 (縮退ケース) なら代替 up を使う。RIGHT も平行なら FORWARD を使う。
     Vector3 safeUp = up;
     if (NearlyZero(Vector3::Cross(up, f).LengthSq()))
         safeUp = NearlyZero(Vector3::Cross(Vector3::RIGHT, f).LengthSq())
@@ -48,7 +47,7 @@ Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
     Vector3 r = Vector3::Cross(safeUp, f).Normalized();
     Vector3 u = Vector3::Cross(f, r);
 
-    // 回転行列 → クォータニオン変換
+    /// @note 回転行列 → クォータニオン変換。
     float trace = r.x + u.y + f.z;
     if (trace > 0.0f) {
         float s = 0.5f / std::sqrt(trace + 1.0f);
@@ -65,30 +64,34 @@ Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
     }
 }
 
-// Shepperd's method: extracts rotation from a pure rotation matrix (no scale/translation).
-// m[row][col], column-vector convention: column i = rotated basis vector i.
+/// @brief Shepperd's method で回転行列 (スケール・平行移動なし) からクォータニオンを抽出する。
+/// @pre m[row][col]、列ベクトル規約 (列 i = 回転後の基底ベクトル i)。
 Quaternion Quaternion::FromMatrix4(const Matrix4& m) {
     float trace = m.m[0][0] + m.m[1][1] + m.m[2][2];
     if (trace > 0.0f) {
-        float s = 2.0f * std::sqrt(trace + 1.0f); // s = 4w
+        /// @note s = 4w。
+        float s = 2.0f * std::sqrt(trace + 1.0f);
         return { (m.m[2][1] - m.m[1][2]) / s,
                  (m.m[0][2] - m.m[2][0]) / s,
                  (m.m[1][0] - m.m[0][1]) / s,
                  s * 0.25f };
     } else if (m.m[0][0] > m.m[1][1] && m.m[0][0] > m.m[2][2]) {
-        float s = 2.0f * std::sqrt(1.0f + m.m[0][0] - m.m[1][1] - m.m[2][2]); // s = 4x
+        /// @note s = 4x。
+        float s = 2.0f * std::sqrt(1.0f + m.m[0][0] - m.m[1][1] - m.m[2][2]);
         return { s * 0.25f,
                  (m.m[0][1] + m.m[1][0]) / s,
                  (m.m[0][2] + m.m[2][0]) / s,
                  (m.m[2][1] - m.m[1][2]) / s };
     } else if (m.m[1][1] > m.m[2][2]) {
-        float s = 2.0f * std::sqrt(1.0f + m.m[1][1] - m.m[0][0] - m.m[2][2]); // s = 4y
+        /// @note s = 4y。
+        float s = 2.0f * std::sqrt(1.0f + m.m[1][1] - m.m[0][0] - m.m[2][2]);
         return { (m.m[0][1] + m.m[1][0]) / s,
                  s * 0.25f,
                  (m.m[1][2] + m.m[2][1]) / s,
                  (m.m[0][2] - m.m[2][0]) / s };
     } else {
-        float s = 2.0f * std::sqrt(1.0f + m.m[2][2] - m.m[0][0] - m.m[1][1]); // s = 4z
+        /// @note s = 4z。
+        float s = 2.0f * std::sqrt(1.0f + m.m[2][2] - m.m[0][0] - m.m[1][1]);
         return { (m.m[0][2] + m.m[2][0]) / s,
                  (m.m[1][2] + m.m[2][1]) / s,
                  s * 0.25f,
@@ -105,7 +108,8 @@ Quaternion Quaternion::operator*(const Quaternion& rhs) const {
     };
 }
 
-// q*v*q^-1 の展開形: v + 2w(q×v) + 2(q×(q×v)) — フル四元数乗算より乗算回数が少ない
+/// @brief ベクトルへクォータニオン回転を適用する (q*v*q^-1)。
+/// @note v + 2w(q×v) + 2(q×(q×v)) の展開形。フル四元数乗算より乗算回数が少ない。
 Vector3 Quaternion::operator*(const Vector3& v) const {
     Vector3 qv  = {x, y, z};
     Vector3 t   = Vector3::Cross(qv, v) * 2.0f;
@@ -163,14 +167,14 @@ Quaternion Quaternion::Lerp(const Quaternion& a, const Quaternion& b, float t) {
 Quaternion Quaternion::Slerp(const Quaternion& a, const Quaternion& b, float t) {
     float dot = Dot(a, b);
 
-    // 遠回りを防ぐため dot が負なら b を反転
+    /// @note 遠回りを防ぐため dot が負なら b を反転する。
     Quaternion b2 = b;
     if (dot < 0.0f) {
         b2 = {-b.x, -b.y, -b.z, -b.w};
         dot = -dot;
     }
 
-    // dot が 1 に近ければ線形補間で近似 (acos が不安定になるため)
+    /// @note dot が 1 に近ければ線形補間で近似する (acos が不安定になるため)。
     if (dot > 1.0f - EPSILON) {
         return Lerp(a, b2, t);
     }
