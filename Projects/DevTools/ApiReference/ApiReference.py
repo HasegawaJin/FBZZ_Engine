@@ -2,8 +2,8 @@
 
 使い方 (リポジトリ直下で):
     doxygen Docs/Doxyfile                    # build/docs/xml/ を作る
-    python Tools/ApiReference.py             # build/docs/api/ へ書く
-    python Tools/ApiReference.py --xml build/docs/xml --out build/docs/api
+    python Projects/DevTools/ApiReference/ApiReference.py             # build/docs/api/ へ書く
+    python Projects/DevTools/ApiReference/ApiReference.py --xml build/docs/xml --out build/docs/api
 
 出力:
     build/docs/api/index.md                  ヘッダー一覧 (モジュール別・@brief・型名)
@@ -369,7 +369,7 @@ def main(argv: list[str]) -> int:
 
     lines = ["# FBZZ Engine — API リファレンス索引",
              "",
-             "生成: `doxygen Docs/Doxyfile` → `python Tools/ApiReference.py`。各ヘッダーの契約は同名の `.md` にある (例: `Engine/Scene/GameObject.md`)。",
+             "生成: `doxygen Docs/Doxyfile` → `python Projects/DevTools/ApiReference/ApiReference.py`。各ヘッダーの契約は同名の `.md` にある (例: `Engine/Scene/GameObject.md`)。",
              "規約: `Docs/conventions/comments.md`",
              ""]
     for module in sorted(by_module):

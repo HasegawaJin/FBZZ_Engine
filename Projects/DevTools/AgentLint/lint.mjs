@@ -1,13 +1,13 @@
 // FBZZ Engine
-// lint.mjs | Tools/AgentLint
+// lint.mjs | Projects/DevTools/AgentLint
 // AGENTS.md の «絶対制約» と記述規約を機械で検査する。AI の編集直後 (Claude Code PostToolUse フック) と手動で使う。
 //
 // 使い方:
-//   node Tools/AgentLint/lint.mjs <file...>     指定ファイル (HEAD からの «増えた違反» だけ報告)
-//   node Tools/AgentLint/lint.mjs --changed     git の未コミット変更すべて
-//   node Tools/AgentLint/lint.mjs --base <ref>  <ref>...HEAD で変わったファイル (CI の PR 差分。<ref> 版から増えた違反)
-//   node Tools/AgentLint/lint.mjs --all <file>  HEAD と比べず全違反を報告
-//   node Tools/AgentLint/lint.mjs --hook        stdin の PostToolUse JSON から編集ファイルを読む
+//   node Projects/DevTools/AgentLint/lint.mjs <file...>     指定ファイル (HEAD からの «増えた違反» だけ報告)
+//   node Projects/DevTools/AgentLint/lint.mjs --changed     git の未コミット変更すべて
+//   node Projects/DevTools/AgentLint/lint.mjs --base <ref>  <ref>...HEAD で変わったファイル (CI の PR 差分。<ref> 版から増えた違反)
+//   node Projects/DevTools/AgentLint/lint.mjs --all <file>  HEAD と比べず全違反を報告
+//   node Projects/DevTools/AgentLint/lint.mjs --hook        stdin の PostToolUse JSON から編集ファイルを読む
 //
 // WHY «増えた違反» だけか: 旧コードには `//` コメント等が大量に残っている。触るたびに
 //     既存の違反まで報告すると、AI がその修正に追われて本来の変更が埋もれる。
@@ -19,7 +19,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const CPP_EXTENSIONS = new Set(['.hpp', '.cpp', '.inl', '.h']);
 const SHADER_EXTENSIONS = new Set(['.hlsl', '.hlsli']);
@@ -290,6 +290,39 @@ function LintTestRegistration(repoPath) {
         message: `Projects/Tests/CMakeLists.txt の SOURCES に ${relative} が無い (ビルドされない)` }];
 }
 
+/**
+ * 入場を索引 (各根の README.md) で管理するツール置き場。
+ * [根, 直下の項目名] を取り出す。GreenWare/Tools のような «プロジェクト/Tools» も含む。
+ */
+const TOOL_ROOTS = [
+    /^(Tools)\/([^/]+)/,
+    /^(Projects\/DevTools)\/([^/]+)/,
+    /^((?!Projects\/)[^/]+\/Tools)\/([^/]+)/,
+];
+
+/**
+ * ツール置き場のファイルが、その根の README.md の索引に載っているか。
+ * WHY: AI は作業中の一回きりのスクリプトを «後で使うかも» と残し、Tools が溜まり場になる。
+ *      索引に載せる (= 呼び出し元と役割を書く) ことを入場の条件にし、置いた瞬間に止める。
+ * 設計: AGENTS.md «ツールの置き場所»
+ */
+function LintToolRegistration(repoPath) {
+    if (/(^|\/)(node_modules|dist|out|__pycache__)\//.test(repoPath)) return [];
+    for (const pattern of TOOL_ROOTS) {
+        const match = pattern.exec(repoPath);
+        if (!match) continue;
+        const [, root, entry] = match;
+        if (entry === 'README.md') return [];
+        const index = path.join(REPO_ROOT, root, 'README.md');
+        const escaped = entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (existsSync(index) && new RegExp('`' + escaped + '/?`').test(readFileSync(index, 'utf8'))) return [];
+        return [{ severity: 'error', rule: 'tool-unlisted', line: 1, key: `tool-unlisted|${root}/${entry}`,
+            message: `${root}/README.md の索引に \`${entry}\` が無い。一回きりのスクリプトは Scratch/ へ置く (Git に入らない)。` +
+                '繰り返し使うならユーザーの承認を得て、役割と呼び出し元を索引へ書く' }];
+    }
+    return [];
+}
+
 function LintContent(repoPath, source) {
     const extension = path.extname(repoPath).toLowerCase();
     if (CPP_EXTENSIONS.has(extension)) return LintCpp(repoPath, source);
@@ -320,9 +353,12 @@ function OnlyNew(findings, baseline) {
 export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
     const repoPath = ToRepoPath(file);
     const absolute = path.join(REPO_ROOT, repoPath);
-    if (!IsLintTarget(repoPath) || !existsSync(absolute) || !statSync(absolute).isFile()) return [];
+    if (!existsSync(absolute) || !statSync(absolute).isFile()) return [];
 
-    const findings = [];
+    // 置き場所の検査は拡張子を問わない (.py / .mjs / .ts もツールとして置かれる)。
+    const findings = LintToolRegistration(repoPath);
+    if (!IsLintTarget(repoPath)) return findings.map((finding) => ({ ...finding, file: repoPath }));
+
     if (GENERATED_FILES.has(path.basename(repoPath))) {
         findings.push({ severity: 'error', rule: 'generated-file', line: 1, key: 'generated-file',
             message: `${path.basename(repoPath)} は生成物。手で編集しない (ScriptCodeGen が作り直す)` });
