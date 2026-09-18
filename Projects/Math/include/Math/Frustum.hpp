@@ -36,4 +36,31 @@ struct Frustum {
     static Frustum FromViewProjection(const Matrix4& vp);
 };
 
+/// @note FBZZMath は DLL のため、.cpp に置くと呼び出しごとに DLL 境界を越えてインライン化されない。カリングで物体ごとに呼ぶためヘッダーで定義する。
+inline bool Frustum::Contains(const Vector3& point) const
+{
+    for (const Plane& p : planes)
+        if (!p.IsOnPositiveSide(point)) return false;
+    return true;
+}
+
+inline bool Frustum::IntersectsSphere(const Vector3& center, float radius) const
+{
+    for (const Plane& p : planes)
+        if (p.SignedDistanceTo(center) < -radius) return false;
+    return true;
+}
+
+inline bool Frustum::IntersectsAABB(const Vector3& center, const Vector3& halfExtents) const
+{
+    for (const Plane& p : planes) {
+        /// @note 各軸の half-extent を法線方向に投影した最大値 (符号付き絶対値の和)。
+        float r = halfExtents.x * (p.normal.x < 0.0f ? -p.normal.x : p.normal.x)
+                + halfExtents.y * (p.normal.y < 0.0f ? -p.normal.y : p.normal.y)
+                + halfExtents.z * (p.normal.z < 0.0f ? -p.normal.z : p.normal.z);
+        if (p.SignedDistanceTo(center) < -r) return false;
+    }
+    return true;
+}
+
 } // namespace fbzz::math
