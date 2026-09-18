@@ -21,6 +21,7 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 - `build <target>` / `test [-Filter]`: `cmake --build` / `ctest`。LNK1168 はエディター起動中として分類して返す。
 - 出力は `ERROR path:line:col CODE message` の 1 行形式に畳み、重複を落とす。全文は `RESULT` 行の log= (最新は `build/agent/last-<verb>.txt` が指す)。終了コード 0 = 成功 / 1 = コードのエラー / 2 = 環境の失敗。
 - 構成ツリーは `development → debug → release` の順で CMakeCache のあるものを使う。
+- **ビルドは同時に 1 本だけ。** SDK 公開も `build/<Config>` から行うので、人のタスクと AI の検証は同じツリーで重なりうる。重なった MSBuild は中間ファイルを奪い合い、C1041 / C1083 / LNK1104 / MSB3491 という «コードのエラー» の形で落ちる。AI がそれを直そうとして正しいコードを壊すのを防ぐため、AgentBuild は始める前に `cl.exe` / `link.exe` / `MSBuild.exe` (ノード再利用の待機を除く) / `cmake.exe` / `ctest.exe` を探し、あれば `RESULT busy` (終了コード 2) で断る。途中で重なった形跡は `HINT CONTENDED` で返す。上書きの引数は持たせない (逃げ道があると常に使われる)。対処は verify-cpp スキルの «ビルドが重なったとき»。
 
 ## 2. Playtest
 
