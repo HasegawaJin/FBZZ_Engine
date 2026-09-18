@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 PIPE = r'\\.\pipe\FBZZEditorCommandBus'
 KERNEL = ctypes.WinDLL('kernel32', use_last_error=True)
 KERNEL.WaitNamedPipeW.argtypes = (ctypes.c_wchar_p, ctypes.c_uint32)

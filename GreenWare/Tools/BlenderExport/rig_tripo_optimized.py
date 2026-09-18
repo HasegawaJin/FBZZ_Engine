@@ -66,7 +66,7 @@ def split_finger_bridges(o):
     return {'vertices_before':len(mesh.vertices),'vertices_after':len(vs),'triangles':len(faces),'split_finger_vertices':sum(p>=0 for p in parts)}
 
 # 前版で検証した胴体の領域分類を再使用し、指は今回の元メッシュへ新しく割り当てる。
-old=ast.parse((ROOT/'Tools/BlenderExport/rig_tripo_minibot.py').read_text(encoding='utf8'))
+old=ast.parse((ROOT/'GreenWare/Tools/BlenderExport/rig_tripo_minibot.py').read_text(encoding='utf8'))
 functions=[n for n in old.body if isinstance(n,ast.FunctionDef) and n.name in ['Smooth','SkinBody']]
 exec(compile(ast.Module(body=functions,type_ignores=[]),'rig_body_weights','exec'),globals())
 oldrig=bpy.data.objects['MiniBotC_Humanoid'];mapping=json.loads(oldrig['humanoid_mapping'])

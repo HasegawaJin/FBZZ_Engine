@@ -5,7 +5,7 @@ import importlib.util
 from pathlib import Path
 
 ROOT=Path(r'C:\Users\jinhs\Downloads\FBZZ_Engine')
-spec=importlib.util.spec_from_file_location('texture_pipeline',ROOT/'Tools/BlenderExport/texture_tripo_minibot.py')
+spec=importlib.util.spec_from_file_location('texture_pipeline',ROOT/'GreenWare/Tools/BlenderExport/texture_tripo_minibot.py')
 pipeline=importlib.util.module_from_spec(spec);spec.loader.exec_module(pipeline)
 scene=bpy.context.scene
 scene.cycles.device='GPU'

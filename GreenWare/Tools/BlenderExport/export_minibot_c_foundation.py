@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT=Path(r'C:\Users\jinhs\Downloads\FBZZ_Engine')
 OUT=ROOT/'GreenWare/Assets/Models/MiniBotC_AnimationReady/Animations'
 ART=ROOT/'Docs/Art/MiniBotC/Foundation'
-sys.path.insert(0,str(ROOT/'Tools/BlenderExport'))
+sys.path.insert(0,str(ROOT/'GreenWare/Tools/BlenderExport'))
 from export_animation_ready_clip import export_clip
 scene=bpy.context.scene;control=bpy.data.objects['MiniBotC_ControlRig'];rig=bpy.data.objects['MiniBotC_Humanoid']
 manifest=json.loads((OUT/'motion_manifest.json').read_text(encoding='utf8'))

@@ -77,11 +77,11 @@
 ## 生成スクリプト
 
 すべて手続き生成。再生成すれば別バリエーションが出る。
-スクリプトは `Tools/VfxTextureGen/` に置く (Assets の下に置くとエディターが .py まで取り込む)。
+スクリプトは `GreenWare/Tools/VfxTextureGen/` に置く (Assets の下に置くとエディターが .py まで取り込む)。
 必要なのは numpy / Pillow / scipy。
 
 ```
-cd Tools/VfxTextureGen
+cd GreenWare/Tools/VfxTextureGen
 OUT=../../GreenWare/Assets/VFX/Textures python gen_textures_v2.py   # 第 2 期の静止テクスチャ 11 点
 MODE=explosion OUT=.../FX_Explosion_8x8.png python gen_flip.py       # 爆発FlipFlop (v3)
 MODE=smoke     OUT=.../FX_Smoke_8x8.png     python gen_flip.py       # 煙FlipFlop (v3)

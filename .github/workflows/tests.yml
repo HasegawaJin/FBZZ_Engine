@@ -9,7 +9,7 @@ name: Tests
 #      分岐 (C1) 以降は clang-cl + llvm-cov の 2 本目のツールチェーンが要り、
 #      エンジン全体を clang-cl で再ビルドすることになる。CI の所要時間が倍になる割に
 #      «PR ごとに見る数字» としては行で足りるため、分岐は手元の
-#      Tools/RunCoverageLLVM.ps1 (VS Code タスク "Coverage: Branch + MC/DC (clang-cl)")
+#      Tools/Coverage/RunCoverageLLVM.ps1 (VS Code タスク "Coverage: Branch + MC/DC (clang-cl)")
 #      で必要な時だけ測る。規約は Docs/conventions/test.md の «13. カバレッジ»。
 
 on:
@@ -176,12 +176,12 @@ jobs:
       # アーティファクトの coverage.xml もランナー上でしか解決できない形のまま残る。
       - name: Normalise coverage paths
         shell: pwsh
-        run: ./Tools/NormalizeCoverageXml.ps1 -CoberturaPath coverage.xml
+        run: ./Tools/Coverage/NormalizeCoverageXml.ps1 -CoberturaPath coverage.xml
 
       - name: Summarise coverage
         id: coverage
         shell: pwsh
-        run: ./Tools/CoverageReport.ps1 -CoberturaPath coverage.xml -OutputPath coverage-comment.md
+        run: ./Tools/Coverage/CoverageReport.ps1 -CoberturaPath coverage.xml -OutputPath coverage-comment.md
 
       - name: Publish summary
         shell: pwsh

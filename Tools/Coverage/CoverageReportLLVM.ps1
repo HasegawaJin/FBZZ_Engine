@@ -24,7 +24,7 @@ if (-not (Test-Path -LiteralPath $JsonPath)) {
     throw "llvm-cov の JSON が見つかりません: $JsonPath"
 }
 
-$repoRoot = (Split-Path -Parent $PSScriptRoot).TrimEnd('\')
+$repoRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)).TrimEnd('\')
 $export = Get-Content -LiteralPath $JsonPath -Raw | ConvertFrom-Json
 $data = $export.data[0]
 $totals = $data.totals
@@ -123,7 +123,7 @@ if ($worst.Count -gt 0) {
 }
 
 [void]$builder.AppendLine('計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core`。')
-[void]$builder.AppendLine('clang-cl + llvm-cov による計測 (`Tools/RunCoverageLLVM.ps1`)。')
+[void]$builder.AppendLine('clang-cl + llvm-cov による計測 (`Tools/Coverage/RunCoverageLLVM.ps1`)。')
 
 $markdown = $builder.ToString()
 $markdown | Out-File -FilePath $OutputPath -Encoding utf8

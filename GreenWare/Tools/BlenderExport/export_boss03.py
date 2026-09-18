@@ -7,7 +7,7 @@ import bpy
 from mathutils import Matrix
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / 'GreenWare/Assets/Models/Boss_03'
 
 

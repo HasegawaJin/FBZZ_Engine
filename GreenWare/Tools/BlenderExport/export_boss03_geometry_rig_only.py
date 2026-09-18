@@ -5,7 +5,7 @@ import json
 import bpy
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 PATH = ROOT / "GreenWare/Assets/Models/Boss_03/Boss03.fbx"
 
 GROUPS = [

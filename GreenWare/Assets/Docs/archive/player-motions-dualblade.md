@@ -1,7 +1,7 @@
 # プレイヤーのモーション — 双剣
 
 > 親: [企画書](企画書.md) ／ 関連: [双剣](blades.md) [操作・カメラ](camera-controls.md) [演出](presentation.md)
-> 出力: `Assets/Models/Player/*.fbx` ／ 書き出し: `Tools/BlenderExport/fbzz_export_minibot.py`
+> 出力: `Assets/Models/Player/*.fbx` ／ 書き出し: `GreenWare/Tools/BlenderExport/fbzz_export_minibot.py`
 
 原本は `Player_Model/MiniBot.blend`。30fps、1 アクション = 1 FBX = 1 テイク。
 刀を持つクリップは `Katana_` 接頭辞、素手のクリップは接頭辞なし。

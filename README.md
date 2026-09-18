@@ -707,7 +707,7 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 | 規模 | スクリプト 145 ファイル・シーン 8 本 |
 | 独立性 | `Assets/` `Src/` `ProjectSettings/` を持つ独立プロジェクト。設計文書は [`GreenWare/Assets/Docs/`](GreenWare/Assets/Docs/) |
 
-プレイヤーモデル (MiniBot C) は Blender で自作し、`Tools/BlenderExport/` のスクリプトで LOD 3 段・54 骨・22 クリップを書き出している。
+プレイヤーモデル (MiniBot C) は Blender で自作し、`GreenWare/Tools/BlenderExport/` のスクリプトで LOD 3 段・54 骨・22 クリップを書き出している。
 
 ---
 
@@ -809,8 +809,8 @@ ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
 
 | | 計測 | 網羅基準 | ツールチェーン |
 |---|---|---|---|
-| **C0** | `Tools\RunCoverage.ps1` | 命令網羅 | MSVC + OpenCppCoverage |
-| **C1 / C2** | `Tools\RunCoverageLLVM.ps1` | 分岐・条件網羅 + MC/DC | clang-cl + llvm-cov |
+| **C0** | `Tools\Coverage\RunCoverage.ps1` | 命令網羅 | MSVC + OpenCppCoverage |
+| **C1 / C2** | `Tools\Coverage\RunCoverageLLVM.ps1` | 分岐・条件網羅 + MC/DC | clang-cl + llvm-cov |
 
 計測対象はどちらも `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。両者の分母を揃えてあるので、C0 と C1 の数字はそのまま並べて読める。
 
@@ -820,7 +820,7 @@ ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
 winget install OpenCppCoverage.OpenCppCoverage
 dotnet tool install -g dotnet-reportgenerator-globaltool   # HTML / バッジ / lcov 用 (任意)
 
-.\Tools\RunCoverage.ps1
+.\Tools\Coverage\RunCoverage.ps1
 ```
 
 | 出力 | 中身 |
@@ -837,7 +837,7 @@ MSVC には分岐を数える機構が無いため、こちらだけ clang-cl �
 
 ```powershell
 # VS Code タスク "Coverage: Build (clang-cl)" でビルドしてから
-.\Tools\RunCoverageLLVM.ps1
+.\Tools\Coverage\RunCoverageLLVM.ps1
 ```
 
 clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、`branch` は判定単位 (C1) だけでなく条件単位 (C2) まで数えている。`mcdc` はさらに厳しく、「各条件が単独で結果を変える組み合わせを通ったか」を見る。

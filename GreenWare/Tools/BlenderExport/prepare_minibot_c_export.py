@@ -11,7 +11,7 @@ from bpy_extras.io_utils import axis_conversion
 from mathutils import Matrix, Vector
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SOURCE = ROOT / 'GreenWare/Assets/_src/MiniBotC/MiniBotC_PlayerMotions.blend'
 OUT = ROOT / 'Docs/Art/MiniBotC/ExportPreparation'
 CONTROL = 'MiniBotC_ControlRig'

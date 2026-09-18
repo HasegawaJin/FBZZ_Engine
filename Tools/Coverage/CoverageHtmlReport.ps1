@@ -10,7 +10,7 @@
 # NOTE Risk Hotspots (循環的複雑度 × 低カバレッジ) は出ない。ReportGenerator が
 #      複雑度を読めるのは dotCover / OpenCover 形式のときだけで、OpenCppCoverage の
 #      Cobertura は complexity="0" しか書かないため。llvm-cov の lcov も同様。
-#      «次にどこを触るか» を出すのは Tools/CoverageReportLLVM.ps1 の
+#      «次にどこを触るか» を出すのは Tools/Coverage/CoverageReportLLVM.ps1 の
 #      «未到達の分岐が多いファイル» の方。
 #
 # WHY 率の正はこちらではないか: ReportGenerator は同じファイルが複数のパッケージ
@@ -18,7 +18,7 @@
 #     わずかにずれることがある。CI のしきい値判定が読むのは CoverageReport.ps1 が出す
 #     summary.md の方で、こちらは «見るための» レポートに徹する。
 #
-#   .\Tools\CoverageHtmlReport.ps1 -CoberturaPath Artifacts\Coverage\coverage.xml `
+#   .\Tools\Coverage\CoverageHtmlReport.ps1 -CoberturaPath Artifacts\Coverage\coverage.xml `
 #                                  -OutputDir    Artifacts\Coverage\report
 #
 # 事前に 1 度だけ:  dotnet tool install -g dotnet-reportgenerator-globaltool

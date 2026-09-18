@@ -26,7 +26,7 @@
 #
 # ── 使い方 ───────────────────────────────────────────────────────────────
 #   Blender の Scripting タブから:
-#       import sys; sys.path.append(r"<repo>/Tools/BlenderExport")
+#       import sys; sys.path.append(r"<repo>/GreenWare/Tools/BlenderExport")
 #       import fbzz_export_minibot as fx; import importlib; importlib.reload(fx)
 #       fx.main(r"<repo>/Assets/Models")
 #   もしくはコマンドラインから:

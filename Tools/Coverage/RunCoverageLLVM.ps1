@@ -1,7 +1,7 @@
 ﻿# clang-cl でビルドした計装バイナリから、分岐 (C1) / 条件・MC/DC (C2 以上) まで測る。
 #
-#   .\Tools\RunCoverageLLVM.ps1                       # build/Coverage を計測
-#   .\Tools\RunCoverageLLVM.ps1 -BuildDir build/Cov2
+#   .\Tools\Coverage\RunCoverageLLVM.ps1                       # build/Coverage を計測
+#   .\Tools\Coverage\RunCoverageLLVM.ps1 -BuildDir build/Cov2
 #
 # 前提:
 #   - Visual Studio インストーラーの «C++ Clang compiler for Windows» が入っていること
@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $repoRoot
 
 # --- LLVM ツールの解決 ------------------------------------------------------

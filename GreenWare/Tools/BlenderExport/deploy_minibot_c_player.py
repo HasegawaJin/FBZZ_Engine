@@ -11,7 +11,7 @@ from pathlib import Path
 from package_minibot_c_player import guid_meta
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 ASSETS = ROOT / 'GreenWare/Assets'
 STAGE = ROOT / 'Temp/PlayerExport_20260914_v2'
 ART = ROOT / 'Docs/Art/MiniBotC/ExportDelivery'

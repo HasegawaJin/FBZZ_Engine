@@ -11,7 +11,7 @@ import numpy as np
 from mathutils import Matrix
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('player_export_preflight', Path(__file__).with_name('prepare_minibot_c_export.py'))
 prep = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prep)
