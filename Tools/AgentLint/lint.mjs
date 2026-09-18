@@ -49,6 +49,7 @@ function IsLintTarget(repoPath) {
     if (CPP_EXTENSIONS.has(extension)) return repoPath.startsWith('Projects/') || /^[^/]+\/Assets\/Scripts\//.test(repoPath);
     if (SHADER_EXTENSIONS.has(extension)) return true;
     if (path.basename(repoPath) === 'CMakeLists.txt' || extension === '.cmake') return true;
+    if (extension === '.ps1') return true;
     return false;
 }
 
@@ -249,8 +250,24 @@ function LintShader(repoPath) {
     return findings;
 }
 
-function LintCMake(repoPath, source) {
+/**
+ * `#` コメントの言語 (CMake / PowerShell) でラベル儀式を拾う。C++ の doxygen-label と同じ規則。
+ * @see Docs/conventions/comments.md §1
+ */
+function LintHashComments(source) {
     const findings = [];
+    source.split(/\r?\n/).forEach((text, index) => {
+        const comment = /(?:^|\s)#\s*(?:@\w+\s+)?(WHY|WHAT|HOW|NOTE|TODO|FIXME)\b[^\n]*[:：]/.exec(text);
+        if (comment) {
+            findings.push({ severity: 'warn', rule: 'doxygen-label', line: index + 1, key: `doxygen-label|${text.trim()}`,
+                message: 'ラベル儀式 (WHY: / NOTE: / TODO:) を書かない。`# @note` / `# @todo` で事実だけ' });
+        }
+    });
+    return findings;
+}
+
+function LintCMake(repoPath, source) {
+    const findings = LintHashComments(source);
     const lines = source.split(/\r?\n/);
     lines.forEach((text, index) => {
         if (/^\s*[^#]*\bFetchContent_/.test(text)) {
@@ -277,6 +294,7 @@ function LintContent(repoPath, source) {
     const extension = path.extname(repoPath).toLowerCase();
     if (CPP_EXTENSIONS.has(extension)) return LintCpp(repoPath, source);
     if (path.basename(repoPath) === 'CMakeLists.txt' || extension === '.cmake') return LintCMake(repoPath, source);
+    if (extension === '.ps1') return LintHashComments(source);
     return [];
 }
 
