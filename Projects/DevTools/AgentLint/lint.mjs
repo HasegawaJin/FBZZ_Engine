@@ -323,6 +323,22 @@ function LintToolRegistration(repoPath) {
     return [];
 }
 
+/**
+ * ASCII 以外を含む .ps1 が UTF-8 の BOM を持つか。
+ * WHY: Windows PowerShell 5.1 (タスクと AgentBuild の `powershell`) は BOM の無い .ps1 を CP932 として読む。
+ *      日本語の文字列やコメントが化けて構文エラーになるのに、PowerShell 7 では通るので気づけない。
+ * @see https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding
+ *      about_Character_Encoding «Character encoding in Windows PowerShell»
+ */
+function LintPowerShellEncoding(repoPath, absolute) {
+    if (path.extname(repoPath).toLowerCase() !== '.ps1') return [];
+    const bytes = readFileSync(absolute);
+    const hasBom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+    if (hasBom || bytes.every((byte) => byte < 0x80)) return [];
+    return [{ severity: 'error', rule: 'ps1-bom', line: 1, key: 'ps1-bom',
+        message: 'ASCII 以外を含む .ps1 は UTF-8 (BOM 付き) で保存する。無いと Windows PowerShell 5.1 が CP932 で読み、構文エラーになる' }];
+}
+
 function LintContent(repoPath, source) {
     const extension = path.extname(repoPath).toLowerCase();
     if (CPP_EXTENSIONS.has(extension)) return LintCpp(repoPath, source);
@@ -373,6 +389,7 @@ export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
     findings.push(...contentFindings);
     if (SHADER_EXTENSIONS.has(path.extname(repoPath).toLowerCase())) findings.push(...LintShader(repoPath));
     findings.push(...LintTestRegistration(repoPath));
+    findings.push(...LintPowerShellEncoding(repoPath, absolute));
     return findings.map((finding) => ({ ...finding, file: repoPath }));
 }
 

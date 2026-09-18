@@ -1,4 +1,4 @@
-# @file    BenchCompare.ps1
+﻿# @file    BenchCompare.ps1
 # @brief   基準と候補の FBZZTestBench をビルドして交互に計測し、比較レポートを作る。
 # @author  Hasegawa Jin
 # @date    2026-09-18
@@ -33,7 +33,9 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+# @note Stop にしない。Windows PowerShell 5.1 は Stop のまま外部コマンドの stderr を受けると、git の進捗表示まで例外にして止まる。
+# @note 外部コマンドの成否は $LASTEXITCODE で、ファイル操作は個別の -ErrorAction Stop で判定する。
+$ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $RepositoryRoot = Split-Path -Parent $PSScriptRoot
@@ -49,9 +51,9 @@ function Stop-WithCode([int] $code, [string] $message) {
 }
 
 function Invoke-Git([string[]] $arguments) {
-    $output = & git -C $RepositoryRoot @arguments 2>&1
+    $output = & git -C $RepositoryRoot @arguments 2>&1 | ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) { Stop-WithCode 2 "git $($arguments -join ' '): $output" }
-    return $output
+    return ($output -join "`n")
 }
 
 # @brief 作業ツリーの TestBench を AgentBuild でビルドし、出力一式を destination へ複製する。
@@ -64,9 +66,9 @@ function Build-Bench([string] $sourceRoot, [string] $destination) {
     Write-Line "[BenchCompare]   $result"
     if ($LASTEXITCODE -ne 0) { Stop-WithCode 2 "TestBench のビルドに失敗 ($sourceRoot)" }
 
-    if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $sourceRoot $TestsOutput) -Destination $destination -Recurse
+    if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force -ErrorAction Stop }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) -ErrorAction Stop | Out-Null
+    Copy-Item -LiteralPath (Join-Path $sourceRoot $TestsOutput) -Destination $destination -Recurse -ErrorAction Stop
 }
 
 # @brief コミットの TestBench を用意する。キャッシュが無ければ worktree で取り出してビルドする。
@@ -120,7 +122,7 @@ $candidateBench = if ([string]::IsNullOrWhiteSpace($Candidate)) { Get-WorkingBen
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $runDirectory = Join-Path $BenchRoot "runs/$stamp"
-New-Item -ItemType Directory -Force -Path $runDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $runDirectory -ErrorAction Stop | Out-Null
 $logPath = Join-Path $runDirectory 'measure.log'
 
 for ($round = 1; $round -le $Rounds; $round++) {
