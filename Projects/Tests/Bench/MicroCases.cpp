@@ -11,8 +11,10 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <span>
 
 namespace fbzz::bench {
 
@@ -47,6 +49,8 @@ struct Inputs {
     std::array<Vector3, kInputCount>    extents;
     std::array<Quaternion, kInputCount> rotations;
     std::array<Matrix4, kInputCount>    matrices;
+    /// @brief xyz = vectors、w = extents.x。IntersectsSphere の行と同じ球を並べる。
+    std::array<math::Vector4, kInputCount> spheres;
     Frustum                             frustum;
 };
 
@@ -61,6 +65,7 @@ const Inputs& GetInputs()
             const Vector3 axis = { random.Next(), random.Next() + 2.0f, random.Next() };
             result.rotations[i] = Quaternion::FromAxisAngle(axis, random.Next() * math::PI);
             result.matrices[i] = Matrix4::TRS(result.vectors[i], result.rotations[i], result.extents[i]);
+            result.spheres[i] = { result.vectors[i], result.extents[i].x };
         }
         const Matrix4 view = Matrix4::LookAt({ 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, Vector3::UP);
         const Matrix4 projection = Matrix4::Perspective(60.0f * math::DEG2RAD, 16.0f / 9.0f, 0.1f, 200.0f);
@@ -76,6 +81,7 @@ struct Outputs {
     std::array<Matrix4, kInputCount>       matrices;
     std::array<math::Vector4, kInputCount> vectors4;
     std::array<Vector3, kInputCount>       vectors3;
+    std::array<uint8_t, kInputCount>       visible;
 };
 
 Outputs& GetOutputs()
@@ -180,6 +186,18 @@ double FrustumSphere(int ops)
     return inside;
 }
 
+/// @note 1 演算 = 球 1 個。IntersectsSphere の行と 1 球あたりで比べられるよう、ops 個をまとめて判定する。
+double FrustumSpheres(int ops)
+{
+    const Inputs& in = GetInputs();
+    auto& visible = GetOutputs().visible;
+    for (int done = 0; done < ops; done += kInputCount) {
+        const size_t count = static_cast<size_t>(std::min(kInputCount, ops - done));
+        in.frustum.IntersectsSpheres(std::span(in.spheres).first(count), std::span(visible).first(count));
+    }
+    return visible[ops & kInputMask];
+}
+
 } // namespace
 
 const std::vector<MicroCase>& AllMicroCases()
@@ -194,6 +212,7 @@ const std::vector<MicroCase>& AllMicroCases()
         { "Vector3::Normalized",      &Vector3Normalize },
         { "Frustum::IntersectsAABB",  &FrustumAabb },
         { "Frustum::IntersectsSphere", &FrustumSphere },
+        { "Frustum::IntersectsSpheres", &FrustumSpheres },
     };
     return cases;
 }
