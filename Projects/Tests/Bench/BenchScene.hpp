@@ -16,6 +16,9 @@
 
 namespace fbzz::bench {
 
+/// @brief Simulate に渡す固定刻み [s]。画面モードと --measure で同じ値を使う。
+inline constexpr float kBenchFixedStep = 1.0f / 60.0f;
+
 class BenchScene {
 public:
     virtual ~BenchScene() = default;
