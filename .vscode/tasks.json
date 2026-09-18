@@ -282,10 +282,10 @@
         // @note 行 (C0) は MSVC + OpenCppCoverage (普段用)、分岐・MC/DC は clang-cl + llvm-cov。計測対象は両系統で揃えてある。
         {
             // @pre winget install OpenCppCoverage.OpenCppCoverage。HTML / lcov は dotnet-reportgenerator-globaltool も要る。
-            // @note 計測対象と出力先は Tools/RunCoverage.ps1 が持つ (CI と共通)。
+            // @note 計測対象と出力先は Tools/Coverage/RunCoverage.ps1 が持つ (CI と共通)。
             "label": "Tests: Coverage (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\RunCoverage.ps1\" -BuildDir build/Debug -Config Debug",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\Coverage\\RunCoverage.ps1\" -BuildDir build/Debug -Config Debug",
             "dependsOn": "CMake: Build Tests (Debug)",
             "group": "test",
             "problemMatcher": []
@@ -309,7 +309,7 @@
         {
             "label": "Coverage: Branch + MC/DC (clang-cl)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\RunCoverageLLVM.ps1\"",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\Coverage\\RunCoverageLLVM.ps1\"",
             "dependsOn": "Coverage: Build (clang-cl)",
             "group": "test",
             "problemMatcher": []

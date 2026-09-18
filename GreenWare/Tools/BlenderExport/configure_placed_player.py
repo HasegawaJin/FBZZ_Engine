@@ -8,7 +8,7 @@ import tomllib
 import uuid
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 PROJECT = ROOT / 'GreenWare'
 OUT = ROOT / 'Temp/PlayerScenePlacement'
 SCENE = PROJECT / 'Assets/Scenes/Stage_01.scene'

@@ -1,7 +1,7 @@
 ﻿# 手元でカバレッジを取る。CI と同じ計測対象・同じ要約を出す。
 #
-#   .\Tools\RunCoverage.ps1                     # build/Debug を計測
-#   .\Tools\RunCoverage.ps1 -BuildDir build/ci  # 別のビルドディレクトリ
+#   .\Tools\Coverage\RunCoverage.ps1                     # build/Debug を計測
+#   .\Tools\Coverage\RunCoverage.ps1 -BuildDir build/ci  # 別のビルドディレクトリ
 #
 # 事前に OpenCppCoverage が要る:  winget install OpenCppCoverage.OpenCppCoverage
 # ビルド自体は Visual Studio / VSCode から済ませておくこと (このスクリプトはビルドしない)。
@@ -14,7 +14,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $repoRoot
 
 $openCppCoverage = (Get-Command OpenCppCoverage.exe -ErrorAction SilentlyContinue).Source

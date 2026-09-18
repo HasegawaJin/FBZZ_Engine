@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 STAGE = ROOT / 'Temp/PlayerExport_20260914_v2'
 PACKAGE = STAGE / 'Player'
 ANIMATION = STAGE / 'Animation_Player'

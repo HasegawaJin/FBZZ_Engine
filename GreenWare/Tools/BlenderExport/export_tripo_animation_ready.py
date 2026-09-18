@@ -63,7 +63,7 @@ for frame in [1,16,31,46,61,76,91]:
         samples[f'{frame}_{name}']=np.array([evaluated.matrix_world@v.co for v in mesh.vertices]);evaluated.to_mesh_clear()
 np.savez_compressed(ROOT/'GreenWare/Assets/_src/MiniBotC/AnimationReady/ClipReference.npz',**samples)
 control.animation_data.action=old_action;scene.frame_set(1)
-sys.path.insert(0,str(ROOT/'Tools/BlenderExport'))
+sys.path.insert(0,str(ROOT/'GreenWare/Tools/BlenderExport'))
 from export_animation_ready_clip import export_clip
 report['demo_clip']=export_clip(OUT/'Animations/DEMO_RigCheck.fbx',action=bpy.data.actions['DEMO_RigCheck'],start=1,end=91)
 
@@ -84,7 +84,7 @@ finger_collection.is_visible=True
 for p in comp.pose.bones:p.bone.color.palette='THEME03'
 for image in bpy.data.images:
     if image.users and image.source=='FILE':image.pack()
-helper=ROOT/'Tools/BlenderExport/export_animation_ready_clip.py'
+helper=ROOT/'GreenWare/Tools/BlenderExport/export_animation_ready_clip.py'
 text=bpy.data.texts.get('Export_Active_Action.py') or bpy.data.texts.new('Export_Active_Action.py');text.clear();text.write(helper.read_text(encoding='utf8'))
 guide=bpy.data.texts.get('START_HERE.txt') or bpy.data.texts.new('START_HERE.txt');guide.clear()
 guide.write('MiniBotC Animation Ready\n\nPose Mode: MiniBotC_ControlRig\nHands: hand_ik.L/R  Feet: foot_ik.L/R\nBody: torso, chest, hips, head; root moves the character.\nFingers: f_index/f_middle/f_ring/f_pinky/thumb; local X bends joints.\nObject custom property two_hand_grip: 0 = free left hand, 1 = left hand follows sword.\nSword_Control changes the grip offset.\nCompanion_Rig: Root = travel, Body = hover/tilt, Pod.L/R = pods.\n\nPlayer_NewAction has a rest key on frame 1. Duplicate/rename in Action Editor.\nDEMO_RigCheck contains diagnostic poses on frames 1,16,31,46,61,76,91.\nText Editor > Export_Active_Action.py > Run Script writes the active Action as a baked FBX.\nExport includes the game skeleton, body and fingers, never Rigify control bones.\n')

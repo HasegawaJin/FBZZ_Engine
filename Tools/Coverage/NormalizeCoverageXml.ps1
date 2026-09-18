@@ -14,7 +14,7 @@
 # CoverageReport.ps1 がこれを Markdown 表のモジュール名として出すため、
 # そのままだと表の 1 列が開発機の絶対パスで埋まる。
 #
-#   .\Tools\NormalizeCoverageXml.ps1 -CoberturaPath Artifacts\Coverage\coverage.xml
+#   .\Tools\Coverage\NormalizeCoverageXml.ps1 -CoberturaPath Artifacts\Coverage\coverage.xml
 #
 # 同じ XML へ二度掛けても結果は変わらない (書き換え済みの相対パスはそのまま通る)。
 
@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $CoberturaPath)) {
     throw "Cobertura XML が見つかりません: $CoberturaPath"
 }
 if (-not $RepositoryRoot) {
-    $RepositoryRoot = Split-Path -Parent $PSScriptRoot
+    $RepositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
 $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path.TrimEnd('\', '/')
 

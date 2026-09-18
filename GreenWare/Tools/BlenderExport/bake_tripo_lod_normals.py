@@ -6,7 +6,7 @@ from pathlib import Path
 from mathutils import Matrix
 
 ROOT=Path(r'C:\Users\jinhs\Downloads\FBZZ_Engine')
-spec=importlib.util.spec_from_file_location('texture_pipeline',ROOT/'Tools/BlenderExport/texture_tripo_minibot.py')
+spec=importlib.util.spec_from_file_location('texture_pipeline',ROOT/'GreenWare/Tools/BlenderExport/texture_tripo_minibot.py')
 p=importlib.util.module_from_spec(spec);spec.loader.exec_module(p)
 scene=bpy.context.scene
 scene.cycles.device='GPU'

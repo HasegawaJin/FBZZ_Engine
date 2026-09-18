@@ -8,7 +8,7 @@ from pathlib import Path
 from package_minibot_c_player import derive_guid
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 ASSETS = ROOT / 'GreenWare/Assets'
 ART = ROOT / 'Docs/Art/MiniBotC/ExportDelivery'
 
