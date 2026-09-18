@@ -263,6 +263,7 @@ add_executable(FBZZTestBench
     Bench/AnomalyLog.cpp
     Bench/BenchApp.cpp
     Bench/Measure.cpp
+    Bench/MicroCases.cpp
     Bench/Viewport2D.cpp
     Bench/Scenes/XPBDConvergenceScene.cpp
     Bench/Scenes/XPBDJointChainScene.cpp
@@ -278,6 +279,8 @@ add_executable(FBZZTestBench
 )
 target_include_directories(FBZZTestBench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/TestKit/include")
 target_link_libraries(FBZZTestBench PRIVATE FBZZEngine FBZZPhysics FBZZMath ImGui)
+# @note --measure の JSON に測定条件として書く。exe は自分がどの構成で作られたかを知る手段が他に無い。
+target_compile_definitions(FBZZTestBench PRIVATE FBZZ_BENCH_CONFIG="$<CONFIG>")
 set_target_properties(FBZZTestBench PROPERTIES FOLDER "Tests")
 fbzz_set_test_output_dir(FBZZTestBench)
 fbzz_apply_app_manifest(FBZZTestBench)
