@@ -41,7 +41,7 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 #pragma once
 ```
 
-- **コメントはすべて Doxygen 形式** (`///` + `@brief` / `@param` / `@return` / `@pre` / `@note` / `@warning` / `@see`)。`//` の自由記述は書かない。関数本体の中で補足が要る箇所も `/// @note` 1 行で書く (Doxygen は本体内を拾わないので、契約に関わる理由は宣言側の `@note` に置く)
+- **コメントはすべて Doxygen 形式** (`///` + `@brief` / `@param` / `@return` / `@pre` / `@note` / `@warning` / `@see`)。CMake・PowerShell は `# @note`、JSONC は `// @note` と記号だけ替えて同じタグで書く。`WHY:` などのラベルはどの言語でも書かない。`//` の自由記述は書かない。関数本体の中で補足が要る箇所も `/// @note` 1 行で書く (Doxygen は本体内を拾わないので、契約に関わる理由は宣言側の `@note` に置く)
 - **短く書く**。各タグ 1 行。段落が要るなら `Docs/design/` に置いて `@see` で指す。生成は `doxygen Docs/Doxyfile` → `python Tools/ApiReference.py` (AI 向け Markdown は `build/docs/api/`、警告は `build/docs/doxygen-warnings.log`)。詳細と移行表は `Docs/conventions/comments.md`
 - **リファレンスは実装のコメントにも残す**。参考にした論文・公式仕様・公式ドキュメントの URL を、対応する数式・アルゴリズム・API 契約の宣言または実装の直近に `/// @see <URL>` で記載する。何を参照したか分かる題名・節名も添え、設計文書や作業報告だけにリンクを置かない。
 - **書くのは「コードから読めないこと」だけ**。契約 (単位・座標系・所有権・スレッド・失敗時の戻り値) と、数式の根拠・順序依存・ドライバ回避策のような非自明な理由のみ。処理をなぞる説明・自明なゲッターの説明・引数名を言い換えただけの `@param` は書かない
