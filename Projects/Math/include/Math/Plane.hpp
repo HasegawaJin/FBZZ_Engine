@@ -39,4 +39,15 @@ struct Plane {
     static Plane FromNormalAndPoint(const Vector3& normal, const Vector3& point);
 };
 
+/// @note FBZZMath は DLL のため、.cpp に置くと呼び出しごとに DLL 境界を越えてインライン化されない。カリングで物体ごとに呼ぶためヘッダーで定義する。
+inline float Plane::SignedDistanceTo(const Vector3& point) const
+{
+    return Vector3::Dot(normal, point) + distance;
+}
+
+inline bool Plane::IsOnPositiveSide(const Vector3& point) const
+{
+    return SignedDistanceTo(point) >= 0.0f;
+}
+
 } // namespace fbzz::math

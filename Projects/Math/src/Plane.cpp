@@ -15,16 +15,6 @@ Plane Plane::Normalized() const
     return { normal * invLen, distance * invLen };
 }
 
-float Plane::SignedDistanceTo(const Vector3& point) const
-{
-    return Vector3::Dot(normal, point) + distance;
-}
-
-bool Plane::IsOnPositiveSide(const Vector3& point) const
-{
-    return SignedDistanceTo(point) >= 0.0f;
-}
-
 Plane Plane::FromPoints(const Vector3& p0, const Vector3& p1, const Vector3& p2)
 {
     Vector3 n = Vector3::Cross(p1 - p0, p2 - p0).Normalized();
