@@ -132,8 +132,11 @@ function LintCpp(repoPath, source) {
     const isHeader = extension === '.hpp' || extension === '.h';
     const isScript = /^[^/]+\/Assets\//.test(repoPath);
     const isRendererBackend = /Renderer\/DX1[12]|RenderDX1[12]|\/DX1[12]\//.test(repoPath);
-    const add = (severity, rule, line, message) => findings.push({
-        severity, rule, line, message, key: `${rule}|${(lines[line - 1] ?? '').trim()}`,
+    // key は HEAD 版と突き合わせて «増えた違反» だけを残すための識別子 (OnlyNew)。
+    // WHY 原文の行をそのまま使わないか: 行末コメントを別の行へ移しただけ・旧形式の見出しを少し書き換えただけで
+    //     既存の違反が «新しい違反» に見え、PR の差分検査が関係の無い箇所で落ちる。規則ごとに不変な部分で比べる。
+    const add = (severity, rule, line, message, keyText = (lines[line - 1] ?? '')) => findings.push({
+        severity, rule, line, message, key: `${rule}|${keyText.replace(/\s+/g, ' ').trim()}`,
     });
 
     if (GENERATED_FILES.has(baseName)) return findings;
@@ -149,7 +152,7 @@ function LintCpp(repoPath, source) {
     const tags = ['@file <ファイル名>', '@brief', '@author', '@date YYYY-MM-DD'];
     for (let n = 0; n < 4; n++) {
         if (!expected[n].test(header[n] ?? '')) {
-            add('error', 'file-header', n + 1, `4 行ヘッダーの ${n + 1} 行目は "/// ${tags[n]}" (AGENTS.md «コード規約»)`);
+            add('error', 'file-header', n + 1, `4 行ヘッダーの ${n + 1} 行目は "/// ${tags[n]}" (AGENTS.md «コード規約»)`, `line ${n + 1}`);
             break;
         }
     }
@@ -186,7 +189,7 @@ function LintCpp(repoPath, source) {
     for (let n = 0; n < codeLines.length; n++) {
         for (const { rule, re, message, severity } of rules) {
             const target = rawLineRules.has(rule) ? (lines[n] ?? '') : codeLines[n];
-            if (re.test(target)) add(severity ?? 'error', rule, n + 1, message);
+            if (re.test(target)) add(severity ?? 'error', rule, n + 1, message, target);
         }
     }
 
