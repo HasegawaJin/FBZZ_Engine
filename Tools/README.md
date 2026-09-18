@@ -14,4 +14,5 @@
 | `AgentBuild.ps1` | AI の検証ループ (compile / build / test) の入口 | AGENTS.md、`.claude/skills/`、`.claude/settings.json` |
 | `VsEnvironment.ps1` | Visual Studio の開発環境を解決する唯一の場所 | `AgentBuild.ps1`、`VcBuild.ps1` |
 | `VcBuild.ps1` | 人が使う VS Code タスクのビルド入口 | `.vscode/tasks.json` |
+| `BenchCompare.ps1` | 基準と候補の TestBench をビルドして交互に計測し、比較レポートを作る | `Docs/design/benchmark-report.md` |
 | `Coverage/` | カバレッジの計測と要約 (C0: OpenCppCoverage / C1・C2: clang-cl + llvm-cov) | `.vscode/tasks.json`、`.github/workflows/tests.yml`、`Docs/conventions/test.md` |
