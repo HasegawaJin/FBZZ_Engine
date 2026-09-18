@@ -94,10 +94,11 @@ inline math::Matrix4 Inverse(const math::Matrix4& mat)
 }
 
 /// @pre q は正規化済みでなくてよい (製品版と同じく内部で正規化する)。
+/// @note 正規化は Quaternion::Normalized と同じく «逆数を掛ける»。成分ごとに割ると丸めが 1 ULP ずれ、ビット一致の突き合わせが成り立たない。
 inline math::Matrix4 Rotate(const math::Quaternion& q)
 {
-    const float len = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-    const math::Quaternion qn{ q.x / len, q.y / len, q.z / len, q.w / len };
+    const float inv = 1.0f / std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    const math::Quaternion qn{ q.x * inv, q.y * inv, q.z * inv, q.w * inv };
     const float xx = qn.x * qn.x, yy = qn.y * qn.y, zz = qn.z * qn.z;
     const float xy = qn.x * qn.y, xz = qn.x * qn.z, yz = qn.y * qn.z;
     const float wx = qn.w * qn.x, wy = qn.w * qn.y, wz = qn.w * qn.z;

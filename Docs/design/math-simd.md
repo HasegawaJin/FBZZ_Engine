@@ -56,6 +56,21 @@ Math の演算を SSE4.1 の intrinsics で書き直す。前段の «小関数�
 - 契約 (`FBZZ_MATH_CONTRACT` で報告して単位行列を返す等) は SIMD 版でも同じ条件・同じ戻り値にする
 - 丸めが変わるので、段 2 の後に Playtest (`--batch`) を回し、基準画像のずれが許容内か確かめる。流体の決定論は «同じバイナリの中» の約束なので影響しない (`fluid-determinism.md` §3)
 
+### 結果 (2026-09-19)
+
+- 積・M*v・転置・TRS は `ScalarParityTests` を許容誤差 0 にしても通る (ビット一致)。**値が変わるのは `Inverse` だけ**
+- `Inverse` だけをスカラーに戻した `FBZZMath.dll` と SIMD 版を差し替え (ABI は同じ)、同じ場面を `--batch` で撮り比べた。基準はスカラー版で撮り、スカラー版をもう 1 回撮って実行ごとの揺れも測った
+
+| 場面 | 揺れ (スカラー同士) の meanDiff | SIMD の meanDiff | 閾値を超えた画素 |
+|------|---:|---:|---:|
+| Title (90f) | 0 | 0 | 0 |
+| Stage_01 (Play 120f) | 3.9e-6 | 5.9e-6 | 0.0013% (揺れと同程度) |
+| Stage_02 (Play 120f) | 2.8e-6 | 2.2e-5 | 0 |
+| Stage_03 (Play 120f) | 2.4e-9 | 1.5e-4 | 0 |
+
+- どれも既定の閾値 (meanDiff 0.01・画素の差 0.1) の 1/60 以下で、差が 0.1 を超える画素は無い。Stage_03 は揺れより大きいが、絵を並べて見ても区別できない
+- 既存の Playtest の基準画像は 12 枚中 6 枚が未作成 (`Title_90f`・`Fiber_30f`・`FiberLifecycle` の `Original` / `Shell` / `MissingMaterial` / `Restored`) で、そのままでは比較に使えなかったため、この手順で測った
+
 ## 6. やらないこと (今は)
 
 - `/arch:AVX2` と FMA: 丸めがビルド全体で変わる。配布先の CPU の下限も上がる
