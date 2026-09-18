@@ -496,6 +496,37 @@ bool IsSkinnedVisible(RenderPassContext& ctx,
                       const GameObject& go,
                       const SkinnedMeshRenderer& smr);
 
+/// @brief スコープの間に加算されたカリング統計 (候補数・距離・極小・錐台・遮蔽) を抜けるときに打ち消す。
+/// @note 本描画と同じ物体を同じカメラで判定し直すパス (Velocity・Forward の GBuffer 前段) で使う。数えないと «落とした数» が倍になる。描画コール数は実際に発行するので対象にしない。
+class CullStatsRollback {
+public:
+    explicit CullStatsRollback(RenderPassContext& ctx)
+        : m_ctx(ctx)
+        , m_totalObjects(ctx.statsTotalObjects)
+        , m_frustumCulled(ctx.statsFrustumCulled)
+        , m_occlusionCulled(ctx.statsOcclusionCulled)
+        , m_distanceCulled(ctx.statsDistanceCulled)
+        , m_smallObjectCulled(ctx.statsSmallObjectCulled) {}
+    ~CullStatsRollback()
+    {
+        m_ctx.statsTotalObjects      = m_totalObjects;
+        m_ctx.statsFrustumCulled     = m_frustumCulled;
+        m_ctx.statsOcclusionCulled   = m_occlusionCulled;
+        m_ctx.statsDistanceCulled    = m_distanceCulled;
+        m_ctx.statsSmallObjectCulled = m_smallObjectCulled;
+    }
+    CullStatsRollback(const CullStatsRollback&) = delete;
+    CullStatsRollback& operator=(const CullStatsRollback&) = delete;
+
+private:
+    RenderPassContext& m_ctx;
+    int m_totalObjects;
+    int m_frustumCulled;
+    int m_occlusionCulled;
+    int m_distanceCulled;
+    int m_smallObjectCulled;
+};
+
 /// @brief 距離カリングの判定だけを単体で行う (ShadowPass 用)。
 /// @note 距離で本体を消しても caster を残すと、オブジェクトが無い場所に影だけが落ちる。カリングの中で一番目につく壊れ方なので、同じ距離で揃える。
 /// @note 極小オブジェクト判定は共有しない。ShadowPass はシャドウマップのテクセル基準で独自の極小カリングを持ち、そちらの方が影の解像度に即している。

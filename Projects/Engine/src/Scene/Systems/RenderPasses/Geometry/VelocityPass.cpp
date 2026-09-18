@@ -97,13 +97,8 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         GetOrCreateMaterialPSO(resources, renderer::BlendMode::OPAQUE_BLEND, false);
     const std::uint64_t frameStamp = Time::frameCount;
 
-    /// @note IsMeshVisible / IsSkinnedVisible はカリング理由の統計を加算する。本描画パスと
-    /// @note 同じオブジェクトをもう一度判定するので、そのままだと Stats パネルの
-    /// @note 「錐台で落ちた数」が倍になる。判定ロジックは共有したいので、
-    /// @note 加算ぶんだけパスの前後で打ち消す。描画コール数は実際に発行するので数える。
-    const int savedFrustumCulled     = ctx.statsFrustumCulled;
-    const int savedDistanceCulled    = ctx.statsDistanceCulled;
-    const int savedSmallObjectCulled = ctx.statsSmallObjectCulled;
+    /// @note 本描画パスと同じ物体をもう一度判定するので、カリング統計はパスを抜けるときに打ち消す。
+    const CullStatsRollback rollback(ctx);
 
     /// @name 静的メッシュ
     for (auto& go : ctx.scene.GameObjects()) {
@@ -149,12 +144,7 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
     ExecuteFiberVelocityPass(ctx);
     resources.Update(h.frameCB, &frameData, sizeof(frameData));
 
-    if (!h.velocitySkinnedShader.IsValid()) {
-        ctx.statsFrustumCulled     = savedFrustumCulled;
-        ctx.statsDistanceCulled    = savedDistanceCulled;
-        ctx.statsSmallObjectCulled = savedSmallObjectCulled;
-        return;
-    }
+    if (!h.velocitySkinnedShader.IsValid()) return;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
@@ -206,10 +196,6 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
             SubmitCounted(ctx, dc);
         }
     }
-
-    ctx.statsFrustumCulled     = savedFrustumCulled;
-    ctx.statsDistanceCulled    = savedDistanceCulled;
-    ctx.statsSmallObjectCulled = savedSmallObjectCulled;
 }
 
 
