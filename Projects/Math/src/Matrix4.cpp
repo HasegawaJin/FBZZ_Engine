@@ -29,7 +29,18 @@ Matrix4 Matrix4::Rotate(const Quaternion& q) {
 }
 
 Matrix4 Matrix4::TRS(const Vector3& t, const Quaternion& r, const Vector3& s) {
-    return Translate(t) * Rotate(r) * Scale(s);
+    /// @note T*R*S を展開すると «回転行列の列 c に s[c] を掛け、第 4 列に t を置く» だけになる。行列積 2 回 (乗算 128 回) を省く。
+    /// @note 積で組んだ場合と値は一致する (展開で消える項は 0 との積と 1 との積だけで、丸めを生まない)。
+    Matrix4 result = Rotate(r);
+    for (int row = 0; row < 3; ++row) {
+        result.m[row][0] *= s.x;
+        result.m[row][1] *= s.y;
+        result.m[row][2] *= s.z;
+    }
+    result.m[0][3] = t.x;
+    result.m[1][3] = t.y;
+    result.m[2][3] = t.z;
+    return result;
 }
 
 Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3& up) {
