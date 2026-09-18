@@ -25,8 +25,9 @@ namespace {
 
 constexpr int kCaseCount = 512;
 
-/// @brief 行列積・M*v の相対許容誤差。加算の順序が変わるぶんの丸めだけを許す。
-constexpr float kProductTolerance = 1.0e-5f;
+/// @brief 行列積・M*v・TRS の許容誤差。SIMD 版はスカラー版と加算の順序を揃えてあるので、ビット単位で一致しなければならない。
+/// @note ここが 0 であることが «SIMD 化で値が変わるのは Inverse だけ» の根拠になる (Docs/design/math-simd.md §5)。
+constexpr float kProductTolerance = 0.0f;
 /// @brief 逆行列の相対許容誤差。余因子の組み方が変わると桁落ちの出方が変わる。
 constexpr float kInverseTolerance = 1.0e-4f;
 /// @brief カリングの突き合わせから外す境界の幅 [m]。これより境界に近い入力は丸めで判定が反転しうる。
