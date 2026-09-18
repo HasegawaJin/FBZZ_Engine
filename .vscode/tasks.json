@@ -1,14 +1,11 @@
-// FBZZ Engine
-// tasks.json | .vscode
-// ビルド・テスト・SDK 公開の入口。
+// @file    tasks.json
+// @brief   VS Code から人がビルド・テスト・SDK 公開を叩くタスク一覧。入口は Tools/VcBuild.ps1。
+// @author  Hasegawa Jin
+// @date    2026-05-15
 //
-// 設計方針:
-//   - Visual Studio の場所を知っているのは Tools\VcBuild.ps1 だけ。ここには絶対パスを書かない。
-//   - configure は VcBuild.ps1 が「未 configure の時だけ」自動実行する。
-//     そのため各ビルドタスクは Configure タスクへ dependsOn しない (毎回の再構成が無駄なため)。
-//     CMakeLists.txt を編集した時は VS ジェネレーターの ZERO_CHECK が自動で再構成する。
-//   - C++ ビルドの前には必ず実行中のエンジンプロセスを落とす。
-//     起動中の Editor が FBZZEngine.dll を掴んでいると LNK1168 でリンクが失敗するため。
+// @note Visual Studio の場所を知るのは Tools/VcBuild.ps1 だけ。ここに絶対パスを書かない。
+// @note ビルドタスクは Configure へ dependsOn しない。VcBuild.ps1 が未 configure 時だけ configure し、CMakeLists.txt の変更は ZERO_CHECK が拾う。
+// @note C++ ビルドは Kill: Engine Processes に依存させる。起動中のプロセスが DLL を掴むと LNK1168 でリンクが落ちる。
 {
     "version": "2.0.0",
     "windows": {
@@ -28,19 +25,13 @@
         "clear": true
     },
     "tasks": [
-        // ------------------------------------------------------------------
-        // プロセス停止
-        // WHY: 出力ファイルを掴んでいるプロセスを先に落とす。taskkill は対象が
-        //      居ないと exit 1 を返すので、常に exit 0 へ潰してタスク連鎖を止めない。
-        // ------------------------------------------------------------------
+        // @name プロセス停止
+        // @note taskkill は対象が居ないと exit 1 を返すので、exit 0 へ潰してタスク連鎖を止めない。
         {
-            // WHY テスト exe まで落とすか: テストとベンチは FBZZMath / FBZZPhysics /
-            //     FBZZEngine の DLL を掴む。結果を読ませるため終了時に入力待ちで止まる
-            //     設計なので、閉じ忘れた窓が 1 つあるだけで次のビルドが LNK1168 で落ちる。
-            //     ハングしたテストが残っている場合も同じ。
+            // @note テスト exe とベンチも DLL を掴み、終了時に入力待ちで残るので一緒に落とす。
             "label": "Kill: Engine Processes",
             "type": "shell",
-            "command": "taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM Sandbox.exe >nul 2>&1 & taskkill /F /T /IM SandboxStandalone.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsMathAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsCoreAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsPhysicsAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsFluidAuto.exe >nul 2>&1 &taskkill /F /T /IM FBZZTestsEngineAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsCoreManual.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestBench.exe >nul 2>&1 & exit 0",
+            "command": "taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM Sandbox.exe >nul 2>&1 & taskkill /F /T /IM SandboxStandalone.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsMathAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsCoreAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsPhysicsAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsFluidAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsEngineAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsEditorAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsCoreManual.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestBench.exe >nul 2>&1 & exit 0",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "silent",
@@ -66,11 +57,8 @@
             "problemMatcher": []
         },
 
-        // ------------------------------------------------------------------
-        // CMake Configure
-        // 通常は不要 (VcBuild.ps1 が初回だけ自動実行する)。
-        // CMakePresets.json やキャッシュ変数を触った後、明示的に作り直したい時に使う。
-        // ------------------------------------------------------------------
+        // @name CMake Configure
+        // @note 通常は不要。CMakePresets.json やキャッシュ変数を変えた後に明示的に作り直すときだけ使う。
         {
             "label": "CMake: Configure (Debug)",
             "type": "shell",
@@ -89,16 +77,8 @@
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" configure release",
             "problemMatcher": "$msCompile"
         },
-        {
-            "label": "CMake: Configure (SDK Publisher)",
-            "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" configure sdk",
-            "problemMatcher": "$msCompile"
-        },
 
-        // ------------------------------------------------------------------
-        // CMake Build — 全ターゲット
-        // ------------------------------------------------------------------
+        // @name CMake Build — 全ターゲット
         {
             "label": "CMake: Build All (Debug)",
             "type": "shell",
@@ -124,11 +104,8 @@
             "problemMatcher": "$msCompile"
         },
 
-        // ------------------------------------------------------------------
-        // ビルド時間の計測。MSBuild のタスク別集計で「コンパイルとリンクの
-        // どちらに時間が行っているか」を出す。増分を測るときは、直前に 1 ファイルだけ
-        // 保存し直してからこれを走らせる。
-        // ------------------------------------------------------------------
+        // @name ビルド時間の計測
+        // @note 増分を測るときは直前に 1 ファイルだけ保存し直してから走らせる。
         {
             "label": "Profile: Build Timing (Development)",
             "type": "shell",
@@ -137,11 +114,8 @@
             "problemMatcher": []
         },
 
-        // ------------------------------------------------------------------
-        // CMake Build — エディター (日常の編集ループで最も回す単位)
-        // WHY: Editor は Engine を共有し、SDK へも常に同じ版で
-        //      入るため片方だけ古い状態を作らない。1 コマンドで両方を上げる。
-        // ------------------------------------------------------------------
+        // @name CMake Build — エディター
+        // @note FBZZEditorLauncher を通して Editor と Engine を同じ版で上げる。片方だけ古い状態を作らない。
         {
             "label": "CMake: Build Editor (Debug)",
             "type": "shell",
@@ -167,9 +141,7 @@
             "problemMatcher": "$msCompile"
         },
 
-        // ------------------------------------------------------------------
-        // CMake Build — Sandbox
-        // ------------------------------------------------------------------
+        // @name CMake Build — Sandbox
         {
             "label": "CMake: Build Sandbox (Debug)",
             "type": "shell",
@@ -195,12 +167,8 @@
             "problemMatcher": "$msCompile"
         },
 
-        // ------------------------------------------------------------------
-        // テスト
-        // WHY 対象を明示列挙するか: --target を書き漏らしたスイートは «ビルドされない»
-        //     だけで、エラーも警告も出ない。実際に Math とベンチが丸ごと抜けていた。
-        //     テストスイートを追加したら、この 3 タスクへも必ず 1 行足すこと。
-        // ------------------------------------------------------------------
+        // @name テスト
+        // @note --target を書き漏らしたスイートはエラーも警告も無くビルドされない。スイートを足したら下の 3 タスクへも足す。
         {
             "label": "CMake: Build Tests (Debug)",
             "type": "shell",
@@ -226,9 +194,8 @@
             "problemMatcher": "$msCompile"
         },
 
-        // --- スイート単位のビルドと実行 ------------------------------------
-        // ${input:testSuite} は 1 回のタスク実行につき 1 度だけ聞かれ、
-        // ビルドと実行の両方へ同じ値が渡る。
+        // @name スイート単位のビルドと実行
+        // @note ${input:testSuite} は 1 回のタスク実行で 1 度だけ聞かれ、ビルドと実行へ同じ値が渡る。
         {
             "label": "Tests: Build Suite (Debug)",
             "type": "shell",
@@ -237,8 +204,7 @@
             "problemMatcher": "$msCompile"
         },
         {
-            // exe を直接叩く。gtest の出力がそのままターミナルに出るので、
-            // どのケースがどう落ちたかを ctest の要約より細かく読める。
+            // @note ctest を通さず exe を直接走らせ、落ちたケースの gtest 出力をそのまま読む。
             "label": "Tests: Run Suite (Debug)",
             "type": "shell",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" run debug ${input:testSuite}",
@@ -255,7 +221,7 @@
             "problemMatcher": []
         },
         {
-            // 実行順に依存したテスト (TearDown の書き漏らし) は、順序を混ぜないと出てこない。
+            // @note 実行順に依存したテスト (TearDown の書き漏らし) は順序を混ぜないと出てこない。
             "label": "Tests: Shuffle Suite (Debug)",
             "type": "shell",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" run debug ${input:testSuite} --gtest_shuffle --gtest_repeat=10",
@@ -264,7 +230,7 @@
             "problemMatcher": []
         },
 
-        // --- ビジュアル検証ベンチ ------------------------------------------
+        // @name ビジュアル検証ベンチ
         {
             "label": "Bench: Build (Debug)",
             "type": "shell",
@@ -312,17 +278,11 @@
             "problemMatcher": []
         },
 
-        // --- カバレッジ ----------------------------------------------------
-        // 2 系統ある。
-        //   行 (C0) まで      MSVC + OpenCppCoverage。普段はこちら。clang を要求しない。
-        //   分岐 (C1) 以降    clang-cl + llvm-cov。2 本目のツールチェーンが要る代わりに
-        //                     分岐・条件・MC/DC まで出る。
-        // どちらも計測対象は Projects/Math / Projects/Physics / Projects/Engine/src/Core で揃えてある。
+        // @name カバレッジ
+        // @note 行 (C0) は MSVC + OpenCppCoverage (普段用)、分岐・MC/DC は clang-cl + llvm-cov。計測対象は両系統で揃えてある。
         {
-            // 事前に winget install OpenCppCoverage.OpenCppCoverage が要る。
-            // HTML / バッジ / lcov も出したい場合は 1 度だけ:
-            //   dotnet tool install -g dotnet-reportgenerator-globaltool
-            // 計測対象と出力先は Tools/RunCoverage.ps1 が持つ (CI と同じ設定)。
+            // @pre winget install OpenCppCoverage.OpenCppCoverage。HTML / lcov は dotnet-reportgenerator-globaltool も要る。
+            // @note 計測対象と出力先は Tools/RunCoverage.ps1 が持つ (CI と共通)。
             "label": "Tests: Coverage (Debug)",
             "type": "shell",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\RunCoverage.ps1\" -BuildDir build/Debug -Config Debug",
@@ -331,18 +291,14 @@
             "problemMatcher": []
         },
         {
-            // clang-cl 用のビルドツリーを作る。coverage preset は Ninja + clang-cl。
-            // clang-cl が無い場合は Visual Studio インストーラーの
-            // «C++ Clang compiler for Windows» を追加すること。
+            // @pre coverage preset は Ninja + clang-cl。VS インストーラーの «C++ Clang compiler for Windows» が要る。
             "label": "Coverage: Configure (clang-cl)",
             "type": "shell",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" configure coverage",
             "problemMatcher": "$msCompile"
         },
         {
-            // WHY 通常ビルドと別ツリーか: 計装フラグはオブジェクトの中身を変える。
-            //     同じ build/Debug を使い回すと «計装済みと素のオブジェクトが混ざったツリー» になり、
-            //     再ビルドの条件次第で数字が変わる。build/Coverage へ完全に分ける。
+            // @note build/Coverage へ分ける。build/Debug と共有すると計装済みと素のオブジェクトが混ざり、数字が再ビルド条件で変わる。
             "label": "Coverage: Build (clang-cl)",
             "type": "shell",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build coverage coverage --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsFluidAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto",
@@ -359,7 +315,6 @@
             "problemMatcher": []
         },
         {
-            // 直近に生成した HTML を既定のブラウザーで開く。
             "label": "Coverage: Open Report",
             "type": "shell",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process (Resolve-Path '${workspaceFolder}\\Artifacts\\Coverage\\report\\index.html')\"",
@@ -380,8 +335,7 @@
             }
         },
         {
-            // gtest_discover_tests() が CTest へ登録済みなので exe 直叩きではなく ctest を通す。
-            // ManualTest は OS 状態 (Window/Cursor) を触るため CTest 未登録で、ここでは走らない。
+            // @note ctest を通す。Core Manual は OS 状態を書き換えるので CTest 未登録で、ここでは走らない。
             "label": "Tests: Run (Debug)",
             "type": "shell",
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" test debug",
@@ -409,15 +363,12 @@
             "problemMatcher": []
         },
 
-        // ------------------------------------------------------------------
-        // 共有 SDK の公開
-        // WHY: SDK は専用の sdk preset (テスト無効・ソース再ビルド無効) で作る。
-        //      成果物は SDK/<sdk-id>/ へ入り、GameHub はそこからエディターを起動する。
-        // ------------------------------------------------------------------
+        // @name 共有 SDK の公開
+        // @note 専用 preset を作らず通常 preset の成果物をそのまま SDK/<sdk-id>/ へ出す。開発用パスは DLL に焼かないので流用できる。
         {
             "label": "CMake: Build SDK (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build sdk sdk-debug --target FBZZSDK",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZSDK",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -425,7 +376,7 @@
         {
             "label": "CMake: Build SDK (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build sdk sdk-development --target FBZZSDK",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZSDK",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -433,15 +384,13 @@
         {
             "label": "CMake: Build SDK (Release)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build sdk sdk-release --target FBZZSDK",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZSDK",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
         },
 
-        // ------------------------------------------------------------------
-        // GameHub (Electron / TypeScript)
-        // ------------------------------------------------------------------
+        // @name GameHub (Electron / TypeScript)
         {
             "label": "GameHub: Typecheck",
             "type": "npm",
@@ -498,12 +447,8 @@
             "problemMatcher": []
         },
 
-        // ------------------------------------------------------------------
-        // 統合ビルド — GameHub から実際に起動するまでの一式
-        // WHY: GameHub は SDK/<sdk-id>/tools/ のエディターを起動するため、
-        //      Hub だけ・エンジンだけを新しくしても起動するのは古い方になる。
-        //      SDK 公開 → Hub ビルドの順を固定して、その食い違いを構造的に防ぐ。
-        // ------------------------------------------------------------------
+        // @name 統合ビルド — GameHub から起動するまでの一式
+        // @note GameHub は SDK/<sdk-id>/tools/ のエディターを起動する。SDK 公開 → Hub ビルドの順を固定し、片方だけ古い状態を防ぐ。
         {
             "label": "GameHub + SDK: Build (Debug)",
             "dependsOn": [
@@ -539,9 +484,7 @@
             "problemMatcher": []
         },
 
-        // ------------------------------------------------------------------
-        // 配布物の組み立て
-        // ------------------------------------------------------------------
+        // @name 配布物の組み立て
         {
             "label": "Distribution: Assemble (Debug)",
             "dependsOn": [
@@ -570,9 +513,7 @@
             "problemMatcher": []
         },
 
-        // ------------------------------------------------------------------
-        // EditorMcp (AI 連携サーバー)
-        // ------------------------------------------------------------------
+        // @name EditorMcp (AI 連携サーバー)
         {
             "label": "EditorMcp: Build",
             "type": "npm",
@@ -591,9 +532,7 @@
         }
     ],
 
-    // ----------------------------------------------------------------------
-    // タスク実行時に聞く値
-    // ----------------------------------------------------------------------
+    // @name タスク実行時に聞く値
     "inputs": [
         {
             "id": "testSuite",
