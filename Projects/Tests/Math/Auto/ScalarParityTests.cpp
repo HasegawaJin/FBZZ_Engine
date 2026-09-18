@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <span>
 #include <vector>
 
 namespace fbzz::tests {
@@ -186,6 +188,37 @@ TEST_F(ScalarParityTest, SphereCullingMatchesTheScalarReference)
         EXPECT_GT(inside, kCaseCount / 8);
         EXPECT_GT(outside, kCaseCount / 8);
     }
+}
+
+TEST_F(ScalarParityTest, BatchedSphereCullingMatchesOneByOne)
+{
+    /// @note 一括版は単体版と式も加算の順序も同じなので、境界ぎりぎりも含めて全件が一致する。
+    /// @note 4 の倍数でない個数にして、端数を単体版で処理する経路も通す。
+    constexpr int kSphereCount = 1023;
+    for (const math::Frustum& frustum : { PerspectiveFrustum(), OrthographicFrustum() }) {
+        std::vector<math::Vector4> spheres;
+        for (int i = 0; i < kSphereCount; ++i) {
+            const math::Vector3 center = Rng().NextVector3(-40.0f, 40.0f);
+            spheres.push_back({ center, Rng().NextFloat(0.0f, 5.0f) });
+        }
+        std::vector<uint8_t> visible(kSphereCount, 2);
+        frustum.IntersectsSpheres(spheres, visible);
+        for (int i = 0; i < kSphereCount; ++i) {
+            const uint8_t expected = frustum.IntersectsSphere(spheres[i].XYZ(), spheres[i].w) ? 1 : 0;
+            EXPECT_EQ(visible[i], expected) << "sphere " << i;
+        }
+    }
+}
+
+TEST_F(ScalarParityTest, BatchedSphereCullingWritesOnlyWhatFits)
+{
+    /// @note 出力が短いのは呼び出し側の誤り。報告して入る数だけ判定し、範囲外へは書かない。
+    const math::Frustum frustum = PerspectiveFrustum();
+    const std::vector<math::Vector4> spheres(9, math::Vector4{ 0.0f, 0.0f, 10.0f, 1.0f });
+    std::vector<uint8_t> visible(10, 2);
+    frustum.IntersectsSpheres(spheres, std::span<uint8_t>(visible).first(5));
+    for (int i = 0; i < 5; ++i) EXPECT_EQ(visible[i], 1) << "sphere " << i;
+    for (int i = 5; i < 10; ++i) EXPECT_EQ(visible[i], 2) << "sphere " << i;
 }
 
 TEST_F(ScalarParityTest, AabbCullingMatchesTheScalarReference)

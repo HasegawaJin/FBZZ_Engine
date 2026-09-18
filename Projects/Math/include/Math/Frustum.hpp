@@ -9,6 +9,9 @@
 #include "Matrix4.hpp"
 #include "Simd.hpp"
 
+#include <cstdint>
+#include <span>
+
 /// @note Plane.hpp include 後に別ヘッダ経由で Plane マクロが再定義された場合に備える。
 ///       Frustum は Plane 型を返すため、ここで名前を必ず型として解決させる。
 #ifdef Plane
@@ -40,6 +43,13 @@ struct Frustum {
     /// @brief AABB が視錐台と交差するかを判定する。
     /// @return 完全に外側なら false。
     bool IntersectsAABB(const Vector3& center, const Vector3& halfExtents) const;
+
+    /// @brief 多数の球をまとめて判定する。結果は IntersectsSphere を 1 個ずつ呼んだ場合と一致する。
+    /// @param spheres xyz = 中心、w = 半径。
+    /// @param visible 球ごとに交差なら 1、完全に外側なら 0 を書く。
+    /// @pre visible.size() >= spheres.size()。足りなければ契約違反を報告し、入る数だけ判定する。
+    /// @note 4 球ずつ転置して 6 平面と比べる。物体ごとに IntersectsSphere を呼ぶより 1 球あたりが安い。
+    void IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible) const;
 
     /// @brief ビュープロジェクション行列から 6 平面を抽出する (Gribb-Hartmann 法)。
     /// @pre DirectX 左手系、深度 [0,1]、列ベクトル規則 (M * v)。
