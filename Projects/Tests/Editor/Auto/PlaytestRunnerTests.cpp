@@ -181,6 +181,28 @@ TEST_F(PlaytestRunnerTest, BusStepCanExpectASpecificError)
     EXPECT_EQ(runner.State(), PlaytestState::PASSED);
 }
 
+TEST_F(PlaytestRunnerTest, BusQueryResultIsKeptInTheReport)
+{
+    /// @note 計測値 (profiler.snapshot 等) をシナリオから取り出すには、query の応答が報告に残る必要がある。command の応答は残さない。
+    PlaytestRunner runner;
+    FakeBus bus;
+    ASSERT_TRUE(Start(runner, R"({"steps":[
+        {"do":"bus","kind":"query","request":{"t":"fake.counter"}},
+        {"do":"bus","request":{"t":"fake.counter"}}
+    ]})"));
+
+    RunToEnd(runner, bus);
+
+    ASSERT_EQ(runner.State(), PlaytestState::PASSED);
+    const JsonValue report = runner.Report();
+    const auto& steps = report.Find("steps")->AsArray();
+    ASSERT_EQ(steps.size(), 2u);
+    const JsonValue* queried = steps[0].Find("result");
+    ASSERT_NE(queried, nullptr);
+    EXPECT_EQ(queried->Find("n")->AsNumber(), 1.0);
+    EXPECT_EQ(steps[1].Find("result"), nullptr);
+}
+
 TEST_F(PlaytestRunnerTest, UnknownStepFails)
 {
     PlaytestRunner runner;
