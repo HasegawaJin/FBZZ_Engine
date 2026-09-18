@@ -11,5 +11,6 @@
 | 名前 | 役割 | 呼び出し元 |
 |------|------|-----------|
 | `AgentLint/` | AGENTS.md の絶対制約・記述規約・置き場所を機械で検査する (Node) | `.claude/settings.json` の PostToolUse フック、`.github/workflows/tests.yml` |
+| `BenchReport/` | `--measure` の JSON から比較レポート (Markdown・SVG・HTML) と一覧を作る (TypeScript。Node 24 で直接実行) | `Tools/BenchCompare.ps1`、`Docs/design/benchmark-report.md` |
 | `ApiReference/` | Doxygen の XML から AI 向けの API Markdown (`build/docs/api/`) を作る (Python) | `Docs/conventions/comments.md`、CLAUDE.md |
 | `FontAtlasGen/` | TTF から BMFont 形式 (`.fnt` + PNG) のアトラスを作る (Python + Pillow) | `Assets/Fonts/` の `.fnt` の生成 |
