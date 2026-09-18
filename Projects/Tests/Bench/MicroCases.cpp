@@ -9,6 +9,7 @@
 #include <Math/MathUtils.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 
 #include <array>
 #include <cstdint>
@@ -80,6 +81,18 @@ double Matrix4Multiply(int ops)
     return sum;
 }
 
+double Matrix4Vector4(int ops)
+{
+    const Inputs& in = GetInputs();
+    float sum = 0.0f;
+    for (int i = 0; i < ops; ++i) {
+        const Vector3& p = in.vectors[(i + 3) & kInputMask];
+        const math::Vector4 clip = in.matrices[i & kInputMask] * math::Vector4{ p, 1.0f };
+        sum += clip.x + clip.w;
+    }
+    return sum;
+}
+
 double Matrix4Trs(int ops)
 {
     const Inputs& in = GetInputs();
@@ -136,17 +149,31 @@ double FrustumAabb(int ops)
     return inside;
 }
 
+/// @note 描画のカリング (GeometryPassHelpers / ShadowPass) が物体ごとに呼ぶ形。半径は extents.x を流用する。
+double FrustumSphere(int ops)
+{
+    const Inputs& in = GetInputs();
+    int inside = 0;
+    for (int i = 0; i < ops; ++i) {
+        const int k = i & kInputMask;
+        inside += in.frustum.IntersectsSphere(in.vectors[k], in.extents[k].x) ? 1 : 0;
+    }
+    return inside;
+}
+
 } // namespace
 
 const std::vector<MicroCase>& AllMicroCases()
 {
     static const std::vector<MicroCase> cases = {
         { "Matrix4 * Matrix4",        &Matrix4Multiply },
+        { "Matrix4 * Vector4",        &Matrix4Vector4 },
         { "Matrix4::TRS",             &Matrix4Trs },
         { "Matrix4::Inverse",         &Matrix4Inverse },
         { "Quaternion * Vector3",     &QuaternionRotate },
         { "Vector3::Normalized",      &Vector3Normalize },
         { "Frustum::IntersectsAABB",  &FrustumAabb },
+        { "Frustum::IntersectsSphere", &FrustumSphere },
     };
     return cases;
 }
