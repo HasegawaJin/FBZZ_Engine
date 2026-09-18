@@ -56,18 +56,6 @@
                 "FBZZ_ENABLE_SOURCE_REBUILD": "OFF",
                 "FBZZ_ENABLE_DX12": "OFF"
             }
-        },
-        {
-            "name": "sdk",
-            "displayName": "Shared SDK Publisher",
-            "generator": "Visual Studio 18 2026",
-            "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/SDK",
-            "cacheVariables": {
-                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
-                "FBZZ_BUILD_TESTS": "OFF",
-                "FBZZ_ENABLE_SOURCE_REBUILD": "OFF"
-            }
         }
     ],
     "buildPresets": [
@@ -90,21 +78,6 @@
             "name": "coverage",
             "configurePreset": "coverage",
             "configuration": "Debug"
-        },
-        {
-            "name": "sdk-debug",
-            "configurePreset": "sdk",
-            "configuration": "Debug"
-        },
-        {
-            "name": "sdk-development",
-            "configurePreset": "sdk",
-            "configuration": "Development"
-        },
-        {
-            "name": "sdk-release",
-            "configurePreset": "sdk",
-            "configuration": "Release"
         }
     ]
 }

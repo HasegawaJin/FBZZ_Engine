@@ -3,7 +3,7 @@
 Playerの移動は連続モーターを採用。歩行・走行の単発音と走行停止音を置き換え、Stage_01の先読みへ登録する。
 
 2026-09-14。Playerは高性能ロボットの滑らかなモーター加速・制動、四足Bossは荷重移動、蛇は擦れと通過で区別する。
-正本は `Tools/SfxGen/gen_movement.py`。最終構成は36本。既存30本を更新、新規6本。不要になった歩行・走行14本と停止2本はmetaごと削除する。
+正本は `GreenWare/Tools/SfxGen/gen_movement.py`。最終構成は36本。既存30本を更新、新規6本。不要になった歩行・走行14本と停止2本はmetaごと削除する。
 すべて手続き合成、48kHz / 16bit PCM / mono。既存の戦闘SEと同じ書き出し処理を使う。
 
 | 対象 | 素材 | 本数 |
@@ -32,7 +32,7 @@ Playerの移動は連続モーターを採用。歩行・走行の単発音と�
 ## 生成と整理
 
 ```text
-python Tools/SfxGen/gen_movement.py --output GreenWare/Assets/Sound/SE --preview <directory>
+python GreenWare/Tools/SfxGen/gen_movement.py --output GreenWare/Assets/Sound/SE --preview <directory>
 ```
 
 同じseedでPCMは再現する。既存WAVのmetaは書き換えず、新規ファイルにのみGUIDを発行する。

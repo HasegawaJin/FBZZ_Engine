@@ -9,22 +9,6 @@
 
 namespace fbzz::math {
 
-Matrix4 Matrix4::Identity() {
-    Matrix4 result;
-    result.m[0][0] = result.m[1][1] = result.m[2][2] = result.m[3][3] = 1.0f;
-    return result;
-}
-
-Matrix4 Matrix4::Zero() { return {}; }
-
-Matrix4 Matrix4::Translate(const Vector3& t) {
-    Matrix4 result = Identity();
-    result.m[0][3] = t.x;
-    result.m[1][3] = t.y;
-    result.m[2][3] = t.z;
-    return result;
-}
-
 Matrix4 Matrix4::Rotate(const Quaternion& q) {
     Quaternion qn = q.Normalized();
     float xx = qn.x * qn.x, yy = qn.y * qn.y, zz = qn.z * qn.z;
@@ -41,14 +25,6 @@ Matrix4 Matrix4::Rotate(const Quaternion& q) {
     result.m[2][0] = 2.0f * (xz - wy);
     result.m[2][1] = 2.0f * (yz + wx);
     result.m[2][2] = 1.0f - 2.0f * (xx + yy);
-    return result;
-}
-
-Matrix4 Matrix4::Scale(const Vector3& s) {
-    Matrix4 result = Identity();
-    result.m[0][0] = s.x;
-    result.m[1][1] = s.y;
-    result.m[2][2] = s.z;
     return result;
 }
 
@@ -105,32 +81,6 @@ Matrix4 Matrix4::Orthographic(float left, float right,
     result.m[1][3] = -(top + bottom) / (top - bottom);
     result.m[2][3] = -nearZ / (farZ - nearZ);
     result.m[3][3] = 1.0f;
-    return result;
-}
-
-Matrix4 Matrix4::operator*(const Matrix4& rhs) const {
-    Matrix4 result;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            for (int k = 0; k < 4; ++k)
-                result.m[r][c] += m[r][k] * rhs.m[k][c];
-    return result;
-}
-
-Vector4 Matrix4::operator*(const Vector4& v) const {
-    return {
-        m[0][0]*v.x + m[0][1]*v.y + m[0][2]*v.z + m[0][3]*v.w,
-        m[1][0]*v.x + m[1][1]*v.y + m[1][2]*v.z + m[1][3]*v.w,
-        m[2][0]*v.x + m[2][1]*v.y + m[2][2]*v.z + m[2][3]*v.w,
-        m[3][0]*v.x + m[3][1]*v.y + m[3][2]*v.z + m[3][3]*v.w
-    };
-}
-
-Matrix4 Matrix4::Transpose(const Matrix4& mat) {
-    Matrix4 result;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            result.m[r][c] = mat.m[c][r];
     return result;
 }
 
@@ -211,7 +161,5 @@ Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
     result.m[2][0] = c20 * inv; result.m[2][1] = c21 * inv; result.m[2][2] = c22 * inv;
     return result;
 }
-
-Matrix4 Matrix4::Transposed() const { return Transpose(*this); }
 
 } // namespace fbzz::math

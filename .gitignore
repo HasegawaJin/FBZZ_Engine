@@ -17,6 +17,9 @@ Builds/
 # DCC からの書き出しを Assets へ配備する前に一度受ける中継置き場。
 # 配備が済めば Assets 側が正本になり、ここは同じ FBX の二重持ちにしかならない。
 /Temp/
+# 一回きりのスクリプト・調査用コードの置き場 (AGENTS.md «ツールの置き場所»)。
+# Tools / DevTools / <Project>/Tools は索引で入場を管理し、ここへ置いたものは履歴に残さない。
+Scratch/
 
 # CMake
 CMakeCache.txt
@@ -157,7 +160,7 @@ Docs/Art/
 # Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
 Projects/GameHub/Templates/standard/Assets/Nature/Tree/**
 
-# Python bytecode (Tools/BlenderExport など)
+# Python bytecode (GreenWare/Tools/BlenderExport など)
 __pycache__/
 *.pyc
 

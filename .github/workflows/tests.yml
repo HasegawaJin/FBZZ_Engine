@@ -9,7 +9,7 @@ name: Tests
 #      分岐 (C1) 以降は clang-cl + llvm-cov の 2 本目のツールチェーンが要り、
 #      エンジン全体を clang-cl で再ビルドすることになる。CI の所要時間が倍になる割に
 #      «PR ごとに見る数字» としては行で足りるため、分岐は手元の
-#      Tools/RunCoverageLLVM.ps1 (VS Code タスク "Coverage: Branch + MC/DC (clang-cl)")
+#      Tools/Coverage/RunCoverageLLVM.ps1 (VS Code タスク "Coverage: Branch + MC/DC (clang-cl)")
 #      で必要な時だけ測る。規約は Docs/conventions/test.md の «13. カバレッジ»。
 
 on:
@@ -35,7 +35,7 @@ env:
 
 jobs:
   # 規約 (AGENTS.md «絶対制約» とコメント形式) の機械検査。数秒で終わるので、40 分のビルドより前に落とす。
-  # WHY 差分だけか: 旧コードには移行途中の違反が残る。PR で «増えた» 違反だけを咎める (Tools/AgentLint/lint.mjs)。
+  # WHY 差分だけか: 旧コードには移行途中の違反が残る。PR で «増えた» 違反だけを咎める (Projects/DevTools/AgentLint/lint.mjs)。
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -57,7 +57,7 @@ jobs:
             base="${{ github.event.before }}"
             if ! git cat-file -e "$base^{commit}" 2>/dev/null; then base="HEAD~1"; fi
           fi
-          node Tools/AgentLint/lint.mjs --base "$base"
+          node Projects/DevTools/AgentLint/lint.mjs --base "$base"
 
   # MCP サーバーの契約とツール。C++ の BusContractParityTests と対で、TypeScript 側の食い違いを落とす。
   # WHY Windows か: バスのクライアントテストが Named Pipe を実際に開く。
@@ -176,12 +176,12 @@ jobs:
       # アーティファクトの coverage.xml もランナー上でしか解決できない形のまま残る。
       - name: Normalise coverage paths
         shell: pwsh
-        run: ./Tools/NormalizeCoverageXml.ps1 -CoberturaPath coverage.xml
+        run: ./Tools/Coverage/NormalizeCoverageXml.ps1 -CoberturaPath coverage.xml
 
       - name: Summarise coverage
         id: coverage
         shell: pwsh
-        run: ./Tools/CoverageReport.ps1 -CoberturaPath coverage.xml -OutputPath coverage-comment.md
+        run: ./Tools/Coverage/CoverageReport.ps1 -CoberturaPath coverage.xml -OutputPath coverage-comment.md
 
       - name: Publish summary
         shell: pwsh

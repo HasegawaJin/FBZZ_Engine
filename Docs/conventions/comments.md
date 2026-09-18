@@ -1,7 +1,7 @@
 # コメント規約 — Doxygen と API リファレンス
 
 コメントは **AI と人が読む API リファレンスの原稿** である。`doxygen Docs/Doxyfile` が公開ヘッダーから
-HTML と XML を生成し、`Tools/ApiReference.py` が XML を AI 向けの圧縮 Markdown へ変換する。
+HTML と XML を生成し、`Projects/DevTools/ApiReference/ApiReference.py` が XML を AI 向けの圧縮 Markdown へ変換する。
 書くのは「コードから読めない契約と理由」だけ。読めば分かることを書くと、リファレンスがノイズで薄まる。
 
 | 生成物 | 場所 | 用途 |
@@ -13,8 +13,8 @@ HTML と XML を生成し、`Tools/ApiReference.py` が XML を AI 向けの圧�
 
 ```
 doxygen Docs/Doxyfile
-python Tools/ApiReference.py            # build/docs/xml → build/docs/api
-node Tools/AgentLint/lint.mjs --all <file>   # doxygen-comment 警告が 0 なら移行済み
+python Projects/DevTools/ApiReference/ApiReference.py            # build/docs/xml → build/docs/api
+node Projects/DevTools/AgentLint/lint.mjs --all <file>   # doxygen-comment 警告が 0 なら移行済み
 ```
 
 ---
@@ -27,7 +27,8 @@ node Tools/AgentLint/lint.mjs --all <file>   # doxygen-comment 警告が 0 な�
 - 参考にした論文・公式仕様の URL は `/// @see <URL> 題名` で数式・アルゴリズムの直近に残す。圧縮の対象にしない
 - **各タグは 1 行。** 段落が要る内容は `Docs/design/` に置き `@see` で指す
 - 使うタグは `@file @brief @author @date @param @tparam @return @pre @post @note @warning @see @todo @name`。`@details` `@remark` `@ret` などは使わない
-- `WHY:` `WHAT:` `NOTE:` `HOW:` のようなラベル儀式を書かない。理由は `@note` 1 行で事実として書く
+- `WHY:` `WHAT:` `NOTE:` `HOW:` のようなラベル儀式を書かない。理由は `@note` 1 行で事実として書く。`@note WHY xxxか:` のような混在も同じ
+- **C++ 以外も同じタグで書く。** CMake (`CMakeLists.txt` / `.cmake`) と PowerShell (`.ps1`) は `# @file` の 4 行ヘッダー + `# @note` / `# @brief` / `# @name` / `# @see`、JSONC (`.vscode/*.json`) は `// @note`。周囲の旧コメントが `# WHY` でも真似せず、触ったファイルは全体を直す。前例は `Projects/Tests/CMakeLists.txt` の冒頭
 
 ### ファイルヘッダー (全ファイル必須・桁揃え)
 
@@ -108,9 +109,9 @@ node Tools/AgentLint/lint.mjs --all <file>   # doxygen-comment 警告が 0 な�
 
 | 確認 | コマンド | 合格 |
 |---|---|---|
-| 旧形式の残り | `node Tools/AgentLint/lint.mjs --all <files>` | `doxygen-comment` 警告 0 |
+| 旧形式の残り | `node Projects/DevTools/AgentLint/lint.mjs --all <files>` | `doxygen-comment` / `doxygen-label` 警告 0 (CMake / `.ps1` はラベルだけを見る) |
 | Doxygen の誤読 | `doxygen Docs/Doxyfile` → `build/docs/doxygen-warnings.log` | 対象ファイルの警告 0 |
-| コメントだけ触ったか | `node Tools/AgentLint/codeonly.mjs snapshot <json> <paths>` → 編集 → `verify <json>` | `CHANGED` が 0 件 |
+| コメントだけ触ったか | `node Projects/DevTools/AgentLint/codeonly.mjs snapshot <json> <paths>` → 編集 → `verify <json>` | `CHANGED` が 0 件 |
 
 PostToolUse フックの `lint.mjs --hook` は「この編集で増えた違反」だけを報告する。旧コードの残りを一掃するときは `--all` で見る。
 
