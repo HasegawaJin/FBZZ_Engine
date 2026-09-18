@@ -26,10 +26,17 @@ namespace {
 
 constexpr uint32_t kMaxResolution = fluid::kMaxVectorFieldResolution;
 
-struct ImageComScope {
-    HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    ~ImageComScope() { if (SUCCEEDED(result)) CoUninitialize(); }
-};
+/// @brief 呼び出しスレッドで COM を使える状態にする。
+/// @return COM が使えるか。既に別モード (STA) で初期化済みの RPC_E_CHANGED_MODE も使える扱い。
+/// @note CoUninitialize は呼ばない。DirectXTex は WIC ファクトリをプロセス全体でキャッシュするため、
+///       最後の参照で COM を畳むと次回の呼び出しが解放済みのファクトリを掴む。同じプロセスで
+///       保存と読み込みを続けると 2 回目以降が必ず失敗する。
+/// @see https://learn.microsoft.com/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex (CoInitializeEx, Return value)
+bool EnsureCom()
+{
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
+}
 
 bool HasPngExtension(const std::string& path)
 {
@@ -85,7 +92,7 @@ bool SaveVectorFieldPng(const std::string& path, const fluid::VectorFieldAsset& 
     root.insert_or_assign("texture", toml::table{
         { "type", "data" }, { "srgb", false }, { "compression", "None" },
         { "mipmaps", false }, { "max_size", 16384 } });
-    ImageComScope com;
+    if (!EnsureCom()) return false;
     std::string error;
     if (!detail::SavePngRgba8(util::FileSystem::PathFromUtf8(path), field.sizeX,
                              field.sizeY * field.sizeZ, pixels, error)) {
@@ -126,7 +133,7 @@ bool LoadVectorFieldPng(const std::string& path, fluid::VectorFieldAsset& outFie
     }
     field.boundsMin = { lower[0], lower[1], lower[2] };
     field.boundsMax = { upper[0], upper[1], upper[2] };
-    ImageComScope com;
+    if (!EnsureCom()) return false;
     DirectX::ScratchImage image;
     const auto imagePath = util::FileSystem::PathFromUtf8(path);
     if (FAILED(DirectX::LoadFromWICFile(imagePath.c_str(),
