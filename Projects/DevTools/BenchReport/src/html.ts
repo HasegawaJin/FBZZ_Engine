@@ -44,8 +44,8 @@ h1 { font-size: clamp(22px, 4vw, 30px); line-height: 1.3; margin: 0 0 8px; }
 h2 { font-size: 18px; margin: 40px 0 4px; }
 .lede { color: var(--muted); margin: 0; }
 .note { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-code { font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--soft); padding: 1px 6px; border-radius: 4px; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 28px 0 0; }
+code { font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--soft); padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; margin: 28px 0 0; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
 .tile .label { color: var(--muted); font-size: 13px; margin: 0; }
 .tile .big { font-size: 32px; font-weight: 650; line-height: 1.2; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
@@ -55,6 +55,7 @@ code { font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; background
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 12px; }
 .chart { overflow-x: auto; }
 .chart svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.chart .compact { display: none; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
@@ -71,11 +72,15 @@ tr:last-child td { border-bottom: 0; }
 .change.improved { color: var(--improved); } .change.regressed { color: var(--regressed); } .change.caution { color: var(--caution); }
 .noise { color: var(--muted); font-size: 12px; margin-left: 4px; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 0; }
-dt { color: var(--muted); } dd { margin: 0; }
+dt { color: var(--muted); } dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .warning { border-left: 4px solid var(--caution); background: var(--caution-bg); padding: 12px 16px; border-radius: 6px; margin-top: 16px; }
 ul.method { margin: 0; padding-left: 20px; } ul.method li { margin: 4px 0; }
 footer { color: var(--muted); font-size: 12.5px; margin-top: 48px; }
-@media (max-width: 560px) { dl { grid-template-columns: 1fr; gap: 2px; } dd { margin-bottom: 8px; } }
+@media (max-width: 560px) {
+  dl { grid-template-columns: 1fr; gap: 2px; } dd { margin-bottom: 8px; }
+  .chart .wide { display: none; }
+  .chart .compact { display: block; }
+}
 `;
 
 function SummaryTiles(comparison: Comparison): string {
@@ -154,7 +159,7 @@ ${warning}
 <section>
 <h2>変化率</h2>
 <p class="note">0% を中心に、速くなった項目を左、遅くなった項目を右へ伸ばしている。色は判定。</p>
-<div class="panel chart">${RenderChart(comparison, { embedStyle: false })}</div>
+<div class="panel chart"><div class="wide">${RenderChart(comparison, { embedStyle: false, idPrefix: 'chart-wide' })}</div><div class="compact">${RenderChart(comparison, { embedStyle: false, compact: true, idPrefix: 'chart-compact' })}</div></div>
 </section>
 ${KindSection(comparison, 'scene')}
 ${KindSection(comparison, 'micro')}
