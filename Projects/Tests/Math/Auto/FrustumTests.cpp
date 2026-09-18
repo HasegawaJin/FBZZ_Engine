@@ -42,8 +42,8 @@ TEST_F(FrustumTest, ExtractedPlanesAreNormalized)
 {
     /// @note 正規化されていないと SignedDistanceTo が «スケール込みの距離» になり、
     ///       球や AABB の半径との比較が全部狂う。
-    for (const math::Plane& plane : frustum.planes)
-        EXPECT_NEAR(plane.normal.Length(), 1.0f, testkit::kTolerance);
+    for (int i = 0; i < math::Frustum::PLANE_COUNT; ++i)
+        EXPECT_NEAR(frustum.GetPlane(i).normal.Length(), 1.0f, testkit::kTolerance);
 }
 
 TEST_F(FrustumTest, EveryPlaneNormalPointsInward)
@@ -51,8 +51,8 @@ TEST_F(FrustumTest, EveryPlaneNormalPointsInward)
     /// @note 視錐台の «内側» にある点は、6 枚すべてに対して正の側にいる。
     const math::Vector3 inside = eye + math::Vector3::FORWARD * 10.0f;
 
-    for (const math::Plane& plane : frustum.planes)
-        EXPECT_GT(plane.SignedDistanceTo(inside), 0.0f);
+    for (int i = 0; i < math::Frustum::PLANE_COUNT; ++i)
+        EXPECT_GT(frustum.GetPlane(i).SignedDistanceTo(inside), 0.0f);
 }
 
 /// @name 点
@@ -154,10 +154,10 @@ TEST_F(FrustumTest, OrthographicSideWallsAreAxisAligned)
     const math::Frustum ortho = math::Frustum::FromViewProjection(
         math::Matrix4::Orthographic(-1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 10.0f));
 
-    EXPECT_VEC3_NEAR(ortho.planes[0].normal, math::Vector3::RIGHT, testkit::kTolerance);
-    EXPECT_VEC3_NEAR(ortho.planes[1].normal, -math::Vector3::RIGHT, testkit::kTolerance);
-    EXPECT_VEC3_NEAR(ortho.planes[4].normal, math::Vector3::FORWARD, testkit::kTolerance);
-    EXPECT_VEC3_NEAR(ortho.planes[5].normal, -math::Vector3::FORWARD, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(ortho.GetPlane(0).normal, math::Vector3::RIGHT, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(ortho.GetPlane(1).normal, -math::Vector3::RIGHT, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(ortho.GetPlane(4).normal, math::Vector3::FORWARD, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(ortho.GetPlane(5).normal, -math::Vector3::FORWARD, testkit::kTolerance);
 }
 
 } // namespace fbzz::tests

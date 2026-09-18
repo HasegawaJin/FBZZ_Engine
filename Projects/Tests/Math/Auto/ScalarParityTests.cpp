@@ -148,6 +148,25 @@ TEST_F(ScalarParityTest, TrsMatchesTheProductOfTranslateRotateScale)
 
 /// @name Frustum
 
+TEST_F(ScalarParityTest, PointContainmentMatchesTheScalarReference)
+{
+    for (const math::Frustum& frustum : { PerspectiveFrustum(), OrthographicFrustum() }) {
+        const reference::Planes planes = reference::PlanesOf(frustum);
+        int inside = 0;
+        int outside = 0;
+        for (int i = 0; i < kCaseCount * 4; ++i) {
+            const math::Vector3 point = Rng().NextVector3(-40.0f, 40.0f);
+            const float margin = reference::SphereMargin(planes, point, 0.0f);
+            if (std::fabs(margin) < kBoundaryMargin) continue;
+            const bool expected = margin >= 0.0f;
+            EXPECT_EQ(frustum.Contains(point), expected) << "case " << i;
+            ++(expected ? inside : outside);
+        }
+        EXPECT_GT(inside, kCaseCount / 8);
+        EXPECT_GT(outside, kCaseCount / 8);
+    }
+}
+
 TEST_F(ScalarParityTest, SphereCullingMatchesTheScalarReference)
 {
     for (const math::Frustum& frustum : { PerspectiveFrustum(), OrthographicFrustum() }) {

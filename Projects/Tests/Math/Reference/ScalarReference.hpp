@@ -132,7 +132,7 @@ inline math::Matrix4 Trs(const math::Vector3& t, const math::Quaternion& r, cons
 inline Planes PlanesOf(const math::Frustum& frustum)
 {
     Planes planes;
-    for (int i = 0; i < 6; ++i) planes[i] = frustum.planes[i];
+    for (int i = 0; i < 6; ++i) planes[i] = frustum.GetPlane(i);
     return planes;
 }
 
