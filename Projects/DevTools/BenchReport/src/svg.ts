@@ -46,22 +46,52 @@ export const CHART_STYLE = `
 export interface ChartOptions {
     /** false なら <style> を埋め込まない (HTML 側がまとめて持つとき)。 */
     embedStyle?: boolean;
+    /** true なら狭い画面向けに、項目名を棒の上へ置いた幅 360 の縦積み版を描く。 */
+    compact?: boolean;
+    /** 同じページに複数描くときの title / desc の id の接頭辞。 */
+    idPrefix?: string;
 }
+
+/** 幅の広い版は項目名を左に、狭い版は棒の上に置く。どちらも棒は中央の 0% から伸ばす。 */
+interface Layout {
+    width: number;
+    rowHeight: number;
+    plotLeft: number;
+    plotRight: number;
+    /** 行の上端から棒の中心までの距離。 */
+    barOffset: number;
+    labelX: number;
+    labelAnchor: 'start' | 'end';
+    /** 行の上端から項目名のベースラインまでの距離。 */
+    labelOffset: number;
+}
+
+const WIDE: Layout = {
+    width: WIDTH, rowHeight: ROW_HEIGHT, plotLeft: LABEL_WIDTH + VALUE_GUTTER, plotRight: WIDTH - VALUE_GUTTER,
+    barOffset: ROW_HEIGHT / 2, labelX: LABEL_WIDTH - 8, labelAnchor: 'end', labelOffset: ROW_HEIGHT / 2 + 4,
+};
+
+const COMPACT: Layout = {
+    width: 360, rowHeight: 44, plotLeft: 52, plotRight: 308,
+    barOffset: 30, labelX: 0, labelAnchor: 'start', labelOffset: 14,
+};
 
 export function RenderChart(comparison: Comparison, options: ChartOptions = {}): string {
     const rows = comparison.rows;
-    const height = TOP + rows.length * ROW_HEIGHT + BOTTOM;
-    const plotLeft = LABEL_WIDTH + VALUE_GUTTER;
-    const plotRight = WIDTH - VALUE_GUTTER;
+    const layout = options.compact ? COMPACT : WIDE;
+    const prefix = options.idPrefix ?? 'chart';
+    const height = TOP + rows.length * layout.rowHeight + BOTTOM;
+    const plotLeft = layout.plotLeft;
+    const plotRight = layout.plotRight;
     const center = (plotLeft + plotRight) / 2;
     const extent = AxisExtent(rows);
     const scale = (plotRight - center) / extent;
 
     const parts: string[] = [];
     const title = `${comparison.candidate.label} の ${comparison.baseline.label} に対する変化率`;
-    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" class="fbzz-chart" viewBox="0 0 ${WIDTH} ${height}" width="${WIDTH}" height="${height}" role="img" aria-labelledby="chart-title chart-desc">`);
-    parts.push(`<title id="chart-title">${EscapeXml(title)}</title>`);
-    parts.push(`<desc id="chart-desc">${EscapeXml(rows.map((row) => `${row.name} ${PhaseText(row.kind, row.phase)}: ${FormatChange(row.change)} (${VERDICT_TEXT[row.verdict]})`).join('。'))}</desc>`);
+    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" class="fbzz-chart" viewBox="0 0 ${layout.width} ${height}" width="${layout.width}" height="${height}" role="img" aria-labelledby="${prefix}-title ${prefix}-desc">`);
+    parts.push(`<title id="${prefix}-title">${EscapeXml(title)}</title>`);
+    parts.push(`<desc id="${prefix}-desc">${EscapeXml(rows.map((row) => `${row.name} ${PhaseText(row.kind, row.phase)}: ${FormatChange(row.change)} (${VERDICT_TEXT[row.verdict]})`).join('。'))}</desc>`);
     if (options.embedStyle !== false) parts.push(`<style>${CHART_STYLE}</style>`);
 
     parts.push(`<text class="sub" x="${center - 8}" y="18" text-anchor="end">← 速くなった</text>`);
@@ -69,18 +99,19 @@ export function RenderChart(comparison: Comparison, options: ChartOptions = {}):
 
     for (const fraction of [-1, -0.5, 0.5, 1]) {
         const x = center + fraction * extent * scale;
-        parts.push(`<line class="grid" x1="${x}" x2="${x}" y1="${TOP - 8}" y2="${height - BOTTOM + 4}"/>`);
+        // 狭い版は項目名が棒の上の全幅に載るので、縦の補助線を引くと文字に重なる。目盛りの数字だけ残す。
+        if (!options.compact) parts.push(`<line class="grid" x1="${x}" x2="${x}" y1="${TOP - 8}" y2="${height - BOTTOM + 4}"/>`);
         parts.push(`<text class="tick" x="${x}" y="${height - 12}" text-anchor="middle">${FormatChange(fraction * extent)}</text>`);
     }
     parts.push(`<text class="tick" x="${center}" y="${height - 12}" text-anchor="middle">0%</text>`);
 
     rows.forEach((row, index) => {
-        const y = TOP + index * ROW_HEIGHT;
-        const middle = y + ROW_HEIGHT / 2;
+        const y = TOP + index * layout.rowHeight;
+        const middle = y + layout.barOffset;
         const width = Math.max(1.5, Math.abs(row.change) * scale);
         const x = row.change < 0 ? center - width : center;
         const phase = PhaseText(row.kind, row.phase);
-        parts.push(`<text class="label" x="${LABEL_WIDTH - 8}" y="${middle + 4}" text-anchor="end">${EscapeXml(row.name)}<tspan class="sub"> · ${EscapeXml(phase)}</tspan></text>`);
+        parts.push(`<text class="label" x="${layout.labelX}" y="${y + layout.labelOffset}" text-anchor="${layout.labelAnchor}">${EscapeXml(row.name)}<tspan class="sub"> · ${EscapeXml(phase)}</tspan></text>`);
         parts.push(`<rect class="bar-${row.verdict}" x="${x.toFixed(1)}" y="${(middle - BAR_HEIGHT / 2).toFixed(1)}" width="${width.toFixed(1)}" height="${BAR_HEIGHT}" rx="2"><title>${EscapeXml(`${row.name} ${phase}: ${FormatChange(row.change)}`)}</title></rect>`);
         const valueX = row.change < 0 ? x - 6 : x + width + 6;
         parts.push(`<text class="value" x="${valueX.toFixed(1)}" y="${middle + 4}" text-anchor="${row.change < 0 ? 'end' : 'start'}">${FormatChange(row.change)}</text>`);
