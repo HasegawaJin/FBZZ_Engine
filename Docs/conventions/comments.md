@@ -1,7 +1,7 @@
 # コメント規約 — Doxygen と API リファレンス
 
 コメントは **AI と人が読む API リファレンスの原稿** である。`doxygen Docs/Doxyfile` が公開ヘッダーから
-HTML と XML を生成し、`Tools/ApiReference.py` が XML を AI 向けの圧縮 Markdown へ変換する。
+HTML と XML を生成し、`Projects/DevTools/ApiReference/ApiReference.py` が XML を AI 向けの圧縮 Markdown へ変換する。
 書くのは「コードから読めない契約と理由」だけ。読めば分かることを書くと、リファレンスがノイズで薄まる。
 
 | 生成物 | 場所 | 用途 |
@@ -13,8 +13,8 @@ HTML と XML を生成し、`Tools/ApiReference.py` が XML を AI 向けの圧�
 
 ```
 doxygen Docs/Doxyfile
-python Tools/ApiReference.py            # build/docs/xml → build/docs/api
-node Tools/AgentLint/lint.mjs --all <file>   # doxygen-comment 警告が 0 なら移行済み
+python Projects/DevTools/ApiReference/ApiReference.py            # build/docs/xml → build/docs/api
+node Projects/DevTools/AgentLint/lint.mjs --all <file>   # doxygen-comment 警告が 0 なら移行済み
 ```
 
 ---
@@ -109,9 +109,9 @@ node Tools/AgentLint/lint.mjs --all <file>   # doxygen-comment 警告が 0 な�
 
 | 確認 | コマンド | 合格 |
 |---|---|---|
-| 旧形式の残り | `node Tools/AgentLint/lint.mjs --all <files>` | `doxygen-comment` / `doxygen-label` 警告 0 (CMake / `.ps1` はラベルだけを見る) |
+| 旧形式の残り | `node Projects/DevTools/AgentLint/lint.mjs --all <files>` | `doxygen-comment` / `doxygen-label` 警告 0 (CMake / `.ps1` はラベルだけを見る) |
 | Doxygen の誤読 | `doxygen Docs/Doxyfile` → `build/docs/doxygen-warnings.log` | 対象ファイルの警告 0 |
-| コメントだけ触ったか | `node Tools/AgentLint/codeonly.mjs snapshot <json> <paths>` → 編集 → `verify <json>` | `CHANGED` が 0 件 |
+| コメントだけ触ったか | `node Projects/DevTools/AgentLint/codeonly.mjs snapshot <json> <paths>` → 編集 → `verify <json>` | `CHANGED` が 0 件 |
 
 PostToolUse フックの `lint.mjs --hook` は「この編集で増えた違反」だけを報告する。旧コードの残りを一掃するときは `--all` で見る。
 

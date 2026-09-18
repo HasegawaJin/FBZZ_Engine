@@ -25,6 +25,7 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 | FetchContent | `ThirdParty/` へベンダー + `LICENSE` + `VERSION` + `THIRD-PARTY-NOTICES.md` へ追記 |
 | `cmake` / `msbuild` の直叩き | 人は VS Code / VS のタスク、AI は `Tools/AgentBuild.ps1` (VS 環境を知るのは `Tools/VsEnvironment.ps1` だけ) |
 | `git checkout -- <path>` / `git restore` | 戻したい対象を提示して判断を仰ぐ |
+| 一回きりのスクリプト (調査・検査・プレビュー) をリポジトリへ置く | `Scratch/` (Git 対象外)。ツールとして残すなら «ツールの置き場所» の索引へ |
 | コミットへの `Co-Authored-By` / `Generated with` | 付けない |
 
 ## コード規約
@@ -42,7 +43,7 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 ```
 
 - **コメントはすべて Doxygen 形式** (`///` + `@brief` / `@param` / `@return` / `@pre` / `@note` / `@warning` / `@see`)。CMake・PowerShell は `# @note`、JSONC は `// @note` と記号だけ替えて同じタグで書く。`WHY:` などのラベルはどの言語でも書かない。`//` の自由記述は書かない。関数本体の中で補足が要る箇所も `/// @note` 1 行で書く (Doxygen は本体内を拾わないので、契約に関わる理由は宣言側の `@note` に置く)
-- **短く書く**。各タグ 1 行。段落が要るなら `Docs/design/` に置いて `@see` で指す。生成は `doxygen Docs/Doxyfile` → `python Tools/ApiReference.py` (AI 向け Markdown は `build/docs/api/`、警告は `build/docs/doxygen-warnings.log`)。詳細と移行表は `Docs/conventions/comments.md`
+- **短く書く**。各タグ 1 行。段落が要るなら `Docs/design/` に置いて `@see` で指す。生成は `doxygen Docs/Doxyfile` → `python Projects/DevTools/ApiReference/ApiReference.py` (AI 向け Markdown は `build/docs/api/`、警告は `build/docs/doxygen-warnings.log`)。詳細と移行表は `Docs/conventions/comments.md`
 - **リファレンスは実装のコメントにも残す**。参考にした論文・公式仕様・公式ドキュメントの URL を、対応する数式・アルゴリズム・API 契約の宣言または実装の直近に `/// @see <URL>` で記載する。何を参照したか分かる題名・節名も添え、設計文書や作業報告だけにリンクを置かない。
 - **書くのは「コードから読めないこと」だけ**。契約 (単位・座標系・所有権・スレッド・失敗時の戻り値) と、数式の根拠・順序依存・ドライバ回避策のような非自明な理由のみ。処理をなぞる説明・自明なゲッターの説明・引数名を言い換えただけの `@param` は書かない
 - 旧コードの `// FBZZ Engine` バナー・`//` コメント・`@ret` などの独自タグは真似しない。**見つけ次第すべて Doxygen 形式へ直す** (触ったファイルは全体を直し切る)。`doxygen Docs/Doxyfile` の警告ログは旧コメントの残りを探す手掛かりになる
@@ -99,6 +100,18 @@ FBZZ_REFLECT(EnemyComponent)   // フィールド宣言の締め。クラス外�
 - エディター起動中に git でツリーを巻き戻さない (`.meta` が作り直されて GUID が変わる)
 - シェーダー (`Assets/Shaders/<Category>/*.hlsl`) はエンジン側とプロジェクト側に複製がある。直すときは全コピーを検索して全部直す
 - 形式の定義は `Engine/Format/` と `Engine/Asset/` のヘッダーを読む
+
+## ツールの置き場所
+
+| 置き場所 | 置くもの |
+|---------|---------|
+| `Projects/DevTools/<Name>/` | エンジンが持つ開発用プログラム (AgentLint・ApiReference・FontAtlasGen …) |
+| `Tools/` | 開発の入口になる薄いスクリプト (AgentBuild・VcBuild・Coverage …)。タスク・CI・スキルから呼ばれるもの |
+| `<Project>/Tools/` | そのゲームのアセット制作パイプライン (`GreenWare/Tools/BlenderExport` …) |
+| `Scratch/` | 一回きりのスクリプト・調査用コード。Git に入らない |
+
+- 上の 3 つ (`Scratch/` 以外) は各根の `README.md` が索引。載っていないファイルは AgentLint の `tool-unlisted` が ERROR にする
+- 索引へ足すのはユーザーの承認を得てから。役割と呼び出し元 (タスク・CI・スキル・設計文書) を書けないものはツールではない
 
 ## ビルド・テスト・Git
 

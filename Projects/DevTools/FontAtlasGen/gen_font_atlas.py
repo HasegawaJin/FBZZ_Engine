@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # FBZZ Engine
-# Tools/FontAtlasGen/gen_font_atlas.py
+# Projects/DevTools/FontAtlasGen/gen_font_atlas.py
 # TTF フォントを RGBA PNG アトラスと .fnt メタデータファイルに変換する。
 #
 # 必要ライブラリ: pip install Pillow

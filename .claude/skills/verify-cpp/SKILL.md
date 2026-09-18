@@ -49,7 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 test -F
 
 ## 4. 規約
 
-- 編集ごとに PostToolUse フックの `Tools/AgentLint/lint.mjs` が走る。`ERROR` は直してから進む。まとめて見るなら `node Tools/AgentLint/lint.mjs --changed`
+- 編集ごとに PostToolUse フックの `Projects/DevTools/AgentLint/lint.mjs` が走る。`ERROR` は直してから進む。まとめて見るなら `node Projects/DevTools/AgentLint/lint.mjs --changed`
 - シェーダーを直したら `Assets/Shaders` と `GreenWare/Assets/Shaders` の両方を同じ内容にする (lint の `shader-copies`)
 
 ## 5. 報告

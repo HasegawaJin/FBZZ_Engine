@@ -1,10 +1,10 @@
 // FBZZ Engine
-// codeonly.mjs | Tools/AgentLint
+// codeonly.mjs | Projects/DevTools/AgentLint
 // «コメントだけを触った» 編集の証明。コメントを剥いだコードのハッシュを取り、編集の前後で比べる。
 //
 // 使い方:
-//   node Tools/AgentLint/codeonly.mjs snapshot <out.json> <file|dir...>   編集前に撮る
-//   node Tools/AgentLint/codeonly.mjs verify   <in.json>  [file|dir...]   編集後に比べる (省略時は snapshot の全件)
+//   node Projects/DevTools/AgentLint/codeonly.mjs snapshot <out.json> <file|dir...>   編集前に撮る
+//   node Projects/DevTools/AgentLint/codeonly.mjs verify   <in.json>  [file|dir...]   編集後に比べる (省略時は snapshot の全件)
 //
 // 文字列リテラルは残し、コメントと空白だけを落とす。コメント整理で文字列を書き換えた事故も検出する。
 // 終了コード: 0 = 全件一致 / 1 = 差分あり / 2 = 使い方の誤り。
@@ -15,7 +15,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CPP_EXTENSIONS = new Set(['.hpp', '.cpp', '.inl', '.h']);
 
 /** `0x8000'0000u` の桁区切りか。文字リテラルの開始と取り違えると、同じ行の `//` コメントをコード扱いしてしまう。 */
