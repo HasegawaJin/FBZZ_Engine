@@ -13,7 +13,7 @@
 
 #include <Editor/Util/FluidPartOverlay.hpp>
 
-#include <Engine/Asset/FluidOperatorEval.hpp>
+#include <Fluid/FluidOperatorEval.hpp>
 
 #include <algorithm>
 #include <cfloat>
@@ -26,19 +26,19 @@
 namespace fbzz::editor {
 namespace {
 
-using asset::FluidCollider;
-using asset::FluidForce;
-using asset::FluidRecipe;
-using asset::FluidSource;
+using fluid::FluidCollider;
+using fluid::FluidForce;
+using fluid::FluidRecipe;
+using fluid::FluidSource;
 using Kind = FluidSelectionKind;
 
 constexpr float kMinPartSize = 0.005f;
 constexpr float kCenterHandleRadius = 7.0f;
 constexpr float kHandleRadius = 6.0f;
-// 向きのハンドルは向きしか表さないので、部品の大きさによらず画面上で一定の距離に置く。
+/// 向きのハンドルは向きしか表さないので、部品の大きさによらず画面上で一定の距離に置く。
 constexpr float kDirectionHandlePixels = 30.0f;
 constexpr float kPickTolerancePixels = 5.0f;
-// 選択中の部品のハンドルは先に並ぶ。後ろのハンドルはこれ以上近くないと勝てない (重なった点で選択が飛ばない)。
+/// 選択中の部品のハンドルは先に並ぶ。後ろのハンドルはこれ以上近くないと勝てない (重なった点で選択が飛ばない)。
 constexpr float kHandleTieSlackPixels = 1.0f;
 constexpr float kFacingViewPlanar = 0.1f;
 
@@ -46,7 +46,7 @@ constexpr ImU32 kSourceColor = IM_COL32(110, 235, 140, 255);
 constexpr ImU32 kForceColor = IM_COL32(255, 170, 60, 255);
 constexpr ImU32 kColliderColor = IM_COL32(225, 228, 240, 255);
 
-// ── 共通の幾何 ──
+/// @name 共通の幾何
 
 float EvalTime(const FluidRecipe& recipe, float time)
 {
@@ -63,7 +63,7 @@ float PlanarLength(const math::Vector3& v)
     return std::sqrt(v.x * v.x + v.y * v.y);
 }
 
-// 2D の絵は奥行きを見ないので xy だけで向きを取る。
+/// 2D の絵は奥行きを見ないので xy だけで向きを取る。
 math::Vector3 PlanarDirection(const math::Vector3& d, const math::Vector3& fallback)
 {
     const float length = PlanarLength(d);
@@ -81,7 +81,7 @@ float DomainLength(const FluidViewMapping& mapping, float pixels)
     return mapping.size > 0.0f ? pixels * 2.0f / mapping.size : 0.0f;
 }
 
-// 画面は y 下向き。
+/// 画面は y 下向き。
 ImVec2 AlongScreen(const ImVec2& from, const math::Vector3& domainDirection, float pixels)
 {
     return { from.x + domainDirection.x * pixels, from.y - domainDirection.y * pixels };
@@ -94,7 +94,7 @@ float ScreenDistance(const ImVec2& a, const ImVec2& b)
     return std::sqrt(dx * dx + dy * dy);
 }
 
-// PickFluidPart は ImGui の文脈なしでも呼ばれる (テスト) ので、アイコンの大きさはフォントでなく正方形から決める。
+/// PickFluidPart は ImGui の文脈なしでも呼ばれる (テスト) ので、アイコンの大きさはフォントでなく正方形から決める。
 float IconPixels(const FluidViewMapping& mapping)
 {
     return std::clamp(mapping.size * 0.028f, 8.0f, 14.0f);
@@ -102,12 +102,12 @@ float IconPixels(const FluidViewMapping& mapping)
 
 bool ForceIsPlaced(const FluidForce& force)
 {
-    using Type = asset::FluidForceType;
+    using Type = fluid::FluidForceType;
     return force.radius > 0.0f || force.type == Type::Attract || force.type == Type::Repulse
         || force.type == Type::Vortex;
 }
 
-// 領域全体に効く力は置き場所が無いので、左上に並べたアイコンで見せる。描く側と選ぶ側で並びを揃える。
+/// 領域全体に効く力は置き場所が無いので、左上に並べたアイコンで見せる。描く側と選ぶ側で並びを揃える。
 ImVec2 GlobalForceIconCenter(const FluidViewMapping& mapping, int slot)
 {
     const float icon = IconPixels(mapping);
@@ -123,7 +123,7 @@ int GlobalForceSlot(const FluidRecipe& recipe, int index, const FluidPartVisibil
     return slot;
 }
 
-// 長さ 0 の向きは上向き (FluidSourceWeight の既定) なので画面内として扱う。
+/// 長さ 0 の向きは上向き (FluidSourceWeight の既定) なので画面内として扱う。
 bool RingFacesView(const math::Vector3& direction)
 {
     return direction.LengthSq() > 1.0e-12f && std::abs(direction.z) >= PlanarLength(direction);
@@ -146,8 +146,8 @@ ConeFrame MakeConeFrame(const FluidSource& source)
     return frame;
 }
 
-// カプセル / 円柱の芯を画面内に倒した枠。size.x = 半径、size.y = 軸方向の長さの半分。
-// 2D の絵は奥行きを見ないので、円錐と同じく軸の xy 成分だけで描く。
+/// カプセル / 円柱の芯を画面内に倒した枠。size.x = 半径、size.y = 軸方向の長さの半分。
+/// 2D の絵は奥行きを見ないので、円錐と同じく軸の xy 成分だけで描く。
 struct SegmentFrame {
     math::Vector3 axis;
     math::Vector3 across;
@@ -176,7 +176,7 @@ struct Plate {
 Plate MakePlate(const FluidSource& source)
 {
     Plate plate;
-    asset::FluidTextureSourceBasis(source, plate.right, plate.up, plate.normal);
+    fluid::FluidTextureSourceBasis(source, plate.right, plate.up, plate.normal);
     plate.ax = plate.right * (std::max)(source.size.x, 0.0f);
     plate.ay = plate.up * (std::max)(source.size.y, 0.0f);
     return plate;
@@ -190,7 +190,7 @@ bool TextureOffersDirection(const Plate& plate)
 /// 部品の基準位置・動き・time の姿。
 struct PartView {
     const math::Vector3* base = nullptr;
-    const asset::FluidMotion* motion = nullptr;
+    const fluid::FluidMotion* motion = nullptr;
     math::Vector3 posed;
     bool placed = true;
 };
@@ -203,7 +203,7 @@ bool ViewPart(const FluidRecipe& recipe, Kind list, int index, float evalTime, P
         const FluidSource& source = recipe.sources[static_cast<std::size_t>(index)];
         out.base = &source.center;
         out.motion = &source.motion;
-        out.posed = asset::PoseFluidSource(source, evalTime).center;
+        out.posed = fluid::PoseFluidSource(source, evalTime).center;
         out.placed = true;
         return true;
     }
@@ -212,7 +212,7 @@ bool ViewPart(const FluidRecipe& recipe, Kind list, int index, float evalTime, P
         const FluidForce& force = recipe.forces[static_cast<std::size_t>(index)];
         out.base = &force.center;
         out.motion = &force.motion;
-        out.posed = asset::PoseFluidForce(force, evalTime).center;
+        out.posed = fluid::PoseFluidForce(force, evalTime).center;
         out.placed = ForceIsPlaced(force);
         return true;
     }
@@ -221,7 +221,7 @@ bool ViewPart(const FluidRecipe& recipe, Kind list, int index, float evalTime, P
         const FluidCollider& collider = recipe.colliders[static_cast<std::size_t>(index)];
         out.base = &collider.center;
         out.motion = &collider.motion;
-        out.posed = asset::PoseFluidCollider(collider, evalTime).center;
+        out.posed = fluid::PoseFluidCollider(collider, evalTime).center;
         out.placed = true;
         return true;
     }
@@ -230,7 +230,7 @@ bool ViewPart(const FluidRecipe& recipe, Kind list, int index, float evalTime, P
     }
 }
 
-// ── ハンドル ──
+/// @name ハンドル
 
 void AddHandle(std::vector<FluidPartHandle>& out, Kind list, int index, FluidHandleKind kind, const ImVec2& screen,
                int keyIndex = -1)
@@ -245,7 +245,7 @@ void AddHandle(std::vector<FluidPartHandle>& out, Kind list, int index, FluidHan
     out.push_back(handle);
 }
 
-// Center は必ず先頭に積む (DrawSelectedHandles が向きの線の根元に使う)。
+/// Center は必ず先頭に積む (DrawSelectedHandles が向きの線の根元に使う)。
 void CollectPartHandles(std::vector<FluidPartHandle>& out, const FluidViewMapping& mapping, const FluidRecipe& recipe,
                         Kind list, int index, float evalTime, bool full)
 {
@@ -263,7 +263,7 @@ void CollectPartHandles(std::vector<FluidPartHandle>& out, const FluidViewMappin
     const math::Vector3 up{ 0.0f, 1.0f, 0.0f };
 
     if (list == Kind::Source) {
-        using Shape = asset::FluidSourceShape;
+        using Shape = fluid::FluidSourceShape;
         const FluidSource& source = recipe.sources[static_cast<std::size_t>(index)];
         const float sx = (std::max)(source.size.x, 0.0f);
         const float sy = (std::max)(source.size.y, 0.0f);
@@ -308,11 +308,11 @@ void CollectPartHandles(std::vector<FluidPartHandle>& out, const FluidViewMappin
     } else if (list == Kind::Force) {
         const FluidForce& force = recipe.forces[static_cast<std::size_t>(index)];
         if (force.radius > 0.0f) addSize(c + math::Vector3{ force.radius, 0.0f, 0.0f });
-        // 2D では渦の軸は常に奥行きなので、向きを掴めるのは風だけ。
-        if (force.type == asset::FluidForceType::Wind)
+        /// @note 2D では渦の軸は常に奥行きなので、向きを掴めるのは風だけ。
+        if (force.type == fluid::FluidForceType::Wind)
             addDirection(AlongScreen(cs, PlanarDirection(force.direction, { 1.0f, 0.0f, 0.0f }), kDirectionHandlePixels));
     } else {
-        using Shape = asset::FluidColliderShape;
+        using Shape = fluid::FluidColliderShape;
         const FluidCollider& collider = recipe.colliders[static_cast<std::size_t>(index)];
         const float sx = (std::max)(collider.size.x, 0.0f);
         const float sy = (std::max)(collider.size.y, 0.0f);
@@ -324,7 +324,7 @@ void CollectPartHandles(std::vector<FluidPartHandle>& out, const FluidViewMappin
             addSize(c + math::Vector3{ sx, sy, 0.0f });
             break;
         case Shape::Plane:
-            // 画面の真正面を向いた面 (2D では効かない) も、掴めば画面内へ倒して直せるように出す。
+            /// @note 画面の真正面を向いた面 (2D では効かない) も、掴めば画面内へ倒して直せるように出す。
             addDirection(AlongScreen(cs, PlanarDirection(collider.direction, up), kDirectionHandlePixels));
             break;
         case Shape::Capsule:
@@ -337,19 +337,19 @@ void CollectPartHandles(std::vector<FluidPartHandle>& out, const FluidViewMappin
         }
     }
 
-    const std::vector<asset::FluidMotionKey>& keys = view.motion->keys;
+    const std::vector<fluid::FluidMotionKey>& keys = view.motion->keys;
     for (std::size_t k = 0; k < keys.size(); ++k) {
         AddHandle(out, list, index, FluidHandleKind::MotionKey, mapping.ToScreen(*view.base + keys[k].offset),
                   static_cast<int>(k));
     }
 }
 
-// ── ドラッグ ──
+/// @name ドラッグ
 
 math::Vector3 DraggedDirection(const math::Vector3& original, const math::Vector3& fallback, float dx, float dy)
 {
     const float planar = std::sqrt(dx * dx + dy * dy);
-    // 中心の上では向きが決まらない。
+    /// @note 中心の上では向きが決まらない。
     if (planar < 1.0e-5f) return original;
     const float length = original.Length();
     const math::Vector3 unit = length > 1.0e-6f ? original / length : fallback;
@@ -365,13 +365,13 @@ void DragHalfExtents(math::Vector3& size, float dx, float dy)
     size.y = (std::max)(std::abs(dy), kMinPartSize);
 }
 
-// 板の角 = center + right × sx + up × sy (xy だけ) を解いて sx / sy を戻す。
+/// 板の角 = center + right × sx + up × sy (xy だけ) を解いて sx / sy を戻す。
 void DragPlateSize(FluidSource& source, float dx, float dy)
 {
     math::Vector3 right;
     math::Vector3 up;
     math::Vector3 normal;
-    asset::FluidTextureSourceBasis(source, right, up, normal);
+    fluid::FluidTextureSourceBasis(source, right, up, normal);
     const float det = right.x * up.y - right.y * up.x;
     float a = source.size.x;
     float b = source.size.y;
@@ -379,7 +379,7 @@ void DragPlateSize(FluidSource& source, float dx, float dy)
         a = (dx * up.y - dy * up.x) / det;
         b = (right.x * dy - right.y * dx) / det;
     } else {
-        // 板が真横を向くと画面では線になり、2 軸を分けられない。画面に見えている軸だけ直す。
+        /// @note 板が真横を向くと画面では線になり、2 軸を分けられない。画面に見えている軸だけ直す。
         const float rr = right.x * right.x + right.y * right.y;
         const float uu = up.x * up.x + up.y * up.y;
         if (rr > 0.0025f) a = (dx * right.x + dy * right.y) / rr;
@@ -389,12 +389,12 @@ void DragPlateSize(FluidSource& source, float dx, float dy)
     source.size.y = (std::max)(std::abs(b), kMinPartSize);
 }
 
-// Center / MotionKey は部品の種類によらない。処理したら true。
-bool ApplyCommonDrag(math::Vector3& center, asset::FluidMotion& motion, const math::Vector3& posed,
+/// Center / MotionKey は部品の種類によらない。処理したら true。
+bool ApplyCommonDrag(math::Vector3& center, fluid::FluidMotion& motion, const math::Vector3& posed,
                      const FluidPartHandle& handle, const math::Vector3& target)
 {
     if (handle.kind == FluidHandleKind::Center) {
-        // 動きのずれは基準の center に依らないので、差だけ足せば今の姿がカーソルに乗る。
+        /// @note 動きのずれは基準の center に依らないので、差だけ足せば今の姿がカーソルに乗る。
         center.x += target.x - posed.x;
         center.y += target.y - posed.y;
         return true;
@@ -413,7 +413,7 @@ bool ApplyCommonDrag(math::Vector3& center, asset::FluidMotion& motion, const ma
 void ApplySourceShapeDrag(FluidSource& source, FluidHandleKind kind, const math::Vector3& c,
                           const math::Vector3& target)
 {
-    using Shape = asset::FluidSourceShape;
+    using Shape = fluid::FluidSourceShape;
     const float dx = target.x - c.x;
     const float dy = target.y - c.y;
     const float distance = std::sqrt(dx * dx + dy * dy);
@@ -427,7 +427,7 @@ void ApplySourceShapeDrag(FluidSource& source, FluidHandleKind kind, const math:
             DragHalfExtents(source.size, dx, dy);
             break;
         case Shape::Cone: {
-            // ハンドルは底の縁。軸方向の成分が長さ、軸に直交する成分が底の半径。
+            /// @note ハンドルは底の縁。軸方向の成分が長さ、軸に直交する成分が底の半径。
             const ConeFrame frame = MakeConeFrame(source);
             const math::Vector3 v{ dx, dy, 0.0f };
             source.size.y = (std::max)(math::Vector3::Dot(v, frame.axis), kMinPartSize);
@@ -439,7 +439,7 @@ void ApplySourceShapeDrag(FluidSource& source, FluidHandleKind kind, const math:
             break;
         case Shape::Capsule:
         case Shape::Cylinder: {
-            // ハンドルは «端 + 半径» の角。軸方向の成分が半分の長さ、軸に直交する成分が半径。
+            /// @note ハンドルは «端 + 半径» の角。軸方向の成分が半分の長さ、軸に直交する成分が半径。
             const SegmentFrame frame = MakeSegmentFrame(source.direction, source.size);
             const math::Vector3 v{ dx, dy, 0.0f };
             source.size.y = (std::max)(std::abs(math::Vector3::Dot(v, frame.axis)), kMinPartSize);
@@ -453,7 +453,7 @@ void ApplySourceShapeDrag(FluidSource& source, FluidHandleKind kind, const math:
         const math::Vector3 fallback = source.shape == Shape::Texture ? math::Vector3{ 0.0f, 0.0f, 1.0f }
                                                                       : math::Vector3{ 0.0f, 1.0f, 0.0f };
         source.direction = DraggedDirection(source.direction, fallback, dx, dy);
-        // 円錐の向きのハンドルは底の中心にある。長さもカーソルまでに合わせないと、手を離すと底がカーソルから跳ねる。
+        /// @note 円錐の向きのハンドルは底の中心にある。長さもカーソルまでに合わせないと、手を離すと底がカーソルから跳ねる。
         if (source.shape == Shape::Cone && distance > 1.0e-5f) source.size.y = (std::max)(distance, kMinPartSize);
     }
 }
@@ -472,7 +472,7 @@ void ApplyForceShapeDrag(FluidForce& force, FluidHandleKind kind, const math::Ve
 void ApplyColliderShapeDrag(FluidCollider& collider, FluidHandleKind kind, const math::Vector3& c,
                             const math::Vector3& target)
 {
-    using Shape = asset::FluidColliderShape;
+    using Shape = fluid::FluidColliderShape;
     const float dx = target.x - c.x;
     const float dy = target.y - c.y;
     if (kind == FluidHandleKind::Size) {
@@ -491,7 +491,7 @@ void ApplyColliderShapeDrag(FluidCollider& collider, FluidHandleKind kind, const
     }
 }
 
-// ── 形の当たり (領域座標の xy) ──
+/// @name 形の当たり (領域座標の xy)
 
 float SegmentDistance(const math::Vector3& p, const math::Vector3& a, const math::Vector3& b)
 {
@@ -506,7 +506,7 @@ float SegmentDistance(const math::Vector3& p, const math::Vector3& a, const math
     return std::sqrt(dx * dx + dy * dy);
 }
 
-// 凸四角形の中か、辺の近く。真横を向いた板は面積 0 の線になるので、辺の近さで拾う。
+/// 凸四角形の中か、辺の近く。真横を向いた板は面積 0 の線になるので、辺の近さで拾う。
 bool QuadContains(const math::Vector3 (&corners)[4], const math::Vector3& p, float tolerance)
 {
     float sign = 0.0f;
@@ -528,7 +528,7 @@ bool QuadContains(const math::Vector3 (&corners)[4], const math::Vector3& p, flo
 
 bool SourceContains(const FluidSource& source, const math::Vector3& c, const math::Vector3& p, float tolerance)
 {
-    using Shape = asset::FluidSourceShape;
+    using Shape = fluid::FluidSourceShape;
     const float dx = p.x - c.x;
     const float dy = p.y - c.y;
     const float distance = std::sqrt(dx * dx + dy * dy);
@@ -580,7 +580,7 @@ bool SourceContains(const FluidSource& source, const math::Vector3& c, const mat
 
 bool ColliderContains(const FluidCollider& collider, const math::Vector3& c, const math::Vector3& p, float tolerance)
 {
-    using Shape = asset::FluidColliderShape;
+    using Shape = fluid::FluidColliderShape;
     const float dx = p.x - c.x;
     const float dy = p.y - c.y;
     switch (collider.shape) {
@@ -590,7 +590,7 @@ bool ColliderContains(const FluidCollider& collider, const math::Vector3& c, con
         return std::abs(dx) <= (std::max)(collider.size.x, 0.0f) + tolerance
             && std::abs(dy) <= (std::max)(collider.size.y, 0.0f) + tolerance;
     case Shape::Plane: {
-        // 固体の側は領域の半分を覆うことがある。そこを掴めると他の部品が選べなくなるので、面の線の近くだけにする。
+        /// @note 固体の側は領域の半分を覆うことがある。そこを掴めると他の部品が選べなくなるので、面の線の近くだけにする。
         const math::Vector3& n = collider.direction;
         if (PlanarLength(n) < 1.0e-4f && std::abs(n.z) > 1.0e-4f) return std::sqrt(dx * dx + dy * dy) <= tolerance * 1.5f;
         const math::Vector3 normal = PlanarDirection(n, { 0.0f, 1.0f, 0.0f });
@@ -611,7 +611,7 @@ bool ColliderContains(const FluidCollider& collider, const math::Vector3& c, con
     return false;
 }
 
-// ── 描画 ──
+/// @name 描画
 
 ImU32 WithAlpha(ImU32 color, int alpha)
 {
@@ -639,27 +639,27 @@ PartStyle MakeStyle(ImU32 base, bool active, bool selected, int activeAlpha = 23
 {
     PartStyle style;
     style.base = selected ? Brighten(base, 0.35f) : base;
-    // 選択中でも止まっている部品は止まっていると読めるよう、濃さの差は残す。
+    /// @note 選択中でも止まっている部品は止まっていると読めるよう、濃さの差は残す。
     style.line = WithAlpha(style.base, selected ? (active ? 255 : 170) : (active ? activeAlpha : inactiveAlpha));
     style.faint = WithAlpha(style.base, selected ? 130 : 70);
     style.thickness = selected ? 2.5f : 1.5f;
     return style;
 }
 
-math::Vector3 EvaluateRamp(const asset::FluidColorRamp& ramp, float t)
+math::Vector3 EvaluateRamp(const fluid::FluidColorRamp& ramp, float t)
 {
     const auto& stops = ramp.stops;
     if (t <= stops[0].position) return stops[0].color;
-    for (int i = 1; i < asset::kFluidRampStops; ++i) {
-        const asset::FluidColorStop& a = stops[static_cast<std::size_t>(i) - 1];
-        const asset::FluidColorStop& b = stops[static_cast<std::size_t>(i)];
+    for (int i = 1; i < fluid::kFluidRampStops; ++i) {
+        const fluid::FluidColorStop& a = stops[static_cast<std::size_t>(i) - 1];
+        const fluid::FluidColorStop& b = stops[static_cast<std::size_t>(i)];
         if (t <= b.position) {
             const float span = b.position - a.position;
             const float u = span > 1.0e-6f ? (t - a.position) / span : 1.0f;
             return math::Vector3::Lerp(a.color, b.color, u);
         }
     }
-    return stops[asset::kFluidRampStops - 1].color;
+    return stops[fluid::kFluidRampStops - 1].color;
 }
 
 float LinearToSrgb(float value)
@@ -668,10 +668,10 @@ float LinearToSrgb(float value)
     return value <= 0.0031308f ? value * 12.92f : 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
 }
 
-ImU32 SourceBaseColor(const asset::FluidRenderSettings& look, const FluidSource& source)
+ImU32 SourceBaseColor(const fluid::FluidRenderSettings& look, const FluidSource& source)
 {
     if (!look.useAlbedoRamp) return kSourceColor;
-    // 煤や血のような暗い色でも市松の上で輪郭が消えないよう、白側へ持ち上げてから縁取る。
+    /// @note 煤や血のような暗い色でも市松の上で輪郭が消えないよう、白側へ持ち上げてから縁取る。
     const math::Vector3 tint = EvaluateRamp(look.albedoRamp, std::clamp(source.colorKey, 0.0f, 1.0f));
     return ImGui::ColorConvertFloat4ToU32({ 0.35f + 0.65f * LinearToSrgb(tint.x), 0.35f + 0.65f * LinearToSrgb(tint.y),
                                             0.35f + 0.65f * LinearToSrgb(tint.z), 1.0f });
@@ -701,15 +701,15 @@ void DrawDiamond(ImDrawList* drawList, const ImVec2& c, float r, ImU32 fill, ImU
     if (outline != 0) drawList->AddQuad(top, right, bottom, left, outline, 1.5f);
 }
 
-// カプセル / 円柱の輪郭。rounded なら両端を半円でつなぐ (円柱は平らな端なので長方形)。
+/// カプセル / 円柱の輪郭。rounded なら両端を半円でつなぐ (円柱は平らな端なので長方形)。
 void DrawSegmentOutline(ImDrawList* drawList, const FluidViewMapping& mapping, const math::Vector3& c,
                         const SegmentFrame& frame, bool rounded, ImU32 color, float thickness)
 {
     const ImVec2 tail = mapping.ToScreen(c - frame.axis * frame.half);
     const ImVec2 head = mapping.ToScreen(c + frame.axis * frame.half);
-    // 半径 0 だと輪郭が線に潰れて «置いた場所» が読めないので 1 px は残す。
+    /// @note 半径 0 だと輪郭が線に潰れて «置いた場所» が読めないので 1 px は残す。
     const float r = (std::max)(mapping.ToPixels(frame.radius), 1.0f);
-    // 画面は y 下向きなので軸の y を反転して角度を取る。
+    /// @note 画面は y 下向きなので軸の y を反転して角度を取る。
     const float angle = std::atan2(-frame.axis.y, frame.axis.x);
     const ImVec2 side{ -std::sin(angle) * r, std::cos(angle) * r };
     if (!rounded) {
@@ -726,15 +726,15 @@ void DrawSegmentOutline(ImDrawList* drawList, const FluidViewMapping& mapping, c
 }
 
 void DrawMotionPath(ImDrawList* drawList, const FluidViewMapping& mapping, const math::Vector3& base,
-                    const asset::FluidMotion& motion, const PartStyle& style, bool selected)
+                    const fluid::FluidMotion& motion, const PartStyle& style, bool selected)
 {
     const std::size_t count =
-        (std::min)(motion.keys.size(), static_cast<std::size_t>(asset::kMaxFluidMotionKeys));
+        (std::min)(motion.keys.size(), static_cast<std::size_t>(fluid::kMaxFluidMotionKeys));
     if (count == 0) return;
-    ImVec2 points[asset::kMaxFluidMotionKeys];
+    ImVec2 points[fluid::kMaxFluidMotionKeys];
     for (std::size_t k = 0; k < count; ++k) points[k] = mapping.ToScreen(base + motion.keys[k].offset);
     if (count >= 2) drawList->AddPolyline(points, static_cast<int>(count), style.faint, selected ? 1.5f : 1.0f);
-    // 選択中の部品のキーはハンドル (大きい菱形) として後で描く。
+    /// @note 選択中の部品のキーはハンドル (大きい菱形) として後で描く。
     if (selected) return;
     for (std::size_t k = 0; k < count; ++k) DrawDiamond(drawList, points[k], 2.5f, style.faint, 0);
 }
@@ -742,16 +742,16 @@ void DrawMotionPath(ImDrawList* drawList, const FluidViewMapping& mapping, const
 void DrawSource(ImDrawList* drawList, const FluidViewMapping& mapping, const FluidRecipe& recipe,
                 const FluidSource& source, float evalTime, bool selected)
 {
-    using Shape = asset::FluidSourceShape;
-    // 液体の Duration 0 は «一斉» なので、その瞬間だけ光らせても目で追えない。少しだけ幅を持たせる。
-    const bool active = recipe.kind == asset::FluidKind::Liquid
+    using Shape = fluid::FluidSourceShape;
+    /// @note 液体の Duration 0 は «一斉» なので、その瞬間だけ光らせても目で追えない。少しだけ幅を持たせる。
+    const bool active = recipe.kind == fluid::FluidKind::Liquid
         ? source.enabled && evalTime >= source.startTime
               && evalTime < source.startTime + (std::max)(source.duration, 0.1f)
-        : asset::FluidSourceEmitting(source, evalTime);
+        : fluid::FluidSourceEmitting(source, evalTime);
     const PartStyle style = MakeStyle(SourceBaseColor(recipe.render, source), active, selected);
     DrawMotionPath(drawList, mapping, source.center, source.motion, style, selected);
 
-    const math::Vector3 c = asset::PoseFluidSource(source, evalTime).center;
+    const math::Vector3 c = fluid::PoseFluidSource(source, evalTime).center;
     const ImVec2 cs = mapping.ToScreen(c);
     const float sx = (std::max)(source.size.x, 0.0f);
     const float sy = (std::max)(source.size.y, 0.0f);
@@ -776,12 +776,12 @@ void DrawSource(ImDrawList* drawList, const FluidViewMapping& mapping, const Flu
         const float ringRadius = mapping.ToPixels(sx);
         const float tube = mapping.ToPixels(sy);
         if (RingFacesView(source.direction)) {
-            // 法線が奥行き寄り: 画面では輪そのもの。
+            /// @note 法線が奥行き寄り: 画面では輪そのもの。
             drawList->AddCircle(cs, ringRadius, style.line, 0, style.thickness);
             drawList->AddCircle(cs, ringRadius + tube, style.faint, 0, 1.0f);
             if (ringRadius - tube > 1.0f) drawList->AddCircle(cs, ringRadius - tube, style.faint, 0, 1.0f);
         } else {
-            // 法線が画面内: 輪を真横から見るので、断面の 2 つの塊になる。
+            /// @note 法線が画面内: 輪を真横から見るので、断面の 2 つの塊になる。
             const math::Vector3 across = Perpendicular(PlanarDirection(source.direction, { 0.0f, 1.0f, 0.0f }));
             const ImVec2 a = mapping.ToScreen(c + across * sx);
             const ImVec2 b = mapping.ToScreen(c - across * sx);
@@ -794,7 +794,7 @@ void DrawSource(ImDrawList* drawList, const FluidViewMapping& mapping, const Flu
     case Shape::Texture: {
         const Plate plate = MakePlate(source);
         const auto corner = [&](const math::Vector3& offset) { return mapping.ToScreen(c + offset); };
-        // 板を画面内へ倒すと厚みの側が見えてくる。前後の面も薄く描いて、湧く範囲の奥行きを示す。
+        /// @note 板を画面内へ倒すと厚みの側が見えてくる。前後の面も薄く描いて、湧く範囲の奥行きを示す。
         if (PlanarLength(plate.normal) > 0.05f) {
             const math::Vector3 az = plate.normal * (std::max)(source.size.z, 0.0f);
             for (const float s : { -1.0f, 1.0f }) {
@@ -805,7 +805,7 @@ void DrawSource(ImDrawList* drawList, const FluidViewMapping& mapping, const Flu
         }
         drawList->AddQuad(corner(-plate.ax - plate.ay), corner(plate.ax - plate.ay), corner(plate.ax + plate.ay),
                           corner(-plate.ax + plate.ay), style.line, style.thickness);
-        // 画像の上辺を太くして、板の上下 (up 軸の向き) を読めるようにする。
+        /// @note 画像の上辺を太くして、板の上下 (up 軸の向き) を読めるようにする。
         drawList->AddLine(corner(-plate.ax + plate.ay), corner(plate.ax + plate.ay), style.line, style.thickness + 1.5f);
         break;
     }
@@ -813,7 +813,7 @@ void DrawSource(ImDrawList* drawList, const FluidViewMapping& mapping, const Flu
     case Shape::Cylinder: {
         const SegmentFrame frame = MakeSegmentFrame(source.direction, source.size);
         DrawSegmentOutline(drawList, mapping, c, frame, source.shape == Shape::Capsule, style.line, style.thickness);
-        // 芯の線分を薄く引いて «どこが軸か» を読めるようにする。
+        /// @note 芯の線分を薄く引いて «どこが軸か» を読めるようにする。
         drawList->AddLine(mapping.ToScreen(c - frame.axis * frame.half), mapping.ToScreen(c + frame.axis * frame.half),
                           style.faint, 1.0f);
         break;
@@ -825,18 +825,18 @@ void DrawSource(ImDrawList* drawList, const FluidViewMapping& mapping, const Flu
 void DrawCollider(ImDrawList* drawList, const FluidViewMapping& mapping, const FluidCollider& collider, float evalTime,
                   bool selected)
 {
-    using Shape = asset::FluidColliderShape;
-    const bool active = asset::FluidColliderActive(collider, evalTime);
+    using Shape = fluid::FluidColliderShape;
+    const bool active = fluid::FluidColliderActive(collider, evalTime);
     const PartStyle style = MakeStyle(kColliderColor, active, selected, 220, 90);
     const ImU32 hatch = WithAlpha(style.base, selected ? 120 : (active ? 90 : 40));
     const float spacing = (std::max)(ImGui::GetFontSize() * 0.45f, 4.0f);
     DrawMotionPath(drawList, mapping, collider.center, collider.motion, style, selected);
 
-    const ImVec2 c = mapping.ToScreen(asset::PoseFluidCollider(collider, evalTime).center);
+    const ImVec2 c = mapping.ToScreen(fluid::PoseFluidCollider(collider, evalTime).center);
     switch (collider.shape) {
     case Shape::Sphere: {
         const float r = mapping.ToPixels((std::max)(collider.size.x, 0.0f));
-        // 斜線は円の弦として描く (矩形のクリップでは円に切り抜けない)。
+        /// @note 斜線は円の弦として描く (矩形のクリップでは円に切り抜けない)。
         constexpr float kInvSqrt2 = 0.70710678f;
         for (float t = -r + spacing * 0.5f; t < r; t += spacing) {
             const float h = std::sqrt((std::max)(r * r - t * t, 0.0f));
@@ -863,7 +863,7 @@ void DrawCollider(ImDrawList* drawList, const FluidViewMapping& mapping, const F
     case Shape::Plane: {
         const math::Vector3& n = collider.direction;
         if (PlanarLength(n) < 1.0e-4f && std::abs(n.z) > 1.0e-4f) {
-            // 法線が奥行き向きだと、2D の断面はどこも面の上 (距離 0) で固体にならない。
+            /// @note 法線が奥行き向きだと、2D の断面はどこも面の上 (距離 0) で固体にならない。
             drawList->AddCircle(c, 4.0f, style.line, 0, style.thickness);
             drawList->AddText({ c.x + 7.0f, c.y - ImGui::GetFontSize() * 0.5f }, style.line,
                               "Plane faces view (no effect in 2D)");
@@ -875,7 +875,7 @@ void DrawCollider(ImDrawList* drawList, const FluidViewMapping& mapping, const F
         const float reach = mapping.size * 1.5f;
         drawList->AddLine({ c.x - along.x * reach, c.y - along.y * reach }, { c.x + along.x * reach, c.y + along.y * reach },
                           style.line, style.thickness);
-        // 固体の側 (法線の反対) へ短い斜線を刻む。
+        /// @note 固体の側 (法線の反対) へ短い斜線を刻む。
         const float interval = spacing * 2.0f;
         const float tick = spacing * 1.2f;
         const int ticks = static_cast<int>(reach / interval);
@@ -893,9 +893,8 @@ void DrawCollider(ImDrawList* drawList, const FluidViewMapping& mapping, const F
     case Shape::Cylinder: {
         const bool rounded = collider.shape == Shape::Capsule;
         const SegmentFrame frame = MakeSegmentFrame(collider.direction, collider.size);
-        const math::Vector3 center = asset::PoseFluidCollider(collider, evalTime).center;
-        // WHY 斜線でなく軸に直交する弦か: 傾いた形は矩形でクリップできず、球のような «円の弦» も
-        //     端が半円 / 平らで場合分けになる。軸に沿って刻めば両方を 1 本の式 (その位置の半幅) で引ける。
+        const math::Vector3 center = fluid::PoseFluidCollider(collider, evalTime).center;
+        /// @note 斜線でなく軸に直交する弦にする: 傾いた形は矩形でクリップできず «円の弦» も端が半円 / 平らで場合分けになるが、軸に沿って刻めば両方を 1 本の式 (その位置の半幅) で引ける。
         const float half = mapping.ToPixels(frame.half);
         const float radius = mapping.ToPixels(frame.radius);
         const float reach = rounded ? half + radius : half;
@@ -919,15 +918,15 @@ void DrawCollider(ImDrawList* drawList, const FluidViewMapping& mapping, const F
 void DrawForce(ImDrawList* drawList, const FluidViewMapping& mapping, const FluidForce& force, float evalTime,
                bool selected, int& globalSlot)
 {
-    using Type = asset::FluidForceType;
-    const PartStyle style = MakeStyle(kForceColor, asset::FluidForceActive(force, evalTime), selected);
+    using Type = fluid::FluidForceType;
+    const PartStyle style = MakeStyle(kForceColor, fluid::FluidForceActive(force, evalTime), selected);
     const ImU32 color = style.line;
     const float thickness = style.thickness;
     const float icon = IconPixels(mapping);
     ImVec2 c;
     if (ForceIsPlaced(force)) {
         DrawMotionPath(drawList, mapping, force.center, force.motion, style, selected);
-        c = mapping.ToScreen(asset::PoseFluidForce(force, evalTime).center);
+        c = mapping.ToScreen(fluid::PoseFluidForce(force, evalTime).center);
         if (force.radius > 0.0f)
             drawList->AddCircle(c, mapping.ToPixels(force.radius), WithAlpha(style.base, selected ? 150 : 80), 0,
                                 selected ? 1.5f : 1.0f);
@@ -956,7 +955,7 @@ void DrawForce(ImDrawList* drawList, const FluidViewMapping& mapping, const Flui
         break;
     }
     case Type::Vortex: {
-        // 2D では軸が常に奥行き (0,0,1) なので、Strength が正なら画面で反時計回り。上端の矢じりで向きを見せる。
+        /// @note 2D では軸が常に奥行き (0,0,1) なので、Strength が正なら画面で反時計回り。上端の矢じりで向きを見せる。
         const float radius = icon * 0.9f;
         drawList->AddCircle(c, radius, color, 20, thickness);
         const float sign = force.strength >= 0.0f ? -1.0f : 1.0f;
@@ -991,7 +990,7 @@ void DrawSelectedHandles(ImDrawList* drawList, const FluidViewMapping& mapping, 
     CollectPartHandles(handles, mapping, recipe, selection.kind, selection.index, evalTime, true);
     if (handles.empty()) return;
 
-    // 今の時刻に一番近いキーを目立たせる (Timeline のどのキーを触っているかの目安)。
+    /// @note 今の時刻に一番近いキーを目立たせる (Timeline のどのキーを触っているかの目安)。
     int nearestKey = -1;
     float nearestGap = FLT_MAX;
     for (std::size_t k = 0; k < view.motion->keys.size(); ++k) {
@@ -1039,11 +1038,11 @@ void DrawSelectedHandles(ImDrawList* drawList, const FluidViewMapping& mapping, 
 
 } // namespace
 
-void DrawFluidPartOverlays(ImDrawList* drawList, const FluidViewMapping& mapping, const asset::FluidRecipe& recipe,
+void DrawFluidPartOverlays(ImDrawList* drawList, const FluidViewMapping& mapping, const fluid::FluidRecipe& recipe,
                            float time, const FluidSelection& selection, const FluidPartVisibility& visible)
 {
     if (drawList == nullptr || mapping.size <= 0.0f) return;
-    // ソルバーの時計は warmup を回した後から数えている。部品の姿も同じ時刻で出す。
+    /// @note ソルバーの時計は warmup を回した後から数えている。部品の姿も同じ時刻で出す。
     const float evalTime = EvalTime(recipe, time);
     const auto isSelected = [&selection](Kind list, int index) {
         return selection.kind == list && selection.index == index;
@@ -1069,13 +1068,13 @@ void DrawFluidPartOverlays(ImDrawList* drawList, const FluidViewMapping& mapping
     drawList->PopClipRect();
 }
 
-std::vector<FluidPartHandle> CollectFluidPartHandles(const FluidViewMapping& mapping, const asset::FluidRecipe& recipe,
+std::vector<FluidPartHandle> CollectFluidPartHandles(const FluidViewMapping& mapping, const fluid::FluidRecipe& recipe,
                                                      float time, const FluidSelection& selection,
                                                      const FluidPartVisibility& visible)
 {
     std::vector<FluidPartHandle> handles;
     const float evalTime = EvalTime(recipe, time);
-    // 選択中の部品を先頭に置く (PickFluidPartHandle は近さが並んだら先のものを取る)。
+    /// @note 選択中の部品を先頭に置く (PickFluidPartHandle は近さが並んだら先のものを取る)。
     if (selection.IsPart() && IsVisible(visible, selection.kind, selection.index))
         CollectPartHandles(handles, mapping, recipe, selection.kind, selection.index, evalTime, true);
     const auto collectList = [&](Kind list, int count) {
@@ -1084,7 +1083,7 @@ std::vector<FluidPartHandle> CollectFluidPartHandles(const FluidViewMapping& map
             CollectPartHandles(handles, mapping, recipe, list, i, evalTime, false);
         }
     };
-    // 残りは上に描かれるもの (力 → 発生源 → 障害物) から並べる。
+    /// @note 残りは上に描かれるもの (力 → 発生源 → 障害物) から並べる。
     collectList(Kind::Force, static_cast<int>(recipe.forces.size()));
     collectList(Kind::Source, static_cast<int>(recipe.sources.size()));
     collectList(Kind::Collider, static_cast<int>(recipe.colliders.size()));
@@ -1106,7 +1105,7 @@ const FluidPartHandle* PickFluidPartHandle(const std::vector<FluidPartHandle>& h
     return best;
 }
 
-void ApplyFluidHandleDrag(asset::FluidRecipe& recipe, const FluidPartHandle& handle,
+void ApplyFluidHandleDrag(fluid::FluidRecipe& recipe, const FluidPartHandle& handle,
                           const math::Vector3& domainPosition, float time)
 {
     const float evalTime = EvalTime(recipe, time);
@@ -1115,7 +1114,7 @@ void ApplyFluidHandleDrag(asset::FluidRecipe& recipe, const FluidPartHandle& han
     case Kind::Source: {
         if (handle.index < 0 || index >= recipe.sources.size()) return;
         FluidSource& source = recipe.sources[index];
-        const math::Vector3 posed = asset::PoseFluidSource(source, evalTime).center;
+        const math::Vector3 posed = fluid::PoseFluidSource(source, evalTime).center;
         if (!ApplyCommonDrag(source.center, source.motion, posed, handle, domainPosition))
             ApplySourceShapeDrag(source, handle.kind, posed, domainPosition);
         break;
@@ -1123,7 +1122,7 @@ void ApplyFluidHandleDrag(asset::FluidRecipe& recipe, const FluidPartHandle& han
     case Kind::Force: {
         if (handle.index < 0 || index >= recipe.forces.size()) return;
         FluidForce& force = recipe.forces[index];
-        const math::Vector3 posed = asset::PoseFluidForce(force, evalTime).center;
+        const math::Vector3 posed = fluid::PoseFluidForce(force, evalTime).center;
         if (!ApplyCommonDrag(force.center, force.motion, posed, handle, domainPosition))
             ApplyForceShapeDrag(force, handle.kind, posed, domainPosition);
         break;
@@ -1131,7 +1130,7 @@ void ApplyFluidHandleDrag(asset::FluidRecipe& recipe, const FluidPartHandle& han
     case Kind::Collider: {
         if (handle.index < 0 || index >= recipe.colliders.size()) return;
         FluidCollider& collider = recipe.colliders[index];
-        const math::Vector3 posed = asset::PoseFluidCollider(collider, evalTime).center;
+        const math::Vector3 posed = fluid::PoseFluidCollider(collider, evalTime).center;
         if (!ApplyCommonDrag(collider.center, collider.motion, posed, handle, domainPosition))
             ApplyColliderShapeDrag(collider, handle.kind, posed, domainPosition);
         break;
@@ -1141,7 +1140,7 @@ void ApplyFluidHandleDrag(asset::FluidRecipe& recipe, const FluidPartHandle& han
     }
 }
 
-FluidSelection PickFluidPart(const FluidViewMapping& mapping, const asset::FluidRecipe& recipe, float time,
+FluidSelection PickFluidPart(const FluidViewMapping& mapping, const fluid::FluidRecipe& recipe, float time,
                              ImVec2 mouse, const FluidPartVisibility& visible)
 {
     if (mapping.size <= 0.0f) return FluidSelection{};
@@ -1150,8 +1149,8 @@ FluidSelection PickFluidPart(const FluidViewMapping& mapping, const asset::Fluid
     const float tolerance = DomainLength(mapping, kPickTolerancePixels);
     const float icon = IconPixels(mapping);
 
-    // 描いた順 (障害物 → 発生源 → 力、各リストは添字順) の逆から当てる = 画面で一番上に見えているもの。
-    // 障害物は大きく下敷きになりやすいので、小さな力のアイコンや発生源が先に取れる。
+    /// @note 描いた順 (障害物 → 発生源 → 力、各リストは添字順) の逆から当てる = 画面で一番上に見えているもの。
+    ///       障害物は大きく下敷きになりやすいので、小さな力のアイコンや発生源が先に取れる。
     for (int i = static_cast<int>(recipe.forces.size()) - 1; i >= 0; --i) {
         if (!IsVisible(visible, Kind::Force, i)) continue;
         const FluidForce& force = recipe.forces[static_cast<std::size_t>(i)];
@@ -1161,7 +1160,7 @@ FluidSelection PickFluidPart(const FluidViewMapping& mapping, const asset::Fluid
                 return FluidSelection{ Kind::Force, i };
             continue;
         }
-        const math::Vector3 c = asset::PoseFluidForce(force, evalTime).center;
+        const math::Vector3 c = fluid::PoseFluidForce(force, evalTime).center;
         const float distance = std::hypot(p.x - c.x, p.y - c.y);
         if (distance <= DomainLength(mapping, icon * 1.2f)
             || (force.radius > 0.0f && std::abs(distance - force.radius) <= tolerance))
@@ -1170,13 +1169,13 @@ FluidSelection PickFluidPart(const FluidViewMapping& mapping, const asset::Fluid
     for (int i = static_cast<int>(recipe.sources.size()) - 1; i >= 0; --i) {
         if (!IsVisible(visible, Kind::Source, i)) continue;
         const FluidSource& source = recipe.sources[static_cast<std::size_t>(i)];
-        if (SourceContains(source, asset::PoseFluidSource(source, evalTime).center, p, tolerance))
+        if (SourceContains(source, fluid::PoseFluidSource(source, evalTime).center, p, tolerance))
             return FluidSelection{ Kind::Source, i };
     }
     for (int i = static_cast<int>(recipe.colliders.size()) - 1; i >= 0; --i) {
         if (!IsVisible(visible, Kind::Collider, i)) continue;
         const FluidCollider& collider = recipe.colliders[static_cast<std::size_t>(i)];
-        if (ColliderContains(collider, asset::PoseFluidCollider(collider, evalTime).center, p, tolerance))
+        if (ColliderContains(collider, fluid::PoseFluidCollider(collider, evalTime).center, p, tolerance))
             return FluidSelection{ Kind::Collider, i };
     }
     return FluidSelection{};

@@ -40,6 +40,7 @@ target_link_libraries(FBZZEditorLauncher
         FBZZEditor
         FBZZEngine
         FBZZPhysics
+        FBZZFluid
         TomlPlusPlus
         user32
         dwmapi
@@ -76,6 +77,7 @@ add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
 # WHY: FBZZEditor は ImGui を共有 DLL として参照するため、exe 隣にないと起動前に 0xC0000135 で終了する。
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZMath>    "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZPhysics> "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZFluid>   "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZEngine>  "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ImGui>        "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

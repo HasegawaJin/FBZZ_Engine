@@ -1,4 +1,4 @@
-/// @file    Inspector/InspectorPanel.cpp
+/// @file    InspectorPanel.cpp
 /// @brief   選択 Entity / Asset の Inspector ルーティング。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
@@ -21,6 +21,7 @@
 #include "InspectorUI.hpp"
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -61,16 +62,62 @@ void PushGameObjectPropertyCommand(EditorContext& ctx,
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
+#if !defined(NDEBUG)
+/// @brief Custom 登録型を持つのにカードが収集されなかったら、型ごとに 1 度だけ警告する。
+/// @note Custom 型のカードは OnRenderContent のカテゴリ別呼び出しで手書き管理している。
+///       呼び出しを足し忘れた新しい型が黙って Inspector から消えないようにする番人。
+void WarnCustomComponentsWithoutCard(scene::GameObject& go,
+                                     const InspectorComponentDrawCollector& collector)
+{
+    static std::vector<std::string> reported;
+    scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if constexpr (Registration::inspectorMode != scene::ComponentInspectorMode::Custom) {
+            return;
+        } else {
+            if (!go.GetComponent<T>()) return;
+            const std::string_view key = Registration::displayName;
+            for (const auto& request : collector.requests)
+                if (request.key == key) return;
+            if (std::find(reported.begin(), reported.end(), key) != reported.end()) return;
+            reported.emplace_back(key);
+            FBZZ_LOG_WARN("Inspector: '%s' is a Custom-inspector component but no card was drawn "
+                          "(add a DrawComponentSection call for it)", Registration::displayName);
+        }
+    });
+}
+#endif
+
+/// @brief シーン設定の環境流。GameObject に属さないのでここに置く。
+/// @note 雲・水面・粒子・(将来の) 草がこの 1 本を読む。局所的な流れは FlowField コンポーネント。
+void DrawSceneEnvironment(EditorContext& ctx)
+{
+    if (ctx.activeScene == nullptr) return;
+    ImGui::Spacing();
+    if (!ImGui::CollapsingHeader(LOC("Scene Environment"), ImGuiTreeNodeFlags_DefaultOpen)) return;
+
+    scene::SceneEnvironment& environment = ctx.activeScene->Environment();
+    bool changed = false;
+    changed |= ImGui::Checkbox(LOC("Ambient Wind"), &environment.enabled);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("シーン全体に一律で流れる媒質。切ると雲と水面はコンポーネント固有の設定へ戻ります。");
+    if (environment.enabled) {
+        changed |= widgets::DragVec3(LOC("Direction"), environment.direction, 0.01f);
+        changed |= ImGui::DragFloat(LOC("Speed [m/s]"), &environment.speed, 0.05f, 0.0f, 100.0f);
+        changed |= ImGui::DragFloat(LOC("Turbulence [m/s]"), &environment.turbulence, 0.01f, 0.0f, 100.0f);
+        changed |= ImGui::DragFloat(LOC("Pulse Frequency"), &environment.pulseFrequency, 0.01f, 0.0f, 20.0f);
+    }
+    /// @note @note Undo は通していない。シーン設定は «1 フレーム前へ戻す» 対象が
+    ///       GameObject コマンドと混ざると履歴の粒度が合わないため、保存でだけ拾う。
+    if (changed && ctx.markSceneDirty) ctx.markSceneDirty();
+}
+
 } // namespace
 
 void InspectorPanel::OnShutdown()
 {
-    // WHY: Inspector はロック中の EntityID / AssetPath と、表示中 Material のハンドルを
-    //      フレームをまたいで保持する。終了時は Scene / AssetManager / ImGui の破棄順が
-    //      通常フレームと異なるため、古い参照状態を残すと終了中の描画・破棄で無効な
-    //      アセット情報へ触れる可能性がある。
-    // WHAT: Panel 自身が所有する一時状態をすべて null 状態へ戻し、後続のグローバル
-    //       リソース破棄に依存しない状態にする。
+    /// @note Inspector はロック中の EntityID / AssetPath と表示中 Material のハンドルを
+    ///       フレームをまたいで保持する。終了時は Scene / AssetManager / ImGui の破棄順が
+    ///       通常フレームと異なるため、古い参照を残すと破棄中に無効なアセットへ触れうる。
     m_componentClipboard.reset();
     m_componentClipboardType = nullptr;
     m_locked = false;
@@ -82,8 +129,8 @@ void InspectorPanel::OnShutdown()
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Render");
-    // Hierarchy / AssetBrowser から Inspector 下部の Component へドラッグできるよう、
-    // ペイン上下端にカーソルを置いたときだけ現在のウィンドウを自動スクロールする。
+    /// @note Hierarchy / AssetBrowser から Inspector 下部の Component へドラッグできるよう、
+    ///       ペイン上下端にカーソルを置いたときだけ現在のウィンドウを自動スクロールする。
     widgets::UpdateDragAutoScroll();
     widgets::DrawAssetPickerModal(ctx.resources, ctx.imguiRenderer);
 
@@ -96,7 +143,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Separator();
     }
 
-    // 起動時に一度だけ、保存済み折り畳み状態を ImGui StateStorage へ復元する
+    /// @note 起動時に一度だけ、保存済み折り畳み状態を ImGui StateStorage へ復元する
     if (!m_sectionStateRestored && !ctx.inspectorSectionState.empty()) {
         if (ImGuiWindow* win = ImGui::FindWindowByName("Inspector")) {
             for (const auto& [key, open] : ctx.inspectorSectionState)
@@ -105,11 +152,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         }
     }
 
-    // ------------------------------------------------------------------
-    // ロック解決
-    // Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
-    // ロック先が破棄 / 削除されていた場合は自動解除する。
-    // ------------------------------------------------------------------
+    /// @note ロック解決
+    ///       Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
+    ///       ロック先が破棄 / 削除されていた場合は自動解除する。
     scene::GameObject* go = nullptr;
     const bool hasSelectedAsset = !ctx.selectedAssetPath.empty();
     std::string assetPathToInspect = ctx.selectedAssetPath;
@@ -119,7 +164,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (ctx.activeScene)
             go = ctx.activeScene->GetGameObject(m_lockedEntityId);
         if (!go) {
-            // 破棄 / シーン切り替えで無効になった場合は自動解除
+            /// @note 破棄 / シーン切り替えで無効になった場合は自動解除
             m_locked = false;
             m_lockedEntityId = {};
         }
@@ -137,9 +182,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         }
     }
 
-    // --- Play 中の編集警告バナー ---
-    // WHY: Play 中の Inspector 編集は Stop 時のスナップショット復元で巻き戻る。
-    //      Unity が Play 中に UI を tint して知らせるのと同様、目立つバナーで注意を促す。
+    /// @name Play 中の編集警告バナー
+    /// @note Play 中の Inspector 編集は Stop 時のスナップショット復元で巻き戻るため、
+    ///       目立つバナーで注意を促す (Unity が Play 中に UI を tint するのと同様)。
     if (ctx.playMode && !ctx.playMode->IsInEditor()) {
         ImVec4 warningBg = EditorTheme::Color(ThemeColor::Warning);
         warningBg.w = 0.16f;
@@ -154,14 +199,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::PopStyleColor();
     }
 
-    // ------------------------------------------------------------------
-    // ロックボタン (右端に配置)
-    // WHY: ボタン押下で m_locked が変化するため、PushStyleColor / PopStyleColor の
-    //      対応を保証するには押下前の状態を wasLocked に固定しておく必要がある。
-    //      m_locked を Push 判定と Pop 判定の両方で使うと片方が空振りしてクラッシュする。
-    // ------------------------------------------------------------------
+    /// @note ロックボタン (右端に配置)。ボタン押下で m_locked が変化するため、押下前の状態を
+    ///       wasLocked に固定して Push/Pop を対称にする。m_locked を両判定に使うと
+    ///       片方が空振りしてクラッシュする。
     {
-        // ボタン描画前の状態を保存して Push/Pop を必ず対称にする
+        /// @note ボタン描画前の状態を保存して Push/Pop を必ず対称にする
         const bool wasLocked = m_locked;
         const char* label    = wasLocked ? "Unlock" : "Lock";
         const float padX     = ImGui::GetStyle().FramePadding.x;
@@ -185,9 +227,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             } else if (hasSelectedAsset) {
                 m_locked          = false;
                 m_lockedEntityId  = {};
-                // Asset ロックは EntityID を INVALID にした m_locked と、既存の inspected path で表す。
-                // WHY: InspectorPanel のデータメンバを増やすと、増分ビルドで古い確保サイズが残った時に
-                //      std::string メンバ破損を起こしやすいため、既存メンバだけで状態を持つ。
+                /// @note Asset ロックは EntityID を INVALID にした m_locked と既存の inspected path で表す。
+                ///       データメンバを増やすと、増分ビルドで古い確保サイズが残った際に std::string メンバ
+                ///       破損を起こしやすいため、既存メンバだけで状態を持つ。
                 m_locked = true;
                 m_inspectedAssetPath = ctx.selectedAssetPath;
                 m_inspectedMat = {};
@@ -199,14 +241,15 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (!canLock)
             ImGui::EndDisabled();
 
-        if (wasLocked) ImGui::PopStyleColor();  // wasLocked で対称を保証
+        /// @note wasLocked で対称を保証
+        if (wasLocked) ImGui::PopStyleColor();
 
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip(wasLocked
                 ? "Unlock — follow selection changes"
                 : "Lock Inspector to current selection");
 
-        // ロック中はロック先の名前をバナー表示
+        /// @note ロック中はロック先の名前をバナー表示
         if (wasLocked && go) {
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
             ImGui::TextDisabled("Locked: %s", go->name.c_str());
@@ -221,14 +264,14 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     const auto resolvedSelection = ctx.ResolveInspectorSelection();
 
-    // アセット選択中、または Asset Inspector ロック中 → アセットインスペクターへ
+    /// @note アセット選択中、または Asset Inspector ロック中 → アセットインスペクターへ
     if ((!m_locked || assetLocked) && !assetPathToInspect.empty()) {
         FBZZ_PROFILE_SCOPE("Inspector::Asset");
         DrawAssetInspector(ctx, assetPathToInspect);
         return;
     }
 
-    // Controller アセットの Graph 選択は、Hierarchy の Entity 選択より優先する。
+    /// @note Controller アセットの Graph 選択は、Hierarchy の Entity 選択より優先する。
     if ((!m_locked || assetLocked) &&
         resolvedSelection.type == EditorContext::InspectorSelection::Type::AnimationGraphAsset) {
         if (DrawAnimationGraphAssetInspector(ctx)) {
@@ -238,7 +281,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    // 複数選択中 (ロックなし) は Multi-select Inspector を表示
+    /// @note 複数選択中 (ロックなし) は Multi-select Inspector を表示
     if (!m_locked &&
         resolvedSelection.type == EditorContext::InspectorSelection::Type::MultiEntity &&
         ctx.activeScene) {
@@ -247,7 +290,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     if (!go) {
-        // 空状態ガイド: 何を選べば編集できるかを案内し、初見の迷いを消す。
+        /// @note 空状態ガイド: 何を選べば編集できるかを案内し、初見の迷いを消す。
         ImGui::Spacing();
         ImGui::TextDisabled("Nothing selected");
         ImGui::Spacing();
@@ -256,38 +299,41 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Spacing();
         ImGui::TextDisabled("Tip: press Ctrl+K to jump to any object or asset, F1 for shortcuts.");
         ImGui::PopTextWrapPos();
+        /// @note シーン設定はどの GameObject にも属さない。«何も選んでいない» ときの Inspector が
+        ///       唯一の置き場になる (Lighting ウィンドウに相当する面がまだ無い)。
+        DrawSceneEnvironment(ctx);
         return;
     }
 
-    // Animation Graph の要素選択中は、GameObject 全体ではなく選択要素の詳細を表示する。
-    // WHY: Graph は遷移関係の操作に専念し、State / Transition の設定は Inspector に集約する。
+    /// @note Animation Graph の要素選択中は、GameObject 全体でなく選択要素の詳細を表示する。
+    ///       Graph は遷移関係の操作に専念し、State / Transition の設定は Inspector に集約する。
     {
         FBZZ_PROFILE_SCOPE("Inspector::AnimationGraphSelection");
         if (DrawAnimationGraphInspector(ctx, *go)) {
-            // Unity と同じく、State / Transition の詳細の下でアニメーションを直接確認できる。
+            /// @note Unity と同じく、State / Transition の詳細の下でアニメーションを直接確認できる。
             ImGui::SeparatorText("Preview");
             DrawAnimationPreviewWidget(ctx, 240.0f);
             return;
         }
     }
 
-    // ── Save as Prefab ───────────────────────────────────────────────────────
-    // WHY: Hierarchy のコンテキストメニューを使わずに Inspector から直接 Prefab 化できる動線。
-    //      Unity の Inspector ヘッダーと同様に最上部に配置する。
+    /// @name Save as Prefab
+    /// @note Hierarchy のコンテキストメニューを使わず Inspector から直接 Prefab 化できる動線。
+    ///       Unity の Inspector ヘッダーと同様に最上部に配置する。
     {
         static constexpr const char* kSaveLabel = "Save as Prefab";
         const float btnW = ImGui::CalcTextSize(kSaveLabel).x
                          + ImGui::GetStyle().FramePadding.x * 2.0f;
         ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - btnW);
         if (ImGui::SmallButton(kSaveLabel) && !ctx.selectedEntities.empty() && ctx.activeScene) {
-            // 保存先: <projectRoot>/Assets/Prefabs/<name>.prefab (重複時は連番付き)
+            /// @note 保存先: `<projectRoot>/Assets/Prefabs/<name>.prefab` (重複時は連番付き)
             const std::string assetRoot = ctx.projectRoot.empty()
                 ? "Assets"
                 : ctx.projectRoot + "/Assets";
             const std::string prefabDir = assetRoot + "/Prefabs";
             util::FileSystem::EnsureDirectory(prefabDir);
 
-            // ファイル名として使えない文字をアンダースコアに置換する
+            /// @note ファイル名として使えない文字をアンダースコアに置換する
             std::string safeName;
             for (char c : go->name) {
                 const bool ok = std::isalnum(static_cast<unsigned char>(c))
@@ -301,9 +347,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             for (int i = 1; util::FileSystem::Exists(savePath) && i < 10000; ++i)
                 savePath = base + " " + std::to_string(i) + ".prefab";
 
-            // WHY: SaveSelection だけだと元の GO が通常オブジェクトのまま残り、
-            //      「プレファブを作ったのに繋がっていない」(Apply/Revert が出ない) 状態になる。
-            //      保存と同時にインスタンスとして接続する。
+            /// @note SaveSelection だけだと元の GO が通常オブジェクトのまま残り、Apply/Revert が
+            ///       出ない「繋がっていない」状態になるため、保存と同時にインスタンスとして接続する。
             std::vector<scene::EntityID> connectedRoots;
             if (PrefabSerializer::SaveSelectionAndConnect(
                     *ctx.activeScene, ctx.selectedEntities, savePath, connectedRoots)) {
@@ -315,10 +360,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SetTooltip("Save selected object as prefab to Assets/Prefabs and link it");
     }
 
-    // プレファブインスタンスには出所プレファブ名と Apply / Revert ボタンを表示する。
-    // WHY: Unity の Inspector ヘッダーと同等の UX。選択中の GO が特定の .prefab
-    //      から生成されたインスタンスであることをユーザーに明示し、同期操作へ
-    //      素早くアクセスできるようにする。
+    /// @note プレファブインスタンスには出所プレファブ名と Apply / Revert ボタンを表示する
+    ///       (Unity の Inspector ヘッダーと同等の UX)。同期操作へ素早くアクセスできるようにする。
     if (!go->prefabAssetPath.empty() && ctx.activeScene) {
         const std::string displayName =
             util::FileSystem::GetFilename(go->prefabAssetPath);
@@ -327,16 +370,14 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextUnformatted(("Prefab: " + displayName).c_str());
         ImGui::PopStyleColor();
 
-        // シーン内の同一プレファブのインスタンス数。Apply の波及範囲を事前に見せる。
+        /// @note シーン内の同一プレファブのインスタンス数。Apply の波及範囲を事前に見せる。
         const int instanceCount =
             PrefabSerializer::CountInstances(*ctx.activeScene, go->prefabAssetPath);
 
         ImGui::SameLine();
         if (ImGui::SmallButton("Apply")) {
-            // WHY ApplyAndPropagate か: アセットを書き換えただけでは、既に配置済みの
-            //     他インスタンスは古い定義のまま残る。Apply と伝播を 1 つの操作として
-            //     閉じてあるので、呼び忘れが起きる場所が無い
-            //     (実際 AI の prefab.apply だけが伝播を呼んでいなかった)。
+            /// @note アセットを書き換えるだけでは既に配置済みの他インスタンスが古い定義のまま残るため、
+            ///       Apply と伝播を 1 つの操作として閉じ、呼び忘れが起きないようにしている。
             const int updated = PrefabSerializer::ApplyAndPropagate(
                 *ctx.activeScene, go->GetID(), ctx.projectRoot);
             if (updated >= 0) {
@@ -344,8 +385,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
                 FBZZ_LOG_INFO("Prefab applied: %s (%d other instance(s) updated)",
                               displayName.c_str(), updated);
-                // 他インスタンスが作り直され EntityID が変わっているため、
-                // このフレームの描画は打ち切る。
+                /// @note 他インスタンスが作り直され EntityID が変わっているため、
+                ///       このフレームの描画は打ち切る。
                 if (updated > 0) return;
             }
         }
@@ -361,14 +402,14 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(), newRoots, ctx.projectRoot)) {
                 if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
-                return; // 古い GO を描画し続けないよう早期リターン
+                /// @note 古い GO を描画し続けないよう早期リターン
+                return;
             }
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Discard instance changes and restore from the source .prefab asset");
 
-        // 同じプレファブのインスタンスをまとめて選ぶ動線。
-        // WHY: 「このプレファブは今どこに何個置かれているか」を確かめる手段が無かった。
+        /// @note 同じプレファブのインスタンスをまとめて選ぶ動線 (どこに何個置かれているかを確かめる手段)。
         if (instanceCount > 1) {
             ImGui::SameLine();
             char selectLabel[64];
@@ -380,19 +421,16 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     if (candidate.prefabAssetPath == prefabPath)
                         instances.push_back(candidate.GetID());
                 if (!instances.empty()) SelectEntities(ctx, instances, SelectionReveal::Skip);
-                return; // 選択が複数になったので、この後の単体 Inspector は描かない
+                /// @note 選択が複数になったので、この後の単体 Inspector は描かない
+                return;
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Select every instance of this prefab in the open scene");
         }
 
-        // ── Overrides: このインスタンスがアセット定義とどこで違うか ────────────
-        //
-        // WHY: これが見えないと「Apply したら何がアセットへ行くのか」「Revert したら
-        //      何が消えるのか」が分からず、どちらのボタンも怖くて押せない。
-        //
-        // 差分の算出はシーン全体のシリアライズを伴うため毎フレームは回さない。
-        // Undo のリビジョン (= 何か編集された) と選択が変わったときだけ取り直す。
+        /// @name Overrides: このインスタンスがアセット定義とどこで違うか
+        /// @note Apply/Revert それぞれで何が起きるかを事前に見せる。差分算出はシーン全体の
+        ///       シリアライズを伴うため毎フレームは回さず、Undo リビジョンと選択が変わったときだけ取り直す。
         {
             struct OverrideCache {
                 std::string       guid;
@@ -438,7 +476,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                                         overrideCount, overrideCount == 1 ? "y" : "ies");
                     ImGui::Separator();
 
-                    // 「1 件だけ元に戻す」。その 1 件を除いた差分で作り直すのが実装。
+                    /// @note 「1 件だけ元に戻す」。その 1 件を除いた差分で作り直すのが実装。
                     const PrefabOverride* revertRequest = nullptr;
 
                     constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_BordersInnerH
@@ -507,9 +545,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                         }
                     }
 
-                    // 1 件だけ戻す: その 1 件を除いた差分でインスタンスを作り直す。
-                    // WHY: ライブなコンポーネントへ値を書き戻すと型ごとの分岐が必要になる。
-                    //      「差分集合を編集して展開し直す」なら経路が 1 本で済む。
+                    /// @note 1 件だけ戻すのは、その 1 件を除いた差分でインスタンスを作り直す形。
+                    ///       ライブなコンポーネントへ直接書き戻すと型ごとの分岐が要るが、差分集合を
+                    ///       編集して展開し直せば経路が 1 本で済む。
                     if (revertRequest) {
                         const PrefabOverrideSet kept = WithoutEntry(cache.set, *revertRequest);
                         std::vector<scene::EntityID> newRoots;
@@ -527,26 +565,26 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
         }
 
-        // プレファブ本体を隔離シーンで開く動線。
+        /// @note プレファブ本体を隔離シーンで開く動線。
         ImGui::SameLine();
         if (ImGui::SmallButton("Open Prefab")) {
             ctx.requestOpenPrefabEdit = go->prefabAssetPath;
-            return;   // このフレーム中にシーンが差し替わるため描画を打ち切る
+            /// @note このフレーム中にシーンが差し替わるため描画を打ち切る
+            return;
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Open the .prefab on its own so edits apply to every instance");
     }
 
-    // ── GameObject ヘッダーカード ────────────────────────────────────────────
-    // WHY: 名前 / Tag / Layer は「今どのオブジェクトを触っているか」を示す情報で、
-    //      その下に続くコンポーネント群とは階層が違う。1 枚のカードで囲って、
-    //      スクロールしても頭の 1 ブロックだけ性格が違うと分かるようにする。
+    /// @name GameObject ヘッダーカード
+    /// @note 名前 / Tag / Layer はコンポーネント群と階層が違う情報のため、1 枚のカードで囲み、
+    ///       スクロールしても頭の 1 ブロックだけ性格が違うと分かるようにする。
     const widgets::ComponentBodyScope headerCard = widgets::BeginCard();
     ImGui::Spacing();
 
-    // Unity と同じく、GameObject 自体の有効状態を名前欄の左で切り替える。
-    // WHY activeSelf か: 親が無効でも Inspector からは子自身の保存値を編集できる必要があり、
-    //      activeInHierarchy を直接表示すると親の状態を誤って上書きしてしまう。
+    /// @note Unity と同じく GameObject 自体の有効状態を名前欄の左で切り替える。activeInHierarchy でなく
+    ///       activeSelf を表示するのは、親が無効でも子自身の保存値を編集できる必要があるため
+    ///       (activeInHierarchy だと親の状態を誤って上書きする)。
     {
         bool active = go->activeSelf();
         if (ImGui::Checkbox("##game_object_active", &active)) {
@@ -569,8 +607,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     static scene::EntityID namingEntity;
     static std::string nameBeforeEdit;
     const std::string nameAtFrameStart = go->name;
-    // 名前欄はカードの主役なので 1 段高く取る。Tag / Layer と同じ高さだと
-    // 「今どのオブジェクトか」が周りの設定行に埋もれる。
+    /// @note 名前欄はカードの主役なので 1 段高く取る。Tag / Layer と同じ高さだと
+    ///       「今どのオブジェクトか」が周りの設定行に埋もれる。
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                         { ImGui::GetStyle().FramePadding.x,
                           ImGui::GetStyle().FramePadding.y + 3.0f });
@@ -599,7 +637,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         const float labelLayW = ImGui::CalcTextSize("Layer").x + spacing;
         const float comboW    = (ImGui::GetContentRegionAvail().x - labelTagW - labelLayW - spacing) * 0.5f;
 
-        // Tag
+        /// @note Tag
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Tag");
         ImGui::SameLine();
@@ -626,7 +664,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::EndCombo();
         }
 
-        // Layer
+        /// @note Layer
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Layer");
@@ -721,9 +759,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     drawAutomatic(scene::ComponentCategory::Misc);
     auto* scriptComponent = go->GetComponent<scene::ScriptComponent>();
     if (scriptComponent) {
-        // ScriptComponent は 1 つの入れ物だが、Inspector 上は各スクリプトを
-        // 独立した Component カードとして扱う。これにより Engine Component と
-        // スクリプトを同じ COMPONENT 順序リストで相互に入れ替えられる。
+        /// @note ScriptComponent は 1 つの入れ物だが、Inspector 上は各スクリプトを
+        ///       独立した Component カードとして扱う。これにより Engine Component と
+        ///       スクリプトを同じ COMPONENT 順序リストで相互に入れ替えられる。
         BeginScriptInspectorFrame(go, ctx);
         for (int i = 0; i < static_cast<int>(scriptComponent->scripts.size()); ++i) {
             const std::string orderKey = GetScriptOrderKey(*scriptComponent, i);
@@ -735,10 +773,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             });
         }
     }
-    // ここまでが「この GameObject の全 Component」の収集。以降で残骸キーを掃除してよい。
-    // NOTE: 上の Map モード絞り込み経路では complete を立てないこと。地形系しか
-    //       収集していない状態で掃除すると、隠れているだけの Component の並びが消える。
+    /// @note ここまでで全 Component の収集が済む。Map モードの絞り込み経路では complete を立てない (隠れた並びが消える)。
     componentCollector.complete = true;
+#if !defined(NDEBUG)
+    WarnCustomComponentsWithoutCard(*go, componentCollector);
+#endif
     componentCollector.DrawInOrder();
     ctx.inspectorComponentCollector = nullptr;
     if (scriptComponent)
@@ -748,13 +787,18 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     { FBZZ_PROFILE_SCOPE("Inspector::AddComponent");
       DrawAddComponentMenu(*go, m_addComponentFilter, ctx); }
 
-    // ── Animator を持つ GameObject は Inspector 最下部にプレビューを出す ──
-    // WHY: Unity と同じ動線。Animator 付きオブジェクトを選ぶだけでモーションを
-    //   確認できるようにする。SkinnedMeshRenderer は子に分かれている構成も
-    //   あるため、判定は Animator の有無だけで行う。
-    // 対象の解決は DrawAnimationPreviewWidget / TickAnimationPreview が行う。
-    // HasAnimationPreviewTarget() をここで先に判定すると、初回選択時に Preview 自身が
-    // 呼ばれず、再選択やパネルの再アタッチまで対象が解決されない。
+    /// @note カードの無い余白の右クリック。Transform しか無い GameObject にもコピーした Component を貼れるようにする。
+    if (ImGui::BeginPopupContextWindow("##inspector_context",
+                                       ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+        DrawPasteComponentAsNewMenuItem(*go, ctx, m_componentClipboard, m_componentClipboardType);
+        ImGui::EndPopup();
+    }
+
+    /// @name Animator を持つ GameObject は Inspector 最下部にプレビューを出す
+    /// @note SkinnedMeshRenderer が子に分かれる構成もあるため、判定は Animator の有無だけで行う。
+    ///       対象解決は DrawAnimationPreviewWidget / TickAnimationPreview が担う。先に
+    ///       HasAnimationPreviewTarget() で判定すると初回選択時に Preview 側が呼ばれず、
+    ///       再選択やパネル再アタッチまで対象が解決されない。
     if (go->GetComponent<scene::AnimatorComponent>()) {
         FBZZ_PROFILE_SCOPE("Inspector::AnimationPreview");
         ImGui::Spacing();

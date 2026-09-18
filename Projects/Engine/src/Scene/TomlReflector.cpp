@@ -3,12 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 #include <Engine/Scene/TomlReflector.hpp>
-
-// WHY codec を借りるか: カーブ / グラデーションの TOML 表現は .vfx と .scene で
-//     すでに 1 つに統一されている。ここで別形式を作ると、同じ型なのに
-//     出どころによって読めるファイルと読めないファイルが生まれる。
 #include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 
+/// @note カーブ / グラデーションの TOML 表現は .vfx と .scene で既に 1 つに統一されているため、
+///       ここで別形式を作ると同じ型なのに出どころによって読めるファイルと読めないファイルが生まれる。
 namespace fbzz::util {
 
 namespace {
@@ -48,7 +46,7 @@ template<typename Element, typename Convert>
 
 } // namespace
 
-// ── 値型 ⇔ TOML 配列 ─────────────────────────────────────────────────────────
+/// @name 値型 ⇔ TOML 配列
 
 toml::array Vec2ToArr(const math::Vector2& v)
 {
@@ -101,7 +99,7 @@ math::Quaternion ArrToQuat(const toml::array* a, math::Quaternion def)
     return { values[0], values[1], values[2], values[3] };
 }
 
-// ── TomlWriteReflector ───────────────────────────────────────────────────────
+/// @name TomlWriteReflector
 
 void TomlWriteReflector::Field(const char* name, scene::ParticleCurve& v)
 {
@@ -125,8 +123,8 @@ void TomlWriteReflector::ListField(const char* name, std::vector<int>& values)
 
 void TomlWriteReflector::ListField(const char* name, std::vector<bool>& values)
 {
-    // WHY vector<bool> だけ MakeArray を通さないか: プロキシ参照を返す特殊化のため、
-    //     const auto& で受けた要素をそのまま push_back できない。
+    /// @note `vector<bool>` だけ MakeArray を通さない。プロキシ参照を返す特殊化のため、
+    ///       const auto& で受けた要素をそのまま push_back できない。
     toml::array array;
     for (const bool value : values) array.push_back(value);
     Put(name, std::move(array));
@@ -154,19 +152,18 @@ void TomlWriteReflector::ListField(const char* name, std::vector<math::Vector4>&
 
 void TomlWriteReflector::BeginObject(const char* name)
 {
-    // 親へ空テーブルを先に挿入し、その実体を書き込み先として積む。
-    // WHY 先に挿入するか: 構築し終えてから move で挿入する方式だと、
-    //     構築中に子のアドレスを保持できずスタックに積めない。
+    /// @note 親へ空テーブルを先に挿入し、その実体を書き込み先として積む。構築し終えてから move で
+    ///       挿入する方式だと、構築中に子のアドレスを保持できずスタックに積めない。
     auto [iterator, inserted] =
         Current().insert_or_assign(PersistentKey(name), toml::table{});
     toml::table* child = iterator->second.as_table();
-    // 挿入直後なので as_table() は必ず成功する。防御的に親を積み直して破綻を避ける。
+    /// @note 挿入直後なので as_table() は必ず成功する。防御的に親を積み直して破綻を避ける。
     m_stack.push_back(child ? child : &Current());
 }
 
 void TomlWriteReflector::EndObject()
 {
-    // ルート (最初の 1 枚) は決して pop しない。
+    /// @note ルート (最初の 1 枚) は決して pop しない。
     if (m_stack.size() > 1) m_stack.pop_back();
 }
 
@@ -175,7 +172,8 @@ std::size_t TomlWriteReflector::BeginObjectList(const char* name, std::size_t co
     auto [iterator, inserted] =
         Current().insert_or_assign(PersistentKey(name), toml::array{});
     m_listStack.push_back(iterator->second.as_array());
-    return count;   // 書き込みは要素数を変えない
+    /// @note 書き込みは要素数を変えない
+    return count;
 }
 
 void TomlWriteReflector::BeginObjectElement(std::size_t index)
@@ -192,15 +190,17 @@ void TomlWriteReflector::BeginObjectElement(std::size_t index)
 std::size_t TomlWriteReflector::EndObjectList()
 {
     if (!m_listStack.empty()) m_listStack.pop_back();
-    return NO_REMOVE;   // 永続化は要素を削除しない
+    /// @note 永続化は要素を削除しない
+    return NO_REMOVE;
 }
 
-// ── TomlReadReflector ────────────────────────────────────────────────────────
+/// @name TomlReadReflector
 
 const toml::node* TomlReadReflector::FindNode(const char* fallback) const
 {
     const toml::table* table = Current();
-    if (!table) return nullptr;   // 欠損スコープの内側
+    /// @note 欠損スコープの内側
+    if (!table) return nullptr;
     return table->get(PersistentKey(fallback));
 }
 
@@ -228,7 +228,7 @@ void TomlReadReflector::Field(const char* name, bool& v)
     if (const toml::node* node = FindNode(name)) v = node->value_or(v);
 }
 
-// codec 側は「キーが無ければ何もしない」ため、欠損スコープでも既定値が残る。
+/// codec 側は「キーが無ければ何もしない」ため、欠損スコープでも既定値が残る。
 void TomlReadReflector::Field(const char* name, scene::ParticleCurve& v)
 {
     if (const toml::table* table = Current())
@@ -313,10 +313,9 @@ void TomlReadReflector::ListField(const char* name, std::vector<math::Vector4>& 
 void TomlReadReflector::BeginObject(const char* name)
 {
     const toml::node* node = FindNode(name);
-    // 見つからなければ nullptr を積む。以降の Field は読み込み元が無いため何もせず、
-    // 呼び出し側の既定値がそのまま残る (欠損スコープ)。
-    // WHY 早期 return しないか: スコープ対は必ず EndObject と釣り合う必要がある。
-    //     積まずに抜けると EndObject でスタックが破綻する。
+    /// @note 見つからなければ nullptr を積む。以降の Field は読み込み元が無いため何もせず、
+    ///       呼び出し側の既定値がそのまま残る (欠損スコープ)。スコープ対は必ず EndObject と
+    ///       釣り合う必要があるため、積まずに抜けると EndObject でスタックが破綻する。
     m_stack.push_back(node ? node->as_table() : nullptr);
 }
 
@@ -330,8 +329,8 @@ std::size_t TomlReadReflector::BeginObjectList(const char* name, std::size_t cou
     (void)count;
     const toml::array* array = FindArray(name);
     m_listStack.push_back(array);
-    // 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
-    // 配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
+    /// @note 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
+    ///       配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
     return array ? array->size() : 0u;
 }
 

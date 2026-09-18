@@ -29,7 +29,7 @@ public:
         particle.SetSimulationMode(fbzz::scene::ParticleSimulationMode::Cpu);
         particle.SetSimulationSpace(fbzz::scene::ParticleSimulationSpace::Local);
         particle.SetRenderMode(fbzz::scene::ParticleRenderMode::VerticalBillboard);
-        particle.SetReceiveForceFields(false);
+        particle.SetReceiveFlowFields(false);
         particle.SetEmitPosition({0.0f, 0.55f, 0.0f});
         particle.SetBoxShape({radius * 0.55f, 0.0f, radius * 0.55f});
         particle.SetEmitVelocity({});
@@ -82,7 +82,7 @@ public:
         m_previous = current;
         m_hasPrevious = true;
         if (damage <= 0 || m_age < kWarmupSeconds || m_hitCooldown > 0.0f) return;
-        // 着火する前に横断し終えた移動は、着火フレームでも被弾にしない。
+        /// @note 着火する前に横断し終えた移動は、着火フレームでも被弾にしない。
         if (previousAge < kWarmupSeconds)
             previous += (current - previous) * std::clamp((kWarmupSeconds - previousAge) / dt, 0.0f, 1.0f);
         if ((current - previous).LengthSq() > 100.0f) previous = current;

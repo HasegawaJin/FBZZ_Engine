@@ -6,17 +6,12 @@
 /// 組み立ても運動も ElectrodeRig が持つ。ここが決めるのは極の符号と調整値だけで、
 /// ElectricPlusParticleComponent とは符号以外まったく同じ振る舞いをする。
 ///
-/// WHY 色をここで持たないか:
-///   赤 = ＋ / 青 = − は ElectrodePole.hpp が全アセット共通の制約として持っている。
-///   タイトル画面だけ別の青を選べるようにすると、盤面の色の意味とタイトルの色が食い違う。
-///
-/// WHY 放電 (Arc) の欄がここに無いか:
-///   放電は 1 本の極ではなく «対» の持ち物で、両極が張ると同じ 2 点に 2 束が重なる。
-///   担当を ＋極 に決めてあるので、調整欄も ElectricPlusParticleComponent 側だけにある。
-///
-/// WHY カーソル追従 (Cursor) の欄がここに無いか:
-///   カーソルは画面に 1 つしかない。両極が同じ点を目指すと重なって 1 点に潰れ、
-///   引き合いも放電も出なくなる。掴まれる側を ＋極 に決めて、−極は追う側に残す。
+/// @note 色をここで持たない理由: 赤 = ＋ / 青 = − は ElectrodePole.hpp が全アセット
+///       共通の制約として持つ。タイトルだけ別の色を選べると盤面の色の意味と食い違う。
+/// @note 放電 (Arc) の欄がここに無い理由: 放電は «対» の持ち物で、担当を ＋極 に決めて
+///       あるため調整欄も ElectricPlusParticleComponent 側だけにある。
+/// @note カーソル追従の欄がここに無い理由: カーソルは画面に 1 つしかない。掴まれる側を
+///       ＋極 に決めて、−極は追う側に残す。
 #pragma once
 
 #include <Scripts/Title/ElectrodeRig.hpp>
@@ -127,7 +122,7 @@ private:
         tuning.lifetime      = lifetime;
         tuning.sizeStart     = particleSize;
         tuning.spawnRadius   = spawnRadius;
-        // 記号が読めなくなる手前で止める。0 まで絞ると開く / 畳む瞬間が «点滅» に見える。
+        /// @note 記号が読めなくなる手前で止める。0 まで絞ると開く / 畳む瞬間が «点滅» に見える。
         tuning.sizeEnd       = particleSize * 0.30f;
         tuning.crackle       = crackle;
         tuning.radialBurst   = radialBurst;
@@ -152,9 +147,9 @@ private:
         tuning.field.beads       = fieldLineBeads;
         tuning.field.travel      = fieldLineTravel;
         tuning.field.spin        = fieldLineSpin;
-        // arc の設定はここに無い。放電は対の持ち物で ＋極の rig だけが張るため
-        // (ElectrodeRig::UpdateArcs)、−側に同じ欄を出しても何も起きない。
-        // 記号と力線は逆に «1 個の電荷» の持ち物なので、両極が同じ欄を持つ。
+        /// @note arc の設定はここに無い。放電は対の持ち物で ＋極の rig だけが張るため
+        ///       (ElectrodeRig::UpdateArcs)、−側に同じ欄を出しても何も起きない。
+        ///       記号と力線は逆に «1 個の電荷» の持ち物なので、両極が同じ欄を持つ。
         tuning.pullStrength  = pullStrength;
         tuning.pushStrength  = pushStrength;
         tuning.fieldRadius   = fieldRadius;

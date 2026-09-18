@@ -8,7 +8,8 @@
 
 namespace fbzz::math {
 
-struct Matrix4; // forward declaration — Quaternion.cpp includes Matrix4.hpp
+/// @note Quaternion.cpp が Matrix4.hpp を include するための前方宣言。
+struct Matrix4;
 
 struct Quaternion {
     float x = 0.0f, y = 0.0f, z = 0.0f, w = 1.0f;
@@ -34,7 +35,8 @@ struct Quaternion {
 
     static Quaternion FromMatrix4(const Matrix4& m);
 
-    // NLerp: 等角速度ではないが Slerp より軽量。短弧補間には Slerp を使う
+    /// @brief NLerp (正規化線形補間)。
+    /// @note 等角速度ではないが Slerp より軽量。短弧補間には Slerp を使う。
     static Quaternion Lerp(const Quaternion& a, const Quaternion& b, float t);
     static Quaternion Slerp(const Quaternion& a, const Quaternion& b, float t);
     static float      Dot(const Quaternion& a, const Quaternion& b);

@@ -13,26 +13,28 @@ namespace fbzz::math {
 
 struct Ray {
     Vector3 origin;
-    Vector3 direction; // 正規化済みであることを前提とする
+    Vector3 direction; ///< 正規化済みであること。
 
     constexpr Ray() = default;
     constexpr Ray(const Vector3& o, const Vector3& d) : origin(o), direction(d) {}
 
-    // t パラメータの点を返す
+    /// @brief t パラメータにおける点を返す。
     Vector3 At(float t) const;
 
-    // 平面との交差。平行なとき、および交点がレイの後方 (t < 0) にあるときは false。
-    // 法線の裏側から入る交差は成立する (片面判定はしない)
+    /// @brief 平面との交差判定。
+    /// @return 平行、または交点がレイの後方 (t < 0) なら false。
+    /// @note 法線の裏側から入る交差も成立する (片面判定はしない)。
     bool IntersectPlane(const Plane& plane, float& outT) const;
 
-    // 球との交差 (direction は正規化済み前提)
+    /// @brief 球との交差判定。
+    /// @pre direction は正規化済みであること。
     bool IntersectSphere(const Vector3& center, float radius, float& outT) const;
 
-    // 三角形との交差 (Möller–Trumbore アルゴリズム)
+    /// @brief 三角形との交差判定 (Möller-Trumbore アルゴリズム)。
     bool IntersectTriangle(const Vector3& v0, const Vector3& v1, const Vector3& v2,
                            float& outT) const;
 
-    // NDC座標 (-1~+1) と逆ビュープロジェクション行列からレイを生成
+    /// @brief NDC 座標 (-1..1) と逆ビュープロジェクション行列からレイを生成する。
     static Ray FromNDC(float ndcX, float ndcY,
                        const Vector3& cameraPos, const Matrix4& invViewProj);
 };

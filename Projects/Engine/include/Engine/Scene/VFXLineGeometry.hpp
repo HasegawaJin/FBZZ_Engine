@@ -3,8 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 描画から切り離すか: 同じ関数を VFXLineSystem (シーン) と Inspector のプレビューが呼ぶ。
-///     形が決定論的 (同じ seed なら同じ雷) なので、テストで固定できる。
+/// @note 同じ関数を VFXLineSystem (シーン) と Inspector のプレビューが呼ぶため描画から切り離す。形が決定論的 (同じ seed なら同じ雷) なのでテストでも固定できる。
 #pragma once
 
 #include <Engine/Scene/Components/VFXLineComponent.hpp>

@@ -7,6 +7,7 @@
 /// 固定ステップは SystemScheduler::PhaseConfig で制御する。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
+#include <Physics/BodyHandle.hpp>
 
 namespace fbzz::scene {
 
@@ -16,8 +17,14 @@ public:
     Phase            GetPhase()   const override { return Phase::Physics; }
     RunMode          GetRunMode() const override { return RunMode::SimOnly; }
     ComponentAccess  GetAccess()  const override;
-    // ctx.fixedDt を使う。固定ステップループは SystemScheduler::RunPhase が担う
+    /// ctx.fixedDt を使う。固定ステップループは SystemScheduler::RunPhase が担う
     void Update(SystemContext& ctx) override;
+
+private:
+    /// 流れの場を配る physics::FlowVolume の枠。
+    /// @note コンポーネントではなく System が持つ理由: 場はシーン全体に 1 つで、
+    ///       どの GameObject にも属さない (WaterComponent::volumeHandle は水面 1 枚ごと)。
+    physics::VolumeHandle m_flowVolumeHandle;
 };
 
 } // namespace fbzz::scene

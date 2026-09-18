@@ -46,11 +46,10 @@ struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
 };
 
-// WHY SpringBoneSystem の同名ヘルパーを共有しないか:
-//   あちらはすべて無名名前空間のファイルローカルで、IKSystem との間でも
-//   CommitBoneWorldPose を «同じ規約» と書いて複製している。骨を書く系の
-//   ヘルパーを共有ヘッダーへ出すのは 3 つ目の書き手が出た今でも早く、
-//   規約が変わったときに 3 箇所が同時に壊れる方が発見が早い。
+/// @note SpringBoneSystem の同名ヘルパーは共有しない。あちらも無名名前空間のファイル
+///       ローカルで、IKSystem との間でも CommitBoneWorldPose を «同じ規約» と書いて複製して
+///       いる。3 つ目の書き手が出た今でも共有ヘッダーへ出すのは早く、規約が変わったとき
+///       3 箇所が同時に壊れる方が発見が早い。
 SkinnedMeshRenderer* FindSkinnedMeshRenderer(GameObject& owner)
 {
     if (auto* renderer = owner.GetComponent<SkinnedMeshRenderer>()) return renderer;
@@ -114,8 +113,8 @@ void RecalcBoneMatrix(const asset::Skeleton& skeleton,
       * skeleton.bones[static_cast<std::size_t>(boneIndex)].offsetMatrix;
 }
 
-// SpringBoneSystem::CommitBoneWorldPose と同じ規約。スキニング行列とボーン Transform を
-// 対で更新する。どちらか片方だけを書くと、メッシュと「骨に付いているもの」が食い違う。
+/// SpringBoneSystem::CommitBoneWorldPose と同じ規約。スキニング行列とボーン Transform を
+/// 対で更新する。どちらか片方だけを書くと、メッシュと「骨に付いているもの」が食い違う。
 void CommitBoneWorldPose(Scene& scene,
                          const asset::Skeleton& skeleton,
                          const SkinnedMeshRenderer& smr,
@@ -153,7 +152,7 @@ void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& 
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
-// AnimatorSystem::DecomposeAffineMatrix と同じ規約 (行優先、平行移動は 4 列目)。
+/// AnimatorSystem::DecomposeAffineMatrix と同じ規約 (行優先、平行移動は 4 列目)。
 void DecomposeAffine(const math::Matrix4& matrix,
                      math::Vector3& outPosition, math::Quaternion& outRotation)
 {
@@ -172,13 +171,13 @@ void DecomposeAffine(const math::Matrix4& matrix,
     outRotation = math::Quaternion::FromMatrix4(rotation).Normalized();
 }
 
-// 根 1 本ぶんを幅優先で辿り、既にある並びの後ろへ足す。
-// 親が必ず子より前に来る順を保つこと ─ RagdollRig はこの順序を前提に
-// «剛体を持たない骨を親から埋める» ので、崩すと葉が飛ぶ。
-//
-// @param claimed ノードを既に拾ったか。根が複数あるとき、後の根が先の根の部分木へ
-//                潜り込むのを防ぐ。同じ骨に剛体を 2 つ作ると、両方が同じ骨へ
-//                書き戻して震える。
+/// 根 1 本ぶんを幅優先で辿り、既にある並びの後ろへ足す。
+/// 親が必ず子より前に来る順を保つこと ─ RagdollRig はこの順序を前提に
+/// «剛体を持たない骨を親から埋める» ので、崩すと葉が飛ぶ。
+///
+/// @param claimed ノードを既に拾ったか。根が複数あるとき、後の根が先の根の部分木へ
+///                潜り込むのを防ぐ。同じ骨に剛体を 2 つ作ると、両方が同じ骨へ
+///                書き戻して震える。
 void AppendBoneTree(RagdollRuntime& runtime,
                     const asset::Skeleton& skeleton,
                     const RagdollProfile& profile,
@@ -213,8 +212,8 @@ void AppendBoneTree(RagdollRuntime& runtime,
 
         for (int child : skeleton.nodes[static_cast<std::size_t>(current.node)].children) {
             if (child < 0 || child >= static_cast<int>(skeleton.nodes.size())) continue;
-            // プロファイルが落とす枝はここで切る。剛体を作らないのではなく骨ごと拾わない
-            // ので、親のカプセルが «指へ向かう短い節» になるのも同時に防げる。
+            /// @note プロファイルが落とす枝はここで切る。剛体を作らないのではなく骨ごと拾わない
+            ///       ので、親のカプセルが «指へ向かう短い節» になるのも同時に防げる。
             if (profile.IsExcluded(
                     CanonicalBoneName(skeleton.nodes[static_cast<std::size_t>(child)].name)))
                 continue;
@@ -223,12 +222,10 @@ void AppendBoneTree(RagdollRuntime& runtime,
     }
 }
 
-// すべての根を 1 本の並びへ畳む。根が 1 本なら従来と同じ結果になる。
-//
-// WHY 1 本の配列にまとめるか: 繋がっていない部分木でも、自己衝突・接触・書き戻しは
-//     «全部まとめて 1 回» でよい。リグを根の数だけ持つと、ソルバも接触の探索も
-//     根の数だけ走ることになる。RagdollRig は親を持たない剛体を根として個別に
-//     繋ぎ止めるので、森のまま載せられる。
+/// @brief すべての根を 1 本の並びへ畳む。根が 1 本なら従来と同じ結果になる。
+/// @note 繋がっていない部分木でも自己衝突・接触・書き戻しは «全部まとめて 1 回» でよい。
+///       リグを根の数だけ持つとソルバも接触の探索も根の数だけ走るが、RagdollRig は親を
+///       持たない剛体を根として個別に繋ぎ止めるので、森のまま載せられる。
 void BuildBoneList(RagdollComponent& ragdoll,
                    const asset::Skeleton& skeleton,
                    const RagdollProfile& profile)
@@ -269,7 +266,7 @@ void BuildBoneList(RagdollComponent& ragdoll,
     runtime.boneScales.assign(runtime.bones.size(), math::Vector3::ONE);
 }
 
-// 全ノードのバインドポーズをスケルトン空間で組む。深さ優先なので親が先に確定する。
+/// 全ノードのバインドポーズをスケルトン空間で組む。深さ優先なので親が先に確定する。
 std::vector<math::Matrix4> BuildBindGlobals(const asset::Skeleton& skeleton)
 {
     std::vector<math::Matrix4> globals(skeleton.nodes.size(), math::Matrix4::Identity());
@@ -292,12 +289,10 @@ std::vector<math::Matrix4> BuildBindGlobals(const asset::Skeleton& skeleton)
     return globals;
 }
 
-// 剛体と関節を組む «たわみ 0» の基準姿勢。
-//
-// WHY 起動時のアニメーション姿勢ではなくバインドポーズか: 可動域は関節フレームからの
-//     角度で測るので、基準が «たまたま再生していたクリップ» だと «膝は前へ 105°» が
-//     毎回違う所から数え始めることになる。走っている途中で倒すと膝が伸び切ったまま
-//     固まる、といった «起動したフレーム次第» の破綻がここから出る。
+/// @brief 剛体と関節を組む «たわみ 0» の基準姿勢。
+/// @note 起動時のアニメーション姿勢ではなくバインドポーズを使う。可動域は関節フレームからの
+///       角度で測るため、基準が «たまたま再生していたクリップ» だと毎回違う所から数え始め、
+///       «起動したフレーム次第» で膝が伸び切ったまま固まるといった破綻が出る。
 std::vector<RagdollBonePose> BuildBindPose(const RagdollRuntime&  runtime,
                                            const asset::Skeleton& skeleton,
                                            const math::Matrix4&   ownerWorld)
@@ -315,7 +310,7 @@ std::vector<RagdollBonePose> BuildBindPose(const RagdollRuntime&  runtime,
     return pose;
 }
 
-// このフレームの FK/IK/揺れ込みの姿勢を読む。捕獲元・サーボの目標・ブレンド先を兼ねる。
+/// このフレームの FK/IK/揺れ込みの姿勢を読む。捕獲元・サーボの目標・ブレンド先を兼ねる。
 bool SampleFkPose(RagdollRuntime& runtime, Scene& scene, const SkinnedMeshRenderer& smr)
 {
     for (std::size_t i = 0; i < runtime.bones.size(); ++i) {
@@ -328,11 +323,10 @@ bool SampleFkPose(RagdollRuntime& runtime, Scene& scene, const SkinnedMeshRender
     return true;
 }
 
-// 剛体を組み直す条件。骨の並びが変わればカプセルも関節も別物になる。
-//
-// WHY «組めなかった» を再試行の理由に入れないか: 根ボーン名が骨格に無いときは何度
-//     やっても組めない。毎フレーム全ノードのバインドポーズを組み直すだけになるので、
-//     条件が変わるまで結果を据え置き、理由は RagdollStatus で名指しする。
+/// @brief 剛体を組み直す条件。骨の並びが変わればカプセルも関節も別物になる。
+/// @note «組めなかった» は再試行の理由に入れない。根ボーン名が骨格に無いときは何度やっても
+///       組めず、毎フレーム全ノードのバインドポーズを組み直すだけになる。条件が変わるまで
+///       結果を据え置き、理由は RagdollStatus で名指しする。
 bool NeedsRebuild(const RagdollComponent& ragdoll, const asset::Skeleton& skeleton,
                   const math::Vector3& scale)
 {
@@ -348,7 +342,7 @@ bool NeedsRebuild(const RagdollComponent& ragdoll, const asset::Skeleton& skelet
         || runtime.builtExcludedRoots != ragdoll.excludedRootBones;
 }
 
-// 衝撃で抜けた力みを戻す。
+/// 衝撃で抜けた力みを戻す。
 void AdvanceRecovery(RagdollComponent& ragdoll, float dt)
 {
     if (ragdoll.mode != RagdollMode::Active || ragdoll.recoveryRemaining <= 0.0f) {
@@ -369,8 +363,8 @@ void AdvanceRecovery(RagdollComponent& ragdoll, float dt)
                                      math::Clamp01(ragdoll.recoveryRemaining / total));
 }
 
-// 自分の当たり判定を集める。ラグドール中も «立っている側» のコライダーは World に
-// 残っているので、除外しないと倒れた体が自分自身と押し合う。
+/// 自分の当たり判定を集める。ラグドール中も «立っている側» のコライダーは World に
+/// 残っているので、除外しないと倒れた体が自分自身と押し合う。
 void CollectOwnColliders(GameObject& object, std::vector<const physics::Collider*>& out)
 {
     const auto push = [&out](const ColliderComponent* component) {
@@ -389,9 +383,9 @@ void CollectOwnColliders(GameObject& object, std::vector<const physics::Collider
         if (GameObject* child = object.GetChild(i)) CollectOwnColliders(*child, out);
 }
 
-// 接地面。アニメーション姿勢は常に «床を破っていない» 側に居なければならない ─
-// 床が目標より上にあると、その下の剛体が毎ステップ押し上げられてサーボと押し合い、
-// 足だけが震える。だからオーナーの足元と、今の姿勢の最下点の低い方を採る。
+/// 接地面。アニメーション姿勢は常に «床を破っていない» 側に居なければならない ─
+/// 床が目標より上にあると、その下の剛体が毎ステップ押し上げられてサーボと押し合い、
+/// 足だけが震える。だからオーナーの足元と、今の姿勢の最下点の低い方を採る。
 float GroundHeightFor(const RagdollComponent& ragdoll, const GameObject& owner)
 {
     const float ownerFloor = owner.transform.worldPosition.y + ragdoll.groundOffset;
@@ -401,8 +395,8 @@ float GroundHeightFor(const RagdollComponent& ragdoll, const GameObject& owner)
 
 } // namespace
 
-// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
-// System と同じバッチに入って並列に走る (AnimatorSystem::GetAccess の WHY を参照)。
+/// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
+/// System と同じバッチに入って並列に走る (理由は AnimatorSystem::GetAccess を参照)。
 ComponentAccess RagdollSystem::GetAccess() const
 {
     return ComponentAccess{}
@@ -412,7 +406,7 @@ ComponentAccess RagdollSystem::GetAccess() const
 
 OrderingHints RagdollSystem::GetOrder() const
 {
-    // 揺れものが確定させた姿勢がブレンド先になる。逆順だと戻り際に揺れが物理を打ち消す。
+    /// @note 揺れものが確定させた姿勢がブレンド先になる。逆順だと戻り際に揺れが物理を打ち消す。
     return OrderingHints{}.After<SpringBoneSystem>();
 }
 
@@ -465,7 +459,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             ragdoll->activationGravity = 1.0f;
         }
 
-        // 止まっているあいだは骨を 1 本も触らない。Animator が書いた姿勢がそのまま残る。
+        /// @note 止まっているあいだは骨を 1 本も触らない。Animator が書いた姿勢がそのまま残る。
         if (ragdoll->phase == RagdollPhase::Idle && !ragdoll->beginRequested) {
             ragdoll->runtimeStatus    = RagdollStatus::Idle;
             ragdoll->runtimeDeviation = 0.0f;
@@ -495,10 +489,10 @@ void RagdollSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        // 落とす部分木が増減すると組み直しになる (壊れた脚が 1 本増えた等)。
-        // 既に走っている最中なら、組み直した剛体をこのフレームの姿勢で捕獲し直す
-        // 必要がある ── 組み上がりはバインドポーズなので、捕獲しないと
-        // 既に垂れていた部分木がバインドポーズへ 1 フレームで跳ね上がる。
+        /// @note 落とす部分木が増減すると組み直しになる (壊れた脚が 1 本増えた等)。
+        ///       既に走っている最中なら、組み直した剛体をこのフレームの姿勢で捕獲し直す
+        ///       必要がある ── 組み上がりはバインドポーズなので、捕獲しないと
+        ///       既に垂れていた部分木がバインドポーズへ 1 フレームで跳ね上がる。
         const bool rebuilding = NeedsRebuild(*ragdoll, skeleton, go->transform.worldScale);
         if (rebuilding) {
             const RagdollProfile profile = ragdoll->ResolveProfile();
@@ -517,8 +511,8 @@ void RagdollSystem::Update(SystemContext& ctx)
             runtime.builtProfile    = ragdoll->profile;
             runtime.builtExcludedRoots = ragdoll->excludedRootBones;
 
-            // «剛体は組めたが可動域が全部 fallback» は画面では «なんとなく柔らかい»
-            // としか見えない。組み直したときだけ出るので、ログが溢れることもない。
+            /// @note «剛体は組めたが可動域が全部 fallback» は画面では «なんとなく柔らかい»
+            ///       としか見えない。組み直したときだけ出るので、ログが溢れることもない。
             ragdoll->runtimeUnmatched =
                 static_cast<int>(runtime.rig->UnmatchedBones().size());
             if (ragdoll->runtimeUnmatched > 0) {
@@ -547,9 +541,9 @@ void RagdollSystem::Update(SystemContext& ctx)
 
         RagdollRig& rig = *runtime.rig;
 
-        // 走っている最中に組み直した。今の姿勢を «たわみ 0» として拾い直す。
-        // beginRequested の経路と同じことをするが、段階 (phase) と重みは触らない ─
-        // 触ると部分木が 1 つ増えるたびに全体がブレンドし直しになる。
+        /// @note 走っている最中に組み直した。今の姿勢を «たわみ 0» として拾い直す。
+        ///       beginRequested の経路と同じことをするが、段階 (phase) と重みは触らない ─
+        ///       触ると部分木が 1 つ増えるたびに全体がブレンドし直しになる。
         if (rebuilding && ragdoll->phase != RagdollPhase::Idle && !ragdoll->beginRequested) {
             rig.Capture(runtime.bones);
             rig.UpdateDriveTargets(runtime.bones);
@@ -580,8 +574,8 @@ void RagdollSystem::Update(SystemContext& ctx)
             rig.UpdateDriveTargets(runtime.bones);
             ragdoll->runtimeGround = GroundHeightFor(*ragdoll, *go);
 
-            // 起動のたびに拾い直す。ラグドール中にコライダーが増減することは無いので、
-            // 毎フレーム階層を辿る理由が無い (ボスは骨だけで 100 個の子を持つ)。
+            /// @note 起動のたびに拾い直す。ラグドール中にコライダーが増減することは無いので、
+            ///       毎フレーム階層を辿る理由が無い (ボスは骨だけで 100 個の子を持つ)。
             std::vector<const physics::Collider*> ignored;
             CollectOwnColliders(*go, ignored);
             rig.SetIgnoredColliders(std::move(ignored));
@@ -589,8 +583,8 @@ void RagdollSystem::Update(SystemContext& ctx)
                 rig.SetIgnoredBody(rigidBody->rigidBody.get());
         }
 
-        // Active は目標ごと今のクリップへ乗せ替える。歩いて足元が上下しても床は付いて回る。
-        // Passive は起動時の床のまま ─ 崩れ落ちている途中で床を動かすと体が跳ねる。
+        /// @note Active は目標ごと今のクリップへ乗せ替える。歩いて足元が上下しても床は付いて回る。
+        ///       Passive は起動時の床のまま ─ 崩れ落ちている途中で床を動かすと体が跳ねる。
         rig.SetStandingGuard(ragdoll->standingGuard, ragdoll->standingMaxDistance,
                              ragdoll->standingMaxDegrees * math::PI / 180.0f);
         if (ragdoll->mode == RagdollMode::Active || ragdoll->standingGuard) {
@@ -606,8 +600,8 @@ void RagdollSystem::Update(SystemContext& ctx)
             ? ctx.dt : 0.0f;
         const int steps = elapsed > 0.0f ? AccumulateRagdollSteps(runtime.remainingTime, elapsed) : 0;
 
-        // 押された瞬間だけ力みを抜く。抜かないと «硬い体が少しめり込んで即座に戻る» に
-        // なり、当たった側から見て手応えが無い。抜けたぶんは recoverySeconds で戻る。
+        /// @note 押された瞬間だけ力みを抜く。抜かないと «硬い体が少しめり込んで即座に戻る» に
+        ///       なり、当たった側から見て手応えが無い。抜けたぶんは recoverySeconds で戻る。
         if (!ragdoll->pendingImpulses.empty() && ragdoll->mode == RagdollMode::Active) {
             ragdoll->muscleScale = std::min(ragdoll->muscleScale,
                                             1.0f - math::Clamp01(ragdoll->impactSlack));
@@ -624,7 +618,7 @@ void RagdollSystem::Update(SystemContext& ctx)
                          0.0f });
         rig.SetLimitLearning(ragdoll->learnLimits,
                              std::max(ragdoll->limitMargin, 0.0f) * math::PI / 180.0f);
-        // 繋ぎ止めも力みに追従させる。押された瞬間だけ胴が動くのはこの倍率が落ちるため。
+        /// @note 繋ぎ止めも力みに追従させる。押された瞬間だけ胴が動くのはこの倍率が落ちるため。
         rig.SetRootAnchor(std::max(ragdoll->rootAnchor, 0.0f) *
                               math::Clamp01(ragdoll->muscleScale),
                           std::max(ragdoll->rootAnchorSag, 0.0f),
@@ -634,9 +628,9 @@ void RagdollSystem::Update(SystemContext& ctx)
                      math::Clamp01(ragdoll->driveFalloff),
                      std::max(ragdoll->driveDamping, 0.0f));
 
-        // Active 中に世界と当てると、足がカプセルの半径ぶん浮いた所でサーボと釣り合う
-        // (RagdollComponent::contactWhileActive の WHY)。自己衝突は姿勢がクリップの
-        // 近くに居る限り新しく重ならないので、こちらは Active でも残す。
+        /// @note Active 中に世界と当てると、足がカプセルの半径ぶん浮いた所でサーボと釣り合う
+        ///       (理由は RagdollComponent::contactWhileActive を参照)。自己衝突は姿勢がクリップの
+        ///       近くに居る限り新しく重ならないので、こちらは Active でも残す。
         const bool worldContacts =
             ragdoll->mode != RagdollMode::Active || ragdoll->contactWhileActive;
 
@@ -656,7 +650,7 @@ void RagdollSystem::Update(SystemContext& ctx)
         }
         ragdoll->pendingImpulses.clear();
 
-        // 接触は固定刻みごとに更新し、ソルバ内の substep では使い回す。
+        /// @note 接触は固定刻みごとに更新し、ソルバ内の substep では使い回す。
         for (int step = 0; step < steps; ++step) {
             if (ragdoll->endRequested && ragdoll->phase != RagdollPhase::BlendOut)
                 BeginRagdollBlendOut(*ragdoll);
@@ -678,8 +672,8 @@ void RagdollSystem::Update(SystemContext& ctx)
 
         ragdoll->runtimeDeviation = rig.MeasureDeviation(runtime.bones);
 
-        // 支え切れなくなったらサーボを捨てる。目標はこのフレームの姿勢のままなので、
-        // 崩れ始めは «こらえていた形» から続く ─ Begin し直すと押された勢いが消える。
+        /// @note 支え切れなくなったらサーボを捨てる。目標はこのフレームの姿勢のままなので、
+        ///       崩れ始めは «こらえていた形» から続く ─ Begin し直すと押された勢いが消える。
         if (ragdoll->mode == RagdollMode::Active && ragdoll->collapseDistance > 0.0f &&
             ragdoll->runtimeDeviation > ragdoll->collapseDistance) {
             ragdoll->mode              = RagdollMode::Passive;

@@ -20,7 +20,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// パスからファイル名部分だけを取り出す (一覧を短く保つため)。
+/// パスからファイル名部分だけを取り出す (一覧を短く保つため)。
 std::string FileNameOnly(const std::string& path)
 {
     const size_t slash = path.find_last_of("/\\");
@@ -32,7 +32,7 @@ const char* KindLabel(BuildRecord::Kind kind)
     return kind == BuildRecord::Kind::Script ? "Script" : "HLSL";
 }
 
-// 履歴コンボに出す 1 行ラベル (例: "14:32:05  Script  FAIL  3E 1W  (2.3s)")。
+/// 履歴コンボに出す 1 行ラベル (例: "14:32:05  Script  FAIL  3E 1W  (2.3s)")。
 std::string RecordLabel(const BuildRecord& rec)
 {
     const char* mark = "...";
@@ -62,7 +62,7 @@ LogListLine MakeDiagnosticLine(const BuildDiagnostic& d, std::uint64_t id)
     }
     line.tag      = d.code;
     line.text     = d.message;
-    // コピーは元の 1 行 (フルパス込み) にする。貼った先でそのまま場所が分かるように。
+    /// @note コピーは元の 1 行 (フルパス込み) にする。貼った先でそのまま場所が分かるように。
     line.copyText = d.raw;
     line.file     = d.file;
     line.line     = d.line;
@@ -73,7 +73,7 @@ LogListLine MakeDiagnosticLine(const BuildDiagnostic& d, std::uint64_t id)
 
 void BuildOutputPanel::SyncDiagnostics(const BuildRecord* rec)
 {
-    // 別レコードへ切り替えたら選択は持ち越さない (id は診断の添字なので別物を指してしまう)。
+    /// @note 別レコードへ切り替えたら選択は持ち越さない (id は診断の添字なので別物を指してしまう)。
     const std::string clock = rec ? rec->startClock : std::string();
     if (rec != m_diagRecord || clock != m_diagRecordClock) {
         m_diagRecord      = rec;
@@ -131,7 +131,7 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
         ImGui::TextDisabled("No builds yet.");
     }
 
-    // 右側: 履歴 / Rebuild / Clear。幅が足りなければ次の行へ回す。
+    /// @note 右側: 履歴 / Rebuild / Clear。幅が足りなければ次の行へ回す。
     const auto& history = console.History();
     const float comboW  = (std::min)(320.0f, (std::max)(160.0f, ImGui::GetContentRegionAvail().x * 0.4f));
     const float rightW  = (history.empty() ? 0.0f : comboW + sp) + btnW("Rebuild") + sp + btnW("Clear");
@@ -161,11 +161,9 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
         ImGui::SameLine(0.0f, sp);
     }
 
-    // Rebuild は script.reload operator を通す。
-    // WHY 直接 requestScriptReload を立てないか: その operator は「コンパイル中は
-    //     開始できない」条件 (poll) を持っており、フラグを直に立てるとその条件を
-    //     素通りする。console.IsBuilding() だけを見ていると、HLSL リロードや
-    //     ホットリロード監視が走らせたビルドの最中でも押せてしまう。
+    /// @note Rebuild は script.reload operator を通す: 直接 requestScriptReload を立てると
+    ///       operator の「コンパイル中は開始できない」poll 条件を素通りする。
+    ///       console.IsBuilding() だけでは HLSL リロードやホットリロード起因のビルドを見逃す。
     const bool canRebuild = CanInvokeOperator(ctx, "script.reload") && !console.IsBuilding();
     ImGui::BeginDisabled(!canRebuild);
     if (ImGui::Button("Rebuild")) InvokeOperator(ctx, "script.reload");
@@ -213,7 +211,7 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
         rec = console->Latest();
 
     DrawHeader(ctx, *console, rec);
-    // Clear で履歴が消えた直後は rec が宙に浮くので引き直す。
+    /// @note Clear で履歴が消えた直後は rec が宙に浮くので引き直す。
     if (m_viewHistoryIndex < 0 || m_viewHistoryIndex >= static_cast<int>(history.size()))
         rec = console->Latest();
     ImGui::Separator();
@@ -233,9 +231,8 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
         m_focusFirstError = false;
     }
 
-    // WHY 高さを先に割り振るか: 以前は診断を 55% の固定高で置き、生ログは残り全部を
-    //     取っていたため、パネルを縮めると生ログのツールバーごと見えなくなっていた。
-    //     2 つのツールバーとスプリッタの高さを先に引き、残りを比率で分ける。
+    /// @note 高さは先にツールバー 2 つとスプリッタの分を引き、残りを比率で分ける。
+    ///       診断を固定 55% で確保すると、パネルを縮めたとき生ログのツールバーごと隠れていた。
     const ImGuiStyle& st        = ImGui::GetStyle();
     const float       toolbarH  = ImGui::GetFrameHeightWithSpacing();
     const float       splitterH = 4.0f + st.ItemSpacing.y * 2.0f;
@@ -251,8 +248,8 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     DrawSplitter();
 
     ImGui::AlignTextToFramePadding();
-    // WHY 過去レコードでも最新の出力を出すか: レコードは生ログ全文を持たない (メモリ節約)。
-    //     何を見ているのか取り違えないよう、ラベルで明示する。
+    /// @note レコードは生ログ全文を持たない (メモリ節約) ため、過去レコード表示中も生ログは
+    ///       最新のものを出す。取り違えないようラベルで明示する。
     const bool viewingPast = rec != nullptr && rec != console->Latest();
     ImGui::TextDisabled("%s", viewingPast ? "Output (latest build)" : "Output");
     ImGui::SameLine();

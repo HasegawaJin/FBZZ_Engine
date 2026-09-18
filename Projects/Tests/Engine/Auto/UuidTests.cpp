@@ -45,7 +45,7 @@ TEST_F(UuidTest, UsesOnlyLowerCaseHexOutsideTheSeparators)
 
 TEST_F(UuidTest, MarksVersionFourAndTheRfcVariant)
 {
-    // 版とバリアントが立っていないと、外部ツールから «UUID ではない» と扱われる。
+    /// @note 版とバリアントが立っていないと、外部ツールから «UUID ではない» と扱われる。
     const std::string id = util::GenerateUUID();
 
     EXPECT_EQ(id[14], '4');
@@ -56,8 +56,8 @@ TEST_F(UuidTest, MarksVersionFourAndTheRfcVariant)
 
 TEST_F(UuidTest, GeneratesADifferentValueEveryTime)
 {
-    // 同じフレームで何十個も作る (プレファブの一括生成)。そこで衝突すると
-    // «参照が別のオブジェクトを指す» という形で出る。
+    /// @note 同じフレームで何十個も作る (プレファブの一括生成)。そこで衝突すると
+    ///       «参照が別のオブジェクトを指す» という形で出る。
     std::set<std::string> seen;
     for (int i = 0; i < 1000; ++i) seen.insert(util::GenerateUUID());
 

@@ -40,7 +40,7 @@ file(MAKE_DIRECTORY "${FBZZ_SDK_GENERATED_DIR}")
 #      FBZZMath をリンクしているおかげで PUBLIC 定義が «たまたま» 流れているだけで、
 #      リンク先を 1 つ減らした瞬間に壊れる。宛先を明示して事故を断つ。
 get_property(FBZZ_ENGINE_MODULE_TARGETS GLOBAL PROPERTY FBZZ_ENGINE_MODULES)
-foreach(FBZZ_ABI_TARGET FBZZMath FBZZPhysics FBZZEngine FBZZEditor
+foreach(FBZZ_ABI_TARGET FBZZMath FBZZPhysics FBZZFluid FBZZEngine FBZZEditor
                         ${FBZZ_ENGINE_MODULE_TARGETS})
     target_compile_definitions(${FBZZ_ABI_TARGET} PUBLIC
         FBZZ_ENGINE_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
@@ -74,7 +74,7 @@ configure_file(
 )
 
 # CMake targetの実際の公開interfaceをexportし、手書きpackageとの乖離を防ぐ。
-install(TARGETS FBZZMath FBZZPhysics FBZZEngine ImGui TomlPlusPlus
+install(TARGETS FBZZMath FBZZPhysics FBZZFluid FBZZEngine ImGui TomlPlusPlus
     EXPORT FBZZTargets
     RUNTIME DESTINATION "bin/$<CONFIG>"
     LIBRARY DESTINATION "bin/$<CONFIG>"
@@ -89,6 +89,7 @@ install(EXPORT FBZZTargets
 install(DIRECTORY
     "${CMAKE_SOURCE_DIR}/Projects/Math/include/"
     "${CMAKE_SOURCE_DIR}/Projects/Physics/include/"
+    "${CMAKE_SOURCE_DIR}/Projects/Fluid/include/"
     "${CMAKE_SOURCE_DIR}/Projects/Engine/include/"
     "${CMAKE_SOURCE_DIR}/ThirdParty/TomlPlusPlus/include/"
     DESTINATION "include"
@@ -142,7 +143,7 @@ add_custom_target(FBZZSDK
         "-DSDK_STORE_ROOT=${FBZZ_SDK_STORE_ROOT}"
         "-DKEEP_SDK_ID=${FBZZ_SDK_ID}"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/PruneFBZZSDKStore.cmake"
-    DEPENDS FBZZMath FBZZPhysics FBZZEngine FBZZEditorLauncher
+    DEPENDS FBZZMath FBZZPhysics FBZZFluid FBZZEngine FBZZEditorLauncher
     COMMENT "Publishing immutable FBZZ SDK ${FBZZ_SDK_ID}"
     VERBATIM
 )

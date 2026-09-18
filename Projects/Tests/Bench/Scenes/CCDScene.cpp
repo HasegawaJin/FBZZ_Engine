@@ -72,7 +72,7 @@ public:
     {
         if (!m_playing || m_samples.empty()) return;
 
-        // 表示上のコマ送り。判定そのものは Rebuild が全フレームぶん済ませてある。
+        /// @note 表示上のコマ送り。判定そのものは Rebuild が全フレームぶん済ませてある。
         m_cursorTime += dt * m_frameRate;
         const float count = static_cast<float>(m_samples.size());
         while (m_cursorTime >= count) m_cursorTime -= count;
@@ -80,7 +80,7 @@ public:
 
     void DetectAnomalies(AnomalyLog& log) override
     {
-        // 障害物は必ず進路上にある。返さないなら掃引そのものが解けていない。
+        /// @note 障害物は必ず進路上にある。返さないなら掃引そのものが解けていない。
         if (!m_hit.hit) {
             log.Report(Severity::Error, "進路上に障害物があるのに CCD がヒットを返していない");
             return;
@@ -95,17 +95,17 @@ public:
         log.ReportIf(std::fabs(length - 1.0f) > 1.0e-3f, Severity::Error,
                      "法線が単位長でない (|n| = %.5f)", length);
 
-        // 弾は -X から来る。法線が +X を向くと押し戻しが障害物の内側へ働く。
+        /// @note 弾は -X から来る。法線が +X を向くと押し戻しが障害物の内側へ働く。
         log.ReportIf(m_hit.normal.x > 0.0f, Severity::Error,
                      "法線が障害物の内側を向いている (%+.2f, %+.2f, %+.2f)",
                      m_hit.normal.x, m_hit.normal.y, m_hit.normal.z);
 
-        // 停止位置は «ちょうど接する» ところ。めり込んでも離れても TOI がずれている。
+        /// @note 停止位置は «ちょうど接する» ところ。めり込んでも離れても TOI がずれている。
         const float gap = m_hitCenter.x - TouchingX();
         log.ReportIf(std::fabs(gap) > kTouchTolerance, Severity::Error,
                      "TOI の停止位置が接触面から %+.4f m ずれている", gap);
 
-        // «不要» と言われた速度ですり抜けている ── しきい値が緩すぎる状態。
+        /// @note «不要» と言われた速度ですり抜けている ── しきい値が緩すぎる状態。
         log.ReportIf(!NeedsCCD() && m_overlappingFrames == 0, Severity::Error,
                      "NeedsCCD が拾わない速度ですり抜けている (しきい値が緩い)");
     }
@@ -137,7 +137,7 @@ public:
         ImGui::Text("サンプル %zu / 重なったフレーム %d",
                     m_samples.size(), m_overlappingFrames);
 
-        // NeedsCCD のしきい値そのもの。«不要» なのに跨ぐ速度があれば、そこが判定の穴。
+        /// @note NeedsCCD のしきい値そのもの。«不要» なのに跨ぐ速度があれば、そこが判定の穴。
         const bool needsCCD = NeedsCCD();
         if (needsCCD) ImGui::TextColored({1.0f, 0.72f, 0.36f, 1.0f}, "NeedsCCD: 必要");
         else          ImGui::TextColored({0.74f, 0.77f, 0.81f, 1.0f}, "NeedsCCD: 不要");
@@ -160,7 +160,7 @@ public:
         else
             ImGui::TextColored({0.74f, 0.77f, 0.81f, 1.0f}, "離散判定でも捕まえられる");
 
-        // «不要» と言われたのに跨いでいる ── しきい値が緩すぎる状態。
+        /// @note «不要» と言われたのに跨いでいる ── しきい値が緩すぎる状態。
         if (!needsCCD && m_overlappingFrames == 0)
             ImGui::TextColored({1.0f, 0.36f, 0.41f, 1.0f},
                                "NeedsCCD が拾わない速度ですり抜けている (しきい値が緩い)");
@@ -171,9 +171,9 @@ public:
         view.DrawGrid(0.5f);
         DrawObstacle(view);
 
-        // 各フレームの位置。障害物と重なったフレームだけ赤くする。
-        // 低速では点が数千個になるので間引くが、重なった点は «すり抜けたかどうか» の
-        // 判断そのものなので必ず描く。
+        /// @note 各フレームの位置。障害物と重なったフレームだけ赤くする。
+        ///       低速では点が数千個になるので間引くが、重なった点は «すり抜けたかどうか» の
+        ///       判断そのものなので必ず描く。
         const std::size_t stride = 1 + m_samples.size() / 300;
         for (std::size_t index = 0; index < m_samples.size(); ++index) {
             const float x        = m_samples[index];
@@ -183,7 +183,7 @@ public:
                             overlaps ? colors::kContact : colors::kBody, false, 1.2f);
         }
 
-        // 今のコマ。どのフレームを見ているかを追えるようにする。
+        /// @note 今のコマ。どのフレームを見ているかを追えるようにする。
         if (!m_samples.empty()) {
             const std::size_t index = static_cast<std::size_t>(m_cursorTime) % m_samples.size();
             const math::Vector3 from{m_samples[index], 0.0f, 0.0f};
@@ -192,7 +192,7 @@ public:
             view.DrawArrow(from, to, colors::kBodyAlt, 2.0f);
         }
 
-        // CCD が返した «最初に当たる位置»。ここで止まれば貫通しない。
+        /// @note CCD が返した «最初に当たる位置»。ここで止まれば貫通しない。
         if (m_hit.hit) {
             view.DrawCircle(m_hitCenter, m_radius, colors::kNormal, false, 2.5f);
             view.DrawPoint(m_hit.contactPoint, colors::kContact, 5.0f);
@@ -242,7 +242,7 @@ private:
     {
         if (m_obstacle == Obstacle::Wall) {
             view.DrawBox({0.0f, 0.0f, 0.0f}, {m_wallHalf, 1.6f, 0.0f}, colors::kGround, true);
-            // 判定に使う «手前側の面» そのもの。TOI はこの線で解いている。
+            /// @note 判定に使う «手前側の面» そのもの。TOI はこの線で解いている。
             view.DrawLine({-m_wallHalf, -1.9f, 0.0f}, {-m_wallHalf, 1.9f, 0.0f},
                           colors::kHint, 1.0f);
         } else {
@@ -275,7 +275,7 @@ private:
 
             const physics::CCDResult result =
                 m_obstacle == Obstacle::Wall
-                    // 壁の手前側の面。法線は弾の側 (-X) を向く。
+                    /// @note 壁の手前側の面。法線は弾の側 (-X) を向く。
                     ? physics::CCDSolver::SweptSpherePlane(center, m_radius, velocity,
                                                            {-1.0f, 0.0f, 0.0f}, m_wallHalf, dt)
                     : physics::CCDSolver::SweptSphereSphere(center, m_radius, velocity,

@@ -30,20 +30,19 @@ namespace fbzz::editor {
 
 namespace {
 
-// SandboxScripts.dll のエクスポート関数シグネチャ
+/// SandboxScripts.dll のエクスポート関数シグネチャ
 using RegisterFnPtr = void(*)(
     void(*)(const char*, std::function<std::unique_ptr<fbzz::scene::Script>()>)
 );
 
-// DLL エクスポート名 (全プロジェクト共通)
-// WHY: プロジェクト固有名 (SandboxScripts_Register 等) を使うと ScriptDllLoader が
-//      プロジェクトごとに変わる。FBZZScripts_Register をエンジン規約として統一し、
-//      任意のプロジェクトの DLL をロードできるようにする。
+/// @note DLL エクスポート名 (全プロジェクト共通)。プロジェクト固有名 (SandboxScripts_Register 等)
+///       を使うと ScriptDllLoader がプロジェクトごとに変わるため、FBZZScripts_Register を
+///       エンジン規約として統一し、任意のプロジェクトの DLL をロードできるようにする。
 constexpr const char* kRegisterFnName = "FBZZScripts_Register";
 constexpr const char* kAbiInfoFnName  = "FBZZScripts_GetAbiInfo";
 using AbiInfoFnPtr = scene::ScriptDllAbiInfo(*)();
 
-// タイムスタンプ文字列を生成する (コピー先ファイル名の一部に使う)
+/// タイムスタンプ文字列を生成する (コピー先ファイル名の一部に使う)
 std::wstring MakeTimestamp()
 {
     const auto now = std::chrono::system_clock::now().time_since_epoch();
@@ -51,7 +50,7 @@ std::wstring MakeTimestamp()
     return std::to_wstring(ms);
 }
 
-// 実行中の FBZZEngine.dll の最終更新時刻。取れなければ nullopt。
+/// 実行中の FBZZEngine.dll の最終更新時刻。取れなければ nullopt。
 std::optional<std::filesystem::file_time_type> EngineModuleWriteTime()
 {
     HMODULE engine = GetModuleHandleW(L"FBZZEngine.dll");
@@ -67,9 +66,9 @@ std::optional<std::filesystem::file_time_type> EngineModuleWriteTime()
     return time;
 }
 
-// SEH は C++ のデストラクタを持つ自動変数と同居できないので、素の関数へ切り出す。
-// NOTE: DllMain の途中で受け止めた場合、その DLL は «半分だけ初期化された» 状態で残る。
-//       だから受けたら必ず読み込みを失敗として扱い、二度と触らない (再ビルドへ回す)。
+/// @brief SEH は C++ のデストラクタを持つ自動変数と同居できないので、素の関数へ切り出す。
+/// @note DllMain の途中で受け止めた場合、その DLL は «半分だけ初期化された» 状態で残る。
+///       だから受けたら必ず読み込みを失敗として扱い、二度と触らない (再ビルドへ回す)。
 HMODULE LoadLibraryGuarded(const wchar_t* path, DWORD& outExceptionCode)
 {
     __try {
@@ -106,9 +105,7 @@ bool RegisterGuarded(RegisterFnPtr fn, RegisterCallback callback, DWORD& outExce
 
 } // namespace
 
-// =============================================================================
-// 公開 API
-// =============================================================================
+/// 公開 API
 
 bool ScriptDllLoader::Load(const std::filesystem::path& dllPath)
 {
@@ -130,7 +127,7 @@ bool ScriptDllLoader::LoadCopy(const std::filesystem::path& dllPath)
         return false;
     }
 
-    // リンク順序だけでも日時は前後するため、互換性の判定は ABI 検査で行う。
+    /// @note リンク順序だけでも日時は前後するため、互換性の判定は ABI 検査で行う。
     if (const auto engineTime = EngineModuleWriteTime()) {
         std::error_code ec;
         const auto dllTime = std::filesystem::last_write_time(dllPath, ec);
@@ -141,7 +138,7 @@ bool ScriptDllLoader::LoadCopy(const std::filesystem::path& dllPath)
         }
     }
 
-    // _hot/ にコピーしてからロードする (元ファイルを再ビルドできるようにするため)
+    /// @note _hot/ にコピーしてからロードする (元ファイルを再ビルドできるようにするため)
     m_hotCopy = CopyToHot(dllPath);
     if (m_hotCopy.empty()) return false;
 
@@ -180,8 +177,8 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
 {
     if (!m_hDll) return;
 
-    // FreeLibrary 前に仮想デストラクタが DLL コード内にある Script インスタンスをすべて破棄する。
-    // WHY: FreeLibrary 後に仮想デストラクタを呼ぶとアクセス違反になるため。
+    /// @note FreeLibrary 前に仮想デストラクタが DLL コード内にある Script インスタンスをすべて破棄する。
+    ///       FreeLibrary 後に仮想デストラクタを呼ぶとアクセス違反になるため。
     if (scene) {
         FBZZ_LOG_DEBUG("ScriptDllLoader: destroying all script instances before unload");
         DestroyAllScripts(*scene);
@@ -191,22 +188,18 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
     scene::ScriptSerializableFactory::UnregisterAll();
     FBZZ_LOG_DEBUG("ScriptDllLoader: ScriptFactory unregistered all");
 
-    // イベント購読とオブジェクトプールを破棄する。
-    // WHY: 購読ハンドラのラムダ本体は DLL 側のコードにあるため、FreeLibrary 後に
-    //      呼ばれるとアクセス違反になる。DestroyAllScripts が通れば ~Script 経由で
-    //      解除されるはずだが、scene が渡されない経路もあるためここでも必ず空にする。
-    //      プールの待機列も破棄済み GameObject の EntityID を抱えたままにしない。
+    /// @note イベント購読とオブジェクトプールを破棄する。購読ハンドラのラムダ本体は DLL 側の
+    ///       コードにあるため FreeLibrary 後に呼ぶとアクセス違反になり、scene が渡されない経路も
+    ///       あるため DestroyAllScripts に頼らずここでも必ず空にする (待機列の EntityID も含め)。
     scene::ScriptEventBus::Clear();
     scene::PrefabPool::ClearAll();
     FBZZ_LOG_DEBUG("ScriptDllLoader: script event bus & prefab pool cleared");
 
-    // DataAsset も DLL コード内に仮想デストラクタ/ファクトリを持つため、FreeLibrary 前に
-    // 共有キャッシュを破棄し DLL 由来の型登録を外す。次回 Resolve でディスクから遅延再ロードされる。
-    //
-    // WHY 全消しにしないか: Engine 組み込みの型 (PostProcessProfile 等) は Engine の
-    //     静的初期化でしか登録されず、DLL を読み直しても再登録されない。以前は
-    //     一緒に消していたため、スクリプトを 1 回ホットリロードすると .fzdata が
-    //     「型が未登録」で読めなくなり、エディターを再起動するまで直らなかった。
+    /// @note DataAsset も DLL コード内に仮想デストラクタ/ファクトリを持つため、FreeLibrary 前に
+    ///       共有キャッシュを破棄し DLL 由来の型登録を外す。次回 Resolve でディスクから遅延再ロードされる。
+    /// @note 全消しにしない: Engine 組み込みの型 (PostProcessProfile 等) は Engine の静的初期化
+    ///       でしか登録されず、DLL を読み直しても再登録されない。以前は一緒に消しており、
+    ///       スクリプトを 1 回ホットリロードすると .fzdata が「型が未登録」で読めなくなっていた。
     asset::DataAssetRegistry::ClearCache();
     asset::DataAssetFactory::UnregisterScriptTypes();
     FBZZ_LOG_DEBUG("ScriptDllLoader: DataAsset cache cleared & factory unregistered");
@@ -219,7 +212,7 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
 
 bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& newDllPath)
 {
-    // シーン全体をシリアライズしてスクリプトフィールドを保存する
+    /// @note シーン全体をシリアライズしてスクリプトフィールドを保存する
     const std::string snapshot = SceneIO::Serialize(scene);
     if (snapshot.empty()) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to serialize scene");
@@ -234,10 +227,10 @@ bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& n
         return false;
     }
 
-    // 静的 DataAsset 登録が同じレジストリを書き換えるため、新旧 DLL は同時ロードしない。
+    /// @note 静的 DataAsset 登録が同じレジストリを書き換えるため、新旧 DLL は同時ロードしない。
     Unload(&scene);
 
-    // 新しい DLL をロードして ScriptFactory に再登録する
+    /// @note 新しい DLL をロードして ScriptFactory に再登録する
     if (!Load(targetPath) || !SceneIO::Deserialize(scene, snapshot)) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Reload: replacement failed; restoring previous DLL");
         Unload(&scene);
@@ -256,9 +249,7 @@ bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& n
     return true;
 }
 
-// =============================================================================
-// 内部実装
-// =============================================================================
+/// 内部実装
 
 std::filesystem::path ScriptDllLoader::CopyToHot(const std::filesystem::path& src) const
 {
@@ -269,7 +260,7 @@ std::filesystem::path ScriptDllLoader::CopyToHot(const std::filesystem::path& sr
         return {};
     }
 
-    // タイムスタンプ付きファイル名でコピーする
+    /// @note タイムスタンプ付きファイル名でコピーする
     const std::wstring stem = m_dllPath.stem().wstring() + L"_" + MakeTimestamp();
     std::filesystem::path dst = hotDir / (stem + src.extension().wstring());
     for (unsigned int suffix = 1; util::FileSystem::Exists(dst); ++suffix)
@@ -291,7 +282,7 @@ void ScriptDllLoader::CleanHotDir() const
     if (!util::FileSystem::Exists(hotDir)) return;
 
     for (const auto& path : util::FileSystem::ListFiles(hotDir)) {
-        // 現在ロード中のコピーは削除しない
+        /// @note 現在ロード中のコピーは削除しない
         if (path == m_hotCopy) continue;
         util::FileSystem::RemoveAll(path);
     }
@@ -309,9 +300,9 @@ bool ScriptDllLoader::RegisterScripts()
         return false;
     }
 
-    // EXE 側の ScriptFactory::Register を関数ポインタとして渡す。
-    // WHY: DLL 内で ScriptFactory::Register() を直接呼ぶと DLL の registry コピーに
-    //      登録されてしまう。EXE 側の関数ポインタを渡すことで EXE の registry に登録する。
+    /// @note EXE 側の ScriptFactory::Register を関数ポインタとして渡す。DLL 内で直接呼ぶと
+    ///       DLL の registry コピーに登録されてしまうため、EXE の関数ポインタ経由で EXE の
+    ///       registry に登録する。
     DWORD exceptionCode = 0;
     const bool registered = RegisterGuarded(
         registerFn,
@@ -357,7 +348,7 @@ bool ScriptDllLoader::ValidateAbi() const
 
     if (host.signature == dll.signature) return true;
 
-    // 現行 schema 同士の差だけを診断する。自動再ビルド対象なので ERROR ではなく WARNING とする。
+    /// @note 現行 schema 同士の差だけを診断する。自動再ビルド対象なので ERROR ではなく WARNING とする。
     FBZZ_LOG_WARN("ScriptDllLoader: ABI mismatch; Scripts DLL rebuild required");
     if (host.sizeofScript != dll.sizeofScript)
         FBZZ_LOG_WARN("  sizeof(Script):          host=%llu  dll=%llu",

@@ -6,8 +6,9 @@
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/Util/FluidAssetWriters.hpp>
 #include <Editor/Util/FluidBakeService.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Asset/FluidSolver.hpp>
+#include <Fluid/FluidSolver.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <filesystem>
@@ -51,10 +52,10 @@ TEST_F(FluidEffectTemplateTest, EveryTemplateCreatesIndependentRecipesAndReserve
         EXPECT_EQ(service.Find(id)->state, editor::FluidJobState::Queued);
         for (std::size_t j = 0; j < layers.size(); ++j) {
             const auto path = ProjectRoot() / folder / (layers[j].name + ".fluid");
-            asset::FluidRecipe recipe;
+            fluid::FluidRecipe recipe;
             ASSERT_TRUE(asset::LoadFluidRecipe(util::FileSystem::PathToUtf8(path), recipe));
             EXPECT_FALSE(recipe.output.loop);
-            EXPECT_EQ(recipe.bake.mode, asset::FluidBakeMode::Flat2D);
+            EXPECT_EQ(recipe.bake.mode, fluid::FluidBakeMode::Flat2D);
             EXPECT_GT(recipe.output.duration, 0.0f);
             EXPECT_FALSE(recipe.sources.empty());
             EXPECT_TRUE(service.IsBusy(util::FileSystem::PathToUtf8(path)));
@@ -138,13 +139,13 @@ TEST_F(FluidEffectTemplateTest, NewMaterialPresetsRoundTripAndInjectFiniteDensit
         const auto recipe = asset::MakeFluidPreset(preset);
         const auto file = File("Material.fluid");
         ASSERT_TRUE(asset::SaveFluidRecipe(util::FileSystem::PathToUtf8(file), recipe));
-        asset::FluidRecipe loaded;
+        fluid::FluidRecipe loaded;
         ASSERT_TRUE(asset::LoadFluidRecipe(util::FileSystem::PathToUtf8(file), loaded));
         EXPECT_EQ(loaded.sources.size(), recipe.sources.size());
         EXPECT_EQ(loaded.forces.size(), recipe.forces.size());
-        EXPECT_EQ(loaded.bake.mode, asset::FluidBakeMode::Volume3D);
+        EXPECT_EQ(loaded.bake.mode, fluid::FluidBakeMode::Volume3D);
         EXPECT_FALSE(loaded.output.loop);
-        asset::FluidGasSolver solver;
+        fluid::FluidGasSolver solver;
         solver.Reset(loaded, 32, 32, 1);
         for (int i = 0; i < 12; ++i) solver.Advance(1.0f / 120.0f);
         EXPECT_GT(solver.TotalDensity(), 0.0f);

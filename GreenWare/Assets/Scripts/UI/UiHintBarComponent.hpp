@@ -11,23 +11,10 @@
 /// シーン側に要るもの: Canvas の下に HintIcon_0..2 (UIImage) と HintText_0..2 (UIText)。
 ///   位置と大きさはここが毎フレーム決めるので、シーンの値は仮でよい。
 ///
-/// WHY 実行時に作らないか (scene.Create を使わないか):
-///   scene.Create は GameObject 配列を再確保する。同じ画面の他のスクリプト
-///   (TitleMenu / OptionsScreen / StageSelect) は行の GameObject* を OnStart で掴んで
-///   持ち続けるので、こちらの OnStart が後に走ると、あちらの指し先が消える。
-///   置き場所はシーンに持たせ、ここは «見つけて動かす» だけにする。
-///
-/// WHY 見た目の規則をシーンに持たせないか:
-///   案内は 4 画面すべてに同じ形で要る。間隔や大きさをシーンに書くと、2px 直す
-///   たびに 4 シーンを開く。並べ方はここ 1 か所、文言だけがシーンごとに違う。
-///
-/// WHY 右下に置くか:
-///   左下は法則の一文 (Title) やランク (Result) が使う。右下は 4 画面とも空いていて、
-///   目線が «内容を読み終えて次に何を押すか» へ移る場所でもある。
-///
-/// WHY 押した瞬間にアイコンを «叩く» か:
-///   案内は静止していると «飾り» になる。押したときにそのアイコンだけが一度膨らみ、
-///   文字が白へ寄ると、案内と操作が繋がっていることが伝わる。
+/// @note scene.Create は使わない ─ GameObject 配列の再確保で、他スクリプトが OnStart で
+///       掴んだ行の GameObject* の指し先が消える。見た目の規則 (間隔・大きさ) は 4 画面
+///       共通なのでここ 1 か所に持ち、シーンには文言だけを置く。右下は 4 画面とも空いた
+///       «次に何を押すか» の目線が来る場所。押した瞬間だけアイコンを叩いて膨らませる。
 #pragma once
 
 #include <Engine/Scene/Components/UIElement.hpp>
@@ -162,9 +149,9 @@ inline void UiHintBarComponent::Bind()
                              " がシーンにありません (案内 '" + e.label + "' は出ません)");
             continue;
         }
-        // 使う枠は必ず起こす。使わない枠を下で消しているので、シーンに «余った枠» を
-        // 畳んだ状態で保存しておける。ここで起こさないと、その画面で案内が 1 つ増えた
-        // 瞬間に「シーンでは消えている枠」が二度と出てこない。
+        /// @note 使う枠は必ず起こす。使わない枠を下で消しているので、シーンに «余った枠» を
+        ///       畳んだ状態で保存しておける。ここで起こさないと、その画面で案内が 1 つ増えた
+        ///       瞬間に「シーンでは消えている枠」が二度と出てこない。
         icon->SetActive(true);
         text->SetActive(true);
         e.icon = EntityRef{ icon->GetID() };
@@ -176,7 +163,7 @@ inline void UiHintBarComponent::Bind()
         ui.SetText(text, e.label);
         bound.push_back(e);
     }
-    // 使わない枠は消す (シーンに 3 枠置いてあり、画面によっては 2 つしか使わない)。
+    /// @note 使わない枠は消す (シーンに 3 枠置いてあり、画面によっては 2 つしか使わない)。
     for (std::size_t i = m_entries.size(); i < 8; ++i) {
         if (GameObject* icon = scene.Find("HintIcon_" + std::to_string(i))) icon->SetActive(false);
         if (GameObject* text = scene.Find("HintText_" + std::to_string(i))) text->SetActive(false);
@@ -190,7 +177,7 @@ inline void UiHintBarComponent::ApplyIcons()
     for (Entry& e : m_entries) {
         GameObject* icon = e.icon.Resolve(scene);
         if (!icon) continue;
-        // メニューの «選択» はキーボードでは W ではなくマウスで行う (GameCursor)。
+        /// @note メニューの «選択» はキーボードでは W ではなくマウスで行う (GameCursor)。
         const std::string_view sprite =
             (e.action == keyicon::Action::MoveAxis && !m_pad) ? std::string_view(keyicon::kbm::kMouse)
                                                              : keyicon::Prompt(m_pad, e.action);
@@ -201,11 +188,12 @@ inline void UiHintBarComponent::ApplyIcons()
 
 inline void UiHintBarComponent::Layout(float reveal)
 {
-    // 右端から左へ積む。文字の幅は実測 (transform.scale.x) を使う。まだ測れていない
-    // フレームは字数から見積もる (1 フレームだけ位置がずれるが、次で直る)。
+    /// @note 右端から左へ積む。文字の幅は実測 (transform.scale.x) を使う。まだ測れていない
+    ///       フレームは字数から見積もる (1 フレームだけ位置がずれるが、次で直る)。
     const float e     = uimotion::OutCubic(reveal);
     const float alpha = uimotion::OutQuint(reveal * 1.25f);
-    const float lift  = 18.0f * (1.0f - e);   // 出る前は少し下に居る
+    /// @note 出る前は少し下に居る
+    const float lift  = 18.0f * (1.0f - e);
     const float baseY = 1080.0f - bottomMargin;
     float x = 1920.0f - rightMargin;
 
@@ -218,7 +206,8 @@ inline void UiHintBarComponent::Layout(float reveal)
         float textW = text->transform.scale.x;
         if (textW <= 1.0f) textW = fontSize * 0.9f * static_cast<float>(en.label.size() / 3 + 1);
         const float hit  = en.hit;
-        const float grow = 1.0f + 0.28f * uimotion::OutBack(hit);   // 叩かれた瞬間だけ膨らむ
+        /// @note 叩かれた瞬間だけ膨らむ
+        const float grow = 1.0f + 0.28f * uimotion::OutBack(hit);
         const float size = iconSize * grow;
 
         x -= textW;
@@ -243,11 +232,11 @@ inline void UiHintBarComponent::OnUpdate()
     const float dt = (std::max)(time.UnscaledDeltaTime(), 0.0f);
     m_elapsed += dt;
 
-    // 機器が変わったらアイコンを差し替える (OPTIONS で切り替えた直後にも効く)。
+    /// @note 機器が変わったらアイコンを差し替える (OPTIONS で切り替えた直後にも効く)。
     const bool pad = UsingPad();
     if (pad != m_pad) { m_pad = pad; ApplyIcons(); }
 
-    // 押した瞬間の «叩き»。軸 (選択) は倒し始めだけ。
+    /// @note 押した瞬間の «叩き»。軸 (選択) は倒し始めだけ。
     const Vector2 axis = input.GetMoveAxis();
     const bool axisHeld = std::abs(axis.x) > 0.4f || std::abs(axis.y) > 0.4f;
     for (Entry& e : m_entries) {

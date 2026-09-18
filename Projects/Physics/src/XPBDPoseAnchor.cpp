@@ -13,8 +13,8 @@ namespace fbzz::physics
         m_finiteStrength = false;
         m_maxForce  = maxForce;
         m_maxTorque = maxTorque;
-        // たわみ x でのカは x/α。α = sag / 上限 と置くと «sag だけずれたところで
-        // 上限を出し切る» という、関節のサーボと同じ意味になる。
+        /// @note たわみ x でのカは x/α。α = sag / 上限 と置くと «sag だけずれたところで
+        ///       上限を出し切る» という、関節のサーボと同じ意味になる。
         m_linearCompliance  = maxForce  > 0.0f ? sag  / maxForce  : 0.0f;
         m_angularCompliance = maxTorque > 0.0f ? tilt / maxTorque : 0.0f;
     }
@@ -37,7 +37,7 @@ namespace fbzz::physics
         m_saturated = false;
         if (!m_body || !m_enabled) return;
 
-        // 位置は重心で受ける。腕が 0 なので回転は起こさず、«引き寄せる» だけになる。
+        /// @note 位置は重心で受ける。腕が 0 なので回転は起こさず、«引き寄せる» だけになる。
         const math::Vector3 delta = m_body->GetPosition() - m_targetPosition;
         m_offset = delta.Length();
 

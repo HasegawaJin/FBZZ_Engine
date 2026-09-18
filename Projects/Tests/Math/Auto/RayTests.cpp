@@ -29,7 +29,7 @@ math::Matrix4 InverseViewProjection(const math::Vector3& eye)
 
 class RayTest : public testkit::Fixture {};
 
-// --- パラメータ位置 ---------------------------------------------------------
+/// @name パラメータ位置
 
 TEST_F(RayTest, AtReturnsTheOriginForZero)
 {
@@ -46,7 +46,7 @@ TEST_F(RayTest, AtAdvancesByTAlongTheDirection)
     EXPECT_VEC3_NEAR(ray.At(-4.0f), math::Vector3(0.0f, 1.0f, -4.0f), testkit::kTolerance);
 }
 
-// --- 平面 -------------------------------------------------------------------
+/// @name 平面
 
 TEST_F(RayTest, IntersectPlaneReturnsTheDistanceToTheHitPoint)
 {
@@ -71,7 +71,7 @@ TEST_F(RayTest, IntersectPlaneMissesWhenParallel)
 
 TEST_F(RayTest, IntersectPlaneMissesWhenThePlaneIsBehindTheRay)
 {
-    // 後方の交点は «当たっていない» とする。ピッキングでカメラの背後を拾わないため。
+    /// @note 後方の交点は «当たっていない» とする。ピッキングでカメラの背後を拾わないため。
     const math::Ray ray({0.0f, 5.0f, 0.0f}, math::Vector3::UP);
     const math::Plane ground(math::Vector3::UP, 0.0f);
     float t = 0.0f;
@@ -81,7 +81,7 @@ TEST_F(RayTest, IntersectPlaneMissesWhenThePlaneIsBehindTheRay)
 
 TEST_F(RayTest, IntersectPlaneHitsFromTheBackSide)
 {
-    // 法線の裏から入っても交差は成立する。片面判定はレイの契約ではない。
+    /// @note 法線の裏から入っても交差は成立する。片面判定はレイの契約ではない。
     const math::Ray ray({0.0f, -5.0f, 0.0f}, math::Vector3::UP);
     const math::Plane ground(math::Vector3::UP, 0.0f);
     float t = 0.0f;
@@ -91,7 +91,7 @@ TEST_F(RayTest, IntersectPlaneHitsFromTheBackSide)
     EXPECT_NEAR(t, 5.0f, testkit::kTolerance);
 }
 
-// --- 球 ---------------------------------------------------------------------
+/// @name 球
 
 TEST_F(RayTest, IntersectSphereReturnsTheNearHitFromOutside)
 {
@@ -105,7 +105,7 @@ TEST_F(RayTest, IntersectSphereReturnsTheNearHitFromOutside)
 
 TEST_F(RayTest, IntersectSphereReturnsTheExitHitFromInside)
 {
-    // 手前の交点が背後にあるときは奥の交点を返す。カメラが球の内側にいる場合。
+    /// @note 手前の交点が背後にあるときは奥の交点を返す。カメラが球の内側にいる場合。
     const math::Ray ray(math::Vector3::ZERO, math::Vector3::FORWARD);
     float t = 0.0f;
 
@@ -141,7 +141,7 @@ TEST_F(RayTest, IntersectSphereHitPointLiesOnTheSurface)
     EXPECT_NEAR((ray.At(t) - center).Length(), 2.5f, testkit::kTolerance);
 }
 
-// --- 三角形 -----------------------------------------------------------------
+/// @name 三角形
 
 TEST_F(RayTest, IntersectTriangleReturnsTheDistanceToTheFace)
 {
@@ -157,7 +157,8 @@ TEST_F(RayTest, IntersectTriangleReturnsTheDistanceToTheFace)
 
 TEST_F(RayTest, IntersectTriangleMissesOutsideTheEdges)
 {
-    const math::Ray ray({0.0f, 0.9f, 0.0f}, math::Vector3::FORWARD);   // 頂点の外側を通る
+    /// @note 頂点の外側を通る
+    const math::Ray ray({0.0f, 0.9f, 0.0f}, math::Vector3::FORWARD);
     float t = 0.0f;
 
     EXPECT_FALSE(ray.IntersectTriangle({-1.0f, -1.0f, 5.0f},
@@ -167,7 +168,7 @@ TEST_F(RayTest, IntersectTriangleMissesOutsideTheEdges)
 
 TEST_F(RayTest, IntersectTriangleHitsRegardlessOfWinding)
 {
-    // 裏面カリングはレンダラーの仕事。レイ側で落とすと «裏から選べない» になる。
+    /// @note 裏面カリングはレンダラーの仕事。レイ側で落とすと «裏から選べない» になる。
     const math::Ray ray(math::Vector3::ZERO, math::Vector3::FORWARD);
     float front = 0.0f;
     float back  = 0.0f;
@@ -192,7 +193,7 @@ TEST_F(RayTest, IntersectTriangleMissesWhenTheFaceIsBehind)
 
 TEST_F(RayTest, IntersectTriangleMissesWhenTheRayLiesInTheFacePlane)
 {
-    // 縮退 (det ≒ 0)。0 除算で NaN を返さないことを固定する。
+    /// @note 縮退 (det ≒ 0)。0 除算で NaN を返さないことを固定する。
     const math::Ray ray({0.0f, 0.0f, 5.0f}, math::Vector3::RIGHT);
     float t = 0.0f;
 
@@ -201,7 +202,7 @@ TEST_F(RayTest, IntersectTriangleMissesWhenTheRayLiesInTheFacePlane)
                                        {0.0f, 1.0f, 5.0f}, t));
 }
 
-// --- NDC からの生成 ---------------------------------------------------------
+/// @name NDC からの生成
 
 TEST_F(RayTest, FromNDCStartsAtTheCameraPosition)
 {
@@ -232,7 +233,7 @@ TEST_F(RayTest, FromNDCAimsAlongTheViewAxisAtTheScreenCenter)
 
 TEST_F(RayTest, FromNDCMapsPositiveXToTheRightAndPositiveYToUp)
 {
-    // NDC の上下反転は «掴んだ場所と選択がずれる» という形でしか出ない。
+    /// @note NDC の上下反転は «掴んだ場所と選択がずれる» という形でしか出ない。
     const math::Vector3 eye(0.0f, 0.0f, -10.0f);
     const math::Matrix4 invVP = InverseViewProjection(eye);
 
@@ -245,7 +246,7 @@ TEST_F(RayTest, FromNDCMapsPositiveXToTheRightAndPositiveYToUp)
 
 TEST_F(RayTest, FromNDCHitsTheGroundWhereTheCameraLooks)
 {
-    // 画面中央のレイは、カメラが見下ろしている点で地面に当たる。
+    /// @note 画面中央のレイは、カメラが見下ろしている点で地面に当たる。
     const math::Vector3 eye(0.0f, 10.0f, -10.0f);
     const math::Matrix4 view = math::Matrix4::LookAt(eye, math::Vector3::ZERO, math::Vector3::UP);
     const math::Matrix4 proj =

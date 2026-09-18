@@ -18,11 +18,12 @@ namespace fbzz::tests {
 
 TEST(VFXCapturedTest, CapturesOnlyTheFirstValue)
 {
-    // 2 回目以降の Capture は無視される。ここが素通しだと、書き換えた後の値を
-    // 新しい基準として掴み、ループのたびに暗くなっていく。
+    /// @note 2 回目以降の Capture は無視される。ここが素通しだと、書き換えた後の値を
+    ///       新しい基準として掴み、ループのたびに暗くなっていく。
     scene::VFXCaptured<float> captured;
     captured.Capture(10.0f);
-    captured.Capture(3.0f);   // 書き換え後の値のつもり
+    /// @note 書き換え後の値のつもり
+    captured.Capture(3.0f);
     captured.Capture(0.0f);
 
     EXPECT_TRUE(captured.captured);
@@ -35,15 +36,16 @@ TEST(VFXCapturedTest, RestoresTheCapturedValue)
     float live = 10.0f;
     captured.Capture(live);
 
-    live = 0.0f;  // エンベロープがフェードで 0 まで落とした
+    /// @note エンベロープがフェードで 0 まで落とした
+    live = 0.0f;
     EXPECT_TRUE(captured.Restore(live));
     EXPECT_NEAR(live, 10.0f, testkit::kTolerance);
 }
 
 TEST(VFXCapturedTest, DoesNothingWhenNothingWasCaptured)
 {
-    // 一度も適用されていないエンベロープが、初期値 (0) を «元の値» として
-    // 書き込んでしまわないこと。付けただけで光が消えるのを防ぐ。
+    /// @note 一度も適用されていないエンベロープが、初期値 (0) を «元の値» として
+    ///       書き込んでしまわないこと。付けただけで光が消えるのを防ぐ。
     const scene::VFXCaptured<float> captured;
     float live = 4.5f;
 
@@ -53,7 +55,7 @@ TEST(VFXCapturedTest, DoesNothingWhenNothingWasCaptured)
 
 TEST(VFXCapturedTest, RestoringTwiceKeepsTheSameValue)
 {
-    // 復元は何度呼んでも同じ結果。SetElementActive は窓の出入りで繰り返し呼ぶ。
+    /// @note 復元は何度呼んでも同じ結果。SetElementActive は窓の出入りで繰り返し呼ぶ。
     scene::VFXCaptured<math::Vector3> captured;
     captured.Capture(math::Vector3(2.0f, 2.0f, 2.0f));
 
@@ -66,8 +68,8 @@ TEST(VFXCapturedTest, RestoringTwiceKeepsTheSameValue)
 
 TEST(VFXCapturedTest, CarriesEveryFieldOfACompositeCapture)
 {
-    // 複数フィールドを 1 つの箱で持つ形 (Light は intensity と color)。
-    // 箱に入れておけば «片方だけ戻す» が書けなくなる。
+    /// @note 複数フィールドを 1 つの箱で持つ形 (Light は intensity と color)。
+    ///       箱に入れておけば «片方だけ戻す» が書けなくなる。
     scene::VFXCaptured<scene::VFXLightEnvelope::Base> captured;
     captured.Capture({ 8.0f, math::Vector3(1.0f, 0.5f, 0.25f) });
 

@@ -3,30 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 ///
-/// 生成するのは `Boss03AiComponent::ThrowWing`。こちらが持つのは翼 1 枚の一生だけで、
-/// «どの翼を抜いたか» と «戻ってきたら畳む» はボスの側が持つ (OnWingReturned)。
-///
-/// 飛ぶのは **翼オブジェクトそのもの**。投げる側がボスから切り離し、既存の
-/// SkinnedMeshRendererを有効にしたまま、このスクリプトを翼へ載せる。
-/// こちらは翼を運ぶだけで、見た目の組み立てには触らない。
-///
-/// WHY 剛体を使うか:
-///   移動そのものはこのスクリプトが決めるが、TerrainColliderとの接触検知は物理へ
-///   任せる。Gravityまで物理へ任せると翼ごとの演出を細かく制御できないため、重力は使わない。
-///
-/// WHY 当たりを剛体の接触で取らないか:
-///   行きの当たりは «弾ける一撃» で、プレイヤーの弾き窓と噛み合う必要がある。
-///   接触に任せると翼の形と速さで当たる瞬間がぶれる。当たりは距離で 1 回だけ見て
-///   (BossPartDebrisComponent と同じ)、剛体には **運ぶことと止まること**だけを任せる。
-///
-/// WHY 飛んでいる間と戻る間はすり抜けるか:
-///   ボスのすぐ横で押し合うと翼もボスも小刻みに震える。**床に落ちている間だけ固い**
-///   ＝ そのときだけ遮蔽になる、という切り分けにする。
-///
-/// WHY 帰り道では当たらないか:
-///   1 回の投擲で «行き» と «帰り» の 2 回当たると、どちらを弾けばよいのかが割れる。
-///   このボスの読みは «連撃の何拍目か» なので、1 投 = 1 拍に保つ。
-///   帰りは «翼が戻る ＝ 次の連撃が長くなる» という**盤面の情報**として見せる。
+/// @note `Boss03AiComponent::ThrowWing` が生成。翼オブジェクトそのものを運ぶ (投げる側が `SkinnedMeshRenderer` を有効のまま載せる)。どの翼を抜いたか/畳むかはボス側 (`OnWingReturned`) が持つ。
+/// @note 剛体は地形との接触検知と運搬だけに使う。重力は演出制御のため使わず、当たり判定も剛体接触でなく距離で 1 回だけ見る (`BossPartDebrisComponent` と同じ) ── 接触任せだと当たる瞬間がぶれ弾き窓と噛み合わない。
+/// @note 床に落ちている間だけ固い (飛行中・戻る間はすり抜け、ボスのすぐ横で震えるのを避ける)。1 投 = 1 拍を保つため帰り道でも当たらない (帰りは «連撃が長くなる» の盤面情報として見せる)。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -69,13 +48,8 @@ public:
     FBZZ_FIELD_READ_ONLY(int, debugWing, -1, "翼")
     FBZZ_FIELD_READ_ONLY(float, debugRest, 0.0f, "残り [秒]")
 
-    /// 投げた側が 1 度だけ呼ぶ。ここから先はこのスクリプトが運ぶ。
-    ///
-    /// ⚠ ここで剛体へ触ってはいけない。呼ばれるのは `AddScript` の直後で context は
-    ///   まだ結ばれていない (`SetContext` は `ScriptSystem` が後から呼ぶ)。
-    ///   **同じ翼は何度でも投げ直されるので `OnStart` も当てにできない** ─ 2 回目は
-    ///   もう始まっている。頼みを立てるだけにして、最初の `OnUpdate` で組む。
-    ///
+    /// @brief 投げた側が 1 度だけ呼ぶ。ここから先はこのスクリプトが運ぶ。
+    /// @warning ここで剛体へ触らない。`AddScript` 直後は context 未結線 (`SetContext` は `ScriptSystem` が後で呼ぶ)。同じ翼は投げ直されるため `OnStart` も当てにできず、最初の `OnUpdate` で組む。
     /// @param owner    ボスのルート。戻り先であり、戻ったことを告げる相手
     /// @param wing     翼の番号 (Boss03Wing)
     /// @param target   狙う点 (ワールド)。ここを通り過ぎたら落下へ移る
@@ -92,8 +66,7 @@ public:
     float recallAccel = 26.0f;
     /// 吸い寄せの «溜め» [秒]。抜ける前に震えて浮く。
     ///
-    /// WHY 溜めを置くか: 床の翼がいきなり動くと «消えて湧いた» に見える。
-    ///     震えて浮いてから引かれると、動かしているのがボスだと読める。
+    /// @note 床の翼がいきなり動くと «消えて湧いた» に見えるため、震えて浮いてから引く。
     float recallWindup = 0.45f;
     /// 溜めのあいだに浮く高さ [m]。
     float recallRise = 0.9f;
@@ -114,8 +87,7 @@ public:
     FBZZ_FIELD_RANGE(float, maxFallSpeed, 9.0f, "落下速度上限 [m/s]", 0.0f, 40.0f)
     /// 坂や隙間で転がり続けても、この時間で落ち着いた扱いにする。
     ///
-    /// WHY 要るか: これが無いと、傾いた所へ落ちた 1 枚が永久に «まだ落下中» のままで、
-    ///     ボスの連撃が二度と元の長さへ戻らない。
+    /// @note 無いと傾いた所へ落ちた 1 枚が永久に «まだ落下中» のままになり、連撃の長さが戻らない。
     float settleTimeout = 4.0f;
     /// 翼の重さ [kg] と空気抵抗。
     float mass = 14.0f;
@@ -123,16 +95,12 @@ public:
 
     /// 戻り切ったときに自分を消すか。
     ///
-    /// WHY 既定が false か: 運んでいるのは **ボスの翼そのもの**で、戻ったら繋ぎ直して
-    ///     また使う。消してよいのは «持ち主が居なくなった» ときだけ。
+    /// @note 既定 false。運ぶのはボスの翼そのもので戻ったら繋ぎ直して再利用する。消すのは持ち主が居なくなったときだけ。
     bool destroyOnReturn = false;
 
-    /// 戻り切った瞬間。«翼を畳む» を結ぶのはボスの側
-    /// (BossBreakComponent::onBreak と同じ形)。
+    /// 戻り切った瞬間。«翼を畳む» を結ぶのはボスの側 (`BossBreakComponent::onBreak` と同じ形)。
     ///
-    /// WHY ボスのスクリプトを名指しで引かないか: こちらがボスのヘッダーを include すると、
-    ///     ボス側もこちらを include している以上、循環参照になる。
-    ///     «戻った» は 1 つの出来事なので、口を 1 本渡せば足りる。
+    /// @note ボスのヘッダーを include すると循環参照になるため、名指しで引かず 1 本のコールバックで渡す。
     std::function<void(int wing)> onReturned;
     std::function<void(int wing)> onParried;
     std::function<void(int wing)> onBroken;
@@ -160,8 +128,7 @@ private:
     void EnsurePhysics();
     /// 翼のメッシュから箱の中心と大きさを解く。引けなければ false。
     ///
-    /// WHY メッシュから採るか: 翼オブジェクトの原点はモデルの原点で、翼の実体は
-    ///     そこから離れた所にある。原点に箱を置くと **翼から離れた空中で止まる**。
+    /// @note 翼オブジェクトの原点はモデル原点で翼の実体から離れているため、原点にそのまま箱を置くと空中で止まる。
     [[nodiscard]] bool MeshBox(Vector3& center, Vector3& size) const;
     /// 床に落ちる物にするか、すり抜ける物にするか。
     void SetSolid(bool solid) const
@@ -216,8 +183,8 @@ FBZZ_REFLECT(Boss03WingProjectileComponent)
 inline void Boss03WingProjectileComponent::Setup(const EntityRef& owner, int wing,
                                                  const Vector3& target)
 {
-    // 同じ翼を何度でも投げ直せるよう、state はここで全部初期化する
-    // (翼そのものを運ぶので、このスクリプトは戻った後も付いたまま残る)。
+    /// @note 同じ翼を何度でも投げ直せるよう、state はここで全部初期化する
+    ///       (翼そのものを運ぶので、このスクリプトは戻った後も付いたまま残る)。
     m_owner       = owner;
     m_wing        = wing;
     m_target      = target;
@@ -289,7 +256,7 @@ inline void Boss03WingProjectileComponent::EnsurePhysics()
     GameObject* self = scene.Self();
     if (!self) return;
 
-    // 引けないときの控え。翼 1 枚ぶんのおおよその大きさで、少なくとも床には当たる。
+    /// @note 引けないときの控え。翼 1 枚ぶんのおおよその大きさで、少なくとも床には当たる。
     Vector3 center = Vector3::ZERO;
     Vector3 size{ 1.0f, 0.4f, 2.4f };
     if (!MeshBox(center, size))
@@ -301,7 +268,8 @@ inline void Boss03WingProjectileComponent::EnsurePhysics()
     box->SetSize(size);
     box->center  = center;
     box->enabled = true;
-    box->SetTrigger(true);   // 飛んでいる間はすり抜ける。固くなるのは落下から
+    /// @note 飛んでいる間はすり抜ける。固くなるのは落下から
+    box->SetTrigger(true);
 
     const Vector3    pos = self->transform.worldPosition;
     const Quaternion rot = self->transform.worldRotation;
@@ -321,8 +289,7 @@ inline void Boss03WingProjectileComponent::EnsurePhysics()
     rb->rigidBody->SetRotation(rot);
     rb->rigidBody->m_linearDrag  = std::max(linearDrag, 0.0f);
     rb->rigidBody->m_angularDrag = std::max(linearDrag, 0.0f) * 1.5f;
-    // WHY CCD か: 22 m/s で飛ぶ翼は 1 step で 0.3m 進む。薄い側から当たると
-    //     テレインを抜けて «床の下へ落ちていく» ことがある。
+    /// @note CCD が要る。22 m/s で飛ぶ翼は 1 step で 0.3m 進み、薄い側から当たるとテレインを抜けて床下へ落ちることがある。
     rb->rigidBody->m_useCCD    = true;
     rb->rigidBody->m_ccdRadius = std::max(std::min(size.x, std::min(size.y, size.z)) * 0.5f, 0.2f);
     rb->ResetPhysicsSyncState(pos, rot);
@@ -343,9 +310,9 @@ inline void Boss03WingProjectileComponent::BeginFall()
 
 inline void Boss03WingProjectileComponent::HandleTerrainContact(const CollisionInfo& info)
 {
-    // 飛行中は翼の軌道が地形の上端へ触れても落とさない。ここで落とすと
-    // Telegraph の手前で地面へ吸われ、攻撃の到達点が読めなくなる。
-    // Fly から Fall への遷移は OnUpdate の到達判定だけが行う。
+    /// @note 飛行中は翼の軌道が地形の上端へ触れても落とさない。ここで落とすと
+    ///       Telegraph の手前で地面へ吸われ、攻撃の到達点が読めなくなる。
+    ///       Fly から Fall への遷移は OnUpdate の到達判定だけが行う。
     if (m_state != State::Fall || !info.other ||
         !info.other->GetComponent<TerrainColliderComponent>()) return;
 
@@ -382,7 +349,7 @@ inline void Boss03WingProjectileComponent::ResolveHit()
     auto* combat = CombatManagerComponent::Instance();
     if (!combat) return;
 
-    // 押しは «翼が来た向き»。飛んできた物に弾かれる形が正しい。
+    /// @note 押しは «翼が来た向き»。飛んできた物に弾かれる形が正しい。
     const Vector3 source = closest - m_heading;
     const PlayerHitResult result =
         combat->HitPlayer(player, std::max(damage, 0), &source, PlayerHitKind::Parryable);
@@ -438,7 +405,7 @@ inline void Boss03WingProjectileComponent::OnUpdate()
         }
     }
 
-    // 投げの頼みは最初の OnUpdate で叶える (Setup の ⚠ を参照)。
+    /// @note 投げの頼みは最初の OnUpdate で叶える (Setup の ⚠ を参照)。
     if (m_pending) {
         m_pending = false;
         EnsurePhysics();
@@ -449,7 +416,7 @@ inline void Boss03WingProjectileComponent::OnUpdate()
 
         physics.SetGravityScale(0.0f);
         physics.SetVelocity(m_heading * std::max(flightSpeed, 1.0f));
-        // 回転は進行方向まわりに。縦に回すと «飛んでいる» が輪郭で読めなくなる。
+        /// @note 回転は進行方向まわりに。縦に回すと «飛んでいる» が輪郭で読めなくなる。
         physics.SetAngularVelocity(m_heading * ToRad(std::max(spinRate, 0.0f)));
         Enter(State::Fly);
         if (m_cancelPending) {
@@ -475,13 +442,14 @@ inline void Boss03WingProjectileComponent::OnUpdate()
 
     switch (m_state) {
     case State::Fly: {
-        // 速さは毎フレーム押し直す。何かを擦って落ちた速度のまま «漂う» にしない。
+        /// @note 速さは毎フレーム押し直す。何かを擦って落ちた速度のまま «漂う» にしない。
         physics.SetVelocity(m_heading * std::max(flightSpeed, 1.0f));
         ResolveHit();
         m_previousPosition = transform.worldPosition;
-        if (m_state != State::Fly) break;   // 弾かれて落下へ移った
+        /// @note 弾かれて落下へ移った
+        if (m_state != State::Fly) break;
 
-        // 狙いを通り過ぎたら落とす。当たっても外しても、行き着く先は床。
+        /// @note 狙いを通り過ぎたら落とす。当たっても外しても、行き着く先は床。
         Vector3 toTarget = m_target - transform.worldPosition;
         toTarget.y = 0.0f;
         if (Vector3::Dot(toTarget, Vector3{ m_heading.x, 0.0f, m_heading.z }) <= 0.0f ||
@@ -499,7 +467,7 @@ inline void Boss03WingProjectileComponent::OnUpdate()
                                    std::max(maxFallSpeed, 0.0f));
             physics.SetVelocity(Vector3{ 0.0f, -m_fallSpeed, 0.0f });
         }
-        // 跳ねている途中の «頂点で一瞬遅くなる» は数えない。
+        /// @note 跳ねている途中の «頂点で一瞬遅くなる» は数えない。
         m_slowFor = Speed() < std::max(settleSpeed, 0.0f) ? m_slowFor + dt : 0.0f;
         if (m_slowFor < std::max(settleSeconds, 0.0f) &&
             m_age < std::max(settleTimeout, 1.0f))
@@ -521,7 +489,7 @@ inline void Boss03WingProjectileComponent::OnUpdate()
         m_rest -= dt;
         debugRest = std::max(m_rest, 0.0f);
         if (m_rest <= 0.0f) {
-            // 吸い寄せの合図。盤面では «連撃がまた長くなる» の予告になる。
+            /// @note 吸い寄せの合図。盤面では «連撃がまた長くなる» の予告になる。
             se::PlayAt(audio, se::kAttractWindup, transform.worldPosition, 0.8f);
             if (auto* effects = VfxManagerComponent::Instance()) {
                 const GameObject* owner = Owner();
@@ -538,11 +506,11 @@ inline void Boss03WingProjectileComponent::OnUpdate()
         break;
 
     case State::Recall: {
-        // 磁力に引かれて震え、浮き上がる。まだ進まない ─ «持っていかれる直前» を見せる。
+        /// @note 磁力に引かれて震え、浮き上がる。まだ進まない ─ «持っていかれる直前» を見せる。
         m_recall += dt;
         const float windup = std::max(recallWindup, 0.01f);
         const float t      = Clamp01(m_recall / windup);
-        // 震えは高い周波数で、浮きは滑らかに。抵抗が抜けていく形にする。
+        /// @note 震えは高い周波数で、浮きは滑らかに。抵抗が抜けていく形にする。
         const float shake  = (1.0f - t) * 3.0f;
         physics.SetVelocity(
             Vector3{ std::sin(m_recall * 47.0f) * shake,
@@ -565,7 +533,7 @@ inline void Boss03WingProjectileComponent::OnUpdate()
     case State::Return: {
         GameObject* owner = Owner();
         if (!owner) {
-            // 戻り先が畳まれた (撃破・シーン遷移)。床に残しても誰も片付けない。
+            /// @note 戻り先が畳まれた (撃破・シーン遷移)。床に残しても誰も片付けない。
             Enter(State::Done);
             if (scene.Self()) scene.Destroy(*scene.Self());
             return;
@@ -586,28 +554,28 @@ inline void Boss03WingProjectileComponent::OnUpdate()
         const Vector3 to       = goal - transform.worldPosition;
         const Vector3 dir      = to.NormalizedOr(m_heading);
 
-        // 加速して吸い込まれる。等速で帰ると «飛んで戻った» で、磁力に見えない。
+        /// @note 加速して吸い込まれる。等速で帰ると «飛んで戻った» で、磁力に見えない。
         m_returnSpeed = std::min(m_returnSpeed + std::max(recallAccel, 0.1f) * dt,
                                  std::max(returnSpeed, 0.5f));
-        // 成功報酬の帰還まで遅くすると、スローを眺めるだけで反撃時間を失う。
+        /// @note 成功報酬の帰還まで遅くすると、スローを眺めるだけで反撃時間を失う。
         const float counterScale = m_parried && dt > 0.0f
             ? std::clamp(time.UnscaledDeltaTime() / dt, 1.0f, 8.0f) : 1.0f;
         const float speed = m_parried ? std::max(m_returnSpeed, 32.0f) * counterScale : m_returnSpeed;
         physics.SetVelocity(dir * speed);
 
-        // 届かないまま時間切れでも繋ぎ直す。追いつけない翼を 1 枚でも残すと、
-        // 連撃の長さが戻らないまま最後まで進む。
+        /// @note 届かないまま時間切れでも繋ぎ直す。追いつけない翼を 1 枚でも残すと、
+        ///       連撃の長さが戻らないまま最後まで進む。
         if (arrived || m_age >= 8.0f) {
             Enter(State::Done);
-            // 繋ぎ直す前に物理を止める。生かしたままだと、ボスの子へ戻した翼の姿勢を
-            // WriteBackTransforms が毎フレーム床の座標へ引き戻す。
+            /// @note 繋ぎ直す前に物理を止める。生かしたままだと、ボスの子へ戻した翼の姿勢を
+            ///       WriteBackTransforms が毎フレーム床の座標へ引き戻す。
             physics.SetVelocity(Vector3::ZERO);
             physics.SetAngularVelocity(Vector3::ZERO);
             physics.SetGravityScale(0.0f);
             SetPhysicsActive(false);
             const auto reportParried = onParried;
             if (m_parried && arrived && reportParried) reportParried(m_wing);
-            // 繋ぎ直すのはボスの仕事 ─ «翼が戻った» は進行の状態なので、持ち主が握る。
+            /// @note 繋ぎ直すのはボスの仕事 ─ «翼が戻った» は進行の状態なので、持ち主が握る。
             const auto reportReturned = onReturned;
             if (reportReturned) reportReturned(m_wing);
             if (destroyOnReturn && scene.Self()) scene.Destroy(*scene.Self());

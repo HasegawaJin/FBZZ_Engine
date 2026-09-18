@@ -70,7 +70,7 @@ std::vector<math::Vector3> MakeCloud(CloudShape shape, int count, uint32_t seed)
         break;
     case CloudShape::CubeCorners:
         for (int i = 0; i < count; ++i) {
-            // 角 8 点を繰り返しつつ、内側の点も混ぜる。内側の点は包みに現れてはならない。
+            /// @note 角 8 点を繰り返しつつ、内側の点も混ぜる。内側の点は包みに現れてはならない。
             if (i < 8)
                 points.push_back({ (i & 1) ? 1.5f : -1.5f,
                                    (i & 2) ? 1.5f : -1.5f,
@@ -145,7 +145,7 @@ public:
         for (const math::Vector3& vertex : m_worldVerts)
             if (!log.CheckFinite("包みの頂点", vertex, 1.0e4f)) return;
 
-        // 描画側は壊れた面を黙って捨てているが、GJK / EPA は面をそのまま信じる。
+        /// @note 描画側は壊れた面を黙って捨てているが、GJK / EPA は面をそのまま信じる。
         for (std::size_t i = 0; i < m_faces.size(); ++i) {
             const std::array<uint32_t, 3>& face = m_faces[i];
             if (face[0] >= m_worldVerts.size() || face[1] >= m_worldVerts.size()
@@ -157,15 +157,15 @@ public:
                          Severity::Error, "面 %zu が同じ頂点を 2 度使っている (法線が作れない)", i);
         }
 
-        // 頂点上限を超えた点は BuildHull が入力ごと捨てる。捨てた点が包みの外に残るのは
-        // 仕様どおりなので、そこを Error にすると «上限を試す» たびに嘘の異常が点く。
+        /// @note 頂点上限を超えた点は BuildHull が入力ごと捨てる。捨てた点が包みの外に残るのは
+        ///       仕様どおりなので、そこを Error にすると «上限を試す» たびに嘘の異常が点く。
         const Severity coverage = Truncated() ? Severity::Warning : Severity::Error;
 
         log.ReportIf(m_outsideCount > 0, coverage,
                      "包みの外に出た入力点が %d 個 (最大 %.4f m)%s", m_outsideCount, m_worstOutside,
                      Truncated() ? " ── 頂点上限で捨てた点なら正常" : "");
 
-        // サポート関数の定義そのもの。どの入力点にも負けてはいけない。
+        /// @note サポート関数の定義そのもの。どの入力点にも負けてはいけない。
         const math::Vector3 direction = Direction();
         const math::Vector3 support   = SupportPoint();
         if (!log.CheckFinite("サポート点", support, 1.0e4f)) return;
@@ -229,7 +229,7 @@ public:
             for (const math::Vector3& p : m_rotatedPoints)
                 view.DrawPoint(p, colors::kGrid, 2.5f);
 
-        // 面の稜線。潰れた点群では 0 本になる ── それ自体が見たい情報。
+        /// @note 面の稜線。潰れた点群では 0 本になる ── それ自体が見たい情報。
         for (const std::array<uint32_t, 3>& face : m_faces) {
             if (face[0] >= m_worldVerts.size() || face[1] >= m_worldVerts.size()
                 || face[2] >= m_worldVerts.size())
@@ -241,11 +241,11 @@ public:
 
         for (const math::Vector3& v : m_worldVerts) view.DrawPoint(v, colors::kBody, 4.0f);
 
-        // 包み損ねた点は «欠陥そのもの» なので、他より目立たせる。
+        /// @note 包み損ねた点は «欠陥そのもの» なので、他より目立たせる。
         for (const math::Vector3& p : m_outsidePoints) view.DrawCircle(p, 0.08f, colors::kContact,
                                                                       false, 2.0f);
 
-        // GJK が実際に呼ぶ経路。方向と返り値を並べて描く。
+        /// @note GJK が実際に呼ぶ経路。方向と返り値を並べて描く。
         const math::Vector3 dir = Direction();
         view.DrawArrow({ 0.0f, 0.0f, 0.0f }, dir * 2.6f, colors::kQuery, 2.0f);
         view.DrawPoint(SupportPoint(), colors::kContact, 6.0f);
@@ -313,7 +313,7 @@ private:
         for (const math::Vector3& v : m_worldVerts) centroid = centroid + v;
         centroid = centroid * (1.0f / static_cast<float>(m_worldVerts.size()));
 
-        // 面の厚みは点群の広がりに対する比で見る。絶対値だと大きな形ほど厳しくなる。
+        /// @note 面の厚みは点群の広がりに対する比で見る。絶対値だと大きな形ほど厳しくなる。
         float extent = 0.0f;
         for (const math::Vector3& v : m_worldVerts)
             extent = (std::max)(extent, (v - centroid).Length());

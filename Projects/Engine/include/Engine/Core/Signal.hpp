@@ -3,22 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-29
 ///
-/// 設計意図 (WHY):
-/// スクリプト間連携は従来 scene.Find("Player_Sword_Trail")->GetScript<T>()->Method()
-/// のように文字列名の合成で結合しており、リネームで壊れ・型安全でなかった。
-///
-/// Signal<Args...> は「発火側がイベントを type-safe に通知し、購読側がラムダで受ける」
-/// 観測者パターンを最小実装で提供する。グローバル状態を持たないため、EXE / Script DLL の
-/// 二重レジストリ問題 (ScriptFactory と同種の ABI 境界問題) を回避できる。
-/// コンポーネント/スクリプトのメンバーとして公開イベントを表現するのに使う。
-///
-/// 使用例 (発火側スクリプト):
-/// fbzz::Signal<> onBloodSpray;                 // 引数なしイベントを公開
-/// void OnHit() { onBloodSpray.Emit(); }
-///
-/// 使用例 (購読側):
-/// // FBZZ_REF(SwordTrailComponent, trail, "Trail") で参照を取得して購読
-/// if (trail) trail->onBloodSpray.Connect([this]{ DoSomething(); });
+/// @note スクリプト間連携が scene.Find(...)->GetScript<T>()->Method() のような文字列合成に頼るとリネームで壊れ型安全でない。Signal<Args...> は発火側が type-safe に通知し購読側がラムダで受ける観測者パターンを提供する。
+/// @note グローバル状態を持たないため EXE/Script DLL の二重レジストリ問題 (ScriptFactory と同種の ABI 境界問題) を回避できる。コンポーネント/スクリプトのメンバーとして公開イベントを表現するのに使う。
 #pragma once
 #include <cstdint>
 #include <functional>
@@ -27,7 +13,7 @@
 
 namespace fbzz {
 
-// 購読解除に使う軽量ハンドル。
+/// @brief 購読解除に使う軽量ハンドル。
 struct SignalConnection {
     uint32_t id = 0;
     bool IsValid() const { return id != 0; }
@@ -38,7 +24,8 @@ class Signal {
 public:
     using Slot = std::function<void(Args...)>;
 
-    // 購読を追加する。返り値のハンドルで個別に解除できる。
+    /// @brief 購読を追加する。
+    /// @return 返り値のハンドルで個別に解除できる。
     SignalConnection Connect(Slot slot)
     {
         const uint32_t id = m_nextId++;
@@ -46,7 +33,7 @@ public:
         return { id };
     }
 
-    // 個別解除。
+    /// @brief 個別解除。
     void Disconnect(SignalConnection c)
     {
         for (auto it = m_slots.begin(); it != m_slots.end(); ++it) {
@@ -54,11 +41,11 @@ public:
         }
     }
 
-    // 全解除。
+    /// @brief 全解除。
     void Clear() { m_slots.clear(); }
 
-    // 全購読者へ通知する。
-    // WHY: 通知中に購読リストが変化しても安全なよう、スナップショットを走査する。
+    /// @brief 全購読者へ通知する。
+    /// @note 通知中に購読リストが変化しても安全なよう、スナップショットを走査する。
     void Emit(Args... args) const
     {
         const auto snapshot = m_slots;

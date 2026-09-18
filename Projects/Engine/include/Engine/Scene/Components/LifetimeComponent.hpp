@@ -8,7 +8,7 @@
 
 namespace fbzz::scene {
 
-// LifetimeComponent — エフェクトなどの一時GameObjectへ秒単位の寿命を与える。
+/// LifetimeComponent — エフェクトなどの一時GameObjectへ秒単位の寿命を与える。
 struct LifetimeComponent {
     float remaining = 5.0f;
     bool  enabled   = true;

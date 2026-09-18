@@ -3,31 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 宣言簿を挟むか:
-///   設定を 1 つ増やすのに、これまでは 5 か所を触る必要があった ─
-///   `GameConfig` の field と Reflect、`OptionsScreenComponent` の行の表、
-///   `GetValue` と `SetValue` の if 連鎖、選択肢の表。しかも 5 か所のうち
-///   1 つ書き忘れると「Option には出るが保存されない」「保存はされるが誰も読まない」
-///   という、画面からは区別の付かない壊れ方をする (2026-08-24 に実際に踏んだ)。
-///   宣言を 1 つの構造体へ畳めば、書き忘れの余地そのものが消える。
-///
-/// WHY 値をここが持つか (GameConfig のような構造体を増やさないか):
-///   スクリプトが増やす設定は、その数も型も事前に判らない。構造体で持つには
-///   フィールドを書き足すことになり、結局「触る場所が増える」問題へ戻る。
-///   id をキーにした 1 本の表なら、宣言が増えても表の行が増えるだけで済む。
-///
-/// WHY float 1 本に畳むか:
-///   設定の値は「つまみの位置」か「選択肢の番号」か「入 / 切」しかない。
-///   3 つとも float 1 本で表せて、見せ方 (Kind) だけが違う。型を分けると
-///   Option 画面が型ごとの分岐を持つことになり、行を足すたびにそこを触る。
-///
-/// WHY シーンをまたいで残るか:
-///   宣言簿は Scripts.dll の static なので、シーン遷移では消えない。
-///   `GameSettingsComponent` が居ないシーン (StageSelect / Result) でも
-///   `settings::Get()` は最後に効いていた値を返す。設定は「そのシーンの持ち物」
-///   ではないので、シーンの構成に答えが左右されてはいけない。
-///   DLL をリロードすると空へ戻るが、宣言する側は OnStart で毎回宣言するので
-///   次のフレームには揃い直す。
+/// @note 設定を 1 つ増やすと保存・Option の行・読み口が自動で揃う。宣言簿を挟まないと
+///       `GameConfig` の field/Reflect・Option 画面の行の表・`GetValue`/`SetValue` の
+///       分岐をそれぞれ触ることになり、書き忘れが画面から見分けられない壊れ方をする。
+/// @note スクリプトが増やす設定は数も型も事前に判らないため、id をキーにした 1 本の表で
+///       持つ。値は「つまみ位置・選択肢番号・入切」のいずれかなので float 1 本に畳み、
+///       見せ方 (Kind) だけを分ける。
+/// @note 宣言簿は Scripts.dll の static でシーンをまたいで残る。`GameSettingsComponent`
+///       が居ないシーンでも `settings::Get()` は最後の値を返す。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -50,11 +33,9 @@ enum class Kind : int {
 
 /// 設定 1 項目の宣言。
 ///
-/// WHY get / set を差せるようにするか:
-///   表示・音量・入力の 3 つは値の置き場がエンジン側 (display / audio / input プロキシ)
-///   にあり、宣言簿が値を持っても意味が無い。あちらを正本にしたまま Option の行と
-///   スクリプトの読み口だけを共通化したいので、「値の出し入れだけ外から差す」形にする。
-///   差さなければ宣言簿が値を持ち、config へ自動で往復する。
+/// @note 表示・音量・入力は値の置き場がエンジン側 (display / audio / input プロキシ)
+///       にあるため、get/set を差して「値の出し入れだけ外から借りる」形にできる。
+///       差さなければ宣言簿が値を持ち、config へ自動で往復する。
 struct Setting {
     std::string id;        ///< config のキーであり、Option の行 ID (`<TAB>_Row_<id>`)
     std::string page;      ///< 出すページ。Option のタブ名 ("Tab_GAME" 等)
@@ -68,9 +49,8 @@ struct Setting {
 
     /// 値の実体を外へ預けるときの出し入れ。両方空なら下の value が正本。
     ///
-    /// WHY 両方を対で持つか: 片方だけ差せると「読むのは宣言簿 / 書くのは外」という
-    ///     ねじれた状態が作れてしまい、Option で動かした値が次のフレームに
-    ///     元へ戻る (外の値で上書きされる) という形で壊れる。
+    /// @note get/set は対で差す。片方だけ差すと「読むのは宣言簿・書くのは外」という
+    ///       ねじれが生まれ、Option で動かした値が次のフレームで外の値に上書きされる。
     std::function<float()>     get;
     std::function<void(float)> set;
 
@@ -109,9 +89,8 @@ namespace detail {
 
 /// 宣言簿の実体。
 ///
-/// WHY 関数の中の static か: ヘッダーオンリーで 1 実体に保つための定石。
-///     inline 変数でも同じだが、初期化順が絡む静的アクセサから触るので
-///     「最初に呼ばれたときに作られる」ことが保証される形にしておく。
+/// @note 関数の中の static はヘッダーオンリーで 1 実体に保つための定石。初期化順が絡む
+///       静的アクセサから触るため、「最初に呼ばれたときに作られる」形にしておく。
 inline std::vector<Setting>& Entries()
 {
     static std::vector<Setting> entries;
@@ -127,11 +106,10 @@ inline int& Revision()
 
 /// 値が書き換わった回数。
 ///
-/// WHY 宣言の版と分けるか: «読み込み直す» 理由 (項目が増えた) と «保存する»
-///     理由 (値が変わった) は別の出来事で、同じ札で数えるとどちらか一方が
-///     もう一方を空振りさせる。組み込み項目は MutableXxx() が編集を申告するが、
-///     宣言簿が値を持つ項目にはその口が無い ─ ここで数えないと、
-///     スクリプトが足した設定だけが «保存されない» という形で落ちる。
+/// @note 宣言の版とは別に数える。«読み込み直す» (項目が増えた) と «保存する»
+///       (値が変わった) は別の出来事で、同じ札にすると片方を空振りさせる。
+///       組み込み項目は MutableXxx() が編集を申告するが、宣言簿が値を持つ項目には
+///       その口が無く、ここで数えないと保存対象から漏れる。
 inline int& ValueRevision()
 {
     static int revision = 0;
@@ -142,8 +120,8 @@ inline int& ValueRevision()
 
 /// 宣言されている全項目。
 ///
-/// WHY 参照を返すのに Setting* を持ち回らせないか: 宣言が増えると vector が
-///     再確保され、控えていたポインタは無効になる。走査は「その場で回す」こと。
+/// @note `Setting*` を持ち回らない。宣言が増えると vector が再確保され、控えていた
+///       ポインタは無効になる。走査は都度その場で回すこと。
 [[nodiscard]] inline const std::vector<Setting>& All() { return detail::Entries(); }
 
 /// 宣言の版。増えるたびに 1 進む。
@@ -165,18 +143,17 @@ inline int& ValueRevision()
 
 /// 宣言する。同じ id を再宣言したときは「宣言の内容だけ」差し替え、値は保つ。
 ///
-/// WHY 値を保つか: 宣言する側は OnStart で毎回宣言する。差し替えのたびに既定へ
-///     戻すと、シーンを移るたびにプレイヤーの設定が消える。宣言は「どんな項目か」
-///     であって「今いくつか」ではない。
-///
-/// WHY 版を進めるのが新規のときだけか: 版は「読み込み直す必要があるか」を表す。
-///     既にある項目の宣言を直しても、その値は既に config から読めている。
+/// @note 値は保つ。宣言する側は OnStart で毎回宣言するため、差し替えのたびに既定へ
+///       戻すとシーンを移るたびに設定が消える。宣言は「どんな項目か」を表すだけで
+///       「今いくつか」ではない。
+/// @note 版を進めるのは新規のときだけ。版は「読み込み直す必要があるか」を表し、
+///       既存項目の宣言を直しても値は既に config から読めている。
 inline void Declare(Setting setting)
 {
     if (setting.id.empty()) return;
 
-    // 値の置き場を外へ預けた項目は、保存も外の担当。二重に持つと、
-    // どちらが正本なのか宣言からは読めなくなる。
+    /// @note 値の置き場を外へ預けた項目は、保存も外の担当。二重に持つと、
+    ///       どちらが正本なのか宣言からは読めなくなる。
     if (setting.get || setting.set) setting.persist = false;
 
     if (Setting* existing = Find(setting.id)) {
@@ -200,9 +177,9 @@ inline void Clear()
 
 /// 現在値。未宣言なら fallback。
 ///
-/// WHY get() の結果を value へ写すか: 値の置き場が外にある項目でも、
-///     その置き場が消えた後 (GameSettingsComponent の居ないシーン) に
-///     「最後に効いていた値」を返せるようにするため。
+/// @note get() の結果を value へ写す。値の置き場が外にある項目でも、その置き場が
+///       消えた後 (`GameSettingsComponent` の居ないシーン) に「最後に効いていた値」
+///       を返せるようにするため。
 [[nodiscard]] inline float Get(std::string_view id, float fallback = 0.0f)
 {
     Setting* entry = Find(id);
@@ -238,8 +215,8 @@ inline void Set(std::string_view id, float value)
     if (!entry) return;
 
     const float sanitized = entry->Sanitize(value);
-    // 値の置き場を外へ預けた項目は、あちらが自分で «編集された» を申告する
-    // (MutableXxx)。二重に数えると、触っていない設定まで保存対象になる。
+    /// @note 値の置き場を外へ預けた項目は、あちらが自分で «編集された» を申告する
+    ///       (MutableXxx)。二重に数えると、触っていない設定まで保存対象になる。
     if (entry->persist) ++detail::ValueRevision();
     entry->value = sanitized;
     if (entry->set) entry->set(sanitized);
@@ -251,10 +228,9 @@ inline void SetInt(std::string_view id, int value) { Set(id, static_cast<float>(
 
 /// 宣言簿が値を持っている項目を既定へ戻す。
 ///
-/// WHY 外へ預けた項目を戻さないか: あちらの既定は VideoConfig{} のような
-///     «構造体の初期化子» が正本で、宣言簿はそれを知らない (宣言には
-///     defaultValue を書いていない)。ここで一緒に戻すと、書いていない 0 が
-///     視野角や明るさへ流れ込む。外の項目は外が戻す。
+/// @note 外へ預けた項目は戻さない。あちらの既定は `VideoConfig{}` のような構造体の
+///       初期化子が正本で、宣言には defaultValue を書いていないため、ここで戻すと
+///       書いていない 0 が視野角や明るさへ流れ込む。
 inline void ResetToDefaults()
 {
     for (Setting& entry : detail::Entries()) {
@@ -265,17 +241,15 @@ inline void ResetToDefaults()
 
 /// config の 1 テーブルへ往復する器。
 ///
-/// WHY 宣言簿そのものを IScriptSerializable にしないか:
-///   宣言簿は static な自由関数の集まりで、`Reflect` を持たせるには型が要る。
-///   器を 1 つ挟めば「宣言簿の今の中身」を書き出す薄い層で済み、
-///   宣言簿の側は永続化の作法を知らないままでいられる。
+/// @note 宣言簿は static な自由関数の集まりで `Reflect` を持たせるには型が要るため、
+///       器を 1 つ挟んで「宣言簿の今の中身」を書き出す薄い層にする。
 class Store final : public fbzz::scene::IScriptSerializable {
 public:
     /// 値の置き場を宣言簿が持っている項目だけを往復させる。
     ///
-    /// WHY 外へ預けた項目を書かないか: あちらは `[video]` / `[input]` のように
-    ///     別のテーブルへ既に保存されている。両方へ書くと、片方だけ直した
-    ///     設定ファイルがどちらの値で復元されるか判らなくなる。
+    /// @note 外へ預けた項目は書かない。あちらは `[video]` / `[input]` のように別の
+    ///       テーブルへ既に保存されており、両方へ書くと片方だけ直した設定ファイルが
+    ///       どちらの値で復元されるか判らなくなる。
     void Reflect(fbzz::scene::IReflector& r) override
     {
         for (Setting& entry : detail::Entries()) {
@@ -286,8 +260,8 @@ public:
 
     /// 読み戻した値を «効かせる» ところまで通す。Read の直後に呼ぶ。
     ///
-    /// WHY Reflect の中で効かせないか: Reflect は書き出しにも使われる。
-    ///     そちらで onApply が走ると、保存するたびに演出が鳴る。
+    /// @note Reflect の中では効かせない。Reflect は書き出しにも使われるため、
+    ///       そちらで onApply が走ると保存するたびに演出が鳴ってしまう。
     void ApplyAll()
     {
         for (Setting& entry : detail::Entries()) {

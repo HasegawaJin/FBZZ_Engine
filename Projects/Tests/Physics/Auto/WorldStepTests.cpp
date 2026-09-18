@@ -99,7 +99,7 @@ protected:
     physics::World world;
 };
 
-// --- 設定値 -----------------------------------------------------------------
+/// @name 設定値
 
 TEST_F(WorldStepTest, GravityIsReadBackAsSet)
 {
@@ -127,7 +127,7 @@ TEST_F(WorldStepTest, LocalClockKeepsPlayerMovingWhileOtherBodiesSlow)
 
 TEST_F(WorldStepTest, SubstepCountIsClampedToTheSupportedRange)
 {
-    // 0 以下で割ると dt が inf になり、1 フレームで世界が消し飛ぶ。上限は計算量の歯止め。
+    /// @note 0 以下で割ると dt が inf になり、1 フレームで世界が消し飛ぶ。上限は計算量の歯止め。
     world.SetSubsteps(0);
     EXPECT_EQ(world.GetSubsteps(), 1);
 
@@ -135,7 +135,7 @@ TEST_F(WorldStepTest, SubstepCountIsClampedToTheSupportedRange)
     EXPECT_EQ(world.GetSubsteps(), 32);
 }
 
-// --- 重力 -------------------------------------------------------------------
+/// @name 重力
 
 TEST_F(WorldStepTest, AppliesWorldGravityAsAnAccelerationIndependentOfMass)
 {
@@ -146,7 +146,7 @@ TEST_F(WorldStepTest, AppliesWorldGravityAsAnAccelerationIndependentOfMass)
 
     world.Step(0.1f);
 
-    // 力は質量倍で入れて積分で割り戻す。どこかで片方を忘れると重い物ほど遅く落ちる。
+    /// @note 力は質量倍で入れて積分で割り戻す。どこかで片方を忘れると重い物ほど遅く落ちる。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, -1.0f, 0.0f), testkit::kTolerance);
 }
 
@@ -189,7 +189,7 @@ TEST_F(WorldStepTest, SkipsGravityForABodyThatOptsOut)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
-// --- サブステップ -----------------------------------------------------------
+/// @name サブステップ
 
 TEST_F(WorldStepTest, SubstepsRefineThePathWithoutChangingTheEndingVelocity)
 {
@@ -209,14 +209,14 @@ TEST_F(WorldStepTest, SubstepsRefineThePathWithoutChangingTheEndingVelocity)
     world.Step(0.1f);
     refined.Step(0.1f);
 
-    // 速度は «加速度 × 経過時間» なので刻み方に依らない。ここがずれるなら
-    // subDt の割り方か、substep ごとの力のリセットが壊れている。
+    /// @note 速度は «加速度 × 経過時間» なので刻み方に依らない。ここがずれるなら
+    ///       subDt の割り方か、substep ごとの力のリセットが壊れている。
     EXPECT_VEC3_NEAR(split.GetVelocity(), single.GetVelocity(), testkit::kLooseTolerance);
-    // 位置は半陰的オイラーの誤差ぶんだけ違う。細かく刻むほど落下量は小さくなる。
+    /// @note 位置は半陰的オイラーの誤差ぶんだけ違う。細かく刻むほど落下量は小さくなる。
     EXPECT_GT(split.GetPosition().y, single.GetPosition().y);
 }
 
-// --- Sleep ------------------------------------------------------------------
+/// @name Sleep
 
 TEST_F(WorldStepTest, PutsAMotionlessBodyToSleepAfterTheSettleTime)
 {
@@ -226,7 +226,7 @@ TEST_F(WorldStepTest, PutsAMotionlessBodyToSleepAfterTheSettleTime)
 
     testkit::StepFixed([&](float dt) { world.Step(dt); }, 60);
 
-    // 眠らせないと、静止したシーンでも毎フレーム全段が走り続ける。
+    /// @note 眠らせないと、静止したシーンでも毎フレーム全段が走り続ける。
     EXPECT_TRUE(body.IsSleeping());
 }
 
@@ -251,17 +251,17 @@ TEST_F(WorldStepTest, SkipsTheWholePipelineForASettledScene)
     SyncScene(world, { &body });
     body.Sleep();
 
-    // 追加も削除もない同期。これで «接触集合が変わり得る変更» が無いことが確定する。
+    /// @note 追加も削除もない同期。これで «接触集合が変わり得る変更» が無いことが確定する。
     SyncScene(world, { &body });
     world.Step(0.1f);
 
-    // 眠っているものしか居ないフレームでは何も動かない。ここが動くなら early-out の
-    // 判定が緩く、Terrain のあるシーンで毎フレーム BVH クエリが走っている。
+    /// @note 眠っているものしか居ないフレームでは何も動かない。ここが動くなら early-out の
+    ///       判定が緩く、Terrain のあるシーンで毎フレーム BVH クエリが走っている。
     EXPECT_VEC3_NEAR(body.GetPosition(), math::Vector3(0.0f, 5.0f, 0.0f), testkit::kTolerance);
     EXPECT_TRUE(body.IsSleeping());
 }
 
-// --- Volume -----------------------------------------------------------------
+/// @name Volume
 
 TEST_F(WorldStepTest, AppliesAVolumeToTheBodiesInsideIt)
 {
@@ -306,8 +306,8 @@ TEST_F(WorldStepTest, DropsExpiredVolumesBeforeTheyAreApplied)
 
     world.Step(1.0f);
 
-    // 寿命切れの爆風が «消したはずのフレーム» でもう一度効くと、1 回のはずの
-    // ノックバックが 2 回入る。
+    /// @note 寿命切れの爆風が «消したはずのフレーム» でもう一度効くと、1 回のはずの
+    ///       ノックバックが 2 回入る。
     EXPECT_EQ(volume.applyCount, 0);
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
@@ -324,7 +324,7 @@ TEST_F(WorldStepTest, AVolumeThatOverridesGravitySuppressesTheWorldGravity)
 
     world.Step(1.0f);
 
-    // 上書きせずに «足し算» にすると、重力反転 Volume の中で下向きが残って浮かない。
+    /// @note 上書きせずに «足し算» にすると、重力反転 Volume の中で下向きが残って浮かない。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
@@ -340,8 +340,8 @@ TEST_F(WorldStepTest, ATimeDilationVolumeShortensTheIntegrationStep)
 
     world.Step(1.0f);
 
-    // 時間スケールは «力» ではなく «その body の dt» に効く。力側で割ると
-    // 重力以外の外力 (すでに乗っている速度) が減速しない。
+    /// @note 時間スケールは «力» ではなく «その body の dt» に効く。力側で割ると
+    ///       重力以外の外力 (すでに乗っている速度) が減速しない。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, -5.0f, 0.0f), testkit::kTolerance);
 }
 
@@ -349,8 +349,8 @@ TEST_F(WorldStepTest, TicksVolumesOncePerSubstep)
 {
     physics::RigidBody body;
     body.SetMass(1.0f);
-    // 力を受けない body は 0.75 秒で眠り、眠った body には Volume が掛からなくなる。
-    // ここで見たいのは «substep ごとに 1 回» なので、Sleep を混ぜない。
+    /// @note 力を受けない body は 0.75 秒で眠り、眠った body には Volume が掛からなくなる。
+    ///       ここで見たいのは «substep ごとに 1 回» なので、Sleep を混ぜない。
     body.m_allowSleeping = false;
     world.SetSubsteps(4);
     auto owned = std::make_unique<ScriptedVolume>();
@@ -359,8 +359,8 @@ TEST_F(WorldStepTest, TicksVolumesOncePerSubstep)
 
     world.Step(1.0f);
 
-    // Tick は Volume の寿命を進める。フレームごとに 1 回しか刻まないと、
-    // substep を増やしたときだけ持続時間が伸びる。
+    /// @note Tick は Volume の寿命を進める。フレームごとに 1 回しか刻まないと、
+    ///       substep を増やしたときだけ持続時間が伸びる。
     EXPECT_EQ(volume.tickCount, 4);
     EXPECT_EQ(volume.applyCount, 4);
 }
@@ -374,11 +374,11 @@ TEST_F(WorldStepTest, StopsApplyingVolumesToABodyOnceItFallsAsleep)
     ScriptedVolume& volume = *owned;
     SyncScene(world, { &body }, std::move(owned));
 
-    // subDt 0.25 × 4。3 回目の終わりに Sleep の閾値 (0.75 秒) へ届く。
+    /// @note subDt 0.25 × 4。3 回目の終わりに Sleep の閾値 (0.75 秒) へ届く。
     world.Step(1.0f);
 
-    // 眠っている body へ環境力を掛け続けると、Sleep しても負荷が下がらない。
-    // Tick は Volume 自身の寿命なので、body が眠っても止めない。
+    /// @note 眠っている body へ環境力を掛け続けると、Sleep しても負荷が下がらない。
+    ///       Tick は Volume 自身の寿命なので、body が眠っても止めない。
     EXPECT_TRUE(body.IsSleeping());
     EXPECT_EQ(volume.tickCount, 4);
     EXPECT_EQ(volume.applyCount, 3);
@@ -386,9 +386,9 @@ TEST_F(WorldStepTest, StopsApplyingVolumesToABodyOnceItFallsAsleep)
 
 TEST_F(WorldStepTest, LeavesGravityAndTimeUntouchedForAVolumeThatAddsNoEffect)
 {
-    // 効果を 1 つだけ持つ Volume は、残りを基底の既定実装に任せて書く (WorldSceneSyncTests の
-    // TrackingVolume が実際にそう書かれている)。既定が中立でなくなると «書いていない効果» が
-    // 掛かることになり、書いていないぶん派生側を読んでも原因に辿り着けない。
+    /// @note 効果を 1 つだけ持つ Volume は、残りを基底の既定実装に任せて書く (WorldSceneSyncTests の
+    ///       TrackingVolume が実際にそう書かれている)。既定が中立でなくなると «書いていない効果» が
+    ///       掛かることになり、書いていないぶん派生側を読んでも原因に辿り着けない。
     physics::RigidBody body;
     body.SetMass(1.0f);
     world.SetGravity(math::Vector3(0.0f, -10.0f, 0.0f));
@@ -398,13 +398,13 @@ TEST_F(WorldStepTest, LeavesGravityAndTimeUntouchedForAVolumeThatAddsNoEffect)
 
     world.Step(1.0f);
 
-    // 重力はそのまま (OverridesGravity → false)、時間も等倍 (GetTimeScale → 1)。
+    /// @note 重力はそのまま (OverridesGravity → false)、時間も等倍 (GetTimeScale → 1)。
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, -10.0f, 0.0f), testkit::kTolerance);
-    // 寿命を持たない (IsExpired → false) ので、生成したフレームで捨てられない。
+    /// @note 寿命を持たない (IsExpired → false) ので、生成したフレームで捨てられない。
     EXPECT_EQ(volume.applyCount, 1);
 }
 
-// --- 制約 -------------------------------------------------------------------
+/// @name 制約
 
 TEST_F(WorldStepTest, SolvesConstraintPositionsAfterIntegrating)
 {
@@ -433,16 +433,16 @@ TEST_F(WorldStepTest, AppliesConstraintForcesBeforeIntegrating)
 
     world.Step(testkit::kFixedDeltaTime);
 
-    // 積分の «後» に力を足すと、そのフレームの速度へ反映されず 1 フレーム遅れる。
+    /// @note 積分の «後» に力を足すと、そのフレームの速度へ反映されず 1 フレーム遅れる。
     EXPECT_GT(a.GetVelocity().x, 0.0f);
     EXPECT_LT(b.GetVelocity().x, 0.0f);
 }
 
 TEST_F(WorldStepTest, SolvesAChainAsPositionsOnlyWithoutInjectingVelocity)
 {
-    // 鎖は «位置だけ» を直す制約で、力の段では何もしない。ここで速度が出るということは
-    // ApplyForce と SolvePosition の両方から距離を詰めているということで、鎖が縮んだ
-    // 反動で先端が弾き飛ぶ。段の分担そのものを縛る。
+    /// @note 鎖は «位置だけ» を直す制約で、力の段では何もしない。ここで速度が出るということは
+    ///       ApplyForce と SolvePosition の両方から距離を詰めているということで、鎖が縮んだ
+    ///       反動で先端が弾き飛ぶ。段の分担そのものを縛る。
     physics::RigidBody a;
     physics::RigidBody b;
     physics::RigidBody c;
@@ -463,7 +463,7 @@ TEST_F(WorldStepTest, SolvesAChainAsPositionsOnlyWithoutInjectingVelocity)
     EXPECT_VEC3_NEAR(c.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
-// --- N 体重力 ---------------------------------------------------------------
+/// @name N 体重力
 
 TEST_F(WorldStepTest, PullsGravitationalSourcesTowardEachOther)
 {
@@ -480,7 +480,7 @@ TEST_F(WorldStepTest, PullsGravitationalSourcesTowardEachOther)
 
     world.Step(1.0f);
 
-    // 作用・反作用。片方だけに入れると系全体が勝手に加速して飛んでいく。
+    /// @note 作用・反作用。片方だけに入れると系全体が勝手に加速して飛んでいく。
     EXPECT_GT(a.GetVelocity().x, 0.0f);
     EXPECT_LT(b.GetVelocity().x, 0.0f);
     EXPECT_NEAR(a.GetVelocity().x + b.GetVelocity().x, 0.0f, testkit::kTolerance);
@@ -499,13 +499,13 @@ TEST_F(WorldStepTest, IgnoresBodiesThatAreNotGravitationalSources)
 
     world.Step(1.0f);
 
-    // 引力は «お互いが源であるとき» だけ。片側で成立させると、ただの小石が
-    // 惑星に吸い寄せられる一方で反作用が消える。
+    /// @note 引力は «お互いが源であるとき» だけ。片側で成立させると、ただの小石が
+    ///       惑星に吸い寄せられる一方で反作用が消える。
     EXPECT_VEC3_NEAR(source.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
     EXPECT_VEC3_NEAR(plain.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
-// --- コライダー同期 ---------------------------------------------------------
+/// @name コライダー同期
 
 TEST_F(WorldStepTest, MovesCollidersOntoTheirBodiesIncludingTheCenterOffset)
 {
@@ -526,7 +526,7 @@ TEST_F(WorldStepTest, MovesCollidersOntoTheirBodiesIncludingTheCenterOffset)
 
     world.Step(testkit::kFixedDeltaTime);
 
-    // オフセットを忘れると、見えている形状と当たり判定が «ちょうどオフセットぶん» ずれる。
+    /// @note オフセットを忘れると、見えている形状と当たり判定が «ちょうどオフセットぶん» ずれる。
     EXPECT_VEC3_NEAR(sphere.GetAABB().Center(),
                      math::Vector3(5.0f, 2.0f, 0.0f),
                      testkit::kLooseTolerance);
@@ -534,15 +534,16 @@ TEST_F(WorldStepTest, MovesCollidersOntoTheirBodiesIncludingTheCenterOffset)
 
 TEST_F(WorldStepTest, PairsABodyWithABodylessHeightField)
 {
-    // 地形は剛体を持たないコライダーとして World に載る。BroadPhase は AABB だけで
-    // 候補を作るので、地形が AABB を返さない・剛体が無い側を飛ばす、のどちらでも
-    // «NarrowPhase は正しいのに地形だけすり抜ける» になる。ペアが立つことを直接見る。
+    /// @note 地形は剛体を持たないコライダーとして World に載る。BroadPhase は AABB だけで
+    ///       候補を作るので、地形が AABB を返さない・剛体が無い側を飛ばす、のどちらでも
+    ///       «NarrowPhase は正しいのに地形だけすり抜ける» になる。ペアが立つことを直接見る。
     physics::HeightFieldCollider field(std::vector<float>(25, 0.0f), 5, 5, 1.0f, 1.0f);
     field.Update(math::Vector3(-2.0f, 0.0f, -2.0f), math::Quaternion::Identity());
 
     physics::RigidBody body;
     body.SetMass(1.0f);
-    body.SetPosition(math::Vector3(0.0f, 0.4f, 0.0f));   // 半径 0.5 なので地形へ食い込む
+    /// @note 半径 0.5 なので地形へ食い込む
+    body.SetPosition(math::Vector3(0.0f, 0.4f, 0.0f));
     physics::SphereCollider sphere(0.5f);
 
     physics::ColliderInstance ground;
@@ -565,7 +566,41 @@ TEST_F(WorldStepTest, PairsABodyWithABodylessHeightField)
     EXPECT_TRUE(event.colliderA == &field || event.colliderB == &field);
 }
 
-// --- CCD --------------------------------------------------------------------
+TEST_F(WorldStepTest, BodyOverAHeightFieldHoleDoesNotTouchTheGround)
+{
+    /// @note 上のテストと同じ配置で、球の真下 2x2 セルを穴にする。球は穴の内側に収まる。
+    /// @see Docs/design/terrain-layers.md §4 穴
+    std::vector<std::uint8_t> holes(16, 0);
+    for (int cz = 1; cz <= 2; ++cz)
+        for (int cx = 1; cx <= 2; ++cx)
+            holes[static_cast<size_t>(cz * 4 + cx)] = 1;
+    physics::HeightFieldCollider field(std::vector<float>(25, 0.0f), 5, 5, 1.0f, 1.0f, holes);
+    field.Update(math::Vector3(-2.0f, 0.0f, -2.0f), math::Quaternion::Identity());
+
+    physics::RigidBody body;
+    body.SetMass(1.0f);
+    body.SetPosition(math::Vector3(0.0f, 0.4f, 0.0f));
+    physics::SphereCollider sphere(0.5f);
+
+    physics::ColliderInstance ground;
+    ground.collider = &field;
+
+    physics::ColliderInstance falling;
+    falling.collider = &sphere;
+    falling.body     = &body;
+
+    world.BeginSceneSync();
+    world.SyncBody({}, &body);
+    world.SyncCollider({}, ground);
+    world.SyncCollider({}, falling);
+    world.EndSceneSync();
+
+    world.Step(testkit::kFixedDeltaTime);
+
+    EXPECT_TRUE(world.GetEnterEvents().empty());
+}
+
+/// @name CCD
 
 TEST_F(WorldStepTest, ClampsTheVelocityOfAFastBodyToItsTimeOfImpact)
 {
@@ -601,7 +636,7 @@ TEST_F(WorldStepTest, ClampsTheVelocityOfAFastBodyToItsTimeOfImpact)
 
     world.Step(0.1f);
 
-    // このフレームの移動量は 10、壁までは 4。TOI で速度を切らないと通り抜ける。
+    /// @note このフレームの移動量は 10、壁までは 4。TOI で速度を切らないと通り抜ける。
     EXPECT_NEAR(fast.GetPosition().x, -1.0f, testkit::kLooseTolerance);
 }
 
@@ -637,8 +672,8 @@ TEST_F(WorldStepTest, TunnelsThroughTheWallWhenCcdIsDisabled)
 
     world.Step(0.1f);
 
-    // CCD は既定で切ってある (全物体に掛けると重い)。«切ると抜ける» ことを
-    // 明示しておかないと、上のテストが何を守っているのか読めない。
+    /// @note CCD は既定で切ってある (全物体に掛けると重い)。«切ると抜ける» ことを
+    ///       明示しておかないと、上のテストが何を守っているのか読めない。
     EXPECT_GT(fast.GetPosition().x, 0.0f);
 }
 

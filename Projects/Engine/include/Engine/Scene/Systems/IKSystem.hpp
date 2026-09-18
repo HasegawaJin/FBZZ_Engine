@@ -16,7 +16,7 @@ public:
     RunMode          GetRunMode() const override { return RunMode::Always; }
     ComponentAccess  GetAccess()  const override;
     OrderingHints    GetOrder()   const override;
-    // ctx.resources が nullptr の場合はスキップ（FK ポーズ後に IK 補正）
+    /// ctx.resources が nullptr の場合はスキップ（FK ポーズ後に IK 補正）
     void Update(SystemContext& ctx) override;
 };
 

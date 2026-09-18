@@ -17,8 +17,8 @@ namespace fbzz::tests {
 
 using editor::SceneDirtyTracker;
 
-// SceneDirtyTracker は SceneIO::Serialize を通してシーンをハッシュする。
-// その一時ファイルの置き場所を用意するため EditorFixture に載せる。
+/// SceneDirtyTracker は SceneIO::Serialize を通してシーンをハッシュする。
+/// その一時ファイルの置き場所を用意するため EditorFixture に載せる。
 class SceneDirtyTrackerTest : public testkit::EditorFixture {};
 
 TEST_F(SceneDirtyTrackerTest, StartsClean)
@@ -88,7 +88,7 @@ TEST_F(SceneDirtyTrackerTest, DetectsAnActiveToggle)
 
 TEST_F(SceneDirtyTrackerTest, GoesCleanAgainAfterCapturingTheNewState)
 {
-    // 保存したら «今の姿» が新しい基準になる。ここが効かないと保存後も促され続ける。
+    /// @note 保存したら «今の姿» が新しい基準になる。ここが効かないと保存後も促され続ける。
     scene::Scene scene;
     SceneDirtyTracker tracker;
     tracker.CaptureClean(scene);
@@ -102,7 +102,7 @@ TEST_F(SceneDirtyTrackerTest, GoesCleanAgainAfterCapturingTheNewState)
 
 TEST_F(SceneDirtyTrackerTest, ReturnsToCleanWhenTheEditIsUndone)
 {
-    // 追加して消せば元の姿。Undo で戻したのに «変更あり» のままだと嘘になる。
+    /// @note 追加して消せば元の姿。Undo で戻したのに «変更あり» のままだと嘘になる。
     scene::Scene scene;
     scene.CreateGameObject("Keep");
     SceneDirtyTracker tracker;
@@ -129,9 +129,9 @@ TEST_F(SceneDirtyTrackerTest, MarkDirtyForcesTheFlagWithoutLookingAtTheScene)
 
 TEST_F(SceneDirtyTrackerTest, EvaluateOverridesAManualMarkWhenTheSceneIsUnchanged)
 {
-    // MarkDirty はシリアライズに出ない変更を拾う逃げ道だが、次の Evaluate で
-    // «中身は同じ» と判定されれば取り消される。この性質を知らずに MarkDirty だけに
-    // 頼ると、保存を促す機会を落とす。
+    /// @note MarkDirty はシリアライズに出ない変更を拾う逃げ道だが、次の Evaluate で
+    ///       «中身は同じ» と判定されれば取り消される。この性質を知らずに MarkDirty だけに
+    ///       頼ると、保存を促す機会を落とす。
     scene::Scene scene;
     SceneDirtyTracker tracker;
     tracker.CaptureClean(scene);
@@ -151,13 +151,13 @@ TEST_F(SceneDirtyTrackerTest, ResetForgetsTheBaseline)
     tracker.Reset();
 
     EXPECT_FALSE(tracker.IsDirty());
-    // 基準が無いので、次の Evaluate は «今の姿» を基準として取り直す。
+    /// @note 基準が無いので、次の Evaluate は «今の姿» を基準として取り直す。
     EXPECT_FALSE(tracker.Evaluate(scene));
 }
 
 TEST_F(SceneDirtyTrackerTest, EvaluateWithoutABaselineAdoptsTheCurrentScene)
 {
-    // 基準を取らないまま呼ばれても «変更あり» と言わない。開いた直後がこれ。
+    /// @note 基準を取らないまま呼ばれても «変更あり» と言わない。開いた直後がこれ。
     scene::Scene scene;
     scene.CreateGameObject("Player");
 

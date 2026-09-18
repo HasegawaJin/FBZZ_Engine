@@ -1,4 +1,4 @@
-/// @file    RenderPasses/SkyLightBakePass.cpp
+/// @file    SkyLightBakePass.cpp
 /// @brief   空連動 IBL (環境システム設計 Phase A) の「②SkyLightBake」パス。
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
@@ -6,10 +6,10 @@
 /// SkyCapture が焼いた "SkyEnvCube" を irradiance / prefilter キューブマップへ畳み込み、
 /// EnvironmentResources に動的 IBL テクスチャとして保持する。
 ///
-/// WHY (既存 compute の再利用):
-/// 畳み込み自体は DX11IblBaker が editor の DDS ベイクで実証済み。本パスは抽象 IRenderer::BakeSkyLight
-/// を呼ぶだけで、DX11 側がその実証済み Compute (IBL.IrradianceConvolution / IBL.PrefilteredEnvMap) を
-/// キャプチャ済みキューブ SRV に対して走らせる。結果は ResourceManager::RegisterTexture で TextureTag 化する。
+/// 畳み込み自体は DX11IblBaker が editor の DDS ベイクで実証済みのため、本パスは抽象
+/// `IRenderer::BakeSkyLight` を呼ぶだけで、DX11 側がその Compute (IBL.IrradianceConvolution /
+/// IBL.PrefilteredEnvMap) をキャプチャ済みキューブ SRV に対して走らせる。結果は
+/// `ResourceManager::RegisterTexture` で TextureTag 化する。
 #include "GeometryPasses.hpp"
 #include <Engine/Renderer/ITexture.hpp>
 #include <cstdint>
@@ -20,14 +20,16 @@ namespace fbzz::scene {
 void ExecuteSkyLightBakePass(RenderPassContext& ctx)
 {
     auto* env = ctx.environmentResources;
-    if (!env || !env->needsConvolution)        return; // SkyCapture が焼き直したフレームのみ
+    /// @note SkyCapture が焼き直したフレームのみ
+    if (!env || !env->needsConvolution)        return;
     if (!ctx.handles.skyEnvCubeRT.IsValid())   return;
 
-    // 畳み込み品質。irradiance は粗くて十分、prefilter は roughness を 5 mip に分割する。
+    /// @note 畳み込み品質。irradiance は粗くて十分、prefilter は roughness を 5 mip に分割する。
     constexpr uint32_t kIrradianceSize = 32;
     constexpr uint32_t kPrefilterSize  = 128;
     constexpr uint32_t kPrefilterMips  = 5;
-    constexpr uint32_t kSampleCount    = 128; // runtime 用に editor (1024) より控えめ
+    /// @note runtime 用に editor (1024) より控えめ
+    constexpr uint32_t kSampleCount    = 128;
 
     std::unique_ptr<renderer::ITexture> irrTex, preTex;
     const bool ok = ctx.renderer.BakeSkyLight(
@@ -36,7 +38,7 @@ void ExecuteSkyLightBakePass(RenderPassContext& ctx)
         irrTex, preTex);
 
     if (ok && irrTex && preTex) {
-        // 旧 IBL テクスチャを解放してから差し替える (dirty 毎に焼き直すためリークさせない)。
+        /// @note 旧 IBL テクスチャを解放してから差し替える (dirty 毎に焼き直すためリークさせない)。
         if (env->skyIrradiance.IsValid()) ctx.resources.Release(env->skyIrradiance);
         if (env->skyPrefilter.IsValid())  ctx.resources.Release(env->skyPrefilter);
         env->skyIrradiance       = ctx.resources.RegisterTexture(std::move(irrTex));
@@ -44,13 +46,13 @@ void ExecuteSkyLightBakePass(RenderPassContext& ctx)
         env->prefilteredMipCount = kPrefilterMips;
     }
 
-    // 成否に関わらずフラグを消費する。失敗フレームを毎回リトライして固まらないようにし、
-    // 次に SkyCapture が dirty を検知したときに再度焼き直す。
+    /// @note 成否に関わらずフラグを消費する。失敗フレームを毎回リトライして固まらないようにし、
+    ///       次に SkyCapture が dirty を検知したときに再度焼き直す。
     env->needsConvolution = false;
-    // まだ一度も焼けていないのに失敗したら、次フレームの SkyCapture を強制 dirty にする。
-    // WHY: ConsumeDirty は SkyCapture の時点で署名を進めてしまうので、ここで何もしないと
-    //     太陽が 1.5° 動くか大気設定を触るまで再試行されず、その間 IBL は ambient 落ちのまま
-    //     (真っ暗な画面 + 無言)。既に焼けた組があるなら古い方を使い続ける方がましなので触らない。
+    /// @note まだ一度も焼けていないのに失敗したら、次フレームの SkyCapture を強制 dirty にする。
+    ///       ConsumeDirty は SkyCapture の時点で署名を進めるため、ここで何もしないと太陽が 1.5°
+    ///       動くか大気設定を触るまで再試行されず IBL が ambient 落ちのままになる。既に焼けた組が
+    ///       あるなら古い方を使い続ける方がましなので触らない。
     if (!ok && !env->HasBakedTextures())
         env->MarkDirty();
 }

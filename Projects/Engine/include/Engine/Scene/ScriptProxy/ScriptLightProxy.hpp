@@ -10,7 +10,7 @@ namespace fbzz::scene {
 
 class Script;
 
-// LightComponent::Type と値を一致させること。DLL 境界を越えるので順序の変更は不可。
+/// @note LightComponent::Type と値を一致させること。DLL 境界を越えるので順序の変更は不可。
 enum class LightType { Directional, Point, Spot, Area, Sphere, Tube };
 
 struct ScriptLightProxy {
@@ -24,9 +24,11 @@ struct ScriptLightProxy {
     void SetOuterCone(float degrees) const;
     void SetEnabled(bool enabled) const;
 
-    // オーサリング値を起点に増減させる演出 (点滅・フェード・被弾時のフラッシュ) は、
-    // 元の値を Script 側に控えておかなくても済むようここから読む。
-    // LightComponent が無ければ既定値を返す。
+    /// @name 読み取り
+    /// オーサリング値を起点に増減させる演出 (点滅・フェード・被弾時のフラッシュ) は、
+    /// 元の値を Script 側に控えておかなくてもここから読める。LightComponent が
+    /// 無ければ既定値を返す。
+    ///@{
     [[nodiscard]] math::Vector3 GetColor() const;
     [[nodiscard]] LightType     GetType() const;
     [[nodiscard]] float         GetIntensity() const;
@@ -34,6 +36,7 @@ struct ScriptLightProxy {
     [[nodiscard]] float         GetInnerCone() const;
     [[nodiscard]] float         GetOuterCone() const;
     [[nodiscard]] bool          IsEnabled() const;
+    ///@}
 };
 
 } // namespace fbzz::scene

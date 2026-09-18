@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
-/// フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
+/// @brief EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
+/// @brief フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneRenderResources.hpp"
@@ -28,10 +28,9 @@ namespace fbzz::scene {
 
 namespace {
 
-// Component 個体が抱えている GPU リソースを、返す先がまだ生きているあいだだけ返す。
-// WHY Active() を使うか: Scene は ResourceManager を知らない (Script も含めた上位が
-//     ResourceHandle しか触らない設計)。プロセス終了で ResourceManager が先に畳まれた
-//     場合は Active() が空になり、そのときは返す先そのものが無いので何もしなくてよい。
+/// @brief Component 個体が抱えている GPU リソースを、返す先がまだ生きているあいだだけ返す。
+/// @note Scene は ResourceManager を知らない (上位は ResourceHandle しか触らない設計)。プロセス
+///       終了で ResourceManager が先に畳まれた場合は Active() が空になり、返す先が無いので何もしない。
 void ReleaseGpuResourcesIfPossible(Scene& scene)
 {
     if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
@@ -42,8 +41,8 @@ void ReleaseGpuResourcesIfPossible(Scene& scene)
 
 Scene::~Scene()
 {
-    // WHY Clear() を呼ばないか: デストラクタから OnDestroy を回すと、既に畳まれた
-    //     サブシステムへスクリプトが触りにいく。ここで要るのは GPU リソースの返却だけ。
+    /// @note デストラクタから OnDestroy を回すと既に畳まれたサブシステムへスクリプトが触りにいく
+    ///       ため Clear() は呼ばない。ここで要るのは GPU リソースの返却だけ。
     ReleaseGpuResourcesIfPossible(*this);
 }
 
@@ -70,15 +69,17 @@ Scene& Scene::operator=(Scene&& other) noexcept
     m_userRenderPasses = std::move(other.m_userRenderPasses);
     m_scriptDebugDrawCommands = std::move(other.m_scriptDebugDrawCommands);
     m_lastScriptDebugDrawTickFrame = other.m_lastScriptDebugDrawTickFrame;
+    m_environment = other.m_environment;
+    /// @note 流れのキャッシュは «誰の GameObject を指しているか» に依存しない値だが、
+    ///       移った先で集め直させる。移動元と同じフレームでも中身は別シーンのもの。
+    InvalidateFlowFrame();
 
     FixupOwnership();
     other.Clear();
     return *this;
 }
 
-// -----------------------------------------------------------------------
-// Entity 管理
-// -----------------------------------------------------------------------
+/// @brief Entity 管理
 EntityID Scene::AllocateEntity() {
     uint32_t idx;
     if (!m_freeIndices.empty()) {
@@ -97,13 +98,14 @@ void Scene::DestroyImmediate(EntityID id) {
 
     GameObject* go = GetGameObject(id);
 
-    // 子を再帰的に破棄
+    /// @note 子を再帰的に破棄
     if (go) {
-        std::vector<EntityID> children = go->m_children; // コピーして走査
+        /// @note コピーして走査
+        std::vector<EntityID> children = go->m_children;
         for (EntityID child : children)
             DestroyImmediate(child);
 
-        // 親から切り離す
+        /// @note 親から切り離す
         if (go->m_parent.IsValid()) {
             if (auto* parent = GetGameObject(go->m_parent)) {
                 auto& pc = parent->m_children;
@@ -112,12 +114,9 @@ void Scene::DestroyImmediate(EntityID id) {
         }
     }
 
-    // Script の後処理。
-    // WHY 添字ループか (不具合修正): OnDestroy から AddScript / Create が呼ばれると
-    //     ScriptComponent 配列も sc->scripts も再確保される。範囲 for が握る参照は
-    //     そこで無効になるため、毎回 id と添字から引き直す。
-    //     FBZZ_EXECUTE_ALWAYS の導入で編集中も m_started が立つようになり、
-    //     エディタ上の削除でもこの経路を通るようになった。
+    /// @note Script の後処理。OnDestroy から AddScript / Create が呼ばれると ScriptComponent 配列も
+    ///       sc->scripts も再確保されうる。範囲 for が握る参照はそこで無効になるため、毎回 id と
+    ///       添字から引き直す。
     if (auto* sc = GetComponent<ScriptComponent>(id)) {
         const size_t initialCount = sc->scripts.size();
         for (size_t i = 0; i < initialCount; ++i) {
@@ -129,19 +128,20 @@ void Scene::DestroyImmediate(EntityID id) {
         }
     }
 
-    // Component が抱えている GPU リソースを、Component を捨てる前に返す。
+    /// @note Component が抱えている GPU リソースを、Component を捨てる前に返す。
     if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
         ReleaseEntityOwnedGpuResources(*this, id, *resources);
 
-    // Component 削除
+    /// @note Component 削除
     RemoveAllComponents(id);
 
-    // Entity 解放
+    /// @note Entity 解放
     m_entityToGameObject[id.index] = nullptr;
-    ++m_generations[id.index]; // generation をインクリメントして古い参照を無効化
+    /// @note generation をインクリメントして古い参照を無効化
+    ++m_generations[id.index];
     m_freeIndices.push_back(id.index);
 
-    // m_gameObjects から削除
+    /// @note m_gameObjects から削除
     if (go) {
         auto it = std::find_if(m_gameObjects.begin(), m_gameObjects.end(),
             [go](const auto& u) { return u.get() == go; });
@@ -156,9 +156,7 @@ bool Scene::IsValid(EntityID id) const {
     return m_generations[id.index] == id.generation;
 }
 
-// -----------------------------------------------------------------------
-// GameObject 生成
-// -----------------------------------------------------------------------
+/// @brief GameObject 生成
 GameObject& Scene::CreateGameObject(const std::string& name) {
     EntityID id = AllocateEntity();
 
@@ -182,9 +180,7 @@ GameObject* Scene::FindByGuid(const std::string& guid) const {
     return nullptr;
 }
 
-// -----------------------------------------------------------------------
-// 検索
-// -----------------------------------------------------------------------
+/// @brief 検索
 GameObject* Scene::Find(const std::string& name) const {
     for (auto& go : m_gameObjects)
         if (go->name == name) return go.get();
@@ -225,9 +221,7 @@ std::vector<GameObject*> Scene::GetRootGameObjects() const {
     return result;
 }
 
-// -----------------------------------------------------------------------
-// イテレーション
-// -----------------------------------------------------------------------
+/// @brief イテレーション
 GameObjectRange Scene::GameObjects() {
     return GameObjectRange(m_gameObjects.begin(), m_gameObjects.end());
 }
@@ -279,7 +273,7 @@ bool Scene::SetRootSiblingIndex(EntityID id, int newRootIndex)
     GameObject* target = GetGameObject(id);
     if (!target || target->m_parent.IsValid()) return false;
 
-    // 対象を除いたルート一覧をフラット index 付きで集める
+    /// @note 対象を除いたルート一覧をフラット index 付きで集める
     std::vector<size_t> otherRootFlatIndices;
     size_t currentFlat = SIZE_MAX;
     for (size_t i = 0; i < m_gameObjects.size(); ++i) {
@@ -292,13 +286,15 @@ bool Scene::SetRootSiblingIndex(EntityID id, int newRootIndex)
 
     newRootIndex = std::clamp(newRootIndex, 0, static_cast<int>(otherRootFlatIndices.size()));
 
-    // 挿入先フラット index (対象を取り除いた後の座標系で求める)
+    /// @note 挿入先フラット index (対象を取り除いた後の座標系で求める)
     size_t targetFlat;
     if (newRootIndex >= static_cast<int>(otherRootFlatIndices.size())) {
-        targetFlat = m_gameObjects.size() - 1;  // 最後のルートより後ろ = 配列末尾
+        /// @note 最後のルートより後ろ = 配列末尾
+        targetFlat = m_gameObjects.size() - 1;
     } else {
         targetFlat = otherRootFlatIndices[static_cast<size_t>(newRootIndex)];
-        if (targetFlat > currentFlat) --targetFlat;  // 削除で 1 つ前へ詰まる分を補正
+        /// @note 削除で 1 つ前へ詰まる分を補正
+        if (targetFlat > currentFlat) --targetFlat;
     }
     return MoveGameObjectToIndex(id, targetFlat);
 }
@@ -307,7 +303,8 @@ bool Scene::SyncSiblingFlatOrder(EntityID id)
 {
     GameObject* go = GetGameObject(id);
     if (!go) return false;
-    if (!go->m_parent.IsValid()) return true;  // ルートは flat 順そのものが正本
+    /// @note ルートは flat 順そのものが正本
+    if (!go->m_parent.IsValid()) return true;
     GameObject* parent = GetGameObject(go->m_parent);
     if (!parent) return false;
 
@@ -325,8 +322,8 @@ bool Scene::SyncSiblingFlatOrder(EntityID id)
     const size_t curFlat = flatIndexOf(id);
     if (curFlat == SIZE_MAX) return false;
 
-    // 兄弟順が「直前の兄弟の後 / 先頭なら次の兄弟の前」になるよう flat 位置を移す。
-    // (削除後の座標系で挿入位置を求める)
+    /// @note 兄弟順が「直前の兄弟の後 / 先頭なら次の兄弟の前」になるよう flat 位置を移す。
+    ///       (削除後の座標系で挿入位置を求める)
     size_t insertPos;
     if (k > 0) {
         size_t prevFlat = flatIndexOf(siblings[k - 1]);
@@ -343,17 +340,13 @@ bool Scene::SyncSiblingFlatOrder(EntityID id)
     return MoveGameObjectToIndex(id, insertPos);
 }
 
-// -----------------------------------------------------------------------
-// EntityID → GameObject* O(1) 逆引き
-// -----------------------------------------------------------------------
+/// @brief EntityID → GameObject* O(1) 逆引き
 GameObject* Scene::GetGameObject(EntityID id) const {
     if (!IsValid(id)) return nullptr;
     return m_entityToGameObject[id.index];
 }
 
-// -----------------------------------------------------------------------
-// Destroy キュー処理
-// -----------------------------------------------------------------------
+/// @brief Destroy キュー処理
 void Scene::FlushDestroyQueue(float dt) {
     for (auto& entry : m_destroyQueue)
         entry.delay -= dt;
@@ -373,7 +366,7 @@ void Scene::FlushDestroyQueue(float dt) {
 
 void Scene::Clear()
 {
-    // シーン破棄前に全スクリプトの OnDestroy を呼ぶ
+    /// @note シーン破棄前に全スクリプトの OnDestroy を呼ぶ
     std::vector<EntityID> scriptIds(GetEntities<ScriptComponent>().begin(),
                                     GetEntities<ScriptComponent>().end());
     for (EntityID id : scriptIds) {
@@ -384,12 +377,12 @@ void Scene::Clear()
                 entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
     }
 
-    // Component を捨てる前に返す。捨ててからでは、どのハンドルを持っていたか辿れない。
+    /// @note Component を捨てる前に返す。捨ててからでは、どのハンドルを持っていたか辿れない。
     ReleaseGpuResourcesIfPossible(*this);
 
-    // 待機列は Scene* をキーに持つ静的な表で、Scene の実体が同じまま中身だけ入れ替わる
-    // Play/Stop では生き残る。EntityID の generation は Clear で 0 に戻るので、
-    // 残したままだと «次の Play で無関係な GameObject をプール済みとして配る» ことが起きる。
+    /// @note 待機列は Scene* をキーに持つ静的な表で、Scene の実体が同じまま中身だけ入れ替わる
+    ///       Play/Stop では生き残る。EntityID の generation は Clear で 0 に戻るので、
+    ///       残したままだと «次の Play で無関係な GameObject をプール済みとして配る» ことが起きる。
     PrefabPool::Clear(*this);
 
     m_destroyQueue.clear();
@@ -405,6 +398,9 @@ void Scene::Clear()
     ClearUserRenderPasses();
     m_scriptDebugDrawCommands.clear();
     m_lastScriptDebugDrawTickFrame = 0;
+    m_environment = SceneEnvironment{};
+    m_flowFrame = FlowFieldFrame{};
+    InvalidateFlowFrame();
 }
 
 renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()
@@ -449,7 +445,7 @@ const std::vector<UserRenderPassDesc>& Scene::GetUserRenderPasses() const
 
 void Scene::QueueScriptDebugDraw(ScriptDebugDrawCommand command)
 {
-    // WHAT: 発行フレームを記録して、duration=0 の描画も同一フレーム内の複数ビューに表示する。
+    /// @note 発行フレームを記録して、duration=0 の描画も同一フレーム内の複数ビューに表示する。
     command.frameCreated = Time::frameCount;
     m_scriptDebugDrawCommands.push_back(command);
 }
@@ -522,14 +518,14 @@ void Scene::CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityI
 
 void Scene::FixupOwnership()
 {
-    // ムーブ後、GameObject が保持する m_scene 生ポインタは旧 Scene を指したままになる。
-    // m_entityToGameObject も新アドレスで再構築が必要。ここで両方を修正する。
+    /// @note ムーブ後、GameObject が保持する m_scene 生ポインタは旧 Scene を指したままになる。
+    ///       m_entityToGameObject も新アドレスで再構築が必要。ここで両方を修正する。
     for (auto& go : m_gameObjects) {
         go->m_scene = this;
         m_entityToGameObject[go->m_id.index] = go.get();
     }
 
-    // Script が保持する Scene* / GameObject* も同様に旧ポインタになっているため更新する。
+    /// @note Script が保持する Scene* / GameObject* も同様に旧ポインタになっているため更新する。
     for (EntityID id : GetArray<ScriptComponent>().Entities()) {
         auto& sc = GetArray<ScriptComponent>().Get(id);
         for (auto& entry : sc.scripts)

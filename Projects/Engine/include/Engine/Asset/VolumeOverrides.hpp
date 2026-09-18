@@ -3,26 +3,20 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
 ///
-/// 効果 1 つ = クラス 1 つ。各クラスはその効果のパラメーターだけを持ち、
-/// 対応する XxxSettings::enabled は Apply 側で立てる。
-/// WHY enabled をフィールドに持たないか:
-/// 「リストに載っていること」自体が使用の意思表示で、一時的に外したいときは
-/// 基底の active を落とす。両方あると「enabled=false の Bloom オーバーライド」
-/// という、存在するのに効かない読みにくい状態が作れてしまう。
-///
-/// 新しい効果を足す手順はこのファイル内で完結する:
-/// 1. ここにクラスを 1 つ足す
-/// 2. VolumeOverrides.cpp に Apply / Reflect を書き、FBZZ_REGISTER_VOLUME_OVERRIDE
-/// Inspector の Add Override メニューと .fzdata の読み書きは自動的に追随する。
+/// @note 効果 1 つ = クラス 1 つ。対応する XxxSettings::enabled は Apply 側で立て、オーバーライド自体は
+///       enabled を持たない (リストに載っていること自体が使用の意思表示で、一時的に外すときは基底の
+///       active を落とす。両方あると「enabled=false の Bloom」という効かないのに存在する状態ができる)。
+/// @note 効果を足す手順: ここにクラスを 1 つ足し、VolumeOverrides.cpp に Apply / Reflect を書いて
+///       FBZZ_REGISTER_VOLUME_OVERRIDE。Add Override メニューと .fzdata の読み書きは自動で追随する。
 #pragma once
 #include <Engine/Asset/VolumeOverride.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 
 namespace fbzz::asset {
 
-// 定型の override 宣言。TYPE_NAME / 表示名 / カテゴリ / Clone を一括で与える。
-// WHY マクロにするか: 4 つの仮想関数はどのクラスでも中身が同じ形で、
-//     手書きすると「Clone のコピー先クラス名を直し忘れる」類の事故が起きる。
+/// @brief 定型の override 宣言。TYPE_NAME / 表示名 / カテゴリ / Clone を一括で与える。
+/// @note 4 つの仮想関数はどのクラスでも中身が同じ形で、手書きすると「Clone のコピー先クラス名を
+///       直し忘れる」類の事故が起きるため、マクロにする。
 #define FBZZ_VOLUME_OVERRIDE_BODY(Class, TypeNameLiteral, DisplayLiteral, CategoryEnum) \
 public:                                                                                \
     static constexpr const char* TYPE_NAME = TypeNameLiteral;                          \
@@ -35,13 +29,16 @@ public:                                                                         
     void Apply(renderer::VolumeSettings& target, float weight) const override;         \
     void Reflect(scene::IReflector& r) override;
 
-// ── 露出 ────────────────────────────────────────────────────────────────
+/// @name 露出
+/// @{
 class ExposureOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(ExposureOverride, "Exposure", "Exposure", Exposure)
     float exposure = 1.0f;
 };
+/// @}
 
-// ── アンチエイリアシング (FXAA / TAA は同一スロットで排他) ────────────────
+/// @name アンチエイリアシング (FXAA / TAA は同一スロットで排他)
+/// @{
 class FxaaOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(FxaaOverride, "FXAA", "FXAA", AntiAliasing)
 };
@@ -50,8 +47,10 @@ class TaaOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(TaaOverride, "TAA", "TAA (Temporal)", AntiAliasing)
     float feedback = 0.9f;
 };
+/// @}
 
-// ── アンビエントオクルージョン (SSAO / GTAO は同一スロットで排他) ──────────
+/// @name アンビエントオクルージョン (SSAO / GTAO は同一スロットで排他)
+/// @{
 class SsaoOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(SsaoOverride, "SSAO", "SSAO (Simple)", AmbientOcclusion)
     float intensity = 1.0f;
@@ -64,8 +63,10 @@ class GtaoOverride final : public VolumeOverride {
     int   slices        = 8;
     int   stepsPerSlice = 8;
 };
+/// @}
 
-// ── 色 ──────────────────────────────────────────────────────────────────
+/// @name 色
+/// @{
 class BloomOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(BloomOverride, "Bloom", "Bloom", Color)
     float intensity = 0.9f;
@@ -123,8 +124,10 @@ class FilmGrainOverride final : public VolumeOverride {
     float intensity = 0.03f;
     float response  = 0.8f;
 };
+/// @}
 
-// ── レンズ ──────────────────────────────────────────────────────────────
+/// @name レンズ
+/// @{
 class VignetteOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(VignetteOverride, "Vignette", "Vignette", Lens)
     float intensity  = 0.25f;
@@ -164,15 +167,16 @@ class MotionBlurOverride final : public VolumeOverride {
     float strength = 0.5f;
     int   samples  = 16;
 };
+/// @}
 
-// ── 大気 ────────────────────────────────────────────────────────────────
+/// @name 大気
+/// @{
 class FogOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(FogOverride, "Fog", "Fog", Atmosphere)
     float density     = 0.04f;
     float farDistance = 80.0f;
     float color[3]    = { 0.55f, 0.65f, 0.75f };
-    // 0=Exponential (固定色) / 1=Atmosphere (大気散乱)。
-    // AtmosphericScatteringComponent::FogSource と一致させること。
+    /// 0=Exponential (固定色) / 1=Atmosphere (大気散乱)。AtmosphericScatteringComponent::FogSource と一致させること。
     int   source      = 0;
 };
 
@@ -191,11 +195,11 @@ class VolumetricLightOverride final : public VolumeOverride {
     int   steps       = 32;
 };
 
-// FroxelFogOverride — 視錐台を 3D グリッドへ切って焼く体積フォグ。
-// VolumetricLight と違い、点光源・スポット・面光源も霧へ映り込む。
-// NOTE: グリッド寸法だけは Volume でブレンドしない。解像度が変わるとボリュームの
-//       再確保が走るため、プロファイル間の遷移中に毎フレーム作り直すことになる。
-//       寸法は RenderSettings の既定 (160x90x64) を使う。
+/// @brief 視錐台を 3D グリッドへ切って焼く体積フォグ。VolumetricLight と違い、点光源・スポット・
+///        面光源も霧へ映り込む。
+/// @note グリッド寸法だけは Volume でブレンドしない。解像度が変わるとボリュームの再確保が走り、
+///       プロファイル間の遷移中に毎フレーム作り直すことになるため、寸法は RenderSettings の既定
+///       (160x90x64) を使う。
 class FroxelFogOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(FroxelFogOverride, "FroxelFog", "Froxel Fog", Atmosphere)
     float density       = 0.02f;
@@ -209,7 +213,7 @@ class FroxelFogOverride final : public VolumeOverride {
     float ambient       = 1.0f;
 };
 
-// AutoExposureOverride — 画面の明るさから露出を自動で決める (眼の順応)。
+/// @brief 画面の明るさから露出を自動で決める (眼の順応)。
 class AutoExposureOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(AutoExposureOverride, "AutoExposure", "Auto Exposure", Exposure)
     float minEV         = -6.0f;
@@ -222,8 +226,10 @@ class AutoExposureOverride final : public VolumeOverride {
     float minExposureEV = -8.0f;
     float maxExposureEV =  8.0f;
 };
+/// @}
 
-// ── 影・反射 (いずれも Deferred Pipeline 専用) ──────────────────────────
+/// @name 影・反射 (いずれも Deferred Pipeline 専用)
+/// @{
 class SsrOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(SsrOverride, "SSR", "Screen Space Reflections", Shadowing)
     float maxDistance = 50.0f;
@@ -239,8 +245,10 @@ class ContactShadowOverride final : public VolumeOverride {
     float thickness = 0.2f;
     int   steps     = 16;
 };
+/// @}
 
-// ── 演出 ────────────────────────────────────────────────────────────────
+/// @name 演出
+/// @{
 class SepiaOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(SepiaOverride, "Sepia", "Sepia", Stylize)
     float intensity = 0.75f;
@@ -260,10 +268,13 @@ class PixelateOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(PixelateOverride, "Pixelate", "Pixelate", Stylize)
     float pixelSize = 4.0f;
 };
+/// @}
 
-// ── カスタム ────────────────────────────────────────────────────────────
-// 自作 HLSL をフルスクリーンパスとして差し込む。別々のシェーダーを重ねられるよう
-// これだけは 1 プロファイルに複数入れられる。
+/// @name カスタム
+/// @{
+
+/// @brief 自作 HLSL をフルスクリーンパスとして差し込む。別々のシェーダーを重ねられるよう、これだけは
+///        1 プロファイルに複数入れられる。
 class CustomEffectOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(CustomEffectOverride, "CustomEffect", "Custom Effect", Custom)
 public:

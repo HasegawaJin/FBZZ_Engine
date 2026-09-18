@@ -26,7 +26,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// AnimationImporter で定義した同一レイアウト (対称性確保)
+/// AnimationImporter で定義した同一レイアウト (対称性確保)
 struct FzAnimV3Extension {
     double   durationSeconds;
     float    frameRate;
@@ -49,7 +49,7 @@ static_assert(sizeof(FzAnimV3Extension) == 48);
 struct FzAnimTrackHeaderV3 {
     char     targetPath[256];
     char     nodeName[128];
-    uint8_t  interp;   // 1 = Linear (デフォルト)
+    uint8_t  interp;   ///< 1 = Linear (デフォルト)
     uint8_t  _pad[3];
     uint32_t positionCount;
     uint32_t rotationCount;
@@ -222,9 +222,9 @@ std::string SanitizeClipName(const std::string& name, uint32_t index)
     return out;
 }
 
-// aiNode の実階層から、AnimationClip と Skeleton が共有する正規パスを構築する。
-// WHY: nodeName だけでは同名ノードを区別できず、追加レイヤーの対象解決が失敗する。
-//      canonical 名も併用し、DCC の namespace / Assimp 補助 suffix を吸収する。
+/// @brief aiNode の実階層から、AnimationClip と Skeleton が共有する正規パスを構築する。
+/// @note nodeName だけでは同名ノードを区別できず追加レイヤーの対象解決が失敗するため、canonical 名も
+///       併用し DCC の namespace / Assimp 補助 suffix を吸収する。
 std::string NormalizeAnimationNodeName(std::string_view value)
 {
     std::string normalized(value);
@@ -256,20 +256,18 @@ bool FindAnimationNodePath(const aiNode* node,
     return false;
 }
 
-// ルートモーションノードの候補を段階付きで集める。
-//
-// WHY: 旧実装は "rootmotion" / "root_motion" の完全一致だけを見ており、Mixamo の
-//      mixamorig:Hips や Blender の Armature|Hips では 1 件もヒットしなかった。
-//      判定規則は asset::ClassifyRootMotionNodeName に集約し、ランタイム側の
-//      AutoDetect と同じ結果になるようにする。
+/// @brief ルートモーションノードの候補を段階付きで集める。
+/// @note "rootmotion" 完全一致だけでは Mixamo の mixamorig:Hips や Blender の Armature|Hips を
+///       拾えない。判定規則は asset::ClassifyRootMotionNodeName に集約し、ランタイム側の
+///       AutoDetect と同じ結果になるようにする。
 struct RootMotionCandidate {
     uint32_t                  trackIndex = UINT32_MAX;
     asset::RootMotionNameTier tier = asset::RootMotionNameTier::None;
     std::string               nodeName;
 };
 
-// 明示指定 (インポート設定) があればそれを最優先し、無ければ候補名で選ぶ。
-// 明示指定された名前が見つからない場合は候補名へフォールバックする。
+/// 明示指定 (インポート設定) があればそれを最優先し、無ければ候補名で選ぶ。
+/// 明示指定された名前が見つからない場合は候補名へフォールバックする。
 void ConsiderRootMotionChannel(RootMotionCandidate& best,
                                const std::string& channelName,
                                uint32_t trackIndex,
@@ -283,7 +281,7 @@ void ConsiderRootMotionChannel(RootMotionCandidate& best,
         best.nodeName = channelName;
         return;
     }
-    // 明示指定が既にヒットしていれば、候補名では上書きしない。
+    /// @note 明示指定が既にヒットしていれば、候補名では上書きしない。
     if (!explicitNodeName.empty() && best.trackIndex != UINT32_MAX) return;
 
     const asset::RootMotionNameTier tier =
@@ -301,20 +299,15 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
 {
     using namespace asset;
     const aiScene* scene = ctx.scene;
-    if (!scene || scene->mNumAnimations == 0) return true; // アニメーションなしは正常
+    /// @note アニメーションなしは正常
+    if (!scene || scene->mNumAnimations == 0) return true;
 
     namespace fs = std::filesystem;
-    // .anim は Library 側へ出す (隠蔽)。
-    //
-    // WHY .meta を持たせなくてよいか: GUID は原本 FBX の GUID + "anims/<file>.anim" から
-    //     AssetDatabase::DeriveGuid で決定論的に導出される。どの環境でも同じ値になり、
-    //     Library を消して再インポートしても復元されるため、git 管理下の .meta が要らない。
-    //     (乱数 GUID + .meta 方式のままここを Library へ移すと、クローン直後の再インポートで
-    //      別 GUID が振られ、.animcontroller の参照が全部切れる。)
-    //
-    // WHY (ディレクトリを事前に作らない): 選択的インポート (selectedAnimNames) で全クリップが
-    //   除外された場合や、クリップが 1 本も書き出されなかった場合に空の anims/ が残るため、
-    //   作成は実際に .anim を書く直前 (下の EnsureParentDirectory) まで遅延させる。
+    /// @note .anim は Library 側へ出す。GUID は原本 FBX の GUID + `"anims/<file>.anim"` から
+    ///       AssetDatabase::DeriveGuid で決定論的に導出するためどの環境でも同じ値になり、.meta は要らない
+    ///       (乱数 GUID + .meta のまま Library へ移すと、再インポートのたびに .animcontroller の参照が切れる)。
+    /// @note 選択的インポート (selectedAnimNames) で全クリップが除外された場合や 1 本も書き出されな
+    ///       かった場合に空の anims/ が残るため、ディレクトリ作成は書く直前まで遅延させる。
     const fs::path animDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "anims";
 
     std::unordered_map<std::string, uint32_t> usedClipStems;
@@ -331,7 +324,7 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
             }
         }
 
-        // 選択的インポート
+        /// @note 選択的インポート
         if (!ctx.selectedAnimNames.empty()) {
             bool found = false;
             for (const auto& n : ctx.selectedAnimNames)
@@ -348,22 +341,12 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         const std::string requestedClipName = clipOptions.outputName.empty()
             ? animName : clipOptions.outputName;
         const std::string clipName = SanitizeClipName(requestedClipName, ai);
-        // 出力ファイル名はクリップ名そのものにする (Idle.anim であって Idle@Idle.anim ではない)。
-        //
-        // WHY 原本名を前置しないか: .anim は Library/Baked/<fbx-guid>/anims/ 配下へ出るため、
-        //     ディレクトリが原本 FBX ごとに分かれている。別 FBX 間でファイル名が衝突しようが
-        //     なく、接頭辞は「1 クリップ 1 FBX」運用だと Idle@Idle のように同じ語を 2 度
-        //     書くだけのノイズになっていた。アセットブラウザでも読みづらい。
-        //
-        // WHY 同名衝突を心配しなくてよいか: 同一 FBX 内に同名クリップが複数ある場合は、
-        //     直下の usedClipStems が _1 / _2 を付けて従来どおり回避する。前置をやめても
-        //     衝突回避の責務はそちらに残っている。
-        //
-        // NOTE: クリップの内部名 (FzAnimHeader::name) は元から clipName で @ を含まない。
-        //       ここで変わるのはファイル名だけ。.animcontroller が参照するのは抽出済みの
-        //       Assets/Animation/*.anim (独自の .meta GUID を持つ) なので、そちらは無傷。
-        //       Library/Baked を直接指す参照だけは導出 GUID が変わるため、再インポート後に
-        //       貼り直しが要る。
+        /// @note 出力ファイル名はクリップ名そのものにする (Idle.anim であって Idle@Idle.anim ではない)。
+        ///       .anim は `Library/Baked/<fbx-guid>/anims/` 配下で FBX ごとに分かれるため、別 FBX 間の
+        ///       衝突は無い。同一 FBX 内の同名クリップは usedClipStems が _1 / _2 を付けて回避する。
+        /// @note クリップの内部名 (FzAnimHeader::name) は変わらず、変わるのはファイル名だけ。
+        ///       .animcontroller が参照する Assets/Animation/*.anim は無傷だが、Library/Baked を
+        ///       直接指す参照は導出 GUID が変わるため再インポート後に貼り直しが要る。
         std::string clipStem = clipName;
         uint32_t& sameNameCount = usedClipStems[clipStem];
         if (sameNameCount > 0)
@@ -373,7 +356,7 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         const fs::path     animFsPath = animDir / (clipStem + ".anim");
         const std::string  animPath   = util::FileSystem::PathToUtf8(animFsPath);
 
-        // 実際に書き出すクリップが確定したこの時点で初めて anims/ を作る。
+        /// @note 実際に書き出すクリップが確定したこの時点で初めて anims/ を作る。
         if (!util::FileSystem::EnsureParentDirectory(animFsPath)) return false;
 
         std::ofstream out(animPath, std::ios::binary);
@@ -391,22 +374,13 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
             const std::string channelName = channel->mNodeName.C_Str();
             static constexpr std::string_view eventPrefix = "FBZZ_EVENT__";
             if (channelName.rfind(eventPrefix.data(), 0) == 0) {
-                // イベントチャンネルは「ステップ信号」として解釈する。
-                //
-                // WHY: DCC 側のアニメーションベイク (Blender の bake_anim_step=1.0 など) は
-                //      補助ノードも毎フレームサンプリングするため、キー数 = フレーム数になる。
-                //      キーを素直に 1:1 でイベント化すると 26 フレームのクリップから
-                //      26 個のイベントが飛ぶ。DCC 側でベイクを切らせるとリグの
-                //      コンストレイントまで焼けなくなるので、取り込み側で吸収する。
-                //
-                // 規約: 先頭キーの値を「静止値 (rest)」とみなし、
-                //       静止値と異なる値へ遷移した瞬間だけをイベントとして採用する。
-                //       静止値へ戻る遷移は発火しない。これにより
-                //         - ベイク済みの重複キーは無視される
-                //         - rest → A → rest → A で同じイベントを何度でも打てる
-                //         - A → B の直接遷移も B として発火する
-                //       DCC 側は「普段は静止値、発火させたいフレームで値を変える」だけでよく、
-                //       センチネル値や特別なエクスポート設定を要求しない。
+                /// @note イベントチャンネルは「ステップ信号」として解釈する。DCC 側のベイク (Blender の
+                ///       bake_anim_step=1.0 等) は毎フレームサンプリングしてキー数 = フレーム数になるため、
+                ///       1:1 でイベント化せず取り込み側で吸収する。
+                /// @note 先頭キーの値を「静止値 (rest)」とみなし、静止値と異なる値へ遷移した瞬間だけを
+                ///       イベントとして採用する (静止値へ戻る遷移は発火しない)。これにより重複キーは無視され、
+                ///       rest→A→rest→A は毎回発火し、A→B の直接遷移も B として発火する。DCC 側は
+                ///       「普段は静止値、発火させたいフレームで値を変える」だけでよい。
                 const std::string eventName = channelName.substr(eventPrefix.size());
                 const uint32_t keyCount = channel->mNumPositionKeys;
                 if (keyCount == 0) continue;
@@ -446,9 +420,8 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         std::sort(animationEvents.begin(), animationEvents.end(),
             [](const FzAnimEventV3& a, const FzAnimEventV3& b) { return a.time < b.time; });
 
-        // どのノードをルートモーションとして拾ったかはログに残す。
-        // WHY: 「ルートモーションが効かない」の原因は大半が命名不一致で、
-        //      候補が見つかったのか否かが分からないと切り分けようがない。
+        /// @note どのノードをルートモーションとして拾ったかはログに残す (原因の大半が命名不一致で、
+        ///       候補が見つかったか分からないと切り分けようがないため)。
         if (rootMotion.trackIndex == UINT32_MAX) {
             FBZZ_LOG_INFO("AnimSubExporter: [%s] root motion node not found "
                           "(specify FbxImportOptions::rootMotionNodeName if needed)",
@@ -461,7 +434,7 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
                               : "skeletal candidate — enable via Animator Auto Detect");
         }
 
-        // FzAnimHeader (version=3)
+        /// @note FzAnimHeader (version=3)
         FzAnimHeader hdr{};
         hdr.magic[0]='F'; hdr.magic[1]='Z'; hdr.magic[2]='A'; hdr.magic[3]='N';
         hdr.version      = 3;
@@ -472,21 +445,17 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         std::memcpy(hdr.name, clipName.data(), nameLen);
         out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
 
-        // FzAnimV3Extension
+        /// @note FzAnimV3Extension
         FzAnimV3Extension ext{};
         ext.durationSeconds      = clipDurationTicks / tps;
         ext.frameRate            = frameRate;
-        // Loop Time は .fbx.meta のクリップ設定から焼く。
-        // WHY ここで解決するか: .anim は再インポートのたびに上書きされる生成物なので、
-        //     設定の権威は原本の横 (.fbx.meta) にある。毎回そこから読み直して焼き込む。
+        /// @note Loop Time は .fbx.meta のクリップ設定から焼く。.anim は再インポートのたびに
+        ///       上書きされる生成物なので、設定の権威は原本の横 (.fbx.meta) にあり毎回読み直す。
         ext.loop = clipOptions.loop ? 1 : 0;
-        // hasRootMotion を立てるのは「ルートモーション専用ノード」が見つかったときだけ。
-        //
-        // WHY: Hips / Armature のような骨階層のルート相当は候補としては拾いたいが、
-        //      既定で有効化すると、その場アニメ (Mixamo の in-place クリップなど) の
-        //      腰の揺れまで移動量として抜き出してしまい、キャラクターが漂う。
-        //      トラック位置だけ記録しておき、有効化の判断は Animator 側の
-        //      RootMotionSource::AutoDetect / NodeName に委ねる。
+        /// @note hasRootMotion を立てるのは「ルートモーション専用ノード」が見つかったときだけ。Hips /
+        ///       Armature 等の骨階層ルートを既定で有効化すると、in-place クリップの腰の揺れまで
+        ///       移動量として抜けてキャラクターが漂うため、トラック位置だけ記録し有効化は
+        ///       Animator 側の RootMotionSource::AutoDetect / NodeName に委ねる。
         ext.hasRootMotion =
             rootMotion.tier == asset::RootMotionNameTier::Explicit ? 1 : 0;
         ext.rootMotionApplyXZ    = 1;
@@ -503,15 +472,14 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         out.write(reinterpret_cast<const char*>(animationEvents.data()),
                   static_cast<std::streamsize>(animationEvents.size() * sizeof(FzAnimEventV3)));
 
-        // DCC 座標系補正 (FbxImportTool が正規化したルートノードと同名のトラックへ適用)。
-        // WHY: Blender はルートノードの +90°X / scale100 をアニメトラックでも毎キー再生する。
-        //      バインド側 (ノード) からは除去済みのため、トラック側にも同じ F = q⁻¹·(1/s) を
-        //      合成しないと骨階層とアニメが 90° / 100 倍ずれてしまう。
+        /// @note DCC 座標系補正 (FbxImportTool が正規化したルートノードと同名のトラックへ適用)。Blender は
+        ///       ルートノードの +90°X / scale100 をアニメトラックでも毎キー再生し、バインド側では除去済み
+        ///       のため、トラック側にも同じ F = q⁻¹·(1/s) を合成しないと骨階層とアニメがずれる。
         const aiQuaternion axisInvQ;
         const float axisInvS = 1.0f / ctx.axisFixScale;
 
 
-        // トラック
+        /// @note トラック
         for (const aiNodeAnim* ch : nodeChannels) {
 
             const std::string nodeName = ch->mNodeName.C_Str();
@@ -541,7 +509,8 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
                 const auto& k = ch->mRotationKeys[ki];
                 if (k.mTime < startTicks || k.mTime > endTicks) continue;
                 aiQuaternion q = k.mValue;
-                if (applyAxisFix) q = axisInvQ * q; // F の回転を左掛け (バインド側と同じ変換)
+                /// @note F の回転を左掛け (バインド側と同じ変換)
+                if (applyAxisFix) q = axisInvQ * q;
                 FzQuaternionKey qk{ k.mTime - startTicks, q.x, q.y, q.z, q.w };
                 rotationKeys.push_back(qk);
             }
@@ -549,7 +518,8 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
                 const auto& k = ch->mScalingKeys[ki];
                 if (k.mTime < startTicks || k.mTime > endTicks) continue;
                 aiVector3D v = k.mValue;
-                if (applyAxisFix) v = v * axisInvS; // scale100 キー → 1.0
+                /// @note scale100 キー → 1.0
+                if (applyAxisFix) v = v * axisInvS;
                 FzVectorKey vk{ k.mTime - startTicks, v.x, v.y, v.z, 0.0f };
                 scaleKeys.push_back(vk);
             }
@@ -577,16 +547,19 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
                       static_cast<std::streamsize>(scaleKeys.size() * sizeof(FzVectorKey)));
         }
 
-        // Assimp が公開する FBX BlendShape / Shape Key Weight を Morph Property Track へ変換する。
+        /// @note Assimp が公開する FBX BlendShape / Shape Key Weight を Morph Property Track へ変換する。
         for (const MorphExportTrack& morph : morphTracks) {
             FzPropertyTrackHeaderV3 th{};
             const size_t pathLength = std::min(morph.targetPath.size(), sizeof(th.targetPath) - 1);
             const size_t nameLength = std::min(morph.morphName.size(), sizeof(th.propertyName) - 1);
             std::memcpy(th.targetPath, morph.targetPath.data(), pathLength);
             std::memcpy(th.propertyName, morph.morphName.data(), nameLength);
-            th.targetType = 2; // AnimTargetType::MorphWeight
-            th.valueType = 0;  // AnimValueType::Float
-            th.interp = 1;     // AnimInterp::Linear
+            /// @note AnimTargetType::MorphWeight
+            th.targetType = 2;
+            /// @note AnimValueType::Float
+            th.valueType = 0;
+            /// @note AnimInterp::Linear
+            th.interp = 1;
             th.meshIndex = morph.meshIndex;
             th.floatCount = static_cast<uint32_t>(morph.keys.size());
             out.write(reinterpret_cast<const char*>(&th), sizeof(th));

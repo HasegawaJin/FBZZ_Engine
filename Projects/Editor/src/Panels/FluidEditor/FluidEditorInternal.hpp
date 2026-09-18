@@ -7,7 +7,7 @@
 #include <Editor/Util/FluidDocument.hpp>
 #include <Editor/Util/FluidPartOverlay.hpp>
 #include <Editor/Util/FluidPreviewCache.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 #include <Math/Vector3.hpp>
 #include <imgui.h>
 
@@ -64,8 +64,8 @@ struct State {
     FluidDocument document;
     FluidPreviewCache preview;
 
-    // プレビューへ最後に渡したもの。hide / solo は Revision を進めないので世代を別に数える。
-    asset::FluidRecipe sentRecipe;
+    /// プレビューへ最後に渡したもの。hide / solo は Revision を進めないので世代を別に数える。
+    fluid::FluidRecipe sentRecipe;
     bool hasSent = false;
     std::uint64_t sentDocRevision = 0;
     std::uint64_t sentVisibilityGeneration = 0;
@@ -82,7 +82,8 @@ struct State {
     ImVec2 pan{ 0.0f, 0.0f };
     bool panning = false;
 
-    // ── 3D ライブプレビュー ──
+    /// @name 3D ライブプレビュー
+    /// @{
     ViewportMode viewMode = ViewportMode::Flat2D;
     /// 開いた直後の 1 回だけ recipe.bake.mode に合わせる。人が切り替えたらもう触らない。
     bool viewModeChosen = false;
@@ -105,7 +106,7 @@ struct State {
     float previewViewSide = 0.0f;
     /// RecordVolumePreview へ渡すレシピ。hide / solo を反映済み。毎フレーム作り直すと部品の
     /// vector を丸ごと複製するので、鍵が変わったときだけ組み直す (0 = まだ組んでいない)。
-    asset::FluidRecipe volumeRecipe;
+    fluid::FluidRecipe volumeRecipe;
     std::uint64_t volumeRecipeKey = 0;
     /// ギズモをつかんでいる間 true (Undo は離したフレームに 1 つ積む)。
     bool gizmoActive = false;
@@ -128,6 +129,7 @@ struct State {
     /// 編集中のプレビューの隣へ «焼き上がり» (.fluid の隣の Atlas) を並べる。
     /// 既定は単独表示 — 並べると 1 枚あたりの絵が半分になるので、要るときだけ人が開く。
     bool compareBaked = false;
+    /// @}
 };
 
 /// 3 種類の部品 (FluidSource / FluidForce / FluidCollider) は enabled・name・center・startTime・duration・motion を
@@ -154,21 +156,20 @@ bool VisitPart(Recipe& recipe, FluidSelectionKind list, int index, Fn&& fn)
 [[nodiscard]] int MaxParts(FluidSelectionKind list);
 
 /// キーの間を直線でつないだ、solverTime (warmup を含むソルバーの時計) での中心からのずれ。
-[[nodiscard]] math::Vector3 MotionOffsetAt(const asset::FluidMotion& motion, float solverTime);
+[[nodiscard]] math::Vector3 MotionOffsetAt(const fluid::FluidMotion& motion, float solverTime);
 /// hide と solo を合わせた «プレビューに出るか»。IsHidden は solo を含まない。
 [[nodiscard]] bool PartShownInPreview(const FluidDocument& document, FluidSelectionKind list, int index);
 
 /// タイムラインの長さ (output.duration。warmup は含まない)。
-[[nodiscard]] float TimelineDuration(const asset::FluidRecipe& recipe);
+[[nodiscard]] float TimelineDuration(const fluid::FluidRecipe& recipe);
 /// 1 コマの秒数 (焼きと同じ刻み)。
-[[nodiscard]] float TimelineFrameDt(const State& state, const asset::FluidRecipe& recipe);
+[[nodiscard]] float TimelineFrameDt(const State& state, const fluid::FluidRecipe& recipe);
 void StepFrame(State& state, int delta);
 
 /// 編集中のプレビューのコマ数と «いま出しているコマ» の添字。
-/// WHY 公開するか: ビューポートの見出し・焼き上がりとの突き合わせ・ツールバーの表示が
-///     同じ数え方をする必要がある。2 か所に書くと «画面によってコマ番号が違う» が静かに入る。
-[[nodiscard]] int FluidViewportLiveFrameCount(const State& state, const asset::FluidRecipe& recipe);
-[[nodiscard]] int FluidViewportLiveFrame(const State& state, const asset::FluidRecipe& recipe, int frames);
+/// @note ビューポートの見出し・焼き上がりとの突き合わせ・ツールバーの表示が同じ数え方をする必要があるため公開する。
+[[nodiscard]] int FluidViewportLiveFrameCount(const State& state, const fluid::FluidRecipe& recipe);
+[[nodiscard]] int FluidViewportLiveFrame(const State& state, const fluid::FluidRecipe& recipe, int frames);
 
 void SetStatus(State& state, std::string text, bool isError);
 /// 部品の数が減った・選択先が消えたときに添字を有効な範囲へ戻す。

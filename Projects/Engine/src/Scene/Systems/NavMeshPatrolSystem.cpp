@@ -25,13 +25,13 @@ void AdvanceWaypoint(NavMeshPatrolComponent& patrol)
         return;
     }
 
-    // PING_PONG: 端に達したら進行方向を反転する。
+    /// @note PING_PONG: 端に達したら進行方向を反転する。
     if (patrol.currentIndex == 0) patrol.direction = 1;
     else if (patrol.currentIndex == count - 1) patrol.direction = -1;
     patrol.currentIndex = static_cast<size_t>(static_cast<int>(patrol.currentIndex) + patrol.direction);
 }
 
-// ウェイポイント i の待機時間を返す。waypointWaitTimes が使えなければ共通 waitTime を返す。
+/// ウェイポイント i の待機時間を返す。waypointWaitTimes が使えなければ共通 waitTime を返す。
 float GetWaitTime(const NavMeshPatrolComponent& patrol, size_t i)
 {
     if (i < patrol.waypointWaitTimes.size())
@@ -39,7 +39,7 @@ float GetWaitTime(const NavMeshPatrolComponent& patrol, size_t i)
     return patrol.waitTime;
 }
 
-// ウェイポイント i の移動速度を返す (0 以下 = Agent のデフォルト速度を使う)。
+/// ウェイポイント i の移動速度を返す (0 以下 = Agent のデフォルト速度を使う)。
 float GetWaypointSpeed(const NavMeshPatrolComponent& patrol, size_t i)
 {
     if (i < patrol.waypointSpeeds.size())
@@ -47,10 +47,9 @@ float GetWaypointSpeed(const NavMeshPatrolComponent& patrol, size_t i)
     return 0.0f;
 }
 
-// Agent の移動速度を一時的に上書きする。speed <= 0 なら元の maxSpeed を維持する。
-// WHY: patrolDefaultSpeed を保存して次のウェイポイントで復元する方式は
-//      複数フレームをまたぐ状態管理が複雑になるため、
-//      Patrol が毎フレーム maxSpeed を必要な値にクランプする方式を使う。
+/// @brief Agent の移動速度を一時的に上書きする。speed <= 0 なら元の maxSpeed を維持する。
+/// @note 前の速度を保存して復元する方式は複数フレームをまたぐ状態管理が複雑になるため、
+///       毎フレーム maxSpeed を必要な値へクランプする方式にしている。
 void ApplyWaypointSpeed(NavMeshAgentComponent& agent, float speed)
 {
     if (speed > 0.0f)
@@ -84,7 +83,7 @@ void NavMeshPatrolSystem::Update(SystemContext& ctx)
         if (patrol->waypoints.empty()) continue;
         if (patrol->currentIndex >= patrol->waypoints.size()) patrol->currentIndex = 0;
 
-        // 追跡対象に切り替わっている間 (Target Follow 中) は巡回を中断する。
+        /// @note 追跡対象に切り替わっている間 (Target Follow 中) は巡回を中断する。
         if (agent->target.IsValid()) continue;
 
         if (patrol->waiting) {
@@ -104,7 +103,7 @@ void NavMeshPatrolSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        // NavigationSystem が到達済みと判定したら、待機 or 次のウェイポイントへ進む。
+        /// @note NavigationSystem が到達済みと判定したら、待機 or 次のウェイポイントへ進む。
         if (agent->destinationReached && !agent->hasDestination) {
             const float wt = GetWaitTime(*patrol, patrol->currentIndex);
             if (wt > 0.0f) {

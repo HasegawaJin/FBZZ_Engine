@@ -36,8 +36,8 @@ struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
 };
 
-// 揺れの積分は dt に敏感で、フレーム落ちの 1 回で髪が伸び切って戻らなくなる。
-// 見た目が変わらない範囲で刻みを固定し、余ったぶんは次フレームへ持ち越さず捨てる。
+/// 揺れの積分は dt に敏感で、フレーム落ちの 1 回で髪が伸び切って戻らなくなる。
+/// 見た目が変わらない範囲で刻みを固定し、余ったぶんは次フレームへ持ち越さず捨てる。
 constexpr float kSubStep      = 1.0f / 60.0f;
 constexpr int   kMaxSubSteps  = 4;
 
@@ -136,8 +136,8 @@ void RecalcBoneMatrix(const asset::Skeleton& skeleton,
       * skeleton.bones[static_cast<std::size_t>(boneIndex)].offsetMatrix;
 }
 
-// IKSystem::CommitBoneWorldPose と同じ規約。スキニング行列とボーン Transform を対で更新する。
-// どちらか片方だけを書くと、メッシュと「骨に付いているもの」が食い違う。
+/// IKSystem::CommitBoneWorldPose と同じ規約。スキニング行列とボーン Transform を対で更新する。
+/// どちらか片方だけを書くと、メッシュと「骨に付いているもの」が食い違う。
 void CommitBoneWorldPose(Scene& scene,
                          const asset::Skeleton& skeleton,
                          const SkinnedMeshRenderer& smr,
@@ -174,17 +174,17 @@ void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& 
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
-// このフレームの FK/IK ワールド姿勢。積分中に Transform を読み直さないための凍結値。
+/// このフレームの FK/IK ワールド姿勢。積分中に Transform を読み直さないための凍結値。
 struct FkSnapshot {
     math::Vector3    position = math::Vector3::ZERO;
     math::Quaternion rotation = math::Quaternion::Identity();
     math::Vector3    scale    = math::Vector3::ONE;
-    // チェーン内の親から見たローカル姿勢。親の揺れ結果へ乗せ直すために使う。
+    /// チェーン内の親から見たローカル姿勢。親の揺れ結果へ乗せ直すために使う。
     math::Vector3    localOffset   = math::Vector3::ZERO;
     math::Quaternion localRotation = math::Quaternion::Identity();
 };
 
-// ワールド空間へ展開した衝突形状。
+/// ワールド空間へ展開した衝突形状。
 struct ResolvedCollider {
     math::Vector3 start  = math::Vector3::ZERO;
     math::Vector3 end    = math::Vector3::ZERO;
@@ -192,7 +192,7 @@ struct ResolvedCollider {
     bool          isCapsule = false;
 };
 
-// 根から幅優先で辿り、親が必ず先に来る順で nodes を組む。
+/// 根から幅優先で辿り、親が必ず先に来る順で nodes を組む。
 void BuildChain(SpringBoneChain& chain,
                 const asset::Skeleton& skeleton,
                 const SkinnedMeshRenderer& smr)
@@ -229,8 +229,8 @@ void BuildChain(SpringBoneChain& chain,
     }
 }
 
-// boneAxis / boneLength を FK 姿勢から 1 度だけ確定する。
-// 子を持つノードは最初の子へ、葉は親からの向きへ仮想先端を伸ばす。
+/// boneAxis / boneLength を FK 姿勢から 1 度だけ確定する。
+/// 子を持つノードは最初の子へ、葉は親からの向きへ仮想先端を伸ばす。
 void InitializeChainRestAxes(SpringBoneChain& chain,
                              const std::vector<FkSnapshot>& fk)
 {
@@ -251,7 +251,7 @@ void InitializeChainRestAxes(SpringBoneChain& chain,
         if (firstChildState >= 0) {
             worldTail = fk[static_cast<std::size_t>(firstChildState)].position;
         } else {
-            // 葉: 親からこのボーンへ向かう向きをそのまま延長する。親が居なければ真下。
+            /// @note 葉: 親からこのボーンへ向かう向きをそのまま延長する。親が居なければ真下。
             const math::Vector3 inherited = node.parentState >= 0
                 ? (fk[i].position - fk[static_cast<std::size_t>(node.parentState)].position)
                 : math::Vector3::ZERO;
@@ -273,7 +273,7 @@ void InitializeChainRestAxes(SpringBoneChain& chain,
     }
 }
 
-// 静止姿勢へ強制的に戻す。テレポート後と初回に使う。
+/// 静止姿勢へ強制的に戻す。テレポート後と初回に使う。
 void ResetChainToRest(SpringBoneChain& chain, const std::vector<FkSnapshot>& fk)
 {
     for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
@@ -286,7 +286,7 @@ void ResetChainToRest(SpringBoneChain& chain, const std::vector<FkSnapshot>& fk)
     }
 }
 
-// 線分 (a,b) 上で p に最も近い点。Sphere は a == b の退化として扱う。
+/// 線分 (a,b) 上で p に最も近い点。Sphere は a == b の退化として扱う。
 math::Vector3 ClosestPointOnSegment(const math::Vector3& a,
                                     const math::Vector3& b,
                                     const math::Vector3& p)
@@ -298,7 +298,7 @@ math::Vector3 ClosestPointOnSegment(const math::Vector3& a,
     return a + ab * t;
 }
 
-// 衝突形状の外へ押し出した先端位置を返す。
+/// 衝突形状の外へ押し出した先端位置を返す。
 math::Vector3 ResolveCollisions(const math::Vector3& tail,
                                 float tailRadius,
                                 const std::vector<ResolvedCollider>& colliders)
@@ -318,7 +318,7 @@ math::Vector3 ResolveCollisions(const math::Vector3& tail,
     return result;
 }
 
-// 静止方向から maxAngle 以内へ先端方向を制限する。
+/// 静止方向から maxAngle 以内へ先端方向を制限する。
 math::Vector3 ClampToCone(const math::Vector3& direction,
                           const math::Vector3& restDirection,
                           float maxAngleRadians)
@@ -336,7 +336,7 @@ math::Vector3 ClampToCone(const math::Vector3& direction,
         .NormalizedOr(restDirection);
 }
 
-// 1 サブステップぶんの積分。親から順に解き、確定姿勢を子の入力にする。
+/// 1 サブステップぶんの積分。親から順に解き、確定姿勢を子の入力にする。
 void StepChain(SpringBoneChain& chain,
                const std::vector<FkSnapshot>& fk,
                const std::vector<ResolvedCollider>& colliders,
@@ -356,8 +356,8 @@ void StepChain(SpringBoneChain& chain,
             continue;
         }
 
-        // 親がチェーン内なら、その揺れ結果へローカル姿勢を乗せ直す。
-        // 根 (parentState < 0) は FK のワールド姿勢をそのまま基準にする。
+        /// @note 親がチェーン内なら、その揺れ結果へローカル姿勢を乗せ直す。
+        ///       根 (parentState < 0) は FK のワールド姿勢をそのまま基準にする。
         math::Vector3    position;
         math::Quaternion restRotation;
         if (node.parentState >= 0) {
@@ -373,8 +373,8 @@ void StepChain(SpringBoneChain& chain,
         const math::Vector3 restDirection =
             (restRotation * node.boneAxis).NormalizedOr(math::Vector3{ 0.0f, -1.0f, 0.0f });
 
-        // dt=0 (ポーズ・ステップ実行) では慣性を進めない。進めると止めた瞬間から
-        // 髪だけが流れ続け、コマ送りで姿勢を確認できなくなる。
+        /// @note dt=0 (ポーズ・ステップ実行) では慣性を進めない。進めると止めた瞬間から
+        ///       髪だけが流れ続け、コマ送りで姿勢を確認できなくなる。
         const math::Vector3 inertia = dt > 0.0f
             ? (node.currentTail - node.prevTail) * (1.0f - damping)
             : math::Vector3::ZERO;
@@ -384,8 +384,8 @@ void StepChain(SpringBoneChain& chain,
 
         math::Vector3 nextTail = node.currentTail + inertia + external;
 
-        // 復元は「先端を静止位置へ寄せる」形で入れる。VRM 系のように方向ベクトルを
-        // 足す形だとボーン長で効き方が変わり、長い髪ほど戻りが鈍くなる。
+        /// @note 復元は「先端を静止位置へ寄せる」形で入れる。VRM 系のように方向ベクトルを
+        ///       足す形だとボーン長で効き方が変わり、長い髪ほど戻りが鈍くなる。
         const math::Vector3 restTail = position + restDirection * node.boneLength;
         nextTail = math::Vector3::Lerp(nextTail, restTail,
                                        math::Clamp01(stiffness * dt / kSubStep));
@@ -408,8 +408,8 @@ void StepChain(SpringBoneChain& chain,
 
 } // namespace
 
-// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
-// System と同じバッチに入って並列に走る (AnimatorSystem::GetAccess の WHY を参照)。
+/// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
+/// System と同じバッチに入って並列に走る (理由は AnimatorSystem::GetAccess を参照)。
 ComponentAccess SpringBoneSystem::GetAccess() const
 {
     return ComponentAccess{}
@@ -419,7 +419,7 @@ ComponentAccess SpringBoneSystem::GetAccess() const
 
 OrderingHints SpringBoneSystem::GetOrder() const
 {
-    // IK が骨を動かした「後」の姿勢が揺れの静止姿勢になる。逆順だと IK が揺れを打ち消す。
+    /// @note IK が骨を動かした「後」の姿勢が揺れの静止姿勢になる。逆順だと IK が揺れを打ち消す。
     return OrderingHints{}.After<IKSystem>();
 }
 
@@ -479,7 +479,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
                 baseRotation = bone->transform.worldRotation;
                 baseScale    = bone->transform.worldScale;
             }
-            // 半径にはスケールの最大成分を掛ける。非一様スケールの正確な楕円体は扱わない。
+            /// @note 半径にはスケールの最大成分を掛ける。非一様スケールの正確な楕円体は扱わない。
             const float scaleFactor =
                 std::max({ std::abs(baseScale.x), std::abs(baseScale.y), std::abs(baseScale.z) });
 
@@ -511,7 +511,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
                 BuildChain(chain, skeleton, *smr);
             if (chain.nodes.empty()) continue;
 
-            // FK 姿勢の凍結。以降 Transform は読まず、このスナップショットだけを入力にする。
+            /// @note FK 姿勢の凍結。以降 Transform は読まず、このスナップショットだけを入力にする。
             fk.assign(chain.nodes.size(), FkSnapshot{});
             bool resolved = true;
             for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
@@ -538,7 +538,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
             for (int step = 0; step < subSteps; ++step)
                 StepChain(chain, fk, colliders, stepDt);
             if (subSteps == 0) {
-                // dt が 0 (ポーズ中など) でも、親の姿勢変化へは追従させる。
+                /// @note dt が 0 (ポーズ中など) でも、親の姿勢変化へは追従させる。
                 StepChain(chain, fk, colliders, 0.0f);
             }
 

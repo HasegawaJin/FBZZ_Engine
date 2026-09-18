@@ -25,15 +25,15 @@ public:
 
     virtual std::string_view Name() const = 0;
 
-    // 読み書きするリソースを申告する。RenderGraph の依存解析はここだけを見る。
+    /// 読み書きするリソースを申告する。RenderGraph の依存解析はここだけを見る。
     virtual void Setup(PassBuilder& builder, const RenderPassContext& ctx) const = 0;
 
-    // false を返すとこのフレームはグラフに載らない。
-    // WHY Execute 冒頭の早期 return と分けるか: 早期 return だとパスはグラフに載ったまま
-    //     依存の鎖を伸ばし続け、デッドパスカリングも効かない。
+    /// false を返すとこのフレームはグラフに載らない。
+    /// @note Execute 冒頭の早期 return と分けない理由: 早期 return だとパスはグラフに載ったまま
+    ///       依存の鎖を伸ばし続け、デッドパスカリングも効かない。
     virtual bool IsEnabled(const RenderPassContext& /*ctx*/) const { return true; }
 
-    // false のとき、出力から到達できなくてもカリングされない (外部副作用が目的のパス)。
+    /// false のとき、出力から到達できなくてもカリングされない (外部副作用が目的のパス)。
     virtual bool AllowCulling() const { return true; }
 
     virtual void Execute(PassResources& resources, RenderPassContext& ctx) = 0;

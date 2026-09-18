@@ -4,7 +4,8 @@
 /// @date    2026-08-23
 #pragma once
 #include <Engine/Audio/SynthSpec.hpp>
-#include <Engine/Scene/Script.hpp>   // IReflector (Inspector / TOML 共用の反射)
+/// @note `IReflector` (Inspector / TOML 共用の反射)。
+#include <Engine/Scene/Script.hpp>
 #include <string>
 #include <string_view>
 

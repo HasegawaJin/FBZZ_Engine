@@ -13,10 +13,10 @@ namespace fbzz::editor {
 
 namespace {
 
-// Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
-// Inspector のレイヤー編集も Graph の編集モデルへ反映する。
-// WHY: Controller を開いた Graph は scene component のコピーを編集しているため、Inspector
-//      側だけを書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
+/// Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
+/// Inspector のレイヤー編集も Graph の編集モデルへ反映する。
+/// @note Controller を開いた Graph は scene component のコピーを編集しているため、Inspector 側だけを
+///       書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
 void SyncOpenControllerLayers(EditorContext& ctx,
                               const scene::AnimatorComponent& source)
 {
@@ -47,11 +47,10 @@ void QueueLayerRename(EditorContext& ctx,
         ctx.animationGraphSelection.layerName = newName;
 }
 
-// ── Root Motion ──────────────────────────────────────────────────────────────
-// WHY: 従来は "Apply Root Motion" チェックボックス 1 個しかなく、
-//      「抽出だけしてスクリプトへ渡す」「RigidBody 速度として食わせる」
-//      「トラックをノード名で指定する」といった受け取り方をどれも選べなかった。
-//      Mode / Source / 軸マスクを分けて提示し、実行中の値も併せて見せる。
+/// @name Root Motion
+/// @note 従来は "Apply Root Motion" チェックボックス 1 個だけで、「抽出だけしてスクリプトへ渡す」
+///       「RigidBody 速度として食わせる」「トラックをノード名で指定する」を選べなかった。
+///       Mode / Source / 軸マスクを分けて提示し、実行中の値も併せて見せる。
 void DrawRootMotionSettings(scene::AnimatorComponent& anim)
 {
     using scene::RootMotionMode;
@@ -134,7 +133,7 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     ImGui::DragFloat("Rotation Scale", &anim.rootMotion.rotationScale,
                      0.01f, 0.0f, 1.0f);
 
-    // 実行中の値。歩幅とゲーム速度が合っているかはここを見ながら詰める。
+    /// @note 実行中の値。歩幅とゲーム速度が合っているかはここを見ながら詰める。
     if (anim.rootMotion.mode != RootMotionMode::None) {
         ImGui::SeparatorText("Runtime");
         const auto& delta = anim.rootMotionDeltaPosition;
@@ -150,10 +149,10 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     ImGui::PopID();
 }
 
-// ── Animator Layers ──────────────────────────────────────────────────────────
-// WHY: 上半身だけ / 下半身だけの制御はレイヤーが入口になる。しかし従来 Inspector には
-//      レイヤーを作る導線が一切なく、ランタイムが対応していても実際には使えなかった。
-//      「レイヤーを足す → .mask を割り当てる → 加算にするか決める」までをここで完結させる。
+/// @name Animator Layers
+/// @note 上半身だけ / 下半身だけの制御はレイヤーが入口だが、従来 Inspector にはレイヤーを作る導線が
+///       無く、ランタイムが対応していても使えなかった。「レイヤーを足す → .mask を割り当てる →
+///       加算にするか決める」までをここで完結させる。
 void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
 {
     ImGui::SeparatorText("Layers");
@@ -166,7 +165,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         markDirty();
     };
 
-    // Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
+    /// @note Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
     if (widgets::AssetPathField("Base Layer Mask", anim.baseLayerMask.path,
                                 ".mask", ctx.projectRoot)) {
         anim.baseLayerMask.Invalidate();
@@ -183,9 +182,8 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         auto& layer = anim.layers[static_cast<size_t>(i)];
         ImGui::PushID(i);
 
-        // ヘッダーには実行中の状態 (weight / Slot) を出す。
-        // WHY: 上半身レイヤーが効いていない原因は大抵 weight か mask なので、
-        //      折りたたんだままでも一目で分かるようにしておく。
+        /// @note ヘッダーには実行中の状態 (weight / Slot) を出す。上半身レイヤーが効いていない原因は
+        ///       大抵 weight か mask なので、折りたたんだままでも一目で分かるようにする。
         char header[192];
         std::snprintf(header, sizeof(header), "%s  [%s %.0f%%]%s",
                       layer.name.empty() ? "(unnamed)" : layer.name.c_str(),
@@ -219,8 +217,8 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 }
             }
 
-            // Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
-            // 足りないときの誇張がここで完結する。
+            /// @note Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
+            ///       足りないときの誇張がここで完結する。
             const float weightMax = layer.mode == scene::AnimationLayerMode::Additive
                 ? scene::MAX_LAYER_WEIGHT : 1.0f;
             if (widgets::RangeField("Weight", layer.weight, 0.0f, weightMax)) markLayerDirty();
@@ -239,9 +237,9 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                     "Additive: Base のポーズに差分を足す (呼吸・反動など)");
             }
 
-            // ── Mask ─────────────────────────────────────────────────────
+            /// @name Mask
             if (widgets::AssetPathField("Mask", layer.mask.path, ".mask", ctx.projectRoot)) {
-                // 次フレームの AnimatorSystem に読み直させる。
+                /// @note 次フレームの AnimatorSystem に読み直させる。
                 layer.mask.Invalidate();
                 markLayerDirty();
             }
@@ -249,13 +247,13 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 ImGui::TextDisabled("  Mask 未設定 = 全身に効きます");
             }
 
-            // ── Additive Reference ───────────────────────────────────────
+            /// @name Additive Reference
             if (layer.mode == scene::AnimationLayerMode::Additive) {
                 ImGui::SeparatorText("Additive Reference Pose");
                 ImGui::TextDisabled("空なら加算クリップ自身の先頭フレームを基準にします。");
-                // 基準ポーズも通常の Source と同じ種類のアセットを受ける。
-                // .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
-                // (Pose_XXX.anim 等) をドロップで割り当てられない。
+                /// @note 基準ポーズも通常の Source と同じ種類のアセットを受ける。
+                ///       .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
+                ///       (Pose_XXX.anim 等) をドロップで割り当てられない。
                 if (widgets::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
                                             ".anim,.asset,.fzasset,.fbx", ctx.projectRoot))
                     markLayerDirty();
@@ -271,7 +269,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                     markLayerDirty();
             }
 
-            // ── State Machine ────────────────────────────────────────────
+            /// @name State Machine
             ImGui::SeparatorText("State Machine");
             if (layer.states.empty()) {
                 ImGui::TextDisabled("  ステート未設定");
@@ -286,7 +284,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 }
             }
 
-            // ── Slot (ランタイム表示のみ) ─────────────────────────────────
+            /// @name Slot (ランタイム表示のみ)
             if (layer.slot.active) {
                 ImGui::SeparatorText("Slot");
                 ImGui::Text("%s", layer.slot.clipName.empty()
@@ -312,7 +310,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
 
     if (ImGui::Button("Add Layer", ImVec2(-1.0f, 0.0f))) {
         scene::AnimationLayer layer;
-        // 同名レイヤーは名前引き API (SetLayerWeight / PlaySlot) が壊れるため採番する。
+        /// @note 同名レイヤーは名前引き API (SetLayerWeight / PlaySlot) が壊れるため採番する。
         layer.name = "Layer " + std::to_string(anim.layers.size() + 1);
         for (int suffix = 1; anim.FindLayer(layer.name) != nullptr && suffix < 1000; ++suffix)
             layer.name = "Layer " + std::to_string(anim.layers.size() + 1 + suffix);
@@ -323,8 +321,8 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
     }
 }
 
-// 揺れものは「根ボーンを 1 つ指す」だけで枝全体が対象になるため、IK のような
-// ボーン名リストを持たない。編集項目もチェーンあたり数個で済む。
+/// 揺れものは「根ボーンを 1 つ指す」だけで枝全体が対象になるため、IK のような
+/// ボーン名リストを持たない。編集項目もチェーンあたり数個で済む。
 void DrawSpringBoneInspector(scene::GameObject* go,
                              EditorContext& ctx,
                              std::any& m_componentClipboard,
@@ -475,9 +473,9 @@ void DrawSpringBoneInspector(scene::GameObject* go,
 
 void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
-    // WHY: Unity の Animator コンポーネントと同じ密度に揃える。ステート/遷移/パラメーターの
-    //      編集は Animation Graph に一本化し、Inspector には Controller 参照と再生設定だけを置く。
-    //      Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
+    /// @note Unity の Animator コンポーネントと同じ密度に揃える。ステート/遷移/パラメーターの編集は
+    ///       Animation Graph に一本化し、Inspector には Controller 参照と再生設定だけを置く。
+    ///       Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
     DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
         [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
             if (widgets::AssetPathField("Controller", anim.controllerPath,
@@ -520,9 +518,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
 
             if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f))) {
-                // WHY selectedAssetPath 任せにしないか: ここでの選択は GameObject であって
-                //     .animcontroller ではない。開くべき対象はこの Animator が指している
-                //     Controller なので、パスを明示して渡す。
+                /// @note selectedAssetPath 任せにしないのは、ここでの選択は GameObject であって
+                ///       .animcontroller ではないため。開くべき Controller はこの Animator が指す
+                ///       ものなので、パスを明示して渡す。
                 if (ctx.openAnimationGraph) ctx.openAnimationGraph(anim.controllerPath);
                 ctx.requestOpenAnimationGraph = true;
             }
@@ -553,9 +551,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             DrawAnimatorLayers(anim, ctx);
         });
 
-    // Bone は FBX インポートで自動付与される内部コンポーネント。編集は想定しないが、
-    // ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
-    // IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
+    /// @note Bone は FBX インポートで自動付与される内部コンポーネント。編集は想定しないが、
+    ///       ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
+    ///       IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
     DrawComponentSection<scene::BoneComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Bone",
         [](scene::BoneComponent& bone, EditorContext&) {
             ImGui::BeginDisabled();
@@ -568,17 +566,16 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
     DrawComponentSection<scene::IKSolverComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "IK Solver",
         [go](scene::IKSolverComponent& ik, EditorContext& ctx) {
 
-            // ── Hip Height Correction ────────────────────────────────────────
-            // ── IK Chains ────────────────────────────────────────────────────
+            /// @name Hip Height Correction
+            /// @name IK Chains
             int removeIdx = -1;
 
             for (int ci = 0; ci < static_cast<int>(ik.chains.size()); ++ci) {
                 auto& chain = ik.chains[static_cast<size_t>(ci)];
                 ImGui::PushID(ci);
 
-                // ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]
-                // WHY: Unity の Constraint コンポーネントと同様に enabled を
-                //      折りたたみ矢印の横に置き、開かずに ON/OFF できるようにする。
+                /// @note ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]。Unity の Constraint
+                ///       コンポーネントと同様に enabled を折りたたみ矢印の横に置き、開かずに ON/OFF できる。
                 const char* solverNames[] = {
                     "Two Bone", "Foot Place", "Aim At", "FABRIK", "Hand Place",
                     "Full Body Biped"
@@ -608,7 +605,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::PopStyleColor(3);
 
                 if (open) {
-                    // 無効チェーンは薄く表示
+                    /// @note 無効チェーンは薄く表示
                     if (!chain.enabled)
                         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
 
@@ -665,7 +662,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                     ik.runtimeSkinningUploaded ? "yes" : "no");
                     }
 
-                    // ── Bones ─────────────────────────────────────────────────
+                    /// @name Bones
                     if (chain.type == scene::IKSolverType::TwoBone ||
                         chain.type == scene::IKSolverType::HandPlace) {
                         if (chain.boneNames.size() != 3) chain.boneNames.resize(3);
@@ -692,9 +689,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             chain.boneNames[2] = dropped->name;
                     }
 
-                    // ── Targets ───────────────────────────────────────────────
-                    // WHY: Target/Pole は名前文字列で保持し、Resolve ボタンで EntityID を
-                    //      解決する。解決状態を色付きドットで即座に確認できる。
+                    /// @name Targets
+                    /// @note Target/Pole は名前文字列で保持し、Resolve ボタンで EntityID を解決する。
+                    ///       解決状態は色付きドットで即座に確認できる。
                     ImGui::SeparatorText("Targets");
                     {
                         char buf[256];
@@ -702,9 +699,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                              + ImGui::GetStyle().FramePadding.x * 2.0f;
                         const float dotW     = ImGui::GetFrameHeight();
 
-                        // WHY: guid を追加することでリネーム後も参照が壊れなくなる。
-                        //      手入力時は guid をクリアし名前フォールバックで解決させる。
-                        //      ドロップ・Resolve 時は dropped/found の instanceId を記録する。
+                        /// @note guid を追加することでリネーム後も参照が壊れなくなる。手入力時は guid を
+                        ///       クリアして名前フォールバックで解決させ、ドロップ・Resolve 時は
+                        ///       dropped/found の instanceId を記録する。
                         auto DrawObjectField = [&](const char* label,
                                                    const char* idStr,
                                                    std::string& name,
@@ -712,7 +709,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                                    scene::EntityID& eid)
                         {
                             const bool resolved = eid.IsValid();
-                            // 解決状態ドット (緑=OK / 赤=未解決)
+                            /// @note 解決状態ドット (緑=OK / 赤=未解決)
                             const ImVec4 dotColor = resolved
                                 ? ImVec4(0.2f, 0.8f, 0.2f, 1.0f)
                                 : ImVec4(0.8f, 0.2f, 0.2f, 1.0f);
@@ -726,7 +723,8 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             std::snprintf(buf, sizeof(buf), "%s", name.c_str());
                             if (ImGui::InputText(idStr, buf, sizeof(buf))) {
                                 name = buf;
-                                guid.clear(); // 手入力時は GUID をクリアして名前で再解決させる
+                                /// @note 手入力時は GUID をクリアして名前で再解決させる
+                                guid.clear();
                             }
                             if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
                                 name = dropped->name;
@@ -747,7 +745,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Target");
 
-                        // Auto Pole: ON のとき Pole フィールドを非活性化し、IKSystem が自動計算する。
+                        /// @note Auto Pole: ON のとき Pole フィールドを非活性化し、IKSystem が自動計算する。
                         ImGui::Checkbox("Auto Pole##ap", &chain.autoPole);
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip(
@@ -773,7 +771,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             ImGui::EndDisabled();
                     }
 
-                    // ── Settings ──────────────────────────────────────────────
+                    /// @name Settings
                         ImGui::SeparatorText("Settings");
                         ImGui::DragFloat("Max Extension", &chain.maxExtension,
                                          0.005f, 0.5f, 1.0f, "%.3f");
@@ -911,7 +909,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
                     }
 
-                    // ── Ground Snap ───────────────────────────────────────────
+                    /// @name Ground Snap
                     if (!chain.enabled)
                         ImGui::PopStyleVar();
 
@@ -922,11 +920,11 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::Spacing();
             }
 
-            // チェーン削除
+            /// @note チェーン削除
             if (removeIdx >= 0)
                 ik.chains.erase(ik.chains.begin() + removeIdx);
 
-            // チェーン追加
+            /// @note チェーン追加
             if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f })) {
                 scene::IKChain chain;
                 chain.enabled = true;

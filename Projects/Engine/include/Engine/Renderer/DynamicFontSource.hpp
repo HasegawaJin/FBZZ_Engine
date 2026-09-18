@@ -3,20 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
-/// WHY: 日本語は JIS 第 1 水準だけで約 3,000 字あり、事前生成の静的アトラスに
-/// 全部載せると PNG が数 MB になる。しかも実際に画面へ出るのはその一部でしかない。
-/// TextMeshPro の Dynamic Font Asset と同じく「使われた文字だけをその場で焼く」方式にすると、
-/// アトラスは実使用ぶんで済み、プレイヤー名のような動的テキストにも対応できる。
-///
-/// WHY (SDF で焼く): 48px 固定のカバレッジでは fontSize を上げたときに字形が角張る。
-/// stb_truetype の stbtt_GetCodepointSDF が符号付き距離場を直接生成できるため、
-/// 焼く段階で SDF にしておけば任意サイズでシャープに出せる。
-/// シェーダー側は UIText.hlsl の fwidth 正規化がそのまま距離場の AA として機能するので、
-/// カバレッジと SDF で分岐する必要がない。
-///
-/// 使い方 (FontAtlas 経由。直接触るのは FontAtlas のみ):
-/// FontAtlas が fontPath の拡張子で .ttf/.ttc/.otf を検出したときに生成し、
-/// UISystem がレイアウト前に FontAtlas::PrepareText() を呼ぶと未登録グリフが焼かれる。
+/// @note 日本語は JIS 第 1 水準だけで約 3,000 字あり、静的アトラスへ全部載せると PNG が数 MB に
+///       なる。TextMeshPro の Dynamic Font Asset 同様「使われた文字だけをその場で焼く」ことで、
+///       アトラスは実使用ぶんで済む。
+/// @note 48px 固定のカバレッジは拡大で角張るため、stbtt_GetCodepointSDF で符号付き距離場を焼く。
+///       UIText.hlsl の fwidth 正規化がそのまま距離場の AA として機能し、カバレッジと SDF で
+///       分岐する必要がない。
+/// @note FontAtlas 経由でのみ使う。fontPath の拡張子が .ttf/.ttc/.otf のとき FontAtlas が生成し、
+///       UISystem がレイアウト前に FontAtlas::PrepareText() を呼ぶと未登録グリフが焼かれる。
 #pragma once
 #include <Engine/Renderer/FontAtlas.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -39,31 +33,32 @@ public:
     DynamicFontSource(const DynamicFontSource&)            = delete;
     DynamicFontSource& operator=(const DynamicFontSource&) = delete;
 
-    // フォントファイルを読み込み、メトリクスを確定する。
-    // pixelHeight はアトラスへ焼く際のラスタライズ解像度 (行高さではなく em 相当の px)。
-    // テクスチャは最初のグリフ追加時に遅延生成されるため、ここでは GPU に触らない。
+    /// @brief フォントファイルを読み込み、メトリクスを確定する。
+    /// @param pixelHeight アトラスへ焼く際のラスタライズ解像度 (行高さではなく em 相当の px)。
+    /// @note テクスチャは最初のグリフ追加時に遅延生成されるため、ここでは GPU に触らない。
     bool Load(const std::string& fontPath, float pixelHeight);
 
     [[nodiscard]] bool IsValid() const;
 
-    // フォントのメトリクス (アトラスピクセル単位)
+    /// @name フォントのメトリクス (アトラスピクセル単位)
+    /// @{
     [[nodiscard]] float GetLineHeight() const;
     [[nodiscard]] float GetBase() const;
     [[nodiscard]] float GetFallbackAdvance() const;
+    /// @}
 
-    // 未登録のコードポイント群をラスタライズしてアトラスへ配置し、glyphTable へ登録する。
-    // 新しいページが必要になった場合は pages へテクスチャハンドルを追加する。
-    // 追加した内容は関数の最後に 1 度だけ GPU へ転送される (ページごとにダーティ矩形 1 回)。
-    //
-    // 戻り値: 1 つでもグリフを追加できたら true。
+    /// @brief 未登録のコードポイント群をラスタライズしてアトラスへ配置し、glyphTable へ登録する。
+    /// @note 新しいページが必要になった場合は pages へテクスチャハンドルを追加する。追加した
+    ///       内容は関数の最後に 1 度だけ GPU へ転送される (ページごとにダーティ矩形 1 回)。
+    /// @return 1 つでもグリフを追加できたら true。
     bool AddGlyphs(const std::vector<char32_t>&             codePoints,
                    std::unordered_map<char32_t, FontGlyph>& glyphTable,
                    std::vector<ResourceHandle<TextureTag>>& pages,
                    ResourceManager&                         resources);
 
-    // 2 文字間のカーニング量 (アトラスピクセル単位)。
-    // NOTE: stb_truetype が読むのは旧来の `kern` テーブルのみで、GPOS ベースの
-    //       カーニングしか持たない現代的なフォントでは 0 が返る。
+    /// @brief 2 文字間のカーニング量 (アトラスピクセル単位)。
+    /// @note stb_truetype が読むのは旧来の `kern` テーブルのみで、GPOS ベースのカーニングしか
+    ///       持たない現代的なフォントでは 0 が返る。
     [[nodiscard]] float GetKerning(char32_t previous, char32_t next) const;
 
 private:

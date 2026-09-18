@@ -11,9 +11,9 @@ namespace fbzz::renderer {
 
 namespace {
 
-// プリセット 1 段ぶんの構成。RenderSettings のうち「重さ」に効く項目だけを持つ。
-// WHY 構造体に切り出すか: 4 段を縦に並べて読めるようにするため。関数内の
-//     switch で個別代入を書くと、段ごとの差分が目で追えなくなる。
+/// プリセット 1 段ぶんの構成。RenderSettings のうち「重さ」に効く項目だけを持つ。
+/// @note 4 段を縦に並べて読めるよう構造体に切り出している。関数内の switch で個別代入を
+///       書くと段ごとの差分が目で追えなくなる。
 struct PresetSpec {
     uint32_t shadowMapResolution;
     int      shadowCascades;
@@ -32,13 +32,13 @@ struct PresetSpec {
 };
 
 constexpr PresetSpec kPresets[] = {
-    // Low    影を 1 枚 512、AA は FXAA、AO 以外の追加パスはすべて切る。
+    /// @note Low    影を 1 枚 512、AA は FXAA、AO 以外の追加パスはすべて切る。
     { 512u,  1, 0, false, false, false, true,  false, false, false, false, false, false, false },
-    // Medium 影 1024 / 2 カスケード、SSAO と Bloom を戻す。
+    /// @note Medium 影 1024 / 2 カスケード、SSAO と Bloom を戻す。
     { 1024u, 2, 1, false, true,  false, true,  false, false, false, false, false, false, true  },
-    // High   既定値。影 2048 / 4 カスケード、GTAO + TAA、接触影まで。
+    /// @note High   既定値。影 2048 / 4 カスケード、GTAO + TAA、接触影まで。
     { 2048u, 4, 2, false, false, true,  false, true,  true,  false, true,  false, true,  true  },
-    // Ultra  影 4096 / PCSS、体積光とモーションブラーまで全部入り。
+    /// @note Ultra  影 4096 / PCSS、体積光とモーションブラーまで全部入り。
     { 4096u, 4, 3, true,  false, true,  false, true,  true,  true,  true,  true,  true,  true  },
 };
 
@@ -89,9 +89,9 @@ void ApplyQualityPreset(RenderSettings& settings, QualityPreset preset)
     settings.lensFlare.enabled       = spec.lensFlare;
     settings.postProcess.bloom.enabled = spec.bloom;
 
-    // 排他スロット (FXAA/TAA, SSAO/GTAO) の規則は 1 か所に集約されている。
-    // プリセットの表が正しくても、ここを通しておけば表の書き間違いで
-    // 両方立った状態が描画へ届くことはない。
+    /// @note 排他スロット (FXAA/TAA, SSAO/GTAO) の規則は 1 か所に集約されている。
+    ///       プリセットの表が正しくても、ここを通しておけば表の書き間違いで
+    ///       両方立った状態が描画へ届くことはない。
     (void)settings.NormalizeExclusivePipelineSlots();
 }
 
@@ -100,8 +100,8 @@ QualityPreset DetectQualityPreset(const RenderSettings& settings)
     for (size_t i = 0; i < std::size(kPresets); ++i) {
         if (Matches(settings, kPresets[i])) return static_cast<QualityPreset>(i);
     }
-    // どれとも一致しない = 個別に調整された状態。影の解像度を目安に
-    // 一番近い (超えない) 段を返す。Option 画面が「カスタム」を持たない前提の妥協。
+    /// @note どれとも一致しない = 個別に調整された状態。影の解像度を目安に
+    ///       一番近い (超えない) 段を返す。Option 画面が「カスタム」を持たない前提の妥協。
     const uint32_t resolution = settings.shadow.mapResolution;
     if (resolution >= kPresets[static_cast<size_t>(QualityPreset::Ultra)].shadowMapResolution)
         return QualityPreset::Ultra;

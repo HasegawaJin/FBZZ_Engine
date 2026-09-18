@@ -11,9 +11,8 @@
 /// cur = p - b·d, next = p + (1-b)·d となり、2 コマとも «コマ N+b で内容がある位置» を指す。
 /// d を軸ごとの Atlas UV で持つため、非正方の Atlas でもスカラー 1 つで足りる。
 ///
-/// WHY GPU 無しの純関数に切り出すか: 符号を 1 つ間違えても «補間がやや濁る» だけで
-///   例外もログも出ない (実際に旧生成器は符号と単位の両方が逆だった)。
-///   シェーダーの計算を C++ に写してテストで固定する。
+/// @note GPU 無しの純関数に切り出す理由: 符号を 1 つ間違えても補間が濁るだけで例外もログも
+///       出ない (旧生成器は符号・単位とも逆だった)。シェーダーの計算を C++ に写しテストで固定する。
 #pragma once
 
 #include <Math/Vector2.hpp>
@@ -72,7 +71,7 @@ struct EncodedMotionVector {
 
 /// coverage が threshold 以下の画素へ、覆われた 4 近傍の平均を iterations 回だけ広げる。
 /// タイル境界は越えない (隣のコマの速度を持ち込まないため)。
-/// WHY: 煙の縁は Bilinear で «速度 0 の空白» と混ざり、縁だけ動きが鈍って見える。
+/// @note 煙の縁は Bilinear で速度 0 の空白と混ざり、縁だけ動きが鈍って見える。
 void DilateMotion(std::span<math::Vector2> motion, std::span<const float> coverage,
                   std::uint32_t atlasWidth, std::uint32_t atlasHeight,
                   const FlipbookGrid& grid, std::uint32_t tileWidth, std::uint32_t tileHeight,

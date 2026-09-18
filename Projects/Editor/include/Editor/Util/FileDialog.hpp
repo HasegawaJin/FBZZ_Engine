@@ -9,8 +9,8 @@
 namespace fbzz::editor {
 
 struct FileFilter {
-    std::string name;  // 例: "FBZZ Scene"
-    std::string spec;  // 例: "*.fbzz"
+    std::string name;  ///< 例: "FBZZ Scene"
+    std::string spec;  ///< 例: "*.fbzz"
 };
 
 class FileDialog {

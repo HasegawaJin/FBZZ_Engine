@@ -14,7 +14,7 @@ namespace {
 
 constexpr std::array<const char*, 3> PERMISSIONS = { "read", "dry-run", "write" };
 
-// 診断結果を色と短いラベルで統一表示し、未設定箇所を一目で識別できるようにする。
+/// 診断結果を色と短いラベルで統一表示し、未設定箇所を一目で識別できるようにする。
 void DrawStatusRow(const char* label, bool ready, const char* readyText, const char* missingText)
 {
     ImGui::TextUnformatted(label);

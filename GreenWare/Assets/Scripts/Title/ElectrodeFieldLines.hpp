@@ -3,20 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 ///
-/// WHY 放電と別にもう 1 種類の線を引くか:
-///   放電 (ElectricArc) は «対» の持ち物で、＋と−の間だけを繋ぐ。極を 1 本だけ見たとき、
-///   そこから何かが出ているようには見えない。力線は 1 個の電荷の持ち物なので、
-///   極ごとに放射状へ生やせる。«芯に電荷があって、そこから線が出ている» を作るのはこちら。
-///
-/// WHY まっすぐ伸ばさず場を積分するか:
-///   放射状の直線を生やすだけだと «ウニ» で、盤面に電荷が 2 つある事実が線に出ない。
-///   相手を含めた場 E = Σ q(x - p)/|x - p|^3 を積分すると、相手側へ向いた線は引き寄せられ、
-///   反対側の線は逃げていく。引力と斥力が線の «形» から読めるようになる。
-///
-/// WHY 種を画面平面 (ワールド XY) に置くか:
-///   ElectrodeCore と同じ理由。極は XZ 平面を周回するので、極の並びを基準に種を撒くと
-///   組がカメラ方向を向いた瞬間に線束が 1 本へ潰れる。出口だけ画面平面に固定しておけば、
-///   極がどこへ動いても «芯から四方へ出ている» ように見える (曲がり方は 3 次元のまま)。
+/// @note 放電と別にもう 1 種類の線を引く理由: 放電 (ElectricArc) は «対» の持ち物で
+///       ＋と−の間だけを繋ぐ。力線は 1 個の電荷の持ち物なので、極ごとに放射状へ生やせる。
+/// @note まっすぐ伸ばさず場を積分する理由: 放射状の直線だけだと «ウニ» で、電荷が
+///       2 つある事実が線に出ない。場 E = Σ q(x - p)/|x - p|^3 を積分すると、
+///       相手側へ向いた線は引き寄せられ、反対側は逃げる ─ 引力と斥力が線の «形» になる。
+/// @note 種を画面平面 (ワールド XY) に置く理由: ElectrodeCore と同じく、極は XZ 平面を
+///       周回するため、極の並びを基準に撒くとカメラ方向で線束が 1 本へ潰れる。
 #pragma once
 
 #include <Engine/Scene/Components/PresentationComponents.hpp>
@@ -49,17 +42,14 @@ struct ElectrodeFieldStyle {
     /// 芯から出る本数。0 で力線を出さない。
     int   lineCount   = 10;
     /// 1 本あたりの折れ点数。増やしても «曲がりの滑らかさ» にしか効かない。
-    /// WHY 長さを伸ばしたら点も増やすか: 刻み幅は length / segments なので、
-    ///     長いまま点が少ないと極のそばの «曲がりのきつい所» で追従できず、
-    ///     線が相手を素通りして裏へ回る。
+    /// @note 長さを伸ばしたら点も増やすこと: 刻み幅は length / segments なので、
+    ///       長いまま点が少ないと極のそばの曲がりのきつい所で追従できず、線が相手を
+    ///       素通りして裏へ回る。
     int   segments    = 44;
     /// 線の道のり [m]。直線距離ではないので、曲がるぶん到達点は近くなる。
-    ///
-    /// WHY 既定を «相手に届く» 長さにするか:
-    ///   途中で切ると 2 つの電荷が «たまたま隣にある別のもの» に見える。
-    ///   ＋から出た線が−へ吸い込まれて終わると、はじめて対が 1 つの系に見える。
-    ///   届かなかった線 (相手と逆を向いて出たもの) は先細りして消え、
-    ///   «外へ逃げる力線» として残る。
+    /// @note 既定を «相手に届く» 長さにする理由: 途中で切ると 2 つの電荷が «たまたま
+    ///       隣にある別のもの» に見える。届かなかった線は先細りして «外へ逃げる力線»
+    ///       として残る。
     float length      = 9.0f;
     /// 湧き出し口の半径 [m]。端子の輪より外に置かないと符号が線に埋もれる。
     float startRadius = 0.75f;
@@ -74,11 +64,8 @@ struct ElectrodeFieldStyle {
     /// 束全体を回す角速度 [deg/s]。0 で止まる。
     float spin        = 7.0f;
     /// 種の角度を隣の線との間隔の何割ずらすか [0,1)。
-    ///
-    /// WHY 極ごとにずらすか:
-    ///   ＋から引いた線と−から引いた線は同じ場の同じ族なので、種の角度が揃うと
-    ///   同じ曲線を 2 度描いて «明るさだけ倍の 1 本» になる。半間隔ずらすと、
-    ///   力線どうしは交わらない性質から入れ子の束になり、間が編んだように詰まる。
+    /// @note 極ごとにずらす理由: ＋と−で種の角度が揃うと同じ曲線を 2 度描いて
+    ///       «明るさだけ倍の 1 本» になる。半間隔ずらすと入れ子の束になり詰まって見える。
     float seedStagger = 0.0f;
 
     /// 根元の色 = この極の極性色。ElectrodeRig が ElectrodePole から入れる。
@@ -115,7 +102,7 @@ struct ElectrodeFieldStyle {
 {
     const Vector3 field  = ElectrodeFieldAt(point, charges) * flow;
     const float   length = field.Length();
-    // 場が打ち消し合う中立点では向きが決まらない。直前の向きのまま通り抜ける。
+    /// @note 場が打ち消し合う中立点では向きが決まらない。直前の向きのまま通り抜ける。
     return length > EPSILON ? field * (1.0f / length) : fallback;
 }
 
@@ -138,7 +125,7 @@ private:
                                  const ElectrodeFieldStyle& style) const;
 
     std::vector<EntityID> m_lines;
-    std::vector<Vector3>  m_points;   // 毎フレームの再確保を避けるための作業領域
+    std::vector<Vector3>  m_points;   ///< 毎フレームの再確保を避けるための作業領域
     float                 m_spin  = 0.0f;
     float                 m_phase = 0.0f;
 };
@@ -153,8 +140,8 @@ inline void ElectrodeFieldLines::EnsureLines(Script& owner, std::size_t count,
     }
 
     while (m_lines.size() < count) {
-        // ElectricArc / ElectrodeCore と同じく、World 空間の点を素直に渡すため
-        // 原点・無回転のルートへ置く。
+        /// @note ElectricArc / ElectrodeCore と同じく、World 空間の点を素直に渡すため
+        ///       原点・無回転のルートへ置く。
         GameObject& object = owner.scene.Create("ElectrodeField_Line");
         const EntityID id  = object.GetID();
         object.runtimeGenerated   = true;
@@ -167,7 +154,7 @@ inline void ElectrodeFieldLines::EnsureLines(Script& owner, std::size_t count,
             line.space        = LineSpace::World;
             line.billboard    = true;
             line.loop         = false;
-            // 記号 (40) より後ろ、放電より前。線が符号を隠さない順にする。
+            /// @note 記号 (40) より後ろ、放電より前。線が符号を隠さない順にする。
             line.orderInLayer = 10;
         }
     }
@@ -190,7 +177,7 @@ inline bool ElectrodeFieldLines::BuildPath(std::vector<Vector3>& out, const Vect
     out.push_back(point);
 
     for (int i = 0; i < count; ++i) {
-        // 中点法。前進オイラーだと極の近くで曲率に追いつけず、線が芯を突き抜けて裏へ回る。
+        /// @note 中点法。前進オイラーだと極の近くで曲率に追いつけず、線が芯を突き抜けて裏へ回る。
         const Vector3 first  = ElectrodeFlowDirection(point, flow, charges, heading);
         const Vector3 middle = ElectrodeFlowDirection(point + first * (step * 0.5f), flow,
                                                       charges, first);
@@ -198,7 +185,7 @@ inline bool ElectrodeFieldLines::BuildPath(std::vector<Vector3>& out, const Vect
         heading = middle;
         out.push_back(point);
 
-        // 逆極の芯へ着いたら止める。中まで潜らせると芯の中の 1/r^2 に振り回される。
+        /// @note 逆極の芯へ着いたら止める。中まで潜らせると芯の中の 1/r^2 に振り回される。
         for (const ElectrodeCharge& charge : charges) {
             if ((point - charge.position).LengthSq() <= radius * radius)
                 return true;
@@ -218,12 +205,12 @@ inline void ElectrodeFieldLines::Update(Script& owner, Pole pole, const Vector3&
     if (m_lines.empty()) return;
 
     m_spin  = std::fmod(m_spin + ToRad(style.spin) * dt, TWO_PI);
-    // ElectricArc.hlsl の frac(sin(x * 12.9898)) は x が育つほど精度を失う。巻き取る。
+    /// @note ElectricArc.hlsl の frac(sin(x * 12.9898)) は x が育つほど精度を失う。巻き取る。
     m_phase = std::fmod(m_phase + dt, 1024.0f);
 
-    // ＋は場に沿って外へ、−は場を遡って外へ。符号 1 つで «出る / 入る» が入れ替わる。
+    /// @note ＋は場に沿って外へ、−は場を遡って外へ。符号 1 つで «出る / 入る» が入れ替わる。
     const float flow = pole == Pole::Minus ? -1.0f : 1.0f;
-    // 輝点の流れる向きは «電荷から見た向き» に合わせる。−極は根元へ吸い込まれて見える。
+    /// @note 輝点の流れる向きは «電荷から見た向き» に合わせる。−極は根元へ吸い込まれて見える。
     const float travel = style.travel * flow;
 
     const float width   = Max(style.width, 0.001f);
@@ -240,8 +227,8 @@ inline void ElectrodeFieldLines::Update(Script& owner, Pole pole, const Vector3&
         const Vector3 seed  = Vector3::RIGHT * std::cos(angle) + Vector3::UP * std::sin(angle);
         const bool    landed = BuildPath(m_points, origin, seed, flow, charges, style);
 
-        // 逃げた線の先端は «同じ色相のまま暗く» する。黒にすると、アルファ合成のまま
-        // 背景を削って黒い髪の毛が残る。相手へ着いた線は逆極の色で終わらせて対を示す。
+        /// @note 逃げた線の先端は «同じ色相のまま暗く» する。黒にすると、アルファ合成のまま
+        ///       背景を削って黒い髪の毛が残る。相手へ着いた線は逆極の色で終わらせて対を示す。
         const Vector4 tip = landed
             ? style.tipColor
             : Vector4{ style.color.x * 0.12f, style.color.y * 0.12f,
@@ -253,7 +240,7 @@ inline void ElectrodeFieldLines::Update(Script& owner, Pole pole, const Vector3&
         line->billboard  = true;
         line->loop       = false;
         line->startWidth = width;
-        // 相手に着いた線は太さを保って «繋がっている» を見せ、逃げた線は細って消える。
+        /// @note 相手に着いた線は太さを保って «繋がっている» を見せ、逃げた線は細って消える。
         line->endWidth   = landed ? width : width * Clamp01(style.tipTaper);
         line->startColor = style.color;
         line->endColor   = tip;
@@ -266,21 +253,21 @@ inline void ElectrodeFieldLines::Update(Script& owner, Pole pole, const Vector3&
         instance.SetFloat(MaterialPropertyId("coreWidth"),   Clamp01(style.coreWidth));
         instance.SetFloat(MaterialPropertyId("glowFalloff"), Max(style.glowFalloff, 0.01f));
         instance.SetFloat(MaterialPropertyId("coreTint"),    Clamp01(style.coreTint));
-        // 相手に着いた線は場が «通っている» ぶん明るく。逃げた線は控えめに引く。
+        /// @note 相手に着いた線は場が «通っている» ぶん明るく。逃げた線は控えめに引く。
         instance.SetFloat(MaterialPropertyId("intensity"),
                           Max(style.intensity, 0.0f) * (landed ? 1.0f : 0.55f));
-        // 線ごとに位相をずらす。揃えると粒が横並びで進み、線ではなく «櫛» に見える。
+        /// @note 線ごとに位相をずらす。揃えると粒が横並びで進み、線ではなく «櫛» に見える。
         instance.SetFloat(MaterialPropertyId("phase"),
                           m_phase + static_cast<float>(index) * 0.37f);
         instance.SetFloat(MaterialPropertyId("travel"), travel);
-        // 粒は «相手へ流れ込んでいる» 線にだけ乗せる。逃げた線にも流すと、
-        // どこへも着かない粒が画面外へ出続けて «漏れている» ように見える。
+        /// @note 粒は «相手へ流れ込んでいる» 線にだけ乗せる。逃げた線にも流すと、
+        ///       どこへも着かない粒が画面外へ出続けて «漏れている» ように見える。
         instance.SetFloat(MaterialPropertyId("beadDensity"),
                           landed ? Max(style.beads, 0.0f) : 0.0f);
         instance.SetFloat(MaterialPropertyId("beadFalloff"), 14.0f);
-        // 力線は途切れない。放電と同じ揺らぎを乗せると «弱い放電» にしか見えなくなる。
+        /// @note 力線は途切れない。放電と同じ揺らぎを乗せると «弱い放電» にしか見えなくなる。
         instance.SetFloat(MaterialPropertyId("breakup"), 0.0f);
-        // 侵食はきっかり 0 にしない (ElectrodeCore の同じ行の WHY を参照)。
+        /// @note 侵食はきっかり 0 にしない (ElectrodeCore の同じ行の @note を参照)。
         instance.SetFloat(MaterialPropertyId("erode"),   0.02f);
     }
 }

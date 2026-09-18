@@ -13,7 +13,7 @@ namespace fbzz::editor::ai {
 
 namespace {
 
-// 再帰下降パーサ。std::string_view 上を index で走査し、throw せず失敗を bool で伝播する。
+/// 再帰下降パーサ。std::string_view 上を index で走査し、throw せず失敗を bool で伝播する。
 class Parser {
 public:
     Parser(std::string_view text, std::string* error) : m_text(text), m_error(error) {}
@@ -23,7 +23,7 @@ public:
         SkipWhitespace();
         if (!ParseValue(out)) return false;
         SkipWhitespace();
-        // 末尾に余分なトークンがあれば不正な JSON とみなす。
+        /// @note 末尾に余分なトークンがあれば不正な JSON とみなす。
         if (m_pos != m_text.size()) return Fail("末尾に余分な文字があります");
         return true;
     }
@@ -74,7 +74,8 @@ private:
     bool ParseObject(JsonValue& out)
     {
         out = JsonValue::MakeObject();
-        ++m_pos; // '{'
+        /// @note '{'
+        ++m_pos;
         SkipWhitespace();
         if (!AtEnd() && Peek() == '}') { ++m_pos; return true; }
         for (;;) {
@@ -100,7 +101,8 @@ private:
     bool ParseArray(JsonValue& out)
     {
         out = JsonValue::MakeArray();
-        ++m_pos; // '['
+        /// @note '['
+        ++m_pos;
         SkipWhitespace();
         if (!AtEnd() && Peek() == ']') { ++m_pos; return true; }
         for (;;) {
@@ -118,7 +120,8 @@ private:
 
     bool ParseString(std::string& out)
     {
-        ++m_pos; // 開き '"'
+        /// @note 開き '"'
+        ++m_pos;
         out.clear();
         while (!AtEnd()) {
             const char c = m_text[m_pos++];
@@ -145,12 +148,12 @@ private:
         return Fail("文字列が閉じていません");
     }
 
-    // \uXXXX (必要ならサロゲートペア) を読み UTF-8 へ変換して out へ追記する。
+    /// \uXXXX (必要ならサロゲートペア) を読み UTF-8 へ変換して out へ追記する。
     bool ParseUnicodeEscape(std::string& out)
     {
         std::uint32_t code = 0;
         if (!ReadHex4(code)) return false;
-        // 上位サロゲートなら続く \uXXXX と結合する。
+        /// @note 上位サロゲートなら続く \uXXXX と結合する。
         if (code >= 0xD800 && code <= 0xDBFF) {
             if (m_pos + 1 >= m_text.size() || m_text[m_pos] != '\\' || m_text[m_pos + 1] != 'u') {
                 return Fail("サロゲートペアが不完全です");
@@ -247,7 +250,7 @@ void SerializeString(const std::string& s, std::string& out)
             case '\t': out += "\\t";  break;
             default:
                 if (static_cast<unsigned char>(c) < 0x20) {
-                    // 制御文字は \u00XX でエスケープ (UTF-8 マルチバイトはそのまま通す)。
+                    /// @note 制御文字は \u00XX でエスケープ (UTF-8 マルチバイトはそのまま通す)。
                     std::array<char, 8> buffer{};
                     std::snprintf(buffer.data(), buffer.size(), "\\u%04x", static_cast<unsigned>(static_cast<unsigned char>(c)));
                     out += buffer.data();
@@ -261,7 +264,7 @@ void SerializeString(const std::string& s, std::string& out)
 
 void SerializeNumber(double value, std::string& out)
 {
-    // std::to_chars は最短往復表現を出す (1.0 → "1", 1.5 → "1.5")。JSON は非有限を許さないため 0 に丸める。
+    /// @note std::to_chars は最短往復表現を出す (1.0 → "1", 1.5 → "1.5")。JSON は非有限を許さないため 0 に丸める。
     if (!(value == value) || value == std::numeric_limits<double>::infinity() || value == -std::numeric_limits<double>::infinity()) {
         out += "0";
         return;

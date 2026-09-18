@@ -22,29 +22,29 @@ enum class KeyCode : uint32_t {
     KEY_0 = '0', KEY_1 = '1', KEY_2 = '2', KEY_3 = '3', KEY_4 = '4',
     KEY_5 = '5', KEY_6 = '6', KEY_7 = '7', KEY_8 = '8', KEY_9 = '9',
 
-    ESCAPE    = 0x1B,  // VK_ESCAPE
-    SPACE     = 0x20,  // VK_SPACE
-    ENTER     = 0x0D,  // VK_RETURN
-    BACKSPACE = 0x08,  // VK_BACK
-    TAB       = 0x09,  // VK_TAB
-    SHIFT     = 0x10,  // VK_SHIFT
-    CTRL      = 0x11,  // VK_CONTROL
-    ALT       = 0x12,  // VK_MENU
-    LEFT      = 0x25,  // VK_LEFT
-    RIGHT     = 0x27,  // VK_RIGHT
-    UP        = 0x26,  // VK_UP
-    DOWN      = 0x28,  // VK_DOWN
+    ESCAPE    = 0x1B,  ///< VK_ESCAPE
+    SPACE     = 0x20,  ///< VK_SPACE
+    ENTER     = 0x0D,  ///< VK_RETURN
+    BACKSPACE = 0x08,  ///< VK_BACK
+    TAB       = 0x09,  ///< VK_TAB
+    SHIFT     = 0x10,  ///< VK_SHIFT
+    CTRL      = 0x11,  ///< VK_CONTROL
+    ALT       = 0x12,  ///< VK_MENU
+    LEFT      = 0x25,  ///< VK_LEFT
+    RIGHT     = 0x27,  ///< VK_RIGHT
+    UP        = 0x26,  ///< VK_UP
+    DOWN      = 0x28,  ///< VK_DOWN
 
-    // VK_F1..VK_F12 は 0x70 から連番。
+    /// VK_F1..VK_F12 は 0x70 から連番。
     F1  = 0x70, F2  = 0x71, F3  = 0x72, F4  = 0x73,
     F5  = 0x74, F6  = 0x75, F7  = 0x76, F8  = 0x77,
     F9  = 0x78, F10 = 0x79, F11 = 0x7A, F12 = 0x7B,
 
-    // マウスボタン — VK_LBUTTON/RBUTTON/MBUTTON はキーボード配列(0-255)内に収まる。
-    // KeyDown / KeyHeld / KeyUp で通常キーと同じように使える。
-    MouseLeft   = 0x01,  // VK_LBUTTON
-    MouseRight  = 0x02,  // VK_RBUTTON
-    MouseMiddle = 0x04,  // VK_MBUTTON
+    /// マウスボタン — VK_LBUTTON/RBUTTON/MBUTTON はキーボード配列(0-255)内に収まる。
+    /// KeyDown / KeyHeld / KeyUp で通常キーと同じように使える。
+    MouseLeft   = 0x01,  ///< VK_LBUTTON
+    MouseRight  = 0x02,  ///< VK_RBUTTON
+    MouseMiddle = 0x04,  ///< VK_MBUTTON
 };
 
 } // namespace fbzz::input

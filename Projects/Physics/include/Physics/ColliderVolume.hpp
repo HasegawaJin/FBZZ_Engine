@@ -8,17 +8,20 @@
 
 namespace fbzz::physics
 {
-    // Unity の Volume 的な表現。Scene 側の Trigger Collider + VolumeComponent から生成される。
+    /// Unity の Volume 的な表現。Scene 側の Trigger Collider + VolumeComponent から生成される。
+    /// @note 整数を明示し 2 を空けたままにする理由: VolumeComponent::Reflect が type を int で
+    ///       保存・clamp しているため、廃止した Buoyancy (= 2) の枠を詰めると既存シーンの
+    ///       Volume が別の型になる。浮力は水面 (FluidVolume) が持つ。
+    /// @see Docs/design/buoyancy.md
     enum class VolumeType {
-        Gravity,
-        Vortex,
-        Buoyancy,
-        Explosion,
-        TimeDilation,
-        Magnetic
+        Gravity      = 0,
+        Vortex       = 1,
+        Explosion    = 3,
+        TimeDilation = 4,
+        Magnetic     = 5
     };
 
-    // Volume の振る舞いを 1 つの設定構造体にまとめ、エディタと Serializer から扱いやすくする。
+    /// Volume の振る舞いを 1 つの設定構造体にまとめ、エディタと Serializer から扱いやすくする。
     struct VolumeSettings {
         VolumeType type = VolumeType::Gravity;
         math::Vector3 gravity = { 0.0f, -9.81f, 0.0f };
@@ -26,19 +29,17 @@ namespace fbzz::physics
         float swirlStrength = 1.0f;
         float inwardStrength = 0.0f;
         float liftStrength = 0.0f;
-        float buoyancy = 10.0f;
-        float drag = 1.0f;
         float explosionImpulse = 10.0f;
         float timeScale = 1.0f;
         float duration = -1.0f;
     };
 
-    // 形状判定は Collider に委譲し、効果だけを VolumeSettings で切り替える。
+    /// 形状判定は Collider に委譲し、効果だけを VolumeSettings で切り替える。
     class ColliderVolume : public Volume
     {
     public:
-        // WHY: Collider の所有権は ColliderComponent (unique_ptr) が持つ。
-        //      Volume は ColliderComponent より短命なため、非所有ポインタで参照する。
+        /// @note Collider の所有権は ColliderComponent (unique_ptr) が持つ。Volume はそれより短命な
+        ///       ため、非所有ポインタで参照する。
         ColliderVolume(Collider* collider, const VolumeSettings& settings);
 
         bool Contains(const math::Vector3& position) const override;

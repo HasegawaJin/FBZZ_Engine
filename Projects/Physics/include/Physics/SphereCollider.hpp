@@ -7,8 +7,8 @@
 
 namespace fbzz::physics {
 
-    // 回転の影響を受けない球形状。安価で CCD の代表形状としても使う。
-    class SphereCollider : public Collider 
+    /// @brief 回転の影響を受けない球形状。安価で CCD の代表形状としても使う。
+    class SphereCollider : public Collider
     {
     public:
         explicit SphereCollider(float radius);
@@ -17,7 +17,7 @@ namespace fbzz::physics {
         ColliderType GetType() const override { return ColliderType::SPHERE; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
-        // 4/3 π r³
+        /// @brief 4/3 π r³。
         [[nodiscard]] float ComputeVolume() const override;
 
         float m_radius;

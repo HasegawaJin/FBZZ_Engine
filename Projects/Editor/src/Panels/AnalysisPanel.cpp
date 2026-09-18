@@ -40,9 +40,8 @@ namespace fbzz::editor {
 
 namespace {
 
-// Profiler UI が保持する表示用スナップショット。
-// WHY: Profiler の生データは毎フレーム更新されるため、そのまま描画すると数値が流れて読めない。
-//      表示側だけ更新間隔・一時停止・履歴集計を持ち、計測本体の解像度は落とさない。
+/// @brief Profiler UI が保持する表示用スナップショット。
+/// @note 生データは毎フレーム更新され流れて読めないため、表示側だけ更新間隔・一時停止・履歴集計を持つ。
 struct ProfilerDisplayState {
     std::vector<profiler::ProfileRecord> visibleRecords;
     uint64_t visibleFrameIndex = 0;
@@ -52,9 +51,8 @@ struct ProfilerDisplayState {
     bool paused = false;
     bool showingSpike = false;
 
-    // スパイクの自動捕捉。
-    // WHY: refreshInterval 間隔の取り込みでは «たまに詰まる» フレームにまず当たらない。
-    //      詰まった «そのフレーム» の内訳が残らないと、原因はどこにも出てこない。
+    /// @brief スパイクの自動捕捉。
+    /// @note refreshInterval 間隔の取り込みでは詰まったフレームを取りこぼすため、閾値超過時は別枠で保持する。
     bool     catchSpikes = true;
     float    spikeThresholdMs = 20.0f;
     std::vector<profiler::ProfileRecord> spikeRecords;
@@ -108,15 +106,15 @@ struct RenderingHistoryState {
 };
 RenderingHistoryState s_renderHistory;
 
-// Unity Profiler に近い粒度で処理を読むための表示カテゴリ。
-// WHY: スコープ名ごとのランダム色は細かすぎて、まず Rendering / Scripts / Physics などの大枠を把握しづらい。
+/// @brief Unity Profiler に近い粒度で処理を読むための表示カテゴリ。
+/// @note スコープ名ごとのランダム色は細かすぎるため、Rendering/Scripts/Physics 等の大枠へまとめる。
 struct ProfilerCategory {
     const char* name = "Others";
     ImU32 color = IM_COL32(140, 140, 140, 225);
 };
 
-// byte 数をデバッグ UI 向けに読みやすい単位へ変換する。
-// WHY: MemoryStats は byte で保持するが、パネルでは KB / MB の方が増減を把握しやすい。
+/// @brief byte 数をデバッグ UI 向けに読みやすい単位へ変換する。
+/// @note MemoryStats は byte で保持するが、パネルでは KB / MB の方が増減を把握しやすい。
 const char* FormatBytes(std::size_t bytes, char (&buffer)[32])
 {
     constexpr double KB = 1024.0;
@@ -132,8 +130,8 @@ const char* FormatBytes(std::size_t bytes, char (&buffer)[32])
     return buffer;
 }
 
-// MemoryStats の 1 行を描画する。
-// WHAT: used / peak / count を同じ列で並べ、タグ別メモリの比較を容易にする。
+/// @brief MemoryStats の 1 行を描画する。
+/// @note used / peak / count を同じ列で並べ、タグ別メモリの比較を容易にする。
 void DrawStatsRow(const char* label, const fbzz::core::MemoryStats& stats)
 {
     char used[32]{};
@@ -155,16 +153,15 @@ void DrawStatsRow(const char* label, const fbzz::core::MemoryStats& stats)
     ImGui::Text("%zu / %zu", stats.allocationCount, stats.freeCount);
 }
 
-// 文字列にキーワードが含まれるか調べる。
-// WHAT: 計測マーカーに明示カテゴリがない場合でも、既存の関数名から大枠カテゴリを推定する。
+/// @brief 文字列にキーワードが含まれるか調べる。
+/// @note 計測マーカーに明示カテゴリがない場合、既存の関数名から大枠カテゴリを推定するのに使う。
 bool ContainsKeyword(const char* text, const char* keyword)
 {
     return text != nullptr && keyword != nullptr && std::strstr(text, keyword) != nullptr;
 }
 
-// ProfileRecord を Unity Profiler 風の大分類へ割り当てる。
-// WHY: FBZZ_PROFILE_SCOPE の呼び出し側を増やすたびにカテゴリ引数を追加するより、
-//      Editor 表示側で分類ルールを持つ方が既存コードへ侵襲せず調整しやすい。
+/// @brief ProfileRecord を Unity Profiler 風の大分類へ割り当てる。
+/// @note FBZZ_PROFILE_SCOPE 呼び出し側にカテゴリ引数を増やすより、Editor 表示側で分類ルールを持つ方が調整しやすい。
 ProfilerCategory ClassifyProfileRecord(const profiler::ProfileRecord& record)
 {
     const char* name = record.name;
@@ -230,11 +227,8 @@ ProfilerCategory ClassifyProfileRecord(const profiler::ProfileRecord& record)
     return { "Others", IM_COL32(140, 140, 140, 225) };
 }
 
-// MemoryDebug が追跡している GPU リソースを、用途タグ別の統計へ合流させる。
-//
-// WHY 別行にせず合流させるか: MemoryTracker には現状どのサブシステムも記録していないため、
-//     タグ行を素直に描くと «全部 0 MB» になる。ResourceManager が握る GPU リソースだけは
-//     MemoryDebug が実バイト数で追えているので、同じ RENDERER 行へ載せて 1 つの表にする。
+/// @brief MemoryDebug が追跡している GPU リソースを、用途タグ別の統計へ合流させる。
+/// @note MemoryTracker はサブシステム別を記録しないため、ResourceManager 側の実バイト数を RENDERER 行へ合流させる。
 void AccumulateTrackedRendererResources(renderer::ResourceManager* resources,
                                         std::vector<core::MemoryStats>& tagStats)
 {
@@ -242,8 +236,7 @@ void AccumulateTrackedRendererResources(renderer::ResourceManager* resources,
         return;
     }
 
-    // WHY 一括で取るか: 索引指定の GetLiveDebugResource() は 1 件ごとに台帳を先頭から
-    //     走るので、全件を回すと本数の 2 乗になる。1 回のパスで集める。
+    /// @note GetLiveDebugResource() の索引指定は台帳を毎回先頭から走るため、全件個別取得は O(n^2)。1 回のパスで集める。
     std::vector<core::AllocationInfo> live;
     live.reserve(512);
     resources->CollectLiveDebugResources(live);
@@ -262,22 +255,20 @@ void AccumulateTrackedRendererResources(renderer::ResourceManager* resources,
     }
 }
 
-// 同名の兄弟をまとめた呼び出しツリーの 1 ノード。
-// WHY まとめるか: ProfileRecord は呼び出し 1 回ごとに 1 件で、オブジェクト単位のスコープが
-//     数百件並ぶと «何が重いか» より «何回呼んだか» の羅列になる。同じ親の下の同名スコープは
-//     1 行へ畳み、回数は Calls 列へ逃がす (Unity Profiler の Hierarchy 表示と同じ)。
+/// @brief 同名の兄弟をまとめた呼び出しツリーの 1 ノード。
+/// @note ProfileRecord は呼び出し毎に 1 件で数百件並ぶため、同じ親の下の同名スコープを畳み回数は Calls 列へ逃がす。
 struct AnalysisProfNode {
     const char*      name = "";
     ProfilerCategory category;
-    std::string      key;             // ルートからの経路。選択と履歴集計の同一性に使う
-    double           totalMs = 0.0;   // 子を含む
-    double           selfMs  = 0.0;   // 子を除く
+    std::string      key;             ///< ルートからの経路。選択と履歴集計の同一性に使う
+    double           totalMs = 0.0;   ///< 子を含む
+    double           selfMs  = 0.0;   ///< 子を除く
     int              calls   = 0;
     int              depth   = 0;
     std::vector<int> children;
 };
 
-// Flat 表示の 1 行。ツリー全体から同名スコープを合算する。
+/// Flat 表示の 1 行。ツリー全体から同名スコープを合算する。
 struct AnalysisProfFlatRow {
     const char*      name = "";
     ProfilerCategory category;
@@ -288,19 +279,19 @@ struct AnalysisProfFlatRow {
 };
 
 struct AnalysisProfTree {
-    std::vector<AnalysisProfNode>    nodes;   // 親は必ず子より前に並ぶ
+    std::vector<AnalysisProfNode>    nodes;   ///< 親は必ず子より前に並ぶ
     std::vector<int>                 roots;
     std::vector<AnalysisProfFlatRow> flat;
     double                           frameMs = 0.0;
 };
 
-// 取り込みごとの時間を key 単位で残し、グラフと Avg / Peak 列の出所にする。
+/// 取り込みごとの時間を key 単位で残し、グラフと Avg / Peak 列の出所にする。
 struct AnalysisProfHistory {
     struct Stat {
         double avg  = 0.0;
         double peak = 0.0;
     };
-    std::deque<std::unordered_map<std::string, float>> frames;  // Hierarchy は Total、Flat は Self
+    std::deque<std::unordered_map<std::string, float>> frames;  ///< Hierarchy は Total、Flat は Self
     std::deque<float>                                  frameMs;
     std::unordered_map<std::string, Stat>              stats;
 };
@@ -311,24 +302,22 @@ AnalysisProfHistory s_profHistory;
 enum class AnalysisProfCol : int { Name, Category, Total, Self, Share, Calls, Avg, Peak, Count };
 
 struct AnalysisProfSort {
-    AnalysisProfCol column     = AnalysisProfCol::Count;  // Count = 並べ替えなし (呼び出し順)
+    AnalysisProfCol column     = AnalysisProfCol::Count;  ///< Count = 並べ替えなし (呼び出し順)
     bool            descending = true;
 };
 
-// Hierarchy の経路 key ("/A/B") と衝突しないよう、区切りに使わない制御文字を先頭に置く。
+/// Hierarchy の経路 key ("/A/B") と衝突しないよう、区切りに使わない制御文字を先頭に置く。
 std::string AnalysisProfFlatKey(const char* name)
 {
     return std::string("\x1f") + name;
 }
 
-// 終了順 (子 → 親) に積まれた ProfileRecord を、同名兄弟を畳んだ呼び出しツリーへ組み直す。
-// WHY 組み直すか: 以前は記録順のまま depth でインデントしていたため子が親より上に並び、
-//     «どのスコープの内訳か» を目で辿れなかった。
+/// @brief 終了順 (子 → 親) に積まれた ProfileRecord を、同名兄弟を畳んだ呼び出しツリーへ組み直す。
 AnalysisProfTree BuildAnalysisProfTree(const std::vector<profiler::ProfileRecord>& records)
 {
     AnalysisProfTree tree;
 
-    // 深さ d の記録が閉じた時点で pending[d + 1] に溜まっている記録が、その直接の子。
+    /// @note 深さ d の記録が閉じた時点で pending[d + 1] に溜まっている記録が、その直接の子。
     std::vector<std::vector<std::size_t>> childrenOf(records.size());
     std::vector<std::vector<std::size_t>> pending(1);
     for (std::size_t i = 0; i < records.size(); ++i) {
@@ -337,7 +326,7 @@ AnalysisProfTree BuildAnalysisProfTree(const std::vector<profiler::ProfileRecord
         childrenOf[i].swap(pending[depth + 1u]);
         pending[depth].push_back(i);
     }
-    // 親が同じフレーム内で閉じなかった記録 (フレームを跨ぐスコープ等) もルートとして拾う。
+    /// @note 親が同じフレーム内で閉じなかった記録 (フレームを跨ぐスコープ等) もルートとして拾う。
     std::vector<std::size_t> rootRecords;
     for (const std::vector<std::size_t>& level : pending)
         rootRecords.insert(rootRecords.end(), level.begin(), level.end());
@@ -374,7 +363,7 @@ AnalysisProfTree BuildAnalysisProfTree(const std::vector<profiler::ProfileRecord
 
         for (std::size_t k = 0; k < merged.size(); ++k) {
             const std::size_t nodeIndex = static_cast<std::size_t>(merged[k]);
-            // 再帰で nodes が伸びて参照が無効になるので、key は値で渡す。
+            /// @note 再帰で nodes が伸びて参照が無効になるので、key は値で渡す。
             const std::string key = tree.nodes[nodeIndex].key;
             std::vector<int> kids = self(self, mergedChildren[k], depth + 1, key);
             double childMs = 0.0;
@@ -408,9 +397,8 @@ AnalysisProfTree BuildAnalysisProfTree(const std::vector<profiler::ProfileRecord
     return tree;
 }
 
-// 履歴から平均値とピーク値を一括計算する。
-// WHY: 各表示行から履歴全体を再走査すると O(表示行数 × 履歴 × 行数) になり、
-//      Profiler 自身が EditorApp::RenderPanels の CPU ボトルネックになるため。
+/// @brief 履歴から平均値とピーク値を一括計算する。
+/// @note 表示行ごとに履歴全体を再走査すると O(表示行数 × 履歴 × 行数) になり Profiler 自身が CPU ボトルネックになる。
 void RebuildAnalysisProfStats()
 {
     struct Aggregate {
@@ -426,8 +414,7 @@ void RebuildAnalysisProfStats()
         }
     }
 
-    // WHY 出現したフレーム数でなく全フレーム数で割るか: たまにしか走らない処理の
-    //     «1 フレームあたりの負担» を、毎フレーム走る処理と同じ尺度で比べたい。
+    /// @note 出現フレーム数でなく全フレーム数で割り、たまにしか走らない処理も毎フレーム走る処理と同じ尺度で比べる。
     const double frameCount = static_cast<double>((std::max)(std::size_t{1}, s_profHistory.frames.size()));
     s_profHistory.stats.clear();
     s_profHistory.stats.reserve(aggregates.size());
@@ -454,7 +441,7 @@ void PushAnalysisProfHistory(const AnalysisProfTree& tree)
     RebuildAnalysisProfStats();
 }
 
-// 表示するフレームを差し替える。pause 中は履歴も動かさず、画面に残った値をそのまま読めるようにする。
+/// 表示するフレームを差し替える。pause 中は履歴も動かさず、画面に残った値をそのまま読めるようにする。
 void ShowAnalysisProfFrame(std::vector<profiler::ProfileRecord> records, uint64_t frameIndex, bool pushHistory)
 {
     s_profilerDisplay.visibleRecords    = std::move(records);
@@ -488,7 +475,7 @@ bool AnalysisProfMatches(const char* name, const ProfilerCategory& category, dou
     return true;
 }
 
-// 数値列を右寄せにする。比例フォントでも小数点の位置が縦に揃い、桁の大小を目で比べられる。
+/// 数値列を右寄せにする。比例フォントでも小数点の位置が縦に揃い、桁の大小を目で比べられる。
 void AnalysisTextRight(const char* text, ImU32 color = 0)
 {
     const float width = ImGui::CalcTextSize(text).x;
@@ -503,13 +490,12 @@ void AnalysisCellMs(double ms)
 {
     char text[32];
     std::snprintf(text, sizeof(text), "%.3f", ms);
-    // 0.000 の並ぶ行は «ほぼ 0» なので薄くし、効いている行だけが目に入るようにする。
+    /// @note 0.000 の並ぶ行は «ほぼ 0» なので薄くし、効いている行だけが目に入るようにする。
     AnalysisTextRight(text, ms < 0.0005 ? EditorTheme::ColorU32(ThemeColor::TextFaint) : 0);
 }
 
-// セル幅いっぱいに割合の棒を敷き、上に百分率を重ねる。
-// WHY セル幅に追従させるか: 以前は 240px 固定の棒と名前を 1 行に並べていたため、パネル幅を
-//     変えても棒は伸びず、深いスコープほどインデントで棒の起点がずれて横並びで比べられなかった。
+/// @brief セル幅いっぱいに割合の棒を敷き、上に百分率を重ねる。
+/// @note 固定幅にすると深いスコープほどインデントで棒の起点がずれ、横並びで比較できなくなる。
 void AnalysisShareBar(double value, double total, ImU32 color)
 {
     const double frac = total > 0.0 ? std::clamp(value / total, 0.0, 1.0) : 0.0;
@@ -525,10 +511,8 @@ void AnalysisShareBar(double value, double total, ImU32 color)
     AnalysisTextRight(text);
 }
 
-// カテゴリ別 Self 時間の積み上げバーと、押すと絞り込める凡例。
-// WHY 1 本の積み上げにするか: 以前はカテゴリごとに 220px 固定の棒を縦に並べていて、
-//     «フレームの何割か» が読めないうえに 10 行ぶんの高さを取っていた。
-//     Self で積むのは、Total だと入れ子のぶん同じ時間を何重にも数えるため。
+/// @brief カテゴリ別 Self 時間の積み上げバーと、押すと絞り込める凡例。
+/// @note Self で積む。Total だと入れ子のぶん同じ時間を何重にも数える。
 void DrawAnalysisProfCategoryBar(const AnalysisProfTree& tree)
 {
     struct Total {
@@ -613,7 +597,7 @@ AnalysisProfSort ReadAnalysisProfSort()
     return sort;
 }
 
-// Node と FlatRow は同じ名前のメンバーを持つので、並べ替えとセル描画を共有する。
+/// Node と FlatRow は同じ名前のメンバーを持つので、並べ替えとセル描画を共有する。
 template <class Row>
 double AnalysisProfNumeric(const Row& row, AnalysisProfCol column, bool flat)
 {
@@ -693,7 +677,7 @@ void SetupAnalysisProfColumns(bool flat)
     ImGui::TableSetupColumn("Category", ImGuiTableColumnFlags_WidthFixed, fontH * 6.0f,
                             static_cast<ImGuiID>(AnalysisProfCol::Category));
     ImGui::TableSetupColumn("Total ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Total));
-    // Flat は «自分で使った時間» の多い順が本題なので、最初から Self で並べる。
+    /// @note Flat は «自分で使った時間» の多い順が本題なので、最初から Self で並べる。
     ImGui::TableSetupColumn("Self ms", num | (flat ? ImGuiTableColumnFlags_DefaultSort : 0), numW,
                             static_cast<ImGuiID>(AnalysisProfCol::Self));
     ImGui::TableSetupColumn("% Frame", num, fontH * 6.0f, static_cast<ImGuiID>(AnalysisProfCol::Share));
@@ -745,7 +729,7 @@ void DrawAnalysisProfTreeRow(int index, const AnalysisProfTreeDraw& dc)
                                ImGuiTreeNodeFlags_OpenOnDoubleClick;
     if (children.empty()) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     if (s_profilerFilter.selectedKey == node.key) flags |= ImGuiTreeNodeFlags_Selected;
-    // 絞り込み中は一致した行の祖先をすべて開く。閉じたままだと «一致したのに見えない» になる。
+    /// @note 絞り込み中は一致した行の祖先をすべて開く。閉じたままだと «一致したのに見えない» になる。
     if (dc.filterActive)     ImGui::SetNextItemOpen(true);
     else if (node.depth < 2) flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
@@ -768,11 +752,12 @@ void DrawAnalysisProfTreeTable(float height)
     const bool filterActive = !nameFilter.empty() || s_profilerFilter.categoryFilterIndex > 0 ||
                               s_profilerFilter.minMsFilter > 0.0f;
 
-    // nodes は親が子より前に並ぶので、後ろから回せば子の判定が先に済む。
+    /// @note nodes は親が子より前に並ぶので、後ろから回せば子の判定が先に済む。
     std::vector<char> visible(s_profTree.nodes.size(), 0);
     for (std::size_t i = s_profTree.nodes.size(); i-- > 0;) {
         const AnalysisProfNode& node = s_profTree.nodes[i];
-        if (node.totalMs <= 0.0 && node.children.empty()) continue;  // 時間幅の無いマーカー
+        /// @note 時間幅の無いマーカー
+        if (node.totalMs <= 0.0 && node.children.empty()) continue;
         bool show = !filterActive || AnalysisProfMatches(node.name, node.category, node.totalMs, nameFilter);
         for (std::size_t c = 0; !show && c < node.children.size(); ++c)
             show = visible[static_cast<std::size_t>(node.children[c])] != 0;
@@ -853,9 +838,7 @@ void DrawAnalysisProfFlatTable(float height)
     ImGui::EndTable();
 }
 
-// 選択行 (無ければフレーム全体) の履歴。表の下へ常に出す。
-// WHY 高さを表と分け合うか: 以前は一覧の子ウィンドウが «残り全部» を取っていたため、
-//     その下に置いたグラフはパネルの外へ押し出され、選択しても見えなかった。
+/// @brief 選択行 (無ければフレーム全体) の履歴。表の下へ常に出す。
 void DrawAnalysisProfGraph()
 {
     const bool hasSelection = !s_profilerFilter.selectedKey.empty();
@@ -898,9 +881,8 @@ void DrawAnalysisProfGraph()
                      0.0f, (std::max)(peak * 1.15f, 0.001f), { -FLT_MIN, height });
 }
 
-// Console から «問題» だけを抜き出して報告へ足す。
-// WHY 一緒にするか: リークの相談は «残っているリソース» と «そのとき出ていた警告» が
-//     揃って初めて意味を持つ。2 つのパネルから別々に写させると、片方が落ちる。
+/// @brief Console から «問題» だけを抜き出して報告へ足す。
+/// @note リークの相談は «残っているリソース» と «そのとき出ていた警告» が揃って初めて意味を持つため、まとめて出す。
 std::string FormatConsoleProblems(const ConsoleSink* sink, std::size_t maxLines = 200)
 {
     if (sink == nullptr) return {};
@@ -912,7 +894,7 @@ std::string FormatConsoleProblems(const ConsoleSink* sink, std::size_t maxLines 
     }
     if (problems.empty()) return "\n-- console (warnings & errors) --\n(none)\n";
 
-    // 直近から maxLines 件。古い方を落とすのは、原因より結果が後に出るため。
+    /// @note 直近から maxLines 件。古い方を落とすのは、原因より結果が後に出るため。
     const std::size_t begin = (problems.size() > maxLines) ? problems.size() - maxLines : 0;
 
     std::string out = "\n-- console (warnings & errors) --\n";
@@ -926,7 +908,7 @@ std::string FormatConsoleProblems(const ConsoleSink* sink, std::size_t maxLines 
     return out;
 }
 
-// 貼り付け用の一括コピー。押した瞬間の «全部» をクリップボードへ入れる。
+/// 貼り付け用の一括コピー。押した瞬間の «全部» をクリップボードへ入れる。
 void DrawCopyReportButton(EditorContext& ctx)
 {
     const bool ready = (ctx.resources != nullptr && ctx.memoryLeakDiff != nullptr);
@@ -950,12 +932,12 @@ void DrawCopyReportButton(EditorContext& ctx)
     ImGui::Separator();
 }
 
-// "file:line" をボタンにして、押したらエディターでその行を開く。
+/// "file:line" をボタンにして、押したらエディターでその行を開く。
 void DrawOriginButton(const std::string& origin, int id)
 {
     const std::size_t colon = origin.find_last_of(':');
     const std::size_t slash = origin.find_last_of("/\\");
-    // パス全体は列に収まらない。表示はファイル名だけにして、全体はツールチップへ。
+    /// @note パス全体は列に収まらない。表示はファイル名だけにして、全体はツールチップへ。
     const std::string shortOrigin =
         (slash == std::string::npos) ? origin : origin.substr(slash + 1);
 
@@ -969,7 +951,7 @@ void DrawOriginButton(const std::string& origin, int id)
         ImGui::SetTooltip("%s", origin.c_str());
 }
 
-// 生存リソース一覧の表示状態。集計は台帳を全走査するため、毎フレームは回さない。
+/// 生存リソース一覧の表示状態。集計は台帳を全走査するため、毎フレームは回さない。
 struct LiveResourceState {
     std::vector<MemoryLeakGroup> groups;
     float       elapsed   = 0.0f;
@@ -979,11 +961,8 @@ struct LiveResourceState {
 };
 LiveResourceState s_liveResources;
 
-// 生存中の Renderer リソースを «発生位置ごと» に出す。
-//
-// WHY 個体を並べないか: 以前は先頭 24 件を生のまま並べていた。個体番号とバイト数が
-//     並ぶだけでは «どれが余分か» が読めず、しかも 24 件を超えたぶんは見えなかった。
-//     同じ file:line が何本あるかで並べれば、撒いた数だけ増えているものが先頭へ来る。
+/// @brief 生存中の Renderer リソースを «発生位置ごと» に出す。
+/// @note 同じ file:line の本数で並べる。撒いた数だけ増えているものが先頭に来る。
 void DrawLiveResources(EditorContext& ctx)
 {
     if (ctx.resources == nullptr) return;
@@ -1041,7 +1020,7 @@ void DrawLiveResources(EditorContext& ctx)
     ImGui::EndTable();
 }
 
-// リーク差分の表示状態。比較は台帳を全走査するため、毎フレームは回さない。
+/// リーク差分の表示状態。比較は台帳を全走査するため、毎フレームは回さない。
 struct LeakDiffState {
     MemoryLeakReport live;
     MemoryLeakReport session;
@@ -1104,7 +1083,7 @@ void DrawLeakReportSummary(const MemoryLeakReport& report)
                        static_cast<long long>(report.totalCountDelta),
                        report.liveCount);
 
-    // 合計が負のときは «増えた行» の表だけでは釣り合わない。返した側の頭を添える。
+    /// @note 合計が負のときは «増えた行» の表だけでは釣り合わない。返した側の頭を添える。
     if (report.totalBytesDelta < 0 && !report.shrunkRows.empty()) {
         const MemoryLeakRow& top = report.shrunkRows.front();
         char shrunkBytes[32]{};
@@ -1116,9 +1095,8 @@ void DrawLeakReportSummary(const MemoryLeakReport& report)
     }
 }
 
-// Renderer リソースの «基準からの増分» を発生位置ごとに出す。
-// WHY 個体一覧と別に置くか: Live 一覧は «今あるもの» の羅列で、Play/Stop のように
-//     作り直しが挟まると何が余分なのか読めない。増えた発生位置だけを残して見せる。
+/// @brief Renderer リソースの «基準からの増分» を発生位置ごとに出す。
+/// @note Live 一覧は «今あるもの» の羅列で Play/Stop の作り直しでは余分が読めないため、増えた発生位置だけを残す。
 void DrawLeakDiff(EditorContext& ctx)
 {
     if (ctx.memoryLeakDiff == nullptr || ctx.resources == nullptr)
@@ -1142,7 +1120,7 @@ void DrawLeakDiff(EditorContext& ctx)
     ImGui::SameLine();
     if (ImGui::Button("Clear##leakDiff")) {
         diff.ClearBaseline();
-        // 累計の基準も一緒に捨てる。«ここから数え直す» が押した人の意図。
+        /// @note 累計の基準も一緒に捨てる。«ここから数え直す» が押した人の意図。
         diff.ClearSessionBaseline();
         s_leakDiff.live    = {};
         s_leakDiff.session = {};
@@ -1160,7 +1138,7 @@ void DrawLeakDiff(EditorContext& ctx)
             s_leakDiff.elapsed += ImGui::GetIO().DeltaTime;
             if (s_leakDiff.elapsed >= s_leakDiff.refreshInterval) {
                 s_leakDiff.elapsed = 0.0f;
-                // 比較は台帳の全走査なので、2 本まとめてこの間隔でだけ回す。
+                /// @note 比較は台帳の全走査なので、2 本まとめてこの間隔でだけ回す。
                 s_leakDiff.live = diff.Compare(*ctx.resources);
                 if (diff.HasSessionBaseline())
                     s_leakDiff.session = diff.CompareSession(*ctx.resources);
@@ -1183,7 +1161,7 @@ void DrawLeakDiff(EditorContext& ctx)
         }
     }
 
-    // 累計。«初回だけ増えた» のか «毎回増える» のかは 1 往復では判定できない。
+    /// @note 累計。«初回だけ増えた» のか «毎回増える» のかは 1 往復では判定できない。
     const int cycles = diff.GetCycleCount();
     if (s_leakDiff.session.valid && cycles > 0) {
         ImGui::Spacing();
@@ -1229,9 +1207,9 @@ void AnalysisPanel::DrawProfiler()
     const float       fontH = ImGui::GetFontSize();
     const auto btnW = [&](const char* s) { return ImGui::CalcTextSize(s, nullptr, true).x + st.FramePadding.x * 2.0f; };
 
-    // 判定は毎フレーム行う。取り込みの間隔に乗せると、詰まったフレームを取りこぼす。
-    // 尺度に DeltaTime を使うのは、体感の «カクつき» がフレームの実時間そのものだから
-    // (計測区間の合計は入れ子ぶん重複するので、この判定には使えない)。
+    /// @note 判定は毎フレーム行う。取り込みの間隔に乗せると、詰まったフレームを取りこぼす。
+    ///       尺度に DeltaTime を使うのは、体感の «カクつき» がフレームの実時間そのものだから
+    ///       (計測区間の合計は入れ子ぶん重複するので、この判定には使えない)。
     if (s_profilerDisplay.catchSpikes) {
         const double frameMs = static_cast<double>(ImGui::GetIO().DeltaTime) * 1000.0;
         if (frameMs >= static_cast<double>(s_profilerDisplay.spikeThresholdMs)
@@ -1253,9 +1231,8 @@ void AnalysisPanel::DrawProfiler()
         }
     }
 
-    // ── 1 段目: 記録 / 一時停止 / 表示中フレーム / スパイク / オプション ──
-    // WHY 1 行へ詰めるか: 以前は設定のスライダーやチェックが 5 行を占め、肝心の一覧が
-    //     パネル下半分に追いやられていた。一度決めたら触らない設定は Options へ畳む。
+    /// @name 1 段目: 記録 / 一時停止 / 表示中フレーム / スパイク / オプション
+    /// @note 一度決めたら触らない設定は Options へ畳み、1 行に詰める。
     bool enabled = profiler::Profiler::IsEnabled();
     if (ImGui::Checkbox("Record", &enabled)) profiler::Profiler::SetEnabled(enabled);
     ImGui::SameLine();
@@ -1293,8 +1270,8 @@ void AnalysisPanel::DrawProfiler()
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - rightW);
 
     if (hasSpike) {
-        // 一番詰まったフレームだけを別枠で控える。Reset を押すまで上書きされないので、
-        // 何度も再現しなくても «その 1 フレームの内訳» を落ち着いて読める。
+        /// @note 一番詰まったフレームだけを別枠で控える。Reset を押すまで上書きされないので、
+        ///       何度も再現しなくても «その 1 フレームの内訳» を落ち着いて読める。
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
         if (ImGui::Button(spikeLabel)) {
             ShowAnalysisProfFrame(s_profilerDisplay.spikeRecords, s_profilerDisplay.spikeFrameIndex, false);
@@ -1335,10 +1312,10 @@ void AnalysisPanel::DrawProfiler()
         ImGui::EndPopup();
     }
 
-    // ── 2 段目: カテゴリの内訳 ──
+    /// @name 2 段目: カテゴリの内訳
     DrawAnalysisProfCategoryBar(s_profTree);
 
-    // ── 3 段目: 表示形式と絞り込み ──
+    /// @name 3 段目: 表示形式と絞り込み
     if (ImGui::RadioButton("Hierarchy", !s_profilerFilter.flatView)) s_profilerFilter.flatView = false;
     ImGui::SetItemTooltip("Call tree. Same-named scopes under one parent are merged (see Calls).");
     ImGui::SameLine();
@@ -1379,7 +1356,7 @@ void AnalysisPanel::DrawProfiler()
         return;
     }
 
-    // 表とグラフで高さを分け合う (グラフが画面外へ押し出されないように、先に取り分ける)。
+    /// @note 表とグラフで高さを分け合う (グラフが画面外へ押し出されないように、先に取り分ける)。
     const float graphH = fontH * 6.0f;
     const float tableH = (std::max)(fontH * 8.0f, ImGui::GetContentRegionAvail().y - graphH - st.ItemSpacing.y);
     if (s_profilerFilter.flatView) DrawAnalysisProfFlatTable(tableH);
@@ -1414,7 +1391,7 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
         totalStats.activeCount += stats.activeCount;
     }
 
-    // Sample memory history
+    /// @note Sample memory history
     s_memHistory.elapsed += ImGui::GetIO().DeltaTime;
     if (s_memHistory.elapsed >= s_memHistory.sampleInterval) {
         s_memHistory.elapsed = 0.0f;
@@ -1486,8 +1463,8 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
                 tracker.GetActiveAllocationCount(),
                 tracker.GetMaxTrackedAllocationCount());
     ImGui::Text("Dropped tracking entries: %zu", tracker.GetDroppedAllocationCount());
-    // 0 が «使っていない» なのか «測っていない» なのか、表からは区別できない。
-    // RENDERER 以外はまだ記録側が居ないので、その旨をここで明示する。
+    /// @note 0 が «使っていない» なのか «測っていない» なのか、表からは区別できない。
+    ///       RENDERER 以外はまだ記録側が居ないので、その旨をここで明示する。
     ImGui::TextDisabled("Only RENDERER is instrumented; other tags stay 0 until their "
                         "subsystems record into MemoryTracker.");
 
@@ -1498,7 +1475,7 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
         ImGui::Separator();
         ImGui::TextUnformatted("Memory history");
 
-        // Build tag name list in stable order
+        /// @note Build tag name list in stable order
         std::vector<const char*> tagNames;
         tagNames.reserve(static_cast<std::size_t>(core::MemoryTag::COUNT));
         for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i)
@@ -1530,11 +1507,10 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
 
 namespace {
 
-// RenderGraph の構成テキストをプロジェクト配下へ保存する。
-//
-// WHY 上書きしないか: 使い道は «改修の前後で差分を取る» ことなので、前に撮ったものが
-//     消えると意味が無い。時刻をファイル名に入れて溜める (1 回数 KB)。
-// WHY Artifacts か: レポート類の置き場として既に coverage が使っている。git 管理外。
+/// RenderGraph の構成テキストをプロジェクト配下へ保存する。
+///
+/// @note タイムスタンプ付きで上書きせず溜める: 改修前後の差分比較に使うため。
+///       Artifacts 配下は git 管理外の既存置き場 (coverage も使用)。
 bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
 {
     const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
@@ -1566,7 +1542,7 @@ bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
 
 namespace {
 
-// 大きな整数を 3 桁区切りにする。三角形数は桁を数えないと 10 万か 100 万か読めない。
+/// 大きな整数を 3 桁区切りにする。三角形数は桁を数えないと 10 万か 100 万か読めない。
 const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
 {
     char digits[24];
@@ -1581,15 +1557,14 @@ const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
     return buffer;
 }
 
-// DrawCall / ポリゴン / カリングの統計。
-// WHY 左右 2 列にするか: 以前は 13 行を縦 1 列に並べていたため、カリングの数字を見るたびに
-//     スクロールが要り、GPU パスの表がさらに下へ押し出されていた。
+/// DrawCall / ポリゴン / カリングの統計。
+/// @note 左右 2 列: 縦 1 列だとスクロールが要り、下の GPU パス表が押し出されていた。
 void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& stats)
 {
     struct Item {
         const char*   label;
         std::uint64_t value;
-        bool          percent;   // 描画対象オブジェクト数に対する割合を添えるか
+        bool          percent;   ///< 描画対象オブジェクト数に対する割合を添えるか
     };
     const auto count = [](long long v) { return static_cast<std::uint64_t>((std::max)(0LL, v)); };
     const long long rendered = static_cast<long long>(stats.totalObjects) - stats.frustumCulled -
@@ -1601,7 +1576,7 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
         { "Vertices",            count(stats.vertexCount),                                false },
         { "Skinning vertices",   static_cast<std::uint64_t>(stats.skinningVertexCount),   false },
         { "Skinning dispatches", static_cast<std::uint64_t>(stats.skinningDispatchCount), false },
-        // シャドウマップは同じジオメトリを光源視点で描き直す別コスト。カメラ統計に混ぜない。
+        /// @note シャドウマップは同じジオメトリを光源視点で描き直す別コスト。カメラ統計に混ぜない。
         { "Shadow draw calls",   count(stats.shadowDrawCalls),                            false },
         { "Shadow triangles",    count(stats.shadowTriangleCount),                        false },
     };
@@ -1674,9 +1649,8 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
 
 enum class AnalysisPassCol : int { Name, Gpu, Share, Cpu, Avg, Peak, Count };
 
-// GPU パスの表と、選択したパスの履歴グラフ。
-// WHY 表にするか: 以前は固定幅の棒の横に "%-22s" で名前と数値を並べていたが、比例フォントでは
-//     桁が揃わず、GPU と CPU の列を縦に読み比べられなかった。並べ替えも固定だった。
+/// GPU パスの表と、選択したパスの履歴グラフ。
+/// @note 表形式にした理由: `"%-22s"` の固定整形は比例フォントで桁が揃わず、GPU/CPU 列の比較も並べ替えもできなかった。
 void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
 {
     const ImGuiStyle& st    = ImGui::GetStyle();
@@ -1732,7 +1706,7 @@ void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
         rows.push_back(row);
     }
 
-    // 表は行数ぶんだけの高さにし、多いときはグラフと RenderGraph の見出しが残るところで止める。
+    /// @note 表は行数ぶんだけの高さにし、多いときはグラフと RenderGraph の見出しが残るところで止める。
     const float rowH   = ImGui::GetTextLineHeight() + st.CellPadding.y * 2.0f;
     const float graphH = fontH * 5.0f;
     const float wantH  = static_cast<float>(rows.size() + 1u) * rowH + st.CellPadding.y * 2.0f + 2.0f;
@@ -1795,7 +1769,7 @@ void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
 
             ImGui::TableNextColumn();
             {
-                // GPU 全体の 1/4 を超えるパスは «まず見るべき所» なので色で浮かせる。
+                /// @note GPU 全体の 1/4 を超えるパスは «まず見るべき所» なので色で浮かせる。
                 char text[32];
                 std::snprintf(text, sizeof(text), "%.3f", row.gpuMs);
                 const bool heavy = totalGpuMs > 0.0 && row.gpuMs / totalGpuMs >= 0.25;
@@ -1845,7 +1819,7 @@ void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
                      0.0f, (std::max)(peak * 1.15f, 0.001f), { -FLT_MIN, graphH - ImGui::GetTextLineHeightWithSpacing() });
 }
 
-// InputTextMultiline は可変バッファを要求するので、構成テキストの写しを持つ。
+/// InputTextMultiline は可変バッファを要求するので、構成テキストの写しを持つ。
 std::string s_renderPlanText;
 
 } // namespace
@@ -1855,11 +1829,9 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
     const renderer::RenderDebugOverlay::Snapshot& snap =
         renderer::RenderDebugOverlay::GetLastSnapshot();
 
-    // ── フレーム時間 ───────────────────────────────────────────────────────
-    // WHY: 内訳の数字はこの下の表と GPU パスに揃っているが、「今フレームが予算に
-    //      収まっているか」だけはビューポートの Stats HUD でしか見られなかった。
-    //      ドッキングした状態でパス内訳と並べて追えるよう、HUD と同じ部品をここへ置く。
-    //      履歴は widgets 側で 1 本に共有しているので、HUD とグラフの中身は一致する。
+    /// @name フレーム時間
+    /// @note フレーム予算の可否はビューポート Stats HUD でしか見えなかったため、HUD と同じ部品をここへ置く。
+    ///       履歴は widgets 側で共有しているので HUD とグラフの中身は一致する。
     const int   targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
     const float targetMs  = 1000.0f / static_cast<float>(targetFps);
     const float fontH     = ImGui::GetFontSize();
@@ -1871,7 +1843,8 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x
                          - ImGui::CalcTextSize(budgetText).x);
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + fontH * 0.9f); // 大きい数字の下端へ揃える
+    /// @note 大きい数字の下端へ揃える
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + fontH * 0.9f);
     ImGui::TextDisabled("%s", budgetText);
 
     widgets::FrameTimeGraph(targetMs, fontH * 3.0f);
@@ -1889,9 +1862,8 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
 
     DrawAnalysisRenderStats(snap.renderStats);
 
-    // ── GPU パスタイミング ─────────────────────────────────────────────────
-    // WHY: Profiler タブは CPU スコープを表示するが、GPU 時間は別物。
-    //      どのパスが GPU 負荷のボトルネックか把握するためにここで可視化する。
+    /// @name GPU パスタイミング
+    /// @note Profiler タブは CPU スコープのみ表示するため、GPU 負荷のボトルネックはここで可視化する。
     ImGui::Spacing();
     ImGui::SeparatorText("GPU passes");
     if (snap.gpuPassTimings.empty())
@@ -1899,9 +1871,9 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
     else
         DrawAnalysisGpuPasses(snap);
 
-    // ── RenderGraph の構成 ─────────────────────────────────────────────────
-    // 実行順・カリング・エイリアス割り当てが «いつの間にか変わっていた» を捕まえるための口。
-    // 絵を見ても分からない種類の変化なので、テキストで差分を取るしかない。
+    /// @name RenderGraph の構成
+    /// @note 実行順・カリング・エイリアス割り当てが «いつの間にか変わっていた» を捕まえるための口。
+    ///       絵を見ても分からない種類の変化なので、テキストで差分を取るしかない。
     ImGui::Spacing();
     if (ImGui::CollapsingHeader("Render graph plan")) {
         if (snap.planDescription.empty()) {
@@ -1929,8 +1901,7 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
                     "変化だけを取り出せます。");
             }
 
-            // WHY 読み取り専用の入力欄か: 差分を取りたい箇所だけ範囲選択してコピーしたい。
-            //     TextUnformatted では全文コピーしかできなかった。
+            /// @note 読み取り専用の入力欄: 差分箇所だけ範囲選択してコピーしたいため。TextUnformatted は全文コピーしかできない。
             if (s_renderPlanText != snap.planDescription) s_renderPlanText = snap.planDescription;
             ImGui::InputTextMultiline("##renderPlanText", s_renderPlanText.data(), s_renderPlanText.size() + 1,
                                       { -FLT_MIN, fontH * 16.0f }, ImGuiInputTextFlags_ReadOnly);

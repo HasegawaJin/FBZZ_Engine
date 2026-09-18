@@ -197,7 +197,7 @@ Gerstner 変位の水平ヤコビアン `det(∂(x+d)/∂x)` は、VS で TBN �
 
 ## CPU 側の水面高さ — 逆写像を解く
 
-浮力・カメラの水中判定・水中フォグ・スクリプトの `GetWaterHeight` は、すべて
+浮力・カメラの水中判定・水中フォグ・スクリプトの `water.GetSurfaceHeightWorld` / `GetSurfaceHeightLocal` は、すべて
 `WaterComponent::GetSurfaceHeightAt(worldX, worldZ, time)` を読む。ここが描画とずれると
 「見えている水面より下で浮く」「潜っているのに水中エフェクトが出ない」という形で表に出る。
 
@@ -279,3 +279,181 @@ Blinn-Phong は裾が急に落ちるため、海のきらめきの**広がった
 
 `MaterialConstants` (b2) の 48 バイトは 16B 境界を保つため `_pad0` / `_pad1` として残してある。
 C++ の `WaterEffectParams` も同じ名前で揃えること。
+
+---
+
+## 流れの場が水面に出る 3 つの道
+
+`FlowField` は媒質の速度 [m/s] しか定義していない (`flow-field.md` §2・§3)。場が水面を素通りしていると、
+**渦の上に浮かべた物だけが回って水面は板のまま**という食い違いが出る。
+
+水面に出るものは 3 つしかない。
+
+| 道 | 担当 | 出るもの |
+|---|---|---|
+| 流れ | PS の `flow(p)` | さざ波の向き・きらめきの異方・泡のムラの流れ |
+| 形 | VS の頂点 Y と `WaterComponent::GetSurfaceHeightAt` | シルエット・浮力・水中判定 |
+| 質感 | PS | さざ波の強度・泡 |
+
+**型ごとに «どの道に出るか» を決める。**
+
+| 型 | 流れ | 形 | 質感 |
+|---|---|---|---|
+| Uniform | 向き × 流速 × influence | **出さない** | «風の足跡» — さざ波の強度を最大 1.6 倍 |
+| Sink | 内向き | 穴 `−v²/2g` (排水口) | 目に泡 (渦の 0.6 倍) |
+| Source | 外向き | 盛り上がり `+v²/2g` (湧き上がり) | 縁に泡の輪 |
+| Vortex | 接線 | 穴 `−v²/2g` (軸がほぼ鉛直のものだけ) | 目に泡 |
+| Curl | `SampleFlow` のまま (PS では曲げない) | **出さない** | さざ波の強度↑ + 泡のムラ (chop) |
+| Baked | 場を基準面で標本化した XZ 成分 | `−min(\|v_xz\|²/2g, 上限)` | 流速から向きと強度 |
+
+**Uniform と Curl が形を持たない理由**: 局所の風はうねりを育てない。風で波が育つには吹送距離と
+時間が要り、それは `.mat` の `windResponse` と `SceneEnvironment` の環境風の担当 (`WaterSystem`)。
+乱流には «高さ» が定義できない。
+
+**Curl を PS で曲げない理由**: 向きを曲げるにはピクセルごとにカールノイズを回すことになる。
+乱流が出したいのは «向き» ではなく «ざわつき» なので、質感だけに落とす。
+
+### 選別 — 水面 1 枚につき 8 本
+
+`WaterSystem` が毎フレーム `Scene::FlowFrame().fields` から拾い、`WaterComponent::surfaceFlows`
+(保存しない) へ写す。拾う条件は 3 つ。
+
+| 条件 | 理由 |
+|---|---|
+| `radius > 0` (Baked は `extents` を見るので除く) | 半径の無い要素は «どこまで掘るか» が決まらない。流速としては効いたまま、形と質感にだけ出さない。シーン全体の風は `SceneEnvironment` の担当 |
+| Vortex は軸がほぼ鉛直 (`\|direction.y\| ≥ 0.7`) | 横倒しの渦は水面を «掘る» のではなく撫でる。解析項では表せない |
+| XZ が水面の矩形 + 半径 (Baked は extents) の内側 | 遠くの場の裾だけが水面の端を舐める絵に枠を使わない |
+
+枠が埋まったら **(|形の高さ|, 流速) の辞書式順**でいちばん弱い枠と競らせる。形を持つものが
+常に勝ち、形を持たないものどうしは速い方が残る。
+
+### 形の高さは Bernoulli
+
+```
+height = ±min(speed² / (2·9.8), kMaxWaterSurfaceDisplacement)   [m]  (Sink/Vortex は負, Source は正)
+height *= WaveMeshFade(特徴の大きさ, cellSize)
+```
+
+- `speed` は流速 [m/s] なので `v²/2g` で長さになる。**新しい単位のつまみを増やさずに済む。**
+- 上限 3 m は見た目の歯止めで**物理的な意味は無い**。`speed 10 m/s` が 5 m の穴を掘ると、
+  水面が裏返って «底» が見える。盛り上がりにも同じ値を効かせる。
+- `WaveMeshFade` を掛けるのは既存の帯の原則そのもの。**頂点で刻めない形は消す。**
+  波長にあたる «特徴の大きさ» は中心型が `2·radius`、Baked が `min(extents.x, extents.z)`。
+  Baked で最小辺を採るのは、いちばん細い向きを刻めない格子ではどの向きも «別の起伏» に
+  化けるから。長辺で測ると細長い場が縞になって残る。
+
+### 形は Gaussian (中心型)
+
+```
+h(r) = height · exp(−(r / (radius·0.4))²)      r = 中心からの XZ 距離 [m]
+勾配 = −2·h·(p − center) / (radius·0.4)²
+```
+
+`(1 − r/R)^p` にしない理由: **r = R で折れる。** 頂点法線が 1 セルだけ跳ね、縁に輪が出る。
+Gaussian は C¹ 連続で、`radius·0.4` にすれば `r = radius` で振幅は e^-6 (0.2%) = 実質 0。
+
+**形は `SolveUndisplacedXZ` の外側**で足す。これらは水平変位を持たないので逆写像の対象ではなく、
+入れると Gerstner の位相まで穴のぶんずれる。VS 側も同じ理由で `worldPos += disp` の**後**に足す。
+
+### Baked の形 — 標本は «変位前の基準面»
+
+焼いた場は 3D なので «どの高さで水面と交わるか» を決める必要がある。**水面の基準面 (波を乗せる前の
+平面 Y) で標本化し、XZ 成分だけを Bernoulli へ通す。**
+
+```
+toPoint = (baseX − center.x, planeOffsetY, baseZ − center.z)   planeOffsetY = 水面の基準 Y − 場の中心 Y
+uvw     = (inverseRotation · toPoint) / extents · 0.5 + 0.5    範囲外は 0
+v       = (inverseRotation⁻¹ · SampleVelocityField(uvw)) · strength
+h       = −min(|v_xz|² / (2·9.8), |height|)
+```
+
+- **波を乗せた後の Y で引くと «高さを高さで引く» 循環になる。** 基準面で固定すれば 1 回で決まる。
+- XZ も変位«前»で引く。着水の輪と同じ扱いで、CPU (`SolveUndisplacedXZ` の結果) と
+  VS (`worldPos += disp` の前の位置) が同じ点を指す。
+- GPU は速度場アトラス (`VelocityFieldAtlas`、`t26` = `TEX_VELOCITY_FIELD`) を `Water.hlsl` から
+  引く。**式は `ParticleGpuSim.cs.hlsl` の `SampleVelocityField` と同じ** (Z だけ手で補間して
+  タイル境界のにじみを断つ)。タイル番号は `VelocityFieldAtlas::Acquire` が返すもの。
+- CPU は `fluid::VectorFieldAsset::SampleLocal`。**取り込みの時点で量子化済み**なので、
+  RGBA8 から復元する GPU と同じ値になる (`VectorFieldAsset.hpp`)。
+- 勾配は VS の前進差分 (1 セルぶん)。解析微分が無いのと、法線の数 % のずれは絵に出ないため。
+- **アトラスが満杯 (64 枚) だとタイル番号が −1 で届き、GPU 側だけ形が出ない。** CPU はアセットを
+  直接読むので浮力には出たままになる。64 枚を超える `速度場 PNG` を同時に常駐させたときだけの話で、
+  直すにはアトラスの枚数を増やすしかない。
+
+### 流れと質感
+
+detail スクロールは `.mat` の `flowDirection × currentSpeed` に場の流れを加える。
+場の方向・さざ波強度・泡のマスクは VS で評価して補間し、PS で方向だけ安全に正規化する。
+これは非線形な場の頂点補間による近似であり、小さい渦の中心や泡の輪では PS 評価と差が出る。
+`WaveMeshFade` は形の帯域制限であり、流れや泡すべての補間誤差を保証するものではない。
+
+```
+flow(p) = current + Σ  (型ごとの向き) · speed · influence(r) / 4
+influence(r) = pow(saturate(1 − r/radius), falloffPower)      r ≥ radius で 0
+```
+
+`influence` は `SampleFlow` の `ResolveInfluence` と同じ式。**中心と同じ高さの点なら CPU の流速と
+一致する** (あちらは 3D 距離、こちらは XZ 距離なので、深く潜った体では離れる)。4 で割るのは
+«向きの重み» だから — 流速そのものではないので `.mat` のつまみにはしない。
+
+質感は 3 つ。**目の泡** (Vortex / Sink、`r < 0.3·radius`) — 回転と吸い込みの中心は実際に白く泡立つ。
+**縁の輪** (Source、`0.55〜1.0·radius`) — 湧き上がった水が広がって縁でぶつかる。
+**さざ波の強度** (Uniform / Curl) — `1 + 0.6·chop·influence` / `1 + 0.5·chop·influence`、
+`chop = clamp01(speed / 4)`。Curl はさらに泡のムラのコントラストを上げる。
+
+浮力側は `physics::FluidVolume` の `flowVelocity` が `current + SampleFlow(水面の点)` を返す。
+**浮いた体は `flowCoupling` が 0 のままでも渦に巻かれる** (`FluidVolume` の抵抗が水流を伝えるため)。
+
+### データ
+
+`WaterSurfaceFlow` (旧 `WaterVortex`) は 8 本。`WaterCB` では 5 本の `float4[8]` に分かれる。
+
+| CB | x | y | z | w |
+|---|---|---|---|---|
+| `surfaceFlowA` | center.x | center.z | radius | height (符号つき) |
+| `surfaceFlowB` | speed (Vortex は spin×速さ、Baked は無次元の倍率) | falloffPower | kind (`FlowFieldType`) | chop |
+| `surfaceFlowC` | dir.x | dir.z | bakedTile (−1 = 無効) | bakedMaxMagnitude |
+| `surfaceFlowD` | inverseRotation (x, y, z, w) | | | |
+| `surfaceFlowE` | extents.x | extents.y | extents.z | planeOffsetY |
+
+本数は `waveShapeParams.y` (枠を増やさないため据え置き)。`kind` は `FlowFieldType` の値そのもので、
+`ParticleGpuSim.cs.hlsl` の `FF_*` と同じ番号。
+
+> **`vectorField` ポインタはフレームを跨いで持たない。** `速度場 PNG` のホットリロードは AssetStore の
+> スロットへ新しい実体を差し込むので、古いポインタは黙って別の場を指す。`WaterSystem` が毎フレーム
+> 埋め直し、`physics::FluidVolume` の callback が `WaterComponent` を値で捕まえるのも
+> «そのフレームの物理ステップの間だけ» という前提で成り立っている。
+
+---
+
+## 波紋の帯分け
+
+着水の輪 (`g_rippleTex`、CPU 生成、水面 1 枚に 1 枚) は PS の法線にしか出ていなかった。
+**海に石を落とすと水面の «形» が変わる**のに、浮いている物は何も感じない。
+
+輪も同じ帯の原則に従わせる。
+
+| 帯 | 担当 | 出るもの |
+|----|------|----------|
+| 幅 × 2 ≳ 3.5 セル | VS が `g_rippleTex.b` を頂点 Y へ足す | シルエット・浮力・水中判定 |
+| それより細い輪 | PS の法線 (RG) — **今までどおり全部書く** | 光り方だけ |
+
+- **B チャンネルに高さ [m] を入れる** (`kWaterRippleHeightScale = 0.5 m` で正規化、128 が 0)。
+  フォーマットは RGBA8 のまま — B は 255 で埋めていた未使用枠だった。
+- 焼くときに輪ごとの `fade = WaveMeshFade(2·width, cellSize)` を**高さにだけ掛ける**。
+  法線に掛けないのは、細い輪こそ PS が引き受ける帯だから (捨てた量を次の帯へ渡す)。
+- 振幅は `kWaterRippleHeightAmplitude = 0.15 m` × 輪の強さ。
+
+**輪の正本は `WaterComponent::ripples` (ワールド座標・保存しない)** へ移した。
+`WaterSystem` が寿命を進め、`WaterRenderPass` はそれを読んで焼くだけになる。
+
+- 描画パスに置いたままだと **SceneView と GameView で寿命が 2 回進む。**
+- `GetSurfaceHeightAt` が同じ輪を読むには、UV ではなくワールド座標で持つ必要がある。
+  ついでに非正方形の水面で輪が楕円だったのが円に直る。
+
+断面は `WaterComponent::WaterRippleProfile(distance, ringRadius, width)` の**1 本だけ**。
+テクスチャを焼く側と `GetSurfaceHeightAt` が同じ関数を呼ぶ。片方だけ変えると、見えている輪の
+上で物が別の高さに浮く。
+
+> 高さは変位後ではなく**変位前の XZ** で引く。VS は `g_rippleTex` を «波を乗せる前の» 頂点 UV で
+> 引いており、CPU もそこへ揃えないと急峻な海で輪が Q·A ぶんずれる。

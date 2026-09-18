@@ -3,11 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 ///
-/// WHY 1 本にまとめるか:
-///   AssetBrowser のサムネイルと Inspector / Preview パネルはこれまで別実装だった。
-///   パラメータ別名の解決・テクスチャスロットの割り当て・照明リグ・Terrain / Water の
-///   定数バッファが二重にあり、片方だけ直ると «同じ .mat なのに置き場所で見た目が違う»
-///   が発生していた。焼く処理はここ 1 本に閉じ、呼び出し側は «どこに出すか» だけを持つ。
+/// @note AssetBrowser のサムネイルと Inspector / Preview パネルは別実装で、パラメータ別名の解決・
+///       テクスチャスロット・照明リグ・Terrain / Water の定数バッファが二重にあり «同じ .mat なのに
+///       置き場所で見た目が違う» が起きていた。焼く処理はここ 1 本に閉じ、呼び出し側は «どこに出すか» だけ持つ。
 #pragma once
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -28,10 +26,8 @@ struct Mesh;
 namespace fbzz::editor::matpreview {
 
 /// .mat をどう焼くかの分類。頂点入力と定数バッファの組み合わせが変わる。
-///
-/// WHY 分類が要るか: エフェクト系の材質はメッシュ用の頂点レイアウトも定数バッファも
-/// 共有していない。«とりあえず球へ» 流すと不正な IA レイアウトで崩れるので、
-/// どの絵をどの形で焼くかをここで決め切る。
+/// @note エフェクト系の材質はメッシュ用の頂点レイアウトも定数バッファも共有しない。«とりあえず球へ»
+///       流すと不正な IA レイアウトで崩れるため、どの絵をどの形で焼くかをここで決め切る。
 enum class Flavor {
     Surface,     ///< 標準の MeshRenderer 材質
     Skinned,     ///< SkinnedMeshRenderer 材質 (ボーン行列を単位で埋める)
@@ -43,6 +39,16 @@ enum class Flavor {
     Decal,       ///< 受け面へ投影 (受け面の深度 + b10)
     PostProcess, ///< 全画面 (シーンを焼いてから b5 で通す)
     Unsupported, ///< シェーダーが引けない等、最後の受け皿
+    Fiber,       ///< 表面繊維 (土台の単色メッシュ + Shell / Fin / Blade を b5 / b10 付きで重ねる)
+};
+
+/// @brief Fiber を焼く描画方式。FiberComponent::m_mode と同じ 4 種。
+/// @note Fiber の .mat は方式を持たない (方式はコンポーネント側)。プレビューで切り替えて見比べる。
+enum class FiberMode {
+    Shell,
+    Fin,
+    Hybrid,
+    Blade,
 };
 
 /// プレビューに使う形状。Skinned / Water は同じ形状の専用頂点レイアウト版を使う。
@@ -105,7 +111,6 @@ struct GpuData {
     std::vector<std::uint8_t>                                  paramData;
 };
 
-// ── 分類と表示用の値 ──────────────────────────────────────────────────────
 
 [[nodiscard]] Flavor      DetectFlavor(const asset::MaterialAsset& material);
 /// 3D へ焼けない .mat の種別バッジ ("PARTICLE" / "DECAL" …)。
@@ -120,13 +125,17 @@ struct GpuData {
 [[nodiscard]] std::string   TextureLoadPath(const std::string& path, std::string_view projectRoot);
 
 [[nodiscard]] const char* ShapeLabel(Shape shape);
+[[nodiscard]] const char* FiberModeLabel(FiberMode mode);
+/// @return シェーダー名 (FiberFin / FiberBlade) から推した方式。それ以外は Shell。
+[[nodiscard]] FiberMode   DefaultFiberMode(const asset::MaterialAsset& material);
+/// @return サムネイルに使う形状。草 (grassShading >= 0.5) の Fiber は平面、それ以外は球。
+[[nodiscard]] Shape       ThumbnailShape(const asset::MaterialAsset& material, Flavor flavor);
 [[nodiscard]] const char* ChannelLabel(Channel channel);
 [[nodiscard]] const char* LightPresetLabel(LightPreset preset);
 /// Terrain / Water / UI はテクスチャスロットの意味が標準と違うため、
 /// Shaded と Wireframe しか出せない。
 [[nodiscard]] bool ChannelSupported(Flavor flavor, Channel channel);
 
-// ── GPU データ ────────────────────────────────────────────────────────────
 
 /// .mat の shaderPath / ShaderDescriptor に合わせて Material CB とテクスチャを埋める。
 [[nodiscard]] bool BuildGpuData(GpuData& gpu,
@@ -149,7 +158,6 @@ void ResetGpuData(GpuData& gpu, renderer::ResourceManager* resources);
 /// 判定に使う。
 [[nodiscard]] bool UsesOwnGeometry(Flavor flavor);
 
-// ── 描画 ─────────────────────────────────────────────────────────────────
 
 struct RenderDesc {
     renderer::ResourceHandle<renderer::RenderTargetTag> target;
@@ -170,7 +178,17 @@ struct RenderDesc {
     bool          clear          = true;
     math::Vector3 overrideCenter{};
     float         overrideRadius = -1.0f; ///< < 0 でメッシュ境界を使う
-    float         time           = 0.0f;  ///< Water の波アニメ [秒]
+    float         time           = 0.0f;  ///< Water の波・Fiber の突風 [秒]
+
+    /// @name Fiber のときだけ使う
+    /// @note 既定値は FiberComponent の既定と同じ。風は +X 方向のワールド [m/s]。
+    /// @{
+    FiberMode fiberMode        = FiberMode::Shell;
+    int       fiberShellCount  = 24;
+    float     fiberWind        = 0.0f;
+    float     fiberBladeDensity = 400.0f;
+    float     fiberBladeWidth  = 0.015f;
+    /// @}
 };
 
 [[nodiscard]] bool Render(renderer::IRenderer& renderer,

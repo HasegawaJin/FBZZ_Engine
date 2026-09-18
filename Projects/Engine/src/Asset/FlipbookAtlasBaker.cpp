@@ -147,7 +147,7 @@ FlipbookAtlasBakeResult BakeFlipbookAtlas(const FlipbookAtlasBakeSettings& setti
                               { atlasImage->pixels, atlasImage->slicePitch }, saveError,
                               atlasImage->rowPitch))
         return Fail(saveError);
-    // WHY mip なし: Atlas の Mip 生成は隣接フレームを混ぜて境界を汚す。
+    /// @note Mip なし。Atlas の Mip 生成は隣接フレームを混ぜて境界を汚す。
     const TextureImportSettings colorDefaults = DefaultSettingsForType(TextureType::Color);
     if (settings.generateTextureMeta
         && !detail::SaveTextureMeta(outputPath, TextureType::Color, colorDefaults.compression,

@@ -3,11 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 独立した ISystem にしないか:
-///   制約は World の BeginSceneSync / EndSceneSync の «窓» の中で申告しないと、
-///   その場で «申告が途切れた» と見なされて破棄される。窓を開けて Step まで走らせるのは
-///   PhysicsSystem::Update の中だけなので、別 System として並べると順番が保証できない。
-///   ColliderSync と同じく、手順だけを独立モジュールへ切り出して PhysicsSystem から呼ぶ。
+/// @note 独立 ISystem にしない理由: 制約は World の BeginSceneSync/EndSceneSync の窓の中で
+///       申告しないと «申告が途切れた» とみなされ破棄される。窓を開けて Step まで走らせるのは
+///       PhysicsSystem::Update の中だけなので、別 System にすると順序を保証できない。
 #pragma once
 
 namespace fbzz::physics { class World; class RigidBody; }
@@ -19,10 +17,9 @@ class GameObject;
 struct JointComponent;
 
 /// ペア関節の相手になる剛体。connectedBody が空なら祖先方向へたどる。
-/// 相手が居ない / 剛体が無い / 無効なら nullptr。Chain では常に nullptr。
-///
-/// WHY 公開するか: 探し方は «張るとき» と «スクリプトが今の間隔を問うとき» で
-///     一致していないと、Inspector に出る距離と物理が効いている距離が食い違う。
+/// @return 相手が居ない / 剛体が無い / 無効なら nullptr。Chain では常に nullptr。
+/// @note 探し方を「張るとき」と「スクリプトが間隔を問うとき」で分けると、Inspector の距離と
+///       物理が効いている距離が食い違うため、ここへ公開して両方から呼ぶ。
 [[nodiscard]] physics::RigidBody* ResolveJointPartner(Scene& scene,
                                                       GameObject& go,
                                                       const JointComponent& joint);

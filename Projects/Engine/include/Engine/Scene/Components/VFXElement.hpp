@@ -3,18 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 生存窓を別コンポーネントにするか:
-///   時間の正本は 1 オブジェクトにつき 1 箇所、という規約でエフェクトを組む。
-///   ParticleEmitter (startDelay/duration/loop) ・TrailComponent (duration) ・
-///   DecalComponent (lifetime/fadeTime) は自前で時間を持つので、VFXElement を付けない。
-///   時間を持たない LightComponent / ForceField / MeshRenderer /
-///   VFXScreenEffect 系にだけ付けて、窓と重みを与える。
-///   両方に duration があると「どちらが効くのか」が読めなくなる。
-///
-/// WHY エンベロープを VFX 専用にしないか:
-///   「時間に沿って明るさを落とす」「膨らませる」は VFX の外でも要る。
-///   VFXElement が無いオブジェクトでも、DecalComponent の age やルートの時刻から
-///   進捗を解決するため (VFXSystem::ResolveProgress)、ふつうのシーンでも使える。
+/// @note 時間の正本は 1 オブジェクト 1 箇所という規約。自前で時間を持つ ParticleEmitter/Trail/
+///       Decal には付けず、時間を持たない Light/FlowField/MeshRenderer/ScreenEffect 系に付ける。
+/// @note エンベロープは VFX 専用にしない: DecalComponent の age 等からも進捗を解決できるため
+///       (VFXSystem::ResolveProgress)、VFXElement が無いオブジェクトでも使える。
 #pragma once
 #include <Engine/Scene/ParticleCurve.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -24,18 +16,9 @@
 namespace fbzz::scene {
 
 /// エンベロープが書き換える前の値を 1 組だけ覚えておく箱。
-///
-/// WHY 型にするか:
-///   捕獲 (VFXSystem::ApplyEnvelopes) と復元 (RestoreEnvelopes) は別の関数にあり、
-///   エンベロープごとに «base* を足す» と «戻す» を人手で 2 か所へ書いていた。
-///   片方だけ足すと 2 通りに壊れる ——
-///     捕獲を忘れる → 書き換え後の値を基準に掴み、ループのたびに暗く (小さく) なる
-///     復元を忘れる → 効果が終わっても値が戻らない
-///   どちらもエラーにならず、数ループ回して初めて «だんだんおかしい» と気付く。
-///   1 つの型を通せば、捕獲と復元が必ず同じフィールドを指す。
-///
-/// @note シーンには保存しない。実行中の «元の値» でしかなく、保存すると
-///       «書き換え途中の値» がオーサリング値として焼き付く。
+/// @note 捕獲/復元が別関数で人手管理だと書き忘れ事故が起きる (捕獲忘れ→値がループ毎に縮む、
+///       復元忘れ→効果終了後も戻らない)。型に通して防ぎ、シーンへは保存しない (実行中の
+///       元の値でしかなく、保存すると書き換え途中の値が焼き付く)。
 template<class T>
 struct VFXCaptured {
     T    value{};
@@ -86,7 +69,8 @@ struct VFXElement {
     /// 旧 .vfx の OnCollision / OnDeath / OnAnimationEvent / OnTrigger の置き換え。
     std::string trigger;
 
-    // --- ランタイム ---
+    /// @name ランタイム
+    /// @{
 
     /// 窓の進捗 [0,1]。窓の外では 0 (開始前) または 1 (終了後)。
     float progress = 0.0f;
@@ -95,8 +79,7 @@ struct VFXElement {
     /// trigger 待ちが解けた時刻 [秒]。負なら未発火。
     float triggeredAt = -1.0f;
     /// 前フレームの窓内時刻。loop の折り返しを検出して頭出しするために持つ。
-    /// WHY 進捗の比較で足りないか: ループする窓は active のままなので、
-    ///     SetActive の切り替わりを頼りにすると一度も頭出しされない。
+    /// @note ループする窓は active のままなので、SetActive の切り替わりに頼ると一度も頭出しされない。
     float lastLocalTime = -1.0f;
 
     const char* GetTypeName() const { return "VFX Element"; }
@@ -110,14 +93,12 @@ struct VFXElement {
         r.Field("weightCurve", weightCurve);
         r.Field("trigger", trigger);
     }
+    /// @}
 };
 
 /// 時間に沿った閃光。LightComponent の intensity / color を書き換える。
-///
-/// 基準値は Inspector に置かれた LightComponent の値そのもの (= ピーク) で、
-/// 初回適用時に捕まえてから毎フレーム倍率を掛け直す。
-/// WHY 基準値をここに複製しないか: LightComponent.intensity と二重管理になり、
-///     「Inspector で明るくしたのに変わらない」という形で必ず食い違う。
+/// @note 基準値は Inspector の LightComponent の値 (=ピーク) を初回適用時に捕まえ、毎フレーム倍率を
+///       掛け直す。ここに複製すると LightComponent.intensity と二重管理になり食い違う。
 struct VFXLightEnvelope {
     bool enabled = true;
 
@@ -133,7 +114,8 @@ struct VFXLightEnvelope {
     bool useColorGradient = false;
     ParticleGradient colorGradient;
 
-    // --- ランタイム ---
+    /// @name ランタイム
+    /// @{
     /// 書き換える前の LightComponent の値。
     struct Base {
         float         intensity = 0.0f;
@@ -151,6 +133,7 @@ struct VFXLightEnvelope {
         r.Field("useColorGradient", useColorGradient);
         r.Field("colorGradient", colorGradient);
     }
+    /// @}
 };
 
 /// 時間に沿った膨張・収縮。localScale へ倍率を掛ける。
@@ -159,14 +142,15 @@ struct VFXTransformEnvelope {
     bool enabled = true;
 
     /// localScale への倍率。既定は 0.1 倍から 4 倍へ、頭で一気に開いて減速する形。
-    /// WHY 既定を線形にしないか: 線形だと «風船が膨らむ» 動きになり、衝撃波に見えない。
+    /// @note 線形だと «風船が膨らむ» 動きになり衝撃波に見えないため、既定は減速カーブ。
     bool useScaleCurve = true;
     ParticleCurve scaleCurve{
         {{ {0.0f, 0.1f}, {0.35f, 2.8f}, {1.0f, 4.0f}, {1.0f, 4.0f},
            {1.0f, 4.0f}, {1.0f, 4.0f}, {1.0f, 4.0f}, {1.0f, 4.0f} }},
         3, ParticleCurveInterpolation::Smooth };
 
-    // --- ランタイム ---
+    /// @name ランタイム
+    /// @{
     /// 書き換える前の localScale。
     VFXCaptured<math::Vector3> base;
 
@@ -178,20 +162,18 @@ struct VFXTransformEnvelope {
         r.Field("useScaleCurve", useScaleCurve);
         r.Field("scaleCurve", scaleCurve);
     }
+    /// @}
 };
 
-/// Mesh シェルのマテリアル未割当時に使う既定 .mat。
-/// 加算・両面の Unlit なので、置いただけで衝撃波シェルとして成立する。
-/// WHY 共通の Fallback.mat に落とさないか: 不透明マゼンタは «壊れている» 表示で、
-///     エフェクトとしては使い物にならない。
+/// Mesh シェルのマテリアル未割当時に使う既定 .mat。加算・両面の Unlit なので、置いただけで
+/// 衝撃波シェルとして成立する。
+/// @note 共通の Fallback.mat (不透明マゼンタ、«壊れている» 表示) はエフェクトとして使えないため分ける。
 inline constexpr const char* kVFXMeshFallbackMaterial =
     "Assets/Materials/Fallback/VFXMeshFallback.mat";
 
 /// 時間に沿ったマテリアル値の書き換え。MaterialComponent::paramOverrides へ書く。
-///
-/// WHY 既定の書き先が "albedo" か: どのマテリアルにも必ずある共通パラメーターなので、
-///     .mat を差し替えても色とフェードが黙って効かなくなることがない。
-///     加算ブレンドでは out = src.rgb * src.a + dst.rgb のため、RGB を落とすと消える。
+/// @note 既定の書き先が "albedo" な理由: どの .mat にも必ずある共通パラメーターで、差し替えても
+///       黙って効かなくならない。加算ブレンド (out = src.rgb*src.a + dst.rgb) では RGB を落とすと消える。
 struct VFXMaterialEnvelope {
     bool enabled = true;
 
@@ -204,16 +186,14 @@ struct VFXMaterialEnvelope {
     std::string   paramName;
     ParticleCurve paramCurve;
 
-    // --- ランタイム ---
+    /// @name ランタイム
+    /// @{
     /// 自分が paramOverrides へ書き込んだキー。復元でこれだけを取り除く。
-    ///
-    /// WHY 要るか: 他のエンベロープは «元の値» を覚えて書き戻していたが、ここだけ
-    ///   書きっぱなしだった (捕獲と復元が別関数にあり、片方を書き忘れても気付けない
-    ///   —— まさに VFXCaptured を作った理由の実例)。プールから使い回すエフェクトでは、
-    ///   前回の最後の値 (たいていフェード後の透明) を持ったまま再出現し、
-    ///   次の Apply が走るまでの 1 フレーム消えて見える。
-    /// WHY 値ではなくキーを覚えるか: paramOverrides は «上書き» なので、元の状態は
-    ///   «そのキーが無い» こと。空文字を書き戻すのではなく、消すのが正しい復元になる。
+    /// @note 他のエンベロープと違い元の値を覚えず書きっぱなしだと、プール再利用時に前回最後の
+    ///       値 (フェード後の透明等) が次の Apply まで 1 フレーム見えるバグになる (VFXCaptured
+    ///       を作った理由の実例)。
+    /// @note paramOverrides は «上書き» なので元の状態は «キーが無い» こと。値でなくキーを覚え、
+    ///       復元は消すのが正しい (空文字の書き戻しは誤り)。
     std::string writtenColorParam;
     std::string writtenParam;
 
@@ -228,13 +208,13 @@ struct VFXMaterialEnvelope {
         r.Field("paramName", paramName);
         r.Field("paramCurve", paramCurve);
     }
+    /// @}
 };
 
-/// 時間に沿ったデカールの濃さ。DecalComponent::opacity を書く。
-///
-/// 進捗は DecalComponent 自身の age / lifetime から解決される (VFXElement は付けない)。
-/// WHY fadeTime の線形フェードで足りないか: 焼け跡は «しばらく濃く残ってから急に消える»
-///     減り方をする。線形だと置いた直後から薄まり «跡が残った» にならない。
+/// 時間に沿ったデカールの濃さ。DecalComponent::opacity を書く。進捗は DecalComponent 自身の
+/// age / lifetime から解決される (VFXElement は付けない)。
+/// @note 焼け跡は «しばらく濃く残ってから急に消える» 減り方をする。線形フェードだと置いた直後
+///       から薄まり «跡が残った» 見た目にならない。
 struct VFXDecalEnvelope {
     bool enabled = true;
 
@@ -248,7 +228,8 @@ struct VFXDecalEnvelope {
     bool          driveEmissive = false;
     ParticleCurve emissiveCurve;
 
-    // --- ランタイム ---
+    /// @name ランタイム
+    /// @{
     /// 書き換える前の emissiveScale。
     VFXCaptured<float> base;
 
@@ -261,6 +242,7 @@ struct VFXDecalEnvelope {
         r.Field("driveEmissive", driveEmissive);
         r.Field("emissiveCurve", emissiveCurve);
     }
+    /// @}
 };
 
 } // namespace fbzz::scene

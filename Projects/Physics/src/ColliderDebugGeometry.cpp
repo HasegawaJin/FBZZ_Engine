@@ -26,12 +26,12 @@ namespace
     constexpr int CIRCLE_SEGMENTS = 24;
     constexpr size_t MAX_MESH_DEBUG_LINES = 8192;
     constexpr size_t MAX_CONVEX_HULL_DEBUG_LINES = 2048;
-    // 遠景で BVH ノードを表す箱の本数上限 (12 本 / 箱 = 約 340 ノード)。
+    /// 遠景で BVH ノードを表す箱の本数上限 (12 本 / 箱 = 約 340 ノード)。
     constexpr size_t MAX_COARSE_DEBUG_LINES = 4096;
-    // ノードを箱で打ち切る角度サイズ。extent の長さがカメラ距離のこの比を下回ったら降りない。
+    /// ノードを箱で打ち切る角度サイズ。extent の長さがカメラ距離のこの比を下回ったら降りない。
     constexpr float COARSE_DETAIL_RATIO = 0.12f;
 
-    // 点から AABB までの最短距離の 2 乗。点が内部にあるときは 0。
+    /// 点から AABB までの最短距離の 2 乗。点が内部にあるときは 0。
     float DistanceSqToAABB(const math::Vector3& p, const AABB& box)
     {
         const float dx = std::max({ box.min.x - p.x, 0.0f, p.x - box.max.x });
@@ -150,7 +150,7 @@ namespace
     void BuildBasis(const math::Vector3& axis, math::Vector3& outX, math::Vector3& outY, math::Vector3& outZ)
     {
         outY = axis.Normalized();
-        // 軸が UP に近いと外積が小さくなるため、参照軸を切り替えて安定した直交基底を作る。
+        /// @note 軸が UP に近いと外積が小さくなるため、参照軸を切り替えて安定した直交基底を作る。
         const math::Vector3 ref = std::abs(outY.y) > 0.95f ? math::Vector3::RIGHT : math::Vector3::UP;
         outX = math::Vector3::Cross(ref, outY).Normalized();
         outZ = math::Vector3::Cross(outY, outX).Normalized();
@@ -331,12 +331,9 @@ ColliderDebugGeometry BuildHeightFieldGeometry(const HeightFieldCollider& hf)
     return out;
 }
 
-    // BVH のノードを、カメラから見た角度サイズで «降りる / 箱で打ち切る» に振り分ける。
-    // 手前は三角形の辺そのもの、奥はノード AABB になるので、遠景でも起伏が塊として残る。
-    //
-    // WHY 全域の等間隔サンプリングをやめたか: 13 万三角形の地形では 8192 本の予算が
-    //     地図全体へ均等にばら撒かれ、どこも «繋がらない三角形が数個» にしかならなかった。
-    //     予算をカメラ手前へ寄せれば、実際に当たり判定を確かめたい足元だけが実寸で読める。
+    /// @brief BVH ノードをカメラから見た角度サイズで «降りる / 箱で打ち切る» に振り分ける。
+    /// @note 全域の等間隔サンプリングでは予算が地図全体へばら撒かれ足元が実寸で読めなかった。
+    ///       予算をカメラ手前へ寄せ、手前は三角形の辺、奥はノード AABB として残す。
     ColliderDebugGeometry BuildBVHLodGeometry(const BVHTree& bvh, const ColliderDebugView& view)
     {
         ColliderDebugGeometry out;
@@ -366,11 +363,10 @@ ColliderDebugGeometry BuildHeightFieldGeometry(const HeightFieldCollider& hf)
             const math::Vector3 extents = node.aabb.Extents();
             const float         distSq  = DistanceSqToAABB(view.cameraPosition, node.aabb);
 
-            // WHY 予算も条件に混ぜるか: 尽きた後も «手前» 扱いを続けると、足元のノードが
-            //     箱にすらならず何も描かれないまま捨てられる。
+            /// @note 予算切れ後も «手前» 扱いを続けると、足元のノードが箱にすらならず捨てられる。
             const bool detailed = distSq <= detailSq && CanAddLine(detail, MAX_MESH_DEBUG_LINES);
 
-            // 画面上で 1 点に潰れる大きさまで縮んだノードは、これ以上割っても情報が増えない。
+            /// @note 画面上で 1 点に潰れる大きさまで縮んだノードは、これ以上割っても情報が増えない。
             if (!detailed && extents.LengthSq() <= distSq * coarseRatioSq)
             {
                 if (CanAddLine(coarse, MAX_COARSE_DEBUG_LINES))
@@ -395,7 +391,7 @@ ColliderDebugGeometry BuildHeightFieldGeometry(const HeightFieldCollider& hf)
                 continue;
             }
 
-            // 遠い子を先に積む = 近い子が先に pop され、詳細線の予算がカメラ寄りから埋まる。
+            /// @note 遠い子を先に積む = 近い子が先に pop され、詳細線の予算がカメラ寄りから埋まる。
             int        first     = node.left;
             int        second    = node.right;
             const auto nodeCount = static_cast<int>(bvh.nodes.size());
@@ -440,7 +436,7 @@ ColliderDebugGeometry BuildHeightFieldGeometry(const HeightFieldCollider& hf)
         return BuildAABBGeometry(collider);
     }
 
-    // 視点つきの LOD へ回せる形状か。回せないものは視点を無視して従来どおり描く。
+    /// 視点つきの LOD へ回せる形状か。回せないものは視点を無視して従来どおり描く。
     const BVHTree* GetLodBVH(const Collider& collider)
     {
         switch (collider.GetType())

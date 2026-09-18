@@ -8,8 +8,8 @@
 
 namespace fbzz::editor {
 
-// CPU プロファイルとメモリ統計を Editor UI から確認するパネル。
-// WHY: Debug メニュー配下で性能とメモリを同じ文脈に置き、処理の重さと確保状況を同時に追えるようにする。
+/// @brief CPU プロファイルとメモリ統計を Editor UI から確認するパネル。
+/// @note Debug メニュー配下に性能とメモリを同居させ、重さと確保状況を同時に追えるようにする。
 class AnalysisPanel final : public IPanel {
 public:
     const char* GetWindowName()        const override { return "Analysis"; }
@@ -22,7 +22,7 @@ protected:
 private:
     void DrawProfiler();
     void DrawMemory(EditorContext& ctx);
-    // フレーム時間・DrawCall / ポリゴン数・GPU パスタイミングを表示するレンダリング統計タブ。
+    /// フレーム時間・DrawCall / ポリゴン数・GPU パスタイミングを表示するレンダリング統計タブ。
     void DrawRendering(EditorContext& ctx);
 };
 

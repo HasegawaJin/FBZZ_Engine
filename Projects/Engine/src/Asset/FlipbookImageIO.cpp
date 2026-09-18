@@ -2,7 +2,8 @@
 /// @brief   生成系アセットが共有する PNG と .meta の書き出しの実装。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-#pragma comment(lib, "ole32.lib") // DirectXTex の WIC PNG エンコーダーに必要
+/// @note DirectXTex の WIC PNG エンコーダーに必要。
+#pragma comment(lib, "ole32.lib")
 
 #include "FlipbookImageIO.hpp"
 

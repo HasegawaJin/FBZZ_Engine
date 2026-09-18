@@ -79,12 +79,9 @@ void SetWorldScale(GameObject& go, const math::Vector3& value)
         go.transform.scale = value;
 }
 
-// この GameObject 自身がソケット名に一致するか。
-//
-// WHY 名前と BoneComponent の両方を見るか:
-//   ソケットは「FBX から生成された骨ノード」のことも「人が手で置いた空の GameObject」の
-//   こともある。前者は GameObject 名をリネームされても boneName が原本を保つため、
-//   両方を見ないとどちらか一方の運用でだけ引けなくなる。
+/// この GameObject 自身がソケット名に一致するか。
+/// @note 名前と BoneComponent の両方を見る。ソケットは FBX 由来の骨ノードのことも手動配置の
+///       空 GameObject のこともあり、片方だけでは一方の運用でしか引けない。
 [[nodiscard]] bool MatchesSocket(GameObject& node, const std::string& socketName)
 {
     if (socketName.empty())
@@ -99,7 +96,7 @@ GameObject* FindSocket(GameObject* root, const std::string& socketName)
 {
     if (!root)
         return nullptr;
-    // 空名は「target 自身に付ける」の意味。従来動作なのでここだけ空を許す。
+    /// @note 空名は「target 自身に付ける」の意味。従来動作なのでここだけ空を許す。
     if (socketName.empty() || MatchesSocket(*root, socketName))
         return root;
     for (int index = 0; index < root->GetChildCount(); ++index) {
@@ -109,26 +106,14 @@ GameObject* FindSocket(GameObject* root, const std::string& socketName)
     return nullptr;
 }
 
-// target 未設定のとき、自分の祖先を根へ向かってたどりながらソケットを探す。
-//
-// WHY target を必須にしないか:
-//   target は EntityRef、つまり「シーン内の特定 GameObject」への参照。Prefab はシーン上の
-//   オブジェクトを参照できないので、target が必須である限り「武器 Prefab 自身が追従の
-//   宣言を持つ」ことが原理的に成立しない。さらに JsonReflector は参照型を読み書きしない
-//   (JsonReflector.hpp 冒頭) ため、Inspector 以外から target を書く手段も無い。
-//   結果として「スクリプトが Play 開始時に代入する」以外の経路が塞がれ、編集中だけ追従が
-//   成立しない = エディタと再生で配置が食い違う、という状態になっていた。
-//   target を省略できるようにすると、宣言をシーンにも Prefab にも保存でき、編集時と実行時が
-//   同じ 1 本の計算を通る。
-//
-// WHY シーン全体の名前検索にしないか:
-//   SOCKET_Muzzle は左右の銃にそれぞれ 1 本ずつ存在する。名前がシーン内で一意でない以上、
-//   全体検索では「どちらか片方」が返り、しかもどちらが返るかは GameObject の生成順に依存する。
-//   祖先方向へ上がりながら探せば必ず「自分から一番近いソケット」が最初に見つかる。
-//
-// WHY 自分が上がってきた枝を除外するか:
-//   自分の部分木にも同名のソケットがあり得る (銃側とキャラ側で同じソケット名を使う運用)。
-//   自分側を先に拾うと自分自身へ追従して、その場から動かなくなる。
+/// target 未設定時、自分の祖先を根へ辿りながらソケットを探す。
+///
+/// @note target 省略可: Prefab はシーン内オブジェクトを参照できず、JsonReflector も
+///       参照型を書き戻さないため、target 必須では Prefab 自身が追従を宣言できない。
+/// @note 祖先方向へ辿る (シーン全体検索でない): 同名ソケットが複数箇所にあり得るため、
+///       祖先方向なら常に自分に最も近いソケットが決定的に見つかる。
+/// @note 自分が辿ってきた部分木は探索から除外する: 自分側にも同名ソケットがあり得て、
+///       先に拾うと自己参照で動かなくなるため。
 GameObject* FindSocketInAncestors(GameObject& self, const std::string& socketName)
 {
     if (socketName.empty())
@@ -231,23 +216,22 @@ void ConstraintSystem::Update(SystemContext& ctx)
             continue;
         GameObject* targetRoot = attachment->target.Resolve(ctx.scene);
 
-        // 追従先が書き換わった瞬間だけを「切り替え」として拾う。呼び出し側は
-        // socketName へ行き先を代入するだけでよく、開始通知を送る必要がない。
-        // WHY イベントにしないか: 通知を取りこぼすと補間が始まらないまま行き先だけ
-        //      変わり、銃が瞬間移動する。差分検出なら取りこぼしようがない。
+        /// @note 追従先が書き換わった瞬間だけを「切り替え」として拾う (イベント通知ではなく
+        ///       差分検出)。呼び出し側は socketName へ代入するだけでよく、通知の取りこぼしで
+        ///       補間が始まらないまま行き先だけ変わる (瞬間移動する) 事態も起きない。
         if (attachment->socketName != attachment->appliedSocketName) {
             attachment->blendFromSocketName = attachment->appliedSocketName;
             attachment->appliedSocketName   = attachment->socketName;
-            // 初回 (補間元が無い) と編集中はスナップする。編集中に補間を進めると、
-            // Play していないのに Inspector の値が毎フレーム変わって見える。
+            /// @note 初回 (補間元が無い) と編集中はスナップする。編集中に補間を進めると、
+            ///       Play していないのに Inspector の値が毎フレーム変わって見える。
             attachment->blendRemaining =
                 (attachment->blendFromSocketName.empty() || !ctx.simulating)
                     ? 0.0f
                     : std::max(attachment->blendDuration, 0.0f);
         }
 
-        // target が指定されていればその部分木から、省略されていれば自分の祖先から探す。
-        // どちらの経路でも「見つかったソケットのワールド姿勢に合わせる」以降は同一。
+        /// @note target が指定されていればその部分木から、省略されていれば自分の祖先から探す。
+        ///       どちらの経路でも「見つかったソケットのワールド姿勢に合わせる」以降は同一。
         const auto resolveSocket = [&](const std::string& name) -> GameObject* {
             return targetRoot ? FindSocket(targetRoot, name)
                               : FindSocketInAncestors(*go, name);
@@ -255,11 +239,10 @@ void ConstraintSystem::Update(SystemContext& ctx)
 
         GameObject* socket = resolveSocket(attachment->socketName);
         if (!socket) {
-            // WHY 報告するか: ここで黙って抜けると症状は「追従先を切り替えたのに動かない」
-            //     だけになり、名前の綴り違い・ソケットが階層の別枝にある・Target の指定漏れ
-            //     のどれなのかが画面から区別できない。どの経路で探したかまで残す。
-            // WHY 1 度だけか: 解決は毎フレーム試みるので、そのまま出すと Console が
-            //     同じ 1 行で埋まり、他のログを押し出す。
+            /// @note 見つからない場合は探索経路 (Target subtree / ancestors) まで含めて警告する。
+            ///       黙って抜けると綴り違い・別枝配置・Target 指定漏れが区別できない。
+            ///       解決は毎フレーム試みるため、name+socketName の組で 1 度だけ出す
+            ///       (毎フレーム出すと Console が埋まる)。
             if (!attachment->socketName.empty()) {
                 static std::unordered_set<std::string> reported;
                 if (reported.insert(go->name + '\n' + attachment->socketName).second) {
@@ -273,7 +256,7 @@ void ConstraintSystem::Update(SystemContext& ctx)
         const math::Quaternion offsetRotation =
             math::Quaternion::FromEuler(attachment->rotationOffsetDegrees * DEG_TO_RAD);
 
-        // ソケット 1 つぶんの「合わせたいワールド姿勢」。オフセットまで畳んだ形で返す。
+        /// @note ソケット 1 つぶんの「合わせたいワールド姿勢」。オフセットまで畳んだ形で返す。
         const auto poseOf = [&](const GameObject& s,
                                 math::Vector3& position,
                                 math::Quaternion& rotation,
@@ -289,8 +272,8 @@ void ConstraintSystem::Update(SystemContext& ctx)
         math::Vector3    desiredScale;
         poseOf(*socket, desiredPosition, desiredRotation, desiredScale);
 
-        // 切り替え中は旧ソケットと新ソケットの「その瞬間の」姿勢を混ぜる。
-        // 両方ともアニメーションで動き続けるので、キャラが歩いていても置き去りにならない。
+        /// @note 切り替え中は旧ソケットと新ソケットの「その瞬間の」姿勢を混ぜる。
+        ///       両方ともアニメーションで動き続けるので、キャラが歩いていても置き去りにならない。
         if (attachment->blendRemaining > 0.0f) {
             attachment->blendRemaining =
                 std::max(0.0f, attachment->blendRemaining - std::max(ctx.dt, 0.0f));
@@ -298,7 +281,7 @@ void ConstraintSystem::Update(SystemContext& ctx)
             if (from && attachment->blendDuration > 0.0f) {
                 const float linear =
                     Clamp01(1.0f - attachment->blendRemaining / attachment->blendDuration);
-                // smoothstep。等速で移すと出だしと着地が硬く、手に「置いた」感が出ない。
+                /// @note smoothstep。等速で移すと出だしと着地が硬く、手に「置いた」感が出ない。
                 const float t = linear * linear * (3.0f - 2.0f * linear);
                 math::Vector3    fromPosition;
                 math::Quaternion fromRotation;
@@ -309,13 +292,13 @@ void ConstraintSystem::Update(SystemContext& ctx)
                     math::Quaternion::Slerp(fromRotation, desiredRotation, t).Normalized();
                 desiredScale    = math::Vector3::Lerp(fromScale, desiredScale, t);
             } else {
-                // 旧ソケットが消えた / 補間時間が 0。追いかけようがないので打ち切る。
+                /// @note 旧ソケットが消えた / 補間時間が 0。追いかけようがないので打ち切る。
                 attachment->blendRemaining = 0.0f;
             }
         }
 
-        // 自分側の合わせ点。「この子ソケットが相手ソケットに重なる」ように原点をずらす。
-        // 相対姿勢は自分のローカル空間で測るため、自分自身の現在姿勢には依存しない。
+        /// @note 自分側の合わせ点。「この子ソケットが相手ソケットに重なる」ように原点をずらす。
+        ///       相対姿勢は自分のローカル空間で測るため、自分自身の現在姿勢には依存しない。
         if (!attachment->localSocketName.empty()) {
             GameObject* localSocket = FindSocket(go, attachment->localSocketName);
             if (localSocket && localSocket != go) {
@@ -572,12 +555,10 @@ void PresentationSystem::Update(SystemContext& ctx)
         return;
     renderer::ResourceManager& resources = *ctx.resources;
     GameObject* mainCamera = FindMainCamera(ctx.scene);
-    // 2 枚を交互に使い、確保済みの容量に収まる限り中身だけ差し替える。
-    // 作り直しに戻る条件と、なぜ 1 枚では駄目かは DoubleBufferedMesh のヘッダーを参照。
-    //
-    // WHY 容量を 2 の冪で取るか:
-    //   線の頂点数は BuildPath が逆極へ届いた時点で打ち切られるぶん毎フレーム増減する。
-    //   ぴったり確保すると 1 頂点増えただけで «毎フレーム作り直し» へ逆戻りする。
+    /// @note 2 枚を交互に使い、確保済みの容量に収まる限り中身だけ差し替える。
+    ///       作り直しに戻る条件と、なぜ 1 枚では駄目かは DoubleBufferedMesh のヘッダーを参照。
+    /// @note 容量は 2 の冪で確保する。線の頂点数は毎フレーム増減するため、ぴったり確保すると
+    ///       1 頂点増えただけで作り直しに逆戻りする。
     const auto uploadMesh = [&](DoubleBufferedMesh& target,
                                 std::vector<renderer::Vertex> vertices,
                                 std::vector<uint32_t> indices) {
@@ -631,19 +612,12 @@ void PresentationSystem::Update(SystemContext& ctx)
         material->paramOverrides["albedo"] = { color.x, color.y, color.z, color.w };
         if (!texture.empty())
             material->textureOverrides["albedo"] = texture;
-        // WHY 合成方法だけ上書きしないか:
-        //   以前はここで毎フレーム ALPHA_BLEND を焼き付けていた。結果、.mat に
-        //   blend_mode = "Additive" と書いても通らず、線とスプライトだけ «見た目の正本が
-        //   .mat ではない» という状態になっていた。パーティクルで同じ壊れ方を潰したのと
-        //   同じ理由 (ParticleMaterialSettings.hpp のヘッダー) で、合成は .mat へ返す。
-        //   ここで false へ倒しもしないのは、ScriptMaterialProxy::SetBlendMode で
-        //   明示的に指定した側を毎フレーム剥がさないため。
-        //
-        // WHY 両面と描画キューは上書きし続けるか:
-        //   どちらも «.mat には決めようがない» 値である。帯のメッシュは毎フレーム
-        //   カメラ向きから組み直すため巻き順が裏返りうるので、片面にすると見る角度で
-        //   消える。描画キューは sortingLayer / orderInLayer をキューへ写す仕組みそのもので、
-        //   .mat に書かせると同じ .mat を共有する線が全部同じ順序になる。
+        /// @note 合成方法は上書きしない (.mat の blend_mode が正本、詳細は
+        ///       ParticleMaterialSettings.hpp)。hasBlendModeOverride を立てないのは
+        ///       ScriptMaterialProxy::SetBlendMode の明示指定を毎フレーム剥がさないため。
+        /// @note 両面と描画キューは毎フレーム上書きし続ける。帯メッシュはカメラ向きに
+        ///       組み直すため巻き順が裏返り片面では消える。描画キューは
+        ///       sortingLayer/orderInLayer 由来で .mat には決めようがない。
         material->hasDoubleSidedOverride = true;
         material->doubleSidedOverride = true;
         material->hasRenderQueueOverride = true;
@@ -683,7 +657,7 @@ void PresentationSystem::Update(SystemContext& ctx)
                 uvMax = sprite->size;
             }
 
-            // 素材が持つ寸法と基準点をそのまま採る。1 単位 = pixelsPerUnit ピクセル。
+            /// @note 素材が持つ寸法と基準点をそのまま採る。1 単位 = pixelsPerUnit ピクセル。
             if (sprite->useSpriteNativeSize && resolved.pixelsPerUnit > 0.0f
                 && resolved.sizePixels.x > 0.0f && resolved.sizePixels.y > 0.0f) {
                 sprite->size = { resolved.sizePixels.x / resolved.pixelsPerUnit,
@@ -742,28 +716,25 @@ void PresentationSystem::Update(SystemContext& ctx)
         if (line->space == LineSpace::World)
             signature ^= std::hash<float>{}(go->transform.worldPosition.x
                 + go->transform.worldPosition.y * 31.0f + go->transform.worldPosition.z * 997.0f);
-        // WHY 筒ではカメラを鍵に混ぜないか: 形が視点に依存しないため、混ぜるとカメラが
-        //     動いた «だけ» で毎フレーム焼き直すことになる。板は向きを作り直すので要る。
+        /// @note 筒 (Tube) はカメラをキーに混ぜない。形が視点に依存しないため、混ぜるとカメラが
+        ///       動いただけで毎フレーム焼き直すことになる (板 (Ribbon) は向きを作り直すので要る)。
         if (line->shape == LineShape::Ribbon && line->billboard && mainCamera)
             signature ^= std::hash<float>{}(mainCamera->transform.worldPosition.x
                 + mainCamera->transform.worldPosition.y * 31.0f
                 + mainCamera->transform.worldPosition.z * 997.0f);
         if ((!line->runtimeMesh.HasMesh() || line->runtimeMesh.signature != signature)
             && line->points.size() >= 2 && line->shape == LineShape::Tube) {
-            // ── 筒 ────────────────────────────────────────────────────────────
-            // 点ごとに円環を 1 枚置き、隣の環と繋いで押し出す。
-            //
-            // WHY 平行移動フレームで組むか (毎回 UP から作り直さないか):
-            //   環の基準ベクトルを毎回 UP との外積で作ると、線が真上を向いた区間で
-            //   基準が反転し、そこだけ筒が 180 度ねじれる。前の環の基準を «軸へ
-            //   直交するよう倒し直す» だけにすれば、経路が曲がってもねじれが増えない。
+            /// @name 筒
+            /// @note 点ごとに円環を 1 枚置き、隣の環と繋いで押し出す。基準ベクトルは平行移動
+            ///       フレームで組む (毎回 UP との外積で作り直さない)。毎回作り直すと線が
+            ///       真上を向いた区間で基準が反転し、そこだけ 180 度ねじれるため。
             std::vector<renderer::Vertex> vertices;
             std::vector<uint32_t> indices;
             const int  radial = std::clamp(line->radialSegments, 3, 32);
             const size_t ringCount = line->points.size();
             const size_t spanCount = line->loop ? ringCount : ringCount - 1;
 
-            // 経路をローカルへ落とす。板側と同じ規則。
+            /// @note 経路をローカルへ落とす。板側と同じ規則。
             std::vector<math::Vector3> path;
             path.reserve(ringCount);
             for (const math::Vector3& point : line->points) {
@@ -773,7 +744,7 @@ void PresentationSystem::Update(SystemContext& ctx)
                     : point);
             }
 
-            // 最初の基準。軸が真上に近いときだけ前方へ倒す (外積が縮退するため)。
+            /// @note 最初の基準。軸が真上に近いときだけ前方へ倒す (外積が縮退するため)。
             math::Vector3 firstAxis =
                 (path.size() > 1 ? (path[1] - path[0]) : math::Vector3::FORWARD)
                     .NormalizedOr(math::Vector3::FORWARD);
@@ -783,14 +754,14 @@ void PresentationSystem::Update(SystemContext& ctx)
                 math::Vector3::Cross(firstAxis, reference).NormalizedOr(math::Vector3::RIGHT);
 
             for (size_t ring = 0; ring < ringCount; ++ring) {
-                // 環の軸は前後の区間の平均。折れ点で筒が角張らない。
+                /// @note 環の軸は前後の区間の平均。折れ点で筒が角張らない。
                 const math::Vector3 back = ring > 0 ? (path[ring] - path[ring - 1])
                                                     : math::Vector3::ZERO;
                 const math::Vector3 forward = ring + 1 < ringCount ? (path[ring + 1] - path[ring])
                                                                    : math::Vector3::ZERO;
                 const math::Vector3 axis = (back + forward).NormalizedOr(firstAxis);
 
-                // 前の基準を新しい軸へ直交させる (平行移動フレーム)。
+                /// @note 前の基準を新しい軸へ直交させる (平行移動フレーム)。
                 normalRef = (normalRef - axis * math::Vector3::Dot(normalRef, axis))
                                 .NormalizedOr(normalRef);
                 const math::Vector3 binormal =
@@ -801,7 +772,7 @@ void PresentationSystem::Update(SystemContext& ctx)
                 const float w = (line->startWidth + (line->endWidth - line->startWidth) * t) * 0.5f;
 
                 for (int step = 0; step <= radial; ++step) {
-                    // 継ぎ目のため最後の 1 本を重ねる (uv が 1 で閉じる)。
+                    /// @note 継ぎ目のため最後の 1 本を重ねる (uv が 1 で閉じる)。
                     const float angle = static_cast<float>(step) / static_cast<float>(radial)
                                       * 6.28318530718f;
                     const math::Vector3 outward =
@@ -839,8 +810,8 @@ void PresentationSystem::Update(SystemContext& ctx)
                     b = DivideSafe(go->transform.worldRotation.Inverse()
                         * (b - go->transform.worldPosition), go->transform.worldScale);
                 }
-                // 同じ点が 2 つ並んだ区間は面積 0 で描くものが無い。方向も作れないので飛ばす。
-                // 頂点は区間ごとに独立しているため、抜けても残りの帯は繋がったままになる。
+                /// @note 同じ点が 2 つ並んだ区間は面積 0 で描くものが無い。方向も作れないので飛ばす。
+                ///       頂点は区間ごとに独立しているため、抜けても残りの帯は繋がったままになる。
                 if ((b - a).LengthSq() < 0.000001f) continue;
                 const math::Vector3 direction = (b - a).Normalized();
                 math::Vector3 viewDirection = math::Vector3::FORWARD;
@@ -848,8 +819,8 @@ void PresentationSystem::Update(SystemContext& ctx)
                     const math::Vector3 cameraLocal = DivideSafe(go->transform.worldRotation.Inverse()
                         * (mainCamera->transform.worldPosition - go->transform.worldPosition),
                         go->transform.worldScale);
-                    // カメラが区間の中点に重なると向きが決まらない。板の面は side 側で
-                    // 作り直されるので、既定の前方を入れておけば絵は崩れない。
+                    /// @note カメラが区間の中点に重なると向きが決まらない。板の面は side 側で
+                    ///       作り直されるので、既定の前方を入れておけば絵は崩れない。
                     viewDirection = (cameraLocal - (a + b) * 0.5f)
                         .NormalizedOr(math::Vector3::FORWARD);
                 }
@@ -899,10 +870,9 @@ void PresentationSystem::Update(SystemContext& ctx)
         if (!projector->materialPath.empty()
             && projector->runtimeLoadedMaterialPath != projector->materialPath
             && asset::LoadMaterialAssetFromFile(projector->materialPath, materialAsset)) {
-            // WHY 用途で分岐するか: render_path = "decal" の .mat はシェーダーごと
-            //     DecalComponent へ渡せる。それ以外はメッシュ用シェーダーを指しており
-            //     デカールパスでは描けないので、従来どおりテクスチャだけ抜いて
-            //     組み込み描画へ載せる (既存の Projector 設定を壊さないため)。
+            /// @note render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡せるが、
+            ///       それ以外はメッシュ用シェーダーを指しデカールパスで描けないため、
+            ///       テクスチャだけ抜いて組み込み描画へ載せる。
             if (materialAsset.renderPath == asset::RenderPath::Decal) {
                 decal->materialPath = projector->materialPath;
             } else {
@@ -916,12 +886,12 @@ void PresentationSystem::Update(SystemContext& ctx)
             }
             projector->runtimeLoadedMaterialPath = projector->materialPath;
         } else if (projector->materialPath.empty() && !projector->runtimeLoadedMaterialPath.empty()) {
-            // 割り当てを外したら .mat も外す。残すとテクスチャを消しても材質が描き続ける。
+            /// @note 割り当てを外したら .mat も外す。残すとテクスチャを消しても材質が描き続ける。
             projector->runtimeLoadedMaterialPath.clear();
             decal->materialPath.clear();
         }
-        // .mat 経路では albedoColor が効かないので、投影の濃さは opacity へ回す。
-        // 組み込み経路は albedoColor[3] が担うため 1.0 のままにする (二重掛けを避ける)。
+        /// @note .mat 経路では albedoColor が効かないので、投影の濃さは opacity へ回す。
+        ///       組み込み経路は albedoColor[3] が担うため 1.0 のままにする (二重掛けを避ける)。
         decal->opacity = decal->materialPath.empty()
             ? 1.0f : std::clamp(projector->color.w, 0.0f, 1.0f);
         if (projector->shape == ProjectorShape::Perspective) {

@@ -3,16 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY 加算にするか:
-///   以前は TpsCameraComponent が「強い方が勝つ」1 本だけを持っていた。被弾と衝突が
-///   同じ瞬間に起きるのは普通で、そのとき弱い方は消える。消えた側は「揺れなかった」
-///   ではなく「反応が無かった」と読まれるので、当たったのに手応えが無い瞬間ができる。
-///   それぞれを独立した波として持ち、足し合わせてから 1 つのオフセットにする。
-///
-/// WHY 揺れの生成をカメラから切り離すか:
-///   揺らしたい側 (衝突・被弾・着地) はカメラの追従方式を知らなくてよいし、
-///   カメラは誰がなぜ揺らしたいのかを知らなくてよい。カメラは合成済みのオフセットを
-///   1 つ受け取るだけにすると、追従を作り変えても揺れの調整はやり直しにならない。
+/// @note 加算合成にする。「強い方が勝つ」1 本だと被弾と衝突が同時に起きたとき弱い方が消え、当たったのに手応えが無い瞬間ができる。独立した波として足し合わせる。
+/// @note 揺れの生成をカメラから切り離す。揺らしたい側は追従方式を、カメラは要求元を知らなくてよく、追従を作り変えても揺れの調整はやり直しにならない。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -53,19 +45,16 @@ public:
 
     [[nodiscard]] static CameraShakeManagerComponent* Instance() { return s_instance; }
 
-    // 強さ (0..1) だけ渡す標準の呼び方。形は既定値から作る。
+    /// 強さ (0..1) だけ渡す標準の呼び方。形は既定値から作る。
     void Shake(float strength01);
-    // 形まで指定する版。着地と衝突で揺れ方を描き分けたいときに使う。
+    /// 形まで指定する版。着地と衝突で揺れ方を描き分けたいときに使う。
     void Shake(float amplitude, float frequency, float duration);
     /// 揺れではなく «押し込み»。カメラのローカル空間で offset ぶん一瞬ずれ、seconds で戻る。
-    ///
-    /// WHY 揺れと別に持つか: 揺れは正弦波なので向きを持たず、«当たった方へ食い込む»
-    ///     が作れない。斬撃の手応えは「前へ数 cm 沈んで戻る」の 1 往復で、
-    ///     往復を繰り返す揺れとは別の語。
+    /// @note 揺れは正弦波で向きを持たないため「当たった方へ食い込む」が作れない。押し込みは「前へ沈んで戻る」の 1 往復で別の語として持つ。
     void Punch(const Vector3& localOffset, float seconds);
     void StopAll() { m_shakes.clear(); m_punches.clear(); }
 
-    // カメラが毎フレーム読む合成済みオフセット (カメラのローカル空間)。
+    /// カメラが毎フレーム読む合成済みオフセット (カメラのローカル空間)。
     [[nodiscard]] Vector3 CurrentOffset() const { return m_offset; }
 
     void OnStart() override;
@@ -117,15 +106,14 @@ inline void CameraShakeManagerComponent::Shake(float strength01)
 
 inline void CameraShakeManagerComponent::Shake(float amplitude, float frequency, float duration)
 {
-    // Option の「カメラ揺れ」。WHY 1 引数版ではなくここで掛けるか: 形まで指定する版も
-    //     同じ揺れなので、設定を 0 にしたのに一部の演出だけ揺れる状態を作らない。
-    //     ここは全ての要求が必ず通る 1 本道。
+    /// @note Option の「カメラ揺れ」は形指定版も含め、全ての要求がここを通る 1 本道で掛ける。設定を 0 にしたのに
+    ///       一部の演出だけ揺れる状態を作らないため。
     amplitude *= GameSettingsComponent::ShakeScale();
     if (amplitude <= 0.0f || duration <= 0.0f) return;
 
     if (static_cast<int>(m_shakes.size()) >= std::max(maxShakes, 1)) {
-        // 上限に達したら最も弱いものを捨てる。古い順に捨てると、直前の強い一撃が
-        // 弱い揺れの連打で押し出されて消える。
+        /// @note 上限に達したら最も弱いものを捨てる。古い順に捨てると、直前の強い一撃が
+        ///       弱い揺れの連打で押し出されて消える。
         const auto weakest = std::min_element(
             m_shakes.begin(), m_shakes.end(),
             [](const Shake_& a, const Shake_& b) { return a.amplitude < b.amplitude; });
@@ -133,8 +121,8 @@ inline void CameraShakeManagerComponent::Shake(float amplitude, float frequency,
         if (weakest != m_shakes.end()) m_shakes.erase(weakest);
     }
 
-    // 位相を 1 本ごとにずらす。同位相だと重ねても振れ幅が増えるだけで、
-    // 「別々の衝撃が来ている」ようには見えない。
+    /// @note 位相を 1 本ごとにずらす。同位相だと重ねても振れ幅が増えるだけで、
+    ///       「別々の衝撃が来ている」ようには見えない。
     m_seedCounter += 1.6180339f;
     m_shakes.push_back({ amplitude, std::max(frequency, 1.0f), duration, duration, m_seedCounter });
 }
@@ -149,8 +137,7 @@ inline void CameraShakeManagerComponent::Punch(const Vector3& localOffset, float
 
 inline void CameraShakeManagerComponent::OnLateUpdate()
 {
-    // WHY 実時間で進めるか: ヒットストップ中も揺れは進めたい。停止中に完全静止すると
-    //     「ドンッ」の最初のフレームが無反応に見え、解除後に遅れて揺れる。
+    /// @note 実時間で進める。ヒットストップ中に完全静止すると衝撃の最初のフレームが無反応に見え、解除後に遅れて揺れる。
     const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
     const float now = Time::unscaledTime;
 
@@ -162,7 +149,7 @@ inline void CameraShakeManagerComponent::OnLateUpdate()
             continue;
         }
 
-        // 終わりに向けて二乗で減衰させる。線形だと最後まで揺れ続けて収まりが悪い。
+        /// @note 終わりに向けて二乗で減衰させる。線形だと最後まで揺れ続けて収まりが悪い。
         const float falloff = Clamp01(it->remaining / it->duration);
         const float weight  = it->amplitude * falloff * falloff;
         const float phase   = now * it->frequency + it->seed;
@@ -171,13 +158,13 @@ inline void CameraShakeManagerComponent::OnLateUpdate()
         ++it;
     }
 
-    // 加算なので同時多発すると青天井になる。方向は保ったまま長さだけ抑える。
+    /// @note 加算なので同時多発すると青天井になる。方向は保ったまま長さだけ抑える。
     const float length = sum.Length();
     const float limit  = std::max(maxAmplitude, 0.0f);
     if (length > limit && length > EPSILON) sum = sum * (limit / length);
 
-    // 押し込みは最初の 1 コマで最大、あとは二乗で戻る。揺れの上限には含めない
-    // (向きを持つずれを長さで削ると、押し込んだ方向そのものが変わる)。
+    /// @note 押し込みは最初の 1 コマで最大、あとは二乗で戻る。揺れの上限には含めない
+    ///       (向きを持つずれを長さで削ると、押し込んだ方向そのものが変わる)。
     for (auto it = m_punches.begin(); it != m_punches.end();) {
         it->remaining -= dt;
         if (it->remaining <= 0.0f || it->duration <= EPSILON) {

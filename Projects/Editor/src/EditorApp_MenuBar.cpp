@@ -3,9 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
 ///
-/// WHY: メニューバーは ImGui の MenuItem 呼び出しが大量に並ぶ UI 記述コードであり、
-/// ライフサイクル管理やシーン I/O とは関心が異なる。
-/// 独立ファイルに分離することで、メニュー項目の追加・変更を局所化できる。
+/// @note UI 記述に特化した独立ファイル。ライフサイクル管理やシーン I/O と関心を分離する。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -16,9 +14,11 @@
 #include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/CreateObjectMenu.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Localization.hpp>
+#include <Editor/Util/ObjectPresets.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -34,6 +34,7 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <utility>
@@ -47,20 +48,24 @@ enum class PlayToolbarIcon {
     Stop,
     Pause,
     Step,
-    Reload
+    Reload,
+    /// @brief コンパイル / リロード中。↻ を回し続ける。
+    ReloadBusy,
+    /// @brief 直近のスクリプトリロードが成功。
+    ReloadOk,
+    /// @brief 直近のスクリプトリロードが失敗。
+    ReloadFailed
 };
 
 void DrawPlayToolbarIcon(PlayToolbarIcon icon, const ImVec2& min, const ImVec2& max, ImU32 color)
 {
-    // WHY: PlayMode のアイコンは短い記号テキストだと幅やフォントに左右され、エディターの工具感が弱くなる。
-    // WHAT: ImGui の DrawList で単純な幾何形状を描き、フォント非依存の固定アイコンとして表示する。
+    /// @note フォント非依存の固定アイコンにするため、ImGui の DrawList で幾何形状を直接描く。
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const ImDrawListFlags oldFlags = drawList->Flags;
     drawList->Flags |= ImDrawListFlags_AntiAliasedFill | ImDrawListFlags_AntiAliasedLines;
 
     auto drawTriangle = [drawList, color](const ImVec2& a, const ImVec2& b, const ImVec2& c) {
-        // WHY: 塗りつぶし三角形だけだと斜辺のジャギーが目立つため、
-        //      同色のアンチエイリアス線を重ねて輪郭をなじませる。
+        /// @note 塗りつぶし三角形だけだと斜辺のジャギーが目立つため、同色の線を輪郭に重ねる。
         drawList->AddTriangleFilled(a, b, c, color);
         drawList->AddTriangle(a, b, c, color, 1.35f);
     };
@@ -104,14 +109,29 @@ void DrawPlayToolbarIcon(PlayToolbarIcon icon, const ImVec2& min, const ImVec2& 
             color,
             1.0f);
         break;
-    case PlayToolbarIcon::Reload: {
-        // 円弧 (約 300°) + 先端に矢頭
+    case PlayToolbarIcon::ReloadOk:
+        drawList->AddPolyline(
+            std::array<ImVec2, 3>{ ImVec2{ center.x - 6.0f, center.y + 0.5f },
+                                   ImVec2{ center.x - 2.0f, center.y + 4.5f },
+                                   ImVec2{ center.x + 6.5f, center.y - 5.0f } }.data(),
+            3, color, 2.2f);
+        break;
+    case PlayToolbarIcon::ReloadFailed:
+        drawList->AddLine({ center.x - 5.0f, center.y - 5.0f }, { center.x + 5.0f, center.y + 5.0f }, color, 2.2f);
+        drawList->AddLine({ center.x + 5.0f, center.y - 5.0f }, { center.x - 5.0f, center.y + 5.0f }, color, 2.2f);
+        break;
+    case PlayToolbarIcon::Reload:
+    case PlayToolbarIcon::ReloadBusy: {
+        /// @note 円弧 (約 300°) + 先端に矢頭
         constexpr float kPi        = 3.14159265f;
         constexpr float r          = 5.5f;
-        constexpr float startAngle = kPi * 0.25f;
-        constexpr float endAngle   = startAngle + kPi * 1.67f;
+        /// @note Busy は 1 周 1 秒で回す。
+        const float spin           = icon == PlayToolbarIcon::ReloadBusy
+            ? static_cast<float>(std::fmod(ImGui::GetTime(), 1.0)) * kPi * 2.0f : 0.0f;
+        const float startAngle     = kPi * 0.25f + spin;
+        const float endAngle       = startAngle + kPi * 1.67f;
         drawList->PathArcTo(center, r, startAngle, endAngle, 16);
-        drawList->PathStroke(color, false, 1.8f);
+        drawList->PathStroke(color, 1.8f);
 
         const float ax = center.x + r * std::cos(endAngle);
         const float ay = center.y + r * std::sin(endAngle);
@@ -142,10 +162,11 @@ bool PlayToolbarButton(
     bool enabled,
     bool active,
     const ImVec4& activeColor,
-    const ImVec2& size)
+    const ImVec2& size,
+    const ImVec4* iconColorOverride = nullptr)
 {
-    // WHY: PlayMode 操作は Godot のように常に同じ位置へ置き、状態確認と操作を視線移動なしで行えるようにする。
-    // WHAT: active 時だけ操作種別の色を背景へ乗せ、無効時は ImGui の Disabled スタイルで入力も止める。
+    /// @note Play 操作は常に同じ位置に置き、状態確認と操作を視線移動なしで行えるようにする。
+    ///       active 時は操作種別の色を背景へ乗せ、無効時は Disabled スタイルで入力も止める。
     if (active) {
         ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, WithAlpha(activeColor, 0.92f));
@@ -158,7 +179,9 @@ bool PlayToolbarButton(
     const bool pressed = ImGui::Button(id, size);
     const ImVec2 min = ImGui::GetItemRectMin();
     const ImVec2 max = ImGui::GetItemRectMax();
-    const ImU32 iconColor = ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+    const ImU32 iconColor = iconColorOverride
+        ? ImGui::ColorConvertFloat4ToU32(*iconColorOverride)
+        : ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
     DrawPlayToolbarIcon(icon, min, max, iconColor);
 
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
@@ -202,12 +225,28 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t TOGGLE_SKELETON = 404;
     constexpr uint16_t TOGGLE_STATS    = 405;
     constexpr uint16_t TOGGLE_HOTRELOAD = 406;
+    constexpr uint16_t TOGGLE_HOTRELOAD_SOUND = 439;
     constexpr uint16_t TOGGLE_COLLIDERS = 407;
     constexpr uint16_t TOGGLE_TERRAIN_COLLISION = 408;
     constexpr uint16_t TOGGLE_NAVMESH = 409;
     constexpr uint16_t TOGGLE_AI_SENSORS = 414;
     constexpr uint16_t TOGGLE_DECAL_BOUNDS = 415;
     constexpr uint16_t TOGGLE_SHADOW = 422;
+    constexpr uint16_t TOGGLE_SCENE_ICONS     = 424;
+    constexpr uint16_t TOGGLE_SCRIPT_GIZMOS   = 425;
+    constexpr uint16_t TOGGLE_SKELETON_SEL    = 426;
+    constexpr uint16_t TOGGLE_CONSTRAINTS     = 427;
+    constexpr uint16_t TOGGLE_RIGID_BODIES    = 428;
+    constexpr uint16_t TOGGLE_IK              = 429;
+    constexpr uint16_t TOGGLE_SPRING_BONES    = 430;
+    constexpr uint16_t TOGGLE_ATTACHMENTS     = 431;
+    constexpr uint16_t TOGGLE_VFX_PATHS       = 432;
+    constexpr uint16_t TOGGLE_TERRAIN_BOUNDS  = 433;
+    constexpr uint16_t TOGGLE_LOD_BOUNDS      = 434;
+    constexpr uint16_t TOGGLE_FLOW_FIELDS     = 435;
+    constexpr uint16_t TOGGLE_FLOW_SAMPLES    = 436;
+    constexpr uint16_t TOGGLE_PHYSICS_VOLUMES = 437;
+    constexpr uint16_t TOGGLE_WATER_FLOW      = 438;
     constexpr uint16_t VIEW_LIT        = 410;
     constexpr uint16_t VIEW_UNLIT      = 411;
     constexpr uint16_t VIEW_WIRE_LIT   = 412;
@@ -220,6 +259,8 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t OPEN_VOLUME_FLIPBOOK = 506;
     constexpr uint16_t OPEN_AI_SETTINGS = 600;
     constexpr uint16_t PANEL_BASE       = 1000;
+    constexpr uint16_t CREATE_EMPTY     = 2999;
+    constexpr uint16_t PRESET_BASE      = 3000;
 
     const auto command = [](const char* label, uint16_t id) {
         return NativeMenuItem{ util::StringUtils::ToWide(label), id, false, {} };
@@ -245,6 +286,25 @@ void EditorApp::InstallNativeMenuBar()
     MenuList terrainTools;
     terrainTools.push_back(command("Terrain Tool", 510));
 
+    /// @note プリセットは Create Empty と同じくルートの注視点へ置く。ネイティブメニューは選択を親にする文脈を持たない。
+    const auto presets = ObjectPresetCatalog();
+    MenuList gameObject;
+    gameObject.push_back(command("Create Empty", CREATE_EMPTY));
+    gameObject.push_back(separator());
+    for (std::size_t i = 0; i < presets.size(); ++i) {
+        const ObjectPreset& preset = presets[i];
+        const std::string label(preset.label);
+        const uint16_t presetId = static_cast<uint16_t>(PRESET_BASE + i);
+        if (preset.category.empty()) {
+            gameObject.push_back(command(label.c_str(), presetId));
+            continue;
+        }
+        const std::wstring categoryName = util::StringUtils::ToWide(std::string(preset.category));
+        if (gameObject.back().label != categoryName)
+            gameObject.push_back(submenu(std::string(preset.category).c_str(), {}));
+        gameObject.back().children.push_back(command(label.c_str(), presetId));
+    }
+
     MenuList menus;
     menus.push_back(submenu("File", {
         command("New Scene", NEW_SCENE),
@@ -259,6 +319,7 @@ void EditorApp::InstallNativeMenuBar()
     menus.push_back(submenu("Edit", {
         command("Undo", UNDO), command("Redo", REDO)
     }));
+    menus.push_back(submenu("GameObject", std::move(gameObject)));
     menus.push_back(submenu("Play", {
         command("Play", PLAY), command("Stop", STOP), command("Pause", PAUSE),
         command("Step", STEP), separator(), command("Reload Scripts", RELOAD_SCRIPTS)
@@ -270,12 +331,23 @@ void EditorApp::InstallNativeMenuBar()
     menus.push_back(submenu("Debug", {
         command("Analysis", OPEN_ANALYSIS), command("Render Pass Viewer", TOGGLE_PASS_VIEWER), separator(),
         command("Grid", TOGGLE_GRID), command("Light Range", TOGGLE_LIGHTS),
-        command("VFX Force Fields / Emitters", TOGGLE_VFX),
-        command("Skeleton", TOGGLE_SKELETON), command("Stats", TOGGLE_STATS),
-        command("Colliders", TOGGLE_COLLIDERS), command("Terrain Collision", TOGGLE_TERRAIN_COLLISION),
+        command("VFX Emitters", TOGGLE_VFX),
+        command("Flow Fields", TOGGLE_FLOW_FIELDS), command("Flow Samples", TOGGLE_FLOW_SAMPLES),
+        command("Skeleton", TOGGLE_SKELETON), command("Skeleton: Selected Only", TOGGLE_SKELETON_SEL),
+        command("Stats", TOGGLE_STATS),
+        command("Scene Icons", TOGGLE_SCENE_ICONS), command("Script Gizmos", TOGGLE_SCRIPT_GIZMOS),
+        command("IK Chains", TOGGLE_IK), command("Spring Bones", TOGGLE_SPRING_BONES),
+        command("Attachments", TOGGLE_ATTACHMENTS), command("VFX Paths", TOGGLE_VFX_PATHS),
+        separator(),
+        command("Colliders", TOGGLE_COLLIDERS), command("Constraints", TOGGLE_CONSTRAINTS),
+        command("Rigid Bodies", TOGGLE_RIGID_BODIES), command("Physics Volumes", TOGGLE_PHYSICS_VOLUMES),
+        command("Water Flow", TOGGLE_WATER_FLOW),
+        command("Terrain Collision", TOGGLE_TERRAIN_COLLISION),
         command("NavMesh", TOGGLE_NAVMESH), command("AI Sensors", TOGGLE_AI_SENSORS),
         command("Decal Bounds", TOGGLE_DECAL_BOUNDS),
-        command("Hot Reload", TOGGLE_HOTRELOAD), separator(),
+        command("Terrain Bounds", TOGGLE_TERRAIN_BOUNDS), command("LOD Bounds", TOGGLE_LOD_BOUNDS),
+        command("Hot Reload", TOGGLE_HOTRELOAD), command("Hot Reload Sound", TOGGLE_HOTRELOAD_SOUND),
+        separator(),
         command("Shadow", TOGGLE_SHADOW),
         submenu("View Mode", std::move(debugViewMode))
     }));
@@ -296,9 +368,15 @@ void EditorApp::InstallNativeMenuBar()
             InvokeOperator("panel.set_visible", args);
             return true;
         }
+        if (id >= PRESET_BASE && id < PRESET_BASE + ObjectPresetCatalog().size()) {
+            OpArgs args;
+            args.Set("preset", std::string(ObjectPresetCatalog()[static_cast<std::size_t>(id - PRESET_BASE)].id));
+            InvokeOperator("node.create_preset", args);
+            return true;
+        }
 
-        // ネイティブメニューは項目ごとの有効/無効を持たないが、InvokeOperator は poll を
-        // 満たさない要求を拒否するので、グレーアウトできない面でも同じ条件が効く。
+        /// @note ネイティブメニューは項目ごとの有効/無効を持たないが、InvokeOperator は poll を
+        ///       満たさない要求を拒否するので、グレーアウトできない面でも同じ条件が効く。
         switch (id) {
         case NEW_SCENE:       InvokeOperator("scene.new"); break;
         case OPEN_SCENE:      InvokeOperator("scene.open"); break;
@@ -309,6 +387,7 @@ void EditorApp::InstallNativeMenuBar()
         case EXIT_EDITOR:     InvokeOperator("app.exit"); break;
         case UNDO:            InvokeOperator("edit.undo"); break;
         case REDO:            InvokeOperator("edit.redo"); break;
+        case CREATE_EMPTY:    InvokeOperator("node.create_empty"); break;
         case PLAY:            InvokeOperator("play.start"); break;
         case STOP:            InvokeOperator("play.stop"); break;
         case PAUSE:           InvokeOperator("play.pause"); break;
@@ -321,19 +400,35 @@ void EditorApp::InstallNativeMenuBar()
             InvokeOperator("panel.set_visible", args);
             break;
         }
-        // 表示トグルとビューモードは Operator を通す。同じ切り替えを 3 面が持つので、
-        // 書き込み先 (EditorContext か ProjectSettings か) を各面が覚えていると必ずずれる。
+        /// @note 表示トグルとビューモードは Operator を通す。同じ切り替えを 3 面が持つので、
+        ///       書き込み先 (EditorContext か ProjectSettings か) を各面が覚えていると必ずずれる。
         case TOGGLE_GRID:      InvokeOperator("render.show_grid"); break;
         case TOGGLE_LIGHTS:    InvokeOperator("render.show_light_range"); break;
         case TOGGLE_VFX:       InvokeOperator("render.show_vfx_gizmos"); break;
         case TOGGLE_SKELETON:  InvokeOperator("render.show_skeleton"); break;
         case TOGGLE_STATS:     InvokeOperator("render.show_stats"); break;
         case TOGGLE_HOTRELOAD: InvokeOperator("debug.hot_reload"); break;
+        case TOGGLE_HOTRELOAD_SOUND: InvokeOperator("debug.hot_reload_sound"); break;
         case TOGGLE_COLLIDERS: InvokeOperator("render.show_colliders"); break;
         case TOGGLE_TERRAIN_COLLISION: InvokeOperator("render.show_terrain_collision"); break;
         case TOGGLE_NAVMESH:    InvokeOperator("render.show_navmesh"); break;
         case TOGGLE_AI_SENSORS: InvokeOperator("render.show_nav_sensors"); break;
         case TOGGLE_DECAL_BOUNDS: InvokeOperator("render.show_decal_bounds"); break;
+        case TOGGLE_SCENE_ICONS:    InvokeOperator("render.show_scene_icons"); break;
+        case TOGGLE_SCRIPT_GIZMOS:  InvokeOperator("render.show_script_gizmos"); break;
+        case TOGGLE_SKELETON_SEL:   InvokeOperator("render.skeleton_selected_only"); break;
+        case TOGGLE_CONSTRAINTS:    InvokeOperator("render.show_constraints"); break;
+        case TOGGLE_RIGID_BODIES:   InvokeOperator("render.show_rigid_bodies"); break;
+        case TOGGLE_IK:             InvokeOperator("render.show_ik"); break;
+        case TOGGLE_SPRING_BONES:   InvokeOperator("render.show_spring_bones"); break;
+        case TOGGLE_ATTACHMENTS:    InvokeOperator("render.show_attachments"); break;
+        case TOGGLE_VFX_PATHS:      InvokeOperator("render.show_vfx_paths"); break;
+        case TOGGLE_TERRAIN_BOUNDS: InvokeOperator("render.show_terrain_bounds"); break;
+        case TOGGLE_LOD_BOUNDS:     InvokeOperator("render.show_lod_bounds"); break;
+        case TOGGLE_FLOW_FIELDS:    InvokeOperator("render.show_flow_fields"); break;
+        case TOGGLE_FLOW_SAMPLES:   InvokeOperator("render.show_flow_samples"); break;
+        case TOGGLE_PHYSICS_VOLUMES: InvokeOperator("render.show_physics_volumes"); break;
+        case TOGGLE_WATER_FLOW:     InvokeOperator("render.show_water_flow"); break;
         case TOGGLE_SHADOW:  InvokeOperator("render.shadow_enabled"); break;
         case VIEW_LIT:       InvokeViewMode("lit"); break;
         case VIEW_UNLIT:     InvokeViewMode("unlit"); break;
@@ -342,8 +437,8 @@ void EditorApp::InstallNativeMenuBar()
         case 700:            InvokeOperator("view.reset_ui_scale"); break;
         case TOGGLE_MAP:     InvokeOperator("tools.map_editing_mode"); break;
         case OPEN_BUILD:     InvokeOperator("tools.build_settings"); break;
-        // パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
-        // operator を生やすと m_panels という単一の出所が二重管理へ戻る。
+        /// @note パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
+        ///       operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
         case OPEN_VOLUME_FLIPBOOK: InvokePanelFocus(m_volumeFlipbookBakePanel); break;
         case OPEN_NAVIGATION:  InvokePanelFocus(m_navigationPanel); break;
@@ -360,8 +455,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
 {
     if (!ImGui::BeginMenuBar()) return;
 
-    // FBZZ Studio のワークスペースであることを常時示すブランドマーク。
-    // WHY: OS タイトルバーを隠す最大化・マルチビューポート環境でも製品識別を失わない。
+    /// @note FBZZ Studio のブランドマーク。OS タイトルバーを隠す最大化・マルチビューポート環境でも製品識別を保つ。
     ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
     ImGui::TextUnformatted("FBZZ");
     ImGui::PopStyleColor();
@@ -373,17 +467,16 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     ImGui::Separator();
     ImGui::SameLine();
 
-    // --- File ------------------------------------------------------------
+    /// @name File
     if (ImGui::BeginMenu(LOC("File"))) {
-        // Prefab 編集モード中はシーン操作を伏せ、対象がアセットであることを明示する。
-        // WHY: 項目名が "Save" のままだと、何が保存されるのかが読み取れない。
+        /// @note Prefab 編集中は項目名を "Save Prefab" にし、保存対象が Prefab アセットであることを明示する。
         const bool inPrefabEdit = ctx.InPrefabEditMode();
         MenuItemOp("scene.new");
         MenuItemOp("scene.open");
         MenuItemOp("scene.save", inPrefabEdit ? "Save Prefab" : nullptr);
         MenuItemOp("scene.save_as");
-        // Prefab 編集中だけ出す。poll (prefab.close) も同じ条件を持つので、
-        // 表示していない状況では AI からも通らない。
+        /// @note Prefab 編集中だけ出す。poll (prefab.close) も同じ条件を持つので、
+        ///       表示していない状況では AI からも通らない。
         if (inPrefabEdit) MenuItemOp("prefab.close");
         MenuItemOp("asset.save_all");
         ImGui::Separator();
@@ -391,10 +484,10 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    // --- Edit ------------------------------------------------------------
+    /// @name Edit
     if (ImGui::BeginMenu(LOC("Edit"))) {
-        // 直前の操作名を添えて「何が戻るのか」を読めるようにする。
-        // ラベルだけが動的で、実行可否と実体は operator 側にある。
+        /// @note 直前の操作名を添えて「何が戻るのか」を読めるようにする。
+        ///       ラベルだけが動的で、実行可否と実体は operator 側にある。
         const bool canUndo = ctx.undoStack && ctx.undoStack->CanUndo();
         const bool canRedo = ctx.undoStack && ctx.undoStack->CanRedo();
         const std::string undoLabel = canUndo
@@ -415,10 +508,20 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    // --- View ------------------------------------------------------------
+    /// @note 中身は Hierarchy の右クリックと同じ投影 (CreateObjectMenu)。選択を既定の親にする。
+    if (ImGui::BeginMenu(LOC("GameObject"))) {
+        PendingObjectCreate pendingCreate;
+        MenuItemOp("node.create_empty");
+        ImGui::Separator();
+        DrawCreateObjectMenu(ctx, pendingCreate);
+        ImGui::EndMenu();
+        InvokePendingObjectCreate(ctx, pendingCreate);
+    }
+
+    /// @name View
     if (ImGui::BeginMenu(LOC("View"))) {
-        // panel.set_visible の投影にすることで、人が押すのと同じ実体を AI も呼べる
-        // (パネルが増えても operator は 1 つのまま)。
+        /// @note panel.set_visible の投影にすることで、人が押すのと同じ実体を AI も呼べる
+        ///       (パネルが増えても operator は 1 つのまま)。
         if (ImGui::BeginMenu(LOC("Panels"))) {
             for (auto& panel : m_panels) {
                 if (!panel->ShowInViewMenu()) continue;
@@ -429,7 +532,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
 
-        // Scene View の視点。軸ビューはナビゲーションギズモのクリックと同じ操作を指す。
+        /// @note Scene View の視点。軸ビューはナビゲーションギズモのクリックと同じ操作を指す。
         if (ImGui::BeginMenu(LOC("Scene Camera"))) {
             MenuItemOp("view.toggle_projection");
             ImGui::Separator();
@@ -444,14 +547,14 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
 
-        // UI 全体スケール (フォント + 余白)。設定に永続化される。
-        // スライダー自体は連続値のドラッグなので operator には乗らないが、
-        // 適用は view.set_ui_scale を通す (範囲の宣言と適用処理を 1 箇所に保つ)。
+        /// @note UI 全体スケール (フォント + 余白)。設定に永続化される。
+        ///       スライダー自体は連続値のドラッグなので operator には乗らないが、
+        ///       適用は view.set_ui_scale を通す (範囲の宣言と適用処理を 1 箇所に保つ)。
         ImGui::Separator();
         ImGui::TextDisabled("%s", LOCT("UI Scale"));
-        // 範囲は operator の params 宣言から引く。スライダー側に直書きすると、
-        // 人は 0.5x にできるのに AI からは BAD_ARG で弾かれる (同じ操作の限界が
-        // 面ごとに違う) という、この設計が消したいずれが範囲という形で再発する。
+        /// @note 範囲は operator の params 宣言から引く。スライダー側に直書きすると、
+        ///       人は 0.5x にできるのに AI からは BAD_ARG で弾かれる (同じ操作の限界が
+        ///       面ごとに違う) という、この設計が消したいずれが範囲という形で再発する。
         float scaleMin = 0.7f;
         float scaleMax = 2.0f;
         if (const EditorOperator* scaleOp = m_operators.Find("view.set_ui_scale");
@@ -470,10 +573,9 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    // --- Debug -----------------------------------------------------------
+    /// @name Debug
     if (ImGui::BeginMenu(LOC("Debug"))) {
-        // WHY: Godot は表示パネル操作とデバッグ描画切替を別メニューに分けている。
-        //      FBZZ でも View はレイアウト・パネル、Debug は実行/描画診断に寄せることで項目の意味を読み取りやすくする。
+        /// @note View はレイアウト・パネル、Debug は実行/描画診断に役割を分ける。
         MenuItemOp("tools.analysis", "Analysis");
         {
             OpArgs args;
@@ -481,17 +583,30 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             MenuItemOpArgs("panel.set_visible", args, "Render Pass Viewer");
         }
         ImGui::Separator();
-        // 全項目を operator の投影にする。フラグのアドレスを直接渡すと、同じフラグを
-        // 切り替える operator と表示が別経路になり、AI からも見えない。
-        // --- Scene Overlays ---
+        /// @note 全項目を operator の投影にする。フラグのアドレスを直接渡すと、同じフラグを
+        ///       切り替える operator と表示が別経路になり、AI からも見えない。
+        /// @name Scene Overlays
         MenuItemOp("render.show_grid",        "Grid");
         MenuItemOp("render.show_light_range", "Light Range");
-        MenuItemOp("render.show_vfx_gizmos",  "VFX Force Fields / Emitters");
+        MenuItemOp("render.show_vfx_gizmos",  "VFX Emitters");
+        MenuItemOp("render.show_flow_fields", "Flow Fields");
+        MenuItemOp("render.show_flow_samples", "Flow Samples");
         MenuItemOp("render.show_skeleton",    "Skeleton");
+        MenuItemOp("render.skeleton_selected_only", "Skeleton: Selected Only");
         MenuItemOp("render.show_stats",       "Stats");
+        MenuItemOp("render.show_scene_icons", "Scene Icons");
+        MenuItemOp("render.show_script_gizmos", "Script Gizmos");
+        MenuItemOp("render.show_ik",            "IK Chains");
+        MenuItemOp("render.show_spring_bones",  "Spring Bones");
+        MenuItemOp("render.show_attachments",   "Attachments");
+        MenuItemOp("render.show_vfx_paths",     "VFX Paths");
         ImGui::Separator();
-        // --- Physics / Rendering ---
+        /// @name Physics / Rendering
         MenuItemOp("render.show_colliders",         "Colliders");
+        MenuItemOp("render.show_constraints",       "Constraints");
+        MenuItemOp("render.show_rigid_bodies",      "Rigid Bodies");
+        MenuItemOp("render.show_physics_volumes",   "Physics Volumes");
+        MenuItemOp("render.show_water_flow",        "Water Flow");
         MenuItemOp("render.show_terrain_collision", "Terrain Collision");
         MenuItemOp("render.show_navmesh",           "NavMesh");
         if (ImGui::BeginMenu(LOC("NavMesh Draw Mode"))) {
@@ -509,18 +624,21 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
         MenuItemOp("render.show_nav_sensors",       "AI Sensors");
         MenuItemOp("render.show_decal_bounds",      "Decal Bounds");
+        MenuItemOp("render.show_terrain_bounds",    "Terrain Bounds");
+        MenuItemOp("render.show_lod_bounds",        "LOD Bounds");
         ImGui::Separator();
-        // --- Culling ---
-        // Scene View はデバッグカメラで描くため CameraComponent の設定が届かない。
-        // 「消えた原因がカリングか」を切り分ける唯一の口なので Debug 側へ出す。
+        /// @name Culling
+        /// @note Scene View はデバッグカメラで描くため CameraComponent の設定が届かない。
+        ///       「消えた原因がカリングか」を切り分ける唯一の口なので Debug 側へ出す。
         MenuItemOp("render.scene_view_occlusion_culling", "Scene View Occlusion Culling");
         ImGui::Separator();
-        // --- Tools ---
+        /// @name Tools
         MenuItemOp("debug.hot_reload", "Hot Reload");
+        MenuItemOp("debug.hot_reload_sound", "Hot Reload Sound");
         ImGui::Separator();
         if (ImGui::BeginMenu(LOC("View Mode"))) {
-            // 排他選択は 1 つの operator に引数で渡す。チェックは checked を
-            // 同じ引数で評価した値なので、「表示は Lit なのに実体は Unlit」が作れない。
+            /// @note 排他選択は 1 つの operator に引数で渡す。チェックは checked を
+            ///       同じ引数で評価した値なので、「表示は Lit なのに実体は Unlit」が作れない。
             const auto viewModeItem = [this](const char* mode, const char* label) {
                 OpArgs args;
                 args.Set("mode", std::string(mode));
@@ -533,9 +651,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        // WHY Bloom / FXAA のトグルが無いか: ポストプロセスの所有者は
-        //     Post Process Volume + Post Process Profile (.fzdata) へ一本化した。
-        //     Shadow はプロジェクト全体の描画構成なのでここに残す。
+        /// @note Bloom / FXAA は Post Process Volume + Profile (.fzdata) へ一本化済み。
+        ///       Shadow はプロジェクト全体の描画構成なのでここに残す。
         MenuItemOp("render.shadow_enabled", "Shadow");
         ImGui::EndMenu();
     }
@@ -549,8 +666,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
         MenuItemOp("tools.build_settings");
         ImGui::Separator();
-        // パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
-        // 名前を引数で渡す 1 つの操作で足りる。
+        /// @note パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
+        ///       名前を引数で渡す 1 つの操作で足りる。
         if (m_iblBakePanel && ImGui::MenuItem(LOC("IBL Baker...")))
             InvokePanelFocus(m_iblBakePanel);
         if (m_volumeFlipbookBakePanel && ImGui::MenuItem(LOC("Volume Flipbook Baker...")))
@@ -566,8 +683,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         if (m_aiSettingsPanel && ImGui::MenuItem(LOC("AI Settings...")))
             InvokePanelFocus(m_aiSettingsPanel);
         ImGui::Separator();
-        // チェックマークは operator の checked (= 実際の待受状態) なので、
-        // 状態表示の役割を保ったままその場で切り替えられる。
+        /// @note チェックマークは operator の checked (= 実際の待受状態) なので、
+        ///       状態表示の役割を保ったままその場で切り替えられる。
         MenuItemOp("ai.command_bus", "Editor Command Bus");
         ImGui::EndMenu();
     }
@@ -580,10 +697,9 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     ImGui::EndMenuBar();
 }
 
-// ── About ───────────────────────────────────────────────────────────────────
-// WHY 素っ気ない 1 行にしないか: 起動して最初に «何を触っているのか» を名乗る場所が
-//     メニューバー隅のブランドマークしか無かった。制作物として人に見せる道具なので、
-//     名前・構成・出所をここで 1 枚にまとめる。
+/// @name About
+
+/// @brief 起動時に「何を触っているか」を名乗るダイアログ。名前・構成・出所を 1 画面にまとめる。
 void EditorApp::DrawAboutDialog()
 {
     constexpr const char* kAboutPopupId = "##fbzz_about";
@@ -616,7 +732,7 @@ void EditorApp::DrawAboutDialog()
     ImGui::Separator();
     ImGui::Spacing();
 
-    // 何で動いているかを 1 行ずつ。«自作» の範囲がここで読み取れるようにする。
+    /// @note 何で動いているかを 1 行ずつ。«自作» の範囲がここで読み取れるようにする。
     const auto row = [](const char* label, const char* value) {
         ImGui::TextDisabled("%s", label);
         ImGui::SameLine(ImGui::GetFontSize() * 7.0f);
@@ -640,7 +756,7 @@ void EditorApp::DrawAboutDialog()
 
 void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 {
-    // WHY: Play 系操作を上部中央へ独立配置し、メニュー項目より実行状態を読み取りやすくする。
+    /// @note Play 系操作を上部中央へ独立配置し、メニュー項目より実行状態を読み取りやすくする。
     constexpr float TOOLBAR_HEIGHT = 34.0f;
     const ImVec2 BUTTON_SIZE { 34.0f, 24.0f };
     constexpr float BUTTON_SPACING = 4.0f;
@@ -658,9 +774,9 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     const bool isPaused = pm && pm->IsPaused();
 
     const float toolbarButtonY = ImGui::GetCursorPosY();
-    // 実行可否は operator の poll から引く。以前はここだけが持っていた条件
-    // (scriptReloadBusy 中は Play 不可) がホットキーとパレットに無く、
-    // コンパイル中でも Ctrl+P で Play へ入れてしまっていた。
+    /// @note 実行可否は operator の poll から引く。以前はここだけが持っていた条件
+    ///       (scriptReloadBusy 中は Play 不可) がホットキーとパレットに無く、
+    ///       コンパイル中でも Ctrl+P で Play へ入れてしまっていた。
     const bool canToggleMapMode = CanInvokeOperator("tools.map_editing_mode");
     if (ctx.mapEditingMode)
         ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Secondary));
@@ -682,12 +798,12 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     }
 
     const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;
-    // ここでは Map ボタンを描いた後でも、子 Window 全体の幅を基準にする。
-    // GetContentRegionAvail() は現在カーソル位置からの残幅なので、Map ボタン分だけ
-    // 二重に引かれて Play 群が左へ寄り、右端が欠ける原因になる。
+    /// @note ここでは Map ボタンを描いた後でも、子 Window 全体の幅を基準にする。
+    ///       GetContentRegionAvail() は現在カーソル位置からの残幅なので、Map ボタン分だけ
+    ///       二重に引かれて Play 群が左へ寄り、右端が欠ける原因になる。
     const float availableWidth = ImGui::GetWindowWidth();
-    // Mapボタンの領域を予約してから中央寄せする。以前はツールバー全体の中央を
-    // 基準にしていたため、ウィンドウ幅が一時的に狭くなると MAP MODE と Play 群が重なった。
+    /// @note Mapボタンの領域を予約してから中央寄せする。以前はツールバー全体の中央を
+    ///       基準にしていたため、ウィンドウ幅が一時的に狭くなると MAP MODE と Play 群が重なった。
     const float playAreaLeft = 8.0f + 92.0f + 16.0f;
     const float centerOffset = (std::max)(playAreaLeft, (availableWidth - groupWidth) * 0.5f);
     ImGui::SetCursorPos({ centerOffset, toolbarButtonY });
@@ -696,7 +812,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
         ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
     const char* playTooltip = scriptReloadBusy
-        ? "Scripts are compiling/reloading..."
+        ? "Play is available after scripts finish compiling/reloading"
         : (isPaused ? "Resume from Play Mode" : "Play");
 
     const ImVec4 playColor  = EditorTheme::Color(ThemeColor::Success);
@@ -751,50 +867,73 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     ImGui::SameLine();
     {
         const ImVec4 reloadColor { 0.25f, 0.55f, 0.90f, 1.0f };
-        const char* reloadTooltip = scriptReloadBusy ? "Scripts are compiling..." : "Reload Scripts";
+        /// @note Blueprint の Compile ボタンと同じく、アイコン自体が直近の結果を持ち続ける (時間で消えない)。
+        using Result = EditorContext::ScriptReloadResult;
+        PlayToolbarIcon reloadIcon    = PlayToolbarIcon::Reload;
+        const char*     reloadTooltip = "Reload Scripts";
+        ImVec4          iconColor     = EditorTheme::Color(ThemeColor::Text);
+        const bool      tintIcon      = scriptReloadBusy || ctx.scriptReloadResult != Result::None;
+        if (scriptReloadBusy) {
+            reloadIcon    = PlayToolbarIcon::ReloadBusy;
+            reloadTooltip = "Scripts are compiling / reloading...";
+            iconColor     = EditorTheme::Color(ThemeColor::Warning);
+        } else if (ctx.scriptReloadResult == Result::Failed) {
+            reloadIcon    = PlayToolbarIcon::ReloadFailed;
+            reloadTooltip = "Last script reload failed \xE2\x80\x94 click to rebuild";
+            iconColor     = EditorTheme::Color(ThemeColor::Danger);
+        } else if (ctx.scriptReloadResult == Result::Ok) {
+            reloadIcon    = PlayToolbarIcon::ReloadOk;
+            reloadTooltip = "Scripts are up to date \xE2\x80\x94 click to rebuild";
+            iconColor     = EditorTheme::Color(ThemeColor::Success);
+        }
         if (PlayToolbarButton(
             "##ScriptReload",
             reloadTooltip,
-            PlayToolbarIcon::Reload,
+            reloadIcon,
             CanInvokeOperator("script.reload"),
             scriptReloadBusy,
             reloadColor,
-            BUTTON_SIZE))
+            BUTTON_SIZE,
+            tintIcon ? &iconColor : nullptr))
             InvokeOperator("script.reload");
     }
 
-    // ── 右端: ホットリロードステータス / PLAYING ラベル ────────────────────
+    /// @name 右端: ホットリロードステータス / PLAYING ラベル
     {
-        // ホットリロードステータステキストを決定する
+        /// @note ホットリロードステータステキストを決定する
+        const bool  shaders     = ctx.hotReloadTarget == EditorContext::HotReloadTarget::Shaders;
         const char* reloadText  = nullptr;
         ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
         switch (ctx.hotReloadState) {
         case EditorContext::HotReloadState::Compiling:
-            reloadText  = "Compiling...";
+            reloadText  = shaders ? "Compiling shaders..." : "Compiling scripts...";
             reloadColor = { 1.0f, 0.85f, 0.2f,  1.0f };
             break;
         case EditorContext::HotReloadState::Reloading:
-            reloadText  = "Reloading...";
+            reloadText  = "Reloading scripts...";
             reloadColor = { 0.5f, 0.8f,  1.0f,  1.0f };
             break;
         case EditorContext::HotReloadState::Done:
-            reloadText  = "Reload OK";
+            reloadText  = shaders ? "Shaders reloaded" : "Scripts reloaded";
             reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };
             break;
         case EditorContext::HotReloadState::Failed:
-            reloadText  = "Compile Error";
+            /// @note コンパイル失敗とロード失敗を区別する。以前はどちらも «Compile Error» だった。
+            reloadText  = ctx.hotReloadMessage.find("error") != std::string::npos
+                ? (shaders ? "Shader errors" : "Script errors")
+                : (shaders ? "Shader reload failed" : "Script reload failed");
             reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };
             break;
         default: break;
         }
 
-        // PLAYING / PAUSED ラベル
+        /// @note PLAYING / PAUSED ラベル
         const char*  playLabel    = !isEditor ? (isPlaying ? "PLAYING" : "PAUSED") : nullptr;
         const ImVec4 playLabelCol = isPlaying
             ? ImVec4{ 0.28f, 0.88f, 0.53f, 1.0f }
             : ImVec4{ 0.92f, 0.72f, 0.28f, 1.0f };
 
-        // 右端からテキスト幅で逆算して配置する (描画対象がある場合のみ)
+        /// @note 右端からテキスト幅で逆算して配置する (描画対象がある場合のみ)
         constexpr float kGap = 6.0f;
         float totalW = 0.0f;
         if (reloadText) totalW += ImGui::CalcTextSize(reloadText).x + kGap;
@@ -804,9 +943,8 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
             const float groupRight = centerOffset + groupWidth;
             const float posX = availableWidth - totalW - 8.0f;
             const float posY = (TOOLBAR_HEIGHT - ImGui::GetTextLineHeight()) * 0.5f;
-            // ステータス文字をボタン群へ重ねず、狭いフレームでは表示を省略する。
-            // WHY: Compiling / PLAYING の表示が Play ボタンを押しつぶして欠けるより、
-            //      操作ボタンを常に完全表示する方が安全である。
+            /// @note ステータス文字をボタン群へ重ねず、狭いフレームでは表示を省略する。
+            ///       Compiling / PLAYING 表示が Play ボタンを圧迫するより、操作ボタンの完全表示を優先する。
             if (posX > groupRight + kGap) {
                 if (posX > ImGui::GetCursorPosX())
                     ImGui::SetCursorPos({ posX, posY });
@@ -815,6 +953,9 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
                     ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
                     ImGui::TextUnformatted(reloadText);
                     ImGui::PopStyleColor();
+                    if (ImGui::IsItemHovered() && !ctx.hotReloadMessage.empty())
+                        ImGui::SetTooltip("%s\nClick to open Build Output", ctx.hotReloadMessage.c_str());
+                    if (ImGui::IsItemClicked()) ctx.requestOpenBuildOutput = true;
                     if (playLabel) ImGui::SameLine(0.0f, kGap);
                 }
                 if (playLabel)
@@ -832,13 +973,10 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     ImGui::PopStyleVar(2);
 }
 
-// =============================================================================
-// ビルド失敗通知バー
-// =============================================================================
+/// ビルド失敗通知バー
 
-// WHY: 従来はビルド失敗が StatusBar に数秒表示されて消えるだけで見落としやすかった。
-//      失敗が残っている間、ツールバー直下に消えない赤帯を出し、[Show] で該当エラーへ、
-//      [Dismiss] で明示的に閉じられるようにする。成功ビルドで自動的に消える。
+/// @note ビルド失敗が残っている間はツールバー直下に赤帯を出し続け、[Show] / [Dismiss] で操作する。
+///       成功ビルドで自動的に消える。
 void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
 {
     if (!ctx.buildConsole || !ctx.buildConsole->HasActiveFailure()) return;
@@ -856,11 +994,12 @@ void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
                        "  %s build failed  \xE2\x80\x94  %d error(s), %d warning(s)  [%s]",
                        kind, fail->errorCount, fail->warnCount, fail->startClock.c_str());
 
-    // 右寄せで操作ボタンを置く。
+    /// @note 右寄せで操作ボタンを置く。
     const float btnW = 150.0f;
     ImGui::SameLine(ImGui::GetWindowWidth() - btnW);
     if (ImGui::SmallButton("Show")) {
-        ctx.requestFocusBuildError = true;   // Build Output を開いて最初のエラーへスクロール
+        /// @note Build Output を開いて最初のエラーへスクロール
+        ctx.requestFocusBuildError = true;
     }
     ImGui::SameLine();
     if (ImGui::SmallButton("Dismiss")) {
@@ -875,7 +1014,7 @@ void EditorApp::DrawGuidConflictBar(EditorContext& /*ctx*/)
 {
     const size_t count = asset::AssetDatabase::GuidConflictCount();
     if (count == 0) return;
-    // 閉じた後に «増えた» ときだけ出し直す。同じ件数のまま出し続けない。
+    /// @note 閉じた後に «増えた» ときだけ出し直す。同じ件数のまま出し続けない。
     if (m_guidConflictBarDismissed && count <= m_dismissedGuidConflicts) return;
     m_guidConflictBarDismissed = false;
 
@@ -902,14 +1041,12 @@ void EditorApp::DrawGuidConflictBar(EditorContext& /*ctx*/)
     ImGui::PopStyleColor();
 }
 
-// =============================================================================
-// ホットキー登録
-// =============================================================================
+/// ホットキー登録
 
 void EditorApp::StartPlayMode()
 {
-    // WHY: Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
-    //      ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
+    /// @note Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
+    ///       ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
     const bool scriptReloadBusy =
         m_ctx.scriptReloadBusy ||
         m_ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
@@ -922,17 +1059,17 @@ void EditorApp::StartPlayMode()
         FBZZ_LOG_WARN("Play: Scripts DLL is unavailable; rebuild requested");
         return;
     }
-    // Prefab 編集面には「シーン」が無い (カメラもライトも無い、プレファブ単体)。
-    // WHY: そのまま Play すると空舞台でゲームが動き出し、Stop 時のスナップショット復元も
-    //      プレファブの内容に対して行われる。編集面から出るまで開始させない。
+    /// @note Prefab 編集面には「シーン」が無い (カメラもライトも無い、プレファブ単体)。
+    ///       そのまま Play すると空舞台で動き出し、Stop 時の復元も Prefab 内容に対して行われるため、
+    ///       編集面から出るまで開始させない。
     if (m_ctx.InPrefabEditMode()) {
         FBZZ_LOG_WARN("Play: close the prefab edit mode first");
         return;
     }
 
-    // FBZZ_REQUIRE_COMPONENT の充足をシーン全体でまとめて検証する。
-    // 付け忘れは「動かないけどエラーも出ない」形でしか現れないので、Play を押した瞬間に
-    // Console へ全件出す。ただし Play は止めない — 作りかけを走らせるのが Play の役目。
+    /// @note FBZZ_REQUIRE_COMPONENT の充足をシーン全体でまとめて検証する。
+    ///       付け忘れは「動かないけどエラーも出ない」形でしか現れないので、Play を押した瞬間に
+    ///       Console へ全件出す。ただし Play は止めない — 作りかけを走らせるのが Play の役目。
     if (const auto issues = scene::ValidateSceneScriptRequirements(*m_ctx.activeScene);
         !issues.empty()) {
         for (const auto& issue : issues)
@@ -943,17 +1080,17 @@ void EditorApp::StartPlayMode()
     }
 
     m_undoStack.Clear();
-    // 編集中に何かが基底を書いていても、Play は «誰も要求していない» 状態から始める。
-    // WHY ここで畳むか: UpdatePlayCursorControls はフレーム先頭で、Play を押した次の
-    //     フレームには既にスクリプトの OnStart が要求を積んでいる。あちらで畳むと
-    //     名乗ったばかりの要求を消してしまう。
+    /// @note 編集中に何かが基底を書いていても、Play は «誰も要求していない» 状態から始める。
+    ///       UpdatePlayCursorControls (フレーム先頭) より前に畳む必要がある — 次フレームには
+    ///       既に OnStart が要求を積んでおり、あちらで畳むと名乗ったばかりの要求を消してしまう。
     core::Cursor::ClearRequests();
-    // カーソルの絵もここで読む。スクリプトの OnStart は «OS カーソルの絵があるか» で
-    // 自前のポインターを出すかどうかを決めるので、走り出す前に揃っている必要がある。
+    /// @note カーソルの絵もここで読む。スクリプトの OnStart は «OS カーソルの絵があるか» で
+    ///       自前のポインターを出すかどうかを決めるので、走り出す前に揃っている必要がある。
     m_ctx.projectSettings.cursor.Apply(m_ctx.projectRoot);
-    RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
-    // navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
-    // Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
+    /// @note Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
+    RemoveEditorHiding();
+    /// @note navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
+    ///       Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
     m_navMeshPlayCache.clear();
     for (scene::EntityID eid : m_ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
         auto* surf = m_ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
@@ -963,29 +1100,29 @@ void EditorApp::StartPlayMode()
         entry.navMesh    = surf->navMesh;
         entry.stats      = surf->bakeStats;
         entry.sourceHash = surf->bakedSourceHash;
-        // ボクセル格子は Scene View の Voxels 表示専用で、Play 中は表示自体が抑止される。
-        // 数 MB を二重に抱えないよう、預けている間は Surface から外す。
+        /// @note ボクセル格子は Scene View の Voxels 表示専用で、Play 中は表示自体が抑止される。
+        ///       数 MB を二重に抱えないよう、預けている間は Surface から外す。
         entry.debug      = std::move(surf->bakeDebug);
         surf->bakeDebug  = {};
         m_navMeshPlayCache[go->instanceId] = std::move(entry);
     }
-    // WHY: ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。
-    //      エディタは共通ProjectRuntimeのSceneManagerをUpdateするため、Play開始時に
-    //      ScriptRuntime をオーバーライドして正しい参照先を指す。
+    /// @note ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。エディタは共通
+    ///       ProjectRuntime の SceneManager を Update するため、Play 開始時に ScriptRuntime を
+    ///       差し替えて正しい参照先を指す。
     m_runtime.ActivateScriptRuntime(
         core::Application::Get().GetRenderer(),
         static_cast<uint32_t>(m_ctx.gameViewportWidth),
         static_cast<uint32_t>(m_ctx.gameViewportHeight)
     );
-    // graphics プロキシの書き換え先を Play 中だけ開ける。実体は ProjectSettings::render で
-    // 終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
+    /// @note graphics プロキシの書き換え先を Play 中だけ開ける。実体は ProjectSettings::render で
+    ///       終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
     m_renderSettingsPlaySnapshot = m_ctx.projectSettings.render;
     core::Application::Get().SetActiveRenderSettings(&m_ctx.projectSettings.render);
-    // Play 中の増加も Stop 後の残りも、この 1 つの基準から測る。
+    /// @note Play 中の増加も Stop 後の残りも、この 1 つの基準から測る。
     if (m_ctx.resources != nullptr) {
         m_memoryLeakDiff.CaptureBaseline(*m_ctx.resources, "Play");
-        // 最初の Play だけ «セッション基準» も置く。キャッシュの初回充填と、
-        // 往復のたびに積むリークを、1 往復ぶんの差分だけでは区別できないため。
+        /// @note 最初の Play だけ «セッション基準» も置く。キャッシュの初回充填と、
+        ///       往復のたびに積むリークを、1 往復ぶんの差分だけでは区別できないため。
         m_memoryLeakDiff.CaptureSessionBaselineIfAbsent(*m_ctx.resources);
     }
     m_playMode.Play(*m_ctx.activeScene);
@@ -998,16 +1135,16 @@ void EditorApp::StopPlayMode()
     if (!m_ctx.activeScene || m_playMode.IsInEditor())
         return;
     scene::ScriptRuntime::Override(nullptr);
-    // Play 中のスクリプトが変えた画質・明るさを編集側へ持ち込まない。
-    // 選択状態だけは編集の続きなので、復元から外して現在のものを残す。
+    /// @note Play 中のスクリプトが変えた画質・明るさを編集側へ持ち込まない。
+    ///       選択状態だけは編集の続きなので、復元から外して現在のものを残す。
     core::Application::Get().SetActiveRenderSettings(nullptr);
     {
         auto selection = std::move(m_ctx.projectSettings.render.selectedObjects);
         m_ctx.projectSettings.render = m_renderSettingsPlaySnapshot;
         m_ctx.projectSettings.render.selectedObjects = std::move(selection);
     }
-    // AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
-    // PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
+    /// @note AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
+    ///       PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
     if (auto* audioManager = core::Application::Get().GetAudioManager())
         audioManager->StopAllVoices();
     m_playMode.Stop(*m_ctx.activeScene);
@@ -1022,7 +1159,7 @@ void EditorApp::TogglePlayMode()
         StopPlayMode();
 }
 
-// 描画モードを operator へ渡す小さな補助 (ネイティブメニューの 4 項目が使う)。
+/// 描画モードを operator へ渡す小さな補助 (ネイティブメニューの 4 項目が使う)。
 void EditorApp::InvokeViewMode(const char* mode)
 {
     OpArgs args;
@@ -1030,11 +1167,9 @@ void EditorApp::InvokeViewMode(const char* mode)
     InvokeOperator("render.set_view_mode", args);
 }
 
-// =============================================================================
-// operator をメニュー項目として描く
-// 表示名・ショートカット文字列・実行可否・実体の 4 つとも登録済みの情報から引く。
-// 直書きするとリバインドで表示だけが嘘になり、実行可否もキー側と別式になる。
-// =============================================================================
+/// operator をメニュー項目として描く
+/// 表示名・ショートカット文字列・実行可否・実体の 4 つとも登録済みの情報から引く。
+/// 直書きするとリバインドで表示だけが嘘になり、実行可否もキー側と別式になる。
 bool EditorApp::MenuItemOp(const char* operatorId, const char* labelOverride)
 {
     return MenuItemOpArgs(operatorId, OpArgs{}, labelOverride);
@@ -1049,18 +1184,18 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
         return false;
     }
 
-    // 実際に割り当てられているキーを表示する (未割り当てなら表示なし)。
+    /// @note 実際に割り当てられているキーを表示する (未割り当てなら表示なし)。
     std::string shortcut;
     if (const Hotkey* hk = m_hotkeys.FindByOperator(operatorId))
         shortcut = HotkeyManager::FormatBinding(*hk);
 
-    // 登録簿は英語のまま (op.list / AI バス / ホットキー保存の鍵になる)。訳すのは
-    // 描くときだけ。LOC は "訳###原文" を返すので、ID は英語版と同じままになる。
+    /// @note 登録簿は英語のまま (op.list / AI バス / ホットキー保存の鍵になる)。訳すのは
+    ///       描くときだけ。LOC は "訳###原文" を返すので、ID は英語版と同じままになる。
     const char* label = LOC((labelOverride != nullptr) ? labelOverride : op->label.c_str());
     const bool  enabled = CanInvokeOperator(operatorId, args);
 
-    // チェックマークも登録簿から引く。フラグを直接指すと表示と実体が別経路になり、
-    // operator 側に条件を足してもメニューの見た目に反映されない。
+    /// @note チェックマークも登録簿から引く。フラグを直接指すと表示と実体が別経路になり、
+    ///       operator 側に条件を足してもメニューの見た目に反映されない。
     bool checked = false;
     if (op->checked) {
         const OpContext context = MakeOpContext();
@@ -1074,8 +1209,8 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
     return true;
 }
 
-// Operator のカテゴリ文字列を、ショートカット一覧の見出し分類へ対応づける。
-// 一覧は enum、Operator 側は文字列カテゴリなので、対応表をここに 1 つ置く。
+/// Operator のカテゴリ文字列を、ショートカット一覧の見出し分類へ対応づける。
+/// 一覧は enum、Operator 側は文字列カテゴリなので、対応表をここに 1 つ置く。
 static HotkeyCategory HotkeyCategoryFromOperator(const std::string& category)
 {
     if (category == "File")      return HotkeyCategory::File;
@@ -1090,21 +1225,20 @@ static HotkeyCategory HotkeyCategoryFromOperator(const std::string& category)
     return HotkeyCategory::Edit;
 }
 
-// =============================================================================
-// ホットキー登録 — キー割り当ての単一の定義場所
-// ここに書けば入力処理・F1 の一覧・リバインド UI・設定への永続化が全部ついてくる
-// (パネル側で IsKeyPressed を直接叩くと、その 4 つが揃わない)。
-// 「何をするか」「いつ実行できるか」は OperatorRegistry が持ち、ここは operator id に
-// キーを割り当てるだけの表。条件式を各面へ写すと必ずずれる。
-// Docs/design/editor-operator-model.md
-// =============================================================================
+/// ホットキー登録 — キー割り当ての単一の定義場所
+/// ここに書けば入力処理・F1 の一覧・リバインド UI・設定への永続化が全部ついてくる
+/// (パネル側で IsKeyPressed を直接叩くと、その 4 つが揃わない)。
+/// 「何をするか」「いつ実行できるか」は OperatorRegistry が持ち、ここは operator id に
+/// キーを割り当てるだけの表。条件式を各面へ写すと必ずずれる。
+/// Docs/design/editor-operator-model.md
 void EditorApp::RegisterDefaultHotkeys()
 {
-    using Cat   = HotkeyCategory;   // 説明専用エントリ (RegisterInfo) で使う
+    /// @note 説明専用エントリ (RegisterInfo) で使う
+    using Cat   = HotkeyCategory;
     using Scope = HotkeyScope;
 
-    // operator id へキーを割り当てる。表示名・分類・実行・実行可否はすべて
-    // レジストリ側から導出するので、ここでキー以外を書くことはない。
+    /// @note operator id へキーを割り当てる。表示名・分類・実行・実行可否はすべて
+    ///       レジストリ側から導出するので、ここでキー以外を書くことはない。
     auto bind = [this](const char* operatorId, int key, bool ctrl, bool shift, bool alt,
                        Scope scope) {
         const EditorOperator* op = m_operators.Find(operatorId);
@@ -1130,23 +1264,22 @@ void EditorApp::RegisterDefaultHotkeys()
         m_hotkeys.Register(std::move(hk));
     };
 
-    // Scene View と Hierarchy のどちらにフォーカスがあっても効く編集操作。
-    // WHY: Unity では Scene View で選んだまま Delete / Ctrl+D が効く。
-    //      Hierarchy へフォーカスを移さないと消せないのは動線として遠回り。
+    /// @note Scene View と Hierarchy のどちらにフォーカスがあっても効く編集操作。
+    ///       Unity 同様、選択後にフォーカスを移さず Delete / Ctrl+D を通す。
     constexpr Scope kEditScopes = Scope::SceneViewport | Scope::Hierarchy;
 
-    // ── File ────────────────────────────────────────────────────────────────
+    /// @name File
     bind("scene.new",      ImGuiKey_N, true, false, false, Scope::Global);
     bind("scene.open",     ImGuiKey_O, true, false, false, Scope::Global);
     bind("scene.save",     ImGuiKey_S, true, false, false, Scope::Global);
     bind("scene.save_as",  ImGuiKey_S, true, true,  false, Scope::Global);
 
-    // ── Edit ────────────────────────────────────────────────────────────────
+    /// @name Edit
     bind("edit.undo", ImGuiKey_Z, true, false, false, Scope::Global);
     bind("edit.redo", ImGuiKey_Y, true, false, false, Scope::Global);
-    // Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させる。
-    // 同じ operator への 2 本目なので operatorId は付けない (付けると Rebind が
-    // id で引いたときどちらを指すか決まらない)。保存鍵は表示名になる。
+    /// @note Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させる。
+    ///       同じ operator への 2 本目なので operatorId は付けない (付けると Rebind が
+    ///       id で引いたときどちらを指すか決まらない)。保存鍵は表示名になる。
     {
         const EditorOperator* redo = m_operators.Find("edit.redo");
         if (redo != nullptr) {
@@ -1169,19 +1302,19 @@ void EditorApp::RegisterDefaultHotkeys()
     bind("edit.paste",           ImGuiKey_V, true, false, false, kEditScopes);
     bind("edit.paste_as_child",  ImGuiKey_V, true, true,  false, kEditScopes);
     bind("edit.rename",          ImGuiKey_F2, false, false, false, Scope::Hierarchy);
+    bind("node.create_empty",    ImGuiKey_N, true, true,  false, kEditScopes);
 
-    // ── Selection ───────────────────────────────────────────────────────────
+    /// @name Selection
     bind("select.all",     ImGuiKey_A, true, false, false, kEditScopes);
     bind("select.clear",   ImGuiKey_Escape, false, false, false, kEditScopes);
     bind("select.back",    ImGuiKey_LeftArrow,  false, false, true, Scope::Global);
     bind("select.forward", ImGuiKey_RightArrow, false, false, true, Scope::Global);
 
-    // ── Viewport ────────────────────────────────────────────────────────────
+    /// @name Viewport
     bind("view.frame_selected", ImGuiKey_F, false, false, false, Scope::SceneViewport);
 
-    // WHY Alt + 数字か: 素の 1~9 はカメラブックマーク、Shift + 数字はその保存で埋まっている。
-    //     Alt は「視点の作り方を変える」修飾として空いており、ViewportPanel の
-    //     ブックマーク処理も Alt 押下中はスキップして取り合いを避けている。
+    /// @note Alt+数字: 素の 1~9 はカメラブックマーク、Shift+数字はその保存で埋まっているため Alt を使う。
+    ///       ViewportPanel のブックマーク処理も Alt 押下中はスキップし、取り合いを避けている。
     bind("view.toggle_projection", ImGuiKey_O, false, false, false, Scope::SceneViewport);
     bind("view.axis_front",  ImGuiKey_1, false, false, true, Scope::SceneViewport);
     bind("view.axis_back",   ImGuiKey_2, false, false, true, Scope::SceneViewport);
@@ -1190,7 +1323,7 @@ void EditorApp::RegisterDefaultHotkeys()
     bind("view.axis_top",    ImGuiKey_5, false, false, true, Scope::SceneViewport);
     bind("view.axis_bottom", ImGuiKey_6, false, false, true, Scope::SceneViewport);
 
-    // ── Gizmo ───────────────────────────────────────────────────────────────
+    /// @name Gizmo
     bind("gizmo.move",         ImGuiKey_W, false, false, false, Scope::SceneViewport);
     bind("gizmo.rotate",       ImGuiKey_E, false, false, false, Scope::SceneViewport);
     bind("gizmo.scale",        ImGuiKey_R, false, false, false, Scope::SceneViewport);
@@ -1198,20 +1331,20 @@ void EditorApp::RegisterDefaultHotkeys()
     bind("gizmo.toggle_pivot", ImGuiKey_Z, false, false, false, Scope::SceneViewport);
     bind("gizmo.toggle_snap",  ImGuiKey_X, false, false, false, Scope::SceneViewport);
 
-    // ── Play ────────────────────────────────────────────────────────────────
+    /// @name Play
     bind("play.toggle", ImGuiKey_P, true, false, false, Scope::Global);
     bind("play.pause",  ImGuiKey_P, true, true,  false, Scope::Global);
 
-    // ── Panels ──────────────────────────────────────────────────────────────
-    // MenuItemOp が実割り当てから表示を引くので、「表示だけあるショートカット」は成立しない。
+    /// @name Panels
+    /// @note MenuItemOp が実割り当てから表示を引くので、「表示だけあるショートカット」は成立しない。
     bind("tools.build_settings", ImGuiKey_B, true, true, false, Scope::Global);
 
     bind("panel.command_palette", ImGuiKey_K, true, false, false, Scope::Global);
     bind("panel.shortcut_list",   ImGuiKey_F1, false, false, false, Scope::Global);
 
-    // ── 説明専用エントリ ─────────────────────────────────────────────────────
-    // マウス操作や数字キー列はキー 1 つに割り当てられないが、一覧としては同じくらい要る。
-    // 別表に切り出すとそこがまた二重管理になるので、同じ器に入れて一覧を 1 本に保つ。
+    /// @name 説明専用エントリ
+    /// @note マウス操作や数字キー列はキー 1 つに割り当てられないが、一覧としては同じくらい要る。
+    ///       別表に切り出すとそこがまた二重管理になるので、同じ器に入れて一覧を 1 本に保つ。
     m_hotkeys.RegisterInfo("Look around",     "RMB drag",       Cat::Viewport, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Fly (while RMB)", "W / A / S / D / Q / E", Cat::Viewport, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Pan",             "MMB drag",       Cat::Viewport, Scope::SceneViewport);
@@ -1227,10 +1360,9 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.RegisterInfo("Vertex snap",     "Hold V + drag",  Cat::Gizmo, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Surface snap",    "Ctrl + Shift + drag", Cat::Gizmo, Scope::SceneViewport);
 
-    // Fluid Editor はキーをパネル内で直接拾う (対象が «開いている文書» でありレジストリの
-    // operator にできない)。入力には関与しない説明専用エントリとして一覧にだけ出す。
-    // WHY: 一覧に出ないキーは «無い» のと同じ。特に Ctrl+S は、ここへ書いておかないと
-    //      「シーンの保存と何が違うのか」が画面のどこにも書かれていないことになる。
+    /// @note Fluid Editor はキーをパネル内で直接拾う (対象が «開いている文書» でありレジストリの
+    ///       operator にできない)。入力には関与しない説明専用エントリとして一覧にだけ出す —
+    ///       一覧に出ないキーは «無い» のと同じで、特に Ctrl+S はここで明示しないと意味が読めない。
     m_hotkeys.RegisterInfo("Save fluid document", "Ctrl+S", Cat::File, Scope::FluidEditor);
     m_hotkeys.RegisterInfo("Play / pause preview", "Space", Cat::Play, Scope::FluidEditor);
     m_hotkeys.RegisterInfo("Step frame",           "Left / Right", Cat::Play, Scope::FluidEditor);
@@ -1239,21 +1371,20 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.RegisterInfo("Insert motion key at playhead", "K",   Cat::Edit, Scope::FluidEditor);
     m_hotkeys.RegisterInfo("Rename selected part", "F2",           Cat::Edit, Scope::FluidEditor);
 
-    // NOTE: 保存済みリバインドの適用は EditorApp::OpenProject が行う (設定を読むのがそこ)。
-    //       Rebind は既定値を全部積んだ後でないと対象を引けないので、順序はここより後。
+    /// @note 保存済みリバインドの適用は EditorApp::OpenProject が行う (設定を読むのがそこ)。
+    ///       Rebind は既定値を全部積んだ後でないと対象を引けないので、順序はここより後。
 
-    // scope の判定は EditorContext のフォーカス状態から答える。
-    // WHY: パネルは自分の描画中にしか自身のフォーカスを知れないため、
-    //      ここで見るのは 1 フレーム前の状態になる。キー入力の応答としては問題ない。
+    /// @note scope の判定は EditorContext のフォーカス状態から答える。パネルは描画中にしか
+    ///       自身のフォーカスを知れないため、ここで見るのは 1 フレーム前の状態になる
+    ///       (キー入力への応答としては問題ない)。
     m_hotkeys.SetScopeResolver([this](HotkeyScope scope) {
-        // 「今フォーカスされている面」は 1 つ (EditorContext::focusedPanelScope)。
-        // パネルが増えてもここは変わらない — 各パネルが IPanel::GetHotkeyScope() で名乗る。
+        /// @note 「今フォーカスされている面」は 1 つ (EditorContext::focusedPanelScope)。
+        ///       パネルが増えてもここは変わらない — 各パネルが IPanel::GetHotkeyScope() で名乗る。
         if (m_ctx.PanelScopeFocused(scope)) return true;
 
-        // Scene View だけはホバーでも効かせる。
-        // WHY 例外を残すか: ギズモ切替やカメラ操作は «絵を見ながら» 押すもので、
-        //     先に一度クリックしてフォーカスを取る手順を挟むと手が止まる。
-        //     他の面は «選んだものに効く» 方が読めるので、フォーカスだけで判定する。
+        /// @note Scene View だけはホバーでも効かせる。ギズモ切替やカメラ操作は «絵を見ながら»
+        ///       押すもので、先にクリックしてフォーカスを取る手順を挟むと手が止まる。
+        ///       他の面はフォーカスのみで判定する方が読める。
         return HasScope(scope, HotkeyScope::SceneViewport) && m_ctx.sceneViewportHovered;
     });
 }

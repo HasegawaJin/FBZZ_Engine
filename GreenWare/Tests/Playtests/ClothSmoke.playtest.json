@@ -1,0 +1,15 @@
+{
+  "name": "ClothSmoke",
+  "scene": "Assets/Scenes/ClothDemo.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    { "do": "play" },
+    { "do": "waitUntil", "query": { "t": "editor.state" }, "path": "playState", "op": "==", "value": "playing", "timeoutFrames": 30 },
+    { "do": "frames", "count": 120 },
+    { "do": "assert", "query": { "t": "scene.find", "name": "Curtain" }, "path": "nodes.0.name", "op": "==", "value": "Curtain" },
+    { "do": "assert", "query": { "t": "scene.find", "name": "Flag" }, "path": "nodes.0.name", "op": "==", "value": "Flag" },
+    { "do": "assert", "query": { "t": "console.logs", "minLevel": "error" }, "path": "entries", "op": "length==", "value": 0 },
+    { "do": "stop" },
+    { "do": "waitUntil", "query": { "t": "editor.state" }, "path": "playState", "op": "==", "value": "editor", "timeoutFrames": 30 }
+  ]
+}

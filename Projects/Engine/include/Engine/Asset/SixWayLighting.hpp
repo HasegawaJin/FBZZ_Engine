@@ -8,9 +8,8 @@
 ///   値は «その向きから光が来たときの明るさ» (モノクロ・リニア・ストレート)。
 /// 光の向きは «テクスチャの軸» で表す (x = 右, y = 上, z = 奥 = 画面の向こう)。
 ///
-/// WHY C++ に写しを置くか: 焼く側 (VolumeRaymarch.hlsl) も読む側 (ParticleCommon.hlsli) も HLSL で、
-///     並びや符号がずれてもエラーにならない。式をここで固定してテストで守る
-///     (FlipbookMotionVectorEncoding と同じ流儀)。
+/// @note 焼く側 (VolumeRaymarch.hlsl) も読む側 (ParticleCommon.hlsli) も HLSL で、並びや符号がずれても
+///       エラーにならない。式を C++ に固定してテストで守る (FlipbookMotionVectorEncoding と同じ流儀)。
 #pragma once
 
 #include <Math/Vector3.hpp>

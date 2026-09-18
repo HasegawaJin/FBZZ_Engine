@@ -7,7 +7,7 @@
 
 #include <TestKit/TestKit.hpp>
 
-#include <Engine/Asset/FluidSolver.hpp>
+#include <Fluid/FluidSolver.hpp>
 #include <Engine/Asset/VolumeFlipbookFluid.hpp>
 
 #include <algorithm>
@@ -16,14 +16,14 @@
 namespace fbzz::tests {
 namespace {
 
-asset::FluidRecipe SplashRecipe()
+fluid::FluidRecipe SplashRecipe()
 {
-    asset::FluidRecipe recipe;
-    recipe.kind = asset::FluidKind::Liquid;
+    fluid::FluidRecipe recipe;
+    recipe.kind = fluid::FluidKind::Liquid;
     recipe.liquid.maxParticles = 400;
     recipe.liquid.floor = true;
     recipe.liquid.floorHeight = -0.8f;
-    asset::FluidSource source;
+    fluid::FluidSource source;
     source.center = { 0.0f, -0.4f, 0.0f };
     source.size = { 0.1f, 0.1f, 0.1f };
     source.velocity = { 0.0f, 1.5f, 0.0f };
@@ -35,7 +35,7 @@ asset::FluidRecipe SplashRecipe()
     return recipe;
 }
 
-void Advance(asset::FluidLiquidSolver& solver, float seconds)
+void Advance(fluid::FluidLiquidSolver& solver, float seconds)
 {
     for (float t = 0.0f; t < seconds; t += 1.0f / 30.0f) solver.Advance(1.0f / 30.0f);
 }
@@ -44,8 +44,8 @@ void Advance(asset::FluidLiquidSolver& solver, float seconds)
 
 TEST(FluidLiquid3DTest, VolumetricSolveSpreadsInDepthAndStaysOnTheFloor)
 {
-    const asset::FluidRecipe recipe = SplashRecipe();
-    asset::FluidLiquidSolver solver;
+    const fluid::FluidRecipe recipe = SplashRecipe();
+    fluid::FluidLiquidSolver solver;
     solver.Reset(recipe, /*volumetric=*/true);
     EXPECT_TRUE(solver.IsVolumetric());
     Advance(solver, 0.6f);
@@ -63,9 +63,10 @@ TEST(FluidLiquid3DTest, VolumetricSolveSpreadsInDepthAndStaysOnTheFloor)
 
 TEST(FluidLiquid3DTest, FlatSolveKeepsDepthAtZero)
 {
-    asset::FluidRecipe recipe = SplashRecipe();
-    recipe.sources[0].velocity.z = 3.0f;   // 2D では奥行きの速度を見ない
-    asset::FluidLiquidSolver solver;
+    fluid::FluidRecipe recipe = SplashRecipe();
+    /// @note 2D では奥行きの速度を見ない
+    recipe.sources[0].velocity.z = 3.0f;
+    fluid::FluidLiquidSolver solver;
     solver.Reset(recipe);
     Advance(solver, 0.3f);
     ASSERT_FALSE(solver.Particles().empty());
@@ -74,7 +75,7 @@ TEST(FluidLiquid3DTest, FlatSolveKeepsDepthAtZero)
 
 TEST(FluidLiquid3DTest, PackedVolumeMarksLiquidOnlyWhereParticlesAre)
 {
-    asset::FluidLiquidSolver solver;
+    fluid::FluidLiquidSolver solver;
     solver.Reset(SplashRecipe(), /*volumetric=*/true);
     Advance(solver, 0.2f);
     asset::PackedFluidVolume volume;
@@ -94,17 +95,17 @@ TEST(FluidLiquid3DTest, PackedVolumeMarksLiquidOnlyWhereParticlesAre)
 
 TEST(FluidLiquid3DTest, ParticlesCarryTheirSourceColorKeyIntoTheVolume)
 {
-    // 鍵 0 と鍵 1 の発生源を左右に離して置く。混ざる前なら、左の液は B = 0・右の液は B = 1。
-    asset::FluidRecipe recipe = SplashRecipe();
+    /// @note 鍵 0 と鍵 1 の発生源を左右に離して置く。混ざる前なら、左の液は B = 0・右の液は B = 1。
+    fluid::FluidRecipe recipe = SplashRecipe();
     recipe.liquid.maxParticles = 800;
     recipe.sources[0].center.x = -0.5f;
     recipe.sources[0].colorKey = 0.0f;
-    asset::FluidSource right = recipe.sources[0];
+    fluid::FluidSource right = recipe.sources[0];
     right.center.x = 0.5f;
     right.colorKey = 1.0f;
     recipe.sources.push_back(right);
 
-    asset::FluidLiquidSolver solver;
+    fluid::FluidLiquidSolver solver;
     solver.Reset(recipe, /*volumetric=*/true);
     Advance(solver, 0.1f);
     ASSERT_FALSE(solver.Particles().empty());

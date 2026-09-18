@@ -17,7 +17,7 @@ namespace fbzz::physics
         ColliderType GetType() const override { return ColliderType::OBB; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
-        // 8 * hx * hy * hz。回転しても体積は変わらないため AABB 版と同じ式。
+        /// @brief 8 * hx * hy * hz。回転しても体積は変わらないため AABB 版と同じ式。
         [[nodiscard]] float ComputeVolume() const override;
 
         math::Vector3 GetCenter() const { return m_worldCenter; }

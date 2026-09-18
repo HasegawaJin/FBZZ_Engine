@@ -1,6 +1,9 @@
-// FBZZ Engine
-// BuildGameHub.mjs | GameHub
-// SDKの最新性を検証し、Vite生成物とElectronランタイムを構成別パッケージへ組み立てる
+/**
+ * @file BuildGameHub.mjs
+ * @brief SDK の最新性を検証し、Vite 生成物と Electron ランタイムを構成別パッケージへ組み立てる。
+ * @author Hasegawa Jin
+ * @date 2026/07/20
+ */
 
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -107,18 +110,13 @@ async function AssemblePackage(projectRoot, configuration) {
   await writeFile(path.join(stagingRoot, 'package.json'), `${JSON.stringify(runtimePackage, null, 2)}\n`, 'utf8');
 
   const templatesRoot = path.join(projectRoot, 'Templates');
-  const sharedShaderRoot = path.join(templatesRoot, 'standard', 'Assets', 'Shaders');
-  const sharedShaderMeta = `${sharedShaderRoot}.meta`;
   const generatedTemplateRoots = new Set(['Binaries', 'Build', 'Lib', 'Library']);
   await cp(templatesRoot, path.join(resourcesRoot, 'Templates'), {
     recursive: true,
-    // Engine shaderとローカル生成物は配布templateへ梱包しない。
+    // ローカル生成物は配布templateへ梱包しない。Engine shader はテンプレートに存在しない (SDK の share を使う)。
     filter: (source) => {
       const relativeParts = path.relative(templatesRoot, source).split(path.sep);
-      if (relativeParts.length >= 2 && generatedTemplateRoots.has(relativeParts[1])) return false;
-      return source !== sharedShaderMeta
-        && source !== sharedShaderRoot
-        && !source.startsWith(`${sharedShaderRoot}${path.sep}`);
+      return !(relativeParts.length >= 2 && generatedTemplateRoots.has(relativeParts[1]));
     },
   });
   if (configuration === 'Release') {

@@ -180,7 +180,7 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             ImGui::Spacing();
             ImGui::TextDisabled("%zu waypoints", patrol.waypoints.size());
 
-            // Per-waypoint データ表示切り替え
+            /// @note Per-waypoint データ表示切り替え
             static bool showPerWaypoint = false;
             ImGui::Checkbox("Per-Waypoint Settings", &showPerWaypoint);
 
@@ -196,7 +196,7 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                 if (ImGui::Button("X")) removeIndex = static_cast<int>(i);
 
                 if (showPerWaypoint) {
-                    // waypointWaitTimes を waypoints と同サイズに揃える
+                    /// @note waypointWaitTimes を waypoints と同サイズに揃える
                     patrol.waypointWaitTimes.resize(patrol.waypoints.size(), 0.0f);
                     patrol.waypointSpeeds.resize(patrol.waypoints.size(), 0.0f);
                     ImGui::Indent();

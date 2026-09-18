@@ -8,8 +8,9 @@
 
 namespace fbzz::editor {
 
-// WHY: 個別ツールがWindow登録・共通ヘッダー・カテゴリ分けを重複実装すると、
-//      新しいEditorを追加するたびにUI規約が分岐するため、制作ツール用の薄い共通層を設ける。
+/// 制作ツール用の薄い共通層。
+/// @note 個別ツールが Window 登録・共通ヘッダー・カテゴリ分けを重複実装すると、
+///       新しい Editor を追加するたびに UI 規約が分岐する。
 class EditorToolPanel : public IPanel {
 public:
     const char* GetViewMenuName() const override { return GetEditorType(); }

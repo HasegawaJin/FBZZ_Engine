@@ -29,7 +29,8 @@ protected:
     {
         scene::GameObject& root = m_scene.CreateGameObject(name);
         auto& vfx = root.AddComponent<scene::VFXComponent>();
-        vfx.loop = true;          // 尺で畳まれて Despawn へ入らないようにする
+        /// @note 尺で畳まれて Despawn へ入らないようにする
+        vfx.loop = true;
         vfx.autoDestroy = false;
 
         scene::GameObject& shell = m_scene.CreateGameObject(name + " Shell");
@@ -70,7 +71,7 @@ TEST_F(VFXSubEmitterScopeTest, EmittersUnderARootAreScopedToThatRoot)
 
 TEST_F(VFXSubEmitterScopeTest, TwoInstancesDoNotShareAScope)
 {
-    // 同じ .vfx を 2 つ置いた状態。名前は同じでも、参照先は自分の枝でなければならない。
+    /// @note 同じ .vfx を 2 つ置いた状態。名前は同じでも、参照先は自分の枝でなければならない。
     const scene::EntityID first  = MakeEffect("Firework");
     const scene::EntityID second = MakeEffect("Firework");
     Tick();
@@ -89,8 +90,8 @@ TEST_F(VFXSubEmitterScopeTest, TwoInstancesDoNotShareAScope)
 
 TEST_F(VFXSubEmitterScopeTest, ANestedRootOwnsItsOwnBranch)
 {
-    // 入れ子の VFX は自分が範囲になる。外側の範囲を配られると、内側の 2 段目を
-    // 外側の別の枝から吹かせられてしまう。
+    /// @note 入れ子の VFX は自分が範囲になる。外側の範囲を配られると、内側の 2 段目を
+    ///       外側の別の枝から吹かせられてしまう。
     const scene::EntityID outer = MakeEffect("Outer");
     scene::GameObject& innerRoot = m_scene.CreateGameObject("Inner");
     innerRoot.SetParent(*m_scene.GetGameObject(outer));
@@ -100,7 +101,7 @@ TEST_F(VFXSubEmitterScopeTest, ANestedRootOwnsItsOwnBranch)
     innerChild.SetParent(innerRoot);
     innerChild.AddComponent<scene::ParticleEmitter>();
 
-    // 外側と内側のどちらが先に回るかは登録順で決まる。順序に依存しないよう 2 回回す。
+    /// @note 外側と内側のどちらが先に回るかは登録順で決まる。順序に依存しないよう 2 回回す。
     Tick();
     Tick();
 
@@ -110,7 +111,7 @@ TEST_F(VFXSubEmitterScopeTest, ANestedRootOwnsItsOwnBranch)
 
 TEST_F(VFXSubEmitterScopeTest, AnEmitterOutsideAnyVfxKeepsSceneWideLookup)
 {
-    // シーンへ手で置いた Emitter は従来どおりシーン全体から引く (範囲は INVALID のまま)。
+    /// @note シーンへ手で置いた Emitter は従来どおりシーン全体から引く (範囲は INVALID のまま)。
     scene::GameObject& lone = m_scene.CreateGameObject("Lone Emitter");
     lone.AddComponent<scene::ParticleEmitter>();
     Tick();

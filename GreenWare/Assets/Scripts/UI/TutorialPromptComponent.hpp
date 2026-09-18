@@ -3,27 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-14
 ///
-/// WHY 目的の 1 行 (HUD_Objective) と分けるか:
-///   目的は «何をするか» だけを言い、どのキーかは言わない ─ 割り当ては OPTIONS で
-///   差し替えられるので、文言に焼くと嘘になる (GameFlowComponent の RefreshHud)。
-///   だが教える段では «どのボタンか» こそが要る。文言はそのまま残し、ボタンは
-///   アイコンで別に出す。差し替えても勝手に付いてくるのがアイコンの利点。
-///
-/// WHY 画面の中央下へ置くか:
-///   右下は操作案内 (UiHintBar) の席で、左下は体力。中央下は «今まさに押すもの» が
-///   目線の落ちる所に来る唯一の空きで、盤面 (ボスの脚元) からも近い。
-///
-/// WHY 押した瞬間に膨らませるか:
-///   出しっぱなしの案内は 2 秒で «飾り» になる。押したときにアイコンだけが一度膨らむと、
-///   案内と自分の指が繋がる。UiHintBar が同じことをしているので、語彙も揃う。
-///
-/// シーン側に要るもの: Canvas の下に `HUD_TutorialIcon` (UIImage) と
-///   `HUD_TutorialText` (UIText)。位置と大きさはここが毎フレーム決めるので、
-///   シーンの値は仮でよい。
-///
-/// WHY 実行時に作らないか: `scene.Create` は GameObject 配列を再確保する。同じ画面の
-///   他のスクリプトが行の GameObject* を掴んで持ち続けているので、あちらの指し先が
-///   消える (UiHintBarComponent と同じ理由)。置き場所はシーンに持たせる。
+/// @note 目的の 1 行 (HUD_Objective) は «何をするか» だけを言い、どのキーかは言わない
+///       (割り当ては OPTIONS で変わるため)。教える段では «どのボタンか» が要るので、
+///       アイコンをここで別に出す。中央下は右下 (UiHintBar) と左下 (体力) が空けている
+///       唯一の場所。押した瞬間だけアイコンを膨らませる (常時だと 2 秒で飾りになる)。
+///       シーンには `HUD_TutorialIcon`/`HUD_TutorialText` が要る (位置・大きさは毎フレーム
+///       ここが決める)。`scene.Create` は使わない ─ GameObject 配列の再確保で他スクリプトが
+///       掴んだ指し先が消える (UiHintBarComponent と同じ理由)。
 #pragma once
 
 #include <Engine/Scene/Components/UIElement.hpp>
@@ -54,8 +40,8 @@ public:
     FBZZ_FIELD(std::string, iconName, "HUD_TutorialIcon", "Icon")
     FBZZ_FIELD(std::string, textName, "HUD_TutorialText", "Text")
     FBZZ_FIELD(std::string, portraitName, "HUD_TutorialPortrait", "案内役")
-    // 文字の後ろへ敷く帯。**画面が沈んでいない間も読めるようにするための物**で、
-    // 沈み (cueDim) とは役割が別 ── あちらは «世界を止めた» の合図、こちらは可読性。
+    /// 文字の後ろへ敷く帯。**画面が沈んでいない間も読めるようにするための物**で、
+    /// 沈み (cueDim) とは役割が別 ── あちらは «世界を止めた» の合図、こちらは可読性。
     FBZZ_FIELD(std::string, bandName, "HUD_TutorialBand", "Band")
     FBZZ_TOOLTIP("空なら帯を出さない。シーンに無くても黙って諦める (案内自体は出る)")
 
@@ -66,19 +52,18 @@ public:
     FBZZ_FIELD_RANGE(float, fontSize, 44.0f, "文字", 8.0f, 96.0f)
     FBZZ_FIELD_RANGE(float, gapIconText, 18.0f, "アイコンと文字の間", 0.0f, 60.0f)
 
-    // «ここだ» の合図が出ている間だけ、画面の真ん中へ寄って大きくなる。
-    //
-    // WHY 普段から中央に置かないか: 中央は盤面そのものが居る場所で、常駐させると
-    //   ボスの足元 (予兆が出る所) を文字で塞ぐ。普段は目線の下、**言い切る瞬間だけ
-    //   目線の上へ** ─ 位置が変わること自体が «今のは特別» の合図になる。
+    /// «ここだ» の合図が出ている間だけ、画面の真ん中へ寄って大きくなる。
+    ///
+    /// @note 普段は目線の下に置く。中央は盤面そのものが居る場所で、常駐させると
+    ///       ボスの足元 (予兆が出る所) を文字で塞ぐため。
     FBZZ_GROUP("教える瞬間")
     FBZZ_FIELD_RANGE(float, cueCenterY, 486.0f, "中央での縦位置 [px]", 0.0f, 1080.0f)
     FBZZ_TOOLTIP("1080 基準。画面の中心 (540) より少し上 ─ 真ん中はボスの胴が居る")
     FBZZ_FIELD_RANGE(float, cueScale, 1.55f, "大きさの倍率", 1.0f, 3.0f)
-    // 合図の «寄り» は速く、«戻り» はゆっくり。«来た» は一瞬で、«読む» には時間が要る。
-    //
-    // WHY 片道ずつ速さを分けるか: 1 本の曲線で往復させると、寄るのを速くすれば
-    //   戻るのも速くなる。戻りが速いと、読み終わる前に中央から逃げていく。
+    /// 合図の «寄り» は速く、«戻り» はゆっくり。«来た» は一瞬で、«読む» には時間が要る。
+    ///
+    /// @note 片道ずつ速さを分ける。1 本の曲線で往復させると、寄りを速くすれば戻りも
+    ///       速くなり、読み終わる前に中央から逃げていく。
     FBZZ_FIELD_RANGE(float, cueRiseSeconds, 0.10f, "寄る速さ [s]", 0.01f, 1.0f)
     FBZZ_FIELD_RANGE(float, cueFallSeconds, 0.34f, "戻る速さ [s]", 0.01f, 2.0f)
 
@@ -88,14 +73,11 @@ public:
     FBZZ_FIELD_RANGE(float, bandPadX, 46.0f, "帯の横の余白 [px]", 0.0f, 200.0f)
     FBZZ_FIELD_RANGE(float, bandPadY, 20.0f, "帯の縦の余白 [px]", 0.0f, 120.0f)
 
-    // 文言が変わってから «読めた頃» に光を 1 度だけ通す。
-    //
-    // WHY 解読 (Decode) にしないか: ここは 0.8 秒で読ませるのが仕事で、しかもスローを
-    //   掛けてまで «今» を言っている。確定するまで待たせる演出は読みやすさを削るだけ。
-    //   走査なら **最初のフレームから全部読める**まま、格だけ上げられる。
-    //
-    // WHY 遅らせるか: 出た瞬間に光らせると «光った» が先に目に入って、文字を読む前に
-    //   1 拍失う。読み終わる頃に舐めるから «特別な一言» として残る。
+    /// 文言が変わってから «読めた頃» に光を 1 度だけ通す。
+    ///
+    /// @note 解読 (Decode) にしない。スローを掛けてまで «今» を言う場面で、確定を待たせる
+    ///       演出は読みやすさを削る。走査なら最初のフレームから全部読める。光は出た瞬間
+    ///       でなく遅らせる ─ 先に光が目に入ると文字を読む前に 1 拍失う。
     FBZZ_GROUP("走査")
     FBZZ_FIELD_RANGE(float, sweepDelay, 0.30f, "通すまで [s]", 0.0f, 2.0f)
     FBZZ_TOOLTIP("文言が変わってからここまで待って光を通す。0 で出た瞬間")
@@ -121,20 +103,18 @@ private:
 
     /// 文字列の幅を «文字の高さ何個ぶんか» で見積もる。
     ///
-    /// WHY バイト数で数えないか: 文言は日本語で、UTF-8 では 1 文字 3 バイト。
-    ///     `size()` で数えると幅を 3 倍に見積もり、アイコンが画面の左へ大きく外れる。
-    ///     実測 (transform.scale.x) が届くまでの 1 フレームだけの話だが、
-    ///     押した瞬間に 1 フレーム飛ぶのは «押したのに変な所へ出た» として目に付く。
-    ///
-    /// WHY 全角を 1.0 とするか: 和文は字面がほぼ正方形で、字送りは文字の高さに等しい。
-    ///     半角 (英数・記号) はその半分あたり。
+    /// @note バイト数 (`size()`) は使わない。日本語 UTF-8 は 1 文字 3 バイトなので幅を
+    ///       3 倍に見積もり、実測が届くまでの 1 フレームだけアイコンが左へ外れる。
+    ///       全角を 1.0 とする ─ 和文は字面がほぼ正方形。半角はその半分あたり。
     [[nodiscard]] static float GlyphWidths(const std::string& text)
     {
         float widths = 0.0f;
         for (const char raw : text) {
             const auto byte = static_cast<unsigned char>(raw);
-            if ((byte & 0xC0u) == 0x80u) continue;      // 継続バイトは数えない
-            widths += (byte < 0x80u) ? 0.55f : 1.0f;    // 半角 / 全角
+            /// @note 継続バイトは数えない
+            if ((byte & 0xC0u) == 0x80u) continue;
+            /// @note 半角 / 全角
+            widths += (byte < 0x80u) ? 0.55f : 1.0f;
         }
         return widths;
     }
@@ -183,7 +163,7 @@ inline void TutorialPromptComponent::Bind()
     if (GameObject* portrait = scene.Find(portraitName)) m_portrait = EntityRef{ portrait->GetID() };
     if (GameObject* icon = scene.Find(iconName)) m_icon = EntityRef{ icon->GetID() };
     if (GameObject* text = scene.Find(textName)) m_text = EntityRef{ text->GetID() };
-    // 帯は無くても案内は成立する。見つからないことを咎めない。
+    /// @note 帯は無くても案内は成立する。見つからないことを咎めない。
     if (!bandName.empty())
         if (GameObject* band = scene.Find(bandName)) m_band = EntityRef{ band->GetID() };
     if (!m_icon.Resolve(scene) || !m_text.Resolve(scene))
@@ -219,8 +199,8 @@ inline void TutorialPromptComponent::Apply(float reveal, float grow)
 
     const float alpha = uimotion::OutQuint(reveal);
 
-    // 合図の間は中央へ寄って大きくなる。寄り切るのは速く、戻るのはゆっくり ──
-    // «来た» は一瞬で、«読む» には時間が要る。
+    /// @note 合図の間は中央へ寄って大きくなる。寄り切るのは速く、戻るのはゆっくり ──
+    ///       «来た» は一瞬で、«読む» には時間が要る。
     const float cue   = uimotion::OutCubic(m_cue);
     const auto* lesson = TutorialDirectorComponent::Instance();
     const bool focus = lesson && lesson->StaminaFocusActive();
@@ -232,18 +212,16 @@ inline void TutorialPromptComponent::Apply(float reveal, float grow)
     const float gap   = gapIconText * zoom;
     const float size  = iconW * grow;
 
-    // 実測の幅で «アイコン + 間 + 文字» を中央へ寄せる。まだ測れていないフレームは
-    // 字数から見積もる (1 フレームだけずれるが、次で直る ── UiHintBar と同じ)。
-    //
-    // WHY 実測をそのまま使えないか: 実測は «前フレームの font で描いた幅»。合図で
-    //     文字が大きくなる最中は毎フレーム変わるので、そのまま使うと中央から
-    //     ずれ続ける。倍率が動いている間は見積もりへ寄せる。
+    /// @note 実測の幅で «アイコン + 間 + 文字» を中央へ寄せる。まだ測れていないフレームは
+    ///       字数から見積もる (1 フレームだけずれるが、次で直る ── UiHintBar と同じ)。
+    ///       実測は «前フレームの font で描いた幅» なので、倍率が動いている最中に使うと
+    ///       中央からずれ続ける ─ その間は見積もりへ寄せる。
     const float textW = font * GlyphWidths(m_label);
     const float portraitW = m_portrait.Resolve(scene) ? 150.0f : 0.0f;
     const float portraitSpace = portraitW > 0.0f ? portraitW + gap : 0.0f;
     const float total = portraitSpace + iconW + gap + textW;
     const float left  = 960.0f - total * 0.5f;
-    // 出る前は少し下から上がってくる。
+    /// @note 出る前は少し下から上がってくる。
     const float lift  = 14.0f * (1.0f - uimotion::OutCubic(reveal));
 
     if (GameObject* portrait = m_portrait.Resolve(scene)) {
@@ -260,10 +238,10 @@ inline void TutorialPromptComponent::Apply(float reveal, float grow)
     if (auto* t = text->GetComponent<UIText>()) t->fontSize = font;
     text->transform.position = { left + portraitSpace + iconW + gap, baseY - font * 0.5f + lift, 0.0f };
 
-    // 走査。読める状態は 1 フレーム目から保ったまま、光だけが端から端へ抜ける。
-    //
-    // 頂点色は UIText.color に掛かるので、走査の間は color を白 + α にして、
-    // 色は文字列の側で組む (UiTextFx.hpp の «絶対色で書く» の約束)。
+    /// @note 走査。読める状態は 1 フレーム目から保ったまま、光だけが端から端へ抜ける。
+    ///
+    ///       頂点色は UIText.color に掛かるので、走査の間は color を白 + α にして、
+    ///       色は文字列の側で組む (UiTextFx.hpp の «絶対色で書く» の約束)。
     const float head = (m_labelAge - sweepDelay) / std::max(sweepSeconds, 0.05f);
     const auto* director = TutorialDirectorComponent::Instance();
     const bool celebrating = director && director->IsCelebrating();
@@ -273,15 +251,15 @@ inline void TutorialPromptComponent::Apply(float reveal, float grow)
         ui.SetText(text, textfx::Sweep(m_label, textColor, sweepColor, head, sweepWidth));
         m_sweeping = true;
     } else {
-        // 抜け切ったら素の文字へ 1 度だけ戻す。毎フレーム組み直す理由が無い。
+        /// @note 抜け切ったら素の文字へ 1 度だけ戻す。毎フレーム組み直す理由が無い。
         if (m_sweeping) { ui.SetText(text, m_label); m_sweeping = false; }
         ui.SetTextColor(text, celebrating ? Vector4{ 1.0f, 0.87f, 0.40f, alpha }
                                          : Vector4{ textColor.x, textColor.y, textColor.z, textColor.w * alpha });
     }
 
-    // 帯は «アイコン + 文字» をそのまま囲う。文字の長さで幅が変わるので、
-    // 固定の板ではなく毎フレーム測って敷く ─ 短い «回避» に帯だけ長く残ると、
-    // 中身の無い板が画面の真ん中を占める。
+    /// @note 帯は «アイコン + 文字» をそのまま囲う。文字の長さで幅が変わるので、
+    ///       固定の板ではなく毎フレーム測って敷く ─ 短い «回避» に帯だけ長く残ると、
+    ///       中身の無い板が画面の真ん中を占める。
     if (GameObject* band = m_band.Resolve(scene)) {
         const float padX = bandPadX * zoom;
         const float padY = bandPadY * zoom;
@@ -301,9 +279,9 @@ inline void TutorialPromptComponent::OnUpdate()
     const auto* director = TutorialDirectorComponent::Instance();
     const char* want     = director ? director->PromptAction() : "";
     const char* label    = director ? director->PromptLabel()  : "";
-    // 合図は «その瞬間の強さ» をそのまま使わず、寄りと戻りで別々の速さで追う。
-    // Director 側は «残り / 全体» をそのまま返すので、中央へ寄るのが合図の頭で
-    // 一番強く、以後ゆっくり下がる ── 追従を分けないと寄りも戻りも同じ速さになる。
+    /// @note 合図は «その瞬間の強さ» をそのまま使わず、寄りと戻りで別々の速さで追う。
+    ///       Director 側は «残り / 全体» をそのまま返すので、中央へ寄るのが合図の頭で
+    ///       一番強く、以後ゆっくり下がる ── 追従を分けないと寄りも戻りも同じ速さになる。
     {
         const float want = director ? director->CueStrength() : 0.0f;
         const float span = want > m_cue ? std::max(cueRiseSeconds, 0.01f)
@@ -312,19 +290,16 @@ inline void TutorialPromptComponent::OnUpdate()
         m_cue = want > m_cue ? std::min(want, m_cue + step) : std::max(want, m_cue - step);
     }
 
-    // 機器が変わったらアイコンを差し替える (OPTIONS で切り替えた直後にも効く)。
+    /// @note 機器が変わったらアイコンを差し替える (OPTIONS で切り替えた直後にも効く)。
     const bool pad = UsingPad();
     const bool deviceChanged = pad != m_pad;
     m_pad = pad;
     debugPad = pad;
 
-    // 押させたい操作が変わったら、文字とアイコンを差し替えて出し直す。
-    //
-    // WHY 一度引っ込めてから出さないか: 段が進んだ «良いこと» の直後に案内が
-    //     消えて出るのは、間違えて消えたようにも見える。中身だけ入れ替えて、
-    //     出入りは «有るか無いか» のときだけにする。
-    // WHY 文言の変化も見るか: 合図の最中はボタンが同じまま **文字だけ** «今だ、横へ
-    //     逃げろ» へ差し替わる。操作名だけを見ていると、そこで文字が更新されない。
+    /// @note 押させたい操作が変わったら、文字とアイコンを差し替えて出し直す。一度
+    ///       引っ込めてから出さない ─ 段が進んだ «良いこと» の直後に消えて出ると、間違えて
+    ///       消えたように見える。操作名だけでなく文言の変化も見る ─ 合図の最中はボタンが
+    ///       同じまま文字だけ差し替わることがあるため。
     const bool labelChanged  = m_label != (label ? label : "");
     const bool actionChanged = m_action != (want ? want : "");
 
@@ -344,13 +319,13 @@ inline void TutorialPromptComponent::OnUpdate()
                 const std::string_view sprite = keyicon::Prompt(m_pad, which);
                 if (!sprite.empty()) ui.SetImageTexture(icon, sprite);
             }
-        // 叩きの残りは «操作が変わったとき» だけ捨てる。文言が言い換わるたびに
-        // 捨てると、合図の最中に押しても膨らまない。
+        /// @note 叩きの残りは «操作が変わったとき» だけ捨てる。文言が言い換わるたびに
+        ///       捨てると、合図の最中に押しても膨らまない。
         if (actionChanged) m_hit = 0.0f;
     }
 
-    // 出したい操作が無ければ引っ込める。アイコンを引けない操作も出さない ─
-    // 絵の無い枠だけが浮くと «何か出そこなった» に見える。
+    /// @note 出したい操作が無ければ引っ込める。アイコンを引けない操作も出さない ─
+    ///       絵の無い枠だけが浮くと «何か出そこなった» に見える。
     keyicon::Action resolved = keyicon::Action::Confirm;
     const bool wantShow = !m_action.empty() && IconOf(m_action, resolved);
 
@@ -360,7 +335,7 @@ inline void TutorialPromptComponent::OnUpdate()
                                  : std::max(target, m_reveal - step);
     if (m_reveal <= 0.0f) { Hide(); return; }
 
-    // 押した瞬間だけ膨らむ。押されていない間は静かに呼吸する。
+    /// @note 押した瞬間だけ膨らむ。押されていない間は静かに呼吸する。
     if (wantShow && input.GetActionDown(m_action)) m_hit = 1.0f;
     uimotion::Decay(m_hit, dt, 0.14f);
     const float breathe = 1.0f + idlePulse * 0.5f

@@ -26,8 +26,8 @@ std::uint64_t HashSpriteIdentity(std::string_view value, std::uint64_t seed)
     return hash;
 }
 
-// ID を持たない旧 .meta へ、パス・名前・並び順から再現可能な ID を割り当てる。
-// WHY: 読み込みのたびにランダム ID を作ると、移行保存前に生成した参照が次回起動で切れるため。
+/// @brief ID を持たない旧 .meta へ、パス・名前・並び順から再現可能な ID を割り当てる。
+/// @note 読み込みのたびにランダム ID を作ると、移行保存前に生成した参照が次回起動で切れる。
 std::string MakeSpriteId(
     std::string_view assetIdentity, std::string_view name, std::size_t index)
 {
@@ -161,12 +161,11 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
 {
     const TextureImportSettings& s = asset.settings;
 
-    // 既存 .meta の [meta] セクション (guid 等) を先に読む。
-    // WHY 先に読むか: guid は Sprite ID を補完するときの種でもある。Load 側が
-    //     [meta] guid を種にしているので、ここで absPath を種にすると同じ Sprite に
-    //     別の ID が付き、書いた瞬間に全参照が切れる。
-    // WHY 引き継ぐか: guid は AssetDatabase が発行する恒久 ID。テクスチャ設定の保存で
-    //     消してしまうとこの画像への guid 参照が全て切れるため、[texture] 以外は必ず残す。
+    /// @note 既存 .meta の [meta] セクション (guid 等) を先に読む。guid は Sprite ID を
+    ///       補完する種でもあり、Load 側も [meta] guid を種にしているため、ここで absPath を
+    ///       種にすると同じ Sprite に別の ID が付き、書いた瞬間に全参照が切れる。
+    /// @note guid は AssetDatabase が発行する恒久 ID。テクスチャ設定の保存で消すとこの画像への
+    ///       参照が全て切れるため、[texture] 以外は必ず残す。
     toml::table root;
     std::string spriteIdentity = absPath;
     std::string existing;
@@ -174,6 +173,8 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
         std::istringstream iss(existing);
         const auto parsed = toml::parse(iss);
         if (parsed) {
+            if (const auto* field = parsed.table()["vector_field"].as_table())
+                root.insert("vector_field", *field);
             if (const auto* meta = parsed.table()["meta"].as_table()) {
                 root.insert("meta", *meta);
                 if (auto guid = (*meta)["guid"].value<std::string>(); guid && !guid->empty())
@@ -183,7 +184,7 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     }
 
     toml::table tex;
-    // source= は持たない。元画像は "<name>.<ext>.meta" から末尾 ".meta" を除いて導出する。
+    /// @note source= は持たない。元画像は `<name>.<ext>.meta` から末尾 `.meta` を除いて導出する。
     tex.insert("type",                std::string(TypeToStr(s.type)));
     tex.insert("srgb",                s.srgb);
     tex.insert("compression",         std::string(CompToStr(s.compression)));
@@ -215,8 +216,8 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
             spriteSources.push_back(std::move(sprite));
         }
 
-        // 名前は「別名キー」なので、テクスチャ内で一意でなければ参照が曖昧になる。
-        // 直すのは編集側 (Sprite Editor) の仕事なので、ここでは黙って書き換えず報告だけする。
+        /// @note 名前は「別名キー」なので、テクスチャ内で一意でなければ参照が曖昧になる。
+        ///       直すのは編集側 (Sprite Editor) の仕事なので、ここでは黙って書き換えず報告だけする。
         for (std::size_t i = 0; i < spriteSources.size(); ++i) {
             for (std::size_t j = i + 1; j < spriteSources.size(); ++j) {
                 if (spriteSources[i].name.empty()
@@ -256,8 +257,8 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     ss << root;
     if (!util::FileSystem::WriteText(absPath, ss.str())) return false;
 
-    // 書いた本人が共有キャッシュを潰す。書き込み時刻でも気付けるが、
-    // 同一秒内の連続 Apply では時刻が動かないことがある。
+    /// @note 書いた本人が共有キャッシュを潰す。書き込み時刻でも気付けるが、
+    ///       同一秒内の連続 Apply では時刻が動かないことがある。
     InvalidateTextureImportSettings(absPath);
     return true;
 }
@@ -278,17 +279,17 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     const auto& tbl = parsed.table();
     const auto* tex = tbl["texture"].as_table();
     if (!tex) {
-        // guid のみの .meta ([meta] セクションだけ) は正当な形式。
-        // テクスチャ設定なし = デフォルト適用なので、エラーではなく静かに false を返す。
+        /// @note guid のみの .meta ([meta] セクションだけ) は正当な形式。
+        ///       テクスチャ設定なし = デフォルト適用なので、エラーではなく静かに false を返す。
         return false;
     }
 
-    // sourcePath はサイドカーには書かれない。呼び出し元 (ImageImporter) が元画像パスを設定する。
+    /// @note sourcePath はサイドカーには書かれない。呼び出し元 (ImageImporter) が元画像パスを設定する。
     TextureImportSettings& s = outAsset.settings;
     const std::string spriteIdentity = tbl["meta"]["guid"].value<std::string>()
         .value_or(absPath);
     if (auto v = (*tex)["type"].value<std::string>())              s.type = StrToType(*v);
-    // type が決まったらデフォルトを入れる (明示フィールドで上書き)
+    /// @note type が決まったらデフォルトを入れる (明示フィールドで上書き)
     s = DefaultSettingsForType(s.type);
 
     if (auto v = (*tex)["srgb"].value<bool>())                     s.srgb              = *v;
@@ -356,18 +357,18 @@ bool TexDescSerializer::ResolveSourcePath(
     std::transform(extension.begin(), extension.end(), extension.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
-    // 生画像は既存パスをそのままロードする。
+    /// @note 生画像は既存パスをそのままロードする。
     if (extension != ".meta") {
         outSourcePath = inputPath;
         return true;
     }
 
-    // 二重拡張子サイドカー: "Foo.png.meta" から末尾 ".meta" を除いた "Foo.png" が元画像。
-    // WHY: source= を持たず、ファイル名だけで元画像を一意に導出する (TOML パース不要で高速)。
+    /// @note 二重拡張子サイドカー: `Foo.png.meta` から末尾 `.meta` を除いた `Foo.png` が元画像。
+    ///       source= を持たず、ファイル名だけで元画像を一意に導出する (TOML パース不要で高速)。
     constexpr std::string_view kMetaExt = ".meta";
     outSourcePath = inputPath.substr(0, inputPath.size() - kMetaExt.size());
 
-    // メタの入れ子 ("Foo.meta.meta") や拡張子なしは不正。元画像拡張子が再び .meta なら失敗させる。
+    /// @note メタの入れ子 ("Foo.meta.meta") や拡張子なしは不正。元画像拡張子が再び .meta なら失敗させる。
     std::string sourceExtension = util::FileSystem::GetExtension(outSourcePath);
     std::transform(sourceExtension.begin(), sourceExtension.end(), sourceExtension.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });

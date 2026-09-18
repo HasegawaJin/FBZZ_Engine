@@ -18,8 +18,8 @@ namespace fbzz::renderer {
 template<typename T, typename Tag>
 class ResourcePool {
 public:
-    // bytes は「この実体が占める GPU メモリ」。0 は «計上しない» を意味する
-    // (PipelineState のような状態オブジェクトや、サイズを取り出せないバックエンド)。
+    /// bytes は「この実体が占める GPU メモリ」。0 は «計上しない» を意味する
+    /// (PipelineState のような状態オブジェクトや、サイズを取り出せないバックエンド)。
     ResourceHandle<Tag> Insert(std::unique_ptr<T> resource,
                                std::size_t bytes,
                                const char* debugName = "ResourcePool",
@@ -28,11 +28,11 @@ public:
     {
         if (!resource) return ResourceHandle<Tag>::Null();
 
-        // WHY: ResourcePool は GPU リソースの唯一の所有者なので、ここで記録すれば
-        //      各呼び出し元へ侵襲せず «返し忘れ» を見つけられる。
-        // WHY: 追跡枠が尽きても (MAX_DEBUG_ALLOCATIONS) プールの機能自体は成立するため戻り値は捨てる。
-        // WHY sizeof(T) を使わないか: T は IBuffer などのインターフェース型で、
-        //     その大きさは vptr 数バイト。実体の GPU メモリとは何の関係もない。
+        /// @note ResourcePool は GPU リソースの唯一の所有者なので、ここで記録すれば各呼び出し元へ
+        ///       侵襲せず «返し忘れ» を見つけられる。追跡枠が尽きても (MAX_DEBUG_ALLOCATIONS)
+        ///       プールの機能自体は成立するため戻り値は捨てる。T は IBuffer などの
+        ///       インターフェース型で sizeof(T) は vptr 数バイトしかなく、
+        ///       実体の GPU メモリとは無関係なので bytes を別引数で受け取る。
         static_cast<void>(m_debug.Track(
             MakeAllocationInfo(resource.get(), bytes, debugName, file, line)));
 
@@ -63,10 +63,10 @@ public:
         return m_slots[handle.id].resource.get();
     }
 
-    // HLSL ホットリロード用: 既存スロットのリソースを新しいものに差し替える。
-    // WHY: Remove → Insert すると world generation が上がり既存ハンドルが無効になる。
-    //      Replace は generation を維持したまま中身だけ入れ替えるため、
-    //      シェーダーを参照する Material / PipelineState を更新せずにホットスワップできる。
+    /// HLSL ホットリロード用: 既存スロットのリソースを新しいものに差し替える。
+    /// @note Remove → Insert すると generation が上がり既存ハンドルが無効になる。Replace は
+    ///       generation を維持したまま中身だけ入れ替えるため、シェーダーを参照する
+    ///       Material / PipelineState を更新せずにホットスワップできる。
     void Replace(ResourceHandle<Tag> handle, std::unique_ptr<T> resource, std::size_t bytes = 0)
     {
         if (!IsLive(handle) || !resource) return;
@@ -85,8 +85,8 @@ public:
         static_cast<void>(m_debug.Untrack(slot.resource.get()));
         slot.resource.reset();
         slot.occupied = false;
-        // generation を進めて、同じ id を再利用しても古いハンドルが IsLive を通過しないようにする。
-        // 0 に戻すと ResourceHandle のデフォルト値 (gen=0) と衝突するため 1 に巻き戻す。
+        /// @note generation を進めて、同じ id を再利用しても古いハンドルが IsLive を通過しないようにする。
+        ///       0 に戻すと ResourceHandle のデフォルト値 (gen=0) と衝突するため 1 に巻き戻す。
         slot.gen = (slot.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : slot.gen + 1u;
         m_freeList.push_back(handle.id);
     }
@@ -108,9 +108,9 @@ public:
 
     void ReleaseOwnedForShutdown()
     {
-        // WHY: Remove() と同じく Untrack → reset の順。ここを通ったスロットは
-        //      «意図して返した» ものなので、終了時のログには残らない。
-        //      残っているものだけが «誰も返さなかった» リソース。
+        /// @note Remove() と同じく Untrack → reset の順。ここを通ったスロットは «意図して
+        ///       返した» ものなので終了時のログには残らない。残っているものだけが
+        ///       «誰も返さなかった» リソース。
         m_freeList.clear();
         for (uint32_t id = 0; id < static_cast<uint32_t>(m_slots.size()); ++id) {
             Slot& slot = m_slots[id];
@@ -146,7 +146,7 @@ private:
 
     struct Slot {
         std::unique_ptr<T> resource;
-        uint32_t gen = 1; // 初期値を 1 にし、ResourceHandle デフォルトの gen=0 とは絶対に一致しない
+        uint32_t gen = 1; ///< 初期値を 1 にし、ResourceHandle デフォルトの gen=0 とは絶対に一致しない
         bool occupied = false;
     };
 
@@ -158,9 +158,9 @@ private:
         return slot.occupied && slot.gen == handle.gen;
     }
 
-    // id = 0 は «無効ハンドル» 用の番兵。中身は常に空のまま。
-    // WHY 初期化子リストで書かないか: Slot は unique_ptr を持つのでコピーできない
-    //     (初期化子リストは要素をコピーする)。個数指定で 1 つ値初期化する。
+    /// id = 0 は «無効ハンドル» 用の番兵。中身は常に空のまま。
+    /// @note Slot は unique_ptr を持つのでコピーできない (初期化子リストは要素をコピーする)。
+    ///       そのため初期化子リストではなく個数指定で 1 つ値初期化する。
     std::vector<Slot> m_slots = std::vector<Slot>(1);
     std::vector<uint32_t> m_freeList;
     core::MemoryDebug m_debug;

@@ -28,7 +28,7 @@ public:
     /// クリップハンドル。0 は無効。
     using ClipId = uint32_t;
 
-    // device の所有権は呼び出し元が保持。Init より前に渡す
+    /// @note device の所有権は呼び出し元が保持する。Init より前に渡すこと。
     explicit AudioManager(IAudioDevice& device);
 
     bool Init();
@@ -47,8 +47,7 @@ public:
     /// @name ミキサーバス
     ///@{
     /// バス構成を作り直す。再生中の音はすべて止まる。
-    /// WHY 止まるか: 送り先の submix を破棄するため。構成変更は設定画面や
-    ///     プロジェクト読み込みの境界でしか起きない想定。
+    /// @note 送り先の submix を破棄するため。構成変更は設定画面やプロジェクト読み込みの境界でしか起きない想定。
     void ApplyBusLayout(const std::vector<BusDesc>& buses);
     /// 大文字小文字を無視して引く。見つからなければ kMasterBus。
     [[nodiscard]] BusIndex FindBus(std::string_view name) const;
@@ -88,16 +87,14 @@ public:
     };
 
     /// Scene の AudioSourceComponent が所有する voice を個別に操作する低レベル API。
-    /// WHY voiceId を返すか: 複数の 3D 音源を同時追跡するため、共有状態では足りない。
+    /// @note 複数の 3D 音源を同時追跡するため voiceId を返す。共有状態では足りない。
     [[nodiscard]] uint32_t PlayVoice(const std::string& path, bool loop, BusIndex bus,
                                      const PlayParams& params = {});
     [[nodiscard]] uint32_t PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
                                          const PlayParams& params = {});
 
     /// 既定の短いフェードを掛けてから畳む。
-    /// WHY 即断しないか: 波形の途中で切ると段差が生まれ、「プツッ」と鳴る。
-    ///     呼んだ側から見た voiceId はこの時点で無効になり、実体の後始末は
-    ///     Update が引き取る (フェード中も PCM は保持される)。
+    /// @note 波形の途中で切ると段差が生まれ「プツッ」と鳴るため即断しない。呼んだ側から見た voiceId はこの時点で無効になり、実体の後始末は Update が引き取る (フェード中も PCM は保持される)。
     void StopVoice(uint32_t voiceId);
     /// フェードを挟まず即座に畳む。ライフサイクル境界とボイススティール用。
     void StopVoiceImmediate(uint32_t voiceId);
@@ -128,7 +125,7 @@ public:
     void PlayBGM(const std::string& path, bool loop = true, float fadeSeconds = 0.0f);
     void StopBGM(float fadeSeconds = 0.0f);
     void PlaySE(const std::string& path);
-    void SetBGMVolume(float volume);  // 0.0f ~ 1.0f
+    void SetBGMVolume(float volume);  ///< 0.0f ~ 1.0f
     void SetSEVolume(float volume);
     [[nodiscard]] float GetBGMVolume() const;
     [[nodiscard]] float GetSEVolume() const;
@@ -137,15 +134,13 @@ public:
 
     /// @name 位置を指定した使い捨て再生
     /// 距離減衰とパンの計算は Listener を知っている AudioSystem が行う。
-    /// WHY ここで計算しないか: 受聴点の選び方 (priority / 有効判定) が
-    ///     AudioSystem にあり、二重に書くと選ばれる Listener がずれる。
+    /// @note 受聴点の選び方 (priority/有効判定) が AudioSystem にあり、二重に書くと選ばれる Listener がずれる。
     ///@{
     struct PositionalRequest
     {
         std::string path;              ///< 空なら clip を使う
         ClipId      clip = 0;          ///< 参照を 1 つ握った状態で積まれる
-        // WHY math::Vector3 を使わないか: audio モジュールは Math へ依存していない。
-        //     3 つの float で足りるものに依存を増やさない。
+        /// @note audio モジュールは Math へ依存していないため math::Vector3 を使わない。3 つの float で足りるものに依存を増やさない。
         float x = 0.0f, y = 0.0f, z = 0.0f;
         float volume      = 1.0f;
         float minDistance = 1.0f;
@@ -177,15 +172,12 @@ private:
         std::vector<uint8_t> pcm;
         int                  refCount   = 0;
         int                  voiceCount = 0;
-        // パス由来。Shutdown まで保持し、参照が 0 でも捨てない。
-        bool                 persistent = false;
-        // 生成クリップの重複排除キー (persistent なら 0)。
-        uint64_t             specHash   = 0;
+        bool                 persistent = false;   ///< パス由来。Shutdown まで保持し、参照が 0 でも捨てない。
+        uint64_t             specHash   = 0;        ///< 生成クリップの重複排除キー (persistent なら 0)。
     };
 
     /// 鳴っている 1 本。デバイスへ送る音量は volume * fadeGain。
-    /// WHY 2 つに分けるか: AudioSystem は毎フレーム距離減衰から音量を計算し直して
-    ///     書き込む。フェードを同じ変数へ書くと、次のフレームで消える。
+    /// @note AudioSystem は毎フレーム距離減衰から音量を計算し直して書き込むため、フェードは別変数に分ける。同じ変数へ書くと次フレームで消える。
     struct VoiceState
     {
         ClipId   clip      = 0;
@@ -202,7 +194,7 @@ private:
     };
 
     /// 上限に達していれば 1 本畳んで場所を空ける。
-    /// @ret 場所を空けられたか。false なら新しい音を鳴らさない。
+    /// @return 場所を空けられたか。false なら新しい音を鳴らさない。
     [[nodiscard]] bool MakeRoomForVoice(int priority);
     void ApplyVoiceGain(uint32_t voiceId, const VoiceState& state);
 
@@ -229,12 +221,10 @@ private:
     std::unordered_map<ClipId, ClipEntry>   m_clips;
     std::unordered_map<std::string, ClipId> m_pathToClip;
     std::unordered_map<uint64_t, ClipId>    m_specToClip;
-    // 鳴っている voice。終了を検出してクリップの参照を戻すためにも要る。
-    std::unordered_map<uint32_t, VoiceState> m_voices;
+    std::unordered_map<uint32_t, VoiceState> m_voices;   ///< 鳴っている voice。終了を検出してクリップの参照を戻すためにも要る。
     uint64_t                                m_nextVoiceSequence = 1;
     size_t                                  m_voiceLimit = 48;
-    // reverb 有効バスへ最後に送った値。同じ値を送り続けないための記録。
-    float                                   m_reverbWet     = -1.0f;
+    float                                   m_reverbWet     = -1.0f;   ///< reverb 有効バスへ最後に送った値。同じ値を送り続けないための記録。
     float                                   m_reverbDecay   = 0.0f;
     float                                   m_reverbHfRatio = 1.0f;
     size_t                                  m_generatedBytes = 0;

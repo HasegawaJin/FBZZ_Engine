@@ -2,8 +2,9 @@
 
 C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理はゼロ実装。ImGui エディター・RenderGraph・NavMesh・地形・水面・VFX・スクリプト DLL ホットリロードを持つ。**ポートフォリオ公開リポジトリ**。
 
-- 名前空間 `fbzz::` (`math` / `physics` / `renderer` / `scene` / `editor`)。ゲームスクリプトは `sandbox` (入れ子禁止)
-- 依存方向 `Editor / GameHub / Sandbox / GreenWare → Engine → Physics → Math`。逆転禁止
+- 名前空間 `fbzz::` (`math` / `physics` / `fluid` / `renderer` / `scene` / `editor`)。ゲームスクリプトは `sandbox` (入れ子禁止)
+- 依存方向 `Editor / GameHub / Sandbox / GreenWare → Engine → Physics / Fluid → Math`。逆転禁止
+- `Fluid` (`Projects/Fluid`) は流体の**数式だけ**。ファイル形式 (`.fluid` / `速度場 PNG`) も RHI も Scene も知らず、依存は Math のみ。`Physics` とは兄弟で互いを知らない (`Docs/design/fluid-library.md`)
 - エンジン本体は `Projects/`、それを使うゲームは `GreenWare/` (作業はほぼ `GreenWare/Assets/` で完結)
 - 迷ったら `Docs/design/` の設計文書に従う。無ければ実装せず選択肢を提示する
 
@@ -22,7 +23,7 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 | エンジン `.hpp` での `using namespace` | スクリプト (`Assets/**/*.hpp`) だけ `fbzz::scene` / `math` / `input` を許可 |
 | C++20 Modules / `std::ranges` / コルーチン | `Engine/Scene/Coroutine.hpp` の自作実装 |
 | FetchContent | `ThirdParty/` へベンダー + `LICENSE` + `VERSION` + `THIRD-PARTY-NOTICES.md` へ追記 |
-| ターミナルからのビルド | VS Code / VS のタスク (MSVC 環境は `Tools/VcBuild.ps1` しか知らない) |
+| `cmake` / `msbuild` の直叩き | 人は VS Code / VS のタスク、AI は `Tools/AgentBuild.ps1` (VS 環境を知るのは `Tools/VsEnvironment.ps1` だけ) |
 | `git checkout -- <path>` / `git restore` | 戻したい対象を提示して判断を仰ぐ |
 | コミットへの `Co-Authored-By` / `Generated with` | 付けない |
 
@@ -41,7 +42,8 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 ```
 
 - **コメントはすべて Doxygen 形式** (`///` + `@brief` / `@param` / `@return` / `@pre` / `@note` / `@warning` / `@see`)。`//` の自由記述は書かない。関数本体の中で補足が要る箇所も `/// @note` 1 行で書く (Doxygen は本体内を拾わないので、契約に関わる理由は宣言側の `@note` に置く)
-- **短く書く**。各タグ 1 行。段落が要るなら `Docs/design/` に置いて `@see` で指す。生成は `doxygen Docs/Doxyfile` (出力 `build/docs/html/`、警告は `build/docs/doxygen-warnings.log`)
+- **短く書く**。各タグ 1 行。段落が要るなら `Docs/design/` に置いて `@see` で指す。生成は `doxygen Docs/Doxyfile` → `python Tools/ApiReference.py` (AI 向け Markdown は `build/docs/api/`、警告は `build/docs/doxygen-warnings.log`)。詳細と移行表は `Docs/conventions/comments.md`
+- **リファレンスは実装のコメントにも残す**。参考にした論文・公式仕様・公式ドキュメントの URL を、対応する数式・アルゴリズム・API 契約の宣言または実装の直近に `/// @see <URL>` で記載する。何を参照したか分かる題名・節名も添え、設計文書や作業報告だけにリンクを置かない。
 - **書くのは「コードから読めないこと」だけ**。契約 (単位・座標系・所有権・スレッド・失敗時の戻り値) と、数式の根拠・順序依存・ドライバ回避策のような非自明な理由のみ。処理をなぞる説明・自明なゲッターの説明・引数名を言い換えただけの `@param` は書かない
 - 旧コードの `// FBZZ Engine` バナー・`//` コメント・`@ret` などの独自タグは真似しない。**見つけ次第すべて Doxygen 形式へ直す** (触ったファイルは全体を直し切る)。`doxygen Docs/Doxyfile` の警告ログは旧コメントの残りを探す手掛かりになる
 
@@ -100,7 +102,9 @@ FBZZ_REFLECT(EnemyComponent)   // フィールド宣言の締め。クラス外�
 
 ## ビルド・テスト・Git
 
-- ビルド結果が必要なときはユーザーに VS Code タスク (`CMake: Build All (Debug)` / `Tests: Build & Run Suite (Debug)` 等) を依頼し、エラー出力を貼ってもらう。VS 更新後に configure が落ちたら `build/<Config>/` を消して再 configure
+- AI の検証ループ (`Docs/design/ai-verification-loop.md`): C++ を変えたら `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check <変えたファイル...>` でコンパイルだけ通す (リンクしないので起動中のエディターと衝突しない)。`build <target>` / `test -Filter <regex>` も同じ入口。出力は `ERROR path:line CODE msg` と `RESULT` 行、全文は `RESULT` 行の log= (最新は `build/agent/last-<verb>.txt` が指す)
+- 動作の確認はシナリオ (`<Project>/Tests/Playtests/*.playtest.json`) で表明する。エディター起動中は MCP の `scenario_run` → `scenario_status`、起動せずに回すなら `FBZZEditor.exe --project <p> --batch <scenario> --hidden [--report <json>] [--update-baselines] [--warp]` (終了コード 0 合格 / 1 不合格 / 2 起動失敗)。基準画像は `<Project>/Tests/Golden/`、出力は `<Project>/Library/Playtests/`
+- フルビルドやエディターの再起動が要る変更 (DLL を掴まれてリンクできない) はユーザーに VS Code タスク (`CMake: Build All (Debug)` / `Tests: Build & Run Suite (Debug)` 等) を依頼する。VS 更新後に configure が落ちたら `build/<Config>/` を消して再 configure
 - ビルド時間は前処理行数で決まる。標準ヘッダーは `fbzz_use_std_pch` に任せ、ヘッダーオンリーの重い実装 (`toml++` 等) を公開ヘッダーに載せない。詳細 `Docs/conventions/build-performance.md`
 - テストは `TEST_F` + `TestKit` の fixture。float は `EXPECT_VEC3_NEAR` 等、乱数・時刻・sleep を持ち込まない。新規ファイルは `Projects/Tests/CMakeLists.txt` の `SOURCES` へ手で 1 行足す。詳細 `Docs/conventions/test.md`
 - ブランチ `main → develop → feature/<name>`。コミットは `[Feature|Fix|Design|Build|Refactor|Chore|Release] + 動詞 + 概要`、本文は Markdown。詳細 `Docs/conventions/git.md`

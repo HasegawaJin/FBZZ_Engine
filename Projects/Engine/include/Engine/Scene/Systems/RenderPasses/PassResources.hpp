@@ -25,9 +25,8 @@
 namespace fbzz::scene {
 
 /// 名前 → 実ハンドルの対応表。1 フレームぶんの «今この名前が指している実体»。
-///
-/// WHY 名前で持つか: グラフへ申告するのも名前なので、両者を同じ鍵で引ければ
-///     «申告したのに別の実体を束縛する» が構造的に起きなくなる。
+/// @note 名前で持つ理由: グラフへ申告するのも名前なので、両者を同じ鍵で引けば «申告したのに
+///       別の実体を束縛する» が構造的に起きなくなる。
 class RenderResourceRegistry {
 public:
     void Clear()
@@ -61,10 +60,8 @@ public:
     }
 
     /// 束縛済みの名前を走査する。
-    ///
-    /// WHY 引きだけでなく走査も要るか: 診断側は «どの名前が差さっているか» を
-    ///     知る術が無く、見たいリソース名を手で書き写すしかなかった。写した一覧は
-    ///     必ず本体と食い違う。
+    /// @note 引きだけでなく走査も要る理由: 診断側は «どの名前が差さっているか» を知る術が無く、
+    ///       見たいリソース名を手で書き写すしかなかった (写した一覧は必ず本体と食い違う)。
     /// @note 走査順は unordered_map の内部順。表示する側が並べ替えること。
     template<typename Fn>
     void ForEachTarget(Fn&& fn) const
@@ -96,17 +93,16 @@ public:
     PassBuilder& ReadWrite(std::string_view name) { return Add(name, Usage::ReadWrite); }
 
     /// 組み立て済みの申告をそのまま載せる。
-    /// WHY: 登録時点で accesses を持っているアダプタ (LambdaPass) が usage を
-    ///      Read/Write/ReadWrite へ場合分けし直さずに済むようにする。
+    /// @note 登録時点で accesses を持つアダプタ (LambdaPass) が usage を Read/Write/ReadWrite へ
+    ///       場合分けし直さずに済むようにする。
     PassBuilder& Declare(const Access& access) { m_accesses.push_back(access); return *this; }
 
     /// Execute の直前に、この名前の RT を自動で束縛する。
-    ///
-    /// WHY «Write が 1 つなら自動» にしないか: Setup へ Write を 1 本足しただけで
-    ///     自動束縛が黙って消えることになる。それは «前のパスが残した束縛に依存する»
-    ///     のと同じ種類の暗黙依存で、いま潰している欠陥そのもの。明示的に宣言させる。
-    /// @note 1 パス内で束縛を切り替えるパス (Shadow / Water / キューブ面) は呼ばず、
-    ///       Execute の中で res.Target(...) を自分で束縛する。
+    /// @note «Write が 1 つなら自動» にしない理由: Setup へ Write を足しただけで自動束縛が黙って
+    ///       消えることになり、«前のパスが残した束縛に依存する» のと同じ暗黙依存になる。明示的に
+    ///       宣言させる。
+    /// @note 1 パス内で束縛を切り替えるパス (Shadow/Water/キューブ面) は呼ばず、Execute の中で
+    ///       res.Target(...) を自分で束縛する。
     PassBuilder& SetAutoTarget(std::string_view name)
     {
         m_autoTarget = std::string(name);
@@ -117,8 +113,8 @@ public:
     [[nodiscard]] const std::string& AutoTarget() const { return m_autoTarget; }
 
     /// Setup が終わった申告を呼び出し側の保管場所へ移す。呼び出し後のビルダーは空。
-    /// WHY: パイプラインは毎フレーム全パスの Setup を引き直す。コピーで受けると
-    ///      パス数 × 申告数ぶんの文字列を毎フレーム作り直すことになる。
+    /// @note パイプラインは毎フレーム全パスの Setup を引き直すため、コピーで受けるとパス数×申告数
+    ///       ぶんの文字列を毎フレーム作り直すことになる。
     void MoveOut(std::vector<Access>& accesses, std::string& autoTarget)
     {
         accesses   = std::move(m_accesses);

@@ -34,7 +34,7 @@ protected:
     scene::Transform transform;
 };
 
-// --- 既定値 -----------------------------------------------------------------
+/// @name 既定値
 
 TEST_F(TransformTest, StartsAtTheOriginWithUnitScale)
 {
@@ -44,12 +44,12 @@ TEST_F(TransformTest, StartsAtTheOriginWithUnitScale)
     EXPECT_VEC3_NEAR(transform.worldScale, math::Vector3::ONE, testkit::kTolerance);
 }
 
-// --- 基底ベクトル -----------------------------------------------------------
+/// @name 基底ベクトル
 
 TEST_F(TransformTest, BasisVectorsComeFromTheWorldRotation)
 {
-    // ローカル回転ではなくワールド回転から作る。親の回転を無視すると、
-    // 子の «前» が親の回転を無視した向きになる。
+    /// @note ローカル回転ではなくワールド回転から作る。親の回転を無視すると、
+    ///       子の «前» が親の回転を無視した向きになる。
     transform.rotation      = math::Quaternion::Identity();
     transform.worldRotation = QuarterTurnAboutUp();
 
@@ -69,7 +69,7 @@ TEST_F(TransformTest, BasisVectorsStayOrthonormal)
                 testkit::kLooseTolerance);
 }
 
-// --- Translate --------------------------------------------------------------
+/// @name Translate
 
 TEST_F(TransformTest, TranslateMovesAlongTheLocalAxesByDefault)
 {
@@ -82,7 +82,7 @@ TEST_F(TransformTest, TranslateMovesAlongTheLocalAxesByDefault)
 
 TEST_F(TransformTest, WorldSpaceTranslateIgnoresTheOwnRotation)
 {
-    // 親を持たないなら world 移動は «そのままの向き»。自分の回転で曲がってはいけない。
+    /// @note 親を持たないなら world 移動は «そのままの向き»。自分の回転で曲がってはいけない。
     transform.rotation      = QuarterTurnAboutUp();
     transform.worldRotation = QuarterTurnAboutUp();
 
@@ -93,9 +93,10 @@ TEST_F(TransformTest, WorldSpaceTranslateIgnoresTheOwnRotation)
 
 TEST_F(TransformTest, WorldSpaceTranslateGoesThroughTheParentRotation)
 {
-    // 親が 90 度回っている子。world で +Z へ動かすと、ローカルでは親の逆回転が掛かる。
+    /// @note 親が 90 度回っている子。world で +Z へ動かすと、ローカルでは親の逆回転が掛かる。
     transform.rotation      = math::Quaternion::Identity();
-    transform.worldRotation = QuarterTurnAboutUp();   // world = 親 × local = 親
+    /// @note world = 親 × local = 親
+    transform.worldRotation = QuarterTurnAboutUp();
 
     transform.Translate(math::Vector3::FORWARD, true);
 
@@ -110,7 +111,7 @@ TEST_F(TransformTest, TranslateAccumulates)
     EXPECT_VEC3_NEAR(transform.position, math::Vector3(1.0f, 2.0f, 0.0f), testkit::kTolerance);
 }
 
-// --- Rotate -----------------------------------------------------------------
+/// @name Rotate
 
 TEST_F(TransformTest, RotateTakesDegrees)
 {
@@ -129,7 +130,7 @@ TEST_F(TransformTest, RotateAccumulatesAndStaysNormalised)
 
 TEST_F(TransformTest, LocalRotateComposesOnTheRightHandSide)
 {
-    // ローカル回転は «自分の軸で» 回る。yaw した後に pitch すると、傾いた軸で持ち上がる。
+    /// @note ローカル回転は «自分の軸で» 回る。yaw した後に pitch すると、傾いた軸で持ち上がる。
     transform.rotation = QuarterTurnAboutUp();
     transform.Rotate({ 90.0f, 0.0f, 0.0f });
 
@@ -140,12 +141,13 @@ TEST_F(TransformTest, LocalRotateComposesOnTheRightHandSide)
     EXPECT_QUAT_NEAR(transform.rotation, expected, testkit::kLooseTolerance);
 }
 
-// --- LookAt -----------------------------------------------------------------
+/// @name LookAt
 
 TEST_F(TransformTest, LookAtPointsForwardAtTheTarget)
 {
     transform.LookAt({ 10.0f, 0.0f, 0.0f });
-    transform.worldRotation = transform.rotation;   // 親が居ないので local == world
+    /// @note 親が居ないので local == world
+    transform.worldRotation = transform.rotation;
 
     EXPECT_VEC3_NEAR(transform.Forward(), math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
@@ -162,7 +164,7 @@ TEST_F(TransformTest, LookAtMeasuresFromTheWorldPosition)
 
 TEST_F(TransformTest, LookAtIgnoresATargetOnTopOfItself)
 {
-    // 追従対象と重なるのは普通に起きる。向きが決まらないだけで、落としてはいけない。
+    /// @note 追従対象と重なるのは普通に起きる。向きが決まらないだけで、落としてはいけない。
     transform.rotation = QuarterTurnAboutUp();
 
     transform.LookAt(transform.worldPosition);
@@ -170,12 +172,12 @@ TEST_F(TransformTest, LookAtIgnoresATargetOnTopOfItself)
     EXPECT_QUAT_NEAR(transform.rotation, QuarterTurnAboutUp(), testkit::kTolerance);
 }
 
-// --- ワールド行列 -----------------------------------------------------------
+/// @name ワールド行列
 
 TEST_F(TransformTest, WorldMatrixIsBuiltFromTheWorldValues)
 {
-    // 行列はローカル値ではなくワールド値から作る。ここを間違えると
-    // 親の下に置いた瞬間だけ描画位置がずれる。
+    /// @note 行列はローカル値ではなくワールド値から作る。ここを間違えると
+    ///       親の下に置いた瞬間だけ描画位置がずれる。
     transform.position      = { 100.0f, 0.0f, 0.0f };
     transform.worldPosition = { 1.0f, 2.0f, 3.0f };
     transform.worldScale    = { 2.0f, 2.0f, 2.0f };
@@ -197,7 +199,7 @@ TEST_F(TransformTest, WorldMatrixMovesAPointIntoWorldSpace)
     const math::Vector4 moved =
         transform.GetWorldMatrix() * math::Vector4(math::Vector3::FORWARD, 1.0f);
 
-    // +Z が +X へ回り、そこから平行移動する。
+    /// @note +Z が +X へ回り、そこから平行移動する。
     EXPECT_VEC3_NEAR(moved.XYZ(), math::Vector3(2.0f, 2.0f, 3.0f), testkit::kLooseTolerance);
 }
 

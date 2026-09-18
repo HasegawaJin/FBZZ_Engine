@@ -50,13 +50,13 @@ renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio)
         result.m_far      = cam->farZ;
         result.m_backgroundColor = cam->backgroundColor;
         result.m_clearMode       = cam->clearMode;
-        // WHY: viewport から決まる実効 aspect を Component に戻し、Script の座標変換と描画カメラを一致させる。
+        /// @note viewport から決まる実効 aspect を Component に戻し、Script の座標変換と描画カメラを一致させる。
         cam->aspectRatio  = aspectRatio;
         result.m_aspect   = cam->aspectRatio;
         return result;
     }
 
-    // WHY: Main Camera がないシーンでも Standalone を落とさず、既定カメラで描画を継続する。
+    /// @note Main Camera がないシーンでも Standalone を落とさず、既定カメラで描画を継続する。
     renderer::Camera fallback;
     fallback.m_aspect = aspectRatio;
     return fallback;
@@ -108,8 +108,8 @@ fbzz::LayerMask ResolveGameCullingMask(Scene& scene)
     return fbzz::Layer::Everything;
 }
 
-// レイヤー数が Physics 側とずれると層ごとの距離が 1 つずつずれる。
-// CameraCullingSettings.hpp は Layer.hpp を引かない方針なので、突き合わせはここで行う。
+/// レイヤー数が Physics 側とずれると層ごとの距離が 1 つずつずれる。
+/// CameraCullingSettings.hpp は Layer.hpp を引かない方針なので、突き合わせはここで行う。
 static_assert(kCullLayerCount == 32, "CameraCullingSettings must cover fbzz::Layer 0-31");
 
 CameraCullingSettings ResolveGameCullingSettings(Scene& scene)
@@ -120,8 +120,8 @@ CameraCullingSettings ResolveGameCullingSettings(Scene& scene)
         CameraCullingSettings settings;
         settings.frustumCulling       = cam->frustumCulling;
         settings.occlusionCulling     = cam->occlusionCulling;
-        // 負値は球を縮める / 距離を反転させるだけで意味を持たないので入口で 0 に潰す。
-        // WHY 描画側でなくここか: 各パスが毎オブジェクト符号を気にする必要をなくす。
+        /// @note 負値は球を縮める / 距離を反転させるだけで意味を持たないので入口で 0 に潰し、
+        ///       各パスが毎オブジェクト符号を気にする必要をなくす。
         settings.cullingBoundsPadding = (std::max)(cam->cullingBoundsPadding, 0.0f);
         settings.maxDrawDistance      = (std::max)(cam->maxDrawDistance, 0.0f);
         settings.cullDistanceSpherical = cam->cullDistanceSpherical;

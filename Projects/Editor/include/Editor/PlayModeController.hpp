@@ -13,19 +13,19 @@ enum class PlayState { Editor, Playing, Paused };
 
 class PlayModeController {
 public:
-    // シーンを TOML スナップショットに保存してからゲームループを開始する
+    /// シーンを TOML スナップショットに保存してからゲームループを開始する
     void Play(scene::Scene& scene);
     void Pause();
-    // スナップショットからシーンを復元してエディターモードに戻る
+    /// スナップショットからシーンを復元してエディターモードに戻る
     void Stop(scene::Scene& scene);
-    // Stop() はスナップショット復元を即座に行わず、このメソッドを次フレームに呼ばせる。
-    // Stop() 呼び出し時は Update ループが実行中の可能性があり、その最中にシーンを書き換えると
-    // イテレーション中のポインタが無効になる恐れがあるため。
+    /// Stop() はスナップショット復元を即座に行わず、このメソッドを次フレームに呼ばせる。
+    /// Stop() 呼び出し時は Update ループが実行中の可能性があり、その最中にシーンを書き換えると
+    /// イテレーション中のポインタが無効になる恐れがあるため。
     bool ApplyPendingRestore(scene::Scene& scene);
 
-    // Paused 中に 1 フレームだけゲームシステムを走らせる
+    /// Paused 中に 1 フレームだけゲームシステムを走らせる
     void RequestStep() { if (m_state == PlayState::Paused) m_stepRequested = true; }
-    // main ループが毎フレーム呼び、消費したら true を返す (一度だけ true)
+    /// main ループが毎フレーム呼び、消費したら true を返す (一度だけ true)
     bool ConsumeStep() { if (!m_stepRequested) return false; m_stepRequested = false; return true; }
 
     PlayState GetState() const  { return m_state; }
@@ -36,7 +36,7 @@ public:
 
 private:
     PlayState   m_state    = PlayState::Editor;
-    std::string m_snapshot; // TOML 文字列でシーン状態を保存
+    std::string m_snapshot; ///< TOML 文字列でシーン状態を保存
     bool        m_restorePending = false;
     bool        m_stepRequested  = false;
 };

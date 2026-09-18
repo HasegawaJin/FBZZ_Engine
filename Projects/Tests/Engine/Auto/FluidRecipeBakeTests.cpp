@@ -9,8 +9,8 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/TempDir.hpp>
 
-#include <Engine/Asset/FluidRecipe.hpp>
-#include <Engine/Asset/FluidSourceMask.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Engine/Asset/FluidSourceMaskLoader.hpp>
 #include <Engine/Asset/FluidVolumeBake.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -115,14 +115,14 @@ std::set<std::string> Difference(const std::set<std::string>& a, const std::set<
     return result;
 }
 
-asset::FluidBakeSettings NonDefaultBake()
+fluid::FluidBakeSettings NonDefaultBake()
 {
-    asset::FluidBakeSettings bake;
-    bake.mode = asset::FluidBakeMode::Volume3D;
+    fluid::FluidBakeSettings bake;
+    bake.mode = fluid::FluidBakeMode::Volume3D;
     bake.volumeResolution = 96;
     bake.raySteps = 256;
     bake.shadowSteps = 24;
-    bake.solver = asset::FluidBakeSolver::Cpu;
+    bake.solver = fluid::FluidBakeSolver::Cpu;
     bake.densityScale = 2.5f;
     bake.scatteringOctaves = 5;
     bake.skyOcclusion = 0.25f;
@@ -150,7 +150,7 @@ void ExpectVector3Eq(const math::Vector3& actual, const math::Vector3& expected)
     EXPECT_FLOAT_EQ(actual.z, expected.z);
 }
 
-void ExpectBakeEq(const asset::FluidBakeSettings& actual, const asset::FluidBakeSettings& expected)
+void ExpectBakeEq(const fluid::FluidBakeSettings& actual, const fluid::FluidBakeSettings& expected)
 {
     EXPECT_EQ(actual.mode, expected.mode);
     EXPECT_EQ(actual.volumeResolution, expected.volumeResolution);
@@ -176,7 +176,7 @@ void ExpectBakeEq(const asset::FluidBakeSettings& actual, const asset::FluidBake
     EXPECT_FLOAT_EQ(actual.halfExtent, expected.halfExtent);
 }
 
-void ExpectMotionEq(const asset::FluidMotion& actual, const asset::FluidMotion& expected)
+void ExpectMotionEq(const fluid::FluidMotion& actual, const fluid::FluidMotion& expected)
 {
     EXPECT_EQ(actual.inheritVelocity, expected.inheritVelocity);
     ASSERT_EQ(actual.keys.size(), expected.keys.size());
@@ -186,7 +186,7 @@ void ExpectMotionEq(const asset::FluidMotion& actual, const asset::FluidMotion& 
     }
 }
 
-void ExpectAmountEq(const asset::FluidAmount& actual, const asset::FluidAmount& expected)
+void ExpectAmountEq(const fluid::FluidAmount& actual, const fluid::FluidAmount& expected)
 {
     ASSERT_EQ(actual.keys.size(), expected.keys.size());
     for (std::size_t i = 0; i < actual.keys.size(); ++i) {
@@ -195,7 +195,7 @@ void ExpectAmountEq(const asset::FluidAmount& actual, const asset::FluidAmount& 
     }
 }
 
-void ExpectSourceEq(const asset::FluidSource& actual, const asset::FluidSource& expected)
+void ExpectSourceEq(const fluid::FluidSource& actual, const fluid::FluidSource& expected)
 {
     EXPECT_EQ(actual.enabled, expected.enabled);
     EXPECT_EQ(actual.name, expected.name);
@@ -218,7 +218,7 @@ void ExpectSourceEq(const asset::FluidSource& actual, const asset::FluidSource& 
     ExpectAmountEq(actual.amount, expected.amount);
 }
 
-void ExpectForceEq(const asset::FluidForce& actual, const asset::FluidForce& expected)
+void ExpectForceEq(const fluid::FluidForce& actual, const fluid::FluidForce& expected)
 {
     EXPECT_EQ(actual.enabled, expected.enabled);
     EXPECT_EQ(actual.name, expected.name);
@@ -236,7 +236,7 @@ void ExpectForceEq(const asset::FluidForce& actual, const asset::FluidForce& exp
     ExpectAmountEq(actual.amount, expected.amount);
 }
 
-void ExpectColliderEq(const asset::FluidCollider& actual, const asset::FluidCollider& expected)
+void ExpectColliderEq(const fluid::FluidCollider& actual, const fluid::FluidCollider& expected)
 {
     EXPECT_EQ(actual.enabled, expected.enabled);
     EXPECT_EQ(actual.name, expected.name);
@@ -250,7 +250,7 @@ void ExpectColliderEq(const asset::FluidCollider& actual, const asset::FluidColl
     ExpectMotionEq(actual.motion, expected.motion);
 }
 
-void ExpectRampEq(const asset::FluidColorRamp& actual, const asset::FluidColorRamp& expected)
+void ExpectRampEq(const fluid::FluidColorRamp& actual, const fluid::FluidColorRamp& expected)
 {
     for (std::size_t i = 0; i < actual.stops.size(); ++i) {
         ExpectVector3Eq(actual.stops[i].color, expected.stops[i].color);
@@ -259,21 +259,21 @@ void ExpectRampEq(const asset::FluidColorRamp& actual, const asset::FluidColorRa
 }
 
 /// 保存して読み直す。
-asset::FluidRecipe RoundTrip(const testkit::TempDir& temp, const char* fileName, const asset::FluidRecipe& recipe)
+fluid::FluidRecipe RoundTrip(const testkit::TempDir& temp, const char* fileName, const fluid::FluidRecipe& recipe)
 {
     const std::string path = util::FileSystem::PathToUtf8(temp.File(fileName));
     EXPECT_TRUE(asset::SaveFluidRecipe(path, recipe));
-    asset::FluidRecipe loaded;
+    fluid::FluidRecipe loaded;
     EXPECT_TRUE(asset::LoadFluidRecipe(path, loaded));
     return loaded;
 }
 
 /// TOML の文字列をファイルに書いて読む。
-asset::FluidRecipe LoadText(const testkit::TempDir& temp, const char* fileName, const std::string& text)
+fluid::FluidRecipe LoadText(const testkit::TempDir& temp, const char* fileName, const std::string& text)
 {
     const std::filesystem::path file = temp.File(fileName);
     EXPECT_TRUE(util::FileSystem::WriteText(file, text));
-    asset::FluidRecipe loaded;
+    fluid::FluidRecipe loaded;
     EXPECT_TRUE(asset::LoadFluidRecipe(util::FileSystem::PathToUtf8(file), loaded));
     return loaded;
 }
@@ -284,15 +284,18 @@ float ToLinear(float c) { return std::pow(c, 2.2f); }
 bool WriteTgaRgba8(const std::filesystem::path& file, int width, int height, const std::vector<std::uint8_t>& rgba)
 {
     std::vector<std::uint8_t> bytes(18, 0);
-    bytes[2] = 2;   // 無圧縮 true color
+    /// @note 無圧縮 true color
+    bytes[2] = 2;
     bytes[12] = static_cast<std::uint8_t>(width & 0xFF);
     bytes[13] = static_cast<std::uint8_t>((width >> 8) & 0xFF);
     bytes[14] = static_cast<std::uint8_t>(height & 0xFF);
     bytes[15] = static_cast<std::uint8_t>((height >> 8) & 0xFF);
     bytes[16] = 32;
-    bytes[17] = 0x28;   // α 8bit + 原点は左上
+    /// @note α 8bit + 原点は左上
+    bytes[17] = 0x28;
     for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
-        bytes.push_back(rgba[i + 2]);   // TGA は BGRA
+        /// @note TGA は BGRA
+        bytes.push_back(rgba[i + 2]);
         bytes.push_back(rgba[i + 1]);
         bytes.push_back(rgba[i + 0]);
         bytes.push_back(rgba[i + 3]);
@@ -307,11 +310,11 @@ TEST(FluidRecipeBakeTest, BakeSectionRoundTripsThroughToml)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     recipe.bake = NonDefaultBake();
     const std::string path = util::FileSystem::PathToUtf8(temp.File("smoke.fluid"));
     ASSERT_TRUE(asset::SaveFluidRecipe(path, recipe));
-    asset::FluidRecipe loaded;
+    fluid::FluidRecipe loaded;
     ASSERT_TRUE(asset::LoadFluidRecipe(path, loaded));
     ExpectBakeEq(loaded.bake, recipe.bake);
 }
@@ -323,32 +326,33 @@ TEST(FluidRecipeBakeTest, FileWithoutBakeSectionLoadsAs2D)
 
     const std::filesystem::path file = temp.File("old.fluid");
     ASSERT_TRUE(util::FileSystem::WriteText(file, "version = 1\nkind = \"gas\"\n\n[output]\ncolumns = 4\n"));
-    asset::FluidRecipe loaded;
+    fluid::FluidRecipe loaded;
     ASSERT_TRUE(asset::LoadFluidRecipe(util::FileSystem::PathToUtf8(file), loaded));
     EXPECT_EQ(loaded.output.columns, 4);
-    EXPECT_EQ(loaded.bake.mode, asset::FluidBakeMode::Flat2D);
-    ExpectBakeEq(loaded.bake, asset::FluidBakeSettings{});
+    EXPECT_EQ(loaded.bake.mode, fluid::FluidBakeMode::Flat2D);
+    ExpectBakeEq(loaded.bake, fluid::FluidBakeSettings{});
 }
 
 TEST(FluidRecipeBakeTest, AllPresetsBakeIn3DAndLiquidsStayOnCpu)
 {
-    // 3D の焼きがループと歪みマップを持ったので、ループものも陽炎も 3D。
-    // 液体は GPU の粒子ソルバーが未検証のうちは CPU に置く。
+    /// @note 3D の焼きがループと歪みマップを持ったので、ループものも陽炎も 3D。
+    ///       液体は GPU の粒子ソルバーが未検証のうちは CPU に置く。
     for (int i = 0; i < static_cast<int>(asset::FluidPreset::Count); ++i) {
         const auto preset = static_cast<asset::FluidPreset>(i);
         SCOPED_TRACE(asset::FluidPresetName(preset));
-        const asset::FluidRecipe recipe = asset::MakeFluidPreset(preset);
-        EXPECT_EQ(recipe.bake.mode, asset::FluidBakeMode::Volume3D);
-        if (recipe.kind == asset::FluidKind::Liquid) {
-            EXPECT_EQ(recipe.bake.solver, asset::FluidBakeSolver::Cpu);
+        const fluid::FluidRecipe recipe = asset::MakeFluidPreset(preset);
+        EXPECT_EQ(recipe.bake.mode, fluid::FluidBakeMode::Volume3D);
+        if (recipe.kind == fluid::FluidKind::Liquid) {
+            EXPECT_EQ(recipe.bake.solver, fluid::FluidBakeSolver::Cpu);
             EXPECT_EQ(recipe.bake.volumeResolution, 64);
-            EXPECT_LE(recipe.bake.volumeResolution, 96);   // CPU の上限
+            /// @note CPU の上限
+            EXPECT_LE(recipe.bake.volumeResolution, 96);
             EXPECT_EQ(recipe.output.supersampling, 2);
         } else {
             EXPECT_EQ(recipe.bake.volumeResolution, 128);
             EXPECT_EQ(recipe.output.supersampling, 2);
-            const bool lit = recipe.render.shading == asset::FluidShading::Smoke
-                          || recipe.render.shading == asset::FluidShading::Fire;
+            const bool lit = recipe.render.shading == fluid::FluidShading::Smoke
+                          || recipe.render.shading == fluid::FluidShading::Fire;
             EXPECT_EQ(recipe.bake.sixWayLightmaps, lit);
         }
     }
@@ -362,30 +366,30 @@ TEST(FluidRecipeBakeTest, ReflectNamesAreTheTomlKeys)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    // 配列は要素が無いとキーが出ないので、発生源・力・動き・量のキーすべてに 1 つ以上入れる。
-    // Enum は既定以外の値にする。
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
-    asset::FluidSource& moving = recipe.sources.emplace_back();
+    /// @note 配列は要素が無いとキーが出ないので、発生源・力・動き・量のキーすべてに 1 つ以上入れる。
+    ///       Enum は既定以外の値にする。
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
+    fluid::FluidSource& moving = recipe.sources.emplace_back();
     moving.name = "Moving";
-    moving.shape = asset::FluidSourceShape::Box;
-    moving.motion.keys = { asset::FluidMotionKey{ 0.0f, { 0.0f, 0.0f, 0.0f } },
-                           asset::FluidMotionKey{ 1.0f, { 0.2f, 0.0f, 0.0f } } };
-    moving.amount.keys = { asset::FluidAmountKey{ 0.0f, 1.0f }, asset::FluidAmountKey{ 0.4f, 0.25f } };
-    asset::FluidForce& gust = recipe.forces.emplace_back();
+    moving.shape = fluid::FluidSourceShape::Box;
+    moving.motion.keys = { fluid::FluidMotionKey{ 0.0f, { 0.0f, 0.0f, 0.0f } },
+                           fluid::FluidMotionKey{ 1.0f, { 0.2f, 0.0f, 0.0f } } };
+    moving.amount.keys = { fluid::FluidAmountKey{ 0.0f, 1.0f }, fluid::FluidAmountKey{ 0.4f, 0.25f } };
+    fluid::FluidForce& gust = recipe.forces.emplace_back();
     gust.name = "Gust";
-    gust.type = asset::FluidForceType::Noise;
-    gust.motion.keys = { asset::FluidMotionKey{ 0.5f, { 0.0f, 0.1f, 0.0f } } };
-    gust.amount.keys = { asset::FluidAmountKey{ 0.2f, 0.5f } };
-    asset::FluidSource& stamp = recipe.sources.emplace_back();
+    gust.type = fluid::FluidForceType::Noise;
+    gust.motion.keys = { fluid::FluidMotionKey{ 0.5f, { 0.0f, 0.1f, 0.0f } } };
+    gust.amount.keys = { fluid::FluidAmountKey{ 0.2f, 0.5f } };
+    fluid::FluidSource& stamp = recipe.sources.emplace_back();
     stamp.name = "Stamp";
-    stamp.shape = asset::FluidSourceShape::Texture;
+    stamp.shape = fluid::FluidSourceShape::Texture;
     stamp.texture = "Textures/FX/Logo.png";
-    asset::FluidCollider& wall = recipe.colliders.emplace_back();
+    fluid::FluidCollider& wall = recipe.colliders.emplace_back();
     wall.name = "Wall";
-    wall.shape = asset::FluidColliderShape::Plane;
-    wall.motion.keys = { asset::FluidMotionKey{ 0.25f, { 0.1f, 0.0f, 0.0f } } };
-    recipe.kind = asset::FluidKind::Liquid;
-    recipe.render.shading = asset::FluidShading::Glow;
+    wall.shape = fluid::FluidColliderShape::Plane;
+    wall.motion.keys = { fluid::FluidMotionKey{ 0.25f, { 0.1f, 0.0f, 0.0f } } };
+    recipe.kind = fluid::FluidKind::Liquid;
+    recipe.render.shading = fluid::FluidShading::Glow;
     recipe.render.useEmissionRamp = true;
     recipe.render.useAlbedoRamp = true;
     recipe.bake = NonDefaultBake();
@@ -403,7 +407,7 @@ TEST(FluidRecipeBakeTest, ReflectNamesAreTheTomlKeys)
     std::set<KeyValue> tomlStrings;
     CollectTomlKeys(parsed.table(), {}, tomlKeys, tomlStrings);
     tomlKeys.erase("version");
-    // 部品の name / texture は自由な文字列で Enum ではない。選択肢の比較からは外す。
+    /// @note 部品の name / texture は自由な文字列で Enum ではない。選択肢の比較からは外す。
     std::erase_if(tomlStrings, [](const KeyValue& entry) {
         return entry.first.ends_with("[].name") || entry.first.ends_with("[].texture");
     });
@@ -415,9 +419,9 @@ TEST(FluidRecipeBakeTest, ReflectNamesAreTheTomlKeys)
         << "TOML に無い Reflect 名: " << Join(Difference(recorder.keys, tomlKeys));
     EXPECT_TRUE(Difference(tomlKeys, recorder.keys).empty())
         << "Reflect が触らない TOML キー: " << Join(Difference(tomlKeys, recorder.keys));
-    // Enum の選択肢の文字列 = TOML に書く名前 (JSON は添字、TOML は名前で同じ値を指す)。
+    /// @note Enum の選択肢の文字列 = TOML に書く名前 (JSON は添字、TOML は名前で同じ値を指す)。
     EXPECT_EQ(recorder.enumValues, tomlStrings);
-    // 部品の配列は期待した名前で出ている (上の一致だけだと、両方が同じ名前で間違っていても通る)。
+    /// @note 部品の配列は期待した名前で出ている (上の一致だけだと、両方が同じ名前で間違っていても通る)。
     EXPECT_EQ(tomlKeys.count("source[].motion.key[].offset"), 1u);
     EXPECT_EQ(tomlKeys.count("force[].motion.key[].time"), 1u);
     EXPECT_EQ(tomlKeys.count("render.emission_ramp[].color"), 1u);
@@ -438,11 +442,11 @@ TEST(FluidRecipeBakeTest, SourcesForcesMotionAndRampRoundTrip)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    asset::FluidRecipe recipe;
-    asset::FluidSource ring;
+    fluid::FluidRecipe recipe;
+    fluid::FluidSource ring;
     ring.enabled = false;
     ring.name = "Shock";
-    ring.shape = asset::FluidSourceShape::Ring;
+    ring.shape = fluid::FluidSourceShape::Ring;
     ring.center = { 0.1f, -0.2f, 0.3f };
     ring.size = { 0.4f, 0.05f, 0.0f };
     ring.direction = { 0.0f, 0.0f, 1.0f };
@@ -457,17 +461,17 @@ TEST(FluidRecipeBakeTest, SourcesForcesMotionAndRampRoundTrip)
     ring.count = 1234;
     ring.colorKey = 0.75f;
     ring.motion.inheritVelocity = false;
-    ring.motion.keys = { asset::FluidMotionKey{ 0.0f, { 0.0f, 0.0f, 0.0f } },
-                         asset::FluidMotionKey{ 0.5f, { 0.3f, 0.1f, 0.0f } },
-                         asset::FluidMotionKey{ 1.5f, { -0.2f, 0.4f, 0.1f } } };
+    ring.motion.keys = { fluid::FluidMotionKey{ 0.0f, { 0.0f, 0.0f, 0.0f } },
+                         fluid::FluidMotionKey{ 0.5f, { 0.3f, 0.1f, 0.0f } },
+                         fluid::FluidMotionKey{ 1.5f, { -0.2f, 0.4f, 0.1f } } };
     recipe.sources.push_back(ring);
-    asset::FluidSource cone;
-    cone.shape = asset::FluidSourceShape::Cone;
+    fluid::FluidSource cone;
+    cone.shape = fluid::FluidSourceShape::Cone;
     recipe.sources.push_back(cone);
 
-    asset::FluidForce vortex;
+    fluid::FluidForce vortex;
     vortex.name = "Spin";
-    vortex.type = asset::FluidForceType::Vortex;
+    vortex.type = fluid::FluidForceType::Vortex;
     vortex.center = { -0.3f, 0.2f, 0.0f };
     vortex.direction = { 0.0f, 1.0f, 0.0f };
     vortex.strength = -3.5f;
@@ -477,10 +481,10 @@ TEST(FluidRecipeBakeTest, SourcesForcesMotionAndRampRoundTrip)
     vortex.noiseSpeed = 0.25f;
     vortex.startTime = 0.1f;
     vortex.duration = 2.0f;
-    vortex.motion.keys = { asset::FluidMotionKey{ 0.25f, { 0.0f, 0.5f, 0.0f } } };
+    vortex.motion.keys = { fluid::FluidMotionKey{ 0.25f, { 0.0f, 0.5f, 0.0f } } };
     recipe.forces.push_back(vortex);
-    asset::FluidForce drag;
-    drag.type = asset::FluidForceType::Drag;
+    fluid::FluidForce drag;
+    drag.type = fluid::FluidForceType::Drag;
     recipe.forces.push_back(drag);
 
     recipe.render.useEmissionRamp = true;
@@ -494,7 +498,7 @@ TEST(FluidRecipeBakeTest, SourcesForcesMotionAndRampRoundTrip)
     recipe.render.liquidGloss = 200.0f;
     recipe.render.liquidFresnel = 0.05f;
 
-    const asset::FluidRecipe loaded = RoundTrip(temp, "parts.fluid", recipe);
+    const fluid::FluidRecipe loaded = RoundTrip(temp, "parts.fluid", recipe);
     ASSERT_EQ(loaded.sources.size(), recipe.sources.size());
     for (std::size_t i = 0; i < loaded.sources.size(); ++i) ExpectSourceEq(loaded.sources[i], recipe.sources[i]);
     ASSERT_EQ(loaded.forces.size(), recipe.forces.size());
@@ -514,16 +518,16 @@ TEST(FluidRecipeBakeTest, CollidersAndTextureSourcesRoundTrip)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    asset::FluidRecipe recipe;
-    asset::FluidSource stamp;
+    fluid::FluidRecipe recipe;
+    fluid::FluidSource stamp;
     stamp.name = "Sigil";
-    stamp.shape = asset::FluidSourceShape::Texture;
+    stamp.shape = fluid::FluidSourceShape::Texture;
     stamp.texture = "guid:0123456789abcdef0123456789abcdef";
     stamp.size = { 0.5f, 0.25f, 0.04f };
     stamp.direction = { 0.0f, 0.0f, 1.0f };
     recipe.sources.push_back(stamp);
 
-    asset::FluidCollider ball;
+    fluid::FluidCollider ball;
     ball.enabled = false;
     ball.name = "Ball";
     ball.center = { 0.1f, 0.2f, -0.3f };
@@ -532,26 +536,26 @@ TEST(FluidRecipeBakeTest, CollidersAndTextureSourcesRoundTrip)
     ball.startTime = 0.25f;
     ball.duration = 1.5f;
     ball.motion.inheritVelocity = false;
-    ball.motion.keys = { asset::FluidMotionKey{ 0.0f, { 0.0f, 0.0f, 0.0f } },
-                         asset::FluidMotionKey{ 1.0f, { 0.5f, 0.0f, 0.0f } } };
+    ball.motion.keys = { fluid::FluidMotionKey{ 0.0f, { 0.0f, 0.0f, 0.0f } },
+                         fluid::FluidMotionKey{ 1.0f, { 0.5f, 0.0f, 0.0f } } };
     recipe.colliders.push_back(ball);
-    asset::FluidCollider box;
-    box.shape = asset::FluidColliderShape::Box;
+    fluid::FluidCollider box;
+    box.shape = fluid::FluidColliderShape::Box;
     box.size = { 0.2f, 0.1f, 0.3f };
     recipe.colliders.push_back(box);
-    asset::FluidCollider ramp;
-    ramp.shape = asset::FluidColliderShape::Plane;
+    fluid::FluidCollider ramp;
+    ramp.shape = fluid::FluidColliderShape::Plane;
     ramp.center = { 0.0f, -0.5f, 0.0f };
     ramp.direction = { -0.5f, 1.0f, 0.0f };
     recipe.colliders.push_back(ramp);
 
-    const asset::FluidRecipe loaded = RoundTrip(temp, "colliders.fluid", recipe);
+    const fluid::FluidRecipe loaded = RoundTrip(temp, "colliders.fluid", recipe);
     ASSERT_EQ(loaded.sources.size(), 1u);
     ExpectSourceEq(loaded.sources[0], stamp);
     ASSERT_EQ(loaded.colliders.size(), recipe.colliders.size());
     for (std::size_t i = 0; i < loaded.colliders.size(); ++i) ExpectColliderEq(loaded.colliders[i], recipe.colliders[i]);
 
-    // 形は名前で書く (JSON の添字ではない)。
+    /// @note 形は名前で書く (JSON の添字ではない)。
     std::ifstream stream(temp.File("colliders.fluid"), std::ios::binary);
     std::stringstream text;
     text << stream.rdbuf();
@@ -567,19 +571,19 @@ TEST(FluidRecipeBakeTest, ColliderMissingKeysKeepDefaultsAndUnknownShapeIsSphere
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    const asset::FluidRecipe loaded = LoadText(temp, "collider.fluid",
+    const fluid::FluidRecipe loaded = LoadText(temp, "collider.fluid",
                                                "version = 2\n"
                                                "kind = \"liquid\"\n"
                                                "\n[[collider]]\n"
-                                               // 知らない名前 (将来の形) は既定の sphere に落ちる。
+                                               /// @note 知らない名前 (将来の形) は既定の sphere に落ちる。
                                                "shape = \"torus\"\n"
                                                "friction = 1.25\n"
                                                "\n[[collider.motion.key]]\ntime = 0.5\noffset = [0.0, 0.2, 0.0]\n"
                                                "\n[[collider.motion.key]]\ntime = 0.1\noffset = [0.0, 0.1, 0.0]\n");
     ASSERT_EQ(loaded.colliders.size(), 1u);
-    const asset::FluidCollider& collider = loaded.colliders[0];
-    const asset::FluidCollider defaults;
-    EXPECT_EQ(collider.shape, asset::FluidColliderShape::Sphere);
+    const fluid::FluidCollider& collider = loaded.colliders[0];
+    const fluid::FluidCollider defaults;
+    EXPECT_EQ(collider.shape, fluid::FluidColliderShape::Sphere);
     EXPECT_FLOAT_EQ(collider.friction, 1.25f);
     EXPECT_TRUE(collider.enabled);
     ExpectVector3Eq(collider.center, defaults.center);
@@ -614,8 +618,8 @@ TEST(FluidRecipeBakeTest, Version1GasSourcesMigrateToSources)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    // 使われていなかった側 (気体のレシピの liquid_emitter) は移さない。
-    const asset::FluidRecipe loaded = LoadText(temp, "v1gas.fluid",
+    /// @note 使われていなかった側 (気体のレシピの liquid_emitter) は移さない。
+    const fluid::FluidRecipe loaded = LoadText(temp, "v1gas.fluid",
                                                "version = 1\n"
                                                "kind = \"gas\"\n"
                                                "\n[[gas_source]]\n"
@@ -633,12 +637,12 @@ TEST(FluidRecipeBakeTest, Version1GasSourcesMigrateToSources)
                                                "center = [0.0, 0.0, 0.0]\n"
                                                "\n[[liquid_emitter]]\n"
                                                "count = 10\n");
-    EXPECT_EQ(loaded.kind, asset::FluidKind::Gas);
+    EXPECT_EQ(loaded.kind, fluid::FluidKind::Gas);
     ASSERT_EQ(loaded.sources.size(), 2u);
     EXPECT_TRUE(loaded.forces.empty());
 
-    asset::FluidSource expected;
-    expected.shape = asset::FluidSourceShape::Box;
+    fluid::FluidSource expected;
+    expected.shape = fluid::FluidSourceShape::Box;
     expected.center = { 0.1f, -0.5f, 0.0f };
     expected.size = { 0.2f, 0.3f, 0.4f };
     expected.density = 3.0f;
@@ -650,7 +654,7 @@ TEST(FluidRecipeBakeTest, Version1GasSourcesMigrateToSources)
     expected.noise = 0.3f;
     ExpectSourceEq(loaded.sources[0], expected);
 
-    asset::FluidSource second;
+    fluid::FluidSource second;
     second.center = { 0.0f, 0.0f, 0.0f };
     ExpectSourceEq(loaded.sources[1], second);
 }
@@ -660,18 +664,18 @@ TEST(FluidRecipeBakeTest, Version1LiquidEmitterKeepsItsOldDefaults)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    // version の無いファイルは version 1。欠けたキーは当時の液体の既定で埋まる (今の FluidSource の既定ではない)。
-    const asset::FluidRecipe loaded = LoadText(temp, "v1liquid.fluid",
+    /// @note version の無いファイルは version 1。欠けたキーは当時の液体の既定で埋まる (今の FluidSource の既定ではない)。
+    const fluid::FluidRecipe loaded = LoadText(temp, "v1liquid.fluid",
                                                "kind = \"liquid\"\n"
                                                "\n[[liquid_emitter]]\n"
                                                "count = 42\n"
                                                "\n[[gas_source]]\n"
                                                "density = 9.0\n");
-    EXPECT_EQ(loaded.kind, asset::FluidKind::Liquid);
+    EXPECT_EQ(loaded.kind, fluid::FluidKind::Liquid);
     ASSERT_EQ(loaded.sources.size(), 1u);
-    const asset::FluidSource& source = loaded.sources[0];
+    const fluid::FluidSource& source = loaded.sources[0];
     EXPECT_EQ(source.count, 42);
-    EXPECT_EQ(source.shape, asset::FluidSourceShape::Sphere);
+    EXPECT_EQ(source.shape, fluid::FluidSourceShape::Sphere);
     ExpectVector3Eq(source.center, { 0.0f, -0.6f, 0.0f });
     ExpectVector3Eq(source.size, { 0.08f, 0.08f, 0.08f });
     ExpectVector3Eq(source.velocity, { 0.0f, 2.5f, 0.0f });
@@ -681,8 +685,8 @@ TEST(FluidRecipeBakeTest, Version1LiquidEmitterKeepsItsOldDefaults)
     EXPECT_TRUE(source.enabled);
     EXPECT_TRUE(source.motion.keys.empty());
 
-    // 書かれていたキーはそのまま移る。
-    const asset::FluidRecipe full = LoadText(temp, "v1liquid_full.fluid",
+    /// @note 書かれていたキーはそのまま移る。
+    const fluid::FluidRecipe full = LoadText(temp, "v1liquid_full.fluid",
                                              "version = 1\n"
                                              "kind = \"liquid\"\n"
                                              "\n[[liquid_emitter]]\n"
@@ -709,29 +713,29 @@ TEST(FluidRecipeBakeTest, ListsAreClampedToTheLimitsOnLoad)
     ASSERT_TRUE(temp.IsValid());
 
     std::string text = "version = 2\nkind = \"gas\"\n";
-    // 先頭の発生源にだけ上限を超えるキーを持たせる。
+    /// @note 先頭の発生源にだけ上限を超えるキーを持たせる。
     text += "\n[[source]]\nname = \"keys\"\n";
-    for (int i = 0; i < asset::kMaxFluidMotionKeys + 4; ++i)
+    for (int i = 0; i < fluid::kMaxFluidMotionKeys + 4; ++i)
         text += "\n[[source.motion.key]]\ntime = " + std::to_string(i) + ".0\n";
-    for (int i = 1; i < asset::kMaxFluidSources + 4; ++i)
+    for (int i = 1; i < fluid::kMaxFluidSources + 4; ++i)
         text += "\n[[source]]\ndensity = " + std::to_string(i) + ".0\n";
-    for (int i = 0; i < asset::kMaxFluidForces + 3; ++i)
+    for (int i = 0; i < fluid::kMaxFluidForces + 3; ++i)
         text += "\n[[force]]\nstrength = " + std::to_string(i) + ".0\n";
-    for (int i = 0; i < asset::kMaxFluidColliders + 3; ++i)
+    for (int i = 0; i < fluid::kMaxFluidColliders + 3; ++i)
         text += "\n[[collider]]\nfriction = " + std::to_string(i) + ".0\n";
 
-    const asset::FluidRecipe loaded = LoadText(temp, "many.fluid", text);
-    ASSERT_EQ(loaded.sources.size(), static_cast<std::size_t>(asset::kMaxFluidSources));
-    ASSERT_EQ(loaded.forces.size(), static_cast<std::size_t>(asset::kMaxFluidForces));
-    ASSERT_EQ(loaded.colliders.size(), static_cast<std::size_t>(asset::kMaxFluidColliders));
-    EXPECT_FLOAT_EQ(loaded.colliders.back().friction, static_cast<float>(asset::kMaxFluidColliders - 1));
-    // ファイルの先頭から上限までが残る。
+    const fluid::FluidRecipe loaded = LoadText(temp, "many.fluid", text);
+    ASSERT_EQ(loaded.sources.size(), static_cast<std::size_t>(fluid::kMaxFluidSources));
+    ASSERT_EQ(loaded.forces.size(), static_cast<std::size_t>(fluid::kMaxFluidForces));
+    ASSERT_EQ(loaded.colliders.size(), static_cast<std::size_t>(fluid::kMaxFluidColliders));
+    EXPECT_FLOAT_EQ(loaded.colliders.back().friction, static_cast<float>(fluid::kMaxFluidColliders - 1));
+    /// @note ファイルの先頭から上限までが残る。
     EXPECT_EQ(loaded.sources[0].name, "keys");
-    EXPECT_FLOAT_EQ(loaded.sources.back().density, static_cast<float>(asset::kMaxFluidSources - 1));
-    EXPECT_FLOAT_EQ(loaded.forces.back().strength, static_cast<float>(asset::kMaxFluidForces - 1));
-    const std::vector<asset::FluidMotionKey>& keys = loaded.sources[0].motion.keys;
-    ASSERT_EQ(keys.size(), static_cast<std::size_t>(asset::kMaxFluidMotionKeys));
-    EXPECT_FLOAT_EQ(keys.back().time, static_cast<float>(asset::kMaxFluidMotionKeys - 1));
+    EXPECT_FLOAT_EQ(loaded.sources.back().density, static_cast<float>(fluid::kMaxFluidSources - 1));
+    EXPECT_FLOAT_EQ(loaded.forces.back().strength, static_cast<float>(fluid::kMaxFluidForces - 1));
+    const std::vector<fluid::FluidMotionKey>& keys = loaded.sources[0].motion.keys;
+    ASSERT_EQ(keys.size(), static_cast<std::size_t>(fluid::kMaxFluidMotionKeys));
+    EXPECT_FLOAT_EQ(keys.back().time, static_cast<float>(fluid::kMaxFluidMotionKeys - 1));
 }
 
 TEST(FluidRecipeBakeTest, MotionKeysAreSortedByTimeOnLoad)
@@ -739,7 +743,7 @@ TEST(FluidRecipeBakeTest, MotionKeysAreSortedByTimeOnLoad)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    const asset::FluidRecipe loaded = LoadText(temp, "unsorted.fluid",
+    const fluid::FluidRecipe loaded = LoadText(temp, "unsorted.fluid",
                                                "version = 2\n"
                                                "kind = \"gas\"\n"
                                                "\n[[force]]\n"
@@ -748,15 +752,16 @@ TEST(FluidRecipeBakeTest, MotionKeysAreSortedByTimeOnLoad)
                                                "\n[[force.motion.key]]\ntime = 0.1\noffset = [0.1, 0.0, 0.0]\n"
                                                "\n[[force.motion.key]]\ntime = 0.3\noffset = [0.3, 0.0, 0.0]\n");
     ASSERT_EQ(loaded.forces.size(), 1u);
-    // [[collider]] より前の version 2 のファイルは障害物なしで開ける。
+    /// @note [[collider]] より前の version 2 のファイルは障害物なしで開ける。
     EXPECT_TRUE(loaded.colliders.empty());
-    EXPECT_EQ(loaded.forces[0].type, asset::FluidForceType::Attract);
-    const std::vector<asset::FluidMotionKey>& keys = loaded.forces[0].motion.keys;
+    EXPECT_EQ(loaded.forces[0].type, fluid::FluidForceType::Attract);
+    const std::vector<fluid::FluidMotionKey>& keys = loaded.forces[0].motion.keys;
     ASSERT_EQ(keys.size(), 3u);
     const float times[] = { 0.1f, 0.3f, 0.5f };
     for (std::size_t i = 0; i < keys.size(); ++i) {
         EXPECT_FLOAT_EQ(keys[i].time, times[i]);
-        EXPECT_FLOAT_EQ(keys[i].offset.x, times[i]);   // offset はキーと一緒に並び替わる
+        /// @note offset はキーと一緒に並び替わる
+        EXPECT_FLOAT_EQ(keys[i].offset.x, times[i]);
     }
 }
 
@@ -768,20 +773,20 @@ TEST(FluidRecipeBakeTest, EveryPresetRoundTripsAndHasAnEnabledSource)
     for (int i = 0; i < static_cast<int>(asset::FluidPreset::Count); ++i) {
         const auto preset = static_cast<asset::FluidPreset>(i);
         SCOPED_TRACE(asset::FluidPresetName(preset));
-        const asset::FluidRecipe recipe = asset::MakeFluidPreset(preset);
+        const fluid::FluidRecipe recipe = asset::MakeFluidPreset(preset);
         EXPECT_TRUE(std::any_of(recipe.sources.begin(), recipe.sources.end(),
-                                [](const asset::FluidSource& source) { return source.enabled; }));
-        EXPECT_LE(recipe.sources.size(), static_cast<std::size_t>(asset::kMaxFluidSources));
-        EXPECT_LE(recipe.forces.size(), static_cast<std::size_t>(asset::kMaxFluidForces));
-        for (const asset::FluidSource& source : recipe.sources) EXPECT_FALSE(source.name.empty());
-        for (const asset::FluidForce& force : recipe.forces) EXPECT_FALSE(force.name.empty());
-        EXPECT_LE(recipe.colliders.size(), static_cast<std::size_t>(asset::kMaxFluidColliders));
-        for (const asset::FluidCollider& collider : recipe.colliders) EXPECT_FALSE(collider.name.empty());
-        // 同梱の画像が無いので、Texture の発生源を使うプリセットは作らない (焼くと板の形がそのまま出る)。
-        for (const asset::FluidSource& source : recipe.sources)
-            EXPECT_NE(source.shape, asset::FluidSourceShape::Texture);
+                                [](const fluid::FluidSource& source) { return source.enabled; }));
+        EXPECT_LE(recipe.sources.size(), static_cast<std::size_t>(fluid::kMaxFluidSources));
+        EXPECT_LE(recipe.forces.size(), static_cast<std::size_t>(fluid::kMaxFluidForces));
+        for (const fluid::FluidSource& source : recipe.sources) EXPECT_FALSE(source.name.empty());
+        for (const fluid::FluidForce& force : recipe.forces) EXPECT_FALSE(force.name.empty());
+        EXPECT_LE(recipe.colliders.size(), static_cast<std::size_t>(fluid::kMaxFluidColliders));
+        for (const fluid::FluidCollider& collider : recipe.colliders) EXPECT_FALSE(collider.name.empty());
+        /// @note 同梱の画像が無いので、Texture の発生源を使うプリセットは作らない (焼くと板の形がそのまま出る)。
+        for (const fluid::FluidSource& source : recipe.sources)
+            EXPECT_NE(source.shape, fluid::FluidSourceShape::Texture);
 
-        const asset::FluidRecipe loaded = RoundTrip(temp, "preset.fluid", recipe);
+        const fluid::FluidRecipe loaded = RoundTrip(temp, "preset.fluid", recipe);
         EXPECT_EQ(loaded.kind, recipe.kind);
         EXPECT_EQ(loaded.seed, recipe.seed);
         EXPECT_EQ(loaded.render.shading, recipe.render.shading);
@@ -802,47 +807,46 @@ TEST(FluidRecipeBakeTest, EveryPresetRoundTripsAndHasAnEnabledSource)
 
 TEST(FluidRecipeBakeTest, PresetsAreBuiltFromTheSameParts)
 {
-    // 液体のプリセットは旧 emitter の値を FluidSource へ移している。先頭がその emitter で、
-    // «球・撃ち出す速度・ばらつき・数・出し切る時間» を今も FluidSource 側で持っていることを見る。
-    // WHY 数値そのものを縛らないか: ここは移し替えの網であって、見た目の決定ではない。値を固定すると
-    //     プリセットの絵を詰め直せなくなる (枠からはみ出す飛沫を抑える調整が «テスト違反» になる)。
-    const asset::FluidRecipe splash = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
+    /// @note 液体のプリセットは旧 emitter の値を FluidSource へ移している。先頭の emitter が
+    ///       «球・速度・ばらつき・数・射出時間» を持つことだけを見る。数値を固定すると
+    ///       プリセットの絵を詰め直せなくなるため、値そのものは縛らない。
+    const fluid::FluidRecipe splash = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
     ASSERT_GE(splash.sources.size(), 1u);
-    EXPECT_EQ(splash.sources[0].shape, asset::FluidSourceShape::Sphere);
+    EXPECT_EQ(splash.sources[0].shape, fluid::FluidSourceShape::Sphere);
     EXPECT_GT(splash.sources[0].size.x, 0.0f);
     EXPECT_GT(splash.sources[0].velocity.y, 0.0f);
     EXPECT_GT(splash.sources[0].spread, 0.0f);
     EXPECT_GT(splash.sources[0].count, 0);
     EXPECT_GT(splash.sources[0].duration, 0.0f);
 
-    const asset::FluidRecipe steam = asset::MakeFluidPreset(asset::FluidPreset::Steam);
+    const fluid::FluidRecipe steam = asset::MakeFluidPreset(asset::FluidPreset::Steam);
     ASSERT_FALSE(steam.sources.empty());
-    EXPECT_EQ(steam.sources[0].shape, asset::FluidSourceShape::Cone);
+    EXPECT_EQ(steam.sources[0].shape, fluid::FluidSourceShape::Cone);
 
-    const asset::FluidRecipe wisp = asset::MakeFluidPreset(asset::FluidPreset::MagicWisp);
+    const fluid::FluidRecipe wisp = asset::MakeFluidPreset(asset::FluidPreset::MagicWisp);
     ASSERT_GE(wisp.forces.size(), 1u);
-    EXPECT_EQ(wisp.forces[0].type, asset::FluidForceType::Vortex);
+    EXPECT_EQ(wisp.forces[0].type, fluid::FluidForceType::Vortex);
 
-    const asset::FluidRecipe ink = asset::MakeFluidPreset(asset::FluidPreset::Ink);
+    const fluid::FluidRecipe ink = asset::MakeFluidPreset(asset::FluidPreset::Ink);
     ASSERT_FALSE(ink.sources.empty());
     EXPECT_GE(ink.sources[0].motion.keys.size(), 2u);
 
-    // 発生源ごとの色の見本は爆発: 芯と外側の土煙で色の鍵が違い、albedo_ramp を使う。
-    const asset::FluidRecipe boom = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
+    /// @note 発生源ごとの色の見本は爆発: 芯と外側の土煙で色の鍵が違い、albedo_ramp を使う。
+    const fluid::FluidRecipe boom = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
     EXPECT_TRUE(boom.render.useAlbedoRamp);
     ASSERT_GE(boom.sources.size(), 2u);
     EXPECT_NE(boom.sources[0].colorKey, boom.sources[1].colorKey);
     for (std::size_t i = 1; i < boom.render.albedoRamp.stops.size(); ++i)
         EXPECT_LE(boom.render.albedoRamp.stops[i - 1].position, boom.render.albedoRamp.stops[i].position);
 
-    // 障害物の見本は噴流の岩 1 つだけ (他のプリセットの絵は変えない)。岩は床に接地している。
+    /// @note 障害物の見本は噴流の岩 1 つだけ (他のプリセットの絵は変えない)。岩は床に接地している。
     int withColliders = 0;
     for (int i = 0; i < static_cast<int>(asset::FluidPreset::Count); ++i)
         if (!asset::MakeFluidPreset(static_cast<asset::FluidPreset>(i)).colliders.empty()) ++withColliders;
     EXPECT_EQ(withColliders, 1);
-    const asset::FluidRecipe jet = asset::MakeFluidPreset(asset::FluidPreset::WaterJet);
+    const fluid::FluidRecipe jet = asset::MakeFluidPreset(asset::FluidPreset::WaterJet);
     ASSERT_EQ(jet.colliders.size(), 1u);
-    EXPECT_EQ(jet.colliders[0].shape, asset::FluidColliderShape::Box);
+    EXPECT_EQ(jet.colliders[0].shape, fluid::FluidColliderShape::Box);
     EXPECT_NEAR(jet.colliders[0].center.y - jet.colliders[0].size.y, jet.liquid.floorHeight, 1.0e-5f);
 }
 
@@ -851,7 +855,7 @@ TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     recipe.output.columns = 6;
     recipe.output.rows = 5;
     recipe.output.duration = 3.0f;
@@ -868,7 +872,8 @@ TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
     EXPECT_FLOAT_EQ(settings.source.frameDt, 0.1f);
     EXPECT_EQ(settings.tileSize, 128);
     EXPECT_EQ(settings.columns, 6);
-    EXPECT_EQ(settings.supersampling, 3);   // Volume Baker の上限
+    /// @note Volume Baker の上限
+    EXPECT_EQ(settings.supersampling, 3);
     EXPECT_FLOAT_EQ(settings.detailStrength, 0.4f);
     EXPECT_FLOAT_EQ(settings.detailScale, 12.0f);
     EXPECT_FLOAT_EQ(settings.detailPeriod, 0.6f);
@@ -880,21 +885,21 @@ TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
     EXPECT_FLOAT_EQ(settings.exposure, 1.3f);
     EXPECT_FLOAT_EQ(settings.halfExtent, 1.4f);
     EXPECT_TRUE(settings.blackbodyEmission);
-    // path は gtest の表示でコンテナ扱いされるので、比較だけして文字列で報告する。
+    /// @note path は gtest の表示でコンテナ扱いされるので、比較だけして文字列で報告する。
     EXPECT_TRUE(util::FileSystem::PathFromUtf8(settings.outputDirectory).lexically_normal()
                 == temp.Path().lexically_normal())
         << settings.outputDirectory;
     EXPECT_EQ(settings.baseName, "MySmoke");
 
-    // 煙は温度を持つが光らせない。炎は炎の Ramp。
+    /// @note 煙は温度を持つが光らせない。炎は炎の Ramp。
     const math::Vector3 hottestSmoke = asset::EvaluateVolumeRamp(settings.emissionRamp, 1.0f);
     EXPECT_FLOAT_EQ(hottestSmoke.x + hottestSmoke.y + hottestSmoke.z, 0.0f);
-    recipe.render.shading = asset::FluidShading::Fire;
+    recipe.render.shading = fluid::FluidShading::Fire;
     const math::Vector3 hottestFire =
         asset::EvaluateVolumeRamp(asset::MakeVolumeBakeSettings(recipe, path).emissionRamp, 1.0f);
     ExpectVector3Eq(hottestFire, asset::EvaluateVolumeRamp(asset::DefaultFireRamp(), 1.0f));
 
-    // コマ数は Volume Baker の範囲 [2, 256] に丸めてから間隔を割る。
+    /// @note コマ数は Volume Baker の範囲 [2, 256] に丸めてから間隔を割る。
     recipe.output.columns = 32;
     recipe.output.rows = 32;
     const asset::VolumeFlipbookBakeSettings many = asset::MakeVolumeBakeSettings(recipe, path);
@@ -907,18 +912,18 @@ TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
 
 TEST(FluidRecipeBakeTest, UserEmissionRampReachesTheVolumeBaker)
 {
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     recipe.render.useEmissionRamp = true;
     recipe.render.emissionRamp.stops[2] = { { 0.1f, 0.8f, 2.0f }, 0.5f };
     recipe.render.emissionRamp.stops[3] = { { 7.0f, 1.0f, 0.5f }, 1.0f };
 
-    // 煙でも Ramp を指定すればその色で光る (shading によらない)。リニアのまま写す。
+    /// @note 煙でも Ramp を指定すればその色で光る (shading によらない)。リニアのまま写す。
     const asset::VolumeFlipbookBakeSettings settings = asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Tinted.fluid");
     for (std::size_t i = 0; i < settings.emissionRamp.stops.size(); ++i) {
         ExpectVector3Eq(settings.emissionRamp.stops[i].color, recipe.render.emissionRamp.stops[i].color);
         EXPECT_FLOAT_EQ(settings.emissionRamp.stops[i].position, recipe.render.emissionRamp.stops[i].position);
     }
-    recipe.render.shading = asset::FluidShading::Fire;
+    recipe.render.shading = fluid::FluidShading::Fire;
     ExpectVector3Eq(asset::EvaluateVolumeRamp(asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Tinted.fluid").emissionRamp,
                                               1.0f),
                     { 7.0f, 1.0f, 0.5f });
@@ -926,7 +931,7 @@ TEST(FluidRecipeBakeTest, UserEmissionRampReachesTheVolumeBaker)
 
 TEST(FluidRecipeBakeTest, LiquidAlbedoIsTheLiquidColor)
 {
-    const asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
+    const fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
     const asset::VolumeFlipbookBakeSettings settings = asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Splash.fluid");
     const math::Vector4& color = recipe.render.liquidColor;
     for (const asset::VolumeRampStop& stop : settings.albedoRamp.stops) {
@@ -941,7 +946,7 @@ TEST(FluidRecipeBakeTest, LiquidAlbedoIsTheLiquidColor)
 
 TEST(FluidRecipeBakeTest, LiquidSurfaceSettingsReachTheVolumeBaker)
 {
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
     recipe.render.liquidSoftness = 0.2f;
     recipe.render.liquidExtinction = 33.0f;
     recipe.render.liquidGloss = 50.0f;
@@ -955,15 +960,15 @@ TEST(FluidRecipeBakeTest, LiquidSurfaceSettingsReachTheVolumeBaker)
 
 TEST(FluidRecipeBakeTest, StoreIsTheInverseOfMake)
 {
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
     recipe.bake = NonDefaultBake();
     const std::string path = "C:/Fx/Boom.fluid";
 
-    asset::FluidRecipe stored = recipe;
+    fluid::FluidRecipe stored = recipe;
     asset::StoreVolumeBakeSettings(asset::MakeVolumeBakeSettings(recipe, path), stored);
     ExpectBakeEq(stored.bake, recipe.bake);
 
-    // パネルで触った値は [bake] へ戻り、[output] (コマ数・タイル) は触らない。
+    /// @note パネルで触った値は [bake] へ戻り、[output] (コマ数・タイル) は触らない。
     asset::VolumeFlipbookBakeSettings edited = asset::MakeVolumeBakeSettings(recipe, path);
     edited.exposure = 2.0f;
     edited.fluidSolver = asset::VolumeFluidSolver::Gpu;
@@ -971,7 +976,7 @@ TEST(FluidRecipeBakeTest, StoreIsTheInverseOfMake)
     edited.source.frameCount = 12;
     asset::StoreVolumeBakeSettings(edited, stored);
     EXPECT_FLOAT_EQ(stored.bake.exposure, 2.0f);
-    EXPECT_EQ(stored.bake.solver, asset::FluidBakeSolver::Gpu);
+    EXPECT_EQ(stored.bake.solver, fluid::FluidBakeSolver::Gpu);
     EXPECT_EQ(stored.bake.mode, recipe.bake.mode);
     EXPECT_EQ(stored.output.frameSize, recipe.output.frameSize);
     EXPECT_EQ(stored.output.columns, recipe.output.columns);
@@ -983,15 +988,15 @@ TEST(FluidRecipeBakeTest, AlbedoRampIsSortedOnLoadAndOldFilesKeepItOff)
     testkit::TempDir temp{ "fluidbake" };
     ASSERT_TRUE(temp.IsValid());
 
-    // albedo_ramp / color_key の無い古いファイルは 1 色のまま (鍵 0)。
-    const asset::FluidRecipe old = LoadText(temp, "old_albedo.fluid",
+    /// @note albedo_ramp / color_key の無い古いファイルは 1 色のまま (鍵 0)。
+    const fluid::FluidRecipe old = LoadText(temp, "old_albedo.fluid",
                                             "version = 2\nkind = \"gas\"\n\n[[source]]\nname = \"a\"\n");
     EXPECT_FALSE(old.render.useAlbedoRamp);
-    ExpectRampEq(old.render.albedoRamp, asset::FluidRenderSettings{}.albedoRamp);
+    ExpectRampEq(old.render.albedoRamp, fluid::FluidRenderSettings{}.albedoRamp);
     ASSERT_EQ(old.sources.size(), 1u);
     EXPECT_FLOAT_EQ(old.sources[0].colorKey, 0.0f);
 
-    const asset::FluidRecipe loaded = LoadText(temp, "unsorted_albedo.fluid",
+    const fluid::FluidRecipe loaded = LoadText(temp, "unsorted_albedo.fluid",
                                                "version = 2\n"
                                                "kind = \"gas\"\n"
                                                "\n[render]\nuse_albedo_ramp = true\n"
@@ -1004,7 +1009,8 @@ TEST(FluidRecipeBakeTest, AlbedoRampIsSortedOnLoadAndOldFilesKeepItOff)
     const auto& stops = loaded.render.albedoRamp.stops;
     const float positions[] = { 0.0f, 0.33f, 0.66f, 1.0f };
     for (std::size_t i = 0; i < stops.size(); ++i) EXPECT_FLOAT_EQ(stops[i].position, positions[i]);
-    ExpectVector3Eq(stops[0].color, { 0.0f, 1.0f, 0.0f });   // 色は点と一緒に並び替わる
+    /// @note 色は点と一緒に並び替わる
+    ExpectVector3Eq(stops[0].color, { 0.0f, 1.0f, 0.0f });
     ExpectVector3Eq(stops[3].color, { 1.0f, 0.0f, 0.0f });
     ASSERT_EQ(loaded.sources.size(), 1u);
     EXPECT_FLOAT_EQ(loaded.sources[0].colorKey, 0.4f);
@@ -1012,21 +1018,21 @@ TEST(FluidRecipeBakeTest, AlbedoRampIsSortedOnLoadAndOldFilesKeepItOff)
 
 TEST(FluidRecipeBakeTest, VolumeSettingsCarryLoopDistortionAndAlbedoRamp)
 {
-    const auto expectRamp = [](const asset::VolumeColorRamp& actual, const asset::FluidColorRamp& expected) {
+    const auto expectRamp = [](const asset::VolumeColorRamp& actual, const fluid::FluidColorRamp& expected) {
         for (std::size_t i = 0; i < actual.stops.size(); ++i) {
             ExpectVector3Eq(actual.stops[i].color, expected.stops[i].color);
             EXPECT_FLOAT_EQ(actual.stops[i].position, expected.stops[i].position);
         }
     };
 
-    // 陽炎: ループし、色の代わりに歪みを焼く。倍率は 2D の符号化 (速さ 1 で変位 0.42) と同じ。
-    const asset::FluidRecipe haze = asset::MakeFluidPreset(asset::FluidPreset::HeatHaze);
+    /// @note 陽炎: ループし、色の代わりに歪みを焼く。倍率は 2D の符号化 (速さ 1 で変位 0.42) と同じ。
+    const fluid::FluidRecipe haze = asset::MakeFluidPreset(asset::FluidPreset::HeatHaze);
     const asset::VolumeFlipbookBakeSettings hazeSettings = asset::MakeVolumeBakeSettings(haze, "C:/Fx/Haze.fluid");
     EXPECT_TRUE(hazeSettings.fluidLoop);
     EXPECT_TRUE(hazeSettings.distortion);
     EXPECT_FLOAT_EQ(hazeSettings.distortionScale, 0.42f);
 
-    // 一度きりの煙はループも歪みもしない。
+    /// @note 一度きりの煙はループも歪みもしない。
     const asset::VolumeFlipbookBakeSettings smoke =
         asset::MakeVolumeBakeSettings(asset::MakeFluidPreset(asset::FluidPreset::Smoke), "C:/Fx/Smoke.fluid");
     EXPECT_FALSE(smoke.fluidLoop);
@@ -1034,8 +1040,8 @@ TEST(FluidRecipeBakeTest, VolumeSettingsCarryLoopDistortionAndAlbedoRamp)
     EXPECT_TRUE(asset::MakeVolumeBakeSettings(asset::MakeFluidPreset(asset::FluidPreset::Fire), "C:/Fx/Fire.fluid")
                     .fluidLoop);
 
-    // 気体: albedo_ramp はリニアのまま写す。切れば smoke_color の 1 色。
-    asset::FluidRecipe boom = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
+    /// @note 気体: albedo_ramp はリニアのまま写す。切れば smoke_color の 1 色。
+    fluid::FluidRecipe boom = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
     ASSERT_TRUE(boom.render.useAlbedoRamp);
     expectRamp(asset::MakeVolumeBakeSettings(boom, "C:/Fx/Boom.fluid").albedoRamp, boom.render.albedoRamp);
     boom.render.useAlbedoRamp = false;
@@ -1046,8 +1052,8 @@ TEST(FluidRecipeBakeTest, VolumeSettingsCarryLoopDistortionAndAlbedoRamp)
         EXPECT_NEAR(stop.color.z, ToLinear(boom.render.smokeColor.z), 1.0e-5f);
     }
 
-    // 液体: albedo_ramp を使うなら liquid_color の 1 色の代わりに Ramp。
-    asset::FluidRecipe splash = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
+    /// @note 液体: albedo_ramp を使うなら liquid_color の 1 色の代わりに Ramp。
+    fluid::FluidRecipe splash = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
     splash.render.useAlbedoRamp = true;
     splash.render.albedoRamp.stops[0] = { { 0.9f, 0.1f, 0.1f }, 0.0f };
     splash.render.albedoRamp.stops[3] = { { 0.1f, 0.2f, 0.9f }, 1.0f };
@@ -1059,7 +1065,7 @@ TEST(FluidSourceMaskTest, ValueIsLuminanceTimesAlphaWithTopRowFirst)
     testkit::TempDir temp{ "fluidmask" };
     ASSERT_TRUE(temp.IsValid());
 
-    // 左半分は白 (下 1/4 だけ黒)、右半分は透明な白。縦横比は 2:1 (マスクは正方形へ引き伸ばす)。
+    /// @note 左半分は白 (下 1/4 だけ黒)、右半分は透明な白。縦横比は 2:1 (マスクは正方形へ引き伸ばす)。
     constexpr int kWidth = 64;
     constexpr int kHeight = 32;
     std::vector<std::uint8_t> rgba(static_cast<std::size_t>(kWidth) * kHeight * 4);
@@ -1077,17 +1083,20 @@ TEST(FluidSourceMaskTest, ValueIsLuminanceTimesAlphaWithTopRowFirst)
     const std::filesystem::path file = temp.File("mask.tga");
     ASSERT_TRUE(WriteTgaRgba8(file, kWidth, kHeight, rgba));
 
-    asset::FluidSourceMask mask;
+    fluid::FluidSourceMask mask;
     std::string error;
     ASSERT_TRUE(asset::LoadFluidSourceMask(util::FileSystem::PathToUtf8(file), mask, &error)) << error;
     ASSERT_TRUE(mask.IsValid());
-    EXPECT_NEAR(asset::SampleFluidSourceMask(mask, 0.1f, 0.1f), 1.0f, 1.0e-3f);    // 白・不透明
-    EXPECT_NEAR(asset::SampleFluidSourceMask(mask, 0.9f, 0.5f), 0.0f, 1.0e-3f);    // 透明
-    EXPECT_NEAR(asset::SampleFluidSourceMask(mask, 0.1f, 0.95f), 0.0f, 1.0e-3f);   // 下の黒 (v は上が 0)
-    // 範囲外は縁の値。
-    EXPECT_FLOAT_EQ(asset::SampleFluidSourceMask(mask, -3.0f, 0.1f), asset::SampleFluidSourceMask(mask, 0.0f, 0.1f));
-    EXPECT_FLOAT_EQ(asset::SampleFluidSourceMask(mask, 0.1f, 5.0f), asset::SampleFluidSourceMask(mask, 0.1f, 1.0f));
-    EXPECT_NEAR(asset::SampleFluidSourceMask(mask, 0.0f, 0.0f), 1.0f, 1.0e-3f);
+    /// @note 白・不透明
+    EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, 0.1f, 0.1f), 1.0f, 1.0e-3f);
+    /// @note 透明
+    EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, 0.9f, 0.5f), 0.0f, 1.0e-3f);
+    /// @note 下の黒 (v は上が 0)
+    EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, 0.1f, 0.95f), 0.0f, 1.0e-3f);
+    /// @note 範囲外は縁の値。
+    EXPECT_FLOAT_EQ(fluid::SampleFluidSourceMask(mask, -3.0f, 0.1f), fluid::SampleFluidSourceMask(mask, 0.0f, 0.1f));
+    EXPECT_FLOAT_EQ(fluid::SampleFluidSourceMask(mask, 0.1f, 5.0f), fluid::SampleFluidSourceMask(mask, 0.1f, 1.0f));
+    EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, 0.0f, 0.0f), 1.0f, 1.0e-3f);
     for (const float value : mask.values) {
         ASSERT_GE(value, 0.0f);
         ASSERT_LE(value, 1.0f);
@@ -1099,7 +1108,7 @@ TEST(FluidSourceMaskTest, ShrinkingKeepsThinLines)
     testkit::TempDir temp{ "fluidmask" };
     ASSERT_TRUE(temp.IsValid());
 
-    // 4 列に 1 本の白線を 1/4 に縮める。点で拾う双線形だと線の間だけを拾って 0 になる。
+    /// @note 4 列に 1 本の白線を 1/4 に縮める。点で拾う双線形だと線の間だけを拾って 0 になる。
     constexpr int kWidth = 1024;
     constexpr int kHeight = 4;
     std::vector<std::uint8_t> rgba(static_cast<std::size_t>(kWidth) * kHeight * 4);
@@ -1116,10 +1125,10 @@ TEST(FluidSourceMaskTest, ShrinkingKeepsThinLines)
     const std::filesystem::path file = temp.File("lines.tga");
     ASSERT_TRUE(WriteTgaRgba8(file, kWidth, kHeight, rgba));
 
-    asset::FluidSourceMask mask;
+    fluid::FluidSourceMask mask;
     ASSERT_TRUE(asset::LoadFluidSourceMask(util::FileSystem::PathToUtf8(file), mask));
     for (const float u : { 0.1f, 0.37f, 0.5f, 0.83f })
-        EXPECT_NEAR(asset::SampleFluidSourceMask(mask, u, 0.5f), 0.25f, 1.0e-3f) << u;
+        EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, u, 0.5f), 0.25f, 1.0e-3f) << u;
 }
 
 TEST(FluidSourceMaskTest, MissingOrBrokenFileLeavesTheMaskInvalid)
@@ -1127,13 +1136,13 @@ TEST(FluidSourceMaskTest, MissingOrBrokenFileLeavesTheMaskInvalid)
     testkit::TempDir temp{ "fluidmask" };
     ASSERT_TRUE(temp.IsValid());
 
-    asset::FluidSourceMask mask;
+    fluid::FluidSourceMask mask;
     std::string error;
     EXPECT_FALSE(asset::LoadFluidSourceMask(util::FileSystem::PathToUtf8(temp.File("missing.png")), mask, &error));
     EXPECT_FALSE(mask.IsValid());
     EXPECT_FALSE(error.empty());
-    // 読めていないマスクは 1 (板の形のまま湧く)。
-    EXPECT_FLOAT_EQ(asset::SampleFluidSourceMask(mask, 0.3f, 0.7f), 1.0f);
+    /// @note 読めていないマスクは 1 (板の形のまま湧く)。
+    EXPECT_FLOAT_EQ(fluid::SampleFluidSourceMask(mask, 0.3f, 0.7f), 1.0f);
 
     const std::filesystem::path broken = temp.File("broken.png");
     ASSERT_TRUE(util::FileSystem::WriteText(broken, std::string("not an image")));
@@ -1147,7 +1156,7 @@ TEST(FluidSourceMaskTest, SpriteReferenceUsesOnlyThatCell)
     testkit::TempDir temp{ "fluidmask" };
     ASSERT_TRUE(temp.IsValid());
 
-    // 4 象限のシート。左上だけ白 (それ以外は黒)。コマを切り抜けていれば «全部 1» と «全部 0» に割れる。
+    /// @note 4 象限のシート。左上だけ白 (それ以外は黒)。コマを切り抜けていれば «全部 1» と «全部 0» に割れる。
     constexpr int kWidth = 64;
     constexpr int kHeight = 64;
     std::vector<std::uint8_t> rgba(static_cast<std::size_t>(kWidth) * kHeight * 4);
@@ -1175,27 +1184,27 @@ sprites = [
 )")));
 
     const std::string image = util::FileSystem::PathToUtf8(file);
-    asset::FluidSourceMask mask;
+    fluid::FluidSourceMask mask;
     std::string error;
 
-    // ID でも名前でも同じコマを指す。
+    /// @note ID でも名前でも同じコマを指す。
     for (const char* token : { "id-lit", "Lit" }) {
         ASSERT_TRUE(asset::LoadFluidSourceMask(asset::MakeSpriteReference(image, token), mask, &error)) << error;
         ASSERT_TRUE(mask.IsValid());
         for (const float u : { 0.05f, 0.5f, 0.95f })
-            EXPECT_NEAR(asset::SampleFluidSourceMask(mask, u, u), 1.0f, 1.0e-3f) << token << " " << u;
+            EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, u, u), 1.0f, 1.0e-3f) << token << " " << u;
     }
 
     ASSERT_TRUE(asset::LoadFluidSourceMask(asset::MakeSpriteReference(image, "Dark"), mask, &error)) << error;
     for (const float u : { 0.05f, 0.5f, 0.95f })
-        EXPECT_NEAR(asset::SampleFluidSourceMask(mask, u, u), 0.0f, 1.0e-3f) << u;
+        EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, u, u), 0.0f, 1.0e-3f) << u;
 
-    // 参照のまま (切り抜かずに) 読むとシート全体なので、左上の 1/4 だけが白い。
+    /// @note 参照のまま (切り抜かずに) 読むとシート全体なので、左上の 1/4 だけが白い。
     ASSERT_TRUE(asset::LoadFluidSourceMask(image, mask, &error)) << error;
-    EXPECT_NEAR(asset::SampleFluidSourceMask(mask, 0.25f, 0.25f), 1.0f, 1.0e-3f);
-    EXPECT_NEAR(asset::SampleFluidSourceMask(mask, 0.75f, 0.75f), 0.0f, 1.0e-3f);
+    EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, 0.25f, 0.25f), 1.0f, 1.0e-3f);
+    EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, 0.75f, 0.75f), 0.0f, 1.0e-3f);
 
-    // 切れた参照はアトラス全面へ落とさず «読めない» にする (呼び手が赤く言える)。
+    /// @note 切れた参照はアトラス全面へ落とさず «読めない» にする (呼び手が赤く言える)。
     EXPECT_FALSE(asset::LoadFluidSourceMask(asset::MakeSpriteReference(image, "Gone"), mask, &error));
     EXPECT_FALSE(mask.IsValid());
     EXPECT_FALSE(error.empty());

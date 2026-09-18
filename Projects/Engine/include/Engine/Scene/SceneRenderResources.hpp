@@ -12,35 +12,21 @@ namespace fbzz::scene {
 
 class Scene;
 
-/// コンポーネントが «その個体専用» に確保した GPU リソースを ResourceManager へ返す。
-///
-/// WHY 要るか:
-///   Scene を畳んでもコンポーネントが持っていた ResourceHandle の実体は ResourceManager 側に残る。
-///   Editor の Play → Stop はシーンを丸ごと読み直すため、繰り返すたびに前のシーンぶんの
-///   定数バッファ・頂点バッファ・キューブマップが積み上がっていた。
-/// NOTE: パスキャッシュ由来の共有リソース (LoadTexture / LoadShader の結果) は返さない。
-///       同じハンドルを他のシーンや Editor UI が使い続けている。
+/// @brief コンポーネントが «その個体専用» に確保した GPU リソースを ResourceManager へ返す。
+/// @note Editor の Play→Stop はシーンを丸ごと読み直すため、返さないと前のシーンぶんの定数バッファ・頂点バッファ・キューブマップが積み上がる。
+/// @note パスキャッシュ由来の共有リソース (LoadTexture/LoadShader の結果) は返さない。他のシーンや Editor UI が同じハンドルを使い続けている。
 void ReleaseSceneOwnedGpuResources(Scene& scene, renderer::ResourceManager& resources);
 
-/// 1 エンティティぶんだけ同じ返却を行う。GameObject を畳む直前に呼ぶ。
+/// @brief 1 エンティティぶんだけ同じ返却を行う。GameObject を畳む直前に呼ぶ。
 void ReleaseEntityOwnedGpuResources(Scene& scene, EntityID id, renderer::ResourceManager& resources);
 
-/// 複製直後のエンティティから «コピー元と同じハンドル» を捨てる。
-///
-/// WHY 要るか: Component 配列の複製は値コピーなので、GPU ハンドルまで写る。
-///     そのままだと複製元と複製先が 1 本のバッファを共有し、毎フレーム互いのポーズを
-///     上書きし合ううえ、片方を畳んだ瞬間にもう片方の参照先が消える。
-///     所有者は複製元なので、ここでは «返さずに手放す» のが正しい。
+/// @brief 複製直後のエンティティから «コピー元と同じハンドル» を捨てる。
+/// @note Component 配列の複製は値コピーで GPU ハンドルも写る。返すと複製元と 1 本のバッファを共有してしまうため、所有者でない複製先は返さず手放す。
 void ClearDuplicatedGpuHandles(Scene& scene, EntityID id);
 
 /// @name コンポーネント 1 つぶんの返却
-///
-/// WHY 型ごとのオーバーロードにするか:
-///   Scene::RemoveComponent<T>() は «どの型でも» 呼ばれるテンプレートで、
-///   GPU リソースを持たない型が大半。持つ型だけ非テンプレートの宣言を用意し、
-///   それ以外はテンプレートの何もしない版へ落とす — 呼び出し側は型を意識しない。
-///   ResourceManager を引数に取らないのは、Scene.hpp へ Renderer の実体を持ち込まないため
-///   (返却先は ResourceManager::Active() を使う。無ければ何もしない)。
+/// @note GPU リソースを持つ型だけ非テンプレートの宣言を用意し、それ以外はテンプレートの空実装へ落とす。呼び出し側は型を意識しない。
+/// @note ResourceManager を引数に取らないのは Scene.hpp へ Renderer 実体を持ち込まないため。返却先は ResourceManager::Active() を使い、無ければ何もしない。
 ///@{
 struct AnimatorComponent;
 struct SkinnedMeshRenderer;
@@ -51,6 +37,7 @@ struct ReflectionProbeComponent;
 struct SpriteRendererComponent;
 struct LineRendererComponent;
 struct ProceduralMeshComponent;
+struct ClothComponent;
 
 void ReleaseComponentGpuResources(AnimatorComponent& component);
 void ReleaseComponentGpuResources(SkinnedMeshRenderer& component);
@@ -61,18 +48,15 @@ void ReleaseComponentGpuResources(ReflectionProbeComponent& component);
 void ReleaseComponentGpuResources(SpriteRendererComponent& component);
 void ReleaseComponentGpuResources(LineRendererComponent& component);
 void ReleaseComponentGpuResources(ProceduralMeshComponent& component);
+void ReleaseComponentGpuResources(ClothComponent& component);
 
-/// 上のどれにも当たらない型は GPU リソースを持たない。
+/// @brief 上のどれにも当たらない型は GPU リソースを持たない。
 template <class T>
 inline void ReleaseComponentGpuResources(T&) {}
 ///@}
 
 /// @name 値としてコピーした Component からハンドルだけ消す (返さない)
-///
-/// WHY 要るか: Undo は «外す前の Component» を値でコピーして持つ。そのコピーには
-///     コピー元と同じ GPU ハンドルが入っているが、実体は外した時点で返却済みで、
-///     同じ枠が別のリソースに再利用され得る。やり直しで «他人のバッファを掴んだ
-///     Component» が復活しないよう、コピー側のハンドルは空にしておく。
+/// @note Undo は外す前の Component を値でコピーして持つ。実体は外した時点で返却済みで同じ枠が再利用され得るため、コピー側のハンドルは空にして «他人のバッファを掴んだ Component» の復活を防ぐ。
 ///@{
 void ClearComponentGpuHandles(AnimatorComponent& component);
 void ClearComponentGpuHandles(SkinnedMeshRenderer& component);
@@ -83,6 +67,7 @@ void ClearComponentGpuHandles(ReflectionProbeComponent& component);
 void ClearComponentGpuHandles(SpriteRendererComponent& component);
 void ClearComponentGpuHandles(LineRendererComponent& component);
 void ClearComponentGpuHandles(ProceduralMeshComponent& component);
+void ClearComponentGpuHandles(ClothComponent& component);
 
 template <class T>
 inline void ClearComponentGpuHandles(T&) {}

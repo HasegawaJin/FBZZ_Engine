@@ -3,15 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY VFXBeam + Trail で済ませないか:
-///   あちらは «2 点を 1 本の滑らかな線で結ぶ» 道具で、雷の本質である «枝分かれ» と «打ち直し»
-///   (1 秒に十数回、形ごと作り直す) を持てない。Trail の帯は 1 本の折れ線しか張れず、
-///   帯の向きもゲームのメインカメラへ向けて CPU で組むので Scene ビューでは紙に見える。
-///   ここは複数本の折れ線を 1 つのメッシュにまとめ、帯をカメラへ向けるのは VS に任せる
-///   (VFXLine.hlsl)。どのビューから見ても帯が正対する。
 ///
-/// 見た目の既定は Assets/Materials/Effects/VFXLine.mat (加算・HDR の芯とグロー)。
-/// 色・明るさ・時刻は VFXLineSystem が MaterialComponent の paramOverrides へ毎フレーム書く。
+/// @note VFXBeam+Trail は 2 点を結ぶ 1 本の折れ線しか張れず、帯もカメラへ CPU で向けるため Scene
+///       ビューで紙に見える。ここは複数本の折れ線を 1 メッシュにまとめ、帯を向けるのは VS に
+///       任せる (VFXLine.hlsl) —— どのビューでも正対する。見た目の既定は VFXLine.mat、色・明るさ・
+///       時刻は VFXLineSystem が paramOverrides へ毎フレーム書く。
 #pragma once
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -32,7 +28,8 @@ struct VFXLineComponent {
     bool enabled = true;
     VFXLineMode mode = VFXLineMode::Lightning;
 
-    // ── 端点 ──
+    /// @name 端点
+    /// @{
     /// 始点の実体。無効なら自分の位置。
     EntityRef fromEntity;
     /// 終点の実体。無効なら toPoint (自分から見たローカル座標 = 置いただけで線が見える)。
@@ -42,8 +39,10 @@ struct VFXLineComponent {
     math::Vector3 toPoint = { 0.0f, 0.0f, 5.0f };
     /// 終点の実体が消えたら線を畳む (誰も居ない場所へ伸び続けないように)。
     bool disableWhenEndpointMissing = true;
+    /// @}
 
-    // ── 見た目 ──
+    /// @name 見た目
+    /// @{
     std::string materialPath = "Assets/Materials/Effects/VFXLine.mat";
     /// グローの色 (リニア)。A は全体の不透明度。
     math::Vector4 color = { 0.35f, 0.6f, 1.0f, 1.0f };
@@ -57,8 +56,10 @@ struct VFXLineComponent {
     float coreWidth = 0.25f;
     /// 終点側の幅 (始点を 1 とした割合)。
     float endTaper = 0.3f;
+    /// @}
 
-    // ── 雷 ──
+    /// @name 雷
+    /// @{
     /// 折れの細かさ。中点変位の段数で、本流は 2^detail 区間になる。
     int   detail = 6;
     /// 折れの大きさ (線の長さに対する割合)。
@@ -77,8 +78,10 @@ struct VFXLineComponent {
     float flicker = 0.5f;
     /// 打ち直しの間の震え (線の長さに対する割合)。
     float jitter = 0.01f;
+    /// @}
 
-    // ── ビーム ──
+    /// @name ビーム
+    /// @{
     int   beamSegments = 32;
     /// たるみ [m]。中点をこの距離だけ下げる (張った光線と «引っ張られる紐» の違い)。
     float sag = 0.0f;
@@ -86,23 +89,29 @@ struct VFXLineComponent {
     float wobble = 0.0f;
     float wobbleFrequency = 3.0f;
     float wobbleWaves = 2.0f;
+    /// @}
 
-    // ── 帯の模様 (シェーダー) ──
+    /// @name 帯の模様 (シェーダー)
+    /// @{
     /// 芯の太さのムラ [0,1]。
     float breakup = 0.4f;
     /// 帯を流れる輝点の速さと数。0 で流さない。
     float pulseSpeed = 0.0f;
     float pulseDensity = 0.0f;
+    /// @}
 
-    // ── 時間 ──
+    /// @name 時間
+    /// @{
     float fadeIn = 0.0f;
     /// 0 以下はずっと出し続ける。
     float duration = 0.0f;
     float fadeOut = 0.2f;
     bool  loop = true;
     int   seed = 1;
+    /// @}
 
-    // ── ランタイム (保存しない) ──
+    /// @name ランタイム (保存しない)
+    /// @{
     float time = 0.0f;
     /// 今の形を打ってからの経過 [秒]。
     float strikeClock = 0.0f;
@@ -112,7 +121,7 @@ struct VFXLineComponent {
 
     void Reflect(IReflector& r)
     {
-        // Group / 表示条件は Inspector だけの話で、保存キーは常に同じ (モードを戻しても値は残る)。
+        /// @note Group / 表示条件は Inspector だけの話で、保存キーは常に同じ (モードを戻しても値は残る)。
         r.Field("enabled", enabled);
         int modeValue = static_cast<int>(mode);
         static constexpr const char* kModes[] = { "Lightning", "Beam" };
@@ -174,6 +183,7 @@ struct VFXLineComponent {
         r.Field("loop", loop);
         r.Field("seed", seed);
     }
+    /// @}
 };
 
 } // namespace fbzz::scene

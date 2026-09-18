@@ -1,7 +1,8 @@
 /// @file    TerrainTool.cpp
-/// @brief   TerrainTool の実装: レイキャスト・ブラシアルゴリズム・ImGui UI。
+/// @brief   TerrainTool の実装: レイキャスト・ストロークと Undo・ImGui UI。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
+/// @see Docs/design/terrain-layers.md
 #include "TerrainTool.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -20,6 +21,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <imgui.h>
 #include <string>
 #include <vector>
@@ -28,38 +30,14 @@ namespace fbzz::editor {
 
 namespace {
 
-float TerrainMinWorldHeight(const scene::TerrainComponent& terrain)
+float TerrainToolMinWorldHeight(const scene::TerrainComponent& terrain)
 {
     if (terrain.heightData.empty()) return 0.0f;
     const auto minIt = std::min_element(terrain.heightData.begin(), terrain.heightData.end());
     return *minIt * terrain.maxHeight;
 }
 
-void EnsureSplatData(scene::TerrainComponent& terrain)
-{
-    const size_t expectedSize = static_cast<size_t>(terrain.columns)
-                              * static_cast<size_t>(terrain.rows) * 4u;
-    if (terrain.splatData.size() != expectedSize) {
-        terrain.InitDefaultSplat();
-        return;
-    }
-
-    for (int i = 0; i < terrain.columns * terrain.rows; ++i) {
-        const size_t base = static_cast<size_t>(i) * 4u;
-        const uint32_t sum = static_cast<uint32_t>(terrain.splatData[base + 0])
-                           + static_cast<uint32_t>(terrain.splatData[base + 1])
-                           + static_cast<uint32_t>(terrain.splatData[base + 2])
-                           + static_cast<uint32_t>(terrain.splatData[base + 3]);
-        if (sum == 0u) {
-            terrain.splatData[base + 0] = 255u;
-            terrain.splatData[base + 1] = 0u;
-            terrain.splatData[base + 2] = 0u;
-            terrain.splatData[base + 3] = 0u;
-        }
-    }
-}
-
-const char* LayerDisplayName(const std::string& path)
+const char* TerrainToolLayerDisplayName(const std::string& path)
 {
     if (path.empty())
         return "(empty)";
@@ -68,14 +46,74 @@ const char* LayerDisplayName(const std::string& path)
     return slash == std::string::npos ? path.c_str() : path.c_str() + slash + 1;
 }
 
-// ToTerrainLocal / ToTerrainWorld / BrushOverlapsTerrainXZ は TerrainBrush.hpp が提供する
-// (AI 側の terrain.sculpt / terrain.paint と同じ実体を使うため)。
+/// @return シーン内の最初の有効な地形。無ければ null。
+scene::TerrainComponent* TerrainToolFirstTerrain(scene::Scene& scene, scene::GameObject** outObject)
+{
+    for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
+        auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
+        if (tc && tc->enabled) {
+            if (outObject) *outObject = scene.GetGameObject(eid);
+            return tc;
+        }
+    }
+    return nullptr;
+}
+
+/// @brief ワールド座標をビューポートのスクリーン座標へ投影する。カメラの後ろは画面外の値を返す。
+ImVec2 TerrainToolProject(const math::Matrix4& viewProjection, const ImVec2& viewportMin,
+                          const ImVec2& viewportSize, const math::Vector3& p)
+{
+    const math::Vector4 clip = viewProjection * math::Vector4{ p.x, p.y, p.z, 1.0f };
+    if (clip.w < 0.001f) return { -99999.0f, -99999.0f };
+    const float ndcX = clip.x / clip.w;
+    const float ndcY = clip.y / clip.w;
+    return {
+        viewportMin.x + (ndcX + 1.0f) * 0.5f * viewportSize.x,
+        viewportMin.y + (1.0f - (ndcY + 1.0f) * 0.5f) * viewportSize.y
+    };
+}
+
+/// @brief 横幅に収まる限り同じ行へ並べる SmallButton。
+/// @return 押されたか。
+bool TerrainToolFlowButton(const char* label, bool active, float rightEdge, bool first, ThemeColor activeColor)
+{
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float width = ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0f;
+    if (!first && ImGui::GetItemRectMax().x + style.ItemSpacing.x + width < rightEdge)
+        ImGui::SameLine();
+    if (active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(activeColor));
+    const bool pressed = ImGui::SmallButton(label);
+    if (active) ImGui::PopStyleColor();
+    return pressed;
+}
 
 } // namespace
 
-// =============================================================================
-// Update — メイン入力処理
-// =============================================================================
+const char* TerrainTool::SculptModeLabel(SculptMode mode)
+{
+    switch (mode) {
+        case SculptMode::Raise:            return "Raise";
+        case SculptMode::Lower:            return "Lower";
+        case SculptMode::Smooth:           return "Smooth";
+        case SculptMode::Flatten:          return "Flatten";
+        case SculptMode::Stamp:            return "Stamp";
+        case SculptMode::Noise:            return "Noise";
+        case SculptMode::ThermalErosion:   return "Thermal";
+        case SculptMode::HydraulicErosion: return "Hydraulic";
+        case SculptMode::Terrace:          return "Terrace";
+    }
+    return "?";
+}
+
+std::string TerrainTool::StatusLabel() const
+{
+    switch (m_mode) {
+        case Mode::Sculpt: return m_rampMode ? "Ramp" : SculptModeLabel(m_sculpt);
+        case Mode::Paint:  return "Layer " + std::to_string(m_paintLayer);
+        case Mode::Hole:   return m_holeErase ? "Fill Hole" : "Cut Hole";
+    }
+    return {};
+}
 
 void TerrainTool::Update(
     scene::Scene&               scene,
@@ -87,21 +125,17 @@ void TerrainTool::Update(
     const std::function<void()>& markDirty,
     UndoStack*                   undoStack)
 {
-    // ビューポート外ではレイキャストしない
-    // 非アクティブ時はブラシ入力・プレビューをすべてスキップする
+    /// @note ビューポート外・非アクティブではレイキャストしない。ただし進行中のストロークは離すまで追う。
     if (!m_active || !viewportHovered) {
         m_isHovering = false;
         m_hitTerrain = nullptr;
-        if (!m_strokeActive) return;
+        if (!m_strokeActive && !m_rampDragging) return;
     }
 
-    // ブラシサイズ・強度のホットキー調整。[ / ] で半径、Shift+[ / Shift+] で強度。
-    // WHY: 多くの地形エディタ標準の操作で、パネルのスライダーへ視線を移さずブラシを連続調整できる。
-    //      マウスホイールはビューポートのカメラ操作と競合するため、競合しないブラケットキーを使う。
-    //      viewportHovered のときだけ拾うので、InputText 等にフォーカスがある場面では誤爆しない。
+    /// @note [ / ] で半径、Shift+[ / ] で強度。ホイールはカメラ操作と競合するため使わない。
     if (viewportHovered) {
         const bool  shift        = ImGui::GetIO().KeyShift;
-        const float radiusStep   = std::max(0.5f, m_brush.radius * 0.1f); // 大きいブラシほど粗く刻む
+        const float radiusStep   = std::max(0.5f, m_brush.radius * 0.1f);
         const float strengthStep = 0.02f;
         if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, /*repeat=*/true)) {
             if (shift) m_brush.strength = std::clamp(m_brush.strength - strengthStep, 0.001f, 1.0f);
@@ -113,76 +147,61 @@ void TerrainTool::Update(
         }
     }
 
-    // 修飾キーによる Sculpt サブモードの一時上書き (Unity Terrain 互換)。
-    // Shift+drag = Smooth / Ctrl+drag = Lower。修飾を離せば選択中のサブモード(m_sculpt)に戻る。
-    // WHY: 平滑化・掘り下げは頻繁に切り替えるため、パネルのラジオボタンへ視線を戻さず手元で操作できるようにする。
-    //      Ctrl を優先し、Ctrl+Shift 同時押しは Lower とする。
+    /// @note 修飾キーによる一時上書き (Unity Terrain 互換)。Ctrl を優先し、Ctrl+Shift は Lower。Ramp 中は上書きしない。
+    const ImGuiIO& io = ImGui::GetIO();
     m_activeSculpt = m_sculpt;
-    if (m_mode == Mode::Sculpt && viewportHovered) {
-        const ImGuiIO& io = ImGui::GetIO();
+    if (m_mode == Mode::Sculpt && !m_rampMode && viewportHovered) {
         if (io.KeyCtrl)       m_activeSculpt = SculptMode::Lower;
         else if (io.KeyShift) m_activeSculpt = SculptMode::Smooth;
     }
 
-    // レイキャストで地形ヒット判定
     math::Vector3     hitWorld;
     scene::GameObject* hitGO = nullptr;
     m_isHovering = RaycastTerrain(scene, camera, viewportMin, viewportSize, hitWorld, hitGO);
-
     if (m_isHovering) {
-        m_hitPoint  = hitWorld;
+        m_hitPoint   = hitWorld;
         m_hitTerrain = hitGO;
     } else {
+        /// @note ヒットなしでもブラシ円は最後のヒット位置に残す (移動の遅延を自然に見せる)。
         m_hitTerrain = nullptr;
-        // ヒットなしでもブラシ円は最後のヒット位置に残す（移動の遅延を自然に見せる）
     }
 
-    // -- マウスボタンが押されている間だけ編集を適用 --
+    const bool mousePressed  = viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
     const bool mouseHeld     = ImGui::IsMouseDown(ImGuiMouseButton_Left);
     const bool mouseReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+
+    if (m_mode == Mode::Sculpt && m_rampMode) {
+        UpdateRamp(scene, mousePressed, mouseReleased || (!mouseHeld && m_rampDragging), markDirty, undoStack);
+        if (m_rampDragging)
+            DrawRampPreview(viewportMin, viewportSize, camera);
+        else if (m_isHovering)
+            DrawBrushPreview(viewportMin, viewportSize, camera);
+        return;
+    }
 
     if (mouseHeld && m_isHovering && m_hitTerrain) {
         auto* terrainComp = m_hitTerrain->GetComponent<scene::TerrainComponent>();
         assert(terrainComp && "ヒット判定したのに TerrainComponent がない — RaycastSingleTerrain のバグ");
         if (!m_strokeActive) {
-            m_strokeEntity = m_hitTerrain->GetID();
-            m_strokeInstanceId = m_hitTerrain->instanceId;
-            m_strokeBefore = *terrainComp;
             m_strokeBeforeTerrains.clear();
             m_strokeActive = true;
+            m_strokeStep   = 0;
         }
-        auto captureTerrainBefore = [&](scene::GameObject* go, scene::TerrainComponent* terrain) {
-            if (!go || !terrain)
-                return;
-            const auto found = std::find_if(
-                m_strokeBeforeTerrains.begin(),
-                m_strokeBeforeTerrains.end(),
-                [&](const TerrainStrokeSnapshot& snapshot) {
-                    return snapshot.instanceId == go->instanceId;
-                });
-            if (found == m_strokeBeforeTerrains.end())
-                m_strokeBeforeTerrains.push_back({ go->instanceId, *terrain });
-        };
-        captureTerrainBefore(m_hitTerrain, terrainComp);
+        CaptureStrokeBefore(*m_hitTerrain, *terrainComp);
 
-        // 描画と同じ World Matrix の逆変換で Terrain ローカル座標へ変換する。
-        const scene::Transform& tf = m_hitTerrain->transform;
-        const math::Vector3 hitLocal = ToTerrainLocal(tf, m_hitPoint);
+        const math::Vector3 hitLocal = ToTerrainLocal(m_hitTerrain->transform, m_hitPoint);
 
-        // Flatten モード: 最初のクリックで基準高さを固定する
+        /// @note Flatten は最初のクリックで基準高さを固定する。
         if (m_mode == Mode::Sculpt && m_activeSculpt == SculptMode::Flatten && !m_flattenLocked) {
             m_flattenTarget = terrainComp->GetHeightAt(hitLocal.x, hitLocal.z);
             m_flattenLocked = true;
         }
 
-        // ブラシ範囲にワールド空間で重なる「全 Terrain」を編集対象にする。
-        // WHY: 各 Terrain は独立した heightData / splatData を持つため、ブラシ半径が境界を越えても
-        //      カーソル下の 1 つだけを編集すると、隣の境界列が取り残されて段差・継ぎ目が残る。
-        //      共有境界の頂点は隣接 Terrain 同士で同一のワールド点なので、各 Terrain のローカル空間へ
-        //      ブラシ中心を変換して当てれば同一のデルタが入り、グリッド登録の有無に関係なく連続する。
+        /// @note ブラシ範囲に重なる全 Terrain を編集する。カーソル下の 1 つだけだと境界に段差・継ぎ目が残る。
+        /// @note 共有境界の頂点は同一のワールド点なので、各 Terrain のローカルへブラシ中心を変換すれば同じデルタが入る。
         switch (m_mode) {
             case Mode::Sculpt:
-                // colliderDirty はここでは立てない（毎フレーム BVH 再構築を避け、確定時に 1 回だけ）。
+                /// @note colliderDirty は確定時に 1 回だけ立てる (毎フレーム BVH 再構築を避ける)。
                 for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
                     auto* go = scene.GetGameObject(eid);
                     auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
@@ -191,14 +210,17 @@ void TerrainTool::Update(
                     const math::Vector3 localN = ToTerrainLocal(go->transform, m_hitPoint);
                     if (!BrushOverlapsTerrainXZ(*tc, localN, m_brush.radius))
                         continue;
-                    captureTerrainBefore(go, tc);
-                    ApplyTerrainSculpt(*tc, localN, m_brush, m_activeSculpt, m_flattenTarget, dt);
+                    CaptureStrokeBefore(*go, *tc);
+                    ApplyTerrainSculpt(*tc, localN, m_brush, m_activeSculpt, m_flattenTarget, dt, m_strokeStep);
                     tc->heightDirty = true;
                 }
                 break;
             case Mode::Paint: {
-                const int paintLayer = static_cast<int>(std::min(m_paintLayer, 3u));
-                const std::string sourceMaterial = terrainComp->layerMaterials[paintLayer];
+                const int layerCount = std::max(terrainComp->LayerCount(), 1);
+                const int paintLayer = std::min(static_cast<int>(m_paintLayer), layerCount - 1);
+                const std::string sourceMaterial = paintLayer < terrainComp->LayerCount()
+                    ? terrainComp->layerMaterials[static_cast<size_t>(paintLayer)]
+                    : std::string();
                 for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
                     auto* go = scene.GetGameObject(eid);
                     auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
@@ -207,85 +229,159 @@ void TerrainTool::Update(
                     const math::Vector3 localN = ToTerrainLocal(go->transform, m_hitPoint);
                     if (!BrushOverlapsTerrainXZ(*tc, localN, m_brush.radius))
                         continue;
-                    // ヒットした Terrain は選択レイヤーをそのまま塗る。
-                    // WHY: マテリアル解決を通すと、複数レイヤーが同じ material path を共有していたり
-                    //      未割り当て(空)だった場合に選択レイヤーと違う層へ解決され、狙ったレイヤーを
-                    //      塗れなくなる。隣接 Terrain だけは layerMaterials の並びが異なり得るため、
-                    //      同じ material path のレイヤーを探して塗り、見つからなければスキップする。
+                    /// @note ヒットした Terrain は選択層をそのまま塗る。隣接 Terrain は層の並びが違い得るので material path で解決する。
                     int layer = paintLayer;
                     if (tc != terrainComp) {
                         layer = ResolvePaintLayerForTerrain(*tc, sourceMaterial, paintLayer);
                         if (layer < 0)
                             continue;
                     }
-                    captureTerrainBefore(go, tc);
-                    EnsureSplatData(*tc);
+                    CaptureStrokeBefore(*go, *tc);
                     ApplyTerrainPaint(*tc, localN, m_brush, layer, dt);
                     tc->splatDirty = true;
                 }
                 break;
             }
+            case Mode::Hole: {
+                /// @note Ctrl+drag で Cut / Fill を一時的に反転する。
+                const bool fill = m_holeErase != io.KeyCtrl;
+                for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
+                    auto* go = scene.GetGameObject(eid);
+                    auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
+                    if (!go || !tc || !tc->enabled || tc->heightData.empty())
+                        continue;
+                    const math::Vector3 localN = ToTerrainLocal(go->transform, m_hitPoint);
+                    if (!BrushOverlapsTerrainXZ(*tc, localN, m_brush.radius))
+                        continue;
+                    CaptureStrokeBefore(*go, *tc);
+                    /// @note 穴は三角形の有無なのでメッシュを作り直す。コライダーは確定時に 1 回。
+                    if (ApplyTerrainHole(*tc, localN, m_brush, !fill))
+                        tc->heightDirty = true;
+                }
+                break;
+            }
         }
+        ++m_strokeStep;
         markDirty();
     }
 
-    // マウスボタンを離したら Flatten の固定を解除する
     if (mouseReleased) {
         m_flattenLocked = false;
         if (m_strokeActive) {
-            // ストローク確定時に、このストロークで触れた全 Terrain のコライダーを一度だけ再構築する。
-            // WHY: Sculpt は高さを変えるため物理形状の更新が要る。Paint(スプラット)は形状に影響しない
-            //      ので colliderDirty は不要。押下中ではなくここで立てることで毎フレーム再構築を避ける。
-            if (m_mode == Mode::Sculpt) {
-                for (const TerrainStrokeSnapshot& snapshot : m_strokeBeforeTerrains) {
-                    if (auto* target = scene.FindByGuid(snapshot.instanceId))
-                        if (auto* component = target->GetComponent<scene::TerrainComponent>())
-                            component->colliderDirty = true;
-                }
-            }
-            if (undoStack && !m_strokeBeforeTerrains.empty()) {
-                std::vector<TerrainStrokeSnapshot> before = m_strokeBeforeTerrains;
-                std::vector<TerrainStrokeSnapshot> after;
-                after.reserve(before.size());
-                for (const TerrainStrokeSnapshot& snapshot : before) {
-                    if (auto* target = scene.FindByGuid(snapshot.instanceId)) {
-                        if (auto* component = target->GetComponent<scene::TerrainComponent>())
-                            after.push_back({ snapshot.instanceId, *component });
-                    }
-                }
-                scene::Scene* scenePtr = &scene;
-                auto apply = [scenePtr, markDirty](const std::vector<TerrainStrokeSnapshot>& values) {
-                    for (const TerrainStrokeSnapshot& snapshot : values) {
-                        if (auto* target = scenePtr->FindByGuid(snapshot.instanceId)) {
-                            if (auto* component = target->GetComponent<scene::TerrainComponent>()) {
-                                *component = snapshot.before;
-                                component->heightDirty = true;
-                                component->splatDirty = true;
-                                component->colliderDirty = true;
-                            }
-                        }
-                    }
-                    if (markDirty)
-                        markDirty();
-                };
-                undoStack->Push(std::make_unique<LambdaCommand>(
-                    m_mode == Mode::Sculpt ? "Sculpt Terrain" : "Paint Terrain",
-                    [apply, after]() { apply(after); },
-                    [apply, before]() { apply(before); }));
-            }
-            m_strokeBeforeTerrains.clear();
-            m_strokeActive = false;
+            const char* label = m_mode == Mode::Sculpt ? "Sculpt Terrain"
+                              : m_mode == Mode::Paint  ? "Paint Terrain"
+                                                       : "Edit Terrain Holes";
+            /// @note Paint は形状に影響しないのでコライダーを作り直さない。
+            CommitStroke(scene, label, m_mode != Mode::Paint, markDirty, undoStack);
         }
     }
 
-    // ブラシ円をビューポートに投影描画
     if (m_isHovering)
         DrawBrushPreview(viewportMin, viewportSize, camera);
 }
 
-// =============================================================================
-// レイキャスト
-// =============================================================================
+void TerrainTool::CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain)
+{
+    const auto found = std::find_if(
+        m_strokeBeforeTerrains.begin(), m_strokeBeforeTerrains.end(),
+        [&](const TerrainStrokeSnapshot& snapshot) { return snapshot.instanceId == go.instanceId; });
+    if (found == m_strokeBeforeTerrains.end())
+        m_strokeBeforeTerrains.push_back({ go.instanceId, terrain });
+}
+
+void TerrainTool::CommitStroke(scene::Scene& scene, const char* undoLabel, bool rebuildCollider,
+                               const std::function<void()>& markDirty, UndoStack* undoStack)
+{
+    if (rebuildCollider) {
+        for (const TerrainStrokeSnapshot& snapshot : m_strokeBeforeTerrains) {
+            if (auto* target = scene.FindByGuid(snapshot.instanceId))
+                if (auto* component = target->GetComponent<scene::TerrainComponent>())
+                    component->colliderDirty = true;
+        }
+    }
+    if (undoStack && !m_strokeBeforeTerrains.empty()) {
+        std::vector<TerrainStrokeSnapshot> before = std::move(m_strokeBeforeTerrains);
+        std::vector<TerrainStrokeSnapshot> after;
+        after.reserve(before.size());
+        for (const TerrainStrokeSnapshot& snapshot : before) {
+            if (auto* target = scene.FindByGuid(snapshot.instanceId))
+                if (auto* component = target->GetComponent<scene::TerrainComponent>())
+                    after.push_back({ snapshot.instanceId, *component });
+        }
+        scene::Scene* scenePtr = &scene;
+        auto apply = [scenePtr, markDirty](const std::vector<TerrainStrokeSnapshot>& values) {
+            for (const TerrainStrokeSnapshot& snapshot : values) {
+                if (auto* target = scenePtr->FindByGuid(snapshot.instanceId)) {
+                    if (auto* component = target->GetComponent<scene::TerrainComponent>()) {
+                        *component = snapshot.before;
+                        component->heightDirty = true;
+                        component->splatDirty = true;
+                        component->colliderDirty = true;
+                    }
+                }
+            }
+            if (markDirty)
+                markDirty();
+        };
+        undoStack->Push(std::make_unique<LambdaCommand>(
+            undoLabel,
+            [apply, after]() { apply(after); },
+            [apply, before]() { apply(before); }));
+    }
+    m_strokeBeforeTerrains.clear();
+    m_strokeActive = false;
+}
+
+void TerrainTool::UpdateRamp(scene::Scene& scene, bool mousePressed, bool mouseReleased,
+                             const std::function<void()>& markDirty, UndoStack* undoStack)
+{
+    if (mousePressed && m_isHovering && !m_rampDragging) {
+        m_rampDragging   = true;
+        m_rampStartWorld = m_hitPoint;
+        m_rampEndWorld   = m_hitPoint;
+    }
+    if (m_rampDragging && m_isHovering)
+        m_rampEndWorld = m_hitPoint;
+    if (!m_rampDragging || !mouseReleased)
+        return;
+
+    m_rampDragging = false;
+    m_strokeBeforeTerrains.clear();
+
+    /// @note 線分全体を半径刻みで標本化して重なりを判定する。両端と中点だけだと、長い坂が途中で横切る Terrain を取りこぼす。
+    const float dxW = m_rampEndWorld.x - m_rampStartWorld.x;
+    const float dzW = m_rampEndWorld.z - m_rampStartWorld.z;
+    const float lengthW = std::sqrt(dxW * dxW + dzW * dzW);
+    const int samples = std::clamp(static_cast<int>(lengthW / std::max(m_brush.radius, 0.5f)) + 2, 3, 256);
+
+    bool any = false;
+    for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
+        auto* go = scene.GetGameObject(eid);
+        auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
+        if (!go || !tc || !tc->enabled || tc->heightData.empty())
+            continue;
+        const math::Vector3 startLocal = ToTerrainLocal(go->transform, m_rampStartWorld);
+        const math::Vector3 endLocal   = ToTerrainLocal(go->transform, m_rampEndWorld);
+        bool overlaps = false;
+        for (int i = 0; i < samples && !overlaps; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(samples - 1);
+            const math::Vector3 p{
+                math::Lerp(startLocal.x, endLocal.x, t), 0.0f, math::Lerp(startLocal.z, endLocal.z, t) };
+            overlaps = BrushOverlapsTerrainXZ(*tc, p, m_brush.radius);
+        }
+        if (!overlaps)
+            continue;
+        CaptureStrokeBefore(*go, *tc);
+        ApplyTerrainRamp(*tc, startLocal, endLocal, m_brush);
+        tc->heightDirty = true;
+        any = true;
+    }
+    if (!any)
+        return;
+    if (markDirty)
+        markDirty();
+    CommitStroke(scene, "Ramp Terrain", true, markDirty, undoStack);
+}
 
 bool TerrainTool::RaycastTerrain(
     scene::Scene&           scene,
@@ -295,17 +391,14 @@ bool TerrainTool::RaycastTerrain(
     math::Vector3&          outHitWorld,
     scene::GameObject*&     outGO) const
 {
-    // マウス位置 → NDC 変換
-    ImVec2 mouse = ImGui::GetMousePos();
+    const ImVec2 mouse = ImGui::GetMousePos();
     const float ndcX = ((mouse.x - viewportMin.x) / viewportSize.x) * 2.0f - 1.0f;
     const float ndcY = 1.0f - ((mouse.y - viewportMin.y) / viewportSize.y) * 2.0f;
 
-    // NDC → カメラレイ
     const math::Matrix4 invVP = math::Matrix4::Inverse(
         camera.GetProjectionMatrix() * camera.GetViewMatrix());
     const math::Ray ray = math::Ray::FromNDC(ndcX, ndcY, camera.m_position, invVP);
 
-    // シーン内の全 TerrainComponent に対してレイキャスト
     float bestT = 1e30f;
     scene::GameObject* bestGO = nullptr;
     math::Vector3 bestLocalHit;
@@ -318,7 +411,7 @@ bool TerrainTool::RaycastTerrain(
         math::Vector3 localHit;
         if (!RaycastSingleTerrain(ray, *tc, go->transform, localHit)) continue;
 
-        // ヒット位置のワールド t を求めて最近傍を選ぶ
+        /// @note 地形ごとにローカル空間が違うので、ワールドへ戻した距離で最近傍を選ぶ。
         const math::Vector3 hitWorld = ToTerrainWorld(go->transform, localHit);
         const math::Vector3 toHit = {
             hitWorld.x - ray.origin.x,
@@ -340,15 +433,13 @@ bool TerrainTool::RaycastTerrain(
     return true;
 }
 
-// DDA + 二分探法による単一地形へのレイキャスト
 bool TerrainTool::RaycastSingleTerrain(
     const math::Ray&               ray,
     const scene::TerrainComponent& terrain,
     const scene::Transform&        tf,
     math::Vector3&                 outLocalHit) const
 {
-    // Terrain 描画と同じ World Matrix の逆変換でレイをローカル化する。
-    // WHAT: 方向は w=0 で変換し、平行移動の影響を除外する。
+    /// @note 描画と同じ World Matrix の逆変換でレイをローカル化する。方向は w=0 で平行移動を除く。
     const math::Matrix4 invWorld = math::Matrix4::Inverse(tf.GetWorldMatrix());
     const math::Vector4 localOrigin =
         invWorld * math::Vector4{ ray.origin.x, ray.origin.y, ray.origin.z, 1.0f };
@@ -359,13 +450,11 @@ bool TerrainTool::RaycastSingleTerrain(
         localDirection.x, localDirection.y, localDirection.z
     }.Normalized();
 
-    // テレイン全体の AABB（ローカル空間）
     const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
     const float terrainD = static_cast<float>(terrain.rows    - 1) * terrain.cellSize;
-    const float minH     = std::min(0.0f, TerrainMinWorldHeight(terrain));
+    const float minH     = std::min(0.0f, TerrainToolMinWorldHeight(terrain));
     const float maxH     = terrain.maxHeight;
 
-    // AABB スラブテスト
     auto slab = [](float origin, float dir, float lo, float hi, float& tMin, float& tMax) {
         if (std::abs(dir) < 1e-6f) {
             if (origin < lo || origin > hi) return false;
@@ -386,101 +475,59 @@ bool TerrainTool::RaycastSingleTerrain(
     if (tMax <= 0.0f) return false;
     tMin = std::max(tMin, 0.0f);
 
-    // DDA: cellSize ごとにステップして地形との交差セルを探す
-    // WHY: ハイトマップは離散グリッドなので cellSize 単位のステップが最も効率的。
-    //      距離ベースのレイマーチより少ないイテレーションで正確に交差セルを検出できる。
-    const float stepT   = terrain.cellSize / std::max(std::abs(rayDir.x), std::abs(rayDir.z));
-    const int   maxStep = static_cast<int>((tMax - tMin) / stepT) + 2;
+    auto pointAt = [&](float t) {
+        return math::Vector3{
+            rayOriginLocal.x + rayDir.x * t,
+            rayOriginLocal.y + rayDir.y * t,
+            rayOriginLocal.z + rayDir.z * t };
+    };
+
+    /// @note DDA: 格子が離散なので cellSize 刻みで交差セルを探すのが最少の反復になる。
+    const float horizontal = std::max(std::abs(rayDir.x), std::abs(rayDir.z));
+    const float stepT   = horizontal > 1e-6f ? terrain.cellSize / horizontal : (tMax - tMin);
+    const int   maxStep = static_cast<int>((tMax - tMin) / std::max(stepT, 1e-6f)) + 2;
 
     float prevT = tMin;
-    float prevH = -1.0f; // 未使用の初期値
-    bool  foundBracket = false;
-    float bracketLo = tMin, bracketHi = tMin;
+    float prevH = -1.0f;
 
     for (int step = 0; step <= maxStep; ++step) {
-        const float t = tMin + static_cast<float>(step) * stepT;
-        const float tClamped = std::min(t, tMax);
-
-        const math::Vector3 p = {
-            rayOriginLocal.x + rayDir.x * tClamped,
-            rayOriginLocal.y + rayDir.y * tClamped,
-            rayOriginLocal.z + rayDir.z * tClamped
-        };
+        const float tClamped = std::min(tMin + static_cast<float>(step) * stepT, tMax);
+        const math::Vector3 p = pointAt(tClamped);
         const float terrainH = terrain.GetHeightAt(p.x, p.z);
 
-        if (step > 0) {
-            // 前のステップではレイが地面より上、今は下 → 交差区間を発見
-            if (prevH > 0.0f && (p.y <= terrainH) && (prevT < tMax)) {
-                foundBracket = true;
-                bracketLo    = prevT;
-                bracketHi    = tClamped;
-                break;
+        /// @note 前の標本が地面より上、今が下 → 交差区間。
+        if (step > 0 && prevH > 0.0f && p.y <= terrainH && prevT < tMax) {
+            /// @note 二分探索 8 回で cellSize 精度の区間を 1/256 に縮める。
+            float lo = prevT;
+            float hi = tClamped;
+            for (int i = 0; i < 8; ++i) {
+                const float mid = (lo + hi) * 0.5f;
+                const math::Vector3 q = pointAt(mid);
+                if (q.y > terrain.GetHeightAt(q.x, q.z)) lo = mid;
+                else                                     hi = mid;
+            }
+            const math::Vector3 q = pointAt((lo + hi) * 0.5f);
+            /// @note 穴のセルは面が無いので貫通させ、次の交差を探し続ける。
+            if (!terrain.IsHoleAtLocal(q.x, q.z)) {
+                outLocalHit = { q.x, terrain.GetHeightAt(q.x, q.z), q.z };
+                return true;
             }
         }
         prevT = tClamped;
-        prevH = p.y - terrainH; // 正なら地面より上
+        prevH = p.y - terrainH;
 
         if (tClamped >= tMax) break;
     }
-
-    if (!foundBracket) return false;
-
-    // 二分探法（8 回）で交差点を精密化
-    // WHY: DDA で見つけた区間は cellSize 精度なので、さらに二分で誤差を 1/256 に縮める。
-    for (int i = 0; i < 8; ++i) {
-        const float mid = (bracketLo + bracketHi) * 0.5f;
-        const math::Vector3 p = {
-            rayOriginLocal.x + rayDir.x * mid,
-            rayOriginLocal.y + rayDir.y * mid,
-            rayOriginLocal.z + rayDir.z * mid
-        };
-        if (p.y > terrain.GetHeightAt(p.x, p.z))
-            bracketLo = mid;
-        else
-            bracketHi = mid;
-    }
-
-    const float tFinal = (bracketLo + bracketHi) * 0.5f;
-    const math::Vector3 localHit = {
-        rayOriginLocal.x + rayDir.x * tFinal,
-        terrain.GetHeightAt(
-            rayOriginLocal.x + rayDir.x * tFinal,
-            rayOriginLocal.z + rayDir.z * tFinal),
-        rayOriginLocal.z + rayDir.z * tFinal
-    };
-    outLocalHit = localHit;
-    return true;
+    return false;
 }
-
-// =============================================================================
-// ブラシ円プレビュー（スクリーン空間投影）
-// =============================================================================
 
 void TerrainTool::DrawBrushPreview(
     const ImVec2&           viewportMin,
     const ImVec2&           viewportSize,
     const renderer::Camera& camera) const
 {
-    // ワールド座標を 2D スクリーン座標に変換するローカルラムダ
-    const math::Matrix4 vp = camera.GetViewProjection();
-    auto project = [&](const math::Vector3& p) -> ImVec2 {
-        const math::Vector4 clip = vp * math::Vector4{ p.x, p.y, p.z, 1.0f };
-        if (clip.w < 0.001f) return { -99999.f, -99999.f };
-        const float ndcX = clip.x / clip.w;
-        const float ndcY = clip.y / clip.w;
-        return {
-            viewportMin.x + (ndcX + 1.0f) * 0.5f * viewportSize.x,
-            viewportMin.y + (1.0f - (ndcY + 1.0f) * 0.5f) * viewportSize.y
-        };
-    };
-
-    // ブラシ半径のリング: Terrain ローカル XZ 平面上で分割し、各点の地表高をサンプリングする。
-    // WHY: 中心の高さだけで水平な円を描くと、斜面や凹凸で実際の編集範囲から浮いて見える。
-    //      ApplyTerrainSculpt / ApplyTerrainPaint と同じローカル座標系を使うことで表示と編集範囲を一致させる。
-    // WHY: DebugDraw は GPU コマンドなので ImGui DrawList と混在しづらい。
-    //      ImGui DrawList の 2D ラインで代替する方が実装がシンプルで確実。
-    // GetForegroundDrawList でウィンドウスタックの最前面に描画する。
-    // GetWindowDrawList だとビューポート画像の裏に隠れる可能性がある。
+    /// @note リングは地形ローカル XZ で分割し各点の地表高を引く。中心の高さの水平円だと斜面で編集範囲から浮いて見える。
+    /// @note GetForegroundDrawList を使う。GetWindowDrawList だとビューポート画像の裏に隠れうる。
     if (!m_hitTerrain)
         return;
 
@@ -488,13 +535,15 @@ void TerrainTool::DrawBrushPreview(
     if (!terrain || terrain->heightData.empty())
         return;
 
-    ImDrawList* dl      = ImGui::GetForegroundDrawList();
-    const float r       = m_brush.radius;
-    const int   segs    = 64;
-    constexpr float kPi = 3.14159265f;
-    const ImU32 col     = (m_mode == Mode::Sculpt)
-                        ? IM_COL32(255, 220, 50,  220)  // Sculpt: 黄色
-                        : IM_COL32(50,  200, 255, 220);  // Paint: 水色
+    const math::Matrix4 vp = camera.GetViewProjection();
+    ImDrawList* dl   = ImGui::GetForegroundDrawList();
+    const float r    = m_brush.radius;
+    constexpr int kSegments = 64;
+    ImU32 col = IM_COL32(255, 220, 50, 220);
+    if (m_mode == Mode::Paint)
+        col = IM_COL32(50, 200, 255, 220);
+    else if (m_mode == Mode::Hole)
+        col = (m_holeErase != ImGui::GetIO().KeyCtrl) ? IM_COL32(120, 255, 120, 220) : IM_COL32(255, 80, 80, 220);
 
     const math::Vector3 hitLocal = ToTerrainLocal(m_hitTerrain->transform, m_hitPoint);
     auto ringPoint = [&](float angle) {
@@ -507,36 +556,89 @@ void TerrainTool::DrawBrushPreview(
         return ToTerrainWorld(m_hitTerrain->transform, localPoint);
     };
 
-    ImVec2 prev = project(ringPoint(0.0f));
-    for (int i = 1; i <= segs; ++i) {
-        const float angle = static_cast<float>(i) / static_cast<float>(segs) * 2.0f * kPi;
-        const ImVec2 cur = project(ringPoint(angle));
+    ImVec2 prev = TerrainToolProject(vp, viewportMin, viewportSize, ringPoint(0.0f));
+    for (int i = 1; i <= kSegments; ++i) {
+        const float angle = static_cast<float>(i) / static_cast<float>(kSegments) * math::TWO_PI;
+        const ImVec2 cur = TerrainToolProject(vp, viewportMin, viewportSize, ringPoint(angle));
         dl->AddLine(prev, cur, col, 1.5f);
         prev = cur;
     }
 }
 
-// =============================================================================
-// ImGui UI
-// =============================================================================
+void TerrainTool::DrawRampPreview(
+    const ImVec2&           viewportMin,
+    const ImVec2&           viewportSize,
+    const renderer::Camera& camera) const
+{
+    const math::Matrix4 vp = camera.GetViewProjection();
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    constexpr ImU32 kCenter = IM_COL32(255, 160, 40, 240);
+    constexpr ImU32 kEdge   = IM_COL32(255, 160, 40, 120);
 
-// =============================================================================
-// DrawSculptContent / DrawPaintContent / DrawImportSection
-// NatureTool のタブ内から呼ぶためのウィンドウなし描画メソッド
-// =============================================================================
+    const math::Vector3& a = m_rampStartWorld;
+    const math::Vector3& b = m_rampEndWorld;
+    const float dx = b.x - a.x;
+    const float dz = b.z - a.z;
+    const float len = std::sqrt(dx * dx + dz * dz);
+    /// @note 坂の幅 (radius) を線分に垂直な 2 本で示す。長さ 0 のあいだは向きが無いので中心線だけ描く。
+    const float px = len > 1e-4f ? -dz / len * m_brush.radius : 0.0f;
+    const float pz = len > 1e-4f ?  dx / len * m_brush.radius : 0.0f;
+
+    auto project = [&](const math::Vector3& p) { return TerrainToolProject(vp, viewportMin, viewportSize, p); };
+    dl->AddLine(project(a), project(b), kCenter, 2.5f);
+    if (len > 1e-4f) {
+        dl->AddLine(project({ a.x + px, a.y, a.z + pz }), project({ b.x + px, b.y, b.z + pz }), kEdge, 1.5f);
+        dl->AddLine(project({ a.x - px, a.y, a.z - pz }), project({ b.x - px, b.y, b.z - pz }), kEdge, 1.5f);
+    }
+    dl->AddCircleFilled(project(a), 5.0f, kCenter);
+    dl->AddCircle(project(b), 6.0f, kCenter, 0, 2.0f);
+}
 
 void TerrainTool::DrawSculptContent(
     scene::Scene& /*scene*/, UndoStack* /*undoStack*/, const std::function<void()>& /*markDirty*/)
 {
     ImGui::TextDisabled("Brush Mode");
-    const char* sculptLabels[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
-    for (int i = 0; i < 5; ++i) {
-        const bool active = static_cast<int>(m_sculpt) == i;
-    if (active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Success));
-        if (ImGui::SmallButton(sculptLabels[i]))
-            m_sculpt = static_cast<SculptMode>(i);
-        if (active) ImGui::PopStyleColor();
-        if (i < 4) ImGui::SameLine();
+    const float rightEdge = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    constexpr int kSculptModeCount = static_cast<int>(SculptMode::Terrace) + 1;
+    for (int i = 0; i < kSculptModeCount; ++i) {
+        const auto mode = static_cast<SculptMode>(i);
+        if (TerrainToolFlowButton(SculptModeLabel(mode), !m_rampMode && m_sculpt == mode, rightEdge, i == 0,
+                                  ThemeColor::Success))
+            SetSculptMode(mode);
+    }
+    if (TerrainToolFlowButton("Ramp", m_rampMode, rightEdge, false, ThemeColor::Success))
+        m_rampMode = true;
+
+    ImGui::Spacing();
+    if (m_rampMode) {
+        ImGui::TextWrapped("Click to set the start, drag to the end, release to build the ramp. "
+                           "Strength 1 matches the slope exactly.");
+        return;
+    }
+    switch (m_sculpt) {
+        case SculptMode::Noise:
+            ImGui::SliderFloat("Noise Scale [m]", &m_brush.noiseScale, 0.5f, 200.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+            ImGui::SliderInt("Octaves", &m_brush.noiseOctaves, 1, 8);
+            ImGui::InputScalar("Seed", ImGuiDataType_U32, &m_brush.seed);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Next"))
+                ++m_brush.seed;
+            break;
+        case SculptMode::ThermalErosion:
+            ImGui::SliderFloat("Talus [deg]", &m_brush.talusDegrees, 5.0f, 85.0f, "%.0f");
+            ImGui::TextDisabled("Slopes steeper than the talus angle crumble.");
+            break;
+        case SculptMode::HydraulicErosion:
+            ImGui::SliderInt("Droplets", &m_brush.erosionDroplets, 1, 512);
+            ImGui::InputScalar("Seed", ImGuiDataType_U32, &m_brush.seed);
+            break;
+        case SculptMode::Terrace:
+            ImGui::SliderFloat("Step [m]", &m_brush.terraceStep, 0.1f, 50.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
+            ImGui::SliderFloat("Sharpness", &m_brush.terraceSharpness, 0.0f, 1.0f, "%.2f");
+            break;
+        default:
+            ImGui::TextDisabled("Shift+drag: Smooth   Ctrl+drag: Lower");
+            break;
     }
 }
 
@@ -546,26 +648,55 @@ void TerrainTool::DrawPaintContent(
     const scene::TerrainComponent* referenceTerrain = nullptr;
     if (m_hitTerrain)
         referenceTerrain = m_hitTerrain->GetComponent<scene::TerrainComponent>();
-    if (!referenceTerrain) {
-        for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
-            if (auto* terrain = scene.GetComponent<scene::TerrainComponent>(eid); terrain && terrain->enabled) {
-                referenceTerrain = terrain;
-                break;
-            }
-        }
-    }
+    if (!referenceTerrain)
+        referenceTerrain = TerrainToolFirstTerrain(scene, nullptr);
 
     ImGui::TextDisabled("Splat Layer");
-    for (int i = 0; i < 4; ++i) {
+    if (!referenceTerrain) {
+        ImGui::TextDisabled("No terrain in scene.");
+        return;
+    }
+
+    /// @note 層 0 枚の地形も «白い既定層» 1 枚として塗れる。
+    const int layerCount = std::max(referenceTerrain->LayerCount(), 1);
+    m_paintLayer = std::min(m_paintLayer, static_cast<uint32_t>(layerCount - 1));
+
+    constexpr int kVisibleRows = 8;
+    const float rowHeight = ImGui::GetFrameHeightWithSpacing();
+    const float listHeight = rowHeight * static_cast<float>(std::min(layerCount, kVisibleRows)) + 4.0f;
+    ImGui::BeginChild("##TerrainPaintLayers", { 0.0f, listHeight }, false);
+    for (int i = 0; i < layerCount; ++i) {
         const bool active = static_cast<int>(m_paintLayer) == i;
-    if (active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
-        std::string label = "Layer " + std::to_string(i);
-        if (referenceTerrain)
-            label += "  " + std::string(LayerDisplayName(referenceTerrain->layerMaterials[i]));
+        if (active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
+        std::string label = "Layer " + std::to_string(i) + "  ";
+        label += i < referenceTerrain->LayerCount()
+            ? TerrainToolLayerDisplayName(referenceTerrain->layerMaterials[static_cast<size_t>(i)])
+            : "(default)";
+        label += "##paintLayer" + std::to_string(i);
         if (ImGui::Button(label.c_str(), { -1.0f, 0.0f }))
             m_paintLayer = static_cast<uint32_t>(i);
         if (active) ImGui::PopStyleColor();
     }
+    ImGui::EndChild();
+    ImGui::TextDisabled("Add or reorder layers in the Terrain Inspector.");
+}
+
+void TerrainTool::DrawHoleContent(
+    scene::Scene& scene, UndoStack* /*undoStack*/, const std::function<void()>& /*markDirty*/)
+{
+    ImGui::TextDisabled("Hole Brush");
+    if (ImGui::RadioButton("Cut", !m_holeErase)) m_holeErase = false;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Fill", m_holeErase)) m_holeErase = true;
+    ImGui::TextDisabled("Ctrl+drag: invert. Cells whose centre is inside the brush change.");
+
+    const scene::TerrainComponent* referenceTerrain = nullptr;
+    if (m_hitTerrain)
+        referenceTerrain = m_hitTerrain->GetComponent<scene::TerrainComponent>();
+    if (!referenceTerrain)
+        referenceTerrain = TerrainToolFirstTerrain(scene, nullptr);
+    if (referenceTerrain)
+        ImGui::Text("Hole cells: %zu / %zu", referenceTerrain->CountHoles(), referenceTerrain->CellCount());
 }
 
 void TerrainTool::DrawBrushSettings()
@@ -584,7 +715,7 @@ void TerrainTool::DrawBrushSettings()
 void TerrainTool::DrawImportSection(
     scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty)
 {
-    if (!ImGui::CollapsingHeader("HeightMap Import")) return;
+    if (!ImGui::CollapsingHeader("HeightMap Import / Export")) return;
 
     ImGui::TextDisabled("File Path (PNG / TGA / DDS)");
     ImGui::SetNextItemWidth(-1.0f);
@@ -598,25 +729,21 @@ void TerrainTool::DrawImportSection(
         ImGui::EndDragDropTarget();
     }
     ImGui::TextDisabled("(Asset Browser からドラッグ＆ドロップも可)");
-    ImGui::RadioButton("Unipolar  [0 → maxH]",    &reinterpret_cast<int&>(m_heightMapUnipolar), 1);
+    ImGui::RadioButton("Unipolar  [0 → maxH]",    &m_heightMapUnipolar, 1);
     ImGui::SameLine();
-    ImGui::RadioButton("Bipolar [-maxH → +maxH]", &reinterpret_cast<int&>(m_heightMapUnipolar), 0);
+    ImGui::RadioButton("Bipolar [-maxH → +maxH]", &m_heightMapUnipolar, 0);
     ImGui::Spacing();
 
     const bool canImport = m_heightMapPath[0] != '\0';
     if (!canImport) ImGui::BeginDisabled();
     if (ImGui::Button("Import into Terrain", { -1.0f, 0.0f })) {
-        scene::TerrainComponent* target = nullptr;
         scene::GameObject* targetObject = nullptr;
-        for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
-            auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
-            if (tc && tc->enabled) { target = tc; targetObject = scene.GetGameObject(eid); break; }
-        }
+        scene::TerrainComponent* target = TerrainToolFirstTerrain(scene, &targetObject);
         if (!target) {
             m_heightMapStatus = "Error: No terrain in scene";
         } else {
             const scene::TerrainComponent before = *target;
-            const bool ok = scene::LoadHeightMapFromFile(m_heightMapPath, *target, m_heightMapUnipolar);
+            const bool ok = scene::LoadHeightMapFromFile(m_heightMapPath, *target, m_heightMapUnipolar != 0);
             m_heightMapStatus = ok ? "OK" : "Error: Load failed";
             if (ok) {
                 target->heightDirty = true; target->splatDirty = true; target->colliderDirty = true;
@@ -643,28 +770,46 @@ void TerrainTool::DrawImportSection(
     }
     if (!canImport) ImGui::EndDisabled();
     if (!m_heightMapStatus.empty()) {
-        const bool isOk = (m_heightMapStatus == "OK");
+        const bool isOk = m_heightMapStatus.starts_with("OK");
         ImGui::TextColored(
             isOk ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
             "%s", m_heightMapStatus.c_str());
     }
-}
 
-// =============================================================================
-// OnEditorGUI — スタンドアローン用ウィンドウ (既存互換)
-// =============================================================================
+    ImGui::Spacing();
+    ImGui::TextDisabled("Export Path (16-bit PNG)");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##hmexport", m_heightMapExport, sizeof(m_heightMapExport));
+    const bool canExport = m_heightMapExport[0] != '\0';
+    if (!canExport) ImGui::BeginDisabled();
+    if (ImGui::Button("Export Heightmap", { -1.0f, 0.0f })) {
+        const scene::TerrainComponent* target = TerrainToolFirstTerrain(scene, nullptr);
+        std::string path = m_heightMapExport;
+        /// @note 出力は常に PNG なので、拡張子が違えば付け足す (WIC は拡張子で形式を決めないが、読み戻す側が拡張子を見る)。
+        if (!(path.ends_with(".png") || path.ends_with(".PNG")))
+            path += ".png";
+        if (!target)
+            m_heightMapExportStatus = "Error: No terrain in scene";
+        else if (scene::SaveHeightMapToFile(path, *target, m_heightMapUnipolar != 0))
+            m_heightMapExportStatus = "OK: " + path;
+        else
+            m_heightMapExportStatus = "Error: Save failed";
+    }
+    if (!canExport) ImGui::EndDisabled();
+    if (!m_heightMapExportStatus.empty()) {
+        const bool isOk = m_heightMapExportStatus.starts_with("OK");
+        ImGui::TextColored(
+            isOk ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+            "%s", m_heightMapExportStatus.c_str());
+    }
+}
 
 void TerrainTool::OnEditorGUI(
     scene::Scene& scene,
     UndoStack* undoStack,
     const std::function<void()>& markDirty)
 {
-    bool hasTerrain = false;
-    for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
-        if (auto* tc = scene.GetComponent<scene::TerrainComponent>(eid))
-            if (tc->enabled) { hasTerrain = true; break; }
-    }
-    if (!hasTerrain) return;
+    if (!TerrainToolFirstTerrain(scene, nullptr)) return;
 
     const ImGuiViewport* mainVP = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(
@@ -677,29 +822,37 @@ void TerrainTool::OnEditorGUI(
     const char* windowTitle = m_active ? "Terrain Tool###TerrainTool" : "Terrain Tool [OFF]###TerrainTool";
     if (!ImGui::Begin(windowTitle, nullptr, kFlags)) { ImGui::End(); return; }
 
-    {
-        ImGui::PushStyleColor(ImGuiCol_Button, m_active
-            ? ImVec4(0.2f, 0.6f, 0.2f, 1.0f) : ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
-        if (ImGui::Button(m_active ? "  Active  " : " Inactive ", { -1.0f, 0.0f }))
-            m_active = !m_active;
-        ImGui::PopStyleColor();
-    }
+    ImGui::PushStyleColor(ImGuiCol_Button, m_active
+        ? ImVec4(0.2f, 0.6f, 0.2f, 1.0f) : ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+    if (ImGui::Button(m_active ? "  Active  " : " Inactive ", { -1.0f, 0.0f }))
+        m_active = !m_active;
+    ImGui::PopStyleColor();
     if (!m_active) ImGui::BeginDisabled();
 
     {
-        const bool sculpt = m_mode == Mode::Sculpt, paint = m_mode == Mode::Paint;
-    if (sculpt) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Success));
-        if (ImGui::Button("Sculpt", { 95.0f, 0.0f })) m_mode = Mode::Sculpt;
-        if (sculpt) ImGui::PopStyleColor();
-        ImGui::SameLine();
-    if (paint) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
-        if (ImGui::Button("Paint",  { 95.0f, 0.0f })) m_mode = Mode::Paint;
-        if (paint) ImGui::PopStyleColor();
+        struct ModeButton { Mode mode; const char* label; ThemeColor color; };
+        constexpr ModeButton kModes[] = {
+            { Mode::Sculpt, "Sculpt", ThemeColor::Success },
+            { Mode::Paint,  "Paint",  ThemeColor::AccentActive },
+            { Mode::Hole,   "Hole",   ThemeColor::Secondary },
+        };
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        const float width = (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f;
+        for (size_t i = 0; i < std::size(kModes); ++i) {
+            if (i > 0) ImGui::SameLine();
+            const bool active = m_mode == kModes[i].mode;
+            if (active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(kModes[i].color));
+            if (ImGui::Button(kModes[i].label, { width, 0.0f })) m_mode = kModes[i].mode;
+            if (active) ImGui::PopStyleColor();
+        }
     }
     ImGui::Spacing();
 
-    if (m_mode == Mode::Sculpt) DrawSculptContent(scene, undoStack, markDirty);
-    else                         DrawPaintContent(scene, undoStack, markDirty);
+    switch (m_mode) {
+        case Mode::Sculpt: DrawSculptContent(scene, undoStack, markDirty); break;
+        case Mode::Paint:  DrawPaintContent(scene, undoStack, markDirty);  break;
+        case Mode::Hole:   DrawHoleContent(scene, undoStack, markDirty);   break;
+    }
 
     DrawBrushSettings();
 

@@ -8,6 +8,7 @@
 
 #include <TestKit/TestKit.hpp>
 
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Asset/VolumeFlipbookFluid.hpp>
 
 #include <algorithm>
@@ -17,9 +18,9 @@
 namespace fbzz::tests {
 namespace {
 
-asset::FluidRecipe SmokeRecipe()
+fluid::FluidRecipe SmokeRecipe()
 {
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     recipe.output.warmup = 0.0f;
     recipe.output.substeps = 1;
     return recipe;
@@ -34,9 +35,9 @@ bool WaitForFrame(asset::FluidVolumeStream& stream, asset::PackedFluidVolume& ou
     return false;
 }
 
-asset::PackedFluidVolume SolveByHand(const asset::FluidRecipe& recipe, int resolution, int advances, float frameDt)
+asset::PackedFluidVolume SolveByHand(const fluid::FluidRecipe& recipe, int resolution, int advances, float frameDt)
 {
-    asset::FluidGasSolver solver;
+    fluid::FluidGasSolver solver;
     solver.Reset(recipe, resolution, resolution, resolution);
     for (int i = 0; i < advances; ++i) solver.Advance(frameDt);
     asset::PackedFluidVolume packed;
@@ -48,8 +49,8 @@ asset::PackedFluidVolume SolveByHand(const asset::FluidRecipe& recipe, int resol
 
 TEST(VolumeFlipbookFluidTest, PackKeepsTheGridLayoutAndScales)
 {
-    const asset::FluidRecipe recipe = SmokeRecipe();
-    asset::FluidGasSolver solver;
+    const fluid::FluidRecipe recipe = SmokeRecipe();
+    fluid::FluidGasSolver solver;
     solver.Reset(recipe, 8, 8, 8);
     for (int i = 0; i < 6; ++i) solver.Advance(1.0f / 24.0f);
 
@@ -58,7 +59,7 @@ TEST(VolumeFlipbookFluidTest, PackKeepsTheGridLayoutAndScales)
     ASSERT_EQ(packed.resolution, 8);
     ASSERT_EQ(packed.medium.size(), 512u);
     ASSERT_EQ(packed.velocity.size(), 512u);
-    // VolumeUpload.cs.hlsl は x + n·(y + n·z) で引く。ソルバーの並びがこれと同じであること。
+    /// @note VolumeUpload.cs.hlsl は x + n·(y + n·z) で引く。ソルバーの並びがこれと同じであること。
     EXPECT_EQ(solver.Index(1, 2, 3), static_cast<std::size_t>(1 + 8 * (2 + 8 * 3)));
 
     float total = 0.0f;
@@ -78,10 +79,10 @@ TEST(VolumeFlipbookFluidTest, PackKeepsTheGridLayoutAndScales)
 
 TEST(VolumeFlipbookFluidTest, PackCarriesTheGasColorKeyInB)
 {
-    // レイマーチは B を albedoRamp の鍵として読む。鍵 1 の煙だけなら、煙のある所は全部 1・無い所は 0。
-    asset::FluidRecipe recipe = SmokeRecipe();
+    /// @note レイマーチは B を albedoRamp の鍵として読む。鍵 1 の煙だけなら、煙のある所は全部 1・無い所は 0。
+    fluid::FluidRecipe recipe = SmokeRecipe();
     for (auto& source : recipe.sources) source.colorKey = 1.0f;
-    asset::FluidGasSolver solver;
+    fluid::FluidGasSolver solver;
     solver.Reset(recipe, 8, 8, 8);
     for (int i = 0; i < 6; ++i) solver.Advance(1.0f / 24.0f);
 
@@ -105,7 +106,7 @@ TEST(VolumeFlipbookFluidTest, PackCarriesTheGasColorKeyInB)
 
 TEST(VolumeFlipbookFluidTest, NonCubicGridPacksNothing)
 {
-    asset::FluidGasSolver solver;
+    fluid::FluidGasSolver solver;
     solver.Reset(SmokeRecipe(), 8, 8, 1);
     asset::PackedFluidVolume packed;
     asset::PackFluidVolume(solver, {}, packed);
@@ -115,31 +116,32 @@ TEST(VolumeFlipbookFluidTest, NonCubicGridPacksNothing)
 
 TEST(VolumeFlipbookFluidTest, TemperatureScaleMakesTheHottestSourceOne)
 {
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     EXPECT_NEAR(asset::FluidRecipeTemperatureScale(recipe), 1.0f, 1.0e-6f);
-    asset::FluidSource warm;
+    fluid::FluidSource warm;
     warm.temperature = 2.0f;
-    asset::FluidSource hot;
+    fluid::FluidSource hot;
     hot.temperature = 4.0f;
     recipe.sources = { warm, hot };
     EXPECT_NEAR(asset::FluidRecipeTemperatureScale(recipe), 0.25f, 1.0e-6f);
-    // 切ってある発生源は注がないので、倍率の基準にもしない。
+    /// @note 切ってある発生源は注がないので、倍率の基準にもしない。
     recipe.sources[1].enabled = false;
     EXPECT_NEAR(asset::FluidRecipeTemperatureScale(recipe), 0.5f, 1.0e-6f);
 }
 
 TEST(VolumeFlipbookFluidTest, StreamCountsFramesLikeThe2DBake)
 {
-    const asset::FluidRecipe recipe = SmokeRecipe();
+    const fluid::FluidRecipe recipe = SmokeRecipe();
     constexpr float kFrameDt = 1.0f / 24.0f;
     asset::FluidVolumeStream stream;
     std::string error;
     ASSERT_TRUE(stream.Open(recipe, 8, kFrameDt, 1.0f, error));
 
-    // frame コマ目 = frame + 1 回進めた状態。
+    /// @note frame コマ目 = frame + 1 回進めた状態。
     asset::PackedFluidVolume frame1;
     ASSERT_TRUE(stream.Request(1));
-    EXPECT_FALSE(stream.Request(2));   // 解いている最中は受け付けない
+    /// @note 解いている最中は受け付けない
+    EXPECT_FALSE(stream.Request(2));
     ASSERT_TRUE(WaitForFrame(stream, frame1));
     EXPECT_EQ(frame1.frame, 1);
     const asset::PackedFluidVolume expected1 = SolveByHand(recipe, 8, 2, kFrameDt);
@@ -149,7 +151,7 @@ TEST(VolumeFlipbookFluidTest, StreamCountsFramesLikeThe2DBake)
         same &= frame1.medium[i].x == expected1.medium[i].x && frame1.velocity[i].y == expected1.velocity[i].y;
     EXPECT_TRUE(same);
 
-    // 手前のコマへ戻ると最初から解き直す。
+    /// @note 手前のコマへ戻ると最初から解き直す。
     asset::PackedFluidVolume frame0;
     ASSERT_TRUE(stream.Request(0));
     ASSERT_TRUE(WaitForFrame(stream, frame0));
@@ -161,7 +163,7 @@ TEST(VolumeFlipbookFluidTest, StreamCountsFramesLikeThe2DBake)
 
 TEST(VolumeFlipbookFluidTest, LiquidRecipeSolvesIn3D)
 {
-    asset::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
     recipe.output.warmup = 0.0f;
     recipe.output.substeps = 1;
     recipe.liquid.maxParticles = 300;
@@ -174,7 +176,7 @@ TEST(VolumeFlipbookFluidTest, LiquidRecipeSolvesIn3D)
     asset::PackedFluidVolume volume;
     ASSERT_TRUE(WaitForFrame(stream, volume));
     ASSERT_EQ(volume.resolution, 16);
-    // 液体は «液体の割合» (A) を 1 で塗る。レイマーチはそれを見て液面として描く。
+    /// @note 液体は «液体の割合» (A) を 1 で塗る。レイマーチはそれを見て液面として描く。
     bool anyLiquid = false;
     for (const auto& cell : volume.medium) anyLiquid |= cell.w == 1.0f && cell.x > 0.0f;
     EXPECT_TRUE(anyLiquid);

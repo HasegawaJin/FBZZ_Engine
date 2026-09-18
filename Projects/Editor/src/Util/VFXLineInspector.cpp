@@ -4,7 +4,7 @@
 /// @date    2026-09-12
 #include <Editor/Util/VFXLineInspector.hpp>
 
-#include <Engine/Core/CurlNoise.hpp>
+#include <Math/CurlNoise.hpp>
 #include <Engine/Scene/Components/VFXLineComponent.hpp>
 #include <Engine/Scene/VFXLineGeometry.hpp>
 #include <imgui.h>
@@ -19,7 +19,7 @@ namespace {
 constexpr float kPreviewHeight = 110.0f;
 constexpr float kPreviewMargin = 14.0f;
 
-// HDR の色を表示色へ。明るさが 1 を超えた分は白へ寄せる (ブルームの見え方に近い)。
+/// HDR の色を表示色へ。明るさが 1 を超えた分は白へ寄せる (ブルームの見え方に近い)。
 ImU32 DisplayColor(const math::Vector4& color, float scale, float alpha)
 {
     const auto tone = [scale](float c) { return 1.0f - std::exp(-(std::max)(c, 0.0f) * scale); };
@@ -51,7 +51,7 @@ void DrawVFXLinePreview(const scene::VFXLineComponent& line)
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(origin, { origin.x + width, origin.y + kPreviewHeight }, IM_COL32(16, 18, 24, 255), 4.0f);
 
-    // 端点はプレビュー用に横一文字へ固定する。形の規則 (折れ・枝・打ち直し・明滅) は本番と同じ関数。
+    /// @note 端点はプレビュー用に横一文字へ固定する。形の規則 (折れ・枝・打ち直し・明滅) は本番と同じ関数。
     const float time = static_cast<float>(ImGui::GetTime());
     scene::VFXLineComponent preview = line;
     std::vector<scene::VFXLineStrand> strands;
@@ -64,10 +64,10 @@ void DrawVFXLinePreview(const scene::VFXLineComponent& line)
             strikeIndex = static_cast<std::uint32_t>(time * line.strikeRate);
             strikeClock = time - static_cast<float>(strikeIndex) / line.strikeRate;
         }
-        const std::uint32_t seed = core::PcgHash(static_cast<std::uint32_t>(line.seed) * 9781u + strikeIndex * 6271u);
+        const std::uint32_t seed = math::PcgHash(static_cast<std::uint32_t>(line.seed) * 9781u + strikeIndex * 6271u);
         scene::GenerateLightning(preview, from, to, seed, time, strands);
     } else {
-        // 実寸のたるみ・揺れを «長さ 2 の線» へ縮めて見せる。
+        /// @note 実寸のたるみ・揺れを «長さ 2 の線» へ縮めて見せる。
         const float length = (std::max)(line.toPoint.Length(), 0.5f);
         preview.sag = line.sag * 2.0f / length;
         preview.wobble = line.wobble * 2.0f / length;
@@ -78,7 +78,7 @@ void DrawVFXLinePreview(const scene::VFXLineComponent& line)
     const float usable = width - kPreviewMargin * 2.0f;
     const float pixelsPerUnit = usable * 0.5f;
     const ImVec2 center = { origin.x + width * 0.5f, origin.y + kPreviewHeight * 0.5f };
-    // 幅は «線の長さに対する割合» で見せる (実際の長さは端点しだいなので toPoint の長さで代用する)。
+    /// @note 幅は «線の長さに対する割合» で見せる (実際の長さは端点しだいなので toPoint の長さで代用する)。
     const float relativeWidth = line.width / (std::max)(line.toPoint.Length(), 0.5f) * 2.0f;
     std::vector<ImVec2> points;
     drawList->PushClipRect(origin, { origin.x + width, origin.y + kPreviewHeight }, true);

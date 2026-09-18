@@ -24,10 +24,6 @@
 ///   {
 ///       float4 coreColor;   // .mat の [params] と **名前** で結ばれる
 ///       float  filaments;
-
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
-    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
-    uint texAlbedoIndex;
 ///   };
 ///
 ///   // VSMain はこのヘッダーが供給する。書くのは PSMain だけ。
@@ -58,7 +54,9 @@
 #include "Common/BindlessIndices.hlsli"
 #include "Common/MaterialTextures.hlsli"
 
-FBZZ_MATERIAL_TEX(gParticleTex, texAlbedoIndex);
+/// @note 添字は MaterialConstants ではなく描画ごとの添字ブロック (b14) の t0 枠から引く。
+///       C++ 側は DrawCall::textures[0] で差す。既定の .mat は MaterialConstants を持たない。
+FBZZ_TEX2D(gParticleTex, TEX_ALBEDO_SLOT);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);
 
 #ifdef FBZZ_PARTICLE_GPU

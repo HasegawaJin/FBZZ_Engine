@@ -19,20 +19,20 @@
 namespace fbzz::editor::fluideditor {
 namespace {
 
-// 行の描画中にレシピの形を変えると、残りの行が消えた添字を読む。操作は溜めてリストを描き終えてから 1 つだけ当てる。
+/// @brief 行の描画中にレシピの形を変えると、残りの行が消えた添字を読む。操作は溜めてリストを描き終えてから 1 つだけ当てる。
 struct RowAction {
     enum class Kind { None, Toggle, Remove, Duplicate, Move, Rename, Copy, Paste };
     Kind kind = Kind::None;
     int index = -1;
-    /// Move の行き先、Paste の挿す位置。
+    /// @brief Move の行き先、Paste の挿す位置。
     int to = -1;
     bool value = false;
     std::string name;
 };
 
-// 上限に達しているリストへ足そうとしたとき、理由を出して弾く。
-// WHY メニューの淡色表示だけで済ませないか: Ctrl+D / Ctrl+V には淡色表示に当たるものが無く、
-//     押しても何も起きないと «キーが効かない» と読まれる。
+/// @brief 上限に達しているリストへ足そうとしたとき、理由を出して弾く。
+/// @note メニューの淡色表示だけで済ませないのは、Ctrl+D / Ctrl+V には淡色表示に当たるものが無く、
+///       押しても何も起きないと «キーが効かない» と読まれるため。
 bool OutlinerEnsureListRoom(State& state, FluidSelectionKind list)
 {
     const int count = fluidui::PartCount(state.document.Recipe(), list);
@@ -53,15 +53,15 @@ void OutlinerCopyPart(State& state, FluidSelectionKind list, int index)
     SetStatus(state, "コピーしました: " + label, false);
 }
 
-// 挿した部品の添字を返す (足せなかったら -1)。
+/// @brief 挿した部品の添字を返す (足せなかったら -1)。
 int OutlinerDuplicatePart(EditorContext& ctx, State& state, FluidSelectionKind list, int index)
 {
     if (index < 0) return -1;
     if (!OutlinerEnsureListRoom(state, list)) return -1;
     FluidDocument& document = state.document;
     const int inserted = index + 1;
-    const auto duplicate = [list, index, inserted](asset::FluidRecipe& recipe) {
-        // 複製は元の直後に入る (FluidRecipeWidgets の DuplicatePart)。
+    const auto duplicate = [list, index, inserted](fluid::FluidRecipe& recipe) {
+        /// @note 複製は元の直後に入る (FluidRecipeWidgets の DuplicatePart)。
         if (!fluidui::DuplicatePart(recipe, list, index)) return;
         std::string base;
         VisitPart(recipe, list, inserted, [&base](const auto& part) { base = part.name; });
@@ -77,7 +77,7 @@ int OutlinerDuplicatePart(EditorContext& ctx, State& state, FluidSelectionKind l
     return inserted;
 }
 
-// at が負・大きすぎるときは末尾へ。挿した添字を返す (貼れなかったら -1)。
+/// @brief at が負・大きすぎるときは末尾へ。挿した添字を返す (貼れなかったら -1)。
 int OutlinerPastePart(EditorContext& ctx, State& state, FluidSelectionKind list, int at)
 {
     if (!FluidPartClipboardMatches(list)) {
@@ -93,7 +93,7 @@ int OutlinerPastePart(EditorContext& ctx, State& state, FluidSelectionKind list,
     FluidDocument& document = state.document;
     const int count = fluidui::PartCount(document.Recipe(), list);
     const int insertAt = (at < 0 || at > count) ? count : at;
-    const bool pasted = document.Edit(ctx, "Paste Fluid Part", [list, insertAt](asset::FluidRecipe& recipe) {
+    const bool pasted = document.Edit(ctx, "Paste Fluid Part", [list, insertAt](fluid::FluidRecipe& recipe) {
         (void)PasteFluidPartClipboard(recipe, list, insertAt);
     });
     if (!pasted) return -1;
@@ -127,7 +127,7 @@ void DrawSectionEntry(State& state, const char* label, FluidSelectionKind kind, 
 void DrawPartRow(State& state, FluidSelectionKind list, int index, int count, ImGuiID listId, RowAction& action)
 {
     FluidDocument& document = state.document;
-    const asset::FluidRecipe& recipe = document.Recipe();
+    const fluid::FluidRecipe& recipe = document.Recipe();
 
     bool enabled = true;
     VisitPart(recipe, list, index, [&enabled](const auto& part) { enabled = part.enabled; });
@@ -247,12 +247,12 @@ void ApplyRowAction(EditorContext& ctx, State& state, FluidSelectionKind list, c
     case RowAction::Kind::None:
         return;
     case RowAction::Kind::Toggle:
-        document.Edit(ctx, "Toggle Fluid Part", [&](asset::FluidRecipe& recipe) {
+        document.Edit(ctx, "Toggle Fluid Part", [&](fluid::FluidRecipe& recipe) {
             if (bool* enabled = fluidui::PartEnabled(recipe, list, action.index)) *enabled = action.value;
         });
         return;
     case RowAction::Kind::Remove: {
-        const bool removed = document.Edit(ctx, "Delete Fluid Part", [&](asset::FluidRecipe& recipe) {
+        const bool removed = document.Edit(ctx, "Delete Fluid Part", [&](fluid::FluidRecipe& recipe) {
             fluidui::RemovePart(recipe, list, action.index);
         });
         if (removed) {
@@ -273,28 +273,28 @@ void ApplyRowAction(EditorContext& ctx, State& state, FluidSelectionKind list, c
         (void)OutlinerPastePart(ctx, state, list, action.to);
         return;
     case RowAction::Kind::Move: {
-        const bool moved = document.Edit(ctx, "Reorder Fluid Parts", [&](asset::FluidRecipe& recipe) {
+        const bool moved = document.Edit(ctx, "Reorder Fluid Parts", [&](fluid::FluidRecipe& recipe) {
             fluidui::MovePart(recipe, list, action.index, action.to);
         });
         if (moved) {
             FixSelectionAfterMove(document.selection, list, action.index, action.to);
             document.RemapVisibilityAfterMove(list, action.index, action.to);
-            // 並べ替えは «解き直し» になる。ノイズの力は «有効な部品を数えた番号» で乱数を引くので、
-            // 順番が変わると同じ設定でも模様が変わる (仕様)。プレビューは Revision の変化で、
-            // hide / solo 側は visibilityGeneration で捨てさせる。
+            /// @note 並べ替えは «解き直し» になる。ノイズの力は «有効な部品を数えた番号» で乱数を引くので、
+            ///       順番が変わると同じ設定でも模様が変わる (仕様)。プレビューは Revision の変化で、
+            ///       hide / solo 側は visibilityGeneration で捨てさせる。
             ++state.visibilityGeneration;
         }
         return;
     }
     case RowAction::Kind::Rename:
-        document.Edit(ctx, "Rename Fluid Part", [&](asset::FluidRecipe& recipe) {
+        document.Edit(ctx, "Rename Fluid Part", [&](fluid::FluidRecipe& recipe) {
             VisitPart(recipe, list, action.index, [&action](auto& part) { part.name = action.name; });
         });
         return;
     }
 }
 
-bool AddMenuItems(FluidSelectionKind list, asset::FluidRecipe& recipe, int& outNewIndex)
+bool AddMenuItems(FluidSelectionKind list, fluid::FluidRecipe& recipe, int& outNewIndex)
 {
     switch (list) {
     case FluidSelectionKind::Source:   return fluidui::AddSourceMenuItems(recipe, outNewIndex);
@@ -325,7 +325,7 @@ void DrawPartList(EditorContext& ctx, State& state, FluidSelectionKind list)
     ImGui::SetItemTooltip("Add %s", ListTitle(list));
 
     if (ImGui::BeginPopup("add_part")) {
-        // 行が 1 つも無いリストへ貼るための入口。行を右クリックできないので «+» から出す。
+        /// @note 行が 1 つも無いリストへ貼るための入口。行を右クリックできないので «+» から出す。
         if (FluidPartClipboardMatches(list)) {
             const std::string pasteLabel = "Paste \"" + FluidPartClipboardLabel() + "\"##paste";
             if (ImGui::MenuItem(pasteLabel.c_str(), "Ctrl+V", false, count < MaxParts(list))) {
@@ -335,11 +335,11 @@ void DrawPartList(EditorContext& ctx, State& state, FluidSelectionKind list)
             }
             ImGui::Separator();
         }
-        asset::FluidRecipe working = document.Recipe();
+        fluid::FluidRecipe working = document.Recipe();
         int newIndex = -1;
         if (AddMenuItems(list, working, newIndex)) {
             const bool added = document.Edit(ctx, "Add Fluid Part",
-                                             [&working](asset::FluidRecipe& recipe) { recipe = working; });
+                                             [&working](fluid::FluidRecipe& recipe) { recipe = working; });
             if (added && newIndex >= 0) {
                 document.selection = FluidSelection{ list, newIndex };
                 ++state.visibilityGeneration;
@@ -364,23 +364,21 @@ void DrawPartList(EditorContext& ctx, State& state, FluidSelectionKind list)
     ApplyRowAction(ctx, state, list, action);
 }
 
-// Ctrl+C / Ctrl+V / Ctrl+D。選んでいる部品 (無ければ控えの種別のリスト) に効く。
+/// @brief Ctrl+C / Ctrl+V / Ctrl+D。選んでいる部品 (無ければ控えの種別のリスト) に効く。
 void OutlinerHandleClipboardKeys(EditorContext& ctx, State& state)
 {
     if (!ctx.PanelScopeFocused(HotkeyScope::FluidEditor)) return;
 
-    // 全体のホットキー (edit.copy / edit.paste / edit.duplicate) を先に取り上げる。
-    // WHY フォーカスの判定だけで足りないか: これらの scope は Scene View | Hierarchy だが、
-    //      Scene View は «ホバーでも効く» 例外を持つ。流体を編集しながらマウスが 3D ビューへ
-    //      乗っているだけで、Ctrl+C がシーンのオブジェクトまで写してしまう。
-    // ProcessInput は描画より前に走るので、効くのは次のフレームから (Ctrl+S の前例と同じ)。
+    /// @note 全体のホットキー (edit.copy / edit.paste / edit.duplicate) を先に取り上げる。scope は
+    ///       Scene View | Hierarchy だが Scene View は «ホバーでも効く» 例外があり、3D ビューへ
+    ///       マウスが乗っただけで Ctrl+C がシーンへ漏れる。効くのは次フレームから (ProcessInput は描画より前)。
     if (ctx.hotkeyManager != nullptr) {
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.copy");
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.paste");
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.duplicate");
     }
 
-    // リネームや数値欄の入力中は文字の編集として扱う (横取りしない)。
+    /// @note リネームや数値欄の入力中は文字の編集として扱う (横取りしない)。
     const ImGuiIO& io = ImGui::GetIO();
     if (io.WantTextInput || !io.KeyCtrl || io.KeyShift || io.KeyAlt) return;
 
@@ -394,7 +392,7 @@ void OutlinerHandleClipboardKeys(EditorContext& ctx, State& state)
         return;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_V, false)) {
-        // 選択が別のリストに居ても、控えの種別のリストへ貼る (種別違いは貼れないため迷わない)。
+        /// @note 選択が別のリストに居ても、控えの種別のリストへ貼る (種別違いは貼れないため迷わない)。
         const bool intoSelection = selection.IsPart() && FluidPartClipboardMatches(selection.kind);
         const FluidSelectionKind list = intoSelection ? selection.kind : FluidPartClipboardKind();
         (void)OutlinerPastePart(ctx, state, list, intoSelection ? selection.index + 1 : -1);
@@ -417,7 +415,7 @@ void DrawOutliner(EditorContext& ctx, State& state)
     DrawSectionEntry(state, "Simulation##fe_section", FluidSelectionKind::Simulation,
                      "種類 (気体 / 液体)・seed・格子とソルバー");
     DrawSectionEntry(state, "Look##fe_section", FluidSelectionKind::Look, "Shading・色・Ramp・細部・炎・液面");
-    DrawSectionEntry(state, "Output##fe_section", FluidSelectionKind::Output, "コマ・長さ・warmup・ループ・MV・.vfield");
+    DrawSectionEntry(state, "Output##fe_section", FluidSelectionKind::Output, "コマ・長さ・warmup・ループ・MV・速度場 PNG");
     DrawSectionEntry(state, "Bake##fe_section", FluidSelectionKind::Bake, "焼き方 (2D / 3D・解像度)");
 
     ImGui::Spacing();
@@ -431,7 +429,7 @@ void DrawOutliner(EditorContext& ctx, State& state)
     ImGui::TextDisabled("Drag the grip to reorder. V = preview visibility, S = solo.");
     ImGui::TextDisabled("Ctrl+D duplicate, Ctrl+C / Ctrl+V copy & paste (across .fluid files).");
 
-    // 部品を描き終えてから読む。リストの描画中に足す・消すと、残りの行が消えた添字を読む。
+    /// @note 部品を描き終えてから読む。リストの描画中に足す・消すと、残りの行が消えた添字を読む。
     OutlinerHandleClipboardKeys(ctx, state);
 }
 

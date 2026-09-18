@@ -9,10 +9,10 @@
 namespace fbzz::scene {
 
 struct SunMoonRenderer {
-    // WHY: 大気散乱 (SkyRenderer) と発光ディスクを分けることで、空色・IBL・雲と太陽/月の責務を独立させる。
+    /// @note 大気散乱 (SkyRenderer) と発光ディスクを分ける設計。空色・IBL・雲と太陽/月の責務を独立させる。
     bool          enabled      = true;
     bool          sunEnabled   = true;
-    // 太陽ディスクの明るさ。空の大気散乱の明るさは SkyRenderer::skyScatterIntensity が別に持つ。
+    /// @brief 太陽ディスクの明るさ。空の大気散乱の明るさは SkyRenderer::skyScatterIntensity が別に持つ。
     float         sunDiskIntensity = 20.0f;
     bool          moonEnabled  = false;
     float         moonSize     = 1.0f;

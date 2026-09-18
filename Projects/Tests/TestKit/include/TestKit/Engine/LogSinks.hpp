@@ -41,9 +41,8 @@ public:
     MOCK_METHOD(void, OnLog, (const core::LogEntry& entry), (override));
 };
 
-/// Logger への登録と解除を対にする。テストが途中で ASSERT で抜けても解除される。
-/// WHY: Logger は非所有ポインタを保持するので、解除し忘れると次のテストで
-///      破棄済みオブジェクトを呼びに行き、原因の分からないクラッシュになる。
+/// @brief Logger への登録と解除を対にする。テストが途中で ASSERT で抜けても解除される。
+/// @note Logger は非所有ポインタを保持するので、解除し忘れると次のテストで破棄済みオブジェクトを呼び原因不明のクラッシュになる。
 class ScopedLogSink {
 public:
     explicit ScopedLogSink(core::ILogSink* sink) : m_sink(sink) { core::Logger::AddSink(m_sink); }

@@ -3,9 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
-/// WHY: 各アセット種別の描画実装は分離し、ここでは拡張子判定とパネルのライフサイクルだけを扱う。
-/// WHY .vfx を扱わないか: 専用の隔離プレビューを作らず Prefab 編集モードで開く判断
-/// (Docs/design/vfx-prefab.md §8.2)。入口は Inspector の .vfx 分岐が持つ。
+/// 各アセット種別の描画実装は分離し、ここでは拡張子判定とパネルのライフサイクルだけを扱う。
+/// @see Docs/design/vfx-prefab.md §8.2 .vfx は専用の隔離プレビューを作らず Prefab 編集モードで開く。
 #include <Editor/Panels/PreviewPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/PreviewPanelRenderers.hpp>
@@ -113,7 +112,7 @@ bool PreviewPanel::DrawIconPreview(EditorContext& ctx, std::string_view assetPat
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::Dummy({ side, side });
 
-    // アイコンは透明部分を持つのが前提なので、市松を敷いて «抜け» を見せる。
+    /// @note アイコンは透明部分を持つのが前提なので、市松を敷いて «抜け» を見せる。
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     constexpr float kCell = 12.0f;
     drawList->AddRectFilled(origin, { origin.x + side, origin.y + side }, IM_COL32(58, 60, 66, 255), 4.0f);
@@ -137,8 +136,8 @@ bool PreviewPanel::DrawIconPreview(EditorContext& ctx, std::string_view assetPat
     return true;
 }
 
-// Animation Preview の状態はパネルのメンバーではなくファイルスコープの共有状態なので、
-// ここでは往復の «口» を開けるだけにして、中身は AnimationPreview 側に閉じる。
+/// Animation Preview の状態はパネルのメンバーではなくファイルスコープの共有状態なので、
+/// ここでは往復の «口» を開けるだけにして、中身は AnimationPreview 側に閉じる。
 void PreviewPanel::OnLoadSettings(const EditorSettings& settings)
 {
     LoadAnimationPreviewSettings(settings);

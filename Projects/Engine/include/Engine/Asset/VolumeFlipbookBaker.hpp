@@ -6,10 +6,9 @@
 /// 1 editor フレームにつき 1 コマ進む状態機械。Tick は **レンダラーのフレーム内** で呼ぶこと
 /// (DX12 はフレーム外の Dispatch / Submit を捨てる)。
 ///
-/// 各 Tick は «前のフレームで描いたコマを読み戻してから、次のコマを記録する» 順で動く。
-/// WHY: DX12 の読み戻しはコマンドキュー上で行われる。同じフレームで描いた直後に読むと、
-///      まだ提出されていないコマンドリストを飛ばして 1 フレーム前の中身を読む。
-///      前のフレームの分なら提出済みなので、キューの順序だけで正しい中身が保証される。
+/// @note 各 Tick は «前のフレームで描いたコマを読み戻してから、次のコマを記録する» 順で動く。DX12 の
+///       読み戻しはコマンドキュー上で行われ、同じフレームで描いた直後に読むと未提出のコマンドリストを
+///       飛ばして 1 フレーム前の中身を読んでしまうため、前のフレーム分だけを読む。
 #pragma once
 
 #include <Engine/Asset/FlipbookMotionVectorEncoding.hpp>
@@ -112,7 +111,8 @@ struct VolumeFlipbookBakeSettings {
     /// 6 方向ライトマップ (_6wayP / _6wayN) も焼く。規約は SixWayLighting.hpp。
     bool sixWayLightmaps = false;
 
-    // ── 品質 ──
+    /// @name 品質
+    /// @{
     /// 多重散乱の段数 (Wrenninge 2013)。1 = 単散乱。増やすほど煙の内側が明るく柔らかくなる。
     int scatteringOctaves = 3;
     /// 環境光を «上に積もった煙» が遮る割合 [0,1]。
@@ -150,6 +150,7 @@ struct VolumeFlipbookBakeSettings {
     /// (人が «前のを残して焼き比べたい» ときだけ)。.fluid から焼く経路は必ず上書きする —
     /// 焼くたびに名前が変わると、同じレシピから同じ絵が出るという前提が崩れる。
     bool overwriteOutputs = false;
+    /// @}
 };
 
 /// 平行投影カメラの基底と、光源へ向かう方向。bake 空間 (y 上向き、DirectX の左手系)。
@@ -195,8 +196,8 @@ struct VolumeFramingReport {
 };
 
 /// 焼く前に、各コマで煙が箱やタイルの縁にかかりそうかを解析的に見積もる。
-/// WHY: 縁で切れた煙はパーティクルにすると «四角い板» として見える。焼いてからでは
-///      何十コマも作り直しになるので、設定を触っている間に知らせる。
+/// @note 縁で切れた煙はパーティクルにすると «四角い板» として見える。焼いてからでは何十コマも
+///       作り直しになるため、設定を触っている間に知らせる。
 [[nodiscard]] VolumeFramingReport AnalyzeVolumeFraming(const VolumeFlipbookBakeSettings& settings);
 
 enum class VolumePreviewView : std::uint8_t { Color, Alpha };
@@ -272,26 +273,26 @@ public:
                        const VolumePreviewOptions& options = {});
     /// レシピをディスクから読まずに «今編集している中身» で解くプレビュー (Fluid Editor のライブ 3D)。
     /// recipe が非 null ならそれを解き、recipeRevision が前と変わっていればストリームを開き直す。
-    /// WHY 版数が要るか: 開き直しの鍵はこれまでパスと解像度だけだったので、浮力を変えても解き直さず、
-    ///     «3D プレビューだけ古い絵のまま» になっていた。中身の版数を鍵に入れて必ず追従させる。
+    /// @note 開き直しの鍵は従来パスと解像度だけで、浮力を変えても解き直さず «3D プレビューだけ古い絵の
+    ///       まま» になっていた。中身の版数も鍵に入れて必ず追従させる。
     void RecordPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                        const VolumeFlipbookBakeSettings& settings, float time,
-                       const VolumePreviewOptions& options, const FluidRecipe* recipe,
+                       const VolumePreviewOptions& options, const fluid::FluidRecipe* recipe,
                        std::uint64_t recipeRevision);
     void Cancel();
     void Release(renderer::ResourceManager& resources);
 
     /// 保留中のソルバー切り替えを適用してよいか。false のあいだは前のソルバーのコマを出し続ける。
-    /// WHY: 切り替えは «今開いているものを閉じて解き直す» なので、再生中に当てると絵が途中で飛ぶ。
-    ///      再生の輪の切れ目 (playhead が 0 へ戻る瞬間) まで待たせるために呼び手が閉じる。
+    /// @note 切り替えは «今開いているものを閉じて解き直す» ため、再生中に当てると絵が途中で飛ぶ。再生の
+    ///       輪の切れ目 (playhead が 0 へ戻る瞬間) まで待たせるために呼び手が閉じる。
     void AllowPreviewSwitch(bool allow) noexcept;
     /// 適用待ちのソルバー切り替えがあるか (開き直しに失敗した要求は待ちに数えない)。
     [[nodiscard]] bool HasPendingPreviewSwitch() const noexcept;
     /// 前のソルバーで描いた絵をまだ出しているか。
     [[nodiscard]] bool IsPreviewStale() const noexcept;
     /// プレビューの開き直しで起きたこと (GPU が使えず CPU へ落ちた/開けなかった)。無ければ空。
-    /// WHY 焼きの Result().message と分けるか: 焼きが成功した後にプレビューだけこけると、
-    ///     成功の要約に紛れて «ただのヒント» に見える。目立たせたい報せを別の口で出す。
+    /// @note 焼きの Result().message と分けるのは、焼きが成功した後にプレビューだけこけると成功の要約に
+    ///       紛れて «ただのヒント» に見えてしまうため。目立たせたい報せを別の口で出す。
     [[nodiscard]] const std::string& PreviewNote() const noexcept;
     /// 上の報せが «開けなかった» ものか (フォールバックで絵が出ているなら false)。
     [[nodiscard]] bool PreviewNoteIsFailure() const noexcept;
@@ -302,7 +303,7 @@ public:
     [[nodiscard]] bool TakeBakedFlipbook(BakedVolumeFlipbook& out);
 
     /// プレビュー RT の色タイル (supersampling を縮めた tile × tile、RGBA8 sRGB) を読み戻す。
-    /// RecordPreview で描いたフレームより «後の» フレームで呼ぶこと (読み戻しの WHY はファイル先頭)。
+    /// RecordPreview で描いたフレームより «後の» フレームで呼ぶこと (読み戻しの理由はファイル先頭)。
     /// PreviewPending() の間・ベイク中・RT が無いときは false。
     [[nodiscard]] bool ReadbackPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                                        std::vector<std::uint8_t>& outRgba8, std::uint32_t& outWidth,
@@ -372,7 +373,7 @@ private:
                                       std::string& outError);
     /// m_previewRequested を実際に開き直す。成功したときだけ m_previewOpen を書き換える。
     /// recipe が非 null ならディスクを読まずにそれを解く。
-    [[nodiscard]] bool ApplyPendingPreviewSwitch(renderer::ResourceManager& resources, const FluidRecipe* recipe,
+    [[nodiscard]] bool ApplyPendingPreviewSwitch(renderer::ResourceManager& resources, const fluid::FluidRecipe* recipe,
                                                  std::string& outError);
     void ReleaseFluidGpu(renderer::ResourceManager& resources);
     [[nodiscard]] bool CaptureFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources);
@@ -385,9 +386,9 @@ private:
     renderer::ResourceHandle<renderer::PipelineStateTag> m_pipeline;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_fillConstants;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_raymarchConstants;
-    /// WHY 輪番で使うか: DX12 の DYNAMIC な StructuredBuffer は 1 枚の Upload Heap へ直接 memcpy する。
-    ///     1 枚を毎フレーム書き換えると、まだ GPU が読んでいない前のフレームの puff を上書きしてしまう
-    ///     (フレームは最大 2 枚まで同時に走る)。3 枚を回せば、書く 1 枚は必ず読み終わっている。
+    /// @note DX12 の DYNAMIC な StructuredBuffer は 1 枚の Upload Heap へ直接 memcpy する。1 枚を毎
+    ///       フレーム書き換えると GPU がまだ読んでいない前のフレームの puff を上書きしてしまうため
+    ///       (フレームは最大 2 枚まで同時に走る)、3 枚を輪番で使い書く 1 枚は必ず読み終わっている。
     static constexpr std::size_t kPuffBufferRing = 3;
     std::array<renderer::ResourceHandle<renderer::StructuredBufferTag>, kPuffBufferRing> m_puffBuffers{};
     std::size_t m_puffRing = 0;
@@ -432,8 +433,8 @@ private:
     /// 直近の RecordPreview が求めたプレビュー。m_previewOpen と違えば切り替え待ち。
     std::optional<FluidPreviewKey> m_previewRequested;
     /// 開き直しに失敗した要求。
-    /// WHY: 読めないパスや作れないソルバーのまま毎フレーム開き直すと、I/O と確保が溢れる。
-    ///      要求が変わるまで試さず、変われば必ずもう一度試す。
+    /// @note 読めないパスや作れないソルバーのまま毎フレーム開き直すと I/O と確保が溢れるため、要求が
+    ///       変わるまで試さず、変われば必ずもう一度試す。
     std::optional<FluidPreviewKey> m_previewFailed;
     bool m_previewSwitchAllowed = true;
     /// 直近の開き直しの報せ。通った開き直しでは空に戻す (前の報せを引きずらない)。
@@ -443,7 +444,7 @@ private:
     bool m_previewStale = false;
     bool m_previewPending = false;
     /// RT に最後に描いたのがプレビューなら、そのタイルの 1 辺。ベイク・RT の作り直し・読めないレシピで 0 に戻す。
-    /// WHY: ベイクの後の RT には表示用でない生の値 (supersampling 倍) が残っていて、読んでも絵にならない。
+    /// @note ベイクの後の RT には表示用でない生の値 (supersampling 倍) が残っていて、読んでも絵にならない。
     std::uint32_t m_previewTile = 0;
     VolumeFillFrame m_fill;
     renderer::ResourceHandle<renderer::TextureTag> m_medium;

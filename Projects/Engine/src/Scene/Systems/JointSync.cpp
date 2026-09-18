@@ -21,9 +21,9 @@ namespace fbzz::scene {
 
 namespace {
 
-// PhysicsSystem::SyncRigidBodies と同じ有効条件。
-// WHY そろえるか: ここだけ条件が緩いと «World が積分していない剛体» を制約が動かす。
-//     見た目は «無効にしたのに動く» で、原因が物理側にあるとは読めない壊れ方になる。
+/// @brief PhysicsSystem::SyncRigidBodies と同じ有効条件を判定する。
+/// @note 条件を緩めると «World が積分していない剛体» を制約が動かし、見た目は
+///       «無効にしたのに動く» になる。原因が物理側にあるとは読めない壊れ方。
 physics::RigidBody* SimulatedJointBody(GameObject* go)
 {
     if (!go || !go->activeInHierarchy()) return nullptr;
@@ -32,10 +32,9 @@ physics::RigidBody* SimulatedJointBody(GameObject* go)
     return rb->rigidBody.get();
 }
 
-// connectedBody 未指定のときの相手探し。祖先を根へ向かってたどる。
-//
-// WHY 祖先か: 吊り下げ物・鎖の節は必ず «吊り元の下» に置かれる。SocketAttachment が
-//     socketName を祖先方向へ探すのと同じ理由で、この探索で一意が取れる。
+/// @brief connectedBody 未指定のときの相手探し。祖先を根へ向かってたどる。
+/// @note 吊り下げ物・鎖の節は必ず «吊り元の下» に置かれる。SocketAttachment が socketName を
+///       祖先方向へ探すのと同じ理由で、この探索で一意が取れる。
 physics::RigidBody* FindAncestorJointBody(GameObject& go)
 {
     for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent())
@@ -69,17 +68,17 @@ float GapBetweenBodies(const physics::RigidBody& a, const physics::RigidBody& b)
     return (b.GetPosition() - a.GetPosition()).Length();
 }
 
-// 長さ 0 の軸は上向きへ倒す。
-// WHY 素の Normalized() を通さないか: 正規化の契約は長さ 0 を «通報して (0,0,0) を返す»。
-//     ここは毎フレーム通る経路なので、軸を空にした瞬間からログが埋まる。
+/// @brief 長さ 0 の軸は上向きへ倒す。
+/// @note 素の Normalized() は長さ 0 を «通報して (0,0,0) を返す» 契約。ここは毎フレーム通る
+///       経路なので、軸を空にした瞬間からログが埋まる。
 math::Vector3 SafeJointAxis(const math::Vector3& axis)
 {
     return axis.LengthSq() > 1e-8f ? axis.Normalized() : math::Vector3::UP;
 }
 
-// 種別ごとの «今の値» を生きている制約へ書き込む。
-// WHY 作り直さず書くか: Fixed / Hinge は構築時の相対姿勢を基準として抱えている。
-//     毎フレーム作り直すと基準が «今の姿勢» へ更新され続け、溶接も可動域も効かなくなる。
+/// @brief 種別ごとの «今の値» を生きている制約へ書き込む。
+/// @note Fixed / Hinge は構築時の相対姿勢を基準として抱える。毎フレーム作り直すと基準が
+///       «今の姿勢» へ更新され続け、溶接も可動域も効かなくなる。
 void ApplyJointTunables(physics::Constraint& constraint, const JointComponent& joint)
 {
     switch (joint.type) {
@@ -130,7 +129,7 @@ void ApplyJointTunables(physics::Constraint& constraint, const JointComponent& j
     }
 }
 
-// 生きている制約が今の構成のままか。false なら作り直す。
+/// 生きている制約が今の構成のままか。false なら作り直す。
 bool JointStillMatches(const physics::Constraint& constraint,
              const JointComponent& joint,
              const std::vector<physics::RigidBody*>& bodies)
@@ -145,8 +144,8 @@ bool JointStillMatches(const physics::Constraint& constraint,
     if (bodies.size() != 2u) return false;
     if (constraint.GetBodyA() != bodies[0] || constraint.GetBodyB() != bodies[1]) return false;
 
-    // Hinge は構築時に軸の直交基準を焼き込む。軸だけ書き換えると角度の測り方が
-    // 古い基準のまま残り、可動域が «違う向きで» 効く。軸が変わったら作り直す。
+    /// @note Hinge は構築時に軸の直交基準を焼き込む。軸だけ書き換えると角度の測り方が
+    ///       古い基準のまま残り、可動域が «違う向きで» 効く。軸が変わったら作り直す。
     if (joint.type == JointType::Hinge) {
         const auto& hinge = static_cast<const physics::HingeConstraint&>(constraint);
         const math::Vector3 wanted = SafeJointAxis(joint.axis);
@@ -188,8 +187,8 @@ std::unique_ptr<physics::Constraint> BuildJointConstraint(
     return std::make_unique<physics::FixedConstraint>(a, b);
 }
 
-// 制約に渡す剛体を並べる。ペア関節は [自分, 相手]、Chain は [自分, 2 節目, ...]。
-// 1 つでも欠けたら空を返す (= 張らない)。
+/// 制約に渡す剛体を並べる。ペア関節は [自分, 相手]、Chain は [自分, 2 節目, ...]。
+/// 1 つでも欠けたら空を返す (= 張らない)。
 std::vector<physics::RigidBody*> CollectJointBodies(Scene& scene,
                                                GameObject& go,
                                                const JointComponent& joint,
@@ -211,8 +210,8 @@ std::vector<physics::RigidBody*> CollectJointBodies(Scene& scene,
 
     physics::RigidBody* other = ResolveJointPartner(scene, go, joint);
 
-    // 自分自身を相手にすると invMass の和で 0 除算を踏む手前まで行って、
-    // «動かないのに CPU だけ食う» 制約になる。黙って張らない方が読み解ける。
+    /// @note 自分自身を相手にすると invMass の和で 0 除算を踏む手前まで行って、
+    ///       «動かないのに CPU だけ食う» 制約になる。黙って張らない方が読み解ける。
     if (!other || other == self) return {};
 
     bodies.push_back(self);
@@ -238,8 +237,8 @@ void SyncOneJoint(Scene& scene, GameObject& go, JointComponent& joint, physics::
     const bool reusable = live && JointStillMatches(*live, joint, bodies);
 
     if (!reusable) {
-        // 距離は «張った瞬間の間隔» を採る。以降は resolvedDistance を正として扱うので、
-        // 毎フレーム測り直して距離がじわじわ伸びていく (制約が効かない) ことはない。
+        /// @note 距離は «張った瞬間の間隔» を採る。以降は resolvedDistance を正として扱うので、
+        ///       毎フレーム測り直して距離がじわじわ伸びていく (制約が効かない) ことはない。
         joint.resolvedDistance = joint.distance;
         if (joint.autoDistance && joint.UsesDistance())
             joint.resolvedDistance = GapBetweenBodies(*bodies[0], *bodies[1]);

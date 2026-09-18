@@ -91,9 +91,21 @@ function Thumbnail({ project, className }: { project: ProjectEntry; className: s
   return <div className={className} style={style}>{!project.thumbnailDataUrl && project.name.slice(0, 2).toUpperCase()}</div>;
 }
 
-function ProjectRow({ entry, expanded, onToggle, onOpen, onReveal, onRemove }: {
+/** 「開く」ボタンの表示と活性。起動中は全プロジェクトの「開く」を止め、対象だけ「起動中…」にする。 */
+function openButtonState(status: ProjectStatus, projectPath: string, openingPath: string): { canOpen: boolean; label: string; title: string } {
+  const opening = openingPath === projectPath;
+  const healthy = status === 'ready' || status === 'warning';
+  return {
+    canOpen: healthy && !openingPath,
+    label: opening ? '起動中…' : '開く',
+    title: opening ? 'Editor を起動しています' : healthy ? 'Editor で開く' : 'エラーを解消してください',
+  };
+}
+
+function ProjectRow({ entry, expanded, openingPath, onToggle, onOpen, onReveal, onRemove }: {
   entry: InspectedProject;
   expanded: boolean;
+  openingPath: string;
   onToggle: () => void;
   onOpen: () => void;
   onReveal: () => void;
@@ -102,7 +114,10 @@ function ProjectRow({ entry, expanded, onToggle, onOpen, onReveal, onRemove }: {
   const { project, diagnostics, status } = entry;
   const opened = formatTimestamp(project.lastOpened);
   const issues = diagnostics.filter((diagnostic) => diagnostic.severity !== 'info').length;
-  const canOpen = status === 'ready' || status === 'warning';
+  const open = openButtonState(status, project.path, openingPath);
+  // 「一覧から削除」は 2 段階にする。畳んだら確認状態も捨てる。
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  useEffect(() => { if (!expanded) setConfirmingRemove(false); }, [expanded]);
 
   return <>
     <div
@@ -124,8 +139,8 @@ function ProjectRow({ entry, expanded, onToggle, onOpen, onReveal, onRemove }: {
       <span className="row-cell num" title={opened.title}>{opened.label}</span>
       <div className="row-actions" onClick={(event) => event.stopPropagation()}>
         <button className="button icon-only" onClick={onReveal} title="Explorer で開く"><Icon name="folder" size={14} /></button>
-        <button className="button primary" onClick={onOpen} disabled={!canOpen} title={canOpen ? 'Editor で開く' : 'エラーを解消してください'}>
-          <Icon name="play" size={12} />開く
+        <button className="button primary" onClick={onOpen} disabled={!open.canOpen} title={open.title}>
+          <Icon name="play" size={12} />{open.label}
         </button>
       </div>
     </div>
@@ -147,17 +162,23 @@ function ProjectRow({ entry, expanded, onToggle, onOpen, onReveal, onRemove }: {
       <div className="card-foot">
         <button className="button" onClick={onReveal}><Icon name="folder" size={13} />Explorer で開く</button>
         <div className="spacer" />
-        <button className="button danger" onClick={onRemove}><Icon name="trash" size={13} />一覧から削除</button>
+        {confirmingRemove
+          ? <>
+            <span className="hint"><Icon name="info" size={13} />一覧から外すだけで、フォルダーは削除しません。</span>
+            <button className="button" onClick={() => setConfirmingRemove(false)}>キャンセル</button>
+            <button className="button danger" onClick={onRemove}><Icon name="trash" size={13} />削除を確定</button>
+          </>
+          : <button className="button danger" onClick={() => setConfirmingRemove(true)}><Icon name="trash" size={13} />一覧から削除</button>}
       </div>
     </div>}
   </>;
 }
 
-function ProjectCard({ entry, onOpen, onReveal }: { entry: InspectedProject; onOpen: () => void; onReveal: () => void }) {
+function ProjectCard({ entry, openingPath, onOpen, onReveal }: { entry: InspectedProject; openingPath: string; onOpen: () => void; onReveal: () => void }) {
   const { project, diagnostics, status } = entry;
   const opened = formatTimestamp(project.lastOpened);
   const issues = diagnostics.filter((diagnostic) => diagnostic.severity !== 'info').length;
-  const canOpen = status === 'ready' || status === 'warning';
+  const open = openButtonState(status, project.path, openingPath);
 
   return <article className="project-card">
     <div className="card-art-wrap">
@@ -176,15 +197,16 @@ function ProjectCard({ entry, onOpen, onReveal }: { entry: InspectedProject; onO
         <time title={opened.title}>{opened.label}</time>
         <div className="spacer" />
         <button className="button icon-only" onClick={onReveal} title="Explorer で開く"><Icon name="folder" size={14} /></button>
-        <button className="button primary" onClick={onOpen} disabled={!canOpen}><Icon name="play" size={12} />開く</button>
+        <button className="button primary" onClick={onOpen} disabled={!open.canOpen} title={open.title}><Icon name="play" size={12} />{open.label}</button>
       </div>
     </div>
   </article>;
 }
 
-function ProjectsPage({ entries, busy, onRefresh, onOpen, onReveal, onRemove }: {
+function ProjectsPage({ entries, busy, openingPath, onRefresh, onOpen, onReveal, onRemove }: {
   entries: InspectedProject[];
   busy: boolean;
+  openingPath: string;
   onRefresh: () => void;
   onOpen: (project: ProjectEntry) => void;
   onReveal: (project: ProjectEntry) => void;
@@ -271,6 +293,7 @@ function ProjectsPage({ entries, busy, onRefresh, onOpen, onReveal, onRemove }: 
         key={entry.project.path}
         entry={entry}
         expanded={expanded === entry.project.path}
+        openingPath={openingPath}
         onToggle={() => setExpanded(expanded === entry.project.path ? '' : entry.project.path)}
         onOpen={() => onOpen(entry.project)}
         onReveal={() => onReveal(entry.project)}
@@ -279,7 +302,7 @@ function ProjectsPage({ entries, busy, onRefresh, onOpen, onReveal, onRemove }: 
     </div>}
 
     {visible.length > 0 && view === 'grid' && <div className="project-grid">
-      {visible.map((entry) => <ProjectCard key={entry.project.path} entry={entry} onOpen={() => onOpen(entry.project)} onReveal={() => onReveal(entry.project)} />)}
+      {visible.map((entry) => <ProjectCard key={entry.project.path} entry={entry} openingPath={openingPath} onOpen={() => onOpen(entry.project)} onReveal={() => onReveal(entry.project)} />)}
     </div>}
   </>;
 }
@@ -292,13 +315,19 @@ function TemplatesPage({ templates, onUse }: { templates: TemplateInfo[]; onUse:
     </div>;
   }
   return <div className="template-list">
-    {templates.map((template) => <button className="template-row" key={template.id} onClick={() => onUse(template.id)}>
+    {templates.map((template) => <button
+      className="template-row"
+      key={template.id}
+      disabled={!template.compatible}
+      title={template.compatible ? undefined : `Engine ${template.engineVersionMin} 以上が必要です`}
+      onClick={() => onUse(template.id)}
+    >
       <span className="glyph">{template.displayName.slice(0, 1).toUpperCase()}</span>
       <div className="truncate">
         <h3 className="truncate">{template.displayName}</h3>
-        <div className="row-sub mono truncate">{template.id}</div>
+        <div className="row-sub mono truncate">{template.id}{template.engineVersionMin && ` · Engine ≥ ${template.engineVersionMin}`}</div>
       </div>
-      <p className="truncate">{template.description || '説明はありません。'}</p>
+      <p className="truncate">{template.compatible ? (template.description || '説明はありません。') : `この GameHub では使えません (Engine ${template.engineVersionMin} 以上)。`}</p>
       <Icon name="arrow" size={15} />
     </button>)}
   </div>;
@@ -423,8 +452,9 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
 }) {
   const [displayName, setDisplayName] = useState('My Game');
   const [destinationRoot, setDestinationRoot] = useState('');
-  const [templateId, setTemplateId] = useState(initialTemplateId || templates[0]?.id || 'standard');
+  const [templateId, setTemplateId] = useState(initialTemplateId || templates.find((template) => template.compatible)?.id || 'standard');
   const [busy, setBusy] = useState(false);
+  const selectedTemplate = templates.find((template) => template.id === templateId);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
@@ -435,7 +465,8 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
   // main 側と同じ導出規則で、作成前にフォルダー名と識別子を提示する。
   const identifiers = deriveProjectIdentifiers(displayName);
   const nameValid = isValidProjectIdentifiers(identifiers);
-  const canSubmit = !busy && nameValid && Boolean(destinationRoot) && Boolean(settings.sdkId);
+  const templateUsable = selectedTemplate?.compatible ?? false;
+  const canSubmit = !busy && nameValid && Boolean(destinationRoot) && Boolean(settings.sdkId) && templateUsable;
 
   const submit = async () => {
     setBusy(true);
@@ -478,12 +509,17 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
               {templates.map((template) => <button
                 key={template.id}
                 className={`template-option ${templateId === template.id ? 'selected' : ''}`}
+                disabled={!template.compatible}
+                title={template.compatible ? undefined : `Engine ${template.engineVersionMin} 以上が必要です`}
                 onClick={() => setTemplateId(template.id)}
               >
                 <strong>{template.displayName}</strong>
-                <small className="truncate">{template.description}</small>
+                <small className="truncate">{template.compatible ? template.description : `Engine ${template.engineVersionMin} 以上が必要`}</small>
               </button>)}
             </div>
+            {selectedTemplate && !selectedTemplate.compatible && <span className="hint danger">
+              <Icon name="alert" size={13} />このテンプレートは Engine {selectedTemplate.engineVersionMin} 以上向けです。
+            </span>}
           </div>
         </div>
 
@@ -512,6 +548,8 @@ export function App() {
   const [page, setPage] = useState<Page>('projects');
   const [creating, setCreating] = useState('');
   const [busy, setBusy] = useState(false);
+  // Editor 起動要求が main で処理中のプロジェクト。連打で同じ Editor を 2 つ立ち上げないための UI 側の門。
+  const [openingPath, setOpeningPath] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const refreshGeneration = useRef(0);
@@ -583,12 +621,24 @@ export function App() {
     });
   }, [data]);
 
-  const run = async (operation: () => Promise<{ ok: boolean; error?: string }>, message?: string) => {
+  const run = async (operation: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>, message?: string) => {
     setError('');
     const result = await operation();
+    // ダイアログの取りやめは失敗でも完了でもない。何も出さず、再読込もしない。
+    if (result.cancelled) return false;
     if (!result.ok) setError(result.error ?? '操作に失敗しました。');
     else { if (message) setNotice(message); await refresh(); }
     return result.ok;
+  };
+
+  const openProject = async (project: ProjectEntry) => {
+    if (openingPath) return;
+    setOpeningPath(project.path);
+    try {
+      await run(() => window.gameHub.openProject(project.path), `${project.name} を起動しました`);
+    } finally {
+      setOpeningPath('');
+    }
   };
 
   if (!data) {
@@ -669,7 +719,7 @@ export function App() {
           <button className="button" onClick={() => void run(() => window.gameHub.addProject(), '既存プロジェクトを追加しました')}>
             <Icon name="plus" size={13} />既存を追加
           </button>
-          <button className="button primary" onClick={() => setCreating(data.templates[0]?.id ?? 'standard')}>
+          <button className="button primary" onClick={() => setCreating(data.templates.find((template) => template.compatible)?.id ?? data.templates[0]?.id ?? 'standard')}>
             <Icon name="plus" size={13} />新規プロジェクト
           </button>
         </div>}
@@ -678,8 +728,9 @@ export function App() {
       {page === 'projects' && <ProjectsPage
         entries={entries}
         busy={busy}
+        openingPath={openingPath}
         onRefresh={() => void refresh()}
-        onOpen={(project) => void run(() => window.gameHub.openProject(project.path), `${project.name} を起動しました`)}
+        onOpen={(project) => void openProject(project)}
         onReveal={(project) => void run(() => window.gameHub.revealProject(project.path))}
         onRemove={(project) => void run(() => window.gameHub.removeProject(project.path), `${project.name} を一覧から削除しました`)}
       />}

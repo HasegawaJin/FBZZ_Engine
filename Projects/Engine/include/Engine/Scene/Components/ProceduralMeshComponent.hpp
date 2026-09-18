@@ -33,10 +33,8 @@ struct ProceduralMeshComponent {
     std::string materialPath = "Assets/Materials/Fallback/ProceduralMeshFallback.mat";
 
     /// 最後に MaterialComponent へ書いた値。
-    ///
-    /// WHY 毎フレーム書き直さないか: 上書きし続けると ScriptMaterialProxy や Inspector で
-    ///     指定したマテリアルが毎フレーム剥がれる。差分を持てば «materialPath を変えた
-    ///     ときだけ» 反映でき、外から差し替えた側も生き残る。
+    /// @note 毎フレーム書き直すと ScriptMaterialProxy や Inspector が指定したマテリアルが
+    ///       毎フレーム剥がれる。差分を持ち «materialPath を変えたときだけ» 反映する。
     std::string appliedMaterialPath;
 
     /// GPU 側の実体。2 枚交互に使う理由は DoubleBufferedMesh のヘッダーを参照。

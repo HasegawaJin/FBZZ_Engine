@@ -3,62 +3,47 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 ///
-/// 設計意図 (WHY):
-/// 調整値を「コンポーネントのインスタンス単位フィールド」で持つと、同種オブジェクトが N 個あると
-/// 値が N 個に複製され、リバランスが各個編集になる。DataAsset は値を 1 ファイル (.fzdata) に切り出し、
-/// 複数スクリプトが Asset<T> で同じ実体を共有する。1 か所いじれば参照側すべてに反映される (純共有)。
-///
-/// 実装の肝は「スクリプトと同じリフレクション基盤を流用する」こと。DataAsset は Script と同じ
-/// GetTypeName()/Reflect(IReflector&) の仮想インターフェースを持つため、FBZZ_FIELD などの
-/// 登録マクロ・Inspector の ImGuiReflector・TOML リフレクタをそのまま使い回せる。
-///
-/// 使い方:
-/// class EnemyStats : public fbzz::DataAsset {
-/// FBZZ_DATA_ASSET(EnemyStats)
-/// FBZZ_FIELD_RANGE(float, maxHp, 100.0f, "Max HP", 1.0f, 9999.0f)
-/// };
-/// FBZZ_REFLECT(EnemyStats)
-///
-/// // 参照側スクリプト:
-/// FBZZ_ASSET(EnemyStats, stats, "Stats")     // Inspector に .fzdata スロットが出る
-/// if (stats) health->Init(stats->maxHp);     // 解決は共有キャッシュ経由で自動
+/// .fzdata に値を切り出し、複数スクリプトが Asset<T> で同じ実体を共有する (純共有、Unity の
+/// ScriptableObject 相当)。Script と同じ GetTypeName()/Reflect(IReflector&) を持つため、
+/// FBZZ_FIELD 等の登録マクロ・Inspector・TOML リフレクタをそのまま使い回せる。
+/// 宣言は FBZZ_DATA_ASSET、参照側は FBZZ_ASSET / FBZZ_REQUIRED_ASSET を使う (下記マクロ参照)。
 #pragma once
-#include <Engine/Scene/Script.hpp>            // IReflector / FBZZ_* 登録マクロ / DataAssetRef
-#include <Engine/Asset/DataAssetRegistry.hpp> // Asset<T>::Get() の解決先
+/// @note IReflector / FBZZ_* 登録マクロ / DataAssetRef を持ち込む。
+#include <Engine/Scene/Script.hpp>
+/// @note Asset<T>::Get() の解決先。
+#include <Engine/Asset/DataAssetRegistry.hpp>
 #include <string>
 
 namespace fbzz {
 
-// 別名: ユーザーは fbzz::DataAsset と書けば済むよう、ここで公開名を与える。
-// 実体は fbzz::asset 名前空間。
+/// @brief ユーザー向け公開名 (fbzz::DataAsset 等) の実体を置く名前空間。
 namespace asset {
 
 class DataAsset {
 public:
     virtual ~DataAsset() = default;
 
-    // 型名 (TYPE_NAME)。FBZZ_DATA_ASSET が定義する。.fzdata の "type" キーに保存される。
+    /// @brief 型名 (TYPE_NAME)。FBZZ_DATA_ASSET が定義する。.fzdata の `"type"` キーに保存される。
     virtual const char* GetTypeName() const = 0;
 
-    // フィールドを IReflector へ反映する。FBZZ_REFLECT がフィールド宣言から自動生成する。
+    /// @brief フィールドを IReflector へ反映する。FBZZ_REFLECT がフィールド宣言から自動生成する。
     virtual void Reflect(scene::IReflector& r) = 0;
 };
 
-// 参照側スクリプトのフィールド型。path で共有実体を解決する型安全ハンドル。
-//   - Get()         : 共有実体を T* で返す (未アサイン / 型不一致 / 未存在なら nullptr)。
-//   - operator->/*  : if (asset) asset->field; のように Ref<T> と同じ書き味で使える。
+/// @brief 参照側スクリプトのフィールド型。path で共有実体を解決する型安全ハンドル。
+/// @note Get() は未アサイン/型不一致/未存在なら nullptr。operator->/* で `if (asset) asset->field;` のように Ref<T> と同じ書き味で使える。
 template<typename T>
 struct Asset {
     scene::DataAssetRef ref;
 
-    // 期待型名を埋めておくことで、Inspector のピッカー絞り込み・ドロップ型チェックが効く。
+    /// @brief 期待型名を埋めておくことで、Inspector のピッカー絞り込み・ドロップ型チェックが効く。
     Asset() { ref.type = T::TYPE_NAME; }
 
     [[nodiscard]] T* Get() const
     {
         if (ref.path.empty()) return nullptr;
         DataAsset* a = DataAssetRegistry::Resolve(ref.path);
-        // dynamic_cast はスクリプト DLL 内で実体化されるため、DLL 内型同士の RTTI 比較になる。
+        /// @note dynamic_cast はスクリプト DLL 内で実体化されるため、DLL 内型同士の RTTI 比較になる。
         return dynamic_cast<T*>(a);
     }
 
@@ -71,37 +56,32 @@ struct Asset {
 
 } // namespace asset
 
-// 公開エイリアス: fbzz::DataAsset / fbzz::Asset<T> で使えるようにする。
+/// @brief 公開エイリアス: `fbzz::DataAsset` / `fbzz::Asset<T>` で使えるようにする。
 using asset::DataAsset;
 template<typename T> using Asset = asset::Asset<T>;
 
 } // namespace fbzz
 
-// ── ユーザー向けマクロ ───────────────────────────────────────────────────────
+/// @name ユーザー向けマクロ
+/// @{
 
-// クラス先頭に置く。Reflect() 連鎖の土台・型名・仮想 override を生成する。
-//
-// WHY FBZZ_SCRIPT ではなく FBZZ_REFLECT_CORE_ を使うか:
-//   以前は FBZZ_SCRIPT をそのまま流用していた (当時は Script を一切参照しない
-//   汎用マクロだったため)。スクリプトに継承を入れた際、FBZZ_SCRIPT は型鎖を辿る
-//   FbzzAsType を持つようになり、その中で Script を名指しする。DataAsset は Script を
-//   継承しないので、流用を続けるとここでコンパイルが通らない。
-//   Script に依存しない土台の部分だけを共有し、終端は自前で置く。
+/// @brief クラス先頭に置く。Reflect() 連鎖の土台・型名・仮想 override を生成する。
+/// @note DataAsset は Script を継承しないため、Script を名指しする FBZZ_SCRIPT でなく Script 非依存の FBZZ_REFLECT_CORE_ を使う。
 #define FBZZ_DATA_ASSET(T)                                                      \
     FBZZ_REFLECT_CORE_(T)                                                       \
     void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
                        ::fbzz::scene::IReflector&) {}
 
-// 参照側スクリプトのフィールド宣言。Inspector に .fzdata ドラッグ&ドロップスロットを出す。
-// 既定値は不要 (空参照)。Reflect では内包する DataAssetRef を対象にする。
+/// @brief 参照側スクリプトのフィールド宣言。Inspector に .fzdata ドラッグ&ドロップスロットを出す。
+/// @note 既定値は不要 (空参照)。Reflect では内包する DataAssetRef を対象にする。
 #define FBZZ_ASSET(Type, Name, Display)                                         \
     ::fbzz::asset::Asset<Type> Name{};                                          \
     FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name.ref))
 
-// 必須の共有データアセットであることを宣言する別名。
-// Inspector の編集体験は通常の FBZZ_ASSET と同じに保ち、実行時の必須検査は
-// 所有する Script の OnStart で行う。値のフォールバックを持たせないため、
-// 未割り当て状態を既定値で隠さず、シーン設定の不備を即座にログへ出せる。
+/// @brief 必須の共有データアセットであることを宣言する別名。Inspector の編集体験は FBZZ_ASSET と同じ。
+/// @note 実行時の必須検査は所有する Script の OnStart で行う。値のフォールバックを持たせないことで、未割り当てをシーン設定の不備として即座にログへ出せる。
 #define FBZZ_REQUIRED_ASSET(Type, Name, Display)                                \
     ::fbzz::asset::Asset<Type> Name{};                                          \
     FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name.ref))
+
+/// @}

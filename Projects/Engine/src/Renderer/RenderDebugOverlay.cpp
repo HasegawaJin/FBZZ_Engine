@@ -22,12 +22,10 @@
 
 namespace fbzz::renderer {
 
-// =============================================================================
-// 静的スナップショット
-// UpdateSnapshot() で書き込み、DrawIfEnabled() で読み出す。
-// RenderSystem が GPU 実行中に書き、ImGui フレーム内で読む設計なので
-// シングルスレッド前提 (エンジン全体のスレッドモデルに準拠)。
-// =============================================================================
+/// 静的スナップショット
+/// UpdateSnapshot() で書き込み、DrawIfEnabled() で読み出す。
+/// RenderSystem が GPU 実行中に書き、ImGui フレーム内で読む設計なので
+/// シングルスレッド前提 (エンジン全体のスレッドモデルに準拠)。
 
 namespace {
 
@@ -37,7 +35,7 @@ struct StoredState {
 };
 static StoredState s_state;
 
-} // anonymous namespace (closed after Draw impl)
+} // namespace (closed after Draw impl)
 
 void RenderDebugOverlay::UpdateSnapshot(const Snapshot& snapshot, bool enabled)
 {
@@ -58,21 +56,21 @@ void RenderDebugOverlay::DrawIfEnabled(IImGuiRenderer& imguiRenderer, ResourceMa
 
 namespace {
 
-// サムネイルの幅 (px)。高さはスクリーンのアスペクト比から算出する。
+/// サムネイルの幅 (px)。高さはスクリーンのアスペクト比から算出する。
 constexpr float THUMB_W = 200.0f;
 
-// タイミングバーチャートの最大幅 (px)。最長パスがこの幅になるよう正規化する。
+/// タイミングバーチャートの最大幅 (px)。最長パスがこの幅になるよう正規化する。
 constexpr float BAR_MAX_W = 180.0f;
 
-// バーの高さ (px)。
+/// バーの高さ (px)。
 constexpr float BAR_H = 12.0f;
 
-// ImTextureID へ変換するヘルパー。GetImTextureID が返す void* を ImGui が要求する型に合わせる。
-// reinterpret_cast を uintptr_t 経由で行うことで、ポインタ幅の差異を吸収する。
+/// ImTextureID へ変換するヘルパー。GetImTextureID が返す void* を ImGui が要求する型に合わせる。
+/// reinterpret_cast を uintptr_t 経由で行うことで、ポインタ幅の差異を吸収する。
 ImTextureID ToImTexID(void* ptr)
 {
-    // ImTextureID はこのプロジェクトでは整数型として定義されているため static_cast を使う。
-    // ViewportPanel.cpp と同様のパターン。
+    /// @note ImTextureID はこのプロジェクトでは整数型として定義されているため static_cast を使う。
+    ///       ViewportPanel.cpp と同様のパターン。
     return static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(ptr));
 }
 
@@ -81,14 +79,14 @@ ImTextureID ToImTexID(void* ptr)
 void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& resources,
                               const Snapshot& snapshot)
 {
-    // アスペクト比を元に高さを決める。解像度が未設定なら 16:9 をフォールバックとする。
+    /// @note アスペクト比を元に高さを決める。解像度が未設定なら 16:9 をフォールバックとする。
     const float thumbH = (snapshot.width > 0 && snapshot.height > 0)
         ? THUMB_W * (static_cast<float>(snapshot.height) / static_cast<float>(snapshot.width))
         : THUMB_W * 9.0f / 16.0f;
 
-    // GetImTextureID は DX11 の SRV バインド状態を変化させる可能性があるため、
-    // ループを 2 回回すと SRV が交互に切り替わり表示がちらつく。
-    // 1 回だけ呼んで ImTextureID をキャッシュしてから ImGui に渡す。
+    /// @note GetImTextureID は DX11 の SRV バインド状態を変化させる可能性があるため、
+    ///       ループを 2 回回すと SRV が交互に切り替わり表示がちらつく。
+    ///       1 回だけ呼んで ImTextureID をキャッシュしてから ImGui に渡す。
     struct ResolvedSlot {
         const char* label;
         ImTextureID texID = 0;
@@ -118,7 +116,7 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
     ImGui::SetNextWindowBgAlpha(0.90f);
     ImGui::Begin("Render Debug##passvwr", nullptr, ImGuiWindowFlags_NoScrollbar);
 
-    // ─── 上段: RT サムネイルタイル ────────────────────────────────────────────
+    /// @name 上段: RT サムネイルタイル
     if (validSlotCount > 0) {
         for (int i = 0; i < validSlotCount; ++i) {
             if (i > 0) ImGui::SameLine(0.0f, 16.0f);
@@ -128,7 +126,7 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
             ImGui::TextUnformatted(slot.label);
             ImGui::Image(slot.texID, { THUMB_W, thumbH });
 
-            // ホバー時に拡大プレビューをツールチップとして表示する。
+            /// @note ホバー時に拡大プレビューをツールチップとして表示する。
             if (ImGui::IsItemHovered()) {
                 ImGui::BeginTooltip();
                 ImGui::Image(slot.texID, { THUMB_W * 2.5f, thumbH * 2.5f });
@@ -141,24 +139,24 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
         ImGui::TextDisabled("No render targets available.");
     }
 
-    // ─── 下段: パス CPU / GPU タイミングバーチャート ─────────────────────────────
+    /// @name 下段: パス CPU / GPU タイミングバーチャート
     if (!snapshot.passTimings.empty()) {
         ImGui::Separator();
         ImGui::TextUnformatted("Pass timings  [CPU | GPU]");
         ImGui::Spacing();
 
-        // GPU 時間を名前引きできるよう map に変換する。
+        /// @note GPU 時間を名前引きできるよう map に変換する。
         std::unordered_map<std::string, double> gpuMap;
         for (const auto& [name, ms] : snapshot.gpuPassTimings)
             gpuMap[name] = ms;
 
-        // 最長パスを 1.0 として正規化する。
+        /// @note 最長パスを 1.0 として正規化する。
         double maxMs = 0.0;
         for (const auto& [name, ms] : snapshot.passTimings)
             maxMs = std::max(maxMs, ms);
         if (maxMs <= 0.0) maxMs = 1.0;
 
-        // 同名パスが複数あれば警告色で強調する (Editor が Scene/Game 両方から同一パスを呼ぶ等)。
+        /// @note 同名パスが複数あれば警告色で強調する (Editor が Scene/Game 両方から同一パスを呼ぶ等)。
         std::unordered_map<std::string, int> nameCount;
         for (const auto& [name, ms] : snapshot.passTimings)
             ++nameCount[name];
@@ -169,7 +167,7 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
 
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-            // CPU バー (重複=赤、通常=青)
+            /// @note CPU バー (重複=赤、通常=青)
             const float cpuW = static_cast<float>(ms / maxMs) * BAR_MAX_W;
             drawList->AddRectFilled(cursor,
                                     { cursor.x + cpuW, cursor.y + BAR_H },

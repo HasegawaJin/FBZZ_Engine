@@ -12,13 +12,12 @@
 
 namespace fbzz::editor {
 
-// ── OpArgs ──────────────────────────────────────────────────────────────────
+/// @name OpArgs
 
 const OpValue* OpArgs::Find(std::string_view name) const
 {
-    // WHY: unordered_map<std::string> は string_view で直接引けない (C++20 の
-    //      heterogeneous lookup は unordered 系だと Hash/KeyEqual の指定が要る)。
-    //      引数は 1 操作あたり数個なので、線形探索で十分速く、型を単純に保てる。
+    /// @note `unordered_map<std::string>` は string_view で直接引けない (heterogeneous lookup は
+    ///       unordered 系だと Hash/KeyEqual の指定が要る)。引数は数個なので線形探索で十分。
     for (const auto& [key, value] : m_values)
         if (key == name) return &value;
     return nullptr;
@@ -43,7 +42,7 @@ int OpArgs::GetInt(std::string_view name, int fallback) const
     const OpValue* v = Find(name);
     if (v == nullptr) return fallback;
     if (const int* i = std::get_if<int>(v)) return *i;
-    // 数値は JSON 側から float で来ることがあるため、縮小変換を許す。
+    /// @note 数値は JSON 側から float で来ることがあるため、縮小変換を許す。
     if (const float* f = std::get_if<float>(v)) return static_cast<int>(*f);
     return fallback;
 }
@@ -73,10 +72,9 @@ math::Vector3 OpArgs::GetVec3(std::string_view name, math::Vector3 fallback) con
     return fallback;
 }
 
-// ── 引数の検問 ──────────────────────────────────────────────────────────────
-// WHY ここに置くか: 面ごと (メニュー / パレット / AI バス) に検証を書くと、
-//     AI 経路だけが厳しい / 緩いという状態が作れてしまう。宣言 (OpParam) を
-//     読んで判定する場所を 1 つに固定すれば、どの面から来ても同じ結論になる。
+/// @name 引数の検問
+/// @note 面ごと (メニュー / パレット / AI バス) に検証を書くと経路によって厳しさが変わる。宣言 (OpParam)
+///       を読んで判定する場所を 1 つに固定し、どの面から来ても同じ結論にする。
 
 OpResult ValidateArgs(const EditorOperator& op, const OpArgs& args)
 {
@@ -118,7 +116,7 @@ OpResult ValidateArgs(const EditorOperator& op, const OpArgs& args)
     return OpResult::Ok();
 }
 
-// ── OperatorRegistry ────────────────────────────────────────────────────────
+/// @name OperatorRegistry
 
 void OperatorRegistry::Register(EditorOperator op)
 {
@@ -133,8 +131,8 @@ void OperatorRegistry::Register(EditorOperator op)
         return;
     }
 
-    // WHY: 二重登録を静かに許すと、ホットキー 1 回で 2 回実行される状態が作れてしまう。
-    //      後勝ちで置き換え、上書きが起きたことはログへ残す。
+    /// @note 二重登録を静かに許すとホットキー 1 回で 2 回実行される状態を作れる。後勝ちで置き換え、
+    ///       上書きが起きたことはログへ残す。
     auto it = std::find_if(m_operators.begin(), m_operators.end(),
                            [&op](const EditorOperator& e) { return e.id == op.id; });
     if (it != m_operators.end()) {
@@ -171,15 +169,14 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
                              "未登録の操作です: " + std::string(id));
     }
 
-    // 宣言された制約 (enum / range) の検問。poll より前に置くのは、
-    // 「実行可能な状態ではあるが引数が不正」を NOT_AVAILABLE ではなく
-    // BAD_ARG として返すため — AI から見て直し方が変わる。
+    /// @note 宣言された制約 (enum / range) の検問。poll より前に置くのは、
+    ///       「実行可能な状態ではあるが引数が不正」を NOT_AVAILABLE ではなく
+    ///       BAD_ARG として返すため — AI から見て直し方が変わる。
     if (OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
         return argCheck;
 
-    // 条件判定は入口で 1 度だけ。exec の先頭に書かせない。
-    // WHY: exec 内で早期 return すると、UI 側は「押せるのに何も起きない」を作れてしまう。
-    //      グレーアウト表示と実行拒否が同じ述語から出ることを、ここで保証する。
+    /// @note 条件判定は入口で 1 度だけ行い、exec の先頭には書かせない。exec 内で早期 return すると
+    ///       「押せるのに何も起きない」UI を作れてしまうため、グレーアウトと実行拒否を同じ述語で保証する。
     if (op->poll && !op->poll(context, args)) {
         return OpResult::Err("NOT_AVAILABLE",
                              "現在この操作は実行できません: " + op->id);
@@ -187,21 +184,21 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
 
     OpResult result = op->exec(context, args);
 
-    // 返ってきたコマンドは「実行済みの編集」なので Execute せず Push だけする
-    // (UndoStack::Push はその契約。Execute を呼ぶと同じ編集が二重に適用される)。
-    // 履歴に出る文言はコマンド自身が持つ — undoLabel はその宣言であり、
-    // AI とドキュメントが実行前に「何が履歴へ残るか」を知るために使う。
+    /// @note 返ってきたコマンドは「実行済みの編集」なので Execute せず Push だけする
+    ///       (UndoStack::Push はその契約。Execute を呼ぶと同じ編集が二重に適用される)。
+    ///       履歴に出る文言はコマンド自身が持つ — undoLabel はその宣言であり、
+    ///       AI とドキュメントが実行前に「何が履歴へ残るか」を知るために使う。
     if (result.ok && result.command) {
         context.undo.Push(std::move(result.command));
         return result;
     }
 
-    // ここが Undo の検問。Mutation がコマンドを返さなかった = Undo できない編集が
-    // シーンへ入った可能性がある。例外を作らないので、抜け道が残らない。
-    //
-    // 記録が無効なとき (Play 中) は履歴を持たないのが正しいので対象外。
-    // 「何も変わらなかった」ケースも nullptr になるが、poll が実行可能と答えた
-    // 直後に何も変わらないなら、それ自体が実装の問題なので黙らせない。
+    /// @note ここが Undo の検問。Mutation がコマンドを返さなかった = Undo できない編集が
+    ///       シーンへ入った可能性がある。例外を作らないので、抜け道が残らない。
+    ///
+    ///       記録が無効なとき (Play 中) は履歴を持たないのが正しいので対象外。
+    ///       「何も変わらなかった」ケースも nullptr になるが、poll が実行可能と答えた
+    ///       直後に何も変わらないなら、それ自体が実装の問題なので黙らせない。
     if (result.ok && !result.noChange
         && op->kind == OpKind::Mutation && context.undo.IsRecordingEnabled()) {
         FBZZ_LOG_WARN("OperatorRegistry: Mutation が Undo コマンドを返しませんでした (id=%s)。"
@@ -212,7 +209,7 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
     return result;
 }
 
-// ── パネルからの呼び出し口 ──────────────────────────────────────────────────
+/// @name パネルからの呼び出し口
 
 bool CanInvokeOperator(EditorContext& ctx, std::string_view id, const OpArgs& args)
 {

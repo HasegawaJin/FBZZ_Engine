@@ -3,14 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// WHY TOML か:
-/// シーン (.scene) / プロジェクト設定と同じ toml++ を使い、依存を増やさない。
-/// バイナリではなくテキストにすることで、Git 上でキーコンフィグの差分が読める。
-///
-/// WHY ProjectSettings/ に置くか:
-/// 入力バインドはエディタ設定ではなくゲーム設定であり、
-/// BuildPipeline の CopyProjectFiles ステップで配布物に含める必要がある。
-/// Assets/EditorConfig/ に置くと配布物から漏れる。
+/// TOML は .scene / ProjectSettings と共通で依存を増やさない。バインドは BuildPipeline の
+/// CopyProjectFiles で配布物に含めるゲーム設定のため、Assets/EditorConfig/ ではなく
+/// ProjectSettings/ に置く (EditorConfig は配布物から漏れる)。
 #include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Util/FileSystem.hpp"
@@ -38,9 +33,8 @@ const char* SourceToString(BindingSource source)
     }
 }
 
-// 未知の source 名は Key として扱わず、明示的に失敗させる。
-// WHY: 綴り間違いを黙って Key(0) に落とすと「なぜか反応しないバインド」になり、
-//      原因究明が極めて困難になる。読み込み時に警告を出して該当バインドを捨てる。
+/// @brief 未知の source 名は Key として扱わず、明示的に失敗させる。
+/// @note 綴り間違いを Key(0) に落とすと原因不明の無反応バインドになるため、読み込み時に警告を出し捨てる。
 bool ParseSource(std::string_view text, BindingSource& out)
 {
     if (text == "Key")            { out = BindingSource::KEY;            return true; }
@@ -56,9 +50,8 @@ toml::table BindingToTable(const InputBinding& binding)
     toml::table table;
     table.insert("source", SourceToString(binding.source));
 
-    // ゲームパッドは列挙名で保存する。
-    // WHY: 数値だと enum への要素追加で既存ファイルの意味が丸ごとずれる。
-    //      キーコードは Win32 の仮想キーコードで値が固定されているため数値のままでよい。
+    /// @note ゲームパッドは列挙名で保存する (数値だと enum への要素追加で既存ファイルの意味がずれる)。
+    ///       キーコードは Win32 仮想キーコードで値が固定なので数値のままでよい。
     if (binding.source == BindingSource::GAMEPAD_BUTTON) {
         table.insert("button", ToString(static_cast<GamepadButton>(binding.code)));
     } else if (binding.source == BindingSource::GAMEPAD_AXIS) {
@@ -67,7 +60,7 @@ toml::table BindingToTable(const InputBinding& binding)
         table.insert("code", static_cast<int64_t>(binding.code));
     }
 
-    // 既定値と同じフィールドは書き出さない。差分の読みやすさを優先する。
+    /// @note 既定値と同じフィールドは書き出さない。差分の読みやすさを優先する。
     if (binding.scale != 1.0f)           table.insert("scale", static_cast<double>(binding.scale));
     if (binding.padIndex != -1)          table.insert("pad", static_cast<int64_t>(binding.padIndex));
     if (binding.buttonThreshold != 0.5f)
@@ -166,8 +159,8 @@ bool InputActionMap::LoadFromFile(const std::string& path)
 
     const toml::table& root = parsed.table();
 
-    // 先にローカルへ組み立て、成功が確定してから差し替える。
-    // WHY: パース途中で失敗した場合に現在のバインドが半端に壊れるのを防ぐ。
+    /// @note 先にローカルへ組み立て、成功確定後に差し替える。パース途中の失敗で現在のバインドが
+    ///       半端に壊れるのを防ぐ。
     std::vector<InputAxis>   loadedAxes;
     std::vector<InputAction> loadedActions;
 
@@ -231,7 +224,7 @@ bool InputActionMap::SaveToFile(const std::string& path)
         table.insert("snap", axis.snap);
         if (axis.raw) table.insert("raw", true);
 
-        // 空の配列は書き出さない。既定バインドのファイルが読みやすくなる。
+        /// @note 空の配列は書き出さない。既定バインドのファイルが読みやすくなる。
         if (!axis.positive.empty()) table.insert("positive", BindingsToArray(axis.positive));
         if (!axis.negative.empty()) table.insert("negative", BindingsToArray(axis.negative));
         if (!axis.analog.empty())   table.insert("analog",   BindingsToArray(axis.analog));
@@ -249,7 +242,7 @@ bool InputActionMap::SaveToFile(const std::string& path)
     }
     root.insert("action", std::move(actionArray));
 
-    // 親ディレクトリが無い場合は作る (新規プロジェクトの初回保存)。
+    /// @note 親ディレクトリが無い場合は作る (新規プロジェクトの初回保存)。
     std::error_code error;
     const std::filesystem::path filePath = util::FileSystem::PathFromUtf8(path);
     if (filePath.has_parent_path()) {

@@ -24,7 +24,7 @@ namespace fbzz::physics
     void AABBCollider::Update(const math::Vector3& worldPos,
                             const math::Quaternion& /*worldRot*/)
     {
-        // AABB は軸整合のため回転は無視し、重心位置のみ追随する
+        /// @note AABB は軸整合のため回転は無視し、重心位置のみ追随する
         m_worldCenter = worldPos;
     }
 

@@ -141,14 +141,14 @@ void RigidBody::Integrate(float dt)
 
     if (!m_isStatic)
     {
-        // 線形運動は半陰的オイラーで積分する。速度を先に更新するため単純な陽的オイラーより安定する。
-        // m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
+        /// @note 線形運動は半陰的オイラーで積分する。速度を先に更新するため単純な陽的オイラーより安定する。
+        ///       m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
         m_velocity += m_force * m_invMass * dt;
         m_velocity = m_velocity * (1.0f / (1.0f + std::max(m_linearDrag, 0.0f) * dt));
         m_velocity = ApplyPositionFreeze(m_velocity, math::Vector3::ZERO);
         m_position = ApplyPositionFreeze(m_position + m_velocity * dt, m_position);
 
-        // 角運動はボディ空間の対角慣性テンソルで角加速度を求め、ワールド空間へ戻す。
+        /// @note 角運動はボディ空間の対角慣性テンソルで角加速度を求め、ワールド空間へ戻す。
         math::Vector3 tauBody   = m_rotation.Conjugate() * m_torque;
         math::Vector3 alphaBody = {
             m_invInertiaDiag.x * tauBody.x,
@@ -159,7 +159,7 @@ void RigidBody::Integrate(float dt)
         m_angularVelocity = m_angularVelocity * (1.0f / (1.0f + std::max(m_angularDrag, 0.0f) * dt));
         m_angularVelocity = ApplyRotationFreeze(m_angularVelocity);
 
-        // q_dot = 0.5 * [0, ω] * q
+        /// @note q_dot = 0.5 * [0, ω] * q
         math::Quaternion omegaQuat(
             m_angularVelocity.x, m_angularVelocity.y, m_angularVelocity.z, 0.0f);
         math::Quaternion spin = omegaQuat * m_rotation;
@@ -171,7 +171,7 @@ void RigidBody::Integrate(float dt)
         ).Normalized();
     }
 
-    // static ボディ含め毎フレームリセットする。力は「そのフレームだけ有効」な入力として扱う。
+    /// @note static ボディ含め毎フレームリセットする。力は「そのフレームだけ有効」な入力として扱う。
     m_force  = math::Vector3::ZERO;
     m_torque = math::Vector3::ZERO;
 }
@@ -220,7 +220,7 @@ void RigidBody::UpdateSleepState(float dt, float linearThreshold, float angularT
 math::Vector3 RigidBody::ApplyInvInertia(const math::Vector3& v) const
 {
     if (m_isStatic || m_isSleeping) return math::Vector3::ZERO;
-    // I⁻¹ v = R * (invInertiaDiag ⊙ (Rᵀ * v))
+    /// @note I⁻¹ v = R * (invInertiaDiag ⊙ (Rᵀ * v))
     math::Vector3 local = m_rotation.Conjugate() * v;
     math::Vector3 scaled = {
         m_invInertiaDiag.x * local.x,
@@ -244,9 +244,9 @@ void RigidBody::RecomputeInertia()
     }
     if (!m_inertiaCollider)
     {
-        // Collider 未設定の RigidBody はテストやスクリプト API から単体で使われる。
-        // 形状由来の慣性は推定できないため、質量だけを反映した等方的な単位慣性として扱い、
-        // FreezeRotation がロック軸だけを止め、未ロック軸の角インパルスは反応できるようにする。
+        /// @note Collider 未設定の RigidBody はテストやスクリプト API から単体で使われる。
+        ///       形状由来の慣性は推定できないため、質量だけを反映した等方的な単位慣性として扱い、
+        ///       FreezeRotation がロック軸だけを止め、未ロック軸の角インパルスは反応できるようにする。
         const float inv = 1.0f / m_mass;
         m_invInertiaDiag = { inv, inv, inv };
         return;
@@ -263,7 +263,7 @@ void RigidBody::RecomputeInertia()
     }
     else if (type == ColliderType::AABB)
     {
-        // AABB は軸整合前提のため回転を許すと形状定義と衝突判定がずれる。
+        /// @note AABB は軸整合前提のため回転を許すと形状定義と衝突判定がずれる。
         m_invInertiaDiag = math::Vector3::ZERO;
         m_angularVelocity = math::Vector3::ZERO;
     }
@@ -297,7 +297,7 @@ void RigidBody::RecomputeInertia()
     }
     else if (type == ColliderType::CYLINDER)
     {
-        // 中実円柱: 軸周り 1/2 m r²、軸に垂直な 2 軸は 1/12 m (3r² + h²)。
+        /// @note 中実円柱: 軸周り 1/2 m r²、軸に垂直な 2 軸は 1/12 m (3r² + h²)。
         const auto* cylinder = static_cast<const CylinderCollider*>(m_inertiaCollider);
         const float r = cylinder->m_radius;
         const float h = cylinder->m_halfHeight * 2.0f;

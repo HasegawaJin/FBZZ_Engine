@@ -44,27 +44,29 @@ void ExpectSupportsAtLeast(const physics::ConvexHullCollider& hull,
 
 class ConvexHullTest : public testkit::Fixture {};
 
-// --- 構築 -------------------------------------------------------------------
+/// @name 構築
 
 TEST_F(ConvexHullTest, KeepsEveryCornerOfACube)
 {
     physics::ConvexHullCollider hull(CubePoints());
     hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
 
-    // 立方体は 8 頂点すべてが凸包の頂点。1 つでも落ちると、その角だけ判定が痩せる。
+    /// @note 立方体は 8 頂点すべてが凸包の頂点。1 つでも落ちると、その角だけ判定が痩せる。
     EXPECT_EQ(hull.GetWorldVertices().size(), 8u);
 }
 
 TEST_F(ConvexHullTest, DropsPointsInsideTheHull)
 {
     std::vector<math::Vector3> points = CubePoints();
-    points.push_back(math::Vector3::ZERO);            // 中心
-    points.push_back({ 0.2f, -0.1f, 0.3f });          // 内部の適当な点
+    /// @note 中心
+    points.push_back(math::Vector3::ZERO);
+    /// @note 内部の適当な点
+    points.push_back({ 0.2f, -0.1f, 0.3f });
 
     physics::ConvexHullCollider hull(std::move(points));
     hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
 
-    // 内部の点を残すと頂点数だけ増え、サポート点探索が毎回それを舐める。
+    /// @note 内部の点を残すと頂点数だけ増え、サポート点探索が毎回それを舐める。
     EXPECT_EQ(hull.GetWorldVertices().size(), 8u);
 }
 
@@ -92,14 +94,14 @@ TEST_F(ConvexHullTest, BuildsFacesThatReferenceRealVertices)
         EXPECT_LT(face[0], vertexCount);
         EXPECT_LT(face[1], vertexCount);
         EXPECT_LT(face[2], vertexCount);
-        // 縮退した面 (同じ頂点を 2 度使う) は法線を作れない。
+        /// @note 縮退した面 (同じ頂点を 2 度使う) は法線を作れない。
         EXPECT_NE(face[0], face[1]);
         EXPECT_NE(face[1], face[2]);
         EXPECT_NE(face[2], face[0]);
     }
 }
 
-// --- サポート関数 -----------------------------------------------------------
+/// @name サポート関数
 
 TEST_F(ConvexHullTest, SupportPointIsTheFarthestCornerAlongTheAxes)
 {
@@ -132,7 +134,7 @@ TEST_F(ConvexHullTest, SupportPointFollowsTheWorldRotation)
         math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(90.0f));
     hull.Update(math::Vector3::ZERO, turn);
 
-    // 回した後の +X 方向の支持点は、回す前の «+X へ回ってくる角»。
+    /// @note 回した後の +X 方向の支持点は、回す前の «+X へ回ってくる角»。
     EXPECT_NEAR(math::Vector3::Dot(hull.SupportPoint(math::Vector3::RIGHT), math::Vector3::RIGHT),
                 1.0f, testkit::kLooseTolerance);
 }
@@ -156,7 +158,7 @@ TEST_F(ConvexHullTest, ScaleStretchesTheHull)
                      math::Vector3(2.0f, 1.0f, 1.0f), testkit::kTolerance);
 }
 
-// --- 境界 -------------------------------------------------------------------
+/// @name 境界
 
 TEST_F(ConvexHullTest, BoundsEncloseEveryHullVertex)
 {
@@ -181,15 +183,15 @@ TEST_F(ConvexHullTest, ReportsItsTypeAndAVolume)
     hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
 
     EXPECT_EQ(hull.GetType(), physics::ColliderType::CONVEX_HULL);
-    // 凸包は厳密な体積を持たず外接箱で近似する契約 (Collider::ComputeVolume)。
+    /// @note 凸包は厳密な体積を持たず外接箱で近似する契約 (Collider::ComputeVolume)。
     EXPECT_NEAR(hull.ComputeVolume(), 8.0f, testkit::kLooseTolerance);
 }
 
-// --- 縮退した入力 -----------------------------------------------------------
+/// @name 縮退した入力
 
 TEST_F(ConvexHullTest, SurvivesAnEmptyPointCloud)
 {
-    // コンポーネントを組み立てる途中で «まだ点が無い» 状態は普通に通る。
+    /// @note コンポーネントを組み立てる途中で «まだ点が無い» 状態は普通に通る。
     physics::ConvexHullCollider hull(std::vector<math::Vector3>{});
     hull.Update({ 5.0f, 0.0f, 0.0f }, math::Quaternion::Identity());
 
@@ -200,7 +202,7 @@ TEST_F(ConvexHullTest, SurvivesAnEmptyPointCloud)
 
 TEST_F(ConvexHullTest, SurvivesPointsThatAllLieOnOnePlane)
 {
-    // 板ポリのメッシュから作るとこうなる。体積が無くても落ちないこと。
+    /// @note 板ポリのメッシュから作るとこうなる。体積が無くても落ちないこと。
     physics::ConvexHullCollider hull(std::vector<math::Vector3>{
         { -1.0f, 0.0f, -1.0f }, { 1.0f, 0.0f, -1.0f },
         { -1.0f, 0.0f,  1.0f }, { 1.0f, 0.0f,  1.0f },
@@ -222,8 +224,8 @@ TEST_F(ConvexHullTest, SurvivesPointsOnASingleLine)
                 1.0f, testkit::kLooseTolerance);
 }
 
-// 4 点以下は «そのまま包み» の近道を通るので、Quickhull 本体は一度も走らない。
-// 退化した点群が壊すのは初期四面体を組む側なので、そこへ届く点数で当てる。
+/// 4 点以下は «そのまま包み» の近道を通るので、Quickhull 本体は一度も走らない。
+/// 退化した点群が壊すのは初期四面体を組む側なので、そこへ届く点数で当てる。
 TEST_F(ConvexHullTest, SurvivesManyPointsOnASingleLine)
 {
     std::vector<math::Vector3> line;
@@ -233,7 +235,7 @@ TEST_F(ConvexHullTest, SurvivesManyPointsOnASingleLine)
     physics::ConvexHullCollider hull(line);
     hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
 
-    // 面は張れない。それでも «その向きで一番遠い点» は答えられなければならない。
+    /// @note 面は張れない。それでも «その向きで一番遠い点» は答えられなければならない。
     EXPECT_TRUE(hull.GetFaces().empty());
     for (int i = 0; i < 32; ++i)
         ExpectSupportsAtLeast(hull, line, Rng().NextUnitVector3());
@@ -268,8 +270,8 @@ TEST_F(ConvexHullTest, SurvivesManyCopiesOfTheSamePoint)
 
 TEST_F(ConvexHullTest, CapsTheVertexCount)
 {
-    // サポート点探索は頂点数に比例する。上限を外すと、細かいメッシュを 1 つ
-    // 割り当てただけで NarrowPhase が跳ねる。
+    /// @note サポート点探索は頂点数に比例する。上限を外すと、細かいメッシュを 1 つ
+    ///       割り当てただけで NarrowPhase が跳ねる。
     std::vector<math::Vector3> cloud;
     for (int i = 0; i < 500; ++i) cloud.push_back(Rng().NextUnitVector3());
 
@@ -282,11 +284,9 @@ TEST_F(ConvexHullTest, CapsTheVertexCount)
 
 TEST_F(ConvexHullTest, KeepsTheOutermostPointsWhenTheCloudExceedsTheCap)
 {
-    // WHY 外周の点を «後ろ» に置くか: 上限を入力の先頭から掛ける実装だと、この 8 点が
-    //     丸ごと落ちて «実際の形より小さいコライダー» が黙って出来上がる。頂点バッファの
-    //     並び順は形とは無関係なので、実データのメッシュでも普通に起きる。
-    //     上の CapsTheVertexCount は «球面上の 500 点» なので、先頭 64 点でもだいたい球に
-    //     なってしまい、この不具合を素通しする。包含関係まで見ないと固定できない。
+    /// @note 外周の点を末尾に置く。上限を入力の先頭から掛ける実装だと、この 8 点が丸ごと落ちて
+    ///       «実際の形より小さいコライダー» が黙って出来上がる (頂点順は形と無関係なので実データでも起きる)。
+    ///       CapsTheVertexCount は球面上の点で先頭 64 点でも概ね球になり、この不具合を素通しする。
     std::vector<math::Vector3> cloud;
     for (int i = 0; i < 120; ++i) cloud.push_back(Rng().NextUnitVector3() * 0.1f);
     for (const math::Vector3& corner : CubePoints(5.0f)) cloud.push_back(corner);
@@ -312,9 +312,8 @@ TEST_F(ConvexHullTest, KeepsTheOutermostPointsWhenTheCloudExceedsTheCap)
 
 TEST_F(ConvexHullTest, FacesReferenceRealVerticesWhenTheCloudExceedsTheCap)
 {
-    // WHY 上限に掛かる大きさで見るか: 頂点だけ切り詰めて面のインデックスを放置すると
-    //     ここが範囲外になる。World.cpp の RayConvexHull は範囲チェックなしで
-    //     verts[face[0]] を引くので、そのまま範囲外読み取りになる。
+    /// @note 頂点だけ切り詰めて面のインデックスを放置すると範囲外になる。World.cpp の RayConvexHull は
+    ///       範囲チェックなしで verts[face[0]] を引くため、そのまま範囲外読み取りになる。
     std::vector<math::Vector3> cloud;
     for (int i = 0; i < 500; ++i) cloud.push_back(Rng().NextUnitVector3());
 
@@ -333,9 +332,8 @@ TEST_F(ConvexHullTest, FacesReferenceRealVerticesWhenTheCloudExceedsTheCap)
 
 TEST_F(ConvexHullTest, OrientsTetrahedronFacesOutwardForEitherWinding)
 {
-    // WHY 2 通り試すか: 4 点だけの経路は入力の並び順をそのまま面にしていた。
-    //     どちら手の四面体かで法線が 4 枚とも内向きになるので、片方の順序しか
-    //     試さないと «たまたま通る» ことがある。
+    /// @note 4 点だけの経路は入力の並び順をそのまま面にしていた。どちら手の四面体かで法線が
+    ///       4 枚とも内向きになるため、片方の順序しか試さないと «たまたま通る» ことがある。
     const std::vector<math::Vector3> base = {
         { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f },
         { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f },
@@ -357,7 +355,7 @@ TEST_F(ConvexHullTest, OrientsTetrahedronFacesOutwardForEitherWinding)
         for (const std::array<std::uint32_t, 3>& face : hull.GetFaces()) {
             const math::Vector3 n = math::Vector3::Cross(verts[face[1]] - verts[face[0]],
                                                          verts[face[2]] - verts[face[0]]);
-            // 外向きなら、面の平面から見て centroid は負の側にある。
+            /// @note 外向きなら、面の平面から見て centroid は負の側にある。
             EXPECT_LT(math::Vector3::Dot(n, centroid - verts[face[0]]), 0.0f);
         }
     };

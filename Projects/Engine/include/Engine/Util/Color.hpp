@@ -19,11 +19,12 @@ struct Color {
     constexpr Color() = default;
     constexpr Color(float r, float g, float b, float a = 1.0f) : r(r), g(g), b(b), a(a) {}
 
-    // ── 変換 ─────────────────────────────────────────────────────────────
+    /// @name 変換
+    /// @{
     constexpr math::Vector4 ToVector4() const { return { r, g, b, a }; }
     static constexpr Color  FromVector4(const math::Vector4& v) { return { v.x, v.y, v.z, v.w }; }
 
-    // 0xRRGGBBAA 形式の 32bit 値
+    /// 0xRRGGBBAA 形式の 32bit 値
     static constexpr Color FromRGBA32(uint32_t rgba) {
         return {
             ((rgba >> 24) & 0xFF) / 255.0f,
@@ -33,7 +34,7 @@ struct Color {
         };
     }
 
-    // "#RRGGBB" または "#RRGGBBAA" 形式の文字列
+    /// "#RRGGBB" または "#RRGGBBAA" 形式の文字列
     static Color FromHex(const char* hex);
 
     constexpr uint32_t ToRGBA32() const {
@@ -43,13 +44,17 @@ struct Color {
         return (uint32_t(clamp(r)) << 24) | (uint32_t(clamp(g)) << 16)
              | (uint32_t(clamp(b)) <<  8) |  uint32_t(clamp(a));
     }
+    /// @}
 
-    // ── HSV 変換 ──────────────────────────────────────────────────────────
-    // h: [0, 360)  s,v: [0, 1]
+    /// @name HSV 変換
+    /// @{
+    /// h: [0, 360)  s,v: [0, 1]
     static Color FromHSV(float h, float s, float v, float a = 1.0f);
     void         ToHSV(float& h, float& s, float& v) const;
+    /// @}
 
-    // ── 補間・操作 ────────────────────────────────────────────────────────
+    /// @name 補間・操作
+    /// @{
     static Color Lerp(const Color& a, const Color& b, float t) {
         float ct = std::clamp(t, 0.0f, 1.0f);
         return {
@@ -69,18 +74,20 @@ struct Color {
         };
     }
 
-    // アルファだけ変えた複製
+    /// アルファだけ変えた複製
     constexpr Color WithAlpha(float newA) const { return { r, g, b, newA }; }
 
-    // 明るさを乗算 (HDR)
+    /// 明るさを乗算 (HDR)
     constexpr Color operator*(float s) const { return { r * s, g * s, b * s, a }; }
 
     constexpr Color operator+(const Color& o) const { return { r+o.r, g+o.g, b+o.b, a+o.a }; }
     constexpr Color operator*(const Color& o) const { return { r*o.r, g*o.g, b*o.b, a*o.a }; }
     constexpr bool  operator==(const Color& o) const { return r==o.r && g==o.g && b==o.b && a==o.a; }
     constexpr bool  operator!=(const Color& o) const { return !(*this == o); }
+    /// @}
 
-    // ── プリセット ────────────────────────────────────────────────────────
+    /// @name プリセット
+    /// @{
     static const Color Red;
     static const Color Green;
     static const Color Blue;
@@ -90,10 +97,10 @@ struct Color {
     static const Color Cyan;
     static const Color Magenta;
     static const Color Gray;
-    static const Color Clear;   // アルファ 0
+    static const Color Clear;   ///< アルファ 0
+    /// @}
 };
 
-// ── プリセット定義 ────────────────────────────────────────────────────────
 inline const Color Color::Red     = { 1.0f, 0.0f, 0.0f, 1.0f };
 inline const Color Color::Green   = { 0.0f, 1.0f, 0.0f, 1.0f };
 inline const Color Color::Blue    = { 0.0f, 0.0f, 1.0f, 1.0f };
@@ -105,7 +112,6 @@ inline const Color Color::Magenta = { 1.0f, 0.0f, 1.0f, 1.0f };
 inline const Color Color::Gray    = { 0.5f, 0.5f, 0.5f, 1.0f };
 inline const Color Color::Clear   = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-// ── 16進カラー文字列 ─────────────────────────────────────────────────────
 inline Color Color::FromHex(const char* hex)
 {
     if (!hex) return {};
@@ -130,7 +136,6 @@ inline Color Color::FromHex(const char* hex)
     return c;
 }
 
-// ── HSV 変換 ──────────────────────────────────────────────────────────────
 inline Color Color::FromHSV(float h, float s, float v, float a)
 {
     if (s <= 0.0f) return { v, v, v, a };

@@ -27,7 +27,7 @@ target_include_directories(SandboxScripts PRIVATE
     src
     ${CMAKE_SOURCE_DIR}/Assets
 )
-target_link_libraries(SandboxScripts PRIVATE FBZZEngine FBZZPhysics)
+target_link_libraries(SandboxScripts PRIVATE FBZZEngine FBZZPhysics FBZZFluid)
 # WHY: Script.hpp は全スクリプトが #include する重いヘッダ群を束ねる。
 #      ホットリロードのたびに再パースしないよう PCH に焼き込む。
 target_precompile_headers(SandboxScripts PRIVATE
@@ -151,6 +151,7 @@ target_link_libraries(Sandbox
         FBZZEditor
         FBZZEngine
         FBZZPhysics
+        FBZZFluid
         TomlPlusPlus
         user32
         dwmapi
@@ -165,6 +166,7 @@ target_link_libraries(SandboxStandalone
     PRIVATE
         FBZZEngine
         FBZZPhysics
+        FBZZFluid
         TomlPlusPlus
         user32
         dwmapi
@@ -175,6 +177,7 @@ add_custom_command(TARGET Sandbox POST_BUILD
     # コア DLL を Sandbox/ に配置
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZMath>    "$<TARGET_FILE_DIR:Sandbox>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZPhysics> "$<TARGET_FILE_DIR:Sandbox>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZFluid>   "$<TARGET_FILE_DIR:Sandbox>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZEngine>  "$<TARGET_FILE_DIR:Sandbox>"
 # WHY: FBZZEngine は共有ライブラリ版 ImGui を参照するため、Sandbox 単体起動にも DLL が必要。
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ImGui> "$<TARGET_FILE_DIR:Sandbox>"
@@ -213,6 +216,7 @@ add_custom_command(TARGET SandboxStandalone POST_BUILD
     # コア DLL を Sandbox/ に配置 (Sandbox.exe と共有ディレクトリなので 1 コピーで済む)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZMath>    "$<TARGET_FILE_DIR:SandboxStandalone>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZPhysics> "$<TARGET_FILE_DIR:SandboxStandalone>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZFluid>   "$<TARGET_FILE_DIR:SandboxStandalone>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZEngine>  "$<TARGET_FILE_DIR:SandboxStandalone>"
 # WHY: Standalone のみをビルドした場合も、FBZZEngine が参照する ImGui DLL を同じ階層へ配置する。
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ImGui> "$<TARGET_FILE_DIR:SandboxStandalone>"

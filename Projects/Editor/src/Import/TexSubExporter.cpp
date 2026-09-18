@@ -42,12 +42,14 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
     using namespace asset;
     namespace fs = std::filesystem;
 
-    if (!ctx.generateTexDescriptors) return true; // .meta 自動生成無効
+    /// @note .meta 自動生成無効
+    if (!ctx.generateTexDescriptors) return true;
 
     const fs::path texDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "textures";
-    if (!util::FileSystem::Exists(texDir)) return true; // テクスチャなし
+    /// @note テクスチャなし
+    if (!util::FileSystem::Exists(texDir)) return true;
 
-    // OpenGL 法線マップ → G を反転する
+    /// @note OpenGL 法線マップ → G を反転する
     const bool flipGreenForNormal =
         (ctx.normalMapConvention == NormalMapConvention::OpenGL);
 
@@ -57,24 +59,25 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
         const std::string ext = LowerExt(absPath);
         if (!IsImageExtension(ext)) continue;
 
-        // 二重拡張子でサイドカーを生成: "Foo.png" -> "Foo.png.meta"。
-        // WHY: replace_extension は末尾拡張子を置換してしまうため、必ず文字列末尾へ付加する。
+        /// @note "Foo.png" -> "Foo.png.meta" のように末尾へ付加する
+        ///       (replace_extension は末尾拡張子を置換してしまうため)。
         const std::string metaPath = absPath + ".meta";
-        if (util::FileSystem::Exists(metaPath)) continue; // 既存はスキップ
+        /// @note 既存はスキップ
+        if (util::FileSystem::Exists(metaPath)) continue;
 
         const std::string filename = util::FileSystem::GetFilename(absPath);
         const TextureType type = GuessTextureType(filename);
         TextureImportSettings settings = DefaultSettingsForType(type);
 
-        // 法線マップのみ flipGreen を適用
+        /// @note 法線マップのみ flipGreen を適用
         if (flipGreenForNormal && type == TextureType::Normal)
             settings.flipGreen = true;
 
-        // defaultCompression が Auto でなければ全テクスチャに一括適用
+        /// @note defaultCompression が Auto でなければ全テクスチャに一括適用
         if (ctx.defaultCompression != TextureCompression::Auto)
             settings.compression = ctx.defaultCompression;
 
-        // サイドカーは元画像から一意に導出できるため source パスは保持しない。
+        /// @note サイドカーは元画像から一意に導出できるため source パスは保持しない。
         TextureAsset asset;
         asset.settings = settings;
 

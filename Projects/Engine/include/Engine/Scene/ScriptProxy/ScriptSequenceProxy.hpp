@@ -27,9 +27,8 @@ struct ScriptSequenceProxy {
     void SetSpeed(float speed) const;
 
     /// binding キーへ実体を割り当てる。target が null ならキーを未解決へ戻す。
-    ///
-    /// WHY タグ解決をエンジンでやらないか: "Player" タグを引くのはゲームの知識で、
-    ///     エンジンが持つと .sequence がゲームの命名規約に依存する。
+    /// @note タグ解決をエンジンでやらない理由: "Player" タグを引くのはゲームの知識で、
+    ///       エンジンが持つと .sequence がゲームの命名規約に依存してしまうため。
     void Bind(std::string_view key, GameObject* target) const;
     void ClearBindings() const;
 

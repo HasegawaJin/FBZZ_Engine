@@ -37,9 +37,9 @@ void SceneIO::SetEditorSceneState(EditorSceneState* state)
 
 bool SceneIO::Save(const scene::Scene& scene, const std::string& path)
 {
-    // Engine の SceneSerializer::Save が非const Scene& を要求する設計になっているため const_cast で対応。
-    // Save は概念的に読み取り専用 (シーンを変更しない) なので安全だが、
-    // Engine 側が const 対応になったタイミングで除去すること。
+    /// @note Engine の SceneSerializer::Save が非const Scene& を要求する設計になっているため const_cast で対応。
+    ///       Save は概念的に読み取り専用 (シーンを変更しない) なので安全だが、
+    ///       Engine 側が const 対応になったタイミングで除去すること。
     scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
     if (!scene::SceneSerializer::Save(mutableScene, path)) return false;
     if (s_editorSceneState) {
@@ -62,14 +62,12 @@ bool SceneIO::Load(scene::Scene& scene, const std::string& path)
 
 std::string SceneIO::Serialize(const scene::Scene& scene)
 {
-    // Engine の SceneSerializer::Save が非 const Scene& を要求する設計になっているため
-    // const_cast で対応。直列化はシーンを変更しない。
+    /// @note Engine の SceneSerializer::Save が非 const Scene& を要求する設計になっているため
+    ///       const_cast で対応。直列化はシーンを変更しない。
     scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
 
-    // WHY ファイルを経由しないか: 以前は一時ファイルへ書いて読み戻していた。
-    //     書き込み先が用意できないだけで空文字が返り、呼び出し側 (変更検知・
-    //     プレハブ切り出し) には «保存できない» ではなく «中身が空 = 変更なし» と
-    //     見えていた。テキストが欲しいだけの経路にディスクを挟まない。
+    /// @note ディスクを経由しない。書き込み先が無いだけで空文字を返すと、呼び出し側 (変更検知・
+    ///       プレハブ切り出し) には «中身が空 = 変更なし» に見えてしまう。
     std::string text = scene::SceneSerializer::SaveToText(mutableScene);
     if (text.empty())
         FBZZ_LOG_ERROR("SceneIO::Serialize produced an empty snapshot");

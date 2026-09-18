@@ -25,7 +25,8 @@
 #pragma once
 
 #include <Engine/Renderer/IIblBaker.hpp>
-#include <Engine/Renderer/ITexture.hpp> // INVALID_BINDLESS_INDEX
+/// @note INVALID_BINDLESS_INDEX 用。
+#include <Engine/Renderer/ITexture.hpp>
 
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -40,12 +41,12 @@ class DX12PsoCache;
 
 class DX12HdriBaker final : public IIblBaker {
 public:
-    // context / psoCache は DX12Renderer が所有する。本クラスは Editor のベイク中のみ生存する
-    // 一時オブジェクトであり、両者の寿命内で使われる (CreateIblBaker() の呼び出し規約)。
+    /// context / psoCache は DX12Renderer が所有する。本クラスは Editor のベイク中のみ生存する
+    /// 一時オブジェクトであり、両者の寿命内で使われる (CreateIblBaker() の呼び出し規約)。
     DX12HdriBaker(DX12Context* context, DX12PsoCache* psoCache);
     ~DX12HdriBaker() override;
 
-    // HDRI → DDS × 4 + .ibl。失敗時は false (例外は投げない)。
+    /// HDRI → DDS × 4 + .ibl。失敗時は false (例外は投げない)。
     [[nodiscard]] bool Bake(
         const IblBakeInput& input,
         const std::string&  outputDir,
@@ -55,48 +56,48 @@ public:
 private:
     using Resource = Microsoft::WRL::ComPtr<ID3D12Resource>;
 
-    // shader-visible ヒープから 1 スロット確保して CPU/GPU ハンドルと添字を返す。
+    /// shader-visible ヒープから 1 スロット確保して CPU/GPU ハンドルと添字を返す。
     struct Descriptor {
         D3D12_CPU_DESCRIPTOR_HANDLE cpu{};
         D3D12_GPU_DESCRIPTOR_HANDLE gpu{};
-        // 自前ヒープ内の添字。
-        // WHY これがそのまま bindless の添字になるか: ResourceDescriptorHeap[] は
-        //     «そのとき束縛されているヒープ» を引く。このベイカーは自分のヒープを
-        //     SetDescriptorHeaps しているので、共有ヒープの永続レンジへ複製する必要がない。
+        /// 自前ヒープ内の添字。
+        /// @note これがそのまま bindless の添字になる理由: ResourceDescriptorHeap[] は
+        ///       «そのとき束縛されているヒープ» を引く。このベイカーは自分のヒープを
+        ///       SetDescriptorHeaps しているので、共有ヒープの永続レンジへ複製する必要がない。
         uint32_t index = INVALID_BINDLESS_INDEX;
     };
 
-    // 一度だけ構築する device レベルのリソース (コマンドリスト・フェンス・ヒープ・CB アップロード)。
+    /// 一度だけ構築する device レベルのリソース (コマンドリスト・フェンス・ヒープ・CB アップロード)。
     bool EnsureCommon();
-    // input.compiledShadersDir が変わった場合のみ 4 つの Compute PSO を再ロードする。
+    /// input.compiledShadersDir が変わった場合のみ 4 つの Compute PSO を再ロードする。
     bool EnsurePipelines(const std::string& compiledShadersDir);
     Microsoft::WRL::ComPtr<ID3D12PipelineState> LoadComputePso(const std::string& csoPath);
 
-    // フェーズ境界。BeginRecording でアロケーターとリング (ヒープ / CB) をリセットし、
-    // ExecuteAndWait で submit → フェンス完全待機する。
+    /// フェーズ境界。BeginRecording でアロケーターとリング (ヒープ / CB) をリセットし、
+    /// ExecuteAndWait で submit → フェンス完全待機する。
     void BeginRecording();
     bool ExecuteAndWait();
 
-    // shader-visible CBV/SRV/UAV ヒープからの線形割当。
+    /// shader-visible CBV/SRV/UAV ヒープからの線形割当。
     Descriptor AllocateDescriptor();
-    // CB アップロードリングへ 256B アライン格納し、root CBV 用の GPU VA を返す (0 なら失敗)。
+    /// CB アップロードリングへ 256B アライン格納し、root CBV 用の GPU VA を返す (0 なら失敗)。
     D3D12_GPU_VIRTUAL_ADDRESS PushConstants(const void* data, size_t size);
 
-    // GPU リソース生成 (すべて committed / DEFAULT ヒープ)。
-    Resource CreateCubemap(uint32_t size, uint32_t mipCount);   // R16G16B16A16F, 6 面, UAV 可, 初期状態 UAV
-    Resource CreateLut(uint32_t size);                          // R16G16B16A16F, 2D, UAV 可, 初期状態 UAV
+    /// GPU リソース生成 (すべて committed / DEFAULT ヒープ)。
+    Resource CreateCubemap(uint32_t size, uint32_t mipCount);   ///< R16G16B16A16F, 6 面, UAV 可, 初期状態 UAV
+    Resource CreateLut(uint32_t size);                          ///< R16G16B16A16F, 2D, UAV 可, 初期状態 UAV
 
-    // ビュー作成 (割当済みスロットの CPU ハンドルへ) して table バインド用 GPU ハンドルを返す。
+    /// ビュー作成 (割当済みスロットの CPU ハンドルへ) して table バインド用 GPU ハンドルを返す。
     uint32_t CreateEquirectSrv(ID3D12Resource* equirect);
     uint32_t CreateCubeSrv(ID3D12Resource* cube, uint32_t mipCount);
     uint32_t CreateFaceUav(ID3D12Resource* cube, uint32_t face, uint32_t mip);
     uint32_t CreateLutUav(ID3D12Resource* lut);
 
-    // subresources を一時 upload バッファ経由で dest へコピー記録する (footprint / row-pitch 対応)。
-    // uploadKeepAlive は GPU 完了 (ExecuteAndWait) まで生存させる必要がある。
+    /// subresources を一時 upload バッファ経由で dest へコピー記録する (footprint / row-pitch 対応)。
+    /// uploadKeepAlive は GPU 完了 (ExecuteAndWait) まで生存させる必要がある。
     bool RecordUpload(ID3D12Resource* dest, const D3D12_SUBRESOURCE_DATA* subs,
                       uint32_t count, Resource& uploadKeepAlive);
-    // equirect float* を R32G32B32A32F の 2D テクスチャへアップロードし NON_PIXEL_SHADER_RESOURCE へ遷移。
+    /// equirect float* を R32G32B32A32F の 2D テクスチャへアップロードし NON_PIXEL_SHADER_RESOURCE へ遷移。
     bool UploadEquirect(const float* pixels, uint32_t width, uint32_t height,
                         Resource& out, Resource& uploadKeepAlive);
 
@@ -111,7 +112,7 @@ private:
     void Dispatch(ID3D12PipelineState* pso, D3D12_GPU_VIRTUAL_ADDRESS cb,
                   uint32_t srvIndex, uint32_t uavIndex, uint32_t size);
 
-    // GPU テクスチャを CaptureTexture (DirectXTex DX12) で読み戻して DDS 保存する。
+    /// GPU テクスチャを CaptureTexture (DirectXTex DX12) で読み戻して DDS 保存する。
     bool SaveDds(ID3D12Resource* resource, bool isCubeMap, const std::string& absPath);
 
     static std::vector<uint8_t> LoadBinary(const std::string& path);

@@ -8,6 +8,10 @@ export const EDITOR_PROTOCOL = 'fbzz.editor.v1';
 // NodeId は Scene の UUID v4 を使い、配列移動や世代更新を越えて安定させる。
 export const NodeIdSchema = z.string().uuid();
 export const Vec3Schema = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
+// 地形ブラシの op。並びは C++ の TerrainSculptOp と同じ (追加は末尾)。
+export const TerrainSculptOpSchema = z.enum([
+    'raise', 'lower', 'smooth', 'flatten', 'stamp', 'noise', 'thermalErosion', 'hydraulicErosion', 'terrace',
+]);
 export const JsonValueSchema = z.lazy(() => z.union([
     z.null(),
     z.boolean(),
@@ -183,6 +187,9 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('fluid.schema') }).strict(),
     z.object({ t: z.literal('fluid.get'), path: FluidPathSchema }).strict(),
     z.object({ t: z.literal('fluid.jobStatus'), job: FluidJobIdSchema, includeImage: z.boolean().optional() }).strict(),
+    z.object({ t: z.literal('playtest.status') }).strict(),
+    z.object({ t: z.literal('playtest.list') }).strict(),
+    z.object({ t: z.literal('editor.bus.list') }).strict(),
 ]);
 const CommandNameSchema = z.string().min(1).max(128);
 const ComponentNameSchema = z.string().min(1).max(128);
@@ -571,18 +578,25 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     z.object({
         t: z.literal('terrain.sculpt'),
         position: Vec3Schema,
-        op: z.enum(['raise', 'lower', 'smooth', 'flatten', 'stamp']).optional(),
+        op: TerrainSculptOpSchema.optional(),
         radius: z.number().finite().gt(0).max(500).optional(),
         strength: z.number().finite().gt(0).max(1).optional(),
         falloff: z.enum(['linear', 'smooth', 'gaussian']).optional(),
         iterations: z.number().int().min(1).max(64).optional(),
         targetHeight: z.number().finite().optional(),
         id: NodeIdSchema.optional(),
+        noiseScale: z.number().finite().gt(0).max(1000).optional(),
+        noiseOctaves: z.number().int().min(1).max(8).optional(),
+        seed: z.number().int().min(0).max(4294967295).optional(),
+        terraceStep: z.number().finite().gt(0).max(1000).optional(),
+        terraceSharpness: z.number().finite().min(0).max(1).optional(),
+        talus: z.number().finite().gt(0).lt(90).optional(),
+        droplets: z.number().int().min(1).max(4096).optional(),
     }).strict(),
     z.object({
         t: z.literal('terrain.paint'),
         position: Vec3Schema,
-        layer: z.number().int().min(0).max(3),
+        layer: z.number().int().min(0).max(254),
         radius: z.number().finite().gt(0).max(500).optional(),
         strength: z.number().finite().gt(0).max(1).optional(),
         falloff: z.enum(['linear', 'smooth', 'gaussian']).optional(),
@@ -592,8 +606,24 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     z.object({
         t: z.literal('terrain.setLayerMaterial'),
         id: NodeIdSchema,
-        layer: z.number().int().min(0).max(3),
+        layer: z.number().int().min(0).max(254),
         material: z.string().max(512),
+    }).strict(),
+    z.object({
+        t: z.literal('terrain.ramp'),
+        start: Vec3Schema,
+        end: Vec3Schema,
+        radius: z.number().finite().gt(0).max(500).optional(),
+        strength: z.number().finite().gt(0).max(1).optional(),
+        falloff: z.enum(['linear', 'smooth', 'gaussian']).optional(),
+        id: NodeIdSchema.optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('terrain.hole'),
+        position: Vec3Schema,
+        radius: z.number().finite().gt(0).max(500).optional(),
+        erase: z.boolean().optional(),
+        id: NodeIdSchema.optional(),
     }).strict(),
     z.object({ t: z.literal('navmesh.bake'), id: NodeIdSchema.optional() }).strict(),
     z.object({
@@ -656,6 +686,29 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         preset: FluidPresetSchema.optional(),
         fields: FluidFieldsSchema.optional(),
         bake: z.boolean().optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('playtest.run'),
+        path: z.string().min(1).max(1024).optional(),
+        scenario: z.record(z.string(), JsonValueSchema).optional(),
+        updateBaselines: z.boolean().optional(),
+        skipImages: z.boolean().optional(),
+    }).strict().refine((value) => value.path !== undefined || value.scenario !== undefined, {
+        message: 'path か scenario のどちらかが必要です',
+    }),
+    z.object({ t: z.literal('playtest.cancel') }).strict(),
+    z.object({
+        t: z.literal('input.record'),
+        action: z.enum(['start', 'stop']),
+        path: z.string().min(1).max(1024).optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('visual.compare'),
+        // Tests/Golden 相対・拡張子なし。".." を許すと基準画像の置き場の外へ書ける。
+        baseline: z.string().min(1).max(128).regex(/^[A-Za-z0-9_\-/]+$/),
+        view: z.enum(['game', 'scene']).optional(),
+        updateBaseline: z.boolean().optional(),
+        pixelThreshold: z.number().min(0).max(1).optional(),
     }).strict(),
     z.object({
         t: z.literal('editor.transaction'),

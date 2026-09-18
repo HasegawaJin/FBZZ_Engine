@@ -1,0 +1,33 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Environment Light', 'Atmospheric Scattering', 'Volumetric Cloud' ]
+    instance_id = 'a32b8f80-b125-4507-8ca5-9902943a2913'
+
+    [[editor.game_objects]]
+    component_order = [
+        'Camera',
+        'Script:TpsCameraComponent',
+        'Audio Listener',
+        'Script:FpsCameraComponent',
+        'Script:BossCameraDirectorComponent'
+    ]
+    instance_id = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
+
+    [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+
+    [[editor.game_objects]]
+    component_order = [ 'Post Process Volume' ]
+    instance_id = '29f249cf-bc13-44e7-a403-cc15ee729734'
+
+    [[editor.game_objects]]
+    component_order = [ 'Flow Field' ]
+    instance_id = '869e477c-25ae-44df-b17b-b82fc5d02826'
+
+[meta]
+guid = '16dc053a9693f1afbfd9d6c7bd77cfa6'

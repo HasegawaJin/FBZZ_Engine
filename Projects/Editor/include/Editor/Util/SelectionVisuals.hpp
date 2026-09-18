@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-08
 ///
-/// WHY: Hierarchy / AssetBrowser / Inspector がそれぞれ別の色・太さで選択表示すると、
-/// ユーザーは「現在の操作対象」を毎回読み直す必要がある。選択・ホバー・主選択を
-/// 共通パレットに集約し、視線移動だけで状態を判断できるようにする。
+/// @note Hierarchy / AssetBrowser / Inspector がそれぞれ別の色・太さで選択表示すると、
+///       ユーザーは「現在の操作対象」を毎回読み直す必要がある。選択・ホバー・主選択を
+///       共通パレットに集約し、視線移動だけで状態を判断できるようにする。
 #pragma once
 
 #include <Editor/Util/EditorTheme.hpp>
@@ -61,13 +61,9 @@ inline void DrawSelectionAccent(ImDrawList* dl,
     dl->AddRectFilled(min, { min.x + 3.0f, max.y }, color, rounding);
 }
 
-// ── タイル (グリッド) 表示用 ────────────────────────────────────────────────
-// WHY: AssetBrowser のような正方形タイルでは、左端 3px のアクセントだけでは
-//      「どれが選択されているか」がサムネイルの絵柄に埋もれてしまう。Unity の
-//      Project ウィンドウ / Unreal の Content Browser と同じく、タイルを面で塗り、
-//      Inspector に出ている主選択だけ濃く・強い枠で区別する。
-//      パネルがフォーカスを失っている間は彩度を落とし、「今キー入力が届く選択」と
-//      「前に選んだまま残っている選択」を取り違えないようにする。
+/// @note 正方形タイルは左端 3px のアクセントだけでは選択がサムネイルに埋もれるため、タイルを
+///       面で塗り主選択だけ濃く・強い枠で区別する (Unity Project / Unreal Content Browser 同様)。
+///       フォーカスを失っている間は彩度を落とし「今キー入力が届く選択」と区別する。
 
 inline ImU32 TileSelectionFill(bool primary, bool focused)
 {
@@ -98,22 +94,19 @@ inline void DrawTileSelection(ImDrawList* dl,
     if (!selected) return;
 
     dl->AddRectFilled(min, max, TileSelectionFill(primary, focused), rounding);
-    // ホバー中の選択タイルはさらに一段明るくして、ドロップ先候補として反応させる。
+    /// @note ホバー中の選択タイルはさらに一段明るくして、ドロップ先候補として反応させる。
     if (hovered)
         dl->AddRectFilled(min, max, HoverFillColor(), rounding);
     dl->AddRect(min, max, TileSelectionBorder(primary, focused), rounding, 0,
                 primary ? 2.0f : 1.2f);
 }
 
-// ── アセットタイルのカード表現 (Unreal Content Browser 方式) ────────────────
-// WHY: 選択されていないタイルは今まで背景を持たず、サムネイルが宙に浮いていた。
-//      種類の判別はアイコン内のラベル文字に頼るしかなく、一覧を「眺めて」
-//      目的の種類の塊を見つけることができない。Unreal のように
-//      「カードの下端をアセット種別の色で塗る」ことで、色の帯の並びだけで
-//      どこに何があるかを読めるようにする。色は EntryColor と同じ 1 系統。
+/// @note 未選択タイルは背景が無くサムネイルが宙に浮き、種類の判別もラベル文字頼みだった。
+///       Unreal のようにカードの下端をアセット種別色で塗り、色の帯の並びで一覧を読めるようにする
+///       (色は EntryColor と同じ 1 系統)。
 
-// hover は 0〜1 の連続量で受ける。カーソルを滑らせたときにカードが
-// «点いて消える» のではなく «灯る» ように見せるため (widgets::Animate が作る)。
+/// hover は 0〜1 の連続量で受ける。カーソルを滑らせたときにカードが
+/// «点いて消える» のではなく «灯る» ように見せるため (widgets::Animate が作る)。
 inline float ClampUnit(float value)
 {
     return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
@@ -124,7 +117,7 @@ inline ImU32 TileCardFill(float hover)
     return EditorTheme::ColorU32(ThemeColor::Canvas, 0.62f + 0.23f * ClampUnit(hover));
 }
 
-// カード下地。選択ハイライトより先に描き、選択色をこの上へ重ねる。
+/// カード下地。選択ハイライトより先に描き、選択色をこの上へ重ねる。
 inline void DrawAssetTileCard(ImDrawList* dl,
                               ImVec2 min,
                               ImVec2 max,
@@ -133,15 +126,15 @@ inline void DrawAssetTileCard(ImDrawList* dl,
 {
     if (!dl) return;
     dl->AddRectFilled(min, max, TileCardFill(hover), rounding);
-    // 縁もホバーで少し起こす。面だけだと «選べるもの» の輪郭が出ない。
+    /// @note 縁もホバーで少し起こす。面だけだと «選べるもの» の輪郭が出ない。
     const float borderAlpha = 0.45f + 0.35f * ClampUnit(hover);
     dl->AddRect(min, max, EditorTheme::ColorU32(ThemeColor::Border, borderAlpha), rounding, 0, 1.0f);
 }
 
-// 名前欄の下地に敷く、アセット種別色の淡い面。
-// WHY: 4px の帯だけだと線が宙に浮いて見える。名前欄まで薄く色を通すことで
-//      「サムネイル + 帯 + 名前」が 1 枚のカードとしてまとまる。
-// 選択ハイライトより先に描き、選択時はその上から塗り潰させる。
+/// 名前欄の下地に敷く、アセット種別色の淡い面。
+/// @note 4px の帯だけだと線が宙に浮くため、名前欄まで薄く色を通し「サムネイル+帯+名前」を
+///       1 枚のカードとしてまとめる。
+/// 選択ハイライトより先に描き、選択時はその上から塗り潰させる。
 inline void DrawAssetTileTypeWash(ImDrawList* dl,
                                   ImVec2 cardMin,
                                   ImVec2 cardMax,
@@ -156,10 +149,10 @@ inline void DrawAssetTileTypeWash(ImDrawList* dl,
                       rounding, ImDrawFlags_RoundCornersBottom);
 }
 
-// サムネイル下端に敷くアセット種別の色帯 (Unreal Content Browser の識別色)。
-// stripY は帯の上辺。カードの左右いっぱいに伸ばす。
-// WHY 最後に描くか: 選択ハイライトや名前欄の下地に覆われると種別が読めなくなる。
-//     この 1 本だけは常に最前面に残し、選択中でも色で種類を判別できるようにする。
+/// サムネイル下端に敷くアセット種別の色帯 (Unreal Content Browser の識別色)。
+/// stripY は帯の上辺。カードの左右いっぱいに伸ばす。
+/// @note 選択ハイライトや名前欄の下地に覆われると種別が読めなくなるため、この 1 本だけは
+///       常に最前面に残す。
 inline void DrawAssetTileTypeStrip(ImDrawList* dl,
                                    ImVec2 cardMin,
                                    ImVec2 cardMax,
@@ -172,8 +165,8 @@ inline void DrawAssetTileTypeStrip(ImDrawList* dl,
                       ImGui::ColorConvertFloat4ToU32(typeColor), 0.0f);
 }
 
-// 選択タイルの名前欄を塗り、白文字で乗せるための下地。
-// WHY: サムネイルの上下でコントラストが変わるため、名前だけは常に同じ読みやすさにする。
+/// 選択タイルの名前欄を塗り、白文字で乗せるための下地。
+/// @note サムネイルの上下でコントラストが変わるため、名前だけは常に同じ読みやすさにする。
 inline void DrawTileLabelPlate(ImDrawList* dl,
                                ImVec2 min,
                                ImVec2 max,
@@ -193,13 +186,13 @@ inline ImU32 TileSelectedTextColor()
     return IM_COL32(250, 251, 255, 255);
 }
 
-// 親アセットに従属するサブアセット (FBX 内のメッシュ、画像内のスプライト等) を
-// 一段沈んだ帯に載せ、「単独のファイルではない」ことと親子の連なりを示す。
-//
-// openLeft / openRight は「帯がその向きへまだ続く」かどうか。同じ行での接合でも、
-// 行をまたぐ折り返しでも true にする。開いている側は角丸を落として直角で終わらせ、
-// 「ここで終わった」ではなく「続いている」と読ませる。同じ行の接合では呼び出し側が
-// セル間の中点まで矩形を伸ばすため、複数タイルにまたがる 1 本の帯として繋がる。
+/// 親アセットに従属するサブアセット (FBX 内のメッシュ、画像内のスプライト等) を
+/// 一段沈んだ帯に載せ、「単独のファイルではない」ことと親子の連なりを示す。
+///
+/// openLeft / openRight は「帯がその向きへまだ続く」かどうか。同じ行での接合でも、
+/// 行をまたぐ折り返しでも true にする。開いている側は角丸を落として直角で終わらせ、
+/// 「ここで終わった」ではなく「続いている」と読ませる。同じ行の接合では呼び出し側が
+/// セル間の中点まで矩形を伸ばすため、複数タイルにまたがる 1 本の帯として繋がる。
 inline void DrawSubAssetBand(ImDrawList* dl,
                              ImVec2 min,
                              ImVec2 max,
@@ -214,17 +207,17 @@ inline void DrawSubAssetBand(ImDrawList* dl,
     if (!openLeft)  corners |= ImDrawFlags_RoundCornersLeft;
     if (!openRight) corners |= ImDrawFlags_RoundCornersRight;
 
-    // 帯そのものは親も子も同じ面色。色を変えると 1 本に見えなくなる。
+    /// @note 帯そのものは親も子も同じ面色。色を変えると 1 本に見えなくなる。
     dl->AddRectFilled(min, max, EditorTheme::ColorU32(ThemeColor::Canvas, 0.55f), rounding, corners);
 
-    // 帯の始端 (= 展開した親タイル) にだけ縦のキャップを立て、どこから始まった
-    // まとまりなのかを示す。接合側・折り返しの継ぎ目には何も描かない。
+    /// @note 帯の始端 (= 展開した親タイル) にだけ縦のキャップを立て、どこから始まった
+    ///       まとまりなのかを示す。接合側・折り返しの継ぎ目には何も描かない。
     if (!openLeft) {
         dl->AddRectFilled(min, { min.x + 3.0f, max.y },
                           EditorTheme::ColorU32(ThemeColor::Secondary, isParent ? 0.85f : 0.45f),
                           rounding, ImDrawFlags_RoundCornersLeft);
     }
-    // 帯の上下に細い罫線を通し、背景との境界を 1 本の線として連続させる。
+    /// @note 帯の上下に細い罫線を通し、背景との境界を 1 本の線として連続させる。
     const ImU32 edge = EditorTheme::ColorU32(ThemeColor::Border, 0.55f);
     dl->AddLine({ min.x, min.y + 0.5f }, { max.x, min.y + 0.5f }, edge, 1.0f);
     dl->AddLine({ min.x, max.y - 0.5f }, { max.x, max.y - 0.5f }, edge, 1.0f);

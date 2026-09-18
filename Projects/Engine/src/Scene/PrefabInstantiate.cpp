@@ -26,10 +26,9 @@
 namespace fbzz::scene {
 namespace {
 
-// 拡張子を補い、"Assets/..." 相対パスをプロジェクトルートで解決する。
-// WHY ここで解決するか: PrefabRef::path は Assets 起点の相対パスで保存される。
-//     Editor は自分でプロジェクトルートを知っているが、スタンドアロン実行では
-//     誰も補完しないため、生成経路そのものが解決できる必要がある。
+/// 拡張子を補い、"Assets/..." 相対パスをプロジェクトルートで解決する。
+/// @note PrefabRef::path は Assets 起点の相対パスで保存される。Editor は自分でプロジェクトルートを
+///       知っているが、スタンドアロン実行では誰も補完しないため、生成経路自身が解決する。
 std::string ResolvePrefabPath(const std::string& path)
 {
     std::string resolved = path;
@@ -71,16 +70,9 @@ bool ReadToml(const std::string& path, toml::table& outTable)
 }
 
 /// 解析済みプレファブの取り置き。鍵は実ファイルパス、鮮度は最終更新時刻で見る。
-///
-/// WHY 要るか: プレファブの展開は «読む → TOML を解析する → 木を複製する» の順で、
-///   最初の 2 つは同じファイルなら毎回まったく同じ結果になる。にもかかわらず 1 体
-///   出すたびに走っていたため、演出のように «短時間に何発も出す» 使い方では、
-///   そこだけでフレームが飛んだ (GreenWare の Boss02 が柱を 4 本立てる瞬間に
-///   ScriptSystem が 300ms ─ 2026-09-01)。
-///
-/// WHY 更新時刻を見るか: エディタで .prefab / .vfx を保存し直したら次の生成から
-///   効いてほしい。取り置きを «永久に» にすると、直したのに古い方が出続ける。
-///   時刻の問い合わせ 1 回は、読み直して解析するより桁で安い。
+/// @note 展開は «読む → TOML 解析 → 木を複製する» の順で、同じファイルなら結果が変わらないため
+///       取り置く。更新時刻を見るのは保存し直したら次の生成から反映させるためで、読み直すより
+///       時刻の問い合わせの方が桁で安い。
 const toml::table* CachedPrefabDoc(const std::string& diskPath)
 {
     struct Entry {
@@ -94,8 +86,8 @@ const toml::table* CachedPrefabDoc(const std::string& diskPath)
         std::filesystem::last_write_time(std::filesystem::path(diskPath), error);
 
     const auto found = cache.find(diskPath);
-    // 時刻が取れないときは «変わっていない» とみなす。取り置きがあるのに読み直すと、
-    // 読めない状況 (排他中など) で毎回もとの重さへ戻ってしまう。
+    /// @note 時刻が取れないときは «変わっていない» とみなす。取り置きがあるのに読み直すと、
+    ///       読めない状況 (排他中など) で毎回もとの重さへ戻ってしまう。
     if (found != cache.end() && (error || found->second.stamp == stamp))
         return &found->second.doc;
 
@@ -138,7 +130,7 @@ bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node
         if (dot == std::string::npos) {
             const std::string key = path.substr(start);
             current->erase(key);
-            // WHY: toml++ の node は多態なので、visit で具体型へ落としてから複製する。
+            /// @note toml++ の node は多態なので、visit で具体型へ落としてから複製する。
             value.visit([&](const auto& concrete) {
                 current->insert(key, concrete);
             });
@@ -147,7 +139,8 @@ bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node
 
         const std::string key = path.substr(start, dot - start);
         toml::node* node = current->get(key);
-        if (!node) return false;      // 途中のテーブルが無い場合は作らない (想定外の形)
+        /// @note 途中のテーブルが無い場合は作らない (想定外の形)
+        if (!node) return false;
         current = node->as_table();
         if (!current) return false;
         start = dot + 1;
@@ -156,7 +149,7 @@ bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node
 
 namespace {
 
-// node 配下の文字列を辿り、guidMap の鍵と «完全一致» するものを新しい guid へ差し替える。
+/// node 配下の文字列を辿り、guidMap の鍵と «完全一致» するものを新しい guid へ差し替える。
 void RemapGuidsInNode(toml::node& node,
                       const std::unordered_map<std::string, std::string>& guidMap)
 {
@@ -183,7 +176,7 @@ void RemapGuidsInNode(toml::node& node,
     }
 }
 
-// テーブル直下のスカラーには触れず、入れ子 (= コンポーネントの中身) だけを辿る。
+/// テーブル直下のスカラーには触れず、入れ子 (= コンポーネントの中身) だけを辿る。
 void RemapGuidsInChildNodes(toml::table& table,
                             const std::unordered_map<std::string, std::string>& guidMap)
 {
@@ -205,7 +198,7 @@ bool InstantiatePrefabAsset(Scene& scene,
 
     const std::string diskPath = ResolvePrefabPath(path);
 
-    // 取り置きは «読むだけ»。振り直しはすべて下の copied 側で行うので共有して問題ない。
+    /// @note 取り置きは «読むだけ»。振り直しはすべて下の copied 側で行うので共有して問題ない。
     const toml::table* prefabDoc = CachedPrefabDoc(diskPath);
     if (!prefabDoc) {
         FBZZ_LOG_ERROR("Prefab load failed: %s", diskPath.c_str());
@@ -225,12 +218,11 @@ bool InstantiatePrefabAsset(Scene& scene,
     for (auto& gameObject : scene.GameObjects())
         usedNames.insert(gameObject.name);
 
-    // guidMap:       プレファブ内の instanceId (旧) → 新規 UUID (新)
-    // guidToNewName: プレファブ内の instanceId (旧) → 一意化した新名
-    // nameMap:       旧名 → 新名 (名前ベース参照のフォールバック。重複名では最後の 1 件のみ)
-    // WHY 改名を名前ではなく instanceId をキーにするか: プレファブ内に同名オブジェクト
-    //     (骨の "Bone" など) が複数あると、名前をキーにした表は全員を同じ新名へ潰し、
-    //     親子と参照の解決が壊れる。
+    /// @note guidMap:       instanceId (旧) → 新規 UUID (新)
+    ///       guidToNewName: instanceId (旧) → 一意化した新名
+    ///       nameMap:       旧名 → 新名 (名前ベース参照のフォールバック。重複名では最後の 1 件のみ)
+    ///       名前でなく instanceId をキーにするのは、骨の "Bone" 等の同名オブジェクトが複数あると
+    ///       名前ベースの表が全員を同じ新名へ潰し、親子と参照の解決が壊れるため。
     std::unordered_map<std::string, std::string> guidMap;
     std::unordered_map<std::string, std::string> guidToNewName;
     std::unordered_map<std::string, std::string> nameMap;
@@ -245,7 +237,7 @@ bool InstantiatePrefabAsset(Scene& scene,
 
         const std::string oldGuid = (*source)["instanceId"].value_or(std::string{});
         if (!oldGuid.empty()) {
-            // 作り直しでは «元の実体と同じ guid» を名乗らせる。表に無い分だけ新規採番する。
+            /// @note 作り直しでは «元の実体と同じ guid» を名乗らせる。表に無い分だけ新規採番する。
             std::string newGuid;
             if (preserveGuids != nullptr) {
                 const auto preserved = preserveGuids->find(oldGuid);
@@ -266,10 +258,9 @@ bool InstantiatePrefabAsset(Scene& scene,
         const std::string oldName = copied["name"].value_or(std::string{"GameObject"});
         const std::string oldGuidForName = copied["instanceId"].value_or(std::string{});
 
-        // インスタンス側の override を、GUID / 名前のリマップより前に流し込む。
-        // WHY: override のパスは transform や各コンポーネントのプロパティで、
-        //      リマップ対象 (name/parent/*Guid) とは重ならない。先に当てておけば
-        //      あとは通常のインスタンス化経路をそのまま通せる。
+        /// @note インスタンス側の override を GUID / 名前のリマップより前に流し込む。override のパスは
+        ///       transform や各コンポーネントのプロパティで、リマップ対象 (name/parent/*Guid) とは
+        ///       重ならないため、先に当てておけば通常のインスタンス化経路をそのまま通せる。
         if (overrides != nullptr && !oldGuidForName.empty()) {
             const auto snapshot = overrides->instanceTables.find(oldGuidForName);
             if (snapshot != overrides->instanceTables.end()) {
@@ -281,25 +272,19 @@ bool InstantiatePrefabAsset(Scene& scene,
             }
         }
 
-        // コンポーネント側に書かれた «プレファブ内部を指す guid» を新しい実体へ振り替える。
-        //
-        // WHY 総当たりか: 参照を持つキーは IKSolverComponent の targetGuid / poleGuid、
-        //     BoneComponent の skinnedMeshOwnerGuid、SkinnedMeshRenderer の
-        //     skeletonRootGuid、そして FBZZ_REF / EntityRef のスクリプトフィールド
-        //     (キー名は «フィールド名そのもの» で綴りに規則が無い) と際限がない。
-        //     キーを列挙する形では «列挙し忘れたものだけが黙って壊れる»。
-        //     guid はプレファブ内の instanceId と «文字列として完全一致» したときだけ
-        //     振り替えるので、外部を指す参照や普通の文字列は素通りする。
-        // WHY 入れ子だけか: instanceId / parentInstanceId / name / parent の 4 つは
-        //     直後の識別子処理が旧値を読んで振り直す。ここで先に書き換えると
-        //     その処理が «知らない guid» を見て新しい UUID を作り直し、親子が切れる。
+        /// @note コンポーネント側の «プレファブ内部を指す guid» を新しい実体へ振り替える。参照キー
+        ///       (targetGuid/poleGuid/skinnedMeshOwnerGuid/skeletonRootGuid や FBZZ_REF のフィールド名)
+        ///       は際限がないため列挙せず、instanceId と文字列完全一致したものだけを機械的に振り替える。
+        /// @note 順序依存: instanceId / parentInstanceId / name / parent の 4 つは直後の識別子処理が
+        ///       旧値を読んで振り直すため、ここで先に書き換えると «知らない guid» を見て新しい UUID を
+        ///       作り直し親子が切れる。
         RemapGuidsInChildNodes(copied, guidMap);
 
         const std::string oldParent = copied["parent"].value_or(std::string{});
         const std::string oldParentGuid = copied["parentInstanceId"].value_or(std::string{});
 
-        // 自身の新名は instanceId から引く (同名オブジェクトでも一意)。
-        // guid が無い旧アセットは名前フォールバックに退避する。
+        /// @note 自身の新名は instanceId から引く (同名オブジェクトでも一意)。
+        ///       guid が無い旧アセットは名前フォールバックに退避する。
         const std::string newName =
             (!oldGuidForName.empty() && guidToNewName.contains(oldGuidForName))
                 ? guidToNewName.at(oldGuidForName)
@@ -308,8 +293,8 @@ bool InstantiatePrefabAsset(Scene& scene,
         copied.erase("name");
         copied.insert("name", newName);
 
-        // parent 名前フィールドも親の guid → 新名で解決する。実際の親子付けは
-        // AppendObjects が parentInstanceId(guid) で行うため、ここは表示・root 判定用。
+        /// @note parent 名前フィールドも親の guid → 新名で解決する。実際の親子付けは
+        ///       AppendObjects が parentInstanceId(guid) で行うため、ここは表示・root 判定用。
         copied.erase("parent");
         std::string newParentName;
         if (!oldParentGuid.empty() && guidToNewName.contains(oldParentGuid))
@@ -324,8 +309,8 @@ bool InstantiatePrefabAsset(Scene& scene,
         else
             copied.insert("parentInstanceId", std::string{});
 
-        // instanceId: インスタンスごとに新規 UUID を割り当てる。
-        // WHY: 重複すると FindByGuid が誤った GO を返す。
+        /// @note instanceId はインスタンスごとに新規 UUID を割り当てる。重複すると FindByGuid が
+        ///       誤った GO を返す。
         {
             const std::string oldGuid = copied["instanceId"].value_or(std::string{});
             const std::string newGuid = guidMap.contains(oldGuid)
@@ -335,11 +320,9 @@ bool InstantiatePrefabAsset(Scene& scene,
             copied.insert("instanceId", newGuid);
         }
 
-        // IKSolverComponent: targetName / poleName / *Guid をリマップする。
-        // WHY: 複数インスタンス化で KneePole_L → KneePole_L (1) のように名前が変わるが、
-        //      chains 内の参照を更新しないと別インスタンスの Pole を解決し、膝が逆に折れる。
-        //      nameMap / guidMap に含まれる (= プレファブ内部の) 参照だけを更新し、
-        //      外部を指す参照はそのまま残してシーン上の既存オブジェクトを参照させる。
+        /// @note IKSolverComponent の targetName / poleName / *Guid をリマップする。複数インスタンス化で
+        ///       名前が変わる (KneePole_L → (1)) 際に chains の参照を更新しないと別インスタンスの Pole を
+        ///       解決し膝が逆に折れるため。プレファブ内部の参照だけ更新し外部参照はそのまま残す。
         if (auto* ikTable = copied["IKSolverComponent"].as_table()) {
             if (auto* chains = (*ikTable)["chains"].as_array()) {
                 for (auto& chainElement : *chains) {
@@ -361,9 +344,9 @@ bool InstantiatePrefabAsset(Scene& scene,
             }
         }
 
-        // BoneComponent: skinnedMeshOwner / skinnedMeshOwnerGuid をリマップする。
-        // WHY: 指す SkinnedMeshRenderer オーナーの識別子もインスタンス化で変わるため、
-        //      別インスタンスの SMR を指さないよう更新する。
+        /// @note BoneComponent の skinnedMeshOwner / skinnedMeshOwnerGuid をリマップする。指す
+        ///       SkinnedMeshRenderer の識別子もインスタンス化で変わるため、別インスタンスの SMR を
+        ///       指さないよう更新する。
         if (auto* boneTable = copied["BoneComponent"].as_table()) {
             const std::string oldOwner = (*boneTable)["skinnedMeshOwner"].value_or(std::string{});
             if (!oldOwner.empty() && nameMap.contains(oldOwner)) {
@@ -390,11 +373,9 @@ bool InstantiatePrefabAsset(Scene& scene,
 
     if (!SceneSerializer::AppendObjects(scene, text, *resources, outRootEntities)) return false;
 
-    // AppendObjects で生成した GO へ、通常のシーンロード経路でしか復元されない
-    // コンポーネントを補完する。
-    // WHY: AppendObjects は Script フィールドの復元など独自の経路を持つ一方、
-    //      全コンポーネントへの追従が漏れやすい。通常ロードを補完元にすることで、
-    //      プレファブがシーン保存と同じコンポーネント集合を扱えるようにする。
+    /// @note AppendObjects で生成した GO へ、通常のシーンロード経路でしか復元されないコンポーネントを
+    ///       補完する。AppendObjects は Script フィールド復元など独自経路を持つため全コンポーネントへの
+    ///       追従が漏れやすく、通常ロードを補完元にしてシーン保存と同じ集合を扱えるようにする。
     if (auto prefabScene = SceneSerializer::LoadFromText(text, *resources, diskPath)) {
         for (auto& sourceObject : prefabScene->GameObjects()) {
             if (sourceObject.instanceId.empty()) continue;
@@ -404,9 +385,9 @@ bool InstantiatePrefabAsset(Scene& scene,
         }
     }
 
-    // 補完コピーしたコンポーネント内の EntityID 参照を、現在の Scene の EntityID へ張り直す。
-    // WHY: 一時 Scene からコピーした EntityID は一時 Scene の値を指すため、
-    //      GUID / 名前を正として再解決する必要がある。
+    /// @note 補完コピーしたコンポーネント内の EntityID 参照を現在の Scene の EntityID へ張り直す。
+    ///       一時 Scene からコピーした EntityID は一時 Scene の値を指すため、GUID / 名前を正として
+    ///       再解決する。
     for (auto& target : scene.GameObjects()) {
         if (auto* grid = target.GetComponent<TerrainGridComponent>())
             grid->ResolveFromScene(scene);
@@ -456,8 +437,8 @@ bool InstantiatePrefabAsset(Scene& scene,
         }
     }
 
-    // インスタンス追跡のため、生成したルート GO へ出所パスを Assets 起点で書き込む。
-    // Apply / Revert は diskPath ではなくこの値を参照する。
+    /// @note インスタンス追跡のため、生成したルート GO へ出所パスを Assets 起点で書き込む。
+    ///       Apply / Revert は diskPath ではなくこの値を参照する。
     const std::string::size_type assetsPos = [&] {
         const auto pos = diskPath.rfind("/Assets/");
         return pos != std::string::npos ? pos + 1 : std::string::npos;
@@ -470,9 +451,9 @@ bool InstantiatePrefabAsset(Scene& scene,
             gameObject->prefabAssetPath = relativePath;
     }
 
-    // プロパティ単位の差分を後から計算できるよう、階層内の全 GO へ
-    // 「プレファブ側のどのオブジェクト由来か」を刻む。instanceId は毎回振り直されるため、
-    // これが無いとインスタンスとアセットを対応付ける手段が無い。
+    /// @note プロパティ単位の差分を後から計算できるよう、階層内の全 GO へ
+    ///       「プレファブ側のどのオブジェクト由来か」を刻む。instanceId は毎回振り直されるため、
+    ///       これが無いとインスタンスとアセットを対応付ける手段が無い。
     for (const auto& [sourceGuid, newGuid] : guidMap) {
         if (auto* gameObject = scene.FindByGuid(newGuid))
             gameObject->prefabSourceId = sourceGuid;

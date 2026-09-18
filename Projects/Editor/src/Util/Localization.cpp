@@ -13,10 +13,7 @@ namespace fbzz::editor::loc {
 namespace {
 
 /// 訳 1 つ。text は表示用、label は "訳###原文"。
-///
-/// WHY 2 本持つか: ラベルは毎フレーム何百回も引かれる。呼ばれるたびに
-///     "訳" + "###" + "原文" を組み立てると、切り替えただけでエディターが重くなる。
-///     訳の数だけ一度作って持てば済む。
+/// @note 2 本持つ: ラベルは毎フレーム何百回も引かれるため、呼ばれるたびに "訳" + "###" + "原文" を組み立てると切り替えただけでエディターが重くなる。訳の数だけ一度作って持てば済む。
 struct Entry {
     std::string text;
     std::string label;
@@ -26,7 +23,7 @@ struct Entry {
 /// 別のリテラルでありうる (翻訳単位が違えば別アドレス)。
 using Table = std::unordered_map<std::string_view, Entry>;
 
-// 既定は日本語。設定ファイルが無い初回起動でも日本語で開く。
+/// 既定は日本語。設定ファイルが無い初回起動でも日本語で開く。
 Language                 s_language = Language::Japanese;
 Table                    s_table;
 std::vector<std::string> s_missing;
@@ -55,12 +52,8 @@ void BuildTable(Language language)
     for (const Pair& pair : kJapanese) {
         Entry entry;
 
-        // 訳が空文字は «英語のままにすると決めた» 印。原文をそのまま返し、
-        // 未訳リストにも出さない。
-        //
-        // WHY 辞書に載せるか: 載せないと «まだ訳していない» と区別が付かず、
-        //     未訳リストがコンポーネント名で埋まって作業リストとして使えなくなる。
-        //     決めたことは書いておく方が、次に見た人が同じ判断をやり直さずに済む。
+        /// @note 訳が空文字は «英語のままにすると決めた» 印。原文をそのまま返し未訳リストにも出さない。
+        /// @note 辞書に載せる: 載せないと «まだ訳していない» と区別が付かず、未訳リストがコンポーネント名で埋まって作業リストとして使えなくなる。
         if (pair.translated == nullptr || pair.translated[0] == '\0') {
             entry.text  = pair.english;
             entry.label = pair.english;
@@ -69,17 +62,15 @@ void BuildTable(Language language)
         }
 
         entry.text  = pair.translated;
-        // ###原文 を足すと ImGui の ID は原文のときと同じになる (1.92.6 以降)。
-        // 訳を当てても保存済みのドッキング配置や開閉状態が失われない。
+        /// @name 原文 を足すと ImGui の ID は原文のときと同じになる (1.92.6 以降)。
+        /// @note 訳を当てても保存済みのドッキング配置や開閉状態が失われない。
         entry.label = entry.text + "###" + pair.english;
         s_table.emplace(std::string_view(pair.english), std::move(entry));
     }
 }
 
 /// 既に日本語 (非 ASCII) を含む文字列か。
-///
-/// WHY 要るか: GreenWare の FBZZ_GROUP / 表示名には最初から日本語で書かれたものがある。
-///     それを «未訳» として記録すると、作業リストに «訳し終わっているもの» が並ぶ。
+/// @note GreenWare の FBZZ_GROUP / 表示名には最初から日本語で書かれたものがあり、それを «未訳» として記録すると作業リストに «訳し終わっているもの» が並ぶ。
 bool AlreadyLocalized(const char* text)
 {
     for (const char* p = text; *p != '\0'; ++p)
@@ -91,8 +82,8 @@ bool AlreadyLocalized(const char* text)
 void RecordMissing(const char* english)
 {
     if (AlreadyLocalized(english)) return;
-    // 毎フレーム引かれるので、既に控えたものは足さない。件数は «残り作業» の
-    // 目安であって網羅リストではないので、線形探索で足りる。
+    /// @note 毎フレーム引かれるので、既に控えたものは足さない。件数は «残り作業» の
+    ///       目安であって網羅リストではないので、線形探索で足りる。
     if (std::find(s_missing.begin(), s_missing.end(), english) != s_missing.end()) return;
     s_missing.emplace_back(english);
 }
@@ -145,8 +136,8 @@ const char* Label(const char* english)
     const auto it = s_table.find(std::string_view(english));
     if (it == s_table.end()) {
         RecordMissing(english);
-        // 訳が無いときは原文をそのまま返す。ID は原文から作られるので、
-        // ここで ### を足しても足さなくても同じ ID になる。
+        /// @note 訳が無いときは原文をそのまま返す。ID は原文から作られるので、
+        ///       ここで ### を足しても足さなくても同じ ID になる。
         return english;
     }
     return it->second.label.c_str();

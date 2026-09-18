@@ -20,7 +20,7 @@ DAG ノードの設定を読んで **GameObject を生やし、既存コンポ�
 | `VFXDecalSettings` | `DecalComponent` |
 | `VFXMeshSettings` | `MeshRenderer` + `MaterialComponent` |
 | `VFXAnimatedMeshSettings` | `SkinnedMeshRenderer` + `MaterialComponent` + `AnimatorComponent` |
-| `VFXForceFieldSettings` | `ParticleForceField` |
+| `VFXForceFieldSettings` | `FlowField` |
 | `VFXScreenEffectSettings` / `VFXCameraShakeSettings` / `VFXTimeScaleSettings` | `VFXScreenEffect` / `VFXCameraShake` / `VFXTimeScale` |
 | `VFXWindSettings` | `WindZoneComponent` |
 | `VFXSubGraphSettings` | `VFXGraphComponent` (入れ子) |
@@ -356,7 +356,7 @@ go->GetComponent<VFXComponent>()->Restart();
 | `vfx.particle` | `ParticleEmitter` (loop なし・duration 1 秒) |
 | `vfx.lightFlash` | `LightComponent` (影なし) + `VFXElement` + `VFXLightEnvelope` |
 | `vfx.meshShell` | `MeshRenderer` + `MaterialComponent` + `VFXElement` + `VFXTransformEnvelope` + `VFXMaterialEnvelope` |
-| `vfx.forceField` | `ParticleForceField` (Repulse) + `VFXElement` |
+| `vfx.flowField` | `FlowField` (Source) + `VFXElement` |
 | `vfx.decal` | `DecalComponent` + `VFXDecalEnvelope` |
 | `vfx.screenEffect` | `VFXScreenEffect` + `VFXElement` (立ち上がり付き weightCurve) |
 | `vfx.cameraShake` | `VFXCameraShake` + `VFXElement` (減衰 weightCurve) |
@@ -417,7 +417,7 @@ Hierarchy の `SaveSelectedAsPrefab` を「サブフォルダと拡張子を受�
 | `[[links]]` の `delay` | `ParticleEmitter.startDelay` へ加算 (§4.1) |
 | `[nodes.light]` | `LightComponent` + `VFXElement` + `VFXLightEnvelope` |
 | `[nodes.decal]` | `DecalComponent` (`lifetime` = ノードの duration) + `VFXDecalEnvelope` |
-| `[nodes.forceField]` | `ParticleForceField` + `VFXElement` |
+| `[nodes.flowField]` | `FlowField` + `VFXElement` |
 | `[[groups]]` (Canvas の枠) | 空 GameObject の**層**。矩形に含まれるノードがその子になる |
 | `[[parameters]]` / `[[bindings]]` | ルートに載せたスクリプト (§6)。既定値は旧 default と同じ |
 

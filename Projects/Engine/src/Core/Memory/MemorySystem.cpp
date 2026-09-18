@@ -53,7 +53,7 @@ bool MemorySystem::Initialize(std::size_t frameAllocatorCapacity)
 
 void MemorySystem::Shutdown()
 {
-    // WHY: Shutdown 時に台帳を消す前に未解放を検出する。assert で止まった場合は GetLeak() から発生位置を追える。
+    /// @note Shutdown で台帳を消す前に未解放を検出する。assert で止まった場合は GetLeak() から発生位置を追える。
     assert(!HasLeaks());
 
     m_frameAllocator.Shutdown();

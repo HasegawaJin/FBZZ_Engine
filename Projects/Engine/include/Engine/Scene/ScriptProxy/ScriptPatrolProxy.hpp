@@ -31,7 +31,7 @@ struct ScriptPatrolProxy {
     [[nodiscard]] int GetCurrentIndex() const;
     [[nodiscard]] bool IsEnabled() const;
     [[nodiscard]] size_t GetWaypointCount() const;
-    // index が範囲外なら false を返し、position は変更しない。
+    /// index が範囲外なら false を返し、position は変更しない。
     [[nodiscard]] bool GetWaypoint(size_t index, math::Vector3& position) const;
 };
 

@@ -7,7 +7,7 @@
 
 namespace fbzz::physics
 {
-    // ローカル Y 軸を中心線とするカプセル。回転は Update() でワールド線分へ反映する。
+    /// ローカル Y 軸を中心線とするカプセル。回転は Update() でワールド線分へ反映する。
     class CapsuleCollider : public Collider
     {
     public:
@@ -17,14 +17,14 @@ namespace fbzz::physics
         ColliderType GetType() const override { return ColliderType::CAPSULE; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
-        // 円柱 (π r² * 2h) + 両端の半球 (= 球 1 個ぶん 4/3 π r³)
+        /// 円柱 (π r² * 2h) + 両端の半球 (= 球 1 個ぶん 4/3 π r³)
         [[nodiscard]] float ComputeVolume() const override;
 
         math::Vector3 GetSegmentStart() const { return m_worldStart; }
         math::Vector3 GetSegmentEnd() const { return m_worldEnd; }
 
-        float m_radius = 0.5f;     // 半球部分を含む半径
-        float m_halfHeight = 1.0f; // 中心から円柱端までの距離
+        float m_radius = 0.5f;     ///< 半球部分を含む半径
+        float m_halfHeight = 1.0f; ///< 中心から円柱端までの距離
 
     private:
         math::Vector3 m_worldCenter;

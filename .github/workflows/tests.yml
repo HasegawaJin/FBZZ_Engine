@@ -34,6 +34,50 @@ env:
   BUILD_CONFIG: Debug
 
 jobs:
+  # 規約 (AGENTS.md «絶対制約» とコメント形式) の機械検査。数秒で終わるので、40 分のビルドより前に落とす。
+  # WHY 差分だけか: 旧コードには移行途中の違反が残る。PR で «増えた» 違反だけを咎める (Tools/AgentLint/lint.mjs)。
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Lint changed files
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+            if ! git cat-file -e "$base^{commit}" 2>/dev/null; then base="HEAD~1"; fi
+          fi
+          node Tools/AgentLint/lint.mjs --base "$base"
+
+  # MCP サーバーの契約とツール。C++ の BusContractParityTests と対で、TypeScript 側の食い違いを落とす。
+  # WHY Windows か: バスのクライアントテストが Named Pipe を実際に開く。
+  editor-mcp:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: EditorMcp tests
+        shell: pwsh
+        working-directory: Projects/EditorMcp
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
   test:
     runs-on: windows-latest
 
@@ -93,7 +137,7 @@ jobs:
         shell: pwsh
         run: |
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
 
       # --timeout: 止まったテストがあってもそこで打ち切り、残りを最後まで走らせる。
       #   これが無いと、1 件のハングでジョブがワークフローの上限まで待ち続ける。

@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
-/// WHAT: 選択中の .mat を AssetBrowser のサムネイルと同じ MaterialPreviewCore で焼き、
-/// 形状・背景・照明・表示チャンネルを切り替えられる形で出す。
-/// WHY: Inspector と Preview パネルの見た目がアセットの場所で変わらないようにする。
+/// 選択中の .mat を AssetBrowser のサムネイルと同じ MaterialPreviewCore で焼き、形状・背景・
+/// 照明・表示チャンネルを切り替えられる形で出す。Inspector と Preview パネルの見た目がアセットの
+/// 場所で変わらないようにする。
 #include <Editor/Panels/MaterialPreview.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -44,6 +44,10 @@ constexpr std::array<mp::Channel, 9> kChannels = {
     mp::Channel::Shaded,    mp::Channel::Albedo,    mp::Channel::Normal,
     mp::Channel::Roughness, mp::Channel::Metallic,  mp::Channel::Occlusion,
     mp::Channel::Emissive,  mp::Channel::Uv,        mp::Channel::Wireframe,
+};
+
+constexpr std::array<mp::FiberMode, 4> kFiberModes = {
+    mp::FiberMode::Shell, mp::FiberMode::Fin, mp::FiberMode::Hybrid, mp::FiberMode::Blade,
 };
 
 constexpr std::array<mp::LightPreset, 4> kPresets = {
@@ -113,14 +117,14 @@ void DrawGrid(ImDrawList* drawList, ImVec2 origin, float size)
     drawList->PopClipRect();
 }
 
-// AssetBrowser の DrawThumbnailFrame と同じ背景グラデーション。
+/// AssetBrowser の DrawThumbnailFrame と同じ背景グラデーション。
 void DrawGradient(ImDrawList* drawList, ImVec2 origin, float size, bool hovered)
 {
     const ImU32 base = hovered ? IM_COL32(42, 45, 52, 255) : IM_COL32(30, 32, 38, 255);
     drawList->AddRectFilled(origin, { origin.x + size, origin.y + size }, base, 4.0f);
     const ImU32 gradTop    = hovered ? IM_COL32(56, 60, 70, 255) : IM_COL32(44, 47, 56, 255);
     const ImU32 gradBottom = hovered ? IM_COL32(30, 32, 38, 255) : IM_COL32(19, 20, 24, 255);
-    // AddRectFilledMultiColor は角丸非対応なので 2px 内側へ重ね、角丸の輪郭を残す。
+    /// @note AddRectFilledMultiColor は角丸非対応なので 2px 内側へ重ね、角丸の輪郭を残す。
     drawList->AddRectFilledMultiColor(
         { origin.x + 2.0f, origin.y + 2.0f },
         { origin.x + size - 2.0f, origin.y + size - 2.0f },
@@ -151,8 +155,8 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
     const float full = (std::max)(ImGui::GetContentRegionAvail().x, 120.0f);
     const float half = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
 
-    // Terrain / Water は «地面» と «水面»、UI は矩形、エフェクト系はビルボードや
-    // リボンと、形そのものが素材の一部なので選ばせない。
+    /// @note Terrain / Water は «地面» と «水面»、UI は矩形、エフェクト系はビルボードや
+    ///       リボンと、形そのものが素材の一部なので選ばせない。
     const bool shapeLocked = flavor == mp::Flavor::Terrain ||
                              flavor == mp::Flavor::Water ||
                              mp::UsesOwnGeometry(flavor);
@@ -187,7 +191,7 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
         }
         ImGui::EndCombo();
     }
-    // 対応していないチャンネルのまま材質が切り替わることがあるので毎フレーム畳む。
+    /// @note 対応していないチャンネルのまま材質が切り替わることがあるので毎フレーム畳む。
     if (!mp::ChannelSupported(flavor, m_channel)) m_channel = mp::Channel::Shaded;
 
     ImGui::SetNextItemWidth(half);
@@ -217,9 +221,28 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
 
     ImGui::SetNextItemWidth(half);
     ImGui::SliderFloat("##Exposure", &m_rig.exposure, 0.1f, 4.0f, "EV %.2f");
-    if (flavor == mp::Flavor::Water) {
+    if (flavor == mp::Flavor::Water || flavor == mp::Flavor::Fiber) {
         ImGui::SameLine();
         ImGui::Checkbox("Animate", &m_animateWater);
+    }
+
+    if (flavor == mp::Flavor::Fiber) {
+        ImGui::SetNextItemWidth(half);
+        if (ImGui::BeginCombo("##FiberMode", mp::FiberModeLabel(m_fiberMode))) {
+            for (mp::FiberMode mode : kFiberModes) {
+                if (ImGui::Selectable(mp::FiberModeLabel(mode), mode == m_fiberMode)) m_fiberMode = mode;
+            }
+            ImGui::EndCombo();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Fiber render mode. The .mat is shared by all modes; the Fiber component picks one.");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(half);
+        ImGui::BeginDisabled(m_fiberMode == mp::FiberMode::Fin || m_fiberMode == mp::FiberMode::Blade);
+        ImGui::SliderInt("##FiberShells", &m_fiberShellCount, 1, 64, "Shells %d");
+        ImGui::EndDisabled();
+        ImGui::SetNextItemWidth(full);
+        ImGui::SliderFloat("##FiberWind", &m_fiberWind, 0.0f, 10.0f, "Wind %.1f m/s");
     }
 }
 
@@ -248,8 +271,8 @@ void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const char* badge = mp::UnsupportedBadge(material);
 
-    // 素材があればその絵を出す。«この材質はこういう色» なのか «焼けなかった» のかを
-    // 区別できるよう、色見本だけで終わらせない。
+    /// @note 素材があればその絵を出す。«この材質はこういう色» なのか «焼けなかった» のかを
+    ///       区別できるよう、色見本だけで終わらせない。
     const std::string texturePath = mp::RepresentativeTexturePath(material);
     if (texturePath != m_fallbackTexturePath) {
         m_fallbackTexturePath = texturePath;
@@ -301,9 +324,8 @@ bool MaterialPreviewView::RenderFrame(EditorContext& ctx,
         m_renderTarget = resources.CreateRenderTarget(kPreviewRtSize, kPreviewRtSize);
     if (!m_renderTarget.IsValid()) return false;
 
-    // WHY 毎フレーム作り直すか: Inspector はスライダーを動かしている最中の .mat を
-    //     そのまま渡してくる。保存を待つと «動かしても絵が変わらない» になる。
-    //     LoadShader / LoadTexture は ResourceManager のキャッシュに当たる。
+    /// @note 毎フレーム作り直す: Inspector はスライダーを動かしている最中の .mat をそのまま渡してくる。
+    ///       保存を待つと «動かしても絵が変わらない» になる。LoadShader / LoadTexture はキャッシュに当たる。
     if (!mp::BuildGpuData(m_gpu, material, resources, ctx.projectRoot)) return false;
 
     mp::RenderDesc desc;
@@ -315,6 +337,9 @@ bool MaterialPreviewView::RenderFrame(EditorContext& ctx,
     desc.rig      = m_rig;
     desc.orbit    = m_orbit;
     desc.time     = m_animateWater ? static_cast<float>(ImGui::GetTime()) : 0.0f;
+    desc.fiberMode       = m_fiberMode;
+    desc.fiberShellCount = m_fiberShellCount;
+    desc.fiberWind       = m_fiberWind;
     desc.mesh     = mp::ShapeMesh(resources, m_shape, flavor);
     if (!desc.mesh && !mp::UsesOwnGeometry(flavor)) return false;
 
@@ -330,8 +355,8 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     const mp::Flavor flavor = mp::DetectFlavor(material);
     DrawToolbar(ctx, flavor);
 
-    // AssetBrowser と同じ正方形表示にする。横長の Inspector 幅へ引き伸ばすと、
-    // 同じ RT でも球の投影とハイライトの位置が別物に見えるため。
+    /// @note AssetBrowser と同じ正方形表示にする。横長の Inspector 幅へ引き伸ばすと、
+    ///       同じ RT でも球の投影とハイライトの位置が別物に見えるため。
     const float width  = (std::max)(ImGui::GetContentRegionAvail().x, 64.0f);
     const float height = (std::max)(previewHeight, 96.0f);
     const float size   = (std::max)((std::min)(width, height), 64.0f);
@@ -343,7 +368,7 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
 
     if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
-        // Ctrl 併用で «光だけ» を回す。Unity / Blender のマテリアルプレビューと同じ操作。
+        /// @note Ctrl 併用で «光だけ» を回す。Unity / Blender のマテリアルプレビューと同じ操作。
         if (ImGui::GetIO().KeyCtrl) {
             m_rig.yaw -= delta.x * 0.012f;
             m_rig.pitch = std::clamp(m_rig.pitch + delta.y * 0.010f, -1.35f, 1.35f);
@@ -361,8 +386,8 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     DrawBackground(origin, size, hovered);
 
     if (flavor == mp::Flavor::Unsupported) {
-        // 3D へは焼けないが «何の素材か» は出している。呼び出し側に
-        // «プレビュー無し» のプレースホルダーを重ねさせないため true を返す。
+        /// @note 3D へは焼けないが «何の素材か» は出している。呼び出し側に
+        ///       «プレビュー無し» のプレースホルダーを重ねさせないため true を返す。
         DrawUnsupported(ctx, material, origin, size);
         ImGui::PopID();
         return true;
@@ -376,8 +401,8 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     if (rawId) {
         drawList->AddImage(ToImTextureID(rawId), origin, { origin.x + size, origin.y + size });
     } else {
-        // 焼けるはずの Flavor なのに失敗した (シェーダーが壊れている等)。
-        // «何も出ない» で終わらせず、素材と種別だけは出す。
+        /// @note 焼けるはずの Flavor なのに失敗した (シェーダーが壊れている等)。
+        ///       «何も出ない» で終わらせず、素材と種別だけは出す。
         DrawUnsupported(ctx, material, origin, size);
     }
 
@@ -388,8 +413,8 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     }
 
     ImGui::PopID();
-    // 焼けなくても色見本は出しているので «描いた» と返す。呼び出し側に
-    // «プレビュー無し» のプレースホルダーを重ねさせないため。
+    /// @note 焼けなくても色見本は出しているので «描いた» と返す。呼び出し側に
+    ///       «プレビュー無し» のプレースホルダーを重ねさせないため。
     return true;
 }
 

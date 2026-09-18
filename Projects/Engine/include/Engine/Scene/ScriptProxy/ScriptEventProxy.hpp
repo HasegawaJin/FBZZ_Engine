@@ -16,19 +16,17 @@ namespace fbzz::scene {
 
 class Script;
 
-// FBZZ_EVENT が付いているか (= EVENT_NAME を持つか) をコンパイル時に判定する。
-// WHY concept にするか: 付け忘れたときのエラーを「テンプレート内部の深い場所」ではなく
-//     呼び出し行で止め、何を直せばよいかを分かるようにする。
+/// @brief FBZZ_EVENT が付いているか (= EVENT_NAME を持つか) をコンパイル時に判定する。
+/// @note concept にすることで、付け忘れのエラーをテンプレート内部でなく呼び出し行で止める。
 template<typename T>
 concept ScriptEventType = requires { { T::EVENT_NAME } -> std::convertible_to<const char*>; };
 
 struct ScriptEventProxy {
     Script* script = nullptr;
 
-    // 購読する。この Script が破棄されると自動的に解除される。
-    // 戻り値のトークンは「途中で降りたい」場合だけ保持すればよい。
-    //
-    //   events.Subscribe<PlayerDied>([this](const PlayerDied& e) { ShowResult(e.score); });
+    /// @brief 購読する。この Script が破棄されると自動的に解除される。
+    /// @return 「途中で降りたい」場合だけ保持すればよいトークン。
+    /// @note 例: `events.Subscribe<PlayerDied>([this](const PlayerDied& e) { ShowResult(e.score); });`
     template<ScriptEventType T, typename Fn>
         requires std::invocable<Fn, const T&>
     ScriptEventToken Subscribe(Fn&& fn) const
@@ -40,18 +38,20 @@ struct ScriptEventProxy {
             });
     }
 
-    // 発火する。購読者はこの呼び出しの中で同期的に処理される。
-    //
-    //   events.Publish(PlayerDied{ .score = 1200 });
+    /// @brief 発火する。購読者はこの呼び出しの中で同期的に処理される。
+    ///
+    /// @code
+    /// events.Publish(PlayerDied{ .score = 1200 });
+    /// @endcode
     template<ScriptEventType T>
     void Publish(const T& event) const
     {
         ScriptEventBus::PublishRaw(T::EVENT_NAME, &event);
     }
 
-    // 個別解除。
+    /// @brief 個別解除。
     void Unsubscribe(ScriptEventToken token) const { ScriptEventBus::Unsubscribe(token); }
-    // この Script の購読をすべて解除する (OnDisable で一旦降りる用途)。
+    /// @brief この Script の購読をすべて解除する (OnDisable で一旦降りる用途)。
     void UnsubscribeAll() const;
 };
 

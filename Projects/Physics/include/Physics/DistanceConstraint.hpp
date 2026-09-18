@@ -7,7 +7,7 @@
 
 namespace fbzz::physics
 {
-    // 2 つの剛体間距離を m_distance に保つ。伸縮しない棒の簡易表現。
+    /// 2 つの剛体間距離を m_distance に保つ。伸縮しない棒の簡易表現。
     class DistanceConstraint : public Constraint
     {
     public:

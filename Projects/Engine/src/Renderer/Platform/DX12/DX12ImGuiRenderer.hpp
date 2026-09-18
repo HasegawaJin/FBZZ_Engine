@@ -13,7 +13,7 @@ namespace fbzz::renderer {
 
 class DX12Context;
 
-// Phase 1 のフォント描画用 SRV を所有コンテキストの可視ヒープへ割り当てる。
+/// Phase 1 のフォント描画用 SRV を所有コンテキストの可視ヒープへ割り当てる。
 class DX12ImGuiRenderer final : public IImGuiRenderer {
 public:
     ~DX12ImGuiRenderer() override;
@@ -26,16 +26,16 @@ public:
     void* GetImTextureID(ResourceHandle<RenderTargetTag>, ResourceManager&, int = 0) override;
     void* GetImTextureID(ResourceHandle<TextureTag>, ResourceManager&) override;
 
-    // imgui_impl_dx12 のC形式コールバックから呼ぶディスクリプタ割り当て境界。
+    /// imgui_impl_dx12 のC形式コールバックから呼ぶディスクリプタ割り当て境界。
     bool AllocateDescriptor(uint32_t& index, D3D12_CPU_DESCRIPTOR_HANDLE& cpu,
                             D3D12_GPU_DESCRIPTOR_HANDLE& gpu);
     void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE cpu);
 
 private:
-    // CacheKey::kind — ハンドルの種別。回収時にどちらの Get で生存を問うかを決める。
+    /// CacheKey::kind — ハンドルの種別。回収時にどちらの Get で生存を問うかを決める。
     static constexpr uint8_t CACHE_KIND_RENDER_TARGET = 0;
     static constexpr uint8_t CACHE_KIND_TEXTURE       = 1;
-    // 生存判定を回す間隔 [フレーム]。毎フレーム全件を舐めるほど枯渇は速くない。
+    /// 生存判定を回す間隔 [フレーム]。毎フレーム全件を舐めるほど枯渇は速くない。
     static constexpr uint64_t SWEEP_INTERVAL_FRAMES = 30;
 
     struct CacheKey {
@@ -49,10 +49,10 @@ private:
         size_t operator()(const CacheKey& key) const;
     };
 
-    // 回収済みディスクリプタ。GPU が読み終わるまで再利用へ回せない。
+    /// 回収済みディスクリプタ。GPU が読み終わるまで再利用へ回せない。
     struct RetiredDescriptor {
         uint32_t index = 0;
-        uint64_t frame = 0;  // 回収した ImGui フレーム番号
+        uint64_t frame = 0;  ///< 回収した ImGui フレーム番号
     };
 
     void* CacheDescriptor(const CacheKey& key, D3D12_CPU_DESCRIPTOR_HANDLE source);

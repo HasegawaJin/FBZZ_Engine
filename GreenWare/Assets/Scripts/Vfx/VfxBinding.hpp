@@ -3,20 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 旧 VFXParamBinding を置き換えるか:
-///   旧実装は `schemaPath = "particle.colorStart"` という文字列でノードのフィールドを
-///   指していた。型は実行時にしか合わず、綴りを間違えても保存も検証も通るので、
-///   «光の強さを変えたつもりでパーティクルの色へ書いていた» が黙って成立していた。
-///   ここでは値の行き先を C++ の関数として書く。渡す型が合わなければコンパイルが止まる。
-///
-/// WHY 名前で子を引くか:
-///   .vfx はプレハブなので、子は «そのエフェクトの層» そのもので、名前が層の名前になる
-///   ("Blast Light" / "Sparks")。id で引くとエディタで層を並べ替えたときに壊れ、
-///   参照で持つとプレハブのインスタンス化ごとに張り直しが要る。名前が一番壊れにくい。
-///
-/// WHY 再帰で探すか:
-///   変換器は旧 Canvas の group を «層» の空 GameObject として残すため、
-///   目的の子は必ずしも直下に居ない (Sparks は "Debris (無彩色)" の中)。
+/// @note 旧 VFXParamBinding は schemaPath 文字列でフィールドを指し、型は実行時にしか合わず綴り
+///       ミスも検証を通っていた。ここでは値の行き先を C++ 関数として書き、型不一致はコンパイルで止める。
+/// @note 子は名前で引く。.vfx の子は層そのもの (name が層名) で、id は並べ替えで壊れ参照は
+///       インスタンス化ごとに張り直しが要る。変換器が残す空の group GameObject があるため再帰で探す。
 #pragma once
 
 #include <Engine/Scene/Components/DecalComponent.hpp>
@@ -106,15 +96,13 @@ inline void ParticleEmitVelocity(GameObject& root, std::string_view node, const 
 }
 
 /// 原点から外向きの加速度 [m/s²]。負で «吸い込み»。
-///
-/// WHY emitVelocity で代用できないか: あちらは層のローカル軸へ固定の初速を与えるので、
-///     «全方位へ同じだけ広がる» を書くと 1 方向だけが濃くなる。放射は粒ごとに向きが
-///     違わなければならず、それを持っているのは発生位置 (球・円錐) だけ。
+/// @note emitVelocity は層のローカル軸へ固定の初速を与えるため «全方位へ同じだけ広がる» は書けず、
+///       粒ごとに向きが違う放射には発生位置 (球・円錐) しか使えない。
 inline void ParticleRadialVelocity(GameObject& root, std::string_view node, float value)
 {
     if (GameObject* target = Find(root, node))
         if (auto* emitter = target->GetComponent<ParticleEmitter>())
-            emitter->settings.EnsureLocalForce(ForceFieldType::Repulse).strength = value;
+            emitter->settings.EnsureLocalForce(FlowFieldType::Source).strength = value;
 }
 
 /// 層そのものの位置。旧 schemaPath "localPosition"。
@@ -124,12 +112,9 @@ inline void NodePosition(GameObject& root, std::string_view node, const Vector3&
 }
 
 /// 光の色と強さ。
-///
-/// WHY エンベロープの基準値も一緒に書くか:
-///   VFXLightEnvelope は «Inspector に置かれた値をピークとして掴み、毎フレーム
-///   カーブを掛け直す» 作りになっている (VFXCaptured<Base>)。掴んだ後に
-///   LightComponent 側だけ書き換えても、次のフレームで基準値から作り直されて消える。
-///   1 発ごとに強さを変えるには基準値の方を書く必要がある。
+/// @note VFXLightEnvelope は Inspector 値をピークとして掴み毎フレームカーブを掛け直すため
+///       (`VFXCaptured<Base>`)、LightComponent だけ書き換えても次フレームで基準値から作り直される。
+///       1 発ごとに強さを変えるには基準値も一緒に書く必要がある。
 inline void Light(GameObject& root, std::string_view node,
                   const Vector3* color, const float* intensity)
 {
@@ -147,8 +132,8 @@ inline void Light(GameObject& root, std::string_view node,
         light->intensity = *intensity;
         if (envelope != nullptr) envelope->base.value.intensity = *intensity;
     }
-    // 以降 «掴み直し» をさせない。掴み直されると、カーブを掛けた後の暗い値を
-    // 新しいピークとして拾ってしまい、撃つたびに暗くなる。
+    /// @note 以降 «掴み直し» をさせない。掴み直されると、カーブを掛けた後の暗い値を
+    ///       新しいピークとして拾ってしまい、撃つたびに暗くなる。
     if (envelope != nullptr) envelope->base.captured = true;
 }
 

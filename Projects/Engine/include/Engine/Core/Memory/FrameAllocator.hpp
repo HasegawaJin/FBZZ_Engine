@@ -12,8 +12,8 @@
 
 namespace fbzz::core {
 
-// ゲームループ単位で使い捨てる一時メモリ領域。
-// WHY: レンダリングリストや一時的な計算結果はフレームを跨がないため、明示的な個別解放を不要にする。
+/// @brief ゲームループ単位で使い捨てる一時メモリ領域。
+/// @note レンダリングリストや一時的な計算結果はフレームを跨がないため、明示的な個別解放を不要にする。
 class FrameAllocator final : public Allocator {
 public:
     FrameAllocator() = default;

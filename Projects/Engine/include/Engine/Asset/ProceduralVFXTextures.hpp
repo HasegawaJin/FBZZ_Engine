@@ -9,8 +9,8 @@
 
 namespace fbzz::asset {
 
-// Particle.hlsl が通常RGBAとして読めるFlipbookプリセット。
-// DistortionだけはRGを符号付き変位、Aを効果範囲として生成する。
+/// Particle.hlsl が通常RGBAとして読めるFlipbookプリセット。
+/// DistortionだけはRGを符号付き変位、Aを効果範囲として生成する。
 enum class ProceduralFlipbookPreset : std::uint8_t {
     Smoke = 0,
     Fire,
@@ -18,8 +18,8 @@ enum class ProceduralFlipbookPreset : std::uint8_t {
     Distortion,
 };
 
-// 1行を1本のアニメーションとして生成する。
-// WHY: ParticleFlipbookSettings::spriteRandomRow と一致させ、行ごとに見た目の異なる粒子を選べるようにする。
+/// 1行を1本のアニメーションとして生成する。
+/// @note ParticleFlipbookSettings::spriteRandomRow と一致させ、行ごとに見た目の異なる粒子を選べるようにする。
 struct ProceduralFlipbookSettings {
     ProceduralFlipbookPreset preset = ProceduralFlipbookPreset::Smoke;
     int frameSize = 128;
@@ -38,7 +38,7 @@ struct ProceduralImpactDecalSettings {
     float emissiveStrength = 0.65f;
 };
 
-// 生成結果は実ファイルパスを返す。Editor側でAssets起点パスへ正規化してアセットへ保存する。
+/// 生成結果は実ファイルパスを返す。Editor側でAssets起点パスへ正規化してアセットへ保存する。
 struct ProceduralVFXTextureResult {
     bool success = false;
     std::string message;
@@ -47,11 +47,11 @@ struct ProceduralVFXTextureResult {
     std::string emissivePath;
 };
 
-// outputDirectoryへ衝突しない連番名でPNGを書き出す。
+/// outputDirectoryへ衝突しない連番名でPNGを書き出す。
 [[nodiscard]] ProceduralVFXTextureResult GenerateProceduralFlipbook(
     const std::string& outputDirectory, const ProceduralFlipbookSettings& settings);
 
-// Albedo / Normal / Emissiveの3枚を同じベース名で書き出す。
+/// Albedo / Normal / Emissiveの3枚を同じベース名で書き出す。
 [[nodiscard]] ProceduralVFXTextureResult GenerateProceduralImpactDecal(
     const std::string& outputDirectory, const ProceduralImpactDecalSettings& settings);
 

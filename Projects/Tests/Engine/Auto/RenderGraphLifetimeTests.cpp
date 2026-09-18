@@ -78,12 +78,12 @@ const RG::ResourceLifetime* Find(const RG& graph, std::string_view name)
 
 class RenderGraphLifetimeTest : public testkit::Fixture {};
 
-// --- 寿命 -------------------------------------------------------------------
+/// @name 寿命
 
 TEST_F(RenderGraphLifetimeTest, ReportsLifetimeBoundsAsExecutionOrderIndices)
 {
-    // firstPass / lastPass は «登録番号» ではなく «カリング後の実行順の番号»。
-    // 取り違えると、刈られたパスがある構成で寿命が実際より長く出る。
+    /// @note firstPass / lastPass は «登録番号» ではなく «カリング後の実行順の番号»。
+    ///       取り違えると、刈られたパスがある構成で寿命が実際より長く出る。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Unused", TransientRT());
@@ -95,7 +95,7 @@ TEST_F(RenderGraphLifetimeTest, ReportsLifetimeBoundsAsExecutionOrderIndices)
 
     ASSERT_TRUE(graph.Plan());
 
-    // Orphan が刈られるので、Present の実行順番号は登録番号の 2 ではなく 1。
+    /// @note Orphan が刈られるので、Present の実行順番号は登録番号の 2 ではなく 1。
     const RG::ResourceLifetime* hdr = Find(graph, "HDR");
     ASSERT_NE(hdr, nullptr);
     EXPECT_EQ(hdr->firstPass, 0);
@@ -120,8 +120,8 @@ TEST_F(RenderGraphLifetimeTest, OmitsResourcesTouchedOnlyByCulledPasses)
 
 TEST_F(RenderGraphLifetimeTest, SortsLifetimesByFirstUseThenName)
 {
-    // RenderPipeline はこの並び順でプールを組み直す。並びが変われば、同じ構成でも
-    // 別の物理 RT が配られる。
+    /// @note RenderPipeline はこの並び順でプールを組み直す。並びが変われば、同じ構成でも
+    ///       別の物理 RT が配られる。
     RG graph;
     graph.DeclareResource("Zebra", TransientRT());
     graph.DeclareResource("Alpha", TransientRT());
@@ -138,11 +138,11 @@ TEST_F(RenderGraphLifetimeTest, SortsLifetimesByFirstUseThenName)
     EXPECT_EQ(lifetimes[1].name, "Zebra");
 }
 
-// --- エイリアス -------------------------------------------------------------
+/// @name エイリアス
 
 TEST_F(RenderGraphLifetimeTest, SharesOneGroupBetweenResourcesWhoseLifetimesDoNotOverlap)
 {
-    // Early は Middle で死に、Late は MakeLate で生まれる。間が 1 段空くので貸し回せる。
+    /// @note Early は Middle で死に、Late は MakeLate で生まれる。間が 1 段空くので貸し回せる。
     RG graph;
     graph.DeclareResource("Early", TransientRT());
     graph.DeclareResource("Mid", TransientRT());
@@ -186,8 +186,8 @@ TEST_F(RenderGraphLifetimeTest, SeparatesGroupsForResourcesAliveAtTheSameTime)
 
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
 {
-    // Half は寿命の上では Full の枠に収まるが、寸法が違うので貸し回してはいけない。
-    // 上の SharesOneGroup... と同じ形で desc だけを変えてある。
+    /// @note Half は寿命の上では Full の枠に収まるが、寸法が違うので貸し回してはいけない。
+    ///       上の SharesOneGroup... と同じ形で desc だけを変えてある。
     RG graph;
     graph.DeclareResource("Full", TransientRT(1920, 1080));
     graph.DeclareResource("Mid", TransientRT(1920, 1080));
@@ -205,15 +205,17 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
     const RG::ResourceLifetime* half = Find(graph, "Half");
     ASSERT_NE(full, nullptr);
     ASSERT_NE(half, nullptr);
-    EXPECT_LT(full->lastPass, half->firstPass);   // 枠は空いている
-    EXPECT_NE(full->aliasGroup, half->aliasGroup); // それでも共有しない
+    /// @note 枠は空いている
+    EXPECT_LT(full->lastPass, half->firstPass);
+    /// @note それでも共有しない
+    EXPECT_NE(full->aliasGroup, half->aliasGroup);
 }
 
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupBetweenDepthOnlyAndColourTargets)
 {
-    // 寸法も形式も同じだが colorCount が違う。実体の作られ方が別物なので貸し回せない。
-    // 以前は寸法と形式しか見ておらず、深度専用の DecalDepth とカラーマスクが
-    // 同じグループに入り得た。
+    /// @note 寸法も形式も同じだが colorCount が違う。実体の作られ方が別物なので貸し回せない。
+    ///       以前は寸法と形式しか見ておらず、深度専用の DecalDepth とカラーマスクが
+    ///       同じグループに入り得た。
     RG graph;
     graph.DeclareResource("Colour", TransientRT(1920, 1080));
     graph.DeclareResource("Mid",    TransientRT(1920, 1080));
@@ -231,13 +233,15 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupBetweenDepthOnlyAndColourTar
     const RG::ResourceLifetime* depth  = Find(graph, "Depth");
     ASSERT_NE(colour, nullptr);
     ASSERT_NE(depth, nullptr);
-    EXPECT_LT(colour->lastPass, depth->firstPass);   // 枠は空いている
-    EXPECT_NE(colour->aliasGroup, depth->aliasGroup); // それでも共有しない
+    /// @note 枠は空いている
+    EXPECT_LT(colour->lastPass, depth->firstPass);
+    /// @note それでも共有しない
+    EXPECT_NE(colour->aliasGroup, depth->aliasGroup);
 }
 
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenOnlyTheDepthFlagDiffers)
 {
-    // colorCount も形式も同じで、深度を持つかだけが違う。
+    /// @note colorCount も形式も同じで、深度を持つかだけが違う。
     RG graph;
     graph.DeclareResource("WithDepth", TransientRT(1920, 1080));
     graph.DeclareResource("Mid",       TransientRT(1920, 1080));
@@ -261,8 +265,8 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenOnlyTheDepthFlagDiffers)
 
 TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasing)
 {
-    // 外から持ち込んだ RT と、フレームを跨いで内容を保つ RT は貸し回してはいけない。
-    // aliasGroup = -1 がその印。
+    /// @note 外から持ち込んだ RT と、フレームを跨いで内容を保つ RT は貸し回してはいけない。
+    ///       aliasGroup = -1 がその印。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("History", PersistentRT());
@@ -286,10 +290,10 @@ TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasi
 
 TEST_F(RenderGraphLifetimeTest, SharesAGroupBetweenUndeclaredResourcesBecauseTheyGetTheDefaultDesc)
 {
-    // DeclareResource を書き忘れた名前は desc が既定値 {Unknown, 0, 0} になる。
-    // 寸法も kind も揃ってしまうので、本来まったく別物のリソース同士が «同型» と
-    // 判定されて同じ物理実体を貸し回される。
-    // 現状これを検出する仕組みは無い。所有権をグラフへ移す前に必ず塞ぐこと。
+    /// @note DeclareResource を書き忘れた名前は desc が既定値 {Unknown, 0, 0} になる。
+    ///       寸法も kind も揃ってしまうので、本来まったく別物のリソース同士が «同型» と
+    ///       判定されて同じ物理実体を貸し回される。
+    ///       現状これを検出する仕組みは無い。所有権をグラフへ移す前に必ず塞ぐこと。
     RG graph;
     graph.DeclareResource("Output", ImportedRT());
     AddPass(graph, "MakeA", {}, { "UndeclaredA" });
@@ -311,8 +315,8 @@ TEST_F(RenderGraphLifetimeTest, SharesAGroupBetweenUndeclaredResourcesBecauseThe
 
 TEST_F(RenderGraphLifetimeTest, AssignsIdenticalAliasGroupsAcrossRepeatedPlans)
 {
-    // グループ番号は物理 RT の貸出先そのもの。unordered_map の走査順に依存して
-    // 揺れると、フレームごとに違う RT へ描くことになる。
+    /// @note グループ番号は物理 RT の貸出先そのもの。unordered_map の走査順に依存して
+    ///       揺れると、フレームごとに違う RT へ描くことになる。
     RG graph;
     graph.DeclareResource("A", TransientRT());
     graph.DeclareResource("B", TransientRT());

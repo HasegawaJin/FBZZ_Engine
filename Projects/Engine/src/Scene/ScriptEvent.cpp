@@ -20,9 +20,9 @@ struct Subscription {
     bool                        canceled = false;
 };
 
-// チャンネル名 → 購読リスト。
-// WHY vector か: 配信はフレームごとに走る一方、購読/解除は開始時と破棄時に偏る。
-//     連続領域を順に舐める配信コストを優先し、解除は canceled フラグ + 後片付けで行う。
+/// チャンネル名 → 購読リスト。
+/// @note 配信はフレームごとに走る一方、購読/解除は開始時と破棄時に偏るため、連続領域を順に舐める
+///       配信コストを優先し、解除は canceled フラグ + 後片付けで行う。
 std::unordered_map<std::string, std::vector<Subscription>>& Channels()
 {
     static std::unordered_map<std::string, std::vector<Subscription>> s_channels;
@@ -30,10 +30,10 @@ std::unordered_map<std::string, std::vector<Subscription>>& Channels()
 }
 
 uint64_t g_nextId = 1;
-// 配信中は vector を再確保させない。ネストした Publish もあり得るので深さで数える。
+/// 配信中は vector を再確保させない。ネストした Publish もあり得るので深さで数える。
 int g_publishDepth = 0;
 
-// canceled になった購読を実際に取り除く。配信の入れ子が完全に抜けたときだけ行う。
+/// canceled になった購読を実際に取り除く。配信の入れ子が完全に抜けたときだけ行う。
 void CompactIfIdle()
 {
     if (g_publishDepth > 0) return;
@@ -62,10 +62,9 @@ ScriptEventToken ScriptEventBus::SubscribeRaw(Script* owner,
     const ScriptEventToken token{ subscription.id };
     Channels()[std::string(channel)].push_back(std::move(subscription));
 
-    // 自動解除は Script::CancelEventSubscriptions() が UnsubscribeOwner(this) を
-    // 呼ぶことで行われる (~Script から必ず通る)。
-    // WHY ここで解除関数を登録しないか: Subscribe のたびに同じ解除処理が積まれ、
-    //     購読数ぶんの重複エントリになる。オーナー単位の一括解除で十分。
+    /// @note 自動解除は Script::CancelEventSubscriptions() が UnsubscribeOwner(this) を呼ぶことで
+    ///       行われる (~Script から必ず通る)。Subscribe ごとに解除関数を積むと購読数ぶんの重複
+    ///       エントリになるため、オーナー単位の一括解除にまとめる。
     return token;
 }
 
@@ -98,13 +97,13 @@ void ScriptEventBus::PublishRaw(std::string_view channel, const void* payload)
     if (it == Channels().end()) return;
 
     ++g_publishDepth;
-    // WHY 添字ループか: ハンドラ内から Subscribe されると vector が再確保され得る。
-    //     開始時点の件数までを走査し、配信中に増えた購読は次回の Publish から届かせる
-    //     (同一イベントの配信中に自分自身を購読して即受け取る、という混乱を避ける)。
+    /// @note ハンドラ内から Subscribe されると vector が再確保され得るため、開始時点の件数までを
+    ///       走査する。配信中に増えた購読は次回の Publish から届かせ、同一イベント配信中に自分自身を
+    ///       購読して即受け取る混乱を避ける。
     const size_t initialCount = it->second.size();
     for (size_t i = 0; i < initialCount; ++i) {
-        // 参照は保持しない。ハンドラ内の Subscribe による再確保後も安全に読めるよう、
-        // 毎回コンテナ経由で取り直してからコピーして呼ぶ。
+        /// @note 参照は保持しない。ハンドラ内の Subscribe による再確保後も安全に読めるよう、
+        ///       毎回コンテナ経由で取り直してからコピーして呼ぶ。
         auto& subs = Channels()[std::string(channel)];
         if (i >= subs.size()) break;
         if (subs[i].canceled) continue;

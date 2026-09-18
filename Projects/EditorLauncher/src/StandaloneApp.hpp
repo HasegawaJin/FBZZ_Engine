@@ -3,9 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
 ///
-/// WHY: IModule を実装することで Application::Run() に乗せ、
-/// Profiler / MemorySystem / Input::Update / PollEvents などの
-/// フレーム境界処理をエンジン側に委譲する。
+/// @note IModule を実装して Application::Run() に乗せることで、Profiler / MemorySystem / Input::Update / PollEvents
+///       などのフレーム境界処理をエンジン側に委譲する。
 #pragma once
 #include <Editor/ScriptDllLoader.hpp>
 #include <Engine/Core/ILogSink.hpp>
@@ -27,16 +26,15 @@ namespace fbzz::editor_launcher {
 
 class StandaloneApp final : public core::IModule {
 public:
-    // WHY settings が非 const か: `graphics` プロキシ (Option 画面) が実行中に
-    //      settings.render を書き換えるため、その実体を可変で握る必要がある。
-    //      配布ゲームでは ProjectSettings をファイルへ書き戻さない。
+    /// @note settings は非 const 参照: `graphics` プロキシ (Option 画面) が実行中に settings.render を書き換えるため、
+    ///       その実体を可変で握る必要がある (配布ゲームでは ProjectSettings をファイルへ書き戻さない)。
     StandaloneApp(renderer::IRenderer& renderer,
                   renderer::IImGuiRenderer& imguiRenderer,
                   renderer::ResourceManager& resources,
                   const LaunchProject& project,
                   ProjectSettings& settings);
 
-    // IModule
+    /// IModule
     [[nodiscard]] bool OnInit()         override;
     void               OnUpdate(float dt)     override;
     void               OnLateUpdate(float dt) override;
@@ -44,7 +42,7 @@ public:
     void               OnShutdown()     override;
 
 private:
-    // game.log へ書き出すシンク
+    /// game.log へ書き出すシンク
     struct FileLogSink final : core::ILogSink {
         std::ofstream file;
         void OnLog(const core::LogEntry& entry) override;

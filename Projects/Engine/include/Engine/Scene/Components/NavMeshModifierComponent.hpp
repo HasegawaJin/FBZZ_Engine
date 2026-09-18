@@ -20,14 +20,14 @@
 namespace fbzz::scene {
 
 enum class NavMeshModifierMode : uint8_t {
-    NotWalkable,  // 障害物: Bake 時にこの GO の Collider を歩行不可領域として除外
-    Walkable,     // 歩行可: Bake 時にこの GO の Collider を歩行可能面ソースとして追加
+    NotWalkable,  ///< 障害物: Bake 時にこの GO の Collider を歩行不可領域として除外
+    Walkable,     ///< 歩行可: Bake 時にこの GO の Collider を歩行可能面ソースとして追加
 };
 
 struct NavMeshModifierComponent {
     NavMeshModifierMode mode    = NavMeshModifierMode::NotWalkable;
-    // Walkable モード専用: このコライダーが生成するポリゴンに割り当てるエリアタイプ ID (0〜31)。
-    // NavMeshSurfaceComponent::areaCosts[areaType] がパスコスト計算に使われる。
+    /// Walkable モード専用: このコライダーが生成するポリゴンに割り当てるエリアタイプ ID (0〜31)。
+    /// NavMeshSurfaceComponent::areaCosts[areaType] がパスコスト計算に使われる。
     int areaType = 0;
     bool                enabled = true;
 

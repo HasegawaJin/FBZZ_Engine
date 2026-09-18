@@ -58,7 +58,7 @@ void ProjectRuntime::Update(float dt,
                             bool singleStep,
                             bool playing)
 {
-    // WHAT: Moduleごとの差異を許さず、Physics設定→Simulation状態→Schedulerの順に固定する。
+    /// @note Module ごとの差異を許さず、Physics 設定 → Simulation 状態 → Scheduler の順に固定する。
     ApplyPhysicsSettings(m_physicsWorld, settings);
     m_sceneManager.SetPhysicsHz(settings.physics.hz);
     m_sceneManager.SetSimulating(simulating);
@@ -100,9 +100,9 @@ void ProjectRuntime::UpdateScriptViewport(uint32_t viewportWidth, uint32_t viewp
 
 void ProjectRuntime::Shutdown()
 {
-    // WHY: Play中のLoadScene後にEditor外部Sceneへ戻ると、SceneManagerには外部Sceneと
-    //      遷移時のowned Sceneが同時に存在する。CurrentSceneだけをClearするとowned Sceneの
-    //      DLL由来Scriptが残るため、FreeLibrary前に両方を明示的に破棄する。
+    /// @note Play 中の LoadScene 後に Editor 外部 Scene へ戻ると、SceneManager には外部 Scene と
+    ///       遷移時の owned Scene が同時に存在する。CurrentScene だけを Clear すると owned Scene の
+    ///       DLL 由来 Script が残るため、FreeLibrary 前に両方を明示的に破棄する。
     m_sceneManager.ClearScenes();
     Script::SetPhysicsWorld(nullptr);
     if (ScriptRuntime::GetOverride() == &m_scriptRuntime) {
@@ -111,8 +111,8 @@ void ProjectRuntime::Shutdown()
     m_sceneManager.SetSimulating(false);
     m_sceneManager.SetPlaying(false);
 
-    // m_gameUICtx は Play セッションごとに作り直される。抱えている頂点バッファは
-    // ResourceHandle なのでデストラクタでは返せず、ここで返さないと往復のたびに残る。
+    /// @note m_gameUICtx は Play セッションごとに作り直される。抱えている頂点バッファは
+    ///       ResourceHandle なのでデストラクタでは返せず、ここで返さないと往復のたびに残る。
     if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
         UISystemReleaseGpuResources(m_gameUICtx, *resources);
 }

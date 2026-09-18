@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 ///
-/// WHAT: v3 の型付き Property / Material / Morph Track を復元する。
+/// v3 の型付き Property / Material / Morph Track を復元する。
 #include <Engine/Asset/AnimationImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Format/FzAssetFormat.hpp>
@@ -84,10 +84,9 @@ struct FzVector4KeyV3 { double time; float x, y, z, w; };
 struct FzIntKeyV3 { double time; int32_t value; int32_t _pad; };
 struct FzBoolKeyV3 { double time; uint8_t value; uint8_t _pad[7]; };
 
-// rootMotionTrackIndex から人が読めるノード名を復元する。
-// WHY: .anim v3 のヘッダーにはノード名を入れる余地が無い。トラック配列から引けば
-//      同じ情報が得られるので、フォーマットを変えずに Inspector や
-//      RootMotionSource::NodeName の突き合わせへ提示できる。
+/// @brief rootMotionTrackIndex から人が読めるノード名を復元する。
+/// @note .anim v3 のヘッダーにはノード名を入れる余地が無いため、トラック配列から引いて
+///       Inspector や RootMotionSource::NodeName の突き合わせへ提示する。
 void ResolveRootMotionNodeName(AnimationClip& clip)
 {
     clip.rootMotionNodeName.clear();

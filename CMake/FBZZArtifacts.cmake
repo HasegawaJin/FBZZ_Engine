@@ -1,6 +1,6 @@
 # 生成物レイアウトの正本と、そこから外れた残骸の掃除。
 #
-#   Binaries/<Config>/          共有 DLL だけ (FBZZMath / FBZZPhysics / FBZZEngine / ImGui / assimp / dxc)
+#   Binaries/<Config>/          共有 DLL だけ (FBZZMath / FBZZPhysics / FBZZFluid / FBZZEngine / ImGui / assimp / dxc)
 #   Binaries/<Config>/Editor/   FBZZEditor.exe        (ターゲット名は FBZZEditorLauncher)
 #   Binaries/<Config>/Sandbox/  Sandbox.exe / SandboxStandalone.exe / SandboxScripts.dll
 #   Binaries/<Config>/Tests/    FBZZTests*.exe / FBZZTestBench.exe

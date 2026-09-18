@@ -3,14 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// 評価モデル (Docs/design/game-ai-layer.md の D7):
-/// Running のときも**ルートから再入する**が、Composite は cursor[] に
-/// 現在の子スロットを持つので兄弟の再評価は起きない。歩くのは根から
-/// Running リーフまでの O(depth) で済む。
-///
-/// WHY リーフへ直接ジャンプしないか:
-/// Decorator の TimeLimit / Cooldown はリーフへ至る経路上にあり、
-/// ジャンプすると評価がスキップされて時間切れが効かなくなる。
+/// 評価モデル (Docs/design/game-ai-layer.md の D7): Running 中もルートから再入するが、
+/// Composite は cursor[] に子スロットを持つので兄弟の再評価は起きず、根から Running リーフ
+/// までの O(depth) で済む。Decorator の TimeLimit/Cooldown はリーフへの経路上にあるため、
+/// リーフへ直接ジャンプすると評価がスキップされ時間切れが効かなくなる。
 #include <Engine/AI/BehaviorTreeEvaluator.hpp>
 
 #include <algorithm>
@@ -18,7 +14,7 @@
 
 namespace fbzz::ai {
 
-// ── BTInstanceState ──────────────────────────────────────────────────────────
+/// @name BTInstanceState
 
 void BTInstanceState::Resize(std::size_t nodeCount)
 {
@@ -45,15 +41,15 @@ void BTInstanceState::ClearRange(std::uint16_t lo, std::uint16_t hi)
         flags[i]  = 0;
         cursor[i] = 0;
         timers[i] = 0.0f;
-        // cooldowns は意図的に触らない (中断で消すと連打できてしまう)。
+        /// @note cooldowns は意図的に触らない (中断で消すと連打できてしまう)。
     }
 }
 
 namespace {
 
-// 決定的な xorshift32。
-// WHY std::mt19937 を使わないか: エージェントごとに状態を持つ必要があり、
-//     mt19937 は 2.5KB と重い。用途は「重み付き選択」だけなので 4 バイトで足りる。
+/// @brief 決定的な xorshift32。
+/// @note エージェントごとに状態を持つ必要があり mt19937 は 2.5KB と重い。用途は「重み付き選択」
+///       だけなので 4 バイトで足りる。
 std::uint32_t NextRandom(std::uint32_t& state)
 {
     std::uint32_t x = state ? state : 0x9E3779B9u;
@@ -81,7 +77,7 @@ void RecordStatus(BTTickContext& ctx, std::uint16_t node, BTStatus status)
     }
 }
 
-// 比較演算を型ごとに適用する。
+/// 比較演算を型ごとに適用する。
 bool CompareValues(BTCompareOp op, float lhs, float rhs)
 {
     switch (op) {
@@ -95,14 +91,13 @@ bool CompareValues(BTCompareOp op, float lhs, float rhs)
     }
 }
 
-// Blackboard の値と params の期待値を比較する。副作用なし。
+/// Blackboard の値と params の期待値を比較する。副作用なし。
 bool EvaluateBlackboardCompare(const BTNodeParams& params, const Blackboard& blackboard)
 {
     if (params.key == kInvalidBlackboardKey) return false;
 
-    // 「N 秒以内に書かれた値か」の時間条件。
-    // WHY 必要か: 「最後にプレイヤーを見てから 5 秒経ったら警戒を解く」という
-    //     記憶の減衰を、各ノードが自前タイマーを持たずに書けるようにする。
+    /// @note 「N 秒以内に書かれた値か」の時間条件。「最後にプレイヤーを見てから 5 秒経ったら
+    ///       警戒を解く」という記憶の減衰を、各ノードが自前タイマーを持たずに書けるようにする。
     if (params.withinSeconds > 0.0f) {
         if (!blackboard.IsSet(params.key)) return false;
         const float elapsed = blackboard.GetTime() - blackboard.GetLastWriteTime(params.key);
@@ -128,7 +123,7 @@ bool EvaluateBlackboardCompare(const BTNodeParams& params, const Blackboard& bla
         return CompareValues(params.compareOp, value, params.valueFloat);
     }
     case BlackboardType::Vector3: {
-        // 距離での比較にする。座標の完全一致は浮動小数では実用にならない。
+        /// @note 距離での比較にする。座標の完全一致は浮動小数では実用にならない。
         math::Vector3 value = math::Vector3::ZERO;
         if (!blackboard.GetVector3(params.key, value)) return false;
         const math::Vector3 diff = value - params.valueVector3;
@@ -137,7 +132,7 @@ bool EvaluateBlackboardCompare(const BTNodeParams& params, const Blackboard& bla
     case BlackboardType::Entity: {
         scene::EntityID value = scene::EntityID::INVALID;
         if (!blackboard.GetEntity(params.key, value)) return false;
-        // Entity は有効/無効の判定にのみ使う (== で比較したい相手が無い)。
+        /// @note Entity は有効/無効の判定にのみ使う (== で比較したい相手が無い)。
         const bool valid = value.IsValid();
         return params.compareOp == BTCompareOp::NotEqual ? !valid : valid;
     }
@@ -152,7 +147,7 @@ bool EvaluateBlackboardCompare(const BTNodeParams& params, const Blackboard& bla
     }
 }
 
-// Wait / Cooldown / TimeLimit の実効時間。durationRandom でばらつかせる。
+/// Wait / Cooldown / TimeLimit の実効時間。durationRandom でばらつかせる。
 float ResolveDuration(const BTNodeParams& params, std::uint32_t& rngState)
 {
     if (params.durationRandom <= 0.0f) return std::max(params.duration, 0.0f);
@@ -162,7 +157,7 @@ float ResolveDuration(const BTNodeParams& params, std::uint32_t& rngState)
 
 } // namespace
 
-// ── 条件評価 (副作用なし) ────────────────────────────────────────────────────
+/// @name 条件評価 (副作用なし)
 
 bool EvaluateBTCondition(const BehaviorTreeRuntime& tree, std::uint16_t node,
                          const Blackboard& blackboard, const BTTickContext& ctx)
@@ -180,7 +175,7 @@ bool EvaluateBTCondition(const BehaviorTreeRuntime& tree, std::uint16_t node,
     case BTNodeType::BlackboardCompare:
         return EvaluateBlackboardCompare(params, blackboard);
 
-    // 知覚に依存する条件は ActionHandler へ委ねる (段階 3 以降で実装)。
+    /// @note 知覚に依存する条件は ActionHandler へ委ねる (段階 3 以降で実装)。
     case BTNodeType::HasTarget:
     case BTNodeType::IsTargetInRange:
     case BTNodeType::IsHealthBelow:
@@ -194,7 +189,7 @@ bool EvaluateBTCondition(const BehaviorTreeRuntime& tree, std::uint16_t node,
 
 namespace {
 
-// 前方宣言 (Composite / Decorator が再帰する)
+/// 前方宣言 (Composite / Decorator が再帰する)
 BTStatus TickNode(const BehaviorTreeRuntime& tree, std::uint16_t node,
                   BTInstanceState& state, Blackboard& blackboard, BTTickContext& ctx);
 
@@ -207,9 +202,8 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
     const std::uint16_t first = btNode.firstChild;
     const std::uint16_t count = btNode.childCount;
 
-    // 子が無い Composite は「やることが無い」= 失敗。
-    // WHY Success にしないか: 空の Selector を通過して先へ進むと、
-    //     未完成の枝が黙って成功扱いになりバグが隠れる。
+    /// @note 子が無い Composite は「やることが無い」= 失敗。Success にすると空の Selector を
+    ///       通過して先へ進み、未完成の枝が黙って成功扱いになりバグが隠れる。
     if (count == 0) return BTStatus::Failure;
 
     switch (btNode.type) {
@@ -260,7 +254,7 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
         for (std::uint16_t i = 0; i < count; ++i) {
             const auto child = static_cast<std::uint16_t>(first + i);
 
-            // 既に決着した子は再実行しない (結果は子の flags に保存してある)。
+            /// @note 既に決着した子は再実行しない (結果は子の flags に保存してある)。
             if (state.flags[child] & BTNodeFlag::Done) {
                 if (state.flags[child] & BTNodeFlag::DoneSuccess) ++succeeded;
                 else                                              ++failed;
@@ -291,7 +285,7 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
 
         const bool success = requireAll ? (failed == 0) : (succeeded > 0);
 
-        // 決着したので子の状態を全部畳む (次回は最初から)。
+        /// @note 決着したので子の状態を全部畳む (次回は最初から)。
         state.ClearRange(first, tree.subtreeEnd[node]);
         state.flags[node] &= static_cast<std::uint8_t>(~BTNodeFlag::Running);
         state.cursor[node] = 0;
@@ -299,10 +293,10 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
     }
 
     case BTNodeType::RandomSelector: {
-        // 実行中なら前回選んだ子を継続する。
+        /// @note 実行中なら前回選んだ子を継続する。
         std::uint16_t chosen = state.cursor[node];
         if (!(state.flags[node] & BTNodeFlag::Running)) {
-            // 重み付き抽選。weights が空 / 合計 0 なら均等。
+            /// @note 重み付き抽選。weights が空 / 合計 0 なら均等。
             float total = 0.0f;
             for (std::uint16_t i = 0; i < count; ++i) {
                 const float w = i < params.childWeights.size()
@@ -316,7 +310,7 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
             for (std::uint16_t i = 0; i < count; ++i) {
                 const float w = i < params.childWeights.size()
                     ? std::max(params.childWeights[i], 0.0f) : 1.0f;
-                // 重み 0 の子は roll がどうであれ選ばれない。
+                /// @note 重み 0 の子は roll がどうであれ選ばれない。
                 if (w <= 0.0f) continue;
                 roll -= w;
                 if (roll <= 0.0f) { chosen = i; break; }
@@ -377,7 +371,7 @@ BTStatus TickDecorator(const BehaviorTreeRuntime& tree, std::uint16_t node,
         }
 
         ++state.cursor[node];
-        // repeatCount = 0 は無限ループ。永久に Running を返し続ける。
+        /// @note repeatCount = 0 は無限ループ。永久に Running を返し続ける。
         if (params.repeatCount > 0 && state.cursor[node] >= params.repeatCount) {
             state.cursor[node] = 0;
             state.flags[node] &= static_cast<std::uint8_t>(~BTNodeFlag::Running);
@@ -398,7 +392,7 @@ BTStatus TickDecorator(const BehaviorTreeRuntime& tree, std::uint16_t node,
             state.flags[node] |= BTNodeFlag::Running;
             return BTStatus::Running;
         }
-        // 子が決着した時点でクールダウンを開始する。
+        /// @note 子が決着した時点でクールダウンを開始する。
         state.cooldowns[node] = ResolveDuration(params, state.rngState);
         state.flags[node] &= static_cast<std::uint8_t>(~BTNodeFlag::Running);
         return status;
@@ -406,7 +400,7 @@ BTStatus TickDecorator(const BehaviorTreeRuntime& tree, std::uint16_t node,
 
     case BTNodeType::BlackboardCondition: {
         if (!EvaluateBlackboardCompare(params, blackboard)) {
-            // 条件が偽なら子には入らない。実行中だった場合は畳む。
+            /// @note 条件が偽なら子には入らない。実行中だった場合は畳む。
             if (state.flags[node] & BTNodeFlag::Running)
                 state.ClearRange(node, tree.subtreeEnd[node]);
             return BTStatus::Failure;
@@ -425,7 +419,7 @@ BTStatus TickDecorator(const BehaviorTreeRuntime& tree, std::uint16_t node,
         state.timers[node] += ctx.dt;
         const float limit = std::max(params.duration, 0.0f);
         if (limit > 0.0f && state.timers[node] > limit) {
-            // 時間切れ。子のサブツリーを畳んで Failure。
+            /// @note 時間切れ。子のサブツリーを畳んで Failure。
             state.ClearRange(node, tree.subtreeEnd[node]);
             return BTStatus::Failure;
         }
@@ -459,7 +453,7 @@ BTStatus TickLeaf(const BehaviorTreeRuntime& tree, std::uint16_t node,
         return BTStatus::Running;
 
     case BTNodeType::Wait: {
-        // 初回入場時に実効時間を決めて timers へ「残り時間」として積む。
+        /// @note 初回入場時に実効時間を決めて timers へ「残り時間」として積む。
         if (!(state.flags[node] & BTNodeFlag::Entered)) {
             state.flags[node] |= BTNodeFlag::Entered;
             state.timers[node] = ResolveDuration(params, state.rngState);
@@ -483,7 +477,8 @@ BTStatus TickLeaf(const BehaviorTreeRuntime& tree, std::uint16_t node,
         case BlackboardType::Float:   ok = blackboard.SetFloat  (params.key, params.valueFloat);   break;
         case BlackboardType::Vector3: ok = blackboard.SetVector3(params.key, params.valueVector3); break;
         case BlackboardType::String:  ok = blackboard.SetString (params.key, params.valueString);  break;
-        case BlackboardType::Entity:  ok = false; break;  // 定数の Entity は表現できない
+        /// @note 定数の Entity は表現できない
+        case BlackboardType::Entity:  ok = false; break;
         default: ok = false; break;
         }
         return ok ? BTStatus::Success : BTStatus::Failure;
@@ -493,7 +488,7 @@ BTStatus TickLeaf(const BehaviorTreeRuntime& tree, std::uint16_t node,
         return EvaluateBlackboardCompare(params, blackboard)
             ? BTStatus::Success : BTStatus::Failure;
 
-    // ── 知覚に依存する条件 ──
+    /// @name 知覚に依存する条件
     case BTNodeType::HasTarget:
     case BTNodeType::IsTargetInRange:
     case BTNodeType::IsHealthBelow:
@@ -501,8 +496,8 @@ BTStatus TickLeaf(const BehaviorTreeRuntime& tree, std::uint16_t node,
         return EvaluateBTCondition(tree, node, blackboard, ctx)
             ? BTStatus::Success : BTStatus::Failure;
 
-    // ── Scene に触るアクション ──
-    // 段階 1 では actions が null なので Failure。段階 3 で実装が差される。
+    /// @name Scene に触るアクション
+    /// @note 段階 1 では actions が null なので Failure。段階 3 で実装が差される。
     case BTNodeType::MoveTo:
     case BTNodeType::Patrol:
     case BTNodeType::LookAt:
@@ -543,7 +538,7 @@ BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree, BTInstanceState& stat
 {
     if (tree.nodes.empty()) return BTStatus::Failure;
 
-    // 木の差し替え後などでサイズが合っていなければ張り直す。
+    /// @note 木の差し替え後などでサイズが合っていなければ張り直す。
     if (state.flags.size() != tree.nodes.size()) state.Resize(tree.nodes.size());
 
     if (ctx.outNodeStatus) {
@@ -554,18 +549,18 @@ BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree, BTInstanceState& stat
                       static_cast<std::uint8_t>(0));
     }
 
-    // Running リーフは毎 tick で再確定させる。
-    // (このリセットが無いと、中断で消えたリーフが残り続ける)
+    /// @note Running リーフは毎 tick で再確定させる。
+    ///       (このリセットが無いと、中断で消えたリーフが残り続ける)
     const std::uint16_t previousLeaf = state.runningLeaf;
     state.runningLeaf = kInvalidNode;
     (void)previousLeaf;
 
     const BTStatus status = TickNode(tree, 0, state, blackboard, ctx);
 
-    // ルートが決着したら全状態を畳んで、次回は最初から始める。
+    /// @note ルートが決着したら全状態を畳んで、次回は最初から始める。
     if (status != BTStatus::Running) {
         state.runningLeaf = kInvalidNode;
-        // cooldowns は保持する (木が一巡しただけでクールダウンが消えるのは誤り)。
+        /// @note cooldowns は保持する (木が一巡しただけでクールダウンが消えるのは誤り)。
         for (std::size_t i = 0; i < state.flags.size(); ++i) {
             state.flags[i]  = 0;
             state.cursor[i] = 0;
