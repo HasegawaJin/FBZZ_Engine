@@ -502,10 +502,10 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 ```powershell
 # C0 — 事前に winget install OpenCppCoverage.OpenCppCoverage
 #      HTML / バッジ / lcov も要るなら dotnet tool install -g dotnet-reportgenerator-globaltool
-.\Tools\RunCoverage.ps1
+.\Tools\Coverage\RunCoverage.ps1
 
 # C1 / C2 — VS Code タスク "Coverage: Build (clang-cl)" でビルドしてから
-.\Tools\RunCoverageLLVM.ps1
+.\Tools\Coverage\RunCoverageLLVM.ps1
 ```
 
 `Tools/` の分担は次のとおり。
@@ -527,8 +527,8 @@ Renderer / Editor / Tests / ThirdParty は両系統とも除外している。
 
 対象を変えるときは 4 箇所を同時に直すこと。ずれると C0 と C1 が別の母集団の比較になる。
 
-- `Tools/RunCoverage.ps1` の `--sources`
-- `Tools/RunCoverageLLVM.ps1` の `$sourceFilters`
+- `Tools/Coverage/RunCoverage.ps1` の `--sources`
+- `Tools/Coverage/RunCoverageLLVM.ps1` の `$sourceFilters`
 - `CMakeLists.txt` 末尾の `fbzz_instrument_for_coverage()`
 - `.github/workflows/tests.yml` の `--sources`
 

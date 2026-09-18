@@ -1,6 +1,6 @@
 # FBZZ Engine — Doxygen 設定
 # 実行: リポジトリ直下で `doxygen Docs/Doxyfile` → build/docs/html/index.html と build/docs/xml/
-# AI 向けの圧縮 Markdown は `python Tools/ApiReference.py` が XML から build/docs/api/ へ作る。
+# AI 向けの圧縮 Markdown は `python Projects/DevTools/ApiReference/ApiReference.py` が XML から build/docs/api/ へ作る。
 # 対象は公開ヘッダーのみ。規約 (Docs/conventions/comments.md) が守られているかを
 # WARN_IF_DOC_ERROR で検出する。未文書化は警告しない (書かない規約のため)。
 
@@ -73,7 +73,7 @@ GENERATE_HTML          = YES
 HTML_OUTPUT            = html
 GENERATE_TREEVIEW      = YES
 GENERATE_LATEX         = NO
-# Tools/ApiReference.py の入力。XML_PROGRAMLISTING を切ると出力が数分の一になる
+# Projects/DevTools/ApiReference/ApiReference.py の入力。XML_PROGRAMLISTING を切ると出力が数分の一になる
 GENERATE_XML           = YES
 XML_OUTPUT             = xml
 XML_PROGRAMLISTING     = NO

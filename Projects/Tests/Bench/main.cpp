@@ -9,6 +9,7 @@
 ///       起動に失敗する (CMake が FBZZEngine の出力先へ配置する)。
 /// @see  Docs/design/dx11-removal.md
 #include "BenchApp.hpp"
+#include "Measure.hpp"
 
 #include <TestKit/Console.hpp>
 
@@ -18,8 +19,15 @@
 
 #include <cstdio>
 
-int main()
+int main(int argc, char** argv)
 {
+    /// @note --measure は窓も GPU も使わない。EnsureConsole は標準出力を新しいコンソールへ繋ぎ替えるため、呼ぶとパイプ先へ結果が届かない。
+    fbzz::bench::MeasureOptions measure;
+    if (fbzz::bench::ParseMeasureOptions(argc, argv, measure)) {
+        fbzz::testkit::SuppressBlockingErrorDialogs();
+        return fbzz::bench::RunMeasure(measure);
+    }
+
     /// @note 起動に失敗したときのログを読ませる。コンソールが無いまま落ちると
     ///       «何も起きなかった» としか見えない。
     const bool ownsConsole = fbzz::testkit::EnsureConsole();

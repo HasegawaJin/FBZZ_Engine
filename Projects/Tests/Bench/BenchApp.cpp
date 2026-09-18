@@ -26,7 +26,7 @@ namespace fbzz::bench {
 
 namespace {
 /// @note 場面側 (XPBD) が自前で substep を刻むので外側まで倍の頻度で回す必要が無い。倍の刻みは倍の負荷になり、重い場面 (ラグドール) では «1 フレームぶんの実時間を進めきれない» 側へ倒れる。
-constexpr float kFixedStep = 1.0f / 60.0f;
+constexpr float kFixedStep = kBenchFixedStep;
 /// 1 フレームで進める上限。
 ///
 /// @note 大きいと «遅い→溜まる→もっと刻む→もっと遅い» の循環に入り画面が固まる。上限 2 なら負荷が追い越しても絵はスロー再生になるだけで操作は効く。遅れは m_droppedFrames が申告する。
@@ -95,13 +95,7 @@ ImFont* LoadJapaneseFont(ImGuiIO& io)
 
 bool BenchApp::OnInit()
 {
-    m_scenes.push_back(MakeXPBDConvergenceScene());
-    m_scenes.push_back(MakeXPBDJointChainScene());
-    m_scenes.push_back(MakeContactScene());
-    m_scenes.push_back(MakeBVHQueryScene());
-    m_scenes.push_back(MakeCCDScene());
-    m_scenes.push_back(MakeConvexHullScene());
-    m_scenes.push_back(MakeRagdollScene());
+    m_scenes = MakeAllScenes();
 
     m_imguiContext = ImGui::CreateContext();
     ImGuiIO& io    = ImGui::GetIO();

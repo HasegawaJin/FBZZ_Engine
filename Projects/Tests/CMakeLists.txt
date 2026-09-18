@@ -262,6 +262,7 @@ add_executable(FBZZTestBench
     Bench/main.cpp
     Bench/AnomalyLog.cpp
     Bench/BenchApp.cpp
+    Bench/Measure.cpp
     Bench/Viewport2D.cpp
     Bench/Scenes/XPBDConvergenceScene.cpp
     Bench/Scenes/XPBDJointChainScene.cpp

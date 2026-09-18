@@ -42,4 +42,20 @@ inline const Vector4 Vector4::RED   = {1.0f, 0.0f, 0.0f, 1.0f};
 inline const Vector4 Vector4::GREEN = {0.0f, 1.0f, 0.0f, 1.0f};
 inline const Vector4 Vector4::BLUE  = {0.0f, 0.0f, 1.0f, 1.0f};
 
+/// @note FBZZMath は DLL のため、.cpp に置くと呼び出しごとに DLL 境界を越えてインライン化されない。契約を報告しない小関数はヘッダーで定義する。
+inline Vector4 Vector4::operator+(const Vector4& rhs) const { return {x + rhs.x, y + rhs.y, z + rhs.z, w + rhs.w}; }
+inline Vector4 Vector4::operator-(const Vector4& rhs) const { return {x - rhs.x, y - rhs.y, z - rhs.z, w - rhs.w}; }
+inline Vector4 Vector4::operator*(float s)            const { return {x * s, y * s, z * s, w * s}; }
+
+inline bool Vector4::operator==(const Vector4& rhs) const {
+    return NearlyEqual(x, rhs.x) && NearlyEqual(y, rhs.y)
+        && NearlyEqual(z, rhs.z) && NearlyEqual(w, rhs.w);
+}
+
+inline float Vector4::Length() const {
+    return std::sqrt(x * x + y * y + z * z + w * w);
+}
+
+inline Vector3 Vector4::XYZ() const { return {x, y, z}; }
+
 } // namespace fbzz::math

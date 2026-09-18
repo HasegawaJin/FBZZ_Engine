@@ -7,6 +7,7 @@
 #include "../BenchScene.hpp"
 
 #include <memory>
+#include <vector>
 
 namespace fbzz::bench {
 
@@ -17,5 +18,20 @@ std::unique_ptr<BenchScene> MakeBVHQueryScene();
 std::unique_ptr<BenchScene> MakeCCDScene();
 std::unique_ptr<BenchScene> MakeConvexHullScene();
 std::unique_ptr<BenchScene> MakeRagdollScene();
+
+/// @brief 全場面を並べ順どおりに生成する。
+/// @note 画面の一覧と --measure の行順を揃えるため、並べ順はここだけで決める。
+inline std::vector<std::unique_ptr<BenchScene>> MakeAllScenes()
+{
+    std::vector<std::unique_ptr<BenchScene>> scenes;
+    scenes.push_back(MakeXPBDConvergenceScene());
+    scenes.push_back(MakeXPBDJointChainScene());
+    scenes.push_back(MakeContactScene());
+    scenes.push_back(MakeBVHQueryScene());
+    scenes.push_back(MakeCCDScene());
+    scenes.push_back(MakeConvexHullScene());
+    scenes.push_back(MakeRagdollScene());
+    return scenes;
+}
 
 } // namespace fbzz::bench

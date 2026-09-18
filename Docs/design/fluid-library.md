@@ -96,7 +96,7 @@ Engine に `FluidRecipeCodec` として残す。**設定型とファイル形式
 3. **「そのまま動く」を移す。** ディレクトリと namespace だけ。Editor / Tests を含む全 include 元を grep で洗う
 4. **3 つを割る。** `FluidRecipe` → 型は Fluid / codec は Engine。`SourceMask` と `VectorField` はデータを Fluid / 読み込みを Engine
 5. **周辺。** SDK (`FBZZSDK.cmake` の install・ABI 定義の foreach・`ValidateFBZZSDK.cmake`)、Launcher / Sandbox の DLL コピー、
-   カバレッジ (`CMakeLists.txt` の計装対象・`Tools/RunCoverageLLVM.ps1`)、`Doxyfile` の INPUT、AGENTS.md の依存方向の行
+   カバレッジ (`CMakeLists.txt` の計装対象・`Tools/Coverage/RunCoverageLLVM.ps1`)、`Doxyfile` の INPUT、AGENTS.md の依存方向の行
 
 移すテストは `FluidSolver` / `FluidDeterminism` / `FluidOperatorEval` / `FluidSegmentShape` / `FluidAmountEnvelope` /
 `FluidLiquid3D` / `FluidGpuStep` (CB の詰め方だけを見ている)。`FluidRecipeBake` (TOML) / `FluidGpuLiquid` (GPU) /

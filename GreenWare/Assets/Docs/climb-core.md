@@ -322,7 +322,7 @@ HUD を足さずに状態が読める、というのが本作の方針（[企画
 
 ## 書き出し経路（2026-09-08 に塞いだ）
 
-`Tools/BlenderExport/fbzz_export_minibot.py` の `RIGS` に **Boss の項が無かった。**
+`GreenWare/Tools/BlenderExport/fbzz_export_minibot.py` の `RIGS` に **Boss の項が無かった。**
 `Assets/Models/Boss_01/` の `Boss.fbx` と 28 本のクリップがどう作られたのか
 スクリプトから辿れない状態だった。
 

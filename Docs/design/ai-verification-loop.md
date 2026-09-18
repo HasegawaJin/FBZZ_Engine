@@ -11,7 +11,7 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 | 2 | プレイの合否をコードで判定できない | Playtest シナリオ (`*.playtest.json`) と `PlaytestRunner`。固定 dt のロックステップ・待機・表明・入力の記録/再生 |
 | 3 | 絵の回帰を判定できない | `ImageCompare` と基準画像。シナリオの `compareImage` 手順と `visual.compare` |
 | 4 | エディターを起動しないと何もできない | `FBZZEditor --batch <scenario>`。窓を出さずにシナリオを回し、終了コードとレポートを返す |
-| 5 | 規約が文章のまま | `Tools/AgentLint/lint.mjs` を Claude Code の PostToolUse フックに掛ける。複数ファイル手順は `.claude/skills/` |
+| 5 | 規約が文章のまま | `Projects/DevTools/AgentLint/lint.mjs` を Claude Code の PostToolUse フックに掛ける。複数ファイル手順は `.claude/skills/` |
 | 6 | バスが 8000 行の if 連鎖 | 領域ごとのファイルへ分け、型名 → ハンドラーの表で引く。表と MCP 契約の食い違いはテストで落とす |
 
 ## 1. AgentBuild
@@ -21,6 +21,7 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 - `build <target>` / `test [-Filter]`: `cmake --build` / `ctest`。LNK1168 はエディター起動中として分類して返す。
 - 出力は `ERROR path:line:col CODE message` の 1 行形式に畳み、重複を落とす。全文は `RESULT` 行の log= (最新は `build/agent/last-<verb>.txt` が指す)。終了コード 0 = 成功 / 1 = コードのエラー / 2 = 環境の失敗。
 - 構成ツリーは `development → debug → release` の順で CMakeCache のあるものを使う。
+- **ビルドは同時に 1 本だけ。** SDK 公開も `build/<Config>` から行うので、人のタスクと AI の検証は同じツリーで重なりうる。重なった MSBuild は中間ファイルを奪い合い、C1041 / C1083 / LNK1104 / MSB3491 という «コードのエラー» の形で落ちる。AI がそれを直そうとして正しいコードを壊すのを防ぐため、AgentBuild は始める前に `cl.exe` / `link.exe` / `MSBuild.exe` (ノード再利用の待機を除く) / `cmake.exe` / `ctest.exe` を探し、あれば `RESULT busy` (終了コード 2) で断る。途中で重なった形跡は `HINT CONTENDED` で返す。上書きの引数は持たせない (逃げ道があると常に使われる)。対処は verify-cpp スキルの «ビルドが重なったとき»。
 
 ## 2. Playtest
 
@@ -91,9 +92,9 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 
 ## 5. 規約の機械化
 
-- `node Tools/AgentLint/lint.mjs <files...>` / `--changed` (git の差分)。PostToolUse フックでは編集したファイル 1 本を見る。コメント規約の詳細は `Docs/conventions/comments.md`
+- `node Projects/DevTools/AgentLint/lint.mjs <files...>` / `--changed` (git の差分)。PostToolUse フックでは編集したファイル 1 本を見る。コメント規約の詳細は `Docs/conventions/comments.md`
 - 共有するのは `.claude/settings.json` (フックと AgentBuild / lint の許可) と `.claude/skills/` (verify-cpp / playtest / add-bus-command / add-script-proxy / add-script)。`settings.local.json` は個人設定なので追跡しない
-- **error** (フックが止める): `new` / `delete` 式、`throw`、`dynamic_cast`、`std::ranges`、コルーチン、`import` モジュール、ヘッダーの `<Windows.h>`、エンジンヘッダーの `using namespace`、`.generated.hpp`、禁止ライブラリの include、生成物 (`ScriptList.inl` / `DataAssetList.inl`) の手編集、4 行ヘッダーの欠落、シェーダー複製の不一致。
+- **error** (フックが止める): `new` / `delete` 式、`throw`、`dynamic_cast`、`std::ranges`、コルーチン、`import` モジュール、ヘッダーの `<Windows.h>`、エンジンヘッダーの `using namespace`、`.generated.hpp`、禁止ライブラリの include、生成物 (`ScriptList.inl` / `DataAssetList.inl`) の手編集、4 行ヘッダーの欠落、シェーダー複製の不一致、ツール置き場 (`Tools/` / `Projects/DevTools/` / `<Project>/Tools/`) の索引 `README.md` に無いファイル (`tool-unlisted`。拡張子を問わない)。
 - **warn** (文脈へ返すだけ): `//` の自由記述コメント (旧コードに大量にあるため止めない)、`reinterpret_cast` (定数バッファ転送のみ可)、テスト `.cpp` の CMake 登録漏れ。
 - 判定はコメントと文字列リテラルを空白に潰してから行う (`= delete` と «new» という単語を誤検出しない)。
 
