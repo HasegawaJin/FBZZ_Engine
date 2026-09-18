@@ -13,40 +13,40 @@ Frustum Frustum::FromViewProjection(const Matrix4& vp)
     Frustum f;
 
     /// @note left: row3 + row0
-    f.planes[0] = Plane{
+    f.SetPlane(0, Plane{
         { vp.m[3][0] + vp.m[0][0], vp.m[3][1] + vp.m[0][1], vp.m[3][2] + vp.m[0][2] },
           vp.m[3][3] + vp.m[0][3]
-    }.Normalized();
+    }.Normalized());
 
     /// @note right: row3 - row0
-    f.planes[1] = Plane{
+    f.SetPlane(1, Plane{
         { vp.m[3][0] - vp.m[0][0], vp.m[3][1] - vp.m[0][1], vp.m[3][2] - vp.m[0][2] },
           vp.m[3][3] - vp.m[0][3]
-    }.Normalized();
+    }.Normalized());
 
     /// @note bottom: row3 + row1
-    f.planes[2] = Plane{
+    f.SetPlane(2, Plane{
         { vp.m[3][0] + vp.m[1][0], vp.m[3][1] + vp.m[1][1], vp.m[3][2] + vp.m[1][2] },
           vp.m[3][3] + vp.m[1][3]
-    }.Normalized();
+    }.Normalized());
 
     /// @note top: row3 - row1
-    f.planes[3] = Plane{
+    f.SetPlane(3, Plane{
         { vp.m[3][0] - vp.m[1][0], vp.m[3][1] - vp.m[1][1], vp.m[3][2] - vp.m[1][2] },
           vp.m[3][3] - vp.m[1][3]
-    }.Normalized();
+    }.Normalized());
 
     /// @note near: row2 (DirectX 深度 [0,1]: clip.z >= 0)
-    f.planes[4] = Plane{
+    f.SetPlane(4, Plane{
         { vp.m[2][0], vp.m[2][1], vp.m[2][2] },
           vp.m[2][3]
-    }.Normalized();
+    }.Normalized());
 
     /// @note far: row3 - row2
-    f.planes[5] = Plane{
+    f.SetPlane(5, Plane{
         { vp.m[3][0] - vp.m[2][0], vp.m[3][1] - vp.m[2][1], vp.m[3][2] - vp.m[2][2] },
           vp.m[3][3] - vp.m[2][3]
-    }.Normalized();
+    }.Normalized());
 
     return f;
 }

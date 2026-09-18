@@ -40,7 +40,7 @@ Math の演算を SSE4.1 の intrinsics で書き直す。前段の «小関数�
 | 0 | micro に `Matrix4 * Vector4`・`Frustum::IntersectsSphere` を足す。スカラー参照実装 (`Projects/Tests/Math/Reference/`) と突き合わせのテスト (`ScalarParityTests`) を置く | 以降の基準 |
 | 1 | `TRS` を行列 3 つの積ではなく、回転行列の列に scale を掛けて平行移動を入れる形で直接組む (スカラーのまま) | `Matrix4::TRS` |
 | 2 | `Matrix4` の積・`M * v`・`Transpose`・`Inverse` を SIMD 化 | 行列の 4 項目 + 物理の場面 |
-| 3a | `Frustum` の 6 平面を SoA (4 レーン × 2 本、余りの 2 レーンは必ず通る平面) で持ち、`IntersectsSphere` / `IntersectsAABB` を SIMD 化。API は変えない | 錐台の 2 項目 |
+| 3a | `Frustum` の 6 平面を SoA (4 レーン × 2 本、余りの 2 レーンは判定のビットマスクで捨てる。値に頼らないので NaN・無限大の入力でも余りが結果を変えない) で持ち、`IntersectsSphere` / `IntersectsAABB` を SIMD 化。API は変えない | 錐台の 2 項目 |
 | 3b | 一括 API `Frustum::IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible)` を足す (xyz = 中心・w = 半径、4 個ずつ転置して 6 平面と比べる)。micro に `Frustum::IntersectsSpheres` を足し、1 球あたりで `IntersectsSphere` と比べる | `Frustum::IntersectsSpheres` |
 | 4 | 描画側で境界球を 1 ビューにつき 1 回集め、3b で判定した結果を各パスが引く形へ直す | エディターの Profiler (TestBench では測れない) |
 
