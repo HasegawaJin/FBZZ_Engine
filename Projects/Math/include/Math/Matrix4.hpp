@@ -8,6 +8,7 @@
 #include "Vector4.hpp"
 #include "Quaternion.hpp"
 #include "Matrix3.hpp"
+#include "Simd.hpp"
 
 namespace fbzz::math {
 
@@ -77,29 +78,51 @@ inline Matrix4 Matrix4::Scale(const Vector3& s) {
     return result;
 }
 
+/// @note 結果の行 r = Σk m[r][k] * rhs の行 k。k = 0 から順に足すので、スカラーの三重ループと加算の順序が同じで値も一致する。
 inline Matrix4 Matrix4::operator*(const Matrix4& rhs) const {
+    const simd::Vec b0 = simd::Load4(rhs.m[0]);
+    const simd::Vec b1 = simd::Load4(rhs.m[1]);
+    const simd::Vec b2 = simd::Load4(rhs.m[2]);
+    const simd::Vec b3 = simd::Load4(rhs.m[3]);
     Matrix4 result;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            for (int k = 0; k < 4; ++k)
-                result.m[r][c] += m[r][k] * rhs.m[k][c];
+    for (int r = 0; r < 4; ++r) {
+        const simd::Vec a = simd::Load4(m[r]);
+        simd::Vec row = _mm_mul_ps(simd::SplatLane<0>(a), b0);
+        row = simd::MulAdd(simd::SplatLane<1>(a), b1, row);
+        row = simd::MulAdd(simd::SplatLane<2>(a), b2, row);
+        row = simd::MulAdd(simd::SplatLane<3>(a), b3, row);
+        simd::Store4(result.m[r], row);
+    }
     return result;
 }
 
+/// @note 行優先に列ベクトルを掛けるので、転置して列を取り出し «列 j × v[j]» を j 順に足す。加算の順序はスカラーの内積と同じで値も一致する。
 inline Vector4 Matrix4::operator*(const Vector4& v) const {
-    return {
-        m[0][0]*v.x + m[0][1]*v.y + m[0][2]*v.z + m[0][3]*v.w,
-        m[1][0]*v.x + m[1][1]*v.y + m[1][2]*v.z + m[1][3]*v.w,
-        m[2][0]*v.x + m[2][1]*v.y + m[2][2]*v.z + m[2][3]*v.w,
-        m[3][0]*v.x + m[3][1]*v.y + m[3][2]*v.z + m[3][3]*v.w
-    };
+    simd::Vec c0 = simd::Load4(m[0]);
+    simd::Vec c1 = simd::Load4(m[1]);
+    simd::Vec c2 = simd::Load4(m[2]);
+    simd::Vec c3 = simd::Load4(m[3]);
+    simd::Transpose4x4(c0, c1, c2, c3);
+    simd::Vec sum = _mm_mul_ps(c0, _mm_set1_ps(v.x));
+    sum = simd::MulAdd(c1, _mm_set1_ps(v.y), sum);
+    sum = simd::MulAdd(c2, _mm_set1_ps(v.z), sum);
+    sum = simd::MulAdd(c3, _mm_set1_ps(v.w), sum);
+    Vector4 result;
+    simd::Store4(&result.x, sum);
+    return result;
 }
 
 inline Matrix4 Matrix4::Transpose(const Matrix4& mat) {
+    simd::Vec r0 = simd::Load4(mat.m[0]);
+    simd::Vec r1 = simd::Load4(mat.m[1]);
+    simd::Vec r2 = simd::Load4(mat.m[2]);
+    simd::Vec r3 = simd::Load4(mat.m[3]);
+    simd::Transpose4x4(r0, r1, r2, r3);
     Matrix4 result;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            result.m[r][c] = mat.m[c][r];
+    simd::Store4(result.m[0], r0);
+    simd::Store4(result.m[1], r1);
+    simd::Store4(result.m[2], r2);
+    simd::Store4(result.m[3], r3);
     return result;
 }
 
