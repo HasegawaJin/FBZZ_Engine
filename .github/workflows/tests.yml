@@ -160,22 +160,53 @@ jobs:
           choco install opencppcoverage --no-progress -y
           echo "C:\Program Files\OpenCppCoverage" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # @note --cover_children で ctest が起動する各テスト exe まで追う。
+      # @note 計測は ctest を通さずテスト exe を 1 本ずつ直接走らせ、binary で出して最後に統合する。
+      # @warning ctest を通すと gtest_discover_tests が登録した «1 テスト 1 プロセス» (2148 本) すべてで OpenCppCoverage が PDB を読み直す。テスト本体は全スイート合わせて 25 秒なのに、起動だけで 20 分 (開発機) / 47 分超 (ランナー) かかりジョブの上限で落ちる。
+      # @note --cover_children はテスト exe が起動する子まで追うために残す。
       # @note 計測対象は «自作で、テストを書くと決めた» 3 つに絞る。Renderer / Editor を混ぜると分母が意味を失う。
+      # @warning スイートを足したらここにも足す。漏れるとそのスイートが踏んだ行が «未到達» に化ける。
       - name: Measure coverage
         if: steps.scope.outputs.measure == 'true'
         shell: pwsh
         run: |
+          $testDir = "$env:BUILD_DIR/Binaries/$env:BUILD_CONFIG/Tests"
+          $suites  = @(
+            "FBZZTestsMathAuto", "FBZZTestsCoreAuto", "FBZZTestsPhysicsAuto",
+            "FBZZTestsFluidAuto", "FBZZTestsEngineAuto", "FBZZTestsEditorAuto"
+          )
+
+          $inputs = @()
+          $failed = @()
+          foreach ($suite in $suites) {
+            OpenCppCoverage.exe `
+              --cover_children `
+              --sources "Projects\Math" `
+              --sources "Projects\Physics" `
+              --sources "Projects\Engine\src\Core" `
+              --excluded_sources "Projects\Tests" `
+              --excluded_sources "ThirdParty" `
+              --working_dir "$testDir" `
+              --export_type "binary:$suite.cov" `
+              -- "$testDir/$suite.exe"
+
+            # @note デバッガー下でだけ出る異常終了 (解放済みメモリへの書き込みをデバッグヒープが捕まえる等) をここで拾う。
+            if ($LASTEXITCODE -ne 0) { $failed += ("{0} (0x{1:X8})" -f $suite, $LASTEXITCODE) }
+            $inputs += "--input_coverage=$suite.cov"
+          }
+
           OpenCppCoverage.exe `
-            --cover_children `
-            --sources "Projects\Math" `
-            --sources "Projects\Physics" `
-            --sources "Projects\Engine\src\Core" `
-            --excluded_sources "Projects\Tests" `
-            --excluded_sources "ThirdParty" `
             --export_type "cobertura:coverage.xml" `
             --export_type "html:coverage-html" `
-            -- ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG --timeout 30
+            @inputs
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "カバレッジの統合に失敗しました"
+            exit 1
+          }
+          if ($failed.Count -gt 0) {
+            Write-Error "計装下で異常終了したスイート: $($failed -join ', ')"
+            exit 1
+          }
 
       # @note OpenCppCoverage はランナーのユーザー名を含む絶対パスを書く。直さないと PR コメントの表と coverage.xml がランナー上でしか読めない。
       - name: Normalise coverage paths
