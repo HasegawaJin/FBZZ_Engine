@@ -79,6 +79,9 @@ jobs:
       - uses: actions/checkout@v5
 
       # @note 変更ファイルを取れなかったときは測る側に倒す。
+      # @note `gh pr diff` は 300 ファイルを超える PR (develop → main のリリース等) で HTTP 406 になるため、ページ送りできる files API (上限 3000) を使う。
+      # @see https://docs.github.com/en/rest/pulls/pulls#list-pull-requests-files "List pull requests files"
+      # @warning pwsh ステップは最後の $LASTEXITCODE で成否が決まる。取得に失敗して測る側に倒したときもステップを落とさないよう、末尾で exit 0 する。
       - name: Decide scope
         id: scope
         shell: pwsh
@@ -90,7 +93,7 @@ jobs:
           $measure = $true
 
           if ($event -eq "pull_request" -and -not $hasCoverageLabel) {
-            $files = gh pr diff ${{ github.event.number }} --name-only --repo "${{ github.repository }}"
+            $files = gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --jq '.[].filename'
             if ($LASTEXITCODE -ne 0) {
               Write-Warning "変更ファイルを取得できなかったので、カバレッジを測る側に倒します"
             } else {
@@ -101,6 +104,7 @@ jobs:
 
           Write-Host "measure=$measure"
           "measure=$($measure.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          exit 0
 
       # @note Visual Studio の世代はランナーイメージで予告なく入れ替わるため、枯れている順に試して最初に通ったものを使う。
       # @note 失敗した generator は CMakeCache に残って次の試行を汚すので、build ディレクトリごと消してから次へ進む。
