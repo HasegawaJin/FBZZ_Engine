@@ -129,6 +129,8 @@ $sourceFilters = @(
     (Join-Path $repoRoot 'Projects\Math')
     (Join-Path $repoRoot 'Projects\Physics')
     (Join-Path $repoRoot 'Projects\Engine\src\Core')
+    # OpenCppCoverage 側の --excluded_sources "Projects\Engine\src\Core\Platform" と対応する。
+    '-ignore-filename-regex=[\\/]Engine[\\/]src[\\/]Core[\\/]Platform[\\/]'
 )
 
 # llvm-cov は «先頭 1 つが位置引数、2 つめ以降は -object» という形しか受け付けない。

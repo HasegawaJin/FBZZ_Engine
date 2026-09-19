@@ -51,20 +51,15 @@ $historyDir = Join-Path $OutputDir 'history'
 # 計測対象は «テストで守ると決めた領域» だけに絞る。Renderer や ImGui のパネルまで
 # 混ぜると、そもそもテストしない領域が分母に入って数値が意味を失う。
 #
-# Editor はモジュール単位で入れる。Util / Import / Ai / GraphEditor / Tools は
-# 判定・変換・直列化といった «目視では追えない» ロジックで、テストで守る対象。
-# src\Panels は ImGui の描画そのものなので入れない (自動テストの対象外)。
+# 分母は CI (.github/workflows/tests.yml) と RunCoverageLLVM.ps1 と同じ 3 つに揃える
+# (Docs/conventions/test.md «計測対象を広げない»)。Asset / Editor のテストは回るが分母には入れない。
+# Core\Platform はウィンドウ・カーソル・起動の OS 層で、テストでは生成しないので外す。
 & $openCppCoverage `
     --cover_children `
     --sources "Projects\Math" `
     --sources "Projects\Physics" `
     --sources "Projects\Engine\src\Core" `
-    --sources "Projects\Engine\src\Asset" `
-    --sources "Projects\Editor\src\Util" `
-    --sources "Projects\Editor\src\Import" `
-    --sources "Projects\Editor\src\Ai" `
-    --sources "Projects\Editor\src\GraphEditor" `
-    --sources "Projects\Editor\src\Tools" `
+    --excluded_sources "Projects\Engine\src\Core\Platform" `
     --excluded_sources "Projects\Tests" `
     --excluded_sources "ThirdParty" `
     --export_type "cobertura:$cobertura" `

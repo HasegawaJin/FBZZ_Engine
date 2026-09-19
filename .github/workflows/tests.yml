@@ -183,6 +183,7 @@ jobs:
               --sources "Projects\Math" `
               --sources "Projects\Physics" `
               --sources "Projects\Engine\src\Core" `
+              --excluded_sources "Projects\Engine\src\Core\Platform" `
               --excluded_sources "Projects\Tests" `
               --excluded_sources "ThirdParty" `
               --working_dir "$testDir" `

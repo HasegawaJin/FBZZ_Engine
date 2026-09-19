@@ -62,11 +62,11 @@ set(FBZZ_ENGINE_UNITY_EXCLUDE
     # @note STB_TRUETYPE_IMPLEMENTATION / STB_RECT_PACK_IMPLEMENTATION の展開場所。
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/StbFontImpl.cpp"
     # @note STB_IMAGE_IMPLEMENTATION の展開場所 (カーソル画像のデコード)。
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Cursor.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Cursor.cpp"
     # @note STB_IMAGE_IMPLEMENTATION の展開場所。STB_IMAGE_STATIC で Cursor.cpp とは別の実体。
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Asset/FluidSourceMaskLoader.cpp"
     # @note DPI_AWARENESS_CONTEXT_* と WM_DPICHANGED を \#undef せずに定義する。
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Window.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Window.cpp"
     # @note WIN32_LEAN_AND_MEAN を定義し、同じバッチの後続 TU の Windows.h の中身を変えてしまう。
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Input/Input.cpp"
 )
@@ -113,7 +113,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
 )
 # @note ヘッダーは低層だが実装が Scene を要求する TU は FBZZEngine へ移す (Application は合成ルート、SaveStore は scene::IReflector を使う)。
 list(REMOVE_ITEM CORE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Application.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Application.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/SaveStore.cpp"
 )
 fbzz_engine_module(FBZZCore SOURCES ${CORE_SOURCES})
@@ -175,7 +175,7 @@ file(GLOB ENGINE_ROOT_SOURCES CONFIGURE_DEPENDS
 )
 list(APPEND ENGINE_SOURCES
     ${ENGINE_ROOT_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Application.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Application.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/SaveStore.cpp"
 )
 

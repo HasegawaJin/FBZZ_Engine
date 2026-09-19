@@ -812,7 +812,7 @@ ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
 | **C0** | `Tools\Coverage\RunCoverage.ps1` | 命令網羅 | MSVC + OpenCppCoverage |
 | **C1 / C2** | `Tools\Coverage\RunCoverageLLVM.ps1` | 分岐・条件網羅 + MC/DC | clang-cl + llvm-cov |
 
-計測対象はどちらも `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。両者の分母を揃えてあるので、C0 と C1 の数字はそのまま並べて読める。
+計測対象はどちらも `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` (OS 層の `Core/Platform` を除く) に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。両者の分母を揃えてあるので、C0 と C1 の数字はそのまま並べて読める。
 
 #### C0 — 行カバレッジ (CI が回すのはこちら)
 
