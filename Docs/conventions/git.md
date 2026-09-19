@@ -57,14 +57,23 @@ main
 
 ## main へのマージ条件 (develop → main)
 
-**「エンジンの動作として区切りがいい状態」** のときのみ。目安は Step 完了時。
+**「エンジンの動作として区切りがいい状態」** かつ **develop の CI が通っている** ときのみ。
+
+1. GitHub で `develop → main` の PR を出す (タイトルは `[Release] vX.Y.Z ...`)。PR の CI が通ったら **Create a merge commit** でマージする (マージコミットを残す)
+2. main のマージコミットに注釈付きタグを打ち、GitHub Release を作る
 
 ```bash
-git switch main
-git merge --no-ff develop    # マージコミットを残す
-git tag v0.1 -m "Step 1: Win32 ウィンドウ + DX11 初期化"
-git push origin main --tags
+git switch main && git pull
+git tag -a v0.9.1 -m "v0.9.1: <概要>"
+git push origin v0.9.1
+gh release create v0.9.1 --verify-tag --title "v0.9.1" --notes-file <リリースノート>
 ```
+
+### タグの書式
+
+- **`vMAJOR.MINOR.PATCH` の 3 桁で書く** (`v0.9.1`)。`v0.9` のような 2 桁は使わない (旧タグ `v0.5`〜`v0.9` は `v0.5.0`〜`v0.9.0` へ改名済み)
+- MINOR は機能の区切り (旧 Step 完了相当)、PATCH は同じ区切りの中の修正・整備
+- タグはリリースの番号。SDK の版 (`CMakeLists.txt` の `project(... VERSION)`、`SDK/<版>/`) とは別に管理する
 
 ---
 
