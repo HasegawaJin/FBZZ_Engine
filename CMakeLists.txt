@@ -3,7 +3,8 @@
 # @author  Hasegawa Jin
 # @date    2026-05-15
 cmake_minimum_required(VERSION 3.25)
-project(FBZZEngine VERSION 0.1.0 LANGUAGES CXX)
+# @note 版はリリースのタグ (vX.Y.Z) と揃える。SDK の置き場所 SDK/<版>/ と Script DLL の ABI 署名もこの値から決まる (Docs/conventions/git.md)。
+project(FBZZEngine VERSION 0.9.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

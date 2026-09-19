@@ -24,7 +24,7 @@ Animator は speed と別のランタイム倍率を持ち、FreezeAnimation の
 
 ## GreenWare へ反映する手順
 
-GreenWare はエンジンのソースヘッダーではなく `SDK/0.1.0/include` と同 SDK のライブラリを参照する。
+GreenWare はエンジンのソースヘッダーではなく `SDK/<版>/include` と同 SDK のライブラリを参照する。
 全体ビルドだけでは SDK は更新されない。今回追加した `SetLocalTimeScale` とランタイムの構造変更を
 揃えて反映するため、VS Code で `CMake: Build SDK (Debug)` を実行し、GreenWare を再 Configure・ビルドする。
 Development / Release で遊ぶ場合は、対応する `CMake: Build SDK (...)` も実行する。
