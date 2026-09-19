@@ -532,6 +532,21 @@ Renderer / Editor / Tests / ThirdParty は両系統とも除外している。
 - `CMakeLists.txt` 末尾の `fbzz_instrument_for_coverage()`
 - `.github/workflows/tests.yml` の `--sources`
 
+### CI は ctest を通さずテスト exe を直接走らせる
+
+CI の «Measure coverage» は、スイートごとに exe を 1 回ずつ計測して binary で出し、
+最後に `--input_coverage` で 1 本のレポートへ統合する。**スイートを足したら
+同ステップの `$suites` にも足すこと。**忘れるとそのスイートが踏んだ行が「未到達」に化ける。
+
+> ctest を通すと `gtest_discover_tests` が登録した **1 テスト 1 プロセス**(2148 本)すべてで
+> OpenCppCoverage が PDB を読み直す。テスト本体は全スイート合わせて 25 秒なのに、
+> プロセス起動だけで 20 分(開発機)・47 分超(ランナー)かかり、ジョブの上限で落ちる。
+
+1 プロセスにまとめると、テスト間で持ち越した不正なメモリ操作が表に出る。
+デバッガー(OpenCppCoverage)の下では Windows のデバッグヒープが有効になり、
+解放済みメモリへの書き込みが `int 3`(終了コード `0xC0000005` / `0x80000003`)になるため、
+**素の ctest では通るのに計測パスだけが落ちる**という形で現れる。
+
 ### 数字を見る前にレポートを見る
 
 率は「今どこに居るか」しか言わない。次に何を書くかを決められるのはこちら。

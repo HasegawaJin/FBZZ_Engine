@@ -70,7 +70,8 @@ private:
     bool CallBus(const PlaytestHooks& hooks, const char* kind, const ai::JsonValue& payload,
                  ai::JsonValue& result, std::string& errorCode, std::string& errorMessage);
     void Finish(PlaytestState state, const PlaytestHooks* hooks);
-    void RecordStep(bool ok, const std::string& message);
+    /// @param result 非 null なら報告の手順に "result" として残す (bus の query の応答)。
+    void RecordStep(bool ok, const std::string& message, const ai::JsonValue* result = nullptr);
     StepResult Fail(const std::string& message);
 
     PlaytestState         m_state = PlaytestState::IDLE;

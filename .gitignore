@@ -7,6 +7,8 @@ build_log.txt
 # レポート類の置き場。リポジトリ直下 (coverage) と、各ゲームプロジェクト直下
 # (エディターが吐く RenderGraph の構成テキストなど) の両方に出る。
 Artifacts/
+# OpenCppCoverage が計測のたびに作業ディレクトリへ吐く実行ログ。
+LastCoverageResults.log
 # ゲームプロジェクトの配布ビルド出力。exe / dll だけでなく、その隣へ複製される
 # EngineAssets / Library まで丸ごと入るため (GreenWare で 480MB) ディレクトリごと除外する。
 Binaries/
