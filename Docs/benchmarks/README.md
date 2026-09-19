@@ -5,6 +5,7 @@
 
 | 日付 | 題名 | 基準 → 候補 | 物理の場面 | Math の演算 | 改善 / 悪化 | CPU |
 |---|---|---|---:|---:|---:|---|
+| 2026-09-19 | [Math の SIMD 化](2026-09-19-math-simd/report.md) · [HTML](2026-09-19-math-simd/index.html) | `56214bc6` → `524431d4` | −0.6% | −35.7% | 6 / 0 | Intel(R) Core(TM) i7-14700F |
 | 2026-09-18 | [Math の小関数のインライン化](2026-09-18-math-inline/report.md) · [HTML](2026-09-18-math-inline/index.html) | `6403b867` → `e5cc1da3` | −44.5% | −42.0% | 9 / 0 | 13th Gen Intel(R) Core(TM) i7-13650HX |
 
 `+` は未コミットの変更を含むビルド。変化は各項目の比の幾何平均。

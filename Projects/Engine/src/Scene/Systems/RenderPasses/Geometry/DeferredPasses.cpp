@@ -21,6 +21,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 namespace fbzz::scene {
@@ -629,6 +630,9 @@ void GBufferPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 
 void GBufferPass::Execute(PassResources&, RenderPassContext& ctx)
 {
+    /// @note Forward の前段は ForwardOpaque と同じ物体を同じカメラで判定し直すので、カリング統計を数えない (数えると倍になる)。
+    std::optional<CullStatsRollback> rollback;
+    if (m_mode == GBufferPassMode::ForwardPrepass) rollback.emplace(ctx);
     ExecuteGBufferPass(ctx);
     ExecuteFiberGBufferPass(ctx);
 }

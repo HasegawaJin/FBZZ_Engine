@@ -38,6 +38,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -661,6 +662,10 @@ void TerrainRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) co
 void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     /// @note 描き先の束縛は Setup の SetAutoTarget が済ませている。
+
+    /// @note Forward + GBuffer 前段では地形が GBuffer と Forward の 2 回走る。チャンクの統計は Forward 側だけで数える。
+    std::optional<CullStatsRollback> rollback;
+    if (m_mode == TerrainDrawMode::GBuffer && !ctx.isDeferred) rollback.emplace(ctx);
 
     /// @note エイリアス: TerrainRenderSystem の旧シグネチャ変数名を ctx から引く
     Scene&                     scene               = ctx.scene;

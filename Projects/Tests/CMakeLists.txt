@@ -25,6 +25,7 @@ fbzz_add_test_suite(MathAuto
         Math/Auto/PlaneTests.cpp
         Math/Auto/RayTests.cpp
         Math/Auto/FrustumTests.cpp
+        Math/Auto/ScalarParityTests.cpp
 )
 
 # @note --- Core -------------------------------------------------------------------

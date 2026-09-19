@@ -9,9 +9,12 @@
 #include <Math/MathUtils.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <span>
 
 namespace fbzz::bench {
 
@@ -46,6 +49,8 @@ struct Inputs {
     std::array<Vector3, kInputCount>    extents;
     std::array<Quaternion, kInputCount> rotations;
     std::array<Matrix4, kInputCount>    matrices;
+    /// @brief xyz = vectors、w = extents.x。IntersectsSphere の行と同じ球を並べる。
+    std::array<math::Vector4, kInputCount> spheres;
     Frustum                             frustum;
 };
 
@@ -60,6 +65,7 @@ const Inputs& GetInputs()
             const Vector3 axis = { random.Next(), random.Next() + 2.0f, random.Next() };
             result.rotations[i] = Quaternion::FromAxisAngle(axis, random.Next() * math::PI);
             result.matrices[i] = Matrix4::TRS(result.vectors[i], result.rotations[i], result.extents[i]);
+            result.spheres[i] = { result.vectors[i], result.extents[i].x };
         }
         const Matrix4 view = Matrix4::LookAt({ 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, Vector3::UP);
         const Matrix4 projection = Matrix4::Perspective(60.0f * math::DEG2RAD, 16.0f / 9.0f, 0.1f, 200.0f);
@@ -69,60 +75,92 @@ const Inputs& GetInputs()
     return inputs;
 }
 
+/// @brief 演算結果の書き込み先。結果は全成分をここへ書く。
+/// @note 一部の成分だけを足し込むと、インライン化された関数では残りの成分の計算が最適化で消え、実際の使い方 (cbuffer・骨の行列の配列へ書く) より軽く測れてしまう。
+struct Outputs {
+    std::array<Matrix4, kInputCount>       matrices;
+    std::array<math::Vector4, kInputCount> vectors4;
+    std::array<Vector3, kInputCount>       vectors3;
+    std::array<uint8_t, kInputCount>       visible;
+};
+
+Outputs& GetOutputs()
+{
+    static Outputs outputs;
+    return outputs;
+}
+
+/// @return 実行時に決まる位置の成分。どの書き込みも読まれうるので、最適化で書き込みを省けない。
+double Pick(const Matrix4& m)        { return m.m[1][2]; }
+double Pick(const math::Vector4& v)  { return v.y; }
+double Pick(const Vector3& v)        { return v.y; }
+
 double Matrix4Multiply(int ops)
 {
     const Inputs& in = GetInputs();
-    float sum = 0.0f;
+    auto& out = GetOutputs().matrices;
+    for (int i = 0; i < ops; ++i)
+        out[i & kInputMask] = in.matrices[i & kInputMask] * in.matrices[(i + 1) & kInputMask];
+    return Pick(out[ops & kInputMask]);
+}
+
+double Matrix4Vector4(int ops)
+{
+    const Inputs& in = GetInputs();
+    auto& out = GetOutputs().vectors4;
     for (int i = 0; i < ops; ++i) {
-        const Matrix4 product = in.matrices[i & kInputMask] * in.matrices[(i + 1) & kInputMask];
-        sum += product.m[0][0] + product.m[3][3];
+        const Vector3& p = in.vectors[(i + 3) & kInputMask];
+        out[i & kInputMask] = in.matrices[i & kInputMask] * math::Vector4{ p, 1.0f };
     }
-    return sum;
+    return Pick(out[ops & kInputMask]);
+}
+
+/// @note cbuffer へ送る前に毎回呼ぶ (HLSL は列優先で読む)。
+double Matrix4Transpose(int ops)
+{
+    const Inputs& in = GetInputs();
+    auto& out = GetOutputs().matrices;
+    for (int i = 0; i < ops; ++i)
+        out[i & kInputMask] = Matrix4::Transpose(in.matrices[i & kInputMask]);
+    return Pick(out[ops & kInputMask]);
 }
 
 double Matrix4Trs(int ops)
 {
     const Inputs& in = GetInputs();
-    float sum = 0.0f;
+    auto& out = GetOutputs().matrices;
     for (int i = 0; i < ops; ++i) {
         const int k = i & kInputMask;
-        const Matrix4 trs = Matrix4::TRS(in.vectors[k], in.rotations[k], in.extents[k]);
-        sum += trs.m[0][3] + trs.m[1][1];
+        out[k] = Matrix4::TRS(in.vectors[k], in.rotations[k], in.extents[k]);
     }
-    return sum;
+    return Pick(out[ops & kInputMask]);
 }
 
 double Matrix4Inverse(int ops)
 {
     const Inputs& in = GetInputs();
-    float sum = 0.0f;
-    for (int i = 0; i < ops; ++i) {
-        const Matrix4 inverse = Matrix4::Inverse(in.matrices[i & kInputMask]);
-        sum += inverse.m[0][0] + inverse.m[2][3];
-    }
-    return sum;
+    auto& out = GetOutputs().matrices;
+    for (int i = 0; i < ops; ++i)
+        out[i & kInputMask] = Matrix4::Inverse(in.matrices[i & kInputMask]);
+    return Pick(out[ops & kInputMask]);
 }
 
 double QuaternionRotate(int ops)
 {
     const Inputs& in = GetInputs();
-    float sum = 0.0f;
-    for (int i = 0; i < ops; ++i) {
-        const Vector3 rotated = in.rotations[i & kInputMask] * in.vectors[(i + 7) & kInputMask];
-        sum += rotated.x + rotated.z;
-    }
-    return sum;
+    auto& out = GetOutputs().vectors3;
+    for (int i = 0; i < ops; ++i)
+        out[i & kInputMask] = in.rotations[i & kInputMask] * in.vectors[(i + 7) & kInputMask];
+    return Pick(out[ops & kInputMask]);
 }
 
 double Vector3Normalize(int ops)
 {
     const Inputs& in = GetInputs();
-    float sum = 0.0f;
-    for (int i = 0; i < ops; ++i) {
-        const Vector3 unit = in.vectors[i & kInputMask].Normalized();
-        sum += unit.y;
-    }
-    return sum;
+    auto& out = GetOutputs().vectors3;
+    for (int i = 0; i < ops; ++i)
+        out[i & kInputMask] = in.vectors[i & kInputMask].Normalized();
+    return Pick(out[ops & kInputMask]);
 }
 
 double FrustumAabb(int ops)
@@ -136,17 +174,45 @@ double FrustumAabb(int ops)
     return inside;
 }
 
+/// @note 描画のカリング (GeometryPassHelpers / ShadowPass) が物体ごとに呼ぶ形。半径は extents.x を流用する。
+double FrustumSphere(int ops)
+{
+    const Inputs& in = GetInputs();
+    int inside = 0;
+    for (int i = 0; i < ops; ++i) {
+        const int k = i & kInputMask;
+        inside += in.frustum.IntersectsSphere(in.vectors[k], in.extents[k].x) ? 1 : 0;
+    }
+    return inside;
+}
+
+/// @note 1 演算 = 球 1 個。IntersectsSphere の行と 1 球あたりで比べられるよう、ops 個をまとめて判定する。
+double FrustumSpheres(int ops)
+{
+    const Inputs& in = GetInputs();
+    auto& visible = GetOutputs().visible;
+    for (int done = 0; done < ops; done += kInputCount) {
+        const size_t count = static_cast<size_t>(std::min(kInputCount, ops - done));
+        in.frustum.IntersectsSpheres(std::span(in.spheres).first(count), std::span(visible).first(count));
+    }
+    return visible[ops & kInputMask];
+}
+
 } // namespace
 
 const std::vector<MicroCase>& AllMicroCases()
 {
     static const std::vector<MicroCase> cases = {
         { "Matrix4 * Matrix4",        &Matrix4Multiply },
+        { "Matrix4 * Vector4",        &Matrix4Vector4 },
+        { "Matrix4::Transpose",       &Matrix4Transpose },
         { "Matrix4::TRS",             &Matrix4Trs },
         { "Matrix4::Inverse",         &Matrix4Inverse },
         { "Quaternion * Vector3",     &QuaternionRotate },
         { "Vector3::Normalized",      &Vector3Normalize },
         { "Frustum::IntersectsAABB",  &FrustumAabb },
+        { "Frustum::IntersectsSphere", &FrustumSphere },
+        { "Frustum::IntersectsSpheres", &FrustumSpheres },
     };
     return cases;
 }
