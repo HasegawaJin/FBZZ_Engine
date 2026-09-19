@@ -9,9 +9,10 @@
 // 前提: Material/Effects/ParticleMaterial.hlsli を先に include する (gParticleTex / gSampler / VSMain)。
 #ifndef PARTICLE_REACTIVE_HLSLI
 #define PARTICLE_REACTIVE_HLSLI
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D gReactiveMotionVectors : register(t6);
-Texture2D gReactiveSceneDepth    : register(TEX_DEPTH);
+FBZZ_TEX2D(gReactiveMotionVectors, 6);
+FBZZ_TEX2D(gReactiveSceneDepth, TEX_DEPTH_SLOT);
 
 float4 PSMain(ParticlePSIn p) : SV_Target0
 {

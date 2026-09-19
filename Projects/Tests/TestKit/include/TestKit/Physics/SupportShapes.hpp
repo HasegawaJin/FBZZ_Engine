@@ -36,8 +36,8 @@ struct SupportPoint {
     static math::Vector3 Support(const void* shape, const math::Vector3& dir);
 };
 
-// SupportFn へ代入できることをここで固定する。署名がずれたらテスト本体ではなく
-// この行がコンパイルエラーになるので、原因が一目で分かる。
+/// SupportFn へ代入できることをここで固定する。署名がずれたらテスト本体ではなく
+/// この行がコンパイルエラーになるので、原因が一目で分かる。
 inline constexpr physics::SupportFn kSphereSupport = &SupportSphere::Support;
 inline constexpr physics::SupportFn kBoxSupport    = &SupportBox::Support;
 inline constexpr physics::SupportFn kPointSupport  = &SupportPoint::Support;

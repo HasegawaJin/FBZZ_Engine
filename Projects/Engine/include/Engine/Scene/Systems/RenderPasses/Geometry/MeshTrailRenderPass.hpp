@@ -1,4 +1,4 @@
-/// @file    MeshTrailRenderSystem.hpp
+/// @file    MeshTrailRenderPass.hpp
 /// @brief   MeshTrailComponent のサンプル更新と Mesh / SkinnedMesh 残像 DrawCall 発行。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
@@ -9,7 +9,7 @@
 
 namespace fbzz::scene {
 
-// IRenderPass 実装 — RenderPipeline::AddPass<MeshTrailRenderPass>() で登録する。
+/// IRenderPass 実装 — RenderPipeline::`AddPass<MeshTrailRenderPass>()` で登録する。
 class MeshTrailRenderPass final : public IRenderPass {
 public:
     std::string_view Name() const override;

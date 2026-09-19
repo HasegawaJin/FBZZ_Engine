@@ -1,16 +1,9 @@
 name: Tests
 
-# GoogleTest による自動テストと、OpenCppCoverage による行カバレッジ計測。
-#
-# WHY プリセットを使わないか: CMakePresets.json は開発機の Visual Studio 18 / Windows SDK
-#      10.0.26100 を指している。ランナーの構成は違うので、CI は世代を固定せず自前で configure する。
-#
-# WHY CI で測るのが行 (C0) までか: MSVC + OpenCppCoverage は行カバレッジしか出せない。
-#      分岐 (C1) 以降は clang-cl + llvm-cov の 2 本目のツールチェーンが要り、
-#      エンジン全体を clang-cl で再ビルドすることになる。CI の所要時間が倍になる割に
-#      «PR ごとに見る数字» としては行で足りるため、分岐は手元の
-#      Tools/RunCoverageLLVM.ps1 (VS Code タスク "Coverage: Branch + MC/DC (clang-cl)")
-#      で必要な時だけ測る。規約は Docs/conventions/test.md の «13. カバレッジ»。
+# @brief GoogleTest による自動テストと、OpenCppCoverage による行カバレッジ計測。
+# @note  プリセットを使わない。CMakePresets.json は開発機の Visual Studio 18 / Windows SDK 10.0.26100 を指し、ランナーの構成と違う。
+# @note  CI で測るのは行 (C0) まで。分岐以降は clang-cl で全体を再ビルドするため手元の Tools/Coverage/RunCoverageLLVM.ps1 で測る (Docs/conventions/test.md «13. カバレッジ»)。
+# @note  PR でカバレッジを測るのは計測対象 (Math / Physics / Core とそのテスト・計測ツール) に触れたときか、ラベル coverage が付いたときだけ (ラベルは次の push から効く)。main / develop への push と手動実行では常に測る。
 
 on:
   push:
@@ -22,9 +15,7 @@ permissions:
   contents: read
   pull-requests: write
 
-# 同じブランチ / PR へ続けて push したとき、追い越された実行を打ち切る。
-# WHY: 1 回 40〜70 分かかるうえ Windows ランナーは課金分数が 2 倍で、
-#      結果を誰も見ない古い実行を最後まで回すと無料枠がそれだけで溶ける。
+# @note 追い越された実行を打ち切る。1 回 40〜70 分かかり、Windows ランナーは課金分数が 2 倍で無料枠が溶ける。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -34,23 +25,90 @@ env:
   BUILD_CONFIG: Debug
 
 jobs:
+  # @brief 規約 (AGENTS.md «絶対制約» とコメント形式) の機械検査。数秒で終わるので 40 分のビルドより前に落とす。
+  # @note  旧コードには移行途中の違反が残るため、差分で «増えた» 違反だけを咎める (Projects/DevTools/AgentLint/lint.mjs)。
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Lint changed files
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+            if ! git cat-file -e "$base^{commit}" 2>/dev/null; then base="HEAD~1"; fi
+          fi
+          node Projects/DevTools/AgentLint/lint.mjs --base "$base"
+
+  # @brief MCP サーバーの契約とツール。C++ の BusContractParityTests と対で、TypeScript 側の食い違いを落とす。
+  # @note  バスのクライアントテストが Named Pipe を実際に開くので Windows で回す。
+  editor-mcp:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: EditorMcp tests
+        shell: pwsh
+        working-directory: Projects/EditorMcp
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
   test:
     runs-on: windows-latest
 
-    # Engine + Editor のフルビルド (EditorAuto が FBZZEditor をリンクするため) と、
-    # 素の ctest + OpenCppCoverage 計装の 2 周で 40〜70 分かかる。既定の上限は 360 分で、
-    # ハング 1 件に 6 時間ぶん持っていかれるため «正常な最長» の倍あたりで切る。
+    # @note Engine + Editor のフルビルドと ctest (+ 計測時は OpenCppCoverage の 2 周目) で 40〜70 分。既定の上限 360 分だとハング 1 件で 6 時間持っていかれるので «正常な最長» の倍あたりで切る。
     timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      # WHY generator を総当たりするか: ランナーイメージが載せる Visual Studio の世代は
-      #      予告なく入れ替わる。1 つに固定すると «その世代が消えた日» に configure ごと落ちる。
-      #      枯れている順に試し、最初に通ったものを使う。失敗した generator は CMakeCache に
-      #      残って次の試行を汚すため、build ディレクトリごと消してから次へ進む。
-      #      世代を足すときは «古い順» を崩さないこと (新しい方を先に試すと、過渡期の
-      #      ランナーで毎回 1 回分の configure が無駄に走る)。
+      # @note 変更ファイルを取れなかったときは測る側に倒す。
+      # @note `gh pr diff` は 300 ファイルを超える PR (develop → main のリリース等) で HTTP 406 になるため、ページ送りできる files API (上限 3000) を使う。
+      # @see https://docs.github.com/en/rest/pulls/pulls#list-pull-requests-files "List pull requests files"
+      # @warning pwsh ステップは最後の $LASTEXITCODE で成否が決まる。取得に失敗して測る側に倒したときもステップを落とさないよう、末尾で exit 0 する。
+      - name: Decide scope
+        id: scope
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $event = "${{ github.event_name }}"
+          $hasCoverageLabel = "${{ contains(github.event.pull_request.labels.*.name, 'coverage') }}" -eq "true"
+          $measure = $true
+
+          if ($event -eq "pull_request" -and -not $hasCoverageLabel) {
+            $files = gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --jq '.[].filename'
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "変更ファイルを取得できなかったので、カバレッジを測る側に倒します"
+            } else {
+              $pattern = '^(Projects/(Math|Physics|Engine/src/Core|Engine/include/Engine/Core|Tests/(Math|Physics|Core|TestKit))/|Tools/Coverage/|\.github/workflows/tests\.yml$)'
+              $measure = [bool]($files | Where-Object { $_ -match $pattern })
+            }
+          }
+
+          Write-Host "measure=$measure"
+          "measure=$($measure.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          exit 0
+
+      # @note Visual Studio の世代はランナーイメージで予告なく入れ替わるため、枯れている順に試して最初に通ったものを使う。
+      # @note 失敗した generator は CMakeCache に残って次の試行を汚すので、build ディレクトリごと消してから次へ進む。
+      # @note 世代を足すときは «古い順» を崩さない。新しい方を先に置くと過渡期のランナーで毎回 configure が 1 回無駄になる。
       - name: Configure
         shell: pwsh
         run: |
@@ -82,22 +140,17 @@ jobs:
             exit 1
           }
 
-      # テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
-      # WHY Editor が混ざるか: EditorAuto は FBZZEditor をリンクするため、その分だけは
-      #     依存として建つ。AI 連携や import 判定は «起動しないと分からない» 壊れ方をし、
-      #     CI で押さえないと手元でしか気づけない。
-      #
-      # スイートを足したら --target にも足すこと。書き漏らすと «ビルドされないだけ» で
-      # 通ってしまい、CTest には NOT_BUILT のプレースホルダーが 1 件出るだけになる。
+      # @brief テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
+      # @note  EditorAuto が FBZZEditor をリンクするので Editor も建つ。AI 連携や import 判定は起動しないと分からない壊れ方をするため CI で押さえる。
+      # @warning スイートを足したら --target にも足す。漏れると «ビルドされないだけ» で通り、CTest に NOT_BUILT が 1 件出るだけになる。
       - name: Build test targets
         shell: pwsh
         run: |
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
 
-      # --timeout: 止まったテストがあってもそこで打ち切り、残りを最後まで走らせる。
-      #   これが無いと、1 件のハングでジョブがワークフローの上限まで待ち続ける。
-      # --no-tests=error: テストが 1 件も登録されていない状態を «成功» にしない。
+      # @note --timeout で止まったテストを打ち切り残りを走らせる。無いと 1 件のハングでジョブ上限まで待つ。
+      # @note --no-tests=error でテストが 1 件も登録されていない状態を成功にしない。
       - name: Run tests
         shell: pwsh
         run: >
@@ -105,64 +158,97 @@ jobs:
           --output-on-failure --timeout 30 --no-tests=error
 
       - name: Install OpenCppCoverage
+        if: steps.scope.outputs.measure == 'true'
         shell: pwsh
         run: |
           choco install opencppcoverage --no-progress -y
           echo "C:\Program Files\OpenCppCoverage" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # --cover_children で ctest が起動する各テスト exe まで追う。
-      # 計測対象は «自作で、テストを書くと決めた» 3 つに絞る。Renderer / Editor を混ぜると、
-      # テストしないと決めた領域が分母に入って数値が意味を失う。
+      # @note 計測は ctest を通さずテスト exe を 1 本ずつ直接走らせ、binary で出して最後に統合する。
+      # @warning ctest を通すと gtest_discover_tests が登録した «1 テスト 1 プロセス» (2148 本) すべてで OpenCppCoverage が PDB を読み直す。テスト本体は全スイート合わせて 25 秒なのに、起動だけで 20 分 (開発機) / 47 分超 (ランナー) かかりジョブの上限で落ちる。
+      # @note --cover_children はテスト exe が起動する子まで追うために残す。
+      # @note 計測対象は «自作で、テストを書くと決めた» 3 つに絞る。Renderer / Editor を混ぜると分母が意味を失う。
+      # @warning スイートを足したらここにも足す。漏れるとそのスイートが踏んだ行が «未到達» に化ける。
       - name: Measure coverage
+        if: steps.scope.outputs.measure == 'true'
         shell: pwsh
         run: |
+          $testDir = "$env:BUILD_DIR/Binaries/$env:BUILD_CONFIG/Tests"
+          $suites  = @(
+            "FBZZTestsMathAuto", "FBZZTestsCoreAuto", "FBZZTestsPhysicsAuto",
+            "FBZZTestsFluidAuto", "FBZZTestsEngineAuto", "FBZZTestsEditorAuto"
+          )
+
+          $inputs = @()
+          $failed = @()
+          foreach ($suite in $suites) {
+            OpenCppCoverage.exe `
+              --cover_children `
+              --sources "Projects\Math" `
+              --sources "Projects\Physics" `
+              --sources "Projects\Engine\src\Core" `
+              --excluded_sources "Projects\Engine\src\Core\Platform" `
+              --excluded_sources "Projects\Tests" `
+              --excluded_sources "ThirdParty" `
+              --working_dir "$testDir" `
+              --export_type "binary:$suite.cov" `
+              -- "$testDir/$suite.exe"
+
+            # @note デバッガー下でだけ出る異常終了 (解放済みメモリへの書き込みをデバッグヒープが捕まえる等) をここで拾う。
+            if ($LASTEXITCODE -ne 0) { $failed += ("{0} (0x{1:X8})" -f $suite, $LASTEXITCODE) }
+            $inputs += "--input_coverage=$suite.cov"
+          }
+
           OpenCppCoverage.exe `
-            --cover_children `
-            --sources "Projects\Math" `
-            --sources "Projects\Physics" `
-            --sources "Projects\Engine\src\Core" `
-            --excluded_sources "Projects\Tests" `
-            --excluded_sources "ThirdParty" `
             --export_type "cobertura:coverage.xml" `
             --export_type "html:coverage-html" `
-            -- ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG --timeout 30
+            @inputs
 
-      # OpenCppCoverage が書くパスは «ランナーのユーザー名を含む絶対パス»。
-      # 直さないと PR コメントの表がランナーの絶対パスで埋まり、
-      # アーティファクトの coverage.xml もランナー上でしか解決できない形のまま残る。
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "カバレッジの統合に失敗しました"
+            exit 1
+          }
+          if ($failed.Count -gt 0) {
+            Write-Error "計装下で異常終了したスイート: $($failed -join ', ')"
+            exit 1
+          }
+
+      # @note OpenCppCoverage はランナーのユーザー名を含む絶対パスを書く。直さないと PR コメントの表と coverage.xml がランナー上でしか読めない。
       - name: Normalise coverage paths
+        if: steps.scope.outputs.measure == 'true'
         shell: pwsh
-        run: ./Tools/NormalizeCoverageXml.ps1 -CoberturaPath coverage.xml
+        run: ./Tools/Coverage/NormalizeCoverageXml.ps1 -CoberturaPath coverage.xml
 
       - name: Summarise coverage
+        if: steps.scope.outputs.measure == 'true'
         id: coverage
         shell: pwsh
-        run: ./Tools/CoverageReport.ps1 -CoberturaPath coverage.xml -OutputPath coverage-comment.md
+        run: ./Tools/Coverage/CoverageReport.ps1 -CoberturaPath coverage.xml -OutputPath coverage-comment.md
 
       - name: Publish summary
+        if: steps.scope.outputs.measure == 'true'
         shell: pwsh
         run: Get-Content coverage-comment.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Comment on pull request
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.scope.outputs.measure == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh pr comment ${{ github.event.number }} --body-file coverage-comment.md
 
       - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && steps.scope.outputs.measure == 'true'
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-html
           path: |
             coverage-html/
             coverage.xml
 
-      # しきい値はリポジトリ変数 FBZZ_COVERAGE_MIN で設定する (未設定なら 0 = 素通り)。
-      # WHY 最初から高い値を入れないか: 落ちるのが当たり前の CI は誰も見なくなる。
-      #     初回の実測値を見てから、下回ったら気づく水準に置くこと。
+      # @note しきい値はリポジトリ変数 FBZZ_COVERAGE_MIN (未設定なら 0 = 素通り)。落ちるのが当たり前の CI は誰も見なくなるので、実測値を見てから置く。
       - name: Enforce minimum coverage
+        if: steps.scope.outputs.measure == 'true'
         shell: pwsh
         run: |
           $minimum = [double]("${{ vars.FBZZ_COVERAGE_MIN }}" -replace '^$', '0')

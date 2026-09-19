@@ -3,23 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
 ///
-/// WHY 弱点にカバーを付けるか:
-///   弱点は «守られている状態との対比» でしか読めない。常時露出しているものは、
-///   どれだけ光らせても装飾に見える。閉＝ただの装甲 / 開＝弱点、という対比を
-///   モデルの側に持たせることで、Docs/climb-core.md の契約
-///   「隙のあいだだけ露出する急所」がそのまま絵になる。
-///
-/// WHY 専用レイヤーへ逃がすか (加算ではなく Override + マスク):
-///   蓋のボーン (Hatch_*) と昇降 (Core_Lift) は、ベースのどのクリップもキーしていない。
-///   加算の利点は «土台の動きを保ったまま差分を乗せる» ことなので、土台が無いここでは
-///   利点がゼロのまま «基準ポーズ» という壊れやすい設定だけが増える。
-///   マスクを 5 本へ絞った Override なら、このレイヤーは残りのボーンへ物理的に触れない。
-///
-/// WHY «開いている» と «斬れる» を別に持つか:
-///   蓋は 0.63 秒かけて開き、コアはそこから遅れてせり上がる。開き始めた瞬間に
-///   当たり判定を出すと、まだ装甲の下にあるコアへ刃が通る。逆に閉じ始めてから
-///   最後まで当たると、目の前で閉じた蓋の中を斬れてしまう。
-///   絵と判定のどちらを正にするかは «絵» で、判定をそこへ寄せる。
+/// @note «開いている» (蓋) と «斬れる» (コア露出) の当たりは別。蓋 0.63 秒 / 閉 0.50 秒の
+///       アニメ尺に対し exposeDelay/sealLead で遅らせて合わせる (絵が正、判定を寄せる)。
+/// @note レイヤーは加算でなく Override+マスクにしてある。蓋 (Hatch_*) と昇降 (Core_Lift) の
+///       ボーンはベースクリップがキーしていないので、加算では基準ポーズが無く壊れやすい。
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
@@ -79,18 +66,15 @@ public:
 
 private:
     /// コアの当たり (HB_Core) を露出に合わせて出し入れする。
-    ///
-    /// WHY 判定側に «露出しているか» を聞かせないか: 斬撃・とどめ・HUD の 3 か所が
-    ///     それぞれ蓋の状態を引くと、1 か所書き忘れたときに «閉じているのに斬れる»
-    ///     が生まれる。オブジェクトごと畳めば、当たりを探す側は何も知らなくてよい
-    ///     (BladeComponent の扇は activeInHierarchy で弾いている)。
+    /// @note 斬撃・とどめ・HUD に «露出しているか» を個別に聞かせない。書き忘れた 1 か所が
+    ///       «閉じているのに斬れる» になるため、当たりごと出し入れして判定側を無知にする。
     void ApplyHitbox();
     [[nodiscard]] static GameObject* FindInSubtree(GameObject& root, const std::string& name);
 
     bool      m_open    = false;
     bool      m_exposed = false;
-    float     m_timer   = 0.0f;   // 現在の状態になってからの経過
-    bool      m_applied = false;  // 直近で当たりへ書いた値
+    float     m_timer   = 0.0f;   ///< 現在の状態になってからの経過
+    bool      m_applied = false;  ///< 直近で当たりへ書いた値
     /// OnStart を抜けたか。初期化で書く «閉じた» を開閉と取り違えないため。
     bool      m_started = false;
     /// 当たりを探し直すまでの残り [秒]。全サブツリー探索を毎フレーム回さないため。
@@ -110,12 +94,14 @@ inline void BossHatchComponent::OnStart()
     debugExposed = false;
     debugTimer   = 0.0f;
     m_coreHitbox = {};
-    m_applied    = true;   // 閉じた状態を 1 度書かせる
-    m_started    = false;  // ここで書く «閉じた» は開閉ではないので鳴らさない
+    /// @note 閉じた状態を 1 度書かせる
+    m_applied    = true;
+    /// @note ここで書く «閉じた» は開閉ではないので鳴らさない
+    m_started    = false;
     m_probeCooldown = 0.0f;
 
-    // Play をまたぐと Animator は Controller の初期値へ戻る。こちらの真偽値と
-    // 食い違ったまま始まると «開いているのに斬れない» が残る。
+    /// @note Play をまたぐと Animator は Controller の初期値へ戻る。こちらの真偽値と
+    ///       食い違ったまま始まると «開いているのに斬れない» が残る。
     if (!openParam.empty()) animator.SetBool(openParam, false);
     if (!layerName.empty()) animator.SetLayerWeight(layerName, 1.0f);
     m_started = true;
@@ -128,22 +114,18 @@ inline void BossHatchComponent::SetOpen(bool open)
     m_timer = 0.0f;
     if (!openParam.empty()) animator.SetBool(openParam, open);
 
-    // WHY 開閉で音を鳴らすか: コアが斬れるのは «蓋が開いている間» だけで、その窓は
-    //     地上からは見えない (Docs/climb-core.md「シルエットで «無防備» が読める」は
-    //     花弁の輪郭の話で、闘技場の反対側からでは間に合わない)。窓の開閉は
-    //     画面に出ていないところでも起きるので、耳で分かる必要がある。
-    //
-    // WHY 閉じる音を «開く音の逆» にしないか: 閉じは «間に合わなかった» の合図で、
-    //     開きと同じ形だと «また開いた» と取り違える。掛け金が噛む 1 発で終わらせる。
-    if (!m_started) return;   // OnStart の初期化で «閉じた» を書くときは鳴らさない
+    /// @note 窓の開閉は画面外でも起きるため音で知らせる。閉じ音は開き音の逆再生にしない ─
+    ///       同じ形だと «また開いた» と取り違えるため、専用の 1 発で終わらせる。
+    /// @note OnStart の初期化で «閉じた» を書くときは鳴らさない。
+    if (!m_started) return;
     se::Play(audio, open ? se::kBossHatchOpen : se::kBossHatchClose, hatchVolume);
 }
 
 inline void BossHatchComponent::OnUpdate()
 {
-    // 開ける条件は «転倒中» ただ 1 つ。踏みつけを弾いた 0.9 秒の硬直では
-    // 開き 0.63s + 閉じ 0.50s が収まらず、開いている時間が実質残らない
-    // (Docs/climb-core.md「蓋を開ける条件」)。
+    /// @note 開ける条件は «転倒中» ただ 1 つ。踏みつけを弾いた 0.9 秒の硬直では
+    ///       開き 0.63s + 閉じ 0.50s が収まらず、開いている時間が実質残らない
+    ///       (Docs/climb-core.md「蓋を開ける条件」)。
     const IBoss* boss = IBoss::Of(scene.Self());
     SetOpen(boss != nullptr && boss->IsToppled());
 
@@ -169,13 +151,10 @@ inline void BossHatchComponent::ApplyHitbox()
 
     GameObject* hitbox = m_coreHitbox.Resolve(scene);
     if (!hitbox) {
-        // 当たりは Play のたびに BossHitboxRigComponent が作り直す runtimeGenerated な
-        // オブジェクトで、こちらの OnStart より後に出来ることがある。見つかるまで諦めない。
-        //
-        // WHY 毎フレーム探さないか (2026-09-08): FindInSubtree はボスの全サブツリーを
-        //     再帰で歩く。ボーンが実行時生成になってからは 100 ノードを超えていて、
-        //     見つからない間ずっと毎フレーム歩き続けると、それだけで目に見えて重くなる。
-        //     «見つからない» は数百 ms 遅れても誰も困らないので、間隔を空ける。
+        /// @note 当たりは Play のたびに BossHitboxRigComponent が作り直す runtimeGenerated な
+        ///       オブジェクトで、OnStart より後に出来ることがある。見つかるまで諦めない。
+        /// @note 毎フレーム探さない。100 ノード超のサブツリーを再帰で歩くと重く、
+        ///       «見つからない» は数百 ms 遅れても困らないので間隔を空ける。
         m_probeCooldown -= std::max(Time::deltaTime, 0.0f);
         if (m_probeCooldown > 0.0f) return;
         m_probeCooldown = kProbeInterval;
@@ -184,7 +163,8 @@ inline void BossHatchComponent::ApplyHitbox()
         hitbox = self ? FindInSubtree(*self, coreHitboxName) : nullptr;
         if (!hitbox) return;
         m_coreHitbox = EntityRef{ hitbox->GetID() };
-        m_applied    = !m_exposed;   // 初回は必ず書く
+        /// @note 初回は必ず書く
+        m_applied    = !m_exposed;
     }
 
     if (m_applied == m_exposed) return;

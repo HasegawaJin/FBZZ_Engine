@@ -502,10 +502,10 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 ```powershell
 # C0 — 事前に winget install OpenCppCoverage.OpenCppCoverage
 #      HTML / バッジ / lcov も要るなら dotnet tool install -g dotnet-reportgenerator-globaltool
-.\Tools\RunCoverage.ps1
+.\Tools\Coverage\RunCoverage.ps1
 
 # C1 / C2 — VS Code タスク "Coverage: Build (clang-cl)" でビルドしてから
-.\Tools\RunCoverageLLVM.ps1
+.\Tools\Coverage\RunCoverageLLVM.ps1
 ```
 
 `Tools/` の分担は次のとおり。
@@ -524,13 +524,30 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 分母は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` の 3 つだけ。
 「12. 何をテストするか」で**書かないと決めた領域を分母に入れると数字が意味を失う**ため、
 Renderer / Editor / Tests / ThirdParty は両系統とも除外している。
+`Projects/Engine/src/Core/Platform` (Window / Cursor / Application / EngineRebuildBootstrap) も
+OS のウィンドウと起動の層でテストから生成しないため、Core の中から除外している。
 
 対象を変えるときは 4 箇所を同時に直すこと。ずれると C0 と C1 が別の母集団の比較になる。
 
-- `Tools/RunCoverage.ps1` の `--sources`
-- `Tools/RunCoverageLLVM.ps1` の `$sourceFilters`
+- `Tools/Coverage/RunCoverage.ps1` の `--sources`
+- `Tools/Coverage/RunCoverageLLVM.ps1` の `$sourceFilters`
 - `CMakeLists.txt` 末尾の `fbzz_instrument_for_coverage()`
 - `.github/workflows/tests.yml` の `--sources`
+
+### CI は ctest を通さずテスト exe を直接走らせる
+
+CI の «Measure coverage» は、スイートごとに exe を 1 回ずつ計測して binary で出し、
+最後に `--input_coverage` で 1 本のレポートへ統合する。**スイートを足したら
+同ステップの `$suites` にも足すこと。**忘れるとそのスイートが踏んだ行が「未到達」に化ける。
+
+> ctest を通すと `gtest_discover_tests` が登録した **1 テスト 1 プロセス**(2148 本)すべてで
+> OpenCppCoverage が PDB を読み直す。テスト本体は全スイート合わせて 25 秒なのに、
+> プロセス起動だけで 20 分(開発機)・47 分超(ランナー)かかり、ジョブの上限で落ちる。
+
+1 プロセスにまとめると、テスト間で持ち越した不正なメモリ操作が表に出る。
+デバッガー(OpenCppCoverage)の下では Windows のデバッグヒープが有効になり、
+解放済みメモリへの書き込みが `int 3`(終了コード `0xC0000005` / `0x80000003`)になるため、
+**素の ctest では通るのに計測パスだけが落ちる**という形で現れる。
 
 ### 数字を見る前にレポートを見る
 

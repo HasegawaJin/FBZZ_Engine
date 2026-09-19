@@ -37,6 +37,7 @@
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LodDither.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
@@ -78,12 +79,12 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  whiteHeat;
 };
 
-Texture2D<float>       texShadow        : register(TEX_SHADOW);
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
 SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
-TextureCube            texIBLIrradiance : register(TEX_IBL_IRRADIANCE);
-TextureCube            texIBLPrefilter  : register(TEX_IBL_PREFILTER);
-Texture2D<float4>      texBRDFLut       : register(TEX_IBL_BRDF_LUT);
+FBZZ_TEXCUBE(texIBLIrradiance, TEX_IBL_IRRADIANCE_SLOT);
+FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);
+FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);
 SamplerState           sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP);
 
 // スキン後のローカル位置と法線を PS まで運ぶ。既定の PSInput には枠が無い。

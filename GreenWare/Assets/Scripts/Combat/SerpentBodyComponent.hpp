@@ -3,20 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
 ///
-/// WHY 千切って後ろを落とさないか (boss-serpent.md「胴を折る」):
-///   斬った所から後ろを丸ごと落とすと 1 回で大半が飛び、«あと何回» が読めなくなる。
-///   潰した節ぶんだけ縮めて両端を繋ぎ直す形なら、1 回で削れる長さが毎回同じになり、
-///   残りの節数がそのまま «あと何回とどめを通すか» になる。
-///
-/// WHY 骨を減らさず «リンクを畳む» 形にするか:
-///   骨の親子は書き出しで固定されていて、途中の 1 本を抜くことはできない。
-///   代わりに潰れた節のリンク長を 0 にすると、残った節が隙間なく繋がったまま
-///   鎖が短くなる ─ «両端が溶接されて胴は繋がったまま短くなる» が、
-///   位置の計算を 1 行も足さずにそのまま出る (畳むのは SerpentSpineComponent)。
-///
-/// WHY 段階をフェーズ変数で持たないか:
-///   長さがそのまま段階になる (28〜23 / 22〜15 / 14 以下)。別に変数を持つと、
-///   «節は 14 なのにフェーズは 1» という、盤面と食い違った状態が作れてしまう。
+/// @note 潰れた節は削除せず両端を繋ぎ直して縮める (boss-serpent.md「胴を折る」)。
+///       骨の親子は書き出しで固定され途中の 1 本を抜けないため、リンク長を 0 にして
+///       畳む (実装は SerpentSpineComponent)。1 回で削れる長さが毎回同じになり、
+///       残り節数がそのまま «あと何回とどめを通すか» になる。
+/// @note 段階はフェーズ変数でなく節数そのもので判定する (28〜23 / 22〜15 / 14 以下)。
+///       別変数を持つと節数とフェーズが食い違う状態を作れてしまう。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -68,20 +60,10 @@ public:
     FBZZ_TOOLTIP("節 1 本を潰したときに入る HP。体力バーは «あと何本» を映す物差しなので、"
                  "削れる節数 × ここ が最大 HP とおおよそ揃っている必要がある")
 
-    // とどめ 1 回につき、潰れた一続きの **先頭 1 本だけ** を床へ落とす
-    // (Docs/part-break.md「柱 3 — 戦利品」)。
-    //
-    // WHY 4 本まとめて落とさないか: 1 回のとどめで 4 節が飛ぶので、全部残すと
-    //     28 → 6 節の道中に 22 本が床へ出る。**開口 16 口の場が全部塞がって
-    //     蛇が渡れなくなる** ── 塞ぐことが «戦術» ではなく «詰み» になる。
-    //     落ちるのは «斬った節» ＝ プレイヤーが選んだ 1 本だけにする。
-    //
-    // WHY «その場に残さない» をやめたか (2026-09-11): 破片を床下へ落としていた
-    //     理由は «盤面に帯電体が増えると離れた 2 節を選びにくくなる» で、
-    //     これは極性の遊びの都合だった (boss-serpent.md「潰した節の破片」)。
-    //     極性は 2026-09-08 に撤去済みなので、この禁止はもう理由を失っている。
-    //     残せば、落ちた節が **床の口を塞ぎ**、蛇はそれを突き上げ・薙ぎで
-    //     吹き飛ばし、吹き飛んだ節は弾ける一撃になって返ってくる。
+    /// @brief とどめ 1 回につき、潰れた一続きの先頭 1 本だけを床へ落とす
+    ///        (Docs/part-break.md「柱 3 — 戦利品」)。
+    /// @note 4 本まとめて落とすと開口 16 口の盤面が全部塞がり «詰み» になるため、
+    ///       斬った 1 本だけを落とす。落ちた節は突き上げ・薙ぎで吹き飛び弾ける一撃になる。
     FBZZ_GROUP("落ちた節")
     FBZZ_FIELD(bool, dropDebris, true, "節を床へ落とす")
     FBZZ_TOOLTIP("とどめで潰れた先頭の 1 本を剛体として床へ落とす。"
@@ -89,10 +71,9 @@ public:
     FBZZ_FIELD_RANGE_INT(int, maxDebris, 3, "上限 [本]", 0, 10)
     FBZZ_TOOLTIP("盤面に置ける本数。**16 口のうち何口まで塞がってよいか**と読む ─ "
                  "多いと渡れる組が尽きて、蛇が同じ 2 口を往復するだけになる")
-    // WHY 立方体で囲うか: 節の «長い向き» はバインド姿勢の骨の +Y だが、落ちた節の
-    //     当たりはモデル空間の軸に沿った箱でしか作れない。向きを取り違えた細長い箱は
-    //     «見えている所で止まらない» という直しようのないずれになるので、
-    //     節長 0.80m と太さ 1.24m の両方を包む立方体で囲う。
+    /// @note 立方体で囲う。節の «長い向き» はバインド姿勢の骨の +Y だが、当たりは
+    ///       モデル空間の軸に沿った箱でしか作れず、向きを取り違えると見えている所で
+    ///       止まらないずれになる。節長 0.80m・太さ 1.24m の両方を包む立方体にする。
     FBZZ_FIELD_RANGE(float, debrisRadius, 0.75f, "当たりの半径 [m]", 0.1f, 3.0f)
     FBZZ_TOOLTIP("落ちた節を囲う立方体の半径。節は長さ 0.80m・太さは前 1.24m 〜 尾 0.20m")
     FBZZ_FIELD_RANGE(float, debrisMass, 30.0f, "Mass", 1.0f, 300.0f)
@@ -124,11 +105,10 @@ public:
     /// 頭に斬撃が通る段か。終盤だけ。
     [[nodiscard]] bool HeadIsVulnerable() const { return m_count <= phase3At; }
 
-    /// とどめ (Docs/break-parry.md)。headIndex から尾の側へ count 本を潰す。
-    /// @ret 潰せた節の数。0 なら何も起きなかった。
-    ///
-    /// WHY 斬った場所で本数が変わらないか: 飛ぶ節の数を選ぶのはプレイヤーではなく
-    ///     «何回倒したか» なので、どこを斬っても同じ長さだけ短くなる方が読める。
+    /// @brief とどめ (Docs/break-parry.md)。headIndex から尾の側へ count 本を潰す。
+    /// @return 潰せた節の数。0 なら何も起きなかった。
+    /// @note 飛ぶ節の数は斬った場所でなく «何回倒したか» で決まる。どこを斬っても
+    ///       同じ長さだけ短くなる方が読める。
     int Sever(int headIndex, int count);
 
     /// 潰れた節が «居なかったこと» になっているか (絵と当たりの後始末が済んだか)。
@@ -136,17 +116,13 @@ public:
     void OnUpdate() override;
 
 private:
-    /// 節 1 本を潰す。絵を伏せ、当たりを畳む。@ret 潰した節が居た所 (ワールド)。
-    ///
-    /// WHY ここで爆発を鳴らさないか: 折りは «輪が閉じて間が潰れる» という 1 つの
-    ///     出来事で、潰れる節の数は 2 節の距離で決まる (最大 20 本超)。節ごとに
-    ///     1 発ずつ鳴らすと、同じフレームに同じ爆発が 20 発重なる ─ 光源は
-    ///     先着 3 発が満光、陽炎も同数、絵としては «白い塊» にしかならず、
-    ///     «どこからどこまでが潰れたか» という肝心の情報が消える。
-    ///     鳴らすのは呼ぶ側 (Sever) が «1 回ぶん» としてまとめる。
-    ///
-    /// WHY 破片をその場に残さないか: 盤面に物が増えるほど «次にどこを斬るか» が
-    ///     読みにくくなる (boss-serpent.md「潰した節の破片」)。
+    /// @brief 節 1 本を潰す。絵を伏せ、当たりを畳む。
+    /// @return 潰した節が居た所 (ワールド)。
+    /// @note 爆発はここで鳴らさない。潰れる節数は 2 節の距離で決まり最大 20 本超に
+    ///       なるため、節ごとに鳴らすと爆発が同一フレームで重なり光源・陽炎が飽和して
+    ///       «どこからどこまで潰れたか» が消える。呼ぶ側 (Sever) が 1 回ぶんへまとめる。
+    /// @note 潰れた節の破片はその場に残さない。盤面に物が増えるほど次にどこを斬るか
+    ///       読みにくくなる (boss-serpent.md「潰した節の破片」)。
     Vector3 Crush(int headIndex);
     /// 潰した一続きを 1 つの出来事として鳴らす。
     /// @param at 潰れた節が居た所 (頭側から順)
@@ -155,22 +131,18 @@ private:
     /// その節の分割メッシュ (`E_*_S07`) を集める。
     void CollectMeshes();
 
-    /// 節 1 本を剛体として床へ落とす。
-    ///
-    /// WHY 静的メッシュで写すか: 骨は SerpentSpineComponent が毎フレーム経路へ
-    ///     沿わせているので、潰した節«だけ»を別に動かす経路が無い。同じ submesh を
-    ///     `Serpent.fbx:N` として静的に描けば、バインド姿勢の節がそのまま «物» になる
-    ///     (BossRigComponent::SpawnLegDebris と同じ形)。
-    ///
-    /// WHY scene.Create を呼ぶ側の最後に置くか: Create は GameObject 配列を再確保する。
-    ///     潰す処理の途中で作ると、握っている GameObject* が無効になる。
+    /// @brief 節 1 本を剛体として床へ落とす。
+    /// @note 骨は SerpentSpineComponent が毎フレーム経路へ沿わせるため、潰した節だけを
+    ///       別に動かす経路が無い。同じ submesh を `Serpent.fbx:N` として静的に描き、
+    ///       バインド姿勢のまま «物» にする (BossRigComponent::SpawnLegDebris と同じ形)。
+    /// @note scene.Create は呼ぶ側の最後に置くこと。GameObject 配列を再確保するので、
+    ///       潰す処理の途中で作ると握っている GameObject* が無効になる。
     void DropDebris(int headIndex, const Vector3& at);
 
-    /// 節の骨のバインド姿勢を控える。落とした節の静的メッシュをどこへ置けば
-    /// «今の節» に重なるかは、これが無いと解けない。
-    ///
-    /// WHY OnStart で 1 回だけか: 骨を動かすのは SerpentSpineComponent の OnUpdate で、
-    ///     OnStart はそれより前に必ず通る ─ そこがバインドに一番近い。
+    /// @brief 節の骨のバインド姿勢を控える。落とした節の静的メッシュを «今の節» に
+    ///        重ねる基準になる。
+    /// @note OnStart で 1 回だけ呼ぶ。骨を動かす SerpentSpineComponent::OnUpdate より
+    ///       前に必ず通るため、バインドに一番近い時点になる。
     void CaptureBind();
     [[nodiscard]] SerpentHitboxRigComponent* Rig() const
     {
@@ -247,9 +219,9 @@ inline void SerpentBodyComponent::CollectMeshes()
 
     for (auto& list : m_meshes) list.clear();
 
-    // WHY 蛇の «直接の子» だけを見るか: FBX の階層表現として RootNode の下にも
-    //     同名のノードが居る。部分木で拾うと、描いていないノードまで輪郭と
-    //     欠損の対象に入る (ボス 1 の脚と同じ理由)。
+    /// @note 蛇の直接の子だけを見る。FBX の階層表現として RootNode の下にも同名の
+    ///       ノードが居るため、部分木で拾うと描いていないノードまで輪郭と欠損の
+    ///       対象に入ってしまう (ボス 1 の脚と同じ理由)。
     int found = 0;
     const int childCount = self->GetChildCount();
     for (int i = 0; i < childCount; ++i) {
@@ -276,8 +248,8 @@ inline int SerpentBodyComponent::Sever(int headIndex, int count)
 {
     if (headIndex < 1 || headIndex > serpent::kSegmentCount || count <= 0) return 0;
 
-    // 斬った節から尾へ向かって、生きている節を count 本。尾側が足りなければ頭側へ戻る
-    // (尾の付け根を斬ったときに «何も飛ばない» にしない)。
+    /// @note 斬った節から尾へ向かって、生きている節を count 本。尾側が足りなければ頭側へ戻る
+    ///       (尾の付け根を斬ったときに «何も飛ばない» にしない)。
     std::vector<int> crushed;
     for (int i = headIndex; i <= serpent::kSegmentCount && static_cast<int>(crushed.size()) < count; ++i)
         if (m_alive[i]) crushed.push_back(i);
@@ -285,7 +257,7 @@ inline int SerpentBodyComponent::Sever(int headIndex, int count)
         if (m_alive[i]) crushed.push_back(i);
     if (crushed.empty()) return 0;
 
-    // 最小の長さは割らない。«繋がったまま短くなる» が «消える» になってしまう。
+    /// @note 最小の長さは割らない。«繋がったまま短くなる» が «消える» になってしまう。
     const int allowed = m_count - minSegments;
     if (allowed <= 0) return 0;
     if (static_cast<int>(crushed.size()) > allowed) crushed.resize(static_cast<std::size_t>(allowed));
@@ -293,8 +265,8 @@ inline int SerpentBodyComponent::Sever(int headIndex, int count)
     std::vector<Vector3> at;
     at.reserve(crushed.size());
     for (const int index : crushed) at.push_back(Crush(index));
-    // とどめは «切断» の絵 (PlayExecute) を呼ぶ側が斬った所へ出す。ここは
-    // 飛んだ節が居た所を軽く言うだけ ─ 芯を 2 つ置くと閃光が重なって白く抜ける。
+    /// @note とどめは «切断» の絵 (PlayExecute) を呼ぶ側が斬った所へ出す。ここは
+    ///       飛んだ節が居た所を軽く言うだけ ─ 芯を 2 つ置くと閃光が重なって白く抜ける。
     CollapseBurst(at, /*heavy=*/false);
 
     m_count -= static_cast<int>(crushed.size());
@@ -314,8 +286,8 @@ inline int SerpentBodyComponent::Sever(int headIndex, int count)
             (void)combat->DamageEnemyDirect(
                 self, std::max(static_cast<int>(crushed.size()) * damagePerSegment, 1));
 
-    // 落とすのは «斬った 1 本» だけ、そして必ず最後に。scene.Create が
-    // GameObject 配列を再確保するので、ここより前に置くと self が無効になる。
+    /// @note 落とすのは «斬った 1 本» だけ、そして必ず最後に。scene.Create が
+    ///       GameObject 配列を再確保するので、ここより前に置くと self が無効になる。
     DropDebris(crushed.front(), at.front());
 
     return static_cast<int>(crushed.size());
@@ -334,13 +306,13 @@ inline void SerpentBodyComponent::DropDebris(int headIndex, const Vector3& at)
     GameObject* bone = FindInSubtree(*self, serpent::BoneName(headIndex));
     if (!bone) return;
 
-    // 今の骨の姿勢に、バインド姿勢の節を重ねる。静的メッシュはモデル空間
-    // (＝ 蛇の根空間のバインド) で描かれるので、根をどこへ置けば節が一致するかを解く。
+    /// @note 今の骨の姿勢に、バインド姿勢の節を重ねる。静的メッシュはモデル空間
+    ///       (＝ 蛇の根空間のバインド) で描かれるので、根をどこへ置けば節が一致するかを解く。
     const Quaternion rot =
         (bone->transform.worldRotation * m_bindRot[headIndex].Inverse()).Normalized();
     const Vector3 pos = bone->transform.worldPosition - rot * m_bindPos[headIndex];
 
-    // scene.Create の前に読み終える (Create は GameObject 配列を再確保する)。
+    /// @note scene.Create の前に読み終える (Create は GameObject 配列を再確保する)。
     struct Piece {
         std::string   model;
         std::uint32_t submesh = 0;
@@ -353,7 +325,7 @@ inline void SerpentBodyComponent::DropDebris(int headIndex, const Vector3& at)
         auto* skin = piece->GetComponent<SkinnedMeshRenderer>();
         if (!skin || skin->modelPath.empty()) continue;
         Piece entry;
-        // "guid:xxx|Assets/..." の形なら、パスの側だけを使う。
+        /// @note "guid:xxx|Assets/..." の形なら、パスの側だけを使う。
         const std::size_t bar = skin->modelPath.find('|');
         entry.model = bar == std::string::npos ? skin->modelPath
                                                : skin->modelPath.substr(bar + 1);
@@ -367,7 +339,7 @@ inline void SerpentBodyComponent::DropDebris(int headIndex, const Vector3& at)
     const std::string name = "SerpentDebris_" + serpent::PartSuffix(headIndex);
     const EntityRef   root{ scene.Create(name).GetID() };
 
-    // 子を先に全部作る。作りながら root を掴み続けると、途中で無効になる。
+    /// @note 子を先に全部作る。作りながら root を掴み続けると、途中で無効になる。
     std::vector<EntityRef> children;
     children.reserve(pieces.size());
     for (std::size_t i = 0; i < pieces.size(); ++i)
@@ -407,8 +379,8 @@ inline void SerpentBodyComponent::DropDebris(int headIndex, const Vector3& at)
     {
         auto& box = debris->AddComponent<BoxColliderComponent>();
         box.SetSize(Vector3{ r * 2.0f, r * 2.0f, r * 2.0f });
-        // 当たりは «節が居るところ»。静的メッシュは 24m の胴まるごとの座標系で
-        // 描かれているので、原点に置くと 10m 離れた所に箱が立つ。
+        /// @note 当たりは «節が居るところ»。静的メッシュは 24m の胴まるごとの座標系で
+        ///       描かれているので、原点に置くと 10m 離れた所に箱が立つ。
         box.center = m_bindPos[headIndex];
     }
     {
@@ -425,8 +397,8 @@ inline void SerpentBodyComponent::DropDebris(int headIndex, const Vector3& at)
         debris->AddComponent<RigidBodyComponent>(std::move(rb));
     }
 
-    // 斬った側から離れる向きへ蹴る。at は潰れた節が居た所なので、蛇の根から見て
-    // その外向きが «飛んだ向き»。
+    /// @note 斬った側から離れる向きへ蹴る。at は潰れた節が居た所なので、蛇の根から見て
+    ///       その外向きが «飛んだ向き»。
     Vector3 away = at - self->transform.worldPosition;
     away.y = 0.0f;
     away = away.NormalizedOr(Vector3::FORWARD);
@@ -449,7 +421,7 @@ inline Vector3 SerpentBodyComponent::Crush(int headIndex)
     if (auto* rig = Rig()) {
         if (GameObject* hitbox = rig->SegmentHitbox(headIndex)) {
             at = hitbox->transform.worldPosition;
-            // 絵だけ消して当たりが残ると «見えない節を斬れる» になる。
+            /// @note 絵だけ消して当たりが残ると «見えない節を斬れる» になる。
             if (auto* part = scene.GetScript<BossPartComponent>(hitbox)) part->Break();
             hitbox->SetActive(false);
         }
@@ -457,8 +429,8 @@ inline Vector3 SerpentBodyComponent::Crush(int headIndex)
 
     for (const EntityRef& ref : m_meshes[headIndex]) {
         if (GameObject* piece = ref.Resolve(scene)) {
-            // 同じフレームで輪郭も取り下げる。次のフレームまで残ると、
-            // 消えた節の輪郭だけが 1 コマ空中に浮く。
+            /// @note 同じフレームで輪郭も取り下げる。次のフレームまで残ると、
+            ///       消えた節の輪郭だけが 1 コマ空中に浮く。
             objectMask.Clear(*piece);
             piece->SetActive(false);
         }
@@ -471,17 +443,16 @@ inline void SerpentBodyComponent::CollapseBurst(const std::vector<Vector3>& at, 
     auto* vfx = VfxManagerComponent::Instance();
     if (!vfx || at.empty()) return;
 
-    // 芯は «真ん中» に 1 発。潰れた一続きの重心がそのまま «どこが縮んだか» になる。
+    /// @note 芯は «真ん中» に 1 発。潰れた一続きの重心がそのまま «どこが縮んだか» になる。
     Vector3 centre = Vector3::ZERO;
     for (const Vector3& point : at) centre = centre + point;
     centre = centre / static_cast<float>(at.size());
     vfx->PlayImpact(centre, BladeSide::None, heavy ? 1.0f : 0.7f, /*againstAnchor=*/true);
 
-    // 残りは «破片» として軽く。爆発を並べると光と陽炎がその数だけ増えるので、
-    // 光源も陽炎も持たない土煙のグラフで «そこも潰れた» だけを言う。
-    //
-    // WHY 全部の節に置かないか: 20 本潰れる回でも読めるのは «端から端まで» で、
-    //     間の 1 本 1 本ではない。両端と、その間を 3 つに割った点で足りる。
+    /// @note 残りは «破片» として軽く。爆発を並べると光と陽炎がその数だけ増えるので、
+    ///       光源も陽炎も持たない土煙のグラフで «そこも潰れた» だけを言う。全節には
+    ///       置かない ─ 20 本潰れても読めるのは «端から端まで» なので、両端とその間を
+    ///       3 つに割った点で足りる。
     const std::size_t count = at.size();
     const auto puff = [&](std::size_t index) {
         if (index >= count) return;
@@ -501,8 +472,8 @@ inline void SerpentBodyComponent::OnUpdate()
 {
     if (!m_meshesBuilt) CollectMeshes();
 
-    // 斬撃の列挙中に節を落とすと、残骸生成で後続の参照が無効になる。
-    // 耐久の消費はここで行い、とどめと同じ欠損・残骸・進行の経路へ渡す。
+    /// @note 斬撃の列挙中に節を落とすと、残骸生成で後続の参照が無効になる。
+    ///       耐久の消費はここで行い、とどめと同じ欠損・残骸・進行の経路へ渡す。
     if (!m_finished && m_count > minSegments) {
         if (auto* rig = Rig()) {
             for (int i = 1; i <= serpent::kSegmentCount; ++i) {
@@ -523,11 +494,9 @@ inline void SerpentBodyComponent::OnUpdate()
     debugSegments = m_count;
     debugPhase    = Phase();
 
-    // 最小の長さまで削られたら決着。HP がいくら残っていても倒れる。
-    //
-    // WHY 別のルートを用意するか: 削るのは «逆極の 2 節を選ぶ» というこの蛇の核で、
-    //     HP を削るのとは別の詰め方になっている。最後だけ «結局 HP» になると、
-    //     機構そのものが勝ち筋にならない。
+    /// @note 最小の長さまで削られたら決着 (HP の残量に関わらず倒れる)。節を削るのが
+    ///       この蛇の核となる詰め方で、HP を削るのとは別ルート。最後だけ «結局 HP» に
+    ///       なると機構そのものが勝ち筋にならないため、専用の決着条件として残す。
     if (m_finished || m_count > minSegments) return;
     m_finished = true;
 

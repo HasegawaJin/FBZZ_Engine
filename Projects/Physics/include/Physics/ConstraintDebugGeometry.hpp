@@ -9,7 +9,7 @@
 
 namespace fbzz::physics
 {
-    // Constraint の種類ごとに、接続線やヒンジ軸を Renderer 非依存の線分として返す。
+    /// Constraint の種類ごとに、接続線やヒンジ軸を Renderer 非依存の線分として返す。
     struct ConstraintDebugGeometry
     {
         std::vector<DebugLine> lines;

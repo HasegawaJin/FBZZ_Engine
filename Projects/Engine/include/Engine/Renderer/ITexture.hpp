@@ -10,16 +10,27 @@
 
 namespace fbzz::renderer
 {
-    // 動的テクスチャ (CPU から部分更新できるテクスチャ) のピクセル形式。
-    //
-    // WHY: フォントアトラスのカバレッジ / SDF は 1 チャンネルで足りる。
-    //      RGBA8 固定にすると 2048x2048 のアトラスで 16MB を無駄に食うため、
-    //      R8 を選べるようにしておく。用途が増えたらここへ足す。
+    /// 動的テクスチャ (CPU から部分更新できるテクスチャ) のピクセル形式。
+    /// @note フォントアトラスのカバレッジ / SDF は 1 チャンネルで足りる。RGBA8 固定だと
+    ///       2048x2048 アトラスで 16MB 無駄になるため R8 を選べるようにしておく。
     enum class DynamicTextureFormat
     {
-        R8,      // 単一チャンネル 8bit。シェーダーからは .r で読む
-        RGBA8,   // 4 チャンネル 8bit
+        R8,      ///< 単一チャンネル 8bit。シェーダーからは .r で読む
+        RGBA8,   ///< 4 チャンネル 8bit
     };
+
+    /// CPU で焼いたミップ連鎖 1 段ぶんの RGBA8 データ。
+    /// @note rgba は width*height*4 バイトを指し、転送が終わるまで有効であること。
+    struct TextureMipData
+    {
+        const std::uint8_t* rgba   = nullptr;
+        std::uint32_t       width  = 0;
+        std::uint32_t       height = 0;
+    };
+
+    /// bindless 非対応、またはこのテクスチャが永続ディスクリプタ枠を持たないことを表す添字。
+    /// @note 0 は «ヒープ先頭の有効なディスクリプタ» なので未設定と区別できず使えない。
+    inline constexpr std::uint32_t INVALID_BINDLESS_INDEX = 0xFFFFFFFFu;
 
     class ITexture
     {
@@ -29,23 +40,29 @@ namespace fbzz::renderer
         virtual std::uint32_t GetWidth() const = 0;
         virtual std::uint32_t GetHeight() const = 0;
 
-        // 3D テクスチャの奥行き。2D では 1 を返す。
-        // WHY 既定実装を置くか: 奥行きを持つのはフロクセルボリュームのような
-        //     一部の生成テクスチャだけで、全実装に強制する意味がない。
+        /// シェーダーが ResourceDescriptorHeap[] へ渡す永続ディスクリプタ添字。ディスクリプタ
+        /// テーブル経路と違い、テクスチャが生きている限り不変で «テクスチャの識別子» として載せられる。
+        /// @note bindless は SM 6.6 + Resource Binding Tier 3 を要求し、満たさない機械では
+        ///       テーブル経路へ縮退する。呼び出し側は必ず INVALID を判定し、その場合は
+        ///       DrawCall::textures 経由で束縛すること。
+        /// @see Docs/design/bindless.md
+        virtual std::uint32_t GetBindlessIndex() const { return INVALID_BINDLESS_INDEX; }
+
+        /// 同じリソースの UAV 側の添字。SRV と UAV はディスクリプタが別物なので枠も別に取る。
+        /// UAV を持たないテクスチャ (通常のファイル由来など) は INVALID を返す。
+        virtual std::uint32_t GetBindlessUavIndex() const { return INVALID_BINDLESS_INDEX; }
+
+        /// 3D テクスチャの奥行き。2D では 1 を返す。
+        /// @note 奥行きを持つのはフロクセルボリュームのような一部の生成テクスチャだけで、
+        ///       全実装に強制する意味がない。
         virtual std::uint32_t GetDepth() const { return 1u; }
 
-        // テクスチャ内の矩形領域を CPU 側のピクセルで差し替える。
-        //
-        // pixels      : 更新元のピクセル先頭 (更新矩形の左上に対応する画素)
-        // srcRowPitch : 更新元 1 行のバイト数。CPU 側が大きなバッファの部分矩形を
-        //               渡せるよう、width * 画素サイズ より大きい値を許す。
-        //
-        // ResourceManager::CreateDynamicTexture() で作ったテクスチャのみ対応する。
-        // それ以外 (ファイル由来 / Immutable / RenderTarget 由来) は false を返す。
-        //
-        // WHY (既定実装を false にする): 全テクスチャ実装に更新経路を強制すると、
-        //      Immutable なファイル由来テクスチャにまで CPU 書き込みの口が生えてしまう。
-        //      対応しているものだけが override する形にして、誤用は false で弾く。
+        /// テクスチャ内の矩形領域を CPU 側のピクセルで差し替える。ResourceManager::CreateDynamicTexture()
+        /// で作ったテクスチャのみ対応し、それ以外 (ファイル由来 / Immutable / RenderTarget 由来) は false。
+        /// @note pixels は更新矩形左上に対応する画素へのポインタ、srcRowPitch は更新元 1 行の
+        ///       バイト数で width * 画素サイズより大きい値を許す (部分矩形コピー用)。
+        /// @note 全実装に更新経路を強制すると Immutable なファイル由来テクスチャにも CPU 書き込みの
+        ///       口が生えるため、対応するものだけが override し誤用は false で弾く。
         virtual bool UpdateRegion(std::uint32_t /*x*/, std::uint32_t /*y*/,
                                   std::uint32_t /*width*/, std::uint32_t /*height*/,
                                   const void* /*pixels*/, std::uint32_t /*srcRowPitch*/)

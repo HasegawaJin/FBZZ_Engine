@@ -57,8 +57,8 @@ struct ScriptCameraProxy {
     fbzz::LayerMask GetCullingMask() const;
     math::Vector4 GetBackgroundColor() const;
     renderer::CameraClearMode GetClearMode() const;
-    // このカメラが描画に使われているか。SetAsMain() が他カメラを降ろすため、
-    // 「今どのカメラが有効か」を切り替え側から確認できる必要がある。
+    /// @return このカメラが描画に使われているか。SetAsMain() が他カメラを降ろすため、
+    ///         切り替え側が「今どのカメラが有効か」を確認できる。
     bool  IsMain() const;
     bool  IsVisible(const math::Vector3& worldPos) const;
     /// 投影不能時は direction が ZERO のレイを返す。

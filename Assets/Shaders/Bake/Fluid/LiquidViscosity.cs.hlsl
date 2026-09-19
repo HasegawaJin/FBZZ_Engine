@@ -5,9 +5,10 @@
 //
 // 近傍の «速度更新後の» 値を読むので、読む状態 (t14) と書く状態 (u2) は別のバッファ。生きていない粒もそのまま写す。
 #include "Bake/Fluid/LiquidNeighbors.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<float4>   gState    : register(t14);
-RWStructuredBuffer<float4> gStateOut : register(u2);
+FBZZ_SBUFFER_T(float4, gState, 14);
+FBZZ_RWSBUFFER_T(float4, gStateOut, 2);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

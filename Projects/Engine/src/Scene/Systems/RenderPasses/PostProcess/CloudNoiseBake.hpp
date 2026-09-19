@@ -3,14 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 ///
-/// WHY: ボリューメトリック雲はレイマーチの各サンプル (+ ライトマーチ) で 3D ノイズを引く。
-/// これを手続き計算すると ALU ネックになるため、Nubis/Horizon と同様に
-/// 事前ベイクした 3D テクスチャ (Shape + Detail) を HW トライリニアでサンプルする。
-/// 外部バイナリ資産を持たず自己完結させるため、周期 (タイラブル) ノイズを実行時に生成する。
-///
-/// 生成物 (RGBA8, WRAP サンプル前提で完全タイラブル):
-/// Shape  (例 128³): R = Perlin-Worley(基本形状), G/B/A = Worley FBM 帯 (低周波ディテール)
-/// Detail (例  32³): R/G/B = 高周波 Worley FBM (雲縁の侵食用)
+/// @note ボリューメトリック雲はレイマーチの各サンプル (+ ライトマーチ) で 3D ノイズを引くため、
+///       手続き計算だと ALU ネックになる。Nubis/Horizon 同様に事前ベイクした 3D テクスチャ
+///       (Shape+Detail) を HW トライリニアでサンプルし、外部資産を持たず自己完結させるため
+///       周期 (タイラブル) ノイズを実行時生成する。生成物は RGBA8, WRAP サンプル前提:
+///       Shape(128³) R=Perlin-Worley 基本形状/G-B-A=低周波 Worley FBM、Detail(32³) R/G/B=
+///       高周波 Worley FBM (雲縁の侵食用)。
 #pragma once
 #include <vector>
 #include <cstdint>
@@ -20,8 +18,8 @@
 
 namespace fbzz::scene::cloudnoise {
 
-// 3D 整数セル座標 → [0,1) の決定的ハッシュ。呼び出し側で period でラップ済み (非負) の座標を渡す。
-// 乗算は uint32_t で行い符号付きオーバーフロー (UB) を避ける。
+/// 3D 整数セル座標 → [0,1) の決定的ハッシュ。呼び出し側で period でラップ済み (非負) の座標を渡す。
+/// 乗算は uint32_t で行い符号付きオーバーフロー (UB) を避ける。
 inline float Hash(int x, int y, int z)
 {
     uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u + (uint32_t)z * 1442695040u;
@@ -30,7 +28,7 @@ inline float Hash(int x, int y, int z)
     return (h & 0x00FFFFFFu) / float(0x01000000);
 }
 
-// セルごとの特徴点オフセット [0,1)³。period でラップしてタイラブルにする。
+/// セルごとの特徴点オフセット [0,1)³。period でラップしてタイラブルにする。
 inline void HashPoint(int x, int y, int z, int period, float& ox, float& oy, float& oz)
 {
     int wx = ((x % period) + period) % period;
@@ -41,7 +39,7 @@ inline void HashPoint(int x, int y, int z, int period, float& ox, float& oy, flo
     oz = Hash(wx + 101,  wy + 71,   wz + 167);
 }
 
-// タイラブル Worley (cellular)。戻り値 = 1 - minDist（セル中心が明るい blob になる反転版）。
+/// タイラブル Worley (cellular)。戻り値 = 1 - minDist（セル中心が明るい blob になる反転版）。
 inline float Worley(float px, float py, float pz, int cells)
 {
     px *= cells; py *= cells; pz *= cells;
@@ -61,7 +59,7 @@ inline float Worley(float px, float py, float pz, int cells)
     return 1.0f - (std::min)(std::sqrt(minD), 1.0f);
 }
 
-// タイラブル Worley FBM。各オクターブの cells を 2 倍にしても [0,1)³ で周期が保たれる。
+/// タイラブル Worley FBM。各オクターブの cells を 2 倍にしても [0,1)³ で周期が保たれる。
 inline float WorleyFbm(float x, float y, float z, int baseCells, int octaves)
 {
     float v = 0.0f, a = 0.625f, sum = 0.0f;
@@ -70,7 +68,7 @@ inline float WorleyFbm(float x, float y, float z, int baseCells, int octaves)
     return v / (std::max)(sum, 1e-5f);
 }
 
-// タイラブル value noise（簡易 Perlin 近似）。
+/// タイラブル value noise（簡易 Perlin 近似）。
 inline float ValueNoise(float x, float y, float z, int cells)
 {
     x *= cells; y *= cells; z *= cells;
@@ -105,7 +103,7 @@ inline float Remap(float v, float lo, float hi, float nlo, float nhi)
     return nlo + (v - lo) / (std::max)(hi - lo, 1e-5f) * (nhi - nlo);
 }
 
-// z スライス単位で並列実行（ハッシュは純粋関数・出力は z ごとに排他なのでスレッド安全）。
+/// z スライス単位で並列実行（ハッシュは純粋関数・出力は z ごとに排他なのでスレッド安全）。
 template <class Fn>
 inline void ParallelZ(int depth, Fn&& fn)
 {
@@ -121,7 +119,7 @@ inline void ParallelZ(int depth, Fn&& fn)
     for (auto& th : pool) th.join();
 }
 
-// Shape ボリューム: R=Perlin-Worley, G/B/A=Worley FBM 帯。
+/// Shape ボリューム: R=Perlin-Worley, G/B/A=Worley FBM 帯。
 inline std::vector<uint8_t> BakeShape(int size)
 {
     std::vector<uint8_t> data((size_t)size * size * size * 4u);
@@ -132,7 +130,7 @@ inline std::vector<uint8_t> BakeShape(int size)
             float u = (x + 0.5f) / size, v = (y + 0.5f) / size, w = (z + 0.5f) / size;
             float perlin = PerlinFbm(u, v, w, 4, 3);
             float wlow   = WorleyFbm(u, v, w, 4, 3);
-            // Perlin-Worley: perlin を worley でリマップして雲塊らしい連結感を出す。
+            /// @note Perlin-Worley: perlin を worley でリマップして雲塊らしい連結感を出す。
             float pw = std::clamp(Remap(perlin, wlow - 1.0f, 1.0f, 0.0f, 1.0f), 0.0f, 1.0f);
             float g = WorleyFbm(u, v, w, 8,  3);
             float b = WorleyFbm(u, v, w, 14, 3);
@@ -147,7 +145,7 @@ inline std::vector<uint8_t> BakeShape(int size)
     return data;
 }
 
-// Detail ボリューム: 高周波 Worley FBM（縁の侵食用）。
+/// Detail ボリューム: 高周波 Worley FBM（縁の侵食用）。
 inline std::vector<uint8_t> BakeDetail(int size)
 {
     std::vector<uint8_t> data((size_t)size * size * size * 4u);

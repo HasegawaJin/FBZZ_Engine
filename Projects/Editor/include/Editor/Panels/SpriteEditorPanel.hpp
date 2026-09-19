@@ -22,7 +22,7 @@ public:
     const char* GetMenuCategory() const override { return "Assets"; }
     bool GetDefaultVisibility() const override { return false; }
 
-    // Texture の .meta sidecar を作業コピーへ読み込み、パネルを前面に開く。
+    /// Texture の .meta sidecar を作業コピーへ読み込み、パネルを前面に開く。
     void Open(const std::string& metaPath);
 
 protected:
@@ -31,7 +31,7 @@ protected:
 
 private:
     enum class SliceType { Automatic, CellSize, CellCount };
-    // 矩形の生成と畳み込みは AI バス (sprite.slice) と共有する (SpriteSlicer.hpp)。
+    /// 矩形の生成と畳み込みは AI バス (sprite.slice) と共有する (SpriteSlicer.hpp)。
     using SliceExistingMode = spriteslice::ExistingMode;
     enum class DragMode {
         None, Move, ResizeLeft, ResizeTop, ResizeRight, ResizeBottom,
@@ -55,8 +55,8 @@ private:
     void DrawSpriteRectInspector(uint32_t textureWidth, uint32_t textureHeight);
 
     /// 今の Sprite ID を参照しているプロジェクト内のファイル数を数える。
-    /// WHY: Delete Existing は ID を全部作り直す。何件壊れるかを見ずに押せると、
-    ///      «割り当てたはずの絵がアトラス全面に戻る» が後から静かに起きる。
+    /// @note Delete Existing は ID を全部作り直す。何件壊れるかを見ずに押せると、
+    ///       «割り当てたはずの絵がアトラス全面に戻る» が後から静かに起きる。
     void RefreshReferrerCount(const EditorContext& ctx);
 
     /// 連番リネーム。名前は «別名キー» なので、人と AI が呼べる名前にできないと

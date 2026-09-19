@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-03
 ///
-/// WHY: Sandbox と EditorLauncher の両方が同じ「プロジェクトパス → 設定ファイル → 開始シーン」解決を必要とする。
-/// 重複を避けるため Engine に集約し、どちらの起動バイナリからも参照できるようにする。
+/// @note Sandbox と EditorLauncher の両方が同じ「プロジェクトパス → 設定ファイル → 開始シーン」解決を必要とするため、
+///       重複を避けて Engine に集約し、どちらの起動バイナリからも参照できるようにする。
 #pragma once
 
 #include <filesystem>
@@ -18,7 +18,7 @@ struct LaunchProject {
     std::filesystem::path projectFile;
     std::filesystem::path settingsFile;
     std::filesystem::path sceneFile;
-    std::filesystem::path scriptsDll;  // スクリプト DLL の絶対パス (省略可: 開発環境フォールバック)
+    std::filesystem::path scriptsDll;  ///< スクリプト DLL の絶対パス (省略可: 開発環境フォールバック)
 };
 
 /// .fbzz_proj / ProjectSettings / 開始シーンのパス解決とエラーメッセージ保持を担当する。

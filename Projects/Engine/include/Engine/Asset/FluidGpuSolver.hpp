@@ -14,7 +14,7 @@
 /// Tick は **レンダラーのフレーム内** で呼ぶこと (VolumeFlipbookBaker と同じ制約)。
 #pragma once
 
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Fluid/FluidRecipe.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 
 #include <array>
@@ -33,15 +33,13 @@ public:
     static constexpr int kMaxFramesPerTick = 4;
     static constexpr int kMaxSubsteps = 8;
     /// 1 Tick に積んでよい Dispatch のおおよその上限 (液体ソルバーと同じ値)。
-    ///
-    /// WHY 要るか: プレビューは «再生ヘッドの位置まで追いつく» ので、切り替え直後は 0 コマ目からの
-    ///     全再解きになる。1 コマは substeps × (14 + 圧力反復) 本で、既定でも 1 コマ 188 本。
-    ///     コマ数だけを見て止めると、1 フレームに数千本積んで GPU のウォッチドッグ (TDR) に掛かり、
-    ///     ドライバがリセットされる。本数で頭打ちにして、追いつきを複数フレームへ分ける。
+    /// @note プレビューは再生ヘッドまで追いつくため切り替え直後は全コマ再解きになり、コマ数だけで
+    ///       止めると 1 フレームに数千本積んで GPU ウォッチドッグ (TDR) に掛かる。本数で頭打ちにし
+    ///       追いつきを複数フレームへ分ける。
     static constexpr int kDispatchBudgetPerTick = 1024;
 
     /// kind = gas 以外は失敗。同じ解像度なら GPU の資源は使い回す。
-    [[nodiscard]] bool Initialize(renderer::ResourceManager& resources, const FluidRecipe& recipe, int resolution,
+    [[nodiscard]] bool Initialize(renderer::ResourceManager& resources, const fluid::FluidRecipe& recipe, int resolution,
                                   float frameDt, float densityScale, std::string& outError);
     void Release(renderer::ResourceManager& resources);
     [[nodiscard]] bool IsReady() const { return m_ready; }
@@ -73,22 +71,22 @@ private:
              ConstantHandle passConstants = {});
     void ReleaseTextures(renderer::ResourceManager& resources);
     /// Texture 発生源のマスクを 1 枚のアトラスへ並べて作り直す (FluidGpuMaskPaths の順にタイルへ置く)。
-    void BuildMaskAtlas(renderer::ResourceManager& resources, const FluidRecipe& recipe);
+    void BuildMaskAtlas(renderer::ResourceManager& resources, const fluid::FluidRecipe& recipe);
 
     enum Kernel : std::size_t {
         Clear, Inject, Forces, Curl, Confine, Divergence, Jacobi, Project, AdvectVelocity, AdvectScalar,
         Correct, Output, Solid, KernelCount
     };
     std::array<renderer::ResourceHandle<renderer::ShaderTag>, KernelCount> m_kernels{};
-    // 速度は 2 枚を交互に使う。スカラーは役割が固定 (0 = 今の場 / 1 = 注入後 / 2 = 前進移流 / 3 = 後退移流)。
-    // 2 と 3 は補正を終えた後、燃料の色の往復移流にも貸す。
-    // スカラーの中身は x 密度 / y 温度 / z 燃料 / w 色の質量 (密度 × 色の鍵)。
+    /// 速度は 2 枚を交互に使う。スカラーは役割が固定 (0 = 今の場 / 1 = 注入後 / 2 = 前進移流 / 3 = 後退移流)。
+    /// 2 と 3 は補正を終えた後、燃料の色の往復移流にも貸す。
+    /// スカラーの中身は x 密度 / y 温度 / z 燃料 / w 色の質量 (密度 × 色の鍵)。
     std::array<TextureHandle, 2> m_velocity{};
     std::array<TextureHandle, 4> m_scalars{};
     std::array<TextureHandle, 2> m_pressure{};
     /// 燃料の色の質量 (z だけ使う。0 = 今の場 / 1 = 注入後)。燃料と同じ運び方をし、燃えた分だけ煙の色へ移る。
-    /// WHY 別のテクスチャか: スカラーの 4 本は密度・温度・燃料・煙の色で埋まっている。
-    ///     往復移流の作業場は scalars[2]/[3] を借りるので、増えるのはこの 2 枚だけ。
+    /// @note スカラーの 4 本は密度・温度・燃料・煙の色で埋まっているため別テクスチャにした。
+    ///       往復移流の作業場は scalars[2]/[3] を借りるので、増えるのはこの 2 枚だけ。
     std::array<TextureHandle, 2> m_fuelColor{};
     /// 燃焼の膨張 (x)。Inject が書き、同じ刻みの Divergence が読む。刻みを跨いでは持たない。
     TextureHandle m_expansion;
@@ -112,7 +110,7 @@ private:
     ConstantHandle m_backwardConstants;
     ConstantHandle m_outputConstants;
 
-    FluidRecipe m_recipe;
+    fluid::FluidRecipe m_recipe;
     int m_resolution = 0;
     float m_frameDt = 1.0f / 24.0f;
     int m_substeps = 1;

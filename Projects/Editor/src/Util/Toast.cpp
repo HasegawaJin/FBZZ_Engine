@@ -12,7 +12,7 @@ std::vector<Toast::Entry> Toast::s_entries;
 
 void Toast::Push(Level level, std::string message, float durationSec)
 {
-    // 同一メッセージが連続で積まれた場合 (例: 監視ループの重複通知) は最新へ寄せて重複を避ける。
+    /// @note 同一メッセージが連続で積まれた場合 (例: 監視ループの重複通知) は最新へ寄せて重複を避ける。
     for (auto& e : s_entries) {
         if (e.level == level && e.message == message) {
             e.age = 0.0f;
@@ -22,7 +22,7 @@ void Toast::Push(Level level, std::string message, float durationSec)
     }
     s_entries.push_back(Entry{ level, std::move(message), 0.0f, durationSec });
 
-    // 溜まりすぎ防止 (古いものから捨てる)。
+    /// @note 溜まりすぎ防止 (古いものから捨てる)。
     constexpr size_t kMaxVisible = 6;
     if (s_entries.size() > kMaxVisible)
         s_entries.erase(s_entries.begin(), s_entries.begin() + (s_entries.size() - kMaxVisible));
@@ -30,7 +30,7 @@ void Toast::Push(Level level, std::string message, float durationSec)
 
 namespace {
 
-// レベルごとのアクセント色 (左端バー・アイコン)。
+/// レベルごとのアクセント色 (左端バー・アイコン)。
 ImVec4 AccentColor(Toast::Level level)
 {
     switch (level) {
@@ -42,13 +42,15 @@ ImVec4 AccentColor(Toast::Level level)
     }
 }
 
-// レベルを示す短い記号 (フォント非依存の ASCII)。
+/// レベルを示す短い記号 (フォント非依存の ASCII)。
 const char* Glyph(Toast::Level level)
 {
     switch (level) {
-    case Toast::Level::Success: return "\xE2\x9C\x93"; // ✓
+    /// @note ✓
+    case Toast::Level::Success: return "\xE2\x9C\x93";
     case Toast::Level::Warning: return "!";
-    case Toast::Level::Error:   return "\xC3\x97";      // ×
+    /// @note ×
+    case Toast::Level::Error:   return "\xC3\x97";
     case Toast::Level::Info:
     default:                    return "i";
     }
@@ -65,8 +67,10 @@ void Toast::Render()
         e.age += dt;
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    constexpr float kPad     = 12.0f;   // 画面端からの余白
-    constexpr float kGap     = 8.0f;    // トースト間の隙間
+    /// @note 画面端からの余白
+    constexpr float kPad     = 12.0f;
+    /// @note トースト間の隙間
+    constexpr float kGap     = 8.0f;
     constexpr float kWidth   = 320.0f;
     constexpr float kFadeIn  = 0.18f;
     constexpr float kFadeOut = 0.5f;
@@ -74,18 +78,18 @@ void Toast::Render()
     const float rightX  = vp->WorkPos.x + vp->WorkSize.x - kPad;
     float       bottomY = vp->WorkPos.y + vp->WorkSize.y - kPad;
 
-    // WHY: 幅は kWidth 固定・高さは 0 指定で内容に合わせて自動調整する (AlwaysAutoResize は使わない。
-    //      固定幅指定と競合してテキスト折返しが安定しないため)。
+    /// @note 幅は kWidth 固定、高さは 0 指定で内容に合わせて自動調整する。AlwaysAutoResize は
+    ///       固定幅指定と競合してテキスト折返しが安定しないため使わない。
     constexpr ImGuiWindowFlags kFlags =
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
 
-    // 新しい通知ほど下に積む (発生位置の近くに見える)。
+    /// @note 新しい通知ほど下に積む (発生位置の近くに見える)。
     for (int i = static_cast<int>(s_entries.size()) - 1; i >= 0; --i) {
         Entry& e = s_entries[i];
 
-        // フェード係数を計算する。
+        /// @note フェード係数を計算する。
         float alpha = 1.0f;
         if (e.age < kFadeIn)
             alpha = e.age / kFadeIn;
@@ -97,7 +101,7 @@ void Toast::Render()
         std::snprintf(id, sizeof(id), "##toast_%d", i);
 
         ImGui::SetNextWindowBgAlpha(0.92f * alpha);
-        // ピボット (1,1) = 右下基準。bottomY を下端に合わせて積み上げる。
+        /// @note ピボット (1,1) = 右下基準。bottomY を下端に合わせて積み上げる。
         ImGui::SetNextWindowPos({ rightX, bottomY }, ImGuiCond_Always, { 1.0f, 1.0f });
         ImGui::SetNextWindowSize({ kWidth, 0.0f }, ImGuiCond_Always);
 
@@ -109,7 +113,7 @@ void Toast::Render()
             const ImVec2 wmin = ImGui::GetWindowPos();
             const ImVec2 wmax = { wmin.x + ImGui::GetWindowSize().x, wmin.y + ImGui::GetWindowSize().y };
 
-            // 左端のアクセントバー。
+            /// @note 左端のアクセントバー。
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec4 barCol = accent; barCol.w *= alpha;
             dl->AddRectFilled(wmin, { wmin.x + 4.0f, wmax.y },
@@ -129,7 +133,7 @@ void Toast::Render()
         ImGui::PopStyleVar(3);
     }
 
-    // 期限切れを除去する。
+    /// @note 期限切れを除去する。
     s_entries.erase(
         std::remove_if(s_entries.begin(), s_entries.end(),
                        [](const Entry& e) { return e.age >= e.duration; }),

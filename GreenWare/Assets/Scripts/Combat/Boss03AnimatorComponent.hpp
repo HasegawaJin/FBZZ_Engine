@@ -3,22 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 ///
-/// WHY AI と Animator の間に 1 枚挟むか (BossAnimatorComponent と同じ):
-///   Boss03.animcontroller のパラメーターは 20 個あり、うち 6 個は «翼ごとの Detach
-///   トリガーと同名のレイヤー» という対応まで持っている。AI が名前で直に叩く形に
-///   すると、綴りを間違えても SetTrigger は黙って何もしないので、症状が
-///   「その翼だけ落ちない」という追えない形で出る。
-///
-/// WHY クリップの «当たる時刻» をここが持つか:
-///   Slam_L は 3.0 秒、Slam_Combo は 5.0 秒あるが、連撃の拍は 0.62 秒
-///   (Docs/boss03.md)。素の速さでは 1 拍のあいだに振り切れず、絵と判定が必ずずれる。
-///   叩きつけの瞬間が拍へ重なる再生速度を出して、そのステートだけに当てる。
-///   尺を知っているのはクリップ、拍を知っているのは AI なので、掛け合わせる場所を
-///   1 つに決める ── 2 か所から書くと «絵だけ拍から外れる» が残る。
-///
-/// ⚠ 叩きつけ・発射の瞬間 (Impact) は Blender 側に印が無い。既定値は尺からの当たりを
-///   付けた仮の値で、手触りを詰めるときは **ここだけ**を触ること。AI の秒数は
-///   «拍» の設計値なので、絵を合わせるために動かすと遊びの方が壊れる。
+/// @note Boss03.animcontroller は 20 パラメータ中 6 個がレイヤー名と翼の Detach トリガー名を共有する。AI が直接名前で叩くと綴りミスが黙って無視され「その翼だけ落ちない」まで症状が追えない。
+/// @note Slam_L (3.0 秒) 等の尺は拍 0.62 秒 (`Docs/boss03.md`) よりずっと長い。尺を知るクリップと拍を知る AI の掛け合わせをここ 1 箇所に閉じ、絵と判定のずれを防ぐ。
+/// @warning Impact (叩きつけ・発射の瞬間) は Blender 側に印が無く、既定値は尺からの仮の値。手触り調整はここだけを触ること。AI の秒数は拍の設計値なので絵合わせに動かすと遊びが壊れる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -72,9 +59,7 @@ public:
     FBZZ_FIELD_RANGE(float, hitLightWeight, 0.40f, "Light Weight", 0.0f, 1.0f)
     FBZZ_TOOLTIP("軽い一撃 (strength 0) でのレイヤー重み。1 にすると全段が締めと同じ深さになる")
 
-    // WHY 尺と «当たる時刻» を別々に持つか: 再生速度は «当たる時刻 ÷ 欲しい秒数» で
-    //   決まる。尺だけ持つと «クリップの真ん中で当たる» を前提にすることになり、
-    //   溜めの長いクリップほど早く当たってしまう。
+    /// @note 再生速度は「当たる時刻 ÷ 欲しい秒数」で決まる。尺だけでは «クリップの真ん中で当たる» が前提になり、溜めの長いクリップほど早く当たってしまう。
     FBZZ_GROUP("クリップ")
     FBZZ_FIELD_RANGE(float, slamClipSeconds, 3.0f, "Slam_L/R の尺 [秒]", 0.1f, 20.0f)
     FBZZ_TOOLTIP("ExportManifest.json の seconds。Slam_L / Slam_R は 3.0 秒")
@@ -137,8 +122,7 @@ public:
 
     /// 繭。true で Close → Cocoon_Idle、false で Deploy → Idle。
     ///
-    /// WHY 被弾を止める口を別に持たないか: Boss03.animcontroller は Hit レイヤーの
-    ///     遷移条件に «IsClosed が false» を持っている。繭の間は絵の側が鳴らさない。
+    /// @note Hit レイヤーの遷移条件が `IsClosed == false` を持つため、繭の間は絵側が自動で鳴らさない。専用の停止口は不要。
     void SetClosed(bool closed);
     /// 崩れて倒れている。Stagger の最終フレームで晒したまま止まる。
     void SetStaggered(bool staggered);
@@ -153,8 +137,7 @@ public:
     void DetachWing(int wing);
     /// 翼を 1 枚だけ戻す。投げた翼が帰ってきたときに使う。
     ///
-    /// WHY トリガーで戻せないか: Detach レイヤーの Detached ステートは出口を持たない
-    ///     (畳んだ姿をそのまま保持するため)。ステートを名指しで指すしかない。
+    /// @note Detach レイヤーの Detached ステートは出口を持たず (畳んだ姿を保持するため)、トリガーでは戻せない。ステートを名指しで指す。
     void RestoreWing(int wing);
     /// 落ちた翼を全部戻す (プレビューと Play のやり直し用)。
     void RestoreWings();
@@ -163,9 +146,7 @@ public:
 
     /// 盤面のテンポ (Boss03AiComponent の Tempo) を預ける。
     ///
-    /// WHY AI から直に Animator の速度を書かせないか: 再生速度は 1 つしか無く、
-    ///     こちらは拍へ合わせるために «ステートごとの速度» を書く。全体の速度を
-    ///     2 か所から書くと、後から書いた方が相手を消す。
+    /// @note 再生速度は 1 つしかなく、ここは拍合わせで「ステートごとの速度」を書く。全体速度を 2 か所から書くと後勝ちで相手を消してしまう。
     void SetTempo(float tempo) { m_tempo = std::max(tempo, 0.0f); }
 
     [[nodiscard]] float Speed()      const { return m_speed; }
@@ -211,8 +192,8 @@ inline void Boss03AnimatorComponent::OnStart()
     m_motion      = Boss03Motion::Hold;
     m_previewWing = 0;
 
-    // Play をまたぐと Animator は Controller の初期値へ戻る。こちらの真偽値と
-    // 食い違ったまま始まると、«開いているのに繭の判定» のような状態が残る。
+    /// @note Play をまたぐと Animator は Controller の初期値へ戻る。こちらの真偽値と
+    ///       食い違ったまま始まると、«開いているのに繭の判定» のような状態が残る。
     animator.SetBool(boss03anim::kIsClosed,    false);
     animator.SetBool(boss03anim::kIsStaggered, false);
     animator.SetBool(boss03anim::kIsDead,      false);
@@ -233,9 +214,9 @@ inline void Boss03AnimatorComponent::OnUpdate()
     debugSpeed  = m_speed;
     debugMotion = static_cast<int>(m_motion);
 
-    // 当事者の凍結 (ヒットストップの手応え) が掛かっている間は速度を書かない。
-    // 凍結は «この相手の再生速度を 0 にする» で作られているので、毎フレーム書き
-    // 続けると次のフレームで解けて凍結が一切効かなくなる (BossAnimatorComponent と同じ)。
+    /// @note 当事者の凍結 (ヒットストップの手応え) が掛かっている間は速度を書かない。
+    ///       凍結は «この相手の再生速度を 0 にする» で作られているので、毎フレーム書き
+    ///       続けると次のフレームで解けて凍結が一切効かなくなる (BossAnimatorComponent と同じ)。
     const auto* stop = HitstopManagerComponent::Instance();
     if (stop && stop->IsAnimationFrozen(scene.Self())) return;
 
@@ -264,9 +245,9 @@ inline void Boss03AnimatorComponent::SampleMotion(float dt)
         return;
     }
 
-    // «前» はモデルの正面。素の +Z で測ると、このモデルでは前後が入れ替わって
-    // 前進のたびに Hover_Forward ではなく «後退＝その場» になる
-    // (kBoss03FacingOffsetDegrees ─ AI の向き直りと同じ定数から引く)。
+    /// @note «前» はモデルの正面。素の +Z で測ると、このモデルでは前後が入れ替わって
+    ///       前進のたびに Hover_Forward ではなく «後退＝その場» になる
+    ///       (kBoss03FacingOffsetDegrees ─ AI の向き直りと同じ定数から引く)。
     const Vector3 localFacing = Quaternion::FromAxisAngle(Vector3::UP,
                                     ToRad(kBoss03FacingOffsetDegrees)) * Vector3::FORWARD;
     const Vector3 facing  = transform.worldRotation * localFacing;
@@ -277,8 +258,7 @@ inline void Boss03AnimatorComponent::SampleMotion(float dt)
     const float ahead = Vector3::Dot(step, forward);
     const float side  = Vector3::Dot(step, right);
 
-    // WHY 後退を Hold にするか: 後ろへ下がるクリップは無い。前進で代用すると
-    //     «前へ向かって後ろへ滑る» になるので、下がる間は浮いたまま見せる。
+    /// @note 後退用クリップが無いため、前進で代用すると «前を向いたまま後ろへ滑る» 絵になる。下がる間は浮いたまま (Hold) にする。
     if (std::fabs(side) > std::fabs(ahead)) m_motion = side > 0.0f ? Boss03Motion::Right
                                                                    : Boss03Motion::Left;
     else                                    m_motion = ahead > 0.0f ? Boss03Motion::Forward
@@ -357,7 +337,7 @@ inline void Boss03AnimatorComponent::SetDead(bool dead)
 {
     m_dead = dead;
     if (dead) {
-        // 倒れる前に立っていた状態を畳む。繭のまま死ぬと、開かずに止まった絵になる。
+        /// @note 倒れる前に立っていた状態を畳む。繭のまま死ぬと、開かずに止まった絵になる。
         SetClosed(false);
         SetStaggered(false);
     }
@@ -366,8 +346,8 @@ inline void Boss03AnimatorComponent::SetDead(bool dead)
 
 inline void Boss03AnimatorComponent::ReactToHit(float strength)
 {
-    // 重みは «次の 1 発» の深さ。鳴り終わりまで持ち越すので、軽い一撃の直後に
-    // 締めが来れば深く、逆なら浅くなる (同時には鳴らないので取り合いは起きない)。
+    /// @note 重みは «次の 1 発» の深さ。鳴り終わりまで持ち越すので、軽い一撃の直後に
+    ///       締めが来れば深く、逆なら浅くなる (同時には鳴らないので取り合いは起きない)。
     if (!hitLayerName.empty())
         animator.SetLayerWeight(hitLayerName,
                                 Lerp(Clamp01(hitLightWeight), 1.0f, Clamp01(strength)));
@@ -394,8 +374,8 @@ inline void Boss03AnimatorComponent::RestoreWings()
 {
     for (int i = 0; i < kBoss03WingCount; ++i) {
         m_detached[i] = false;
-        // トリガーでは戻せない (Detached からの遷移を持たないレイヤー)。
-        // ステートを直接指して畳んだ姿を解く。
+        /// @note トリガーでは戻せない (Detached からの遷移を持たないレイヤー)。
+        ///       ステートを直接指して畳んだ姿を解く。
         animator.PlayLayerState(kBoss03WingTriggers[i], "Attached");
     }
     debugWingsDetached = 0;

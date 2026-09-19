@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-22
 ///
-/// WHY 独立したファイルにするか: 「リストの編集」(追加・削除・並べ替え・一時無効化) は
-/// Inspector の他のどのパネルとも構造が違い、Inspector 本体へ直接書くと埋もれる。
+/// リストの編集 (追加・削除・並べ替え・一時無効化) は Inspector の他パネルと構造が違うため
+/// 独立ファイルにする。
 #pragma once
 #include <string>
 
@@ -15,23 +15,18 @@ namespace fbzz::editor {
 
 struct ImGuiReflector;
 
-// UI の編集結果。呼び出し側は保存タイミングの判断に使う。
+/// UI の編集結果。呼び出し側は保存タイミングの判断に使う。
 struct PostProcessInspectorResult {
-    bool changed          = false;  // 何らかの値が変わった
-    bool structureChanged = false;  // オーバーライドの追加/削除/並べ替えが起きた
+    bool changed          = false;  ///< 何らかの値が変わった
+    bool structureChanged = false;  ///< オーバーライドの追加/削除/並べ替えが起きた
 };
 
-// プロファイルのオーバーライドリストを編集する。
-// @param reflector 各オーバーライドのパラメーターを描くのに使う。
-//                  projectRoot 等が配線済みのものを呼び出し側が用意する。
-// WHY パラメーター UI を ImGuiReflector に任せるか:
-//     効果ごとに専用の描画関数を書くと、効果を 1 つ足すたびに Engine 側と
-//     Editor 側の 2 か所を触ることになる。Reflect() が既にレンジとカラーヒントを
-//     持っているので、それを唯一の情報源にすれば追加作業は Engine 側だけで閉じる。
-// @param renderSettings 現在のレンダー設定。渡すと「このパイプラインでは効かない」
-//                       オーバーライドにその旨を出す。nullptr なら警告を出さない。
-// WHY 任意引数か: このウィジェットは .fzdata の編集 UI で、レンダー設定を持たない
-//     文脈 (アセット単体のプレビュー等) からも呼べる形を保っておきたい。
+/// プロファイルのオーバーライドリストを編集する。
+/// @param reflector 各オーバーライドの描画に使う。projectRoot 等は呼び出し側で配線済み。
+/// @note パラメーター UI は ImGuiReflector に任せる。効果ごとに専用関数を書くと Engine/Editor
+///       の 2 か所を触ることになるため、Reflect() のレンジ・カラーヒントを唯一の情報源にする。
+/// @param renderSettings 現在のレンダー設定。渡すと非対応オーバーライドにその旨を出す。null なら警告なし。
+/// @note null を許すのは、.fzdata 編集 UI としてレンダー設定を持たない文脈 (単体プレビュー等) からも呼べるため。
 PostProcessInspectorResult DrawVolumeOverrideListInspector(
     asset::PostProcessProfile& profile, ImGuiReflector& reflector,
     const renderer::RenderSettings* renderSettings = nullptr);

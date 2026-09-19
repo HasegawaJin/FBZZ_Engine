@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
 ///
-/// Script 本体を肥大化させず、Component / System ごとの便利 API をここで具体化する。
+/// @brief Script 本体を肥大化させず、Component / System ごとの便利 API をここで具体化する。
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <limits>
@@ -51,7 +51,8 @@
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/Components/VFXComponent.hpp>
-#include <Engine/Scene/Components/ForceField.hpp>
+#include <Engine/Scene/Environment/SceneEnvironment.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
@@ -239,7 +240,7 @@ bool ScriptMemoryProxy::InitializeFrame(std::size_t capacity) const
         return false;
     }
 
-    // WHY: 既存領域を保持したまま容量だけ変えると旧ポインタの寿命が曖昧になるため、明示的に作り直す。
+    /// @note 既存領域を保持したまま容量だけ変えると旧ポインタの寿命が曖昧になるため、明示的に作り直す。
     if (m_frameAllocator.IsInitialized()) {
         m_frameAllocator.Shutdown();
     }
@@ -253,7 +254,7 @@ void* ScriptMemoryProxy::AllocateFrame(std::size_t size, std::size_t alignment) 
         return nullptr;
     }
 
-    // WHAT: 小規模 Script が OnAwake で明示初期化しなくても使えるよう、初回確保時に既定容量を用意する。
+    /// @note 小規模 Script が OnAwake で明示初期化しなくても使えるよう、初回確保時に既定容量を用意する。
     if (!m_frameAllocator.IsInitialized() && !m_frameAllocator.Initialize(DEFAULT_FRAME_CAPACITY)) {
         return nullptr;
     }
@@ -287,7 +288,7 @@ bool ScriptMemoryProxy::InitializePool(std::size_t blockSize,
         return false;
     }
 
-    // WHY: PoolAllocator は固定 stride のため、用途変更時は古いブロックを破棄してから作り直す。
+    /// @note PoolAllocator は固定 stride のため、用途変更時は古いブロックを破棄してから作り直す。
     if (m_poolAllocator.IsInitialized()) {
         m_poolAllocator.Shutdown();
     }
@@ -373,7 +374,7 @@ Transform* ScriptTransformProxy::Get() const
     return script && script->m_gameObject ? &script->m_gameObject->transform : nullptr;
 }
 
-// ── ローカル空間 property getter / setter ──────────────────────────────────
+/// @name ローカル空間 property getter / setter
 math::Vector3 ScriptTransformProxy::_GetPos() const
 {
     auto* t = Get(); return t ? t->position : math::Vector3::ZERO;
@@ -399,7 +400,7 @@ void ScriptTransformProxy::_SetScl(const math::Vector3& v)
     if (auto* t = Get()) t->scale = v;
 }
 
-// ── ワールド空間 property getter / setter ──────────────────────────────────
+/// @name ワールド空間 property getter / setter
 math::Vector3 ScriptTransformProxy::_GetWPos() const
 {
     auto* t = Get(); return t ? t->worldPosition : math::Vector3::ZERO;
@@ -413,12 +414,12 @@ math::Quaternion ScriptTransformProxy::_GetWRot() const
     auto* t = Get(); return t ? t->worldRotation : math::Quaternion::Identity();
 }
 
-// ── 算出値 ─────────────────────────────────────────────────────────────────
+/// @name 算出値
 math::Vector3 ScriptTransformProxy::_GetFwd()   const { auto* t = Get(); return t ? t->Forward() : math::Vector3::FORWARD; }
 math::Vector3 ScriptTransformProxy::_GetUp()    const { auto* t = Get(); return t ? t->Up()      : math::Vector3::UP; }
 math::Vector3 ScriptTransformProxy::_GetRight() const { auto* t = Get(); return t ? t->Right()   : math::Vector3::RIGHT; }
 
-// ── メソッド ───────────────────────────────────────────────────────────────
+/// @name メソッド
 void ScriptTransformProxy::Translate(const math::Vector3& v) const
 {
     if (auto* t = Get()) t->Translate(v);
@@ -427,8 +428,8 @@ void ScriptTransformProxy::Translate(const math::Vector3& v) const
 void ScriptTransformProxy::Rotate(const math::Vector3& axis, float deg) const
 {
     if (auto* t = Get()) {
-        // 軸が潰れていたら回しようがない。スクリプトの引数ミスでエディターごと
-        // 落とさないよう、何もしないで返す。
+        /// @note 軸が潰れていたら回しようがない。スクリプトの引数ミスでエディターごと
+        ///       落とさないよう、何もしないで返す。
         if (axis.LengthSq() < math::EPSILON * math::EPSILON) return;
         const auto delta = math::Quaternion::FromAxisAngle(axis.Normalized(), deg * DEG_TO_RAD);
         t->rotation = (delta * t->rotation).Normalized();
@@ -449,8 +450,8 @@ float ScriptTransformProxy::DistanceTo(const GameObject& other) const
 math::Vector3 ScriptTransformProxy::DirectionTo(const GameObject& other) const
 {
     const auto* t = Get();
-    // 相手と重なっている間は向きが無い。距離 0 は追跡や射撃で普通に通る状態なので、
-    // 「方向なし」を表す ZERO をそのまま返す (呼び出し側は既に 0 判定を持っている)。
+    /// @note 相手と重なっている間は向きが無い。距離 0 は追跡や射撃で普通に通る状態なので、
+    ///       「方向なし」を表す ZERO をそのまま返す (呼び出し側は既に 0 判定を持っている)。
     return t ? (other.transform.worldPosition - t->worldPosition).NormalizedOr(math::Vector3::ZERO)
              : math::Vector3::ZERO;
 }
@@ -466,7 +467,7 @@ bool ScriptInputProxy::MouseButton(MouseBtn btn) const { return input::Input::Mo
 bool ScriptInputProxy::MouseButtonDown(MouseBtn btn) const { return input::Input::MouseButtonDown(static_cast<int>(btn)); }
 bool ScriptInputProxy::MouseButtonUp(MouseBtn btn) const { return input::Input::MouseButtonUp(static_cast<int>(btn)); }
 
-// ── アクション層 ─────────────────────────────────────────────────────────────
+/// @name アクション層
 
 bool ScriptInputProxy::GetAction(std::string_view name) const
 {
@@ -494,11 +495,11 @@ math::Vector2 ScriptInputProxy::GetLookAxis() const
     return input::InputActionMap::GetAxis2D("LookX", "LookY");
 }
 
-// ── ゲームパッド直接アクセス ─────────────────────────────────────────────────
+/// @name ゲームパッド直接アクセス
 
 namespace {
-// pad = -1 を「接続中の最初のパッド」へ解決する。
-// 1 台も接続されていない場合は 0 を返す (未接続スロットへの問い合わせは false / 0)。
+/// @brief pad = -1 を「接続中の最初のパッド」へ解決する。
+/// @brief 1 台も接続されていない場合は 0 を返す (未接続スロットへの問い合わせは false / 0)。
 int ResolveScriptPad(int pad)
 {
     if (pad >= 0) return pad;
@@ -540,7 +541,7 @@ void ScriptInputProxy::StopVibration(int pad) const
     input::Gamepad::StopVibration(ResolveScriptPad(pad));
 }
 
-// ── キーコンフィグ ───────────────────────────────────────────────────────────
+/// @name キーコンフィグ
 
 int ScriptInputProxy::GetActionBindingCount(std::string_view action) const
 {
@@ -563,10 +564,8 @@ bool ScriptInputProxy::SetActionBinding(std::string_view action, int index,
     auto* found = input::InputActionMap::FindAction(action);
     if (!found || !binding.IsValid()) return false;
 
-    // scale / padIndex / buttonThreshold は既存のバインドのものを引き継ぐ。
-    // WHY: トリガーを閾値 0.5 のボタンとして扱う設定などは、割り当てを差し替えても
-    //      そのまま効いていてほしい。値まで初期化すると、リバインドした軸だけ
-    //      感度と不感帯が既定へ戻る。
+    /// @note scale / padIndex / buttonThreshold は既存のバインドのものを引き継ぐ。閾値 0.5 のボタン扱い等の
+    ///       設定は割り当てを差し替えても効いてほしく、値まで初期化するとリバインドした軸だけ既定へ戻る。
     if (index >= 0 && index < static_cast<int>(found->bindings.size())) {
         input::InputBinding& slot = found->bindings[static_cast<size_t>(index)];
         slot.source = static_cast<input::BindingSource>(binding.source);
@@ -610,8 +609,8 @@ void ScriptInputProxy::CancelRebind() const
 
 CursorRequest ScriptCursorProxy::Push(CursorLockMode mode, bool visible, int priority) const
 {
-    // owner に index+1 を渡す。index 0 は正当な GameObject なので、
-    // 0 を «無所属» に使っている Cursor 側と衝突させない。
+    /// @note owner に index+1 を渡す。index 0 は正当な GameObject なので、
+    ///       0 を «無所属» に使っている Cursor 側と衝突させない。
     std::uint32_t owner = 0;
     if (script) {
         if (GameObject* self = script->scene.Self(); self && self->IsValid())
@@ -775,6 +774,22 @@ void ScriptPhysicsProxy::SetLocalTimeScale(float scale) const
     if (auto* rb = SelfRigidBody(script)) rb->m_timeScale = std::clamp(scale, 0.0f, 8.0f);
 }
 
+void ScriptPhysicsProxy::SetFlowCoupling(float coupling) const
+{
+    auto* component = SelfComponent<RigidBodyComponent>(script);
+    if (!component) return;
+    /// @note 正本はコンポーネント側 (PhysicsSystem が毎フレーム剛体へ押し込むため、剛体だけに書くと
+    ///       次の固定ステップで巻き戻る)。剛体にも写さないと効果が 1 ステップ遅れて出る。
+    component->flowCoupling = coupling;
+    if (component->rigidBody) component->rigidBody->SetFlowCoupling(coupling);
+}
+
+float ScriptPhysicsProxy::GetFlowCoupling() const
+{
+    const auto* component = SelfComponent<RigidBodyComponent>(script);
+    return component ? component->flowCoupling : 0.0f;
+}
+
 math::Vector3 ScriptPhysicsProxy::GetWorldGravity() const
 {
     if (!Script::s_physicsWorld) return { 0.0f, -9.81f, 0.0f };
@@ -783,9 +798,9 @@ math::Vector3 ScriptPhysicsProxy::GetWorldGravity() const
 
 bool ScriptPhysicsProxy::LayersCollide(int a, int b) const
 {
-    // World が無い (編集中) ときは «ぶつかる» を返す。無いことを «切れている» と
-    // 読ませると、Play していない間だけ組み立てが安全側へ倒れて、
-    // エディタで見ている当たりと Play 中の当たりが別物になる。
+    /// @note World が無い (編集中) ときは «ぶつかる» を返す。無いことを «切れている» と
+    ///       読ませると、Play していない間だけ組み立てが安全側へ倒れて、
+    ///       エディタで見ている当たりと Play 中の当たりが別物になる。
     if (!Script::s_physicsWorld) return true;
     return Script::s_physicsWorld->LayersCollide(a, b);
 }
@@ -1006,8 +1021,8 @@ void ScriptColliderProxy::SetFriction(float staticFriction, float dynamicFrictio
 {
     auto* c = SelfAnyCollider(script);
     if (!c) return;
-    // 共有アセット参照を外してから書く。残したままだと次のフレームで
-    // ResolvePhysicsMaterial() に上書きされ、書いた値が消える。
+    /// @note 共有アセット参照を外してから書く。残したままだと次のフレームで
+    ///       ResolvePhysicsMaterial() に上書きされ、書いた値が消える。
     c->physicsMaterialPath.clear();
     c->material.staticFriction = staticFriction;
     c->material.dynamicFriction = dynamicFriction;
@@ -1069,7 +1084,7 @@ bool ScriptColliderProxy::ApplyPhysicsMaterialPreset(std::string_view presetName
 {
     auto* c = SelfAnyCollider(script);
     if (!c) return false;
-    // string_view は終端 NUL を保証しないため、C API へ渡す前に string 化する。
+    /// @note string_view は終端 NUL を保証しないため、C API へ渡す前に string 化する。
     const std::string name(presetName);
     const auto* preset = physics::PhysicsMaterial::FindPreset(name.c_str());
     if (!preset) {
@@ -1099,28 +1114,22 @@ bool LoadSynthSpecFromPath(std::string_view path, audio::SynthSpec& out)
     return true;
 }
 
-// 手続きクリップの再生要求は「フィールドが参照を 1 つ握る」規約で動く。
-// 同じフレームに 2 回積まれたら、置き換えられる側の参照をここで返す。
+/// @brief 手続きクリップの再生要求は「フィールドが参照を 1 つ握る」規約で動く。
+/// @brief 同じフレームに 2 回積まれたら、置き換えられる側の参照をここで返す。
 void HandOffPendingClip(audio::AudioManager& manager, uint32_t& slot, uint32_t clip)
 {
     if (slot != 0) manager.ReleaseClip(slot);
     slot = clip;
 }
 
-// AudioSource が無い GameObject で音声 API を呼んだことを一度だけ報告する。
-//
-// WHY 必要か: プロキシは対象コンポーネントが無ければ黙って何もしない。音声は
-//     「鳴らない」以外の症状が出ないため、AudioSource の付け忘れが最後まで
-//     気付かれない (実際 GreenWare は 9 箇所の PlayOneShot がすべて no-op のまま
-//     書かれていた)。FBZZ_OPTIONAL_COMPONENT 宣言では赤帯も出ない。
-//
-// WHY 一度だけか: OnUpdate から呼ばれると毎フレーム出て Console が埋まる。
-//     (オブジェクト名, API 名) で重複を落とし、同じ組み合わせは二度言わない。
+/// @brief AudioSource が無い GameObject で音声 API を呼んだことを一度だけ報告する。
+/// @note 音声は「鳴らない」以外の症状が出ずコンポーネントの付け忘れに気付きにくいため警告する。
+///       OnUpdate から呼ばれても Console が埋まらないよう (オブジェクト名, API 名) で重複を 1 回に絞る。
 void WarnMissingAudioSource(const Script* script, const char* api)
 {
     static std::unordered_set<std::string> reported;
-    // NOTE: m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
-    //       直接は引けないため、公開されている scene プロキシ経由で取り出す。
+    /// @note m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
+    ///       直接は引けないため、公開されている scene プロキシ経由で取り出す。
     const GameObject* go = script ? script->scene.Self() : nullptr;
     std::string key = go ? go->name : std::string("<no object>");
     key += '/';
@@ -1130,7 +1139,7 @@ void WarnMissingAudioSource(const Script* script, const char* api)
                   api, go ? go->name.c_str() : "<no object>");
 }
 
-// 書き込み系の音声 API 用。見つからなければ警告してから nullptr を返す。
+/// @brief 書き込み系の音声 API 用。見つからなければ警告してから nullptr を返す。
 AudioSourceComponent* SelfAudioSource(const Script* script, const char* api)
 {
     auto* source = SelfComponent<AudioSourceComponent>(script);
@@ -1138,7 +1147,7 @@ AudioSourceComponent* SelfAudioSource(const Script* script, const char* api)
     return source;
 }
 
-// one-shot 要求を積む。上限を超えたぶんは捨て、握っていた参照を返す。
+/// @brief one-shot 要求を積む。上限を超えたぶんは捨て、握っていた参照を返す。
 void PushOneShot(AudioSourceComponent& source, AudioSourceComponent::OneShotRequest request)
 {
     if (source.m_pendingOneShots.size() >= AudioSourceComponent::MAX_PENDING_ONE_SHOTS) {
@@ -1352,7 +1361,7 @@ void ScriptAudioProxy::PlayClip(SynthClip clip) const
     auto* manager = ActiveAudioManager();
     auto* audio   = SelfAudioSource(script, "PlayClip");
     if (!manager || !audio || !clip.IsValid()) return;
-    // 要求が参照を 1 つ握る。AudioSystem が再生後に手放す。
+    /// @note 要求が参照を 1 つ握る。AudioSystem が再生後に手放す。
     manager->AddClipRef(clip.id);
     AudioSourceComponent::OneShotRequest request;
     request.clipId = clip.id;
@@ -1376,7 +1385,7 @@ void ScriptAudioProxy::PlaySynth(const audio::SynthSpec& spec) const
     auto* manager = ActiveAudioManager();
     auto* audio   = SelfAudioSource(script, "PlaySynth");
     if (!manager || !audio) return;
-    // AcquireGeneratedClip が返す参照をそのまま要求へ譲る。
+    /// @note AcquireGeneratedClip が返す参照をそのまま要求へ譲る。
     const uint32_t clip = manager->AcquireGeneratedClip(spec);
     if (clip == 0) return;
     AudioSourceComponent::OneShotRequest request;
@@ -1396,7 +1405,7 @@ void ScriptAudioProxy::PlaySynth2D(const audio::SynthSpec& spec, std::string_vie
     const uint32_t clip = manager->AcquireGeneratedClip(spec);
     if (clip == 0) return;
     (void)manager->PlayClipVoice(clip, false, manager->FindBus(bus));
-    // 再生中は voice 側が実体を押さえる。ここでの参照はもう要らない。
+    /// @note 再生中は voice 側が実体を押さえる。ここでの参照はもう要らない。
     manager->ReleaseClip(clip);
 }
 
@@ -1417,9 +1426,8 @@ void ScriptAudioProxy::PlayAtPoint(std::string_view clipPath, const math::Vector
     request.path   = std::string(clipPath);
     request.volume = (std::max)(volume, 0.0f);
     request.x = position.x; request.y = position.y; request.z = position.z;
-    // 自 GameObject に AudioSource があれば、その 3D 設定を引き継ぐ。
-    // WHY: 「同じ銃の弾着音」を発生源の減衰カーブと揃えたい場合が普通なので、
-    //      設定が手元にあるなら流用する。無ければ既定値で鳴る。
+    /// @note 自 GameObject に AudioSource があれば、その 3D 設定を引き継ぐ (無ければ既定値)。
+    ///       «同じ銃の弾着音» を発生源の減衰カーブと揃えたい場合が普通なので設定を流用する。
     if (const auto* source = SelfComponent<AudioSourceComponent>(script)) {
         request.minDistance   = source->minDistance;
         request.maxDistance   = source->maxDistance;
@@ -1493,7 +1501,7 @@ void ScriptAudioProxy::FadeOutAndStop(float seconds) const
     auto* audio   = SelfAudioSource(script, "FadeOutAndStop");
     if (!manager || !audio || audio->m_voiceId == 0) return;
     manager->FadeOutAndStop(audio->m_voiceId, (std::max)(seconds, 0.0f));
-    // ハンドルはこの時点で AudioManager 側の持ち物になる。
+    /// @note ハンドルはこの時点で AudioManager 側の持ち物になる。
     audio->m_voiceId   = 0;
     audio->m_isPlaying = false;
     audio->m_isPaused  = false;
@@ -1513,8 +1521,8 @@ void ScriptAudioProxy::SetBus(std::string_view bus) const
 
 std::string_view ScriptAudioProxy::GetBus() const
 {
-    // 参照先は AudioSourceComponent が所有する文字列。呼び出し側が SetBus を
-    // 挟まない限り有効で、コピーを返さずに済む。
+    /// @note 参照先は AudioSourceComponent が所有する文字列。呼び出し側が SetBus を
+    ///       挟まない限り有効で、コピーを返さずに済む。
     const auto* audio = SelfComponent<AudioSourceComponent>(script);
     return audio ? std::string_view(audio->busName) : std::string_view{};
 }
@@ -1774,8 +1782,8 @@ Ray ScriptCameraProxy::ScreenPointToRay(float screenX, float screenY) const
     return { nearPt, dir };
 }
 
-// スロットを所有する MaterialComponent を解決する。
-// SetEnabled のようなコンポーネント全体の操作はこちらを使う。
+/// @brief スロットを所有する MaterialComponent を解決する。
+/// @brief SetEnabled のようなコンポーネント全体の操作はこちらを使う。
 MaterialComponent* MaterialInstance::ResolveOwner(bool ensure) const
 {
     if (!m_script || !m_script->m_scene) return nullptr;
@@ -1788,11 +1796,9 @@ MaterialComponent* MaterialInstance::ResolveOwner(bool ensure) const
     return ensure ? &object->AddComponent<MaterialComponent>() : nullptr;
 }
 
-// m_slot が指す MaterialSlot を解決する。
-// WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体を描くようになり、
-//      submesh ごとのマテリアルはスロットとして同じ GameObject に並ぶ。
-//      スクリプトから「バイザーだけ光らせる」ような操作をスロット番号で行えるようにする。
-//      ensure=true のときは必要な数までスロットを伸ばす。
+/// @brief m_slot が指す MaterialSlot を解決する。ensure=true なら必要な数までスロットを伸ばす。
+/// @note SkinnedMeshRenderer は 1 GameObject でモデル全体を描くため、submesh ごとのマテリアルは
+///       同じ GameObject 上のスロットとして並ぶ (例: «バイザーだけ光らせる» をスロット番号で行える)。
 void* MaterialInstance::ResolveComponent(bool ensure) const
 {
     MaterialComponent* owner = ResolveOwner(ensure);
@@ -1813,7 +1819,7 @@ bool MaterialInstance::HasProperty(MaterialPropertyId property) const
 {
     auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
     if (!material || !property.IsValid() || !material->EnsureMaterialAsset()) return false;
-    const auto* asset = asset::AssetManager::GetMaterial(material->materialAsset);
+    const auto* asset = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
     if (!asset) return false;
     if (asset->params.contains(std::string(property.name)) ||
         asset->textures.contains(std::string(property.name)))
@@ -1866,7 +1872,7 @@ bool MaterialInstance::ValidateProperty(
     if ((material->propertyValidationCache[property.hash] & validationBit) != 0)
         return true;
     if (!descriptor) {
-        const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+        const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
         bool valid = false;
         if (shared) {
             if (kind == PropertyKind::Texture) {
@@ -2008,7 +2014,7 @@ bool MaterialInstance::TryGetFloat(MaterialPropertyId property, float& value) co
         value = overrideIt->second[0];
         return true;
     }
-    const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+    const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
     if (!shared) return false;
     const auto it = shared->params.find(key);
     if (it == shared->params.end() || it->second.empty()) return false;
@@ -2041,7 +2047,7 @@ bool MaterialInstance::TryGetVector4(MaterialPropertyId property, math::Vector4&
     const std::vector<float>* values = overrideIt != material->paramOverrides.end()
         ? &overrideIt->second : nullptr;
     if (!values) {
-        const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+        const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
         if (!shared) return false;
         const auto sharedIt = shared->params.find(key);
         if (sharedIt == shared->params.end()) return false;
@@ -2075,7 +2081,7 @@ bool MaterialInstance::TryGetTexture(MaterialPropertyId property, TextureRef& te
         texture.SetPath(overrideIt->second);
         return true;
     }
-    const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+    const auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(material->materialAsset);
     if (!shared) return false;
     const auto it = shared->textures.find(key);
     if (it == shared->textures.end()) return false;
@@ -2162,8 +2168,8 @@ bool ScriptMaterialProxy::SetSharedMaterial(EntityRef target,
     if (!material) return false;
     const std::string path = materialRef.ResolvePath();
     const auto assetHandle = path.empty()
-        ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
-        : asset::AssetManager::LoadMaterial(path);
+        ? asset::AssetHandle<asset::MaterialAsset>{}
+        : asset::AssetManager::Load<asset::MaterialAsset>(path);
     if (!path.empty() && !assetHandle.IsValid()) {
         FBZZ_LOG_WARN("Shared material could not be loaded: %s", path.c_str());
         return false;
@@ -2177,18 +2183,18 @@ bool ScriptMaterialProxy::SetSharedMaterial(EntityRef target,
     return true;
 }
 
-// ── 共有 .mat の読み取り ────────────────────────────────────────────────────
+/// @name 共有 .mat の読み取り
 
 namespace {
 
-// MaterialRef から共有アセットを解決する。未ロードならここでロードする。
+/// @brief MaterialRef から共有アセットを解決する。未ロードならここでロードする。
 const asset::MaterialAsset* ResolveSharedMaterial(const MaterialRef& material)
 {
     const std::string path = material.ResolvePath();
     if (path.empty()) return nullptr;
-    const auto handle = asset::AssetManager::LoadMaterial(path);
+    const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     if (!handle.IsValid()) return nullptr;
-    return asset::AssetManager::GetMaterial(handle);
+    return asset::AssetManager::Get<asset::MaterialAsset>(handle);
 }
 
 } // namespace
@@ -2222,8 +2228,8 @@ bool ScriptMaterialProxy::TryGetSharedVector4(const MaterialRef& material,
     const auto it = shared->params.find(std::string(property.name));
     if (it == shared->params.end() || it->second.empty()) return false;
 
-    // .mat は float / float2 / float3 / float4 を同じ形式で持つため、
-    // 足りない成分は 0 で埋める (Instance() の読み出しと同じ規則)。
+    /// @note .mat は float / float2 / float3 / float4 を同じ形式で持つため、
+    ///       足りない成分は 0 で埋める (Instance() の読み出しと同じ規則)。
     const auto& values = it->second;
     value = {
         values[0],
@@ -2333,8 +2339,8 @@ math::Vector4 ScriptMaterialProxy::GetVector4(std::string_view param) const
 
 bool ScriptMaterialProxy::SetEnabled(bool enabled) const
 {
-    // enabled はコンポーネント全体の有効/無効。submesh 単位の表示切替は
-    // SetSlotVisible() を使う。
+    /// @note enabled はコンポーネント全体の有効/無効。submesh 単位の表示切替は
+    ///       SetSlotVisible() を使う。
     MaterialComponent* material = Instance().ResolveOwner(false);
     if (!material) return false;
     material->enabled = enabled;
@@ -2357,7 +2363,7 @@ bool ScriptMaterialProxy::SetSlotVisible(uint32_t slot, bool visible) const
 
 bool ScriptMaterialProxy::IsSlotVisible(uint32_t slot) const
 {
-    // ensure = false。存在しないスロットを問い合わせただけで作らない。
+    /// @note ensure = false。存在しないスロットを問い合わせただけで作らない。
     const auto* material = static_cast<const MaterialSlot*>(Instance(slot).ResolveComponent(false));
     return material && material->visible;
 }
@@ -2378,7 +2384,7 @@ std::string ScriptMaterialProxy::GetSharedMaterialPath(EntityRef target, uint32_
 uint32_t ScriptMaterialProxy::GetSlotCount() const
 {
     const MaterialComponent* material = Instance().ResolveOwner(false);
-    // スロット 0 は MaterialComponent 自身が兼ねるので extraSlots + 1。
+    /// @note スロット 0 は MaterialComponent 自身が兼ねるので extraSlots + 1。
     return material ? static_cast<uint32_t>(material->extraSlots.size() + 1) : 0u;
 }
 
@@ -2558,7 +2564,7 @@ void ScriptParticleProxy::SetMeshShape(std::string_view modelPath, int meshIndex
         p->settings.meshShapeScale = (std::max)(scale, 0.0001f);
         p->settings.meshShapeFollowSkinnedAnimation = followSkinnedAnimation;
         p->settings.meshShapeNormalVelocity = normalVelocity;
-        // パス・サブメッシュ変更時は次のスポーンでFBX頂点を再構築する。
+        /// @note パス・サブメッシュ変更時は次のスポーンでFBX頂点を再構築する。
         p->runtime.loadedMeshShapePath.clear();
         p->runtime.loadedMeshShapeIndex = -2;
         p->runtime.meshShapeVertices.clear();
@@ -2653,8 +2659,9 @@ void ScriptParticleProxy::SetSubEmitters(std::string_view birthEmitter,
 
 void ScriptParticleProxy::SetVelocityDamping(float damping) const
 {
+    /// @note @note 旧 API 名のまま。減衰は «流れへ寄る速さ» になったので flowCoupling を触る。
     if (auto* p = SelfComponent<ParticleEmitter>(script))
-        p->settings.EnsureLocalForce(ForceFieldType::Drag).strength = (std::max)(damping, 0.0f);
+        p->settings.flowCoupling = (std::max)(damping, 0.0f);
 }
 
 void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) const
@@ -2668,22 +2675,21 @@ void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) con
 void ScriptParticleProxy::SetNoise(float strength, float frequency, float speed) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        ForceFieldSettings& turbulence =
-            p->settings.EnsureLocalForce(ForceFieldType::Turbulence);
-        turbulence.strength       = (std::max)(strength, 0.0f);
-        turbulence.noiseFrequency = (std::max)(frequency, 0.0001f);
-        turbulence.noiseSpeed     = speed;
+        FlowFieldSettings& curl = p->settings.EnsureLocalForce(FlowFieldType::Curl);
+        curl.strength       = (std::max)(strength, 0.0f);
+        curl.noiseFrequency = (std::max)(frequency, 0.0001f);
+        curl.noiseSpeed     = speed;
     }
 }
 
-void ScriptParticleProxy::SetReceiveForceFields(bool receive) const
+void ScriptParticleProxy::SetReceiveFlowFields(bool receive) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.receiveForceFields = receive;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.receiveFlowFields = receive;
 }
 
-void ScriptParticleProxy::SetForceFieldChannels(uint32_t channels) const
+void ScriptParticleProxy::SetFlowFieldChannels(uint32_t channels) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.forceFieldChannels = channels;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.flowFieldChannels = channels;
 }
 
 bool ScriptParticleProxy::IsEnabled() const
@@ -2722,10 +2728,10 @@ float ScriptParticleProxy::GetLifetime() const
     return p ? p->settings.lifetime : 0.0f;
 }
 
-uint32_t ScriptParticleProxy::GetForceFieldChannels() const
+uint32_t ScriptParticleProxy::GetFlowFieldChannels() const
 {
     const auto* p = SelfComponent<ParticleEmitter>(script);
-    return p ? p->settings.forceFieldChannels : 0u;
+    return p ? p->settings.flowFieldChannels : 0u;
 }
 
 float ScriptParticleProxy::GetPlayTime() const
@@ -2744,9 +2750,9 @@ ParticleGpuFallbackReason ScriptParticleProxy::GetGpuFallbackReason() const
 {
     const auto* p = SelfComponent<ParticleEmitter>(script);
     if (!p) return ParticleGpuFallbackReason::NotRequested;
-    // ParticlePass と同じ引数で呼ぶ。runtime.material を渡さないと .mat 由来の 3 条件
-    // (フリップブック補間・モーションベクター・自己影) が判定から抜け、
-    // 実際は CPU で回っているのに「GPU で回る」と答えてしまう。
+    /// @note ParticlePass と同じ引数で呼ぶ。runtime.material を渡さないと .mat 由来の 3 条件
+    ///       (フリップブック補間・モーションベクター・自己影) が判定から抜け、
+    ///       実際は CPU で回っているのに「GPU で回る」と答えてしまう。
     return GetParticleGpuFallbackReason(p->settings, &p->runtime.material);
 }
 
@@ -2814,7 +2820,7 @@ float ScriptVFXProxy::GetDuration() const
 {
     const auto* vfx = SelfComponent<VFXComponent>(script);
     if (vfx == nullptr) return 0.0f;
-    // duration が 0 のときは配下から算出した実効尺が正。
+    /// @note duration が 0 のときは配下から算出した実効尺が正。
     return vfx->duration > 0.0f ? vfx->duration : vfx->resolvedDuration;
 }
 
@@ -3041,10 +3047,10 @@ int ScriptMeshTrailProxy::GetSampleCount() const
     return t ? t->sampleCount : 0;
 }
 
-// ── UIButton 入力の取得 ──────────────────────────────────────────────────────
-// UISystem が毎フレーム立て直す onClick / onEnter / onExit / state をそのまま読む。
-// 取得系はボタンが無い場合に「押されていない」を返す方が呼び出し側の分岐が減るため、
-// nullptr は一律 false / Disabled に潰す。
+/// @name UIButton 入力の取得
+/// @brief UISystem が毎フレーム立て直す onClick / onEnter / onExit / state をそのまま読む。
+/// @brief 取得系はボタンが無い場合に「押されていない」を返す方が呼び出し側の分岐が減るため、
+/// @brief nullptr は一律 false / Disabled に潰す。
 namespace {
 
 UIButtonPhase ToButtonPhase(const UIButton* button)
@@ -3202,7 +3208,7 @@ bool ScriptUIProxy::TryGetCanvasSize(math::Vector2& outSize, GameObject* canvasO
 
 math::Vector2 ScriptUIProxy::GetCanvasMousePosition() const
 {
-    // 自 GO が Canvas ならそれを、そうでなければシーンの最初の Canvas を使う。
+    /// @note 自 GO が Canvas ならそれを、そうでなければシーンの最初の Canvas を使う。
     if (auto* self = SelfComponent<UICanvas>(script)) return self->resolvedMousePosition;
     const ScriptSceneProxy sceneProxy{ script };
     if (GameObject* go = sceneProxy.FindObjectOfType<UICanvas>())
@@ -3345,20 +3351,18 @@ void ScriptUIProxy::SetMaterial(GameObject* go, std::string_view materialPath) c
     const std::string next(materialPath);
     if (image->materialPath == next) return;
     image->materialPath = next;
-    // 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
-    // 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
+    /// @note 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
+    ///       残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
     image->materialParamOverrides.clear();
     image->materialTextureOverrides.clear();
 }
 
 namespace {
 
-// 上書きを「その場で」書き換える。
-// WHY 代入ではなく assign か: これらの Setter は要素ごとに毎フレーム呼ばれる。
-//     `map[key] = {値...}` は初期化子リストから毎回 vector を作って move するので、
-//     1 要素 3 パラメータ × 20 要素 × 60fps ぶんの確保と解放が定常的に走る。
-//     既にあるエントリの容量へ書き戻せば、2 フレーム目以降の確保は 0 になる。
-//     キー側の std::string は短い変数名なら SSO に収まりヒープを触らない。
+/// @brief 上書きを「その場で」書き換える。
+/// @note 代入 (`map[key] = {...}`) は初期化子リストから毎回 vector を作って move するため、
+///       要素ごと毎フレーム呼ばれるこの Setter では確保・解放が定常的に走る。既存エントリの
+///       容量へ assign すれば 2 フレーム目以降の確保は 0 (キーの std::string も短ければ SSO で済む)。
 void AssignUIMaterialOverride(UIImage& image, std::string_view param,
                               const float* values, std::size_t count)
 {
@@ -3400,7 +3404,7 @@ void ScriptUIProxy::SetMaterialTexture(GameObject* go, std::string_view slot,
                                        std::string_view texturePath) const
 {
     if (auto* image = ObjectComponent<UIImage>(go)) {
-        // 値側も assign で容量を使い回す。テクスチャパスは SSO に収まらない長さになる。
+        /// @note 値側も assign で容量を使い回す。テクスチャパスは SSO に収まらない長さになる。
         image->materialTextureOverrides[std::string(slot)].assign(
             texturePath.data(), texturePath.size());
     }
@@ -3432,10 +3436,10 @@ bool ScriptUIProxy::HasMaterialOverride(GameObject* go, std::string_view param) 
         || image->materialTextureOverrides.count(key) > 0;
 }
 
-// ── ウィジェットの値 ─────────────────────────────────────────────────────────
-// WHY コンポーネントを直接触らせないか: スクリプトは Engine の実装へ依存しない
-//     (AGENTS.md)。ここが無かったせいで、オプション画面が
-//     GetComponent<UISlider>() を直に呼ぶ形になっていた。
+/// @name ウィジェットの値
+/// @brief 子オブジェクトを名前で探す。
+/// @note スクリプトが Engine の実装型に直接依存しないための層 (AGENTS.md)。無いと
+///       オプション画面が GetComponent<UISlider>() を直に呼ぶ形になる。
 GameObject* ScriptUIProxy::Find(GameObject* parent, std::string_view childName) const
 {
     if (!parent || !parent->IsValid()) return nullptr;
@@ -3464,8 +3468,8 @@ void ScriptUIProxy::SetSliderValue(GameObject* go, float value) const
     const float low  = (std::min)(s->minimum, s->maximum);
     const float high = (std::max)(s->minimum, s->maximum);
     s->value = std::clamp(s->wholeNumbers ? std::round(value) : value, low, high);
-    // 見た目の追従は UISystem がドラッグ中にしかやらない。外から入れた値でも
-    // ゲージが動くよう、同じ規則をここでも当てる。
+    /// @note 見た目の追従は UISystem がドラッグ中にしかやらない。外から入れた値でも
+    ///       ゲージが動くよう、同じ規則をここでも当てる。
     if (auto* image = ObjectComponent<UIImage>(go)) {
         const float range = s->maximum - s->minimum;
         image->fillAmount = std::abs(range) > 0.000001f
@@ -3597,9 +3601,9 @@ void ScriptUIProxy::SetGroupBlocksRaycasts(GameObject* go, bool blocks) const
 
 namespace {
 
-// go が属する Canvas を親方向に辿って探す。
-// WHY 親方向か: フォーカスは Canvas が持つ。要素側から辿らないと、
-//     複数 Canvas がある画面でどれのフォーカスを触るのか決まらない。
+/// @brief go が属する Canvas を親方向に辿って探す。
+/// @note フォーカスは Canvas が持つ。要素側から辿らないと、複数 Canvas がある画面でどれの
+///       フォーカスを触るのか決まらない。
 UICanvas* OwningCanvas(GameObject* go)
 {
     for (GameObject* node = go; node != nullptr; node = node->GetParent()) {
@@ -3814,7 +3818,7 @@ void ScriptSceneProxy::DestroySelf(float delay) const
 
 bool ScriptSceneProxy::IsActiveAndEnabled() const
 {
-    // Unity の isActiveAndEnabled と同じく、親 GameObject の無効化も実効状態へ反映する。
+    /// @note Unity の isActiveAndEnabled と同じく、親 GameObject の無効化も実効状態へ反映する。
     return script && script->m_gameObject && script->m_gameObject->activeInHierarchy() && script->enabled;
 }
 
@@ -3826,10 +3830,9 @@ GameObject* ScriptSceneProxy::Instantiate(const PrefabRef& prefab) const
 GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath) const
 {
     if (!script || !script->m_scene || prefabPath.empty()) return nullptr;
-    // WHY: PrefabSerializer::Instantiate は内部で SceneIO::Deserialize を呼び全 GameObject を
-    //      再構築する。これにより呼び出し元 Script (と m_gameObject) が解放されるため、
-    //      呼び出し後に script->m_scene を参照するとクラッシュする。
-    //      Scene* はデシリアライズ後も同アドレスに存在し続けるため、先に退避しておく。
+    /// @note PrefabSerializer::Instantiate は内部で SceneIO::Deserialize を呼び全 GameObject を再構築し、
+    ///       呼び出し元 Script (と m_gameObject) を解放する。呼び出し後に script->m_scene を参照すると
+    ///       クラッシュするため、同アドレスで生き続ける Scene* を先に退避しておく。
     Scene* scene = script->m_scene;
     std::vector<EntityID> roots;
     if (!Script::InstantiatePrefab(*scene, prefabPath, roots) || roots.empty())
@@ -3853,7 +3856,7 @@ GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath,
     return go;
 }
 
-// ── オブジェクトプール ──────────────────────────────────────────────────────
+/// @name オブジェクトプール
 
 GameObject* ScriptSceneProxy::Spawn(const PrefabRef& prefab,
                                     const math::Vector3& position,
@@ -3867,8 +3870,8 @@ GameObject* ScriptSceneProxy::Spawn(const std::string& prefabPath,
                                     const math::Quaternion& rotation) const
 {
     if (!script || !script->m_scene) return nullptr;
-    // Instantiate と同じ理由で Scene* を先に退避する。プールが空だった場合は
-    // 内部で Instantiate が走り、GameObject 配列が再確保され得る。
+    /// @note Instantiate と同じ理由で Scene* を先に退避する。プールが空だった場合は
+    ///       内部で Instantiate が走り、GameObject 配列が再確保され得る。
     Scene* scene = script->m_scene;
     return PrefabPool::Spawn(*scene, prefabPath, position, rotation);
 }
@@ -3876,8 +3879,8 @@ GameObject* ScriptSceneProxy::Spawn(const std::string& prefabPath,
 GameObject* ScriptSceneProxy::Spawn(const PrefabRef& prefab) const
 {
     if (!script || !script->m_gameObject) return nullptr;
-    // WHY 値へコピーしてから渡すか: Spawn の内部で Instantiate が走ると Scene の
-    //     GameObject 配列が再確保され、m_gameObject->transform の参照先が無効になる。
+    /// @note 値へコピーしてから渡す: Spawn 内部で Instantiate が走ると Scene の GameObject 配列が
+    ///       再確保され、m_gameObject->transform の参照先が無効になるため。
     const math::Vector3    position = script->m_gameObject->transform.worldPosition;
     const math::Quaternion rotation = script->m_gameObject->transform.worldRotation;
     return Spawn(prefab.path, position, rotation);
@@ -3946,8 +3949,8 @@ void ScriptSceneProxy::SetTag(const std::string& t) const
 
 float ScriptSceneProxy::GetTerrainHeightAt(const math::Vector3& worldPos) const
 {
-    // WHY: 地形なし時は lowest() を返し、呼び出し側の「nextPos.y <= terrainH」が常に
-    //      true になる問題を防ぐ。worldPos.y を返すと高さが一致して誤判定する。
+    /// @note 地形なし時は lowest() を返す。worldPos.y を返すと高さが一致し、呼び出し側の
+    ///       «nextPos.y <= terrainH» が常に true になる誤判定を防ぐ。
     if (!script || !script->m_scene) return std::numeric_limits<float>::lowest();
     for (auto& go : script->m_scene->GameObjects()) {
         if (auto* terrain = go.GetComponent<TerrainComponent>())
@@ -4183,9 +4186,9 @@ void ScriptAnimatorProxy::Play(GameObject* go, std::string_view stateName) const
 
 void ScriptAnimatorProxy::SetLayerWeight(std::string_view layerName, float weight) const
 {
-    // 名前引きと診断は AnimatorComponent 側に集約してある (このファイルの方針どおり
-    // «Script から自 GameObject の Animator を引くだけ» に留める)。以前ここだけ
-    // 探索を書き写していたため、レイヤー名を間違えたときの報告が漏れていた。
+    /// @note 名前引きと診断は AnimatorComponent 側に集約してある (このファイルの方針どおり
+    ///       «Script から自 GameObject の Animator を引くだけ» に留める)。以前ここだけ
+    ///       探索を書き写していたため、レイヤー名を間違えたときの報告が漏れていた。
     if (auto* animator = SelfComponent<AnimatorComponent>(script))
         animator->SetLayerWeight(layerName, weight);
 }
@@ -4198,9 +4201,9 @@ float ScriptAnimatorProxy::GetLayerWeight(std::string_view layerName) const
     return 0.0f;
 }
 
-// ── レイヤー制御 / Slot ──────────────────────────────────────────────────────
-// WHY: 判定と状態遷移は AnimatorComponent 側のメソッドに集約済み。
-//      ここは Script から自 GameObject の Animator を引くだけの薄い委譲に留める。
+/// @name レイヤー制御 / Slot
+/// @note 判定と状態遷移は AnimatorComponent 側のメソッドに集約済み。ここは Script から
+///       自 GameObject の Animator を引くだけの薄い委譲に留める。
 
 std::string ScriptAnimatorProxy::GetLayerState(std::string_view layerName) const
 {
@@ -4232,7 +4235,7 @@ void ScriptAnimatorProxy::SetLayerMask(
     AnimationLayer* layer = animator->FindLayer(layerName);
     if (!layer) { ReportUnknownAnimationLayer("SetLayerMask", layerName, animator->layers); return; }
     layer->mask.path = std::string(maskPath);
-    // ロード済みキャッシュを落とし、次フレームの AnimatorSystem に読み直させる。
+    /// @note ロード済みキャッシュを落とし、次フレームの AnimatorSystem に読み直させる。
     layer->mask.Invalidate();
 }
 
@@ -4424,11 +4427,11 @@ void ScriptAnimatorProxy::SetRootMotionNodeName(std::string_view nodeName) const
     auto* animator = SelfComponent<AnimatorComponent>(script);
     if (!animator) return;
     animator->rootMotion.nodeName = nodeName;
-    // 名前を指定したら解決方法も NodeName へ切り替える。空なら クリップ指定へ戻す。
+    /// @note 名前を指定したら解決方法も NodeName へ切り替える。空なら クリップ指定へ戻す。
     animator->rootMotion.source = nodeName.empty()
         ? RootMotionSource::ClipDefined
         : RootMotionSource::NodeName;
-    // トラックが変わるとサンプル位置の連続性が失われるため、キャッシュを捨てる。
+    /// @note トラックが変わるとサンプル位置の連続性が失われるため、キャッシュを捨てる。
     animator->rootMotionSamples.clear();
 }
 
@@ -4447,28 +4450,66 @@ void ScriptDebugProxy::LogError(std::string_view msg) const
     core::Logger::Error("%.*s", static_cast<int>(msg.size()), msg.data());
 }
 
+namespace {
+
+/// @brief 要求 1 件の共通部分を埋める。フィールドの多重利用は ScriptDebugDrawType を参照。
+ScriptDebugDrawCommand MakeDebugDrawCommand(ScriptDebugDrawType type, const math::Vector3& a,
+                                            const math::Vector3& b, const math::Vector4& color,
+                                            float duration, bool depthTest)
+{
+    ScriptDebugDrawCommand command;
+    command.type      = type;
+    command.a         = a;
+    command.b         = b;
+    command.color     = color;
+    command.duration  = duration;
+    command.depthTest = depthTest;
+    return command;
+}
+
+} // namespace
+
 void ScriptDebugProxy::DrawLine(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color, float duration) const
 {
     if (!script || !script->m_scene) return;
-    script->m_scene->QueueScriptDebugDraw({ ScriptDebugDrawType::Line, a, b, {}, color, 0.0f, duration });
+    script->m_scene->QueueScriptDebugDraw(
+        MakeDebugDrawCommand(ScriptDebugDrawType::Line, a, b, color, duration, depthTest));
 }
 
 void ScriptDebugProxy::DrawSphere(const math::Vector3& center, float radius, const math::Vector4& color, float duration) const
 {
     if (!script || !script->m_scene) return;
-    script->m_scene->QueueScriptDebugDraw({ ScriptDebugDrawType::Sphere, center, {}, {}, color, radius, duration });
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::Sphere, center, {}, color, duration, depthTest);
+    command.radius = radius;
+    script->m_scene->QueueScriptDebugDraw(command);
 }
 
 void ScriptDebugProxy::DrawBox(const math::Vector3& center, const math::Vector3& halfExtents, const math::Vector4& color, float duration) const
 {
     if (!script || !script->m_scene) return;
-    script->m_scene->QueueScriptDebugDraw({ ScriptDebugDrawType::Box, center, {}, halfExtents, color, 0.0f, duration });
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::Box, center, {}, color, duration, depthTest);
+    command.halfExtents = halfExtents;
+    script->m_scene->QueueScriptDebugDraw(command);
+}
+
+void ScriptDebugProxy::DrawBox(const math::Vector3& center, const math::Vector3& halfExtents,
+                               const math::Quaternion& rotation, const math::Vector4& color, float duration) const
+{
+    if (!script || !script->m_scene) return;
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::OrientedBox, center, {}, color, duration, depthTest);
+    command.halfExtents = halfExtents;
+    command.rotation    = rotation;
+    script->m_scene->QueueScriptDebugDraw(command);
 }
 
 void ScriptDebugProxy::DrawRay(const math::Vector3& origin, const math::Vector3& dir, const math::Vector4& color, float duration) const
 {
     if (!script || !script->m_scene) return;
-    script->m_scene->QueueScriptDebugDraw({ ScriptDebugDrawType::Ray, origin, origin + dir, {}, color, 0.0f, duration });
+    script->m_scene->QueueScriptDebugDraw(
+        MakeDebugDrawCommand(ScriptDebugDrawType::Ray, origin, origin + dir, color, duration, depthTest));
 }
 
 void ScriptDebugProxy::DrawArrow(const math::Vector3& from, const math::Vector3& to,
@@ -4476,10 +4517,11 @@ void ScriptDebugProxy::DrawArrow(const math::Vector3& from, const math::Vector3&
                                   const math::Vector4& color, float duration) const
 {
     if (!script || !script->m_scene) return;
-    // headLength を radius、headRadius を halfExtents.x に格納する (ScriptDebugDrawCommand の多重利用)
-    script->m_scene->QueueScriptDebugDraw({
-        ScriptDebugDrawType::Arrow, from, to, { headRadius, 0.0f, 0.0f }, color, headLength, duration
-    });
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::Arrow, from, to, color, duration, depthTest);
+    command.radius      = headLength;
+    command.halfExtents = { headRadius, 0.0f, 0.0f };
+    script->m_scene->QueueScriptDebugDraw(command);
 }
 
 void ScriptDebugProxy::DrawCone(const math::Vector3& apex, const math::Vector3& direction,
@@ -4487,10 +4529,57 @@ void ScriptDebugProxy::DrawCone(const math::Vector3& apex, const math::Vector3& 
                                  const math::Vector4& color, float duration) const
 {
     if (!script || !script->m_scene) return;
-    // height を halfExtents.x、baseRadius を radius に格納する
-    script->m_scene->QueueScriptDebugDraw({
-        ScriptDebugDrawType::Cone, apex, direction, { height, 0.0f, 0.0f }, color, baseRadius, duration
-    });
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::Cone, apex, direction, color, duration, depthTest);
+    command.radius      = baseRadius;
+    command.halfExtents = { height, 0.0f, 0.0f };
+    script->m_scene->QueueScriptDebugDraw(command);
+}
+
+void ScriptDebugProxy::DrawCapsule(const math::Vector3& center, float radius, float halfHeight,
+                                   const math::Quaternion& rotation, const math::Vector4& color,
+                                   float duration) const
+{
+    if (!script || !script->m_scene) return;
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::Capsule, center, {}, color, duration, depthTest);
+    command.radius      = radius;
+    command.halfExtents = { halfHeight, 0.0f, 0.0f };
+    command.rotation    = rotation;
+    script->m_scene->QueueScriptDebugDraw(command);
+}
+
+void ScriptDebugProxy::DrawCircle(const math::Vector3& center, const math::Vector3& normal, float radius,
+                                  const math::Vector4& color, float duration) const
+{
+    if (!script || !script->m_scene) return;
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::Circle, center, normal, color, duration, depthTest);
+    command.radius = radius;
+    script->m_scene->QueueScriptDebugDraw(command);
+}
+
+void ScriptDebugProxy::DrawArc(const math::Vector3& center, const math::Vector3& normal,
+                               const math::Vector3& fromDirection, float radius, float angleDegrees,
+                               const math::Vector4& color, float duration) const
+{
+    if (!script || !script->m_scene) return;
+    ScriptDebugDrawCommand command =
+        MakeDebugDrawCommand(ScriptDebugDrawType::Arc, center, normal, color, duration, depthTest);
+    command.halfExtents = fromDirection;
+    command.radius      = radius;
+    command.angle       = math::ToRad(angleDegrees);
+    script->m_scene->QueueScriptDebugDraw(command);
+}
+
+void ScriptDebugProxy::DrawPolyline(std::span<const math::Vector3> points, bool closed,
+                                    const math::Vector4& color, float duration) const
+{
+    if (!script || !script->m_scene || points.size() < 2) return;
+    for (size_t i = 0; i + 1 < points.size(); ++i)
+        DrawLine(points[i], points[i + 1], color, duration);
+    if (closed && points.size() > 2)
+        DrawLine(points.back(), points.front(), color, duration);
 }
 
 renderer::PostProcessSettings& ScriptPostProcessProxy::Get() const
@@ -4599,32 +4688,67 @@ bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x,
 
 bool ScriptPostProcessProxy::LoadProfile(std::string_view profilePath) const
 {
-    // WHY DataAssetRegistry を経由するか: 同じプロファイルを複数箇所から読んでも
-    //     TOML の再パースが起きず、エディタでの編集が即座に反映される。
-    //     ファイルを直接パースしていた旧 .fzpp 経路より安く、共有実体とも一致する。
+    /// @note DataAssetRegistry 経由: 同じプロファイルを複数箇所から読んでも TOML の再パースが起きず、
+    ///       エディタでの編集が即座に反映される。旧 .fzpp の直接パース経路より安く共有実体とも一致する。
     auto* profile = dynamic_cast<asset::PostProcessProfile*>(
         asset::DataAssetRegistry::Resolve(std::string(profilePath)));
     if (!profile) return false;
 
-    // プロファイルは「効果のリスト」なので、まず既定値へ重み 1 で解決して
-    // 具体的な設定へ落としてから渡す。
-    // WHY ポストプロセス部分だけ渡すか: このプロキシが書き込むランタイム上書きの器は
-    //     Scene の PostProcessSettings で、SSR や TAA といった高度グラフィクスの
-    //     置き場が無い。恒久的にプロファイル全体を効かせたい場合は、
-    //     PostProcessVolume からこのプロファイルを参照させる。
+    /// @note プロファイルは «効果のリスト» なので、まず既定値へ重み 1 で解決してから渡す。渡すのは
+    ///       ポストプロセス部分のみ: このプロキシが書くランタイム上書きの器は Scene の
+    ///       PostProcessSettings で SSR/TAA 等の高度グラフィクスの置き場が無い。恒久的に効かせたい
+    ///       場合は PostProcessVolume からこのプロファイルを参照させる。
     renderer::VolumeSettings resolved;
     profile->ApplyTo(resolved, 1.0f);
     Set(resolved.post);
     return true;
 }
 
-// =============================================================================
-// GizmoProxy — OnDrawGizmos 区間内で Gizmo:: / DebugDraw:: を直接呼ぶプロキシ
-// =============================================================================
-// WHY: OnDrawGizmos は DebugDraw::BeginFrame/Flush の間で呼ばれるため、
-//      コマンドキューを介さず直接描画できる。renderer ポインタは RenderSystem が注入する。
-
+/// @note OnDrawGizmos は DebugDraw の記録区間 (CaptureScriptGizmos) で呼ばれるので直接積める。
 #define GIZMO_ASSERT assert(renderer && "GizmoProxy is only valid inside OnDrawGizmos()")
+
+void GizmoProxy::SetDepthTest(bool enabled) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::SetDepthTest(enabled);
+}
+
+void GizmoProxy::DrawCapsule(const math::Vector3& center, float radius, float halfHeight,
+                             const math::Quaternion& rotation, const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Capsule(*renderer, center, radius, halfHeight, rotation, color);
+}
+
+void GizmoProxy::DrawCone(const math::Vector3& apex, const math::Vector3& direction,
+                          float height, float baseRadius, const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Cone(*renderer, apex, direction, height, baseRadius, color);
+}
+
+void GizmoProxy::DrawCircle(const math::Vector3& center, const math::Vector3& normal, float radius,
+                            const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Circle(*renderer, center, normal, radius, color);
+}
+
+void GizmoProxy::DrawArc(const math::Vector3& center, const math::Vector3& normal,
+                         const math::Vector3& fromDirection, float radius, float angleDegrees,
+                         const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Arc(*renderer, center, normal, fromDirection, radius,
+                             math::ToRad(angleDegrees), color);
+}
+
+void GizmoProxy::DrawPolyline(std::span<const math::Vector3> points, bool closed,
+                              const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Polyline(*renderer, points, closed, color);
+}
 
 void GizmoProxy::DrawTransformAxes(const math::Vector3& position,
                                     const math::Quaternion& rotation,
@@ -4707,10 +4831,10 @@ void GizmoProxy::DrawTargetLine(const math::Vector3& from, const math::Vector3& 
 
 #undef GIZMO_ASSERT
 
-// ── ScriptNavigationProxy 実装 ───────────────────────────────────────────────
-// WHY: フリー関数は Script::m_gameObject (protected) へアクセスできない
-//      (friend 指定は ScriptNavigationProxy のメンバー関数にのみ及ぶ)。
-//      既存の SelfComponent<T>() (public な Script::GetComponent<T>() 経由) を再利用する。
+/// @name ScriptNavigationProxy 実装
+/// @note フリー関数は Script::m_gameObject (protected) へアクセスできない (friend 指定は
+///       ScriptNavigationProxy のメンバー関数にのみ及ぶ)。既存の SelfComponent<T>() (public な
+///       Script::GetComponent<T>() 経由) を再利用する。
 namespace {
 NavMeshAgentComponent* SelfNavAgent(const Script* script)
 {
@@ -4888,7 +5012,7 @@ GameObject* ScriptNavigationProxy::GetDetectedTarget() const
     return script->m_scene ? script->m_scene->GetGameObject(sensor->detectedTarget) : nullptr;
 }
 
-// ── EntityRef 実装 ──────────────────────────────────────────────────────────
+/// @name EntityRef 実装
 GameObject* EntityRef::Resolve(const ScriptSceneProxy& scene) const
 {
     return id.IsValid() ? scene.GetGameObject(id) : nullptr;
@@ -4899,9 +5023,7 @@ GameObject* EntityRef::Resolve(Scene& scene) const
     return id.IsValid() ? scene.GetGameObject(id) : nullptr;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptCharacterProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptCharacterProxy
 namespace {
 CharacterControllerComponent* SelfCharacter(const Script* script)
 {
@@ -4913,7 +5035,7 @@ void ScriptCharacterProxy::Tick(float dt) const
 {
     auto* cc = SelfCharacter(script);
     if (!cc) return;
-    // RigidBody は SelfRigidBody() が script→Component→rigidBody と辿る。
+    /// @note RigidBody は SelfRigidBody() が script→Component→rigidBody と辿る。
     cc->Tick(SelfRigidBody(script), dt);
 }
 
@@ -5012,9 +5134,7 @@ bool ScriptCharacterProxy::IsEnabled() const
     return cc && cc->enabled;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptMeshProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptMeshProxy
 void ScriptMeshProxy::SetEnabled(bool enabled) const
 {
     if (!script || !script->m_gameObject) return;
@@ -5059,7 +5179,7 @@ void ScriptMeshProxy::SetMeshPath(std::string_view path) const
     auto* mr = script->m_gameObject->GetComponent<MeshRenderer>();
     if (!mr || mr->meshPath == path) return;
     mr->meshPath      = std::string(path);
-    // 引き直しには ResourceManager が要る。実際に差し替えるのは RuntimeMeshSystem。
+    /// @note 引き直しには ResourceManager が要る。実際に差し替えるのは RuntimeMeshSystem。
     mr->meshPathDirty = true;
 }
 
@@ -5096,8 +5216,8 @@ void ApplyProceduralMesh(GameObject& go, const MeshBuilder& builder)
 {
     ProceduralMeshComponent* procedural = EnsureProceduralMesh(go);
     if (!procedural) return;
-    // 三角形の数が変われば当然、同数でも繋がり方は変わりうる。値で受けた以上、
-    // 何が変わったかは判別できないので常に全更新として扱う。
+    /// @note 三角形の数が変われば当然、同数でも繋がり方は変わりうる。値で受けた以上、
+    ///       何が変わったかは判別できないので常に全更新として扱う。
     procedural->builder = builder;
     procedural->dirty   = MeshDirty::All;
     procedural->enabled = true;
@@ -5129,7 +5249,7 @@ void ScriptMeshProxy::Touch(MeshDirty dirty) const
     if (!script || !script->m_gameObject) return;
     auto* procedural = script->m_gameObject->GetComponent<ProceduralMeshComponent>();
     if (!procedural || dirty == MeshDirty::None) return;
-    // 既に全更新が積まれているフレームで «頂点だけ» を要求されても、弱い方へは下げない。
+    /// @note 既に全更新が積まれているフレームで «頂点だけ» を要求されても、弱い方へは下げない。
     if (procedural->dirty != MeshDirty::All) procedural->dirty = dirty;
 }
 
@@ -5153,9 +5273,7 @@ void ScriptMeshProxy::SetProceduralMaterial(std::string_view path) const
     procedural->materialPath = std::string(path);
 }
 
-// ---------------------------------------------------------------------------
-// ScriptIKProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptIKProxy
 namespace {
 IKSolverComponent* SelfIK(const Script* script)
 {
@@ -5228,9 +5346,7 @@ bool ScriptIKProxy::IsEnabled() const
     return ik && ik->enabled;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptWaterProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptWaterProxy
 namespace {
 WaterComponent* SelfWater(const Script* script)
 {
@@ -5249,7 +5365,7 @@ float ScriptWaterProxy::GetSurfaceHeightLocal(float localX, float localZ, float 
 {
     auto* wc = SelfWater(script);
     if (!wc || !script->m_gameObject) return 0.0f;
-    // 波の位相はワールド XZ で決まる。ローカルのまま評価すると描画とずれる。
+    /// @note 波の位相はワールド XZ で決まる。ローカルのまま評価すると描画とずれる。
     const auto& t = script->m_gameObject->transform;
     const math::Vector3 world = t.worldPosition
         + t.worldRotation * math::Vector3{ localX * t.worldScale.x, 0.0f, localZ * t.worldScale.z };
@@ -5282,7 +5398,7 @@ void ScriptWaterProxy::AddRipple(const math::Vector3& worldPos, float strength) 
 {
     auto* wc = SelfWater(script);
     if (!wc || !script->m_gameObject) return;
-    EmitWaterRipple(script->m_gameObject->GetID(), *wc, script->m_gameObject->transform, worldPos, strength);
+    EmitWaterRipple(*wc, script->m_gameObject->transform, worldPos, strength);
 }
 
 void ScriptWaterProxy::Splash(const math::Vector3& worldPos, float intensity) const
@@ -5308,7 +5424,6 @@ bool ScriptWaterProxy::IsEnabled() const
     return wc && wc->enabled;
 }
 
-// ---------------------------------------------------------------------------
 namespace {
 TerrainComponent* SelfTerrain(const Script* script)
 {
@@ -5375,6 +5490,29 @@ bool ScriptTerrainProxy::SetLayerMaterial(int layer, std::string_view materialPa
     return terrain && terrain->SetLayerMaterial(layer, std::string(materialPath));
 }
 
+int ScriptTerrainProxy::GetLayerCount() const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->LayerCount() : 0;
+}
+
+float ScriptTerrainProxy::GetLayerWeightAtGrid(int x, int z, int layer) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->GetLayerWeightAtGrid(x, z, layer) : 0.0f;
+}
+
+bool ScriptTerrainProxy::SetHoleAtGrid(int cellX, int cellZ, bool hole) const
+{
+    auto* terrain = SelfTerrain(script);
+    if (!terrain) return false;
+    const bool wasHole = terrain->IsHoleCell(cellX, cellZ);
+    if (!terrain->SetHoleCell(cellX, cellZ, hole)) return false;
+    /// @note 変化の無い書き込みでメッシュとコライダーを作り直さない (毎フレーム呼ぶスクリプトを想定)。
+    if (wasHole != hole) terrain->RequestHoleRebuild();
+    return true;
+}
+
 void ScriptTerrainProxy::RequestRebuild() const
 {
     if (auto* terrain = SelfTerrain(script)) {
@@ -5384,17 +5522,14 @@ void ScriptTerrainProxy::RequestRebuild() const
     }
 }
 
-// ScriptEnvironmentProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptEnvironmentProxy
 namespace {
-// シーン全体から最初のコンポーネントを検索する汎用ヘルパー。
-// WHY: EnvironmentLight / AtmosphericScattering / SkyRenderer は通常シーンに 1 つしかなく、
-//      どの Script からでもアクセスできる設計にするためシーン全探索を行う。
-//      enabled チェックを行わないのは、SetEnabled(false) を呼ぶためにコンポーネントを
-//      見つける必要があるため。
-// NOTE: Script* ではなく Scene* を受け取る — Script::m_scene は protected のため
-//       free function から直接アクセスできない。呼び出し側 (friend の proxy メソッド) で
-//       script->m_scene を取り出して渡す。
+/// @brief シーン全体から最初のコンポーネントを検索する汎用ヘルパー。
+/// @note EnvironmentLight/AtmosphericScattering/SkyRenderer は通常シーンに 1 つで、どの Script
+///       からでもアクセスできるよう全探索する。enabled は見ない (SetEnabled(false) を呼ぶために
+///       コンポーネント自体を見つける必要があるため)。
+/// @note Script* でなく Scene* を受け取る: Script::m_scene は protected で free function から
+///       直接アクセスできないため、呼び出し側 (friend の proxy メソッド) で取り出して渡す。
 template<typename T>
 T* FindFirstInScene(Scene* scene)
 {
@@ -5452,7 +5587,7 @@ float ScriptEnvironmentProxy::GetFogDensity() const
 
 void ScriptEnvironmentProxy::SetSunIntensity(float intensity) const
 {
-    // 対象は大気散乱の明るさ。太陽ディスクは ScriptSunMoonProxy::SetSun が持つ。
+    /// @note 対象は大気散乱の明るさ。太陽ディスクは ScriptSunMoonProxy::SetSun が持つ。
     if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->skyScatterIntensity = intensity;
 }
 void ScriptEnvironmentProxy::SetMieScattering(float mie) const
@@ -5511,9 +5646,7 @@ float ScriptEnvironmentProxy::GetFogFar() const
     return c ? c->fogFar : 0.0f;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptDecalProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptDecalProxy
 namespace {
 DecalComponent* SelfDecal(const Script* script)
 {
@@ -5532,12 +5665,12 @@ EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
     if (!script || !script->m_scene) return EntityRef{};
     Scene& scene = *script->m_scene;
 
-    // 投影軸はデカールのローカル +Y。法線をそのまま +Y へ向けるので、床への着弾は
-    // 無回転になる (BossShockwave / DecalScorch が置いている床デカールと同じ規約)。
+    /// @note 投影軸はデカールのローカル +Y。法線をそのまま +Y へ向けるので、床への着弾は
+    ///       無回転になる (BossShockwave / DecalScorch が置いている床デカールと同じ規約)。
     const math::Vector3 axis = normal.NormalizedOr(math::Vector3::UP);
 
-    // ローカル +Z は投影 UV の V 軸。法線に直交していれば向きは何でもよいので、
-    // 軸に平行になりにくい 2 本から選ぶ (真上 / 真横の面で基底が潰れるのを避ける)。
+    /// @note ローカル +Z は投影 UV の V 軸。法線に直交していれば向きは何でもよいので、
+    ///       軸に平行になりにくい 2 本から選ぶ (真上 / 真横の面で基底が潰れるのを避ける)。
     math::Vector3 forward = math::Vector3::Cross(axis, math::Vector3::RIGHT);
     if (forward.LengthSq() < 1.0e-6f)
         forward = math::Vector3::Cross(axis, math::Vector3::FORWARD);
@@ -5545,14 +5678,14 @@ EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
 
     math::Quaternion rotation =
         math::Quaternion::LookRotation(forward, axis).Normalized();
-    // roll はローカル +Y (= 投影軸) まわり。右から掛けてローカル回転として足す。
+    /// @note roll はローカル +Y (= 投影軸) まわり。右から掛けてローカル回転として足す。
     if (rollDegrees != 0.0f) {
         rotation = (rotation * math::Quaternion::FromAxisAngle(
                         math::Vector3::UP, rollDegrees * math::DEG2RAD)).Normalized();
     }
 
-    // Create / AddComponent はシーンの配列を伸ばしうる。値は必ず ID から引き直した
-    // 個体へ入れる —— 作った直後の参照は、次の確保で無効になりうる。
+    /// @note Create / AddComponent はシーンの配列を伸ばしうる。値は必ず ID から引き直した
+    ///       個体へ入れる —— 作った直後の参照は、次の確保で無効になりうる。
     const EntityID id = [&] {
         GameObject& created = scene.CreateGameObject("Decal");
         created.runtimeGenerated = true;
@@ -5566,7 +5699,7 @@ EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
     if (!decal) return EntityRef{};
 
     const float extent = (std::max)(size, 0.001f);
-    // worldPosition だけでは動かない。PrePhysics が local から組み直すため position も書く。
+    /// @note worldPosition だけでは動かない。PrePhysics が local から組み直すため position も書く。
     spawned->transform.position      = point;
     spawned->transform.worldPosition = point;
     spawned->transform.rotation      = rotation;
@@ -5679,8 +5812,8 @@ float ScriptDecalProxy::GetEffectiveOpacity() const
 {
     const auto* d = SelfDecal(script);
     if (!d) return 0.0f;
-    // DecalPass のライフタイムフェードと同じ式。片方だけ変えると
-    // 「見た目は消えているのに Script は 1.0 を読む」というズレになる。
+    /// @note DecalPass のライフタイムフェードと同じ式。片方だけ変えると
+    ///       「見た目は消えているのに Script は 1.0 を読む」というズレになる。
     float fade = 1.0f;
     if (d->lifetime >= 0.0f && d->fadeTime > 0.0f)
         fade = (std::min)(1.0f, (d->lifetime - d->age) / d->fadeTime);
@@ -5706,14 +5839,14 @@ void ScriptDecalProxy::SetMaterial(std::string_view materialPath) const
     std::string next(materialPath);
     if (d->materialPath == next) return;
     d->materialPath = std::move(next);
-    // 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
-    // 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
+    /// @note 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
+    ///       残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
     d->materialParamOverrides.clear();
     d->materialTextureOverrides.clear();
 }
 
 namespace {
-// AssignUIMaterialOverride と同じ理由で assign を使う (毎フレーム呼ばれる Setter)。
+/// @brief AssignUIMaterialOverride と同じ理由で assign を使う (毎フレーム呼ばれる Setter)。
 void AssignDecalMaterialOverride(DecalComponent& decal, std::string_view param,
                                  const float* values, std::size_t count)
 {
@@ -5761,9 +5894,7 @@ void ScriptDecalProxy::ClearMaterialOverrides() const
     d->materialTextureOverrides.clear();
 }
 
-// ---------------------------------------------------------------------------
-// ScriptVolumeProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptVolumeProxy
 namespace {
 VolumeComponent* SelfVolume(const Script* script)
 {
@@ -5782,10 +5913,6 @@ void ScriptVolumeProxy::SetGravity(const math::Vector3& gravity) const
 void ScriptVolumeProxy::SetSwirlStrength(float strength) const
 {
     if (auto* v = SelfVolume(script)) v->swirlStrength = strength;
-}
-void ScriptVolumeProxy::SetBuoyancy(float buoyancy) const
-{
-    if (auto* v = SelfVolume(script)) v->buoyancy = buoyancy;
 }
 void ScriptVolumeProxy::SetExplosionImpulse(float impulse) const
 {
@@ -5824,9 +5951,7 @@ float ScriptVolumeProxy::GetElapsed() const
     return v ? v->elapsed : 0.0f;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptReflectionProbeProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptReflectionProbeProxy
 namespace {
 ReflectionProbeComponent* SelfReflectionProbe(const Script* script)
 {
@@ -5951,9 +6076,7 @@ float ScriptMotionWarpProxy::GetRemainingDistance() const
     return warp ? warp->runtimeRemainingDistance : 0.0f;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptLifetimeProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptLifetimeProxy
 namespace {
 LifetimeComponent* SelfLifetime(const Script* script)
 {
@@ -5985,96 +6108,98 @@ bool ScriptLifetimeProxy::HasLifetime() const
 }
 void ScriptLifetimeProxy::Kill() const
 {
-    // remaining = 0 にして LifetimeSystem に次フレームで GO を破棄させる。
+    /// @note remaining = 0 にして LifetimeSystem に次フレームで GO を破棄させる。
     if (auto* lc = SelfLifetime(script)) lc->remaining = 0.0f;
 }
 
-// ScriptForceFieldProxy
-//
-// 力場は «1 本» から «リスト» になった (旧 WindZone を吸収するため)。
-// スクリプト API は 1 本を触る形のままにしてあり、対象は **先頭の力**。
-// WHY 先頭か: このプロキシを使うスクリプトは «この GameObject の力» を 1 つだと思って
-//      書かれている。束ねて置いた 2 本目以降を触りたい用途はまだ無く、あるとしたら
-//      «どれを» を指す API が別に要る。黙って全部へ配ると、風だけ強めたつもりで
-//      乱れまで動く。
+/// @brief ScriptFlowFieldProxy
+///
+/// @brief 場は «1 本» から «リスト» になった。スクリプト API は 1 本を触る形のままで、
+/// @brief 対象は **先頭の流れ**。
+/// @note 先頭なのは、このプロキシを使うスクリプトが «この GameObject の流れ» を 1 つだと
+///       思って書かれているため。黙って全部へ配ると、流れだけ強めたつもりで乱れまで動く。
 namespace {
 
-ForceFieldSettings* SelfPrimaryForce(const Script* script)
+FlowFieldSettings* SelfPrimaryForce(const Script* script)
 {
-    auto* field = SelfComponent<ForceField>(script);
+    auto* field = SelfComponent<FlowField>(script);
     if (field == nullptr || field->forces.empty()) return nullptr;
     return &field->forces.front();
 }
 
 } // namespace
 
-void ScriptForceFieldProxy::SetEnabled(bool enabled) const
+void ScriptFlowFieldProxy::SetEnabled(bool enabled) const
 {
     if (auto* force = SelfPrimaryForce(script)) force->enabled = enabled;
 }
-void ScriptForceFieldProxy::SetType(ScriptForceFieldType type) const
+void ScriptFlowFieldProxy::SetType(ScriptFlowFieldType type) const
 {
     if (auto* force = SelfPrimaryForce(script)) {
-        const int value = std::clamp(static_cast<int>(type), 0, kForceFieldTypeCount - 1);
-        force->fieldType = static_cast<ForceFieldType>(value);
+        /// @note LEGACY_DRAG (5) と Baked (6) はスクリプトからは選べない。前者は読み込み専用、
+        ///       後者は 速度場 PNG のパスが要るのでコンポーネント側で組む。
+        const int value = std::clamp(static_cast<int>(type), 0,
+                                     static_cast<int>(FlowFieldType::Curl));
+        force->fieldType = static_cast<FlowFieldType>(value);
     }
 }
-void ScriptForceFieldProxy::SetStrength(float strength) const
+void ScriptFlowFieldProxy::SetSpeed(float speed) const
 {
-    if (auto* force = SelfPrimaryForce(script)) force->strength = strength;
+    if (auto* force = SelfPrimaryForce(script)) force->strength = speed;
 }
-void ScriptForceFieldProxy::SetRadius(float radius, float falloffPower) const
+void ScriptFlowFieldProxy::SetRadius(float radius, float falloffPower) const
 {
     if (auto* force = SelfPrimaryForce(script)) {
         force->radius = radius;
         force->falloffPower = (std::max)(falloffPower, 0.01f);
     }
 }
-void ScriptForceFieldProxy::SetDirection(const math::Vector3& direction) const
+void ScriptFlowFieldProxy::SetDirection(const math::Vector3& direction) const
 {
     if (auto* force = SelfPrimaryForce(script)) force->direction = direction;
 }
-void ScriptForceFieldProxy::SetTurbulence(float frequency, float speed) const
+void ScriptFlowFieldProxy::SetTurbulence(float frequency, float speed) const
 {
     if (auto* force = SelfPrimaryForce(script)) {
         force->noiseFrequency = (std::max)(frequency, 0.0f);
         force->noiseSpeed = speed;
     }
 }
-void ScriptForceFieldProxy::SetChannels(uint32_t channels) const
+void ScriptFlowFieldProxy::SetChannels(uint32_t channels) const
 {
-    // チャンネルは «この力場が誰に効くか» で、束ねた力で分ける意味が無いので全部へ配る。
-    if (auto* field = SelfComponent<ForceField>(script))
+    /// @note チャンネルは «この場が誰に効くか» で、束ねた流れで分ける意味が無いので全部へ配る。
+    if (auto* field = SelfComponent<FlowField>(script))
         for (auto& force : field->forces) force.channels = channels;
 }
-bool ScriptForceFieldProxy::IsEnabled() const
+bool ScriptFlowFieldProxy::IsEnabled() const
 {
     const auto* force = SelfPrimaryForce(script);
     return force && force->enabled;
 }
-float ScriptForceFieldProxy::GetStrength() const
+float ScriptFlowFieldProxy::GetSpeed() const
 {
     const auto* force = SelfPrimaryForce(script);
     return force ? force->strength : 0.0f;
 }
-float ScriptForceFieldProxy::GetRadius() const
+float ScriptFlowFieldProxy::GetRadius() const
 {
     const auto* force = SelfPrimaryForce(script);
     return force ? force->radius : 0.0f;
 }
-ScriptForceFieldType ScriptForceFieldProxy::GetType() const
+ScriptFlowFieldType ScriptFlowFieldProxy::GetType() const
 {
     const auto* force = SelfPrimaryForce(script);
-    return force ? static_cast<ScriptForceFieldType>(static_cast<int>(force->fieldType))
-                 : ScriptForceFieldType::WIND;
+    if (force == nullptr || force->fieldType > FlowFieldType::Curl)
+        return ScriptFlowFieldType::UNIFORM;
+    return static_cast<ScriptFlowFieldType>(static_cast<int>(force->fieldType));
 }
-uint32_t ScriptForceFieldProxy::GetChannels() const
+uint32_t ScriptFlowFieldProxy::GetChannels() const
 {
     const auto* force = SelfPrimaryForce(script);
     return force ? force->channels : 0u;
 }
 
-// ScriptCloudProxy
+/// @brief ScriptCloudProxy
 void ScriptCloudProxy::SetEnabled(bool enabled) const
 {
     if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) cloud->enabled = enabled;
@@ -6118,7 +6243,7 @@ void ScriptCloudProxy::SetQuality(int stepCount, float maxDistance) const
     }
 }
 
-// ScriptSunMoonProxy
+/// @brief ScriptSunMoonProxy
 void ScriptSunMoonProxy::SetEnabled(bool enabled) const
 {
     if (auto* sunMoon = SelfComponent<SunMoonRenderer>(script)) sunMoon->enabled = enabled;
@@ -6141,7 +6266,7 @@ void ScriptSunMoonProxy::SetMoon(bool enabled, float size, float brightness,
     }
 }
 
-// ScriptPatrolProxy
+/// @brief ScriptPatrolProxy
 void ScriptPatrolProxy::SetEnabled(bool enabled) const
 {
     if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) patrol->enabled = enabled;
@@ -6219,68 +6344,38 @@ bool ScriptPatrolProxy::GetWaypoint(size_t index, math::Vector3& position) const
     return true;
 }
 
-// ScriptWindProxy
-//
-// 環境風は ForceField の «radius 0 の Wind (+ Turbulence)» になった
-// (旧 WindZoneComponent は廃止)。スクリプトから見た API は «風» のままにしてあるので、
-// ここで役割ごとの 1 本を引き当てる。
-namespace {
-
-/// この GameObject の力場から、型で 1 本を引く。無ければ足す。
-/// WHY 役割で引くか: スクリプトは «風» を触りたいのであって、リストの何番目かは知らない。
-ForceFieldSettings* FindWindForce(const Script* script, ForceFieldType type,
-                                  bool createIfMissing)
-{
-    auto* field = SelfComponent<ForceField>(script);
-    if (field == nullptr) return nullptr;
-    for (auto& force : field->forces)
-        if (force.fieldType == type) return &force;
-    if (!createIfMissing) return nullptr;
-
-    ForceFieldSettings added;
-    added.fieldType    = type;
-    added.space        = ForceFieldSpace::World;
-    added.radius       = 0.0f;
-    added.falloffPower = 1.0f;
-    // 足しただけで絵が変わらないように。強さは呼び出し側が続けて入れる。
-    added.strength = 0.0f;
-    field->forces.push_back(added);
-    return &field->forces.back();
-}
-
-} // namespace
+/// @brief ScriptWindProxy
+///
+/// @brief 環境風はシーン設定 (SceneEnvironment) になった。スクリプトから見た «風» の語彙は
+/// @brief そのままで、触る先だけを差し替えてある。
+/// @note この GameObject に FlowField が付いているかは関係しない。環境風は場所を持たない。
+/// @note m_scene に触れるのはプロキシ本体だけ (Script の friend)。自由関数に畳めないので
+///       各メソッドで 1 行ずつ引く。
 
 void ScriptWindProxy::SetEnabled(bool enabled) const
 {
-    // 風という概念全体の on/off。乱れも一緒に切る。
-    if (auto* field = SelfComponent<ForceField>(script)) {
-        for (auto& force : field->forces) {
-            if (force.fieldType == ForceFieldType::Wind
-                || force.fieldType == ForceFieldType::Turbulence)
-                force.enabled = enabled;
-        }
-    }
+    /// @note 風という概念全体の on/off。乱れも一緒に切る。
+    if (script && script->m_scene) script->m_scene->Environment().enabled = enabled;
 }
 void ScriptWindProxy::SetDirection(const math::Vector3& direction) const
 {
-    if (auto* wind = FindWindForce(script, ForceFieldType::Wind, true))
-        wind->direction = direction;
+    if (script && script->m_scene) script->m_scene->Environment().direction = direction;
 }
 void ScriptWindProxy::SetStrength(float strength) const
 {
-    if (auto* wind = FindWindForce(script, ForceFieldType::Wind, true))
-        wind->strength = strength;
+    /// @note 旧 API 名のまま。中身は流速 [m/s]。
+    if (script && script->m_scene) script->m_scene->Environment().speed = strength;
 }
 void ScriptWindProxy::SetTurbulence(float turbulence) const
 {
-    if (auto* turb = FindWindForce(script, ForceFieldType::Turbulence, true))
-        turb->strength = (std::max)(turbulence, 0.0f);
+    if (script && script->m_scene)
+        script->m_scene->Environment().turbulence = (std::max)(turbulence, 0.0f);
 }
 void ScriptWindProxy::SetPulseFrequency(float frequency) const
 {
-    // 脈動の速さ = 乱流のノイズ時間スクロール速度 (旧 WindZone と同じ対応)。
-    if (auto* turb = FindWindForce(script, ForceFieldType::Turbulence, true))
-        turb->noiseSpeed = (std::max)(frequency, 0.0f);
+    /// @note 脈動の速さ = 乱流のノイズ時間スクロール速度 (旧 WindZone と同じ対応)。
+    if (script && script->m_scene)
+        script->m_scene->Environment().pulseFrequency = (std::max)(frequency, 0.0f);
 }
 
 bool ScriptGameplayProxy::SetSprite(std::string_view assetPath) const
@@ -6289,7 +6384,7 @@ bool ScriptGameplayProxy::SetSprite(std::string_view assetPath) const
     if (!component)
         return false;
     component->spritePath = std::string(assetPath);
-    // 署名を潰して PresentationSystem に組み直させる。
+    /// @note 署名を潰して PresentationSystem に組み直させる。
     component->runtimeMesh.signature = 0;
     return true;
 }
@@ -6332,12 +6427,12 @@ bool ScriptGameplayProxy::SetLinePoints(std::span<const math::Vector3> points,
     if (!component)
         return false;
 
-    // WHY assign か: 毎フレーム呼ばれる想定なので、点数が変わらない限り
-    //      vector の再確保が起きない代入で更新する。
+    /// @note 毎フレーム呼ばれる想定のため、点数が変わらない限り vector の再確保が起きない
+    ///       assign で更新する。
     component->points.assign(points.begin(), points.end());
     component->space = worldSpace ? LineSpace::World : LineSpace::Local;
-    // runtimeSignature は points から毎フレーム計算されるため、ここで触る必要はない
-    // (SpriteRenderer と違い、内容が変わればメッシュは自動で作り直される)。
+    /// @note runtimeSignature は points から毎フレーム計算されるため、ここで触る必要はない
+    ///       (SpriteRenderer と違い、内容が変わればメッシュは自動で作り直される)。
     return true;
 }
 
@@ -6486,9 +6581,9 @@ bool ScriptGameplayProxy::SetAudioMixerSend(std::string_view busName, float leve
     return true;
 }
 
-// ── ScriptStoreProxyBase (save / config) ────────────────────────────────────
-// util::SaveStore へそのまま転送する。スクリプトに Engine 実装を include させないための層。
-// save と config の違いは Store() が返すストアだけなので、実装はここ 1 つに閉じる。
+/// @name ScriptStoreProxyBase (save / config)
+/// @brief util::SaveStore へそのまま転送する。スクリプトに Engine 実装を include させないための層。
+/// @brief save と config の違いは Store() が返すストアだけなので、実装はここ 1 つに閉じる。
 
 namespace {
 
@@ -6620,18 +6715,17 @@ bool ScriptStoreProxyBase::IsDirty() const
     return StoreOf(kind).IsDirty();
 }
 
-// ── ScriptDisplayProxy ──────────────────────────────────────────────────────
+/// @name ScriptDisplayProxy
 
 namespace {
 
-// Editor ホスト中に game 側が要求したフルスクリーン状態。窓へは反映せず、
-// IsFullscreen() の答えだけ一致させる。
-//
-// WHY 覚えるところまでやるか: 握り潰すだけだと Option 画面のチェックが押した直後に
-//     跳ね返り、「Editor では設定 UI が壊れている」ように見える。ゲーム側のコードは
-//     Standalone と 1 行も変えずに済むのが望ましい。
-// NOTE: 解像度側に同じ受け皿を用意しないのは、読み戻す API が GetWidth()/GetHeight()
-//       = 「実際に描いている面の寸法」であり、要求値を返すと嘘になるため。
+/// @brief Editor ホスト中に game 側が要求したフルスクリーン状態。窓へは反映せず、
+///        IsFullscreen() の答えだけ一致させる。
+/// @note 覚えておく理由: 握り潰すだけだと Option 画面のチェックが押した直後に跳ね返り、
+///       «Editor では設定 UI が壊れている» ように見える。ゲーム側コードは Standalone と
+///       1 行も変えずに済むのが望ましい。
+/// @note 解像度側に同じ受け皿が無い理由: 読み戻す API の GetWidth()/GetHeight() は «実際に
+///       描いている面の寸法» であり、要求値を返すと嘘になるため。
 bool s_editorRequestedFullscreen = false;
 
 bool IsEditorHostedWindow()
@@ -6700,9 +6794,9 @@ bool ScriptDisplayProxy::GetVSync() const
     return core::Application::Get().GetRenderer().GetVSync();
 }
 
-// ── ScriptGraphicsProxy ─────────────────────────────────────────────────────
-// 触る先は「実行中の RenderSettings」。Editor では Play 中しか登録されないので、
-// 編集中に呼ばれた場合は静かに何もしない (ProjectSettings.toml を汚さないため)。
+/// @name ScriptGraphicsProxy
+/// @brief 触る先は「実行中の RenderSettings」。Editor では Play 中しか登録されないので、
+/// @brief 編集中に呼ばれた場合は静かに何もしない (ProjectSettings.toml を汚さないため)。
 
 namespace {
 
@@ -6711,7 +6805,7 @@ renderer::RenderSettings* ActiveRenderSettings()
     return core::Application::Get().GetActiveRenderSettings();
 }
 
-// getter 用。未登録でも既定値を返せるよう、読み取りは静的な既定インスタンスへ落とす。
+/// @brief getter 用。未登録でも既定値を返せるよう、読み取りは静的な既定インスタンスへ落とす。
 const renderer::RenderSettings& RenderSettingsForRead()
 {
     static const renderer::RenderSettings s_defaults{};
@@ -6829,7 +6923,7 @@ void ScriptGraphicsProxy::SetGTAO(bool enabled) const
     auto* settings = ActiveRenderSettings();
     if (!settings) return;
     settings->gtao.enabled = enabled;
-    // GTAO と SSAO は同じスロット。立てた側を残すため、先に相手を落としてから正規化する。
+    /// @note GTAO と SSAO は同じスロット。立てた側を残すため、先に相手を落としてから正規化する。
     if (enabled) settings->postProcess.ambientOcclusion.enabled = false;
     (void)settings->NormalizeExclusivePipelineSlots();
 }
@@ -6916,15 +7010,15 @@ bool ScriptGraphicsProxy::GetContactShadow() const
     return RenderSettingsForRead().contactShadow.enabled;
 }
 
-// ── ScriptEventProxy ────────────────────────────────────────────────────────
-// Subscribe / Publish はテンプレートなのでヘッダ側。ここは非テンプレート分だけ。
+/// @name ScriptEventProxy
+/// @brief Subscribe / Publish はテンプレートなのでヘッダ側。ここは非テンプレート分だけ。
 
 void ScriptEventProxy::UnsubscribeAll() const
 {
     ScriptEventBus::UnsubscribeOwner(script);
 }
 
-// ── ScriptRandomProxy ───────────────────────────────────────────────────────
+/// @name ScriptRandomProxy
 
 float ScriptRandomProxy::Value() const
 {
@@ -6976,13 +7070,13 @@ math::Vector3 ScriptRandomProxy::ConeDirection(const math::Vector3& axis, float 
     const math::Vector3 forward = axis.NormalizedOr(math::Vector3::FORWARD);
     if (maxAngleDeg <= 0.0f) return forward;
 
-    // 円錐内の一様サンプリング。cos を一様に引くことで、頂点付近に偏らせない。
+    /// @note 円錐内の一様サンプリング。cos を一様に引くことで、頂点付近に偏らせない。
     const float maxCos = std::cos(std::clamp(maxAngleDeg, 0.0f, 180.0f) * DEG_TO_RAD);
     const float cosTheta = util::Random::Range(maxCos, 1.0f);
     const float sinTheta = std::sqrt((std::max)(0.0f, 1.0f - cosTheta * cosTheta));
     const float phi = util::Random::Range(0.0f, 6.28318530718f);
 
-    // forward に直交する基底を作る。forward と平行になりにくい軸を選んで外積する。
+    /// @note forward に直交する基底を作る。forward と平行になりにくい軸を選んで外積する。
     const math::Vector3 reference =
         std::abs(forward.y) < 0.99f ? math::Vector3{ 0.0f, 1.0f, 0.0f }
                                     : math::Vector3{ 1.0f, 0.0f, 0.0f };
@@ -6999,7 +7093,7 @@ void ScriptRandomProxy::SetSeed(uint32_t seed) const
     util::Random::SetSeed(static_cast<unsigned int>(seed));
 }
 
-// ── ScriptTweenProxy ────────────────────────────────────────────────────────
+/// @name ScriptTweenProxy
 
 float ScriptTweenProxy::Evaluate(TweenEase ease, float t)
 {
@@ -7029,7 +7123,7 @@ float ScriptTweenProxy::Evaluate(TweenEase ease, float t)
 
 namespace {
 
-// Tween 1 ステップぶんの経過時間。Scaled / Unscaled の分岐をここへ集約する。
+/// @brief Tween 1 ステップぶんの経過時間。Scaled / Unscaled の分岐をここへ集約する。
 float TweenStepDelta(const Script* script, TweenClock clock)
 {
     if (!script) return 0.0f;
@@ -7042,8 +7136,8 @@ float TweenStepDelta(const Script* script, TweenClock clock)
 Coroutine ScriptTweenProxy::MoveTo(math::Vector3 target, float duration,
                                    TweenEase ease, TweenClock clock) const
 {
-    // WHY 引数を値で受けるか: コルーチンの引数は最初の中断で保存されるが、参照は
-    //     呼び出し側の一時オブジェクトを指したまま残り得るため必ずコピーで持つ。
+    /// @note 引数は値で受ける: コルーチンの引数は最初の中断で保存されるが、参照は呼び出し側の
+    ///       一時オブジェクトを指したまま残り得るため必ずコピーで持つ。
     Script* owner = script;
     if (!owner) co_return;
 
@@ -7060,7 +7154,7 @@ Coroutine ScriptTweenProxy::MoveTo(math::Vector3 target, float duration,
         const float t = Evaluate(ease, elapsed / duration);
         owner->transform.position = math::Vector3::Lerp(start, target, t);
     }
-    // 端数で終値に届かないことがあるため、最後に必ず合わせる。
+    /// @note 端数で終値に届かないことがあるため、最後に必ず合わせる。
     owner->transform.position = target;
 }
 
@@ -7070,9 +7164,9 @@ Coroutine ScriptTweenProxy::MoveBy(math::Vector3 delta, float duration,
     Script* owner = script;
     if (!owner) co_return;
 
-    // 開始位置は呼ばれた「今」を基準にする。連続で呼べば相対移動として積み上がる。
-    // WHY MoveTo を co_await せず展開するか: Coroutine 自体は awaiter ではないため
-    //     (待機命令は WaitForSeconds 等のみ)、入れ子にできない。処理を直接書く。
+    /// @note 開始位置は呼ばれた «今» を基準にする。連続で呼べば相対移動として積み上がる。
+    /// @note MoveTo を co_await せず展開するのは、Coroutine 自体が awaiter ではなく (待機命令は
+    ///       WaitForSeconds 等のみ) 入れ子にできないため。
     const math::Vector3 start  = owner->transform.position;
     const math::Vector3 target = start + delta;
 
@@ -7130,8 +7224,8 @@ Coroutine ScriptTweenProxy::RotateTo(math::Quaternion target, float duration,
         co_await WaitForFrames(1);
         elapsed += TweenStepDelta(owner, clock);
         const float t = Evaluate(ease, elapsed / duration);
-        // WHY Slerp か: 角速度が一定になるため、イージング曲線の形がそのまま
-        //     見た目の速度変化になる。Lerp だと曲線に回転量の歪みが乗る。
+        /// @note Slerp を使う: 角速度が一定になり、イージング曲線の形がそのまま見た目の速度変化になる。
+        ///       Lerp だと曲線に回転量の歪みが乗る。
         owner->transform.rotation = math::Quaternion::Slerp(start, target, t);
     }
     owner->transform.rotation = target;
@@ -7166,9 +7260,8 @@ Coroutine ScriptTweenProxy::ShakePosition(float amplitude, float duration,
     if (!owner || duration <= 0.0f || amplitude <= 0.0f) co_return;
 
     const math::Vector3 origin = owner->transform.position;
-    // 揺れの向きは毎フレーム引き直すのではなく、位相を進めた正弦で決める。
-    // WHY: 毎フレーム乱数だとフレームレートで揺れの速さが変わってしまう。
-    //      周波数で定義すれば、何 fps でも同じ速さに見える。
+    /// @note 揺れの向きは毎フレーム引き直すのではなく、位相を進めた正弦で決める。毎フレーム乱数だと
+    ///       フレームレートで速さが変わるため、周波数で定義すれば何 fps でも同じ速さに見える。
     util::RandomStream rng{ static_cast<uint64_t>(
         static_cast<uint32_t>(amplitude * 1000.0f) + 1u) };
     const math::Vector3 axisA = rng.OnUnitSphere();
@@ -7180,7 +7273,8 @@ Coroutine ScriptTweenProxy::ShakePosition(float amplitude, float duration,
         elapsed += TweenStepDelta(owner, clock);
 
         const float normalized = std::clamp(elapsed / duration, 0.0f, 1.0f);
-        const float decay = 1.0f - normalized;               // 線形に収束させる
+        /// @note 線形に収束させる
+        const float decay = 1.0f - normalized;
         const float phase = elapsed * frequency;
         const math::Vector3 offset =
             axisA * (std::sin(phase) * amplitude * decay) +
@@ -7190,12 +7284,12 @@ Coroutine ScriptTweenProxy::ShakePosition(float amplitude, float duration,
     owner->transform.position = origin;
 }
 
-// ── ScriptSequenceProxy ──────────────────────────────────────────────────────
+/// @name ScriptSequenceProxy
 
 namespace {
 
-// Player は「演出の再生窓口」であって、事前に置いておくものとは限らない。
-// sequence.Play(path) の 1 行で始められるよう、無ければその場で足す。
+/// @brief Player は「演出の再生窓口」であって、事前に置いておくものとは限らない。
+/// @brief sequence.Play(path) の 1 行で始められるよう、無ければその場で足す。
 SequencePlayerComponent* EnsureSequencePlayer(GameObject* object)
 {
     if (!object || !object->IsValid()) return nullptr;
@@ -7206,8 +7300,8 @@ SequencePlayerComponent* EnsureSequencePlayer(GameObject* object)
 SequencePlayerComponent* SelfSequencePlayer(const Script* script, bool ensure)
 {
     if (!script) return nullptr;
-    // NOTE: m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
-    //       直接は引けないため、公開されている scene プロキシ経由で取り出す。
+    /// @note m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
+    ///       直接は引けないため、公開されている scene プロキシ経由で取り出す。
     GameObject* object = script->scene.Self();
     if (!object || !object->IsValid()) return nullptr;
     if (auto* player = object->GetComponent<SequencePlayerComponent>()) return player;
@@ -7216,7 +7310,7 @@ SequencePlayerComponent* SelfSequencePlayer(const Script* script, bool ensure)
 
 const asset::SequenceAsset* ResolveSequenceAsset(const SequencePlayerComponent& player)
 {
-    // SequenceSystem と同じ順序で引く。エディタが編集中なら尺もそちらのもの。
+    /// @note SequenceSystem と同じ順序で引く。エディタが編集中なら尺もそちらのもの。
     if (player.authoringSequence) return player.authoringSequence.get();
     if (player.sequencePath.empty()) return nullptr;
     const auto handle = asset::AssetManager::Load<asset::SequenceAsset>(player.sequencePath);
@@ -7324,11 +7418,9 @@ void ScriptSequenceProxy::BindOn(GameObject& owner,
     BindSequenceKey(EnsureSequencePlayer(&owner), key, target);
 }
 
-// ---------------------------------------------------------------------------
-// ScriptObjectMaskProxy
-// ---------------------------------------------------------------------------
-// 触る先は ScriptGraphicsProxy と同じ「実行中の RenderSettings」。編集中は
-// 登録されていないので、FBZZ_EXECUTE_ALWAYS のスクリプトから呼んでも何も起きない。
+/// @brief ScriptObjectMaskProxy
+/// @brief 触る先は ScriptGraphicsProxy と同じ「実行中の RenderSettings」。編集中は
+/// @brief 登録されていないので、FBZZ_EXECUTE_ALWAYS のスクリプトから呼んでも何も起きない。
 namespace {
 
 [[nodiscard]] bool SameEntity(const renderer::RenderSelectionID& lhs, const EntityID& rhs)
@@ -7342,9 +7434,9 @@ void SubmitObjectMaskRequest(GameObject* target, const math::Vector4& color,
     if (!target || !target->IsValid()) return;
     auto* settings = ActiveRenderSettings();
     if (!settings) {
-        // 申告先が無い。Play 中は EditorApp が、配布ビルドは StandaloneProjectModule が
-        // 差す。ここが null だと «Set は呼べているのに何も起きない» になり、
-        // 呼んだ側からは成功と区別が付かない。
+        /// @note 申告先が無い。Play 中は EditorApp が、配布ビルドは StandaloneProjectModule が
+        ///       差す。ここが null だと «Set は呼べているのに何も起きない» になり、
+        ///       呼んだ側からは成功と区別が付かない。
         static bool sWarned = false;
         if (!sWarned) {
             sWarned = true;
@@ -7357,8 +7449,8 @@ void SubmitObjectMaskRequest(GameObject* target, const math::Vector4& color,
 
     const EntityID id = target->GetID();
 
-    // 同じ対象の行があれば上書きし、無ければ «前のフレームで途絶えた行» を再利用する。
-    // 拾わずに追加し続けると、一度でも印された対象の数だけ配列が伸びたままになる。
+    /// @note 同じ対象の行があれば上書きし、無ければ «前のフレームで途絶えた行» を再利用する。
+    ///       拾わずに追加し続けると、一度でも印された対象の数だけ配列が伸びたままになる。
     renderer::RenderObjectMaskRequest* slot = nullptr;
     for (renderer::RenderObjectMaskRequest& request : settings->objectMaskRequests) {
         if (SameEntity(request.id, id)) {
@@ -7416,9 +7508,7 @@ void ScriptObjectMaskProxy::Clear(GameObject& target) const
     WithdrawObjectMaskRequest(&target);
 }
 
-// ---------------------------------------------------------------------------
-// ScriptSpringBoneProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptSpringBoneProxy
 namespace {
 SpringBoneChain* FindSpringChain(const Script* script, std::string_view rootBoneName)
 {
@@ -7439,7 +7529,7 @@ void ScriptSpringBoneProxy::EnsureChain(std::string_view rootBoneName, int maxDe
 
     for (SpringBoneChain& chain : spring->chains) {
         if (chain.rootBoneName != rootBoneName) continue;
-        // 段数が変わったら組み直させる。nodes を空にするのが «組み直せ» の合図。
+        /// @note 段数が変わったら組み直させる。nodes を空にするのが «組み直せ» の合図。
         if (chain.maxDepth != maxDepth) {
             chain.maxDepth = maxDepth;
             chain.nodes.clear();
@@ -7450,7 +7540,7 @@ void ScriptSpringBoneProxy::EnsureChain(std::string_view rootBoneName, int maxDe
     SpringBoneChain chain{};
     chain.rootBoneName = std::string(rootBoneName);
     chain.maxDepth     = maxDepth;
-    // 既定は «動かない»。Script が作るチェーンは、使う瞬間に weight を上げて使う。
+    /// @note 既定は «動かない»。Script が作るチェーンは、使う瞬間に weight を上げて使う。
     chain.weight       = 0.0f;
     chain.gravityPower = 0.0f;
     spring->chains.push_back(std::move(chain));
@@ -7522,8 +7612,8 @@ void ScriptSpringBoneProxy::ClearForce(std::string_view rootBoneName) const
 
 void ScriptSpringBoneProxy::ResetAll() const
 {
-    // hasLastOwnerPosition を落とすと、次の更新で全チェーンが静止姿勢へ戻る
-    // (SpringBoneSystem のテレポート復帰と同じ経路)。
+    /// @note hasLastOwnerPosition を落とすと、次の更新で全チェーンが静止姿勢へ戻る
+    ///       (SpringBoneSystem のテレポート復帰と同じ経路)。
     if (auto* spring = SelfComponent<SpringBoneComponent>(script))
         spring->hasLastOwnerPosition = false;
 }
@@ -7539,15 +7629,13 @@ bool ScriptSpringBoneProxy::IsEnabled() const
     return spring && spring->enabled;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptRagdollProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptRagdollProxy
 namespace {
 RagdollComponent* EnsureRagdoll(const Script* script)
 {
     if (!script) return nullptr;
-    // NOTE: m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
-    //       直接は引けないため、公開されている scene プロキシ経由で取り出す。
+    /// @note m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
+    ///       直接は引けないため、公開されている scene プロキシ経由で取り出す。
     GameObject* object = script->scene.Self();
     if (!object || !object->IsValid()) return nullptr;
     if (auto* ragdoll = object->GetComponent<RagdollComponent>()) return ragdoll;
@@ -7619,12 +7707,12 @@ void ScriptRagdollProxy::BeginActive(float holdSeconds) const
 {
     auto* ragdoll = EnsureRagdoll(script);
     if (!ragdoll) return;
-    // 既に立って走っているなら捕獲し直さない。目標はどのみち毎フレーム取り直すので
-    // 呼び直す意味が無く、Begin すると押されて沈んでいた勢いだけが消える。
+    /// @note 既に立って走っているなら捕獲し直さない。目標はどのみち毎フレーム取り直すので
+    ///       呼び直す意味が無く、Begin すると押されて沈んでいた勢いだけが消える。
     if (ragdoll->IsStanding()) {
         ragdoll->endRequested  = false;
         ragdoll->holdRemaining = holdSeconds > 0.0f ? holdSeconds : 0.0f;
-        // 戻りかけの適用率を始点にして、連撃でも姿勢が跳ねないようにする。
+        /// @note 戻りかけの適用率を始点にして、連撃でも姿勢が跳ねないようにする。
         if (ragdoll->phase == RagdollPhase::BlendOut) {
             ragdoll->phaseStartWeight = math::Clamp01(ragdoll->weight);
             ragdoll->phase      = RagdollPhase::BlendIn;
@@ -7636,7 +7724,7 @@ void ScriptRagdollProxy::BeginActive(float holdSeconds) const
     ragdoll->activeRequested = true;
     ragdoll->endRequested    = false;
     ragdoll->holdRemaining   = holdSeconds > 0.0f ? holdSeconds : 0.0f;
-    // 立っている絵はクリップと一致するので、薄く乗せる理由が無い。
+    /// @note 立っている絵はクリップと一致するので、薄く乗せる理由が無い。
     ragdoll->activationWeight  = 1.0f;
     ragdoll->activationGravity = 1.0f;
 }
@@ -7662,8 +7750,8 @@ void ScriptRagdollProxy::SetRoots(const std::vector<std::string>& rootBoneNames,
     auto* ragdoll = EnsureRagdoll(script);
     if (!ragdoll) return;
 
-    // 先頭を rootBoneName、残りを extraRootBones へ分ける。呼ぶ側にこの非対称を
-    // 見せないための口なので、ここで畳む。空なら «骨格の根から» (＝全身) に戻る。
+    /// @note 先頭を rootBoneName、残りを extraRootBones へ分ける。呼ぶ側にこの非対称を
+    ///       見せないための口なので、ここで畳む。空なら «骨格の根から» (＝全身) に戻る。
     ragdoll->rootBoneName = rootBoneNames.empty() ? std::string{} : rootBoneNames.front();
     ragdoll->extraRootBones.clear();
     for (std::size_t i = 1; i < rootBoneNames.size(); ++i)
@@ -7736,7 +7824,7 @@ float ScriptRagdollProxy::GetDeviation() const
 const char* ScriptRagdollProxy::GetStatus() const
 {
     const auto* ragdoll = SelfComponent<RagdollComponent>(script);
-    // «コンポーネントがそもそも無い» は «止まっている» と区別が付かないと調べようがない。
+    /// @note «コンポーネントがそもそも無い» は «止まっている» と区別が付かないと調べようがない。
     if (!ragdoll) return "NoComponent";
     switch (ragdoll->runtimeStatus) {
     case RagdollStatus::Idle:          return "Idle";
@@ -7787,8 +7875,8 @@ void ScriptRagdollProxy::SetRoot(const char* rootBoneName, int maxDepth) const
     if (!ragdoll) return;
     const std::string next = rootBoneName ? rootBoneName : "";
     if (ragdoll->rootBoneName == next && ragdoll->maxDepth == maxDepth) return;
-    // 骨の並びが変わるので剛体も組み直しになるが、ここで壊す必要はない。
-    // RagdollSystem が «組んだときの root / maxDepth» と突き合わせて自分で組み直す。
+    /// @note 骨の並びが変わるので剛体も組み直しになるが、ここで壊す必要はない。
+    ///       RagdollSystem が «組んだときの root / maxDepth» と突き合わせて自分で組み直す。
     ragdoll->rootBoneName = next;
     ragdoll->maxDepth     = maxDepth;
 }
@@ -7811,7 +7899,7 @@ void ScriptRagdollProxy::SetMuscle(float stiffness, float falloff, float damping
 {
     auto* ragdoll = EnsureRagdoll(script);
     if (!ragdoll) return;
-    // どれもプロファイルが与えた値への «倍率»。1 でプロファイルどおり。
+    /// @note どれもプロファイルが与えた値への «倍率»。1 でプロファイルどおり。
     ragdoll->driveScale   = stiffness < 0.0f ? 0.0f : stiffness;
     ragdoll->driveFalloff = math::Clamp01(falloff);
     ragdoll->driveDamping = damping < 0.0f ? 0.0f : damping;
@@ -7842,9 +7930,7 @@ bool ScriptRagdollProxy::IsEnabled() const
     return ragdoll && ragdoll->enabled;
 }
 
-// ---------------------------------------------------------------------------
-// ScriptJointProxy
-// ---------------------------------------------------------------------------
+/// @brief ScriptJointProxy
 namespace {
 
 JointComponent* EnsureJointComponent(const Script* script)
@@ -7856,8 +7942,8 @@ JointComponent* EnsureJointComponent(const Script* script)
     return &self->AddComponent<JointComponent>();
 }
 
-// Connect*() 共通の下ごしらえ。種別と相手を差し替え、残りは呼び出し側が詰める。
-// target が null / 無効なら関節は作らず nullptr を返す («黙って自分だけ» にしない)。
+/// @brief Connect*() 共通の下ごしらえ。種別と相手を差し替え、残りは呼び出し側が詰める。
+/// @brief target が null / 無効なら関節は作らず nullptr を返す («黙って自分だけ» にしない)。
 JointComponent* BeginJointConnect(const Script* script, JointType type, GameObject* target)
 {
     if (!target || !target->IsValid()) return nullptr;
@@ -7866,14 +7952,14 @@ JointComponent* BeginJointConnect(const Script* script, JointType type, GameObje
     joint->enabled         = true;
     joint->type            = type;
     joint->connectedBody.id = target->GetID();
-    // 相手を名指しした以上、祖先へのフォールバックは切る。
-    // 残したままだと、相手が消えた瞬間に «別のものへ勝手に繋ぎ変わる»。
+    /// @note 相手を名指しした以上、祖先へのフォールバックは切る。
+    ///       残したままだと、相手が消えた瞬間に «別のものへ勝手に繋ぎ変わる»。
     joint->connectToParent = false;
     joint->chainBodies.clear();
     return joint;
 }
 
-// 距離は «0 以下なら張った瞬間の間隔» という 1 つの規約で通す。
+/// @brief 距離は «0 以下なら張った瞬間の間隔» という 1 つの規約で通す。
 void SetAuthoredJointDistance(JointComponent& joint, float distance)
 {
     joint.autoDistance = distance <= 0.0f;
@@ -7941,8 +8027,8 @@ void ScriptJointProxy::ConnectChain(const std::vector<GameObject*>& following,
     joint->chainBodies.clear();
     joint->chainBodies.reserve(following.size());
     for (GameObject* go : following) {
-        // 1 つでも欠けると «どこから先が繋がっていないのか» が分からなくなる。
-        // 並びの穴を許さず、丸ごと張らないことで気付ける形にする。
+        /// @note 1 つでも欠けると «どこから先が繋がっていないのか» が分からなくなる。
+        ///       並びの穴を許さず、丸ごと張らないことで気付ける形にする。
         if (!go || !go->IsValid()) { joint->chainBodies.clear(); return; }
         joint->chainBodies.push_back(EntityRef{ go->GetID() });
     }
@@ -7984,8 +8070,8 @@ void ScriptJointProxy::SetLimits(float lower, float upper) const
     auto* joint = SelfComponent<JointComponent>(script);
     if (!joint) return;
     joint->useLimits  = true;
-    // 逆に渡されても入れ替えて受ける。Physics 側の SetLimits も min/max を並べ替えるが、
-    // Inspector に «下限 > 上限» のまま残ると «可動域が効かない» に見える。
+    /// @note 逆に渡されても入れ替えて受ける。Physics 側の SetLimits も min/max を並べ替えるが、
+    ///       Inspector に «下限 > 上限» のまま残ると «可動域が効かない» に見える。
     joint->lowerLimit = std::min(lower, upper);
     joint->upperLimit = std::max(lower, upper);
 }

@@ -5,6 +5,9 @@
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Panels/MaterialPreview.hpp>
+#include <Engine/Asset/AssetHandle.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <any>
@@ -25,20 +28,23 @@ private:
     std::any              m_componentClipboard;
     const std::type_info* m_componentClipboardType = nullptr;
     char                  m_addComponentFilter[64] = {};
-    bool                  m_sectionStateRestored = false; // 起動時に ImGui StateStorage を一度だけ復元した後 true
+    bool                  m_sectionStateRestored = false; ///< 起動時に ImGui StateStorage を一度だけ復元した後 true
 
-    // ロック機能: true のとき m_lockedEntityId のオブジェクトを固定表示する。
-    // WHY: IK Solver の設定中など、Hierarchy で別オブジェクトをクリックしても
-    //      Inspector の表示を切り替えずに編集を続けられるようにする。
+    /// ロック機能: true のとき m_lockedEntityId のオブジェクトを固定表示する。
+    /// @note IK Solver の設定中など、Hierarchy で別オブジェクトをクリックしても
+    ///       Inspector の表示を切り替えずに編集を続けられるようにする。
     bool            m_locked         = false;
     scene::EntityID m_lockedEntityId = {};
 
-    // アセットインスペクター状態。
-    // WHY: InspectorPanel は EditorApp.cpp の make_unique で確保されるため、頻繁にメンバを増やすと
-    //      増分ビルドで古い sizeof(InspectorPanel) が残った際に破損しやすい。
-    //      Asset ロックは m_locked && !m_lockedEntityId.IsValid() と、この path の組み合わせで表現する。
+    /// アセットインスペクター状態。Asset ロックは m_locked && !m_lockedEntityId.IsValid() と
+    /// この path の組み合わせで表現する。
+    /// @note InspectorPanel は EditorApp.cpp の make_unique で確保されるため、増分ビルドで古い
+    ///       sizeof(InspectorPanel) が残ると破損しやすい。
     std::string                                          m_inspectedAssetPath;
-    renderer::ResourceHandle<renderer::MaterialAssetTag> m_inspectedMat;
+    asset::AssetHandle<asset::MaterialAsset>             m_inspectedMat;
+
+    /// .mat インスペクター下部のプレビュー。Preview パネルとは別の視点・照明を持つ。
+    MaterialPreviewView m_materialPreview;
 
     void DrawAssetInspector(EditorContext& ctx, const std::string& assetPath);
 };

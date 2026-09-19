@@ -43,10 +43,7 @@ public:
 
 private:
     /// 鳴り終わった voice を «畳まずに» プールへ戻すための鍵。
-    ///
-    /// WHY 送り先まで鍵に入れるか: 送り先 (バス) は CreateSourceVoice の引数で、
-    ///     後から変えるには SetOutputVoices が要る。あれも DestroyVoice と同じく
-    ///     オーディオ処理の合間を待つ呼び出しなので、«同じバス宛» だけを再利用する。
+    /// @note 送り先 (バス) は CreateSourceVoice の引数で、後から変えるには SetOutputVoices というオーディオ処理の合間を待つ呼び出しが要るため、«同じバス宛» だけを再利用する。
     struct VoiceKey
     {
         uint16_t       channels      = 0;
@@ -78,8 +75,7 @@ private:
         IXAudio2SourceVoice* voice    = nullptr;
         bool                 loop     = false;
         uint16_t             channels = 0;
-        // パンの出力行列はこの voice の実際の送り先に対して設定する。
-        // WHY: バス導入後もマスターへ行列を書くと、送り先が違うため何も起きない。
+        /// @note パンの出力行列はこの voice の実際の送り先に対して設定する。バス導入後もマスターへ書くと送り先が違うため何も起きない。
         IXAudio2Voice*       destination = nullptr;
         uint32_t             destinationChannels = 0;
         /// 鳴り終わったときにどのプールへ返すか。
@@ -100,7 +96,7 @@ private:
     IXAudio2MasteringVoice*          m_masterVoice = nullptr;
     uint32_t                         m_masterChannels   = 0;
     uint32_t                         m_masterSampleRate = 0;
-    // CoInitializeEx成功時だけCoUninitializeを対にし、初期化途中の失敗でも安全に後始末する。
+    /// @note CoInitializeEx 成功時だけ CoUninitialize を対にし、初期化途中の失敗でも安全に後始末する。
     bool                             m_comInitialized = false;
 
     /// 1 本のバス。effect スロット 0 が残響で、持たないバスでは hasReverb が false。
@@ -111,15 +107,13 @@ private:
         bool                 reverbEnabled = false;
     };
 
-    // 添字は BusIndex。先頭が Master。
-    std::vector<BusEntry> m_buses;
+    std::vector<BusEntry> m_buses;   ///< 添字は BusIndex。先頭が Master。
 
     uint32_t                                 m_nextId = 1;
     std::unordered_map<uint32_t, VoiceEntry> m_voices;
 
-    // 鳴り終わった voice の置き場。形式と送り先が同じものだけを積む。
-    // 1 鍵あたりの上限は «同じ音が同時に何本鳴るか» で足りる。
-    static constexpr std::size_t kMaxPooledPerKey = 16;
+    static constexpr std::size_t kMaxPooledPerKey = 16;   ///< 1 鍵あたりの上限。«同じ音が同時に何本鳴るか» で足りる。
+    /// @brief 鳴り終わった voice の置き場。形式と送り先が同じものだけを積む。
     std::unordered_map<VoiceKey, std::vector<IXAudio2SourceVoice*>, VoiceKeyHash> m_voicePool;
 };
 

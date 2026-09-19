@@ -6,6 +6,7 @@
 // 要らない (マスクはシルエットしか描かない)。
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer ObjectMaskConstants : register(CB_MATERIAL)
 {
@@ -19,7 +20,7 @@ cbuffer ObjectMaskConstants : register(CB_MATERIAL)
 //   後段が SceneHDR で走る場合、描き先は hdrRT でその深度は書き込み先として
 //   束縛されている。同じリソースを SRV として同時には読めない。マスクを描く
 //   ここは別の RT へ描いているので、シーン深度を自由に読める。
-Texture2D<float> texSceneDepth : register(TEX_DEPTH);
+FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
 
 // 自分自身との比較は等しくなるので、しきい値は «明らかに手前に別の面がある» 分だけ。
 static const float kObjectMaskDepthBias = 0.00002f;

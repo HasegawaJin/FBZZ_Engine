@@ -26,16 +26,15 @@ protected:
     void SetUp() override
     {
         EngineFixture::SetUp();
-        // このテストだけは DEBUG まで通す。TearDown で既定へ戻る。
+        /// @note このテストだけは DEBUG まで通す。TearDown で既定へ戻る。
         SetLogLevel(core::LogLevel::DEBUG);
     }
 
-    // WHY メンバーにするか: Logger は sink を所有しない。ローカル変数にすると、
-    //     解除より先に破棄された場合に次のテストが破棄済みポインタを呼びに行く。
+    /// @note Logger は sink を所有しない。ローカル変数にすると解除より先に破棄され、次のテストが破棄済みポインタを呼びに行く。
     testkit::RecordingLogSink sink;
 };
 
-// --- 配送内容 ---------------------------------------------------------------
+/// @name 配送内容
 
 TEST_F(LoggerTest, DeliversFormattedEntriesToRegisteredSink)
 {
@@ -87,7 +86,7 @@ TEST_F(LoggerTest, AtFunctionsKeepTheMessageUsable)
     EXPECT_NE(sink.Find("manual location"), nullptr);
 }
 
-// --- 呼ばれ方の契約 (gmock) -------------------------------------------------
+/// @name 呼ばれ方の契約 (gmock)
 
 class LoggerCallTest : public testkit::EngineFixture {
 protected:
@@ -102,8 +101,8 @@ protected:
 
 TEST_F(LoggerCallTest, DoesNotCallTheSinkForEntriesBelowTheMinimumLevel)
 {
-    // «呼ばれないこと» が契約そのもの。記録用 fake で «0 件だった» を見るより、
-    // 呼ばれた瞬間に落ちるほうが原因の行に近いところで止まる。
+    /// @note «呼ばれないこと» が契約そのもの。記録用 fake で «0 件だった» を見るより、
+    ///       呼ばれた瞬間に落ちるほうが原因の行に近いところで止まる。
     testkit::ScopedLogSink scoped(&mock);
     SetLogLevel(core::LogLevel::LOG_ERROR);
 
@@ -139,8 +138,8 @@ TEST_F(LoggerCallTest, DeliversEntriesInTheOrderTheyWereLogged)
 
 TEST_F(LoggerCallTest, DeliversTheSameEntryToEveryRegisteredSink)
 {
-    // 2 つ目の sink は «来ても来なくてもよい» わけではないが、
-    // ここで見たいのは «両方に届く» ことだけなので NiceMock で余計な呼び出しを許す。
+    /// @note 2 つ目の sink は «来ても来なくてもよい» わけではないが、
+    ///       ここで見たいのは «両方に届く» ことだけなので NiceMock で余計な呼び出しを許す。
     NiceMock<testkit::MockLogSink> second;
 
     testkit::ScopedLogSink scopedFirst(&mock);

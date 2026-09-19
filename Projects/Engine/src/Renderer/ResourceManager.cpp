@@ -27,22 +27,20 @@ namespace fbzz::renderer {
 namespace {
 ResourceManager* s_activeResourceManager = nullptr;
 
-// Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
+/// Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
 std::string TextureCacheKey(std::string_view path)
 {
-    // Sprite参照はGPU上では親Textureを共有する。サブアセット名をキャッシュキーへ
-    // 含めると同じ画像を重複ロードするため、ここで親パスへ正規化する。
+    /// @note Sprite参照はGPU上では親Textureを共有する。サブアセット名をキャッシュキーへ
+    ///       含めると同じ画像を重複ロードするため、ここで親パスへ正規化する。
     std::string key = NormalizeTextureKey(path);
     std::replace(key.begin(), key.end(), '\\', '/');
     return key;
 }
 
-// テクスチャが占めるバイト数の概算。
-//
-// WHY 概算で足りるか: ITexture が公開するのは寸法だけで、フォーマットもミップ数も
-//     バックエンドの内側にある。Analysis パネルが答えたいのは «どの用途が増え続けて
-//     いるか» であって GPU の実測値ではないので、RGBA8 換算の桁が合っていれば読める。
-//     ブロック圧縮の DDS は過大に、HDR/ミップ付きは過小に出る点だけは承知して使うこと。
+/// テクスチャが占めるバイト数の概算。
+/// @note ITexture が公開するのは寸法だけでフォーマット/ミップ数はバックエンドの内側にあるため、
+///       RGBA8 換算で近似する。Analysis パネルが知りたいのは «どの用途が増え続けているか» で
+///       GPU 実測値ではない。ブロック圧縮 DDS は過大に、HDR/ミップ付きは過小に出る。
 std::size_t EstimateTextureBytes(const ITexture& texture, std::size_t bytesPerTexel = 4)
 {
     return static_cast<std::size_t>(texture.GetWidth())
@@ -60,8 +58,8 @@ ResourceManager::ResourceManager(IRenderer& renderer)
 
 ResourceManager::~ResourceManager()
 {
-    // WHY 解放より先に数えるか: ReleaseOwnedForShutdown() は台帳ごと畳むので、
-    //     後で数えると常に 0 になる (以前はここが逆で、報告が出ることは無かった)。
+    /// @note 解放より先に数える理由: ReleaseOwnedResourcesForShutdown() は台帳ごと畳むため、
+    ///       後で数えると常に 0 になる (以前はここが逆で、報告が出ることは無かった)。
     LogLiveDebugResources();
     ReleaseOwnedResourcesForShutdown();
 
@@ -76,8 +74,8 @@ ResourceManager* ResourceManager::Active()
 
 ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 {
-    // WHY: LoadTexture と同様にパス区切りを統一し、大文字小文字の違いによる
-    //      同一シェーダーの二重ロードを防ぐ。DX11Shader 内部も同様に正規化する。
+    /// @note LoadTexture と同様にパス区切りを統一し、大文字小文字の違いによる同一シェーダーの
+    ///       二重ロードを防ぐ。バックエンドの IShader 内部も同様に正規化する。
     std::string key(path);
     std::replace(key.begin(), key.end(), '\\', '/');
     auto it = m_shaderCache.find(key);
@@ -89,8 +87,8 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
         return ResourceHandle<ShaderTag>::Null();
     }
 
-    // WHY 0 か: シェーダーバイトコードの実サイズはバックエンドの内側にあり、
-    //          ITexture / IBuffer のように寸法から復元することもできない。
+    /// @note 0 バイトとして登録: シェーダーバイトコードの実サイズはバックエンドの内側にあり、
+    ///       ITexture/IBuffer のように寸法から復元することもできない。
     ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader), 0, "Shader", __FILE__, __LINE__);
     m_shaderCache[key] = handle;
     return handle;
@@ -144,9 +142,9 @@ bool ResourceManager::ReloadAllShaders()
 
 void ResourceManager::Reset()
 {
-    // WHAT: 所有リソースを全て手放し、ResourceHandle の gen を進めて旧ハンドルを無効化する。
-    // WHY: デバイスロスト復帰後に旧ネイティブリソースへ触るとクラッシュするため、
-    //      RenderSystem 側は GetResetVersion() の変化を検知して static handle を再作成する。
+    /// @note 所有リソースを全て手放し、ResourceHandle の gen を進めて旧ハンドルを無効化する。
+    ///       デバイスロスト復帰後に旧ネイティブリソースへ触るとクラッシュするため、RenderSystem
+    ///       側は GetResetVersion() の変化を検知して static handle を再作成する。
     ReleaseOwnedResourcesForShutdown();
     ++m_resetVersion;
     FBZZ_LOG_INFO("ResourceManager: reset renderer resources (version=%llu)",
@@ -159,9 +157,9 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
-    // ".meta" サイドカー表記と生画像パスを同じ公開 API で扱う (ResolveSourcePath が元画像へ解決)。
-    // WHY: .mat / Scene は Assets/ 起点の相対パスを保存するが、DX11Texture は実ファイルパスを要求する。
-    //      ResourceManager が AssetManager と同じ解決規則を通すことで、呼び出し側ごとの cwd 依存をなくす。
+    /// @note `.meta` サイドカー表記と生画像パスを同じ公開 API で扱う (ResolveTextureSource が
+    ///       元画像へ解決)。.mat/Scene は Assets/ 起点の相対パスを保存するがテクスチャ実装は
+    ///       実ファイルパスを要求するため、AssetManager と同じ解決規則を通して cwd 依存をなくす。
     std::string sourcePath;
     if (!ResolveTextureSource(ResolveAssetPath(key), sourcePath)) {
         FBZZ_LOG_ERROR("Texture path resolution failed: %s", key.c_str());
@@ -198,7 +196,7 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
         return it->second;
     }
 
-    // ResourcePool のスロットを置換し、RenderSystem や Material が保持するハンドルを有効なまま保つ。
+    /// @note ResourcePool のスロットを置換し、RenderSystem や Material が保持するハンドルを有効なまま保つ。
     const std::size_t reloadedBytes = EstimateTextureBytes(*newTexture);
     m_textures.Replace(it->second, std::move(newTexture), reloadedBytes);
     return it->second;
@@ -209,8 +207,8 @@ std::size_t ResourceManager::EvictTexture(std::string_view path)
     const std::string key = TextureCacheKey(path);
     if (key.empty()) return 0;
 
-    // フォルダを渡された場合に配下ごと外す。末尾に '/' を付けて前方一致させることで、
-    // "Assets/UI/Title" が "Assets/UI/TitleOld/..." を巻き込まないようにする。
+    /// @note フォルダを渡された場合に配下ごと外す。末尾に '/' を付けて前方一致させることで、
+    ///       "Assets/UI/Title" が "Assets/UI/TitleOld/..." を巻き込まないようにする。
     const std::string prefix = key + "/";
 
     std::size_t evicted = 0;
@@ -234,15 +232,27 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, u
         FBZZ_LOG_ERROR("ResourceManager::CreateTexture failed (%ux%u)", width, height);
         return ResourceHandle<TextureTag>::Null();
     }
-    // WHY サイズを先に控えるか: 引数の評価順は未規定で、std::move した後に
-    //     *texture を読むと空のポインタを参照しうる。
+    /// @note サイズを先に控える理由: 引数の評価順は未規定で、std::move した後に
+    ///       *texture を読むと空のポインタを参照しうる。
     const std::size_t bytes = EstimateTextureBytes(*texture);
     return m_textures.Insert(std::move(texture), bytes, "TextureFromData", where.file_name(), static_cast<int>(where.line()));
 }
 
+ResourceHandle<TextureTag> ResourceManager::CreateTextureWithMips(
+    const TextureMipData* mips, uint32_t mipCount, Where where)
+{
+    auto texture = m_renderer.CreateNativeTextureFromDataMips(mips, mipCount);
+    if (!texture) {
+        FBZZ_LOG_ERROR("ResourceManager::CreateTextureWithMips failed (%u 段)", mipCount);
+        return ResourceHandle<TextureTag>::Null();
+    }
+    const std::size_t bytes = EstimateTextureBytes(*texture);
+    return m_textures.Insert(std::move(texture), bytes, "TextureFromDataMips", where.file_name(), static_cast<int>(where.line()));
+}
+
 ResourceHandle<TextureTag> ResourceManager::GetWhiteTexture()
 {
-    // Reset() はスロットの世代を進めるため、控えたハンドルの生死で作り直しを判断する。
+    /// @note Reset() はスロットの世代を進めるため、控えたハンドルの生死で作り直しを判断する。
     if (Get(m_whiteTexture) == nullptr) {
         static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
         m_whiteTexture = CreateTexture(kWhite, 1, 1);
@@ -291,7 +301,7 @@ ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t s
 
 ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const PipelineStateDesc& desc, Where where)
 {
-    // PSO は状態の束で、専有メモリと呼べる実体を持たない。
+    /// @note PSO は状態の束で、専有メモリと呼べる実体を持たない。
     return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc), 0,
                                    "PipelineState", where.file_name(), static_cast<int>(where.line()));
 }
@@ -322,8 +332,8 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
                                            "RenderTargetColorTexture", where.file_name(), static_cast<int>(where.line())));
     }
 
-    // 深度を持たない RT では SRV も作らない。GetDepthTexture は無効ハンドルを返し、
-    // 束縛しようとした側で «読めない» ことが分かる。
+    /// @note 深度を持たない RT では SRV も作らない。GetDepthTexture は無効ハンドルを返し、
+    ///       束縛しようとした側で «読めない» ことが分かる。
     ResourceHandle<TextureTag> depth = ResourceHandle<TextureTag>::Null();
     if (desc.withDepth) {
         auto depthTexture = m_renderer.CreateNativeTextureFromRenderTarget(
@@ -335,8 +345,8 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
                                   "RenderTargetDepthTexture", where.file_name(), static_cast<int>(where.line()));
     }
 
-    // WHY 0 か: RT のメモリは上で登録した色 / 深度テクスチャ側に計上済み。
-    //          ここでも数えると同じ実体を二重に積む。
+    /// @note 0 バイトとして登録: RT のメモリは上で登録した色/深度テクスチャ側に計上済みで、
+    ///       ここでも数えると同じ実体を二重に積む。
     ResourceHandle<RenderTargetTag> handle =
         m_renderTargets.Insert(std::move(rt), 0, "RenderTarget", where.file_name(), static_cast<int>(where.line()));
     const uint64_t key = Key(handle);
@@ -351,13 +361,13 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint3
     auto rt = m_renderer.CreateNativeCubemapRenderTarget(size, mipCount);
     if (!rt) return ResourceHandle<RenderTargetTag>::Null();
 
-    // TextureCube SRV を 1 つの "カラーテクスチャ" として登録する。
-    // WHY: 既存の m_renderTargetColors 経路に乗せることで、Release()/シャットダウン時の
-    //      解放処理を通常 RT と共有できる (キューブ専用のクリーンアップを書かずに済む)。
-    //      深度バッファは持たないため m_renderTargetDepths には登録しない。
+    /// @note TextureCube SRV を 1 つの「カラーテクスチャ」として登録する。既存の
+    ///       m_renderTargetColors 経路に乗せることで Release()/シャットダウン時の解放処理を
+    ///       通常 RT と共有でき、キューブ専用のクリーンアップを書かずに済む。深度バッファは
+    ///       持たないため m_renderTargetDepths には登録しない。
     std::vector<ResourceHandle<TextureTag>> colors;
     if (auto cubeTex = m_renderer.CreateNativeCubeTextureFromRenderTarget(*rt)) {
-        // 6 面ぶん。GetWidth/GetHeight は 1 面の寸法しか返さない。
+        /// @note 6 面ぶん。GetWidth/GetHeight は 1 面の寸法しか返さない。
         const std::size_t cubeBytes = EstimateTextureBytes(*cubeTex) * 6u;
         colors.push_back(m_textures.Insert(std::move(cubeTex), cubeBytes,
                                            "CubemapRenderTargetTexture", where.file_name(), static_cast<int>(where.line())));
@@ -371,14 +381,15 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint3
 
 ResourceHandle<TextureTag> ResourceManager::GetCubemapTexture(ResourceHandle<RenderTargetTag> rt)
 {
-    // キューブ SRV は index 0 のカラーテクスチャとして登録してある。
+    /// @note キューブ SRV は index 0 のカラーテクスチャとして登録してある。
     return GetColorTexture(rt, 0);
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height, Where where)
 {
     return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height),
-                             static_cast<std::size_t>(width) * height * 8u, // RGBA16F
+                             /// @note RGBA16F
+                             static_cast<std::size_t>(width) * height * 8u,
                              "ComputeTexture", where.file_name(), static_cast<int>(where.line()));
 }
 
@@ -391,7 +402,8 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
                       width, height, depth);
         return ResourceHandle<TextureTag>::Null();
     }
-    const std::size_t bytes = EstimateTextureBytes(*texture, 8u); // RGBA16F
+    /// @note RGBA16F
+    const std::size_t bytes = EstimateTextureBytes(*texture, 8u);
     return m_textures.Insert(std::move(texture), bytes, "ComputeTexture3D", where.file_name(), static_cast<int>(where.line()));
 }
 
@@ -400,7 +412,7 @@ ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
 {
     auto texture = m_renderer.CreateNativeDynamicTexture(width, height, format);
     if (!texture) {
-        // 未対応バックエンドでは nullptr が返る。呼び出し側は Null ハンドルで縮退を判断する。
+        /// @note 未対応バックエンドでは nullptr が返る。呼び出し側は Null ハンドルで縮退を判断する。
         FBZZ_LOG_WARN("CreateDynamicTexture: backend does not support dynamic textures (%ux%u)",
                       width, height);
         return ResourceHandle<TextureTag>::Null();
@@ -526,8 +538,8 @@ uint64_t ResourceManager::Key(ResourceHandle<RenderTargetTag> h)
 
 void ResourceManager::ReleaseOwnedResourcesForShutdown()
 {
-    // WHY: RenderTarget 由来の TextureTag は RT の SRV を参照するラッパーなので、
-    //      マップを先に消して shutdown 時の重複解放経路を断つ。
+    /// @note RenderTarget 由来の TextureTag は RT の SRV を参照するラッパーなので、
+    ///       マップを先に消して shutdown 時の重複解放経路を断つ。
     m_renderTargetColors.clear();
     m_renderTargetDepths.clear();
     m_shaderCache.clear();
@@ -552,11 +564,10 @@ struct OriginTotal {
     std::size_t bytes = 0;
 };
 
-// 生存リソースを «発生位置ごとの本数» に畳んで、多い順に返す。
-//
-// WHY 1 件ずつ並べないか: プロセス寿命のキャッシュ (シェーダー / テクスチャ / 既定メッシュ) は
-//     最後まで生きているのが正しく、生の一覧では数百行のうちどれが漏れなのか読めない。
-//     同じ file:line が何本あるかで並べれば «撒いた数だけ増えているもの» が一目で分かる。
+/// 生存リソースを «発生位置ごとの本数» に畳んで、多い順に返す。
+/// @note プロセス寿命のキャッシュ (シェーダー/テクスチャ/既定メッシュ) は最後まで生きているのが
+///       正しく、生の一覧では数百行のうちどれが漏れなのか読めない。同じ file:line の本数で
+///       並べれば «撒いた数だけ増えているもの» が一目で分かる。
 std::vector<OriginTotal> SummarizeByOrigin(const std::vector<core::AllocationInfo>& live)
 {
     std::vector<OriginTotal> totals;
@@ -619,13 +630,13 @@ std::size_t ResourceManager::GetLiveDebugResourceBytes() const
 void ResourceManager::TickLeakWatchdog()
 {
 #if defined(FBZZ_GPU_VALIDATION)
-    // 連続で増え続けた «フレーム数» のしきい値。まばらな生成 (シーン読み込み・
-    // プールの立ち上がり) で鳴らないよう、数秒ぶん増え続けたときだけ疑う。
+    /// @note 連続で増え続けた «フレーム数» のしきい値。まばらな生成 (シーン読み込み・
+    ///       プールの立ち上がり) で鳴らないよう、数秒ぶん増え続けたときだけ疑う。
     constexpr uint32_t kGrowthFrames = 180;
-    // 同じ実行で何度も出しても読み切れない。上限を決めて黙る。
+    /// @note 同じ実行で何度も出しても読み切れない。上限を決めて黙る。
     constexpr uint32_t kMaxReports = 3;
 
-    // エディタは 1 フレームで Scene / Game の 2 面を描く。フレームが変わったときだけ数える。
+    /// @note エディタは 1 フレームで Scene / Game の 2 面を描く。フレームが変わったときだけ数える。
     if (m_watchdogFrame == Time::frameCount)
         return;
     m_watchdogFrame = Time::frameCount;
@@ -652,7 +663,7 @@ void ResourceManager::TickLeakWatchdog()
 #endif
 }
 
-// ── Mesh のバッファの寿命 ─────────────────────────────────────────────────────
+/// @name Mesh のバッファの寿命
 
 std::size_t ResourceManager::ReleaseMeshBuffers(Mesh& mesh)
 {
@@ -692,9 +703,9 @@ bool SizedRenderTarget::Ensure(ResourceManager& resources,
 {
     const uint64_t resetVersion = resources.GetResetVersion();
     if (m_resetVersion != resetVersion) {
-        // WHY 返さずに捨てるか: リセットではマネージャーが実体ごと畳んでいる。
-        //     こちらのハンドルは無効で、返しにいっても意味が無い (最悪、同じスロットへ
-        //     入ってきた別の実体を巻き添えにする)。控えだけ捨てて作り直す。
+        /// @note 返さず捨てる理由: リセットではマネージャーが実体ごと畳んでおり、こちらの
+        ///       ハンドルは無効で返しても意味が無い (最悪、同じスロットへ入ってきた別の実体を
+        ///       巻き添えにする)。控えだけ捨てて作り直す。
         m_resetVersion = resetVersion;
         m_handle       = {};
         m_width = m_height = m_colorCount = 0;

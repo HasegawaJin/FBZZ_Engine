@@ -1,13 +1,16 @@
-// FBZZ GameHub
-// templateService.ts | main
-// C++版テンプレートのコピーとプレースホルダー展開をTypeScriptで再現する
+/**
+ * @file templateService.ts
+ * @brief テンプレートのコピーとプレースホルダー展開で新規プロジェクトを生成する。
+ * @author Hasegawa Jin
+ * @date 2026/07/19
+ */
 
 import { app } from 'electron';
 import { access, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'smol-toml';
 import type { CreateProjectRequest, ProjectIdentifiers, TemplateInfo } from '../shared/contracts';
-import { deriveProjectIdentifiers, isValidProjectIdentifiers } from '../shared/contracts';
+import { ENGINE_VERSION, deriveProjectIdentifiers, isValidProjectIdentifiers, isVersionAtLeast } from '../shared/contracts';
 
 const TEXT_EXTENSIONS = new Set([
   '.cpp', '.hpp', '.h', '.inl', '.txt', '.toml', '.json', '.cmake', '.md', '.hlsl', '.hlsli', '.glsl', '.gitignore',
@@ -16,6 +19,11 @@ const TEXT_EXTENSIONS = new Set([
 // ビルド生成物はテンプレート作業中に混入しても新規プロジェクトへ持ち込まない。
 // WHY: CMakeCache.txt には生成元の絶対パスが焼き込まれ、コピー先の configure を必ず失敗させる。
 const GENERATED_ROOT_DIRECTORIES = new Set(['Binaries', 'Build', 'Lib', 'Library']);
+
+// 行頭の `namespace X` だけを名前空間宣言とみなす (Editor 側 ScriptCodeGen と同じ規則)。
+// WHY: スクリプトは冒頭に `using namespace fbzz::scene;` を書くので、行頭を見ないと
+//      それに先に当たり `FBZZ_SCRIPT_ENTRY(fbzz::scene, X)` という存在しない型を登録してしまう。
+const NAMESPACE_DECLARATION = /^\s*namespace\s+([A-Za-z_][A-Za-z0-9_:]*)/m;
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -32,13 +40,13 @@ function assertValidName(info: ProjectIdentifiers): void {
   }
 }
 
-function applyPlaceholders(text: string, info: ProjectIdentifiers, createdAt: string, sdkId: string, engineVersion: string): string {
+function applyPlaceholders(text: string, info: ProjectIdentifiers, createdAt: string, sdkId: string): string {
   const replacements: Record<string, string> = {
     PROJECT_NAME: info.name,
     PROJECT_ID: info.projectId,
     CPP_NAMESPACE: info.cppNamespace,
     TARGET_NAME: info.targetName,
-    ENGINE_VERSION: engineVersion,
+    ENGINE_VERSION,
     SDK_ID: sdkId,
     CREATED_AT: createdAt,
     SETTINGS_PATH: 'ProjectSettings/ProjectSettings.toml',
@@ -96,10 +104,13 @@ export class TemplateService {
       try {
         const document = parse(await readFile(path.join(root, entry.name, 'template.toml'), 'utf8')) as Record<string, unknown>;
         const table = (document.template ?? {}) as Record<string, unknown>;
+        const engineVersionMin = typeof table.engine_version_min === 'string' ? table.engine_version_min : '';
         return {
           id: typeof table.id === 'string' ? table.id : entry.name,
-          displayName: typeof table.name === 'string' ? table.name : entry.name,
-          description: typeof table.desc === 'string' ? table.desc : '',
+          displayName: typeof table.display_name === 'string' ? table.display_name : entry.name,
+          description: typeof table.description === 'string' ? table.description : '',
+          engineVersionMin,
+          compatible: isVersionAtLeast(ENGINE_VERSION, engineVersionMin),
         } satisfies TemplateInfo;
       } catch {
         return null;
@@ -108,14 +119,18 @@ export class TemplateService {
     return templates.filter((template): template is TemplateInfo => template !== null);
   }
 
-  async create(request: CreateProjectRequest, sdkId: string, engineVersion: string): Promise<string> {
+  async create(request: CreateProjectRequest, sdkId: string): Promise<string> {
     const info = deriveProjectIdentifiers(request.displayName);
     assertValidName(info);
 
+    const template = (await this.listTemplates()).find((candidate) => candidate.id === request.templateId);
     const templatesRoot = await this.resolveTemplatesRoot();
     const templateRoot = path.join(templatesRoot, request.templateId);
-    if (!await exists(path.join(templateRoot, 'template.toml'))) {
+    if (!template || !await exists(path.join(templateRoot, 'template.toml'))) {
       throw new Error('選択されたテンプレートが見つかりません。');
+    }
+    if (!template.compatible) {
+      throw new Error(`テンプレート ${template.displayName} は Engine ${template.engineVersionMin} 以上が必要です (GameHub は ${ENGINE_VERSION})。`);
     }
 
     const projectRoot = path.join(path.resolve(request.destinationRoot), info.targetName);
@@ -123,30 +138,27 @@ export class TemplateService {
 
     const createdAt = new Date().toISOString();
     await mkdir(projectRoot, { recursive: false });
-    await this.copyTemplateDirectory(templateRoot, projectRoot, info, createdAt, sdkId, engineVersion);
+    await this.copyTemplateDirectory(templateRoot, projectRoot, info, createdAt, sdkId);
     await this.syncScriptRegistrations(projectRoot, info);
     return projectRoot;
   }
 
-  private async copyTemplateDirectory(sourceRoot: string, projectRoot: string, info: ProjectIdentifiers, createdAt: string, sdkId: string, engineVersion: string): Promise<void> {
+  private async copyTemplateDirectory(sourceRoot: string, projectRoot: string, info: ProjectIdentifiers, createdAt: string, sdkId: string): Promise<void> {
     const walk = async (sourceDirectory: string, relativeDirectory: string): Promise<void> => {
       for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
         if (!relativeDirectory && entry.name === 'template.toml') continue;
-        const replacedName = applyPlaceholders(entry.name, info, createdAt, sdkId, engineVersion).replace(/\.tmpl$/, '');
+        if (!relativeDirectory && entry.isDirectory() && GENERATED_ROOT_DIRECTORIES.has(entry.name)) continue;
+        const replacedName = applyPlaceholders(entry.name, info, createdAt, sdkId).replace(/\.tmpl$/, '');
         const relativePath = path.join(relativeDirectory, replacedName);
         const sourcePath = path.join(sourceDirectory, entry.name);
         const outputPath = path.join(projectRoot, relativePath);
-        const normalizedRelativePath = relativePath.replaceAll('\\', '/');
-        if (normalizedRelativePath === 'Assets/Shaders' || normalizedRelativePath === 'Assets/Shaders.meta') continue;
-        if (!relativeDirectory && entry.isDirectory() && GENERATED_ROOT_DIRECTORIES.has(entry.name)) continue;
         if (entry.isDirectory()) {
-          // Engine shaderはSDKのread-only共有assetを使用し、プロジェクトへ複製しない。
           await mkdir(outputPath, { recursive: true });
           await walk(sourcePath, relativePath);
         } else if (entry.isFile()) {
           await mkdir(path.dirname(outputPath), { recursive: true });
           if (isTextTemplate(sourcePath)) {
-            const text = applyPlaceholders(await readFile(sourcePath, 'utf8'), info, createdAt, sdkId, engineVersion);
+            const text = applyPlaceholders(await readFile(sourcePath, 'utf8'), info, createdAt, sdkId);
             await writeFile(outputPath, text, 'utf8');
           } else {
             await copyFile(sourcePath, outputPath);
@@ -169,7 +181,7 @@ export class TemplateService {
         if (item.isDirectory()) await visit(itemPath);
         if (!item.isFile() || !item.name.endsWith('.hpp') || item.name.endsWith('.generated.hpp')) continue;
         const source = await readFile(itemPath, 'utf8');
-        const namespaceName = source.match(/namespace\s+([A-Za-z_][A-Za-z0-9_:]*)/)?.[1] ?? info.cppNamespace;
+        const namespaceName = source.match(NAMESPACE_DECLARATION)?.[1] ?? info.cppNamespace;
         const header = path.relative(assetsRoot, itemPath).replaceAll('\\', '/');
         for (const match of source.matchAll(/FBZZ_SCRIPT\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g)) {
           scripts.push({ header, entry: `FBZZ_SCRIPT_ENTRY(${namespaceName}, ${match[1]})` });

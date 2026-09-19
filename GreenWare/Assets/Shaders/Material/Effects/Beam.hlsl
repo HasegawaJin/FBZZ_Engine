@@ -192,14 +192,19 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     ///      潰れるどころか焼き付くのが正しい。
     float  axialGlint;
     float  _beamPad;
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
 };
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Material/Effects/ArcNoise.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    texAlbedo   : register(TEX_ALBEDO);
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
 static const float kBeamTau = 6.28318530718f;

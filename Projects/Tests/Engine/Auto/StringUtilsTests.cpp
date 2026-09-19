@@ -19,7 +19,7 @@ using util::StringUtils;
 
 class StringUtilsTest : public testkit::EngineFixture {};
 
-// --- 検索 -------------------------------------------------------------------
+/// @name 検索
 
 TEST_F(StringUtilsTest, ContainsIsCaseSensitiveAndContainsCIIsNot)
 {
@@ -48,7 +48,7 @@ TEST_F(StringUtilsTest, PrefixAndSuffixRejectAffixesLongerThanTheString)
     EXPECT_FALSE(StringUtils::EndsWith("ab", "abc"));
 }
 
-// --- 比較と変換 -------------------------------------------------------------
+/// @name 比較と変換
 
 TEST_F(StringUtilsTest, EqualsCIIgnoresCaseOnBothSides)
 {
@@ -65,7 +65,7 @@ TEST_F(StringUtilsTest, CaseConversionLeavesNonLettersAlone)
 
 TEST_F(StringUtilsTest, WideConversionRoundTrips)
 {
-    // パスは Windows API へ渡すたびにこの往復を通る。落とすとファイルが開けない。
+    /// @note パスは Windows API へ渡すたびにこの往復を通る。落とすとファイルが開けない。
     const std::string original = "Assets/Scenes/Main.scene";
 
     EXPECT_EQ(StringUtils::ToNarrow(StringUtils::ToWide(original)), original);
@@ -77,7 +77,7 @@ TEST_F(StringUtilsTest, WideConversionSurvivesAnEmptyString)
     EXPECT_TRUE(StringUtils::ToNarrow(std::wstring{}).empty());
 }
 
-// --- 分割 -------------------------------------------------------------------
+/// @name 分割
 
 TEST_F(StringUtilsTest, SplitBreaksOnEveryDelimiter)
 {
@@ -91,7 +91,7 @@ TEST_F(StringUtilsTest, SplitBreaksOnEveryDelimiter)
 
 TEST_F(StringUtilsTest, SplitKeepsEmptyFieldsInTheMiddle)
 {
-    // "a,,b" は 3 列。空の列を落とすと、CSV 的な並びの列がずれる。
+    /// @note "a,,b" は 3 列。空の列を落とすと、CSV 的な並びの列がずれる。
     const std::vector<std::string> parts = StringUtils::Split("a,,b", ',');
 
     ASSERT_EQ(parts.size(), 3u);
@@ -100,7 +100,7 @@ TEST_F(StringUtilsTest, SplitKeepsEmptyFieldsInTheMiddle)
 
 TEST_F(StringUtilsTest, SplitDropsTheEmptyTailAfterATrailingDelimiter)
 {
-    // 末尾の区切りは «空の列» を作らない契約。
+    /// @note 末尾の区切りは «空の列» を作らない契約。
     const std::vector<std::string> parts = StringUtils::Split("a,b,", ',');
 
     ASSERT_EQ(parts.size(), 2u);
@@ -120,7 +120,7 @@ TEST_F(StringUtilsTest, SplitOfAnEmptyStringIsEmpty)
     EXPECT_TRUE(StringUtils::Split("", ',').empty());
 }
 
-// --- トリム -----------------------------------------------------------------
+/// @name トリム
 
 TEST_F(StringUtilsTest, TrimRemovesSurroundingWhitespace)
 {

@@ -71,8 +71,8 @@ bool LoadSynthAssetFromFile(std::string_view path, SynthAsset& outAsset)
         return false;
     }
 
-    // WHY 欠損キーを既定のままにするか: パラメーターは今後増える。書いていない項目を
-    //     エラーにすると、既存の .synth が engine 更新のたびに読めなくなる。
+    /// @note パラメーターは今後増えるため、欠損キーは既定のままにする。書いていない項目を
+    ///       エラーにすると、既存の .synth が engine 更新のたびに読めなくなる。
     const toml::table& root = parsed.table();
     const toml::table* table = root["synth"].as_table();
     if (!table) table = &root;
@@ -119,8 +119,8 @@ bool SaveSynthAssetToFile(std::string_view path, const SynthAsset& asset)
     const std::string pathString(path);
     const audio::SynthSpec& spec = asset.spec;
 
-    // WHY 既定値を書かないか: 全項目を書くと「何も触っていないのに 20 行」になり、
-    //     git の差分から「どこを調整したか」が読めなくなる (FbxMetaSerializer と同方針)。
+    /// @note 全項目を書くと「何も触っていないのに 20 行」になり、git の差分から
+    ///       「どこを調整したか」が読めなくなるため、既定値と同じ項目は書かない (FbxMetaSerializer と同方針)。
     const audio::SynthSpec defaults;
     toml::table table;
     const auto writeFloat = [&table](const char* key, float value, float defaultValue) {

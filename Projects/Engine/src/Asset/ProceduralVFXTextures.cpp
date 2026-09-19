@@ -24,13 +24,13 @@ namespace {
 
 constexpr float PI = 3.14159265358979323846f;
 
-// CPU生成中の8bit RGBA画像と、安全な正規化値書き込みをまとめる。
+/// CPU生成中の8bit RGBA画像と、安全な正規化値書き込みをまとめる。
 struct RgbaImage {
     int width = 0;
     int height = 0;
     std::vector<std::uint8_t> pixels;
 
-    // 0～1の各チャンネルをクランプして8bit画素へ格納する。
+    /// 0～1の各チャンネルをクランプして8bit画素へ格納する。
     void Set(int x, int y, float r, float g, float b, float a)
     {
         const std::size_t index = (static_cast<std::size_t>(y) * width + x) * 4;
@@ -41,16 +41,16 @@ struct RgbaImage {
     }
 };
 
-// Distortionの2次元ベクトル計算だけに使う軽量値型。
+/// Distortionの2次元ベクトル計算だけに使う軽量値型。
 struct Float2 {
     float x = 0.0f;
     float y = 0.0f;
 };
 
-// ノイズやマスクの値を画像チャンネル範囲へ収める。
+/// ノイズやマスクの値を画像チャンネル範囲へ収める。
 float Saturate(float value) { return std::clamp(value, 0.0f, 1.0f); }
 
-// エッジを滑らかに補間し、プロシージャル形状のジャギーを抑える。
+/// エッジを滑らかに補間し、プロシージャル形状のジャギーを抑える。
 float SmoothStep(float edge0, float edge1, float value)
 {
     if (edge0 == edge1) return value < edge0 ? 0.0f : 1.0f;
@@ -58,7 +58,7 @@ float SmoothStep(float edge0, float edge1, float value)
     return t * t * (3.0f - 2.0f * t);
 }
 
-// Seedと格子座標から再現可能な疑似乱数を作る整数ハッシュ。
+/// Seedと格子座標から再現可能な疑似乱数を作る整数ハッシュ。
 std::uint32_t Hash(std::uint32_t value)
 {
     value ^= value >> 16;
@@ -69,7 +69,7 @@ std::uint32_t Hash(std::uint32_t value)
     return value;
 }
 
-// 2次元格子座標を0～1の決定論的乱数へ変換する。
+/// 2次元格子座標を0～1の決定論的乱数へ変換する。
 float Hash01(int x, int y, std::uint32_t seed)
 {
     const std::uint32_t ux = static_cast<std::uint32_t>(x);
@@ -78,7 +78,7 @@ float Hash01(int x, int y, std::uint32_t seed)
         / static_cast<float>(0x01000000u);
 }
 
-// 格子乱数を滑らかに補間した2次元Value Noiseを返す。
+/// 格子乱数を滑らかに補間した2次元Value Noiseを返す。
 float ValueNoise(float x, float y, std::uint32_t seed)
 {
     const int ix = static_cast<int>(std::floor(x));
@@ -96,7 +96,7 @@ float ValueNoise(float x, float y, std::uint32_t seed)
     return top + (bottom - top) * sy;
 }
 
-// 複数オクターブを合成して煙・炎・クレーターの中周波ディテールを作る。
+/// 複数オクターブを合成して煙・炎・クレーターの中周波ディテールを作る。
 float Fbm(float x, float y, std::uint32_t seed, int octaves = 5)
 {
     float value = 0.0f;
@@ -112,7 +112,7 @@ float Fbm(float x, float y, std::uint32_t seed, int octaves = 5)
     return weight > 0.0f ? value / weight : 0.0f;
 }
 
-// 低周波ノイズで座標を歪めて、単純な格子感のない流体状ノイズを返す。
+/// 低周波ノイズで座標を歪めて、単純な格子感のない流体状ノイズを返す。
 float WarpedNoise(float x, float y, float time, const ProceduralFlipbookSettings& settings,
                   std::uint32_t seed)
 {
@@ -132,7 +132,7 @@ bool SavePng(const RgbaImage& source, const std::filesystem::path& path, std::st
                                 static_cast<std::uint32_t>(source.height), source.pixels, outError);
 }
 
-// 膨張・上昇・散逸するグレースケール煙の1画素を生成する。
+/// 膨張・上昇・散逸するグレースケール煙の1画素を生成する。
 void GenerateSmokePixel(float x, float y, float time, const ProceduralFlipbookSettings& settings,
                         std::uint32_t seed, float& r, float& g, float& b, float& a)
 {
@@ -145,15 +145,15 @@ void GenerateSmokePixel(float x, float y, float time, const ProceduralFlipbookSe
     const float noise = WarpedNoise(x, y + rise, time * 1.7f, settings, seed);
     const float shape = 1.0f - distance + (noise - 0.5f) * 0.72f;
     a = SmoothStep(0.0f, 0.28f, shape) * (1.0f - time * 0.38f);
-    // Smokeは通常Alpha Blendへ割り当てるためRGBを事前乗算しない。
-    // アルファを二重に掛けると薄い縁が不自然に消える。
+    /// @note Smokeは通常Alpha Blendへ割り当てるためRGBを事前乗算しない。
+    ///       アルファを二重に掛けると薄い縁が不自然に消える。
     const float shade = 0.62f + noise * 0.38f;
     r = shade;
     g = shade;
     b = shade;
 }
 
-// 下部が太く上部が揺らぐ加算向け炎の1画素を生成する。
+/// 下部が太く上部が揺らぐ加算向け炎の1画素を生成する。
 void GenerateFirePixel(float x, float y, float time, const ProceduralFlipbookSettings& settings,
                        std::uint32_t seed, float& r, float& g, float& b, float& a)
 {
@@ -172,7 +172,7 @@ void GenerateFirePixel(float x, float y, float time, const ProceduralFlipbookSet
     b = core * 0.08f;
 }
 
-// 発光コアから煙へ遷移する事前乗算Alpha爆発の1画素を生成する。
+/// 発光コアから煙へ遷移する事前乗算Alpha爆発の1画素を生成する。
 void GenerateExplosionPixel(float x, float y, float time,
                             const ProceduralFlipbookSettings& settings, std::uint32_t seed,
                             float& r, float& g, float& b, float& a)
@@ -187,13 +187,13 @@ void GenerateExplosionPixel(float x, float y, float time,
     const float hot = Saturate((1.0f - time * 1.45f) * 2.0f)
         * SmoothStep(radius, radius * 0.18f, irregularDistance);
     const float smoke = a * (1.0f - hot * 0.55f);
-    // Premultiplied Alphaで発光する芯と遮蔽する煙を同居させる。
+    /// @note Premultiplied Alphaで発光する芯と遮蔽する煙を同居させる。
     r = smoke * 0.18f + hot * 1.0f;
     g = smoke * 0.16f + hot * 0.34f;
     b = smoke * 0.14f + hot * 0.035f;
 }
 
-// Curl状のRG変位と円形Alphaマスクを持つ歪みの1画素を生成する。
+/// Curl状のRG変位と円形Alphaマスクを持つ歪みの1画素を生成する。
 void GenerateDistortionPixel(float x, float y, float time,
                              const ProceduralFlipbookSettings& settings, std::uint32_t seed,
                              float& r, float& g, float& b, float& a)
@@ -221,7 +221,7 @@ void GenerateDistortionPixel(float x, float y, float time,
     a = mask;
 }
 
-// 角度の周期境界を考慮した最短距離を返す。
+/// 角度の周期境界を考慮した最短距離を返す。
 float AngleDistance(float a, float b)
 {
     float difference = std::fmod(std::abs(a - b), PI * 2.0f);
@@ -229,7 +229,7 @@ float AngleDistance(float a, float b)
     return difference;
 }
 
-// Seedから放射状の亀裂群を作り、指定座標でのマスク値を返す。
+/// Seedから放射状の亀裂群を作り、指定座標でのマスク値を返す。
 float DecalCracks(float x, float y, const ProceduralImpactDecalSettings& settings)
 {
     const float angle = std::atan2(y, x);
@@ -251,7 +251,7 @@ float DecalCracks(float x, float y, const ProceduralImpactDecalSettings& setting
     return cracks;
 }
 
-// クレーターの凹み・盛り上がった縁・亀裂を合成した高さを返す。
+/// クレーターの凹み・盛り上がった縁・亀裂を合成した高さを返す。
 float DecalHeight(float x, float y, const ProceduralImpactDecalSettings& settings)
 {
     const float distance = std::sqrt(x * x + y * y);
@@ -261,7 +261,7 @@ float DecalHeight(float x, float y, const ProceduralImpactDecalSettings& setting
     return -crater * 0.32f + rim * 0.20f - DecalCracks(x, y, settings) * 0.16f;
 }
 
-// 回復可能エラーをUIへ返す共通失敗結果を作る。
+/// 回復可能エラーをUIへ返す共通失敗結果を作る。
 ProceduralVFXTextureResult Fail(std::string message)
 {
     ProceduralVFXTextureResult result;
@@ -271,7 +271,7 @@ ProceduralVFXTextureResult Fail(std::string message)
 
 } // namespace
 
-// UIとファイル名で共有する安定したプリセット表示名を返す。
+/// UIとファイル名で共有する安定したプリセット表示名を返す。
 const char* ProceduralFlipbookPresetName(ProceduralFlipbookPreset preset)
 {
     switch (preset) {
@@ -283,7 +283,7 @@ const char* ProceduralFlipbookPresetName(ProceduralFlipbookPreset preset)
     return "VFX";
 }
 
-// 指定プリセットを行別バリエーション付きRGBAアトラスとして生成する。
+/// 指定プリセットを行別バリエーション付きRGBAアトラスとして生成する。
 ProceduralVFXTextureResult GenerateProceduralFlipbook(
     const std::string& outputDirectory, const ProceduralFlipbookSettings& inputSettings)
 {
@@ -355,7 +355,7 @@ ProceduralVFXTextureResult GenerateProceduralFlipbook(
     std::string saveError;
     if (!SavePng(image, destination, saveError)) return Fail(std::move(saveError));
     if (settings.preset == ProceduralFlipbookPreset::Distortion) {
-        // RG変位とAlphaマスクを全て保持するためBC7。BC5ではAlphaが失われる。
+        /// @note RG変位とAlphaマスクを全て保持するためBC7。BC5ではAlphaが失われる。
         if (!SaveTextureMeta(destination, TextureType::Data, TextureCompression::BC7,
                              AlphaMode::Straight, false, saveError)) {
             return Fail(std::move(saveError));
@@ -377,7 +377,7 @@ ProceduralVFXTextureResult GenerateProceduralFlipbook(
     return result;
 }
 
-// Impact Decal用Albedo・Normal・Emissiveセットを同一Seedから生成する。
+/// Impact Decal用Albedo・Normal・Emissiveセットを同一Seedから生成する。
 ProceduralVFXTextureResult GenerateProceduralImpactDecal(
     const std::string& outputDirectory, const ProceduralImpactDecalSettings& inputSettings)
 {
@@ -454,7 +454,7 @@ ProceduralVFXTextureResult GenerateProceduralImpactDecal(
     }
     if (!SaveTextureMeta(albedoPath, TextureType::Color, TextureCompression::Auto,
                          AlphaMode::Straight, true, saveError)
-        // Decal.hlslはZを再構築せずRGBを直接読むため、Bを保持できるBC7を使う。
+        /// @note Decal.hlslはZを再構築せずRGBを直接読むため、Bを保持できるBC7を使う。
         || !SaveTextureMeta(normalPath, TextureType::Normal, TextureCompression::BC7,
                             AlphaMode::None, true, saveError)
         || !SaveTextureMeta(emissivePath, TextureType::Color, TextureCompression::Auto,

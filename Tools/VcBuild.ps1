@@ -1,23 +1,15 @@
-﻿# FBZZ Engine
-# VcBuild.ps1 | Tools
-# VS Code タスクから CMake を叩くための唯一の入口。
+﻿# @file    VcBuild.ps1
+# @brief   VS Code タスクから CMake を叩く唯一の入口。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 #
-# WHY (絶対パスを排除): 以前は vcvars64.bat の絶対パスを tasks.json へ 20 箇所
-#     ハードコードしていた。Visual Studio のエディション (Community/Professional) や
-#     世代が変わるだけで全ビルドタスクが同時に壊れ、20 箇所を手で直す必要があった。
-#     VS の場所を知っているのはこのファイル 1 つだけ、という状態にする。
-#
-# WHY (.bat ではなく .ps1): cmd.exe はバッチファイルを「バイトオフセット」で読み進め、
-#     goto のたびにファイルを seek し直す。日本語コメントのようなマルチバイト文字が
-#     あると seek 位置が文字境界からずれてパーサーが壊れ、コメントのはずの断片が
-#     コマンドとして実行される。PowerShell は文字単位で解釈するためこの問題が無い。
-#
-# 使い方:
-#   VcBuild.ps1 configure <configurePreset>
-#   VcBuild.ps1 build     <configurePreset> <buildPreset> [追加の cmake 引数...]
-#   VcBuild.ps1 test      <configurePreset> [追加の ctest 引数...]
-#   VcBuild.ps1 run       <configurePreset> <exe 名>       [追加の実行時引数...]
+# @note tasks.json に VS のパスを書かない。VS の場所を知るのは VsEnvironment.ps1 経由のこの入口だけにする。
+# @note .bat にしない。cmd.exe はバイトオフセットで seek するため、マルチバイトのコメントで構文が壊れる。
 
+# @note configure <configurePreset>
+# @note build <configurePreset> <buildPreset> [追加の cmake 引数...]
+# @note test <configurePreset> [追加の ctest 引数...]
+# @note run <configurePreset> <exe 名> [追加の実行時引数...]
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
@@ -27,11 +19,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $ConfigurePreset,
 
-    # build では buildPreset、run では実行する exe 名。configure / test では使わない。
+    # @note build では buildPreset、run では実行する exe 名。configure / test では使わない。
     [Parameter(Mandatory = $false)]
     [string] $BuildPreset,
 
-    # --target 等、cmake / ctest / exe へそのまま渡す追加引数。
+    # @note cmake / ctest / exe へそのまま渡す (--target 等)。
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $CMakeArguments = @()
 )
@@ -39,20 +31,20 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# @note CMake の message() は UTF-8、cl.exe はコンソールのコードページで書く。65001 にすると両方が UTF-8 で揃う。
+# @note 子プロセス (cmake / cl / ctest) は chcp を引き継ぐ。OutputEncoding は PowerShell 自身の出力のぶん。
+chcp 65001 | Out-Null
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 $RepositoryRoot = Split-Path -Parent $PSScriptRoot
 
-# --- CMakePresets.json との対応表 ------------------------------------------
-# WHY: 初回の自動 configure 判定 (CMakeCache.txt の有無) と ctest の実行先を知るために
-#      binaryDir が要る。preset を追加したらここへも 1 行足すこと。
-#      ずれると初回ビルドが「未 configure なのに configure されない」状態になる。
-#
-#      coverage は Ninja の単一構成ビルド。CMAKE_BUILD_TYPE=Debug なので、CMake が
-#      参照する出力先プロパティは他と同じ *_DEBUG 系になり、Binaries/Debug/ へ出る。
+# @name CMakePresets.json との対応表
+# @note binaryDir は初回 configure の判定と ctest の実行先に要る。preset を足したらここと AgentBuild.ps1 へも足す。
+# @note coverage は Ninja の単一構成で CMAKE_BUILD_TYPE=Debug のため、出力は Binaries/Debug/ になる。
 $PresetLayout = @{
     'debug'       = @{ BinaryDir = 'build/Debug';       Configuration = 'Debug' }
     'release'     = @{ BinaryDir = 'build/Release';     Configuration = 'Release' }
     'development' = @{ BinaryDir = 'build/Development'; Configuration = 'Development' }
-    'sdk'         = @{ BinaryDir = 'build/SDK';         Configuration = 'Development' }
     'coverage'    = @{ BinaryDir = 'build/Coverage';    Configuration = 'Debug' }
 }
 
@@ -71,43 +63,8 @@ if ($Verb -eq 'build' -and [string]::IsNullOrWhiteSpace($BuildPreset)) {
     exit 1
 }
 
-# --- Visual Studio 開発者環境の取り込み ------------------------------------
-# vswhere.exe は VS インストーラーが必ずこの固定パスへ置く、唯一安定した入口。
-function Import-VisualStudioEnvironment {
-    $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    if (-not (Test-Path -LiteralPath $vsWhere)) {
-        throw "vswhere.exe が見つかりません: $vsWhere`nVisual Studio と C++ ワークロードをインストールしてください。"
-    }
-
-    # C++ x64 ツールチェーンを実際に持つインストールだけを候補にし、最新版を選ぶ。
-    $installPath = & $vsWhere -latest -prerelease -products * `
-        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-        -property installationPath | Select-Object -Last 1
-    if ([string]::IsNullOrWhiteSpace($installPath)) {
-        throw 'C++ ワークロードを持つ Visual Studio が見つかりません。'
-    }
-
-    $vcvars = Join-Path $installPath 'VC/Auxiliary/Build/vcvars64.bat'
-    if (-not (Test-Path -LiteralPath $vcvars)) {
-        throw "vcvars64.bat が見つかりません: $vcvars"
-    }
-
-    # WHY: vcvars64.bat はバッチでしか環境を作れないため、cmd 側で実行して
-    #      その結果の環境変数一式を読み戻し、この PowerShell セッションへ反映する。
-    #      こうしないと cl.exe / link.exe が PATH に載らない。
-    $captured = & cmd.exe /d /c "call `"$vcvars`" >nul 2>&1 && set"
-    if ($LASTEXITCODE -ne 0) {
-        throw "vcvars64.bat の実行に失敗しました: $vcvars"
-    }
-    foreach ($line in $captured) {
-        $separator = $line.IndexOf('=')
-        if ($separator -gt 0) {
-            $name = $line.Substring(0, $separator)
-            $value = $line.Substring($separator + 1)
-            Set-Item -LiteralPath "Env:$name" -Value $value
-        }
-    }
-}
+# @note Visual Studio 開発者環境の取り込みは AgentBuild.ps1 と共有する VsEnvironment.ps1 が持つ。
+. (Join-Path $PSScriptRoot 'VsEnvironment.ps1')
 
 try {
     Import-VisualStudioEnvironment
@@ -126,25 +83,15 @@ switch ($Verb) {
     }
 
     'build' {
-        # WHY: 以前は全ビルドタスクが Configure タスクへ dependsOn しており、毎回 CMake の
-        #      再構成コストを払っていた。Visual Studio ジェネレーターは ZERO_CHECK が
-        #      CMakeLists.txt の変更を検知して自動再構成するので、明示的な configure が
-        #      要るのは「まだ一度も configure していない時」だけ。それをここで判定する。
+        # @note 再構成は ZERO_CHECK が自動で行う。明示の configure が要るのは未 configure のときだけ。
         if (-not (Test-Path -LiteralPath (Join-Path $BinaryDirectory 'CMakeCache.txt'))) {
             Write-Host "[VcBuild] 未 configure のため初回 configure を実行します: $ConfigurePreset" -ForegroundColor Cyan
             & cmake --preset $ConfigurePreset
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         }
 
-        # WHY: --parallel 1 で MSBuild のノード並列を 1 に抑える。ルート CMakeLists.txt が
-        #      各プロジェクトへ /MP<n> を渡しているため、ノード並列まで開けると
-        #      「プロジェクト数 × /MP」で cl.exe が掛け算に増える。Inspector 等の
-        #      /bigobj が要る重い翻訳単位は cl.exe 1 つで 1〜2GB 使うため、
-        #      物理メモリを使い切ってマシン全体がスワップに巻き込まれる。
-        #
-        #      coverage preset だけは Ninja。/MP を渡していないので «並列はジェネレーターが
-        #      全部持つ» 側になり、ここで 1 を渡すとビルド全体が本当に直列になる。
-        #      物理メモリから同時実行数を決め直す (clang-cl 1 プロセス = 1GB 見積り)。
+        # @note MSBuild のノード並列は 1。ルート CMakeLists.txt が /MP<n> を渡すので、開けると cl.exe (1 本 1〜2GB) が掛け算で増える。
+        # @note coverage (Ninja) は /MP が無く並列をジェネレーターが持つため、物理メモリから決める (clang-cl 1 本 1GB 見積り)。
         if ($PresetKey -eq 'coverage') {
             $memoryMB = [int]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
             $jobs = [Math]::Min([Environment]::ProcessorCount - 2, [int]($memoryMB / 1024))
@@ -159,24 +106,16 @@ switch ($Verb) {
     }
 
     'test' {
-        # gtest_discover_tests() が CTest へ個別テストを登録済みなので、exe を直接叩かず
-        # ctest を通す。失敗したテストの出力だけがそのままターミナルへ出る。
-        # ManualTest は Window/Cursor の OS 状態を触るため CTest 未登録で、ここでは走らない。
-        # 追加引数はそのまま ctest へ渡す (-R で名前を絞る等)。
-        #
-        # --timeout: 1 件でも «終わらないテスト» があると、そこから先が丸ごと実行されない。
-        #   CMake 側でも TIMEOUT プロパティを付けているが、古いビルドツリー
-        #   (再 configure していない) には載っていないため、ここでも上限を渡す。
-        # --no-tests=error: フィルタの打ち間違いで 0 件になったとき «全部成功» に見せない。
+        # @note 手動テスト (Window / Cursor) は CTest 未登録なのでここでは走らない。
+        # @note --timeout は再 configure していない古いツリー (TIMEOUT プロパティ無し) でも終わらないテストを止めるため。
+        # @note --no-tests=error はフィルタの打ち間違いで 0 件のとき全部成功に見せないため。
         & ctest --test-dir $BinaryDirectory -C $Configuration --output-on-failure `
             --timeout 30 --no-tests=error @CMakeArguments
         exit $LASTEXITCODE
     }
 
     'run' {
-        # WHY ここで解決するか: テスト成果物の置き場は構成ごとに分かれる。
-        #     tasks.json 側に書くと preset を足すたびに全タスクへ同じパスが増える。
-        #     「どこに出るか」を知っているのはこのファイルだけ、という状態を保つ。
+        # @note テスト exe の置き場 (構成ごと) はここだけが知る。tasks.json にパスを書かない。
         if ([string]::IsNullOrWhiteSpace($BuildPreset)) {
             Write-Host "[VcBuild] run には exe 名が必要です。" -ForegroundColor Red
             exit 1

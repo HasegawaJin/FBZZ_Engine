@@ -1,7 +1,7 @@
 /// @file    ScriptList.inl
 /// @brief   ScriptList.inl — スクリプト登録 X-macro リスト。
 /// @author  Hasegawa Jin
-/// @date    2026-07-01
+/// @date    2026-06-22
 ///
 /// ScriptCodeGen が自動更新する。手動編集しないこと。
 ///

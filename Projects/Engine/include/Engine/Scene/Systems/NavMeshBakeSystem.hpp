@@ -18,7 +18,7 @@ class Scene;
 
 /// surface のベイクソース (自身の設定・対象 Terrain の高さ・寄与する Modifier の配置) を
 /// 1 つの値へ畳む。ベイク投入時の値と現在値が違えば、その NavMesh は古い。
-/// @ret surface か GameObject が無ければ 0。
+/// @return surface か GameObject が無ければ 0。
 /// @note Terrain の heightData を全走査するため、毎フレーム呼ばずに間引くこと。
 [[nodiscard]] uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId);
 
@@ -30,7 +30,7 @@ public:
     ComponentAccess  GetAccess()  const override;
     void Update(SystemContext& ctx) override;
 
-    // エディタの進捗バー用（surfaceId は EntityID::index）
+    /// エディタの進捗バー用（surfaceId は EntityID::index）
     float BakeProgress(uint32_t surfaceId) const;
 
 private:

@@ -12,10 +12,9 @@ namespace fbzz::renderer {
 
 namespace {
 
-// WHY Active() を使うか: Material は Model / MaterialComponent / 各パスのキャッシュへ
-//     埋め込まれて畳まれるため、破棄地点へ ResourceManager& を渡す経路が無い。
-//     ResourceManager より後に消える Material では Active() が空になり、
-//     そのときは解放先そのものが既に無いので何もしないのが正しい。
+/// @note Active() を使う理由: Material は Model/MaterialComponent/各パスのキャッシュへ埋め込まれて
+///       畳まれるため、破棄地点へ ResourceManager& を渡す経路が無い。ResourceManager より後に
+///       消える Material では Active() が空になり、そのときは解放先が無いので何もしない。
 void ReleaseParamsBuffer(ResourceHandle<ConstantBufferTag>& buffer)
 {
     if (!buffer.IsValid()) return;
@@ -66,15 +65,15 @@ Material Material::CloneWithoutGpuResources() const
 
 void Material::Init(ResourceManager& resources, uint32_t cbufferSize, Where where)
 {
-    // 呼び出し側が CPU 配列を先に組み直すため、容量は GPU 実体で判定する。
-    // DX12 は 256 byte 単位で確保するので、必要量以上なら再利用できる。
+    /// @note 呼び出し側が CPU 配列を先に組み直すため、容量は GPU 実体で判定する。
+    ///       DX12 は 256 byte 単位で確保するので、必要量以上なら再利用できる。
     if (paramData.size() != cbufferSize)
         paramData.assign(cbufferSize, 0u);
     const auto* buffer = resources.Get(paramsBuffer);
     if (buffer && cbufferSize > 0 && buffer->GetSize() >= cbufferSize) return;
     if (paramsBuffer.IsValid()) {
-        // WHY: ハンドルの上書きだけでは旧 ConstantBuffer が ResourceManager に残るため、
-        //      シェーダー変更でレイアウトが変わる前に明示的に解放する。
+        /// @note ハンドルの上書きだけでは旧 ConstantBuffer が ResourceManager に残るため、
+        ///       シェーダー変更でレイアウトが変わる前に明示的に解放する。
         resources.Release(paramsBuffer);
         paramsBuffer = {};
     }
@@ -88,8 +87,8 @@ void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc, 
     if (!paramsBuffer.IsValid()) return;
     if (paramData.size() != desc.cbufferSize) return;
 
-    // textureMask を textures の有効性から計算し paramData に書き込む。
-    // エディターでテクスチャを差し替えても自動反映されるよう毎フレーム再計算する。
+    /// @note textureMask を textures の有効性から計算し paramData に書き込む。
+    ///       エディターでテクスチャを差し替えても自動反映されるよう毎フレーム再計算する。
     if (desc.textureMaskOffset != UINT32_MAX
         && desc.textureMaskOffset + 4 <= static_cast<uint32_t>(paramData.size()))
     {
@@ -97,6 +96,22 @@ void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc, 
         for (size_t i = 0; i < textures.size() && i < 8; ++i)
             if (textures[i].IsValid()) mask |= (1u << i);
         std::memcpy(paramData.data() + desc.textureMaskOffset, &mask, sizeof(uint32_t));
+    }
+
+    /// @note bindless の添字を MaterialConstants へ毎フレーム書き込む。添字はテクスチャの生存に
+    ///       紐づき、差し替え・再読み込み・ホットリロードで変わるため、焼き込むと前のテクスチャが
+    ///       貼られたままになる。未割り当てを INVALID で埋めるのは、0 がヒープ先頭の有効な
+    ///       ディスクリプタで「差していない」と区別できないため。シェーダーは添字の有効判定で分岐する。
+    for (const auto& bind : desc.textures) {
+        if (bind.constantOffset == UINT32_MAX
+            || bind.constantOffset + sizeof(uint32_t) > paramData.size())
+            continue;
+        uint32_t index = INVALID_BINDLESS_INDEX;
+        if (bind.slot < textures.size()) {
+            if (const ITexture* texture = resources.Get(textures[bind.slot]))
+                index = texture->GetBindlessIndex();
+        }
+        std::memcpy(paramData.data() + bind.constantOffset, &index, sizeof(uint32_t));
     }
 
     resources.Update(paramsBuffer, paramData.data(),

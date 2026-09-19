@@ -30,13 +30,13 @@
 namespace fbzz::editor {
 namespace {
 
-// Rendererのopaque pointerをImGuiのTexture IDへ安全に変換する。
+/// Rendererのopaque pointerをImGuiのTexture IDへ安全に変換する。
 ImTextureID ToTextureId(void* ptr)
 {
     return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
 }
 
-// ハンドル選択に使うscreen-space距離の二乗を返す。
+/// ハンドル選択に使うscreen-space距離の二乗を返す。
 float DistanceSquared(ImVec2 lhs, ImVec2 rhs)
 {
     const float dx = lhs.x - rhs.x;
@@ -44,7 +44,7 @@ float DistanceSquared(ImVec2 lhs, ImVec2 rhs)
     return dx * dx + dy * dy;
 }
 
-// 透明部分を判別できる市松模様をcanvas全面へ描く。
+/// 透明部分を判別できる市松模様をcanvas全面へ描く。
 void DrawCheckerboard(ImDrawList* drawList, ImVec2 min, ImVec2 max)
 {
     constexpr float CELL = 16.0f;
@@ -59,7 +59,7 @@ void DrawCheckerboard(ImDrawList* drawList, ImVec2 min, ImVec2 max)
     }
 }
 
-// Sprite 設定変更後、同じ Texture を参照する UIImage の UV / 9-slice 再解決を要求する。
+/// Sprite 設定変更後、同じ Texture を参照する UIImage の UV / 9-slice 再解決を要求する。
 void InvalidateSpriteUsers(EditorContext& ctx, const std::string& editedTexturePath)
 {
     if (!ctx.activeScene) return;
@@ -68,7 +68,7 @@ void InvalidateSpriteUsers(EditorContext& ctx, const std::string& editedTextureP
     for (auto [image] : ctx.activeScene->View<scene::UIImage>()) {
         std::string texturePath;
         std::string spriteToken;
-        // 状態別スプライトで差し替え中なら、今描いている絵のほうを見る。
+        /// @note 状態別スプライトで差し替え中なら、今描いている絵のほうを見る。
         (void)asset::ParseSpriteReference(
             image.EffectiveTexturePath(), texturePath, spriteToken);
         const std::filesystem::path resolvedTexture = util::FileSystem::PathFromUtf8(
@@ -85,7 +85,7 @@ void InvalidateSpriteUsers(EditorContext& ctx, const std::string& editedTextureP
 
 } // namespace
 
-// 初回表示を Sprite Sheet 全体と右下プロパティを同時に扱える実用サイズで開く。
+/// 初回表示を Sprite Sheet 全体と右下プロパティを同時に扱える実用サイズで開く。
 void SpriteEditorPanel::OnBeforeBegin(EditorContext&)
 {
     if (m_initialSizeRequested) {
@@ -108,7 +108,7 @@ void SpriteEditorPanel::OnBeforeBegin(EditorContext&)
         { 760.0f, 520.0f }, { FLT_MAX, FLT_MAX });
 }
 
-// 指定metaを開き、未適用変更がある場合は意図しない破棄を防ぐ。
+/// 指定metaを開き、未適用変更がある場合は意図しない破棄を防ぐ。
 void SpriteEditorPanel::Open(const std::string& metaPath)
 {
     visible = true;
@@ -128,7 +128,7 @@ void SpriteEditorPanel::Open(const std::string& metaPath)
     LoadWorkingCopy();
 }
 
-// ディスク上のmetaを作業コピーへ読み込み、編集状態を初期化する。
+/// ディスク上のmetaを作業コピーへ読み込み、編集状態を初期化する。
 bool SpriteEditorPanel::LoadWorkingCopy()
 {
     m_working = {};
@@ -168,7 +168,7 @@ bool SpriteEditorPanel::LoadWorkingCopy()
     return true;
 }
 
-// 検証済み作業コピーだけをmetaへ保存する。
+/// 検証済み作業コピーだけをmetaへ保存する。
 bool SpriteEditorPanel::Apply(EditorContext& ctx)
 {
     asset::TextureAsset persisted = m_working;
@@ -177,7 +177,7 @@ bool SpriteEditorPanel::Apply(EditorContext& ctx)
         asset::SpriteRect& sprite = persisted.settings.sprites.front();
         if (sprite.x == 0 && sprite.y == 0
             && sprite.width == m_textureWidth && sprite.height == m_textureHeight) {
-            // Single の全面 Sprite は 0 サイズ表現へ戻し、元画像差し替え後も全面追従させる。
+            /// @note Single の全面 Sprite は 0 サイズ表現へ戻し、元画像差し替え後も全面追従させる。
             sprite.width = 0;
             sprite.height = 0;
         }
@@ -197,7 +197,7 @@ bool SpriteEditorPanel::Apply(EditorContext& ctx)
     return true;
 }
 
-// 未適用変更を破棄し、ディスク上のmetaへ戻す。
+/// 未適用変更を破棄し、ディスク上のmetaへ戻す。
 void SpriteEditorPanel::Revert()
 {
     m_pendingUndoSettings.erase(m_metaPath);
@@ -205,7 +205,7 @@ void SpriteEditorPanel::Revert()
     m_status = "Reverted.";
 }
 
-// 作業コピーの確定操作を Editor 全体の Undo/Redo 履歴へ積む。
+/// 作業コピーの確定操作を Editor 全体の Undo/Redo 履歴へ積む。
 void SpriteEditorPanel::PushUndoSnapshot(
     EditorContext& ctx, const asset::TextureImportSettings& before,
     const asset::TextureImportSettings& after, const std::string& description)
@@ -226,8 +226,8 @@ void SpriteEditorPanel::PushUndoSnapshot(
             return;
         }
 
-        // 別 Texture の履歴も失わず保持し、次に対象を開いた時に未適用作業コピーとして復元する。
-        // WHY: ディスクへ即時保存すると Inspector の未適用値を上書きするため、Apply までは分離する。
+        /// @note 別 Texture の履歴も失わず保持し、次に対象を開いた時に未適用作業コピーとして復元する。
+        ///       ディスクへ即時保存すると Inspector の未適用値を上書きするため、Apply までは分離する。
         m_pendingUndoSettings[targetMetaPath] = settings;
         m_status = "Undo/Redo changes queued for another Sprite asset.";
     };
@@ -237,7 +237,7 @@ void SpriteEditorPanel::PushUndoSnapshot(
         [applySettings, before]() { applySettings(before); }));
 }
 
-// Texture全体を指定行列で均等分割する。
+/// Texture全体を指定行列で均等分割する。
 void SpriteEditorPanel::SliceGrid(uint32_t textureWidth, uint32_t textureHeight)
 {
     spriteslice::GridParams params;
@@ -273,7 +273,7 @@ void SpriteEditorPanel::SliceGrid(uint32_t textureWidth, uint32_t textureHeight)
         + " Sprite rects.";
 }
 
-// Automatic Slice として、alpha が連結した島ごとに外接矩形を生成する。
+/// Automatic Slice として、alpha が連結した島ごとに外接矩形を生成する。
 void SpriteEditorPanel::AutoTrim(uint32_t textureWidth, uint32_t textureHeight)
 {
     spriteslice::AutoTrimParams params;
@@ -301,7 +301,7 @@ void SpriteEditorPanel::AutoTrim(uint32_t textureWidth, uint32_t textureHeight)
     (void)textureHeight;
 }
 
-// 選択中 SpriteRect を、その範囲内にある非透明ピクセルの外接矩形へ縮める。
+/// 選択中 SpriteRect を、その範囲内にある非透明ピクセルの外接矩形へ縮める。
 void SpriteEditorPanel::TrimSelected(uint32_t textureWidth, uint32_t textureHeight)
 {
     if (m_selected < 0
@@ -367,7 +367,7 @@ void SpriteEditorPanel::TrimSelected(uint32_t textureWidth, uint32_t textureHeig
     m_status = "Trimmed selected SpriteRect.";
 }
 
-// 名前・矩形範囲・9-slice Borderの保存可能性を検証する。
+/// 名前・矩形範囲・9-slice Borderの保存可能性を検証する。
 SpriteEditorPanel::ValidationResult SpriteEditorPanel::Validate(
     uint32_t textureWidth, uint32_t textureHeight) const
 {
@@ -412,8 +412,8 @@ void SpriteEditorPanel::RefreshReferrerCount(const EditorContext& ctx)
     m_referrerFileCount = 0;
     if (ctx.projectRoot.empty()) return;
 
-    // ID は .scene / .prefab / .mat のほか、スクリプトへ文字列で埋め込まれることもある
-    // (KeyIcons.hpp のような生成表)。テキストとして開けるものは全部見る。
+    /// @note ID は .scene / .prefab / .mat のほか、スクリプトへ文字列で埋め込まれることもある
+    ///       (KeyIcons.hpp のような生成表)。テキストとして開けるものは全部見る。
     static const std::vector<std::string> kTextExtensions = {
         ".scene", ".prefab", ".mat", ".animcontroller", ".vfx", ".sequence",
         ".fzdata", ".toml", ".json", ".hpp", ".cpp", ".terrain"
@@ -461,7 +461,7 @@ void SpriteEditorPanel::RenameAll(const std::string& prefix, int startIndex)
     m_status = "Renamed " + std::to_string(m_working.settings.sprites.size()) + " Sprites.";
 }
 
-// Unity と同様に、選択中 SpriteRect の情報をキャンバス右下の小パネルへ描画する。
+/// Unity と同様に、選択中 SpriteRect の情報をキャンバス右下の小パネルへ描画する。
 void SpriteEditorPanel::DrawSpriteRectInspector(
     uint32_t textureWidth, uint32_t textureHeight)
 {
@@ -570,7 +570,7 @@ void SpriteEditorPanel::DrawSpriteRectInspector(
     ImGui::EndChild();
 }
 
-// Texture canvasと直接操作ハンドルを描画し、mouse操作をSprite値へ反映する。
+/// Texture canvasと直接操作ハンドルを描画し、mouse操作をSprite値へ反映する。
 void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
                                    uint32_t textureWidth, uint32_t textureHeight)
 {
@@ -651,7 +651,7 @@ void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
                           toScreen(static_cast<float>(sprite.x) + width, static_cast<float>(sprite.y) + height) };
     };
 
-    // Unity と同様に Grid Slice の設定変更を確定前から Texture 上へプレビューする。
+    /// @note Unity と同様に Grid Slice の設定変更を確定前から Texture 上へプレビューする。
     if (m_slicePopupOpen && m_sliceType != SliceType::Automatic) {
         const int offsetX =
             std::clamp(m_sliceOffsetX, 0, static_cast<int>(textureWidth) - 1);
@@ -1009,7 +1009,7 @@ void SpriteEditorPanel::DrawCanvas(EditorContext& ctx, void* textureId,
     (void)ctx;
 }
 
-// toolbar、一覧、canvasをまとめて専用Sprite Editorウィンドウへ描画する。
+/// toolbar、一覧、canvasをまとめて専用Sprite Editorウィンドウへ描画する。
 void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
 {
     if (m_requestFocus) {
@@ -1045,7 +1045,7 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextColored({ 1.0f, 0.3f, 0.25f, 1.0f }, "Texture dimensions are invalid.");
         return;
     }
-    // width/height=0 はSingle Spriteの「Texture全体」表現なので、視覚編集用作業コピーだけ実寸へ展開する。
+    /// @note width/height=0 はSingle Spriteの「Texture全体」表現なので、視覚編集用作業コピーだけ実寸へ展開する。
     for (asset::SpriteRect& sprite : m_working.settings.sprites) {
         if (sprite.width == 0) sprite.width = textureWidth - std::min(sprite.x, textureWidth);
         if (sprite.height == 0) sprite.height = textureHeight - std::min(sprite.y, textureHeight);
@@ -1056,7 +1056,7 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S);
     bool revertedThisFrame = false;
 
-    // Unity Sprite Editor と同じ順序で、左に Sprite Rect 操作、右に表示・保存操作を置く。
+    /// @note Unity Sprite Editor と同じ順序で、左に Sprite Rect 操作、右に表示・保存操作を置く。
     bool openSlicePopup = false;
     ImGui::BeginChild(
         "##sprite_toolbar", { 0.0f, 38.0f }, false,
@@ -1137,7 +1137,7 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextDisabled("%s%d, %s%d, …",
                             m_renamePrefix, m_renameStartIndex,
                             m_renamePrefix, m_renameStartIndex + 1);
-        // ID は変えないので、既存の参照は名前を付け直しても切れない。
+        /// @note ID は変えないので、既存の参照は名前を付け直しても切れない。
         ImGui::TextDisabled("ID は変わりません (既存の参照はそのまま)");
         ImGui::Separator();
         if (ImGui::Button("Rename", { 100.0f, 0.0f })) {
@@ -1169,8 +1169,8 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::Combo("Method", &existingMode, kExistingModeNames, 3))
             m_sliceExistingMode = static_cast<SliceExistingMode>(existingMode);
 
-        // Delete Existing だけは既存の ID を全部捨てる。何が壊れるかをここで言う。
-        // Smart / Safe は重なりで ID を引き継ぐので、既存の参照は生き残る。
+        /// @note Delete Existing だけは既存の ID を全部捨てる。何が壊れるかをここで言う。
+        ///       Smart / Safe は重なりで ID を引き継ぐので、既存の参照は生き残る。
         if (m_sliceExistingMode == SliceExistingMode::DeleteExisting) {
             if (m_referrerCount > 0) {
                 ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f },

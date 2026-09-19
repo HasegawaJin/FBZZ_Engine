@@ -15,15 +15,13 @@
 
 namespace fbzz::renderer {
 
-// DirectX 12 バックエンドの公開境界。
-// WHAT: Phase 1 ではバックバッファ描画と同期を担当し、リソース描画は Phase 2 で追加する。
+/// @brief DirectX 12 バックエンドの公開境界。
+/// @note Phase 1 ではバックバッファ描画と同期を担当し、リソース描画は Phase 2 で追加する。
 class DX12Renderer final : public IRenderer {
 public:
-    // WHY: m_iblBaker が unique_ptr<DX12IblBaker>（本ヘッダーでは前方宣言のみ）を持つため、
-    //      デストラクターを明示的に out-of-line 化する。これがないと RendererFactory.cpp の
-    //      make_unique<DX12Renderer>() が不完全型 DX12IblBaker のデリーターをインスタンス化し、
-    //      "can't delete an incomplete type" (<memory> の static_assert) で失敗する。
-    //      定義は DX12IblBaker.hpp を include 済みの DX12Renderer.cpp 側に置く。
+    /// @note m_iblBaker は unique_ptr<DX12IblBaker> (前方宣言のみ) を持つため、デストラクターを
+    ///       out-of-line 化する。省くと `make_unique<DX12Renderer>()` が不完全型のデリーターを
+    ///       インスタンス化し "can't delete an incomplete type" で失敗する。定義は DX12Renderer.cpp。
     DX12Renderer();
     ~DX12Renderer() override;
 
@@ -50,8 +48,8 @@ public:
     bool BakeSkyLight(ResourceHandle<RenderTargetTag>, ResourceManager&, uint32_t, uint32_t,
                       uint32_t, uint32_t, std::unique_ptr<ITexture>&,
                       std::unique_ptr<ITexture>&) override;
-    // Editor の HDRI → DDS ベイクは DX12HdriBaker (IIblBaker 実装) を返す。
-    // WHY: BakeSkyLight (実行時畳み込み) とは別に、フレーム非依存で 4 DDS を焼く同期経路。
+    /// @brief Editor の HDRI → DDS ベイクは DX12HdriBaker (IIblBaker 実装) を返す。
+    /// @note BakeSkyLight (実行時畳み込み) とは別に、フレーム非依存で 4 DDS を焼く同期経路。
     std::unique_ptr<IIblBaker> CreateIblBaker() override;
     void GpuProfBeginFrame() override;
     void GpuProfEndFrame() override;
@@ -59,11 +57,11 @@ public:
     void GpuProfEndPass(const char* name) override;
     void GpuProfCollect() override;
     const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuResults; }
-    // AI 連携 (viewport.capture): Scene View RT を PNG バイト列へ読み戻す。
+    /// AI 連携 (viewport.capture): Scene View RT を PNG バイト列へ読み戻す。
     bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
                                   std::vector<uint8_t>& outPng,
                                   uint32_t& outWidth, uint32_t& outHeight) override;
-    // AI 連携 (vfx.previewMetrics): 同じ RT を HDR 線形値のまま数値評価用に読み戻す。
+    /// AI 連携 (vfx.previewMetrics): 同じ RT を HDR 線形値のまま数値評価用に読み戻す。
     bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
                                          std::vector<float>& outRgba,
                                          uint32_t& outWidth, uint32_t& outHeight) override;
@@ -80,6 +78,7 @@ private:
     std::unique_ptr<IShader> CreateNativeShader(const std::string&) override;
     std::unique_ptr<ITexture> CreateNativeTexture(const std::string&) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override;
+    std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(const TextureMipData*, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(IRenderTarget&, uint32_t, RenderTargetTextureKind) override;
     std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc&) override;
@@ -100,15 +99,21 @@ private:
     DX12UploadArena m_uploadArena;
     DX12PsoCache m_psoCache;
     DX12StateTracker m_stateTracker;
-    // 独立 Dispatch 群が書いた UAV を保持し、パス末尾の 1 回の ResourceBarrier へ集約する。
+    /// 独立 Dispatch 群が書いた UAV を保持し、パス末尾の 1 回の ResourceBarrier へ集約する。
     std::vector<ID3D12Resource*> m_computeBatchWrittenResources;
     bool m_computeBatchActive = false;
-    class DX12RenderTarget* m_currentRenderTarget = nullptr;
-    // 束縛中の RT のハンドル。生ポインタと二重に持つのは «消えたかどうか» を問えるようにするため。
-    // WHY: RT は描画の途中でも解放される (ビューポートのリサイズ、ViewRenderTargets の作り直し)。
-    //      解放されたものを次の SetRenderTarget が «前の RT» として触ると、破棄済みの
-    //      オブジェクトから GetColorResource を引いて、無関係な番地へバリアを積む。
+    /// @brief 束縛中の RT をハンドルから引き直す。
+    /// @return バックバッファ束縛中、または束縛した RT が解放済みなら nullptr。
+    /// @note 生ポインタを持たないのは、RT が描画の途中でも解放されるため
+    ///       (ビューポートのリサイズ、ViewRenderTargets の作り直し)。
+    [[nodiscard]] class DX12RenderTarget* ResolveCurrentRenderTarget(ResourceManager* resources) const;
+    /// @brief RT を束縛したのに、その RT が既に解放されているか。
+    /// @note 描き先の書式も RTV も失われているので、Clear / Submit は何もしない。
+    [[nodiscard]] bool IsCurrentRenderTargetLost(ResourceManager* resources) const;
+    void ReportLostRenderTarget(const char* where);
+    /// 束縛中の RT。無効ハンドルはバックバッファを表す。
     ResourceHandle<RenderTargetTag> m_currentRenderTargetHandle;
+    bool m_reportedLostRenderTarget = false;
     std::unique_ptr<class DX12IblBaker> m_iblBaker;
     D3D12_CPU_DESCRIPTOR_HANDLE m_currentCubeRtv{};
     uint32_t m_currentCubeFace = 0;
@@ -116,60 +121,39 @@ private:
     D3D12_VIEWPORT m_currentViewport{};
     D3D12_RECT m_currentScissor{};
     D3D12_GPU_VIRTUAL_ADDRESS m_nullConstantAddress = 0;
+    /// 全スロットを INVALID_BINDLESS_INDEX で埋めた添字ブロック。フレーム頭に 1 個だけ確保する。
+    /// @note アリーナ枯渇時に m_nullConstantAddress (ゼロ埋め) を差すと、添字 0 がヒープ先頭の
+    ///       有効なディスクリプタと解釈されてしまうため、専用に持つ。
+    D3D12_GPU_VIRTUAL_ADDRESS m_invalidBindlessAddress = 0;
 
-    // WHY: 連続する Draw が同じテクスチャ/バッファ集合を束縛する場合 (同一マテリアルのバッチ等)、
-    //      shader-visible リングへの CopyDescriptors を毎 Draw 発行するのは無駄。
-    //      束縛シグネチャをキーに GPU テーブルをキャッシュし、一致すればコピーを丸ごと省略する。
-    //      リングはフレームごとに巻き戻る (BeginFrame でオフセットリセット) ため、フレームを跨いだ
-    //      再利用は不可 — BeginFrame で必ず無効化する。
-    //
-    // WHY 直前 1 件ではなくフレーム内マップか: GBuffer のようにマテリアルが交互に来るパスでは
-    //      「直前と同じか」だけの判定はほぼ毎 Draw で外れ、32 回のディスクリプタコピーが
-    //      そのまま記録コストになる。フレーム内で同じ束縛が再登場したら必ず当たるようにする。
-    // テクスチャ 32 枠 + PS-readable StructuredBuffer 2 枠を (id,gen) へ畳んだ束縛シグネチャ。
-    // WHY タグ違いのハンドルを uint64 へ潰すか: textures は TextureTag、psBuffers は
-    //     StructuredBufferTag と型が違うため 1 本の配列に並べられない。
-    //     比較とハッシュにしか使わないので、identity をそのまま数値化する。
-    static constexpr size_t kPixelTableKeySize = 34;
-    using PixelTableKey = std::array<uint64_t, kPixelTableKeySize>;
-    static PixelTableKey MakePixelTableKey(const DrawCall& call);
-    struct PixelTableKeyHash {
-        size_t operator()(const PixelTableKey& key) const noexcept;
-    };
-    std::unordered_map<PixelTableKey, D3D12_GPU_DESCRIPTOR_HANDLE, PixelTableKeyHash> m_pixelTableCache;
-    // 直前 Draw の結果だけは別に持ち、マップ探索すら省く高速路にする。
-    PixelTableKey m_lastPixelTextures{};
-    D3D12_GPU_DESCRIPTOR_HANDLE m_lastPixelTableGpu{};
-    bool m_lastPixelTableValid = false;
-    std::array<ResourceHandle<StructuredBufferTag>, 3> m_lastVertexBuffers{};
-    D3D12_GPU_DESCRIPTOR_HANDLE m_lastVertexTableGpu{};
-    bool m_lastVertexTableValid = false;
+    /// @note かつてここに «ピクセル/頂点 SRV テーブルのフレーム内キャッシュ» があった。
+    ///       bindless 移行で 1 ドローあたりのディスクリプタコピーが無くなり、
+    ///       «同じ束縛なら再利用する» という最適化そのものが不要になったため撤去した。
+    ///       @see Docs/design/bindless.md
 
-    // 直前に root スロットへ束縛した CBV の GPU VA。変化したスロットだけ再設定するために持つ。
-    // WHY: 従来は毎 Draw「14 スロットを null で埋めてから実 CB で上書き」していて最大 28 回の
-    //      SetGraphicsRootConstantBufferView が出ていた。GBuffer では実際に変わるのは
-    //      Object CB と Material CB だけなので、差分だけ出せば 2〜3 回で済む。
-    // NOTE: グラフィクスとコンピュートで root signature が別物のため、Dispatch を挟んだら
-    //       必ず無効化する (InvalidateRootCbvCache)。
+    /// 直前に root スロットへ束縛した CBV の GPU VA。変化したスロットだけ再設定するために持つ。
+    /// @note 毎 Draw 全 14 スロットを null 埋め→実 CB で上書きすると最大 28 回の
+    ///       SetGraphicsRootConstantBufferView が出るため、差分だけ設定してコストを落とす。
+    /// @note グラフィクスとコンピュートは root signature が別物のため、Dispatch を挟んだら
+    ///       必ず無効化する (InvalidateRootCbvCache)。
     std::array<D3D12_GPU_VIRTUAL_ADDRESS, 14> m_lastRootCbv{};
     bool m_rootCbvCacheValid = false;
 
-    // 冗長なパイプライン状態設定を弾くための直前値。
-    // NOTE: m_lastGraphicsRootSignature は「正しさ」のために必要 (ルートシグネチャの再設定は
-    //       全ルート引数を無効化するため、m_lastRootCbv の前提が崩れる)。
-    //       他の 2 つは記録コスト削減のみが目的。
+    /// 冗長なパイプライン状態設定を弾くための直前値。
+    /// @note m_lastGraphicsRootSignature は正しさのために必要 (再設定は全ルート引数を無効化し、
+    ///       m_lastRootCbv の前提が崩れるため)。他の 2 つは記録コスト削減のみが目的。
     ID3D12RootSignature* m_lastGraphicsRootSignature = nullptr;
     ID3D12PipelineState* m_lastPipelineState = nullptr;
     ID3D12DescriptorHeap* m_lastDescriptorHeap = nullptr;
-    // 共有コマンドリストへ他所が記録したことを検知するための世代 (DX12Context 側が上げる)。
+    /// 共有コマンドリストへ他所が記録したことを検知するための世代 (DX12Context 側が上げる)。
     uint64_t m_seenPipelineStateGeneration = 0;
 
-    // Compute へ切り替えるとグラフィクス側のルート束縛は当てにできなくなる。
-    // Dispatch / BeginFrame / コマンドリスト再取得のたびに呼ぶこと。
+    /// Compute へ切り替えるとグラフィクス側のルート束縛は当てにできなくなる。
+    /// Dispatch / BeginFrame / コマンドリスト再取得のたびに呼ぶこと。
     void InvalidateRootCbvCache();
 
-    // 頂点バッファ実ストライドとリフレクション推定ストライドの不一致を
-    // シェーダーごとに一度だけ警告するための記録。
+    /// 頂点バッファ実ストライドとリフレクション推定ストライドの不一致を
+    /// シェーダーごとに一度だけ警告するための記録。
     std::unordered_set<const void*> m_strideWarned;
     bool m_reportedMissingDrawResource = false;
 

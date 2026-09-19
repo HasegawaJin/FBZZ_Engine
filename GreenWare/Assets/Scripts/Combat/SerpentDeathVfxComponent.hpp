@@ -3,27 +3,18 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
 ///
-/// WHY ボス 1 の BossDeathVfxComponent を使い回さないか:
-///   あちらは «四足の体のあちこちを跨ぐ» ための固定のボーン名表 (Head / Thigh_BL /
-///   Hock_FR …) が演出そのもので、順序を «散らす» ことに意味がある。蛇は 1 本の鎖で、
-///   散らすと «どこで何が起きたか» が読めない ─ 逆に **頭から尾へ順に走らせる**ことが
-///   «長いものが端から死んでいく» の読みになる。共有できるのは減衰の式だけ
-///   (shock::NearnessTo を両方が使う)。
-///
-/// WHY 床下の節では爆ぜないか:
-///   撃破の瞬間、24 m のうち地上に出ているのは 11 m ほどで、残りは縦坑の中にいる。
-///   そこで爆ぜても画面には何も出ず、«間が空いた» としか見えない。走らせるのは
-///   «見えている胴» の上だけにして、間隔はその長さから割る。
-///
-/// WHY 決定打を頭に置くか:
-///   終盤まで頭は床下にいて触れず、«頭を斬りたい» だけが動機として置かれている
-///   (boss-serpent.md「撃破までの形」)。最後の 1 発が頭で起きれば、その動機に
-///   決着が付く。
-///
-/// WHY ここで体を溶かさないか:
-///   ディゾルブと粒は EnemyDeathVfxComponent が持つ (雑魚もボス 1 も同じ口)。
-///   こちらは «決定打までの 1.4 秒» だけを受け持ち、あちらの Body Dissolve > Delay と
-///   同じ秒数で終わる ─ 崩れ始めが決定打に重なる。
+/// @note ボス 1 の BossDeathVfxComponent は流用しない。あちらは «四足の体のあちこちを
+///       跨ぐ» ための固定ボーン名表で順序を散らすことに意味があるが、蛇は 1 本の鎖で
+///       散らすと «どこで何が» が読めない。逆に頭から尾へ順に走らせることが «長いもの
+///       が端から死んでいく» の読みになる (共有は `shock::NearnessTo` の減衰式のみ)。
+/// @note 床下の節では爆ぜない。撃破の瞬間、地上に出ているのは 24 m 中 11 m ほどで、
+///       残りは縦坑の中 ─ 爆ぜても «間が空いた» としか見えない。見えている胴の上だけ
+///       走らせ、間隔はその長さから割る。
+/// @note 決定打は頭に置く。頭は終盤まで床下にいて触れず «頭を斬りたい» だけが動機
+///       として置かれている (boss-serpent.md「撃破までの形」)。最後の 1 発で決着させる。
+/// @note 体はここで溶かさない。ディゾルブと粒は `EnemyDeathVfxComponent` が持ち
+///       (雑魚もボス 1 も同じ口)、こちらは決定打までの `buildupSeconds` だけを受け持つ
+///       ─ あちらの Body Dissolve > Delay と同じ秒数にして崩れ始めと決定打を重ねる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -114,10 +105,9 @@ private:
 
     /// 1 発。heavy なら爆発 (光と陽炎を持つ)、そうでなければ軽い破片だけ。
     ///
-    /// WHY 全部を爆発にしないか: 1 発は焦げ跡まで含めて 4 秒あるので、1.4 秒に
-    ///     10 発置くと常時 7〜8 発が生きている。爆発は陽炎の層を持ち、歪む
-    ///     エミッター 1 つにつき全画面コピーが 1 回走る ─ 絵としても «端から
-    ///     死んでいく» が白い帯に潰れる。要所だけ爆発にして、間は破片で繋ぐ。
+    /// @note 全部を爆発にしない。1 発は焦げ跡まで含めて 4 秒あるので、1.4 秒に 10 発
+    ///       置くと常時 7〜8 発が生きる。爆発は陽炎の層を持ち歪むエミッター 1 つにつき
+    ///       全画面コピーが 1 回走るため、要所だけ爆発にして間は破片で繋ぐ。
     void Blast(const Vector3& point, float strength01, float volume, const se::Bank& bank,
                bool heavy) const;
     /// index 番目 (0 = 頭側) の爆発を置く点。
@@ -141,12 +131,13 @@ inline int SerpentDeathVfxComponent::NearestLiveSegment(int headIndex) const
 
     const int from = std::clamp(headIndex, 1, serpent::kSegmentCount);
 
-    // 指した節が床下や潰れた節だったら、そこから尾側へ探す。見つからなければ頭側へ。
+    /// @note 指した節が床下や潰れた節だったら、そこから尾側へ探す。見つからなければ頭側へ。
     for (int i = from; i <= serpent::kSegmentCount; ++i)
         if ((!body || body->IsAlive(i)) && spine->IsExposed(i)) return i;
     for (int i = from; i >= 1; --i)
         if ((!body || body->IsAlive(i)) && spine->IsExposed(i)) return i;
-    return 0;   // 頭。地上に 1 節も無いときの最後の拠り所
+    /// @note 頭。地上に 1 節も無いときの最後の拠り所
+    return 0;
 }
 
 inline Vector3 SerpentDeathVfxComponent::BlastPoint(int index) const
@@ -154,13 +145,13 @@ inline Vector3 SerpentDeathVfxComponent::BlastPoint(int index) const
     const auto* spine = Spine();
     if (!spine) return transform.worldPosition;
 
-    // 頭から尾へ等間隔。節の «番号» で割るので、折られて短くなった胴でも端まで届く。
+    /// @note 頭から尾へ等間隔。節の «番号» で割るので、折られて短くなった胴でも端まで届く。
     const int count = Max(blastCount, 1);
     const int seg   = 1 + (index * (serpent::kSegmentCount - 1)) / Max(count - 1, 1);
 
     Vector3 point = spine->JointPosition(NearestLiveSegment(seg));
 
-    // 黄金角で散らす。番号から一意に決まるので、同じ撃破は何度見ても同じ形になる。
+    /// @note 黄金角で散らす。番号から一意に決まるので、同じ撃破は何度見ても同じ形になる。
     const float angle  = static_cast<float>(index) * 2.39996323f;
     const float radius = Max(blastSpread, 0.0f);
     point.x += std::cos(angle) * radius;
@@ -177,13 +168,13 @@ inline void SerpentDeathVfxComponent::Blast(const Vector3& point, float strength
 
     if (auto* vfx = VfxManagerComponent::Instance()) {
         if (heavy) vfx->PlayImpact(point, BladeSide::None, strength, /*againstAnchor=*/false);
-        // 破片は «そこも爆ぜた» だけを言う。光も陽炎も持たないので何発重ねても軽い。
+        /// @note 破片は «そこも爆ぜた» だけを言う。光も陽炎も持たないので何発重ねても軽い。
         else       vfx->PlaySerpentGeyser(point, strength, 0.6f + 0.7f * strength);
     }
     se::PlayAt(audio, bank, point, volume);
 
-    // 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
-    // 震える距離ができて «どこで起きたか» の答えが 2 つになる。
+    /// @note 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
+    ///       震える距離ができて «どこで起きたか» の答えが 2 つになる。
     const float nearness = shock::NearnessTo(Player(), point, Max(feedbackRange, 1.0f),
                                              Max(feedbackNear, 0.0f));
     if (nearness <= 0.0f) return;
@@ -211,9 +202,9 @@ inline void SerpentDeathVfxComponent::OnUpdate()
 {
     if (!m_running) return;
 
-    // WHY 実時間ではなくスケール時間か: 決定打はディゾルブが始まる瞬間と重なっていないと
-    //     «崩れ始めたのに何も起きない» が出る。EnemyDeathVfxComponent が Time::deltaTime で
-    //     数えている以上、こちらだけ実時間で数えるとヒットストップのぶんだけずれる。
+    /// @note 実時間でなくスケール時間で数える。決定打はディゾルブが始まる瞬間と重ならないと
+    ///       «崩れ始めたのに何も起きない» が出る。`EnemyDeathVfxComponent` が
+    ///       `Time::deltaTime` で数えている以上、実時間にするとヒットストップぶんずれる。
     m_elapsed += Time::deltaTime;
 
     const int   count   = Max(blastCount, 0);
@@ -223,18 +214,15 @@ inline void SerpentDeathVfxComponent::OnUpdate()
         const float t = count > 1
             ? static_cast<float>(m_next) / static_cast<float>(count - 1) : 1.0f;
 
-        // 頭側を速く、尾側を遅く。
-        //
-        // WHY 等間隔をやめたか: 強さの傾斜 (0.30 → 0.70) だけでは «10 発が等間隔で
-        //     鳴った» としか見えず、«長いものが端から死んでいく» にならない。
-        //     時間の方を曲げると、頭のあたりで一気に走って尾で溜める形になり、
-        //     最後の頭の決定打 (Climax) までの «間» もそこで作れる。
+        /// @note 頭側を速く、尾側を遅く。等間隔だと強さの傾斜 (0.30 → 0.70) だけでは
+        ///       «10 発が等間隔で鳴った» としか見えない。時間を曲げると頭側で一気に
+        ///       走って尾で溜める形になり、頭の決定打までの «間» もそこで作れる。
         const float shape = std::pow(t, Max(blastBias, 0.5f));
         const float at    = buildup * (shape * static_cast<float>(count) + 0.5f)
                           / static_cast<float>(count + 1);
         if (m_elapsed < at) break;
 
-        // 要所だけ «爆発»。全部を爆発にすると同時に生きる陽炎が 7〜8 枚になる。
+        /// @note 要所だけ «爆発»。全部を爆発にすると同時に生きる陽炎が 7〜8 枚になる。
         const int  every = Max(heavyEvery, 1);
         const bool heavy = (m_next % every) == 0 || m_next == count - 1;
         Blast(BlastPoint(m_next), Lerp(blastStrengthStart, blastStrengthEnd, t), blastVolume,
@@ -245,7 +233,7 @@ inline void SerpentDeathVfxComponent::OnUpdate()
 
     if (m_climaxed || m_elapsed < buildup) return;
 
-    // 決定打は頭。ここからディゾルブが体を食い始める。
+    /// @note 決定打は頭。ここからディゾルブが体を食い始める。
     m_climaxed = true;
     debugStage = "Head Detonation";
 
@@ -254,9 +242,9 @@ inline void SerpentDeathVfxComponent::OnUpdate()
     Blast(head, climaxStrength, climaxVolume, se::kSerpentDestroy, /*heavy=*/true);
     ++debugBlastsFired;
 
-    // WHY 白いフラッシュではなくサージか: 画面を塗る白は «こちらが受けた» を表す語で、
-    //     倒した瞬間に出すと被弾と読み違える。縁だけを灼く色付きの一撃なら、
-    //     盤面の中央で起きたことを隠さずに済む。
+    /// @note 白いフラッシュでなくサージにする。画面を塗る白は «こちらが受けた» を表す語で、
+    ///       倒した瞬間に出すと被弾と読み違える。縁だけを灼く色付きの一撃なら、盤面の
+    ///       中央で起きたことを隠さずに済む。
     if (climaxSurgeSeconds > 0.0f) {
         if (auto* screen = ScreenEffectManagerComponent::Instance())
             screen->Surge(climaxSurgeColor, Clamp01(climaxStrength), climaxSurgeSeconds);

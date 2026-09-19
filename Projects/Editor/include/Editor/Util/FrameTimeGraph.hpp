@@ -3,9 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 ///
-/// WHY: ビューポートの Stats HUD と Analysis > Rendering が同じ「今フレームが
-///      予算に収まっているか」を見せる。履歴を表示側それぞれに持たせると、
-///      どちらを開いていたかでグラフの中身が変わってしまうため 1 本に統一する。
+/// @note ビューポートの Stats HUD と Analysis > Rendering が同じ表示を見せる。履歴を
+///       表示側それぞれに持たせると、どちらを開いていたかでグラフの中身が変わってしまう。
 #pragma once
 #include <imgui.h>
 

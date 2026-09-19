@@ -1,0 +1,17 @@
+version = 1
+name = 'DecalStandard'
+shader = 'Assets/Shaders/Material/Decal/Decal.hlsl'
+render_path = 'decal'
+blend_mode = 'AlphaBlend'
+double_sided = true
+render_queue = 3000
+
+[textures]
+
+[params]
+albedoTint = [ 1.0, 1.0, 1.0, 1.0 ]
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.0
+uvTiling = [ 1.0, 1.0 ]
+uvOffset = [ 0.0, 0.0 ]
+normalStrength = 1.0

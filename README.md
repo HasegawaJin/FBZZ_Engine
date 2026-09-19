@@ -1,14 +1,14 @@
 # FBZZ Engine
 
 **C++20 で書いている自作 3D ゲームエンジン (Windows)。**
-数学と物理をゼロから実装し、レンダラーを `IRenderer` 抽象の裏に隠して **DirectX 11 / DirectX 12 の 2 バックエンド**を同居させている。RenderGraph ベースの Deferred + Forward ハイブリッド、クラスタードライティング、スクリプト DLL のホットリロード、ノードベースのアニメーショングラフ、NavMesh、地形・水面・天候、VFX / 流体オーサリング、37 パネルの ImGui エディター、そして MCP 経由の AI 連携までを 1 つのリポジトリに収めている。
+数学と物理をゼロから実装し、レンダラーを `IRenderer` 抽象の裏に隠している。**DirectX 11 / 12 の 2 バックエンドを同居させた上で、DX11 を v1.0 で撤去した** — 上位レイヤーを 1 行も変えずにバックエンドを 1 つ落とせたことが、この境界が機能している証拠になっている ([設計文書](Docs/design/dx11-removal.md))。RenderGraph ベースの Deferred + Forward ハイブリッド、クラスタードライティング、スクリプト DLL のホットリロード、ノードベースのアニメーショングラフ、NavMesh、地形・水面・天候、VFX / 流体オーサリング、37 パネルの ImGui エディター、そして MCP 経由の AI 連携までを 1 つのリポジトリに収めている。
 
 エンジンだけでは「動くもの」にならないので、**サンプルゲーム 2 本**を同梱している。エディター既定プロジェクトの TPS サンプルと、エンジンの全機能を使って制作中の剣戟アクション **GreenWare**。
 
 | | |
 |---|---|
 | 言語 / 規格 | C++20 (一部 TypeScript / HLSL / PowerShell) |
-| プラットフォーム | Windows 10 / 11・DirectX 11 / DirectX 12 |
+| プラットフォーム | Windows 10 / 11・DirectX 12 (SM 6.x) |
 | 名前空間 | `fbzz::` (`math` / `physics` / `renderer` / `scene` / `editor`) |
 | 依存方向 | `Editor / GameHub / Sandbox / GreenWare → Engine → Physics → Math` |
 | 外部数学・物理ライブラリ | **不使用** (GLM / GLFW / Bullet / PhysX / Box2D いずれも不採用) |
@@ -74,9 +74,9 @@ Vector2/3/4・Matrix3/4・Quaternion・Ray・Segment・Frustum・Plane を GLM �
 
 ### 2. バックエンドは上位から見えない
 
-`IRenderer` / `IBuffer` / `ITexture` / `IShader` / `IPipelineState` のインターフェース層 (`FBZZRHI`) があり、DX11 / DX12 の実装はそれぞれ別の OBJECT ライブラリに閉じる。**DX ヘッダーは各バックエンドの PRIVATE include にしか無く**、バックエンドが外へ出すのは `BackendEntry.hpp` の生成関数 1 つだけ。これを CMake が強制していて、`DX11Renderer*` へダウンキャストしようとしても include が通らない。
+`IRenderer` / `IBuffer` / `ITexture` / `IShader` / `IPipelineState` のインターフェース層 (`FBZZRHI`) があり、バックエンド実装は別の OBJECT ライブラリに閉じる。**DX ヘッダーは各バックエンドの PRIVATE include にしか無く**、バックエンドが外へ出すのは `BackendEntry.hpp` の生成関数 1 つだけ。これを CMake が強制していて、`DX12Renderer*` へダウンキャストしようとしても include が通らない。
 
-DX12 が既定 (`ProjectSettings::rendererBackend = DX12`)。DX11 はフォールバックとして全パスを維持している。
+DX12 が唯一のバックエンド (`ProjectSettings::rendererBackend = DX12`)。DirectX 11 サポートは v1.0 で終了し、`v0.9` が DX11 を含む最後のリリースになる。`renderer = "dx11"` が残った設定ファイルは起動を止めずに DX12 へ倒し、倒したことを警告で名指しする。
 
 ### 3. リフレクションはヘッダーに閉じる
 
@@ -140,7 +140,7 @@ FBZZ_Engine/
 ```mermaid
 graph LR
     subgraph サードパーティ
-        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 11 / DirectX 12"]
+        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 12 / DXC"]
     end
 
     subgraph コアライブラリ
@@ -176,12 +176,12 @@ graph LR
 `FBZZEngine.dll` は 1 本だが、内部は 5 つの OBJECT ライブラリへ割り、依存の向きを CMake で固定している。
 
 ```
-FBZZCore → FBZZRHI → FBZZRenderPlatform → FBZZRenderDX11 / FBZZRenderDX12 → FBZZEngine
+FBZZCore → FBZZRHI → FBZZRenderPlatform → FBZZRenderDX12 → FBZZEngine
 ```
 
 - **OBJECT であって STATIC ではない** — `__declspec(dllexport)` を持つ翻訳単位を STATIC に畳むと、リンカーがエクスポートを落とす
 - **どのモジュールにも属さないソースが出ると configure 時に落ちる** — 新しい `.cpp` を黙って取りこぼさないため
-- DX12 バックエンドは `FBZZ_ENABLE_DX12` (既定 ON) で切り離せる
+- `FBZZ_ENABLE_DX12` (既定 ON) を OFF にすると描画バックエンドを持たない構成になる (カバレッジ計測専用)
 
 ### コアエンジン
 
@@ -327,7 +327,7 @@ graph LR
 
 ### シェーダー (HLSL)
 
-`Assets/Shaders/` 以下をカテゴリで分けて置く。エディターと CMake が自動収集し、`compile_shaders.ps1` が **include 依存を含む差分だけ**をコンパイルする (DX11 は FXC、DX12 は DXC)。
+`Assets/Shaders/` 以下をカテゴリで分けて置く。エディターと CMake が自動収集し、`compile_shaders.ps1` が **include 依存を含む差分だけ**を DXC でコンパイルする (SM 6.8 / DXIL)。
 
 | カテゴリ | 内容 |
 |---|---|
@@ -341,7 +341,7 @@ graph LR
 | `Bake/` | Fluid ソルバー / VolumeFlipbook ベイク (CS) |
 | `Motion/` `Terrain/` `Water/` `UI/` `Debug/` | 速度・地形・水面・UI・デバッグ表示 |
 | `Rendering/` `Common/` | `BRDF` / `Lighting` / `ClusteredLights` / `Shadow` / `IBL` / `Atmosphere` / `Cloud` / `Fog` / `ToneMap` / `ParticleCommon` などの共通 `.hlsli` |
-| `Platform/` | `DX11.hlsli` / `DX12.hlsli` — バックエンド差を吸収する薄い層 |
+| `Platform/` | `Backend.hlsli` / `DX12.hlsli` — バックエンド機能フラグを 1 か所へ集約する薄い層 |
 
 ---
 
@@ -528,7 +528,7 @@ DLL 境界を越えてエンジン実装型へ直接依存しないためのプ�
 | `ImportCacheStore` | 指紋による差分インポート (起動のたびに焼き直さない) |
 | `Library/Baked` | ベイク済みバイナリの隔離置き場。ソースアセットと混ざらない |
 
-**独自フォーマット**: `.fzasset` (汎用バイナリ) / `.mesh` / `.scene` / `.prefab` / `.mat` / `.tex` / `.terrain` / `.animcontroller` / `.anim` / `.skel` / `.mask` / `.physmat` / `.sequence` / `.synth` / `.fluid` / `.vfield` / `.curve` / `.gradient` / `.ibl` / `.fzdata`
+**独自フォーマット**: `.fzasset` (汎用バイナリ) / `.mesh` / `.scene` / `.prefab` / `.mat` / `.tex` / `.terrain` / `.animcontroller` / `.anim` / `.skel` / `.mask` / `.physmat` / `.sequence` / `.synth` / `.fluid` / `速度場 PNG` / `.curve` / `.gradient` / `.ibl` / `.fzdata`
 
 FBX をドラッグ & ドロップすると自動インポートし、`.mat` をドロップしてマテリアルを差し替え、Collider を自動フィットできる。
 
@@ -575,7 +575,7 @@ FBX をドラッグ & ドロップすると自動インポートし、`.mat` を
 | 見た目の分離 | 発光・6-way ライティング・フリップブック・歪みなどの表現は `.mat` の `[particle]` が正本 (34 項目) |
 | ライティング | セルフシャドウ・点光源の自動選択・6-way マップ |
 | 力場 | `ForceField` に統一 (風・渦・引力)。`channels` マスクで効く相手を選ぶ |
-| 速度場 (`.vfield`) | 32³ タイルの速度場を Texture3D として供給 |
+| 速度場 (`速度場 PNG`) | 32³ タイルの速度場を Texture3D として供給 |
 | ビーム / ライン | `VFXBeamComponent` / `VFXLineComponent`。雷や斬撃を純関数で形作り、VS でカメラへ向ける |
 | トレイル | `TrailComponent` (帯) / `MeshTrailComponent` (メッシュ残像) |
 | 流体ベイク (`.fluid`) | 気体は格子ソルバー、液体は PBF。GPU ソルバーの結果をフリップブック / ボリュームへ焼く |
@@ -707,7 +707,7 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 | 規模 | スクリプト 145 ファイル・シーン 8 本 |
 | 独立性 | `Assets/` `Src/` `ProjectSettings/` を持つ独立プロジェクト。設計文書は [`GreenWare/Assets/Docs/`](GreenWare/Assets/Docs/) |
 
-プレイヤーモデル (MiniBot C) は Blender で自作し、`Tools/BlenderExport/` のスクリプトで LOD 3 段・54 骨・22 クリップを書き出している。
+プレイヤーモデル (MiniBot C) は Blender で自作し、`GreenWare/Tools/BlenderExport/` のスクリプトで LOD 3 段・54 骨・22 クリップを書き出している。
 
 ---
 
@@ -720,7 +720,7 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 | OS | Windows 10 / 11 |
 | Visual Studio | 2022 以降 (C++20 対応) |
 | CMake | 3.20 以上 |
-| Windows SDK | DirectX 11 / 12 同梱版 |
+| Windows SDK | DirectX 12 / DXC 同梱版 |
 | Node.js | GameHub / EditorMcp をビルドする場合のみ |
 
 ### 手順
@@ -809,10 +809,10 @@ ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
 
 | | 計測 | 網羅基準 | ツールチェーン |
 |---|---|---|---|
-| **C0** | `Tools\RunCoverage.ps1` | 命令網羅 | MSVC + OpenCppCoverage |
-| **C1 / C2** | `Tools\RunCoverageLLVM.ps1` | 分岐・条件網羅 + MC/DC | clang-cl + llvm-cov |
+| **C0** | `Tools\Coverage\RunCoverage.ps1` | 命令網羅 | MSVC + OpenCppCoverage |
+| **C1 / C2** | `Tools\Coverage\RunCoverageLLVM.ps1` | 分岐・条件網羅 + MC/DC | clang-cl + llvm-cov |
 
-計測対象はどちらも `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。両者の分母を揃えてあるので、C0 と C1 の数字はそのまま並べて読める。
+計測対象はどちらも `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` (OS 層の `Core/Platform` を除く) に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。両者の分母を揃えてあるので、C0 と C1 の数字はそのまま並べて読める。
 
 #### C0 — 行カバレッジ (CI が回すのはこちら)
 
@@ -820,7 +820,7 @@ ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
 winget install OpenCppCoverage.OpenCppCoverage
 dotnet tool install -g dotnet-reportgenerator-globaltool   # HTML / バッジ / lcov 用 (任意)
 
-.\Tools\RunCoverage.ps1
+.\Tools\Coverage\RunCoverage.ps1
 ```
 
 | 出力 | 中身 |
@@ -837,7 +837,7 @@ MSVC には分岐を数える機構が無いため、こちらだけ clang-cl �
 
 ```powershell
 # VS Code タスク "Coverage: Build (clang-cl)" でビルドしてから
-.\Tools\RunCoverageLLVM.ps1
+.\Tools\Coverage\RunCoverageLLVM.ps1
 ```
 
 clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、`branch` は判定単位 (C1) だけでなく条件単位 (C2) まで数えている。`mcdc` はさらに厳しく、「各条件が単独で結果を変える組み合わせを通ったか」を見る。
@@ -879,8 +879,8 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 
 | ライブラリ | 用途 |
 |---|---|
-| DirectX 11 / DirectX 12 SDK | レンダリング API |
-| DXC / FXC | シェーダーコンパイラー (DX12 / DX11) |
+| DirectX 12 SDK | レンダリング API |
+| DXC | シェーダーコンパイラー (SM 6.8 / DXIL) |
 | Microsoft::WRL (ComPtr) | COM リソース RAII |
 | XAudio2 | 3D オーディオ |
 | Assimp | FBX / OBJ メッシュ・スケルタルデータ読み込み |

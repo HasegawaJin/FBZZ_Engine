@@ -12,8 +12,8 @@
 
 namespace fbzz::core {
 
-// 同じサイズのブロックだけを扱う高速アロケータ。
-// WHY: 汎用ヒープより用途を狭める代わりに、空きリスト 1 本で O(1) の Allocate/Free を実現する。
+/// @brief 同じサイズのブロックだけを扱う高速アロケータ。
+/// @note 汎用ヒープより用途を狭める代わりに、空きリスト 1 本で O(1) の Allocate/Free を実現する。
 class PoolAllocator final : public Allocator {
 public:
     PoolAllocator() = default;

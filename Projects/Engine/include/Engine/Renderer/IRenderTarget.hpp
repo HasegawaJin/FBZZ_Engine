@@ -18,8 +18,8 @@ namespace fbzz::renderer {
         virtual uint32_t GetHeight()     const = 0;
         virtual uint32_t GetColorCount() const = 0;
 
-        // ImGui Viewport 表示用ネイティブテクスチャハンドル
-        // DX11 は ID3D11ShaderResourceView*、DX12 は GPU descriptor handle を uint64_t として扱う
+        /// ImGui Viewport 表示用ネイティブテクスチャハンドル
+        /// DX12 は GPU descriptor handle を uint64_t として扱う
         virtual void* GetNativeSRV(int slot = 0) const = 0;
     };
 

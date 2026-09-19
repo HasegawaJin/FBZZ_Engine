@@ -31,7 +31,7 @@ scene::ParticleCurve Ramp()
 
 class TrailMultiKeyTest : public testkit::EngineFixture {};
 
-// --- 瞬間移動の切断 ---------------------------------------------------------
+/// @name 瞬間移動の切断
 
 TEST_F(TrailMultiKeyTest, NeverBreaksWithTheDefaultThreshold)
 {
@@ -56,11 +56,11 @@ TEST_F(TrailMultiKeyTest, MeasuresTheJumpInThreeDimensions)
     scene::TrailComponent trail;
     trail.breakDistance = 1.0f;
 
-    // 各軸 0.6 は 1 軸だけ見れば閾値の内側だが、長さは 1.04 で外側。
+    /// @note 各軸 0.6 は 1 軸だけ見れば閾値の内側だが、長さは 1.04 で外側。
     EXPECT_TRUE(scene::TrailIsDiscontinuous(trail, { 0.0f, 0.0f, 0.0f }, { 0.6f, 0.6f, 0.6f }));
 }
 
-// --- 多キーの幅 -------------------------------------------------------------
+/// @name 多キーの幅
 
 TEST_F(TrailMultiKeyTest, FallsBackToTheTwoEndpointsByDefault)
 {
@@ -70,7 +70,7 @@ TEST_F(TrailMultiKeyTest, FallsBackToTheTwoEndpointsByDefault)
 
     ASSERT_FALSE(trail.widthCurveEnabled);
     ASSERT_FALSE(scene::TrailUsesWidthCurve(trail));
-    // age=1 (最新の点) が widthStart、age=0 (最古) が widthEnd。
+    /// @note age=1 (最新の点) が widthStart、age=0 (最古) が widthEnd。
     EXPECT_NEAR(scene::TrailWidthAt(trail, 1.0f, 1.0f), 0.20f, testkit::kTolerance);
     EXPECT_NEAR(scene::TrailWidthAt(trail, 0.0f, 0.0f), 0.02f, testkit::kTolerance);
     EXPECT_NEAR(scene::TrailWidthAt(trail, 0.5f, 0.5f), 0.11f, testkit::kTolerance);
@@ -92,7 +92,8 @@ TEST_F(TrailMultiKeyTest, ScalesTheCurveByWidthStart)
 {
     scene::TrailComponent trail;
     trail.widthStart = 0.40f;
-    trail.widthEnd   = 0.02f; // カーブが有効な間は使われない
+    /// @note カーブが有効な間は使われない
+    trail.widthEnd   = 0.02f;
     trail.widthCurveEnabled = true;
     trail.widthCurve = Ramp();
 
@@ -109,12 +110,12 @@ TEST_F(TrailMultiKeyTest, IgnoresTheEasedAgeWhileTheCurveIsUsed)
     trail.widthCurveEnabled = true;
     trail.widthCurve = Ramp();
 
-    // イージングを二重に掛けると «カーブどおりの形» にならない。
+    /// @note イージングを二重に掛けると «カーブどおりの形» にならない。
     EXPECT_NEAR(scene::TrailWidthAt(trail, 0.25f, 0.9f),
                 scene::TrailWidthAt(trail, 0.25f, 0.1f), testkit::kTolerance);
 }
 
-// --- 多キーの色 -------------------------------------------------------------
+/// @name 多キーの色
 
 TEST_F(TrailMultiKeyTest, LeavesTheColorGradientOffByDefault)
 {
@@ -135,13 +136,13 @@ TEST_F(TrailMultiKeyTest, NeedsTwoKeysBeforeTheGradientTakesOver)
     EXPECT_TRUE(scene::TrailUsesColorGradient(trail));
 }
 
-// --- 画面効果の既定 ---------------------------------------------------------
+/// @name 画面効果の既定
 
 TEST_F(TrailMultiKeyTest, LeavesTheShockRingDisabledByDefault)
 {
     const renderer::PostProcessSettings settings;
 
-    // 振幅 0 でシェーダー側が素通しする。半径や幅が入っていても絵は変わらない。
+    /// @note 振幅 0 でシェーダー側が素通しする。半径や幅が入っていても絵は変わらない。
     EXPECT_EQ(settings.lens.shockRingAmplitude, 0.0f);
     EXPECT_EQ(settings.exposure, 1.0f);
     EXPECT_EQ(settings.colorGrading.contrast, 0.0f);

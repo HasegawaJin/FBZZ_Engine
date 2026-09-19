@@ -36,11 +36,11 @@ constexpr int kTileSizes[] = { 128, 256, 512 };
 constexpr float kPreviewSides[] = { 256.0f, 384.0f, 512.0f };
 constexpr ImU32 kWarningColor = IM_COL32(255, 80, 60, 255);
 constexpr ImU32 kLightColor = IM_COL32(255, 214, 90, 255);
-// 一発ものを最後まで再生したあと、頭へ戻る前に止めておく時間 [秒]。
+/// 一発ものを最後まで再生したあと、頭へ戻る前に止めておく時間 [秒]。
 constexpr float kCompareHoldSeconds = 0.5f;
 
-// 生成物はプロジェクトの Generated 配下へ出し、エンジン同梱の Assets を変更しない
-// (Procedural Flipbook Generator と同じ置き場)。
+/// 生成物はプロジェクトの Generated 配下へ出し、エンジン同梱の Assets を変更しない
+/// (Procedural Flipbook Generator と同じ置き場)。
 std::string GeneratedDirectory(const std::string& projectRoot, const char* relative)
 {
     if (projectRoot.empty()) return relative;
@@ -67,7 +67,7 @@ bool ComboFromList(const char* label, int& value, const int (&items)[N])
     return changed;
 }
 
-// HDR のリニア色を、グラデーションのバーに塗る表示色へ。
+/// HDR のリニア色を、グラデーションのバーに塗る表示色へ。
 ImU32 ToDisplayColor(const math::Vector3& linear)
 {
     const auto encode = [](float v) { return std::pow(std::clamp(v, 0.0f, 1.0f), 1.0f / 2.2f); };
@@ -98,7 +98,7 @@ bool DrawRamp(asset::VolumeColorRamp& ramp)
                                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
         ImGui::SameLine();
         ImGui::SetNextItemWidth((std::max)(width - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x, 32.0f));
-        // 両隣の点を越えさせない。シェーダーは位置が昇順だと決め打ちで区間を探す。
+        /// @note 両隣の点を越えさせない。シェーダーは位置が昇順だと決め打ちで区間を探す。
         const float lower = i > 0 ? ramp.stops[static_cast<std::size_t>(i - 1)].position : 0.0f;
         const float upper = i + 1 < asset::kVolumeRampStops ? ramp.stops[static_cast<std::size_t>(i + 1)].position : 1.0f;
         changed |= ImGui::SliderFloat("##Position", &stop.position, lower, (std::max)(lower, upper), "%.2f");
@@ -183,7 +183,7 @@ void VolumeFlipbookBakePanel::OnInit(EditorContext& ctx)
 
 void VolumeFlipbookBakePanel::OnShutdown()
 {
-    // 共有 Baker の GPU 資源は FluidBakeService::Shutdown が返す。
+    /// @note 共有 Baker の GPU 資源は FluidBakeService::Shutdown が返す。
     if (m_resources == nullptr) return;
     m_compare->Release(*m_resources);
 }
@@ -246,7 +246,7 @@ void VolumeFlipbookBakePanel::HandleFinishedJob(EditorContext& ctx)
             }
         }
     }
-    // ベイクの最後のコマは表示用の変換をせずに描いてある。プレビューを描き直す。
+    /// @note ベイクの最後のコマは表示用の変換をせずに描いてある。プレビューを描き直す。
     m_previewDirty = true;
 }
 
@@ -263,7 +263,7 @@ void VolumeFlipbookBakePanel::OnBeforeBegin(EditorContext& ctx)
 
     const float delta = ImGui::GetIO().DeltaTime;
     if (!service.IsVolumeBakerFree()) {
-        // 焼き (か AI のプレビュー) が共有 Baker を使っている。空いたら描き直す。
+        /// @note 焼き (か AI のプレビュー) が共有 Baker を使っている。空いたら描き直す。
         m_previewDirty = true;
     } else {
         if (m_playing) {
@@ -328,7 +328,7 @@ void VolumeFlipbookBakePanel::DrawSourceSettings(EditorContext& /*ctx*/)
             const bool selected = desc.name == source.preset;
             if (ImGui::Selectable(desc.name.c_str(), selected) && !selected) {
                 source.preset = desc.name;
-                // 似合う Look (液体の色・炎の明るさ) はソースごとに違う。選び直したら推奨へ寄せる。
+                /// @note 似合う Look (液体の色・炎の明るさ) はソースごとに違う。選び直したら推奨へ寄せる。
                 asset::ApplyVolumeSourceLook(m_settings);
                 changed = true;
             }
@@ -542,7 +542,7 @@ void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
     if (rawId == nullptr) return;
 
     const float side = PreviewWidth(1.0f);
-    // RT は 4 枚のタイルが横に並ぶ [色 | 速度 | 6-way + | 6-way -]。
+    /// @note RT は 4 枚のタイルが横に並ぶ [色 | 速度 | 6-way + | 6-way -]。
     const int tileIndex = m_view == VolumeView::Motion           ? 1
                         : m_view == VolumeView::SixWayPositive   ? 2
                         : m_view == VolumeView::SixWayNegative   ? 3
@@ -574,7 +574,7 @@ void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
         const ImVec2 tip = { center.x + screenX * side * 0.42f, center.y + screenY * side * 0.42f };
         drawList->AddLine(center, tip, kLightColor, 2.0f);
         drawList->AddCircleFilled(tip, 5.0f, kLightColor);
-        // 奥から当たる光 (逆光) と手前から当たる光 (順光) は、画面上の矢印だけでは区別できない。
+        /// @note 奥から当たる光 (逆光) と手前から当たる光 (順光) は、画面上の矢印だけでは区別できない。
         const char* facing = depth > 0.3f ? "Light (逆光)" : depth < -0.3f ? "Light (順光)" : "Light";
         drawList->AddText({ tip.x + 8.0f, tip.y - 8.0f }, kLightColor, facing);
     }
@@ -708,7 +708,7 @@ void VolumeFlipbookBakePanel::DrawApply(EditorContext& ctx)
     if (ImGui::Button("Preview as VFX", { -1.0f, 0.0f })) OpenInPrefabPreview(ctx);
     ImGui::EndDisabled();
     if (ctx.InPrefabEditMode())
-        // 編集中でも開ける。今のプレハブは保存して閉じてから切り替わる。
+        /// @note 編集中でも開ける。今のプレハブは保存して閉じてから切り替わる。
         ImGui::TextDisabled("今開いている Prefab を保存して、プレビュー用の .vfx へ切り替えます。");
     else
         ImGui::TextDisabled("この .mat を使うエミッター 1 つだけの .vfx を作り、Prefab 編集モードで再生します。\n"
@@ -725,7 +725,7 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
         return;
     }
 
-    // ループ判定と FPS は «今の» 設定ではなく焼いたときの設定で決める。
+    /// @note ループ判定と FPS は «今の» 設定ではなく焼いたときの設定で決める。
     asset::MaterialAsset newAsset = oldAsset;
     ApplyFluidBakeToMaterial(FluidMaterialSource::FromVolume(m_lastResult, m_lastBakeSettings), newAsset);
 
@@ -755,7 +755,7 @@ void VolumeFlipbookBakePanel::OpenInPrefabPreview(EditorContext& ctx)
     std::filesystem::create_directories(directory, directoryError);
     const std::filesystem::path file = directory / (stem + "_Preview.vfx");
 
-    // 1 粒の寿命でアトラスを 1 周させる。焼いた長さそのままにすると、焼いたときの速さで動く。
+    /// @note 1 粒の寿命でアトラスを 1 周させる。焼いた長さそのままにすると、焼いたときの速さで動く。
     const int frames = m_lastResult.success ? m_lastResult.frameCount : m_settings.source.frameCount;
     const float frameDt = m_lastResult.success ? m_lastBakeSettings.source.frameDt : m_settings.source.frameDt;
     const float lifetime = (std::max)(static_cast<float>(frames) * frameDt, 0.1f);

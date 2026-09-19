@@ -20,13 +20,13 @@ class IAssetImporter {
 public:
     virtual ~IAssetImporter() = default;
 
-    // absPath: 絶対ファイルパス。失敗時は nullptr を返す。例外は使わない。
-    // resources: GPU アップロードが必要な型のみ使用（不要な型では nullptr も可）
+    /// absPath: 絶対ファイルパス。失敗時は nullptr を返す。例外は使わない。
+    /// resources: GPU アップロードが必要な型のみ使用（不要な型では nullptr も可）
     [[nodiscard]] virtual std::unique_ptr<T> Import(
         const std::string&         absPath,
         renderer::ResourceManager* resources) = 0;
 
-    // このインポーターが処理できる拡張子（ドット付き小文字、例: ".fzasset"）
+    /// このインポーターが処理できる拡張子（ドット付き小文字、例: ".fzasset"）
     virtual std::span<const std::string_view> SupportedExtensions() const = 0;
 };
 

@@ -57,14 +57,25 @@ main
 
 ## main へのマージ条件 (develop → main)
 
-**「エンジンの動作として区切りがいい状態」** のときのみ。目安は Step 完了時。
+**「エンジンの動作として区切りがいい状態」** かつ **develop の CI が通っている** ときのみ。
+
+1. GitHub で `develop → main` の PR を出す (タイトルは `[Release] vX.Y.Z ...`)。PR の CI が通ったら **Create a merge commit** でマージする (マージコミットを残す)
+2. main のマージコミットに注釈付きタグを打ち、GitHub Release を作る
 
 ```bash
-git switch main
-git merge --no-ff develop    # マージコミットを残す
-git tag v0.1 -m "Step 1: Win32 ウィンドウ + DX11 初期化"
-git push origin main --tags
+git switch main && git pull
+git tag -a v0.9.1 -m "v0.9.1: <概要>"
+git push origin v0.9.1
+gh release create v0.9.1 --verify-tag --title "v0.9.1" --notes-file <リリースノート>
 ```
+
+### タグの書式
+
+- **`vMAJOR.MINOR.PATCH` の 3 桁で書く** (`v0.9.1`)。`v0.9` のような 2 桁は使わない (旧タグ `v0.5`〜`v0.9` は `v0.5.0`〜`v0.9.0` へ改名済み)
+- MINOR は機能の区切り (旧 Step 完了相当)、PATCH は同じ区切りの中の修正・整備
+- **タグと SDK の版は同じ番号にする**。リリース前に develop で `CMakeLists.txt` の `project(FBZZEngine VERSION X.Y.Z)` を上げ、その版でタグを打つ
+  - 版は SDK の置き場所 `SDK/<版>/`・`find_package(FBZZ <版> EXACT)`・Script DLL の ABI 署名に効く。上げたら GreenWare の `CMakeLists.txt` と `.fbzz_proj` (`engine_version` / `sdk_root`) も揃え、SDK を公開し直す
+  - 版を上げるとスクリプト DLL は再ビルドが要る (旧版の DLL は ABI 署名の不一致で読み込みを拒否される)
 
 ---
 

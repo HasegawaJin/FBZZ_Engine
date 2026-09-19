@@ -20,7 +20,7 @@ constexpr int kWaveformResolution = 512;
 
 const char* const kWaveLabels[] = { "Sine", "Square", "Saw", "Triangle", "Noise" };
 
-// パネルのボタンはすべて Operator を呼ぶ。人と AI で実装を分けない。
+/// パネルのボタンはすべて Operator を呼ぶ。人と AI で実装を分けない。
 void Invoke(EditorContext& ctx, const char* id, const OpArgs& args = {})
 {
     const OpResult result = InvokeOperator(ctx, id, args);
@@ -53,15 +53,15 @@ void SfxEditorPanel::EnsureWaveform(const EditorContext& ctx)
         ? static_cast<float>(m_sampleCount) / static_cast<float>(fmt.sampleRate) : 0.0f;
     if (m_sampleCount == 0) return;
 
-    // 16bit リトルエンディアンをバイトから組み立てる (Synth::Render と対)。
+    /// @note 16bit リトルエンディアンをバイトから組み立てる (Synth::Render と対)。
     const auto sampleAt = [&pcm](size_t index) {
         const auto lo = static_cast<uint16_t>(pcm[index * 2]);
         const auto hi = static_cast<uint16_t>(pcm[index * 2 + 1]);
         return static_cast<int>(static_cast<int16_t>(static_cast<uint16_t>(lo | (hi << 8))));
     };
 
-    // WHY 最大値で間引くか: 平均を取ると高い周波数の波形が打ち消し合って
-    //     ほぼ直線に見え、「音が出ているのか」すら読めなくなる。
+    /// @note 最大値で間引く: 平均を取ると高い周波数の波形が打ち消し合ってほぼ直線に見え、
+    ///       「音が出ているのか」すら読めなくなる。
     const size_t buckets = (std::min)(static_cast<size_t>(kWaveformResolution), m_sampleCount);
     m_waveform.resize(buckets);
     for (size_t i = 0; i < buckets; ++i) {
@@ -87,8 +87,8 @@ void SfxEditorPanel::LoadRequested(EditorContext& ctx)
         FBZZ_LOG_WARN("SFX Editor: cannot open [%s]", path.c_str());
         return;
     }
-    // 未保存の下書きは開いた時点で失われる (Behavior Tree / Animation Graph と同じ)。
-    // 黙って消えると原因が追えないので、せめて Console には残す。
+    /// @note 未保存の下書きは開いた時点で失われる (Behavior Tree / Animation Graph と同じ)。
+    ///       黙って消えると原因が追えないので、せめて Console には残す。
     if (ctx.sfxEditorDirty) {
         FBZZ_LOG_WARN("SFX Editor: 未保存の変更を破棄して [%s] を開きます", path.c_str());
     }
@@ -112,10 +112,9 @@ bool SfxEditorPanel::DrawParameters(EditorContext& ctx)
         changed = true;
     }
 
-    // WHY スライダーは Operator を通さないか: ドラッグ中は毎フレーム値が変わる。
-    //     1 フレームごとに sfx.set_param を呼ぶと、AI 向けの粒度で作った操作が
-    //     人のドラッグで秒間 60 回走る。実体は同じ ctx.sfxEditorSpec なので、
-    //     ここは直接書き、離した時点の状態が Operator 経由と同じになるようにする。
+    /// @note スライダーは Operator を通さない: ドラッグ中は毎フレーム値が変わり、1 フレームごとに
+    ///       sfx.set_param を呼ぶと AI 向けの粒度の操作が秒間 60 回走る。実体は同じ
+    ///       ctx.sfxEditorSpec なので直接書き、離した時点の状態を Operator 経由と揃える。
     if (ImGui::CollapsingHeader("Envelope", ImGuiTreeNodeFlags_DefaultOpen)) {
         changed |= Slider("Attack",  spec.attack,  0.0f, 1.0f, "立ち上がりにかける秒数");
         changed |= Slider("Sustain", spec.sustain, 0.0f, 2.0f, "最大音量を保つ秒数");
@@ -235,8 +234,7 @@ void SfxEditorPanel::OnRenderContent(EditorContext& ctx)
         ctx.sfxEditorDirty = true;
         m_previewPending   = true;
     }
-    // WHY 操作を離してから鳴らすか: ドラッグ中に毎フレーム鳴らすと同じ音が何十も
-    //     重なり、何を聞いているのか分からなくなる。
+    /// @note 操作を離してから鳴らす: ドラッグ中に毎フレーム鳴らすと同じ音が何十も重なる。
     if (m_previewPending && !ImGui::IsAnyItemActive()) {
         m_previewPending = false;
         if (m_autoPreview) Invoke(ctx, "sfx.preview");

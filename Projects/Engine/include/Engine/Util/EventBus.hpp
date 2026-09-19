@@ -17,7 +17,7 @@ public:
     using SubscriberID = uint32_t;
     using RawHandler   = std::function<void(const void*)>;
 
-    // 購読登録。戻り値の ID を保持して Unsubscribe に渡す
+    /// 購読登録。戻り値の ID を保持して Unsubscribe に渡す
     template<typename T>
     static SubscriberID Subscribe(std::function<void(const T&)> fn) {
         return SubscribeRaw(typeid(T), [fn](const void* ptr) {
@@ -25,19 +25,19 @@ public:
         });
     }
 
-    // 購読解除
+    /// 購読解除
     template<typename T>
     static void Unsubscribe(SubscriberID id) {
         UnsubscribeRaw(typeid(T), id);
     }
 
-    // イベント発行。同フレーム内で同期呼び出しされる
+    /// イベント発行。同フレーム内で同期呼び出しされる
     template<typename T>
     static void Publish(const T& event) {
         PublishRaw(typeid(T), &event);
     }
 
-    // Play モード開始/終了時など、全購読を一括解除する
+    /// Play モード開始/終了時など、全購読を一括解除する
     static void Clear();
 
 private:

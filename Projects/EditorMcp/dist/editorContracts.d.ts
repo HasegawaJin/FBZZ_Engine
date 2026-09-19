@@ -2,6 +2,17 @@ import * as z from 'zod/v4';
 export declare const EDITOR_PROTOCOL = "fbzz.editor.v1";
 export declare const NodeIdSchema: z.ZodString;
 export declare const Vec3Schema: z.ZodTuple<[z.ZodNumber, z.ZodNumber, z.ZodNumber], null>;
+export declare const TerrainSculptOpSchema: z.ZodEnum<{
+    flatten: "flatten";
+    hydraulicErosion: "hydraulicErosion";
+    lower: "lower";
+    noise: "noise";
+    raise: "raise";
+    smooth: "smooth";
+    stamp: "stamp";
+    terrace: "terrace";
+    thermalErosion: "thermalErosion";
+}>;
 export type JsonValue = null | boolean | number | string | JsonValue[] | {
     [key: string]: JsonValue;
 };
@@ -226,6 +237,12 @@ export type EditorQuery = {
     t: 'fluid.jobStatus';
     job: number;
     includeImage?: boolean | undefined;
+} | {
+    t: 'playtest.status';
+} | {
+    t: 'playtest.list';
+} | {
+    t: 'editor.bus.list';
 };
 export declare const EditorQuerySchema: z.ZodType<EditorQuery>;
 export type EditorCommand = {
@@ -623,13 +640,20 @@ export type EditorCommand = {
 } | {
     t: 'terrain.sculpt';
     position: [number, number, number];
-    op?: 'raise' | 'lower' | 'smooth' | 'flatten' | 'stamp' | undefined;
+    op?: 'raise' | 'lower' | 'smooth' | 'flatten' | 'stamp' | 'noise' | 'thermalErosion' | 'hydraulicErosion' | 'terrace' | undefined;
     radius?: number | undefined;
     strength?: number | undefined;
     falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
     iterations?: number | undefined;
     targetHeight?: number | undefined;
     id?: string | undefined;
+    noiseScale?: number | undefined;
+    noiseOctaves?: number | undefined;
+    seed?: number | undefined;
+    terraceStep?: number | undefined;
+    terraceSharpness?: number | undefined;
+    talus?: number | undefined;
+    droplets?: number | undefined;
 } | {
     t: 'terrain.paint';
     position: [number, number, number];
@@ -644,6 +668,20 @@ export type EditorCommand = {
     id: string;
     layer: number;
     material: string;
+} | {
+    t: 'terrain.ramp';
+    start: [number, number, number];
+    end: [number, number, number];
+    radius?: number | undefined;
+    strength?: number | undefined;
+    falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
+    id?: string | undefined;
+} | {
+    t: 'terrain.hole';
+    position: [number, number, number];
+    radius?: number | undefined;
+    erase?: boolean | undefined;
+    id?: string | undefined;
 } | {
     t: 'navmesh.bake';
     id?: string | undefined;
@@ -705,6 +743,24 @@ export type EditorCommand = {
     preset?: string | undefined;
     fields?: Record<string, JsonValue> | undefined;
     bake?: boolean | undefined;
+} | {
+    t: 'playtest.run';
+    path?: string | undefined;
+    scenario?: Record<string, JsonValue> | undefined;
+    updateBaselines?: boolean | undefined;
+    skipImages?: boolean | undefined;
+} | {
+    t: 'playtest.cancel';
+} | {
+    t: 'input.record';
+    action: 'start' | 'stop';
+    path?: string | undefined;
+} | {
+    t: 'visual.compare';
+    baseline: string;
+    view?: 'game' | 'scene' | undefined;
+    updateBaseline?: boolean | undefined;
+    pixelThreshold?: number | undefined;
 } | {
     t: 'editor.transaction';
     label: string;

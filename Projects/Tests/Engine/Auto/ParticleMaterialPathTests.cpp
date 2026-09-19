@@ -20,19 +20,20 @@ namespace fbzz::tests {
 TEST(ParticleMaterialPathTest, RecognisesTextureExtensions)
 {
     EXPECT_TRUE(asset::IsParticleTexturePath("Assets/Textures/Particles/flame.png"));
-    EXPECT_TRUE(asset::IsParticleTexturePath("flame.TGA"));   // 大小は問わない
+    /// @note 大小は問わない
+    EXPECT_TRUE(asset::IsParticleTexturePath("flame.TGA"));
     EXPECT_TRUE(asset::IsParticleTexturePath("a/b/c.dds"));
     EXPECT_TRUE(asset::IsParticleTexturePath("x.jpeg"));
 
     EXPECT_FALSE(asset::IsParticleTexturePath("Assets/Materials/Particles/Flame_Additive.mat"));
     EXPECT_FALSE(asset::IsParticleTexturePath(""));
-    // ディレクトリ名にドットがあっても拡張子と取り違えないこと。
+    /// @note ディレクトリ名にドットがあっても拡張子と取り違えないこと。
     EXPECT_FALSE(asset::IsParticleTexturePath("Assets/v1.2/Flame"));
 }
 
 TEST(ParticleMaterialPathTest, WrapsATextureIntoADeterministicMaterialName)
 {
-    // 区切りを落として各語の頭を大文字にする。同梱の 25 枚と同じ名前へ落ちるのが狙い。
+    /// @note 区切りを落として各語の頭を大文字にする。同梱の 25 枚と同じ名前へ落ちるのが狙い。
     EXPECT_EQ(asset::ParticleMaterialPathForTexture("Assets/Textures/flame_03.png",
                                                     scene::ParticleBlendMode::Additive),
               "Assets/Materials/Particles/Flame03_Additive.mat");
@@ -46,7 +47,7 @@ TEST(ParticleMaterialPathTest, WrapsATextureIntoADeterministicMaterialName)
 
 TEST(ParticleMaterialPathTest, TheSameTextureAlwaysMapsToTheSameMaterial)
 {
-    // 呼ぶたびに別名になると、同じ素材の .mat が二重に増える。
+    /// @note 呼ぶたびに別名になると、同じ素材の .mat が二重に増える。
     const std::string first =
         asset::ParticleMaterialPathForTexture("Assets/Textures/Particles/Glow_Soft.png",
                                               scene::ParticleBlendMode::Additive);
@@ -60,7 +61,7 @@ TEST(ParticleMaterialPathTest, TheSameTextureAlwaysMapsToTheSameMaterial)
 TEST(ParticleMaterialPathTest, ReturnsNothingWhenThereIsNoUsableName)
 {
     EXPECT_TRUE(asset::ParticleMaterialPathForTexture("", scene::ParticleBlendMode::Additive).empty());
-    // 記号だけの名前は素材名にならない。空を返して呼び出し側を «既定へ落とす» 側へ倒す。
+    /// @note 記号だけの名前は素材名にならない。空を返して呼び出し側を «既定へ落とす» 側へ倒す。
     EXPECT_TRUE(asset::ParticleMaterialPathForTexture("___.png",
                                                       scene::ParticleBlendMode::Additive).empty());
 }

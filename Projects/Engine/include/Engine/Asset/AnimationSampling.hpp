@@ -1,19 +1,16 @@
 /// @file    AnimationSampling.hpp
-/// @brief   時刻付きキー列を 1 つの値へ落とすサンプリング関数群
+/// @brief   時刻付きキー列を 1 つの値へ落とすサンプリング関数群。
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
+///
+/// AnimatorSystem (.anim) と SequenceSystem (.sequence) が共有する評価関数。
+/// 実装を二重化すると補間結果がずれるため、ここに一本化する。
 #pragma once
 
 #include <Engine/Asset/AnimationClip.hpp>
 
 #include <algorithm>
 #include <vector>
-
-// WHY ヘッダーへ出すか:
-//   .anim (AnimatorSystem) と .sequence (SequenceSystem) は同じキー型を使う。
-//   補間規則の実装が 2 か所にあると、片方だけ直した瞬間に「Animator で見た動きと
-//   演出で見た動きが違う」が出る。原因を特定できる形の壊れ方ではないので、
-//   評価関数そのものを 1 本に固定する。
 
 namespace fbzz::asset {
 

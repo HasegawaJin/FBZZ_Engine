@@ -25,7 +25,7 @@ bool Compiler::Start(const Config& config)
     m_log.clear();
     m_exitCode = 0;
 
-    // WHAT: stderr も stdout と同じパイプへ流し、ビルドログを UI で一括表示する。
+    /// @note stderr も stdout と同じパイプへ流し、ビルドログを UI で一括表示する。
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE stdoutWrite = INVALID_HANDLE_VALUE;
     if (!CreatePipe(&m_hStdoutRead, &stdoutWrite, &sa, 0))
@@ -40,12 +40,9 @@ bool Compiler::Start(const Config& config)
             L" --build \"" + config.buildDir.wstring() + L"\""
             L" --target " + util::StringUtils::ToWide(config.target) +
             L" --config " + util::StringUtils::ToWide(config.configuration) +
-            // WHY (--parallel 1): cl.exe 側の並列度はルート CMakeLists.txt の
-            //      /MP${FBZZ_BUILD_JOBS} で既に上限が入っている。ここで MSBuild の
-            //      ノード並列 (/m) まで開けると「プロジェクト数 × /MP」の cl.exe が
-            //      同時に走り、メモリ使用量が掛け算で膨らむ。エディタからのビルドは
-            //      裏で走るビルドなので、手動ビルドや実行中のエディタを止めないよう
-            //      プロジェクト単位の多重化はしない。
+            /// @note --parallel 1: cl.exe の並列度は CMakeLists.txt の /MP${FBZZ_BUILD_JOBS} で
+            ///       既に確保済み。MSBuild のノード並列まで開くと「プロジェクト数×/MP」の
+            ///       cl.exe が同時に走りメモリが掛け算で膨らむため単一に絞る。
             L" --parallel 1";
     }
 
@@ -56,7 +53,7 @@ bool Compiler::Start(const Config& config)
             command += L" /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
     }
 
-    // WHY: 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
+    /// @note 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
     m_log += "> " + util::StringUtils::ToNarrow(command) + "\n";
 
     STARTUPINFOW si{};
@@ -67,9 +64,9 @@ bool Compiler::Start(const Config& config)
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
 
     PROCESS_INFORMATION pi{};
-    // WHY: 既存の GameHub プロジェクトは CMake 再構成前だと /FS が vcxproj に入っていないことがある。
-    //      MSBuild /m と cl.exe の並列実行が同じ PDB へ書くと C1041 が発生するため、
-    //      子プロセスの CL 環境変数へ /FS を一時的に追加して古い生成物でも安定させる。
+    /// @note 既存の GameHub プロジェクトは CMake 再構成前だと /FS が vcxproj に入っていないことがある。
+    ///       MSBuild /m と cl.exe の並列実行が同じ PDB へ書くと C1041 になるため、
+    ///       子プロセスの CL 環境変数へ /FS を一時的に足して古い生成物でも安定させる。
     std::wstring oldCl;
     const DWORD oldClSize = GetEnvironmentVariableW(L"CL", nullptr, 0);
     if (oldClSize > 0) {
@@ -99,9 +96,8 @@ bool Compiler::Start(const Config& config)
     }
 
     const std::wstring workingDirectory = config.workingDirectory.wstring();
-    // WHY (BELOW_NORMAL_PRIORITY_CLASS): 優先度クラスは cmake → MSBuild → cl.exe と
-    //      子プロセスへ継承される。エディタからのビルドは裏方なので、Visual Studio /
-    //      VSCode の手動ビルドやエディタ自身の描画スレッドから CPU を奪わないようにする。
+    /// @note BELOW_NORMAL_PRIORITY_CLASS: 優先度クラスは cmake→MSBuild→cl.exe と子プロセスへ
+    ///       継承される。エディタのビルドは裏方なので、手動ビルドや描画スレッドから CPU を奪わない。
     const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
                                    CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
                                    workingDirectory.empty() ? nullptr : workingDirectory.c_str(),

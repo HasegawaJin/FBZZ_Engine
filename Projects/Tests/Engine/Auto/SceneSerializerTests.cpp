@@ -52,7 +52,7 @@ private:
     testkit::TempDir m_temp{"scene"};
 };
 
-// --- 骨格 -------------------------------------------------------------------
+/// @name 骨格
 
 TEST_F(SceneSerializerTest, SavesAndReloadsAnEmptyScene)
 {
@@ -98,8 +98,8 @@ TEST_F(SceneSerializerTest, KeepsNameTagAndLayer)
 
 TEST_F(SceneSerializerTest, KeepsThePersistentIdentifier)
 {
-    // instanceId はクロスオブジェクト参照 (IK の Pole/Target 等) の永続キー。
-    // 保存で振り直すと、開き直した瞬間に参照が全部切れる。
+    /// @note instanceId はクロスオブジェクト参照 (IK の Pole/Target 等) の永続キー。
+    ///       保存で振り直すと、開き直した瞬間に参照が全部切れる。
     scene::Scene source;
     const std::string id = source.CreateGameObject("Player").instanceId;
     ASSERT_FALSE(id.empty());
@@ -123,7 +123,7 @@ TEST_F(SceneSerializerTest, KeepsTheActiveFlag)
     EXPECT_FALSE(reloaded->activeSelf());
 }
 
-// --- Transform --------------------------------------------------------------
+/// @name Transform
 
 TEST_F(SceneSerializerTest, KeepsTheLocalTransform)
 {
@@ -147,7 +147,7 @@ TEST_F(SceneSerializerTest, KeepsTheLocalTransform)
                      testkit::kLooseTolerance);
 }
 
-// --- 階層 -------------------------------------------------------------------
+/// @name 階層
 
 TEST_F(SceneSerializerTest, KeepsTheParentChildHierarchy)
 {
@@ -159,7 +159,7 @@ TEST_F(SceneSerializerTest, KeepsTheParentChildHierarchy)
     const std::unique_ptr<scene::Scene> restored = RoundTrip(source);
 
     ASSERT_NE(restored, nullptr);
-    // 親子が復元されていれば、ルートは親だけになる。
+    /// @note 親子が復元されていれば、ルートは親だけになる。
     EXPECT_EQ(restored->GetRootGameObjects().size(), 1u);
     EXPECT_NE(restored->Find("Child"), nullptr);
 }
@@ -180,11 +180,11 @@ TEST_F(SceneSerializerTest, KeepsDeepHierarchies)
     EXPECT_NE(restored->Find("C"), nullptr);
 }
 
-// --- 実行時生成物 -----------------------------------------------------------
+/// @name 実行時生成物
 
 TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
 {
-    // VFX のノード実体や Water の飛沫。保存すると、開くたびにゾンビ GO が増える。
+    /// @note VFX のノード実体や Water の飛沫。保存すると、開くたびにゾンビ GO が増える。
     scene::Scene source;
     source.CreateGameObject("Authored");
     source.CreateGameObject("Spawned").runtimeGenerated = true;
@@ -196,12 +196,12 @@ TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
     EXPECT_EQ(restored->Find("Spawned"), nullptr);
 }
 
-// --- GPU リソースを作らない復元 ---------------------------------------------
+/// @name GPU リソースを作らない復元
 
 TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
 {
-    // これが «データ復元と GPU リソース生成を分けた» ことの中身。
-    // デバイス無しでも参照 (パス) は完全に残り、実体だけが後回しになる。
+    /// @note これが «データ復元と GPU リソース生成を分けた» ことの中身。
+    ///       デバイス無しでも参照 (パス) は完全に残り、実体だけが後回しになる。
     scene::Scene source;
     scene::GameObject& object = source.CreateGameObject("Prop");
     scene::MeshRenderer renderer{};
@@ -218,13 +218,14 @@ TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
     ASSERT_NE(mr, nullptr);
     EXPECT_EQ(mr->meshPath, "Assets/Models/Prop.fbx");
     EXPECT_FALSE(mr->castShadows);
-    EXPECT_EQ(mr->mesh, nullptr);   // GPU リソースは作らない
+    /// @note GPU リソースは作らない
+    EXPECT_EQ(mr->mesh, nullptr);
 }
 
 TEST_F(SceneSerializerTest, KeepsSeveralMeshPathsIndependently)
 {
-    // 後から ResolveMeshes() で結び直すのはこの meshPath。1 つでも落ちると
-    // «そのオブジェクトだけ描かれない» になる。
+    /// @note 後から ResolveMeshes() で結び直すのはこの meshPath。1 つでも落ちると
+    ///       «そのオブジェクトだけ描かれない» になる。
     scene::Scene source;
     for (int i = 0; i < 3; ++i) {
         scene::GameObject& object = source.CreateGameObject("Prop" + std::to_string(i));
@@ -245,7 +246,7 @@ TEST_F(SceneSerializerTest, KeepsSeveralMeshPathsIndependently)
     }
 }
 
-// --- 壊れた入力 -------------------------------------------------------------
+/// @name 壊れた入力
 
 TEST_F(SceneSerializerTest, RejectsTextThatIsNotToml)
 {
@@ -260,7 +261,7 @@ TEST_F(SceneSerializerTest, RejectsAMissingFile)
 
 TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
 {
-    // 空のシーンファイルは «壊れている» ではなく «何も無い»。
+    /// @note 空のシーンファイルは «壊れている» ではなく «何も無い»。
     const std::unique_ptr<scene::Scene> restored =
         scene::SceneSerializer::LoadDataFromText("", "empty.scene");
 
@@ -268,11 +269,11 @@ TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
     EXPECT_TRUE(restored->GetRootGameObjects().empty());
 }
 
-// --- 安定性 -----------------------------------------------------------------
+/// @name 安定性
 
 TEST_F(SceneSerializerTest, SavingTwiceProducesTheSameFile)
 {
-    // 触っていないのに差分が出ると、シーンのコミットに毎回ノイズが混ざる。
+    /// @note 触っていないのに差分が出ると、シーンのコミットに毎回ノイズが混ざる。
     scene::Scene source;
     scene::GameObject& object = source.CreateGameObject("Stable");
     object.transform.position = { 1.0f, 2.0f, 3.0f };

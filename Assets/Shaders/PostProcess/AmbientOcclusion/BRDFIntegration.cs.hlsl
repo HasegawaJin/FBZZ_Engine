@@ -24,11 +24,12 @@
 
 #include "Common/Binding.hlsli"
 #include "Common/Math.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // BRDF LUT 出力 UAV
 // WHY: 実行時の汎用 ComputeTexture は R16G16B16A16_FLOAT のため、typed UAV の
 //      コンポーネント数を一致させる。利用側は RG の scale/bias のみ読む。
-RWTexture2D<float4> outBRDFLut : register(UAV_BRDF_LUT);  // u0
+FBZZ_RWTEX2D_T(float4, outBRDFLut, UAV_BRDF_LUT_SLOT);  // u0
 
 // =========================================================================
 // Hammersley 低差異列

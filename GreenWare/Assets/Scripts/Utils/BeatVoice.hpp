@@ -3,13 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 持ち主の AudioSource で鳴らさないか (LoopVoice と同じ理由):
-///   AudioSource の pitch は一発ものにもそのまま掛かる。持ち主の口で音程を上げると、
-///   同じ体から出る斬撃音や被弾音まで一緒に高くなる。
-///
-/// WHY 主 voice を鳴らし直す (単音) か:
-///   拍の合図は 0.36 秒おきに 1 つずつ上がっていく «旋律» で、前の音が残って重なると
-///   和音になって段の上がり方が耳から消える。鳴らし直せば前の音は必ず切れる。
+/// @note 持ち主の AudioSource では鳴らさない (LoopVoice と同じ理由) ─ pitch は一発ものにも
+///       掛かるため、音程を上げると同じ体から出る斬撃音や被弾音まで一緒に高くなる。
+///       主 voice を鳴らし直す単音にする ─ 拍の合図は 0.36 秒おきに上がる «旋律» で、
+///       前の音が残って重なると和音になり段の上がり方が耳から消える。
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -48,12 +45,12 @@ inline fbzz::scene::AudioSourceComponent* BeatVoice::Acquire(fbzz::scene::Script
 
     GameObject* object = owner.scene.GetGameObject(m_id);
     if (!object) {
-        // DLL リロードで m_id は消えるが、子は Scene に残る。名前で拾い直す。
+        /// @note DLL リロードで m_id は消えるが、子は Scene に残る。名前で拾い直す。
         const std::string name = "SFX_Beat_" + m_key;
         object = owner.scene.Find(name);
         if (!object) {
             const EntityID created = owner.scene.Create(name).GetID();
-            // Create がコンポーネント配列を伸ばしうるので、設定は ID から引き直す。
+            /// @note Create がコンポーネント配列を伸ばしうるので、設定は ID から引き直す。
             object = owner.scene.GetGameObject(created);
             if (!object) return nullptr;
             object->runtimeGenerated = true;
@@ -67,7 +64,7 @@ inline fbzz::scene::AudioSourceComponent* BeatVoice::Acquire(fbzz::scene::Script
     if (!source) {
         source = &object->AddComponent<AudioSourceComponent>();
         source->busName      = m_bus;
-        // 合図は «画面の出来事» で場所を持たない。3D にすると振り向いた向きで旋律が偏る。
+        /// @note 合図は «画面の出来事» で場所を持たない。3D にすると振り向いた向きで旋律が偏る。
         source->spatialBlend = 0.0f;
         source->playOnAwake  = false;
         source->loop         = false;
@@ -83,8 +80,8 @@ inline void BeatVoice::Play(fbzz::scene::Script& owner, std::string_view path,
     fbzz::scene::AudioSourceComponent* source = Acquire(owner);
     if (!source) return;
 
-    // 再生要求は AudioSystem が «今の voice を止めて鳴らし直す» ので、同じクリップでも
-    // 毎回頭から鳴る。音程と音量は鳴らし直す瞬間の値が乗る。
+    /// @note 再生要求は AudioSystem が «今の voice を止めて鳴らし直す» ので、同じクリップでも
+    ///       毎回頭から鳴る。音程と音量は鳴らし直す瞬間の値が乗る。
     source->clipPath      = std::string(path);
     source->loop          = false;
     source->volume        = fbzz::math::Clamp01(volume);

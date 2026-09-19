@@ -26,7 +26,7 @@ void FrameAllocator::BeginFrame()
 
 void FrameAllocator::EndFrame()
 {
-    // フレーム終端でメモリを一括解放し、次フレームの再利用に備える。
+    /// @note フレーム終端でメモリを一括解放し、次フレームの再利用に備える。
     m_allocator.Reset();
 }
 

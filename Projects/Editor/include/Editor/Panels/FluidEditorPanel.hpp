@@ -3,13 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// WHY 専用パネルにするか:
-///   Inspector の縦 1 列では «どの部品がいつ・どこで効くか» が見えず、値を 1 つ触るたびに頭から解き直していた。
-///   部品を絵の上で掴んで動かし、タイムラインで出番をずらし、スクラブで同じ瞬間を見比べる、という
-///   EmberGen / Niagara と同じ手順をそのまま UI にする。
-///
-/// 開くのは asset.open (Asset Browser のダブルクリック) が積む EditorContext::requestOpenFluidEditor。
-/// 要求はこのパネルが OnBeforeBegin で読んで消す (背面タブのときも読めるように Begin の前で読む)。
+/// @note Inspector の縦 1 列では «どの部品がいつ・どこで効くか» が見えず、値を 1 つ触るたびに頭から解き直していた。
+///       部品を絵の上で掴んで動かし、タイムラインで出番をずらし、スクラブで同じ瞬間を見比べる UI にする。
+///       開くのは asset.open (Asset Browser のダブルクリック) が積む EditorContext::requestOpenFluidEditor。
+///       要求はこのパネルが OnBeforeBegin で読んで消す (背面タブのときも読めるように Begin の前で読む)。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 
@@ -31,9 +28,9 @@ public:
     FluidEditorPanel& operator=(const FluidEditorPanel&) = delete;
 
     const char* GetWindowName()        const override { return "Fluid Editor"; }
-    // ここにフォーカスがある間、Ctrl+S は «開いている .fluid を保存» になる。
-    // 何も開いていないときは名乗らない (空の Fluid Editor にフォーカスがあるだけで
-    // シーンが保存できなくなるため)。判定に FluidDocument が要るので実装は .cpp。
+    /// ここにフォーカスがある間、Ctrl+S は «開いている .fluid を保存» になる。
+    /// 何も開いていないときは名乗らない (空の Fluid Editor にフォーカスがあるだけで
+    /// シーンが保存できなくなるため)。判定に FluidDocument が要るので実装は .cpp。
     HotkeyScope GetHotkeyScope()       const override;
     const char* GetMenuCategory()      const override { return "Tools"; }
     bool        GetDefaultVisibility() const override { return false; }

@@ -16,12 +16,9 @@ namespace fbzz::editor {
 /// @param projectRoot テクスチャ生成の出力先とパス解決に使う (EditorContext::projectRoot)
 /// @param resources / imguiRenderer フリップブックのアトラス表示に使う。null なら数値の編集だけ出す
 /// @return 値を変更したら true (呼び出し側が dirty 登録と保存を行う)
-///
-/// WHY ParticleEmitter 側に置かないか:
-///   ブレンド・フリップブック・歪み・煙・自己影は «その素材がどう見えるか» で、
-///   同じ .mat を使う全エミッターで共有される。コンポーネントが持っていた頃は
-///   素材を差し替えるたびに 34 項目を貼り直す必要があり、しかも .mat 側の値が
-///   毎フレーム上書きしてくるため «Inspector で変えても戻る» が起きていた。
+/// @note ParticleEmitter でなくここに置く: ブレンド・フリップブック・歪み・煙・自己影は
+///       素材ごとに共有される見た目で、コンポーネント側にあった頃は差し替えるたびに 34 項目を
+///       貼り直し、.mat が毎フレーム上書きして «Inspector で変えても戻る» が起きていた。
 bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::string& projectRoot,
                                    renderer::ResourceManager* resources = nullptr,
                                    renderer::IImGuiRenderer* imguiRenderer = nullptr);

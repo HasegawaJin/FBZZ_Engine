@@ -27,10 +27,9 @@ void DX12ConstantBuffer::Update(const void* data, size_t sizeBytes)
         return;
     }
     std::memcpy(m_cpuData.data(), data, sizeBytes);
-    // 256 バイト境界へ切り上げた余白だけをゼロで埋める。
-    // WHY: 以前は毎 Update で全域を memset していたが、直後に sizeBytes 分を上書きするので
-    //      ゼロにする意味があるのは末尾の余白だけ。ShadowConstants (464B → 512B) のように
-    //      実体が大きい CB ほど、無駄なゼロ埋めがそのまま記録コストになっていた。
+    /// @note 256 バイト境界へ切り上げた余白だけをゼロで埋める。直後に sizeBytes 分を上書きする
+    ///       ので、ゼロにする意味があるのは末尾の余白だけ。以前は全域 memset していたため、
+    ///       ShadowConstants (464B→512B) のように実体が大きい CB ほど無駄なコストになっていた。
     if (sizeBytes < m_size)
         std::memset(m_cpuData.data() + sizeBytes, 0, m_size - sizeBytes);
     m_hasData = true;
@@ -41,8 +40,8 @@ D3D12_GPU_VIRTUAL_ADDRESS DX12ConstantBuffer::PrepareForSubmit()
 {
     if (!m_arena || !m_hasData) return 0;
 
-    // 内容が変わっておらず、かつ同じフレーム (= アリーナが巻き戻っていない) なら、
-    // 前回配られたスライスがそのまま生きている。確保も転送もせずアドレスだけ返す。
+    /// @note 内容が変わっておらず、かつ同じフレーム (= アリーナが巻き戻っていない) なら、
+    ///       前回配られたスライスがそのまま生きている。確保も転送もせずアドレスだけ返す。
     const uint64_t epoch = m_arena->GetEpoch();
     if (!m_dirty && m_cachedGpuAddress != 0 && m_cachedArenaEpoch == epoch)
         return m_cachedGpuAddress;
@@ -50,8 +49,8 @@ D3D12_GPU_VIRTUAL_ADDRESS DX12ConstantBuffer::PrepareForSubmit()
     const auto allocation = m_arena->Allocate(
         m_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
     if (!allocation) return 0;
-    // WHY: UploadArenaはフレーム開始時に再利用されるため、過去フレームのGPUアドレスを
-    //      保持できない。Submit直前にCPU shadowから転送して記録済みDrawの値を安定させる。
+    /// @note UploadArena はフレーム開始時に再利用されるため、過去フレームの GPU アドレスを
+    ///       保持できない。Submit 直前に CPU shadow から転送して記録済み Draw の値を安定させる。
     std::memcpy(allocation.cpu, m_cpuData.data(), m_size);
 
     m_cachedGpuAddress = allocation.gpu;

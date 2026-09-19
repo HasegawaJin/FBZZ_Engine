@@ -19,7 +19,7 @@ using editor::ComputeGraphLayout;
 using editor::GraphLayoutEdge;
 using editor::GraphLayoutOptions;
 
-// 既定の options は originX=80 / columnStep=300。列番号は x から逆算できる。
+/// 既定の options は originX=80 / columnStep=300。列番号は x から逆算できる。
 int ColumnOf(float x, const GraphLayoutOptions& options = {})
 {
     return static_cast<int>((x - options.originX) / options.columnStep + 0.5f);
@@ -29,8 +29,8 @@ int ColumnOf(float x, const GraphLayoutOptions& options = {})
 
 TEST(GraphLayout, ReturnsNothingForAnEmptyGraph)
 {
-    // 空の中括弧だと «根の一覧» と «options» のどちらにも見えて解決できない。
-    // 型を書いて、根を渡す 3 引数版であることを固定する。
+    /// @note 空の中括弧だと «根の一覧» と «options» のどちらにも見えて解決できない。
+    ///       型を書いて、根を渡す 3 引数版であることを固定する。
     const std::vector<int>             noNodes;
     const std::vector<GraphLayoutEdge> noEdges;
     const std::vector<int>             noRoots;
@@ -65,7 +65,7 @@ TEST(GraphLayout, LaysChildrenToTheRightOfTheirParent)
 
 TEST(GraphLayout, UsesTheLongestPathSoArrowsNeverPointBackwards)
 {
-    // 1->2->3 と 1->3 の両方がある。最短で置くと 3 が 2 と同じ列に来て矢印が逆流する。
+    /// @note 1->2->3 と 1->3 の両方がある。最短で置くと 3 が 2 と同じ列に来て矢印が逆流する。
     const std::vector<int> nodes{ 1, 2, 3 };
     const std::vector<GraphLayoutEdge> edges{ { 1, 2 }, { 2, 3 }, { 1, 3 } };
 
@@ -89,7 +89,7 @@ TEST(GraphLayout, SiblingsShareAColumnAndStackVertically)
 
 TEST(GraphLayout, KeepsTheGivenOrderWithinAColumn)
 {
-    // 整列のたびに上下が入れ替わると、覚えた位置関係が壊れる。
+    /// @note 整列のたびに上下が入れ替わると、覚えた位置関係が壊れる。
     const std::vector<int> nodes{ 1, 2, 3 };
     const std::vector<GraphLayoutEdge> edges{ { 1, 2 }, { 1, 3 } };
 
@@ -114,7 +114,7 @@ TEST(GraphLayout, IsStableAcrossRepeatedRuns)
 
 TEST(GraphLayout, PutsUnreachableNodesPastTheDeepestColumn)
 {
-    // どこからも辿れないノードを根と同じ列に置くと、根と見分けが付かなくなる。
+    /// @note どこからも辿れないノードを根と同じ列に置くと、根と見分けが付かなくなる。
     const std::vector<int> nodes{ 1, 2, 99 };
     const std::vector<GraphLayoutEdge> edges{ { 1, 2 } };
 
@@ -125,8 +125,8 @@ TEST(GraphLayout, PutsUnreachableNodesPastTheDeepestColumn)
 
 TEST(GraphLayout, TerminatesOnACycle)
 {
-    // 循環があっても «深さの更新» が止まらなくなってはいけない。
-    // 返ってくること自体が、このテストの検証内容 (止まればタイムアウトで落ちる)。
+    /// @note 循環があっても «深さの更新» が止まらなくなってはいけない。
+    ///       返ってくること自体が、このテストの検証内容 (止まればタイムアウトで落ちる)。
     const std::vector<int> nodes{ 1, 2, 3 };
     const std::vector<GraphLayoutEdge> edges{ { 1, 2 }, { 2, 3 }, { 3, 1 } };
 
@@ -147,7 +147,7 @@ TEST(GraphLayout, TerminatesOnASelfLoop)
 
 TEST(GraphLayout, IgnoresEdgesPointingAtUnknownNodes)
 {
-    // 削除済みノードを指す辺が残っていても、整列ごと壊れてはいけない。
+    /// @note 削除済みノードを指す辺が残っていても、整列ごと壊れてはいけない。
     const std::vector<int> nodes{ 1, 2 };
     const std::vector<GraphLayoutEdge> edges{ { 1, 2 }, { 2, 404 }, { 404, 1 } };
 
@@ -164,13 +164,13 @@ TEST(GraphLayout, IgnoresRootsThatAreNotInTheGraph)
 
     const auto positions = ComputeGraphLayout(nodes, edges, std::vector<int>{ 404 });
 
-    // 根が 1 つも無いので全ノードが到達不能。落ちずに全部置ければよい。
+    /// @note 根が 1 つも無いので全ノードが到達不能。落ちずに全部置ければよい。
     EXPECT_EQ(positions.size(), 2u);
 }
 
 TEST(GraphLayout, DerivesRootsFromNodesWithNoIncomingEdge)
 {
-    // 根を渡さない版。入次数 0 を根とみなす。
+    /// @note 根を渡さない版。入次数 0 を根とみなす。
     const std::vector<int> nodes{ 1, 2, 3 };
     const std::vector<GraphLayoutEdge> edges{ { 1, 2 }, { 2, 3 } };
 
@@ -207,7 +207,7 @@ TEST(GraphLayout, CenteringOnlyShiftsTheShorterColumn)
     GraphLayoutOptions flat;
     flat.centerColumns = false;
 
-    // 列 0 に 1 個、列 1 に 2 個。センタリングすると短い列 0 だけが下がる。
+    /// @note 列 0 に 1 個、列 1 に 2 個。センタリングすると短い列 0 だけが下がる。
     const std::vector<int> nodes{ 1, 2, 3 };
     const std::vector<GraphLayoutEdge> edges{ { 1, 2 }, { 1, 3 } };
 

@@ -5,11 +5,12 @@
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D          texLDR            : register(TEX_GBUFFER0);
-Texture2D          texSelectionMask  : register(TEX_GBUFFER1);
-Texture2D<float>   texSceneDepth     : register(TEX_DEPTH);
-Texture2D<float>   texSelectionDepth : register(TEX_SHADOW);
+FBZZ_TEX2D(texLDR, TEX_GBUFFER0_SLOT);
+FBZZ_TEX2D(texSelectionMask, TEX_GBUFFER1_SLOT);
+FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
+FBZZ_TEX2D_T(float, texSelectionDepth, TEX_SHADOW_SLOT);
 // 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
 SamplerState       sampLinear        : register(SAMPLER_LINEAR_CLAMP);
 

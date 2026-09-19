@@ -1,6 +1,9 @@
-// FBZZ Engine
-// AssembleDistribution.mjs | GameHub
-// 公開済みGameHubとimmutable SDKを一つの配布ディレクトリへ集約する
+/**
+ * @file AssembleDistribution.mjs
+ * @brief 公開済み GameHub と immutable SDK を一つの配布ディレクトリへ集約する。
+ * @author Hasegawa Jin
+ * @date 2026/08/16
+ */
 
 import { access, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';

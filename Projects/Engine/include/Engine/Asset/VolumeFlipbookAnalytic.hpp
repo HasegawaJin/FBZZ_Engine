@@ -3,17 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// ボリュームは noise を纏った «puff» の和。各 puff の形は時刻 a の 3x3 行列
-/// A(a) = s(a)·E(a)·R(ω·a) (膨張 · 進行方向への伸び · 定軸回転) と中心 c(a) で決まる。
-/// 中心は一定の加速度と速度比例の減速を受けても閉じた式で出るので、コマ N の物質点が
-/// コマ N+1 でどこにあるか (flow map: x' = c1 + A1·A0^-1·(x - c0)) も閉じた式で出る。
-/// MV の正解がそのまま手に入るので、ベイク処理全体の検証台になる。
-///
-/// WHY 流体ソルバーを先に書かないか: ソルバーの速度場は «正しいかどうか» を外から判定できない。
-///   流れの向きと MV の符号・単位を先に確定させてから、VolumeFill.cs を差し替える。
-///
-/// 座標は bake 空間の立方体 [-1,1]^3 (y 上向き)。時間は秒。
-/// GPU 側は Assets/Shaders/Bake/VolumeFlipbook/VolumeFill.cs.hlsl。式は 1:1 で一致させること。
+/// @note puff は時刻 a の 3x3 行列 A(a) = s(a)·E(a)·R(ω·a) (膨張・進行方向への伸び・定軸回転) と中心
+///       c(a) の和で表す。中心は閉じた式で求まるため、flow map x' = c1 + A1·A0^-1·(x - c0) も閉じた式に
+///       なり MV の正解として使える。
+/// @note 流体ソルバーより先にこれを書く理由: 速度場の正誤は外から検証できないため、流れの向きと MV の
+///       符号・単位をここで先に確定させてから VolumeFill.cs を差し替える。
+/// @note 座標は bake 空間の立方体 [-1,1]^3 (y 上向き)、時間は秒。GPU 側 (VolumeFill.cs.hlsl) と式を
+///       1:1 で一致させること。
 #pragma once
 
 #include <Math/Vector3.hpp>
@@ -122,7 +118,7 @@ struct VolumeSample {
 [[nodiscard]] std::uint32_t CountLiveVolumePuffs(std::span<const VolumePuff> puffs, float time);
 
 /// 時刻 t に生きている puff を詰める。速度は [t, t + frameDt] の割線速度。
-/// @ret 詰めた puff 数 (kVolumeFillMaxPuffs を超えた分は捨てる)。
+/// @return 詰めた puff 数 (kVolumeFillMaxPuffs を超えた分は捨てる)。
 std::uint32_t PackVolumeFill(std::span<const VolumePuff> puffs, const VolumeNoiseSettings& noise,
                              std::uint32_t resolution, float time, float frameDt, VolumeFillFrame& out);
 

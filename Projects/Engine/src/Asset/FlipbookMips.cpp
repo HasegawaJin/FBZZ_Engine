@@ -69,7 +69,7 @@ void Downsample(const FlipbookMipLevel& source, FlipbookMipContent content, Flip
             }
             const std::size_t o = (static_cast<std::size_t>(y) * out.width + x) * 4;
             for (int c = 0; c < 3; ++c) {
-                // 全部が透明なら重みが 0 になる。そのときは素の平均を残す (後段の双線形で縁の色が要る)。
+                /// @note 全部が透明なら重みが 0 になる。そのときは素の平均を残す (後段の双線形で縁の色が要る)。
                 const float value = weighted
                     ? (alphaSum > 1.0e-6f ? color[c] / alphaSum : plainColor[c] * 0.25f)
                     : color[c] * 0.25f;

@@ -1,5 +1,5 @@
 /// @file    RagdollDebugPass.cpp
-/// @brief   ラグドールの剛体・可動域・接触点を HDR バッファへ重ねる IRenderPass 実装
+/// @brief   ラグドールの剛体・可動域・接触点を重ねて描く。
 /// @author  Hasegawa Jin
 /// @date    2026-09-03
 #include "DebugPasses.hpp"
@@ -14,8 +14,7 @@ namespace fbzz::scene {
 
 namespace {
 
-// 剛体は控えめな水色、可動域は緑、力負けしている関節は赤、接触は黄。
-// 「赤が出たら支え切れていない」だけ覚えれば読める配色にしてある。
+/// @brief 剛体 = 水色、可動域 = 緑、力負けした関節 = 赤、接触 = 黄。
 math::Vector4 ColorOf(RagdollDebugLine::Kind kind)
 {
     switch (kind) {
@@ -30,12 +29,6 @@ math::Vector4 ColorOf(RagdollDebugLine::Kind kind)
 } // namespace
 
 std::string_view RagdollDebugPass::Name() const { return "RagdollDebug"; }
-
-void RagdollDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
-{
-    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
-    builder.ReadWrite("HDR").SetAutoTarget("HDR");
-}
 
 bool RagdollDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
@@ -54,8 +47,7 @@ void RagdollDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 
         const auto* ragdoll = object->GetComponent<RagdollComponent>();
         if (!ragdoll || !ragdoll->runtime.rig || !ragdoll->runtime.rig->IsBuilt()) continue;
-        // 止まっている間は剛体が «最後に倒れた形» のまま残っている。それを描くと
-        // 画面に居ないラグドールの残骸が写るので、走っているものだけ出す。
+        /// @note 止まっている間の剛体は «最後に倒れた形» の残骸なので描かない。
         if (!ragdoll->IsActive()) continue;
 
         m_lines.clear();

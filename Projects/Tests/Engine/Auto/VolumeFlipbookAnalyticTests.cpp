@@ -28,7 +28,7 @@ asset::VolumeSourceSettings PuffSource()
     asset::VolumeSourceSettings source;
     source.preset = "Puff";
     source.seed = 3;
-    // Puff はベイクの長さで正規化される。検査する時刻 (〜1.3 秒) がベイクの内側に入る長さにする。
+    /// @note Puff はベイクの長さで正規化される。検査する時刻 (〜1.3 秒) がベイクの内側に入る長さにする。
     source.frameCount = 64;
     source.frameDt = kFrameDt;
     return source;
@@ -41,7 +41,7 @@ asset::VolumeFillFrame Pack(const std::vector<asset::VolumePuff>& puffs, float t
     return frame;
 }
 
-// center の周りから、密度のある点をいくつか拾う。
+/// center の周りから、密度のある点をいくつか拾う。
 std::vector<math::Vector3> DensePointsAround(const asset::VolumeFillFrame& frame, const math::Vector3& center,
                                              float extent)
 {
@@ -61,7 +61,7 @@ std::vector<math::Vector3> DensePoints(const asset::VolumeFillFrame& frame)
     return DensePointsAround(frame, { 0.0f, -0.3f, 0.0f }, 0.3f);
 }
 
-// 重力・減速・進行方向への伸び・回転・膨張を全部持つ puff。
+/// 重力・減速・進行方向への伸び・回転・膨張を全部持つ puff。
 asset::VolumePuff BallisticPuff()
 {
     asset::VolumePuff puff;
@@ -147,7 +147,7 @@ TEST_F(VolumeFlipbookAnalyticTest, CenterVelocityIsTheDerivativeOfTheCenter)
             EXPECT_VEC3_NEAR(asset::PuffCenterVelocityAt(puff, age), numeric, testkit::kLooseTolerance);
         }
     }
-    // 減速なしは放物線そのもの。
+    /// @note 減速なしは放物線そのもの。
     const math::Vector3 parabola = withoutDrag.startCenter + withoutDrag.velocity * 0.5f
         + withoutDrag.acceleration * (0.5f * 0.25f);
     EXPECT_VEC3_NEAR(asset::PuffCenterAt(withoutDrag, 0.5f), parabola, testkit::kTolerance);
@@ -162,7 +162,7 @@ TEST_F(VolumeFlipbookAnalyticTest, StretchElongatesAlongTheVelocity)
     puff.noiseScale = 0.0f;
     const asset::VolumeFillFrame frame = Pack({ puff }, 0.0f);
 
-    // 進行方向は σ·r = 0.6 まで伸び、横は r/√σ ≈ 0.115 まで縮む。
+    /// @note 進行方向は σ·r = 0.6 まで伸び、横は r/√σ ≈ 0.115 まで縮む。
     EXPECT_GT(asset::SampleVolumeFill(frame, { 0.4f, 0.0f, 0.0f }).density, 0.0f);
     EXPECT_EQ(asset::SampleVolumeFill(frame, { 0.0f, 0.4f, 0.0f }).density, 0.0f);
     EXPECT_EQ(asset::SampleVolumeFill(frame, { 0.0f, 0.0f, 0.4f }).density, 0.0f);

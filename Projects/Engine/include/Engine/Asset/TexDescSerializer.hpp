@@ -1,19 +1,11 @@
 /// @file    TexDescSerializer.hpp
-/// @brief   テクスチャインポート設定サイドカー (.meta) の読み書き (IAssetSerializer<TextureAsset> 実装)。
+/// @brief   テクスチャインポート設定サイドカー (.meta) の読み書き (`IAssetSerializer<TextureAsset>` 実装)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 ///
-/// 命名規則: 元画像に二重拡張子で付随する。例: Foo.png -> Foo.png.meta (Unity 流)
-/// WHY: 元画像は末尾 ".meta" を除けば一意に導出できるため source= フィールドは持たない。
-/// .meta フォーマット:
-/// [texture]
-/// type = "color" | "normal" | "data" | "hdr" | "ui" | "sprite"
-/// srgb = true
-/// compression = "Auto" | "BC1" | "BC3" | "BC4" | "BC5" | "BC6H" | "BC7" | "None"
-/// sprite_mode = "Single" | "Multiple"
-/// pixels_per_unit = 100.0
-/// sprites = [{ id = "sprite-...", name = "Button", x = 0, y = 0, width = 64, height = 32, ... }]
-/// ... 他すべての TextureImportSettings フィールド
+/// @note 命名: 元画像に二重拡張子で付随する (`Foo.png` → `Foo.png.meta`、Unity 流)。元画像パスは末尾
+///       `.meta` を除けば一意に導出できるため、source= フィールドは持たない。
+/// @note .meta は TOML の [texture] セクションで、TextureImportSettings の全フィールドを持つ。
 #pragma once
 #include <Engine/Asset/IAssetSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
@@ -28,8 +20,8 @@ public:
     [[nodiscard]] bool Load(const std::string& absPath, TextureAsset& outAsset) const override;
     std::string_view Extension() const override { return ".meta"; }
 
-    // ".meta" が渡されたら末尾 ".meta" を除いた元画像パスを返す。生画像パスはそのまま返す。
-    // WHY: Scene / Material / Terrain の全テクスチャ参照を、元画像 / サイドカーどちらの表記でも解決させる。
+    /// @brief ".meta" が渡されたら末尾を除いた元画像パスを返す。生画像パスはそのまま返す。
+    /// @note Scene / Material / Terrain の全テクスチャ参照を、元画像 / サイドカーどちらの表記でも解決させる。
     [[nodiscard]] static bool ResolveSourcePath(
         std::string_view texturePath, std::string& outSourcePath);
 };

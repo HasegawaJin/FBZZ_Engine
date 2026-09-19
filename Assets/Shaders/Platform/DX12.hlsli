@@ -19,4 +19,14 @@
 #define RAY_QUERY_SUPPORTED       1
 #endif
 
+// WHAT: SM 6.6 の ResourceDescriptorHeap でディスクリプタヒープを直接引けることを表す。
+// WHY: コンパイル対象が命令を «書ける» ことと、実機が «実行できる» ことは別。実機側は
+//      DX12Context::SupportsBindless (SM 6.6 + Resource Binding Tier 3) が判定し、非対応なら
+//      ルートシグネチャのフラグごと落ちる。そのとき添字は常に BINDLESS_INVALID_INDEX で配られ、
+//      シェーダーはディスクリプタテーブル経路へ縮退する。
+//      詳細は Docs/design/bindless.md
+#ifndef BINDLESS_SUPPORTED
+#define BINDLESS_SUPPORTED        1
+#endif
+
 #endif // FBZZ_PLATFORM_DX12_HLSLI

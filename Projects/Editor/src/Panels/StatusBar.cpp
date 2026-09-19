@@ -48,7 +48,7 @@ float SnapFieldsWidth()
     return w;
 }
 
-// 直前に描いた項目の右端 (ウィンドウローカル X)。バーは 1 行なので、これが次の項目の開始位置になる。
+/// 直前に描いた項目の右端 (ウィンドウローカル X)。バーは 1 行なので、これが次の項目の開始位置になる。
 float LastItemEndX()
 {
     return ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
@@ -56,9 +56,8 @@ float LastItemEndX()
 
 } // namespace
 
-// 下端ドロワーの開閉ボタン。開いている間は押下色にして状態を一目で分かるようにする。
-// WHY: Unreal の Content Drawer と同じで、Viewメニューやドックタブを探さずに
-//      どのレイアウトからでも同じ位置で開閉できることに価値がある。
+/// 下端ドロワーの開閉ボタン。開いている間は押下色にして状態を一目で分かるようにする。
+/// @note どのレイアウトからでも同じ位置で開閉できることに価値がある (Unreal の Content Drawer 同様)。
 void DrawDrawerToggle(const char* label, bool* visible, const char* tooltipTarget)
 {
     if (visible == nullptr) return;
@@ -78,7 +77,7 @@ void DrawDrawerToggle(const char* label, bool* visible, const char* tooltipTarge
 
 void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consoleVisible)
 {
-    // FPS / フレームタイム
+    /// @note FPS / フレームタイム
     m_fpsTimer += ImGui::GetIO().DeltaTime;
     ++m_fpsCount;
     if (m_fpsTimer >= 0.5f) {
@@ -96,35 +95,41 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 
-    // WHY: 行の基準をテキストではなく枠付きウィジェット (Checkbox / DragFloat) の高さに合わせる。
-    //      テキスト基準のままだと枠の下端がバー = ウィンドウ下端をはみ出して切れる。
-    //      AlignTextToFramePadding でテキスト側をこの行に合わせ直すので、文字の位置は変わらない。
+    /// @note 行の基準は枠付きウィジェット (Checkbox / DragFloat) の高さに合わせる。テキスト基準だと
+    ///       枠の下端がバー下端をはみ出す。AlignTextToFramePadding でテキストをこの行に合わせ直す。
     const float rowY = (barH - ImGui::GetFrameHeight()) * 0.5f;
     ImGui::SetCursorPosY(rowY);
     ImGui::AlignTextToFramePadding();
 
-    // 右端に置く内容を描画前に決めておく。
-    // WHY: 左から流し込む情報をどこで打ち切るかは、右端領域と Snap 群の幅が確定しないと判定できない。
-    //      判定しないままだと、ウィンドウが狭いときに Snap のチェックボックスと入力欄が外へ押し出される。
-    const float pbW       = 180.0f;
+    /// @note 右端に置く内容を描画前に決めておく。左から流し込む情報の打ち切り位置は右端領域と
+    ///       Snap 群の幅が確定しないと判定できず、しないとウィンドウが狭いとき Snap が外へ押し出される。
+    const float pbW       = 280.0f;
     const auto& hrs       = ctx.hotReloadState;
     const bool  compiling = (hrs == EditorContext::HotReloadState::Compiling);
     const bool  reloading = (hrs == EditorContext::HotReloadState::Reloading);
     const bool  completed = (hrs == EditorContext::HotReloadState::Done && ctx.hotReloadProgress >= 1.0f);
+    const bool  failed    = (hrs == EditorContext::HotReloadState::Failed && !ctx.hotReloadMessage.empty());
 
     const bool showProgress = compiling || reloading || completed;
+    /// @note 確定までは今の時刻、確定後は FinishTime で止めた経過秒。
+    const double elapsedSec = (compiling || reloading ? ImGui::GetTime() : ctx.hotReloadFinishTime)
+                              - ctx.hotReloadStartTime;
 
-    // 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
-    // ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
+    /// @note 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
+    ///       ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
     const BuildRecord* latest       = ctx.buildConsole ? ctx.buildConsole->Latest() : nullptr;
     const char*        reloadText   = nullptr;
     ImVec4             reloadColor  = EditorTheme::Color(ThemeColor::Text);
     char               summary[160] = {};
     if (!showProgress) {
         if (!m_message.empty()) {
-            // 一時的な操作メッセージ (保存など) を最優先で表示する。
+            /// @note 一時的な操作メッセージ (保存など) を最優先で表示する。
             reloadText  = m_message.c_str();
             reloadColor = EditorTheme::Color(ThemeColor::Info);
+        } else if (failed) {
+            /// @note ビルド記録より先に見る。コンパイル成功後のロード失敗は記録上 «成功» なので、記録だけだと OK と出る。
+            reloadText  = ctx.hotReloadMessage.c_str();
+            reloadColor = EditorTheme::Color(ThemeColor::Danger);
         } else if (latest && latest->result == BuildRecord::Result::Failed) {
             std::snprintf(summary, sizeof(summary), "Build failed  %d error(s)  %s",
                           latest->errorCount, latest->startClock.c_str());
@@ -149,7 +154,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     const float snapW      = SepWidth() + SnapToggleWidth() + (ctx.snapEnabled ? SnapFieldsWidth() : 0.0f);
     const float leftBudget = windowW - rightW - snapW;
 
-    // ── 下端ドロワー ──────────────────────────────────────────────────
+    /// @name 下端ドロワー
     DrawDrawerToggle("Asset Browser", assetBrowserVisible, "Asset Browser");
     DrawDrawerToggle("Console", consoleVisible, "Console (debug log)");
 
@@ -174,15 +179,15 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         Sep();
     }
 
-    // ── シーン名 + 未保存インジケーター ───────────────────────────────
-    // WHY: 未保存状態は「タイトルバーの *」「AssetBrowser の Save* (N)」に分散していた。
-    //      ここへ シーン未保存の橙ドットと 未保存アセット件数を集約し、一目で保存漏れを把握できるようにする。
+    /// @name シーン名 + 未保存インジケーター
+    /// @note 未保存状態はタイトルバーの * と AssetBrowser の Save* (N) に分散していたため、ここへ
+    ///       シーン未保存の橙ドットと未保存アセット件数を集約する。
     const std::string sceneName = ctx.currentScenePath.empty()
         ? "Untitled"
         : util::FileSystem::GetFilename(ctx.currentScenePath);
     ImGui::Text("Scene: %s", sceneName.c_str());
-    // Play 中に LoadScene で移った先は「今走っているシーン」であって編集対象ではない。
-    // 名前を並べておかないと、遷移したこと自体が画面のどこにも出ない。
+    /// @note Play 中に LoadScene で移った先は「今走っているシーン」であって編集対象ではない。
+    ///       名前を並べておかないと、遷移したこと自体が画面のどこにも出ない。
     if (!ctx.playSceneName.empty()) {
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Success), "\xE2\x96\xB6 %s",
@@ -194,8 +199,9 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     }
     if (ctx.sceneDirty) {
         ImGui::SameLine(0.0f, 4.0f);
-        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "\xE2\x97\x8F"); // ● 未保存
-        // クリックで即保存できるようにする (タイトルバー * と StatusBar 表示の導線を一致させる)。
+        /// @note ● 未保存
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "\xE2\x97\x8F");
+        /// @note クリックで即保存できるようにする (タイトルバー * と StatusBar 表示の導線を一致させる)。
         if (ImGui::IsItemClicked()) ctx.requestSaveScene = true;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Scene has unsaved changes \xe2\x80\x94 click to save (Ctrl+S)");
     }
@@ -208,7 +214,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     Sep();
     ImGui::Text("FPS: %.1f  (%.2f ms)", m_fps, ms);
 
-    // 選択名は長さが読めないため先に測り、シーン統計やカメラ座標より優先で場所を確保する。
+    /// @note 選択名は長さが読めないため先に測り、シーン統計やカメラ座標より優先で場所を確保する。
     const char* selName = "None";
     if (auto* go = ctx.GetSelectedGO())
         selName = go->name.c_str();
@@ -216,7 +222,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     std::snprintf(selText, sizeof(selText), "Sel: %s", selName);
     const float selW = SepWidth() + ImGui::CalcTextSize(selText).x;
 
-    // 残り幅に入らない項目は落とす。reserved は「この項目より優先する後続項目」の幅。
+    /// @note 残り幅に入らない項目は落とす。reserved は「この項目より優先する後続項目」の幅。
     auto DrawIfFits = [leftBudget](const char* text, float reserved) {
         if (LastItemEndX() + SepWidth() + ImGui::CalcTextSize(text).x + reserved > leftBudget)
             return;
@@ -224,7 +230,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         ImGui::TextUnformatted(text);
     };
 
-    // ── シーン統計 ────────────────────────────────────────────────────
+    /// @name シーン統計
     if (ctx.activeScene) {
         const int objCount   = static_cast<int>(ctx.activeScene->GameObjectCount());
         const int meshCount  = static_cast<int>(ctx.activeScene->GetComponents<scene::MeshRenderer>().size());
@@ -234,7 +240,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         DrawIfFits(stats, selW);
     }
 
-    // ── カメラ座標 ────────────────────────────────────────────────────
+    /// @name カメラ座標
     if (ctx.editorCamera) {
         const auto& p = ctx.editorCamera->m_position;
         char cam[64];
@@ -242,10 +248,10 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         DrawIfFits(cam, selW);
     }
 
-    // ── 選択オブジェクト ──────────────────────────────────────────────
+    /// @name 選択オブジェクト
     DrawIfFits(selText, 0.0f);
 
-    // ── スナップ設定 ──────────────────────────────────────────────────
+    /// @name スナップ設定
     Sep();
     ImGui::PushStyleColor(ImGuiCol_Text,
         ctx.snapEnabled ? EditorTheme::Color(ThemeColor::Accent)
@@ -254,10 +260,10 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     ImGui::PopStyleColor();
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Toggle gizmo snapping\nRight-click each value for presets");
-    // 左側を削っても入力欄 3 つ分が残らない極端な幅では、チェックボックスだけ残す。
+    /// @note 左側を削っても入力欄 3 つ分が残らない極端な幅では、チェックボックスだけ残す。
     const bool roomForSnapFields = (windowW - rightW - LastItemEndX()) >= SnapFieldsWidth();
     if (ctx.snapEnabled && roomForSnapFields) {
-        // Position
+        /// @note Position
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextDisabled("Pos");
         ImGui::SameLine(0.0f, 2.0f);
@@ -274,7 +280,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             }
             ImGui::EndPopup();
         }
-        // Rotation
+        /// @note Rotation
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextDisabled("Rot");
         ImGui::SameLine(0.0f, 2.0f);
@@ -291,7 +297,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             }
             ImGui::EndPopup();
         }
-        // Scale
+        /// @note Scale
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextDisabled("Scl");
         ImGui::SameLine(0.0f, 2.0f);
@@ -310,20 +316,20 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         }
     }
 
-    // ── ホットリロード状態（右端）─────────────────────────────────────
+    /// @name ホットリロード状態（右端）
     {
         const float rightX = windowW - pbW - 4.0f;
         const float pbH    = barH - 4.0f;
         const float pbY    = (barH - pbH) * 0.5f;
 
-        // WHY: SameLine を挟まないと右端の内容が次の行 = バーの外へ落ちる。
-        //      行を保つことで、テキストは AlignTextToFramePadding の基準線に乗ったままになる。
+        /// @note SameLine を挟まないと右端の内容が次の行 = バーの外へ落ちる。
         ImGui::SameLine(0.0f, 0.0f);
 
         if (compiling || reloading || completed) {
-            const char* label = compiling
-                ? (ctx.hotReloadMessage.empty() ? "Compiling Scripts..." : ctx.hotReloadMessage.c_str())
-                : (ctx.hotReloadMessage.empty() ? "Reloading DLL..."    : ctx.hotReloadMessage.c_str());
+            const bool  shaders = ctx.hotReloadTarget == EditorContext::HotReloadTarget::Shaders;
+            const char* label = completed ? (shaders ? "Shaders reloaded" : "Scripts reloaded")
+                              : reloading ? "Reloading scripts..."
+                              : (shaders ? "Compiling shaders..." : "Compiling scripts...");
             const ImVec4 barCol = completed
                 ? EditorTheme::Color(ThemeColor::Success)
                 : (compiling ? EditorTheme::Color(ThemeColor::Warning)
@@ -332,26 +338,31 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             ImGui::SetCursorPosY(pbY);
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
             ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
-            // 進捗が取れないときは掃引アニメーションで「動いている」ことだけ示す。
-            // WHY ここで作るか: 以前は Detail Bake のバーと共用していて外側に置いていたが、
-            //     そちらが無くなったので、唯一の使い手であるこのブロックへ寄せる。
+            /// @note 進捗が取れないときは掃引アニメーションで「動いている」ことだけ示す。唯一の
+            ///       使い手であるこのブロックへ寄せる (Detail Bake との共用は廃止済み)。
             const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
             const float sweep       = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
             const float progress    = hasProgress ? ctx.hotReloadProgress : sweep;
-            // コンパイル中は現在コンパイル対象のファイル名を重畳し、擬似進捗を実感のある表示にする。
+            /// @note 擬似進捗の % は出さない (MSBuild は総数を返さず 89% で止まって見える)。代わりに経過秒と現在ファイルを出す。
             const char* curFile = (compiling && ctx.buildConsole && !ctx.buildConsole->CurrentFile().empty())
                                       ? ctx.buildConsole->CurrentFile().c_str() : nullptr;
             char progressLabel[256];
-            if (curFile) {
-                std::snprintf(progressLabel, sizeof(progressLabel), "%s  %s", label, curFile);
-            } else if (hasProgress) {
-                std::snprintf(progressLabel, sizeof(progressLabel), "%s %.0f%%", label, progress * 100.0f);
-            }
-            const bool hasLabel = curFile || hasProgress;
-            ImGui::ProgressBar(progress, { pbW, pbH }, hasLabel ? progressLabel : label);
-            // クリックで Build Output を開けるようにする。
+            if (curFile)
+                std::snprintf(progressLabel, sizeof(progressLabel), "%s %.1fs  %s", label, elapsedSec, curFile);
+            else
+                std::snprintf(progressLabel, sizeof(progressLabel), "%s %.1fs", label, elapsedSec);
+            ImGui::ProgressBar(progress, { pbW, pbH }, progressLabel);
+            /// @note クリックで Build Output を開けるようにする。
             if (ImGui::IsItemClicked()) ctx.requestOpenBuildOutput = true;
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to open Build Output");
+            if (ImGui::IsItemHovered()) {
+                ImGui::BeginTooltip();
+                if (!ctx.hotReloadMessage.empty()) ImGui::TextUnformatted(ctx.hotReloadMessage.c_str());
+                if (curFile) ImGui::Text("Current: %s", curFile);
+                if (compiling || reloading)
+                    ImGui::TextDisabled("Play is disabled until the reload finishes");
+                ImGui::TextDisabled("Click to open Build Output");
+                ImGui::EndTooltip();
+            }
             ImGui::PopStyleColor(2);
         } else if (reloadText) {
             const float rx = windowW - rightW;
@@ -359,9 +370,10 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
             ImGui::TextUnformatted(reloadText);
             ImGui::PopStyleColor();
-            // ビルド結果テキストのクリックで Build Output を開く。
-            if (latest && ImGui::IsItemClicked())  ctx.requestOpenBuildOutput = true;
-            if (latest && ImGui::IsItemHovered())  ImGui::SetTooltip("Click to open Build Output");
+            /// @note ビルド結果テキストのクリックで Build Output を開く。
+            const bool opensBuildOutput = latest || failed;
+            if (opensBuildOutput && ImGui::IsItemClicked())  ctx.requestOpenBuildOutput = true;
+            if (opensBuildOutput && ImGui::IsItemHovered())  ImGui::SetTooltip("Click to open Build Output");
         }
     }
 

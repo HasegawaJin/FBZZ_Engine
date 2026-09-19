@@ -3,13 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// WHY: 従来は Transform を「全員をプライマリの値に揃える」だけで、共通コンポーネントは
-/// BulletText で名前を並べるだけだった。レベル調整では「選んだ 20 個のライトの強度を
-/// まとめて下げる」「全員を +Y に 2m ずらす」が毎日発生するため、
-/// 1) Transform に Set / Offset の 2 モード
-/// 2) 共通コンポーネントの実編集 (Reflect() 経由で自動生成)
-/// 3) 列挙をコンポーネントレジストリ由来にして追加漏れを無くす
-/// の 3 点を入れる。
+/// @note Transform は Set / Offset の 2 モード、共通コンポーネントは Reflect() 経由で実編集し、
+///       列挙はコンポーネントレジストリ由来にして追加漏れを防ぐ (「選んだ 20 個のライト強度を
+///       まとめて下げる」「全員を +Y に 2m」のようなレベル調整の一括操作に対応する)。
 #include "InspectorMultiEdit.hpp"
 #include "InspectorCommon.hpp"
 
@@ -28,12 +24,10 @@ namespace fbzz::editor {
 
 namespace {
 
-// ── 一括編集用リフレクタ ──────────────────────────────────────────────────────
-// 基底 (ImGuiReflector) の描画をそのまま使い、呼び出し前後で値が変わったフィールドを
-// 「名前 + 新しい値」として記録する。
-// WHY: ImGuiReflector は値を直接書き換えるだけで「どのフィールドが変わったか」を返さない。
-//      これが分かれば、同じ Reflect() をもう一度回して他の選択オブジェクトの同名フィールド
-//      だけへ値を配れる。コンポーネントごとに一括編集 UI を手書きしなくて済む。
+/// @name 一括編集用リフレクタ
+/// @brief 基底 (ImGuiReflector) の描画を流用し、呼び出し前後で変わったフィールドを記録する。
+/// @note ImGuiReflector は値を書き換えるだけで変更フィールドを返さない。記録した変更で
+///       同じ Reflect() を他の選択オブジェクトへ回し、同名フィールドだけへ配る。
 struct MultiEditReflector final : ImGuiReflector {
     struct Change {
         enum class Kind { Float, Int, Bool, Vec2, Vec3, Vec4, Quat, String };
@@ -149,9 +143,9 @@ private:
     }
 };
 
-// 記録された変更を「同名フィールドだけ」へ書き込むリフレクタ。
-// WHY: 変更されていないフィールドまでプライマリの値で塗ると、
-//      Intensity を触っただけで他オブジェクトの色や範囲まで揃ってしまう (Unity は触った値だけ揃える)。
+/// @brief 記録された変更を「同名フィールドだけ」へ書き込むリフレクタ。
+/// @note 未変更フィールドまでプライマリの値で塗ると、Intensity を触っただけで他オブジェクトの
+///       色や範囲まで揃ってしまう (Unity は触った値だけ揃える)。
 struct ApplyFieldReflector final : scene::IReflector {
     const MultiEditReflector::Change* change = nullptr;
 
@@ -201,11 +195,11 @@ struct ApplyFieldReflector final : scene::IReflector {
     }
 };
 
-// ── Transform 一括編集 ───────────────────────────────────────────────────────
+/// @name Transform 一括編集
 
 enum class TransformEditMode { Set, Offset };
 
-// 選択全体の Transform を before/after で 1 コマンドにまとめて Undo へ積む。
+/// 選択全体の Transform を before/after で 1 コマンドにまとめて Undo へ積む。
 void PushBulkTransformUndo(EditorContext& ctx,
                            const std::vector<std::string>& guids,
                            const std::vector<scene::Transform>& before,
@@ -245,7 +239,7 @@ std::vector<scene::Transform> TransformsOf(const std::vector<scene::GameObject*>
     return values;
 }
 
-// 「全員を同じ値にする」モード。従来の挙動をそのまま踏襲する。
+/// 「全員を同じ値にする」モード。従来の挙動をそのまま踏襲する。
 void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObject*>& gos)
 {
     const auto& refT = gos.front()->transform;
@@ -263,7 +257,7 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
             scaleAllSame = false;
     }
 
-    // ドラッグ 1 回を 1 コマンドにまとめるための編集状態。
+    /// @note ドラッグ 1 回を 1 コマンドにまとめるための編集状態。
     struct MultiTransformEdit {
         std::vector<std::string>      guids;
         std::vector<scene::Transform> before;
@@ -278,8 +272,8 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
             edit.active = true;
         }
         if (!changed && !ImGui::IsItemDeactivatedAfterEdit()) return;
-        // WHY: 反映は各フィールドの changed ハンドラ側で済ませている。ここで transform 全体を
-        //      コピーすると、Position を触っただけで他の回転・スケールまで潰れる。
+        /// @note 反映は各フィールドの changed ハンドラ側で済ませている。ここで transform 全体を
+        ///       コピーすると、Position を触っただけで他の回転・スケールまで潰れる。
         if (!ImGui::IsItemDeactivatedAfterEdit()) return;
         if (edit.active)
             PushBulkTransformUndo(ctx, edit.guids, edit.before, TransformsOf(gos), description);
@@ -323,10 +317,10 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
     track(scaleChanged, "Scale (Multi)");
 }
 
-// 「全員に相対的な差分を加える」モード。
-// WHY: Set モードでは「全員を +Y に 2m」ができない (全員が同じ Y に揃ってしまう)。
-//      その場適用ではなく [Apply] ボタン式にしているのは、ドラッグ中に毎フレーム
-//      加算されて発散するのを避けるためと、Undo を 1 操作 = 1 コマンドに保つため。
+/// @brief 「全員に相対的な差分を加える」モード。
+/// @note Set モードでは「全員を +Y に 2m」ができない (全員が同じ Y に揃う)。その場適用でなく
+///       [Apply] ボタン式にしているのは、ドラッグ中の毎フレーム加算による発散を避け、
+///       Undo を 1 操作 = 1 コマンドに保つため。
 void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameObject*>& gos)
 {
     static float moveDelta[3]  = { 0.0f, 0.0f, 0.0f };
@@ -355,8 +349,8 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
     widgets::DragAxes("Rotate by", rotDelta, 3, 0.5f, 0.0f, 0.0f, "%.1f");
     ImGui::SameLine();
     if (ImGui::Button("Apply##rot")) {
-        // WHY: ワールド軸まわりの回転を左から掛けることで、各オブジェクトの現在の向きに
-        //      関係なく「同じ方向へ同じ角度だけ回す」になる。
+        /// @note ワールド軸まわりの回転を左から掛けることで、各オブジェクトの現在の向きに
+        ///       関係なく「同じ方向へ同じ角度だけ回す」になる。
         const math::Quaternion delta =
             widgets::EulerDegToQuat({ rotDelta[0], rotDelta[1], rotDelta[2] });
         applyBulk("Rotate by Offset (Multi)", [delta](scene::Transform& t) {
@@ -376,9 +370,9 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
     }
 }
 
-// ── 共通コンポーネントの一括編集 ──────────────────────────────────────────────
+/// @name 共通コンポーネントの一括編集
 
-// T を全員が持っているか。
+/// T を全員が持っているか。
 template<typename T>
 bool AllHaveComponent(const std::vector<scene::GameObject*>& gos)
 {
@@ -387,32 +381,159 @@ bool AllHaveComponent(const std::vector<scene::GameObject*>& gos)
     return true;
 }
 
-// 共通コンポーネント 1 種類ぶんのセクションを描く。
-// プライマリのコンポーネントを Reflect() で描画し、変更されたフィールドだけを
-// 他の選択オブジェクトの同名フィールドへ配る。
+/// @brief Reflect() に載る値を Change の列へ写し取る。コピーできない型の Remove を戻すために使う。
+struct CaptureFieldsReflector final : scene::IReflector {
+    using Change = MultiEditReflector::Change;
+    std::vector<Change> changes;
+
+    void Field(const char* name, float& v) override            { Record(name, Change::Kind::Float).f = v; }
+    void Field(const char* name, int& v) override              { Record(name, Change::Kind::Int).i = v; }
+    void Field(const char* name, bool& v) override             { Record(name, Change::Kind::Bool).b = v; }
+    void Field(const char* name, math::Vector2& v) override    { Record(name, Change::Kind::Vec2).v2 = v; }
+    void Field(const char* name, math::Vector3& v) override    { Record(name, Change::Kind::Vec3).v3 = v; }
+    void Field(const char* name, math::Vector4& v) override    { Record(name, Change::Kind::Vec4).v4 = v; }
+    void Field(const char* name, math::Quaternion& v) override { Record(name, Change::Kind::Quat).q = v; }
+    void Field(const char* name, std::string& v) override      { Record(name, Change::Kind::String).s = v; }
+    void AssetField(const char* name,
+                    scene::ScriptAssetReference& value,
+                    scene::ScriptAssetType) override
+    {
+        Record(name, Change::Kind::String).s = value.ResolvePath();
+    }
+
+private:
+    Change& Record(const char* name, Change::Kind kind)
+    {
+        Change& c = changes.emplace_back();
+        c.name = PersistentKey(name);
+        c.kind = kind;
+        return c;
+    }
+};
+
+/// @brief 選択全員から T を外し、1 回の Undo で全員ぶん戻すボタン。
+/// @note 1 体でも «外すと壊れる相手» が居れば押せなくし、相手を名指しする。
+/// @note コピーできない型は Reflect() の値だけを持ち運ぶ。collider は捨て、物理側が meshPath から組み直す。
+template<typename T>
+void DrawRemoveFromAllSelectedButton(EditorContext& ctx,
+                                     const std::vector<scene::GameObject*>& gos,
+                                     const char* label)
+{
+    constexpr bool copyable   = std::is_copy_constructible_v<T>;
+    constexpr bool restorable = copyable
+        || (std::is_default_constructible_v<T>
+            && requires(T& c, scene::IReflector& r) { c.Reflect(r); });
+    if constexpr (!restorable) {
+        return;
+    } else {
+        std::string blocker;
+        for (auto* g : gos) {
+            if (!g->GetComponent<T>()) continue;
+            blocker = FindComponentRemovalBlocker(*g, typeid(T));
+            if (!blocker.empty()) { blocker += " on " + g->name; break; }
+        }
+
+        ImGui::BeginDisabled(!blocker.empty());
+        const bool clicked = ImGui::SmallButton("Remove from all selected");
+        ImGui::EndDisabled();
+        if (!blocker.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Required by %s", blocker.c_str());
+        if (!clicked) return;
+
+        const bool canUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
+        scene::Scene* scene = ctx.activeScene;
+        const auto markDirty = ctx.markSceneDirty;
+        std::vector<std::string> guids;
+        const auto removeAll = [scene, markDirty](const std::vector<std::string>& ids) {
+            for (const std::string& guid : ids)
+                if (auto* target = scene->FindByGuid(guid))
+                    if (target->GetComponent<T>())
+                        target->RemoveComponent<T>();
+            if (markDirty) markDirty();
+        };
+
+        if constexpr (copyable) {
+            std::vector<T> removed;
+            for (auto* g : gos) {
+                if (auto* c = g->GetComponent<T>()) {
+                    guids.push_back(g->instanceId);
+                    /// @note やり直し用のコピーからは GPU ハンドルを消す (実体は RemoveComponent が返す)。
+                    removed.push_back(*c);
+                    scene::ClearComponentGpuHandles(removed.back());
+                    g->RemoveComponent<T>();
+                }
+            }
+            if (canUndo && !guids.empty()) {
+                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                    std::string("Remove ") + label + " (Multi)",
+                    [removeAll, guids]() { removeAll(guids); },
+                    [scene, guids, removed, markDirty]() {
+                        for (std::size_t i = 0; i < guids.size(); ++i)
+                            if (auto* target = scene->FindByGuid(guids[i]))
+                                if (!target->GetComponent<T>())
+                                    target->AddComponent<T>(removed[i]);
+                        if (markDirty) markDirty();
+                    }));
+            }
+        } else {
+            std::vector<std::vector<MultiEditReflector::Change>> removed;
+            for (auto* g : gos) {
+                if (auto* c = g->GetComponent<T>()) {
+                    guids.push_back(g->instanceId);
+                    CaptureFieldsReflector capture;
+                    c->Reflect(capture);
+                    removed.push_back(std::move(capture.changes));
+                    g->RemoveComponent<T>();
+                }
+            }
+            if (canUndo && !guids.empty()) {
+                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                    std::string("Remove ") + label + " (Multi)",
+                    [removeAll, guids]() { removeAll(guids); },
+                    [scene, guids, removed, markDirty]() {
+                        for (std::size_t i = 0; i < guids.size(); ++i) {
+                            auto* target = scene->FindByGuid(guids[i]);
+                            if (!target || target->GetComponent<T>()) continue;
+                            T& restored = target->AddComponent<T>();
+                            ApplyFieldReflector applier;
+                            for (const auto& change : removed[i]) {
+                                applier.change = &change;
+                                restored.Reflect(applier);
+                            }
+                            if constexpr (requires(T& value) { value.collider.reset(); })
+                                restored.collider.reset();
+                        }
+                        if (markDirty) markDirty();
+                    }));
+            }
+        }
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
+}
+
+/// @brief 共通コンポーネント 1 種類ぶんのセクション。
+/// @note プライマリを Reflect() で描き、変更されたフィールドだけを他の選択の同名フィールドへ配る。
 template<typename T, typename Registration>
 void DrawSharedComponentSection(EditorContext& ctx,
                                 const std::vector<scene::GameObject*>& gos,
                                 const char* label)
 {
-    // レジストリが既に「Reflect() を持つか」を判定しているので、それをそのまま使う。
     constexpr bool hasReflect = Registration::hasReflect;
     constexpr bool copyable   = std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>;
 
     ImGui::PushID(label);
 
     if constexpr (!hasReflect || !copyable) {
-        // Reflect() を持たない / コピーできない型 (MeshCollider 等) は一括編集できない。
-        // WHY: 前者はフィールドを機械的に辿れず、後者は Undo 用のスナップショットが取れない。
-        //      黙って出さないと「なぜ編集できないのか」が分からないため、理由を明示する。
+        /// @note Reflect() が無い型は辿れず、コピーできない型は編集の Undo を取れない。黙って隠さず理由を出す。
         ImGui::BulletText("%s", label);
         ImGui::SameLine();
         ImGui::TextDisabled("(select a single object to edit)");
+        ImGui::SameLine();
+        DrawRemoveFromAllSelectedButton<T>(ctx, gos, label);
         ImGui::PopID();
         return;
     } else {
-        // 単体 Inspector と同じカード表現に揃える。複数選択でも「どの系統の
-        // コンポーネントを触っているか」を帯の色で拾えるようにするため。
+        /// @note 単体と同じカード表現にして、複数選択でも系統を帯の色で拾えるようにする。
         const ImU32 accent = ComponentAccent<T>();
         const widgets::ComponentHeaderResult header =
             widgets::ComponentHeader(label, accent, nullptr, false);
@@ -432,7 +553,7 @@ void DrawSharedComponentSection(EditorContext& ctx,
         const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
         ImGui::Spacing();
 
-        // ドラッグ 1 回を 1 コマンドにまとめるための編集状態 (型ごとに別インスタンス)。
+        /// @note ドラッグ 1 回を 1 コマンドにまとめる編集状態 (型ごとに別インスタンス)。
         struct BulkEdit {
             std::vector<std::string> guids;
             std::vector<T>           before;
@@ -450,7 +571,6 @@ void DrawSharedComponentSection(EditorContext& ctx,
 
         const ImGuiID activeAfter = ImGui::GetActiveID();
 
-        // 編集の開始を検出したら、選択全員のコンポーネントを before として保存する。
         if (canUndo && !edit.active && activeAfter != 0 && activeAfter != activeBefore) {
             edit.guids.clear();
             edit.before.clear();
@@ -464,7 +584,6 @@ void DrawSharedComponentSection(EditorContext& ctx,
             edit.active   = true;
         }
 
-        // 変更されたフィールドだけを他の選択オブジェクトへ配る。
         if (!reflector.changes.empty()) {
             ApplyFieldReflector applier;
             for (const auto& change : reflector.changes) {
@@ -476,8 +595,7 @@ void DrawSharedComponentSection(EditorContext& ctx,
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
 
-        // 編集の終了 (ウィジェットが非アクティブになった) で 1 コマンドを積む。
-        // WHY: 編集途中に Play へ入る等で記録が止まる場合があるため、積む直前にも確認する。
+        /// @note 編集途中に Play へ入ると記録が止まるので、積む直前にも記録可否を見る。
         const bool committed =
             edit.active && ctx.undoStack && ctx.undoStack->IsRecordingEnabled() &&
             (activeAfter == 0 || activeAfter != edit.activeId);
@@ -508,46 +626,12 @@ void DrawSharedComponentSection(EditorContext& ctx,
 
             edit.active = false;
         } else if (edit.active && (activeAfter == 0 || activeAfter != edit.activeId)) {
-            // Undo を積めない状況 (Play 中など) でも、編集状態は必ず閉じる。
+            /// @note Undo を積めない状況 (Play 中など) でも編集状態は必ず閉じる。
             edit.active = false;
         }
 
         ImGui::Spacing();
-        if (ImGui::SmallButton("Remove from all selected")) {
-            // 全員から取り除き、1 回の Undo で全員ぶん戻す。
-            std::vector<std::string> guids;
-            std::vector<T>           removed;
-            for (auto* g : gos) {
-                if (auto* c = g->GetComponent<T>()) {
-                    guids.push_back(g->instanceId);
-                    // やり直し用のコピーからは GPU ハンドルを消す (実体は下で返される)。
-                    removed.push_back(*c);
-                    scene::ClearComponentGpuHandles(removed.back());
-                    g->RemoveComponent<T>();
-                }
-            }
-            if (canUndo && !guids.empty()) {
-                scene::Scene* scene = ctx.activeScene;
-                const auto markDirty = ctx.markSceneDirty;
-                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                    std::string("Remove ") + label + " (Multi)",
-                    [scene, guids, markDirty]() {
-                        for (const std::string& guid : guids)
-                            if (auto* target = scene->FindByGuid(guid))
-                                if (target->GetComponent<T>())
-                                    target->RemoveComponent<T>();
-                        if (markDirty) markDirty();
-                    },
-                    [scene, guids, removed, markDirty]() {
-                        for (std::size_t i = 0; i < guids.size(); ++i)
-                            if (auto* target = scene->FindByGuid(guids[i]))
-                                if (!target->GetComponent<T>())
-                                    target->AddComponent<T>(removed[i]);
-                        if (markDirty) markDirty();
-                    }));
-            }
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
-        }
+        DrawRemoveFromAllSelectedButton<T>(ctx, gos, label);
         ImGui::Spacing();
         widgets::EndComponentBody(body);
         ImGui::Spacing();
@@ -573,7 +657,7 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
     ImGui::Separator();
     ImGui::Spacing();
 
-    // ── Transform ────────────────────────────────────────────────────────────
+    /// @name Transform
     const widgets::ComponentHeaderResult transformHeader =
         widgets::ComponentHeader("Transform", EditorTheme::ColorU32(ThemeColor::Accent), nullptr);
     if (transformHeader.open) {
@@ -606,16 +690,16 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
     }
     ImGui::Spacing();
 
-    // ── 共通コンポーネント ────────────────────────────────────────────────────
-    // WHY: 以前は 8 種類を決め打ちで BulletText していたため、コンポーネントを追加するたび
-    //      ここへ書き足す必要があり、実際に漏れていた。レジストリから列挙して自動追従させる。
+    /// @name 共通コンポーネント
+    /// @note 決め打ちの 8 種類 BulletText は列挙漏れの実害があったため、レジストリ由来の列挙で
+    ///       自動追従させる。
     ImGui::Spacing();
     ImGui::TextDisabled("Shared Components");
     ImGui::Separator();
 
     bool anyShared = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
-        // Hidden (Internal) は単体 Inspector にも出ないので、こちらでも出さない。
+        /// @note Hidden (Internal) は単体 Inspector にも出ないので、こちらでも出さない。
         if constexpr (Registration::inspectorMode == scene::ComponentInspectorMode::Hidden)
             return;
         else {
@@ -628,9 +712,9 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
     if (!anyShared)
         ImGui::TextDisabled("The selected objects have no component in common.");
 
-    // ── 選択全体へコンポーネントを追加 ────────────────────────────────────────
-    // WHY: 「選んだ 20 個全部に AudioSource を足す」はレベル調整で普通に出る操作。
-    //      既に持っている対象は飛ばし、追加ぶんは 1 回の Undo でまとめて戻る。
+    /// @name 選択全体へコンポーネントを追加
+    /// @note 既に持っている対象は飛ばし、追加ぶんは 1 回の Undo でまとめて戻る
+    ///       (「選んだ 20 個全部に AudioSource」のようなレベル調整操作に対応)。
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();

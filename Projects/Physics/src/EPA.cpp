@@ -18,8 +18,8 @@ namespace fbzz::physics
         struct EPAFace
         {
             Simplex::Vertex verts[3];
-            math::Vector3   normal;  // ポリトープ外向き法線 (正規化済み)
-            float           dist;    // 原点からの距離
+            math::Vector3   normal;  ///< ポリトープ外向き法線 (正規化済み)
+            float           dist;    ///< 原点からの距離
         };
 
         EPAFace MakeFace(const Simplex::Vertex& a,
@@ -34,11 +34,9 @@ namespace fbzz::physics
             const float lenSq = n.LengthSq();
             if (lenSq < 1e-12f)
             {
-                // 面積が潰れた面は法線を定義できない。
-                // WHY 距離を 0 でなく最遠にするか: 0 にすると «原点に最も近い面» として
-                //     毎回選ばれ、同じ方向のサポート点を足しては面を増やす無限膨張になる。
-                //     軸に揃った対称な配置 (球どうしを真横に重ねる等) で実際に起きる。
-                //     選ばれない距離に置き、実体のある面だけで拡張を進ませる。
+                /// @note 面積が潰れた面は法線を定義できない。距離を 0 にすると «原点に最も近い
+                ///       面» として毎回選ばれ、同じ方向のサポート点を足し続けて無限膨張する
+                ///       (球を真横に重ねる等の対称配置で発生)。選ばれない最遠距離に置く。
                 f.normal = math::Vector3::UP;
                 f.dist   = std::numeric_limits<float>::max();
             }
@@ -56,7 +54,7 @@ namespace fbzz::physics
             return f;
         }
 
-        // ポリトープのエッジ: EPA 拡張時に削除する面のエッジを保持
+        /// ポリトープのエッジ: EPA 拡張時に削除する面のエッジを保持
         struct Edge
         {
             Simplex::Vertex a, b;
@@ -64,7 +62,7 @@ namespace fbzz::physics
 
         void AddEdgeOrRemoveDuplicate(std::vector<Edge>& edges, const Simplex::Vertex& a, const Simplex::Vertex& b)
         {
-            // 逆向きの同一エッジが既にあれば両方削除 (Morrison's rule)
+            /// @note 逆向きの同一エッジが既にあれば両方削除 (Morrison's rule)
             for (int i = static_cast<int>(edges.size()) - 1; i >= 0; --i)
             {
                 const auto& e = edges[i];
@@ -78,16 +76,17 @@ namespace fbzz::physics
             edges.push_back({a, b});
         }
 
-        // バリセントリック座標で接触点を補間する
+        /// バリセントリック座標で接触点を補間する
         void BarycentricContact(const EPAFace& face,
                                 math::Vector3& outA,
                                 math::Vector3& outB)
         {
-            // 原点を面に投影し、バリセントリック座標を計算する
+            /// @note 原点を面に投影し、バリセントリック座標を計算する
             const math::Vector3& a = face.verts[0].point;
             const math::Vector3& b = face.verts[1].point;
             const math::Vector3& c = face.verts[2].point;
-            const math::Vector3  p = face.normal * face.dist; // 面への投影点
+            /// @note 面への投影点
+            const math::Vector3  p = face.normal * face.dist;
 
             const math::Vector3 ab = b - a;
             const math::Vector3 ac = c - a;
@@ -116,12 +115,9 @@ namespace fbzz::physics
         /// 原点がポリトープの «面の上» に乗っている状態で、深さ 0 の接触は解決に使えない。
         constexpr float kDegenerateDepth = 1.0e-5f;
 
-        /// ポリトープの面数の上限。
-        /// WHY: 原点がポリトープの稜線上に乗る配置 (球どうしを 1 軸方向にだけずらす等) では、
-        ///      同一平面の面が «向きだけ逆» の対で残り、シルエットエッジが打ち消し
-        ///      合わなくなる。1 反復ごとに面が増え続け、maxIter に達する前に
-        ///      メモリと O(E²) のエッジ探索で事実上停止する (テストがハングした原因)。
-        ///      反復数とは別に面数でも必ず止まるようにする。
+        /// @brief ポリトープの面数の上限。
+        /// @note 原点が稜線上に乗る退化配置では向き違いの同一平面対が相殺されず面が増え続け、
+        ///       O(E²) のエッジ探索が終わらない。反復数とは別に面数でも必ず止める。
         constexpr std::size_t kMaxFaces = 256;
 
         void RefineCardinalAxis(const void* shapeA, SupportFn supportA,
@@ -132,7 +128,7 @@ namespace fbzz::physics
             const float ax = std::abs(result.normal.x);
             const float ay = std::abs(result.normal.y);
             const float az = std::abs(result.normal.z);
-            // force = ポリトープからは深さが出なかった。軸ごとの重なりで測り直す。
+            /// @note force = ポリトープからは深さが出なかった。軸ごとの重なりで測り直す。
             if (!force && std::max({ ax, ay, az }) >= 0.75f) return;
 
             const math::Vector3 axes[6] = {
@@ -148,10 +144,10 @@ namespace fbzz::physics
 
             for (const math::Vector3& axis : axes)
             {
-                // ContactPoint::normal は「B から A」へ押し戻す向きで統一している。
-                // そのため候補軸 axis の貫通量は、A の axis 反対側の面と B の axis 側の面の
-                // 重なりとして測る。ここを逆にすると、床(OBB=A)の上にある Capsule(B)で
-                // 浅い上向き法線を選び、ResolvePosition が Capsule を床へ押し込んでしまう。
+                /// @note ContactPoint::normal は「B から A」へ押し戻す向きで統一している。
+                ///       そのため候補軸 axis の貫通量は、A の axis 反対側の面と B の axis 側の面の
+                ///       重なりとして測る。ここを逆にすると、床(OBB=A)の上にある Capsule(B)で
+                ///       浅い上向き法線を選び、ResolvePosition が Capsule を床へ押し込んでしまう。
                 const math::Vector3 suppA = supportA(shapeA, -axis);
                 const math::Vector3 suppB = supportB(shapeB, axis);
                 const float depth = math::Vector3::Dot(suppB - suppA, axis);
@@ -172,7 +168,7 @@ namespace fbzz::physics
                 result.contactB = bestB;
             }
         }
-    } // anonymous namespace
+    } // namespace
 
     EPAResult EPA_GetContactInfo(
         const void* shapeA, SupportFn supportA,
@@ -182,12 +178,12 @@ namespace fbzz::physics
     {
         EPAResult result;
 
-        // GJK の Simplex を四面体に拡張してポリトープの初期面を作る
-        // GJK 終了時の Simplex は 4 頂点でなければならない
+        /// @note GJK の Simplex を四面体に拡張してポリトープの初期面を作る
+        ///       GJK 終了時の Simplex は 4 頂点でなければならない
         if (gjkSimplex.size < 4)
         {
-            // 頂点が不足している場合は任意方向にサポート点を追加して補完する
-            // 簡易: 代表法線方向でサポートを追加して fallback
+            /// @note 頂点が不足している場合は任意方向にサポート点を追加して補完する
+            ///       簡易: 代表法線方向でサポートを追加して fallback
             result.valid  = false;
             return result;
         }
@@ -201,20 +197,20 @@ namespace fbzz::physics
         faces.push_back(MakeFace(v[0], v[3], v[1]));
         faces.push_back(MakeFace(v[1], v[3], v[2]));
 
-        // 収束せずに打ち切ったか。true ならポリトープの出す深さは信用しない。
+        /// @note 収束せずに打ち切ったか。true ならポリトープの出す深さは信用しない。
         bool abandoned = false;
 
         for (int iter = 0; iter < maxIter; ++iter)
         {
-            // 面が増え続けている = 縮退した配置で拡張が収束していない。
-            // ここで抜けて、その時点で最も近い面から近似値を作る。
+            /// @note 面が増え続けている = 縮退した配置で拡張が収束していない。
+            ///       ここで抜けて、その時点で最も近い面から近似値を作る。
             if (faces.size() > kMaxFaces)
             {
                 abandoned = true;
                 break;
             }
 
-            // 原点に最も近い面を選ぶ
+            /// @note 原点に最も近い面を選ぶ
             int   minIdx  = 0;
             float minDist = std::numeric_limits<float>::max();
             for (int i = 0; i < static_cast<int>(faces.size()); ++i)
@@ -226,15 +222,15 @@ namespace fbzz::physics
                 }
             }
 
-            // 実体のある面が 1 つも残っていない (すべて潰れている)。
-            // ここで進むと最遠に置いた番兵の距離を貫通量として返すことになる。
+            /// @note 実体のある面が 1 つも残っていない (すべて潰れている)。
+            ///       ここで進むと最遠に置いた番兵の距離を貫通量として返すことになる。
             if (minDist == std::numeric_limits<float>::max())
                 return result;
 
             const EPAFace& closestFace = faces[minIdx];
             const math::Vector3& n = closestFace.normal;
 
-            // 新しいサポート点を追加する
+            /// @note 新しいサポート点を追加する
             Simplex::Vertex newVert;
             newVert.suppA = supportA(shapeA,  n);
             newVert.suppB = supportB(shapeB, -n);
@@ -242,7 +238,7 @@ namespace fbzz::physics
 
             const float newDist = math::Vector3::Dot(n, newVert.point);
 
-            // 収束判定: 新しい点がほぼ面上にある
+            /// @note 収束判定: 新しい点がほぼ面上にある
             if (newDist - minDist < tolerance)
             {
                 BarycentricContact(closestFace, result.contactA, result.contactB);
@@ -254,7 +250,7 @@ namespace fbzz::physics
                 return result;
             }
 
-            // 新しい点から見える面を削除し、シルエットエッジを収集する
+            /// @note 新しい点から見える面を削除し、シルエットエッジを収集する
             std::vector<Edge> edges;
             for (int i = static_cast<int>(faces.size()) - 1; i >= 0; --i)
             {
@@ -269,12 +265,12 @@ namespace fbzz::physics
                 }
             }
 
-            // シルエットエッジから新しい面を追加する
+            /// @note シルエットエッジから新しい面を追加する
             for (const Edge& e : edges)
                 faces.push_back(MakeFace(e.a, e.b, newVert));
         }
 
-        // maxIter 到達: 最も近い面で近似する
+        /// @note maxIter 到達: 最も近い面で近似する
         if (!faces.empty())
         {
             int   minIdx  = 0;
@@ -287,7 +283,7 @@ namespace fbzz::physics
                     minIdx  = i;
                 }
             }
-            // 潰れた面しか残っていない場合は近似の元が無い。無効を返す。
+            /// @note 潰れた面しか残っていない場合は近似の元が無い。無効を返す。
             if (minDist == std::numeric_limits<float>::max())
                 return result;
 
@@ -295,8 +291,8 @@ namespace fbzz::physics
             result.normal = faces[minIdx].normal;
             result.depth  = minDist;
             result.valid  = true;
-            // 打ち切りで抜けた場合、原点が面の上に乗ったまま (深さ 0) のことがある。
-            // その値では «接触しているのに押し戻せない» ので、軸ごとの重なりで測り直す。
+            /// @note 打ち切りで抜けた場合、原点が面の上に乗ったまま (深さ 0) のことがある。
+            ///       その値では «接触しているのに押し戻せない» ので、軸ごとの重なりで測り直す。
             RefineCardinalAxis(shapeA, supportA, shapeB, supportB, result,
                                abandoned || minDist <= kDegenerateDepth);
         }

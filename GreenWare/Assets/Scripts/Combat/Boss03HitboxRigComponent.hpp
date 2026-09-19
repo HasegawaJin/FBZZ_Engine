@@ -3,32 +3,15 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 ///
-/// WHY 骨から組み立てるか (シーンに手で置かないか):
-///   翼は 6 枚とも同じ形で、角度だけが違う。手で置くと «右の中翼だけ半径が違う» が
-///   必ず混ざるうえ、リグを書き出し直すたびに置き直しになる。骨のローカル軸
-///   (Blender の骨は +Y が骨の向き) に沿って張れば、リグが変わっても追従する。
-///
-/// WHY 名前に骨名を含めるか:
-///   `Boss03AiComponent::Execute` は斬った当たりの名前から «どの翼か» を引く
-///   (`Boss03WingFromName`)。名前が «HB_Wing_L_Upper» なら骨名 «Wing_L_Upper» を
-///   含むので、対応表を 2 か所に持たなくて済む。
-///
-/// WHY 削り切っても翼が落ちないか:
-///   落とすのは とどめ だけ (Docs/break-parry.md)。`BossPartComponent` を付けるのは
-///   «斬った手応え» (閃光・吸い付き・崩しゲージ) のためで、耐久はそのための器。
-///   削り切ると斬撃の対象から外れてしまうので、耐久は高めに置いてある。
-///
-/// WHY トリガーのままか:
-///   斬撃は物理を使わず `BossPartComponent` を型で集めて扇の内側かを測る
-///   (BladeComponent)。固くする理由は «プレイヤーがぶつかる» ためだけで、
-///   このボスは頭上に浮いているので、ぶつかる相手にならない。
+/// @note 翼 6 枚は同形で角度だけが違う。手置きだと寸法の食い違いが混ざり、リグ書き出しのたびに置き直しになるため骨のローカル軸 (+Y) から組み立てる。
+/// @note `Boss03AiComponent::Execute` は当たりの名前から翼を引く (`Boss03WingFromName`)。骨名を含む名前 (`HB_Wing_L_Upper` 等) にして対応表を 1 か所に閉じる。
+/// @note 翼を落とすのはとどめのみ (`Docs/break-parry.md`)。耐久は「斬った手応え」用の器で、削り切ると斬撃対象から外れるため高めに設定する。
+/// @note 斬撃は物理でなく `BossPartComponent` を型で集めて判定する (`BladeComponent`)。非トリガーが要るのはプレイヤーの衝突用で、このボスは頭上に浮き衝突しない。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/GameObject.hpp>
-// WHY Scene.hpp まで要るか: AddComponent / AddScript の template 本体は Scene.hpp の
-//     末尾にある (GameObject.hpp では Scene が前方宣言しかされていない)。
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
@@ -47,6 +30,7 @@ using fbzz::Time;
 
 namespace sandbox {
 
+/// @note `Scene.hpp` まで要るのは `AddComponent`/`AddScript` の template 本体が末尾にあるため (`GameObject.hpp` は前方宣言のみ)。
 class Boss03HitboxRigComponent : public Script {
     FBZZ_SCRIPT(Boss03HitboxRigComponent)
 
@@ -109,10 +93,7 @@ private:
     [[nodiscard]] Boss03AnimatorComponent* Anim() const
     { return scene.GetScript<Boss03AnimatorComponent>(); }
 
-    /// WHY 1 回で作り切らないか: ボスの骨 GameObject はシーンに保存されず、
-    ///     AnimatorSystem が実行時に作る。OnStart の時点ではまだ 1 本も無いことがあり、
-    ///     そのときは 7 つすべてが «骨が無い» で落ちて当たり判定が 1 つも生まれない。
-    ///     揃うまで間を置いて試し続ける。
+    /// @note ボスの骨 GameObject はシーンに保存されず AnimatorSystem が実行時に作るため、OnStart 時点では 1 本も無いことがある。揃うまで間を置いて試し続ける。
     std::vector<Piece> m_pending;
     float     m_waited        = 0.0f;
     float     m_retryCooldown = 0.0f;
@@ -168,17 +149,17 @@ inline void Boss03HitboxRigComponent::Build()
 
 inline bool Boss03HitboxRigComponent::BuildPiece(const Piece& piece)
 {
-    // 生成のたびに引き直す。scene.Create が GameObject 配列を再確保するので、
-    // ループの外で掴んだポインタは 2 つ目以降で無効になる。
+    /// @note 生成のたびに引き直す。scene.Create が GameObject 配列を再確保するので、
+    ///       ループの外で掴んだポインタは 2 つ目以降で無効になる。
     GameObject* self = scene.Self();
     if (!self || !FindInSubtree(*self, piece.bone)) return false;
 
     const float radius = std::max(piece.radius, 0.01f);
 
     GameObject& hitbox = scene.Create("HB_" + piece.bone);
-    // シーンには保存しない。Play のたびにその時点のリグから組み直す。
+    /// @note シーンには保存しない。Play のたびにその時点のリグから組み直す。
     hitbox.runtimeGenerated = true;
-    // 部位もボス本体と同じ «敵» として扱わせる。
+    /// @note 部位もボス本体と同じ «敵» として扱わせる。
     hitbox.tag   = "Enemy";
     hitbox.layer = hitboxLayer & 31;
 
@@ -187,8 +168,8 @@ inline bool Boss03HitboxRigComponent::BuildPiece(const Piece& piece)
         hitbox.SetParent(*parent);
 
     if (piece.length > radius * 2.0f) {
-        // 骨のローカル +Y が骨の向き (Blender の primary_bone_axis='Y' で書き出している)。
-        // 根元から先端までを 1 本のカプセルで覆う。
+        /// @note 骨のローカル +Y が骨の向き (Blender の primary_bone_axis='Y' で書き出している)。
+        ///       根元から先端までを 1 本のカプセルで覆う。
         hitbox.transform.position = { 0.0f, piece.length * 0.5f, 0.0f };
         hitbox.transform.rotation = Quaternion::Identity();
         auto& collider = hitbox.AddComponent<CapsuleColliderComponent>();
@@ -209,7 +190,7 @@ inline bool Boss03HitboxRigComponent::BuildPiece(const Piece& piece)
     }
     if (piece.wing >= 0) {
         auto& part = hitbox.AddScript<BossPartComponent>();
-        // 扇の判定はレンダラーを持たない部位に対して «本人の申告» を使う。
+        /// @note 扇の判定はレンダラーを持たない部位に対して «本人の申告» を使う。
         part.hitRadius = radius;
         part.maxHealth = std::max(wingHealth, 1);
         m_wings[piece.wing] = EntityRef{ hitbox.GetID() };
@@ -233,14 +214,11 @@ inline void Boss03HitboxRigComponent::SyncDetached()
         auto* part = scene.GetScript<BossPartComponent>(hitbox);
         if (!part) continue;
         if (detached) {
-            // 落ちた翼はもう的ではない。畳むだけだと «斬れないのに輪郭が出る» が残る。
+            /// @note 落ちた翼はもう的ではない。畳むだけだと «斬れないのに輪郭が出る» が残る。
             part->Break();
         } else {
-            // 戻ってきた翼 (投げた翼) は的に戻す。
-            //
-            // WHY 耐久ごと戻すか: 壊れた印だけ下ろすと、残り 0 の部位が的として戻り、
-            //     1 撃で再び «壊れた» 扱いになる (BossPartComponent::Restore の WHY)。
-            //     とどめ で落とした翼はそもそも畳まれたままなので、ここへは来ない。
+            /// @note 戻ってきた翼 (投げた翼) は的に戻す。壊れた印だけでは残り 0 のまま的に戻り 1 撃で再び壊れる扱いになるため、耐久ごと `Restore()` する。
+            /// @note とどめで落とした翼はそもそも畳まれたままなので、ここへは来ない。
             if (part->IsBroken()) part->Restore();
         }
     }
@@ -258,13 +236,11 @@ inline void Boss03HitboxRigComponent::SyncFlinch()
         const float previous = m_flash[i];
         m_flash[i] = flash;
 
-        // 立ち上がりだけを «1 発» として拾う。«光っているか» で見ると、閃光が
-        // 減っていく途中のフレームでも斬られたと読んで、仰け反りが連続で鳴る。
+        /// @note 立ち上がりだけを «1 発» として拾う。«光っているか» で見ると、閃光が
+        ///       減っていく途中のフレームでも斬られたと読んで、仰け反りが連続で鳴る。
         if (previous > 0.0f || flash <= 0.0f) continue;
 
-        // WHY 軽い重みか (BossAnimatorComponent の Hit Layer):
-        //     斬撃は 1 セットで 5 回当たる。毎回満額で仰け反らせると «痙攣» に見える。
-        //     深い仰け反りは弾き返した締めの取り分で、こちらは «触れた» に留める。
+        /// @note 軽い重みに留める理由 (`BossAnimatorComponent` の Hit Layer): 斬撃は 1 セットで 5 回当たるため毎回満額だと «痙攣» に見える。深い仰け反りは弾き返した締めの取り分。
         anim->ReactToHit(0.0f);
     }
 }
@@ -276,8 +252,7 @@ inline void Boss03HitboxRigComponent::OnUpdate()
 
     if (m_pending.empty()) return;
 
-    // WHY 毎フレーム試さないか: BuildPiece は 1 つごとにボスのサブツリーを再帰で歩く。
-    //     骨がまだ無いのは正常な状態なので、そのあいだ中ずっと重くする理由が無い。
+    /// @note `BuildPiece` は 1 つごとにサブツリーを再帰で歩く。骨がまだ無いのは正常な状態なので、揃うまで毎フレーム試さずクールダウンを挟む。
     m_waited        += std::max(Time::deltaTime, 0.0f);
     m_retryCooldown -= std::max(Time::deltaTime, 0.0f);
     if (m_retryCooldown > 0.0f) return;
@@ -291,16 +266,15 @@ inline void Boss03HitboxRigComponent::OnUpdate()
     debugMissingBones = static_cast<int>(m_pending.size());
     if (m_pending.empty()) return;
 
-    // 綴り違いは «その翼だけ斬れない» という形でしか出ない。名指しで言う。
-    // WHY すぐ言わないか: 起動直後はまだ骨が無いのが正常で、そこで出すと毎回
-    //     エラーが出て «本当に綴りが違うとき» を見分けられなくなる。
+    /// @note 綴り違いは «その翼だけ斬れない» としか出ないため、名指しでログに言う。
+    /// @note 起動直後はまだ骨が無いのが正常なので即座には言わず、`kGiveUpSeconds` 待ってから報告する。
     if (m_waited > kGiveUpSeconds && !m_reported) {
         m_reported = true;
         debug.LogError("Boss03HitboxRigComponent could not find " +
                        std::to_string(m_pending.size()) +
                        " bone(s) after " + std::to_string(static_cast<int>(kGiveUpSeconds)) +
                        "s. Check the rig names against Assets/Models/Boss_03/ExportManifest.json.");
-        // ここまで来たら «まだ出来ていない» ではなく «名前が違う»。探索の負荷だけが残る。
+        /// @note ここまで来たら «まだ出来ていない» ではなく «名前が違う»。探索の負荷だけが残る。
         m_pending.clear();
         debugMissingBones = 0;
     }

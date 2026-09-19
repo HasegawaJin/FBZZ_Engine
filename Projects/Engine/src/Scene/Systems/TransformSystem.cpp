@@ -40,10 +40,9 @@ static void UpdateWorldTransform(GameObject& go, const Transform* parentTransfor
 
 static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
 {
-    // WHY: fixed step 後の確定 Transform を直接補間すると次の PhysicsSystem が
-    //      テレポートと誤認するため、local 値は触らず world 値だけを描画用に更新する。
-    //      次フレームの TransformPrePhysics が local → world を再計算し、Physics には
-    //      補間前の確定姿勢が戻る。
+    /// @note fixed step 後の確定 Transform を直接補間すると次の PhysicsSystem がテレポートと
+    ///       誤認するため、local 値は触らず world 値だけを描画用に更新する。次フレームの
+    ///       TransformPrePhysics が local → world を再計算し、Physics には補間前の確定姿勢が戻る。
     std::queue<GameObject*> queue;
     for (GameObject& go : scene.GameObjects())
         if (!go.GetParent())
@@ -96,7 +95,7 @@ ComponentAccess TransformSystem::GetAccess() const
 void TransformSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
-    // ルート (親なし) から BFS で子孫を更新する
+    /// @note ルート (親なし) から BFS で子孫を更新する
     std::queue<GameObject*> queue;
 
     for (GameObject& go : scene.GameObjects())
@@ -122,9 +121,9 @@ void TransformSystem::Update(SystemContext& ctx)
         ApplyPhysicsInterpolation(scene, ctx.interpolationAlpha);
 
     if (ctx.simulating && GetPhase() == Phase::PrePhysics) {
-        // 初回 fixed step より前にワールド姿勢で履歴を初期化する。
-        // WHY FixedScript より後の PhysicsSystem で初期化すると、最初の OnFixedUpdate が
-        //     RigidBody へ設定した姿勢を Scene の初期値で上書きしてしまうため。
+        /// @note 初回 fixed step より前にワールド姿勢で履歴を初期化する。FixedScript より後の
+        ///       PhysicsSystem で初期化すると、最初の OnFixedUpdate が RigidBody へ設定した
+        ///       姿勢を Scene の初期値で上書きしてしまう。
         for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
             GameObject* go = scene.GetGameObject(id);
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
@@ -140,8 +139,8 @@ void TransformSystem::Update(SystemContext& ctx)
 
 void FlushWorldTransforms(Scene& scene)
 {
-    // スケジューラを経由しないため SystemContext は不要。
-    // BFS でルートから辿り、TransformSystem::Update と同じ計算を実行する。
+    /// @note スケジューラを経由しないため SystemContext は不要。
+    ///       BFS でルートから辿り、TransformSystem::Update と同じ計算を実行する。
     std::queue<GameObject*> queue;
 
     for (GameObject& go : scene.GameObjects())
@@ -169,8 +168,8 @@ void SetWorldPose(GameObject& go,
                   const math::Quaternion& worldRotation,
                   const math::Vector3& worldScale)
 {
-    // 0 スケールの親で割らない。親が潰れている軸は local を 0 に倒し、
-    // 「無限大が Transform に混ざって以降のフレームが全部 NaN になる」壊れ方を避ける。
+    /// @note 0 スケールの親で割らない。親が潰れている軸は local を 0 に倒し、
+    ///       「無限大が Transform に混ざって以降のフレームが全部 NaN になる」壊れ方を避ける。
     const auto divideSafe = [](const math::Vector3& a, const math::Vector3& b) {
         return math::Vector3{
             std::abs(b.x) > 1e-6f ? a.x / b.x : 0.0f,

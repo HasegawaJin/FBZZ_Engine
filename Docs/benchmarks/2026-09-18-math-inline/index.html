@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Math の小関数のインライン化</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f8fa; --surface: #ffffff; --ink: #1f2328; --muted: #59636e; --line: #d1d9e0; --soft: #eef1f4;
+  --improved: #1a7f37; --neutral: #6e7781; --caution: #9a6700; --regressed: #cf222e;
+  --improved-bg: #dafbe1; --neutral-bg: #eff2f5; --caution-bg: #fff8c5; --regressed-bg: #ffebe9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --surface: #151b23; --ink: #e6edf3; --muted: #9198a1; --line: #3d444d; --soft: #212830;
+    --improved: #3fb950; --neutral: #9198a1; --caution: #d29922; --regressed: #f85149;
+    --improved-bg: #12261e; --neutral-bg: #212830; --caution-bg: #272115; --regressed-bg: #2d1619;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.65 system-ui, -apple-system, "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 40px 16px 64px; }
+header .eyebrow { color: var(--muted); font-size: 13px; letter-spacing: .04em; margin: 0 0 6px; }
+h1 { font-size: clamp(22px, 4vw, 30px); line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 18px; margin: 40px 0 4px; }
+.lede { color: var(--muted); margin: 0; }
+.note { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+code { font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--soft); padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; margin: 28px 0 0; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.tile .label { color: var(--muted); font-size: 13px; margin: 0; }
+.tile .big { font-size: 32px; font-weight: 650; line-height: 1.2; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.tile .sub { color: var(--muted); font-size: 12.5px; margin: 0; }
+.big.improved { color: var(--improved); } .big.regressed { color: var(--regressed); } .big.caution { color: var(--caution); }
+.counts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 12px; }
+.chart { overflow-x: auto; }
+.chart svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.chart .compact { display: none; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+td.num, th.num { text-align: right; }
+td.name { white-space: normal; min-width: 180px; }
+tr:last-child td { border-bottom: 0; }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+.pill.improved { color: var(--improved); background: var(--improved-bg); }
+.pill.neutral { color: var(--neutral); background: var(--neutral-bg); }
+.pill.caution { color: var(--caution); background: var(--caution-bg); }
+.pill.regressed { color: var(--regressed); background: var(--regressed-bg); }
+.change { font-weight: 650; }
+.change.improved { color: var(--improved); } .change.regressed { color: var(--regressed); } .change.caution { color: var(--caution); }
+.noise { color: var(--muted); font-size: 12px; margin-left: 4px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 0; }
+dt { color: var(--muted); } dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.warning { border-left: 4px solid var(--caution); background: var(--caution-bg); padding: 12px 16px; border-radius: 6px; margin-top: 16px; }
+ul.method { margin: 0; padding-left: 20px; } ul.method li { margin: 4px 0; }
+footer { color: var(--muted); font-size: 12.5px; margin-top: 48px; }
+@media (max-width: 560px) {
+  dl { grid-template-columns: 1fr; gap: 2px; } dd { margin-bottom: 8px; }
+  .chart .wide { display: none; }
+  .chart .compact { display: block; }
+}
+
+  .fbzz-chart { --improved:#1a7f37; --neutral:#8c959f; --caution:#9a6700; --regressed:#cf222e;
+                --ink:#1f2328; --muted:#59636e; --grid:#d1d9e0; font-family: system-ui, -apple-system, "Segoe UI", "Yu Gothic UI", sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    .fbzz-chart { --improved:#3fb950; --neutral:#6e7681; --caution:#d29922; --regressed:#f85149;
+                  --ink:#e6edf3; --muted:#9198a1; --grid:#3d444d; }
+  }
+  .fbzz-chart .label { fill: var(--ink); font-size: 12px; }
+  .fbzz-chart .sub { fill: var(--muted); font-size: 11px; }
+  .fbzz-chart .value { fill: var(--ink); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .fbzz-chart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .fbzz-chart .grid { stroke: var(--grid); stroke-width: 1; }
+  .fbzz-chart .zero { stroke: var(--muted); stroke-width: 1.25; }
+  .fbzz-chart .bar-improved { fill: var(--improved); }
+  .fbzz-chart .bar-neutral { fill: var(--neutral); }
+  .fbzz-chart .bar-caution { fill: var(--caution); }
+  .fbzz-chart .bar-regressed { fill: var(--regressed); }
+</style>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">FBZZ Engine · ベンチマーク · 2026-09-18</p>
+<h1>Math の小関数のインライン化</h1>
+<p class="lede">基準 <code>6403b867</code> と候補 <code>e5cc1da3</code> を、同じマシンで交互に 3 回ずつ実行して比べた。</p>
+</header>
+<section class="tiles" aria-label="概要"><div class="tile"><p class="label">物理の場面</p><p class="big improved">−44.5%</p><p class="sub">6 項目の幾何平均</p></div><div class="tile"><p class="label">Math の演算</p><p class="big improved">−42.0%</p><p class="sub">6 項目の幾何平均</p></div><div class="tile"><p class="label">判定</p><div class="counts"><span class="pill improved">改善 9</span><span class="pill neutral">変化なし 3</span><span class="pill caution">注意 0</span><span class="pill regressed">悪化 0</span></div><p class="sub" style="margin-top:10px">全 12 項目</p></div></section>
+
+<section>
+<h2>変化率</h2>
+<p class="note">0% を中心に、速くなった項目を左、遅くなった項目を右へ伸ばしている。色は判定。</p>
+<div class="panel chart"><div class="wide"><svg xmlns="http://www.w3.org/2000/svg" class="fbzz-chart" viewBox="0 0 760 386" width="760" height="386" role="img" aria-labelledby="chart-wide-title chart-wide-desc">
+<title id="chart-wide-title">after の before に対する変化率</title>
+<desc id="chart-wide-desc">XPBD: 刻みと静止位置 Simulate: −46.9% (改善)。XPBD: 関節の鎖 Simulate: −44.8% (改善)。NarrowPhase: 接触の法線と深さ Simulate: −33.6% (改善)。凸包: Quickhull とサポート点 Simulate: −66.3% (改善)。ラグドール: クリップと物理の差 Simulate: −46.2% (改善)。ラグドール: クリップと物理の差 Present: −17.2% (改善)。Matrix4 * Matrix4 1 演算: −29.2% (改善)。Matrix4::TRS 1 演算: +0.3% (変化なし)。Matrix4::Inverse 1 演算: +0.0% (変化なし)。Quaternion * Vector3 1 演算: −88.5% (改善)。Vector3::Normalized 1 演算: −0.4% (変化なし)。Frustum::IntersectsAABB 1 演算: −52.9% (改善)</desc>
+<text class="sub" x="522" y="18" text-anchor="end">← 速くなった</text>
+<text class="sub" x="538" y="18">遅くなった →</text>
+<line class="grid" x1="364" x2="364" y1="32" y2="356"/>
+<text class="tick" x="364" y="374" text-anchor="middle">−100.0%</text>
+<line class="grid" x1="447" x2="447" y1="32" y2="356"/>
+<text class="tick" x="447" y="374" text-anchor="middle">−50.0%</text>
+<line class="grid" x1="613" x2="613" y1="32" y2="356"/>
+<text class="tick" x="613" y="374" text-anchor="middle">+50.0%</text>
+<line class="grid" x1="696" x2="696" y1="32" y2="356"/>
+<text class="tick" x="696" y="374" text-anchor="middle">+100.0%</text>
+<text class="tick" x="530" y="374" text-anchor="middle">0%</text>
+<text class="label" x="292" y="57" text-anchor="end">XPBD: 刻みと静止位置<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="452.2" y="46.0" width="77.8" height="14" rx="2"><title>XPBD: 刻みと静止位置 Simulate: −46.9%</title></rect>
+<text class="value" x="446.2" y="57" text-anchor="end">−46.9%</text>
+<text class="label" x="292" y="83" text-anchor="end">XPBD: 関節の鎖<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="455.6" y="72.0" width="74.4" height="14" rx="2"><title>XPBD: 関節の鎖 Simulate: −44.8%</title></rect>
+<text class="value" x="449.6" y="83" text-anchor="end">−44.8%</text>
+<text class="label" x="292" y="109" text-anchor="end">NarrowPhase: 接触の法線と深さ<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="474.3" y="98.0" width="55.7" height="14" rx="2"><title>NarrowPhase: 接触の法線と深さ Simulate: −33.6%</title></rect>
+<text class="value" x="468.3" y="109" text-anchor="end">−33.6%</text>
+<text class="label" x="292" y="135" text-anchor="end">凸包: Quickhull とサポート点<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="419.9" y="124.0" width="110.1" height="14" rx="2"><title>凸包: Quickhull とサポート点 Simulate: −66.3%</title></rect>
+<text class="value" x="413.9" y="135" text-anchor="end">−66.3%</text>
+<text class="label" x="292" y="161" text-anchor="end">ラグドール: クリップと物理の差<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="453.4" y="150.0" width="76.6" height="14" rx="2"><title>ラグドール: クリップと物理の差 Simulate: −46.2%</title></rect>
+<text class="value" x="447.4" y="161" text-anchor="end">−46.2%</text>
+<text class="label" x="292" y="187" text-anchor="end">ラグドール: クリップと物理の差<tspan class="sub"> · Present</tspan></text>
+<rect class="bar-improved" x="501.4" y="176.0" width="28.6" height="14" rx="2"><title>ラグドール: クリップと物理の差 Present: −17.2%</title></rect>
+<text class="value" x="495.4" y="187" text-anchor="end">−17.2%</text>
+<text class="label" x="292" y="213" text-anchor="end">Matrix4 * Matrix4<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="481.5" y="202.0" width="48.5" height="14" rx="2"><title>Matrix4 * Matrix4 1 演算: −29.2%</title></rect>
+<text class="value" x="475.5" y="213" text-anchor="end">−29.2%</text>
+<text class="label" x="292" y="239" text-anchor="end">Matrix4::TRS<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="530.0" y="228.0" width="1.5" height="14" rx="2"><title>Matrix4::TRS 1 演算: +0.3%</title></rect>
+<text class="value" x="537.5" y="239" text-anchor="start">+0.3%</text>
+<text class="label" x="292" y="265" text-anchor="end">Matrix4::Inverse<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="530.0" y="254.0" width="1.5" height="14" rx="2"><title>Matrix4::Inverse 1 演算: +0.0%</title></rect>
+<text class="value" x="537.5" y="265" text-anchor="start">+0.0%</text>
+<text class="label" x="292" y="291" text-anchor="end">Quaternion * Vector3<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="383.0" y="280.0" width="147.0" height="14" rx="2"><title>Quaternion * Vector3 1 演算: −88.5%</title></rect>
+<text class="value" x="377.0" y="291" text-anchor="end">−88.5%</text>
+<text class="label" x="292" y="317" text-anchor="end">Vector3::Normalized<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="528.5" y="306.0" width="1.5" height="14" rx="2"><title>Vector3::Normalized 1 演算: −0.4%</title></rect>
+<text class="value" x="522.5" y="317" text-anchor="end">−0.4%</text>
+<text class="label" x="292" y="343" text-anchor="end">Frustum::IntersectsAABB<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="442.2" y="332.0" width="87.8" height="14" rx="2"><title>Frustum::IntersectsAABB 1 演算: −52.9%</title></rect>
+<text class="value" x="436.2" y="343" text-anchor="end">−52.9%</text>
+<line class="zero" x1="530" x2="530" y1="32" y2="356"/>
+</svg></div><div class="compact"><svg xmlns="http://www.w3.org/2000/svg" class="fbzz-chart" viewBox="0 0 360 602" width="360" height="602" role="img" aria-labelledby="chart-compact-title chart-compact-desc">
+<title id="chart-compact-title">after の before に対する変化率</title>
+<desc id="chart-compact-desc">XPBD: 刻みと静止位置 Simulate: −46.9% (改善)。XPBD: 関節の鎖 Simulate: −44.8% (改善)。NarrowPhase: 接触の法線と深さ Simulate: −33.6% (改善)。凸包: Quickhull とサポート点 Simulate: −66.3% (改善)。ラグドール: クリップと物理の差 Simulate: −46.2% (改善)。ラグドール: クリップと物理の差 Present: −17.2% (改善)。Matrix4 * Matrix4 1 演算: −29.2% (改善)。Matrix4::TRS 1 演算: +0.3% (変化なし)。Matrix4::Inverse 1 演算: +0.0% (変化なし)。Quaternion * Vector3 1 演算: −88.5% (改善)。Vector3::Normalized 1 演算: −0.4% (変化なし)。Frustum::IntersectsAABB 1 演算: −52.9% (改善)</desc>
+<text class="sub" x="172" y="18" text-anchor="end">← 速くなった</text>
+<text class="sub" x="188" y="18">遅くなった →</text>
+<text class="tick" x="52" y="590" text-anchor="middle">−100.0%</text>
+<text class="tick" x="116" y="590" text-anchor="middle">−50.0%</text>
+<text class="tick" x="244" y="590" text-anchor="middle">+50.0%</text>
+<text class="tick" x="308" y="590" text-anchor="middle">+100.0%</text>
+<text class="tick" x="180" y="590" text-anchor="middle">0%</text>
+<text class="label" x="0" y="54" text-anchor="start">XPBD: 刻みと静止位置<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="120.0" y="63.0" width="60.0" height="14" rx="2"><title>XPBD: 刻みと静止位置 Simulate: −46.9%</title></rect>
+<text class="value" x="114.0" y="74" text-anchor="end">−46.9%</text>
+<text class="label" x="0" y="98" text-anchor="start">XPBD: 関節の鎖<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="122.6" y="107.0" width="57.4" height="14" rx="2"><title>XPBD: 関節の鎖 Simulate: −44.8%</title></rect>
+<text class="value" x="116.6" y="118" text-anchor="end">−44.8%</text>
+<text class="label" x="0" y="142" text-anchor="start">NarrowPhase: 接触の法線と深さ<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="137.0" y="151.0" width="43.0" height="14" rx="2"><title>NarrowPhase: 接触の法線と深さ Simulate: −33.6%</title></rect>
+<text class="value" x="131.0" y="162" text-anchor="end">−33.6%</text>
+<text class="label" x="0" y="186" text-anchor="start">凸包: Quickhull とサポート点<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="95.1" y="195.0" width="84.9" height="14" rx="2"><title>凸包: Quickhull とサポート点 Simulate: −66.3%</title></rect>
+<text class="value" x="89.1" y="206" text-anchor="end">−66.3%</text>
+<text class="label" x="0" y="230" text-anchor="start">ラグドール: クリップと物理の差<tspan class="sub"> · Simulate</tspan></text>
+<rect class="bar-improved" x="120.9" y="239.0" width="59.1" height="14" rx="2"><title>ラグドール: クリップと物理の差 Simulate: −46.2%</title></rect>
+<text class="value" x="114.9" y="250" text-anchor="end">−46.2%</text>
+<text class="label" x="0" y="274" text-anchor="start">ラグドール: クリップと物理の差<tspan class="sub"> · Present</tspan></text>
+<rect class="bar-improved" x="158.0" y="283.0" width="22.0" height="14" rx="2"><title>ラグドール: クリップと物理の差 Present: −17.2%</title></rect>
+<text class="value" x="152.0" y="294" text-anchor="end">−17.2%</text>
+<text class="label" x="0" y="318" text-anchor="start">Matrix4 * Matrix4<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="142.6" y="327.0" width="37.4" height="14" rx="2"><title>Matrix4 * Matrix4 1 演算: −29.2%</title></rect>
+<text class="value" x="136.6" y="338" text-anchor="end">−29.2%</text>
+<text class="label" x="0" y="362" text-anchor="start">Matrix4::TRS<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="180.0" y="371.0" width="1.5" height="14" rx="2"><title>Matrix4::TRS 1 演算: +0.3%</title></rect>
+<text class="value" x="187.5" y="382" text-anchor="start">+0.3%</text>
+<text class="label" x="0" y="406" text-anchor="start">Matrix4::Inverse<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="180.0" y="415.0" width="1.5" height="14" rx="2"><title>Matrix4::Inverse 1 演算: +0.0%</title></rect>
+<text class="value" x="187.5" y="426" text-anchor="start">+0.0%</text>
+<text class="label" x="0" y="450" text-anchor="start">Quaternion * Vector3<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="66.7" y="459.0" width="113.3" height="14" rx="2"><title>Quaternion * Vector3 1 演算: −88.5%</title></rect>
+<text class="value" x="60.7" y="470" text-anchor="end">−88.5%</text>
+<text class="label" x="0" y="494" text-anchor="start">Vector3::Normalized<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-neutral" x="178.5" y="503.0" width="1.5" height="14" rx="2"><title>Vector3::Normalized 1 演算: −0.4%</title></rect>
+<text class="value" x="172.5" y="514" text-anchor="end">−0.4%</text>
+<text class="label" x="0" y="538" text-anchor="start">Frustum::IntersectsAABB<tspan class="sub"> · 1 演算</tspan></text>
+<rect class="bar-improved" x="112.3" y="547.0" width="67.7" height="14" rx="2"><title>Frustum::IntersectsAABB 1 演算: −52.9%</title></rect>
+<text class="value" x="106.3" y="558" text-anchor="end">−52.9%</text>
+<line class="zero" x1="180" x2="180" y1="32" y2="572"/>
+</svg></div></div>
+</section>
+<section>
+<h2>物理の場面</h2>
+<p class="note">TestBench の各場面を固定刻みで進めたときの 1 刻みあたりの時間。数値にカーソルを合わせると各実行の値が出る。</p>
+<div class="panel table-wrap"><table>
+<thead><tr><th>項目</th><th>計測</th><th class="num">基準</th><th class="num">候補</th><th class="num">変化</th><th>判定</th><th class="num">ばらつき</th></tr></thead>
+<tbody>
+<tr>
+  <td class="name">XPBD: 刻みと静止位置</td>
+  <td>Simulate</td>
+  <td class="num" title="各実行: 10.12 / 10.00 / 10.02">10.02 <span class="noise">us/step</span></td>
+  <td class="num" title="各実行: 5.36 / 5.32 / 5.31">5.32 <span class="noise">us/step</span></td>
+  <td class="num"><span class="change improved">−46.9%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">1.1%</td>
+</tr>
+<tr>
+  <td class="name">XPBD: 関節の鎖</td>
+  <td>Simulate</td>
+  <td class="num" title="各実行: 12.94 / 12.92 / 12.94">12.94 <span class="noise">us/step</span></td>
+  <td class="num" title="各実行: 7.24 / 7.12 / 7.14">7.14 <span class="noise">us/step</span></td>
+  <td class="num"><span class="change improved">−44.8%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">1.8%</td>
+</tr>
+<tr>
+  <td class="name">NarrowPhase: 接触の法線と深さ</td>
+  <td>Simulate</td>
+  <td class="num" title="各実行: 0.060 / 0.069 / 0.072">0.069 <span class="noise">us/step</span></td>
+  <td class="num" title="各実行: 0.045 / 0.045 / 0.045">0.045 <span class="noise">us/step</span></td>
+  <td class="num"><span class="change improved">−33.6%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">17.8%</td>
+</tr>
+<tr>
+  <td class="name">凸包: Quickhull とサポート点</td>
+  <td>Simulate</td>
+  <td class="num" title="各実行: 23.54 / 23.44 / 23.47">23.47 <span class="noise">us/step</span></td>
+  <td class="num" title="各実行: 7.90 / 7.92 / 7.90">7.90 <span class="noise">us/step</span></td>
+  <td class="num"><span class="change improved">−66.3%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">0.4%</td>
+</tr>
+<tr>
+  <td class="name">ラグドール: クリップと物理の差</td>
+  <td>Simulate</td>
+  <td class="num" title="各実行: 89.93 / 90.41 / 89.64">89.93 <span class="noise">us/step</span></td>
+  <td class="num" title="各実行: 48.41 / 48.50 / 48.31">48.41 <span class="noise">us/step</span></td>
+  <td class="num"><span class="change improved">−46.2%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">0.8%</td>
+</tr>
+<tr>
+  <td class="name">ラグドール: クリップと物理の差</td>
+  <td>Present</td>
+  <td class="num" title="各実行: 48.98 / 49.07 / 49.28">49.07 <span class="noise">us/step</span></td>
+  <td class="num" title="各実行: 40.63 / 40.67 / 40.37">40.63 <span class="noise">us/step</span></td>
+  <td class="num"><span class="change improved">−17.2%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">0.7%</td>
+</tr>
+</tbody></table></div>
+</section>
+<section>
+<h2>Math の演算</h2>
+<p class="note">1024 要素の入力を繰り返し処理したときの 1 演算あたりの時間。数値にカーソルを合わせると各実行の値が出る。</p>
+<div class="panel table-wrap"><table>
+<thead><tr><th>項目</th><th>計測</th><th class="num">基準</th><th class="num">候補</th><th class="num">変化</th><th>判定</th><th class="num">ばらつき</th></tr></thead>
+<tbody>
+<tr>
+  <td class="name">Matrix4 * Matrix4</td>
+  <td>1 演算</td>
+  <td class="num" title="各実行: 14.38 / 14.34 / 14.25">14.34 <span class="noise">ns/op</span></td>
+  <td class="num" title="各実行: 10.09 / 10.14 / 10.15">10.14 <span class="noise">ns/op</span></td>
+  <td class="num"><span class="change improved">−29.2%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">0.9%</td>
+</tr>
+<tr>
+  <td class="name">Matrix4::TRS</td>
+  <td>1 演算</td>
+  <td class="num" title="各実行: 44.77 / 44.75 / 44.93">44.77 <span class="noise">ns/op</span></td>
+  <td class="num" title="各実行: 44.84 / 45.05 / 44.89">44.89 <span class="noise">ns/op</span></td>
+  <td class="num"><span class="change neutral">+0.3%</span></td>
+  <td><span class="pill neutral">変化なし</span></td>
+  <td class="num">0.5%</td>
+</tr>
+<tr>
+  <td class="name">Matrix4::Inverse</td>
+  <td>1 演算</td>
+  <td class="num" title="各実行: 12.13 / 12.13 / 12.11">12.13 <span class="noise">ns/op</span></td>
+  <td class="num" title="各実行: 12.13 / 12.14 / 12.11">12.13 <span class="noise">ns/op</span></td>
+  <td class="num"><span class="change neutral">+0.0%</span></td>
+  <td><span class="pill neutral">変化なし</span></td>
+  <td class="num">0.3%</td>
+</tr>
+<tr>
+  <td class="name">Quaternion * Vector3</td>
+  <td>1 演算</td>
+  <td class="num" title="各実行: 17.86 / 18.21 / 18.08">18.08 <span class="noise">ns/op</span></td>
+  <td class="num" title="各実行: 2.07 / 2.08 / 2.06">2.07 <span class="noise">ns/op</span></td>
+  <td class="num"><span class="change improved">−88.5%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">1.9%</td>
+</tr>
+<tr>
+  <td class="name">Vector3::Normalized</td>
+  <td>1 演算</td>
+  <td class="num" title="各実行: 2.07 / 2.08 / 2.07">2.07 <span class="noise">ns/op</span></td>
+  <td class="num" title="各実行: 2.06 / 2.06 / 2.06">2.06 <span class="noise">ns/op</span></td>
+  <td class="num"><span class="change neutral">−0.4%</span></td>
+  <td><span class="pill neutral">変化なし</span></td>
+  <td class="num">0.4%</td>
+</tr>
+<tr>
+  <td class="name">Frustum::IntersectsAABB</td>
+  <td>1 演算</td>
+  <td class="num" title="各実行: 15.70 / 15.67 / 15.56">15.67 <span class="noise">ns/op</span></td>
+  <td class="num" title="各実行: 7.38 / 7.32 / 7.45">7.38 <span class="noise">ns/op</span></td>
+  <td class="num"><span class="change improved">−52.9%</span></td>
+  <td><span class="pill improved">改善</span></td>
+  <td class="num">1.7%</td>
+</tr>
+</tbody></table></div>
+</section>
+<section>
+<h2>測定条件</h2>
+<div class="panel"><dl>
+<dt>基準 (before)</dt><dd><code>6403b867f7703fcfd2fedbddc775828f302b7557</code> × 3 回</dd>
+<dt>候補 (after)</dt><dd><code>e5cc1da367e528bcd822dc215049eda8963322e6</code> × 3 回</dd>
+<dt>CPU</dt><dd>13th Gen Intel(R) Core(TM) i7-13650HX (論理 20 コア。計測スレッドは 1 コアに固定し、優先度を上げた)</dd>
+<dt>ビルド</dt><dd>MSVC 19.51.36256 / Development</dd>
+<dt>場面</dt><dd>warmup 120 刻み → 600 刻み × 7 回の中央値 (固定刻み 16.67 ms)</dd>
+<dt>演算</dt><dd>200,000 演算 × 7 回の中央値</dd>
+</dl></div>
+</section>
+<section>
+<h2>判定の基準</h2>
+<div class="panel"><ul class="method">
+<li>変化 = (候補 − 基準) / 基準。値は各実行の中央値の中央値。</li>
+<li>改善 −3% 以下 / 変化なし ±3% 未満 / 注意 +3〜5% / 悪化 +5% 以上。</li>
+<li>ばらつき = 各実行の中央値の (最大 − 最小) / 代表値。変化がこれより小さいものは «ノイズ内» と注記した。</li>
+<li>基準と候補を交互に実行し、マシンの状態の変化による偏りを打ち消している。</li>
+</ul></div>
+</section>
+<footer>Projects/DevTools/BenchReport で生成。元データは同じフォルダーの raw/ にある。</footer>
+</main>
+</body>
+</html>

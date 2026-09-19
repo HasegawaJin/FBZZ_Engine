@@ -42,42 +42,34 @@
 namespace fbzz::scene {
 namespace {
 
-// .mat 1 件ぶんの解決結果。
-//
-// WHY PSO まで持つか: .mat は blend_mode を持つので、加算合成の焼け跡と通常合成の
-//     血痕が同じシーンに並ぶ。デカール既定の ALPHA_BLEND 固定 PSO を使い回すと
-//     .mat に書いた blend_mode が黙って無視される。
-//
-// WHY 値で持つか (shared_ptr にしないか): この構造体は下のキャッシュの要素としてしか
-//     存在しない。unordered_map はノード単位で確保するので rehash しても要素の
-//     アドレスは動かず、所有権を共有する相手も居ない。
+/// @brief .mat 1 件ぶんの解決結果。
+/// @note PSO まで持つ理由: .mat は blend_mode を持ち、デカール既定の ALPHA_BLEND 固定 PSO を使い回すと .mat の blend_mode が黙って無視される。
+/// @note 値で持つ理由 (shared_ptr にしない): この構造体は下のキャッシュの要素としてしか存在せず、unordered_map はノード単位で確保するため rehash しても要素のアドレスは動かない。
 struct DecalMaterialBinding {
     renderer::Material                                    material;
-    // 上書きを名前でバイトオフセットへ写像するのに要る。
+    /// 上書きを名前でバイトオフセットへ写像するのに要る。
     renderer::ShaderDescriptor                            descriptor;
     renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
-    // PSO を作り直す判断に使う。CreatePipelineState は重複を畳まないため、
-    // 毎フレーム呼ぶとステートオブジェクトが際限なく増える。
+    /// PSO を作り直す判断に使う。CreatePipelineState は重複を畳まないため、
+    /// 毎フレーム呼ぶとステートオブジェクトが際限なく増える。
     renderer::BlendMode                                   psoBlend = renderer::BlendMode::ALPHA_BLEND;
     bool                                                  psoValid = false;
-    // 上書きを持つデカールだけが通す一時 cbuffer。
-    // WHY マテリアルごとに 1 本で足りるか: 定数バッファの Update は Upload Arena の
-    //     スライスを切るので、同じハンドルへ書いて Submit を繰り返しても、記録済みの
-    //     Draw はそれぞれ自分の書き込み時点の中身を読む。
+    /// 上書きを持つデカールだけが通す一時 cbuffer。
+    /// @note マテリアルごとに 1 本で足りる理由: Update は Upload Arena のスライスを切るため、同じハンドルへ書いて Submit を繰り返しても記録済みの Draw はそれぞれ自分の書き込み時点の中身を読む。
     renderer::ResourceHandle<renderer::ConstantBufferTag> overrideConstants;
     std::vector<uint8_t>                                  overrideScratch;
-    // このパス呼び出しで既に値を適用したか。弾痕は同じ .mat を数十個が共有するので、
-    // デカールごとにリフレクション適用と Upload をやり直すと数だけ無駄が増える。
+    /// このパス呼び出しで既に値を適用したか。弾痕は同じ .mat を数十個が共有するので、
+    /// デカールごとにリフレクション適用と Upload をやり直すと数だけ無駄が増える。
     uint64_t                                              resolvedPass = 0;
     bool                                                  resolvedOk   = false;
 };
 
-// .mat のパスで引く。解決はシェーダーのロードとリフレクションを伴うので毎フレーム
-// やる値段ではない。値の適用はパスごとに 1 回だけやり直し、.mat の編集を絵へ出す。
+/// .mat のパスで引く。解決はシェーダーのロードとリフレクションを伴うので毎フレーム
+/// やる値段ではない。値の適用はパスごとに 1 回だけやり直し、.mat の編集を絵へ出す。
 std::unordered_map<std::string, DecalMaterialBinding> g_decalMaterials;
-// 同じ .mat の失敗を毎フレーム記録するとログが埋まる。
+/// 同じ .mat の失敗を毎フレーム記録するとログが埋まる。
 std::unordered_set<std::string>                       g_warnedDecalMaterials;
-// ExecuteDecalPass の呼び出し通番。0 は「未解決」を表すため 1 から始める。
+/// ExecuteDecalPass の呼び出し通番。0 は「未解決」を表すため 1 から始める。
 uint64_t                                              g_decalPassSerial = 0;
 
 bool WarnDecalMaterialOnce(const std::string& path)
@@ -85,25 +77,22 @@ bool WarnDecalMaterialOnce(const std::string& path)
     return g_warnedDecalMaterials.insert(path).second;
 }
 
-// materialPath から描画に要るものを揃える。解決できない場合は組み込み経路へ落とす。
+/// materialPath から描画に要るものを揃える。解決できない場合は組み込み経路へ落とす。
 DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
                                            const DecalComponent& decal)
 {
     if (decal.materialPath.empty()) return nullptr;
 
-    const auto assetHandle = asset::AssetManager::LoadMaterial(decal.materialPath);
+    const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(decal.materialPath);
     const auto* matAsset = assetHandle.IsValid()
-        ? asset::AssetManager::GetMaterial(assetHandle) : nullptr;
+        ? asset::AssetManager::Get<asset::MaterialAsset>(assetHandle) : nullptr;
     if (!matAsset) {
         if (WarnDecalMaterialOnce(decal.materialPath))
             FBZZ_LOG_WARN("Decal material load failed '%s' -> falling back to the built-in decal shader.",
                           decal.materialPath.c_str());
         return nullptr;
     }
-    // WHY 用途を検査するか: メッシュ用の .mat は頂点入力を前提にしたシェーダーを指す。
-    //     デカールは頂点バッファを持たない SV_VertexID 描画なので、割り当てると
-    //     入力レイアウト不一致で何も出ないか画面が塗り潰される。
-    //     原因が絵からは絶対に分からない種類の事故なので名指しで止める。
+    /// @note 用途を検査する理由: メッシュ用の .mat は頂点入力を前提にしたシェーダーを指すが、デカールは頂点バッファを持たない SV_VertexID 描画のため、割り当てると入力レイアウト不一致で何も出ないか画面が塗り潰される。原因が絵からは分からない事故のため名指しで止める。
     if (matAsset->renderPath != asset::RenderPath::Decal) {
         if (WarnDecalMaterialOnce(decal.materialPath))
             FBZZ_LOG_WARN("Decal material '%s' is not declared for decals (render_path must be \"decal\") "
@@ -133,8 +122,8 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
         return nullptr;
     }
 
-    // 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
-    // ポインタで持つと解決時の中身と食い違う瞬間ができる。
+    /// @note 記述子は値ごと持つ。シェーダーはホットリロードで差し替わりうるので、
+    ///       ポインタで持つと解決時の中身と食い違う瞬間ができる。
     binding.descriptor = {};
     if (auto* shader = resources.Get(material.shader))
         binding.descriptor = shader->GetDescriptor();
@@ -166,7 +155,7 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
     if (!binding.overrideConstants.IsValid() && binding.descriptor.cbufferSize > 0)
         binding.overrideConstants = resources.CreateConstantBuffer(binding.descriptor.cbufferSize);
 
-    // デカールは深度を書かない。ブレンドだけ .mat に従わせる。
+    /// @note デカールは深度を書かない。ブレンドだけ .mat に従わせる。
     if (!binding.psoValid || binding.psoBlend != matAsset->blendMode) {
         binding.pso = resources.CreatePipelineState({
             renderer::RasterizerMode::SOLID, matAsset->blendMode, renderer::DepthMode::DEPTH_OFF });
@@ -179,7 +168,7 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
     return &binding;
 }
 
-// 共有マテリアルの上へこのデカールだけの上書きを重ねる。上書きが無ければ何もしない。
+/// 共有マテリアルの上へこのデカールだけの上書きを重ねる。上書きが無ければ何もしない。
 void ApplyDecalMaterialOverrides(renderer::ResourceManager& resources,
                                  DecalMaterialBinding& binding,
                                  const DecalComponent& decal,
@@ -199,7 +188,7 @@ void ApplyDecalMaterialOverrides(renderer::ResourceManager& resources,
     if (!binding.overrideConstants.IsValid()) return;
     if (binding.overrideScratch.size() != binding.material.paramData.size()) return;
 
-    // 共有側の paramData は触らない — 触ると同じ .mat を使う他のデカールへ波及する。
+    /// @note 共有側の paramData は触らない — 触ると同じ .mat を使う他のデカールへ波及する。
     std::memcpy(binding.overrideScratch.data(),
                 binding.material.paramData.data(),
                 binding.material.paramData.size());
@@ -211,17 +200,10 @@ void ApplyDecalMaterialOverrides(renderer::ResourceManager& resources,
     call.constantBuffers[2] = binding.overrideConstants;
 }
 
-// 受信レイヤーバッファを 1 フレーム 1 回だけ描く。
-//
-// WHY マスクごとにシーンを描き直さないか (旧実装):
-//   レイヤーフィルタを持つデカール 1 個につきシーン全体を 1 回描いていた。
-//   可視サーフェスのレイヤー番号を書いておけば、判定はデカール側のビットテストで
-//   済み、描画は 1 回に畳める。
-//
-// @param markMask 番号を書き込む必要があるレイヤーの集合。
-//        どのデカールも受信を許すレイヤーは書かなくてよい (Decal 側は
-//        「未描画 = 受信」と解釈するため)。
-// @return 描けたら true。false の場合、呼び出し側はフィルタ自体を無効にする。
+/// @brief 受信レイヤーバッファを 1 フレーム 1 回だけ描く。
+/// @note マスクごとにシーンを描き直さない。可視サーフェスのレイヤー番号を書いておけば判定はデカール側のビットテストで済み、描画は 1 回に畳める。
+/// @param markMask 番号を書き込む必要があるレイヤーの集合。どのデカールも受信を許すレイヤーは書かなくてよい (Decal 側は「未描画 = 受信」と解釈する)。
+/// @return 描けたら true。false の場合、呼び出し側はフィルタ自体を無効にする。
 bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
 {
     auto& r         = ctx.renderer;
@@ -249,8 +231,8 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
             mr->mesh->vertexBuffer.IsValid() && mr->mesh->indexBuffer.IsValid();
         const bool drawSkinned = h.decalMaskSkinnedShader.IsValid() &&
             smr && smr->enabled && smr->lodVisible && smr->model;
-        // Static は GameObject に手で付ける層ではなく、静的メッシュを表す受信分類。
-        // インポート済みの環境オブジェクトへ一つずつ層を設定する必要をなくす。
+        /// @note Static は GameObject に手で付ける層ではなく、静的メッシュを表す受信分類。
+        ///       インポート済みの環境オブジェクトへ一つずつ層を設定する必要をなくす。
         const bool markStatic = drawStatic &&
             fbzz::Layer::Contains(markMask, fbzz::Layer::Static);
         const bool markSkinned = !markStatic && drawSkinned &&
@@ -284,16 +266,14 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
 
         if (!markSkinned) continue;
 
-        // WHY FindAnimator を使うか: Animator はモデルルート側、SkinnedMeshRenderer は
-        //     submesh 子 GO に分かれる構成が一般的で、自 GO だけを見ると bind pose へ
-        //     落ちる。可視サーフェス判定が T ポーズの深度で走ると全画素が捨てられる。
+        /// @note Animator はモデルルート側、SkinnedMeshRenderer は submesh 子 GO に分かれる構成が一般的で、自 GO だけを見ると bind pose へ落ち、可視サーフェス判定が T ポーズの深度で走り全画素が捨てられる。
         auto* anim = FindAnimator(go);
         const auto skinCB = ResolveSkinningCB(
             anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
             smr->model, h.bindPoseSkinningCB);
 
         const auto* mat = go.GetComponent<MaterialComponent>();
-        // mi はローカルスロット番号 (submeshIndices 対応)。
+        /// @note mi はローカルスロット番号 (submeshIndices 対応)。
         for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
             renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
             if (!meshPtr) continue;
@@ -317,8 +297,8 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
     return true;
 }
 
-// このフレームに描くデカール 1 件。走査を 2 周に分けるのは、受信レイヤーバッファを
-// 描くのに「どのレイヤーを書く必要があるか」を先に知る必要があるため。
+/// このフレームに描くデカール 1 件。走査を 2 周に分けるのは、受信レイヤーバッファを
+/// 描くのに「どのレイヤーを書く必要があるか」を先に知る必要があるため。
 struct PendingDecal {
     GameObject*     go    = nullptr;
     DecalComponent* decal = nullptr;
@@ -330,18 +310,15 @@ bool DecalHasFlipbook(const DecalComponent& decal)
     return decal.frameCount > 1;
 }
 
-// age を進める必要があるか。
-//
-// WHY 常に進めないか: age はシーンへ保存されるフィールドで、永続デカール (lifetime < 0)
-//     では従来 0 のままだった。無条件に足すと、編集中にシーンを開いているだけで
-//     age が増え、保存するたびに «誰も触っていない差分» が出る。
+/// @brief age を進める必要があるか。
+/// @note 永続デカール (lifetime < 0) は age を進めない。無条件に足すと、編集中にシーンを開いているだけで age が増え、保存するたびに «誰も触っていない差分» が出る。
 bool DecalNeedsAge(const DecalComponent& decal)
 {
     return decal.lifetime >= 0.0f || decal.fadeInTime > 0.0f || DecalHasFlipbook(decal);
 }
 
-// アトラスの 1 コマぶんの UV スケールと、今のコマ番号を求める。
-// @return フリップブックが有効なら true (無効時は恒等な (1,1) / 0 を書く)
+/// アトラスの 1 コマぶんの UV スケールと、今のコマ番号を求める。
+/// @return フリップブックが有効なら true (無効時は恒等な (1,1) / 0 を書く)
 bool ResolveDecalFlipbook(const DecalComponent& decal, float outScale[2], float& outIndex)
 {
     outScale[0] = 1.0f;
@@ -353,8 +330,8 @@ bool ResolveDecalFlipbook(const DecalComponent& decal, float outScale[2], float&
     const int perRow = std::clamp(decal.framesPerRow, 1, frames);
     const int rows   = (frames + perRow - 1) / perRow;
 
-    // frameRate 0 は「寿命いっぱいで 1 周」。血の乾きや焦げの定着は消えるまでに
-    // 終わるのが正しく、lifetime を触るたびに fps を計算し直させたくない。
+    /// @note frameRate 0 は「寿命いっぱいで 1 周」。血の乾きや焦げの定着は消えるまでに
+    ///       終わるのが正しく、lifetime を触るたびに fps を計算し直させたくない。
     float progress = 0.0f;
     if (decal.frameRate > 0.0f)
         progress = decal.age * decal.frameRate / static_cast<float>(frames);
@@ -362,7 +339,7 @@ bool ResolveDecalFlipbook(const DecalComponent& decal, float outScale[2], float&
         progress = decal.age / decal.lifetime;
 
     if (decal.frameLoop) progress -= std::floor(progress);
-    // 止める側は 1.0 を含めない。含めると frames 番目 (存在しないコマ) を指す。
+    /// @note 止める側は 1.0 を含めない。含めると frames 番目 (存在しないコマ) を指す。
     else                 progress = std::clamp(progress, 0.0f, 0.9999f);
 
     const int index = std::clamp(static_cast<int>(progress * static_cast<float>(frames)),
@@ -375,9 +352,8 @@ bool ResolveDecalFlipbook(const DecalComponent& decal, float outScale[2], float&
 
 } // namespace
 
-// WHY: キャッシュが持つシェーダー・テクスチャ・cbuffer のハンドルはデバイス世代に
-//      属するため、リセット後に古い世代のハンドルを再利用しない。Release は呼ばない
-//      (リセット済みの ResourceManager では既に実体が無い)。
+/// @brief キャッシュが持つシェーダー・テクスチャ・cbuffer のハンドルを破棄する。
+/// @note ハンドルはデバイス世代に属するため、リセット後に古い世代のハンドルを再利用しない。Release は呼ばない (リセット済みの ResourceManager では既に実体が無い)。
 void ReleaseDecalMaterialCache()
 {
     g_decalMaterials.clear();
@@ -390,19 +366,19 @@ void ExecuteDecalPass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
 
-    // DecalDepthCopy が decalDepthRT を束縛したままここへ入ってくる。以降のパスは
-    // HDR が束縛されている前提なので、デカールが 1 つも無い経路も含めて必ず戻す。
+    /// @note DecalDepthCopy が decalDepthRT を束縛したままここへ入ってくる。以降のパスは
+    ///       HDR が束縛されている前提なので、デカールが 1 つも無い経路も含めて必ず戻す。
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     if (!h.decalShader.IsValid() || !h.decalPSO.IsValid() ||
         !h.decalCB.IsValid() || !h.decalMaterialCB.IsValid())
         return;
 
-    // .mat の再適用はこの呼び出しで 1 マテリアルにつき 1 回だけにする。
+    /// @note .mat の再適用はこの呼び出しで 1 マテリアルにつき 1 回だけにする。
     ++g_decalPassSerial;
 
-    // decalDepthRT はデカールパス直前にコピーされた深度専用 RT。
-    // hdrRT の深度をそのまま使うと DX11 が DSV/SRV 競合で SRV をサイレント解除する。
+    /// @note decalDepthRT はデカールパス直前にコピーされた深度専用 RT。
+    ///       hdrRT の深度をそのまま使うと DX11 が DSV/SRV 競合で SRV をサイレント解除する。
     const auto depthTex = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
     if (!depthTex.IsValid())
         return;
@@ -411,8 +387,8 @@ void ExecuteDecalPass(RenderPassContext& ctx)
     std::vector<EntityID> expiredDecals;
     std::vector<PendingDecal> pending;
 
-    // 全デカールがフィルタで受信を許すレイヤーの積。ここに含まれるレイヤーは
-    // 受信バッファへ書かなくても「未描画 = 受信」で正しく判定できる。
+    /// @note 全デカールがフィルタで受信を許すレイヤーの積。ここに含まれるレイヤーは
+    ///       受信バッファへ書かなくても「未描画 = 受信」で正しく判定できる。
     fbzz::LayerMask alwaysReceive = fbzz::Layer::Everything;
     bool anyFiltered = false;
 
@@ -432,10 +408,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         float fade = 1.0f;
         if (decal->lifetime >= 0.0f && decal->fadeTime > 0.0f)
             fade = std::min(1.0f, (decal->lifetime - decal->age) / decal->fadeTime);
-        // 出現側のフェード。永続デカールでも効く。
-        // WHY 小さい方を採るか: 寿命が fadeInTime + fadeTime より短いデカールでは
-        //     両方の窓が重なる。掛けると «出きる前に消え始める» 山が二重に低くなり、
-        //     短命な痕が一度もはっきり見えないまま終わる。
+        /// @note 出現側のフェード。永続デカールでも効く。寿命が fadeInTime + fadeTime より短いと両窓が重なるため掛けずに小さい方を採る (掛けると «出きる前に消え始める» 山が二重に低くなり短命な痕がはっきり見えないまま終わる)。
         if (decal->fadeInTime > 0.0f)
             fade = std::min(fade, decal->age / decal->fadeInTime);
         fade = std::clamp(fade, 0.0f, 1.0f);
@@ -448,15 +421,15 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         pending.push_back({ &go, decal, fade });
     }
 
-    // 重なった痕の前後。デカールは深度を書かないので、合成する順番だけが前後を決める。
-    // stable_sort なので sortOrder が同じデカールは走査順 —— 従来の順序 —— のまま。
+    /// @note 重なった痕の前後。デカールは深度を書かないので、合成する順番だけが前後を決める。
+    ///       stable_sort なので sortOrder が同じデカールは走査順 —— 従来の順序 —— のまま。
     std::stable_sort(pending.begin(), pending.end(),
                      [](const PendingDecal& a, const PendingDecal& b) {
                          return a.decal->sortOrder < b.decal->sortOrder;
                      });
 
-    // 受信バッファは全デカールで共有する。RT の張り替えは DX12 でバリアを
-    // 1 回発行するので、デカールごとに往復させない。
+    /// @note 受信バッファは全デカールで共有する。RT の張り替えは DX12 でバリアを
+    ///       1 回発行するので、デカールごとに往復させない。
     const bool receiverBufferReady =
         anyFiltered && RenderDecalReceiverLayers(ctx, ~alwaysReceive);
     if (receiverBufferReady)
@@ -472,13 +445,13 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         decalData.decalTangent   = go.transform.right.Normalized();
         decalData.decalBitangent = go.transform.forward.Normalized();
         decalData.decalNormal    = go.transform.up.Normalized();
-        // 組み込み経路のアルベドアルファはコンポーネント側の値。.mat 経路では
-        // 材質が tint を持つため、ここはライフタイムフェードと opacity だけにする。
+        /// @note 組み込み経路のアルベドアルファはコンポーネント側の値。.mat 経路では
+        ///       材質が tint を持つため、ここはライフタイムフェードと opacity だけにする。
         decalData.alpha = entry.fade * std::clamp(d.opacity, 0.0f, 1.0f)
                         * (binding ? 1.0f : d.albedoColor[3]);
         decalData.angleFadeStrength = std::clamp(d.angleFadeStrength, 0.0f, 1.0f);
-        // 角度は度で持ち、シェーダーへは cos で渡す。ピクセルごとに acos を取るのは無駄。
-        // 90 度で cos=0 になり全ての面が残るため、89 度で上限を切って「必ず何かは消える」形にする。
+        /// @note 角度は度で持ち、シェーダーへは cos で渡す。ピクセルごとに acos を取るのは無駄。
+        ///       90 度で cos=0 になり全ての面が残るため、89 度で上限を切って「必ず何かは消える」形にする。
         decalData.angleFadeCos = std::cos(
             std::clamp(d.angleFadeDegrees, 0.0f, 89.0f) * (3.14159265358979323846f / 180.0f));
         const bool filtered = receiverBufferReady &&
@@ -525,8 +498,8 @@ void ExecuteDecalPass(RenderPassContext& ctx)
             matData.emissiveColor[2] = d.emissiveColor[2];
             matData.emissiveScale    = d.emissiveScale;
             matData.normalStrength   = d.normalStrength;
-            // ビット位置はテクスチャスロット番号。renderer::Material::Upload と同じ規則に
-            // 揃えてあるので、.mat 経路と組み込み経路でシェーダーを共有できる。
+            /// @note ビット位置はテクスチャスロット番号。renderer::Material::Upload と同じ規則に
+            ///       揃えてあるので、.mat 経路と組み込み経路でシェーダーを共有できる。
             matData.textureMask = (albedoTex.IsValid()   ? 1u : 0u)
                                 | (normalTex.IsValid()   ? 2u : 0u)
                                 | (emissiveTex.IsValid() ? 8u : 0u);
@@ -543,7 +516,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         SubmitCounted(ctx, drawCall);
     }
 
-    // WHY: GameObjects() の走査中に即時削除すると iterator が無効化されるため、pass 後に破棄キューへ積む。
+    /// @note GameObjects() の走査中に即時削除すると iterator が無効化されるため、pass 後に破棄キューへ積む。
     for (EntityID id : expiredDecals) {
         ctx.scene.DestroyGameObject(id);
     }
@@ -568,4 +541,24 @@ void ExecuteDecalDepthCopyPass(RenderPassContext& ctx)
     r.Submit(dc, resources);
 }
 
+
+void DecalDepthCopyPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+{
+    builder.Read(ctx.isDeferred ? "GBuffer" : "HDR").Write("DecalDepth");
+}
+
+void DecalDepthCopyPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDecalDepthCopyPass(ctx);
+}
+
+void DecalPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("DecalDepth").ReadWrite("HDR");
+}
+
+void DecalPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteDecalPass(ctx);
+}
 } // namespace fbzz::scene

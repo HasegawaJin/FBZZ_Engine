@@ -1,7 +1,7 @@
 /// @file    TpsCameraComponent.hpp
 /// @brief   プレイヤーを追う三人称カメラのスクリプト。
 /// @author  Hasegawa Jin
-/// @date    2026-08-16
+/// @date    2026-06-03
 #pragma once
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -42,7 +42,6 @@ private:
 
 FBZZ_REFLECT(TpsCameraComponent)
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 inline void TpsCameraComponent::OnStart()
 {
     FindTarget();
@@ -67,7 +66,7 @@ inline void TpsCameraComponent::OnLateUpdate()
     const Vector3    focus    = m_target->transform.worldPosition + Vector3::UP * height;
     const Vector3    targetCamPos = focus - (rotation * Vector3::FORWARD) * distance;
 
-    // WHY: 指数補間で dt に依存した補間率を計算。初回のみスナップして位置ずれを防ぐ。
+    /// @note 指数補間で dt に依存した補間率を計算。初回のみスナップして位置ずれを防ぐ。
     const float safeDt          = Max(Time::deltaTime, 0.0f);
     const float safeFollowSpeed = Max(followSpeed, 0.0f);
     const float followT = safeFollowSpeed <= EPSILON

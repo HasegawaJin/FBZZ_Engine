@@ -21,9 +21,8 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
         return;
     }
 
-    // WHAT: SSAO.cs.hlsl は GBuffer 法線と深度から遮蔽率を生成し、Blur で 4x4 平滑化する。
-    // WHY: DeferredLighting は 1 枚の AO テクスチャだけを読む形にすると、Lighting pass の責務を
-    //      PBR 合成に集中でき、Compute の UAV/SRV 競合もこのパス内に閉じられる。
+    /// @note DeferredLighting が読むのは AO テクスチャ 1 枚。責務を PBR 合成に集中させ、
+    ///       Compute の UAV/SRV 競合もこのパス内に閉じるため。
     PostProcCB postData{};
     postData.texelSize[0] = 1.0f / static_cast<float>(ctx.width);
     postData.texelSize[1] = 1.0f / static_cast<float>(ctx.height);
@@ -53,6 +52,26 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
     blurDC.dispatchY = (ctx.height / 2 + 7) / 8;
     blurDC.dispatchZ = 1;
     r.Dispatch(blurDC, resources);
+}
+
+
+std::string_view SSAOPass::Name() const { return "SSAO"; }
+
+void SSAOPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("GBuffer").Write("SSAO");
+}
+
+bool SSAOPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    /// @note 設定だけでなくシェーダーと作業バッファの有無まで含んだ判定。
+    ///       組み立てた RenderSystem 側が ctx へ載せているので、ここでは引くだけ。
+    return ctx.ssaoEnabled;
+}
+
+void SSAOPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteSSAOPass(ctx);
 }
 
 } // namespace fbzz::scene

@@ -1,10 +1,14 @@
 /// @file    ProjectSettingsPanel.cpp
-/// @brief   Project settings editor UI.
+/// @brief   プロジェクト設定とエディターの個人設定を編集するパネル。
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
+#include <Editor/Util/EditorSettings.hpp>
+#include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
@@ -12,9 +16,6 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Gamepad.hpp>
 #include <Engine/Input/InputActionMap.hpp>
-#include <Editor/Util/EditorTheme.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
-#include <Editor/Util/Localization.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/PipelineDiagnostics.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
@@ -24,164 +25,160 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <functional>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace fbzz::editor {
 
 namespace {
 
-// セクション名の列。px 直値だと UI スケールを上げたときにも幅が変わらず、
-// 拡大したぶんだけ名前がはみ出す (日本語だと «アプリケーション» が最初に溢れる)。
-// 文字の大きさに追従させる。
+using Section = ProjectSettingsPanel::Section;
+
+/// @brief 差分印を置くための左の余白 [px]。
+constexpr float kMarkerGutter = 6.0f;
+/// @brief Input.inputactions を書き出すまでの待ち [s]。ProjectSettings の自動保存と揃える。
+constexpr float kInputSaveDelay = 1.0f;
+
+/// @note px 直値だと UI スケールを上げたときに名前がはみ出す (日本語だと «アプリケーション» が最初に溢れる)。
 float SidebarWidth() { return ImGui::GetFontSize() * 11.0f; }
 
-bool SectionButton(const char* label, ProjectSettingsPanel::Section value, ProjectSettingsPanel::Section& current)
+struct SectionInfo {
+    const char* name;
+    const char* description;
+    /// @brief 名前には出てこないが、そのセクションで探されそうな語。
+    const char* keywords;
+};
+
+constexpr SectionInfo kSections[] = {
+    { "Application",   "Frame rate, startup scenes, screen size and cursor images.",
+      "fps scene startup screen resolution window cursor 解像度 画面 シーン" },
+    { "Graphics",      "Rendering pipeline, shadows and debug overlays.",
+      "render pipeline shadow cascade pcss debug outline navmesh 描画 影" },
+    { "Physics",       "Simulation rate, gravity and which layers collide.",
+      "gravity substep hz collision matrix 重力 衝突" },
+    { "Input",         "Game input bindings, saved to Input.inputactions.",
+      "gamepad key binding axis action pad キー 入力" },
+    { "Audio",         "Master volume, voice limit and mixer buses.",
+      "volume bus mixer reverb bgm se 音量" },
+    { "Tags & Layers", "Names used to classify GameObjects.",
+      "tag layer タグ レイヤー" },
+    { "Import",        "Defaults and presets for new FBX imports.",
+      "fbx preset model texture compression インポート" },
+    { "Preferences",   "Your personal editor settings, saved to editor_settings.toml.",
+      "editor language hot reload sound 言語 日本語 ホットリロード" },
+};
+
+const SectionInfo& Info(Section section) { return kSections[static_cast<std::size_t>(section)]; }
+
+bool ContainsCI(const char* text, const char* query)
 {
-    const bool selected = current == value;
-    if (ImGui::Selectable(label, selected)) {
-        current = value;
-        return true;
-    }
-    return false;
+    return text != nullptr && util::StringUtils::ContainsCI(text, query);
 }
 
-
-} // namespace
-
-void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
+/// @brief 原文と訳の両方に当てる。日本語表示のまま英語の資料の語で引けるようにする。
+bool LabelHits(const char* label, const char* query)
 {
-    struct UndoTracker {
-        ImGuiID activeId = 0;
-        ProjectSettings before;
-        bool active = false;
-        bool changed = false;
-    };
-    static UndoTracker undo;
-    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) {
-        undo.active = false;
-        undo.changed = false;
-        DrawSidebar();
-        ImGui::SameLine();
-        ImGui::BeginChild("##ProjectSettingsContent", { 0.0f, 0.0f }, false);
-        DrawSection(ctx);
-        ImGui::EndChild();
-        return;
-    }
-    const ProjectSettings beforeDraw = ctx.projectSettings;
-    const ImGuiID activeBefore = ImGui::GetActiveID();
-    const std::uint64_t editGenerationBefore = m_editGeneration;
+    return ContainsCI(label, query) || ContainsCI(LOCT(label), query);
+}
 
-    DrawSidebar();
+const ProjectSettings& ProjectDefaults()
+{
+    static const ProjectSettings defaults = ProjectSettings::Default();
+    return defaults;
+}
+
+const EditorSettings& EditorDefaults()
+{
+    static const EditorSettings defaults{};
+    return defaults;
+}
+
+/// @note 配列版と曖昧にならないよう、汎用版は配列を受けない (MSVC は部分順序で決め切らない)。
+template <class T>
+    requires (!std::is_array_v<T>)
+bool SameValue(const T& a, const T& b) { return a == b; }
+
+template <class T, std::size_t N>
+bool SameValue(const T (&a)[N], const T (&b)[N]) { return std::equal(a, a + N, b); }
+
+template <class T>
+    requires (!std::is_array_v<T>)
+void AssignValue(T& target, const T& source) { target = source; }
+
+template <class T, std::size_t N>
+void AssignValue(T (&target)[N], const T (&source)[N]) { std::copy(source, source + N, target); }
+
+/// @brief 列挙値のコンボ。labels の並びが列挙子の値と一致していること。
+template <class E, std::size_t N>
+bool EnumCombo(E& value, const char* const (&labels)[N])
+{
+    const int current = std::clamp(static_cast<int>(value), 0, static_cast<int>(N) - 1);
+    bool changed = false;
+    if (ImGui::BeginCombo("##v", labels[current])) {
+        for (int i = 0; i < static_cast<int>(N); ++i) {
+            const bool selected = i == current;
+            if (ImGui::Selectable(labels[i], selected) && !selected) {
+                value = static_cast<E>(i);
+                changed = true;
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
+}
+
+std::string LocalClockNow()
+{
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_s(&local, &now);
+    char buffer[16];
+    std::strftime(buffer, sizeof(buffer), "%H:%M:%S", &local);
+    return buffer;
+}
+
+void StatusDot(ThemeColor color)
+{
+    ImGui::TextColored(EditorTheme::Color(color), "\xE2\x97\x8F");
     ImGui::SameLine();
-
-    ImGui::BeginChild("##ProjectSettingsContent", { 0.0f, 0.0f }, false);
-    DrawSection(ctx);
-    ImGui::EndChild();
-
-    const ImGuiID activeAfter = ImGui::GetActiveID();
-    const bool editedThisFrame = GImGui && GImGui->ActiveIdHasBeenEditedThisFrame;
-    const bool structuralEdit = m_editGeneration != editGenerationBefore;
-    auto pushCommand = [&](const ProjectSettings& before, const ProjectSettings& after) {
-        if (!ctx.undoStack) return;
-        EditorContext* context = &ctx;
-        auto apply = [context](const ProjectSettings& value) {
-            context->projectSettings = value;
-            Time::targetFps = value.app.targetFps;
-        };
-        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-            "Edit Project Settings",
-            [apply, after]() { apply(after); },
-            [apply, before]() { apply(before); }));
-    };
-
-    if (structuralEdit) {
-        pushCommand(beforeDraw, ctx.projectSettings);
-        undo.active = false;
-        undo.changed = false;
-    } else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
-        undo.activeId = activeAfter;
-        undo.before = beforeDraw;
-        undo.active = true;
-        undo.changed = editedThisFrame;
-    } else if (undo.active && activeAfter == undo.activeId) {
-        undo.changed |= editedThisFrame;
-    } else if (undo.active && activeAfter != undo.activeId) {
-        if (undo.changed) pushCommand(undo.before, ctx.projectSettings);
-        undo.active = false;
-        undo.changed = false;
-    } else if (!undo.active && editedThisFrame && activeAfter == 0) {
-        pushCommand(beforeDraw, ctx.projectSettings);
-    }
 }
 
-void ProjectSettingsPanel::DrawSidebar()
+/// @brief 取り消せない操作の確認。Open 済みのポップアップ id に対して描く。
+/// @return 実行が選ばれたら true。
+bool ConfirmPopup(const char* id, const char* message, const char* confirmLabel)
 {
-    ImGui::BeginChild("##ProjectSettingsSidebar", { SidebarWidth(), 0.0f }, true);
-
-    // 検索バー — 入力文字列に部分一致するセクションのみ表示する。
-    static char s_filter[64] = {};
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##search", LOCT("Search..."), s_filter, sizeof(s_filter));
-    ImGui::Separator();
-
-    // 空フィルター時は全表示、入力時は大文字小文字無視の部分一致フィルタリング。
-    // keywords は「そのセクションに含まれるが名前には出てこない語」。
-    // WHY 必要か: 項目を統合したことで "Screen" や "Bloom" のような
-    //      旧項目名・内容語で引いたときに何も出なくなる。検索の当たりを維持する。
-    // 検索は原文と訳の両方に当てる。日本語表示中に "physics" で引けないと、
-    // 英語の資料を見ながら設定を探す使い方ができなくなる。
-    auto btn = [&](const char* name, Section sec, const char* keywords = "") {
-        const bool match = s_filter[0] == '\0'
-            || util::StringUtils::ContainsCI(name, s_filter)
-            || util::StringUtils::ContainsCI(LOCT(name), s_filter)
-            || (keywords[0] != '\0' && util::StringUtils::ContainsCI(keywords, s_filter));
-        if (match) SectionButton(LOC(name), sec, m_currentSection);
-    };
-
-    btn("Application",    Section::Application,
-        "screen resolution window fps scene startup 解像度 画面");
-    btn("Graphics",       Section::Graphics,
-        "render post process shadow bloom fog debug outline navmesh 描画 影");
-    btn("Physics",        Section::Physics, "gravity substep 重力");
-    btn("Input",          Section::Input,   "gamepad key binding pad キー 入力");
-    btn("Audio",          Section::Audio,   "volume bgm se 音量");
-    btn("Tags & Layers",  Section::TagsAndLayers, "tag layer タグ レイヤー");
-    btn("Import",         Section::Import,  "fbx preset model texture インポート");
-    btn("Editor",         Section::Editor,  "language english japanese 言語 日本語 表示");
-
-    ImGui::EndChild();
-}
-
-void ProjectSettingsPanel::DrawSection(EditorContext& ctx)
-{
-    auto& settings = ctx.projectSettings;
-    switch (m_currentSection) {
-    case Section::Application:   DrawApplication(ctx, settings); break;
-    case Section::Graphics:      DrawGraphics(ctx, settings.render); break;
-    case Section::Physics:       DrawPhysics(settings); break;
-    case Section::Input:         DrawInput(ctx); break;
-    case Section::Audio:         DrawAudio(settings); break;
-    case Section::TagsAndLayers: DrawTagsAndLayers(settings); break;
-    case Section::Import:        DrawImport(ctx); break;
-    case Section::Editor:        DrawEditor(ctx); break;
+    bool confirmed = false;
+    if (ImGui::BeginPopup(id)) {
+        ImGui::TextUnformatted(message);
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Danger));
+        if (ImGui::Button(confirmLabel)) {
+            confirmed = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        if (ImGui::Button(LOC("Cancel"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
+    return confirmed;
 }
 
-namespace {
 
-// プリセットディレクトリのパス
 std::string ImportPresetsDir(const EditorContext& ctx)
 {
     const std::string root = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
-    return util::FileSystem::PathToUtf8(
-        util::FileSystem::PathFromUtf8(root) / ".import_presets");
+    return util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(root) / ".import_presets");
 }
 
 struct PresetEntry {
@@ -196,630 +193,899 @@ std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
     namespace fs = std::filesystem;
     const fs::path dir = util::FileSystem::PathFromUtf8(presetsDir);
     if (!util::FileSystem::Exists(dir)) return result;
-    try {
-        for (const auto& entry : fs::directory_iterator(dir)) {
-            if (!entry.is_regular_file()) continue;
-            const std::string ext = util::StringUtils::ToLower(
-                util::FileSystem::PathToUtf8(entry.path().extension()));
-            if (ext != ".toml") continue;
-            std::string text;
-            if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(entry.path()), text))
-                continue;
-            std::istringstream ss(text);
-            const auto parsed = toml::parse(ss);
-            if (!parsed) continue;
-            PresetEntry p;
-            p.name = entry.path().stem().string();
-            p.path = util::FileSystem::PathToUtf8(entry.path());
-            const auto& tbl = parsed.table();
-            if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
-                p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
-            if (auto v = tbl["options"]["up_axis"].value<int64_t>())
-                p.options.upAxis = static_cast<FbxUpAxis>(*v);
-            if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
-                p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
-            if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>())
-                p.options.unitScaleMultiplier = *v;
-            if (auto v = tbl["options"]["generate_normals"].value<bool>())
-                p.options.generateNormals = *v;
-            if (auto v = tbl["options"]["generate_tangents"].value<bool>())
-                p.options.generateTangents = *v;
-            if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
-                p.options.generateTexDescriptors = *v;
-            if (auto v = tbl["options"]["default_compression"].value<int64_t>())
-                p.options.defaultCompression = static_cast<asset::TextureCompression>(*v);
-            result.push_back(std::move(p));
-        }
-    } catch (...) {}
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (!entry.is_regular_file()) continue;
+        const std::string ext = util::StringUtils::ToLower(
+            util::FileSystem::PathToUtf8(entry.path().extension()));
+        if (ext != ".toml") continue;
+        std::string text;
+        if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(entry.path()), text)) continue;
+        std::istringstream ss(text);
+        const auto parsed = toml::parse(ss);
+        if (!parsed) continue;
+        PresetEntry p;
+        p.name = util::FileSystem::PathToUtf8(entry.path().stem());
+        p.path = util::FileSystem::PathToUtf8(entry.path());
+        const auto& tbl = parsed.table();
+        if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
+            p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
+        if (auto v = tbl["options"]["up_axis"].value<int64_t>())
+            p.options.upAxis = static_cast<FbxUpAxis>(*v);
+        if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
+            p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
+        if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>())
+            p.options.unitScaleMultiplier = *v;
+        if (auto v = tbl["options"]["generate_normals"].value<bool>())
+            p.options.generateNormals = *v;
+        if (auto v = tbl["options"]["generate_tangents"].value<bool>())
+            p.options.generateTangents = *v;
+        if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
+            p.options.generateTexDescriptors = *v;
+        if (auto v = tbl["options"]["default_compression"].value<int64_t>())
+            p.options.defaultCompression = static_cast<asset::TextureCompression>(*v);
+        result.push_back(std::move(p));
+    }
     std::sort(result.begin(), result.end(),
-        [](const PresetEntry& a, const PresetEntry& b) { return a.name < b.name; });
+              [](const PresetEntry& a, const PresetEntry& b) { return a.name < b.name; });
     return result;
+}
+
+struct PresetCache {
+    std::vector<PresetEntry> presets;
+    bool loaded = false;
+};
+
+PresetCache& Presets()
+{
+    static PresetCache cache;
+    return cache;
+}
+
+
+/// @note ランタイム側 (ProjectSettings::Load) が同じ規則で探す。ここが唯一の定義。
+std::string InputActionsPath(const EditorContext& ctx)
+{
+    const std::string root = ctx.projectRoot.empty() ? "." : ctx.projectRoot;
+    return util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(root) / "ProjectSettings" / "Input.inputactions");
+}
+
+/// @brief バインド 1 件の行。
+/// @return 削除が要求されたら true。
+bool DrawBindingRow(const input::InputBinding& binding, int index, bool rebinding,
+                    bool& outRebindRequested)
+{
+    ImGui::PushID(index);
+    const float rowRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+    ImGui::AlignTextToFramePadding();
+    ImGui::Bullet();
+    ImGui::SameLine();
+
+    /// @note 待機中の行を目立たせる。対象が分からないと別のバインドを潰す。
+    if (rebinding)
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s", LOCT("< Press an input... (Esc to cancel) >"));
+    else
+        ImGui::TextUnformatted(input::InputActionMap::DescribeBinding(binding).c_str());
+
+    const float buttons = ImGui::CalcTextSize(LOCT("Rebind")).x + ImGui::CalcTextSize(LOCT("Remove")).x
+                        + ImGui::GetStyle().FramePadding.x * 4.0f + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SameLine();
+    ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(), rowRight - buttons));
+    if (ImGui::SmallButton(LOC("Rebind"))) outRebindRequested = true;
+    ImGui::SameLine();
+    const bool removeRequested = ImGui::SmallButton(LOC("Remove"));
+
+    ImGui::PopID();
+    return removeRequested;
+}
+
+void DrawBindingList(const char* label, std::vector<input::InputBinding>& bindings,
+                     const std::function<void(int)>& beginRebind,
+                     const std::function<bool(int)>& isRebindTarget, bool& outDirty)
+{
+    ImGui::TextDisabled("%s", label);
+    ImGui::Indent();
+
+    int removeIndex = -1;
+    for (int i = 0; i < static_cast<int>(bindings.size()); ++i) {
+        bool rebindRequested = false;
+        if (DrawBindingRow(bindings[static_cast<std::size_t>(i)], i, isRebindTarget(i), rebindRequested))
+            removeIndex = i;
+        if (rebindRequested) beginRebind(i);
+    }
+    if (removeIndex >= 0) {
+        bindings.erase(bindings.begin() + removeIndex);
+        outDirty = true;
+    }
+
+    /// @note 末尾に足してすぐ待機に入る。空のバインドを置いたままにすると «反応しない行» が残る。
+    if (ImGui::SmallButton(LOC("+ Add Binding")))
+        beginRebind(static_cast<int>(bindings.size()));
+
+    ImGui::Unindent();
+}
+
+std::string JoinNames(const std::vector<std::string>& names)
+{
+    std::string joined;
+    for (const std::string& name : names) {
+        joined += name;
+        joined += ' ';
+    }
+    return joined;
 }
 
 } // namespace
 
-void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
+
+void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 {
-    ImGui::TextUnformatted("Import");
+    const bool trackUndo = ctx.undoStack && ctx.undoStack->IsRecordingEnabled();
+    if (!trackUndo) {
+        m_undo.active  = false;
+        m_undo.changed = false;
+    }
+    /// @note 描く前の値を控える。Undo は «掴む前» の値へ戻す必要がある。
+    const ProjectSettings beforeDraw = trackUndo ? ctx.projectSettings : ProjectSettings{};
+    const ImGuiID activeBefore = ImGui::GetActiveID();
+    const std::uint64_t generationBefore = m_editGeneration;
+
+    DrawSidebar();
+    ImGui::SameLine();
+
+    ImGui::BeginChild("##ProjectSettingsContent", { 0.0f, 0.0f }, false);
+    DrawSaveStatus(ctx);
     ImGui::Separator();
+    ImGui::BeginChild("##ProjectSettingsScroll", { 0.0f, 0.0f }, false);
+    DrawContent(ctx);
+    ImGui::EndChild();
+    ImGui::EndChild();
 
-    // ── Default FBX Settings ──────────────────────────────────────────────────
-    ImGui::TextDisabled("Default settings applied to new FBX imports.");
-    ImGui::Spacing();
+    if (trackUndo) TrackUndo(ctx, beforeDraw, activeBefore, generationBefore);
+    FlushEditorPreferences(ctx);
+    TickInputAutoSave(ctx);
+}
 
-    auto& opt = ctx.defaultImportOptions;
+void ProjectSettingsPanel::OnShutdown()
+{
+    if (!m_inputDirty || m_inputPath.empty()) return;
+    if (!input::InputActionMap::SaveToFile(m_inputPath))
+        FBZZ_LOG_ERROR("Input: failed to save %s on shutdown", m_inputPath.c_str());
+    m_inputDirty = false;
+}
 
-    if (ImGui::CollapsingHeader("FBX Defaults", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Indent();
-        {
-            static constexpr const char* kSourceDccNames[] = { "Auto Detect", "Maya / FBX SDK", "Blender" };
-            int sourceDccIdx = static_cast<int>(opt.sourceDcc);
-            ImGui::SetNextItemWidth(180.0f);
-            if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3))
-                opt.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
-        }
-        {
-            static constexpr const char* kAxisNames[] = { "Auto", "Y Up", "Z Up" };
-            int axisIdx = static_cast<int>(opt.upAxis);
-            ImGui::SetNextItemWidth(180.0f);
-            if (ImGui::Combo("Source Up Axis", &axisIdx, kAxisNames, 3))
-                opt.upAxis = static_cast<FbxUpAxis>(axisIdx);
-        }
-        ImGui::DragFloat("Unit Scale", &opt.unitScaleMultiplier, 0.01f, 0.001f, 100.0f, "%.3fx");
-        ImGui::Checkbox("Generate Normals", &opt.generateNormals);
-        ImGui::SameLine();
-        ImGui::Checkbox("Generate Tangents", &opt.generateTangents);
-        {
-            static constexpr const char* kConvNames[] = { "DirectX (keep G)", "OpenGL (flip G)" };
-            int convIdx = static_cast<int>(opt.normalMapConvention);
-            ImGui::SetNextItemWidth(180.0f);
-            if (ImGui::Combo("Normal Map Convention", &convIdx, kConvNames, 2))
-                opt.normalMapConvention = static_cast<NormalMapConvention>(convIdx);
-        }
-        ImGui::Checkbox("Auto-generate texture .meta sidecars", &opt.generateTexDescriptors);
-        {
-            static constexpr const char* kCompNames[] = {
-                "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
-            };
-            int compIdx = static_cast<int>(opt.defaultCompression);
-            ImGui::SetNextItemWidth(180.0f);
-            if (ImGui::Combo("Default Compression", &compIdx, kCompNames, 8))
-                opt.defaultCompression = static_cast<asset::TextureCompression>(compIdx);
-        }
-        ImGui::Unindent();
-    }
+void ProjectSettingsPanel::TrackUndo(EditorContext& ctx, const ProjectSettings& beforeDraw,
+                                     ImGuiID activeBefore, std::uint64_t generationBefore)
+{
+    const ImGuiID activeAfter = ImGui::GetActiveID();
+    const bool editedThisFrame = GImGui && GImGui->ActiveIdHasBeenEditedThisFrame;
+    const bool structuralEdit = m_editGeneration != generationBefore;
 
-    ImGui::Spacing();
-
-    // ── Import Presets ────────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Import Presets", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Indent();
-
-        const std::string presetsDir = ImportPresetsDir(ctx);
-        static std::vector<PresetEntry> s_presets;
-        static bool s_presetsLoaded = false;
-        static int  s_deleteIdx     = -1;
-
-        if (!s_presetsLoaded) {
-            s_presets       = LoadImportPresets(presetsDir);
-            s_presetsLoaded = true;
-        }
-
-        if (ImGui::SmallButton("Refresh Presets"))
-            s_presetsLoaded = false;
-
-        ImGui::Spacing();
-
-        if (s_presets.empty()) {
-            ImGui::TextDisabled("No presets found in Assets/.import_presets/");
-            ImGui::TextDisabled("Create presets via the Import Settings dialog\n(right-click FBX \xe2\x86\x92 Import with Settings...).");
-        } else {
-            if (ImGui::BeginTable("##presets_tbl", 3,
-                    ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupColumn("Name",           ImGuiTableColumnFlags_WidthStretch, 2.0f);
-                ImGui::TableSetupColumn("Settings",       ImGuiTableColumnFlags_WidthStretch, 3.0f);
-                ImGui::TableSetupColumn("",               ImGuiTableColumnFlags_WidthFixed,   130.0f);
-                ImGui::TableHeadersRow();
-
-                for (int i = 0; i < static_cast<int>(s_presets.size()); ++i) {
-                    const auto& p = s_presets[static_cast<size_t>(i)];
-                    ImGui::TableNextRow();
-
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::TextUnformatted(p.name.c_str());
-
-                    ImGui::TableSetColumnIndex(1);
-                    ImGui::TextDisabled("DCC=%s  Axis=%s  Scale=%.2f  Conv=%s  GenTex=%s",
-                        p.options.sourceDcc == FbxSourceDcc::Blender ? "Blender" :
-                        p.options.sourceDcc == FbxSourceDcc::Maya ? "Maya" : "Auto",
-                        p.options.upAxis == FbxUpAxis::ZUp ? "Z" :
-                        p.options.upAxis == FbxUpAxis::YUp ? "Y" : "Auto",
-                        p.options.unitScaleMultiplier,
-                        p.options.normalMapConvention == NormalMapConvention::OpenGL ? "OpenGL" : "DirectX",
-                        p.options.generateTexDescriptors ? "on" : "off");
-
-                    ImGui::TableSetColumnIndex(2);
-                    ImGui::PushID(i);
-                    if (ImGui::SmallButton("Use as Default")) {
-                        opt = p.options;
-                        ++m_editGeneration;
-                    }
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Copy this preset's values into Default FBX Settings above.");
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("Delete")) {
-                        s_deleteIdx = i;
-                    }
-                    ImGui::PopID();
-                }
-                ImGui::EndTable();
-
-                if (s_deleteIdx >= 0) {
-                    const std::string delPath =
-                        s_presets[static_cast<size_t>(s_deleteIdx)].path;
-                    try {
-                        std::filesystem::remove(util::FileSystem::PathFromUtf8(delPath));
-                        FBZZ_LOG_INFO("Deleted import preset: %s", delPath.c_str());
-                    } catch (...) {
-                        FBZZ_LOG_ERROR("Failed to delete preset: %s", delPath.c_str());
-                    }
-                    s_presets.erase(s_presets.begin() + s_deleteIdx);
-                    s_deleteIdx = -1;
-                }
-            }
-        }
-
-        ImGui::Unindent();
-    }
-
-    ImGui::Spacing();
-
-    // ── Exclude Patterns ──────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Exclude Patterns")) {
-        ImGui::Indent();
-        ImGui::TextDisabled("Files whose stem ends with these suffixes are skipped:");
-        ImGui::Spacing();
-        static constexpr const char* kExcluded[] = {
-            "_backup", "_old", "_wip", "_ref", "_tmp", "_test", "_unused", "_bak"
+    auto pushCommand = [&ctx](const ProjectSettings& before, const ProjectSettings& after) {
+        /// @note ProjectSettings に触れない編集 (検索欄・Input・Preferences) で空の履歴を積まない。
+        if (before.ToToml() == after.ToToml()) return;
+        EditorContext* context = &ctx;
+        auto apply = [context](const ProjectSettings& value) {
+            context->projectSettings = value;
+            Time::targetFps = value.app.targetFps;
         };
-        for (const char* s : kExcluded)
-            ImGui::BulletText("%s", s);
-        ImGui::Spacing();
-        ImGui::TextDisabled("(Built-in patterns. Not yet user-configurable.)");
-        ImGui::Unindent();
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Edit Project Settings",
+            [apply, after]() { apply(after); },
+            [apply, before]() { apply(before); }));
+    };
+
+    if (structuralEdit) {
+        pushCommand(beforeDraw, ctx.projectSettings);
+        m_undo.active  = false;
+        m_undo.changed = false;
+    } else if (!m_undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+        m_undo.activeId = activeAfter;
+        m_undo.before   = beforeDraw;
+        m_undo.active   = true;
+        m_undo.changed  = editedThisFrame;
+    } else if (m_undo.active && activeAfter == m_undo.activeId) {
+        m_undo.changed |= editedThisFrame;
+    } else if (m_undo.active && activeAfter != m_undo.activeId) {
+        if (m_undo.changed) pushCommand(m_undo.before, ctx.projectSettings);
+        m_undo.active  = false;
+        m_undo.changed = false;
+    } else if (!m_undo.active && editedThisFrame && activeAfter == 0) {
+        pushCommand(beforeDraw, ctx.projectSettings);
     }
 }
 
+void ProjectSettingsPanel::DrawSidebar()
+{
+    ImGui::BeginChild("##ProjectSettingsSidebar", { SidebarWidth(), 0.0f }, true);
+
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+        && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_F))
+        ImGui::SetKeyboardFocusHere();
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##search", LOCT("Search settings..."), m_search, sizeof(m_search));
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s", LOCT("Searches every section by name, description and value names (Ctrl+F)."));
+    ImGui::Spacing();
+
+    auto entry = [this](Section section) {
+        const SectionInfo& info = Info(section);
+        const int hits = m_lastSectionMatches[static_cast<std::size_t>(section)];
+        char label[160];
+        if (Searching())
+            std::snprintf(label, sizeof(label), "%s  (%d)###%s", LOCT(info.name), hits, info.name);
+        else
+            std::snprintf(label, sizeof(label), "%s###%s", LOCT(info.name), info.name);
+
+        const bool dim = Searching() && hits == 0;
+        if (dim) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+        /// @note 検索中に選ぶと検索を解いてそのセクションへ移る (結果一覧からの «ここへ行く»)。
+        if (ImGui::Selectable(label, !Searching() && m_currentSection == section)) {
+            m_currentSection = section;
+            m_search[0] = '\0';
+        }
+        if (dim) ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+            ImGui::SetTooltip("%s", LOCT(info.description));
+    };
+
+    ImGui::TextDisabled("%s", LOCT("PROJECT"));
+    for (int i = 0; i < static_cast<int>(Section::Editor); ++i)
+        entry(static_cast<Section>(i));
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("%s", LOCT("EDITOR"));
+    entry(Section::Editor);
+
+    ImGui::EndChild();
+}
+
+void ProjectSettingsPanel::DrawSaveStatus(EditorContext& ctx)
+{
+    const float lineRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+    ImGui::AlignTextToFramePadding();
+    ImGui::BeginGroup();
+
+    const bool editorSide = !Searching()
+        && (m_currentSection == Section::Editor || m_currentSection == Section::Import);
+    const bool inputPage = !Searching() && m_currentSection == Section::Input;
+    const char* tooltipPath = ctx.projectSettingsPath.c_str();
+
+    if (editorSide) {
+        StatusDot(m_editorPrefsDirty ? ThemeColor::Warning : ThemeColor::Success);
+        ImGui::TextDisabled("%s", LOCT(m_editorPrefsDirty ? "Saving..." : "Saved automatically to editor_settings.toml"));
+        tooltipPath = "Assets/EditorConfig/editor_settings.toml";
+    } else if (inputPage) {
+        tooltipPath = m_inputPath.c_str();
+        switch (m_inputSaveState) {
+        case InputSaveState::Saved:
+            StatusDot(ThemeColor::Success);
+            if (m_inputSavedClock.empty()) ImGui::TextDisabled("%s", LOCT("Input bindings are saved"));
+            else ImGui::TextDisabled("%s %s", LOCT("Input bindings saved at"), m_inputSavedClock.c_str());
+            break;
+        case InputSaveState::Pending:
+            StatusDot(ThemeColor::Warning);
+            ImGui::TextUnformatted(LOCT(input::InputActionMap::IsRebinding()
+                ? "Waiting for the rebind to finish before saving..." : "Saving..."));
+            break;
+        case InputSaveState::Failed:
+            StatusDot(ThemeColor::Danger);
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "%s", LOCT("Could not save Input.inputactions"));
+            ImGui::SameLine();
+            if (ImGui::SmallButton(LOC("Retry"))) {
+                m_inputDirty = true;
+                m_inputIdle  = kInputSaveDelay;
+            }
+            break;
+        }
+    } else {
+        switch (ctx.projectSettingsSaveState) {
+        case EditorContext::SettingsSaveState::Saved:
+            StatusDot(ThemeColor::Success);
+            if (ctx.projectSettingsSavedClock.empty()) ImGui::TextDisabled("%s", LOCT("All changes are saved"));
+            else ImGui::TextDisabled("%s %s", LOCT("Saved at"), ctx.projectSettingsSavedClock.c_str());
+            break;
+        case EditorContext::SettingsSaveState::Pending:
+            StatusDot(ThemeColor::Warning);
+            ImGui::TextUnformatted(LOCT("Saving..."));
+            break;
+        case EditorContext::SettingsSaveState::Failed:
+            StatusDot(ThemeColor::Danger);
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "%s", LOCT("Could not save ProjectSettings.toml"));
+            ImGui::SameLine();
+            if (ImGui::SmallButton(LOC("Retry"))) ctx.requestProjectSettingsSave = true;
+            break;
+        }
+    }
+    ImGui::EndGroup();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s\n%s", tooltipPath,
+                          LOCT("Changes are saved automatically about a second after you stop editing."));
+
+    /// @note 既定値へ戻す操作は右クリックにしか無いので、存在をここで教える。
+    const char* hint = LOCT("Right-click a value to reset it");
+    const float hintX = lineRight - ImGui::CalcTextSize(hint).x;
+    ImGui::SameLine();
+    if (hintX > ImGui::GetCursorPosX()) {
+        ImGui::SetCursorPosX(hintX);
+        ImGui::TextDisabled("%s", hint);
+    } else {
+        ImGui::NewLine();
+    }
+}
+
+void ProjectSettingsPanel::DrawContent(EditorContext& ctx)
+{
+    ImGui::Indent(kMarkerGutter);
+
+    if (!Searching()) {
+        m_drawingSection = m_currentSection;
+        const SectionInfo& info = Info(m_currentSection);
+        widgets::BeginHeadingFont(1.2f);
+        ImGui::TextUnformatted(LOCT(info.name));
+        widgets::EndHeadingFont();
+        ImGui::TextDisabled("%s", LOCT(info.description));
+        DrawSection(ctx, m_currentSection);
+    } else {
+        /// @note 検索中はページ見出しを保留し、当たった行の直前で描く (FlushPendingHeaders)。
+        m_matchCount = 0;
+        m_sectionMatches.fill(0);
+        for (int i = 0; i < static_cast<int>(Section::Count); ++i) {
+            m_drawingSection = static_cast<Section>(i);
+            const SectionInfo& info = Info(m_drawingSection);
+            m_pendingPage  = true;
+            m_pageMatched  = LabelHits(info.name, m_search) || ContainsCI(info.keywords, m_search);
+            m_pendingGroup = nullptr;
+            m_groupMatched = false;
+            DrawSection(ctx, m_drawingSection);
+            m_pendingPage = false;
+            m_pageMatched = false;
+        }
+        m_lastSectionMatches = m_sectionMatches;
+        if (m_matchCount == 0
+            && widgets::EmptyState(nullptr, LOCT("No settings match"),
+                                   LOCT("Try a different word, or clear the search."), LOC("Clear Search")))
+            m_search[0] = '\0';
+    }
+
+    ImGui::Unindent(kMarkerGutter);
+}
+
+void ProjectSettingsPanel::DrawSection(EditorContext& ctx, Section section)
+{
+    ImGui::PushID(static_cast<int>(section));
+    m_editingProjectSettings = section != Section::Import && section != Section::Editor;
+    auto& settings = ctx.projectSettings;
+    switch (section) {
+    case Section::Application:   DrawApplication(ctx, settings); break;
+    case Section::Graphics:      DrawGraphics(ctx, settings.render); break;
+    case Section::Physics:       DrawPhysics(settings); break;
+    case Section::Input:         DrawInput(ctx); break;
+    case Section::Audio:         DrawAudio(settings); break;
+    case Section::TagsAndLayers: DrawTagsAndLayers(settings); break;
+    case Section::Import:        DrawImport(ctx); break;
+    case Section::Editor:        DrawEditorPreferences(ctx); break;
+    case Section::Count:         break;
+    }
+    EndGroup();
+    m_editingProjectSettings = true;
+    ImGui::PopID();
+}
+
+
+bool ProjectSettingsPanel::Matches(const char* label, const char* keywords)
+{
+    if (!Searching()) return true;
+    const bool hit = m_pageMatched || m_groupMatched
+                  || LabelHits(label, m_search) || ContainsCI(keywords, m_search);
+    if (!hit) return false;
+    FlushPendingHeaders();
+    ++m_matchCount;
+    ++m_sectionMatches[static_cast<std::size_t>(m_drawingSection)];
+    return true;
+}
+
+bool ProjectSettingsPanel::BeginGroup(const char* label, bool defaultOpen, const char* keywords)
+{
+    if (Searching()) {
+        m_pendingGroup = label;
+        m_groupMatched = LabelHits(label, m_search) || ContainsCI(keywords, m_search);
+        return true;
+    }
+    ImGui::Spacing();
+    return ImGui::CollapsingHeader(LOC(label), defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+}
+
+void ProjectSettingsPanel::EndGroup()
+{
+    m_pendingGroup = nullptr;
+    m_groupMatched = false;
+}
+
+void ProjectSettingsPanel::FlushPendingHeaders()
+{
+    if (m_pendingPage) {
+        m_pendingPage = false;
+        const SectionInfo& info = Info(m_drawingSection);
+        if (m_matchCount > 0) {
+            ImGui::Spacing();
+            ImGui::Spacing();
+        }
+        widgets::BeginHeadingFont(1.2f);
+        ImGui::TextUnformatted(LOCT(info.name));
+        widgets::EndHeadingFont();
+        ImGui::SameLine();
+        if (ImGui::SmallButton(LOC("Open"))) {
+            m_currentSection = m_drawingSection;
+            m_search[0] = '\0';
+        }
+        ImGui::Separator();
+    }
+    if (m_pendingGroup) {
+        ImGui::SeparatorText(LOC(m_pendingGroup));
+        m_pendingGroup = nullptr;
+    }
+}
+
+template <class T, class Draw>
+bool ProjectSettingsPanel::Field(const char* label, T& value, const T* def, const char* tooltip, Draw&& draw)
+{
+    if (!Matches(label, tooltip)) return false;
+
+    const bool modified = def != nullptr && !SameValue(value, *def);
+    const float markerX = ImGui::GetCursorScreenPos().x - kMarkerGutter + 1.0f;
+
+    const widgets::PropertyRowScope row = widgets::BeginPropertyField(LOCT(label));
+    bool changed = draw();
+    if (tooltip != nullptr && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", tooltip);
+    if (def != nullptr && ImGui::BeginPopupContextItem("##fieldMenu")) {
+        if (ImGui::MenuItem(LOC("Reset to Default"), nullptr, false, modified)) {
+            AssignValue(value, *def);
+            changed = true;
+            MarkStructuralEdit();
+        }
+        ImGui::EndPopup();
+    }
+    widgets::EndPropertyField(row);
+
+    /// @note 既定値から変えた行だけ左端に印を付ける。«どこを触ったか» を一覧で拾えるようにする。
+    if (modified) {
+        const float bottom = ImGui::GetCursorScreenPos().y - ImGui::GetStyle().ItemSpacing.y;
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            { markerX, row.top }, { markerX + 3.0f, bottom },
+            EditorTheme::ColorU32(ThemeColor::Accent), 1.5f);
+        if (ImGui::IsMouseHoveringRect({ markerX - 2.0f, row.top }, { markerX + 5.0f, bottom }))
+            ImGui::SetTooltip("%s", LOCT("Changed from the default. Right-click the value to reset it."));
+    }
+
+    if (changed && !m_editingProjectSettings) m_editorPrefsDirty = true;
+    return changed;
+}
+
+void ProjectSettingsPanel::InfoRow(const char* label, const char* text)
+{
+    if (!Matches(label)) return;
+    const widgets::PropertyRowScope row = widgets::BeginPropertyField(LOCT(label));
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%s", text);
+    widgets::EndPropertyField(row);
+}
+
+void ProjectSettingsPanel::MarkStructuralEdit()
+{
+    if (m_editingProjectSettings) ++m_editGeneration;
+    else m_editorPrefsDirty = true;
+}
+
+void ProjectSettingsPanel::FlushEditorPreferences(EditorContext& ctx)
+{
+    /// @note ドラッグ中に毎フレーム editor_settings.toml を書かない。手を離してから 1 回。
+    if (!m_editorPrefsDirty || ImGui::IsAnyItemActive()) return;
+    m_editorPrefsDirty = false;
+    ctx.requestEditorSettingsSave = true;
+}
+
+void ProjectSettingsPanel::TickInputAutoSave(EditorContext& ctx)
+{
+    if (m_inputPath.empty()) m_inputPath = InputActionsPath(ctx);
+
+    /// @note リバインドはパネルの外 (入力の到着) で確定するので、待機が明けた瞬間を変更として数える。
+    const bool rebinding = input::InputActionMap::IsRebinding();
+    if (m_wasRebinding && !rebinding) {
+        m_inputDirty = true;
+        m_inputIdle  = 0.0f;
+    }
+    m_wasRebinding = rebinding;
+    if (!m_inputDirty) return;
+
+    m_inputSaveState = InputSaveState::Pending;
+    m_inputIdle += ImGui::GetIO().DeltaTime;
+    /// @note 待機の途中でファイルへ落とすと、次の起動が壊れたバインドで立ち上がる。
+    if (rebinding || ImGui::IsAnyItemActive() || m_inputIdle < kInputSaveDelay) return;
+
+    m_inputDirty = false;
+    if (input::InputActionMap::SaveToFile(m_inputPath)) {
+        m_inputSaveState  = InputSaveState::Saved;
+        m_inputSavedClock = LocalClockNow();
+    } else {
+        m_inputSaveState = InputSaveState::Failed;
+        FBZZ_LOG_ERROR("Input: failed to save %s", m_inputPath.c_str());
+    }
+}
+
+
 void ProjectSettingsPanel::DrawApplication(EditorContext& ctx, ProjectSettings& settings)
 {
-    ImGui::TextUnformatted("Application");
-    ImGui::Separator();
+    const ProjectSettings& d = ProjectDefaults();
 
-    if (ImGui::DragInt("Target FPS", &settings.app.targetFps, 1.0f, 0, 360))
-        Time::targetFps = settings.app.targetFps;
-    ImGui::SameLine();
-    ImGui::TextDisabled("(0 = unlimited)");
+    if (BeginGroup("Frame Rate")) {
+        if (Field("Target FPS", settings.app.targetFps, &d.app.targetFps,
+                  "1 秒あたりの更新回数の上限。0 で無制限 (Editor の描画にも効く)",
+                  [&] { return ImGui::DragInt("##v", &settings.app.targetFps, 1.0f, 0, 360, "%d fps"); }))
+            Time::targetFps = settings.app.targetFps;
+    }
+    EndGroup();
 
-    ImGui::Spacing();
-    ImGui::SeparatorText("Scenes");
-    char defaultScene[260];
-    std::snprintf(defaultScene, sizeof(defaultScene), "%s", settings.game.project.defaultScene.c_str());
-    ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputText("Default Scene", defaultScene, sizeof(defaultScene)))
-        settings.game.project.defaultScene = defaultScene;
+    if (BeginGroup("Scenes")) {
+        Field("Default Scene", settings.game.project.defaultScene, &d.game.project.defaultScene,
+              "プロジェクトの既定シーン。Assets からの相対パス",
+              [&] { return widgets::AssetPathField("##v", settings.game.project.defaultScene, ".scene", ctx.projectRoot); });
+        Field("Start Scene", settings.game.runtime.startScene, &d.game.runtime.startScene,
+              "実行時に最初に読み込むシーン。Assets からの相対パス",
+              [&] { return widgets::AssetPathField("##v", settings.game.runtime.startScene, ".scene", ctx.projectRoot); });
+    }
+    EndGroup();
 
-    char startScene[260];
-    std::snprintf(startScene, sizeof(startScene), "%s", settings.game.runtime.startScene.c_str());
-    ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputText("Start Scene", startScene, sizeof(startScene)))
-        settings.game.runtime.startScene = startScene;
+    if (BeginGroup("Screen")) {
+        Field("Width", settings.screen.width, &d.screen.width, "画面の横幅 [px]",
+              [&] { return ImGui::DragInt("##v", &settings.screen.width, 1.0f, 1, 7680, "%d px"); });
+        Field("Height", settings.screen.height, &d.screen.height, "画面の高さ [px]",
+              [&] { return ImGui::DragInt("##v", &settings.screen.height, 1.0f, 1, 4320, "%d px"); });
+    }
+    EndGroup();
 
-    // 旧 Screen セクション。解像度はウィンドウ設定であり、
-    // Target FPS と並べた方が「起動時の画面まわり」として一望できる。
-    ImGui::Spacing();
-    ImGui::SeparatorText("Screen");
-    ImGui::DragInt("Width",  &settings.screen.width,  1.0f, 1, 7680);
-    ImGui::DragInt("Height", &settings.screen.height, 1.0f, 1, 4320);
-
-    ImGui::Spacing();
-    ImGui::SeparatorText("Cursor");
-    DrawCursor(ctx, settings.cursor);
+    if (BeginGroup("Cursor", false))
+        DrawCursor(ctx, settings.cursor);
+    EndGroup();
 }
 
 void ProjectSettingsPanel::DrawCursor(EditorContext& ctx, CursorAppearance& cursor)
 {
-    // WHY 拘束モードがここに無いか: 拘束と表示は «その画面が今どう遊ばれているか» で
-    //     決まるもので、スクリプトが cursor.Push で名乗る。設定が持つのは差し替え可能な
-    //     «絵» だけ。以前は初期値としてここにも置いていたが、実行中の要求と同じ値を
-    //     共有していたため、Play 中にここを触るとスクリプトの要求が黙って消えていた。
-    ImGui::Checkbox("Hardware Cursor", &cursor.hardwareCursor);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("OS カーソルの絵を下の画像で差し替える。\n"
-                          "外すと常に既定の矢印になる (自前で UI に描く場合など)");
+    /// @note 拘束と表示はここに無い。«その画面が今どう遊ばれているか» で決まり、スクリプトが cursor.Push で名乗る。
+    const CursorAppearance& d = ProjectDefaults().cursor;
+    Field("Hardware Cursor", cursor.hardwareCursor, &d.hardwareCursor,
+          "OS カーソルの絵を下の画像で差し替える。外すと常に既定の矢印になる (自前で UI に描く場合など)",
+          [&] { return ImGui::Checkbox("##v", &cursor.hardwareCursor); });
 
     if (!cursor.hardwareCursor) ImGui::BeginDisabled();
-
     for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
         const auto shape = static_cast<core::CursorShape>(i);
+        const char* name = core::ToString(shape);
+        if (!Matches(name, "cursor image hotspot カーソル 画像")) continue;
+
         ImGui::PushID(static_cast<int>(i));
         auto& entry = cursor.shapes[i];
+        const widgets::PropertyRowScope row = widgets::BeginPropertyField(name);
+        if (widgets::AssetPathField("##v", entry.path, ".png,.tga,.bmp", ctx.projectRoot))
+            MarkStructuralEdit();
+        widgets::EndPropertyField(row);
 
-        widgets::AssetPathField(core::ToString(shape), entry.path,
-                                ".png,.tga,.bmp", ctx.projectRoot);
         if (!entry.path.empty()) {
             float hotspot[2] = { entry.hotspotX, entry.hotspotY };
-            if (ImGui::DragFloat2("Hotspot", hotspot, 1.0f, 0.0f, 4096.0f, "%.0f")) {
+            const widgets::PropertyRowScope hotspotRow = widgets::BeginPropertyField(LOCT("Hotspot"));
+            if (ImGui::DragFloat2("##v", hotspot, 1.0f, 0.0f, 4096.0f, "%.0f px")) {
                 entry.hotspotX = hotspot[0];
                 entry.hotspotY = hotspot[1];
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("画像の左上から «実際に指す点» までの画素。\n"
-                                  "矢印なら先端、十字なら中心");
+                ImGui::SetTooltip("画像の左上から «実際に指す点» までの画素。矢印なら先端、十字なら中心");
+            widgets::EndPropertyField(hotspotRow);
         }
         ImGui::PopID();
     }
-
     if (!cursor.hardwareCursor) ImGui::EndDisabled();
 
-    // WHY 編集中に反映しないか: 差し替え先はウィンドウクラスのカーソルで、Editor では
-    //     «エディタの窓全体» が対象になる。編集しながら適用すると、パネルの上でも
-    //     ゲームのカーソルが出てしまう。
-    ImGui::TextDisabled("画像は Play 開始時に読み込まれます");
+    /// @note 編集中に反映しない。Editor ではウィンドウ全体のカーソルが変わり、パネルの上でもゲームの絵が出る。
+    if (!Searching()) ImGui::TextDisabled("%s", LOCT("Images are loaded when Play starts."));
 }
+
 
 void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render)
 {
-    ImGui::TextUnformatted("Graphics");
-    ImGui::Separator();
+    const renderer::RenderSettings& d = ProjectDefaults().render;
 
-    // WHY Post Process セクションが無いか:
-    //     Bloom / SSR / TAA といった「ルック」はシーン内の場所ごとに変わるもので、
-    //     プロジェクト全体の設定として持つと屋外と洞窟を切り替えられない。
-    //     所有者を Post Process Volume + Post Process Profile (.fzdata) へ一本化した。
-    if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawRenderCore(render);
+    if (BeginGroup("Rendering")) {
+        static const char* const kPipelines[] = { "Forward", "Deferred", "Forward+", "Deferred+" };
+        Field("Pipeline", render.pipeline, &d.pipeline,
+              "描画経路。+ 付きはクラスタ分割でライトを間引く (ライトが多い場面向け)",
+              [&] { return EnumCombo(render.pipeline, kPipelines); });
 
-    if (ImGui::CollapsingHeader("User Settings (preview)"))
-        DrawRenderUserSettings(ctx, render);
-
-    if (ImGui::CollapsingHeader("Debug"))
-        DrawRenderDebug(render);
-
-    ImGui::Spacing();
-    ImGui::TextDisabled(
-        "ポストプロセス / 高度グラフィクスは Post Process Volume で設定します。\n"
-        "Hierarchy に Post Process Volume を追加し、Post Process Profile (.fzdata) を割り当ててください。");
-}
-
-// WHY 保存されない項目をここへ出すか:
-//     明るさと描画スケールは Option 画面がプレイヤー設定として持つ値で、
-//     プロジェクト設定には保存しない。ただし「効きを目で確かめる」手段が
-//     Play + スクリプトしか無いと、調整のたびに再生し直すことになる。
-//     保存されないことを明記したうえで、確認用のつまみだけ置く。
-void ProjectSettingsPanel::DrawRenderUserSettings(EditorContext& ctx,
-                                                  renderer::RenderSettings& render)
-{
-    ImGui::Indent();
-    ImGui::TextDisabled("Option 画面がプレイヤー設定として持つ値。ここでの変更は保存されません。");
-    ImGui::Spacing();
-
-    ImGui::SetNextItemWidth(220.0f);
-    ImGui::SliderFloat("Brightness", &render.userBrightness, 0.1f, 4.0f, "%.2f");
-
-    // WHY 描画スケールだけ直接書かないか: 値が変わるたびに中間 RT を作り直すため、
-    //     ドラッグ中ずっと 16 枚の再確保が走る。手を離した時点で 1 度だけ反映する。
-    if (!m_renderScaleDragging) m_renderScaleDraft = render.renderScale;
-    ImGui::SetNextItemWidth(220.0f);
-    ImGui::SliderFloat("Render Scale", &m_renderScaleDraft,
-                       renderer::kMinRenderScale, renderer::kMaxRenderScale, "%.2f");
-    m_renderScaleDragging = ImGui::IsItemActive();
-    if (ImGui::IsItemDeactivatedAfterEdit()) render.renderScale = m_renderScaleDraft;
-
-    // ドラッグ中は反映前の draft で予告する (何ピクセルになるかを見ながら決められる)。
-    uint32_t internalWidth = 0, internalHeight = 0;
-    renderer::ResolveRenderResolution(
-        static_cast<uint32_t>(std::max(ctx.viewportWidth, 1.0f)),
-        static_cast<uint32_t>(std::max(ctx.viewportHeight, 1.0f)),
-        m_renderScaleDraft, internalWidth, internalHeight);
-    ImGui::TextDisabled("Scene View: %.0fx%.0f -> %ux%u",
-                        ctx.viewportWidth, ctx.viewportHeight,
-                        internalWidth, internalHeight);
-
-    ImGui::Unindent();
-}
-
-void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
-{
-    ImGui::Indent();
-
-    // WHAT: Combo のポップアップへ候補を個別に描画し、Forward+ / Deferred+ も常に表示する。
-    // WHY: ImGui::Combo の配列オーバーロードは表示領域を呼び出し側へ委ねるため、
-    //      狭い Project Settings パネルでは Plus 系の候補が確認しづらい。
-    const char* pipelineItems[] = { "Forward", "Deferred", "Forward+", "Deferred+" };
-    int pipelineIdx = std::clamp(static_cast<int>(render.pipeline), 0, 3);
-    ImGui::SetNextItemWidth(220.0f);
-    if (ImGui::BeginCombo("Pipeline", pipelineItems[pipelineIdx]))
-    {
-        for (int index = 0; index < 4; ++index)
-        {
-            const bool selected = pipelineIdx == index;
-            if (ImGui::Selectable(pipelineItems[index], selected))
-                pipelineIdx = index;
-            if (selected)
-                ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-    render.pipeline = static_cast<renderer::RenderingPipeline>(pipelineIdx);
-
-    // 「有効にしてあるのに、このパイプラインでは無視される設定」をその場で出す。
-    //
-    // WHY パイプラインの真下か: 原因は Pipeline の選択そのものなので、
-    //     効かない設定の側 (Post Process Volume) だけに出しても直し方が分からない。
-    //     選んだ直後に「これとこれが無効になります」と見えるのが一番短い導線になる。
-    if (const auto inert = renderer::CollectInertSettings(render); !inert.empty())
-    {
-        ImGui::Spacing();
-        const ImVec4 warn = EditorTheme::Color(ThemeColor::Warning);
-        ImGui::TextColored(warn, "Warning: このパイプラインで無効になる設定が %d 件あります",
-                           static_cast<int>(inert.size()));
-        ImGui::Indent();
-        for (const renderer::InertSetting& issue : inert)
-        {
-            ImGui::TextColored(warn, "%s", issue.label);
-            ImGui::Indent();
-            ImGui::TextDisabled("%s", issue.reason);
-            if (issue.remedy) ImGui::TextDisabled("→ %s", issue.remedy);
-            ImGui::Unindent();
-        }
-        ImGui::Unindent();
-        ImGui::Spacing();
-    }
-
-    const bool clusteredPipeline = render.pipeline == renderer::RenderingPipeline::ForwardPlus
-                                || render.pipeline == renderer::RenderingPipeline::DeferredPlus;
-    if (clusteredPipeline)
-    {
-        ImGui::Indent();
-        ImGui::Checkbox("Enable clustered lights", &render.clustered.enabled);
-        if (render.clustered.enabled)
-        {
-            ImGui::SetNextItemWidth(150.0f);
-            ImGui::DragFloat("Max distance##clustered", &render.clustered.maxDistance,
-                             1.0f, 1.0f, 10000.0f, "%.0f m");
-            ImGui::Checkbox("Debug heatmap##clustered", &render.clustered.debugHeatmap);
-            ImGui::Checkbox("Force all lights##clustered", &render.clustered.forceAllLights);
-            ImGui::SameLine();
-            ImGui::TextDisabled("(Linear validation mode)");
-        }
-        ImGui::Unindent();
-    }
-
-    ImGui::Spacing();
-    ImGui::Checkbox("Shadow", &render.shadowEnabled);
-    if (render.shadowEnabled)
-    {
-        ImGui::Indent();
-        static const uint32_t kResValues[] = { 512u, 1024u, 2048u, 4096u, 8192u };
-        static const char*    kResLabels[] = { "512",  "1024",  "2048",  "4096",  "8192" };
-        int resIdx = 3;
-        for (int i = 0; i < 5; ++i)
-            if (kResValues[i] == render.shadow.mapResolution) { resIdx = i; break; }
-        ImGui::SetNextItemWidth(100.0f);
-        if (ImGui::Combo("Resolution##shadow", &resIdx, kResLabels, 5))
-            render.shadow.mapResolution = kResValues[resIdx];
-        ImGui::SameLine();
-        ImGui::TextDisabled("(Atlas)");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "全カスケードが共有するアトラス 1 枚ぶんの解像度。\n"
-                "2 分割以上では 2x2 タイルへ分けるので、1 カスケードは この値 / 2 になる。\n"
-                "分割数を増やしてもメモリと塗り量は変わらない (面積の配分が変わるだけ)。");
-
-        // 影の到達距離。カスケード分割の全体レンジでもある。
-        ImGui::SetNextItemWidth(100.0f);
-        ImGui::DragFloat("Shadow Distance##shadow", &render.shadow.autoFitDistance,
-                         1.0f, 5.0f, 2000.0f, "%.0f m");
-        ImGui::SameLine();
-        ImGui::TextDisabled("(影が届く最大距離)");
-
-        // ── カスケード ────────────────────────────────────────────────────────
-        ImGui::Spacing();
-        static const char* kCascadeLabels[] = { "1 – 単一", "2", "3", "4" };
-        int cascadeIdx = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades) - 1;
-        ImGui::SetNextItemWidth(100.0f);
-        if (ImGui::Combo("Cascades##shadow", &cascadeIdx, kCascadeLabels, 4))
-            render.shadow.cascadeCount = cascadeIdx + 1;
-        ImGui::SameLine();
-        ImGui::TextDisabled("(Cascaded Shadow Maps)");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを丸ごと割り当てる。\n"
-                "同じ解像度・同じ塗り量のまま、近距離のテクセル密度だけを上げられる。\n"
-                "1 を選ぶと従来の単一シャドウマップに戻る。");
-
-        if (render.shadow.cascadeCount > 1)
-        {
-            ImGui::Indent();
-            ImGui::SetNextItemWidth(100.0f);
-            ImGui::SliderFloat("Split Lambda##shadow", &render.shadow.cascadeSplitLambda,
-                               0.0f, 1.0f, "%.2f");
-            ImGui::SameLine();
-            ImGui::TextDisabled("(0=等分割 / 1=対数分割)");
-
-            ImGui::SetNextItemWidth(100.0f);
-            ImGui::SliderFloat("Blend##shadow", &render.shadow.cascadeBlend, 0.0f, 0.5f, "%.2f");
-            ImGui::SameLine();
-            ImGui::TextDisabled("(境界のクロスフェード幅)");
-
-            ImGui::Checkbox("Visualize Cascades##shadow", &render.shadow.debugVisualizeCascades);
-            ImGui::SameLine();
-            ImGui::TextDisabled("(緑=近 → 赤=遠)");
-            ImGui::Unindent();
-        }
-
-        // 各カスケードの実テクセル密度。分割と解像度の効き方を数値で見せる。
-        // WHY: 「解像度を上げる」より「分割数を増やす / 到達距離を縮める」ほうが
-        //      効くことが多く、それはこの表を見ないと判断できない。
-        {
-            const int      count      = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades);
-            const uint32_t tileSize   = std::max(render.shadow.mapResolution / (count > 1 ? 2u : 1u), 1u);
-            const float    nearZ      = 0.1f;
-            const float    lambda     = std::clamp(render.shadow.cascadeSplitLambda, 0.0f, 1.0f);
-            const float    distance   = std::max(render.shadow.autoFitDistance, 1.0f);
-            // ComputeFrustumSliceSphere と同じ k (fovY 60 / aspect 16:9 の代表値)。
-            constexpr float kSphereFactor = 1.177f;
-
-            ImGui::Spacing();
-            ImGui::TextDisabled("Cascade texel density (tile %u px)", tileSize);
-            float sliceNear = nearZ;
-            for (int i = 0; i < count; ++i) {
-                const float ratio    = static_cast<float>(i + 1) / static_cast<float>(count);
-                const float logSplit = nearZ * std::pow(distance / nearZ, ratio);
-                const float uniform  = nearZ + (distance - nearZ) * ratio;
-                const float sliceFar = (i == count - 1)
-                    ? distance : (lambda * logSplit + (1.0f - lambda) * uniform);
-                const float radius   = sliceFar * kSphereFactor;
-                const float texelCm  = (radius * 2.0f) / static_cast<float>(tileSize) * 100.0f;
-                ImGui::BulletText("Cascade %d: %.1f–%.1f m   1 texel = %.1f cm",
-                                  i, sliceNear, sliceFar, texelCm);
-                sliceNear = sliceFar;
+        /// @note 効かない設定は選んだ Pipeline の真下に出す。原因がここなので、Volume 側に出しても直し方が分からない。
+        if (!Searching()) {
+            if (const auto inert = renderer::CollectInertSettings(render); !inert.empty()) {
+                const ImVec4 warn = EditorTheme::Color(ThemeColor::Warning);
+                ImGui::TextColored(warn, "%s (%d)", LOCT("Settings ignored by this pipeline"),
+                                   static_cast<int>(inert.size()));
+                ImGui::Indent();
+                for (const renderer::InertSetting& issue : inert) {
+                    ImGui::TextColored(warn, "%s", issue.label);
+                    ImGui::Indent();
+                    ImGui::TextDisabled("%s", issue.reason);
+                    if (issue.remedy) ImGui::TextDisabled("-> %s", issue.remedy);
+                    ImGui::Unindent();
+                }
+                ImGui::Unindent();
+                ImGui::Spacing();
             }
         }
 
-        static const char* kPcfLabels[] = { "0 – Hard", "1 – 3x3", "2 – 5x5", "3 – 7x7" };
-        int pcfIdx = std::clamp(render.shadow.pcfRadius, 0, 3);
-        ImGui::SetNextItemWidth(100.0f);
-        if (ImGui::Combo("PCF Radius##shadow", &pcfIdx, kPcfLabels, 4))
-            render.shadow.pcfRadius = pcfIdx;
-        ImGui::SameLine();
-        ImGui::TextDisabled("(Blur)");
-
-        // PCSS — 距離に比例してペナンブラが広がる物理ベースのソフトシャドウ。
-        ImGui::Spacing();
-        ImGui::Checkbox("PCSS##shadow", &render.shadow.pcssEnabled);
-        ImGui::SameLine();
-        ImGui::TextDisabled("(Percentage Closer Soft Shadows)");
-        if (render.shadow.pcssEnabled)
-        {
-            ImGui::Indent();
-            ImGui::SetNextItemWidth(100.0f);
-            ImGui::DragFloat("Light Radius##pcss", &render.shadow.pcssLightRadius,
-                             0.1f, 0.0f, 50.0f, "%.2f");
-            ImGui::SameLine();
-            ImGui::TextDisabled("(大きいほどソフト)");
-            ImGui::Unindent();
+        const bool clustered = render.pipeline == renderer::RenderingPipeline::ForwardPlus
+                            || render.pipeline == renderer::RenderingPipeline::DeferredPlus;
+        if (clustered) {
+            Field("Clustered Lights", render.clustered.enabled, &d.clustered.enabled,
+                  "ライトを視錐台のクラスタへ振り分けて、画素ごとに近いライトだけを評価する",
+                  [&] { return ImGui::Checkbox("##v", &render.clustered.enabled); });
+            if (render.clustered.enabled) {
+                Field("Cluster Distance", render.clustered.maxDistance, &d.clustered.maxDistance,
+                      "クラスタを張る最大距離。これより遠いライトは振り分けない",
+                      [&] { return ImGui::DragFloat("##v", &render.clustered.maxDistance, 1.0f, 1.0f, 10000.0f, "%.0f m"); });
+                Field("Cluster Heatmap", render.clustered.debugHeatmap, &d.clustered.debugHeatmap,
+                      "クラスタごとのライト数を色で重ねる (デバッグ)",
+                      [&] { return ImGui::Checkbox("##v", &render.clustered.debugHeatmap); });
+                Field("Force All Lights", render.clustered.forceAllLights, &d.clustered.forceAllLights,
+                      "振り分けを無視して全ライトを評価する。クラスタの取りこぼしを疑うときの検証用",
+                      [&] { return ImGui::Checkbox("##v", &render.clustered.forceAllLights); });
+            }
         }
 
-        ImGui::Unindent();
+        static const char* const kViewModes[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
+        Field("View Mode", render.viewMode, &d.viewMode, "ライティングとワイヤーフレームの表示切り替え",
+              [&] { return EnumCombo(render.viewMode, kViewModes); });
     }
-    ImGui::Spacing();
-    {
-        const char* kViewModeLabels[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
-        int idx = static_cast<int>(render.viewMode);
-        ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::Combo("View Mode", &idx, kViewModeLabels, 4))
-            render.viewMode = static_cast<renderer::ViewMode>(idx);
-    }
+    EndGroup();
 
-    ImGui::Unindent();
+    if (BeginGroup("Shadows"))
+        DrawShadows(render);
+    EndGroup();
+
+    if (BeginGroup("Player Options Preview", false, "brightness render scale 明るさ 解像度"))
+        DrawPlayerOptionsPreview(ctx, render);
+    EndGroup();
+
+    if (BeginGroup("Debug Overlays", false))
+        DrawDebugOverlays(render);
+    EndGroup();
+
+    /// @note Bloom / SSR / TAA などの «ルック» は場所ごとに変わるので、所有者は Post Process Volume に一本化してある。
+    if (!Searching()) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", LOCT("Post processing is configured per area with a Post Process Volume and a Post Process Profile (.fzdata)."));
+    }
 }
 
-void ProjectSettingsPanel::DrawRenderDebug(renderer::RenderSettings& render)
+void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
 {
-    ImGui::Indent();
+    const renderer::ShadowSettings& d = ProjectDefaults().render.shadow;
+    Field("Shadows", render.shadowEnabled, &ProjectDefaults().render.shadowEnabled,
+          "太陽 (Directional Light) の影を描く",
+          [&] { return ImGui::Checkbox("##v", &render.shadowEnabled); });
+    if (!render.shadowEnabled) return;
 
-    ImGui::SeparatorText("Debug Visualization");
-    ImGui::Checkbox("Colliders",         &render.showColliders);
-    ImGui::SameLine();
-    ImGui::Checkbox("Terrain Collision", &render.showTerrainCollision);
-    ImGui::SameLine();
-    ImGui::Checkbox("NavMesh",           &render.showNavMesh);
-    ImGui::Checkbox("AI Sensors",        &render.showNavSensors);
-    ImGui::SameLine();
-    ImGui::Checkbox("UI Rects",          &render.showUIRects);
-    ImGui::SameLine();
-    ImGui::Checkbox("Decal Bounds",      &render.showDecalBounds);
-    ImGui::SameLine();
-    ImGui::Checkbox("Selection Outline", &render.showSelectionOutline);
+    static const uint32_t kResValues[] = { 512u, 1024u, 2048u, 4096u, 8192u };
+    static const char* const kResLabels[] = { "512", "1024", "2048", "4096", "8192" };
+    Field("Atlas Resolution", render.shadow.mapResolution, &d.mapResolution,
+          "全カスケードが共有するアトラス 1 枚の解像度。2 分割以上では 2x2 タイルに分けるので、1 カスケードはこの値 / 2",
+          [&] {
+              int index = 3;
+              for (int i = 0; i < 5; ++i)
+                  if (kResValues[i] == render.shadow.mapResolution) index = i;
+              if (!EnumCombo(index, kResLabels)) return false;
+              render.shadow.mapResolution = kResValues[index];
+              return true;
+          });
+    Field("Shadow Distance", render.shadow.autoFitDistance, &d.autoFitDistance,
+          "影が届く最大距離。カスケード分割の全体レンジでもある",
+          [&] { return ImGui::DragFloat("##v", &render.shadow.autoFitDistance, 1.0f, 5.0f, 2000.0f, "%.0f m"); });
 
-    ImGui::Spacing();
-    ImGui::SeparatorText("Debug");
-    ImGui::TextDisabled("Render Pass Viewer: Debug > Render Pass Viewer");
-    ImGui::Checkbox("Particle Budget", &render.particleBudgetEnabled);
-    if (render.particleBudgetEnabled)
-        ImGui::DragInt("Particle Budget Count", &render.particleBudget, 100, 0, 1000000);
+    static const char* const kCascadeLabels[] = { "1 (single)", "2", "3", "4" };
+    Field("Cascades", render.shadow.cascadeCount, &d.cascadeCount,
+          "視錐台を距離で区切り、手前ほど狭い範囲に 1 タイルを割り当てる。同じ解像度のまま近距離の密度だけを上げられる",
+          [&] {
+              int index = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades) - 1;
+              if (!EnumCombo(index, kCascadeLabels)) return false;
+              render.shadow.cascadeCount = index + 1;
+              return true;
+          });
 
-    ImGui::Spacing();
-    ImGui::SeparatorText("Selection Outline");
-    ImGui::SliderFloat("Outline Width", &render.outlineWidth, 0.005f, 0.2f);
-    ImGui::ColorEdit4("Outline Color", render.outlineColor);
+    if (render.shadow.cascadeCount > 1) {
+        Field("Split Lambda", render.shadow.cascadeSplitLambda, &d.cascadeSplitLambda,
+              "0 = 等分割 / 1 = 対数分割。上げるほど手前のカスケードが狭く (細かく) なる",
+              [&] { return ImGui::SliderFloat("##v", &render.shadow.cascadeSplitLambda, 0.0f, 1.0f, "%.2f"); });
+        Field("Cascade Blend", render.shadow.cascadeBlend, &d.cascadeBlend,
+              "カスケード境界のクロスフェード幅",
+              [&] { return ImGui::SliderFloat("##v", &render.shadow.cascadeBlend, 0.0f, 0.5f, "%.2f"); });
+        Field("Visualize Cascades", render.shadow.debugVisualizeCascades, &d.debugVisualizeCascades,
+              "カスケードを色分けする (緑 = 近 -> 赤 = 遠)",
+              [&] { return ImGui::Checkbox("##v", &render.shadow.debugVisualizeCascades); });
+    }
 
-    ImGui::Unindent();
+    /// @note 解像度を上げるより分割数や距離を変える方が効くことが多い。それはこの表を見ないと判断できない。
+    if (Matches("Cascade Texel Density", "cascade texel テクセル 密度")) {
+        const int      count    = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades);
+        const uint32_t tileSize = (std::max)(render.shadow.mapResolution / (count > 1 ? 2u : 1u), 1u);
+        const float    nearZ    = 0.1f;
+        const float    lambda   = std::clamp(render.shadow.cascadeSplitLambda, 0.0f, 1.0f);
+        const float    distance = (std::max)(render.shadow.autoFitDistance, 1.0f);
+        /// @note ComputeFrustumSliceSphere と同じ係数 (fovY 60 / aspect 16:9 の代表値)。
+        constexpr float kSphereFactor = 1.177f;
+
+        const widgets::PropertyRowScope row = widgets::BeginPropertyField(LOCT("Cascade Texel Density"));
+        ImGui::BeginGroup();
+        float sliceNear = nearZ;
+        for (int i = 0; i < count; ++i) {
+            const float ratio    = static_cast<float>(i + 1) / static_cast<float>(count);
+            const float logSplit = nearZ * std::pow(distance / nearZ, ratio);
+            const float uniform  = nearZ + (distance - nearZ) * ratio;
+            const float sliceFar = (i == count - 1) ? distance : (lambda * logSplit + (1.0f - lambda) * uniform);
+            const float texelCm  = (sliceFar * kSphereFactor * 2.0f) / static_cast<float>(tileSize) * 100.0f;
+            ImGui::TextDisabled("#%d  %.1f-%.1f m   1 texel = %.1f cm", i, sliceNear, sliceFar, texelCm);
+            sliceNear = sliceFar;
+        }
+        ImGui::EndGroup();
+        widgets::EndPropertyField(row);
+    }
+
+    static const char* const kPcfLabels[] = { "0 (hard)", "1 (3x3)", "2 (5x5)", "3 (7x7)" };
+    Field("PCF Radius", render.shadow.pcfRadius, &d.pcfRadius, "影の縁のぼかし幅",
+          [&] {
+              int index = std::clamp(render.shadow.pcfRadius, 0, 3);
+              if (!EnumCombo(index, kPcfLabels)) return false;
+              render.shadow.pcfRadius = index;
+              return true;
+          });
+    Field("PCSS", render.shadow.pcssEnabled, &d.pcssEnabled,
+          "Percentage Closer Soft Shadows。遮蔽物から離れるほど影の縁が広がる",
+          [&] { return ImGui::Checkbox("##v", &render.shadow.pcssEnabled); });
+    if (render.shadow.pcssEnabled) {
+        Field("PCSS Light Radius", render.shadow.pcssLightRadius, &d.pcssLightRadius,
+              "仮想的な光源の半径 (ワールド単位)。大きいほどソフト",
+              [&] { return ImGui::DragFloat("##v", &render.shadow.pcssLightRadius, 0.1f, 0.0f, 50.0f, "%.2f"); });
+    }
 }
+
+void ProjectSettingsPanel::DrawPlayerOptionsPreview(EditorContext& ctx, renderer::RenderSettings& render)
+{
+    /// @note 保存されない値を出すのは、効きを Play + スクリプト無しで目で確かめるため。
+    if (!Searching())
+        ImGui::TextDisabled("%s", LOCT("Values owned by the in-game Options screen. Changes here are not saved."));
+
+    Field("Brightness", render.userBrightness, static_cast<const float*>(nullptr),
+          "Option 画面の明るさ。確認用で保存されない",
+          [&] { return ImGui::SliderFloat("##v", &render.userBrightness, 0.1f, 4.0f, "%.2f"); });
+
+    /// @note 描画スケールは値が変わるたびに中間 RT を作り直す。ドラッグ中は draft に溜め、離した時点で 1 回だけ反映する。
+    if (!m_renderScaleDragging) m_renderScaleDraft = render.renderScale;
+    Field("Render Scale", m_renderScaleDraft, static_cast<const float*>(nullptr),
+          "内部解像度の倍率。確認用で保存されない",
+          [&] {
+              ImGui::SliderFloat("##v", &m_renderScaleDraft, renderer::kMinRenderScale, renderer::kMaxRenderScale, "%.2f");
+              m_renderScaleDragging = ImGui::IsItemActive();
+              if (!ImGui::IsItemDeactivatedAfterEdit()) return false;
+              render.renderScale = m_renderScaleDraft;
+              return true;
+          });
+
+    uint32_t internalWidth = 0, internalHeight = 0;
+    renderer::ResolveRenderResolution(
+        static_cast<uint32_t>((std::max)(ctx.viewportWidth, 1.0f)),
+        static_cast<uint32_t>((std::max)(ctx.viewportHeight, 1.0f)),
+        m_renderScaleDraft, internalWidth, internalHeight);
+    char resolution[64];
+    std::snprintf(resolution, sizeof(resolution), "%.0fx%.0f -> %ux%u",
+                  ctx.viewportWidth, ctx.viewportHeight, internalWidth, internalHeight);
+    InfoRow("Scene View Resolution", resolution);
+}
+
+void ProjectSettingsPanel::DrawDebugOverlays(renderer::RenderSettings& render)
+{
+    const renderer::RenderSettings& d = ProjectDefaults().render;
+    auto toggle = [&](const char* label, bool renderer::RenderSettings::* member, const char* tooltip) {
+        Field(label, render.*member, &(d.*member), tooltip,
+              [&] { return ImGui::Checkbox("##v", &(render.*member)); });
+    };
+    toggle("Colliders",         &renderer::RenderSettings::showColliders,
+           "Collider の形状をワイヤーで描く。緑 = 静的 / 黄 = 動く剛体 / 暗い黄 = 眠り / 紫 = トリガー");
+    toggle("Terrain Collision", &renderer::RenderSettings::showTerrainCollision, "地形のコリジョン形状を描く");
+    toggle("NavMesh",           &renderer::RenderSettings::showNavMesh, "NavMesh の歩行可能面を描く");
+    toggle("AI Sensors",        &renderer::RenderSettings::showNavSensors, "NavMeshSensor の視界・聴覚範囲を描く");
+    toggle("UI Rects",          &renderer::RenderSettings::showUIRects, "UI 要素の矩形とピボットを重ねる");
+    toggle("Decal Bounds",      &renderer::RenderSettings::showDecalBounds, "デカールの投影範囲を描く");
+    toggle("Selection Outline", &renderer::RenderSettings::showSelectionOutline, "選択中のオブジェクトに輪郭を付ける");
+    if (render.showSelectionOutline) {
+        Field("Outline Width", render.outlineWidth, &d.outlineWidth, "選択輪郭の太さ",
+              [&] { return ImGui::SliderFloat("##v", &render.outlineWidth, 0.005f, 0.2f, "%.3f"); });
+        Field("Outline Color", render.outlineColor, &d.outlineColor, "選択輪郭の色",
+              [&] { return ImGui::ColorEdit4("##v", render.outlineColor); });
+    }
+    Field("Particle Budget", render.particleBudgetEnabled, &d.particleBudgetEnabled,
+          "画面内のパーティクル総数に上限をかける",
+          [&] { return ImGui::Checkbox("##v", &render.particleBudgetEnabled); });
+    if (render.particleBudgetEnabled) {
+        Field("Particle Budget Count", render.particleBudget, &d.particleBudget, "上限の粒子数",
+              [&] { return ImGui::DragInt("##v", &render.particleBudget, 100.0f, 0, 1000000); });
+    }
+
+    /// @note Script Gizmos / Skeleton / IK などはエディター設定が正本で毎フレーム上書きされるので、置き場所だけ案内する。
+    if (!Searching()) {
+        ImGui::TextDisabled("%s", LOCT("Scene View only overlays (Script Gizmos, Skeleton, IK, ...): Viewport > Overlays"));
+        ImGui::TextDisabled("%s", LOCT("Render Pass Viewer: Debug > Render Pass Viewer"));
+    }
+}
+
 
 void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)
 {
-    ImGui::TextUnformatted("Physics");
-    ImGui::Separator();
+    const PhysicsSettings& d = ProjectDefaults().physics;
 
-    ImGui::DragInt("Hz", &settings.physics.hz, 1.0f, 1, 1000);
-    ImGui::DragInt("Substeps", &settings.physics.substeps, 1.0f, 1, 32);
+    if (BeginGroup("Simulation")) {
+        Field("Fixed Rate", settings.physics.hz, &d.hz, "物理の固定更新回数 [Hz]。上げるほど安定するが重い",
+              [&] { return ImGui::DragInt("##v", &settings.physics.hz, 1.0f, 1, 1000, "%d Hz"); });
+        Field("Substeps", settings.physics.substeps, &d.substeps, "1 回の固定更新をさらに分割する数",
+              [&] { return ImGui::DragInt("##v", &settings.physics.substeps, 1.0f, 1, 32); });
+        Field("Gravity", settings.physics.gravity, &d.gravity, "重力加速度 [m/s^2]。キャラクターのジャンプもこれを読む",
+              [&] { return widgets::DragAxes("##v", settings.physics.gravity, 0.05f, -1000.0f, 1000.0f, "%.2f"); });
+    }
+    EndGroup();
 
-    float gravity[3] = {
-        settings.physics.gravity.x,
-        settings.physics.gravity.y,
-        settings.physics.gravity.z
-    };
-    if (ImGui::DragFloat3("Gravity", gravity, 0.05f, -1000.0f, 1000.0f))
-        settings.physics.gravity = { gravity[0], gravity[1], gravity[2] };
-
-    DrawCollisionMatrix(settings);
+    if (BeginGroup("Layer Collision Matrix", true, "collision layer matrix 衝突 レイヤー"))
+        DrawCollisionMatrix(settings);
+    EndGroup();
 }
 
 void ProjectSettingsPanel::DrawCollisionMatrix(ProjectSettings& settings)
 {
-    ImGui::Spacing();
-    ImGui::SeparatorText(LOC("Layer Collision Matrix"));
+    if (!Matches("Layer Collision Matrix", "collision layer matrix 衝突")) return;
 
-    // 名前の付いたレイヤーだけ並べる。32 本すべてを出すと 1024 マスになり、
-    // 実際に使っている数本を探せない。名前を付けることが «使う» の宣言になる。
+    /// @note 名前の付いたレイヤーだけ並べる。32 本すべてだと 1024 マスになり、使っている数本を探せない。
     std::vector<int> used;
     for (int i = 0; i < 32; ++i)
-        if (i == Layer::Default ||
-            !settings.game.layerNames[static_cast<std::size_t>(i)].empty()) used.push_back(i);
+        if (i == Layer::Default || !settings.game.layerNames[static_cast<std::size_t>(i)].empty())
+            used.push_back(i);
 
     if (used.size() < 2) {
-        ImGui::TextDisabled("%s", LOC("Name at least two layers in Tags & Layers to edit the matrix."));
+        ImGui::TextDisabled("%s", LOCT("Name at least two layers in Tags & Layers to edit the matrix."));
         return;
     }
+    ImGui::TextDisabled("%s", LOCT("Unchecked pairs never collide. Triggers are filtered too."));
 
-    ImGui::TextDisabled("%s", LOC("Unchecked pairs never collide. Triggers are filtered too."));
-
-    // 行は «全レイヤー»、列は «自分より後ろのレイヤー» だけ。対称行列なので
-    // 全面を出すと同じ組が 2 回現れ、どちらを触ったのか分からなくなる。
+    /// @note 対称行列なので上三角だけ出す。全面だと同じ組が 2 回現れ、どちらを触ったのか分からない。
     if (ImGui::BeginTable("##collisionMatrix", static_cast<int>(used.size()) + 1,
-                          ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInner)) {
+                          ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInner
+                          | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("");
         for (int column : used)
-            ImGui::TableSetupColumn(LayerLabel(settings, column).c_str());
+            ImGui::TableSetupColumn(LayerLabel(settings, column).c_str(), ImGuiTableColumnFlags_AngledHeader);
+        ImGui::TableAngledHeadersRow();
         ImGui::TableHeadersRow();
 
         for (std::size_t row = 0; row < used.size(); ++row) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(LayerLabel(settings, used[row]).c_str());
-
             for (std::size_t column = 0; column < used.size(); ++column) {
                 ImGui::TableNextColumn();
-                if (column < row) continue;   // 下三角は上三角と同じ組
-
+                if (column < row) continue;
                 const int a = used[row];
                 const int b = used[column];
                 bool collide = settings.physics.collisionMatrix.CanCollide(a, b);
                 ImGui::PushID(a * 32 + b);
                 if (ImGui::Checkbox("##pair", &collide))
                     settings.physics.collisionMatrix.Set(a, b, collide);
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("%s  x  %s", LayerLabel(settings, a).c_str(), LayerLabel(settings, b).c_str());
                 ImGui::PopID();
             }
         }
@@ -833,250 +1099,157 @@ std::string ProjectSettingsPanel::LayerLabel(const ProjectSettings& settings, in
     return std::to_string(layer) + ": " + (name.empty() ? "Default" : name);
 }
 
-namespace {
-
-// .inputactions の保存先。ProjectSettings.toml と同じディレクトリに置く。
-// WHY: ランタイム側 (ProjectSettings::Load) が同じ規則で探すため、ここを唯一の定義とする。
-std::string InputActionsPath(const EditorContext& ctx)
-{
-    const std::string root = ctx.projectRoot.empty() ? "." : ctx.projectRoot;
-    return util::FileSystem::PathToUtf8(
-        util::FileSystem::PathFromUtf8(root) / "ProjectSettings" / "Input.inputactions");
-}
-
-// バインド 1 件の行。削除が要求されたら true を返す。
-bool DrawBindingRow(const input::InputBinding& binding, int index,
-                    const char* rebindLabel, bool rebinding,
-                    bool& outRebindRequested)
-{
-    ImGui::PushID(index);
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Bullet();
-    ImGui::SameLine();
-
-    // リバインド待機中のバインドは目立たせる。
-    // WHY: 「押してください」の対象がどれか分からないと、別のバインドを潰す事故になる。
-    if (rebinding) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{ 1.0f, 0.85f, 0.3f, 1.0f });
-        ImGui::TextUnformatted("< 入力してください... (Esc で取消) >");
-        ImGui::PopStyleColor();
-    } else {
-        ImGui::TextUnformatted(input::InputActionMap::DescribeBinding(binding).c_str());
-    }
-
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 110.0f);
-    if (ImGui::SmallButton(rebindLabel)) outRebindRequested = true;
-
-    ImGui::SameLine();
-    const bool removeRequested = ImGui::SmallButton("Remove");
-
-    ImGui::PopID();
-    return removeRequested;
-}
-
-// バインド配列 1 本ぶんの編集 UI。
-void DrawBindingList(const char* label,
-                     std::vector<input::InputBinding>& bindings,
-                     const std::function<void(int bindingIndex)>& beginRebind,
-                     const std::function<bool(int bindingIndex)>& isRebindTarget,
-                     bool& outDirty)
-{
-    ImGui::TextDisabled("%s", label);
-    ImGui::Indent();
-
-    int removeIndex = -1;
-    for (int i = 0; i < static_cast<int>(bindings.size()); ++i) {
-        bool rebindRequested = false;
-        const bool removeRequested =
-            DrawBindingRow(bindings[static_cast<size_t>(i)], i, "Rebind",
-                           isRebindTarget(i), rebindRequested);
-        if (rebindRequested) beginRebind(i);
-        if (removeRequested) removeIndex = i;
-    }
-
-    if (removeIndex >= 0) {
-        bindings.erase(bindings.begin() + removeIndex);
-        outDirty = true;
-    }
-
-    if (ImGui::SmallButton("+ Add Binding")) {
-        // 末尾に追加してすぐリバインド待機に入る。
-        // WHY: 空のバインドを置いたまま放置されると「反応しないバインド」が残る。
-        beginRebind(static_cast<int>(bindings.size()));
-    }
-
-    ImGui::Unindent();
-}
-
-} // namespace
 
 void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
 {
-    ImGui::TextUnformatted("Input");
-    ImGui::Separator();
+    m_inputPath = InputActionsPath(ctx);
 
-    ImGui::TextDisabled(
-        "ゲーム入力のバインド定義。エディタ操作のショートカットは Hotkey Editor で編集します。");
-    ImGui::Spacing();
-
-    const std::string path = InputActionsPath(ctx);
-
-    // ── ファイル操作 ─────────────────────────────────────────────────────────
-    if (ImGui::Button("Save")) {
-        if (input::InputActionMap::SaveToFile(path))
-            FBZZ_LOG_INFO("Input: %s へ保存しました", path.c_str());
-        else
-            FBZZ_LOG_ERROR("Input: %s へ保存できませんでした", path.c_str());
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reload")) {
-        if (!input::InputActionMap::LoadFromFile(path))
-            FBZZ_LOG_WARN("Input: %s を読み込めませんでした — 現在のバインドを維持します",
-                          path.c_str());
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reset to Defaults")) {
-        input::InputActionMap::LoadDefaults();
-        FBZZ_LOG_INFO("Input: 既定バインドへリセットしました");
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", path.c_str());
-
-    // リバインド中は他の操作を誤爆させないよう明示する。
-    if (input::InputActionMap::IsRebinding()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{ 1.0f, 0.85f, 0.3f, 1.0f });
-        ImGui::TextUnformatted("リバインド待機中 — 割り当てたい入力を押してください (Esc で取消)");
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Cancel")) input::InputActionMap::CancelRebind();
-    }
-
-    // ── ライブプレビュー ─────────────────────────────────────────────────────
-    // WHY 必要か: アクション層は Play 中のみ有効 (エディット中の誤発火を防ぐため) なので、
-    //     そのままではこのタブの "Current:" 表示やアクションのハイライトが常に 0 / 消灯になり、
-    //     「今設定したバインドが効いているか」をここで確認できない。
-    // WHY 安全か: Play 中でなければスクリプトは走っておらず、アクションを消費する側が居ない。
-    //     評価するだけならシーンに影響しない。
-    {
-        static bool s_livePreview = false;
-        if (ImGui::Checkbox("Live Preview", &s_livePreview))
-            input::InputActionMap::SetEnabled(s_livePreview);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("バインドの動作をこのタブ上で確認できるようにします。\n"
-                              "Play を開始・終了すると自動で切り替わります。");
-        ImGui::SameLine();
-        ImGui::TextDisabled(input::InputActionMap::IsEnabled() ? "(評価中)" : "(停止中)");
-
-        // 外部 (PlayModeController) が状態を変えた場合にチェックボックス表示を追従させる。
-        s_livePreview = input::InputActionMap::IsEnabled();
-    }
-
-    ImGui::Spacing();
-
-    // ── 接続中のゲームパッド ─────────────────────────────────────────────────
-    // WHY 実測値を出すか: スティックのドリフト量を目で見てデッドゾーンを決められる。
-    //     「デッドゾーンをいくつにすべきか」は個体差があり、数値だけでは決められない。
-    if (ImGui::CollapsingHeader("Connected Gamepads")) {
-        bool anyConnected = false;
-        for (int pad = 0; pad < input::Gamepad::MAX_PADS; ++pad) {
-            if (!input::Gamepad::IsConnected(pad)) continue;
-            anyConnected = true;
-
-            ImGui::PushID(pad);
-            ImGui::Text("Pad %d", pad);
-            ImGui::Indent();
-
-            const float leftX  = input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_X, pad);
-            const float leftY  = input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_Y, pad);
-            const float rightX = input::Gamepad::Axis(input::GamepadAxis::RIGHT_STICK_X, pad);
-            const float rightY = input::Gamepad::Axis(input::GamepadAxis::RIGHT_STICK_Y, pad);
-            ImGui::Text("Left Stick : %+.3f, %+.3f", leftX, leftY);
-            ImGui::Text("Right Stick: %+.3f, %+.3f", rightX, rightY);
-            ImGui::Text("Triggers   : L %.3f  R %.3f",
-                        input::Gamepad::Axis(input::GamepadAxis::LEFT_TRIGGER, pad),
-                        input::Gamepad::Axis(input::GamepadAxis::RIGHT_TRIGGER, pad));
-
-            // 押下中のボタンを列挙する。
-            std::string pressed;
-            for (uint16_t i = 0; i < static_cast<uint16_t>(input::GamepadButton::COUNT); ++i) {
-                const auto button = static_cast<input::GamepadButton>(i);
-                if (!input::Gamepad::ButtonHeld(button, pad)) continue;
-                if (!pressed.empty()) pressed += ", ";
-                pressed += input::ToString(button);
+    if (!Searching()) {
+        if (ImGui::Button(LOC("Reload from Disk"))) {
+            if (input::InputActionMap::LoadFromFile(m_inputPath)) {
+                m_inputDirty     = false;
+                m_inputSaveState = InputSaveState::Saved;
+            } else {
+                FBZZ_LOG_WARN("Input: could not read %s; keeping current bindings", m_inputPath.c_str());
             }
-            ImGui::Text("Buttons    : %s", pressed.empty() ? "-" : pressed.c_str());
-
-            if (ImGui::SmallButton("Test Vibration"))
-                input::Gamepad::SetVibration(0.5f, 0.5f, 0.3f, pad);
-
-            ImGui::Unindent();
-            ImGui::PopID();
         }
-        if (!anyConnected)
-            ImGui::TextDisabled("接続されているゲームパッドはありません。");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("Input.inputactions を読み直す。まだ書き出していない変更は捨てる");
+        ImGui::SameLine();
+        if (ImGui::Button(LOC("Reset to Defaults...")))
+            ImGui::OpenPopup("##resetInput");
+        if (ConfirmPopup("##resetInput", LOCT("Replace every binding with the engine defaults?"), LOC("Reset"))) {
+            input::InputActionMap::LoadDefaults();
+            m_inputDirty = true;
+            m_inputIdle  = 0.0f;
+        }
+
+        /// @note 待機中は他の操作を誤爆させないよう、何を待っているかを明示する。
+        if (input::InputActionMap::IsRebinding()) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s",
+                               LOCT("Waiting for input. Press the key or button to assign (Esc to cancel)."));
+            ImGui::SameLine();
+            if (ImGui::SmallButton(LOC("Cancel"))) input::InputActionMap::CancelRebind();
+        }
     }
 
-    ImGui::Spacing();
+    if (BeginGroup("Preview")) {
+        /// @note アクション層は Play 中だけ有効。そのままでは «Current» 表示もハイライトも常に 0 で、ここで確かめられない。
+        bool live = input::InputActionMap::IsEnabled();
+        Field("Live Preview", live, static_cast<const bool*>(nullptr),
+              "バインドの動作を Play せずにこのタブで確かめる。Play の開始・終了で自動的に切り替わる",
+              [&] {
+                  if (!ImGui::Checkbox("##v", &live)) return false;
+                  input::InputActionMap::SetEnabled(live);
+                  return true;
+              });
+    }
+    EndGroup();
 
-    // 編集はランタイムのマップを直接書き換える。保存は明示的な Save のみ。
-    // WHY 自動保存しないか: リバインド途中の中途半端な状態がファイルへ落ちると、
-    //     次回起動時に壊れたバインドで立ち上がる。確定操作をユーザーに握らせる。
+    if (BeginGroup("Connected Gamepads", false, "gamepad pad stick trigger vibration ゲームパッド")) {
+        /// @note 実測値を出す。スティックのドリフト量は個体差があり、デッドゾーンは数値だけでは決められない。
+        if (Matches("Connected Gamepads", "gamepad pad stick trigger vibration ゲームパッド")) {
+            bool anyConnected = false;
+            for (int pad = 0; pad < input::Gamepad::MAX_PADS; ++pad) {
+                if (!input::Gamepad::IsConnected(pad)) continue;
+                anyConnected = true;
+                ImGui::PushID(pad);
+                ImGui::Text("Pad %d", pad);
+                ImGui::Indent();
+                ImGui::Text("Left Stick : %+.3f, %+.3f",
+                            input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_X, pad),
+                            input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_Y, pad));
+                ImGui::Text("Right Stick: %+.3f, %+.3f",
+                            input::Gamepad::Axis(input::GamepadAxis::RIGHT_STICK_X, pad),
+                            input::Gamepad::Axis(input::GamepadAxis::RIGHT_STICK_Y, pad));
+                ImGui::Text("Triggers   : L %.3f  R %.3f",
+                            input::Gamepad::Axis(input::GamepadAxis::LEFT_TRIGGER, pad),
+                            input::Gamepad::Axis(input::GamepadAxis::RIGHT_TRIGGER, pad));
+                std::string pressed;
+                for (uint16_t i = 0; i < static_cast<uint16_t>(input::GamepadButton::COUNT); ++i) {
+                    const auto button = static_cast<input::GamepadButton>(i);
+                    if (!input::Gamepad::ButtonHeld(button, pad)) continue;
+                    if (!pressed.empty()) pressed += ", ";
+                    pressed += input::ToString(button);
+                }
+                ImGui::Text("Buttons    : %s", pressed.empty() ? "-" : pressed.c_str());
+                if (ImGui::SmallButton(LOC("Test Vibration")))
+                    input::Gamepad::SetVibration(0.5f, 0.5f, 0.3f, pad);
+                ImGui::Unindent();
+                ImGui::PopID();
+            }
+            if (!anyConnected) ImGui::TextDisabled("%s", LOCT("No gamepads are connected."));
+        }
+    }
+    EndGroup();
+
     bool dirty = false;
+    DrawInputAxes(dirty);
+    DrawInputActions(dirty);
+    if (dirty) {
+        m_inputDirty = true;
+        m_inputIdle  = 0.0f;
+    }
+}
 
-    // ── 軸 ───────────────────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Axes", ImGuiTreeNodeFlags_DefaultOpen)) {
+void ProjectSettingsPanel::DrawInputAxes(bool& dirty)
+{
+    std::vector<std::string> names;
+    for (const input::InputAxis& axis : input::InputActionMap::GetAxes()) names.push_back(axis.name);
+    const std::string keywords = JoinNames(names) + "axis dead zone sensitivity 軸";
+
+    if (BeginGroup("Axes", true, keywords.c_str())) {
+        static const input::InputAxis kAxisDefaults{};
         std::string axisToRemove;
 
-        // GetAxes() は const 参照。編集には FindAxis() の可変参照を使う。
-        std::vector<std::string> axisNames;
-        axisNames.reserve(input::InputActionMap::GetAxes().size());
-        for (const input::InputAxis& axis : input::InputActionMap::GetAxes())
-            axisNames.push_back(axis.name);
-
-        for (const std::string& name : axisNames) {
+        for (const std::string& name : names) {
             input::InputAxis* axis = input::InputActionMap::FindAxis(name);
             if (!axis) continue;
+            const bool groupMatched = m_groupMatched;
+            if (!Matches(name.c_str())) continue;
+            /// @note 軸名で当たったなら中の行も全部出す。
+            m_groupMatched = true;
 
             ImGui::PushID(name.c_str());
+            if (Searching()) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
             if (ImGui::TreeNode(name.c_str())) {
-                if (ImGui::DragFloat("Dead Zone", &axis->deadZone, 0.01f, 0.0f, 0.9f))
-                    dirty = true;
-                if (ImGui::DragFloat("Gravity", &axis->gravity, 0.1f, 0.0f, 100.0f))
-                    dirty = true;
-                if (ImGui::DragFloat("Sensitivity", &axis->sensitivity, 0.1f, 0.0f, 100.0f))
-                    dirty = true;
-                if (ImGui::Checkbox("Snap", &axis->snap)) dirty = true;
-                ImGui::SameLine();
-                if (ImGui::Checkbox("Raw", &axis->raw)) dirty = true;
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Raw: デッドゾーンと平滑化を適用しない。\n"
-                                      "マウス移動量のように既に相対量である入力へ使う。");
+                dirty |= Field("Dead Zone", axis->deadZone, &kAxisDefaults.deadZone,
+                               "この値より小さい入力を 0 とみなす。スティックのドリフト対策",
+                               [&] { return ImGui::SliderFloat("##v", &axis->deadZone, 0.0f, 0.9f, "%.2f"); });
+                dirty |= Field("Gravity", axis->gravity, &kAxisDefaults.gravity,
+                               "キーを離したとき 0 へ戻る速さ [1/s]",
+                               [&] { return ImGui::DragFloat("##v", &axis->gravity, 0.1f, 0.0f, 100.0f, "%.1f"); });
+                dirty |= Field("Sensitivity", axis->sensitivity, &kAxisDefaults.sensitivity,
+                               "キーを押したとき目標値へ向かう速さ [1/s]",
+                               [&] { return ImGui::DragFloat("##v", &axis->sensitivity, 0.1f, 0.0f, 100.0f, "%.1f"); });
+                dirty |= Field("Snap", axis->snap, &kAxisDefaults.snap,
+                               "逆方向へ切り返したとき、いったん 0 から始める",
+                               [&] { return ImGui::Checkbox("##v", &axis->snap); });
+                dirty |= Field("Raw", axis->raw, &kAxisDefaults.raw,
+                               "デッドゾーンと平滑化を適用しない。マウス移動量のように既に相対量である入力へ使う",
+                               [&] { return ImGui::Checkbox("##v", &axis->raw); });
 
-                // 現在値のライブ表示。バインドが期待どおり効いているかを即確認できる。
-                ImGui::Text("Current: %+.3f", input::InputActionMap::GetAxis(name));
+                char current[32];
+                std::snprintf(current, sizeof(current), "%+.3f", input::InputActionMap::GetAxis(name));
+                InfoRow("Current Value", current);
 
                 ImGui::Spacing();
-
-                DrawBindingList("Positive (押している間 +1)", axis->positive,
+                DrawBindingList(LOCT("Positive (+1 while held)"), axis->positive,
                     [&](int i) { input::InputActionMap::BeginRebindAxis(name, 0, i); },
-                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 0, i); },
-                    dirty);
-                DrawBindingList("Negative (押している間 -1)", axis->negative,
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 0, i); }, dirty);
+                DrawBindingList(LOCT("Negative (-1 while held)"), axis->negative,
                     [&](int i) { input::InputActionMap::BeginRebindAxis(name, 1, i); },
-                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 1, i); },
-                    dirty);
-                DrawBindingList("Analog (スティック / マウス軸)", axis->analog,
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 1, i); }, dirty);
+                DrawBindingList(LOCT("Analog (stick / mouse axis)"), axis->analog,
                     [&](int i) { input::InputActionMap::BeginRebindAxis(name, 2, i); },
-                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 2, i); },
-                    dirty);
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 2, i); }, dirty);
 
                 ImGui::Spacing();
-                if (ImGui::SmallButton("Remove Axis")) axisToRemove = name;
-
+                if (ImGui::SmallButton(LOC("Remove Axis"))) axisToRemove = name;
                 ImGui::TreePop();
             }
             ImGui::PopID();
+            m_groupMatched = groupMatched;
         }
 
         if (!axisToRemove.empty()) {
@@ -1084,53 +1257,55 @@ void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
             dirty = true;
         }
 
-        ImGui::Spacing();
-        static char s_newAxis[64] = {};
-        ImGui::SetNextItemWidth(180.0f);
-        ImGui::InputTextWithHint("##newaxis", "New axis name", s_newAxis, sizeof(s_newAxis));
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Add Axis") && s_newAxis[0] != '\0') {
-            input::InputAxis axis{};
-            axis.name = s_newAxis;
-            if (input::InputActionMap::AddAxis(axis)) {
-                s_newAxis[0] = '\0';
-                dirty = true;
+        if (!Searching()) {
+            static char s_newAxis[64] = {};
+            ImGui::Spacing();
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+            const bool submit = ImGui::InputTextWithHint("##newaxis", LOCT("New axis name"), s_newAxis,
+                                                         sizeof(s_newAxis), ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(s_newAxis[0] == '\0');
+            if ((ImGui::SmallButton(LOC("Add Axis")) || submit) && s_newAxis[0] != '\0') {
+                input::InputAxis axis{};
+                axis.name = s_newAxis;
+                if (input::InputActionMap::AddAxis(axis)) {
+                    s_newAxis[0] = '\0';
+                    dirty = true;
+                }
             }
+            ImGui::EndDisabled();
         }
     }
+    EndGroup();
+}
 
-    ImGui::Spacing();
+void ProjectSettingsPanel::DrawInputActions(bool& dirty)
+{
+    std::vector<std::string> names;
+    for (const input::InputAction& action : input::InputActionMap::GetActions()) names.push_back(action.name);
+    const std::string keywords = JoinNames(names) + "action binding アクション";
 
-    // ── アクション ───────────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Actions", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (BeginGroup("Actions", true, keywords.c_str())) {
         std::string actionToRemove;
-
-        std::vector<std::string> actionNames;
-        actionNames.reserve(input::InputActionMap::GetActions().size());
-        for (const input::InputAction& action : input::InputActionMap::GetActions())
-            actionNames.push_back(action.name);
-
-        for (const std::string& name : actionNames) {
+        for (const std::string& name : names) {
             input::InputAction* action = input::InputActionMap::FindAction(name);
             if (!action) continue;
+            if (!Matches(name.c_str())) continue;
 
             ImGui::PushID(name.c_str());
-
-            // 押下中のアクションは名前を光らせる。動作確認が Play を挟まずにできる。
+            /// @note 押下中のアクションは名前を光らせる。動作確認が Play を挟まずにできる。
             const bool held = input::InputActionMap::GetAction(name);
-            if (held) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{ 0.4f, 1.0f, 0.5f, 1.0f });
+            if (held) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Success));
+            if (Searching()) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
             const bool open = ImGui::TreeNode(name.c_str());
             if (held) ImGui::PopStyleColor();
 
             if (open) {
-                DrawBindingList("Bindings", action->bindings,
+                DrawBindingList(LOCT("Bindings"), action->bindings,
                     [&](int i) { input::InputActionMap::BeginRebindAction(name, i); },
-                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, -1, i); },
-                    dirty);
-
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, -1, i); }, dirty);
                 ImGui::Spacing();
-                if (ImGui::SmallButton("Remove Action")) actionToRemove = name;
-
+                if (ImGui::SmallButton(LOC("Remove Action"))) actionToRemove = name;
                 ImGui::TreePop();
             }
             ImGui::PopID();
@@ -1141,46 +1316,47 @@ void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
             dirty = true;
         }
 
-        ImGui::Spacing();
-        static char s_newAction[64] = {};
-        ImGui::SetNextItemWidth(180.0f);
-        ImGui::InputTextWithHint("##newaction", "New action name", s_newAction, sizeof(s_newAction));
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Add Action") && s_newAction[0] != '\0') {
-            input::InputAction action{};
-            action.name = s_newAction;
-            if (input::InputActionMap::AddAction(action)) {
-                s_newAction[0] = '\0';
-                dirty = true;
+        if (!Searching()) {
+            static char s_newAction[64] = {};
+            ImGui::Spacing();
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+            const bool submit = ImGui::InputTextWithHint("##newaction", LOCT("New action name"), s_newAction,
+                                                         sizeof(s_newAction), ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(s_newAction[0] == '\0');
+            if ((ImGui::SmallButton(LOC("Add Action")) || submit) && s_newAction[0] != '\0') {
+                input::InputAction action{};
+                action.name = s_newAction;
+                if (input::InputActionMap::AddAction(action)) {
+                    s_newAction[0] = '\0';
+                    dirty = true;
+                }
             }
+            ImGui::EndDisabled();
         }
     }
-
-    if (dirty) ++m_editGeneration;
+    EndGroup();
 }
+
 
 void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
 {
-    ImGui::TextUnformatted("Audio");
-    ImGui::Separator();
+    const AudioSettings& d = ProjectDefaults().audio;
+    bool dirty = false;
 
-    bool dirty = ImGui::SliderFloat("Master Volume", &settings.audio.masterVolume, 0.0f, 1.0f);
-
-    dirty |= ImGui::SliderInt("Voice Limit", &settings.audio.voiceLimit, 8, 128);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("同時発音の上限。超えると AudioSource の Priority が低い音から"
-                          "畳まれる (ループ音は畳まれない)");
-    if (auto* audioManager = core::Application::Get().GetAudioManager()) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(now %zu)", audioManager->ActiveVoiceCount());
+    if (BeginGroup("Output")) {
+        dirty |= Field("Master Volume", settings.audio.masterVolume, &d.masterVolume, "全体の音量",
+                       [&] { return ImGui::SliderFloat("##v", &settings.audio.masterVolume, 0.0f, 1.0f, "%.2f"); });
+        dirty |= Field("Voice Limit", settings.audio.voiceLimit, &d.voiceLimit,
+                       "同時発音の上限。超えると AudioSource の Priority が低い音から畳まれる (ループ音は畳まれない)",
+                       [&] { return ImGui::SliderInt("##v", &settings.audio.voiceLimit, 8, 128); });
+        if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+            char voices[32];
+            std::snprintf(voices, sizeof(voices), "%zu", audioManager->ActiveVoiceCount());
+            InfoRow("Active Voices", voices);
+        }
     }
-
-    ImGui::Spacing();
-    ImGui::TextUnformatted("Mixer Buses");
-    ImGui::TextDisabled("AudioSource の Bus Name と、スクリプトの audio.SetBusVolume() が"
-                        " ここで定義した名前を指す");
-    ImGui::TextDisabled("Rev = AudioReverbZone の残響を受けるバス"
-                        " (切り替えると再生中の音がいったん止まる)");
+    EndGroup();
 
     auto& buses = settings.audio.buses;
     if (buses.empty()) {
@@ -1188,244 +1364,436 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
         dirty = true;
     }
 
-    int removeIndex = -1;
-    for (size_t i = 0; i < buses.size(); ++i) {
-        audio::BusDesc& bus = buses[i];
-        const bool isMaster = bus.name == audio::kMasterBusName;
-        ImGui::PushID(static_cast<int>(i));
+    std::vector<std::string> busNames;
+    for (const audio::BusDesc& bus : buses) busNames.push_back(bus.name);
+    const std::string busKeywords = JoinNames(busNames) + "bus mixer reverb low-pass バス ミキサー 残響";
 
-        char nameBuffer[64];
-        std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", bus.name.c_str());
-        ImGui::SetNextItemWidth(140.0f);
-        if (isMaster) {
-            ImGui::BeginDisabled();
-            ImGui::InputText("##name", nameBuffer, sizeof(nameBuffer));
-            ImGui::EndDisabled();
-        } else if (ImGui::InputText("##name", nameBuffer, sizeof(nameBuffer))) {
-            bus.name = nameBuffer;
-            dirty = true;
-        }
+    if (BeginGroup("Mixer Buses", true, busKeywords.c_str()) && Matches("Mixer Buses", busKeywords.c_str())) {
+        ImGui::TextDisabled("%s", LOCT("AudioSource Bus Name and audio.SetBusVolume() refer to these names."));
 
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
-        char parentBuffer[64];
-        std::snprintf(parentBuffer, sizeof(parentBuffer), "%s", bus.parent.c_str());
-        if (isMaster) {
-            ImGui::BeginDisabled();
-            ImGui::InputTextWithHint("##parent", "(output)", parentBuffer, sizeof(parentBuffer));
-            ImGui::EndDisabled();
-        } else if (ImGui::InputTextWithHint("##parent", "Master",
-                                            parentBuffer, sizeof(parentBuffer))) {
-            bus.parent = parentBuffer;
-            dirty = true;
-        }
+        int removeIndex = -1;
+        if (ImGui::BeginTable("##buses", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg
+                                           | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn(LOCT("Name"),     ImGuiTableColumnFlags_WidthStretch, 1.3f);
+            ImGui::TableSetupColumn(LOCT("Parent"),   ImGuiTableColumnFlags_WidthStretch, 1.1f);
+            ImGui::TableSetupColumn(LOCT("Volume"),   ImGuiTableColumnFlags_WidthStretch, 1.3f);
+            ImGui::TableSetupColumn(LOCT("Low-pass"), ImGuiTableColumnFlags_WidthStretch, 1.1f);
+            ImGui::TableSetupColumn(LOCT("Reverb"),   ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("",               ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableHeadersRow();
 
-        // Master の音量は上の Master Volume が正本なので、ここでは触らせない。
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
-        if (isMaster) {
-            ImGui::BeginDisabled();
-            float shown = settings.audio.masterVolume;
-            ImGui::SliderFloat("##volume", &shown, 0.0f, 1.0f);
-            ImGui::EndDisabled();
-        } else {
-            dirty |= ImGui::SliderFloat("##volume", &bus.volume, 0.0f, 1.0f);
-        }
+            for (std::size_t i = 0; i < buses.size(); ++i) {
+                audio::BusDesc& bus = buses[i];
+                const bool isMaster = bus.name == audio::kMasterBusName;
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::TableNextRow();
 
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(110.0f);
-        dirty |= ImGui::SliderFloat("##lowpass", &bus.lowPassCutoff, 0.0f, 1.0f, "LPF %.2f");
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                ImGui::BeginDisabled(isMaster);
+                dirty |= widgets::InputString("##name", bus.name, 64);
+                ImGui::EndDisabled();
 
-        ImGui::SameLine();
-        dirty |= ImGui::Checkbox("Rev", &bus.reverb);
-
-        if (!isMaster) {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("-")) removeIndex = static_cast<int>(i);
-        }
-        ImGui::PopID();
-    }
-
-    // 削除ボタンは Master 以外にしか出さないので、添字は素直に使える。
-    if (removeIndex >= 0) {
-        buses.erase(buses.begin() + removeIndex);
-        dirty = true;
-    }
-
-    if (ImGui::Button("Add Bus")) {
-        audio::BusDesc desc;
-        desc.name   = "Bus " + std::to_string(buses.size());
-        desc.parent = audio::kMasterBusName;
-        buses.push_back(std::move(desc));
-        dirty = true;
-    }
-
-    // WHY 即座に反映するか: 音量調整はスライダーを動かしながら耳で合わせる作業で、
-    //     保存してから確かめる形にすると往復が成立しない。
-    //     ただしバス構成の作り直しは再生中の音を止めるため、名前や親の変更では
-    //     グラフを組み直さず、音量とフィルターだけを送る。
-    if (dirty) {
-        if (auto* audioManager = core::Application::Get().GetAudioManager()) {
-            audioManager->SetVoiceLimit(static_cast<size_t>(settings.audio.voiceLimit));
-            const std::vector<audio::BusDesc> layout = settings.audio.BuildBusLayout();
-            const bool sameGraph =
-                layout.size() == audioManager->BusLayout().size() &&
-                std::equal(layout.begin(), layout.end(), audioManager->BusLayout().begin(),
-                           [](const audio::BusDesc& a, const audio::BusDesc& b) {
-                               // reverb も比較に入れる: 残響 DSP は submix の生成時に
-                               // しか差し込めないので、切り替えには組み直しが要る。
-                               return a.name == b.name && a.parent == b.parent
-                                   && a.reverb == b.reverb;
-                           });
-            if (sameGraph) {
-                for (const audio::BusDesc& desc : layout) {
-                    audioManager->SetBusVolume(desc.name, desc.volume);
-                    audioManager->SetBusLowPass(desc.name, desc.lowPassCutoff);
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (isMaster) {
+                    ImGui::TextDisabled("%s", LOCT("(output)"));
+                } else {
+                    dirty |= widgets::InputString("##parent", bus.parent, 64);
                 }
-            } else {
-                audioManager->ApplyBusLayout(layout);
+
+                /// @note Master の音量は上の Master Volume が正本。ここでは触らせない。
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (isMaster) {
+                    float shown = settings.audio.masterVolume;
+                    ImGui::BeginDisabled();
+                    ImGui::SliderFloat("##volume", &shown, 0.0f, 1.0f, "%.2f");
+                    ImGui::EndDisabled();
+                } else {
+                    dirty |= ImGui::SliderFloat("##volume", &bus.volume, 0.0f, 1.0f, "%.2f");
+                }
+
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                dirty |= ImGui::SliderFloat("##lowpass", &bus.lowPassCutoff, 0.0f, 1.0f, "%.2f");
+
+                ImGui::TableNextColumn();
+                dirty |= ImGui::Checkbox("##reverb", &bus.reverb);
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("AudioReverbZone の残響を受ける。切り替えると再生中の音がいったん止まる");
+
+                ImGui::TableNextColumn();
+                if (!isMaster && ImGui::SmallButton("x")) removeIndex = static_cast<int>(i);
+                if (!isMaster && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", LOCT("Remove bus"));
+                ImGui::PopID();
             }
+            ImGui::EndTable();
         }
-        ++m_editGeneration;
+
+        if (removeIndex >= 0) {
+            buses.erase(buses.begin() + removeIndex);
+            dirty = true;
+            MarkStructuralEdit();
+        }
+        if (!Searching() && ImGui::SmallButton(LOC("+ Add Bus"))) {
+            audio::BusDesc desc;
+            desc.name   = "Bus " + std::to_string(buses.size());
+            desc.parent = audio::kMasterBusName;
+            buses.push_back(std::move(desc));
+            dirty = true;
+            MarkStructuralEdit();
+        }
+    }
+    EndGroup();
+
+    /// @note 音量は耳で合わせる作業なので即座に送る。ただしバス構成の組み直しは再生中の音を止めるので、
+    ///       名前・親・残響が変わったときだけ組み直す。
+    if (!dirty) return;
+    auto* audioManager = core::Application::Get().GetAudioManager();
+    if (!audioManager) return;
+    audioManager->SetVoiceLimit(static_cast<std::size_t>(settings.audio.voiceLimit));
+    const std::vector<audio::BusDesc> layout = settings.audio.BuildBusLayout();
+    const bool sameGraph =
+        layout.size() == audioManager->BusLayout().size() &&
+        std::equal(layout.begin(), layout.end(), audioManager->BusLayout().begin(),
+                   [](const audio::BusDesc& a, const audio::BusDesc& b) {
+                       /// @note 残響 DSP は submix の生成時にしか差し込めないので、reverb も組み直しの条件に入れる。
+                       return a.name == b.name && a.parent == b.parent && a.reverb == b.reverb;
+                   });
+    if (sameGraph) {
+        for (const audio::BusDesc& desc : layout) {
+            audioManager->SetBusVolume(desc.name, desc.volume);
+            audioManager->SetBusLowPass(desc.name, desc.lowPassCutoff);
+        }
+    } else {
+        audioManager->ApplyBusLayout(layout);
     }
 }
 
-// エディター自身の設定。書き込み先は ProjectSettings ではなく EditorSettings なので、
-// このセクションだけ Undo の対象にならない (OnRenderContent の Undo 追跡は
-// ProjectSettings の差分しか見ていない)。表示言語は «誰が触っているか» で決まる値で、
-// 元に戻す対象として履歴に積む種類の編集ではない。
-void ProjectSettingsPanel::DrawEditor(EditorContext& ctx)
-{
-    (void)ctx;
-
-    ImGui::TextUnformatted(LOCT("Editor"));
-    ImGui::Separator();
-
-    ImGui::SeparatorText(LOC("Language"));
-
-    const loc::Language current = loc::GetLanguage();
-    if (ImGui::BeginCombo(LOC("Language"), loc::DisplayName(current))) {
-        for (const loc::Language language : loc::kLanguages) {
-            // 表示名は常にその言語自身の表記。日本語表示のまま "英語" としか
-            // 出ないと、英語へ戻したい人が何を選べばよいか分からない。
-            if (ImGui::Selectable(loc::DisplayName(language), language == current))
-                loc::SetLanguage(language);
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::TextDisabled("%s", LOCT("Applies immediately. Saved to editor_settings.toml."));
-
-    if (current == loc::Language::English) return;
-
-    // 訳の埋まり具合。ここが無いと «日本語にしたのに英語のまま» の箇所を見たとき、
-    // 訳が無いのか仕組みが効いていないのかが区別できない。
-    ImGui::SeparatorText(LOC("Translation Coverage"));
-    ImGui::Text("%s: %d", LOCT("Entries"), loc::TranslationCount());
-
-    const std::vector<std::string>& missing = loc::MissingKeys();
-    ImGui::Text("%s: %zu", LOCT("Untranslated (seen this session)"), missing.size());
-    ImGui::TextDisabled("%s", LOCT("Open the panels you want translated, then add these to "
-                                   "Localization_ja.inl."));
-
-    if (missing.empty()) return;
-    if (ImGui::Button(LOC("Copy to Clipboard"))) {
-        std::string text;
-        for (const std::string& key : missing) text += "{ \"" + key + "\", \"\" },\n";
-        ImGui::SetClipboardText(text.c_str());
-    }
-    if (ImGui::BeginChild("##missing", { 0.0f, 260.0f }, true)) {
-        for (const std::string& key : missing) ImGui::TextUnformatted(key.c_str());
-    }
-    ImGui::EndChild();
-}
 
 void ProjectSettingsPanel::DrawTagsAndLayers(ProjectSettings& settings)
 {
-    ImGui::TextUnformatted("Tags & Layers");
-    ImGui::Separator();
-
-    // WHY 同居させるか: どちらも「GameObject を分類する ID テーブル」で、
-    //      編集タイミングもほぼ同時 (新しい敵種別を足すときにタグとレイヤーを両方触る)。
-    //      別項目に分けると往復が必要になるだけで、分離の利点がない。
-    if (ImGui::CollapsingHeader("Tags", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Indent();
+    /// @note 同居させるのは、どちらも GameObject を分類する ID 表で、新しい敵種別を足すときに両方触るから。
+    const std::string tagKeywords = JoinNames(settings.game.tags) + "tag タグ";
+    if (BeginGroup("Tags", true, tagKeywords.c_str()) && Matches("Tag List", tagKeywords.c_str()))
         DrawTags(settings);
-        ImGui::Unindent();
-    }
-    if (ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Indent();
+    EndGroup();
+
+    std::vector<std::string> layerNames(settings.game.layerNames.begin(), settings.game.layerNames.end());
+    const std::string layerKeywords = JoinNames(layerNames) + "layer レイヤー";
+    if (BeginGroup("Layers", true, layerKeywords.c_str()) && Matches("Layer List", layerKeywords.c_str()))
         DrawLayers(settings);
-        ImGui::Unindent();
-    }
+    EndGroup();
 }
 
 void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
 {
-    if (ImGui::SmallButton("Reset Unity Preset")) {
-        settings.game.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
-                               "MainCamera", "Player", "GameController" };
-        ++m_editGeneration;
-    }
-    ImGui::Spacing();
+    auto& tags = settings.game.tags;
+    const auto isDuplicate = [&tags](const std::string& tag) {
+        return std::count(tags.begin(), tags.end(), tag) > 1;
+    };
 
-    int removeIdx = -1;
-    for (int i = 0; i < static_cast<int>(settings.game.tags.size()); ++i) {
-        ImGui::PushID(i);
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%s", settings.game.tags[i].c_str());
-        ImGui::SetNextItemWidth(-80.0f);
-        if (ImGui::InputText("##tag", buf, sizeof(buf)))
-            settings.game.tags[i] = buf;
-        ImGui::SameLine();
-        if (settings.game.tags[i] != "Untagged" && ImGui::SmallButton("Remove"))
-            removeIdx = i;
-        ImGui::PopID();
+    int removeIndex = -1;
+    if (ImGui::BeginTable("##tags", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("##name",   ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##action", ImGuiTableColumnFlags_WidthFixed);
+        for (int i = 0; i < static_cast<int>(tags.size()); ++i) {
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            /// @note Untagged は «タグ無し» の意味を持つ予約名なので改名も削除もさせない。
+            const bool reserved = tags[static_cast<std::size_t>(i)] == "Untagged";
+            const bool duplicate = isDuplicate(tags[static_cast<std::size_t>(i)]);
+            if (duplicate) {
+                ImVec4 warn = EditorTheme::Color(ThemeColor::Danger);
+                warn.w = 0.35f;
+                ImGui::PushStyleColor(ImGuiCol_FrameBg, warn);
+            }
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::BeginDisabled(reserved);
+            widgets::InputString("##tag", tags[static_cast<std::size_t>(i)], 64);
+            ImGui::EndDisabled();
+            if (duplicate) {
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", LOCT("Another tag has the same name."));
+            }
+            ImGui::TableNextColumn();
+            if (!reserved && ImGui::SmallButton(LOC("Remove"))) removeIndex = i;
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (removeIndex >= 0) {
+        tags.erase(tags.begin() + removeIndex);
+        MarkStructuralEdit();
     }
 
-    if (removeIdx >= 0) {
-        settings.game.tags.erase(settings.game.tags.begin() + removeIdx);
-        ++m_editGeneration;
-    }
+    if (Searching()) return;
 
-    ImGui::Spacing();
-    ImGui::SetNextItemWidth(-80.0f);
-    ImGui::InputText("##newtag", m_newTag, sizeof(m_newTag));
+    const std::string newTag = m_newTag;
+    const bool exists = std::find(tags.begin(), tags.end(), newTag) != tags.end();
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    const bool submit = ImGui::InputTextWithHint("##newtag", LOCT("New tag name"), m_newTag, sizeof(m_newTag),
+                                                 ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    if (ImGui::SmallButton("Add") && m_newTag[0] != '\0') {
-        settings.game.tags.push_back(m_newTag);
+    ImGui::BeginDisabled(newTag.empty() || exists);
+    if ((ImGui::SmallButton(LOC("Add Tag")) || submit) && !newTag.empty() && !exists) {
+        tags.push_back(newTag);
         m_newTag[0] = '\0';
-        ++m_editGeneration;
+        MarkStructuralEdit();
+    }
+    ImGui::EndDisabled();
+    if (exists && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", LOCT("A tag with this name already exists."));
+
+    ImGui::SameLine();
+    if (ImGui::SmallButton(LOC("Reset to Unity Preset...")))
+        ImGui::OpenPopup("##resetTags");
+    if (ConfirmPopup("##resetTags", LOCT("Replace all tags with the Unity preset? Custom tags are removed."), LOC("Reset"))) {
+        tags = ProjectDefaults().game.tags;
+        MarkStructuralEdit();
     }
 }
 
 void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
 {
-    if (ImGui::SmallButton("Reset Unity Preset##layers")) {
+    if (ImGui::BeginTable("##layers", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("##index", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##name",  ImGuiTableColumnFlags_WidthStretch);
+        for (int i = 0; i < 32; ++i) {
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%2d", i);
+            ImGui::TableNextColumn();
+            char hint[32];
+            std::snprintf(hint, sizeof(hint), "User Layer %d", i);
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), "%s", settings.game.layerNames[static_cast<std::size_t>(i)].c_str());
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputTextWithHint("##layer", hint, buffer, sizeof(buffer)))
+                settings.game.layerNames[static_cast<std::size_t>(i)] = buffer;
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    if (Searching()) return;
+    ImGui::PushID("layers");
+    const bool resetRequested = ImGui::SmallButton(LOC("Reset to Unity Preset..."));
+    ImGui::PopID();
+    if (resetRequested) ImGui::OpenPopup("##resetLayers");
+    if (ConfirmPopup("##resetLayers", LOCT("Replace all layer names with the Unity preset? Scenes keep their layer numbers."), LOC("Reset"))) {
         settings.game.layerNames = {
             "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
             "", "", "", "", "", "", "", "", "", "",
             "", "", "", "", "", "", "", "", "", "",
             "", "", "", "", "", ""
         };
-        ++m_editGeneration;
+        MarkStructuralEdit();
     }
-    ImGui::Spacing();
+}
 
-    for (int i = 0; i < 32; ++i) {
-        ImGui::PushID(i);
-        ImGui::Text("%2d", i);
-        ImGui::SameLine();
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%s", settings.game.layerNames[i].c_str());
-        if (settings.game.layerNames[i].empty()) {
-            ImGui::TextDisabled("User Layer %d", i);
-            ImGui::SameLine();
-        }
-        ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::InputText("##layer", buf, sizeof(buf)))
-            settings.game.layerNames[i] = buf;
-        ImGui::PopID();
+
+void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
+{
+    static const FbxImportOptions kDefaults{};
+    auto& opt = ctx.defaultImportOptions;
+
+    if (BeginGroup("FBX Defaults")) {
+        static const char* const kSourceDcc[]   = { "Auto Detect", "Maya / FBX SDK", "Blender" };
+        static const char* const kUpAxis[]      = { "Auto", "Y Up", "Z Up" };
+        static const char* const kConvention[]  = { "DirectX (keep G)", "OpenGL (flip G)" };
+        static const char* const kCompression[] = { "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None" };
+
+        Field("Source DCC", opt.sourceDcc, &kDefaults.sourceDcc, "書き出し元のツール。軸と単位の解釈が変わる",
+              [&] { return EnumCombo(opt.sourceDcc, kSourceDcc); });
+        Field("Source Up Axis", opt.upAxis, &kDefaults.upAxis, "書き出し元の上方向。Auto はファイルの記録に従う",
+              [&] { return EnumCombo(opt.upAxis, kUpAxis); });
+        Field("Unit Scale", opt.unitScaleMultiplier, &kDefaults.unitScaleMultiplier, "読み込み時に掛ける倍率",
+              [&] { return ImGui::DragFloat("##v", &opt.unitScaleMultiplier, 0.01f, 0.001f, 100.0f, "%.3fx"); });
+        Field("Generate Normals", opt.generateNormals, &kDefaults.generateNormals, "法線が無いメッシュに法線を作る",
+              [&] { return ImGui::Checkbox("##v", &opt.generateNormals); });
+        Field("Generate Tangents", opt.generateTangents, &kDefaults.generateTangents, "法線マップ用の接線を作る",
+              [&] { return ImGui::Checkbox("##v", &opt.generateTangents); });
+        Field("Normal Map Convention", opt.normalMapConvention, &kDefaults.normalMapConvention,
+              "法線マップの緑チャンネルの向き。OpenGL 形式なら反転して取り込む",
+              [&] { return EnumCombo(opt.normalMapConvention, kConvention); });
+        Field("Texture Sidecars", opt.generateTexDescriptors, &kDefaults.generateTexDescriptors,
+              "参照テクスチャの .meta を自動で作る",
+              [&] { return ImGui::Checkbox("##v", &opt.generateTexDescriptors); });
+        Field("Default Compression", opt.defaultCompression, &kDefaults.defaultCompression,
+              "テクスチャの既定の圧縮形式。Auto は用途 (色・法線・マスク) から選ぶ",
+              [&] { return EnumCombo(opt.defaultCompression, kCompression); });
     }
+    EndGroup();
+
+    if (BeginGroup("Import Presets", true, "preset プリセット") && Matches("Import Presets", "preset プリセット")) {
+        PresetCache& cache = Presets();
+        const std::string presetsDir = ImportPresetsDir(ctx);
+        if (!cache.loaded) {
+            cache.presets = LoadImportPresets(presetsDir);
+            cache.loaded  = true;
+        }
+        if (ImGui::SmallButton(LOC("Refresh"))) cache.loaded = false;
+
+        if (cache.presets.empty()) {
+            ImGui::TextDisabled("%s", LOCT("No presets in Assets/.import_presets/."));
+            ImGui::TextDisabled("%s", LOCT("Create one from the Import Settings dialog (right-click an FBX > Import with Settings...)."));
+        } else if (ImGui::BeginTable("##presets", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg
+                                                   | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn(LOCT("Name"),     ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableSetupColumn(LOCT("Settings"), ImGuiTableColumnFlags_WidthStretch, 2.0f);
+            ImGui::TableSetupColumn("",               ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableHeadersRow();
+
+            int deleteIndex = -1;
+            for (int i = 0; i < static_cast<int>(cache.presets.size()); ++i) {
+                const PresetEntry& p = cache.presets[static_cast<std::size_t>(i)];
+                ImGui::PushID(i);
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(p.name.c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("%s / %s / x%.2f / %s",
+                    p.options.sourceDcc == FbxSourceDcc::Blender ? "Blender" :
+                    p.options.sourceDcc == FbxSourceDcc::Maya ? "Maya" : "Auto",
+                    p.options.upAxis == FbxUpAxis::ZUp ? "Z Up" :
+                    p.options.upAxis == FbxUpAxis::YUp ? "Y Up" : "Auto",
+                    p.options.unitScaleMultiplier,
+                    p.options.normalMapConvention == NormalMapConvention::OpenGL ? "OpenGL" : "DirectX");
+                ImGui::TableNextColumn();
+                if (ImGui::SmallButton(LOC("Use as Default"))) {
+                    opt = p.options;
+                    MarkStructuralEdit();
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", LOCT("Copy this preset into FBX Defaults above."));
+                ImGui::SameLine();
+                if (ImGui::SmallButton(LOC("Delete..."))) ImGui::OpenPopup("##deletePreset");
+                if (ConfirmPopup("##deletePreset", LOCT("Delete this preset file? This cannot be undone."), LOC("Delete")))
+                    deleteIndex = i;
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+
+            if (deleteIndex >= 0) {
+                const std::string path = cache.presets[static_cast<std::size_t>(deleteIndex)].path;
+                std::error_code ec;
+                if (std::filesystem::remove(util::FileSystem::PathFromUtf8(path), ec)) {
+                    FBZZ_LOG_INFO("Deleted import preset: %s", path.c_str());
+                    cache.presets.erase(cache.presets.begin() + deleteIndex);
+                } else {
+                    FBZZ_LOG_ERROR("Failed to delete preset: %s", path.c_str());
+                }
+            }
+        }
+    }
+    EndGroup();
+
+    if (BeginGroup("Exclude Patterns", false, "exclude suffix backup 除外") && Matches("Exclude Patterns", "exclude suffix backup 除外")) {
+        ImGui::TextDisabled("%s", LOCT("Files whose name ends with these suffixes are skipped (built in):"));
+        static constexpr const char* kExcluded[] = { "_backup", "_old", "_wip", "_ref", "_tmp", "_test", "_unused", "_bak" };
+        std::string joined;
+        for (const char* suffix : kExcluded) {
+            if (!joined.empty()) joined += "  ";
+            joined += suffix;
+        }
+        ImGui::TextUnformatted(joined.c_str());
+    }
+    EndGroup();
+}
+
+
+void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
+{
+    const EditorSettings& d = EditorDefaults();
+
+    if (BeginGroup("Language", true, "english japanese 日本語 英語 表示")) {
+        loc::Language language = loc::GetLanguage();
+        static constexpr loc::Language kDefaultLanguage = loc::Language::English;
+        const bool changed = Field("Display Language", language, &kDefaultLanguage,
+            "エディター UI の表示言語。選ぶとすぐ切り替わる",
+            [&] {
+                bool picked = false;
+                if (ImGui::BeginCombo("##v", loc::DisplayName(language))) {
+                    for (const loc::Language option : loc::kLanguages) {
+                        /// @note 候補は常にその言語自身の表記で出す。日本語表示のまま «英語» としか出ないと戻し方が分からない。
+                        if (ImGui::Selectable(loc::DisplayName(option), option == language) && option != language) {
+                            language = option;
+                            picked = true;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                return picked;
+            });
+        if (changed) loc::SetLanguage(language);
+
+        /// @note 訳の埋まり具合。無いと «英語のまま» の箇所が訳の欠けか仕組みの不具合か区別できない。
+        if (loc::GetLanguage() != loc::Language::English
+            && Matches("Translation Coverage", "translation missing untranslated 訳")) {
+            char entries[32];
+            std::snprintf(entries, sizeof(entries), "%d", loc::TranslationCount());
+            InfoRow("Entries", entries);
+
+            const std::vector<std::string>& missing = loc::MissingKeys();
+            char missingText[32];
+            std::snprintf(missingText, sizeof(missingText), "%zu", missing.size());
+            InfoRow("Untranslated (seen this session)", missingText);
+
+            if (!missing.empty() && ImGui::TreeNode(LOC("Untranslated strings"))) {
+                ImGui::TextDisabled("%s", LOCT("Open the panels you want translated, then add these to Localization_ja.inl."));
+                if (ImGui::SmallButton(LOC("Copy to Clipboard"))) {
+                    std::string text;
+                    for (const std::string& key : missing) text += "{ \"" + key + "\", \"\" },\n";
+                    ImGui::SetClipboardText(text.c_str());
+                }
+                if (ImGui::BeginChild("##missing", { 0.0f, ImGui::GetTextLineHeightWithSpacing() * 12.0f }, true)) {
+                    for (const std::string& key : missing) ImGui::TextUnformatted(key.c_str());
+                }
+                ImGui::EndChild();
+                ImGui::TreePop();
+            }
+        }
+    }
+    EndGroup();
+
+    if (BeginGroup("Scene Auto Save", true, "autosave backup crash recovery オートセーブ 自動保存 復旧")) {
+        Field("Enabled", ctx.sceneAutoSaveEnabled, &d.autoSaveEnabled,
+              "未保存の変更があるとき、一定間隔で Library/AutoSave へ退避する。本体のシーンファイルは上書きしない",
+              [&] { return ImGui::Checkbox("##v", &ctx.sceneAutoSaveEnabled); });
+        int minutes = (std::max)(1, ctx.sceneAutoSaveIntervalSec / 60);
+        const int defaultMinutes = (std::max)(1, d.autoSaveIntervalSec / 60);
+        if (Field("Interval", minutes, &defaultMinutes,
+                  "変更してからこの時間が経つと保存する。直前 10 秒は通知が出て、延期できる",
+                  [&] { return ImGui::SliderInt("##v", &minutes, 1, 60, "%d min"); }))
+            ctx.sceneAutoSaveIntervalSec = minutes * 60;
+
+        if (ctx.sceneAutoSaveEnabled) {
+            char next[48];
+            if (ctx.sceneAutoSaveRemainingSec < 0.0f)
+                std::snprintf(next, sizeof(next), "%s", LOCT("Not scheduled (no unsaved changes)"));
+            else
+                std::snprintf(next, sizeof(next), "%d:%02d",
+                              static_cast<int>(ctx.sceneAutoSaveRemainingSec) / 60,
+                              static_cast<int>(ctx.sceneAutoSaveRemainingSec) % 60);
+            InfoRow("Next Auto Save", next);
+        }
+    }
+    EndGroup();
+
+    if (BeginGroup("Hot Reload", true, "script shader dll compile sound スクリプト シェーダー 音")) {
+        Field("Watch Scripts & Shaders", ctx.hotReloadEnabled, &d.hotReloadEnabled,
+              "Assets のスクリプトとシェーダーの保存を監視し、自動でビルドしてリロードする",
+              [&] { return ImGui::Checkbox("##v", &ctx.hotReloadEnabled); });
+        Field("Completion Sound", ctx.hotReloadSound, &d.hotReloadSound,
+              "ホットリロードの成功・失敗を音で知らせる。エディターを見ていなくても気づける",
+              [&] { return ImGui::Checkbox("##v", &ctx.hotReloadSound); });
+    }
+    EndGroup();
 }
 
 } // namespace fbzz::editor

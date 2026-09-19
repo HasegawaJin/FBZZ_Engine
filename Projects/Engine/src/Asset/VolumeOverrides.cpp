@@ -19,8 +19,8 @@ using renderer::BlendColor3;
 using renderer::BlendFloat;
 using renderer::BlendInt;
 
-// ── Reflect の短縮ヘルパー ──────────────────────────────────────────────
-// BeginField で永続キーと表示名を与えてから Field を呼ぶ、という定型をまとめる。
+/// @name Reflect の短縮ヘルパー
+/// BeginField で永続キーと表示名を与えてから Field を呼ぶ、という定型をまとめる。
 
 void Range(IReflector& r, const char* name, float& value, float min, float max)
 {
@@ -34,8 +34,8 @@ void Number(IReflector& r, const char* name, float& value)
     r.Field(name, value);
 }
 
-// 整数にもレンジを与える。Inspector 側 (ImGuiReflector) がスライダーになり、
-// 品質パラメーターの現実的な範囲がその場で分かる。
+/// 整数にもレンジを与える。Inspector 側 (ImGuiReflector) がスライダーになり、
+/// 品質パラメーターの現実的な範囲がその場で分かる。
 void Integer(IReflector& r, const char* name, int& value, int min, int max)
 {
     r.BeginField(name, name);
@@ -48,8 +48,8 @@ void Text(IReflector& r, const char* name, std::string& value)
     r.Field(name, value);
 }
 
-// float[3] を Vector3 経由で反映し、カラーピッカーのヒントを付ける。
-// WHY 経由が要るか: IReflector は C 配列を直接扱えない。一時 Vector3 へ写して書き戻す。
+/// float[3] を Vector3 経由で反映し、カラーピッカーのヒントを付ける。
+/// @note IReflector は C 配列を直接扱えないため、一時 Vector3 へ写して書き戻す。
 void Color3(IReflector& r, const char* name, float (&color)[3])
 {
     math::Vector3 value{ color[0], color[1], color[2] };
@@ -63,9 +63,7 @@ void Color3(IReflector& r, const char* name, float (&color)[3])
 
 } // namespace
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 露出
-// ═══════════════════════════════════════════════════════════════════════════
+/// 露出
 
 void ExposureOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -77,9 +75,7 @@ void ExposureOverride::Reflect(IReflector& r)
     Range(r, "exposure", exposure, 0.0f, 8.0f);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// アンチエイリアシング
-// ═══════════════════════════════════════════════════════════════════════════
+/// アンチエイリアシング
 
 void FxaaOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -88,7 +84,7 @@ void FxaaOverride::Apply(renderer::VolumeSettings& target, float weight) const
 
 void FxaaOverride::Reflect(IReflector&)
 {
-    // パラメーターを持たない。ON/OFF は基底の active とリストへの有無で表す。
+    /// @note パラメーターを持たない。ON/OFF は基底の active とリストへの有無で表す。
 }
 
 void TaaOverride::Apply(renderer::VolumeSettings& target, float weight) const
@@ -102,9 +98,7 @@ void TaaOverride::Reflect(IReflector& r)
     Range(r, "feedback", feedback, 0.0f, 1.0f);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// アンビエントオクルージョン
-// ═══════════════════════════════════════════════════════════════════════════
+/// アンビエントオクルージョン
 
 void SsaoOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -134,9 +128,7 @@ void GtaoOverride::Reflect(IReflector& r)
     Integer(r, "stepsPerSlice", stepsPerSlice, 1, 16);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 色
-// ═══════════════════════════════════════════════════════════════════════════
+/// 色
 
 void BloomOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -266,9 +258,7 @@ void FilmGrainOverride::Reflect(IReflector& r)
     Range(r, "response",  response,  0.0f, 1.0f);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// レンズ
-// ═══════════════════════════════════════════════════════════════════════════
+/// レンズ
 
 void VignetteOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -360,9 +350,7 @@ void MotionBlurOverride::Reflect(IReflector& r)
     Integer(r, "samples", samples, 2, 32);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 大気
-// ═══════════════════════════════════════════════════════════════════════════
+/// 大気
 
 void FogOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -371,7 +359,7 @@ void FogOverride::Apply(renderer::VolumeSettings& target, float weight) const
     v.density     = BlendFloat(v.density,     density,     weight);
     v.farDistance = BlendFloat(v.farDistance, farDistance, weight);
     BlendColor3(v.color, color, weight, v.color);
-    // source は列挙値なので閾値で切り替える。
+    /// @note source は列挙値なので閾値で切り替える。
     v.source = BlendInt(v.source, source, weight);
 }
 
@@ -405,7 +393,7 @@ void VolumetricLightOverride::Reflect(IReflector& r)
     Range(r, "intensity",   intensity,   0.0f, 8.0f);
     Color3(r, "tint", tint);
     Range(r, "minDistance", minDistance, 0.0f, 500.0f);
-    // 屋外の光芒は雲の切れ間から地面まで伸びるため、200 では手前の空気しか積分できない。
+    /// @note 屋外の光芒は雲の切れ間から地面まで伸びるため、200 では手前の空気しか積分できない。
     Range(r, "maxDistance", maxDistance, 1.0f, 4000.0f);
     Range(r, "edgeFade",    edgeFade,    0.0f, 1.0f);
     Range(r, "density",     density,     0.0f, 0.2f);
@@ -427,7 +415,7 @@ void FroxelFogOverride::Apply(renderer::VolumeSettings& target, float weight) co
     f.ambient       = BlendFloat(f.ambient,       ambient,       weight);
     BlendColor3(f.albedo,   albedo,   weight, f.albedo);
     BlendColor3(f.emissive, emissive, weight, f.emissive);
-    // グリッド寸法はブレンドしない (再確保が走るため)。RenderSettings の既定を使う。
+    /// @note グリッド寸法はブレンドしない (再確保が走るため)。RenderSettings の既定を使う。
 }
 
 void FroxelFogOverride::Reflect(IReflector& r)
@@ -471,9 +459,7 @@ void AutoExposureOverride::Reflect(IReflector& r)
     Range(r, "maxExposureEV", maxExposureEV,   0.0f, 16.0f);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 影・反射
-// ═══════════════════════════════════════════════════════════════════════════
+/// 影・反射
 
 void SsrOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -511,9 +497,7 @@ void ContactShadowOverride::Reflect(IReflector& r)
     Integer(r, "steps", steps, 4, 64);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 演出
-// ═══════════════════════════════════════════════════════════════════════════
+/// 演出
 
 void SepiaOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
@@ -563,15 +547,13 @@ void PixelateOverride::Reflect(IReflector& r)
     Range(r, "pixelSize", pixelSize, 1.0f, 64.0f);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// カスタム
-// ═══════════════════════════════════════════════════════════════════════════
+/// カスタム
 
 void CustomEffectOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
-    // WHY 補間せず閾値で足すか: 配列要素の「半分だけ存在する」状態を定義できない。
-    //     重みが半分を超えたときにパスとして追加し、パラメーターは
-    //     オーバーライドの値をそのまま使う。
+    /// @note 配列要素の「半分だけ存在する」状態を定義できないため、補間せず閾値で足す。
+    ///       重みが半分を超えたときにパスとして追加し、パラメーターはオーバーライドの
+    ///       値をそのまま使う。
     if (weight < 0.5f) return;
 
     renderer::CustomPostProcessSettings applied = effect;
@@ -585,16 +567,16 @@ void CustomEffectOverride::Reflect(IReflector& r)
     r.BeginField("shaderPath", "shaderPath");
     r.SetFileExtensions(".hlsl");
     r.Field("shaderPath", effect.shaderPath);
-    // .mat を指すと、シェーダー・テクスチャ・名前付きパラメーターがそちらから来る。
+    /// @note .mat を指すと、シェーダー・テクスチャ・名前付きパラメーターがそちらから来る。
     r.BeginField("materialPath", "materialPath");
     r.SetFileExtensions(".mat");
     r.Field("materialPath", effect.materialPath);
     Range(r, "intensity", effect.intensity, 0.0f, 4.0f);
     Range(r, "blend",     effect.blend,     0.0f, 1.0f);
 
-    // 列挙は int で出す (FogOverride::source と同じ扱い)。
-    //   stage     0 = SceneHDR (Composite 前) / 1 = PostProcess (後) / 2 = AfterOpaque (半透明の前)
-    //   blendMode 0 = 置き換え / 1 = アルファ / 2 = 加算 / 3 = 事前乗算 (HDR の段のみ有効)
+    /// @note 列挙は int で出す (FogOverride::source と同じ扱い)。
+    ///       stage     0 = SceneHDR (Composite 前) / 1 = PostProcess (後) / 2 = AfterOpaque (半透明の前)
+    ///       blendMode 0 = 置き換え / 1 = アルファ / 2 = 加算 / 3 = 事前乗算 (HDR の段のみ有効)
     int stage = static_cast<int>(effect.stage);
     Integer(r, "stage", stage, 0, 2);
     effect.stage = static_cast<renderer::CustomPassStage>(stage);
@@ -603,8 +585,8 @@ void CustomEffectOverride::Reflect(IReflector& r)
     Integer(r, "blendMode", blendMode, 0, 3);
     effect.blendMode = static_cast<renderer::BlendMode>(blendMode);
 
-    // 追加入力のビット (CustomPassInput)。
-    //   1 深度 / 2 オブジェクトマスク / 4 速度 / 8 法線 / 16 ブルーム / 32 AO
+    /// @note 追加入力のビット (CustomPassInput)。
+    ///       1 深度 / 2 オブジェクトマスク / 4 速度 / 8 法線 / 16 ブルーム / 32 AO
     int inputs = static_cast<int>(effect.inputs);
     Integer(r, "inputs", inputs, 0, 63);
     effect.inputs = static_cast<uint32_t>(inputs);
@@ -621,9 +603,9 @@ void CustomEffectOverride::Reflect(IReflector& r)
 
 } // namespace fbzz::asset
 
-// ── レジストリ登録 ──────────────────────────────────────────────────────
-// WHY ファイル末尾にまとめるか: 登録漏れを 1 か所で目視確認できるようにするため。
-//     クラス定義の直後に散らすと、追加時に「宣言はしたが登録し忘れた」が起きやすい。
+/// @name レジストリ登録
+/// @note 登録漏れを 1 か所で目視確認できるようにするため、ファイル末尾にまとめる。
+///       クラス定義の直後に散らすと、追加時に「宣言はしたが登録し忘れた」が起きやすい。
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::ExposureOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::FxaaOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::TaaOverride)

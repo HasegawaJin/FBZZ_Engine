@@ -4,7 +4,7 @@
 /// @date    2026-09-12
 #include <Engine/Scene/VFXLineGeometry.hpp>
 
-#include <Engine/Core/CurlNoise.hpp>
+#include <Math/CurlNoise.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -18,10 +18,10 @@ constexpr float kDegreesToRadians = 3.14159265359f / 180.0f;
 /// 決定論的な乱数 [0,1)。
 class LineRandom {
 public:
-    explicit LineRandom(std::uint32_t seed) : m_state(core::PcgHash(seed * 2654435761u + 0x9e3779b9u) | 1u) {}
+    explicit LineRandom(std::uint32_t seed) : m_state(math::PcgHash(seed * 2654435761u + 0x9e3779b9u) | 1u) {}
     float Next()
     {
-        m_state = core::PcgHash(m_state + 0x6d2b79f5u);
+        m_state = math::PcgHash(m_state + 0x6d2b79f5u);
         return static_cast<float>(m_state >> 8) * (1.0f / 16777216.0f);
     }
     float Signed() { return Next() * 2.0f - 1.0f; }
@@ -30,7 +30,7 @@ private:
     std::uint32_t m_state;
 };
 
-// 線に直交する 2 軸。真上・真下へ伸びる線 (落雷) で外積が縮退しないよう、基準を切り替える。
+/// 線に直交する 2 軸。真上・真下へ伸びる線 (落雷) で外積が縮退しないよう、基準を切り替える。
 void Basis(const math::Vector3& direction, math::Vector3& outRight, math::Vector3& outUp)
 {
     const math::Vector3 reference = std::fabs(math::Vector3::Dot(direction, math::Vector3::UP)) > 0.99f
@@ -39,8 +39,8 @@ void Basis(const math::Vector3& direction, math::Vector3& outRight, math::Vector
     outUp = math::Vector3::Cross(outRight, direction).NormalizedOr(math::Vector3::UP);
 }
 
-// 中点変位 (midpoint displacement)。段ごとに区間を 2 分し、中点を線に直交する向きへずらす。
-// ずらす量は段ごとに半分にする — 大きな折れと細かい震えが入れ子になり、稲妻の «自己相似» になる。
+/// 中点変位 (midpoint displacement)。段ごとに区間を 2 分し、中点を線に直交する向きへずらす。
+/// ずらす量は段ごとに半分にする — 大きな折れと細かい震えが入れ子になり、稲妻の «自己相似» になる。
 std::vector<math::Vector3> Displace(const math::Vector3& from, const math::Vector3& to, int levels, float offset,
                                     LineRandom& random)
 {
@@ -86,7 +86,7 @@ void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, 
     main.points = Displace(from, to, levels, (std::max)(line.chaos, 0.0f) * length, random);
     main.endTaper = std::clamp(line.endTaper, 0.0f, 1.0f);
 
-    // 打ち直しの間の震え。両端は動かさない (端が離れると «繋がっていない» に見える)。
+    /// @note 打ち直しの間の震え。両端は動かさない (端が離れると «繋がっていない» に見える)。
     const float jitter = (std::max)(line.jitter, 0.0f) * length;
     if (jitter > 0.0f) {
         const std::size_t last = main.points.size() - 1;
@@ -97,12 +97,12 @@ void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, 
             main.points[i] += (right * std::sin(phase) + up * std::cos(phase * 1.31f)) * (jitter * taper);
         }
     }
-    // 枝は本流の点を参照しながら out へ積む。途中で out が伸び直すと参照が宙に浮くので、先に枠を取る。
+    /// @note 枝は本流の点を参照しながら out へ積む。途中で out が伸び直すと参照が宙に浮くので、先に枠を取る。
     const int branches = std::clamp(line.branchCount, 0, 16);
     out.reserve(static_cast<std::size_t>(branches) + 1);
     out.push_back(main);
 
-    // 枝。本流の途中から、本流の向きを少し開いた方向へ伸びる短い雷。
+    /// @note 枝。本流の途中から、本流の向きを少し開いた方向へ伸びる短い雷。
     const std::vector<math::Vector3>& trunk = out.front().points;
     for (int b = 0; b < branches && trunk.size() >= 3; ++b) {
         const float along = 0.15f + random.Next() * 0.6f;
@@ -148,7 +148,7 @@ void GenerateBeam(const VFXLineComponent& line, const math::Vector3& from, const
     for (int i = 0; i <= segments; ++i) {
         const float t = static_cast<float>(i) / static_cast<float>(segments);
         math::Vector3 point = from + delta * t;
-        // たるみは放物線 (4t(1-t))。sin では «張った紐» に見えない。横ゆれも両端を固定する。
+        /// @note たるみは放物線 (4t(1-t))。sin では «張った紐» に見えない。横ゆれも両端を固定する。
         const float taper = 4.0f * t * (1.0f - t);
         point.y -= line.sag * taper;
         if (line.wobble != 0.0f) {
@@ -179,8 +179,8 @@ float VFXLineBrightness(const VFXLineComponent& line, float time, std::uint32_t 
     const float flicker = std::clamp(line.flicker, 0.0f, 1.0f);
     float pulse = 1.0f;
     if (line.mode == VFXLineMode::Lightning) {
-        // 打つたびに強さが揺れ、打った瞬間から落ちていく。雷の «バチッ» はこの落ち方で出る。
-        const float strength = 1.0f - flicker * (static_cast<float>(core::PcgHash(strikeIndex * 747796405u + 1u) >> 8)
+        /// @note 打つたびに強さが揺れ、打った瞬間から落ちていく。雷の «バチッ» はこの落ち方で出る。
+        const float strength = 1.0f - flicker * (static_cast<float>(math::PcgHash(strikeIndex * 747796405u + 1u) >> 8)
                                                  * (1.0f / 16777216.0f));
         pulse = strength * (1.0f - flicker * 0.5f * (1.0f - std::exp(-(std::max)(strikeClock, 0.0f) * 12.0f)));
     } else {
@@ -205,7 +205,7 @@ const char* VFXLinePresetName(VFXLinePreset preset)
 void ApplyVFXLinePreset(VFXLineComponent& line, VFXLinePreset preset)
 {
     const VFXLineComponent defaults{};
-    // 端点・マテリアル・seed は «どこに置いたか» なので残し、形と見た目だけを入れ替える。
+    /// @note 端点・マテリアル・seed は «どこに置いたか» なので残し、形と見た目だけを入れ替える。
     const VFXLineComponent keep = line;
     line = defaults;
     line.enabled = keep.enabled;

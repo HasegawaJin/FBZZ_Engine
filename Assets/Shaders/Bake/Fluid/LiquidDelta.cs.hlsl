@@ -5,10 +5,11 @@
 //
 // 読む予測位置 (t14) と書く予測位置 (u2) は別のバッファ。全員の補正を今の位置から求めてから動かす (CPU と同じ)。
 #include "Bake/Fluid/LiquidNeighbors.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-StructuredBuffer<float4>   gPredicted    : register(t14);
-StructuredBuffer<float>    gLambda       : register(t30);
-RWStructuredBuffer<float4> gPredictedOut : register(u2);
+FBZZ_SBUFFER_T(float4, gPredicted, 14);
+FBZZ_SBUFFER_T(float, gLambda, 30);
+FBZZ_RWSBUFFER_T(float4, gPredictedOut, 2);
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

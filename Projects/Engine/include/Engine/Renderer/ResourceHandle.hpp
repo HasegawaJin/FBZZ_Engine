@@ -12,11 +12,9 @@
 namespace fbzz::renderer {
 
 /// リソースを «どこから» 作ったか。既定引数で呼び出し位置を拾うために使う。
-///
-/// WHY 呼び出し元を持ち回るか: 記録側 (ResourceManager) の __FILE__ を使うと、
-///     どの頂点バッファも «同じ 1 行» から生まれたことになり、リーク一覧が
-///     «誰が漏らしたか» を答えられなくなる。Ensure / Acquire / Init のような
-///     «代わりに作る» 関数も、受け取った位置をそのまま下へ渡すこと。
+/// @note 記録側 (ResourceManager) の `__FILE__` を使うと、どの頂点バッファも «同じ 1 行»
+///       から生まれたことになりリーク一覧が «誰が漏らしたか» を答えられない。Ensure /
+///       Acquire / Init のような «代わりに作る» 関数も、受け取った位置をそのまま下へ渡すこと。
 using Where = std::source_location;
 
 template<typename Tag>
@@ -31,15 +29,14 @@ struct ResourceHandle {
     static ResourceHandle Null() { return {}; }
 };
 
-// 各タグは ResourceHandle<T> の型安全性確保のための空型。
-// ResourceHandle<TextureTag> と ResourceHandle<ShaderTag> は暗黙変換できない。
+/// 各タグは `ResourceHandle<T>` の型安全性確保のための空型。
+/// `ResourceHandle<TextureTag>` と `ResourceHandle<ShaderTag>` は暗黙変換できない。
 struct TextureTag {};
 struct ShaderTag {};
 struct BufferTag {};
 struct ConstantBufferTag {};
 struct PipelineStateTag {};
 struct RenderTargetTag {};
-struct MaterialAssetTag {};    // CPU 側 MaterialAsset を AssetManager のスロットプールで管理するハンドル
-struct StructuredBufferTag {}; // GPU StructuredBuffer (SRV) — DrawInstanced のインスタンスデータ用
+struct StructuredBufferTag {}; ///< GPU StructuredBuffer (SRV) — DrawInstanced のインスタンスデータ用
 
 } // namespace fbzz::renderer

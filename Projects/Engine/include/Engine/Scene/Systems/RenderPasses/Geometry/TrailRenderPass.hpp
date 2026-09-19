@@ -1,4 +1,4 @@
-/// @file    TrailRenderSystem.hpp
+/// @file    TrailRenderPass.hpp
 /// @brief   TrailComponent を更新し、マイタージョイント付きリボンとして透明描画するシステム。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
@@ -9,7 +9,7 @@
 
 namespace fbzz::scene {
 
-// IRenderPass 実装 — RenderPipeline::AddPass<TrailRenderPass>() で登録する。
+/// IRenderPass 実装 — RenderPipeline::`AddPass<TrailRenderPass>()` で登録する。
 class TrailRenderPass final : public IRenderPass {
 public:
     std::string_view Name() const override;

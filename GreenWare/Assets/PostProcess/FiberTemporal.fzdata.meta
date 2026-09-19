@@ -1,0 +1,6 @@
+# @file    FiberTemporal.fzdata.meta
+# @brief   繊維検証アセットの固定 GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+[meta]
+guid = "07d9f43693b445088f67000bb9478920"

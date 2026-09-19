@@ -23,7 +23,7 @@ protected:
     void SetLogLevel(core::LogLevel level);
 
 private:
-    // Logger に getter が無いため、規約上の既定値 (INFO) へ戻す。
+    /// Logger に getter が無いため、規約上の既定値 (INFO) へ戻す。
     static constexpr core::LogLevel kDefaultLevel = core::LogLevel::INFO;
 };
 

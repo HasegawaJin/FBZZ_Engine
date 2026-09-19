@@ -3,11 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY: Terrain の columns / rows は heightData と splatData のサイズと一体であり、
-/// 数値だけを変更すると TerrainRenderPass と PhysicsSystem が不整合な配列を読む。
-/// Inspector は TerrainComponent::Resize() を通して安全に変更しているため、
-/// AI からも同じ入口を使い、変更前後の TerrainComponent を丸ごと Undo へ保持する。
-/// Docs/design/editor-operator-model.md
+/// @note Terrain の columns/rows は heightData / splatIndices / splatWeights / holeData のサイズと一体で、数値だけ変えると TerrainRenderPass/PhysicsSystem が不整合な配列を読む。Inspector と同じく TerrainComponent::Resize() を通し、変更前後を丸ごと Undo へ保持する。
+/// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -32,8 +29,8 @@ scene::GameObject* ResolveTerrainNode(const OpContext& context, const std::strin
 
 bool IsValidTerrainDimension(int value)
 {
-    // Inspector と同じ上限に揃える。極端な値は Undo スナップショットと GPU 再構築の
-    // 両方で巨大な一時確保を起こすため、Operator 側でも先に拒否する。
+    /// @note Inspector と同じ上限に揃える。極端な値は Undo スナップショットと GPU 再構築の
+    ///       両方で巨大な一時確保を起こすため、Operator 側でも先に拒否する。
     return value >= 2 && value <= 4097;
 }
 
@@ -130,8 +127,8 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
         after.Resize(columns, rows);
         MarkTerrainDirty(after);
 
-        // OperatorRegistry::Invoke は返却コマンドを再実行せず Push だけ行う契約なので、
-        // 画面へはここで反映してから、同じ状態を redo 用スナップショットへ渡す。
+        /// @note OperatorRegistry::Invoke は返却コマンドを再実行せず Push だけ行う契約なので、
+        ///       画面へはここで反映してから、同じ状態を redo 用スナップショットへ渡す。
         *terrain = after;
         if (context.ctx.markSceneDirty) context.ctx.markSceneDirty();
 

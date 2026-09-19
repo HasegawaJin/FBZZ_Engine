@@ -33,11 +33,11 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
 
-// ── 木の共有キャッシュ ───────────────────────────────────────────────────────
-// パス → コンパイル済みランタイム。weak_ptr で持ち、誰も参照しなくなれば解放する。
-//
-// WHY 共有するか: 敵 100 体が同じ木を使うとき、構造を 100 個複製するのは
-//     メモリの浪費であり、キャッシュ効率も悪い。実行状態だけを個体が持つ。
+/// @name 木の共有キャッシュ
+/// パス → コンパイル済みランタイム。weak_ptr で持ち、誰も参照しなくなれば解放する。
+///
+/// @note 構造は個体間で共有し、実行状態だけを個体が持つ。同じ木を使う多数の個体が
+///       それぞれ複製を持つ無駄を避けるため。
 std::unordered_map<std::string, std::weak_ptr<const ai::BehaviorTreeRuntime>>& TreeCache()
 {
     static std::unordered_map<std::string, std::weak_ptr<const ai::BehaviorTreeRuntime>> cache;
@@ -74,7 +74,7 @@ std::shared_ptr<const ai::BehaviorTreeRuntime> AcquireTree(const std::string& pa
     return runtime;
 }
 
-// ── Scene に触るアクションの実装 ─────────────────────────────────────────────
+/// @name Scene に触るアクションの実装
 class SceneActionHandler final : public ai::IBTActionHandler {
 public:
     SceneActionHandler(Scene& scene, physics::World& world) : m_scene(scene), m_world(world) {}
@@ -95,9 +95,8 @@ public:
         case ai::BTNodeType::PlayAnimation: return ExecutePlayAnimation(params, *self, ctx);
         case ai::BTNodeType::PlayAudio:   return ExecutePlaySound(params, *self, ctx);
 
-        // 段階 7 で FBZZ_BT_ACTION + ScriptCodeGen により実装する。
-        // WHY Failure を返すか: Success にすると未実装の枝が黙って通過し、
-        //     木が「動いているように見えて何もしていない」状態になる。
+        /// @note 段階 7 で FBZZ_BT_ACTION + ScriptCodeGen により実装する。Success を返すと
+        ///       未実装の枝が黙って通過するため Failure を返す。
         case ai::BTNodeType::RunScript:   return ai::BTStatus::Failure;
 
         default: return ai::BTStatus::Failure;
@@ -113,9 +112,8 @@ public:
 
         const ai::BTNodeParams& params = tree.params[tree.nodes[node].paramIndex];
 
-        // Running 中に中断されたリーフの後始末。
-        // WHY 必要か: MoveTo を中断したまま放置すると、agent が古い目的地へ
-        //     走り続け、割り込んだ行動と競合して「動きがおかしい敵」になる。
+        /// @note Running 中に中断されたリーフの後始末。MoveTo を放置すると agent が
+        ///       古い目的地へ走り続け、割り込んだ行動と競合する。
         switch (tree.nodes[node].type) {
         case ai::BTNodeType::MoveTo: {
             if (auto* agent = m_scene.GetComponent<NavMeshAgentComponent>(ctx.self)) {
@@ -124,7 +122,7 @@ public:
             }
             break;
         }
-        // Patrol は currentIndex を保持したままにする (復帰時に続きから巡回する)。
+        /// @note Patrol は currentIndex を保持したままにする (復帰時に続きから巡回する)。
         case ai::BTNodeType::Patrol:
         default:
             break;
@@ -175,7 +173,7 @@ public:
             const math::Vector3 direction = toTarget * (1.0f / distance);
             physics::World::RaycastHit hit;
             if (!m_world.Raycast(origin, direction, distance, hit)) return true;
-            // 遮蔽物までの距離がターゲットとほぼ同じなら、遮っているのはターゲット自身。
+            /// @note 遮蔽物までの距離がターゲットとほぼ同じなら、遮っているのはターゲット自身。
             return hit.distance >= distance - 0.1f;
         }
 
@@ -192,7 +190,7 @@ private:
         auto* agent = m_scene.GetComponent<NavMeshAgentComponent>(ctx.self);
         if (!agent) return ai::BTStatus::Failure;
 
-        // 追跡モード: Entity キーの対象を SetTarget で追い続ける。
+        /// @note 追跡モード: Entity キーの対象を SetTarget で追い続ける。
         if (params.chaseEntity) {
             EntityID target = EntityID::INVALID;
             if (params.moveKey == ai::kInvalidBlackboardKey
@@ -200,9 +198,8 @@ private:
                 return ai::BTStatus::Failure;
             }
 
-            // 既に同じ相手を追っているなら SetTarget を呼び直さない。
-            // WHY: SetTarget は再パスのタイマーをリセットする。毎 tick 呼ぶと
-            //      経路が確定せず、その場で足踏みする。
+            /// @note 既に同じ相手を追っているなら SetTarget を呼び直さない。SetTarget は
+            ///       再パスのタイマーをリセットするため、毎 tick 呼ぶと経路が確定しない。
             if (!(agent->target == target))
                 agent->SetTarget(target, params.repathInterval);
 
@@ -213,19 +210,19 @@ private:
                 (targetGo->transform.worldPosition - self.transform.worldPosition).Length();
             if (distance <= params.acceptanceRadius) return ai::BTStatus::Success;
 
-            // 経路が見つからない状態が続いたら諦める。
+            /// @note 経路が見つからない状態が続いたら諦める。
             if (agent->isStuck) return ai::BTStatus::Failure;
             return ai::BTStatus::Running;
         }
 
-        // 座標モード: Vector3 キー (無ければ定数) の位置へ 1 度だけ向かう。
+        /// @note 座標モード: Vector3 キー (無ければ定数) の位置へ 1 度だけ向かう。
         math::Vector3 destination = params.valueVector3;
         if (params.moveKey != ai::kInvalidBlackboardKey) {
             if (!blackboard.GetVector3(params.moveKey, destination))
                 return ai::BTStatus::Failure;
         }
 
-        // 初回入場時にだけ SetDestination する。
+        /// @note 初回入場時にだけ SetDestination する。
         if (!(state.flags[node] & ai::BTNodeFlag::Entered)) {
             state.flags[node] |= ai::BTNodeFlag::Entered;
             agent->SetDestination(destination);
@@ -252,17 +249,12 @@ private:
         auto* agent  = m_scene.GetComponent<NavMeshAgentComponent>(ctx.self);
         if (!patrol || !agent || patrol->waypoints.empty()) return ai::BTStatus::Failure;
 
-        // 実際の巡回進行は NavMeshPatrolSystem が行う。
-        // WHY 二重実装しないか: ウェイポイントの前後・待機・速度上書きのロジックは
-        //     既に NavMeshPatrolSystem にあり、そこが唯一の真実であるべき。
-        //     BT の Patrol ノードは「巡回させ続ける意思表示」として Running を返し、
-        //     追跡へ切り替わるときに中断される側に回る。
-        //
-        // NavMeshPatrolSystem は agent->target が有効だと巡回を止めるため、
-        // 巡回に入る時点で追跡状態を解除しておく。
+        /// @note 実際の巡回進行は NavMeshPatrolSystem が行う (唯一の実装)。この関数は
+        ///       Running を返して巡回継続の意思を示すだけ。NavMeshPatrolSystem は
+        ///       agent->target が有効だと巡回を止めるため、先に解除しておく。
         if (agent->target.IsValid()) agent->ClearTarget();
 
-        // 巡回は明示的に終わらない。中断されるまで Running。
+        /// @note 巡回は明示的に終わらない。中断されるまで Running。
         return ai::BTStatus::Running;
     }
 
@@ -290,8 +282,8 @@ private:
         const float dot = std::clamp(math::Vector3::Dot(forward, desired), -1.0f, 1.0f);
         const float angleDeg = std::acos(dot) * (180.0f / kPi);
 
-        // 3 度以内なら向き終わったとみなす。
-        // WHY 閾値を置くか: 完全一致を待つと浮動小数の誤差で永久に Running になる。
+        /// @note 3 度以内なら向き終わったとみなす。完全一致を待つと浮動小数誤差で
+        ///       永久に Running になる。
         if (angleDeg <= 3.0f) return ai::BTStatus::Success;
 
         const float step = std::min(params.turnSpeedDeg * ctx.dt, angleDeg);
@@ -310,8 +302,8 @@ private:
         if (!animator || params.text.empty()) return ai::BTStatus::Failure;
 
         animator->SetTrigger(params.text);
-        // waitForAnimation は段階 3 では未対応 (Animator の再生完了通知が要る)。
-        // 現状はトリガーを立てた時点で Success。
+        /// @note waitForAnimation は段階 3 では未対応 (Animator の再生完了通知が要る)。
+        ///       現状はトリガーを立てた時点で Success。
         return ai::BTStatus::Success;
     }
 
@@ -327,7 +319,7 @@ private:
 
         AudioSourceComponent::OneShotRequest request;
         request.path        = params.text;
-        // ノードの volume は今まで参照されていなかった。one-shot が倍率を持てるようになったので繋ぐ。
+        /// @note ノードの volume は今まで参照されていなかった。one-shot が倍率を持てるようになったので繋ぐ。
         request.volumeScale = params.volume < 0.0f ? 0.0f : params.volume;
         source->m_pendingOneShots.push_back(std::move(request));
         return ai::BTStatus::Success;
@@ -337,10 +329,10 @@ private:
     physics::World& m_world;
 };
 
-// 知覚結果を予約キーへ書き込む。
-//
-// 段階 3 では NavMeshSensorComponent を情報源にする。
-// 段階 4 で PerceptionComponent を追加したら、そちらを優先する分岐をここへ足す。
+/// 知覚結果を予約キーへ書き込む。
+///
+/// 段階 3 では NavMeshSensorComponent を情報源にする。
+/// 段階 4 で PerceptionComponent を追加したら、そちらを優先する分岐をここへ足す。
 void PopulateReservedKeys(Scene& scene, EntityID eid, GameObject& self,
                           BehaviorTreeComponent& bt)
 {
@@ -348,7 +340,7 @@ void PopulateReservedKeys(Scene& scene, EntityID eid, GameObject& self,
 
     blackboard.SetEntity(ai::bb::Self, eid);
 
-    // HomePosition は最初の 1 回だけ記録する (帰還先)。
+    /// @note HomePosition は最初の 1 回だけ記録する (帰還先)。
     if (!blackboard.IsSet(ai::bb::HomePosition))
         blackboard.SetVector3(ai::bb::HomePosition, self.transform.worldPosition);
 
@@ -363,7 +355,7 @@ void PopulateReservedKeys(Scene& scene, EntityID eid, GameObject& self,
             blackboard.SetVector3(ai::bb::TargetPosition, target->transform.worldPosition);
     }
 
-    // 最後に見た位置は見失った後も残す (捜索行動が使う)。
+    /// @note 最後に見た位置は見失った後も残す (捜索行動が使う)。
     blackboard.SetVector3(ai::bb::LastKnownPosition, sensor->lastKnownTargetPos);
 }
 
@@ -379,7 +371,7 @@ ComponentAccess BehaviorTreeSystem::GetAccess() const
 
 OrderingHints BehaviorTreeSystem::GetOrder() const
 {
-    // Sensor の結果を読み、Patrol より先に agent を掴む。
+    /// @note Sensor の結果を読み、Patrol より先に agent を掴む。
     return OrderingHints{}
         .After<NavMeshSensorSystem>()
         .Before<NavMeshPatrolSystem>();
@@ -395,7 +387,7 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
         auto* go = scene.GetGameObject(eid);
         if (!bt || !go || !go->activeInHierarchy() || !bt->enabled) continue;
 
-        // ── ロード / 再ロード ────────────────────────────────────────────────
+        /// @name ロード / 再ロード
         if (!bt->initialized || bt->reloadRequested || bt->loadedTreePath != bt->treePath) {
             bt->runtime         = AcquireTree(bt->treePath);
             bt->loadedTreePath  = bt->treePath;
@@ -409,13 +401,12 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
                 bt->blackboard.Reset(bt->runtime->blackboard);
                 bt->lastNodeStatus.assign(bt->runtime->NodeCount(), 0);
 
-                // 個体ごとに RNG の種を変える (同じ木でも選択がばらける)。
+                /// @note 個体ごとに RNG の種を変える (同じ木でも選択がばらける)。
                 bt->state.rngState = 0x9E3779B9u ^ (eid.index * 2654435761u);
 
-                // ── 評価位相の分散 ──────────────────────────────────────────
-                // WHY 黄金比を使うか: index % N は連番スポーンで全個体が同じ剰余に
-                //     落ち、結局同じフレームに集中する。無理数倍の小数部を使うと
-                //     連番でも均等にばらける (低食い違い列)。
+                /// @name 評価位相の分散
+                /// @note 黄金比の小数部 (低食い違い列) を使う。index % N は連番スポーンで
+                ///       同じ剰余に落ち、同一フレームに集中するため。
                 const float phase = std::fmod(static_cast<float>(eid.index) * 0.6180339887f, 1.0f);
                 bt->tickTimer = bt->tickRate * phase;
             } else {
@@ -431,16 +422,14 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
             bt->restartRequested = false;
         }
 
-        // ── tickRate による間引き ────────────────────────────────────────────
+        /// @name tickRate による間引き
         float tickDt = ctx.dt;
         if (bt->tickRate > 0.0f) {
             bt->tickTimer -= ctx.dt;
             if (bt->tickTimer > 0.0f) continue;
 
-            // 実際に経過した時間を木へ渡す。
-            // WHY dt をそのまま渡さないか: Wait や Cooldown が tickRate 間隔で
-            //     呼ばれるのに 1 フレーム分の dt を受け取ると、待ち時間が
-            //     tickRate/dt 倍に伸びる。
+            /// @note 実際に経過した時間を木へ渡す。1 フレーム分の dt を渡すと、
+            ///       tickRate 間隔で呼ばれる Wait/Cooldown の待ち時間が tickRate/dt 倍に伸びる。
             tickDt = bt->tickRate - bt->tickTimer;
             bt->tickTimer += bt->tickRate;
         }
@@ -448,12 +437,12 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
         bt->elapsedTime += tickDt;
         ++bt->tickCount;
 
-        // ── 知覚結果を Blackboard へ ────────────────────────────────────────
+        /// @name 知覚結果を Blackboard へ
         bt->blackboard.SetTick(bt->tickCount);
         bt->blackboard.SetTime(bt->elapsedTime);
         PopulateReservedKeys(scene, eid, *go, *bt);
 
-        // ── 評価 ────────────────────────────────────────────────────────────
+        /// @name 評価
         ai::BTTickContext tickCtx;
         tickCtx.scene         = &scene;
         tickCtx.world         = &ctx.world;

@@ -3,12 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
+/// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include "Engine/Scene/Systems/RenderSystem.hpp"
-// ResolveGameCullingSettings — 呼び出し側が明示しなかったときのフォールバック解決に使う。
 #include "Engine/Scene/SceneUtils.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/MeshTrailRenderPass.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
@@ -18,7 +18,7 @@
 #include "RenderPasses/Debug/DebugPasses.hpp"
 #include <Physics/World.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
-#include "RenderPasses/Geometry/ParticleEmitterSpace.hpp"
+#include <Engine/Scene/Components/ParticleEmitterSpace.hpp>
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Scene/Components/ParticleGpuSimulation.hpp"
 #include "Engine/Scene/Components/ParticleLightSelection.hpp"
@@ -73,6 +73,7 @@
 #include <utility>
 #include <vector>
 
+/// @note SceneUtils.hpp の ResolveGameCullingSettings は、呼び出し側が明示しなかったときのフォールバック解決に使う。
 namespace fbzz::scene {
 
 namespace {
@@ -100,8 +101,8 @@ uint64_t HashLutSettings(const renderer::LUTColorGradingSettings& settings)
     return hash;
 }
 
-// RendererがサンプルするLDR RGB座標と同じ順序で32^3 RGBA8 LUTを生成する。
-// WHAT: x=R, y=G, z=B、xが最速で並ぶD3D11 Texture3Dのメモリ配置にする。
+/// @brief RendererがサンプルするLDR RGB座標と同じ順序で32^3 RGBA8 LUTを生成する。
+/// @note x=R, y=G, z=B、xが最速で並ぶD3D11 Texture3Dのメモリ配置にする。
 std::vector<uint8_t> GenerateProceduralColorLut(const renderer::LUTColorGradingSettings& settings)
 {
     constexpr float PI = 3.14159265358979323846f;
@@ -154,76 +155,76 @@ std::vector<uint8_t> GenerateProceduralColorLut(const renderer::LUTColorGradingS
     return pixels;
 }
 
-// Viewport ごとに解像度依存の中間リソースを保持する。
-// static で共有すると SceneView と GameView が 1 フレーム内でリサイズし合う。
+/// @note Viewport ごとに解像度依存の中間リソースを保持する。
+/// @note static で共有すると SceneView と GameView が 1 フレーム内でリサイズし合う。
 struct ViewRenderTargets {
-    // View ごとの RenderGraph 計画と transient RT をフレーム間で保持する。
-    // スタック生成だと DX12 の descriptor heap を毎フレーム作り直し、CPU が詰まる。
+    /// @note View ごとの RenderGraph 計画と transient RT をフレーム間で保持する。
+    /// @note スタック生成だと DX12 の descriptor heap を毎フレーム作り直し、CPU が詰まる。
     RenderPipeline pipeline;
     renderer::ResourceHandle<renderer::RenderTargetTag> hdr;
     renderer::ResourceHandle<renderer::RenderTargetTag> ldr;
     renderer::ResourceHandle<renderer::RenderTargetTag> selectionMask;
     renderer::ResourceHandle<renderer::RenderTargetTag> outline;
-    // ランタイム輪郭のシルエット (RGB=色 / A=太さ)。エディタ選択のマスクとは別物。
+    /// @note ランタイム輪郭のシルエット (RGB=色 / A=太さ)。エディタ選択のマスクとは別物。
     renderer::ResourceHandle<renderer::RenderTargetTag> objectMask;
     renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcess[2];
-    // ポストプロセスチェーンの終着点。描画スケールが等倍でないフレームだけ持ち、
-    // UpscalePass がここから出力先の実寸へ解像する。等倍なら確保しない。
+    /// @note ポストプロセスチェーンの終着点。描画スケールが等倍でないフレームだけ持ち、
+    /// @note UpscalePass がここから出力先の実寸へ解像する。等倍なら確保しない。
     renderer::ResourceHandle<renderer::RenderTargetTag> upscaleSrc;
     renderer::ResourceHandle<renderer::RenderTargetTag> gbuffer;
-    // モーションベクター (RG=速度, B=書き込み済みフラグ)。TAA / MotionBlur が有効な
-    // フレームだけ描く。深度は自前で持つので、本描画の深度バッファとは共有しない。
+    /// @note モーションベクター (RG=速度, B=書き込み済みフラグ)。TAA / MotionBlur が有効な
+    /// @note フレームだけ描く。深度は自前で持つので、本描画の深度バッファとは共有しない。
     renderer::ResourceHandle<renderer::RenderTargetTag> velocity;
     renderer::ResourceHandle<renderer::RenderTargetTag> decalDepth;
     renderer::ResourceHandle<renderer::RenderTargetTag> decalMask;
-    // Bloom のミップ連鎖。bloomChain[0] が半解像度で、以降 1/2 ずつ。
-    // bloomHalf は bloomChain[0] の別名 (Composite 側の参照名)。
-    // 1 枚のミップ付きにしないのは CreateComputeTexture がミップを持たないため。
+    /// @note Bloom のミップ連鎖。bloomChain[0] が半解像度で、以降 1/2 ずつ。
+    /// @note bloomHalf は bloomChain[0] の別名 (Composite 側の参照名)。
+    /// @note 1 枚のミップ付きにしないのは CreateComputeTexture がミップを持たないため。
     renderer::ResourceHandle<renderer::TextureTag> bloomChain[kBloomMipCount];
     renderer::ResourceHandle<renderer::TextureTag> bloomUpChain[kBloomMipCount];
     renderer::ResourceHandle<renderer::TextureTag> bloomHalf;
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
     renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
-    // ---- Advanced Graphics (解像度依存・ビュー単位) ----
-    // 解像度非依存な static リソース (BRDF LUT 等) は別途 static 変数が持つ。
-    renderer::ResourceHandle<renderer::TextureTag>        ssrResult;           // SSR CS 出力
-    renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    // Volumetric CS 出力
-    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;         // TAA ping-pong A
-    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;         // TAA ping-pong B
-    // TAA の ping-pong の向き。RenderPassHandles はフレームごとに作り直すので、
-    // ここに持たないと毎フレーム false から始まり «A を読んで B に書く» しか起きない。
-    // A は一度も書かれず、履歴は最初の中身のまま固定される。
+    /// @name Advanced Graphics (解像度依存・ビュー単位)
+    /// @note 解像度非依存な static リソース (BRDF LUT 等) は別途 static 変数が持つ。
+    renderer::ResourceHandle<renderer::TextureTag>        ssrResult;           ///< @note SSR CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    ///< @note Volumetric CS 出力
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;         ///< @note TAA ping-pong A
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;         ///< @note TAA ping-pong B
+    /// @note TAA の ping-pong の向き。RenderPassHandles はフレームごとに作り直すので、
+    /// @note ここに持たないと毎フレーム false から始まり «A を読んで B に書く» しか起きない。
+    /// @note A は一度も書かれず、履歴は最初の中身のまま固定される。
     bool taaFlip = false;
-    renderer::ResourceHandle<renderer::TextureTag>        motionBlurResult;    // Motion Blur CS 出力
-    renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             // GTAO RAW CS 出力
-    renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            // GTAO Blur CS 出力
-    renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult; // Contact Shadow CS 出力
-    // ---- ビュー別定数バッファ / 再投影行列 ----
-    // static で共有すると SceneView と GameView が互いのカメラ行列を引き、
-    // MotionBlur / TAA の再投影が常に壊れる。
+    renderer::ResourceHandle<renderer::TextureTag>        motionBlurResult;    ///< @note Motion Blur CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             ///< @note GTAO RAW CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            ///< @note GTAO Blur CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult; ///< @note Contact Shadow CS 出力
+    /// @name ビュー別定数バッファ / 再投影行列
+    /// @note static で共有すると SceneView と GameView が互いのカメラ行列を引き、
+    /// @note MotionBlur / TAA の再投影が常に壊れる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
-    // ---- 自動露出 (ビュー単位・解像度非依存) ----
-    // exposureResult は「順応済みの平均輝度」でフレームをまたぐ状態。static で共有すると
-    // SceneView と GameView が交互に順応を進め、互いの明るさへ引きずられて露出が振れる。
+    /// @name 自動露出 (ビュー単位・解像度非依存)
+    /// @note exposureResult は「順応済みの平均輝度」でフレームをまたぐ状態。static で共有すると
+    /// @note SceneView と GameView が交互に順応を進め、互いの明るさへ引きずられて露出が振れる。
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureHistogram;
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureResult;
     uint32_t exposureResetGeneration = 0;
-    // ---- 体積雲の作業 RT (ビュー単位・解像度依存) ----
+    /// @name 体積雲の作業 RT (ビュー単位・解像度依存)
     renderer::SizedRenderTarget cloudRT;
     renderer::SizedRenderTarget cloudDepthRT;
-    // ---- 水面の屈折用コピー (ビュー単位・解像度依存) ----
+    /// @name 水面の屈折用コピー (ビュー単位・解像度依存)
     renderer::SizedRenderTarget waterSceneColorRT;
     renderer::SizedRenderTarget waterSceneDepthRT;
-    // ---- 歪みパーティクルの背景退避 / 重なり計数 / コースティクスの深度コピー ----
-    // 水面と同じくビュー単位。共有すると 2 ビューで寸法を取り合い、毎フレーム作り直す。
+    /// @name 歪みパーティクルの背景退避 / 重なり計数 / コースティクスの深度コピー
+    /// @note 水面と同じくビュー単位。共有すると 2 ビューで寸法を取り合い、毎フレーム作り直す。
     renderer::SizedRenderTarget particleSceneColorRT;
     renderer::SizedRenderTarget particleOverdrawRT;
     renderer::SizedRenderTarget particleReactiveRT;
     renderer::SizedRenderTarget causticsDepthRT;
-    // ---- フロクセル霧 (ビュー単位・解像度非依存) ----
-    // グリッドは視錐台に貼り付くので、共有すると互いの履歴を上書きして霧が明滅する。
-    // 寸法は設定値 (既定 160x90x64) で画面サイズと無関係なので、リサイズでは作り直さない。
+    /// @name フロクセル霧 (ビュー単位・解像度非依存)
+    /// @note グリッドは視錐台に貼り付くので、共有すると互いの履歴を上書きして霧が明滅する。
+    /// @note 寸法は設定値 (既定 160x90x64) で画面サイズと無関係なので、リサイズでは作り直さない。
     renderer::ResourceHandle<renderer::TextureTag> froxelScatter;
     renderer::ResourceHandle<renderer::TextureTag> froxelScatterHistory;
     renderer::ResourceHandle<renderer::TextureTag> froxelIntegrated;
@@ -231,15 +232,15 @@ struct ViewRenderTargets {
     FroxelFogViewState           froxelState;
     math::Matrix4 prevViewProjection    = math::Matrix4::Identity();
     math::Matrix4 invPrevViewProjection = math::Matrix4::Identity();
-    // TAA ジッター列の現在位置。ビュー別に持たないと SceneView と GameView が
-    // 同じ番号を取り合って、どちらもサンプル点が飛び飛びになる。
+    /// @note TAA ジッター列の現在位置。ビュー別に持たないと SceneView と GameView が
+    /// @note 同じ番号を取り合って、どちらもサンプル点が飛び飛びになる。
     uint32_t taaFrameIndex = 0;
     uint32_t width = 0;
     uint32_t height = 0;
 };
 
-// Halton 列 (基数 base) の index 番目。
-// TAA には少ない枚数でも偏らない散り方が要る。乱数だと数フレームでは固まる。
+/// @note Halton 列 (基数 base) の index 番目。
+/// @note TAA には少ない枚数でも偏らない散り方が要る。乱数だと数フレームでは固まる。
 float HaltonRadicalInverse(uint32_t index, uint32_t base)
 {
     const float invBase = 1.0f / static_cast<float>(base);
@@ -253,10 +254,10 @@ float HaltonRadicalInverse(uint32_t index, uint32_t base)
     return result;
 }
 
-// Resize 前のネイティブリソースを ResourceManager から確実に解放する。
+/// @note Resize 前のネイティブリソースを ResourceManager から確実に解放する。
 void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceManager& resources)
 {
-    // transient RT も同じ Viewport 寿命に属するため、固定 RT より先に明示解放する。
+    /// @note transient RT も同じ Viewport 寿命に属するため、固定 RT より先に明示解放する。
     targets.pipeline.ReleaseViewResources(resources);
     if (targets.hdr.IsValid())                  resources.Release(targets.hdr);
     if (targets.ldr.IsValid())                  resources.Release(targets.ldr);
@@ -270,7 +271,7 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     if (targets.velocity.IsValid())             resources.Release(targets.velocity);
     if (targets.decalDepth.IsValid())           resources.Release(targets.decalDepth);
     if (targets.decalMask.IsValid())            resources.Release(targets.decalMask);
-    // bloomHalf は bloomChain[0] の別名なので、ここでは解放しない (二重解放になる)。
+    /// @note bloomHalf は bloomChain[0] の別名なので、ここでは解放しない (二重解放になる)。
     for (auto& mip : targets.bloomChain)
         if (mip.IsValid())                      resources.Release(mip);
     for (auto& mip : targets.bloomUpChain)
@@ -287,25 +288,25 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     if (targets.gtaoRaw.IsValid())               resources.Release(targets.gtaoRaw);
     if (targets.gtaoBlur.IsValid())              resources.Release(targets.gtaoBlur);
     if (targets.contactShadowResult.IsValid())   resources.Release(targets.contactShadowResult);
-    // どちらも解像度非依存。作り直すと prevVP が Identity へ戻り、
-    // MotionBlur / TAA が 1 フレーム乱れるので、保存して復元する。
+    /// @note どちらも解像度非依存。作り直すと prevVP が Identity へ戻り、
+    /// @note MotionBlur / TAA が 1 フレーム乱れるので、保存して復元する。
     auto savedCB         = targets.advancedGraphicsCB;
     auto savedPrevVP     = targets.prevViewProjection;
     auto savedPrevInvVP  = targets.invPrevViewProjection;
     auto savedTaaIndex   = targets.taaFrameIndex;
-    // フロクセル霧のボリュームは解像度非依存なので、リサイズで作り直さない。
-    // 作り直すと 14MB の確保が走ってフレームが飛ぶうえ、履歴が切れて霧が 1 度暗転する。
+    /// @note フロクセル霧のボリュームは解像度非依存なので、リサイズで作り直さない。
+    /// @note 作り直すと 14MB の確保が走ってフレームが飛ぶうえ、履歴が切れて霧が 1 度暗転する。
     auto savedFroxelA     = targets.froxelScatter;
     auto savedFroxelB     = targets.froxelScatterHistory;
     auto savedFroxelInt   = targets.froxelIntegrated;
     const uint32_t savedFroxelGrid[3] = { targets.froxelGrid[0], targets.froxelGrid[1],
                                           targets.froxelGrid[2] };
     auto savedFroxelState = targets.froxelState;
-    // 露出の順応も解像度非依存。リサイズで捨てると画面が一瞬白飛び / 黒潰れする。
+    /// @note 露出の順応も解像度非依存。リサイズで捨てると画面が一瞬白飛び / 黒潰れする。
     auto savedExposureHistogram = targets.exposureHistogram;
     auto savedExposureResult    = targets.exposureResult;
     const uint32_t savedExposureGeneration = targets.exposureResetGeneration;
-    // 雲の作業 RT は解像度依存。`targets = {}` で握ったまま忘れると漏れるので先に返す。
+    /// @note 雲の作業 RT は解像度依存。`targets = {}` で握ったまま忘れると漏れるので先に返す。
     targets.cloudRT.Release(resources);
     targets.waterSceneColorRT.Release(resources);
     targets.waterSceneDepthRT.Release(resources);
@@ -387,9 +388,9 @@ bool ComputeTerrainWorldBounds(const Transform& transform, const TerrainComponen
     return outBounds.radius > 0.0f;
 }
 
-// 視錐台スライス [nearZ, farZ] の外接球。centerDistance はカメラ前方への距離。
-// 8 頂点へ合わせるとカメラの回転で箱の大きさが変わり、影の精細度が脈動する。
-// 外接球の半径は向きに依存しない。
+/// @note 視錐台スライス [nearZ, farZ] の外接球。centerDistance はカメラ前方への距離。
+/// @note 8 頂点へ合わせるとカメラの回転で箱の大きさが変わり、影の精細度が脈動する。
+/// @note 外接球の半径は向きに依存しない。
 struct FrustumSliceSphere {
     float centerDistance = 0.0f;
     float radius         = 0.0f;
@@ -402,8 +403,8 @@ FrustumSliceSphere ComputeFrustumSliceSphere(const renderer::Camera& camera,
     nearZ = (std::max)(nearZ, 0.01f);
     farZ  = (std::max)(farZ, nearZ + 0.01f);
 
-    // 平行投影は錐台ではなく直方体なので、対角の傾きという概念が無い。
-    // スライスの外接球は「中央 + 半対角」でそのまま求まる。
+    /// @note 平行投影は錐台ではなく直方体なので、対角の傾きという概念が無い。
+    /// @note スライスの外接球は「中央 + 半対角」でそのまま求まる。
     if (camera.m_projection == renderer::ProjectionMode::Orthographic) {
         const float halfH = (std::max)(camera.m_orthoHeight, 0.01f) * 0.5f;
         const float halfW = halfH * camera.m_aspect;
@@ -414,14 +415,14 @@ FrustumSliceSphere ComputeFrustumSliceSphere(const renderer::Camera& camera,
         return box;
     }
 
-    // 視錐台の対角方向の傾き。k = |(±aspect*t, ±t, 1)| の xy 成分の長さ。
+    /// @note 視錐台の対角方向の傾き。k = |(±aspect*t, ±t, 1)| の xy 成分の長さ。
     const float tanHalfFov = std::tan(camera.m_fovY * 0.5f * DEG_TO_RAD);
     const float k  = tanHalfFov * std::sqrt(1.0f + camera.m_aspect * camera.m_aspect);
     const float k2 = k * k;
 
     FrustumSliceSphere sphere;
-    // near 面が far 面より広いほど中心は手前へ寄る。k² が十分大きいときは
-    // far 面の外接円がスライス全体を包むので、中心は far 面上に載る。
+    /// @note near 面が far 面より広いほど中心は手前へ寄る。k² が十分大きいときは
+    /// @note far 面の外接円がスライス全体を包むので、中心は far 面上に載る。
     if (k2 >= (farZ - nearZ) / (farZ + nearZ)) {
         sphere.centerDistance = farZ;
         sphere.radius         = farZ * k;
@@ -437,9 +438,9 @@ FrustumSliceSphere ComputeFrustumSliceSphere(const renderer::Camera& camera,
     return sphere;
 }
 
-// practical split scheme。対数分割 (手前を細かく) と等分割 (遠方を細かく) を lambda で補間する。
-// 対数だけだと遠景の影が溶け、等分だけだと足元が粗くなる。
-// outSplits[i] は「カスケード i が担当する far 距離」。outSplits[count-1] == shadowDistance。
+/// @note practical split scheme。対数分割 (手前を細かく) と等分割 (遠方を細かく) を lambda で補間する。
+/// @note 対数だけだと遠景の影が溶け、等分だけだと足元が粗くなる。
+/// @note outSplits[i] は「カスケード i が担当する far 距離」。outSplits[count-1] == shadowDistance。
 void ComputeCascadeSplits(float nearZ, float shadowDistance, int cascadeCount,
                           float lambda, float* outSplits)
 {
@@ -452,7 +453,7 @@ void ComputeCascadeSplits(float nearZ, float shadowDistance, int cascadeCount,
         const float uniformSplit = nearZ + range * ratio;
         outSplits[i] = clampedLambda * logSplit + (1.0f - clampedLambda) * uniformSplit;
     }
-    // 丸め誤差で最遠が shadowDistance を下回ると、影の到達距離が設定より短くなる。
+    /// @note 丸め誤差で最遠が shadowDistance を下回ると、影の到達距離が設定より短くなる。
     outSplits[cascadeCount - 1] = shadowDistance;
 }
 
@@ -500,20 +501,20 @@ void RenderSystem(Scene& scene,
 {
     FBZZ_PROFILE_SCOPE("RenderSystem");
 
-    // カリング挙動は「明示指定 > シーンのメインカメラ > 既定値」の順で解決する。
-    // シーンから引くのは、RenderSystem を素で呼ぶ Standalone でも CameraComponent の設定を効かせるため。
+    /// @note カリング挙動は「明示指定 > シーンのメインカメラ > 既定値」の順で解決する。
+    /// @note シーンから引くのは、RenderSystem を素で呼ぶ Standalone でも CameraComponent の設定を効かせるため。
     const CameraCullingSettings resolvedCulling =
         cullingSettings ? *cullingSettings : ResolveGameCullingSettings(scene);
 
-    // VFXCameraShake — VFX グラフの Camera Shake ノードによる揺れ。
-    // カメラ本体を書き換えると DebugCamera の yaw/pitch と乖離して操作が壊れる。
-    // 描画用のコピーだけをずらす。カリングも揺れた視点で行うので画面端の不整合も出ない。
+    /// @note VFXCameraShake — VFX グラフの Camera Shake ノードによる揺れ。
+    /// @note カメラ本体を書き換えると DebugCamera の yaw/pitch と乖離して操作が壊れる。
+    /// @note 描画用のコピーだけをずらす。カリングも揺れた視点で行うので画面端の不整合も出ない。
     renderer::Camera shakenCamera = inputCamera;
     {
         math::Vector3 offset = math::Vector3::ZERO;
         float rollDegrees = 0.0f;
-        // 方向性のキックだけはワールド空間で積む。«どちらから押されたか» が本体なので、
-        // カメラのローカル軸へ畳むと向きの情報が消える。
+        /// @note 方向性のキックだけはワールド空間で積む。«どちらから押されたか» が本体なので、
+        /// @note カメラのローカル軸へ畳むと向きの情報が消える。
         math::Vector3 worldKick = math::Vector3::ZERO;
         for (EntityID id : scene.GetEntities<VFXCameraShake>()) {
             GameObject* go       = scene.GetGameObject(id);
@@ -522,7 +523,7 @@ void RenderSystem(Scene& scene,
             const VFXCameraShake& shake = *shakePtr;
             const float weight = shake.enabled ? std::clamp(shake.weight, 0.0f, 1.0f) : 0.0f;
             if (weight <= 0.0f) continue;
-            // 発生源から遠いほど弱める。radius <= 0 は距離減衰なし。
+            /// @note 発生源から遠いほど弱める。radius <= 0 は距離減衰なし。
             float distanceScale = 1.0f;
             if (shake.radius > 0.0f) {
                 const float distance = (go->transform.worldPosition - inputCamera.m_position).Length();
@@ -530,26 +531,26 @@ void RenderSystem(Scene& scene,
             }
             const float amount = weight * distanceScale;
             if (amount <= 0.0f) continue;
-            // 軸ごとに位相をずらした正弦の合成。決定論的で、フレームレートに依存しない。
+            /// @note 軸ごとに位相をずらした正弦の合成。決定論的で、フレームレートに依存しない。
             const float phase = shake.elapsed * shake.frequency;
             offset.x += std::sin(phase * 1.00f) * shake.amplitude * amount;
             offset.y += std::sin(phase * 1.37f + 1.7f) * shake.amplitude * amount;
             offset.z += std::sin(phase * 0.83f + 3.1f) * shake.amplitude * amount * 0.5f;
             rollDegrees += std::sin(phase * 1.11f + 0.6f) * shake.rotationAmplitude * amount;
 
-            // 方向性のキック。«発生源から見て押しのけられる» 向きへ 1 回だけ動かす。
+            /// @note 方向性のキック。«発生源から見て押しのけられる» 向きへ 1 回だけ動かす。
             if (shake.kick != 0.0f) {
                 math::Vector3 direction = shake.kickDirection;
                 if (direction.LengthSq() <= 0.0001f)
                     direction = inputCamera.m_position - go->transform.worldPosition;
-                // 発生源とカメラが同じ点にあるときは «押す向き» が決まらない。
-                // 揺れだけを残し、キックは捨てる (前方へ倒すと爆心で毎回同じ癖が出る)。
+                /// @note 発生源とカメラが同じ点にあるときは «押す向き» が決まらない。
+                /// @note 揺れだけを残し、キックは捨てる (前方へ倒すと爆心で毎回同じ癖が出る)。
                 worldKick += direction.NormalizedOr(math::Vector3::ZERO) * (shake.kick * amount);
             }
         }
         if (offset.LengthSq() > 0.0f || worldKick.LengthSq() > 0.0f || rollDegrees != 0.0f) {
             constexpr float DEG_TO_RAD = 0.01745329251994329577f;
-            // オフセットはカメラのローカル軸で与え、向きに依らず自然に揺れるようにする。
+            /// @note オフセットはカメラのローカル軸で与え、向きに依らず自然に揺れるようにする。
             shakenCamera.m_position = inputCamera.m_position
                 + inputCamera.GetRight() * offset.x
                 + inputCamera.GetUp() * offset.y
@@ -564,21 +565,22 @@ void RenderSystem(Scene& scene,
     static renderer::RenderSettings sDefaultSettings;
     renderer::RenderSettings effectiveSettings = settings ? *settings : sDefaultSettings;
 
-    // ── ルック設定の解決 ───────────────────────────────────────────
-    // ベースは VolumeSettings の既定値で、ボリュームが唯一の供給源
-    // (ProjectSettings からポストプロセスと高度グラフィクスの公開は撤去済み)。
-    // 隠れた全体ベースを持つと、同じプロファイルが別プロジェクトで違う絵になる。
+    /// @name ルック設定の解決
+    /// @note ベースは VolumeSettings の既定値で、ボリュームが唯一の供給源
+    /// @note (ProjectSettings からポストプロセスと高度グラフィクスの公開は撤去済み)。
+    /// @note 隠れた全体ベースを持つと、同じプロファイルが別プロジェクトで違う絵になる。
     renderer::VolumeSettings volumeSettings;
     if (const auto* runtimePostProcess = scene.TryGetRuntimePostProcessSettings())
         volumeSettings.post = *runtimePostProcess;
 
-    // ── コンポーネントによる設定上書き (ProjectSettings < runtimePostProcess < Component) ───
-    // View<> を使わないのは GameObject が取れず activeInHierarchy() を見られないため。
-    // enabled (コンポーネントを切る) と activeInHierarchy() (オブジェクトごと切る) の
-    // どちらでも絵から消える必要がある。
-    //
-    // EnvironmentLightComponent — シーン Inspector から IBL を上書きする。先着優先。
-    IblSource activeIblSource = IblSource::StaticDDS; // 空連動 IBL: 採用された EnvironmentLight の source
+    /// @name コンポーネントによる設定上書き (ProjectSettings < runtimePostProcess < Component)
+    /// @note View<> を使わないのは GameObject が取れず activeInHierarchy() を見られないため。
+    /// @note enabled (コンポーネントを切る) と activeInHierarchy() (オブジェクトごと切る) の
+    /// @note どちらでも絵から消える必要がある。
+    ///
+    /// @note EnvironmentLightComponent — シーン Inspector から IBL を上書きする。先着優先。
+    /// @note 空連動 IBL: 採用された EnvironmentLight の source
+    IblSource activeIblSource = IblSource::StaticDDS;
     for (EntityID id : scene.GetEntities<EnvironmentLightComponent>()) {
         GameObject* go     = scene.GetGameObject(id);
         auto*       elcPtr = scene.GetComponent<EnvironmentLightComponent>(id);
@@ -595,7 +597,7 @@ void RenderSystem(Scene& scene,
         effectiveSettings.ibl.maxMipLevel    = elc.maxMipLevel;
         break;
     }
-    // AtmosphericScatteringComponent — シーン Inspector から霧設定を上書きする。
+    /// @note AtmosphericScatteringComponent — シーン Inspector から霧設定を上書きする。
     for (EntityID id : scene.GetEntities<AtmosphericScatteringComponent>()) {
         GameObject* go     = scene.GetGameObject(id);
         auto*       atmPtr = scene.GetComponent<AtmosphericScatteringComponent>(id);
@@ -611,9 +613,9 @@ void RenderSystem(Scene& scene,
         fog.color[2]   = atm.fogColor.z;
         break;
     }
-    // ── PostProcessVolumeComponent の合成 ────────────────────────────────────
-    // ベースの上に、有効なボリュームを priority 昇順で重み付きブレンドする。
-    // 走査順に任せると GameObject を作り直しただけで重なり順が変わる。
+    /// @name PostProcessVolumeComponent の合成
+    /// @note ベースの上に、有効なボリュームを priority 昇順で重み付きブレンドする。
+    /// @note 走査順に任せると GameObject を作り直しただけで重なり順が変わる。
     {
         struct VolumeEntry {
             const PostProcessVolumeComponent* volume  = nullptr;
@@ -622,8 +624,8 @@ void RenderSystem(Scene& scene,
         };
         std::vector<VolumeEntry> entries;
 
-        // 距離判定はシェイク適用後のカメラ位置で行う。
-        // シェイク量は influenceRadius に対して無視できるので、視点を使い分けない。
+        /// @note 距離判定はシェイク適用後のカメラ位置で行う。
+        /// @note シェイク量は influenceRadius に対して無視できるので、視点を使い分けない。
         const math::Vector3 viewPosition = camera.m_position;
 
         for (EntityID id : scene.GetEntities<PostProcessVolumeComponent>()) {
@@ -632,8 +634,8 @@ void RenderSystem(Scene& scene,
             if (!go || !ppvPtr || !go->activeInHierarchy() || !ppvPtr->enabled) continue;
             const PostProcessVolumeComponent& ppv = *ppvPtr;
 
-            // プロファイル未アサイン / 参照切れのボリュームは何も適用しない。
-            // 既定値へ倒すと「素のルック」を主張して priority 次第で他を打ち消す。
+            /// @note プロファイル未アサイン / 参照切れのボリュームは何も適用しない。
+            /// @note 既定値へ倒すと「素のルック」を主張して priority 次第で他を打ち消す。
             const asset::PostProcessProfile* resolved = ppv.Resolve();
             if (!resolved) continue;
 
@@ -648,32 +650,32 @@ void RenderSystem(Scene& scene,
             entries.push_back({ &ppv, resolved, weight });
         }
 
-        // priority 昇順。同値は安定ソートで走査順を保つ (再現性のため)。
+        /// @note priority 昇順。同値は安定ソートで走査順を保つ (再現性のため)。
         std::stable_sort(entries.begin(), entries.end(),
             [](const VolumeEntry& lhs, const VolumeEntry& rhs) {
                 return lhs.volume->priority < rhs.volume->priority;
             });
 
         for (const VolumeEntry& entry : entries) {
-            // 持っているオーバーライドだけが混ざり、載っていない効果は素通し。
-            // 「洞窟プロファイルは Fog と Color Grading だけ持つ」差分オーサリングが成立する。
+            /// @note 持っているオーバーライドだけが混ざり、載っていない効果は素通し。
+            /// @note 「洞窟プロファイルは Fog と Color Grading だけ持つ」差分オーサリングが成立する。
             entry.profile->ApplyTo(volumeSettings, entry.weight);
         }
 
-        // 以降のコードは effectiveSettings.postProcess や .ssr をフラットに読む。
+        /// @note 以降のコードは effectiveSettings.postProcess や .ssr をフラットに読む。
         renderer::ApplyVolumeSettings(volumeSettings, effectiveSettings);
     }
-    // VFXScreenEffect — VFX グラフの ScreenEffect ノードが出す一時的な画面演出。
-    // PostProcessVolume は「設定の差し替え」なので一瞬の上乗せや同時発生を表現できない。
-    // 解決済み設定へ後段で加算する。フラッシュだけは飽和するので最大値を採る。
+    /// @note VFXScreenEffect — VFX グラフの ScreenEffect ノードが出す一時的な画面演出。
+    /// @note PostProcessVolume は「設定の差し替え」なので一瞬の上乗せや同時発生を表現できない。
+    /// @note 解決済み設定へ後段で加算する。フラッシュだけは飽和するので最大値を採る。
     {
         renderer::PostProcessSettings& pp = effectiveSettings.postProcess;
         float strongestFlash = 0.0f;
-        // 輪だけは «一番強い 1 枚» を採る。中心と半径を足すと、2 つの爆発が
-        // «画面のどこにも無い中心を持つ 1 つの輪» に化ける。
+        /// @note 輪だけは «一番強い 1 枚» を採る。中心と半径を足すと、2 つの爆発が
+        /// @note «画面のどこにも無い中心を持つ 1 つの輪» に化ける。
         float strongestRing = 0.0f;
-        // 露出・色は «押し» の合計。掛け算ではなく加算なので、同時に走った演出は
-        // それぞれのぶんだけ深くなる (0 が «素» になる設計)。
+        /// @note 露出・色は «押し» の合計。掛け算ではなく加算なので、同時に走った演出は
+        /// @note それぞれのぶんだけ深くなる (0 が «素» になる設計)。
         float exposureOffset = 0.0f;
         float saturationOffset = 0.0f;
         float contrastOffset = 0.0f;
@@ -700,12 +702,12 @@ void RenderSystem(Scene& scene,
                 pp.vignette.enabled = true;
                 pp.vignette.intensity += effect.vignette * weight;
             }
-            // 放射ブラーは «有効フラグ» を持たない。0 のときシェーダー側が
-            // 早期 return するので、加算するだけで «掛かっていない» が成立する。
+            /// @note 放射ブラーは «有効フラグ» を持たない。0 のときシェーダー側が
+            /// @note 早期 return するので、加算するだけで «掛かっていない» が成立する。
             if (effect.radialBlur > 0.0f)
                 pp.lens.radialBlur += effect.radialBlur * weight;
-            // 輪は «進捗» で外へ走る。progress=0 (窓の頭 / 配り手が居ない) では
-            // 半径 0 の点になってしまうので、そのフレームは掛けない。
+            /// @note 輪は «進捗» で外へ走る。progress=0 (窓の頭 / 配り手が居ない) では
+            /// @note 半径 0 の点になってしまうので、そのフレームは掛けない。
             const float ring = effect.shockRingAmplitude * weight;
             if (ring > strongestRing && effect.progress > 0.0f) {
                 strongestRing = ring;
@@ -731,9 +733,9 @@ void RenderSystem(Scene& scene,
         if (exposureOffset != 0.0f)
             pp.exposure = (std::max)(pp.exposure + exposureOffset, 0.0f);
         if (saturationOffset != 0.0f || contrastOffset != 0.0f) {
-            // 切ってあったグレーディングを «押し» のために点けるときは、必ず素の値から
-            // 始める。プロファイルが書いた値がぶら下がったまま有効になると、
-            // 止めの一瞬だけ «誰も指示していない色» へ飛ぶ。
+            /// @note 切ってあったグレーディングを «押し» のために点けるときは、必ず素の値から
+            /// @note 始める。プロファイルが書いた値がぶら下がったまま有効になると、
+            /// @note 止めの一瞬だけ «誰も指示していない色» へ飛ぶ。
             if (!pp.colorGrading.enabled) {
                 pp.colorGrading = renderer::ColorGradingSettings{};
                 pp.colorGrading.enabled = true;
@@ -742,26 +744,24 @@ void RenderSystem(Scene& scene,
             pp.colorGrading.contrast += contrastOffset;
         }
     }
-    // NOTE: ReflectionProbeComponent は将来の局所反射ブレンド実装で使用予定。
-    //       現時点は Inspector / Serializer のみ対応し、RenderSystem での適用は未実装。
+    /// @note ReflectionProbeComponent は将来の局所反射ブレンド実装で使用予定。
+    /// @note 現時点は Inspector / Serializer のみ対応し、RenderSystem での適用は未実装。
 
     const renderer::RenderSettings& rs = effectiveSettings;
 
-    // 静的ハンドルの検証・デバイスリセット復旧・初回バッファ生成をまとめて計測する。
+    /// @note 静的ハンドルの検証・デバイスリセット復旧・初回バッファ生成をまとめて計測する。
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::StaticResourceSetup", "Rendering"));
 
-    // =========================================================================
-    // 静的リソースの遅延初期化
-    // =========================================================================
+    /// @note 静的リソースの遅延初期化
     static uint64_t sResourceResetVersion = resources.GetResetVersion();
-    // シャドウアトラスは «解像度が動く» リソース (画質プリセットとエディタの Play/Stop)。
-    // 作り直しと解放は SizedRenderTarget に任せる ─ 自前で書くと、返し忘れた 1 か所が
-    // そのまま «ShadowPass だけ突然重い» になる。
+    /// @note シャドウアトラスは «解像度が動く» リソース (画質プリセットとエディタの Play/Stop)。
+    /// @note 作り直しと解放は SizedRenderTarget に任せる ─ 自前で書くと、返し忘れた 1 か所が
+    /// @note そのまま «ShadowPass だけ突然重い» になる。
     static renderer::SizedRenderTarget shadowMapRT;
-    // Spot / Point 用のシャドウアトラス。Directional の CSM とは面積を共有しない。
+    /// @note Spot / Point 用のシャドウアトラス。Directional の CSM とは面積を共有しない。
     static renderer::SizedRenderTarget punctualShadowRT;
-    // ライト Cookie を敷き詰めるアトラス。寸法は固定なので作り直しは起きない。
+    /// @note ライト Cookie を敷き詰めるアトラス。寸法は固定なので作り直しは起きない。
     static renderer::SizedRenderTarget lightCookieRT;
     static auto cookieBlitShader =
         resources.LoadShader("Assets/Shaders/Pipeline/Lighting/CookieBlit.hlsl");
@@ -769,10 +769,10 @@ void RenderSystem(Scene& scene,
     static auto skinnedShadowShader  = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
     static auto velocityShader        = resources.LoadShader("Assets/Shaders/Motion/Velocity.hlsl");
     static auto velocitySkinnedShader = resources.LoadShader("Assets/Shaders/Motion/VelocitySkinned.hlsl");
-    // コンピュートスキニング。無効ならスキンド描画は従来の VS スキニング経路へ落ちる。
+    /// @note コンピュートスキニング。無効ならスキンド描画は従来の VS スキニング経路へ落ちる。
     static auto skinningComputeCS    = resources.LoadShader("Assets/Shaders/Pipeline/Skinning/SkinningCompute.cs.hlsl");
 
-    // スキンドメッシュに AnimatorComponent がない場合のアイデンティティボーンパレット
+    /// @note スキンドメッシュに AnimatorComponent がない場合のアイデンティティボーンパレット
     static renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
     if (!bindPoseSkinningCB.IsValid()) {
         struct BindPoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };
@@ -802,7 +802,7 @@ void RenderSystem(Scene& scene,
     static auto fxaaShader              = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
     static auto upscaleShader           = resources.LoadShader("Assets/Shaders/PostProcess/Upscale/Upscale.hlsl");
 
-    // ---- Advanced Graphics シェーダー (static で初回ロード、Reset 後に再ロード) ----
+    /// @name Advanced Graphics シェーダー (static で初回ロード、Reset 後に再ロード)
     static auto iblBrdfBakeShader   = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/BRDFIntegration.cs.hlsl");
     static auto gtaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAO.cs.hlsl");
     static auto gtaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAOBlur.cs.hlsl");
@@ -812,8 +812,8 @@ void RenderSystem(Scene& scene,
     static auto taaShader           = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/TAA.hlsl");
     static auto motionBlurShader    = resources.LoadShader("Assets/Shaders/PostProcess/Motion/MotionBlur.cs.hlsl");
     static auto lensFlareShader     = resources.LoadShader("Assets/Shaders/PostProcess/Flare/LensFlare.hlsl");
-    // WHY: BRDF LUT は 512×512 の定数テーブルで、解像度・シーンが変わっても内容は変わらない。
-    //      毎フレーム再生成するコストを避けるため static で一度だけ生成し、IBLBakePass でのみ書き込む。
+    /// @note BRDF LUT は 512x512 の定数テーブルで、解像度・シーンが変わっても内容は変わらない。
+    /// @note 毎フレーム再生成するコストを避けるため static で一度だけ生成し、IBLBakePass でのみ書き込む。
     static auto iblBrdfLut          = resources.CreateComputeTexture(512, 512);
     static renderer::ResourceHandle<renderer::TextureTag> proceduralColorLut;
     static uint64_t proceduralColorLutHash = 0u;
@@ -822,8 +822,8 @@ void RenderSystem(Scene& scene,
     static auto sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
     static auto skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
 
-    // 空連動 IBL (環境システム Phase A): 空を焼くキューブマップ RT と、面ごとの view/proj 用 CB。
-    // EnvironmentResources はフレームをまたいで保持し、SkyRenderer が変化した時だけ再キャプチャする。
+    /// @note 空連動 IBL (環境システム Phase A): 空を焼くキューブマップ RT と、面ごとの view/proj 用 CB。
+    /// @note EnvironmentResources はフレームをまたいで保持し、SkyRenderer が変化した時だけ再キャプチャする。
     static constexpr uint32_t kSkyEnvCubeSize = 128;
     static EnvironmentResources sEnvironmentResources;
     static uint64_t sEnvResetVersion = resources.GetResetVersion();
@@ -833,7 +833,7 @@ void RenderSystem(Scene& scene,
         sEnvResetVersion  = resources.GetResetVersion();
         skyEnvCubeRT      = resources.CreateCubemapRenderTarget(kSkyEnvCubeSize, 1);
         skyCaptureFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
-        // リソース再生成後 (デバイスリセット等) は古い動的 IBL ハンドルが無効。クリアして焼き直す。
+        /// @note リソース再生成後 (デバイスリセット等) は古い動的 IBL ハンドルが無効。クリアして焼き直す。
         sEnvironmentResources.skyEnvCube    = {};
         sEnvironmentResources.skyIrradiance = {};
         sEnvironmentResources.skyPrefilter  = {};
@@ -841,8 +841,8 @@ void RenderSystem(Scene& scene,
         sEnvironmentResources.MarkDirty();
     }
 
-    // ボリューメトリック雲の 3D ノイズ (Shape 128³ + Detail 32³) を起動時に 1 回だけ CPU 焼きする。
-    // タイラブルなので WRAP サンプルで無限に並べられる。デバイスリセット後は SRV が無効になるため焼き直す。
+    /// @note ボリューメトリック雲の 3D ノイズ (Shape 128³ + Detail 32³) を起動時に 1 回だけ CPU 焼きする。
+    /// @note タイラブルなので WRAP サンプルで無限に並べられる。デバイスリセット後は SRV が無効になるため焼き直す。
     static renderer::ResourceHandle<renderer::TextureTag> cloudShapeTex;
     static renderer::ResourceHandle<renderer::TextureTag> cloudDetailTex;
     if (resources.Get(cloudShapeTex) == nullptr || resources.Get(cloudDetailTex) == nullptr) {
@@ -857,31 +857,31 @@ void RenderSystem(Scene& scene,
     static auto deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
     static auto depthCopyShader        = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
 
-    // クラスタライトカリング (Forward+ / Deferred+)。
+    /// @note クラスタライトカリング (Forward+ / Deferred+)。
     static auto clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
-    // clusterIndexBuffer は解像度非依存の固定長なので確保は初回の 1 回だけ。
-    // CS が u2 へ書き PS が t30 から読むので RW。
-    // punctualLightBuffer (CPU が書いて GPU が読むだけ) は 1 枚を共有せず、描くたびに借りる。
-    // WHY: DX12 の読み取り専用 StructuredBuffer は Upload ヒープへの直 memcpy。1 枚だと
-    //      Scene View の Draw が Game View の書いた配列を読み、GPU がまだ読んでいる
-    //      前フレームの配列も上書きする (ライトが増減したフレームにだけ幽霊が出る)。
+    /// @note clusterIndexBuffer は解像度非依存の固定長なので確保は初回の 1 回だけ。
+    /// @note CS が u2 へ書き PS が t30 から読むので RW。
+    /// @note punctualLightBuffer (CPU が書いて GPU が読むだけ) は 1 枚を共有せず、描くたびに借りる。
+    /// @note DX12 の読み取り専用 StructuredBuffer は Upload ヒープへの直 memcpy。1 枚だと
+    /// @note Scene View の Draw が Game View の書いた配列を読み、GPU がまだ読んでいる
+    /// @note 前フレームの配列も上書きする (ライトが増減したフレームにだけ幽霊が出る)。
     static renderer::DynamicStructuredBufferPool punctualLightPool;
     static auto clusterIndexBuffer = resources.CreateRWStructuredBuffer(
         nullptr, kClusterCount * kClusterStride, static_cast<uint32_t>(sizeof(uint32_t)));
 
-    // 自動露出のバッファはビュー単位 (ViewRenderTargets) で確保する。シェーダーだけ共有。
+    /// @note 自動露出のバッファはビュー単位 (ViewRenderTargets) で確保する。シェーダーだけ共有。
     static auto exposureHistogramCS =
         resources.LoadShader("Assets/Shaders/PostProcess/Color/ExposureHistogram.cs.hlsl");
     static auto exposureAverageCS =
         resources.LoadShader("Assets/Shaders/PostProcess/Color/ExposureAverage.cs.hlsl");
 
-    // フロクセル霧の CS。ボリューム本体はビュー単位なので、下の per-view ブロックで確保する。
+    /// @note フロクセル霧の CS。ボリューム本体はビュー単位なので、下の per-view ブロックで確保する。
     static auto froxelInjectCS =
         resources.LoadShader("Assets/Shaders/PostProcess/Cloud/FroxelInject.cs.hlsl");
     static auto froxelIntegrateCS =
         resources.LoadShader("Assets/Shaders/PostProcess/Cloud/FroxelIntegrate.cs.hlsl");
     static auto clusterCB = resources.CreateConstantBuffer(sizeof(ClusterConstantsCB));
-    // 別視点から描くパス用に、供給モードだけ Linear へ落とした同内容の CB。
+    /// @note 別視点から描くパス用に、供給モードだけ Linear へ落とした同内容の CB。
     static auto clusterLinearCB = resources.CreateConstantBuffer(sizeof(ClusterConstantsCB));
 
     static auto decalShader     = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
@@ -891,12 +891,12 @@ void RenderSystem(Scene& scene,
     static auto particleShader      = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
     static auto particleGpuSimCS   = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
     static auto particleGpuShader  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
-    // GPU ソート 3 段 (キー生成 / グローバル段 / LDS 段)。sortMode != None のときだけ走る。
+    /// @note GPU ソート 3 段 (キー生成 / グローバル段 / LDS 段)。sortMode != None のときだけ走る。
     static auto particleGpuSortKeysCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortKeys.cs.hlsl");
     static auto particleGpuSortStepCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortStep.cs.hlsl");
     static auto particleGpuSortLocalCS = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortLocal.cs.hlsl");
     static auto particleGpuMeshShader  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuMesh.hlsl");
-    // 自己影: 光源から見た密度を積む。selfShadowStrength > 0 のエミッターがあるときだけ走る。
+    /// @note 自己影: 光源から見た密度を積む。selfShadowStrength > 0 のエミッターがあるときだけ走る。
     static auto particleSelfShadowShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleSelfShadowDensity.hlsl");
     static auto trailShader    = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
     static auto meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
@@ -909,7 +909,7 @@ void RenderSystem(Scene& scene,
     static auto cookieBlitCB     = resources.CreateConstantBuffer(sizeof(CookieBlitCB));
     static auto exposureCB       = resources.CreateConstantBuffer(sizeof(AutoExposureCB));
     static auto froxelFogCB      = resources.CreateConstantBuffer(sizeof(FroxelFogCB));
-    // コンピュートスキニングの b0 (頂点数のみ)。16 バイト境界へ切り上げられる。
+    /// @note コンピュートスキニングの b0 (頂点数のみ)。16 バイト境界へ切り上げられる。
     static auto skinningCB = resources.CreateConstantBuffer(16);
     static auto postprocCB = resources.CreateConstantBuffer(sizeof(PostProcCB));
     static auto outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
@@ -919,14 +919,14 @@ void RenderSystem(Scene& scene,
     static auto decalMaterialCB = resources.CreateConstantBuffer(sizeof(DecalMaterialCB));
     static auto decalReceiverCB = resources.CreateConstantBuffer(sizeof(DecalReceiverCB));
     static auto volumetricCloudCB = resources.CreateConstantBuffer(176);
-    // パーティクル自己影: 光源側の密度 RT と、光源行列を入れる専用 frame CB。
-    // RenderPassHandles は毎フレーム作り直される値型なので、パス側で遅延生成すると RT を漏らす。
-    // 解像度が固定なのは、拾うのが「煙の内部で光がどれだけ減るか」という低周波の情報だから。
+    /// @note パーティクル自己影: 光源側の密度 RT と、光源行列を入れる専用 frame CB。
+    /// @note RenderPassHandles は毎フレーム作り直される値型なので、パス側で遅延生成すると RT を漏らす。
+    /// @note 解像度が固定なのは、拾うのが「煙の内部で光がどれだけ減るか」という低周波の情報だから。
     static renderer::SizedRenderTarget particleSelfShadowRT;
     static auto particleSelfShadowFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
 
-    // WHY: static handle は通常フレームでは再利用し、ResourceManager::Reset() 後だけ世代差分で再生成する。
-    //      これによりデバイスロスト復帰時も旧ネイティブリソースへ触らない。
+    /// @note static handle は通常フレームでは再利用し、ResourceManager::Reset() 後だけ世代差分で再生成する。
+    /// @note これによりデバイスロスト復帰時も旧ネイティブリソースへ触らない。
     static auto defaultPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
@@ -1012,21 +1012,21 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_OFF
     });
-    // VolumetricCloud.hlsl は scatter.rgb に既に透過率を積分した premultiplied 値を返す。
-    // Overdraw 可視化も volumetricCloudPSO を共有するため、雲の合成だけ専用 PSO に分離する。
+    /// @note VolumetricCloud.hlsl は scatter.rgb に既に透過率を積分した premultiplied 値を返す。
+    /// @note Overdraw 可視化も volumetricCloudPSO を共有するため、雲の合成だけ専用 PSO に分離する。
     static auto volumetricCloudPremultipliedPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::PREMULTIPLIED,
         renderer::DepthMode::DEPTH_OFF
     });
-    // ---- Advanced Graphics PSO / 定数バッファ ----
-    // taaPSO: OPAQUE — TAA は ping-pong バッファへ上書きするため α ブレンドは不要
+    /// @name Advanced Graphics PSO / 定数バッファ
+    /// @note taaPSO: OPAQUE — TAA は ping-pong バッファへ上書きするため α ブレンドは不要
     static auto taaPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_OFF
     });
-    // lensFlarePSO: ADDITIVE — ゴーストはフレアを HDR バッファに加算合成する
+    /// @note lensFlarePSO: ADDITIVE — ゴーストはフレアを HDR バッファに加算合成する
     static auto lensFlarePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::ADDITIVE,
@@ -1045,39 +1045,34 @@ void RenderSystem(Scene& scene,
 
     const bool resourcesWereReset = sResourceResetVersion != resources.GetResetVersion();
 
-    // GPU リソースが «増え続けていないか» をフレーム単位で見張る。
-    // WHY ここか: 描画は 1 フレームに 1 度だけ通り、resources を持っている。
+    /// @note GPU リソースが «増え続けていないか» をフレーム単位で見張る。
+    /// @note 描画は 1 フレームに 1 度だけ通り、resources を持っているのでここに置く。
     resources.TickLeakWatchdog();
 
-    // シャドウアトラス。解像度は «動く» ─ 画質プリセットの適用 (GameSettings が各シーンの
-    // OnStart で行う) と、エディタの Play / Stop による RenderSettings の差し替えで、
-    // 1 回の試遊につき数回作り直される。1 枚で数十 MB あるので、返し忘れると数回の Play で
-    // 数百 MB 漏れ «ShadowPass だけ突然重い / エディタ再起動で直る» として出る (2026-09-01)。
-    // 解像度は CSM と punctual で別設定なので、それぞれ独立に作り直す。
+    /// @note シャドウアトラス。解像度は «動く» ─ 画質プリセットの適用 (GameSettings が各シーンの
+    /// @note OnStart で行う) と、エディタの Play / Stop による RenderSettings の差し替えで、
+    /// @note 1 回の試遊につき数回作り直される。1 枚で数十 MB あるので、返し忘れると数回の Play で
+    /// @note 数百 MB 漏れ «ShadowPass だけ突然重い / エディタ再起動で直る» として出る (2026-09-01)。
+    /// @note 解像度は CSM と punctual で別設定なので、それぞれ独立に作り直す。
     const uint32_t punctualShadowRes = (std::max)(rs.shadow.punctualMapResolution, 64u);
     (void)punctualShadowRT.Ensure(resources, punctualShadowRes, punctualShadowRes, 0);
 
     if (lightCookieRT.Ensure(resources, kLightCookieAtlasWidth, kLightCookieAtlasHeight, 1)) {
         cookieBlitShader =
             resources.LoadShader("Assets/Shaders/Pipeline/Lighting/CookieBlit.hlsl");
-        // アトラスの中身は作り直しで失われる。焼き直し済みの記録も捨てる。
+        /// @note アトラスの中身は作り直しで失われる。焼き直し済みの記録も捨てる。
         ReleaseLightCookieCache();
     }
 
-    // WHY 下のシェーダー再ロードと分けるか (2026-09-01 の修正):
-    //   以前はアトラスとシェーダーが 1 つの if に同居していて、影の解像度が 1 段変わるだけで
-    //   シェーダー約 40 本・定数バッファ十数個・PSO・BRDF LUT まで作り直していた。
-    //   しかもどれも古いハンドルを返していないので、そのぶんが丸ごと漏れる。
+    /// @note 下のシェーダー再ロードとは別に確保する。同居させると影解像度が 1 段変わるだけで
+    /// @note シェーダー約 40 本・定数バッファ十数個・PSO・BRDF LUT まで作り直し、旧ハンドルが漏れる。
     (void)shadowMapRT.Ensure(resources, rs.shadow.mapResolution, rs.shadow.mapResolution, 0);
 
     (void)particleSelfShadowRT.Ensure(resources, RenderPassHandles::kSelfShadowResolution,
                                       RenderPassHandles::kSelfShadowResolution, 1);
 
-    // シェーダー / 定数バッファ / PSO の作り直し。
-    //
-    // WHY «リセットされたときと初回» だけか: どれもデバイスリセットで実体ごと失われる
-    //   もので、返す相手はもう居ない (だから Release を書いていない)。逆に言えば、
-    //   実体が生きているうちにここを通してはいけない ─ 通ったぶんがそのまま漏れる。
+    /// @note シェーダー / 定数バッファ / PSO の作り直しはデバイスリセット時と初回のみ通す。
+    /// @note どちらも実体ごと失われるため Release は書かない。実体が生きているうちに通すと漏れる。
     static bool sStaticsLoaded = false;
     if (resourcesWereReset || !sStaticsLoaded) {
         sStaticsLoaded        = true;
@@ -1088,7 +1083,7 @@ void RenderSystem(Scene& scene,
         velocityShader        = resources.LoadShader("Assets/Shaders/Motion/Velocity.hlsl");
         velocitySkinnedShader = resources.LoadShader("Assets/Shaders/Motion/VelocitySkinned.hlsl");
         skinningComputeCS   = resources.LoadShader("Assets/Shaders/Pipeline/Skinning/SkinningCompute.cs.hlsl");
-        // Mesh* / AnimatorComponent* をキーにしたキャッシュはリソースリセットで無効になる。
+        /// @note Mesh* / AnimatorComponent* をキーにしたキャッシュはリソースリセットで無効になる。
         ReleaseSkinningComputeCaches();
         compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
         causticsShader      = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
@@ -1119,7 +1114,7 @@ void RenderSystem(Scene& scene,
         decalShader = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
         decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
         decalMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMaskSkinned.hlsl");
-        // .mat の解決結果はシェーダー・テクスチャ・cbuffer のハンドルを持つ。
+        /// @note .mat の解決結果はシェーダー・テクスチャ・cbuffer のハンドルを持つ。
         ReleaseDecalMaterialCache();
         ReleaseCustomPassMaterialCache();
         particleShader     = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
@@ -1134,7 +1129,7 @@ void RenderSystem(Scene& scene,
         meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
         skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
 
-        // ---- Advanced Graphics: デバイスリセット後に再ロード ----
+        /// @name Advanced Graphics: デバイスリセット後に再ロード
         iblBrdfBakeShader   = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/BRDFIntegration.cs.hlsl");
         gtaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAO.cs.hlsl");
         gtaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAOBlur.cs.hlsl");
@@ -1146,8 +1141,8 @@ void RenderSystem(Scene& scene,
         lensFlareShader     = resources.LoadShader("Assets/Shaders/PostProcess/Flare/LensFlare.hlsl");
         taaPSO              = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
         lensFlarePSO        = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE,      renderer::DepthMode::DEPTH_OFF });
-        // WHY: デバイスリセット後は iblBrdfLut の内容が失われるため再生成する。
-        //      IBLBakePass は焼き済み対象を世代付きハンドルで追跡し、新ハンドルを次フレームで再生成する。
+        /// @note デバイスリセット後は iblBrdfLut の内容が失われるため再生成する。
+        /// @note IBLBakePass は焼き済み対象を世代付きハンドルで追跡し、新ハンドルを次フレームで再生成する。
         iblBrdfLut          = resources.CreateComputeTexture(512, 512);
 
         bindPoseSkinningCB = {};
@@ -1158,8 +1153,8 @@ void RenderSystem(Scene& scene,
             bindPoseSkinningCB = resources.CreateConstantBuffer(sizeof(BindPoseData));
             resources.Update(bindPoseSkinningCB, &bp, sizeof(BindPoseData));
         }
-        // モデル側のリファレンスポーズ CB もデバイスリセットで失われる。
-        // ハンドルを落としておけば下の遅延生成が次フレームで作り直す。
+        /// @note モデル側のリファレンスポーズ CB もデバイスリセットで失われる。
+        /// @note ハンドルを落としておけば下の遅延生成が次フレームで作り直す。
         for (auto& go : scene.GameObjects()) {
             if (auto* smr = go.GetComponent<SkinnedMeshRenderer>())
                 if (smr->model) smr->model->referencePoseCB = {};
@@ -1204,8 +1199,8 @@ void RenderSystem(Scene& scene,
         decalMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
     }
 
-    // パーティクルのクワッド用インデックスバッファ (最大描画数分を事前確保)。
-    // 頂点側は共有せず、描画時に DynamicVertexBufferPool から 1 エミッターぶんずつ借りる。
+    /// @note パーティクルのクワッド用インデックスバッファ (最大描画数分を事前確保)。
+    /// @note 頂点側は共有せず、描画時に DynamicVertexBufferPool から 1 エミッターぶんずつ借りる。
     static renderer::ResourceHandle<renderer::BufferTag> particleIB;
     static uint64_t sParticleResetVersion = 0;
     if (sParticleResetVersion != resources.GetResetVersion()) {
@@ -1225,15 +1220,15 @@ void RenderSystem(Scene& scene,
 
     profiler::Profiler::EndSample();
 
-    // UI の描画先種別を安定キーにして、Scene / Game の中間リソースを分離する。
-    // uiOptions がない通常ゲーム描画は key=0 の単一コンテキストを使う。
+    /// @note UI の描画先種別を安定キーにして、Scene / Game の中間リソースを分離する。
+    /// @note uiOptions がない通常ゲーム描画は key=0 の単一コンテキストを使う。
     const uint32_t viewKey = uiOptions
         ? static_cast<uint32_t>(uiOptions->targetView) + 1u
         : 0u;
     static std::unordered_map<uint32_t, ViewRenderTargets> s_viewTargets;
     static uint64_t sRenderTargetResetVersion = 0;
     if (sRenderTargetResetVersion != resources.GetResetVersion()) {
-        // ResourceManager::Reset() 後は旧ハンドルが無効なので Release せずキャッシュだけ破棄する。
+        /// @note ResourceManager::Reset() 後は旧ハンドルが無効なので Release せずキャッシュだけ破棄する。
         s_viewTargets.clear();
         sRenderTargetResetVersion = resources.GetResetVersion();
     }
@@ -1264,29 +1259,29 @@ void RenderSystem(Scene& scene,
     auto& contactShadowResult     = viewTargets.contactShadowResult;
     uint32_t& sHdrW               = viewTargets.width;
     uint32_t& sHdrH               = viewTargets.height;
-    // advancedGraphicsCB はビュー別に生成する。
-    // s_viewTargets.clear() によるデバイスリセット後は無効になるため、ここで lazily 再生成する。
+    /// @note advancedGraphicsCB はビュー別に生成する。
+    /// @note s_viewTargets.clear() によるデバイスリセット後は無効になるため、ここで lazily 再生成する。
     if (!viewTargets.advancedGraphicsCB.IsValid())
         viewTargets.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
     auto& advancedGraphicsCB = viewTargets.advancedGraphicsCB;
-    // 自動露出。ヒストグラムは「読んだ後に自分でクリアする」設計なので初回だけ 0 が要る
-    // (DEFAULT ヒープの初期内容は未定義)。
+    /// @note 自動露出。ヒストグラムは「読んだ後に自分でクリアする」設計なので初回だけ 0 が要る
+    /// @note (DEFAULT ヒープの初期内容は未定義)。
     if (!viewTargets.exposureHistogram.IsValid()) {
         const std::vector<uint32_t> zeros(kExposureHistogramBins, 0u);
         viewTargets.exposureHistogram = resources.CreateRWStructuredBuffer(
             zeros.data(), kExposureHistogramBins, static_cast<uint32_t>(sizeof(uint32_t)));
     }
     if (!viewTargets.exposureResult.IsValid()) {
-        // 負値は「まだ順応していない」の印。CS 側が reset と同じ扱いで拾う。
+        /// @note 負値は「まだ順応していない」の印。CS 側が reset と同じ扱いで拾う。
         const float initial = -1.0f;
         viewTargets.exposureResult =
             resources.CreateRWStructuredBuffer(&initial, 1, static_cast<uint32_t>(sizeof(float)));
     }
 
-    // 出力先の実寸。UI はこの寸法で描く (描画スケールの影響を受けない)。
+    /// @note 出力先の実寸。UI はこの寸法で描く (描画スケールの影響を受けない)。
     uint32_t nativeW = 0;
     uint32_t nativeH = 0;
-    // 内部解像度と出力先の実寸が食い違うフレームか。UpscalePass の要否そのもの。
+    /// @note 内部解像度と出力先の実寸が食い違うフレームか。UpscalePass の要否そのもの。
     bool needsUpscale = false;
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::ResizeRenderTargets");
@@ -1295,27 +1290,25 @@ void RenderSystem(Scene& scene,
         nativeH = output ? output->GetHeight() : renderer.GetHeight();
         if (nativeW == 0 || nativeH == 0) return;
 
-        // 内部描画解像度。ここで倍率を掛ければ中間 RT もビューポートも texelSize も追従する。
-        // 実寸へ戻すのは UpscalePass ただ 1 つ。ポストの各段が outputRT へ直接書くと、
-        // その段だけが実寸で走り、描画スケールで浮かせたはずのコストが最後に戻ってくる。
+        /// @note 内部描画解像度。ここで倍率を掛ければ中間 RT もビューポートも texelSize も追従する。
+        /// @note 実寸へ戻すのは UpscalePass ただ 1 つ。ポストの各段が outputRT へ直接書くと、
+        /// @note その段だけが実寸で走り、描画スケールで浮かせたはずのコストが最後に戻ってくる。
         uint32_t curW = 0;
         uint32_t curH = 0;
         renderer::ResolveRenderResolution(nativeW, nativeH, rs.renderScale, curW, curH);
         if (curW == 0 || curH == 0) return;
         if (!hdrRT.IsValid() || sHdrW != curW || sHdrH != curH)
         {
-            // 全画面ポストの中継先。深度テストも深度書き込みもしないので深度を持たない。
-            // WHY ここだけ落とせるか: 深度が要るのは «ジオメトリを描く RT» と
-            //     «深度を SRV で読まれる RT» の 2 つだけ。中継先はどちらでもない
-            //     (GetDepthTexture の引数を全部当たって確認済み)。
-            //     1080p で 1 枚 8MB、ビューごとに 7 枚ぶん浮く。
+            /// @note 全画面ポストの中継先。深度テストも深度書き込みもしないので深度を持たない。
+            /// @note 深度が要るのは «ジオメトリを描く RT» と «深度を SRV で読まれる RT» の 2 つだけで、
+            /// @note 中継先はどちらでもない。1080p で 1 枚 8MB、ビューごとに 7 枚ぶん浮く。
             constexpr renderer::RenderTargetDesc kPostChainRT{
                 /*colorCount=*/1, renderer::Format::RGBA16F, /*withDepth=*/false };
 
             ReleaseViewRenderTargets(viewTargets, resources);
             hdrRT           = resources.CreateRenderTarget(curW, curH, 1);
             ldrRT           = resources.CreateRenderTarget(curW, curH, kPostChainRT);
-            // 選択マスクと輪郭マスクはジオメトリを描き、深度も読まれる。
+            /// @note 選択マスクと輪郭マスクはジオメトリを描き、深度も読まれる。
             selectionMaskRT = resources.CreateRenderTarget(curW, curH, 1);
             outlineRT       = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             objectMaskRT   = resources.CreateRenderTarget(curW, curH, 1);
@@ -1325,11 +1318,12 @@ void RenderSystem(Scene& scene,
             velocityRT      = resources.CreateRenderTarget(curW, curH, 1);
             decalDepthRT    = resources.CreateRenderTarget(curW, curH, 0);
             decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1);
-            // Bloom のミップ連鎖。段ごとに 1/2、1 まで来たら以降は同寸法のまま確保する。
-            // ダウンサンプル用と足し戻し用の 2 系統。足し戻しは「1 段小さいぼけ + 自分の段の元」
-            // を読んで書くので、読みながら書けない以上は書き先を分ける必要がある。
+            /// @note Bloom のミップ連鎖。段ごとに 1/2、1 まで来たら以降は同寸法のまま確保する。
+            /// @note ダウンサンプル用と足し戻し用の 2 系統。足し戻しは「1 段小さいぼけ + 自分の段の元」
+            /// @note を読んで書くので、読みながら書けない以上は書き先を分ける必要がある。
             for (uint32_t i = 0; i < kBloomMipCount; ++i) {
-                const uint32_t div = 2u << i;   // 2, 4, 8, 16, 32
+                /// @note 2, 4, 8, 16, 32
+                const uint32_t div = 2u << i;
                 const uint32_t mw = (std::max)(1u, curW / div);
                 const uint32_t mh = (std::max)(1u, curH / div);
                 viewTargets.bloomChain[i]   = resources.CreateComputeTexture(mw, mh);
@@ -1337,27 +1331,30 @@ void RenderSystem(Scene& scene,
             }
             bloomHalf       = viewTargets.bloomChain[0];
             bloomFull       = resources.CreateComputeTexture(curW, curH);
-            // AO / 接触影は低周波なので半解像度 (コスト約 1/4)。消費側が linear サンプルで戻す。
-            // SSR は鏡面が崩れるためフル解像度のまま。
+            /// @note AO / 接触影は低周波なので半解像度 (コスト約 1/4)。消費側が linear サンプルで戻す。
+            /// @note SSR は鏡面が崩れるためフル解像度のまま。
             ssaoRaw         = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             ssaoBlur        = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
-            // ---- Advanced Graphics per-view テクスチャ ----
+            /// @name Advanced Graphics per-view テクスチャ
             ssrResult           = resources.CreateComputeTexture(curW, curH);
             volumetricResult    = resources.CreateComputeTexture(curW, curH);
             taaHistoryA         = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             taaHistoryB         = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             motionBlurResult    = resources.CreateComputeTexture(curW, curH);
-            gtaoRaw             = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 AO
-            gtaoBlur            = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 AO
-            contactShadowResult = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 接触影
+            /// @note 半解像度 AO
+            gtaoRaw             = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
+            /// @note 半解像度 AO
+            gtaoBlur            = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
+            /// @note 半解像度 接触影
+            contactShadowResult = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             sHdrW = curW;
             sHdrH = curH;
         }
 
-        // アップスケール元。等倍のときは 1 枚まるごと無駄なので持たない。
-        // WHY 上のリサイズ判定に混ぜないか: 内部解像度は kMinRenderWidth で床に張り付くので、
-        //     出力先だけが動いて curW/curH が変わらないフレームがある。そこで倍率が等倍を
-        //     またぐと、必要な RT が無いまま UpscalePass だけが登録される。
+        /// @note アップスケール元。等倍のときは 1 枚まるごと無駄なので持たない。
+        /// @note 上のリサイズ判定とは別に見る: 内部解像度は kMinRenderWidth で床に張り付くので、
+        /// @note 出力先だけが動いて curW/curH が変わらないフレームがある。そこで倍率が等倍を
+        /// @note またぐと、必要な RT が無いまま UpscalePass だけが登録される。
         needsUpscale = (sHdrW != nativeW) || (sHdrH != nativeH);
         if (needsUpscale) {
             if (!upscaleSrcRT.IsValid())
@@ -1369,9 +1366,9 @@ void RenderSystem(Scene& scene,
             upscaleSrcRT = {};
         }
 
-        // フロクセル霧のボリューム。解像度ではなくグリッド寸法で作り直す。
-        // リサイズのたびに 14MB を作り直すとフレームが飛び、履歴が切れて霧が暗転する。
-        // 無効化しても解放しないのは、切り戻した瞬間に確保が走るのを避けるため。
+        /// @note フロクセル霧のボリューム。解像度ではなくグリッド寸法で作り直す。
+        /// @note リサイズのたびに 14MB を作り直すとフレームが飛び、履歴が切れて霧が暗転する。
+        /// @note 無効化しても解放しないのは、切り戻した瞬間に確保が走るのを避けるため。
         if (rs.froxelFog.enabled) {
             const uint32_t fx = (std::max)(rs.froxelFog.gridX, 1u);
             const uint32_t fy = (std::max)(rs.froxelFog.gridY, 1u);
@@ -1393,7 +1390,7 @@ void RenderSystem(Scene& scene,
                 viewTargets.froxelScatter        = resources.CreateComputeTexture3D(fx, fy, fz);
                 viewTargets.froxelScatterHistory = resources.CreateComputeTexture3D(fx, fy, fz);
                 viewTargets.froxelIntegrated     = resources.CreateComputeTexture3D(fx, fy, fz);
-                // 中身が未初期化の 2 枚を「前フレーム」として読ませない。
+                /// @note 中身が未初期化の 2 枚を「前フレーム」として読ませない。
                 viewTargets.froxelState.grid[0] = 0u;
                 viewTargets.froxelState.grid[1] = 0u;
                 viewTargets.froxelState.grid[2] = 0u;
@@ -1401,59 +1398,57 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    // =========================================================================
-    // ライト収集とシャドウ範囲計算はシーン全体を走査するため、独立して計測する。
+    /// @note ライト収集とシャドウ範囲計算はシーン全体を走査するため、独立して計測する。
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::LightingSetup", "Rendering"));
 
-    // ライト定数バッファを構築
-    // =========================================================================
+    /// @note ライト定数バッファを構築
     renderer::LightConstantsCB lightData{};
     lightData.lightDir       = { 0.0f, -1.0f, 0.5f };
     lightData.lightColor     = { 1.0f,  1.0f, 1.0f };
     lightData.lightIntensity = 1.0f;
 
-    // Directional Light のシャドウ設定 (LightComponent から取得)
+    /// @note Directional Light のシャドウ設定 (LightComponent から取得)
     bool  dirCastShadows    = true;
     float dirShadowBias     = 1.0f;
     float dirShadowStrength = 1.0f;
     float dirShadowDistance = 0.0f;
 
-    // クラスタライティング用の統合ライト配列。b3 の固定長配列と並行して構築する。
-    // b3 は点 8 / スポット 4 で打ち切るが、こちらは 256 本まで拾う。
-    // b3 の詰め方は変えないので、クラスタ未対応のパスの見た目は据え置き。
+    /// @note クラスタライティング用の統合ライト配列。b3 の固定長配列と並行して構築する。
+    /// @note b3 は点 8 / スポット 4 で打ち切るが、こちらは 256 本まで拾う。
+    /// @note b3 の詰め方は変えないので、クラスタ未対応のパスの見た目は据え置き。
     std::vector<PunctualLightGPU> punctualLights;
     punctualLights.reserve(32);
 
-    // 影を落とせるライトの候補 (Directional 以外の全型)。
-    // アトラスは 16 タイルしかなく、走査順に配ると「シーンのどこに置いたか」で
-    // 影の有無が決まる。全部集めてから捨てる相手を選ぶ。
+    /// @note 影を落とせるライトの候補 (Directional 以外の全型)。
+    /// @note アトラスは 16 タイルしかなく、走査順に配ると「シーンのどこに置いたか」で
+    /// @note 影の有無が決まる。全部集めてから捨てる相手を選ぶ。
     struct PunctualShadowCandidate {
-        size_t        punctualIndex;   // punctualLights 内の位置
-        int           legacySlot;      // b3 側の位置 (点 0-7 / スポット 8-11)。-1 = b3 に入らない
-        // 全方位のライトはキューブ 6 面 = 6 タイルを使う。Spot / Area は 1 タイル。
+        size_t        punctualIndex;   ///< @note punctualLights 内の位置
+        int           legacySlot;      ///< @note b3 側の位置 (点 0-7 / スポット 8-11)。-1 = b3 に入らない
+        /// @note 全方位のライトはキューブ 6 面 = 6 タイルを使う。Spot / Area は 1 タイル。
         bool          needsCube;
         math::Vector3 position;
-        math::Vector3 direction;       // 1 タイル側の照射方向 (キューブでは未使用)
+        math::Vector3 direction;       ///< @note 1 タイル側の照射方向 (キューブでは未使用)
         float         range;
-        float         outerCone;       // [degrees] 1 タイル側の半画角
+        float         outerCone;       ///< @note [degrees] 1 タイル側の半画角
         float         nearPlane;
         float         bias;
         float         strength;
-        float         sourceRadius;  // 半影の広がりを決める光源半径 [m]
+        float         sourceRadius;  ///< @note 半影の広がりを決める光源半径 [m]
         float         cameraDistSq;
     };
     std::vector<PunctualShadowCandidate> shadowCandidates;
 
-    // Cookie を持つスポットの候補。割り当ての考え方は影と同じで、タイル数が
-    // 有限 (8 枚) なのでカメラから近い順に配る。
+    /// @note Cookie を持つスポットの候補。割り当ての考え方は影と同じで、タイル数が
+    /// @note 有限 (8 枚) なのでカメラから近い順に配る。
     struct LightCookieCandidate {
         size_t        punctualIndex;
         int           legacySlot;
         math::Vector3 position;
         math::Vector3 direction;
         float         range;
-        float         outerCone;   // [degrees]
+        float         outerCone;   ///< @note [degrees]
         float         nearPlane;
         float         rotationRad;
         std::string   path;
@@ -1461,18 +1456,18 @@ void RenderSystem(Scene& scene,
     };
     std::vector<LightCookieCandidate> cookieCandidates;
 
-    // b3 経路の点光源 / スポットの光源半径。添字は legacyShadowSlots と同じ。
+    /// @note b3 経路の点光源 / スポットの光源半径。添字は legacyShadowSlots と同じ。
     float legacySourceRadius[kMaxLegacyPunctualLights] = {};
 
     constexpr float kDegToRad = 3.14159265f / 180.0f;
-    // キューブ 1 面ぶんの半画角 (= 90 度の半分)。Point シャドウの 6 面で使う。
+    /// @note キューブ 1 面ぶんの半画角 (= 90 度の半分)。Point シャドウの 6 面で使う。
     constexpr float kQuarterPi = 3.14159265f / 4.0f;
-    // Area の影を焼く錐台の半画角 [degrees]。Spot の outerCone に相当する値として渡す。
-    // 面光源は法線側の半球 (= 90 度) を照らすが、透視投影は 90 度で無限に広がるため
-    // 張れない。75 度は「パネルの正面に置いた物の影は出る / 真横は諦める」の線。
+    /// @note Area の影を焼く錐台の半画角 [degrees]。Spot の outerCone に相当する値として渡す。
+    /// @note 面光源は法線側の半球 (= 90 度) を照らすが、透視投影は 90 度で無限に広がるため
+    /// @note 張れない。75 度は「パネルの正面に置いた物の影は出る / 真横は諦める」の線。
     constexpr float kAreaShadowOuterConeDeg = 75.0f;
-    // View<> だと GameObject が取れず activeInHierarchy() を見られないので、GO を切っても
-    // 光だけが残る。GetEntities<> は View<> と同じ基底 span なので走査順は変わらない。
+    /// @note View<> だと GameObject が取れず activeInHierarchy() を見られないので、GO を切っても
+    /// @note 光だけが残る。GetEntities<> は View<> と同じ基底 span なので走査順は変わらない。
     for (EntityID id : scene.GetEntities<LightComponent>()) {
         GameObject*     go    = scene.GetGameObject(id);
         LightComponent* light = scene.GetComponent<LightComponent>(id);
@@ -1480,29 +1475,29 @@ void RenderSystem(Scene& scene,
         const Transform&      tf = go->transform;
         const LightComponent& lc = *light;
 
-        // 色温度モードでは color 欄ではなく colorTemperature が正本。
-        // 毎フレーム引き直す。キャッシュは Inspector の反映漏れという見つけにくい種になる。
+        /// @note 色温度モードでは color 欄ではなく colorTemperature が正本。
+        /// @note 毎フレーム引き直す。キャッシュは Inspector の反映漏れという見つけにくい種になる。
         const math::Vector3 lightColor =
             lc.useColorTemperature ? renderer::ColorFromTemperature(lc.colorTemperature)
                                    : lc.color;
 
-        // 点光源 / スポット / 大きさを持つ光源は上限に達するまで統合配列へも積む。
-        // b3 は「点を全部→スポットを全部」の 2 配列だがこちらは 1 本なので評価順が変わりうる。
-        // 加算なので結果は同じ (順序による丸め差のみ)。
+        /// @note 点光源 / スポット / 大きさを持つ光源は上限に達するまで統合配列へも積む。
+        /// @note b3 は「点を全部→スポットを全部」の 2 配列だがこちらは 1 本なので評価順が変わりうる。
+        /// @note 加算なので結果は同じ (順序による丸め差のみ)。
         if (lc.type != LightComponent::Type::Directional
             && punctualLights.size() < kMaxPunctualLights) {
             const size_t punctualIndex = punctualLights.size();
             PunctualLightGPU& gpu = punctualLights.emplace_back();
-            // WHY worldPosition か: Transform::position は親基準のローカル座標。
-            //     子 GameObject にライトを置くと (キャラクターの発光部・車のヘッドライト・
-            //     ボーンに付けた松明)、親の姿勢が一切効かず原点付近に光が落ちる。
-            //     向き (forward / right / up) は worldRotation から作られるので既に
-            //     ワールド空間で、位置だけが取り残されていた。
+            /// @note worldPosition を使う: Transform::position は親基準のローカル座標。
+            /// @note 子 GameObject にライトを置くと (キャラクターの発光部・車のヘッドライト・
+            /// @note ボーンに付けた松明)、親の姿勢が一切効かず原点付近に光が落ちる。
+            /// @note 向き (forward / right / up) は worldRotation から作られるので既に
+            /// @note ワールド空間で、位置だけが取り残されていた。
             gpu.position  = tf.worldPosition;
             gpu.range     = lc.range;
             gpu.color     = lightColor;
             gpu.intensity = lc.intensity;
-            // 既定は Point。他の型が以降で上書きする。
+            /// @note 既定は Point。他の型が以降で上書きする。
             gpu.direction   = { 0.0f, -1.0f, 0.0f };
             gpu.innerCos    = 0.0f;
             gpu.outerCos    = 0.0f;
@@ -1511,8 +1506,8 @@ void RenderSystem(Scene& scene,
             gpu.cookieIndex = -1;
             gpu.tangent     = { 1.0f, 0.0f, 0.0f };
             gpu.bitangent   = { 0.0f, 1.0f, 0.0f };
-            // 点光源 / スポットでも halfWidth は光源半径として意味を持つ
-            // (形状は点のまま、ハイライトの広がりと影のにじみ幅にだけ効く)。
+            /// @note 点光源 / スポットでも halfWidth は光源半径として意味を持つ
+            /// @note (形状は点のまま、ハイライトの広がりと影のにじみ幅にだけ効く)。
             gpu.halfWidth   = (std::max)(lc.sourceRadius, 0.0f);
             gpu.halfHeight  = 0.0f;
 
@@ -1524,7 +1519,7 @@ void RenderSystem(Scene& scene,
             } else if (lc.type == LightComponent::Type::Sphere) {
                 gpu.type      = static_cast<uint32_t>(PunctualLightType::Sphere);
             } else if (lc.type == LightComponent::Type::Tube) {
-                // 管の軸は Transform の Right。蛍光灯を横向きに置く姿勢が既定になる。
+                /// @note 管の軸は Transform の Right。蛍光灯を横向きに置く姿勢が既定になる。
                 gpu.tangent    = tf.right.NormalizedOr({ 1.0f, 0.0f, 0.0f });
                 gpu.halfHeight = (std::max)(lc.sourceLength, 0.0f) * 0.5f;
                 gpu.type       = static_cast<uint32_t>(PunctualLightType::Tube);
@@ -1534,8 +1529,8 @@ void RenderSystem(Scene& scene,
                 gpu.bitangent  = tf.up.NormalizedOr({ 0.0f, 1.0f, 0.0f });
                 gpu.halfWidth  = (std::max)(lc.areaWidth,  0.001f) * 0.5f;
                 gpu.halfHeight = (std::max)(lc.areaHeight, 0.001f) * 0.5f;
-                // Area では innerCos / outerCos が空くので、両面フラグの運搬に使う。
-                // 専用フィールドを足すと 96 バイトの構造体がキャッシュライン 2 本に収まらない。
+                /// @note Area では innerCos / outerCos が空くので、両面フラグの運搬に使う。
+                /// @note 専用フィールドを足すと 96 バイトの構造体がキャッシュライン 2 本に収まらない。
                 gpu.outerCos   = lc.areaTwoSided ? 1.0f : 0.0f;
                 gpu.type       = static_cast<uint32_t>(PunctualLightType::Area);
             }
@@ -1543,8 +1538,8 @@ void RenderSystem(Scene& scene,
             const math::Vector3 toCamera = tf.worldPosition - camera.m_position;
             const float cameraDistSq = math::Vector3::Dot(toCamera, toCamera);
 
-            // b3 側でこのライトが取る添字。直後のブロックが末尾へ 1 つ足すだけなので、
-            // 採番される番号は今のカウンタ値そのもの。
+            /// @note b3 側でこのライトが取る添字。直後のブロックが末尾へ 1 つ足すだけなので、
+            /// @note 採番される番号は今のカウンタ値そのもの。
             int legacySlot = -1;
             if (lc.type == LightComponent::Type::Point && lightData.pointLightCount < 8)
                 legacySlot = lightData.pointLightCount;
@@ -1553,8 +1548,8 @@ void RenderSystem(Scene& scene,
             if (legacySlot >= 0)
                 legacySourceRadius[legacySlot] = (std::max)(lc.sourceRadius, 0.0f);
 
-            // Cookie の候補。Spot 専用 — Point はキューブマップ、Directional は
-            // ワールド空間のタイリングという別の仕組みが要る。
+            /// @note Cookie の候補。Spot 専用 — Point はキューブマップ、Directional は
+            /// @note ワールド空間のタイリングという別の仕組みが要る。
             if (lc.type == LightComponent::Type::Spot && !lc.cookiePath.empty()) {
                 LightCookieCandidate cookie{};
                 cookie.punctualIndex = punctualIndex;
@@ -1570,25 +1565,22 @@ void RenderSystem(Scene& scene,
                 cookieCandidates.push_back(std::move(cookie));
             }
 
-            // 影の候補として控える。Directional 以外は全型が落とせる。
-            //
-            // WHY 形状を持つ光源も «点から焼いた影» でよいか: 影の形は遮蔽物と受光面の
-            //     配置でほぼ決まり、光源の大きさは半影の広さにしか効かない。その広さは
-            //     sourceRadius から作る penumbraTexels が受け持つので、深度そのものは
-            //     中心 1 点から焼けば足りる。管が長いほど本当は半影が軸方向へ伸びるが、
-            //     それを出すには軸に沿った複数枚が要り、16 タイルでは到底足りない。
+            /// @note 影の候補として控える。Directional 以外は全型が落とせる。
+            /// @note 形状を持つ光源も点から焼いた影でよい: 影の形は遮蔽物と受光面の配置でほぼ決まり、
+            /// @note 光源の大きさは半影の広さ (sourceRadius から作る penumbraTexels) にしか効かない。
+            /// @note 管が長いと本来は半影が軸方向へ伸びるが、それには軸に沿った複数枚が要り 16 タイルでは足りない。
             const bool canCastShadow =
                 lc.castShadows && lc.shadowStrength > 0.0f &&
                 lc.type != LightComponent::Type::Directional;
             if (canCastShadow) {
-                // 遠すぎるライトへタイルを割り当てない。判定距離に range を足すのは、
-                // range の大きいライトは離れていても画面を広く照らすため。
+                /// @note 遠すぎるライトへタイルを割り当てない。判定距離に range を足すのは、
+                /// @note range の大きいライトは離れていても画面を広く照らすため。
                 const float limit = rs.shadow.punctualShadowDistance + lc.range;
                 if (cameraDistSq <= limit * limit) {
                     PunctualShadowCandidate cand{};
                     cand.punctualIndex = punctualIndex;
                     cand.legacySlot    = legacySlot;
-                    // Sphere / Tube は Point と同じ全方位。Area だけが向きを持つ。
+                    /// @note Sphere / Tube は Point と同じ全方位。Area だけが向きを持つ。
                     cand.needsCube     = (lc.type == LightComponent::Type::Point
                                        || lc.type == LightComponent::Type::Sphere
                                        || lc.type == LightComponent::Type::Tube);
@@ -1597,8 +1589,8 @@ void RenderSystem(Scene& scene,
                                        ? math::Vector3{ 0.0f, -1.0f, 0.0f }
                                        : tf.forward.NormalizedOr({ 0.0f, 0.0f, 1.0f });
                     cand.range         = (std::max)(lc.range, 0.05f);
-                    // Area は法線側の半球を照らすが、1 枚の透視投影では 180 度を張れない。
-                    // 実用上そこまでで、これ以上広げると端のテクセル密度が落ちるだけ。
+                    /// @note Area は法線側の半球を照らすが、1 枚の透視投影では 180 度を張れない。
+                    /// @note 実用上そこまでで、これ以上広げると端のテクセル密度が落ちるだけ。
                     cand.outerCone     = (lc.type == LightComponent::Type::Area)
                                        ? kAreaShadowOuterConeDeg
                                        : lc.outerCone;
@@ -1640,9 +1632,9 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    // 粒子を点光源にする (ParticleEmitter の Lights モジュール)。LightComponent の後に積むので、
-    // 枠が足りないときに削られるのは粒子の光の方。Legacy (b3) には載せない。
-    // NOTE: GPU シミュレーションの粒子は位置が GPU にしか無いので対象外 (Inspector に注記がある)。
+    /// @note 粒子を点光源にする (ParticleEmitter の Lights モジュール)。LightComponent の後に積むので、
+    /// @note 枠が足りないときに削られるのは粒子の光の方。Legacy (b3) には載せない。
+    /// @note GPU シミュレーションの粒子は位置が GPU にしか無いので対象外 (Inspector に注記がある)。
     std::vector<ParticleLightEmission> particleLights;
     for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
         if (punctualLights.size() >= kMaxPunctualLights) break;
@@ -1666,15 +1658,15 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    // ── Spot / Point シャドウのスロット割り当てと行列の組み立て ────────────────────
-    // カメラから近い順。遠いライトの影は数ピクセルにしかならず落としても気づかれにくい。
-    // 距離キーは連続に変化するので、あふれの切り替わりも端から 1 つずつ起きる。
+    /// @name Spot / Point シャドウのスロット割り当てと行列の組み立て
+    /// @note カメラから近い順。遠いライトの影は数ピクセルにしかならず落としても気づかれにくい。
+    /// @note 距離キーは連続に変化するので、あふれの切り替わりも端から 1 つずつ起きる。
     std::sort(shadowCandidates.begin(), shadowCandidates.end(),
               [](const PunctualShadowCandidate& a, const PunctualShadowCandidate& b) {
                   return a.cameraDistSq < b.cameraDistSq;
               });
 
-    // アトラスは 4x4 = kMaxPunctualShadows タイル。Spot が 1 枚、Point が 6 枚を使う。
+    /// @note アトラスは 4x4 = kMaxPunctualShadows タイル。Spot が 1 枚、Point が 6 枚を使う。
     constexpr uint32_t kPunctualTilesPerSide = 4u;
     static_assert(kPunctualTilesPerSide * kPunctualTilesPerSide
                       == static_cast<uint32_t>(kMaxPunctualShadows),
@@ -1685,9 +1677,9 @@ void RenderSystem(Scene& scene,
     const float    punctualUvScale   =
         static_cast<float>(punctualTileSize) / punctualAtlasResF;
 
-    // キューブ 6 面の向きと up。順序は PunctualShadow.hlsli の FBZZ_CubeFaceIndex と
-    // 一致させること (+X, -X, +Y, -Y, +Z, -Z)。
-    // up は描く行列と引く行列が同じなら何でもよい (両方ここで作った 1 本を使う)。
+    /// @note キューブ 6 面の向きと up。順序は PunctualShadow.hlsli の FBZZ_CubeFaceIndex と
+    /// @note 一致させること (+X, -X, +Y, -Y, +Z, -Z)。
+    /// @note up は描く行列と引く行列が同じなら何でもよい (両方ここで作った 1 本を使う)。
     static constexpr math::Vector3 kCubeFaceDir[6] = {
         {  1.0f,  0.0f,  0.0f }, { -1.0f,  0.0f,  0.0f },
         {  0.0f,  1.0f,  0.0f }, {  0.0f, -1.0f,  0.0f },
@@ -1701,13 +1693,13 @@ void RenderSystem(Scene& scene,
 
     PunctualShadowView punctualViews[kMaxPunctualShadows] = {};
     int punctualViewCount   = 0;
-    // キューブ 6 面を使ったライトの本数 (Point / Sphere / Tube)。
+    /// @note キューブ 6 面を使ったライトの本数 (Point / Sphere / Tube)。
     int shadowedCubeCount   = 0;
-    // b3 経路 (既定の Forward) 向けのスロット番号。-1 = 影なし。
+    /// @note b3 経路 (既定の Forward) 向けのスロット番号。-1 = 影なし。
     int legacyShadowSlots[kMaxLegacyPunctualLights];
     for (int& slot : legacyShadowSlots) slot = -1;
 
-    // タイル 1 枚を組み立てる。halfFovRad はそのタイルの投影半画角。
+    /// @note タイル 1 枚を組み立てる。halfFovRad はそのタイルの投影半画角。
     const auto buildPunctualView =
         [&](int slot, const math::Vector3& eye, const math::Vector3& dir,
             const math::Vector3& up, float halfFovRad, float nearZ, float farZ,
@@ -1731,39 +1723,39 @@ void RenderSystem(Scene& scene,
             punctualUvScale, punctualUvScale
         };
 
-        // 基本バイアスは「1 テクセルが覆うワールド距離」。アクネはテクセルの幅の中で
-        // 面の深度が変わることから出るので、補正量はテクセルの実寸そのものになる
-        // (斜め面ぶんの tan(theta) はシェーダー側の FBZZ_PunctualSlopeBias が掛ける)。
-        // 評価点が range の中ほどなのは、透視投影ではテクセル実寸が深度に比例するため。
+        /// @note 基本バイアスは「1 テクセルが覆うワールド距離」。アクネはテクセルの幅の中で
+        /// @note 面の深度が変わることから出るので、補正量はテクセルの実寸そのものになる
+        /// @note (斜め面ぶんの tan(theta) はシェーダー側の FBZZ_PunctualSlopeBias が掛ける)。
+        /// @note 評価点が range の中ほどなのは、透視投影ではテクセル実寸が深度に比例するため。
         const float midZ       = (std::max)((nearZ + farZ) * 0.5f, nearZ * 2.0f);
         const float texelWorld =
             2.0f * midZ * std::tan(halfFovRad) / static_cast<float>(punctualTileSize);
-        // 透視投影の NDC 深度は非線形なので、ワールド距離をそのまま渡せない。
-        //   z_ndc = f/(f-n) * (1 - n/z)  →  dz_ndc/dz = f*n / ((f-n) * z^2)
+        /// @note 透視投影の NDC 深度は非線形なので、ワールド距離をそのまま渡せない。
+        /// @note z_ndc = f/(f-n) * (1 - n/z)  →  dz_ndc/dz = f*n / ((f-n) * z^2)
         const float ndcPerWorld =
             (farZ * nearZ) / ((std::max)(farZ - nearZ, 0.001f) * midZ * midZ);
         view.biasNDC = texelWorld * ndcPerWorld * biasScale;
 
-        // 1 テクセルが張る角度。ShadowPass の極小 caster カリングが使う。
+        /// @note 1 テクセルが張る角度。ShadowPass の極小 caster カリングが使う。
         view.texelAngularSize =
             2.0f * std::tan(halfFovRad) / static_cast<float>(punctualTileSize);
 
-        // 光源半径がシャドウマップ上で何テクセルぶんの半影になるか。
-        // 本来は「光源の大きさ × 遮蔽物と受光面の距離比」だが、ブロッカー探索が無いので
-        // 比を 1 とみなす。遮蔽物が遠いほど硬くなるが「大きな電球ほど柔らかい」は出る。
+        /// @note 光源半径がシャドウマップ上で何テクセルぶんの半影になるか。
+        /// @note 本来は「光源の大きさ × 遮蔽物と受光面の距離比」だが、ブロッカー探索が無いので
+        /// @note 比を 1 とみなす。遮蔽物が遠いほど硬くなるが「大きな電球ほど柔らかい」は出る。
         view.penumbraTexels = (texelWorld > 0.0f) ? (sourceRadius / texelWorld) : 0.0f;
     };
 
     if (rs.shadowEnabled) {
         for (const PunctualShadowCandidate& cand : shadowCandidates) {
             const int needed = cand.needsCube ? 6 : 1;
-            // break ではなく continue。全方位のライトが入らなかっただけで、後ろに続く
-            // Spot / Area は 1 枚で収まる可能性がある。
+            /// @note break ではなく continue。全方位のライトが入らなかっただけで、後ろに続く
+            /// @note Spot / Area は 1 枚で収まる可能性がある。
             if (punctualViewCount + needed > kMaxPunctualShadows) continue;
             if (cand.needsCube && shadowedCubeCount >= rs.shadow.maxShadowedPointLights) continue;
 
-            // Inspector で range より大きい shadowNearPlane を入れられるので、
-            // ここで潰さないと Matrix4::Perspective の assert を踏む。
+            /// @note Inspector で range より大きい shadowNearPlane を入れられるので、
+            /// @note ここで潰さないと Matrix4::Perspective の assert を踏む。
             const float farZ  = cand.range;
             const float nearZ = (std::min)(cand.nearPlane, farZ * 0.5f);
 
@@ -1778,9 +1770,9 @@ void RenderSystem(Scene& scene,
                 punctualViewCount += 6;
                 ++shadowedCubeCount;
             } else {
-                // 錐台は円錐へ外接させる。outerCone は半角なので画角はその 2 倍。
-                // 少し広げるのは、ぴったり切ると PCF が縁ではみ出して影が欠けるため。
-                // Area はコーンを持たないので kAreaShadowOuterConeDeg が入っている。
+                /// @note 錐台は円錐へ外接させる。outerCone は半角なので画角はその 2 倍。
+                /// @note 少し広げるのは、ぴったり切ると PCF が縁ではみ出して影が欠けるため。
+                /// @note Area はコーンを持たないので kAreaShadowOuterConeDeg が入っている。
                 const float halfFov = (std::min)(
                     std::clamp(cand.outerCone, 1.0f, 79.0f) * kDegToRad * 1.05f,
                     kQuarterPi * 1.9f);
@@ -1792,16 +1784,16 @@ void RenderSystem(Scene& scene,
                                   cand.sourceRadius);
                 punctualViewCount += 1;
             }
-            // クラスタ経路はライト構造体から、レガシー経路は b12 の対応表から番号を引く。
-            // どちらの経路でも同じスロットを指すよう、ここで両方へ書く。
+            /// @note クラスタ経路はライト構造体から、レガシー経路は b12 の対応表から番号を引く。
+            /// @note どちらの経路でも同じスロットを指すよう、ここで両方へ書く。
             punctualLights[cand.punctualIndex].shadowIndex = baseSlot;
             if (cand.legacySlot >= 0 && cand.legacySlot < kMaxLegacyPunctualLights)
                 legacyShadowSlots[cand.legacySlot] = baseSlot;
         }
     }
 
-    // ── Cookie のスロット割り当て ────────────────────────────────────────────────
-    // 影と同じくカメラから近い順。タイルは 8 枚しかない。
+    /// @name Cookie のスロット割り当て
+    /// @note 影と同じくカメラから近い順。タイルは 8 枚しかない。
     std::sort(cookieCandidates.begin(), cookieCandidates.end(),
               [](const LightCookieCandidate& a, const LightCookieCandidate& b) {
                   return a.cameraDistSq < b.cameraDistSq;
@@ -1818,9 +1810,9 @@ void RenderSystem(Scene& scene,
         const int slot = cookieViewCount++;
         LightCookieView& view = cookieViews[slot];
 
-        // 投影は影と同じ「スポットの円錐に外接する透視錐台」。
-        // 影の行列を流用しないのは、Cookie が影を落とさないライトにも付くため。
-        // 縁を広げないのは、近傍サンプルが無く広げると模様がコーンより内側で終わるため。
+        /// @note 投影は影と同じ「スポットの円錐に外接する透視錐台」。
+        /// @note 影の行列を流用しないのは、Cookie が影を落とさないライトにも付くため。
+        /// @note 縁を広げないのは、近傍サンプルが無く広げると模様がコーンより内側で終わるため。
         const float farZ    = cand.range;
         const float nearZ   = (std::min)(cand.nearPlane, farZ * 0.5f);
         const float halfFov = std::clamp(cand.outerCone, 1.0f, 79.0f) * kDegToRad;
@@ -1851,32 +1843,32 @@ void RenderSystem(Scene& scene,
             legacyCookieSlots[cand.legacySlot] = slot;
     }
 
-    // ── 昼夜の色・強度カーブ (Phase B) ─────────────────────────────────────────────
-    // 太陽の向きは DirectionalLight の transform が唯一のソース (lightDir は上書きしない)。
-    // dayNightEnabled のときは、その光源の太陽高度から色と強度の遷移だけを駆動する。
-    // ライトを回すと 太陽ディスク・空・月・空連動 IBL・ライティングが一緒に動く。
-    // 雲シャドウ params (Phase C) も SkyRenderer から読み、passCtx へ後で転送する。
+    /// @name 昼夜の色・強度カーブ (Phase B)
+    /// @note 太陽の向きは DirectionalLight の transform が唯一のソース (lightDir は上書きしない)。
+    /// @note dayNightEnabled のときは、その光源の太陽高度から色と強度の遷移だけを駆動する。
+    /// @note ライトを回すと 太陽ディスク・空・月・空連動 IBL・ライティングが一緒に動く。
+    /// @note 雲シャドウ params (Phase C) も SkyRenderer から読み、passCtx へ後で転送する。
     float skyCloudShadowStrength = 0.0f, skyCloudShadowCoverage = 0.5f,
           skyCloudShadowScale = 0.02f, skyCloudShadowSpeed = 1.0f;
-    // 太陽の向きは DirectionalLight 側で決まるため SkyRenderer の Transform は使わない。
+    /// @note 太陽の向きは DirectionalLight 側で決まるため SkyRenderer の Transform は使わない。
     for (EntityID id : scene.GetEntities<SkyRenderer>()) {
         GameObject* go     = scene.GetGameObject(id);
         auto*       skyPtr = scene.GetComponent<SkyRenderer>(id);
         if (!go || !skyPtr || !go->activeInHierarchy() || !skyPtr->enabled) continue;
         const SkyRenderer& sky = *skyPtr;
 
-        // 雲シャドウは昼夜サイクルとは独立に常に反映する。
+        /// @note 雲シャドウは昼夜サイクルとは独立に常に反映する。
         skyCloudShadowStrength = sky.cloudShadowStrength;
         skyCloudShadowCoverage = sky.cloudShadowCoverage;
-        // Component は「まだら 1 周期の大きさ [m]」。シェーダーは world→UV スケールを要る。
+        /// @note Component は「まだら 1 周期の大きさ [m]」。シェーダーは world→UV スケールを要る。
         skyCloudShadowScale    = 1.0f / (std::max)(sky.cloudShadowSize, 1.0f);
         skyCloudShadowSpeed    = sky.cloudShadowSpeed;
 
         if (sky.dayNightEnabled) {
-            // 太陽方向 (toward sun) = -lightDir。その高度 [度] を軸に 夜 ↔ 夕方 ↔ 昼 を補間する。
-            // 高度 0° を夕方のキーに置くと「ライトを水平 = 夕方」になり、昼側と夜側それぞれ
-            // 独立した帯幅で抜けられる。旧実装は夕焼けの重みに昼の重みを掛けており、
-            // 地平線上で重みが 0.17 まで落ちて夕方を作れなかった。
+            /// @note 太陽方向 (toward sun) = -lightDir。その高度 [度] を軸に 夜 ↔ 夕方 ↔ 昼 を補間する。
+            /// @note 高度 0° を夕方のキーに置くと「ライトを水平 = 夕方」になり、昼側と夜側それぞれ
+            /// @note 独立した帯幅で抜けられる。旧実装は夕焼けの重みに昼の重みを掛けており、
+            /// @note 地平線上で重みが 0.17 まで落ちて夕方を作れなかった。
             const math::Vector3 sunToSun =
                 math::Vector3{ -lightData.lightDir.x, -lightData.lightDir.y, -lightData.lightDir.z }.Normalized();
 
@@ -1896,29 +1888,30 @@ void RenderSystem(Scene& scene,
             const float span  = above ? (std::max)(sky.dayAltitude,   0.1f)
                                       : (std::max)(sky.nightAltitude, 0.1f);
             float t = clamp01(std::fabs(altitudeDeg) / span);
-            t = t * t * (3.0f - 2.0f * t); // smoothstep: 帯の端で色・明るさが折れないようにする
+            /// @note smoothstep: 帯の端で色・明るさが折れないようにする
+            t = t * t * (3.0f - 2.0f * t);
 
             lightData.lightColor     = lerp3(sky.sunsetColor,
                                              above ? sky.dayColor : sky.nightColor, t);
             lightData.lightIntensity = lerp1(sky.sunsetIntensity,
                                              above ? sky.dayIntensity : sky.nightIntensity, t);
-            // 空の明るさは太陽光の強さとは別軸。共用していた頃は太陽を強くすると空も白飛びした。
-            // 詳細は SkyRenderer::skyDayBrightness。
+            /// @note 空の明るさは太陽光の強さとは別軸。共用していた頃は太陽を強くすると空も白飛びした。
+            /// @note 詳細は SkyRenderer::skyDayBrightness。
             lightData.skyDimmer      = lerp1(sky.skySunsetBrightness,
                                              above ? sky.skyDayBrightness : sky.skyNightBrightness, t);
         }
         break;
     }
 
-    // ambientColor: Lit モードでは AMBIENT_SCALE 相当値、Unlit 系では白に上書き
+    /// @note ambientColor: Lit モードでは AMBIENT_SCALE 相当値、Unlit 系では白に上書き
     lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
     if (rs.IsUnlit()) {
         lightData.ambientColor    = { 1.0f, 1.0f, 1.0f };
         lightData.lightIntensity  = 0.0f;
         lightData.pointLightCount = 0;
         lightData.spotLightCount  = 0;
-        // 空も消灯する。分離前は lightIntensity=0 が空系シェーダーにも効いていたので、
-        // Unlit 表示で空が黒く落ちる従来の挙動を skyDimmer 側で維持する。
+        /// @note 空も消灯する。分離前は lightIntensity=0 が空系シェーダーにも効いていたので、
+        /// @note Unlit 表示で空が黒く落ちる従来の挙動を skyDimmer 側で維持する。
         lightData.skyDimmer       = 0.0f;
     }
 
@@ -1934,22 +1927,22 @@ void RenderSystem(Scene& scene,
         shadowBounds.valid = true;
     }
 
-    // ── カスケードシャドウ (CSM) のフィッティング ───────────────────────────────
-    // 精細さを決めるのは解像度ではなく「1 テクセルが覆うワールド距離」。単一マップでは
-    // 到達距離を伸ばすと分母が伸びるだけで、近距離の精細さと両立しない。
-    // 視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを割り当てて足元の密度だけ上げる。
-    // shadowBounds (シーン全体) は「これ以上大きくしない」上限としてだけ使う。
+    /// @name カスケードシャドウ (CSM) のフィッティング
+    /// @note 精細さを決めるのは解像度ではなく「1 テクセルが覆うワールド距離」。単一マップでは
+    /// @note 到達距離を伸ばすと分母が伸びるだけで、近距離の精細さと両立しない。
+    /// @note 視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを割り当てて足元の密度だけ上げる。
+    /// @note shadowBounds (シーン全体) は「これ以上大きくしない」上限としてだけ使う。
     const int cascadeCount =
         std::clamp(rs.shadow.cascadeCount, 1, fbzz::renderer::kMaxShadowCascades);
 
-    // アトラス配置: 1 分割なら全面、2 分割以上なら 2x2 タイル。
-    // 1 枚に収めれば影を読む 20 以上のシェーダーがバインドもサンプラーも変えずに済む。
-    // 解像度とメモリは分割数によらず一定で、変わるのは面積の配分だけ。
+    /// @note アトラス配置: 1 分割なら全面、2 分割以上なら 2x2 タイル。
+    /// @note 1 枚に収めれば影を読む 20 以上のシェーダーがバインドもサンプラーも変えずに済む。
+    /// @note 解像度とメモリは分割数によらず一定で、変わるのは面積の配分だけ。
     const uint32_t atlasResolution = (std::max)(rs.shadow.mapResolution, 1u);
     const uint32_t tilesPerSide    = (cascadeCount > 1) ? 2u : 1u;
     const uint32_t tileSize        = (std::max)(atlasResolution / tilesPerSide, 1u);
 
-    // 影の最大到達距離。LightComponent::shadowDistance > 0 は従来どおり手動指定を優先する。
+    /// @note 影の最大到達距離。LightComponent::shadowDistance > 0 は従来どおり手動指定を優先する。
     const float shadowDistance = (dirShadowDistance > 0.0f)
         ? (std::max)(dirShadowDistance, 1.0f)
         : (std::max)(rs.shadow.autoFitDistance, 1.0f);
@@ -1961,7 +1954,7 @@ void RenderSystem(Scene& scene,
     const math::Vector3 up = (std::abs(lightDir.y) > 0.99f)
                              ? math::Vector3{ 1.0f, 0.0f, 0.0f }
                              : math::Vector3{ 0.0f, 1.0f, 0.0f };
-    // 位置を持たない回転だけのライト空間。テクセルスナップの量子化格子として使う。
+    /// @note 位置を持たない回転だけのライト空間。テクセルスナップの量子化格子として使う。
     const math::Matrix4 snapView     = math::Matrix4::LookAt(math::Vector3::ZERO, lightDir, up);
     const math::Matrix4 snapViewInv  = math::Matrix4::Inverse(snapView);
 
@@ -1971,16 +1964,16 @@ void RenderSystem(Scene& scene,
     for (int i = 0; i < cascadeCount; ++i) {
         const float sliceFar = cascadeSplits[i];
 
-        // このカスケードが担当する視錐台スライスの外接球 (向きに依存しないので回転で脈動しない)。
+        /// @note このカスケードが担当する視錐台スライスの外接球 (向きに依存しないので回転で脈動しない)。
         const FrustumSliceSphere slice =
             ComputeFrustumSliceSphere(camera, cascadeSliceNear, sliceFar);
 
-        // シーン全体より大きい影ボリュームを作っても無駄なテクセルが増えるだけ。
+        /// @note シーン全体より大きい影ボリュームを作っても無駄なテクセルが増えるだけ。
         float radius = (std::max)((std::min)(slice.radius, shadowBounds.radius), 1.0f);
 
         math::Vector3 center = camera.m_position + camera.GetForward() * slice.centerDistance;
         if (radius < shadowBounds.radius) {
-            // シーン球からはみ出さないよう、中心をシーン球内へ引き戻す。
+            /// @note シーン球からはみ出さないよう、中心をシーン球内へ引き戻す。
             const math::Vector3 offset   = center - shadowBounds.center;
             const float         distance = offset.Length();
             const float         limit    = (std::max)(shadowBounds.radius - radius, 0.0f);
@@ -1990,8 +1983,8 @@ void RenderSystem(Scene& scene,
             center = shadowBounds.center;
         }
 
-        // テクセルスナップ。中心がカメラに追従するとサブテクセルのずれで輪郭が波打つ
-        // (shadow swimming)。ライト空間で 1 テクセル単位へ量子化すると標本位置が固定される。
+        /// @note テクセルスナップ。中心がカメラに追従するとサブテクセルのずれで輪郭が波打つ
+        /// @note (shadow swimming)。ライト空間で 1 テクセル単位へ量子化すると標本位置が固定される。
         const float texelWorldSize = (radius * 2.0f) / static_cast<float>(tileSize);
         {
             math::Vector4 lightSpace =
@@ -2002,8 +1995,8 @@ void RenderSystem(Scene& scene,
             center = { snapped.x, snapped.y, snapped.z };
         }
 
-        // 深度レンジ。ボリュームの外にいる背の高い caster も影を落とせるよう、
-        // ライト方向の引きはシーン全体の広がりから取る (near/far を広げても塗る面積は増えない)。
+        /// @note 深度レンジ。ボリュームの外にいる背の高い caster も影を落とせるよう、
+        /// @note ライト方向の引きはシーン全体の広がりから取る (near/far を広げても塗る面積は増えない)。
         const float pullback   = (std::max)(shadowBounds.radius, radius) + 20.0f;
         const float depthRange = pullback + radius + 20.0f;
 
@@ -2019,11 +2012,11 @@ void RenderSystem(Scene& scene,
         cascade.eyePos         = eye;
         cascade.frustum        = math::Frustum::FromViewProjection(cascade.viewProjection);
         cascade.texelWorldSize = texelWorldSize;
-        // ワールド空間で約 5mm 相当の一定バイアスになるよう深度レンジで正規化する。
-        // カスケードごとにレンジが違うので、値もカスケードごとに持つ。
+        /// @note ワールド空間で約 5mm 相当の一定バイアスになるよう深度レンジで正規化する。
+        /// @note カスケードごとにレンジが違うので、値もカスケードごとに持つ。
         cascade.biasNDC = (0.005f * dirShadowBias) / (std::max)(depthRange - 1.0f, 1.0f);
 
-        // アトラス内のタイル位置 (2x2 を左上から Z 字順に埋める)。
+        /// @note アトラス内のタイル位置 (2x2 を左上から Z 字順に埋める)。
         const uint32_t tileX = static_cast<uint32_t>(i) % tilesPerSide;
         const uint32_t tileY = static_cast<uint32_t>(i) / tilesPerSide;
         cascade.viewportX    = tileX * tileSize;
@@ -2040,22 +2033,22 @@ void RenderSystem(Scene& scene,
         cascadeSliceNear = sliceFar;
     }
 
-    // 単一のライト行列で足りるパス (パーティクル自己影など) 向けの代表値。
-    // 到達範囲を最も広く覆う最遠カスケードを渡す。ビルボードの正対に view の内訳が要るので、
-    // view と viewProjection は必ず同じカスケードから対で渡す。
+    /// @note 単一のライト行列で足りるパス (パーティクル自己影など) 向けの代表値。
+    /// @note 到達範囲を最も広く覆う最遠カスケードを渡す。ビルボードの正対に view の内訳が要るので、
+    /// @note view と viewProjection は必ず同じカスケードから対で渡す。
     const ShadowCascade& widestCascade = cascades[cascadeCount - 1];
     const math::Matrix4  lightVP   = widestCascade.viewProjection;
     const math::Matrix4  lightView = widestCascade.view;
     const math::Vector3  lightPos  = widestCascade.eyePos;
 
-    // 不透明物は可能な限り共通の GBuffer → AO → DeferredLighting 経路を通す。
-    // Forward 直描きでは SSAO/GTAO/ContactShadows/SSR/IBL が Terrain に乗らないため。
-    // 必須リソースが欠けるときだけ従来 Forward へ落ちる。
-    // 「GBuffer を作るパイプラインか」の定義は RenderSettings::UsesGBuffer() が唯一で、
-    // UI の警告 (PipelineDiagnostics) も同じ関数を見る。
+    /// @note 不透明物は可能な限り共通の GBuffer → AO → DeferredLighting 経路を通す。
+    /// @note Forward 直描きでは SSAO/GTAO/ContactShadows/SSR/IBL が Terrain に乗らないため。
+    /// @note 必須リソースが欠けるときだけ従来 Forward へ落ちる。
+    /// @note 「GBuffer を作るパイプラインか」の定義は RenderSettings::UsesGBuffer() が唯一で、
+    /// @note UI の警告 (PipelineDiagnostics) も同じ関数を見る。
     const bool wantsDeferredPipeline = rs.UsesGBuffer();
-    // GBuffer (法線 + 深度 + roughness) を描けるか。Deferred の本経路と、
-    // Forward のプリパスの両方がこれを土台にする。
+    /// @note GBuffer (法線 + 深度 + roughness) を描けるか。Deferred の本経路と、
+    /// @note Forward のプリパスの両方がこれを土台にする。
     const bool gbufferAvailable = gbufferRT.IsValid() && gbufferShader.IsValid();
     const bool useGBufferOpaquePipeline =
         wantsDeferredPipeline &&
@@ -2063,11 +2056,11 @@ void RenderSystem(Scene& scene,
         deferredLightingShader.IsValid() &&
         depthCopyShader.IsValid();
 
-    // ── Forward の GBuffer プリパス ────────────────────────────────────────────
-    // SSAO / GTAO / SSR / 接触影 はどれも GBuffer の法線と深度から作る。Forward には
-    // 書く場所が無く、同じ設定でも効果が丸ごと消えていた。
-    // 不透明ジオメトリをもう 1 回描くので、画面空間系を要求されたときだけ走らせる。
-    // 副産物として深度プリパスにもなり、本描画で early-Z が効く。
+    /// @name Forward の GBuffer プリパス
+    /// @note SSAO / GTAO / SSR / 接触影 はどれも GBuffer の法線と深度から作る。Forward には
+    /// @note 書く場所が無く、同じ設定でも効果が丸ごと消えていた。
+    /// @note 不透明ジオメトリをもう 1 回描くので、画面空間系を要求されたときだけ走らせる。
+    /// @note 副産物として深度プリパスにもなり、本描画で early-Z が効く。
     const bool needsScreenSpaceInputs =
         rs.postProcess.ambientOcclusion.enabled || rs.IsGtaoActive()
         || rs.contactShadow.enabled || rs.ssr.enabled;
@@ -2075,7 +2068,7 @@ void RenderSystem(Scene& scene,
         !useGBufferOpaquePipeline && gbufferAvailable
         && needsScreenSpaceInputs && !rs.IsUnlit();
 
-    // 画面空間系を走らせられるか。Deferred の本経路でも Forward のプリパスでも成立する。
+    /// @note 画面空間系を走らせられるか。Deferred の本経路でも Forward のプリパスでも成立する。
     const bool screenSpaceReady = useGBufferOpaquePipeline || forwardGBufferPrepass;
 
     const bool ssaoEnabled =
@@ -2091,14 +2084,11 @@ void RenderSystem(Scene& scene,
         selectionMaskRT.IsValid() && selectionMaskPso.IsValid() &&
         selectionOutlineShader.IsValid();
 
-    // ランタイムのオブジェクトマスク。showSelectionOutline (エディタの表示切り替え) には
-    // 従わない ─ あちらは「編集中の選択を出すか」の設定で、ゲームの見た目を消す権限は
-    // 持たない。
-    //
-    // WHY 生きた申告の有無で切るか: 申告が 1 件も無いフレームまでマスクを描くと、
-    //     何も印されていない盤面で全画面のクリアと 1 パスぶんの帯域を毎フレーム捨てる。
-    // WHY 理由を出すか: 4 つの条件のどれで落ちても症状は «輪郭が出ない» の 1 種類で、
-    //     しかも黙って落ちる。どれが欠けているかを 1 行で名指しできるようにしておく。
+    /// @note ランタイムのオブジェクトマスク。showSelectionOutline (エディタの表示切り替え) には
+    /// @note 従わない ─ あちらは「編集中の選択を出すか」の設定で、ゲームの見た目を消す権限は持たない。
+    /// @note 生きた申告が 1 件も無いフレームまで描くと、全画面クリアと 1 パスぶんの帯域を毎フレーム
+    /// @note 捨てるので切る。4 条件のどれで落ちても症状は «輪郭が出ない» の 1 種類で黙って落ちるため、
+    /// @note 欠けている条件を objectMaskOffReason で 1 行名指しできるようにする。
     const char* objectMaskOffReason = nullptr;
     const bool objectMaskEnabled = [&]() {
         if (!objectMaskRT.IsValid())      { objectMaskOffReason = "objectMaskRT 未作成"; return false; }
@@ -2119,8 +2109,8 @@ void RenderSystem(Scene& scene,
         const char* reason = objectMaskEnabled ? "(有効)" : objectMaskOffReason;
         if (reason && reason != sLastReason) {
             sLastReason = reason;
-            // 申告先と読み手が同じ実体かを直接見る。RenderSystem は settings を «複製» して
-            // 使うので、複製元のアドレスが Application の active と一致しているかが要点。
+            /// @note 申告先と読み手が同じ実体かを直接見る。RenderSystem は settings を «複製» して
+            /// @note 使うので、複製元のアドレスが Application の active と一致しているかが要点。
             const void* readFrom = static_cast<const void*>(settings);
             const void* active   = static_cast<const void*>(
                 core::Application::Get().GetActiveRenderSettings());
@@ -2130,14 +2120,12 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    // 「有効なのに現在のパイプラインでは無視される設定」をログへ出す。
-    // エディタを開かずにビルドする経路でも同じ落とし穴を踏むので、警告表示だけでは足りない。
-    // 変化時だけ出す。毎フレーム出すとログが埋まって本当のエラーが見えなくなる。
-    //
-    // WHY settings が無いフレームは黙るか: 診断が指しているのは «プロジェクトの設定» で、
-    //     設定を渡されなかった呼び出し (起動時の Warmup 等) が使う既定値は誰も書いていない。
-    //     既定は Forward + Clustered 有効なので、Deferred+ のプロジェクトでも必ず
-    //     «Clustered Lights は無視される» が 1 度出る。身に覚えのない警告になる。
+    /// @note 「有効なのに現在のパイプラインでは無視される設定」をログへ出す。
+    /// @note エディタを開かずにビルドする経路でも同じ落とし穴を踏むので、警告表示だけでは足りない。
+    /// @note 変化時だけ出す。毎フレーム出すとログが埋まって本当のエラーが見えなくなる。
+    /// @note settings が無いフレーム (起動時の Warmup 等) は黙る: 診断はプロジェクトの設定を指すが、
+    /// @note 既定値は Forward + Clustered 有効なので、Deferred+ のプロジェクトでも既定値のままだと
+    /// @note «Clustered Lights は無視される» が身に覚えのないまま必ず 1 度出てしまう。
     if (settings != nullptr) {
         static std::string sLastInertReport;
         std::string report;
@@ -2156,12 +2144,10 @@ void RenderSystem(Scene& scene,
     }
     profiler::Profiler::EndSample();
 
-    // =========================================================================
-    // RenderPassHandles を組み立て
-    // =========================================================================
+    /// @note RenderPassHandles を組み立て
     RenderPassHandles passHandles{};
-    // selectionMaskRT / outlineRT はハンドルを配らない。
-    // 名前 ("SelectionMask" / "Outline") から res.Target() で引く (登録簿を参照)。
+    /// @note selectionMaskRT / outlineRT はハンドルを配らない。
+    /// @note 名前 ("SelectionMask" / "Outline") から res.Target() で引く (登録簿を参照)。
     passHandles.customPostProcessRT[0] = customPostProcessRT[0];
     passHandles.customPostProcessRT[1] = customPostProcessRT[1];
     for (uint32_t i = 0; i < kBloomMipCount; ++i) {
@@ -2192,8 +2178,8 @@ void RenderSystem(Scene& scene,
     passHandles.customComposeShader       = customComposeShader;
     passHandles.fxaaShader        = fxaaShader;
     passHandles.customPostProcessShaders.resize(rs.postProcess.customEffects.size());
-    // 走る段でリストを分ける。登録順が RenderGraph のタイブレークなので、
-    // 同じ段の中では customEffects に並べた順がそのまま適用順になる。
+    /// @note 走る段でリストを分ける。登録順が RenderGraph のタイブレークなので、
+    /// @note 同じ段の中では customEffects に並べた順がそのまま適用順になる。
     std::vector<uint32_t> customAfterOpaqueIndices;
     std::vector<uint32_t> customSceneHdrIndices;
     std::vector<uint32_t> customPostProcessIndices;
@@ -2201,8 +2187,8 @@ void RenderSystem(Scene& scene,
     for (uint32_t i = 0; i < static_cast<uint32_t>(rs.postProcess.customEffects.size()); ++i) {
         const auto& custom = rs.postProcess.customEffects[i];
         if (!custom.enabled) continue;
-        // shaderPath は .mat を持たないパスの受け皿。materialPath 側の解決は
-        // パス本体が毎フレーム行う (シェーダーもテクスチャも .mat が決めるため)。
+        /// @note shaderPath は .mat を持たないパスの受け皿。materialPath 側の解決は
+        /// @note パス本体が毎フレーム行う (シェーダーもテクスチャも .mat が決めるため)。
         if (!custom.shaderPath.empty())
             passHandles.customPostProcessShaders[i] = resources.LoadShader(custom.shaderPath);
         if (!passHandles.customPostProcessShaders[i].IsValid() && custom.materialPath.empty())
@@ -2213,9 +2199,9 @@ void RenderSystem(Scene& scene,
         case renderer::CustomPassStage::PostProcess: customPostProcessIndices.push_back(i); break;
         }
     }
-    // WHY ここも出すか: マスクを «読む» パスが 1 本も無いと、RenderGraph は
-    //     ObjectMask パスごと刈る (BuildExecutionOrder)。輪郭が出ない症状は
-    //     «申告が届いていない» と «読み手が居なくて刈られた» で同じに見える。
+    /// @note マスクを «読む» パスが 1 本も無いと、RenderGraph は ObjectMask パスごと刈る
+    /// @note (BuildExecutionOrder)。輪郭が出ない症状は «申告が届いていない» と
+    /// @note «読み手が居なくて刈られた» で同じに見えるので、ここでも出す。
     {
         static size_t sAfterOpaque = SIZE_MAX;
         static size_t sSceneHdr    = SIZE_MAX;
@@ -2239,7 +2225,7 @@ void RenderSystem(Scene& scene,
 
     passHandles.selectionMaskPSO  = selectionMaskPso;
     passHandles.postprocPSO       = postprocPSO;
-    // Cookie 焼き。全画面三角形を不透明で塗るだけなので postproc と同じ状態でよい。
+    /// @note Cookie 焼き。全画面三角形を不透明で塗るだけなので postproc と同じ状態でよい。
     passHandles.cookieBlitShader  = cookieBlitShader;
     passHandles.cookieBlitCB      = cookieBlitCB;
     passHandles.cookieBlitPSO     = postprocPSO;
@@ -2259,9 +2245,9 @@ void RenderSystem(Scene& scene,
     passHandles.exposureAverageCS   = exposureAverageCS;
     passHandles.exposureCB          = exposureCB;
 
-    // 散乱ボリュームは 2 枚をフレームごとに入れ替える。Inject が scatter へ書きながら
-    // history を読むので、同じテクスチャを UAV と SRV に同時に張れない。
-    // 向きもビュー別。static だと 1 フレームに 2 回反転し、互いの履歴を読み合う。
+    /// @note 散乱ボリュームは 2 枚をフレームごとに入れ替える。Inject が scatter へ書きながら
+    /// @note history を読むので、同じテクスチャを UAV と SRV に同時に張れない。
+    /// @note 向きもビュー別。static だと 1 フレームに 2 回反転し、互いの履歴を読み合う。
     viewTargets.froxelState.ping = !viewTargets.froxelState.ping;
     passHandles.froxelScatter        = viewTargets.froxelState.ping
                                      ? viewTargets.froxelScatter : viewTargets.froxelScatterHistory;
@@ -2279,9 +2265,9 @@ void RenderSystem(Scene& scene,
     passHandles.lightCB           = lightCB;
     passHandles.bindPoseSkinningCB = bindPoseSkinningCB;
 
-    // ── スキンドモデルのリファレンスポーズ CB を遅延生成 ─────────────────
-    // AnimatorComponent を持たない SkinnedMeshRenderer の既定パレット。スケルトン単位に
-    // 1 本で全インスタンスが共有する。無いと単位行列へ落ち、バインド変換を持つアセットが倒れる。
+    /// @name スキンドモデルのリファレンスポーズ CB を遅延生成
+    /// @note AnimatorComponent を持たない SkinnedMeshRenderer の既定パレット。スケルトン単位に
+    /// @note 1 本で全インスタンスが共有する。無いと単位行列へ落ち、バインド変換を持つアセットが倒れる。
     {
         struct RefPoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };
         for (auto& go : scene.GameObjects()) {
@@ -2319,7 +2305,7 @@ void RenderSystem(Scene& scene,
     passHandles.decalCB           = decalCB;
     passHandles.decalMaterialCB   = decalMaterialCB;
     passHandles.decalReceiverCB   = decalReceiverCB;
-    // ── ジオメトリ用ハンドル ──────────────────────────────────────────────────
+    /// @name ジオメトリ用ハンドル
     passHandles.shadowShader         = shadowShader;
     passHandles.shadowSkinnedShader  = skinnedShadowShader;
     passHandles.shadowCB             = shadowCB;
@@ -2375,7 +2361,7 @@ void RenderSystem(Scene& scene,
     passHandles.clusterCB            = clusterCB;
     passHandles.clusterLinearCB      = clusterLinearCB;
 
-    // ---- Advanced Graphics ハンドルを passHandles に束縛 ----
+    /// @name Advanced Graphics ハンドルを passHandles に束縛
     passHandles.advancedGraphicsCB   = advancedGraphicsCB;
     if (rs.lutColorGrading.enabled) {
         const uint64_t lutHash = HashLutSettings(rs.lutColorGrading);
@@ -2390,48 +2376,48 @@ void RenderSystem(Scene& scene,
         }
     }
     passHandles.proceduralColorLut = proceduralColorLut;
-    // IBL BRDF LUT: static ComputeTexture。IBLBakePass が初回フレームで書き込む。
+    /// @note IBL BRDF LUT: static ComputeTexture。IBLBakePass が初回フレームで書き込む。
     passHandles.iblBrdfLut           = iblBrdfLut;
     passHandles.iblBrdfBakeShader    = iblBrdfBakeShader;
-    // IBL キューブマップ: RenderSettings に指定されたパスを毎フレーム LoadTexture でキャッシュ参照する。
-    // WHY: LoadTexture は内部でキャッシュするため、毎フレーム呼んでも I/O は初回のみ。
+    /// @note IBL キューブマップ: RenderSettings に指定されたパスを毎フレーム LoadTexture でキャッシュ参照する。
+    /// @note LoadTexture は内部でキャッシュするため、毎フレーム呼んでも I/O は初回のみ。
     if (!rs.ibl.irradiancePath.empty())
         passHandles.iblIrradiance = resources.LoadTexture(rs.ibl.irradiancePath);
     if (!rs.ibl.prefilterPath.empty())
         passHandles.iblPrefilter  = resources.LoadTexture(rs.ibl.prefilterPath);
-    // SSR
+    /// @note SSR
     passHandles.ssrResult            = ssrResult;
     passHandles.ssrShader            = ssrShader;
-    // Volumetric Lighting
+    /// @note Volumetric Lighting
     passHandles.volumetricResult     = volumetricResult;
     passHandles.volumetricShader     = volumetricShader;
-    // TAA (ping-pong)
+    /// @note TAA (ping-pong)
     passHandles.taaHistoryA          = taaHistoryA;
     passHandles.taaHistoryB          = taaHistoryB;
     passHandles.taaFlip              = viewTargets.taaFlip;
     passHandles.taaShader            = taaShader;
     passHandles.taaPSO               = taaPSO;
-    // Motion Blur
+    /// @note Motion Blur
     passHandles.motionBlurResult     = motionBlurResult;
     passHandles.motionBlurShader     = motionBlurShader;
-    // GTAO
+    /// @note GTAO
     passHandles.gtaoRaw              = gtaoRaw;
     passHandles.gtaoShader           = gtaoShader;
     passHandles.gtaoBlurShader       = gtaoBlurShader;
-    // Contact Shadows
+    /// @note Contact Shadows
     passHandles.contactShadowShader  = contactShadowShader;
-    // Lens Flare
+    /// @note Lens Flare
     passHandles.lensFlareShader      = lensFlareShader;
     passHandles.lensFlarePSO         = lensFlarePSO;
 
-    // カメラ視錐台とライト視錐台。Gribb-Hartmann 法は VP 行列の行の和・差から
-    // 6 平面を直接出せるので逆行列が要らない。全ジオメトリパスで共有する。
+    /// @note カメラ視錐台とライト視錐台。Gribb-Hartmann 法は VP 行列の行の和・差から
+    /// @note 6 平面を直接出せるので逆行列が要らない。全ジオメトリパスで共有する。
     const math::Frustum cameraFrustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
     const math::Frustum lightFrustum  = math::Frustum::FromViewProjection(lightVP);
     OcclusionCuller occlusionCuller;
 
-    // 参照メンバーまでは集成体初期化で埋めざるを得ないが、それ以降は名前付きで代入する。
-    // 位置指定のままだと RenderPassContext へフィールドを 1 つ挿すだけで以降が全部ずれる。
+    /// @note 参照メンバーまでは集成体初期化で埋めざるを得ないが、それ以降は名前付きで代入する。
+    /// @note 位置指定のままだと RenderPassContext へフィールドを 1 つ挿すだけで以降が全部ずれる。
     RenderPassContext passCtx{
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles
@@ -2447,62 +2433,31 @@ void RenderSystem(Scene& scene,
         if (resolvedCulling.layerCullDistances[i] > 0.0f)
             passCtx.hasLayerCullDistances = true;
     }
-    // 極小オブジェクト判定用の射影スケール = 1/tan(fovY/2)。
-    // GetProjectionMatrix() は毎回行列を組み直すので、オブジェクトごとに呼ぶと判定より高い。
+    /// @note 極小オブジェクト判定用の射影スケール = 1/tan(fovY/2)。
+    /// @note GetProjectionMatrix() は毎回行列を組み直すので、オブジェクトごとに呼ぶと判定より高い。
     passCtx.cullProjScaleY    = camera.GetProjectionMatrix().m[1][1];
     passCtx.cullOrthographic  =
         camera.m_projection == renderer::ProjectionMode::Orthographic;
     passCtx.cullCameraForward = camera.GetForward();
     passCtx.width                   = sHdrW;
     passCtx.height                  = sHdrH;
-    // ---- 名前 → 実ハンドルの登録簿 ----
-    // グラフへ申告するのも、パスが引くのも同じ名前。ここが唯一の対応表になる。
-    // WHY 毎フレーム埋めるか: 中身 (TAA の ping-pong、UpscaleSrc の有無、GBuffer の
-    //     使用可否) はフレームごとに変わる。作り直すのは数十件なので、
-    //     «いつのものか分からない対応表» を持ち回るより素直。
-    {
-        auto& reg = passCtx.resourceRegistry;
-        reg.Clear();
-        reg.BindTarget("Output",             outputRT);
-        reg.BindTarget("HDR",                hdrRT);
-        reg.BindTarget("LDR",                ldrRT);
-        reg.BindTarget("ShadowMap",          shadowMapRT);
-        reg.BindTarget("PunctualShadowMap",  punctualShadowRT);
-        reg.BindTarget("LightCookieAtlas",   lightCookieRT);
-        reg.BindTarget("SelectionMask",      selectionMaskRT);
-        reg.BindTarget("Outline",            outlineRT);
-        reg.BindTarget("ObjectMask",         objectMaskRT);
-        reg.BindTarget("Velocity",           velocityRT);
-        reg.BindTarget("CustomPostProcess0", customPostProcessRT[0]);
-        reg.BindTarget("CustomPostProcess1", customPostProcessRT[1]);
-        reg.BindTarget("GBuffer",            gbufferRT);
-        reg.BindTarget("DecalDepth",         decalDepthRT);
-        reg.BindTarget("UpscaleSrc",         upscaleSrcRT);
-        // Kind が Texture のもの (CS 出力)。RT ではないので別の口へ入れる。
-        reg.BindTexture("Bloom",               bloomFull);
-        reg.BindTexture("SSAO",                ssaoBlur);
-        reg.BindTexture("GTAOResult",          gtaoBlur);
-        reg.BindTexture("ContactShadowResult", contactShadowResult);
-        reg.BindTexture("SSRResult",           ssrResult);
-        reg.BindTexture("MotionBlurResult",    motionBlurResult);
-        reg.BindTexture("VolumetricResult",    volumetricResult);
-        reg.BindTexture("LensFlareSource",     bloomHalf);
-    }
+    /// @note 名前 → 実ハンドルの登録簿は、下の DeclareTarget / DeclareTexture から
+    /// @note RenderPipeline が組み立てる。ここに 2 つ目の一覧は置かない。
 
     passCtx.uiOptions               = uiOptions;
     passCtx.outputWidth             = nativeW;
     passCtx.outputHeight            = nativeH;
-    // ポストプロセスチェーンの終着点。等倍なら従来どおり outputRT へ直接書き切る。
+    /// @note ポストプロセスチェーンの終着点。等倍なら従来どおり outputRT へ直接書き切る。
     passCtx.chainOutputRT           = (needsUpscale && upscaleSrcRT.IsValid()) ? upscaleSrcRT : outputRT;
-    // TAA サブピクセルジッター。8 フレーム周期の Halton(2,3) をピクセル内 ±0.5 に写す。
-    // 周期 8 は収束の速さと品質の標準的な折衷。TAA が無効なフレームは 0 のまま
-    // (ジッターだけ残すと画面全体が揺れて見える)。
+    /// @note TAA サブピクセルジッター。8 フレーム周期の Halton(2,3) をピクセル内 ±0.5 に写す。
+    /// @note 周期 8 は収束の速さと品質の標準的な折衷。TAA が無効なフレームは 0 のまま
+    /// @note (ジッターだけ残すと画面全体が揺れて見える)。
     if (rs.IsTaaActive() && sHdrW > 0u && sHdrH > 0u) {
         constexpr uint32_t kTaaJitterPeriod = 8u;
         const uint32_t sampleIndex = viewTargets.taaFrameIndex % kTaaJitterPeriod + 1u;
         const float offsetPxX = HaltonRadicalInverse(sampleIndex, 2u) - 0.5f;
         const float offsetPxY = HaltonRadicalInverse(sampleIndex, 3u) - 0.5f;
-        // ピクセル → NDC。NDC の Y は上向きなので符号を反転する。
+        /// @note ピクセル → NDC。NDC の Y は上向きなので符号を反転する。
         passCtx.taaJitterNdcX =  2.0f * offsetPxX / static_cast<float>(sHdrW);
         passCtx.taaJitterNdcY = -2.0f * offsetPxY / static_cast<float>(sHdrH);
         ++viewTargets.taaFrameIndex;
@@ -2511,14 +2466,14 @@ void RenderSystem(Scene& scene,
     }
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
     passCtx.objectMaskEnabled      = objectMaskEnabled;
-    // 登録条件 (Forward: forwardGBufferPrepass / Deferred: useGBufferOpaquePipeline) と
-    // ExecuteSSRPass の早期 return を合わせた «本当に走るか»。
+    /// @note 登録条件 (Forward: forwardGBufferPrepass / Deferred: useGBufferOpaquePipeline) と
+    /// @note ExecuteSSRPass の早期 return を合わせた «本当に走るか»。
     passCtx.ssrPassActive =
         rs.ssr.enabled && screenSpaceReady &&
         ssrShader.IsValid() && ssrResult.IsValid() && gbufferRT.IsValid();
-    // UI 要素の矩形も 3D と同じ選択マスクへ乗せ、輪郭の描き方を 1 か所に保つ。
-    // 寸法が nativeW/H なのは、UI がポストプロセス後の outputRT へ実寸で描かれ、
-    // Canvas Scaler の解釈も出力実寸で決まるため (渡すのはクリップ空間の行列)。
+    /// @note UI 要素の矩形も 3D と同じ選択マスクへ乗せ、輪郭の描き方を 1 か所に保つ。
+    /// @note 寸法が nativeW/H なのは、UI がポストプロセス後の outputRT へ実寸で描かれ、
+    /// @note Canvas Scaler の解釈も出力実寸で決まるため (渡すのはクリップ空間の行列)。
     if (selectionOutlineEnabled && uiOptions && uiOptions->enabled && uiOptions->context) {
         passCtx.appendUISelectionMask = [&]() {
             const float uiWidth = uiOptions->viewportWidth > 0.0f
@@ -2543,19 +2498,19 @@ void RenderSystem(Scene& scene,
     passCtx.ssaoEnabled             = ssaoEnabled;
     passCtx.gbufferDepthReady       = screenSpaceReady;
 
-    // ── 前方描画のマテリアルへ渡す画面空間の遮蔽 ──────────────────────────────
-    // GTAO と SSAO は排他 (IsGtaoActive が解決済み)。走った方を 1 つのスロットへ入れる。
-    // Deferred でも渡すのは、半透明・エフェクト・スキンドが Forward で描かれ
-    // DeferredLighting を通らないため。本体は共有ヘッダーを外しているので二重適用にならない。
-    // kHalfResScale は半解像度で焼いた AO / 接触影へ svPosition.xy を落とす係数。
-    // 強度は b8 が運ぶが、あれを組むのは IBL 解決後なのでここでは値だけ決める。
+    /// @name 前方描画のマテリアルへ渡す画面空間の遮蔽
+    /// @note GTAO と SSAO は排他 (IsGtaoActive が解決済み)。走った方を 1 つのスロットへ入れる。
+    /// @note Deferred でも渡すのは、半透明・エフェクト・スキンドが Forward で描かれ
+    /// @note DeferredLighting を通らないため。本体は共有ヘッダーを外しているので二重適用にならない。
+    /// @note kHalfResScale は半解像度で焼いた AO / 接触影へ svPosition.xy を落とす係数。
+    /// @note 強度は b8 が運ぶが、あれを組むのは IBL 解決後なのでここでは値だけ決める。
     constexpr float kHalfResScale = 0.5f;
     float screenAoStrength = 0.0f;
     float screenContactShadowStrength = 0.0f;
 
     if (screenSpaceReady && rs.IsGtaoActive() && gtaoBlur.IsValid()) {
         passCtx.screenAoTexture = gtaoBlur;
-        // GTAO の出力は gtaoIntensity を織り込み済み。ここで再度掛けると二重になる。
+        /// @note GTAO の出力は gtaoIntensity を織り込み済み。ここで再度掛けると二重になる。
         screenAoStrength = 1.0f;
     } else if (ssaoEnabled) {
         passCtx.screenAoTexture = ssaoBlur;
@@ -2563,23 +2518,21 @@ void RenderSystem(Scene& scene,
     }
     if (screenSpaceReady && rs.contactShadow.enabled && contactShadowResult.IsValid()) {
         passCtx.screenContactShadowTexture = contactShadowResult;
-        // 強度はマスク生成 CS 側で織り込み済み。ここは「適用するか」だけを決める。
+        /// @note 強度はマスク生成 CS 側で織り込み済み。ここは「適用するか」だけを決める。
         screenContactShadowStrength = 1.0f;
     }
 
-    // ── ライト供給モードの決定と定数の組み立て ──────────────────────────────────
-    // 4 つのパイプラインで「どのライトが効くか」を揃える。
-    //   Forward   / Deferred   → LINEAR    (統合配列を全数走査)
-    //   Forward+  / Deferred+  → CLUSTERED (クラスタで絞ってから走査)
-    // どちらも同じ StructuredBuffer を読むので、"+" は性能の選択であって絵の選択ではない。
-    // b3 のレガシー経路を既定から外したのは、点 8 / スポット 4 で打ち切るため
-    // Forward を選んだだけで 9 個目の電球が黙って消えていたから。
-    // LEGACY はフォールバックとして残る (リソース確保の失敗と、b9 / t29 を束縛しない
-    // エディタのプレビュー経路)。
-    // useGBufferOpaquePipeline はライトの供給方法と直交する軸なので触らない。
+    /// @name ライト供給モードの決定と定数の組み立て
+    /// @note 4 つのパイプラインで「どのライトが効くか」を揃える。
+    /// @note Forward/Deferred → LINEAR (全数走査)、Forward+/Deferred+ → CLUSTERED (クラスタで絞る)。
+    /// @note どちらも同じ StructuredBuffer を読むので "+" は性能の選択であって絵の選択ではない。
+    /// @note b3 のレガシー経路を既定から外したのは、点 8 / スポット 4 で打ち切るため 9 個目の
+    /// @note 電球が黙って消えていたから。LEGACY はリソース確保失敗時とエディタのプレビュー
+    /// @note 経路 (b9 / t29 を束縛しない) のフォールバックとして残る。
+    /// @note useGBufferOpaquePipeline はライトの供給方法と直交する軸なので触らない。
     const bool punctualBufferReady =
         passHandles.punctualLightBuffer.IsValid() && clusterCB.IsValid();
-    // クラスタで絞れるか。カリング CS とインデックスバッファが揃って初めて成立する。
+    /// @note クラスタで絞れるか。カリング CS とインデックスバッファが揃って初めて成立する。
     const bool canCullClusters = rs.UsesClusteredLighting()
         && clusterIndexBuffer.IsValid() && clusterCullCS.IsValid()
         && !rs.clustered.forceAllLights;
@@ -2593,20 +2546,20 @@ void RenderSystem(Scene& scene,
 
     passCtx.punctualLights    = std::move(punctualLights);
     passCtx.clusterLightMode  = clusterMode;
-    // 霧のフレーム間状態は描画中のビューが持つ (SceneView / GameView で混ざらないように)。
+    /// @note 霧のフレーム間状態は描画中のビューが持つ (SceneView / GameView で混ざらないように)。
     passCtx.froxelFogState    = &viewTargets.froxelState;
     passCtx.clusterDebugHeatmap = clusteredEnabled && rs.clustered.debugHeatmap;
 
     if (punctualBufferReady) {
-        // ライト配列は毎フレーム転送する。上限 256 本 × 96B = 24KB で、部分更新の価値はない。
+        /// @note ライト配列は毎フレーム転送する。上限 256 本 × 96B = 24KB で、部分更新の価値はない。
         if (!passCtx.punctualLights.empty()) {
             resources.Update(passHandles.punctualLightBuffer, passCtx.punctualLights.data(),
                              passCtx.punctualLights.size() * sizeof(PunctualLightGPU));
         }
 
-        // 指数分割の係数。slice = log(viewZ) * scale + bias が [0, GridZ) に収まるよう決める。
-        //   slice(nearZ) = 0 / slice(clusterFar) = GridZ
-        // 対数なのは、等間隔だと手前の 1 スライスが広くなりすぎて何も落とせないため。
+        /// @note 指数分割の係数。slice = log(viewZ) * scale + bias が [0, GridZ) に収まるよう決める。
+        /// @note slice(nearZ) = 0 / slice(clusterFar) = GridZ
+        /// @note 対数なのは、等間隔だと手前の 1 スライスが広くなりすぎて何も落とせないため。
         const float nearZ = (std::max)(camera.m_near, 0.01f);
         const float farZ  = (std::max)((std::min)(camera.m_far, rs.clustered.maxDistance), nearZ * 2.0f);
         const float logRatio = std::log(farZ / nearZ);
@@ -2621,8 +2574,8 @@ void RenderSystem(Scene& scene,
         clusterData.clusterDebugMode  = passCtx.clusterDebugHeatmap ? 1u : 0u;
         resources.Update(clusterCB, &clusterData, sizeof(ClusterConstantsCB));
 
-        // 別視点パス用。Legacy を Linear へ持ち上げると空のバッファを全数走査するので落とす。
-        // ヒートマップも切る (メインカメラのタイル分布を別視点で塗っても意味がない)。
+        /// @note 別視点パス用。Legacy を Linear へ持ち上げると空のバッファを全数走査するので落とす。
+        /// @note ヒートマップも切る (メインカメラのタイル分布を別視点で塗っても意味がない)。
         ClusterConstantsCB linearData = clusterData;
         if (clusterMode != ClusterLightMode::Legacy)
             linearData.clusterLightMode = static_cast<uint32_t>(ClusterLightMode::Linear);
@@ -2633,18 +2586,19 @@ void RenderSystem(Scene& scene,
     passCtx.lightFrustum            = &lightFrustum;
     passCtx.occlusionCuller         = &occlusionCuller;
     passCtx.physicsWorld  = physicsWorld;
-    passCtx.environmentResources = &sEnvironmentResources; // 空連動 IBL の永続状態 (フレームをまたぐ)
-    // 雲シャドウ (Phase C): SkyRenderer から読んだ params + 現在時刻を影パスへ渡す。
+    /// @note 空連動 IBL の永続状態 (フレームをまたぐ)
+    passCtx.environmentResources = &sEnvironmentResources;
+    /// @note 雲シャドウ (Phase C): SkyRenderer から読んだ params + 現在時刻を影パスへ渡す。
     passCtx.cloudShadowStrength = skyCloudShadowStrength;
     passCtx.cloudShadowCoverage = skyCloudShadowCoverage;
     passCtx.cloudShadowScale    = skyCloudShadowScale;
     passCtx.cloudShadowSpeed    = skyCloudShadowSpeed;
     passCtx.cloudShadowTime     = Time::time;
-    // Shadow トグルを CB まで伝える。描画を止めるだけだと、シェーダーは影を切っても
-    // PCF ループ (既定 7x7 = 49 タップ) を回し続け、「切っても速くならない」状態になる。
+    /// @note Shadow トグルを CB まで伝える。描画を止めるだけだと、シェーダーは影を切っても
+    /// @note PCF ループ (既定 7x7 = 49 タップ) を回し続け、「切っても速くならない」状態になる。
     passCtx.shadowStrength =
         (rs.shadowEnabled && dirCastShadows) ? dirShadowStrength : 0.0f;
-    // 単一カスケード相当のバイアス。カスケードごとの値は ShadowCascade::biasNDC が持つ。
+    /// @note 単一カスケード相当のバイアス。カスケードごとの値は ShadowCascade::biasNDC が持つ。
     passCtx.shadowBiasNDC  = cascades[0].biasNDC;
     passCtx.shadowCascadeCount = cascadeCount;
     for (int i = 0; i < cascadeCount; ++i)
@@ -2663,8 +2617,8 @@ void RenderSystem(Scene& scene,
     for (int i = 0; i < cookieViewCount; ++i)
         passCtx.lightCookieViews[i] = cookieViews[i];
 
-    // レガシー経路向けに「大きさを持つ光源」を先頭から数本だけ写す。
-    // 1 部屋に数個のものなので上限に当たること自体が稀。並び順が変わらない方が追いやすい。
+    /// @note レガシー経路向けに「大きさを持つ光源」を先頭から数本だけ写す。
+    /// @note 1 部屋に数個のものなので上限に当たること自体が稀。並び順が変わらない方が追いやすい。
     passCtx.legacyShapedLightCount = 0;
     for (const PunctualLightGPU& light : passCtx.punctualLights) {
         if (passCtx.legacyShapedLightCount >= kMaxLegacyShapedLights) break;
@@ -2677,10 +2631,10 @@ void RenderSystem(Scene& scene,
     for (int i = 0; i < kMaxLegacyPunctualLights; ++i)
         passCtx.legacySourceRadius[i] = legacySourceRadius[i];
 
-    // ── 空連動 IBL: source=DynamicSky のとき空→動的 IBL を用意する ──
-    // AdvancedGraphicsCB / 各 Lit パスより前に焼くことで同フレームで消費できる。
-    // キャプチャ先と畳み込み出力は RenderGraph 管理外なのでグラフ実行前に直接呼ぶ。
-    // SkyCapture / SkyLightBake は dirty を内部判定し、不要フレームは即 return する。
+    /// @name 空連動 IBL: source=DynamicSky のとき空→動的 IBL を用意する
+    /// @note AdvancedGraphicsCB / 各 Lit パスより前に焼くことで同フレームで消費できる。
+    /// @note キャプチャ先と畳み込み出力は RenderGraph 管理外なのでグラフ実行前に直接呼ぶ。
+    /// @note SkyCapture / SkyLightBake は dirty を内部判定し、不要フレームは即 return する。
     bool dynamicIblReady = false;
     float reflectionProbeIntensity = 1.0f;
     int dynamicIblMipCount = 0;
@@ -2695,8 +2649,8 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    // 局所 Reflection Probe はカメラが影響範囲内にいるとき、グローバル IBL より優先する。
-    // IBL スロットを共有するので、マテリアル側に専用分岐も追加テクスチャも要らない。
+    /// @note 局所 Reflection Probe はカメラが影響範囲内にいるとき、グローバル IBL より優先する。
+    /// @note IBL スロットを共有するので、マテリアル側に専用分岐も追加テクスチャも要らない。
     if (auto* localProbe = ExecuteReflectionProbeCapturePass(passCtx)) {
         passHandles.iblIrradiance = localProbe->runtimeIrradiance;
         passHandles.iblPrefilter  = localProbe->runtimePrefilter;
@@ -2705,19 +2659,19 @@ void RenderSystem(Scene& scene,
         dynamicIblMipCount = static_cast<int>(localProbe->runtimePrefilterMipCount);
     }
 
-    // ---- AdvancedGraphicsCB (b8) を毎フレーム更新 ----
-    // 各パスはここで書いたデータを読むだけなので、更新はこの 1 か所に集中させる。
+    /// @name AdvancedGraphicsCB (b8) を毎フレーム更新
+    /// @note 各パスはここで書いたデータを読むだけなので、更新はこの 1 か所に集中させる。
     if (advancedGraphicsCB.IsValid()) {
         AdvancedGraphicsCB agData{};
-        // 未バインド SRV をサンプルさせず、確実に ambient へフォールバックさせるための判定。
-        // 動的 IBL は .dds を持たないので dynamicIblReady を別経路として許可する。
+        /// @note 未バインド SRV をサンプルさせず、確実に ambient へフォールバックさせるための判定。
+        /// @note 動的 IBL は .dds を持たないので dynamicIblReady を別経路として許可する。
         const bool iblResourcesReady =
             (dynamicIblReady || (rs.ibl.enabled && rs.HasValidIblAssets())) &&
             passHandles.iblIrradiance.IsValid() && passHandles.iblPrefilter.IsValid();
         agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity * reflectionProbeIntensity : 0.0f;
         agData.iblDiffuseScale       = rs.ibl.diffuseScale;
         agData.iblSpecularScale      = rs.ibl.specularScale;
-        // 動的 IBL は SkyLightBake が焼いた prefilter mip 数に合わせる (maxMip = mip 数 - 1)。
+        /// @note 動的 IBL は SkyLightBake が焼いた prefilter mip 数に合わせる (maxMip = mip 数 - 1)。
         agData.iblMaxMipLevel        = dynamicIblReady
             ? dynamicIblMipCount - 1
             : rs.ibl.maxMipLevel;
@@ -2738,15 +2692,15 @@ void RenderSystem(Scene& scene,
         agData.volTintB              = rs.volumetricLight.tint[2];
         agData.volEdgeFade           = rs.volumetricLight.edgeFade;
 
-    // 前方描画のマテリアルが画面空間 AO / 接触影をどれだけ受けるか。
-    // 値そのものは上の「前方描画のマテリアルへ渡す画面空間の遮蔽」ブロックで決めてある。
+    /// @note 前方描画のマテリアルが画面空間 AO / 接触影をどれだけ受けるか。
+    /// @note 値そのものは上の「前方描画のマテリアルへ渡す画面空間の遮蔽」ブロックで決めてある。
     agData.screenAoStrength            = screenAoStrength;
     agData.screenContactShadowStrength = screenContactShadowStrength;
     agData.screenAoScale               = kHalfResScale;
     agData.screenContactShadowScale    = kHalfResScale;
 
-    // 自動露出。key <= 0 が「無効」の印なので、切ってあるときは 0 のまま渡す。
-    // 0.18 は反射率 18% のグレーカード = 写真の露出計が基準にしている明るさ。
+    /// @note 自動露出。key <= 0 が「無効」の印なので、切ってあるときは 0 のまま渡す。
+    /// @note 0.18 は反射率 18% のグレーカード = 写真の露出計が基準にしている明るさ。
     agData.autoExposureKey          = rs.autoExposure.enabled ? 0.18f : 0.0f;
     agData.autoExposureCompensation = rs.autoExposure.compensation;
     agData.autoExposureMinEV        = rs.autoExposure.minExposureEV;
@@ -2775,7 +2729,7 @@ void RenderSystem(Scene& scene,
         agData.pcssEnabled           = rs.shadow.pcssEnabled ? 1 : 0;
         agData.lutBlend              = (rs.lutColorGrading.enabled && resources.Get(proceduralColorLut) != nullptr)
             ? rs.lutColorGrading.blend : 0.0f;
-        // 天候 — シーンに置かれた WeatherComponent 1 個ぶん。無ければ 0 で素通りする。
+        /// @note 天候 — シーンに置かれた WeatherComponent 1 個ぶん。無ければ 0 で素通りする。
         for (auto& weatherGo : scene.GameObjects()) {
             const auto* weather = weatherGo.GetComponent<WeatherComponent>();
             if (!weather || !weather->enabled) continue;
@@ -2784,75 +2738,104 @@ void RenderSystem(Scene& scene,
             agData.weatherPuddle    = std::clamp(weather->puddleAmount, 0.0f, 1.0f);
             break;
         }
-        // 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使う。ビュー別に持つ。
+        /// @note 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使う。ビュー別に持つ。
         agData.prevViewProjection    = viewTargets.prevViewProjection;
         agData.invPrevViewProjection = viewTargets.invPrevViewProjection;
         resources.Update(advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
-        // ここはジッターを載せない。両方に載せるとジッター差分がそのまま「動き」として
-        // 現れ、履歴が毎フレームずれて収束しない。履歴はピクセル中心で収束した絵なので、
-        // 引く座標もピクセル中心でなければならない。
+        /// @note ここはジッターを載せない。両方に載せるとジッター差分がそのまま「動き」として
+        /// @note 現れ、履歴が毎フレームずれて収束しない。履歴はピクセル中心で収束した絵なので、
+        /// @note 引く座標もピクセル中心でなければならない。
         viewTargets.prevViewProjection    = camera.GetViewProjection();
         viewTargets.invPrevViewProjection = math::Matrix4::Inverse(camera.GetViewProjection());
-    } // end AdvancedGraphicsCB update
+    }
 
-    // =========================================================================
-    // RenderPipeline にパスを登録
-    // =========================================================================
+    /// @note RenderPipeline にパスを登録
     RenderPipeline& pipeline = viewTargets.pipeline;
     pipeline.BeginBuild();
-    // 申告を条件で組み立てるパス用。initializer_list には if を書けないので、
-    // 読むものが構成で変わるパスは vector を渡す。
+    /// @note エディターが編集した «このパスは載せない / これを待つ» をこのフレームへ効かせる。
+    pipeline.SetPassOverrides(rs.passOverrides);
+    pipeline.SetSchedulePolicy(rs.schedulePolicy);
+    /// @note 申告を条件で組み立てるパス用。initializer_list には if を書けないので、
+    /// @note 読むものが構成で変わるパスは vector を渡す。
     using RA = renderer::RenderGraph::ResourceAccess;
     using RU = renderer::RenderGraph::ResourceUsage;
-    // 申告を条件で組み立てるパス用。initializer_list には if を書けないので、
-    // 読むものが構成で変わるパスは vector を渡す。
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
-    // Output だけは出力先そのものなので実寸で申告する (中間 RT は内部解像度)。
-    pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, nativeW, nativeH, renderer::Format::RGBA16F, 1, true,  true,  false });
-    pipeline.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, renderer::Format::RGBA16F, 0, true, false, false });
-    pipeline.DeclareResource("PunctualShadowMap", { renderer::RenderGraph::ResourceKind::RenderTarget, punctualShadowRes, punctualShadowRes, renderer::Format::RGBA16F, 0, true, false, false });
-    pipeline.DeclareResource("LightCookieAtlas",  { renderer::RenderGraph::ResourceKind::RenderTarget, kLightCookieAtlasWidth, kLightCookieAtlasHeight, renderer::Format::RGBA16F, 1, true, false, false });
-    pipeline.DeclareResource("HDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("LDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("Outline",    { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("ObjectMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("Velocity",   { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, true,  false, true });
-    pipeline.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    // 実体は upscaleSrcRT。等倍のフレームは誰も触らないので申告もしない。
+    /// @name 論理リソースの宣言
+    /// @note 申告 (依存解析に使う «形») と実体 (名前 → ハンドル) を同じ 1 行で渡す。宣言と登録を
+    /// @note 分けると、片方だけ足しても Plan が通り «申告したのに実体が無い» が静かに成立してしまう。
+    /// @note 登録簿は RenderPipeline がここから組み立てる。
+    using RK = renderer::RenderGraph::ResourceKind;
+    constexpr auto kResFormat = renderer::Format::RGBA16F;
+
+    /// @note 内部解像度・フレーム内だけ生きる RT。違うのは MRT 枚数と深度の有無だけ。
+    const auto declareViewTarget = [&](const char* name,
+                                       renderer::ResourceHandle<renderer::RenderTargetTag> handle,
+                                       uint32_t colorCount, bool withDepth) {
+        pipeline.DeclareTarget(name, handle,
+            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, colorCount, withDepth, false, true });
+    };
+    /// @note CS 出力のテクスチャ。解像度以外の «形» は全部同じ。
+    const auto declareViewTexture = [&](const char* name,
+                                        renderer::ResourceHandle<renderer::TextureTag> handle,
+                                        uint32_t width, uint32_t height) {
+        pipeline.DeclareTexture(name, handle,
+            { RK::Texture, width, height, kResFormat, 1, false, false, true });
+    };
+
+    /// @note Output だけは出力先そのものなので実寸で申告する (中間 RT は内部解像度)。
+    pipeline.DeclareTarget("Output", outputRT,
+        { RK::RenderTarget, nativeW, nativeH, kResFormat, 1, true, true, false });
+    pipeline.DeclareTarget("ShadowMap", shadowMapRT,
+        { RK::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, kResFormat, 0, true, false, false });
+    pipeline.DeclareTarget("PunctualShadowMap", punctualShadowRT,
+        { RK::RenderTarget, punctualShadowRes, punctualShadowRes, kResFormat, 0, true, false, false });
+    pipeline.DeclareTarget("LightCookieAtlas", lightCookieRT,
+        { RK::RenderTarget, kLightCookieAtlasWidth, kLightCookieAtlasHeight, kResFormat, 1, true, false, false });
+
+    declareViewTarget("HDR",                hdrRT,                  1, true);
+    declareViewTarget("LDR",                ldrRT,                  1, false);
+    declareViewTarget("SelectionMask",      selectionMaskRT,        1, true);
+    declareViewTarget("Outline",            outlineRT,              1, false);
+    declareViewTarget("ObjectMask",         objectMaskRT,           1, true);
+    declareViewTarget("Velocity",           velocityRT,             1, true);
+    declareViewTarget("CustomPostProcess0", customPostProcessRT[0], 1, false);
+    declareViewTarget("CustomPostProcess1", customPostProcessRT[1], 1, false);
+
+    /// @note 実体は upscaleSrcRT。等倍のフレームは誰も触らないので申告もしない。
     const bool upscaleActive = needsUpscale && upscaleSrcRT.IsValid();
     if (upscaleActive)
-        pipeline.DeclareResource("UpscaleSrc", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("SSRResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("MotionBlurResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    pipeline.DeclareResource("VolumetricResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, renderer::Format::RGBA16F, 1, false, false, true });
-    // Forward もプリパスで GBuffer へ描くので、ここを Deferred 限定にすると
-    // 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。
+        declareViewTarget("UpscaleSrc", upscaleSrcRT, 1, false);
+
+    declareViewTexture("Bloom",            bloomFull,        sHdrW, sHdrH);
+    declareViewTexture("SSRResult",        ssrResult,        sHdrW, sHdrH);
+    declareViewTexture("MotionBlurResult", motionBlurResult, sHdrW, sHdrH);
+    declareViewTexture("VolumetricResult", volumetricResult, sHdrW, sHdrH);
+
+    /// @note Forward もプリパスで GBuffer へ描くので、ここを Deferred 限定にすると
+    /// @note 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。
     if (screenSpaceReady)
-        pipeline.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 2, true, false, false });
-    // AO と接触影は半解像度で持つ (実体は curW/2 x curH/2)。ここをフル解像度で
-    // 申告していると、エイリアシングが全画面 RT と同じ枠を貸してしまう。
+        pipeline.DeclareTarget("GBuffer", gbufferRT,
+            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, 2, true, false, false });
+
+    /// @note AO と接触影は半解像度で持つ (実体は curW/2 x curH/2)。ここをフル解像度で
+    /// @note 申告していると、エイリアシングが全画面 RT と同じ枠を貸してしまう。
     const uint32_t halfW = (std::max)(1u, sHdrW / 2);
     const uint32_t halfH = (std::max)(1u, sHdrH / 2);
-    pipeline.DeclareResource("LensFlareSource", { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
+    declareViewTexture("LensFlareSource", bloomHalf, halfW, halfH);
     if (ssaoEnabled)
-        pipeline.DeclareResource("SSAO",               { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
-    // GTAO / ContactShadows は GBuffer を読んで独自の UAV へ書く。専用名で宣言しないと
-    // GBuffer への偽書き込みとみなされ、DeferredLighting との依存順が崩れる。
+        declareViewTexture("SSAO", ssaoBlur, halfW, halfH);
+    /// @note GTAO / ContactShadows は GBuffer を読んで独自の UAV へ書く。専用名で宣言しないと
+    /// @note GBuffer への偽書き込みとみなされ、DeferredLighting との依存順が崩れる。
     if (screenSpaceReady && rs.IsGtaoActive())
-        pipeline.DeclareResource("GTAOResult",          { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
+        declareViewTexture("GTAOResult", gtaoBlur, halfW, halfH);
     if (screenSpaceReady && rs.contactShadow.enabled)
-        pipeline.DeclareResource("ContactShadowResult", { renderer::RenderGraph::ResourceKind::Texture, halfW, halfH, renderer::Format::RGBA16F, 1, false, false, true });
+        declareViewTexture("ContactShadowResult", contactShadowResult, halfW, halfH);
     pipeline.SetOutputs({ "Output" });
 
-    // IBL BRDF LUT 焼き付け。512x512 の積分テーブルはシーンにも設定にも依存しない定数なので、
-    // 毎フレーム呼ぶが実処理は世代追跡で初回のみ走る。
-    pipeline.AddRawPass("IBLBrdfBake", {}, {}, [&]() {
-        ExecuteIBLBakeBrdfLutPass(passCtx);
-    }, false); // 外部 ComputeTexture への副作用パスなので RenderGraph カリング禁止
+    /// @note IBL BRDF LUT 焼き付け。512x512 の積分テーブルはシーンにも設定にも依存しない定数なので、
+    /// @note 毎フレーム呼ぶが実処理は世代追跡で初回のみ走る。
+    pipeline.AddPass<IBLBrdfBakePass>();
 
     scene.ClearUserRenderPasses();
 
@@ -2869,12 +2852,11 @@ void RenderSystem(Scene& scene,
         }
     };
 
-    // HDR の段 (AfterOpaque / SceneHDR) のカスタムパスを積む。どちらも hdrRT を
-    // 読んで書くので、違うのは «パイプラインのどこへ挿すか» だけ。
-    //
-    // WHY マスクを reads に入れるか: 入れないとグラフは «マスクを描く前に» この
-    //     パスを走らせてよいことになる。読む宣言をしていない効果でも、同じ段に
-    //     読む効果が混ざれば順序は共有されるので、有無で分けずまとめて宣言する。
+    /// @note HDR の段 (AfterOpaque / SceneHDR) のカスタムパスを積む。どちらも hdrRT を
+    /// @note 読んで書くので、違うのは «パイプラインのどこへ挿すか» だけ。
+    /// @note マスクを reads に入れないと、グラフは «マスクを描く前に» このパスを走らせてよいことになる。
+    /// @note 読む宣言をしていない効果でも同じ段に読む効果が混ざれば順序は共有されるので、
+    /// @note 有無で分けずまとめて宣言する。
     auto appendCustomHdrPasses = [&](const char* label, const std::vector<uint32_t>& indices) {
         for (uint32_t i = 0; i < static_cast<uint32_t>(indices.size()); ++i) {
             const uint32_t customIndex = indices[i];
@@ -2887,247 +2869,125 @@ void RenderSystem(Scene& scene,
         }
     };
 
-    // ── Skinning (コンピュート) ───────────────────────────────────────────────
-    // Shadow より前。変形結果をシャドウ・GBuffer・Forward が共有するので 1 回で済む。
-    // 出力は論理リソースではなく SkinnedMeshRenderer の頂点バッファなので依存には乗せない。
-    pipeline.AddRawPass("SkinningCompute", {}, {}, [&]() {
-        ExecuteSkinningComputePass(passCtx);
-    }, false);
+    /// @name Skinning (コンピュート)
+    /// @note Shadow より前。変形結果をシャドウ・GBuffer・Forward が共有するので 1 回で済む。
+    /// @note 出力は論理リソースではなく SkinnedMeshRenderer の頂点バッファなので依存には乗せない。
+    pipeline.AddPass<SkinningComputePass>();
 
-    // ── クラスタライトカリング ────────────────────────────────────────────────
-    // Shadow より前。どちらの経路も同じ結果を読むので 1 回で済む。
-    // 出力は StructuredBuffer で論理リソースではないため reads/writes は空。
+    /// @name クラスタライトカリング
+    /// @note Shadow より前。どちらの経路も同じ結果を読むので 1 回で済む。
+    /// @note 出力は StructuredBuffer で論理リソースではないため reads/writes は空。
     if (clusteredEnabled) {
-        pipeline.AddRawPass("ClusterLightCull", {}, {}, [&]() {
-            ExecuteClusterLightCullPass(passCtx);
-        }, false);
+        pipeline.AddPass<ClusterLightCullPass>();
     }
 
-    // ── Light Cookie ──────────────────────────────────────────────────────────
-    // Cookie の顔ぶれが変わったフレームだけアトラスを焼き直す。
-    pipeline.AddRawPass("LightCookie", {}, { "LightCookieAtlas" }, [&]() {
-        ExecuteLightCookiePass(passCtx);
-    });
+    /// @name Light Cookie
+    /// @note Cookie の顔ぶれが変わったフレームだけアトラスを焼き直す。
+    pipeline.AddPass<LightCookiePass>();
 
-    // ── Shadow ────────────────────────────────────────────────────────────────
-    // Directional の CSM と Spot / Point のアトラスを 1 パスで描く。caster の収集と
-    // ソートを両者で共有するため、パスを分けるとシーン走査が丸ごと 2 回になる。
-    pipeline.AddRawPass("Shadow", {}, { "ShadowMap", "PunctualShadowMap" }, [&]() {
-        ExecuteShadowPass(passCtx);
-    });
+    /// @name Shadow
+    /// @note Directional の CSM と Spot / Point のアトラスを 1 パスで描く。caster の収集と
+    /// @note ソートを両者で共有するため、パスを分けるとシーン走査が丸ごと 2 回になる。
+    pipeline.AddPass<ShadowPass>();
 
-    // ── Forward or Deferred ───────────────────────────────────────────────────
+    /// @name Forward or Deferred
     if (!useGBufferOpaquePipeline) {
-        // 画面空間系のための GBuffer プリパス。ライティングはせず法線・深度・roughness だけ書く。
-        // 以降の SSAO / GTAO / SSR / 接触影は Deferred と同じ入力を読む。
+        /// @note 画面空間系のための GBuffer プリパス。ライティングはせず法線・深度・roughness だけ書く。
+        /// @note 以降の SSAO / GTAO / SSR / 接触影は Deferred と同じ入力を読む。
         if (forwardGBufferPrepass) {
-            pipeline.AddRawPass("ForwardGBufferPrepass",
-                                { "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                                { "GBuffer" }, [&]() {
-                ExecuteGBufferPass(passCtx);
-            });
+            pipeline.AddPass<GBufferPass>(GBufferPassMode::ForwardPrepass);
 
-            // 地形も GBuffer へ入れる。飛ばすと地形が AO の遮蔽者にも受け手にもならず、
-            // 「Deferred では地形に AO が乗るのに Forward では乗らない」差が残る。
-            // WHY 独立したパスにするか: 以前はプリパスの «中で» 入れ子実行していた。
-            //     その経路では Setup が呼ばれず、申告はホスト側のラムダが代理していた。
-            //     登録順を直後に置けば、実行順はこれまでと同じになる。
+            /// @note 地形も GBuffer へ入れる。飛ばすと地形が AO の遮蔽者にも受け手にもならず、
+            /// @note 「Deferred では地形に AO が乗るのに Forward では乗らない」差が残る。
+            /// @note 独立したパスにするのは Setup を呼ばせるため。登録順を直後に置けば実行順は変わらない。
             pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::GBuffer);
 
-            // AO と接触影は ForwardOpaque より前。Forward には合流点が無く各マテリアルが
-            // 自分の画素で読むので、本描画の時点で結果が揃っていないと何も掛からない。
-            if (rs.IsGtaoActive()) {
-                pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GTAOResult" }, [&]() {
-                    ExecuteGTAOPass(passCtx);
-                });
-            }
-            if (rs.contactShadow.enabled) {
-                // WHY HDR を申告しないか: ContactShadowsPass は gbufferDepthReady が false の
-            //     ときだけ HDR の深度へ落ちるが、この登録は 2 箇所とも «GBuffer が揃う»
-            //     分岐の中にある。申告すると本描画前の HDR へ偽の依存が張られる。
-            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "ContactShadowResult" }, [&]() {
-                    ExecuteContactShadowsPass(passCtx);
-                });
-            }
-            if (ssaoEnabled) {
-                pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
-                    ExecuteSSAOPass(passCtx);
-                });
-            }
+            /// @note AO と接触影は ForwardOpaque より前。Forward には合流点が無く各マテリアルが
+            /// @note 自分の画素で読むので、本描画の時点で結果が揃っていないと何も掛からない。
+            /// @note 有効条件と申告はパス側が持つ (PostProcessPasses.hpp)。ここが決めるのは位置だけ。
+            pipeline.AddPass<GTAOPass>();
+            pipeline.AddPass<ContactShadowsPass>();
+            pipeline.AddPass<SSAOPass>();
         }
 
-        // ForwardOpaque の reads は AO / 接触影の有無で変わる。
-        // 宣言しておかないとグラフが AO より先に本描画を並べうる。
-        {
-            // HDR は Write。ReadWrite にすると読み手にもなるが、この時点で producer が
-            // いないため検証が落ちる。ForwardOpaque は自分でクリアしてから描く。
-            std::vector<RA> forwardAccesses = {
-                { "ShadowMap",         RU::Read  },
-                { "PunctualShadowMap", RU::Read  },
-                { "LightCookieAtlas",  RU::Read  },
-                { "HDR",               RU::Write },
-            };
-            if (forwardGBufferPrepass) {
-                if (ssaoEnabled)              forwardAccesses.push_back({ "SSAO",                RU::Read });
-                if (rs.IsGtaoActive())        forwardAccesses.push_back({ "GTAOResult",          RU::Read });
-                if (rs.contactShadow.enabled) forwardAccesses.push_back({ "ContactShadowResult", RU::Read });
-            }
-            pipeline.AddRawPass("ForwardOpaque", std::move(forwardAccesses), [&]() {
-                ExecuteForwardPasses(passCtx);
-            });
-        }
+        pipeline.AddPass<ForwardOpaquePass>();
     }
 
     if (useGBufferOpaquePipeline) {
-        pipeline.AddRawPass("DeferredGBuffer", {}, { "GBuffer" }, [&]() {
-            ExecuteGBufferPass(passCtx);
-        });
+        pipeline.AddPass<GBufferPass>(GBufferPassMode::Deferred);
 
-        // Deferred Terrain — GBuffer へ書く。DepthCopy / AO / Lighting より前に置くことで
-        // GTAO/SSAO/ContactShadows/SSR/IBL が地形へも効く。
+        /// @note Deferred Terrain — GBuffer へ書く。DepthCopy / AO / Lighting より前に置くことで
+        /// @note GTAO/SSAO/ContactShadows/SSR/IBL が地形へも効く。
         pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::GBuffer);
 
-        pipeline.AddRawPass("DeferredDepthCopy", { "GBuffer" }, { "HDR" }, [&]() {
-            ExecuteDeferredDepthCopyPass(passCtx);
-        });
+        pipeline.AddPass<DeferredDepthCopyPass>();
     }
 
-    // ── Terrain (Forward フォールバック用) ────────────────────────────────────
-    // ForwardOpaque / Sky の間に HDR RT (depth 共有) へ描く。Sky より前なので空が被らない。
-    // 通常は上の GBuffer フェーズで描画済みなのでここは通らない。
+    /// @name Terrain (Forward フォールバック用)
+    /// @note ForwardOpaque / Sky の間に HDR RT (depth 共有) へ描く。Sky より前なので空が被らない。
+    /// @note 通常は上の GBuffer フェーズで描画済みなのでここは通らない。
     if (!useGBufferOpaquePipeline) {
         pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::Forward);
     }
 
-    // Sky / SunMoon — Forward フォールバックではここ (不透明描画後・雲前)。
-    // GBuffer 経路では Terrain が HDR を書かないので Sky と DeferredDepthCopy の順序保証が
-    // 失われ、DepthCopy のクリアで空が消える。だから Lighting 後 (下のブロック) に描く。
+    /// @note Sky / SunMoon — Forward フォールバックではここ (不透明描画後・雲前)。
+    /// @note GBuffer 経路では Terrain が HDR を書かないので Sky と DeferredDepthCopy の順序保証が
+    /// @note 失われ、DepthCopy のクリアで空が消える。だから Lighting 後 (下のブロック) に描く。
     if (!useGBufferOpaquePipeline) {
-        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSkyPass(passCtx);
-        });
-        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSunMoonPass(passCtx);
-        });
+        pipeline.AddPass<SkyPass>();
+        pipeline.AddPass<SunMoonPass>();
 
-        // VolumetricCloud — GBuffer フォールバックの Forward では Sky 後・透明物前に HDR へ合成する。
-        // WHY: 空を背景にしつつ、後続の水面・透明エフェクトで上書きできる順序にする。
-        pipeline.AddRawPass("VolumetricCloud", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteVolumetricCloudPass(passCtx);
-        });
+        /// @note VolumetricCloud — GBuffer フォールバックの Forward では Sky 後・透明物前に HDR へ合成する。
+        /// @note 空を背景にしつつ、後続の水面・透明エフェクトで上書きできる順序にする。
+        pipeline.AddPass<VolumetricCloudPass>();
 
-        // SSR — Forward でもプリパスの GBuffer から反射を計算する。
-        // 映すのはライティング済みのシーンなので HDR が出揃った後に置く。
-        if (forwardGBufferPrepass && rs.ssr.enabled) {
-            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "SSRResult", "HDR" }, [&]() {
-                ExecuteSSRPass(passCtx);
-            });
-        }
+        /// @note SSR — Forward でもプリパスの GBuffer から反射を計算する。
+        /// @note 映すのはライティング済みのシーンなので HDR が出揃った後に置く。
+        /// @note 設定のトグルは SSRPass::IsEnabled。ここで見るのは GBuffer があるかだけ。
+        if (forwardGBufferPrepass)
+            pipeline.AddPass<SSRPass>();
     }
 
-    // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
+    /// @name SSAO + Deferred Lighting
     if (useGBufferOpaquePipeline) {
-        // GTAO — DeferredLighting より前に GBuffer から AO を計算する。
-        // "GTAOResult" として宣言することで DeferredLighting が正確な依存で待てる。
-        if (rs.IsGtaoActive()) {
-            pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GTAOResult" }, [&]() {
-                ExecuteGTAOPass(passCtx);
-            });
-        }
-        // ContactShadows — DeferredLighting より前に深度から接触影マスクを生成する。
-        // WHY: GTAO と同様に ContactShadowResult として宣言し偽依存を除去する。
-        if (rs.contactShadow.enabled) {
-            // WHY HDR を申告しないか: ContactShadowsPass は gbufferDepthReady が false の
-            //     ときだけ HDR の深度へ落ちるが、この登録は 2 箇所とも «GBuffer が揃う»
-            //     分岐の中にある。申告すると本描画前の HDR へ偽の依存が張られる。
-            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "ContactShadowResult" }, [&]() {
-                ExecuteContactShadowsPass(passCtx);
-            });
-        }
-        if (ssaoEnabled) {
-            pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
-                ExecuteSSAOPass(passCtx);
-            });
-        }
-        // DeferredLighting の reads を動的に構築し、有効な AO の出力だけへ依存を張る。
-        // 静的に書くと有効/無効の組み合わせごとに分岐が要る。
-        {
-            std::vector<RA> deferredAccesses = {
-                { "GBuffer", RU::Read     },
-                { "HDR",     RU::ReadWrite }, // 深度を読み、ライティング結果を書く
-                // 影と Cookie はライティングの本体が読む (t13 / t28 / t31)。
-                // 申告が抜けていたので «Shadow / LightCookie の後» という依存が張られず、
-                // 登録順が偶然そうなっているだけの状態だった。
-                { "ShadowMap",         RU::Read },
-                { "PunctualShadowMap", RU::Read },
-                { "LightCookieAtlas",  RU::Read },
-            };
-            if (ssaoEnabled)              deferredAccesses.push_back({ "SSAO",               RU::Read });
-            if (rs.IsGtaoActive())        deferredAccesses.push_back({ "GTAOResult",          RU::Read });
-            if (rs.contactShadow.enabled) deferredAccesses.push_back({ "ContactShadowResult", RU::Read });
-            pipeline.AddRawPass("DeferredLighting", std::move(deferredAccesses), [&]() {
-                ExecuteDeferredLightingPass(passCtx);
-            });
-        }
+        /// @note AO と接触影は DeferredLighting より前。専用名で書くので、Lighting は
+        /// @note "GTAOResult" / "ContactShadowResult" を正確な依存で待てる。
+        /// @note 申告と有効条件はパス側 (PostProcessPasses.hpp)。Forward 側と同じ 3 行になる。
+        pipeline.AddPass<GTAOPass>();
+        pipeline.AddPass<ContactShadowsPass>();
+        pipeline.AddPass<SSAOPass>();
+        pipeline.AddPass<DeferredLightingPass>();
 
-        // Sky / SunMoon — GBuffer ライティング後に HDR へ描く。深度==1.0 の画素だけを埋め、
-        // HDR 依存チェーンで DeferredDepthCopy のクリアより確実に後段になる。
-        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSkyPass(passCtx);
-        });
-        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteSunMoonPass(passCtx);
-        });
+        /// @note Sky / SunMoon — GBuffer ライティング後に HDR へ描く。深度==1.0 の画素だけを埋め、
+        /// @note HDR 依存チェーンで DeferredDepthCopy のクリアより確実に後段になる。
+        pipeline.AddPass<SkyPass>();
+        pipeline.AddPass<SunMoonPass>();
 
-        // VolumetricCloud — GBuffer Lighting / Sky 後・透明物前に HDR へ合成する。
-        // WHY: Lighting・空に上書きされず、透明物や水面を雲の手前に描ける順序にする。
-        pipeline.AddRawPass("VolumetricCloud", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteVolumetricCloudPass(passCtx);
-        });
+        /// @note VolumetricCloud — GBuffer Lighting / Sky 後・透明物前に HDR へ合成する。
+        /// @note Lighting・空に上書きされず、透明物や水面を雲の手前に描ける順序にする。
+        pipeline.AddPass<VolumetricCloudPass>();
 
-        // Deferred の中で «前方描画される» 2 パス。どちらも BindForwardShadingResources を
-        // 通るので、Forward パスと同じく Spot/Point の影 (t28) と Cookie (t31) を引く。
-        // 申告しないと依存辺が張られず、Shadow / LightCookie より先に走ってよいことになる。
-        pipeline.AddRawPass("DeferredSkinnedForward",
-                            { "HDR", "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                            { "HDR" }, [&]() {
-            ExecuteDeferredSkinnedForwardPass(passCtx);
-        });
+        /// @note Deferred の中で «前方描画される» 2 パス。どちらも BindForwardShadingResources を
+        /// @note 通るので、Forward パスと同じく Spot/Point の影 (t28) と Cookie (t31) を引く。
+        /// @note 申告しないと依存辺が張られず、Shadow / LightCookie より先に走ってよいことになる。
+        pipeline.AddPass<DeferredSkinnedForwardPass>();
+        pipeline.AddPass<FiberRenderPass>();
+        pipeline.AddPass<DeferredForwardTransparentPass>();
 
-        pipeline.AddRawPass("DeferredForwardTransparent",
-                            { "HDR", "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                            { "HDR" }, [&]() {
-            ExecuteDeferredForwardTransparentPass(passCtx);
-        });
-
-        // SSR — 透明オブジェクト通過後の深度を使うので DeferredForwardTransparent の後。
-        // 実行条件はパイプラインの選択ではなく GBuffer の有無。
-        if (rs.ssr.enabled) {
-            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "SSRResult", "HDR" }, [&]() {
-                ExecuteSSRPass(passCtx);
-            });
-        }
+        /// @note SSR — 透明オブジェクト通過後の深度を使うので DeferredForwardTransparent の後。
+        /// @note 実行条件はパイプラインの選択ではなく GBuffer の有無 (SSRPass::IsEnabled)。
+        pipeline.AddPass<SSRPass>();
     }
 
-    // VolumetricLight — ゴッドレイ・光柱を HDR バッファへ加算合成する。
-    //
-    // WHY 半透明より «前» か: レイは不透明深度で止まる。水や半透明は深度を書かないので、
-    //     レイの終端は水底のジオメトリになる。それを水面の描画より «後» に足すと、
-    //     水底までの光芒がまるごと水面の手前へ描かれ、水が光の靄で塗り潰される。
-    //     不透明深度が確定したこの位置で足しておけば、水面・トレイル・パーティクルが
-    //     光芒の上へ順番に乗り、遮蔽も屈折も普通の透明描画として処理される。
-    //     WaterCaustics が「Water の前でなければならない」のと同じ理由。
-    if (rs.volumetricLight.enabled) {
-        pipeline.AddRawPass("VolumetricLight", { "HDR", "ShadowMap" }, { "VolumetricResult", "HDR" }, [&]() {
-            ExecuteVolumetricLightPass(passCtx);
-        });
-    }
+    /// @note VolumetricLight — ゴッドレイ・光柱を HDR バッファへ加算合成する。半透明より前に置く:
+    /// @note レイは不透明深度で止まるが、水や半透明は深度を書かないためレイの終端が水底になる。
+    /// @note 水面描画の後に足すと水底までの光芒が水面手前に描かれ水が光の靄で塗り潰されるので、
+    /// @note 不透明深度が確定したここで先に足す。WaterCaustics が Water の前必須なのと同じ理由。
+    pipeline.AddPass<VolumetricLightPass>();
 
-    // WaterCaustics — 水面下の不透明ジオメトリへコースティクスを投影してから、水面本体を透明描画する。
-    // WHY: Water の後に加算すると水面そのものへ模様が乗りやすいため、深度が不透明物だけを指す段階で実行する。
-    pipeline.AddRawPass("WaterCaustics", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteCausticsPass(passCtx);
-    });
+    /// @note WaterCaustics — 水面下の不透明ジオメトリへコースティクスを投影してから、水面本体を透明描画する。
+    /// @note Water の後に加算すると水面そのものへ模様が乗りやすいため、深度が不透明物だけを指す段階で実行する。
+    pipeline.AddPass<WaterCausticsPass>();
 
     pipeline.AddPass<WaterRenderPass>();
 
@@ -3146,190 +3006,136 @@ void RenderSystem(Scene& scene,
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterOpaque);
 
-    // オブジェクトマスク。描くのはジオメトリなので不透明が出揃ったここで済ませる。
-    //
-    // WHY 半透明より前か: マスクの中身は «不透明の形と、その時点の深度» で決まる。
-    //     半透明は深度を書かないので待っても結果は変わらない。一方でここより後ろへ
-    //     置くと、AfterOpaque 段のカスタムパスがマスクを読めなくなる
-    //     (グラフ上「まだ描かれていないもの」を読む宣言になり、順序が閉じない)。
-    if (objectMaskEnabled) {
-        pipeline.AddRawPass("ObjectMask", { "HDR" }, { "ObjectMask" }, [&]() {
-            ExecuteObjectMaskPass(passCtx);
-        });
-    }
+    /// @note オブジェクトマスク。描くのはジオメトリなので不透明が出揃ったここで済ませる。
+    /// @note 半透明より前でよい: マスクの中身は «不透明の形と、その時点の深度» で決まり、
+    /// @note 深度を書かない半透明を待っても結果は変わらない。ここより後ろへ置くと、
+    /// @note AfterOpaque 段のカスタムパスがマスクを読めなくなる (順序が閉じない)。
+    pipeline.AddPass<ObjectMaskPass>();
 
-    // ── AfterOpaque 段のユーザーシェーダー ────────────────────────────────────
-    // WHY ここか: 背景だけが描かれていて、デカール・トレイル・パーティクル・半透明は
-    //     まだ乗っていない。画面を歪める効果をこの後 (SceneHDR) に置くと、既に
-    //     描かれたパーティクルごと曲がって «エフェクトだけ別の場所に居る» 絵になる。
+    /// @name AfterOpaque 段のユーザーシェーダー
+    /// @note 背景だけが描かれていて、デカール・トレイル・パーティクル・半透明はまだ乗っていない。
+    /// @note 画面を歪める効果をこの後 (SceneHDR) に置くと、既に描かれたパーティクルごと曲がって
+    /// @note «エフェクトだけ別の場所に居る» 絵になる。
     appendCustomHdrPasses("CustomAfterOpaque", customAfterOpaqueIndices);
 
-    // ── デカール用深度スナップショット ────────────────────────────────────────
-    // 深度専用 RT (colorCount = 0)。カラーを持つ RT と貸し回してはいけない。
-    pipeline.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA16F, 0, true, false, true });
-    pipeline.AddRawPass("DecalDepthCopy", { useGBufferOpaquePipeline ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
-        ExecuteDecalDepthCopyPass(passCtx);
-    });
+    /// @name デカール用深度スナップショット
+    /// @note 深度専用 RT (colorCount = 0)。カラーを持つ RT と貸し回してはいけない。
+    declareViewTarget("DecalDepth", decalDepthRT, 0, true);
+    pipeline.AddPass<DecalDepthCopyPass>();
 
-    // ── Decal + Trail + Particle ──────────────────────────────────────────────
-    pipeline.AddRawPass("Decal", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
-        ExecuteDecalPass(passCtx);
-    });
+    /// @name Decal + Trail + Particle
+    pipeline.AddPass<DecalPass>();
 
     pipeline.AddPass<MeshTrailRenderPass>();
     pipeline.AddPass<TrailRenderPass>();
 
-    // ShadowMap は粒子の自己影が読む (t8)。申告していないと影より前に走れてしまう。
-    // WHY Particle より前に登録するか: 粒子は同じフレームの霧を読んで «自分の奥行きの霧» を逆算する
-    //     (ParticleLighting.hlsli の ApplyParticleFog)。依存を申告しあわない 2 つのパスは登録順に並ぶ。
-    pipeline.AddRawPass("FroxelFog", { "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" }, {}, [&]() {
-        ExecuteFroxelFogPass(passCtx);
-    }, false);
+    /// @note ShadowMap は粒子の自己影が読む (t8)。申告していないと影より前に走れてしまう。
+    /// @note 粒子より前に登録するのは、粒子が同じフレームの霧を読んで «自分の奥行きの霧» を逆算する
+    /// @note (ParticleLighting.hlsli の ApplyParticleFog) ため。依存を申告しあわない 2 パスは登録順に並ぶ。
+    pipeline.AddPass<FroxelFogPass>();
 
-    // PunctualShadowMap / LightCookieAtlas は «点光源を受ける» .mat の粒子が読む (ParticleLighting.hlsli)。
-    pipeline.AddRawPass("Particle", { "HDR", "DecalDepth", "ShadowMap", "PunctualShadowMap", "LightCookieAtlas" },
-                        { "HDR" }, [&]() {
-        ExecuteParticlePass(passCtx);
-    });
+    /// @note PunctualShadowMap / LightCookieAtlas は «点光源を受ける» .mat の粒子が読む (ParticleLighting.hlsli)。
+    pipeline.AddPass<ParticlePass>();
 
-    // Overdraw 可視化は診断表示。有効なときだけ Particle の直後に HDR を上書きする。
-    // GPU 時間を Particle パスの実測値と混ぜないよう、別パスとして計測させる。
-    if (rs.particleOverdrawView) {
-        pipeline.AddRawPass("ParticleOverdraw", { "HDR" }, { "HDR" }, [&]() {
-            ExecuteParticleOverdrawPass(passCtx);
-        });
-    }
+    /// @note Overdraw 可視化は診断表示。有効なときだけ Particle の直後に HDR を上書きする。
+    /// @note GPU 時間を Particle パスの実測値と混ぜないよう、別パスとして計測させる。
+    pipeline.AddPass<ParticleOverdrawPass>();
 
-    // TAA の反応マスク。HDR へは書かないが、Particle の後・Composite (→ TAA) の前に並べるために
-    // HDR の書き手として申告する (Overdraw と同じ申告の仕方)。
-    if (rs.IsTaaActive()) {
-        pipeline.AddRawPass("ParticleReactive", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
-            ExecuteParticleReactivePass(passCtx);
-        });
-    }
+    /// @note TAA の反応マスク。HDR へは書かないが、Particle の後・Composite (→ TAA) の前に並べるために
+    /// @note HDR の書き手として申告する (Overdraw と同じ申告の仕方)。
+    pipeline.AddPass<ParticleReactivePass>();
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
-    // ── Selection / Debug ─────────────────────────────────────────────────────
-    if (selectionOutlineEnabled) {
-        pipeline.AddRawPass("SelectionMask", { "HDR" }, { "SelectionMask" },
-                            [&](PassResources& res) {
-            ExecuteSelectionMaskPass(res, passCtx);
-        });
-    }
+    /// @name Selection / Debug
+    pipeline.AddPass<SelectionMaskPass>();
 
-    // ── SceneHDR 段のユーザーシェーダー ───────────────────────────────────────
-    // WHY ここか: 絵が出揃っていて、まだブルームにも露出にも触れていない唯一の場所。
-    //     Bloom より後ろへ置くと «光っているのに滲まない»、AutoExposure より後ろへ
-    //     置くと «明るくしたのに露出が反応しない» という、段を選べる意味が消える
-    //     並びになる。デバッグ描画より前なのは、ギズモを効果で歪ませないため。
+    /// @name SceneHDR 段のユーザーシェーダー
+    /// @note 絵が出揃っていて、まだブルームにも露出にも触れていない唯一の場所。
+    /// @note Bloom より後ろへ置くと «光っているのに滲まない»、AutoExposure より後ろへ
+    /// @note 置くと «明るくしたのに露出が反応しない» という、段を選べる意味が消える並びになる。
+    /// @note デバッグ描画より前なのは、ギズモを効果で歪ませないため。
     appendCustomHdrPasses("CustomSceneHDR", customSceneHdrIndices);
 
-    // 自動露出はデバッグ描画より前。
-    //
-    // WHY ここか: 測るのは «シーンの明るさ» で、グリッド・ギズモ・コライダー・NavMesh は
-    //     Scene View にしか無い。後ろへ置くと Scene View だけ画面の何割かをグリッドの色に
-    //     占められ、同じシーンなのに Game View と露出が食い違う。RenderGraph は
-    //     «登録順より前の書き手» を読み手の世代とするので、ここへ置けばデバッグ描画が
-    //     乗る前の HDR を測る。
-    //
-    // WHY MotionBlur / LensFlare より前になるか: どちらも HDR を書き換えるが、
-    //     フレアを測光へ入れると «明るい → 露出が下がる → フレアが弱る» の輪ができる。
-    //     測るのは素のシーンでよい。Bloom は HDR を書かないので位置に関わらず同じ。
-    //
-    // 出力は StructuredBuffer (Composite が t29 で読む) で、グラフの論理リソースに
-    // 乗らない。FroxelFog と同じ理由でカリング対象から外す。
-    if (rs.autoExposure.enabled) {
-        pipeline.AddRawPass("AutoExposure", { "HDR" }, {}, [&]() {
-            ExecuteAutoExposurePass(passCtx);
-        }, false);
-    }
+    /// @note 自動露出はデバッグ描画より前。測るのは «シーンの明るさ» で、グリッド・ギズモ・
+    /// @note コライダー・NavMesh は Scene View にしか無い。後ろへ置くと Scene View だけ露出が
+    /// @note Game View と食い違う (RenderGraph は登録順より前の書き手を読み手の世代とする)。
+    /// @note MotionBlur / LensFlare より前なのは、フレアを測光へ入れると «明るい→露出が下がる→
+    /// @note フレアが弱る» の輪ができるため。Bloom は HDR を書かないので位置に関わらず同じ。
+    /// @note 出力は StructuredBuffer (Composite が t29 で読む) で論理リソースに乗らないため、
+    /// @note FroxelFog と同じ理由でカリング対象から外す。
+    pipeline.AddPass<AutoExposurePass>();
 
-    pipeline.AddPass<ConstraintDebugPass>();
-    pipeline.AddPass<RagdollDebugPass>();
-    pipeline.AddPass<AnimatorDebugPass>();
+    /// @note debug.Draw* の duration はビューの数や表示の入り切りに関係なくフレーム 1 回減らす
+    /// @note (Scene 側でフレーム番号ガード済み)。表示を切ったビューでもキューが溜まらない。
+    scene.TickScriptDebugDrawCommands(Time::deltaTime);
+    /// @note OnDrawGizmos はここで 1 ビュー 1 回だけ記録し、深度あり (HDR) と深度なし (LDR 終端) の
+    /// @note 2 パスへ流す。showScriptGizmos が false のビューでは呼ばない。
+    renderer::DebugDrawCapture scriptGizmoCapture;
+    CaptureScriptGizmos(passCtx, scriptGizmoCapture);
+
+    /// @note ここに残すのはシーン深度で遮蔽させる線だけ (グリッド・NavMesh の面・深度ありのギズモ)。
+    /// @note 深度なしの診断線はトーンマップ後へ回す (下の «デバッグ線» 参照)。
     pipeline.AddPass<GridDebugPass>();
-    pipeline.AddPass<LightRangeDebugPass>();
-    pipeline.AddPass<VFXGizmoDebugPass>();
-    pipeline.AddPass<TerrainCollisionDebugPass>();
-
-    pipeline.AddRawPass("ScriptDebugDraw", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteScriptDebugDrawPass(passCtx);
-    });
-
-    // コライダーは Script の Gizmo より後。どちらも深度オフの 1px ラインなので、同じ形が
-    // 重なるとサブピクセルの被り方でちらつく。コライダーを破線にして最後に描けば両方読める
-    // (DebugCollidersPass の DASH_* を参照)。
-    pipeline.AddPass<DebugCollidersPass>();
-
     pipeline.AddPass<NavMeshDebugPass>();
-    pipeline.AddPass<DecalDebugPass>();
+    pipeline.AddPass<ScriptGizmoPass>("HDR", "ScriptGizmosDepth",
+                                      renderer::DebugDrawLayer::DepthTested, scriptGizmoCapture);
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::BeforePostProcess);
 
-    // ── モーションベクター ────────────────────────────────────────────────────
-    // TAA とモーションブラーは深度再投影だけでは「カメラの動き」しか復元できない。
-    // 不透明ジオメトリの実際の移動量を専用 RT へ描いて両者へ供給する。
-    // 消費側が 1 つも無いフレームは丸ごと省く (不透明をもう一度ラスタライズするため)。
+    /// @name モーションベクター
+    /// @note TAA とモーションブラーは深度再投影だけでは「カメラの動き」しか復元できない。
+    /// @note 不透明ジオメトリの実際の移動量を専用 RT へ描いて両者へ供給する。
+    /// @note 消費側が 1 つも無いフレームは丸ごと省く (不透明をもう一度ラスタライズするため)。
     const bool velocityNeeded =
         velocityRT.IsValid() && (rs.motionBlur.enabled || rs.IsTaaActive());
     if (velocityNeeded) {
-        pipeline.AddRawPass("Velocity", {}, { "Velocity" }, [&]() {
-            ExecuteVelocityPass(passCtx);
-        });
+        pipeline.AddPass<VelocityPass>();
     }
 
-    // ── PostProcess チェーン ──────────────────────────────────────────────────
-    // MotionBlur CS — HDR 空間で計算し motionBlurResult へ書く (Composite が hdrRT の代わりに読む)。
-    // Bloom の前に走らせるので blur 後の輝度が Bloom に乗る。
+    /// @name PostProcess チェーン
+    /// @note MotionBlur CS — HDR 空間で計算し motionBlurResult へ書く (Composite が hdrRT の代わりに読む)。
+    /// @note Bloom の前に走らせるので blur 後の輝度が Bloom に乗る。
     if (rs.motionBlur.enabled) {
-        // Velocity は誰も書かないフレームがある。書かれないものを読むと申告した瞬間に
-        // «producer が居ない» で Plan が落ちるので、要るときだけ足す。
+        /// @note Velocity は誰も書かないフレームがある。書かれないものを読むと申告した瞬間に
+        /// @note «producer が居ない» で Plan が落ちるので、要るときだけ足す。
         std::vector<RA> motionBlurAccesses = { { "MotionBlurResult", RU::Write }, { "HDR", RU::ReadWrite } };
         if (velocityNeeded) motionBlurAccesses.push_back({ "Velocity", RU::Read });
         pipeline.AddRawPass("MotionBlur", std::move(motionBlurAccesses), [&]() {
             ExecuteMotionBlurPass(passCtx);
         });
     }
-    // LensFlare PS — 輝度抽出した光源を ADDITIVE で HDR へ合成する。
-    // Bloom の前に置くのでフレアも Bloom に乗るが、その順序では bloomHalf に今フレームの
-    // 輝点がまだ無い。パス自身が bloomHalf へ焼いてから読む (LensFlareSource がこの出力)。
-    if (rs.lensFlare.enabled) {
-        pipeline.AddRawPass("LensFlare", { "HDR" }, { "HDR", "LensFlareSource" }, [&]() {
-            ExecuteLensFlarePass(passCtx);
-        });
-    }
-    if (rs.postProcess.bloom.enabled) {
-        pipeline.AddRawPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
-            ExecuteBloomPass(passCtx);
-        });
-    }
+    /// @note LensFlare PS — 輝度抽出した光源を ADDITIVE で HDR へ合成する。
+    /// @note Bloom の前に置くのでフレアも Bloom に乗るが、その順序では bloomHalf に今フレームの
+    /// @note 輝点がまだ無い。パス自身が bloomHalf へ焼いてから読む (LensFlareSource がこの出力)。
+    pipeline.AddPass<LensFlarePass>();
+    pipeline.AddPass<BloomPass>();
 
-    // フロクセル霧。シャドウマップを読むので Shadow より後、Composite より前。
-    // 霧はライトとシャドウだけから作るので HDR の完成を待つ必要はない。
-    // 無効でも積むのは、パス側が b13 へ「無効」を書き戻さないと前フレームの定数が残り
-    // 画面が真っ黒になるため (FroxelFogPass 参照)。
-    // 出力先の 3D ボリュームは論理リソースに乗らないので、writes が空でもカリングさせない。
+    /// @note フロクセル霧。シャドウマップを読むので Shadow より後、Composite より前。
+    /// @note 霧はライトとシャドウだけから作るので HDR の完成を待つ必要はない。
+    /// @note 無効でも積むのは、パス側が b13 へ「無効」を書き戻さないと前フレームの定数が残り
+    /// @note 画面が真っ黒になるため (FroxelFogPass 参照)。
+    /// @note 出力先の 3D ボリュームは論理リソースに乗らないので、writes が空でもカリングさせない。
 
     const bool customPostProcessEnabled =
         !customPostProcessIndices.empty() &&
         customPostProcessRT[0].IsValid() &&
         customPostProcessRT[1].IsValid();
-    // hasPostCompositeEffects: Composite の出力先が "LDR" かチェーン終端かを決める。
-    // WHY: このフラグが true なら Composite は ldrRT に書き、後続エフェクトがチェーンを形成する。
+    /// @note hasPostCompositeEffects: Composite の出力先が "LDR" かチェーン終端かを決める。
+    /// @note このフラグが true なら Composite は ldrRT に書き、後続エフェクトがチェーンを形成する。
     const bool hasPostCompositeEffects =
         rs.IsTaaActive() || customPostProcessEnabled || selectionOutlineEnabled || rs.postProcess.fxaaEnabled;
 
-    // ここが «Composite がどこへ書くか» の唯一の正本。グラフへの申告 (下の writes) と
-    // パスが実際に束縛するハンドルを、同じ 1 つの判定から配る。
+    /// @note ここが «Composite がどこへ書くか» の唯一の正本。グラフへの申告 (下の writes) と
+    /// @note パスが実際に束縛するハンドルを、同じ 1 つの判定から配る。
     passCtx.compositeOutputRT = hasPostCompositeEffects ? ldrRT : passCtx.chainOutputRT;
 
-    // LDR チェーンの終端リソース。passCtx.chainOutputRT の «グラフ側の名前» で、
-    // 実寸へ引き伸ばすのは UpscalePass だけという対応を保つ。
+    /// @note LDR チェーンの終端リソース。passCtx.chainOutputRT の «グラフ側の名前» で、
+    /// @note 実寸へ引き伸ばすのは UpscalePass だけという対応を保つ。
     const char* const chainOutRes = upscaleActive ? "UpscaleSrc" : "Output";
 
     {
-        // Bloom を読むのは bloom.enabled のときだけ (CompositePass の bloomWritten と同条件)。
+        /// @note Bloom を読むのは bloom.enabled のときだけ (CompositePass の bloomWritten と同条件)。
         std::vector<RA> compositeAccesses = {
             { "HDR", RU::Read },
             { hasPostCompositeEffects ? "LDR" : chainOutRes, RU::Write },
@@ -3340,38 +3146,39 @@ void RenderSystem(Scene& scene,
         });
     }
 
-    // ---- Post-composite チェーン ----
-    // ppCurrent は「LDR 空間の最新フレームを持つリソース名」。これを進めるだけで
-    // TAA/CustomPP/SelectionOutline/FXAA の任意の組み合わせが 1 本の直列チェーンになる。
+    /// @name Post-composite チェーン
+    /// @note ppCurrent は「LDR 空間の最新フレームを持つリソース名」。これを進めるだけで
+    /// @note TAA/CustomPP/SelectionOutline/FXAA の任意の組み合わせが 1 本の直列チェーンになる。
     std::string ppCurrent  = hasPostCompositeEffects ? "LDR" : chainOutRes;
-    int         ppPingPong = 0; // customPostProcessRT の ping-pong インデックス
+    /// @note customPostProcessRT の ping-pong インデックス
+    int         ppPingPong = 0;
 
-    // TAA — 最初に適用することで後続の CustomPP/SelectionOutline が TAA 済み映像に乗る。
-    // 登録順が RenderGraph のタイブレークになる (Kahn's algorithm)。
+    /// @note TAA — 最初に適用することで後続の CustomPP/SelectionOutline が TAA 済み映像に乗る。
+    /// @note 登録順が RenderGraph のタイブレークになる (Kahn's algorithm)。
     if (rs.IsTaaActive()) {
         const auto taaBody = [&]() {
             ExecuteTAAPass(passCtx);
-            // taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
+            /// @note taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
             auto& taaOut = passHandles.taaFlip ? passHandles.taaHistoryB : passHandles.taaHistoryA;
             passHandles.fxaaInput = resources.GetColorTexture(taaOut, 0);
-            // TAA 後は履歴バッファが最新フレーム。更新しないと後続が TAA 前の ldrRT を読む。
+            /// @note TAA 後は履歴バッファが最新フレーム。更新しないと後続が TAA 前の ldrRT を読む。
             passHandles.postProcessInput = passHandles.fxaaInput;
-            // LDR の論理的な最新世代は履歴 RT に移る。診断も後続パスも同じ実体を引く。
+            /// @note LDR の論理的な最新世代は履歴 RT に移る。診断も後続パスも同じ実体を引く。
             passCtx.resourceRegistry.BindTarget("LDR", taaOut);
         };
-        // MotionBlur と同じ理由で Velocity は要るときだけ足す。
+        /// @note MotionBlur と同じ理由で Velocity は要るときだけ足す。
         std::vector<RA> taaAccesses = { { ppCurrent, RU::ReadWrite } };
         if (velocityNeeded) taaAccesses.push_back({ "Velocity", RU::Read });
         pipeline.AddRawPass("TAA", std::move(taaAccesses), taaBody);
     }
 
-    // Custom PostProcess チェーン
+    /// @note Custom PostProcess チェーン
     for (uint32_t i = 0; i < static_cast<uint32_t>(customPostProcessIndices.size()); ++i) {
         const uint32_t customIndex  = customPostProcessIndices[i];
         const bool     isLastEffect = (i + 1 == static_cast<uint32_t>(customPostProcessIndices.size()))
                                        && !selectionOutlineEnabled
                                        && !rs.postProcess.fxaaEnabled;
-        // outputIndex == 2 → ExecuteCustomPostProcessPass が ctx.outputRT に直書きする規約
+        /// @note outputIndex == 2 → ExecuteCustomPostProcessPass が ctx.outputRT に直書きする規約
         const uint32_t    outputIndex = isLastEffect ? 2u : static_cast<uint32_t>(ppPingPong % 2);
         const std::string outRes      = isLastEffect
             ? chainOutRes
@@ -3379,9 +3186,9 @@ void RenderSystem(Scene& scene,
         const auto customBody = [&, customIndex, outputIndex]() {
             ExecuteCustomPostProcessPass(passCtx, customIndex, outputIndex);
         };
-        // 輪郭マスクはユーザーシェーダーの入力になりうる。読むと宣言しないと、
-        // グラフはマスクを描く前にこのパスを走らせてよいことになる (reads が
-        // initializer_list なので MotionBlur と同じく 2 通りに分ける)。
+        /// @note 輪郭マスクはユーザーシェーダーの入力になりうる。読むと宣言しないと、
+        /// @note グラフはマスクを描く前にこのパスを走らせてよいことになる (reads が
+        /// @note initializer_list なので MotionBlur と同じく 2 通りに分ける)。
         if (objectMaskEnabled) {
             pipeline.AddRawPass(
                 "CustomPostProcess" + std::to_string(i),
@@ -3395,11 +3202,11 @@ void RenderSystem(Scene& scene,
         ++ppPingPong;
     }
 
-    // SelectionOutline
+    /// @note SelectionOutline
     if (selectionOutlineEnabled) {
         const bool        isLastEffect = !rs.postProcess.fxaaEnabled;
         const std::string outRes       = isLastEffect ? chainOutRes : "Outline";
-        // HDR は輪郭の深度比較が読む (t7)。
+        /// @note HDR は輪郭の深度比較が読む (t7)。
         pipeline.AddRawPass("SelectionOutline",
             { ppCurrent, "SelectionMask", "HDR" },
             { outRes },
@@ -3407,14 +3214,14 @@ void RenderSystem(Scene& scene,
         ppCurrent = outRes;
     }
 
-    // FXAA
+    /// @note FXAA
     if (rs.postProcess.fxaaEnabled) {
         pipeline.AddRawPass("FXAA", { ppCurrent }, { chainOutRes }, [&]() { ExecuteFxaaPass(passCtx); });
         ppCurrent = chainOutRes;
     }
 
-    // TAA_Blit — TAA は ping-pong 履歴にしか書かないので、後続エフェクトが 1 つも無いときは
-    // ppCurrent が "LDR" のまま残る。ここでチェーン終端へ届ける。
+    /// @note TAA_Blit — TAA は ping-pong 履歴にしか書かないので、後続エフェクトが 1 つも無いときは
+    /// @note ppCurrent が "LDR" のまま残る。ここでチェーン終端へ届ける。
     if (ppCurrent != chainOutRes) {
         pipeline.AddRawPass("TAA_Blit", { ppCurrent }, { chainOutRes }, [&]() {
             ExecuteTAABlitPass(passCtx);
@@ -3422,8 +3229,34 @@ void RenderSystem(Scene& scene,
         ppCurrent = chainOutRes;
     }
 
-    // Upscale — 内部解像度で仕上がった絵を出力先の実寸へ解像する。
-    // UI より «前» に置くのが要点。後ろに回すと UI まで引き伸ばされて滲む。
+    /// @note デバッグ線 (深度なし) は LDR チェーンの終端へ、Upscale より前に内部解像度で重ねる。
+    /// @note HDR に描くと MotionBlur / Bloom / LensFlare / 露出 / トーンマップ / TAA で線の色と形が変わる。
+    /// @note 終端 RT はシーン深度を持たないので、深度テストが要る線は上の HDR 段に残してある。
+    /// @note 同じ描き先を ReadWrite するので登録順がそのまま描画順。コライダーは破線で最後に描き、
+    /// @note 同じ形のスクリプト Gizmo (実線) と重なっても両方読めるようにする。
+    pipeline.AddPass<ConstraintDebugPass>(chainOutRes);
+    pipeline.AddPass<RagdollDebugPass>(chainOutRes);
+    pipeline.AddPass<RigidBodyDebugPass>(chainOutRes);
+    pipeline.AddPass<AnimatorDebugPass>(chainOutRes);
+    pipeline.AddPass<IKDebugPass>(chainOutRes);
+    pipeline.AddPass<SpringBoneDebugPass>(chainOutRes);
+    pipeline.AddPass<AttachmentDebugPass>(chainOutRes);
+    pipeline.AddPass<LightRangeDebugPass>(chainOutRes);
+    pipeline.AddPass<VFXGizmoDebugPass>(chainOutRes);
+    pipeline.AddPass<FlowFieldDebugPass>(chainOutRes);
+    pipeline.AddPass<FlowSampleDebugPass>(chainOutRes);
+    pipeline.AddPass<PhysicsVolumeDebugPass>(chainOutRes);
+    pipeline.AddPass<WaterFlowDebugPass>(chainOutRes);
+    pipeline.AddPass<VFXPathDebugPass>(chainOutRes);
+    pipeline.AddPass<BoundsDebugPass>(chainOutRes);
+    pipeline.AddPass<TerrainCollisionDebugPass>(chainOutRes);
+    pipeline.AddPass<DecalDebugPass>(chainOutRes);
+    pipeline.AddPass<ScriptGizmoPass>(chainOutRes, "ScriptGizmos",
+                                      renderer::DebugDrawLayer::Overlay, scriptGizmoCapture);
+    pipeline.AddPass<DebugCollidersPass>(chainOutRes);
+
+    /// @note Upscale — 内部解像度で仕上がった絵を出力先の実寸へ解像する。
+    /// @note UI より «前» に置くのが要点。後ろに回すと UI まで引き伸ばされて滲む。
     if (upscaleActive) {
         pipeline.AddRawPass("Upscale", { ppCurrent }, { "Output" }, [&]() {
             ExecuteUpscalePass(passCtx);
@@ -3454,19 +3287,17 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    // =========================================================================
-    // RenderPipeline 実行 + デバッグスナップショット更新
-    // =========================================================================
+    /// @note RenderPipeline 実行 + デバッグスナップショット更新
 
-    // GPU Timestamp Query の前フレーム結果を収集してからフレームを開始する。
-    // WHY: GpuProfCollect を先に呼ぶことで前フレームの非同期クエリが確定している可能性を最大化する。
+    /// @note GPU Timestamp Query の前フレーム結果を収集してからフレームを開始する。
+    /// @note GpuProfCollect を先に呼ぶことで前フレームの非同期クエリが確定している可能性を最大化する。
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::GpuProfilerSetup");
         renderer.GpuProfCollect();
         renderer.GpuProfBeginFrame();
 
-        // GPU フックを RenderPipeline に設定する。CPU フックとは独立しているため、
-        // Profiler の CPU スコープ計測と干渉しない。
+        /// @note GPU フックを RenderPipeline に設定する。CPU フックとは独立しているため、
+        /// @note Profiler の CPU スコープ計測と干渉しない。
         pipeline.SetGpuProfilerHooks(
             [&](std::string_view name) { renderer.GpuProfBeginPass(name.data()); },
             [&](std::string_view name) { renderer.GpuProfEndPass(name.data()); }
@@ -3480,9 +3311,9 @@ void RenderSystem(Scene& scene,
         capture->Finish(pipeline.LastReport(), renderer.GpuProfGetResults());
     assert(graphExecuted);
     (void)graphExecuted;
-    // パスが書き換えたフレームをまたぐ状態をビューへ戻す。
-    // TAA は反転させた向き (次フレームは «書いた方» を履歴として読む)、
-    // 自動露出は消費したリセット世代。
+    /// @note パスが書き換えたフレームをまたぐ状態をビューへ戻す。
+    /// @note TAA は反転させた向き (次フレームは «書いた方» を履歴として読む)、
+    /// @note 自動露出は消費したリセット世代。
     viewTargets.taaFlip                 = passHandles.taaFlip;
     viewTargets.exposureResetGeneration = passHandles.exposureResetGeneration;
 
@@ -3516,11 +3347,11 @@ void RenderSystem(Scene& scene,
         for (const auto& profile : pipeline.LastReport().profiles)
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
 
-        // GPU 計測結果を Snapshot に詰める。QUERY_LATENCY フレーム以内は空になる。
+        /// @note GPU 計測結果を Snapshot に詰める。QUERY_LATENCY フレーム以内は空になる。
         for (const auto& gp : renderer.GpuProfGetResults())
             dbgSnap.gpuPassTimings.push_back({ gp.name, gp.gpuMs });
 
-        // カリング統計を Snapshot に詰める
+        /// @note カリング統計を Snapshot に詰める
         dbgSnap.renderStats.totalObjects    = passCtx.statsTotalObjects;
         dbgSnap.renderStats.frustumCulled   = passCtx.statsFrustumCulled;
         dbgSnap.renderStats.occlusionCulled = passCtx.statsOcclusionCulled;

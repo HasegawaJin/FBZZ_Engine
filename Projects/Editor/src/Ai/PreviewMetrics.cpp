@@ -10,19 +10,19 @@
 namespace fbzz::editor::ai {
 namespace {
 
-// Rec.709 相対輝度。パーティクルは加算合成で 1.0 を大きく超えるため、飽和はさせない。
+/// Rec.709 相対輝度。パーティクルは加算合成で 1.0 を大きく超えるため、飽和はさせない。
 float Luminance(float r, float g, float b)
 {
     return 0.2126f * r + 0.7152f * g + 0.0722f * b;
 }
 
-// 背景から有意に離れているか。加算ブレンドの薄い裾まで拾えるよう、閾値は低めに取る。
-// WHY: ここを厳しくすると「煙の外周が消えている」と誤判定し、coverage が実感と合わなくなる。
+/// 背景から有意に離れているか。加算ブレンドの薄い裾まで拾えるよう、閾値は低めに取る。
+/// @note 厳しくすると「煙の外周が消えている」と誤判定し、coverage が実感と合わなくなる。
 constexpr float kCoverageEpsilon = 0.004f;
-// 動きの有無を判定する輝度差。読み戻しの量子化 (R16F) より十分大きく取る。
+/// 動きの有無を判定する輝度差。読み戻しの量子化 (R16F) より十分大きく取る。
 constexpr float kMotionEpsilon = 0.01f;
 
-// log2 輝度 [-8, +8] を kPreviewHistogramBuckets 等分した階級 index。
+/// log2 輝度 [-8, +8] を kPreviewHistogramBuckets 等分した階級 index。
 int HistogramBucket(float luminance)
 {
     if (!(luminance > 0.0f)) return 0;
@@ -69,8 +69,8 @@ PreviewMetrics ComputePreviewMetrics(const std::vector<float>& rgba,
             ++histogramCounts[static_cast<std::size_t>(HistogramBucket(value))];
             metrics.luminanceMax = (std::max)(metrics.luminanceMax, value);
 
-            // 背景との差で「何かが描かれた画素」を判定する。アルファではなく色差を見るのは、
-            // 加算合成のパーティクルが背景のアルファを 1 のまま残すため。
+            /// @note 背景との差で「何かが描かれた画素」を判定する。アルファではなく色差を見るのは、
+            ///       加算合成のパーティクルが背景のアルファを 1 のまま残すため。
             const float difference = (std::max)({ std::fabs(texel[0] - background[0]),
                                                   std::fabs(texel[1] - background[1]),
                                                   std::fabs(texel[2] - background[2]) });
@@ -106,7 +106,7 @@ PreviewMetrics ComputePreviewMetrics(const std::vector<float>& rgba,
         metrics.boundsMaxY = static_cast<float>(maxY) / static_cast<float>((std::max)(1u, height - 1u));
     }
 
-    // 上位 1% 点。全体ソートは不要なので nth_element で境界だけ求める。
+    /// @note 上位 1% 点。全体ソートは不要なので nth_element で境界だけ求める。
     {
         std::vector<float> sorted = luminance;
         const std::size_t rank = pixelCount - (std::max)(std::size_t{1}, pixelCount / std::size_t{100});
@@ -136,7 +136,7 @@ std::vector<std::string> DescribePreviewMetricIssues(const PreviewMetrics& metri
     std::vector<std::string> issues;
     if (metrics.width == 0 || metrics.height == 0) return issues;
 
-    // 何も描かれていない。他の指標は全て意味を失うので、これだけを返して打ち切る。
+    /// @note 何も描かれていない。他の指標は全て意味を失うので、これだけを返して打ち切る。
     if (metrics.coverage < 0.0005f) {
         issues.emplace_back("EMPTY_FRAME: 画にエフェクトがほとんど出ていません "
                             "(coverage < 0.05%)。vfx_runtime_state で起動状態を確認してください");
@@ -161,7 +161,7 @@ std::vector<std::string> DescribePreviewMetricIssues(const PreviewMetrics& metri
         issues.emplace_back("STATIC_FRAME: 前のサンプルからほぼ変化していません。"
                             "その区間はエフェクトが止まって見えます");
     }
-    // 画角ずれ。重心が中央から大きく外れているのは、カメラかエミッター位置のどちらかがずれている。
+    /// @note 画角ずれ。重心が中央から大きく外れているのは、カメラかエミッター位置のどちらかがずれている。
     if (std::fabs(metrics.centroidX - 0.5f) > 0.25f || std::fabs(metrics.centroidY - 0.5f) > 0.25f) {
         issues.emplace_back("OFF_CENTER: 描画の重心が画面中央から大きく外れています。"
                             "camera 引数か emitPosition を見直してください");

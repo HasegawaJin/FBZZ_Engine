@@ -171,9 +171,9 @@ AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
 }
 
 
-// AnimationState 1 件を TOML へ書き出す。
-// WHY: Base Layer (asset.states) と各 AnimationLayer::states の両方が同じ形式を使うため、
-//      Save/Load へインライン展開せず 1 箇所に集約する。片方だけ直す事故を防ぐ。
+/// @brief AnimationState 1 件を TOML へ書き出す。
+/// @note Base Layer (asset.states) と各 AnimationLayer::states の両方が同じ形式を使うため、
+///       Save/Load へインライン展開せず 1 箇所に集約する。片方だけ直す事故を防ぐ。
 toml::table WriteState(const scene::AnimationState& state)
 {
     toml::table stateTable;
@@ -215,7 +215,7 @@ toml::table WriteState(const scene::AnimationState& state)
     return stateTable;
 }
 
-// TOML から AnimationState 1 件を読む。
+/// TOML から AnimationState 1 件を読む。
 scene::AnimationState ReadState(const toml::table& stateTable)
 {
     scene::AnimationState state;
@@ -288,9 +288,9 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         parameterTable.insert("type", static_cast<int64_t>(parameter.type));
         parameterTable.insert("floatValue", static_cast<double>(parameter.floatValue));
         parameterTable.insert("intValue", static_cast<int64_t>(parameter.intValue));
-        // Trigger は状態値ではなく一瞬の発火信号なので、Controller へ保存しない。
-        // WHY: Editor の一時操作や古い .animcontroller の boolValue=true を復元すると、
-        //      起動直後に Trigger 遷移が発火して意図しない State へ進んでしまう。
+        /// @note Trigger は状態値ではなく一瞬の発火信号なので、Controller へ保存しない。
+        ///       Editor の一時操作や古い .animcontroller の boolValue=true を復元すると、
+        ///       起動直後に Trigger 遷移が発火して意図しない State へ進んでしまう。
         parameterTable.insert(
             "boolValue",
             parameter.type == scene::ParamType::Trigger ? false : parameter.boolValue);
@@ -307,14 +307,14 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         layerTable.insert("enabled", layer.enabled);
         layerTable.insert("maskPath", layer.mask.path);
 
-        // 加算レイヤーの基準ポーズ。
+        /// @note 加算レイヤーの基準ポーズ。
         toml::table additiveReference;
         additiveReference.insert("sourcePath", layer.additiveReference.sourcePath);
         additiveReference.insert("clipName", layer.additiveReference.clipName);
         additiveReference.insert("time", static_cast<double>(layer.additiveReference.time));
         layerTable.insert("additiveReference", std::move(additiveReference));
 
-        // レイヤー独自ステートマシン。
+        /// @note レイヤー独自ステートマシン。
         layerTable.insert("defaultStateName", layer.defaultStateName);
         toml::array layerStates;
         for (const auto& state : layer.states)
@@ -325,8 +325,8 @@ bool SaveAnimatorControllerAsset(const std::string& path,
             layerAnyState.push_back(WriteTransition(transition));
         layerTable.insert("anyStateTransitions", std::move(layerAnyState));
 
-        // Slot は「今この瞬間割り込んでいるモーション」であってレイヤー定義ではないため、
-        // ランタイム状態 (active / time / weight) は保存しない。既定のフェード時間だけ残す。
+        /// @note Slot は「今この瞬間割り込んでいるモーション」であってレイヤー定義ではないため、
+        ///       ランタイム状態 (active / time / weight) は保存しない。既定のフェード時間だけ残す。
         toml::table slot;
         slot.insert("fadeInDuration", static_cast<double>(layer.slot.fadeInDuration));
         slot.insert("fadeOutDuration", static_cast<double>(layer.slot.fadeOutDuration));
@@ -353,7 +353,7 @@ bool SaveAnimatorControllerAsset(const std::string& path,
     root.insert("baseLayerMaskPath", asset.baseLayerMaskPath);
     root.insert("editorLayout", WriteEditorLayout(asset.editorLayout));
 
-    // .anim クリップ参照 (sourcePath) を guid: 形式で保存する (リネーム・移動耐性)。
+    /// @note .anim クリップ参照 (sourcePath) を guid: 形式で保存する (リネーム・移動耐性)。
     EncodeGuidRefs(root);
 
     std::ostringstream stream;
@@ -371,7 +371,7 @@ bool LoadAnimatorControllerAsset(const std::string& path,
     toml::parse_result result = toml::parse(text);
     if (!result) return false;
 
-    // guid: 参照を "Assets/..." パスへ戻してから読む。
+    /// @note guid: 参照を "Assets/..." パスへ戻してから読む。
     DecodeGuidRefs(result.table());
 
     AnimatorControllerAsset loaded;
@@ -475,10 +475,10 @@ bool LoadAnimatorControllerAsset(const std::string& path,
 void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
                                   scene::AnimatorComponent& animator)
 {
-    // Controller の初回ロードや差し替えでは再生状態を初期化するが、Graph の保存後に
-    // 同じ Controller をライブ Animator へ反映する場合は、現在のモーションを止めない。
-    // loadedControllerPath は AnimatorSystem が初回ロード完了後に設定するため、
-    // 「初回ロード」と「編集反映」を安全に区別できる。
+    /// @note Controller の初回ロードや差し替えでは再生状態を初期化するが、Graph の保存後に
+    ///       同じ Controller をライブ Animator へ反映する場合は、現在のモーションを止めない。
+    ///       loadedControllerPath は AnimatorSystem が初回ロード完了後に設定するため、
+    ///       「初回ロード」と「編集反映」を安全に区別できる。
     const bool preservePlayback =
         !animator.loadedControllerPath.empty() &&
         animator.loadedControllerPath == animator.controllerPath;
@@ -494,8 +494,8 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
     animator.states = asset.states;
     animator.anyStateTransitions = asset.anyStateTransitions;
     animator.parameters = asset.parameters;
-    // 旧形式・手編集された Controller に残る Trigger の true も実行開始前に捨てる。
-    // Trigger は SetTrigger() でのみ発火し、アセットの初期値にはしない。
+    /// @note 旧形式・手編集された Controller に残る Trigger の true も実行開始前に捨てる。
+    ///       Trigger は SetTrigger() でのみ発火し、アセットの初期値にはしない。
     for (auto& parameter : animator.parameters) {
         if (parameter.type == scene::ParamType::Trigger)
             parameter.boolValue = false;
@@ -512,7 +512,7 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
     animator.clips.clear();
     animator.clipSourcePaths.clear();
     animator.clipsLoaded = false;
-    // clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
+    /// @note clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
     animator.rootMotionSamples.clear();
 
     const auto stateExists = [](const std::vector<scene::AnimationState>& states,
@@ -536,9 +536,9 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
         }
     }
 
-    // Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
-    // 初回 Controller 読込前に Script が PlayLayerState を呼んだ場合も、同名ステートが
-    // Controller 側に存在するなら、その要求を復元して初回フレームから再生できる。
+    /// @note Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
+    ///       初回 Controller 読込前に Script が PlayLayerState を呼んだ場合も、同名ステートが
+    ///       Controller 側に存在するなら、その要求を復元して初回フレームから再生できる。
     for (auto& layer : animator.layers) {
         for (const auto& previousLayer : previousLayers) {
             if (previousLayer.name != layer.name) continue;

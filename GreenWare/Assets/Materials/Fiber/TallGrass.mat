@@ -1,0 +1,31 @@
+# @file    TallGrass.mat
+# @brief   ワールド XZ へ配置する短い芝のプリセット。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+version = 1
+shader = 'guid:aef89576fbea4916a2a3905f4ef1ead5|Assets/Shaders/Fiber/FiberShell.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+depth_write = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+rootColor = [0.025, 0.065, 0.008, 1.0]
+tipColor = [0.18, 0.42, 0.035, 1.0]
+fiberLength = 0.65
+fiberDensity = 0.8
+fiberThickness = 0.34
+fiberTaper = 0.95
+fiberFrequency = 60.0
+windResponse = 0.09
+maxBend = 0.3
+gravityBend = 0.005
+roughness = 0.8
+specularStrength = 0.05
+transmission = 0.55
+rootOcclusion = 0.75
+grassShading = 1.0
+worldMapping = 1.0
+finSilhouetteWidth = 0.4

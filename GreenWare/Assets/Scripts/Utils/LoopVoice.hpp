@@ -3,17 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 持ち主の AudioSource で鳴らさないか:
-///   AudioSourceComponent が持てる主 voice は 1 本だけで、その volume と pitch は
-///   AudioSystem が PlayOneShot の一発ものにもそのまま掛ける。移動音を速さで絞ったり
-///   高さを振ったりすると、同じ体から出る被弾音や撃破音まで一緒に小さくなる。
-///   «鳴り続けているもの» と «起きたこと» は別の口から出す。
-///
-/// WHY 子オブジェクトを名前で拾い直すか:
-///   スクリプト DLL をリロードすると持ち主の Script は作り直され、この声が覚えていた
-///   EntityID は消える。一方で子は Scene 側に残っているため、拾い直せないと
-///   リロードのたびに音源が増え、同じループが重なって鳴る。
-///   (ElectricArcBundle が筋を拾い直すのと同じ理由)
+/// @note 持ち主の AudioSource で鳴らさない。主 voice は 1 本だけで volume/pitch は
+///       AudioSystem が PlayOneShot の一発ものにもそのまま掛けるため、移動音を絞ると
+///       同じ体の被弾音・撃破音まで一緒に小さくなる。«鳴り続けるもの» と «起きたこと» は
+///       別の口から出す。子オブジェクトは名前で拾い直す (ElectricArcBundle と同じ理由):
+///       DLL リロードで持ち主が覚えていた EntityID は消えるが子は Scene に残るため、
+///       拾い直せないとリロードのたびに音源が増え同じループが重なる。
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -35,11 +30,8 @@ public:
     void SetKey(std::string key) { m_key = std::move(key); }
 
     /// 出力先と広がりを変える。既定は «盤面のどこかで鳴っている» 3D の SE。
-    ///
-    /// WHY 既定を 3D のままにするか: この声の使い道はほとんどが敵や機械の定常音で、
-    ///     どの方向で何が鳴っているかが聞き分けの手がかりになる。2D にしたいのは
-    ///     環境音のように «場所を持たない» ものだけなので、そちらを明示させる。
-    ///
+    /// @note 既定を 3D にするのは、この声の使い道の多くが敵や機械の定常音で方向が聞き分けの
+    ///       手がかりになるため。2D は環境音のように «場所を持たない» ものだけ明示させる。
     /// 音源を作った後に呼んでも既に立っている声には効かない。Update() の前に 1 度呼ぶこと。
     void SetOutput(std::string bus, float spatialBlend)
     {
@@ -72,12 +64,12 @@ inline AudioSourceComponent* LoopVoice::Acquire(Script& owner)
         object = owner.scene.Find(name);
         if (!object) {
             const EntityID created = owner.scene.Create(name).GetID();
-            // Create がコンポーネント配列を伸ばしうるので、設定は ID から引き直す。
+            /// @note Create がコンポーネント配列を伸ばしうるので、設定は ID から引き直す。
             object = owner.scene.GetGameObject(created);
             if (!object) return nullptr;
             object->runtimeGenerated = true;
             if (GameObject* self = owner.scene.Self()) object->SetParent(*self);
-            // 親の原点で鳴らす。体のどこから出ているかまでは聞き分けられない。
+            /// @note 親の原点で鳴らす。体のどこから出ているかまでは聞き分けられない。
             object->transform.position = Vector3::ZERO;
         }
         m_id = object->GetID();
@@ -90,8 +82,8 @@ inline AudioSourceComponent* LoopVoice::Acquire(Script& owner)
         source->spatialBlend = m_spatial;
         source->playOnAwake  = false;
         source->loop         = true;
-        // 既定の 50m は «盤面のどこに居ても全員ぶん鳴っている» になる。鳴り続ける音は
-        // 一発ものと違って重なったぶんだけ濁るので、近くの数体ぶんに閉じる。
+        /// @note 既定の 50m は «盤面のどこに居ても全員ぶん鳴っている» になる。鳴り続ける音は
+        ///       一発ものと違って重なったぶんだけ濁るので、近くの数体ぶんに閉じる。
         source->minDistance  = 2.0f;
         source->maxDistance  = 22.0f;
     }
@@ -108,9 +100,9 @@ inline void LoopVoice::Update(Script& owner, std::string_view path, float volume
     AudioSourceComponent* source = Acquire(owner);
     if (!source) return;
 
-    // 掛け直すのは «まだ鳴らしていない» か «別のクリップになった» ときだけ。
-    // 毎フレーム要求を立てると AudioSystem が毎フレーム voice を作り直し、
-    // ループが先頭で切り刻まれてノイズになる。
+    /// @note 掛け直すのは «まだ鳴らしていない» か «別のクリップになった» ときだけ。
+    ///       毎フレーム要求を立てると AudioSystem が毎フレーム voice を作り直し、
+    ///       ループが先頭で切り刻まれてノイズになる。
     if (!m_started || source->clipPath != path) {
         source->clipPath      = std::string(path);
         source->loop          = true;

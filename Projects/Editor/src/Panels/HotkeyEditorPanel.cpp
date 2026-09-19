@@ -3,9 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-16
 ///
-/// WHY: 一覧・整形・競合判定は HotkeyManager 側に持たせ、このパネルは表示と
-/// 入力待ちだけを担当する。以前は整形処理がここと F1 オーバーレイに
-/// 別々に書かれており、片方だけ直る状態だった。
+/// 一覧・整形・競合判定は HotkeyManager 側に持たせ、このパネルは表示と入力待ちだけを担当する
+/// (整形処理を F1 オーバーレイと重複させない)。
 #include <Editor/Panels/HotkeyEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
@@ -20,7 +19,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    // リバインド待ち中: 次のキー入力を捕捉する
+    /// @note リバインド待ち中: 次のキー入力を捕捉する
     if (!m_rebindTarget.empty()) {
         ImGui::TextColored({ 0.4f, 0.9f, 1.0f, 1.0f },
             "Press any key to rebind \"%s\"  (Esc = cancel)",
@@ -42,8 +41,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
                 const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
                 const bool alt   = ImGui::IsKeyDown(ImGuiKey_LeftAlt)   || ImGui::IsKeyDown(ImGuiKey_RightAlt);
 
-                // WHY: 既存の割り当てを黙って潰すと、後になって「効かなくなった」
-                //      という形でしか気づけない。割り当ては行ったうえで警告を残す。
+                /// @note 既存の割り当てを黙って潰すと後で気づけないため、割り当ては行ったうえで警告を残す。
                 const std::string conflict =
                     ctx.hotkeyManager->FindConflict(m_rebindTarget, k, ctrl, shift, alt);
                 ctx.hotkeyManager->Rebind(m_rebindTarget, k, ctrl, shift, alt);
@@ -84,9 +82,8 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::TableSetColumnIndex(0);
             ImGui::TextUnformatted(hk.name.c_str());
 
-            // どこにフォーカスがあるとき効くのかを出す。
-            // WHY: 同じ Delete が Scene View と Hierarchy で効くことが分からないと、
-            //      「効いたり効かなかったりする」ように見える。
+            /// @note どこにフォーカスがあるとき効くのかを出す。同じ Delete が複数のスコープで効くことが
+            ///       分からないと「効いたり効かなかったりする」ように見える。
             ImGui::TableSetColumnIndex(1);
             std::string scopeText;
             if (HasScope(hk.scope, HotkeyScope::Global))        scopeText = "Anywhere";
@@ -109,7 +106,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::TextUnformatted(HotkeyManager::FormatBinding(hk).c_str());
 
             ImGui::TableSetColumnIndex(3);
-            // 説明専用エントリ (マウス操作など) は割り当てを持たないのでリバインドできない。
+            /// @note 説明専用エントリ (マウス操作など) は割り当てを持たないのでリバインドできない。
             if (hk.infoOnly) {
                 ImGui::TextDisabled("-");
             } else {

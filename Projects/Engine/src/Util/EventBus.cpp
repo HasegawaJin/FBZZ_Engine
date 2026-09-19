@@ -44,7 +44,7 @@ void EventBus::PublishRaw(std::type_index type, const void* event)
 {
     auto it = s_handlers.find(type);
     if (it == s_handlers.end()) return;
-    // コピーしてからイテレート — ハンドラ内で Unsubscribe しても安全
+    /// @note コピーしてからイテレート — ハンドラ内で Unsubscribe しても安全
     auto handlers = it->second;
     for (const auto& e : handlers)
         e.fn(event);

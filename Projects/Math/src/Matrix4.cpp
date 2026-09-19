@@ -9,22 +9,6 @@
 
 namespace fbzz::math {
 
-Matrix4 Matrix4::Identity() {
-    Matrix4 result;
-    result.m[0][0] = result.m[1][1] = result.m[2][2] = result.m[3][3] = 1.0f;
-    return result;
-}
-
-Matrix4 Matrix4::Zero() { return {}; }
-
-Matrix4 Matrix4::Translate(const Vector3& t) {
-    Matrix4 result = Identity();
-    result.m[0][3] = t.x;
-    result.m[1][3] = t.y;
-    result.m[2][3] = t.z;
-    return result;
-}
-
 Matrix4 Matrix4::Rotate(const Quaternion& q) {
     Quaternion qn = q.Normalized();
     float xx = qn.x * qn.x, yy = qn.y * qn.y, zz = qn.z * qn.z;
@@ -44,23 +28,27 @@ Matrix4 Matrix4::Rotate(const Quaternion& q) {
     return result;
 }
 
-Matrix4 Matrix4::Scale(const Vector3& s) {
-    Matrix4 result = Identity();
-    result.m[0][0] = s.x;
-    result.m[1][1] = s.y;
-    result.m[2][2] = s.z;
+Matrix4 Matrix4::TRS(const Vector3& t, const Quaternion& r, const Vector3& s) {
+    /// @note T*R*S を展開すると «回転行列の列 c に s[c] を掛け、第 4 列に t を置く» だけになる。行列積 2 回 (乗算 128 回) を省く。
+    /// @note 積で組んだ場合と値は一致する (展開で消える項は 0 との積と 1 との積だけで、丸めを生まない)。
+    Matrix4 result = Rotate(r);
+    for (int row = 0; row < 3; ++row) {
+        result.m[row][0] *= s.x;
+        result.m[row][1] *= s.y;
+        result.m[row][2] *= s.z;
+    }
+    result.m[0][3] = t.x;
+    result.m[1][3] = t.y;
+    result.m[2][3] = t.z;
     return result;
 }
 
-Matrix4 Matrix4::TRS(const Vector3& t, const Quaternion& r, const Vector3& s) {
-    return Translate(t) * Rotate(r) * Scale(s);
-}
-
 Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3& up) {
-    // DirectX 左手系 LookAt
-    Vector3 z = (target - eye).Normalized();   // forward (+Z into screen)
-    Vector3 x = Vector3::Cross(up, z).Normalized(); // right
-    Vector3 y = Vector3::Cross(z, x);              // corrected up
+    /// @note DirectX 左手系の LookAt。
+    /// @note z=forward (+Z 画面奥)、x=right、y=corrected up。
+    Vector3 z = (target - eye).Normalized();
+    Vector3 x = Vector3::Cross(up, z).Normalized();
+    Vector3 y = Vector3::Cross(z, x);
 
     Matrix4 result;
     result.m[0][0] = x.x; result.m[0][1] = x.y; result.m[0][2] = x.z;
@@ -74,9 +62,8 @@ Matrix4 Matrix4::LookAt(const Vector3& eye, const Vector3& target, const Vector3
 }
 
 Matrix4 Matrix4::Perspective(float fovY, float aspect, float nearZ, float farZ) {
-    // DirectX 左手系 透視投影 (depth: 0 to 1)
-    // 潰れたビューポート (幅 0 / 高さ 0) は編集中に普通に起きる。行列を作れないだけなので、
-    // 破綻しない最小値へ寄せて進む。止めるとレイアウト操作の途中でエディターが死ぬ。
+    /// @note DirectX 左手系の透視投影 (深度 0..1)。
+    /// @note 潰れたビューポート (幅/高さ 0) は編集中に普通に起きる。破綻しない最小値へ寄せて進む。
     FBZZ_MATH_CONTRACT(aspect > EPSILON, "degenerate aspect; clamped to 1.0");
     if (!(aspect > EPSILON)) aspect = 1.0f;
     FBZZ_MATH_CONTRACT(farZ > nearZ, "far <= near; far pushed past near");
@@ -108,86 +95,94 @@ Matrix4 Matrix4::Orthographic(float left, float right,
     return result;
 }
 
-Matrix4 Matrix4::operator*(const Matrix4& rhs) const {
-    Matrix4 result;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            for (int k = 0; k < 4; ++k)
-                result.m[r][c] += m[r][k] * rhs.m[k][c];
-    return result;
+namespace {
+
+/// @brief 2x2 行列 (行優先で 1 レジスタに [a0 a1; a2 a3]) の積 A * B。
+inline simd::Vec Mat2Mul(simd::Vec a, simd::Vec b) {
+    return _mm_add_ps(_mm_mul_ps(a, _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 0, 3, 0))),
+                      _mm_mul_ps(_mm_shuffle_ps(a, a, _MM_SHUFFLE(2, 3, 0, 1)),
+                                 _mm_shuffle_ps(b, b, _MM_SHUFFLE(1, 2, 1, 2))));
 }
 
-Vector4 Matrix4::operator*(const Vector4& v) const {
-    return {
-        m[0][0]*v.x + m[0][1]*v.y + m[0][2]*v.z + m[0][3]*v.w,
-        m[1][0]*v.x + m[1][1]*v.y + m[1][2]*v.z + m[1][3]*v.w,
-        m[2][0]*v.x + m[2][1]*v.y + m[2][2]*v.z + m[2][3]*v.w,
-        m[3][0]*v.x + m[3][1]*v.y + m[3][2]*v.z + m[3][3]*v.w
-    };
+/// @brief 2x2 の adj(A) * B。
+inline simd::Vec Mat2AdjMul(simd::Vec a, simd::Vec b) {
+    return _mm_sub_ps(_mm_mul_ps(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 0, 3, 3)), b),
+                      _mm_mul_ps(_mm_shuffle_ps(a, a, _MM_SHUFFLE(2, 2, 1, 1)),
+                                 _mm_shuffle_ps(b, b, _MM_SHUFFLE(1, 0, 3, 2))));
 }
 
-Matrix4 Matrix4::Transpose(const Matrix4& mat) {
-    Matrix4 result;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            result.m[r][c] = mat.m[c][r];
-    return result;
+/// @brief 2x2 の A * adj(B)。
+inline simd::Vec Mat2MulAdj(simd::Vec a, simd::Vec b) {
+    return _mm_sub_ps(_mm_mul_ps(a, _mm_shuffle_ps(b, b, _MM_SHUFFLE(0, 3, 0, 3))),
+                      _mm_mul_ps(_mm_shuffle_ps(a, a, _MM_SHUFFLE(2, 3, 0, 1)),
+                                 _mm_shuffle_ps(b, b, _MM_SHUFFLE(1, 2, 1, 2))));
 }
 
-// 余因子展開による 4x4 逆行列
+} // namespace
+
+/// @brief 2x2 ブロック [A B; C D] の余因子で 4x4 逆行列を求める。
+/// @note |M| = |A||D| + |B||C| - tr(adj(A)B adj(D)C)。各ブロックの余因子を 1 レジスタ (2x2) ずつ並列に作る。
+/// @see https://lxjk.github.io/2017/09/03/Fast-4x4-Matrix-Inverse-with-SSE-SIMD-Explained.html Eric Zhang «Fast 4x4 Matrix Inverse with SSE SIMD, Explained» (General Matrix Inverse)
 Matrix4 Matrix4::Inverse(const Matrix4& mat) {
-    const float* a = &mat.m[0][0];
+    const simd::Vec r0 = simd::Load4(mat.m[0]);
+    const simd::Vec r1 = simd::Load4(mat.m[1]);
+    const simd::Vec r2 = simd::Load4(mat.m[2]);
+    const simd::Vec r3 = simd::Load4(mat.m[3]);
 
-    float b00 = a[ 0]*a[ 5] - a[ 1]*a[ 4];
-    float b01 = a[ 0]*a[ 6] - a[ 2]*a[ 4];
-    float b02 = a[ 0]*a[ 7] - a[ 3]*a[ 4];
-    float b03 = a[ 1]*a[ 6] - a[ 2]*a[ 5];
-    float b04 = a[ 1]*a[ 7] - a[ 3]*a[ 5];
-    float b05 = a[ 2]*a[ 7] - a[ 3]*a[ 6];
-    float b06 = a[ 8]*a[13] - a[ 9]*a[12];
-    float b07 = a[ 8]*a[14] - a[10]*a[12];
-    float b08 = a[ 8]*a[15] - a[11]*a[12];
-    float b09 = a[ 9]*a[14] - a[10]*a[13];
-    float b10 = a[ 9]*a[15] - a[11]*a[13];
-    float b11 = a[10]*a[15] - a[11]*a[14];
+    const simd::Vec a = _mm_movelh_ps(r0, r1);
+    const simd::Vec b = _mm_movehl_ps(r1, r0);
+    const simd::Vec c = _mm_movelh_ps(r2, r3);
+    const simd::Vec d = _mm_movehl_ps(r3, r2);
 
-    float det = b00*b11 - b01*b10 + b02*b09 + b03*b08 - b04*b07 + b05*b06;
-    // scale に 0 が入った Transform は特異行列になる。Inspector の操作として普通に起きるので、
-    // 単位行列を返して «その変換が効かない» だけに留める (Matrix4.cpp の Decompose 側と同じ判断)。
+    /// @note 4 ブロックの行列式を 1 レジスタで (|A| |B| |C| |D|)。
+    const simd::Vec detSub = _mm_sub_ps(
+        _mm_mul_ps(_mm_shuffle_ps(r0, r2, _MM_SHUFFLE(2, 0, 2, 0)), _mm_shuffle_ps(r1, r3, _MM_SHUFFLE(3, 1, 3, 1))),
+        _mm_mul_ps(_mm_shuffle_ps(r0, r2, _MM_SHUFFLE(3, 1, 3, 1)), _mm_shuffle_ps(r1, r3, _MM_SHUFFLE(2, 0, 2, 0))));
+    const simd::Vec detA = simd::SplatLane<0>(detSub);
+    const simd::Vec detB = simd::SplatLane<1>(detSub);
+    const simd::Vec detC = simd::SplatLane<2>(detSub);
+    const simd::Vec detD = simd::SplatLane<3>(detSub);
+
+    const simd::Vec adjDC = Mat2AdjMul(d, c);
+    const simd::Vec adjAB = Mat2AdjMul(a, b);
+    /// @note 逆行列を |M|^-1 [X Y; Z W] と置いたときの各ブロックの余因子。
+    simd::Vec adjX = _mm_sub_ps(_mm_mul_ps(detD, a), Mat2Mul(b, adjDC));
+    simd::Vec adjW = _mm_sub_ps(_mm_mul_ps(detA, d), Mat2Mul(c, adjAB));
+    simd::Vec adjY = _mm_sub_ps(_mm_mul_ps(detB, c), Mat2MulAdj(d, adjAB));
+    simd::Vec adjZ = _mm_sub_ps(_mm_mul_ps(detC, b), Mat2MulAdj(a, adjDC));
+
+    simd::Vec trace = _mm_mul_ps(adjAB, _mm_shuffle_ps(adjDC, adjDC, _MM_SHUFFLE(3, 1, 2, 0)));
+    trace = _mm_hadd_ps(trace, trace);
+    trace = _mm_hadd_ps(trace, trace);
+    const simd::Vec detM = _mm_sub_ps(_mm_add_ps(_mm_mul_ps(detA, detD), _mm_mul_ps(detB, detC)), trace);
+
+    const float det = _mm_cvtss_f32(detM);
+    /// @note scale に 0 が入った Transform は特異行列になる。Inspector の操作として普通に起きるため、
+    ///       単位行列を返し「その変換が効かない」だけに留める (Decompose 側と同じ判断)。
     FBZZ_MATH_CONTRACT(!NearlyZero(det),
                        "singular matrix inverted (zero scale?); returning identity");
     if (NearlyZero(det)) return Identity();
 
-    float inv = 1.0f / det;
+    /// @note 余因子から元のブロックへ戻す adj の符号 (+ - - +) を 1/|M| に畳む。
+    const simd::Vec invDet = _mm_div_ps(_mm_setr_ps(1.0f, -1.0f, -1.0f, 1.0f), detM);
+    adjX = _mm_mul_ps(adjX, invDet);
+    adjY = _mm_mul_ps(adjY, invDet);
+    adjZ = _mm_mul_ps(adjZ, invDet);
+    adjW = _mm_mul_ps(adjW, invDet);
+
+    /// @note adj の並べ替え (成分 0 と 3 の交換) と、ブロックを行へ戻す並べ替えを 1 回のシャッフルで兼ねる。
     Matrix4 result;
-    float* r = &result.m[0][0];
-
-    r[ 0] = ( a[ 5]*b11 - a[ 6]*b10 + a[ 7]*b09) * inv;
-    r[ 1] = (-a[ 1]*b11 + a[ 2]*b10 - a[ 3]*b09) * inv;
-    r[ 2] = ( a[13]*b05 - a[14]*b04 + a[15]*b03) * inv;
-    r[ 3] = (-a[ 9]*b05 + a[10]*b04 - a[11]*b03) * inv;
-    r[ 4] = (-a[ 4]*b11 + a[ 6]*b08 - a[ 7]*b07) * inv;
-    r[ 5] = ( a[ 0]*b11 - a[ 2]*b08 + a[ 3]*b07) * inv;
-    r[ 6] = (-a[12]*b05 + a[14]*b02 - a[15]*b01) * inv;
-    r[ 7] = ( a[ 8]*b05 - a[10]*b02 + a[11]*b01) * inv;
-    r[ 8] = ( a[ 4]*b10 - a[ 5]*b08 + a[ 7]*b06) * inv;
-    r[ 9] = (-a[ 0]*b10 + a[ 1]*b08 - a[ 3]*b06) * inv;
-    r[10] = ( a[12]*b04 - a[13]*b02 + a[15]*b00) * inv;
-    r[11] = (-a[ 8]*b04 + a[ 9]*b02 - a[11]*b00) * inv;
-    r[12] = (-a[ 4]*b09 + a[ 5]*b07 - a[ 6]*b06) * inv;
-    r[13] = ( a[ 0]*b09 - a[ 1]*b07 + a[ 2]*b06) * inv;
-    r[14] = (-a[12]*b03 + a[13]*b01 - a[14]*b00) * inv;
-    r[15] = ( a[ 8]*b03 - a[ 9]*b01 + a[10]*b00) * inv;
-
+    simd::Store4(result.m[0], _mm_shuffle_ps(adjX, adjY, _MM_SHUFFLE(1, 3, 1, 3)));
+    simd::Store4(result.m[1], _mm_shuffle_ps(adjX, adjY, _MM_SHUFFLE(0, 2, 0, 2)));
+    simd::Store4(result.m[2], _mm_shuffle_ps(adjZ, adjW, _MM_SHUFFLE(1, 3, 1, 3)));
+    simd::Store4(result.m[3], _mm_shuffle_ps(adjZ, adjW, _MM_SHUFFLE(0, 2, 0, 2)));
     return result;
 }
 
 Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
-    // アフィン行列 M = [[A, 0], [t, 1]] (行優先・行ベクトル規約) の逆行列は
-    //   M^-1 = [[A^-1, 0], [-t*A^-1, 1]]
-    // なので、その転置の左上 3x3 は (A^-1)^T になる。平行移動 t は一切効かない。
-    // さらに A^-1 = adj(A)/det = cofactor(A)^T/det より (A^-1)^T = cofactor(A)/det。
-    // つまり左上 3x3 の余因子行列を行列式で割るだけでよい。
+    /// @note アフィン行列 M=[[A,0],[t,1]] の逆行列は M^-1=[[A^-1,0],[-t*A^-1,1]]。
+    /// @note その転置の左上 3x3 は (A^-1)^T = cofactor(A)/det になる (t は寄与しない)。
+    /// @note よって左上 3x3 の余因子行列を行列式で割るだけでよい。
     const auto& a = mat.m;
 
     const float c00 = a[1][1]*a[2][2] - a[1][2]*a[2][1];
@@ -196,9 +191,7 @@ Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
 
     const float det = a[0][0]*c00 + a[0][1]*c01 + a[0][2]*c02;
     Matrix4 result = Identity();
-    // スケール 0 などで退化した場合は単位行列を返す。
-    // WHY assert しないか: Transform のスケールに 0 を入れるのはエディタ操作として普通に起きる。
-    //      描画のたびに停止させる類の異常ではないので、法線を素通しして描き続ける。
+    /// @note スケール 0 などの退化は Transform 編集で普通に起きるため assert せず、単位行列を返して進む。
     if (NearlyZero(det))
         return result;
 
@@ -215,7 +208,5 @@ Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
     result.m[2][0] = c20 * inv; result.m[2][1] = c21 * inv; result.m[2][2] = c22 * inv;
     return result;
 }
-
-Matrix4 Matrix4::Transposed() const { return Transpose(*this); }
 
 } // namespace fbzz::math

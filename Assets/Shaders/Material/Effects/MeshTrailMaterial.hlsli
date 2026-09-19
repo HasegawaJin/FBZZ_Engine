@@ -67,8 +67,12 @@ cbuffer MeshTrailConstants : register(CB_MESHTRAIL)
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D    gMeshTrailTex : register(TEX_ALBEDO);
+/// @note 添字は MaterialConstants ではなく描画ごとの添字ブロック (b14) の t0 枠から引く。
+///       C++ 側は DrawCall::textures[0] で差す。既定の .mat は MaterialConstants を持たない。
+FBZZ_TEX2D(gMeshTrailTex, TEX_ALBEDO_SLOT);
 SamplerState gSampler      : register(SAMPLER_DEFAULT);
 
 // WHY 法線と world 座標まで渡すか:

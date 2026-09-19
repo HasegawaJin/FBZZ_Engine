@@ -10,21 +10,21 @@ namespace fbzz::editor {
 
 ImportCategory CategoryForExtension(std::string_view lowerExt)
 {
-    // モデルソース: Assimp で読み、Library 側の .fzasset へ変換する。
+    /// @note モデルソース: Assimp で読み、Library 側の .fzasset へ変換する。
     if (lowerExt == ".fbx" || lowerExt == ".obj" ||
         lowerExt == ".gltf" || lowerExt == ".glb")
         return ImportCategory::Model;
 
-    // LDR 画像ソース: ImageImporter が .meta の設定でエンコードする。
+    /// @note LDR 画像ソース: ImageImporter が .meta の設定でエンコードする。
     if (lowerExt == ".png" || lowerExt == ".jpg" || lowerExt == ".jpeg" ||
         lowerExt == ".tga" || lowerExt == ".bmp")
         return ImportCategory::Texture;
 
-    // 浮動小数リニア画像: ガンマも LDR ブロック圧縮も適用できない。
+    /// @note 浮動小数リニア画像: ガンマも LDR ブロック圧縮も適用できない。
     if (lowerExt == ".hdr" || lowerExt == ".exr")
         return ImportCategory::TextureHdr;
 
-    // 既にブロック圧縮済み。Editor 側で再エンコードする経路を持たない。
+    /// @note 既にブロック圧縮済み。Editor 側で再エンコードする経路を持たない。
     if (lowerExt == ".dds")
         return ImportCategory::TexturePrebaked;
 
@@ -67,7 +67,7 @@ const char* ImportCategoryLabel(ImportCategory category)
 
 namespace {
 
-// リニアデータとして扱う型。sRGB 変換もアルファ合成も意味を持たない。
+/// リニアデータとして扱う型。sRGB 変換もアルファ合成も意味を持たない。
 bool IsLinearDataType(asset::TextureType type)
 {
     return type == asset::TextureType::Normal ||
@@ -84,8 +84,8 @@ TextureFieldMask TextureFieldsFor(
     const asset::TextureType type = settings.type;
 
     if (category == ImportCategory::TexturePrebaked) {
-        // .dds は既に GPU が読める形になっている。エンコードに関わる項目は全て効かず、
-        // 実行時に効くのはサンプラー状態 (Wrap / Aniso / Filter) だけ。
+        /// @note .dds は既に GPU が読める形になっている。エンコードに関わる項目は全て効かず、
+        ///       実行時に効くのはサンプラー状態 (Wrap / Aniso / Filter) だけ。
         mask.textureType   = true;
         mask.srgb          = false;
         mask.mipmaps       = false;
@@ -101,14 +101,15 @@ TextureFieldMask TextureFieldsFor(
     }
 
     if (category == ImportCategory::TextureHdr) {
-        // .hdr / .exr は常にリニア浮動小数。型は HDR に固定し、ガンマとアルファを外す。
+        /// @note .hdr / .exr は常にリニア浮動小数。型は HDR に固定し、ガンマとアルファを外す。
         mask.textureType   = false;
         mask.srgb          = false;
         mask.mipmaps       = true;
         mask.mipDetail     = settings.mipmaps;
         mask.normalizeMips = false;
         mask.flipGreen     = false;
-        mask.compression   = true;   // 選択肢は BC6H / None に絞る (IsCompressionAllowed)
+        /// @note 選択肢は BC6H / None に絞る (IsCompressionAllowed)
+        mask.compression   = true;
         mask.maxSize       = true;
         mask.sampling      = true;
         mask.alpha         = false;
@@ -117,7 +118,7 @@ TextureFieldMask TextureFieldsFor(
     }
 
     if (category != ImportCategory::Texture) {
-        // テクスチャ以外に対してテクスチャ設定を描く経路自体が誤り。全て落とす。
+        /// @note テクスチャ以外に対してテクスチャ設定を描く経路自体が誤り。全て落とす。
         mask = TextureFieldMask{};
         mask.textureType   = false;
         mask.srgb          = false;
@@ -130,20 +131,20 @@ TextureFieldMask TextureFieldsFor(
         return mask;
     }
 
-    // ── LDR 画像 (.png / .jpg / .tga / .bmp) ──────────────────────────────
+    /// @name LDR 画像 (.png / .jpg / .tga / .bmp)
     mask.textureType = true;
-    // 法線・データマスク・HDR はリニアで読む必要があり、sRGB を選ばせてはいけない。
+    /// @note 法線・データマスク・HDR はリニアで読む必要があり、sRGB を選ばせてはいけない。
     mask.srgb          = !IsLinearDataType(type);
     mask.mipmaps       = true;
     mask.mipDetail     = settings.mipmaps;
-    // Normalize Mipmaps は縮小で崩れた法線を再正規化する処理。法線マップ専用。
+    /// @note Normalize Mipmaps は縮小で崩れた法線を再正規化する処理。法線マップ専用。
     mask.normalizeMips = settings.mipmaps && type == asset::TextureType::Normal;
-    // G 反転は OpenGL 規約の法線マップを DirectX 規約へ直す処理。他の型では無意味。
+    /// @note G 反転は OpenGL 規約の法線マップを DirectX 規約へ直す処理。他の型では無意味。
     mask.flipGreen     = type == asset::TextureType::Normal;
     mask.compression   = true;
     mask.maxSize       = true;
     mask.sampling      = true;
-    // 法線・データマスクのアルファはチャンネルとして使われるだけで、合成方式の概念がない。
+    /// @note 法線・データマスクのアルファはチャンネルとして使われるだけで、合成方式の概念がない。
     mask.alpha         = !IsLinearDataType(type);
     mask.sprite        = type == asset::TextureType::Sprite;
     return mask;
@@ -153,12 +154,12 @@ bool IsTextureTypeAllowed(ImportCategory category, asset::TextureType type)
 {
     switch (category) {
     case ImportCategory::Texture:
-        // LDR ソースを HDR 型として扱っても情報は増えない。
+        /// @note LDR ソースを HDR 型として扱っても情報は増えない。
         return type != asset::TextureType::HDR;
     case ImportCategory::TextureHdr:
         return type == asset::TextureType::HDR;
     case ImportCategory::TexturePrebaked:
-        // 圧縮済みブロックから矩形を切り出す経路を持たないため Sprite は除外する。
+        /// @note 圧縮済みブロックから矩形を切り出す経路を持たないため Sprite は除外する。
         return type != asset::TextureType::Sprite;
     default:
         return false;
@@ -170,20 +171,20 @@ bool IsCompressionAllowed(
 {
     using C = asset::TextureCompression;
 
-    // Auto と None はどの型でも常に選べる (Auto は型から自動選択する)。
+    /// @note Auto と None はどの型でも常に選べる (Auto は型から自動選択する)。
     if (compression == C::Auto || compression == C::None) return true;
 
     if (category == ImportCategory::TextureHdr || type == asset::TextureType::HDR) {
-        // 浮動小数を扱えるブロック圧縮は BC6H だけ。
+        /// @note 浮動小数を扱えるブロック圧縮は BC6H だけ。
         return compression == C::BC6H;
     }
 
     switch (type) {
     case asset::TextureType::Normal:
-        // 2 チャンネル法線は BC5、高品質が要るときだけ BC7。BC1/BC3 は破綻する。
+        /// @note 2 チャンネル法線は BC5、高品質が要るときだけ BC7。BC1/BC3 は破綻する。
         return compression == C::BC5 || compression == C::BC7;
     case asset::TextureType::Data:
-        // Roughness / Metallic / AO 等のマスク。単/2 チャンネルか BC7。
+        /// @note Roughness / Metallic / AO 等のマスク。単/2 チャンネルか BC7。
         return compression == C::BC4 || compression == C::BC5 || compression == C::BC7;
     case asset::TextureType::Color:
     case asset::TextureType::UI:
@@ -199,13 +200,13 @@ bool SanitizeTextureSettings(ImportCategory category, asset::TextureImportSettin
 {
     const asset::TextureImportSettings before = settings;
 
-    // 型が拡張子に対して不正なら、その拡張子の既定型へ寄せる。
+    /// @note 型が拡張子に対して不正なら、その拡張子の既定型へ寄せる。
     if (!IsTextureTypeAllowed(category, settings.type)) {
         const asset::TextureType fallback = (category == ImportCategory::TextureHdr)
             ? asset::TextureType::HDR
             : asset::TextureType::Color;
-        // 型が変わると既定値一式も変わるため、DefaultSettingsForType で作り直す。
-        // ただしユーザーが編集しうる Sprite 矩形だけは引き継ぐ。
+        /// @note 型が変わると既定値一式も変わるため、DefaultSettingsForType で作り直す。
+        ///       ただしユーザーが編集しうる Sprite 矩形だけは引き継ぐ。
         auto sprites = std::move(settings.sprites);
         settings = asset::DefaultSettingsForType(fallback);
         settings.sprites = std::move(sprites);
@@ -213,8 +214,8 @@ bool SanitizeTextureSettings(ImportCategory category, asset::TextureImportSettin
 
     const TextureFieldMask mask = TextureFieldsFor(category, settings);
 
-    // マスクで無効化した項目が有効値を持ったままだと、UI に出ないのに
-    // インポータ側が拾って挙動が食い違う。ここで無害な既定へ落とす。
+    /// @note マスクで無効化した項目が有効値を持ったままだと、UI に出ないのに
+    ///       インポータ側が拾って挙動が食い違う。ここで無害な既定へ落とす。
     if (!mask.srgb)          settings.srgb = false;
     if (!mask.mipmaps)       settings.mipmaps = false;
     if (!mask.normalizeMips) settings.normalizeMipmaps = false;
@@ -223,9 +224,9 @@ bool SanitizeTextureSettings(ImportCategory category, asset::TextureImportSettin
         settings.alphaMode   = asset::AlphaMode::None;
         settings.alphaDither = false;
     }
-    // Sprite 矩形はユーザーが手で切った著作物なので、型が Sprite でなくなっても消さない。
-    // WHY: 型を一時的に Color へ戻して確認しただけで切り直しが消えるのは復旧不能な損失。
-    //      使われないだけで害はないため、モードだけ既定へ戻して矩形は保持する。
+    /// @note Sprite 矩形はユーザーが手で切った著作物なので、型が Sprite でなくなっても消さない
+    ///       (型を一時的に Color へ戻しただけで切り直しが消えるのは復旧不能な損失のため)。
+    ///       使われないだけで害はないため、モードだけ既定へ戻して矩形は保持する。
     if (!mask.sprite) settings.spriteMode = asset::SpriteMode::Single;
     if (!IsCompressionAllowed(category, settings.type, settings.compression))
         settings.compression = asset::TextureCompression::Auto;
@@ -233,7 +234,7 @@ bool SanitizeTextureSettings(ImportCategory category, asset::TextureImportSettin
     return !(settings == before);
 }
 
-// ── UI ヘルパー ──────────────────────────────────────────────────────────────
+/// @name UI ヘルパー
 
 namespace {
 
@@ -285,7 +286,7 @@ bool DrawTextureTypeCombo(const char* label, ImportCategory category, asset::Tex
     for (const asset::TextureType t : kAllTextureTypes)
         if (IsTextureTypeAllowed(category, t)) ++allowedCount;
 
-    // 選択肢が 1 つしかないなら、触れるように見せない方が誤解が少ない。
+    /// @note 選択肢が 1 つしかないなら、触れるように見せない方が誤解が少ない。
     const bool locked = allowedCount <= 1;
     if (locked) ImGui::BeginDisabled();
 

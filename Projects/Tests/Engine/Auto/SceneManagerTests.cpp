@@ -4,6 +4,7 @@
 /// @date    2026-09-15
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -40,7 +41,7 @@ public:
     }
     void OnUpdate() override
     {
-        // 初回に全員が原点だと、ボスの押し出しが出現座標を上書きしていた。
+        /// @note 初回に全員が原点だと、ボスの押し出しが出現座標を上書きしていた。
         if (auto* boss = scene.Find("Boss")) {
             if ((transform.worldPosition - boss->transform.worldPosition).LengthSq() < 1.0f) {
                 transform.position = math::Vector3{0.0f, 0.0f, 1.0f};
@@ -51,7 +52,21 @@ public:
 };
 }
 
-class SceneManagerTest : public testkit::EngineFixture {};
+class SceneManagerTest : public testkit::EngineFixture {
+protected:
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        /// @note 本物の SystemScheduler は並列バッチをワーカーへ投げる。プールが無いと Submit が落ちる。
+        TaskSystem::Init(2);
+    }
+
+    void TearDown() override
+    {
+        TaskSystem::Shutdown();
+        EngineFixture::TearDown();
+    }
+};
 
 TEST_F(SceneManagerTest, TransitionDestroysPreviousScriptsBeforeStartingNextScene)
 {
@@ -117,7 +132,7 @@ TEST_F(SceneManagerTest, RuntimeTransitionResolvesRootAndChildPosesBeforeFirstSc
 
     for (const char* name : {"StageSelect", "Load", "Stage03"}) {
         ASSERT_TRUE(manager.LoadScene(name));
-        // 固定ステップが走らないフレームでも、初期化時の座標は有効である必要がある。
+        /// @note 固定ステップが走らないフレームでも、初期化時の座標は有効である必要がある。
         manager.Update(0.0f, world);
     }
     auto* actor = manager.GetActive()->Find("Player");

@@ -1,8 +1,9 @@
-/// @file    RenderPasses/CausticsPass.cpp
+/// @file    CausticsPass.cpp
 /// @brief   水面越しの投影コースティクスを HDR バッファへ加算合成するポストプロセスパス。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "../PostProcess/PostProcessPasses.hpp"
+#include "GeometryPasses.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -46,8 +47,8 @@ CausticsSource FindCausticsSource(RenderPassContext& ctx)
 
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {
-            const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
-            mat = asset::AssetManager::GetMaterial(handle);
+            const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath);
+            mat = asset::AssetManager::Get<asset::MaterialAsset>(handle);
         }
 
         auto getF = [mat](const char* name, float def) -> float {
@@ -77,8 +78,7 @@ CausticsSource FindCausticsSource(RenderPassContext& ctx)
             weightedWaveFreq += (math::TWO_PI / wave.wavelength) * wave.amplitude;
         }
 
-        // 複数水面は最も強い設定を代表値として扱う。
-        // WHY: 1 回のフルスクリーン加算で済ませるため、Phase C-2 では代表水面のみを投影元にする。
+        /// @note 複数水面は最も強い設定を代表値として扱う。1 回のフルスクリーン加算で済ませるため、代表水面のみを投影元にする。
         if (result.enabled && intensity <= result.intensity) continue;
 
         result.enabled     = true;
@@ -123,7 +123,7 @@ renderer::ResourceHandle<renderer::TextureTag> CreateProceduralCaustics(renderer
     return resources.CreateTexture(pixels.data(), size, size);
 }
 
-} // anonymous namespace
+} // namespace
 
 void ExecuteCausticsPass(RenderPassContext& ctx)
 {
@@ -137,7 +137,7 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     static renderer::ResourceHandle<renderer::TextureTag> s_loadedTexture;
     static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     static uint64_t s_resetVersion = 0;
-    // 深度のコピー先はビューが持つ (RenderPassHandles::causticsDepthRT の WHY)。
+    /// @note 深度のコピー先はビューが持つ (理由は RenderPassHandles::causticsDepthRT を参照)。
     if (!ctx.handles.causticsDepthRT) return;
     renderer::SizedRenderTarget& s_causticsDepthRT = *ctx.handles.causticsDepthRT;
 
@@ -178,8 +178,7 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     postData.causticsWaveSpeed = source.waveSpeed;
     ctx.resources.Update(ctx.handles.postprocCB, &postData, sizeof(PostProcCB));
 
-    // WHAT: HDR の depth を専用 RT へコピーし、PS ではコピー後の SRV からワールド座標を復元する。
-    // WHY: hdrRT を RTV/DSV として加算先にしながら同じ depth を SRV(t7) で読むと DX11 の read/write 競合になる。
+    /// @note HDR の depth を専用 RT へコピーし、PS ではコピー後の SRV(t7) からワールド座標を復元する。hdrRT を RTV/DSV として加算先にしながら同じ depth を SRV で読むと DX11 の read/write 競合になる。
     ctx.renderer.SetRenderTarget(s_causticsDepthRT, ctx.resources);
     ctx.renderer.ClearDepth();
     if (depthCopyShader.IsValid()) {
@@ -204,4 +203,14 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     ctx.renderer.Submit(dc, ctx.resources);
 }
 
+
+void WaterCausticsPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.ReadWrite("HDR");
+}
+
+void WaterCausticsPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteCausticsPass(ctx);
+}
 } // namespace fbzz::scene

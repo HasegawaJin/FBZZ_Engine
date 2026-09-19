@@ -37,7 +37,7 @@ if(NOT EXISTS "${FBZZ_SDK_ROOT}/cmake/FBZZ/FBZZConfig.cmake")
     message(FATAL_ERROR "FBZZ SDK not found at '${FBZZ_SDK_ROOT}'. Re-select the versioned SDK in FBZZ Hub.")
 endif()
 list(PREPEND CMAKE_PREFIX_PATH "${FBZZ_SDK_ROOT}/cmake")
-find_package(FBZZ 0.1.0 EXACT CONFIG REQUIRED)
+find_package(FBZZ 0.9.1 EXACT CONFIG REQUIRED)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY             "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY             "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")

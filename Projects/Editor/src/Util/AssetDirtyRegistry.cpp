@@ -16,7 +16,7 @@ void AssetDirtyRegistry::Register(const std::string& absPath,
 {
     for (auto& entry : s_dirty) {
         if (entry.path == absPath) {
-            // saveFunc だけ更新 (最新の in-memory 状態をキャプチャしたクロージャで上書き)
+            /// @note saveFunc だけ更新 (最新の in-memory 状態をキャプチャしたクロージャで上書き)
             entry.saveFunc    = std::move(saveFunc);
             entry.displayPath = displayPath;
             return;
@@ -51,9 +51,7 @@ const std::vector<DirtyAsset>& AssetDirtyRegistry::GetAll()
 
 bool AssetDirtyRegistry::Save(const std::string& absPath)
 {
-    // saveFunc をコピーしてから呼ぶ。
-    // WHY: saveFunc の中で Register が呼ばれると s_dirty が再確保され、
-    //      イテレータ (と entry への参照) が実行中に無効化されうる。
+    /// @note saveFunc をコピーしてから呼ぶ: 中で Register が呼ばれると s_dirty が再確保され、イテレータ (と entry への参照) が無効化されうる。
     std::function<bool()> saveFunc;
     for (const auto& entry : s_dirty) {
         if (entry.path != absPath) continue;
@@ -69,7 +67,7 @@ bool AssetDirtyRegistry::Save(const std::string& absPath)
 int AssetDirtyRegistry::SaveAll()
 {
     int failed = 0;
-    // 保存しながら clean 扱いにする (逆順ループで safe erase)
+    /// @note 保存しながら clean 扱いにする (逆順ループで safe erase)
     std::vector<std::string> saved;
     for (auto& entry : s_dirty) {
         if (entry.saveFunc && entry.saveFunc())

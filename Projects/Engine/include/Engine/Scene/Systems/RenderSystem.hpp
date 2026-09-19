@@ -25,11 +25,10 @@ namespace fbzz::scene {
 
 class RenderPassCapture;
 
-// RenderSystemUIOptions は RenderGraph 内へ UI 合成パスを登録するための設定。
-// WHY: UI を RenderSystem の外で描くと、PostProcess 後の RT バインド状態に依存して
-//      Editor の複数 Viewport で別 RT へ描いてしまうリスクがある。
-//      RenderGraph の Output ReadWrite pass として扱えば、3D / PostProcess / UI の順序を
-//      グラフ依存で固定できる。
+/// RenderGraph 内へ UI 合成パスを登録するための設定。
+/// @note UI を外で描くと PostProcess 後の RT バインド状態に依存し、複数 Viewport で別 RT へ
+///       描いてしまう。Output ReadWrite pass として扱い、3D/PostProcess/UI の順序をグラフ
+///       依存で固定する。
 struct RenderSystemUIOptions {
     bool enabled = false;
     float viewportWidth = 0.0f;
@@ -37,9 +36,9 @@ struct RenderSystemUIOptions {
     math::Vector2 mouseInCanvasSpace = {};
     bool mousePressed = false;
     UIRenderTargetView targetView = UIRenderTargetView::GameViewport;
-    // 呼び出し元 Viewport が所有する GPU リソースコンテキスト。
-    // WHY: 複数 Viewport が同フレームに UISystem を呼ぶとき、インスタンスを分離して
-    //      定数バッファの上書き競合を防ぐ。null の場合 UI は描画されない。
+    /// 呼び出し元 Viewport が所有する GPU リソースコンテキスト。null なら UI は描画されない。
+    /// @note 複数 Viewport が同フレームに UISystem を呼ぶときインスタンスを分離し、定数バッファの
+    ///       上書き競合を防ぐ。
     UISystemContext* context = nullptr;
 };
 
@@ -52,12 +51,10 @@ void RenderSystem(Scene& scene,
                   fbzz::LayerMask cullingMask = fbzz::Layer::Everything,
                   const RenderSystemUIOptions* uiOptions = nullptr,
                   const physics::World* physicsWorld = nullptr,
-                  // カリング挙動の上書き。nullptr のときはシーンのメインカメラから解決する。
-                  // WHY 既定を「シーンから解決」にするか: Standalone / GameHub テンプレートは
-                  //     RenderSystem を素朴に呼ぶだけなので、呼び出し側を書き換えなくても
-                  //     CameraComponent の設定が効くようにしておきたい。
-                  //     Editor の Scene View は自前のデバッグカメラで描くため、
-                  //     ゲームカメラの設定を持ち込まないよう明示的に既定値を渡す。
+                  /// カリング挙動の上書き。nullptr のときはシーンのメインカメラから解決する。
+                  /// @note Standalone/GameHub は RenderSystem を素朴に呼ぶだけなので既定は «シーンから解決»。
+                  ///       Editor の Scene View は自前のデバッグカメラで描くため、ゲームカメラの設定を
+                  ///       持ち込まないよう明示的に既定値を渡す。
                   const CameraCullingSettings* cullingSettings = nullptr,
                   RenderPassCapture* capture = nullptr);
 

@@ -11,21 +11,18 @@
 
 namespace fbzz::scene {
 
-// 共通実装を持つ基底クラス（直接登録しない）
+/// 共通実装を持つ基底クラス（直接登録しない）
 class TransformSystem : public ISystem {
 public:
     ComponentAccess GetAccess() const override;
     void Update(SystemContext& ctx) override;
 };
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Phase ごとのタグサブクラス（メタデータだけ異なる、実装は TransformSystem から継承）
-// ──────────────────────────────────────────────────────────────────────────────
+/// Phase ごとのタグサブクラス（メタデータだけ異なる、実装は TransformSystem から継承）
 
-// Editor 停止中のみ動作。NavMeshBake が Transform を読む前に行列を更新する。
-// WHY: Sim モードでは Physics 書き戻し後の Transform を翌フレーム先頭の NavMesh が
-//      使うため Transform は PreScript より後に走る。Editor モードは Physics がないため
-//      先頭で明示的に更新が必要。
+/// Editor 停止中のみ動作。NavMeshBake が Transform を読む前に行列を更新する。
+/// @note Sim モードでは Physics 書き戻し後の Transform を翌フレーム先頭の NavMesh が読むため
+///       PreScript より後で足りる。Editor モードは Physics が無いため先頭で明示的に更新する。
 class TransformEditorPreview final : public TransformSystem {
 public:
     std::string_view Name()       const override { return "TransformSystem.EditorPreview"; }
@@ -54,9 +51,7 @@ public:
     RunMode          GetRunMode() const override { return RunMode::Always; }
 };
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ユーティリティ関数
-// ──────────────────────────────────────────────────────────────────────────────
+/// ユーティリティ関数
 
 class Scene;
 class GameObject;
@@ -67,9 +62,8 @@ class GameObject;
 void FlushWorldTransforms(Scene& scene);
 
 /// 確定したワールド姿勢を GameObject へ書き、親から逆算した local も同時に更新する。
-/// WHY local も要るか: world フィールドは local から再計算される派生値でしかない。
-///   この後 FlushWorldTransforms が走った瞬間に
-///   local から上書きされるため、local を直さない書き込みは 1 フレームも保たない。
+/// @note world は local から再計算される派生値。FlushWorldTransforms が走った瞬間に local から
+///       上書きされるため、local を直さない書き込みは 1 フレームも保たない。
 void SetWorldPose(GameObject& go,
                   const math::Vector3& worldPosition,
                   const math::Quaternion& worldRotation,

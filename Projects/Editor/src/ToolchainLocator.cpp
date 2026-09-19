@@ -22,9 +22,9 @@ std::filesystem::path NormalizeConfigPath(const std::filesystem::path& configPat
     return path.lexically_normal();
 }
 
-// buildRoot 直下、または 1 段下のサブディレクトリから build.config を探す。
-// WHY: cmake --preset fbzz-vs は build.config を buildRoot/VS/build.config に生成する。
-//      直下にも置けるよう両方を試す。
+/// @brief buildRoot 直下、または 1 段下のサブディレクトリから build.config を探す。
+/// @note cmake --preset fbzz-vs は build.config を buildRoot/VS/build.config に生成するため、
+///       直下にも置けるよう両方を試す。
 std::filesystem::path FindBuildConfigUnderRoot(const std::filesystem::path& buildRoot)
 {
     if (buildRoot.empty()) return {};

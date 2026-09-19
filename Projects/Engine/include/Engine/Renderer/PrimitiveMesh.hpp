@@ -12,8 +12,8 @@ namespace fbzz::renderer {
 
 class ResourceManager;
 
-// WHY: PrimitiveMesh は AssetManager 管轄外の手続き生成メッシュなので、
-//      static キャッシュで所有し raw pointer を返す。呼び出し元はポインタをキャッシュしてよい。
+/// @note PrimitiveMesh は AssetManager 管轄外の手続き生成メッシュなので、static キャッシュで
+///       所有し raw pointer を返す。呼び出し元はポインタをキャッシュしてよい。
 class PrimitiveMesh {
 public:
     static Mesh* Cube    (ResourceManager& resources);

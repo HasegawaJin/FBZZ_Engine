@@ -3,12 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 ///
-/// WHY ParticleEmitter.hpp から切り出すか:
-///   この 2 型はパーティクル専用ではなく、VFX ノードのフェードやスクリプトの
-///   ダメージ減衰にも使う汎用のオーサリング型である。ParticleEmitter.hpp は
-///   Script.hpp を include するため、Script.hpp から参照すると include が循環する。
-///   依存を持たないここへ置くことで、ユーザースクリプトが Script.hpp 1 枚のまま
-///   カーブフィールドを宣言できる。
+/// @note ParticleEmitter.hpp から分離: VFX フェードやダメージ減衰にも使う汎用型で、
+///       ParticleEmitter.hpp は Script.hpp を include するため循環を避けた。
+/// @note 依存を持たないため、スクリプトは Script.hpp だけでカーブフィールドを宣言できる。
 
 #pragma once
 #include <Engine/Scene/Components/ParticleColorSpace.hpp>
@@ -20,47 +17,40 @@
 
 namespace fbzz::scene {
 
-// ParticleCurveKey — 正規化時間に対する値 1 点。
-// 固定長にしてGPU定数バッファへそのまま転送できるようにする。
+/// @brief 正規化時間に対する値 1 点。
+/// @note 固定長にして GPU 定数バッファへそのまま転送できるようにする。
 struct ParticleCurveKey {
     float time = 0.0f;
     float value = 0.0f;
     bool operator==(const ParticleCurveKey&) const = default;
 };
 
-// カーブ / グラデーションのキー上限。
-// WHY: 4 キーでは「立ち上がり → 保持 → 減衰 → 余韻」のような 4 区間すら表せず、
-//      爆発の閃光やループする炎の呼吸を作るのに足りなかった。8 キーあれば
-//      実用上の作り込みは足りる。GPU 定数バッファは float4 が 1 キー 2 点なので
-//      curve 1 本あたり 4 レジスタで収まる (上限を上げる場合は HLSL 側も対で直すこと)。
+/// @brief カーブ / グラデーションのキー上限。
+/// @note 4 キーでは立ち上がり→保持→減衰→余韻のような4区間を表せず、8 キーで実用上足りる。
+/// @note GPU 定数バッファは float4 が 1 キー 2 点、curve 1 本で 4 レジスタ。上限を上げる場合は HLSL 側も対で直すこと。
 inline constexpr uint32_t kMaxParticleCurveKeys = 8;
 
-// キー間の繋ぎ方。キー単位ではなくカーブ単位に持つ。
-// WHY: キー単位にすると GPU へ 1 キーあたり追加の float が要り、パッキングが崩れる。
-//      実用上「このカーブ全体をなめらかにしたい / 階段にしたい」が大半で、
-//      混在が要る場面はキーを増やして近似できる。
+/// @brief キー間の繋ぎ方。キー単位ではなくカーブ単位に持つ。
+/// @note キー単位にすると GPU 側で 1 キーごとに float が増えパッキングが崩れる。混在が要る場合はキーを増やして近似する。
 enum class ParticleCurveInterpolation : uint8_t {
-    Linear = 0, // 直線
-    Step,       // 次のキーまで前の値を保持 (フリップブックの段階切替・点滅)
-    Smooth,     // smoothstep。始点と終点で速度 0 になり、機械的な折れ線に見えない
+    Linear = 0, ///< 直線
+    Step,       ///< 次のキーまで前の値を保持 (フリップブックの段階切替・点滅)
+    Smooth,     ///< smoothstep。始点と終点で速度 0 になり、機械的な折れ線に見えない
 };
 
-// 補間係数へ曲線モードを適用する。CPU/GPU で必ず同じ式にすること
-// (GPU 側は ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation)。
+/// @brief 補間係数へ曲線モードを適用する。
+/// @note CPU/GPU で必ず同じ式にすること (GPU 側は ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation)。
 inline float ApplyCurveInterpolation(float alpha, ParticleCurveInterpolation mode)
 {
-    // Step は次のキーへ «到達した時点で» 切り替える。区間は [前のキー, 次のキー)。
-    //
-    // WHY 常に 0 にしないか: 評価は «次のキー以下» の区間で行われるので、常に 0 だと
-    //     最後のキーの値はその時刻を越えたときにしか出ない。寿命 0..1 のカーブでは
-    //     t=1.0 が最後のフレームなので、フリップブックの最終コマや消え際の点滅が
-    //     一度も表示されないまま粒子が死ぬ。
+    /// @note Step は次のキーへ到達した時点で切り替える (区間は [前のキー, 次のキー))。
+    /// @note 評価は「次のキー以下」の区間で行うため、常に 0 だと寿命 0..1 の t=1.0 (最終フレーム) で
+    ///       フリップブックの最終コマや消え際の点滅が一度も表示されないまま粒子が死ぬ。
     if (mode == ParticleCurveInterpolation::Step) return alpha >= 1.0f ? 1.0f : 0.0f;
     if (mode == ParticleCurveInterpolation::Smooth) return alpha * alpha * (3.0f - 2.0f * alpha);
     return alpha;
 }
 
-// ParticleCurve — 軽量カーブ。Editorで最大 kMaxParticleCurveKeys キーを編集する。
+/// @brief 軽量カーブ。Editor で最大 kMaxParticleCurveKeys キーを編集する。
 struct ParticleCurve {
     std::array<ParticleCurveKey, kMaxParticleCurveKeys> keys{{
         {0.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f},
@@ -96,14 +86,9 @@ struct ParticleGradientKey {
     }
 };
 
-// ParticleGradient — GPU転送可能な色Gradient。キー上限はカーブと共通。
-// Step 補間は「炎から煙へ切り替わる瞬間」のような硬い変化を作るのに使う。
-//
-// 色空間の規約 (エンジン全体で 1 つ):
-//   キーの RGB は「カラーピッカーに表示される値」= sRGB でオーサリングする。
-//   RGB は 1 を超えてよい (HDR)。シェーダーへ渡る直前に一度だけリニアへ変換する。
-//   CPU 経路は EvaluateLinear、GPU 経路は ParticleGpuSim.cs.hlsl の EvaluateGradient8 が
-//   同じ順序 (補間 → リニア化) で処理する。片方だけ変えると CPU/GPU で色が食い違う。
+/// @brief GPU 転送可能な色 Gradient。キー上限はカーブと共通。Step 補間は炎→煙のような硬い切り替えに使う。
+/// @note キーの RGB はカラーピッカー表示値 (sRGB) でオーサリングし、1 を超えてよい (HDR)。シェーダー直前で一度だけリニア変換する。
+/// @note CPU (EvaluateLinear) と GPU (ParticleGpuSim.cs.hlsl の EvaluateGradient8) は同じ順序 (補間→リニア化) で処理すること。
 struct ParticleGradient {
     std::array<ParticleGradientKey, kMaxParticleCurveKeys> keys{{
         {0.0f, {1, 1, 1, 1}}, {1.0f, {1, 1, 1, 0}},
@@ -115,8 +100,8 @@ struct ParticleGradient {
     ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear;
     ParticleColorSpace colorSpace = ParticleColorSpace::Gamma;
 
-    // オーサリング空間 (sRGB) で評価する。Editor のプレビュー帯やカラーピッカーは
-    // こちらを使う (ImGui は sRGB 値を受け取る前提のため)。
+    /// @brief オーサリング空間 (sRGB) で評価する。
+    /// @note Editor のプレビュー帯やカラーピッカーはこちらを使う (ImGui は sRGB 値を受け取る前提)。
     math::Vector4 Evaluate(float time) const
     {
         const uint32_t count = keyCount < 1 ? 1 : (keyCount > keys.size() ? static_cast<uint32_t>(keys.size()) : keyCount);
@@ -132,13 +117,14 @@ struct ParticleGradient {
         return keys[count - 1].color;
     }
 
-    // 描画へ渡すリニア色。シミュレーションが粒子へ書くのは常にこちら。
+    /// @brief 描画へ渡すリニア色。シミュレーションが粒子へ書くのは常にこちら。
     math::Vector4 EvaluateLinear(float time) const
     {
         return ParticleSrgbToLinear(Evaluate(time));
     }
 
-    // 2 キーを colorSpace に従って混ぜる。アルファは常に線形 (不透明度は光量ではないため)。
+    /// @brief 2 キーを colorSpace に従って混ぜる。
+    /// @note アルファは常に線形で混ぜる (不透明度は光量ではないため)。
     math::Vector4 MixKeys(const math::Vector4& a, const math::Vector4& b, float alpha) const
     {
         const float w = a.w + (b.w - a.w) * alpha;

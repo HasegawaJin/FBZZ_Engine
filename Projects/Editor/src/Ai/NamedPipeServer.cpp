@@ -18,13 +18,13 @@
 namespace fbzz::editor::ai {
 
 namespace {
-// 1接続あたりの要求サイズ上限。base64 PNG は応答側なので要求は小さいが、暴走防止に上限を設ける。
+/// 1接続あたりの要求サイズ上限。base64 PNG は応答側なので要求は小さいが、暴走防止に上限を設ける。
 constexpr std::size_t kMaxRequestBytes = 8 * 1024 * 1024;
 constexpr DWORD       kPipeBufferBytes = 64 * 1024;
 } // namespace
 
 struct NamedPipeServer::Impl {
-    // メインスレッドの応答を待つ1要求分の受け渡し箱。
+    /// メインスレッドの応答を待つ1要求分の受け渡し箱。
     struct Pending {
         std::string               request;
         std::promise<std::string> response;
@@ -34,16 +34,16 @@ struct NamedPipeServer::Impl {
 
     std::thread              listener;
     std::atomic<bool>        running{ false };
-    HANDLE                   stopEvent = nullptr; // listener / ワーカーの待機を一斉解除する
+    HANDLE                   stopEvent = nullptr; ///< listener / ワーカーの待機を一斉解除する
 
     std::mutex                             queueMutex;
-    std::deque<std::shared_ptr<Pending>>   queue;   // 未処理要求 (メインスレッドが drain)
+    std::deque<std::shared_ptr<Pending>>   queue;   ///< 未処理要求 (メインスレッドが drain)
 
     std::atomic<int>         activeWorkers{ 0 };
     std::mutex               workerMutex;
     std::condition_variable  workerDone;
 
-    // オーバーラップド操作を stopEvent と同時に待つ。戻り: 0=完了, 1=停止要求, -1=失敗。
+    /// オーバーラップド操作を stopEvent と同時に待つ。戻り: 0=完了, 1=停止要求, -1=失敗。
     int WaitOverlapped(HANDLE pipe, OVERLAPPED& overlapped, DWORD& bytesTransferred)
     {
         const HANDLE waits[2] = { overlapped.hEvent, stopEvent };
@@ -59,7 +59,7 @@ struct NamedPipeServer::Impl {
         return -1;
     }
 
-    // 接続済みパイプから NDJSON 1行を読み、メインスレッドで処理させ、応答を書き戻して閉じる。
+    /// 接続済みパイプから NDJSON 1行を読み、メインスレッドで処理させ、応答を書き戻して閉じる。
     void HandleConnection(HANDLE pipe)
     {
         struct WorkerGuard {
@@ -83,7 +83,7 @@ struct NamedPipeServer::Impl {
         CloseHandle(pipe);
     }
 
-    // '\n' までを読む。改行は含めない。停止要求・エラー・上限超過で false。
+    /// '\n' までを読む。改行は含めない。停止要求・エラー・上限超過で false。
     bool ReadRequestLine(HANDLE pipe, std::string& out)
     {
         std::vector<char> chunk(kPipeBufferBytes);
@@ -101,12 +101,15 @@ struct NamedPipeServer::Impl {
                 else status = -1;
             }
             CloseHandle(overlapped.hEvent);
-            if (status != 0) return false;      // 停止 or 失敗
-            if (bytesRead == 0) return false;   // 相手が切断
+            /// @note 停止 or 失敗
+            if (status != 0) return false;
+            /// @note 相手が切断
+            if (bytesRead == 0) return false;
 
             for (DWORD i = 0; i < bytesRead; ++i) {
                 const char c = chunk[i];
-                if (c == '\n') return true;     // 1行完成 (以降は 1req/1conn 前提で捨てる)
+                /// @note 1行完成 (以降は 1req/1conn 前提で捨てる)
+                if (c == '\n') return true;
                 out.push_back(c);
                 if (out.size() > kMaxRequestBytes) return false;
             }
@@ -138,7 +141,7 @@ struct NamedPipeServer::Impl {
         }
     }
 
-    // 要求をキューへ積み、メインスレッド (DrainRequests) が set_value するまで待つ。停止時は空応答。
+    /// 要求をキューへ積み、メインスレッド (DrainRequests) が set_value するまで待つ。停止時は空応答。
     std::string DispatchOnMainThread(const std::string& request)
     {
         auto pending = std::make_shared<Pending>();
@@ -149,7 +152,7 @@ struct NamedPipeServer::Impl {
             if (!running.load()) return {};
             queue.push_back(pending);
         }
-        // メインスレッドが毎フレーム drain する。停止時は Stop() が空文字で解除する。
+        /// @note メインスレッドが毎フレーム drain する。停止時は Stop() が空文字で解除する。
         future.wait();
         return future.get();
     }
@@ -172,11 +175,13 @@ struct NamedPipeServer::Impl {
             bool connected = false;
             const BOOL ok = ConnectNamedPipe(pipe, &overlapped);
             if (ok) {
-                connected = true; // 稀: 同期完了
+                /// @note 稀: 同期完了
+                connected = true;
             } else {
                 const DWORD error = GetLastError();
                 if (error == ERROR_PIPE_CONNECTED) {
-                    connected = true; // Connect 前に相手が既に接続していた
+                    /// @note Connect 前に相手が既に接続していた
+                    connected = true;
                 } else if (error == ERROR_IO_PENDING) {
                     DWORD ignored = 0;
                     connected = (WaitOverlapped(pipe, overlapped, ignored) == 0);
@@ -187,7 +192,7 @@ struct NamedPipeServer::Impl {
             if (!running.load()) { CloseHandle(pipe); break; }
             if (!connected)      { CloseHandle(pipe); continue; }
 
-            // 接続毎に短命ワーカーを起こす。detach し、停止時は activeWorkers==0 まで待って安全に解放する。
+            /// @note 接続毎に短命ワーカーを起こす。detach し、停止時は activeWorkers==0 まで待って安全に解放する。
             activeWorkers.fetch_add(1);
             std::thread([this, pipe] { HandleConnection(pipe); }).detach();
         }
@@ -202,7 +207,8 @@ bool NamedPipeServer::Start(const std::wstring& pipeName)
 {
     if (m_impl->running.load()) return true;
 
-    m_impl->stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr); // manual-reset
+    /// @note manual-reset
+    m_impl->stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (m_impl->stopEvent == nullptr) return false;
 
     m_impl->pipeName = pipeName;
@@ -214,14 +220,14 @@ bool NamedPipeServer::Start(const std::wstring& pipeName)
 void NamedPipeServer::Stop()
 {
     if (!m_impl || !m_impl->running.exchange(false)) {
-        // 既に停止済みでも stopEvent の後始末だけは行う。
+        /// @note 既に停止済みでも stopEvent の後始末だけは行う。
         if (m_impl && m_impl->stopEvent) { CloseHandle(m_impl->stopEvent); m_impl->stopEvent = nullptr; }
         return;
     }
 
     if (m_impl->stopEvent) SetEvent(m_impl->stopEvent);
 
-    // 待機中ワーカーを空応答で解除し、キューを空にする。
+    /// @note 待機中ワーカーを空応答で解除し、キューを空にする。
     {
         std::lock_guard<std::mutex> lock(m_impl->queueMutex);
         for (auto& pending : m_impl->queue) pending->response.set_value(std::string{});
@@ -230,7 +236,7 @@ void NamedPipeServer::Stop()
 
     if (m_impl->listener.joinable()) m_impl->listener.join();
 
-    // detach 済みワーカーが Impl を触り終える (activeWorkers==0) まで待つ。
+    /// @note detach 済みワーカーが Impl を触り終える (activeWorkers==0) まで待つ。
     {
         std::unique_lock<std::mutex> lock(m_impl->workerMutex);
         m_impl->workerDone.wait(lock, [this] { return m_impl->activeWorkers.load() == 0; });
@@ -246,7 +252,7 @@ bool NamedPipeServer::IsRunning() const
 
 void NamedPipeServer::DrainRequests(const RequestHandler& handler)
 {
-    // キューをローカルへ取り出してからロック外で処理する (handler 実行中に IO スレッドを止めない)。
+    /// @note キューをローカルへ取り出してからロック外で処理する (handler 実行中に IO スレッドを止めない)。
     std::deque<std::shared_ptr<Impl::Pending>> pendingList;
     {
         std::lock_guard<std::mutex> lock(m_impl->queueMutex);

@@ -5,7 +5,7 @@
 #include "GpuValidation.hpp"
 
 #if defined(FBZZ_GPU_VALIDATION)
-// DXGIGetDebugInterface1 は dxgi1_3.h、IDXGIDebug1 と RLO フラグは dxgidebug.h にある。
+/// @note DXGIGetDebugInterface1 は dxgi1_3.h、IDXGIDebug1 と RLO フラグは dxgidebug.h にある。
 #include <dxgi1_3.h>
 #include <dxgidebug.h>
 #include <wrl/client.h>
@@ -18,7 +18,7 @@ bool IsEnabled()
     if constexpr (!kBuiltIn) {
         return false;
     } else {
-        // 起動中に変わるものではないので 1 回だけ読む。
+        /// @note 起動中に変わるものではないので 1 回だけ読む。
         static const bool enabled = [] {
             wchar_t value[8]{};
             const DWORD length = GetEnvironmentVariableW(L"FBZZ_GPU_VALIDATION", value, 8);
@@ -59,8 +59,8 @@ void ReportLiveObjects(const GUID& apiId, const char* label)
         return;
     }
 
-    // DETAIL を付けると 1 件ごとに «誰が作ったか» まで出る。終了時の 1 回だけなので、
-    // 内訳が要らない SUMMARY より «どのリソースが残ったか» が分かる方を採る。
+    /// @note DETAIL を付けると 1 件ごとに «誰が作ったか» まで出る。終了時の 1 回だけなので、
+    ///       内訳が要らない SUMMARY より «どのリソースが残ったか» が分かる方を採る。
     const auto flags = static_cast<DXGI_DEBUG_RLO_FLAGS>(
         DXGI_DEBUG_RLO_DETAIL | DXGI_DEBUG_RLO_IGNORE_INTERNAL);
     FBZZ_LOG_INFO("GpuValidation: 生存 COM オブジェクトを出力します (%s) — 出力先はデバッガーの出力ウィンドウ",

@@ -8,13 +8,13 @@
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/SequenceAsset.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
-#include <Engine/Asset/VectorFieldAsset.hpp>
+#include <Engine/Asset/VectorFieldFile.hpp>
 #include <Engine/Audio/Synth.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 #include <filesystem>
@@ -23,35 +23,15 @@ namespace fbzz::editor {
 
 namespace {
 
-// 生成したアセットをユーザーへ知らせる。Undo 履歴には積まない。
-//
-// WHY 履歴に積まないか (重要):
-//   以前はここで「Undo = そのパスを RemoveAll する」コマンドを積んでいた。これは
-//   ディスク上のファイルの存在そのものを Undo 対象にする設計で、次の壊れ方をする。
-//     1. アセットを作る → 中身を編集する (.mat / .fzdata は自動保存でディスクへ書かれる)
-//        → 無関係な作業のあと Ctrl+Z を数回 → 生成コマンドまで巻き戻り、
-//          編集ぶんごとファイルが消える。作業内容がどこにも残らない。
-//     2. 「Create Folder」の Undo はフォルダを丸ごと RemoveAll する。作成後にそこへ
-//        入れたアセットまで巻き添えで消える。
-//     3. パスだけを覚えているため、その後リネーム / 再作成された別物を消しうる。
-//   Undo スタックはシーン編集と共有で、Scene View で Ctrl+Z を押しただけでこれらが
-//   起きる。ファイルの生成・削除は Unity と同じく Undo の対象外とし、履歴には
-//   「メモリ上の値の編集」だけを載せる。
+/// @brief 生成したアセットをユーザーへ知らせる。Undo 履歴には積まない。
+/// @note 旧実装は「Undo = そのパスを RemoveAll する」を積んでいたが、ディスク上のファイルの存在自体を Undo 対象にすると壊れる: 中身を編集後に無関係な Ctrl+Z で編集ぶんごとファイルが消える、フォルダ Undo で後から追加した中身まで巻き添えで消える、パスだけで別物を消しうる。Undo スタックはシーン編集と共有のため、ファイルの生成・削除は Unity と同じく対象外にし、履歴には「メモリ上の値の編集」だけを載せる。
 void NotifyAssetCreated(const std::string& path)
 {
     if (path.empty()) return;
     FBZZ_LOG_INFO("Asset created: %s", path.c_str());
 
-    // 失敗キャッシュを掃除する。
-    //
-    // WHY ここでやるか: AssetManager はロード失敗も cache へ焼き付けるため、実体が
-    //     生まれる前に一度でも参照されたパスは、ファイルを作っても無音で無効なままになる
-    //     (コンポーネントへ先にパスを書いてからアセットを作る、という順序は普通に起きる)。
-    //     ここは AssetBrowser の全生成経路が通る唯一の合流点なので、掃除を 1 か所で効かせられる。
-    //
-    // WHY RefreshDirectory() 側に置かないか: あちらはファイル監視や各操作の後に高頻度で
-    //     走る。そこで掃除すると、本当に壊れているアセットの再インポートを延々と試み続ける。
-    //     「実体が増えた瞬間」だけに絞る方が、掃除の意味とコストが釣り合う。
+    /// @note 失敗キャッシュを掃除する。AssetManager はロード失敗も cache へ焼き付けるため、実体が生まれる前に一度でも参照されたパスはファイルを作っても無音で無効なままになる (先にパスを書いてからアセットを作る順序は普通に起きる)。ここは全生成経路が通る唯一の合流点なので、1 か所で掃除を効かせられる。
+    /// @note RefreshDirectory() 側では掃除しない。あちらはファイル監視や各操作の後に高頻度で走り、そこで掃除すると壊れているアセットの再インポートを延々と試み続けるため、「実体が増えた瞬間」だけに絞る。
     asset::AssetManager::FlushFailed();
 
     Toast::Success("Created " + util::FileSystem::GetFilename(path));
@@ -70,14 +50,8 @@ void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContex
     if (ctx && !util::FileSystem::IsDirectory(path))
         SelectAsset(*ctx, path);
 
-    // 編集させるのは拡張子より前だけ。拡張子は m_renameExtension に退避して固定表示する。
-    //
-    // WHY: 拡張子はアセットの種類そのものなので、名前を直すついでに変えられると困る。
-    //      ここは新規作成・複製・F2・遅延リネームの全経路が通る唯一の開始地点なので、
-    //      分割をここでやれば呼び出し側に手を入れずに全リネームへ効く。
-    //
-    //      フォルダと、先頭がドットのファイル (.gitignore 等) は分割しない。
-    //      後者は「拡張子だけの名前」であり、切り出すと編集できる部分が無くなる。
+    /// @note 編集させるのは拡張子より前だけ。拡張子は m_renameExtension に退避して固定表示する。拡張子はアセットの種類そのものなので、名前を直すついでに変えられると困る。ここは新規作成・複製・F2・遅延リネームの全経路が通る唯一の開始地点なので、分割をここでやれば呼び出し側に手を入れずに全リネームへ効く。
+    /// @note フォルダと、先頭がドットのファイル (.gitignore 等) は分割しない。後者は「拡張子だけの名前」であり、切り出すと編集できる部分が無くなる。
     const std::string fileName = util::FileSystem::GetFilename(path);
     std::string       stem     = fileName;
     m_renameExtension.clear();
@@ -116,7 +90,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         return;
     }
 
-    // アイコン描画ラムダ (DrawEntry と同じスタイル)
+    /// @note アイコン描画ラムダ (DrawEntry と同じスタイル)
     const float padding = 8.0f;
     const float avail   = ImGui::GetContentRegionAvail().x;
     const int   cols    = std::max(1, (int)(avail / (m_iconSize + padding)));
@@ -166,9 +140,9 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
 
         if (hov) ImGui::SetTooltip("%s", tooltip);
 
-        // 名前テキスト (省略、中央揃え)
-        // 1 バイトずつ pop_back すると日本語のファイル名が文字の途中で切れる。
-        // 文字境界を知っている共通の縮め方へ寄せる。
+        /// @note 名前テキスト (省略、中央揃え)
+        ///       1 バイトずつ pop_back すると日本語のファイル名が文字の途中で切れる。
+        ///       文字境界を知っている共通の縮め方へ寄せる。
         const std::string disp = widgets::ElideToWidth(displayName, sz, "..");
 
         const float ind = (sz - ImGui::CalcTextSize(disp.c_str()).x) * 0.5f;
@@ -180,7 +154,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         ++col;
     };
 
-    // ── MESH アイコン ──
+    /// @name MESH アイコン
     if (hasMesh) {
         char tip[256];
         std::snprintf(tip, sizeof(tip), "%zu mesh(es)%s\nDrag → Skinned Mesh Renderer",
@@ -192,7 +166,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         drawSubIcon("MESH", "Mesh", tip, { 0.80f, 0.45f, 0.10f, 1.0f }, m_selectedFbxPath, ctx);
     }
 
-    // ── ANIM アイコン (クリップ1件につき1個) ──
+    /// @name ANIM アイコン (クリップ1件につき1個)
     for (const auto& clip : model.clips) {
         const float dur = static_cast<float>(clip.GetDurationSeconds());
         char tip[256];
@@ -207,7 +181,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
 {
     if (ImGui::MenuItem("Folder")) {
         std::string newDir = m_currentPath + "/New Folder";
-        // 重複回避
+        /// @note 重複回避
         int suffix = 1;
         while (util::FileSystem::Exists(newDir))
             newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
@@ -260,14 +234,14 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Vector Field")) {
-        std::string newPath = m_currentPath + "/New Vector Field.vfield";
+        std::string newPath = m_currentPath + "/New Vector Field.png";
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
-            newPath = m_currentPath + "/New Vector Field " + std::to_string(suffix++) + ".vfield";
-        // 既定は 32³ のカールノイズ。空のグリッドを置くと «貼っても何も起きない» という
-        // 最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
-        asset::VectorFieldAsset field;
-        asset::BakeVectorField(asset::VectorFieldRecipe::Curl, 32, { 5.0f, 5.0f, 5.0f },
+            newPath = m_currentPath + "/New Vector Field " + std::to_string(suffix++) + ".png";
+        /// @note 既定は 32³ のカールノイズ。空のグリッドを置くと «貼っても何も起きない» という
+        ///       最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
+        fluid::VectorFieldAsset field;
+        fluid::BakeVectorField(fluid::VectorFieldRecipe::Curl, 32, { 5.0f, 5.0f, 5.0f },
                                /*seed=*/1, /*strength=*/1.0f, field);
         if (asset::SaveVectorField(newPath, field)) {
             NotifyAssetCreated(newPath);
@@ -280,8 +254,8 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Fluid " + std::to_string(suffix++) + ".fluid";
-        // 既定は煙のプリセット。空のレシピだと焼いても何も写らず、«壊れている» のか
-        // «設定が無い» のか区別できない。
+        /// @note 既定は煙のプリセット。空のレシピだと焼いても何も写らず、«壊れている» のか
+        ///       «設定が無い» のか区別できない。
         if (asset::SaveFluidRecipe(newPath, asset::MakeFluidPreset(asset::FluidPreset::Smoke))) {
             NotifyAssetCreated(newPath);
             RefreshDirectory();
@@ -295,9 +269,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             newPath = m_currentPath + "/New Post Process Profile " +
                 std::to_string(suffix++) + ".fzdata";
 
-        // WHY DataAssetRegistry::Create を使うか: 型名から実体を生成して
-        //     既定値のまま保存するため、Inspector が期待する全セクションが
-        //     Reflect() 経由で自動的に揃う。専用のテンプレート文字列を持たなくて済む。
+        /// @note DataAssetRegistry::Create は型名から実体を生成し既定値のまま保存するため、Inspector が期待する全セクションが Reflect() 経由で自動的に揃う。専用のテンプレート文字列を持たなくて済む。
         if (!asset::DataAssetRegistry::Create(
                 newPath, asset::PostProcessProfile::TYPE_NAME)) {
             FBZZ_LOG_ERROR("Post Process Profile creation failed: %s", newPath.c_str());
@@ -322,9 +294,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
-    // 演出タイムライン。空でも「合図を並べる EventTrack 1 本」だけは入れて出す。
-    // WHY: 完全に空の .sequence は SequencePlayerComponent に挿しても何も起きず、
-    //      設定が足りないのかアセットが壊れているのか見分けが付かない。
+    /// @note 演出タイムライン。空でも「合図を並べる EventTrack 1 本」だけは入れて出す。完全に空の .sequence は SequencePlayerComponent に挿しても何も起きず、設定が足りないのかアセットが壊れているのか見分けが付かない。
     if (ImGui::MenuItem("Sequence")) {
         std::string newPath = m_currentPath + "/New Sequence.sequence";
         int suffix = 1;
@@ -345,8 +315,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
-    // Avatar Mask: アニメーションレイヤーを「どのボーンに効かせるか」の再利用アセット。
-    // WHY: 上半身だけ / 下半身だけの制御はこれが無いと毎回ボーンパスを手書きすることになる。
+    /// @note Avatar Mask: アニメーションレイヤーを「どのボーンに効かせるか」の再利用アセット。上半身だけ / 下半身だけの制御はこれが無いと毎回ボーンパスを手書きすることになる。
     if (ImGui::MenuItem("Avatar Mask")) {
         std::string newPath = m_currentPath + "/New Avatar Mask.mask";
         int suffix = 1;
@@ -354,7 +323,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             newPath = m_currentPath + "/New Avatar Mask " + std::to_string(suffix++) + ".mask";
         asset::AvatarMaskAsset mask;
         mask.name = "New Avatar Mask";
-        // 既定は「何も含まない」。Inspector の Humanoid プリセットで足していく想定。
+        /// @note 既定は「何も含まない」。Inspector の Humanoid プリセットで足していく想定。
         mask.defaultInclude = false;
         if (!asset::SaveAvatarMaskAsset(newPath, mask)) {
             FBZZ_LOG_ERROR("Avatar Mask creation failed: %s", newPath.c_str());
@@ -371,9 +340,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             newPath = m_currentPath + "/New Behavior Tree " + std::to_string(suffix++)
                     + ".behaviortree";
 
-        // ルート 1 個の最小構成で作る。
-        // WHY 空にしないか: ValidateBehaviorTreeAsset が「ルート 0 個」を拒否するため、
-        //      空のまま保存できない。すぐ編集を始められる形で生成する。
+        /// @note ルート 1 個の最小構成で作る。ValidateBehaviorTreeAsset が「ルート 0 個」を拒否するため空のまま保存できず、すぐ編集を始められる形で生成する。
         ai::BehaviorTreeAsset tree;
         ai::EnsureReservedBlackboardKeys(tree);
 
@@ -397,11 +364,8 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         BeginRenameForPath(newPath, &ctx);
     }
 
-    // ── Physics Material (共有物理マテリアル) ─────────────────────
-    // プリセットを選んで .physmat を生成する。
-    // WHY プリセットから作らせるか: 反発 0.3 / 摩擦 0.6 のような数値は、それだけ見ても
-    //     「どんな材質か」が分からない。ゴム・氷・金属という名前から始めれば、
-    //     そこからの微調整として値をいじれる。
+    /// @name Physics Material (共有物理マテリアル)
+    /// @note プリセットを選んで .physmat を生成する。反発 0.3 / 摩擦 0.6 のような数値だけでは「どんな材質か」が分からないため、ゴム・氷・金属という名前から始めて微調整させる。
     if (ImGui::BeginMenu("Physics Material")) {
         for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
             const char* presetName = physics::PhysicsMaterial::PresetName(i);
@@ -429,10 +393,8 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    // ── Data Asset (純共有 ScriptableObject) ──────────────────────
-    // プリセットを選んで .synth を生成する。
-    // WHY プリセットから作らせるか: 空の SynthSpec は無音に近く、そこから耳で
-    //     目的の音へ辿り着くのは現実的でない。「Laser」から始めれば調整で済む。
+    /// @name Data Asset (純共有 ScriptableObject)
+    /// @note プリセットを選んで .synth を生成する。空の SynthSpec は無音に近く、そこから耳で目的の音へ辿り着くのは現実的でないため、「Laser」から始めて調整させる。
     if (ImGui::BeginMenu("Synth Clip")) {
         for (int i = 0; i < static_cast<int>(audio::SynthPreset::Count); ++i) {
             const auto preset = static_cast<audio::SynthPreset>(i);
@@ -460,10 +422,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    // 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。
-    // WHY: ファイル内容は "type = ..." の 1 行だけにしておき、フィールドの既定値は
-    //      Inspector の初回 Resolve 時に型のフィールド初期化子から補完する。これにより
-    //      Create 側でデフォルト値を二重管理せずに済む。
+    /// @note 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。ファイル内容は `type = ...` の 1 行だけにしておき、フィールドの既定値は Inspector の初回 Resolve 時に型のフィールド初期化子から補完する。Create 側でデフォルト値を二重管理せずに済む。
     if (ImGui::BeginMenu("Data Asset")) {
         const auto types = asset::DataAssetFactory::RegisteredTypeNames();
         if (types.empty())
@@ -484,31 +443,22 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    // ── C++ スクリプト ────────────────────────────────────────────
+    /// @name C++ スクリプト
     ImGui::Separator();
-    // 3 種類を同じ入口に並べる。
-    //
-    // WHY 種類を分けて見せるか:
-    //   ここに "C++ Script..." しか無いと、ユーティリティ関数も共有の調整値も
-    //   「アタッチするスクリプト」として作るしかないように見える。実際には
-    //   FBZZ_SCRIPT を持たないヘッダは ScriptList.inl に登録されず、Add Script にも
-    //   出ない普通のクラスとして使える (CMake の GLOB が拾うのでビルドはされる)。
-    //   その選択肢を入口に置かないと、実装があっても誰も辿り着けない。
+    /// @note 3 種類を同じ入口に並べる。`C++ Script...` しか無いと、ユーティリティ関数も共有の調整値も「アタッチするスクリプト」として作るしかないように見える。実際には FBZZ_SCRIPT を持たないヘッダは ScriptList.inl に登録されず、Add Script にも出ない普通のクラスとして使える (CMake の GLOB が拾うのでビルドはされる)。その選択肢を入口に置かないと、実装があっても誰も辿り着けない。
     if (ImGui::BeginMenu("C++...")) {
         const std::string engineScriptsDir = ctx.scriptsSourceDir;
         const std::string projScriptsDir   = ctx.projectRoot + "/Assets/Scripts";
         const std::string dllPath          = ctx.scriptsDllCppPath;
         const std::string staticPath       = ctx.scriptsStaticCppPath;
-        // パス未解決のときはフォールバック: プロジェクト側の Scripts/ に直接作成する
-        // WHY: ToolchainLocator が失敗した環境 (build.config なし) でも
-        //      DLL 登録なしでヘッダだけを生成できるようにする。
+        /// @note パス未解決のときはフォールバックでプロジェクト側の Scripts/ に直接作成する。ToolchainLocator が失敗した環境 (build.config なし) でも DLL 登録なしでヘッダだけを生成できるようにする。
         const std::string resolvedScriptsDir =
             engineScriptsDir.empty() ? projScriptsDir : engineScriptsDir;
         const std::string destination =
             "Destination: " + (resolvedScriptsDir.empty() ? projScriptsDir : resolvedScriptsDir);
 
-        // 生成先が 2 箇所ある (SDK 側ソースとプロジェクト側 Assets) のは既存仕様。
-        // 種類が増えても分岐が散らないよう、コールバックの組み立てを 1 本化する。
+        /// @note 生成先が 2 箇所ある (SDK 側ソースとプロジェクト側 Assets) のは既存仕様。
+        ///       種類が増えても分岐が散らないよう、コールバックの組み立てを 1 本化する。
         auto makeCallback = [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
             (ScriptCodeGen::ScriptKind kind, const char* label) {
             return [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath, kind, label]
@@ -519,7 +469,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                     FBZZ_LOG_WARN("%s creation failed: %s", label, name.c_str());
                     return;
                 }
-                // プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
+                /// @note プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
                 if (!projScriptsDir.empty() && projScriptsDir != resolvedScriptsDir)
                     ScriptCodeGen::CreateScript(name, projScriptsDir, "", "", kind);
                 NotifyAssetCreated(path);
@@ -566,11 +516,11 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    // ── HLSL シェーダー ───────────────────────────────────────────
+    /// @name HLSL シェーダー
     if (ImGui::BeginMenu("HLSL Shader...")) {
         const std::string engineHlslDir = ctx.hlslSourceDir;
         const std::string projHlslDir   = ctx.projectRoot + "/Assets/shaders";
-        // パス未解決のときはプロジェクト側の shaders/ を直接使う
+        /// @note パス未解決のときはプロジェクト側の shaders/ を直接使う
         const std::string resolvedHlslDir =
             engineHlslDir.empty() ? projHlslDir : engineHlslDir;
 
@@ -584,7 +534,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                     FBZZ_LOG_WARN("HLSL creation failed: %s", name.c_str());
                     return;
                 }
-                // プロジェクト側にも即コピー
+                /// @note プロジェクト側にも即コピー
                 if (!projHlslDir.empty() && projHlslDir != resolvedHlslDir)
                     ScriptCodeGen::CreateHlsl(name, projHlslDir, kind);
                 NotifyAssetCreated(path);
@@ -623,9 +573,9 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
     }
 }
 
-// ─── メインレイアウト ─────────────────────────────────────────────────────────
+/// @name メインレイアウト
 
-// ─── ファイル監視ヘルパー ─────────────────────────────────────────────────────
+/// @name ファイル監視ヘルパー
 
 
 } // namespace fbzz::editor

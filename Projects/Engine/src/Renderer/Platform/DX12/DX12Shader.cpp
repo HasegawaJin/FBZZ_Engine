@@ -27,22 +27,22 @@ namespace fbzz::renderer {
 
 namespace {
 
-// 相対Assetsパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
-// util::ResolveEngineAssetPath に集約している。
+/// 相対Assetsパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
+/// util::ResolveEngineAssetPath に集約している。
 std::wstring ResolveShaderPath(const std::string& path)
 {
     return util::ResolveEngineAssetPath(util::StringUtils::ToWide(path)).wstring();
 }
 
-// dxcompiler.dll を遅延ロードして DXC API の静的リンク依存を避ける。
-// WHY: Windows SDK や同梱 DXC の配置差を吸収し、DX11 のみを使う環境では DLL を要求しない。
+/// dxcompiler.dll を遅延ロードして DXC API の静的リンク依存を避ける。
+/// @note Windows SDK や同梱 DXC の配置差を吸収し、DX11 のみを使う環境では DLL を要求しない。
 DxcCreateInstanceProc GetDxcCreateInstance()
 {
     static HMODULE module = [] {
         HMODULE loaded = LoadLibraryW(L"dxcompiler.dll");
         if (loaded) return loaded;
 
-        // FBZZ_DXC が dxc.exe の絶対パスなら、同じディレクトリの DLL も探索する。
+        /// @note FBZZ_DXC が dxc.exe の絶対パスなら、同じディレクトリの DLL も探索する。
         wchar_t compilerPath[32768]{};
         const DWORD length = GetEnvironmentVariableW(
             L"FBZZ_DXC", compilerPath, static_cast<DWORD>(std::size(compilerPath)));
@@ -65,7 +65,7 @@ bool CreateDxcServices(Microsoft::WRL::ComPtr<IDxcUtils>& utils,
         CLSID_DxcCompiler, IID_PPV_ARGS(compiler->ReleaseAndGetAddressOf())));
 }
 
-// DXBC は D3DReflect、DXIL は DXC の container reflection で同じ D3D12 API に正規化する。
+/// DXBC は D3DReflect、DXIL は DXC の container reflection で同じ D3D12 API に正規化する。
 Microsoft::WRL::ComPtr<ID3D12ShaderReflection> CreateShaderReflection(
     const std::vector<uint8_t>& blob)
 {
@@ -83,7 +83,7 @@ Microsoft::WRL::ComPtr<ID3D12ShaderReflection> CreateShaderReflection(
     return reflection;
 }
 
-// HLSLをDX12定義付きで SM 6.8 DXIL へコンパイルし、次回起動用に保存する。
+/// HLSLをDX12定義付きで SM 6.8 DXIL へコンパイルし、次回起動用に保存する。
 std::vector<uint8_t> CompileShader(
     const std::string& path, const char* entryPoint, const char* target,
     const std::string& csoSavePath)
@@ -160,7 +160,7 @@ std::vector<uint8_t> CompileShader(
     if (FAILED(status) || FAILED(result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&code), nullptr)) || !code)
         return {};
 
-    // 再コンパイル結果を保存し、次回起動時のコンパイルを避ける。
+    /// @note 再コンパイル結果を保存し、次回起動時のコンパイルを避ける。
     if (!csoSavePath.empty()) {
         std::filesystem::path output = shader_dependency::ResolveExistingPath(
             util::StringUtils::ToWide(csoSavePath));
@@ -216,7 +216,7 @@ std::string DX12Shader::CompiledBase(const std::string& path)
     std::string base = normalized.substr(0, anchorIndex + anchor.size());
     std::string relative = normalized.substr(anchorIndex + anchor.size());
 
-    // WHAT: 既存アセットの互換エイリアスを DX11 と同じ CSO 名へ正規化する。
+    /// @note 既存アセットの互換エイリアスを DX11 と同じ CSO 名へ正規化する。
     if (relative == "Debug.hlsl") relative = "Debug/DebugDraw.hlsl";
     else if (relative == "Material/Unlit.hlsl") relative = "Material/Surface/Unlit.hlsl";
     else if (relative == "Material/Lit.hlsl") relative = "Material/Surface/Lit.hlsl";
@@ -236,16 +236,28 @@ std::string DX12Shader::CompiledBase(const std::string& path)
     return base + "compiled_dx12/" + relative;
 }
 
+namespace {
+
+/// 添字フィールド名 → マテリアルのテクスチャ枠番号。該当しなければ UINT32_MAX。
+uint32_t MaterialTextureSlotOf(std::string_view field)
+{
+    for (uint32_t slot = 0; slot < kMaterialTextureSlotCount; ++slot)
+        if (field == kMaterialTextureSlots[slot].field) return slot;
+    return UINT32_MAX;
+}
+
+} // namespace
+
 ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 {
-    // WHAT: DXBC / DXIL の PS reflection を共通化し、DX11 と同じ descriptor を構築する。
-    // WHY: Inspector / SyncMaterial / サムネイルへバックエンド差を漏らさないため。
+    /// @note DXBC / DXIL の PS reflection を共通化し、DX11 と同じ descriptor を構築する。
+    ///       Inspector / SyncMaterial / サムネイルへバックエンド差を漏らさないため。
     ShaderDescriptor desc;
 
     Microsoft::WRL::ComPtr<ID3D12ShaderReflection> refl = CreateShaderReflection(psBlob);
     if (!refl) return desc;
 
-    // ---- MaterialConstants (b2) から編集可能変数を列挙 ----
+    /// @name MaterialConstants (b2) から編集可能変数を列挙
     auto* cb = refl->GetConstantBufferByName("MaterialConstants");
     if (cb)
     {
@@ -262,15 +274,25 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                 if (FAILED(var->GetType()->GetDesc(&tDesc))) continue;
                 if (!vDesc.Name) continue;
 
-                // WHY: D3D Reflection は最適化済みシェーダーや匿名パディング相当の変数で
-                //      Name が null になる可能性がある。std::string_view(nullptr) は MSVC STL の
-                //      strlen 経路でクラッシュするため、null は編集対象外として捨てる。
+                /// @note D3D Reflection は最適化済みシェーダーや匿名パディング相当の変数で Name が null になりうる。
+                ///       std::string_view(nullptr) は MSVC STL の strlen 経路でクラッシュするため、
+                ///       null は編集対象外として捨てる。
                 std::string_view n = vDesc.Name;
-                // パディング変数はスキップ
+                /// @note パディング変数はスキップ
                 if (n.starts_with("_")) continue;
-                // textureMask は Inspector に出さないが offset を記録する
+                /// @note textureMask は Inspector に出さないが offset を記録する
                 if (n == "textureMask") {
                     desc.textureMaskOffset = vDesc.StartOffset;
+                    continue;
+                }
+                /// @note テクスチャ添字フィールドは «編集可能変数» ではなくテクスチャ枠。
+                ///       Inspector の数値欄に uint が並ぶのを避け、代わりにテクスチャ枠として出す。
+                if (const uint32_t slot = MaterialTextureSlotOf(n); slot != UINT32_MAX) {
+                    ShaderTexBindDesc bind;
+                    bind.name = vDesc.Name;
+                    bind.slot = slot;
+                    bind.constantOffset = vDesc.StartOffset;
+                    desc.textures.push_back(std::move(bind));
                     continue;
                 }
 
@@ -292,8 +314,8 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
         }
     }
 
-    // ---- PostProcConstants (b5) から custom* 変数を列挙 ----
-    // WHY: 共通 PostProcess Inspector が実際にシェーダーで使用される入力だけを表示するため。
+    /// @name PostProcConstants (b5) から custom* 変数を列挙
+    /// @note 共通 PostProcess Inspector が実際にシェーダーで使用される入力だけを表示するため。
     if (auto* postCb = refl->GetConstantBufferByName("PostProcConstants"))
     {
             D3D12_SHADER_BUFFER_DESC cbDesc{};
@@ -327,23 +349,10 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
         }
     }
 
-    // ---- t0-t4 のテクスチャバインドを列挙 ----
-    D3D12_SHADER_DESC shDesc{};
-    refl->GetDesc(&shDesc);
-    for (UINT i = 0; i < shDesc.BoundResources; ++i)
-    {
-        D3D12_SHADER_INPUT_BIND_DESC bDesc{};
-        refl->GetResourceBindingDesc(i, &bDesc);
-        if (bDesc.Type == D3D_SIT_TEXTURE && bDesc.BindPoint < 5)
-        {
-            if (!bDesc.Name) continue;
-
-            ShaderTexBindDesc t;
-            t.name = bDesc.Name;
-            t.slot = bDesc.BindPoint;
-            desc.textures.push_back(std::move(t));
-        }
-    }
+    /// @note かつてここで D3D_SIT_TEXTURE の束縛 (t0〜t4) を列挙していた。bindless では
+    ///       ResourceDescriptorHeap から引くテクスチャが DXIL に束縛情報を残さないため、
+    ///       この経路は «どのシェーダーでもテクスチャ 0 件» になる。枠の正本は
+    ///       MaterialConstants の添字フィールドへ移した (上のループ)。
     std::sort(desc.textures.begin(), desc.textures.end(),
         [](const auto& a, const auto& b) { return a.slot < b.slot; });
 
@@ -352,7 +361,7 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 
 std::vector<uint8_t> DX12Shader::LoadBinary(const std::string& path)
 {
-    // WHY: CSO も HLSL と同じ解決規則に通す — SDK の共有 asset だけが実体を持つ構成があるため。
+    /// @note CSO も HLSL と同じ解決規則に通す (SDK の共有 asset だけが実体を持つ構成があるため)。
     std::ifstream file(ResolveShaderPath(path), std::ios::binary | std::ios::ate);
     if (!file.is_open())
         return {};
@@ -396,10 +405,9 @@ bool DX12Shader::Init(const std::string& path)
     FBZZ_LOG_DEBUG("DX12Shader: VS/PS準備完了 [%s] source=%s vs=%zu ps=%zu",
                   path.c_str(), loadedCso ? "compiled_dx12" : "runtime",
                   m_vertexBlob.size(), m_pixelBlob.size());
-    // PS バイトコードから MaterialConstants とテクスチャバインドを取得する。
-    // WHY: Material Inspector・SyncMaterial (Forward/Deferred)・AssetBrowser サムネイルは
-    //      ShaderDescriptor を頼りに Material CB を構築する。ここを省くとマテリアル値が
-    //      一切反映されず、Material プレビューも生成不能になる (DX11 と同じ処理が必須)。
+    /// @note PS バイトコードから MaterialConstants とテクスチャバインドを取得する。Material Inspector・
+    ///       SyncMaterial・AssetBrowser サムネイルは ShaderDescriptor を頼りに Material CB を構築するため、
+    ///       省くとマテリアル値が反映されずプレビューも生成できない (DX11 と同じ処理が必須)。
     m_descriptor = BuildDescriptor(m_pixelBlob);
     if (!ReflectVertexInput()) {
         FBZZ_LOG_ERROR("DX12Shader: Vertex Input Reflection失敗 [%s]", path.c_str());
@@ -439,8 +447,8 @@ bool DX12Shader::ReflectVertexInput()
         else if (parameter.Mask <= 0x7) { element.Format = isUInt ? DXGI_FORMAT_R32G32B32_UINT : DXGI_FORMAT_R32G32B32_FLOAT; byteOffset += 12; }
         else { element.Format = isUInt ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT; byteOffset += 16; }
         m_inputElements.push_back(element);
-        // 診断: リフレクションが決めた各要素のオフセットを残す。実バッファのレイアウトと
-        // ずれていた場合 (パディングや宣言順の差)、ここのログが照合の起点になる。
+        /// @note 診断: リフレクションが決めた各要素のオフセットを残す。実バッファのレイアウトと
+        ///       ずれていた場合 (パディングや宣言順の差)、ここのログが照合の起点になる。
         FBZZ_LOG_DEBUG("DX12Shader:   input[%zu] %s%u offset=%u mask=0x%X %s",
                       m_inputElements.size() - 1, parameter.SemanticName, parameter.SemanticIndex,
                       element.AlignedByteOffset, parameter.Mask, isUInt ? "uint" : "float");

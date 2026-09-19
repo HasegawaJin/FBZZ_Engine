@@ -3,9 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture3D<float4>   gVelocityIn : register(t0);
-RWTexture3D<float4> gCurlOut    : register(u0); // xyz 渦度 / w 大きさ
+FBZZ_TEX3D_T(float4, gVelocityIn, 0);
+FBZZ_RWTEX3D_T(float4, gCurlOut, 0); // xyz 渦度 / w 大きさ
 
 // 軸方向の中心差分 (縁は片側差分)。FluidGasSolver::Derivative と同じ。
 float3 VelocityDerivative(Texture3D<float4> field, uint3 id, uint axis)

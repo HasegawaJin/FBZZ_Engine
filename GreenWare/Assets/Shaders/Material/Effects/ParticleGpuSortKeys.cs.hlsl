@@ -13,6 +13,7 @@
 
 #include "Common/Binding.hlsli"
 #include "Rendering/ParticleSortCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // LAYOUT: ParticleGpuSim.cs.hlsl / ParticleGPU.hlsl の GpuParticle と完全に一致させること (112 bytes)。
 struct GpuParticle
@@ -32,7 +33,7 @@ struct GpuParticle
     float4 nextUvRect;
 };
 
-StructuredBuffer<GpuParticle> gParticles : register(SB_GPU_PARTICLES);
+FBZZ_SBUFFER_T(GpuParticle, gParticles, SB_GPU_PARTICLES_SLOT);
 
 [numthreads(PARTICLE_SORT_BLOCK, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)

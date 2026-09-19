@@ -42,15 +42,13 @@ void AutoLayoutAnimatorStates(GraphLayout& layout, const scene::AnimatorComponen
     auto& positions = layout.nodePositions;
     constexpr float START_Y = 80.0f;
 
-    // 遷移の深さを列にする共通実装を使う。
-    // WHY: 以前は Animation だけ「4 列の単純グリッド」で、ステートの並びが遷移の構造を
-    //      一切反映していなかった。同じ Auto Layout という操作なのに VFX とは
-    //      結果の質が違う状態で、共通アルゴリズム自体は既にあるのに未使用だった。
+    /// @note 遷移の深さを列にする共通実装を使う。以前は Animation だけ「4 列の単純グリッド」で
+    ///       遷移の構造を反映しておらず、VFX と結果の質が違っていた (共通アルゴリズムは既にあった)。
     std::vector<int> nodeIds;
     std::vector<GraphLayoutEdge> edges;
     std::unordered_map<std::string, int> indexOfState;
     for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
-        // ComputeGraphLayout は 1 以上の id を要求する (0 は「未解決」の意味を持つ)。
+        /// @note ComputeGraphLayout は 1 以上の id を要求する (0 は「未解決」の意味を持つ)。
         indexOfState[animator.states[static_cast<std::size_t>(index)].name] = index + 1;
         nodeIds.push_back(index + 1);
     }
@@ -61,8 +59,8 @@ void AutoLayoutAnimatorStates(GraphLayout& layout, const scene::AnimatorComponen
             if (target != indexOfState.end()) edges.push_back({ index + 1, target->second });
         }
     }
-    // 既定ステートを根にする。入次数 0 に任せると、どこからも遷移して来ない
-    // 孤立ステートまで 1 列目へ並び、開始点が読めなくなる。
+    /// @note 既定ステートを根にする。入次数 0 に任せると、どこからも遷移して来ない
+    ///       孤立ステートまで 1 列目へ並び、開始点が読めなくなる。
     std::vector<int> roots;
     if (const auto found = indexOfState.find(animator.defaultStateName);
         found != indexOfState.end())
@@ -99,9 +97,9 @@ bool MarkAnimatorControllerDirty(EditorContext& ctx)
 
     ctx.animationControllerDirty = true;
 
-    // Registry に登録し Save All / 終了時確認で一括保存できるようにする。
-    // saveFunc は weak_ptr でモデルを掴む。保存要求が来たときに編集モデルが
-    // 既に閉じられていることがあり、そのまま raw ポインタを持つと解放後参照になる。
+    /// @note Registry に登録し Save All / 終了時確認で一括保存できるようにする。
+    ///       saveFunc は weak_ptr でモデルを掴む。保存要求が来たときに編集モデルが
+    ///       既に閉じられていることがあり、そのまま raw ポインタを持つと解放後参照になる。
     const std::string capturedPath = ctx.animationControllerEditorPath;
     EditorContext* context = &ctx;
     std::weak_ptr<scene::AnimatorComponent> weakAnimator = ctx.animationControllerEditor;

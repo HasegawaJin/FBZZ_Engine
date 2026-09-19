@@ -19,11 +19,12 @@
 #define SCREEN_SPACE_SHADING_HLSLI
 
 #include "Common/Binding.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 #ifndef FBZZ_NO_SCREEN_SHADING
 
-Texture2D<float4> gScreenAO            : register(TEX_SCREEN_AO);      // t23
-Texture2D<float>  gScreenContactShadow : register(TEX_CONTACT_SHADOW); // t24
+FBZZ_TEX2D_T(float4, gScreenAO, TEX_SCREEN_AO_SLOT);      // t23
+FBZZ_TEX2D_T(float, gScreenContactShadow, TEX_CONTACT_SHADOW_SLOT); // t24
 
 // FBZZ_ScreenAO — この画素の画面空間 AO [0,1]。1 = 遮蔽なし。
 //

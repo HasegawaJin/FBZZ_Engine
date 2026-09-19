@@ -3,22 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-29
 ///
-/// WHY ポーズを触らないか:
-///   骨を動かす手 (IK) は «アニメーションそのものを書き換える» ことになる。溜めの震えは
-///   «今のポーズのまま体が細かく振れている» であって、別のポーズを作りたいわけではない。
-///   モデルを丸ごと拡縮すれば、どのクリップが再生されていてもその上から等しく掛かる。
-///
-/// WHY 描画ノードに掛けるか (Player 本体ではなく):
-///   スキンドメッシュは «描画ノードのワールド行列 × ボーン行列» で描かれる
-///   (DeferredPasses: objData.world = go.transform.GetWorldMatrix())。描画ノードは
-///   Player 直下にぶら下がる素の子で、アニメーションもボーン伝播も触らない。
-///   Player 本体を拡縮するとカプセルまで一緒に脈打ち、接地判定が毎フレーム揺れる。
-///
-/// WHY ボーンではないか:
-///   ボーンのローカル姿勢 (位置・回転・スケール) は AnimatorSystem が Phase::LateUpdate で
-///   毎フレーム丸ごと書き直す。Script フェーズから触っても同じフレームのうちに必ず消える。
-///
-/// 拡縮の原点はモデル原点 (足元)。縦に伸ばしても浮かず、原点から遠い手や頭ほど大きく動く。
+/// @note ボーンのローカル姿勢は AnimatorSystem が Phase::LateUpdate で毎フレーム書き直すため
+///       Script から触っても消える。Player 本体を拡縮すると衝突カプセルも脈打つため、
+///       スキンドメッシュを描く描画ノード (objData.world = go.transform.GetWorldMatrix()、
+///       Player 直下の素の子) のスケールだけを操作する。原点はモデル原点 (足元)。
 #pragma once
 
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
@@ -61,7 +49,6 @@ private:
     bool  m_shaking = false;
 };
 
-// ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline void BodyShake::Ensure(Script& owner)
 {
@@ -72,9 +59,8 @@ inline void BodyShake::Ensure(Script& owner)
     GameObject* self = owner.scene.Self();
     if (!self) return;
 
-    // WHY 直下の子だけ見るか: 描画ノードは «モデル 1 体ぶんの入れ物» で、必ず持ち主の
-    //     直下に並ぶ (材質ごとに 1 つ)。孫まで拾うと、ボーン配下に付けた武器や
-    //     エフェクトのノードまで掴んで、震えが装備品ごとに二重に掛かる。
+    /// @note 直下の子だけを見る。描画ノードは持ち主の直下に材質ごと 1 つ並ぶため、孫まで拾うと
+    ///       ボーン配下の武器・エフェクトのノードまで掴んで震えが二重に掛かる。
     const int count = self->GetChildCount();
     for (int i = 0; i < count; ++i) {
         GameObject* child = self->GetChild(i);
@@ -99,23 +85,19 @@ inline void BodyShake::Update(Script& owner, float amount, float lateral, float 
         Stop(owner);
         return;
     }
-    // DLL リロードや Play 直後で拾えていなければ、その場で拾い直す。
+    /// @note DLL リロードや Play 直後で拾えていなければ、その場で拾い直す。
     if (m_nodes.empty()) Ensure(owner);
 
     m_shaking = true;
     m_phase += Max(Time::deltaTime, 0.0f) * frequency;
 
-    // WHY 2 つ目の速い波を足すか: 単一の正弦は往復が読めてしまい «脈打っている» に
-    //     なる。倍数にならない速さの小さい波を重ねると、戻る位置が毎回わずかに違う
-    //     «震え» になる。
+    /// @note 単一の正弦は往復が読めて «脈打つ» に見えるため、倍数比でない速い波を重ねて
+    ///       戻る位置を毎回わずかにずらす。
     const float wave = std::sin(m_phase * TWO_PI)
                      + std::sin(m_phase * TWO_PI * 2.37f) * 0.35f;
 
-    // WHY 縦と横を逆向きに振るか: 全軸を同じ比で振ると «近づいたり遠ざかったり» に
-    //     見えて、力をこらえている絵にならない。縦に伸びたぶん横が締まると、
-    //     嵩が変わらないまま «力んでいる» だけが出る。
-    //     横を 0 にすれば «幅は 1 mm も変わらないのに手と頭は震えている» になる
-    //     ─ 原点 (足元) から遠いところほど大きく動くという、拡縮そのものの性質。
+    /// @note 全軸を同じ比で振ると «近づいたり遠ざかったり» に見える。縦に伸びた分だけ横を
+    ///       締めれば嵩を変えずに «力んでいる» だけが出る (横 0 なら幅は不変のまま震える)。
     const float stretch = wave * amount;
     const Vector3 factor{ 1.0f - stretch * lateral,
                           1.0f + stretch,

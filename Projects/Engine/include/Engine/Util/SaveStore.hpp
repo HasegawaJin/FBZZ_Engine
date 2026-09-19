@@ -3,20 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// 設計意図 (WHY):
-///   DataAsset (.fzdata) は「オーサリング時に決めた値をランタイムで共有する」ための仕組みで、
-///   ゲーム中に書き換えた内容をディスクへ戻す用途ではない (エディタセッションを汚染する)。
-///   ハイスコア・進行度・オプション設定は「ゲームが実行中に書いて次回起動で読む」データで、
-///   性質がまったく違う。両者を混ぜないよう、ランタイム永続化はこのストアに閉じる。
-///
-///   保存形式は TOML。バイナリにしないのは、セーブデータの破損調査とテストのために
-///   人間が中身を読めることを優先したため (エンジン内の他のフォーマットとも揃う)。
-///
-///   WHY static クラスではなくインスタンスか:
-///     セーブ枠 (進行) と環境設定 (Option) は寿命が違う。SetPath + Load はテーブルを
-///     まるごと置き換えるため、1 本のテーブルに同居させると「別のセーブをロードしたら
-///     音量が戻った」という、原因の見えない不具合になる。Application が
-///     GetSaveStore() / GetConfigStore() の 2 本を別々に持つ。
+/// @note DataAsset (.fzdata) はオーサリング時の値をランタイムで共有する仕組みで、書き換えをディスクへ
+///       戻す用途ではない。セーブデータ・環境設定は実行中に書いて次回起動で読むため性質が違い、
+///       ランタイム永続化はこのストアに閉じる。
+/// @note 保存形式は TOML。破損調査とテストで人間が中身を読めることを優先し、他フォーマットとも揃える。
+/// @note セーブ枠と環境設定は寿命が違うため、1 テーブルに同居させると「別セーブをロードしたら音量が戻った」
+///       という不具合になる。Application が GetSaveStore() / GetConfigStore() を別々に持つ。
 #pragma once
 
 #include <Math/Vector2.hpp>
@@ -52,16 +44,16 @@ public:
     /// object.Reflect() が並べたフィールドを key のテーブルとして往復させる。
     /// コンポーネントの Reflect と同じ書き方でセーブデータを定義できる。
     ///@{
-    /// @ret 常に true (メモリ上のテーブルを更新するだけで失敗しない)。ディスクへは Save() で落ちる。
+    /// @return 常に true (メモリ上のテーブルを更新するだけで失敗しない)。ディスクへは Save() で落ちる。
     bool Write(std::string_view key, scene::IScriptSerializable& object);
     /// key のテーブルに無いフィールドは object の値を保つ。
-    /// @ret テーブル自体が存在しなければ false (object は無変更)。
+    /// @return テーブル自体が存在しなければ false (object は無変更)。
     bool Read(std::string_view key, scene::IScriptSerializable& object);
     ///@}
 
     /// @name スカラー
     /// メモリ上のテーブルを更新するだけで、ディスクへは Save() で初めて書き出す。
-    /// WHY: 1 フレームに何度も値を更新するゲームコードから直接ファイル I/O を走らせないため。
+    /// @note 1 フレームに何度も値を更新するゲームコードから直接ファイル I/O を走らせないため。
     ///@{
     void SetBool  (std::string_view key, bool value);
     void SetInt   (std::string_view key, int value);
@@ -71,9 +63,8 @@ public:
     void SetVector3(std::string_view key, const math::Vector3& value);
     void SetVector4(std::string_view key, const math::Vector4& value);
 
-    // キーが無い / 型が違う場合は defaultValue を返す。
-    // WHY: セーブデータはバージョン違いで欠損キーが普通に起きるため、
-    //      「無ければ既定値」を呼び出し側に毎回書かせない。
+    /// キーが無い / 型が違う場合は defaultValue を返す。
+    /// @note セーブデータはバージョン違いで欠損キーが普通に起きるため、既定値処理を呼び出し側へ毎回書かせない。
     [[nodiscard]] bool          GetBool  (std::string_view key, bool defaultValue = false) const;
     [[nodiscard]] int           GetInt   (std::string_view key, int defaultValue = 0) const;
     [[nodiscard]] float         GetFloat (std::string_view key, float defaultValue = 0.0f) const;
@@ -95,17 +86,15 @@ public:
     /// ディスクへ書き出す。親ディレクトリが無ければ作る。
     bool Save();
     /// ディスクから読み込み、メモリ上のテーブルを置き換える。
-    /// WHY ファイル欠損で true を返すか: 初回起動には必ずファイルが存在しない。
-    ///     これを失敗として扱うと呼び出し側が毎回「初回かどうか」を分岐することになる。
-    ///     本当の失敗 (パース不能 = 破損) だけを false にする。
+    /// @note ファイル欠損 (初回起動) は true を返す。false は本当の失敗 (パース不能 = 破損) のみ。
     bool Load();
     /// 最後の Save() / Load() 以降に書き込みがあったか。終了確認ダイアログ等に使う。
     [[nodiscard]] bool IsDirty() const;
     ///@}
 
 private:
-    // toml++ を公開ヘッダーへ波及させないための pImpl。
-    // Application.hpp から間接的に取り込まれると、ほぼ全 TU が toml++ を読むことになる。
+    /// toml++ を公開ヘッダーへ波及させないための pImpl。
+    /// Application.hpp から間接的に取り込まれると、ほぼ全 TU が toml++ を読むことになる。
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };

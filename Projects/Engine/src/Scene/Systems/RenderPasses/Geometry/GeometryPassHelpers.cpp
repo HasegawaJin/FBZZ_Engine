@@ -1,4 +1,4 @@
-/// @file    RenderPasses/GeometryPassHelpers.cpp
+/// @file    GeometryPassHelpers.cpp
 /// @brief   ジオメトリパス共有ヘルパー関数。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
@@ -40,26 +40,16 @@ namespace fbzz::scene {
 
 namespace {
 
-// 束縛の規則そのものは Engine/Asset/MaterialParamBinding.hpp が持つ。
-// WHY ここから出したか: UI のように「同じ .mat 形式を、違う頂点入力とパスで描く」側が
-//     増えると、無名名前空間に置いた実装は写経するしかなくなる。写した先だけが
-//     スロット名や既定値の変更に追従しなくなるので、規則は 1 箇所に置く。
+/// @note 束縛の規則そのものは `Engine/Asset/MaterialParamBinding.hpp` が持つ。UI のように「同じ .mat 形式を、違う頂点入力とパスで描く」側が増えると、無名名前空間に置いた実装は写経するしかなくなり写した先だけが追従しなくなるため、規則は 1 箇所に置く。
 using asset::ApplyMaterialAssetParams;
 using asset::ApplyMaterialParamOverrides;
 using asset::FindMaterialParam;
 using asset::InitDefaultMaterialParams;
 constexpr auto& kTextureSlotNames = asset::kMaterialTextureSlotNames;
 
-// albedo に Sprite サブアセットが指定された場合、Sprite矩形を標準UV変換へ合成する。
-// WHY: GPU Texture 自体はatlas全体を共有するため、3D Materialで個別Spriteを使うには
-//      頂点UVを矩形のscale/offsetへ写像する必要がある。
-//
-// WHY 共有 .mat ではなく「実効 albedo 参照」を受け取るか:
-//   textureOverrides で GameObject 単位に albedo を差し替えた場合、共有 .mat 側を見ていると
-//   矩形が元のスプライトのまま残る。atlas は 1 枚のテクスチャなので、テクスチャだけ
-//   差し替わって矩形が変わらないと「別のコマを指定したのに絵が変わらない」という、
-//   スクリプトからは原因の見えない壊れ方をする。表情・目パチのようにコマを
-//   ランタイムで切り替える用途はこの経路しか通らないため、実効値で解決する。
+/// @brief albedo に Sprite サブアセットが指定された場合、Sprite 矩形を標準 UV 変換へ合成する。
+/// @note GPU Texture は atlas 全体を共有するため、3D Material で個別 Sprite を使うには頂点 UV を矩形の scale/offset へ写像する必要がある。
+/// @note 共有 .mat でなく実効 albedo 参照を受け取る。textureOverrides で GameObject 単位に albedo を差し替えると、共有 .mat 側を見ていては矩形が元のスプライトのまま残り「別のコマを指定したのに絵が変わらない」という原因不明の壊れ方をする。表情・目パチのようにコマをランタイムで切り替える用途はこの経路しか通らないため実効値で解決する。
 void ApplyAlbedoSpriteUv(std::string_view albedoReference,
                          const renderer::ShaderDescriptor& desc,
                          renderer::ResourceManager& resources,
@@ -71,8 +61,8 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
     std::string spriteToken;
     if (!asset::ParseSpriteReference(albedoReference, texturePath, spriteToken)) return;
 
-    // 矩形の取り出しは ResolveSpriteReference が持つ (ID / 名前 / 暗黙 Single と
-    // .meta のキャッシュまで含めて 1 箇所)。ここは UV への合成だけを受け持つ。
+    /// @note 矩形の取り出しは ResolveSpriteReference が持つ (ID / 名前 / 暗黙 Single と
+    /// @note .meta のキャッシュまで含めて 1 箇所)。ここは UV への合成だけを受け持つ。
     const std::string absoluteTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
     const renderer::ITexture* texture = resources.Get(resources.LoadTexture(absoluteTexturePath));
     if (texture == nullptr) return;
@@ -83,8 +73,8 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
         static_cast<float>(std::max<uint32_t>(1, texture->GetHeight())));
     if (!resolved.resolved) return;
 
-    // 矩形が画像からはみ出していても UV は画像内へ収める。
-    // はみ出した分を素通しすると Clamp サンプリングで端の 1 列が伸びる。
+    /// @note 矩形が画像からはみ出していても UV は画像内へ収める。
+    /// @note はみ出した分を素通しすると Clamp サンプリングで端の 1 列が伸びる。
     struct { float scaleX, scaleY, offsetX, offsetY; } transform{
         std::clamp(resolved.uvMax.x - resolved.uvMin.x, 0.0f, 1.0f),
         std::clamp(resolved.uvMax.y - resolved.uvMin.y, 0.0f, 1.0f),
@@ -117,8 +107,7 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
 
 AnimatorComponent* FindAnimator(GameObject& go)
 {
-    // Skinned submesh はモデル構造により複数階層下へ配置されるため、直親だけで打ち切らない。
-    // WHY: Animatorを見失うとbind pose用CBへフォールバックし、Trailの初期位置もずれる。
+    /// @note Skinned submesh はモデル構造により複数階層下へ配置されるため、直親だけで打ち切らない。Animator を見失うと bind pose 用 CB へフォールバックし、Trail の初期位置もずれる。
     for (GameObject* current = &go; current; current = current->GetParent())
         if (auto* animator = current->GetComponent<AnimatorComponent>())
             return animator;
@@ -152,8 +141,8 @@ renderer::Material* GetFallbackMaterial(renderer::ResourceManager& resources, bo
     return SyncMaterial(fallback, resources, skinned);
 }
 
-// 実体。MaterialComponent とスロットを分けて受け取り、
-// 「コンポーネント全体の有効/無効」と「スロット単体の有効/無効」を両方尊重する。
+/// @note 実体。MaterialComponent とスロットを分けて受け取り、
+/// @note 「コンポーネント全体の有効/無効」と「スロット単体の有効/無効」を両方尊重する。
 static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
                                                 bool componentEnabled,
                                                 renderer::ResourceManager& resources,
@@ -162,14 +151,12 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
     if (!componentEnabled || !mc.visible) return nullptr;
 
     if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
-        mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
+        mc.materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(mc.materialPath);
 
     auto activeAsset = mc.materialAsset;
     if (!activeAsset.IsValid()) {
-        // .mat が読めない / 未割当でも、メッシュを画面から絶対に消さない。
-        // 原色紫のフォールバック材質で描画を続け、問題を可視化する (Unity のマゼンタ相当)。
-        // WHY: mc.materialAsset には書き戻さず毎フレーム再解決させる。壊れた .mat を
-        //      修復・再インポートした瞬間 (FlushFailed 後) に正規材質へ自動復帰できる。
+        /// @note .mat が読めない / 未割当でも、メッシュを画面から絶対に消さない。原色紫のフォールバック材質で描画を続け、問題を可視化する (Unity のマゼンタ相当)。
+        /// @note mc.materialAsset には書き戻さず毎フレーム再解決させる。壊れた .mat を修復・再インポートした瞬間 (FlushFailed 後) に正規材質へ自動復帰できる。
         const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
         static std::unordered_set<std::string> s_warnedMissingMaterials;
         const std::string warnKey =
@@ -178,8 +165,8 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
             FBZZ_LOG_WARN("Material load failed '%s' -> using fallback %s.",
                           warnKey.c_str(), fallbackPath);
         }
-        activeAsset = asset::AssetManager::LoadMaterial(fallbackPath);
-        // フォールバック .mat 自体が存在しない場合だけは描画を諦める。
+        activeAsset = asset::AssetManager::Load<asset::MaterialAsset>(fallbackPath);
+        /// @note フォールバック .mat 自体が存在しない場合だけは描画を諦める。
         if (!activeAsset.IsValid()) return nullptr;
     }
 
@@ -188,19 +175,18 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
 
     auto& material = *mc.material;
     const std::string& shaderPath = mc.GetShaderPath();
-    const auto* matAsset = asset::AssetManager::GetMaterial(activeAsset);
+    const auto* matAsset = asset::AssetManager::Get<asset::MaterialAsset>(activeAsset);
     if (matAsset && shaderPath.empty()) {
         const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
-        // WHY: shader 未設定の .mat を PBR 推定で描くと、未設定と意図した PBR の区別が付かない。
-        //      原色紫の Unlit フォールバック材質へ明示的に差し替え、問題箇所を見つけやすくする。
+        /// @note shader 未設定の .mat を PBR 推定で描くと、未設定と意図した PBR の区別が付かない。原色紫の Unlit フォールバック材質へ明示的に差し替え、問題箇所を見つけやすくする。
         static std::unordered_set<std::string> s_warnedEmptyShaderMaterials;
         const std::string warnKey = mc.materialPath.empty() ? std::string("<unnamed>") : mc.materialPath;
         if (s_warnedEmptyShaderMaterials.insert(warnKey + "|" + fallbackPath).second) {
             FBZZ_LOG_WARN("Material '%s' has an empty shader path -> using %s.",
                           warnKey.c_str(), fallbackPath);
         }
-        activeAsset = asset::AssetManager::LoadMaterial(fallbackPath);
-        matAsset = asset::AssetManager::GetMaterial(activeAsset);
+        activeAsset = asset::AssetManager::Load<asset::MaterialAsset>(fallbackPath);
+        matAsset = asset::AssetManager::Get<asset::MaterialAsset>(activeAsset);
         if (!matAsset) return nullptr;
     }
     const std::string effectiveShaderPath = matAsset ? matAsset->shaderPath : std::string{};
@@ -218,7 +204,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
         InitDefaultMaterialParams(*desc, material.paramData);
     if (desc && matAsset)
         ApplyMaterialAssetParams(*matAsset, *desc, material.paramData);
-    // 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
+    /// @note 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
     if (desc && !mc.paramOverrides.empty())
         ApplyMaterialParamOverrides(mc.paramOverrides, *desc, material.paramData);
 
@@ -235,8 +221,8 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
             texturePaths[i] = overrideIt->second;
     }
 
-    // Sprite 矩形は「最終的に t0 へ束縛される参照」から決める。共有 .mat の値ではなく
-    // 上書き適用後の texturePaths[0] を渡すため、テクスチャ解決より後に置く。
+    /// @note Sprite 矩形は「最終的に t0 へ束縛される参照」から決める。共有 .mat の値ではなく
+    /// @note 上書き適用後の texturePaths[0] を渡すため、テクスチャ解決より後に置く。
     if (desc)
         ApplyAlbedoSpriteUv(texturePaths[0], *desc, resources, material.paramData);
 
@@ -262,7 +248,7 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
 renderer::Material* SyncMaterialSlot(MaterialComponent& mc, size_t slotIndex,
                                      renderer::ResourceManager& resources, bool preferSkinnedFallback)
 {
-    // mc.enabled は基底 (スロット 0) の enabled であり、コンポーネント全体の有効判定を兼ねる。
+    /// @note mc.enabled は基底 (スロット 0) の enabled であり、コンポーネント全体の有効判定を兼ねる。
     return SyncMaterialSlotImpl(mc.SlotAt(slotIndex), mc.enabled, resources, preferSkinnedFallback);
 }
 
@@ -271,17 +257,16 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::BlendMode        blend,
     bool                       doubleSided)
 {
-    // 両面描画はバックフェースカリングを無効化する。
+    /// @note 両面描画はバックフェースカリングを無効化する。
     const renderer::RasterizerMode raster = doubleSided
         ? renderer::RasterizerMode::SOLID_NOCULL
         : renderer::RasterizerMode::SOLID;
-    // 半透明・加算は深度書き込みをオフにし、背後のオブジェクトが透けて見えるようにする。
+    /// @note 半透明・加算は深度書き込みをオフにし、背後のオブジェクトが透けて見えるようにする。
     const renderer::DepthMode depth = (blend == renderer::BlendMode::OPAQUE_BLEND)
         ? renderer::DepthMode::DEPTH_ON
         : renderer::DepthMode::DEPTH_READ;
 
-    // WHY: ビットパッキング (旧実装) は enum 値追加時にサイレントなキー衝突が起きるため、
-    //      構造体を直接比較する std::map に変更した。
+    /// @note ビットパッキングは enum 値追加時にサイレントなキー衝突が起きるため、構造体を直接比較する std::map を使う。
     struct DescLess {
         bool operator()(const renderer::PipelineStateDesc& a,
                         const renderer::PipelineStateDesc& b) const noexcept {
@@ -308,12 +293,9 @@ bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask)
 
 bool IsForwardOnly(const MaterialSlot& mc)
 {
-    const auto* a = asset::AssetManager::GetMaterial(mc.materialAsset);
+    const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
     if (a) {
-        // WHY: 2枚のGBufferにはclearcoat/sheen/anisotropyと接線基底を保持できない。
-        //      拡張ローブをDeferredへ落とすと情報が欠落し、物理的なエネルギー配分も
-        //      変わるため、拡張値が有効な場合だけ Forward の完全評価へフォールバックする。
-        //      これは Material の render_path 指定ではなく、現在の GBuffer 仕様からの自動判定。
+        /// @note 2 枚の GBuffer には clearcoat/sheen/anisotropy と接線基底を保持できない。拡張ローブを Deferred へ落とすと情報が欠落し物理的なエネルギー配分も変わるため、拡張値が有効な場合だけ Forward の完全評価へフォールバックする (Material の render_path 指定でなく GBuffer 仕様からの自動判定)。
         const auto hasFeature = [&](std::string_view name) {
             const auto overrideIt = mc.paramOverrides.find(std::string(name));
             if (overrideIt != mc.paramOverrides.end())
@@ -324,6 +306,8 @@ bool IsForwardOnly(const MaterialSlot& mc)
         const bool advancedPbr = a->meshType != asset::MeshType::Skinned &&
             (hasFeature("clearcoat") || hasFeature("sheen") || hasFeature("anisotropy"));
         if (advancedPbr) return true;
+        /// @note Cloth は sheen=0 でも固有の反射モデルを保持する。色パラメーターの存在で GBuffer への変換を避ける。
+        if (FindMaterialParam(*a, "clothSheenColor")) return true;
         if (a->shaderPath.empty()) return true;
     }
     return a == nullptr;
@@ -331,7 +315,7 @@ bool IsForwardOnly(const MaterialSlot& mc)
 
 bool IsSurfaceMaterial(const MaterialSlot& mc)
 {
-    const auto* a = asset::AssetManager::GetMaterial(mc.materialAsset);
+    const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
     if (a) {
         if (a->meshType == asset::MeshType::Surface) return true;
         if (a->meshType == asset::MeshType::Skinned) return false;
@@ -340,15 +324,15 @@ bool IsSurfaceMaterial(const MaterialSlot& mc)
     return false;
 }
 
-// ── カリング ヘルパー ────────────────────────────────────────────────────────
+/// @name カリング ヘルパー
 
 void UpdateShadowConstants(RenderPassContext& ctx)
 {
     const auto& rs = ctx.settings;
     ShadowConstantsCB data{};
 
-    // 全カスケードが共有する 1 枚のアトラスなので、テクセルサイズはアトラス全体基準。
-    // カスケード内 UV → アトラス UV への写像は HLSL 側 (cascadeAtlasRect) が行う。
+    /// @note 全カスケードが共有する 1 枚のアトラスなので、テクセルサイズはアトラス全体基準。
+    /// @note カスケード内 UV → アトラス UV への写像は HLSL 側 (cascadeAtlasRect) が行う。
     const float texel = 1.0f / static_cast<float>((std::max)(rs.shadow.mapResolution, 1u));
     data.shadowMapTexelSize[0] = texel;
     data.shadowMapTexelSize[1] = texel;
@@ -356,14 +340,14 @@ void UpdateShadowConstants(RenderPassContext& ctx)
     const int count = std::clamp(ctx.shadowCascadeCount, 1, renderer::kMaxShadowCascades);
     data.cascadeCount     = count;
     data.cascadeBlend     = std::clamp(rs.shadow.cascadeBlend, 0.0f, 0.5f);
-    // 可視化は分割している時だけ意味がある。1 分割で有効なままだと画面全体が
-    // カスケード 0 の色に染まるだけなので、ここで落とす。
+    /// @note 可視化は分割している時だけ意味がある。1 分割で有効なままだと画面全体が
+    /// @note カスケード 0 の色に染まるだけなので、ここで落とす。
     data.cascadeDebugView = (rs.shadow.debugVisualizeCascades && count > 1) ? 1 : 0;
 
     float bias[renderer::kMaxShadowCascades] = {};
     for (int i = 0; i < renderer::kMaxShadowCascades; ++i) {
-        // 未使用スロットは最遠カスケードで埋める。HLSL 側は cascadeCount までしか
-        // 見ないが、未初期化の行列が残ると RenderDoc 等で追うときに紛らわしい。
+        /// @note 未使用スロットは最遠カスケードで埋める。HLSL 側は cascadeCount までしか
+        /// @note 見ないが、未初期化の行列が残ると RenderDoc 等で追うときに紛らわしい。
         const ShadowCascade& cascade = ctx.shadowCascades[(i < count) ? i : count - 1];
         data.cascadeViewProjection[i] = cascade.viewProjection;
         data.cascadeAtlasRect[i]      = cascade.atlasRect;
@@ -371,8 +355,8 @@ void UpdateShadowConstants(RenderPassContext& ctx)
     }
     data.cascadeBias = { bias[0], bias[1], bias[2], bias[3] };
 
-    // 単一のライト行列で足りるパス向け (= 最遠カスケード)。
-    // cascadeCount == 1 のときはカスケード 0 と同一なので、従来の単一シャドウマップ経路と一致する。
+    /// @note 単一のライト行列で足りるパス向け (= 最遠カスケード)。
+    /// @note cascadeCount == 1 のときはカスケード 0 と同一なので、従来の単一シャドウマップ経路と一致する。
     data.lightViewProjection = ctx.lightVP;
     data.shadowBias          = ctx.shadowBiasNDC;
     data.shadowStrength      = ctx.shadowStrength;
@@ -396,15 +380,15 @@ void UpdatePunctualShadowConstants(RenderPassContext& ctx)
     const auto& rs = ctx.settings;
     PunctualShadowConstantsCB data{};
 
-    // 全スロットが 1 枚のアトラスを共有するので、テクセルサイズはアトラス全体基準。
-    // タイル内 UV → アトラス UV への写像は HLSL 側 (punctualShadowRect) が行う。
+    /// @note 全スロットが 1 枚のアトラスを共有するので、テクセルサイズはアトラス全体基準。
+    /// @note タイル内 UV → アトラス UV への写像は HLSL 側 (punctualShadowRect) が行う。
     const float texel =
         1.0f / static_cast<float>((std::max)(ctx.punctualShadowResolution, 1u));
     data.punctualShadowTexel[0] = texel;
     data.punctualShadowTexel[1] = texel;
     data.punctualShadowPcf      = std::clamp(rs.shadow.punctualPcfRadius, 0, 3);
 
-    // 未使用スロットは 0 のまま残す。HLSL 側は punctualShadowCount までしか見ない。
+    /// @note 未使用スロットは 0 のまま残す。HLSL 側は punctualShadowCount までしか見ない。
     const int count = std::clamp(ctx.punctualShadowViewCount, 0, kMaxPunctualShadows);
     data.punctualShadowCount = count;
     for (int i = 0; i < count; ++i) {
@@ -424,8 +408,8 @@ void UpdatePunctualShadowConstants(RenderPassContext& ctx)
         data.lightCookieRect[i] = ctx.lightCookieViews[i].atlasRect;
     }
 
-    // レガシー経路の「大きさを持つ光源」。b3 に型が無いので実体ごと載せる。
-    // レイアウトは PunctualShadowConstants.hlsli のコメントと FBZZ_PunctualAt が正本。
+    /// @note レガシー経路の「大きさを持つ光源」。b3 に型が無いので実体ごと載せる。
+    /// @note レイアウトは PunctualShadowConstants.hlsli のコメントと FBZZ_PunctualAt が正本。
     const int shapedCount = std::clamp(ctx.legacyShapedLightCount, 0, kMaxLegacyShapedLights);
     data.legacyShapedLightCount = shapedCount;
     for (int i = 0; i < shapedCount; ++i) {
@@ -436,16 +420,14 @@ void UpdatePunctualShadowConstants(RenderPassContext& ctx)
         dst[2] = { a.direction, 0.0f };
         dst[3] = { a.tangent,   a.halfWidth };
         dst[4] = { a.bitangent, a.halfHeight };
-        // y は両面フラグ。PunctualLightGPU では outerCos の枠に載せてある。
-        // z は影のスロット番号。legacyPunctualSlots は b3 の 12 枠に紐付いた表なので、
-        // b3 に席の無い「大きさを持つ光源」はそこから引けない。空いている枠へ載せる。
+        /// @note y は両面フラグ。PunctualLightGPU では outerCos の枠に載せてある。
+        /// @note z は影のスロット番号。legacyPunctualSlots は b3 の 12 枠に紐付いた表なので、
+        /// @note b3 に席の無い「大きさを持つ光源」はそこから引けない。空いている枠へ載せる。
         dst[5] = { static_cast<float>(a.type), a.outerCos,
                    static_cast<float>(a.shadowIndex), 0.0f };
     }
 
-    // レガシー経路のスロット番号と光源半径。「無し」は -1 (ctx 側の既定値がそう)。
-    // WHY 0 埋めで済ませられないか: 0 は「スロット 0」という有効な番号なので、
-    //     影を持たないライトが他のライトのシャドウマップを引いてしまう。
+    /// @note レガシー経路のスロット番号と光源半径。「無し」は -1 (ctx 側の既定値がそう)。0 は「スロット 0」という有効な番号のため 0 埋めでは済ませられず、影を持たないライトが他のライトのシャドウマップを引いてしまう。
     for (int i = 0; i < kMaxLegacyPunctualLights; ++i) {
         data.legacyPunctualSlots[i] = {
             static_cast<float>(ctx.legacyShadowSlots[i]),
@@ -463,8 +445,8 @@ bool IsReliableOccluder(const renderer::Mesh& mesh)
 {
     if (mesh.boundsRadius <= 0.0f) return false;
 
-    // 立方体で 0.577、球で 1.0。板・壁・棒はこれを大きく下回る。
-    // 0.40 は「立方体は通し、厚み比 1:4 を超える扁平は落とす」あたりの線。
+    /// @note 立方体で 0.577、球で 1.0。板・壁・棒はこれを大きく下回る。
+    /// @note 0.40 は「立方体は通し、厚み比 1:4 を超える扁平は落とす」あたりの線。
     constexpr float kMinFillRatio = 0.40f;
     const float minExtent = std::min({ mesh.boundsExtents.x,
                                        mesh.boundsExtents.y,
@@ -476,9 +458,9 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, 
 {
     const math::Matrix4 world = tf.GetWorldMatrix();
 
-    // ローカル空間バウンディング球中心をワールド空間に変換する。
-    // 行列は列ベクトル規則 (M * v) なので:
-    //   wx = m[0][0]*bx + m[0][1]*by + m[0][2]*bz + m[0][3]
+    /// @note ローカル空間バウンディング球中心をワールド空間に変換する。
+    /// @note 行列は列ベクトル規則 (M * v) なので:
+    /// @note wx = m[0][0]*bx + m[0][1]*by + m[0][2]*bz + m[0][3]
     const float bx = mesh.boundsCenter.x;
     const float by = mesh.boundsCenter.y;
     const float bz = mesh.boundsCenter.z;
@@ -488,9 +470,7 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, 
         world.m[2][0]*bx + world.m[2][1]*by + world.m[2][2]*bz + world.m[2][3],
     };
 
-    // ワールド行列の各軸ベクトルのノルムからスケールを取得し、最大値を掛ける。
-    // WHY: 非一様スケールの場合は最大成分で保守的な球にする。
-    //      球半径を過大評価しても偽カリング (見えているのに消える) は発生しない。
+    /// @note ワールド行列の各軸ベクトルのノルムからスケールを取得し、最大値を掛ける。非一様スケールでは最大成分で保守的な球にする。球半径を過大評価しても偽カリング (見えているのに消える) は発生しない。
     const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
     const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
     const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
@@ -508,17 +488,9 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
 
     const Transform& tf = go.transform;
 
-    // 骨から作った球があればそちらを使う。
-    //
-    // WHY バインドポーズ球では足りないか: 下のループはバインドポーズの submesh バウンズを
-    //     Renderer の Transform で運んでいるだけで、骨がどこへ行ったかを見ていない。
-    //     Script が骨を数十 m 動かす構成では、球がバインドポーズの場所に取り残されて
-    //     «実体は見えているのに視錐台の外／遮蔽物の中» と判定され、部位ごとに明滅する。
-    //
-    // WHY 肉の厚みを足すか: Animator が持っているのは骨の広がりだけ。その周りの
-    //     ジオメトリは submesh のバインド半径ぶん外へ出る。Renderer ごとに違う値なので、
-    //     この Renderer が描く submesh の最大値をここで足す。
-    // GetComponent に const 版が無いので剥がす。ここは読むだけ。
+    /// @note 骨から作った球があればそちらを使う。下のループはバインドポーズの submesh バウンズを Renderer の Transform で運ぶだけで骨の移動を見ないため、Script が骨を数十 m 動かす構成では球がバインドポーズの場所に取り残され部位ごとに明滅する。
+    /// @note Animator が持つのは骨の広がりだけで周囲のジオメトリは submesh のバインド半径ぶん外へ出るため、この Renderer が描く submesh の最大値を肉の厚みとして足す。
+    /// @note GetComponent に const 版が無いので剥がす。ここは読むだけ。
     for (GameObject* current = const_cast<GameObject*>(&go); current;
          current = current->GetParent()) {
         const auto* animator = current->GetComponent<AnimatorComponent>();
@@ -530,7 +502,7 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
             if (const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot))
                 flesh = (std::max)(flesh, meshPtr->boundsRadius);
 
-        // 球は Animator の owner のローカル空間にある。運ぶのもその Transform。
+        /// @note 球は Animator の owner のローカル空間にある。運ぶのもその Transform。
         const math::Matrix4 world = current->transform.GetWorldMatrix();
         const math::Vector3& c = animator->skinnedBoundsCenter;
         outBounds.center = {
@@ -552,13 +524,8 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
     math::Vector3 weightedCenter = math::Vector3::ZERO;
     float totalWeight = 0.0f;
 
-    // WHAT: 各 submesh のワールド球を半径重みで平均し、最後に全 submesh を包む半径へ拡張する。
-    // WHY: 毎フレーム CPU スキニングして厳密 bounds を取ると頂点数に比例して重い。
-    //      バインドポーズ球は保守的だが、視錐台外の遠いキャラクターを安く除外できる。
-    // この Renderer が描く submesh だけを包む。
-    // WHY モデル全体で取らないか: ノードごとに子 GameObject へ分けた構成では、
-    //     モデル全体の球はどの子にとっても過大になり、画面外の部位のぶんまで
-    //     視錐台に残ってしまう。カリングの単位は「実際に描くもの」に揃える。
+    /// @note 各 submesh のワールド球を半径重みで平均し、最後に全 submesh を包む半径へ拡張する。毎フレーム CPU スキニングして厳密 bounds を取ると頂点数に比例して重いため、視錐台外の遠いキャラクターを安く除外できる保守的なバインドポーズ球を使う。
+    /// @note この Renderer が描く submesh だけを包む。ノードごとに子 GameObject へ分けた構成ではモデル全体の球はどの子にとっても過大になり画面外の部位のぶんまで視錐台に残るため、カリングの単位は「実際に描くもの」に揃える。
     for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
         const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
         if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
@@ -573,10 +540,7 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
 
     outBounds.center = weightedCenter * (1.0f / totalWeight);
     outBounds.radius = 0.0f;
-    // この Renderer が描く submesh だけを包む。
-    // WHY モデル全体で取らないか: ノードごとに子 GameObject へ分けた構成では、
-    //     モデル全体の球はどの子にとっても過大になり、画面外の部位のぶんまで
-    //     視錐台に残ってしまう。カリングの単位は「実際に描くもの」に揃える。
+    /// @note この Renderer が描く submesh だけを包む。モデル全体で取ると、ノードごとに子 GameObject へ分けた構成では過大な球になり画面外の部位のぶんまで視錐台に残るため、カリングの単位は「実際に描くもの」に揃える。
     for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
         const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
         if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
@@ -585,9 +549,7 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
         outBounds.radius = (std::max)(outBounds.radius, delta.Length() + bounds.radius);
     }
 
-    // 余白は submesh ごとではなく合成後の球へ 1 回だけ足す。
-    // WHY: ComputeWorldBounds へ渡して submesh 単位で足すと、合成時の
-    //      「中心距離 + 半径」に padding が二重・三重で積み上がる。
+    /// @note 余白は submesh ごとではなく合成後の球へ 1 回だけ足す。ComputeWorldBounds へ渡して submesh 単位で足すと、合成時の「中心距離 + 半径」に padding が二重・三重で積み上がる。
     if (padding > 0.0f) outBounds.radius += padding;
 
     return true;
@@ -595,7 +557,7 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
 
 namespace {
 
-// このレイヤーに適用する描画距離 [m] を返す。0 は「距離カリングしない」。
+/// @note このレイヤーに適用する描画距離 [m] を返す。0 は「距離カリングしない」。
 float ResolveCullDistance(const RenderPassContext& ctx, int layer)
 {
     if (ctx.hasLayerCullDistances) {
@@ -605,38 +567,35 @@ float ResolveCullDistance(const RenderPassContext& ctx, int layer)
     return ctx.cullMaxDistance;
 }
 
-// 距離 → 極小 → 錐台 の順で判定し、落ちた場合は理由の統計を加算して false を返す。
-// WHY この順序か: 前段ほど計算が安く、かつ後段より多くを落とす。
-//      距離は減算と内積だけ、極小は除算 1 回、錐台は 6 平面。
-//      逆順にすると、遠くて画面に 1 ピクセルも占めないオブジェクトにまで
-//      毎フレーム 6 平面テストを通すことになる。
+/// @brief 距離 → 極小 → 錐台 の順で判定し、落ちた場合は理由の統計を加算して false を返す。
+/// @note 前段ほど計算が安く後段より多くを落とす。距離は減算と内積だけ、極小は除算 1 回、錐台は 6 平面で、逆順にすると遠くて画面に 1 ピクセルも占めないオブジェクトにまで毎フレーム 6 平面テストを通すことになる。
 bool TestBoundsVisible(RenderPassContext& ctx, const GameObject& go, const WorldBounds& bounds)
 {
-    // 半径 0 = ComputeBounds 未実行。安全に判定できないので必ず描く。
+    /// @note 半径 0 = ComputeBounds 未実行。安全に判定できないので必ず描く。
     if (bounds.radius <= 0.0f) return true;
 
     const math::Vector3 toObject = bounds.center - ctx.camera.m_position;
 
-    // 距離カリングと極小判定は同じ距離を使うので 1 回だけ求める。
-    // 球距離モードでも深度距離モードでも「カメラからの前方距離」として扱う。
+    /// @note 距離カリングと極小判定は同じ距離を使うので 1 回だけ求める。
+    /// @note 球距離モードでも深度距離モードでも「カメラからの前方距離」として扱う。
     const float distance = ctx.cullDistanceSpherical
         ? toObject.Length()
         : math::Vector3::Dot(toObject, ctx.cullCameraForward);
 
-    // ── 距離カリング ──
-    // 球の最近点で測る。中心で測ると、大きな地形メッシュが境界をまたいだ瞬間に丸ごと消える。
+    /// @name 距離カリング
+    /// @note 球の最近点で測る。中心で測ると、大きな地形メッシュが境界をまたいだ瞬間に丸ごと消える。
     const float cullDistance = ResolveCullDistance(ctx, go.layer);
     if (cullDistance > 0.0f && distance - bounds.radius > cullDistance) {
         ++ctx.statsDistanceCulled;
         return false;
     }
 
-    // ── 極小オブジェクトカリング ──
-    // 画面高さ比 = radius * (1/tan(fovY/2)) / 距離。
-    // 単位は LODLevel::screenRelativeHeight と同じで、LODSystem の projectedHeight と一致する。
+    /// @name 極小オブジェクトカリング
+    /// @note 画面高さ比 = radius * (1/tan(fovY/2)) / 距離。
+    /// @note 単位は LODLevel::screenRelativeHeight と同じで、LODSystem の projectedHeight と一致する。
     if (ctx.smallObjectScreenHeight > 0.0f && ctx.cullProjScaleY > 0.0f && distance > 0.0f) {
-        // 平行投影は距離で縮まない。割ってしまうと、引きの大きい正投影カメラでは
-        // ほぼ全オブジェクトが「極小」と判定されて消える。
+        /// @note 平行投影は距離で縮まない。割ってしまうと、引きの大きい正投影カメラでは
+        /// @note ほぼ全オブジェクトが「極小」と判定されて消える。
         const float screenHeight = ctx.cullOrthographic
             ? bounds.radius * ctx.cullProjScaleY
             : bounds.radius * ctx.cullProjScaleY / distance;
@@ -646,8 +605,8 @@ bool TestBoundsVisible(RenderPassContext& ctx, const GameObject& go, const World
         }
     }
 
-    // ── フラスタムカリング ──
-    // 錐台未設定 (プローブキャプチャ等の派生コンテキスト) は「カリングしない」に倒す。
+    /// @name フラスタムカリング
+    /// @note 錐台未設定 (プローブキャプチャ等の派生コンテキスト) は「カリングしない」に倒す。
     if (ctx.frustumCullingEnabled && ctx.cameraFrustum &&
         !ctx.cameraFrustum->IntersectsSphere(bounds.center, bounds.radius)) {
         ++ctx.statsFrustumCulled;
@@ -674,7 +633,7 @@ bool IsSkinnedVisible(RenderPassContext& ctx,
                       const SkinnedMeshRenderer& smr)
 {
     WorldBounds bounds{};
-    // bounds を作れない (CPU 頂点未生成など) 場合は安全側に倒して描く。
+    /// @note bounds を作れない (CPU 頂点未生成など) 場合は安全側に倒して描く。
     if (!ComputeSkinnedWorldBounds(go, smr, bounds, ctx.cullingBoundsPadding))
         return true;
     return TestBoundsVisible(ctx, go, bounds);
@@ -704,7 +663,8 @@ ActiveWeather FindActiveWeather(Scene& scene)
         result.wetness      = std::clamp(weather->wetness, 0.0f, 1.0f);
         result.darkening    = std::clamp(weather->darkening, 0.0f, 1.0f);
         result.puddleAmount = std::clamp(weather->puddleAmount, 0.0f, 1.0f);
-        break; // シーンに 1 つ想定。環境風と同じ扱い
+        /// @note シーンに 1 つ想定。環境風と同じ扱い
+        break;
     }
     return result;
 }
@@ -712,11 +672,11 @@ ActiveWeather FindActiveWeather(Scene& scene)
 math::Vector3 ComputeCameraFacingRibbonNormal(
     const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point)
 {
-    // 帯の面をカメラへ向けるには、幅方向を「進行方向 × 視線方向」に取る。
+    /// @note 帯の面をカメラへ向けるには、幅方向を「進行方向 × 視線方向」に取る。
     math::Vector3 up = cameraPos - point;
     if (up.LengthSq() > math::EPSILON * math::EPSILON) up = up.Normalized();
     else up = math::Vector3::UP;
-    // 進行方向と視線がほぼ平行だと外積が退化して帯が消える。安定な軸へ逃がす。
+    /// @note 進行方向と視線がほぼ平行だと外積が退化して帯が消える。安定な軸へ逃がす。
     if (std::abs(math::Vector3::Dot(direction, up)) > 0.99f) up = math::Vector3::UP;
     if (std::abs(math::Vector3::Dot(direction, up)) > 0.99f) up = math::Vector3::RIGHT;
 
@@ -727,11 +687,11 @@ math::Vector3 ComputeCameraFacingRibbonNormal(
 
 bool IsEffectTextureSrgb(const std::string& texturePath)
 {
-    // 1x1 白フォールバックなど参照が無い場合。1.0 はどちらの空間でも 1.0 なので変換しない。
+    /// @note 1x1 白フォールバックなど参照が無い場合。1.0 はどちらの空間でも 1.0 なので変換しない。
     if (texturePath.empty()) return false;
 
-    // 毎フレーム呼ばれる経路 (Trail) があるため結果を持つ。.meta の更新時刻で無効化して、
-    // エディターで再インポートしたときに古い判定が残らないようにする。
+    /// @note 毎フレーム呼ばれる経路 (Trail) があるため結果を持つ。.meta の更新時刻で無効化して、
+    /// @note エディターで再インポートしたときに古い判定が残らないようにする。
     struct CachedSrgb {
         std::filesystem::file_time_type metaWriteTime{};
         bool srgb = true;
@@ -757,7 +717,7 @@ bool IsEffectTextureSrgb(const std::string& texturePath)
         cached.srgb = described.settings.srgb;
         return cached.srgb;
     }
-    // サイドカーが無い素材はインポーターと同じ推定に従う (色テクスチャ = sRGB)。
+    /// @note サイドカーが無い素材はインポーターと同じ推定に従う (色テクスチャ = sRGB)。
     const auto slash = sourcePath.find_last_of("/\\");
     const std::string filename =
         slash == std::string::npos ? sourcePath : sourcePath.substr(slash + 1);

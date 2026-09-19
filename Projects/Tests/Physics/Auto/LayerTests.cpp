@@ -13,7 +13,7 @@ namespace fbzz::tests {
 
 class LayerTest : public testkit::Fixture {};
 
-// --- マスク -----------------------------------------------------------------
+/// @name マスク
 
 TEST_F(LayerTest, MaskSetsExactlyTheBitForTheLayer)
 {
@@ -24,7 +24,7 @@ TEST_F(LayerTest, MaskSetsExactlyTheBitForTheLayer)
 
 TEST_F(LayerTest, MaskWrapsLayerIndicesIntoThe32BitRange)
 {
-    // 添字は 0-31。範囲外で未定義シフトにせず、丸めて必ずビットを 1 本返す。
+    /// @note 添字は 0-31。範囲外で未定義シフトにせず、丸めて必ずビットを 1 本返す。
     EXPECT_EQ(Layer::Mask(32), Layer::Mask(0));
     EXPECT_EQ(Layer::Mask(33), Layer::Mask(1));
 }
@@ -48,7 +48,7 @@ TEST_F(LayerTest, EverythingContainsAllLayersAndNothingContainsNone)
 
 TEST_F(LayerTest, BuiltInLayerIndicesAreDistinct)
 {
-    // 番号はシーンファイルに焼かれている。重複させると別レイヤーが混ざる。
+    /// @note 番号はシーンファイルに焼かれている。重複させると別レイヤーが混ざる。
     const LayerMask combined = Layer::Mask(Layer::Default) | Layer::Mask(Layer::TransparentFX)
                              | Layer::Mask(Layer::IgnoreRaycast) | Layer::Mask(Layer::Water)
                              | Layer::Mask(Layer::UI);
@@ -58,10 +58,11 @@ TEST_F(LayerTest, BuiltInLayerIndicesAreDistinct)
     EXPECT_TRUE(Layer::Contains(combined, Layer::IgnoreRaycast));
     EXPECT_TRUE(Layer::Contains(combined, Layer::Water));
     EXPECT_TRUE(Layer::Contains(combined, Layer::UI));
-    EXPECT_FALSE(Layer::Contains(combined, 3));   // 未使用の番号は含まれない
+    /// @note 未使用の番号は含まれない
+    EXPECT_FALSE(Layer::Contains(combined, 3));
 }
 
-// --- 衝突行列 ---------------------------------------------------------------
+/// @name 衝突行列
 
 TEST_F(LayerTest, EveryPairCollidesByDefault)
 {

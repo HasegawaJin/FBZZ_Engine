@@ -13,9 +13,9 @@
 namespace fbzz::editor {
 namespace {
 
-// 個人の作業状態を置くファイル。Library は .gitignore 済みなので、clone しても
-// 他人の視点位置・開いていたシーン・パネル配置が付いてこない (Unity の UserSettings/ 相当)。
-// projectRoot が空 (プロジェクト未確定) なら保存先を決められないので空文字列を返す。
+/// 個人の作業状態を置くファイル。Library は .gitignore 済みなので、clone しても
+/// 他人の視点位置・開いていたシーン・パネル配置が付いてこない (Unity の UserSettings/ 相当)。
+/// projectRoot が空 (プロジェクト未確定) なら保存先を決められないので空文字列を返す。
 std::string EditorLocalStatePath(const std::string& projectRoot)
 {
     if (projectRoot.empty()) return {};
@@ -24,13 +24,9 @@ std::string EditorLocalStatePath(const std::string& projectRoot)
     return root + "Library/EditorLocalState.toml";
 }
 
-// 共有設定を読んだテーブルの上へ、個人状態のセクションを被せる。
-//
-// WHY セクションごと差し替えるか: 読み出し側 (Load 本体) は tbl["scene"] のような
-//     参照を 250 行にわたって持つ。ファイルが 2 つに割れたことを読み出し側へ持ち込むと
-//     どちらを見るかの分岐が全行に生えるので、読む前に 1 つのテーブルへ合流させる。
-//     旧 editor_settings.toml に同じセクションが残っていても local 側が勝つため、
-//     移行はこの上書きだけで完了する。
+/// 共有設定を読んだテーブルの上へ、個人状態のセクションを被せる。
+/// @note セクションごと差し替える: Load 本体は `tbl["scene"]` のような参照を 250 行にわたって持つため、
+///       ファイル分割を読み出し側へ持ち込まず読む前に 1 つのテーブルへ合流させる。旧ファイルに同じセクションが残っていても local 側が勝つ。
 void OverlayEditorLocalState(const std::string& projectRoot, toml::table& tbl)
 {
     const std::string localPath = EditorLocalStatePath(projectRoot);
@@ -41,7 +37,7 @@ void OverlayEditorLocalState(const std::string& projectRoot, toml::table& tbl)
 
     auto result = toml::parse(text);
     if (!result) {
-        // 壊れていても復旧は要らない。次の保存で書き直され、失うのは作業状態だけ。
+        /// @note 壊れていても復旧は要らない。次の保存で書き直され、失うのは作業状態だけ。
         FBZZ_LOG_WARN("EditorSettings: parse failed: %s", localPath.c_str());
         return;
     }
@@ -54,7 +50,7 @@ void OverlayEditorLocalState(const std::string& projectRoot, toml::table& tbl)
     }
 }
 
-// 個人状態のセクションを Library/EditorLocalState.toml へ書き出す。
+/// 個人状態のセクションを Library/EditorLocalState.toml へ書き出す。
 bool SaveEditorLocalState(const std::string& projectRoot, toml::table&& localRoot)
 {
     const std::string localPath = EditorLocalStatePath(projectRoot);
@@ -81,7 +77,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
     std::string text;
     if (util::FileSystem::ReadText(path, text)) {
-        // TOML_EXCEPTIONS=0 なので parse_result で受ける
+        /// @note TOML_EXCEPTIONS=0 なので parse_result で受ける
         auto result = toml::parse(text);
         if (!result) {
             FBZZ_LOG_WARN("EditorSettings: parse failed: %s", path.c_str());
@@ -90,14 +86,14 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         tbl = std::move(result.table());
         sharedLoaded = true;
     }
-    // 共有設定がまだ無いプロジェクトでも読み出しは続ける。空テーブル相手なら
-    // 全項目が既定値のまま素通りし、個人状態と旧 BuildSettings.toml だけが拾われる。
+    /// @note 共有設定がまだ無いプロジェクトでも読み出しは続ける。空テーブル相手なら
+    ///       全項目が既定値のまま素通りし、個人状態と旧 BuildSettings.toml だけが拾われる。
 
-    // 個人状態を上書きで被せる。旧 editor_settings.toml に [camera] や [scene] が
-    // 残っていても local 側が勝つので、移行はこの 1 行で済む。
+    /// @note 個人状態を上書きで被せる。旧 editor_settings.toml に [camera] や [scene] が
+    ///       残っていても local 側が勝つので、移行はこの 1 行で済む。
     OverlayEditorLocalState(projectRoot, tbl);
 
-    // カメラ
+    /// @note カメラ
     if (auto v = tbl["camera"]["speed"].value<float>())        cameraSpeed        = *v;
     if (auto v = tbl["camera"]["sensitivity"].value<float>())  cameraSensitivity  = *v;
     if (auto v = tbl["camera"]["last_pos_x"].value<float>())   cameraLastPx       = *v;
@@ -110,59 +106,81 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["camera"]["orthographic"].value<bool>())  cameraOrthographic = *v;
     if (auto v = tbl["camera"]["ortho_height"].value<float>()) cameraOrthoHeight  = *v;
 
-    // ビュー
+    /// @note ビュー
     if (auto v = tbl["view"]["show_grid"].value<bool>())      showGrid      = *v;
     if (auto v = tbl["view"]["grid_size"].value<float>())     gridSize      = *v;
     if (auto v = tbl["view"]["show_light_range"].value<bool>()) showLightRange = *v;
     if (auto v = tbl["view"]["show_vfx_gizmos"].value<bool>()) showVFXGizmos = *v;
+    if (auto v = tbl["view"]["show_flow_fields"].value<bool>()) showFlowFields = *v;
+    else                                                         showFlowFields = showVFXGizmos;
+    if (auto v = tbl["view"]["show_flow_samples"].value<bool>())    showFlowSamples    = *v;
+    if (auto v = tbl["view"]["show_physics_volumes"].value<bool>()) showPhysicsVolumes = *v;
+    if (auto v = tbl["view"]["show_water_flow"].value<bool>())      showWaterFlow      = *v;
     if (auto v = tbl["view"]["show_ragdoll"].value<bool>()) showRagdoll = *v;
     if (auto v = tbl["view"]["show_skeleton"].value<bool>())  showSkeleton  = *v;
+    if (auto v = tbl["view"]["skeleton_selected_only"].value<bool>()) skeletonSelectedOnly = *v;
+    if (auto v = tbl["view"]["show_script_gizmos"].value<bool>())     showScriptGizmos     = *v;
+    if (auto v = tbl["view"]["show_constraints"].value<bool>())       showConstraints      = *v;
+    if (auto v = tbl["view"]["show_rigid_bodies"].value<bool>())      showRigidBodies      = *v;
+    if (auto v = tbl["view"]["show_ik"].value<bool>())                showIK               = *v;
+    if (auto v = tbl["view"]["show_spring_bones"].value<bool>())      showSpringBones      = *v;
+    if (auto v = tbl["view"]["show_attachments"].value<bool>())       showAttachments      = *v;
+    if (auto v = tbl["view"]["show_vfx_paths"].value<bool>())         showVFXPaths         = *v;
+    if (auto v = tbl["view"]["show_terrain_bounds"].value<bool>())    showTerrainBounds    = *v;
+    if (auto v = tbl["view"]["show_lod_bounds"].value<bool>())        showLODBounds        = *v;
+    if (auto v = tbl["view"]["show_scene_icons"].value<bool>()) showSceneIcons = *v;
+    hiddenSceneIcons.clear();
+    if (auto* arr = tbl["view"]["hidden_scene_icons"].as_array()) {
+        for (auto& elem : *arr)
+            if (auto v = elem.value<std::string>()) hiddenSceneIcons.push_back(*v);
+    }
     if (auto v = tbl["view"]["show_stats"].value<bool>())     showStats = *v;
     if (auto v = tbl["view"]["scene_view_occlusion_culling"].value<bool>())
         sceneViewOcclusionCulling = *v;
     if (auto v = tbl["view"]["surface_snap_align_to_normal"].value<bool>())
         surfaceSnapAlignToNormal = *v;
 
-    // スナップ
+    /// @note スナップ
     if (auto v = tbl["snap"]["enabled"].value<bool>())   snapEnabled = *v;
     if (auto v = tbl["snap"]["pos"].value<float>())      snapPos     = *v;
     if (auto v = tbl["snap"]["rot"].value<float>())      snapRot     = *v;
     if (auto v = tbl["snap"]["scale"].value<float>())    snapScale   = *v;
 
-    // ギズモ
+    /// @note ギズモ
     if (auto v = tbl["gizmo"]["mode"].value<int64_t>())       gizmoMode     = static_cast<int>(*v);
     if (auto v = tbl["gizmo"]["space"].value<int64_t>())      gizmoSpace    = static_cast<int>(*v);
     if (auto v = tbl["gizmo"]["pivot"].value<int64_t>())      gizmoPivot    = static_cast<int>(*v);
 
-    // ゲームビュー
+    /// @note ゲームビュー
     if (auto v = tbl["game_view"]["aspect"].value<int64_t>()) gameViewportAspect = static_cast<int>(*v);
     if (auto v = tbl["game_view"]["play_focus_mode"].value<int64_t>()) playFocusMode = static_cast<int>(*v);
 
-    // その他
+    /// @note その他
     if (auto v = tbl["misc"]["hot_reload"].value<bool>()) hotReloadEnabled = *v;
+    if (auto v = tbl["misc"]["hot_reload_sound"].value<bool>()) hotReloadSound = *v;
     if (auto v = tbl["misc"]["ai_command_bus"].value<bool>()) aiCommandBusEnabled = *v;
     if (auto v = tbl["misc"]["sweep_orphaned_baked"].value<bool>())
         sweepOrphanedBakedOnOpen = *v;
 
-    // ツールウィンドウ
+    /// @note ツールウィンドウ
     if (auto v = tbl["tools"]["show_terrain"].value<bool>()) showTerrainTool = *v;
 
-    // Map Mode フィルター
+    /// @note Map Mode フィルター
     if (auto v = tbl["map_mode"]["hierarchy_filter"].value<bool>()) mapHierarchyFilter = *v;
     if (auto v = tbl["map_mode"]["inspector_filter"].value<bool>()) mapInspectorFilter = *v;
     if (auto v = tbl["map_mode"]["active_tool"].value<int64_t>())   mapActiveTool = static_cast<int>(*v);
 
-    // Hierarchy
+    /// @note Hierarchy
     if (auto v = tbl["hierarchy"]["show_generated_objects"].value<bool>()) showGeneratedObjects = *v;
 
-    // TerrainTool ブラシ設定
+    /// @note TerrainTool ブラシ設定
     if (auto v = tbl["terrain_tool"]["brush_radius"].value<float>())    terrainBrushRadius   = *v;
     if (auto v = tbl["terrain_tool"]["brush_strength"].value<float>())  terrainBrushStrength = *v;
     if (auto v = tbl["terrain_tool"]["brush_falloff"].value<int64_t>()) terrainBrushFalloff  = static_cast<int>(*v);
     if (auto v = tbl["terrain_tool"]["sculpt_mode"].value<int64_t>())   terrainSculptMode    = static_cast<int>(*v);
     if (auto v = tbl["terrain_tool"]["paint_layer"].value<int64_t>())   terrainPaintLayer    = static_cast<uint32_t>(*v);
 
-    // Camera Bookmarks
+    /// @note Camera Bookmarks
     if (auto* arr = tbl["camera_bookmarks"].as_array()) {
         for (std::size_t i = 0; i < arr->size() && i < cameraBookmarks.size(); ++i) {
             auto* t = (*arr)[i].as_table();
@@ -179,7 +197,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         }
     }
 
-    // デフォルトインポート設定
+    /// @note デフォルトインポート設定
     if (auto v = tbl["import"]["source_dcc"].value<int64_t>())
         defaultImportOptions.sourceDcc = static_cast<fbzz::editor::FbxSourceDcc>(*v);
     if (auto v = tbl["import"]["up_axis"].value<int64_t>())
@@ -197,7 +215,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["import"]["default_compression"].value<int64_t>())
         defaultImportOptions.defaultCompression = static_cast<fbzz::asset::TextureCompression>(*v);
 
-    // ホットキーオーバーライド
+    /// @note ホットキーオーバーライド
     hotkeyOverrides.clear();
     if (auto* arr = tbl["hotkeys"]["overrides"].as_array()) {
         for (auto& elem : *arr) {
@@ -213,12 +231,12 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         }
     }
 
-    // UI
+    /// @note UI
     if (auto v = tbl["ui"]["language"].value<std::string>()) language = *v;
     if (auto v = tbl["ui"]["scale"].value<float>()) editorUiScale = *v;
     if (auto v = tbl["ui"]["multi_viewport"].value<bool>()) multiViewportEnabled = *v;
 
-    // 相対パスで保存されたパスを projectRoot と組み合わせて絶対パスへ戻すヘルパー。
+    /// @note 相対パスで保存されたパスを projectRoot と組み合わせて絶対パスへ戻すヘルパー。
     const auto toAbsProjectPath = [&projectRoot](std::string p) -> std::string {
         if (!projectRoot.empty() && !p.empty()) {
             std::filesystem::path fp = util::FileSystem::PathFromUtf8(p);
@@ -231,18 +249,16 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         return p;
     };
 
-    // Asset Browser
-    // 1 パネルぶんの状態を 1 つのテーブルから読む。旧形式 ([asset_browser] 直下の
-    // スカラー) も新形式 ([[asset_browser.panels]] の各要素) も同じ形なので共用する。
+    /// @note Asset Browser
+    ///       1 パネルぶんの状態を 1 つのテーブルから読む。旧形式 ([asset_browser] 直下の
+    ///       スカラー) も新形式 ([[asset_browser.panels]] の各要素) も同じ形なので共用する。
     const auto readPanelState = [](const auto& src, AssetBrowserPanelState& dst,
                                    const auto& toAbs) {
         if (auto v = src["icon_size"].template value<float>())    dst.iconSize  = *v;
         if (auto v = src["tree_width"].template value<float>())   dst.treeWidth = *v;
         if (auto v = src["view_mode"].template value<int64_t>())  dst.viewMode  = static_cast<int>(*v);
         if (auto v = src["sort_mode"].template value<int64_t>())  dst.sortMode  = static_cast<int>(*v);
-        // 新形式のマスクが無ければ、旧版が書いた単一 enum 値から組み立てる。
-        // WHY 名前を分けるか: if の条件変数のスコープは else 節まで伸びるため、
-        //     else if の初期化文で同じ名前を宣言すると再定義になる。
+        /// @note 新形式のマスクが無ければ、旧版が書いた単一 enum 値から組み立てる。名前を分けるのは if の条件変数のスコープが else 節まで伸びるため (同じ名前だと再定義になる)。
         if (auto mask = src["type_filter_mask"].template value<int64_t>())
             dst.typeFilterMask = static_cast<unsigned int>(*mask);
         else if (auto legacy = src["type_filter"].template value<int64_t>(); legacy && *legacy > 0)
@@ -262,7 +278,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
             assetBrowserPanels.push_back(std::move(state));
         }
     } else {
-        // 旧形式からの移行。1 枚目のパネルの状態として読み取る。
+        /// @note 旧形式からの移行。1 枚目のパネルの状態として読み取る。
         AssetBrowserPanelState state;
         readPanelState(tbl["asset_browser"], state, toAbsProjectPath);
         assetBrowserPanels.push_back(std::move(state));
@@ -292,7 +308,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
                 assetBrowserRecentFolderColors.push_back(static_cast<unsigned int>(*v));
     }
 
-    // Console
+    /// @note Console
     if (auto v = tbl["console"]["show_debug"].value<bool>())    consoleShowDebug   = *v;
     if (auto v = tbl["console"]["show_info"].value<bool>())     consoleShowInfo    = *v;
     if (auto v = tbl["console"]["show_warn"].value<bool>())     consoleShowWarn    = *v;
@@ -304,7 +320,41 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["console"]["detail_ratio"].value<double>())
         consoleDetailRatio = std::clamp(static_cast<float>(*v), 0.10f, 0.80f);
 
-    // パネル表示状態
+    /// @note Animation Preview
+    {
+        const auto& ap = tbl["animation_preview"];
+        if (auto v = ap["show_mesh"].value<bool>())        animPreviewShowMesh       = *v;
+        if (auto v = ap["show_bones"].value<bool>())       animPreviewShowBones      = *v;
+        if (auto v = ap["show_bone_names"].value<bool>())  animPreviewShowBoneNames  = *v;
+        if (auto v = ap["show_trail"].value<bool>())       animPreviewShowTrail      = *v;
+        if (auto v = ap["show_ghost"].value<bool>())       animPreviewShowGhost      = *v;
+        if (auto v = ap["show_info"].value<bool>())        animPreviewShowInfo       = *v;
+        if (auto v = ap["show_curves"].value<bool>())      animPreviewShowCurves     = *v;
+        if (auto v = ap["show_root_motion"].value<bool>()) animPreviewShowRootMotion = *v;
+        if (auto v = ap["label_mode"].value<int64_t>())
+            animPreviewLabelMode = std::clamp(static_cast<int>(*v), 0, 2);
+        if (auto v = ap["ghost_offset"].value<double>())
+            animPreviewGhostOffset = std::clamp(static_cast<float>(*v), 0.0f, 0.5f);
+        if (auto v = ap["loop"].value<bool>())             animPreviewLoop           = *v;
+        if (auto v = ap["speed"].value<double>())
+            animPreviewSpeed = std::clamp(static_cast<float>(*v), 0.05f, 4.0f);
+        if (auto v = ap["camera_yaw"].value<double>())
+            animPreviewCameraYaw = static_cast<float>(*v);
+        if (auto v = ap["camera_pitch"].value<double>())
+            animPreviewCameraPitch = std::clamp(static_cast<float>(*v), -1.35f, 1.35f);
+        if (auto v = ap["show_grid"].value<bool>())        animPreviewShowGrid       = *v;
+        if (auto v = ap["show_ground_ring"].value<bool>()) animPreviewShowGroundRing = *v;
+        if (auto v = ap["wireframe"].value<bool>())        animPreviewWireframe      = *v;
+        if (auto v = ap["show_axis_gizmo"].value<bool>())  animPreviewShowAxisGizmo  = *v;
+        if (auto v = ap["background"].value<int64_t>())
+            animPreviewBackground = std::clamp(static_cast<int>(*v), 0, 3);
+        if (auto v = ap["fov"].value<double>())
+            animPreviewFov = std::clamp(static_cast<float>(*v), 12.0f, 90.0f);
+        if (auto v = ap["light_yaw"].value<double>())
+            animPreviewLightYaw = static_cast<float>(*v);
+    }
+
+    /// @note パネル表示状態
     panelVisibility.clear();
     if (auto* arr = tbl["panels"]["visible"].as_array()) {
         for (auto& elem : *arr) {
@@ -317,7 +367,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         }
     }
 
-    // Debug メニュー - レンダリングオーバーレイ
+    /// @note Debug メニュー - レンダリングオーバーレイ
     if (auto v = tbl["debug"]["show_colliders"].value<bool>())         showColliders        = *v;
     if (auto v = tbl["debug"]["show_ui_rects"].value<bool>())          showUIRects          = *v;
     if (auto v = tbl["debug"]["show_terrain_collision"].value<bool>()) showTerrainCollision = *v;
@@ -328,7 +378,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["debug"]["navmesh_draw_distance"].value<double>()) navMeshDrawDistance = static_cast<float>(*v);
     if (auto v = tbl["debug"]["view_mode"].value<int64_t>())      viewMode = static_cast<int>(*v);
 
-    // Inspector セクション折り畳み状態
+    /// @note Inspector セクション折り畳み状態
     inspectorSectionState.clear();
     if (auto* arr = tbl["inspector_sections"]["states"].as_array()) {
         for (auto& elem : *arr) {
@@ -342,11 +392,11 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         }
     }
 
-    // シーン
+    /// @note シーン
     if (auto v = tbl["scene"]["last_path"].value<std::string>())
         lastScenePath = toAbsProjectPath(*v);
 
-    // 最近開いたシーン
+    /// @note 最近開いたシーン
     recentScenes.clear();
     if (auto* arr = tbl["scene"]["recent"].as_array()) {
         for (auto& elem : *arr)
@@ -354,26 +404,25 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
                 recentScenes.push_back(toAbsProjectPath(*v));
     }
 
-    // オートセーブ
+    /// @note オートセーブ
     if (auto v = tbl["autosave"]["enabled"].value<bool>())       autoSaveEnabled     = *v;
     if (auto v = tbl["autosave"]["interval_sec"].value<int64_t>()) autoSaveIntervalSec = static_cast<int>(*v);
     if (auto v = tbl["autosave"]["fluid_editor"].value<bool>())   fluidEditorAutoSave = *v;
     if (auto v = tbl["fluid_editor"]["follow_selection"].value<bool>()) fluidEditorFollowSelection = *v;
 
-    // 最近 Fluid Editor で開いた .fluid
+    /// @note 最近 Fluid Editor で開いた .fluid
     recentFluids.clear();
-    // WHY 節を分けるか: 履歴は個人の作業状態なので EditorLocalState.toml 側に置く。
-    //     OverlayEditorLocalState はセクション単位で差し替えるため、同じ [fluid_editor] を
-    //     両方のファイルに置くと local 側が共有側の follow_selection ごと隠してしまう。
+    /// @note 節を分ける: 履歴は個人の作業状態なので EditorLocalState.toml 側に置く。`OverlayEditorLocalState` はセクション単位で差し替えるため、
+    ///       同じ [fluid_editor] を両方のファイルに置くと local 側が共有側の follow_selection ごと隠してしまう。
     if (auto* arr = tbl["fluid_editor_state"]["recent"].as_array()) {
         for (auto& elem : *arr)
             if (auto v = elem.value<std::string>()) recentFluids.push_back(toAbsProjectPath(*v));
     }
-    // 手で書き足された / 古い形式で膨らんだファイルからでも件数は超えて持たない。
+    /// @note 手で書き足された / 古い形式で膨らんだファイルからでも件数は超えて持たない。
     if (recentFluids.size() > static_cast<std::size_t>(kMaxRecentFluids))
         recentFluids.resize(static_cast<std::size_t>(kMaxRecentFluids));
 
-    // Build Settings
+    /// @note Build Settings
     if (auto* buildTbl = tbl["build"].as_table()) {
         build.productName       = (*buildTbl)["product_name"].value_or(build.productName);
         build.version           = (*buildTbl)["version"].value_or(build.version);
@@ -394,7 +443,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
             }
         }
     } else {
-        // 旧 <projectRoot>/BuildSettings.toml を一度だけ引き継ぐ。
+        /// @note 旧 `<projectRoot>/BuildSettings.toml` を一度だけ引き継ぐ。
         BuildSettings::LoadLegacyFile(projectRoot, build);
     }
 
@@ -403,7 +452,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
 bool EditorSettings::Save(const std::string& path, const std::string& projectRoot) const
 {
-    // カメラ。これだけ書き出し先が Library/EditorLocalState.toml (git 管理外)。
+    /// @note カメラ。これだけ書き出し先が Library/EditorLocalState.toml (git 管理外)。
     toml::table camTbl;
     camTbl.insert("speed",       cameraSpeed);
     camTbl.insert("sensitivity", cameraSensitivity);
@@ -417,57 +466,78 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     camTbl.insert("orthographic", cameraOrthographic);
     camTbl.insert("ortho_height", cameraOrthoHeight);
 
-    // ビュー
+    /// @note ビュー
     toml::table viewTbl;
     viewTbl.insert("show_grid",        showGrid);
     viewTbl.insert("grid_size",        gridSize);
     viewTbl.insert("show_light_range", showLightRange);
     viewTbl.insert("show_vfx_gizmos", showVFXGizmos);
+    viewTbl.insert("show_flow_fields",     showFlowFields);
+    viewTbl.insert("show_flow_samples",    showFlowSamples);
+    viewTbl.insert("show_physics_volumes", showPhysicsVolumes);
+    viewTbl.insert("show_water_flow",      showWaterFlow);
     viewTbl.insert("show_ragdoll", showRagdoll);
     viewTbl.insert("show_skeleton",    showSkeleton);
+    viewTbl.insert("skeleton_selected_only", skeletonSelectedOnly);
+    viewTbl.insert("show_script_gizmos",     showScriptGizmos);
+    viewTbl.insert("show_constraints",       showConstraints);
+    viewTbl.insert("show_rigid_bodies",      showRigidBodies);
+    viewTbl.insert("show_ik",                showIK);
+    viewTbl.insert("show_spring_bones",      showSpringBones);
+    viewTbl.insert("show_attachments",       showAttachments);
+    viewTbl.insert("show_vfx_paths",         showVFXPaths);
+    viewTbl.insert("show_terrain_bounds",    showTerrainBounds);
+    viewTbl.insert("show_lod_bounds",        showLODBounds);
+    viewTbl.insert("show_scene_icons", showSceneIcons);
+    {
+        toml::array hiddenArr;
+        for (const auto& key : hiddenSceneIcons) hiddenArr.push_back(key);
+        viewTbl.insert("hidden_scene_icons", std::move(hiddenArr));
+    }
     viewTbl.insert("show_stats",       showStats);
     viewTbl.insert("scene_view_occlusion_culling", sceneViewOcclusionCulling);
     viewTbl.insert("surface_snap_align_to_normal", surfaceSnapAlignToNormal);
 
-    // スナップ
+    /// @note スナップ
     toml::table snapTbl;
     snapTbl.insert("enabled", snapEnabled);
     snapTbl.insert("pos",     snapPos);
     snapTbl.insert("rot",     snapRot);
     snapTbl.insert("scale",   snapScale);
 
-    // ギズモ
+    /// @note ギズモ
     toml::table gizmoTbl;
     gizmoTbl.insert("mode",  static_cast<int64_t>(gizmoMode));
     gizmoTbl.insert("space", static_cast<int64_t>(gizmoSpace));
     gizmoTbl.insert("pivot", static_cast<int64_t>(gizmoPivot));
 
-    // ゲームビュー
+    /// @note ゲームビュー
     toml::table gameViewTbl;
     gameViewTbl.insert("aspect", static_cast<int64_t>(gameViewportAspect));
     gameViewTbl.insert("play_focus_mode", static_cast<int64_t>(playFocusMode));
 
-    // その他
+    /// @note その他
     toml::table miscTbl;
     miscTbl.insert("hot_reload", hotReloadEnabled);
+    miscTbl.insert("hot_reload_sound", hotReloadSound);
     miscTbl.insert("ai_command_bus", aiCommandBusEnabled);
     miscTbl.insert("sweep_orphaned_baked", sweepOrphanedBakedOnOpen);
 
-    // ツールウィンドウ
+    /// @note ツールウィンドウ
     toml::table toolsTbl;
     toolsTbl.insert("show_terrain", showTerrainTool);
 
-    // Map Mode フィルター
+    /// @note Map Mode フィルター
     toml::table mapModeTbl;
     mapModeTbl.insert("hierarchy_filter", mapHierarchyFilter);
     mapModeTbl.insert("inspector_filter", mapInspectorFilter);
     mapModeTbl.insert("active_tool",      static_cast<int64_t>(mapActiveTool));
 
-    // Hierarchy
+    /// @note Hierarchy
     toml::table hierarchyTbl;
     hierarchyTbl.insert("show_generated_objects", showGeneratedObjects);
 
-    // TerrainTool ブラシ設定
+    /// @note TerrainTool ブラシ設定
     toml::table terrainToolTbl;
     terrainToolTbl.insert("brush_radius",   terrainBrushRadius);
     terrainToolTbl.insert("brush_strength", terrainBrushStrength);
@@ -475,7 +545,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     terrainToolTbl.insert("sculpt_mode",    static_cast<int64_t>(terrainSculptMode));
     terrainToolTbl.insert("paint_layer",    static_cast<int64_t>(terrainPaintLayer));
 
-    // Camera Bookmarks
+    /// @note Camera Bookmarks
     toml::array camBkArr;
     for (const auto& bk : cameraBookmarks) {
         toml::table t;
@@ -486,7 +556,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
         camBkArr.push_back(std::move(t));
     }
 
-    // 絶対パスを projectRoot 相対へ変換して保存する (プロジェクトを移動しても壊れない)。
+    /// @note 絶対パスを projectRoot 相対へ変換して保存する (プロジェクトを移動しても壊れない)。
     const auto toRelProjectPath = [&projectRoot](const std::string& p) -> std::string {
         if (!projectRoot.empty() && !p.empty()) {
             const std::filesystem::path rel = util::FileSystem::RelativePath(
@@ -498,7 +568,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
         return p;
     };
 
-    // Asset Browser
+    /// @note Asset Browser
     toml::table assetBrowserTbl;
     {
         toml::array panelArr;
@@ -538,7 +608,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
         assetBrowserTbl.insert("recent_folder_colors", std::move(recentArr));
     }
 
-    // Console
+    /// @note Console
     toml::table consoleTbl;
     consoleTbl.insert("show_debug",    consoleShowDebug);
     consoleTbl.insert("show_info",     consoleShowInfo);
@@ -550,7 +620,31 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     consoleTbl.insert("show_detail",   consoleShowDetail);
     consoleTbl.insert("detail_ratio",  static_cast<double>(consoleDetailRatio));
 
-    // パネル表示状態
+    /// @note Animation Preview
+    toml::table animPreviewTbl;
+    animPreviewTbl.insert("show_mesh",        animPreviewShowMesh);
+    animPreviewTbl.insert("show_bones",       animPreviewShowBones);
+    animPreviewTbl.insert("show_bone_names",  animPreviewShowBoneNames);
+    animPreviewTbl.insert("show_trail",       animPreviewShowTrail);
+    animPreviewTbl.insert("show_ghost",       animPreviewShowGhost);
+    animPreviewTbl.insert("show_info",        animPreviewShowInfo);
+    animPreviewTbl.insert("show_curves",      animPreviewShowCurves);
+    animPreviewTbl.insert("show_root_motion", animPreviewShowRootMotion);
+    animPreviewTbl.insert("label_mode",       static_cast<int64_t>(animPreviewLabelMode));
+    animPreviewTbl.insert("ghost_offset",     static_cast<double>(animPreviewGhostOffset));
+    animPreviewTbl.insert("loop",             animPreviewLoop);
+    animPreviewTbl.insert("speed",            static_cast<double>(animPreviewSpeed));
+    animPreviewTbl.insert("camera_yaw",       static_cast<double>(animPreviewCameraYaw));
+    animPreviewTbl.insert("camera_pitch",     static_cast<double>(animPreviewCameraPitch));
+    animPreviewTbl.insert("show_grid",        animPreviewShowGrid);
+    animPreviewTbl.insert("show_ground_ring", animPreviewShowGroundRing);
+    animPreviewTbl.insert("wireframe",        animPreviewWireframe);
+    animPreviewTbl.insert("show_axis_gizmo",  animPreviewShowAxisGizmo);
+    animPreviewTbl.insert("background",       static_cast<int64_t>(animPreviewBackground));
+    animPreviewTbl.insert("fov",              static_cast<double>(animPreviewFov));
+    animPreviewTbl.insert("light_yaw",        static_cast<double>(animPreviewLightYaw));
+
+    /// @note パネル表示状態
     toml::array panelArr;
     for (const auto& [name, open] : panelVisibility) {
         toml::table entry;
@@ -561,7 +655,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table panelsTbl;
     panelsTbl.insert("visible", std::move(panelArr));
 
-    // Inspector セクション折り畳み状態
+    /// @note Inspector セクション折り畳み状態
     toml::array statesArr;
     for (auto& [key, open] : inspectorSectionState) {
         toml::table entry;
@@ -572,7 +666,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table inspectorTbl;
     inspectorTbl.insert("states", std::move(statesArr));
 
-    // シーン
+    /// @note シーン
     toml::table sceneTbl;
     sceneTbl.insert("last_path", toRelProjectPath(lastScenePath));
     {
@@ -581,7 +675,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
         sceneTbl.insert("recent", std::move(recentArr));
     }
 
-    // オートセーブ
+    /// @note オートセーブ
     toml::table autosaveTbl;
     autosaveTbl.insert("enabled",      autoSaveEnabled);
     autosaveTbl.insert("interval_sec", static_cast<int64_t>(autoSaveIntervalSec));
@@ -590,8 +684,8 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table fluidEditorTbl;
     fluidEditorTbl.insert("follow_selection", fluidEditorFollowSelection);
 
-    // 履歴は個人の作業状態。共有ファイルへ置くと、同じプロジェクトを触る全員がこの行で衝突する
-    // (recentScenes が [scene] で local 側に居るのと同じ理由)。
+    /// @note 履歴は個人の作業状態。共有ファイルへ置くと、同じプロジェクトを触る全員がこの行で衝突する
+    ///       (recentScenes が [scene] で local 側に居るのと同じ理由)。
     toml::table fluidEditorStateTbl;
     {
         toml::array recentArr;
@@ -599,7 +693,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
         fluidEditorStateTbl.insert("recent", std::move(recentArr));
     }
 
-    // Debug メニュー - レンダリングオーバーレイ
+    /// @note Debug メニュー - レンダリングオーバーレイ
     toml::table debugTbl;
     debugTbl.insert("show_colliders",         showColliders);
     debugTbl.insert("show_ui_rects",          showUIRects);
@@ -611,7 +705,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     debugTbl.insert("navmesh_draw_distance",  static_cast<double>(navMeshDrawDistance));
     debugTbl.insert("view_mode", static_cast<int64_t>(viewMode));
 
-    // ホットキーオーバーライド
+    /// @note ホットキーオーバーライド
     toml::array ovArr;
     for (const auto& ov : hotkeyOverrides) {
         toml::table t;
@@ -625,7 +719,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table hkTbl;
     hkTbl.insert("overrides", std::move(ovArr));
 
-    // デフォルトインポート設定
+    /// @note デフォルトインポート設定
     toml::table importTbl;
     importTbl.insert("source_dcc",                static_cast<int64_t>(defaultImportOptions.sourceDcc));
     importTbl.insert("up_axis",                   static_cast<int64_t>(defaultImportOptions.upAxis));
@@ -636,7 +730,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     importTbl.insert("generate_tex_descriptors", defaultImportOptions.generateTexDescriptors);
     importTbl.insert("default_compression",      static_cast<int64_t>(defaultImportOptions.defaultCompression));
 
-    // Build Settings
+    /// @note Build Settings
     toml::table buildTbl;
     buildTbl.insert("product_name",        build.productName);
     buildTbl.insert("version",             build.version);
@@ -655,15 +749,15 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
         buildTbl.insert("scenes", std::move(scenesArr));
     }
 
-    // UI スケール
+    /// @note UI スケール
     toml::table uiTbl;
     uiTbl.insert("language", language);
     uiTbl.insert("scale", editorUiScale);
     uiTbl.insert("multi_viewport", multiViewportEnabled);
 
-    // ── 個人の作業状態 (Library/EditorLocalState.toml) ─────────────────────
-    // 「その人がどこで何を開いて作業していたか」しか入っていないセクション。
-    // 共有しても相手の役に立たず、触るたびに書き換わるので分けて置く。
+    /// @name 個人の作業状態 (Library/EditorLocalState.toml)
+    /// @note 「その人がどこで何を開いて作業していたか」しか入っていないセクション。
+    ///       共有しても相手の役に立たず、触るたびに書き換わるので分けて置く。
     toml::table localRoot;
     localRoot.insert("camera",             std::move(camTbl));
     localRoot.insert("camera_bookmarks",   std::move(camBkArr));
@@ -671,14 +765,15 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     localRoot.insert("asset_browser",      std::move(assetBrowserTbl));
     localRoot.insert("panels",             std::move(panelsTbl));
     localRoot.insert("console",            std::move(consoleTbl));
+    localRoot.insert("animation_preview",  std::move(animPreviewTbl));
     localRoot.insert("inspector_sections", std::move(inspectorTbl));
     localRoot.insert("fluid_editor_state", std::move(fluidEditorStateTbl));
 
-    // 個人状態は共有ファイルより先に片付ける。ここが失敗しても共有側の保存は続ける
-    // (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。
+    /// @note 個人状態は共有ファイルより先に片付ける。ここが失敗しても共有側の保存は続ける
+    ///       (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。
     (void)SaveEditorLocalState(projectRoot, std::move(localRoot));
 
-    // ── 共有設定 (Assets/EditorConfig/editor_settings.toml) ────────────────
+    /// @name 共有設定 (Assets/EditorConfig/editor_settings.toml)
     toml::table root;
     root.insert("ui",                 std::move(uiTbl));
     root.insert("view",               std::move(viewTbl));

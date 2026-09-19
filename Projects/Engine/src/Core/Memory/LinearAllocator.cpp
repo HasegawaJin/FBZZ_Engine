@@ -102,7 +102,7 @@ void* LinearAllocator::Allocate(std::size_t size, std::size_t alignment)
 
 void LinearAllocator::Free(void* ptr)
 {
-    // LinearAllocator は個別 Free を持たない。所有確認だけ行い、実際の再利用は Reset に集約する。
+    /// @note LinearAllocator は個別 Free を持たない。所有確認だけ行い、実際の再利用は Reset に集約する。
     assert(ptr == nullptr || Owns(ptr));
     (void)ptr;
 }

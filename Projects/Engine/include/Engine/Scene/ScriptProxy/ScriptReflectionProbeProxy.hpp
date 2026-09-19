@@ -19,15 +19,15 @@ struct ScriptReflectionProbeProxy {
     void SetEnabled(bool enabled) const;
     void SetIntensity(float intensity) const;
 
-    // 球影響半径 [m]。カメラがこの距離内に入るとプローブが適用される。
+    /// 球影響半径 [m]。カメラがこの距離内に入るとプローブが適用される。
     void SetInfluenceRadius(float radius) const;
 
-    // ボックス形状影響範囲に切り替える。
+    /// ボックス形状影響範囲に切り替える。
     void SetBoxInfluence(bool useBox) const;
-    // ボックス半径 [m] を設定する (SetBoxInfluence(true) と合わせて使う)。
+    /// ボックス半径 [m] を設定する (SetBoxInfluence(true) と合わせて使う)。
     void SetBoxExtents(const math::Vector3& halfExtents) const;
 
-    // 静的環境マップを差し替える (.dds)。
+    /// 静的環境マップを差し替える (.dds)。
     void SetCubemap(std::string_view path) const;
 
     [[nodiscard]] bool  IsEnabled() const;

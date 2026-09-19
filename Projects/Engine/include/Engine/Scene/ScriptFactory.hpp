@@ -31,17 +31,15 @@ public:
     static std::unique_ptr<Script> Create(const std::string& typeName);
     static std::vector<std::string> RegisteredTypeNames();
 
-    // DLL ホットリロード用: レジストリを全クリアする。
-    // WHY: スクリプト DLL をアンロードする前に呼び、古い型の factory (DLL へのポインタを含む)
-    //      が残らないようにする。DLL ロード時の静的初期化子が再登録する。
+    /// @brief DLL ホットリロード用: レジストリを全クリアする。
+    /// @note スクリプト DLL をアンロードする前に呼び、古い型の factory (DLL へのポインタを含む) が残らないようにする。DLL ロード時の静的初期化子が再登録する。
     static void UnregisterAll();
 };
 
 } // namespace fbzz::scene
 
-// スクリプト型を ScriptFactory に静的登録するマクロ。
-// WHY: main.cpp に RegisterXxxScripts() を置くと、スクリプト追加のたびに起動コードを触る必要がある。
-//      各ゲーム側 Translation Unit に登録を置くことで、Script の所有者が登録責務も持てる。
+/// @brief スクリプト型を ScriptFactory に静的登録するマクロ。
+/// @note main.cpp に RegisterXxxScripts() を置くとスクリプト追加のたびに起動コードを触る必要がある。各 Translation Unit に登録を置くことで Script の所有者が登録責務も持てる。
 #define FBZZ_SCRIPT_FACTORY_CONCAT_INNER(a, b) a##b
 #define FBZZ_SCRIPT_FACTORY_CONCAT(a, b) FBZZ_SCRIPT_FACTORY_CONCAT_INNER(a, b)
 #define FBZZ_REGISTER_SCRIPT(T) \

@@ -14,9 +14,9 @@
 
 namespace fbzz::editor {
 
-// ランタイム Scene へ混ぜない、Editor 上の Scene 状態。
-// WHY: Inspector の表示順はゲーム実行時のデータではなく、Editor の編集体験だけに属する。
-//      この型を Engine から分離することで、Standalone が Editor メタデータを読まずに済む。
+/// ランタイム Scene へ混ぜない、Editor 上の Scene 状態。
+/// @note Inspector の表示順は Editor の編集体験だけに属する。この型を Engine から分離することで、
+///       Standalone が Editor メタデータを読まずに済む。
 struct EditorSceneState {
     using ComponentOrder = std::vector<std::string>;
     using InstanceIds    = std::vector<std::string>;
@@ -28,10 +28,9 @@ struct EditorSceneState {
         lockedObjects.clear();
     }
 
-    // Hierarchy の非表示 (👁) / ロック (🔒) を付けた GameObject の instanceId。
-    // WHY EntityID ではなく instanceId か: EntityID はシーンを読み直すたびに振り直され、
-    //     しかも別シーンで同じ値が使われる。番号で覚えると、シーンを開き直した瞬間に
-    //     まったく別のオブジェクトがロックされ、「選べないのに理由が分からない」状態になる。
+    /// Hierarchy の非表示 (👁) / ロック (🔒) を付けた GameObject の instanceId。
+    /// @note EntityID はシーンを読み直すたびに振り直され、別シーンで同じ値も使われるため、
+    ///       番号で覚えると開き直した瞬間に別のオブジェクトがロックされる。
     const InstanceIds& GetHiddenObjects() const { return hiddenObjects; }
     void SetHiddenObjects(InstanceIds ids) { hiddenObjects = std::move(ids); }
     const InstanceIds& GetLockedObjects() const { return lockedObjects; }
@@ -53,11 +52,9 @@ struct EditorSceneState {
             order.emplace_back(componentKey);
     }
 
-    // draggedKey を targetKey の直前 / 直後へ差し込む。
-    //
-    // WHY insertAfter を受けるか (不具合修正): 以前は常に「直前へ挿入」だった。
-    //     どのカードへ落としても手前にしか入らないため、末尾のカードより後ろへは
-    //     何も動かせず、最後の Component が固定されて並び替え不能になっていた。
+    /// draggedKey を targetKey の直前 / 直後へ差し込む。
+    ///
+    /// @note insertAfter が無いと常に直前挿入になり、末尾のカードより後ろへ動かせなくなる。
     bool MoveComponentOrder(std::string_view instanceId,
                             std::string_view draggedKey,
                             std::string_view targetKey,
@@ -72,22 +69,20 @@ struct EditorSceneState {
         if (dragged == order.end()) return false;
 
         const std::string value = *dragged;
-        // 先に抜いてから挿入位置を引き直す。抜く前に求めた iterator は erase で無効になる。
+        /// @note 先に抜いてから挿入位置を引き直す。抜く前に求めた iterator は erase で無効になる。
         order.erase(dragged);
         auto target = std::find(order.begin(), order.end(), targetKey);
         if (target == order.end()) return false;
-        if (insertAfter) ++target;   // end() への ++ は起きない (target は必ず有効要素を指す)
+        /// @note end() への ++ は起きない (target は必ず有効要素を指す)
+        if (insertAfter) ++target;
         order.insert(target, value);
         return true;
     }
 
-    // 実際に描画された Component のキーだけを残す。
-    //
-    // WHY 要るか (不具合修正): EnsureComponentOrder は描画のたびにキーを追記する一方、
-    //     取り除く経路がどこにも無かった。Component を削除しても、リネームしても
-    //     古いキーが残り続け、そのまま .meta へ書き出されて増え続けていた。
-    //     残骸は並び順の途中に「存在しない席」を作るため、見た目の並びと
-    //     保存された並びが少しずつ食い違っていく原因にもなる。
+    /// 実際に描画された Component のキーだけを残す。
+    ///
+    /// @note EnsureComponentOrder は追記のみで削除経路を持たない。呼ばないと、削除/リネームされた
+    ///       古いキーが .meta へ書き出され続け、表示順と保存順が食い違っていく。
     void PruneComponentOrder(std::string_view instanceId,
                              const std::vector<std::string>& presentKeys)
     {

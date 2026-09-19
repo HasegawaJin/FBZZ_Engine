@@ -1,4 +1,6 @@
 blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
 double_sided = false
 mesh_type = 'surface'
 render_path = 'auto'

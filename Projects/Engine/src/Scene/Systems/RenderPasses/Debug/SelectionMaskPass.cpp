@@ -3,8 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "SelectionPasses.hpp"
+#include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
-#include "../Geometry/GeometryPasses.hpp"  // FindAnimator (親方向探索) を共用する
+/// @note `FindAnimator` (親方向探索) を共用する。
+#include "../Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -40,7 +42,7 @@ bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& 
 
 namespace {
 
-// ParticlePassと同じ規則でLocal座標をWorld座標へ移す。
+/// @note ParticlePass と同じ Local → World 変換を使う。
 math::Vector3 ParticleWorldPoint(const Transform& transform, const math::Vector3& localPoint)
 {
     const math::Vector3 scaled = {
@@ -56,14 +58,12 @@ math::Vector3 ParticleWorldVector(const Transform& transform, const math::Vector
     return transform.worldRotation * localVector;
 }
 
-// エミッター 1 個ぶんのマスク頂点を貸し出すプール。
-// WHY 共有バッファを使わないか: 複数のエミッターを同時選択すると Update → Submit が
-//     エミッターの数だけ並ぶ。DX12 では後の Update が先に記録した Draw の中身まで
-//     差し替えてしまう (詳細は DynamicBufferPool.hpp)。
+/// @brief エミッター 1 個ぶんのマスク頂点を貸し出すプール。
+/// @note 共有バッファを使わない理由: 複数エミッター同時選択で Update → Submit が並ぶと、DX12 では後の Update が先に記録した Draw の中身まで差し替えてしまう (詳細は `DynamicBufferPool.hpp`)。
 renderer::DynamicVertexBufferPool g_selectionMaskParticlePool;
 
-// 選択されたParticleEmitterの現在形状を、テクスチャAlpha込みでSelection Maskへ描く。
-// WHY: GameObjectのBounds矩形では炎・煙の透明部分まで囲まれ、Unity型のシルエット輪郭にならない。
+/// @brief 選択された ParticleEmitter の現在形状を、テクスチャ Alpha 込みで Selection Mask へ描く。
+/// @note GameObject の Bounds 矩形では炎・煙の透明部分まで囲まれ、Unity 型のシルエット輪郭にならない。
 void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderPassContext& ctx)
 {
     auto& h = ctx.handles;
@@ -168,7 +168,7 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
     ctx.renderer.Submit(draw, ctx.resources);
 }
 
-// GPU粒子はCPU側にparticles配列が無いため、StructuredBufferを直接読むMask VSで合成する。
+/// @note GPU 粒子は CPU 配列を持たないため StructuredBuffer を読む。
 void DrawGpuParticleSelectionMask(ParticleEmitter& emitter, RenderPassContext& ctx)
 {
     auto& h = ctx.handles;
@@ -237,19 +237,16 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
 
         if (h.selectionMaskSkinnedShader.IsValid()) {
             auto* smr = go.GetComponent<SkinnedMeshRenderer>();
-            // WHY: Animator はモデルルート側、SkinnedMeshRenderer はサブメッシュ子 GO に
-            //      分かれる構成が一般的。同一 GO だけを見ると Animator を見失い
-            //      bind pose CB へフォールバックしてアウトラインが T ポーズのまま止まる。
-            //      通常描画パスと同じ FindAnimator (親方向探索) で解決する。
+            /// @note Animator はモデルルート側、SkinnedMeshRenderer はサブメッシュ子 GO に分かれる構成が一般的。同一 GO だけを見ると Animator を見失い bind pose CB へフォールバックしてアウトラインが T ポーズのまま止まるため、通常描画パスと同じ FindAnimator (親方向探索) で解決する。
             auto* anim = FindAnimator(go);
     if (smr && smr->enabled && smr->lodVisible && smr->model) {
                 const auto skinCB = ResolveSkinningCB(
                     anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
                     smr->model, h.bindPoseSkinningCB);
 
-                // 通常描画パスと同じく、モデル全体のうち可視スロットの submesh だけを描く。
+                /// @note 通常描画パスと同じく、モデル全体のうち可視スロットの submesh だけを描く。
                 const auto* mat = go.GetComponent<MaterialComponent>();
-                // mi はローカルスロット番号 (submeshIndices 対応)。
+                /// @note mi はローカルスロット番号 (submeshIndices 対応)。
                 for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
                     renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                     if (!meshPtr) continue;
@@ -277,6 +274,7 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
         }
     }
 
+    ExecuteFiberSelectionMask(ctx);
     TerrainSelectionMaskSystem(ctx);
     WaterSelectionMaskSystem(ctx);
     if (ctx.appendUISelectionMask) ctx.appendUISelectionMask();
@@ -284,4 +282,19 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
+
+void SelectionMaskPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("HDR").Write("SelectionMask");
+}
+
+bool SelectionMaskPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.selectionOutlineEnabled;
+}
+
+void SelectionMaskPass::Execute(PassResources& resources, RenderPassContext& ctx)
+{
+    ExecuteSelectionMaskPass(resources, ctx);
+}
 } // namespace fbzz::scene

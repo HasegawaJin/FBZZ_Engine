@@ -9,7 +9,7 @@ namespace fbzz::testkit {
 math::Vector3 SupportSphere::Support(const void* shape, const math::Vector3& dir)
 {
     const auto& sphere = *static_cast<const SupportSphere*>(shape);
-    // 方向が退化した呼び出しは GJK の初期化で普通に起きる。止めずに任意の一点を返す。
+    /// @note 方向が退化した呼び出しは GJK の初期化で普通に起きる。止めずに任意の一点を返す。
     return sphere.center + dir.NormalizedOr(math::Vector3::RIGHT) * sphere.radius;
 }
 

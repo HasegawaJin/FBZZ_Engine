@@ -9,6 +9,9 @@
 #include <cstddef>
 #include <cstdint>
 
+/// @note INVALID_BINDLESS_INDEX の正本。
+#include "ITexture.hpp"
+
 namespace fbzz::renderer
 {
     class IBuffer
@@ -16,12 +19,17 @@ namespace fbzz::renderer
     public:
         virtual ~IBuffer() = default;
         
-        // CPU 側からデータを再書き込み (動的バッファ用)
+        /// @brief CPU 側からデータを再書き込み (動的バッファ用)。
         virtual void Update(const void* data, size_t sizeBytes) = 0;
 
         virtual size_t GetSize() const = 0;
-        // 頂点バッファのみ有効。インデックスバッファでは 0 を返す。
+        /// @brief 頂点バッファのみ有効。インデックスバッファでは 0 を返す。
         virtual std::uint32_t GetStride() const = 0;
+
+        /// @brief GPU 書き込み可能な頂点バッファ (コンピュートスキニングの出力) の UAV 添字。
+        /// @return 書き込み経路を持たないバッファは INVALID_BINDLESS_INDEX。
+        /// @see Docs/design/bindless.md
+        virtual std::uint32_t GetBindlessUavIndex() const { return INVALID_BINDLESS_INDEX; }
     };
 
 } // namespace fbzz::renderer

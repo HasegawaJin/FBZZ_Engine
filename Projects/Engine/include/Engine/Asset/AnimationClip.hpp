@@ -21,8 +21,8 @@ namespace fbzz::asset {
 
 enum class AnimInterp : uint8_t { Step = 0, Linear = 1, Cubic = 2 };
 
-// AnimationClip が書き換える値の型。
-// WHY: DLL 境界や Component 実装型を Clip に露出せず、型安全な Property Binding を構築する。
+/// @brief AnimationClip が書き換える値の型。
+/// @note DLL 境界や Component 実装型を Clip に露出せず、型安全な Property Binding を構築する。
 enum class AnimValueType : uint8_t {
     Float = 0,
     Vector2,
@@ -33,7 +33,7 @@ enum class AnimValueType : uint8_t {
     Bool
 };
 
-// Property Track の適用先。Component と Material は同じ値 Track を共有する。
+/// @brief Property Track の適用先。Component と Material は同じ値 Track を共有する。
 enum class AnimTargetType : uint8_t {
     ComponentProperty = 0,
     MaterialProperty,
@@ -78,7 +78,7 @@ struct Vector4Key {
 };
 
 struct NodeAnimationTrack {
-    // Animator 所有 GameObject からの相対 Path。
+    /// @brief Animator 所有 GameObject からの相対 Path。
     std::string               targetPath;
     std::string               nodeName;
     AnimInterp                interp = AnimInterp::Linear;
@@ -87,9 +87,8 @@ struct NodeAnimationTrack {
     std::vector<VectorKey>    scales;
 };
 
-// Component / Material / Morph を同じ時間軸から操作する型付き Track。
-// Component は componentType + propertyName、Material は materialSlot + propertyName、
-// Morph は meshIndex + propertyName（Morph 名）で一意に解決する。
+/// @brief Component / Material / Morph を同じ時間軸から操作する型付き Track。
+/// @note Component は componentType+propertyName、Material は materialSlot+propertyName、Morph は meshIndex+propertyName (Morph 名) で解決する。
 struct PropertyAnimationTrack {
     AnimTargetType targetType = AnimTargetType::ComponentProperty;
     AnimValueType  valueType = AnimValueType::Float;
@@ -107,7 +106,7 @@ struct PropertyAnimationTrack {
     std::vector<BoolKey>    boolKeys;
 };
 
-// .anim ファイル内に埋め込まれたアニメーションイベント
+/// @brief .anim ファイル内に埋め込まれたアニメーションイベント。
 struct AnimEvent {
     double      time       = 0.0;
     std::string name;
@@ -117,52 +116,46 @@ struct AnimEvent {
 
 struct AnimationClip {
     std::string name;
-    // durationSeconds: .anim v3 の正規化済み再生長。AnimatorSystem はこの値だけを遷移時間に使う。
+    /// @brief .anim v3 の正規化済み再生長。AnimatorSystem はこの値だけを遷移時間に使う。
     double durationSeconds = 0.0;
-    // durationTicks / ticksPerSecond はキー時刻を tick 空間でサンプリングするための補助値。
-    // WHY: key.time は exporter 元の tick 単位を保持するため、秒→tick 変換係数が必要になる。
+    /// @brief キー時刻を tick 空間でサンプリングするための補助値 (durationTicks / ticksPerSecond の組)。
+    /// @note key.time は exporter 元の tick 単位を保持するため、秒→tick 変換係数として必要。
     double durationTicks  = 0.0;
     double ticksPerSecond = 30.0;
     float  frameRate       = 30.0f;
     bool   loop            = false;
     bool   hasRootMotion   = false;
     uint32_t rootMotionTrackIndex = UINT32_MAX;
-    // Root Motion の水平移動、高さ、回転を個別に適用できる。
+    /// @brief Root Motion の水平移動・高さ・回転を個別に適用できる。
     bool rootMotionApplyXZ = true;
     bool rootMotionApplyY = false;
     bool rootMotionApplyRotation = true;
-    // インポート時に採用したルートモーションノード名。空なら未指定 (インデックスのみ)。
-    // WHY: トラック配列を組み替えても人が読める形で追跡でき、Inspector にも提示できる。
-    //      ランタイム側の名前指定オーバーライドと突き合わせるための基準値でもある。
+    /// @brief インポート時に採用したルートモーションノード名。空なら未指定 (インデックスのみ)。
+    /// @note トラック配列の組み替えに強い追跡キー。Inspector 提示とランタイムの名前指定オーバーライド突き合わせに使う。
     std::string rootMotionNodeName;
 
     std::vector<NodeAnimationTrack> tracks;
     std::vector<PropertyAnimationTrack> propertyTracks;
     std::vector<AnimEvent>          events;
 
-    // Import 時の最適化結果。ランタイムでは展開済み Key を二分探索して評価する。
+    /// @brief Import 時の最適化結果。ランタイムでは展開済み Key を二分探索して評価する (以下 4 フィールドが一群)。
     bool optimized = false;
     float positionError = 0.0001f;
     float rotationErrorDegrees = 0.05f;
     float scaleError = 0.0001f;
 
-    // AnimatorSystem 用: 最新仕様の正規化済み再生秒数を返す。
+    /// @brief 最新仕様の正規化済み再生秒数を返す。
     double GetDurationSeconds() const {
         return durationSeconds;
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ルートモーションノード名の解決
-//
-// WHY: 以前はエクスポーターが "rootmotion" / "root_motion" の完全一致だけを見ており、
-//      Mixamo (mixamorig:Hips) や Blender (Armature/Hips) など実際に流通している
-//      命名では 1 件もヒットしなかった。判定を「候補リスト + 段階付け」に置き換え、
-//      インポーター (Editor) とランタイム (Engine) で同じ規則を共有する。
-// ─────────────────────────────────────────────────────────────────────────────
+/// @name ルートモーションノード名の解決
+/// @note 候補リスト + 段階付けで判定する。Editor インポーターと Engine ランタイムで同じ規則を共有する。
+/// @{
 
-// FBX チャンネル名の揺れ (namespace / パス区切り / Assimp の補助ノード suffix) を吸収する。
-// 例: "Armature|mixamorig:Hips_$AssimpFbx$_Translation" → "Hips"
+/// @brief FBX チャンネル名の揺れ (namespace・パス区切り・Assimp の補助ノード suffix) を吸収する。
+/// @note 例: `"Armature|mixamorig:Hips_$AssimpFbx$_Translation"` → `"Hips"`。
 inline std::string CanonicalNodeName(std::string_view rawName)
 {
     std::string name(rawName);
@@ -181,8 +174,8 @@ inline std::string CanonicalNodeName(std::string_view rawName)
     return name;
 }
 
-// CanonicalNodeName の結果を小文字化し、区切り記号を除いた比較用キーを返す。
-// "Root_Motion" / "root motion" / "RootMotion" を同一視するために使う。
+/// @brief CanonicalNodeName の結果を小文字化し、区切り記号を除いた比較用キーを返す。
+/// @note `"Root_Motion"` / `"root motion"` / `"RootMotion"` を同一視するために使う。
 inline std::string RootMotionNameKey(std::string_view rawName)
 {
     std::string name = CanonicalNodeName(rawName);
@@ -196,12 +189,12 @@ inline std::string RootMotionNameKey(std::string_view rawName)
     return key;
 }
 
-// ルートモーション候補としての確度。数値が大きいほど確実。
+/// @brief ルートモーション候補としての確度。数値が大きいほど確実。
 enum class RootMotionNameTier : int {
     None     = 0,
-    // 「ルートモーション専用ノード」を意味することが明確な名前。
+    /// 専用ノードであることが明確な名前。
     Explicit = 2,
-    // スケルトンのルート相当としてよく使われる名前。自動検出でのみ採用する。
+    /// スケルトンのルート相当としてよく使われる名前。自動検出でのみ採用する。
     Skeletal = 1,
 };
 
@@ -210,14 +203,14 @@ inline RootMotionNameTier ClassifyRootMotionNodeName(std::string_view rawName)
     const std::string key = RootMotionNameKey(rawName);
     if (key.empty()) return RootMotionNameTier::None;
 
-    // 専用ノード。DCC 側で明示的に用意されたもの。
+    /// 専用ノード。DCC 側で明示的に用意されたもの。
     static constexpr std::string_view explicitNames[] = {
         "rootmotion", "motionroot", "rootmotionnode", "fbzzrootmotion", "trajectory",
     };
     for (const auto& candidate : explicitNames)
         if (key == candidate) return RootMotionNameTier::Explicit;
 
-    // スケルトンのルート相当。Mixamo / Blender / 3ds Max Biped / UE の一般的な命名。
+    /// スケルトンのルート相当。Mixamo / Blender / 3ds Max Biped / UE の一般的な命名。
     static constexpr std::string_view skeletalNames[] = {
         "root", "reference", "armature", "skeleton", "cog",
         "hips", "hip", "pelvis", "bip01", "bip001", "bip01pelvis",
@@ -228,8 +221,8 @@ inline RootMotionNameTier ClassifyRootMotionNodeName(std::string_view rawName)
     return RootMotionNameTier::None;
 }
 
-// 名前を明示指定してトラックを引く。完全一致 → 正規化一致の順に探す。
-// 見つからなければ UINT32_MAX。
+/// @brief 名前を明示指定してトラックを引く。完全一致 → 正規化一致の順に探す。
+/// @return 見つからなければ UINT32_MAX。
 inline uint32_t FindRootMotionTrackIndexByName(const AnimationClip& clip,
                                                std::string_view nodeName)
 {
@@ -244,9 +237,9 @@ inline uint32_t FindRootMotionTrackIndexByName(const AnimationClip& clip,
     return UINT32_MAX;
 }
 
-// クリップ内から最も確度の高いルートモーショントラックを推定する。
-// skeletonRootName に骨階層のルートノード名を渡すと、候補名に一致しない独自命名の
-// リグでもルートを拾える。allowSkeletalTier=false のときは専用ノードのみを採用する。
+/// @brief クリップ内から最も確度の高いルートモーショントラックを推定する。
+/// @param skeletonRootName 骨階層のルートノード名。候補名に一致しない独自命名のリグでもこれで拾える。
+/// @param allowSkeletalTier false なら専用ノード (Explicit) のみを採用する。
 inline uint32_t AutoDetectRootMotionTrackIndex(const AnimationClip& clip,
                                                std::string_view skeletonRootName = {},
                                                bool allowSkeletalTier = true)
@@ -263,11 +256,13 @@ inline uint32_t AutoDetectRootMotionTrackIndex(const AnimationClip& clip,
     }
     if (best != UINT32_MAX) return best;
 
-    // 候補名に当たらないリグは、スケルトンのルートノードと同名のトラックを採用する。
+    /// @note 候補名に当たらないリグは、スケルトンのルートノードと同名のトラックを採用する。
     if (allowSkeletalTier && !skeletonRootName.empty())
         return FindRootMotionTrackIndexByName(clip, skeletonRootName);
 
     return UINT32_MAX;
 }
+
+/// @}
 
 } // namespace fbzz::asset

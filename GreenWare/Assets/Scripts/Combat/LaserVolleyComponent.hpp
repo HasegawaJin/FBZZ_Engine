@@ -3,31 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
 ///
-/// WHY 撃つ手 (AI) と «線» を分けるか:
-///   柱は同時に 4 本立ち、槍は 1 本。どちらも «溜めて → 撃つ → 消す» の同じ時間割で、
-///   違うのは端点と .mat だけになる。AI 側へ書くと同じ 3 段の管理が 2 つ並び、
-///   片方だけ «消し忘れる» 経路ができる。ここは «何本かの線分を、いつからいつまで、
-///   どれだけの太さで» だけを持つ。
-///
-/// WHY 当たりも持つか:
-///   避けられたかどうかが絵と一致していなければ «避ける手» にならない。端点を
-///   1 か所で決めて、そこから «描く» と «測る» の両方を出す (BossBeam と同じ判断)。
-///
-/// WHY 見た目を BeamLook へ預けるか (2026-09-06):
-///   ボスの薙ぎは 3 本の線を同時に出すが、中央はコアビーム (BossBeamComponent) で
-///   左右はここ。以前は «筒 + 裾 + 放電 + 着弾光» と «板 1 枚» という別々の描き方で、
-///   同じ 1 回の攻撃なのに中央だけが別の武器に見えていた。断面・流れ・放電の正本を
-///   beamlook へ寄せ、層の組み立てもコアビームと同じ «芯 + 裾 + 放電 + 光» に揃える。
-///   以後、線の質を触るのは BeamLook.hpp 1 か所になる。
-///
-/// WHY 溜めを «太さ» で見せるか:
-///   針が一瞬で本径へ太る、が予兆として一番読みやすい。太さはシェーダーではなく
-///   帯の実寸で作る ─ 筒は輪郭を実体が持つので、細い針は本当に細い筒でなければ
-///   «細く見える» にならない。
-///
-/// WHY 帯を蛇の子にしないか:
-///   LineRenderer の World 空間は、渡したワールド点を所有 GameObject のローカルへ
-///   引き戻してからメッシュにする。動く胴の子に付けると、その変換ぶんだけ端点がずれる。
+/// @note 撃つ手 (AI) と線を分ける: 柱 (4 本同時) と槍 (1 本) は「溜めて→撃つ→消す」の同じ
+///       3 段管理を共有し、当たりも同じ端点から出す (避けたかどうかは絵と一致必須)。
+/// @note 見た目は BeamLook.hpp に一本化 (2026-09-06): 以前は中央 (BossBeamComponent) と
+///       左右で描き方が別で、同じ攻撃なのに質が食い違っていた。線の質を触るのはここ 1 箇所。
+/// @note 溜めは太さの実寸で見せる (シェーダーでなく帯の実寸: 筒は輪郭を実体が持つため)。
+/// @note 帯を蛇の子にしない: LineRenderer の World 空間はワールド点を所有 GameObject の
+///       ローカルへ引き戻すため、動く胴の子に付けると端点がずれる。
 #pragma once
 #include <Math/Segment.hpp>
 
@@ -95,9 +77,8 @@ public:
     FBZZ_FIELD_RANGE(float, hitRadius, 0.95f, "半径", 0.1f, 5.0f)
     FBZZ_TOOLTIP("線の芯からこの距離まで当たる。帯幅の半分より少し小さくすること ─ "
                  "見えている縁で当たると «掠っただけ» が全部当たりになる")
-    // WHY 2 から 1 へ (2026-09-06): 扇は逃げる方向そのものを塞ぐ手で、隙間を読み違えた
-    //     ぶんの罰としては 5 分の 2 が重すぎた。読んで避ける手 (踏みつけ・突進・着地) が
-    //     2 で、塞ぐ手が 1 という並びにする。
+    /// @note 2 から 1 へ (2026-09-06): 扇は逃げ道そのものを塞ぐ手で、5 分の 2 は罰が重すぎた。
+    ///       読んで避ける手 (踏みつけ・突進・着地) を 2、塞ぐ手を 1 という並びにする。
     FBZZ_FIELD_RANGE_INT(int, damage, 1, "ダメージ", 0, 100)
     FBZZ_TOOLTIP("プレイヤーの体力は 5。柱に囲まれても 1 本ぶんしか入らない")
 
@@ -105,8 +86,8 @@ public:
     FBZZ_FIELD_COLOR(columnColor, (Vector4{ 1.00f, 0.62f, 0.18f, 1.0f }), "Column")
     FBZZ_TOOLTIP("開口の縁と同じ琥珀。極の赤青を使うと «帯電している» と読み違える")
     FBZZ_FIELD_COLOR(lanceColor, (Vector4{ 1.00f, 0.78f, 0.34f, 1.0f }), "Lance")
-    // WHY コアビームと同じ .mat を既定にするか: 同じ攻撃から出る線なので «質» は 1 つ。
-    //     別の .mat を差せるようにはしてあるが、差した時点で «中央だけ違う線» が戻る。
+    /// @note コアビームと同じ .mat を既定にする: 同じ攻撃から出る線は質を 1 つに揃えるため。
+    ///       別 .mat も差せるが、差した時点で「中央だけ違う線」に戻る。
     FBZZ_FIELD_FILE(columnMaterial, "Assets/Materials/Effects/FX_BOSS_Beam.mat",
                     "Column Material", ".mat")
     FBZZ_FIELD_FILE(lanceMaterial, "Assets/Materials/Effects/FX_BOSS_Beam.mat",
@@ -119,16 +100,15 @@ public:
     FBZZ_FIELD_RANGE(float, needleWidth, 0.14f, "Needle", 0.02f, 1.0f)
     FBZZ_TOOLTIP("溜め始めの太さを本径の何割にするか。予兆の «針» の細さそのもの")
 
-    // 放電はコアビームと同じ 2 系統 (線に沿う筋 / 端で散る筋)。これが無い線は
-    // 輪郭が硬いままで、隣に本物の放電が付いた線が並ぶと «描き込みが足りない» に見える。
+    /// 放電はコアビームと同じ 2 系統 (線に沿う筋 / 端で散る筋)。これが無い線は
+    /// 輪郭が硬いままで、隣に本物の放電が付いた線が並ぶと «描き込みが足りない» に見える。
     FBZZ_GROUP("Arcs")
     FBZZ_FIELD_RANGE_INT(int, beamArcs, 2, "ビームに沿って", 0, 6)
     FBZZ_TOOLTIP("1 本の筒の外側を這う束の数。筒だけだと表面が硬いので、輪郭を崩す役")
     FBZZ_FIELD_RANGE_INT(int, tipArcs, 2, "At Tip", 0, 6)
     FBZZ_TOOLTIP("線の «出口» (柱は床、槍と扇は先端) で散る束の数")
-    // WHY 全体の上限を別に持つか: 扇は 1 度に 6 本撃つ。1 本あたりの本数だけで決めると、
-    //     «2 本のときに丁度いい» 設定が 6 本のとき 3 倍の筋を生む。上限を本数で割って
-    //     配れば、どの撃ち方でも «線どうしは互いに同じ» を保ったまま総量だけが収まる。
+    /// @note 全体の上限を別に持つ理由: 1 本あたりの本数だけで決めると、扇 (6 本) では
+    ///       2 本用の設定が 3 倍の筋を生む。上限を本数で割って配れば総量だけが収まる。
     FBZZ_FIELD_RANGE_INT(int, arcBudget, 14, "Bundle Budget", 0, 64)
     FBZZ_TOOLTIP("斉射全体で走らせる束の上限。本数で割って 1 本ぶんへ配る")
     FBZZ_FIELD_RANGE_INT(int, arcStrands, 2, "筋の数", 1, 6)
@@ -161,9 +141,8 @@ public:
     void ClearGroundFire();
     /// 1 点から放射状に扇を撃つ。水平面へ count 本、位相 phaseDegrees からの等間隔。
     ///
-    /// WHY 向きの配列ではなく «本数と位相» で受けるか: 等間隔でないと «隙間がどこか» を
-    ///     読ませられない。任意の向きを渡せる口にすると、撃つ側が毎回等間隔を組む
-    ///     ことになり、そこがずれた盤面は «避けられない扇» になる。
+    /// @note 向きの配列でなく「本数と位相」で受ける理由: 等間隔でないと隙間の位置を読ませ
+    ///       られない。任意の向きを渡せると撃つ側の組み方がずれ「避けられない扇」になりうる。
     void FireFan(const Vector3& origin, int count, float length, float phaseDegrees,
                  float heightAboveOrigin = 0.0f);
     /// 1 点から地面上へ放射する。Core から床へ刺すレーザー用。
@@ -171,24 +150,15 @@ public:
                        float groundY);
     /// 1 点から、渡された向きへ 1 本ずつ撃つ。等間隔でない «並び» を撃つのはこちら。
     ///
-    /// WHY 扇 (FireFan) と分けるか: あちらは «全周を等間隔で塞ぐ» 手で、隙間の位置は
-    ///     本数と位相だけで決まる。こちらは «狙った向きの周りに何本か» を並べる手で、
-    ///     隙間の幅は撃つ側が決める。同じ口にすると «等間隔とは限らない扇» が書けて
-    ///     しまい、避けられない並びを作れる余地が残る。
-    /// WHY 向きの配列で受けるか: 撃った瞬間に端点が決まる (Shot が持つ) ので、
-    ///     以後どれだけボスが回っても線は動かない ─ «固定» はここで保証される。
+    /// @note FireFan と分ける理由: あちらは全周を等間隔で塞ぐ手 (隙間は本数と位相だけで
+    ///       決まる)。こちらは狙った向きの周りへ任意の並びを撃つ手で、同じ口にすると
+    ///       避けられない不等間隔の扇が書けてしまう。向きの配列で受けるのは、撃った瞬間に
+    ///       端点が決まり以後ボスが回っても線が動かない「固定」を保証するため。
     void FireRays(const Vector3& origin, const std::vector<Vector3>& directions,
                   float length, float heightAboveOrigin = 0.0f);
     /// 撃った後も狙点を差し替える。FireRays で撃った線«だけ» が動く。
-    ///
-    /// WHY «固定» の例外を開けるか (2026-09-11):
-    ///     薙ぎの中央 (コアビーム) は撃っている間に終端を持ち上げて、床を焼く線から
-    ///     胴を薙ぐ高さへ振り上がる。左右をここで固定したままにすると、中央だけが
-    ///     上がって左右は床に貼り付き、3 本が同じ 1 回の攻撃に見えなくなる。
-    ///
-    /// WHY それでも «避けられる» か: 動くのは高さだけで、水平の向きは撃った瞬間の
-    ///     まま。逃げ道の «位置» は変わらないので、読んで入った隙間は最後まで隙間。
-    ///
+    /// @note 「固定」の例外 (2026-09-11): 中央 (コアビーム) は照射中に終端を持ち上げるため
+    ///       左右も高さだけ動かす。水平の向きは撃った瞬間のまま変えないため避けられる。
     /// @param origin  口 (ワールド)。中央と同じ穴から出すためのもの。
     /// @param aimBase 狙点の起点 (ボスの足元)。ここから向き × reach、さらに lift だけ上。
     /// @param reach   狙点までの水平距離 [m]。
@@ -199,13 +169,10 @@ public:
 
     /// この 1 射のあいだ、線の質を丸ごと外から借りる。毎フレーム押し直すこと。
     ///
-    /// WHY 1 射ぶんの上書きにするか: 借りるのは «同じ攻撃の一部として撃たれた» 線
-    ///     だけで、扇や柱は自分の色と太さで撃つ。フィールドを書き換えると、誰も
-    ///     設定していない値が次の斉射へ残る (OverrideTiming と同じ判断)。
-    ///
-    /// WHY 毎フレーム押すのか、撃ち始めの 1 回では駄目か: 質は点火で毎フレーム
-    ///     変わる。撃ち始めの値を握ると、左右だけが «点火した瞬間の太さ» のまま
-    ///     照射の最後まで固まる。
+    /// @note 1 射ぶんの上書きにする理由: 借りるのは同じ攻撃の一部として撃たれた線だけで、
+    ///       フィールドを書き換えると誰も設定していない値が次の斉射へ残る (OverrideTiming と
+    ///       同じ判断)。毎フレーム押し直す理由: 質は点火で毎フレーム変わり、撃ち始めの
+    ///       値を握ると左右が点火時の太さのまま最後まで固まる。
     void AdoptLook(const beamlook::Look& look)
     {
         m_adopted    = look;
@@ -214,11 +181,9 @@ public:
 
     /// 次の 1 射だけ時間割を差し替える。撃つ側の時計と «同じ瞬間» を作りたいときに使う。
     ///
-    /// WHY 1 射だけか: ボスの薙ぎは 3 本のうち中央がコアビームで、そちらの時計は
-    ///     Tempo で割られる。斉射の時計は実時間なので、Inspector の値のままだと
-    ///     左右だけが先に本径へ太り、«まだ細い中央» の左右に完成した壁が立つ。
-    ///     かといってフィールドを恒久的に書き換えると、次に撃った扇や柱まで
-    ///     «薙ぎの尺» を引き継ぐ ─ 誰も設定していない値が盤面に残る。
+    /// @note 1 射だけにする理由: 中央 (コアビーム) の時計は Tempo で割られるが斉射は実時間
+    ///       のため、Inspector 値のままだと左右が先に太る。恒久的に書き換えると次の
+    ///       扇や柱まで薙ぎの尺を引き継いでしまう。
     void OverrideTiming(float charge, float fire)
     {
         m_chargeOverride = Max(charge, 0.05f);
@@ -243,8 +208,8 @@ private:
 
     /// 1 本ぶん。端点は撃った瞬間に決まり、以後は動かない (避けられる形にする)。
     ///
-    /// WHY 層と放電を線ごとに持つか: 扇は 1 度に 6 本走る。系統ごとにまとめて持つと
-    ///     «何番目の線の筋か» が添字の対応でしか分からず、本数が変わった回に取り違える。
+    /// @note 層と放電を線ごとに持つ理由: 系統ごとにまとめると「何番目の線の筋か」が添字の
+    ///       対応でしか分からず、本数が変わった回に取り違える。
     struct Shot {
         Vector3   from{};
         Vector3   to{};
@@ -287,8 +252,8 @@ private:
                    float dt);
     /// 線の «真ん中» に点光源を置く。無ければ作り、消すときは消灯する。
     ///
-    /// WHY 端ではなく中点か: 扇は全部の線が同じ 1 点から出るので、根元へ置くと
-    ///     6 個の光が同じ場所で重なって白く飛ぶ。中点なら線ごとに散る。
+    /// @note 端でなく中点にする理由: 扇は全部の線が同じ 1 点から出るため、根元だと
+    ///       6 個の光が重なって白く飛ぶ。中点なら線ごとに散る。
     void DriveLight(Shot& shot, int index, const beamlook::Look& look, bool lit);
     void TickHits();
     /// 点から線分までの距離。
@@ -320,9 +285,8 @@ private:
     bool           m_hasAdopted = false;
     /// 溜めの拍と回避窓。床のデカールと同じ型を通す (BossTelegraph.hpp)。
     ///
-    /// WHY 線にも要るか: 線は床へ絵を置かないので、予兆は «針から本径へ» の太さ
-    ///     だけが持っていた。しかもその太りは 3 乗なので溜めの 8 割は針のまま ─
-    ///     «いつ撃たれるか» の手掛かりが最後の一瞬にしか無かった。
+    /// @note 線にも要る理由: 線は床へ絵を置かないため予兆は太さ (3 乗カーブ) だけが持ち、
+    ///       溜めの 8 割は針のままで「いつ撃たれるか」の手掛かりが最後の一瞬にしか無かった。
     BossTelegraphCue m_cue;
 };
 
@@ -342,7 +306,7 @@ inline void LaserVolleyComponent::OnStart()
 inline void LaserVolleyComponent::OnDestroy()
 {
     ClearGroundFire();
-    // ルートに置いた以上、蛇と一緒には消えない。持ち主が畳む。
+    /// @note ルートに置いた以上、蛇と一緒には消えない。持ち主が畳む。
     for (Shot& shot : m_shots) {
         for (ElectricArcBundle& arc : shot.arcsAlong) arc.Detach(*this);
         for (ElectricArcBundle& arc : shot.arcsTip)  arc.Detach(*this);
@@ -360,8 +324,8 @@ inline float LaserVolleyComponent::DistanceToSegment(const Vector3& point, const
 
 inline std::string LaserVolleyComponent::LayerName(int index, const char* layer) const
 {
-    // WHY 持ち主ごとに名前を変えるか: 実体はルートに置くため、名前で拾い直すときに
-    //     同名だと 2 体目 (デバッグ用の複製を含む) が 1 体目の線を奪う。
+    /// @note 持ち主ごとに名前を変える理由: 実体はルートに置くため、同名だと 2 体目
+    ///       (デバッグ複製含む) が 1 体目の線を奪う。
     GameObject* self = scene.Self();
     return "LaserVolley_" + (self ? self->instanceId : std::string("orphan")) + "_"
          + std::to_string(index) + "_" + layer;
@@ -377,8 +341,8 @@ inline GameObject* LaserVolleyComponent::EnsureLayer(int index, const char* laye
 {
     const std::string name = LayerName(index, layer);
 
-    // WHY 先に拾い直すか: DLL をリロードすると Script は作り直され EntityRef は空へ戻るが、
-    //     帯の GameObject は Scene に残る。無条件に作るとリロードのたびに増えていく。
+    /// @note 先に拾い直す理由: DLL リロードで EntityRef は空に戻るが帯の GameObject は
+    ///       Scene に残るため、無条件に作るとリロードのたびに増えていく。
     GameObject* object = scene.Find(name);
     if (!object) {
         GameObject& created = scene.Create(name);
@@ -398,8 +362,8 @@ inline void LaserVolleyComponent::Begin(const std::vector<Vector3>& from,
     m_stage   = Stage::Charge;
     m_elapsed = 0.0f;
 
-    // 尺はここで確定させ、上書きは 1 射ぶんで使い切る。Stop の側で消すと、
-    // 撃つ直前に渡された上書きを Begin 冒頭の Stop が消してしまう。
+    /// @note 尺はここで確定させ、上書きは 1 射ぶんで使い切る。Stop の側で消すと、
+    ///       撃つ直前に渡された上書きを Begin 冒頭の Stop が消してしまう。
     m_chargeTime = m_chargeOverride > 0.0f ? m_chargeOverride : Max(chargeSeconds, 0.05f);
     m_fireTime   = m_fireOverride   > 0.0f ? m_fireOverride   : Max(fireSeconds, 0.05f);
     m_chargeOverride = 0.0f;
@@ -432,7 +396,7 @@ inline void LaserVolleyComponent::FireColumns(const std::vector<Vector3>& center
     from.reserve(centers.size());
     to.reserve(centers.size());
     for (const Vector3& center : centers) {
-        // 床の «下» から立ち上げる。床の上に載せると柱ではなく置物に見える。
+        /// @note 床の «下» から立ち上げる。床の上に載せると柱ではなく置物に見える。
         from.push_back({ center.x, center.y - Max(columnSink, 0.0f), center.z });
         to.push_back({ center.x, center.y + Max(columnHeight, 1.0f), center.z });
     }
@@ -457,7 +421,7 @@ inline void LaserVolleyComponent::FireGroundLance(const Vector3& from, const Vec
         GameObject* object = hit.gameObject;
         if (!object || object == self || (self && object->IsDescendantOf(*self))) continue;
         if (object->tag == playerTag) continue;
-        // 基底型は ECS に登録されない。同じ物体にある別のトリガーで実体のヒットを除外しない。
+        /// @note 基底型は ECS に登録されない。同じ物体にある別のトリガーで実体のヒットを除外しない。
         const auto isHitTrigger = [&hit](const ColliderComponent* component) {
             return component && component->collider.get() == hit.collider && component->isTrigger;
         };
@@ -534,7 +498,7 @@ inline void LaserVolleyComponent::FireFan(const Vector3& origin, int count, floa
         to.push_back({ hub.x + std::cos(angle) * Max(length, 1.0f), hub.y,
                        hub.z + std::sin(angle) * Max(length, 1.0f) });
     }
-    // 扇は «槍が何本も出ている» もの。柱の輪ではなく芯を主役にする。
+    /// @note 扇は «槍が何本も出ている» もの。柱の輪ではなく芯を主役にする。
     Begin(from, to, /*column=*/false);
 }
 
@@ -573,8 +537,8 @@ inline void LaserVolleyComponent::FireRays(const Vector3& origin,
     to.reserve(directions.size());
     flats.reserve(directions.size());
     for (const Vector3& direction : directions) {
-        // 水平に寝かせる。上下に振れた向きを渡されると «床を焼く線» にならず、
-        // 予兆の帯 (床のデカール) と実際の線がずれる。
+        /// @note 水平に寝かせる。上下に振れた向きを渡されると «床を焼く線» にならず、
+        ///       予兆の帯 (床のデカール) と実際の線がずれる。
         const Vector3 flat = Vector3{ direction.x, 0.0f, direction.z }
                                  .NormalizedOr(Vector3::FORWARD);
         from.push_back(hub);
@@ -582,7 +546,7 @@ inline void LaserVolleyComponent::FireRays(const Vector3& origin,
         flats.push_back(flat);
     }
     Begin(from, to, /*column=*/false);
-    // Begin は Stop を通るので、覚えるのはその後。
+    /// @note Begin は Stop を通るので、覚えるのはその後。
     m_rayDirs = std::move(flats);
 }
 
@@ -593,8 +557,8 @@ inline void LaserVolleyComponent::AimRays(const Vector3& origin, const Vector3& 
 
     const std::size_t count = Min(m_rayDirs.size(), m_shots.size());
     for (std::size_t i = 0; i < count; ++i) {
-        // 狙点は «ボスの足元から» 組む。口から組むと、腹下のアパーチャの高さぶん
-        // だけ線が寝てしまい、中央だけが床を焼いて左右は床の手前を素通りする。
+        /// @note 狙点は «ボスの足元から» 組む。口から組むと、腹下のアパーチャの高さぶん
+        ///       だけ線が寝てしまい、中央だけが床を焼いて左右は床の手前を素通りする。
         const Vector3 aim = aimBase + m_rayDirs[i] * Max(reach, 0.1f)
                           + Vector3::UP * Max(lift, 0.0f);
         Vector3 normal;
@@ -611,18 +575,18 @@ inline void LaserVolleyComponent::Stop()
         if (auto* glow = TrailOf(shot.glow)) glow->Hide();
         for (ElectricArcBundle& arc : shot.arcsAlong) arc.Extinguish(*this);
         for (ElectricArcBundle& arc : shot.arcsTip)  arc.Extinguish(*this);
-        // 光は «作り直さず消灯»。破棄すると次の斉射で作り直しになり、
-        // 撃つたびにライトの実体がシーンから出入りする。
+        /// @note 光は «作り直さず消灯»。破棄すると次の斉射で作り直しになり、
+        ///       撃つたびにライトの実体がシーンから出入りする。
         if (GameObject* object = shot.light.Resolve(scene))
             if (auto* light = object->GetComponent<LightComponent>()) light->enabled = false;
     }
     m_shots.clear();
     m_rayDirs.clear();
-    // 借り物は 1 射で返す。返さないと、次に撃った扇が薙ぎの色と太さを引き継ぐ。
+    /// @note 借り物は 1 射で返す。返さないと、次に撃った扇が薙ぎの色と太さを引き継ぐ。
     m_hasAdopted = false;
     m_stage    = Stage::Idle;
     m_elapsed  = 0.0f;
-    // 次の 1 射は «3 拍目» からではなく最初から数え直す。
+    /// @note 次の 1 射は «3 拍目» からではなく最初から数え直す。
     m_cue.Reset();
     debugShots = 0;
     debugStage = "Idle";
@@ -630,16 +594,13 @@ inline void LaserVolleyComponent::Stop()
 
 inline beamlook::Look LaserVolleyComponent::LookAt(float charge01) const
 {
-    // 借りているあいだは «そのまま» 使う。
-    //
-    // WHY 針 (needleWidth) と拍 (m_cue) を重ねないか: どちらもこの斉射の予兆で、
-    //     借りている相手 (コアビーム) は持っていない。重ねると左右だけが細って脈打ち、
-    //     質を借りた意味が消える。薙ぎの予兆は中央の点火が 3 本ぶん担う。
+    /// @note 借りているあいだはそのまま使う: 針 (needleWidth) と拍 (m_cue) は借りた相手
+    ///       (コアビーム) が持たないため重ねない。重ねると左右だけ脈打ち借りた意味が消える。
     if (m_hasAdopted) {
         beamlook::Look look = m_adopted;
-        // 消えぎわだけは自分の時計で細らせる。貸し手 (コアビーム) の消灯は
-        // Discharge 0.8 秒で、こちらの Fade と同じ長さとは限らない ─ 借りたまま
-        // だと «当たり判定がいつ切れたか» が読めないまま、ぱっと消える。
+        /// @note 消えぎわだけは自分の時計で細らせる。貸し手 (コアビーム) の消灯は
+        ///       Discharge 0.8 秒で、こちらの Fade と同じ長さとは限らない ─ 借りたまま
+        ///       だと «当たり判定がいつ切れたか» が読めないまま、ぱっと消える。
         if (m_stage == Stage::Fade) {
             const float fade = Clamp01(charge01);
             look.coreWidth *= fade;
@@ -654,36 +615,30 @@ inline beamlook::Look LaserVolleyComponent::LookAt(float charge01) const
     look.color        = m_column ? columnColor : lanceColor;
     look.charge       = Clamp01(charge01);
     look.tubeSegments = tubeSegments;
-    // 柱は «立っている場» なので揺らさない。揺れると避ける先が読めなくなる。
+    /// @note 柱は «立っている場» なので揺らさない。揺れると避ける先が読めなくなる。
     look.wobble       = m_column ? 0.0f : 0.05f;
 
-    // 針から本径へ。
-    //
-    // WHY 溜めの割合をそのまま掛けないか: 溜めの間に線形で太らせると、予兆の
-    //     終わりには既に半分の太さになっていて «針が一瞬で太る» にならない。
-    //     3 乗にすると溜めの大半を針のまま過ごし、撃つ瞬間だけ跳ね上がる。
+    /// @note 針から本径へ、3 乗カーブで太らせる: 線形だと溜めの半ばで半分の太さになり
+    ///       「針が一瞬で太る」にならない。3 乗なら溜めの大半を針のまま過ごせる。
     const float full = m_column ? Max(columnWidth, 0.05f) : Max(lanceWidth, 0.05f);
     const float needle = Clamp01(needleWidth);
     const float grow   = look.charge * look.charge * look.charge;
     look.coreWidth = full * (needle + (1.0f - needle) * grow);
 
-    // 拍。床のデカールと同じ言葉で «あと何回» を数えさせる。
-    //
-    // WHY 太さだけでは足りないか: 3 乗で太らせるということは、溜めの 8 割の間
-    //     «針のまま» ということでもある。太さの変化は最後の一瞬にしか出ないので、
-    //     «いつ撃たれるか» を読む手掛かりが実質そこしか無かった。線は床に絵を
-    //     置かないぶん、拍と回避窓を線そのものへ乗せるしかない。
+    /// @note 拍 (床のデカールと同じ言葉で「あと何回」を数える) も掛ける理由: 3 乗カーブでは
+    ///       溜めの 8 割が針のままで、太さだけでは「いつ撃たれるか」を読む手掛かりが
+    ///       最後の一瞬にしか無い。線は床に絵を置けないため拍と回避窓を線自体に乗せる。
     look.coreWidth *= m_cue.pulse;
-    // 回避窓では白へ寄る。琥珀のまま明るくすると «溜まってきた» の続きに見える。
+    /// @note 回避窓では白へ寄る。琥珀のまま明るくすると «溜まってきた» の続きに見える。
     const float toWhite = m_cue.strike * 0.8f;
     look.color.x = Lerp(look.color.x, 1.00f, toWhite);
     look.color.y = Lerp(look.color.y, 0.95f, toWhite);
     look.color.z = Lerp(look.color.z, 0.86f, toWhite);
 
     look.glowWidth = look.coreWidth * Max(glowScale, 0.0f);
-    // 借りていないとき (扇・柱) は自分の値で埋める。以後 DriveArcs / DriveLight は
-    // フィールドではなく look だけを見る ─ 借り物と自前で読む場所が分かれていると、
-    // 借りたときに «断面だけ揃って放電は自分のまま» という半端が必ず戻ってくる。
+    /// @note 借りていないとき (扇・柱) は自分の値で埋める。以後 DriveArcs / DriveLight は
+    ///       フィールドではなく look だけを見る ─ 借り物と自前で読む場所が分かれていると、
+    ///       借りたときに «断面だけ揃って放電は自分のまま» という半端が必ず戻ってくる。
     look.arcAlong       = beamArcs;
     look.arcStrands     = arcStrands;
     look.arcWidth       = arcWidth;
@@ -701,12 +656,12 @@ inline void LaserVolleyComponent::EnsureBundles(std::vector<ElectricArcBundle>& 
     const auto wanted = static_cast<std::size_t>(std::max(count, 0));
     while (bundles.size() < wanted) {
         bundles.emplace_back();
-        // 鍵は «持ち主 + 線の番号 + 系統 + 束の番号»。同じ鍵の束が 2 つあると
-        // 筋を奪い合い、どちらも 1 本ぶんしか出なくなる。
+        /// @note 鍵は «持ち主 + 線の番号 + 系統 + 束の番号»。同じ鍵の束が 2 つあると
+        ///       筋を奪い合い、どちらも 1 本ぶんしか出なくなる。
         bundles.back().SetKey(LayerName(index, tag) + "_"
                               + std::to_string(bundles.size() - 1));
     }
-    // 減らされた枠は消灯だけして寝かせる。作り直すと GameObject 数が毎フレーム動く。
+    /// @note 減らされた枠は消灯だけして寝かせる。作り直すと GameObject 数が毎フレーム動く。
     for (std::size_t i = wanted; i < bundles.size(); ++i) bundles[i].Extinguish(*this);
 }
 
@@ -729,34 +684,34 @@ inline void LaserVolleyComponent::DriveArcs(Shot& shot, int index,
     const Vector3 axis = delta / length;
     Vector3 side, up;
     beamlook::PerpendicularBasis(axis, side, up);
-    // 線ごとに回り始めを散らす。揃えると全部の筋が同じ形で同時に組み替わる。
+    /// @note 線ごとに回り始めを散らす。揃えると全部の筋が同じ形で同時に組み替わる。
     const float spin = m_arcSpin + static_cast<float>(index) * 1.31f;
 
     for (std::size_t i = 0; i < shot.arcsAlong.size(); ++i) {
         const float phase = spin + static_cast<float>(i) * TWO_PI
                           / static_cast<float>(std::max<std::size_t>(shot.arcsAlong.size(), 1));
-        // 両端は筒に触れたまま、途中だけ外へ膨らませる。端を離すと «別の線» に見える。
+        /// @note 両端は筒に触れたまま、途中だけ外へ膨らませる。端を離すと «別の線» に見える。
         const Vector3 offset = (side * std::cos(phase) + up * std::sin(phase))
                              * (look.coreWidth * 0.5f);
 
         ElectricArcStyle style = beamlook::ArcStyle(look, ignite, look.arcStrands,
                                                     Max(look.arcWidth, 0.001f) * 0.85f,
                                                     look.arcRate, look.arcIntensity);
-        // 折れ点は長さで決める。20m を 24 点で折ると 1 区間 0.8m の «稲妻» になる。
+        /// @note 折れ点は長さで決める。20m を 24 点で折ると 1 区間 0.8m の «稲妻» になる。
         style.segments  = std::clamp(static_cast<int>(length * 2.5f), 16, 56);
         style.amplitude = Max(look.arcBow, 0.0f) * ignite;
-        // 出口の側で暴れさせる。焼いている所がいちばん荒れている、という当たり前。
+        /// @note 出口の側で暴れさせる。焼いている所がいちばん荒れている、という当たり前。
         style.taperBias = 0.72f;
         shot.arcsAlong[i].Update(*this, shot.from + offset, shot.to + offset, style, dt);
     }
 
-    // 出口は柱なら床、槍と扇なら先端。«中へ向かって» 吹き出すので、線に沿う向きは反転する。
+    /// @note 出口は柱なら床、槍と扇なら先端。«中へ向かって» 吹き出すので、線に沿う向きは反転する。
     const Vector3 mouth = m_column ? shot.from + axis * Max(columnSink, 0.0f) : shot.to;
     const Vector3 inward = m_column ? axis : -axis;
     for (std::size_t i = 0; i < shot.arcsTip.size(); ++i) {
         const float phase = -spin * 2.3f + static_cast<float>(i) * TWO_PI
                           / static_cast<float>(std::max<std::size_t>(shot.arcsTip.size(), 1));
-        // 長さを筋ごとに散らす。揃えると «車輪» に見えて放電に見えない。
+        /// @note 長さを筋ごとに散らす。揃えると «車輪» に見えて放電に見えない。
         const float reach = Max(tipReach, 0.05f)
                           * (0.55f + 0.45f * ArcHash01(static_cast<uint32_t>(index) * 7919u
                                                        + static_cast<uint32_t>(i) * 31u
@@ -769,7 +724,7 @@ inline void LaserVolleyComponent::DriveArcs(Shot& shot, int index,
                                                     look.arcIntensity);
         style.segments  = 20;
         style.amplitude = reach * 0.42f;
-        // 先端で暴れさせる。根元が暴れると «線がどこから出ているか» が読めなくなる。
+        /// @note 先端で暴れさせる。根元が暴れると «線がどこから出ているか» が読めなくなる。
         style.taperBias = 0.8f;
         shot.arcsTip[i].Update(*this, mouth, end, style, dt);
     }
@@ -797,8 +752,8 @@ inline void LaserVolleyComponent::DriveLight(Shot& shot, int index,
     light->enabled = lit && beamLight;
     if (!light->enabled) return;
 
-    // WHY worldPosition へ直接置くか: ルートに置いた GameObject なので local = world。
-    //     描画は worldPosition を見るので、両方に同じ点を書く。
+    /// @note worldPosition へ直接置く理由: ルートに置いた GameObject なので local = world。
+    ///       描画は worldPosition を見るので、両方に同じ点を書く。
     const Vector3 center = (shot.from + shot.to) * 0.5f;
     object->transform.position      = center;
     object->transform.worldPosition = center;
@@ -815,13 +770,11 @@ inline void LaserVolleyComponent::Draw(float charge01, float dt)
 {
     const beamlook::Look look = LookAt(charge01);
 
-    // 束の総量を本数で割って配る。1 本ぶんの «質» は本数に依らず同じままにする。
-    //
-    // WHY 沿う筋を先に取るか: 輪郭を崩すのは筒に張り付く筋の仕事で、これが無いと
-    //     線が «硬い棒» に戻る。先端の散りは «出口の説明» なので、削るならこちらから。
-    // WHY 束の数だけ look 経由にするか: 借りた線は中央と同じ «描き込みの量» で
-    //     なければ揃わないが、扇は 1 度に 6 本走るので上限 (Bundle Budget) は
-    //     こちらが持ったままでなければならない。要求は借り、天井は自分で決める。
+    /// @note 束の総量を本数で割って配る。1 本ぶんの質は本数に依らず同じままにする。沿う筋を
+    ///       先に取る理由: 輪郭を崩すのは筒に張り付く筋の仕事で、無いと線が硬い棒に戻る
+    ///       (先端の散りは出口の説明なので削るならこちらから)。束の数だけ look 経由にする
+    ///       理由: 借りた線は中央と同じ描き込み量が要るが、上限 (Bundle Budget) は扇が
+    ///       6 本走る都合でこちらが持つ。要求は借り、天井は自分で決める。
     const int shots = std::max(static_cast<int>(m_shots.size()), 1);
     const int quota = std::max(arcBudget, 0) / shots;
     const int along = std::min(std::max(look.arcAlong, 0), (quota + 1) / 2);
@@ -831,13 +784,13 @@ inline void LaserVolleyComponent::Draw(float charge01, float dt)
         Shot&     shot  = m_shots[i];
         const int index = static_cast<int>(i);
 
-        // 線ごとに別の波にする。同じ鍵だと 6 本が完全に同じ形でうねる。
+        /// @note 線ごとに別の波にする。同じ鍵だと 6 本が完全に同じ形でうねる。
         beamlook::Look mine = look;
         mine.seed = beamlook::kSeed + static_cast<uint32_t>(index) * 7919u;
 
         if (auto* core = TrailOf(shot.core)) {
             core->Show(shot.from, shot.to, beamlook::Style(mine, true));
-            // 溜めは共通名ではないので、BeamTrailRenderer は書かない。ここが受け持つ。
+            /// @note 溜めは共通名ではないので、BeamTrailRenderer は書かない。ここが受け持つ。
             const MaterialInstance instance = material.Instance(shot.core, 0u);
             if (instance.HasProperty(kLaserVolleyChargeId))
                 instance.SetFloat(kLaserVolleyChargeId, mine.charge);
@@ -859,7 +812,7 @@ inline void LaserVolleyComponent::TickHits()
     GameObject* player = Player();
     if (!player || damage <= 0) return;
 
-    // 高さは胸のあたりで見る。足元だけで測ると、跳んで越えたつもりが当たる。
+    /// @note 高さは胸のあたりで見る。足元だけで測ると、跳んで越えたつもりが当たる。
     Vector3 point = player->transform.worldPosition;
     point.y += 0.9f;
 
@@ -870,22 +823,23 @@ inline void LaserVolleyComponent::TickHits()
         shot.dealt = true;
         PlayerHitResult result = PlayerHitResult::Ignored;
         if (auto* combat = CombatManagerComponent::Instance()) {
-            // 押しの起点は «線の上で一番近い所»。柱なら真横へ、槍なら後ろへ弾かれる。
+            /// @note 押しの起点は «線の上で一番近い所»。柱なら真横へ、槍なら後ろへ弾かれる。
             const Vector3 ab = shot.to - shot.from;
             const float   t  = ab.LengthSq() > EPSILON
                 ? Clamp01(Vector3::Dot(point - shot.from, ab) / ab.LengthSq()) : 0.0f;
             const Vector3 source = shot.from + ab * t;
-            // 槍と扇 (飛んでくる線) は刀で弾ける。柱は床から立つ場なので弾けない。
+            /// @note 槍と扇 (飛んでくる線) は刀で弾ける。柱は床から立つ場なので弾けない。
             result = combat->HitPlayer(player, damage, &source,
                                        m_column ? PlayerHitKind::Unblockable
                                                 : PlayerHitKind::Parryable);
         }
-        // 弾いたときの手触りは弾いた側が返す。ここで重ねると 2 系統になる。
+        /// @note 弾いたときの手触りは弾いた側が返す。ここで重ねると 2 系統になる。
         if (result != PlayerHitResult::Parried) {
             if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.40f);
             if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.70f, 0.45f, 0.22f);
         }
-        return;   // 1 回の斉射で入るのは 1 本ぶん
+        /// @note 1 回の斉射で入るのは 1 本ぶん
+        return;
     }
 }
 
@@ -895,7 +849,7 @@ inline void LaserVolleyComponent::OnUpdate()
 
     const float dt = Max(Time::deltaTime, 0.0f);
     m_elapsed += dt;
-    // 回し続ける。止めると同じ形が明滅するだけの «静止した飾り» になる。
+    /// @note 回し続ける。止めると同じ形が明滅するだけの «静止した飾り» になる。
     m_arcSpin = std::fmod(m_arcSpin + dt * 1.7f, TWO_PI);
 
     const float charge = ChargeSeconds();
@@ -905,12 +859,13 @@ inline void LaserVolleyComponent::OnUpdate()
     if (m_elapsed < charge) {
         m_stage    = Stage::Charge;
         debugStage = "Charge";
-        // 溜めの進みで拍を刻む。撃つ瞬間が最後の 1 拍に重なる。
+        /// @note 溜めの進みで拍を刻む。撃つ瞬間が最後の 1 拍に重なる。
         m_cue.Tick(m_elapsed / charge, dt, true);
-        Draw(m_elapsed / charge * 0.55f, dt);   // 針のまま。太るのは撃つ瞬間
+        /// @note 針のまま。太るのは撃つ瞬間
+        Draw(m_elapsed / charge * 0.55f, dt);
         return;
     }
-    // 撃ち始めたら拍は畳む。撃っている間も脈打つと «まだ溜めている» に見える。
+    /// @note 撃ち始めたら拍は畳む。撃っている間も脈打つと «まだ溜めている» に見える。
     m_cue.Tick(1.0f, dt, false);
     if (m_elapsed < charge + fire) {
         if (m_stage != Stage::Fire) {
@@ -919,9 +874,9 @@ inline void LaserVolleyComponent::OnUpdate()
                 if (shot.igniteGround) IgniteGround(shot.to);
             debugStage = "Fire";
             se::Play(audio, se::kBossBeamLoop);
-            // WHY 柱だけ本数ぶん出すか: 柱は 1 本ずつ別の口から立つが、槍と扇は
-            //     全部が同じ 1 点から出る。線の数だけ撒くと同じ場所へ 6 個重なり、
-            //     白く飛ぶうえに枠 (VFX のプール) を無駄に食う。
+            /// @note 柱だけ本数ぶん出す理由: 柱は 1 本ずつ別の口から立つが、槍と扇は全部が
+            ///       同じ 1 点から出る。線の数だけ撒くと同じ場所へ重なり、白飛びして
+            ///       VFX プールの枠も無駄に食う。
             if (auto* vfx = VfxManagerComponent::Instance()) {
                 if (m_column)
                     for (const Shot& shot : m_shots)
@@ -938,7 +893,7 @@ inline void LaserVolleyComponent::OnUpdate()
     if (fade > 0.0f && m_elapsed < charge + fire + fade) {
         m_stage    = Stage::Fade;
         debugStage = "Fade";
-        // 消えぎわは細らせる。ぱっと消すと «当たり判定がいつ切れたか» が分からない。
+        /// @note 消えぎわは細らせる。ぱっと消すと «当たり判定がいつ切れたか» が分からない。
         Draw(1.0f - (m_elapsed - charge - fire) / fade, dt);
         return;
     }

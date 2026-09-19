@@ -14,12 +14,11 @@ ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitterSett
     if (emitter.simulationMode != ParticleSimulationMode::Gpu)
         return ParticleGpuFallbackReason::NotRequested;
 
-    // 判定順は「事故になりやすい順」。Trail や SubEmitter は狙って設定したつもりで
-    // GPU を落としている代表格なので、複数該当したときはこちらを先に名指しする。
-    //
-    // NOTE: sortMode はここに無い。GPU 側で bitonic sort を回すようになったため、
-    //       半透明の前後関係を保ったまま GPU シミュレーションを使える
-    //       (ParticleGpuSortKeys / ParticleGpuSortStep / ParticleGpuSortLocal)。
+    /// @note 判定順は「事故になりやすい順」。Trail や SubEmitter は狙って設定したつもりで
+    ///       GPU を落としている代表格なので、複数該当したときはこちらを先に名指しする。
+    /// @note sortMode はここに無い。GPU 側で bitonic sort を回すようになったため、半透明の
+    ///       前後関係を保ったまま GPU シミュレーションを使える
+    ///       (ParticleGpuSortKeys / ParticleGpuSortStep / ParticleGpuSortLocal)。
     if (emitter.simulationSpace != ParticleSimulationSpace::World)
         return ParticleGpuFallbackReason::LocalSpace;
     if (emitter.collisionMode != ParticleCollisionMode::None
@@ -27,24 +26,24 @@ ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitterSett
         return ParticleGpuFallbackReason::Collision;
     if (emitter.trail.trailEnabled)
         return ParticleGpuFallbackReason::Trail;
-    // NOTE: meshParticlePath はここに無い。ParticleGpuMesh.hlsl のインスタンス描画で
-    //       GPU 経路でもメッシュパーティクルを出せるようになったため。
+    /// @note meshParticlePath はここに無い。ParticleGpuMesh.hlsl のインスタンス描画で
+    ///       GPU 経路でもメッシュパーティクルを出せるようになったため。
     if (emitter.prewarm)
         return ParticleGpuFallbackReason::Prewarm;
-    // NOTE: Frame Blending / Motion Vector はここに無い。CS が次のコマと補間率を書き、
-    //       ParticleGPU.hlsl が CPU 経路と同じ式で 2 コマを混ぜるようになったため。
+    /// @note Frame Blending / Motion Vector はここに無い。CS が次のコマと補間率を書き、
+    ///       ParticleGPU.hlsl が CPU 経路と同じ式で 2 コマを混ぜるようになったため。
     if (!emitter.birthSubEmitter.empty() || !emitter.deathSubEmitter.empty()
         || !emitter.collisionSubEmitter.empty())
         return ParticleGpuFallbackReason::SubEmitter;
-    // 自己影の密度パスは CPU が組んだ頂点バッファを光源視点で描き直す方式のため、
-    // GPU 経路 (頂点バッファを持たない) では測れない。
+    /// @note 自己影の密度パスは CPU が組んだ頂点バッファを光源視点で描き直す方式のため、
+    ///       GPU 経路 (頂点バッファを持たない) では測れない。
     if (material != nullptr && material->selfShadowStrength > 0.0f)
         return ParticleGpuFallbackReason::SelfShadow;
-    // 速さで見た目を変えるモジュールは CPU 側にしかない (理由は enum の宣言を参照)。
+    /// @note 速さで見た目を変えるモジュールは CPU 側にしかない (理由は enum の宣言を参照)。
     if (emitter.useSpeedSizeCurve || emitter.useSpeedColorGradient)
         return ParticleGpuFallbackReason::SpeedModule;
-    // 粒子を点光源にするには CPU 側に位置が要る。«入れたのに光らない» を黙って通すより、
-    // CPU へ縮退して光らせる (光が要らないなら Lights を切れば GPU に戻る)。
+    /// @note 粒子を点光源にするには CPU 側に位置が要る。«入れたのに光らない» を黙って通すより、
+    ///       CPU へ縮退して光らせる (光が要らないなら Lights を切れば GPU に戻る)。
     if (emitter.light.lightEnabled)
         return ParticleGpuFallbackReason::Light;
     return ParticleGpuFallbackReason::None;
@@ -94,7 +93,7 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
     case ParticleGpuFallbackReason::Prewarm:
         return "prewarm のため CPU で実行されます。"
                "「最初から定常状態で存在する」表現は GPU の逐次積分では作れません。";
-    // 予約 (Script DLL の ABI)。GPU 経路でも補間・Motion Vector を描けるので返らない。
+    /// @note 予約 (Script DLL の ABI)。GPU 経路でも補間・Motion Vector を描けるので返らない。
     case ParticleGpuFallbackReason::FlipbookFrameBlending:
     case ParticleGpuFallbackReason::MotionVectorFlipbook:
         return "GPU シミュレーションで実行されます。";

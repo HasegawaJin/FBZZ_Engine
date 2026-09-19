@@ -10,15 +10,15 @@
 namespace fbzz::renderer {
 namespace {
 
-// ResourceManager生成前の起動時コンパイルも記録する必要があるため、所有者を持たないプロセス寿命の状態にする。
-// WHY: パネルや ConsoleSink を所有者にすると、それらの生成前に出た最重要エラーだけが失われる。
+/// ResourceManager 生成前の起動時コンパイルも記録する必要があるため、所有者を持たないプロセス寿命の
+/// 状態にする。パネルや ConsoleSink を所有者にすると、それらの生成前に出た最重要エラーだけが失われる。
 struct ShaderCompileDiagnosticState {
     std::mutex mutex;
     std::vector<ShaderCompileDiagnostic> diagnostics;
     std::uint64_t nextSequence = 1;
 };
 
-// プロセス内で共有する診断状態を、初回利用時に安全に構築して返す。
+/// プロセス内で共有する診断状態を、初回利用時に安全に構築して返す。
 ShaderCompileDiagnosticState& GetState()
 {
     static ShaderCompileDiagnosticState state;

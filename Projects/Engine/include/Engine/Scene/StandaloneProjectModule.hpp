@@ -17,17 +17,12 @@ class ResourceManager;
 
 namespace fbzz::scene {
 
-/// SandboxとGameHub生成プロジェクトで共通のStandalone実行ループを提供する。
-/// WHY: 各プロジェクトが初期化・更新・描画・終了処理を複製すると、片方で修正した
-///      ランタイム不具合がもう片方に残るため、実行経路全体をEngine側に集約する。
+/// @brief Sandbox と GameHub 生成プロジェクトで共通の Standalone 実行ループを提供する。
+/// @note 各プロジェクトが初期化・更新・描画・終了処理を複製すると、片方で修正したランタイム不具合がもう片方に残るため、実行経路全体を Engine 側に集約する。
 class StandaloneProjectModule final : public core::IModule {
 public:
-    /// プロジェクトのAssetsルートと開始シーンを使ってStandalone実行を構成する。
-    ///
-    /// WHY settings が非 const か: `graphics` プロキシ (Option 画面) が実行中に
-    ///     `settings.render` を書き換えるため、その実体を可変で握る必要がある。
-    ///     配布ゲームでは ProjectSettings をファイルへ書き戻さないので、
-    ///     書き換えはプロセスが生きている間だけ効く。
+    /// @brief プロジェクトの Assets ルートと開始シーンを使って Standalone 実行を構成する。
+    /// @param settings 非 const。`graphics` プロキシ (Option 画面) が実行中に `settings.render` を書き換えるため可変で握る。配布ゲームは ProjectSettings をファイルへ書き戻さないので、書き換えはプロセスが生きている間だけ効く。
     StandaloneProjectModule(renderer::IRenderer& renderer,
                             renderer::ResourceManager& resources,
                             std::filesystem::path projectRoot,

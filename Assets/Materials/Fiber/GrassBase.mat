@@ -1,0 +1,14 @@
+# @file    GrassBase.mat
+# @brief   繊維の根元の表面色。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+version = 1
+shader = 'guid:b8a759120fac41289126bed4eabc9a3d|Assets/Shaders/Material/Surface/Lit.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+render_queue = 2000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[params]
+albedo = [0.025, 0.065, 0.008, 1]

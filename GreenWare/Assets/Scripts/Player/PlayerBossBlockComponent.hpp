@@ -17,17 +17,12 @@
 ///   自己衝突しない。こちらの `standOnBack` は «剛体を持たない体» 用の予備で既定 off
 ///   ── 両方を有効にすると同じフレームで 2 回持ち上げて震える。
 ///
-/// WHY 当時は物理のコライダーでやらなかったか:
-///   最初はボスの当たり (BossHitboxRigComponent) を isTrigger=false にして塞いだが、
-///   **ボスが吹き飛んだ。**衝突レイヤーの行列が物理へ渡っておらず
-///   (受け口 World::Step(layerFilter) はあったが誰も渡していなかった)、
-///   ボス配下に置いた solid はボス自身の胴カプセルと RigidBody (mass 400) に必ず当たった。
-///   しかもボーンは毎フレーム «瞬間移動» するので、めり込み解決が巨大な力になる。
-///
-/// WHY プレイヤーを押す側に置くか:
-///   «ぶつかる» で本当に要るのは «プレイヤーがボスの中へ入れない» ことだけで、
-///   ボスが押し返される必要は無い (6m・400kg の重機が小型ロボに押されては困る)。
-///   片側だけを動かせば、自己衝突も質量比の破綻も原理的に起きない。
+/// @note 物理コライダーで塞ぐと、衝突レイヤー行列が物理へ渡っておらず (World::Step(layerFilter)
+///       はあったが未接続)、ボス配下の solid が自身の胴カプセルと RigidBody (mass 400) に
+///       必ず当たる。ボーンは毎フレーム瞬間移動するため、めり込み解決が巨大な力になる。
+/// @note «ぶつかる» で要るのはプレイヤーがボスの中へ入れないことだけで、ボスが押し返される
+///       必要は無い (6m・400kg の重機が小型ロボに押されては困る)。片側だけ動かせば自己衝突も
+///       質量比の破綻も原理的に起きない。
 #pragma once
 #include <Scripts/Game/TimeManagerComponent.hpp>
 #include <Math/Segment.hpp>
@@ -67,10 +62,9 @@ public:
     FBZZ_FIELD_RANGE(float, skin, 0.02f, "余白", 0.0f, 0.5f)
 
     FBZZ_GROUP("背に乗る")
-    // WHY 既定を off にしたか (2026-09-10): 足場は BossHitboxRigComponent が背に置く
-    //     本物の当たり (HB_Deck) が持つようになった。あちらはボス本体の剛体へ
-    //     属しているので自己衝突しない。こちらは «剛体を持たない体» 用の予備で、
-    //     両方を有効にすると同じフレームで 2 回持ち上げて震える。
+    /// @note 足場は BossHitboxRigComponent が背に置く本物の当たり (HB_Deck) が持つ。あちらは
+    ///       ボス本体の剛体へ属し自己衝突しない。こちらは «剛体を持たない体» 用の予備で、
+    ///       両方を有効にすると同じフレームで 2 回持ち上げて震える。
     FBZZ_FIELD(bool, standOnBack, false, "背に乗れる (物理の足場が無いとき用)")
     FBZZ_TOOLTIP("座標で持ち上げる予備の足場。BossHitboxRig の «甲板の足場» が "
                  "on なら要らない。両方 on にすると震える")
@@ -95,11 +89,9 @@ public:
     void OnDrawGizmos() override;
 
 private:
-    /// 脚 1 本ぶんの «線分»。両端は骨そのものを覚えておき、位置だけ毎フレーム読む。
-    ///
-    /// WHY GameObject を覚えるか: 名前で引くと 1 本ごとにボスの全サブツリーを再帰で
-    ///     歩くことになる (100 ノード超)。13 本を毎フレームやると、それだけで重くなる。
-    ///     骨の «並び» は転倒しても変わらないので、覚えたまま位置だけ読めばいい。
+    /// @brief 脚 1 本ぶんの «線分»。両端は骨そのものを覚え、位置だけ毎フレーム読む。
+    /// @note 名前で引くと 1 本ごとに全サブツリーを再帰で歩く (100 ノード超)。骨の «並び» は
+    ///       転倒しても変わらないため、GameObject を覚えたまま位置だけ読む。
     struct Limb { EntityRef a, b; float radius; };
 
     [[nodiscard]] GameObject* Boss() const;
@@ -108,20 +100,15 @@ private:
     [[nodiscard]] static Vector3 ClosestOnSegment(const Vector3& a, const Vector3& b,
                                                   const Vector3& p);
     void CollectLimbs(GameObject& boss);
-    /// 背の «面» に乗せる。乗せたら true。
-    ///
-    /// WHY 面を «円 + 深さ» で書くか: 甲板は骨から測った点で、そこに形は無い。
-    ///     箱を置くと物理の当たりが要り、それはボス自身を押す危険に戻る。
-    ///     «この円の中で、面より少し下に居るなら面へ上げる» だけなら、
-    ///     動くのは必ずプレイヤーだけになる。
+    /// @brief 背の «面» に乗せる。乗せたら true。
+    /// @note 甲板は骨から測った点で形は無い。箱を置くと物理の当たりが要りボス自身を押す
+    ///       危険に戻るため、«円の中で面よりやや下なら上げる» だけにして動くのは
+    ///       必ずプレイヤー側にする。
     bool HoldOnBack(GameObject& boss);
-    /// プレイヤーをこのワールド座標へ置く。
-    ///
-    /// WHY ローカルまで書くか: スクリプトの次に走る TransformSystem (PrePhysics) が
-    ///     ルートから «ローカル値でワールドを組み直す» ので、ワールドだけ書いた 1 行は
-    ///     物理へ渡る前に捨てられる ── 押し出しも «面へ上げる» も黙って効かなくなる
-    ///     (PlayerClimbComponent::Place と同じ理由)。プレイヤーはルートなので
-    ///     local = world。
+    /// @brief プレイヤーをこのワールド座標へ置く。
+    /// @note TransformSystem (PrePhysics) がローカル値からワールドを組み直すため、ワールド
+    ///       だけ書くと物理へ渡る前に捨てられる (PlayerClimbComponent::Place と同じ)。
+    ///       プレイヤーはルートなので local = world。
     void Place(const Vector3& world);
 
     EntityRef          m_boss;
@@ -168,8 +155,8 @@ inline Vector3 PlayerBossBlockComponent::ClosestOnSegment(const Vector3& a, cons
 inline void PlayerBossBlockComponent::CollectLimbs(GameObject& boss)
 {
     m_limbs.clear();
-    // 脚は 4 本とも 3 リンク。膝下だけでなく腿も入れる ─ 腿を抜くと
-    // «脚の間から胴の下へ潜り込める» が残る。
+    /// @note 脚は 4 本とも 3 リンク。膝下だけでなく腿も入れる ─ 腿を抜くと
+    ///       «脚の間から胴の下へ潜り込める» が残る。
     static constexpr const char* kSuffix[4] = { "_FR", "_FL", "_BR", "_BL" };
     static constexpr const char* kChain[4]  = { "Thigh", "Shin", "Hock", "Foot" };
     for (const char* suffix : kSuffix) {
@@ -182,7 +169,7 @@ inline void PlayerBossBlockComponent::CollectLimbs(GameObject& boss)
             prev = node;
         }
     }
-    // 胴。腹から尻までを 1 本の太い線分にする。
+    /// @note 胴。腹から尻までを 1 本の太い線分にする。
     GameObject* body = FindInSubtree(boss, "Body");
     GameObject* rear = FindInSubtree(boss, "Rear");
     if (body)
@@ -201,18 +188,18 @@ inline bool PlayerBossBlockComponent::HoldOnBack(GameObject& boss)
     const Vector3 surface = anchor->transform.worldPosition + up * std::max(deckRise, 0.0f);
 
     Vector3 offset = transform.worldPosition - surface;
-    // 面からの «高さ» と «横のずれ» に分ける。転倒で背が傾いても面に沿う。
+    /// @note 面からの «高さ» と «横のずれ» に分ける。転倒で背が傾いても面に沿う。
     const float height = Vector3::Dot(offset, up);
     Vector3     flat   = offset - up * height;
     if (flat.Length() > std::max(deckRadius, 0.05f)) return false;
 
-    // 面より上に居るなら何もしない ─ 落ちてくる途中を掴むと «空中で止まる» になる。
-    // 下に居ても deckGrip より深ければ、甲羅の «中» なので拾わない。
+    /// @note 面より上に居るなら何もしない ─ 落ちてくる途中を掴むと «空中で止まる» になる。
+    ///       下に居ても deckGrip より深ければ、甲羅の «中» なので拾わない。
     if (height > 0.0f || height < -std::max(deckGrip, 0.05f)) return false;
 
     Place(transform.worldPosition - up * height);
 
-    // 面に乗せたのに落下速度が残っていると、次のステップでまた沈んで «震える»。
+    /// @note 面に乗せたのに落下速度が残っていると、次のステップでまた沈んで «震える»。
     if (auto* rb = scene.GetComponent<RigidBodyComponent>();
         rb && rb->enabled && rb->rigidBody) {
         Vector3 velocity = rb->rigidBody->GetVelocity();
@@ -233,13 +220,12 @@ inline void PlayerBossBlockComponent::OnUpdate()
 
     const auto* climb = scene.GetScript<PlayerClimbComponent>();
 
-    // 登っている間は押し出さない。
-    // WHY 切るか: 登攀は経路の上へ座標を置く手で、そこへ «脚から離れろ» を足すと
-    //     脚の表面を這うはずのプレイヤーが毎フレーム外へ弾かれる。
+    /// @note 登っている間は押し出さない。登攀は経路上へ座標を置く手なので、«脚から離れろ»
+    ///       を足すと脚の表面を這うはずのプレイヤーが毎フレーム外へ弾かれる。
     if (climb && climb->IsClimbing()) { m_limbs.clear(); return; }
 
-    // 背に乗っている間は «乗せる» だけ。脚の押し出しは掛けない ── 甲板の真下に
-    // 脚があるので、掛けると立っているだけで横へ滑り出す。
+    /// @note 背に乗っている間は «乗せる» だけ。脚の押し出しは掛けない ── 甲板の真下に
+    ///       脚があるので、掛けると立っているだけで横へ滑り出す。
     if (climb && climb->IsOnDeck()) {
         m_limbs.clear();
         debugOnBack = HoldOnBack(*boss);
@@ -247,7 +233,7 @@ inline void PlayerBossBlockComponent::OnUpdate()
     }
     debugOnBack = HoldOnBack(*boss);
 
-    // 骨の «探索» は高いが、位置を読むのは安い。探し直しは間隔を空ける。
+    /// @note 骨の «探索» は高いが、位置を読むのは安い。探し直しは間隔を空ける。
     m_probeCooldown -= std::max(TimeManagerComponent::PlayerDeltaTime(), 0.0f);
     if (m_limbs.empty() || m_probeCooldown <= 0.0f) {
         m_probeCooldown = kProbeInterval;
@@ -265,7 +251,7 @@ inline void PlayerBossBlockComponent::OnUpdate()
         GameObject* gb = limb.b.Resolve(scene);
         if (!ga || !gb) continue;
 
-        // 水平だけで測る。垂直を入れると、脚をまたいだ瞬間に上へ突き上げられる。
+        /// @note 水平だけで測る。垂直を入れると、脚をまたいだ瞬間に上へ突き上げられる。
         const Vector3 hit = ClosestOnSegment(ga->transform.worldPosition,
                                              gb->transform.worldPosition, pos);
         Vector3 delta = pos - hit;
@@ -274,7 +260,7 @@ inline void PlayerBossBlockComponent::OnUpdate()
         const float dist = delta.Length();
         if (dist >= want) continue;
 
-        // 真上・真下から重なったときは向きが定まらない。ボスの中心から外へ逃がす。
+        /// @note 真上・真下から重なったときは向きが定まらない。ボスの中心から外へ逃がす。
         Vector3 out;
         if (dist > EPSILON) {
             out = delta / dist;

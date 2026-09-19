@@ -1,4 +1,4 @@
-﻿/// @file    ScriptCodeGen.cpp
+/// @file    ScriptCodeGen.cpp
 /// @brief   エディター内からのソースコード生成ユーティリティ。
 /// @author  Hasegawa Jin
 /// @date    2026-06-03
@@ -41,7 +41,7 @@ std::string ParseNamespaceLine(const std::string& line)
     return trimmed.substr(begin, end - begin);
 }
 
-// ファイルを全行読み込む
+/// ファイルを全行読み込む
 std::vector<std::string> ReadLines(const std::string& path)
 {
     std::string text;
@@ -54,7 +54,7 @@ std::vector<std::string> ReadLines(const std::string& path)
     return lines;
 }
 
-// 行リストをファイルに書き出す
+/// 行リストをファイルに書き出す
 bool WriteLines(const std::string& path, const std::vector<std::string>& lines)
 {
     std::ostringstream output;
@@ -64,8 +64,8 @@ bool WriteLines(const std::string& path, const std::vector<std::string>& lines)
     return util::FileSystem::WriteText(path, output.str());
 }
 
-// マーカー間の自動生成ブロックを丸ごと置き換える。
-// WHY: ファイル削除時も古い include / 登録エントリを確実に消すため、追記ではなく同期で扱う。
+/// @brief マーカー間の自動生成ブロックを丸ごと置き換える。
+/// @note ファイル削除時も古い include / 登録エントリを確実に消すため、追記ではなく同期で扱う。
 bool ReplaceGeneratedBlock(const std::string& path,
                            const std::string& beginMarker,
                            const std::string& endMarker,
@@ -107,9 +107,9 @@ bool ReplaceGeneratedBlock(const std::string& path,
     return WriteLines(path, next);
 }
 
-// FBZZ_SCRIPT( / FBZZ_DATA_ASSET( のような「マクロ名(」を走査して登録情報を集める汎用版。
-// WHY: スクリプトとデータアセットは同じヘッダ群に同じ構文で宣言されるため、走査トークンだけ
-//      差し替えれば同じ収集ロジックを使い回せる (DRY)。
+/// @brief FBZZ_SCRIPT( / FBZZ_DATA_ASSET( のような「マクロ名(」を走査して登録情報を集める汎用版。
+/// @note スクリプトとデータアセットは同じヘッダ群に同じ構文で宣言されるため、走査トークンだけ
+///       差し替えれば同じ収集ロジックを使い回せる。
 std::vector<ScriptRegistration> CollectRegistrations(const std::string& scriptsDir,
                                                      const std::string& macroToken)
 {
@@ -145,8 +145,8 @@ std::vector<ScriptRegistration> CollectRegistrations(const std::string& scriptsD
                 if (end == std::string::npos) break;
 
                 std::string_view raw = std::string_view(line).substr(begin, end - begin);
-                // 2 引数マクロ (FBZZ_SCRIPT_DERIVED / FBZZ_SCRIPT_BASE) は
-                // "T, Base" の並びなので、先頭の引数だけを型名として採る。
+                /// @note 2 引数マクロ (FBZZ_SCRIPT_DERIVED / FBZZ_SCRIPT_BASE) は
+                ///       "T, Base" の並びなので、先頭の引数だけを型名として採る。
                 if (const size_t comma = raw.find(','); comma != std::string_view::npos)
                     raw = raw.substr(0, comma);
 
@@ -180,10 +180,9 @@ std::vector<ScriptRegistration> CollectRegistrations(const std::string& scriptsD
 }
 
 
-// C++ スクリプトのテンプレートを生成する (新方式: 自己登録リフレクション + 1 ファイル inline)
-// WHY: 旧方式の .generated.hpp / 専用 .cpp / _IMPL ガードを廃止。
-//      FBZZ_FIELD でフィールドを足すだけで Inspector/シリアライズが自動追従し、
-//      FBZZ_REFLECT が Reflect() を生成する。実装は inline で同ヘッダに書く。
+/// @brief C++ スクリプトのテンプレートを生成する。
+/// @note 自己登録リフレクション方式: FBZZ_FIELD でフィールドを足すだけで Inspector/シリアライズが
+///       自動追従し、FBZZ_REFLECT が Reflect() を生成する。実装は inline で同ヘッダに書く。
 std::string BuildScriptTemplate(const std::string& name)
 {
     const std::string className = name + "Component";
@@ -236,13 +235,9 @@ std::string BuildScriptTemplate(const std::string& name)
     return ss.str();
 }
 
-// アタッチしないユーティリティクラスのテンプレート。
-//
-// WHY 登録マクロを持たせないか:
-//   ScriptCodeGen は Assets/**/*.hpp の FBZZ_SCRIPT( を走査して ScriptList.inl を作る。
-//   マクロが無いヘッダは登録されず、Add Script メニューにも出ない。つまり
-//   「Unity で MonoBehaviour を継承しない普通のクラス」がそのまま成立する。
-//   CMake の GLOB は Assets/*.hpp を全部拾うので、置くだけで DLL のビルド対象に入る。
+/// @brief アタッチしないユーティリティクラスのテンプレート。
+/// @note FBZZ_SCRIPT が無いヘッダは ScriptCodeGen の走査に引っかからず Add Script メニューにも
+///       出ない。CMake の GLOB が Assets/*.hpp を全部拾うため、置くだけでビルド対象には入る。
 std::string BuildUtilityTemplate(const std::string& name)
 {
     std::ostringstream ss;
@@ -273,12 +268,9 @@ std::string BuildUtilityTemplate(const std::string& name)
     return ss.str();
 }
 
-// 共有調整値 (.fzdata) のテンプレート。Unity の ScriptableObject に相当する。
-//
-// WHY コンポーネントのフィールドで持たないか:
-//   同じ調整値を N 体のインスタンスがそれぞれ持つと、リバランスが N 個の個別編集になる。
-//   DataAsset は値を 1 ファイルへ切り出し、参照側すべてが同じ実体を見る。
-//   1 か所いじれば全部に効く。
+/// @brief 共有調整値 (.fzdata) のテンプレート。Unity の ScriptableObject に相当する。
+/// @note コンポーネントのフィールドで持つと N 体それぞれの個別編集になる。DataAsset は値を
+///       1 ファイルへ切り出し、参照側すべてが同じ実体を見るため 1 か所で全部に効く。
 std::string BuildDataAssetTemplate(const std::string& name)
 {
     std::ostringstream ss;
@@ -310,7 +302,7 @@ std::string BuildDataAssetTemplate(const std::string& name)
     return ss.str();
 }
 
-// Surface VS+PS シェーダーテンプレートを生成する
+/// Surface VS+PS シェーダーテンプレートを生成する
 std::string BuildSurfaceHlslTemplate(const std::string& name)
 {
     std::ostringstream ss;
@@ -320,18 +312,24 @@ std::string BuildSurfaceHlslTemplate(const std::string& name)
     ss << "#ifndef " << name << "_HLSL\n";
     ss << "#define " << name << "_HLSL\n";
     ss << "\n";
+    ss << "// 下で MaterialConstants を自前で宣言するので、Constants.hlsli の既定定義を止める。\n";
+    ss << "#define FBZZ_MATERIAL_CONSTANTS\n";
     ss << "#include \"Common/Constants.hlsli\"\n";
     ss << "#include \"Common/Structs.hlsli\"\n";
     ss << "#include \"Platform/Backend.hlsli\"\n";
     ss << "#include \"Rendering/Lighting.hlsli\"\n";
+    ss << "#include \"Common/BindlessIndices.hlsli\"\n";
+    ss << "#include \"Common/MaterialTextures.hlsli\"\n";
     ss << "\n";
     ss << "cbuffer MaterialConstants : register(CB_MATERIAL)\n";
     ss << "{\n";
     ss << "    float4 albedo;      // RGBA ベースカラー\n";
     ss << "    uint   textureMask; // テクスチャフラグ\n";
+    ss << "    // テクスチャ枠の添字。宣言した枠だけが Inspector に出る。必ず cbuffer の中に置く。\n";
+    ss << "    FBZZ_MATERIAL_TEX_ALBEDO\n";
     ss << "};\n";
     ss << "\n";
-    ss << "Texture2D    texAlbedo   : register(TEX_ALBEDO);\n";
+    ss << "FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);\n";
     ss << "SamplerState sampDefault : register(SAMPLER_DEFAULT);\n";
     ss << "\n";
     ss << "PSInput VSMain(VSInput v)\n";
@@ -359,10 +357,9 @@ std::string BuildSurfaceHlslTemplate(const std::string& name)
     return ss.str();
 }
 
-// ParticleEmitter 用の PS テンプレートを生成する。
-// WHY VS を書かせないか: パーティクルはビルボード展開と 29 個の定数が定型で、
-//     写経すると 1 つ間違えただけで «出ない / 形が崩れる» としか分からない。
-//     ParticleMaterial.hlsli が VSMain まで供給するので、雛形は PSMain だけにする。
+/// @brief ParticleEmitter 用の PS テンプレートを生成する。
+/// @note VS は書かせない。ビルボード展開と 29 個の定数は定型で写経ミスが分かりにくいため、
+///       ParticleMaterial.hlsli が VSMain まで供給し、雛形は PSMain だけにする。
 std::string BuildParticleHlslTemplate(const std::string& name)
 {
     std::ostringstream ss;
@@ -412,7 +409,7 @@ std::string BuildParticleHlslTemplate(const std::string& name)
     return ss.str();
 }
 
-// PostProcess フルスクリーン VS+PS テンプレートを生成する
+/// PostProcess フルスクリーン VS+PS テンプレートを生成する
 std::string BuildPostProcessHlslTemplate(const std::string& name)
 {
     std::ostringstream ss;
@@ -425,8 +422,10 @@ std::string BuildPostProcessHlslTemplate(const std::string& name)
     ss << "#include \"Common/Constants.hlsli\"\n";
     ss << "#include \"Common/Structs.hlsli\"\n";
     ss << "#include \"Platform/Backend.hlsli\"\n";
+    ss << "#include \"Common/BindlessIndices.hlsli\"\n";
     ss << "\n";
-    ss << "Texture2D    texScene    : register(t0);\n";
+    ss << "// シーン色は描画ごとの添字ブロックの t5 枠 (CustomPostProcess.hlsl と同じ)。\n";
+    ss << "FBZZ_TEX2D(texScene, TEX_GBUFFER0_SLOT);\n";
     ss << "SamplerState sampDefault : register(SAMPLER_DEFAULT);\n";
     ss << "\n";
     ss << "// フルスクリーン三角形用 VS (ジオメトリ不要)\n";
@@ -449,7 +448,7 @@ std::string BuildPostProcessHlslTemplate(const std::string& name)
     return ss.str();
 }
 
-// Compute Shader テンプレートを生成する
+/// Compute Shader テンプレートを生成する
 std::string BuildComputeHlslTemplate(const std::string& name)
 {
     std::ostringstream ss;
@@ -461,9 +460,11 @@ std::string BuildComputeHlslTemplate(const std::string& name)
     ss << "\n";
     ss << "#include \"Common/Constants.hlsli\"\n";
     ss << "#include \"Platform/Backend.hlsli\"\n";
+    ss << "#include \"Common/BindlessIndices.hlsli\"\n";
     ss << "\n";
-    ss << "RWTexture2D<float4> outputTex : register(u0);\n";
-    ss << "Texture2D           inputTex  : register(t0);\n";
+    ss << "// ComputeCall::uavOutputs[0] / srvInputs[0] の枠を添字で引く。\n";
+    ss << "FBZZ_RWTEX2D(outputTex, UAV_OUTPUT_SLOT);\n";
+    ss << "FBZZ_TEX2D(inputTex, 0);\n";
     ss << "SamplerState        sampPoint : register(SAMPLER_DEFAULT);\n";
     ss << "\n";
     ss << "[numthreads(8, 8, 1)]\n";
@@ -485,9 +486,7 @@ std::string BuildComputeHlslTemplate(const std::string& name)
 
 } // namespace
 
-// =============================================================================
-// 公開 API
-// =============================================================================
+/// 公開 API
 
 std::string ScriptCodeGen::CreateScript(const std::string& name,
                                         const std::string& scriptsDir,
@@ -497,19 +496,19 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
 {
     if (name.empty() || scriptsDir.empty()) return {};
 
-    // "Component" サフィックスはアタッチするスクリプトの慣習。
-    // ユーティリティや DataAsset に付けると意味が逆になるため、Behaviour だけに付ける。
+    /// @note "Component" サフィックスはアタッチするスクリプトの慣習。
+    ///       ユーティリティや DataAsset に付けると意味が逆になるため、Behaviour だけに付ける。
     const std::string className  = (kind == ScriptKind::Behaviour) ? name + "Component" : name;
     const std::string headerName = className + ".hpp";
     const std::string headerPath = scriptsDir + "/" + headerName;
 
-    // 重複チェック
+    /// @note 重複チェック
     if (util::FileSystem::Exists(headerPath)) {
         FBZZ_LOG_WARN("ScriptCodeGen: %s already exists", headerPath.c_str());
         return {};
     }
 
-    // .hpp テンプレートを書き出す
+    /// @note .hpp テンプレートを書き出す
     if (!util::FileSystem::EnsureDirectory(scriptsDir)) {
         FBZZ_LOG_ERROR("ScriptCodeGen: failed to create Scripts directory: %s", scriptsDir.c_str());
         return {};
@@ -527,13 +526,11 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
         return {};
     }
 
-    // 新方式: .generated.hpp も専用 .cpp も生成しない。
-    // WHY: Reflect() は FBZZ_REFLECT がヘッダ内で生成し、実装は inline 化したため
-    //      外部生成ファイルや独立 TU が不要になった (1 スクリプト = 1 ファイル)。
-    //      DLL/EXE エントリがヘッダを include するだけで実装も取り込まれる。
+    /// @note .generated.hpp も専用 .cpp も生成しない。FBZZ_REFLECT がヘッダ内で Reflect() を生成し
+    ///       実装も inline 化しているため、DLL/EXE がヘッダを include するだけで実装も取り込まれる。
 
-    // WHY: 生成後は追記ではなく Scripts/ の実ファイル一覧から再同期する。
-    //      これにより、削除済みスクリプトの古い登録も同じ経路で消せる。
+    /// @note 生成後は追記ではなく Scripts/ の実ファイル一覧から再同期する。削除済みスクリプトの
+    ///       古い登録も同じ経路で消せる。
     SyncScriptRegistry(scriptsDir, dllCppPath, staticCppPath);
 
     FBZZ_LOG_INFO("ScriptCodeGen: script generated -> %s", headerPath.c_str());
@@ -546,28 +543,19 @@ bool ScriptCodeGen::SyncScriptRegistry(const std::string& scriptsDir,
 {
     if (scriptsDir.empty()) return false;
 
-    // スクリプトとデータアセットを別々に収集する (同じヘッダ群を別トークンで走査)。
-    //
-    // WHY 4 トークンに分かれるか:
-    //   FBZZ_SCRIPT           … Script を直接継承する通常のスクリプト。登録する。
-    //   FBZZ_SCRIPT_DERIVED   … 他のスクリプトを継承したスクリプト。これも登録する。
-    //   FBZZ_SCRIPT_BASE      … 共有基底。GameObject へ付けるものではないので登録しない。
-    //   FBZZ_SCRIPT_INTERFACE … 横断インターフェース。Script ですらないので登録しない。
-    //
-    //   後ろ 2 つを登録すると make_unique<T>() が要求される。純粋仮想を持つ基底や
-    //   インターフェースではコンパイルが通らず、通ったとしても Add Component の
-    //   一覧に「基底そのもの」が出てしまう。ヘッダの include だけは要る (派生の定義に要る)。
-    //
-    // NOTE: "FBZZ_SCRIPT(" は FBZZ_SCRIPT_DERIVED( などには一致しない
-    //       (直後が '_' で '(' ではない) ため、4 者は互いに混ざらない。
+    /// @note スクリプトとデータアセットを別々に収集する (同じヘッダ群を別トークンで走査)。4 トークン:
+    ///       FBZZ_SCRIPT / FBZZ_SCRIPT_DERIVED は Script 実装として登録し、FBZZ_SCRIPT_BASE /
+    ///       FBZZ_SCRIPT_INTERFACE は登録しない (make_unique<T>() が要求され、抽象型はコンパイルが
+    ///       通らないか Add Component 一覧に基底が出てしまう。ヘッダの include だけは派生の定義に要る)。
+    ///       "FBZZ_SCRIPT(" は直後 '_' の FBZZ_SCRIPT_DERIVED( 等に誤一致しないため 4 者は混ざらない。
     auto scripts              = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT(");
     const auto derivedScripts = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT_DERIVED(");
     const auto baseScripts    = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT_BASE(");
     const auto interfaces     = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT_INTERFACE(");
     const auto dataAssets     = CollectRegistrations(scriptsDir, "FBZZ_DATA_ASSET(");
 
-    // 登録対象は 直接派生 + 継承派生。ScriptList.inl の並びを安定させるため、
-    // 連結後に CollectRegistrations と同じ規則で並べ直す。
+    /// @note 登録対象は 直接派生 + 継承派生。ScriptList.inl の並びを安定させるため、
+    ///       連結後に CollectRegistrations と同じ規則で並べ直す。
     scripts.insert(scripts.end(), derivedScripts.begin(), derivedScripts.end());
     std::sort(scripts.begin(), scripts.end(),
         [](const ScriptRegistration& a, const ScriptRegistration& b) {
@@ -584,11 +572,8 @@ bool ScriptCodeGen::SyncScriptRegistry(const std::string& scriptsDir,
 
     bool ok = true;
 
-    // include ブロックは「スクリプト or 基底 or インターフェース or データアセットを
-    // 宣言する全ヘッダ」の和集合。
-    // WHY: DataAsset 専用ヘッダ (FBZZ_SCRIPT を持たない)・共有基底・インターフェースの
-    //      ヘッダも DLL/EXE の TU に取り込む必要があるため、すべてのヘッダをマージし、
-    //      重複を排除してから #include 行を作る。登録はしないが定義には要る。
+    /// @note include ブロックは「スクリプト or 基底 or インターフェース or データアセットを宣言する
+    ///       全ヘッダ」の和集合。登録しないヘッダも定義には要るため、重複を排除してマージする。
     std::vector<std::string> headers;
     headers.reserve(scripts.size() + baseScripts.size() + interfaces.size() + dataAssets.size());
     for (const auto& reg : scripts)     headers.push_back(reg.headerName);
@@ -631,7 +616,7 @@ bool ScriptCodeGen::SyncScriptRegistry(const std::string& scriptsDir,
                                     entryLines);
     }
 
-    // DataAsset 登録リスト。DataAssetList.inl が無いプロジェクトでは何もしない (後方互換)。
+    /// @note DataAsset 登録リスト。DataAssetList.inl が無いプロジェクトでは何もしない (後方互換)。
     const std::string dataAssetListPath = scriptsDir + "/DataAssetList.inl";
     if (util::FileSystem::Exists(dataAssetListPath)) {
         std::vector<std::string> entryLines;
@@ -707,8 +692,6 @@ std::string ScriptCodeGen::CreateHlsl(const std::string& name,
     return outPath;
 }
 
-// =============================================================================
-// 内部実装
-// =============================================================================
+/// 内部実装
 
 } // namespace fbzz::editor

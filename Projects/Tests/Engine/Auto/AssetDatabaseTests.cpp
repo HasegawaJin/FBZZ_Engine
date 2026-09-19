@@ -42,7 +42,7 @@ void WriteFile(const std::filesystem::path& path, const std::string& text)
 
 } // namespace
 
-// --- 参照文字列の解析 (索引に依存しない純ロジック) --------------------------
+/// @name 参照文字列の解析 (索引に依存しない純ロジック)
 
 class AssetRefTest : public testkit::EngineFixture {};
 
@@ -63,7 +63,7 @@ TEST_F(AssetRefTest, ExtractsTheGuidWithoutThePathHint)
 
 TEST_F(AssetRefTest, ExtractsTheGuidWithoutASubAssetSuffix)
 {
-    // 接尾辞の区切り文字に依存しないよう、hex が続く限りで切る契約。
+    /// @note 接尾辞の区切り文字に依存しないよう、hex が続く限りで切る契約。
     const std::string guid =
         AssetDatabase::GuidFromRef("guid:0123456789abcdef0123456789abcdef@clip3");
 
@@ -94,7 +94,7 @@ TEST_F(AssetRefTest, HasNoHintWhenNoneIsWritten)
     EXPECT_EQ(AssetDatabase::HintFromRef("Assets/Textures/Player.png"), "");
 }
 
-// --- GUID の生成と導出 ------------------------------------------------------
+/// @name GUID の生成と導出
 
 TEST_F(AssetRefTest, GeneratesA32DigitHexGuid)
 {
@@ -108,7 +108,7 @@ TEST_F(AssetRefTest, GeneratesADifferentGuidEachTime)
 
 TEST_F(AssetRefTest, DerivesTheSameGuidForTheSameInputs)
 {
-    // Library は .gitignore 済み。再インポートで値が変われば参照が全部切れる。
+    /// @note Library は .gitignore 済み。再インポートで値が変われば参照が全部切れる。
     const std::string a = AssetDatabase::DeriveGuid("0123456789abcdef0123456789abcdef",
                                                     "anims/MiniBot@Idle.anim");
     const std::string b = AssetDatabase::DeriveGuid("0123456789abcdef0123456789abcdef",
@@ -144,7 +144,7 @@ TEST_F(AssetRefTest, DerivesNothingFromEmptyInputs)
     EXPECT_EQ(AssetDatabase::DeriveGuid("0123456789abcdef0123456789abcdef", ""), "");
 }
 
-// --- .meta を持つ対象の判定 -------------------------------------------------
+/// @name .meta を持つ対象の判定
 
 TEST_F(AssetRefTest, SourceAssetsAndDocumentsGetMeta)
 {
@@ -156,13 +156,13 @@ TEST_F(AssetRefTest, SourceAssetsAndDocumentsGetMeta)
 
 TEST_F(AssetRefTest, DotLeadingFilesWithARealExtensionStillGetMeta)
 {
-    // ".playmode_snapshot.scene" は実アセット。«ドット始まりは全除外» にできない。
+    /// @note ".playmode_snapshot.scene" は実アセット。«ドット始まりは全除外» にできない。
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta(".playmode_snapshot.scene"));
 }
 
 TEST_F(AssetRefTest, GeneratedArtefactsDoNotGetMeta)
 {
-    // 再生成できる派生物の GUID は原本から導出する。独自の .meta を持たせない。
+    /// @note 再生成できる派生物の GUID は原本から導出する。独自の .meta を持たせない。
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.meta"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.fzasset"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.mesh"));
@@ -174,21 +174,21 @@ TEST_F(AssetRefTest, GeneratedArtefactsDoNotGetMeta)
 
 TEST_F(AssetRefTest, AtomicSaveTempFilesDoNotGetMeta)
 {
-    // 原子的な保存の途中経過。rename で消える相手に .meta を発行すると孤児が残る。
-    // 一時名は .tmp の «後ろ» に pid とハッシュが付くので、末尾拡張子だけでは弾けない。
+    /// @note 原子的な保存の途中経過。rename で消える相手に .meta を発行すると孤児が残る。
+    ///       一時名は .tmp の «後ろ» に pid とハッシュが付くので、末尾拡張子だけでは弾けない。
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("stage_01.scene.tmp.3588.b6c904700d2b"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("keyicons.hpp.tmp.3588.44fddd02650a"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.tmp"));
 
-    // 名前の一部として ".tmp." を含まない通常のアセットは巻き込まない。
+    /// @note 名前の一部として ".tmp." を含まない通常のアセットは巻き込まない。
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("tmp_backup.scene"));
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("effect.tmpl.mat"));
 }
 
 TEST_F(AssetRefTest, NonFileLikeNamesDoNotGetMeta)
 {
-    // EncodeGuidRefs は文書中の全文字列にこの判定を掛ける。
-    // «拡張子に見えるだけの値» をディスクへ問い合わせに行かせない。
+    /// @note EncodeGuidRefs は文書中の全文字列にこの判定を掛ける。
+    ///       «拡張子に見えるだけの値» をディスクへ問い合わせに行かせない。
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("license"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta(".gitignore"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.001"));
@@ -213,7 +213,7 @@ TEST_F(AssetRefTest, FolderExclusionIgnoresCase)
     EXPECT_FALSE(AssetDatabase::ShouldHaveFolderMeta("Build"));
 }
 
-// --- 索引 (実ファイルを伴う) ------------------------------------------------
+/// @name 索引 (実ファイルを伴う)
 
 /// Assets ルートを一時ディレクトリに作り、テストごとに索引を作り直す。
 /// AssetDatabase はプロセス全体で 1 つの静的な索引を持つため、
@@ -268,7 +268,7 @@ TEST_F(AssetDatabaseTest, ResolvesTheGuidBackToItsPath)
 
 TEST_F(AssetDatabaseTest, ReusesTheGuidWrittenInAnExistingMeta)
 {
-    // .meta は git 管理下。索引を作り直しても値を振り直してはいけない。
+    /// @note .meta は git 管理下。索引を作り直しても値を振り直してはいけない。
     const std::filesystem::path texture = AssetsRoot() / "Player.png";
     WriteFile(texture, "x");
     WriteFile(std::filesystem::path(texture.string() + ".meta"),
@@ -282,7 +282,7 @@ TEST_F(AssetDatabaseTest, ReusesTheGuidWrittenInAnExistingMeta)
 
 TEST_F(AssetDatabaseTest, TryGetDoesNotCreateMetaForUnknownAssets)
 {
-    // Import 前の FBX に .meta を発行させないための契約。
+    /// @note Import 前の FBX に .meta を発行させないための契約。
     InitDatabase();
     const std::filesystem::path model = AssetsRoot() / "Later.fbx";
     WriteFile(model, "x");
@@ -346,7 +346,7 @@ TEST_F(AssetDatabaseTest, MovingAFolderRepointsEverythingUnderIt)
 
 TEST_F(AssetDatabaseTest, ForgetsAnAssetThatWasDeleted)
 {
-    // 旧 GUID を残すと、同じ場所へ作り直したアセットが古い参照を乗っ取る。
+    /// @note 旧 GUID を残すと、同じ場所へ作り直したアセットが古い参照を乗っ取る。
     const std::filesystem::path texture = AssetsRoot() / "Doomed.png";
     WriteFile(texture, "x");
     InitDatabase();
@@ -377,7 +377,7 @@ TEST_F(AssetDatabaseTest, DeletingAFolderForgetsEverythingUnderIt)
 
 TEST_F(AssetDatabaseTest, AssetsRootAlwaysEndsWithASeparator)
 {
-    // "Assets/..." 相対化はこの末尾スラッシュ前提で長さを引いている。
+    /// @note "Assets/..." 相対化はこの末尾スラッシュ前提で長さを引いている。
     InitDatabase();
 
     const std::string root = AssetDatabase::AssetsRoot();
@@ -396,7 +396,7 @@ TEST_F(AssetDatabaseTest, ProjectRootIsTheParentOfTheAssetsFolder)
 }
 
 
-// ── Library/Baked の掃除 ──────────────────────────────────────────────────
+/// @name Library/Baked の掃除
 
 TEST_F(AssetDatabaseTest, SweepRemovesBakedContainersNobodyClaims)
 {
@@ -410,7 +410,7 @@ TEST_F(AssetDatabaseTest, SweepRemovesBakedContainersNobodyClaims)
     const std::filesystem::path baked = AssetsRoot().parent_path() / "Library" / "Baked";
     WriteFile(baked / "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" / "Player.fzasset", "live");
     WriteFile(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" / "Old.fzasset", "orphan");
-    // guid 以外の名前は掃除の対象外。
+    /// @note guid 以外の名前は掃除の対象外。
     WriteFile(baked / "notaguid" / "keep.txt", "keep");
 
     const auto result = AssetDatabase::SweepOrphanedBaked(/*dryRun=*/false);
@@ -442,7 +442,7 @@ TEST_F(AssetDatabaseTest, SweepDryRunReportsWithoutDeleting)
 
 TEST_F(AssetDatabaseTest, SweepRefusesToRunWithoutAnIndex)
 {
-    // 索引を作らずに呼ぶ。«誰も名乗っていない» の判定ができないので 1 件も消さない。
+    /// @note 索引を作らずに呼ぶ。«誰も名乗っていない» の判定ができないので 1 件も消さない。
     const std::filesystem::path baked = AssetsRoot().parent_path() / "Library" / "Baked";
     WriteFile(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" / "Old.fzasset", "orphan");
 
@@ -454,12 +454,12 @@ TEST_F(AssetDatabaseTest, SweepRefusesToRunWithoutAnIndex)
 }
 
 
-// ── 同じ guid を名乗る 2 つの実体 ────────────────────────────────────────
+/// @name 同じ guid を名乗る 2 つの実体
 
 TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
 {
-    // エンジンは共通シェーダーをプロジェクトの Assets へ配る。.meta ごとコピーされるので
-    // guid も同じになるが、これは «同じアセットが 2 箇所にある» だけで衝突ではない。
+    /// @note エンジンは共通シェーダーをプロジェクトの Assets へ配る。.meta ごとコピーされるので
+    ///       guid も同じになるが、これは «同じアセットが 2 箇所にある» だけで衝突ではない。
     const std::string guid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const std::string meta =
         "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n";
@@ -469,7 +469,7 @@ TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
     WriteFile(projShader.string() + ".meta", meta);
     InitDatabase();
 
-    // エンジン側は Init の走査範囲外。参照解決で «後から» 索引に載る。
+    /// @note エンジン側は Init の走査範囲外。参照解決で «後から» 索引に載る。
     const std::filesystem::path engineShader =
         AssetsRoot().parent_path() / "EngineAssets" / "Assets" / "Shaders" / "Lit.hlsl";
     WriteFile(engineShader, "shader");
@@ -477,14 +477,14 @@ TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
 
     EXPECT_EQ(AssetDatabase::TryGetGuidFromPath(Utf8(engineShader)), guid);
     EXPECT_EQ(AssetDatabase::GuidConflictCount(), 0u);
-    // 実体として引けるのはプロジェクト側。
+    /// @note 実体として引けるのはプロジェクト側。
     EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(projShader));
 }
 
 TEST_F(AssetDatabaseTest, DifferentAssetsSharingAGuidAreStillReported)
 {
-    // Assets からの相対パスが違う = 別のアセットが同じ guid を名乗っている。
-    // これは参照が黙って他人へ吸われる本物の衝突なので、報告しなければならない。
+    /// @note Assets からの相対パスが違う = 別のアセットが同じ guid を名乗っている。
+    ///       これは参照が黙って他人へ吸われる本物の衝突なので、報告しなければならない。
     const std::string guid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const std::string meta =
         "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n";
@@ -504,8 +504,8 @@ TEST_F(AssetDatabaseTest, DifferentAssetsSharingAGuidAreStillReported)
 
 TEST_F(AssetDatabaseTest, TheSameFileUnderTwoSpellingsIsNotADuplicate)
 {
-    // 索引には絶対パスが載るが、参照解決は大文字小文字や区切りの違う表記で入ってくる。
-    // 同じ実体なら «重複» ではないので、警告も衝突記録もしてはいけない。
+    /// @note 索引には絶対パスが載るが、参照解決は大文字小文字や区切りの違う表記で入ってくる。
+    ///       同じ実体なら «重複» ではないので、警告も衝突記録もしてはいけない。
     const std::string guid = "cccccccccccccccccccccccccccccccc";
     const std::filesystem::path texture = AssetsRoot() / "Textures" / "Player.png";
     WriteFile(texture, "png");
@@ -513,7 +513,7 @@ TEST_F(AssetDatabaseTest, TheSameFileUnderTwoSpellingsIsNotADuplicate)
               "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n");
     InitDatabase();
 
-    // 同じファイルを «別表記» で引く (区切りをバックスラッシュに変えたもの)。
+    /// @note 同じファイルを «別表記» で引く (区切りをバックスラッシュに変えたもの)。
     std::string spelled = Utf8(texture);
     std::replace(spelled.begin(), spelled.end(), '/', '\\');
 

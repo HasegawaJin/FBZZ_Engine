@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
+#include <cassert>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -83,6 +84,7 @@ void TaskSystem::Shutdown() {
 }
 
 void TaskSystem::SubmitRaw(std::function<void()> task) {
+    assert(s_pool && "TaskSystem::Init() has not been called");
     s_pool->Submit(std::move(task));
 }
 

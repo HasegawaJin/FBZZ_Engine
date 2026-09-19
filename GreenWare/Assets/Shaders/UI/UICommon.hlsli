@@ -22,6 +22,8 @@
 #endif
 
 #include "Common/Binding.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
 // UISystem が毎ドロー埋める。マテリアル側からは読み取り専用。
 cbuffer UIConstants : register(CB_UI)
@@ -46,7 +48,10 @@ cbuffer UIConstants : register(CB_UI)
 //       ...
 //   };
 
-Texture2D    g_Texture : register(TEX_ALBEDO);
+/// @note 添字は MaterialConstants ではなく描画ごとの添字ブロック (b14) の t0 枠から引く。
+///       UISystem は既定シェーダーにもマテリアルにも call.textures[0] でアトラス / 画像を差す。
+///       既定シェーダーは MaterialConstants を持たないので、そちらに添字を置くと誰も書かない。
+FBZZ_TEX2D(g_Texture, TEX_ALBEDO_SLOT);
 SamplerState g_Sampler : register(SAMPLER_UI);
 
 struct UIVertexInput

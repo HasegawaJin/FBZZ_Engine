@@ -64,11 +64,11 @@ LaunchArgs LaunchArgs::Parse()
     if (args.projectPath.empty()) {
         const std::filesystem::path exeDir = FileSystem::GetExecutableDirectory();
         if (FileSystem::Exists(exeDir / L".fbzz_proj")) {
-            // WHY: 配布 exe はプロジェクト直下に置かれるため、引数なしなら Standalone とみなす。
+            /// @note 配布 exe はプロジェクト直下に置かれるため、引数なしなら Standalone とみなす。
             args.projectPath = exeDir;
             args.standalone  = true;
         } else {
-            // WHY: 開発時の引数なし起動ではテンプレートプロジェクトを Editor で開く。
+            /// @note 開発時の引数なし起動ではテンプレートプロジェクトを Editor で開く。
             args.projectPath = FindDefaultSandboxProjectPath();
         }
     }

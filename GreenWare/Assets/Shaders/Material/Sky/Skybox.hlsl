@@ -4,8 +4,9 @@
 
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-TextureCube  texEnvCube  : register(TEX_ENV_CUBE);
+FBZZ_TEXCUBE(texEnvCube, TEX_ENV_CUBE_SLOT);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
 struct SkyVSInput

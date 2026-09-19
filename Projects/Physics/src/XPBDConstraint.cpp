@@ -10,8 +10,8 @@ namespace fbzz::physics
 {
     namespace
     {
-        // 一般化逆質量の和がこれを下回る = 双方が動けない。ここで打ち切らないと
-        // 0 除算で NaN が姿勢へ入り、以降のフレームが全部壊れる。
+        /// 一般化逆質量の和がこれを下回る = 双方が動けない。ここで打ち切らないと
+        /// 0 除算で NaN が姿勢へ入り、以降のフレームが全部壊れる。
         constexpr float kMinInverseMass = 1e-9f;
         constexpr float kMinViolation   = 1e-9f;
 
@@ -43,7 +43,7 @@ namespace fbzz::physics
                                        const math::Vector3&    angular,
                                        float                   h)
     {
-        // q_dot = 0.5 * [ω, 0] * q。RigidBody::Integrate と同じ形にしてある。
+        /// @note q_dot = 0.5 * [ω, 0] * q。RigidBody::Integrate と同じ形にしてある。
         const math::Quaternion spin =
             math::Quaternion{ angular.x, angular.y, angular.z, 0.0f } * q;
         const float s = 0.5f * h;
@@ -62,8 +62,8 @@ namespace fbzz::physics
         if (h <= 0.0f) return math::Vector3::ZERO;
 
         const math::Quaternion delta = current * previous.Inverse();
-        // 同じ姿勢を表す符号違いの 2 つのうち短い方を採る。採らないと «ほぼ 1 回転ぶん»
-        // の角速度が出て、次の substep で体が弾け飛ぶ。
+        /// @note 同じ姿勢を表す符号違いの 2 つのうち短い方を採る。採らないと «ほぼ 1 回転ぶん»
+        ///       の角速度が出て、次の substep で体が弾け飛ぶ。
         const float scale = (delta.w < 0.0f ? -2.0f : 2.0f) / h;
         return math::Vector3{ delta.x, delta.y, delta.z } * scale;
     }
@@ -93,8 +93,8 @@ namespace fbzz::physics
         const float alphaTilde = compliance / (h * h);
         float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
 
-        // SolveAngular と同じく «蓄積した λ» に掛ける。摩擦は λ が上限に当たった時点で
-        // 滑り出す ─ 差分に掛けると substep が細かいほど強い摩擦になってしまう。
+        /// @note SolveAngular と同じく «蓄積した λ» に掛ける。摩擦は λ が上限に当たった時点で
+        ///       滑り出す ─ 差分に掛けると substep が細かいほど強い摩擦になってしまう。
         if (maxLambda > 0.0f) {
             float clamped = lambda + deltaLambda;
             clamped = clamped >  maxLambda ?  maxLambda : clamped;
@@ -127,8 +127,8 @@ namespace fbzz::physics
         const float alphaTilde = compliance / (h * h);
         float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
 
-        // 上限は «加えた分» ではなく «蓄積した λ» に掛ける。λ/h² がその substep で
-        // 関節が出しているトルクそのものなので、ここを切ると出力が頭打ちになる。
+        /// @note 上限は «加えた分» ではなく «蓄積した λ» に掛ける。λ/h² がその substep で
+        ///       関節が出しているトルクそのものなので、ここを切ると出力が頭打ちになる。
         if (maxLambda > 0.0f) {
             float clamped = lambda + deltaLambda;
             clamped = clamped >  maxLambda ?  maxLambda : clamped;
@@ -197,11 +197,12 @@ namespace fbzz::physics
     {
         math::Vector3 v{ q.x, q.y, q.z };
         float         w = q.w;
-        // 同じ姿勢を表す符号違いのうち短い方。採らないと «ほぼ 1 回転» を返す。
+        /// @note 同じ姿勢を表す符号違いのうち短い方。採らないと «ほぼ 1 回転» を返す。
         if (w < 0.0f) { v = -v; w = -w; }
 
         const float length = v.Length();
-        if (length <= kMinViolation) return v * 2.0f;  // 小角では 2v が回転ベクトル
+        /// @note 小角では 2v が回転ベクトル
+        if (length <= kMinViolation) return v * 2.0f;
         return v * (2.0f * std::atan2(length, w) / length);
     }
 
@@ -209,10 +210,10 @@ namespace fbzz::physics
                              math::Quaternion&       swing,
                              math::Quaternion&       twist)
     {
-        // ツイスト軸は関節フレームの X。q の X 成分と実部だけを残せばツイストになる。
+        /// @note ツイスト軸は関節フレームの X。q の X 成分と実部だけを残せばツイストになる。
         const float length = std::sqrt(q.x * q.x + q.w * q.w);
-        // 特異点: スイングが 180° に近いとツイスト成分が消え、向きが決められない。
-        // ここを 0 除算で通すと NaN が姿勢へ入って以降のフレームが全部壊れる。
+        /// @note 特異点: スイングが 180° に近いとツイスト成分が消え、向きが決められない。
+        ///       ここを 0 除算で通すと NaN が姿勢へ入って以降のフレームが全部壊れる。
         twist = length <= kMinViolation
             ? math::Quaternion::Identity()
             : math::Quaternion{ q.x / length, 0.0f, 0.0f, q.w / length };

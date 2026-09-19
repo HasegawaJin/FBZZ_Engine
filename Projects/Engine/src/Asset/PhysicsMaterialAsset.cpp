@@ -16,9 +16,9 @@ namespace {
 
 using physics::PhysicsMaterialCombine;
 
-// 合成規則は数値ではなく名前で保存する。
-// WHY: 列挙に値を追加・並べ替えしたときに、既存 .physmat の意味が黙って変わるのを防ぐ。
-//      物理挙動は「後で見返して原因を追う」対象なので、ファイルが読んで分かる形であることを優先する。
+/// 合成規則は数値ではなく名前で保存する。
+/// @note 列挙に値を追加・並べ替えしたときに、既存 .physmat の意味が黙って変わるのを防ぐ。
+///       物理挙動は「後で見返して原因を追う」対象なので、ファイルが読んで分かる形であることを優先する。
 constexpr const char* kCombineNames[] = {
     "average", "geometric_mean", "minimum", "multiply", "maximum"
 };
@@ -56,9 +56,9 @@ bool LoadPhysicsMaterialAssetFromFile(std::string_view path, PhysicsMaterialAsse
 
     const toml::table& table = parsed.table();
 
-    // 既定値は PhysicsMaterial::Default。欠損キーはそのまま既定が残る。
-    // WHY: 物理マテリアルは今後フィールドが増える可能性が高く、古い .physmat を
-    //      読めなくするより「書いていない項目は既定」の方が壊れにくい。
+    /// @note 既定値は PhysicsMaterial::Default。欠損キーはそのまま既定が残る。
+    ///       物理マテリアルは今後フィールドが増える可能性が高く、古い .physmat を読めなく
+    ///       するより「書いていない項目は既定」の方が壊れにくい。
     PhysicsMaterialAsset asset;
     auto& material = asset.material;
     material.restitution     = static_cast<float>(table["restitution"].value_or(static_cast<double>(material.restitution)));

@@ -19,11 +19,8 @@ namespace fbzz::scene {
 /// MeshBuilder が積む頂点。GPU へ渡す並びそのままなので変換コピーが要らない。
 using MeshVertex = renderer::Vertex;
 
-/// 手続きメッシュの «どこが変わったか»。
-///
-/// WHY 区別するか: トポロジを変えずに頂点だけ動かす演出 (脈動・波打ち・なびき) では
-///      インデックスバッファの中身は 1 バイトも変わらない。毎フレーム上げ直すのは
-///      そのぶん丸ごと無駄なので、頂点だけの更新を明示できるようにする。
+/// @brief 手続きメッシュの «どこが変わったか»。
+/// @note トポロジを変えずに頂点だけ動かす演出 (脈動・波打ち・なびき) ではインデックスバッファが変わらないため、頂点だけの更新を明示できるようにする。
 enum class MeshDirty {
     None,      ///< 変更なし。アップロードしない。
     Vertices,  ///< 頂点だけ変わった。インデックスバッファには触らない。
@@ -40,7 +37,8 @@ enum class MeshDirty {
 /// GameObject を原点に置くか、Transform() で自分で移す。
 class MeshBuilder {
 public:
-    // ── 状態 ──────────────────────────────────────────────────────────────
+    /// @name 状態
+    /// @{
 
     void Clear();
     /// 積む量が読めているときに確保しておく。毎フレーム組み直す形では効きが大きい。
@@ -56,8 +54,10 @@ public:
     [[nodiscard]] const std::vector<MeshVertex>& Vertices() const { return m_vertices; }
     [[nodiscard]] std::vector<uint32_t>&         Indices()        { return m_indices; }
     [[nodiscard]] const std::vector<uint32_t>&   Indices()  const { return m_indices; }
+    /// @}
 
-    // ── 手組み ────────────────────────────────────────────────────────────
+    /// @name 手組み
+    /// @{
 
     /// 頂点を 1 個足してその添字を返す。
     uint32_t AddVertex(const MeshVertex& vertex);
@@ -73,8 +73,10 @@ public:
     void AddTriangle(uint32_t a, uint32_t b, uint32_t c);
     /// 四角形を a-b-c / a-c-d の 2 枚に割る。
     void AddQuad(uint32_t a, uint32_t b, uint32_t c, uint32_t d);
+    /// @}
 
-    // ── 色 ────────────────────────────────────────────────────────────────
+    /// @name 色
+    /// @{
 
     /// これ以降に積む頂点の既定色。形状ヘルパーもこの色を使う。
     void SetColor(const math::Vector4& color) { m_color = color; }
@@ -83,9 +85,11 @@ public:
     /// 既に積んだ頂点を塗り直す。
     void ColorizeAll(const math::Vector4& color);
     void ColorizeRange(uint32_t firstVertex, uint32_t count, const math::Vector4& color);
+    /// @}
 
-    // ── 形状 ──────────────────────────────────────────────────────────────
-    // すべて「今ある内容へ足す」。連続して呼べば 1 メッシュに複数の形が入る。
+    /// @name 形状
+    /// @{
+    /// すべて「今ある内容へ足す」。連続して呼べば 1 メッシュに複数の形が入る。
 
     /// right / up が板の半径ベクトル (長さがそのまま半分の大きさ)。
     void AddQuad(const math::Vector3& center,
@@ -130,11 +134,8 @@ public:
     void AddRibbon(std::span<const math::Vector3> points,
                    std::span<const float> widths,
                    const math::Vector3& up);
-    /// 帯を viewPosition の側へ正対させる。斬撃・ビームはこちらを使う。
-    ///
-    /// WHY 別関数か: 固定の up で組んだ帯は、その面を真横から見た瞬間に消える。
-    ///      視点方向と進行方向の外積で毎フレーム面を作り直せば、どの角度からも
-    ///      幅が保たれる (LineRenderer が内部でやっているのと同じこと)。
+    /// @brief 帯を viewPosition の側へ正対させる。斬撃・ビームはこちらを使う。
+    /// @note 固定の up で組んだ帯は真横から見ると消える。視点方向と進行方向の外積で毎フレーム面を作り直し、どの角度からも幅を保つ (LineRenderer と同じ手法)。
     void AddRibbonFacing(std::span<const math::Vector3> points,
                          std::span<const float> widths,
                          const math::Vector3& viewPosition);
@@ -142,8 +143,10 @@ public:
     void AddTube(std::span<const math::Vector3> points,
                  std::span<const float> radii,
                  int sides = 8, bool capped = false);
+    /// @}
 
-    // ── 加工 ──────────────────────────────────────────────────────────────
+    /// @name 加工
+    /// @{
 
     void Transform(const math::Matrix4& matrix);
     void TransformRange(uint32_t firstVertex, uint32_t count, const math::Matrix4& matrix);
@@ -164,6 +167,7 @@ public:
     void Weld(float epsilon = 0.0001f);
     /// 三角形を中点で 4 分割する。levels 回繰り返す。
     void Subdivide(int levels = 1);
+    /// @}
 
 private:
     /// 現在の色を乗せて頂点を積む内部用。

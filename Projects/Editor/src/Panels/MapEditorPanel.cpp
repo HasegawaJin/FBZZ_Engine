@@ -23,6 +23,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 #include <string>
 
 namespace fbzz::editor {
@@ -44,8 +45,8 @@ std::string SanitizeTerrainAssetName(std::string name)
 
 std::string UniqueGridTerrainAssetPath(const EditorContext& ctx, const std::string& objectName)
 {
-    // WHY: Grid Terrain はセル単位で独立編集されるため、Scene に埋め込まず
-    //      最初から Assets/Terrain/Grid 配下の外部 .terrain として管理する。
+    /// @note Grid Terrain はセル単位で独立編集されるため、Scene に埋め込まず
+    ///       Assets/Terrain/Grid 配下の外部 .terrain として管理する。
     const std::string assetRoot = ctx.projectRoot.empty()
         ? "Assets"
         : ctx.projectRoot + "/Assets";
@@ -82,9 +83,8 @@ bool EnsureTerrainCollider(scene::Scene& scene, scene::EntityID id)
     if (!go || !go->GetComponent<scene::TerrainComponent>())
         return false;
 
-    // WHY: Grid 作成経路で古い Terrain が TerrainColliderComponent を持たない場合がある。
-    //      PhysicsSystem は TerrainColliderComponent を入口に HeightFieldCollider を構築するため、
-    //      Grid 管理下の Terrain には自動で TerrainCollider を補う。
+    /// @note PhysicsSystem は TerrainColliderComponent を入口に HeightFieldCollider を構築するため、
+    ///       Grid 作成経路で古い Terrain がこれを持たない場合、自動で補う。
     if (!go->GetComponent<scene::TerrainColliderComponent>()) {
         go->AddComponent<scene::TerrainColliderComponent>();
         return true;
@@ -125,9 +125,8 @@ bool EnsureTerrainGridAssets(EditorContext& ctx, scene::TerrainGridComponent& gr
 
 void MarkTerrainGridDirty(scene::Scene& scene, scene::TerrainGridComponent& grid)
 {
-    // WHY: TerrainRenderPass は TerrainGrid の隣接関係を使って境界頂点を補正する。
-    //      グリッド編集後に既存チャンクキャッシュが残ると補正が見えないため、
-    //      セル内 Terrain を再構築対象にする。
+    /// @note TerrainRenderPass は TerrainGrid の隣接関係を使って境界頂点を補正する。グリッド編集後に
+    ///       既存チャンクキャッシュが残ると補正が見えないため、セル内 Terrain を再構築対象にする。
     for (const scene::EntityID id : grid.cells) {
         if (!scene.IsValid(id))
             continue;
@@ -150,10 +149,10 @@ void MarkTerrainDirty(scene::Scene& scene, scene::EntityID id)
     }
 }
 
-// Grid の指定セルへ新規 Terrain を生成して割り当てる。
-// WHY: "Add New Terrain Here" と "Fill All Empty Cells" で同じ生成手順を共有するため切り出す。
-//      grid / gridObject は EntityID 経由で都度引き直す。CreateGameObject で内部ストレージが
-//      再配置されてポインタが無効化されても安全に扱えるようにするため。
+/// Grid の指定セルへ新規 Terrain を生成して割り当てる。"Add New Terrain Here" と
+/// "Fill All Empty Cells" で同じ生成手順を共有するため切り出す。
+/// @note grid / gridObject は EntityID 経由で都度引き直す。CreateGameObject で内部ストレージが
+///       再配置されポインタが無効化されても安全に扱えるようにするため。
 scene::EntityID CreateTerrainInGridCell(EditorContext& ctx, scene::Scene& scene,
                                         scene::EntityID gridEntity, int gx, int gz)
 {
@@ -161,7 +160,7 @@ scene::EntityID CreateTerrainInGridCell(EditorContext& ctx, scene::Scene& scene,
     if (!grid)
         return scene::EntityID::INVALID;
 
-    // セルのワールド配置サイズは既存セルがあればそのサイズ、無ければ grid のデフォルトを使う。
+    /// @note セルのワールド配置サイズは既存セルがあればそのサイズ、無ければ grid のデフォルトを使う。
     float worldSize = static_cast<float>(grid->defaultColumns - 1) * grid->defaultCellSize;
     for (int i = 0; i < grid->cellCountX * grid->cellCountZ; ++i) {
         if (i < static_cast<int>(grid->cells.size()) && scene.IsValid(grid->cells[i])) {
@@ -178,7 +177,7 @@ scene::EntityID CreateTerrainInGridCell(EditorContext& ctx, scene::Scene& scene,
     auto& newGo = scene.CreateGameObject(goName);
     newGo.transform.position = { wx, 0.0f, wz };
 
-    // CreateGameObject 後はコンポーネント配列が再配置され得るため引き直す。
+    /// @note CreateGameObject 後はコンポーネント配列が再配置され得るため引き直す。
     if (auto* gridObject = scene.GetGameObject(gridEntity))
         newGo.SetParent(*gridObject);
 
@@ -188,8 +187,9 @@ scene::EntityID CreateTerrainInGridCell(EditorContext& ctx, scene::Scene& scene,
     tc.cellSize  = grid->defaultCellSize;
     tc.chunkSize = grid->defaultChunkSize;
     tc.InitFlat(0.0f);
+    tc.layerMaterials.resize(4);
     for (int li = 0; li < 4; ++li)
-        tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
+        tc.layerMaterials[static_cast<size_t>(li)] = DefaultTerrainLayerMaterialPath(li);
     tc.heightDirty   = true;
     tc.colliderDirty = true;
     newGo.AddComponent<scene::TerrainComponent>(tc);
@@ -203,9 +203,9 @@ scene::EntityID CreateTerrainInGridCell(EditorContext& ctx, scene::Scene& scene,
     return newGo.GetID();
 }
 
-// セル矩形の内側に Terrain のハイトマップを粗いグレースケールで描く簡易ミニマップ。
-// WHY: 色付きボタンだけでは「どのセルがどの地形か」が名前ツールチップ頼りだった。
-//      12x12 サンプルの矩形塗りならテクスチャ基盤なしで一目で山谷が分かる。
+/// セル矩形の内側に Terrain のハイトマップを粗いグレースケールで描く簡易ミニマップ。
+/// @note 色付きボタンだけでは名前ツールチップ頼りになるため、12x12 サンプルの矩形塗りで
+///       テクスチャ基盤なしに一目で山谷が分かるようにする。
 void DrawCellHeightPreview(ImDrawList* draw, const ImVec2& rectMin, const ImVec2& rectMax,
                            const scene::TerrainComponent& tc)
 {
@@ -218,8 +218,9 @@ void DrawCellHeightPreview(ImDrawList* draw, const ImVec2& rectMin, const ImVec2
         for (int sx = 0; sx < kSamples; ++sx) {
             const int col = (tc.columns - 1) * sx / (kSamples - 1);
             const int row = (tc.rows - 1) * sz / (kSamples - 1);
-            const float h = tc.heightData[static_cast<size_t>(row) * tc.columns + col]; // [-1, 1]
-            // 高さ 0 が中間の緑になるよう [-1,1] → [0,1] へマップし、地形らしい緑系で明暗を付ける
+            /// @note [-1, 1]
+            const float h = tc.heightData[static_cast<size_t>(row) * tc.columns + col];
+            /// @note 高さ 0 が中間の緑になるよう [-1,1] → [0,1] へマップし、地形らしい緑系で明暗を付ける
             const float t = std::clamp(h * 0.5f + 0.5f, 0.0f, 1.0f);
             const int r = static_cast<int>(40.0f + 150.0f * t);
             const int g = static_cast<int>(70.0f + 160.0f * t);
@@ -238,12 +239,11 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
     DrawEditorToolbar(ctx, "World / Terrain");
     ImGui::Separator();
     if (!ctx.mapEditingMode || !ctx.activeScene) {
-        // WHY: 旧実装は「モードが無効」と表示するだけの死に画面で、入る手段が別メニューだった。
-        //      その場で入れるボタンを置き、モードへの導線をパネル内で完結させる。
+        /// @note その場で入れるボタンを置き、モードへの導線をパネル内で完結させる (別メニュー不要)。
         ImGui::TextDisabled("Map Editing Mode is not active.");
         ImGui::Spacing();
-        // 実行可否と実体は operator が持つ。ここでフラグを直に立てると、
-        // メニュー / ツールバーが従っている条件 (Play 中は不可) を素通りする。
+        /// @note 実行可否と実体は operator が持つ。ここでフラグを直に立てると、
+        ///       メニュー / ツールバーが従っている条件 (Play 中は不可) を素通りする。
         if (CanInvokeOperator(ctx, "tools.map_editing_mode")
             && ImGui::Button("Enter Map Editing Mode", { -1.0f, 0.0f }))
             InvokeOperator(ctx, "tools.map_editing_mode");
@@ -252,11 +252,11 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    // ツール実体のアクティブ状態を毎フレーム同期する。
-    // (ビューポートの数字キー / オーバーレイからも ctx.mapActiveTool が書き換わるため)
+    /// @note ツール実体のアクティブ状態を毎フレーム同期する。
+    ///       (ビューポートの数字キー / オーバーレイからも ctx.mapActiveTool が書き換わるため)
     ActivateMapTool(ctx, ctx.mapActiveTool);
 
-    // ── ヘッダー: モード表示 + Exit ボタン ──────────────────────────────
+    /// @name ヘッダー: モード表示 + Exit ボタン
     ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP EDITING MODE");
     ImGui::SameLine(ImGui::GetContentRegionMax().x - 68.0f);
     if (ImGui::SmallButton("Exit Mode"))
@@ -265,35 +265,28 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SetTooltip("Return to normal editor layout");
     ImGui::Separator();
 
-    // 現在アクティブなツールとサブモードを常時表示する。
-    // WHY: Sculpt のサブモード(Raise 等)や Paint のレイヤー番号は設定欄を見ないと分からない。
-    //      「今どの操作中か」を1行で示し、ビューポートとパネルを視線往復せず把握できるようにする。
+    /// @note 現在アクティブなツールとサブモードを常時表示する。設定欄を見ないと分からない
+    ///       Sculpt のサブモードや Paint のレイヤー番号を 1 行で示し、視線往復を減らす。
     {
         const char* toolName = "-";
         for (const MapToolDef& def : kMapToolDefs)
             if (def.tool == ctx.mapActiveTool)
                 toolName = def.label;
         std::string status = toolName;
-        if (ctx.terrainTool) {
-            if (ctx.mapActiveTool == EditorContext::MapTool::TerrainSculpt) {
-                static const char* kSub[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
-                status += "  -  ";
-                status += kSub[static_cast<int>(ctx.terrainTool->GetSculptMode())];
-            } else if (ctx.mapActiveTool == EditorContext::MapTool::TerrainPaint) {
-                status += "  -  Layer " + std::to_string(ctx.terrainTool->GetPaintLayer());
-            }
-        }
+        if (ctx.terrainTool && IsTerrainMapTool(ctx.mapActiveTool))
+            status += "  -  " + ctx.terrainTool->StatusLabel();
         ImGui::TextDisabled("Active:");
         ImGui::SameLine();
         ImGui::TextColored({ 0.95f, 0.85f, 0.4f, 1.0f }, "%s", status.c_str());
     }
 
-    // ── ツール選択: 3列のコンパクトグリッド ─────────────────────────────
-    // WHY: 旧実装の全幅縦積みボタンは画面の1/3を占有し、肝心のブラシ設定・
-    //      レイヤー選択が下へ押し出されていた。3列に畳んで設定領域を最大化する。
+    /// @name ツール選択: 1 行のコンパクトグリッド
+    /// @note 全幅縦積みだと画面の 1/3 を占有しブラシ設定・レイヤー選択が下へ押し出されるため、横に畳んで設定領域を最大化する。
     {
+        constexpr int kColumns = static_cast<int>(std::size(kMapToolDefs));
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float buttonW = (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f;
+        const float buttonW = (ImGui::GetContentRegionAvail().x - spacing * static_cast<float>(kColumns - 1))
+                            / static_cast<float>(kColumns);
         int column = 0;
         for (const MapToolDef& def : kMapToolDefs) {
             if (column > 0) ImGui::SameLine();
@@ -308,10 +301,11 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::SetTooltip("%s\nShortcut: %s (Scene View)", def.tooltip, def.shortcut);
             if (active)
                 ImGui::PopStyleColor();
-            column = (column + 1) % 3;
+            column = (column + 1) % kColumns;
         }
     }
-    ImGui::TextDisabled("Keys 1-3 switch tools while the Scene View is focused");
+    ImGui::TextDisabled("Keys 1-%d switch tools while the Scene View is focused",
+                        static_cast<int>(std::size(kMapToolDefs)));
 
     ImGui::Separator();
     ImGui::BeginChild("##MapToolSettings", { 0.0f, 0.0f }, false);
@@ -333,6 +327,13 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
             ctx.terrainTool->DrawBrushSettings();
         }
         break;
+    case EditorContext::MapTool::TerrainHole:
+        if (ctx.terrainTool) {
+            ctx.terrainTool->DrawHoleContent(
+                *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
+            ctx.terrainTool->DrawBrushSettings();
+        }
+        break;
     case EditorContext::MapTool::Grid:
         DrawGridContent(ctx);
         break;
@@ -345,9 +346,8 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
 {
     auto& scene = *ctx.activeScene;
 
-    // グリッドコンポーネントとそれを所有する Entity を取得する。
-    // WHY: Grid から生成する Terrain は CreateTerrainInGridCell 内で gridEntity 経由に
-    //      親へぶら下げる。ここでは安定した EntityID だけ保持し、ポインタは都度引き直す。
+    /// @note グリッドコンポーネントとそれを所有する Entity を取得する。CreateTerrainInGridCell が
+    ///       gridEntity 経由で親へぶら下げるため、ここでは安定した EntityID だけ保持しポインタは都度引き直す。
     const auto gridEntities = scene.GetEntities<scene::TerrainGridComponent>();
     const scene::EntityID gridEntity = gridEntities.empty()
         ? scene::EntityID::INVALID
@@ -373,7 +373,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
     if (EnsureTerrainGridAssets(ctx, *grid))
         ctx.markSceneDirty();
 
-    // グリッドサイズ設定
+    /// @note グリッドサイズ設定
     ImGui::TextDisabled("Grid Size");
     int cx = grid->cellCountX;
     int cz = grid->cellCountZ;
@@ -395,8 +395,8 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
         ctx.markSceneDirty();
     }
 
-    // 空セルを一括で埋める。WHY: 大きな Grid を1セルずつ "Add New Terrain Here" で
-    //      埋めるのは手数が多く面倒なため、空セルへまとめてフラット Terrain を生成する。
+    /// @note 空セルを一括で埋める。1セルずつ "Add New Terrain Here" するのは大きな Grid で手数が
+    ///       多いため、空セルへまとめてフラット Terrain を生成する。
     if (ImGui::Button("Fill All Empty Cells", { -1.0f, 0.0f })) {
         int created = 0;
         for (int z = 0; z < grid->cellCountZ; ++z)
@@ -415,14 +415,15 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
 
     ImGui::Separator();
 
-    // ── 2D グリッドミニマップ ─────────────────────────────────────────
-    // 各セルにハイトマップのグレースケールを敷き、エディターカメラの位置マーカーを重ねる。
-    // クリックで選択 / ダブルクリックでカメラフォーカス / 右クリックで操作メニュー。
-    const float cellPx  = 64.0f; // セル表示サイズ [px]
+    /// @name 2D グリッドミニマップ
+    /// @note 各セルにハイトマップのグレースケールを敷き、エディターカメラの位置マーカーを重ねる。
+    ///       クリックで選択 / ダブルクリックでカメラフォーカス / 右クリックで操作メニュー。
+    /// @note セル表示サイズ [px]
+    const float cellPx  = 64.0f;
     const float spacing = 3.0f;
     ImGui::TextDisabled("Click: select  /  Double-click: focus camera  /  Right-click: actions");
 
-    // セル1枚のワールドサイズ (CreateTerrainInGridCell と同じ推定方法)
+    /// @note セル1枚のワールドサイズ (CreateTerrainInGridCell と同じ推定方法)
     float cellWorldSize = static_cast<float>(grid->defaultColumns - 1) * grid->defaultCellSize;
     for (const scene::EntityID id : grid->cells) {
         if (!scene.IsValid(id)) continue;
@@ -449,7 +450,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             const ImVec2 rectMax = ImGui::GetItemRectMax();
             const bool hovered = ImGui::IsItemHovered();
 
-            // セル背景: 割り当て済みはハイトマッププレビュー、空はダークグレー + "+"
+            /// @note セル背景: 割り当て済みはハイトマッププレビュー、空はダークグレー + "+"
             const scene::TerrainComponent* tc = hasCell
                 ? scene.GetComponent<scene::TerrainComponent>(cellId)
                 : nullptr;
@@ -462,11 +463,11 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                                 (rectMin.y + rectMax.y - plusSize.y) * 0.5f },
                               IM_COL32(130, 135, 150, 255), "+");
             }
-            // 座標ラベル (左上に小さく)
+            /// @note 座標ラベル (左上に小さく)
             char coordLabel[16];
             std::snprintf(coordLabel, sizeof(coordLabel), "%d,%d", gx, gz);
             draw->AddText({ rectMin.x + 3.0f, rectMin.y + 2.0f }, IM_COL32(235, 240, 255, 200), coordLabel);
-            // 枠: 選択中=黄 / ホバー=白 / 通常=グレー
+            /// @note 枠: 選択中=黄 / ホバー=白 / 通常=グレー
             const ImU32 border = selected ? IM_COL32(255, 210, 90, 255)
                                : hovered  ? IM_COL32(220, 224, 235, 200)
                                           : IM_COL32(80, 86, 100, 255);
@@ -476,7 +477,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                 m_gridSelectedX = gx;
                 m_gridSelectedZ = gz;
             }
-            // ダブルクリックでカメラフォーカス (右クリックメニューの Focus Camera を1操作に短縮)
+            /// @note ダブルクリックでカメラフォーカス (右クリックメニューの Focus Camera を1操作に短縮)
             if (hasCell && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 if (const auto* go = scene.GetGameObject(cellId)) {
                     ctx.focusTargetPosition    = go->transform.worldPosition;
@@ -498,10 +499,8 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                 ImGui::EndTooltip();
             }
 
-            // 右クリックでセル操作メニューを開く。
-            // WHY: 旧実装は右クリックで即セルをクリアしていたが、選択や確認の間もなく
-            //      割り当て済み Terrain を外してしまい誤操作が多かった。メニュー経由にして
-            //      Focus / Select / Remove を明示的に選べるようにする。
+            /// @note 右クリックでセル操作メニューを開く。即クリアだと選択や確認の間もなく割り当て済み
+            ///       Terrain を外してしまうため、Focus / Select / Remove を明示的に選べるようにする。
             if (hasCell && ImGui::BeginPopupContextItem("cell_ctx")) {
                 m_gridSelectedX = gx;
                 m_gridSelectedZ = gz;
@@ -532,10 +531,9 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
         }
     }
 
-    // ── エディターカメラ位置マーカー ────────────────────────────────────
-    // WHY: 俯瞰ミニマップとして機能させるには「自分がどこを見ているか」が必須。
-    //      Grid の GameObject 位置を原点とみなし、カメラの XZ をセル座標へ射影する。
-    //      Grid GO の回転は想定しない (Grid Terrain は軸整列配置が前提)。
+    /// @name エディターカメラ位置マーカー
+    /// @note Grid の GameObject 位置を原点とみなし、カメラの XZ をセル座標へ射影する。
+    ///       Grid GO の回転は想定しない (Grid Terrain は軸整列配置が前提)。
     if (ctx.editorCamera && cellWorldSize > 0.0f) {
         math::Vector3 gridWorldOrigin{};
         if (const auto* gridGo = scene.GetGameObject(gridEntity))
@@ -548,13 +546,13 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
         if (inside) {
             const ImVec2 markerPos(gridOrigin.x + fx * (cellPx + spacing),
                                    gridOrigin.y + fz * (cellPx + spacing));
-            // カメラの向き (ヨー) を三角形マーカーの向きに反映する
+            /// @note カメラの向き (ヨー) を三角形マーカーの向きに反映する
             const math::Vector3 forward = ctx.editorCamera->GetForward();
             const float yaw = std::atan2(forward.x, forward.z);
             const float s = std::sin(yaw);
             const float c = std::cos(yaw);
             auto rotate = [&](float x, float y) {
-                // ミニマップはワールド +X → 画面右 / +Z → 画面下
+                /// @note ミニマップはワールド +X → 画面右 / +Z → 画面下
                 return ImVec2(markerPos.x + x * c + y * s, markerPos.y - x * s + y * c);
             };
             draw->AddTriangleFilled(rotate(0.0f, 8.0f), rotate(-5.0f, -5.0f), rotate(5.0f, -5.0f),
@@ -565,7 +563,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
 
     ImGui::Separator();
 
-    // 選択セルの操作
+    /// @note 選択セルの操作
     if (m_gridSelectedX < 0 || m_gridSelectedX >= grid->cellCountX ||
         m_gridSelectedZ < 0 || m_gridSelectedZ >= grid->cellCountZ) {
         ImGui::TextDisabled("No cell selected.");
@@ -576,19 +574,20 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
     const scene::EntityID selId = grid->GetCell(m_gridSelectedX, m_gridSelectedZ);
 
     if (scene.IsValid(selId)) {
-        // 割り当て済みセルの情報表示
+        /// @note 割り当て済みセルの情報表示
         if (const auto* go = scene.GetGameObject(selId)) {
             ImGui::Text("GO: %s", go->name.c_str());
             if (const auto* tc = scene.GetComponent<scene::TerrainComponent>(selId)) {
                 ImGui::Text("Size: %d x %d  cellSize: %.2f",
                     tc->columns, tc->rows, tc->cellSize);
-                ImGui::Text("Layer 0: %s",
-                    tc->layerMaterials[0].empty() ? "(none)" : tc->layerMaterials[0].c_str());
+                const bool hasLayer0 = tc->LayerCount() > 0 && !tc->layerMaterials[0].empty();
+                ImGui::Text("Layers: %d  Layer 0: %s", tc->LayerCount(),
+                    hasLayer0 ? tc->layerMaterials[0].c_str() : "(none)");
             }
             const auto& p = go->transform.worldPosition;
             ImGui::Text("World: %.1f, %.1f, %.1f", p.x, p.y, p.z);
         }
-        // 4 近傍のうち割り当て済みのセル数。継ぎ目処理の対象がどれだけ揃っているかの目安。
+        /// @note 4 近傍のうち割り当て済みのセル数。継ぎ目処理の対象がどれだけ揃っているかの目安。
         int neighborCount = 0;
         const int dirs[4][2] = { {-1,0}, {1,0}, {0,-1}, {0,1} };
         for (auto& d : dirs)
@@ -603,7 +602,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             ctx.markSceneDirty();
         }
     } else {
-        // 空セル: 新規 Terrain 生成 または 既存 GO から選択
+        /// @note 空セル: 新規 Terrain 生成 または 既存 GO から選択
         if (ImGui::Button("Add New Terrain Here", { -1.0f, 0.0f })) {
             CreateTerrainInGridCell(ctx, scene, gridEntity, m_gridSelectedX, m_gridSelectedZ);
             MarkTerrainGridDirty(scene, *grid);

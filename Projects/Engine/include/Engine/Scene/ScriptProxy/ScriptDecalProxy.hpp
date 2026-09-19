@@ -19,29 +19,14 @@ class Script;
 struct ScriptDecalProxy {
     Script* script = nullptr;
 
-    // ── 配置 ─────────────────────────────────────────────────────────────────
-    /// レイキャストの当たり点と法線へ痕を 1 枚置く。
-    ///
-    /// 新しい GameObject を作って DecalComponent を付け、投影ボリュームを面へ合わせる。
-    /// 自分の DecalComponent は見ないので、デカールを持たないスクリプトからも呼べる。
-    ///
-    /// WHY 専用の口を作るか: これまでは «GameObject を作って DecalComponent を付けて
-    ///     投影軸の回転を組む» を痕の種類ごとに書き起こしていた。回転の組み方
-    ///     (どのローカル軸が投影軸か) は投影の実装と対で決まる知識で、
-    ///     呼び出し側に書き写させると実装を変えた瞬間に全部が静かにずれる。
-    ///
-    /// @param point        当たり点 (ワールド)。ボリュームの中心に置く
-    /// @param normal       受け面の法線 (ワールド)。長さ 0 なら上向きとして扱う
+    /// @name 配置
+    ///@{
+    /// @brief レイキャストの当たり点と法線へ痕を 1 枚置く。DecalComponent が無くても呼べる。
+    /// @param point,normal 当たり点・受け面の法線 (ともにワールド)。normal は長さ 0 なら上向き
     /// @param materialPath render_path = "decal" の .mat。空文字列で組み込み経路
-    /// @param size         痕の一辺 [m] (投影ボリュームの面内サイズ)
-    /// @param lifetime     [秒]。< 0 で永続 (既定)
-    /// @param depth        投影ボリュームの厚み [m]。厚いほど凹凸をまたいで貼れるが、
-    ///                     手前の別の面にも乗りやすくなる
-    /// @param rollDegrees  法線まわりの回転 [度]。同じ痕を毎回違う向きで貼る用途
-    /// @return 置いたデカールの参照。作れなかったときは無効な EntityRef
-    ///
-    /// @note 返った参照から GameObject を引けば、大きさや .mat の上書きを後から足せる。
-    ///       置いた GameObject は runtimeGenerated なのでシーンへ保存されない。
+    /// @param size,lifetime,depth,rollDegrees 一辺[m]・寿命[秒](<0で永続)・投影厚み[m]・
+    ///        法線まわりの回転[度]
+    /// @return 置いたデカールの参照。作れなければ無効な EntityRef (runtimeGenerated で非保存)
     [[nodiscard]] EntityRef Spawn(const math::Vector3& point,
                                   const math::Vector3& normal,
                                   std::string_view materialPath,
@@ -51,8 +36,9 @@ struct ScriptDecalProxy {
                                   float rollDegrees = 0.0f) const;
 
     void SetEnabled(bool enabled) const;
+    ///@}
 
-    // lifetime < 0 で永続、>= 0 で時間経過フェードアウト→削除に切り替える。
+    /// @brief lifetime < 0 で永続、>= 0 で時間経過フェードアウト→削除に切り替える。
     void SetLifetime(float seconds)   const;
     void SetFadeTime(float fadeTime)  const;
     /// 出現時に濃くなっていく時間 [秒]。0 でいきなり全濃度。永続デカールでも効く。
@@ -61,7 +47,7 @@ struct ScriptDecalProxy {
     void SetFlipbook(int frameCount, int framesPerRow, float frameRate, bool loop) const;
     /// 重なった痕の前後。小さいほど先に描く = 後ろになる。
     void SetSortOrder(int order) const;
-    // age をリセットする（タイムラインを巻き戻してデカールを再表示したい場合）。
+    /// @brief age をリセットする (タイムラインを巻き戻してデカールを再表示したい場合)。
     void ResetAge() const;
 
     /// 不透明度の倍率 [0, 1]。ライフタイムフェードへ掛かるので .mat 経路でも効く。
@@ -75,19 +61,22 @@ struct ScriptDecalProxy {
     /// デカールを受け取るレイヤーのビットマスク。
     void SetReceiverLayerMask(uint32_t mask) const;
 
-    // ── 組み込み経路 (materialPath が空のときだけ効く) ────────────────────────
+    /// @name 組み込み経路 (materialPath が空のときだけ効く)
+    ///@{
     void SetAlbedoColor(float r, float g, float b, float a) const;
     void SetNormalStrength(float strength) const;
     void SetEmissiveColor(float r, float g, float b) const;
     void SetEmissiveScale(float scale) const;
 
-    // テクスチャパスを変更する。変更後は DecalPass が再バインドする。
+    /// @brief テクスチャパスを変更する。変更後は DecalPass が再バインドする。
     void SetAlbedoTexture  (std::string_view path) const;
     void SetNormalTexture  (std::string_view path) const;
     void SetEmissiveTexture(std::string_view path) const;
+    ///@}
 
-    // ── .mat 経路 ─────────────────────────────────────────────────────────────
-    /// 空文字列で組み込み経路へ戻す。render_path = "decal" の .mat だけが使える。
+    /// @name .mat 経路
+    ///@{
+    /// @brief 空文字列で組み込み経路へ戻す。render_path = "decal" の .mat だけが使える。
     void SetMaterial(std::string_view materialPath) const;
 
     /// このデカールだけのパラメータ上書き。共有 .mat の値は変えない。
@@ -100,6 +89,7 @@ struct ScriptDecalProxy {
 
     void ClearMaterialOverride (std::string_view param) const;
     void ClearMaterialOverrides() const;
+    ///@}
 
     [[nodiscard]] bool  IsEnabled() const;
     [[nodiscard]] float GetOpacity() const;

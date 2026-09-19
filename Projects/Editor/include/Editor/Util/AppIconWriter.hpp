@@ -3,13 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 ///
-/// WHAT: Unity の Player Settings > Icon 相当。PNG 等を Windows のアイコンリソース
-/// (RT_GROUP_ICON / RT_ICON) に変換し、パッケージング済みの exe へ書き込む。
-///
-/// WHY (再リンクせずリソースだけ差し替えるか):
-/// .rc でアイコンを持たせるとゲーム側 CMakeLists の変更になり、絵を差し替えるたびに
-/// ゲームプロジェクトの再コンパイルとリンクが要る。リソースの書き換えはリンク済みの
-/// exe に対して行えるため、パッケージング工程の 1 ステップで閉じる。
+/// @note PNG 等を Windows のアイコンリソース (RT_GROUP_ICON / RT_ICON) に変換し、
+///       パッケージング済みの exe へ直接書き込む。.rc に持たせるとゲーム側の再リンクが要るため。
 #pragma once
 #include <filesystem>
 #include <string>
@@ -19,9 +14,8 @@ namespace fbzz::editor {
 class AppIconWriter {
 public:
     /// 書き込むアイコングループのリソース ID。
-    /// WHY 101 固定か: ランタイムの Window がこの ID で exe からタイトルバー / Alt+Tab 用の
-    ///     アイコンを読む (Engine/src/Core/Window.cpp の kDefaultApplicationIconId)。
-    ///     ずらすと Explorer には出るのにウィンドウだけ既定アイコンになる。
+    /// @note 101 固定。Engine/src/Core/Platform/Window.cpp の kDefaultApplicationIconId と対応する。
+    ///       ずらすと Explorer には出てもウィンドウ (タイトルバー / Alt+Tab) は既定アイコンのまま残る。
     static constexpr int kIconResourceId = 101;
 
     /// 画像の素性。Build Settings の事前チェックが exe に触れずに読む。

@@ -3,10 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
 ///
-/// WHY DX11 を明示するか: このベンチはシェーダーを 1 本も使わず ImGui しか描かない。
-///     DX12 経路は実行時に dxcompiler.dll / dxil.dll を要求するため、それが無い環境で
-///     «物理を見たいだけ» のツールが起動しなくなる。--renderer=dx12 で上書きはできる。
+/// @note このベンチはシェーダーを 1 本も使わず ImGui しか描かない。以前は DXC を要求しない
+///       DX11 経路を明示していたが、DirectX 11 サポートは v1.0 で終了した。DX12 経路は
+///       dxcompiler.dll / dxil.dll を実行時に要求するため、それらが exe の隣に無い環境では
+///       起動に失敗する (CMake が FBZZEngine の出力先へ配置する)。
+/// @see  Docs/design/dx11-removal.md
 #include "BenchApp.hpp"
+#include "Measure.hpp"
 
 #include <TestKit/Console.hpp>
 
@@ -16,10 +19,17 @@
 
 #include <cstdio>
 
-int main()
+int main(int argc, char** argv)
 {
-    // 起動に失敗したときのログを読ませる。コンソールが無いまま落ちると
-    // «何も起きなかった» としか見えない。
+    /// @note --measure は窓も GPU も使わない。EnsureConsole は標準出力を新しいコンソールへ繋ぎ替えるため、呼ぶとパイプ先へ結果が届かない。
+    fbzz::bench::MeasureOptions measure;
+    if (fbzz::bench::ParseMeasureOptions(argc, argv, measure)) {
+        fbzz::testkit::SuppressBlockingErrorDialogs();
+        return fbzz::bench::RunMeasure(measure);
+    }
+
+    /// @note 起動に失敗したときのログを読ませる。コンソールが無いまま落ちると
+    ///       «何も起きなかった» としか見えない。
     const bool ownsConsole = fbzz::testkit::EnsureConsole();
 
     auto& app = fbzz::core::Application::Get();
@@ -29,7 +39,7 @@ int main()
     config.width  = 1600;
     config.height = 900;
 
-    if (!app.Init(config, fbzz::renderer::RendererBackend::DX11)) {
+    if (!app.Init(config, fbzz::renderer::RendererBackend::DX12)) {
         std::printf("\nApplication::Init に失敗しました。上のログを確認してください。\n");
         if (ownsConsole) fbzz::testkit::WaitForKey();
         return 1;

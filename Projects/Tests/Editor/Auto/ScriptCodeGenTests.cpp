@@ -54,7 +54,7 @@ protected:
         ASSERT_TRUE(m_temp.IsValid());
         std::filesystem::create_directories(ScriptsDir());
 
-        // 生成はマーカーの «あいだ» を置換する方式。器が無いと何も書かれない。
+        /// @note 生成はマーカーの «あいだ» を置換する方式。器が無いと何も書かれない。
         WriteFile(ListInl(),
                   "// 手書きの前書き\n"
                   "// @@FBZZ_SCRIPT_ENTRIES_BEGIN\n"
@@ -88,7 +88,7 @@ private:
     testkit::TempDir m_temp{"scriptcodegen"};
 };
 
-// --- 登録の対象と非対象 -----------------------------------------------------
+/// @name 登録の対象と非対象
 
 TEST_F(ScriptCodeGenTest, RegistersAPlainScript)
 {
@@ -113,7 +113,7 @@ TEST_F(ScriptCodeGenTest, RegistersADerivedScript)
 
 TEST_F(ScriptCodeGenTest, DoesNotRegisterASharedBase)
 {
-    // 基底を登録すると make_unique<T>() が要求され、純粋仮想を持つ型でビルドが落ちる。
+    /// @note 基底を登録すると make_unique<T>() が要求され、純粋仮想を持つ型でビルドが落ちる。
     AddHeader("EnemyBase.hpp",
               "#pragma once\nclass EnemyBase {\n  FBZZ_SCRIPT_BASE(EnemyBase)\n};\n");
 
@@ -134,7 +134,7 @@ TEST_F(ScriptCodeGenTest, DoesNotRegisterAnInterface)
 
 TEST_F(ScriptCodeGenTest, StillIncludesTheHeaderOfANonRegisteredType)
 {
-    // 登録はしないが、派生の定義に要るのでヘッダは取り込まれなければならない。
+    /// @note 登録はしないが、派生の定義に要るのでヘッダは取り込まれなければならない。
     AddHeader("EnemyBase.hpp",
               "#pragma once\nclass EnemyBase {\n  FBZZ_SCRIPT_BASE(EnemyBase)\n};\n");
 
@@ -145,7 +145,7 @@ TEST_F(ScriptCodeGenTest, StillIncludesTheHeaderOfANonRegisteredType)
 
 TEST_F(ScriptCodeGenTest, IgnoresAHeaderWithoutAnyMacro)
 {
-    // FBZZ_SCRIPT を持たないユーティリティは Add Script に出てはいけない。
+    /// @note FBZZ_SCRIPT を持たないユーティリティは Add Script に出てはいけない。
     AddHeader("MathHelpers.hpp",
               "#pragma once\nstruct MathHelpers { static int Add(int,int); };\n");
 
@@ -156,8 +156,8 @@ TEST_F(ScriptCodeGenTest, IgnoresAHeaderWithoutAnyMacro)
 
 TEST_F(ScriptCodeGenTest, DistinguishesScriptFromItsPrefixedSiblings)
 {
-    // "FBZZ_SCRIPT(" は "FBZZ_SCRIPT_BASE(" に一致してはいけない。
-    // ここが混ざると基底まで登録され、ビルドが落ちる。
+    /// @note "FBZZ_SCRIPT(" は "FBZZ_SCRIPT_BASE(" に一致してはいけない。
+    ///       ここが混ざると基底まで登録され、ビルドが落ちる。
     AddHeader("Mixed.hpp",
               "#pragma once\n"
               "class Real {\n  FBZZ_SCRIPT(Real)\n};\n"
@@ -170,7 +170,7 @@ TEST_F(ScriptCodeGenTest, DistinguishesScriptFromItsPrefixedSiblings)
     EXPECT_FALSE(Contains(registry, "FBZZ_SCRIPT_ENTRY(sandbox, Base)")) << registry;
 }
 
-// --- 名前空間 ---------------------------------------------------------------
+/// @name 名前空間
 
 TEST_F(ScriptCodeGenTest, RecordsTheNamespaceOfAScript)
 {
@@ -186,7 +186,7 @@ TEST_F(ScriptCodeGenTest, RecordsTheNamespaceOfAScript)
 
 TEST_F(ScriptCodeGenTest, HandlesACompoundNamespaceOnOneLine)
 {
-    // "namespace a::b {" は 1 行で読めるので、そのまま修飾名になる。
+    /// @note "namespace a::b {" は 1 行で読めるので、そのまま修飾名になる。
     AddHeader("PlayerComponent.hpp",
               "#pragma once\nnamespace game::player {\n"
               "class PlayerComponent {\n  FBZZ_SCRIPT(PlayerComponent)\n};\n"
@@ -198,11 +198,11 @@ TEST_F(ScriptCodeGenTest, HandlesACompoundNamespaceOnOneLine)
         << Registry();
 }
 
-// --- マーカーの扱い ---------------------------------------------------------
+/// @name マーカーの扱い
 
 TEST_F(ScriptCodeGenTest, KeepsTheHandWrittenPartsAroundTheMarkers)
 {
-    // 生成はマーカーの «あいだ» だけ。人が書いた前後を巻き込んで消してはいけない。
+    /// @note 生成はマーカーの «あいだ» だけ。人が書いた前後を巻き込んで消してはいけない。
     AddHeader("PlayerComponent.hpp",
               "#pragma once\nclass PlayerComponent {\n  FBZZ_SCRIPT(PlayerComponent)\n};\n");
 
@@ -215,7 +215,7 @@ TEST_F(ScriptCodeGenTest, KeepsTheHandWrittenPartsAroundTheMarkers)
 
 TEST_F(ScriptCodeGenTest, ReportsFailureWhenTheMarkersAreMissing)
 {
-    // マーカーの無いファイルを «全部書き換える» で処理すると、人の書いたものが消える。
+    /// @note マーカーの無いファイルを «全部書き換える» で処理すると、人の書いたものが消える。
     WriteFile(ListInl(), "// マーカーの無いファイル\n");
     AddHeader("PlayerComponent.hpp",
               "#pragma once\nclass PlayerComponent {\n  FBZZ_SCRIPT(PlayerComponent)\n};\n");
@@ -226,7 +226,7 @@ TEST_F(ScriptCodeGenTest, ReportsFailureWhenTheMarkersAreMissing)
 
 TEST_F(ScriptCodeGenTest, ClearsTheBlockWhenEveryScriptIsGone)
 {
-    // スクリプトを消したのに登録が残ると、存在しない型を new しに行く。
+    /// @note スクリプトを消したのに登録が残ると、存在しない型を new しに行く。
     AddHeader("PlayerComponent.hpp",
               "#pragma once\nclass PlayerComponent {\n  FBZZ_SCRIPT(PlayerComponent)\n};\n");
     ASSERT_TRUE(Sync());
@@ -238,11 +238,11 @@ TEST_F(ScriptCodeGenTest, ClearsTheBlockWhenEveryScriptIsGone)
     EXPECT_FALSE(Contains(Registry(), "PlayerComponent")) << Registry();
 }
 
-// --- 出力の性質 -------------------------------------------------------------
+/// @name 出力の性質
 
 TEST_F(ScriptCodeGenTest, ProducesTheSameFileForTheSameInput)
 {
-    // 走査順で並びが揺れると、何も変えていないのに毎回 git の差分が出る。
+    /// @note 走査順で並びが揺れると、何も変えていないのに毎回 git の差分が出る。
     AddHeader("Alpha.hpp", "#pragma once\nclass Alpha {\n  FBZZ_SCRIPT(Alpha)\n};\n");
     AddHeader("Beta.hpp",  "#pragma once\nclass Beta {\n  FBZZ_SCRIPT(Beta)\n};\n");
 
@@ -292,11 +292,11 @@ TEST_F(ScriptCodeGenTest, RejectsAnEmptyScriptsDirectoryArgument)
     EXPECT_FALSE(ScriptCodeGen::SyncScriptRegistry("", DllCppUtf8()));
 }
 
-// --- スクリプト雛形の生成 ---------------------------------------------------
+/// @name スクリプト雛形の生成
 
 TEST_F(ScriptCodeGenTest, CreateScriptAppendsTheComponentSuffixForBehaviours)
 {
-    // アタッチするスクリプトの慣習。ここがぶれると Add Script の一覧で名前が揃わない。
+    /// @note アタッチするスクリプトの慣習。ここがぶれると Add Script の一覧で名前が揃わない。
     const std::string created =
         ScriptCodeGen::CreateScript("My", ScriptsDirUtf8(), DllCppUtf8());
 
@@ -308,7 +308,7 @@ TEST_F(ScriptCodeGenTest, CreateScriptAppendsTheComponentSuffixForBehaviours)
 
 TEST_F(ScriptCodeGenTest, CreateScriptForAUtilityKeepsTheNameAndOmitsTheMacro)
 {
-    // ユーティリティはアタッチしない。Component を付けると意味が逆になる。
+    /// @note ユーティリティはアタッチしない。Component を付けると意味が逆になる。
     const std::string created =
         ScriptCodeGen::CreateScript("MyHelpers", ScriptsDirUtf8(), DllCppUtf8(), {},
                                     ScriptCodeGen::ScriptKind::Utility);
@@ -332,7 +332,7 @@ TEST_F(ScriptCodeGenTest, CreateScriptRefusesToOverwriteAnExistingFile)
 {
     ASSERT_FALSE(ScriptCodeGen::CreateScript("My", ScriptsDirUtf8(), DllCppUtf8()).empty());
 
-    // 2 回目は既存を上書きせず失敗する (人の書いたコードを消さない)。
+    /// @note 2 回目は既存を上書きせず失敗する (人の書いたコードを消さない)。
     EXPECT_TRUE(ScriptCodeGen::CreateScript("My", ScriptsDirUtf8(), DllCppUtf8()).empty());
 }
 
@@ -351,7 +351,7 @@ TEST_F(ScriptCodeGenTest, CreatedScriptIsPickedUpByTheRegistry)
     EXPECT_TRUE(Contains(Registry(), "FBZZ_SCRIPT_ENTRY(sandbox, MyComponent)")) << Registry();
 }
 
-// --- HLSL 雛形 --------------------------------------------------------------
+/// @name HLSL 雛形
 
 TEST_F(ScriptCodeGenTest, CreateHlslWritesAFileForEveryKind)
 {
@@ -370,8 +370,8 @@ TEST_F(ScriptCodeGenTest, CreateHlslWritesAFileForEveryKind)
 
 TEST_F(ScriptCodeGenTest, ParticleShaderIncludesTheParticleMaterialHelpers)
 {
-    // ParticleEmitter 用の PS は ParticleMaterial.hlsli を通さないと、
-    // 生成した .hlsl がそのままではコンパイルできない。
+    /// @note ParticleEmitter 用の PS は ParticleMaterial.hlsli を通さないと、
+    ///       生成した .hlsl がそのままではコンパイルできない。
     const std::string created = ScriptCodeGen::CreateHlsl(
         "MySpark", HlslDirUtf8(), ScriptCodeGen::HlslKind::ParticlePS);
 

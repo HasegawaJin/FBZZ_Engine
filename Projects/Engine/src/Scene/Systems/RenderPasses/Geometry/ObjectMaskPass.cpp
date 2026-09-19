@@ -3,19 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-28
 ///
-/// マスクの中身にエンジンは意味を持たない。RGBA は申告した側 (スクリプト) と
-/// 読む側 (カスタムパスのシェーダー) の取り決めで、輪郭の色にも、光らせる強さにも、
-/// «ここはボカすな» の重みにもなる。
-///
-/// WHY 値を申告ごとに持つか (パス側の定数にせず):
-///   同じフレームに違う意味のシルエットが並ぶ。定数 1 本にすると «誰の印か» を
-///   後段が区別できず、色や強さで意味を分ける表現が成立しない。
-///   マスクの 1 フェッチで全部揃うので、後段は対象を数える必要もなくなる。
-///
-/// WHY 遮蔽の判定をここで済ませるか:
-///   読む側が HDR の段で走ると、描き先 (hdrRT) の深度を同時には読めない。
-///   ここは別の RT へ描いているのでシーン深度を自由に読める。«見えている面だけ»
-///   にするかどうかは申告ごとの visibleOnly が決める (壁越しシルエットは false)。
+/// マスクの RGBA はエンジンが意味を決めない。申告した側 (スクリプト) と読む側
+/// (カスタムパスのシェーダー) の取り決めで、輪郭の色にも強さにもボカし量にもなる。
 #include "GeometryPasses.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -34,13 +23,12 @@ namespace fbzz::scene {
 
 namespace {
 
-// このフレームでマスクへ実際に発行したドローコール数。
-//
-// WHY 数えるか: «輪郭が出ない» は申告・描画・後段のどこで切れても症状が同じ
-//     «何も見えない» になる。RenderDoc を開かずに «パスが走ったか / 何枚描いたか»
-//     を切り分けられるようにしておく。値が変わったときだけ 1 行出す。
+/// このフレームでマスクへ実際に発行したドローコール数。申告・描画・後段のどこで切れても
+/// 症状が同じ「何も見えない」になるため、RenderDoc を開かずに切り分けられるよう数える。
 int g_objectMaskDraws = 0;
 
+/// @note 遮蔽判定はこのパスで完結させる。別 RT へ描くのでシーン深度 (HDR の深度) を自由に
+///       読める。visibleOnly が偽の申告はこの深度テストを素通しにし、壁越しシルエットを許す。
 void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
 {
     auto& r = ctx.renderer;
@@ -78,9 +66,9 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
     auto* smr = go.GetComponent<SkinnedMeshRenderer>();
     if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) return;
 
-    // Animator はモデルルート側、SkinnedMeshRenderer は submesh の子 GO に分かれる構成が
-    // 普通なので、通常描画と同じ親方向探索で解決する。自 GO だけを見ると bind pose へ
-    // 落ちて、輪郭だけが T ポーズで止まる。
+    /// @note Animator はモデルルート側、SkinnedMeshRenderer は submesh の子 GO に分かれる構成が
+    ///       普通なので、通常描画と同じ親方向探索で解決する。自 GO だけを見ると bind pose へ
+    ///       落ちて、輪郭だけが T ポーズで止まる。
     auto* anim = FindAnimator(go);
     const auto skinCB = ResolveSkinningCB(
         anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
@@ -91,7 +79,7 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
         renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
         if (!meshPtr) continue;
         if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
-        // 非表示スロットまで描くと、隠してあるメッシュの分だけ輪郭が膨らむ。
+        /// @note 非表示スロットまで描くと、隠してあるメッシュの分だけ輪郭が膨らむ。
         if (mat && !mat->SlotAt(mi).visible) continue;
 
         renderer::DrawCall dc;
@@ -151,13 +139,15 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
         if (!root) continue;
         ++resolved;
 
+        /// @note 値は申告 (GameObject) ごとに持つ。パス共通の定数にすると、同一フレームに
+        ///       並ぶ複数のシルエットを色や強さで区別できなくなる。
         ObjectMaskCB maskData{};
         maskData.payload = {
             request.color[0],
             request.color[1],
             request.color[2],
-            // 0 は «描かれていない» とクリア値の区別が付かない。値 0 の申告は
-            // «居ないこと» ではなく «弱いこと» なので、下限を持たせる。
+            /// @note 0 は «描かれていない» とクリア値の区別が付かない。値 0 の申告は
+            ///       «居ないこと» ではなく «弱いこと» なので、下限を持たせる。
             std::clamp(request.value, 0.02f, 1.0f)
         };
         maskData.flags = { request.visibleOnly ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
@@ -166,8 +156,8 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
         DrawSubtreeMask(*root, request.includeChildren, ctx);
     }
 
-    // 内訳が変わったときだけ 1 行。毎フレーム出すとログが埋まって本当のエラーが見えなくなる
-    // (RenderSystem の «無視される設定» の報告と同じ扱い)。
+    /// @note 内訳が変わったときだけ 1 行。毎フレーム出すとログが埋まって本当のエラーが見えなくなる
+    ///       (RenderSystem の «無視される設定» の報告と同じ扱い)。
     {
         static int sLive = -1;
         static int sResolved = -1;
@@ -185,4 +175,19 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
     r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
+
+void ObjectMaskPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("HDR").Write("ObjectMask");
+}
+
+bool ObjectMaskPass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.objectMaskEnabled;
+}
+
+void ObjectMaskPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteObjectMaskPass(ctx);
+}
 } // namespace fbzz::scene

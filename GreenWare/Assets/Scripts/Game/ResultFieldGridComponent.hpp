@@ -3,19 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-30
 ///
-/// WHY 専用の .mat を作らないか:
-///   FieldGrid.mat を «Title 用» と «Result 用» に割ると、格子の間隔も歪みの深さも
-///   2 か所で管理することになる。見た目の違いは «電極をどう動かすか» と «どれだけ
-///   絞るか» だけなので、per-instance の上書きで足りる。Title 側の絵は影響を受けない。
-///
-/// WHY 電極を ElectrodeRig から取らないか:
-///   あれはカーソル追従の実体で、Result には置きたくない (触れる的が無いのに
-///   マウスで背景が動くと、押せる物だと誤解させる)。ここでは «居るふりをする» 2 極を
-///   数式で回すだけにして、盤面にオブジェクトを増やさない。
-///
-/// WHY 勝敗で極を変えるか:
-///   CLEAR は＋と−が噛み合った状態、FAILED は片極だけが残って場が閉じない状態。
-///   背景そのものが結果の説明になるので、文字を大きくしなくても «負けた» が伝わる。
+/// @note 専用の .mat は作らない。FieldGrid.mat を Title 用と Result 用に割ると格子の
+///       間隔も歪みの深さも 2 か所で管理することになるが、見た目の違いは «電極を
+///       どう動かすか» と «どれだけ絞るか» だけなので per-instance の上書きで足りる。
+/// @note 電極は ElectrodeRig から取らない。あれはカーソル追従の実体で、触れる的が
+///       無いのにマウスで背景が動くと押せる物だと誤解させる。«居るふりをする» 2 極を
+///       数式で回すだけにして盤面にオブジェクトを増やさない。
+/// @note 勝敗で極を変える。CLEAR は＋と−が噛み合った状態、FAILED は片極だけが残って
+///       場が閉じない状態にし、背景そのものが結果の説明になるようにする。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
@@ -29,8 +24,8 @@ using namespace fbzz::math;
 
 namespace sandbox {
 
-// FieldGrid.hlsl の cbuffer 名。MaterialPropertyId は名前を畳んだ ID なので、
-// 毎フレーム作り直さずここで 1 度だけ確定させる。
+/// FieldGrid.hlsl の cbuffer 名。MaterialPropertyId は名前を畳んだ ID なので、
+/// 毎フレーム作り直さずここで 1 度だけ確定させる。
 inline constexpr MaterialPropertyId kPZenithColor     { "zenithColor" };
 inline constexpr MaterialPropertyId kPHorizonColor    { "horizonColor" };
 inline constexpr MaterialPropertyId kPGridColor       { "gridColor" };
@@ -80,9 +75,9 @@ public:
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(float, debugPulse, 0.0f, "脈動")
 
-    /// 文字が噛み合う瞬間に、場をひと突きする。ResultPresenter から呼ぶ。
-    /// WHY static か: 演出の «間» は文字側が持っている。時刻を両方に書くと、
-    ///     片方だけ直したときに必ずずれる。呼ぶ側を 1 つにして同期を消す。
+    /// @brief 文字が噛み合う瞬間に、場をひと突きする。ResultPresenter から呼ぶ。
+    /// @note static にする。演出の «間» は文字側が持っており、時刻を両方に書くと
+    ///       片方だけ直したときに必ずずれるため、呼ぶ側を 1 つにして同期を消す。
     static void Pulse(float strength = 1.0f);
 
     void OnStart() override;
@@ -112,15 +107,15 @@ inline void ResultFieldGridComponent::OnStart()
 
 inline void ResultFieldGridComponent::OnDestroy()
 {
-    // 自分が現役のときだけ降ろす。ホットリロードで新旧が一瞬同居しても、
-    // 後から来た方の登録を古い方の破棄が消してしまわない。
+    /// @note 自分が現役のときだけ降ろす。ホットリロードで新旧が一瞬同居しても、
+    ///       後から来た方の登録を古い方の破棄が消してしまわない。
     if (s_active == this) s_active = nullptr;
 }
 
 inline void ResultFieldGridComponent::OnUpdate()
 {
-    // ドームは «画面を埋めるための代理» なので、中心をカメラに合わせるだけでよい
-    // (FieldGrid.hlsl は視線と床平面の交点から絵を作る)。
+    /// @note ドームは «画面を埋めるための代理» なので、中心をカメラに合わせるだけでよい
+    ///       (FieldGrid.hlsl は視線と床平面の交点から絵を作る)。
     if (GameObject* cam = scene.FindWithTag("MainCamera"))
         transform.position = cam->transform.worldPosition;
 
@@ -129,18 +124,18 @@ inline void ResultFieldGridComponent::OnUpdate()
 
     const float dt = time.UnscaledDeltaTime();
     m_time += dt;
-    // 突きは 1.1 秒で抜ける。指数減衰にすると «鳴った» 感じが頭にだけ残る。
+    /// @note 突きは 1.1 秒で抜ける。指数減衰にすると «鳴った» 感じが頭にだけ残る。
     m_pulse -= m_pulse * (dt * 3.4f);
     if (m_pulse < 1.0e-4f) m_pulse = 0.0f;
     debugPulse = m_pulse;
 
     const bool  win  = GameResultState::victory;
-    // 出だしの 1.2 秒でゆっくり立ち上げる。最初のフレームから満照度だと、
-    // 文字のフェードインより先に背景が完成してしまい、順番が逆に見える。
+    /// @note 出だしの 1.2 秒でゆっくり立ち上げる。最初のフレームから満照度だと、
+    ///       文字のフェードインより先に背景が完成してしまい、順番が逆に見える。
     const float warm = m_time < 1.2f ? (m_time / 1.2f) * (m_time / 1.2f) : 1.0f;
 
-    // ── 色 ──────────────────────────────────────────────────────────────
-    // 無彩色の格子。Result の地色 (#050608) より少しだけ上に置く。
+    /// @name 色
+    /// @note 無彩色の格子。Result の地色 (#050608) より少しだけ上に置く。
     mat.SetVector4(kPZenithColor, Vector4{ 0.0196f, 0.0235f, 0.0314f, 1.0f });
     mat.SetVector4(kPHorizonColor, Vector4{ 0.042f, 0.048f, 0.060f, 1.0f });
     mat.SetVector4(kPGridColor, Vector4{ 0.062f, 0.070f, 0.086f, 1.0f });
@@ -148,8 +143,8 @@ inline void ResultFieldGridComponent::OnUpdate()
     mat.SetVector4(kPPlusColor, kColorRight);
     mat.SetVector4(kPMinusColor, kColorLeft);
 
-    // ── 格子 ────────────────────────────────────────────────────────────
-    // Title より 1 段細かく、遠くで早く消す。文字の裏に線が残ると読みが落ちる。
+    /// @name 格子
+    /// @note Title より 1 段細かく、遠くで早く消す。文字の裏に線が残ると読みが落ちる。
     mat.SetFloat(kPCellSize, 1.6f);
     mat.SetFloat(kPMajorEvery, 4.0f);
     mat.SetFloat(kPLineWidth, 0.9f);
@@ -160,7 +155,7 @@ inline void ResultFieldGridComponent::OnUpdate()
     mat.SetFloat(kPGroundHeight, 0.0f);
     mat.SetFloat(kPDither, 0.004f);
 
-    // ── 歪みと光 ────────────────────────────────────────────────────────
+    /// @name 歪みと光
     const float pulse = m_pulse;
     mat.SetFloat(kPWarpRadius, 4.0f);
     mat.SetFloat(kPWarpStrength, (win ? 1.35f : 0.75f) * (1.0f + pulse * 0.9f));
@@ -176,15 +171,16 @@ inline void ResultFieldGridComponent::OnUpdate()
     mat.SetFloat(kPIntensity,
                  (win ? clearIntensity : failIntensity) * warm * (1.0f + pulse * 0.35f));
 
-    // ── 2 極 ────────────────────────────────────────────────────────────
-    // ＋はキャラクター側 (画面右)、−は文字側 (画面左) を基準にして、
-    // 逆回りでゆっくりすれ違う。同じ向きに回すと «並んで移動する» ように見えて、
-    // 引き合っている感じが出ない。
+    /// @name 2 極
+    /// @note ＋はキャラクター側 (画面右)、−は文字側 (画面左) を基準にして、
+    ///       逆回りでゆっくりすれ違う。同じ向きに回すと «並んで移動する» ように見えて、
+    ///       引き合っている感じが出ない。
     const float period = orbitSeconds > 0.1f ? orbitSeconds : 0.1f;
     const float aPlus  = (m_time / period) * 6.2831853f;
     const float aMinus = -(m_time / (period * 1.38f)) * 6.2831853f + 2.4f;
 
-    const Vector3 hub{ 0.6f, 0.0f, 1.5f };   // キャラクターの少し奥
+    /// @note キャラクターの少し奥
+    const Vector3 hub{ 0.6f, 0.0f, 1.5f };
     const Vector3 plus {
         hub.x + std::cos(aPlus) * orbitRadius,
         orbitHeight + std::sin(aPlus * 0.7f) * 0.35f,
@@ -196,7 +192,7 @@ inline void ResultFieldGridComponent::OnUpdate()
         hub.z + std::sin(aMinus) * orbitRadius * 0.7f,
     };
 
-    // w は極性と «有効か»。負けたときは＋を落として、場が閉じない絵にする。
+    /// @note w は極性と «有効か»。負けたときは＋を落として、場が閉じない絵にする。
     mat.SetVector4(kPElectrode0,
                    Vector4{ plus.x,  plus.y,  plus.z,  win ? 1.0f : 0.0f });
     mat.SetVector4(kPElectrode1,

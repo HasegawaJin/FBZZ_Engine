@@ -28,7 +28,7 @@ public:
     {
         m_body.SetMass(1.0f);
         m_body.SetPosition(position);
-        // Step を回す前のクエリ・BroadPhase は «コライダーが覚えている場所» を見る。
+        /// @note Step を回す前のクエリ・BroadPhase は «コライダーが覚えている場所» を見る。
         m_shape.Update(position, math::Quaternion::Identity());
     }
 
@@ -75,7 +75,7 @@ protected:
     void SetUp() override
     {
         testkit::Fixture::SetUp();
-        // 落下は接触の «継続» を壊す。イベント分類だけを見たいので重力は切る。
+        /// @note 落下は接触の «継続» を壊す。イベント分類だけを見たいので重力は切る。
         world.SetGravity(math::Vector3::ZERO);
     }
 
@@ -94,7 +94,7 @@ protected:
     physics::World world;
 };
 
-// --- Enter / Stay / Exit ----------------------------------------------------
+/// @name Enter / Stay / Exit
 
 TEST_F(WorldCollisionEventTest, ReportsEnterOnTheFirstFrameOfAnOverlap)
 {
@@ -120,7 +120,7 @@ TEST_F(WorldCollisionEventTest, DowngradesEnterToStayWhileTheOverlapContinues)
     world.Step(testkit::kFixedDeltaTime);
     world.Step(testkit::kFixedDeltaTime);
 
-    // Enter が毎フレーム飛ぶと «触れた瞬間だけ» のはずの処理が連射される。
+    /// @note Enter が毎フレーム飛ぶと «触れた瞬間だけ» のはずの処理が連射される。
     EXPECT_TRUE(world.GetEnterEvents().empty());
     EXPECT_EQ(world.GetStayEvents().size(), 1u);
 }
@@ -152,7 +152,7 @@ TEST_F(WorldCollisionEventTest, ReportsExitOnlyOnceAfterTheOverlapEnds)
     world.Step(testkit::kFixedDeltaTime);
     world.Step(testkit::kFixedDeltaTime);
 
-    // 前フレームの記録を消し忘れると、離れて以降ずっと Exit が飛び続ける。
+    /// @note 前フレームの記録を消し忘れると、離れて以降ずっと Exit が飛び続ける。
     EXPECT_TRUE(world.GetExitEvents().empty());
 }
 
@@ -167,7 +167,7 @@ TEST_F(WorldCollisionEventTest, NamesBothCollidersOnTheEvent)
 
     ASSERT_EQ(world.GetEnterEvents().size(), 1u);
     const physics::CollisionEvent& event = world.GetEnterEvents()[0];
-    // どちらが A でどちらが B かは実装都合。«2 つとも載っている» ことだけを契約にする。
+    /// @note どちらが A でどちらが B かは実装都合。«2 つとも載っている» ことだけを契約にする。
     const bool namesBoth =
         (event.colliderA == probe.Shape() && event.colliderB == zone.Shape()) ||
         (event.colliderA == zone.Shape() && event.colliderB == probe.Shape());
@@ -176,7 +176,7 @@ TEST_F(WorldCollisionEventTest, NamesBothCollidersOnTheEvent)
     EXPECT_NE(event.bodyB, nullptr);
 }
 
-// --- Trigger --------------------------------------------------------------
+/// @name Trigger
 
 TEST_F(WorldCollisionEventTest, MarksAnOverlapWithATriggerAsATriggerEvent)
 {
@@ -200,7 +200,7 @@ TEST_F(WorldCollisionEventTest, LeavesASolidContactUnmarked)
 
     world.Step(testkit::kFixedDeltaTime);
 
-    // ここが true になると、押し返されているのに «すり抜ける当たり» として扱われる。
+    /// @note ここが true になると、押し返されているのに «すり抜ける当たり» として扱われる。
     ASSERT_EQ(world.GetEnterEvents().size(), 1u);
     EXPECT_FALSE(world.GetEnterEvents()[0].isTrigger);
 }
@@ -218,12 +218,12 @@ TEST_F(WorldCollisionEventTest, DoesNotPushABodyOutOfATrigger)
     EXPECT_VEC3_NEAR(probe.Body().GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
-// --- 衝突の強さ -------------------------------------------------------------
+/// @name 衝突の強さ
 
 TEST_F(WorldCollisionEventTest, ReportsTheApproachSpeedMeasuredBeforeResolve)
 {
-    // 接触した瞬間に «まだ減速していない» 速度を残す。Resolve の後で測ると、
-    // 止められた後の 0 に近い値になり、衝突ダメージが常に最小になる。
+    /// @note 接触した瞬間に «まだ減速していない» 速度を残す。Resolve の後で測ると、
+    ///       止められた後の 0 に近い値になり、衝突ダメージが常に最小になる。
     Ball probe(1.0f, math::Vector3(-0.5f, 0.0f, 0.0f));
     Ball wall(1.0f, math::Vector3(1.5f, 0.0f, 0.0f));
     wall.AsStaticWall();
@@ -246,7 +246,7 @@ TEST_F(WorldCollisionEventTest, ReportsTheNormalImpulseAppliedByResolve)
 
     world.Step(testkit::kFixedDeltaTime);
 
-    // 質量込みの «手応え»。軽い敵と重い敵で反応を変えたいときに読む値。
+    /// @note 質量込みの «手応え»。軽い敵と重い敵で反応を変えたいときに読む値。
     ASSERT_EQ(world.GetEnterEvents().size(), 1u);
     EXPECT_GT(world.GetEnterEvents()[0].normalImpulse, 0.0f);
 }
@@ -260,8 +260,8 @@ TEST_F(WorldCollisionEventTest, ReportsNoImpactForAnOverlapThatIsNotClosing)
 
     world.Step(testkit::kFixedDeltaTime);
 
-    // 床に載っているだけの接触に «衝突の強さ» を付けると、立っているだけで
-    // ダメージが入り続ける。
+    /// @note 床に載っているだけの接触に «衝突の強さ» を付けると、立っているだけで
+    ///       ダメージが入り続ける。
     ASSERT_EQ(world.GetEnterEvents().size(), 1u);
     EXPECT_FLOAT_EQ(world.GetEnterEvents()[0].approachSpeed, 0.0f);
     EXPECT_FLOAT_EQ(world.GetEnterEvents()[0].normalImpulse, 0.0f);
@@ -281,8 +281,8 @@ TEST_F(WorldCollisionEventTest, ClearsTheImpactValuesOnExitEvents)
     wall.Body().SetPosition(math::Vector3(50.0f, 0.0f, 0.0f));
     world.Step(testkit::kFixedDeltaTime);
 
-    // 離れた «瞬間» に強さは無い。前フレームの値を持ち越すと、Exit を見ている
-    // スクリプトが古い衝突速度でダメージを出す。
+    /// @note 離れた «瞬間» に強さは無い。前フレームの値を持ち越すと、Exit を見ている
+    ///       スクリプトが古い衝突速度でダメージを出す。
     ASSERT_EQ(world.GetExitEvents().size(), 1u);
     const physics::CollisionEvent& exitEvent = world.GetExitEvents()[0];
     EXPECT_FLOAT_EQ(exitEvent.approachSpeed, 0.0f);

@@ -1,10 +1,7 @@
 /// @file    DecalDebugPass.cpp
-/// @brief   DecalComponent の OBB ワイヤーフレーム可視化。
+/// @brief   DecalComponent の投影 OBB と投影方向 (-Y) を描く。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
-/// Transform の worldScale * 0.5 を halfExtents として DebugDraw::Box を呼ぶ。
-/// 投影方向 (-Y) を示す矢印線も中心から描画する。
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
@@ -17,12 +14,6 @@ namespace fbzz::scene {
 
 std::string_view DecalDebugPass::Name() const { return "DebugDecalBounds"; }
 
-void DecalDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
-{
-    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
-    builder.ReadWrite("HDR").SetAutoTarget("HDR");
-}
-
 bool DecalDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
     return ctx.settings.showDecalBounds;
@@ -30,8 +21,8 @@ bool DecalDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void DecalDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    constexpr math::Vector4 kBoxColor   = { 1.0f, 0.5f, 0.0f, 1.0f }; // オレンジ
-    constexpr math::Vector4 kArrowColor = { 1.0f, 0.8f, 0.0f, 1.0f }; // 黄
+    constexpr math::Vector4 kBoxColor   = { 1.0f, 0.5f, 0.0f, 1.0f };
+    constexpr math::Vector4 kArrowColor = { 1.0f, 0.8f, 0.0f, 1.0f };
 
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
     for (auto& go : ctx.scene.GameObjects()) {
@@ -40,18 +31,16 @@ void DecalDebugPass::Execute(PassResources&, RenderPassContext& ctx)
         const auto* dc = go.GetComponent<DecalComponent>();
         if (!dc || !dc->enabled) continue;
 
-        const auto& tf = go.transform;
+        /// @note DecalPass は GetWorldMatrix の単位立方体で投影する。ここもワールド TRS だけで組む
+        ///       (ローカル値を混ぜると親の下に置いたデカールで箱だけずれる)。
+        const Transform& tf = go.transform;
+        const math::Vector3 halfExtents = tf.worldScale * 0.5f;
+        renderer::DebugDraw::Box(ctx.renderer, tf.worldPosition, halfExtents, tf.worldRotation, kBoxColor);
 
-        // OBB ワイヤーフレーム
-        renderer::DebugDraw::Box(ctx.renderer,
-            tf.position,
-            tf.worldScale * 0.5f,
-            tf.rotation,
-            kBoxColor);
-
-        // 投影方向インジケータ: 中心 → ローカル -Y 方向へ halfExtent.y の矢印
-        const math::Vector3 tip = tf.position - tf.rotation * math::Vector3{ 0.0f, tf.worldScale.y * 0.5f, 0.0f };
-        renderer::DebugDraw::Line(ctx.renderer, tf.position, tip, kArrowColor);
+        const math::Vector3 tip =
+            tf.worldPosition - tf.worldRotation * math::Vector3{ 0.0f, halfExtents.y, 0.0f };
+        renderer::DebugDraw::Arrow(ctx.renderer, tf.worldPosition, tip,
+                                   halfExtents.y * 0.2f, halfExtents.y * 0.06f, kArrowColor);
     }
     renderer::DebugDraw::Flush();
 }

@@ -1,0 +1,31 @@
+# @file    Fur.mat
+# @brief   Shell / Fin が共有する短毛のプリセット。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+version = 1
+shader = 'guid:aef89576fbea4916a2a3905f4ef1ead5|Assets/Shaders/Fiber/FiberShell.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+depth_write = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+rootColor = [0.16, 0.07, 0.025, 1.0]
+tipColor = [0.65, 0.4, 0.18, 1.0]
+fiberLength = 0.08
+fiberDensity = 0.85
+fiberThickness = 0.32
+fiberTaper = 0.85
+fiberFrequency = 100.0
+windResponse = 0.025
+maxBend = 0.04
+gravityBend = 0.01
+roughness = 0.5
+specularStrength = 0.25
+transmission = 0.0
+rootOcclusion = 0.65
+grassShading = 0.0
+worldMapping = 0.0
+finSilhouetteWidth = 0.35

@@ -36,7 +36,7 @@ public:
 
 class ColliderTest : public testkit::Fixture {};
 
-// --- Sphere -----------------------------------------------------------------
+/// @name Sphere
 
 TEST_F(ColliderTest, SphereVolumeMatchesTheAnalyticFormula)
 {
@@ -58,7 +58,7 @@ TEST_F(ColliderTest, SphereBoundsFollowTheWorldPosition)
 
 TEST_F(ColliderTest, SphereBoundsIgnoreRotation)
 {
-    // 球は回しても形が変わらない。回転を反映してしまうと境界が無意味に膨らむ。
+    /// @note 球は回しても形が変わらない。回転を反映してしまうと境界が無意味に膨らむ。
     physics::SphereCollider rotated(1.0f);
     physics::SphereCollider upright(1.0f);
     rotated.Update(math::Vector3::ZERO, Rng().NextRotation());
@@ -75,7 +75,7 @@ TEST_F(ColliderTest, SphereReportsItsType)
     EXPECT_EQ(sphere.GetType(), physics::ColliderType::SPHERE);
 }
 
-// --- AABB -------------------------------------------------------------------
+/// @name AABB
 
 TEST_F(ColliderTest, AxisAlignedBoxVolumeIsEightTimesTheHalfExtentProduct)
 {
@@ -86,8 +86,8 @@ TEST_F(ColliderTest, AxisAlignedBoxVolumeIsEightTimesTheHalfExtentProduct)
 
 TEST_F(ColliderTest, AxisAlignedBoxIgnoresRotation)
 {
-    // 「回らない箱」であることが AABBCollider の存在理由。回ってしまうと
-    // 地面や壁がフレームごとに膨らんだり縮んだりする。
+    /// @note 「回らない箱」であることが AABBCollider の存在理由。回ってしまうと
+    ///       地面や壁がフレームごとに膨らんだり縮んだりする。
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
     box.Update(math::Vector3::ZERO,
                math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(45.0f)));
@@ -98,7 +98,7 @@ TEST_F(ColliderTest, AxisAlignedBoxIgnoresRotation)
     EXPECT_VEC3_NEAR(bounds.max, math::Vector3(1.0f, 1.0f, 1.0f), testkit::kTolerance);
 }
 
-// --- OBB --------------------------------------------------------------------
+/// @name OBB
 
 TEST_F(ColliderTest, OrientedBoxVolumeIsInvariantUnderRotation)
 {
@@ -113,7 +113,7 @@ TEST_F(ColliderTest, OrientedBoxVolumeIsInvariantUnderRotation)
 
 TEST_F(ColliderTest, OrientedBoxBoundsGrowWhenRotatedFortyFiveDegrees)
 {
-    // 一辺 2 の立方体を Y 回りに 45 度回すと、XZ の外接幅が sqrt(2) 倍になる。
+    /// @note 一辺 2 の立方体を Y 回りに 45 度回すと、XZ の外接幅が sqrt(2) 倍になる。
     physics::OBBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
     box.Update(math::Vector3::ZERO,
                math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(45.0f)));
@@ -160,7 +160,7 @@ TEST_F(ColliderTest, OrientedBoxSupportPointIsTheFarthestCorner)
     physics::OBBCollider box(math::Vector3(1.0f, 2.0f, 3.0f));
     box.Update(math::Vector3::ZERO, math::Quaternion::Identity());
 
-    // 回転なしなら、支持点は各軸の符号で決まる角そのもの。
+    /// @note 回転なしなら、支持点は各軸の符号で決まる角そのもの。
     EXPECT_VEC3_NEAR(box.SupportPoint(math::Vector3(1.0f, 1.0f, 1.0f)),
                      math::Vector3(1.0f, 2.0f, 3.0f), testkit::kTolerance);
     EXPECT_VEC3_NEAR(box.SupportPoint(math::Vector3(-1.0f, -1.0f, -1.0f)),
@@ -183,7 +183,7 @@ TEST_F(ColliderTest, OrientedBoxSupportPointIsNeverBeatenByAnyCorner)
     }
 }
 
-// --- Capsule ----------------------------------------------------------------
+/// @name Capsule
 
 TEST_F(ColliderTest, CapsuleVolumeIsTheCylinderPlusOneWholeSphere)
 {
@@ -207,7 +207,7 @@ TEST_F(ColliderTest, CapsuleSegmentRunsAlongTheLocalUpAxis)
 
 TEST_F(ColliderTest, CapsuleSegmentFollowsRotation)
 {
-    // X 回りに 90 度回すと、中心線は Y 軸から Z 軸へ倒れる。
+    /// @note X 回りに 90 度回すと、中心線は Y 軸から Z 軸へ倒れる。
     physics::CapsuleCollider capsule(0.5f, 2.0f);
     capsule.Update(math::Vector3::ZERO,
                    math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::HALF_PI));
@@ -229,11 +229,11 @@ TEST_F(ColliderTest, CapsuleBoundsIncludeTheRadiusAroundTheSegment)
     EXPECT_VEC3_NEAR(bounds.max, math::Vector3(0.5f, 2.5f, 0.5f), testkit::kTolerance);
 }
 
-// --- 基底クラスの既定 -------------------------------------------------------
+/// @name 基底クラスの既定
 
 TEST_F(ColliderTest, DefaultVolumeFallsBackToTheBoundingBox)
 {
-    // 三角メッシュや凸包は厳密な体積を出さず、外接箱で近似する契約。
+    /// @note 三角メッシュや凸包は厳密な体積を出さず、外接箱で近似する契約。
     BareCollider collider;
     collider.m_bounds = {math::Vector3(-1.0f, -2.0f, -3.0f), math::Vector3(1.0f, 2.0f, 3.0f)};
 
@@ -242,7 +242,7 @@ TEST_F(ColliderTest, DefaultVolumeFallsBackToTheBoundingBox)
 
 TEST_F(ColliderTest, DefaultVolumeIsZeroForDegenerateBounds)
 {
-    // 厚みのない境界で負や NaN を返すと、質量計算がそのまま壊れる。
+    /// @note 厚みのない境界で負や NaN を返すと、質量計算がそのまま壊れる。
     BareCollider collider;
     collider.m_bounds = {math::Vector3::ZERO, math::Vector3(1.0f, 0.0f, 1.0f)};
 

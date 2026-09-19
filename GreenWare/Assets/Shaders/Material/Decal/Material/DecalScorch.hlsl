@@ -24,8 +24,9 @@
 ///     「1.0 が自然な状態」になるようパラメータを選んである (coverage は 1 で満開、
 ///     cooled は 1 で冷え切った跡)。
 #include "Material/Decal/DecalCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
-Texture2D texAlbedo : register(TEX_ALBEDO);
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
@@ -43,7 +44,17 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     // 輪郭の崩れ方を個体ごとにずらす種。呼び出し側が跡 1 枚ごとに違う値を入れる。
     float  seed;          // offset 56
     uint   textureMask;   // offset 60  bit0 = albedo で焦げを変調する
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    uint texAlbedoIndex;
 };
+
+// WHY cbuffer の後ろへ置くか: 添字フィールドを参照して初期化するため、
+//     宣言はフィールドより後ろでなければならない。
+/// @note 読むのは描画ごとの添字ブロック (b14)。cbuffer の添字フィールドは Inspector に枠を出すためだけに残す。
+///       組み込みデカールは C++ の DecalMaterialCB (添字なし) を b2 に書き、デカールごとの
+///       テクスチャ上書きも DrawCall::textures だけを差し替えるので、CB の添字は当てにならない。
+FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
 
 DecalPixelInput VSMain(uint id : SV_VertexID)
 {

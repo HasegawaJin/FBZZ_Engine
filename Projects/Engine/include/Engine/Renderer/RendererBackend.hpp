@@ -3,8 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 ///
-/// WHY: enum を RendererFactory.hpp から切り出すことで、ProjectSettings や Application が
-/// IRenderer 一式 (重いインターフェース) を include せずにバックエンド種別だけを参照できる。
+/// @note enum を RendererFactory.hpp から切り出してあるのは、ProjectSettings や Application が
+///       IRenderer 一式 (重いインターフェース) を include せずに種別だけを参照できるようにするため。
+/// @note DirectX 11 サポートは v1.0 で終了した。実装が 1 つになった今も列挙と文字列変換を
+///       残しているのは、次のバックエンドを足すときに上位層の形を変えずに済ませるため。
+/// @see  Docs/design/dx11-removal.md
 #pragma once
 
 #include <cstdint>
@@ -13,24 +16,33 @@
 namespace fbzz::renderer {
 
 enum class RendererBackend : uint8_t {
-    DX11,
     DX12,
 };
 
-// 設定ファイル用の小文字トークン ("dx11" / "dx12") との相互変換。
+/// @brief 設定ファイル用の小文字トークンへ変換する。
 inline const char* ToString(RendererBackend backend)
 {
     switch (backend) {
     case RendererBackend::DX12: return "dx12";
-    case RendererBackend::DX11: return "dx11";
     }
-    return "dx11";
+    return "dx12";
 }
 
+/// @brief v1.0 で終了したバックエンドを指す設定値かどうか。
+/// @note 呼び出し側が「黙って DX12 へ倒した」ことを利用者へ伝えられるように、
+///       未知トークンとは区別して判定できるようにしてある。
+inline bool IsRetiredBackendToken(std::string_view text)
+{
+    return text == "dx11";
+}
+
+/// @brief 設定ファイルのトークンから種別を解決する。
+/// @note 解決できないトークンは DX12 とみなす。プロジェクト設定に "dx11" が残っていても
+///       起動を止めないための意図的な挙動で、警告は呼び出し側が IsRetiredBackendToken で出す。
 inline RendererBackend BackendFromString(std::string_view text)
 {
-    // WHY: DX12を全体既定とし、DX11は明示指定された場合だけ互換経路として選ぶ。
-    return text == "dx11" ? RendererBackend::DX11 : RendererBackend::DX12;
+    (void)text;
+    return RendererBackend::DX12;
 }
 
 } // namespace fbzz::renderer

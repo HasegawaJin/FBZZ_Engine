@@ -2,11 +2,9 @@
 /// @brief   Canvas 配下で矩形を持つ「UI 要素」の判定
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
-/// WHY 1 か所に置くか:
-///   「これは UI 要素か」を Editor は選択・ギズモ・Inspector の 3 か所で問う。
-///   絵を持つもの (UIImage / UIText) だけを条件に書くと、Mask や Scroll View の
-///   ように自分では何も描かない要素が Viewport から一切触れなくなる。条件が
-///   散っていると UI コンポーネントを 1 つ足すたびに拾い漏れる箇所が出る。
+/// @note 1 か所に置くのは、「これは UI 要素か」を Editor が選択・ギズモ・Inspector の 3 か所で
+///       問うため。絵を持つものだけを条件に書くと、Mask や Scroll View のように自分では
+///       何も描かない要素が Viewport から触れなくなる。散っていると拾い漏れが出る。
 #pragma once
 
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -35,8 +33,8 @@ namespace fbzz::scene {
         || go.GetComponent<UINavigation>()
         || go.GetComponent<UIDragSource>()
         || go.GetComponent<UIDropTarget>();
-    // NOTE: UICanvasGroup は入れない。あれは配下の見え方と入力可否を変えるだけで
-    //       自分の矩形を持たない (掴んでも動かす対象が無い)。
+    /// @note UICanvasGroup は入れない。あれは配下の見え方と入力可否を変えるだけで
+    ///       自分の矩形を持たない (掴んでも動かす対象が無い)。
 }
 
 /// サイズが実測でしか決まらない要素。掴んで広げることはできない。

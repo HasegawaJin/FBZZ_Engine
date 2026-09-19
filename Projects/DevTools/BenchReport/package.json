@@ -1,0 +1,20 @@
+{
+    "name": "fbzz-bench-report",
+    "version": "0.1.0",
+    "private": true,
+    "description": "FBZZTestBench --measure の JSON から比較レポート (Markdown・SVG・HTML) を作る。Node 24 の型除去で .ts を直接実行し、実行時の依存を持たない。",
+    "type": "module",
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "report": "node src/cli.ts report",
+        "index": "node src/cli.ts index",
+        "test": "node --test \"tests/*.test.ts\"",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@types/node": "^26.1.1",
+        "typescript": "^7.0.2"
+    }
+}

@@ -3,24 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-27
 ///
-/// WHY AI と音の間に 1 枚挟むか:
-///   BossAnimatorComponent が Animator に対してそうしているのと同じ理由。ボスの素材は
-///   35 ファイルあり、しかも 1 つの行動が «予備動作 → 着弾 → 減衰 → 硬直 → 引き抜き» の
-///   ように 5 本のファイルへ割れている。AI が se::Play を直に並べると、行動を 1 つ
-///   足すたびに «どのファイルを何秒後に» という表が AI の中へ散らばる。
-///   行動 1 つを関数 1 つに閉じて、ファイル名も間隔もこのファイルの外へ出さない。
-///
-/// WHY 間隔を秒ではなくフレームで書くか:
-///   素材 (Assets/Sound/SE/README) は 30fps のフレーム番号にそのまま乗る長さで
-///   書き出してあり、踏みつけの «F16–20 は完全な無音» のように、間そのものが
-///   設計されている。秒へ均してしまうと、その «置かれた無音» が誰かの丸め方次第で
-///   埋まる。表の側の単位のまま持って、使う直前に秒へ直す。
-///
-/// WHY 鳴り続ける音を LoopVoice で持つか:
-///   AudioSourceComponent の主 voice は 1 本しかなく、その volume と pitch は
-///   PlayOneShot にもそのまま掛かる (LoopVoice.hpp)。サーボの定常音を速さで絞ると、
-///   同じ体から出る着弾音や被弾音まで一緒に小さくなる。土台 (サーボ) / 照射 / スタン /
-///   突進は互いに重なりうるので、それぞれ別の口から出す。
+/// @note AI と音の間に 1 枚挟む (BossAnimatorComponent と同じ理由)。1 つの行動が
+///       5 本のファイルへ割れており、AI が直に並べるとファイル名と間隔の表が散らばる。
+/// @note 間隔は秒でなくフレームで持つ。素材は 30fps のフレーム番号そのままの長さで
+///       書き出してあり (README)、秒へ均すと «置かれた無音» が丸め方次第で埋まる。
+/// @note 鳴り続ける音は LoopVoice で持つ。主 voice は 1 本で volume/pitch が
+///       PlayOneShot にも掛かるため、土台・照射・スタン・突進を別の口から出す。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -37,23 +25,19 @@ using fbzz::Time;
 
 namespace sandbox {
 
-// WHY 入れ子の namespace へ畳まないか:
-//   ScriptCodeGen は FBZZ_SCRIPT を見つけたとき、そのファイルで最後に開いている
-//   namespace をスクリプトの所属として ScriptList.inl へ書く。ここに namespace を
-//   1 枚挟むと ::bossse::BossAudioComponent という存在しない型が登録され、
-//   «スクリプトを 1 つ足しただけで DLL がコンパイルできない» という壊れ方をする。
-//   まとめたいなら BossAnimParams.hpp のように FBZZ_SCRIPT の無い別ファイルへ置くこと。
+/// @note 入れ子の namespace へ畳まない。ScriptCodeGen はファイルで最後に開いている
+///       namespace をスクリプトの所属として ScriptList.inl へ書くため、1 枚挟むと
+///       存在しない型が登録され DLL がコンパイルできなくなる (BossAnimParams.hpp のように
+///       FBZZ_SCRIPT の無い別ファイルへ逃がすこと)。
 
 /// 素材の表は 30fps で書かれている。
 inline constexpr float kBossSeFps = 30.0f;
 [[nodiscard]] inline constexpr float BossFrameSeconds(float frames)
 { return frames / kBossSeFps; }
 
-// 踏みつけ 60F の表 (素材 README)。着弾 F23 を基準に、他の 3 点は比で付いてくる。
-//
-// WHY F16–20 に何も置かないか:
-//   予備動作のファイルは F16 で音が切れるように書き出してあり、そこから着弾までの
-//   0.13 秒は «完全静止» が予兆そのものになっている。埋めるための音を足さないこと。
+/// 踏みつけ 60F の表 (素材 README)。着弾 F23 を基準に、他の 3 点は比で付いてくる。
+/// @note F16–20 には何も置かない。予備動作は F16 で音が切れ、着弾までの 0.13 秒の
+///       «完全静止» が予兆そのものになっているため、埋める音を足さない。
 inline constexpr float kBossStompRaiseFrame  = 4.0f;
 inline constexpr float kBossStompImpactFrame = 23.0f;
 inline constexpr float kBossStompHoldFrame   = 35.0f;
@@ -104,7 +88,7 @@ public:
 
     void OnStart()  override;
     void OnUpdate() override;
-    // 無効化で土台と照射が鳴りっぱなしになるのを防ぐ。
+    /// 無効化で土台と照射が鳴りっぱなしになるのを防ぐ。
     void OnDisable() override { SilenceLoops(); }
 
 
@@ -113,11 +97,8 @@ public:
 
     /// 踏みつけの 60F 表を頭から流す。
     /// @param hitSeconds AI が持つ着弾時刻 [秒]。表の F23 がここへ来るよう全体を伸縮させる。
-    ///
-    /// WHY 着弾に合わせて表ごと伸縮させるか: 予備動作・無音・着弾・硬直の比は
-    ///     «予備動作より着弾が 13dB 大きい» という設計とセットで作られている。
-    ///     着弾だけ AI の時刻へ寄せて他を固定すると、無音の 0.13 秒が着弾の後ろへ
-    ///     回り込んで予兆にならない。
+    /// @note 表ごと伸縮させる。着弾だけ AI の時刻へ寄せて他を固定すると、無音の 0.13 秒が
+    ///       着弾の後ろへ回り込んで予兆にならない。
     void BeginStomp(float hitSeconds);
 
     /// 突進の溜め (45F)。
@@ -162,9 +143,8 @@ private:
     [[nodiscard]] BossCoreComponent* Core() const
     { return scene.GetScript<BossCoreComponent>(); }
 
-    // WHY 4 本に分けるか: 土台・突進・照射・スタンは互いに重なりうる。
-    //     突進からそのまま激突すればクロールとスタンが 1 フレーム重なるし、
-    //     照射中もサーボは鳴り続けている。1 本で回すと、後から来た方が前を切る。
+    /// @note 4 本に分ける。土台・突進・照射・スタンは互いに重なりうる (突進から激突で
+    ///       クロールとスタンが 1 フレーム重なる等)。1 本で回すと後から来た方が前を切る。
     se::LoopVoice m_servo;
     se::LoopVoice m_run;
     se::LoopVoice m_beam;
@@ -208,18 +188,18 @@ inline void BossAudioComponent::OnStart()
     m_charging          = false;
     m_silenced          = false;
 
-    // ボスは盤面の «どこかに» 居る。距離と方向が読める 3D で鳴らす。
+    /// @note ボスは盤面の «どこかに» 居る。距離と方向が読める 3D で鳴らす。
     se::EnsureSource(scene, "SE", 1.0f);
 
-    // 鳴り続ける 4 本は別々の子から出る。キーが被ると音源を奪い合う。
+    /// @note 鳴り続ける 4 本は別々の子から出る。キーが被ると音源を奪い合う。
     m_servo.SetKey("BossServo");
     m_run.SetKey("BossRun");
     m_beam.SetKey("BossBeam");
     m_stun.SetKey("BossStun");
 
-    // 被弾と撃破は EnemyHealthComponent が鳴らす経路を既に持っている。ここは
-    // «ボスのときはこの束» を預けるだけにして、鳴らす場所を 2 つに増やさない
-    // («鳴らす側» ではなく «束を預ける側» になる)。
+    /// @note 被弾と撃破は EnemyHealthComponent が鳴らす経路を既に持っている。ここは
+    ///       «ボスのときはこの束» を預けるだけにして、鳴らす場所を 2 つに増やさない
+    ///       («鳴らす側» ではなく «束を預ける側» になる)。
     if (auto* health = scene.GetScript<EnemyHealthComponent>()) {
         health->SetFlinchVoice(&se::kBossDamaged);
         health->SetDestroyVoice(&se::kBossDestroy);
@@ -246,8 +226,8 @@ inline bool BossAudioComponent::IsAlive() const
 
 inline float BossAudioComponent::Speed() const
 {
-    // Animator は同じ速さから歩容を選んでいる。そこから取れば、足音と脚の動きが
-    // 同じ 1 つの値で決まり、Walk と Charge の境目で音だけ先に切り替わることがない。
+    /// @note Animator は同じ速さから歩容を選んでいる。そこから取れば、足音と脚の動きが
+    ///       同じ 1 つの値で決まり、Walk と Charge の境目で音だけ先に切り替わることがない。
     if (const auto* anim = scene.GetScript<BossAnimatorComponent>()) return anim->Speed();
 
     const Vector3 velocity = physics.GetVelocity();
@@ -259,8 +239,8 @@ inline void BossAudioComponent::OnUpdate()
     const float dt = std::max(Time::deltaTime, 0.0f);
 
     if (!IsAlive()) {
-        // 崩れ落ちている最中にサーボが回り続けていると «まだ動いている» に聞こえる。
-        // 撃破音そのものは EnemyHealthComponent が場所へ残して鳴らす。
+        /// @note 崩れ落ちている最中にサーボが回り続けていると «まだ動いている» に聞こえる。
+        ///       撃破音そのものは EnemyHealthComponent が場所へ残して鳴らす。
         SilenceLoops();
         m_stompCue    = -1;
         debugStompCue = -1;
@@ -279,19 +259,18 @@ inline void BossAudioComponent::DriveLocomotion(float dt)
     const float speed = Speed();
     debugSpeed = speed;
 
-    // 土台は止まっていても鳴らし続ける。無音まで落とすと、待ち構えているボスが
-    // 耳から消えて、振り向いた瞬間に湧いたように見える。
+    /// @note 土台は止まっていても鳴らし続ける。無音まで落とすと、待ち構えているボスが
+    ///       耳から消えて、振り向いた瞬間に湧いたように見える。
     const float speed01 = Clamp01(speed / std::max(chargeStepSpeed, 0.01f));
-    // WHY ピッチを振らないか: 巡回と突進で «常に 3 本接地» の重なり方そのものが
-    //     違う音として別に用意されている。1 本を伸縮させて速さを表すと、素材が
-    //     作り分けている歩容の違いと二重になる。速さは音量だけで伝える。
+    /// @note ピッチは振らない。巡回と突進は «常に 3 本接地» の重なり方自体が別の音として
+    ///       用意されており、1 本を伸縮させると歩容の作り分けと二重になる。
     m_servo.Update(*this, se::kBossServoLoop.First(),
                    Lerp(servoIdleVolume, servoMoveVolume, speed01));
 
-    // 突進中はクロールのループが接地を持っている。同時に単発の足音も刻むと、
-    // 1 周期に接地が 8 回あることになって歩容が崩れる。
+    /// @note 突進中はクロールのループが接地を持っている。同時に単発の足音も刻むと、
+    ///       1 周期に接地が 8 回あることになって歩容が崩れる。
     if (m_charging || speed < stepMinSpeed) {
-        // 貯めた残りは捨てる。残すと、止まって歩き出した 1 歩目が周期を待たずに鳴る。
+        /// @note 貯めた残りは捨てる。残すと、止まって歩き出した 1 歩目が周期を待たずに鳴る。
         m_stepRemaining = 0.0f;
         return;
     }
@@ -303,7 +282,7 @@ inline void BossAudioComponent::DriveLocomotion(float dt)
     m_stepRemaining -= dt;
     if (m_stepRemaining > 0.0f) return;
 
-    // 束は抽選せず順に送る。01→04 が 4 周期ぶんの歩容として書かれている。
+    /// @note 束は抽選せず順に送る。01→04 が 4 周期ぶんの歩容として書かれている。
     se::PlayNext(audio, fast ? se::kBossStepCharge : se::kBossStepWalk, stepVolume);
     m_stepRemaining = period;
 }
@@ -313,7 +292,7 @@ inline void BossAudioComponent::BeginStomp(float hitSeconds)
     m_stompCue  = 0;
     m_stompTime = 0.0f;
 
-    // 表の F23 が AI の着弾時刻に重なるよう、全体をこの比で伸縮させる。
+    /// @note 表の F23 が AI の着弾時刻に重なるよう、全体をこの比で伸縮させる。
     const float tableHit = BossFrameSeconds(kBossStompImpactFrame);
     m_stompScale = tableHit > 0.0f ? std::max(hitSeconds, 0.0f) / tableHit : 1.0f;
     if (m_stompScale <= 0.0f) m_stompScale = 1.0f;
@@ -326,7 +305,7 @@ inline void BossAudioComponent::TickStomp(float dt)
     if (m_stompCue < 0) return;
     m_stompTime += dt;
 
-    // 1 フレームで 2 つ以上跨いだ場合 (低フレームレート) も取りこぼさない。
+    /// @note 1 フレームで 2 つ以上跨いだ場合 (低フレームレート) も取りこぼさない。
     while (m_stompCue >= 0) {
         float frame = 0.0f;
         switch (m_stompCue) {
@@ -342,8 +321,8 @@ inline void BossAudioComponent::TickStomp(float dt)
             se::Play(audio, se::kBossStompRaise);
             break;
         case 1:
-            // 着弾と、そこから始まる跳ね返りの減衰振動。減衰の側は着弾の «後» では
-            // なく «同時» に始まる (F23–35 が 1 本のファイルになっている)。
+            /// @note 着弾と、そこから始まる跳ね返りの減衰振動。減衰の側は着弾の «後» では
+            ///       なく «同時» に始まる (F23–35 が 1 本のファイルになっている)。
             se::Play(audio, se::kBossStompImpact);
             se::Play(audio, se::kBossStompSettle);
             break;
@@ -403,12 +382,9 @@ inline void BossAudioComponent::BeamFiring(bool firing)
 
 inline void BossAudioComponent::BeamSweep()
 {
-    // 薙ぎは土台に «重ねる» 層。床の継ぎ目を横切るたびに床が鳴る側だけが入っている。
-    //
-    // WHY 再生速度を振らないか: 素材 README は «2 回薙ぐなら 1.1 倍ほど変えて重ねる»
-    //     と書いているが、PlayOneShot に速度の口は無く、AudioSource の pitch は
-    //     同じ口から出る他の一発ものにも掛かる。1 回の照射で 1 回しか薙がない
-    //     今の AI では同じ音が続かないので、専用の音源を足してまで振らない。
+    /// @note 薙ぎは土台に «重ねる» 層。床の継ぎ目を横切るたびに床が鳴る側だけが入っている。
+    /// @note 再生速度は振らない。PlayOneShot に速度の口が無く AudioSource の pitch は
+    ///       他の一発ものにも掛かるため、1 回しか薙がない今の AI では振らずに済ませる。
     se::Play(audio, se::kBossBeamSweep);
 }
 
@@ -420,8 +396,8 @@ inline void BossAudioComponent::EndBeam()
 
 inline void BossAudioComponent::MagneticPulse()
 {
-    // 切替の音とパルスの衝撃波を «同時» に出すと、切り替わったことと撃たれたことが
-    // 1 つの音塊になって、どちらが起きたのか読めない。素材 README の 20ms だけずらす。
+    /// @note 切替の音とパルスの衝撃波を «同時» に出すと、切り替わったことと撃たれたことが
+    ///       1 つの音塊になって、どちらが起きたのか読めない。素材 README の 20ms だけずらす。
     m_pulseDelay = kBossMagPulseDelay;
 }
 
@@ -436,7 +412,7 @@ inline void BossAudioComponent::TickPhase(float dt)
     const auto* core = Core();
     if (!core) return;
 
-    // フェーズが上がった瞬間に 1 度だけ。
+    /// @note フェーズが上がった瞬間に 1 度だけ。
     const int phase = core->CurrentPhase();
     if (phase > m_lastPhase) se::Play(audio, se::kBossPhaseShift);
     m_lastPhase = phase;
@@ -452,8 +428,8 @@ inline void BossAudioComponent::TickPending(float dt)
     if (m_stunRemaining < 0.0f) return;
     m_stunRemaining -= dt;
 
-    // 復帰は明ける «前» に流し始める。明けてから鳴らすと、立ち上がったボスの背中で
-    // 復帰音が鳴り、反撃機会が終わった合図として遅れて届く。
+    /// @note 復帰は明ける «前» に流し始める。明けてから鳴らすと、立ち上がったボスの背中で
+    ///       復帰音が鳴り、反撃機会が終わった合図として遅れて届く。
     if (!m_stunRecoverPlayed && m_stunRemaining <= kBossStunRecoverSeconds) {
         m_stunRecoverPlayed = true;
         m_stun.Stop(*this);

@@ -65,10 +65,10 @@ void ModalDialog::OnRender()
     if (ImGui::BeginPopupModal(s_state.title.c_str(), nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize))
     {
-        // テキスト入力ダイアログ
+        /// @note テキスト入力ダイアログ
         if (s_state.isInput) {
             ImGui::SetNextItemWidth(320.0f);
-            // 初回フォーカスを InputText に当てる
+            /// @note 初回フォーカスを InputText に当てる
             if (s_state.inputNeedsFocus) {
                 ImGui::SetKeyboardFocusHere();
                 s_state.inputNeedsFocus = false;

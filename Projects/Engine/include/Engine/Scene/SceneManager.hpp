@@ -29,57 +29,53 @@ public:
 
     void Register(const std::string& name, SceneFactory factory);
 
-    // .fbzz ファイルからシーンを登録する。ロードは LoadScene 呼び出し時に行う
+    /// .fbzz ファイルからシーンを登録する。ロードは LoadScene 呼び出し時に行う
     void RegisterFromFile(const std::string& name, const std::string& path,
                           renderer::ResourceManager& resources);
 
-    // 次フレームの先頭でシーンを切り替える。
-    // 未登録の名前なら要求を受け付けず false を返す (エラーはログへ)。
-    // WHY 戻り値を返すか: 遷移はフェードアウトの後に呼ばれることが多く、失敗を
-    //     黙って捨てると「暗転したまま何も起きない」という最も気付きにくい形で止まる。
+    /// @brief 次フレームの先頭でシーンを切り替える。未登録の名前なら要求を受け付けず false を返す (エラーはログへ)。
+    /// @note 遷移はフェードアウトの後に呼ばれることが多く、失敗を黙って捨てると「暗転したまま何も起きない」形で気付かれずに止まる。
     bool LoadScene(const std::string& name);
 
-    // 外部所有シーンをバインドする。null を渡すと LoadScene で作成した m_active を使用する
+    /// 外部所有シーンをバインドする。null を渡すと LoadScene で作成した m_active を使用する
     void SetScene(Scene* scene);
 
-    // 外部所有SceneとManager所有Sceneを両方破棄し、遷移要求も取り消す。
-    // WHY: Script DLLをFreeLibraryする前に、どちらのSceneに残る派生Scriptも破棄する必要がある。
+    /// @brief 外部所有 Scene と Manager 所有 Scene を両方破棄し、遷移要求も取り消す。
+    /// @note Script DLL を FreeLibrary する前に、どちらの Scene に残る派生 Script も破棄する必要がある。
     void ClearScenes();
 
-    // LoadScene で作った Manager 所有 Scene だけを破棄し、保留中の遷移要求も捨てる。
-    // WHY: Editor は Stop で外部 Scene へ戻るが、遷移先の Scene は誰も Update しないまま
-    //      Script ごと生き残る。保留要求も残すと、Stop の次フレームに外部バインドが
-    //      もう一度外れて「編集シーンが動かない」状態になる。
+    /// @brief LoadScene で作った Manager 所有 Scene だけを破棄し、保留中の遷移要求も捨てる。
+    /// @note Editor は Stop で外部 Scene へ戻るが、遷移先の Scene は誰も Update しないまま Script ごと生き残る。保留要求も残すと、Stop の次フレームに外部バインドがもう一度外れて編集シーンが動かなくなる。
     void ReleaseOwnedScene();
 
-    // 最後の LoadScene で切り替えた登録名。外部 Scene をバインドし直すと空に戻る。
+    /// 最後の LoadScene で切り替えた登録名。外部 Scene をバインドし直すと空に戻る。
     [[nodiscard]] const std::string& ActiveSceneName() const { return m_activeName; }
 
-    // 固定タイムステップの Hz (デフォルト 60)
+    /// 固定タイムステップの Hz (デフォルト 60)
     void SetPhysicsHz(int hz);
 
-    // false のとき EditorOnly System のみ実行する (エディタ停止中)
+    /// false のとき EditorOnly System のみ実行する (エディタ停止中)
     void SetSimulating(bool simulating);
-    // Play セッションが続いているか。Pause 中も true のまま (simulating だけ false になる)。
-    // 呼ばない場合は simulating と同じ扱いになる (Standalone / プレビュー用途)。
+    /// Play セッションが続いているか。Pause 中も true のまま (simulating だけ false になる)。
+    /// 呼ばない場合は simulating と同じ扱いになる (Standalone / プレビュー用途)。
     void SetPlaying(bool playing);
 
-    // AudioSystem に渡す AudioManager を設定する（null を渡すと AudioSystem はスキップ）
+    /// AudioSystem に渡す AudioManager を設定する（null を渡すと AudioSystem はスキップ）
     void SetAudioManager(audio::AudioManager* audioManager);
 
-    // true のとき accumulator を無視して physics を 1 回だけ実行する (frame step 用)
+    /// true のとき accumulator を無視して physics を 1 回だけ実行する (frame step 用)
     void SetSingleStep(bool singleStep);
 
-    // Phase PreScript 〜 Cleanup
-    // RenderSystem はゲームループ側から BeginFrame/EndFrame の間に直接呼ぶこと
+    /// Phase PreScript 〜 Cleanup
+    /// RenderSystem はゲームループ側から BeginFrame/EndFrame の間に直接呼ぶこと
     void Update(float dt, physics::World& world);
 
-    // Phase LateUpdate のみ
+    /// Phase LateUpdate のみ
     void LateUpdate(float dt, physics::World& world);
 
     Scene* GetActive();
 
-    // 名前で System インスタンスを取得（エディタ統合用）。
+    /// 名前で System インスタンスを取得（エディタ統合用）。
     [[nodiscard]] ISystem* FindSystem(std::string_view name) const {
         return m_scheduler.FindSystem(name);
     }

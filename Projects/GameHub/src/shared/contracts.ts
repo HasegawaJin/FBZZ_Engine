@@ -5,7 +5,28 @@
  * @date 2026/09/02
  */
 
-export const ENGINE_VERSION = '0.1.0';
+/** ビルド時に Vite の define が注入する。正本はリポジトリ直下の CMakeLists.txt (build.config.ts 参照)。 */
+declare const __FBZZ_ENGINE_VERSION__: string;
+export const ENGINE_VERSION: string = __FBZZ_ENGINE_VERSION__;
+
+/**
+ * "a.b.c" 形式の version 比較。minimum が空なら制約なし。
+ * どちらかが解釈できなければ false (互換を推測しない)。
+ */
+export function isVersionAtLeast(current: string, minimum: string): boolean {
+  if (!minimum.trim()) return true;
+  const parseVersion = (value: string) => value.trim().split('-')[0]?.split('.').map(Number) ?? [];
+  const currentParts = parseVersion(current);
+  const minimumParts = parseVersion(minimum);
+  if (currentParts.length === 0 || minimumParts.length === 0) return false;
+  if ([...currentParts, ...minimumParts].some(Number.isNaN)) return false;
+  for (let index = 0; index < Math.max(currentParts.length, minimumParts.length); index += 1) {
+    const left = currentParts[index] ?? 0;
+    const right = minimumParts[index] ?? 0;
+    if (left !== right) return left > right;
+  }
+  return true;
+}
 
 export type HubTheme = 'modern' | 'dark' | 'light' | 'system';
 export type SdkBuildConfiguration = 'Debug' | 'Development' | 'Release';
@@ -41,6 +62,10 @@ export interface TemplateInfo {
   id: string;
   displayName: string;
   description: string;
+  // template.toml の engine_version_min。空なら制約なし。
+  engineVersionMin: string;
+  // この GameHub の Engine version で作成できるか (main が判定し、renderer は表示だけ)。
+  compatible: boolean;
 }
 
 export interface BootstrapData {
@@ -88,6 +113,8 @@ export interface OperationResult<T = undefined> {
   ok: boolean;
   value?: T;
   error?: string;
+  // ユーザーがダイアログで取りやめた。失敗ではないので通知も再読込もしない。
+  cancelled?: boolean;
 }
 
 export interface GameHubApi {

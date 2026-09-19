@@ -39,7 +39,7 @@ namespace fbzz::physics
         if (m_collider->GetType() == ColliderType::CYLINDER)
             return static_cast<const CylinderCollider*>(m_collider)->Contains(position);
 
-        // Capsule は線分上の最近傍点との距離で内外を判定する。
+        /// @note Capsule は線分上の最近傍点との距離で内外を判定する。
         const auto* capsule = static_cast<const CapsuleCollider*>(m_collider);
         const math::Vector3 segment = capsule->GetSegmentEnd() - capsule->GetSegmentStart();
         const float lenSq = segment.LengthSq();
@@ -60,8 +60,8 @@ namespace fbzz::physics
         switch (m_settings.type)
         {
         case VolumeType::Gravity:
-            // 継続的な環境力は sleep timer をリセットしない。
-            // WHY: Volume 内に静止している body が毎 substep WakeUp すると、World::Step の sleep early-out が効かない。
+            /// @note 継続的な環境力は sleep timer をリセットしない (毎 substep WakeUp すると
+            ///       World::Step の sleep early-out が効かなくなる)。
             body.ApplyForceNoWake(m_settings.gravity * body.GetMass());
             break;
         case VolumeType::Vortex:
@@ -75,21 +75,17 @@ namespace fbzz::physics
                                    math::Vector3::UP * m_settings.liftStrength) * body.GetMass());
             break;
         }
-        case VolumeType::Buoyancy:
-            body.ApplyForceNoWake(math::Vector3::UP * (m_settings.buoyancy * body.GetMass()));
-            body.ApplyForceNoWake(-body.GetVelocity() * m_settings.drag);
-            break;
         case VolumeType::Explosion:
         {
-            // Explosion は継続力ではなく瞬間インパルスとして扱う。
-            // duration が短い Volume と組み合わせて 1 回だけ発火させる想定。
+            /// @note Explosion は継続力ではなく瞬間インパルスとして扱う。
+            ///       duration が短い Volume と組み合わせて 1 回だけ発火させる想定。
             const math::Vector3 delta = body.GetPosition() - center;
             const math::Vector3 dir = delta.LengthSq() > 1e-6f ? delta.Normalized() : math::Vector3::UP;
             body.ApplyImpulse(dir * m_settings.explosionImpulse);
             break;
         }
         case VolumeType::TimeDilation:
-            // 時間スケールは World 側で effectiveDt に反映済み。
+            /// @note 時間スケールは World 側で effectiveDt に反映済み。
             break;
         case VolumeType::Magnetic:
             body.ApplyForceNoWake(math::Vector3::Cross(body.GetVelocity(), m_settings.magneticField) * body.m_charge);

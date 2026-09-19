@@ -21,7 +21,7 @@
 
 namespace fbzz {
 
-// ─── 内部ユーティリティ ───────────────────────────────────────────────────────
+/// @name 内部ユーティリティ
 
 static bool HasConflict(const ComponentAccess& a, const ComponentAccess& b)
 {
@@ -35,13 +35,16 @@ static bool HasConflict(const ComponentAccess& a, const ComponentAccess& b)
         return false;
     };
 
-    if (intersects(a.writes, b.writes)) return true;  // write-write
-    if (intersects(a.writes, b.reads))  return true;  // a write, b read
-    if (intersects(b.writes, a.reads))  return true;  // b write, a read
+    /// @note write-write
+    if (intersects(a.writes, b.writes)) return true;
+    /// @note a write, b read
+    if (intersects(a.writes, b.reads))  return true;
+    /// @note b write, a read
+    if (intersects(b.writes, a.reads))  return true;
     return false;
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
+/// @name Public API
 
 void SystemScheduler::ConfigurePhase(Phase phase, PhaseConfig cfg)
 {
@@ -63,7 +66,7 @@ void SystemScheduler::Build()
         auto& batches = m_batches[pi];
         batches.clear();
 
-        // この Phase に属する System を収集
+        /// @note この Phase に属する System を収集
         std::vector<ISystem*> phSystems;
         for (auto& sys : m_systems)
             if (sys->GetPhase() == phase)
@@ -73,8 +76,8 @@ void SystemScheduler::Build()
 
         const size_t n = phSystems.size();
 
-        // ── Kahn's algorithm で DAG をトポロジカルソートしてバッチ列を作る ──
-        // 隣接行列: adj[i] = i が先、j が後（i→j の依存）
+        /// @name Kahn's algorithm で DAG をトポロジカルソートしてバッチ列を作る
+        /// @note 隣接行列: adj[i] = i が先、j が後（i→j の依存）
         std::vector<std::vector<int>> adj(n);
         std::vector<int> inDegree(n, 0);
 
@@ -84,13 +87,13 @@ void SystemScheduler::Build()
             return -1;
         };
 
-        // OrderingHints から辺を張る
+        /// @note OrderingHints から辺を張る
         for (size_t i = 0; i < n; ++i) {
             const OrderingHints hints = phSystems[i]->GetOrder();
             for (const auto& tid : hints.after) {
                 for (size_t j = 0; j < n; ++j) {
                     if (std::type_index(typeid(*phSystems[j])) == tid) {
-                        // j が先に来る (j → i)
+                        /// @note j が先に来る (j → i)
                         adj[j].push_back(static_cast<int>(i));
                         inDegree[i]++;
                     }
@@ -99,7 +102,7 @@ void SystemScheduler::Build()
             for (const auto& tid : hints.before) {
                 for (size_t j = 0; j < n; ++j) {
                     if (std::type_index(typeid(*phSystems[j])) == tid) {
-                        // i が先に来る (i → j)
+                        /// @note i が先に来る (i → j)
                         adj[i].push_back(static_cast<int>(j));
                         inDegree[j]++;
                     }
@@ -107,11 +110,11 @@ void SystemScheduler::Build()
             }
         }
 
-        // ComponentAccess 競合から追加の辺を張る（順序は登録順で決定）
+        /// @note ComponentAccess 競合から追加の辺を張る（順序は登録順で決定）
         for (size_t i = 0; i < n; ++i) {
             for (size_t j = i + 1; j < n; ++j) {
                 if (!HasConflict(phSystems[i]->GetAccess(), phSystems[j]->GetAccess())) continue;
-                // 競合する場合、OrderingHints で既に辺がなければ登録順 (i→j) を使う
+                /// @note 競合する場合、OrderingHints で既に辺がなければ登録順 (i→j) を使う
                 bool alreadyOrdered = false;
                 for (int v : adj[i]) if (v == static_cast<int>(j)) { alreadyOrdered = true; break; }
                 for (int v : adj[j]) if (v == static_cast<int>(i)) { alreadyOrdered = true; break; }
@@ -122,7 +125,7 @@ void SystemScheduler::Build()
             }
         }
 
-        // Kahn's algorithm: 同一レベルのノードを 1 バッチにまとめる
+        /// @note Kahn's algorithm: 同一レベルのノードを 1 バッチにまとめる
         std::queue<int> q;
         for (size_t i = 0; i < n; ++i)
             if (inDegree[i] == 0) q.push(static_cast<int>(i));
@@ -130,7 +133,7 @@ void SystemScheduler::Build()
         size_t processed = 0;
         while (!q.empty()) {
             std::vector<ISystem*> batch;
-            // 現在キューにある全ノード = 同じレベル → 1 バッチ
+            /// @note 現在キューにある全ノード = 同じレベル → 1 バッチ
             std::vector<int> levelNodes;
             while (!q.empty()) {
                 levelNodes.push_back(q.front());
@@ -165,7 +168,7 @@ void SystemScheduler::ResetAccumulator()
     m_accumulator = 0.0f;
 }
 
-// ─── Frame Update ────────────────────────────────────────────────────────────
+/// @name Frame Update
 
 void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
 {
@@ -175,7 +178,7 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
 
     auto runBatches = [&](SystemContext& c) {
         for (auto& batch : m_batches[pi]) {
-            // RunMode / ShouldRun フィルタリングしてから実行する System を決定
+            /// @note RunMode / ShouldRun フィルタリングしてから実行する System を決定
             std::vector<ISystem*> toRun;
             for (ISystem* sys : batch) {
                 const RunMode mode = sys->GetRunMode();
@@ -191,15 +194,9 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
                 FBZZ_PROFILE_SCOPE(toRun[0]->Name().data());
                 toRun[0]->Update(c);
             } else {
-                // WHY ワーカー側で ProfileScope を張らないか:
-                //   Profiler は s_stack を素の static で持つ main スレッド専用の作りで、
-                //   ワーカーから Begin/End を呼ぶとスタックが壊れる。ここで測って
-                //   join 後に main から積む。
-                // WHY 計測を諦めないか:
-                //   以前はこの経路に計測が一切無く、「バッチに 1 個しか入らなかった
-                //   System だけがプロファイラに出る」状態だった。同じフェーズに居る
-                //   隣の System の時間が丸ごと見えないため、重い System を名指しできず、
-                //   単独バッチになった無関係な名前が犯人に見えていた。
+                /// @note Profiler は s_stack を素の static で持つ main スレッド専用の作りで、
+                ///       ワーカーから Begin/End を呼ぶとスタックが壊れるため、ここで計測し
+                ///       join 後に main から積む。計測しないと重い System を名指しできなくなる。
                 std::vector<std::future<void>> futs;
                 std::vector<double> elapsedMs(toRun.size(), 0.0);
                 futs.reserve(toRun.size());
@@ -227,7 +224,7 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
         return;
     }
 
-    // 固定ステップループ（PhysicsSystem 用）
+    /// @note 固定ステップループ（PhysicsSystem 用）
     const float fixedDt  = 1.0f / static_cast<float>(cfg.hz);
     const float maxAccum = fixedDt * cfg.maxCatchUp;
     SystemContext fixedCtx = ctx;
@@ -266,8 +263,8 @@ void SystemScheduler::LateUpdate(SystemContext ctx)
     if (physicsConfig.fixedStep && physicsConfig.hz > 0)
     {
         const float fixedDt = 1.0f / static_cast<float>(physicsConfig.hz);
-        // Update() 後に残った accumulator は、現在の確定姿勢から次の fixed step
-        // までの経過割合。LateUpdate の描画だけをこの係数で補間する。
+        /// @note Update() 後に残った accumulator は、現在の確定姿勢から次の fixed step
+        ///       までの経過割合。LateUpdate の描画だけをこの係数で補間する。
         ctx.interpolationAlpha = std::clamp(m_accumulator / fixedDt, 0.0f, 1.0f);
     }
     RunPhase(Phase::LateUpdate, ctx);
@@ -282,7 +279,7 @@ void SystemScheduler::Shutdown()
     m_built = false;
 }
 
-// ─── デバッグ ──────────────────────────────────────────────────────────────
+/// @name デバッグ
 
 ISystem* SystemScheduler::FindSystem(std::string_view name) const
 {
@@ -315,8 +312,8 @@ void SystemScheduler::DumpGraph() const
             oss << "\n";
         }
     }
-    // WHY %s か: Logger は printf 形式の可変長引数。"{}" は書式指定として解釈されず
-    //     そのまま出力されるうえ、std::string を ... へ渡すのは未定義動作になる。
+    /// @note Logger は printf 形式の可変長引数。"{}" は書式指定として解釈されずそのまま出力され、
+    ///       std::string を ... へ渡すのは未定義動作になるため %s を使う。
     FBZZ_LOG_INFO("%s", oss.str().c_str());
 }
 

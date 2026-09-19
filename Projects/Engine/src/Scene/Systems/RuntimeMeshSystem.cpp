@@ -22,8 +22,8 @@ namespace fbzz::scene {
 
 namespace {
 
-// 容量は 2 の冪で取る。毎フレーム組み直す形 (伸び縮みするリボン) はぴったり確保すると
-// 1 頂点増えるたびにバッファを作り直すことになり、DoubleBufferedMesh の意味が消える。
+/// 容量は 2 の冪で取る。毎フレーム組み直す形 (伸び縮みするリボン) はぴったり確保すると
+/// 1 頂点増えるたびにバッファを作り直すことになり、DoubleBufferedMesh の意味が消える。
 uint32_t CapacityFor(uint32_t needed)
 {
     uint32_t capacity = 256;
@@ -45,8 +45,8 @@ void UploadProceduralMesh(ProceduralMeshComponent& component,
     const uint32_t vertexCount = builder.VertexCount();
     const uint32_t indexCount  = builder.IndexCount();
 
-    // 空にされた (mesh.Clear()) だけなら描く数を 0 にすれば足りる。GPU バッファは
-    // 次に組み直したとき使い回せるので、ここで解放するとかえって作り直しが増える。
+    /// @note 空にされた (mesh.Clear()) だけなら描く数を 0 にすれば足りる。GPU バッファは
+    ///       次に組み直したとき使い回せるので、ここで解放するとかえって作り直しが増える。
     if (vertexCount == 0 || indexCount == 0) {
         mesh.cpuVertices.clear();
         mesh.cpuIndices.clear();
@@ -56,10 +56,9 @@ void UploadProceduralMesh(ProceduralMeshComponent& component,
         return;
     }
 
-    // WHY «頂点だけ» を格下げすることがあるか: 2 枚を交互に使うので、今から書く側が
-    //     前回の全更新を受けているとは限らない (最初の 1 回や、直前が頂点だけの更新)。
-    //     こちら側のインデックスが今の三角形と食い違っていたら、頂点だけ上げても
-    //     繋がり方が古いまま描かれる。食い違いを見て全更新へ落とす。
+    /// @note 2 枚を交互に使うので、今から書く側が前回の全更新を受けているとは限らない
+    ///       (最初の 1 回や、直前が頂点だけの更新)。インデックスが今の三角形と食い違っていたら
+    ///       頂点だけ上げても繋がり方が古いまま描かれるため、食い違いを見て全更新へ落とす。
     const bool topologyMatches = mesh.indexBuffer.IsValid() && mesh.indexCount == indexCount;
     const bool uploadIndices =
         component.dirty == MeshDirty::All || !topologyMatches;

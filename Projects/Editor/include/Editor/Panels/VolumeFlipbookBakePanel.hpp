@@ -9,9 +9,8 @@
 /// ジョブとして走るので、パネルを閉じても止まらない。プレビューだけは OnBeforeBegin で描く
 /// (ドッキングしたタブが裏に回ると OnRenderContent は呼ばれないが、OnBeforeBegin はフレーム内で呼ばれる)。
 ///
-/// 扱うのは解析ソース (puff) だけ。WHY .fluid を扱わないか: このパネルと .fluid の Inspector が
-/// 同じファイルへ別々に書き戻していて、あとから書いた側が相手の編集を潰していた。.fluid の
-/// プレビューと焼きは Fluid Editor が 1 つだけ持つ。
+/// @note 扱うのは解析ソース (puff) だけ。.fluid の Inspector と同じファイルへ別々に書き戻すと後勝ちが相手の編集を
+///       潰すため、.fluid のプレビューと焼きは Fluid Editor だけが持つ。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/Asset/VolumeFlipbookBaker.hpp>
@@ -71,12 +70,12 @@ private:
     asset::VolumeFramingReport        m_framing;
     bool                              m_framingDirty = true;
 
-    // 表示 (両タブ共通)
+    /// 表示 (両タブ共通)
     asset::VolumePreviewBackground m_background = asset::VolumePreviewBackground::Dark;
     int  m_previewSize = 1;   ///< 0 = 256 / 1 = 384 / 2 = 512 / 3 = 幅に合わせる
     bool m_selectFlipbookTab = false;
 
-    // Volume タブ
+    /// Volume タブ
     float      m_previewTime = 0.0f;
     bool       m_previewDirty = true;
     bool       m_playing = false;
@@ -84,7 +83,7 @@ private:
     VolumeView m_view = VolumeView::Color;
     bool       m_showLightArrow = true;
 
-    // Flipbook タブ
+    /// Flipbook タブ
     float m_compareTime = 0.0f;
     bool  m_comparePlaying = true;
     /// 焼いた FPS より遅く再生すると、コマ間の補間の差がよく見える。

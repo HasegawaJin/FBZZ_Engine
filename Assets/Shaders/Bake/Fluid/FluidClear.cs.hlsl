@@ -3,9 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include "Bake/Fluid/FluidGpuCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-RWTexture3D<float4> gOut0 : register(u0);
-RWTexture3D<float4> gOut1 : register(u1);
+FBZZ_RWTEX3D_T(float4, gOut0, 0);
+FBZZ_RWTEX3D_T(float4, gOut1, 1);
 
 [numthreads(4, 4, 4)]
 void CSMain(uint3 id : SV_DispatchThreadID)

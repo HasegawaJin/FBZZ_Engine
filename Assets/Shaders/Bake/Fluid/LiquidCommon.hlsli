@@ -97,7 +97,7 @@ uint LiquidCellKey(int3 cell)
     return (uint(cell.z) * gCellsY + uint(cell.y)) * gCellsX + uint(cell.x);
 }
 
-// 以下は Engine/Asset/FluidOperatorEval.hpp の正本の写し (液体は常に 3D なので volumetric = true の枝だけ、
+// 以下は Fluid/FluidOperatorEval.hpp の正本の写し (液体は常に 3D なので volumetric = true の枝だけ、
 // ノイズの切り出し位置は 0)。式を変えるときは両方を直す。
 
 // core::CurlNoise と同じ式。

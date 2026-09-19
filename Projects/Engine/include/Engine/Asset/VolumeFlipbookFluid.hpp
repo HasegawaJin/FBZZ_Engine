@@ -3,16 +3,15 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// Volume Flipbook Baker の下流 (レイマーチ・MV・Atlas) は «u0 に媒質、u1 に速度» しか見ない
-/// (VolumeFill.cs.hlsl の注記)。ここは FluidGasSolver の格子を同じ形へ詰め、VolumeUpload.cs.hlsl が
-/// そのまま u0 / u1 へ写す。
-/// 座標はそのまま一致する: ソルバーは «最長軸 = [-1,1]・y 上向き» なので、立方体で解けば
-/// bake 空間 [-1,1]^3 と同じ。速度の単位も «領域単位/秒» = bake 単位/秒。
+/// @note 下流 (レイマーチ・MV・Atlas) は «u0 に媒質、u1 に速度» しか見ない (VolumeFill.cs.hlsl の注記)。
+///       ここは FluidGasSolver の格子を同じ形へ詰め、VolumeUpload.cs.hlsl がそのまま u0/u1 へ写す。
+/// @note 座標は一致する: ソルバーは «最長軸 = [-1,1]・y 上向き» の立方体で解くため bake 空間 [-1,1]^3 と
+///       同じ。速度の単位も «領域単位/秒» = bake 単位/秒。
 #pragma once
 
-#include <Engine/Asset/FluidRecipe.hpp>
-#include <Engine/Asset/FluidSolver.hpp>
-#include <Engine/Asset/FluidStepping.hpp>
+#include <Fluid/FluidRecipe.hpp>
+#include <Fluid/FluidSolver.hpp>
+#include <Fluid/FluidStepping.hpp>
 #include <Math/Vector4.hpp>
 
 #include <atomic>
@@ -42,16 +41,16 @@ struct FluidVolumeScale {
 };
 
 /// 解いた格子を詰める。ソルバーは立方体 (nx = ny = nz) で解いてあること (違えば out は空)。
-void PackFluidVolume(const FluidGasSolver& solver, const FluidVolumeScale& scale, PackedFluidVolume& out);
+void PackFluidVolume(const fluid::FluidGasSolver& solver, const FluidVolumeScale& scale, PackedFluidVolume& out);
 
 /// 3D の液体粒子をボリュームへ塗る。粒子ごとに半径 (粒子半径 × radiusScale) の山を足し、
 /// VolumeRaymarch はその和が threshold を跨ぐところを液面として描く。A (液体の割合) は 1。
 /// 速度と B (粒子の colorKey) は山の重みで平均する。lifetime > 0 なら寿命の終わりへ向けて山を細らせる。
-void PackLiquidVolume(const FluidLiquidSolver& solver, int resolution, float radiusScale, float lifetime,
+void PackLiquidVolume(const fluid::FluidLiquidSolver& solver, int resolution, float radiusScale, float lifetime,
                       PackedFluidVolume& out);
 
 /// 発生源の芯の温度が 1 になる倍率 (発生源が無ければ 1)。
-[[nodiscard]] float FluidRecipeTemperatureScale(const FluidRecipe& recipe);
+[[nodiscard]] float FluidRecipeTemperatureScale(const fluid::FluidRecipe& recipe);
 
 /// 3D の流体 (気体の格子 / 液体の粒子) を 1 コマずつ別スレッドで解いて渡す。
 /// 0 コマ目 = warmup の後に 1 コマぶん進めた状態 (FluidBaker の 2D ベイクと同じ数え方)。
@@ -64,13 +63,13 @@ public:
     FluidVolumeStream& operator=(const FluidVolumeStream&) = delete;
 
     /// 気体も液体も開ける。解き始めはしない (Request で始まる)。
-    [[nodiscard]] bool Open(const FluidRecipe& recipe, int resolution, float frameDt, float densityScale,
+    [[nodiscard]] bool Open(const fluid::FluidRecipe& recipe, int resolution, float frameDt, float densityScale,
                             std::string& outError);
     /// 解いている最中なら終わるまで待ってから閉じる。
     void Close();
     /// 走っているワーカーに «途中でやめてよい» と伝えるだけ (待たない)。
-    /// WHY: 96³ の 1 コマは数秒かかる。ソルバーを切り替えた直後の 1 コマはどのみち捨てるので、
-    ///      解き終わるのを待つ理由が無い。待つと切り替えや終了のたびにエディターごと止まる。
+    /// @note 96³ の 1 コマは数秒かかる。ソルバーを切り替えた直後の 1 コマはどのみち捨てるため、解き
+    ///       終わるのを待つ理由が無い。待つと切り替えや終了のたびにエディターごと止まる。
     /// 畳まれたコマは Poll から返らず、続きの場も捨てて次の Request で頭から解き直す。
     void Cancel() noexcept;
     [[nodiscard]] bool IsOpen() const { return m_solver != nullptr || m_liquid != nullptr; }
@@ -81,9 +80,9 @@ public:
     [[nodiscard]] bool Poll(PackedFluidVolume& out);
 
 private:
-    FluidRecipe m_recipe;
-    std::unique_ptr<FluidGasSolver> m_solver;
-    std::unique_ptr<FluidLiquidSolver> m_liquid;
+    fluid::FluidRecipe m_recipe;
+    std::unique_ptr<fluid::FluidGasSolver> m_solver;
+    std::unique_ptr<fluid::FluidLiquidSolver> m_liquid;
     float m_liquidRadiusScale = 2.5f;
     float m_liquidLifetime = 0.0f;
     FluidVolumeScale m_scale;

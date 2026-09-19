@@ -99,8 +99,8 @@ std::unique_ptr<physics::Collider> MakeCollider(Shape shape)
         return std::make_unique<physics::TriangleMeshCollider>(
             GroundQuadPositions(), std::vector<uint32_t>{ 0, 2, 1, 1, 2, 3 });
     case Shape::Field:
-        // 3x3 の平坦なグリッド。cellSize 4 なのでローカルでは [0,8]、
-        // 原点を -4 ずらしてメッシュ版と同じ [-4,4] の板にする。
+        /// @note 3x3 の平坦なグリッド。cellSize 4 なのでローカルでは [0,8]、
+        ///       原点を -4 ずらしてメッシュ版と同じ [-4,4] の板にする。
         return std::make_unique<physics::HeightFieldCollider>(
             std::vector<float>(9, 0.0f), 3, 3, 4.0f, 1.0f);
     }
@@ -127,8 +127,8 @@ public:
         m_instance.material = &physics::PhysicsMaterial::Default;
         if (withBody) {
             m_body.SetMass(1.0f);
-            // 面の «重心» は板の中央。法線の向き合わせは剛体の位置関係で決まるため、
-            // 形状のローカル原点ではなく見た目の中心を渡す。
+            /// @note 面の «重心» は板の中央。法線の向き合わせは剛体の位置関係で決まるため、
+            ///       形状のローカル原点ではなく見た目の中心を渡す。
             m_body.SetPosition(IsSurface(shape) ? math::Vector3::ZERO : position);
             m_instance.body = &m_body;
         }
@@ -173,9 +173,9 @@ float HalfWidthX(Shape shape)
 }
 
 /// 触れ合う距離の 8 割。厚みの 2 割だけ食い込ませる。
-/// WHY 深く重ねないか: 片方の中心や軸が相手の内部に入ると «どちらの面から抜けるか» の
-///     縮退した場合分けに入り、対応表が見たい «普通の接触» とは別の経路になる。
-///     深い重なりは専用のテストで個別に見る。
+/// @note 深く重ねない。片方の中心や軸が相手の内部に入ると «どちらの面から抜けるか» の
+///       縮退した場合分けに入り、対応表が見たい «普通の接触» とは別経路になる
+///       (深い重なりは専用のテストで個別に見る)。
 float ShallowOffsetX(Shape a, Shape b)
 {
     return (HalfWidthX(a) + HalfWidthX(b)) * 0.8f;
@@ -227,7 +227,8 @@ std::vector<ShapePair> CollidablePairs()
     for (const Shape a : kAllShapes)
         for (const Shape b : kAllShapes) {
             if (IsSurface(a) && IsSurface(b)) continue;
-            if (static_cast<int>(b) < static_cast<int>(a)) continue;   // 無順序の組を 1 度だけ
+            /// @note 無順序の組を 1 度だけ
+            if (static_cast<int>(b) < static_cast<int>(a)) continue;
             pairs.push_back({ a, b });
         }
     return pairs;
@@ -243,7 +244,7 @@ std::string PairName(const ::testing::TestParamInfo<ShapePair>& info)
 class CollisionPairTest : public testkit::Fixture,
                           public ::testing::WithParamInterface<ShapePair> {};
 
-// --- 当たる / 当たらない ----------------------------------------------------
+/// @name 当たる / 当たらない
 
 TEST_P(CollisionPairTest, ReportsAContactWhenTheShapesOverlap)
 {
@@ -271,8 +272,8 @@ TEST_P(CollisionPairTest, ReportsNoContactWhenTheShapesAreApart)
 
 TEST_P(CollisionPairTest, ReportsAContactRegardlessOfTheOperandOrder)
 {
-    // dispatch は形状を «正規化された順» に並べ替えてから判定関数を呼ぶ。
-    // 並べ替えの条件を書き間違えると、片方の順番でだけ当たらなくなる。
+    /// @note dispatch は形状を «正規化された順» に並べ替えてから判定関数を呼ぶ。
+    ///       並べ替えの条件を書き間違えると、片方の順番でだけ当たらなくなる。
     const ShapePair pair  = GetParam();
     const Placement place = Overlapping(pair.a, pair.b);
     const Actor a(pair.a, place.a, true);
@@ -282,7 +283,7 @@ TEST_P(CollisionPairTest, ReportsAContactRegardlessOfTheOperandOrder)
     EXPECT_FALSE(Collide(b, a).empty());
 }
 
-// --- 接触点の中身 -----------------------------------------------------------
+/// @name 接触点の中身
 
 TEST_P(CollisionPairTest, ProducesAUnitNormalAndAPositiveDepth)
 {
@@ -302,8 +303,8 @@ TEST_P(CollisionPairTest, ProducesAUnitNormalAndAPositiveDepth)
 
 TEST_P(CollisionPairTest, OrientsTheNormalFromBodyBTowardsBodyA)
 {
-    // ContactPoint の規約: normal は «bodyB から bodyA へ押し戻す» 向き。
-    // ソルバーはこの向き前提でインパルスを入れるので、裏返ると物体が吸い込まれる。
+    /// @note ContactPoint の規約: normal は «bodyB から bodyA へ押し戻す» 向き。
+    ///       ソルバーはこの向き前提でインパルスを入れるので、裏返ると物体が吸い込まれる。
     const ShapePair pair  = GetParam();
     const Placement place = Overlapping(pair.a, pair.b);
     const Actor a(pair.a, place.a, true);
@@ -319,8 +320,8 @@ TEST_P(CollisionPairTest, OrientsTheNormalFromBodyBTowardsBodyA)
 
 TEST_P(CollisionPairTest, AlignsTheNormalWithTheAxisOfSeparation)
 {
-    // 貫通が一番浅い向きが法線になる。板の上なら鉛直、横にずらした組なら その軸。
-    // 別の軸を向いていると、押し戻しが «横滑り» として出る。
+    /// @note 貫通が一番浅い向きが法線になる。板の上なら鉛直、横にずらした組なら その軸。
+    ///       別の軸を向いていると、押し戻しが «横滑り» として出る。
     const ShapePair pair  = GetParam();
     const Placement place = Overlapping(pair.a, pair.b);
     const Actor a(pair.a, place.a, true);
@@ -336,8 +337,8 @@ TEST_P(CollisionPairTest, AlignsTheNormalWithTheAxisOfSeparation)
 
 TEST_P(CollisionPairTest, FlipsTheNormalWhenTheOperandsAreSwapped)
 {
-    // 剛体を付けない = 最後の «bodyDelta による向き合わせ» が働かない状態。
-    // dispatch 内の «正規化して呼び、法線を反転する» 処理だけを裸で見る。
+    /// @note 剛体を付けない = 最後の «bodyDelta による向き合わせ» が働かない状態。
+    ///       dispatch 内の «正規化して呼び、法線を反転する» 処理だけを裸で見る。
     const ShapePair pair  = GetParam();
     const Placement place = Overlapping(pair.a, pair.b);
     const Actor a(pair.a, place.a, false);
@@ -354,13 +355,13 @@ TEST_P(CollisionPairTest, FlipsTheNormalWhenTheOperandsAreSwapped)
 INSTANTIATE_TEST_SUITE_P(AllShapeCombinations, CollisionPairTest,
                          ::testing::ValuesIn(CollidablePairs()), PairName);
 
-// --- 解かない組 -------------------------------------------------------------
+/// @name 解かない組
 
 class StaticPairTest : public testkit::Fixture {};
 
 TEST_F(StaticPairTest, SkipsTrianglemeshAgainstTrianglemesh)
 {
-    // 両方とも静的な «面»。解いても何も動かないので判定ごと省く。
+    /// @note 両方とも静的な «面»。解いても何も動かないので判定ごと省く。
     const Actor a(Shape::Mesh, math::Vector3::ZERO, true);
     const Actor b(Shape::Mesh, math::Vector3::ZERO, true);
 
@@ -384,13 +385,13 @@ TEST_F(StaticPairTest, SkipsTrianglemeshAgainstHeightfield)
     EXPECT_TRUE(Collide(b, a).empty());
 }
 
-// --- 接触点へ載る情報 -------------------------------------------------------
+/// @name 接触点へ載る情報
 
 class ContactWiringTest : public testkit::Fixture {};
 
 TEST_F(ContactWiringTest, CarriesTheCollidersAndBodiesOfThePair)
 {
-    // ここが取り違うと、衝突コールバックが «別のオブジェクトに当たった» と報告する。
+    /// @note ここが取り違うと、衝突コールバックが «別のオブジェクトに当たった» と報告する。
     const Actor a(Shape::Sphere, math::Vector3::ZERO, true);
     const Actor b(Shape::Sphere, { 0.8f, 0.0f, 0.0f }, true);
 
@@ -407,7 +408,7 @@ TEST_F(ContactWiringTest, CarriesTheCollidersAndBodiesOfThePair)
 
 TEST_F(ContactWiringTest, MarksTheContactAsTriggerWhenEitherSideIsATrigger)
 {
-    // トリガーは «通知するだけ»。片側だけの指定でも押し返してはいけない。
+    /// @note トリガーは «通知するだけ»。片側だけの指定でも押し返してはいけない。
     Actor a(Shape::Sphere, math::Vector3::ZERO, true);
     const Actor b(Shape::Sphere, { 0.8f, 0.0f, 0.0f }, true);
     a.Instance().isTrigger = true;
@@ -431,7 +432,7 @@ TEST_F(ContactWiringTest, LeavesTheContactNonTriggerWhenNeitherSideIsOne)
 
 TEST_F(ContactWiringTest, BuildsAMultiPointManifoldForFaceContacts)
 {
-    // 箱同士が面で当たったときに 1 点しか作らないと、接地した箱がその点を軸に揺れる。
+    /// @note 箱同士が面で当たったときに 1 点しか作らないと、接地した箱がその点を軸に揺れる。
     const Actor a(Shape::Box, math::Vector3::ZERO, true);
     const Actor b(Shape::Box, { 1.8f, 0.0f, 0.0f }, true);
 
@@ -452,30 +453,31 @@ TEST_F(ContactWiringTest, ReportsADeeperOverlapAsAGreaterDepth)
     EXPECT_GT(deepContacts.front().depth, shallowContacts.front().depth);
 }
 
-// --- 深く重なった配置 -------------------------------------------------------
+/// @name 深く重なった配置
 
 class DeepOverlapTest : public testkit::Fixture {};
 
 TEST_F(DeepOverlapTest, PushesASphereOutOfTheNearestFaceWhenItsCentreIsInsideABox)
 {
-    // 壁の中に生成された / 高速に貫通した球。最近点が中心と一致して法線が作れない縮退。
-    // 抜ける先を決め打ちにすると、形状に関係なく真上へ飛び出す。
-    const Actor sphere(Shape::Sphere, { 0.9f, 0.0f, 0.0f }, true);   // 中心が箱の内側
+    /// @note 壁の中に生成された / 高速に貫通した球。最近点が中心と一致して法線が作れない縮退。
+    ///       抜ける先を決め打ちにすると、形状に関係なく真上へ飛び出す。
+    /// @note 中心が箱の内側
+    const Actor sphere(Shape::Sphere, { 0.9f, 0.0f, 0.0f }, true);
     const Actor box(Shape::Box, math::Vector3::ZERO, true);
 
     const std::vector<physics::ContactPoint> contacts = Collide(sphere, box);
     ASSERT_FALSE(contacts.empty());
 
-    // +X 面までが 0.1、そこから半径 1.0 ぶん抜ける。
+    /// @note +X 面までが 0.1、そこから半径 1.0 ぶん抜ける。
     EXPECT_VEC3_NEAR(contacts.front().normal, math::Vector3::RIGHT, testkit::kLooseTolerance);
     EXPECT_NEAR(contacts.front().depth, 1.1f, testkit::kLooseTolerance);
 }
 
 TEST_F(DeepOverlapTest, PushesACapsuleOutSidewaysWhenItsAxisSpansTheWholeBox)
 {
-    // カプセルの軸が箱を上下に貫いている。端点は上下面へ «接している» ので、
-    // 最近点を 1 点だけ拾うと «そこから 0 距離で下へ抜ける» という答えになる。
-    // 出口は線分全体で決めなければならない ─ 正しくは横 (+X 面) から 0.3 押し出す。
+    /// @note カプセルの軸が箱を上下に貫いている。端点は上下面へ «接している» ので、
+    ///       最近点を 1 点だけ拾うと «そこから 0 距離で下へ抜ける» という答えになる。
+    ///       出口は線分全体で決めなければならない ─ 正しくは横 (+X 面) から 0.3 押し出す。
     const Actor box(Shape::Box, math::Vector3::ZERO, true);
     const Actor capsule(std::make_unique<physics::CapsuleCollider>(0.2f, 1.0f),
                         { 0.7f, 0.0f, 0.0f });
@@ -489,8 +491,8 @@ TEST_F(DeepOverlapTest, PushesACapsuleOutSidewaysWhenItsAxisSpansTheWholeBox)
 
 TEST_F(DeepOverlapTest, PushesACapsuleOutAlongTheOrientedBoxAxes)
 {
-    // OBB 版も同じ規則。出口は箱のローカル軸で決まるので、回転を掛けても
-    // «一番浅い面» の選び方は変わらない。
+    /// @note OBB 版も同じ規則。出口は箱のローカル軸で決まるので、回転を掛けても
+    ///       «一番浅い面» の選び方は変わらない。
     const math::Quaternion turn =
         math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(90.0f));
     const Actor box(std::make_unique<physics::OBBCollider>(math::Vector3(1.0f, 1.0f, 1.0f)),
@@ -507,7 +509,7 @@ TEST_F(DeepOverlapTest, PushesACapsuleOutAlongTheOrientedBoxAxes)
 
 TEST_F(DeepOverlapTest, PicksTheShallowestFaceForAnOffCentreSphereInsideABox)
 {
-    // 中心が上寄りなら上面が最短。抜ける面は «中心がどこに居るか» で毎回変わる。
+    /// @note 中心が上寄りなら上面が最短。抜ける面は «中心がどこに居るか» で毎回変わる。
     const Actor sphere(Shape::Sphere, { 0.0f, 0.2f, 0.0f }, true);
     const Actor box(Shape::Box, math::Vector3::ZERO, true);
 

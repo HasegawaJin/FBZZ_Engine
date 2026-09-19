@@ -1,0 +1,337 @@
+[environment]
+windDirection = [ 1.0, 1.09, 0.3 ]
+windEnabled = true
+windPulseFrequency = 1.4
+windSpeed = 0.65
+windTurbulence = 0.14
+
+[scene]
+format_version = 2
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f001'
+layer = 0
+name = 'FiberCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'MainCamera'
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777267
+    backgroundColor = [ 0.025, 0.03, 0.04, 1.0 ]
+    clearMode = 0
+    cullDistanceSpherical = true
+    cullingBoundsPadding = 0.0
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 50.0
+    fovY = 50.0
+    frustumCulling = true
+    isMain = true
+    maxDrawDistance = 0.0
+    nearZ = 0.05
+    occlusionCulling = false
+    smallObjectScreenHeight = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 3.0, -6.0 ]
+    rotation = [ 0.173648, 0.0, 0.0, 0.984808 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f002'
+layer = 0
+name = 'FiberLight'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = true
+    color = [ 1.0, 0.92, 0.82 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 3.0
+    outerCone = 30.0
+    range = 10.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 0
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 4.0, -2.0 ]
+    rotation = [ 0.382683, 0.0, 0.0, 0.92388 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f003'
+layer = 0
+name = 'FurShell'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    distanceLod = false
+    enabled = true
+    flowChannels = -1
+    lodFar = 40.0
+    lodNear = 8.0
+    materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
+    minShellCount = 8
+    mode = 0
+    seed = 1
+    shellCount = 32
+    terrainPatchCells = 2
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:ea4de9a3939e4ebf8fe646841113a264|Assets/Materials/Fiber/FurBase.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ -1.8, 0.75, 0.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.2, 1.2, 1.2 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f004'
+layer = 0
+name = 'FurFin'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    distanceLod = false
+    enabled = true
+    flowChannels = -1
+    lodFar = 40.0
+    lodNear = 8.0
+    materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
+    minShellCount = 8
+    mode = 1
+    seed = 1
+    shellCount = 32
+    terrainPatchCells = 2
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:ea4de9a3939e4ebf8fe646841113a264|Assets/Materials/Fiber/FurBase.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.75, 0.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.2, 1.2, 1.2 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f005'
+layer = 0
+name = 'FurHybrid'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    distanceLod = false
+    enabled = true
+    flowChannels = -1
+    lodFar = 40.0
+    lodNear = 8.0
+    materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
+    minShellCount = 8
+    mode = 2
+    seed = 1
+    shellCount = 32
+    terrainPatchCells = 2
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:ea4de9a3939e4ebf8fe646841113a264|Assets/Materials/Fiber/FurBase.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ 1.8, 0.75, 0.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.2, 1.2, 1.2 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f006'
+layer = 0
+name = 'GrassShell'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    distanceLod = false
+    enabled = true
+    flowChannels = -1
+    lodFar = 40.0
+    lodNear = 8.0
+    materialPath = 'guid:739d861ca4e047919d17c941c10191c8|Assets/Materials/Fiber/Grass.mat'
+    minShellCount = 8
+    mode = 0
+    seed = 1
+    shellCount = 32
+    terrainPatchCells = 2
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:c6ca2895f86b43bda4982f1655a7e8b4|Assets/Materials/Fiber/GrassBase.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.transform]
+    position = [ -1.8, 0.0, -1.6 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.3, 1.0, 1.3 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f007'
+layer = 0
+name = 'GrassFin'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    distanceLod = false
+    enabled = true
+    flowChannels = -1
+    lodFar = 40.0
+    lodNear = 8.0
+    materialPath = 'guid:739d861ca4e047919d17c941c10191c8|Assets/Materials/Fiber/Grass.mat'
+    minShellCount = 8
+    mode = 1
+    seed = 1
+    shellCount = 32
+    terrainPatchCells = 2
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:c6ca2895f86b43bda4982f1655a7e8b4|Assets/Materials/Fiber/GrassBase.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, -1.6 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.3, 1.0, 1.3 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f008'
+layer = 0
+name = 'GrassHybrid'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    distanceLod = false
+    enabled = true
+    flowChannels = -1
+    lodFar = 40.0
+    lodNear = 8.0
+    materialPath = 'guid:739d861ca4e047919d17c941c10191c8|Assets/Materials/Fiber/Grass.mat'
+    minShellCount = 8
+    mode = 2
+    seed = 1
+    shellCount = 32
+    terrainPatchCells = 2
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:c6ca2895f86b43bda4982f1655a7e8b4|Assets/Materials/Fiber/GrassBase.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.transform]
+    position = [ 1.8, 0.0, -1.6 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.3, 1.0, 1.3 ]

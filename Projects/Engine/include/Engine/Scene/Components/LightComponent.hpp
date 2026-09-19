@@ -16,133 +16,116 @@ struct LightComponent {
 
     Type          type      = Type::Directional;
     math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
-    // 色を色温度から作る。true のとき color は無視され、colorTemperature が正本になる。
-    // WHY color を上書きせず別フラグにするか: 温度で決めた色を Inspector の color 欄へ
-    //     焼き戻すと、温度を動かすたびにオーサリング値が失われる。どちらが正本かを
-    //     フラグで持てば、温度モードを切っても元の色がそのまま戻る。
+    /// 色を色温度から作る。true のとき color は無視され、colorTemperature が正本になる。
+    /// @note 温度で決めた色を Inspector の color 欄へ焼き戻すと温度を動かすたびに
+    ///       オーサリング値が失われるため、どちらが正本かをフラグで分離する。
     bool          useColorTemperature = false;
-    // 色温度 [K]。1900=ろうそく, 2700=白熱電球, 4000=白色蛍光灯,
-    // 5500=昼光, 6500=D65, 7500=曇天, 10000=晴天の日陰。
+    /// 色温度 [K]。1900=ろうそく, 2700=白熱電球, 4000=白色蛍光灯,
+    /// 5500=昼光, 6500=D65, 7500=曇天, 10000=晴天の日陰。
     float         colorTemperature    = 6500.0f;
-    // intensity の単位 (Lighting.hlsli の LIGHT_UNIT_SCALE を参照)。
-    //
-    // ⚠ タイプによって意味が違う。同じ数値を入れ替えても同じ明るさにはならない。
-    //
-    //   Directional          … そのまま放射照度。1.0 で白い拡散面が albedo の明るさ。
-    //   Point / Spot / Sphere / Tube
-    //                        … 「1m 地点での明るさ」。シェーダーが 1/d^2 で減衰する
-    //                          (LightAttenuation)。10m 先の寄与は 1/100 になる。
-    //   Area (Rect)          … 面の**輝度 (radiance)**。減衰は形態係数
-    //                          (コサイン重み付き立体角 / 2π) が担い、1/d^2 は掛からない。
-    //                          面が半球を埋め尽くすとき albedo × intensity になる。
-    //
-    // WHY Area だけ桁が変わるか: 小さなパネルが遠くの点へ張る立体角は極めて小さい。
-    //     1.6 x 1.2m のパネルを 9m 先から見た形態係数は 0.0038 しかないため、
-    //     Point と同じ感覚で 10 を入れると albedo × 0.04 = ほぼ見えない。
-    //     天井照明として成立させるには 100〜200 が要る。逆に Point/Spot に 140 を
-    //     入れると近傍が完全に白飛びする。**タイプを変えたら必ず数値も入れ直すこと。**
-    //
-    //   既定 3.0 は、空由来の IBL 環境光 (概ね albedo × 1.5 相当) を明確に上回る
-    //   Directional の基準値。旧既定 1.0 では環境光に埋もれて効果が見えなかった。
-    //   Point / Spot で明るい屋外に存在感を出すなら 15〜30 が目安。
+    /// intensity の単位 (Lighting.hlsli の LIGHT_UNIT_SCALE を参照)。
+    /// @note タイプで意味が違い、同じ数値を入れ替えても同じ明るさにならない。Directional は
+    ///       放射照度そのまま。Point/Spot/Sphere/Tube は 1m 地点の明るさで 1/d² 減衰
+    ///       (LightAttenuation)。Area は面の輝度で形態係数のみが減衰を担い 1/d² は掛からず、
+    ///       Point の 10〜30 に対し 100〜200 が目安になる (タイプを変えたら数値も入れ直す)。
+    ///       既定 3.0 は空由来 IBL 環境光 (albedo×1.5 相当) を明確に上回る Directional 基準値。
     float         intensity = 3.0f;
-    float         range     = 10.0f;    // Directional 以外。Area では打ち切り距離のみ
-    float         innerCone = 15.0f;    // Spot のみ (degrees)
-    float         outerCone = 30.0f;    // Spot のみ (degrees)
+    float         range     = 10.0f;    ///< Directional 以外。Area では打ち切り距離のみ
+    float         innerCone = 15.0f;    ///< Spot のみ (degrees)
+    float         outerCone = 30.0f;    ///< Spot のみ (degrees)
     bool          enabled   = true;
 
-    // ---- 発光体の大きさ ----
-    // 点ではなく大きさを持つ光源として扱う半径 [m]。0 で厳密な点光源。
-    //   Sphere : この半径の球
-    //   Tube   : この半径 × sourceLength の長さを持つカプセル
-    //   Point / Spot : 影のにじみ幅とハイライトの広がりだけに効く (形状は点のまま)
-    //
-    // WHY 形状を持たない Point / Spot にも効かせるか: 現実の電球やスポットには必ず
-    //     大きさがあり、それが半影の幅とハイライトの大きさを決めている。0 のままだと
-    //     どんなに詰めても影の縁が硬く、ハイライトが点にしかならない。
+    /// @name 発光体の大きさ
+    /// @{
+    /// 点ではなく大きさを持つ光源として扱う半径 [m]。0 で厳密な点光源。
+    ///   Sphere : この半径の球
+    ///   Tube   : この半径 × sourceLength の長さを持つカプセル
+    ///   Point / Spot : 影のにじみ幅とハイライトの広がりだけに効く (形状は点のまま)
+    /// @note 現実の光源は必ず大きさを持ち、それが半影の幅とハイライトの大きさを決める。
     float         sourceRadius = 0.0f;
-    // Tube の長さ [m]。両端に半球が付くカプセルとして扱う。
+    /// Tube の長さ [m]。両端に半球が付くカプセルとして扱う。
     float         sourceLength = 1.0f;
+    /// @}
 
-    // ---- 面光源 (Type::Area) ----
-    // 面の向きは Transform::Forward()、面内の軸は Right() / Up() を使う。
-    // WHY 半寸法でなく全寸法で持つか: Inspector に「窓の幅 2m」と入れたいのであって、
-    //     「半幅 1m」と入れたいわけではない。半分にするのは GPU へ渡す直前で行う。
-    float         areaWidth  = 1.0f;    // [m]
-    float         areaHeight = 1.0f;    // [m]
-    // 面の裏側を照らさない。板の裏に光が回り込むのを防ぐ。
+    /// @name 面光源 (Type::Area)
+    /// @{
+    /// 面の向きは Transform::Forward()、面内の軸は Right() / Up() を使う。
+    /// @note Inspector には「窓の幅 2m」のように全寸法で入れたい。半分にするのは
+    ///       GPU へ渡す直前で行う。
+    float         areaWidth  = 1.0f;    ///< [m]
+    float         areaHeight = 1.0f;    ///< [m]
+    /// 面の裏側を照らさない。板の裏に光が回り込むのを防ぐ。
     bool          areaTwoSided = false;
+    /// @}
 
-    // ---- 影 ----
-    // Directional はカスケードシャドウ (CSM)、それ以外は専用アトラス (4x4 = 16 タイル)。
-    // タイルの消費は型で変わる:
-    //   Spot / Area          … 1 枚 (Area は法線方向 75 度の錐台。真横は諦める)
-    //   Point / Sphere / Tube … キューブ 6 面で 6 枚。本数上限は
-    //                           ShadowSettings::maxShadowedPointLights
-    // 光源の «大きさ» は深度ではなく半影の広さ (sourceRadius) として効く。
-    // 割り当てはカメラから近い順で、あふれたライトは黙って影を落とさなくなる。
-    bool  castShadows    = true;  // false のとき影を無効化 (shadowStrength=0 と等価)
-    float shadowBias     = 1.0f;  // 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
-    float shadowStrength = 1.0f;  // 影の濃さ: 0=影なし, 1=完全な影
-    float shadowDistance = 0.0f;  // Directional のみ: 0=シーンに自動フィット, >0=正射影の半幅 [m]
-    // Directional 以外の透視投影 near 面 [m]。
-    // WHY 露出させるか: near が小さいほど深度の分解能が near 側へ寄り、遠い側で
-    //     アクネが出る。逆に大きくするとライトのすぐ手前にある caster が near で
-    //     切り取られ、影が抜ける。ライトを壁や天井へ埋める使い方だと既定では
-    //     詰められないケースが出るため、シーンごとに触れる値として持つ。
+    /// @name 影
+    /// @{
+    /// Directional はカスケードシャドウ (CSM)、それ以外は専用アトラス (4x4 = 16 タイル)。
+    /// @note タイル消費: Spot/Area は 1 枚 (Area は法線方向 75 度の錐台)、Point/Sphere/Tube は
+    ///       キューブ 6 面で 6 枚 (上限は ShadowSettings::maxShadowedPointLights)。割り当ては
+    ///       カメラに近い順で、あふれたライトは黙って影を落とさなくなる。sourceRadius は
+    ///       深度ではなく半影の広さとして効く。
+    bool  castShadows    = true;  ///< false のとき影を無効化 (shadowStrength=0 と等価)
+    float shadowBias     = 1.0f;  ///< 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
+    float shadowStrength = 1.0f;  ///< 影の濃さ: 0=影なし, 1=完全な影
+    float shadowDistance = 0.0f;  ///< Directional のみ: 0=シーンに自動フィット, >0=正射影の半幅 [m]
+    /// Directional 以外の透視投影 near 面 [m]。
+    /// @note near が小さいほど深度分解能が near 側へ寄り遠い側でアクネが出る。大きくすると
+    ///       手前の caster が near で切り取られ影が抜ける。壁・天井埋め込みだと既定では
+    ///       詰められないケースがあるため露出する。
     float shadowNearPlane = 0.1f;
+    /// @}
 
-    // ---- Cookie (投影テクスチャ) ----
-    // Spot のみ。ライトの円錐へ被せる白黒/カラーのマスクで、木漏れ日・窓枠・
-    // ロゴのゴボを作る。空文字で無効。
-    // NOTE: Point / Directional は未対応 (前者はキューブマップ、後者は
-    //       ワールド空間のタイリングという別の仕組みが要る)。
+    /// @name Cookie (投影テクスチャ)
+    /// @{
+    /// Spot のみ。ライトの円錐へ被せる白黒/カラーのマスクで、木漏れ日・窓枠・
+    /// ロゴのゴボを作る。空文字で無効。
+    /// @note Point / Directional は未対応 (前者はキューブマップ、後者はワールド空間の
+    ///       タイリングという別の仕組みが要る)。
     std::string cookiePath;
-    // Cookie の見かけの回転 [degrees]。ライト自身を回すと影の向きまで変わってしまうため、
-    // 模様だけを回す軸を別に持つ。
+    /// Cookie の見かけの回転 [degrees]。ライト自身を回すと影の向きまで変わってしまうため、
+    /// 模様だけを回す軸を別に持つ。
     float cookieRotation = 0.0f;
+    /// @}
 
-    // ---- 明滅 (Flicker) ----
-    // たいまつのゆらぎ・破断面の放電・目の脈動。既定は Off で、既存シーンの絵は変わらない。
-    //
-    // WHY コンポーネントへ持たせるか: これまでは演出ごとに «LightComponent を取って
-    //     intensity を毎フレーム書く» スクリプトを起こしていた。揺れの形はオーサリングの
-    //     対象で、コードの対象ではない。
-    //
-    // 駆動は LightFlickerSystem。intensity を «オーサリング値 × 倍率» で毎フレーム
-    // 書き換え、Play を抜けるときにオーサリング値へ戻す (保存へ焼き付かない)。
-    //
-    // ⚠ 同じ GameObject に VFXLightEnvelope を付けないこと。どちらも intensity を
-    //   «捕まえて掛け直す» 作りなので、片方が書いた値をもう片方が基準として掴む。
+    /// @name 明滅 (Flicker)
+    /// @{
+    /// たいまつのゆらぎ・破断面の放電・目の脈動。既定は Off で、既存シーンの絵は変わらない。
+    /// @note 駆動は LightFlickerSystem。intensity を «オーサリング値 × 倍率» で毎フレーム
+    ///       書き換え、Play を抜けるとオーサリング値へ戻す (保存へ焼き付かない)。
+    /// @warning 同じ GameObject に VFXLightEnvelope を付けないこと。どちらも intensity を
+    ///          «捕まえて掛け直す» 作りなので、片方が書いた値をもう片方が基準として掴む。
     enum class FlickerMode : std::uint8_t {
-        Off = 0,   // 無効
-        Sine,      // 正弦。呼吸するような滑らかな脈動
-        Noise,     // value noise。たいまつ・不安定な蛍光灯
-        Curve,     // flickerCurve を 1 周期として繰り返す。作り込んだ放電の形
+        Off = 0,   ///< 無効
+        Sine,      ///< 正弦。呼吸するような滑らかな脈動
+        Noise,     ///< value noise。たいまつ・不安定な蛍光灯
+        Curve,     ///< flickerCurve を 1 周期として繰り返す。作り込んだ放電の形
     };
     FlickerMode flickerMode = FlickerMode::Off;
-    // 倍率の振れ幅。倍率 = 1 - flickerAmplitude * (1 - wave)、wave は [0, 1]。
-    // 0 で «常に 1 倍» = 無効、1 で消灯まで振れる。
-    // WHY 倍率の «減る側» だけを作るか: 上へ振ると白飛びの閾値を越えた瞬間から
-    //     Bloom が別物になり、オーサリングした intensity がピークを表さなくなる。
+    /// 倍率の振れ幅。倍率 = 1 - flickerAmplitude * (1 - wave)、wave は [0, 1]。
+    /// 0 で «常に 1 倍» = 無効、1 で消灯まで振れる。
+    /// @note 上へ振ると白飛びの閾値を越えた瞬間から Bloom が別物になり、オーサリングした
+    ///       intensity がピークを表さなくなるため、減る側だけを作る。
     float    flickerAmplitude = 0.0f;
-    float    flickerFrequency = 6.0f;   // [Hz]。Curve では 1 周の速さ
-    // Sine / Curve の上へ混ぜるノイズの量 [0, 1]。1 で完全にノイズ。
+    float    flickerFrequency = 6.0f;   ///< [Hz]。Curve では 1 周の速さ
+    /// Sine / Curve の上へ混ぜるノイズの量 [0, 1]。1 で完全にノイズ。
     float    flickerNoise     = 0.0f;
-    // 位相オフセット [0, 1)。同じ設定のライトを並べたときに揃って光らないようずらす。
+    /// 位相オフセット [0, 1)。同じ設定のライトを並べたときに揃って光らないようずらす。
     float    flickerPhase     = 0.0f;
-    // ノイズ列の種。同じ seed と同じ位相なら、いつ何回走らせても同じ揺れになる。
+    /// ノイズ列の種。同じ seed と同じ位相なら、いつ何回走らせても同じ揺れになる。
     std::uint32_t flickerSeed = 0;
-    // Curve モードの波形。横軸は 1 周期の正規化時間、縦軸は倍率 [0, 1] 想定。
+    /// Curve モードの波形。横軸は 1 周期の正規化時間、縦軸は倍率 [0, 1] 想定。
     ParticleCurve flickerCurve{
         {{ {0.0f, 1.0f}, {0.5f, 0.25f}, {1.0f, 1.0f}, {1.0f, 1.0f},
            {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f} }},
         3, ParticleCurveInterpolation::Smooth };
+    /// @}
 
-    // ---- 明滅のランタイム状態 (シリアライズしない) ----
-    // WHY コンポーネントに持たせるか: 適用は intensity の «書き換え» なので、元の値を
-    //     誰かが覚えていないとループのたびに暗くなっていく。System 側の別テーブルで
-    //     持つと GameObject の破棄と寿命が合わず、使い回した ID で前の値が蘇る。
+    /// @name 明滅のランタイム状態 (シリアライズしない)
+    /// @{
+    /// @note 適用は intensity の «書き換え» なので元の値をどこかが覚えている必要がある。
+    ///       System 側の別テーブルで持つと GameObject の破棄と寿命が合わず、使い回した
+    ///       ID で前の値が蘇るためコンポーネント側に持つ。
     float flickerBaseIntensity = 0.0f;
     float flickerTime          = 0.0f;
     bool  flickerCaptured      = false;
@@ -187,16 +170,17 @@ struct LightComponent {
         r.Field("flickerNoise",     flickerNoise);
         r.Field("flickerPhase",     flickerPhase);
         {
-            // IReflector は uint32_t 非対応のため int 経由で往復させる。
+            /// @note IReflector は uint32_t 非対応のため int 経由で往復させる。
             int seed = static_cast<int>(flickerSeed);
             r.Field("flickerSeed", seed);
             flickerSeed = static_cast<std::uint32_t>(seed < 0 ? 0 : seed);
         }
         r.Field("flickerCurve", flickerCurve);
     }
-    // Directional / Spot / Area の方向 → Transform::Forward()
-    // Point / Spot / Area の位置      → Transform::position
-    // Area の面内軸                   → Transform::Right() / Up()
+    /// Directional / Spot / Area の方向 → Transform::Forward()
+    /// Point / Spot / Area の位置      → Transform::position
+    /// Area の面内軸                   → Transform::Right() / Up()
+    /// @}
 };
 
 } // namespace fbzz::scene

@@ -17,7 +17,50 @@ DX12StructuredBuffer::~DX12StructuredBuffer()
     if (m_resource && m_mapped) m_resource->Unmap(0, nullptr);
     m_mapped = nullptr;
     if (m_tracker) m_tracker->Remove(m_resource.Get());
-    if (m_context) m_context->DeferRelease(m_resource);
+    if (m_context) {
+        /// @note リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
+        m_context->FreeBindlessSlot(m_bindlessIndex);
+        m_context->FreeBindlessSlot(m_bindlessUavIndex);
+        m_context->DeferRelease(m_resource);
+    }
+}
+
+uint32_t DX12StructuredBuffer::GetBindlessIndex() const
+{
+    if (m_bindlessIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessIndex;
+    if (!m_context || !m_descriptorHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetSrv(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessIndex = slot;
+    return slot;
+}
+
+uint32_t DX12StructuredBuffer::GetBindlessUavIndex() const
+{
+    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessUavIndex;
+    /// @note 読み取り専用で作られたバッファは UAV ディスクリプタを持たない。ここで弾かないと
+    ///       GetUav() が SRV 枠を指し、「書けるつもりの SRV」を配ってしまう。
+    if (!m_context || !m_readWrite || !m_descriptorHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetUav(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessUavIndex = slot;
+    return slot;
 }
 
 bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker, const void* data,
@@ -35,8 +78,8 @@ bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker,
     const size_t sizeBytes = GetSize();
     ID3D12Device* device = context->GetDevice();
     if (readWrite || gpuLocalReadOnly) {
-        // 初期データは一度だけ Upload Heap を経由し、以後の SRV 読み取りは DEFAULT Heap から行う。
-        // WHY: immutable なスキニング入力を CPU 可視メモリへ置き続ける必要はない。
+        /// @note 初期データは一度だけ Upload Heap を経由し、以後の SRV 読み取りは DEFAULT Heap から行う
+        ///       (immutable なスキニング入力を CPU 可視メモリへ置き続ける必要はない)。
         if (!context->CreateDefaultBuffer(data, sizeBytes, m_resource)) return false;
         tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
     } else {
@@ -62,7 +105,7 @@ bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker,
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = readWrite ? 2 : 1;
-    // Resource SRV/UAVは動的shader-visibleテーブルへコピーするCPU stagingとして保持する。
+    /// @note Resource SRV/UAVは動的shader-visibleテーブルへコピーするCPU stagingとして保持する。
     if (FAILED(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_descriptorHeap)))) return false;
     m_descriptorIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
@@ -87,7 +130,7 @@ void DX12StructuredBuffer::Update(const void* data, size_t sizeBytes)
 {
     if (!data || sizeBytes == 0) return;
     if (m_gpuLocalReadOnly) {
-        // immutable SRV の更新要求は契約違反。再生成による明示的な差し替えを要求する。
+        /// @note immutable SRV の更新要求は契約違反。再生成による明示的な差し替えを要求する。
         FBZZ_LOG_WARN("DX12StructuredBuffer: GPUローカル読み取り専用バッファは更新できません");
         return;
     }

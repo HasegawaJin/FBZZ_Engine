@@ -3,14 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 専用パネルを持つか (Inspector で足りない理由):
-///   エフェクトの良し悪しは個々の数値ではなく «どの層がいつ立ち上がっていつ消えるか» で決まる。
-///   Inspector は 1 オブジェクトずつしか見せないので、13 個の層の重なりを詰める作業では
-///   選択を往復するだけで時間が溶ける。横に並べて初めて «煙が火花より先に出ている» が見える。
-///
-/// WHY グラフ Canvas を作り直さないか:
-///   実行の因果は startDelay に畳んであり (Docs/design/vfx-prefab.md §4.3)、
-///   配線として描くものが残っていない。時間軸だけが要る。
+/// @note エフェクトの良し悪しは «どの層がいつ立ち上がっていつ消えるか» で決まるが、Inspector は
+///       1 オブジェクトずつしか見せず、選択往復だけで時間が溶ける。実行の因果は startDelay に
+///       畳んであり (Docs/design/vfx-prefab.md §4.3) 配線として描くものは残っていないため、
+///       グラフ Canvas ではなく時間軸だけの専用パネルにする。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/Scene/Entity.hpp>
@@ -32,11 +28,9 @@ protected:
 
 private:
     /// 1 行ぶん。窓の値がどのコンポーネントに載っているかを併せて持つ。
-    ///
-    /// WHY 持ち主を覚えるか: 時間の正本は 1 オブジェクトにつき 1 箇所で、
-    ///     ParticleEmitter は自前の startDelay/duration、それ以外は VFXElement にある
-    ///     (§4.1)。書き戻し先を行ごとに決めておかないと、掴んで動かした値が
-    ///     «読んだ場所と違うところ» へ入る。
+    /// @note 時間の正本は 1 オブジェクトにつき 1 箇所で、ParticleEmitter は自前の
+    ///       startDelay/duration、それ以外は VFXElement にある (§4.1)。書き戻し先を行ごとに
+    ///       決めておかないと、掴んで動かした値が «読んだ場所と違うところ» へ入る。
     struct Track {
         scene::EntityID entity{};
         std::string     label;

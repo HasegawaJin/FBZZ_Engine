@@ -21,6 +21,7 @@
 
 #include "IBL/IBLCommon.hlsli"
 #include "Rendering/BRDF.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 cbuffer CbPrefilter : register(b0)
 {
@@ -34,8 +35,8 @@ cbuffer CbPrefilter : register(b0)
     uint  _pad2;
 };
 
-TextureCube<float4>          g_envMap  : register(t0); // Environment Cubemap SRV (with mips)
-RWTexture2DArray<float4>     g_output  : register(u0); // Prefiltered Cubemap UAV (1 面×1 mip)
+FBZZ_TEXCUBE_T(float4, g_envMap, 0); // Environment Cubemap SRV (with mips)
+FBZZ_RWTEX2DARRAY_T(float4, g_output, 0); // Prefiltered Cubemap UAV (1 面×1 mip)
 SamplerState                 g_sampler : register(s0); // LinearWrap
 
 [numthreads(8, 8, 1)]

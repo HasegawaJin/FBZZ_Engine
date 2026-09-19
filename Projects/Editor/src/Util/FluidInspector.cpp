@@ -12,7 +12,7 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/FluidBaker.hpp>
-#include <Engine/Asset/FluidRecipe.hpp>
+#include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <algorithm>
@@ -30,36 +30,36 @@
 namespace fbzz::editor {
 namespace {
 
-using asset::FluidKind;
-using asset::FluidShading;
+using fluid::FluidKind;
+using fluid::FluidShading;
 
 constexpr ImVec4 kErrorColor{ 1.0f, 0.40f, 0.30f, 1.0f };
 
-// Inspector は編集しない。表示に要るレシピだけを覚え、ディスクが書き換わったら読み直す
-// (書くのは Fluid Editor と AI)。
+/// @brief Inspector は編集しない。表示に要るレシピだけを覚え、ディスクが書き換わったら読み直す
+/// @brief (書くのは Fluid Editor と AI)。
 struct FluidSummaryState {
     std::string path;
     std::filesystem::file_time_type stamp{};
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     bool loaded = false;
     std::string loadError;
 
-    /// 最後に焼き上がった結果 (2D / 3D)。«Create / Update Particle Material» がこれを写す。
+    /// @brief 最後に焼き上がった結果 (2D / 3D)。«Create / Update Particle Material» がこれを写す。
     FluidMaterialSource lastBake;
     bool hasBake = false;
     std::string status;
     bool statusIsError = false;
 
-    /// 隣にある焼いた出力 (表示名, 実パス)。毎フレーム stat しないよう 1 秒ごとに見直す。
+    /// @brief 隣にある焼いた出力 (表示名, 実パス)。毎フレーム stat しないよう 1 秒ごとに見直す。
     std::vector<std::pair<const char*, std::string>> outputs;
     std::chrono::steady_clock::time_point outputsCheckedAt{};
     bool outputsChecked = false;
 };
 
-// Inspector は同時に 1 つのアセットしか開かないため、状態はファイル内 static で足りる。
+/// @brief Inspector は同時に 1 つのアセットしか開かないため、状態はファイル内 static で足りる。
 FluidSummaryState s_state;
 
-// 焼きは FluidBakeService のジョブ。別のアセットへ移っても追えるよう、s_state とは別に持つ。
+/// @brief 焼きは FluidBakeService のジョブ。別のアセットへ移っても追えるよう、s_state とは別に持つ。
 EditorContext* s_context = nullptr;
 std::uint32_t s_bakeJobId = 0;
 std::string s_bakeJobPath;
@@ -117,7 +117,7 @@ void LoadIfNeeded(const std::string& absPath)
     s_state.path = absPath;
     s_state.stamp = stamp;
     s_state.outputsChecked = false;
-    asset::FluidRecipe recipe;
+    fluid::FluidRecipe recipe;
     std::string error;
     if (asset::LoadFluidRecipe(absPath, recipe, &error)) {
         s_state.recipe = std::move(recipe);
@@ -129,12 +129,12 @@ void LoadIfNeeded(const std::string& absPath)
     }
 }
 
-[[nodiscard]] int FrameCount(const asset::FluidRecipe& recipe)
+[[nodiscard]] int FrameCount(const fluid::FluidRecipe& recipe)
 {
     return (std::max)(recipe.output.columns, 1) * (std::max)(recipe.output.rows, 1);
 }
 
-[[nodiscard]] const char* ShadingName(const asset::FluidRecipe& recipe)
+[[nodiscard]] const char* ShadingName(const fluid::FluidRecipe& recipe)
 {
     if (recipe.kind == FluidKind::Liquid) return "Liquid";
     switch (recipe.render.shading) {
@@ -147,10 +147,10 @@ void LoadIfNeeded(const std::string& absPath)
     return "?";
 }
 
-// ── 隣の焼いた出力 ──
+/// @name 隣の焼いた出力
 
-// 名前の規則は FluidBaker (2D: <stem>_Flipbook / _MV / .vfield) と VolumeFlipbookBaker (3D: <stem> / _mv / _6way*)。
-// Windows のファイル名は大文字小文字を区別しないので、2D の _MV と 3D の _mv は同じファイルを指す。
+/// @brief 名前の規則は FluidBaker (2D: `<stem>`_Flipbook / _MV / _Velocity.png) と VolumeFlipbookBaker (3D: `<stem>` / _mv / _6way*)。
+/// @note Windows のファイル名は大文字小文字を区別しないので、2D の _MV と 3D の _mv は同じファイルを指す。
 void RefreshSiblingOutputs()
 {
     const auto now = std::chrono::steady_clock::now();
@@ -175,7 +175,7 @@ void RefreshSiblingOutputs()
     addFirst("Motion Vectors", { "_MV.dds", "_MV.png" });
     addFirst("6-way +", { "_6wayP.dds", "_6wayP.png" });
     addFirst("6-way -", { "_6wayN.dds", "_6wayN.png" });
-    addFirst("Vector Field", { ".vfield" });
+    addFirst("Vector Field", { "_Velocity.png" });
     addFirst("VFX", { ".vfx" });
     if (std::string material = SiblingMaterialPath(s_state.path); util::FileSystem::Exists(material))
         s_state.outputs.emplace_back("Material", std::move(material));
@@ -205,7 +205,7 @@ void DrawSiblingOutputs()
     ImGui::EndTable();
 }
 
-// ── 要約 ──
+/// @name 要約
 
 void SummaryRow(const char* label, const char* format, ...) IM_FMTARGS(2);
 
@@ -229,7 +229,7 @@ int CountEnabled(const std::vector<Part>& parts)
 
 void DrawRecipeSummary()
 {
-    const asset::FluidRecipe& recipe = s_state.recipe;
+    const fluid::FluidRecipe& recipe = s_state.recipe;
     ImGui::SeparatorText("Recipe");
     if (ImGui::BeginTable("##summary", 2, ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableSetupColumn("##label", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 7.0f);
@@ -242,20 +242,20 @@ void DrawRecipeSummary()
             else                  SummaryRow(label, "%d / %d  (%d off)", count, limit, count - enabled);
         };
         partRow("Sources", static_cast<int>(recipe.sources.size()), CountEnabled(recipe.sources),
-                asset::kMaxFluidSources);
-        partRow("Forces", static_cast<int>(recipe.forces.size()), CountEnabled(recipe.forces), asset::kMaxFluidForces);
+                fluid::kMaxFluidSources);
+        partRow("Forces", static_cast<int>(recipe.forces.size()), CountEnabled(recipe.forces), fluid::kMaxFluidForces);
         partRow("Colliders", static_cast<int>(recipe.colliders.size()), CountEnabled(recipe.colliders),
-                asset::kMaxFluidColliders);
+                fluid::kMaxFluidColliders);
 
-        const asset::FluidBakeSettings& bake = recipe.bake;
-        if (bake.mode == asset::FluidBakeMode::Volume3D)
+        const fluid::FluidBakeSettings& bake = recipe.bake;
+        if (bake.mode == fluid::FluidBakeMode::Volume3D)
             SummaryRow("Bake Mode", "3D (Volume)  %d^3  %s%s", bake.volumeResolution,
-                       bake.solver == asset::FluidBakeSolver::Gpu ? "GPU" : "CPU",
+                       bake.solver == fluid::FluidBakeSolver::Gpu ? "GPU" : "CPU",
                        bake.sixWayLightmaps ? "  + 6-way" : "");
         else
             SummaryRow("Bake Mode", "2D (Flat)");
 
-        const asset::FluidOutputSettings& output = recipe.output;
+        const fluid::FluidOutputSettings& output = recipe.output;
         const int frames = FrameCount(recipe);
         SummaryRow("Frame", "%d px  x%d supersampling", output.frameSize, output.supersampling);
         SummaryRow("Frames", "%d x %d = %d  (atlas %d x %d px)", output.columns, output.rows, frames,
@@ -270,9 +270,9 @@ void DrawRecipeSummary()
         ImGui::TextColored(kErrorColor, "有効な発生源がありません。焼いても何も写りません。");
 }
 
-// ── 焼き ──
+/// @name 焼き
 
-// 焼いた結果を Particle 用 .mat (.fluid と同名) へ書く。既にあればテクスチャとコマ割りだけ追従させる。
+/// @brief 焼いた結果を Particle 用 .mat (.fluid と同名) へ書く。既にあればテクスチャとコマ割りだけ追従させる。
 bool WriteParticleMaterial(const std::string& fluidPath, const FluidMaterialSource& bake,
                            std::string& outRelativePath)
 {
@@ -301,8 +301,8 @@ void StartBake()
     if (BakeJobActive()) return;
     FluidBakeRequest request;
     request.fluidPath = s_state.path;
-    // .mat が既にあれば焼いた設定へ追従させる。コマ数を変えて焼き直した直後に、
-    // 古い分割のまま描かれる (エラーにならず «変な煙» になる) のを防ぐ。
+    /// @note .mat が既にあれば焼いた設定へ追従させる。コマ数を変えて焼き直した直後に、
+    ///       古い分割のまま描かれる (エラーにならず «変な煙» になる) のを防ぐ。
     request.updateMaterial = util::FileSystem::Exists(SiblingMaterialPath(s_state.path));
     FluidJobError error;
     const std::uint32_t id = service->EnqueueBake(*s_context, request, error);
@@ -313,11 +313,11 @@ void StartBake()
     s_bakeJobId = id;
     s_bakeJobPath = s_state.path;
     s_bakeStarted = std::chrono::steady_clock::now();
-    SetStatus(s_state.recipe.bake.mode == asset::FluidBakeMode::Volume3D ? "3D で焼いています…" : "焼いています…",
+    SetStatus(s_state.recipe.bake.mode == fluid::FluidBakeMode::Volume3D ? "3D で焼いています…" : "焼いています…",
               false);
 }
 
-// 焼き上がりは次の描画フレームで拾う (テクスチャの差し替えと .mat の追従はサービスが済ませている)。
+/// @brief 焼き上がりは次の描画フレームで拾う (テクスチャの差し替えと .mat の追従はサービスが済ませている)。
 void PollBake()
 {
     FluidBakeService* service = BakeService();
@@ -330,7 +330,8 @@ void PollBake()
     if (!status->Finished()) return;
     const std::uint32_t id = s_bakeJobId;
     s_bakeJobId = 0;
-    if (s_bakeJobPath != s_state.path) return;  // 焼いている間に別のアセットへ移った
+    /// @note 焼いている間に別のアセットへ移った
+    if (s_bakeJobPath != s_state.path) return;
 
     s_state.outputsChecked = false;
     SetStatus(status->message, status->state != FluidJobState::Done);
@@ -366,7 +367,7 @@ void DrawBakeProgress()
     Tooltip("2D の焼きは途中で止められないため、書き出しは最後まで続きます (結果は捨てます)。");
 }
 
-// 焼き上がった直後だけ出す。.mat が既にあれば焼きのたびにサービスが追従させているので、ここは «作る» ための入口。
+/// @brief 焼き上がった直後だけ出す。.mat が既にあれば焼きのたびにサービスが追従させているので、ここは «作る» ための入口。
 void DrawMaterialButton()
 {
     if (!s_state.hasBake) return;
@@ -385,7 +386,7 @@ void DrawMaterialButton()
 void DrawBakeSection()
 {
     ImGui::SeparatorText("Bake");
-    const bool volumeMode = s_state.loaded && s_state.recipe.bake.mode == asset::FluidBakeMode::Volume3D;
+    const bool volumeMode = s_state.loaded && s_state.recipe.bake.mode == fluid::FluidBakeMode::Volume3D;
     ImGui::BeginDisabled(BakeJobActive() || BakeService() == nullptr || !s_state.loaded);
     if (ImGui::Button(volumeMode ? "Bake (3D)" : "Bake (2D)", { -1.0f, 0.0f })) StartBake();
     ImGui::EndDisabled();
@@ -393,7 +394,7 @@ void DrawBakeSection()
         Tooltip("保存済みのレシピを 3D で解き直してレイマーチで焼き、.fluid の隣へ <名前>.dds / _mv.dds を書きます。\n"
                 "Fluid Editor の未保存の変更は入りません。裏で焼くので、その間もエディターは操作できます。");
     else
-        Tooltip("保存済みのレシピを解き直し、.fluid の隣へ _Flipbook.png / _MV.png / .vfield を書きます。\n"
+        Tooltip("保存済みのレシピを解き直し、.fluid の隣へ _Flipbook.png / _MV.png / _Velocity.png を書きます。\n"
                 "Fluid Editor の未保存の変更は入りません。裏で焼くので、その間もエディターは操作できます。");
     DrawBakeProgress();
     DrawStatus();

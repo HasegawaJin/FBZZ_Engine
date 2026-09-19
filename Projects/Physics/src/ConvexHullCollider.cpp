@@ -16,14 +16,7 @@ namespace fbzz::physics
 
     namespace
     {
-        // 点 p から直線 (a, b) への符号付き距離の 2 倍 (方向成分のみ)
-        float SignedDistToLine2D(const math::Vector3& a, const math::Vector3& b,
-                                 const math::Vector3& p, const math::Vector3& planeNormal)
-        {
-            return math::Vector3::Dot(math::Vector3::Cross(b - a, p - a), planeNormal);
-        }
-
-        // 三角形の法線方向に対して正の側にある点を返す
+        /// 三角形の法線方向に対して正の側にある点を返す
         float DistToPlane(const math::Vector3& planeNormal, const math::Vector3& planePoint,
                           const math::Vector3& p)
         {
@@ -51,8 +44,63 @@ namespace fbzz::physics
             return len > 1e-8f ? n * (1.0f / len) : math::Vector3::UP;
         }
 
-        // 簡易 Quickhull: 全点を処理して凸包頂点インデックスを返す
-        // ここでは Incremental 法（面を追加しながら外部点を処理）を簡略実装する
+        /// centroid が内側にある前提で、三角形の法線が外を向くように頂点順を決める。
+        std::array<uint32_t, 3> OrientOutward(const std::vector<math::Vector3>& pts,
+                                              uint32_t a, uint32_t b, uint32_t c,
+                                              const math::Vector3& centroid)
+        {
+            HullFace f;
+            f.v[0]   = static_cast<int>(a);
+            f.v[1]   = static_cast<int>(b);
+            f.v[2]   = static_cast<int>(c);
+            f.normal = FaceNormal(pts, f);
+            if (DistToPlane(f.normal, pts[f.v[0]], centroid) > 0.0f) std::swap(b, c);
+            return { a, b, c };
+        }
+
+        /// @brief 球面に散らした budget 本の方向それぞれで «最も遠い点» を拾い、その部分集合を返す。
+        /// @note 配列の先頭から間引くと «エクスポーターの頂点順» で残る点が決まり、実形より
+        ///       小さい当たり判定になりうる。向きで選べば最外周の点が残り、出来る凸包は
+        ///       常に真の凸包に内接する (大きくなりすぎない)。
+        std::vector<math::Vector3> SelectExtremePoints(const std::vector<math::Vector3>& pts,
+                                                       int budget)
+        {
+            const int n = static_cast<int>(pts.size());
+
+            std::vector<int> picked;
+            picked.reserve(static_cast<size_t>(budget));
+
+            /// @note フィボナッチ球。偏りの少ない準一様分布を三角関数 2 回だけで作れる。
+            /// @note PI * (3 - sqrt(5))
+            constexpr float GOLDEN_ANGLE = 2.39996322972865332f;
+            for (int i = 0; i < budget; ++i)
+            {
+                const float y = 1.0f - (static_cast<float>(i) + 0.5f) * 2.0f / static_cast<float>(budget);
+                const float r = std::sqrt(std::max(0.0f, 1.0f - y * y));
+                const float theta = GOLDEN_ANGLE * static_cast<float>(i);
+                const math::Vector3 dir = { std::cos(theta) * r, y, std::sin(theta) * r };
+
+                /// @note argmax <p, dir> は原点の取り方に依存しない (全点に同じ定数が乗るだけ)。
+                int   best    = 0;
+                float bestDot = -std::numeric_limits<float>::max();
+                for (int p = 0; p < n; ++p)
+                {
+                    const float d = math::Vector3::Dot(pts[p], dir);
+                    if (d > bestDot) { bestDot = d; best = p; }
+                }
+
+                if (std::find(picked.begin(), picked.end(), best) == picked.end())
+                    picked.push_back(best);
+            }
+
+            std::vector<math::Vector3> out;
+            out.reserve(picked.size());
+            for (int i : picked) out.push_back(pts[static_cast<size_t>(i)]);
+            return out;
+        }
+
+        /// 簡易 Quickhull: 全点を処理して凸包頂点インデックスを返す
+        /// ここでは Incremental 法（面を追加しながら外部点を処理）を簡略実装する
         HullBuildResult SimpleQuickhull(std::vector<math::Vector3> pts)
         {
             const int n = static_cast<int>(pts.size());
@@ -60,18 +108,22 @@ namespace fbzz::physics
                 HullBuildResult result;
                 result.vertices = std::move(pts);
                 if (n == 4) {
+                    /// @note 4 点の並びは呼び出し元の入力順のままで手 (向き) が定まらず、固定の
+                    ///       面リストだけでは法線が全て内向きになる入力がある。主経路と揃える。
+                    const math::Vector3 centroid = (result.vertices[0] + result.vertices[1]
+                                                  + result.vertices[2] + result.vertices[3]) * 0.25f;
                     result.faces = {
-                        std::array<uint32_t, 3>{ 0, 1, 2 },
-                        std::array<uint32_t, 3>{ 0, 2, 3 },
-                        std::array<uint32_t, 3>{ 0, 3, 1 },
-                        std::array<uint32_t, 3>{ 1, 3, 2 },
+                        OrientOutward(result.vertices, 0, 1, 2, centroid),
+                        OrientOutward(result.vertices, 0, 2, 3, centroid),
+                        OrientOutward(result.vertices, 0, 3, 1, centroid),
+                        OrientOutward(result.vertices, 1, 3, 2, centroid),
                     };
                 }
                 return result;
             }
 
-            // 初期四面体を構築する
-            // 最遠 X 軸ペアを選ぶ
+            /// @note 初期四面体を構築する
+            ///       最遠 X 軸ペアを選ぶ
             int minX = 0, maxX = 0;
             for (int i = 1; i < n; ++i)
             {
@@ -80,8 +132,8 @@ namespace fbzz::physics
             }
             if (minX == maxX) return { std::move(pts), {} };
 
-            // 退化を判定する長さの基準。絶対値の閾値で切ると、小さいメッシュがすべて
-            // 「退化」に、大きいメッシュがすべて「非退化」になる。
+            /// @note 退化を判定する長さの基準。絶対値の閾値で切ると、小さいメッシュがすべて
+            ///       「退化」に、大きいメッシュがすべて「非退化」になる。
             math::Vector3 lower = pts[0];
             math::Vector3 upper = pts[0];
             for (const math::Vector3& p : pts)
@@ -92,9 +144,8 @@ namespace fbzz::physics
             const float degenerateEps =
                 std::max({ upper.x - lower.x, upper.y - lower.y, upper.z - lower.z }) * 1e-6f;
 
-            // 直線 (minX, maxX) から最遠点
-            // WHY 外積の長さではなく直線からの距離で比べるか: 外積の長さは軸の長さに比例するので、
-            //     同じ閾値が形の大きさで意味を変えてしまう。
+            /// @note 直線 (minX, maxX) から最遠点。外積の長さは軸長に比例するため、直線からの
+            ///       距離で比べないと同じ閾値が形の大きさで意味を変えてしまう。
             const math::Vector3 axis       = pts[maxX] - pts[minX];
             const float         axisLength = axis.Length();
             int far1 = -1;
@@ -106,16 +157,14 @@ namespace fbzz::physics
                     math::Vector3::Cross(axis, pts[i] - pts[minX]).Length() / axisLength;
                 if (dist > bestDist) { bestDist = dist; far1 = i; }
             }
-            // 全点が一直線。三角形が作れないので面は持たず、点だけを凸包として返す
-            // (サポート関数は点の集合だけで正しく解ける)。
-            // WHY ここで降りるか: 進むと下の正規化が長さ 0 の外積を踏む。
-            //     板ポリのメッシュや潰れたスケールから、この点群は実データで普通に来る。
+            /// @note 全点が一直線なら三角形が作れず点だけを凸包として返す (サポート関数は点集合
+            ///       だけで解ける)。ここで降りないと下の正規化が長さ 0 の外積を踏む。板ポリの
+            ///       メッシュや潰れたスケールで実データとして普通に起こる。
             if (far1 < 0) return { std::move(pts), {} };
 
-            // 平面 (minX, maxX, far1) から最遠点
-            // WHY Normalized() ではなく NormalizedOr か: 上の閾値は «最も条件の良い 3 点目» を
-            //     選ぶためのもので、外積の長さが正規化に耐えることまでは保証しない。
-            //     Normalized() は長さ 0 を契約違反として assert で落とすので、ここは踏めない。
+            /// @note 平面 (minX, maxX, far1) から最遠点。上の閾値は «最も条件の良い 3 点目» を
+            ///       選ぶだけで外積が正規化に耐える保証はなく、Normalized() は長さ 0 を assert
+            ///       で落とすため NormalizedOr を使う。
             const math::Vector3 triN = math::Vector3::Cross(axis, pts[far1] - pts[minX])
                                            .NormalizedOr(math::Vector3::ZERO);
             if (triN.LengthSq() < 0.5f) return { std::move(pts), {} };
@@ -127,14 +176,13 @@ namespace fbzz::physics
                 const float dist = std::abs(DistToPlane(triN, pts[minX], pts[i]));
                 if (dist > bestDist) { bestDist = dist; far2 = i; }
             }
-            // 全点が同一平面。厚みの無い四面体からは外向き法線が決まらない。
+            /// @note 全点が同一平面。厚みの無い四面体からは外向き法線が決まらない。
             if (far2 < 0) return { std::move(pts), {} };
 
-            // 4 点から凸包を構築する (簡易: 全点に対して外側テスト)
-            const std::vector<int> initIdx = {minX, maxX, far1, far2};
+            /// @note 4 点から凸包を構築する (簡易: 全点に対して外側テスト)
             std::vector<HullFace> faces;
 
-            // 4 面の三角形を作成する
+            /// @note 4 面の三角形を作成する
             const int idx[4] = {minX, maxX, far1, far2};
             const int triIdx[4][3] = {{0,1,2},{0,2,3},{0,3,1},{1,3,2}};
             math::Vector3 centroid = (pts[idx[0]] + pts[idx[1]] + pts[idx[2]] + pts[idx[3]]) * 0.25f;
@@ -146,7 +194,7 @@ namespace fbzz::physics
                 f.v[1] = idx[ti[1]];
                 f.v[2] = idx[ti[2]];
                 f.normal = FaceNormal(pts, f);
-                // 外向き法線に修正
+                /// @note 外向き法線に修正
                 if (DistToPlane(f.normal, pts[f.v[0]], centroid) > 0.0f)
                 {
                     std::swap(f.v[1], f.v[2]);
@@ -155,10 +203,10 @@ namespace fbzz::physics
                 faces.push_back(f);
             }
 
-            // 各点を面に追加していく Incremental Quickhull
+            /// @note 各点を面に追加していく Incremental Quickhull
             for (int pi = 0; pi < n; ++pi)
             {
-                // 既に凸包内にある点はスキップ
+                /// @note 既に凸包内にある点はスキップ
                 bool outside = false;
                 for (const auto& f : faces)
                 {
@@ -170,7 +218,7 @@ namespace fbzz::physics
                 }
                 if (!outside) continue;
 
-                // 見える面を削除しシルエットエッジを収集する
+                /// @note 見える面を削除しシルエットエッジを収集する
                 struct EdgePair { int a, b; };
                 std::vector<EdgePair> edges;
                 for (int fi = static_cast<int>(faces.size()) - 1; fi >= 0; --fi)
@@ -196,7 +244,7 @@ namespace fbzz::physics
                     }
                 }
 
-                // シルエットエッジから新しい面を追加する
+                /// @note シルエットエッジから新しい面を追加する
                 for (const auto& e : edges)
                 {
                     HullFace f;
@@ -210,12 +258,12 @@ namespace fbzz::physics
                     faces.push_back(f);
                 }
 
-                // 重心を更新
+                /// @note 重心を更新
                 centroid = (centroid * static_cast<float>(faces.size() - 1) + pts[pi])
                          * (1.0f / static_cast<float>(faces.size()));
             }
 
-            // 使用された頂点インデックスを収集して重複を排除する
+            /// @note 使用された頂点インデックスを収集して重複を排除する
             std::vector<bool> used(n, false);
             for (const auto& f : faces)
                 for (int k = 0; k < 3; ++k)
@@ -246,7 +294,7 @@ namespace fbzz::physics
 
             return { std::move(result), std::move(resultFaces) };
         }
-    } // anonymous namespace
+    } // namespace
 
     ConvexHullCollider::ConvexHullCollider(std::vector<math::Vector3> points)
     {
@@ -258,17 +306,17 @@ namespace fbzz::physics
     {
         if (points.empty()) return;
 
-        // 頂点数の上限
+        /// @note 頂点数の上限は «どの点を凸包の材料にするか» で掛ける。
+        ///       SimpleQuickhull は入力より多い頂点を返さないので、これで結果も上限に収まる。
         if (static_cast<int>(points.size()) > MAX_HULL_VERTS)
-            points.resize(static_cast<size_t>(MAX_HULL_VERTS));
+            points = SelectExtremePoints(points, MAX_HULL_VERTS);
 
+        /// @note m_localVerts だけ後から切り詰めると m_faces が古いインデックスを持ったままになり、
+        ///       World.cpp の RayConvexHull が範囲外の verts[face[0]] を読む。頂点と面は必ず
+        ///       同じ SimpleQuickhull の出力から受け取る。
         HullBuildResult hull = SimpleQuickhull(std::move(points));
         m_localVerts = std::move(hull.vertices);
-        m_faces = std::move(hull.faces);
-
-        // 上限を超えた場合はさらにトリミング (精度よりも安全を優先)
-        if (static_cast<int>(m_localVerts.size()) > MAX_HULL_VERTS)
-            m_localVerts.resize(static_cast<size_t>(MAX_HULL_VERTS));
+        m_faces      = std::move(hull.faces);
     }
 
     void ConvexHullCollider::Update(const math::Vector3& worldPos,

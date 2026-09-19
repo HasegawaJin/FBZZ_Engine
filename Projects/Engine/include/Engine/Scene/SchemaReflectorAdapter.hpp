@@ -11,9 +11,9 @@
 
 namespace fbzz::scene {
 
-// スキーマのleafを従来IReflectorへ渡し、編集結果を型付きsetterでauthoring値へ戻す。
-// WHY: 全ComponentのReflectを一括変更せず、型単位でスキーマを単一の真実へ移行できるようにする。
-// Curve/Gradient/Arrayは旧IReflectorに型口がないため、スキーマ消費側がPropertyDescを直接扱う。
+/// @brief スキーマの leaf を従来 IReflector へ渡し、編集結果を型付き setter で authoring 値へ戻す。
+/// @note 全 Component の Reflect を一括変更せず、型単位でスキーマを単一の真実へ移行できるようにする。
+/// @note Curve/Gradient/Array は旧 IReflector に型口がないため、スキーマ消費側が PropertyDesc を直接扱う。
 inline void ReflectTypeSchema(IReflector& reflector, const reflection::ITypeSchema& schema, void* owner)
 {
     if (owner == nullptr) return;

@@ -10,21 +10,18 @@ namespace fbzz::editor {
 
 namespace {
 
-// 「今 Inspector が映すもの」を GameObject 側へ移す。
-//
-// WHY: 表示対象は ResolveInspectorSelection が
-//      Animation Graph > アセット > Entity の優先順で決める。GameObject を選んでも
-//      上位のチャンネルが残っていると、Inspector は選んだ覚えのないアセットや
-//      ステートを映し続ける。選択を「最後に選んだものが勝つ」に揃える。
+/// @brief 「今 Inspector が映すもの」を GameObject 側へ移す。
+/// @note 表示対象は ResolveInspectorSelection が Animation Graph > アセット > Entity の優先順で
+///       決めるため、他チャンネルの選択を残したままだと GameObject を選んでも反映されない。
 void ClaimEntityChannel(EditorContext& ctx)
 {
     ctx.selectedAssetPath.clear();
     ctx.animationGraphSelection.Clear();
 }
 
-// Animation Graph の選択のうち、GameObject にぶら下がっている分だけを落とす。
-// 開いている .animcontroller ドキュメントの選択はここでは触らない
-// (そちらはパネルを閉じるまで生きている編集対象そのもの)。
+/// Animation Graph の選択のうち、GameObject にぶら下がっている分だけを落とす。
+/// 開いている .animcontroller ドキュメントの選択はここでは触らない
+/// (そちらはパネルを閉じるまで生きている編集対象そのもの)。
 void DropEntityBoundGraphSelection(EditorContext& ctx)
 {
     if (ctx.animationGraphSelection.entityId.IsValid())
@@ -41,9 +38,8 @@ void RequestReveal(EditorContext& ctx, scene::EntityID id, SelectionReveal revea
 
 void SelectEntity(EditorContext& ctx, scene::EntityID id, SelectionReveal reveal)
 {
-    // 空の選択は「解除」であって、他チャンネルを奪う操作ではない。
-    // WHY: シーン再構築後の選択復元はここを空で通る。そこでアセット選択まで
-    //      落とすと、スクリプトのホットリロードのたびに Inspector が沈黙する。
+    /// @note 空の選択は「解除」であって、他チャンネルを奪う操作ではない。シーン再構築後の選択復元は
+    ///       ここを空で通るため、アセット選択まで落とすとホットリロードのたびに Inspector が沈黙する。
     if (!id.IsValid()) {
         ClearEntitySelection(ctx);
         return;
@@ -116,8 +112,8 @@ void SelectAsset(EditorContext& ctx, std::string absolutePath)
     ctx.selectedAssetPath = std::move(absolutePath);
     if (ctx.selectedAssetPath.empty()) return;
 
-    // WHY GameObject の選択も落とすか: Inspector はアセットを映しているのに
-    //      Delete / Ctrl+D は選択中の GameObject に効く、という食い違いを作らないため。
+    /// @note GameObject の選択も落とす。Inspector はアセットを映しているのに Delete / Ctrl+D が
+    ///       選択中の GameObject に効く、という食い違いを避けるため。
     ctx.selectedEntities.clear();
     DropEntityBoundGraphSelection(ctx);
 }

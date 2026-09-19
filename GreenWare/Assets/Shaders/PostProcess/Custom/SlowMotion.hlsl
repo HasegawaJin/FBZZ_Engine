@@ -32,8 +32,9 @@
 #include "Common/Color.hlsli"
 #include "Common/Random.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D    texInput   : register(TEX_GBUFFER0);
+FBZZ_TEX2D(texInput, TEX_GBUFFER0_SLOT);
 SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)

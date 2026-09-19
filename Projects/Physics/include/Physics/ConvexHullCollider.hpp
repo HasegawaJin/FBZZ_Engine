@@ -12,12 +12,12 @@
 namespace fbzz::physics
 {
 
-    // 任意点群を凸形状として扱うためのコライダー。詳細判定は GJK/EPA に委譲する。
+    /// 任意点群を凸形状として扱うためのコライダー。詳細判定は GJK/EPA に委譲する。
     class ConvexHullCollider : public Collider
     {
     public:
-        // 点群から Quickhull で凸包を構築する (最大頂点数 MAX_HULL_VERTS)。
-        // 上限を設けることでサポート点探索の線形コストを抑える。
+        /// 点群から Quickhull で凸包を構築する (最大頂点数 MAX_HULL_VERTS)。
+        /// 上限を設けることでサポート点探索の線形コストを抑える。
         explicit ConvexHullCollider(std::vector<math::Vector3> points);
 
         AABB         GetAABB() const override { return m_worldAABB; }
@@ -28,19 +28,19 @@ namespace fbzz::physics
                              const math::Quaternion& worldRot,
                              const math::Vector3& worldScale);
 
-        // GJK サポート関数: 方向 dir で最遠のワールド空間頂点を返す
+        /// GJK サポート関数: 方向 dir で最遠のワールド空間頂点を返す
         math::Vector3 SupportPoint(const math::Vector3& dir) const;
         const std::vector<math::Vector3>& GetWorldVertices() const { return m_worldVerts; }
         const std::vector<std::array<uint32_t, 3>>& GetFaces() const { return m_faces; }
 
-        // PhysicsSolver から SupportFn として渡すための static ラッパー
+        /// PhysicsSolver から SupportFn として渡すための static ラッパー
         static math::Vector3 SupportFnImpl(const void* shape, const math::Vector3& dir);
 
-        static constexpr int MAX_HULL_VERTS = 64; // Sandbox 検証用の凸形状を安定して処理する上限
+        static constexpr int MAX_HULL_VERTS = 64; ///< Sandbox 検証用の凸形状を安定して処理する上限
 
     private:
-        std::vector<math::Vector3> m_localVerts;  // ローカル空間の凸包頂点
-        std::vector<math::Vector3> m_worldVerts;  // Update で変換済み
+        std::vector<math::Vector3> m_localVerts;  ///< ローカル空間の凸包頂点
+        std::vector<math::Vector3> m_worldVerts;  ///< Update で変換済み
         std::vector<std::array<uint32_t, 3>> m_faces;
 
         math::Vector3    m_worldCenter;
@@ -48,7 +48,7 @@ namespace fbzz::physics
         math::Vector3    m_worldScale = { 1.0f, 1.0f, 1.0f };
         AABB             m_worldAABB;
 
-        // Quickhull で凸包を計算し m_localVerts に格納する
+        /// Quickhull で凸包を計算し m_localVerts に格納する
         void BuildHull(std::vector<math::Vector3> points);
 
         void UpdateWorldVerts(const math::Vector3& pos,

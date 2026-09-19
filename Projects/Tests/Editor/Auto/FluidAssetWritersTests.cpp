@@ -34,9 +34,7 @@ std::string ReadFile(const std::filesystem::path& path)
     return ss.str();
 }
 
-// WHY: MaterialAsset は標準スロット (albedo/emissive/tex5 ...) を保存時に必ず書き、読み込み時にも
-//      先に空で埋める。«外した» 結果はキーの消滅ではなく空文字列として現れるので、キーの有無では
-//      判定できない。古いパスが残っていれば必ず落ちるよう、値が空であることだけを縛る。
+/// @note MaterialAsset は標準スロットを保存・読み込み時に必ず空で埋めるため、«外した» 結果はキー消滅でなく空文字列になる。キーの有無でなく値が空であることだけを縛る。
 ::testing::AssertionResult TextureCleared(const asset::MaterialAsset& material, const char* slot)
 {
     const auto it = material.textures.find(slot);
@@ -50,8 +48,8 @@ std::string ReadFile(const std::filesystem::path& path)
 
 class FluidAssetWritersTest : public testkit::EditorFixture {
 protected:
-    // Assets/ 配下に置くと、テクスチャ参照が実運用と同じ «Assets/ 起点» で書かれる。
-    // テクスチャ本体は作らない (guid が引けず、パス参照に落ちる経路を固定する)。
+    /// Assets/ 配下に置くと、テクスチャ参照が実運用と同じ «Assets/ 起点» で書かれる。
+    /// テクスチャ本体は作らない (guid が引けず、パス参照に落ちる経路を固定する)。
     std::string AssetFile(const std::string& name) const
     {
         const std::filesystem::path path = ProjectRoot() / "Assets" / "FX" / name;
@@ -113,8 +111,8 @@ TEST_F(FluidAssetWritersTest, FlatBakeWritesBlendTexturesAndGrid)
     EXPECT_FLOAT_EQ(loaded.particle.emissiveScale, 2.0f);
 }
 
-// 焼き直しで追従させるのはテクスチャとコマ割りだけ。人が詰めた描画順は残し、
-// MV を焼かなくなったら古い MV は外す (残すと別の流れで warp される)。
+/// 焼き直しで追従させるのはテクスチャとコマ割りだけ。人が詰めた描画順は残し、
+/// MV を焼かなくなったら古い MV は外す (残すと別の流れで warp される)。
 TEST_F(FluidAssetWritersTest, FlatBakeKeepsHandTunedValuesAndDropsStaleMotion)
 {
     const std::string material = AssetFile("Steam.mat");
@@ -178,7 +176,7 @@ TEST_F(FluidAssetWritersTest, VolumeBakeWithSixWayUsesMapsAndStraightAlpha)
     EXPECT_EQ(loaded.particle.flipbook.flipbookMode, scene::ParticleFlipbookMode::Lifetime);
 }
 
-// 6-way を切って焼き直したら、事前乗算の色 Atlas に戻し、前回の _6wayN を emissive に残さない。
+/// 6-way を切って焼き直したら、事前乗算の色 Atlas に戻し、前回の _6wayN を emissive に残さない。
 TEST_F(FluidAssetWritersTest, VolumeBakeWithoutSixWayIsPremultipliedAndClearsStaleMaps)
 {
     const std::string material = AssetFile("Smoke3D.mat");
@@ -213,8 +211,8 @@ TEST_F(FluidAssetWritersTest, VolumeBakeWithoutSixWayIsPremultipliedAndClearsSta
     EXPECT_FLOAT_EQ(loaded.particle.flipbook.flipbookFramesPerSecond, 12.0f);
 }
 
-// 歪みを焼いた 3D は 2D の Distortion と同じ組み方: 通常のアルファ合成・distortion・MV なし。
-// 流体のループ (fluidLoop) は FPS モードで再生する。
+/// 歪みを焼いた 3D は 2D の Distortion と同じ組み方: 通常のアルファ合成・distortion・MV なし。
+/// 流体のループ (fluidLoop) は FPS モードで再生する。
 TEST_F(FluidAssetWritersTest, VolumeDistortionLoopIsAlphaBlendedFpsWithoutMotion)
 {
     const std::string material = AssetFile("Heat3D.mat");
@@ -264,7 +262,7 @@ TEST_F(FluidAssetWritersTest, SiblingMaterialSitsNextToTheFluid)
 TEST_F(FluidAssetWritersTest, SingleEmitterVfxIsPrefabFormatWithTheMaterial)
 {
     const std::filesystem::path file = File("Preview.vfx");
-    // 名前に引用符が入っても TOML として壊れないこと (エスケープの確認)。
+    /// @note 名前に引用符が入っても TOML として壊れないこと (エスケープの確認)。
     ASSERT_TRUE(editor::WriteSingleEmitterVfx(file, "Smoke \"A\"", "Assets/FX/Smoke.mat", 2.0f));
 
     const auto parsed = toml::parse(ReadFile(file));

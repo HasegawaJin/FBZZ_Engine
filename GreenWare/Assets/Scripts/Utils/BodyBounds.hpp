@@ -3,10 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// WHY 1 箇所へ集めるか:
-///   頭上の体力バー・ロックオン枠・接触判定の 3 者が「この敵はどこからどこまでか」を
-///   知る必要がある。各自がコライダーを読むと、スケールの掛け方が 1 箇所ずれただけで
-///   「バーだけ頭にめり込む」「枠だけ小さい」という、絵を見ても原因が分からない差になる。
+/// @note 頭上の体力バー・ロックオン枠・接触判定の 3 者が「この敵はどこからどこまでか」を
+///       知る必要がある。各自がコライダーを読むと、スケールの掛け方が 1 箇所ずれただけで
+///       絵を見ても原因が分からない差になる。
 #pragma once
 
 #include <Engine/Scene/ScriptProxy/ScriptColliderProxy.hpp>
@@ -34,7 +33,7 @@ struct Extents {
         return out;
     out.top      = maximum.y - object.transform.worldPosition.y;
     out.bottom   = minimum.y - object.transform.worldPosition.y;
-    // ビームの太さへ足す近似半径。厳密な衝突判定は物理クエリの責務。
+    /// @note ビームの太さへ足す近似半径。厳密な衝突判定は物理クエリの責務。
     out.radius   = std::max(maximum.x - minimum.x, maximum.z - minimum.z) * 0.5f;
     out.measured = true;
     return out;

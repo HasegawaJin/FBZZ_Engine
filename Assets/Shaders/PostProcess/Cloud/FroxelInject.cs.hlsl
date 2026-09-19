@@ -25,14 +25,15 @@
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
-Texture2D<float>       texShadow  : register(TEX_SHADOW);
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
 SamplerComparisonState sampShadow : register(SAMPLER_SHADOW);
 
-RWTexture3D<float4> gFroxelScatter : register(UAV_FROXEL_SCATTER);
+FBZZ_RWTEX3D_T(float4, gFroxelScatter, UAV_FROXEL_SCATTER_SLOT);
 
 // 前フレームの散乱ボリューム。Z スライスのジッターで出るちらつきを均すために読む。
-Texture3D<float4> gFroxelHistory     : register(TEX_FROXEL_HISTORY);
+FBZZ_TEX3D_T(float4, gFroxelHistory, TEX_FROXEL_HISTORY_SLOT);
 SamplerState      gFroxelHistorySamp : register(SAMPLER_FROXEL_HISTORY);
 
 [numthreads(8, 8, 1)]

@@ -3,16 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-03
 ///
-/// WHY BossAiComponent から BladeComponent を直接読ませないか:
-///   include すると BossAi → Blade → BossRig → BossAi で環になる
-///   (BossRigComponent は SetCrippled を呼ぶために BossAi を見ている)。
-///   申告する側と読む側の両方が葉のヘッダーだけを見る形にすれば、依存の向きが増えない。
-///
-/// WHY 問い合わせではなく «置いていく» か:
-///   何を振っているかを知っているのは剣の側だけで、ボスは «誰が» 振っているかを
-///   知る必要がない。置きっぱなしが古いまま読まれないよう、書いた時刻を一緒に持たせて
-///   読む側が捨てる ─ プレイヤーが死んだ・シーンが変わった瞬間に «永遠に振り続けている»
-///   状態が残るのが、この形で一番起こりやすい壊れ方になる。
+/// @note BossAiComponent から BladeComponent を直接読ませない。include すると
+///       BossAi→Blade→BossRig→BossAi で環になるため (BossRig は SetCrippled 呼び出しで
+///       BossAi を見る)、双方が葉のヘッダーだけを見る «置いていく» 形にする。書いた時刻を
+///       一緒に持たせ古い申告は読む側が捨てることで、プレイヤー死亡・シーン遷移の瞬間に
+///       «永遠に振り続けている» が残る壊れ方を避ける。
 #pragma once
 
 namespace sandbox::playeraction {
@@ -62,9 +57,9 @@ inline void Publish(bool swinging, bool finisher, bool recovering,
 /// カメラ演出が «今、盤面を止めている» の一枚。BossCameraDirectorComponent が置き、
 /// ボス AI とプレイヤーの入力が読む。
 ///
-/// WHY ここに置くか: 置く側 (カメラ) と読む側 (ボス / プレイヤー) が互いを include せずに
-///     済む葉のヘッダーが要る。playeraction と同じ «時刻付きで置いていく» 形にして、
-///     演出の途中でカメラが消えても «永遠に止まったまま» が残らないようにする。
+/// @note 置く側 (カメラ) と読む側 (ボス/プレイヤー) が互いを include せずに済む葉のヘッダーと
+///       してここに置く。playeraction と同じ «時刻付きで置いていく» 形で、演出中にカメラが
+///       消えても «永遠に止まったまま» を残さない。
 namespace sandbox::cutscene {
 
 struct Snapshot {

@@ -1,6 +1,9 @@
-// FBZZ GameHub
-// preload.ts | preload
-// Node.jsをrendererへ露出せず、用途を限定した型付きAPIだけを橋渡しする
+/**
+ * @file preload.ts
+ * @brief Node.js を renderer へ露出せず、用途を限定した型付き API だけを橋渡しする。
+ * @author Hasegawa Jin
+ * @date 2026/07/19
+ */
 
 import { contextBridge, ipcRenderer } from 'electron';
 import type { CreateProjectRequest, GameHubApi, HubSettings } from './shared/contracts';

@@ -21,24 +21,25 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/BindlessIndices.hlsli"
 
 // ---- リソース ---------------------------------------------------------------
 
 // HDR カラー (GBuffer0 スロット t5 を流用)
-Texture2D          texHDR     : register(t5);
+FBZZ_TEX2D(texHDR, 5);
 // GBuffer0: albedo(RGB) + roughness(A)
-Texture2D          texGBuffer0: register(t0);
+FBZZ_TEX2D(texGBuffer0, 0);
 // GBuffer1: normal(RGB) + metallic(A)
-Texture2D          texGBuffer1: register(t6);
+FBZZ_TEX2D(texGBuffer1, 6);
 // Deferred GBuffer 深度
-Texture2D<float>   texDepth   : register(t7);
+FBZZ_TEX2D_T(float, texDepth, 7);
 // Deferred 深度の転写後に Forward 不透明物を書き込んだ最終シーン深度
-Texture2D<float>   texSceneDepth : register(TEX_SCENE_DEPTH);
+FBZZ_TEX2D_T(float, texSceneDepth, TEX_SCENE_DEPTH_SLOT);
 
 SamplerState       sampDefault : register(s0);
 
 // SSR 出力 (UAV_SSR = u3)
-RWTexture2D<float4> OutputSSR  : register(u3);
+FBZZ_RWTEX2D_T(float4, OutputSSR, 3);
 
 // ---- メインカーネル ---------------------------------------------------------
 

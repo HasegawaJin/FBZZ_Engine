@@ -15,25 +15,25 @@
 
 namespace fbzz::editor {
 
-// HDRI の生ピクセルデータ。IblBaker::Bake() に渡すための一時データ。
-// デストラクタが stb_image_free / free を呼ぶためライフタイムに注意。
+/// HDRI の生ピクセルデータ。IblBaker::Bake() に渡すための一時データ。
+/// デストラクタが stb_image_free / free を呼ぶためライフタイムに注意。
 struct HdriPixels {
-    // pixels は常に RGBA float (4 ch) として返される。
-    // デリーターで正しい解放関数を呼ぶ。
+    /// pixels は常に RGBA float (4 ch) として返される。
+    /// デリーターで正しい解放関数を呼ぶ。
     std::unique_ptr<float[], void(*)(void*)> data{ nullptr, nullptr };
     uint32_t width    = 0;
     uint32_t height   = 0;
 
     bool IsValid() const { return data && width > 0 && height > 0; }
 
-    // IblBakeInput::pixels に渡す raw ポインター
+    /// IblBakeInput::pixels に渡す raw ポインター
     const float* Pixels() const { return data.get(); }
 };
 
 class HdriLoader {
 public:
-    // absPath の拡張子 (.hdr / .exr) に応じて適切なローダーを自動選択する。
-    // 失敗時は IsValid() == false の HdriPixels を返す。
+    /// absPath の拡張子 (.hdr / .exr) に応じて適切なローダーを自動選択する。
+    /// 失敗時は IsValid() == false の HdriPixels を返す。
     [[nodiscard]] static HdriPixels Load(const std::string& absPath);
 };
 

@@ -1,4 +1,4 @@
-/// @file    RenderPasses/SkyPass.cpp
+/// @file    SkyPass.cpp
 /// @brief   スカイドーム描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
@@ -88,6 +88,32 @@ void ExecuteSunMoonPass(RenderPassContext& ctx)
         SubmitCounted(ctx, dc);
         break;
     }
+}
+
+
+std::string_view SkyPass::Name() const { return "Sky"; }
+
+void SkyPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    /// @note 深度 == 1.0 の画素だけを埋めるので、既に描かれた不透明を読み書きする。
+    builder.ReadWrite("HDR");
+}
+
+void SkyPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteSkyPass(ctx);
+}
+
+std::string_view SunMoonPass::Name() const { return "SunMoon"; }
+
+void SunMoonPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.ReadWrite("HDR");
+}
+
+void SunMoonPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteSunMoonPass(ctx);
 }
 
 } // namespace fbzz::scene

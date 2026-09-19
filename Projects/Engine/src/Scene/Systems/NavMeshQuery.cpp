@@ -18,7 +18,7 @@ namespace fbzz::scene {
 
 namespace {
 
-// XZ 平面上の符号付き面積の 2 倍 (Funnel Algorithm の左右判定に使う)。
+/// XZ 平面上の符号付き面積の 2 倍 (Funnel Algorithm の左右判定に使う)。
 float TriArea2(const math::Vector3& a, const math::Vector3& b, const math::Vector3& c)
 {
     return (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
@@ -32,8 +32,8 @@ bool NearlyEqualXZ(const math::Vector3& a, const math::Vector3& b)
 
 } // namespace
 
-// 指定座標を含むポリゴンを返す。範囲外なら最も近いポリゴンへフォールバックする
-// (Agent が NavMesh の境界からわずかに外れているケースを許容する)。
+/// 指定座標を含むポリゴンを返す。範囲外なら最も近いポリゴンへフォールバックする
+/// (Agent が NavMesh の境界からわずかに外れているケースを許容する)。
 int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
 {
     int best = -1;
@@ -49,14 +49,14 @@ int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
     return best;
 }
 
-// ポリゴン隣接グラフ上の A* 探索。
-// 最適化: open リストを二分ヒープ (std::priority_queue) で管理する。
-// decrease-key を行わない代わりに、より良い g が見つかるたびに新しいエントリを push し、
-// pop 時に closed 済み (=確定済みより悪い古いエントリ) を読み捨てる lazy deletion 方式を使う。
-// これにより大きな NavMesh でも O((V+E) log V) で探索できる。
-// areaMask: ビット i が立っているとき areaType==i のポリゴンを通過可 (-1 = 全通過)
-// areaCosts: nullptr のとき全コスト 1.0f。areaCosts[areaType] がエッジ重みに掛かる。
-// agentTypeId: オフメッシュリンクの agentTypeMask フィルタリングに使う。
+/// ポリゴン隣接グラフ上の A* 探索。
+/// 最適化: open リストを二分ヒープ (std::priority_queue) で管理する。
+/// decrease-key を行わない代わりに、より良い g が見つかるたびに新しいエントリを push し、
+/// pop 時に closed 済み (=確定済みより悪い古いエントリ) を読み捨てる lazy deletion 方式を使う。
+/// これにより大きな NavMesh でも O((V+E) log V) で探索できる。
+/// areaMask: ビット i が立っているとき areaType==i のポリゴンを通過可 (-1 = 全通過)
+/// areaCosts: nullptr のとき全コスト 1.0f。areaCosts[areaType] がエッジ重みに掛かる。
+/// agentTypeId: オフメッシュリンクの agentTypeMask フィルタリングに使う。
 bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::vector<int>& outPath,
                      int areaMask, const float* areaCosts, int agentTypeId)
 {
@@ -72,20 +72,21 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
         return (navMesh.polygons[static_cast<size_t>(a)].Center()
               - navMesh.polygons[static_cast<size_t>(b)].Center()).Length();
     };
-    // エリアタイプのコストを取得する。areaCosts が nullptr のとき 1.0f を返す。
+    /// @note エリアタイプのコストを取得する。areaCosts が nullptr のとき 1.0f を返す。
     auto areaCost = [&](int areaType) -> float {
         if (!areaCosts) return 1.0f;
         const float c = areaCosts[areaType < 0 ? 0 : (areaType > 31 ? 31 : areaType)];
         return c > 0.0f ? c : 1.0f;
     };
-    // areaMask でポリゴンが通過可能かチェックする。
+    /// @note areaMask でポリゴンが通過可能かチェックする。
     auto canTraverse = [&](int polyIdx) -> bool {
         if (areaMask == -1) return true;
         const int at = navMesh.polygons[static_cast<size_t>(polyIdx)].areaType;
         return (areaMask & (1 << (at & 31))) != 0;
     };
 
-    using OpenEntry = std::pair<float, int>; // (fScore, polygon index)
+    /// @note (fScore, polygon index)
+    using OpenEntry = std::pair<float, int>;
     std::priority_queue<OpenEntry, std::vector<OpenEntry>, std::greater<OpenEntry>> open;
     open.push({ heuristic(startPoly, goalPoly), startPoly });
 
@@ -115,9 +116,9 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
                 open.push({ tentativeG + heuristic(nb, goalPoly), nb });
             }
         }
-        // オフメッシュリンクをグラフエッジとして扱う
+        /// @note オフメッシュリンクをグラフエッジとして扱う
         for (const auto& link : navMesh.offMeshLinks) {
-            // agentTypeMask フィルタ: -1 は全 Agent 通過可
+            /// @note agentTypeMask フィルタ: -1 は全 Agent 通過可
             if (link.agentTypeMask != -1 && !(link.agentTypeMask & (1 << (agentTypeId & 31)))) continue;
             auto tryLink = [&](int from, int to, float cost) {
                 if (from != current || closed[static_cast<size_t>(to)]) return;
@@ -137,8 +138,8 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
     return false;
 }
 
-// ポリゴン経路から Funnel Algorithm (Simple Stupid Funnel Algorithm) で
-// 直線最短パスへ平滑化する。先頭要素は startPos そのもの。
+/// ポリゴン経路から Funnel Algorithm (Simple Stupid Funnel Algorithm) で
+/// 直線最短パスへ平滑化する。先頭要素は startPos そのもの。
 std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::vector<int>& polyPath,
                                             const math::Vector3& startPos, const math::Vector3& goalPos)
 {
@@ -150,7 +151,7 @@ std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::ve
         return result;
     }
 
-    // ── チャンネル構築: 各境界の Portal を進行方向基準の左右へ並べ直す ──────
+    /// @name チャンネル構築: 各境界の Portal を進行方向基準の左右へ並べ直す
     struct ChannelPortal { math::Vector3 left, right; };
     std::vector<ChannelPortal> channel;
     channel.push_back({ startPos, startPos });
@@ -218,8 +219,8 @@ std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::ve
     return result;
 }
 
-// NavMesh 面上の XZ 座標から Y 高さをバリセントリック補間で返す。
-// 最近傍ポリゴンが見つからない場合は pos.y をそのまま返す。
+/// NavMesh 面上の XZ 座標から Y 高さをバリセントリック補間で返す。
+/// 最近傍ポリゴンが見つからない場合は pos.y をそのまま返す。
 float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos)
 {
     const int polyIdx = FindNearestPolygon(navMesh, pos);

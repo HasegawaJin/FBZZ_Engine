@@ -1,19 +1,20 @@
-/// @file    RenderPasses/ForwardPasses.cpp
+/// @file    ForwardPasses.cpp
 /// @brief   Forward パイプライン: 不透明 + 半透明の静的・スキンドメッシュ描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 ///
-/// カリング戦略:
-/// 1. Frustum Culling (フラスタムカリング)
-/// カメラ視錐台に交差しないバウンディング球を持つオブジェクトを除外する。
-/// Frustum::IntersectsSphere() で 6 平面テストを行う。
+/// @note カリング戦略:
+/// @note 1. Frustum Culling (フラスタムカリング)
+/// @note カメラ視錐台に交差しないバウンディング球を持つオブジェクトを除外する。
+/// @note Frustum::IntersectsSphere() で 6 平面テストを行う。
 ///
-/// 2. Software Occlusion Culling (ソフトウェアオクルージョンカリング)
-/// 不透明静的オブジェクトを前から後ろ順にソートし、CPU 上の小型深度バッファで
-/// 完全に隠蔽されているかどうかを判定する。
-/// スキンドメッシュはバインドポーズ球がアニメーション後の姿勢と乖離するため除外。
-/// 半透明は深度書き込みを行わないためオクルージョンカリング対象外。
+/// @note 2. Software Occlusion Culling (ソフトウェアオクルージョンカリング)
+/// @note 不透明静的オブジェクトを前から後ろ順にソートし、CPU 上の小型深度バッファで
+/// @note 完全に隠蔽されているかどうかを判定する。
+/// @note スキンドメッシュはバインドポーズ球がアニメーション後の姿勢と乖離するため除外。
+/// @note 半透明は深度書き込みを行わないためオクルージョンカリング対象外。
 #include "GeometryPasses.hpp"
+#include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Renderer/Mesh.hpp"
@@ -31,17 +32,16 @@ namespace fbzz::scene {
 
 namespace {
 
-// 不透明静的メッシュのギャザーエントリ (ソート + オクルージョンカリング用)
+/// @note 不透明静的メッシュのギャザーエントリ (ソート + オクルージョンカリング用)
 struct OpaqueStaticEntry {
     GameObject*        go;
     MeshRenderer*      mr;
     MaterialComponent* mat;
-    float              distSq; // カメラからの距離^2 (前から後ろ順ソート用)
+    float              distSq; ///< @note カメラからの距離^2 (前から後ろ順ソート用)
 };
 
-// 不透明スキンドメッシュのギャザーエントリ。
-// WHY: 1 GameObject がモデル全体 (複数 submesh) を描き、submesh ごとに別マテリアル
-//      スロットを持つため、ブレンドモード振り分けもキュー要素も submesh 粒度になる。
+/// @brief 不透明スキンドメッシュのギャザーエントリ。
+/// @note 1 GameObject がモデル全体 (複数 submesh) を描き submesh ごとに別マテリアルスロットを持つため、ブレンドモード振り分けもキュー要素も submesh 粒度になる。
 struct OpaqueSkinnedEntry {
     GameObject*          go;
     SkinnedMeshRenderer* smr;
@@ -74,7 +74,7 @@ void SortAndSubmitTransparent(
     }
 }
 
-} // anonymous namespace
+} // namespace
 
 void ExecuteForwardPasses(RenderPassContext& ctx)
 {
@@ -96,17 +96,15 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
     const auto shadowDepthTex = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
 
-    // =========================================================================
-    // Phase 1: フラスタムカリング + ギャザー
-    // =========================================================================
-    // フラスタム外のオブジェクトを除外し、不透明 / 半透明ごとに収集する。
-    // 不透明は Phase 2 でソートし、Phase 3 でオクルージョンカリングを行う。
+    /// @note Phase 1: フラスタムカリング + ギャザー
+    /// @note フラスタム外のオブジェクトを除外し、不透明 / 半透明ごとに収集する。
+    /// @note 不透明は Phase 2 でソートし、Phase 3 でオクルージョンカリングを行う。
 
     std::vector<OpaqueStaticEntry>  opaqueStaticQueue;
     std::vector<OpaqueSkinnedEntry> opaqueSkinnedQueue;
     std::vector<TransparentEntry>   transparentQueue;
 
-    // ── 静的メッシュのギャザー ─────────────────────────────────────────────────
+    /// @name 静的メッシュのギャザー
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
@@ -117,7 +115,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
         ++ctx.statsTotalObjects;
 
-        // 距離 / 極小 / 錐台カリング。落ちた理由の統計は IsMeshVisible が加算する。
+        /// @note 距離 / 極小 / 錐台カリング。落ちた理由の統計は IsMeshVisible が加算する。
         if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
         const float dx = go.transform.position.x - cam.m_position.x;
@@ -128,7 +126,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
             opaqueStaticQueue.push_back({ &go, mr, mat, distSq });
         } else {
-            // 半透明は即収集 (オクルージョンカリング対象外)
+            /// @note 半透明は即収集 (オクルージョンカリング対象外)
             auto* material = SyncMaterial(*mat, resources);
             if (!material || !material->shader.IsValid()) continue;
 
@@ -163,7 +161,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         }
     }
 
-    // ── スキンドメッシュのギャザー ─────────────────────────────────────────────
+    /// @name スキンドメッシュのギャザー
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
@@ -179,12 +177,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const float dz = go.transform.position.z - cam.m_position.z;
         const float distSq = dx*dx + dy*dy + dz*dz;
 
-        // submesh ごとにマテリアルスロットを引き、そのスロットのブレンドモードで
-        // 不透明キュー / 半透明キューへ振り分ける。
-        // WHY: 1 モデル内に不透明ボディと半透明バイザーが混在するのが普通のため、
-        //      オブジェクト単位で振り分けると片方が必ず誤ったキューへ入る。
-        // mi は「この Renderer の中での」スロット番号。model->meshes の添字とは
-        // 一致しないことがあるため (submeshIndices)、メッシュは必ずアクセサから引く。
+        /// @note submesh ごとにマテリアルスロットを引き、そのスロットのブレンドモードで不透明キュー / 半透明キューへ振り分ける。1 モデル内に不透明ボディと半透明バイザーが混在するのが普通のため、オブジェクト単位で振り分けると片方が必ず誤ったキューへ入る。
+        /// @note mi は「この Renderer の中での」スロット番号。`model->meshes` の添字とは一致しないことがあるため (submeshIndices)、メッシュは必ずアクセサから引く。
         const size_t meshCount = smr->SubmeshCount();
         for (size_t mi = 0; mi < meshCount; ++mi) {
             renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
@@ -213,7 +207,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!skinnedShader.IsValid()) continue;
 
             PerObjectCB objData{};
-            // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
+            /// @note スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
             objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
             objData.objectParams.x    = smr->lodDither;
@@ -248,14 +242,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         }
     }
 
-    // =========================================================================
-    // Phase 2: 不透明オブジェクトを RenderQueue → 前から後ろ順にソート
-    // =========================================================================
-    // WHY: RenderQueue で AlphaTest などの明示順を守り、その内側では前→後ろ順にする。
-    //      前→後ろ順で描画すると GPU の Early-Z Rejection が機能しやすくなり、
-    //      シェーダー実行コストを削減できる。
-    //      また SW オクルージョンカリングは前に描かれたオブジェクトほど
-    //      後続オブジェクトを効率よく遮蔽できるため、ソートが前提となる。
+    /// @note Phase 2: 不透明オブジェクトを RenderQueue → 前から後ろ順にソート
+    /// @note RenderQueue で AlphaTest などの明示順を守り、その内側では前→後ろ順にする。前→後ろ順は GPU の Early-Z Rejection を機能させシェーダー実行コストを削減し、SW オクルージョンカリングは前に描いたオブジェクトほど後続を効率よく遮蔽できるため、ソートが前提となる。
 
     std::sort(opaqueStaticQueue.begin(), opaqueStaticQueue.end(),
         [](const OpaqueStaticEntry& a, const OpaqueStaticEntry& b) {
@@ -265,22 +253,20 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         });
     std::sort(opaqueSkinnedQueue.begin(), opaqueSkinnedQueue.end(),
         [](const OpaqueSkinnedEntry& a, const OpaqueSkinnedEntry& b) {
-            // RenderQueue は submesh ごとのスロットから引く。
+            /// @note RenderQueue は submesh ごとのスロットから引く。
             const int32_t qa = a.mat->SlotAt(a.meshIndex).GetRenderQueue();
             const int32_t qb = b.mat->SlotAt(b.meshIndex).GetRenderQueue();
             if (qa != qb) return qa < qb;
             return a.distSq < b.distSq;
         });
 
-    // =========================================================================
-    // Phase 3: オクルージョンカリング + 不透明描画
-    // =========================================================================
-    // カメラ側で Occlusion Culling を切っている場合はテストも遮蔽者登録も行わない。
+    /// @note Phase 3: オクルージョンカリング + 不透明描画
+    /// @note カメラ側で Occlusion Culling を切っている場合はテストも遮蔽者登録も行わない。
     const bool useOcclusion = ctx.occlusionCuller != nullptr && ctx.occlusionCullingEnabled;
     if (useOcclusion)
         ctx.occlusionCuller->Reset(cam);
 
-    // ── 不透明静的メッシュ ─────────────────────────────────────────────────────
+    /// @name 不透明静的メッシュ
     for (auto& entry : opaqueStaticQueue) {
         auto& go  = *entry.go;
         auto* mr  = entry.mr;
@@ -289,7 +275,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* material = SyncMaterial(*mat, resources);
         if (!material || !material->shader.IsValid()) continue;
 
-        // オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
+        /// @note オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
         if (useOcclusion) {
             const auto bounds =
                 ComputeWorldBounds(go.transform, *mr->mesh, ctx.cullingBoundsPadding);
@@ -301,7 +287,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         }
 
         PerObjectCB objData{};
-        // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
+        /// @note スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         objData.objectParams.x    = mr->lodDither;
@@ -332,9 +318,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         SubmitCounted(ctx, dc);
     }
 
-    // ── 不透明スキンドメッシュ ─────────────────────────────────────────────────
-    // バインドポーズ球はアニメーション後の実際の姿勢と乖離するため
-    // SW オクルージョンカリングは適用しない。
+    /// @name 不透明スキンドメッシュ
+    /// @note バインドポーズ球はアニメーション後の実際の姿勢と乖離するため
+    /// @note SW オクルージョンカリングは適用しない。
     for (auto& entry : opaqueSkinnedQueue) {
         auto& go   = *entry.go;
         auto* smr  = entry.smr;
@@ -361,7 +347,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!skinnedShader.IsValid()) continue;
 
         PerObjectCB objData{};
-        // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
+        /// @note スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         objData.objectParams.x    = smr->lodDither;
@@ -385,10 +371,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[2] = drawMaterial->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
-        // b8: SkinnedPBR.hlsl は天候の濡れ (ApplyWetness) だけでなく iblIntensity /
-        //     screenAoStrength / pcssEnabled もここから読む。束縛しないと cbuffer は
-        //     全ゼロで読まれ、«不透明スキンドだけ IBL も濡れも乗らない» 状態になる。
-        //     同じパスの静的メッシュと半透明スキンドは渡していたので差が出ていた。
+        /// @note b8: SkinnedPBR.hlsl は天候の濡れ (ApplyWetness) だけでなく iblIntensity /
+        /// @note screenAoStrength / pcssEnabled もここから読む。束縛しないと cbuffer は
+        /// @note 全ゼロで読まれ、«不透明スキンドだけ IBL も濡れも乗らない» 状態になる。
+        /// @note 同じパスの静的メッシュと半透明スキンドは渡していたので差が出ていた。
         dc.constantBuffers[8] = h.advancedGraphicsCB;
         dc.constantBuffers[7] = skinCB;
         BindForwardShadingResources(dc, ctx);
@@ -398,8 +384,23 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         SubmitCounted(ctx, dc);
     }
 
-    // ── 半透明をソートして Submit ─────────────────────────────────────────────
+    /// @name 半透明をソートして Submit
+    ExecuteFiberPass(ctx);
     SortAndSubmitTransparent(ctx, transparentQueue, h.objectCB);
 }
 
+
+void ForwardOpaquePass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+{
+    builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas").Write("HDR");
+    /// @note GBuffer プリパスが走ったフレームだけ画面空間の遮蔽が存在する。
+    /// @note 走っていないのに申告すると、誰も書かない名前を読むことになり Plan が落ちる。
+    if (ctx.gbufferDepthReady)
+        DeclareScreenSpaceOcclusionReads(builder, ctx);
+}
+
+void ForwardOpaquePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    ExecuteForwardPasses(ctx);
+}
 } // namespace fbzz::scene

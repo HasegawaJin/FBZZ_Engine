@@ -18,9 +18,13 @@ DX12Buffer::~DX12Buffer()
     if (m_resource && m_mapped)
         m_resource->Unmap(0, nullptr);
     m_mapped = nullptr;
-    // 状態追跡から外してから解放する。残すと同アドレスへ載った別リソースの状態を誤認する。
+    /// @note 状態追跡から外してから解放する。残すと同アドレスへ載った別リソースの状態を誤認する。
     if (m_tracker) m_tracker->Remove(m_resource.Get());
-    if (m_context) m_context->DeferRelease(m_resource);
+    if (m_context) {
+        /// @note リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
+        m_context->FreeBindlessSlot(m_bindlessUavIndex);
+        m_context->DeferRelease(m_resource);
+    }
 }
 
 bool DX12Buffer::Init(DX12Context* context, const void* data, size_t sizeBytes, uint32_t stride, Kind kind)
@@ -68,14 +72,14 @@ bool DX12Buffer::InitGpuWritableVertex(DX12Context* context, DX12StateTracker* t
     m_stride  = stride;
     m_kind    = Kind::Vertex;
 
-    // CreateDefaultBuffer は ALLOW_UNORDERED_ACCESS 付きで DEFAULT ヒープへ作る。
-    // data=nullptr なので初期状態は COMMON。CPU からは触らない (m_mapped は null のまま)。
+    /// @note CreateDefaultBuffer は ALLOW_UNORDERED_ACCESS 付きで DEFAULT ヒープへ作る。
+    ///       data=nullptr なので初期状態は COMMON。CPU からは触らない (m_mapped は null のまま)。
     if (!context->CreateDefaultBuffer(nullptr, sizeBytes, m_resource))
         return false;
     tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
 
-    // UAV は CPU 専用ヒープへ置き、Dispatch 時に shader-visible テーブルへコピーする
-    // (DX12StructuredBuffer と同じ方式)。
+    /// @note UAV は CPU 専用ヒープへ置き、Dispatch 時に shader-visible テーブルへコピーする
+    ///       (DX12StructuredBuffer と同じ方式)。
     ID3D12Device* device = context->GetDevice();
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -84,7 +88,8 @@ bool DX12Buffer::InitGpuWritableVertex(DX12Context* context, DX12StateTracker* t
         return false;
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
-    uav.Format                      = DXGI_FORMAT_UNKNOWN; // Structured は UNKNOWN 固定
+    /// @note Structured は UNKNOWN 固定
+    uav.Format                      = DXGI_FORMAT_UNKNOWN;
     uav.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
     uav.Buffer.NumElements          = static_cast<UINT>(sizeBytes / stride);
     uav.Buffer.StructureByteStride  = stride;
@@ -98,9 +103,28 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12Buffer::GetUav() const
     return m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
 }
 
+uint32_t DX12Buffer::GetBindlessUavIndex() const
+{
+    if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessUavIndex;
+    /// @note m_descriptorHeap を持つのは GPU 書き込み可能な頂点バッファだけ (IsGpuWritable と同じ条件)。
+    if (!m_context || !m_descriptorHeap || !m_context->SupportsBindless())
+        return INVALID_BINDLESS_INDEX;
+
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == DX12Context::INVALID_BINDLESS_INDEX)
+        return INVALID_BINDLESS_INDEX;
+
+    m_context->GetDevice()->CopyDescriptorsSimple(
+        1, m_context->GetBindlessCpu(slot), GetUav(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_bindlessUavIndex = slot;
+    return slot;
+}
+
 void DX12Buffer::Update(const void* data, size_t sizeBytes)
 {
-    // GPU 書き込み専用バッファは CPU から更新しない (m_mapped が null)。
+    /// @note GPU 書き込み専用バッファは CPU から更新しない (m_mapped が null)。
     if (!m_mapped) {
         FBZZ_LOG_ERROR("DX12Buffer: GPU 書き込み専用バッファは CPU から更新できません");
         return;
@@ -109,7 +133,7 @@ void DX12Buffer::Update(const void* data, size_t sizeBytes)
         FBZZ_LOG_ERROR("DX12Buffer: 無効な更新サイズです (%zu / %zu)", sizeBytes, m_size);
         return;
     }
-    // 同じバッファを UI が次フレームで借りても、GPU が読む旧頂点を上書きしない。
+    /// @note 同じバッファを UI が次フレームで借りても、GPU が読む旧頂点を上書きしない。
     if (m_cpuData.empty()) {
         m_cpuData.resize(m_size, 0);
         if (m_dataSize > 0)

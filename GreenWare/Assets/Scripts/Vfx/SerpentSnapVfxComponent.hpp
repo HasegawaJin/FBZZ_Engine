@@ -3,15 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-07
 ///
-/// WHY 叩きつけ (FX_SRP_Slam) と分けるか:
-///   締め上げは «壁 2 枚が角を軸に寄る» 手なので、危険なのは角から外側 ─ プレイヤーは
-///   その角から離れる方向へ逃げることになる。叩きつけの «帯が落ちてくる» とは
-///   逃げる向きが違う。同じ絵にしていた間は、予兆のデカールを見ていない限り
-///   2 つを区別できなかった。
-///
-/// WHY 輪を出さないか (VFX/Game/README.md「弾き・当たり・転倒・とどめの読み分け」):
-///   輪は «弾いた» の印。締め上げで輪を出すと、プレイヤーが «弾ける手» だと読む。
-///   ここは砕けた床と、角から放射に抜ける煙だけで言う。
+/// @note 叩きつけ (FX_SRP_Slam) とは絵を分ける。締め上げは «壁 2 枚が角を軸に寄る»
+///       手で危険は角から外側、叩きつけは «帯が落ちてくる» で逃げる向きが違う。
+/// @note 輪は出さない (VFX/Game/README.md「弾き・当たり・転倒・とどめの読み分け」)。
+///       輪は «弾いた» の印なので、ここは砕けた床と角から放射に抜ける煙だけで言う。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -64,8 +59,8 @@ inline void SerpentSnapVfxComponent::Apply()
     vfxbind::ParticleColor(root, "Grit", Vector4{ dustColor.x, dustColor.y, dustColor.z, 1.0f });
     vfxbind::ParticleColor(root, "Sparks", rimColor);
 
-    // 放射は «球へ撒いて外へ押す»。固定の向きを与えると 1 方向だけが濃くなり、
-    // «どちらから寄ったか» という嘘の向きが出る。
+    /// @note 放射は «球へ撒いて外へ押す»。固定の向きを与えると 1 方向だけが濃くなり、
+    ///       «どちらから寄ったか» という嘘の向きが出る。
     vfxbind::ParticleEmitVelocity(root, "Corner Smoke", { 0.0f, out * 0.22f, 0.0f });
     vfxbind::ParticleRadialVelocity(root, "Corner Smoke", out * 2.6f);
     vfxbind::ParticleRadialVelocity(root, "Ground Wash",  out * 3.4f);

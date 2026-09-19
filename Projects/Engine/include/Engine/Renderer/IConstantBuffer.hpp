@@ -15,13 +15,11 @@ namespace fbzz::renderer
     public:
         virtual ~IConstantBuffer() = default;
 
-        // CPU からデータを書き込む。この呼び出し時点の内容は、次に行われる Submit が
-        // キャプチャし、同じバッファへの後続 Update から独立して使われる。
-        // DX11: UpdateSubresource / Map+Unmap
-        // DX12: Upload ヒープへの memcpy
-
+        /// @brief CPU からデータを書き込む。
+        /// @note この呼び出し時点の内容は次に行われる Submit がキャプチャし、同じバッファへの
+        ///       後続 Update から独立して使われる (DX12 は Upload ヒープへの memcpy)。
         virtual void Update(const void* data, size_t sizeBytes) = 0;
-        // 定数バッファのサイズ (バイト単位)
+        /// @brief 定数バッファのサイズ (バイト単位)。
         virtual size_t GetSize() const = 0;
     };
 

@@ -8,8 +8,8 @@ namespace fbzz::core {
 
 MemoryDebug::MemoryDebug()
 {
-    // WHY vector か: ResourcePool は ResourceManager に 7 個内包され、Sandbox では
-    //     ResourceManager がローカル変数になる。固定長配列を値メンバにするとスタックを圧迫する。
+    /// @note ResourcePool は ResourceManager に 7 個内包され Sandbox ではローカル変数になるため、
+    ///       固定長配列を値メンバにするとスタックを圧迫する。vector にして回避する。
     m_entries.resize(MAX_DEBUG_ALLOCATIONS);
 }
 
@@ -56,7 +56,7 @@ bool MemoryDebug::Untrack(const void* ptr)
         return false;
     }
 
-    // 消す前に引く。空にしてから読むと 0 を引くことになる。
+    /// @note 消す前に引く。空にしてから読むと 0 を引くことになる。
     m_liveBytes -= entry->size;
     --m_liveCount;
     *entry = {};

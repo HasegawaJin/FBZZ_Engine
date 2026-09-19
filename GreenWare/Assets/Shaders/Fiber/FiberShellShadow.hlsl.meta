@@ -1,0 +1,6 @@
+# @file    FiberShellShadow.hlsl.meta
+# @brief   繊維シェーダーの固定 GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+[meta]
+guid = "df7a707cde314371bc092bf1bb4390b5"

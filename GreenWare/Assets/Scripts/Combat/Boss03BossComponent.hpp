@@ -3,16 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 ///
-/// WHY AI と分けるか (SerpentBossComponent と同じ形):
-///   `IBoss` は «今どうなっているか» を外へ見せる口で、`Boss03AiComponent` は
-///   «どう決めているか» を持つ。同じクラスに畳むと、HUD の都合で状態機械へ
-///   フィールドが生えていく。ボス 1 と 2 が既にこの分け方をしているので揃える。
-///
-/// WHY IDamageable をここに重ねないか:
-///   `IDamageable::Registry()` は GameObject をキーにした 1 対 1 の名簿で、
-///   同じオブジェクトに 2 つ載せると後から名乗った方が黙って上書きする。
-///   HP を持つのは `EnemyHealthComponent` の方 ─ `GameFlowComponent` と
-///   `BossHealthBarComponent` がそれを名指しで引いている。
+/// @note `IBoss` は状態の外部公開、`Boss03AiComponent` は意思決定を持つ。ボス 1・2 と同じ分け方で揃える。
+/// @note `IDamageable::Registry()` は GameObject 1 個につき 1 枠で後勝ち上書き。HP は `EnemyHealthComponent` 側が持ち、`GameFlowComponent` と `BossHealthBarComponent` が名指しで参照する。
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>
@@ -107,8 +99,8 @@ FBZZ_REFLECT(Boss03BossComponent)
 
 inline void Boss03BossComponent::OnStart()
 {
-    // «ボスとして» 名乗る。型で引く経路はこの環境では空を返すので、
-    // ここを書き忘れると倒してもステージが終わらない (IBoss.hpp の WHY)。
+    /// @note «ボスとして» 名乗る。型で引く経路はこの環境では空を返すので、
+    ///       ここを書き忘れると倒してもステージが終わらない (理由は IBoss.hpp を参照)。
     IBoss::Bind(scene.Self(), this);
 
     if (!Ai())
@@ -117,12 +109,12 @@ inline void Boss03BossComponent::OnStart()
 
     if (auto* health = scene.GetScript<EnemyHealthComponent>()) {
         health->SetFlinchVoice(&se::kBossDamaged);
-        // 撃破の声も預ける。ここを書かないと «最後の翼が落ちた瞬間» が無音になり、
-        // 撃破の演出 (BossDeathVfxComponent) だけが音無しで始まる。
+        /// @note 撃破の声も預ける。ここを書かないと «最後の翼が落ちた瞬間» が無音になり、
+        ///       撃破の演出 (BossDeathVfxComponent) だけが音無しで始まる。
         health->SetDestroyVoice(&se::kBossDestroy);
     } else {
-        // 進行はボスの EnemyHealthComponent で終わりを決める。無いと «倒しても
-        // 何も起きない» ステージになり、しかも進行側は何も言わない。
+        /// @note 進行はボスの EnemyHealthComponent で終わりを決める。無いと «倒しても
+        ///       何も起きない» ステージになり、しかも進行側は何も言わない。
         debug.LogError("Boss03BossComponent: no EnemyHealthComponent on the boss. "
                        "GameFlowComponent decides victory from it, so the stage can never end.");
     }

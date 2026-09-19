@@ -10,7 +10,7 @@ namespace fbzz::tests {
 
 class CursorManualTest : public testkit::Fixture {
 protected:
-    // 静的状態を持つ API なので、前のテストの要求を持ち越さない。
+    /// 静的状態を持つ API なので、前のテストの要求を持ち越さない。
     void SetUp() override { core::Cursor::ResetForEditor(); }
     void TearDown() override { core::Cursor::ResetForEditor(); }
 };
@@ -39,8 +39,8 @@ TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
                                        core::CursorLockMode::Locked }) {
         EXPECT_EQ(core::CursorLockModeFromString(core::ToString(mode)), mode);
     }
-    // 未知の綴りは既定 (拘束しない) へ倒す。設定ファイルの手編集でカーソルを
-    // 取り上げられたまま起動する事故を作らない。
+    /// @note 未知の綴りは既定 (拘束しない) へ倒す。設定ファイルの手編集でカーソルを
+    ///       取り上げられたまま起動する事故を作らない。
     EXPECT_EQ(core::CursorLockModeFromString("bogus"), core::CursorLockMode::None);
 }
 
@@ -55,8 +55,8 @@ TEST_F(CursorManualTest, ShapeNamesSurviveTomlRoundTrip)
 
 TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
 {
-    // 抑制中でも «ゲームが何を求めたか» は残る。Editor が Game View から離れている間に
-    // 要求を None へ畳んでしまうと、戻ってきたときに何を復元するか分からなくなる。
+    /// @note 抑制中でも «ゲームが何を求めたか» は残る。Editor が Game View から離れている間に
+    ///       要求を None へ畳んでしまうと、戻ってきたときに何を復元するか分からなくなる。
     core::Cursor::SetSuppressed(true);
     core::Cursor::SetLockMode(core::CursorLockMode::Locked);
     core::Cursor::SetVisible(false);
@@ -79,8 +79,8 @@ TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
 
 TEST_F(CursorManualTest, StrongerRequestWinsAndPoppingRestoresTheWeakerOne)
 {
-    // 視点操作 (Camera) の上へメニュー (Modal) を重ね、閉じたら視点へ «自動で» 戻る。
-    // これが SetLockMode の直書きでは書けない部分で、戻す値を覚える責任が消える。
+    /// @note 視点操作 (Camera) の上へメニュー (Modal) を重ね、閉じたら視点へ «自動で» 戻る。
+    ///       これが SetLockMode の直書きでは書けない部分で、戻す値を覚える責任が消える。
     const auto camera = core::Cursor::Push({ core::CursorLockMode::Locked, false },
                                            core::CursorPriority::Camera, 1, "Camera");
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::Locked);
@@ -147,8 +147,8 @@ TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
 
 TEST_F(CursorManualTest, ClearRequestsAlsoResetsTheBase)
 {
-    // シーン遷移で呼ぶ経路。積んだ要求だけでなく «直書きの基底» まで戻さないと、
-    // 前の画面が SetLockMode で取った拘束を誰も外さない。
+    /// @note シーン遷移で呼ぶ経路。積んだ要求だけでなく «直書きの基底» まで戻さないと、
+    ///       前の画面が SetLockMode で取った拘束を誰も外さない。
     core::Cursor::SetLockMode(core::CursorLockMode::Locked);
     core::Cursor::Push({ core::CursorLockMode::Confined, false },
                        core::CursorPriority::UI, 1, "Screen");
@@ -166,8 +166,8 @@ TEST_F(CursorManualTest, UpdatingARequestKeepsItsPlaceInTheStack)
     core::Cursor::Push({ core::CursorLockMode::Locked, false },
                        core::CursorPriority::Camera, 2, "Camera");
 
-    // マウスとパッドで表示だけを切り替える経路。Release → Push だと «同値なら後勝ち» の
-    // 順序が変わり、他の要求との強弱が黙って入れ替わる。
+    /// @note マウスとパッドで表示だけを切り替える経路。Release → Push だと «同値なら後勝ち» の
+    ///       順序が変わり、他の要求との強弱が黙って入れ替わる。
     core::Cursor::UpdateRequest(ui, { core::CursorLockMode::Confined, true });
     EXPECT_TRUE(core::Cursor::IsVisible());
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::Confined);

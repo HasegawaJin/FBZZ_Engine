@@ -1,7 +1,7 @@
 # Playerの戦闘SE — 両手剣
 
 2026-09-14。金属の接触・短い抵抗・振り抜けで、攻撃が通った手応えを作る。
-合成元は `Tools/SfxGen/gen_greatsword.py`。外部録音素材は使わない。
+合成元は `GreenWare/Tools/SfxGen/gen_greatsword.py`。外部録音素材は使わない。
 
 ## 音源
 
@@ -44,7 +44,7 @@
 NumPyが必要。リポジトリルートで以下を実行する。
 
 ```text
-python Tools/SfxGen/gen_greatsword.py --output GreenWare/Assets/Sound/SE/Weapon --preview <preview.wav>
+python GreenWare/Tools/SfxGen/gen_greatsword.py --output GreenWare/Assets/Sound/SE/Weapon --preview <preview.wav>
 ```
 
 同じseedから同じPCMを生成する。既存metaは保存し、新規WAVにのみGUIDを発行する。

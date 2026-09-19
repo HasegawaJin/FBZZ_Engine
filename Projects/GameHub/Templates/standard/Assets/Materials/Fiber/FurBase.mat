@@ -1,0 +1,14 @@
+# @file    FurBase.mat
+# @brief   繊維の根元の表面色。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+version = 1
+shader = 'Assets/Shaders/Material/Surface/Lit.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+render_queue = 2000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[params]
+albedo = [0.16, 0.07, 0.025, 1]

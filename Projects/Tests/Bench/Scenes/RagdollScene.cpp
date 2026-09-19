@@ -126,8 +126,8 @@ public:
         m_time += dt * m_clipSpeed;
         Animate();
 
-        // 実行時の RagdollSystem と同じ順序。順を入れ替えると «押し返しが 1 フレーム遅れる»
-        // という形でしか症状が出ないので、ここでも同じ並びにしておく。
+        /// @note 実行時の RagdollSystem と同じ順序。順を入れ替えると «押し返しが 1 フレーム遅れる»
+        ///       という形でしか症状が出ないので、ここでも同じ並びにしておく。
         if (m_driveOn) m_rig->UpdateDriveTargets(m_clip);
         m_rig->RefreshContacts(nullptr);
         m_rig->Step(dt);
@@ -150,8 +150,8 @@ public:
         if (!log.CheckFinite("重心", m_rig->CenterOfMass(), 1.0e3f)) return;
         if (!log.CheckFinite("クリップとのずれ", m_deviation, 1.0e3f)) return;
 
-        // 床の判定は剛体のデバッグ幾何で見る。骨の位置で見ると、剛体を持たない骨
-        // (規則に当たらなかった骨) が親に引かれて沈むだけで嘘の貫通が出る。
+        /// @note 床の判定は剛体のデバッグ幾何で見る。骨の位置で見ると、剛体を持たない骨
+        ///       (規則に当たらなかった骨) が親に引かれて沈むだけで嘘の貫通が出る。
         if (m_useGround) {
             float deepest = 0.0f;
             for (const scene::RagdollDebugLine& line : m_lines) {
@@ -167,7 +167,7 @@ public:
             if (!log.CheckFinite(rest.name, m_positions[i], 1.0e3f)) return;
             if (rest.parent < 0) continue;
 
-            // 骨は伸び縮みしない。ここが動くのはソケットが解けているとき。
+            /// @note 骨は伸び縮みしない。ここが動くのはソケットが解けているとき。
             const float bind = math::Vector3(rest.offsetX, rest.offsetY, 0.0f).Length();
             const float span = (m_positions[i]
                                 - m_positions[static_cast<std::size_t>(rest.parent)]).Length();
@@ -212,7 +212,7 @@ public:
         ImGui::SliderFloat("クリップの振り幅", &m_clipAmount, 0.0f, 2.0f, "%.2f");
         ImGui::SliderFloat("クリップの速さ", &m_clipSpeed, 0.0f, 3.0f, "%.2f");
 
-        // 3 つの骨格が重なると、どれがどれか読めなくなる。1 つずつ消して見る口。
+        /// @note 3 つの骨格が重なると、どれがどれか読めなくなる。1 つずつ消して見る口。
         ImGui::Separator();
         ImGui::TextDisabled("表示");
         ImGui::Checkbox("クリップ (灰)", &m_showClip);
@@ -241,7 +241,7 @@ public:
         else
             ImGui::TextColored({ 0.74f, 0.77f, 0.81f, 1.0f }, "可動域に食い込んだ関節 0");
 
-        // «規則に当たらない骨» は、画面では «なんとなく柔らかい» としか見えない失敗。
+        /// @note «規則に当たらない骨» は、画面では «なんとなく柔らかい» としか見えない失敗。
         const std::vector<std::string>& unmatched = m_rig->UnmatchedBones();
         ImGui::Text("規則に当たらない骨 %zu", unmatched.size());
         for (const std::string& name : unmatched) ImGui::BulletText("%s", name.c_str());
@@ -252,7 +252,7 @@ public:
         view.DrawGrid(0.5f);
         if (m_useGround) view.DrawGroundLine(0.0f, colors::kGround);
 
-        // クリップの骨格。物理を切っても必ずここへ戻るべき «正解»。
+        /// @note クリップの骨格。物理を切っても必ずここへ戻るべき «正解»。
         if (m_showClip) {
             for (std::size_t i = 0; i < kBoneCount; ++i) {
                 const int parent = kSkeleton[i].parent;
@@ -262,14 +262,14 @@ public:
             }
         }
 
-        // 物理が出した剛体・可動域・接触。エンジン自身のデバッグ幾何をそのまま描く。
+        /// @note 物理が出した剛体・可動域・接触。エンジン自身のデバッグ幾何をそのまま描く。
         for (const scene::RagdollDebugLine& line : m_lines) {
             const bool isBody = line.kind == scene::RagdollDebugLine::Kind::Body;
             if (isBody ? !m_showBodies : !m_showJoints) continue;
             view.DrawLine(line.from, line.to, ColorOf(line.kind), isBody ? 3.0f : 1.5f);
         }
 
-        // 書き戻した骨。ここが灰線に重なっていれば «物理が付いてきている»。
+        /// @note 書き戻した骨。ここが灰線に重なっていれば «物理が付いてきている»。
         if (m_showBones) {
             for (std::size_t i = 0; i < m_positions.size() && i < kBoneCount; ++i) {
                 const int parent = kSkeleton[i].parent;
@@ -330,7 +330,7 @@ private:
     {
         if (!m_rig) return;
         m_rig->SetDrive(m_driveOn, m_driveScale, m_driveFalloff, m_driveDamping);
-        // 脱力させたのに根だけ吊られていると «宙に浮いた死体» になる。
+        /// @note 脱力させたのに根だけ吊られていると «宙に浮いた死体» になる。
         m_rig->SetRootAnchor(m_driveOn ? m_anchorScale : 0.0f, 0.04f, 0.05f);
     }
 

@@ -18,10 +18,10 @@ namespace fbzz::editor {
 namespace {
 
 constexpr const char* kCompareShaderPath = "Assets/Shaders/Bake/VolumeFlipbook/FlipbookCompare.hlsl";
-// 表示用なので、大きいタイルは縮めて描く (4096 のタイルを 2 枚並べる必要は無い)。
+/// 表示用なので、大きいタイルは縮めて描く (4096 のタイルを 2 枚並べる必要は無い)。
 constexpr std::uint32_t kMaxDisplayTile = 512;
 
-// FlipbookCompare.hlsl の cbuffer と 1:1。
+/// FlipbookCompare.hlsl の cbuffer と 1:1。
 struct alignas(16) CompareConstants {
     float currentRect[4];
     float nextRect[4];
@@ -32,7 +32,7 @@ struct alignas(16) CompareConstants {
 };
 static_assert(sizeof(CompareConstants) == 48, "FlipbookCompare.hlsl の cbuffer と一致させること");
 
-// ParticlePass の SpriteRectForFrame と同じ並び (左上から行優先)。
+/// ParticlePass の SpriteRectForFrame と同じ並び (左上から行優先)。
 void StoreTileRect(float (&out)[4], int frame, const asset::FlipbookGrid& grid)
 {
     const int columns = (std::max)(grid.columns, 1);
@@ -106,7 +106,7 @@ void VolumeFlipbookComparePreview::Render(renderer::IRenderer& renderer, rendere
 {
     std::string error;
     if (!HasFlipbook() || !EnsureGpu(resources, error)) return;
-    // デバイスリセットで Atlas も消えた。再ベイクまで描かない。
+    /// @note デバイスリセットで Atlas も消えた。再ベイクまで描かない。
     if (!m_colorAtlas.IsValid()) return;
 
     const int frames = (std::max)(m_grid.frameCount, 1);
@@ -115,7 +115,7 @@ void VolumeFlipbookComparePreview::Render(renderer::IRenderer& renderer, rendere
                                  : (std::min)(position, static_cast<float>(frames - 1));
     m_currentFrame = std::clamp(static_cast<int>(std::floor(framePosition)), 0, frames - 1);
     m_currentBlend = framePosition - static_cast<float>(m_currentFrame);
-    // ParticlePass と同じく、ループしない列の最後は自分自身へ向かって補間する (= 補間なし)。
+    /// @note ParticlePass と同じく、ループしない列の最後は自分自身へ向かって補間する (= 補間なし)。
     const int nextFrame = m_loop ? (m_currentFrame + 1) % frames : (std::min)(m_currentFrame + 1, frames - 1);
 
     CompareConstants constants{};
@@ -137,7 +137,7 @@ void VolumeFlipbookComparePreview::Render(renderer::IRenderer& renderer, rendere
     draw.textures[0] = m_colorAtlas;
     draw.textures[1] = m_motionAtlas;
     renderer.Submit(draw, resources);
-    // DX12 は RT を切り替えたときにシェーダー読み取り状態へ戻す。ImGui 表示はそれを前提にしている。
+    /// @note DX12 は RT を切り替えたときにシェーダー読み取り状態へ戻す。ImGui 表示はそれを前提にしている。
     renderer.SetRenderTarget({}, resources);
 }
 

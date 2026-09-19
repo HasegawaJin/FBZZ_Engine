@@ -34,6 +34,8 @@
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/SurfaceCommon.hlsli"
+#include "Common/BindlessIndices.hlsli"
+#include "Common/MaterialTextures.hlsli"
 
 // WHY: #define FBZZ_MATERIAL_CONSTANTS により Constants.hlsli の
 //      デフォルト cbuffer は展開されない。ここで自分の変数を宣言する。
@@ -51,11 +53,16 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float2 uvOffset;          // UV オフセット (X, Y)            offset 40
     uint   textureMask;       // テクスチャ存在フラグ (自動設定) offset 48
     float3 _pad;              //                                 offset 52
+
+    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    uint texAlbedoIndex;
+    uint texNormalIndex;
 };
 
-Texture2D              texAlbedo   : register(TEX_ALBEDO);   // t0: ベースカラー
-Texture2D              texNormal   : register(TEX_NORMAL);   // t1: 法線マップ (Tangent Space)
-Texture2D<float>       texShadow   : register(TEX_SHADOW);   // t8: シャドウマップ (RenderSystem が自動バインド)
+FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);   // t0: ベースカラー
+FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);   // t1: 法線マップ (Tangent Space)
+FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);   // t8: シャドウマップ (RenderSystem が自動バインド)
 SamplerState           sampDefault : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 

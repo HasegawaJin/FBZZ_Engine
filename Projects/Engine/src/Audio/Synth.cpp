@@ -17,9 +17,9 @@ constexpr float    kTwoPi             = 6.28318530717958647692f;
 constexpr float    kMaxDuration       = 30.0f;
 constexpr int      kNoiseTableSize    = 32;
 
-// WHY std::mt19937 を使わないか: 同じ seed から同じ音が出ることが仕様の一部で、
-//     標準ライブラリの実装差やバージョン差を挟みたくない。xorshift32 なら
-//     ここに全部書いてあり、どの環境でも同じ列になる。
+/// @brief 決定的乱数生成器。同じ seed から同じ音が出ることが仕様の一部。
+/// @note std::mt19937 は標準ライブラリの実装・バージョン差を挟むため使わない。xorshift32 なら
+///       ここに全部書いてあり、どの環境でも同じ列になる。
 struct Rng {
     uint32_t state;
 
@@ -103,9 +103,9 @@ float Oscillate(SynthWave wave, float phase, float duty, const float* noise)
     }
 }
 
-// 正規化カットオフ (0-1) を一次フィルターの係数へ落とす。
-// WHY 二乗するか: 聴感上の変化は低域に密集している。線形のままだと 0.0-0.2 の
-//     狭い範囲でしか音が変わらず、Editor のスライダーがほぼ使えなくなる。
+/// @brief 正規化カットオフ (0-1) を一次フィルターの係数へ落とす。
+/// @note 聴感上の変化は低域に密集しているため二乗する。線形のままだと 0.0-0.2 の
+///       狭い範囲でしか音が変わらず、Editor のスライダーがほぼ使えなくなる。
 float FilterCoefficient(float normalizedCutoff, uint32_t sampleRate)
 {
     const float nyquist = static_cast<float>(sampleRate) * 0.5f;
@@ -125,8 +125,8 @@ uint64_t HashBytes(uint64_t hash, const void* data, size_t bytes)
 
 uint64_t HashFloat(uint64_t hash, float value)
 {
-    // WHY 生ビットではなく正規化してから畳むか: -0.0f と +0.0f はビット列が違うのに
-    //     合成結果は完全に同じ。別クリップとして二重生成されるのを防ぐ。
+    /// @note -0.0f と +0.0f はビット列が違うが合成結果は同じため、生ビットでなく正規化してから
+    ///       畳み込み、別クリップとして二重生成されるのを防ぐ。
     if (value == 0.0f) value = 0.0f;
     uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
@@ -166,8 +166,8 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
     const float crushLevels  = spec.bitCrush > 0.0f
         ? std::exp2(16.0f - spec.bitCrush * 12.0f) : 0.0f;
 
-    // WHY 掃引の有無で分けるか: 係数計算は exp() を含む。掃引していない間は
-    //     毎サンプル同じ値になるので、ループの外で 1 回だけ求める。
+    /// @note 係数計算は exp() を含み、掃引していない間は毎サンプル同じ値になるため、
+    ///       掃引の有無で分けループの外で 1 回だけ求める。
     const bool  sweepsLowPass = spec.lowPassSweep != 0.0f;
     const float staticLowPass = FilterCoefficient(spec.lowPassCutoff, sampleRate);
     const float highPassCoeff = spec.highPassCutoff > 0.0f
@@ -209,8 +209,8 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
         const float duty = Clamp(spec.dutyCycle + spec.dutySweep * tSegment, 0.01f, 0.99f);
         float value = Oscillate(spec.wave, phase, duty, noise);
 
-        // WHY 正規化値で判定するか: 係数は cutoff=1 でも 1 に達しないため、
-        //     係数側で判定すると既定の「無加工」設定でも高域が削れる。
+        /// @note 係数は cutoff=1 でも 1 に達しないため、係数側で判定すると既定の「無加工」
+        ///       設定でも高域が削れる。正規化値側で判定する。
         const float lowPassNorm = sweepsLowPass
             ? Clamp(spec.lowPassCutoff + spec.lowPassSweep * t, 0.0f, 1.0f)
             : spec.lowPassCutoff;
@@ -230,7 +230,7 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
 
         value *= EnvelopeAt(spec, t) * spec.amplitude;
 
-        // attack / decay が 0 のときの発音端クリックを潰す。
+        /// @note attack / decay が 0 のときの発音端クリックを潰す。
         if (guardSamples > 0) {
             if (i < guardSamples)
                 value *= static_cast<float>(i) / static_cast<float>(guardSamples);
@@ -238,8 +238,8 @@ std::vector<uint8_t> Render(const SynthSpec& in, WaveFormat& outFmt)
                 value *= static_cast<float>(sampleCount - i) / static_cast<float>(guardSamples);
         }
 
-        // WAV の 16bit PCM はリトルエンディアン。バイトで書くことで、
-        // アラインメントもエンディアンも環境任せにしない。
+        /// @note WAV の 16bit PCM はリトルエンディアン。バイトで書くことで、
+        ///       アラインメントもエンディアンも環境任せにしない。
         const auto sample = static_cast<int16_t>(Clamp(value, -1.0f, 1.0f) * 32767.0f);
         pcm[i * 2]     = static_cast<uint8_t>(static_cast<uint16_t>(sample) & 0xFFu);
         pcm[i * 2 + 1] = static_cast<uint8_t>((static_cast<uint16_t>(sample) >> 8) & 0xFFu);
@@ -314,9 +314,9 @@ SynthSpec Mutate(const SynthSpec& base, float amount, uint32_t seed)
     const auto jitter = [&](float value, float lo, float hi) {
         return Clamp(value * (1.0f + rng.Signed() * scale), lo, hi);
     };
-    // 0 のままにしておきたいパラメーター (無効化されている機能) は乗算では動かない。
-    // 掛け算だけだと Mutate が「一度でも 0 にした項目を永久に殺す」挙動になるため、
-    // 中心が 0 の項目は加算で揺らす。
+    /// @note 0 のままにしておきたいパラメーター (無効化されている機能) は乗算では動かない。
+    ///       掛け算だけだと Mutate が「一度でも 0 にした項目を永久に殺す」挙動になるため、
+    ///       中心が 0 の項目は加算で揺らす。
     const auto offset = [&](float value, float span, float lo, float hi) {
         return Clamp(value + rng.Signed() * scale * span, lo, hi);
     };
@@ -388,7 +388,8 @@ std::vector<uint8_t> EncodeWav(const void* pcmData, size_t bytes, const WaveForm
     push("WAVE", 4);
     push("fmt ", 4);
     pushU32(16);
-    pushU16(1);                 // WAVE_FORMAT_PCM
+    /// @note WAVE_FORMAT_PCM
+    pushU16(1);
     pushU16(fmt.channels);
     pushU32(fmt.sampleRate);
     pushU32(byteRate);
@@ -469,10 +470,9 @@ SynthAnalysis Analyze(const SynthSpec& spec)
         static_cast<float>(peakIndex) / static_cast<float>(fmt.sampleRate);
     analysis.zeroCrossingHz = static_cast<float>(crossings) / analysis.durationSeconds;
 
-    // パワー加重の実効周波数: f = fs/(2π) * sqrt(Σ(Δx)² / Σx²)。
-    // WHY FFT を使わないか: 必要なのは「明るいか暗いか」の 1 スカラーだけで、
-    //     一次差分のエネルギー比がそのまま二乗平均周波数になる。窓関数も
-    //     ビン幅の選択も要らず、O(N) で済む。
+    /// @note パワー加重の実効周波数: f = fs/(2π) * sqrt(Σ(Δx)² / Σx²)。
+    ///       必要なのは「明るいか暗いか」の 1 スカラーだけで、一次差分のエネルギー比がそのまま
+    ///       二乗平均周波数になるため FFT は使わず、窓関数もビン幅選択も不要で O(N) で済む。
     if (energy > 0.0) {
         analysis.brightnessHz = static_cast<float>(
             static_cast<double>(fmt.sampleRate) / static_cast<double>(kTwoPi)

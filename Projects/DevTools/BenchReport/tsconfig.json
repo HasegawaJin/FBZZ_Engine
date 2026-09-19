@@ -1,0 +1,19 @@
+{
+    // 型検査専用 (npm run typecheck)。実行は Node 24 が型を取り除いて .ts を直接読むので出力しない。
+    // erasableSyntaxOnly: enum / namespace / 引数プロパティなど «取り除くだけでは JS にならない» 構文を禁じる。
+    "compilerOptions": {
+        "target": "ES2024",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "noEmit": true,
+        "allowImportingTsExtensions": true,
+        "erasableSyntaxOnly": true,
+        "verbatimModuleSyntax": true,
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "skipLibCheck": true,
+        "types": ["node"]
+    },
+    "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

@@ -24,8 +24,8 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
 
     ImGui::SeparatorText("Particle / Alpha");
     {
-        // テクスチャの作りの違いを吸収する。素材を画像編集ソフトで加工させないための設定。
-        // 並びは Rendering/Mask.hlsli の FBZZ_MASK_* と一致させること。
+        /// @note テクスチャの作りの違いを吸収する。素材を画像編集ソフトで加工させないための設定。
+        ///       並びは Rendering/Mask.hlsli の FBZZ_MASK_* と一致させること。
         static constexpr const char* kAlphaItems[] = {
             "Texture Alpha", "Luminance (black = clear)",
             "Inverted Luminance (white = clear)", "Red Channel",
@@ -76,7 +76,7 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
         if (particle.distortion) {
             changed |= ImGui::DragFloat("Distortion Strength", &particle.distortionStrength,
                                         0.001f, 0.0f, 0.25f, "%.4f");
-            // 歪み専用マップは [textures] normal。未設定なら albedo の RG へ縮退する。
+            /// @note 歪み専用マップは [textures] normal。未設定なら albedo の RG へ縮退する。
             changed |= widgets::AssetPathField("Distortion Map (normal)", material.textures["normal"],
                                                widgets::kTextureAssetFilter, projectRoot);
             if (ImGui::IsItemHovered())
@@ -94,13 +94,13 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
     ImGui::SeparatorText("Smoke Lighting");
     {
         if (ImGui::Checkbox("Six-way Lit Smoke", &particle.sixWayLighting)) {
-            // 役割が重複するため排他にする (両方掛けると二重に陰影が付いて濁る)。
+            /// @note 役割が重複するため排他にする (両方掛けると二重に陰影が付いて濁る)。
             if (particle.sixWayLighting) particle.volumetric = false;
             changed = true;
         }
         if (particle.sixWayLighting) {
-            // シェーダー側が saturate するため 1.0 が上限。それ以上は「元の色を捨てて
-            // (ambient + N·L) で塗る」だけになり、暗い環境で煙が真っ黒に潰れる。
+            /// @note シェーダー側が saturate するため 1.0 が上限。それ以上は「元の色を捨てて
+            ///       (ambient + N·L) で塗る」だけになり、暗い環境で煙が真っ黒に潰れる。
             changed |= ImGui::SliderFloat("Lighting Strength", &particle.lightingStrength, 0.0f, 1.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("0 = 元の色そのまま / 1 = 完全にライティングで置換");
@@ -173,7 +173,7 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
                 ImGui::TextDisabled("加算ブレンドでは影が暗くしても見えにくくなります。"
                                     "煙は Alpha / Premultiplied を推奨。");
         }
-        // 自己影。受け影とは別の現象なので、別のスライダーとして並べる。
+        /// @note 自己影。受け影とは別の現象なので、別のスライダーとして並べる。
         changed |= ImGui::DragFloat("Self Shadow", &particle.selfShadowStrength,
                                     0.01f, 0.0f, 8.0f, "%.2f");
         if (ImGui::IsItemHovered())

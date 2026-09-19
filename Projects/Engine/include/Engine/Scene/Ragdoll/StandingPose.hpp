@@ -39,7 +39,7 @@ inline bool LimitStandingPose(const std::vector<RagdollBonePose>& targets,
         }
     }
 
-    // ワールド位置を個別に丸めると骨が伸びる。候補のローカル回転だけを補間する。
+    /// @note ワールド位置を個別に丸めると骨が伸びる。候補のローカル回転だけを補間する。
     localRotations.resize(rotations.size());
     for (std::size_t i = 0; i < targets.size(); ++i) {
         const int parent = targets[i].parent;
@@ -71,7 +71,7 @@ inline bool LimitStandingPose(const std::vector<RagdollBonePose>& targets,
         return inside;
     };
     if (compose(1.0f)) return true;
-    // 1 → 0.5 → 0.25 の段階的な制限は境界で反動を跳ね返す。許容側の境界まで連続的に戻す。
+    /// @note 1 → 0.5 → 0.25 の段階的な制限は境界で反動を跳ね返す。許容側の境界まで連続的に戻す。
     float lower = 0.0f;
     float upper = 1.0f;
     for (int attempt = 0; attempt < 16; ++attempt) {
