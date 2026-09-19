@@ -629,7 +629,8 @@ bool BuildPipeline::ExecuteStep()
         std::ostringstream ss;
         ss << "product_name   = \"" << m_settings.productName << "\"\n";
         ss << "version        = \"" << m_settings.version     << "\"\n";
-        ss << "engine_version = \"0.1.0\"\n";
+        /// @note 版は CMake の project(VERSION) から FBZZSDK.cmake が FBZZEditor へ注入する。直書きするとリリースごとに食い違う。
+        ss << "engine_version = \"" << FBZZ_ENGINE_VERSION_STRING << "\"\n";
         ss << "build_date     = \"" << TodayString()          << "\"\n";
         ss << "development    = " << (m_settings.developmentBuild ? "true" : "false") << "\n";
         ss << "configuration  = \"" << m_runtimeConfiguration << "\"\n";
