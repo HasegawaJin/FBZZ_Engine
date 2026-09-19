@@ -358,6 +358,29 @@ function HeadVersion(repoPath, ref = 'HEAD') {
     }
 }
 
+const renameCache = new Map();
+
+/**
+ * base 側の改名元パス。改名されていなければ null。
+ * @note 改名先は base に無いので、これが無いと移動しただけの既存違反がすべて «増えた» 扱いになる。
+ * @note base が HEAD 以外 (CI) は PR 差分と同じ merge-base 起点で見る。HEAD (手元) は作業ツリーとの比較で git mv 済みの改名を拾う。
+ */
+function RenameSource(repoPath, base) {
+    if (!renameCache.has(base)) {
+        const range = base === 'HEAD' ? ['HEAD'] : [`${base}...HEAD`];
+        const renames = new Map();
+        try {
+            const out = execFileSync('git', ['diff', '--name-status', '-M', '--diff-filter=R', ...range], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+            for (const line of out.split(/\r?\n/)) {
+                const [status, from, to] = line.split('\t');
+                if (status?.startsWith('R') && from && to) renames.set(to, from);
+            }
+        } catch { /* @note git が使えないときは改名を追わず、従来どおり新規ファイル扱い。 */ }
+        renameCache.set(base, renames);
+    }
+    return renameCache.get(base).get(repoPath) ?? null;
+}
+
 /** HEAD 版にも同じ (規則, 行テキスト) が同数以上あった指摘を落とす。 */
 function OnlyNew(findings, baseline) {
     const budget = new Map();
@@ -386,7 +409,8 @@ export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
     const source = readFileSync(absolute, 'utf8');
     let contentFindings = LintContent(repoPath, source);
     if (!all) {
-        const head = HeadVersion(repoPath, base);
+        const renamedFrom = RenameSource(repoPath, base);
+        const head = HeadVersion(repoPath, base) ?? (renamedFrom ? HeadVersion(renamedFrom, base) : null);
         if (head !== null) contentFindings = OnlyNew(contentFindings, LintContent(repoPath, head));
     }
     findings.push(...contentFindings);
