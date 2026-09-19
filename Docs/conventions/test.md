@@ -524,6 +524,8 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 分母は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` の 3 つだけ。
 「12. 何をテストするか」で**書かないと決めた領域を分母に入れると数字が意味を失う**ため、
 Renderer / Editor / Tests / ThirdParty は両系統とも除外している。
+`Projects/Engine/src/Core/Platform` (Window / Cursor / Application / EngineRebuildBootstrap) も
+OS のウィンドウと起動の層でテストから生成しないため、Core の中から除外している。
 
 対象を変えるときは 4 箇所を同時に直すこと。ずれると C0 と C1 が別の母集団の比較になる。
 

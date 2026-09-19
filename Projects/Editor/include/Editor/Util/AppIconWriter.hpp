@@ -14,7 +14,7 @@ namespace fbzz::editor {
 class AppIconWriter {
 public:
     /// 書き込むアイコングループのリソース ID。
-    /// @note 101 固定。Engine/src/Core/Window.cpp の kDefaultApplicationIconId と対応する。
+    /// @note 101 固定。Engine/src/Core/Platform/Window.cpp の kDefaultApplicationIconId と対応する。
     ///       ずらすと Explorer には出てもウィンドウ (タイトルバー / Alt+Tab) は既定アイコンのまま残る。
     static constexpr int kIconResourceId = 101;
 

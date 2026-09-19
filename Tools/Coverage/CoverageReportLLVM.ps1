@@ -122,7 +122,7 @@ if ($worst.Count -gt 0) {
     [void]$builder.AppendLine()
 }
 
-[void]$builder.AppendLine('計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core`。')
+[void]$builder.AppendLine('計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` (`Core/Platform` を除く)。')
 [void]$builder.AppendLine('clang-cl + llvm-cov による計測 (`Tools/Coverage/RunCoverageLLVM.ps1`)。')
 
 $markdown = $builder.ToString()

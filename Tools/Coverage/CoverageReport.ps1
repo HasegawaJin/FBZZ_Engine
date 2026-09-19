@@ -51,7 +51,7 @@ foreach ($package in $report.coverage.packages.package) {
 }
 
 [void]$builder.AppendLine()
-[void]$builder.AppendLine('計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core`。')
+[void]$builder.AppendLine('計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` (`Core/Platform` を除く)。')
 [void]$builder.AppendLine('MSVC + OpenCppCoverage が出せるのは行カバレッジ (C0) まで。')
 [void]$builder.AppendLine('分岐 (C1) / 条件・MC/DC (C2) は `Tools/Coverage/RunCoverageLLVM.ps1` (clang-cl + llvm-cov) で測る。')
 
