@@ -3,9 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "GeometryPasses.hpp"
+#include <Engine/Renderer/IPipelineState.hpp>
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Asset/MaterialParamBinding.hpp"
+#include "Engine/Asset/StreamedTextureResolver.hpp"
 #include "Engine/Asset/TexDescSerializer.hpp"
 #include "Engine/Asset/TextureAsset.hpp"
 #include "Engine/Core/Logger.hpp"
@@ -63,14 +65,30 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
 
     /// @note 矩形の取り出しは ResolveSpriteReference が持つ (ID / 名前 / 暗黙 Single と
     /// @note .meta のキャッシュまで含めて 1 箇所)。ここは UV への合成だけを受け持つ。
-    const std::string absoluteTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
-    const renderer::ITexture* texture = resources.Get(resources.LoadTexture(absoluteTexturePath));
-    if (texture == nullptr) return;
+    /// @note 矩形はピクセル単位なので元画像の寸法で換算する。品質段で縮小して常駐していても GPU 実体の寸法は使わない。
+    asset::StreamedTextureResolver& resolver = asset::StreamedTextureResolver::Engine();
+    uint32_t sourceWidth = 0;
+    uint32_t sourceHeight = 0;
+    if (const asset::TextureAsset* textureAsset = resolver.ResolveAsset(resources, texturePath)) {
+        sourceWidth = textureAsset->sourceWidth;
+        sourceHeight = textureAsset->sourceHeight;
+        if ((sourceWidth == 0 || sourceHeight == 0) && resources.Get(textureAsset->gpuHandle)) {
+            sourceWidth = resources.Get(textureAsset->gpuHandle)->GetWidth();
+            sourceHeight = resources.Get(textureAsset->gpuHandle)->GetHeight();
+        }
+    } else if (resolver.GetMissPolicy() == asset::StreamedTextureResolver::MissPolicy::Synchronous) {
+        const std::string absoluteTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
+        if (const renderer::ITexture* texture = resources.Get(resources.LoadTexture(absoluteTexturePath))) {
+            sourceWidth = texture->GetWidth();
+            sourceHeight = texture->GetHeight();
+        }
+    }
+    if (sourceWidth == 0 || sourceHeight == 0) return;
 
     const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
         albedoReference,
-        static_cast<float>(std::max<uint32_t>(1, texture->GetWidth())),
-        static_cast<float>(std::max<uint32_t>(1, texture->GetHeight())));
+        static_cast<float>(sourceWidth),
+        static_cast<float>(sourceHeight));
     if (!resolved.resolved) return;
 
     /// @note 矩形が画像からはみ出していても UV は画像内へ収める。
@@ -103,7 +121,7 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
     std::memcpy(paramData.data() + offsetVar->offset, offset, sizeof(offset));
 }
 
-} // namespace
+}
 
 AnimatorComponent* FindAnimator(GameObject& go)
 {
@@ -146,7 +164,8 @@ renderer::Material* GetFallbackMaterial(renderer::ResourceManager& resources, bo
 static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
                                                 bool componentEnabled,
                                                 renderer::ResourceManager& resources,
-                                                bool preferSkinnedFallback)
+                                                bool preferSkinnedFallback,
+                                                float screenPixels)
 {
     if (!componentEnabled || !mc.visible) return nullptr;
 
@@ -207,6 +226,8 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
     /// @note 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
     if (desc && !mc.paramOverrides.empty())
         ApplyMaterialParamOverrides(mc.paramOverrides, *desc, material.paramData);
+    if (desc && !mc.integerParamOverrides.empty())
+        asset::ApplyMaterialIntegerOverrides(mc.integerParamOverrides, *desc, material.paramData);
 
     std::array<std::string, kTextureSlotNames.size()> texturePaths{};
     if (matAsset) {
@@ -226,13 +247,16 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
     if (desc)
         ApplyAlbedoSpriteUv(texturePaths[0], *desc, resources, material.paramData);
 
+    /// @note テクスチャは非同期台帳の利用権越しに引く。毎フレーム引かれている間は利用権が続き、引かれなく
+    /// @note なると手放されて台帳の猶予と予算で解放される。先読み済みなら同期ロードは起きない。
     const size_t slotCount = texturePaths.size();
     material.textures.resize(slotCount);
+    asset::StreamedTextureResolver& resolver = asset::StreamedTextureResolver::Engine();
     for (size_t i = 0; i < slotCount; ++i)
     {
         material.textures[i] = texturePaths[i].empty()
             ? renderer::ResourceHandle<renderer::TextureTag>{}
-            : resources.LoadTexture(texturePaths[i]);
+            : resolver.ResolveGpu(resources, texturePaths[i], screenPixels);
     }
 
     static renderer::ShaderDescriptor s_fallback;
@@ -240,27 +264,46 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
     return &material;
 }
 
-renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback)
+renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources,
+                                 bool preferSkinnedFallback, float screenPixels)
 {
-    return SyncMaterialSlotImpl(mc, mc.enabled, resources, preferSkinnedFallback);
+    return SyncMaterialSlotImpl(mc, mc.enabled, resources, preferSkinnedFallback, screenPixels);
 }
 
 renderer::Material* SyncMaterialSlot(MaterialComponent& mc, size_t slotIndex,
-                                     renderer::ResourceManager& resources, bool preferSkinnedFallback)
+                                     renderer::ResourceManager& resources, bool preferSkinnedFallback,
+                                     float screenPixels)
 {
     /// @note mc.enabled は基底 (スロット 0) の enabled であり、コンポーネント全体の有効判定を兼ねる。
-    return SyncMaterialSlotImpl(mc.SlotAt(slotIndex), mc.enabled, resources, preferSkinnedFallback);
+    return SyncMaterialSlotImpl(mc.SlotAt(slotIndex), mc.enabled, resources, preferSkinnedFallback, screenPixels);
+}
+
+float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go, const renderer::Mesh& mesh)
+{
+    if (ctx.cullProjScaleY <= 0.0f || ctx.height == 0 || mesh.boundsRadius <= 0.0f) return 0.0f;
+    const WorldBounds bounds = ComputeWorldBounds(go.transform, mesh);
+    /// @note 投影半径 (NDC) = r * P[1][1] / 距離。NDC の縦 [-1, 1] が height px なので直径は r*P11/d*height。
+    /// @note カメラが球の中へ入ったら画面いっぱいとして扱う。
+    const float distance = (bounds.center - ctx.camera.m_position).Length();
+    if (!ctx.cullOrthographic && distance <= bounds.radius) return static_cast<float>(ctx.height);
+    const float ndcRadius = ctx.cullOrthographic
+        ? bounds.radius * ctx.cullProjScaleY
+        : bounds.radius * ctx.cullProjScaleY / distance;
+    return ndcRadius * static_cast<float>(ctx.height);
 }
 
 renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
     renderer::BlendMode        blend,
-    bool                       doubleSided)
+    bool                       doubleSided,
+    int32_t                    depthBias,
+    float                      depthBiasSlope,
+    bool                       wireframe)
 {
     /// @note 両面描画はバックフェースカリングを無効化する。
-    const renderer::RasterizerMode raster = doubleSided
-        ? renderer::RasterizerMode::SOLID_NOCULL
-        : renderer::RasterizerMode::SOLID;
+    const renderer::RasterizerMode raster = wireframe
+        ? (doubleSided ? renderer::RasterizerMode::WIREFRAME_NOCULL : renderer::RasterizerMode::WIREFRAME)
+        : (doubleSided ? renderer::RasterizerMode::SOLID_NOCULL : renderer::RasterizerMode::SOLID);
     /// @note 半透明・加算は深度書き込みをオフにし、背後のオブジェクトが透けて見えるようにする。
     const renderer::DepthMode depth = (blend == renderer::BlendMode::OPAQUE_BLEND)
         ? renderer::DepthMode::DEPTH_ON
@@ -272,18 +315,35 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
                         const renderer::PipelineStateDesc& b) const noexcept {
             if (a.rasterizer != b.rasterizer) return a.rasterizer < b.rasterizer;
             if (a.blend      != b.blend)      return a.blend      < b.blend;
-            return a.depth < b.depth;
+            if (a.depth      != b.depth)      return a.depth      < b.depth;
+            if (a.depthBias  != b.depthBias)  return a.depthBias  < b.depthBias;
+            return a.depthBiasSlope < b.depthBiasSlope;
         }
     };
     static std::map<renderer::PipelineStateDesc,
                     renderer::ResourceHandle<renderer::PipelineStateTag>,
                     DescLess> s_cache;
-    const renderer::PipelineStateDesc desc{ raster, blend, depth };
+    const renderer::PipelineStateDesc desc{ raster, blend, depth, depthBias, depthBiasSlope };
     auto it = s_cache.find(desc);
-    if (it != s_cache.end()) return it->second;
+    if (it != s_cache.end()) {
+        /// @note Reset や別 ResourceManager で同じ番号が再利用されても、失効・別設定の PSO を返さない。
+        if (const auto* existing = resources.Get(it->second)) {
+            const auto& cached = existing->GetDesc();
+            if (!DescLess{}(cached, desc) && !DescLess{}(desc, cached)) return it->second;
+        }
+    }
     auto handle = resources.CreatePipelineState(desc);
     s_cache[desc] = handle;
     return handle;
+}
+
+renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
+    renderer::ResourceManager& resources,
+    const MaterialSlot&        slot,
+    bool                      wireframe)
+{
+    return GetOrCreateMaterialPSO(resources, slot.GetBlendMode(), slot.IsDoubleSided(),
+                                  slot.GetDepthBias(), slot.GetDepthBiasSlope(), wireframe);
 }
 
 bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask)
@@ -291,27 +351,10 @@ bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask)
     return go.activeInHierarchy() && fbzz::Layer::Contains(mask, go.layer);
 }
 
-bool IsForwardOnly(const MaterialSlot& mc)
-{
-    const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
-    if (a) {
-        /// @note 2 枚の GBuffer には clearcoat/sheen/anisotropy と接線基底を保持できない。拡張ローブを Deferred へ落とすと情報が欠落し物理的なエネルギー配分も変わるため、拡張値が有効な場合だけ Forward の完全評価へフォールバックする (Material の render_path 指定でなく GBuffer 仕様からの自動判定)。
-        const auto hasFeature = [&](std::string_view name) {
-            const auto overrideIt = mc.paramOverrides.find(std::string(name));
-            if (overrideIt != mc.paramOverrides.end())
-                return !overrideIt->second.empty() && std::abs(overrideIt->second.front()) > 1.0e-4f;
-            const auto* values = FindMaterialParam(*a, name);
-            return values && !values->empty() && std::abs(values->front()) > 1.0e-4f;
-        };
-        const bool advancedPbr = a->meshType != asset::MeshType::Skinned &&
-            (hasFeature("clearcoat") || hasFeature("sheen") || hasFeature("anisotropy"));
-        if (advancedPbr) return true;
-        /// @note Cloth は sheen=0 でも固有の反射モデルを保持する。色パラメーターの存在で GBuffer への変換を避ける。
-        if (FindMaterialParam(*a, "clothSheenColor")) return true;
-        if (a->shaderPath.empty()) return true;
-    }
-    return a == nullptr;
-}
+/// @note かつてここに IsForwardOnly があった。GBuffer に入れるかどうかの判断は
+///       ResolveGeometryRoute (Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp) が唯一の正本。
+///       判定が 2 つあると片方だけ古くなり、物が二重に描かれるか黙って消える。
+/// @see Docs/design/pipeline-boundary.md
 
 bool IsSurfaceMaterial(const MaterialSlot& mc)
 {
@@ -616,7 +659,7 @@ bool TestBoundsVisible(RenderPassContext& ctx, const GameObject& go, const World
     return true;
 }
 
-} // namespace
+}
 
 bool IsMeshVisible(RenderPassContext& ctx,
                    const GameObject& go,
@@ -725,4 +768,4 @@ bool IsEffectTextureSrgb(const std::string& texturePath)
     return cached.srgb;
 }
 
-} // namespace fbzz::scene
+}

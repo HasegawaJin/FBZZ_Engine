@@ -69,11 +69,8 @@ float3 ApplyParticleFog(float3 premultipliedRgb, float alpha, float2 svXY, float
     const float2 uv = svXY / max(float2(gScreenWidth, gScreenHeight), float2(1.0f, 1.0f));
     const float particleZ = LinearizeDepth(particleNdcZ, nearZ, farZ, isOrthographic);
     const float sceneZ = LinearizeDepth(sceneNdcZ, nearZ, farZ, isOrthographic);
-    const float gridZ = float(froxelGridZ);
-    const float4 atParticle = gParticleFroxelFog.SampleLevel(
-        gParticleLinearClamp, float3(uv, (FBZZ_FroxelViewZToSlice(particleZ) + 0.5f) / gridZ), 0.0f);
-    const float4 atScene = gParticleFroxelFog.SampleLevel(
-        gParticleLinearClamp, float3(uv, (FBZZ_FroxelViewZToSlice(sceneZ) + 0.5f) / gridZ), 0.0f);
+    const float4 atParticle = FBZZ_SampleIntegratedFroxel(gParticleFroxelFog, gParticleLinearClamp, uv, particleZ);
+    const float4 atScene    = FBZZ_SampleIntegratedFroxel(gParticleFroxelFog, gParticleLinearClamp, uv, sceneZ);
     const float sceneTransmittance = max(atScene.a, 0.02f);
     if ((gEffectsFlags & FBZZ_PFX_ADDITIVE) != 0u)
         return premultipliedRgb * (atParticle.a / sceneTransmittance);

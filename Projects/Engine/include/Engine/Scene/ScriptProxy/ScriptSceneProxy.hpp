@@ -22,11 +22,15 @@ class Script;
 struct ScriptSceneProxy {
     Script* script = nullptr;
 
-    GameObject* Find(std::string_view name) const;
-    GameObject* FindWithTag(std::string_view tag) const;
+    /// @name 検索 (Unity の GameObject.Find / FindWithTag / FindObjectsOfType と同じ規則)
+    /// @note 既定では親ごと無効化された GameObject を返さない。無効にしておいて後で有効化する物 (HUD・ポーズ画面など) を探すときは includeInactive = true を渡す。
+    /// @{
+    GameObject* Find(std::string_view name, bool includeInactive = false) const;
+    GameObject* FindWithTag(std::string_view tag, bool includeInactive = false) const;
+    template<typename T> GameObject* FindObjectOfType(bool includeInactive = false) const;
+    template<typename T> std::vector<GameObject*> FindObjectsOfType(bool includeInactive = false) const;
+    /// @}
     GameObject* Self() const;
-    template<typename T> GameObject* FindObjectOfType() const;
-    template<typename T> std::vector<GameObject*> FindObjectsOfType() const;
     GameObject* GetGameObject(EntityID id) const;
     GameObject* GetMainCameraObject() const;
     GameObject& Create(std::string_view name = "GameObject") const;

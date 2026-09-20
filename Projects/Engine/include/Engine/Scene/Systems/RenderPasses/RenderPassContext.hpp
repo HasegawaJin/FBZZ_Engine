@@ -183,6 +183,7 @@ struct PerFrameCB {
     /// WaterRenderPass だけが waterSsrEnabled として使う枠。他パスは 0 のまま。
     float         _reserved;
     /// 平行投影なら 1、遠近投影なら 0。
+    /// @note カメラ視点の projection / viewProjection は Reversed-Z (near → 1、far → 0)。
     /// @note 深度バッファの値と視空間 Z の関係が射影で変わるため、Space.hlsli の
     ///       LinearizeDepthAuto がこれで式を切り替えないと SSAO/SSR/コンタクトシャドウ/
     ///       ソフトパーティクル/デカールが正投影ビューで一斉に破綻する。
@@ -190,14 +191,15 @@ struct PerFrameCB {
     float         _pad;
 };
 
-/// TAA サブピクセルジッターを織り込んだ射影行列を返す。
+/// TAA サブピクセルジッターを織り込んだ GPU 用射影行列 (Reversed-Z) を返す。
 /// @param jitterNdcX,jitterNdcY NDC 単位のジッター量。TAA 非有効時は 0 を渡す。
 /// @note ジッターはラスタライズする行列にだけ乗せる。カリング用の錐台には載せないこと
 ///       (半ピクセルのために可視判定を揺らす意味がない)。
+/// @note 深度は near → 1、far → 0。カメラ視点の深度バッファ (reversedZ な RT) と対で使う。
 inline math::Matrix4 MakeJitteredProjection(const renderer::Camera& camera,
                                             float jitterNdcX, float jitterNdcY)
 {
-    math::Matrix4 projection = camera.GetProjectionMatrix();
+    math::Matrix4 projection = camera.GetGpuProjectionMatrix();
     if (camera.m_projection == renderer::ProjectionMode::Orthographic) {
         /// @note 正投影は clip.w が常に 1 なので、平行移動成分へ直接足す。
         ///       透視と同じ m[*][2] へ足すと、ずれ量が視空間 Z に比例してしまう。
@@ -525,6 +527,18 @@ struct AtmosphereCB {
     /// @}
 };
 
+/// @brief Light Probe Volume 1 つぶんの配置。intensity <= 0 で無効。
+/// @note LAYOUT: AdvancedGraphicsConstants.hlsli の ProbeVolumeParams と一致させること (48 bytes)。
+struct ProbeVolumeParamsCB {
+    math::Vector3 boxMin{};                     ///< 箱の最小角 [world]
+    float         intensity = 0.0f;             ///< 拡散 GI の倍率
+    math::Vector3 invSize{ 1.0f, 1.0f, 1.0f };  ///< 1 / 箱の大きさ [1/m]
+    float         fade = 0.0f;                  ///< 箱の縁で外側へ戻していく幅 [m]
+    uint32_t      grid[3] = { 1u, 1u, 1u };
+    float         normalBias = 0.0f;            ///< 法線方向へずらして引く距離 [m]
+};
+static_assert(sizeof(ProbeVolumeParamsCB) == 48, "ProbeVolumeParamsCB must match ProbeVolumeParams (48 bytes)");
+
 /// AdvancedGraphicsCB — IBL・SSR・TAA・GTAO・Contact Shadow 等の詳細設定。
 /// LAYOUT: Constants.hlsli の AdvancedGraphicsConstants cbuffer と完全に一致させること。
 /// @note 16-byte アライメント制約のため、各グループを 4 要素単位でまとめる。
@@ -568,9 +582,14 @@ struct AdvancedGraphicsCB {
     /// バッファ解像度 / 描画解像度。AO と接触影は半解像度で焼かれるので 0.5。
     float screenAoScale = 1.0f;
     float screenContactShadowScale = 1.0f;
+    /// Light Probe Volume。[0] が内側 (t22)、[1] が外側 (t21)。
+    /// @see Assets/Shaders/Rendering/LightProbeGI.hlsli
+    ProbeVolumeParamsCB probeVolumes[2]{};
+    float probeSpecularOcclusion = 0.0f;     ///< プローブの暗さを鏡面 IBL へ移す強さ [0,1]
+    float _probePad[3]{};
 };
-static_assert(sizeof(AdvancedGraphicsCB) == 352,
-    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in Constants.hlsli (352 bytes)");
+static_assert(sizeof(AdvancedGraphicsCB) == 464,
+    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in AdvancedGraphicsConstants.hlsli (464 bytes)");
 
 /// Bloom のミップ連鎖の段数。連鎖の 1 段目が半解像度で、以降 1/2 ずつ。
 /// 1080p で 5 段なら最小段は 33px 相当 = 全解像度で半径およそ 100px のにじみになる。
@@ -668,9 +687,10 @@ struct PostProcCB {
     ///       «効果を 2 つに割る» しかなくなり、パスが増える。
     float customParameters2[4];
     /// カスタムパスの «走り方»。パラメーターと違い、書き手ではなくエンジンが埋める。
-    ///   x = 入力 UV のスケール (downscale の逆数)。縮小して走るときだけ 1 未満
+    ///   x = 入力 UV の横の倍率 (縮小後の幅 / 実寸の幅)。縮小して走るときだけ 1 未満
     ///   y = 今が何回目の反復か (0 起点) / z = 反復の総数
-    ///   w = 予約
+    ///   w = 入力 UV の縦の倍率 (縮小後の高さ / 実寸の高さ)。縦横は別々に切り捨てられるので x と一致しない
+    /// @note シェーダーは Constants.hlsli の FBZZ_CustomInputUV で読む。
     float customPassInfo[4];
     /// 衝撃波リング (VFXScreenEffect)。Amplitude=0 で無効。
     /// @note 途中の padding に詰めると、Constants.hlsli の 4 コピーの直し忘れが
@@ -681,6 +701,8 @@ struct PostProcCB {
     float shockRingAmplitude;
     float _shockRingPad[3];
 };
+/// @note HLSL 側 (Common/Constants.hlsli の PostProcConstants) は複数コピーある。サイズがずれたら全コピーを直す。
+static_assert(sizeof(PostProcCB) == 416, "PostProcCB must match PostProcConstants in Constants.hlsli (416 bytes)");
 
 /// 画面サイズ由来のフィールドだけを埋めた PostProcCB を返す。
 /// @note b5 は全ポストプロセスで共有され、各パスが構造体ごと上書きする。texelSize/screenSize を
@@ -703,6 +725,7 @@ struct OutlineCB {
     float         width;
     float         _pad[3];
 };
+static_assert(sizeof(OutlineCB) == 32, "OutlineCB must match OutlineConstants in SelectionOutline.hlsl (32 bytes)");
 
 /// ObjectMaskConstants (b2) — Pipeline/Mask/ObjectMask*.hlsl と一致させること。
 ///   payload … そのままマスクへ書く RGBA (意味は書き手と読み手の取り決め)
@@ -1073,6 +1096,10 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskParticleGpuShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
     renderer::ResourceHandle<renderer::ShaderTag> objectMaskShader;
+    /// objectMaskShader のインスタンシング変種。
+    /// @note 無効なら束ねずに 1 件ずつ出す (絵は変わらない)。
+    /// @see Docs/design/gpu-instancing.md
+    renderer::ResourceHandle<renderer::ShaderTag> objectMaskInstancedShader;
     renderer::ResourceHandle<renderer::ShaderTag> objectMaskSkinnedShader;
     /// 全画面コピー。読みながら書けない場所で «今の絵» を退避するのに使う。
     renderer::ResourceHandle<renderer::ShaderTag> copyColorShader;
@@ -1081,6 +1108,8 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
     /// 内部解像度の最終画を出力先の実寸へ引き伸ばす。等倍のフレームでは使わない。
     renderer::ResourceHandle<renderer::ShaderTag> upscaleShader;
+    /// 内部解像度が出力より大きいとき (スーパーサンプリング) に、出力 1 画素の足跡を平均して縮める。
+    renderer::ResourceHandle<renderer::ShaderTag> downscaleShader;
     std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
 
     renderer::ResourceHandle<renderer::PipelineStateTag> selectionMaskPSO;
@@ -1113,6 +1142,10 @@ struct RenderPassHandles {
 
     renderer::ResourceHandle<renderer::ShaderTag>         shadowShader;
     renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;
+    /// shadowShader のインスタンシング変種。world を b1 でなく VS の t0 から引く。
+    /// @note 無効なら EmitShadowCasters は束ねずに 1 件ずつ出す (絵は変わらない)。
+    /// @see Docs/design/gpu-instancing.md
+    renderer::ResourceHandle<renderer::ShaderTag>         shadowInstancedShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
 
     /// @name モーションベクター
@@ -1120,6 +1153,10 @@ struct RenderPassHandles {
     /// RG = 現 UV - 前フレーム UV、B = 書き込み済みフラグ。TAA / MotionBlur が t26 で読む。
     /// RGBA16F を使うのは CreateRenderTarget にフォーマット引数が無く RG16F を作れないため。
     renderer::ResourceHandle<renderer::ShaderTag>         velocityShader;
+    /// velocityShader のインスタンシング変種。b1 の 2 枠目 (prevWorld) も per-instance で運ぶ。
+    /// @note 無効なら束ねずに 1 件ずつ出す (絵は変わらない)。
+    /// @see Docs/design/gpu-instancing.md
+    renderer::ResourceHandle<renderer::ShaderTag>         velocityInstancedShader;
     renderer::ResourceHandle<renderer::ShaderTag>         velocitySkinnedShader;
     /// @}
 
@@ -1263,6 +1300,14 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::PipelineStateTag>  meshTrailDoubleSidedPSO;
 
     renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
+    /// gbufferShader のインスタンシング変種。
+    /// @note 無効なら GBuffer パスは束ねずに 1 件ずつ出す (絵は変わらない)。
+    /// @see Docs/design/gpu-instancing.md
+    renderer::ResourceHandle<renderer::ShaderTag>         gbufferInstancedShader;
+    /// gbufferShader のスキンド変種。b7 のパレットで VS が変形する。
+    /// @note コンピュートスキニングが効いていれば使わない (変形済みの頂点を素の GBuffer で描く)。
+    /// @see Docs/design/pipeline-boundary.md §3
+    renderer::ResourceHandle<renderer::ShaderTag>         gbufferSkinnedShader;
     renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
     renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
     /// @}
@@ -1343,6 +1388,24 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::PipelineStateTag>  lensFlarePSO;    ///< ADDITIVE ブレンド
     /// CPU生成32^3 RGBA8 LUT。外部DDSに依存せずCompositeのTexture3D(t22)へ束縛する。
     renderer::ResourceHandle<renderer::TextureTag>        proceduralColorLut;
+
+    /// @name Light Probe Volume
+    /// @{
+    /// このフレームのライティングが引く SH ボリューム。[0] = 内側 (t22)、[1] = 外側 (t21)。無効ハンドルなら束縛しない。
+    renderer::ResourceHandle<renderer::TextureTag>        lightProbeSH[2];
+    /// 6 面を SH へ射影する CS と、その定数 (b0)。
+    renderer::ResourceHandle<renderer::ShaderTag>         lightProbeProjectCS;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightProbeProjectCB;
+    /// 壁に埋まったプローブを周りで埋める CS と、その定数 (b0)。
+    renderer::ResourceHandle<renderer::ShaderTag>         lightProbeDilateCS;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightProbeDilateCB;
+    /// 面の表裏だけを書くシェーダー (カリング無し PSO で描く)。
+    renderer::ResourceHandle<renderer::ShaderTag>         lightProbeFacingShader;
+    /// 捕捉の面ごとの b0。カメラの frameCB を上書きしないために分ける。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightProbeCaptureFrameCB;
+    /// 捕捉で描くマテリアルが読む b8。画面空間 AO など «メインカメラの画面» に依存する項を切った写し。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightProbeCaptureAdvancedCB;
+    /// @}
     /// @}
 };
 
@@ -1642,6 +1705,12 @@ struct RenderPassContext {
     int statsDrawCalls       = 0;
     int statsVertexCount     = 0;
     int statsTriangleCount   = 0;
+    /// 束ねて発行した Instanced Draw の回数と、それによって減ったドロー数。
+    /// @note カメラ視点と影で分けない。«束ねが効いているか» を見る数字で、発行先の区別は
+    ///       statsDrawCalls / statsShadowDrawCalls 側が既に持っているため。
+    /// @see Docs/design/gpu-instancing.md
+    int statsInstancedBatches    = 0;
+    int statsInstancedDrawsSaved = 0;
     /// SkinningComputePass がこのフレームのポーズについて実際に処理した仕事量。
     /// Scene/Game View が結果を共有した場合も、後側のビューへ同じ値を引き継ぐ。
     uint64_t statsSkinningVertexCount = 0;

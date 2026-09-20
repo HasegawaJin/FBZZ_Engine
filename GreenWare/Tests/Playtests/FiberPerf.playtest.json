@@ -1,0 +1,763 @@
+{
+  "name": "FiberPerf",
+  "scene": "Assets/Scenes/Test/FiberSkinning.scene",
+  "lockstep": 0.016666666666666666,
+  "steps": [
+    {
+      "do": "waitUntil",
+      "query": {
+        "t": "editor.state"
+      },
+      "path": "scriptReloadBusy",
+      "op": "==",
+      "value": false,
+      "timeoutFrames": 3600
+    },
+    {
+      "do": "play"
+    },
+    {
+      "do": "frames",
+      "count": 60
+    },
+    {
+      "do": "log",
+      "message": "off"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": false
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "hybrid24"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 2
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 24
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 6
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 2
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 24
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 6
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "shell24"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 0
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 24
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 0
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 24
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "shell24sh24"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 24
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 24
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "shell16"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 16
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 6
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 16
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 6
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "shell8"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 8
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 8
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "fin"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 1
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 1
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "hybrid16lod"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 2
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 16
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "distanceLod",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 6
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 2
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shellCount",
+        "value": 16
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "distanceLod",
+        "value": true
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "shadowShellCount",
+        "value": 6
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "log",
+      "message": "shell16lod"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "0c40e471-57ce-4013-8580-3c9a7c2ebd75",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 0
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "component.set",
+        "id": "64189cfc-518b-4db0-8eea-d173e33a60aa",
+        "comp": "FiberComponent",
+        "field": "mode",
+        "value": 0
+      }
+    },
+    {
+      "do": "frames",
+      "count": 40
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot",
+        "limit": 5
+      }
+    },
+    {
+      "do": "frames",
+      "count": 10
+    },
+    {
+      "do": "stop"
+    }
+  ]
+}

@@ -336,6 +336,13 @@ scene::GameObject* MakeReflectionProbe(EditorContext& ctx)
     return &go;
 }
 
+scene::GameObject* MakeLightProbeVolume(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Light Probe Volume");
+    go.AddComponent<scene::LightProbeVolumeComponent>();
+    return &go;
+}
+
 /// @brief 環境流を有効にする。**GameObject は作らない。**
 /// @return 常に nullptr。生成コマンド (ObjectCreation.cpp) はこれを «シーン設定だけを変えた» と読み、
 ///         Undo で SceneEnvironment を元の値へ戻す。
@@ -1092,6 +1099,7 @@ constexpr ObjectPreset kPresets[] = {
     { "env.volumetricCloud",  "Environment", "Volumetric Cloud",       "ボリューメトリック雲", &MakeVolumetricCloud },
     { "env.postProcess",      "Environment", "Post Process Volume",    "ルック設定 (Post Process Profile を割り当てて使う)", &MakePostProcessVolume },
     { "env.reflectionProbe",  "Environment", "Reflection Probe",       "反射プローブ。周囲をキューブマップへ焼く", &MakeReflectionProbe },
+    { "env.lightProbeVolume", "Environment", "Light Probe Volume",     "箱の中の間接光を球面調和で焼き、拡散環境光を差し替える", &MakeLightProbeVolume },
     { "env.ambientWind",      "Environment", "Ambient Wind",           "シーン設定の環境流を有効にする (GameObject は作らない)。雲・水面・粒子が同じ流れに乗る", &MakeAmbientWind },
     { "env.weather",          "Environment", "Weather",                "天候。雨量と路面の濡れ (雨エミッターを子に持つ)", &MakeWeather },
 

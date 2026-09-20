@@ -220,7 +220,7 @@ bool PhysicsVolumeDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void PhysicsVolumeDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : ctx.scene.GetEntities<VolumeComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         const VolumeComponent* volume = ctx.scene.GetComponent<VolumeComponent>(id);

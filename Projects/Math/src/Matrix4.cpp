@@ -95,6 +95,25 @@ Matrix4 Matrix4::Orthographic(float left, float right,
     return result;
 }
 
+Matrix4 Matrix4::PerspectiveReversedZ(float fovY, float aspect, float nearZ, float farZ) {
+    /// @note Perspective の z 行を (w - z) に置き換えた形。z_ndc = n (f - z) / (z (f - n))。
+    /// @see https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
+    Matrix4 result = Perspective(fovY, aspect, nearZ, farZ);
+    if (!(farZ > nearZ)) farZ = nearZ + 1.0f;
+    result.m[2][2] = -nearZ / (farZ - nearZ);
+    result.m[2][3] = nearZ * farZ / (farZ - nearZ);
+    return result;
+}
+
+Matrix4 Matrix4::OrthographicReversedZ(float left, float right,
+                                       float bottom, float top,
+                                       float nearZ, float farZ) {
+    Matrix4 result = Orthographic(left, right, bottom, top, nearZ, farZ);
+    result.m[2][2] = -1.0f / (farZ - nearZ);
+    result.m[2][3] = farZ / (farZ - nearZ);
+    return result;
+}
+
 namespace {
 
 /// @brief 2x2 行列 (行優先で 1 レジスタに [a0 a1; a2 a3]) の積 A * B。

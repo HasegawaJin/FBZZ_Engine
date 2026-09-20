@@ -2,7 +2,6 @@
 /// @brief   IReflector を TOML テーブルへ読み書きする共通リフレクタ。
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
-///
 /// @note IReflector→toml::table の変換を SceneSerializer/DataAssetRegistry/SaveStore の 3 箇所で共有する。別々に書くと型追加のたびに 3 箇所を直すことになり、対応漏れが無警告のまま保存されなくなる。
 /// @note 実体は scene::IReflector の実装だが、呼び出し側を巻き込まないよう名前空間は fbzz::util のまま据え置く。参照型 (EntityID/アセット GUID) のように文脈が要るものは派生で足す。
 #pragma once
@@ -57,6 +56,10 @@ public:
     void Field(const char* name, math::Quaternion& v) override { Put(name, QuatToArr(v)); }
     void Field(const char* name, scene::ParticleCurve& v) override;
     void Field(const char* name, scene::ParticleGradient& v) override;
+    void Field(const char* name, input::KeyCode& v) override;
+    void AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType type) override;
+    void AssetListField(const char* name, std::vector<scene::ScriptAssetReference>& values, scene::ScriptAssetType type) override;
+    void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override;
 
     void ListField(const char* name, std::vector<float>& values) override;
     void ListField(const char* name, std::vector<int>& values) override;
@@ -109,6 +112,10 @@ public:
     void Field(const char* name, math::Quaternion& v) override { v = ArrToQuat(FindArray(name), v); }
     void Field(const char* name, scene::ParticleCurve& v) override;
     void Field(const char* name, scene::ParticleGradient& v) override;
+    void Field(const char* name, input::KeyCode& v) override;
+    void AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType type) override;
+    void AssetListField(const char* name, std::vector<scene::ScriptAssetReference>& values, scene::ScriptAssetType type) override;
+    void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override;
 
     void ListField(const char* name, std::vector<float>& values) override;
     void ListField(const char* name, std::vector<int>& values) override;

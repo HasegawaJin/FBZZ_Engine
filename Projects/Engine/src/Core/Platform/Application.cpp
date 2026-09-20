@@ -8,6 +8,8 @@
 #include <Windows.h>
 #include <timeapi.h>
 #include "Engine/Core/Application.hpp"
+#include "Engine/Asset/AssetStreaming.hpp"
+#include "Engine/Asset/StreamedTextureResolver.hpp"
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Core/IModule.hpp"
 #include "Engine/Core/Logger.hpp"
@@ -293,6 +295,16 @@ void Application::Run(IModule& module) {
             m_memorySystem.EndFrame();
             Quit();
             break;
+        }
+
+        /// @note 非同期アセットの完了回収と公開はフレーム境界で行う。Scene 更新と描画記録より前、
+        ///       レンダラーのフレーム外に置くので、このフレームの描画は公開済みの実体だけを見る。
+        /// @see Docs/design/asset-streaming.md «責務とスレッド境界»
+        {
+            FBZZ_PROFILE_SCOPE("AssetStreamer::Pump");
+            asset::AssetStreamer::Engine().Pump();
+            /// @note 前のフレームで描画が引かなかったテクスチャの利用権を手放す。解放は台帳の猶予と予算が決める。
+            asset::StreamedTextureResolver::Engine().EndFrame();
         }
 
         const float dt = Time::deltaTime;

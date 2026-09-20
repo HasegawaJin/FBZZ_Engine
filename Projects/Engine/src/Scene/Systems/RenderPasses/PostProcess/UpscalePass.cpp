@@ -17,10 +17,15 @@ void ExecuteUpscalePass(RenderPassContext& ctx)
     const auto src = ctx.resources.GetColorTexture(ctx.chainOutputRT, 0);
     if (!src.IsValid()) return;
 
-    /// @note 拡大は Catmull-Rom、縮小 (renderScale > 1 のスーパーサンプリング) は素の linear。
+    /// @note 拡大は Catmull-Rom、縮小 (renderScale > 1 のスーパーサンプリング) は足跡の箱型平均。
     ///       Catmull-Rom の負の重みは縮小側だとシャープ化になり、落としたエイリアスを縁に呼び戻すため。
+    ///       双線形 1 タップの縮小は倍率が 2 を超えると入力を読み飛ばすので、平均する専用シェーダーを使う。
     const bool magnify = ctx.width < ctx.outputWidth || ctx.height < ctx.outputHeight;
-    const auto shader  = (magnify && h.upscaleShader.IsValid()) ? h.upscaleShader : h.copyColorShader;
+    auto shader = h.copyColorShader;
+    if (magnify && h.upscaleShader.IsValid())
+        shader = h.upscaleShader;
+    else if (!magnify && h.downscaleShader.IsValid())
+        shader = h.downscaleShader;
     if (!shader.IsValid()) return;
 
     ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);

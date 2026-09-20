@@ -10,6 +10,7 @@
 /// @note を分割数ぶん繰り返すだけになっている。
 #include "GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
+#include <Engine/Scene/Systems/RenderPasses/InstanceBatch.hpp>
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -312,31 +313,33 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx,
 /// @brief EmitShadowCasters — 収集済み caster のうち、指定ビューに属するものを描画する。
 /// @param punctual false なら cascadeMask の bit viewIndex を、true なら punctualMask を見る。
 /// @pre 配列は呼び出し前にソート済みであること (`ComputeLightDepthKey` 参照。ソートは 1 回でよい)。
-/// @note PerObjectCB は 1 本を使い回すため、更新と Submit は必ず交互に行う。同一オブジェクトの
-/// @note 連続 submesh は world が同じなので更新を省ける。
+/// @note b1 は 1 本を使い回すため更新と Submit は交互に行う。同一オブジェクトの連続 submesh は
+/// @note world が同じなので InstanceBatcher が載せ直しを省く。
+/// @note 束ねるのは深度順の並びの中で連続している同一メッシュだけ。並べ替えないので early-Z の
+/// @note 効き方は変わらない (Docs/design/gpu-instancing.md «やらないこと»)。
 void EmitShadowCasters(RenderPassContext& ctx,
                        const std::vector<ShadowCaster>& casters,
                        int viewIndex, bool punctual)
 {
-    auto& resources = ctx.resources;
-    auto& h         = ctx.handles;
+    auto& h = ctx.handles;
 
     const uint32_t viewBit = 1u << viewIndex;
 
-    uint32_t lastObjectId  = 0;
-    bool     hasLastObject = false;
+    /// @note 変種を渡すのは静的メッシュ用のシェーダーで描く caster だけ。VS スキニングへ落ちた
+    ///       caster は shader が違うので prototype が一致せず、束ねられずに 1 件ずつ出る。
+    InstanceBatcher batcher(ctx, h.shadowShader,
+                            ctx.settings.gpuInstancing
+                                ? h.shadowInstancedShader
+                                : renderer::ResourceHandle<renderer::ShaderTag>{},
+                            true);
+
     for (const ShadowCaster& caster : casters) {
         const uint32_t mask = punctual ? caster.punctualMask : caster.cascadeMask;
         if ((mask & viewBit) == 0) continue;
 
-        if (!hasLastObject || caster.objectId != lastObjectId) {
-            PerObjectCB objData{};
-            objData.world          = caster.world;
-            objData.objectParams.x = caster.lodDither;
-            resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
-            lastObjectId  = caster.objectId;
-            hasLastObject = true;
-        }
+        PerObjectCB objData{};
+        objData.world          = caster.world;
+        objData.objectParams.x = caster.lodDither;
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = caster.vertexBuffer;
@@ -345,11 +348,12 @@ void EmitShadowCasters(RenderPassContext& ctx,
         dc.shader             = caster.shader;
         dc.pipelineState      = h.defaultPSO;
         dc.constantBuffers[0] = h.frameCB;
-        dc.constantBuffers[1] = h.objectCB;
         if (caster.skinningCB.IsValid())
             dc.constantBuffers[7] = caster.skinningCB;
-        SubmitCountedShadow(ctx, dc);
+        /// @note VS スキニングの caster は b1 の world も使うが、束ねないので従来どおり載る。
+        batcher.Add(dc, objData);
     }
+    batcher.Flush();
 }
 
 /// @note RenderShadowCascade — カスケード 1 枚をアトラスの担当タイルへ描く。

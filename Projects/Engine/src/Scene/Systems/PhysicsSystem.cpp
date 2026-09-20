@@ -130,9 +130,7 @@ physics::VolumeHandle SyncFlowVolume(Scene& scene, physics::World& world,
     /// @note channels は全ビット。剛体にはチャンネルの申告が無いので «どの場も受ける»。
     /// @note 時刻を捕まえ時に固定するのは、Curl のスクロールが substep ごとに進むと
     ///       同じフレームの中で場が動いてしまうため。
-    desc.flowVelocity = [fields = frame.fields, time = Time::time](const math::Vector3& p) {
-        return SampleFlow(p, *fields, 0xFFFFFFFFu, time);
-    };
+    desc.flowVelocity = MakeFlowSampler(frame, {}, Time::time);
     return world.SyncVolume(handle, std::make_unique<physics::FlowVolume>(std::move(desc)));
 }
 
@@ -376,7 +374,7 @@ void DispatchCollisionEvents(Scene& scene,
     }
 }
 
-} // namespace
+}
 
 ComponentAccess PhysicsSystem::GetAccess() const
 {
@@ -522,4 +520,4 @@ void PhysicsSystem::Update(SystemContext& ctx) {
     }
 }
 
-} // namespace fbzz::scene
+}

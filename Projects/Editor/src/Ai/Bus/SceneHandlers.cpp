@@ -17,6 +17,9 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Renderer/IShader.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -149,6 +152,7 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
                 match.Set("name", JsonValue(go->name));
                 match.Set("tag", JsonValue(go->tag));
                 match.Set("active", JsonValue(go->activeSelf()));
+                match.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
                 match.Set("layer", JsonValue(go->layer));
                 match.Set("path", JsonValue(nodePath));
                 if (GameObject* parent = go->GetParent()) match.Set("parent", JsonValue(parent->instanceId));
@@ -218,6 +222,7 @@ JsonValue BuildSceneSnapshot(scene::Scene& activeScene)
         node.Set("name", JsonValue(go.name));
         node.Set("tag", JsonValue(go.tag));
         node.Set("active", JsonValue(go.activeSelf()));
+        node.Set("activeInHierarchy", JsonValue(go.activeInHierarchy()));
         node.Set("layer", JsonValue(go.layer));
         if (GameObject* parent = go.GetParent()) node.Set("parent", JsonValue(parent->instanceId));
 
@@ -357,6 +362,11 @@ Outcome DoMaterialInspect(editor::EditorContext& ctx, const JsonValue& payload)
         for (float element : values) value.Push(JsonValue(element));
         overrides.Set(name, std::move(value));
     }
+    for (const auto& [name, values] : material->integerParamOverrides) {
+        JsonValue value = JsonValue::MakeArray();
+        for (const int64_t element : values) value.Push(JsonValue(static_cast<double>(element)));
+        overrides.Set(name, std::move(value));
+    }
     JsonValue result = JsonValue::MakeObject();
     result.Set("id", JsonValue(id));
     result.Set("materialPath", JsonValue(material->materialPath));
@@ -455,7 +465,7 @@ Outcome DoSceneValidate(editor::EditorContext& ctx)
 
 /// @note mutating Command は `ICommand` へ変換してから Undo に載せる (ここでは実行しない)。失敗時は nullptr + err。
 /// @note createdSink は生成系 Command が代表ルートの instanceId を書き込む先。detailSink は改名や budget 引き上げなど
-///       「適用の副作用」を応答へ伝える先で、黙って起きる変更は必ずここへ載せる。
+/// @note 「適用の副作用」を応答へ伝える先で、黙って起きる変更は必ずここへ載せる。
 
 /// @name ワールドオーサリング (Scene 入出力 / Terrain / NavMesh / Environment / Audio / UI / Build)
 /// @note 地形・NavMesh・空と光の設定はブラシとベイクでしか変えられず component.set では読めないため、ここに集約する。
@@ -664,7 +674,7 @@ std::unique_ptr<ICommand> BuildPresetCreateCommand([[maybe_unused]] editor::Edit
 
     /// @name Create プリセット
     /// @note Hierarchy・GameObject メニュー・node.create_preset Operator と同じ MakeCreateObjectCommand を通す。
-    ///       Operator を直接呼ばないのは、dryRun と transaction では適用を UndoStack::Execute に任せる必要があるため。
+    /// @note Operator を直接呼ばないのは、dryRun と transaction では適用を UndoStack::Execute に任せる必要があるため。
     if (type == "preset.create") {
         editor::CreateObjectRequest request;
         request.source      = editor::CreateObjectSource::Preset;
@@ -849,7 +859,7 @@ std::unique_ptr<ICommand> BuildPrefabCreateCommand([[maybe_unused]] editor::Edit
 
     if (type == "prefab.create") {
         /// @note 選択 (または payload.ids) から `.prefab` を作りソースをインスタンス接続する。
-        ///       Hierarchy / AssetBrowser D&D と同じ SaveSelectionAndConnect を通すため、青色表示・Apply/Revert 接続も自動で付く。
+        /// @note Hierarchy / AssetBrowser D&D と同じ SaveSelectionAndConnect を通すため、青色表示・Apply/Revert 接続も自動で付く。
         namespace fs = std::filesystem;
         if (ctx.projectRoot.empty()) {
             err = Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
@@ -1112,30 +1122,56 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
         if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
         auto* material = go->GetComponent<scene::MaterialComponent>();
         if (material == nullptr) { err = Outcome::Err("NOT_PRESENT", "MaterialComponent が装着されていません"); return nullptr; }
-        if (parameter.empty() || value == nullptr || !value->IsArray() || value->AsArray().empty() || value->AsArray().size() > 4) {
-            err = Outcome::Err("BAD_ARG", "parameter と1〜4要素の value が必要です");
+        if (parameter.empty() || value == nullptr || !value->IsArray() || value->AsArray().empty() || value->AsArray().size() > 16384) {
+            err = Outcome::Err("BAD_ARG", "parameter と1〜16384要素の value が必要です");
             return nullptr;
         }
-        std::vector<float> newValue;
+        std::vector<double> newValue;
         for (const JsonValue& element : value->AsArray()) {
             if (!element.IsNumber()) { err = Outcome::Err("BAD_ARG", "value は数値配列です"); return nullptr; }
-            newValue.push_back(static_cast<float>(element.AsNumber()));
+            newValue.push_back(element.AsNumber());
         }
-        const auto oldIterator = material->paramOverrides.find(parameter);
-        const bool hadOldValue = oldIterator != material->paramOverrides.end();
-        const std::vector<float> oldValue = hadOldValue ? oldIterator->second : std::vector<float>{};
+        if (!ctx.resources || !material->EnsureMaterialAsset()) {
+            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material と Shader の読み込みが必要です"); return nullptr;
+        }
+        const auto handle = ctx.resources->LoadShader(material->GetShaderPath());
+        const auto* shader = ctx.resources->Get(handle);
+        const auto* variable = shader ? shader->GetDescriptor().FindVar(parameter) : nullptr;
+        if (!variable || !asset::ValidateMaterialValues(*variable, newValue)) {
+            err = Outcome::Err("MATERIAL_TYPE_MISMATCH", "shader.inspect の writable/type/components と値の範囲を確認してください");
+            return nullptr;
+        }
+        const bool integer = variable->varType != renderer::ShaderVarType::Float;
+        const auto oldFloat = material->paramOverrides.find(parameter);
+        const auto oldInteger = material->integerParamOverrides.find(parameter);
+        const bool hadFloat = oldFloat != material->paramOverrides.end();
+        const bool hadInteger = oldInteger != material->integerParamOverrides.end();
+        const auto floatValue = hadFloat ? oldFloat->second : std::vector<float>{};
+        const auto integerValue = hadInteger ? oldInteger->second : std::vector<int64_t>{};
         return std::make_unique<LambdaCommand>("AI: Override Material Parameter",
-            [scene, id, parameter, newValue, markDirty]() {
+            [scene, id, parameter, newValue, integer, markDirty]() {
                 if (GameObject* target = scene->FindByGuid(id)) {
-                    if (auto* component = target->GetComponent<scene::MaterialComponent>()) component->paramOverrides[parameter] = newValue;
+                    if (auto* component = target->GetComponent<scene::MaterialComponent>()) {
+                        component->paramOverrides.erase(parameter);
+                        component->integerParamOverrides.erase(parameter);
+                        if (integer) {
+                            auto& values = component->integerParamOverrides[parameter];
+                            for (const double value : newValue) values.push_back(static_cast<int64_t>(value));
+                        } else {
+                            auto& values = component->paramOverrides[parameter];
+                            for (const double value : newValue) values.push_back(static_cast<float>(value));
+                        }
+                    }
                 }
                 markDirty();
             },
-            [scene, id, parameter, hadOldValue, oldValue, markDirty]() {
+            [scene, id, parameter, hadFloat, hadInteger, floatValue, integerValue, markDirty]() {
                 if (GameObject* target = scene->FindByGuid(id)) {
                     if (auto* component = target->GetComponent<scene::MaterialComponent>()) {
-                        if (hadOldValue) component->paramOverrides[parameter] = oldValue;
+                        if (hadFloat) component->paramOverrides[parameter] = floatValue;
                         else component->paramOverrides.erase(parameter);
+                        if (hadInteger) component->integerParamOverrides[parameter] = integerValue;
+                        else component->integerParamOverrides.erase(parameter);
                     }
                 }
                 markDirty();
@@ -1455,7 +1491,7 @@ std::unique_ptr<ICommand> BuildComponentAddCommand([[maybe_unused]] editor::Edit
         if (!info.known)   { err = Outcome::Err("UNKNOWN_COMPONENT", "未知のコンポーネント: " + comp); return nullptr; }
         if (!info.addable) { err = Outcome::Err("NOT_ADDABLE", "追加できないコンポーネント: " + comp); return nullptr; }
         /// @note Inspector の Add Component と同じ既定値・依存で付ける。Undo は依存も含めて増えた型だけを外す
-        ///       (元から在ったものは消さない)。
+        /// @note (元から在ったものは消さない)。
         auto added = std::make_shared<std::vector<std::string>>();
         return std::make_unique<LambdaCommand>("AI: Add Component",
             [scene, id, comp, added, markDirty]() {
@@ -1590,7 +1626,7 @@ Outcome DoSceneTreeQuery(editor::EditorContext& ctx, const JsonValue& payload)
     if (activeScene == nullptr) { outcome = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); }
     else {
         /// @note includeGenerated: 実行時に作られた GO (VFX ノード実体、Water splash) をツリーへ含めるか。既定は含めない。
-        ///       生成物は編集しても保存されないため、混ぜると context を無駄に消費するだけの編集を誘発する。
+        /// @note 生成物は編集しても保存されないため、混ぜると context を無駄に消費するだけの編集を誘発する。
         const JsonValue* includeValue = payload.Find("includeGenerated");
         const bool includeGenerated = includeValue != nullptr && includeValue->AsBool();
         struct Builder {
@@ -1600,6 +1636,7 @@ Outcome DoSceneTreeQuery(editor::EditorContext& ctx, const JsonValue& payload)
                 node.Set("name", JsonValue(go->name));
                 node.Set("tag", JsonValue(go->tag));
                 node.Set("active", JsonValue(go->activeSelf()));
+                node.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
                 node.Set("layer", JsonValue(go->layer));
                 /// @note 生成物を含める指定のときだけ印を付ける。既定応答では常に false になるため出さず冗長さを避ける。
                 if (includeGenerated && go->runtimeGenerated)
@@ -1649,6 +1686,7 @@ Outcome DoNodeComponentsQuery(editor::EditorContext& ctx, const JsonValue& paylo
         result.Set("name", JsonValue(go->name));
         result.Set("tag", JsonValue(go->tag));
         result.Set("active", JsonValue(go->activeSelf()));
+        result.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         result.Set("layer", JsonValue(go->layer));
         result.Set("components", SnapshotComponents(*go));
         outcome = Outcome::Ok(std::move(result));

@@ -32,7 +32,7 @@ void ExecuteContactShadowsPass(RenderPassContext& ctx)
     csDC.shader             = h.contactShadowShader;
     /// @note b0: CameraConstants (projection, invProjection)
     csDC.constantBuffers[0] = h.frameCB;
-    /// @note b3: LightConstants (lightDir in view space)
+    /// @note b3: LightConstants (lightDir はワールド空間。シェーダーが view でビュー空間へ回す)
     csDC.constantBuffers[3] = h.lightCB;
     /// @note b8: contactShadowStrength/rayLen/steps/thick
     csDC.constantBuffers[8] = h.advancedGraphicsCB;

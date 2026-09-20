@@ -406,7 +406,7 @@ private:
     [[nodiscard]] SerpentSpineComponent* Spine() const { return scene.GetScript<SerpentSpineComponent>(); }
     [[nodiscard]] SerpentBodyComponent*  Body()  const { return scene.GetScript<SerpentBodyComponent>(); }
     [[nodiscard]] SerpentApertureComponent* Aperture() const;
-    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag); }
+    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag, true); }
     [[nodiscard]] bool IsAlive() const;
 
     void Enter(State state, float timer = 0.0f);
@@ -729,7 +729,7 @@ inline SerpentApertureComponent* SerpentAiComponent::Aperture() const
     /// @note 保持しない: 口はマップ側 (Boss02_Arena_Map) に居るためどちらの OnStart が
     ///       先に走るかはシーンの並び次第。開始時に1度掴んで持ち続けると、並び順を
     ///       変えただけで口が一切開かなくなる。
-    GameObject* map = scene.FindObjectOfType<SerpentApertureComponent>();
+    GameObject* map = scene.FindObjectOfType<SerpentApertureComponent>(true);
     return map ? scene.GetScript<SerpentApertureComponent>(map) : nullptr;
 }
 
@@ -973,7 +973,7 @@ inline bool SerpentAiComponent::HoleBlocked(const std::string& hole) const
     if (!aperture || debrisBlockRadius <= 0.0f) return false;
 
     const Vector3 center = aperture->HoleCenter(hole);
-    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         const auto* part = scene.GetScript<BossPartDebrisComponent>(object);
         /// @note 飛んでいる最中・吸い上げられている最中の節は栓にならない。床に居るものだけ。
@@ -995,7 +995,7 @@ inline int SerpentAiComponent::LaunchDebrisNear(const Vector3& point, float radi
     const Vector3 target = player->transform.worldPosition;
 
     int fired = 0;
-    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartDebrisComponent>(object);
         if (!part || !part->IsResting()) continue;
@@ -1102,7 +1102,7 @@ inline void SerpentAiComponent::ScanOthers() const
     m_othersScanned = true;
 
     const GameObject* self = scene.Self();
-    for (GameObject* object : scene.FindObjectsOfType<SerpentAiComponent>())
+    for (GameObject* object : scene.FindObjectsOfType<SerpentAiComponent>(true))
         if (object && object != self) m_others.push_back(EntityRef{ object->GetID() });
 }
 
@@ -1438,7 +1438,7 @@ inline GameObject* SerpentAiComponent::EnsureDecal(int slot)
     /// @note 先に拾い直す: DLL リロードで Script は作り直され EntityRef は空へ戻るが、
     ///       デカールの GameObject は Scene に残る。無条件に作るとリロードのたびに
     ///       1枚ずつ増えていく。
-    GameObject* object = scene.Find(name);
+    GameObject* object = scene.Find(name, true);
     if (!object) {
         /// @note 蛇の子にしない: 予兆はワールドの形で、子にすると胴の向きを引き継いで
         ///       帯が振り回される。

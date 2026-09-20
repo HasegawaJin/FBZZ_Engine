@@ -15,6 +15,7 @@ import {
   type HubTheme,
   type SdkBuildConfiguration,
 } from '../shared/contracts';
+import { EMPTY_UPDATE_STATE, type UpdateState } from './updateChecker';
 
 export interface ConfigProject {
   path: string;
@@ -24,6 +25,7 @@ export interface ConfigProject {
 interface HubConfig {
   settings: HubSettings;
   projects: ConfigProject[];
+  update: UpdateState;
 }
 
 const DEFAULT_CONFIG: HubConfig = {
@@ -33,8 +35,10 @@ const DEFAULT_CONFIG: HubConfig = {
     sdkId: '',
     sdkConfiguration: 'Development',
     theme: 'modern',
+    checkForUpdates: true,
   },
   projects: [],
+  update: { ...EMPTY_UPDATE_STATE },
 };
 
 function asString(value: unknown): string {
@@ -67,8 +71,8 @@ async function isSdkRoot(candidate: string): Promise<boolean> {
 /**
  * sdk_idから互換判定に使うEngine versionを取り出す。
  * SDKはversionごとに1つだけ公開されるため、versionが一致すれば同じSDKを指す。
- * WHY: 旧方式のプロジェクトは`0.1.0-dev.<rev>`のような世代IDをpinしている。
- *      版が同じなら現行の`0.1.0`へ解決し、.fbzz_projを書き換えずに開けるようにする。
+ * @note 旧方式のプロジェクトは`0.1.0-dev.<rev>`のような世代IDをpinしている。
+ *       版が同じなら現行の`0.1.0`へ解決し、.fbzz_projを書き換えずに開けるようにする。
  */
 function sdkVersionOf(sdkId: string): string {
   return sdkId.trim().split('-')[0] ?? '';
@@ -179,6 +183,7 @@ export class ConfigStore {
     try {
       const document = parse(await readFile(this.configPath, 'utf8')) as Record<string, unknown>;
       const hub = (document.hub ?? {}) as Record<string, unknown>;
+      const update = (document.update ?? {}) as Record<string, unknown>;
       const rawProjects = Array.isArray(document.projects) ? document.projects : [];
 
       this.config = {
@@ -188,6 +193,14 @@ export class ConfigStore {
           sdkId: asString(hub.sdk_id),
           sdkConfiguration: asSdkConfiguration(hub.sdk_configuration),
           theme: asTheme(hub.theme),
+          checkForUpdates: update.check !== false,
+        },
+        update: {
+          lastCheckedAt: asString(update.last_checked_at),
+          latestVersion: asString(update.latest_version),
+          latestUrl: asString(update.latest_url),
+          latestNotes: asString(update.latest_notes),
+          dismissedVersion: asString(update.dismissed_version),
         },
         projects: rawProjects.flatMap((item) => {
           if (!item || typeof item !== 'object') return [];
@@ -242,7 +255,14 @@ export class ConfigStore {
       sdkId,
       sdkConfiguration: asSdkConfiguration(settings.sdkConfiguration),
       theme: asTheme(settings.theme),
+      checkForUpdates: settings.checkForUpdates !== false,
     };
+    await this.save();
+  }
+
+  /** 新しい版の問い合わせ結果を差し替えて保存する。 */
+  async setUpdateState(update: UpdateState): Promise<void> {
+    this.config.update = { ...update };
     await this.save();
   }
 
@@ -312,6 +332,14 @@ export class ConfigStore {
         sdk_id: this.config.settings.sdkId,
         sdk_configuration: this.config.settings.sdkConfiguration,
         theme: this.config.settings.theme,
+      },
+      update: {
+        check: this.config.settings.checkForUpdates,
+        last_checked_at: this.config.update.lastCheckedAt,
+        latest_version: this.config.update.latestVersion,
+        latest_url: this.config.update.latestUrl,
+        latest_notes: this.config.update.latestNotes,
+        dismissed_version: this.config.update.dismissedVersion,
       },
       projects: this.config.projects.map((project) => ({
         path: project.path,

@@ -36,7 +36,8 @@ FBZZ_TEX2D_T(float, texDepth, 7);
 // Deferred 深度の転写後に Forward 不透明物を書き込んだ最終シーン深度
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_SCENE_DEPTH_SLOT);
 
-SamplerState       sampDefault : register(s0);
+/// @note 全画面フェッチなので clamp (s0 は DX12 では WRAP で、画面端が反対側の色を拾う)。
+SamplerState       sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 // SSR 出力 (UAV_SSR = u3)
 FBZZ_RWTEX2D_T(float4, OutputSSR, 3);
@@ -88,15 +89,16 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // Forward 描画された不透明物が反射面より手前にあるピクセルでは SSR を合成しない。
     // WHY: SkinnedMeshRenderer は GBuffer 後に HDR へ描かれるため、GBuffer 深度だけでは Player の遮蔽を検出できない。
+    /// @note カメラ深度は Reversed-Z なので «手前» は値が大きい側。
     float sceneNdcDepth = texSceneDepth.Load(int3(id.xy, 0)).r;
-    if (sceneNdcDepth + 1e-5f < ndcDepth)
+    if (sceneNdcDepth - 1e-5f > ndcDepth)
     {
         OutputSSR[id.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
-    // 深度 = 1.0 はスカイボックス — 反射不要
-    if (ndcDepth >= 1.0f)
+    /// @note 最遠 (Reversed-Z で 0) はスカイボックス。反射不要。
+    if (IsFarDepth(ndcDepth))
     {
         OutputSSR[id.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
@@ -108,7 +110,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
 
     // カメラ → サーフェスの視線ベクトル (正規化)
-    float3 V = normalize(worldPos - cameraPos);
+    /// @note 平行投影では視線が全画素で同じ (カメラ前方)。視空間 +Z をワールドへ戻す。
+    float3 V = isOrthographic > 0.5f
+        ? normalize(mul((float3x3)view, float3(0.0f, 0.0f, 1.0f)))
+        : normalize(worldPos - cameraPos);
 
     // ---- 反射レイの生成 -----------------------------------------------------
 
@@ -183,7 +188,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float sampleDepthLinear = LinearizeDepth(sampleNdcDepth, nearZ, farZ, isOrthographic);
         // 透視投影後の補間率からビュー深度を逆数補間する。
         // WHY: UV を線形補間してもビュー深度は線形でないため、遠近補正なしでは交差位置がずれる。
-        float rayDepthLinear = rcp(lerp(rcp(rayOriginVS.z), rcp(rayEndVS.z), traceRatio));
+        /// @note 平行投影では画面上の補間がそのまま視空間 Z の補間になる。
+        float rayDepthLinear = isOrthographic > 0.5f
+            ? lerp(rayOriginVS.z, rayEndVS.z, traceRatio)
+            : rcp(lerp(rcp(rayOriginVS.z), rcp(rayEndVS.z), traceRatio));
 
         // 1 ステップ分の深度移動を交差幅に含め、深度帯の飛び越しを防ぐ。
         float hitThickness = max(ssrThickness, abs(rayDepthLinear - previousRayDepth));

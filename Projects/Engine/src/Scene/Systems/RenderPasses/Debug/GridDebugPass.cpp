@@ -29,7 +29,7 @@ void GridDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kAxisColorX = { 0.60f, 0.18f, 0.18f, 1.0f };
     constexpr math::Vector4 kAxisColorZ = { 0.18f, 0.18f, 0.60f, 1.0f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     const float extent = static_cast<float>(kHalfCount) * kCellSize;
     for (int i = -kHalfCount; i <= kHalfCount; ++i) {
         const float offset = static_cast<float>(i) * kCellSize;

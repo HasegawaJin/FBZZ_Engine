@@ -24,7 +24,7 @@ void DecalDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kBoxColor   = { 1.0f, 0.5f, 0.0f, 1.0f };
     constexpr math::Vector4 kArrowColor = { 1.0f, 0.8f, 0.0f, 1.0f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;

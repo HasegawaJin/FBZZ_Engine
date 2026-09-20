@@ -9,18 +9,23 @@ shader = 'guid:aef89576fbea4916a2a3905f4ef1ead5|Assets/Shaders/Fiber/FiberShell.
 version = 1
 
 [params]
+clumpTwist = 0.25
+clumping = 0.3499999940395355
+colorVariation = 0.20000000298023224
 fiberDensity = 1.0
-fiberFrequency = 100.0
-fiberLength = 0.23999999463558197
-fiberTaper = 0.8500000238418579
+fiberFrequency = 95.80999755859375
+fiberLength = 0.23000000417232513
+fiberTaper = 5.0
 fiberThickness = 3.0
 finSilhouetteWidth = 0.3499999940395355
 grassShading = 0.0
-gravityBend = 0.009999999776482582
+gravityBend = 2.2799999713897705
 maxBend = 0.03999999910593033
 rootColor = [ 1.0, 0.6638297438621521, 0.0, 1.0 ]
 rootOcclusion = 0.6499999761581421
 roughness = 0.5
+secondarySpecular = 0.6000000238418579
+specularShift = 0.11999999731779099
 specularStrength = 0.25
 tipColor = [ 0.38723403215408325, 0.18063442409038544, 0.0049434080719947815, 1.0 ]
 transmission = 0.0

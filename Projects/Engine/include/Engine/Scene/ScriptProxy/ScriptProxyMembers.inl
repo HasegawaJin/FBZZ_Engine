@@ -74,3 +74,5 @@ FBZZ_PROXY_MEMBER(ScriptSpringBoneProxy,    springBone)
 FBZZ_PROXY_MEMBER(ScriptRagdollProxy,       ragdoll)
 /// 剛体の関節。制約の実体は World が持つので、ここからは宣言 (JointComponent) を触る。
 FBZZ_PROXY_MEMBER(ScriptJointProxy,         joint)
+/// アセットの非同期読み込み・先読み。要求はスクリプトの破棄で手放される。
+FBZZ_PROXY_MEMBER(ScriptAssetProxy,         assets)

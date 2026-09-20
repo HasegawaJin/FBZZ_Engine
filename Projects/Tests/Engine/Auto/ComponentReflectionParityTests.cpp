@@ -38,6 +38,7 @@
 #include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
 #include <Engine/Scene/Components/RagdollComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
@@ -314,6 +315,60 @@ TEST_F(ComponentReflectionParityTest, AFoldedComponentKeepsItsValues)
     EXPECT_NEAR(restored->intensity, 2.25f, testkit::kTolerance);
     EXPECT_NEAR(restored->influenceRadius, 17.5f, testkit::kTolerance);
     EXPECT_EQ(restored->cubemapPath, "Assets/Ibl/Room.dds");
+}
+
+/// @note Light Probe Volume は設定だけを運ぶ。焼いた結果と焼きの要求はランタイム値で、
+///       読み直したシーンは «未ベイク» から自動で焼き直す (古い GPU ハンドルを復元しない)。
+TEST_F(ComponentReflectionParityTest, LightProbeVolumeKeepsSettingsButNotBakeState)
+{
+    scene::Scene source;
+    scene::GameObject& go = source.CreateGameObject("GI");
+
+    scene::LightProbeVolumeComponent volume{};
+    volume.boxExtents     = { 6.0f, 3.0f, 4.0f };
+    volume.probeCountX    = 12;
+    volume.probeCountY    = 5;
+    volume.probeCountZ    = 9;
+    volume.intensity      = 1.5f;
+    volume.bounces        = 3;
+    volume.realtimeUpdate = true;
+    volume.bakeRequested  = true;
+    volume.runtimeReady   = true;
+    go.AddComponent<scene::LightProbeVolumeComponent>(volume);
+
+    const std::string text = scene::SceneSerializer::SaveToText(source);
+    ASSERT_FALSE(text.empty());
+    EXPECT_EQ(text.find("bakeRequested"), std::string::npos);
+    EXPECT_EQ(text.find("runtime"), std::string::npos);
+
+    std::unique_ptr<scene::Scene> loaded = scene::SceneSerializer::LoadDataFromText(text, "");
+    ASSERT_NE(loaded, nullptr);
+    const scene::LightProbeVolumeComponent* restored = nullptr;
+    for (auto& candidate : loaded->GameObjects())
+        if (candidate.name == "GI") restored = candidate.GetComponent<scene::LightProbeVolumeComponent>();
+    ASSERT_NE(restored, nullptr);
+    EXPECT_VEC3_NEAR(restored->boxExtents, math::Vector3(6.0f, 3.0f, 4.0f), testkit::kTolerance);
+    EXPECT_EQ(restored->probeCountX, 12);
+    EXPECT_EQ(restored->probeCountY, 5);
+    EXPECT_EQ(restored->probeCountZ, 9);
+    EXPECT_NEAR(restored->intensity, 1.5f, testkit::kTolerance);
+    EXPECT_EQ(restored->bounces, 3);
+    EXPECT_TRUE(restored->realtimeUpdate);
+    EXPECT_FALSE(restored->bakeRequested);
+    EXPECT_FALSE(restored->runtimeReady);
+}
+
+TEST_F(ComponentReflectionParityTest, LightProbeVolumeClampsItsGrid)
+{
+    scene::LightProbeVolumeComponent volume{};
+    volume.probeCountX = 0;
+    volume.probeCountY = 500;
+    volume.probeCountZ = -3;
+    const auto grid = volume.ClampedGrid();
+    EXPECT_EQ(grid[0], 1);
+    EXPECT_EQ(grid[1], 32);
+    EXPECT_EQ(grid[2], 1);
+    EXPECT_EQ(volume.ProbeCount(), 32);
 }
 
 /// @name 廃止コンポーネントの移行

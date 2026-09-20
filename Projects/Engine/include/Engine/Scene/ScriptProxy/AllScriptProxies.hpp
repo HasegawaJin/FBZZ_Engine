@@ -59,3 +59,4 @@
 #include <Engine/Scene/ScriptProxy/ScriptSpringBoneProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptRagdollProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptJointProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptAssetProxy.hpp>

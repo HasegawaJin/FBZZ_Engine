@@ -24,7 +24,8 @@ FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     float ndcDepth = g_depth.Sample(sampDepth, p.uv).r;
-    if (ndcDepth >= 0.9999f)
+    /// @note 空 (Reversed-Z で深度 0) にはコースティクスを落とさない。
+    if (IsFarDepth(ndcDepth))
     {
         return float4(0.0f, 0.0f, 0.0f, 1.0f);
     }

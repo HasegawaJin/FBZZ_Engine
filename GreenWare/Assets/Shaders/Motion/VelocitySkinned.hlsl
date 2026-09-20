@@ -25,6 +25,22 @@ cbuffer ObjectConstants : register(CB_OBJECT)
 #include "Common/Structs.hlsli"
 #include "Common/Space.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Common/BindlessIndices.hlsli"
+
+/// @note t7 = 完成したシーン深度 (Reversed-Z)。静止物は速度を描かないので、Velocity RT 自身の深度には居ない。
+FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
+
+/// @brief 静止物の裏に隠れた画素を捨てる。捨てないと手前の壁に奥の物体の速度が書かれ、壁がぶれる。
+/// @note 本描画はジッター込み、速度はジッター無しで描くので深度がわずかにずれる。視空間で 1% + 2 cm の余裕を取る。
+void DiscardIfOccludedByScene(float4 svPosition)
+{
+    const float sceneDepth = texSceneDepth.Load(int3(int2(svPosition.xy), 0));
+    if (IsFarDepth(sceneDepth)) return;
+    const float fragZ  = LinearizeDepth(svPosition.z, nearZ, farZ, isOrthographic);
+    const float sceneZ = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+    if (fragZ > sceneZ * 1.01f + 0.02f)
+        discard;
+}
 
 cbuffer PrevSkinningConstants : register(CB_PREV_SKINNING)
 {
@@ -70,6 +86,7 @@ VelocityPSInput VSMain(SkinnedVSInput v)
 
 float4 PSMain(VelocityPSInput p) : SV_Target0
 {
+    DiscardIfOccludedByScene(p.svPosition);
     if (abs(p.currClip.w) < 1.0e-6f || abs(p.prevClip.w) < 1.0e-6f)
         return float4(0.0f, 0.0f, 1.0f, 0.0f);
 

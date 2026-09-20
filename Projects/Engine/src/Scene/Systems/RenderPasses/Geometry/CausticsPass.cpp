@@ -42,8 +42,13 @@ struct CausticsSource {
 CausticsSource FindCausticsSource(RenderPassContext& ctx)
 {
     CausticsSource result{};
-    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
-        if (!water.enabled) continue;
+    /// @note 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
+    for (const EntityID waterId : ctx.scene.GetEntities<WaterComponent>()) {
+        const GameObject* waterObject = ctx.scene.GetGameObject(waterId);
+        const auto* waterPtr = ctx.scene.GetComponent<WaterComponent>(waterId);
+        if (!waterObject || !waterPtr || !waterPtr->enabled || !waterObject->activeInHierarchy()) continue;
+        const WaterComponent& water = *waterPtr;
+        const Transform& transform = waterObject->transform;
 
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {
@@ -151,7 +156,7 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
         depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     }
 
-    (void)s_causticsDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, 0);
+    (void)s_causticsDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, renderer::CameraDepthTargetDesc(0));
 
     renderer::ResourceHandle<renderer::TextureTag> causticsTex = fallbackCaustics;
     if (!source.texturePath.empty()) {

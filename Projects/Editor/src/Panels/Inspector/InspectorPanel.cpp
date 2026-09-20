@@ -582,6 +582,12 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     const widgets::ComponentBodyScope headerCard = widgets::BeginCard();
     ImGui::Spacing();
 
+    /// @note 自分は有効でも親が無効なら、下のコンポーネントは全部止まっている。チェックが入ったままなので、理由を 1 行で出す。
+    if (go->activeSelf() && !go->activeInHierarchy()) {
+        ImGui::TextColored({ 1.0f, 0.75f, 0.3f, 1.0f }, "親の GameObject が無効なため、この GameObject とコンポーネントは動いていません");
+        ImGui::Spacing();
+    }
+
     /// @note Unity と同じく GameObject 自体の有効状態を名前欄の左で切り替える。activeInHierarchy でなく
     ///       activeSelf を表示するのは、親が無効でも子自身の保存値を編集できる必要があるため
     ///       (activeInHierarchy だと親の状態を誤って上書きする)。

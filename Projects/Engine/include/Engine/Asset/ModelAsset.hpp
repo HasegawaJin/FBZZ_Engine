@@ -57,6 +57,17 @@ struct ModelAsset {
     bool IsSkinned()   const { return skeleton != nullptr; }
     uint32_t LodCount() const { return static_cast<uint32_t>(lods.size()); }
 
+    /// @brief メッシュが常駐している最も高品質な LOD。
+    /// @note 非同期経路は品質段より高品質な LOD のメッシュを持たない (submesh の枠と名前だけ残る)。
+    ///       LOD を選ぶ側は、希望の LOD が未常駐ならこれへ倒す。全部未常駐なら LodCount() を返す。
+    /// @see Docs/design/asset-streaming.md «常駐予算とストリーミング»
+    [[nodiscard]] uint32_t FirstResidentLod() const
+    {
+        for (uint32_t i = 0; i < LodCount(); ++i)
+            for (const SubmeshEntry& submesh : lods[i].submeshes)
+                if (submesh.mesh) return i;
+        return LodCount();
+    }
 };
 
 } // namespace fbzz::asset

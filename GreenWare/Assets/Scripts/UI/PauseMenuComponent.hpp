@@ -156,7 +156,7 @@ inline GameObject* PauseMenuComponent::Child(GameObject* parent, std::string_vie
 
 inline PlayerComponent* PauseMenuComponent::Player() const
 {
-    GameObject* player = scene.FindWithTag("Player");
+    GameObject* player = scene.FindWithTag("Player", true);
     return player ? scene.GetScript<PlayerComponent>(player) : nullptr;
 }
 
@@ -164,10 +164,10 @@ inline void PauseMenuComponent::OnStart()
 {
     se::EnsureSource(scene, "UI");
 
-    m_root    = scene.Find("Pause_Root");
-    m_menu    = scene.Find("Pause_Menu");
-    m_options = scene.Find("Pause_Options");
-    m_title   = scene.Find("Pause_Title");
+    m_root    = scene.Find("Pause_Root", true);
+    m_menu    = scene.Find("Pause_Menu", true);
+    m_options = scene.Find("Pause_Options", true);
+    m_title   = scene.Find("Pause_Title", true);
     if (!m_root || !m_menu) {
         debug.LogError("PauseMenuComponent: Pause_Root / Pause_Menu が見つかりません。"
                        "ポーズは開きません");

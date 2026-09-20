@@ -25,6 +25,7 @@
 #include <Engine/Scene/ScriptValidation.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Window.hpp>
 #include <Engine/Audio/AudioManager.hpp>
@@ -654,6 +655,28 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         /// @note Bloom / FXAA は Post Process Volume + Profile (.fzdata) へ一本化済み。
         ///       Shadow はプロジェクト全体の描画構成なのでここに残す。
         MenuItemOp("render.shadow_enabled", "Shadow");
+        ImGui::Separator();
+        /// @name Developer
+        /// @see Docs/design/developer-mode.md
+        MenuItemOp("developer.toggle_mode", "Developer Mode");
+        if (core::DeveloperMode::IsEnabled() && ImGui::BeginMenu(LOC("Developer"))) {
+            if (ImGui::BeginMenu(LOC("Crash"))) {
+                const auto crashItem = [this](const char* kind, const char* label) {
+                    OpArgs args;
+                    args.Set("kind", std::string(kind));
+                    MenuItemOpArgs("developer.crash", args, label);
+                };
+                crashItem("report",            "Write Report Only");
+                ImGui::Separator();
+                crashItem("access_violation",  "Access Violation");
+                crashItem("stack_overflow",    "Stack Overflow");
+                crashItem("abort",             "abort()");
+                crashItem("pure_call",         "Pure Virtual Call");
+                crashItem("invalid_parameter", "CRT Invalid Parameter");
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
         ImGui::EndMenu();
     }
 

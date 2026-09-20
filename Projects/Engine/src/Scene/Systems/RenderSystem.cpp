@@ -24,6 +24,7 @@
 #include "Engine/Scene/Components/ParticleLightSelection.hpp"
 #include "RenderPasses/PostProcess/PostProcessPasses.hpp"
 #include "RenderPasses/PostProcess/CloudNoiseBake.hpp"
+#include <Engine/Scene/Systems/RenderPasses/InstanceBatch.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "RenderPasses/Debug/SelectionPasses.hpp"
 #include "Engine/Core/Application.hpp"
@@ -235,6 +236,10 @@ struct ViewRenderTargets {
     /// @note TAA ジッター列の現在位置。ビュー別に持たないと SceneView と GameView が
     /// @note 同じ番号を取り合って、どちらもサンプル点が飛び飛びになる。
     uint32_t taaFrameIndex = 0;
+    /// @brief TAA 履歴 (taaHistoryA/B) に «前のフレームの絵» が入っているか。
+    /// @note 作り直した直後と TAA を切っていた後は中身が未定義か古い絵。false の間は taaFeedback を 0 にし、
+    ///       今のフレームだけで履歴を作り直す。リサイズでは保存・復元しないので false に戻る。
+    bool taaHistoryValid = false;
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -766,8 +771,14 @@ void RenderSystem(Scene& scene,
     static auto cookieBlitShader =
         resources.LoadShader("Assets/Shaders/Pipeline/Lighting/CookieBlit.hlsl");
     static auto shadowShader         = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
+    /// @note 束ねた caster 用の変種。@see Docs/design/gpu-instancing.md
+    static auto shadowInstancedShader =
+        resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMapInstanced.hlsl");
     static auto skinnedShadowShader  = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
     static auto velocityShader        = resources.LoadShader("Assets/Shaders/Motion/Velocity.hlsl");
+    /// @note 束ねた物体の速度用の変種。@see Docs/design/gpu-instancing.md
+    static auto velocityInstancedShader =
+        resources.LoadShader("Assets/Shaders/Motion/VelocityInstanced.hlsl");
     static auto velocitySkinnedShader = resources.LoadShader("Assets/Shaders/Motion/VelocitySkinned.hlsl");
     /// @note コンピュートスキニング。無効ならスキンド描画は従来の VS スキニング経路へ落ちる。
     static auto skinningComputeCS    = resources.LoadShader("Assets/Shaders/Pipeline/Skinning/SkinningCompute.cs.hlsl");
@@ -796,11 +807,15 @@ void RenderSystem(Scene& scene,
     static auto selectionMaskParticleGpuShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskParticleGPU.hlsl");
     static auto selectionOutlineShader  = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
     static auto objectMaskShader       = resources.LoadShader("Assets/Shaders/Pipeline/Mask/ObjectMask.hlsl");
+    /// @note 束ねたシルエット用の変種。@see Docs/design/gpu-instancing.md
+    static auto objectMaskInstancedShader =
+        resources.LoadShader("Assets/Shaders/Pipeline/Mask/ObjectMaskInstanced.hlsl");
     static auto objectMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Pipeline/Mask/ObjectMaskSkinned.hlsl");
     static auto copyColorShader         = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
     static auto customComposeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Custom/CustomCompose.hlsl");
     static auto fxaaShader              = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
     static auto upscaleShader           = resources.LoadShader("Assets/Shaders/PostProcess/Upscale/Upscale.hlsl");
+    static auto downscaleShader         = resources.LoadShader("Assets/Shaders/PostProcess/Upscale/Downscale.hlsl");
 
     /// @name Advanced Graphics シェーダー (static で初回ロード、Reset 後に再ロード)
     static auto iblBrdfBakeShader   = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/BRDFIntegration.cs.hlsl");
@@ -854,6 +869,12 @@ void RenderSystem(Scene& scene,
     }
 
     static auto gbufferShader          = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+    /// @note 束ねた不透明メッシュ用の変種。@see Docs/design/gpu-instancing.md
+    static auto gbufferInstancedShader =
+        resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBufferInstanced.hlsl");
+    /// @note スキンドを GBuffer へ入れる経路のフォールバック。@see Docs/design/pipeline-boundary.md
+    static auto gbufferSkinnedShader =
+        resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBufferSkinned.hlsl");
     static auto deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
     static auto depthCopyShader        = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
 
@@ -880,6 +901,17 @@ void RenderSystem(Scene& scene,
         resources.LoadShader("Assets/Shaders/PostProcess/Cloud/FroxelInject.cs.hlsl");
     static auto froxelIntegrateCS =
         resources.LoadShader("Assets/Shaders/PostProcess/Cloud/FroxelIntegrate.cs.hlsl");
+
+    /// @note Light Probe Volume の焼き。ボリュームと面の RT は各コンポーネントが持つので、ここは共有の CS と定数だけ。
+    static auto lightProbeProjectCS =
+        resources.LoadShader("Assets/Shaders/IBL/LightProbeProject.cs.hlsl");
+    static auto lightProbeProjectCB         = resources.CreateConstantBuffer(kLightProbeProjectCBSize);
+    static auto lightProbeCaptureFrameCB    = resources.CreateConstantBuffer(sizeof(PerFrameCB));
+    static auto lightProbeCaptureAdvancedCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
+    static auto lightProbeDilateCS =
+        resources.LoadShader("Assets/Shaders/IBL/LightProbeDilate.cs.hlsl");
+    static auto lightProbeDilateCB     = resources.CreateConstantBuffer(kLightProbeDilateCBSize);
+    static auto lightProbeFacingShader = resources.LoadShader("Assets/Shaders/IBL/LightProbeFacing.hlsl");
     static auto clusterCB = resources.CreateConstantBuffer(sizeof(ClusterConstantsCB));
     /// @note 別視点から描くパス用に、供給モードだけ Linear へ落とした同内容の CB。
     static auto clusterLinearCB = resources.CreateConstantBuffer(sizeof(ClusterConstantsCB));
@@ -1079,12 +1111,17 @@ void RenderSystem(Scene& scene,
         sResourceResetVersion = resources.GetResetVersion();
 
         shadowShader        = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
+        shadowInstancedShader =
+            resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMapInstanced.hlsl");
         skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
         velocityShader        = resources.LoadShader("Assets/Shaders/Motion/Velocity.hlsl");
+        velocityInstancedShader = resources.LoadShader("Assets/Shaders/Motion/VelocityInstanced.hlsl");
         velocitySkinnedShader = resources.LoadShader("Assets/Shaders/Motion/VelocitySkinned.hlsl");
         skinningComputeCS   = resources.LoadShader("Assets/Shaders/Pipeline/Skinning/SkinningCompute.cs.hlsl");
         /// @note Mesh* / AnimatorComponent* をキーにしたキャッシュはリソースリセットで無効になる。
         ReleaseSkinningComputeCaches();
+        /// @note インスタンスバッファの貸出プールも同じ理由で手放す。
+        ReleaseInstanceBatchCaches(resources);
         compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
         causticsShader      = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
         volumetricCloudShader = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/VolumetricCloud.hlsl");
@@ -1099,15 +1136,22 @@ void RenderSystem(Scene& scene,
         selectionMaskParticleGpuShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskParticleGPU.hlsl");
         selectionOutlineShader = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
         objectMaskShader = resources.LoadShader("Assets/Shaders/Pipeline/Mask/ObjectMask.hlsl");
+        objectMaskInstancedShader =
+            resources.LoadShader("Assets/Shaders/Pipeline/Mask/ObjectMaskInstanced.hlsl");
         objectMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Pipeline/Mask/ObjectMaskSkinned.hlsl");
         copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         customComposeShader = resources.LoadShader("Assets/Shaders/PostProcess/Custom/CustomCompose.hlsl");
         fxaaShader = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
         upscaleShader = resources.LoadShader("Assets/Shaders/PostProcess/Upscale/Upscale.hlsl");
+        downscaleShader = resources.LoadShader("Assets/Shaders/PostProcess/Upscale/Downscale.hlsl");
         skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
         sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
         skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
         gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+        gbufferInstancedShader =
+            resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBufferInstanced.hlsl");
+        gbufferSkinnedShader =
+            resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBufferSkinned.hlsl");
         deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
         depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
         clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
@@ -1304,19 +1348,21 @@ void RenderSystem(Scene& scene,
             /// @note 中継先はどちらでもない。1080p で 1 枚 8MB、ビューごとに 7 枚ぶん浮く。
             constexpr renderer::RenderTargetDesc kPostChainRT{
                 /*colorCount=*/1, renderer::Format::RGBA16F, /*withDepth=*/false };
+            /// @note カメラ視点の深度を持つ RT は Reversed-Z。GPU へ渡す射影 (Camera::GetGpuProjectionMatrix) と対。
+            const auto cameraDepthRT = renderer::CameraDepthTargetDesc;
 
             ReleaseViewRenderTargets(viewTargets, resources);
-            hdrRT           = resources.CreateRenderTarget(curW, curH, 1);
+            hdrRT           = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             ldrRT           = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             /// @note 選択マスクと輪郭マスクはジオメトリを描き、深度も読まれる。
-            selectionMaskRT = resources.CreateRenderTarget(curW, curH, 1);
+            selectionMaskRT = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             outlineRT       = resources.CreateRenderTarget(curW, curH, kPostChainRT);
-            objectMaskRT   = resources.CreateRenderTarget(curW, curH, 1);
+            objectMaskRT   = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             customPostProcessRT[0] = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             customPostProcessRT[1] = resources.CreateRenderTarget(curW, curH, kPostChainRT);
-            gbufferRT       = resources.CreateRenderTarget(curW, curH, 2);
-            velocityRT      = resources.CreateRenderTarget(curW, curH, 1);
-            decalDepthRT    = resources.CreateRenderTarget(curW, curH, 0);
+            gbufferRT       = resources.CreateRenderTarget(curW, curH, cameraDepthRT(2));
+            velocityRT      = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
+            decalDepthRT    = resources.CreateRenderTarget(curW, curH, cameraDepthRT(0));
             decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1);
             /// @note Bloom のミップ連鎖。段ごとに 1/2、1 まで来たら以降は同寸法のまま確保する。
             /// @note ダウンサンプル用と足し戻し用の 2 系統。足し戻しは「1 段小さいぼけ + 自分の段の元」
@@ -2172,9 +2218,11 @@ void RenderSystem(Scene& scene,
     passHandles.selectionMaskParticleGpuShader = selectionMaskParticleGpuShader;
     passHandles.selectionOutlineShader    = selectionOutlineShader;
     passHandles.objectMaskShader         = objectMaskShader;
+    passHandles.objectMaskInstancedShader = objectMaskInstancedShader;
     passHandles.objectMaskSkinnedShader  = objectMaskSkinnedShader;
     passHandles.copyColorShader           = copyColorShader;
     passHandles.upscaleShader             = upscaleShader;
+    passHandles.downscaleShader           = downscaleShader;
     passHandles.customComposeShader       = customComposeShader;
     passHandles.fxaaShader        = fxaaShader;
     passHandles.customPostProcessShaders.resize(rs.postProcess.customEffects.size());
@@ -2307,9 +2355,11 @@ void RenderSystem(Scene& scene,
     passHandles.decalReceiverCB   = decalReceiverCB;
     /// @name ジオメトリ用ハンドル
     passHandles.shadowShader         = shadowShader;
+    passHandles.shadowInstancedShader = shadowInstancedShader;
     passHandles.shadowSkinnedShader  = skinnedShadowShader;
     passHandles.shadowCB             = shadowCB;
     passHandles.velocityShader        = velocityShader;
+    passHandles.velocityInstancedShader = velocityInstancedShader;
     passHandles.velocitySkinnedShader = velocitySkinnedShader;
     passHandles.punctualShadowCB     = punctualShadowCB;
     passHandles.skinningComputeCS    = skinningComputeCS;
@@ -2328,6 +2378,15 @@ void RenderSystem(Scene& scene,
     passHandles.atmosphereCB         = atmCB;
     passHandles.skyEnvCubeRT         = skyEnvCubeRT;
     passHandles.skyCaptureFrameCB    = skyCaptureFrameCB;
+    passHandles.lightProbeProjectCS         = lightProbeProjectCS;
+    passHandles.lightProbeProjectCB         = lightProbeProjectCB;
+    passHandles.lightProbeCaptureFrameCB    = lightProbeCaptureFrameCB;
+    passHandles.lightProbeCaptureAdvancedCB = lightProbeCaptureAdvancedCB;
+    passHandles.lightProbeDilateCS          = lightProbeDilateCS;
+    passHandles.lightProbeDilateCB          = lightProbeDilateCB;
+    passHandles.lightProbeFacingShader      = lightProbeFacingShader;
+    passHandles.lightProbeSH[0]             = {};
+    passHandles.lightProbeSH[1]             = {};
     passHandles.particleShader       = particleShader;
     passHandles.particlePSO          = particlePSO;
     passHandles.particleAlphaPSO     = particleAlphaPSO;
@@ -2352,6 +2411,8 @@ void RenderSystem(Scene& scene,
     passHandles.meshTrailPSO         = meshTrailPSO;
     passHandles.meshTrailDoubleSidedPSO = meshTrailDoubleSidedPSO;
     passHandles.gbufferShader        = gbufferShader;
+    passHandles.gbufferInstancedShader = gbufferInstancedShader;
+    passHandles.gbufferSkinnedShader   = gbufferSkinnedShader;
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
     passHandles.clusterCullCS        = clusterCullCS;
@@ -2463,6 +2524,7 @@ void RenderSystem(Scene& scene,
         ++viewTargets.taaFrameIndex;
     } else {
         viewTargets.taaFrameIndex = 0u;
+        viewTargets.taaHistoryValid = false;
     }
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
     passCtx.objectMaskEnabled      = objectMaskEnabled;
@@ -2701,12 +2763,14 @@ void RenderSystem(Scene& scene,
 
     /// @note 自動露出。key <= 0 が「無効」の印なので、切ってあるときは 0 のまま渡す。
     /// @note 0.18 は反射率 18% のグレーカード = 写真の露出計が基準にしている明るさ。
-    agData.autoExposureKey          = rs.autoExposure.enabled ? 0.18f : 0.0f;
+    /// @note 結果バッファが無いと Composite は t29 を束縛しない。key を立てたままだと 0 を平均輝度として読み、
+    ///       露出が上限へ張り付いて白飛びするので、同じ条件で無効にする (CompositePass の束縛条件と対)。
+    agData.autoExposureKey          = (rs.autoExposure.enabled && viewTargets.exposureResult.IsValid()) ? 0.18f : 0.0f;
     agData.autoExposureCompensation = rs.autoExposure.compensation;
     agData.autoExposureMinEV        = rs.autoExposure.minExposureEV;
     agData.autoExposureMaxEV        = (std::max)(rs.autoExposure.maxExposureEV,
                                                  rs.autoExposure.minExposureEV);
-        agData.taaFeedback           = rs.taa.feedback;
+        agData.taaFeedback           = viewTargets.taaHistoryValid ? rs.taa.feedback : 0.0f;
         agData.taaJitterX            = passCtx.taaJitterNdcX;
         agData.taaJitterY            = passCtx.taaJitterNdcY;
         agData.motionBlurStrength    = rs.motionBlur.enabled ? rs.motionBlur.strength : 0.0f;
@@ -2730,23 +2794,37 @@ void RenderSystem(Scene& scene,
         agData.lutBlend              = (rs.lutColorGrading.enabled && resources.Get(proceduralColorLut) != nullptr)
             ? rs.lutColorGrading.blend : 0.0f;
         /// @note 天候 — シーンに置かれた WeatherComponent 1 個ぶん。無ければ 0 で素通りする。
-        for (auto& weatherGo : scene.GameObjects()) {
-            const auto* weather = weatherGo.GetComponent<WeatherComponent>();
-            if (!weather || !weather->enabled) continue;
-            agData.weatherWetness   = std::clamp(weather->wetness, 0.0f, 1.0f);
-            agData.weatherDarkening = std::clamp(weather->darkening, 0.0f, 1.0f);
-            agData.weatherPuddle    = std::clamp(weather->puddleAmount, 0.0f, 1.0f);
-            break;
+        /// @note 地形 (b8 を読めない) と同じ FindActiveWeather を使う。別々に探すと無効化の扱いが食い違う。
+        {
+            const ActiveWeather weather = FindActiveWeather(scene);
+            agData.weatherWetness   = weather.wetness;
+            agData.weatherDarkening = weather.darkening;
+            agData.weatherPuddle    = weather.puddleAmount;
         }
         /// @note 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使う。ビュー別に持つ。
         agData.prevViewProjection    = viewTargets.prevViewProjection;
         agData.invPrevViewProjection = viewTargets.invPrevViewProjection;
+        /// @note Light Probe Volume: 焼きを進め、焼き上がったボリュームの拡散 GI を IBL キューブに差し替える。
+        /// @note 拡散 GI は IBL の拡散項の置き換えなので、IBL が引けないフレームでは効かせない (マテリアルが IBL 分岐に入らない)。
+        if (iblResourcesReady) {
+            const LightProbeVolumeSelection gi = ExecuteLightProbeBakePass(passCtx, agData);
+            const LightProbeVolumeSelection::Entry* slots[2] = { &gi.inner, &gi.outer };
+            for (int slot = 0; slot < 2; ++slot) {
+                if (!slots[slot]->volume) continue;
+                FillLightProbeVolumeConstants(*slots[slot]->owner, *slots[slot]->volume, agData.probeVolumes[slot]);
+                passHandles.lightProbeSH[slot] = slots[slot]->volume->runtimeVolume;
+            }
+            /// @note 鏡面遮蔽の強さは 1 画面に 1 つ。内側 (画面の主役になりやすい方) の設定を使う。
+            if (gi.inner.volume)
+                agData.probeSpecularOcclusion = std::clamp(gi.inner.volume->specularOcclusion, 0.0f, 1.0f);
+        }
         resources.Update(advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
         /// @note ここはジッターを載せない。両方に載せるとジッター差分がそのまま「動き」として
         /// @note 現れ、履歴が毎フレームずれて収束しない。履歴はピクセル中心で収束した絵なので、
         /// @note 引く座標もピクセル中心でなければならない。
-        viewTargets.prevViewProjection    = camera.GetViewProjection();
-        viewTargets.invPrevViewProjection = math::Matrix4::Inverse(camera.GetViewProjection());
+        /// @note シェーダーが今フレームの深度 (Reversed-Z) と並べて使うので GPU 用の行列で持つ。
+        viewTargets.prevViewProjection    = camera.GetGpuViewProjection();
+        viewTargets.invPrevViewProjection = math::Matrix4::Inverse(viewTargets.prevViewProjection);
     }
 
     /// @note RenderPipeline にパスを登録
@@ -2895,7 +2973,7 @@ void RenderSystem(Scene& scene,
         /// @note 画面空間系のための GBuffer プリパス。ライティングはせず法線・深度・roughness だけ書く。
         /// @note 以降の SSAO / GTAO / SSR / 接触影は Deferred と同じ入力を読む。
         if (forwardGBufferPrepass) {
-            pipeline.AddPass<GBufferPass>(GBufferPassMode::ForwardPrepass);
+            pipeline.AddPass<GBufferPass>(GBufferPassMode::DepthNormalPrepass);
 
             /// @note 地形も GBuffer へ入れる。飛ばすと地形が AO の遮蔽者にも受け手にもならず、
             /// @note 「Deferred では地形に AO が乗るのに Forward では乗らない」差が残る。
@@ -2958,7 +3036,7 @@ void RenderSystem(Scene& scene,
         pipeline.AddPass<SSAOPass>();
         pipeline.AddPass<DeferredLightingPass>();
 
-        /// @note Sky / SunMoon — GBuffer ライティング後に HDR へ描く。深度==1.0 の画素だけを埋め、
+        /// @note Sky / SunMoon — GBuffer ライティング後に HDR へ描く。最遠 (Reversed-Z で 0) の画素だけを埋め、
         /// @note HDR 依存チェーンで DeferredDepthCopy のクリアより確実に後段になる。
         pipeline.AddPass<SkyPass>();
         pipeline.AddPass<SunMoonPass>();
@@ -2994,7 +3072,7 @@ void RenderSystem(Scene& scene,
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !go)
+        if (!sc || !go || !go->activeInHierarchy())
             continue;
         for (auto& entry : sc->scripts) {
             if (!entry.script || !entry.script->enabled)
@@ -3158,6 +3236,7 @@ void RenderSystem(Scene& scene,
     if (rs.IsTaaActive()) {
         const auto taaBody = [&]() {
             ExecuteTAAPass(passCtx);
+            viewTargets.taaHistoryValid = true;
             /// @note taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
             auto& taaOut = passHandles.taaFlip ? passHandles.taaHistoryB : passHandles.taaHistoryA;
             passHandles.fxaaInput = resources.GetColorTexture(taaOut, 0);
@@ -3167,7 +3246,8 @@ void RenderSystem(Scene& scene,
             passCtx.resourceRegistry.BindTarget("LDR", taaOut);
         };
         /// @note MotionBlur と同じ理由で Velocity は要るときだけ足す。
-        std::vector<RA> taaAccesses = { { ppCurrent, RU::ReadWrite } };
+        /// @note HDR は深度 (t7) を読むための申告。速度の無い画素の再投影に使う。
+        std::vector<RA> taaAccesses = { { ppCurrent, RU::ReadWrite }, { "HDR", RU::Read } };
         if (velocityNeeded) taaAccesses.push_back({ "Velocity", RU::Read });
         pipeline.AddRawPass("TAA", std::move(taaAccesses), taaBody);
     }
@@ -3276,7 +3356,7 @@ void RenderSystem(Scene& scene,
         for (EntityID id : scene.GetEntities<ScriptComponent>()) {
             auto* sc = scene.GetComponent<ScriptComponent>(id);
             auto* go = scene.GetGameObject(id);
-            if (!sc || !go)
+            if (!sc || !go || !go->activeInHierarchy())
                 continue;
             for (auto& entry : sc->scripts) {
                 if (!entry.script || !entry.script->enabled)
@@ -3322,7 +3402,7 @@ void RenderSystem(Scene& scene,
         for (EntityID id : scene.GetEntities<ScriptComponent>()) {
             auto* sc = scene.GetComponent<ScriptComponent>(id);
             auto* go = scene.GetGameObject(id);
-            if (!sc || !go)
+            if (!sc || !go || !go->activeInHierarchy())
                 continue;
             for (auto& entry : sc->scripts) {
                 if (!entry.script || !entry.script->enabled)
@@ -3364,6 +3444,8 @@ void RenderSystem(Scene& scene,
         dbgSnap.renderStats.skinningDispatchCount = passCtx.statsSkinningDispatchCount;
         dbgSnap.renderStats.shadowDrawCalls     = passCtx.statsShadowDrawCalls;
         dbgSnap.renderStats.shadowTriangleCount = passCtx.statsShadowTriangleCount;
+        dbgSnap.renderStats.instancedBatches    = passCtx.statsInstancedBatches;
+        dbgSnap.renderStats.instancedDrawsSaved = passCtx.statsInstancedDrawsSaved;
 
         renderer::RenderDebugOverlay::UpdateSnapshot(dbgSnap, rs.passViewerEnabled);
     }

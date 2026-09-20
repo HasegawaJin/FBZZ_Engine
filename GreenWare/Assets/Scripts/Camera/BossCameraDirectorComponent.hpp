@@ -236,7 +236,7 @@ inline void BossCameraDirectorComponent::OnStart()
 
 inline GameObject* BossCameraDirectorComponent::Boss() const
 {
-    return bossName.empty() ? nullptr : scene.Find(bossName);
+    return bossName.empty() ? nullptr : scene.Find(bossName, true);
 }
 
 inline Vector3 BossCameraDirectorComponent::Focus(const GameObject& boss) const
@@ -424,17 +424,17 @@ inline void BossCameraDirectorComponent::Pose(float t, Vector3& position,
 inline void BossCameraDirectorComponent::UpdateTitle(float alpha)
 {
     const bool visible = alpha > 0.001f;
-    if (auto* label = scene.Find("HUD_BossIntroTitle")) {
+    if (auto* label = scene.Find("HUD_BossIntroTitle", true)) {
         ui.SetTextEnabled(label, visible);
         ui.SetText(label, introTitle);
         ui.SetTextColor(label, { 0.96f, 0.95f, 0.9f, alpha });
     }
-    if (auto* label = scene.Find("HUD_BossIntroSubtitle")) {
+    if (auto* label = scene.Find("HUD_BossIntroSubtitle", true)) {
         ui.SetTextEnabled(label, visible);
         ui.SetText(label, introSubtitle);
         ui.SetTextColor(label, { introColor.x, introColor.y, introColor.z, alpha });
     }
-    if (auto* line = scene.Find("HUD_BossIntroLine")) {
+    if (auto* line = scene.Find("HUD_BossIntroLine", true)) {
         ui.SetImageEnabled(line, visible);
         ui.SetImageColor(line, { introColor.x, introColor.y, introColor.z, alpha });
         ui.SetImageFillAmount(line, alpha);

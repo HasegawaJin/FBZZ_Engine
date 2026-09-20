@@ -34,6 +34,15 @@ struct Matrix4 {
     static Matrix4 Orthographic(float left, float right,
                                  float bottom, float top,
                                  float nearZ, float farZ);
+    /// @brief Perspective の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
+    /// @note 深度 1 付近で粗い float の刻みを遠景へ回さず、遠景の Z-fighting を抑える。
+    ///       1 - Perspective の深度を後から計算すると、その引き算で精度を失うため直接組む。
+    /// @see https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
+    static Matrix4 PerspectiveReversedZ(float fovY, float aspect, float nearZ, float farZ);
+    /// @brief Orthographic の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
+    static Matrix4 OrthographicReversedZ(float left, float right,
+                                         float bottom, float top,
+                                         float nearZ, float farZ);
 
     Matrix4 operator*(const Matrix4& rhs) const;
     Vector4 operator*(const Vector4& v)   const;

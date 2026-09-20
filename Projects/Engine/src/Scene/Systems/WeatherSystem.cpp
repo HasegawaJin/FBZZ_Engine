@@ -53,6 +53,8 @@ void WeatherSystem::Update(SystemContext& ctx)
     if (!editing && !ctx.simulating) return;
 
     for (auto& go : ctx.scene.GameObjects()) {
+        /// @note 親ごと無効化された天候は進めない (描画側の FindActiveWeather も同じ規則で拾わない)。
+        if (!go.activeInHierarchy()) continue;
         auto* weather = go.GetComponent<WeatherComponent>();
         if (!weather || !weather->enabled) continue;
 

@@ -1,15 +1,16 @@
 /// @file    DX12Texture.cpp
-/// @brief   DirectXTex 読み込み画像を RGBA8 へ正規化して同期アップロードする。
+/// @brief   RGBA8 へ展開した画像を同期または非同期で転送する。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #include "DX12Texture.hpp"
 
 #include "DX12Context.hpp"
 #include "DX12StateTracker.hpp"
-#include <DirectXTex.h>
 #include <Engine/Core/Logger.hpp>
-#include <Engine/Util/StringUtils.hpp>
+#include <Engine/Renderer/TextureFileDecoder.hpp>
+#include <algorithm>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace fbzz::renderer {
@@ -74,51 +75,45 @@ bool DX12Texture::Init(DX12Context* context, const std::string& path)
 {
     if (!context)
         return false;
-    m_context = context;
-    DirectX::ScratchImage source;
-    const std::wstring widePath = util::StringUtils::ToWide(path);
-    HRESULT result = E_FAIL;
-    if (path.ends_with(".dds") || path.ends_with(".DDS"))
-        result = DirectX::LoadFromDDSFile(widePath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, source);
-    else if (path.ends_with(".tga") || path.ends_with(".TGA"))
-        result = DirectX::LoadFromTGAFile(widePath.c_str(), nullptr, source);
-    else
-        result = DirectX::LoadFromWICFile(widePath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, source);
-    if (FAILED(result) || source.GetImageCount() == 0) {
-        FBZZ_LOG_ERROR("DX12Texture: 画像を読み込めません: %s", path.c_str());
+    /// @note 展開は非同期ストリーミングと同じ関数を通す。経路ごとに変換を書くと同じ画像の画素が食い違う。
+    DecodedTextureRGBA8 decoded;
+    std::string error;
+    if (!DecodeTextureFileRGBA8(path, decoded, &error)) {
+        FBZZ_LOG_ERROR("DX12Texture: %s", error.c_str());
         return false;
     }
-
-    /// @note DDS に入っているミップは全段転送する。フリップブックの «コマを跨がないミップ» は
-    ///       焼く側でしか作れないので、ここで 0 段目だけにすると遠くの粒子がちらつく。
-    const std::size_t mipCount = (std::max)(source.GetMetadata().mipLevels, std::size_t{ 1 });
-    std::vector<DirectX::ScratchImage> converted(mipCount);
-    std::vector<DX12Context::TextureMip> mips;
-    mips.reserve(mipCount);
-    for (std::size_t level = 0; level < mipCount; ++level) {
-        const DirectX::Image* image = source.GetImage(level, 0, 0);
-        if (image == nullptr) break;
-        if (image->format != DXGI_FORMAT_R8G8B8A8_UNORM) {
-            result = DirectX::IsCompressed(image->format)
-                ? DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, converted[level])
-                : DirectX::Convert(*image, DXGI_FORMAT_R8G8B8A8_UNORM,
-                                   DirectX::TEX_FILTER_DEFAULT, 0.0f, converted[level]);
-            if (FAILED(result)) {
-                FBZZ_LOG_ERROR("DX12Texture: RGBA8 変換に失敗しました: %s", path.c_str());
-                return false;
-            }
-            image = converted[level].GetImage(0, 0, 0);
-        }
-        mips.push_back({ image->pixels, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height),
-                         image->rowPitch });
-    }
-    if (mips.empty() || !context->UploadTexture2DMips(mips, m_resource)) {
+    std::vector<TextureMipData> mips;
+    if (!decoded.ToMipData(mips)
+        || !InitFromDataMips(context, mips.data(), static_cast<uint32_t>(mips.size()))) {
         FBZZ_LOG_ERROR("DX12Texture: テクスチャ転送に失敗しました: %s", path.c_str());
         return false;
     }
+    return true;
+}
+
+bool DX12Texture::InitFromDataMipsAsync(DX12Context* context, const TextureMipData* mips, uint32_t mipCount,
+                                        uint64_t& outUploadFence)
+{
+    outUploadFence = 0;
+    if (!context || !mips || mipCount == 0)
+        return false;
+    std::vector<DX12Context::TextureMip> levels;
+    levels.reserve(mipCount);
+    for (uint32_t level = 0; level < mipCount; ++level) {
+        if (!mips[level].rgba || mips[level].width == 0 || mips[level].height == 0)
+            return false;
+        levels.push_back({ mips[level].rgba, mips[level].width, mips[level].height,
+                           static_cast<std::size_t>(mips[level].width) * 4u });
+    }
+    if (!context->UploadTexture2DMipsAsync(levels, m_resource, outUploadFence)) {
+        FBZZ_LOG_ERROR("DX12Texture: 非同期テクスチャ転送の投入に失敗しました (%ux%u, %u 段)",
+                       mips[0].width, mips[0].height, mipCount);
+        return false;
+    }
+    m_context = context;
     m_width = mips[0].width;
     m_height = mips[0].height;
-    m_mipLevels = static_cast<uint32_t>(mips.size());
+    m_mipLevels = mipCount;
     return CreateSrv(context);
 }
 

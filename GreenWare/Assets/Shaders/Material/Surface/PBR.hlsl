@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Material/Surface/PBR.hlsl | Material
-// Cook-Torrance PBR フォワードパス (法線マップ / AO / エミッシブ / PCF シャドウ)
+/// @file    PBR.hlsl
+/// @brief   Cook-Torrance PBR のフォワードパス (法線マップ / AO / エミッシブ / PCF シャドウ)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-19
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
@@ -14,23 +15,24 @@
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LodDither.hlsli"
-// ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で提供される
+/// @note ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で入る。
 
+/// @note offset は C++ 側 MaterialConstants と一致させる。
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
-    float4 albedo;             // RGBA ベースカラー    offset  0
-    float  metallic;           // 金属度 [0,1]         offset 16
-    float  roughness;          // 粗さ   [0,1]         offset 20
-    float  normalStrength;     // 法線マップ強度        offset 24
-    float  occlusionStrength;  // AO 強度 [0,1]        offset 28
-    float3 emissiveColor;      // エミッシブ色          offset 32
-    float  emissiveScale;      // エミッシブ強度        offset 44
-    float2 uvTiling;           // UV タイリング        offset 48
-    float2 uvOffset;           // UV オフセット        offset 56
-    float  alphaCutoff;        // アルファカットオフ     offset 64
-    float3 _pad0;              //                      offset 68
-    uint   textureMask;        // テクスチャフラグ       offset 80
-    float3 _pad1;              //                      offset 84
+    float4 albedo;             ///< RGBA ベースカラー (線形)。offset 0
+    float  metallic;           ///< [0,1]。offset 16
+    float  roughness;          ///< [0,1]。offset 20
+    float  normalStrength;     ///< 0 でサーフェス法線。offset 24
+    float  occlusionStrength;  ///< [0,1]。offset 28
+    float3 emissiveColor;      ///< offset 32
+    float  emissiveScale;      ///< 0 で非発光。offset 44
+    float2 uvTiling;           ///< offset 48
+    float2 uvOffset;           ///< offset 56
+    float  alphaCutoff;        ///< offset 64
+    float3 _pad0;              ///< offset 68
+    uint   textureMask;        ///< bit0 albedo / 1 normal / 2 metalRough / 3 emissive / 4 AO。offset 80
+    float3 _pad1;              ///< offset 84
     float  clearcoat;
     float  clearcoatRoughness;
     float  sheen;
@@ -38,8 +40,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float3 sheenColor;
     float  _pad2;
 
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
-    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    /// @note bindless のテクスチャ添字。Material::Upload が毎フレーム書き、ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
     uint texAlbedoIndex;
     uint texNormalIndex;
     uint texMetallicIndex;
@@ -47,8 +48,8 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     uint texAOIndex;
 };
 
-// bindless 移行済み。宣言だけを置き換えてあり、以降の Sample 呼び出しは一切変えていない。
-// 添字は b14 の添字ブロック経由で毎ドロー配られる。@see Docs/design/bindless.md
+/// @note bindless 化は宣言の置き換えだけで、Sample 呼び出しは従来のまま。添字は b14 の添字ブロックで毎ドロー配られる。
+/// @see Docs/design/bindless.md
 FBZZ_TEX2D_T(float,  texShadow,        TEX_SHADOW_SLOT);
 FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
 FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);
@@ -58,7 +59,7 @@ FBZZ_MATERIAL_TEX(texAO, texAOIndex);
 FBZZ_TEXCUBE(        texIBLIrradiance, TEX_IBL_IRRADIANCE_SLOT);
 FBZZ_TEXCUBE(        texIBLPrefilter,  TEX_IBL_PREFILTER_SLOT);
 FBZZ_TEX2D_T(float4, texBRDFLut,       TEX_IBL_BRDF_LUT_SLOT);
-// サンプラーはルートシグネチャへ焼いた静的サンプラーのままで、bindless の対象外。
+/// @note サンプラーはルートシグネチャの静的サンプラーで、bindless の対象外。
 SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
 SamplerState           sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP);
@@ -79,32 +80,27 @@ float4 PSMain(PSInput p) : SV_Target0
 {
     ApplyLodDither(p.svPosition.xy, objectParams.x);
 
-    // UV タイリング / オフセットをすべてのサンプルに適用する。
     float2 uv = p.uv * uvTiling + uvOffset;
 
-    // Albedo + alpha
-    // sRGB テクスチャを線形空間にデコードしてから tint (線形) を乗算する。
-    // テクスチャなし時は (1,1,1) として albedo.rgb をそのまま使用 (SRGBToLinear(1)=1)。
+    /// @note sRGB を線形へ戻してから線形の tint を掛ける。テクスチャ無しは 1 で SRGBToLinear(1)=1 なので albedo がそのまま出る。
     float4 rawAlbedo = (textureMask & (1u << 0))
         ? texAlbedo.Sample(sampDefault, uv)
         : float4(1.0f, 1.0f, 1.0f, 1.0f);
     float3 col   = SRGBToLinear(rawAlbedo.rgb) * albedo.rgb;
     float  alpha = rawAlbedo.a * albedo.a;
 
-    // alphaCutoff: カットアウト描画。不透明パスでディザリングなし早期棄却。
+    /// @note カットアウト。不透明パスなのでディザリングせず棄却する。
     clip(alpha - alphaCutoff);
 
-    // Normal
     float3 N = SafeNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
     if (textureMask & (1u << 1))
     {
         float3 ns = texNormal.Sample(sampDefault, uv).rgb;
         float3 nm = ApplyNormalMap(ns, N, SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f)));
-        // normalStrength=0 でサーフェス法線に戻る線形ブレンド。
         N = SafeNormalize(lerp(N, nm, saturate(normalStrength)), N);
     }
 
-    // Metallic / Roughness (glTF 規約: G チャンネル = roughness, B チャンネル = metallic)
+    /// @note glTF 規約: G = roughness、B = metallic。
     float met   = metallic;
     float rough = roughness;
     if (textureMask & (1u << 2))
@@ -116,7 +112,7 @@ float4 PSMain(PSInput p) : SV_Target0
 
     met   = saturate(met);
     rough = max(saturate(rough), 0.045f);
-    // 濡れは素材の値なので法線分散のフィルタより先に掛ける (GBuffer.hlsl と同順)。
+    /// @note 濡れは素材の値なので法線分散のフィルタより先に掛ける (GBuffer.hlsl と同順)。
     const WetSurface wet = ApplyWetness(col, rough, N);
     col   = wet.albedo;
     rough = max(wet.roughness, 0.045f);
@@ -128,7 +124,6 @@ float4 PSMain(PSInput p) : SV_Target0
     T = SafeNormalize(T - N * dot(N, T), T);
     float3 B = SafeNormalize(cross(N, T), float3(0.0f, 0.0f, 1.0f));
 
-    // AO
     float ao = 1.0f;
     if (textureMask & (1u << 4))
         ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
@@ -137,11 +132,11 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = SafeNormalize(-lightDir, N);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    /// @note Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
     shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
     ao *= FBZZ_ScreenAO(p.svPosition.xy);
     float3 result = iblIntensity > 0.0f
-        ? Lighting_PBR_IBL_Advanced(N, V, L, T, B, col, met, rough,
+        ? Lighting_PBR_IBL_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow, ao,
               texIBLIrradiance, texIBLPrefilter, texBRDFLut, iblMaxMipLevel,
@@ -151,15 +146,14 @@ float4 PSMain(PSInput p) : SV_Target0
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow);
 
-    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
-    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    /// @note 点光源 / スポットの走査元は clusterLightMode が決める (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
         result += Lighting_PBR_Advanced(N, V, ps.L, T, B, col, met, saturate(rough + ps.roughnessBias),
             clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
             ps.color, ps.intensity, 1.0f);
     FBZZ_PUNCTUAL_END
 
-    // Emissive: テクスチャがあれば sRGB デコードして乗算。emissiveScale=0 で非発光。
+    /// @note エミッシブテクスチャは sRGB。
     float3 emissiveTex = (textureMask & (1u << 3))
         ? SRGBToLinear(texEmissive.Sample(sampDefault, uv).rgb)
         : float3(1.0f, 1.0f, 1.0f);

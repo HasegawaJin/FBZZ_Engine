@@ -1,8 +1,10 @@
-// FBZZ Engine
-// PostProcess/AmbientOcclusion/SSAO.cs.hlsl | PostProcess
-// Screen Space Ambient Occlusion — 半球サンプリングで遮蔽率を計算する
-//
-// Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1
+/// @file    SSAO.cs.hlsl
+/// @brief   Screen Space Ambient Occlusion。法線まわりの半球に点を撒き、シーン深度より奥に沈んだ割合を遮蔽とする。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+/// @note    ビュー空間は左手系 (前方 +Z)。カメラ深度は Reversed-Z。出力は半解像度、深度・法線はフル解像度。
+/// @note    Dispatch は ceil(出力幅/8) x ceil(出力高/8) x 1。
+/// @see     https://learnopengl.com/Advanced-Lighting/SSAO (LearnOpenGL, "SSAO" — 範囲チェックとバイアス)
 
 #include "Common/Constants.hlsli"
 #include "Common/Math.hlsli"
@@ -11,83 +13,79 @@
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);  // normal(RGB) + metallic(A)
+/// @note GBuffer1 は法線 (RGB) + metallic (A)。
+FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);
 FBZZ_TEX2D(texDepth, TEX_DEPTH_SLOT);
-// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
-SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
-
 FBZZ_RWTEX2D_T(float4, outputSSAO, UAV_OUTPUT_SLOT);
 
 static const int   SAMPLE_COUNT  = 16;
 static const float SAMPLE_RADIUS = 0.5f;
 static const float BIAS          = 0.025f;
 
+/// @brief UV の位置のフル解像度の画素を返す。
+/// @note 深度と法線は最近傍で読む。補間すると輪郭で手前と奥が混ざり、宙に浮いた点ができる。
+int3 FullResTexel(float2 uv, float2 fullSize)
+{
+    return int3(clamp(int2(uv * fullSize), int2(0, 0), int2(fullSize) - 1), 0);
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
-    uint2  pixel = dtid.xy;
-
-    // 出力 SSAO バッファ (半解像度対応) の実サイズを基準にする。
+    const uint2 pixel = dtid.xy;
     float2 outSize;
     outputSSAO.GetDimensions(outSize.x, outSize.y);
     if (pixel.x >= (uint)outSize.x || pixel.y >= (uint)outSize.y)
         return;
 
-    float2 uv    = (float2(pixel) + 0.5f) / outSize;
+    float2 fullSize;
+    texDepth.GetDimensions(fullSize.x, fullSize.y);
 
-    // GBuffer / 深度はフル解像度なので、正規化 UV でサンプルして半解像度スレッドから読む。
-    // WHY: Load(pixel) だと半解像度 pixel でフル解像度 GBuffer の左上 1/4 しか読めず破綻する。
-    float3 N = texGBuffer1.SampleLevel(sampDefault, uv, 0).rgb * 2.0f - 1.0f;
-    N = normalize(N);
+    const float2 uv = (float2(pixel) + 0.5f) / outSize;
+    const float3 N  = normalize(texGBuffer1.Load(FullResTexel(uv, fullSize)).rgb * 2.0f - 1.0f);
 
-    // 深度から worldPos 復元
-    float  ndcDepth = texDepth.SampleLevel(sampDefault, uv, 0).r;
-    if (ndcDepth >= 1.0f)
+    const float ndcDepth = texDepth.Load(FullResTexel(uv, fullSize)).r;
+    if (IsFarDepth(ndcDepth))
     {
         outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);
         return;
     }
-    float3 origin   = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
-    float originDepth = LinearizeDepth(ndcDepth, nearZ, farZ, isOrthographic);
+    const float3 origin      = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
+    const float  originDepth = LinearizeDepth(ndcDepth, nearZ, farZ, isOrthographic);
 
-    // 半球サンプリング
+    const float3 up = abs(N.z) < 0.999f ? float3(0, 0, 1) : float3(1, 0, 0);
+    const float3 T  = normalize(cross(up, N));
+    const float3 B  = cross(N, T);
+
     float occlusion = 0.0f;
     for (int i = 0; i < SAMPLE_COUNT; ++i)
     {
-        // Wang ハッシュで乱数生成
-        uint  seed     = Hash(pixel.x + pixel.y * (uint)screenSize.x + (uint)i * 37u);
-        float r1       = HashToFloat(seed);
-        float r2       = HashToFloat(Hash(seed));
+        const uint  seed = Hash(pixel.x + pixel.y * (uint)screenSize.x + (uint)i * 37u);
+        const float r1   = HashToFloat(seed);
+        const float r2   = HashToFloat(Hash(seed));
 
-        // コサイン重み付き半球サンプル
-        float phi      = 6.28318f * r1;
-        float cosTheta = sqrt(r2);
-        float sinTheta = sqrt(1.0f - r2);
-        float3 localSample = float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+        /// @note 余弦重みの半球サンプル。
+        const float  phi      = 6.28318f * r1;
+        const float  cosTheta = sqrt(r2);
+        const float  sinTheta = sqrt(1.0f - r2);
+        const float3 sampleW  = T * (cos(phi) * sinTheta) + B * (sin(phi) * sinTheta) + N * cosTheta;
+        const float3 samplePos = origin + sampleW * SAMPLE_RADIUS;
 
-        // 法線方向を軸とした TBN で変換
-        float3 up      = abs(N.z) < 0.999f ? float3(0, 0, 1) : float3(1, 0, 0);
-        float3 T       = normalize(cross(up, N));
-        float3 B       = cross(N, T);
-        float3 sampleW = T * localSample.x + B * localSample.y + N * localSample.z;
-
-        float3 samplePos = origin + sampleW * SAMPLE_RADIUS;
-
-        // サンプル点をスクリーン空間へ投影
         float4 clip = mul(float4(samplePos, 1.0f), viewProjection);
         if (abs(clip.w) < EPSILON) continue;
         clip.xyz /= clip.w;
-        float2 sampleUV = NdcToUv(clip.xy);
+        const float2 sampleUV = NdcToUv(clip.xy);
         if (any(sampleUV <= 0.0f) || any(sampleUV >= 1.0f)) continue;
 
-        float sampleDepth = texDepth.SampleLevel(sampDefault, sampleUV, 0).r;
-        if (sampleDepth >= 1.0f) continue;
+        const float sampleDepth = texDepth.Load(FullResTexel(sampleUV, fullSize)).r;
+        if (IsFarDepth(sampleDepth)) continue;
 
-        // ワールドZではなくカメラからの線形深度で判定し、カメラ回転によるAO反転を防ぐ。
-        float sceneDepth = LinearizeDepth(sampleDepth, nearZ, farZ, isOrthographic);
-        float samplePosDepth = -mul(float4(samplePos, 1.0f), view).z;
-        float rangeCheck = smoothstep(0.0f, 1.0f,
-                                      SAMPLE_RADIUS / max(abs(originDepth - sceneDepth), EPSILON));
+        /// @note ワールド Y でなくカメラからの視空間 Z で比べる。ワールド Y だとカメラを回すと遮蔽が反転する。
+        /// @note 視空間は左手系なので z はそのまま正の奥行き。
+        const float sceneDepth     = LinearizeDepth(sampleDepth, nearZ, farZ, isOrthographic);
+        const float samplePosDepth = mul(float4(samplePos, 1.0f), view).z;
+        const float rangeCheck = smoothstep(0.0f, 1.0f,
+                                            SAMPLE_RADIUS / max(abs(originDepth - sceneDepth), EPSILON));
         occlusion += (sceneDepth < samplePosDepth - BIAS ? 1.0f : 0.0f) * rangeCheck;
     }
 

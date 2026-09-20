@@ -22,6 +22,11 @@ public:
     /// CPU で焼いたミップ連鎖 (RGBA8) をそのまま全段転送する。
     /// @param mips 0 段目から順。行ピッチは width*4 固定。
     bool InitFromDataMips(DX12Context* context, const TextureMipData* mips, uint32_t mipCount);
+    /// @brief InitFromDataMips の待たない版。転送を graphics queue へ投入して戻る。
+    /// @param outUploadFence 転送完了で通過するフェンス値。
+    /// @note 同じキューの後続コマンドは転送の後に実行されるので、状態は生成直後から PIXEL_SHADER_RESOURCE として扱える。
+    bool InitFromDataMipsAsync(DX12Context* context, const TextureMipData* mips, uint32_t mipCount,
+                               uint64_t& outUploadFence);
     /// 3D テクスチャ (R8G8B8A8_UNORM)。ボリューメトリック雲ノイズ / 3D カラー LUT 用 (DX11 の Init3DFromData 相当)。
     /// @note 未実装だと 3D テクスチャが null になり、シェーダーの Texture3D スロットへ null Texture2D SRV が
     ///       バインドされて次元不一致の検証エラーになる。

@@ -33,4 +33,15 @@ float Clamp(float x, float lo, float hi) { return clamp(x, lo, hi); }
 // 2 値の符号付き比較 (a < b ? -1 : 1)
 float Sign(float x) { return (x >= 0.0f) ? 1.0f : -1.0f; }
 
+// @brief 0 ベクトルを normalize しないための共通ヘルパー。
+// @note 点光源直下や V+L≈0、ウェイトが全部 0 の頂点でも NaN を出さず、指定した方向へ連続させる。
+// @note ここに置くのは、ライティングだけでなく «変形した法線を正規化する» 側 (GBuffer の
+//       スキンド変種) も要るため。BRDF.hlsli はこのファイルを include しているので、
+//       これまでどおり BRDF 経由でも引ける。
+float3 SafeNormalize(float3 value, float3 fallback)
+{
+    const float lenSq = dot(value, value);
+    return lenSq > EPSILON * EPSILON ? value * rsqrt(lenSq) : fallback;
+}
+
 #endif // MATH_HLSLI

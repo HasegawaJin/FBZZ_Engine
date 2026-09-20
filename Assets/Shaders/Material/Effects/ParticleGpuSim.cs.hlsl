@@ -393,7 +393,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             int2 pixel = clamp(int2(uv * float2(gScreenWidth, gScreenHeight)),
                                int2(0, 0), int2(gScreenWidth - 1u, gScreenHeight - 1u));
                 float sceneDepth = gSceneDepth.Load(int3(pixel, 0));
-                if (ndc.z >= sceneDepth && ndc.z - sceneDepth <= gDepthThickness)
+                /// @note カメラ深度は Reversed-Z (奥ほど小さい)。面の奥へ gDepthThickness 以内に入ったら当たり。
+                if (ndc.z <= sceneDepth && sceneDepth - ndc.z <= gDepthThickness)
                 {
                     p.position = previousPosition;
                     if (gDepthResponse == 1u)

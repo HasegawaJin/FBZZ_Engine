@@ -13,6 +13,7 @@
 #include <Math/Matrix4.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -133,6 +134,24 @@ bool ReadNodes(BinaryReader& r, ModelAsset& out, const std::string& path)
     return true;
 }
 
+/// @brief submesh の本体 (頂点・インデックス・モーフ) を読まずに飛ばす。大きさはヘッダーから決まる。
+bool SkipSubmeshPayload(BinaryReader& r, const FzSubmeshHeader& header,
+                        const FzSubmeshExtensionV3& extension, bool hasVertexColor)
+{
+    const std::size_t vertexStride = header.vertexFormat == 1
+        ? sizeof(renderer::SkinnedVertex)
+        : (hasVertexColor ? sizeof(renderer::Vertex) : sizeof(FzVertexV1));
+    if (!r.Skip(static_cast<std::size_t>(header.vertexCount) * vertexStride
+                + static_cast<std::size_t>(header.indexCount) * sizeof(uint32_t)))
+        return false;
+    for (uint32_t mi = 0; mi < extension.morphTargetCount; ++mi) {
+        FzMorphTargetHeader morphHeader{};
+        if (!r.Read(morphHeader) || morphHeader.vertexCount != header.vertexCount) return false;
+        if (!r.Skip(static_cast<std::size_t>(morphHeader.vertexCount) * sizeof(FzMorphDelta))) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
@@ -145,7 +164,31 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
         FBZZ_LOG_ERROR("ModelAssetImporter: cannot open [%s]", absPath.c_str());
         return nullptr;
     }
+    return ImportFromReader(r, absPath, resources, 0);
+}
 
+std::unique_ptr<ModelAsset> ModelAssetImporter::ImportPartial(
+    const std::string&         absPath,
+    renderer::ResourceManager* resources,
+    uint32_t                   firstResidentLod,
+    uint64_t*                  outBytesRead)
+{
+    BinaryReader r;
+    if (!r.OpenStreaming(absPath)) {
+        FBZZ_LOG_ERROR("ModelAssetImporter: cannot open [%s]", absPath.c_str());
+        return nullptr;
+    }
+    auto model = ImportFromReader(r, absPath, resources, firstResidentLod);
+    if (outBytesRead) *outBytesRead = r.bytesRead;
+    return model;
+}
+
+std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
+    BinaryReader&              r,
+    const std::string&         absPath,
+    renderer::ResourceManager* resources,
+    uint32_t                   firstResidentLod)
+{
     FzModelHeader hdr{};
     if (!r.Read(hdr) ||
         hdr.magic[0] != 'F' || hdr.magic[1] != 'Z' ||
@@ -182,6 +225,9 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
         model->materialSlotNames[i] = nameBuf;
     }
 
+    /// @note 最低品質の LOD は必ず読む。これより高品質な LOD は本体をシークで飛ばす。
+    const uint32_t firstResident = (std::min)(firstResidentLod, hdr.lodCount - 1u);
+
     /// @note LOD ループ
     model->lods.resize(hdr.lodCount);
     for (uint32_t li = 0; li < hdr.lodCount; ++li) {
@@ -212,6 +258,15 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
             SubmeshEntry& entry = lod.submeshes[si];
             entry.materialSlotIndex = smHdr.materialSlotIndex;
             entry.name = smExtV3.name;
+
+            if (li < firstResident) {
+                if (!SkipSubmeshPayload(r, smHdr, smExtV3, hasVertexColor)) {
+                    FBZZ_LOG_ERROR("ModelAssetImporter: truncated submesh payload lod=%u submesh=%u [%s]",
+                                   li, si, absPath.c_str());
+                    return nullptr;
+                }
+                continue;
+            }
 
             auto mesh = std::make_unique<renderer::Mesh>();
             mesh->vertexCount  = smHdr.vertexCount;

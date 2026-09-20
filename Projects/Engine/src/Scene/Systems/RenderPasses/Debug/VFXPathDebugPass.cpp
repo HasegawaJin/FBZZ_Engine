@@ -64,7 +64,7 @@ bool VFXPathDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void VFXPathDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy() || !IsSelectedForDebug(go, ctx)) continue;
         const Transform& tf = go.transform;

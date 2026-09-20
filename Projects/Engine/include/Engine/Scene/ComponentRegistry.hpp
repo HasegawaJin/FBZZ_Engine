@@ -71,6 +71,7 @@
 #include "Components/SequencePlayerComponent.hpp"
 #include "Components/FiberComponent.hpp"
 #include "Components/FiberInteractorComponent.hpp"
+#include "Components/LightProbeVolumeComponent.hpp"
 #include "ScriptComponent.hpp"
 
 #include <cstddef>
@@ -272,7 +273,10 @@ using ComponentRegistry = std::tuple<
                           ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>,
     FBZZ_COMPONENT(FiberComponent, Rendering, "Fiber (Fur / Grass)"),
     FBZZ_COMPONENT(ClothComponent, Physics, "Cloth"),
-    FBZZ_COMPONENT(FiberInteractorComponent, Rendering, "Fiber Interactor")
+    FBZZ_COMPONENT(FiberInteractorComponent, Rendering, "Fiber Interactor"),
+    /// @note 保存は Reflect のまま、Inspector は焼きの進捗と Bake ボタンを持つ専用 UI。
+    ComponentRegistration<LightProbeVolumeComponent, ComponentCategory::Environment, "LightProbeVolumeComponent",
+                          "Light Probe Volume", ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>
 >;
 
 template<typename Registry>

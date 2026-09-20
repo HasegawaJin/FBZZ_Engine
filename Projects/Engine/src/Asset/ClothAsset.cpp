@@ -83,31 +83,157 @@ toml::array IndexArray(const std::vector<uint32_t>& values)
     for (uint32_t value : values) result.push_back(static_cast<int64_t>(value));
     return result;
 }
+bool Frame(const math::Vector3& a, const math::Vector3& b, const math::Vector3& c,
+           math::Vector3& u, math::Vector3& v, math::Vector3& n)
+{
+    u = b - a;
+    n = math::Vector3::Cross(u, c - a);
+    if (!Finite(u) || !Finite(n) || u.LengthSq() < 1.0e-16f || n.LengthSq() < 1.0e-16f) return false;
+    u = u.Normalized();
+    n = n.Normalized();
+    v = math::Vector3::Cross(n, u);
+    return true;
+}
+/// @see https://realtimecollisiondetection.net/ Real-Time Collision Detection 5.1.5 三角形の Voronoi 領域による最近点。
+math::Vector3 ClosestWeights(const math::Vector3& p, const math::Vector3& a,
+                            const math::Vector3& b, const math::Vector3& c)
+{
+    using math::Vector3;
+    const auto ab = b-a, ac = c-a, ap = p-a;
+    const float d1 = Vector3::Dot(ab, ap), d2 = Vector3::Dot(ac, ap);
+    if (d1 <= 0 && d2 <= 0) return {1,0,0};
+    const auto bp = p-b;
+    const float d3 = Vector3::Dot(ab, bp), d4 = Vector3::Dot(ac, bp);
+    if (d3 >= 0 && d4 <= d3) return {0,1,0};
+    const float vc = d1*d4-d3*d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) { const float t = d1/(d1-d3); return {1-t,t,0}; }
+    const auto cp = p-c;
+    const float d5 = Vector3::Dot(ab, cp), d6 = Vector3::Dot(ac, cp);
+    if (d6 >= 0 && d5 <= d6) return {0,0,1};
+    const float vb = d5*d2-d1*d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) { const float t = d2/(d2-d6); return {1-t,0,t}; }
+    const float va = d3*d6-d5*d4;
+    if (va <= 0 && d4-d3 >= 0 && d5-d6 >= 0) {
+        const float t = (d4-d3)/((d4-d3)+(d5-d6)); return {0,1-t,t};
+    }
+    const float sum = va+vb+vc;
+    return {va/sum,vb/sum,vc/sum};
+}
+}
+
+bool EvaluateClothRenderBindings(std::span<const ClothRenderBinding> bindings,
+    std::span<const math::Vector3> rest, std::span<const math::Vector3> positions, std::vector<math::Vector3>& out)
+{
+    if (rest.size() != positions.size()) return false;
+    std::vector<math::Vector3> result;
+    result.reserve(bindings.size());
+    for (const auto& binding : bindings) {
+        const auto& ids = binding.particles;
+        const auto& w = binding.barycentric;
+        if (ids[0] >= positions.size() || ids[1] >= positions.size() || ids[2] >= positions.size()
+            || !Finite(w) || !Finite(binding.offset) || w.x < 0 || w.y < 0 || w.z < 0
+            || std::abs(w.x+w.y+w.z-1.0f) > 1.0e-5f) return false;
+        const auto& a = positions[ids[0]]; const auto& b = positions[ids[1]]; const auto& c = positions[ids[2]];
+        if (!Finite(a) || !Finite(b) || !Finite(c)) return false;
+        math::Vector3 u, v, n;
+        if (!Frame(a,b,c,u,v,n) && !Frame(rest[ids[0]],rest[ids[1]],rest[ids[2]],u,v,n)) return false;
+        const auto p = a*w.x+b*w.y+c*w.z+u*binding.offset.x+v*binding.offset.y+n*binding.offset.z;
+        if (!Finite(p)) return false;
+        result.push_back(p);
+    }
+    out = std::move(result);
+    return true;
+}
+
+bool BindClothRenderMesh(const ClothAsset& simulation, const renderer::Mesh& renderMesh, float maxDistance, ClothAsset& out)
+{
+    if (!ValidateClothAsset(simulation) || renderMesh.isSkinned || renderMesh.cpuVertices.empty()
+        || !std::isfinite(maxDistance) || maxDistance < 0 || maxDistance > 100.0f) return false;
+    ClothAsset result = simulation;
+    if (result.renderBindings.empty()) {
+        result.simulationIndices.clear();
+        for (uint32_t index : result.indices) result.simulationIndices.push_back(result.renderToParticle[index]);
+    }
+    /// @note オフライン結合の総当たり上限。失敗しても元アセットや out を変更しない。
+    if (renderMesh.cpuVertices.size() > CLOTH_MAX_VERTICES
+        || renderMesh.cpuIndices.size() > CLOTH_MAX_INDICES
+        || renderMesh.cpuVertices.size() * (result.simulationIndices.size()/3) > 20000000u) return false;
+    result.vertices = renderMesh.cpuVertices;
+    result.indices = renderMesh.cpuIndices;
+    result.renderToParticle.clear();
+    result.renderBindings.clear();
+    for (const auto& vertex : result.vertices) {
+        if (!Finite(vertex.position)) return false;
+        ClothRenderBinding best;
+        float bestDistance = maxDistance*maxDistance;
+        bool found = false;
+        for (size_t i = 0; i < result.simulationIndices.size(); i += 3) {
+            const uint32_t ia = result.simulationIndices[i], ib = result.simulationIndices[i+1], ic = result.simulationIndices[i+2];
+            const auto& a = result.particles[ia]; const auto& b = result.particles[ib]; const auto& c = result.particles[ic];
+            const auto w = ClosestWeights(vertex.position,a,b,c);
+            const auto delta = vertex.position-(a*w.x+b*w.y+c*w.z);
+            const float distance = delta.LengthSq();
+            if (!std::isfinite(distance) || distance > bestDistance || (found && distance == bestDistance)) continue;
+            math::Vector3 u,v,n;
+            if (!Frame(a,b,c,u,v,n)) return false;
+            best = {{ia,ib,ic},w,{math::Vector3::Dot(delta,u),math::Vector3::Dot(delta,v),math::Vector3::Dot(delta,n)}};
+            bestDistance = distance;
+            found = true;
+        }
+        if (!found) return false;
+        result.renderBindings.push_back(best);
+    }
+    result.revision = 0;
+    if (!ValidateClothAsset(result)) return false;
+    out = std::move(result);
+    return true;
 }
 
 bool ValidateClothAsset(const ClothAsset& asset)
 {
+    const bool bound = !asset.renderBindings.empty();
     if (asset.vertices.empty() || asset.vertices.size() > CLOTH_MAX_VERTICES
         || asset.particles.empty() || asset.particles.size() > CLOTH_MAX_VERTICES
         || asset.indices.empty() || asset.indices.size() > CLOTH_MAX_INDICES
-        || asset.indices.size() % 3 != 0 || asset.renderToParticle.size() != asset.vertices.size()
+        || asset.indices.size() % 3 != 0
+        || (bound ? (!asset.renderToParticle.empty() || asset.renderBindings.size() != asset.vertices.size()
+            || asset.simulationIndices.empty() || asset.simulationIndices.size() > CLOTH_MAX_INDICES
+            || asset.simulationIndices.size()%3 != 0)
+            : (asset.renderToParticle.size() != asset.vertices.size() || !asset.simulationIndices.empty()))
         || asset.pins.size() > asset.particles.size() || !ValidSkin(asset)) return false;
     for (const auto& p : asset.particles) if (!Finite(p)) return false;
     for (size_t i = 0; i < asset.vertices.size(); ++i) {
         const auto& v = asset.vertices[i];
-        const uint32_t particle = asset.renderToParticle[i];
+        const uint32_t particle = bound ? 0 : asset.renderToParticle[i];
         if (particle >= asset.particles.size() || !Finite(v.position) || !Finite(v.normal) || !Finite(v.tangent)
             || !std::isfinite(v.uv.x) || !std::isfinite(v.uv.y)
             || !std::isfinite(v.color.x) || !std::isfinite(v.color.y) || !std::isfinite(v.color.z) || !std::isfinite(v.color.w)
-            || (v.position - asset.particles[particle]).LengthSq() > 1.0e-12f) return false;
+            || (!bound && (v.position - asset.particles[particle]).LengthSq() > 1.0e-12f)) return false;
     }
     std::vector<uint32_t> triangles;
     std::vector<bool> used(asset.particles.size(), false), pinned(asset.particles.size(), false);
     for (uint32_t index : asset.indices) {
         if (index >= asset.vertices.size()) return false;
-        const uint32_t particle = asset.renderToParticle[index];
-        triangles.push_back(particle);
+        if (!bound) triangles.push_back(asset.renderToParticle[index]);
+    }
+    if (bound) {
+        triangles = asset.simulationIndices;
+        std::set<std::array<uint32_t,3>> faces;
+        for (size_t i = 0; i < triangles.size(); i += 3) faces.insert({triangles[i],triangles[i+1],triangles[i+2]});
+        for (const auto& binding : asset.renderBindings) if (!faces.contains(binding.particles)) return false;
+        std::vector<math::Vector3> reconstructed;
+        if (!EvaluateClothRenderBindings(asset.renderBindings, asset.particles, asset.particles, reconstructed)) return false;
+        for (size_t i = 0; i < reconstructed.size(); ++i)
+            if ((reconstructed[i]-asset.vertices[i].position).LengthSq() > 1.0e-8f) return false;
+    }
+    for (uint32_t particle : triangles) {
+        if (particle >= used.size()) return false;
         used[particle] = true;
+    }
+    for (size_t i = 0; i < asset.indices.size(); i += 3) {
+        const auto a = asset.indices[i], b = asset.indices[i+1], c = asset.indices[i+2];
+        if (a == b || b == c || c == a || math::Vector3::Cross(asset.vertices[b].position-asset.vertices[a].position,
+            asset.vertices[c].position-asset.vertices[a].position).LengthSq() < 1.0e-16f) return false;
     }
     for (bool value : used) if (!value) return false;
     for (uint32_t pin : asset.pins) {
@@ -234,7 +360,7 @@ bool LoadClothAssetFromFile(std::string_view path, ClothAsset& out)
     if (!parsed) return false;
     const auto& table = parsed.table();
     const auto version = table["version"].value<int64_t>();
-    if (version != 1 && version != CLOTH_FORMAT_VERSION) return false;
+    if (!version || *version < 1 || *version > CLOTH_FORMAT_VERSION) return false;
     const auto* particles = table["particles"].as_array();
     const auto* vertices = table["vertices"].as_array();
     if (!particles || !vertices || particles->size() > CLOTH_MAX_VERTICES || vertices->size() > CLOTH_MAX_VERTICES) return false;
@@ -250,7 +376,7 @@ bool LoadClothAssetFromFile(std::string_view path, ClothAsset& out)
         result.vertices.push_back({{v[0], v[1], v[2]}, {v[3], v[4], v[5]}, {v[6], v[7], v[8]},
             {v[9], v[10]}, {v[11], v[12], v[13], v[14]}});
     }
-    if (version == CLOTH_FORMAT_VERSION) {
+    if (*version >= 2) {
         const auto* bones = table["skin_bones"].as_array();
         const auto* weights = table["skin_weights"].as_array();
         if (!bones || !weights || bones->size() > CLOTH_MAX_BONES || weights->size() > CLOTH_MAX_VERTICES) return false;
@@ -281,6 +407,22 @@ bool LoadClothAssetFromFile(std::string_view path, ClothAsset& out)
             result.skinWeights.push_back(skin);
         }
     }
+    if (*version >= 3) {
+        const auto* bindings = table["render_bindings"].as_array();
+        if (!bindings || bindings->size() > CLOTH_MAX_VERTICES
+            || !ReadIndices(table.get("simulation_indices"), CLOTH_MAX_INDICES, result.simulationIndices)) return false;
+        for (const auto& node : *bindings) {
+            const auto* record = node.as_table();
+            if (!record) return false;
+            std::vector<uint32_t> ids;
+            float w[3]{}, offset[3]{};
+            const auto* weights = record->get("barycentric");
+            const auto* delta = record->get("offset");
+            if (!ReadIndices(record->get("particles"), 3, ids) || ids.size() != 3 || !weights || !delta
+                || !ReadFloats(*weights,w) || !ReadFloats(*delta,offset)) return false;
+            result.renderBindings.push_back({{ids[0],ids[1],ids[2]},{w[0],w[1],w[2]},{offset[0],offset[1],offset[2]}});
+        }
+    }
     if (!ReadIndices(table.get("indices"), CLOTH_MAX_INDICES, result.indices)
         || !ReadIndices(table.get("render_to_particle"), CLOTH_MAX_VERTICES, result.renderToParticle)
         || !ReadIndices(table.get("pins"), CLOTH_MAX_VERTICES, result.pins) || !ValidateClothAsset(result)) {
@@ -307,6 +449,16 @@ bool SaveClothAssetToFile(std::string_view path, const ClothAsset& asset)
     table.insert("vertices", std::move(vertices));
     table.insert("indices", IndexArray(asset.indices));
     table.insert("render_to_particle", IndexArray(asset.renderToParticle));
+    table.insert("simulation_indices", IndexArray(asset.simulationIndices));
+    toml::array bindings;
+    for (const auto& binding : asset.renderBindings) {
+        const auto& ids = binding.particles;
+        const auto& w = binding.barycentric;
+        const auto& d = binding.offset;
+        bindings.push_back(toml::table{{"particles",toml::array{ids[0],ids[1],ids[2]}},
+            {"barycentric",toml::array{w.x,w.y,w.z}}, {"offset",toml::array{d.x,d.y,d.z}}});
+    }
+    table.insert("render_bindings", std::move(bindings));
     table.insert("pins", IndexArray(asset.pins));
     toml::array bones, weights;
     for (const auto& bone : asset.skinBones) {

@@ -74,9 +74,10 @@ public:
     bool SetSiblingIndex(int index);
 
     /// Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
-    static GameObject*              Find(const std::string& n);
+    /// @note Unity と同じく既定では親ごと無効化された GameObject を返さない。FindByGuid は参照解決用なので無効な物も返す。
+    static GameObject*              Find(const std::string& n, bool includeInactive = false);
     static GameObject*              FindByGuid(const std::string& guid);
-    static GameObject*              FindWithTag(const std::string& t);
+    static GameObject*              FindWithTag(const std::string& t, bool includeInactive = false);
     template<typename T>
     static std::vector<GameObject*> FindObjectsOfType();
 

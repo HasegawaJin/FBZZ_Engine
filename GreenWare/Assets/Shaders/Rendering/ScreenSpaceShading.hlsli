@@ -38,7 +38,10 @@ FBZZ_TEX2D_T(float, gScreenContactShadow, TEX_CONTACT_SHADOW_SLOT); // t24
 float FBZZ_ScreenAO(float2 svXY)
 {
     if (screenAoStrength <= 0.0f) return 1.0f;
-    const int2 texel = int2(svXY * screenAoScale);
+    /// @note 半解像度は切り捨てで作るので、奇数の画面幅では最後の列が範囲外になる。範囲外の Load は 0 (真っ黒) を返す。
+    uint aoW, aoH;
+    gScreenAO.GetDimensions(aoW, aoH);
+    const int2 texel = min(int2(svXY * screenAoScale), int2(aoW, aoH) - 1);
     const float ao = saturate(gScreenAO.Load(int3(texel, 0)).r);
     return lerp(1.0f, ao, saturate(screenAoStrength));
 }
@@ -48,7 +51,9 @@ float FBZZ_ScreenAO(float2 svXY)
 float FBZZ_ScreenContactShadow(float2 svXY)
 {
     if (screenContactShadowStrength <= 0.0f) return 1.0f;
-    const int2 texel = int2(svXY * screenContactShadowScale);
+    uint csW, csH;
+    gScreenContactShadow.GetDimensions(csW, csH);
+    const int2 texel = min(int2(svXY * screenContactShadowScale), int2(csW, csH) - 1);
     const float mask = saturate(gScreenContactShadow.Load(int3(texel, 0)));
     return lerp(1.0f, mask, saturate(screenContactShadowStrength));
 }

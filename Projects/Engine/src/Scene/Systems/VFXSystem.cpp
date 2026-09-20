@@ -446,8 +446,12 @@ void ApplyVFXTimeScale(Scene& scene, bool& ownsTimeScale)
 {
     float slowest = 1.0f;
     bool any = false;
-    for (auto [tf, request] : scene.View<Transform, VFXTimeScale>()) {
-        if (!request.enabled) continue;
+    /// @note 親ごと無効化された要求は数えない (ゲーム全体がスローのまま残る)。View は GameObject を返さないので実体から引く。
+    for (const EntityID id : scene.GetEntities<VFXTimeScale>()) {
+        const GameObject* owner = scene.GetGameObject(id);
+        const auto* requestPtr = scene.GetComponent<VFXTimeScale>(id);
+        if (!owner || !requestPtr || !requestPtr->enabled || !owner->activeInHierarchy()) continue;
+        const auto& request = *requestPtr;
         const float weight = std::clamp(request.weight, 0.0f, 1.0f);
         if (weight <= 0.0f) continue;
         any = true;

@@ -189,7 +189,8 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     //     直し忘れた 1 つだけが静かに別の値を読む。
     float4 customParameters2;
     // カスタムパスの «走り方» (書き手ではなくエンジンが埋める)。
-    //   x = 入力 UV のスケール (downscale の逆数) / y = 何回目の反復 / z = 反復の総数
+    //   x = 入力 UV の横の倍率 (縮小後の幅 / 実寸の幅) / y = 何回目の反復 / z = 反復の総数
+    //   w = 入力 UV の縦の倍率 (縮小後の高さ / 実寸の高さ)。縦横は別々に切り捨てられるので一致しない
     float4 customPassInfo;
     // 衝撃波リング (VFXScreenEffect)。C++ PostProcCB と一致。Amplitude=0 で無効。
     float2 shockRingCenter;
@@ -198,6 +199,19 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  shockRingAmplitude;
     float3 _shockRingPad;
 };
+
+/// @brief カスタムパスが入力テクスチャを引く UV。縮小して走るときの倍率を掛け、有効範囲の内側へ留める。
+/// @note 縮小結果は実寸の RT の左上にしか無く、その外はクリアした 0。倍率を掛けるだけだと端のタップと
+///       双線形の隣が 0 を拾い、右端と下端が暗くなる。texelSize は «縮小後» の 1 画素なので半画素ぶん内側で止める。
+/// @note customPassInfo を埋めないパス (x = 0) では倍率 1 として扱う。
+float2 FBZZ_CustomInputUV(float2 uv)
+{
+    const float2 scale = customPassInfo.x > 0.0f
+        ? float2(customPassInfo.x, customPassInfo.w > 0.0f ? customPassInfo.w : customPassInfo.x)
+        : float2(1.0f, 1.0f);
+    const float2 maxUV = scale * (1.0f - 0.5f * texelSize);
+    return clamp(uv * scale, float2(0.0f, 0.0f), maxUV);
+}
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)
 {

@@ -99,7 +99,7 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
     atmData.mieG                  = sky->mieG;
     resources.Update(h.atmosphereCB, &atmData, sizeof(AtmosphereCB));
 
-    /// @note 90° FOV・アスペクト 1.0 の射影。Skydome.hlsl は svPosition.xyww で z を上書きするため
+    /// @note 90° FOV・アスペクト 1.0 の射影。Skydome.hlsl は svPosition の z を 0 (Reversed-Z の最遠) で上書きし、面は深度を持たないため
     ///       near/far は xy に影響しない (値は形式的)。
     const math::Matrix4 proj = math::Matrix4::Perspective(math::ToRad(90.0f), 1.0f, 0.1f, 10.0f);
 

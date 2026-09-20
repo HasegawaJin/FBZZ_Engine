@@ -10,6 +10,8 @@
 #pragma once
 #include "Engine/Scene/Fields/FlowField.hpp"
 #include <cstdint>
+#include <functional>
+#include <span>
 #include <vector>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
@@ -21,6 +23,7 @@ namespace fbzz::scene {
 class Scene;
 struct Transform;
 struct ParticleEmitter;
+struct FlowFieldFrame;
 
 /// @brief 1 フレーム分に解決した流れ 1 本 (ワールド空間へ解決済み)。
 /// @brief シーンに置いた FlowField と、エミッターが内蔵する流れの両方がこの形になる。
@@ -50,6 +53,24 @@ struct ActiveFlowField {
 /// @brief ワールド球と流れの有効範囲の交差。無限の場と不明な Bounds は残す。
 [[nodiscard]] bool FlowIntersectsSphere(const ActiveFlowField& field, const math::Vector3& center, float radius);
 
+/// @note CPU 評価と GPU 転送の受信条件。力・変形への変換は各消費者が行う。
+/// @see Docs/design/flow-field.md
+struct FlowReceiver {
+    bool enabled = true;
+    uint32_t channels = 0xffffffffu;
+    [[nodiscard]] bool Accepts(const ActiveFlowField& field) const;
+    /// @note radius < 0 は境界不明として空間カリングを省略する。
+    [[nodiscard]] bool Intersects(const ActiveFlowField& field, const math::Vector3& center, float radius) const;
+    [[nodiscard]] math::Vector3 Sample(const math::Vector3& position, std::span<const ActiveFlowField> fields,
+                                     float time, bool* covered = nullptr) const;
+};
+
+/// @note 戻り値は frame.fields を借用する。環境風を別経路で適用する描画は includeAmbient=false を指定する。
+[[nodiscard]] std::span<const ActiveFlowField> SelectFlowFields(const FlowFieldFrame& frame, bool includeAmbient = true);
+/// @note 配列の寿命と時刻を固定する。受信無効・マスク 0 では空の関数を返す。
+[[nodiscard]] std::function<math::Vector3(const math::Vector3&)> MakeFlowSampler(
+    const FlowFieldFrame& frame, FlowReceiver receiver, float time, bool includeAmbient = true);
+
 /// @return 場の流速の保守的上限 [m/s]。GPU 粒子の次フレームの Bounds に使う。
 [[nodiscard]] float FlowSpeedBound(const ActiveFlowField& field);
 
@@ -71,7 +92,7 @@ void GatherFlowFields(Scene& scene, std::vector<ActiveFlowField>& out);
 /// @note LegacyDrag は流れではないので何も足さない (読み込み時に flowCoupling へ写る)。
 /// @note 式は ParticleGpuSim.cs.hlsl の SampleFlow と一致させること。
 [[nodiscard]] math::Vector3 SampleFlow(const math::Vector3& position,
-                                       const std::vector<ActiveFlowField>& fields,
+                                       std::span<const ActiveFlowField> fields,
                                        uint32_t channels, float time,
                                        bool* covered = nullptr);
 
@@ -95,4 +116,4 @@ void ApplyFlowFields(const std::vector<ActiveFlowField>& fields,
                      math::Vector3&       velocity,
                      float dt, float time, float coupling);
 
-} // namespace fbzz::scene
+}

@@ -89,7 +89,7 @@ inline void ChainDisplayComponent::OnStart()
     /// @note 参照の解決は 1 度だけ。毎フレーム名前で探すと、見つからない構成のときに
     ///       静かにシーン全体の走査を続けることになる。
     GameObject* text = countText.Get();
-    if (!text) text = scene.Find(kCountName);
+    if (!text) text = scene.Find(kCountName, true);
     if (!text) {
         debug.LogError("ChainDisplayComponent: chain text not found (assign it, or name it "
                        "HUD_Chain in the scene).");

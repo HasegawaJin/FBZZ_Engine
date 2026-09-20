@@ -87,7 +87,13 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
         }
 
         /// @name 検知判定
-        GameObject* targetGo = sensor->targetTag.empty() ? nullptr : scene.FindWithTag(sensor->targetTag);
+        /// @note 親ごと無効化された対象は «居ない» として扱う (Scene::FindWithTag は無効な物も返すので自前で探す)。
+        GameObject* targetGo = nullptr;
+        if (!sensor->targetTag.empty()) {
+            for (auto& candidate : scene.GameObjects()) {
+                if (candidate.tag == sensor->targetTag && candidate.activeInHierarchy()) { targetGo = &candidate; break; }
+            }
+        }
         bool detected = false;
 
         if (targetGo) {

@@ -6,6 +6,7 @@
 #include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/MeshBuilder.hpp>
+#include <Engine/Asset/ClothAsset.hpp>
 #include <Physics/Cloth/ClothSolver.hpp>
 #include <array>
 
@@ -21,6 +22,18 @@ struct ClothAttachment {
     float maxDistance = 0.0f;
     bool operator==(const ClothAttachment&) const = default;
 };
+/// @note 質点ごとの最大移動距離 [m]。未指定は skinMaxDistance を継承し、非スキン布では拘束なし。
+/// @see https://nvidiagameworks.github.io/PhysX/3.3/PhysXGuide/Manual/Cloth.html#motion-constraints Motion Constraints。
+struct ClothMaxDistance {
+    int particle = 0;
+    float distance = 0.1f;
+    bool operator==(const ClothMaxDistance&) const = default;
+};
+struct ClothColliderPose {
+    EntityID entity{};
+    math::Vector3 position{};
+    math::Quaternion rotation{};
+};
 
 struct ClothRuntime {
     physics::ClothSolver solver;
@@ -29,8 +42,11 @@ struct ClothRuntime {
     std::vector<math::Vector3> previous;
     std::vector<uint32_t> pins;
     std::vector<uint32_t> renderToParticle;
+    std::vector<asset::ClothRenderBinding> renderBindings;
     std::vector<int> appliedPins;
     std::vector<ClothAttachment> appliedAttachments;
+    std::vector<ClothMaxDistance> appliedMaxDistances;
+    std::vector<ClothColliderPose> colliderPoses;
     std::vector<math::Vector3> attachmentCenters;
     std::vector<math::Vector3> skinCenters;
     EntityID appliedSkinTarget{};
@@ -65,6 +81,8 @@ struct ClothComponent {
     bool useSkinning = false;
     EntityID skinTarget{};
     float skinMaxDistance = 0.1f;
+    /// @note 明示 attachments と固定点が優先。非スキン布では Transform で移動する静止位置を中心とする。
+    std::vector<ClothMaxDistance> maxDistances;
     float width = 2.0f;
     float height = 2.0f;
     int segments = 16;
@@ -73,9 +91,17 @@ struct ClothComponent {
     bool pinLeft = false;
     bool collideWithSpheres = true;
     bool collideWithCapsules = true;
+    uint32_t collisionMask = 0xffffffffu;
+    bool twoWayCoupling = false;
+    /// @note 0 は別 Cloth との接触なし。双方の距離が正のとき大きい方を質点間の最小距離 [m] に使う。
+    float interCollisionDistance = 0.0f;
+    bool interCollisionFaces = false;
+    bool interContinuousCollision = false;
     bool groundEnabled = false;
     float groundHeight = 0.0f;
     float teleportDistance = 5.0f;
+    bool receiveFlowFields = false;
+    uint32_t flowFieldChannels = 0xffffffffu;
     std::string materialPath = "guid:732e0b24798a45baa3285d0c867a0fec";
     physics::ClothSettings settings;
     ClothRuntime runtime;
@@ -116,6 +142,17 @@ struct ClothComponent {
         r.Field("useSkinning", useSkinning);
         r.Field("skinTarget", skinTarget);
         r.Field("skinMaxDistance", skinMaxDistance);
+        const size_t distanceCount = r.BeginObjectList("maxDistances", maxDistances.size());
+        maxDistances.resize(distanceCount);
+        for (size_t i = 0; i < distanceCount; ++i) {
+            r.BeginObjectElement(i);
+            r.Field("particle", maxDistances[i].particle);
+            r.Field("distance", maxDistances[i].distance);
+            r.EndObjectElement();
+        }
+        const size_t removedDistance = r.EndObjectList();
+        if (removedDistance < maxDistances.size())
+            maxDistances.erase(maxDistances.begin() + static_cast<std::ptrdiff_t>(removedDistance));
         r.Group("Grid");
         r.FloatRange("width", width, 0.01f, 100.0f);
         r.FloatRange("height", height, 0.01f, 100.0f);
@@ -129,15 +166,28 @@ struct ClothComponent {
         r.Field("windVelocity", settings.windVelocity);
         r.Field("stretchCompliance", settings.stretchCompliance);
         r.Field("bendCompliance", settings.bendCompliance);
+        r.Field("dihedralBending", settings.dihedralBending);
         r.Field("damping", settings.damping);
         r.Field("airDensity", settings.airDensity);
         r.Field("dragCoefficient", settings.dragCoefficient);
         r.IntRange("substeps", settings.substeps, 1, 64);
         r.IntRange("iterations", settings.iterations, 1, 32);
         r.Field("teleportDistance", teleportDistance);
+        r.Group("Flow Fields");
+        r.Field("receiveFlowFields", receiveFlowFields);
+        int flowChannelsValue = static_cast<int>(flowFieldChannels);
+        r.Field("flowFieldChannels", flowChannelsValue);
+        flowFieldChannels = static_cast<uint32_t>(flowChannelsValue);
         r.Group("Collision");
         r.Field("collideWithSpheres", collideWithSpheres);
         r.Field("collideWithCapsules", collideWithCapsules);
+        int collisionMaskValue = static_cast<int>(collisionMask);
+        r.Field("collisionMask", collisionMaskValue);
+        collisionMask = static_cast<uint32_t>(collisionMaskValue);
+        r.Field("twoWayCoupling", twoWayCoupling);
+        r.Field("interCollisionDistance", interCollisionDistance);
+        r.Field("interCollisionFaces", interCollisionFaces);
+        r.Field("interContinuousCollision", interContinuousCollision);
         r.Field("groundEnabled", groundEnabled);
         r.Field("groundHeight", groundHeight);
         r.Field("thickness", settings.thickness);

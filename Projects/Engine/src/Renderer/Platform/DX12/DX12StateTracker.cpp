@@ -68,6 +68,19 @@ void DX12StateTracker::QueueTransition(ID3D12Resource* resource, D3D12_RESOURCE_
     m_states[resource] = requiredState;
 }
 
+void DX12StateTracker::QueueTransitionAllToCommon()
+{
+    /// @note m_states を走査しながら QueueTransition を呼ぶと同じ map を書き換えることになるため、
+    ///       先に対象を集めてから移す。
+    std::vector<ID3D12Resource*> targets;
+    targets.reserve(m_states.size());
+    for (const auto& [resource, state] : m_states)
+        if (state != D3D12_RESOURCE_STATE_COMMON) targets.push_back(resource);
+
+    for (ID3D12Resource* resource : targets)
+        QueueTransition(resource, D3D12_RESOURCE_STATE_COMMON);
+}
+
 void DX12StateTracker::FlushBarriers(ID3D12GraphicsCommandList* commands)
 {
     if (!commands || m_pendingBarriers.empty()) return;

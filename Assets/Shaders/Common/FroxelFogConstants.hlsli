@@ -70,13 +70,25 @@ float3 FBZZ_FroxelWorldPosAt(uint3 coord, float sliceOffset)
                     / float2(max(froxelGridX, 1u), max(froxelGridY, 1u));
     const float viewZ = FBZZ_FroxelSliceToViewZ(float(coord.z) + sliceOffset);
 
-    // ビュー深度 → NDC 深度 (DirectX の 0..1)。逆投影に食わせる形へ戻す。
-    const float ndcZ = (froxelFar * (viewZ - froxelNear))
-                     / max(viewZ * (froxelFar - froxelNear), 1e-6f);
+    /// @note 画素の視線上で、カメラの near 面と far 面の点を逆射影し、その直線上で viewZ の点を取る。
+    ///       froxelNear/Far はグリッドの範囲で、froxelInvViewProj はカメラの near/far で作られている。
+    ///       前者で NDC 深度を作って後者で戻すと、奥のスライスほど大きく遠くへずれる。
+    /// @note 視空間 Z は直線上で線形に変わるので、透視でも平行投影でも同じ式で済む。
+    /// @note froxelInvViewProj は CPU 用 (通常の Z: near → 0、far → 1) の射影の逆行列。
+    const float2 ndcXY = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
+    const float4 nearH = mul(float4(ndcXY, 0.0f, 1.0f), froxelInvViewProj);
+    const float4 farH  = mul(float4(ndcXY, 1.0f, 1.0f), froxelInvViewProj);
+    const float3 nearW = nearH.xyz / nearH.w;
+    const float3 farW  = farH.xyz / farH.w;
 
-    const float4 ndc = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, saturate(ndcZ), 1.0f);
-    const float4 world = mul(ndc, froxelInvViewProj);
-    return world.xyz / world.w;
+    const float4 centerNearH = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), froxelInvViewProj);
+    const float4 centerFarH  = mul(float4(0.0f, 0.0f, 1.0f, 1.0f), froxelInvViewProj);
+    const float3 forward = normalize(centerFarH.xyz / centerFarH.w - centerNearH.xyz / centerNearH.w);
+
+    const float nearViewZ = dot(nearW - froxelCameraPos, forward);
+    const float farViewZ  = dot(farW - froxelCameraPos, forward);
+    const float t = (viewZ - nearViewZ) / max(farViewZ - nearViewZ, 1e-6f);
+    return lerp(nearW, farW, t);
 }
 
 // フロクセルの標本点 (jitter 込み)。密度・位相・影を引くのはこの位置。
@@ -127,6 +139,19 @@ bool FBZZ_FroxelHistoryUVW(float3 worldPos, out float3 uvw)
     uvw.y = 0.5f - ndc.y * 0.5f;
     uvw.z = FBZZ_FroxelViewZToSlice(clip.w) / max(float(froxelGridZ), 1.0f);
     return true;
+}
+
+/// @brief 積分済みボリュームから、カメラから視空間 Z = viewZ までの霧 (rgb = 散乱光、a = 透過率) を引く。
+/// @note FroxelIntegrate はテクセル k に «スライス k の奥の端 (スライス座標 k+1) まで» の積分を入れる。
+///       スライス座標 s の点はテクセル中心 (k + 0.5) が s = k + 1 に当たるので、z は (s - 0.5) / gridZ。
+///       (s + 0.5) で引くと 1 スライスぶん奥まで積分した値になり、霧が一段濃く、奥の光が手前へ漏れる。
+/// @note s < 1 (最初のスライスの内側) はテクセル 0 に張り付くので、カメラ位置 (霧なし) から線形に立ち上げる。
+float4 FBZZ_SampleIntegratedFroxel(Texture3D<float4> volume, SamplerState samp, float2 uv, float viewZ)
+{
+    const float slice = FBZZ_FroxelViewZToSlice(viewZ);
+    const float4 fog = volume.SampleLevel(samp, float3(uv, (slice - 0.5f) / max(float(froxelGridZ), 1.0f)), 0.0f);
+    const float firstSlice = saturate(slice);
+    return float4(fog.rgb * firstSlice, lerp(1.0f, fog.a, firstSlice));
 }
 
 // Henyey-Greenstein 位相関数。cosTheta は入射方向と視線方向の内積。

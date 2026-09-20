@@ -65,4 +65,8 @@ void RegisterEffectOperators(OperatorRegistry& registry);
 /// @brief 静的メッシュの ClothAsset 書き出し。
 void RegisterClothOperators(OperatorRegistry& registry);
 
+/// @brief 開発者モードの切り替えと、開発者モードでだけ出す操作 (わざと落とす など)。
+/// @see Docs/design/developer-mode.md
+void RegisterDeveloperOperators(OperatorRegistry& registry);
+
 } // namespace fbzz::editor

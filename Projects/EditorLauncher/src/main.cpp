@@ -11,6 +11,8 @@
 #include "StandaloneApp.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/CrashHandler.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/ProjectResolver.hpp>
@@ -162,6 +164,13 @@ int Run()
     ///       `--project` 指定で Standalone 起動する場合は Assets が `project.root` にあるため、
     ///       相対 shader path が解決できるよう CWD を切り替える。
     SetCurrentDirectoryW(workingDirectory.wstring().c_str());
+
+    /// @note 終了処理で落ちても残すため Uninstall しない。バッチは人が居ないので通知をダイアログにしない。
+    /// @see Docs/design/crash-report.md
+    const std::string crashAppName = args.standalone ? StringUtils::PathToUtf8(project.root.filename()) : "FBZZ Editor";
+    core::CrashHandler::Install(workingDirectory, crashAppName);
+    core::CrashHandler::NotifyUnreported(workingDirectory, crashAppName, !batch);
+    core::DeveloperMode::InitFromCommandLine();
 
     auto& app = core::Application::Get();
 

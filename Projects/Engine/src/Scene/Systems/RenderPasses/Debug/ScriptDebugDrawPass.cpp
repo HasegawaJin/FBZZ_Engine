@@ -98,7 +98,7 @@ bool ScriptGizmoPass::IsEnabled(const RenderPassContext& ctx) const
 
 void ScriptGizmoPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     renderer::DebugDraw::Replay(ctx.renderer, m_capture, m_layer);
     renderer::DebugDraw::Flush();
 }

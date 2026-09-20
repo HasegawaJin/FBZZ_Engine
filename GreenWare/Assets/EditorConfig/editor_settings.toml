@@ -1,7 +1,7 @@
 [autosave]
 enabled = true
 fluid_editor = true
-interval_sec = 300
+interval_sec = 60
 
 [build]
 development = false
@@ -345,6 +345,7 @@ inspector_filter = true
 
 [misc]
 ai_command_bus = true
+developer_mode = false
 hot_reload = true
 hot_reload_sound = true
 sweep_orphaned_baked = true
@@ -376,11 +377,11 @@ hidden_scene_icons = []
 scene_view_occlusion_culling = true
 show_attachments = false
 show_constraints = false
-show_flow_fields = true
-show_flow_samples = true
+show_flow_fields = false
+show_flow_samples = false
 show_grid = false
 show_ik = false
-show_light_range = true
+show_light_range = false
 show_lod_bounds = false
 show_physics_volumes = true
 show_ragdoll = false

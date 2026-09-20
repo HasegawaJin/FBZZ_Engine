@@ -40,7 +40,7 @@ void RagdollDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     const auto entities = ctx.scene.GetEntities<RagdollComponent>();
     if (entities.empty()) return;
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : entities) {
         GameObject* object = ctx.scene.GetGameObject(id);
         if (!object || !object->activeInHierarchy()) continue;

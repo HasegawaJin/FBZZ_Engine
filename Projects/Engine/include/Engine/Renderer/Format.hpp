@@ -31,7 +31,22 @@ struct RenderTargetDesc {
     /// @note 既定を true にするのは、CreateRenderTarget の呼び出し側の多くが «必ず深度が付く»
     ///       前提で書かれているため。不要と分かった RT から明示的に false へ倒していく。
     bool     withDepth = true;
+    /// @brief 深度を Reversed-Z (near = 1、far = 0) で持つか。withDepth = false なら意味を持たない。
+    /// @note 深度の向きは深度バッファの属性。クリア値 (0 / 1) と PSO の深度比較 (GREATER / LESS) は
+    ///       束縛中の RT のこの値から決まる。カメラ視点の深度だけ true にし、影マップ等は false のまま。
+    /// @see https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
+    bool     reversedZ = false;
 };
+
+/// @brief 深度バッファの «何も無い» 値 (最遠)。クリア値と空の判定に使う。
+[[nodiscard]] constexpr float FarDepth(bool reversedZ) { return reversedZ ? 0.0f : 1.0f; }
+
+/// @brief カメラ視点の深度を持つ RT (HDR・GBuffer・マスク・深度コピー) の記述子。深度は Reversed-Z。
+/// @param colorCount 0 = 深度専用。
+[[nodiscard]] constexpr RenderTargetDesc CameraDepthTargetDesc(uint32_t colorCount)
+{
+    return RenderTargetDesc{ colorCount, Format::RGBA16F, /*withDepth=*/true, /*reversedZ=*/true };
+}
 
 /// 1 画素あたりのバイト数。VRAM 見積もりに使う。
 [[nodiscard]] constexpr uint32_t BytesPerPixel(Format format)

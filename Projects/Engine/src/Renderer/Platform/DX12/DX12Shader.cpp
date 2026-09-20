@@ -20,6 +20,9 @@
 #include <fstream>
 #include <iterator>
 #include <string_view>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <wrl/client.h>
 
@@ -27,14 +30,14 @@ namespace fbzz::renderer {
 
 namespace {
 
-/// 相対Assetsパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
-/// util::ResolveEngineAssetPath に集約している。
+/// @note 相対Assetsパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
+/// @note util::ResolveEngineAssetPath に集約している。
 std::wstring ResolveShaderPath(const std::string& path)
 {
     return util::ResolveEngineAssetPath(util::StringUtils::ToWide(path)).wstring();
 }
 
-/// dxcompiler.dll を遅延ロードして DXC API の静的リンク依存を避ける。
+/// @note dxcompiler.dll を遅延ロードして DXC API の静的リンク依存を避ける。
 /// @note Windows SDK や同梱 DXC の配置差を吸収し、DX11 のみを使う環境では DLL を要求しない。
 DxcCreateInstanceProc GetDxcCreateInstance()
 {
@@ -65,7 +68,7 @@ bool CreateDxcServices(Microsoft::WRL::ComPtr<IDxcUtils>& utils,
         CLSID_DxcCompiler, IID_PPV_ARGS(compiler->ReleaseAndGetAddressOf())));
 }
 
-/// DXBC は D3DReflect、DXIL は DXC の container reflection で同じ D3D12 API に正規化する。
+/// @note DXBC は D3DReflect、DXIL は DXC の container reflection で同じ D3D12 API に正規化する。
 Microsoft::WRL::ComPtr<ID3D12ShaderReflection> CreateShaderReflection(
     const std::vector<uint8_t>& blob)
 {
@@ -83,7 +86,7 @@ Microsoft::WRL::ComPtr<ID3D12ShaderReflection> CreateShaderReflection(
     return reflection;
 }
 
-/// HLSLをDX12定義付きで SM 6.8 DXIL へコンパイルし、次回起動用に保存する。
+/// @note HLSLをDX12定義付きで SM 6.8 DXIL へコンパイルし、次回起動用に保存する。
 std::vector<uint8_t> CompileShader(
     const std::string& path, const char* entryPoint, const char* target,
     const std::string& csoSavePath)
@@ -238,7 +241,7 @@ std::string DX12Shader::CompiledBase(const std::string& path)
 
 namespace {
 
-/// 添字フィールド名 → マテリアルのテクスチャ枠番号。該当しなければ UINT32_MAX。
+/// @note 添字フィールド名 → マテリアルのテクスチャ枠番号。該当しなければ UINT32_MAX。
 uint32_t MaterialTextureSlotOf(std::string_view field)
 {
     for (uint32_t slot = 0; slot < kMaterialTextureSlotCount; ++slot)
@@ -246,12 +249,93 @@ uint32_t MaterialTextureSlotOf(std::string_view field)
     return UINT32_MAX;
 }
 
+
+/// @note legacy cbuffer の配列は 16 byte 境界、行列は格納方向のベクトルごとに 16 byte 境界。
+/// @see https://github.com/microsoft/DirectXShaderCompiler/wiki/Buffer-Packing Legacy layout
+uint32_t ReflectedExtent(ID3D12ShaderReflectionType* type, bool array = true)
+{
+    D3D12_SHADER_TYPE_DESC desc{};
+    if (!type || FAILED(type->GetDesc(&desc))) return 0;
+    uint32_t size = 0;
+    if (desc.Class == D3D_SVC_STRUCT) {
+        for (UINT i = 0; i < desc.Members; ++i) {
+            auto* member = type->GetMemberTypeByIndex(i);
+            D3D12_SHADER_TYPE_DESC child{};
+            if (member && SUCCEEDED(member->GetDesc(&child)))
+                size = (std::max)(size, child.Offset + ReflectedExtent(member));
+        }
+    } else {
+        const uint32_t scalarSize = desc.Type == D3D_SVT_DOUBLE
+            || desc.Type == D3D_SVT_INT64 || desc.Type == D3D_SVT_UINT64 ? 8u : 4u;
+        if (desc.Class == D3D_SVC_MATRIX_ROWS || desc.Class == D3D_SVC_MATRIX_COLUMNS) {
+            const bool rowMajor = desc.Class == D3D_SVC_MATRIX_ROWS;
+            const uint32_t major = rowMajor ? desc.Rows : desc.Columns;
+            const uint32_t minor = rowMajor ? desc.Columns : desc.Rows;
+            const uint32_t stride = (minor * scalarSize + 15u) & ~15u;
+            size = major ? (major - 1u) * stride + minor * scalarSize : 0;
+        } else size = desc.Rows * desc.Columns * scalarSize;
+    }
+    if (array && desc.Elements)
+        size = (desc.Elements - 1u) * ((size + 15u) & ~15u) + size;
+    return size;
+}
+
+void AppendReflectedVariables(ID3D12ShaderReflectionType* type, const std::string& name,
+                              uint32_t offset, uint32_t size, std::vector<ShaderVarDesc>& variables)
+{
+    D3D12_SHADER_TYPE_DESC desc{};
+    if (!type || FAILED(type->GetDesc(&desc))) return;
+    if (desc.Class == D3D_SVC_STRUCT) {
+        const uint32_t stride = (ReflectedExtent(type, false) + 15u) & ~15u;
+        for (uint32_t element = 0; element < (desc.Elements ? desc.Elements : 1u); ++element) {
+            const std::string prefix = name + (desc.Elements ? "[" + std::to_string(element) + "]" : "");
+            for (UINT i = 0; i < desc.Members; ++i) {
+                auto* member = type->GetMemberTypeByIndex(i);
+                const char* memberName = type->GetMemberTypeName(i);
+                D3D12_SHADER_TYPE_DESC child{};
+                if (!memberName || !member || FAILED(member->GetDesc(&child))) continue;
+                AppendReflectedVariables(member, prefix + "." + memberName,
+                    offset + element * stride + child.Offset, ReflectedExtent(member), variables);
+            }
+        }
+        return;
+    }
+    ShaderVarDesc value;
+    value.name = name;
+    value.offset = offset;
+    value.size = size;
+    value.rows = static_cast<uint8_t>(desc.Rows);
+    value.columns = static_cast<uint8_t>(desc.Columns);
+    value.elements = desc.Elements;
+    value.arrayStride = desc.Elements ? (ReflectedExtent(type, false) + 15u) & ~15u : 0u;
+    value.rowMajor = desc.Class == D3D_SVC_MATRIX_ROWS;
+    switch (desc.Class) {
+    case D3D_SVC_SCALAR: value.varClass = ShaderVarClass::Scalar; break;
+    case D3D_SVC_VECTOR: value.varClass = ShaderVarClass::Vector; break;
+    case D3D_SVC_MATRIX_ROWS:
+    case D3D_SVC_MATRIX_COLUMNS: value.varClass = ShaderVarClass::Matrix; break;
+    default: value.varClass = ShaderVarClass::UNSUPPORTED; break;
+    }
+    switch (desc.Type) {
+    case D3D_SVT_FLOAT: value.varType = ShaderVarType::Float; break;
+    case D3D_SVT_INT: value.varType = ShaderVarType::Int; break;
+    case D3D_SVT_UINT: value.varType = ShaderVarType::UInt; break;
+    case D3D_SVT_BOOL: value.varType = ShaderVarType::Bool; break;
+    default: value.varType = ShaderVarType::UNSUPPORTED; break;
+    }
+    if (!value.IsWritable()) {
+        value.unsupportedReason = "Only 32-bit float/int/uint/bool scalar, vector and matrix leaves are writable";
+        FBZZ_LOG_WARN("Shader reflection: %s: %s", name.c_str(), value.unsupportedReason.c_str());
+    }
+    variables.push_back(std::move(value));
+}
+
 } // namespace
 
 ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 {
     /// @note DXBC / DXIL の PS reflection を共通化し、DX11 と同じ descriptor を構築する。
-    ///       Inspector / SyncMaterial / サムネイルへバックエンド差を漏らさないため。
+    /// @note Inspector / SyncMaterial / サムネイルへバックエンド差を漏らさないため。
     ShaderDescriptor desc;
 
     Microsoft::WRL::ComPtr<ID3D12ShaderReflection> refl = CreateShaderReflection(psBlob);
@@ -275,8 +359,8 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                 if (!vDesc.Name) continue;
 
                 /// @note D3D Reflection は最適化済みシェーダーや匿名パディング相当の変数で Name が null になりうる。
-                ///       std::string_view(nullptr) は MSVC STL の strlen 経路でクラッシュするため、
-                ///       null は編集対象外として捨てる。
+                /// @note std::string_view(nullptr) は MSVC STL の strlen 経路でクラッシュするため、
+                /// @note null は編集対象外として捨てる。
                 std::string_view n = vDesc.Name;
                 /// @note パディング変数はスキップ
                 if (n.starts_with("_")) continue;
@@ -286,7 +370,7 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                     continue;
                 }
                 /// @note テクスチャ添字フィールドは «編集可能変数» ではなくテクスチャ枠。
-                ///       Inspector の数値欄に uint が並ぶのを避け、代わりにテクスチャ枠として出す。
+                /// @note Inspector の数値欄に uint が並ぶのを避け、代わりにテクスチャ枠として出す。
                 if (const uint32_t slot = MaterialTextureSlotOf(n); slot != UINT32_MAX) {
                     ShaderTexBindDesc bind;
                     bind.name = vDesc.Name;
@@ -296,20 +380,7 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                     continue;
                 }
 
-                ShaderVarDesc svd;
-                svd.name    = vDesc.Name;
-                svd.offset  = vDesc.StartOffset;
-                svd.size    = vDesc.Size;
-                svd.rows    = static_cast<uint8_t>(tDesc.Rows);
-                svd.columns = static_cast<uint8_t>(tDesc.Columns);
-                svd.varClass = (tDesc.Class == D3D_SVC_SCALAR) ? ShaderVarClass::Scalar
-                             : (tDesc.Class == D3D_SVC_VECTOR) ? ShaderVarClass::Vector
-                             :                                    ShaderVarClass::Matrix;
-                svd.varType  = (tDesc.Type == D3D_SVT_FLOAT)   ? ShaderVarType::Float
-                             : (tDesc.Type == D3D_SVT_INT)     ? ShaderVarType::Int
-                             : (tDesc.Type == D3D_SVT_UINT)    ? ShaderVarType::UInt
-                             :                                    ShaderVarType::Bool;
-                desc.vars.push_back(std::move(svd));
+                AppendReflectedVariables(var->GetType(), vDesc.Name, vDesc.StartOffset, vDesc.Size, desc.vars);
             }
         }
     }
@@ -331,28 +402,15 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                 const std::string_view name = vDesc.Name;
                 if (!name.starts_with("custom")) continue;
 
-                ShaderVarDesc value;
-                value.name = vDesc.Name;
-                value.offset = vDesc.StartOffset;
-                value.size = vDesc.Size;
-                value.rows = static_cast<uint8_t>(tDesc.Rows);
-                value.columns = static_cast<uint8_t>(tDesc.Columns);
-                value.varClass = (tDesc.Class == D3D_SVC_SCALAR) ? ShaderVarClass::Scalar
-                               : (tDesc.Class == D3D_SVC_VECTOR) ? ShaderVarClass::Vector
-                               :                                    ShaderVarClass::Matrix;
-                value.varType = (tDesc.Type == D3D_SVT_FLOAT) ? ShaderVarType::Float
-                              : (tDesc.Type == D3D_SVT_INT)   ? ShaderVarType::Int
-                              : (tDesc.Type == D3D_SVT_UINT)  ? ShaderVarType::UInt
-                              :                                  ShaderVarType::Bool;
-                desc.postProcessVars.push_back(std::move(value));
+                AppendReflectedVariables(var->GetType(), vDesc.Name, vDesc.StartOffset, vDesc.Size, desc.postProcessVars);
             }
         }
     }
 
     /// @note かつてここで D3D_SIT_TEXTURE の束縛 (t0〜t4) を列挙していた。bindless では
-    ///       ResourceDescriptorHeap から引くテクスチャが DXIL に束縛情報を残さないため、
-    ///       この経路は «どのシェーダーでもテクスチャ 0 件» になる。枠の正本は
-    ///       MaterialConstants の添字フィールドへ移した (上のループ)。
+    /// @note ResourceDescriptorHeap から引くテクスチャが DXIL に束縛情報を残さないため、
+    /// @note この経路は «どのシェーダーでもテクスチャ 0 件» になる。枠の正本は
+    /// @note MaterialConstants の添字フィールドへ移した (上のループ)。
     std::sort(desc.textures.begin(), desc.textures.end(),
         [](const auto& a, const auto& b) { return a.slot < b.slot; });
 
@@ -406,8 +464,8 @@ bool DX12Shader::Init(const std::string& path)
                   path.c_str(), loadedCso ? "compiled_dx12" : "runtime",
                   m_vertexBlob.size(), m_pixelBlob.size());
     /// @note PS バイトコードから MaterialConstants とテクスチャバインドを取得する。Material Inspector・
-    ///       SyncMaterial・AssetBrowser サムネイルは ShaderDescriptor を頼りに Material CB を構築するため、
-    ///       省くとマテリアル値が反映されずプレビューも生成できない (DX11 と同じ処理が必須)。
+    /// @note SyncMaterial・AssetBrowser サムネイルは ShaderDescriptor を頼りに Material CB を構築するため、
+    /// @note 省くとマテリアル値が反映されずプレビューも生成できない (DX11 と同じ処理が必須)。
     m_descriptor = BuildDescriptor(m_pixelBlob);
     if (!ReflectVertexInput()) {
         FBZZ_LOG_ERROR("DX12Shader: Vertex Input Reflection失敗 [%s]", path.c_str());
@@ -448,7 +506,7 @@ bool DX12Shader::ReflectVertexInput()
         else { element.Format = isUInt ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT; byteOffset += 16; }
         m_inputElements.push_back(element);
         /// @note 診断: リフレクションが決めた各要素のオフセットを残す。実バッファのレイアウトと
-        ///       ずれていた場合 (パディングや宣言順の差)、ここのログが照合の起点になる。
+        /// @note ずれていた場合 (パディングや宣言順の差)、ここのログが照合の起点になる。
         FBZZ_LOG_DEBUG("DX12Shader:   input[%zu] %s%u offset=%u mask=0x%X %s",
                       m_inputElements.size() - 1, parameter.SemanticName, parameter.SemanticIndex,
                       element.AlignedByteOffset, parameter.Mask, isUInt ? "uint" : "float");

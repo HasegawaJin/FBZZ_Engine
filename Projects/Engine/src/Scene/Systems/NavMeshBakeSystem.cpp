@@ -810,7 +810,8 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
         for (EntityID teid : scene.GetEntities<TerrainComponent>()) {
             auto* t  = scene.GetComponent<TerrainComponent>(teid);
             auto* tg = scene.GetGameObject(teid);
-            if (t && tg) hashTerrain(*t, *tg);
+            /// @note 無効な地形は焼かないので、有効/無効の切り替えもハッシュに入れて «古い» と判定させる。
+            if (t && tg && tg->activeInHierarchy()) hashTerrain(*t, *tg);
         }
     }
 
@@ -821,6 +822,7 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
         auto* modGo = scene.GetGameObject(meid);
         if (!mod || !modGo) continue;
         HashValue(h, mod->enabled);
+        HashValue(h, modGo->activeInHierarchy());
         HashValue(h, mod->mode);
         HashValue(h, mod->areaType);
         HashTransform(h, *modGo);
@@ -915,7 +917,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
             for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
                 auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
                 auto* modGo = scene.GetGameObject(meid);
-                if (!mod || !modGo || !mod->enabled) continue;
+                if (!mod || !modGo || !mod->enabled || !modGo->activeInHierarchy()) continue;
                 if (mod->mode != NavMeshModifierMode::Walkable) continue;
                 /// @note デフォルトは書き換え不要
                 if (mod->areaType == 0) continue;
@@ -946,7 +948,8 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         auto* go      = scene.GetGameObject(eid);
-        if (!surface || !go || !surface->needsBake) continue;
+        /// @note 親ごと無効化された Surface は焼かない (Unity と同じく、無効な物はベイクの入力にも出力先にもならない)。
+        if (!surface || !go || !surface->needsBake || !go->activeInHierarchy()) continue;
         /// @note 既に実行中
         if (m_jobs.count(eid.index)) continue;
 
@@ -985,7 +988,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
             for (EntityID teid : scene.GetEntities<TerrainComponent>()) {
                 auto* t  = scene.GetComponent<TerrainComponent>(teid);
                 auto* tg = scene.GetGameObject(teid);
-                if (!t || !tg) continue;
+                if (!t || !tg || !tg->activeInHierarchy()) continue;
                 TerrainBakeData tbd;
                 tbd.heightData = t->heightData;
                 if (t->holeData.size() == t->CellCount()) tbd.holeData = t->holeData;
@@ -1001,7 +1004,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
         for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
             auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
             auto* modGo = scene.GetGameObject(meid);
-            if (!mod || !modGo || !mod->enabled) continue;
+            if (!mod || !modGo || !mod->enabled || !modGo->activeInHierarchy()) continue;
             if (mod->mode == NavMeshModifierMode::NotWalkable) {
                 Obstacle obs{};
                 if (TryGetObstacle(scene, meid, *modGo, obs)) input.obstacles.push_back(obs);

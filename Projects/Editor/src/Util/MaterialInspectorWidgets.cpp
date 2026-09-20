@@ -6,6 +6,8 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Scene/Systems/WaterSystem.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
+#include <cstring>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <imgui.h>
@@ -16,6 +18,93 @@
 #include <vector>
 
 namespace fbzz::editor {
+
+bool DrawReflectedMaterialParam(asset::MaterialAsset& material, const renderer::ShaderVarDesc& variable)
+{
+    if (!variable.IsWritable()) {
+        ImGui::TextDisabled("%s: %s", variable.name.c_str(), variable.unsupportedReason.c_str());
+        return false;
+    }
+    std::vector<double> values;
+    if (const auto it = material.integerParams.find(variable.name); it != material.integerParams.end())
+        for (const auto value : it->second) values.push_back(static_cast<double>(value));
+    else if (const auto it = material.params.find(variable.name); it != material.params.end())
+        for (const auto value : it->second) values.push_back(static_cast<double>(value));
+    if (values.empty()) {
+        renderer::ShaderDescriptor descriptor;
+        descriptor.vars.push_back(variable);
+        std::vector<uint8_t> bytes(static_cast<size_t>(variable.offset) + variable.size);
+        asset::InitDefaultMaterialParams(descriptor, bytes);
+        values.resize(variable.ValueCount());
+        for (uint32_t i = 0; i < variable.ValueCount(); ++i) {
+            const uint64_t offset = variable.ValueOffset(i);
+            if (offset + 4 > bytes.size()) return false;
+            if (variable.varType == renderer::ShaderVarType::Float) {
+                float value = 0;
+                std::memcpy(&value, bytes.data() + offset, sizeof(value));
+                values[i] = value;
+            }
+        }
+    }
+    ImGui::PushID(variable.name.c_str());
+    ImGui::TextUnformatted(variable.name.c_str());
+    bool changed = false;
+    if (!asset::ValidateMaterialValues(variable, values)) {
+        ImGui::TextDisabled("Invalid value/count (expected %u)", variable.ValueCount());
+        if (!ImGui::Button("Reset values")) { ImGui::PopID(); return false; }
+        values.assign(variable.ValueCount(), 0.0);
+        changed = true;
+    }
+    for (uint32_t i = 0; i < values.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        const uint32_t components = variable.rows * variable.columns;
+        char label[64];
+        std::snprintf(label, sizeof(label), "[%u] (%u,%u)", i / components,
+            (i % components) / variable.columns, i % variable.columns);
+        switch (variable.varType) {
+        case renderer::ShaderVarType::Float: {
+            float value = static_cast<float>(values[i]);
+            changed |= ImGui::DragFloat(label, &value, 0.01f);
+            values[i] = value;
+            break;
+        }
+        case renderer::ShaderVarType::Int: {
+            int32_t value = static_cast<int32_t>(values[i]);
+            changed |= ImGui::InputScalar(label, ImGuiDataType_S32, &value);
+            values[i] = value;
+            break;
+        }
+        case renderer::ShaderVarType::UInt: {
+            uint32_t value = static_cast<uint32_t>(values[i]);
+            changed |= ImGui::InputScalar(label, ImGuiDataType_U32, &value);
+            values[i] = value;
+            break;
+        }
+        case renderer::ShaderVarType::Bool: {
+            bool value = values[i] != 0;
+            changed |= ImGui::Checkbox(label, &value);
+            values[i] = value ? 1 : 0;
+            break;
+        }
+        default: break;
+        }
+        ImGui::PopID();
+    }
+    ImGui::PopID();
+    if (!changed || !asset::ValidateMaterialValues(variable, values)) return false;
+    if (variable.varType == renderer::ShaderVarType::Float) {
+        auto& floats = material.params[variable.name];
+        floats.resize(values.size());
+        std::transform(values.begin(), values.end(), floats.begin(), [](double value) { return static_cast<float>(value); });
+        material.integerParams.erase(variable.name);
+    } else {
+        auto& integers = material.integerParams[variable.name];
+        integers.clear();
+        for (const double value : values) integers.push_back(static_cast<int64_t>(value));
+        material.params.erase(variable.name);
+    }
+    return true;
+}
 
 namespace {
 
@@ -80,7 +169,7 @@ bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, cons
     ImGui::TextUnformatted(label);
 
     /// @note サムネイルは入力欄の左に置く。Unity の Material Inspector と同じ並びにして、
-    ///       «どの絵を入れたか» をパスの読み合わせなしで確かめられるようにする。
+    /// @note «どの絵を入れたか» をパスの読み合わせなしで確かめられるようにする。
     const ImGuiStyle& style = ImGui::GetStyle();
     const float thumbSize = widgets::TextureThumbnailSize();
     const float rowTopY   = ImGui::GetCursorPosY();
@@ -89,13 +178,13 @@ bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, cons
     ImGui::SetCursorPosY(rowTopY + (thumbSize - ImGui::GetFrameHeight()) * 0.5f);
 
     /// @note 入力欄のスナップショットはサムネイルへのドロップより後に取る。
-    ///       先に取ると、落とした直後の 1 フレームだけ古いパスが欄に出る。
+    /// @note 先に取ると、落とした直後の 1 フレームだけ古いパスが欄に出る。
     char buf[512];
     std::snprintf(buf, sizeof(buf), "%s", path.c_str());
 
     /// @note ラベルを独立行に出し、入力欄は ## ID だけで描く。InputText の可視ラベルに
-    ///       幅 -1 を指定すると ImGui の «入力欄 + 右側ラベル» レイアウトと衝突し、
-    ///       Inspector の狭い列で Terrain / Water の長いパスが潰れて読めなくなる。
+    /// @note 幅 -1 を指定すると ImGui の «入力欄 + 右側ラベル» レイアウトと衝突し、
+    /// @note Inspector の狭い列で Terrain / Water の長いパスが潰れて読めなくなる。
     const float clearWidth = path.empty()
         ? 0.0f
         : ImGui::CalcTextSize("Clear").x + style.FramePadding.x * 2.0f + style.ItemInnerSpacing.x;
@@ -144,7 +233,7 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& m
         flags.paramDirty |= DrawMaterialFloat(mat, "Ambient Occlusion","ambientOcclusion",1.0f, 0.01f, 0.0f,  1.0f);
     }
     /// @note 既定値は TerrainRenderPass がキー欠落時に使う値と一致させる。EnsureFloatParam が開いた瞬間に
-    ///       欠けたキーを埋めるため、食い違うと Inspector を開いただけで地形の見た目が変わる。
+    /// @note 欠けたキーを埋めるため、食い違うと Inspector を開いただけで地形の見た目が変わる。
     /// @see Docs/design/terrain-layers.md
     if (ImGui::CollapsingHeader("Blending & Projection")) {
         /// @see https://www.gamedeveloper.com/programming/advanced-terrain-texture-splatting
@@ -179,8 +268,8 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
 {
     using namespace scene::water_keys;
     /// @note 既定値は WaterRenderPass / CausticsPass / WaterSystem がキー欠落時に使う値と
-    ///       揃えること。EnsureFloatParam は開いた瞬間に欠けたキーを既定値で埋めるため、
-    ///       描画側と違う値を入れると Inspector を開いただけで水面の見た目が変わる。
+    /// @note 揃えること。EnsureFloatParam は開いた瞬間に欠けたキーを既定値で埋めるため、
+    /// @note 描画側と違う値を入れると Inspector を開いただけで水面の見た目が変わる。
     bool dirty = false;
 
     ImGui::SeparatorText("Surface");

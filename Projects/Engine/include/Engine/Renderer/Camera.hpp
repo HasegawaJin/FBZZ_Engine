@@ -38,11 +38,29 @@ enum class ProjectionMode : uint8_t {
     Orthographic = 1,
 };
 
+/// @brief クリップ空間へ写す行列の深度を反転する (z' = w - z)。xy と w は変えない。
+/// @note Reversed-Z の深度バッファへ、通常の Z で組まれた行列 (UI のキャンバス等) を描くときに使う。
+///       NDC 深度 0 (最手前) は 1 へ、1 (最遠) は 0 へ移る。
+[[nodiscard]] inline math::Matrix4 ReverseClipDepth(const math::Matrix4& toClip)
+{
+    math::Matrix4 result = toClip;
+    for (int col = 0; col < 4; ++col)
+        result.m[2][col] = toClip.m[3][col] - toClip.m[2][col];
+    return result;
+}
+
 class Camera {
 public:
     math::Matrix4 GetViewMatrix()       const;
+    /// @brief CPU 側で使う射影。深度は near → 0、far → 1 (視錐台・レイ・スクリーン座標変換の前提)。
     math::Matrix4 GetProjectionMatrix() const;
     math::Matrix4 GetViewProjection()   const;
+    /// @brief GPU へ送る射影。カメラ視点の深度バッファは Reversed-Z なので near → 1、far → 0。
+    /// @note xy と w は GetProjectionMatrix と同じ。深度バッファ (RenderTargetDesc::reversedZ) へ
+    ///       描く・読むシェーダーに渡す行列はすべてこちらから作る。
+    /// @see https://docs.unity3d.com/ScriptReference/GL.GetGPUProjectionMatrix.html (Unity, GL.GetGPUProjectionMatrix)
+    math::Matrix4 GetGpuProjectionMatrix() const;
+    math::Matrix4 GetGpuViewProjection()   const;
 
     math::Vector3 GetForward() const;
     math::Vector3 GetRight()   const;

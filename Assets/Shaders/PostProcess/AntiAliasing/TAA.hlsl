@@ -34,7 +34,7 @@ FBZZ_TEX2D(texCurrent, TEX_GBUFFER0_SLOT);    // 現フレームカラー
 FBZZ_TEX2D(texHistory, TEX_TAA_HISTORY_SLOT); // 前フレーム TAA 出力
 FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);       // 深度バッファ
 FBZZ_TEX2D(texVelocity, TEX_VELOCITY_SLOT);    // モーションベクター (RG=速度, B=有効)
-// 粒子が画素を覆う割合 (ParticleReactive パス)。束縛されないフレームは 0 が読まれて何もしない。
+/// @note 粒子が画素を覆う割合 (ParticleReactive パス)。粒子の無いフレームは束縛されないので、読む前に添字を確かめる。
 FBZZ_TEX2D(texReactive, TEX_SSAO_SLOT);
 
 SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP); // バイリニアクランプ (s0 は DX12 では WRAP)
@@ -78,7 +78,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 
     // ── 前フレーム UV を求める ─────────────────────────────────────────────────
     float2 prevUV;
-    float3 velocity = texVelocity.Sample(sampPoint, uv).rgb;
+    /// @note 速度は VelocityPass が走ったフレームだけ束縛される。無効な添字のまま読むと未定義。
+    float3 velocity = IsBindlessValid(FbzzPixelSlot(TEX_VELOCITY_SLOT))
+        ? texVelocity.Sample(sampPoint, uv).rgb : float3(0.0f, 0.0f, 0.0f);
     if (velocity.z > 0.5f)
     {
         // Velocity パスが書いた画素。カメラとオブジェクトの動きが両方入っている。
@@ -122,7 +124,11 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     }
 
     // ── 前フレームカラーを AABB にクランプ ────────────────────────────────────
-    float3 historyColor = texHistory.Sample(sampPoint, prevUV).rgb;
+    /// @note 再投影先は画素中心に揃わないので双線形で読む。最近傍だと動くたびに半画素ずつ跳ね、輪郭が揺れる。
+    float3 historyColor = texHistory.Sample(sampDefault, prevUV).rgb;
+    /// @note NaN は一度履歴に入るとクランプでも消えず残り続ける。見つけたら今のフレームで置き換える。
+    if (any(isnan(historyColor)) || any(isinf(historyColor)))
+        historyColor = currentColor;
     historyColor = ClipToAABB(historyColor, minColor, maxColor);
 
     // ── taaFeedback でブレンド ────────────────────────────────────────────────
@@ -130,7 +136,8 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     // taaFeedback = 0.9 : 標準的な時間的蓄積（ジッタリングと組み合わせて滑らかな AA）
     float  blend  = 1.0f - saturate(taaFeedback);
     // 粒子は速度を書かないので、履歴は背景の動きで引かれている。粒子が覆う画素ほど今のフレームを採る。
-    const float reactive = saturate(texReactive.SampleLevel(sampPoint, uv, 0.0f).r);
+    const float reactive = IsBindlessValid(FbzzPixelSlot(TEX_SSAO_SLOT))
+        ? saturate(texReactive.SampleLevel(sampPoint, uv, 0.0f).r) : 0.0f;
     blend = lerp(blend, 1.0f, reactive * 0.85f);
     float3 result = lerp(historyColor, currentColor, blend);
 

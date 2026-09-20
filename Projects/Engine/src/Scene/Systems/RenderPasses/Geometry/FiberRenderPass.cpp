@@ -10,6 +10,8 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/FiberGeometry.hpp>
+#include <Engine/Renderer/ITexture.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <algorithm>
@@ -60,6 +62,7 @@ struct FiberShaderSlot {
 /// @note 1 フレーム内の全パス・全カスケードで共有する解決結果。フレームが進むと読み直す。
 struct FiberMaterialEntry {
     asset::FiberMaterialSettings m_settings;
+    FiberMaskSlot m_mask;
     uint64_t m_frame = (std::numeric_limits<uint64_t>::max)();
     bool m_valid = false;
 };
@@ -100,6 +103,8 @@ struct FiberResources {
     std::map<const Scene*,FiberContactCache> m_contactStates;
     std::array<FiberShaderSlot, 5 * 3 * 2> m_shaders;
     std::unordered_map<std::string, FiberMaterialEntry> m_materials;
+    /// @note FiberComponent::m_maskPath による個体ごとの差し替え。パスごとに 1 枠。
+    std::unordered_map<std::string, FiberMaskSlot> m_maskOverrides;
     FiberUpload<asset::FiberMaterialSettings> m_uploadedMaterial;
     FiberUpload<FiberFrameCB> m_uploadedFrame;
     FiberUpload<FiberMotionCB> m_uploadedMotion;
@@ -121,9 +126,8 @@ FiberFlowCache& UpdateFiberFlows(FiberResources& cache, Scene& scene, renderer::
     std::swap(flow.m_previous, flow.m_current);
     std::swap(flow.m_previousPacked, flow.m_currentPacked);
     const auto& frame = scene.FlowFrame();
-    const auto& fields = *frame.fields;
-    const size_t sceneCount = (std::min)(frame.sceneFieldCount, fields.size());
-    flow.m_current.assign(fields.begin(), fields.begin() + static_cast<std::ptrdiff_t>(sceneCount));
+    const auto fields = SelectFlowFields(frame, false);
+    flow.m_current.assign(fields.begin(), fields.end());
     flow.m_currentPacked.clear();
     for (const auto& field : flow.m_current) flow.m_currentPacked.push_back(PackGpuFlowField(field, resources));
     for (auto& field : flow.m_current) field.vectorField = nullptr;
@@ -148,7 +152,7 @@ uint32_t CountFiberFlows(const std::vector<ActiveFlowField>& fields, uint32_t ch
 {
     if (channels == 0u) return 0;
     for (const auto& field : fields)
-        if (AffectsEmitter(field, channels) && FlowIntersectsSphere(field, center, radius))
+        if (FlowReceiver{true, channels}.Intersects(field, center, radius))
             return static_cast<uint32_t>(fields.size());
     return 0;
 }
@@ -180,7 +184,8 @@ renderer::ResourceHandle<renderer::ShaderTag> GetFiberShader(FiberResources& cac
 }
 
 /// @note 材質パラメーターの文字列検索は 1 フレーム 1 回。影の各カスケードや各ビューで繰り返さない。
-const FiberMaterialEntry& GetFiberMaterial(FiberResources& cache, const std::string& path)
+const FiberMaterialEntry& GetFiberMaterial(FiberResources& cache, renderer::ResourceManager& resources,
+    const std::string& path)
 {
     auto& entry = cache.m_materials[path];
     if (entry.m_frame == Time::frameCount) return entry;
@@ -188,8 +193,29 @@ const FiberMaterialEntry& GetFiberMaterial(FiberResources& cache, const std::str
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
     const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
     entry.m_valid = material != nullptr;
-    if (material) entry.m_settings = asset::ResolveFiberMaterial(material);
+    if (material) {
+        entry.m_settings = asset::ResolveFiberMaterial(material);
+        ResolveFiberMaskTexture(entry.m_settings, material, resources, entry.m_mask);
+    }
     return entry;
+}
+
+/// @brief FiberComponent の個体ごとの倍率を共有 .mat の解決結果へ掛ける。
+/// @note 長さ・密度・毛束は ResolveFiberMaterial と同じ上限で丸める。色の乗算は 1 を超えてよい (HDR)。非有限は 1 とみなす。
+asset::FiberMaterialSettings ApplyFiberOverrides(const asset::FiberMaterialSettings& base, const FiberComponent& fiber,
+    FiberResources& cache, renderer::ResourceManager& resources)
+{
+    const auto scale = [](float value) { return std::isfinite(value) ? std::max(value, 0.0f) : 1.0f; };
+    asset::FiberMaterialSettings settings = base;
+    const math::Vector3 tint{ scale(fiber.m_colorTint.x), scale(fiber.m_colorTint.y), scale(fiber.m_colorTint.z) };
+    settings.m_rootColor = { base.m_rootColor.x * tint.x, base.m_rootColor.y * tint.y, base.m_rootColor.z * tint.z, base.m_rootColor.w };
+    settings.m_tipColor = { base.m_tipColor.x * tint.x, base.m_tipColor.y * tint.y, base.m_tipColor.z * tint.z, base.m_tipColor.w };
+    settings.m_length = std::clamp(base.m_length * scale(fiber.m_lengthScale), 0.0f, 2.0f);
+    settings.m_density = std::clamp(base.m_density * scale(fiber.m_densityScale), 0.0f, 1.0f);
+    settings.m_clumping = std::clamp(base.m_clumping * scale(fiber.m_clumpingScale), 0.0f, 1.0f);
+    if (!fiber.m_maskPath.empty())
+        ResolveFiberMaskTexture(settings, fiber.m_maskPath, resources, cache.m_maskOverrides[fiber.m_maskPath]);
+    return settings;
 }
 
 FiberResources& GetFiberResources(renderer::ResourceManager& resources)
@@ -386,16 +412,23 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         bool cast=true;
         bool validPreviousSkin=true;
         float dither=0;
-        bool densityFromAlpha=false;  ///< 地形の層指定時だけ true。葉の密度を頂点色 A で間引く
+        bool densityFromAlpha=false;  ///< @brief 地形の層指定時だけ true。葉の密度を頂点色 A で間引く
+        /// @note コンピュートスキニング済みの頂点 (静的メッシュと同じ並び)。有効なら Shell は VS でスキニングし直さない。
+        renderer::ResourceHandle<renderer::BufferTag> skinnedVertices;
+        /// @note スキンの今の姿勢のワールド球 (毛丈込み)。得られないときは false で、カリングせずに描く。
+        bool hasSkinBounds=false;
+        WorldBounds skinBounds{};
     };
     static std::vector<Surface> surfaces;
     for (auto* fiberObject : objects) {
         auto& go = *fiberObject;
         auto& fiber = *go.GetComponent<FiberComponent>();
-        const auto& materialEntry = GetFiberMaterial(cache, fiber.m_materialPath);
+        const auto& materialEntry = GetFiberMaterial(cache, resources, fiber.m_materialPath);
         if (!materialEntry.m_valid) continue;
-        const auto& settings = materialEntry.m_settings;
+        const asset::FiberMaterialSettings settings = ApplyFiberOverrides(materialEntry.m_settings, fiber, cache, resources);
         if (settings.m_length <= 0.0f || settings.m_density <= 0.0f) continue;
+        /// @note 毛丈と曲げを含めたカリング球の余白。静的メッシュとスキンで同じ値を使う。
+        const float fiberPadding = ctx.cullingBoundsPadding + settings.m_length * 3.0f + settings.m_maxBend;
         surfaces.clear();
         if (auto* mr=go.GetComponent<MeshRenderer>(); mr && mr->enabled && mr->lodVisible && mr->mesh && !mr->mesh->isSkinned)
             surfaces.push_back({mr->mesh,mr->mesh->vertexBuffer,{}, {},mr->castShadows,true,mr->lodDither});
@@ -406,10 +439,17 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             const bool valid=anim && anim->prevBoneMatricesValid && anim->prevSkinningBuffer.IsValid();
             const auto prev=valid ? anim->prevSkinningBuffer : skin;
             const auto* baseMaterial=go.GetComponent<MaterialComponent>();
+            /// @note 骨の今の広がりから作る球 (Animator が焼く)。以前はスキンをカリングせず、画面外でも全カスケードへ全層を描いていた。
+            WorldBounds skinBounds{};
+            const bool hasSkinBounds=ComputeSkinnedWorldBounds(go,*smr,skinBounds,fiberPadding);
             for (size_t i=0;i<smr->SubmeshCount();++i) {
                 auto* mesh=smr->SubmeshMesh(i);
                 if (!mesh || (baseMaterial && !baseMaterial->SlotAt(i).visible)) continue;
-                surfaces.push_back({mesh,smr->ResolveSlotVertexBuffer(i,mesh->vertexBuffer),skin,prev,smr->castShadows,valid,smr->lodDither});
+                Surface surface{mesh,smr->ResolveSlotVertexBuffer(i,mesh->vertexBuffer),skin,prev,smr->castShadows,valid,smr->lodDither};
+                surface.skinnedVertices=smr->ResolveSlotSkinnedVertexBuffer(i);
+                surface.hasSkinBounds=hasSkinBounds;
+                surface.skinBounds=skinBounds;
+                surfaces.push_back(surface);
             }
         }
         if (auto* terrain=go.GetComponent<TerrainComponent>(); terrain && terrain->enabled) {
@@ -419,7 +459,9 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             for (auto& mesh:patches.m_patches) surfaces.push_back({&mesh,mesh.vertexBuffer,{},{},true,true,0,layered});
         }
         if (surfaces.empty()) continue;
-        const bool drawFins = fiber.m_mode == FiberRenderMode::FIN || fiber.m_mode == FiberRenderMode::HYBRID;
+        /// @note Hybrid の影は Shell の平均被覆だけで足りる。Fin は輪郭を補う見た目用で、影では Shell の数倍重かった。
+        const bool drawFins = fiber.m_mode == FiberRenderMode::FIN
+            || (fiber.m_mode == FiberRenderMode::HYBRID && mode != FiberPassMode::SHADOW);
         const bool drawShells = fiber.m_mode == FiberRenderMode::SHELL || fiber.m_mode == FiberRenderMode::HYBRID;
         const bool drawBlades = fiber.m_mode == FiberRenderMode::BLADE;
         PerObjectCB object{};
@@ -431,13 +473,13 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         const auto* mesh=surface.mesh;
         const bool skinned=mesh->isSkinned;
         if (mode == FiberPassMode::COLOR) ++ctx.statsTotalObjects;
-        /// @note 流れの場の交差判定に使う球。スキンは bounds を持たないので «不明» (負の半径) とする。
+        /// @note 流れの場の交差判定とカリングに使う球。球が得られないスキンは «不明» (負の半径) とし、カリングしない。
         math::Vector3 flowCenter = go.transform.worldPosition;
         float flowRadius = -1.0f;
-        if (!skinned && mesh->boundsRadius > 0.0f) {
+        const bool hasBounds = skinned ? surface.hasSkinBounds : mesh->boundsRadius > 0.0f;
+        if (hasBounds) {
             /// @note 全パスで同じ変形後 bounds を使う。影はカメラ外の caster も必要なので光源の錐台だけを見る。
-            const auto bounds = ComputeWorldBounds(go.transform, *mesh,
-                ctx.cullingBoundsPadding + settings.m_length*3.0f + settings.m_maxBend);
+            const auto bounds = skinned ? surface.skinBounds : ComputeWorldBounds(go.transform, *mesh, fiberPadding);
             flowCenter = bounds.center;
             flowRadius = bounds.radius;
             if (lightFrustum) {
@@ -457,7 +499,10 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         FiberFrameCB frame = frameBase;
         frame.m_shellCount = static_cast<float>(std::clamp(fiber.m_shellCount, 1, 64));
         const auto center=object.world*math::Vector4{mesh->boundsCenter.x,mesh->boundsCenter.y,mesh->boundsCenter.z,1};
-        const float distance=(math::Vector3{center.x,center.y,center.z}-ctx.camera.m_position).Length();
+        /// @note スキンは骨の今の位置で距離を測る。バインドポーズの中心は骨が動くと実体から離れる。
+        const math::Vector3 lodCenter = skinned && surface.hasSkinBounds ? surface.skinBounds.center
+            : math::Vector3{center.x,center.y,center.z};
+        const float distance=(lodCenter-ctx.camera.m_position).Length();
         if (fiber.m_distanceLod) {
             const float nearDistance=std::max(fiber.m_lodNear,0.0f);
             const float farDistance=std::max(fiber.m_lodFar,nearDistance+0.1f);
@@ -467,13 +512,19 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             frame.m_lod.x=1.0f-0.75f*t;
             frame.m_lod.y=std::clamp((farDistance-distance)/(0.1f*(farDistance-nearDistance)),0.0f,1.0f);
         }
+        /// @note 影は層の隙間が見えにくく、カスケード・光源の面の数だけ全層を描くので層数を別に絞る。層間隔は fiberShellCount から求まるので視差の上乗せも自動で太る。
+        if (mode == FiberPassMode::SHADOW)
+            frame.m_shellCount = std::min(frame.m_shellCount, static_cast<float>(std::clamp(fiber.m_shadowShellCount, 1, 64)));
         frame.m_hybrid = fiber.m_mode == FiberRenderMode::HYBRID ? 1.0f : 0.0f;
         /// @note 届く場が 1 本も無い物体は本数 0 で送り、VS の場の評価を丸ごと省く。
         frame.m_flowChannels = static_cast<uint32_t>(fiber.m_flowChannels);
         frame.m_flowCount = CountFiberFlows(flows.m_current, frame.m_flowChannels, flowCenter, flowRadius);
         frame.m_flowPreviousFirst = static_cast<uint32_t>(flows.m_currentPacked.size());
         frame.m_flowPreviousCount = CountFiberFlows(flows.m_previous, frame.m_flowChannels, flowCenter, flowRadius);
-        const auto shellShader = drawShells ? GetFiberShader(cache, resources, mode, FiberShape::SHELL, skinned)
+        /// @note コンピュートスキニング済みなら Shell は静的メッシュとして描き、層 × パスごとのボーン合成を省く。
+        /// @note velocity だけは前フレームの骨が要るので VS スキニングのまま。
+        const bool shellPreSkinned = skinned && surface.skinnedVertices.IsValid() && mode != FiberPassMode::VELOCITY;
+        const auto shellShader = drawShells ? GetFiberShader(cache, resources, mode, FiberShape::SHELL, skinned && !shellPreSkinned)
                                             : renderer::ResourceHandle<renderer::ShaderTag>{};
         const auto finShader = drawFins ? GetFiberShader(cache, resources, mode, FiberShape::FIN, skinned)
                                         : renderer::ResourceHandle<renderer::ShaderTag>{};
@@ -487,7 +538,7 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         renderer::DrawCall call;
         call.pipelineState = cache.m_pipeline;
         if (mode == FiberPassMode::COLOR) {
-            /// @note Deferred は GBuffer の深度を転写済み。LESS_EQUAL / 読取専用で固有の繊維照明を上書きする。
+            /// @note Deferred は GBuffer の深度を転写済み。DEPTH_SKY (等しい深度も通す) / 読取専用で固有の繊維照明を上書きする。
             call.pipelineState = ctx.isDeferred ? cache.m_deferredPipeline : cache.m_pipeline;
             if (ctx.settings.IsWireframe()) call.pipelineState = ctx.handles.wireframePSO;
         }
@@ -540,7 +591,7 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         }
         if (shellShader.IsValid()) {
             call.shader = shellShader;
-            call.vertexBuffer = surface.vertices;
+            call.vertexBuffer = shellPreSkinned ? surface.skinnedVertices : surface.vertices;
             call.indexBuffer = mesh->indexBuffer;
             call.indexCount = mesh->indexCount;
             call.instanceCount = static_cast<uint32_t>(frame.m_shellCount);
@@ -565,7 +616,31 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         }
     }
 }
-} // namespace
+}
+
+void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset::MaterialAsset* material,
+    renderer::ResourceManager& resources, FiberMaskSlot& slot)
+{
+    std::string path;
+    if (material) {
+        if (const auto it = material->textures.find(asset::FIBER_MASK_TEXTURE_KEY); it != material->textures.end())
+            path = it->second;
+    }
+    ResolveFiberMaskTexture(settings, path, resources, slot);
+}
+
+void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::string& path,
+    renderer::ResourceManager& resources, FiberMaskSlot& slot)
+{
+    /// @note パスが変わった時だけ読む。読込失敗は ResourceManager がキャッシュしないので、毎フレーム読み直すとエラーログが流れ続ける。
+    if (slot.m_path != path) {
+        slot.m_path = path;
+        slot.m_texture = path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.LoadTexture(path);
+    }
+    const renderer::ITexture* texture = resources.Get(slot.m_texture);
+    if (!texture) texture = resources.Get(resources.GetWhiteTexture());
+    settings.m_maskIndex = texture ? texture->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
+}
 
 void FiberRenderPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
@@ -587,5 +662,5 @@ void SubmitFiberShadowCasters(RenderPassContext& ctx, const PerFrameCB& frame, c
 {
     ExecuteFiberGeometry(ctx, FiberPassMode::SHADOW, &frame, &frustum);
 }
-} // namespace fbzz::scene
+}
 

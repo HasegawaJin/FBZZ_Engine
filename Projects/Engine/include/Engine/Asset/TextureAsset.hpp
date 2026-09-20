@@ -163,6 +163,10 @@ struct TextureAsset {
     std::string                                    sourcePath;
     TextureImportSettings                          settings;
     renderer::ResourceHandle<renderer::TextureTag> gpuHandle; ///< ロード後に設定
+    /// 元画像の寸法。品質段で縮小して常駐していても元の値。0 は未知 (GPU 実体の寸法を使う)。
+    /// @note スプライト矩形はピクセル単位で書かれているので、UV への換算は必ずこの寸法で行う。
+    uint32_t                                       sourceWidth  = 0;
+    uint32_t                                       sourceHeight = 0;
 };
 
 } // namespace fbzz::asset

@@ -76,6 +76,18 @@ public:
     virtual void BeginComputeBatch() {}
     virtual void EndComputeBatch() {}
 
+    /// @brief ここから EndAsyncCompute までの Dispatch を非同期コンピュートキューへ記録する。
+    /// @return 非同期キューへ載せたなら true。false のときは何も変わらず描画キューのまま続く。
+    /// @pre 区間の中で Submit (描画) を呼ばないこと。描画先は区間の外で束縛し直される。
+    /// @note 呼ぶ側は true / false のどちらでも同じ結果になるように書くこと。使えるかどうかは
+    ///       機械と設定で変わり、絵が変わってはいけない。
+    /// @note 区間へ入る時点で描画の列を割るため、直前までの描画がそこで GPU へ投入される。
+    /// @see Docs/design/async-compute.md
+    virtual bool BeginAsyncCompute(ResourceManager& /*resources*/) { return false; }
+    /// @brief 非同期区間を閉じ、以降の描画がその完了を待つようにする。
+    /// @note BeginAsyncCompute が false を返した場合も呼んでよい (no-op)。
+    virtual void EndAsyncCompute() {}
+
     virtual void Resize(uint32_t width, uint32_t height) = 0;
     virtual uint32_t GetWidth() const = 0;
     virtual uint32_t GetHeight() const = 0;
@@ -88,7 +100,9 @@ public:
     [[nodiscard]] virtual bool GetVSync() const { return false; }
 
     virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
-    virtual void ClearDepth(float depth = 1.0f) = 0;
+    /// @brief 束縛中の RT の深度を最遠値へ戻す (RenderTargetDesc::reversedZ なら 0、それ以外は 1)。
+    /// @note 値を引数で受けないのは、RT の深度の向きと食い違ったクリアで深度テストが全滅するため。
+    virtual void ClearDepth() = 0;
 
     /// SetViewport — 現在の描画先の一部矩形だけへ描くようビューポートを絞る。
     /// @note カスケードシャドウはシャドウマップを 2x2 タイルに分け、カスケードごとに描き込む
@@ -178,6 +192,18 @@ private:
     ///       しか知らない場合があるため。
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(
         const TextureMipData* /*mips*/, uint32_t /*mipCount*/) { return nullptr; }
+    /// CreateNativeTextureFromDataMips の待たない版。転送を投入して戻る。
+    /// @param outUploadToken 転送完了の判定に IsUploadComplete へ渡す値。0 は完了済み。
+    /// @note mips は戻った時点で手放してよい (転送元は内部の upload メモリへ複製済み)。
+    /// @note 既定は同期版へ倒す。非同期転送を持たないバックエンドもそのまま動く。
+    virtual std::unique_ptr<ITexture> CreateNativeTextureFromDataMipsAsync(
+        const TextureMipData* mips, uint32_t mipCount, uint64_t& outUploadToken)
+    {
+        outUploadToken = 0;
+        return CreateNativeTextureFromDataMips(mips, mipCount);
+    }
+    /// 非同期転送が GPU 上で完了したか。CPU は待たない。
+    virtual bool IsUploadComplete(uint64_t /*uploadToken*/) const { return true; }
     virtual std::unique_ptr<ITexture> CreateNativeTexture3DFromData(
         const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(

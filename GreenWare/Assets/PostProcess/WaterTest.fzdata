@@ -22,7 +22,7 @@ type = 'ContactShadow'
 
 [[overrides]]
 active = true
-intensity = 0.09999759495258331
+intensity = 0.3097854256629944
 softKnee = 1.0
 threshold = 0.9501633048057556
 type = 'Bloom'
@@ -65,7 +65,7 @@ distortion = 0.0
 type = 'LensDistortion'
 
 [[overrides]]
-active = false
+active = true
 albedo = [ 1.0, 1.0, 1.0 ]
 ambient = 0.6976743936538696
 anisotropy = 0.949999988079071

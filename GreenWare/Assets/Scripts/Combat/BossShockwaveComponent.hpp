@@ -336,7 +336,7 @@ inline Vector3 BossShockwaveComponent::PointOnFront(float angle, float inset) co
 
 inline bool BossShockwaveComponent::PlayerAngle(float& outAngle) const
 {
-    GameObject* player = scene.FindWithTag(playerTag);
+    GameObject* player = scene.FindWithTag(playerTag, true);
     if (!player) return false;
     const Vector3 to = player->transform.worldPosition - m_center;
     if (std::fabs(to.x) <= EPSILON && std::fabs(to.z) <= EPSILON) return false;
@@ -565,7 +565,7 @@ inline void BossShockwaveComponent::EmitFrontMarker(float dt)
     if (m_frontTimer > 0.0f) return;
     m_frontTimer = std::max(frontInterval, 0.02f);
 
-    GameObject* player = scene.FindWithTag(playerTag);
+    GameObject* player = scene.FindWithTag(playerTag, true);
     if (!player) return;
 
     const Vector3 to = player->transform.worldPosition - m_center;
@@ -619,7 +619,7 @@ inline void BossShockwaveComponent::EmitCracks(float dt)
             const std::string name = "FX_BossCrack_" +
                                      (owner ? owner->instanceId : std::string{}) + "_" +
                                      std::to_string(slot);
-            object = scene.Find(name);
+            object = scene.Find(name, true);
             if (!object) {
                 GameObject& created = scene.Create(name);
                 created.runtimeGenerated = true;
@@ -661,7 +661,7 @@ inline void BossShockwaveComponent::DriveFrontLight(bool lit)
         GameObject* owner = scene.Self();
         const std::string name = "FX_BossShockLight_" +
                                  (owner ? owner->instanceId : std::string{});
-        object = scene.Find(name);
+        object = scene.Find(name, true);
         if (!object) {
             GameObject& created = scene.Create(name);
             created.runtimeGenerated = true;
@@ -810,7 +810,7 @@ inline void BossShockwaveComponent::OnLateUpdate()
     EmitCracks(dt);
     DriveFrontLight(true);
 
-    if (GameObject* player = scene.FindWithTag(playerTag)) {
+    if (GameObject* player = scene.FindWithTag(playerTag, true)) {
         ResolveHit(player);
         NotifyPass(player->transform.worldPosition);
     }
