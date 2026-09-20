@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <charconv>
 #include <sstream>
+#include <cmath>
+#include <map>
 
 namespace fbzz::editor {
 void RegisterClothOperators(OperatorRegistry& registry)
@@ -24,11 +26,16 @@ void RegisterClothOperators(OperatorRegistry& registry)
     op.label = "Export Selected Mesh as Cloth";
     op.category = "Cloth";
     op.desc = "選択した静的またはスキンメッシュを Cloth に保存する。スキンはボーン名・逆バインド・4 ウェイトも転送する。";
-    op.caution = "頂点対応は 1:1。スキンの submesh はローカルスロット番号。使用時は Cloth の skinTarget に元の Renderer を指定する。";
+    op.caution = "simulationAsset を指定すると、その低解像度布へ選択メッシュを結合する。両者は同じモデル空間に置く。submesh はローカルスロット番号。";
     op.kind = OpKind::Action;
     OpParam submesh;
     submesh.name = "submesh"; submesh.type = OpParamType::Int; submesh.required = false; submesh.defaultValue = 0;
-    op.params = {submesh};
+    OpParam simulationAsset;
+    simulationAsset.name = "simulationAsset"; simulationAsset.type = OpParamType::String; simulationAsset.required = false;
+    simulationAsset.defaultValue = std::string{};
+    OpParam maxDistance;
+    maxDistance.name = "maxBindDistance"; maxDistance.type = OpParamType::Float; maxDistance.required = false; maxDistance.defaultValue = 0.1f;
+    op.params = {submesh, simulationAsset, maxDistance};
     op.poll = [](const OpContext& context, const OpArgs& args) {
         auto* go = context.ctx.GetSelectedGO();
         if (!go || (context.ctx.playMode && !context.ctx.playMode->IsInEditor()) || context.ctx.projectRoot.empty()
@@ -56,6 +63,21 @@ void RegisterClothOperators(OperatorRegistry& registry)
         } else return OpResult::Err("NO_MESH", "メッシュを選択してください。");
         if (!created)
             return OpResult::Err("INVALID_MESH", "形状・ボーン名・バインド行列・ウェイトを確認してください。モーフは転送しません。");
+        const auto simulationPath = args.GetString("simulationAsset");
+        if (!simulationPath.empty()) {
+            asset::ClothAsset simulation, bound;
+            const auto reference = asset::AssetDatabase::IsGuidRef(simulationPath)
+                ? asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(simulationPath)) : simulationPath;
+            const auto path = util::FileSystem::PathFromUtf8(context.ctx.projectRoot) / util::FileSystem::PathFromUtf8(reference);
+            if (reference.empty() || !asset::LoadClothAssetFromFile(util::FileSystem::PathToUtf8(path),simulation))
+                return OpResult::Err("INVALID_SIMULATION", "低解像度の .cloth を読み込めませんでした。");
+            renderer::Mesh renderMesh;
+            renderMesh.cpuVertices = cloth.vertices;
+            renderMesh.cpuIndices = cloth.indices;
+            if (!asset::BindClothRenderMesh(simulation,renderMesh,args.GetFloat("maxBindDistance",0.1f),bound))
+                return OpResult::Err("BIND_FAILED", "モデル空間・結合距離・形状を確認してください。探索上限は描画頂点数 × 物理三角形数で 2000 万です。");
+            cloth = std::move(bound);
+        }
         const auto path = util::FileSystem::PathFromUtf8(context.ctx.projectRoot) / "Assets" / "Cloth"
             / (asset::AssetDatabase::GenerateGuid() + ".cloth");
         const std::string filename = util::FileSystem::PathToUtf8(path);
@@ -165,5 +187,71 @@ void RegisterClothOperators(OperatorRegistry& registry)
         return result;
     };
     registry.Register(std::move(paint));
+
+    EditorOperator distancePaint;
+    distancePaint.id = "cloth.paint_max_distance";
+    distancePaint.label = "Apply Cloth Max Distance Stroke";
+    distancePaint.category = "Cloth";
+    distancePaint.desc = "質点ごとの最大移動距離 [m] を設定する。inherit=true で上書きを解除する。固定点・明示 attachment が優先。";
+    distancePaint.kind = OpKind::Mutation;
+    distancePaint.undoLabel = "Paint Cloth Max Distance";
+    OpParam distance;
+    distance.name = "distance"; distance.type = OpParamType::Float; distance.required = false; distance.defaultValue = 0.1f;
+    OpParam inherit;
+    inherit.name = "inherit"; inherit.type = OpParamType::Bool; inherit.required = false; inherit.defaultValue = false;
+    distancePaint.params = {node,particles,distance,inherit};
+    distancePaint.poll = [](const OpContext& c, const OpArgs&) {
+        return c.ctx.activeScene && (!c.ctx.playMode || c.ctx.playMode->IsInEditor());
+    };
+    distancePaint.exec = [](OpContext& c, const OpArgs& args) {
+        auto* go = args.GetString("node").empty() ? c.ctx.GetSelectedGO() : c.ctx.activeScene->FindByGuid(args.GetString("node"));
+        auto* cloth = go ? go->GetComponent<scene::ClothComponent>() : nullptr;
+        if (!cloth || !cloth->enabled || !cloth->runtime.initialized || cloth->runtime.failed
+            || cloth->runtime.appliedAsset != cloth->clothAssetPath
+            || (cloth->clothAssetPath.empty() && cloth->runtime.shape[2] != static_cast<float>(cloth->segments)))
+            return OpResult::Err("NOT_READY", "形状の初期化が完了した布を選択してください。");
+        const float value = args.GetFloat("distance",0.1f);
+        if (!std::isfinite(value) || value < 0 || value > 100.0f)
+            return OpResult::Err("BAD_DISTANCE", "距離は 0～100 m の有限値にしてください。");
+        const size_t count = cloth->runtime.restLocal.size();
+        std::map<int,float> values;
+        for (const auto& entry : cloth->maxDistances) {
+            if (entry.particle < 0 || static_cast<size_t>(entry.particle) >= count || !std::isfinite(entry.distance)
+                || entry.distance < 0 || !values.emplace(entry.particle,entry.distance).second)
+                return OpResult::Err("BAD_DISTANCES", "既存の質点番号・距離・重複を修正してください。");
+        }
+        const auto original = values;
+        std::istringstream input(args.GetString("particles"));
+        std::string token;
+        while (input >> token) {
+            int id = -1;
+            const auto parsed = std::from_chars(token.data(),token.data()+token.size(),id);
+            if (parsed.ec != std::errc{} || parsed.ptr != token.data()+token.size() || id < 0 || static_cast<size_t>(id) >= count)
+                return OpResult::Err("BAD_PARTICLE", "質点番号が不正です。変更は適用されていません。");
+            if (args.GetBool("inherit",false)) values.erase(id);
+            else values[id] = value;
+        }
+        if (values == original) { OpResult result; result.noChange = true; return result; }
+        const auto before = cloth->maxDistances;
+        std::vector<scene::ClothMaxDistance> after;
+        for (const auto& [id,radius] : values) after.push_back({id,radius});
+        EditorContext* context = &c.ctx;
+        auto* owner = c.ctx.activeScene;
+        const std::string guid = go->instanceId;
+        const auto apply = [context,owner,guid](const std::vector<scene::ClothMaxDistance>& entries) {
+            if (context->activeScene != owner) return;
+            auto* target = owner->FindByGuid(guid);
+            auto* component = target ? target->GetComponent<scene::ClothComponent>() : nullptr;
+            if (!component) return;
+            component->maxDistances = entries;
+            if (context->markSceneDirty) context->markSceneDirty();
+        };
+        apply(after);
+        OpResult result;
+        result.command = std::make_unique<LambdaCommand>("Paint Cloth Max Distance",
+            [apply,after] { apply(after); }, [apply,before] { apply(before); });
+        return result;
+    };
+    registry.Register(std::move(distancePaint));
 }
 }

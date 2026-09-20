@@ -26,6 +26,16 @@
 
 namespace fbzz::tests {
 namespace {
+class ClothCpuBuffer final : public renderer::IBuffer {
+public:
+    ClothCpuBuffer(size_t size, uint32_t stride) : m_size(size), m_stride(stride) {}
+    void Update(const void*, size_t size) override { EXPECT_LE(size,m_size); }
+    size_t GetSize() const override { return m_size; }
+    uint32_t GetStride() const override { return m_stride; }
+private:
+    size_t m_size;
+    uint32_t m_stride;
+};
 /// @note CPU アセットの実ロードに必要な ResourceManager を作る。デバイスもウィンドウも生成しない。
 class ClothCpuRenderer final : public renderer::IRenderer {
 public:
@@ -39,12 +49,14 @@ public:
     uint32_t GetWidth() const override { return 1; }
     uint32_t GetHeight() const override { return 1; }
     void SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>, renderer::ResourceManager&) override {}
-    void ClearDepth(float) override {}
+    void ClearDepth() override {}
     void SetViewport(uint32_t, uint32_t, uint32_t, uint32_t) override {}
     std::unique_ptr<renderer::IShader> CreateNativeShader(const std::string&) override { return {}; }
     std::unique_ptr<renderer::IConstantBuffer> CreateNativeConstantBuffer(size_t) override { return {}; }
-    std::unique_ptr<renderer::IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override { return {}; }
-    std::unique_ptr<renderer::IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IBuffer> CreateNativeVertexBuffer(const void*, size_t size, uint32_t stride) override
+    { return std::make_unique<ClothCpuBuffer>(size,stride); }
+    std::unique_ptr<renderer::IBuffer> CreateNativeIndexBuffer(const void*, uint32_t count) override
+    { return std::make_unique<ClothCpuBuffer>(count*sizeof(uint32_t),0); }
     std::unique_ptr<renderer::ITexture> CreateNativeTexture(const std::string&) override { return {}; }
     std::unique_ptr<renderer::ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override { return {}; }
     std::unique_ptr<renderer::ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override { return {}; }
@@ -82,7 +94,7 @@ protected:
         m_skinResources.reset();
         testkit::EngineFixture::TearDown();
     }
-    void SetSkinSource(scene::EntityID& owner, scene::EntityID& left, scene::EntityID& right)
+    void SetSkinSource(scene::EntityID& owner, scene::EntityID& left, scene::EntityID& right, bool bindRender = false)
     {
         ASSERT_TRUE(m_skinTemp.IsValid());
         m_skinModel.skeleton = std::make_unique<asset::Skeleton>();
@@ -106,6 +118,13 @@ protected:
         source.skinBones = {{"Left", math::Matrix4::Identity()}, {"Right", math::Matrix4::Translate({-1,0,0})}};
         for (const auto& p : source.particles) source.skinWeights.push_back({p, {0,1,0,0}, {0.25f,0.75f,0,0}});
         source.pins = {0};
+        if (bindRender) {
+            mesh.cpuVertices.push_back({{0.25f,-0.25f,0.05f},{0,0,1},{1,0,0},{0.25f,0.25f}});
+            mesh.cpuIndices = {0,1,3,1,2,3,2,0,3};
+            asset::ClothAsset bound;
+            ASSERT_TRUE(asset::BindClothRenderMesh(source,mesh,0.1f,bound));
+            source = std::move(bound);
+        }
         m_skinPath = m_skinTemp.File("skin.cloth").generic_string();
         ASSERT_TRUE(asset::SaveClothAssetToFile(m_skinPath, source));
         m_skinResources = std::make_unique<renderer::ResourceManager>(m_cpuRenderer);
@@ -140,6 +159,62 @@ TEST_F(ClothSystemTest, GridMovesInWindButTopEdgeStaysAttached)
         EXPECT_TRUE(std::isfinite(position.y));
         EXPECT_TRUE(std::isfinite(position.z));
     }
+}
+TEST_F(ClothSystemTest, PaintedDistanceLimitsStaticClothAndInvalidEntriesFreezeStep)
+{
+    Cloth().maxDistances = {{80,0.0f},{79,0.02f}};
+    for (int i = 0; i < 20; ++i) Tick();
+    ASSERT_FALSE(Cloth().runtime.failed);
+    const auto& state = Cloth().runtime;
+    EXPECT_VEC3_NEAR(state.solver.Positions()[80],(state.restLocal[80]+math::Vector3{0,3,0}),1.0e-5f);
+    EXPECT_LE((state.solver.Positions()[79]-state.restLocal[79]-math::Vector3{0,3,0}).Length(),0.02001f);
+    const auto before = state.solver.Positions();
+    Cloth().maxDistances.push_back({80,0.5f});
+    Tick();
+    EXPECT_TRUE(state.failed);
+    for (size_t i = 0; i < before.size(); ++i) EXPECT_VEC3_NEAR(state.solver.Positions()[i],before[i],1.0e-6f);
+    Cloth().maxDistances.clear();
+    for (int i = 0; i < 20; ++i) Tick();
+    EXPECT_FALSE(state.failed);
+    EXPECT_GT((state.solver.Positions()[80]-before[80]).Length(),0.001f);
+}
+TEST_F(ClothSystemTest, PaintedDistanceOverridesSkinDefaultAndAttachmentsOverridePaint)
+{
+    scene::EntityID owner,left,right;
+    SetSkinSource(owner,left,right);
+    Cloth().maxDistances = {{1,0.0f},{2,0.02f}};
+    Tick();
+    m_scene.GetGameObject(right)->transform.worldPosition.z = 0.4f;
+    Tick();
+    ASSERT_FALSE(Cloth().runtime.failed);
+    EXPECT_NEAR(Cloth().runtime.solver.Positions()[1].z,0.3f,1.0e-5f);
+    EXPECT_LE((Cloth().runtime.solver.Positions()[2]-math::Vector3{1,3,0.3f}).Length(),0.02001f);
+    Cloth().attachments = {{1,left,{0,-1,0},0.0f}};
+    Tick();
+    EXPECT_NEAR(Cloth().runtime.solver.Positions()[1].z,0.0f,1.0e-5f);
+}
+TEST_F(ClothSystemTest, LowResolutionPhysicsTransfersInterpolatedPoseToRenderMesh)
+{
+    scene::EntityID owner,left,right;
+    SetSkinSource(owner,left,right,true);
+    Cloth().skinMaxDistance = 0;
+    Cloth().materialPath.clear();
+    Tick();
+    ASSERT_EQ(Cloth().runtime.solver.Positions().size(),3u);
+    ASSERT_EQ(Cloth().runtime.mesh.Vertices().size(),4u);
+    m_scene.GetGameObject(right)->transform.worldPosition.z = 0.4f;
+    Tick();
+    ASSERT_FALSE(Cloth().runtime.failed);
+    SystemContext ctx{m_scene,m_world,m_skinResources.get(),nullptr,1.0f/60,1.0f/60,true,true,0.5f};
+    scene::ClothRenderSystem{}.Update(ctx);
+    ASSERT_FALSE(Cloth().runtime.failed);
+    ASSERT_TRUE(Cloth().runtimeMesh.HasMesh());
+    const auto* mesh = Cloth().runtimeMesh.Current();
+    ASSERT_EQ(mesh->cpuVertices.size(),4u);
+    EXPECT_EQ(mesh->cpuIndices.size(),9u);
+    EXPECT_VEC3_NEAR(mesh->cpuVertices[3].position,(math::Vector3{0.25f,-0.25f,0.2f}),1.0e-5f);
+    EXPECT_FLOAT_EQ(mesh->cpuVertices[3].uv.x,0.25f);
+    EXPECT_NEAR(mesh->boundsCenter.z+mesh->boundsExtents.z,0.2f,1.0e-5f);
 }
 
 TEST_F(ClothSystemTest, PauseDoesNotAdvanceAndTeleportRebuildsAtNewOrigin)
@@ -183,7 +258,16 @@ TEST_F(ClothSystemTest, SceneRoundTripKeepsSettingsWithoutRuntimeState)
     Cloth().attachments.push_back({0, target, {0.1f, 0.2f, 0.3f}, 0.0f});
     Cloth().skinTarget = target;
     Cloth().skinMaxDistance = 0.25f;
+    Cloth().maxDistances = {{1,0.0f},{2,0.2f}};
     Cloth().settings.selfCollisionDistance = 0.05f;
+    Cloth().settings.dihedralBending = true;
+    Cloth().collisionMask = 0x80000001u;
+    Cloth().twoWayCoupling = true;
+    Cloth().interCollisionDistance = 0.03f;
+    Cloth().interCollisionFaces = true;
+    Cloth().interContinuousCollision = true;
+    Cloth().receiveFlowFields = true;
+    Cloth().flowFieldChannels = 0x80000001u;
     Cloth().overridePins = true;
     Cloth().pinnedParticles = {0, 8};
     Tick();
@@ -200,6 +284,14 @@ TEST_F(ClothSystemTest, SceneRoundTripKeepsSettingsWithoutRuntimeState)
     const auto* cloth = go->GetComponent<scene::ClothComponent>();
     ASSERT_NE(cloth, nullptr);
     EXPECT_EQ(cloth->segments, 8);
+    EXPECT_TRUE(cloth->settings.dihedralBending);
+    EXPECT_EQ(cloth->collisionMask,0x80000001u);
+    EXPECT_TRUE(cloth->twoWayCoupling);
+    EXPECT_FLOAT_EQ(cloth->interCollisionDistance,0.03f);
+    EXPECT_TRUE(cloth->interCollisionFaces);
+    EXPECT_TRUE(cloth->interContinuousCollision);
+    EXPECT_TRUE(cloth->receiveFlowFields);
+    EXPECT_EQ(cloth->flowFieldChannels,0x80000001u);
     EXPECT_EQ(cloth->materialPath, Cloth().materialPath);
     EXPECT_EQ(cloth->clothAssetPath, Cloth().clothAssetPath);
     EXPECT_TRUE(cloth->overridePins);
@@ -217,6 +309,7 @@ TEST_F(ClothSystemTest, SceneRoundTripKeepsSettingsWithoutRuntimeState)
     EXPECT_EQ(cloth->skinTarget, restoredTarget->GetID());
     EXPECT_TRUE(cloth->useSkinning);
     EXPECT_FLOAT_EQ(cloth->skinMaxDistance, 0.25f);
+    EXPECT_EQ(cloth->maxDistances, Cloth().maxDistances);
     EXPECT_FLOAT_EQ(cloth->settings.selfCollisionDistance, 0.05f);
 }
 

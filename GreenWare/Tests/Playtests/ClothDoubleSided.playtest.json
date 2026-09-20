@@ -1,0 +1,14 @@
+{
+  "name": "ClothDoubleSided",
+  "scene": "Assets/Scenes/Test/ClothDemo.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    { "do": "frames", "count": 60 },
+    { "do": "capture", "view": "game", "name": "Cloth_Front" },
+    { "do": "bus", "request": { "t": "transform.set", "id": "b7681fe2-f2ea-465a-99b7-589d82fc3021", "pos": [0, 1.8, 7], "rot": [0, 180, 0] } },
+    { "do": "frames", "count": 60 },
+    { "do": "capture", "view": "game", "name": "Cloth_Back" },
+    { "do": "bus", "request": { "t": "transform.set", "id": "b7681fe2-f2ea-465a-99b7-589d82fc3021", "pos": [0, 1.8, -7], "rot": [0, 0, 0] } },
+    { "do": "assert", "query": { "t": "shader.diagnostics" }, "path": "errorCount", "op": "==", "value": 0 }
+  ]
+}

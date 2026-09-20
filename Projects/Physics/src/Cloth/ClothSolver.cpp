@@ -1,5 +1,5 @@
 /// @file    ClothSolver.cpp
-/// @brief   布の距離拘束・近似曲げ・風・離散/連続接触の実装。
+/// @brief   布の距離・二面角拘束、風、離散/連続接触の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #include <Physics/Cloth/ClothSolver.hpp>
@@ -205,7 +205,9 @@ uint64_t PairKey(uint32_t a, uint32_t b)
 bool ValidContact(const ClothContact& c)
 {
     if (!Finite(c.a) || !Finite(c.b) || !Finite(c.normal) || !Finite(c.velocity)
+        || !Finite(c.angularVelocity) || !Finite(c.rotationCenter) || !Nonnegative(c.inverseMass)
         || !Nonnegative(c.radius) || !std::isfinite(c.offset)) return false;
+    for (const auto& row : c.inverseInertia.m) for (float value : row) if (!std::isfinite(value)) return false;
     switch (c.type) {
     case ClothContactType::SPHERE: return true;
     case ClothContactType::CAPSULE: return std::isfinite((c.b - c.a).LengthSq());
@@ -213,6 +215,24 @@ bool ValidContact(const ClothContact& c)
         return std::abs(c.normal.LengthSq() - 1.0f) < 0.001f;
     default: return false;
     }
+}
+/// @see https://matthias-research.github.io/pages/publications/posBasedDyn.pdf 4.1 / Appendix A 二面角。atan2 で折り返しの符号を保持する。
+bool Dihedral(const std::array<Vector3,4>& p, float& angle, std::array<Vector3,4>& gradient)
+{
+    const Vector3 edge = p[3]-p[2];
+    const float length = edge.Length();
+    Vector3 n0 = Vector3::Cross(p[2]-p[0],p[3]-p[0]);
+    Vector3 n1 = Vector3::Cross(p[3]-p[1],p[2]-p[1]);
+    const float a0 = n0.LengthSq(), a1 = n1.LengthSq();
+    if (length <= EPSILON || a0 < EPSILON*EPSILON || a1 < EPSILON*EPSILON) return false;
+    const auto unit0 = n0/std::sqrt(a0), unit1 = n1/std::sqrt(a1);
+    angle = std::atan2(Vector3::Dot(Vector3::Cross(unit0,unit1),edge/length),Vector3::Dot(unit0,unit1));
+    n0 = n0/a0; n1 = n1/a1;
+    gradient[0] = n0 * -length;
+    gradient[1] = n1 * -length;
+    gradient[2] = (n0*Vector3::Dot(p[0]-p[3],edge)+n1*Vector3::Dot(p[1]-p[3],edge)) / -length;
+    gradient[3] = -gradient[0]-gradient[1]-gradient[2];
+    return std::isfinite(angle);
 }
 }
 
@@ -227,6 +247,7 @@ bool ClothSolver::Initialize(std::span<const math::Vector3> positions,
     struct Edge { uint32_t opposite; bool paired = false; };
     std::map<std::pair<uint32_t, uint32_t>, Edge> edges;
     std::vector<DistanceConstraint> constraints;
+    std::vector<BendConstraint> bends;
     std::vector<std::array<uint32_t, 2>> meshEdges;
     for (size_t i = 0; i < indices.size(); i += 3) {
         const uint32_t a = indices[i], b = indices[i + 1], c = indices[i + 2];
@@ -250,6 +271,12 @@ bool ClothSolver::Initialize(std::span<const math::Vector3> positions,
                 if (!std::isfinite(length) || length <= EPSILON) return false;
                 /// @note 初期版の曲げは対頂点間距離による近似。二面角拘束とは異なる。
                 constraints.push_back({opposite, it->second.opposite, length, 0.0f, true});
+                BendConstraint bend;
+                bend.v = {opposite,it->second.opposite,key.first,key.second};
+                std::array<Vector3,4> p, gradient;
+                for (size_t k = 0; k < 4; ++k) p[k] = positions[bend.v[k]];
+                if (!Dihedral(p,bend.restAngle,gradient)) return false;
+                bends.push_back(bend);
             }
         }
     }
@@ -263,6 +290,9 @@ bool ClothSolver::Initialize(std::span<const math::Vector3> positions,
     m_inverseMasses.assign(inverseMasses.begin(), inverseMasses.end());
     m_indices.assign(indices.begin(), indices.end());
     m_constraints = std::move(constraints);
+    m_bends = std::move(bends);
+    m_contactResponses.clear();
+    m_stepInverseMasses.clear();
     m_edges = std::move(meshEdges);
     m_primitivePairs.clear();
     m_selfExcluded.clear();
@@ -299,11 +329,13 @@ void ClothSolver::Reset()
 {
     m_positions = m_restPositions;
     m_pinTargets = m_restPositions;
+    m_contactResponses.clear();
+    m_stepInverseMasses.clear();
     std::fill(m_velocities.begin(), m_velocities.end(), Vector3{});
 }
 
 /// @see https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/dynamic-pressure/ 動圧 q=ρv²/2。法線抗力への適用は初期版の近似。
-void ClothSolver::ApplyWind(float h)
+bool ClothSolver::ApplyWind(float h, const ClothWindSampler& wind)
 {
     for (size_t i = 0; i < m_indices.size(); i += 3) {
         const uint32_t a = m_indices[i], b = m_indices[i + 1], c = m_indices[i + 2];
@@ -311,7 +343,9 @@ void ClothSolver::ApplyWind(float h)
         const float twiceArea = cross.Length();
         if (twiceArea <= EPSILON) continue;
         const Vector3 normal = cross / twiceArea;
-        const Vector3 relativeWind = m_settings.windVelocity - (m_velocities[a] + m_velocities[b] + m_velocities[c]) / 3.0f;
+        const Vector3 additionalWind = wind ? wind((m_positions[a]+m_positions[b]+m_positions[c])/3.0f) : Vector3{};
+        if (!Finite(additionalWind)) return false;
+        const Vector3 relativeWind = m_settings.windVelocity + additionalWind - (m_velocities[a] + m_velocities[b] + m_velocities[c]) / 3.0f;
         const float speed = Vector3::Dot(relativeWind, normal);
         /// @note q=ρv²/2 の法線抗力を面積で積分し、3 頂点へ等分する。
         const Vector3 impulse = normal * (m_settings.airDensity * m_settings.dragCoefficient
@@ -320,12 +354,14 @@ void ClothSolver::ApplyWind(float h)
             if (m_stepInverseMasses[vertex] > 0.0f)
                 m_velocities[vertex] += impulse * m_stepInverseMasses[vertex];
     }
+    return true;
 }
 
 /// @see https://matthias-research.github.io/pages/publications/XPBD.pdf 式 (18)–(19)、compliance/h² と累積 lambda。
 void ClothSolver::SolveDistances(float h)
 {
     for (auto& constraint : m_constraints) {
+        if (constraint.bending && m_settings.dihedralBending) continue;
         const float wa = m_stepInverseMasses[constraint.a], wb = m_stepInverseMasses[constraint.b];
         if (wa + wb == 0.0f) continue;
         const Vector3 delta = m_positions[constraint.a] - m_positions[constraint.b];
@@ -340,11 +376,33 @@ void ClothSolver::SolveDistances(float h)
     }
 }
 
+/// @see https://matthias-research.github.io/pages/publications/XPBD.pdf 式 (18)–(19)、角度勾配の質量重み付き射影。
+void ClothSolver::SolveBending(float h)
+{
+    if (!m_settings.dihedralBending) return;
+    const float alpha = m_settings.bendCompliance/(h*h);
+    for (auto& bend : m_bends) {
+        std::array<Vector3,4> p, g;
+        for (size_t i = 0; i < 4; ++i) p[i] = m_positions[bend.v[i]];
+        float angle;
+        if (!Dihedral(p,angle,g)) continue;
+        float denominator = alpha;
+        for (size_t i = 0; i < 4; ++i) denominator += m_stepInverseMasses[bend.v[i]]*g[i].LengthSq();
+        if (denominator < 1.0e-12f) continue;
+        const float error = std::remainder(angle-bend.restAngle,6.28318530718f);
+        const float delta = (-error-alpha*bend.lambda)/denominator;
+        bend.lambda += delta;
+        for (size_t i = 0; i < 4; ++i) m_positions[bend.v[i]] += g[i]*(m_stepInverseMasses[bend.v[i]]*delta);
+    }
+}
+
+/// @see https://graphics.stanford.edu/papers/cloth-sig02/cloth.pdf Contact and Friction、相対速度に対する接触力積。
 void ClothSolver::SolveContacts(std::span<const ClothContact> contacts, float h)
 {
     for (size_t i = 0; i < m_positions.size(); ++i) {
         if (m_stepInverseMasses[i] == 0.0f) continue;
-        for (const auto& contact : contacts) {
+        for (size_t contactIndex = 0; contactIndex < contacts.size(); ++contactIndex) {
+            const auto& contact = contacts[contactIndex];
             Vector3 normal;
             float depth;
             bool swept = false;
@@ -376,11 +434,27 @@ void ClothSolver::SolveContacts(std::span<const ClothContact> contacts, float h)
             if (depth < 0.0f && !swept) continue;
             m_positions[i] += normal * std::max(depth, 0.0f);
             /// @note 摩擦は相対接線速度を減衰させる近似。位置射影の後に評価し、法線方向の侵入速度を除く。
-            Vector3 relative = m_velocities[i] - contact.velocity;
+            const Vector3 arm = m_positions[i]-normal*m_settings.thickness-contact.rotationCenter;
+            const Vector3 surfaceVelocity = contact.velocity+Vector3::Cross(contact.angularVelocity,arm);
+            const Vector3 relative = m_velocities[i] - surfaceVelocity;
             const float normalSpeed = Vector3::Dot(relative, normal);
             const Vector3 tangent = relative - normal * normalSpeed;
-            relative = tangent * (1.0f - m_settings.friction) + normal * std::max(0.0f, normalSpeed);
-            m_velocities[i] = relative + contact.velocity;
+            const auto effectiveMass = [&](const Vector3& direction) {
+                const Vector3 angular = Vector3::Cross(arm,direction);
+                return m_stepInverseMasses[i]+contact.inverseMass
+                    + std::max(0.0f,Vector3::Dot(angular,contact.inverseInertia*angular));
+            };
+            Vector3 impulse = normal*(-std::min(0.0f,normalSpeed)/effectiveMass(normal));
+            const float tangentSpeed = tangent.Length();
+            if (tangentSpeed > EPSILON) {
+                const Vector3 direction = tangent/tangentSpeed;
+                impulse -= direction*(tangentSpeed*m_settings.friction/effectiveMass(direction));
+            }
+            m_velocities[i] += impulse*m_stepInverseMasses[i];
+            if (contact.inverseMass > 0.0f) {
+                m_contactResponses[contactIndex].impulse -= impulse;
+                m_contactResponses[contactIndex].angularImpulse -= Vector3::Cross(arm,impulse);
+            }
             m_previous[i] = m_positions[i] - m_velocities[i] * h;
         }
     }
@@ -638,8 +712,10 @@ bool ClothSolver::SolvePrimitiveContinuous()
     return corrected;
 }
 
-bool ClothSolver::Step(float dt, std::span<const ClothContact> contacts, std::span<const ClothMotionConstraint> motion)
+bool ClothSolver::Step(float dt, std::span<const ClothContact> contacts, std::span<const ClothMotionConstraint> motion,
+                       const ClothWindSampler& wind)
 {
+    m_contactResponses.clear();
     if (m_positions.empty() || !std::isfinite(dt) || dt <= 0.0f || dt > 0.1f) return false;
     for (const auto& contact : contacts) if (!ValidContact(contact)) return false;
     m_stepInverseMasses = m_inverseMasses;
@@ -656,9 +732,11 @@ bool ClothSolver::Step(float dt, std::span<const ClothContact> contacts, std::sp
     if (h * h < 1.0e-16f) return false;
     m_stepPositions = m_positions;
     m_stepVelocities = m_velocities;
+    m_contactResponses.resize(contacts.size());
     const auto rollback = [this] {
         m_positions = m_stepPositions;
         m_velocities = m_stepVelocities;
+        m_contactResponses.clear();
         return false;
     };
     const bool primitives = m_settings.selfCollisionFaces && m_settings.selfCollisionDistance > 0.0f
@@ -666,7 +744,7 @@ bool ClothSolver::Step(float dt, std::span<const ClothContact> contacts, std::sp
     const float damping = std::exp(-m_settings.damping * h);
     for (int substep = 0; substep < m_settings.substeps; ++substep) {
         m_previous = m_positions;
-        ApplyWind(h);
+        if (!ApplyWind(h,wind)) return rollback();
         const float fraction = static_cast<float>(substep + 1) / static_cast<float>(m_settings.substeps);
         for (size_t i = 0; i < m_positions.size(); ++i) {
             if (m_stepInverseMasses[i] == 0.0f) {
@@ -678,10 +756,12 @@ bool ClothSolver::Step(float dt, std::span<const ClothContact> contacts, std::sp
         }
         SolveMotion(motion, fraction, h, false);
         for (auto& constraint : m_constraints) constraint.lambda = 0.0f;
+        for (auto& bend : m_bends) bend.lambda = 0.0f;
         /// @note 反復中の移動を見込み、予測位置の掃引を接触距離の 2 倍だけ広げて候補を固定する。
         if (primitives && !BuildPrimitivePairs(2.0f * m_settings.selfCollisionDistance)) return rollback();
         for (int iteration = 0; iteration < m_settings.iterations; ++iteration) {
             SolveDistances(h);
+            SolveBending(h);
             if (!SolveSelfContacts()) return rollback();
             if (primitives) SolvePrimitiveProximity();
             SolveMotion(motion, fraction, h, false);
@@ -697,6 +777,285 @@ bool ClothSolver::Step(float dt, std::span<const ClothContact> contacts, std::sp
         SolveMotion(motion, fraction, h, true);
         for (size_t i = 0; i < m_positions.size(); ++i)
             if (!Finite(m_positions[i]) || !Finite(m_velocities[i])) return rollback();
+    }
+    for (const auto& response : m_contactResponses)
+        if (!Finite(response.impulse) || !Finite(response.angularImpulse)) return rollback();
+    return true;
+}
+
+namespace {
+enum class InterPrimitiveType { POINT, TRIANGLE, EDGE };
+struct InterPrimitive {
+    Quad vertices{};
+    size_t cloth = 0;
+    InterPrimitiveType type = InterPrimitiveType::POINT;
+};
+
+/// @note CCD の距離下界を壊さないよう、ほぼ平行な辺も double で最近点を解く。
+/// @see https://realtimecollisiondetection.net/ Ericson, 5.1.9 Closest Points of Two Line Segments。
+std::pair<float,float> InterSegmentParameters(const Vector3& p0, const Vector3& p1, const Vector3& q0, const Vector3& q1)
+{
+    const auto d1 = ToDouble(p1)-ToDouble(p0), d2 = ToDouble(q1)-ToDouble(q0), r = ToDouble(p0)-ToDouble(q0);
+    const double a = Dot(d1,d1), e = Dot(d2,d2), f = Dot(d2,r);
+    if (a <= 1.0e-30 && e <= 1.0e-30) return {0.0f,0.0f};
+    if (a <= 1.0e-30) return {0.0f,static_cast<float>(std::clamp(f/e,0.0,1.0))};
+    const double c = Dot(d1,r);
+    if (e <= 1.0e-30) return {static_cast<float>(std::clamp(-c/a,0.0,1.0)),0.0f};
+    const double b = Dot(d1,d2), denominator = a*e-b*b;
+    double s = denominator > 0 ? std::clamp((b*f-c*e)/denominator,0.0,1.0) : 0;
+    double t = (b*s+f)/e;
+    if (t < 0) { t = 0; s = std::clamp(-c/a,0.0,1.0); }
+    else if (t > 1) { t = 1; s = std::clamp((b-c)/a,0.0,1.0); }
+    return {static_cast<float>(s),static_cast<float>(t)};
+}
+
+/// @note 境界・端点も含む最近点。潰れた三角形は 3 辺との最短距離に退化させる。
+/// @see https://realtimecollisiondetection.net/ Ericson, 5.1.5 / 5.1.9 Closest Points。
+Weights InterWeights(const std::vector<Vector3>& p, bool edgeEdge)
+{
+    if (edgeEdge) {
+        const auto [s,t] = InterSegmentParameters(p[0],p[1],p[2],p[3]);
+        return {1-s,s,-(1-t),-t};
+    }
+    bool interior = false;
+    constexpr Quad LOCAL{0,1,2,3};
+    auto result = PairWeights(p,LOCAL,edgeEdge,interior);
+    float best = Combine(p,LOCAL,result).LengthSq();
+    for (uint32_t a = 1; a <= 3; ++a) {
+        const uint32_t b = a == 3 ? 1 : a+1;
+        const float t = InterSegmentParameters(p[0],p[0],p[a],p[b]).second;
+        Weights candidate{1,0,0,0};
+        candidate[a] = -(1-t); candidate[b] = -t;
+        const float distance = Combine(p,LOCAL,candidate).LengthSq();
+        if (distance < best) { result = candidate; best = distance; }
+    }
+    return result;
+}
+
+/// @return 計算上限・非有限値なら false。hit=false は厚みへの到達なし。
+/// @note 距離減少速度の上限は両 primitive の頂点間の最大相対変位。安全な時間増分を積み、厚みから 1 μm または厚みの 0.01% 以内で止める。
+/// @see https://ipc-sim.github.io/C-IPC/file/paper.pdf 5.3 / 5.4、有限厚みと conservative advancement の距離下界。
+bool InterImpact(const std::vector<Vector3>& start, const std::vector<Vector3>& end, bool edgeEdge,
+                 float thickness, size_t& evaluations, bool& hit, Weights& weights, Vector3& normal)
+{
+    constexpr Quad LOCAL{0,1,2,3};
+    const int split = edgeEdge ? 2 : 1;
+    float speed = 0;
+    for (int a = 0; a < split; ++a) for (int b = split; b < 4; ++b)
+        speed = std::max(speed,((end[a]-start[a])-(end[b]-start[b])).Length());
+    if (!std::isfinite(speed)) return false;
+    const float tolerance = std::max(1.0e-6f,thickness*1.0e-4f);
+    std::vector<Vector3> p(4);
+    double time = 0;
+    hit = false;
+    for (int iteration = 0; iteration < 128; ++iteration) {
+        if (++evaluations > MAX_SELF_CANDIDATES) return false;
+        for (size_t i = 0; i < 4; ++i) p[i] = Vector3::Lerp(start[i],end[i],static_cast<float>(time));
+        weights = InterWeights(p,edgeEdge);
+        const Vector3 delta = Combine(p,LOCAL,weights);
+        const float distance = delta.Length();
+        if (!std::isfinite(distance)) return false;
+        if (distance <= thickness+tolerance) {
+            if (distance > 1.0e-8f) normal = delta/distance;
+            else if (!OrientedNormal(p,start,LOCAL,edgeEdge,weights,normal)) return true;
+            hit = true;
+            return true;
+        }
+        if (speed <= 1.0e-12f || time >= 1.0) return true;
+        const double step = 0.9*static_cast<double>(distance-thickness)/speed;
+        if (step > 1.0-time) return true;
+        time += step;
+    }
+    return false;
+}
+
+/// @note 開始/終了の swept AABB を x 軸で整列する。同じ布の組とマスク除外は狭域判定へ渡さない。
+/// @see https://graphics.stanford.edu/papers/cloth-sig02/cloth.pdf 6.2、質点–三角形 / 辺–辺による布の連続衝突。
+bool SolveInterPrimitives(std::vector<Vector3>& x, const std::vector<Vector3>& start,
+                          const std::vector<float>& masses, const std::vector<InterPrimitive>& primitives,
+                          std::span<const ClothInteraction> cloths, float inflation, size_t& evaluations)
+{
+    struct Box { Vector3 lower,upper; size_t primitive; };
+    std::vector<Box> boxes;
+    boxes.reserve(primitives.size());
+    for (size_t i = 0; i < primitives.size(); ++i) {
+        const auto& primitive = primitives[i];
+        Box box{x[primitive.vertices[0]],x[primitive.vertices[0]],i};
+        for (uint32_t v : primitive.vertices) for (const auto* source : std::array<const std::vector<Vector3>*,2>{&x,&start}) {
+            const auto& p = (*source)[v];
+            box.lower = {std::min(box.lower.x,p.x),std::min(box.lower.y,p.y),std::min(box.lower.z,p.z)};
+            box.upper = {std::max(box.upper.x,p.x),std::max(box.upper.y,p.y),std::max(box.upper.z,p.z)};
+        }
+        box.lower -= Vector3{inflation,inflation,inflation};
+        box.upper += Vector3{inflation,inflation,inflation};
+        if (!Finite(box.lower) || !Finite(box.upper)) return false;
+        boxes.push_back(box);
+    }
+    std::sort(boxes.begin(),boxes.end(),[](const Box& a,const Box& b) {
+        return a.lower.x != b.lower.x ? a.lower.x < b.lower.x : a.primitive < b.primitive;
+    });
+    size_t scanned = 0;
+    std::vector<Vector3> previous(4),current(4);
+    constexpr Quad LOCAL{0,1,2,3};
+    for (size_t i = 0; i < boxes.size(); ++i) for (size_t j = i+1; j < boxes.size() && boxes[j].lower.x <= boxes[i].upper.x; ++j) {
+        if (++scanned > MAX_SELF_CANDIDATES) return false;
+        const auto& a = primitives[boxes[i].primitive]; const auto& b = primitives[boxes[j].primitive];
+        if (a.cloth == b.cloth || !BoxesOverlapYZ(boxes[i].lower,boxes[i].upper,boxes[j].lower,boxes[j].upper)) continue;
+        const auto& ca = cloths[a.cloth]; const auto& cb = cloths[b.cloth];
+        if (!(ca.mask & (1u<<cb.layer)) || !(cb.mask & (1u<<ca.layer))) continue;
+        const bool continuous = ca.continuous || cb.continuous;
+        if (!(ca.faces || cb.faces || continuous)) continue;
+        const bool edgeEdge = a.type == InterPrimitiveType::EDGE && b.type == InterPrimitiveType::EDGE;
+        Quad v;
+        if (edgeEdge) v = {a.vertices[0],a.vertices[1],b.vertices[0],b.vertices[1]};
+        else {
+            const auto& point = a.type == InterPrimitiveType::POINT ? a : b;
+            const auto& face = a.type == InterPrimitiveType::POINT ? b : a;
+            if (point.type != InterPrimitiveType::POINT || face.type != InterPrimitiveType::TRIANGLE) continue;
+            v = {point.vertices[0],face.vertices[0],face.vertices[1],face.vertices[2]};
+        }
+        if (masses[v[0]]+masses[v[1]]+masses[v[2]]+masses[v[3]] == 0) continue;
+        for (size_t k = 0; k < 4; ++k) { previous[k] = start[v[k]]; current[k] = x[v[k]]; }
+        const float distance = std::max(ca.distance,cb.distance);
+        Weights weights;
+        Vector3 normal;
+        bool hit = false;
+        if (continuous && !InterImpact(previous,current,edgeEdge,distance,evaluations,hit,weights,normal)) return false;
+        if (!hit) {
+            weights = InterWeights(current,edgeEdge);
+            const Vector3 delta = Combine(current,LOCAL,weights);
+            const float length = delta.Length();
+            if (!std::isfinite(length)) return false;
+            if (length >= distance) continue;
+            if (length > 1.0e-8f) normal = delta/length;
+            else if (!OrientedNormal(current,previous,LOCAL,edgeEdge,weights,normal)) continue;
+        }
+        const float separation = Vector3::Dot(Combine(x,v,weights),normal);
+        if (separation < distance) ProjectSeparation(x,masses,v,weights,normal,distance-separation);
+    }
+    return true;
+}
+}
+
+bool ClothSolver::SolveInterCollision(std::span<const ClothInteraction> cloths, float dt)
+{
+    if (!std::isfinite(dt) || dt <= 0 || dt > 0.1f) return false;
+    float cellSize = 0;
+    std::vector<std::vector<Vector3>> positions, velocities;
+    for (size_t i = 0; i < cloths.size(); ++i) {
+        const auto& entry = cloths[i];
+        if (!entry.solver || entry.layer >= 32 || !Nonnegative(entry.distance) || entry.distance > 100
+            || (entry.distance > 0 && entry.distance < 1.0e-6f)
+            || entry.solver->m_positions.size() != entry.solver->m_stepInverseMasses.size()) return false;
+        for (size_t j = 0; j < i; ++j) if (cloths[j].solver == entry.solver) return false;
+        for (const auto& motion : entry.motion)
+            if (motion.particle >= entry.solver->m_positions.size() || !Finite(motion.center)
+                || !Finite(motion.previousCenter) || !Nonnegative(motion.radius)) return false;
+        cellSize = std::max(cellSize,entry.distance);
+        positions.push_back(entry.solver->m_positions);
+        velocities.push_back(entry.solver->m_velocities);
+    }
+    if (cellSize == 0) return true;
+    bool usePrimitives = false;
+    std::vector<unsigned char> primitiveParticipants(cloths.size(),0);
+    for (size_t a = 0; a < cloths.size(); ++a) for (size_t b = a+1; b < cloths.size(); ++b)
+        if (cloths[a].distance > 0 && cloths[b].distance > 0 && (cloths[a].mask & (1u<<cloths[b].layer))
+            && (cloths[b].mask & (1u<<cloths[a].layer))
+            && (cloths[a].faces || cloths[b].faces || cloths[a].continuous || cloths[b].continuous)) {
+            usePrimitives = true;
+            primitiveParticipants[a] = primitiveParticipants[b] = 1;
+        }
+    std::vector<InterPrimitive> primitives;
+    std::vector<Vector3> flatPositions,flatStart;
+    std::vector<float> flatMasses;
+    std::vector<size_t> offsets;
+    if (usePrimitives) for (size_t c = 0; c < cloths.size(); ++c) {
+        const auto& solver = *cloths[c].solver;
+        if (solver.m_stepPositions.size() != solver.m_positions.size()
+            || flatPositions.size()+solver.m_positions.size() > std::numeric_limits<uint32_t>::max()) return false;
+        const uint32_t offset = static_cast<uint32_t>(flatPositions.size());
+        offsets.push_back(offset);
+        flatPositions.insert(flatPositions.end(),solver.m_positions.begin(),solver.m_positions.end());
+        flatStart.insert(flatStart.end(),solver.m_stepPositions.begin(),solver.m_stepPositions.end());
+        flatMasses.insert(flatMasses.end(),solver.m_stepInverseMasses.begin(),solver.m_stepInverseMasses.end());
+        if (!primitiveParticipants[c]) continue;
+        for (uint32_t p = 0; p < solver.m_positions.size(); ++p)
+            primitives.push_back({{offset+p,offset+p,offset+p,offset+p},c,InterPrimitiveType::POINT});
+        for (size_t t = 0; t < solver.m_indices.size(); t += 3)
+            primitives.push_back({{offset+solver.m_indices[t],offset+solver.m_indices[t+1],offset+solver.m_indices[t+2],offset+solver.m_indices[t]},c,InterPrimitiveType::TRIANGLE});
+        for (const auto& edge : solver.m_edges)
+            primitives.push_back({{offset+edge[0],offset+edge[1],offset+edge[0],offset+edge[1]},c,InterPrimitiveType::EDGE});
+    }
+    const auto rollback = [&] {
+        for (size_t i = 0; i < cloths.size(); ++i) {
+            cloths[i].solver->m_positions = positions[i];
+            cloths[i].solver->m_velocities = velocities[i];
+        }
+        return false;
+    };
+    struct Point { std::array<int64_t,3> cell; size_t cloth; uint32_t particle; };
+    std::vector<Point> points;
+    size_t evaluations = 0;
+    /// @note 相互衝突は固定更新の最後に 4 反復。座標順・参加者順・質点順で再現性を保つ。
+    for (int iteration = 0; iteration < 4; ++iteration) {
+        points.clear();
+        for (size_t c = 0; c < cloths.size(); ++c) {
+            if (cloths[c].distance == 0) continue;
+            const auto& solver = *cloths[c].solver;
+            for (uint32_t p = 0; p < solver.m_positions.size(); ++p) {
+                const auto& v = solver.m_positions[p];
+                const double coordinates[]{std::floor(static_cast<double>(v.x)/cellSize),
+                    std::floor(static_cast<double>(v.y)/cellSize),std::floor(static_cast<double>(v.z)/cellSize)};
+                Point point{{},c,p};
+                for (int axis = 0; axis < 3; ++axis) {
+                    if (!std::isfinite(coordinates[axis]) || std::abs(coordinates[axis]) > 1.0e15) return rollback();
+                    point.cell[axis] = static_cast<int64_t>(coordinates[axis]);
+                }
+                points.push_back(point);
+            }
+        }
+        std::sort(points.begin(),points.end(),[](const Point& a,const Point& b) {
+            if (a.cell != b.cell) return a.cell < b.cell;
+            return a.cloth != b.cloth ? a.cloth < b.cloth : a.particle < b.particle;
+        });
+        size_t candidates = 0;
+        for (const auto& point : points) {
+            for (int x = -1; x <= 1; ++x) for (int y = -1; y <= 1; ++y) for (int z = -1; z <= 1; ++z) {
+                const std::array<int64_t,3> cell{point.cell[0]+x,point.cell[1]+y,point.cell[2]+z};
+                auto it = std::lower_bound(points.begin(),points.end(),cell,[](const Point& p,const auto& key) { return p.cell < key; });
+                for (; it != points.end() && it->cell == cell; ++it) {
+                    if (it->cloth <= point.cloth) continue;
+                    if (++candidates > 2000000u) return rollback();
+                    const auto& a = cloths[point.cloth]; const auto& b = cloths[it->cloth];
+                    if (!(a.mask & (1u<<b.layer)) || !(b.mask & (1u<<a.layer))) continue;
+                    auto& sa = *a.solver; auto& sb = *b.solver;
+                    const float wa = sa.m_stepInverseMasses[point.particle], wb = sb.m_stepInverseMasses[it->particle];
+                    if (wa+wb == 0) continue;
+                    auto& pa = sa.m_positions[point.particle]; auto& pb = sb.m_positions[it->particle];
+                    const Vector3 delta = pa-pb;
+                    const float length = delta.Length(), distance = std::max(a.distance,b.distance);
+                    if (length >= distance) continue;
+                    const Vector3 normal = delta.NormalizedOr((positions[point.cloth][point.particle]-positions[it->cloth][it->particle]).NormalizedOr(Vector3::UP));
+                    const Vector3 correction = normal*((distance-length)/(wa+wb));
+                    pa += correction*wa; pb -= correction*wb;
+                }
+            }
+        }
+        if (usePrimitives) {
+            for (size_t c = 0; c < cloths.size(); ++c)
+                std::copy(cloths[c].solver->m_positions.begin(),cloths[c].solver->m_positions.end(),flatPositions.begin()+offsets[c]);
+            if (!SolveInterPrimitives(flatPositions,flatStart,flatMasses,primitives,cloths,cellSize,evaluations)) return rollback();
+            for (size_t c = 0; c < cloths.size(); ++c)
+                std::copy_n(flatPositions.begin()+offsets[c],cloths[c].solver->m_positions.size(),cloths[c].solver->m_positions.begin());
+        }
+        for (const auto& entry : cloths) entry.solver->SolveMotion(entry.motion,1.0f,dt,false);
+    }
+    for (size_t c = 0; c < cloths.size(); ++c) {
+        auto& solver = *cloths[c].solver;
+        for (size_t p = 0; p < solver.m_positions.size(); ++p) {
+            solver.m_velocities[p] += (solver.m_positions[p]-positions[c][p])/dt;
+            if (!Finite(solver.m_positions[p]) || !Finite(solver.m_velocities[p])) return rollback();
+        }
     }
     return true;
 }

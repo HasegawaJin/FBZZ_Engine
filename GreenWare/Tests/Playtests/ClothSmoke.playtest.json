@@ -1,15 +1,30 @@
 {
   "name": "ClothSmoke",
-  "scene": "Assets/Scenes/ClothDemo.scene",
+  "scene": "Assets/Scenes/Test/ClothDemo.scene",
   "lockstep": 0.016666667,
   "steps": [
+    { "do": "frames", "count": 30 },
+    { "do": "bus", "request": { "t": "editor.op.invoke", "id": "cloth.paint_max_distance", "args": { "node": "3f523baa-d03a-4f42-a2e8-868d9605093f", "particles": "288", "distance": 0.1 } } },
     { "do": "play" },
     { "do": "waitUntil", "query": { "t": "editor.state" }, "path": "playState", "op": "==", "value": "playing", "timeoutFrames": 30 },
+    { "do": "bus", "request": { "t": "component.set", "id": "3f523baa-d03a-4f42-a2e8-868d9605093f", "comp": "ClothComponent", "field": "dihedralBending", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "3f523baa-d03a-4f42-a2e8-868d9605093f", "comp": "ClothComponent", "field": "twoWayCoupling", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "3f523baa-d03a-4f42-a2e8-868d9605093f", "comp": "ClothComponent", "field": "interCollisionDistance", "value": 0.05 } },
+    { "do": "bus", "request": { "t": "component.set", "id": "966aa69a-3f5e-4bf1-8565-2c9fcefa7dca", "comp": "ClothComponent", "field": "dihedralBending", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "966aa69a-3f5e-4bf1-8565-2c9fcefa7dca", "comp": "ClothComponent", "field": "interCollisionDistance", "value": 0.05 } },
+    { "do": "bus", "request": { "t": "component.set", "id": "3f523baa-d03a-4f42-a2e8-868d9605093f", "comp": "ClothComponent", "field": "interCollisionFaces", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "3f523baa-d03a-4f42-a2e8-868d9605093f", "comp": "ClothComponent", "field": "interContinuousCollision", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "966aa69a-3f5e-4bf1-8565-2c9fcefa7dca", "comp": "ClothComponent", "field": "interCollisionFaces", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "966aa69a-3f5e-4bf1-8565-2c9fcefa7dca", "comp": "ClothComponent", "field": "interContinuousCollision", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "3f523baa-d03a-4f42-a2e8-868d9605093f", "comp": "ClothComponent", "field": "receiveFlowFields", "value": true } },
+    { "do": "bus", "request": { "t": "component.set", "id": "966aa69a-3f5e-4bf1-8565-2c9fcefa7dca", "comp": "ClothComponent", "field": "receiveFlowFields", "value": true } },
     { "do": "frames", "count": 120 },
     { "do": "assert", "query": { "t": "scene.find", "name": "Curtain" }, "path": "nodes.0.name", "op": "==", "value": "Curtain" },
     { "do": "assert", "query": { "t": "scene.find", "name": "Flag" }, "path": "nodes.0.name", "op": "==", "value": "Flag" },
     { "do": "assert", "query": { "t": "console.logs", "minLevel": "error" }, "path": "entries", "op": "length==", "value": 0 },
     { "do": "stop" },
-    { "do": "waitUntil", "query": { "t": "editor.state" }, "path": "playState", "op": "==", "value": "editor", "timeoutFrames": 30 }
+    { "do": "waitUntil", "query": { "t": "editor.state" }, "path": "playState", "op": "==", "value": "editor", "timeoutFrames": 30 },
+    { "do": "frames", "count": 2 },
+    { "do": "bus", "request": { "t": "editor.op.invoke", "id": "cloth.paint_max_distance", "args": { "node": "3f523baa-d03a-4f42-a2e8-868d9605093f", "particles": "288", "inherit": true } } }
   ]
 }
