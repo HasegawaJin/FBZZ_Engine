@@ -7,6 +7,7 @@
 /// Scene の所有は manager が持ち、利用側は非所有参照で扱う。
 #pragma once
 #include "Scene.hpp"
+#include "Engine/Asset/AssetLeaseSet.hpp"
 #include "Engine/Core/Scheduler/SystemScheduler.hpp"
 #include <Physics/World.hpp>
 
@@ -51,6 +52,18 @@ public:
     /// 最後の LoadScene で切り替えた登録名。外部 Scene をバインドし直すと空に戻る。
     [[nodiscard]] const std::string& ActiveSceneName() const { return m_activeName; }
 
+    /// @name シーン単位の先読みと利用権
+    /// @see Docs/design/asset-streaming.md «シーン切り替え・停止・復旧»
+    /// @{
+    /// @brief RegisterFromFile で登録したシーンが参照するテクスチャ・モデル・マテリアルを非同期で読み始める。
+    /// @return ファイル登録でない (本文が無い) シーンなら false。
+    /// @note 切り替えは待たない。GetScenePrefetchProgress が揃ってから LoadScene すれば同期ロードが起きない。
+    bool PrefetchScene(const std::string& name);
+    [[nodiscard]] asset::AssetLeaseSet::Progress GetScenePrefetchProgress(const std::string& name) const;
+    /// @brief 先読みの利用権を手放す。現在のシーンの束は手放さない。
+    void CancelScenePrefetch(const std::string& name);
+    /// @}
+
     /// 固定タイムステップの Hz (デフォルト 60)
     void SetPhysicsHz(int hz);
 
@@ -83,8 +96,14 @@ public:
 private:
     Scene* CurrentScene() const;
     void BuildScheduler();
+    /// @brief シーン本文から参照を拾って利用権の束を作る。既にあれば優先度だけ上げる。
+    bool AcquireSceneLeases(const std::string& name, asset::AssetPriority priority);
 
     std::unordered_map<std::string, SceneFactory> m_factories;
+    /// RegisterFromFile の本文の場所。先読みで参照を拾うのに使う。
+    std::unordered_map<std::string, std::string>  m_scenePaths;
+    /// シーンごとの利用権。切り替えが成功したら旧シーンの束だけを手放す (共有物は他の束が持ち続ける)。
+    std::unordered_map<std::string, asset::AssetLeaseSet> m_sceneLeases;
     std::unique_ptr<Scene>                        m_active;
     std::string                                   m_pendingLoad;
     std::string                                   m_activeName;

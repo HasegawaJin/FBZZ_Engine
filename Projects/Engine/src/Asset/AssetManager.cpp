@@ -5,6 +5,8 @@
 ///
 /// @brief Load<T>() はヘッダーでインライン化し、ここでは型ごとの特殊化と Init を実装する。
 #include <Engine/Asset/AssetManager.hpp>
+#include "BundledModel.hpp"
+#include "ModelStreamChannel.hpp"
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AnimationImporter.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -37,6 +39,8 @@
 #include <Engine/Asset/TerrainImporter.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
+#include <Engine/Asset/StreamedTextureResolver.hpp>
+#include <Engine/Asset/TextureStreamChannel.hpp>
 #include <Engine/Renderer/AssetPathService.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/EngineAssetPath.hpp>
@@ -78,7 +82,7 @@ bool ShouldReportBrokenRef(const std::string& ref)
     return BrokenRefReports().insert(ref).second;
 }
 
-std::unique_ptr<Model> BuildBundledModel(std::unique_ptr<ModelAsset> asset)
+std::unique_ptr<Model> BuildBundledModelImpl(std::unique_ptr<ModelAsset> asset)
 {
     if (!asset || asset->lods.empty()) return nullptr;
 
@@ -518,7 +522,7 @@ public:
 
         if (EndsWithCI(absPath, ".fzasset") || EndsWithCI(absPath, ".fbx")) {
             ModelAssetImporter importer;
-            return BuildBundledModel(importer.Import(absPath, resources));
+            return BuildBundledModelImpl(importer.Import(absPath, resources));
         }
         return ModelImporter::Import(absPath, *resources);
     }
@@ -531,6 +535,11 @@ public:
 };
 
 } // namespace
+
+std::unique_ptr<Model> detail::BuildBundledModel(std::unique_ptr<ModelAsset> asset)
+{
+    return BuildBundledModelImpl(std::move(asset));
+}
 
 /// @name Init / UnloadAll
 
@@ -563,10 +572,23 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     RegisterImporter<SequenceAsset>           (std::make_unique<SequenceImporter>());
     RegisterImporter<fluid::VectorFieldAsset>        (std::make_unique<VectorFieldImporter>());
     RegisterImporter<ParticleCurveAsset>      (std::make_unique<ParticleCurveImporter>());
+
+    /// @name 非同期経路の登録
+    /// @note チャンネルは DLL 内で作る。AssetStore<T> は DLL / EXE ごとに別実体なので、ここで作らないと
+    ///       同期 Load<T> と違うストアを埋めてしまう。
+    AssetStreamer::Engine().RegisterChannel(CreateTextureStreamChannel(resources));
+    AssetStreamer::Engine().RegisterChannel(CreateModelStreamChannel(resources));
+    AssetStreamer::Engine().RegisterChannel(CreateModelAssetStreamChannel(resources));
+    AssetStreamer::Engine().RegisterChannel(CreateMaterialStreamChannel());
 }
 
 void AssetManager::UnloadAll()
 {
+    /// @note ストアを畳む前に非同期要求を捨てる。転送中の GPU 候補は ResourceManager が生きているうちに返し、
+    ///       実行中ジョブの結果は epoch の不一致で棄却させる。
+    AssetStreamer::Engine().ResetForProjectSwitch();
+    StreamedTextureResolver::Engine().Reset();
+
     /// @note 全型を漏れなく並べる。消し忘れた型はプロジェクトを切り替えても前のプロジェクトの
     ///       アセットが cache に残り続け、パスが同名なら別プロジェクトの中身が黙って引き
     ///       当たるという、最も気付きにくい壊れ方をする。
@@ -616,20 +638,26 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
     const std::string key = CacheKey(relativePath);
     AssetStore<T>& store = AssetStore<T>::Get();
 
+    const auto importPathOf = [&] { return ResolveImportPath(key, IsModelContainer<T>()); };
+
     const auto it = store.cache.find(key);
-    if (it != store.cache.end()) return it->second;
+    if (it != store.cache.end()) {
+        /// @note 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
+        ///       ここで読んで埋め、実行中の非同期結果は棄却させる。計測と警告は AssetStreamer 側。
+        if (store.IsPending(it->second) && store.importer) {
+            if (std::unique_ptr<T> filled = store.importer->Import(importPathOf(), S_res())) {
+                store.Replace(it->second, std::move(filled));
+                NotifyStreamerSyncFilled(AssetStreamTypeName<T>(), key);
+            }
+        }
+        /// @note 同期 API で配ったものは明示的な Unload まで固定する。非同期側の自動解放はこれを外さない。
+        if (!store.IsPending(it->second)) store.Pin(it->second);
+        return it->second;
+    }
 
     std::unique_ptr<T> asset;
-    if (store.importer) {
-        /// @note Model / ModelAsset は .fbx を受け取ったら Library/Baked の .fzasset へ寄せる。
-        const std::string importPath = [&] {
-            if constexpr (std::is_same_v<T, ModelAsset> || std::is_same_v<T, Model>)
-                return ResolveModelAssetPath(key, S_base());
-            else
-                return ResolvePath(key, S_base());
-        }();
-        asset = store.importer->Import(importPath, S_res());
-    }
+    if (store.importer)
+        asset = store.importer->Import(importPathOf(), S_res());
     else
         FBZZ_LOG_ERROR("AssetManager: importer is not registered [%s]", key.c_str());
 
@@ -638,8 +666,21 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
         return AssetHandle<T>::Null();
     }
     const AssetHandle<T> h = store.Alloc(std::move(asset));
+    store.Pin(h);
     store.cache[key] = h;
     return h;
+}
+
+std::string AssetManager::StreamCacheDir()
+{
+    if (!EndsWithCI(s_basePath, "assets/")) return {};
+    /// @note "assets/" を除去
+    return s_basePath.substr(0, s_basePath.size() - 7) + "Library/StreamCache";
+}
+
+std::string AssetManager::ResolveImportPath(const std::string& key, bool modelContainer)
+{
+    return modelContainer ? ResolveModelAssetPath(key, s_basePath) : ResolvePath(key, s_basePath);
 }
 
 template<typename T>
@@ -657,6 +698,17 @@ void AssetManager::UnloadFromStore(const std::string& relativePath)
     if (it == store.cache.end()) return;
     store.Free(it->second);
     store.cache.erase(it);
+    NotifyStreamerUnloaded(AssetStreamTypeName<T>(), key);
+}
+
+void AssetManager::NotifyStreamerSyncFilled(std::string_view typeName, const std::string& key)
+{
+    AssetStreamer::Engine().NotifySyncFilled(typeName, key);
+}
+
+void AssetManager::NotifyStreamerUnloaded(std::string_view typeName, const std::string& key)
+{
+    AssetStreamer::Engine().NotifyUnloaded(typeName, key);
 }
 
 template<>

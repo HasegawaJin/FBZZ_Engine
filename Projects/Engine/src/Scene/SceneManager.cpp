@@ -38,8 +38,13 @@
 #include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include "Engine/Scene/Systems/RuntimeMeshSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Asset/AssetDatabase.hpp"
+#include "Engine/Scene/SceneAssetReferences.hpp"
+#include "Engine/Util/FileSystem.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <cassert>
 
@@ -145,6 +150,51 @@ void SceneManager::RegisterFromFile(const std::string& name, const std::string& 
     Register(name, [path, &resources]() {
         return SceneSerializer::Load(path, resources);
     });
+    m_scenePaths[name] = path;
+}
+
+bool SceneManager::AcquireSceneLeases(const std::string& name, asset::AssetPriority priority)
+{
+    if (auto it = m_sceneLeases.find(name); it != m_sceneLeases.end()) {
+        it->second.SetPriority(priority);
+        return true;
+    }
+    const auto pathIt = m_scenePaths.find(name);
+    if (pathIt == m_scenePaths.end()) return false;
+
+    std::ifstream file(util::FileSystem::PathFromUtf8(pathIt->second), std::ios::binary);
+    if (!file) return false;
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    const auto references = CollectSceneAssetReferences(text, [](std::string_view guidRef) {
+        return asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(std::string(guidRef)));
+    });
+    asset::AssetLeaseSet leases(asset::AssetStreamer::Engine());
+    asset::AssetRequestOptions options;
+    options.priority = priority;
+    for (const SceneAssetReference& reference : references) {
+        /// @note 拒否 (経路未登録・予算超過) はその分が同期ロードになるだけなので、先読みは続ける。
+        (void)leases.Add(StreamTypeNameOf(reference.kind), reference.reference, options);
+    }
+    m_sceneLeases.emplace(name, std::move(leases));
+    return true;
+}
+
+bool SceneManager::PrefetchScene(const std::string& name)
+{
+    return AcquireSceneLeases(name, asset::AssetPriority::Prefetch);
+}
+
+asset::AssetLeaseSet::Progress SceneManager::GetScenePrefetchProgress(const std::string& name) const
+{
+    const auto it = m_sceneLeases.find(name);
+    return it != m_sceneLeases.end() ? it->second.GetProgress() : asset::AssetLeaseSet::Progress{};
+}
+
+void SceneManager::CancelScenePrefetch(const std::string& name)
+{
+    if (name == m_activeName) return;
+    m_sceneLeases.erase(name);
 }
 
 bool SceneManager::LoadScene(const std::string& name)
@@ -179,6 +229,8 @@ void SceneManager::ReleaseOwnedScene()
     }
     m_pendingLoad.clear();
     m_activeName.clear();
+    /// @note Play 停止: Play 中に読んだシーンの利用権だけを手放す。Editor の要求 (マテリアルの解決口など) は残る。
+    m_sceneLeases.clear();
 }
 
 void SceneManager::ClearScenes()
@@ -200,6 +252,7 @@ void SceneManager::ClearScenes()
     m_externalScene = nullptr;
     m_pendingLoad.clear();
     m_activeName.clear();
+    m_sceneLeases.clear();
 }
 
 void SceneManager::SetPhysicsHz(int hz)
@@ -276,8 +329,15 @@ void SceneManager::Update(float dt, physics::World& world)
         m_scheduler.ResetAccumulator();
         /// @note LoadScene は明示的な遷移要求なので、新しい owned Scene を外部 Scene より優先する。
         m_externalScene = nullptr;
+        const std::string previousName = m_activeName;
         m_activeName    = m_pendingLoad;
         m_pendingLoad.clear();
+
+        /// @note 新しいシーンの束を持ってから旧シーンの束を手放す。順序を逆にすると、両方が使う共有物の
+        ///       利用権が一瞬ゼロになり解放の対象に入る。先読みしていなかったシーンもロード後に束を作る
+        ///       (中身は読み込み済みなのでジョブは出ない)。失敗した遷移では上で return するので旧シーンの束は残る。
+        (void)AcquireSceneLeases(m_activeName, asset::AssetPriority::Visible);
+        if (!previousName.empty() && previousName != m_activeName) m_sceneLeases.erase(previousName);
     }
 
     Scene* scene = CurrentScene();
