@@ -1,2 +1,8 @@
+[editor]
+format_version = 2
+game_objects = []
+hidden_objects = []
+locked_objects = []
+
 [meta]
-guid = "1918d5f8d23c4839ab191c9439fd8c9b"
+guid = '1918d5f8d23c4839ab191c9439fd8c9b'

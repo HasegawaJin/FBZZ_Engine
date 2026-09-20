@@ -50,6 +50,29 @@ TEST_F(FiberTest, ClampsMaterialAndRejectsNonFiniteValues)
     EXPECT_FLOAT_EQ(settings.m_rootColor.x, defaults.m_rootColor.x);
 }
 
+TEST_F(FiberTest, FurLookParametersDefaultOffAndClamp)
+{
+    const auto defaults = asset::ResolveFiberMaterial(nullptr);
+    EXPECT_FLOAT_EQ(defaults.m_clumping, 0.0f);
+    EXPECT_FLOAT_EQ(defaults.m_secondarySpecular, 0.0f);
+    asset::MaterialAsset material;
+    material.params["clumping"] = {3.0f};
+    material.params["clumpTwist"] = {-9.0f};
+    material.params["specularShift"] = {std::numeric_limits<float>::quiet_NaN()};
+    const auto settings = asset::ResolveFiberMaterial(&material);
+    EXPECT_FLOAT_EQ(settings.m_clumping, 1.0f);
+    EXPECT_FLOAT_EQ(settings.m_clumpTwist, -2.0f);
+    EXPECT_FLOAT_EQ(settings.m_specularShift, defaults.m_specularShift);
+}
+
+TEST_F(FiberTest, ComponentDefaultsFitCharacterBudget)
+{
+    const scene::FiberComponent fiber;
+    EXPECT_EQ(fiber.m_shellCount, 16);
+    EXPECT_TRUE(fiber.m_distanceLod);
+    EXPECT_LE(fiber.m_shadowShellCount, fiber.m_shellCount);
+}
+
 TEST_F(FiberTest, RejectsWrongParameterArity)
 {
     asset::MaterialAsset material;
@@ -140,6 +163,12 @@ TEST_F(FiberTest, PreservesFiberModesAndMaterialThroughSceneSave)
     fiber.m_motionHistories.emplace_back();
     fiber.m_motionHistories.back().Advance(42, renderer::FiberDeformationState{});
     fiber.m_materialPath = "guid:739d861ca4e047919d17c941c10191c8|Assets/Materials/Fiber/Grass.mat";
+    fiber.m_shadowShellCount = 3;
+    fiber.m_colorTint = {0.5f, 0.25f, 1.0f};
+    fiber.m_lengthScale = 1.5f;
+    fiber.m_densityScale = 0.5f;
+    fiber.m_clumpingScale = 2.0f;
+    fiber.m_maskPath = "Assets/Textures/FurMask.png";
     const auto path = temp.File("fiber.scene").generic_string();
     ASSERT_TRUE(scene::SceneSerializer::Save(source, path));
     const auto restored = scene::SceneSerializer::LoadData(path);
@@ -153,6 +182,12 @@ TEST_F(FiberTest, PreservesFiberModesAndMaterialThroughSceneSave)
     EXPECT_FALSE(loaded->m_enabled);
     EXPECT_TRUE(loaded->m_motionHistories.empty());
     EXPECT_EQ(loaded->m_materialPath, fiber.m_materialPath);
+    EXPECT_EQ(loaded->m_shadowShellCount, 3);
+    EXPECT_VEC3_NEAR(loaded->m_colorTint, fiber.m_colorTint, 1.0e-6f);
+    EXPECT_FLOAT_EQ(loaded->m_lengthScale, 1.5f);
+    EXPECT_FLOAT_EQ(loaded->m_densityScale, 0.5f);
+    EXPECT_FLOAT_EQ(loaded->m_clumpingScale, 2.0f);
+    EXPECT_EQ(loaded->m_maskPath, fiber.m_maskPath);
 }
 
 TEST_F(FiberTest, AdvancesWindHistoryEvenWhenWorldIsStatic)

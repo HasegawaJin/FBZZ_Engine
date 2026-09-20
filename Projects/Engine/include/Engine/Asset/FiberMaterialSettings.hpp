@@ -4,6 +4,7 @@
 /// @date    2026-09-17
 #pragma once
 #include <Math/Vector4.hpp>
+#include <cstdint>
 
 namespace fbzz::asset {
 struct MaterialAsset;
@@ -27,9 +28,21 @@ struct FiberMaterialSettings {
     float m_grass = 0.0f;
     float m_worldMapping = 0.0f;
     float m_finWidth = 0.35f;
-    float m_padding = 0.0f;
+    /// @note 以下の毛皮の質感は既定 0 (無効)。Inspector が欠けたキーを 0 で埋めるのと揃える。
+    float m_specularShift = 0.0f;
+    float m_secondarySpecular = 0.0f;
+    float m_colorVariation = 0.0f;
+    float m_clumping = 0.0f;
+    float m_clumpTwist = 0.0f;
+    /// @note fiberMask (.mat の tex5) の bindless 添字。ResolveFiberMaterial は書かず、描画側が毎フレーム書く。
+    /// @see scene::ResolveFiberMaskTexture
+    std::uint32_t m_maskIndex = 0xFFFFFFFFu;
+    float m_padding[3]{};
 };
-static_assert(sizeof(FiberMaterialSettings) == 96);
+static_assert(sizeof(FiberMaterialSettings) == 128);
+
+/// @brief fiberMask を置く .mat の textures キー。シェーダーの tex5Index と対になり、Inspector には «tex5» の枠で出る。
+inline constexpr const char* FIBER_MASK_TEXTURE_KEY = "tex5";
 
 /// @return 欠損 / 非有限値は既定値、範囲外は clamp。asset が null なら既定の毛皮。
 [[nodiscard]] FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset);
