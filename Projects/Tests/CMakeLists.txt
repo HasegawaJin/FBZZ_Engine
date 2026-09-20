@@ -177,6 +177,11 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/FluidAmountEnvelopeTests.cpp
         Engine/Auto/FluidGpuLiquidTests.cpp
         Engine/Auto/GeometryRouteTests.cpp
+        Engine/Auto/GeometryMaterialExtractionTests.cpp
+        Engine/Auto/GeometryPipelineTests.cpp
+        Engine/Auto/RenderVisibilityTests.cpp
+        Engine/Auto/RenderSceneExtractorTests.cpp
+        Engine/Auto/RenderLightExtractorTests.cpp
         Engine/Auto/InstanceBatchTests.cpp
         Engine/Auto/RenderGraphTests.cpp
         Engine/Auto/RenderPipelineTests.cpp
@@ -312,3 +317,20 @@ fbzz_add_test_suite(CoreManual MANUAL
     LINKS
         FBZZTestKitEngine
 )
+
+# @note Engine をリンクしない契約を実行時の DLL 一覧と実 GPU 描画の両方で検証する。
+fbzz_add_test_suite(GraphicsStandalone
+    SOURCES Graphics/Auto/GraphicsStandaloneTests.cpp
+    LINKS FBZZGraphics
+)
+configure_file(Graphics/Auto/StandaloneTriangle.hlsl StandaloneTriangle.hlsl COPYONLY)
+target_compile_definitions(FBZZTestsGraphicsStandaloneObj PRIVATE
+    FBZZ_GRAPHICS_SMOKE_SHADER="${CMAKE_CURRENT_BINARY_DIR}/StandaloneTriangle.hlsl")
+if(FBZZ_DXC_RUNTIME_DIRECTORY)
+    foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
+        add_custom_command(TARGET FBZZTestsGraphicsStandalone POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
+                "$<TARGET_FILE_DIR:FBZZTestsGraphicsStandalone>")
+    endforeach()
+endif()
