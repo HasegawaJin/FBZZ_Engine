@@ -79,8 +79,7 @@ math::Vector2 WaterWorldSize(const WaterComponent& water, const Transform& trans
 }
 
 /// @brief 枠を争う 2 本のうち a が残るか。
-/// @note 形を持つものが常に勝ち、形の無いものどうしは速い方が残る。形は «その場に無いと
-///       シルエットが変わる» のに対し、質感は 1 本落ちても画として崩れないため。
+/// @note 形を持つものが常に勝ち、形の無いものどうしは速い方が残る。形は «その場に無いと シルエットが変わる» のに対し、質感は 1 本落ちても画として崩れないため。
 bool IsStrongerSurfaceFlow(const WaterSurfaceFlow& a, const WaterSurfaceFlow& b)
 {
     const float heightA = std::abs(a.height);
@@ -99,7 +98,7 @@ const SplashTarget* FindSplashTarget(const std::vector<SplashTarget>& targets, c
     return nullptr;
 }
 
-} // namespace
+}
 
 GerstnerWave DefaultWaterWave(int index)
 {
@@ -147,8 +146,7 @@ void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* materi
             const float align = dirLen > 1.0e-4f
                 ? math::Vector2::Dot(wave.direction * (1.0f / dirLen), windDir)
                 : 0.0f;
-            /// @note 向かい風で潰れる量は、追い風で育つ量の半分に留める。
-            ///       全部の波が消えると、風上側を向いた水面だけが鏡のように止まって見える。
+            /// @note 向かい風で潰れる量は、追い風で育つ量の半分に留める。 全部の波が消えると、風上側を向いた水面だけが鏡のように止まって見える。
             const float gain = align >= 0.0f
                 ? 1.0f + windGain * align
                 : 1.0f + windGain * align * 0.5f;
@@ -186,17 +184,14 @@ void EmitWaterRipple(WaterComponent& water, const Transform& transform,
 {
     const math::Vector2 size = WaterWorldSize(water, transform);
 
-    /// @note 波紋テクスチャは水面全体で 1 枚。テクセルより細い輪は焼いても «輪» にならないので、
-    ///       テクセルのワールド実寸を太さの下限にする。
+    /// @note 波紋テクスチャは水面全体で 1 枚。テクセルより細い輪は焼いても «輪» にならないので、 テクセルのワールド実寸を太さの下限にする。
     const float mean   = (size.x + size.y) * 0.5f;
     const float texel  = mean / static_cast<float>(kWaterRippleTextureSize);
     const float s      = math::Clamp01(strength);
     const float width  = (std::max)(0.25f + 0.35f * s, texel * 1.5f);
     const float speed  = (std::max)(1.2f + 1.2f * s, texel * 3.0f);
 
-    /// @note テクセルで止めた «実際に出る輪の太さ» [m]。海サイズの水面では 1 テクセルが数十 m あり、
-    ///       小石 1 個の着水が直径 100 m の輪として出てしまう。太くなったぶんだけ薄くし、
-    ///       «輪として読めない» ところで置くのをやめる。しぶきのパーティクルはそのまま残る。
+    /// @note テクセルで止めた «実際に出る輪の太さ» [m]。海サイズの水面では 1 テクセルが数十 m あり、 小石 1 個の着水が直径 100 m の輪として出てしまう。太くなったぶんだけ薄くし、 «輪として読めない» ところで置くのをやめる。しぶきのパーティクルはそのまま残る。
     const float t = math::Clamp01((width - 3.0f) / 5.0f);
     const float scaleFade = 1.0f - t * t * (3.0f - 2.0f * t);
     if (scaleFade <= 0.01f) return;
@@ -208,14 +203,12 @@ void EmitWaterRipple(WaterComponent& water, const Transform& transform,
     ripple.amplitude = s * scaleFade;
     ripple.speed     = speed;
     ripple.decayRate = 1.3f;
-    /// @note 断面 sin(ring/w·PI) の周期は 2·width。«波長 / セル» で測る WaveMeshFade へは
-    ///       その周期を渡す (帯の原則は Gerstner 波と同じ尺で決める)。
+    /// @note 断面 sin(ring/w·PI) の周期は 2·width。«波長 / セル» で測る WaveMeshFade へは その周期を渡す (帯の原則は Gerstner 波と同じ尺で決める)。
     ripple.meshFade  = WaterComponent::WaveMeshFade(width * 2.0f, water.cellSize);
     /// @note 輪は «水面を横切り切ったら» 用済み。UV 時代の 2.8 (= 幅の 2.8 倍) を実寸へ写した値。
     ripple.maxRadius = mean * 2.8f;
 
-    /// @note 波紋テクスチャは «テクセル数 × 波紋数» を毎フレーム CPU で焼き直す。物体を大量に
-    ///       水へ落とすと波紋の数だけフレームが重くなるので、上限を置いて古いものから捨てる。
+    /// @note 波紋テクスチャは «テクセル数 × 波紋数» を毎フレーム CPU で焼き直す。物体を大量に 水へ落とすと波紋の数だけフレームが重くなるので、上限を置いて古いものから捨てる。
     if (water.ripples.size() >= kMaxWaterRipples)
         water.ripples.erase(water.ripples.begin());
     water.ripples.push_back(ripple);
@@ -250,6 +243,7 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
     const float halfZ = size.y * 0.5f;
 
     for (const ActiveFlowField& field : fields) {
+        if (!FlowReceiver{}.Accepts(field)) continue;
         /// @note 流れではない。読み込み時に flowCoupling へ写るので、ここまで届くのは移行漏れ。
         if (field.type == FlowFieldType::LegacyDrag) continue;
 
@@ -269,24 +263,32 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
             /// @note Baked の strength は «焼いた値 [m/s] に掛ける無次元の倍率» で符号を持つ。
             flow.speed           = field.strength;
             flow.planeOffsetY    = transform.worldPosition.y - field.position.y;
-            /// @note 回した箱を軸並行で包む代わりに対角長で見る。枠に入るかの粗いふるいなので、
-            ///       安全側に大きく取って構わない。
+            /// @note 回した箱を軸並行で包む代わりに対角長で見る。枠に入るかの粗いふるいなので、 安全側に大きく取って構わない。
             reach = field.extents.Length();
             if (std::abs(flow.planeOffsetY) > reach) continue;
-            /// @note 特徴の大きさは «狭い辺の半分»。extents は箱の半径で、場の中の起伏は箱より
-            ///       細かい。全幅で測ると、刻めない場が縞として残る。
+            /// @note 特徴の大きさは «狭い辺の半分»。extents は箱の半径で、場の中の起伏は箱より 細かい。全幅で測ると、刻めない場が縞として残る。
             const float feature = (std::min)(field.extents.x, field.extents.z);
             flow.height = -kMaxWaterSurfaceDisplacement
                         * WaterComponent::WaveMeshFade(feature, water.cellSize);
         } else {
-            /// @note 半径の無い («シーン全体») 要素は中心からの距離で減衰しないので、水面のどこまで
-            ///       効くのか決まらない。流速としては効いたままで、形と質感にだけ出さない。
+            /// @note 半径の無い («シーン全体») 要素は中心からの距離で減衰しないので、水面のどこまで 効くのか決まらない。流速としては効いたままで、形と質感にだけ出さない。
             if (field.radius <= 0.0001f) continue;
+            /// @note 波による変位を含めると形が自身の高さへ依存するため、水面の基準面と球の断面で解決する。
+            /// @see Docs/design/water-waves.md 「水面と場の高低差」
+            const float distanceY = std::abs(transform.worldPosition.y - field.position.y);
+            if (distanceY >= field.radius) continue;
+            const float heightRatio = distanceY / field.radius;
+            const float planeInfluence = std::pow(1.0f - heightRatio, field.falloffPower);
+            flow.radius = field.radius * std::sqrt((1.0f - heightRatio) * (1.0f + heightRatio));
+            reach = flow.radius;
             /// @note Bernoulli。strength は流速 [m/s] なので v^2/2g がそのまま長さになる。
             const float bernoulli =
                 (std::min)(flow.speed * flow.speed / 19.6f, kMaxWaterSurfaceDisplacement)
+                /// @note 上限を掛けた後で減衰させ、強い場も Y 移動で直ちに浅くなるようにする。
+                * planeInfluence * planeInfluence
                 /// @note 頂点で刻めない形は消す。波長にあたるのは形の差し渡し = 2·radius。
-                * WaterComponent::WaveMeshFade(field.radius * 2.0f, water.cellSize);
+                * WaterComponent::WaveMeshFade(flow.radius * 2.0f, water.cellSize);
+            flow.speed *= planeInfluence;
             switch (field.type) {
             case FlowFieldType::Uniform: {
                 /// @note 真上・真下を向いた流れは水面を撫でない。水平成分だけを «風» として読む。
@@ -318,8 +320,7 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
             }
         }
 
-        /// @note 形を持つ型が «刻めない» ときは枠を使わない。占めたままだと、頂点に出ない形の
-        ///       ために Uniform / Curl の質感が押し出される。
+        /// @note 形を持つ型が «刻めない» ときは枠を使わない。占めたままだと、頂点に出ない形の ために Uniform / Curl の質感が押し出される。
         const bool shapeless = flow.kind == FlowFieldType::Uniform
                             || flow.kind == FlowFieldType::Curl;
         if (!shapeless && std::abs(flow.height) <= 0.0001f) continue;
@@ -358,9 +359,8 @@ math::Vector3 WaterFlowVelocityAt(const WaterComponent& water,
         worldPos.z,
     };
     /// @note 全ビットで引く。剛体にはチャンネルの申告が無いので «どの場も受ける»。
-    const math::Vector3 flow = SampleFlow(surfacePoint, fields, 0xFFFFFFFFu, time);
-    /// @note 鉛直成分は捨てる。水面の «表面の流速» は水平にしか意味がなく、y を渡すと
-    ///       浮いた体が浮力と綱引きして水面の上で震える。
+    const math::Vector3 flow = FlowReceiver{}.Sample(surfacePoint, fields, time);
+    /// @note 鉛直成分は捨てる。水面の «表面の流速» は水平にしか意味がなく、y を渡すと 浮いた体が浮力と綱引きして水面の上で震える。
     return { water.current.x + flow.x, 0.0f, water.current.y + flow.z };
 }
 
@@ -374,11 +374,9 @@ ComponentAccess WaterSystem::GetAccess() const
 void WaterSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
-    /// @note 前フレームまでに積まれたしぶきをここで生成する。描画パスの中で作ると
-    ///       同じフレームの後続パスが握るエミッターを詰め替えてしまう。
+    /// @note 前フレームまでに積まれたしぶきをここで生成する。描画パスの中で作ると 同じフレームの後続パスが握るエミッターを詰め替えてしまう。
     UpdateWaterSplashes(scene);
-    /// @note 環境流は Scene のフレームキャッシュが正本。GameObject の並び順で勝者が決まる
-    ///       «最初に見つかった radius 0 の Wind» の探索はもう無い。
+    /// @note 環境流は Scene のフレームキャッシュが正本。GameObject の並び順で勝者が決まる «最初に見つかった radius 0 の Wind» の探索はもう無い。
     const FlowFieldFrame& flowFrame = scene.FlowFrame();
     const AmbientWind& ambient = flowFrame.ambient;
     const WaterWind wind{ ambient.active, ambient.direction, ambient.speed };
@@ -387,23 +385,22 @@ void WaterSystem::Update(SystemContext& ctx)
     for (EntityID id : scene.GetEntities<WaterComponent>()) {
         auto* water = scene.GetComponent<WaterComponent>(id);
         GameObject* go = scene.GetGameObject(id);
-        if (!water || !go) continue;
+        /// @note 親ごと無効化された水面は波・流れ・波紋も止める。描画・浮力・スクリプトの問い合わせはどれも無効な水面を見ないので、準備だけ進めても使われない。
+        if (!water || !go || !go->activeInHierarchy()) continue;
         ResolveWaterWaves(*water, LoadWaterMaterial(*water), wind);
         water->cellSize = ResolveWaterCellSize(*water, go->transform);
         water->PrepareWaveCache();
-        /// @note 流れと輪は cellSize を決めた後で解決する。どちらも «頂点で刻めるか» を
-        ///       WaveMeshFade で測るので、順序が逆だと 1 フレーム古いセル実寸で判断する。
+        /// @note 流れと輪は cellSize を決めた後で解決する。どちらも «頂点で刻めるか» を WaveMeshFade で測るので、順序が逆だと 1 フレーム古いセル実寸で判断する。
         ResolveWaterSurfaceFlows(*water, go->transform, *flowFrame.fields);
         UpdateWaterRipples(*water, go->transform, ctx.dt);
-        if (water->enabled && water->splashEnabled && go->activeInHierarchy()) {
+        if (water->enabled && water->splashEnabled) {
             targets.push_back({ water, &go->transform,
                                 water->extentX * 0.5f * std::abs(go->transform.worldScale.x),
                                 water->extentZ * 0.5f * std::abs(go->transform.worldScale.z) });
         }
     }
 
-    /// @note 編集中は «前回どこに居たか» を持ち越さない。持ち越すと、水中に置いた物体が
-    ///       Play 開始の瞬間に一斉に «着水» したことになる。
+    /// @note 編集中は «前回どこに居たか» を持ち越さない。持ち越すと、水中に置いた物体が Play 開始の瞬間に一斉に «着水» したことになる。
     if (!ctx.playing) { m_bodies.clear(); return; }
     if (!ctx.simulating) return;
     if (targets.empty()) { m_bodies.clear(); return; }
@@ -470,4 +467,4 @@ void WaterSystem::Update(SystemContext& ctx)
     std::erase_if(m_bodies, [](const auto& entry) { return !entry.second.seen; });
 }
 
-} // namespace fbzz::scene
+}

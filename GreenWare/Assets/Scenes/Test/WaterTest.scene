@@ -25,7 +25,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777267
+    aspectRatio = 1.777379
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
