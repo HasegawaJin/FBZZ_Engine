@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
 ///
-/// 各ステップの詳細は BuildPipeline.hpp のコメントを参照。
+/// @note 各ステップの詳細は BuildPipeline.hpp のコメントを参照。
 #include <Editor/BuildPipeline.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AppIconWriter.hpp>
@@ -26,7 +26,7 @@ namespace fbzz::editor {
 
 namespace {
 
-/// 今日の日付を YYYY-MM-DD 形式で返す
+/// @note 今日の日付を YYYY-MM-DD 形式で返す
 std::string TodayString()
 {
     const auto now      = std::chrono::system_clock::now();
@@ -44,23 +44,23 @@ std::string LowerUtf8(const std::filesystem::path& path)
     return util::StringUtils::ToLower(util::FileSystem::PathToUtf8(path));
 }
 
-/// 配布物に入れないファイルか (relative は Assets/ からの相対パス)。
+/// @note 配布物に入れないファイルか (relative は Assets/ からの相対パス)。
 /// @note .hlsl/.hlsli を残すのは、ShaderDependencyTracker が本体または include 先を
-///       見失うと CSO を stale 判定し実行時再コンパイルへ落ちるため。.meta を残すのは
-///       AssetDatabase の guid 索引が .meta から作られ、落とすと guid: 参照が全滅するため。
+/// @note 見失うと CSO を stale 判定し実行時再コンパイルへ落ちるため。.meta を残すのは
+/// @note AssetDatabase の guid 索引が .meta から作られ、落とすと guid: 参照が全滅するため。
 bool IsEditorOnlyAsset(const std::filesystem::path& relative)
 {
     if (relative.begin() != relative.end()) {
         const std::string topDir = LowerUtf8(*relative.begin());
         /// @note EditorConfig (レイアウト/個人設定/Play退避)・Scripts (原本、ランタイムは
-        ///       コンパイル済みのみ読む)・Docs (孤児 meta を防ぐ) は拡張子でなく置き場ごと
-        ///       落とす。.playmode_snapshot.scene のように拡張子だけでは配布可否を区別できない。
+        /// @note コンパイル済みのみ読む)・Docs (孤児 meta を防ぐ) は拡張子でなく置き場ごと
+        /// @note 落とす。.playmode_snapshot.scene のように拡張子だけでは配布可否を区別できない。
         if (topDir == "editorconfig" || topDir == "scripts" || topDir == "docs") return true;
     }
 
     /// @note "_" で始まるフォルダ/ファイルは作業用の置き場として配布から外す。DCC の原本と
-    ///       退避コピーが Assets に同居し (GreenWare の Assets/_src だけで 4.5GB = 97%)、
-    ///       拡張子だけでは規則が増えるたび漏れるため、置き場の名前を正の規約にする。
+    /// @note 退避コピーが Assets に同居し (GreenWare の Assets/_src だけで 4.5GB = 97%)、
+    /// @note 拡張子だけでは規則が増えるたび漏れるため、置き場の名前を正の規約にする。
     for (const std::filesystem::path& component : relative) {
         const std::string name = LowerUtf8(component);
         if (!name.empty() && name.front() == '_') return true;
@@ -91,9 +91,9 @@ bool IsEditorOnlyAsset(const std::filesystem::path& relative)
     return false;
 }
 
-/// .meta は本体 (ファイルでもフォルダでも) の扱いに従わせる。
+/// @note .meta は本体 (ファイルでもフォルダでも) の扱いに従わせる。
 /// @note 実体を失った .meta は AssetDatabase が起動時に「孤児」として削除しにいく。
-///       配布先ディレクトリへの書き込みが発生するうえ、索引の警告も無意味に増える。
+/// @note 配布先ディレクトリへの書き込みが発生するうえ、索引の警告も無意味に増える。
 bool ShouldSkipAsset(const std::filesystem::path& absPath, const std::filesystem::path& relative)
 {
     if (LowerUtf8(relative.extension()) != ".meta")
@@ -110,9 +110,9 @@ bool ShouldSkipAsset(const std::filesystem::path& absPath, const std::filesystem
     return IsEditorOnlyAsset(companionRel);
 }
 
-} // namespace
+} /// @note namespace
 
-/// 開始 / 進行
+/// @note 開始 / 進行
 
 void BuildPipeline::Start(const BuildSettings& settings,
                           const std::string& projectRoot,
@@ -146,7 +146,7 @@ void BuildPipeline::Start(const BuildSettings& settings,
     m_tmpDir    += L"_tmp";
 
     /// @note CommitOutput は出力先を remove_all するため、数分かけたコンパイル後ではなく
-    ///       ここで止めないと削除まで走ってしまう。
+    /// @note ここで止めないと削除まで走ってしまう。
     std::string outputReason;
     if (!m_settings.ValidateOutputPath(m_projectRoot, outputReason)) {
         /// @note まだ作っていない。SetFailed の後始末対象にしない
@@ -177,13 +177,13 @@ void BuildPipeline::Tick()
             config.cmakeExe      = toolchain.cmakeExe;
             config.buildDir      = toolchain.buildDir;
             /// @note Build Settings の Development Build は CMake の Development 構成に対応する。
-            ///       Debug を使うと Development 用に配置された EXE/DLL とずれてパッケージングに失敗する。
+            /// @note Debug を使うと Development 用に配置された EXE/DLL とずれてパッケージングに失敗する。
             config.exePath       = m_settings.developmentBuild
                 ? (!toolchain.exeDevelopment.empty() ? toolchain.exeDevelopment : toolchain.exeDebug)
                 : toolchain.exeRelease;
             config.target        = m_targetName;
             /// @note ゲーム側 CMakeLists は FBZZ_SDK_ROOT が無いと configure で落ちる。
-            ///       ビルド中に ZERO_CHECK が再 configure を走らせても SDK を見失わせない。
+            /// @note ビルド中に ZERO_CHECK が再 configure を走らせても SDK を見失わせない。
             config.sdkRoot       = m_engineRoot;
             config.configuration = m_settings.developmentBuild
                 ? (!toolchain.exeDevelopment.empty() ? "Development" : "Debug")
@@ -295,7 +295,7 @@ std::string BuildPipeline::GetOutputDir() const
     return util::FileSystem::PathToUtf8(m_outputDir);
 }
 
-/// プロジェクト構成の解決
+/// @note プロジェクト構成の解決
 
 void BuildPipeline::ResolveProjectLayout()
 {
@@ -307,8 +307,8 @@ void BuildPipeline::ResolveProjectLayout()
     const std::filesystem::path root = util::FileSystem::PathFromUtf8(m_projectRoot);
 
     /// @note 絶対パスをプロジェクトルート相対 (/ 区切り) に変換する。GameHub Creator が
-    ///       settings_path を絶対パスで書き込むことがあり、そのまま配布物へ入れると
-    ///       別 PC で解決できないため。
+    /// @note settings_path を絶対パスで書き込むことがあり、そのまま配布物へ入れると
+    /// @note 別 PC で解決できないため。
     const auto makeRelative = [&root](const std::string& rawPath) -> std::string {
         if (rawPath.empty()) return rawPath;
         std::filesystem::path p = util::FileSystem::PathFromUtf8(rawPath);
@@ -318,7 +318,7 @@ void BuildPipeline::ResolveProjectLayout()
     };
 
     /// @note standard テンプレートの settings_path は "{{SETTINGS_PATH}}" のまま残る場合が
-    ///       あり、"{{" で始まる値はプレースホルダと判断してデフォルトを使う。
+    /// @note あり、"{{" で始まる値はプレースホルダと判断してデフォルトを使う。
     std::string projectText;
     if (util::FileSystem::ReadText(root / L".fbzz_proj", projectText)) {
         auto parsed = toml::parse(projectText);
@@ -334,8 +334,8 @@ void BuildPipeline::ResolveProjectLayout()
     }
 
     /// @note .fbzz_proj の default_scene は実体と拡張子がずれていることがある
-    ///       (GameHub が生成した ".fbzz" のまま等)。そのまま配布物へ書くと
-    ///       ランタイムの開始シーン解決が失敗して起動できない。
+    /// @note (GameHub が生成した ".fbzz" のまま等)。そのまま配布物へ書くと
+    /// @note ランタイムの開始シーン解決が失敗して起動できない。
     if (!util::FileSystem::Exists(root / util::FileSystem::PathFromUtf8(m_defaultSceneRel))) {
         std::filesystem::path fixed = util::FileSystem::PathFromUtf8(m_defaultSceneRel);
         fixed.replace_extension(L".scene");
@@ -351,7 +351,7 @@ void BuildPipeline::ResolveProjectLayout()
         auto parsed = toml::parse(settingsText);
         if (parsed) {
             /// @note ProjectSettings の renderer は [app] テーブルにあるため先に読む。
-            ///       旧形式のトップレベルも fallback として読み続ける。
+            /// @note 旧形式のトップレベルも fallback として読み続ける。
             std::string backend = parsed.table()["app"]["renderer"].value_or(std::string{});
             if (backend.empty())
                 backend = parsed.table()["renderer"].value_or(std::string{});
@@ -363,7 +363,7 @@ void BuildPipeline::ResolveProjectLayout()
     }
 }
 
-/// ステップ実行
+/// @note ステップ実行
 
 bool BuildPipeline::ExecuteStep()
 {
@@ -405,7 +405,7 @@ bool BuildPipeline::ExecuteStep()
         const std::filesystem::path exe = m_tmpDir / (m_settings.productName + ".exe");
         std::string reason;
         /// @note アイコンは «出来上がった exe を見て» しか確認できない。警告で済ませて
-        ///       既定アイコンのまま配ると、配った後にしか気付けない。
+        /// @note 既定アイコンのまま配ると、配った後にしか気付けない。
         if (!AppIconWriter::Apply(icon, exe, reason)) {
             SetFailed("Failed to apply icon: " + reason);
             return false;
@@ -423,8 +423,8 @@ bool BuildPipeline::ExecuteStep()
             : L"assimp-vc145-mt.dll";
 
         /// @note ランタイム DLL の内訳を決めるのは SDK のステージング (fbzz_stage_runtime) で、
-        ///       固定リストで列挙すると SDK が 1 つ増やすたびに配布物だけ欠けるため、
-        ///       exe 隣を丸ごと同期する。
+        /// @note 固定リストで列挙すると SDK が 1 つ増やすたびに配布物だけ欠けるため、
+        /// @note exe 隣を丸ごと同期する。
         std::vector<std::filesystem::path> runtimeDlls;
         for (const std::filesystem::path& file : util::FileSystem::ListFiles(exeDir)) {
             if (LowerUtf8(file.extension()) == ".dll")
@@ -432,13 +432,13 @@ bool BuildPipeline::ExecuteStep()
         }
 
         /// @note 実行に必須の DLL がないパッケージを成功扱いにしない。黙ってスキップすると
-        ///       Build complete 表示後の起動時にだけ不足が発覚し、原因の工程を特定しにくい。
+        /// @note Build complete 表示後の起動時にだけ不足が発覚し、原因の工程を特定しにくい。
         std::vector<std::wstring> required = {
-            L"imgui.dll", L"FBZZMath.dll", L"FBZZPhysics.dll", L"FBZZEngine.dll", assimpDLL,
+            L"imgui.dll", L"FBZZMath.dll", L"FBZZPhysics.dll", L"FBZZFluid.dll", L"FBZZCore.dll", L"FBZZGraphics.dll", L"FBZZEngine.dll", assimpDLL,
         };
         /// @note DX12 は .cso (DXIL) を読むだけの経路でも、頂点入力と MaterialConstants の
-        ///       リフレクションに dxcompiler.dll が要る。無いと DX12Shader::Init が
-        ///       全シェーダーで失敗し、何も描かれないまま起動する。
+        /// @note リフレクションに dxcompiler.dll が要る。無いと DX12Shader::Init が
+        /// @note 全シェーダーで失敗し、何も描かれないまま起動する。
         if (m_rendererBackend == "dx12") {
             required.push_back(L"dxcompiler.dll");
             required.push_back(L"dxil.dll");
@@ -461,7 +461,7 @@ bool BuildPipeline::ExecuteStep()
         FBZZ_LOG_DEBUG("BuildPipeline: copied %zu runtime DLLs", runtimeDlls.size());
 
         /// @note スクリプト DLL をコピーする。DLL 名はプロジェクトごとに異なり、
-        ///       `Binaries/<Config>` ではなく別ディレクトリに出るプロジェクトは exe 隣に無い。
+        /// @note `Binaries/<Config>` ではなく別ディレクトリに出るプロジェクトは exe 隣に無い。
         if (!m_scriptsDllSrcPath.empty()) {
             const std::filesystem::path scriptsSrc = util::FileSystem::PathFromUtf8(m_scriptsDllSrcPath);
             if (util::FileSystem::Exists(scriptsSrc)) {
@@ -480,7 +480,7 @@ bool BuildPipeline::ExecuteStep()
 
     case Step::EnumerateFiles:
         /// @note BeginEnumerateFiles() は CopyFiles に遷移した直後に呼ばれるため、
-        ///       ここでは何もしない (ステップ遷移ロジックは Tick() 側が担う)
+        /// @note ここでは何もしない (ステップ遷移ロジックは Tick() 側が担う)
         m_status   = "Enumerating files...";
         m_progress = 0.18f;
         return true;
@@ -499,8 +499,8 @@ bool BuildPipeline::ExecuteStep()
 
         /// @name ビルド向け最小 .fbzz_proj を書き出す (開発環境固有の絶対パスを除去)
         /// @note 元の .fbzz_proj は engine.root/api_root/script_root 等の開発環境固有の
-        ///       絶対パスを含み、別 PC では無効になる。ランタイムが読むフィールドだけを
-        ///       相対パスで書き直す。
+        /// @note 絶対パスを含み、別 PC では無効になる。ランタイムが読むフィールドだけを
+        /// @note 相対パスで書き直す。
         {
             std::ostringstream proj;
             proj << "[project]\n";
@@ -508,7 +508,7 @@ bool BuildPipeline::ExecuteStep()
             proj << "settings_path = \"" << m_settingsRelPath << "\"\n";
             proj << "default_scene = \"" << m_defaultSceneRel << "\"\n";
             /// @note スクリプトを DLL で持つランタイムはこのフィールドを読んでロードする。
-            ///       DLL 名はプロジェクトごとに異なるためハードコードせず、ここに記録する。
+            /// @note DLL 名はプロジェクトごとに異なるためハードコードせず、ここに記録する。
             if (!m_scriptsDllSrcPath.empty()) {
                 const std::filesystem::path scriptsDll = util::FileSystem::PathFromUtf8(m_scriptsDllSrcPath);
                 proj << "scripts_dll   = \"" << util::FileSystem::PathToUtf8(scriptsDll.filename()) << "\"\n";
@@ -523,7 +523,7 @@ bool BuildPipeline::ExecuteStep()
 
         /// @name ProjectSettings を相対パスに修正してコピー
         /// @note default_scene / start_scene が絶対パスで保存されている場合、パースして
-        ///       絶対パスフィールドのみ相対変換し、それ以外は元の値を保持する。
+        /// @note 絶対パスフィールドのみ相対変換し、それ以外は元の値を保持する。
         {
             const std::filesystem::path src = root / util::FileSystem::PathFromUtf8(m_settingsRelPath);
             const std::filesystem::path dst = m_tmpDir / util::FileSystem::PathFromUtf8(m_settingsRelPath);
@@ -571,8 +571,8 @@ bool BuildPipeline::ExecuteStep()
 
         /// @name 入力バインド (.inputactions) をコピー
         /// @note ProjectSettings.toml と同じディレクトリの Input.inputactions をランタイムが
-        ///       読む。入れ忘れるとビルドだけ既定バインドに戻る。入力設定自体は任意なので
-        ///       ファイルが無くても失敗にしない。
+        /// @note 読む。入れ忘れるとビルドだけ既定バインドに戻る。入力設定自体は任意なので
+        /// @note ファイルが無くても失敗にしない。
         {
             const std::filesystem::path settingsDir =
                 util::FileSystem::PathFromUtf8(m_settingsRelPath).parent_path();
@@ -588,7 +588,7 @@ bool BuildPipeline::ExecuteStep()
 
         /// @name Assets の外に置かれたシーンを拾う
         /// @note Assets 配下のシーンは CopyFiles で既にコピー済み。ここが効くのは Build
-        ///       Settings に Assets 外の絶対パス/別ディレクトリを足した場合だけ。
+        /// @note Settings に Assets 外の絶対パス/別ディレクトリを足した場合だけ。
         {
             std::vector<std::string> scenesToCopy = m_settings.EnabledScenes();
             const auto autoAdd = [&scenesToCopy](const std::string& scene) {
@@ -624,8 +624,8 @@ bool BuildPipeline::ExecuteStep()
     case Step::WriteManifest: {
         m_status = "Writing manifest...";
         /// @note game.manifest.toml: 製品名・バージョン・ビルド構成を書き出す。出来上がった
-        ///       配布物だけを見てどの構成/バックエンドで焼いたか判別できるようにする。
-        ///       ランタイムは development フラグを読む。
+        /// @note 配布物だけを見てどの構成/バックエンドで焼いたか判別できるようにする。
+        /// @note ランタイムは development フラグを読む。
         std::ostringstream ss;
         ss << "product_name   = \"" << m_settings.productName << "\"\n";
         ss << "version        = \"" << m_settings.version     << "\"\n";
@@ -649,7 +649,7 @@ bool BuildPipeline::ExecuteStep()
     case Step::CommitOutput: {
         m_status = "Committing output...";
         /// @note Start から数分経っており、その間に出力先が別物に差し替わっていても
-        ///       remove_all の直前ならここで気付ける。
+        /// @note remove_all の直前ならここで気付ける。
         std::string outputReason;
         if (!m_settings.ValidateOutputPath(m_projectRoot, outputReason)) {
             SetFailed("Invalid output directory: " + outputReason);
@@ -670,7 +670,7 @@ bool BuildPipeline::ExecuteStep()
     }
 }
 
-/// ファイルコピー
+/// @note ファイルコピー
 
 void BuildPipeline::BeginEnumerateFiles()
 {
@@ -680,8 +680,8 @@ void BuildPipeline::BeginEnumerateFiles()
     const std::filesystem::path root = util::FileSystem::PathFromUtf8(m_projectRoot);
 
     struct TreeStats {
-        size_t filtered = 0;   ///< 配布対象外として落とした数
-        size_t shadowed = 0;   ///< プロジェクト側に同じ相対パスがあって落とした数
+        size_t filtered = 0;   ///< @note 配布対象外として落とした数
+        size_t shadowed = 0;   ///< @note プロジェクト側に同じ相対パスがあって落とした数
     };
 
     /// @note shadowRoot を渡すと、そこに同じ相対パスのファイルがある分を列挙しない。
@@ -711,8 +711,8 @@ void BuildPipeline::BeginEnumerateFiles()
         FBZZ_LOG_INFO("BuildPipeline: skipped %zu editor-only asset files", skipped);
 
     /// @note 2) Library/Baked — FBX から焼いた .fzasset/.anim/.skel/.mat の実体。.scene と
-    ///       .animcontroller は `` "guid:<derived>|Library/Baked/..." `` でこれらを参照し、
-    ///       導出 GUID は Library/Baked の走査でしか索引に載らないため、無いと参照が全部切れる。
+    /// @note .animcontroller は `` "guid:<derived>|Library/Baked/..." `` でこれらを参照し、
+    /// @note 導出 GUID は Library/Baked の走査でしか索引に載らないため、無いと参照が全部切れる。
     const std::filesystem::path bakedDir = root / L"Library" / L"Baked";
     if (util::FileSystem::Exists(bakedDir)) {
         enqueueTree(bakedDir, m_tmpDir / L"Library" / L"Baked", false);
@@ -722,10 +722,10 @@ void BuildPipeline::BeginEnumerateFiles()
     }
 
     /// @note 3) EngineAssets — SDK 共有アセット。既定フォントのようにプロジェクト側に実体を
-    ///       持たないアセットがあり、AssetManager は exe 隣の EngineAssets/ を engine base
-    ///       path として解決する。AssetManager::ResolvePath は «プロジェクトの Assets/ に
-    ///       無ければ EngineAssets/ を見る» というフォールバックでプロジェクト側が常に勝つため、
-    ///       同じ相対パスがプロジェクトにある分は複製を配布物へ入れない。
+    /// @note 持たないアセットがあり、AssetManager は exe 隣の EngineAssets/ を engine base
+    /// @note path として解決する。AssetManager::ResolvePath は «プロジェクトの Assets/ に
+    /// @note 無ければ EngineAssets/ を見る» というフォールバックでプロジェクト側が常に勝つため、
+    /// @note 同じ相対パスがプロジェクトにある分は複製を配布物へ入れない。
     const std::filesystem::path engineAssetsDir = m_exeSrcPath.parent_path() / L"EngineAssets";
     if (util::FileSystem::Exists(engineAssetsDir)) {
         const TreeStats engineStats = enqueueTree(
@@ -773,4 +773,4 @@ void BuildPipeline::SetFailed(const std::string& reason)
     FBZZ_LOG_ERROR("BuildPipeline: %s", reason.c_str());
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

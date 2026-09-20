@@ -1,13 +1,14 @@
-# FBZZ Engine
-# FBZZTargets.cmake | CMake
-# 共有 SDK の構成別 IMPORTED target 定義
+# @file    FBZZTargets.cmake.in
+# @brief   共有 SDK の構成別 IMPORTED target 定義。
+# @author  Hasegawa Jin
+# @date    2026-09-21
 
 if(TARGET FBZZ::Engine)
     return()
 endif()
 
 set(_FBZZ_CONFIGS Debug Development Release)
-foreach(_FBZZ_TARGET Math Physics Fluid Engine)
+foreach(_FBZZ_TARGET Math Core Graphics Physics Fluid Engine)
     add_library(FBZZ::${_FBZZ_TARGET} SHARED IMPORTED GLOBAL)
     set_property(TARGET FBZZ::${_FBZZ_TARGET} PROPERTY IMPORTED_CONFIGURATIONS ${_FBZZ_CONFIGS})
     set_target_properties(FBZZ::${_FBZZ_TARGET} PROPERTIES
@@ -25,10 +26,11 @@ foreach(_FBZZ_TARGET Math Physics Fluid Engine)
 endforeach()
 
 set_target_properties(FBZZ::Physics PROPERTIES INTERFACE_LINK_LIBRARIES FBZZ::Math)
-# WHY Fluid も Math だけか: Physics と Fluid は兄弟で、互いを知らない (Docs/design/fluid-library.md)。
+# @note Physics と Fluid は兄弟で、互いを知らない (Docs/design/fluid-library.md)。
 set_target_properties(FBZZ::Fluid PROPERTIES INTERFACE_LINK_LIBRARIES FBZZ::Math)
+set_target_properties(FBZZ::Graphics PROPERTIES INTERFACE_LINK_LIBRARIES "FBZZ::Core;FBZZ::Math")
 set_target_properties(FBZZ::Engine PROPERTIES
-    INTERFACE_LINK_LIBRARIES "FBZZ::Physics;FBZZ::Fluid;FBZZ::Math;xaudio2;mfplat;mfreadwrite;mfuuid;winmm;d3d12;dxgi;dxguid;d3dcompiler"
+    INTERFACE_LINK_LIBRARIES "FBZZ::Core;FBZZ::Graphics;FBZZ::Physics;FBZZ::Fluid;FBZZ::Math;xaudio2;mfplat;mfreadwrite;mfuuid;winmm"
     INTERFACE_COMPILE_DEFINITIONS
         "TOML_EXCEPTIONS=0;FBZZ_ENGINE_VERSION_MAJOR=@PROJECT_VERSION_MAJOR@;FBZZ_ENGINE_VERSION_MINOR=@PROJECT_VERSION_MINOR@;FBZZ_ENGINE_VERSION_PATCH=@PROJECT_VERSION_PATCH@;FBZZ_ENGINE_VERSION_STRING=\"@PROJECT_VERSION@\";FBZZ_BUILD_CONFIG_ID=$<IF:$<CONFIG:Debug>,1,$<IF:$<CONFIG:Development>,2,3>>;FBZZ_BUILD_CONFIG_NAME=$<IF:$<CONFIG:Debug>,\"Debug\",$<IF:$<CONFIG:Development>,\"Development\",\"Release\">>"
 )

@@ -148,6 +148,8 @@ add_subdirectory(Projects/Physics)
 # @note Fluid は Physics の兄弟で Math しか見ない。
 # @see Docs/design/fluid-library.md
 add_subdirectory(Projects/Fluid)
+add_subdirectory(Projects/Core)
+add_subdirectory(Projects/Graphics)
 add_subdirectory(Projects/Engine)
 add_subdirectory(Projects/Editor)
 add_subdirectory(Projects/EditorLauncher)
