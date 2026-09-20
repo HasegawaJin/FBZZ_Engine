@@ -153,13 +153,14 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
 
     if (!desc.withDepth)
         return true;
+    m_reversedZ = desc.reversedZ;
 
     D3D12_RESOURCE_DESC depthDesc = colorDesc;
     depthDesc.Format = DXGI_FORMAT_R32_TYPELESS;
     depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
     D3D12_CLEAR_VALUE depthClear{};
     depthClear.Format = DXGI_FORMAT_D32_FLOAT;
-    depthClear.DepthStencil.Depth = 1.0f;
+    depthClear.DepthStencil.Depth = FarDepth(m_reversedZ);
     if (FAILED(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &depthDesc,
             D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, IID_PPV_ARGS(&m_depth))))
         return false;

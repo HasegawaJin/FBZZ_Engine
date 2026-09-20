@@ -22,7 +22,8 @@ SkyPSInput VSMain(SkyVSInput v)
     SkyPSInput o;
     float3x3 rotView = (float3x3)view;
     float4   clip    = mul(float4(mul(v.position, rotView), 1.0f), projection);
-    o.svPosition = clip.xyww;
+    /// @note z = 0 は Reversed-Z の最遠。DEPTH_SKY (GREATER_EQUAL) で空いた画素だけを埋め、他のジオメトリに隠れる。
+    o.svPosition = float4(clip.xy, 0.0f, clip.w);
     o.rayDir     = v.position;
     return o;
 }

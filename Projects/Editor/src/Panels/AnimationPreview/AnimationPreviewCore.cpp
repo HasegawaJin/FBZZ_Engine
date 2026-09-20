@@ -487,7 +487,8 @@ bool EnsurePreviewGpu(renderer::ResourceManager& resources)
     if (!g_gpu.skinningCB.IsValid())
         g_gpu.skinningCB = resources.CreateConstantBuffer(sizeof(PreviewSkinningCB));
     if (!g_gpu.renderTarget.IsValid())
-        g_gpu.renderTarget = resources.CreateRenderTarget(PREVIEW_RT_SIZE, PREVIEW_RT_SIZE);
+        g_gpu.renderTarget = resources.CreateRenderTarget(PREVIEW_RT_SIZE, PREVIEW_RT_SIZE,
+                                                          renderer::CameraDepthTargetDesc(1));
 
     return g_gpu.skinnedShader.IsValid() && g_gpu.surfaceShader.IsValid() &&
            g_gpu.pso.IsValid() && g_gpu.frameCB.IsValid() && g_gpu.objectCB.IsValid() &&
@@ -1815,8 +1816,9 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 
     scene::PerFrameCB frameData{};
     frameData.view = camera.GetViewMatrix();
-    frameData.projection = camera.GetProjectionMatrix();
-    frameData.viewProjection = camera.GetViewProjection();
+    /// @note 描画先 RT は Reversed-Z (CameraDepthTargetDesc)。xy と w は CPU 用の射影と同じ。
+    frameData.projection = camera.GetGpuProjectionMatrix();
+    frameData.viewProjection = camera.GetGpuViewProjection();
     frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
     frameData.cameraPos = camera.m_position;
     frameData.nearZ = camera.m_near;

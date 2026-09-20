@@ -172,7 +172,7 @@ void FlowSampleDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 
     constexpr math::Vector4 kStillColor = { 0.6f, 0.6f, 0.65f, 0.8f };
     const float maxLength = spacing * 0.85f;
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (size_t i = 0; i < m_positions.size(); ++i) {
         const math::Vector3& p = m_positions[i];
         const math::Vector3& v = m_velocities[i];

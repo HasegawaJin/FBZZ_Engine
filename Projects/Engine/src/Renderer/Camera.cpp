@@ -29,6 +29,19 @@ math::Matrix4 Camera::GetViewProjection() const {
     return GetProjectionMatrix() * GetViewMatrix();
 }
 
+math::Matrix4 Camera::GetGpuProjectionMatrix() const {
+    if (m_projection == ProjectionMode::Orthographic) {
+        const float halfH = (m_orthoHeight > 0.0f ? m_orthoHeight : 1.0f) * 0.5f;
+        const float halfW = halfH * m_aspect;
+        return math::Matrix4::OrthographicReversedZ(-halfW, halfW, -halfH, halfH, m_near, m_far);
+    }
+    return math::Matrix4::PerspectiveReversedZ(math::ToRad(m_fovY), m_aspect, m_near, m_far);
+}
+
+math::Matrix4 Camera::GetGpuViewProjection() const {
+    return GetGpuProjectionMatrix() * GetViewMatrix();
+}
+
 math::Vector3 Camera::GetForward() const {
     return m_rotation * math::Vector3::FORWARD;
 }

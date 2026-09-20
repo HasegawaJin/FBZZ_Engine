@@ -15,13 +15,13 @@ namespace fbzz::renderer {
 
 namespace {
 
-/// 静的サンプラーはシェーダーレジスタ (s0〜) 単位で決まる。Assets/Shaders/Common/Binding.hlsli の
-/// SAMPLER_* 定義と 1:1 で対応させること。
+/// @note 静的サンプラーはシェーダーレジスタ (s0〜) 単位で決まる。Assets/Shaders/Common/Binding.hlsli の
+/// @note SAMPLER_* 定義と 1:1 で対応させること。
 /// @note DX12 は Root Signature へ焼き込む静的サンプラーのため、レジスタごとに 1 つの意味に固定
-///       するしかない。両バックエンドをこの制約に合わせ、パス単位でサンプラーを差し替える API
-///       (旧 IRenderer::SetSampler) は廃止した。以前は SamplerMode の列挙順をそのままレジスタ
-///       番号にしていたため、s1 が比較サンプラーでなく通常 Linear に、s4 が wrap でなく clamp に
-///       ずれ、前者は影が全面に出て後者は 3D ノイズが端に張り付いていた。配列の並びを崩さないこと。
+/// @note するしかない。両バックエンドをこの制約に合わせ、パス単位でサンプラーを差し替える API
+/// @note (旧 IRenderer::SetSampler) は廃止した。以前は SamplerMode の列挙順をそのままレジスタ
+/// @note 番号にしていたため、s1 が比較サンプラーでなく通常 Linear に、s4 が wrap でなく clamp に
+/// @note ずれ、前者は影が全面に出て後者は 3D ノイズが端に張り付いていた。配列の並びを崩さないこと。
 std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
 {
     struct Preset {
@@ -46,8 +46,8 @@ std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
         { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
         { D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
         /// @note s7 SAMPLER_SHADOW_PUNCTUAL : Spot / Point 用の 2 本目の比較サンプラー。
-        ///       設定は s1 と同一。別スロットにするのは、共有ヘッダー (PunctualShadow.hlsli) が
-        ///       自前の名前で宣言する必要があり、s1 は各マテリアルシェーダーが既に占有しているため。
+        /// @note 設定は s1 と同一。別スロットにするのは、共有ヘッダー (PunctualShadow.hlsli) が
+        /// @note 自前の名前で宣言する必要があり、s1 は各マテリアルシェーダーが既に占有しているため。
         { D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
         { D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,    4, D3D12_COMPARISON_FUNC_NEVER },
     };
@@ -68,7 +68,7 @@ std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
     return samplers;
 }
 
-} // namespace
+}
 
 size_t DX12PsoCache::KeyHash::operator()(const Key& key) const
 {
@@ -79,6 +79,9 @@ size_t DX12PsoCache::KeyHash::operator()(const Key& key) const
     hash ^= static_cast<size_t>(key.topology) << 15;
     hash ^= static_cast<size_t>(key.renderTargetFormat) << 19;
     hash ^= static_cast<size_t>(key.renderTargetCount) << 25;
+    hash ^= static_cast<size_t>(key.reversedZ) << 30;
+    hash ^= std::hash<int32_t>{}(key.depthBias) * 31u;
+    hash ^= std::hash<float>{}(key.depthBiasSlope) * 131u;
     return hash;
 }
 
@@ -93,8 +96,8 @@ bool DX12PsoCache::Initialize(ID3D12Device* device, bool bindlessEnabled)
 D3D12_ROOT_SIGNATURE_FLAGS DX12PsoCache::BaseRootSignatureFlags() const
 {
     /// @note 既存のディスクリプタテーブルを残したまま立てる理由: このフラグは «ヒープを直接引ける»
-    ///       という許可を足すだけで、テーブル経由の束縛を無効化しない。144 本のシェーダーを
-    ///       一斉に書き換えずに、bindless へ移したものから順に切り替えられる。
+    /// @note という許可を足すだけで、テーブル経由の束縛を無効化しない。144 本のシェーダーを
+    /// @note 一斉に書き換えずに、bindless へ移したものから順に切り替えられる。
     return m_bindlessEnabled
         ? D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED
         : D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -117,7 +120,7 @@ void DX12PsoCache::ClearPipelines()
 bool DX12PsoCache::CreateComputeRootSignature()
 {
     /// @note 並びは描画側と揃える (param 14 = bindless 添字ブロック b14)。
-    ///       SRV / UAV テーブルは撤去済み。CS も ResourceDescriptorHeap から直接引く。
+    /// @note SRV / UAV テーブルは撤去済み。CS も ResourceDescriptorHeap から直接引く。
     std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
     for (UINT slot = 0; slot < 14; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -151,11 +154,11 @@ bool DX12PsoCache::CreateComputeRootSignature()
 bool DX12PsoCache::CreateRootSignature()
 {
     /// @note param 0〜13 : 定数バッファ b0〜b13 (root CBV)
-    ///       param 14    : bindless 添字ブロック b14 (root CBV)
+    /// @note param 14    : bindless 添字ブロック b14 (root CBV)
     ///
-    ///       かつてここに «ピクセル SRV テーブル (t0〜t31)» と «頂点 SRV テーブル» があったが、
-    ///       全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
-    ///       ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
+    /// @note かつてここに «ピクセル SRV テーブル (t0〜t31)» と «頂点 SRV テーブル» があったが、
+    /// @note 全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
+    /// @note ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
     ///       @see Docs/design/bindless.md
     std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
     for (UINT slot = 0; slot < 14; ++slot) {
@@ -194,10 +197,11 @@ bool DX12PsoCache::CreateRootSignature()
 
 ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     const DX12Shader& shader, const PipelineStateDesc& state, PrimitiveTopology topology,
-    DXGI_FORMAT renderTargetFormat, uint32_t renderTargetCount)
+    DXGI_FORMAT renderTargetFormat, uint32_t renderTargetCount, bool reversedZ)
 {
     const Key key{&shader, state.rasterizer, state.blend, state.depth, topology,
-                  renderTargetFormat, renderTargetCount};
+                  renderTargetFormat, renderTargetCount, reversedZ,
+                  state.depthBias, state.depthBiasSlope};
     if (const auto found = m_cache.find(key); found != m_cache.end())
         return found->second.Get();
 
@@ -217,28 +221,35 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     desc.PrimitiveTopologyType = topology == PrimitiveTopology::LINE_LIST
         ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
-    desc.RasterizerState.FillMode = state.rasterizer == RasterizerMode::WIREFRAME
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_rasterizer_desc FillMode と CullMode は独立した状態。
+    desc.RasterizerState.FillMode = (state.rasterizer == RasterizerMode::WIREFRAME
+        || state.rasterizer == RasterizerMode::WIREFRAME_NOCULL)
         ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
-    desc.RasterizerState.CullMode = state.rasterizer == RasterizerMode::SOLID_NOCULL
+    desc.RasterizerState.CullMode = (state.rasterizer == RasterizerMode::SOLID_NOCULL
+        || state.rasterizer == RasterizerMode::WIREFRAME_NOCULL)
         ? D3D12_CULL_MODE_NONE : state.rasterizer == RasterizerMode::SOLID_FRONT_CULL
         ? D3D12_CULL_MODE_FRONT : D3D12_CULL_MODE_BACK;
     desc.RasterizerState.FrontCounterClockwise = FALSE;
     desc.RasterizerState.DepthClipEnable = TRUE;
+    /// @note PipelineStateDesc のバイアスは «正で手前»。手前ほど深度が大きい Reversed-Z ではそのまま、通常の Z では符号を裏返す。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_rasterizer_desc (D3D12_RASTERIZER_DESC)
+    desc.RasterizerState.DepthBias = reversedZ ? state.depthBias : -state.depthBias;
+    desc.RasterizerState.SlopeScaledDepthBias = reversedZ ? state.depthBiasSlope : -state.depthBiasSlope;
 
     /// @note GBuffer などの MRT は RT1 以降にも法線・材質値を書き込む。D3D12 の初期値は
-    ///       WriteMask=0 なので、RT0 だけ設定すると Deferred Lighting 入力が消える。
+    /// @note WriteMask=0 なので、RT0 だけ設定すると Deferred Lighting 入力が消える。
     for (uint32_t index = 0; index < renderTargetCount; ++index) {
         auto& blend = desc.BlendState.RenderTarget[index];
         blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         if (state.blend != BlendMode::OPAQUE_BLEND) {
             blend.BlendEnable = TRUE;
             /// @note 方程式は RenderState.hpp の BlendMode が正本。ここはその翻訳でしかない。
-            ///       PREMULTIPLIED は src.rgb に alpha が乗った値なので SrcBlend=ONE、
-            ///       背景側は (1-src.a) で残す (DX11 側の同名ケースと同じ方程式)。
+            /// @note PREMULTIPLIED は src.rgb に alpha が乗った値なので SrcBlend=ONE、
+            /// @note 背景側は (1-src.a) で残す (DX11 側の同名ケースと同じ方程式)。
             switch (state.blend) {
             case BlendMode::ADDITIVE:
                 /// @note SrcBlend は ONE ではない。ONE にすると出力アルファがブレンド方程式から
-                ///       消え、非事前乗算で書かれた PS (Particle.hlsl 等) が寿命フェードを失う。
+                /// @note 消え、非事前乗算で書かれた PS (Particle.hlsl 等) が寿命フェードを失う。
                 blend.SrcBlend  = D3D12_BLEND_SRC_ALPHA;
                 blend.DestBlend = D3D12_BLEND_ONE;
                 break;
@@ -262,8 +273,15 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     desc.DepthStencilState.DepthEnable = state.depth != DepthMode::DEPTH_OFF;
     desc.DepthStencilState.DepthWriteMask = state.depth == DepthMode::DEPTH_ON
         ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-    desc.DepthStencilState.DepthFunc = state.depth == DepthMode::DEPTH_SKY
-        ? D3D12_COMPARISON_FUNC_LESS_EQUAL : D3D12_COMPARISON_FUNC_LESS;
+    /// @note Reversed-Z の RT では手前ほど深度が大きいので比較を裏返す。DepthMode は «手前が勝つ» の意味で書く。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_comparison_func (D3D12_COMPARISON_FUNC)
+    if (reversedZ) {
+        desc.DepthStencilState.DepthFunc = state.depth == DepthMode::DEPTH_SKY
+            ? D3D12_COMPARISON_FUNC_GREATER_EQUAL : D3D12_COMPARISON_FUNC_GREATER;
+    } else {
+        desc.DepthStencilState.DepthFunc = state.depth == DepthMode::DEPTH_SKY
+            ? D3D12_COMPARISON_FUNC_LESS_EQUAL : D3D12_COMPARISON_FUNC_LESS;
+    }
     desc.DepthStencilState.StencilEnable = FALSE;
 
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
@@ -297,4 +315,4 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreateCompute(const DX12Shader& shader)
     return result;
 }
 
-} // namespace fbzz::renderer
+}

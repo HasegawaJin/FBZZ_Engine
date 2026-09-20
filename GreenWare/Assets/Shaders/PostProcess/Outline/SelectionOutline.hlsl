@@ -35,7 +35,8 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     int radius = (int)ceil(radiusPx);
 
     float maxMask = centerMask;
-    float selectedDepth = 1.0f;
+    /// @note カメラ深度は Reversed-Z (手前ほど大きい)。最遠 0 から始めて最も手前 (max) を取る。
+    float selectedDepth = 0.0f;
 
     // 走査範囲は radius (= ceil(radiusPx)) まで。半径外は下の distPx 判定で必ず弾かれるので
     // 出力は固定 33x33 走査と完全に一致する。
@@ -58,14 +59,14 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
             }
             if (mask > 0.5f)
             {
-                selectedDepth = min(selectedDepth, texSelectionDepth.SampleLevel(sampLinear, sampleUv, 0).r);
+                selectedDepth = max(selectedDepth, texSelectionDepth.SampleLevel(sampLinear, sampleUv, 0).r);
             }
         }
     }
 
     float edge = saturate(maxMask - centerMask);
     float sceneDepth = texSceneDepth.SampleLevel(sampLinear, p.uv, 0).r;
-    float visible = selectedDepth <= sceneDepth + 0.0002f ? 1.0f : 0.0f;
+    float visible = selectedDepth >= sceneDepth - 0.0002f ? 1.0f : 0.0f;
     float alpha = edge * outlineColor.a * visible;
     float3 color = lerp(baseColor, outlineColor.rgb, alpha);
     return float4(color, 1.0f);

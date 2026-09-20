@@ -28,7 +28,7 @@ void LightRangeDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     const math::Vector4 kShape = kColor;
     const math::Vector4 kRange = { kColor.x, kColor.y, kColor.z, kColor.w * 0.45f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         const auto* light = go.GetComponent<LightComponent>();

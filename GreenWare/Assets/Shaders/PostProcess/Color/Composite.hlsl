@@ -57,12 +57,11 @@ FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
     return FBZZMakeFullscreenVertex(id);
 }
 
+/// @brief カメラ深度 (Reversed-Z) を視空間 Z へ戻す。空 (深度 0) は farZ になる。
+/// @note 平行投影も Space.hlsli の LinearizeDepth が分岐して扱う。
 float LinearDepthFromNdc(float ndcZ)
 {
-    if (ndcZ >= 0.9999f)
-        return farZ;
-
-    return nearZ * farZ / (farZ - ndcZ * (farZ - nearZ));
+    return LinearizeDepth(ndcZ, nearZ, farZ, isOrthographic);
 }
 
 // ApplyFroxelFog — 積分済みボリュームから「加算する光」と「背景の透過率」を取り出す。
@@ -73,12 +72,9 @@ float3 ApplyFroxelFog(float3 hdr, float2 uv, float ndcDepth)
 
     // 深度が最遠 (スカイドーム) のときは、グリッドの最終スライスまで積分した値になる。
     const float viewZ = LinearDepthFromNdc(ndcDepth);
-    const float slice = FBZZ_FroxelViewZToSlice(viewZ);
 
-    // Load ではなく Sample。スライス間を補間しないと、粗いグリッドの境界が
-    // そのまま画面上の縞になる。
-    const float3 volumeUV = float3(uv, (slice + 0.5f) / float(froxelGridZ));
-    const float4 fog = texFroxelFog.SampleLevel(sampLinearClamp, volumeUV, 0);
+    /// @note Load でなく Sample。スライス間を補間しないと、粗いグリッドの境界がそのまま画面上の縞になる。
+    const float4 fog = FBZZ_SampleIntegratedFroxel(texFroxelFog, sampLinearClamp, uv, viewZ);
 
     return hdr * fog.a + fog.rgb;
 }
@@ -141,15 +137,19 @@ float3 ApplyClarity(float3 ldr, float2 uv)
 
     // WHAT: 少し広い近傍平均との差分を LDR に戻すローカルコントラスト補正。
     // WHY: シャープ化より大きい面の明暗差を強調し、ディテールが眠い画を自然に引き締める。
+    /// @note 中心も近傍と同じ経路 (HDR + Bloom → トーンマップ) で作り、その差だけを足す。
+    ///       完成した ldr と比べると、近傍に乗っていない霧・SSR・被写界深度まで «差» として強調される。
+    const float  exposureValue = ResolveExposure();
     float2 r = texelSize * max(clarityRadius, 0.5f);
+    const float3 center = FinalOutput(SampleHdrWithBloom(uv), exposureValue);
     float3 blur =
-        FinalOutput(SampleHdrWithBloom(saturate(uv + float2( r.x, 0.0f))), ResolveExposure()) +
-        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(-r.x, 0.0f))), ResolveExposure()) +
-        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(0.0f,  r.y))), ResolveExposure()) +
-        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(0.0f, -r.y))), ResolveExposure());
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2( r.x, 0.0f))), exposureValue) +
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(-r.x, 0.0f))), exposureValue) +
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(0.0f,  r.y))), exposureValue) +
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(0.0f, -r.y))), exposureValue);
     blur *= 0.25f;
 
-    return saturate(ldr + (ldr - blur) * clarityStrength);
+    return saturate(ldr + (center - blur) * clarityStrength);
 }
 
 // 放射ブラー — 画面中心から外向きへ数タップ伸ばす。
@@ -203,9 +203,11 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     {
         hdr += texBloom.Sample(sampLinearClamp, uv).rgb * bloomIntensity;
     }
-    float ndcDepth = 1.0f;
+    /// @note 深度を読まないときは最遠 (Reversed-Z で 0) とみなす。
+    /// @note フロクセル霧も深度を使う。条件から漏らすと全画素が空扱いになり、手前まで霧で覆われる。
+    float ndcDepth = 0.0f;
     [branch]
-    if (dofBlurRadius > 0.0f || fogDensity > 0.0f || underwaterStrength > 0.0f)
+    if (dofBlurRadius > 0.0f || fogDensity > 0.0f || underwaterStrength > 0.0f || froxelGridZ != 0u)
         ndcDepth = texDepth.Sample(sampLinearClamp, uv).r;
     hdr = ApplyDepthOfFieldHDR(hdr, uv, ndcDepth);
     hdr = ApplySharpenHDR(hdr, uv);
@@ -233,11 +235,11 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     ldr = ApplyClarity(ldr, uv);
 
     // 深度から線形距離を復元してフォグを適用する。
-    // ndcZ ≥ 0.9999 はスカイドーム（clip.xyww で z=w → NDC z=1.0）なので霧を掛けない。
+    /// @note 深度 0 (Reversed-Z の最遠) はスカイドームなので霧を掛けない。
     // フォグの適用ロジック (ApplyFog) は共通で、色の出どころだけ fogSource で切り替える (§3-3)。
     if (fogDensity > 0.0f)
     {
-        if (ndcDepth < 0.9999f)
+        if (!IsFarDepth(ndcDepth))
         {
             float linDepth = LinearDepthFromNdc(ndcDepth);
             float dist     = max(linDepth - fogFar, 0.0f);
@@ -269,7 +271,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     if (underwaterStrength > 0.0f)
     {
         float depthFactor = underwaterStrength;
-        if (ndcDepth < 0.9999f)
+        if (!IsFarDepth(ndcDepth))
         {
             float linDepth = LinearDepthFromNdc(ndcDepth);
             depthFactor = saturate((1.0f - exp(-underwaterFogDensity * linDepth)) * underwaterStrength);
