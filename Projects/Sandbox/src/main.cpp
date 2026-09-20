@@ -18,6 +18,8 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/CrashHandler.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -113,6 +115,13 @@ int Run()
     const LaunchProject& project = resolver.Get();
 
     SetCurrentDirectoryW(FileSystem::GetExecutableDirectory().wstring().c_str());
+
+    /// @note Sandbox は作業ディレクトリが exe 側なので、レポートはプロジェクトのルートへ置く。
+    /// @see Docs/design/crash-report.md
+    const std::string crashAppName = StringUtils::PathToUtf8(project.root.filename());
+    core::CrashHandler::Install(project.root, crashAppName);
+    core::CrashHandler::NotifyUnreported(project.root, crashAppName, true);
+    core::DeveloperMode::InitFromCommandLine();
 
     auto& app = core::Application::Get();
 #ifdef FBZZ_STANDALONE_TARGET
