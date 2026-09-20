@@ -2,12 +2,14 @@
 /// @brief   文字列操作ユーティリティ実装。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// 検索・分割・trim・大文字小文字変換と wide / narrow 変換を扱う。
-/// Win32 API 境界で必要な文字列変換をここに集約する。
-#include <Engine/Util/StringUtils.hpp>
+/// @note 検索・分割・trim・大文字小文字変換と wide / narrow 変換を扱う。
+/// @note Win32 API 境界で必要な文字列変換をここに集約する。
+#include <Core/Util/StringUtils.hpp>
 #include <algorithm>
 #include <cctype>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 
 namespace fbzz::util {
@@ -131,10 +133,10 @@ std::string StringUtils::ToNarrow(const wchar_t* s, int charCount)
 std::string StringUtils::PathToUtf8(const std::filesystem::path& path)
 {
     /// @note Windows の filesystem::path は '\' 区切りを返すため '/' に正規化する。
-    ///       FileSystem::PathToUtf8 と挙動を統一し、アセット管理の文字列比較を一致させる。
+    /// @note       FileSystem::PathToUtf8 と挙動を統一し、アセット管理の文字列比較を一致させる。
     std::string s = ToNarrow(path.wstring());
     std::replace(s.begin(), s.end(), '\\', '/');
     return s;
 }
 
-} // namespace fbzz::util
+} /// @note namespace fbzz::util

@@ -2,9 +2,8 @@
 /// @brief   MemoryTracker の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-///
-/// 固定配列でタグ別統計を持ち、集計そのものが追加メモリを要求しないようにする。
-#include "Engine/Core/Memory/MemoryTracker.hpp"
+/// @note 固定配列でタグ別統計を持ち、集計そのものが追加メモリを要求しないようにする。
+#include "Core/Memory/MemoryTracker.hpp"
 
 namespace fbzz::core {
 namespace {
@@ -20,7 +19,7 @@ constexpr const char* TAG_NAMES[] = {
     "Editor",
 };
 
-} // namespace
+} /// @note namespace
 
 void MemoryTracker::Reset()
 {
@@ -190,4 +189,4 @@ const AllocationInfo* MemoryTracker::FindAllocation(void* ptr) const
     return nullptr;
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

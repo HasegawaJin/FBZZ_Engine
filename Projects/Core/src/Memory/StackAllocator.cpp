@@ -2,9 +2,8 @@
 /// @brief   StackAllocator の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-///
-/// 確保順と逆順の Free に限定し、ヘッダー 1 個で高速に巻き戻す。
-#include "Engine/Core/Memory/StackAllocator.hpp"
+/// @note 確保順と逆順の Free に限定し、ヘッダー 1 個で高速に巻き戻す。
+#include "Core/Memory/StackAllocator.hpp"
 
 #include <cstdlib>
 #include <memory>
@@ -157,4 +156,4 @@ bool StackAllocator::Owns(const void* ptr) const
     return bytePtr >= m_memory && bytePtr < (m_memory + m_stats.capacity);
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core
