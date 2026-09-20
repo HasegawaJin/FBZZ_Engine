@@ -321,7 +321,8 @@ bool MaterialPreviewView::RenderFrame(EditorContext& ctx,
     auto& resources = *ctx.resources;
 
     if (!m_renderTarget.IsValid())
-        m_renderTarget = resources.CreateRenderTarget(kPreviewRtSize, kPreviewRtSize);
+        m_renderTarget = resources.CreateRenderTarget(kPreviewRtSize, kPreviewRtSize,
+                                                      renderer::CameraDepthTargetDesc(1));
     if (!m_renderTarget.IsValid()) return false;
 
     /// @note 毎フレーム作り直す: Inspector はスライダーを動かしている最中の .mat をそのまま渡してくる。

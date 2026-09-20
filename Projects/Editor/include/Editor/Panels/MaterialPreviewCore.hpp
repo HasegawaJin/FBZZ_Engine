@@ -184,7 +184,7 @@ struct RenderDesc {
     /// @note 既定値は FiberComponent の既定と同じ。風は +X 方向のワールド [m/s]。
     /// @{
     FiberMode fiberMode        = FiberMode::Shell;
-    int       fiberShellCount  = 24;
+    int       fiberShellCount  = 16;  ///< @brief FiberComponent::m_shellCount の既定と揃える
     float     fiberWind        = 0.0f;
     float     fiberBladeDensity = 400.0f;
     float     fiberBladeWidth  = 0.015f;

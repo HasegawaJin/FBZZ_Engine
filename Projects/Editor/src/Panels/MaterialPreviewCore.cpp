@@ -2,6 +2,7 @@
 /// @brief   .mat プレビューのパラメータ解決・メッシュ生成・オフスクリーン描画。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
+#include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Editor/Panels/MaterialPreviewCore.hpp>
 
 #include <Engine/Asset/FiberMaterialSettings.hpp>
@@ -43,14 +44,14 @@ constexpr const char* kFallbackShader = "Assets/Shaders/Material/Surface/Fallbac
 constexpr const char* kMeshFallbackShader = "Assets/Shaders/Material/Surface/Lit.hlsl";
 constexpr const char* kChannelShader = "Assets/Shaders/Debug/MaterialChannel.hlsl";
 
-/// Lighting.hlsli の LIGHT_UNIT_SCALE。距離補正で相殺する。
+/// @note Lighting.hlsli の LIGHT_UNIT_SCALE。距離補正で相殺する。
 constexpr float kLightUnitScale = std::numbers::pi_v<float>;
 
-/// Decal の受け面 / PostProcess の入力シーンを焼く中間 RT の一辺。どちらも画面 UV で引くので
-/// 描画先と解像度が違っても位置は合う (プレビューごとに RT を作り分けるほうが VRAM を食う)。
+/// @note Decal の受け面 / PostProcess の入力シーンを焼く中間 RT の一辺。どちらも画面 UV で引くので
+/// @note 描画先と解像度が違っても位置は合う (プレビューごとに RT を作り分けるほうが VRAM を食う)。
 constexpr std::uint32_t kEffectRtSize = 512;
 
-/// t0-t15 は標準 Material スロット。Terrain / Water は専用名で解決される。
+/// @note t0-t15 は標準 Material スロット。Terrain / Water は専用名で解決される。
 constexpr std::array<const char*, 16> kSlotNames = {
     "albedo", "normal", "metallic", "emissive", "ao",
     "tex5", "tex6", "tex7", "tex8", "tex9",
@@ -65,8 +66,8 @@ std::string Lower(std::string value)
     return value;
 }
 
-/// エンジンが埋める定数バッファ (Terrain / Water / Particle / Trail / Decal / UI) は
-/// すべて scene:: の公開レイアウトをそのまま使う。プレビュー専用の写しは持たない。
+/// @note エンジンが埋める定数バッファ (Terrain / Water / Particle / Trail / Decal / UI) は
+/// @note すべて scene:: の公開レイアウトをそのまま使う。プレビュー専用の写しは持たない。
 using scene::DecalCB;
 using scene::ParticleRenderCB;
 using scene::ParticleVertex;
@@ -82,7 +83,7 @@ struct SkinningCB {
     math::Matrix4 boneMatrices[128];
 };
 
-/// LAYOUT: Assets/Shaders/Debug/MaterialChannel.hlsl の MaterialChannelConstants。
+/// @note LAYOUT: Assets/Shaders/Debug/MaterialChannel.hlsl の MaterialChannelConstants。
 struct ChannelCB {
     math::Vector4 baseColor;
     math::Vector4 pbr;      ///< x=metallic y=roughness z=occlusionStrength w=normalStrength
@@ -94,7 +95,7 @@ struct ChannelCB {
 };
 
 
-/// 単色フォールバック材質 (Lit.hlsl) の MaterialConstants。
+/// @note 単色フォールバック材質 (Lit.hlsl) の MaterialConstants。
 struct FallbackMaterialCB {
     math::Vector4 albedo{ 1.0f, 1.0f, 1.0f, 1.0f };
     std::uint32_t textureMask = 0;
@@ -115,14 +116,14 @@ struct SharedResources {
     renderer::ResourceHandle<renderer::ConstantBufferTag> channelCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
-    /// Spot / Point シャドウ (b12) の無効化用。中身は 0 のまま使う。
+    /// @note Spot / Point シャドウ (b12) の無効化用。中身は 0 のまま使う。
     /// @note 定数バッファの束縛は DrawCall をまたいで残るがテクスチャ SRV はドローごとにクリアされる。
-    ///       b12 だけシーン描画のものが残ると punctualShadowCount > 0 のままアトラス (t28) が未束縛になり、
-    ///       比較サンプルが 0 (完全な影) を返してプレビューが黒く潰れる。
+    /// @note b12 だけシーン描画のものが残ると punctualShadowCount > 0 のままアトラス (t28) が未束縛になり、
+    /// @note 比較サンプルが 0 (完全な影) を返してプレビューが黒く潰れる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
-    /// ライト供給モード (b9) の無効化用。中身は 0 = FBZZ_LIGHT_MODE_LEGACY のまま使う。
+    /// @note ライト供給モード (b9) の無効化用。中身は 0 = FBZZ_LIGHT_MODE_LEGACY のまま使う。
     /// @note シーン描画は Forward でも統合配列を使う。b9 の束縛は残る一方ライト配列 (t29) は毎回
-    ///       クリアされるため、渡さないと «本数は残っているのに中身が全部ゼロ» を読み光が当たらない。
+    /// @note クリアされるため、渡さないと «本数は残っているのに中身が全部ゼロ» を読み光が当たらない。
     renderer::ResourceHandle<renderer::ConstantBufferTag> clusterCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> terrainCB;
     /// @name 地形 (本編と同じ層配列 + 番号 / 重みマップ)
@@ -150,15 +151,15 @@ struct SharedResources {
     renderer::ResourceHandle<renderer::BufferTag>         trailIndexBuffer;
     renderer::ResourceHandle<renderer::ConstantBufferTag> decalCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> postProcCB;
-    /// Decal の受け面深度と PostProcess の入力シーン。プレビュー内で 1 枚ずつ焼く。
+    /// @note Decal の受け面深度と PostProcess の入力シーン。プレビュー内で 1 枚ずつ焼く。
     renderer::ResourceHandle<renderer::RenderTargetTag>   sceneRT;
 
     renderer::ResourceHandle<renderer::TextureTag>        whiteTexture;
     renderer::ResourceHandle<renderer::TextureTag>        blackTexture;
     renderer::ResourceHandle<renderer::TextureTag>        flatNormalTexture;
-    /// 波紋テクスチャの «何も起きていない» 値。RG = 平らな法線, B = 高さ 0。
+    /// @note 波紋テクスチャの «何も起きていない» 値。RG = 平らな法線, B = 高さ 0。
     /// @note 黒で埋めてはいけない。RG は (-1,-1) の強い傾きへ、B は -0.5 m の沈みへ復号され、
-    ///       プレビューの水面だけが傾いて沈む。
+    /// @note プレビューの水面だけが傾いて沈む。
     renderer::ResourceHandle<renderer::TextureTag>        neutralRippleTexture;
 };
 
@@ -172,7 +173,7 @@ const std::vector<float>* FindParam(const asset::MaterialAsset& material, std::s
     if (it != material.params.end()) return &it->second;
 
     /// @note .mat は PBR 寄りの名前、HLSL は shader ごとの短い変数名を使う場合があるため、
-    ///       プレビューも本編描画と同じ別名吸収を行う。
+    /// @note プレビューも本編描画と同じ別名吸収を行う。
     if (name == "albedo")              it = material.params.find("base_color");
     else if (name == "metallic")       it = material.params.find("metallic_factor");
     else if (name == "roughness")      it = material.params.find("roughness_factor");
@@ -236,50 +237,21 @@ std::string FindTexturePath(const asset::MaterialAsset& material,
 
 void InitDefaultParams(const renderer::ShaderDescriptor& descriptor, std::vector<std::uint8_t>& data)
 {
-    const float one = 1.0f;
-    for (const auto& variable : descriptor.vars) {
-        if (variable.varType != renderer::ShaderVarType::Float) continue;
-        for (std::uint32_t column = 0; column < variable.columns; ++column) {
-            const std::uint32_t offset = variable.offset + column * sizeof(float);
-            if (offset + sizeof(float) <= data.size())
-                std::memcpy(data.data() + offset, &one, sizeof(one));
-        }
-    }
-
-    const auto set = [&](std::string_view name, const float* values, std::uint32_t count) {
-        const auto* variable = descriptor.FindVar(name);
-        if (!variable || variable->varType != renderer::ShaderVarType::Float) return;
-        if (variable->columns < count) return;
-        if (variable->offset + count * sizeof(float) > data.size()) return;
-        std::memcpy(data.data() + variable->offset, values, count * sizeof(float));
-    };
-    const float metallic = 0.0f;
-    const float roughness = 0.65f;
-    const float emissiveScale = 0.0f;
-    const float alphaCutoff = 0.5f;
-    const float uvTiling[2] = { 1.0f, 1.0f };
-    const float uvOffset[2] = { 0.0f, 0.0f };
-    const float white3[3] = { 1.0f, 1.0f, 1.0f };
-    set("metallic", &metallic, 1);
-    set("roughness", &roughness, 1);
-    set("emissiveScale", &emissiveScale, 1);
-    set("alphaCutoff", &alphaCutoff, 1);
-    set("uvTiling", uvTiling, 2);
-    set("uvOffset", uvOffset, 2);
-    set("emissiveColor", white3, 3);
+    asset::InitDefaultMaterialParams(descriptor, data);
 }
 
 void ApplyAssetParams(const asset::MaterialAsset& material,
                       const renderer::ShaderDescriptor& descriptor,
                       std::vector<std::uint8_t>& data)
 {
+    asset::ApplyMaterialAssetParams(material, descriptor, data);
+    /// @note 古いプレビュー専用の別名も共通の型検証と転送を通す。
     for (const auto& variable : descriptor.vars) {
-        if (variable.varType != renderer::ShaderVarType::Float) continue;
-        if (variable.offset + variable.size > data.size()) continue;
-        const auto* values = FindParam(material, variable.name);
-        if (!values || values->empty()) continue;
-        const std::size_t count = std::min<std::size_t>(variable.columns, values->size());
-        std::memcpy(data.data() + variable.offset, values->data(), count * sizeof(float));
+        if (material.params.contains(variable.name) || material.integerParams.contains(variable.name)) continue;
+        if (const auto* values = FindParam(material, variable.name)) {
+            const std::vector<double> converted(values->begin(), values->end());
+            (void)asset::WriteMaterialValues(variable, converted, data);
+        }
     }
 }
 
@@ -300,8 +272,8 @@ renderer::Mesh* PrimitiveFor(renderer::ResourceManager& resources, Shape shape)
     }
 }
 
-/// Terrain / Water 用の細分割された平面。4 頂点の PrimitiveMesh::Plane では Water の Gerstner 波
-/// (頂点変位) が «平らな板» にしかならず、Terrain も陰影の補間に頂点密度が要る。
+/// @note Terrain / Water 用の細分割された平面。4 頂点の PrimitiveMesh::Plane では Water の Gerstner 波
+/// @note (頂点変位) が «平らな板» にしかならず、Terrain も陰影の補間に頂点密度が要る。
 renderer::Mesh* GridMesh(renderer::ResourceManager& resources, int segments)
 {
     static std::map<int, std::unique_ptr<renderer::Mesh>> cache;
@@ -479,7 +451,7 @@ RigProfile ProfileFor(LightPreset preset)
     }
 }
 
-/// リグ全体をワールド Y 回り → ワールド X 回りの順で回す。
+/// @note リグ全体をワールド Y 回り → ワールド X 回りの順で回す。
 math::Vector3 RotateRig(const math::Vector3& v, float yaw, float pitch)
 {
     const float cy = std::cos(yaw), sy = std::sin(yaw);
@@ -538,7 +510,7 @@ bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
 
     if (!g_shared.solidPso.IsValid()) {
         /// @note 材質自身の blend / depth を使わない: そうすると同じ .mat でも表示場所によって
-        ///       輪郭・透過・陰影が変わってしまう。
+        /// @note 輪郭・透過・陰影が変わってしまう。
         g_shared.solidPso = resources.CreatePipelineState({
             renderer::RasterizerMode::SOLID_NOCULL,
             renderer::BlendMode::OPAQUE_BLEND,
@@ -577,7 +549,7 @@ bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
 
 /// @brief プレビュー用の層配列を StructuredBuffer へ置き、b1 を組む。
 /// @note 層 .mat (Layer0_Ground.mat 等) は接頭辞なしのキーを持つので 1 層として焼く。
-///       旧形式の «layer0_diffuse» のような接頭辞付きキーを持つ .mat は、続く番号がある限り層を並べる。
+/// @note 旧形式の «layer0_diffuse» のような接頭辞付きキーを持つ .mat は、続く番号がある限り層を並べる。
 /// @return 層配列を置けなかったら false。
 bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialAsset* material,
                     const math::Matrix4& viewProjection, TerrainObjectCB& outCb)
@@ -675,15 +647,15 @@ WaterCB BuildWaterCB(const asset::MaterialAsset* material,
     const math::Vector3 sss = ParamFloat3(material, "sssColor", { 0.12f, 0.50f, 0.46f });
     cb.sssParams = { sss.x, sss.y, sss.z, ParamFloat(material, "sssStrength", 0.6f) };
     /// @note プレビューは IBL キューブを持たないので、空反射はフラット色へフォールバックさせる。
-    ///       y は波の «群» の深さ。プレビューの波は極小 (振幅 0.012 m) なので、群まで掛けると
-    ///       水面が止まって見える瞬間ができる。ここは 0 のまま «常に同じうねり» で見せる。
+    /// @note y は波の «群» の深さ。プレビューの波は極小 (振幅 0.012 m) なので、群まで掛けると
+    /// @note 水面が止まって見える瞬間ができる。ここは 0 のまま «常に同じうねり» で見せる。
     cb.reflectParams = { 0.0f, 0.0f, 0.0f, 0.35f };
     cb.flowParams    = { 1.0f, 0.0f,
                          (std::max)(ParamFloat(material, "detailAnisotropy", 2.0f), 1.0f),
                          (std::max)(ParamFloat(material, "detailWarp",       0.5f), 0.0f) };
 
     /// @note 波が 1 本も指定されていない .mat でも «水面» に見せる。波の指定は Water コンポーネント
-    ///       側に持つことが多く、.mat だけ見ると全部ゼロ = 完全な鏡面になり判別できないため。
+    /// @note 側に持つことが多く、.mat だけ見ると全部ゼロ = 完全な鏡面になり判別できないため。
     cb.waveDir[0]    = { 1.0f, 0.0f, 0.0f, 0.0f };
     cb.waveParams[0] = { 0.012f, 0.55f, 1.1f, 0.0f };
     cb.waveDir[1]    = { 0.35f, 0.94f, 0.0f, 0.0f };
@@ -742,7 +714,7 @@ ChannelCB BuildChannelCB(const asset::MaterialAsset* material, const GpuData* gp
 
 /// @name フレーム / 照明の共通セットアップ
 /// @note Decal は «受け面» を、PostProcess は «入力シーン» を先に焼くが、どちらも本番と同じ
-///       カメラ・同じ照明で焼かないと後段のパスが別の絵を読む。
+/// @note カメラ・同じ照明で焼かないと後段のパスが別の絵を読む。
 
 struct FrameState {
     renderer::Camera  camera;
@@ -762,7 +734,7 @@ FrameState UploadFrame(renderer::ResourceManager& resources,
     const float distance = state.radius * std::max(orbit.distance, 0.05f);
 
     /// @note 望遠にしない: FOV 30 + 遠距離はパースがほぼ消えて正射影に近づき、球が円板のように
-    ///       平坦に見えるため、FOV を広げてカメラを寄せる。
+    /// @note 平坦に見えるため、FOV を広げてカメラを寄せる。
     const float cosPitch = std::cos(orbit.pitch);
     state.camera.m_position = center + math::Vector3{
         cosPitch * std::sin(orbit.yaw) * distance,
@@ -776,8 +748,9 @@ FrameState UploadFrame(renderer::ResourceManager& resources,
     state.camera.LookAt(center);
 
     state.frame.view              = state.camera.GetViewMatrix();
-    state.frame.projection        = state.camera.GetProjectionMatrix();
-    state.frame.viewProjection    = state.camera.GetViewProjection();
+    /// @note 描画先 RT は Reversed-Z (CameraDepthTargetDesc)。本編と同じシェーダーが深度を読むので行列も揃える。
+    state.frame.projection        = state.camera.GetGpuProjectionMatrix();
+    state.frame.viewProjection    = state.camera.GetGpuViewProjection();
     state.frame.invViewProjection = math::Matrix4::Inverse(state.frame.viewProjection);
     state.frame.cameraPos         = state.camera.m_position;
     state.frame.nearZ             = state.camera.m_near;
@@ -788,7 +761,7 @@ FrameState UploadFrame(renderer::ResourceManager& resources,
 
 /// @name 3 点照明リグ (キー / フィル / リム)
 /// @note 単一平行光 + 高いアンビエントだと球が円板に見えるため、アンビエントを落として明暗差を
-///       作り、寒色フィルで陰側の丸みを、リムで輪郭を背景から分離する。
+/// @note 作り、寒色フィルで陰側の丸みを、リムで輪郭を背景から分離する。
 void UploadRig(renderer::ResourceManager& resources, const Rig& rig, const FrameState& fs)
 {
     const RigProfile profile = ProfileFor(rig.preset);
@@ -806,7 +779,7 @@ void UploadRig(renderer::ResourceManager& resources, const Rig& rig, const Frame
     lightData.ambientColor = profile.ambient * exposure;
 
     /// @note LightAttenuation は 1/dist^2 を含むためメッシュ半径で効きが変わる。range = radius*20 に
-    ///       対し dist は radius*3 前後で range 窓はほぼ 1.0 なので、逆二乗と LIGHT_UNIT_SCALE だけ打ち消す。
+    /// @note 対し dist は radius*3 前後で range 窓はほぼ 1.0 なので、逆二乗と LIGHT_UNIT_SCALE だけ打ち消す。
     const auto placeLight = [&](renderer::PointLight& light,
                                 const math::Vector3& offsetFromCenter,
                                 const math::Vector3& color,
@@ -816,7 +789,7 @@ void UploadRig(renderer::ResourceManager& resources, const Rig& rig, const Frame
         light.color    = color;
         light.range    = radius * 20.0f;
         /// @note シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛け、
-        ///       極小メッシュで補正が過剰にならないようにする。
+        /// @note 極小メッシュで補正が過剰にならないようにする。
         light.intensity = targetIntensity * exposure *
             std::max(rotated.LengthSq(), 0.01f) / kLightUnitScale;
     };
@@ -835,13 +808,13 @@ void UploadRig(renderer::ResourceManager& resources, const Rig& rig, const Frame
     shadowData.shadowMapTexelSize[0] = 0.0f;
     shadowData.shadowMapTexelSize[1] = 0.0f;
     /// @note NDC 深度最大値 (1.0) をバイアスにすると depth - bias <= 0 が常に成立し、
-    ///       SampleCmpLevelZero が必ず 1.0 (照らされている) を返して影を無効化できる。
+    /// @note SampleCmpLevelZero が必ず 1.0 (照らされている) を返して影を無効化できる。
     shadowData.shadowBias = 1.0f;
     resources.Update(g_shared.shadowCB, &shadowData, sizeof(shadowData));
 }
 
-/// b0 / b3 / b4 を埋めたあとに呼ぶ、単色 Lit のメッシュ 1 枚。
-/// Decal の受け面と PostProcess の入力シーンがこれで «舞台» を作る。
+/// @note b0 / b3 / b4 を埋めたあとに呼ぶ、単色 Lit のメッシュ 1 枚。
+/// @note Decal の受け面と PostProcess の入力シーンがこれで «舞台» を作る。
 void DrawNeutralMesh(renderer::IRenderer& renderer,
                      renderer::ResourceManager& resources,
                      const renderer::Mesh& mesh,
@@ -889,7 +862,7 @@ renderer::ResourceHandle<renderer::PipelineStateTag> BlendPso(
                           renderer::BlendMode mode) {
         if (!slot.IsValid()) {
             /// @note DEPTH_OFF: プレビューには遮蔽物が無く、粒子どうしの前後も «重なって見える»
-            ///       ほうが素材を読み取りやすい。
+            /// @note ほうが素材を読み取りやすい。
             slot = resources.CreatePipelineState({
                 renderer::RasterizerMode::SOLID_NOCULL, mode, renderer::DepthMode::DEPTH_OFF });
         }
@@ -906,11 +879,11 @@ renderer::ResourceHandle<renderer::PipelineStateTag> BlendPso(
 }
 
 /// @name UI マテリアル
-/// UI パスは b0 を CameraConstants ではなく UIConstants として使い、頂点も
-/// float2 pos / float2 uv / float4 color しか持たない。3D 経路とは別の描画にする。
+/// @note UI パスは b0 を CameraConstants ではなく UIConstants として使い、頂点も
+/// @note float2 pos / float2 uv / float4 color しか持たない。3D 経路とは別の描画にする。
 
-/// プレビューの Canvas 寸法 [px]。矩形の角丸・枠線は «何ピクセルぶん» で決まるので、
-/// 表示サイズに依らず同じ形になるよう固定値にする。
+/// @note プレビューの Canvas 寸法 [px]。矩形の角丸・枠線は «何ピクセルぶん» で決まるので、
+/// @note 表示サイズに依らず同じ形になるよう固定値にする。
 constexpr float kUiCanvasSize = 256.0f;
 constexpr float kUiMargin     = 18.0f;
 
@@ -975,7 +948,7 @@ bool RenderUi(renderer::IRenderer& renderer,
     drawCall.constantBuffers[0] = g_shared.uiCB;
     drawCall.constantBuffers[2] = desc.gpu->materialCB;
     /// @note 素材を持たない UI マテリアルでも図形は描ける。白 1px を差して
-    ///       «テクスチャ未束縛で真っ黒» にならないようにする。
+    /// @note «テクスチャ未束縛で真っ黒» にならないようにする。
     drawCall.textures[0] = (!desc.gpu->textures.empty() && desc.gpu->textures[0].IsValid())
         ? desc.gpu->textures[0] : g_shared.whiteTexture;
     for (std::size_t i = 1; i < std::min(drawCall.textures.size(), desc.gpu->textures.size()); ++i)
@@ -987,11 +960,11 @@ bool RenderUi(renderer::IRenderer& renderer,
 }
 
 /// @name Particle
-/// ビルボードは ParticleBillboardVS が VS で展開する。CPU 側は «粒子 1 個 = 四隅»
-/// を ParticleVertex で積むだけ。本編の ParticlePass とまったく同じ入力になる。
+/// @note ビルボードは ParticleBillboardVS が VS で展開する。CPU 側は «粒子 1 個 = 四隅»
+/// @note を ParticleVertex で積むだけ。本編の ParticlePass とまったく同じ入力になる。
 
-/// プレビューに置く粒子。1 個だけだと «重なったときの合成» が読めないので、
-/// 大きい 1 個を先に描き、その手前へ小さい 2 個を重ねる (深度は切ってあるので描画順が前後)。
+/// @note プレビューに置く粒子。1 個だけだと «重なったときの合成» が読めないので、
+/// @note 大きい 1 個を先に描き、その手前へ小さい 2 個を重ねる (深度は切ってあるので描画順が前後)。
 struct PreviewParticle {
     math::Vector3 center;
     float         size;
@@ -1063,7 +1036,7 @@ bool RenderParticle(renderer::IRenderer& renderer,
     particleData.screenWidth  = static_cast<float>(kEffectRtSize);
     particleData.screenHeight = static_cast<float>(kEffectRtSize);
     /// @note 影・ソフトパーティクル・歪みはシーンの深度とカラーを要る。プレビューには
-    ///       どちらも無いので切る (未束縛 SRV を読むと真っ黒になる)。
+    /// @note どちらも無いので切る (未束縛 SRV を読むと真っ黒になる)。
     particleData.softParticles = 0;
     particleData.shadowStrength = 0.0f;
     particleData.selfShadowStrength = 0.0f;
@@ -1114,8 +1087,8 @@ bool RenderParticle(renderer::IRenderer& renderer,
 }
 
 /// @name Trail
-/// Trail.hlsl の b2 は材質ではなく TrailConstants (エンジンが埋める)。帯の形も
-/// CPU で作るので、ここは ParticlePass / TrailRenderPass と同じ形を一本作るだけ。
+/// @note Trail.hlsl の b2 は材質ではなく TrailConstants (エンジンが埋める)。帯の形も
+/// @note CPU で作るので、ここは ParticlePass / TrailRenderPass と同じ形を一本作るだけ。
 
 constexpr int kTrailSegments = 48;
 
@@ -1177,7 +1150,7 @@ bool RenderTrail(renderer::IRenderer& renderer,
 
     TrailCB trailData{};
     /// @note 帯の色は TrailComponent が持つ値で、.mat には無いことが多い。
-    ///       同名の [params] があればそれを使い、無ければ «白 → 透明» の既定で形を見せる。
+    /// @note 同名の [params] があればそれを使い、無ければ «白 → 透明» の既定で形を見せる。
     trailData.colorStart = TrailParamColor(desc.material, "colorStart", { 1.0f, 1.0f, 1.0f, 1.0f });
     trailData.colorEnd   = TrailParamColor(desc.material, "colorEnd",   { 1.0f, 1.0f, 1.0f, 0.0f });
     trailData.uvScrollSpeed = ParamFloat(desc.material, "uvScrollSpeed", 0.0f);
@@ -1221,13 +1194,14 @@ bool RenderTrail(renderer::IRenderer& renderer,
 }
 
 /// @name Decal
-/// デカールは «受け面の深度からワールド座標を復元して OBB へ投影する» ので、
-/// 投影先が要る。受け面を 1 枚別の RT へ焼き、その深度を読ませて本番と同じ経路を通す。
+/// @note デカールは «受け面の深度からワールド座標を復元して OBB へ投影する» ので、
+/// @note 投影先が要る。受け面を 1 枚別の RT へ焼き、その深度を読ませて本番と同じ経路を通す。
 
 bool EnsureSceneRT(renderer::ResourceManager& resources)
 {
     if (!g_shared.sceneRT.IsValid())
-        g_shared.sceneRT = resources.CreateRenderTarget(kEffectRtSize, kEffectRtSize);
+        g_shared.sceneRT = resources.CreateRenderTarget(kEffectRtSize, kEffectRtSize,
+                                                        renderer::CameraDepthTargetDesc(1));
     return g_shared.sceneRT.IsValid();
 }
 
@@ -1245,7 +1219,7 @@ bool RenderDecal(renderer::IRenderer& renderer,
     if (!receiver) return false;
 
     /// @note 受け面は投影ボリュームより広く取る: 同じ大きさだとデカールが画面いっぱいになり
-    ///       «どこまで乗るか» が見えないため、周囲を残して投影範囲と角の落ち方を読めるようにする。
+    /// @note «どこまで乗るか» が見えないため、周囲を残して投影範囲と角の落ち方を読めるようにする。
     constexpr float kReceiverScale = 2.2f;
     const FrameState frameState =
         UploadFrame(resources, desc.orbit, math::Vector3::ZERO, kReceiverScale * 0.5f);
@@ -1254,7 +1228,7 @@ bool RenderDecal(renderer::IRenderer& renderer,
         { kReceiverScale, kReceiverScale, kReceiverScale }));
 
     /// @note 受け面 (中性グレー) を 2 回焼く。描画先の深度バッファは同時に SRV として読めないため、
-    ///       1 回目は深度を SRV として読む別 RT へ、2 回目は «デカールが乗る下地» としてプレビュー本体へ。
+    /// @note 1 回目は深度を SRV として読む別 RT へ、2 回目は «デカールが乗る下地» としてプレビュー本体へ。
     constexpr math::Vector4 kReceiverColor{ 0.62f, 0.63f, 0.66f, 1.0f };
     renderer.SetRenderTarget(g_shared.sceneRT, resources);
     renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
@@ -1269,7 +1243,7 @@ bool RenderDecal(renderer::IRenderer& renderer,
     DrawNeutralMesh(renderer, resources, *receiver, kReceiverColor);
 
     /// @note 投影ボリュームは受け面 (1x1 の平面) をちょうど覆う立方体。
-    ///       デカールローカルは [-0.5, 0.5]^3 で、+Y が投影軸・+X/+Z が UV 軸。
+    /// @note デカールローカルは [-0.5, 0.5]^3 で、+Y が投影軸・+X/+Z が UV 軸。
     DecalCB decalData{};
     decalData.invDecalWorld     = math::Matrix4::Identity();
     decalData.decalTangent      = { 1.0f, 0.0f, 0.0f };
@@ -1303,8 +1277,8 @@ bool RenderDecal(renderer::IRenderer& renderer,
 }
 
 /// @name PostProcess
-/// 全画面フィルタは «通す絵» が無いと何も分からない。標準の球をいつものリグで
-/// 焼き、その結果を入力 (t5) にして材質のシェーダーを 1 回通す。
+/// @note 全画面フィルタは «通す絵» が無いと何も分からない。標準の球をいつものリグで
+/// @note 焼き、その結果を入力 (t5) にして材質のシェーダーを 1 回通す。
 
 bool RenderPostProcess(renderer::IRenderer& renderer,
                        renderer::ResourceManager& resources,
@@ -1337,17 +1311,14 @@ bool RenderPostProcess(renderer::IRenderer& renderer,
     postProcData.customPassInfo[0] = 1.0f;
 
     /// @note .mat の [params] を b5 の custom* へ名前で束縛する。オフセットはリフレクション
-    ///       (ShaderDescriptor::postProcessVars) 由来なので、ここで名前を書き並べずに済む。
+    /// @note (ShaderDescriptor::postProcessVars) 由来なので、ここで名前を書き並べずに済む。
     if (auto* shader = resources.Get(desc.gpu->shader); shader && desc.material) {
-        auto* raw = reinterpret_cast<std::uint8_t*>(&postProcData);
-        for (const auto& variable : shader->GetDescriptor().postProcessVars) {
-            if (variable.varType != renderer::ShaderVarType::Float) continue;
-            if (variable.offset + variable.size > sizeof(PostProcCB)) continue;
-            const auto* values = FindParam(*desc.material, variable.name);
-            if (!values || values->empty()) continue;
-            const std::size_t count = std::min<std::size_t>(variable.columns, values->size());
-            std::memcpy(raw + variable.offset, values->data(), count * sizeof(float));
-        }
+        auto* raw = static_cast<uint8_t*>(static_cast<void*>(&postProcData));
+        renderer::ShaderDescriptor descriptor;
+        descriptor.vars = shader->GetDescriptor().postProcessVars;
+        std::vector<uint8_t> bytes(raw, raw + sizeof(postProcData));
+        asset::ApplyMaterialAssetParams(*desc.material, descriptor, bytes);
+        std::memcpy(raw, bytes.data(), sizeof(postProcData));
     }
     resources.Update(g_shared.postProcCB, &postProcData, sizeof(postProcData));
 
@@ -1403,6 +1374,8 @@ struct FiberPreviewShared {
     /// @note 局所 FlowField は 0 本。VS が未束縛の SRV を参照しないよう 1 要素の空バッファを差す。
     renderer::ResourceHandle<renderer::StructuredBufferTag> emptyFlow;
     std::map<std::array<std::uint32_t, 2>, FiberPreviewGeometry> geometry;
+    /// @note 全プレビューで 1 枠を共有する。別の .mat へ切り替わると読み直すが、実体は ResourceManager がパスでキャッシュしている。
+    scene::FiberMaskSlot mask;
 };
 
 FiberPreviewShared g_fiber;
@@ -1478,7 +1451,8 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
     if (!EnsureShared(resources, true) || !EnsureFiberShared(resources)) return false;
 
     /// @note 本編と同じ値の丸め (範囲外・非有限の除去) を通す。生の params を CB へ写さない。
-    const asset::FiberMaterialSettings settings = asset::ResolveFiberMaterial(desc.material);
+    asset::FiberMaterialSettings settings = asset::ResolveFiberMaterial(desc.material);
+    scene::ResolveFiberMaskTexture(settings, desc.material, resources, g_fiber.mask);
     resources.Update(g_fiber.materialCB, &settings, sizeof(settings));
 
     /// @note 毛先と曲げまで枠へ収める。形状の境界だけで寄ると長い草の先が切れる。
@@ -1570,11 +1544,10 @@ Flavor DetectFlavor(const asset::MaterialAsset& material)
     const std::string lower = Lower(material.shaderPath);
 
     /// @note 先に «プレビューの形を作れない» シェーダーを落とす。render_path より
-    ///       シェーダー本体の入力のほうが強い制約で、ここを後回しにすると
-    ///       render_path = 'trail' の MeshTrail をリボンの頂点で描いて崩す。
-    ///
-    ///       MeshTrail / SkinnedMeshTrail … 帯ではなくメッシュを流す (TrailVertex ではない)
-    ///       GPU パーティクル             … 頂点バッファを持たず StructuredBuffer から引く
+    /// @note シェーダー本体の入力のほうが強い制約で、ここを後回しにすると
+    /// @note render_path = 'trail' の MeshTrail をリボンの頂点で描いて崩す。
+    /// @note MeshTrail / SkinnedMeshTrail … 帯ではなくメッシュを流す (TrailVertex ではない)
+    /// @note GPU パーティクル             … 頂点バッファを持たず StructuredBuffer から引く
     if (lower.find("meshtrail") != std::string::npos) return Flavor::Unsupported;
     if (lower.find("/effects/particlegpu") != std::string::npos ||
         lower.find("/effects/particlereactivegpu") != std::string::npos ||
@@ -1582,8 +1555,8 @@ Flavor DetectFlavor(const asset::MaterialAsset& material)
         return Flavor::Unsupported;
 
     /// @note 以降の判定は render_path を信頼元にする。Particle / Trail / Decal の .mat は
-    ///       MeshRenderer と頂点入力も定数バッファも違うため、3D メッシュのプレビューへ流すと
-    ///       不正な IA レイアウトになる。
+    /// @note MeshRenderer と頂点入力も定数バッファも違うため、3D メッシュのプレビューへ流すと
+    /// @note 不正な IA レイアウトになる。
     switch (material.renderPath) {
         case asset::RenderPath::UI:          return Flavor::Ui;
         case asset::RenderPath::Particle:    return Flavor::Particle;
@@ -1643,7 +1616,7 @@ math::Vector4 SwatchColor(const asset::MaterialAsset& material)
     }
     if (!found) {
         /// @note 名前が独自でも «...Color» は色として扱える。params は unordered なので、
-        ///       名前の小さい方に決めておかないと起動のたびに色が変わる。
+        /// @note 名前の小さい方に決めておかないと起動のたびに色が変わる。
         const std::string* pick = nullptr;
         for (const auto& [name, values] : material.params) {
             if (values.size() < 3) continue;
@@ -1771,10 +1744,10 @@ bool ChannelSupported(Flavor flavor, Channel channel)
     /// @note Fiber は専用シェーダーで繊維を重ねるため、差し替えチャンネル (MaterialChannel.hlsl) の前提が無い。
     if (flavor == Flavor::Unsupported || flavor == Flavor::Fiber) return false;
     /// @note Wireframe は材質自身のシェーダーのまま RasterizerMode だけ差し替える経路なので、
-    ///       3D メッシュを焼く Flavor にしか効かない (矩形・ビルボード・リボン・全画面は対象外)。
+    /// @note 3D メッシュを焼く Flavor にしか効かない (矩形・ビルボード・リボン・全画面は対象外)。
     if (channel == Channel::Wireframe) return !UsesOwnGeometry(flavor);
     /// @note Terrain / Water / UI / エフェクト系はテクスチャスロットの意味が標準と違い、
-    ///       MaterialChannel.hlsl の t0-t4 の前提が成立しない。
+    /// @note MaterialChannel.hlsl の t0-t4 の前提が成立しない。
     return flavor == Flavor::Surface || flavor == Flavor::Skinned;
 }
 
@@ -1838,8 +1811,8 @@ bool BuildGpuData(GpuData& gpu,
     if (flavor == Flavor::Unsupported) return false;
 
     /// @note b2 をエンジンが所有するシェーダーは «MaterialConstants» という名前の cbuffer を
-    ///       持たないため、リフレクションが空で返る。これは «壊れている» ではないので通す。
-    ///       (Terrain は b1 の TerrainObjectCB、Trail は b2 の TrailConstants が正本)
+    /// @note 持たないため、リフレクションが空で返る。これは «壊れている» ではないので通す。
+    /// @note (Terrain は b1 の TerrainObjectCB、Trail は b2 の TrailConstants が正本)
     const bool engineOwnsMaterialCB = flavor == Flavor::Terrain || flavor == Flavor::Trail;
     if (!descriptor.IsValid() && !engineOwnsMaterialCB) return false;
 
@@ -1852,7 +1825,7 @@ bool BuildGpuData(GpuData& gpu,
     }
     if (!descriptor.IsValid()) {
         /// @note cbuffer のリフレクションが無い分、標準スロット名だけは名前で解決しておく。
-        ///       素材が 1 枚も付かないと «何の絵か» が消えてしまう。
+        /// @note 素材が 1 枚も付かないと «何の絵か» が消えてしまう。
         for (std::uint32_t slot = 0; slot < 5; ++slot) {
             if (gpu.textures[slot].IsValid()) continue;
             auto it = renderAsset->textures.find(kSlotNames[slot]);
@@ -2035,12 +2008,12 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
             }
         }
         /// @note t4 は Water ではさざ波タイル。白や黒で埋めると勾配が一様な傾きへ復号され、
-        ///       プレビューの水面だけ «斜めに倒れた鏡» になるため上書きする。
+        /// @note プレビューの水面だけ «斜めに倒れた鏡» になるため上書きする。
         if (desc.flavor == Flavor::Water && !channelReady) {
             const auto& detailNoise = scene::GetWaterDetailNoise(resources);
             if (detailNoise.texture.IsValid()) drawCall.textures[4] = detailNoise.texture;
             /// @note t26 は Water では速度場アトラス (Texture3D)。上の穴埋めが 2D の既定を
-            ///       差すと宣言と次元が食い違うので、本物のアトラスで上書きする。
+            /// @note 差すと宣言と次元が食い違うので、本物のアトラスで上書きする。
             drawCall.textures[26] = asset::VelocityFieldAtlas::Texture(resources);
         }
     } else {

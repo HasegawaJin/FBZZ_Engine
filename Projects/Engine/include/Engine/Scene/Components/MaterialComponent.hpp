@@ -19,37 +19,39 @@
 
 namespace fbzz::scene {
 
-/// MaterialSlot — submesh 1 つ分のマテリアル参照・GPU キャッシュ・インスタンス上書き。
+/// @note MaterialSlot — submesh 1 つ分のマテリアル参照・GPU キャッシュ・インスタンス上書き。
 /// @note MaterialComponent はこれを継承し「スロット 0」を自分自身として公開することで、
-///       単一マテリアル前提の既存コード (mc.materialPath など) をそのまま動かす。
+/// @note 単一マテリアル前提の既存コード (mc.materialPath など) をそのまま動かす。
 struct MaterialSlot {
-    /// 共有 MaterialAsset から解決した GPU 側マテリアル。SyncMaterial が生成・更新する。
+    /// @note 共有 MaterialAsset から解決した GPU 側マテリアル。SyncMaterial が生成・更新する。
     std::unique_ptr<renderer::Material> material;
 
     asset::AssetHandle<asset::MaterialAsset> materialAsset;
 
-    /// この submesh を描画するか。false のスロットはスキップされる。
+    /// @note この submesh を描画するか。false のスロットはスキップされる。
     /// @note コンポーネント全体の有効/無効 (MaterialComponent::enabled) とは別軸で、
-    ///       モデルの一部だけを出す (VFX の AnimatedMesh、装備の表示切替) 用途に使う。
+    /// @note モデルの一部だけを出す (VFX の AnimatedMesh、装備の表示切替) 用途に使う。
     bool visible = true;
 
-    /// .mat の assets/ 相対パス。空文字は「マテリアル未割当」。
+    /// @note .mat の assets/ 相対パス。空文字は「マテリアル未割当」。
     /// @note MaterialSlot は参照だけを持ち、シェーダー・パラメータ・テクスチャは共有アセット側へ集約する。
     std::string materialPath;
 
-    /// オブジェクトごとのパラメータ上書き (シェーダー変数名 → float 値配列)。ランタイム専用 (非シリアライズ)。
+    /// @note オブジェクトごとのパラメータ上書き (シェーダー変数名 → float 値配列)。ランタイム専用 (非シリアライズ)。
     /// @note MaterialAsset はパス単位で共有され、そこへ書くと同じ .mat の全インスタンスへ波及する。
-    ///       SyncMaterial が共有アセット適用後にここで「この GO 専用」に上書きするため、
-    ///       ディゾルブ量や色をインスタンス単位でアニメーションできる。
+    /// @note SyncMaterial が共有アセット適用後にここで「この GO 専用」に上書きするため、
+    /// @note ディゾルブ量や色をインスタンス単位でアニメーションできる。
     std::unordered_map<std::string, std::vector<float>> paramOverrides;
-    /// Textureと描画状態も共有.matを変更せず、GameObject単位で上書きする。
+    /// @note uint32_t 全域を丸めず保持し、シェーダーの型に従って 32 bit へ転送する。
+    std::unordered_map<std::string, std::vector<int64_t>> integerParamOverrides;
+    /// @note Textureと描画状態も共有.matを変更せず、GameObject単位で上書きする。
     std::unordered_map<std::string, std::string> textureOverrides;
-    /// PropertyId のhashから実名を引き、毎フレームの文字列生成と線形検索を避ける。
-    /// hash衝突時は呼び出し側が実名を照合して上書きする。
+    /// @note PropertyId のhashから実名を引き、毎フレームの文字列生成と線形検索を避ける。
+    /// @note hash衝突時は呼び出し側が実名を照合して上書きする。
     std::unordered_map<uint64_t, std::string> propertyNameCache;
-    /// bitはMaterialInstanceのPropertyKindごとのShader reflection検証済み状態。
+    /// @note bitはMaterialInstanceのPropertyKindごとのShader reflection検証済み状態。
     std::unordered_map<uint64_t, uint8_t> propertyValidationCache;
-    /// Shader descriptorがhot reloadで差し替わったら検証cacheを破棄する非所有識別子。
+    /// @note Shader descriptorがhot reloadで差し替わったら検証cacheを破棄する非所有識別子。
     const void* propertyValidationDescriptor = nullptr;
 
     bool hasBlendModeOverride = false;
@@ -63,14 +65,15 @@ struct MaterialSlot {
     ~MaterialSlot() = default;
 
     /// @note material は unique_ptr のため既定のコピーが作れない。設定だけを写し、
-    ///       ConstantBuffer (所有者を 1 つに保つため) と検証キャッシュ (shader descriptor の
-    ///       差し替え検知のため) は複製先で作り直す。
+    /// @note ConstantBuffer (所有者を 1 つに保つため) と検証キャッシュ (shader descriptor の
+    /// @note 差し替え検知のため) は複製先で作り直す。
     MaterialSlot(const MaterialSlot& o)
         : material(o.material ? std::make_unique<renderer::Material>(o.material->CloneWithoutGpuResources()) : nullptr)
         , materialAsset(o.materialAsset)
         , visible(o.visible)
         , materialPath(o.materialPath)
         , paramOverrides(o.paramOverrides)
+        , integerParamOverrides(o.integerParamOverrides)
         , textureOverrides(o.textureOverrides)
         , propertyNameCache(o.propertyNameCache)
         , hasBlendModeOverride(o.hasBlendModeOverride)
@@ -88,6 +91,7 @@ struct MaterialSlot {
             visible      = o.visible;
             materialPath = o.materialPath;
             paramOverrides = o.paramOverrides;
+            integerParamOverrides = o.integerParamOverrides;
             textureOverrides = o.textureOverrides;
             propertyNameCache = o.propertyNameCache;
             propertyValidationCache.clear();
@@ -104,7 +108,7 @@ struct MaterialSlot {
     MaterialSlot(MaterialSlot&&)            = default;
     MaterialSlot& operator=(MaterialSlot&&) = default;
 
-    /// materialPath が設定されていれば AssetManager 経由で共有 MaterialAsset を解決する。
+    /// @note materialPath が設定されていれば AssetManager 経由で共有 MaterialAsset を解決する。
     /// @note BlendMode / RenderQueue は描画キュー振り分け前に必要なため、SyncMaterial より前でも呼べる。
     bool EnsureMaterialAsset()
     {
@@ -127,6 +131,18 @@ struct MaterialSlot {
         return a ? a->doubleSided : false;
     }
 
+    int32_t GetDepthBias() const
+    {
+        const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(materialAsset);
+        return a ? a->depthBias : 0;
+    }
+
+    float GetDepthBiasSlope() const
+    {
+        const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(materialAsset);
+        return a ? a->depthBiasSlope : 0.0f;
+    }
+
     int32_t GetRenderQueue() const
     {
         if (hasRenderQueueOverride) return renderQueueOverride;
@@ -147,7 +163,7 @@ struct MaterialSlot {
         return a ? a->meshType : asset::MeshType::Any;
     }
 
-    /// .mat の割り当てを差し替える。解決済みハンドルと GPU キャッシュを捨てて再解決させる。
+    /// @note .mat の割り当てを差し替える。解決済みハンドルと GPU キャッシュを捨てて再解決させる。
     void SetMaterialPath(std::string path)
     {
         if (materialPath == path) return;
@@ -159,25 +175,25 @@ struct MaterialSlot {
     }
 };
 
-/// MaterialComponent — GameObject に付く 1 個以上のマテリアルスロット。
-/// スロット i は Renderer が描く submesh i に対応する。
+/// @note MaterialComponent — GameObject に付く 1 個以上のマテリアルスロット。
+/// @note スロット i は Renderer が描く submesh i に対応する。
 /// @note MaterialSlot を継承し「スロット 0 = コンポーネント自身」とすることで、
-///       mc.materialPath / mc.GetBlendMode() 等の既存コードが無変更で主スロットを指す。
+/// @note mc.materialPath / mc.GetBlendMode() 等の既存コードが無変更で主スロットを指す。
 struct MaterialComponent : MaterialSlot {
-    /// コンポーネント全体の有効/無効。false なら全スロットが描画されない。
+    /// @note コンポーネント全体の有効/無効。false なら全スロットが描画されない。
     bool enabled = true;
 
-    /// submesh 1 以降のスロット。スロット 0 は基底の MaterialSlot 部分が兼ねる。
+    /// @note submesh 1 以降のスロット。スロット 0 は基底の MaterialSlot 部分が兼ねる。
     /// @note 大多数のオブジェクトは submesh 1 つなので、追加スロットだけを可変長で持ち
-    ///       1 マテリアルのケースでヒープ確保が発生しないようにする。
+    /// @note 1 マテリアルのケースでヒープ確保が発生しないようにする。
     std::vector<MaterialSlot> extraSlots;
 
     MaterialComponent() = default;
 
     [[nodiscard]] size_t SlotCount() const { return 1u + extraSlots.size(); }
 
-    /// 生のスロット参照 (フォールバックなし)。Inspector / シリアライザなど
-    /// 「スロットそのもの」を編集したい側が使う。
+    /// @note 生のスロット参照 (フォールバックなし)。Inspector / シリアライザなど
+    /// @note 「スロットそのもの」を編集したい側が使う。
     [[nodiscard]] MaterialSlot& RawSlotAt(size_t index)
     {
         if (index == 0 || index > extraSlots.size()) return *this;
@@ -189,11 +205,11 @@ struct MaterialComponent : MaterialSlot {
         return extraSlots[index - 1u];
     }
 
-    /// submesh index に対応する「描画に使う」スロットを返す。
-    /// 範囲外、または .mat 未割当のスロットは主スロット (0) へフォールバックする。
+    /// @note submesh index に対応する「描画に使う」スロットを返す。
+    /// @note 範囲外、または .mat 未割当のスロットは主スロット (0) へフォールバックする。
     /// @note submesh 数とスロット数がずれても画面から消えないための保険 (モデル差し替えで
-    ///       submesh が増えた・追加スロットへの割り当て忘れ)。非表示指定 (visible=false) の
-    ///       スロットはフォールバックせずそのまま返し、呼び出し側にスキップさせる。
+    /// @note submesh が増えた・追加スロットへの割り当て忘れ)。非表示指定 (visible=false) の
+    /// @note スロットはフォールバックせずそのまま返し、呼び出し側にスキップさせる。
     [[nodiscard]] MaterialSlot& SlotAt(size_t index)
     {
         MaterialSlot& slot = RawSlotAt(index);
@@ -207,15 +223,15 @@ struct MaterialComponent : MaterialSlot {
         return *this;
     }
 
-    /// スロット数を count (>=1) に揃える。増やした分は未割当スロットになる。
+    /// @note スロット数を count (>=1) に揃える。増やした分は未割当スロットになる。
     void ResizeSlots(size_t count)
     {
         extraSlots.resize(count > 0 ? count - 1u : 0u);
     }
 
-    /// 指定 submesh だけを表示する。index < 0 なら全 submesh を表示。
+    /// @note 指定 submesh だけを表示する。index < 0 なら全 submesh を表示。
     /// @note VFX の AnimatedMesh のように「モデルの一部だけを出す」用途を、Renderer 側へ
-    ///       submesh 指定を戻さずに実現する。
+    /// @note submesh 指定を戻さずに実現する。
     void SetOnlyVisibleSlot(int index)
     {
         for (size_t i = 0; i < SlotCount(); ++i)
@@ -229,7 +245,7 @@ struct MaterialComponent : MaterialSlot {
         r.Field("enabled", enabled);
         r.Field("materialPath", materialPath);
         /// @note 追加スロットは可変長配列で IReflector の Field では表現できないため、
-        ///       SceneSerializer が "materialSlots" 配列として別途読み書きする。
+        /// @note SceneSerializer が "materialSlots" 配列として別途読み書きする。
     }
 };
 

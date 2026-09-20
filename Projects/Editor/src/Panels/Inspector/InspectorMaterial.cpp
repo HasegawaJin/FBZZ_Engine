@@ -12,7 +12,7 @@ namespace {
 
 /// @brief 編集された .mat を未保存アセットとして登録する。
 /// @note インライン編集は AssetManager 上の実体だけを書き換える。登録しないと未保存プロンプトや
-///       Save All に出ず、Double Sided 等の .mat 側パラメータが警告なしに消える。
+/// @note Save All に出ず、Double Sided 等の .mat 側パラメータが警告なしに消える。
 void RegisterMaterialDirty(const scene::MaterialSlot& slot, const EditorContext& ctx)
 {
     if (slot.materialPath.empty() || !slot.materialAsset.IsValid()) return;
@@ -28,7 +28,7 @@ void RegisterMaterialDirty(const scene::MaterialSlot& slot, const EditorContext&
 
 /// @brief マテリアルスロット 1 つぶんの .mat 編集 UI (shader / textures / params / 保存)。
 /// @note MaterialComponent でなく MaterialSlot を受けるのは、Element 1 以降でも同じ UI を
-///       その場で展開するため。コンポーネント限定だとスロット 0 決め打ちに戻ってしまう。
+/// @note その場で展開するため。コンポーネント限定だとスロット 0 決め打ちに戻ってしまう。
 void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
 {
             auto* matPtr = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
@@ -85,11 +85,14 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                 }
                 materialDirty |= ImGui::Checkbox("Double Sided", &mat.doubleSided);
                 materialDirty |= ImGui::DragInt("Render Queue", &mat.renderQueue, 1.0f, 0, 5000);
+                materialDirty |= ImGui::DragInt("Depth Bias", &mat.depthBias, 0.25f, -1024, 1024);
+                materialDirty |= ImGui::DragFloat("Depth Bias Slope", &mat.depthBiasSlope, 0.01f, -8.0f, 8.0f);
+                ImGui::SetItemTooltip("Positive values pull this material toward the camera (fixes Z-fighting on coplanar faces)");
                 {
                     /// @note 通常の Forward / Deferred はプロジェクト設定で決まる。
-                    ///       ここでは専用レンダーパスの用途だけを指定する。
-                    ///       LAYOUT: asset::RenderPath と同じ並びにすること。欠けた用途は
-                    ///       Combo を触った瞬間に別の値へ化ける。
+                    /// @note ここでは専用レンダーパスの用途だけを指定する。
+                    /// @note LAYOUT: asset::RenderPath と同じ並びにすること。欠けた用途は
+                    /// @note Combo を触った瞬間に別の値へ化ける。
                     static constexpr const char* kMaterialUsageNames[] = {
                         "Auto", "Particle", "Trail", "UI", "Decal" };
                     int usageIndex = static_cast<int>(mat.renderPath);
@@ -118,15 +121,15 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
             } else {
                 ImGui::SeparatorText("Textures");
                 /// @note fzmat のキーは GeometryPassHelpers の kTextureSlotNames と一致させる。ShaderDescriptor の
-                ///       tex.name は HLSL 変数名 ("texAlbedo") で kTextureSlotNames ("albedo") と異なるため、
-                ///       tex.slot でインデックスして変換する。t5-t7 はカスタムシェーダー用の汎用スロット。
+                /// @note tex.name は HLSL 変数名 ("texAlbedo") で kTextureSlotNames ("albedo") と異なるため、
+                /// @note tex.slot でインデックスして変換する。t5-t7 はカスタムシェーダー用の汎用スロット。
                 static constexpr std::array<const char*, 8> kCanonicalSlots = {
                     "albedo", "normal", "metallic", "emissive", "ao", "tex5", "tex6", "tex7"
                 };
                 /// @note Sprite のコマを受けるのはメッシュ描画 (Auto) の albedo だけ。
-                ///       矩形を uvTiling / uvOffset へ畳むのは ApplyAlbedoSpriteUv (GeometryPassHelpers) の
-                ///       1 か所しかなく、1 描画に 1 組しか無い。他のスロットや Particle / UI / Decal の
-                ///       パスへ入れても切り抜きは効かず、アトラス全面が出る。
+                /// @note 矩形を uvTiling / uvOffset へ畳むのは ApplyAlbedoSpriteUv (GeometryPassHelpers) の
+                /// @note 1 か所しかなく、1 描画に 1 組しか無い。他のスロットや Particle / UI / Decal の
+                /// @note パスへ入れても切り抜きは効かず、アトラス全面が出る。
                 const bool spriteAlbedo = mat.renderPath == asset::RenderPath::Auto;
                 auto drawTexSlot = [&](const char* slot) {
                     std::string& path = mat.textures[slot];
@@ -194,14 +197,22 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                 ImGui::SeparatorText("Params");
                 if (desc) {
                     for (const auto& var : desc->vars) {
-                        if (var.varType != renderer::ShaderVarType::Float)
+                        if (!var.IsWritable() || var.varType != renderer::ShaderVarType::Float
+                            || var.elements || var.varClass == renderer::ShaderVarClass::Matrix
+                            || mat.integerParams.contains(var.name)) {
+                            materialDirty |= DrawReflectedMaterialParam(mat, var);
                             continue;
+                        }
                         const size_t componentCount = var.columns > 0 ? var.columns : 1;
                         std::vector<float>& values = mat.params[var.name];
                         if (values.size() != componentCount)
                             values = defaultParamValues(var.name, componentCount);
                         drawParam(var.name, values);
                     }
+                }
+                for (const auto& [name, values] : mat.integerParams) {
+                    if (desc && desc->FindVar(name)) continue;
+                    ImGui::TextDisabled("%s: reflection unavailable (%zu values)", name.c_str(), values.size());
                 }
                 for (auto& [name, values] : mat.params) {
                     if (desc && desc->FindVar(name))
@@ -250,7 +261,7 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                         context->BumpMaterialPreviewRevision(relPath);
                         if (markDirty) markDirty();
                         /// @note Undo / Redo はメモリ上の値だけを戻す。保存済みでも
-                        ///       ここでディスクとずれるので、改めて未保存として積み直す。
+                        /// @note ここでディスクとずれるので、改めて未保存として積み直す。
                         if (!diskPath.empty()) {
                             AssetDirtyRegistry::Register(
                                 diskPath, relPath, "MAT",
@@ -302,7 +313,7 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
 
 /// @brief マテリアル配列の 1 行。D&D / クリックで辿る / 中身のインライン編集をここで完結させる。
 /// @note スロット番号は submesh との対応そのものでユーザーが決める値ではないため、番号入力は出さない。
-///       widgets::AssetPathField が D&D 受理・Asset Browser への ping・Inspector 遷移を内包している。
+/// @note widgets::AssetPathField が D&D 受理・Asset Browser への ping・Inspector 遷移を内包している。
 void DrawMaterialElementRow(scene::MaterialSlot& slot,
                             size_t slotIndex,
                             bool isFallbackTarget,
@@ -313,7 +324,7 @@ void DrawMaterialElementRow(scene::MaterialSlot& slot,
     const std::string label = "Element " + std::to_string(slotIndex);
     if (widgets::AssetPathField(label.c_str(), slot.materialPath, ".mat", ctx.projectRoot)) {
         /// @note AssetPathField は materialPath を直接書き換えるため、解決済みハンドルと
-        ///       GPU キャッシュをここで捨てて再解決させる。
+        /// @note GPU キャッシュをここで捨てて再解決させる。
         slot.materialAsset = {};
         slot.material.reset();
         slot.propertyValidationCache.clear();
@@ -327,7 +338,7 @@ void DrawMaterialElementRow(scene::MaterialSlot& slot,
                            "Missing: %s", slot.materialPath.c_str());
     } else if (slot.materialPath.empty() && isFallbackTarget) {
         /// @note SlotAt() は未割当スロットを Element 0 へフォールバックさせる。
-        ///       「割り当てが無いのに描かれている」状態を隠さない。
+        /// @note 「割り当てが無いのに描かれている」状態を隠さない。
         ImGui::TextDisabled("未割当 — Element 0 のマテリアルで描画されます");
     }
 
@@ -338,7 +349,7 @@ void DrawMaterialElementRow(scene::MaterialSlot& slot,
         ImGui::SetTooltip("この submesh を描画するか");
 
     /// @note 折りたたみにするのは、全スロット常時展開だと submesh 5 枚で Inspector が数百行になり、
-    ///       割り当ての一覧という本来の役割が埋もれるため (Unity のマテリアル折りたたみと同じ)。
+    /// @note 割り当ての一覧という本来の役割が埋もれるため (Unity のマテリアル折りたたみと同じ)。
     if (slot.materialAsset.IsValid()) {
         if (ImGui::TreeNode("Edit")) {
             DrawMaterialSlotBody(slot, ctx);
@@ -350,7 +361,7 @@ void DrawMaterialElementRow(scene::MaterialSlot& slot,
     ImGui::PopID();
 }
 
-/// この GameObject の Renderer が描く submesh 数。Renderer が無ければ 0。
+/// @note この GameObject の Renderer が描く submesh 数。Renderer が無ければ 0。
 size_t RendererSubmeshCount(scene::GameObject& go)
 {
     if (const auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>())
@@ -370,12 +381,12 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             const size_t submeshCount = owner ? RendererSubmeshCount(*owner) : 0u;
 
             /// @note 行数を submesh 数へ自動追従させる。手動の Add Slot / Match Submesh Count は廃止した。
-            ///       ずれた状態はフォールバック描画という分かりにくい挙動を生むだけだった。
+            /// @note ずれた状態はフォールバック描画という分かりにくい挙動を生むだけだった。
             if (submeshCount > 0 && mc.SlotCount() != submeshCount)
                 mc.ResizeSlots(submeshCount);
 
             /// @note Renderer を持たない GameObject (VFX の Mesh 出力・デカール等) は
-            ///       submesh の概念が無いので、単一マテリアルとして 1 行だけ出す。
+            /// @note submesh の概念が無いので、単一マテリアルとして 1 行だけ出す。
             if (submeshCount == 0) {
                 ImGui::SeparatorText("Material");
                 DrawMaterialElementRow(mc, 0, false, ctx);
