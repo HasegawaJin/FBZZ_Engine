@@ -2,9 +2,8 @@
 /// @brief   TOML ベースの Scene 保存・復元。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// GameObject 階層と登録済み Component を .fbzz へ書き出す。
-/// ロード時は既存 Scene をクリアしてから復元する。
+/// @note GameObject 階層と登録済み Component を .fbzz へ書き出す。
+/// @note ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Memory/MakeUnique.hpp>
@@ -90,12 +89,12 @@
 
 namespace fbzz::scene {
 
-/// 内部ヘルパー
+/// @note 内部ヘルパー
 namespace {
 
-/// LightComponent を読む。`type` が文字列で書かれた旧シーンをここで吸収する。
+/// @note LightComponent を読む。`type` が文字列で書かれた旧シーンをここで吸収する。
 /// @note 旧コーデックは `type` を文字列で書いていたが、`Reflect()` は他の enum と同じく int を
-///       読むため、そのままでは既定値の 0 (Directional) に落ち、次の保存で元に戻せない形で消える。
+/// @note 読むため、そのままでは既定値の 0 (Directional) に落ち、次の保存で元に戻せない形で消える。
 void ReadLightComponent(GameObject& go, const toml::table& goTbl)
 {
     const auto* lightTbl = goTbl["LightComponent"].as_table();
@@ -119,11 +118,11 @@ void ReadLightComponent(GameObject& go, const toml::table& goTbl)
     go.AddComponent<LightComponent>(light);
 }
 
-/// 流れの場コンポーネントを読む。旧い 4 つの形をここで吸収する: (a) FlowField (現行。strength は
-/// 流速 [m/s])、(b) ForceField (strength は加速度 [m/s^2]。単位を換算)、(c) ForceField フラット
-/// (力 1 本ぶんのキーが直下に並ぶ)、(d) WindZoneComponent (廃止。SceneEnvironment へ写す)。
+/// @note 流れの場コンポーネントを読む。旧い 4 つの形をここで吸収する: (a) FlowField (現行。strength は
+/// @note 流速 [m/s])、(b) ForceField (strength は加速度 [m/s^2]。単位を換算)、(c) ForceField フラット
+/// @note (力 1 本ぶんのキーが直下に並ぶ)、(d) WindZoneComponent (廃止。SceneEnvironment へ写す)。
 /// @note 捨てると既存シーンの風が黙って止まり «風が弱い» と区別が付かないため、値は移して
-///       言い方だけを 1 つにする。
+/// @note 言い方だけを 1 つにする。
 /// @param outEnvironment 旧 WindZoneComponent を見つけたらここへ書く。
 void ReadFlowFieldComponent(GameObject& go, const toml::table& goTbl,
                             SceneEnvironment& outEnvironment)
@@ -131,7 +130,7 @@ void ReadFlowFieldComponent(GameObject& go, const toml::table& goTbl,
     std::vector<FlowFieldSettings> forces;
 
     /// @note 型が ParticleForceField → ForceField → FlowField と変わり、そのたびキーも変わった。
-    ///       出荷済みシーンは旧キーで書かれているので全部を受ける。
+    /// @note 出荷済みシーンは旧キーで書かれているので全部を受ける。
     bool legacyUnits = false;
     const auto* fieldTbl = goTbl["FlowField"].as_table();
     if (fieldTbl == nullptr) {
@@ -154,7 +153,7 @@ void ReadFlowFieldComponent(GameObject& go, const toml::table& goTbl,
 
     if (const auto* windTbl = goTbl["WindZoneComponent"].as_table()) {
         /// @note 環境風は GameObject ではなくシーン設定になった。GameObject の並び順で
-        ///       «どれが環境風か» が決まる状態をやめるのがこの移行の目的なので、場としては残さない。
+        /// @note «どれが環境風か» が決まる状態をやめるのがこの移行の目的なので、場としては残さない。
         if ((*windTbl)["enabled"].value_or(true)) {
             outEnvironment.enabled   = true;
             outEnvironment.direction =
@@ -171,7 +170,7 @@ void ReadFlowFieldComponent(GameObject& go, const toml::table& goTbl,
 
     if (legacyUnits) {
         /// @note 旧 strength は加速度 [m/s^2]。静止粒子で dv を等置して流速へ写す。
-        ///       LegacyDrag は «空間の性質» ではなく結合係数だったので、場としては残さない。
+        /// @note LegacyDrag は «空間の性質» ではなく結合係数だったので、場としては残さない。
         std::vector<FlowFieldSettings> converted;
         converted.reserve(forces.size());
         for (FlowFieldSettings& force : forces) {
@@ -188,14 +187,12 @@ void ReadFlowFieldComponent(GameObject& go, const toml::table& goTbl,
     go.AddComponent<FlowField>(component);
 }
 
-/// [environment] を持たないシーンから環境流を救い出す。
-///
-/// «半径 0 の Uniform (+ 同じ GameObject の Curl)» が旧 «環境風» の書き方だった。
-/// 残したままにすると環境流と局所の場で二重に掛かるので、写したら FlowField から取り除く。
-///
+/// @note [environment] を持たないシーンから環境流を救い出す。
+/// @note «半径 0 の Uniform (+ 同じ GameObject の Curl)» が旧 «環境風» の書き方だった。
+/// @note 残したままにすると環境流と局所の場で二重に掛かるので、写したら FlowField から取り除く。
 /// @note 最初に見つかった 1 体だけを環境流とする。2 つ置いてあったシーンでは
-///       «GameObject の並び順で勝者が決まる» 旧挙動をそのまま引き継ぐことになるが、
-///       移行後は Inspector に 1 本だけ見えるので «沈黙» ではなくなる。
+/// @note «GameObject の並び順で勝者が決まる» 旧挙動をそのまま引き継ぐことになるが、
+/// @note 移行後は Inspector に 1 本だけ見えるので «沈黙» ではなくなる。
 void MigrateAmbientFlowFields(Scene& scene)
 {
     for (auto& go : scene.GameObjects()) {
@@ -272,7 +269,7 @@ void NormalizeTomlFloats(toml::node& node)
     }
 }
 
-/// 値型 ⇔ TOML 配列の変換は util 共通版を使う (Engine/Scene/TomlReflector.hpp)。
+/// @note 値型 ⇔ TOML 配列の変換は util 共通版を使う (Engine/Scene/TomlReflector.hpp)。
 using util::ArrToQuat;
 using util::ArrToVec2;
 using util::ArrToVec3;
@@ -290,11 +287,11 @@ toml::table SerializeCollider(const ColliderComponent& col)
     colTbl.insert("isTrigger", col.isTrigger);
 
     /// @note 共有 .physmat への参照。EncodeGuidRefs がドキュメント全体を走査して
-    ///       guid 形式へ変換するため、ここでは素のパス文字列を入れるだけでよい。
+    /// @note guid 形式へ変換するため、ここでは素のパス文字列を入れるだけでよい。
     colTbl.insert("physicsMaterial", col.physicsMaterialPath);
 
     /// @note 参照がある場合も値を書くのは .physmat が失われたときのフォールバック。参照が解決できず
-    ///       物理挙動が既定値へ落ちるより、最後に解決できた値を保っている方が壊れ方として穏やか。
+    /// @note 物理挙動が既定値へ落ちるより、最後に解決できた値を保っている方が壊れ方として穏やか。
     toml::table matTbl;
     matTbl.insert("restitution",      (double)col.material.restitution);
     matTbl.insert("staticFriction",   (double)col.material.staticFriction);
@@ -305,14 +302,14 @@ toml::table SerializeCollider(const ColliderComponent& col)
     colTbl.insert("material", std::move(matTbl));
 
     /// @note shape はここで書かない。physics::Collider の寸法は worldScale を焼き込んだ後の値で、
-    ///       ここから書き出すと保存のたびにスケールが 1 段ずつ掛かって太り続ける。
-    ///       呼び出し側がコンポーネントのフィールドから書くこと。
+    /// @note ここから書き出すと保存のたびにスケールが 1 段ずつ掛かって太り続ける。
+    /// @note 呼び出し側がコンポーネントのフィールドから書くこと。
     return colTbl;
 }
 
-/// MaterialComponent を TOML から復元する。
+/// @note MaterialComponent を TOML から復元する。
 /// @note LoadScene と AppendObjects の 2 経路が同じ表を読むため、スロット配列の読み取りを
-///       1 か所に集約して差異が生まれないようにする。
+/// @note 1 か所に集約して差異が生まれないようにする。
 MaterialComponent ReadMaterialComponent(const toml::table& matTbl)
 {
     MaterialComponent mc{};
@@ -354,7 +351,7 @@ void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
         col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
 
         /// @note 既定は選択制にする前の固定規則 (反発 = Minimum / 摩擦 = GeometricMean)。
-        ///       これにより合成規則を持たない既存シーンの挙動が変わらない。
+        /// @note これにより合成規則を持たない既存シーンの挙動が変わらない。
         const auto restitutionCombine = (*matTbl)["restitutionCombine"].value_or(
             (int64_t)physics::PhysicsMaterialCombine::Minimum);
         const auto frictionCombine = (*matTbl)["frictionCombine"].value_or(
@@ -366,8 +363,8 @@ void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
     }
 
     /// @note 参照があるならこの時点で共有アセットの値へ解決しておく。PhysicsSystem は Play 中しか
-    ///       回らないため、エディタでシーンを開いた直後の Inspector 表示を正しい値にする目的で
-    ///       ロード時にも 1 回通す。
+    /// @note 回らないため、エディタでシーンを開いた直後の Inspector 表示を正しい値にする目的で
+    /// @note ロード時にも 1 回通す。
     col.ResolvePhysicsMaterial();
 }
 
@@ -471,7 +468,7 @@ physics::VolumeType StringToVolumeType(const std::string& value)
 
 /// @brief 廃止した VolumeType::Buoyancy (保存値 2) の VolumeComponent を無効化して知らせる。
 /// @note 黙って Gravity のまま生かすと «消したはずの浮力の代わりに重力が掛かる» が起きる。
-///       水面の浮力は WaterComponent が持つので、この Volume はもう要らない。
+/// @note 水面の浮力は WaterComponent が持つので、この Volume はもう要らない。
 /// @see Docs/design/buoyancy.md
 void RetireLegacyBuoyancyVolume(const toml::table& goTbl, GameObject& go)
 {
@@ -486,108 +483,29 @@ void RetireLegacyBuoyancyVolume(const toml::table& goTbl, GameObject& go)
                        "(Docs/design/buoyancy.md): %s", go.name.c_str());
 }
 
-/// KeyCode ↔ 文字列変換。シリアライズは文字列名で保存し可読性を確保する。
-static const char* KeyCodeToString(input::KeyCode k)
-{
-    using KC = input::KeyCode;
-    switch (k) {
-    case KC::A: return "A"; case KC::B: return "B"; case KC::C: return "C";
-    case KC::D: return "D"; case KC::E: return "E"; case KC::F: return "F";
-    case KC::G: return "G"; case KC::H: return "H"; case KC::I: return "I";
-    case KC::J: return "J"; case KC::K: return "K"; case KC::L: return "L";
-    case KC::M: return "M"; case KC::N: return "N"; case KC::O: return "O";
-    case KC::P: return "P"; case KC::Q: return "Q"; case KC::R: return "R";
-    case KC::S: return "S"; case KC::T: return "T"; case KC::U: return "U";
-    case KC::V: return "V"; case KC::W: return "W"; case KC::X: return "X";
-    case KC::Y: return "Y"; case KC::Z: return "Z";
-    case KC::KEY_0: return "0"; case KC::KEY_1: return "1"; case KC::KEY_2: return "2";
-    case KC::KEY_3: return "3"; case KC::KEY_4: return "4"; case KC::KEY_5: return "5";
-    case KC::KEY_6: return "6"; case KC::KEY_7: return "7"; case KC::KEY_8: return "8";
-    case KC::KEY_9: return "9";
-    case KC::ESCAPE:    return "Escape";
-    case KC::SPACE:     return "Space";
-    case KC::ENTER:     return "Enter";
-    case KC::BACKSPACE: return "Backspace";
-    case KC::SHIFT:     return "Shift";
-    case KC::CTRL:      return "Ctrl";
-    case KC::ALT:       return "Alt";
-    case KC::LEFT:      return "Left";
-    case KC::RIGHT:     return "Right";
-    case KC::UP:        return "Up";
-    case KC::DOWN:      return "Down";
-    case KC::F1:  return "F1";  case KC::F2:  return "F2";  case KC::F3:  return "F3";
-    case KC::F4:  return "F4";  case KC::F5:  return "F5";  case KC::F6:  return "F6";
-    case KC::F7:  return "F7";  case KC::F8:  return "F8";  case KC::F9:  return "F9";
-    case KC::F10: return "F10"; case KC::F11: return "F11"; case KC::F12: return "F12";
-    case KC::MouseLeft:   return "MouseLeft";
-    case KC::MouseRight:  return "MouseRight";
-    case KC::MouseMiddle: return "MouseMiddle";
-    default: return "Unknown";
-    }
-}
-
-static input::KeyCode KeyCodeFromString(const std::string& s)
-{
-    using KC = input::KeyCode;
-    if (s == "A") return KC::A; if (s == "B") return KC::B; if (s == "C") return KC::C;
-    if (s == "D") return KC::D; if (s == "E") return KC::E; if (s == "F") return KC::F;
-    if (s == "G") return KC::G; if (s == "H") return KC::H; if (s == "I") return KC::I;
-    if (s == "J") return KC::J; if (s == "K") return KC::K; if (s == "L") return KC::L;
-    if (s == "M") return KC::M; if (s == "N") return KC::N; if (s == "O") return KC::O;
-    if (s == "P") return KC::P; if (s == "Q") return KC::Q; if (s == "R") return KC::R;
-    if (s == "S") return KC::S; if (s == "T") return KC::T; if (s == "U") return KC::U;
-    if (s == "V") return KC::V; if (s == "W") return KC::W; if (s == "X") return KC::X;
-    if (s == "Y") return KC::Y; if (s == "Z") return KC::Z;
-    if (s == "0") return KC::KEY_0; if (s == "1") return KC::KEY_1;
-    if (s == "2") return KC::KEY_2; if (s == "3") return KC::KEY_3;
-    if (s == "4") return KC::KEY_4; if (s == "5") return KC::KEY_5;
-    if (s == "6") return KC::KEY_6; if (s == "7") return KC::KEY_7;
-    if (s == "8") return KC::KEY_8; if (s == "9") return KC::KEY_9;
-    if (s == "Escape")     return KC::ESCAPE;
-    if (s == "Space")      return KC::SPACE;
-    if (s == "Enter")      return KC::ENTER;
-    if (s == "Backspace")  return KC::BACKSPACE;
-    if (s == "Shift")      return KC::SHIFT;
-    if (s == "Ctrl")       return KC::CTRL;
-    if (s == "Alt")        return KC::ALT;
-    if (s == "Left")       return KC::LEFT;
-    if (s == "Right")      return KC::RIGHT;
-    if (s == "Up")         return KC::UP;
-    if (s == "Down")       return KC::DOWN;
-    if (s == "F1")  return KC::F1;  if (s == "F2")  return KC::F2;
-    if (s == "F3")  return KC::F3;  if (s == "F4")  return KC::F4;
-    if (s == "F5")  return KC::F5;  if (s == "F6")  return KC::F6;
-    if (s == "F7")  return KC::F7;  if (s == "F8")  return KC::F8;
-    if (s == "F9")  return KC::F9;  if (s == "F10") return KC::F10;
-    if (s == "F11") return KC::F11; if (s == "F12") return KC::F12;
-    if (s == "MouseLeft")   return KC::MouseLeft;
-    if (s == "MouseRight")  return KC::MouseRight;
-    if (s == "MouseMiddle") return KC::MouseMiddle;
-    return KC::SPACE;
-}
-
+/// @note KeyCode ↔ 文字列変換。シリアライズは文字列名で保存し可読性を確保する。
 std::string TomlTableToString(const toml::table& table);
 toml::table TomlTableFromString(const std::string& text);
 
-/// instanceId → GameObject の索引。Scene::FindByGuid は線形探索なので、
-/// 参照解決を GameObject ごとに呼ぶと全体で O(n^2) になる。
-/// Scene へ常駐させないのは、同期漏れが「解決できない」ではなく
-/// 「別のオブジェクトに解決される」形で出るため。ロード中だけ作って捨てる。
+/// @note instanceId → GameObject の索引。Scene::FindByGuid は線形探索なので、
+/// @note 参照解決を GameObject ごとに呼ぶと全体で O(n^2) になる。
+/// @note Scene へ常駐させないのは、同期漏れが「解決できない」ではなく
+/// @note 「別のオブジェクトに解決される」形で出るため。ロード中だけ作って捨てる。
 class GuidIndex {
 public:
     /// @param reportDuplicates 同じ instanceId が 2 つ以上あったらエラーとして出すか。
-    ///   重複はシーンファイルの性質なので、報告はファイルを読んだ経路 1 回で足りる。
-    ///   ロード後に索引を作り直す場面 (複製など) で出し直すと、同じ 1 件が操作のたびに
-    ///   並ぶだけで、新しいことは何も判らない。
+    /// @note 重複はシーンファイルの性質なので、報告はファイルを読んだ経路 1 回で足りる。
+    /// @note ロード後に索引を作り直す場面 (複製など) で出し直すと、同じ 1 件が操作のたびに
+    /// @note 並ぶだけで、新しいことは何も判らない。
     explicit GuidIndex(Scene& scene, bool reportDuplicates = true)
     {
         for (GameObject& go : scene.GameObjects()) {
             if (go.instanceId.empty()) continue;
 
             /// @note emplace は先勝ちなので、重複した id の GameObject は辿れなくなり、
-            ///       その id への参照はすべて先頭のオブジェクトへ解決される。
-            ///       新しい id を振って直しはしない — 参照は既に先頭を指しており、読み込みの
-            ///       副作用でシーンを書き換えると事故がそのまま保存される。両方の名前を出すまで。
+            /// @note その id への参照はすべて先頭のオブジェクトへ解決される。
+            /// @note 新しい id を振って直しはしない — 参照は既に先頭を指しており、読み込みの
+            /// @note 副作用でシーンを書き換えると事故がそのまま保存される。両方の名前を出すまで。
             const auto [it, inserted] = m_objects.emplace(go.instanceId, &go);
             if (!inserted && reportDuplicates) {
                 FBZZ_LOG_ERROR("SceneSerializer: duplicate instanceId %s "
@@ -608,21 +526,21 @@ private:
     std::unordered_map<std::string, GameObject*> m_objects;
 };
 
-/// GameObject 参照とアセット参照を Scene の文脈で解決する書き込みリフレクタ。
-/// 値型・リスト・入れ子スコープは util::TomlWriteReflector が受け持つ。
+/// @note GameObject 参照とアセット参照を Scene の文脈で解決する書き込みリフレクタ。
+/// @note 値型・リスト・入れ子スコープは util::TomlWriteReflector が受け持つ。
 class SceneWriteReflector : public util::TomlWriteReflector {
 public:
-    /// GameObject 参照は EntityID (並び順の番号) ではなく instanceId で保存する。
-    /// 番号は 1 つ増減しただけで以降が全部ずれ、しかも無効にならず別のオブジェクトを
-    /// 指したまま有効になる。EntityID → instanceId の変換に Scene が要る。
-    /// 挿入が先勝ちなのは従来の保存結果と一致させるため。
+    /// @note GameObject 参照は EntityID (並び順の番号) ではなく instanceId で保存する。
+    /// @note 番号は 1 つ増減しただけで以降が全部ずれ、しかも無効にならず別のオブジェクトを
+    /// @note 指したまま有効になる。EntityID → instanceId の変換に Scene が要る。
+    /// @note 挿入が先勝ちなのは従来の保存結果と一致させるため。
     explicit SceneWriteReflector(toml::table& table, const Scene* scene = nullptr)
         : util::TomlWriteReflector(table, /*overwriteDuplicates=*/false)
         , m_scene(scene)
     {
     }
 
-    /// 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
+    /// @note 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
     using util::TomlWriteReflector::Field;
     using util::TomlWriteReflector::ListField;
 
@@ -630,42 +548,15 @@ public:
     {
         Put(name, GuidOfEntity(v));
     }
-    void Field(const char* name, input::KeyCode& v) override
-    {
-        Put(name, std::string(KeyCodeToString(v)));
-    }
-    void AssetField(const char* name,
-                    ScriptAssetReference& v,
-                    ScriptAssetType) override
-    {
-        if (v.guid.empty() && !v.path.empty())
-            v.SetPath(v.path);
-        toml::table assetRef;
-        assetRef.insert("guid", v.guid);
-        assetRef.insert("path", v.path);
-        Put(name, std::move(assetRef));
-    }
+
+
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         toml::array array;
         for (const auto& value : values) array.push_back(GuidOfEntity(value.id));
         Put(name, std::move(array));
     }
-    void AssetListField(const char* name,
-                        std::vector<ScriptAssetReference>& values,
-                        ScriptAssetType) override
-    {
-        toml::array array;
-        for (auto& value : values) {
-            if (value.guid.empty() && !value.path.empty())
-                value.SetPath(value.path);
-            toml::table assetRef;
-            assetRef.insert("guid", value.guid);
-            assetRef.insert("path", value.path);
-            array.push_back(std::move(assetRef));
-        }
-        Put(name, std::move(array));
-    }
+
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
         toml::table reference;
@@ -683,7 +574,7 @@ public:
     }
 
 private:
-    /// 解決できない参照は空文字列。読み込み側は空を「未設定」として扱う。
+    /// @note 解決できない参照は空文字列。読み込み側は空を「未設定」として扱う。
     [[nodiscard]] std::string GuidOfEntity(EntityID id) const
     {
         if (!m_scene || !id.IsValid()) return {};
@@ -694,19 +585,19 @@ private:
     const Scene* m_scene = nullptr;
 };
 
-/// 書き込み側と対称の読み込みリフレクタ。値型は util::TomlReadReflector が読み、
-/// ここは GameObject 参照とアセット参照だけを Scene の文脈で解決する。
+/// @note 書き込み側と対称の読み込みリフレクタ。値型は util::TomlReadReflector が読み、
+/// @note ここは GameObject 参照とアセット参照だけを Scene の文脈で解決する。
 class SceneReadReflector : public util::TomlReadReflector {
 public:
-    /// guids が null の場合、GameObject 参照は解決されず無効のまま残る。
-    /// 参照先がまだ生成されていない Pass 1 では正常な状態で、あとの解決パスが埋め直す。
+    /// @note guids が null の場合、GameObject 参照は解決されず無効のまま残る。
+    /// @note 参照先がまだ生成されていない Pass 1 では正常な状態で、あとの解決パスが埋め直す。
     explicit SceneReadReflector(const toml::table& table, const GuidIndex* guids = nullptr)
         : util::TomlReadReflector(table)
         , m_guids(guids)
     {
     }
 
-    /// 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
+    /// @note 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
     using util::TomlReadReflector::Field;
     using util::TomlReadReflector::ListField;
 
@@ -716,24 +607,9 @@ public:
             v = EntityFromGuid(*node);
     }
 
-    void Field(const char* name, input::KeyCode& v) override
-    {
-        const toml::node* node = FindNode(name);
-        const std::string s = node ? node->value_or(std::string{}) : std::string{};
-        if (!s.empty()) v = KeyCodeFromString(s);
-    }
 
-    void AssetField(const char* name,
-                    ScriptAssetReference& v,
-                    ScriptAssetType) override
-    {
-        const toml::node* node = FindNode(name);
-        if (!node) return;
-        if (const toml::table* assetRef = node->as_table()) {
-            v.guid = (*assetRef)["guid"].value_or(std::string{});
-            v.path = (*assetRef)["path"].value_or(std::string{});
-        }
-    }
+
+
 
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
@@ -745,23 +621,7 @@ public:
             values.push_back(EntityRef{ EntityFromGuid(node) });
     }
 
-    void AssetListField(const char* name,
-                        std::vector<ScriptAssetReference>& values,
-                        ScriptAssetType) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array) {
-            ScriptAssetReference value;
-            if (const toml::table* assetRef = node.as_table()) {
-                value.guid = (*assetRef)["guid"].value_or(std::string{});
-                value.path = (*assetRef)["path"].value_or(std::string{});
-            }
-            values.push_back(std::move(value));
-        }
-    }
+
 
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
@@ -791,12 +651,12 @@ protected:
     const GuidIndex* m_guids = nullptr;
 };
 
-/// GameObject 参照だけを解決し直す読み込みリフレクタ。
-/// 参照先が参照元より後ろに並ぶことがあるので 1 パスでは解決できない。patch 先の
-/// アドレスも覚えられない (コンポーネントはローカル変数から ComponentArray へ move される)。
-/// 全 GameObject を生成し終えてから参照フィールドだけを流し直すのが、追加の状態を
-/// 持たずに済む唯一の形。
-/// 値フィールドを無効化してあるのは「解決のためだけのパス」だと型で示すため。
+/// @note GameObject 参照だけを解決し直す読み込みリフレクタ。
+/// @note 参照先が参照元より後ろに並ぶことがあるので 1 パスでは解決できない。patch 先の
+/// @note アドレスも覚えられない (コンポーネントはローカル変数から ComponentArray へ move される)。
+/// @note 全 GameObject を生成し終えてから参照フィールドだけを流し直すのが、追加の状態を
+/// @note 持たずに済む唯一の形。
+/// @note 値フィールドを無効化してあるのは「解決のためだけのパス」だと型で示すため。
 class EntityRefResolveReflector : public SceneReadReflector {
 public:
     using SceneReadReflector::SceneReadReflector;
@@ -810,7 +670,7 @@ public:
     void Field(const char*, std::string&) override {}
     void Field(const char*, math::Quaternion&) override {}
     void Field(const char*, input::KeyCode&) override {}
-    void AssetField(const char*, ScriptAssetReference&, ScriptAssetType) override {}
+
     void ListField(const char*, std::vector<float>&) override {}
     void ListField(const char*, std::vector<int>&) override {}
     void ListField(const char*, std::vector<bool>&) override {}
@@ -818,10 +678,10 @@ public:
     void ListField(const char*, std::vector<math::Vector2>&) override {}
     void ListField(const char*, std::vector<math::Vector3>&) override {}
     void ListField(const char*, std::vector<math::Vector4>&) override {}
-    void AssetListField(const char*, std::vector<ScriptAssetReference>&, ScriptAssetType) override {}
 
-    /// 入れ子の Serializable は作り直さず、既にある実体の参照だけを解決する。
-    /// 基底の実装はファクトリで作り直すので、Pass 1 で読んだオブジェクトが差し替わる。
+
+    /// @note 入れ子の Serializable は作り直さず、既にある実体の参照だけを解決する。
+    /// @note 基底の実装はファクトリで作り直すので、Pass 1 で読んだオブジェクトが差し替わる。
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
         if (!value.value) return;
@@ -836,7 +696,7 @@ public:
     }
 };
 
-/// Registry で Automatic 指定された標準コンポーネントを Reflect() だけで保存する。
+/// @note Registry で Automatic 指定された標準コンポーネントを Reflect() だけで保存する。
 /// @note 新型追加時に SceneSerializer へ型別 if ブロックを増やさず、単純データを共通経路へ流す。
 void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable, const Scene* scene)
 {
@@ -853,7 +713,7 @@ void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable, cons
     });
 }
 
-/// RegistryでAutomatic指定された標準コンポーネントを既定値へReflect()で復元する。
+/// @note RegistryでAutomatic指定された標準コンポーネントを既定値へReflect()で復元する。
 void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
 {
     ForEachRegisteredComponent([&]<typename T, typename Registration>() {
@@ -870,8 +730,8 @@ void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
     });
 }
 
-/// 全 GameObject 生成後に呼ぶ。コンポーネントとスクリプトの GameObject 参照を
-/// instanceId から EntityID へ解決する。
+/// @note 全 GameObject 生成後に呼ぶ。コンポーネントとスクリプトの GameObject 参照を
+/// @note instanceId から EntityID へ解決する。
 void ResolveEntityReferences(GameObject& go,
                              const toml::table& gameObjectTable,
                              const GuidIndex& guids)
@@ -894,7 +754,7 @@ void ResolveEntityReferences(GameObject& go,
     if (!sc || !scriptsArr) return;
 
     /// @note 読み込み時と同じ規則で歩幅を合わせる。readScriptEntry は type が空の項目を
-    ///       読み飛ばすため、単純な添字対応にすると 1 つずれた Script へ書き込む。
+    /// @note 読み飛ばすため、単純な添字対応にすると 1 つずれた Script へ書き込む。
     size_t scriptIndex = 0;
     for (const auto& item : *scriptsArr) {
         const auto* scTbl = item.as_table();
@@ -942,20 +802,19 @@ toml::table MakeScriptEntryTable(const std::string& type, bool enabled, toml::ta
     return scTbl;
 }
 
-/// 実体は Scene/MeshResolver.cpp。実行中の meshPath 差し替えからも同じ解決を使うため、
-/// ここから括り出してある。
-///
-/// resources == nullptr は «GPU リソースを作らない» 復元 (SceneSerializer::LoadData)。
-/// メッシュは張らず、meshPath だけをコンポーネントに残す。
+/// @note 実体は Scene/MeshResolver.cpp。実行中の meshPath 差し替えからも同じ解決を使うため、
+/// @note ここから括り出してある。
+/// @note resources == nullptr は «GPU リソースを作らない» 復元 (SceneSerializer::LoadData)。
+/// @note メッシュは張らず、meshPath だけをコンポーネントに残す。
 renderer::Mesh* ResolveMesh(const std::string& path, renderer::ResourceManager* resources)
 {
     if (resources == nullptr) return nullptr;
     return ResolveMeshPath(path, *resources);
 }
 
-/// SceneSerializer が扱う Asset パスを、現在保存/読込している Scene の場所から解決する。
-/// FileSystem はプロジェクトルートを知らないので、"Assets/..." をそのまま読むと
-/// カレントディレクトリ次第で見失う。Scene が Assets 配下にある前提から逆算する。
+/// @note SceneSerializer が扱う Asset パスを、現在保存/読込している Scene の場所から解決する。
+/// @note FileSystem はプロジェクトルートを知らないので、"Assets/..." をそのまま読むと
+/// @note カレントディレクトリ次第で見失う。Scene が Assets 配下にある前提から逆算する。
 std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std::string& assetPath)
 {
     if (assetPath.empty()) return {};
@@ -991,15 +850,15 @@ std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std
 
 } // namespace
 
-/// ScriptComponent の複製
+/// @note ScriptComponent の複製
 ScriptComponent CloneScriptComponent(const ScriptComponent& src,
                                      const Scene* srcScene,
                                      Scene* dstScene,
                                      GameObject* dstOwner)
 {
     /// @note GuidIndex の構築は GameObject 数に比例するため、Script ごとに作ると階層複製で
-    ///       GameObject 数 × Script 数になる。重複 id の報告は切る。複製先はロード済みの
-    ///       シーンで、重複があるならそのとき出ている。
+    /// @note GameObject 数 × Script 数になる。重複 id の報告は切る。複製先はロード済みの
+    /// @note シーンで、重複があるならそのとき出ている。
     std::optional<GuidIndex> guids;
     if (dstScene) guids.emplace(*dstScene, false);
 
@@ -1048,7 +907,7 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
     return dst;
 }
 
-/// Save
+/// @note Save
 bool SceneSerializer::Save(Scene& scene, const std::string& path)
 {
     const std::string text = SaveToText(scene, path);
@@ -1060,18 +919,18 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePath)
 {
     /// @note Terrain のレイヤーマテリアルは «シーンの隣» へ書き出す副作用がある。
-    ///       保存先が決まらない呼び出し (テキストだけ欲しい場合) では書き出さない。
+    /// @note 保存先が決まらない呼び出し (テキストだけ欲しい場合) では書き出さない。
     const std::string& path = scenePath;
     toml::table doc;
 
     toml::table sceneTbl;
     /// @note 2 = GameObject 参照を EntityID の並び順番号ではなく instanceId で保存する形式。
-    ///       読み込み側は分岐しない (旧形式は移行済み)。読む人向けの目印として上げておく。
+    /// @note 読み込み側は分岐しない (旧形式は移行済み)。読む人向けの目印として上げておく。
     sceneTbl.insert("format_version", 2);
     doc.insert("scene", std::move(sceneTbl));
 
     /// @note 環境流はシーン設定。重力が ProjectSettings にあるのと同じ位置づけで、
-    ///       GameObject の並び順に依らないところへ置く。
+    /// @note GameObject の並び順に依らないところへ置く。
     {
         SceneEnvironment environment = scene.Environment();
         doc.insert("environment", SerializeReflected(environment));
@@ -1081,7 +940,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
     for (auto& go : scene.GameObjects()) {
         /// @note ランタイム専用 GO は永続化しない。システムが needsBake 時などに再生成するため、
-        ///       保存するとロード時にゾンビ GO が蓄積し childEntities と不整合を起こす。
+        /// @note 保存するとロード時にゾンビ GO が蓄積し childEntities と不整合を起こす。
         if (go.runtimeGenerated) continue;
 
         toml::table goTbl;
@@ -1128,7 +987,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             matTbl.insert("enabled",  mc->enabled);
             matTbl.insert("visible",  mc->visible);
             /// @note submesh 1 以降のマテリアルスロット。単一マテリアルのオブジェクトでは
-            ///       空配列を書かず、既存シーンの diff を増やさない。
+            /// @note 空配列を書かず、既存シーンの diff を増やさない。
             if (!mc->extraSlots.empty()) {
                 toml::array slotArr;
                 for (const auto& slot : mc->extraSlots) {
@@ -1200,7 +1059,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             ccTbl.insert("backgroundColor", Vec4ToArr(cc->backgroundColor));
             ccTbl.insert("clearMode", (int64_t)cc->clearMode);
             /// @note レイヤー別距離は「1 つでも設定されているとき」だけ 32 要素の配列を書く。既定
-            ///       (全 0) のカメラすべてに 32 個のゼロが並ぶと、シーンの差分が読めなくなるため。
+            /// @note (全 0) のカメラすべてに 32 個のゼロが並ぶと、シーンの差分が読めなくなるため。
             {
                 bool anyLayerDistance = false;
                 for (int i = 0; i < kCullLayerCount; ++i)
@@ -1251,11 +1110,11 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         WriteComponentReflected<AtmosphericScatteringComponent>(go, goTbl, "AtmosphericScatteringComponent");
 
         /// @note PostProcessVolumeComponent — ルック本体は .fzdata プロファイル側にあるため、
-        ///       シーンにはボリュームの掛かり方 (参照・領域・優先度) だけを保存する。
+        /// @note シーンにはボリュームの掛かり方 (参照・領域・優先度) だけを保存する。
         WriteComponentReflected<PostProcessVolumeComponent>(go, goTbl, "PostProcessVolumeComponent");
 
         /// @note ParticleEmitter。表を手書きで二重管理すると、.vfx 側にだけ項目が足されて
-        ///       シーン直置きの Emitter が Play 往復で既定値へ戻る。コーデックへ委譲する。
+        /// @note シーン直置きの Emitter が Play 往復で既定値へ戻る。コーデックへ委譲する。
         if (auto* pe = go.GetComponent<ParticleEmitter>()) {
             goTbl.insert("ParticleEmitter", asset::SerializeParticleEmitterSettings(pe->settings));
         }
@@ -1395,7 +1254,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             smrTbl.insert("castShadows", smr->castShadows);
             smrTbl.insert("modelPath",   smr->modelPath);
             /// @note この Renderer が担当する submesh の添字列。空なら書き出さない
-            ///       (=「モデル全体を描く」)。DCC のノード 1 個が複数マテリアルを持つので配列。
+            /// @note (=「モデル全体を描く」)。DCC のノード 1 個が複数マテリアルを持つので配列。
             if (!smr->submeshIndices.empty()) {
                 toml::array submeshes;
                 for (const uint32_t index : smr->submeshIndices)
@@ -1403,9 +1262,9 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 smrTbl.insert("submeshIndices", std::move(submeshes));
             }
             /// @note ボーン階層の起点 (Unity の SkinnedMeshRenderer.rootBone 相当)。
-            ///       EnsureBoneHierarchy の「自分の子孫から探す」だけだと、ボーンが兄弟の
-            ///       Armature 側に居る構成で見つからず Renderer ごとにスケルトンが複製される。
-            ///       EntityID は実行ごとに変わるので GUID + 名前で持つ。
+            /// @note EnsureBoneHierarchy の「自分の子孫から探す」だけだと、ボーンが兄弟の
+            /// @note Armature 側に居る構成で見つからず Renderer ごとにスケルトンが複製される。
+            /// @note EntityID は実行ごとに変わるので GUID + 名前で持つ。
             if (smr->skeletonRootEntity.IsValid()) {
                 if (auto* skeletonRoot = scene.GetGameObject(smr->skeletonRootEntity)) {
                     smrTbl.insert("skeletonRootGuid", skeletonRoot->instanceId);
@@ -1416,7 +1275,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         }
 
         /// @note BoneComponent: skinnedMeshEntity は EntityID (実行ごとに変わる) ため、オーナー
-        ///       GameObject の名前として保存し、ロード後の Pass 3 で解決する。
+        /// @note GameObject の名前として保存し、ロード後の Pass 3 で解決する。
         if (auto* bone = go.GetComponent<BoneComponent>()) {
             toml::table boneTbl;
             boneTbl.insert("boneName",  bone->boneName);
@@ -1424,7 +1283,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             boneTbl.insert("boneIndex", (int64_t)bone->boneIndex);
             boneTbl.insert("generated", bone->generated);
             /// @note skinnedMeshEntity の参照を GUID + 名前の両方で保存する。GUID はリネームに
-            ///       耐性があり、名前は古いファイルとの後方互換フォールバック。
+            /// @note 耐性があり、名前は古いファイルとの後方互換フォールバック。
             std::string ownerName;
             std::string ownerGuid;
             if (bone->skinnedMeshEntity.IsValid())
@@ -1570,8 +1429,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 pTbl.insert("floatValue", (double)p.floatValue);
                 pTbl.insert("intValue",   (int64_t)p.intValue);
                 /// @note Trigger は一時的な発火信号であり、Scene に初期値を保存しない。保存された
-                ///       true がロード直後の遷移を発火させると、Play 開始時に Player の
-                ///       Jump / Draw / Holster が勝手に再生される。
+                /// @note true がロード直後の遷移を発火させると、Play 開始時に Player の
+                /// @note Jump / Draw / Holster が勝手に再生される。
                 pTbl.insert(
                     "boolValue",
                     p.type == ParamType::Trigger ? false : p.boolValue);
@@ -1587,8 +1446,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 layerTbl.insert("mode", (int64_t)layer.mode);
                 layerTbl.insert("enabled", layer.enabled);
                 /// @note .mask アセット参照と加算基準ポーズ。
-                ///       レイヤー独自ステートマシン (layer.states) は保存しない ─ 遷移グラフの
-                ///       置き場は .animcontroller で、両方に持たせると二重管理になる。
+                /// @note レイヤー独自ステートマシン (layer.states) は保存しない ─ 遷移グラフの
+                /// @note 置き場は .animcontroller で、両方に持たせると二重管理になる。
                 layerTbl.insert("maskPath", layer.mask.path);
                 toml::table additiveRef;
                 additiveRef.insert("sourcePath", layer.additiveReference.sourcePath);
@@ -1619,7 +1478,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         }
 
         /// @note IKSolverComponent: targetEntity / poleEntity は EntityID (実行ごとに変わる) ため、
-        ///       参照先 GameObject の名前として保存し、ロード後の Pass 3 で解決する。
+        /// @note 参照先 GameObject の名前として保存し、ロード後の Pass 3 で解決する。
         if (auto* ikSolver = go.GetComponent<IKSolverComponent>()) {
             toml::table ikTbl;
             ikTbl.insert("enabled", ikSolver->enabled);
@@ -1664,9 +1523,9 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 chainTbl.insert("lookAtClampAngle",    (double)chain.lookAtClampAngle);
                 chainTbl.insert("lookAtSpeed",         (double)chain.lookAtSpeed);
                 /// @note EntityID が有効なら実 GameObject から名前と GUID を取り、無効なら
-                ///       文字列フィールドを使う。Inspector でテキスト直打ちしたまま Resolve せずに
-                ///       保存すると EntityID は INVALID で targetName にだけ正しい値がある。
-                ///       GUID 優先で保存し、古いシーンとの互換性のため名前も残す。
+                /// @note 文字列フィールドを使う。Inspector でテキスト直打ちしたまま Resolve せずに
+                /// @note 保存すると EntityID は INVALID で targetName にだけ正しい値がある。
+                /// @note GUID 優先で保存し、古いシーンとの互換性のため名前も残す。
                 std::string savedTargetName;
                 std::string savedTargetGuid;
                 if (chain.targetEntity.IsValid())
@@ -1743,15 +1602,15 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         WriteComponentReflected<RagdollComponent>(go, goTbl, "RagdollComponent");
 
         /// @note ScriptComponent
-        ///       TerrainComponent
+        /// @note TerrainComponent
         if (auto* tc = go.GetComponent<TerrainComponent>()) {
             toml::table terrainTbl;
             terrainTbl.insert("enabled",          tc->enabled);
             terrainTbl.insert("terrainAssetPath", tc->terrainAssetPath);
 
             /// @note シーン終了時の保存では Inspector の「Save Asset」を押さないため、参照だけ保存
-            ///       すると .terrain / .mat の実体が古いまま残る。Scene 保存と同時に外部アセットも
-            ///       更新して再起動後の白地形を防ぐ。scenePath が空なら実体は書かない。
+            /// @note すると .terrain / .mat の実体が古いまま残る。Scene 保存と同時に外部アセットも
+            /// @note 更新して再起動後の白地形を防ぐ。scenePath が空なら実体は書かない。
             if (!path.empty() && !tc->terrainAssetPath.empty()) {
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
@@ -1761,7 +1620,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             for (const std::string& layerMaterial : tc->layerMaterials) {
                 layerMatArr.push_back(layerMaterial);
                 /// @note 保存先が決まっているときだけ、レイヤーマテリアルを実ファイルへ書く。
-                ///       scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
+                /// @note scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
                 if (!path.empty() && !layerMaterial.empty()) {
                     auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(layerMaterial);
                     if (auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
@@ -1795,7 +1654,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         }
 
         /// @note WaterComponent — ジオメトリ・個体の補正・浮力・materialPath のみ保存。
-        ///       水の種類 (色・波・風・水流) は .mat が持つ。waves / current は WaterSystem が毎フレーム作る。
+        /// @note 水の種類 (色・波・風・水流) は .mat が持つ。waves / current は WaterSystem が毎フレーム作る。
         if (auto* water = go.GetComponent<WaterComponent>()) {
             toml::table waterTbl;
             waterTbl.insert("enabled",             water->enabled);
@@ -1824,8 +1683,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         WriteComponentReflected<NavMeshAgentComponent>(go, goTbl, "NavMeshAgentComponent");
 
         /// @note NavMeshOffMeshLinkComponent — 非連続ポリゴン接続の設計値のみ保存する。Bake 後の
-        ///       内部接続は navMesh と同じランタイム生成物なので、Prefab/Scene には編集可能な
-        ///       端点・方向・通過条件だけを永続化する。
+        /// @note 内部接続は navMesh と同じランタイム生成物なので、Prefab/Scene には編集可能な
+        /// @note 端点・方向・通過条件だけを永続化する。
         WriteComponentReflected<NavMeshOffMeshLinkComponent>(go, goTbl, "NavMeshOffMeshLinkComponent");
 
         /// @note NavMeshPatrolComponent — ウェイポイント・巡回設定を保存。進行状態はランタイムのため非保存。
@@ -1892,7 +1751,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
     NormalizeTomlFloats(doc);
 
     /// @note ディスク上のアセット参照は guid: 形式にする (リネーム・移動耐性)。
-    ///       ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
+    /// @note ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
     asset::EncodeGuidRefs(doc);
 
     std::ostringstream oss;
@@ -1900,12 +1759,12 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
     return oss.str();
 }
 
-/// Load
+/// @note Load
 std::unique_ptr<Scene> SceneSerializer::Load(
     const std::string& path, renderer::ResourceManager* resources)
 {
     /// @note assert しない。シーンファイルの欠落や破損はデータ側の事故で、不変条件の破れではない。
-    ///       abort させると壊れたシーンへ遷移しただけでエディタが落ちる。ログにして nullptr を返す。
+    /// @note abort させると壊れたシーンへ遷移しただけでエディタが落ちる。ログにして nullptr を返す。
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) {
         FBZZ_LOG_ERROR("SceneSerializer: scene file not found [%s]", path.c_str());
@@ -1937,7 +1796,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     auto scene = std::make_unique<Scene>();
 
     /// @note 環境流。無ければ «半径なしの Uniform (+ Curl)» を環境風と読んでいた旧シーンなので、
-    ///       ReadFlowFieldComponent のあとで MigrateAmbientFlowFields が拾い上げる。
+    /// @note ReadFlowFieldComponent のあとで MigrateAmbientFlowFields が拾い上げる。
     const bool hasEnvironmentTable = doc.contains("environment");
     if (const auto* environmentTbl = doc["environment"].as_table())
         DeserializeReflected(*environmentTbl, scene->Environment());
@@ -1964,8 +1823,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
         go.SetActive(active);
         /// @note instanceId: ファイルに保存された UUID を復元する。
-        ///       古いシーンファイルには instanceId がないため、その場合は CreateGameObject が
-        ///       生成した UUID をそのまま使う (後方互換)。
+        /// @note 古いシーンファイルには instanceId がないため、その場合は CreateGameObject が
+        /// @note 生成した UUID をそのまま使う (後方互換)。
         {
             std::string id = (*goTbl)["instanceId"].value_or(std::string{});
             if (!id.empty()) go.instanceId = std::move(id);
@@ -2094,7 +1953,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             lodGroup.size = (float)(*lodTbl)["size"].value_or(1.0);
             lodGroup.cullBelowLastLevel = (*lodTbl)["cullBelowLastLevel"].value_or(false);
             /// @note 既存シーンにキーが無いときは 0 (従来どおり即差し替え) にする。既定値 0.25 を
-            ///       使うと保存済みのシーンの見え方を勝手に変えてしまうため。
+            /// @note 使うと保存済みのシーンの見え方を勝手に変えてしまうため。
             lodGroup.fadeDuration = (float)(*lodTbl)["fadeDuration"].value_or(0.0);
             if (const auto* levelsArr = (*lodTbl)["levels"].as_array()) {
                 for (const auto& levelNode : *levelsArr) {
@@ -2133,10 +1992,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             ParticleEmitter pe{};
             asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
             /// @note 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
-            ///       乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
+            /// @note 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
             pe.ResetPlayback();
             /// @note 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
-            ///       colorGradient.space が無い場合だけ、こちらを正として反映する。
+            /// @note colorGradient.space が無い場合だけ、こちらを正として反映する。
             if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
                 pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
                     std::clamp(static_cast<int>(*legacySpace), 0,
@@ -2654,9 +2513,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
 
         /// @note RagdollComponent
-        ///
-        ///       実行状態 (rig / phase) は保存しない。ラグドールは倒れる数秒のための一時状態で、
-        ///       シーンに焼き付いていると Play した瞬間に崩れている。
+        /// @note 実行状態 (rig / phase) は保存しない。ラグドールは倒れる数秒のための一時状態で、
+        /// @note シーンに焼き付いていると Play した瞬間に崩れている。
         ReadComponentReflected<RagdollComponent>(go, *goTbl, "RagdollComponent");
 
         /// @note TerrainComponent
@@ -2740,17 +2598,17 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
 
         /// @note NavMeshSurfaceComponent
-        ///       navMesh は Bake で再生成するため needsBake=true で登録し非保存。
+        /// @note navMesh は Bake で再生成するため needsBake=true で登録し非保存。
         {
             /// @note 値の読み込みは Reflect() が担う。既定は NavMeshSurfaceComponent{} から来るので、
-            ///       キーの無い古いシーンも構造体の既定で開く。
-            ///       (maxClimb は既定 0.4。0 で読むと «段差を無視して繋がる» 旧 NavMesh の状態が
-            ///       固定され、しかも Inspector には 0 と出て設定として正しく見えてしまう。)
+            /// @note キーの無い古いシーンも構造体の既定で開く。
+            /// @note (maxClimb は既定 0.4。0 で読むと «段差を無視して繋がる» 旧 NavMesh の状態が
+            /// @note 固定され、しかも Inspector には 0 と出て設定として正しく見えてしまう。)
             if (const auto* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table()) {
                 NavMeshSurfaceComponent surface{};
                 DeserializeReflected(*surfTbl, surface);
                 /// @note ベイク結果 (navMesh) は保存しないので、開いた直後は «設定はあるが面が無い»。
-                ///       シーンを開いたら必ず焼き直す。
+                /// @note シーンを開いたら必ず焼き直す。
                 surface.needsBake = true;
                 go.AddComponent<NavMeshSurfaceComponent>(std::move(surface));
             }
@@ -2835,7 +2693,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         };
 
         /// @note ScriptComponents は ScriptComponent 内の複数 Script を表す唯一の保存形式。まだ
-        ///       1.0 前のため旧単体形式との互換を持たず、保存形式の分岐を増やさない。
+        /// @note 1.0 前のため旧単体形式との互換を持たず、保存形式の分岐を増やさない。
         if (auto* scriptsArr = (*goTbl)["ScriptComponents"].as_array()) {
             ScriptComponent sc{};
             for (auto& item : *scriptsArr) {
@@ -2867,7 +2725,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     }
 
     /// @note Pass 3: EntityID 参照を識別子から解決する
-    ///       EntityID は実行ごとに変わるので識別子で保存し、全 GameObject を揃えてから解決する。
+    /// @note EntityID は実行ごとに変わるので識別子で保存し、全 GameObject を揃えてから解決する。
 
     /// @note Reflect() を通る全コンポーネント / スクリプトの GameObject 参照。
     for (auto& item : *goArr) {
@@ -2880,8 +2738,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     }
 
     /// @note IKSolverComponent: targetEntity / poleEntity を GUID 優先・名前フォールバックで解決する。
-    ///       GUID はリネームに耐性があり複数インスタンス時も衝突しない。古いシーンファイルには
-    ///       GUID が無いため名前フォールバックで後方互換を保つ。
+    /// @note GUID はリネームに耐性があり複数インスタンス時も衝突しない。古いシーンファイルには
+    /// @note GUID が無いため名前フォールバックで後方互換を保つ。
     for (auto& go : scene->GameObjects()) {
         auto* ik = go.GetComponent<IKSolverComponent>();
         if (!ik) continue;
@@ -2908,9 +2766,9 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     }
 
     /// @note BoneComponent: skinnedMeshEntity
-    ///       オーナーの EntityID は Pass 1 では確定しないので、識別子をここで変換する。
-    ///       解決順は GUID (リネーム耐性) → 名前 (後方互換)。
-    ///       nodeEntities は EnsureBoneHierarchy が nodeIndex から再構築するので保存不要。
+    /// @note オーナーの EntityID は Pass 1 では確定しないので、識別子をここで変換する。
+    /// @note 解決順は GUID (リネーム耐性) → 名前 (後方互換)。
+    /// @note nodeEntities は EnsureBoneHierarchy が nodeIndex から再構築するので保存不要。
     for (size_t i = 0; i < goArr->size(); ++i) {
         auto* goTbl = (*goArr)[i].as_table();
         if (!goTbl) continue;
@@ -2920,8 +2778,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
         if (ownerGuid.empty() && ownerName.empty()) continue;
         /// @note 骨の名前はシーン内で一意ではない (同じモデルを 2 体置くと Seg01 が 2 つになる)
-        ///       ため名前で引かない。名前で引くと後から来た側の行が 1 体目の骨へ書き込まれ、
-        ///       2 体目は skinnedMeshEntity を持たず «バインドポーズで固まる» 形でしか症状が出ない。
+        /// @note ため名前で引かない。名前で引くと後から来た側の行が 1 体目の骨へ書き込まれ、
+        /// @note 2 体目は skinnedMeshEntity を持たず «バインドポーズで固まる» 形でしか症状が出ない。
         const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
         auto* boneGo = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
         if (!boneGo) boneGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
@@ -2935,8 +2793,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     }
 
     /// @note SkinnedMeshRenderer: skeletonRootEntity
-    ///       起点のボーンは Pass 1 では未生成のことがあるので、全 GO を揃えてから変換する。
-    ///       解決できていれば AnimatorSystem は子孫を探さずに共有スケルトンへ束縛できる。
+    /// @note 起点のボーンは Pass 1 では未生成のことがあるので、全 GO を揃えてから変換する。
+    /// @note 解決できていれば AnimatorSystem は子孫を探さずに共有スケルトンへ束縛できる。
     for (size_t i = 0; i < goArr->size(); ++i) {
         auto* goTbl = (*goArr)[i].as_table();
         if (!goTbl) continue;
@@ -2958,8 +2816,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     }
 
     /// @note TerrainGridComponent の cellInstanceIds → cells を全 GO ロード後に解決する。Grid が
-    ///       参照する Terrain GO はシリアライズ順で後に来る可能性があるため、全 GO を追加してから
-    ///       GUID → EntityID の変換を行う。
+    /// @note 参照する Terrain GO はシリアライズ順で後に来る可能性があるため、全 GO を追加してから
+    /// @note GUID → EntityID の変換を行う。
     for (auto& go : scene->GameObjects()) {
         if (auto* tgc = go.GetComponent<TerrainGridComponent>())
             tgc->ResolveFromScene(*scene);
@@ -2980,13 +2838,13 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     }
 
     /// @note 生えなかったスクリプトを 1 行で告げる。中身は SerializedScriptData として entry に残り、
-    ///       エディタは DLL を読み直したあと Reload() で同じデータから生やし直す (捨てていない)。
+    /// @note エディタは DLL を読み直したあと Reload() で同じデータから生やし直す (捨てていない)。
     /// @note 1 件ずつ警告にしないのは、DLL 再ビルド中に «まだ居ない» 型を通るたびにログが埋まり、
-    ///       本当の欠落が沈むため。
+    /// @note 本当の欠落が沈むため。
     /// @note 重さは 2 段: レジストリが空 = DLL がまだ 1 つも載っていない (起動直後のビルド待ち。
-    ///       復元されるので INFO)。空でないのに型が無い = 載っている DLL にその型が無い = exe が
-    ///       古いか登録リストから漏れている (WARN)。配布ビルドに建て直しは来ないので、後者は
-    ///       画面に «その機能だけ動かない» としか出ない。
+    /// @note 復元されるので INFO)。空でないのに型が無い = 載っている DLL にその型が無い = exe が
+    /// @note 古いか登録リストから漏れている (WARN)。配布ビルドに建て直しは来ないので、後者は
+    /// @note 画面に «その機能だけ動かない» としか出ない。
     if (!unresolvedScriptTypes.empty()) {
         std::string joined;
         for (const std::string& type : unresolvedScriptTypes) {
@@ -3008,11 +2866,11 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     return scene;
 }
 
-/// 既存 Scene への読み込み
+/// @note 既存 Scene への読み込み
 int SceneSerializer::ResolveMeshes(Scene& scene, renderer::ResourceManager& resources)
 {
     /// @note LoadData で復元した Scene を «描けるようにする» ための後段。
-    ///       既に mesh を持つものは触らない ─ 二重に載せると同じ頂点バッファが 2 本になる。
+    /// @note 既に mesh を持つものは触らない ─ 二重に載せると同じ頂点バッファが 2 本になる。
     int resolved = 0;
     for (auto& gameObject : scene.GameObjects()) {
         auto* mr = gameObject.GetComponent<MeshRenderer>();
@@ -3041,9 +2899,9 @@ bool SceneSerializer::LoadInPlace(
     return true;
 }
 
-/// AppendObjects — シーンを破棄せず新規 GO の追記だけを行う。
-/// OnUpdate 内の Instantiate() でシーン全体を再構築すると呼び出し元 Script が
-/// 解放されて use-after-free になる。
+/// @note AppendObjects — シーンを破棄せず新規 GO の追記だけを行う。
+/// @note OnUpdate 内の Instantiate() でシーン全体を再構築すると呼び出し元 Script が
+/// @note 解放されて use-after-free になる。
 bool SceneSerializer::AppendObjects(
     Scene& scene, const std::string& tomlText,
     renderer::ResourceManager* resources,
@@ -3128,10 +2986,10 @@ bool SceneSerializer::AppendObjects(
             ParticleEmitter pe{};
             asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
             /// @note 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
-            ///       乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
+            /// @note 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
             pe.ResetPlayback();
             /// @note 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
-            ///       colorGradient.space が無い場合だけ、こちらを正として反映する。
+            /// @note colorGradient.space が無い場合だけ、こちらを正として反映する。
             if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
                 pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
                     std::clamp(static_cast<int>(*legacySpace), 0,
@@ -3143,7 +3001,7 @@ bool SceneSerializer::AppendObjects(
         }
 
         /// @note @note 追記 (Prefab / クリップボード) では環境流を書き換えない。
-        ///       «部品を 1 つ足しただけでシーン全体の風が変わる» のは事故になる。
+        /// @note «部品を 1 つ足しただけでシーン全体の風が変わる» のは事故になる。
         SceneEnvironment discardedEnvironment;
         ReadFlowFieldComponent(go, *goTbl, discardedEnvironment);
 
@@ -3332,7 +3190,7 @@ bool SceneSerializer::AppendObjects(
     }
 
     /// @note root 収集。guid を正とし、フォールバックだけ名前引きにする。
-    ///       Find(name) だと同名ルートが並んだとき常に先頭の 1 体しか拾えない。
+    /// @note Find(name) だと同名ルートが並んだとき常に先頭の 1 体しか拾えない。
     for (const auto& item : *goArr) {
         const auto* tbl = item.as_table();
         if (!tbl) continue;
