@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BootstrapData, CreateProjectRequest, HubSettings, HubTheme, ProjectEntry, SdkBuildConfiguration, TemplateInfo } from '../shared/contracts';
+import type { BootstrapData, CreateProjectRequest, HubSettings, HubTheme, ProjectEntry, SdkBuildConfiguration, TemplateInfo, UpdateNotice } from '../shared/contracts';
 import { deriveProjectIdentifiers, isValidProjectIdentifiers } from '../shared/contracts';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
@@ -417,6 +417,25 @@ function SettingsPage({ settings, projectCount, hubVersion, onSave }: {
     </section>
 
     <section className="card">
+      <header><h2>更新</h2><p>GitHub Releases に新しい FBZZ Engine が出たら知らせます。</p></header>
+      <div className="card-content">
+        <div className="field">
+          <div className="field-label"><span>新しい版の確認</span><small>起動時、1 日 1 回まで</small></div>
+          <div className="field-control">
+            <div className="segmented self-start">
+              <button className={draft.checkForUpdates ? 'active' : ''} onClick={() => patch({ checkForUpdates: true })}>確認する</button>
+              <button className={draft.checkForUpdates ? '' : 'active'} onClick={() => patch({ checkForUpdates: false })}>確認しない</button>
+            </div>
+            <span className="hint">
+              <Icon name="info" size={13} />
+              api.github.com へ最新リリースを問い合わせます。自動では更新しません。
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section className="card">
       <header><h2>環境</h2><p>保存済みの値です。</p></header>
       <div className="card-content">
         <dl className="readout">
@@ -543,8 +562,32 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
   </div>;
 }
 
+/**
+ * 新しい版の帯。閉じると main がその版を記録し、次の版が出るまで出さない。
+ * @see Docs/design/gamehub-update-notice.md
+ */
+function UpdateBanner({ notice, onOpen, onDismiss }: {
+  notice: UpdateNotice;
+  onOpen: () => void;
+  onDismiss: () => void;
+}) {
+  return <section className="update-banner" role="status">
+    <Icon name="info" size={16} />
+    <div className="update-banner-body">
+      <strong>FBZZ Engine <span className="mono">v{notice.latestVersion}</span> が公開されています</strong>
+      <small>いまの GameHub は <span className="mono">v{notice.currentVersion}</span> です。</small>
+      {notice.notes && <p>{notice.notes}</p>}
+    </div>
+    <div className="update-banner-actions">
+      <button className="button primary" onClick={onOpen}>リリースページを開く<Icon name="arrow" size={13} /></button>
+      <button className="button" onClick={onDismiss} title="もっと新しい版が出たら、また知らせます">この版は知らせない</button>
+    </div>
+  </section>;
+}
+
 export function App() {
   const [data, setData] = useState<BootstrapData | null>(null);
+  const [updateNotice, setUpdateNotice] = useState<UpdateNotice | null>(null);
   const [page, setPage] = useState<Page>('projects');
   const [creating, setCreating] = useState('');
   const [busy, setBusy] = useState(false);
@@ -596,6 +639,18 @@ export function App() {
     initialLoadStarted.current = true;
     void refresh();
   }, [refresh]);
+
+  // 設定で確認を切り替えたときも追従する。確認は main が 1 日 1 回に抑えるので、ここでは何度呼んでもよい。
+  const checkForUpdates = data?.settings.checkForUpdates;
+  useEffect(() => {
+    if (checkForUpdates === undefined) return;
+    if (!checkForUpdates) { setUpdateNotice(null); return; }
+    let cancelled = false;
+    void window.gameHub.checkForUpdate().then((result) => {
+      if (!cancelled && result.ok) setUpdateNotice(result.value ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [checkForUpdates]);
 
   // system は CSS に持たせず、ここで実際の配色へ解決する。
   useEffect(() => {
@@ -701,6 +756,15 @@ export function App() {
     </aside>
 
     <main className="content">
+      {updateNotice && <UpdateBanner
+        notice={updateNotice}
+        onOpen={() => void window.gameHub.openReleasePage().then((result) => { if (!result.ok) setError(result.error ?? 'リリースページを開けませんでした。'); })}
+        onDismiss={() => {
+          const version = updateNotice.latestVersion;
+          setUpdateNotice(null);
+          void window.gameHub.dismissUpdate(version);
+        }}
+      />}
       <div className="page-head">
         <div>
           <h1>{page === 'projects' ? 'プロジェクト' : page === 'templates' ? 'テンプレート' : '設定'}</h1>

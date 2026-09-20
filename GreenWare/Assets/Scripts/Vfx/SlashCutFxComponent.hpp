@@ -106,7 +106,7 @@ inline GameObject* SlashCutFxComponent::EnsureObject(int index)
     const std::string name = "SlashCut_" + std::to_string(index);
     /// @note 先に拾い直す。DLL リロードでこの Script は作り直されるが、線の GameObject
     ///       はシーンに残るため、拾わず作るとリロードのたびに枠が増える。
-    GameObject* object = scene.Find(name);
+    GameObject* object = scene.Find(name, true);
     if (!object) {
         /// @note 誰の子にもしない。LineRenderer はワールド点を所有者のローカルへ引き戻して
         ///       焼くため、親の移動・回転がそのまま端点のずれになる。
@@ -117,7 +117,7 @@ inline GameObject* SlashCutFxComponent::EnsureObject(int index)
     if (!scene.GetScript<BeamTrailRendererComponent>(object))
         object->AddScript<BeamTrailRendererComponent>();
     /// @note Create / AddScript はシーンの配列を伸ばしうる。返すのは名前から引き直した個体。
-    return scene.Find(name);
+    return scene.Find(name, true);
 }
 
 inline BeamTrailRendererComponent* SlashCutFxComponent::RendererOf(const Slot& slot) const

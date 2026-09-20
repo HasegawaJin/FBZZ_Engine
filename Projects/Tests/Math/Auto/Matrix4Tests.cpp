@@ -212,4 +212,44 @@ TEST_F(Matrix4Test, OrthographicMapsTheBoxCornersToTheNdcCube)
                      math::Vector3(-1.0f, -1.0f, 0.0f), testkit::kTolerance);
 }
 
+TEST_F(Matrix4Test, PerspectiveReversedZMapsTheNearPlaneToOneAndTheFarPlaneToZero)
+{
+    constexpr float     kNear = 0.1f;
+    constexpr float     kFar  = 100.0f;
+    const math::Matrix4 proj  = math::Matrix4::PerspectiveReversedZ(math::ToRad(60.0f), 16.0f / 9.0f,
+                                                                    kNear, kFar);
+
+    const math::Vector4 atNear = proj * math::Vector4(0.0f, 0.0f, kNear, 1.0f);
+    const math::Vector4 atFar  = proj * math::Vector4(0.0f, 0.0f, kFar, 1.0f);
+
+    ASSERT_GT(atNear.w, testkit::kEpsilon);
+    ASSERT_GT(atFar.w, testkit::kEpsilon);
+    EXPECT_NEAR(atNear.z / atNear.w, 1.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(atFar.z / atFar.w, 0.0f, testkit::kLooseTolerance);
+}
+
+TEST_F(Matrix4Test, PerspectiveReversedZKeepsXYAndWOfPerspective)
+{
+    const math::Matrix4 standard = math::Matrix4::Perspective(math::ToRad(60.0f), 1.5f, 0.1f, 100.0f);
+    const math::Matrix4 reversed = math::Matrix4::PerspectiveReversedZ(math::ToRad(60.0f), 1.5f, 0.1f, 100.0f);
+
+    const math::Vector4 a = standard * math::Vector4(1.0f, 2.0f, 4.0f, 1.0f);
+    const math::Vector4 b = reversed * math::Vector4(1.0f, 2.0f, 4.0f, 1.0f);
+
+    EXPECT_NEAR(a.x, b.x, testkit::kTolerance);
+    EXPECT_NEAR(a.y, b.y, testkit::kTolerance);
+    EXPECT_NEAR(a.w, b.w, testkit::kTolerance);
+    EXPECT_NEAR(b.z / b.w, 1.0f - a.z / a.w, testkit::kLooseTolerance);
+}
+
+TEST_F(Matrix4Test, OrthographicReversedZMapsTheNearPlaneToOneAndTheFarPlaneToZero)
+{
+    const math::Matrix4 proj = math::Matrix4::OrthographicReversedZ(-2.0f, 2.0f, -1.0f, 1.0f, 0.0f, 10.0f);
+
+    EXPECT_VEC3_NEAR(TransformPoint(proj, math::Vector3(2.0f, 1.0f, 10.0f)),
+                     math::Vector3(1.0f, 1.0f, 0.0f), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(TransformPoint(proj, math::Vector3(-2.0f, -1.0f, 0.0f)),
+                     math::Vector3(-1.0f, -1.0f, 1.0f), testkit::kTolerance);
+}
+
 } // namespace fbzz::tests

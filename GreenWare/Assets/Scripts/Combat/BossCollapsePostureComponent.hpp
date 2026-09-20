@@ -249,7 +249,7 @@ inline void BossCollapsePostureComponent::EnsureTargets()
 
     for (int leg = 0; leg < 4; ++leg) {
         const std::string name = std::string("BossCollapseTarget") + SuffixOf(leg);
-        GameObject* target = scene.Find(name);
+        GameObject* target = scene.Find(name, true);
         if (!target) {
             /// @note scene.Create は GameObject 配列を再確保するので、掴んだポインタを
             ///       跨いで作らない。ここは «作って即しまう» だけに留める。
@@ -373,7 +373,7 @@ inline bool BossCollapsePostureComponent::ToLocal(const GameObject* bone, Vector
     /// @note 自分が pivot へ掛けた変形を外して「立っていたときの」値へ戻す。骨のワールド
     ///       位置は崩れた後の姿勢そのもので、そのまま測ると出力を入力に混ぜてしまい、
     ///       3 本目を失う等の解き直しで倒れ代が 0 と出て崩れが取り消され立ち姿へ戻る。
-    if (GameObject* pivot = scene.Find(pivotName)) {
+    if (GameObject* pivot = scene.Find(pivotName, true)) {
         const Vector3 rel = local - pivot->transform.position;
         local = pivot->transform.rotation.Inverse() * rel;
     }
@@ -599,7 +599,7 @@ inline void BossCollapsePostureComponent::ApplyStagger(GameObject& pivot, float 
 inline void BossCollapsePostureComponent::OnUpdate()
 {
     GameObject* self  = scene.Self();
-    GameObject* pivot = self ? scene.Find(pivotName) : nullptr;
+    GameObject* pivot = self ? scene.Find(pivotName, true) : nullptr;
     if (!self || !pivot) {
         if (self && !pivot)
             debug.LogWarning("BossCollapsePostureComponent: pivot node '" + pivotName +

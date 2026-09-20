@@ -158,8 +158,8 @@ inline void ControlsGuideComponent::OnStart()
     for (const actions::ControlRow& cr : actions::kControlRows) {
         Row r;
         r.key   = cr.key;
-        r.hit   = scene.Find(std::string("CtrlDiv_") + cr.key);
-        r.label = scene.Find(std::string("CtrlL_") + cr.key);
+        r.hit   = scene.Find(std::string("CtrlDiv_") + cr.key, true);
+        r.label = scene.Find(std::string("CtrlL_") + cr.key, true);
         if (!r.hit || !r.label) {
             debug.LogWarning(std::string("ControlsGuide: CtrlDiv_/CtrlL_") + cr.key + " が見つかりません");
             continue;
@@ -171,10 +171,10 @@ inline void ControlsGuideComponent::OnStart()
 
         /// @note 右側は機器ごとに 2 組ある。両方控えて、出ている方だけ描かれる。
         for (const char* group : { "KBM", "PAD" }) {
-            CaptureSlot(m_right, scene.Find(std::string("CtrlR_") + group + "_" + cr.key));
+            CaptureSlot(m_right, scene.Find(std::string("CtrlR_") + group + "_" + cr.key, true));
             for (int i = 0; i < 4; ++i)
                 CaptureSlot(m_right, scene.Find(std::string("CtrlIcon_") + group + "_" + cr.key
-                                                + "_" + std::to_string(i)));
+                                                + "_" + std::to_string(i), true));
         }
     }
     Bind();
@@ -188,10 +188,10 @@ inline void ControlsGuideComponent::OnStart()
 
 inline void ControlsGuideComponent::Bind()
 {
-    m_box    = scene.Find("CtrlGuide_Box");
-    m_tag    = scene.Find("CtrlGuide_Tag");
-    m_body   = scene.Find("CtrlGuide_Body");
-    m_device = scene.Find("CtrlGuide_Device");
+    m_box    = scene.Find("CtrlGuide_Box", true);
+    m_tag    = scene.Find("CtrlGuide_Tag", true);
+    m_body   = scene.Find("CtrlGuide_Body", true);
+    m_device = scene.Find("CtrlGuide_Device", true);
     if (!m_box || !m_tag || !m_body || !m_device)
         debug.LogWarning("ControlsGuide: CtrlGuide_Box / _Tag / _Body / _Device のどれかがシーンにありません");
 

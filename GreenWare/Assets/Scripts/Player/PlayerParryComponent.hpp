@@ -382,7 +382,7 @@ inline GameObject* PlayerParryComponent::FindExecutablePart(GameObject*& outRoot
     GameObject* best     = nullptr;
     GameObject* bestRoot = nullptr;
     float       bestDist = 0.0f;
-    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         const auto* part = scene.GetScript<BossPartComponent>(object);
         if (!part || part->IsBroken() || !part->IsExecutable()) continue;
@@ -729,8 +729,8 @@ inline void PlayerParryComponent::DriveRushHud()
 {
     auto* manager = TimeManagerComponent::Instance();
     const bool show = manager && manager->IsParryRush() && !manager->IsPaused();
-    GameObject* label = scene.Find("HUD_ParryRush");
-    GameObject* fill = scene.Find("HUD_ParryRushFill");
+    GameObject* label = scene.Find("HUD_ParryRush", true);
+    GameObject* fill = scene.Find("HUD_ParryRushFill", true);
     if (label) label->SetActive(show);
     if (fill) fill->SetActive(show);
     if (!show) { m_rushHudPulse = 0.0f; return; }

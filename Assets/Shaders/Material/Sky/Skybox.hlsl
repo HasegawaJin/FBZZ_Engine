@@ -26,8 +26,9 @@ SkyPSInput VSMain(SkyVSInput v)
     // ビュー行列から平行移動を除いて回転のみ適用し、空を無限遠に固定する
     float3x3 rotView = (float3x3)view;
     float4   clip    = mul(float4(mul(v.position, rotView), 1.0f), projection);
-    // z=w → 深度 1.0、深度テスト LESS_EQUAL で通過し他ジオメトリに隠れる
-    o.svPosition = clip.xyww;
+
+    /// @note z = 0 は Reversed-Z の最遠。DEPTH_SKY (GREATER_EQUAL) で空いた画素だけを埋め、他のジオメトリに隠れる。
+    o.svPosition = float4(clip.xy, 0.0f, clip.w);
     o.rayDir     = v.position;
     return o;
 }

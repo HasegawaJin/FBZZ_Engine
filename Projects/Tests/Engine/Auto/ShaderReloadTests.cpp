@@ -15,6 +15,13 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <functional>
 #include <utility>
+#include "../../../Engine/src/Scene/Systems/RenderPasses/Geometry/GeometryPasses.hpp"
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
+#include <cstring>
 
 namespace fbzz::tests {
 namespace {
@@ -23,7 +30,8 @@ namespace r = renderer;
 
 class TestShader final : public r::IShader {
 public:
-    TestShader(std::string path, uint32_t size) : m_path(std::move(path)) { m_descriptor.cbufferSize = size; }
+    TestShader(std::string path, uint32_t size, const std::vector<r::ShaderVarDesc>& variables = {})
+        : m_path(std::move(path)) { m_descriptor.cbufferSize = size; m_descriptor.vars = variables; }
     const std::string& GetPath() const override { return m_path; }
     const r::ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
 private:
@@ -40,12 +48,21 @@ private:
     size_t m_size;
 };
 
+class TestPipeline final : public r::IPipelineState {
+public:
+    explicit TestPipeline(const r::PipelineStateDesc& desc) : m_desc(desc) {}
+    const r::PipelineStateDesc& GetDesc() const override { return m_desc; }
+private:
+    r::PipelineStateDesc m_desc;
+};
+
 class ReloadRenderer final : public r::IRenderer {
 public:
     int shaderCreates = 0;
     int failAt = -1;
     int prepareCalls = 0;
     uint32_t shaderSize = 16;
+    std::vector<r::ShaderVarDesc> shaderVars;
     bool allowReload = true;
     std::function<void()> beforeReplace;
 
@@ -56,7 +73,7 @@ public:
     }
     std::unique_ptr<r::IShader> CreateNativeShader(const std::string& path) override {
         if (++shaderCreates == failAt) return {};
-        return std::make_unique<TestShader>(path, shaderSize);
+        return std::make_unique<TestShader>(path, shaderSize, shaderVars);
     }
     std::unique_ptr<r::IConstantBuffer> CreateNativeConstantBuffer(size_t size) override {
         return std::make_unique<TestConstantBuffer>(size);
@@ -71,7 +88,7 @@ public:
     uint32_t GetWidth() const override { return 1; }
     uint32_t GetHeight() const override { return 1; }
     void SetRenderTarget(r::ResourceHandle<r::RenderTargetTag>, r::ResourceManager&) override {}
-    void ClearDepth(float) override {}
+    void ClearDepth() override {}
     void SetViewport(uint32_t, uint32_t, uint32_t, uint32_t) override {}
     std::unique_ptr<r::IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override { return {}; }
     std::unique_ptr<r::IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override { return {}; }
@@ -79,7 +96,7 @@ public:
     std::unique_ptr<r::ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override { return {}; }
     std::unique_ptr<r::ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override { return {}; }
     std::unique_ptr<r::ITexture> CreateNativeTextureFromRenderTarget(r::IRenderTarget&, uint32_t, r::RenderTargetTextureKind) override { return {}; }
-    std::unique_ptr<r::IPipelineState> CreateNativePipelineState(const r::PipelineStateDesc&) override { return {}; }
+    std::unique_ptr<r::IPipelineState> CreateNativePipelineState(const r::PipelineStateDesc& desc) override { return std::make_unique<TestPipeline>(desc); }
     std::unique_ptr<r::IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t, const r::RenderTargetDesc&) override { return {}; }
     std::unique_ptr<r::ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override { return {}; }
     std::unique_ptr<r::IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t, uint32_t) override { return {}; }
@@ -89,6 +106,42 @@ public:
 } // namespace
 
 class ShaderReloadTest : public testkit::Fixture {};
+
+TEST_F(ShaderReloadTest, WireframePreservesMaterialSidednessBlendAndDepthBias)
+{
+    ReloadRenderer backend;
+    r::ResourceManager resources(backend);
+    scene::MaterialSlot slot;
+    slot.hasDoubleSidedOverride = true;
+    slot.doubleSidedOverride = true;
+    for (const auto blend : {r::BlendMode::OPAQUE_BLEND, r::BlendMode::ALPHA_BLEND, r::BlendMode::ADDITIVE}) {
+        const auto solid = scene::GetOrCreateMaterialPSO(resources, blend, true, 3, 1.5f);
+        const auto wire = scene::GetOrCreateMaterialPSO(resources, blend, true, 3, 1.5f, true);
+        ASSERT_NE(resources.Get(solid), nullptr);
+        ASSERT_NE(resources.Get(wire), nullptr);
+        EXPECT_NE(solid, wire);
+        const auto& before = resources.Get(solid)->GetDesc();
+        const auto& after = resources.Get(wire)->GetDesc();
+        EXPECT_EQ(before.rasterizer, r::RasterizerMode::SOLID_NOCULL);
+        EXPECT_EQ(after.rasterizer, r::RasterizerMode::WIREFRAME_NOCULL);
+        EXPECT_EQ(after.blend, before.blend);
+        EXPECT_EQ(after.depth, before.depth);
+        EXPECT_EQ(after.depthBias, before.depthBias);
+        EXPECT_FLOAT_EQ(after.depthBiasSlope, before.depthBiasSlope);
+        EXPECT_EQ(solid, scene::GetOrCreateMaterialPSO(resources, blend, true, 3, 1.5f));
+    }
+    auto wire = scene::GetOrCreateMaterialPSO(resources, slot, true);
+    ASSERT_NE(resources.Get(wire), nullptr);
+    EXPECT_EQ(resources.Get(wire)->GetDesc().rasterizer, r::RasterizerMode::WIREFRAME_NOCULL);
+    slot.doubleSidedOverride = false;
+    wire = scene::GetOrCreateMaterialPSO(resources, slot, true);
+    ASSERT_NE(resources.Get(wire), nullptr);
+    EXPECT_EQ(resources.Get(wire)->GetDesc().rasterizer, r::RasterizerMode::WIREFRAME);
+    resources.Reset();
+    wire = scene::GetOrCreateMaterialPSO(resources, slot, true);
+    ASSERT_NE(resources.Get(wire), nullptr);
+    EXPECT_EQ(resources.Get(wire)->GetDesc().rasterizer, r::RasterizerMode::WIREFRAME);
+}
 
 TEST_F(ShaderReloadTest, FailedBatchKeepsEveryOldShaderAndVersion)
 {
@@ -184,6 +237,100 @@ TEST_F(ShaderReloadTest, MaterialGrowsGpuBufferAfterCpuLayoutHasAlreadyChanged)
     ASSERT_NE(resources.Get(material.paramsBuffer), nullptr);
     EXPECT_GE(resources.Get(material.paramsBuffer)->GetSize(), 512u);
     EXPECT_EQ(resources.Get(initial), nullptr);
+}
+
+
+class MaterialScriptIntegrationTest : public testkit::Fixture {
+protected:
+    void SetUp() override
+    {
+        Fixture::SetUp();
+        m_backend.shaderVars = {
+            {"mode", 0, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Int},
+            {"mask", 4, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::UInt},
+            {"enabled", 8, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Bool},
+            {"uv", 16, 8, 1, 2, r::ShaderVarClass::Vector, r::ShaderVarType::Float},
+            {"matrix", 32, 64, 4, 4, r::ShaderVarClass::Matrix, r::ShaderVarType::Float}
+        };
+        m_backend.shaderSize = 96;
+        m_resources = std::make_unique<r::ResourceManager>(m_backend);
+        asset::AssetManager::Init(*m_resources, m_temp.Path().generic_string() + "/");
+        asset::MaterialAsset material;
+        material.shaderPath = "typed.hlsl";
+        const auto path = m_temp.File("typed.mat").generic_string();
+        ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, material));
+        auto& object = m_scene.CreateGameObject("Typed material");
+        m_material = &object.AddComponent<scene::MaterialComponent>();
+        m_material->materialPath = path;
+        m_script.SetContext(&m_scene, &object);
+        m_proxy.script = &m_script;
+    }
+    void TearDown() override
+    {
+        asset::AssetManager::UnloadAll();
+        m_resources.reset();
+        Fixture::TearDown();
+    }
+    testkit::TempDir m_temp{"material-script"};
+    ReloadRenderer m_backend;
+    std::unique_ptr<r::ResourceManager> m_resources;
+    scene::Scene m_scene;
+    scene::Script m_script;
+    scene::ScriptMaterialProxy m_proxy;
+    scene::MaterialComponent* m_material = nullptr;
+};
+
+TEST_F(MaterialScriptIntegrationTest, TypedSettersAndGettersMatchUploadedValues)
+{
+    const auto instance = m_proxy.Instance();
+    const scene::MaterialPropertyId mode("mode"), mask("mask"), enabled("enabled"), uv("uv"), matrix("matrix");
+    ASSERT_TRUE(instance.SetInt(mode, -16777217));
+    ASSERT_TRUE(instance.SetUInt(mask, UINT32_MAX));
+    ASSERT_TRUE(instance.SetBool(enabled, true));
+    ASSERT_TRUE(instance.SetVector2(uv, {2, 3}));
+    auto transform = math::Matrix4::Identity();
+    transform.m[0][3] = 7;
+    ASSERT_TRUE(instance.SetMatrix(matrix, transform));
+    int signedValue = 0;
+    uint32_t unsignedValue = 0;
+    ASSERT_TRUE(instance.TryGetInt(mode, signedValue));
+    ASSERT_TRUE(instance.TryGetUInt(mask, unsignedValue));
+    EXPECT_EQ(signedValue, -16777217);
+    EXPECT_EQ(unsignedValue, UINT32_MAX);
+    EXPECT_FALSE(instance.SetInt(mask, -1));
+    EXPECT_FALSE(instance.SetFloat(mode, 3));
+    EXPECT_FALSE(instance.SetVector4(matrix, {1, 2, 3, 4}));
+    renderer::ShaderDescriptor descriptor;
+    descriptor.vars = m_backend.shaderVars;
+    std::vector<uint8_t> bytes(96);
+    asset::ApplyMaterialParamOverrides(m_material->paramOverrides, descriptor, bytes);
+    asset::ApplyMaterialIntegerOverrides(m_material->integerParamOverrides, descriptor, bytes);
+    int32_t uploadedMode = 0;
+    uint32_t uploadedMask = 0;
+    float uploadedTranslation = 0;
+    std::memcpy(&uploadedMode, bytes.data(), 4);
+    std::memcpy(&uploadedMask, bytes.data() + 4, 4);
+    std::memcpy(&uploadedTranslation, bytes.data() + 80, 4);
+    EXPECT_EQ(uploadedMode, -16777217);
+    EXPECT_EQ(uploadedMask, UINT32_MAX);
+    EXPECT_FLOAT_EQ(uploadedTranslation, 7);
+    ASSERT_TRUE(instance.ClearOverride(mode));
+    EXPECT_FALSE(m_material->integerParamOverrides.contains("mode"));
+    ASSERT_TRUE(instance.ClearAllOverrides());
+    EXPECT_TRUE(m_material->integerParamOverrides.empty());
+    EXPECT_TRUE(m_material->paramOverrides.empty());
+}
+
+TEST_F(MaterialScriptIntegrationTest, ShaderReloadInvalidatesPreviouslyValidPropertyTypes)
+{
+    const auto instance = m_proxy.Instance();
+    const scene::MaterialPropertyId mode("mode");
+    ASSERT_TRUE(instance.SetInt(mode, 1));
+    m_backend.shaderVars[0].varType = r::ShaderVarType::Float;
+    ASSERT_TRUE(m_resources->ReloadShader("typed.hlsl"));
+    EXPECT_FALSE(instance.SetInt(mode, 2));
+    EXPECT_TRUE(instance.SetFloat(mode, 2));
+    EXPECT_FALSE(m_material->integerParamOverrides.contains("mode"));
 }
 
 } // namespace fbzz::tests

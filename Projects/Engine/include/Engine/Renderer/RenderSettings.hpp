@@ -590,6 +590,16 @@ struct RenderSettings {
     ViewMode          viewMode  = ViewMode::Lit;
     bool shadowEnabled = true;
     ShadowSettings shadow;
+    /// 同じメッシュ・同じマテリアルの連続する描画を 1 回の Instanced Draw へ束ねる。
+    /// @note 切れるようにしておくのは、束ねても絵が変わらないことと、減ったドロー数が
+    ///       本当に束ねによるものだということを同じシーンで確かめられるようにするため。
+    /// @see Docs/design/gpu-instancing.md
+    bool gpuInstancing = true;
+    /// 画面空間 Compute (今は AO) を非同期コンピュートキューへ出し、描画と重ねる。
+    /// @note 既定 false。絵が 1 ピクセルも変わらないことと、速くなることを測ってから入れる。
+    /// @note 機械がコンピュートキューを持たない場合は true でも描画キューのまま動く (絵は同じ)。
+    /// @see Docs/design/async-compute.md
+    bool asyncCompute = false;
     /// @name 診断表示 (StripDebugVisualization が落とす)
     ///@{
     bool showColliders        = false;

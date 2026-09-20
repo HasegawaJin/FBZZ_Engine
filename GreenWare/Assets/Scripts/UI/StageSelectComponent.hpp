@@ -88,7 +88,7 @@ private:
             && StageExists(index);
     }
 
-    [[nodiscard]] GameObject* N(std::string_view name) const { return scene.Find(std::string(name)); }
+    [[nodiscard]] GameObject* N(std::string_view name) const { return scene.Find(std::string(name), true); }
     void Text(std::string_view name, const std::string& v) const
     {
         if (GameObject* go = N(name)) ui.SetText(go, v);

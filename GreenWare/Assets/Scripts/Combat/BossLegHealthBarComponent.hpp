@@ -88,7 +88,7 @@ inline std::string BossLegHealthBarComponent::CanvasName(const GameObject& owner
 inline bool BossLegHealthBarComponent::Adopt(GameObject& owner)
 {
     for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
-        GameObject* canvasObject = scene.Find(CanvasName(owner, leg));
+        GameObject* canvasObject = scene.Find(CanvasName(owner, leg), true);
         if (!canvasObject || !canvasObject->GetComponent<UICanvas>()) return false;
 
         m_bars[leg].canvas = EntityRef{ canvasObject->GetID() };

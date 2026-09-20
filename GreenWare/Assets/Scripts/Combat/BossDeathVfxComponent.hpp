@@ -99,7 +99,7 @@ private:
     /// 名前で子孫を引く。リグが持っていないボーン (Head / Rear など) 用。
     [[nodiscard]] static GameObject* FindInSubtree(GameObject& root, const char* name);
 
-    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag); }
+    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag, true); }
 
     float m_elapsed  = 0.0f;
     /// 次に出す爆発の番号。決定打は blastCount 番目として同じ数え方に載せる。

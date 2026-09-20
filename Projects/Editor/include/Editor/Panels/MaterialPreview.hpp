@@ -62,7 +62,7 @@ private:
     /// @note .mat は描画方式を持たないため、プレビュー側で選んで見比べる。層数と風は FiberComponent の既定から始める。
     /// @{
     matpreview::FiberMode m_fiberMode = matpreview::FiberMode::Shell;
-    int   m_fiberShellCount = 24;
+    int   m_fiberShellCount = 16;
     float m_fiberWind = 0.0f;
     /// @}
 

@@ -730,7 +730,8 @@ static void MarkPreviewSucceeded(T& p) {
 template<typename T>
 static void EnsureThumbnailRT(T& t, EditorContext& ctx) {
     if (!t.thumbnailRT.IsValid()) {
-        t.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
+        /// @note matpreview は GPU 用 (Reversed-Z) の射影で描くので、深度もそれに揃える。
+        t.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128, renderer::CameraDepthTargetDesc(1));
         t.thumbnailRendered = false;
     }
 }

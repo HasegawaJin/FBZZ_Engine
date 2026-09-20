@@ -81,7 +81,7 @@ inline GameObject* PlayerBreathBarComponent::Resolve(const Ref<GameObject>& refe
 {
     if (GameObject* object = reference.Get())
         return object;
-    return scene.Find(name);
+    return scene.Find(name, true);
 }
 
 inline void PlayerBreathBarComponent::OnStart()

@@ -142,7 +142,7 @@ bool ConstraintDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void ConstraintDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
 
     if (ctx.physicsWorld) {
         for (const auto* constraint : ctx.physicsWorld->GetConstraints()) {

@@ -173,7 +173,7 @@ inline void ElectricArcBundle::EnsureStrands(Script& owner, int count,
         /// @note スクリプト DLL をリロードすると持ち主の Script は作り直され m_strands は
         ///       空に戻るが、筋の GameObject は Scene 側に残る。拾わずに作るとリロードの
         ///       たびに筋が増えていく。
-        GameObject* object = owner.scene.Find(name);
+        GameObject* object = owner.scene.Find(name, true);
         if (!object) object = &owner.scene.Create(name);
         const EntityID id = object->GetID();
 

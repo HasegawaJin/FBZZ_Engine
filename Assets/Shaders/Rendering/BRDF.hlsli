@@ -6,13 +6,8 @@
 
 #include "Common/Math.hlsli"
 
-// 0ベクトルを normalize しないための共通ヘルパー。点光源直下や V+L≈0 の
-// 特殊ケースでも NaN を発生させず、指定した有効方向へ連続させる。
-float3 SafeNormalize(float3 value, float3 fallback)
-{
-    const float lenSq = dot(value, value);
-    return lenSq > EPSILON * EPSILON ? value * rsqrt(lenSq) : fallback;
-}
+// @note SafeNormalize は Common/Math.hlsli へ移した (このファイルが include している)。
+//       ライティング以外 (GBuffer のスキンド変種) からも要るようになったため。
 
 // =========================================================================
 // GGX 法線分布関数 (NDF)

@@ -4,8 +4,8 @@
 /// @date    2026-06-18
 ///
 /// @note 水面は透明描画・Terrain 高さ参照・動的 CPU テクスチャ更新を扱う。GPU リソースは
-///       Component に持たせず System 側の static cache に閉じ、Scene データは保存しやすい
-///       純粋なパラメータのまま保つ。
+/// @note Component に持たせず System 側の static cache に閉じ、Scene データは保存しやすい
+/// @note 純粋なパラメータのまま保つ。
 #include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
 #include "GeometryPasses.hpp"
 #include "WaterNoiseBake.hpp"
@@ -48,11 +48,11 @@ namespace fbzz::scene {
 namespace {
 
 /// @note WaterVertex / WaterCB / WaterEffectParams は `RenderPassContext.hpp` にある。
-///       エディタのマテリアルプレビューが本編と同じレイアウトを焼く必要があり、ここに複製すると黙ってずれる。
+/// @note エディタのマテリアルプレビューが本編と同じレイアウトを焼く必要があり、ここに複製すると黙ってずれる。
 
 /// @brief チャンク 1 個分の GPU リソースと、波を乗せる前のローカル AABB。
 /// @note 波の振幅は meshDirty を立てずに変わるため AABB へ焼き込まない。焼き込むと振幅を
-///       上げた瞬間から AABB だけ古くなり、見えている端のチャンクが消える。
+/// @note 上げた瞬間から AABB だけ古くなり、見えている端のチャンクが消える。
 struct WaterChunk {
     renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
     renderer::ResourceHandle<renderer::BufferTag> indexBuffer;
@@ -67,7 +67,7 @@ struct WaterMesh {
     math::Vector3 aabbMax;
 };
 
-/// 頂点が Gerstner 変位で平面から出る量。水平は Q*A、垂直は A の総和が上限。
+/// @note 頂点が Gerstner 変位で平面から出る量。水平は Q*A、垂直は A の総和が上限。
 struct WaveMargin {
     float horizontal = 0.0f;
     float vertical   = 0.0f;
@@ -78,7 +78,7 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
     WaveMargin margin;
     if (water.enableGerstnerWaves) {
         /// @note 群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
-        ///       ここに入れ忘れると、山に当たったチャンクだけが «AABB からはみ出した» 扱いで消える。
+        /// @note ここに入れ忘れると、山に当たったチャンクだけが «AABB からはみ出した» 扱いで消える。
         const float peak = (1.0f + math::Clamp01(water.waveGrouping))
                          * WaterComponent::WaveSpreadAmplitudeSum(water.waveSpread);
         for (const GerstnerWave& wave : water.waves) {
@@ -88,7 +88,7 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
         }
     }
     /// @note 流れの場が作る形と着水の輪も «平面から出る量»。入れないと穴や山や輪の上のチャンク
-    ///       だけが «AABB からはみ出した» 扱いで消える。盛り上がりも穴と同じ枠で測る。
+    /// @note だけが «AABB からはみ出した» 扱いで消える。盛り上がりも穴と同じ枠で測る。
     float flowDisplacement = 0.0f;
     for (int i = 0; i < (std::min)(water.surfaceFlowCount, kWaterSurfaceFlowCount); ++i) {
         flowDisplacement = (std::max)(
@@ -110,16 +110,16 @@ struct WaterTextures {
     renderer::ResourceHandle<renderer::TextureTag> foamMask;
 };
 
-/// 焼いた 1 枚と «前のフレームに輪があったか»。
+/// @note 焼いた 1 枚と «前のフレームに輪があったか»。
 /// @note 輪そのものは WaterComponent::ripples が正本。ここに置くと SceneView と GameView で
-///       寿命が 2 回進み、CPU 側の GetSurfaceHeightAt からも読めない。
+/// @note 寿命が 2 回進み、CPU 側の GetSurfaceHeightAt からも読めない。
 struct WaterRippleState {
     std::vector<uint8_t> pixels;
     uint32_t width = kWaterRippleTextureSize;
     uint32_t height = kWaterRippleTextureSize;
     renderer::ResourceHandle<renderer::TextureTag> gpuTex;
     bool dirty = true;
-    /// 最後に焼いたとき輪があったか。落としきった次のフレームに 1 回だけ焼き直すため。
+    /// @note 最後に焼いたとき輪があったか。落としきった次のフレームに 1 回だけ焼き直すため。
     bool hadRipples = false;
 };
 
@@ -134,9 +134,9 @@ struct SplashEvent {
 
 static std::vector<SplashEvent> s_pendingSplashes;
 
-/// しぶき GameObject の名前。UpdateWaterSplashes が破棄対象を見分ける印を兼ねる。
+/// @note しぶき GameObject の名前。UpdateWaterSplashes が破棄対象を見分ける印を兼ねる。
 constexpr const char* kSplashObjectName = "__WaterSplash";
-/// 1 フレームに積める上限。WaterSystem が回らない構成でキューが伸び続けないようにする。
+/// @note 1 フレームに積める上限。WaterSystem が回らない構成でキューが伸び続けないようにする。
 constexpr size_t kMaxPendingSplashes = 64;
 
 float SmoothStep(float edge0, float edge1, float x)
@@ -179,8 +179,8 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     const float oz = -water.extentZ * 0.5f;
 
     /// @note 切り上げでなく境界を按分して分ける。ceil(res/chunks) を全チャンクに掛けると
-    ///       最後のほうのチャンクは開始セルが res を追い越し、差が符号なしで折り返して
-    ///       4G 要素の reserve になり、解像度を上げた瞬間に確保失敗で落ちていた。
+    /// @note 最後のほうのチャンクは開始セルが res を追い越し、差が符号なしで折り返して
+    /// @note 4G 要素の reserve になり、解像度を上げた瞬間に確保失敗で落ちていた。
     const uint32_t numChunks =
         (std::min)((std::max)(water.chunkCount, 1u), (std::min)(water.resolutionX, water.resolutionZ));
     auto splitAt = [](uint32_t cells, uint32_t index, uint32_t count) {
@@ -249,7 +249,7 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
     renderer::ResourceManager& resources)
 {
     /// @note 岸沿いのマスクは帯が出れば十分でメッシュ解像度に追随させる理由がなく、上限を置く。
-    ///       無ければ解像度に比例した VRAM を毎回焼き直し、スライダー操作中だけで数百 MB を使う。
+    /// @note 無ければ解像度に比例した VRAM を毎回焼き直し、スライダー操作中だけで数百 MB を使う。
     constexpr uint32_t kMaxFoamMaskSide = 257u;
     const uint32_t width  = (std::min)(water.resolutionX + 1u, kMaxFoamMaskSide);
     const uint32_t height = (std::min)(water.resolutionZ + 1u, kMaxFoamMaskSide);
@@ -257,10 +257,13 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
 
     TerrainComponent* terrain = nullptr;
     Transform* terrainTransform = nullptr;
-    for (auto [tc, tf] : scene.View<TerrainComponent, Transform>()) {
-        if (!tc.enabled || tc.heightData.empty()) continue;
-        terrain = &tc;
-        terrainTransform = &tf;
+    /// @note 岸の泡は «いま描かれている地形» から作る。親ごと無効化された地形は拾わない。
+    for (const EntityID terrainId : scene.GetEntities<TerrainComponent>()) {
+        GameObject* terrainObject = scene.GetGameObject(terrainId);
+        auto* tc = scene.GetComponent<TerrainComponent>(terrainId);
+        if (!terrainObject || !tc || !tc->enabled || tc->heightData.empty() || !terrainObject->activeInHierarchy()) continue;
+        terrain = tc;
+        terrainTransform = &terrainObject->transform;
         break;
     }
 
@@ -268,12 +271,12 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
         return resources.CreateTexture(pixels.data(), width, height);
 
     /// @note ワールド行列を通すのは、水面が子オブジェクトだったり拡大されていると
-    ///       ローカル position 基準では泡の帯だけが実際の水際からずれるため。
+    /// @note ローカル position 基準では泡の帯だけが実際の水際からずれるため。
     const math::Matrix4 waterWorld = waterTransform.GetWorldMatrix();
     const float ox = -water.extentX * 0.5f;
     const float oz = -water.extentZ * 0.5f;
     /// @note テクセル «中心» を標本点にする。シェーダー側は uv → (u*width - 0.5) で引くため、
-    ///       角合わせで焼くと泡の帯が半テクセルぶん岸からずれる。
+    /// @note 角合わせで焼くと泡の帯が半テクセルぶん岸からずれる。
     const float du = water.extentX / static_cast<float>(width);
     const float dv = water.extentZ / static_cast<float>(height);
 
@@ -337,12 +340,12 @@ WaterTextures BuildTextureSet(
     return textures;
 }
 
-/// 波紋テクスチャを焼く。RG = 法線 xy、**B = 頂点へ乗せる高さ** [m] (kWaterRippleHeightScale 正規化)。
+/// @note 波紋テクスチャを焼く。RG = 法線 xy、**B = 頂点へ乗せる高さ** [m] (kWaterRippleHeightScale 正規化)。
 ///
 /// @note 高さにだけ輪ごとの meshFade を掛ける。細い輪は頂点で刻めないので «傾きだけ» の帯へ落ち、
-///       法線は今までどおり全部書く (water-waves.md の帯の原則)。
+/// @note 法線は今までどおり全部書く (water-waves.md の帯の原則)。
 /// @note テクセルをワールド XZ へ直して距離を測る。UV 距離で測ると、非正方形の水面で輪が
-///       楕円になり CPU の GetSurfaceHeightAt と食い違う。
+/// @note 楕円になり CPU の GetSurfaceHeightAt と食い違う。
 /// @warning 断面は WaterComponent::WaterRippleWave が正本。ここに写しを作らないこと。
 void UpdateRippleState(WaterRippleState& state, const WaterComponent& water,
                        const Transform& transform, renderer::ResourceManager& resources)
@@ -392,7 +395,7 @@ void UpdateRippleState(WaterRippleState& state, const WaterComponent& water,
     state.hadRipples = !water.ripples.empty();
 }
 
-/// viewProjection は TAA ジッター込みで渡す。カメラから組み直すとジッターが落ちる。
+/// @note viewProjection は TAA ジッター込みで渡す。カメラから組み直すとジッターが落ちる。
 /// @param resources 焼いた速度場を常駐させる (VelocityFieldAtlas) のに要る。
 WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* mat,
                      const Transform& transform, const math::Matrix4& viewProjection, float time,
@@ -417,15 +420,15 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         WGetF(mat, "fresnelPower",  5.0f)
     };
     /// @note 水面の «実寸» はローカル extent ではなくワールド実寸。拡大された水面でも、縁のフェードと
-    ///       波のエイリアシング判定が、画面に出ているとおりの大きさで効くようにする。
+    /// @note 波のエイリアシング判定が、画面に出ているとおりの大きさで効くようにする。
     const float worldExtentX = (std::max)(water.extentX * std::abs(transform.worldScale.x), 0.0001f);
     const float worldExtentZ = (std::max)(water.extentZ * std::abs(transform.worldScale.z), 0.0001f);
     /// @note z はさざ波タイルの勾配復号係数。ベイクした値をそのまま渡し、シェーダー側に定数を
-    ///       写さない (写すとタイルを焼き直してもシェーダーが古い係数で復号し続ける)。
+    /// @note 写さない (写すとタイルを焼き直してもシェーダーが古い係数で復号し続ける)。
     cb.normalParams = { worldExtentX, worldExtentZ, detailNoise.derivativeScale,
                         WGetF(mat, "normalStrength", 1.0f) };
     /// @note 頂点グリッド 1 セルの実寸。«刻めない波» の判断を CPU (浮力) と揃えるため、
-    ///       描画側で計算し直さず WaterSystem が解決した値をそのまま渡す。z はタイルのセル数の逆数。
+    /// @note 描画側で計算し直さず WaterSystem が解決した値をそのまま渡す。z はタイルのセル数の逆数。
     cb.timeParams   = { water.cellSize.x, water.cellSize.y, detailNoise.invTileCells, time };
     cb.foamParams = {
         WGetF(mat, "foamThreshold",     0.3f),
@@ -435,7 +438,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         WGetF(mat, "foamNoiseScale",    0.5f)
     };
     /// @note 外周フェードの幅はメートルで持ち、軸ごとに extent で割って UV へ直す。UV 比で
-    ///       持つと大きい水面ほど帯が広くなり、縁から何 m で消えるかが大きさに依存してしまう。
+    /// @note 持つと大きい水面ほど帯が広くなり、縁から何 m で消えるかが大きさに依存してしまう。
     const float edgeFadeMeters = (std::max)(WGetF(mat, "edgeFade", 1.5f), 0.0f);
     cb.refractionFlowParams = {
         WGetF(mat, "refractionStrength", 0.03f),
@@ -453,8 +456,8 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     cb.sssParams = { sssColor.x, sssColor.y, sssColor.z,
                      math::Clamp01(WGetF(mat, "sssStrength", 0.6f)) };
     /// @note 波の山ほど透過光を強くするため、CPU 側と同じ「振幅の合計」を波高の基準として渡す。
-    ///       群の包絡と方向広がりのぶんも含める。含めないと、山に当たった波だけ waveState.x が 1 で
-    ///       飽和し、透過光と白波が «そこだけ最大» に張り付く。
+    /// @note 群の包絡と方向広がりのぶんも含める。含めないと、山に当たった波だけ waveState.x が 1 で
+    /// @note 飽和し、透過光と白波が «そこだけ最大» に張り付く。
     const float peak = (1.0f + math::Clamp01(water.waveGrouping))
                      * WaterComponent::WaveSpreadAmplitudeSum(water.waveSpread);
     float waveHeightSum = 0.0f;
@@ -469,7 +472,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     const auto flowDir = WGetF2(mat, "flowDirection", { 1.0f, 0.0f });
     const float flowLen = std::sqrt(flowDir.x * flowDir.x + flowDir.y * flowDir.y);
     /// @note zw はさざ波の «形»。異方比は風向と直交する «うね» の伸び、ワープ幅はうねりの斜面が
-    ///       さざ波を運ぶ距離 [m]。どちらも 1.0 / 0.0 にすれば従来の等方・非追従へ戻る。
+    /// @note さざ波を運ぶ距離 [m]。どちらも 1.0 / 0.0 にすれば従来の等方・非追従へ戻る。
     const math::Vector2 detailShape = {
         (std::max)(WGetF(mat, "detailAnisotropy", 2.0f), 1.0f),
         (std::max)(WGetF(mat, "detailWarp",       0.5f), 0.0f)
@@ -479,7 +482,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         : math::Vector4{ 1.0f, 0.0f, detailShape.x, detailShape.y };
     /// @note 流れの場が出す形・流れ・質感。本数は y に入れる (枠を 1 つ増やさずに済む)。
     /// @note 高さも流速も CPU で決める。形の式は WaterComponent が正本で、浮力・水中判定と
-    ///       同じ値でなければならない。シェーダーで導き直すと二重化が 1 本増える。
+    /// @note 同じ値でなければならない。シェーダーで導き直すと二重化が 1 本増える。
     const int flowCount = (std::min)(water.surfaceFlowCount, kWaterSurfaceFlowCount);
     cb.waveShapeParams = { math::Clamp01(water.waveSpread),
                            static_cast<float>(flowCount), 0.0f, 0.0f };
@@ -490,7 +493,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         cb.surfaceFlowB[i] = { f.speed, f.falloffPower,
                                static_cast<float>(static_cast<int>(f.kind)), f.chop };
         /// @note 常駐できなかった場はタイル -1 で渡す。本数を詰めると別の流れに化けるので、
-        ///       枠は残したまま «無効» を送る (ParticleGpuSim と同じ扱い)。
+        /// @note 枠は残したまま «無効» を送る (ParticleGpuSim と同じ扱い)。
         float tile = -1.0f;
         float maxMagnitude = 1.0f;
         if (f.kind == FlowFieldType::Baked && f.vectorField != nullptr) {
@@ -544,7 +547,7 @@ WaterEffectParams BuildWaterEffectParams(const asset::MaterialAsset* mat)
 
 /// @brief ローカル AABB をワールド行列で包み直して可視判定する。
 /// @note 描画側は `Transform::GetWorldMatrix()` を使い親の回転・スケールが乗るため、
-///       カリングをローカル position 基準にすると水面を子にしたり拡大した瞬間に消える。
+/// @note カリングをローカル position 基準にすると水面を子にしたり拡大した瞬間に消える。
 bool AabbVisible(const math::Frustum& frustum, const math::Matrix4& world,
                  const math::Vector3& localMin, const math::Vector3& localMax)
 {
@@ -571,7 +574,7 @@ bool AabbVisible(const math::Frustum& frustum, const math::Matrix4& world,
     return frustum.IntersectsAABB({ center.x, center.y, center.z }, extents);
 }
 
-/// 波のマージンを乗せたローカル AABB。チャンクにも水面全体にも同じ広げ方をする。
+/// @note 波のマージンを乗せたローカル AABB。チャンクにも水面全体にも同じ広げ方をする。
 void ExpandByWaveMargin(const WaveMargin& margin, math::Vector3& outMin, math::Vector3& outMax)
 {
     outMin.x -= margin.horizontal;
@@ -582,7 +585,7 @@ void ExpandByWaveMargin(const WaveMargin& margin, math::Vector3& outMin, math::V
     outMax.y += margin.vertical;
 }
 
-} // namespace
+}
 
 const WaterDetailNoise& GetWaterDetailNoise(renderer::ResourceManager& resources)
 {
@@ -590,7 +593,7 @@ const WaterDetailNoise& GetWaterDetailNoise(renderer::ResourceManager& resources
     static uint64_t s_bakedAt = 0xFFFFFFFFFFFFFFFFull;
 
     /// @note 焼き直しを Reset に紐づける。デバイスロストで実体が消えてもハンドルは残るため、
-    ///       世代が変わったときだけ焼き直せば失敗時に毎フレーム焼き続けずに済む。
+    /// @note 世代が変わったときだけ焼き直せば失敗時に毎フレーム焼き続けずに済む。
     const uint64_t resetVersion = resources.GetResetVersion();
     if (s_bakedAt == resetVersion)
         return s_noise;
@@ -719,12 +722,12 @@ std::string_view WaterRenderPass::Name() const { return "WaterForward"; }
 void WaterRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
     /// @note 平行光の影 (t9) に加え、BindForwardShadingResources が Spot/Point の影 (t28) と
-    ///       Cookie (t31) を束縛する。申告しないと Shadow / LightCookie より先に走ってよいことになる。
+    /// @note Cookie (t31) を束縛する。申告しないと Shadow / LightCookie より先に走ってよいことになる。
     ///
-    ///       屈折用のシーンカラー / 深度のコピーはこのパスの中で作って読み切る作業用で、
-    ///       他のパスからは見えない。元の HDR は下の ReadWrite で押さえてある。
-    ///       SetAutoTarget は呼ばない。屈折用のコピーを作る間に束縛を 3 回切り替えるので、
-    ///       描き先は Execute の中で自分で張る。
+    /// @note 屈折用のシーンカラー / 深度のコピーはこのパスの中で作って読み切る作業用で、
+    /// @note 他のパスからは見えない。元の HDR は下の ReadWrite で押さえてある。
+    /// @note SetAutoTarget は呼ばない。屈折用のコピーを作る間に束縛を 3 回切り替えるので、
+    /// @note 描き先は Execute の中で自分で張る。
     builder.ReadWrite("HDR").Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
 }
 
@@ -741,23 +744,23 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     const float elapsedTime = Time::time;
 
     /// @note static ローカルは初回のみ初期化される。`ResourceManager::Reset()` で世代が
-    ///       変わった場合だけ再生成し、旧ハンドル (失効済み) へのアクセスを防ぐ。
+    /// @note 変わった場合だけ再生成し、旧ハンドル (失効済み) へのアクセスを防ぐ。
     static uint64_t s_resetVersion = resources.GetResetVersion();
     static auto waterShader = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
     /// @note 半透明だが深度書き込みありで描く。水面は 1 枚の面で重なるのは自分自身だけなので、
-    ///       書き込みを切るとチャンクの submit 順 (-Z→+Z の行優先) がそのままブレンド順に
-    ///       なり、+Z 向きカメラでは奥のチャンクが後から手前へ上塗りされ、向こう側の縁や
-    ///       うねりの裏面 (SOLID_NOCULL で描かれる) が手前の水面に線となって浮く。深度を
-    ///       書けば提出順に関係なく一番手前の水面だけが残る。水中の向こうの不透明物は屈折用
-    ///       シーンカラーコピーから引いており、深度を書いても水底は見えたままになる。
+    /// @note 書き込みを切るとチャンクの submit 順 (-Z→+Z の行優先) がそのままブレンド順に
+    /// @note なり、+Z 向きカメラでは奥のチャンクが後から手前へ上塗りされ、向こう側の縁や
+    /// @note うねりの裏面 (SOLID_NOCULL で描かれる) が手前の水面に線となって浮く。深度を
+    /// @note 書けば提出順に関係なく一番手前の水面だけが残る。水中の向こうの不透明物は屈折用
+    /// @note シーンカラーコピーから引いており、深度を書いても水底は見えたままになる。
     static auto waterPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_ON
     });
     static auto waterWireframePSO = resources.CreatePipelineState({
-        renderer::RasterizerMode::WIREFRAME,
-        renderer::BlendMode::ALPHA_BLEND,
+        renderer::RasterizerMode::WIREFRAME_NOCULL,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_ON
     });
     static auto cameraCBH = resources.CreateConstantBuffer(288);
@@ -774,15 +777,15 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         return resources.CreateTexture(b, 1, 1);
     }();
     /// @note B は «高さ 0» の 128。255 のままだと波紋が 1 枚も無い水面の頂点が
-    ///       kWaterRippleHeightScale ぶん持ち上がる。
+    /// @note kWaterRippleHeightScale ぶん持ち上がる。
     static auto neutralRippleTex = [&] {
         const uint8_t r[4] = { 128, 128, 128, 255 };
         return resources.CreateTexture(r, 1, 1);
     }();
 
     /// @note 水面の屈折用にシーンカラーをコピーする。Water シェーダーが屈折で HDR をシーン
-    ///       カラーとして読むため、hdrRT を出力 RT として束ねる前にコピーする必要がある
-    ///       (DX11 は同時読み書きを禁止する)。
+    /// @note カラーとして読むため、hdrRT を出力 RT として束ねる前にコピーする必要がある
+    /// @note (DX11 は同時読み書きを禁止する)。
     static auto copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
     static auto depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
 
@@ -790,7 +793,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         s_resetVersion    = resources.GetResetVersion();
         waterShader       = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
         waterPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_ON });
-        waterWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME,    renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_ON });
+        waterWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         cameraCBH         = resources.CreateConstantBuffer(288);
         waterCBH          = resources.CreateConstantBuffer(sizeof(WaterCB));
         defaultEffectCBH  = [&] { WaterEffectParams d{}; auto h = resources.CreateConstantBuffer(sizeof(WaterEffectParams)); resources.Update(h, &d, sizeof(WaterEffectParams)); return h; }();
@@ -800,7 +803,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         copyColorShader   = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         depthCopyShader   = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
         /// @note `Reset()` は実体を全て破棄済みで握っているのは失効したハンドルだけなので、
-        ///       返さず空にする。次のループが素直に作り直す。
+        /// @note 返さず空にする。次のループが素直に作り直す。
         s_meshCache.clear();
         s_texCache.clear();
         s_rippleStates.clear();
@@ -835,7 +838,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
 
     /// @note 描画用の行列だけ TAA ジッターを乗せる。乗せないと水面だけ AA が効かず、
-    ///       b0 経由で描く不透明物とサブピクセルずれた深度になって TAA の再投影が濁る。
+    /// @note b0 経由で描く不透明物とサブピクセルずれた深度になって TAA の再投影が濁る。
     const math::Matrix4 jitteredProj =
         MakeJitteredProjection(camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     const math::Matrix4 jitteredVP = jitteredProj * camera.GetViewMatrix();
@@ -867,7 +870,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     renderer::SizedRenderTarget& sceneDepthRT = *ctx.handles.waterSceneDepthRT;
 
     (void)sceneColorRT.Ensure(resources, ctx.width, ctx.height, 1);
-    (void)sceneDepthRT.Ensure(resources, ctx.width, ctx.height, 0);
+    (void)sceneDepthRT.Ensure(resources, ctx.width, ctx.height, renderer::CameraDepthTargetDesc(0));
     renderer.SetRenderTarget(sceneColorRT, resources);
     if (copyColorShader.IsValid()) {
         renderer::DrawCall copyDC;
@@ -880,8 +883,8 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     const auto sceneColor = resources.GetColorTexture(sceneColorRT, 0);
 
     /// @note HDR の depth を Water 専用の深度 RT へコピーし、PS ではその SRV (t5) を読む。
-    ///       hdrRT を RTV/DSV として使いながら同じ depth を SRV(t5) で読むと DX11 の
-    ///       read/write 競合で SRV が解除され、背景判定・水深・泡が破綻する。
+    /// @note hdrRT を RTV/DSV として使いながら同じ depth を SRV(t5) で読むと DX11 の
+    /// @note read/write 競合で SRV が解除され、背景判定・水深・泡が破綻する。
     renderer.SetRenderTarget(sceneDepthRT, resources);
     renderer.ClearDepth();
     if (depthCopyShader.IsValid()) {
@@ -897,7 +900,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     /// @note しぶきの GameObject は UpdateWaterSplashes (WaterSystem) が作って消す。
-    ///       描画中にシーンを書き換えると、後続パスが握るエミッターがすり替わる。
+    /// @note 描画中にシーンを書き換えると、後続パスが握るエミッターがすり替わる。
 
     {
         struct CameraCB {
@@ -908,11 +911,12 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             math::Vector3 cameraPos;
             float nearZ;
             float farZ;
-            /// LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること
-            /// (waterSsrEnabled は共通側で _reserved になっている枠)。
+            /// @note LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること
+            /// @note (waterSsrEnabled は共通側で _reserved になっている枠)。
             float waterSsrEnabled;
             float isOrthographic;
-            float _pad;
+            /// @note Water 専用 b0 の末尾。0=通常、1=Wireframe Lit、2=Wireframe Unlit。
+            float wireframeMode;
         };
         static_assert(sizeof(CameraCB) == 288, "CameraCB size mismatch");
 
@@ -927,11 +931,12 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         camData.waterSsrEnabled = (ctx.isDeferred && ctx.settings.ssr.enabled) ? 1.0f : 0.0f;
         camData.isOrthographic  =
             camera.m_projection == renderer::ProjectionMode::Orthographic ? 1.0f : 0.0f;
+        camData.wireframeMode = ctx.settings.IsWireframe() ? (ctx.settings.IsUnlit() ? 2.0f : 1.0f) : 0.0f;
         resources.Update(cameraCBH, &camData, sizeof(camData));
     }
 
     /// @note 輪の寿命は WaterSystem が進める。ここで進めると SceneView と GameView で
-    ///       2 回進み、ビューを 2 つ開いた瞬間に波紋が倍速で消える。
+    /// @note 2 回進み、ビューを 2 つ開いた瞬間に波紋が倍速で消える。
 
     for (auto [water, transform] : scene.View<WaterComponent, Transform>()) {
         if (!water.enabled) continue;
@@ -977,7 +982,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         if (water.texDirty || water.foamDirty || !s_texCache.contains(eid.index)) {
             WaterTextures& cached = s_texCache[eid.index];
             /// @note 焼き直しは解像度スライダー操作中フレーム毎に走るため、上書き前に解放する。
-            ///       返さず差し替えると 1 フレームぶんの泡マスクがそのまま漏れ続ける。
+            /// @note 返さず差し替えると 1 フレームぶんの泡マスクがそのまま漏れ続ける。
             if (cached.foamMask.IsValid()) resources.Release(cached.foamMask);
             cached = BuildTextureSet(
                 water, transform, scene, resources, foamThreshold, foamFade);
@@ -986,7 +991,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         }
 
         /// @note 波紋がなく既存テクスチャも有効なら CPU 更新・GPU アップロードを省く。
-        ///       hadRipples を見るのは最後の 1 つが消えたフレームに 1 回だけ焼き直すため。
+        /// @note hadRipples を見るのは最後の 1 つが消えたフレームに 1 回だけ焼き直すため。
         WaterRippleState& rippleState = s_rippleStates[eid.index];
         if (rippleState.dirty || !rippleState.gpuTex.IsValid()
             || !water.ripples.empty() || rippleState.hadRipples)
@@ -1002,8 +1007,8 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         }
 
         /// @note 空反射は空連動 IBL のキューブが焼けているときだけ有効にする。DX12 の未バインド
-        ///       スロットは Texture2D の null ディスクリプタなので、TextureCube 宣言のまま
-        ///       参照させず、0 を渡してシェーダー側の分岐を閉じる。
+        /// @note スロットは Texture2D の null ディスクリプタなので、TextureCube 宣言のまま
+        /// @note 参照させず、0 を渡してシェーダー側の分岐を閉じる。
         const bool hasSkyCube = ctx.handles.iblPrefilter.IsValid();
         const WaterDetailNoise& detailNoise = GetWaterDetailNoise(resources);
         const WaterCB cb = BuildWaterCB(water, mat, transform, jitteredVP, elapsedTime,
@@ -1019,7 +1024,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 
         const WaterTextures& textures = s_texCache.at(eid.index);
         /// @note outputRT を RTV/DSV としてバインドしたままその depth を SRV(t5) で読むことは
-        ///       DX11 で禁止のため、Water パス開始時にコピーした depth を読み背景・水深判定を安定させる。
+        /// @note DX11 で禁止のため、Water パス開始時にコピーした depth を読み背景・水深判定を安定させる。
         const renderer::ResourceHandle<renderer::TextureTag> depthTex = sceneDepth;
         const renderer::ResourceHandle<renderer::TextureTag> colorTex =
             sceneColor.IsValid() ? sceneColor : blackTex;
@@ -1068,12 +1073,12 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             /// @note TEX_IBL_PREFILTER: 空反射
             call.textures[17] = ctx.handles.iblPrefilter;
             /// @note TEX_VELOCITY_FIELD: 焼いた速度場のアトラス。場が 1 枚も無くても **必ず束縛する**
-            ///       — DX12 の null ディスクリプタは Texture2D 固定で、Texture3D を宣言した
-            ///       スロットを空にすると次元が食い違う。
+            /// @note — DX12 の null ディスクリプタは Texture2D 固定で、Texture3D を宣言した
+            /// @note スロットを空にすると次元が食い違う。
             call.textures[26] = asset::VelocityFieldAtlas::Texture(resources);
             SubmitCounted(ctx, call);
         }
     }
 }
 
-} // namespace fbzz::scene
+}

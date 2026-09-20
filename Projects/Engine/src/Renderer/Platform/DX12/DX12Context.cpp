@@ -340,7 +340,108 @@ bool DX12Context::CreateCommandsAndFence()
     if (!CheckResult(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)), "Fence の生成"))
         return false;
     m_fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    return m_fenceEvent != nullptr;
+    if (m_fenceEvent == nullptr) return false;
+
+    /// @note 非同期テクスチャ転送の専用コピーキュー。作れなくても起動は止めず、描画キューでの転送へ倒す。
+    ///       `FBZZ_COPY_QUEUE=0` で使わない構成を試せる (検証レイヤーでの切り分け用)。
+    D3D12_COMMAND_QUEUE_DESC copyDesc{};
+    copyDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+    if (SUCCEEDED(m_device->CreateCommandQueue(&copyDesc, IID_PPV_ARGS(&m_copyQueue)))
+        && SUCCEEDED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_copyFence)))) {
+        wchar_t value[8]{};
+        if (GetEnvironmentVariableW(L"FBZZ_COPY_QUEUE", value, 8) > 0 && value[0] == L'0') m_useCopyQueue = false;
+        FBZZ_LOG_INFO("DX12Context: コピーキュー %s", m_useCopyQueue ? "有効" : "無効 (FBZZ_COPY_QUEUE=0)");
+    } else {
+        m_copyQueue.Reset();
+        m_copyFence.Reset();
+        FBZZ_LOG_WARN("DX12Context: コピーキューを作れません。テクスチャ転送は描画キューで行います");
+    }
+
+    /// @note 画面空間 Compute をジオメトリ描画と重ねるためのキュー。使うかどうかを決めるのは
+    ///       RenderSettings::asyncCompute (既定 false) で、ここは «機械が持っているか» だけを見る。
+    ///       `FBZZ_ASYNC_COMPUTE=0` は機械側の強制停止 (検証レイヤーでの切り分け用)。
+    /// @see Docs/design/async-compute.md
+    D3D12_COMMAND_QUEUE_DESC computeDesc{};
+    computeDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+    bool computeReady = SUCCEEDED(m_device->CreateCommandQueue(&computeDesc, IID_PPV_ARGS(&m_computeQueue)))
+                     && SUCCEEDED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_computeFence)));
+    if (computeReady) {
+        for (auto& allocator : m_computeAllocators) {
+            if (FAILED(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE,
+                                                        IID_PPV_ARGS(&allocator)))) {
+                computeReady = false;
+                break;
+            }
+        }
+    }
+    if (computeReady) {
+        computeReady = SUCCEEDED(m_device->CreateCommandList(
+            0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_computeAllocators[0].Get(), nullptr,
+            IID_PPV_ARGS(&m_computeList)));
+        if (computeReady) m_computeList->Close();
+    }
+    if (computeReady) {
+        wchar_t value[8]{};
+        if (GetEnvironmentVariableW(L"FBZZ_ASYNC_COMPUTE", value, 8) > 0 && value[0] == L'0')
+            m_useAsyncCompute = false;
+        FBZZ_LOG_INFO("DX12Context: コンピュートキュー %s",
+                      m_useAsyncCompute ? "利用可" : "無効 (FBZZ_ASYNC_COMPUTE=0)");
+    } else {
+        m_computeQueue.Reset();
+        m_computeFence.Reset();
+        m_computeList.Reset();
+        for (auto& allocator : m_computeAllocators) allocator.Reset();
+        FBZZ_LOG_WARN("DX12Context: コンピュートキューを作れません。Compute は描画キューで行います");
+    }
+    return true;
+}
+
+uint64_t DX12Context::SplitGraphicsList()
+{
+    if (!m_frameOpen) return 0;
+    if (!CheckResult(m_commandList->Close(), "CommandList::Close (分割)")) return 0;
+
+    ID3D12CommandList* lists[] = { m_commandList.Get() };
+    m_commandQueue->ExecuteCommandLists(1, lists);
+    const uint64_t value = m_nextFenceValue++;
+    m_commandQueue->Signal(m_fence.Get(), value);
+
+    /// @note アロケーターは Reset しない。投入したリストがまだその記録メモリを読んでいる。
+    if (!CheckResult(m_commandList->Reset(m_frames[m_frameIndex].allocator.Get(), nullptr),
+                     "CommandList::Reset (分割)")) {
+        /// @note ここで失敗するとフレームの記録先が閉じたままになる。以降の記録を捨てる。
+        m_frameOpen = false;
+        return 0;
+    }
+    /// @note Reset で全パイプライン状態が落ちた。束縛の記憶を持つ側へ知らせる。
+    MarkPipelineStateDirty();
+    return value;
+}
+
+ID3D12GraphicsCommandList* DX12Context::BeginComputeList(uint64_t waitGraphicsFenceValue)
+{
+    if (!SupportsAsyncCompute() || m_computeListOpen || !m_frameOpen) return nullptr;
+    if (!CheckResult(m_computeList->Reset(m_computeAllocators[m_frameIndex].Get(), nullptr),
+                     "ComputeList::Reset"))
+        return nullptr;
+    if (waitGraphicsFenceValue != 0)
+        m_computeQueue->Wait(m_fence.Get(), waitGraphicsFenceValue);
+    m_computeListOpen = true;
+    return m_computeList.Get();
+}
+
+void DX12Context::EndComputeList()
+{
+    if (!m_computeListOpen) return;
+    m_computeListOpen = false;
+    if (!CheckResult(m_computeList->Close(), "ComputeList::Close")) return;
+
+    ID3D12CommandList* lists[] = { m_computeList.Get() };
+    m_computeQueue->ExecuteCommandLists(1, lists);
+    const uint64_t value = m_nextComputeFenceValue++;
+    m_computeQueue->Signal(m_computeFence.Get(), value);
+    /// @note この後に投入される描画だけが待つ。区間の結果を読むのは区間より後の描画なので足りる。
+    m_commandQueue->Wait(m_computeFence.Get(), value);
 }
 
 bool DX12Context::BeginFrame()
@@ -368,6 +469,12 @@ bool DX12Context::BeginFrame()
     if (!CheckResult(frame.allocator->Reset(), "CommandAllocator::Reset")
         || !CheckResult(m_commandList->Reset(frame.allocator.Get(), nullptr), "CommandList::Reset"))
         return false;
+    /// @note このフレームのコンピュート用アロケーターもここで 1 回だけ巻き戻す。同じフレームの
+    ///       描画フェンスを待った後なので、そのフレームのコンピュートも既に終わっている
+    ///       (描画キューが区間の完了を待ってから最後の Signal を出すため)。
+    if (m_computeAllocators[m_frameIndex])
+        m_computeAllocators[m_frameIndex]->Reset();
+    RecordPostCopyBarriers();
 
     m_backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
     TransitionBackBuffer(D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -470,6 +577,10 @@ void DX12Context::Shutdown()
 {
     if (m_commandQueue)
         Flush();
+    FlushCopyQueue();
+    m_pendingPostCopyBarriers.clear();
+    m_copyFence.Reset();
+    m_copyQueue.Reset();
     if (m_fenceEvent) {
         CloseHandle(m_fenceEvent);
         m_fenceEvent = nullptr;
@@ -486,6 +597,7 @@ void DX12Context::Shutdown()
     for (auto& frame : m_frames) frame.allocator.Reset();
     for (auto& uploads : m_transientUploads) uploads.clear();
     m_deferredResources.clear();
+    m_pendingUploads.clear();
     /// @note 永続 bindless の台帳もヒープと一緒に捨てる。残すと再初期化後に «存在しないヒープの
     ///       添字» を配ってしまい、デバイスロストからの復帰で真っ黒に描画される形で出る。
     m_bindlessNextSlot = 0;
@@ -628,8 +740,118 @@ bool DX12Context::UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t 
 bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
                                       Microsoft::WRL::ComPtr<ID3D12Resource>& texture)
 {
+    PendingUpload upload;
+    if (!SubmitTexture2DUpload(mips, texture, upload, false))
+        return false;
+    Flush();
+    return true;
+}
+
+void DX12Context::FlushCopyQueue()
+{
+    if (!m_copyQueue || !m_copyFence) return;
+    const uint64_t value = m_nextCopyFenceValue++;
+    if (FAILED(m_copyQueue->Signal(m_copyFence.Get(), value))) return;
+    if (m_copyFence->GetCompletedValue() >= value) return;
+    if (SUCCEEDED(m_copyFence->SetEventOnCompletion(value, m_fenceEvent)))
+        WaitForSingleObject(m_fenceEvent, INFINITE);
+}
+
+void DX12Context::RecordPostCopyBarriers()
+{
+    /// @note コピーキューで書き終えた転送先を PIXEL_SHADER_RESOURCE へ移す。フレームの頭に置くので、
+    ///       その後の描画は遷移済みの状態で読む。公開 (Pump) はフェンス通過を見てから行うので、
+    ///       公開済みのテクスチャは必ずここで遷移している。
+    const uint64_t completed = m_copyFence ? m_copyFence->GetCompletedValue() : 0;
+    std::vector<D3D12_RESOURCE_BARRIER> barriers;
+    const auto firstPending = std::remove_if(
+        m_pendingPostCopyBarriers.begin(), m_pendingPostCopyBarriers.end(),
+        [&](const PostCopyBarrier& entry) {
+            if (entry.copyFenceValue > completed) return false;
+            D3D12_RESOURCE_BARRIER barrier{};
+            barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Transition.pResource = entry.resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            barriers.push_back(barrier);
+            return true;
+        });
+    if (!barriers.empty())
+        m_commandList->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+    /// @note 遷移を記録したフレームが終わるまで転送先を生かす (記録したコマンドがまだ指している)。
+    for (auto it = firstPending; it != m_pendingPostCopyBarriers.end(); ++it) DeferRelease(it->resource);
+    m_pendingPostCopyBarriers.erase(firstPending, m_pendingPostCopyBarriers.end());
+}
+
+bool DX12Context::UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
+                                           Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
+                                           uint64_t& outFenceValue)
+{
+    outFenceValue = 0;
+    PendingUpload upload;
+    /// @note 専用コピーキューがあればそちらへ流す。描画キューのフレームと並んで走り、描画を待たせない。
+    if (m_copyQueue && m_useCopyQueue && SubmitTexture2DUpload(mips, texture, upload, true)) {
+        upload.fenceValue = m_nextCopyFenceValue++;
+        if (FAILED(m_copyQueue->Signal(m_copyFence.Get(), upload.fenceValue))) {
+            FlushCopyQueue();
+            m_pendingPostCopyBarriers.push_back({ texture, 0 });
+            return true;
+        }
+        m_pendingPostCopyBarriers.push_back({ texture, upload.fenceValue });
+        outFenceValue = upload.fenceValue | kCopyQueueTokenBit;
+        m_pendingUploads.push_back(std::move(upload));
+        return true;
+    }
+    texture.Reset();
+    if (!SubmitTexture2DUpload(mips, texture, upload, false))
+        return false;
+    /// @note フレーム記録中は新しい値を Signal しない。DeferRelease / FreeBindlessSlot は記録中の
+    ///       m_nextFenceValue を «このフレームの終わり» とみなしているため、途中で値を消費すると
+    ///       まだ記録中のコマンドが読む資源を早く返してしまう。転送は同じキューで先に実行されるので、
+    ///       フレーム末尾の値を待てば転送完了も保証される。
+    if (m_frameOpen) {
+        upload.fenceValue = m_nextFenceValue;
+    } else {
+        upload.fenceValue = m_nextFenceValue++;
+        if (FAILED(m_commandQueue->Signal(m_fence.Get(), upload.fenceValue))) {
+            /// @note Signal できなければ完了を知る手段が無い。待って同期転送へ倒す。
+            Flush();
+            outFenceValue = 0;
+            return true;
+        }
+    }
+    outFenceValue = upload.fenceValue;
+    m_pendingUploads.push_back(std::move(upload));
+    return true;
+}
+
+bool DX12Context::IsFenceComplete(uint64_t fenceValue) const
+{
+    /// @note デバイス削除後の GetCompletedValue は UINT64_MAX を返すので、ロスト中も待ち続けない。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12fence-getcompletedvalue ID3D12Fence::GetCompletedValue
+    if (fenceValue == 0) return true;
+    if ((fenceValue & kCopyQueueTokenBit) != 0) {
+        /// @note コピーキューのフェンスで判定する。描画側の遷移は、公開 (フレーム外の Pump) の後に来る
+        ///       BeginFrame の頭で RecordPostCopyBarriers が記録するので、公開済みの描画は遷移の後に並ぶ。
+        const uint64_t copyValue = fenceValue & ~kCopyQueueTokenBit;
+        return m_copyFence && m_copyFence->GetCompletedValue() >= copyValue;
+    }
+    return GetCompletedFenceValue() >= fenceValue;
+}
+
+bool DX12Context::SubmitTexture2DUpload(std::span<const TextureMip> mips,
+                                        Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
+                                        PendingUpload& outUpload, bool onCopyQueue)
+{
     if (mips.empty() || !mips[0].rgba || mips[0].width == 0 || mips[0].height == 0 || !m_device || !m_commandQueue)
         return false;
+    if (onCopyQueue && !m_copyQueue) return false;
+    /// @note コピーキューで使う資源は COMMON から暗黙に COPY_DEST へ昇格させ、実行後は COMMON へ戻る (decay)。
+    ///       遷移の命令はコピーキューに記録できないので、PIXEL_SHADER_RESOURCE への遷移は描画側で行う。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12 «Implicit state transitions»
+    const D3D12_COMMAND_LIST_TYPE listType = onCopyQueue ? D3D12_COMMAND_LIST_TYPE_COPY : D3D12_COMMAND_LIST_TYPE_DIRECT;
+    const D3D12_RESOURCE_STATES initialState = onCopyQueue ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_COPY_DEST;
     const UINT mipCount = static_cast<UINT>(mips.size());
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -643,7 +865,7 @@ bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
     textureDesc.SampleDesc.Count = 1;
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &textureDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&texture))))
+            initialState, nullptr, IID_PPV_ARGS(&texture))))
         return false;
 
     std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(mipCount);
@@ -682,9 +904,8 @@ bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
 
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
-    if (FAILED(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)))
-        || FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
-                                              IID_PPV_ARGS(&list))))
+    if (FAILED(m_device->CreateCommandAllocator(listType, IID_PPV_ARGS(&allocator)))
+        || FAILED(m_device->CreateCommandList(0, listType, allocator.Get(), nullptr, IID_PPV_ARGS(&list))))
         return false;
     for (UINT level = 0; level < mipCount; ++level) {
         D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
@@ -697,18 +918,28 @@ bool DX12Context::UploadTexture2DMips(std::span<const TextureMip> mips,
         sourceLocation.PlacedFootprint = footprints[level];
         list->CopyTextureRegion(&destinationLocation, 0, 0, 0, &sourceLocation, nullptr);
     }
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = texture.Get();
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    list->ResourceBarrier(1, &barrier);
+    if (!onCopyQueue) {
+        D3D12_RESOURCE_BARRIER barrier{};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = texture.Get();
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        list->ResourceBarrier(1, &barrier);
+    }
     if (FAILED(list->Close()))
         return false;
     ID3D12CommandList* lists[] = {list.Get()};
-    m_commandQueue->ExecuteCommandLists(1, lists);
-    Flush();
+    (onCopyQueue ? m_copyQueue : m_commandQueue)->ExecuteCommandLists(1, lists);
+    /// @note アロケーター・upload バッファ・転送先は GPU が読み書きし終えるまで生かす。呼び出し側がフェンスを決める。
+    ///       転送先まで持つのは、転送中に候補が捨てられても (DeferRelease は描画キューのフェンスしか見ない)
+    ///       コピーキューが書き終えるまで実体を消さないため。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
+    outUpload.allocator = std::move(allocator);
+    outUpload.list = std::move(list);
+    outUpload.upload = std::move(upload);
+    outUpload.destination = texture;
+    outUpload.onCopyQueue = onCopyQueue;
     return true;
 }
 
@@ -806,6 +1037,14 @@ void DX12Context::CollectDeferredReleases()
         m_deferredResources.begin(), m_deferredResources.end(),
         [completed](const DeferredResource& entry) { return entry.fenceValue <= completed; });
     m_deferredResources.erase(firstPending, m_deferredResources.end());
+
+    const uint64_t copyCompleted = m_copyFence ? m_copyFence->GetCompletedValue() : 0;
+    const auto firstUploading = std::remove_if(
+        m_pendingUploads.begin(), m_pendingUploads.end(),
+        [completed, copyCompleted](const PendingUpload& entry) {
+            return entry.fenceValue <= (entry.onCopyQueue ? copyCompleted : completed);
+        });
+    m_pendingUploads.erase(firstUploading, m_pendingUploads.end());
 
     /// @note 通過済みの bindless 枠をフリーリストへ戻す。リソース本体と同じフェンスで守る。
     const auto firstLive = std::remove_if(

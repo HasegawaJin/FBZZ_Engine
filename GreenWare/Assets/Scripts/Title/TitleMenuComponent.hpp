@@ -123,7 +123,7 @@ inline void TitleMenuComponent::OnStart()
     se::EnsureSource(scene, "UI");
     bgm::Play(audio, bgm::kTitle);
     for (int i = 0; i < kCount; ++i) {
-        m_rows[i]   = scene.Find(std::string("MenuRow_") + kNames[i]);
+        m_rows[i]   = scene.Find(std::string("MenuRow_") + kNames[i], true);
         m_bands[i]  = Child(m_rows[i], "Band");
         m_bars[i]   = Child(m_rows[i], "Bar");
         m_labels[i] = Child(m_rows[i], "Label");

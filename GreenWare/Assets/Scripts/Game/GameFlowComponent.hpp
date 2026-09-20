@@ -209,7 +209,7 @@ inline void GameFlowComponent::OnStart()
     m_combatWatch.Reset();
     m_bossWatch.Reset();
 
-    if (GameObject* player = scene.FindWithTag("Player")) {
+    if (GameObject* player = scene.FindWithTag("Player", true)) {
         m_player = scene.GetScript<PlayerComponent>(player);
         if (m_player)
             m_player->SetOnDeath([this]() { BeginEnd(false); });
@@ -290,7 +290,7 @@ inline void GameFlowComponent::FadeOutAmbience()
 
 inline void GameFlowComponent::RefreshHud()
 {
-    if (GameObject* text = scene.Find(objectiveTextName)) {
+    if (GameObject* text = scene.Find(objectiveTextName, true)) {
         /// @note 目的は «削り切る» ではなく «弾いて崩し、とどめで脚を落とす»。倒れている間
         ///       だけ言い方を変える。キー名は書かない ─ 弾きの割り当ては差し替えられる
         ///       (OPTIONS の parry 行) ため、どのキーかは OPTIONS / UiHintBar に任せる。

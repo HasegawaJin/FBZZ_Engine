@@ -3529,8 +3529,11 @@ void UISelectionMaskSystem(Scene& scene,
 
         const UITransform2D canvasRoot =
             BuildCanvasRootTransform(*entry.canvas, viewportWidth, viewportHeight);
+        /// @note 選択マスク RT は Reversed-Z。スクリーン空間 (z=0) は最手前の 1 へ、
+        ///       ワールド空間はカメラの GPU 射影と同じ深度へ移る。
+        const math::Matrix4 canvasToClip = renderer::ReverseClipDepth(state.canvasToClip);
         SubmitSelectionMaskRecursive(*entry.go, canvasRoot, renderer, resources, ctx,
-                                     state.canvasToClip, state.layer, isSelected, false);
+                                     canvasToClip, state.layer, isSelected, false);
     }
 }
 

@@ -39,7 +39,7 @@ void TerrainCollisionDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     view.detailRadius   = kDetailRadius;
     view.enabled        = true;
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : ctx.scene.GetEntities<TerrainColliderComponent>()) {
         GameObject* go  = ctx.scene.GetGameObject(id);
         auto*       col = ctx.scene.GetComponent<TerrainColliderComponent>(id);

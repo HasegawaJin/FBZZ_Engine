@@ -37,11 +37,12 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     else if (displayMode == 6) color = value.rgb * 0.5 + 0.5;
     else if (displayMode == 7)
     {
-        // DirectX の通常 Z (near=0, far=1)。遠平面距離で正規化して値域調整へ渡す。
+        /// @note カメラ深度は Reversed-Z (near=1, far=0)。視空間 Z を遠平面距離で正規化して値域調整へ渡す。
+        /// @see Common/Space.hlsli の LinearizeDepth (同じ式を farPlane で割ったもの)
         float z = saturate(value.r);
         float linearZ = orthographic > 0.5
-            ? (nearPlane + z * (farPlane - nearPlane)) / max(farPlane, 0.000001)
-            : nearPlane / max(farPlane - z * (farPlane - nearPlane), 0.000001);
+            ? (farPlane - z * (farPlane - nearPlane)) / max(farPlane, 0.000001)
+            : nearPlane / max(nearPlane + z * (farPlane - nearPlane), 0.000001);
         color = linearZ.xxx;
     }
 

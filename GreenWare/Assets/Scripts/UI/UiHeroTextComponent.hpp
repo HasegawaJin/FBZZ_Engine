@@ -80,7 +80,7 @@ inline void UiHeroTextComponent::OnStart()
     for (const std::string& name : targets) {
         if (name.empty()) continue;
         Target t;
-        t.go = scene.Find(name);
+        t.go = scene.Find(name, true);
         if (!t.go) { debug.LogWarning("UiHeroText: '" + name + "' が見つかりません"); continue; }
         if (auto* text = t.go->GetComponent<UIText>()) text->richText = true;
         m_targets.push_back(t);

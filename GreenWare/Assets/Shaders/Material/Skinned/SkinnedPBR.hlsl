@@ -1,7 +1,9 @@
-// FBZZ Engine
-// Material/Skinned/SkinnedPBR.hlsl | Material
-// GPU スキニング + Cook-Torrance PBR フォワードパス
-// PS ロジックは Surface/PBR.hlsl と完全に一致させること。
+/// @file    SkinnedPBR.hlsl
+/// @brief   GPU スキニング + Cook-Torrance PBR のフォワードパス。
+/// @author  Hasegawa Jin
+/// @date    2026-05-19
+///
+/// @note PS の処理は Surface/PBR.hlsl と完全に一致させる (画面空間 AO / 接触影を引かない点だけが違う)。
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
@@ -38,8 +40,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float3 sheenColor;
     float  _pad2;
 
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
-    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    /// @note bindless のテクスチャ添字。Material::Upload が毎フレーム書き、ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
     uint texAlbedoIndex;
     uint texNormalIndex;
     uint texMetallicIndex;
@@ -116,7 +117,7 @@ float4 PSMain(PSInput p) : SV_Target0
 
     met   = saturate(met);
     rough = max(saturate(rough), 0.045f);
-    // 濡れは素材の値なので法線分散のフィルタより先に掛ける (GBuffer.hlsl と同順)。
+    /// @note 濡れは素材の値なので法線分散のフィルタより先に掛ける (GBuffer.hlsl と同順)。
     const WetSurface wet = ApplyWetness(col, rough, N);
     col   = wet.albedo;
     rough = max(wet.roughness, 0.045f);
@@ -135,11 +136,10 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = SafeNormalize(-lightDir, N);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    // NOTE: スキンドメッシュは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外)。
-    //       画面空間 AO / 接触影を引くと、キャラの画素で「背景の遮蔽」を読んでしまうので使わない。
-    //       これは Deferred でも同じ (キャラは DeferredLighting を通らない) ため、差は生じない。
+    /// @note スキンドは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外) ので、画面空間 AO / 接触影は背景の遮蔽を読んでしまい使わない。
+    /// @note Deferred でもキャラは DeferredLighting を通らないため、パイプライン間の差は出ない。
     float3 result = iblIntensity > 0.0f
-        ? Lighting_PBR_IBL_Advanced(N, V, L, T, B, col, met, rough,
+        ? Lighting_PBR_IBL_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow, ao,
               texIBLIrradiance, texIBLPrefilter, texBRDFLut, iblMaxMipLevel,
@@ -149,8 +149,7 @@ float4 PSMain(PSInput p) : SV_Target0
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow);
 
-    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
-    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    /// @note 点光源 / スポットの走査元は clusterLightMode が決める (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
         result += Lighting_PBR_Advanced(N, V, ps.L, T, B, col, met, saturate(rough + ps.roughnessBias),
             clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,

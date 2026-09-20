@@ -61,7 +61,7 @@ inline AudioSourceComponent* LoopVoice::Acquire(Script& owner)
     GameObject* object = owner.scene.GetGameObject(m_id);
     if (!object) {
         const std::string name = "SFX_Loop_" + m_key;
-        object = owner.scene.Find(name);
+        object = owner.scene.Find(name, true);
         if (!object) {
             const EntityID created = owner.scene.Create(name).GetID();
             /// @note Create がコンポーネント配列を伸ばしうるので、設定は ID から引き直す。

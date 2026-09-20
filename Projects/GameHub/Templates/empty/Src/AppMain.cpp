@@ -11,6 +11,8 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/CrashHandler.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Core/ILogSink.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/ProjectResolver.hpp>
@@ -157,6 +159,11 @@ int Run()
 
     FileLogSink logSink;
     OpenGameLog(logSink);
+
+    /// @note 終了処理で落ちても残すため Uninstall しない。配布物では exe の隣の Saved/Crashes に残る。
+    fbzz::core::CrashHandler::Install(workingDirectory, "{{PROJECT_NAME}}");
+    fbzz::core::CrashHandler::NotifyUnreported(workingDirectory, "{{PROJECT_NAME}}", true);
+    fbzz::core::DeveloperMode::InitFromCommandLine();
 
     /// @note SceneSerializer がシーンを復元するときに ScriptFactory を参照するため、シーンロードより前に呼ぶ必要がある。
     RegisterScripts();

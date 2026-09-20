@@ -64,12 +64,16 @@ float SunEnergy(float opticalToSun, float cosT)
 
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
-    float ndcDepth = g_depth.Sample(sampDefault, p.uv).r;
-    float sceneDepth = ndcDepth >= 0.9999f
+    /// @note 画素が覆う深度のうち最も手前 (Reversed-Z で最大) を使う。半解像度で描くとき、輪郭の 2x2 を
+    ///       補間すると空 (0) と物体の中間の «実在しない奥行き» になり、物体の手前まで雲が伸びてはみ出す。
+    const float4 depthQuad = g_depth.GatherRed(sampDefault, p.uv);
+    float ndcDepth = max(max(depthQuad.x, depthQuad.y), max(depthQuad.z, depthQuad.w));
+    /// @note カメラ深度は Reversed-Z。空は深度 0、far 面は NDC z = 0。
+    float sceneDepth = IsFarDepth(ndcDepth)
         ? cloudNoise.w
         : distance(cameraPos, ReconstructWorldPos(p.uv, ndcDepth, invViewProjection));
 
-    float3 farPos = ReconstructWorldPos(p.uv, 1.0f, invViewProjection);
+    float3 farPos = ReconstructWorldPos(p.uv, 0.0f, invViewProjection);
     float3 rd = normalize(farPos - cameraPos);
 
     float t0, t1;

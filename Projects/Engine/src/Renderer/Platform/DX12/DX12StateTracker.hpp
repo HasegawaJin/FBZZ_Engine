@@ -25,6 +25,16 @@ public:
     void QueueTransition(ID3D12Resource* resource, D3D12_RESOURCE_STATES requiredState);
     void FlushBarriers(ID3D12GraphicsCommandList* commands);
 
+    /// @brief 追跡中のリソースをすべて COMMON へ移す遷移を溜める。
+    /// @note 非同期コンピュート区間へ入る前に、描画キュー側で呼ぶ。COMPUTE キューは
+    ///       PIXEL_SHADER_RESOURCE / RENDER_TARGET / DEPTH_* を扱えず、その状態のまま渡すと
+    ///       コンピュート側で遷移も使用もできない。COMMON はどのキューでも合法で、そこからなら
+    ///       UNORDERED_ACCESS / NON_PIXEL_SHADER_RESOURCE へ自由に移せる。
+    /// @note 「区間が触るリソースだけ」を宣言させないのは、宣言漏れが «たまに壊れる» 形でしか
+    ///       現れず、絵から原因に辿りつけないため。
+    /// @see Docs/design/async-compute.md §3
+    void QueueTransitionAllToCommon();
+
     void Clear();
 
 private:

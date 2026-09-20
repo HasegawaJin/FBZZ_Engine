@@ -32,8 +32,13 @@ UnderwaterInfo EvaluateUnderwaterInfo(const RenderPassContext& ctx)
     UnderwaterInfo best{};
     const float time = Time::time;
 
-    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
-        if (!water.enabled) continue;
+    /// @note 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
+    for (const EntityID waterId : ctx.scene.GetEntities<WaterComponent>()) {
+        const GameObject* waterObject = ctx.scene.GetGameObject(waterId);
+        const auto* waterPtr = ctx.scene.GetComponent<WaterComponent>(waterId);
+        if (!waterObject || !waterPtr || !waterPtr->enabled || !waterObject->activeInHierarchy()) continue;
+        const WaterComponent& water = *waterPtr;
+        const Transform& transform = waterObject->transform;
 
         const float localX = ctx.camera.m_position.x - transform.position.x;
         const float localZ = ctx.camera.m_position.z - transform.position.z;
@@ -205,7 +210,11 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     /// @note MotionBlur が有効なら CS が生成した blurred HDR を hdrRT の代わりに t5 へ束縛する。
     ///       MotionBlurPass が motionBlurResult に完全なブラー済み HDR を書くため、Composite
     ///       はそれを HDR ソースとして読むだけで良く、Composite.hlsl の変更は不要。
-    compositeDC.textures[5] = (rs.motionBlur.enabled && h.motionBlurResult.IsValid())
+    /// @note 条件は ExecuteMotionBlurPass の早期 return と同じにする。シェーダーが読めずパスが走らなかった
+    ///       フレームに結果テクスチャを読むと、前のフレーム (または未初期化) の絵が出る。
+    const bool motionBlurWritten = rs.motionBlur.enabled
+        && h.motionBlurShader.IsValid() && h.motionBlurResult.IsValid();
+    compositeDC.textures[5] = motionBlurWritten
         ? h.motionBlurResult
         : resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
     compositeDC.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));

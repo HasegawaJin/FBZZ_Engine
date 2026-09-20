@@ -59,6 +59,8 @@ cbuffer LightConstants : register(CB_LIGHT)
 
 FBZZ_TEX2D_T(float, g_shadowMap, 13);
 SamplerComparisonState g_shadowSampler : register(SAMPLER_SHADOW);
+/// @note Light Probe Volume の Texture3D を引く Linear clamp。
+SamplerState g_linearClampSampler : register(SAMPLER_LINEAR_CLAMP);
 
 float4 PSMain(TerrainPSInput p) : SV_Target0
 {
@@ -79,9 +81,13 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     /// @note 層の AO (材質の凹凸) と画面空間 AO (形状同士の遮蔽) は別物なので掛け合わせる。
     const float ao = surface.ao * FBZZ_ScreenAO(p.svPosition.xy);
 
+    /// @note Light Probe Volume の中だけ定数の環境光をプローブへ置き換える。外では覆い率 0 で従来の ambientColor のまま (既存の地形の絵を変えない)。
+    float probeCoverage;
+    const float3 ambient = FBZZ_ApplyLightProbes(p.worldPos, N, g_linearClampSampler, ambientColor, probeCoverage);
+
     /// @note AO は環境光だけに掛ける。直射光まで遮ると谷の地形が不自然に暗くなる。
     /// @note 直接光は GBuffer 経路の DeferredLighting と同じ Cook-Torrance (metallic = 0) に揃える。
-    float3 result = albedo * ambientColor * ao
+    float3 result = albedo * ambient * ao
                   + Lighting_PBR_Direct(N, V, L, albedo, 0.0f, roughness, lightColor, lightIntensity) * shadow;
 
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)

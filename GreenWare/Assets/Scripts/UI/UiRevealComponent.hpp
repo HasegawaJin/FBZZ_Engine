@@ -100,7 +100,7 @@ inline void UiRevealComponent::OnStart()
     int group = 0;
     for (const std::string& name : targets) {
         if (name.empty()) continue;
-        GameObject* go = scene.Find(name);
+        GameObject* go = scene.Find(name, true);
         if (!go) {
             debug.LogWarning("UiRevealComponent: '" + name + "' が見つかりません");
             continue;

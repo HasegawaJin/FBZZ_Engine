@@ -40,6 +40,8 @@ FBZZ Engine のドキュメントは 4 か所に分かれている。**どこを
 | [cursor.md](design/cursor.md) | カーソルの要求スタックと見た目の分離 |
 | [bindless.md](design/bindless.md) | ResourceDescriptorHeap によるディスクリプタ直引き。区画割り・枠の寿命・縮退規則 |
 | [dx11-removal.md](design/dx11-removal.md) | DirectX 11 サポート終了 (v1.0)。捨てた理由・残した境界・終了済み設定の扱い |
+| [graphics-library.md](design/graphics-library.md) | Graphics ライブラリ分離、Engine との描画入力・寿命契約、Forward / Deferred の構成境界と移行手順 (Draft) |
+| [pipeline-boundary.md](design/pipeline-boundary.md) | 材質ごとの GBuffer / Forward 振り分け規則とスキンド描画の導入背景 |
 | [game-settings.md](design/game-settings.md) | ユーザー定義シリアライズと Option 画面。宣言 1 行で設定を増やす |
 | [sequence-system.md](design/sequence-system.md) | 演出タイムライン (`.sequence`) |
 | [sprite-reference.md](design/sprite-reference.md) | Sprite 参照の設計。名前で書き、ID で保存する契約 |

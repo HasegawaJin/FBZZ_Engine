@@ -107,6 +107,9 @@ void ScriptEventBus::PublishRaw(std::string_view channel, const void* payload)
         auto& subs = Channels()[std::string(channel)];
         if (i >= subs.size()) break;
         if (subs[i].canceled) continue;
+        /// @note 持ち主のスクリプトが無効 (自身が無効・親ごと無効化) なら配らない。購読は残すので、有効に戻せば何もせずまた届く。
+        ///       Update と同じ規則にしないと、止めたはずのオブジェクトがイベントにだけ反応し続ける。
+        if (const Script* owner = subs[i].owner; owner && !owner->scene.IsActiveAndEnabled()) continue;
         RawHandler handler = subs[i].handler;
         if (handler) handler(payload);
     }

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include <Engine/Scene/Fields/FlowFieldEval.hpp>
+#include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 
 #include "Engine/Asset/AssetManager.hpp"
 #include "Fluid/VectorFieldAsset.hpp"
@@ -44,11 +45,43 @@ bool ResolveInfluence(const ActiveFlowField& f, const math::Vector3& toPoint, fl
     return true;
 }
 
-} // namespace
+}
 
 bool AffectsEmitter(const ActiveFlowField& field, uint32_t emitterChannels)
 {
-    return (field.channels & emitterChannels) != 0u;
+    return FlowReceiver{true, emitterChannels}.Accepts(field);
+}
+
+bool FlowReceiver::Accepts(const ActiveFlowField& field) const
+{
+    return enabled && (field.channels & channels) != 0u;
+}
+
+bool FlowReceiver::Intersects(const ActiveFlowField& field, const math::Vector3& center, float radius) const
+{
+    return Accepts(field) && FlowIntersectsSphere(field, center, radius);
+}
+
+math::Vector3 FlowReceiver::Sample(const math::Vector3& position, std::span<const ActiveFlowField> fields,
+                                  float time, bool* covered) const
+{
+    return SampleFlow(position, fields, enabled ? channels : 0u, time, covered);
+}
+
+std::span<const ActiveFlowField> SelectFlowFields(const FlowFieldFrame& frame, bool includeAmbient)
+{
+    const std::span<const ActiveFlowField> fields = *frame.fields;
+    return includeAmbient ? fields : fields.first((std::min)(frame.sceneFieldCount, fields.size()));
+}
+
+std::function<math::Vector3(const math::Vector3&)> MakeFlowSampler(
+    const FlowFieldFrame& frame, FlowReceiver receiver, float time, bool includeAmbient)
+{
+    if (!receiver.enabled || receiver.channels == 0u) return {};
+    const size_t count = SelectFlowFields(frame, includeAmbient).size();
+    return [fields = frame.fields, count, receiver, time](const math::Vector3& position) {
+        return receiver.Sample(position, std::span<const ActiveFlowField>(*fields).first(count), time);
+    };
 }
 
 bool FlowIntersectsSphere(const ActiveFlowField& field, const math::Vector3& center, float radius)
@@ -131,7 +164,7 @@ void GatherFlowFields(Scene& scene, std::vector<ActiveFlowField>& out)
 
 /// @brief 契約 (何を返すか・GPU との式の一致) は FlowFieldEval.hpp を参照。
 math::Vector3 SampleFlow(const math::Vector3& position,
-                         const std::vector<ActiveFlowField>& fields,
+                         std::span<const ActiveFlowField> fields,
                          uint32_t channels, float time, bool* covered)
 {
     math::Vector3 flow = math::Vector3::ZERO;
@@ -212,7 +245,7 @@ void ApplyFlowFields(const std::vector<ActiveFlowField>& fields,
 {
     if (fields.empty() || coupling <= 0.0f) return;
     bool covered = false;
-    const math::Vector3 flow = SampleFlow(position, fields, emitterChannels, time, &covered);
+    const math::Vector3 flow = FlowReceiver{true, emitterChannels}.Sample(position, fields, time, &covered);
     if (!covered) return;
     /// @note 1 を超えると «行き過ぎて逆に振れる» 発散になる。陽解法の 1 ステップぶんで
     ///       追い越さないところで止める (HLSL 側は saturate)。
@@ -248,7 +281,8 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
         outFields.push_back(resolved);
     }
 
-    if (!emitter.settings.receiveFlowFields) return;
+    const FlowReceiver receiver{emitter.settings.receiveFlowFields, emitter.settings.flowFieldChannels};
+    if (!receiver.enabled || receiver.channels == 0u) return;
     math::Vector3 boundsCenter = emitter.runtime.flowBoundsCenter;
     float boundsRadius = emitter.runtime.flowBoundsRadius;
     if (!useGpuBounds) {
@@ -263,8 +297,8 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
     }
     bool needsZeroFlow = false;
     for (const ActiveFlowField& field : sceneFields) {
-        if (!AffectsEmitter(field, emitter.settings.flowFieldChannels)) continue;
-        if (!FlowIntersectsSphere(field, boundsCenter, boundsRadius)) {
+        if (!receiver.Accepts(field)) continue;
+        if (!receiver.Intersects(field, boundsCenter, boundsRadius)) {
             needsZeroFlow |= field.type == FlowFieldType::Baked;
             continue;
         }
@@ -279,4 +313,4 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
     }
 }
 
-} // namespace fbzz::scene
+}

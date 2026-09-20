@@ -506,12 +506,12 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     m_dangerClock += presentationDt;
     const float defeat = Clamp01(m_defeatSeconds / 1.4f);
     const float reveal = Clamp01((m_defeatSeconds - 0.55f) / 0.45f);
-    if (auto* word = scene.Find("HUD_FailedTitle")) {
+    if (auto* word = scene.Find("HUD_FailedTitle", true)) {
         ui.SetTextEnabled(word, m_defeated);
         ui.SetTextColor(word, {0.95f, 0.045f, 0.085f, reveal * (1.0f - transition::Coverage())});
         word->transform.position.y = 426.0f + (1.0f - reveal) * 16.0f;
     }
-    if (auto* caption = scene.Find("HUD_FailedCaption")) {
+    if (auto* caption = scene.Find("HUD_FailedCaption", true)) {
         ui.SetTextEnabled(caption, m_defeated);
         ui.SetTextColor(caption, {0.72f, 0.65f, 0.66f,
             Clamp01((m_defeatSeconds - 1.0f) / 0.5f) * (1.0f - transition::Coverage())});

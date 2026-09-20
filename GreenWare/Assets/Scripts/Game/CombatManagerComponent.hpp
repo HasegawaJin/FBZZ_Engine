@@ -274,7 +274,7 @@ inline void CombatManagerComponent::OnUpdate()
     if (!m_warnedNoPlayerTarget && m_targetGrace < kTargetGraceSeconds) {
         m_targetGrace += std::max(time.UnscaledDeltaTime(), 0.0f);
         if (m_targetGrace >= kTargetGraceSeconds) {
-            GameObject* player = scene.FindWithTag("Player");
+            GameObject* player = scene.FindWithTag("Player", true);
             if (!player) {
                 m_warnedNoPlayerTarget = true;
                 debug.LogError("CombatManagerComponent: tag=Player の GameObject が無い。"

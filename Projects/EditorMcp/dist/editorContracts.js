@@ -1,14 +1,15 @@
-// FBZZ Engine
-// editorContracts.ts | EditorMcp
-// Editor Command Bus と MCP が共有する wire 契約と入力検証
+/// @file    editorContracts.ts
+/// @brief   Editor Command Bus と MCP が共有する wire 契約と入力検証
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 import * as z from 'zod/v4';
-// プロトコル識別子。C++ Editor 側 (EditorBusProtocol.hpp) と一字一句一致させ、
-// 世代を跨いだ非互換要求を弾く単一の真実にする。
+/// @note プロトコル識別子。C++ Editor 側 (EditorBusProtocol.hpp) と一字一句一致させ、
+/// @note 世代を跨いだ非互換要求を弾く単一の真実にする。
 export const EDITOR_PROTOCOL = 'fbzz.editor.v1';
-// NodeId は Scene の UUID v4 を使い、配列移動や世代更新を越えて安定させる。
+/// @note NodeId は Scene の UUID v4 を使い、配列移動や世代更新を越えて安定させる。
 export const NodeIdSchema = z.string().uuid();
 export const Vec3Schema = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
-// 地形ブラシの op。並びは C++ の TerrainSculptOp と同じ (追加は末尾)。
+/// @note 地形ブラシの op。並びは C++ の TerrainSculptOp と同じ (追加は末尾)。
 export const TerrainSculptOpSchema = z.enum([
     'raise', 'lower', 'smooth', 'flatten', 'stamp', 'noise', 'thermalErosion', 'hydraulicErosion', 'terrace',
 ]);
@@ -26,24 +27,24 @@ export const ScenePropertyFilterSchema = z.object({
     op: z.enum(['equals', 'notEquals', 'contains', 'greater', 'less']).default('equals'),
     value: JsonValueSchema,
 }).strict();
-// .fluid はレシピ本体。拡張子を先に弾くのは、.mat や .vfx を渡されても C++ 側では
-// FLUID_READ_FAILED としか言えず、AI が「中身が壊れている」と誤読するため。
+/// @note .fluid はレシピ本体。拡張子を先に弾くのは、.mat や .vfx を渡されても C++ 側では
+/// @note FLUID_READ_FAILED としか言えず、AI が「中身が壊れている」と誤読するため。
 export const FluidPathSchema = z.string().min(1).max(1024).regex(/\.fluid$/i, '.fluid のパスを指定してください');
-// FluidBakeService のジョブ id は uint32 で 0 が「受け付けなかった」を意味する。
+/// @note FluidBakeService のジョブ id は uint32 で 0 が「受け付けなかった」を意味する。
 export const FluidJobIdSchema = z.number().int().min(1).max(0xFFFFFFFF);
-// 既定値は C++ 側が持つ (MakeFluidPreset の識別子)。ここで enum に固定すると、
-// エンジンにプリセットを 1 つ足すたびに TypeScript も直すことになる。
+/// @note 既定値は C++ 側が持つ (MakeFluidPreset の識別子)。ここで enum に固定すると、
+/// @note エンジンにプリセットを 1 つ足すたびに TypeScript も直すことになる。
 export const FluidPresetSchema = z.string().min(1).max(64);
-// fluid.set / fluid.createEffect の部分レシピ。形は fluid.schema が正本なので中身は見ない。
+/// @note fluid.set / fluid.createEffect の部分レシピ。形は fluid.schema が正本なので中身は見ない。
 export const FluidFieldsSchema = z.record(z.string().min(1).max(128), JsonValueSchema)
     .refine((fields) => Object.keys(fields).length > 0, { message: 'fields に 1 つ以上の項目が必要です' });
 export const FluidEffectNameSchema = z.string().min(1).max(64)
     .regex(/^[^\\/:*?"<>|.][^\\/:*?"<>|]*$/, 'name はファイル名 1 つ分 (区切り文字・先頭の . は不可)');
-// 部品リストの名前は .fluid の配列キー (recipe.source / recipe.force / recipe.collider) と同じ。
+/// @note 部品リストの名前は .fluid の配列キー (recipe.source / recipe.force / recipe.collider) と同じ。
 export const FluidOperatorListSchema = z.enum(['source', 'force', 'collider']);
 export const FluidOperatorIndexSchema = z.number().int().min(0).max(15);
-// 形 (source: sphere / box / cone / ring / texture、collider: sphere / box / plane) か
-// 力の種類 (wind / attract / ...) のラベル。一覧は fluid.schema が正本。
+/// @note 形 (source: sphere / box / cone / ring / texture、collider: sphere / box / plane) か
+/// @note 力の種類 (wind / attract / ...) のラベル。一覧は fluid.schema が正本。
 export const FluidOperatorTypeSchema = z.string().min(1).max(32);
 export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('editor.catalog') }).strict(),
@@ -56,8 +57,8 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({
         t: z.literal('editor.op.query'),
         id: z.string().min(1).max(128),
-        // 引数は Editor 側の params 宣言だけで検証する。ここで形を固定すると
-        // 「Operator を 1 つ足すたび TypeScript も直す」という重複が復活する。
+        /// @note 引数は Editor 側の params 宣言だけで検証する。ここで形を固定すると
+        /// @note 「Operator を 1 つ足すたび TypeScript も直す」という重複が復活する。
         args: z.record(z.string(), z.unknown()).optional(),
     }).strict(),
     z.object({
@@ -153,13 +154,13 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
         h: z.number().int().min(90).max(1080),
         view: z.enum(['scene', 'game']).optional(),
     }).strict(),
-    // ── ワールドオーサリング ──
+    /// @note ── ワールドオーサリング ──
     z.object({ t: z.literal('scene.list') }).strict(),
     z.object({ t: z.literal('preset.catalog'), category: z.string().min(1).max(64).optional() }).strict(),
     z.object({ t: z.literal('terrain.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({
         t: z.literal('terrain.sample'),
-        // [x, y, z] でも [x, z] でも受ける (高さを問うのに y は要らない)。
+        /// @note [x, y, z] でも [x, z] でも受ける (高さを問うのに y は要らない)。
         points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
         id: NodeIdSchema.optional(),
     }).strict(),
@@ -194,9 +195,9 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
 const CommandNameSchema = z.string().min(1).max(128);
 const ComponentNameSchema = z.string().min(1).max(128);
 export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
-    // args の中身は Editor 側の params 宣言に従って検証される。
-    // ここで形を固定しないのは、operator が増えてもこのファイルを触らずに済ませるため
-    // (Editor に 1 つ足すたび TypeScript も直す、が今回無くしたい重複そのもの)。
+    /// @note args の中身は Editor 側の params 宣言に従って検証される。
+    /// @note ここで形を固定しないのは、operator が増えてもこのファイルを触らずに済ませるため
+    /// @note (Editor に 1 つ足すたび TypeScript も直す、が今回無くしたい重複そのもの)。
     z.object({
         t: z.literal('editor.op.invoke'),
         id: z.string().min(1).max(128),
@@ -254,24 +255,24 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         t: z.literal('material.override'),
         id: NodeIdSchema,
         parameter: z.string().min(1).max(128),
-        value: z.array(z.number().finite()).min(1).max(4),
+        value: z.array(z.number().finite()).min(1).max(16384),
     }).strict(),
     z.object({
         t: z.literal('material.asset.setShader'),
         path: z.string().min(1),
         shaderPath: z.string().min(1),
     }).strict(),
-    // フリップブックアトラスからモーションベクターアトラスを生成する。
-    // MV は外部ツールでしか作れず、AI が flipbook のブレンド品質を上げたくても
-    // 手段が無かったため、コマンドとして公開する。
+    /// @note フリップブックアトラスからモーションベクターアトラスを生成する。
+    /// @note MV は外部ツールでしか作れず、AI が flipbook のブレンド品質を上げたくても
+    /// @note 手段が無かったため、コマンドとして公開する。
     z.object({ t: z.literal('vfx.generateMotionVectors'), texturePath: z.string().min(1).max(1024),
         columns: z.number().int().min(1).max(64), rows: z.number().int().min(1).max(64),
         searchRadius: z.number().int().min(1).max(64).optional(),
         loop: z.boolean().optional(),
         rowSequences: z.boolean().optional(),
-        // 推奨 strength は生成結果でしか決まらないため、渡されたら .mat へ直接書き込む。
+        /// @note 推奨 strength は生成結果でしか決まらないため、渡されたら .mat へ直接書き込む。
         materialPath: z.string().min(1).max(1024).optional() }).strict(),
-    // ── Sprite ──
+    /// @note ── Sprite ──
     z.object({ t: z.literal('sprite.rename'), path: z.string().min(1).max(1024),
         sprite: z.string().min(1).max(256), name: z.string().min(1).max(128) }).strict(),
     z.object({ t: z.literal('sprite.slice'), path: z.string().min(1).max(1024),
@@ -289,7 +290,7 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         keepEmptyRects: z.boolean().optional(),
         prefix: z.string().min(1).max(64).optional(),
         mode: z.enum(['smart', 'safe', 'replace']).optional() }).strict(),
-    // ── Behavior Tree ──
+    /// @note ── Behavior Tree ──
     z.object({ t: z.literal('bt.node.add'), path: z.string().min(1).max(1024),
         nodeType: z.string().min(1).max(64), parentId: z.number().int().min(1).optional(),
         name: z.string().min(1).max(128).optional() }).strict(),
@@ -311,7 +312,7 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     z.object({ t: z.literal('bt.blackboard.remove'), path: z.string().min(1).max(1024),
         name: z.string().min(1).max(64) }).strict(),
     z.object({ t: z.literal('bt.autoLayout'), path: z.string().min(1).max(1024) }).strict(),
-    // bt.lint が autoFixable=true と言った code だけを機械的に直す (Undo 可能)。
+    /// @note bt.lint が autoFixable=true と言った code だけを機械的に直す (Undo 可能)。
     z.object({ t: z.literal('bt.repair'), path: z.string().min(1).max(1024),
         fixAborts: z.boolean().optional(), fixDurations: z.boolean().optional(),
         fixWeights: z.boolean().optional(), fixKeys: z.boolean().optional() }).strict(),
@@ -335,14 +336,14 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         t: z.literal('animation.setParameter'),
         id: NodeIdSchema,
         name: z.string().min(1).max(128),
-        // float/int は number、bool/trigger は boolean。trigger は value 省略で発火。
+        /// @note float/int は number、bool/trigger は boolean。trigger は value 省略で発火。
         value: z.union([z.number().finite(), z.boolean()]).optional(),
     }).strict(),
     z.object({
         t: z.literal('animation.addTransition'),
         id: NodeIdSchema,
         layer: z.string().min(1).max(128).optional(),
-        // from 省略 = Any State 遷移。指定時はそのステートからの遷移。
+        /// @note from 省略 = Any State 遷移。指定時はそのステートからの遷移。
         from: z.string().min(1).max(128).optional(),
         to: z.string().min(1).max(128),
         hasExitTime: z.boolean().optional(),
@@ -362,7 +363,7 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         threshold: z.number().finite().optional(),
         conditionIndex: z.number().int().nonnegative().optional(),
     }).strict().superRefine((input, context) => {
-        // add/update は parameter と op が必須。update/remove は conditionIndex が必須。
+        /// @note add/update は parameter と op が必須。update/remove は conditionIndex が必須。
         if ((input.action === 'add' || input.action === 'update')
             && (input.parameter === undefined || input.op === undefined)) {
             context.addIssue({ code: 'custom', message: `action=${input.action} には parameter と op が必要です` });
@@ -561,7 +562,7 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     }),
     z.object({ t: z.literal('editor.undo') }).strict(),
     z.object({ t: z.literal('editor.redo') }).strict(),
-    // ── ワールドオーサリング ──
+    /// @note ── ワールドオーサリング ──
     z.object({
         t: z.literal('preset.create'),
         preset: z.string().min(1).max(64),
@@ -663,7 +664,7 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     z.object({
         t: z.literal('fluid.preview'),
         path: FluidPathSchema,
-        // frame が第一級 (焼きの第 n コマ)。time は «一番近いコマ» へ吸着させる旧来の指定。
+        /// @note frame が第一級 (焼きの第 n コマ)。time は «一番近いコマ» へ吸着させる旧来の指定。
         frame: z.number().int().min(0).max(1023).optional(),
         time: z.number().finite().min(0).max(600).optional(),
         size: z.number().int().min(32).max(2048).optional(),
@@ -680,7 +681,7 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     z.object({ t: z.literal('fluid.cancel'), job: FluidJobIdSchema }).strict(),
     z.object({
         t: z.literal('fluid.createEffect'),
-        // ファイル名の素になる。区切り文字を許すと dir の外へ書けてしまう。
+        /// @note ファイル名の素になる。区切り文字を許すと dir の外へ書けてしまう。
         name: FluidEffectNameSchema,
         dir: z.string().min(1).max(1024).optional(),
         preset: FluidPresetSchema.optional(),
@@ -704,7 +705,7 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
     }).strict(),
     z.object({
         t: z.literal('visual.compare'),
-        // Tests/Golden 相対・拡張子なし。".." を許すと基準画像の置き場の外へ書ける。
+        /// @note Tests/Golden 相対・拡張子なし。".." を許すと基準画像の置き場の外へ書ける。
         baseline: z.string().min(1).max(128).regex(/^[A-Za-z0-9_\-/]+$/),
         view: z.enum(['game', 'scene']).optional(),
         updateBaseline: z.boolean().optional(),
@@ -727,7 +728,7 @@ export const EditorBusResponseSchema = z.object({
         details: z.unknown().optional(),
     }).optional(),
 }).strict();
-// viewport.capture の応答。engine が PNG を base64 化して返し、MCP が image content へ変換する。
+/// @note viewport.capture の応答。engine が PNG を base64 化して返し、MCP が image content へ変換する。
 export const ViewportCaptureResultSchema = z.object({
     mimeType: z.literal('image/png'),
     base64: z.string().min(1),
@@ -758,8 +759,8 @@ export const AssetThumbnailResultSchema = z.object({
     base64: z.string().min(1),
     path: z.string().min(1),
 }).strict();
-// fluid.jobStatus の応答。C++ 側で項目が増えても MCP を壊さないよう未知キーは素通しする。
-// image は asset.thumbnail と同じ形で、MCP 側で image content へ移し替える。
+/// @note fluid.jobStatus の応答。C++ 側で項目が増えても MCP を壊さないよう未知キーは素通しする。
+/// @note image は asset.thumbnail と同じ形で、MCP 側で image content へ移し替える。
 export const FluidJobImageSchema = z.looseObject({
     mimeType: z.enum(['image/png', 'image/jpeg']),
     base64: z.string().min(1),
@@ -769,7 +770,7 @@ export const FluidJobStatusResultSchema = z.looseObject({
     state: z.enum(['queued', 'running', 'encoding', 'done', 'failed', 'cancelled']),
     image: FluidJobImageSchema.optional(),
 });
-// 切り抜き 1 コマ。reference をそのまま component_set へ渡せる形で返す。
+/// @note 切り抜き 1 コマ。reference をそのまま component_set へ渡せる形で返す。
 export const SpriteThumbnailResultSchema = z.object({
     mimeType: z.literal('image/png'),
     base64: z.string().min(1),

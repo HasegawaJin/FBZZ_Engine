@@ -335,14 +335,14 @@ inline GameFlowComponent* TutorialDirectorComponent::Flow() const
     /// @note 掴んで持たない。GameFlow は別の子オブジェクトに居るのでどちらの OnStart が
     ///       先に走るかはシーンの並び次第になり、1 度きりで掴むと並び順を変えただけで
     ///       目的の 1 行が二度と出なくなる (GameFlowComponent の Combat() と同じ判断)。
-    for (GameObject* object : scene.FindObjectsOfType<GameFlowComponent>())
+    for (GameObject* object : scene.FindObjectsOfType<GameFlowComponent>(true))
         if (auto* flow = scene.GetScript<GameFlowComponent>(object)) return flow;
     return nullptr;
 }
 
 inline PlayerComponent* TutorialDirectorComponent::Player() const
 {
-    GameObject* player = scene.FindWithTag("Player");
+    GameObject* player = scene.FindWithTag("Player", true);
     return player ? scene.GetScript<PlayerComponent>(player) : nullptr;
 }
 
@@ -737,7 +737,7 @@ inline void TutorialDirectorComponent::OnLateUpdate()
     auto* boss = BossObject();
     const auto* rig = boss ? scene.GetScript<BossRigComponent>(boss) : nullptr;
     const auto* iboss = boss ? IBoss::Of(boss) : nullptr;
-    auto* player = scene.FindWithTag("Player");
+    auto* player = scene.FindWithTag("Player", true);
     const bool show = teach && player && rig && iboss && PartsLeft() > 0
         && !StaminaFocusActive() && (m_act == Act::Slash || m_act >= Act::Rush);
     marker->SetActive(show);
@@ -771,11 +771,11 @@ inline void TutorialDirectorComponent::OnStart()
     const char* panelNames[] = { "HUD_StaminaFocusTop", "HUD_StaminaFocusLeft",
                                 "HUD_StaminaFocusRight", "HUD_StaminaFocusBottom" };
     for (int i = 0; i < 4; ++i)
-        if (auto* object = scene.Find(panelNames[i])) m_focusPanels[i] = EntityRef{ object->GetID() };
-    if (auto* object = scene.Find("HUD_StaminaTrace")) m_focusTrace = EntityRef{ object->GetID() };
-    if (auto* object = scene.Find("HUD_StaminaFocusCaption")) m_focusCaption = EntityRef{ object->GetID() };
-    if (auto* object = scene.Find("TutorialLegMarker")) m_legMarker = EntityRef{ object->GetID() };
-    if (auto* object = scene.Find("TutorialLegCaption")) m_legCaption = EntityRef{ object->GetID() };
+        if (auto* object = scene.Find(panelNames[i], true)) m_focusPanels[i] = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_StaminaTrace", true)) m_focusTrace = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_StaminaFocusCaption", true)) m_focusCaption = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("TutorialLegMarker", true)) m_legMarker = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("TutorialLegCaption", true)) m_legCaption = EntityRef{ object->GetID() };
     ClearLessonPresentation();
     if (const auto* player = Player()) {
         m_seenDodgeSpent = player->DodgeStaminaSpent();

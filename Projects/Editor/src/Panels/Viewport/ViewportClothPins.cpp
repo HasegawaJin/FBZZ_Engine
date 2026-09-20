@@ -24,9 +24,17 @@ void DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         InvokeOperator(ctx, "cloth.paint_mode");
     if (ctx.clothPinPainting) {
         ImGui::SameLine();
+        if (ImGui::Checkbox("Max Distance", &brush.distanceMode)) brush.dragging = false;
+        ImGui::SameLine();
         ImGui::SetNextItemWidth(140);
         ImGui::SliderFloat("Radius (px)", &brush.radius, 4.0f, 100.0f, "%.0f");
-        ImGui::TextUnformatted("Through selection | Drag: pin | Shift+drag: release | Gold: pinned");
+        if (brush.distanceMode) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120);
+            if (ImGui::DragFloat("Distance (m)", &brush.distance, 0.01f, 0.0f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp))
+                brush.dragging = false;
+            ImGui::TextUnformatted("Through selection | Drag: set distance | Shift+drag: inherit | Blue: 0, gold: brush value");
+        } else ImGui::TextUnformatted("Through selection | Drag: pin | Shift+drag: release | Gold: pinned");
     }
     ImGui::EndGroup();
     const bool controlsHovered = ImGui::IsItemHovered();
@@ -38,10 +46,17 @@ void DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         return;
     }
     const auto& io = ImGui::GetIO();
+    std::vector<int> distanceParticles;
+    std::vector<float> distanceValues;
+    for (const auto& entry : cloth->maxDistances) { distanceParticles.push_back(entry.particle); distanceValues.push_back(entry.distance); }
     if (brush.dragging && (brush.lastFrame != frame - 1 || brush.scene != ctx.activeScene
         || brush.target != go->instanceId || brush.assetPath != cloth->clothAssetPath
         || brush.revision != state.assetRevision || brush.shape != state.shape
         || brush.beforeOverride != cloth->overridePins || brush.beforePins != cloth->pinnedParticles
+        || brush.strokeDistanceMode != brush.distanceMode || brush.strokeDistance != brush.distance
+        || brush.beforeDefaultDistance != cloth->skinMaxDistance
+        || brush.beforeUseSkinning != cloth->useSkinning
+        || brush.beforeDistanceParticles != distanceParticles || brush.beforeDistances != distanceValues
         || brush.touched.size() != state.restLocal.size() || io.KeyAlt || io.KeyCtrl
         || ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsMouseDown(ImGuiMouseButton_Middle)
         || ImGui::IsKeyPressed(ImGuiKey_Escape)))
@@ -61,6 +76,12 @@ void DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         brush.shape = state.shape;
         brush.beforeOverride = cloth->overridePins;
         brush.beforePins = cloth->pinnedParticles;
+        brush.strokeDistanceMode = brush.distanceMode;
+        brush.strokeDistance = brush.distance;
+        brush.beforeDefaultDistance = cloth->skinMaxDistance;
+        brush.beforeUseSkinning = cloth->useSkinning;
+        brush.beforeDistanceParticles = distanceParticles;
+        brush.beforeDistances = distanceValues;
         brush.touched.assign(state.restLocal.size(), false);
         brush.lastX = mouse.x;
         brush.lastY = mouse.y;
@@ -72,6 +93,9 @@ void DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         for (uint32_t id : state.pins) if (id < pinned.size()) pinned[id] = true;
     }
     auto* draw = ImGui::GetWindowDrawList();
+    std::vector<float> distances(state.restLocal.size(), cloth->useSkinning ? cloth->skinMaxDistance : -1.0f);
+    for (const auto& entry : cloth->maxDistances)
+        if (entry.particle >= 0 && static_cast<size_t>(entry.particle) < distances.size()) distances[entry.particle] = entry.distance;
     draw->PushClipRect(min, {min.x + size.x, min.y + size.y}, true);
     const auto vp = ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix();
     for (size_t i = 0; i < state.restLocal.size(); ++i) {
@@ -92,7 +116,15 @@ void DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
         }
         const bool touched = brush.dragging && brush.touched[i];
         const bool fixed = touched ? !brush.remove : pinned[i];
-        draw->AddCircleFilled(p, touched ? 4.0f : 3.0f, fixed ? IM_COL32(255,190,50,255) : IM_COL32(70,210,255,210));
+        ImU32 color = fixed ? IM_COL32(255,190,50,255) : IM_COL32(70,210,255,210);
+        if (brush.distanceMode) {
+            const float value = touched ? (brush.remove ? (cloth->useSkinning ? cloth->skinMaxDistance : -1.0f) : brush.strokeDistance) : distances[i];
+            const float ratio = std::clamp(value / std::max(brush.distance,0.001f),0.0f,1.0f);
+            color = value < 0 ? IM_COL32(160,160,160,210)
+                : ImGui::ColorConvertFloat4ToU32({0.15f+0.85f*ratio,0.65f,1.0f-0.8f*ratio,1.0f});
+        }
+        draw->AddCircleFilled(p, touched ? 4.0f : 3.0f, color);
+        if (brush.distanceMode && pinned[i]) draw->AddCircle(p,5.0f,IM_COL32(255,255,255,230));
     }
     if (canPaint) draw->AddCircle(mouse, brush.radius, IM_COL32(240,240,240,220), 40, 1.5f);
     draw->PopClipRect();
@@ -107,7 +139,9 @@ void DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
                 args.Set("node", brush.target);
                 args.Set("particles", ids);
                 args.Set("pin", !brush.remove);
-                const auto result = InvokeOperator(ctx, "cloth.paint_pins", args);
+                args.Set("distance", brush.strokeDistance);
+                args.Set("inherit", brush.remove);
+                const auto result = InvokeOperator(ctx, brush.strokeDistanceMode ? "cloth.paint_max_distance" : "cloth.paint_pins", args);
                 if (!result.ok) FBZZ_LOG_WARN("Cloth brush: %s", result.message.c_str());
             }
             brush.dragging = false;

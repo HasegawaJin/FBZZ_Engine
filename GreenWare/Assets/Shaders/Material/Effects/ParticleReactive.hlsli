@@ -18,7 +18,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
 {
     // 不透明物の後ろにある粒子は画面に出ていない。そこで履歴を捨てると輪郭がちらつくだけになる。
     const float sceneDepth = gReactiveSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
-    if (p.svPosition.z > sceneDepth) discard;
+    /// @note カメラ深度は Reversed-Z (手前ほど大きい)。シーンより奥なら捨てる。
+    if (p.svPosition.z < sceneDepth) discard;
 
     float coverage = p.color.a * gTintColor.a * RadialMask(p.localUv);
     if ((gEffectsFlags & FBZZ_PFX_VOLUMETRIC) == 0u)

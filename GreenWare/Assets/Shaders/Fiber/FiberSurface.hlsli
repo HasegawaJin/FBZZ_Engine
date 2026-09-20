@@ -107,6 +107,8 @@ struct FiberPixel {
     float silhouette : TEXCOORD6;
     /// @note 根元で評価した局所 FlowField [m/s]。照明の接線を変形と揃えるため PS へ渡す。
     float3 localFlow : TEXCOORD9;
+    /// @note 頂点で引いた fiberMask の G。層間隔 (視差の上乗せ) を実際の毛丈で求めるため PS へ渡す。
+    float lengthScale : TEXCOORD10;
 #if FIBER_PASS == 3
     float4 currentClip : TEXCOORD7;
     float4 previousClip : TEXCOORD8;
@@ -129,7 +131,9 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
 #if FIBER_FIN
     o.height = v.height;
 #else
-    o.height = (float(instance) + 0.5f) / max(fiberShellCount, 1.0f);
+    /// @note インスタンス 0 を最も外側の層にする。外から描くと、手前の層に隠れた奥の層の画素を深度テストが先に弾く。
+    float shellCount = max(fiberShellCount, 1.0f);
+    o.height = (shellCount - float(instance) - 0.5f) / shellCount;
 #endif
     o.root = mul(float4(localPosition, 1.0f), world).xyz;
     o.normal = FiberNormalize(mul(localNormal, (float3x3)worldInvTranspose), float3(0, 1, 0));
@@ -137,7 +141,8 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
     o.height *= v.faceNormal0.x;
 #endif
     o.localFlow = FiberLocalFlow(o.root, fiberTime, false);
-    o.worldPosition = FiberPosition(o.root, o.normal, o.height, o.localFlow);
+    o.lengthScale = FiberMaskLevel0(v.uv).g;
+    o.worldPosition = FiberPosition(o.root, o.normal, o.height, o.localFlow, o.lengthScale);
 #if FIBER_FIN == 2
     float3 bladeSide = mul(v.edgeVector, (float3x3)world)*v.edgeCoordinate*(1.0f-v.height);
     o.worldPosition += bladeSide;
@@ -147,9 +152,7 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
     o.uv = v.uv;
 #if FIBER_FIN == 1
     /// @note 影では光源のビューを使う。カメラの輪郭に依存した影を投射しない。
-    float3 V = isOrthographic > 0.5f
-        ? FiberNormalize(float3(view[0][2], view[1][2], view[2][2]) * -1.0f, o.normal)
-        : FiberNormalize(cameraPos - o.root, o.normal);
+    float3 V = FiberViewDirection(o.root, o.normal);
     float3 face0=v.faceNormal0, face1=v.faceNormal1;
 #if FIBER_SKINNED
     face0=mul(face0,(float3x3)skin);
@@ -182,9 +185,11 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
         fiberPrevWindTime.w, fiberPrevGust.x, fiberPrevGust.y,
         fiberPrevShape.y, fiberPrevShape.z, fiberPrevShape.w,
         FiberLocalFlow(previousRoot, fiberPrevWindTime.w, true));
-    float3 previousPosition = previousRoot + previousNormal * (fiberPrevShape.x * o.height)
-        + previousBend * (o.height * o.height)
-        + FiberContactOffset(previousRoot, previousNormal, o.height, fiberPrevWindTime.w, fiberPrevShape.x, true);
+    /// @note マスクはフレーム間で変わらない前提で、今フレームの lengthScale を前フレームにも掛ける。
+    float3 previousPosition = previousRoot + previousNormal * (fiberPrevShape.x * o.lengthScale * o.height)
+        + previousBend * (o.lengthScale * o.height * o.height)
+        + FiberContactOffset(previousRoot, previousNormal, o.height, fiberPrevWindTime.w,
+            fiberPrevShape.x * o.lengthScale, true);
 #if FIBER_FIN == 2
     previousPosition += mul(v.edgeVector,(float3x3)fiberPrevWorld)*v.edgeCoordinate*(1.0f-v.height);
 #endif
@@ -206,17 +211,69 @@ FiberPixel VSMain(FiberInput v, uint instance : SV_InstanceID)
 }
 #endif
 
-void FiberCoverage(FiberPixel p)
+#if !FIBER_FIN
+/// @brief 隣の Shell 層との視差を埋める半径の上乗せ [セル単位]。
+/// @note 層間隔 s を傾き θ で見ると断面が s·tanθ ずれる。その半分を半径へ足すと上下の層が重なり、層の隙間が透けない。
+/// @note ワールド [m] → セルの縮尺は画面微分の比で近似する (UV 写像では面ごとに縮尺が違う)。上乗せは元の太さまで。
+/// @see https://hhoppe.com/fur.pdf
+float FiberShellWiden(FiberPixel p, float2 coordinate)
 {
+    float3 N = FiberNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
+    float cosTheta = max(abs(dot(N, FiberViewDirection(p.root, N))), 0.25f);
+    float tanTheta = sqrt(saturate(1.0f - cosTheta * cosTheta)) / cosTheta;
+    float spacing = fiberLength * p.lengthScale / max(fiberShellCount, 1.0f);
+    float cellsPerMeter = (length(ddx(coordinate)) + length(ddy(coordinate)))
+        / max(length(ddx(p.root)) + length(ddy(p.root)), 1.0e-8f);
+    return min(0.5f * spacing * tanTheta * cellsPerMeter, fiberThickness);
+}
+
+/// @brief セル座標の u / v が増える向き (ワールド、単位長)。毛の横ずれをワールドへ戻すのに使う。
+/// @note 頂点の接線は UV の符号 (鏡像) を持たないので、画面微分から余接フレームを組む。組めない画素は 0。
+/// @see http://www.thetenthplanet.de/archives/1180 (Schüler, Followup: Normal Mapping Without Precomputed Tangents)
+void FiberShellFrame(FiberPixel p, float2 coordinate, out float3 axisU, out float3 axisV)
+{
+    float3 N = FiberNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
+    float3 dp2perp = cross(ddy(p.root), N);
+    float3 dp1perp = cross(N, ddx(p.root));
+    float2 duv1 = ddx(coordinate);
+    float2 duv2 = ddy(coordinate);
+    axisU = FiberNormalize(dp2perp * duv1.x + dp1perp * duv2.x, float3(0.0f, 0.0f, 0.0f));
+    axisV = FiberNormalize(dp2perp * duv1.y + dp1perp * duv2.y, float3(0.0f, 0.0f, 0.0f));
+}
+#endif
+
+/// @return coverage を通った毛。照明以外のパスは捨ててよい。
+FiberStrand FiberCoverage(FiberPixel p)
+{
+    /// @note 画面微分 (マスクのミップ・視差・フレーム) は clip より前に取る。
+    float4 mask = FiberMaskFiltered(p.uv);
+#if FIBER_PASS == 1 && !FIBER_FIN
+    ApplyLodDither(p.position.xy, objectParams.x);
+    clip(fiberLod.y-FiberHash(floor(p.root.xz*31.0f))-1.0e-6f);
+    FiberClipShellShadow(FiberRootCoordinates(p.uv, p.root), p.height, mask);
+    return FiberDefaultStrand(p.height, 0.5f);
+#endif
+#if !FIBER_FIN
+    float2 shellCoordinate = FiberRootCoordinates(p.uv, p.root);
+    float shellWiden = FiberShellWiden(p, shellCoordinate);
+    float3 shellAxisU, shellAxisV;
+    FiberShellFrame(p, shellCoordinate, shellAxisU, shellAxisV);
+#endif
     ApplyLodDither(p.position.xy, objectParams.x);
     clip(fiberLod.y-FiberHash(floor(p.root.xz*31.0f))-1.0e-6f);
 #if FIBER_FIN == 2
-    clip(fiberDensity-p.coordinate-1.0e-6f);
+    clip(fiberDensity*mask.r-p.coordinate-1.0e-6f);
+    FiberStrand blade = FiberDefaultStrand(p.height, frac(p.coordinate * 61.7f));
+    blade.colorMix = mask.a;
+    return blade;
 #elif FIBER_FIN == 1
-    FiberClipFin(p.coordinate, p.height);
+    FiberStrand strand = FiberClipFin(p.coordinate, p.height, mask);
     if (fiberHybrid > 0.5f) clip(p.silhouette - FiberHash(floor(p.position.xy)) - 1.0e-6f);
+    return strand;
 #else
-    FiberClipShell(FiberRootCoordinates(p.uv, p.root), p.height);
+    FiberStrand strand = FiberClipShell(shellCoordinate, p.height, shellWiden, mask);
+    strand.across = shellAxisU * strand.offset.x + shellAxisV * strand.offset.y;
+    return strand;
 #endif
 }
 
@@ -228,9 +285,9 @@ void PSMain(FiberPixel p)
 #elif FIBER_PASS == 2
 GBufferOut PSMain(FiberPixel p)
 {
-    FiberCoverage(p);
+    FiberStrand strand = FiberCoverage(p);
     GBufferOut o;
-    o.albedoRoughness = float4(lerp(rootColor.rgb, tipColor.rgb, p.height), roughness);
+    o.albedoRoughness = float4(FiberStrandColor(strand, p.height), roughness);
     o.normalMetallic = float4(FiberNormalize(p.normal, float3(0, 1, 0)) * 0.5f + 0.5f, 0.0f);
     return o;
 }
@@ -241,7 +298,8 @@ float4 PSMain(FiberPixel p) : SV_Target0
     FiberCoverage(p);
     /// @note 静止した遮蔽物は既存 velocity パスが省くため、完成したシーン深度でも遮蔽を判定する。
     float sceneDepth = fiberSceneDepth.Load(int3(int2(p.position.xy), 0));
-    clip(sceneDepth + 1.0e-6f - p.position.z);
+    /// @note カメラ深度は Reversed-Z (手前ほど大きい)。シーンより奥の画素は捨てる。
+    clip(p.position.z - sceneDepth + 1.0e-6f);
     if (p.currentClip.w <= 1.0e-6f || p.previousClip.w <= 1.0e-6f)
         return float4(0, 0, 1, 0);
     float2 currentUv = NdcToUv(p.currentClip.xy / p.currentClip.w);
@@ -257,7 +315,7 @@ float4 PSMain(FiberPixel p) : SV_Target0
 #else
 float4 PSMain(FiberPixel p) : SV_Target0
 {
-    FiberCoverage(p);
-    return FiberLighting(p.worldPosition, p.normal, p.root, p.height, p.position.xy, p.localFlow);
+    FiberStrand strand = FiberCoverage(p);
+    return FiberLighting(p.worldPosition, p.normal, p.root, p.height, p.position.xy, p.localFlow, strand);
 }
 #endif

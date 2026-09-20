@@ -421,6 +421,8 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool selected       = ContainsEntity(ctx.selectedEntities, id);
     const bool isRoot         = go.GetParent() == nullptr;
     const bool isActive       = go.activeInHierarchy();
+    /// @note 目アイコンとメニューが切り替えるのは自分の値 (activeSelf)。表示もそれに合わせ、親のせいで無効なときだけ薄く描く。
+    const bool isActiveSelf   = go.activeSelf();
     const bool isLocked       = ctx.IsLocked(id);
     const bool isEditorHidden  = ctx.editorHiddenGuids.count(go.instanceId) > 0;
     const bool isPrimarySelected = ctx.PrimarySelected() == id;
@@ -548,10 +550,12 @@ void DrawHierarchyNode(EditorContext& ctx,
 
         /// @note visibility アイコン
         if (visHov) dl->AddRectFilled(visMin, visMax, IM_COL32(80, 80, 80, 160), 2.0f);
-        const char* visChar = isActive ? "o" : "-";
+        const char* visChar = isActiveSelf ? "o" : "-";
         ImVec2 vts = ImGui::CalcTextSize(visChar);
         dl->AddText({ visMin.x + (btnW - vts.x) * 0.5f, visMin.y + (h - vts.y) * 0.5f },
                     isActive ? IM_COL32(200, 200, 200, 200) : IM_COL32(100, 100, 100, 200), visChar);
+        if (visHov && isActiveSelf && !isActive)
+            ImGui::SetTooltip("親の GameObject が無効なため、この GameObject も無効です");
 
         /// @note lock アイコン (常時描画: ロック中はオレンジ、非ロック+ホバーは薄く)
         if (lockHov || isLocked) {
@@ -736,7 +740,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
         const bool multiSelected = ctx.selectedEntities.size() > 1;
 
-        if (ImGui::MenuItem(multiSelected ? "Hide/Show" : (isActive ? "Hide" : "Show"))) {
+        if (ImGui::MenuItem(multiSelected ? "Hide/Show" : (isActiveSelf ? "Hide" : "Show"))) {
             if (multiSelected) {
                 const std::vector<scene::EntityID> toToggle = ctx.selectedEntities;
                 deferred = [&ctx, toToggle]() {

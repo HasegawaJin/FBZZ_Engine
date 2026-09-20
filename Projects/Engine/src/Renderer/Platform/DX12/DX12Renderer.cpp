@@ -142,11 +142,11 @@ void DX12Renderer::Clear(const math::Vector4& color)
         for (uint32_t index = 0; index < target->GetColorCount(); ++index)
             m_context.GetCommandList()->ClearRenderTargetView(
                 target->GetRtv(index), clearColor, 0, nullptr);
-        /// @note IRenderer::Clear は深度も 1.0 へ戻す契約。RenderSystem は Clear(色) しか呼ばないので、
-        ///       残すと初期値 0 のまま LESS 比較が全滅する。
+        /// @note IRenderer::Clear は深度も最遠値へ戻す契約。RenderSystem は Clear(色) しか呼ばないので、
+        ///       残すと前の値のまま深度比較が全滅する。
         if (target->HasDepth()) {
             m_context.GetCommandList()->ClearDepthStencilView(
-                target->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+                target->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, FarDepth(target->IsReversedZ()), 0, 0, nullptr);
         }
     } else {
         m_context.GetCommandList()->ClearRenderTargetView(m_context.GetCurrentRtv(), clearColor, 0, nullptr);
@@ -156,7 +156,7 @@ void DX12Renderer::Clear(const math::Vector4& color)
     }
 }
 
-void DX12Renderer::ClearDepth(float depth)
+void DX12Renderer::ClearDepth()
 {
     if (m_context.IsFrameOpen()) {
         ResourceManager* const resources = ResourceManager::Active();
@@ -168,8 +168,9 @@ void DX12Renderer::ClearDepth(float depth)
         if (target && target->IsCubemap()) return;
         if (target && !target->HasDepth()) return;
         const auto dsv = target ? target->GetDsv() : m_context.GetDsv();
+        const float farDepth = FarDepth(target && target->IsReversedZ());
         m_context.GetCommandList()->ClearDepthStencilView(
-            dsv, D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr);
+            dsv, D3D12_CLEAR_FLAG_DEPTH, farDepth, 0, 0, nullptr);
     }
 }
 
@@ -234,8 +235,9 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         ? currentTarget->GetColorFormat() : DX12Context::BACK_BUFFER_FORMAT;
     const uint32_t renderTargetCount = currentTarget
         ? currentTarget->GetColorCount() : 1;
+    const bool reversedZ = currentTarget && currentTarget->IsReversedZ();
     ID3D12PipelineState* pso = m_psoCache.GetOrCreate(
-        *shader, state->GetDesc(), call.topology, renderTargetFormat, renderTargetCount);
+        *shader, state->GetDesc(), call.topology, renderTargetFormat, renderTargetCount, reversedZ);
     if (!pso) return;
 
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
@@ -409,7 +411,8 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     auto* shader = static_cast<DX12Shader*>(shaderBase);
     ID3D12PipelineState* pso = m_psoCache.GetOrCreateCompute(*shader);
     if (!pso) return;
-    ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
+    ID3D12GraphicsCommandList* commands = RecordingList();
+    if (!commands) return;
     /// @note Compute へ切り替えるとグラフィクス側のパイプライン状態・ルート束縛は当てにできない。
     ///       Submit 側の差分キャッシュをここで必ず捨てる (捨て忘れると次の Draw が束縛を省いて壊れる)。
     InvalidateRootCbvCache();
@@ -548,12 +551,92 @@ void DX12Renderer::EndComputeBatch()
             barriers[index].UAV.pResource = m_computeBatchWrittenResources[index];
         }
         /// @note Dispatch ごとの API 呼び出しをやめ、パス全体を 1 回の UAV barrier 群で確定する。
-        m_context.GetCommandList()->ResourceBarrier(
-            static_cast<UINT>(barriers.size()), barriers.data());
+        /// @note 非同期区間の中ならコンピュートリストへ積む。Dispatch を記録した列と別の列へ
+        ///       バリアを積むと、守りたい順序の外に出てしまう。
+        if (ID3D12GraphicsCommandList* commands = RecordingList())
+            commands->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     }
 
     m_computeBatchWrittenResources.clear();
     m_computeBatchActive = false;
+}
+
+ID3D12GraphicsCommandList* DX12Renderer::RecordingList() const
+{
+    if (m_asyncComputeActive && m_context.IsComputeListOpen())
+        return m_context.GetComputeList();
+    return m_context.GetCommandList();
+}
+
+void DX12Renderer::RestoreGraphicsTargetState(ResourceManager& resources)
+{
+    ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
+    if (!commands) return;
+
+    auto* target = ResolveCurrentRenderTarget(&resources);
+    if (target) {
+        /// @note 区間へ入る前に COMMON へ落としてあるので、描ける状態へ戻す。状態表は 1 か所なので
+        ///       ここで積んでおけば、次に束縛する側の判断とも食い違わない。
+        for (uint32_t index = 0; index < target->GetColorCount(); ++index)
+            m_stateTracker.QueueTransition(target->GetColorResource(index),
+                                           D3D12_RESOURCE_STATE_RENDER_TARGET);
+        if (target->HasDepth())
+            m_stateTracker.QueueTransition(target->GetDepthResource(),
+                                           D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    }
+    m_stateTracker.FlushBarriers(commands);
+
+    if (m_currentCubeRtv.ptr != 0) {
+        /// @note キューブ面を描いている途中 (SkyCapture)。面の RTV をそのまま張り直す。
+        commands->OMSetRenderTargets(1, &m_currentCubeRtv, FALSE, nullptr);
+    } else if (target) {
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, DX12RenderTarget::MAX_COLOR> rtvs{};
+        for (uint32_t index = 0; index < target->GetColorCount(); ++index)
+            rtvs[index] = target->GetRtv(index);
+        const auto dsv = target->GetDsv();
+        commands->OMSetRenderTargets(target->GetColorCount(), rtvs.data(), FALSE,
+                                     target->HasDepth() ? &dsv : nullptr);
+    } else {
+        const auto rtv = m_context.GetCurrentRtv();
+        const auto dsv = m_context.GetDsv();
+        commands->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+    }
+    commands->RSSetViewports(1, &m_currentViewport);
+    commands->RSSetScissorRects(1, &m_currentScissor);
+}
+
+bool DX12Renderer::BeginAsyncCompute(ResourceManager& resources)
+{
+    if (m_asyncComputeActive) return true;
+    if (!m_context.IsFrameOpen() || !m_context.SupportsAsyncCompute()) return false;
+
+    /// @note コンピュートキューは PIXEL_SHADER_RESOURCE / RENDER_TARGET / DEPTH_* を扱えない。
+    ///       区間へ渡す前に、描画キュー側で追跡中のリソースをまとめて COMMON へ落とす。
+    /// @see Docs/design/async-compute.md §3
+    m_stateTracker.QueueTransitionAllToCommon();
+    m_stateTracker.FlushBarriers(m_context.GetCommandList());
+
+    /// @note ここで描画の列を割る。直前までの描画が GPU へ投入され、その完了をコンピュートが待つ。
+    const uint64_t waitValue = m_context.SplitGraphicsList();
+    if (waitValue == 0) return false;
+
+    /// @note 列を割ると Reset で全パイプライン状態が落ちる。束縛の記憶を捨て、描画先を張り直す。
+    InvalidateRootCbvCache();
+    RestoreGraphicsTargetState(resources);
+
+    if (!m_context.BeginComputeList(waitValue)) return false;
+    m_asyncComputeActive = true;
+    return true;
+}
+
+void DX12Renderer::EndAsyncCompute()
+{
+    if (!m_asyncComputeActive) return;
+    m_asyncComputeActive = false;
+    m_context.EndComputeList();
+    /// @note コンピュート側で束縛したルートシグネチャ・ヒープは描画リストには載っていない。
+    ///       区間の前後で記憶が食い違わないよう、ここでも捨てる。
+    InvalidateRootCbvCache();
 }
 
 void DX12Renderer::Resize(uint32_t width, uint32_t height)
@@ -688,7 +771,8 @@ bool DX12Renderer::RenderDebugPreview(const DrawCall& call, ResourceHandle<Rende
     auto* previewShader = static_cast<DX12Shader*>(resources.Get(call.shader));
     auto* previewState = static_cast<DX12PipelineState*>(resources.Get(call.pipelineState));
     if (!m_psoCache.GetOrCreate(*previewShader, previewState->GetDesc(), call.topology,
-                               previewTarget->GetColorFormat(), previewTarget->GetColorCount())) return false;
+                               previewTarget->GetColorFormat(), previewTarget->GetColorCount(),
+                               previewTarget->IsReversedZ())) return false;
     const auto previous = m_currentRenderTargetHandle;
     const auto viewport = m_currentViewport;
     const auto scissor = m_currentScissor;
@@ -836,6 +920,19 @@ std::unique_ptr<ITexture> DX12Renderer::CreateNativeTextureFromDataMips(
         return nullptr;
     texture->RegisterState(&m_stateTracker, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     return texture;
+}
+std::unique_ptr<ITexture> DX12Renderer::CreateNativeTextureFromDataMipsAsync(
+    const TextureMipData* mips, uint32_t mipCount, uint64_t& outUploadToken)
+{
+    auto texture = std::make_unique<DX12Texture>();
+    if (!texture->InitFromDataMipsAsync(&m_context, mips, mipCount, outUploadToken))
+        return nullptr;
+    texture->RegisterState(&m_stateTracker, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    return texture;
+}
+bool DX12Renderer::IsUploadComplete(uint64_t uploadToken) const
+{
+    return m_context.IsFenceComplete(uploadToken);
 }
 std::unique_ptr<ITexture> DX12Renderer::CreateNativeTexture3DFromData(
     const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth)

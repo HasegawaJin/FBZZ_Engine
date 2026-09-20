@@ -154,7 +154,7 @@ inline void PlayerHealthComponent::OnStart()
     if (GameObject* self = scene.Self()) CollectFlashTargets(*self);
     const HandSide hands[] = { HandSide::Right };
     for (const HandSide hand : hands)
-        if (GameObject* sword = scene.Find(SwordObjectName(hand)))
+        if (GameObject* sword = scene.Find(SwordObjectName(hand), true))
             CollectFlashTargets(*sword);
     debugFlashParts = static_cast<int>(m_flash.size());
 }

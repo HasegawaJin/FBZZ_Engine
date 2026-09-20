@@ -31,8 +31,8 @@ public:
         m_started = false;
         m_ready = false;
 
-        GameObject* plus = scene.Find("PolarityCore_Plus");
-        GameObject* minus = scene.Find("PolarityCore_Minus");
+        GameObject* plus = scene.Find("PolarityCore_Plus", true);
+        GameObject* minus = scene.Find("PolarityCore_Minus", true);
         if (!plus || !minus) {
             debug.LogWarning("Load fusion requires PolarityCore_Plus and PolarityCore_Minus.");
             return;

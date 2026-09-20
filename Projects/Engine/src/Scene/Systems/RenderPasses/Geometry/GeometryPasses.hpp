@@ -30,11 +30,12 @@ struct AnimatorComponent;
 struct MaterialSlot;
 struct MaterialComponent;
 struct ReflectionProbeComponent;
+struct LightProbeVolumeComponent;
 struct SkinnedMeshRenderer;
 
-/// 背景色とクリア方法は CameraComponent が持ち、renderer::Camera 経由で各パスへ届く。
-/// 既定値は renderer::kDefaultBackgroundColor が正本。ここに定数を置くと、
-/// カメラ設定を無視して塗る経路が生まれるため置かない。
+/// @note 背景色とクリア方法は CameraComponent が持ち、renderer::Camera 経由で各パスへ届く。
+/// @note 既定値は renderer::kDefaultBackgroundColor が正本。ここに定数を置くと、
+/// @note カメラ設定を無視して塗る経路が生まれるため置かない。
 
 /// @brief 描画開始時の hdrRT 初期化。clearMode の判断はこの 1 関数に閉じる。
 /// @note Forward と Deferred が同じ判断を別々に書くと、片方だけ新しいモードに追従し損ね «描画パスによって背景が違う» という壊れ方をする。
@@ -42,7 +43,7 @@ inline void ClearForCamera(renderer::IRenderer& renderer, const renderer::Camera
 {
     if (camera.m_clearMode == renderer::CameraClearMode::DepthOnly) {
         /// @note カラーは前に描かれたものを残し、深度だけリセットする。
-        ///       IRenderer::Clear は色と深度を両方消すため、ここでは使えない。
+        /// @note IRenderer::Clear は色と深度を両方消すため、ここでは使えない。
         renderer.ClearDepth();
         return;
     }
@@ -64,6 +65,11 @@ inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const Rend
         drawCall.textures[23] = ctx.screenAoTexture;
     if (ctx.screenContactShadowTexture.IsValid())
         drawCall.textures[24] = ctx.screenContactShadowTexture;
+    /// @note t22 / t21: Light Probe Volume の SH (内側 / 外側)。引くかどうかは b8 の probeVolumes[i].intensity が決める。
+    if (ctx.handles.lightProbeSH[0].IsValid())
+        drawCall.textures[22] = ctx.handles.lightProbeSH[0];
+    if (ctx.handles.lightProbeSH[1].IsValid())
+        drawCall.textures[21] = ctx.handles.lightProbeSH[1];
 
     if (ctx.handles.punctualShadowCB.IsValid()) {
         /// @note b12
@@ -92,22 +98,22 @@ inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const Rend
         drawCall.psBuffers[1]   = ctx.handles.clusterIndexBuffer;
 }
 
-/// パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
+/// @note パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
 constexpr int kMaxParticleDraw = 10000;
 
-/// GPU パーティクルのソート用 CB (b0)。
-/// LAYOUT: Rendering/ParticleSortCommon.hlsli の GpuParticleSortCB と一致させること。
+/// @note GPU パーティクルのソート用 CB (b0)。
+/// @note LAYOUT: Rendering/ParticleSortCommon.hlsli の GpuParticleSortCB と一致させること。
 struct GpuParticleSortCB {
     math::Vector3 cameraPos{};
-    uint32_t aliveCount = 0;    ///< = maxParticles。これ以上の index は 2 のべき乗への詰め物
-    uint32_t paddedCount = 0;   ///< 2 のべき乗へ切り上げた総要素数
-    uint32_t backToFront = 0;   ///< 1 = 遠い順に描く
-    uint32_t stageK = 0;        ///< bitonic 外側ステージ幅
-    uint32_t stageJ = 0;        ///< bitonic 比較距離
+    uint32_t aliveCount = 0;    ///< @brief = maxParticles。これ以上の index は 2 のべき乗への詰め物
+    uint32_t paddedCount = 0;   ///< @brief 2 のべき乗へ切り上げた総要素数
+    uint32_t backToFront = 0;   ///< @brief 1 = 遠い順に描く
+    uint32_t stageK = 0;        ///< @brief bitonic 外側ステージ幅
+    uint32_t stageJ = 0;        ///< @brief bitonic 比較距離
 };
 static_assert(sizeof(GpuParticleSortCB) == 32);
 
-/// LDS 段が 1 グループで扱う要素数。ParticleSortCommon.hlsli の PARTICLE_SORT_BLOCK と一致させること。
+/// @note LDS 段が 1 グループで扱う要素数。ParticleSortCommon.hlsli の PARTICLE_SORT_BLOCK と一致させること。
 inline constexpr std::uint32_t kParticleSortBlock = 256u;
 
 /// @brief リボン 1 点ぶんの法線 (帯の幅方向)。カメラへ正対する向きを返す。
@@ -115,9 +121,9 @@ inline constexpr std::uint32_t kParticleSortBlock = 256u;
 [[nodiscard]] math::Vector3 ComputeCameraFacingRibbonNormal(
     const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point);
 
-/// ポリラインの各点に「帯の幅方向」を割り当てる。隣り合う線分の法線を平均 (マイター) する。
+/// @note ポリラインの各点に「帯の幅方向」を割り当てる。隣り合う線分の法線を平均 (マイター) する。
 /// @param normalOf (正規化済み進行方向, 点) -> 幅方向。Trail ノードは alignment で、
-///                 粒子リボンはカメラ正対で決めるため、そこだけを呼び出し側に委ねる
+/// @note 粒子リボンはカメラ正対で決めるため、そこだけを呼び出し側に委ねる
 /// @note 長さ 0 の線分は寄与しない。前後とも 0 なら RIGHT を残す
 template<class NormalFn>
 void BuildRibbonMiterNormals(const std::vector<math::Vector3>& points,
@@ -156,21 +162,21 @@ void BuildRibbonMiterNormals(const std::vector<math::Vector3>& points,
     }
 }
 
-/// コンピュートスキニング。ボーン変形を 1 フレーム 1 回だけ計算し、静的メッシュと同じ
-/// 頂点レイアウトへ書き出す。Shadow より前に実行すること (結果を各パスが共有するため)。
+/// @note コンピュートスキニング。ボーン変形を 1 フレーム 1 回だけ計算し、静的メッシュと同じ
+/// @note 頂点レイアウトへ書き出す。Shadow より前に実行すること (結果を各パスが共有するため)。
 void ExecuteSkinningComputePass            (RenderPassContext& ctx);
-/// Mesh* / AnimatorComponent* をキーにした内部キャッシュを破棄する。
-/// シーン切り替えやリソースリセットの際に呼ぶこと。
+/// @note Mesh* / AnimatorComponent* をキーにした内部キャッシュを破棄する。
+/// @note シーン切り替えやリソースリセットの際に呼ぶこと。
 void ReleaseSkinningComputeCaches          ();
-/// クラスタライトカリング。Shadow より前に 1 回だけ実行し、Forward / Deferred の
-/// 両方が同じクラスタ結果を読む。出力は StructuredBuffer なので RenderGraph の
-/// 論理リソースには乗らない (SkinningCompute と同じ扱い)。
+/// @note クラスタライトカリング。Shadow より前に 1 回だけ実行し、Forward / Deferred の
+/// @note 両方が同じクラスタ結果を読む。出力は StructuredBuffer なので RenderGraph の
+/// @note 論理リソースには乗らない (SkinningCompute と同じ扱い)。
 void ExecuteClusterLightCullPass           (RenderPassContext& ctx);
 void ExecuteShadowPass                     (RenderPassContext& ctx);
-/// ライト Cookie のアトラス焼き。Shadow より前でも後でもよいが、Cookie を読む
-/// ライティングパスより前に 1 回だけ走らせること。内容が変わったフレームだけ描く。
+/// @note ライト Cookie のアトラス焼き。Shadow より前でも後でもよいが、Cookie を読む
+/// @note ライティングパスより前に 1 回だけ走らせること。内容が変わったフレームだけ描く。
 void ExecuteLightCookiePass                (RenderPassContext& ctx);
-/// スロットごとの「前回焼いた内容」を破棄する。シーン切り替えやリソースリセットで呼ぶこと。
+/// @note スロットごとの「前回焼いた内容」を破棄する。シーン切り替えやリソースリセットで呼ぶこと。
 void ReleaseLightCookieCache               ();
 void ExecuteForwardPasses                  (RenderPassContext& ctx);
 void ExecuteGBufferPass                    (RenderPassContext& ctx);
@@ -198,10 +204,10 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-/// どれも出力が論理リソースでない (SkinnedMeshRenderer の頂点バッファ /
-/// StructuredBuffer / 外部 ComputeTexture) か、書き先が 1 つに決まっている。
+/// @note どれも出力が論理リソースでない (SkinnedMeshRenderer の頂点バッファ /
+/// @note StructuredBuffer / 外部 ComputeTexture) か、書き先が 1 つに決まっている。
 /// @note 申告の無い副作用パスは AllowCulling() を false にする。書き先を申告できない
-///       以上 «誰も読まない» と判定されるので、既定のままだと必ず刈られる。
+/// @note 以上 «誰も読まない» と判定されるので、既定のままだと必ず刈られる。
 
 class SkinningComputePass final : public IRenderPass {
 public:
@@ -236,8 +242,12 @@ public:
 /// @brief GBuffer を «どちらの経路として» 埋めるか。本体は同じで、名前と申告だけが違う。
 /// @note 名前を分けないとプロファイラーと構成テキストで «Forward なのに GBuffer を描いている» フレームを見分けられなくなる。
 enum class GBufferPassMode {
-    ForwardPrepass, ///< Forward 経路の画面空間入力づくり。影と Cookie を読む
-    Deferred,       ///< Deferred 本経路。ライティングしないので何も読まない
+    /// @brief Forward 経路の «深度と法線のプリパス»。画面空間効果への入力だけを作る。
+    /// @note Forward に GBuffer は無い。DeferredLighting は動かず、ここで書いた値を読むのは
+    ///       SSAO / GTAO / SSR / 接触影だけ。同じ RT を使うだけで役割が違う。
+    /// @see Docs/design/pipeline-boundary.md §4
+    DepthNormalPrepass,
+    Deferred,       ///< @brief Deferred 本経路。ライティングしないので何も読まない
 };
 
 class GBufferPass final : public IRenderPass {
@@ -258,11 +268,11 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-/// Deferred の中で «前方描画される» 2 パス。
+/// @note Deferred の中で «前方描画される» 2 パス。
 ///
 /// @note どちらも BindForwardShadingResources を通るので、Forward パスと同じく
-///       Spot / Point の影 (t28) と Cookie (t31) を読む。申告しないと依存辺が張られず、
-///       Shadow / LightCookie より先に走ってよいことになる。
+/// @note Spot / Point の影 (t28) と Cookie (t31) を読む。申告しないと依存辺が張られず、
+/// @note Shadow / LightCookie より先に走ってよいことになる。
 class DeferredSkinnedForwardPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "DeferredSkinnedForward"; }
@@ -287,10 +297,10 @@ inline void DeclareScreenSpaceOcclusionReads(PassBuilder& builder, const RenderP
     if (ctx.settings.contactShadow.enabled) builder.Read("ContactShadowResult");
 }
 
-/// Forward の不透明本描画。
+/// @note Forward の不透明本描画。
 ///
 /// @note HDR は Write であって ReadWrite ではない。この時点で producer が居らず、
-///       読み手として申告すると検証が落ちる。自分でクリアしてから描く。
+/// @note 読み手として申告すると検証が落ちる。自分でクリアしてから描く。
 class ForwardOpaquePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "ForwardOpaque"; }
@@ -298,11 +308,11 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-/// GBuffer をライティングして HDR へ合成する。
+/// @note GBuffer をライティングして HDR へ合成する。
 ///
 /// @note 影と Cookie はライティングの本体が読む (t13 / t28 / t31)。申告が抜けていた
-///       ため «Shadow / LightCookie の後» という依存が張られず、登録順が偶然そう
-///       なっているだけの状態だった。
+/// @note ため «Shadow / LightCookie の後» という依存が張られず、登録順が偶然そう
+/// @note なっているだけの状態だった。
 class DeferredLightingPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "DeferredLighting"; }
@@ -317,7 +327,7 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-/// デカール用の深度スナップショット。
+/// @note デカール用の深度スナップショット。
 /// @note 読み元は不透明深度を持っている方。Deferred なら GBuffer、Forward なら HDR。
 class DecalDepthCopyPass final : public IRenderPass {
 public:
@@ -334,7 +344,7 @@ public:
 };
 
 /// @note ShadowMap は粒子の自己影が読む (t8)。PunctualShadowMap / LightCookieAtlas は
-///       «点光源を受ける» .mat の粒子が読む (ParticleLighting.hlsli)。
+/// @note «点光源を受ける» .mat の粒子が読む (ParticleLighting.hlsli)。
 class ParticlePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "Particle"; }
@@ -342,7 +352,7 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-/// 重なり枚数のヒートマップ。診断表示。
+/// @note 重なり枚数のヒートマップ。診断表示。
 /// @note 別パスにするのは、GPU 時間を Particle の実測値と混ぜないため。
 class ParticleOverdrawPass final : public IRenderPass {
 public:
@@ -352,9 +362,9 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-/// TAA の反応マスク。
+/// @note TAA の反応マスク。
 /// @note HDR へは書かないが、Particle の後・Composite (→ TAA) の前へ並べるために
-///       HDR の書き手として申告する。
+/// @note HDR の書き手として申告する。
 class ParticleReactivePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "ParticleReactive"; }
@@ -363,8 +373,8 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-///  マスクの中身は «不透明の形と、その時点の深度» で決まる。半透明は深度を
-///       書かないので、待っても結果は変わらない。
+/// @note マスクの中身は «不透明の形と、その時点の深度» で決まる。半透明は深度を
+/// @note 書かないので、待っても結果は変わらない。
 class ObjectMaskPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "ObjectMask"; }
@@ -373,8 +383,8 @@ public:
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-/// 選択オブジェクトのシルエット。
-///  本体は res.Target(...) から引くので PassResources を受け取る。
+/// @note 選択オブジェクトのシルエット。
+/// @note 本体は res.Target(...) から引くので PassResources を受け取る。
 class SelectionMaskPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "SelectionMask"; }
@@ -391,14 +401,36 @@ public:
 };
 void ExecuteSkyCapturePass                 (RenderPassContext& ctx);
 void ExecuteSkyLightBakePass               (RenderPassContext& ctx);
-/// ReflectionProbe の動的キューブマップを更新し、メインカメラに最も近い有効プローブを返す。
-/// 戻り値が nullptr の場合は既存のグローバル IBL をそのまま使う。
+/// @note ReflectionProbe の動的キューブマップを更新し、メインカメラに最も近い有効プローブを返す。
+/// @note 戻り値が nullptr の場合は既存のグローバル IBL をそのまま使う。
 ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx);
+
+/// @brief SH 射影 CS / 膨張 CS の定数バッファの大きさ。中身は LightProbeBakePass.cpp が持つ。
+inline constexpr size_t kLightProbeProjectCBSize = 448;
+inline constexpr size_t kLightProbeDilateCBSize  = 16;
+
+/// @brief このフレームのライティングが引く Light Probe Volume (最大 2 つ)。
+struct LightProbeVolumeSelection {
+    struct Entry {
+        const GameObject*                owner  = nullptr;
+        const LightProbeVolumeComponent* volume = nullptr;
+    };
+    Entry inner;   ///< @brief 小さい箱。外側の上に重なる (t22)
+    Entry outer;   ///< @brief 大きい箱 (t21)
+};
+/// @brief 焼きが要るボリュームを probesPerFrame 個ぶん進め、描画に使うボリュームを最大 2 つ選ぶ。
+/// @param mainData このフレームの b8。捕捉で描く面にも同じ IBL・天候を効かせるために写す。
+/// @return 焼き上がったボリュームのうちカメラに近い 2 つ (箱の中なら距離 0)。小さい方が inner。
+/// @note グラフの外で呼ぶ (描画先が RenderGraph 管理外の RT とボリュームのため)。影マップは前フレームの中身を読む。
+LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, const AdvancedGraphicsCB& mainData);
+/// @brief ボリュームの箱と格子を b8 の probeVolumes[i] へ書く。
+void FillLightProbeVolumeConstants(const GameObject& owner, const LightProbeVolumeComponent& volume,
+                                   ProbeVolumeParamsCB& data);
 void ExecuteParticlePass                   (RenderPassContext& ctx);
 /// @brief パーティクルの重なり枚数を可視化して HDR RT へ上書きする診断パス。
 /// @note fill rate は通常の絵からは読めないが、パーティクルの実コストはほぼここで決まる。Particle パスと同じジオメトリを計数シェーダーで描き直しヒートマップへ変換し、ctx.settings.particleOverdrawView が true のときだけ Particle パスの直後に走る。
 void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
-/// TAA の反応マスク (粒子が覆う割合) を particleReactiveRT へ描く。TAA が有効なフレームだけ呼ぶ。
+/// @note TAA の反応マスク (粒子が覆う割合) を particleReactiveRT へ描く。TAA が有効なフレームだけ呼ぶ。
 void ExecuteParticleReactivePass           (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
 /// @brief 不透明の深度をデカール専用の深度 RT へ写す。
@@ -407,11 +439,11 @@ void ExecuteDecalDepthCopyPass             (RenderPassContext& ctx);
 /// @brief RenderSettings::objectMaskRequests のシルエットを objectMaskRT へ描く (RGB=色 / A=太さ)。輪郭そのものは描かない — 見た目は CustomPostProcess のシェーダーが決める。
 /// @note エディタ選択マスク (SelectionMaskPass) とは別。あちらは «選ばれているか» の 1 ビットで SelectionOutline.hlsl が .r を被覆率として読むため、同じ RT へ色を書くと選択輪郭の太さが対象の色で変わってしまう。
 void ExecuteObjectMaskPass                (RenderPassContext& ctx);
-/// 不透明ジオメトリのモーションベクターを velocityRT へ描く。TAA / MotionBlur が
-/// 「カメラの動き」しか知らない状態を解消する。両方が無効なら実行しなくてよい。
+/// @note 不透明ジオメトリのモーションベクターを velocityRT へ描く。TAA / MotionBlur が
+/// @note 「カメラの動き」しか知らない状態を解消する。両方が無効なら実行しなくてよい。
 void ExecuteVelocityPass                   (RenderPassContext& ctx);
-/// .mat のパスをキーにした解決済みマテリアルのキャッシュを破棄する。
-/// シーン切り替えやリソースリセットの際に呼ぶこと。
+/// @note .mat のパスをキーにした解決済みマテリアルのキャッシュを破棄する。
+/// @note シーン切り替えやリソースリセットの際に呼ぶこと。
 void ReleaseDecalMaterialCache             ();
 
 
@@ -422,16 +454,23 @@ void UpdateShadowConstants(RenderPassContext& ctx);
 /// @brief PunctualShadowConstants (b12) を組み立てて handles.punctualShadowCB へ書き込む。Spot / Point の行列・アトラス矩形・バイアス。
 /// @note b4 は 464 バイト固定で Terrain / Water まで同じレイアウトを読むため、対応パスを増やしている途中の Spot / Point は、束縛していないパスが 0 埋め (= 影なし) で素通りできる別スロットに置く。
 void UpdatePunctualShadowConstants(RenderPassContext& ctx);
-/// 主スロット (submesh 0) を同期する。単一マテリアルのオブジェクト向け。
+/// @note 主スロット (submesh 0) を同期する。単一マテリアルのオブジェクト向け。
+/// @param screenPixels 描く物体の画面上の直径 [px] (EstimateScreenPixels)。テクスチャの品質段の自動選択に使う。0 は不明。
 renderer::Material* SyncMaterial(
-    MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback = false);
+    MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback = false,
+    float screenPixels = 0.0f);
 
-/// submesh 単位でスロットを同期する。SkinnedMeshRenderer のように 1 GameObject が
-/// 複数 submesh を描くケースで使う。slotIndex が SlotCount() を超える場合は
-/// MaterialComponent::SlotAt() が主スロットへフォールバックする。
+/// @note submesh 単位でスロットを同期する。SkinnedMeshRenderer のように 1 GameObject が
+/// @note 複数 submesh を描くケースで使う。slotIndex が SlotCount() を超える場合は
+/// @note MaterialComponent::SlotAt() が主スロットへフォールバックする。
 renderer::Material* SyncMaterialSlot(
     MaterialComponent& mc, size_t slotIndex, renderer::ResourceManager& resources,
-    bool preferSkinnedFallback = false);
+    bool preferSkinnedFallback = false, float screenPixels = 0.0f);
+
+/// @brief メッシュのワールド境界球を画面へ投影した直径 [px]。求められなければ 0。
+/// @note 極小カリングと同じ射影の縦倍率 (cullProjScaleY) を使う。NDC の縦 2 が描画先の高さに当たる。
+[[nodiscard]] float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go,
+                                         const renderer::Mesh& mesh);
 
 renderer::Material* GetFallbackMaterial(
     renderer::ResourceManager& resources, bool skinned);
@@ -444,15 +483,26 @@ void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath);
 /// @note 子 GO (submesh ごとの SkinnedMeshRenderer) は AnimatorComponent を持たない。
 AnimatorComponent* FindAnimator(GameObject& go);
 
+/// @param depthBias / depthBiasSlope 正で手前へ寄せる (renderer::PipelineStateDesc::depthBias)。
 renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
     renderer::BlendMode        blend,
-    bool                       doubleSided);
+    bool                       doubleSided,
+    int32_t                    depthBias      = 0,
+    float                      depthBiasSlope = 0.0f,
+    bool                       wireframe = false);
+
+/// @brief スロットのブレンド・両面・深度バイアスから PSO を引く。
+/// @note カメラ視点で同じメッシュを描くパスはすべてこちらを通す (バイアスがパス間で食い違うと深度が合わない)。
+renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
+    renderer::ResourceManager& resources,
+    const MaterialSlot&        slot,
+    bool                      wireframe = false);
 
 bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask);
-/// シーングローバル天候 (WeatherComponent) の解決結果。既定は「乾いている」。
-/// b8 を宣言できないシェーダー (Terrain) へ値を手渡すために使う。b8 を持つシェーダーは
-/// RenderSystem が AdvancedGraphicsCB へ書いた値をそのまま読む。
+/// @note シーングローバル天候 (WeatherComponent) の解決結果。既定は「乾いている」。
+/// @note b8 を宣言できないシェーダー (Terrain) へ値を手渡すために使う。b8 を持つシェーダーは
+/// @note RenderSystem が AdvancedGraphicsCB へ書いた値をそのまま読む。
 struct ActiveWeather {
     float wetness      = 0.0f;
     float darkening    = 0.0f;
@@ -462,14 +512,14 @@ struct ActiveWeather {
 ActiveWeather FindActiveWeather(Scene& scene);
 
 
-/// ワールド空間バウンディング球 (カリング用)
+/// @note ワールド空間バウンディング球 (カリング用)
 struct WorldBounds {
     math::Vector3 center;
     float         radius;
 };
 
-/// メッシュのローカルバウンディング球をワールド空間に変換する。boundsRadius が 0 のメッシュ (ComputeBounds 未実行) は半径 0 を返す。padding はワールド単位で半径へ加算する余白 (カメラの Culling Bounds Padding)。
-/// このメッシュを SW オクルージョンカリングの遮蔽者として使ってよいか。
+/// @note メッシュのローカルバウンディング球をワールド空間に変換する。boundsRadius が 0 のメッシュ (ComputeBounds 未実行) は半径 0 を返す。padding はワールド単位で半径へ加算する余白 (カメラの Culling Bounds Padding)。
+/// @note このメッシュを SW オクルージョンカリングの遮蔽者として使ってよいか。
 /// @note OcclusionCuller はバウンディング球の投影円に内接する正方形へ「球の背面深度」を焼く。床タイル・壁パネル・板ポリ・フェンスのように球に対し実体が薄い形では「球の内側は概ねメッシュで埋まっている」という前提が崩れ、実際には何も無い空間まで遮蔽者として主張してしまう (見えているものが消える)。
 /// @note 判定材料は AABB の最小半径成分と球半径の比。立方体で 0.577、球で 1.0、10x10x0.2 の板で 0.014 になるので、この比だけで薄い形を弾ける。
 /// @note 弾かれた物も「遮蔽される側」としては通常どおり判定される (描画は落ちる)。
@@ -534,13 +584,12 @@ bool IsWithinCullDistance(const RenderPassContext& ctx,
                           const GameObject& go,
                           const WorldBounds& bounds);
 
-/// @brief GBuffer に格納できない材質かを自動判定する。
-/// @note Forward / Deferred の主経路は RenderSettings::pipeline が決めるため、Material の render_path による通常材質の上書きは行わない。ただし GBuffer に表現できない高度なローブだけは情報欠落を避けるため Forward へ送る。
-/// @note MaterialSlot を受けるので MaterialComponent (= スロット 0) も submesh 別スロットも渡せる。
-bool IsForwardOnly(const MaterialSlot& slot);
+/// @note GBuffer と Forward の振り分けは ResolveGeometryRoute
+///       (Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp) が唯一の正本。
+/// @see Docs/design/pipeline-boundary.md
 
 /// @brief fzmat の mesh_type フィールドから static mesh 専用かを決定する。
 /// @note カスタムシェーダーはエンジンコードを触らず mesh_type = "surface"/"skinned"/"any" で対応するメッシュタイプを宣言できるようにするため。
 bool IsSurfaceMaterial(const MaterialSlot& slot);
 
-} // namespace fbzz::scene
+}

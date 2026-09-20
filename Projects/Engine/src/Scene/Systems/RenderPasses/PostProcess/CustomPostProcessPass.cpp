@@ -13,6 +13,7 @@
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -118,7 +119,7 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
     for (size_t i = 0; i < texturePaths.size(); ++i) {
         material.textures[i] = texturePaths[i].empty()
             ? renderer::ResourceHandle<renderer::TextureTag>{}
-            : resources.LoadTexture(texturePaths[i]);
+            : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePaths[i]);
     }
 
     material.Init(resources, binding.descriptor.cbufferSize);
@@ -134,7 +135,7 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
 /// b5 をカスタムパスの内容で埋める。段が変わっても «同じ名前で同じ意味» にする。
 PostProcCB MakeCustomPostProcCB(const renderer::CustomPostProcessSettings& custom,
                                 uint32_t width, uint32_t height,
-                                float uvScale, int iteration, int iterationCount)
+                                float uvScaleX, float uvScaleY, int iteration, int iterationCount)
 {
     PostProcCB postData = MakeScreenPostProcCB(width, height);
     postData.time = Time::time;
@@ -144,10 +145,11 @@ PostProcCB MakeCustomPostProcCB(const renderer::CustomPostProcessSettings& custo
         postData.customParameters[i]  = custom.parameters[i];
         postData.customParameters2[i] = custom.parameters[i + 4];
     }
-    postData.customPassInfo[0] = uvScale;
+    postData.customPassInfo[0] = uvScaleX;
     postData.customPassInfo[1] = static_cast<float>(iteration);
     postData.customPassInfo[2] = static_cast<float>(iterationCount);
-    postData.customPassInfo[3] = 0.0f;
+    /// @note 縮小した RT の幅と高さは別々に切り捨てられるので、縦の倍率は横と一致しない。
+    postData.customPassInfo[3] = uvScaleY;
     return postData;
 }
 
@@ -279,7 +281,7 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     r.SetRenderTarget(needsIntermediate ? h.customPostProcessRT[outputIndex] : ctx.chainOutputRT, resources);
 
     /// @note 縮小も反復もこの段では効かない (理由はファイル冒頭を参照)。uvScale は常に 1。
-    const PostProcCB postData = MakeCustomPostProcCB(custom, ctx.width, ctx.height, 1.0f, 0, 1);
+    const PostProcCB postData = MakeCustomPostProcCB(custom, ctx.width, ctx.height, 1.0f, 1.0f, 0, 1);
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
     renderer::DrawCall customDC;
@@ -330,7 +332,10 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
 
     const uint32_t reducedW = (std::max)(1u, ctx.width  / static_cast<uint32_t>(downscale));
     const uint32_t reducedH = (std::max)(1u, ctx.height / static_cast<uint32_t>(downscale));
-    const float    uvScale  = reduced ? 1.0f / static_cast<float>(downscale) : 1.0f;
+    /// @note 倍率は «縮小後の画素数 / 実寸の画素数» で縦横別に出す。1/downscale だと割り切れない解像度で
+    ///       有効範囲の外 (クリアした 0) まで読み、右端と下端が暗くなる。
+    const float    uvScaleX = static_cast<float>(reducedW) / static_cast<float>((std::max)(ctx.width, 1u));
+    const float    uvScaleY = static_cast<float>(reducedH) / static_cast<float>((std::max)(ctx.height, 1u));
 
     const auto drawCopy = [&](renderer::ResourceHandle<renderer::TextureTag> source) {
         renderer::DrawCall copyDC;
@@ -344,7 +349,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
     if (!reduced) {
         for (int i = 0; i < iterations; ++i) {
             const PostProcCB postData =
-                MakeCustomPostProcCB(custom, ctx.width, ctx.height, 1.0f, i, iterations);
+                MakeCustomPostProcCB(custom, ctx.width, ctx.height, 1.0f, 1.0f, i, iterations);
             resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
             /// @note 置き換えるなら «今の HDR» を退避してから描き戻す。
@@ -378,7 +383,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
     {
         /// @note 入力の縮小コピー。UV は 0..1 のまま全画面を読み、小さいビューポートへ書く。
         const PostProcCB postData =
-            MakeCustomPostProcCB(custom, reducedW, reducedH, uvScale, 0, iterations);
+            MakeCustomPostProcCB(custom, reducedW, reducedH, uvScaleX, uvScaleY, 0, iterations);
         resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
         r.SetRenderTarget(scratchA, resources);
         r.SetViewport(0, 0, reducedW, reducedH);
@@ -389,7 +394,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
     for (int i = 0; i < iterations; ++i) {
         const auto target = (source == scratchA) ? scratchB : scratchA;
         const PostProcCB postData =
-            MakeCustomPostProcCB(custom, reducedW, reducedH, uvScale, i, iterations);
+            MakeCustomPostProcCB(custom, reducedW, reducedH, uvScaleX, uvScaleY, i, iterations);
         resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
         r.SetRenderTarget(target, resources);

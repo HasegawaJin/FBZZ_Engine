@@ -13,6 +13,7 @@
 ///      メッシュ・マテリアル・クリップを一括保持する。新規コードは ModelAsset を使う。
 #pragma once
 #include <Engine/Asset/AssetHandle.hpp>
+#include <Engine/Asset/AssetStreaming.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -24,6 +25,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -49,6 +51,8 @@ public:
         std::unique_ptr<T> asset;
         uint32_t gen      = 1;
         bool     occupied = false;
+        /// 同期 Load<T> が配ったスロット。明示的な Unload まで自動 eviction の対象にしない。
+        bool     pinned   = false;
     };
 
     static AssetStore& Get() { static AssetStore s; return s; }
@@ -62,18 +66,38 @@ public:
         } else {
             idx = static_cast<uint32_t>(slots.size());
             slots.emplace_back();
+            slots.back().gen = genFloor;
         }
         Slot& s   = slots[idx];
         s.asset   = std::move(asset_);
         s.occupied = true;
+        s.pinned  = false;
         return AssetHandle<T>{ idx + 1u, s.gen };
     }
+
+    /// @brief 同期 API が配ったことを記録する。
+    void Pin(AssetHandle<T> h) {
+        if (IsLive(h)) slots[h.id - 1u].pinned = true;
+    }
+
+    [[nodiscard]] bool IsPinned(AssetHandle<T> h) const {
+        return IsLive(h) && slots[h.id - 1u].pinned;
+    }
+
+    /// @brief 中身の無いスロットを予約する。非同期ロードが完成物を Replace で埋める。
+    /// @note 予約中の GetPtr は nullptr。ハンドルは完成前から配れる。
+    AssetHandle<T> Reserve() { return Alloc(nullptr); }
 
     bool IsLive(AssetHandle<T> h) const {
         if (!h.IsValid()) return false;
         const uint32_t idx = h.id - 1u;
         if (idx >= slots.size()) return false;
         return slots[idx].occupied && slots[idx].gen == h.gen;
+    }
+
+    /// @brief 予約済みでまだ中身が無いか。
+    bool IsPending(AssetHandle<T> h) const {
+        return IsLive(h) && !slots[h.id - 1u].asset;
     }
 
     T* GetPtr(AssetHandle<T> h) {
@@ -95,11 +119,17 @@ public:
         Slot& s = slots[idx];
         s.asset.reset();
         s.occupied = false;
+        s.pinned = false;
         s.gen = (s.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : s.gen + 1u;
         freeList.push_back(idx);
     }
 
+    /// @note 世代は捨てずに床へ畳む。0 から数え直すと、Clear 前に配った {id, gen} が次のプロジェクトの
+    ///       別アセットを指して «蘇る»。
     void Clear() {
+        uint32_t highest = genFloor;
+        for (const Slot& s : slots) highest = (std::max)(highest, s.gen);
+        genFloor = (highest == (std::numeric_limits<uint32_t>::max)()) ? 1u : highest + 1u;
         slots.clear();
         freeList.clear();
         cache.clear();
@@ -108,6 +138,8 @@ public:
 
     std::vector<Slot>                               slots;
     std::vector<uint32_t>                           freeList;
+    /// 新しく作るスロットの初期世代。Clear を跨いで増え続ける。
+    uint32_t                                        genFloor = 1;
     std::unordered_map<std::string, AssetHandle<T>> cache;
     std::unique_ptr<IAssetImporter<T>>              importer;
 
@@ -147,6 +179,16 @@ public:
 
     [[nodiscard]] static std::string ResolveAssetPath(const std::string& path);
 
+    /// @brief ストアのキャッシュキー。非同期要求 (AssetStreamer) の重複集約も同じキーを使う。
+    [[nodiscard]] static std::string CanonicalKey(const std::string& path) { return CacheKey(path); }
+
+    /// @brief importer へ渡す実パス。modelContainer なら .fbx を Library/Baked の .fzasset へ寄せる。
+    [[nodiscard]] static std::string ResolveImportPath(const std::string& key, bool modelContainer);
+
+    /// @brief ストリーミング用キャッシュの置き場所 `<Project>/Library/StreamCache` (末尾 '/' なし)。
+    /// @return プロジェクト構成でない (basePath が Assets/ で終わらない) なら空文字。キャッシュは使わない。
+    [[nodiscard]] static std::string StreamCacheDir();
+
     /// @brief 原本 FBX に対応する `Library/Baked/<fbx-guid>/` の絶対パスを返す (末尾 '/' なし)。
     /// @return guid が引けない (Assets 外の FBX 等) なら空文字。
     /// @note AssetBrowser がファイル名を知らない状態でサブアセット (.anim 等) の隔離先ディレクトリを列挙するために使う。ResolveAssetPath は実在ファイルしか返せない。
@@ -167,7 +209,18 @@ public:
         AssetStore<T>& store = AssetStore<T>::Get();
 
         const auto it = store.cache.find(key);
-        if (it != store.cache.end()) return it->second;
+        if (it != store.cache.end()) {
+            /// @note 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
+            ///       ここで読んで埋め、実行中の非同期結果は棄却させる。
+            if (store.IsPending(it->second) && store.importer) {
+                if (std::unique_ptr<T> filled = store.importer->Import(ResolvePath(key, S_base()), S_res())) {
+                    store.Replace(it->second, std::move(filled));
+                    NotifyStreamerSyncFilled(AssetStreamTypeName<T>(), key);
+                }
+            }
+            if (!store.IsPending(it->second)) store.Pin(it->second);
+            return it->second;
+        }
 
         std::unique_ptr<T> asset;
         if (store.importer)
@@ -178,8 +231,19 @@ public:
             return AssetHandle<T>::Null();
         }
         const AssetHandle<T> h = store.Alloc(std::move(asset));
+        store.Pin(h);
         store.cache[key] = h;
         return h;
+    }
+
+    /// @brief 予約中のスロットを、同期 API の固定を付けずにこの場で埋める (AssetStreamer::CompleteNow 用)。
+    /// @return 埋めたら true。
+    template<typename T>
+    static bool FillPendingWithoutPin(const std::string& key, AssetHandle<T> handle) {
+        AssetStore<T>& store = AssetStore<T>::Get();
+        if (!store.IsPending(handle) || !store.importer) return false;
+        std::unique_ptr<T> filled = store.importer->Import(ResolveImportPath(key, IsModelContainer<T>()), S_res());
+        return filled && store.Replace(handle, std::move(filled));
     }
 
     template<typename T>
@@ -203,6 +267,7 @@ public:
         if (it == store.cache.end()) return;
         store.Free(it->second);
         store.cache.erase(it);
+        NotifyStreamerUnloaded(AssetStreamTypeName<T>(), key);
     }
 
     /// @}
@@ -227,6 +292,13 @@ private:
     static bool                        S_init() noexcept;
     static const std::string&          S_base() noexcept;
     static renderer::ResourceManager*  S_res()  noexcept;
+    template<typename T>
+    static constexpr bool IsModelContainer() {
+        return std::is_same_v<T, ModelAsset> || std::is_same_v<T, Model>;
+    }
+    /// @brief 同期経路の変化を AssetStreamer::Engine() へ伝える。台帳は DLL 側の 1 つだけ。
+    static void NotifyStreamerSyncFilled(std::string_view typeName, const std::string& key);
+    static void NotifyStreamerUnloaded(std::string_view typeName, const std::string& key);
     template<typename T>
     static AssetHandle<T> LoadFromStore(const std::string& relativePath);
     template<typename T>

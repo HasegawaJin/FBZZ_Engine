@@ -301,7 +301,7 @@ bool NavMeshDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void NavMeshDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
 
     if (ctx.settings.showNavMesh) {
         const NavMeshDrawMode mode        = ctx.settings.navMeshDrawMode;

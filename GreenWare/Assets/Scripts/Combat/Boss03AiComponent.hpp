@@ -590,7 +590,7 @@ inline void Boss03AiComponent::RefreshPlayer()
 {
     /// @note 毎フレーム取り直す。プレイヤーが作り直される構成でも繋がり直る。
     if (m_player.Resolve(scene)) return;
-    if (GameObject* player = scene.FindWithTag(playerTag))
+    if (GameObject* player = scene.FindWithTag(playerTag, true))
         m_player = EntityRef{ player->GetID() };
 }
 

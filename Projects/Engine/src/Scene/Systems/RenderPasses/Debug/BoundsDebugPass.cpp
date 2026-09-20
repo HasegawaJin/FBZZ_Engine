@@ -68,7 +68,7 @@ bool BoundsDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void BoundsDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     if (ctx.settings.showTerrainBounds) DrawTerrainBounds(ctx);
     if (ctx.settings.showLODBounds) DrawLodBounds(ctx);
     renderer::DebugDraw::Flush();

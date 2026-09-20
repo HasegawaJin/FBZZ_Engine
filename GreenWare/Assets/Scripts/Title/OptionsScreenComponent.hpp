@@ -301,8 +301,8 @@ inline void OptionsScreenComponent::OnStart()
     if (standalone) bgm::Play(audio, bgm::kOptions);
 
     for (int i = 0; i < kTabs; ++i) {
-        m_navBars[i]   = scene.Find(std::string("Nav") + kTabNames[i] + "Bar");
-        m_navLabels[i] = scene.Find(std::string("Nav") + kTabNames[i] + "Label");
+        m_navBars[i]   = scene.Find(std::string("Nav") + kTabNames[i] + "Bar", true);
+        m_navLabels[i] = scene.Find(std::string("Nav") + kTabNames[i] + "Label", true);
         if (!m_navBars[i] || !m_navLabels[i])
             debug.LogWarning(std::string("OptionsScreen: Nav") + kTabNames[i] + " が見つかりません");
         m_navAmount[i] = (i == m_tab) ? 1.0f : 0.0f;
@@ -315,7 +315,7 @@ inline void OptionsScreenComponent::OnStart()
             }
         }
     }
-    m_focusBar = scene.Find("FocusBar");
+    m_focusBar = scene.Find("FocusBar", true);
     if (m_focusBar) {
         m_focusY = m_focusTarget = m_focusBar->transform.position.y;
         /// @note 最初はどの行にも居ないので消しておく (出したまま置くと 1 本目の行に
@@ -328,7 +328,7 @@ inline void OptionsScreenComponent::OnStart()
         const char* group = deviceIndex == 1 ? "PAD" : "KBM";
         for (std::size_t i = 0; i < kControlRowCount; ++i) {
             GameObject* tail = scene.Find(std::string("CtrlR_") + group + "_"
-                                          + actions::kControlRows[i].key);
+                                          + actions::kControlRows[i].key, true);
             const auto* text = tail ? tail->GetComponent<UIText>() : nullptr;
             m_ctrlTail[deviceIndex][i] = text ? text->text : std::string{};
         }
@@ -360,8 +360,8 @@ inline void OptionsScreenComponent::ApplyDeviceGroups()
 {
     auto* s = GameSettingsComponent::Instance();
     const bool pad = s && s->Input().device == 1;
-    if (auto* go = scene.Find("CtrlR_KBM")) go->SetActive(!pad);
-    if (auto* go = scene.Find("CtrlR_PAD")) go->SetActive(pad);
+    if (auto* go = scene.Find("CtrlR_KBM", true)) go->SetActive(!pad);
+    if (auto* go = scene.Find("CtrlR_PAD", true)) go->SetActive(pad);
     /// @note 差し替え済みの行は絵ではなく文字で出る。機器を切り替えた側の一覧へも反映する。
     RefreshAllControlRows();
 }
@@ -375,7 +375,7 @@ inline void OptionsScreenComponent::SelectTab(int tab)
     ///       (滑り込みの途中で隠すと、次に出したときその位置が «置き場所» になる)。
     if (pageChanged) SettlePage();
     for (const char* name : { "Tab_INPUT", "Tab_INPUT_PAD", "Tab_GAME", "Tab_VIDEO", "Tab_AUDIO" })
-        if (auto* go = scene.Find(name)) go->SetActive(page == name);
+        if (auto* go = scene.Find(name, true)) go->SetActive(page == name);
 
     /// @note 宣言簿の全項目に対して «このページに行のオブジェクトがあるか» を見る。
     ///       置いてある行だけが出るので、設定を増やすのは «宣言 1 つ + 行 1 つ» で済む。
@@ -383,7 +383,7 @@ inline void OptionsScreenComponent::SelectTab(int tab)
     const std::string tag = page.substr(4);
     m_bound.clear();
     for (const settings::Setting& setting : settings::All()) {
-        if (GameObject* go = scene.Find(tag + "_Row_" + setting.id)) {
+        if (GameObject* go = scene.Find(tag + "_Row_" + setting.id, true)) {
             m_bound.push_back({ setting.id, go });
             if (GameObject* slider = Child(go, "Slider")) {
                 const float value = settings::Get(setting.id);
@@ -549,7 +549,7 @@ inline void OptionsScreenComponent::PollControls()
     for (const actions::ControlRow& row : actions::kControlRows) {
         /// @note 軸と点付与は差し替えられない
         if (!row.action || !*row.action) continue;
-        GameObject* hit = scene.Find(std::string("CtrlDiv_") + row.key);
+        GameObject* hit = scene.Find(std::string("CtrlDiv_") + row.key, true);
         if (hit && ui.WasClicked(hit)) {
             BeginRebind(row);
             return;
@@ -580,9 +580,9 @@ inline void OptionsScreenComponent::BeginRebind(const actions::ControlRow& row)
     const char* group = device == 1 ? "PAD" : "KBM";
     for (int i = 0; i < 4; ++i)
         if (auto* icon = scene.Find(std::string("CtrlIcon_") + group + "_" + row.key
-                                    + "_" + std::to_string(i)))
+                                    + "_" + std::to_string(i), true))
             icon->SetActive(false);
-    if (auto* tail = scene.Find(std::string("CtrlR_") + group + "_" + row.key))
+    if (auto* tail = scene.Find(std::string("CtrlR_") + group + "_" + row.key, true))
         ui.SetText(tail, "…  BS:既定 / ESC:取消");
 }
 
@@ -665,10 +665,10 @@ inline void OptionsScreenComponent::RefreshControlRow(std::size_t rowIndex)
     ///       エンジンが持つ表示名 ("F" / "Pad0:A") をそのまま文字で出す。
     for (int i = 0; i < 4; ++i)
         if (auto* icon = scene.Find(std::string("CtrlIcon_") + group + "_" + row.key
-                                    + "_" + std::to_string(i)))
+                                    + "_" + std::to_string(i), true))
             icon->SetActive(!custom);
 
-    GameObject* tail = scene.Find(std::string("CtrlR_") + group + "_" + row.key);
+    GameObject* tail = scene.Find(std::string("CtrlR_") + group + "_" + row.key, true);
     if (!tail) return;
     if (custom) {
         const int index = s->BindingIndexFor(row.action, device);
@@ -851,7 +851,7 @@ inline void OptionsScreenComponent::LayoutControlIcons()
             const std::string suffix = std::string(dev) + "_" + row.key;
             float cursor = kRight;
 
-            if (GameObject* tail = scene.Find("CtrlR_" + suffix)) {
+            if (GameObject* tail = scene.Find("CtrlR_" + suffix, true)) {
                 const auto* text = tail->GetComponent<UIText>();
                 if (text && !text->text.empty()) {
                     const float width = tail->transform.scale.x;
@@ -867,7 +867,7 @@ inline void OptionsScreenComponent::LayoutControlIcons()
             int count = 0;
             while (!custom && count < 4) {
                 GameObject* icon =
-                    scene.Find("CtrlIcon_" + suffix + "_" + std::to_string(count));
+                    scene.Find("CtrlIcon_" + suffix + "_" + std::to_string(count), true);
                 if (!icon) break;
                 icons[count++] = icon;
             }

@@ -7,6 +7,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/BindlessIndices.hlsli"
+#include "Common/ObjectInstance.hlsli"
 
 cbuffer ObjectMaskConstants : register(CB_MATERIAL)
 {
@@ -35,19 +36,34 @@ struct PSInput
     float4 position : SV_POSITION;
 };
 
-PSInput VSMain(VSInput input)
+// @brief 本体。入口だけが変種ごとに違い、変換そのものは 1 か所に置く。
+PSInput ObjectMaskVS(VSInput input, float4x4 objectWorld)
 {
     PSInput output;
-    float3 worldPos = mul(float4(input.position, 1.0f), world).xyz;
+    float3 worldPos = mul(float4(input.position, 1.0f), objectWorld).xyz;
     output.position = mul(float4(worldPos, 1.0f), viewProjection);
     return output;
 }
+
+#ifdef FBZZ_INSTANCED
+// @note 束ねたシルエット。@see Docs/design/gpu-instancing.md
+PSInput VSMain(VSInput input, uint instanceId : SV_InstanceID)
+{
+    return ObjectMaskVS(input, gObjectInstances[instanceId].world);
+}
+#else
+PSInput VSMain(VSInput input)
+{
+    return ObjectMaskVS(input, world);
+}
+#endif
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
     if (objectMaskFlags.x > 0.5f) {
         const float sceneDepth = texSceneDepth.Load(int3((int2)input.position.xy, 0));
-        if (input.position.z > sceneDepth + kObjectMaskDepthBias) discard;
+        /// @note カメラ深度は Reversed-Z (手前ほど大きい)。シーンより奥なら捨てる。
+        if (input.position.z < sceneDepth - kObjectMaskDepthBias) discard;
     }
     return objectMaskPayload;
 }

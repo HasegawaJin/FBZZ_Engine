@@ -5,13 +5,14 @@
  * @date 2026/07/19
  */
 
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import path from 'node:path';
-import type { BootstrapData, CreateProjectRequest, HubSettings, OperationResult } from '../shared/contracts';
+import type { BootstrapData, CreateProjectRequest, HubSettings, OperationResult, UpdateNotice } from '../shared/contracts';
 import { ENGINE_VERSION } from '../shared/contracts';
 import { ConfigStore } from './configStore';
 import { ProjectService } from './projectService';
 import { TemplateService } from './templateService';
+import { fetchLatestRelease, isFresh, isReleasePageUrl, noticeFrom } from './updateChecker';
 
 const configStore = new ConfigStore();
 const projectService = new ProjectService();
@@ -39,8 +40,8 @@ function failure(error: unknown): OperationResult<never> {
 
 /**
  * main 側の settings を全ウィンドウへ通知する。
- * WHY: renderer は最後に受け取った settings を bootstrap の値より優先する。起動時の自動検出
- *      だけでなく保存後にも送らないと、保存した値が起動時の検出結果へ巻き戻って見える。
+ * @note renderer は最後に受け取った settings を bootstrap の値より優先する。起動時の自動検出
+ *       だけでなく保存後にも送らないと、保存した値が起動時の検出結果へ巻き戻って見える。
  */
 function broadcastSettings(settings: HubSettings): void {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -64,6 +65,26 @@ async function bootstrap(): Promise<BootstrapData> {
     projects: projectService.createPendingProjects(config.projects),
     templates: await templateService.listTemplates(),
   };
+}
+
+/**
+ * 知らせるべき新しい版を返す。24 時間以内に確認済みなら問い合わせず保存済みの結果を使う。
+ * @see Docs/design/gamehub-update-notice.md
+ */
+async function checkForUpdate(): Promise<UpdateNotice | null> {
+  await ensureConfigLoaded();
+  const config = configStore.snapshot();
+  if (!config.settings.checkForUpdates) return null;
+
+  let state = config.update;
+  if (!isFresh(state, Date.now())) {
+    const latest = await fetchLatestRelease();
+    if (latest) {
+      state = { ...state, ...latest, lastCheckedAt: new Date().toISOString() };
+      await configStore.setUpdateState(state);
+    }
+  }
+  return noticeFrom(state, ENGINE_VERSION);
 }
 
 export function registerIpcHandlers(): void {
@@ -138,6 +159,27 @@ export function registerIpcHandlers(): void {
       await configStore.setSettings(settings);
       broadcastSettings(configStore.snapshot().settings);
       return success(await bootstrap());
+    } catch (error) { return failure(error); }
+  });
+
+  ipcMain.handle('update:check', async () => {
+    try { return success(await checkForUpdate()); } catch (error) { return failure(error); }
+  });
+  ipcMain.handle('update:dismiss', async (_event, version: string) => {
+    try {
+      await ensureConfigLoaded();
+      await configStore.setUpdateState({ ...configStore.snapshot().update, dismissedVersion: String(version) });
+      return success();
+    } catch (error) { return failure(error); }
+  });
+  ipcMain.handle('update:open-release', async () => {
+    try {
+      await ensureConfigLoaded();
+      const url = configStore.snapshot().update.latestUrl;
+      /** @note renderer から URL を受け取らない。保存済みの値もこのリポジトリのリリースページでなければ開かない。 */
+      if (!isReleasePageUrl(url)) throw new Error('リリースページの URL が不正です。');
+      await shell.openExternal(url);
+      return success();
     } catch (error) { return failure(error); }
   });
 

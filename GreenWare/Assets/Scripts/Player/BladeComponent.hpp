@@ -827,7 +827,7 @@ inline GameObject* BladeComponent::AimedPart() const
     /// @note score の下限は -0.35 (下の重み)。-2 なら必ず更新される。
     float       bestScore = -2.0f;
 
-    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartComponent>(object);
         if (!part) continue;
@@ -1670,7 +1670,7 @@ inline void BladeComponent::ResolveHit()
     enum class Contact { ARMOR, NORMAL, WEAK, BREAK };
     Contact contact = Contact::ARMOR;
     int hits = 0;
-    for (GameObject* object : scene.FindObjectsOfType<BossBreakComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossBreakComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         /// @note 蛇の根は床下の経路原点。実際に露出している節だけで命中を判定する。
         if (object->GetScript<SerpentHitboxRigComponent>()) continue;
@@ -1711,7 +1711,7 @@ inline void BladeComponent::ResolveHit()
     int         parts   = 0;
     GameObject* struck  = nullptr;
     Vector3     struckPoint = Vector3::ZERO;
-    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartComponent>(object);
         if (!part || !part->CanBeHit()) continue;

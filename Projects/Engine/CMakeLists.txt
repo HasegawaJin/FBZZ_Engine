@@ -240,6 +240,8 @@ target_link_libraries(FBZZEngine
     PRIVATE
         # @note Engine 実装専用だが install(EXPORT) がリンク依存先も要求するので、SDK では FBZZ::ImGui として出す。
         ImGui
+        # @note CrashHandler の MiniDumpWriteDump。落ちてから LoadLibrary しないよう起動時に読ませる。
+        dbghelp
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
         "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${DIRECTXTEX_LIB_RELEASE}>"
         "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"

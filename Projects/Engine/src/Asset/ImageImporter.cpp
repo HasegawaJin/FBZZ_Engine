@@ -7,6 +7,7 @@
 /// サイドカーが無ければ GuessTextureType で設定を推定して GPU ロード
 #include <Engine/Asset/ImageImporter.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -45,10 +46,16 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
     }
 
     /// @note GPU テクスチャロード (キャッシュキーは常に元画像パスで安定させる)
+    /// @note 固定印を付けない。同期 `Load<TextureAsset>` の固定は AssetStore 側のスロットが持ち、
+    ///       非同期経路 (AssetStreamer::CompleteNow) が同じ importer で読んだものは後で解放できる。
     if (resources) {
-        asset->gpuHandle = resources->LoadTexture(asset->sourcePath);
-        if (!asset->gpuHandle.IsValid())
+        asset->gpuHandle = resources->LoadTextureUnpinned(asset->sourcePath);
+        if (const renderer::ITexture* texture = resources->Get(asset->gpuHandle)) {
+            asset->sourceWidth  = texture->GetWidth();
+            asset->sourceHeight = texture->GetHeight();
+        } else {
             FBZZ_LOG_WARN("ImageImporter: GPU load failed [%s]", asset->sourcePath.c_str());
+        }
     }
 
     return asset;

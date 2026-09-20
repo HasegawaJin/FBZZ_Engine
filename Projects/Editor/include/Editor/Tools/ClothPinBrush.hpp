@@ -19,6 +19,14 @@ struct ClothPinBrush {
     bool dragging = false;
     bool remove = false;
     bool beforeOverride = false;
+    bool distanceMode = false;
+    bool strokeDistanceMode = false;
+    bool beforeUseSkinning = false;
+    float distance = 0.1f;
+    float strokeDistance = 0.1f;
+    float beforeDefaultDistance = 0.1f;
+    std::vector<int> beforeDistanceParticles;
+    std::vector<float> beforeDistances;
     int lastFrame = -1;
     scene::Scene* scene = nullptr;
     std::string target;

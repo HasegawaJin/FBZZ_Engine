@@ -25,7 +25,7 @@ public:
     void OnStart() override
     {
         GameObject* weapon = sword.Get();
-        if (!weapon) weapon = scene.Find(kSwordObject);
+        if (!weapon) weapon = scene.Find(kSwordObject, true);
         m_attached = weapon != nullptr;
         if (!weapon) {
             debug.LogError("WeaponRigComponent: assign Sword before Play.");

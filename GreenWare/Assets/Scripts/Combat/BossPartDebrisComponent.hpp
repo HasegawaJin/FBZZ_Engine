@@ -209,7 +209,7 @@ inline void BossPartDebrisComponent::ResolveHit()
 {
     if (m_dealt) return;
 
-    GameObject* player = scene.FindWithTag(playerTag);
+    GameObject* player = scene.FindWithTag(playerTag, true);
     if (!player) return;
 
     const Vector3 at = transform.worldPosition;

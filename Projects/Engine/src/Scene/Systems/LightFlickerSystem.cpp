@@ -128,6 +128,9 @@ void LightFlickerSystem::Update(SystemContext& ctx)
             Restore(light);
             continue;
         }
+        /// @note 親ごと無効化された光源は明滅の時計も止める (Pause と同じく今の明るさを保ち、有効に戻れば続きから)。
+        if (const GameObject* owner = ctx.scene.GetGameObject(id); !owner || !owner->activeInHierarchy())
+            continue;
 
         if (!light.flickerCaptured) {
             /// @note VFXLightEnvelope も «捕まえて掛け直す» ので、同じ光源に両方付けると互いの出力を

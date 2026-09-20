@@ -754,10 +754,12 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
 
     TerrainGridComponent* terrainGrid = nullptr;
-    {
-        const auto gridEntities = scene.GetEntities<TerrainGridComponent>();
-        if (!gridEntities.empty())
-            terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
+    /// @note 親ごと無効化された Grid は使わない (有効な最初の 1 つ)。
+    for (const EntityID gridId : scene.GetEntities<TerrainGridComponent>()) {
+        const GameObject* gridObject = scene.GetGameObject(gridId);
+        if (!gridObject || !gridObject->activeInHierarchy()) continue;
+        terrainGrid = scene.GetComponent<TerrainGridComponent>(gridId);
+        break;
     }
 
     /// @note 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
@@ -933,10 +935,12 @@ void SubmitTerrainShadowCasters(
     renderer::ResourceManager& resources = ctx.resources;
 
     TerrainGridComponent* terrainGrid = nullptr;
-    {
-        const auto gridEntities = scene.GetEntities<TerrainGridComponent>();
-        if (!gridEntities.empty())
-            terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
+    /// @note 親ごと無効化された Grid は使わない (有効な最初の 1 つ)。
+    for (const EntityID gridId : scene.GetEntities<TerrainGridComponent>()) {
+        const GameObject* gridObject = scene.GetGameObject(gridId);
+        if (!gridObject || !gridObject->activeInHierarchy()) continue;
+        terrainGrid = scene.GetComponent<TerrainGridComponent>(gridId);
+        break;
     }
 
     struct ShadowObjectCB {

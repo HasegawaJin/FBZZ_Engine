@@ -123,6 +123,15 @@ TEST_F(ClothPinBrushTest, ExportSkinnedSubmeshTransfersWeightsAndRejectsInvalidS
     EXPECT_EQ(loaded.skinBones[0].name, "Bone");
     EXPECT_EQ(loaded.skinWeights.size(), 3u);
     EXPECT_FLOAT_EQ(loaded.skinWeights[0].weights[0], 1.0f);
+    const std::string lowPath = Context().requestRevealAssetPath;
+    args.Set("simulationAsset",lowPath);
+    args.Set("maxBindDistance",0.1f);
+    const auto boundResult = editor::InvokeOperator(Context(),"cloth.export_mesh",args);
+    ASSERT_TRUE(boundResult.ok) << boundResult.message;
+    EXPECT_NE(Context().requestRevealAssetPath,lowPath);
+    ASSERT_TRUE(asset::LoadClothAssetFromFile(Context().requestRevealAssetPath,loaded));
+    EXPECT_EQ(loaded.renderBindings.size(),3u);
+    EXPECT_EQ(loaded.simulationIndices,(std::vector<uint32_t>{0,1,2}));
 }
 
 TEST_F(ClothPinBrushTest, StrokeUsesOneUndoAndRestoresInheritedPins)
@@ -209,5 +218,43 @@ TEST_F(ClothPinBrushTest, PlayTransitionCancelsPreview)
     EXPECT_FALSE(m_brush.dragging);
     EXPECT_FALSE(Cloth().overridePins);
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+TEST_F(ClothPinBrushTest, DistanceStrokeCommitsOnceAndCancelsOnSettingChange)
+{
+    Context().clothPinPainting = true;
+    m_brush.distanceMode = true;
+    m_brush.distance = 0.3f;
+    Frame(false); Frame(true);
+    ASSERT_TRUE(m_brush.dragging);
+    EXPECT_TRUE(Cloth().maxDistances.empty());
+    Frame(false);
+    ASSERT_EQ(Cloth().maxDistances.size(),1u);
+    EXPECT_EQ(Cloth().maxDistances[0].particle,4);
+    EXPECT_FLOAT_EQ(Cloth().maxDistances[0].distance,0.3f);
+    EXPECT_EQ(m_undo.GetHistorySize(),1u);
+    m_undo.Undo();
+    EXPECT_TRUE(Cloth().maxDistances.empty());
+    Frame(true);
+    Cloth().skinMaxDistance = 0.5f;
+    Frame(false);
+    EXPECT_TRUE(Cloth().maxDistances.empty());
+}
+TEST_F(ClothPinBrushTest, DistanceOperatorRestoresInheritanceAndRejectsPartialInvalidStroke)
+{
+    editor::OpArgs args;
+    args.Set("particles",std::string("4 8 4")); args.Set("distance",0.2f);
+    ASSERT_TRUE(editor::InvokeOperator(Context(),"cloth.paint_max_distance",args).ok);
+    const auto before = Cloth().maxDistances;
+    EXPECT_EQ(before.size(),2u);
+    EXPECT_TRUE(editor::InvokeOperator(Context(),"cloth.paint_max_distance",args).noChange);
+    args.Set("particles",std::string("0 9"));
+    EXPECT_FALSE(editor::InvokeOperator(Context(),"cloth.paint_max_distance",args).ok);
+    EXPECT_EQ(Cloth().maxDistances,before);
+    args.Set("particles",std::string("4")); args.Set("inherit",true);
+    ASSERT_TRUE(editor::InvokeOperator(Context(),"cloth.paint_max_distance",args).ok);
+    ASSERT_EQ(Cloth().maxDistances.size(),1u);
+    EXPECT_EQ(Cloth().maxDistances[0].particle,8);
+    m_undo.Undo(); EXPECT_EQ(Cloth().maxDistances,before);
+    m_undo.Redo(); EXPECT_EQ(Cloth().maxDistances.size(),1u);
 }
 }
