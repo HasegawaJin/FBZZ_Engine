@@ -63,7 +63,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // ── 前フレームからの移動量を求める ──────────────────────────────────────────
     float2 frameMotion;
-    float3 velocity = texVelocity.SampleLevel(sampDefault, uv, 0).rgb;
+    /// @note 速度は VelocityPass が走ったフレームだけ束縛される。無効な添字のまま読むと未定義。
+    float3 velocity = IsBindlessValid(FbzzPixelSlot(TEX_VELOCITY_SLOT))
+        ? texVelocity.SampleLevel(sampDefault, uv, 0).rgb : float3(0.0f, 0.0f, 0.0f);
     if (velocity.z > 0.5f)
     {
         // Velocity パスが書いた画素。カメラとオブジェクトの動きが両方入っている。
@@ -76,11 +78,22 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float3 worldPos = ReconstructWorldPos(uv, ndcZ, invViewProjection);
 
         float4 prevClip = mul(float4(worldPos, 1.0f), prevViewProjection);
+        /// @note 前フレームのカメラの後ろにあった点は再投影できない。w で割ると向きが反転するか NaN になる。
+        if (prevClip.w <= 1.0e-5f)
+        {
+            OutputBlur[pixel] = texColor.SampleLevel(sampDefault, uv, 0);
+            return;
+        }
         prevClip.xyz   /= prevClip.w;
         frameMotion     = uv - NdcToUv(prevClip.xy);
     }
 
     float2 motionVec = frameMotion * motionBlurStrength;
+    /// @note 長さに上限を付ける。カメラのワープやテレポートの 1 フレームで画面全体が流れるのを防ぐ。
+    const float kMaxMotionUV = 0.05f;
+    const float rawLen = length(motionVec);
+    if (rawLen > kMaxMotionUV)
+        motionVec *= kMaxMotionUV / rawLen;
 
     // ── モーションベクトルが極小の場合はブラーなし ─────────────────────────────
     float motionLen = length(motionVec);

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
 #include "GeometryPasses.hpp"
+#include "Engine/Asset/StreamedTextureResolver.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <algorithm>
@@ -74,7 +75,8 @@ void ExecuteLightCookiePass(RenderPassContext& ctx)
         const LightCookieView& view = ctx.lightCookieViews[i];
         if (view.sourcePath.empty()) continue;
 
-        const auto sourceTex = resources.LoadTexture(view.sourcePath);
+        /// @note 焼いたアトラスが絵を持つので、元テクスチャは焼く瞬間だけ要る。利用権は使われなくなれば手放される。
+        const auto sourceTex = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, view.sourcePath);
         if (!sourceTex.IsValid()) {
             /// @note ロードできなかったスロットは白のまま残し、次フレームで再挑戦させる。
             s_baked[i] = BakedCookie{};

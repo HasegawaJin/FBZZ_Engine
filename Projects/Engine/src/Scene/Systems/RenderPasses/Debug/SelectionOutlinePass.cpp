@@ -24,7 +24,11 @@ void ExecuteSelectionOutlinePass(PassResources& res, RenderPassContext& ctx)
         rs.outlineColor[2],
         rs.outlineColor[3]
     };
-    outlineData.width = rs.outlineWidth;
+    /// @note シェーダーは内部解像度の画素で幅を数え、その後 UpscalePass が出力の実寸へ引き伸ばす。
+    ///       描画スケールで太さが変わらないよう、出力の画素で見た幅になるよう換算する。
+    const float renderToOutput = ctx.outputWidth > 0u
+        ? static_cast<float>(ctx.width) / static_cast<float>(ctx.outputWidth) : 1.0f;
+    outlineData.width = rs.outlineWidth * renderToOutput;
     resources.Update(h.outlineCB, &outlineData, sizeof(OutlineCB));
 
     /// @note `SelectionOutline.hlsl` はマスク探索の 1 タップ幅を b5 の texelSize で決める。直前に b5 を書いたパス頼みだと、ポストプロセスチェーンの構成次第で輪郭幅が変わる。

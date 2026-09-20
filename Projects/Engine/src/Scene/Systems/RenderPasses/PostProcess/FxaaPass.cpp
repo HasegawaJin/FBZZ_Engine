@@ -40,9 +40,9 @@ void ExecuteTAABlitPass(RenderPassContext& ctx)
 
     /// @note TAA 出力 (fxaaInput = taaHistoryA or B) を OutputRT に blit する。TAA は
     ///       ping-pong 履歴バッファにのみ書き OutputRT には書かないため、後続に FXAA が
-    ///       ない場合 OutputRT が更新されず viewport が黒になる。FXAA シェーダーを blit
-    ///       として流用して最終出力に届ける (TAA 後はエッジがほぼ平滑化済みで処理量は極小)。
-    if (!h.fxaaShader.IsValid() || !h.fxaaInput.IsValid()) return;
+    ///       ない場合 OutputRT が更新されず viewport が黒になる。
+    /// @note 素通しのコピーにする。FXAA を流用すると、FXAA を切っていても TAA の絵がもう一段ぼける。
+    if (!h.copyColorShader.IsValid() || !h.fxaaInput.IsValid()) return;
 
     ctx.renderer.SetRenderTarget(ctx.chainOutputRT, ctx.resources);
 
@@ -50,7 +50,7 @@ void ExecuteTAABlitPass(RenderPassContext& ctx)
     ctx.resources.Update(h.postprocCB, &blitData, sizeof(PostProcCB));
 
     renderer::DrawCall blitDC;
-    blitDC.shader             = h.fxaaShader;
+    blitDC.shader             = h.copyColorShader;
     blitDC.pipelineState      = h.postprocPSO;
     blitDC.vertexCount        = 3;
     blitDC.constantBuffers[5] = h.postprocCB;

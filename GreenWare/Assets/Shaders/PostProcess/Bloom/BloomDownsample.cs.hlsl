@@ -61,6 +61,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
 
         // NaN / Inf の混入を止める。HDR バッファは発散した値を持ちうるが、
         // ここで拾うとミップ全段へ広がって画面が丸ごと壊れる。
+        /// @note min(NaN, x) は x を返すので、NaN は先に 0 へ落とす (放置すると最大輝度の光になる)。
+        c.rgb = any(isnan(c.rgb)) ? float3(0.0f, 0.0f, 0.0f) : c.rgb;
         c.rgb = min(c.rgb, 65504.0f);
         c.rgb = max(c.rgb, 0.0f);
     }
