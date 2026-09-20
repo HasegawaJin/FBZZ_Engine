@@ -15,6 +15,7 @@
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/Components/JointComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
@@ -373,6 +374,7 @@ const SceneIconDef kSceneIcons[] = {
     { "joint",                "Joint",                "J",     IM_COL32(230, 200, 130, 210), IconShape::Badge,  &EntitiesOf<scene::JointComponent> },
     { "spline",               "Spline",               "S",     IM_COL32(255, 150, 110, 210), IconShape::Badge,  &EntitiesOf<scene::SplineComponent> },
     { "reflection_probe",     "Reflection Probe",     "R",     IM_COL32(190, 190, 240, 210), IconShape::Badge,  &EntitiesOf<scene::ReflectionProbeComponent> },
+    { "light_probe_volume",   "Light Probe Volume",   "GI",    IM_COL32(240, 210, 120, 210), IconShape::Badge,  &EntitiesOf<scene::LightProbeVolumeComponent> },
     { "decal",                "Decal",                "D",     IM_COL32(240, 180, 120, 210), IconShape::Badge,  &EntitiesOf<scene::DecalComponent> },
     { "environment_light",    "Environment Light",    "E",     IM_COL32(250, 230, 150, 210), IconShape::Badge,  &EntitiesOf<scene::EnvironmentLightComponent> },
     { "post_process_volume",  "Post Process Volume",  "PP",    IM_COL32(220, 140, 180, 210), IconShape::Badge,  &EntitiesOf<scene::PostProcessVolumeComponent> },
@@ -503,6 +505,27 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
         /// @note ReflectionProbeCapturePass は箱をワールド軸・回転無視・スケール無視で判定する。
         if (probe->boxInfluence) DrawWireAabb(ctx, dl, pos, probe->boxExtents, vpMin, vpSize, col);
         else                     DrawWireSphere(ctx, dl, pos, probe->influenceRadius, vpMin, vpSize, col);
+    }
+
+    if (const auto* volume = go.GetComponent<scene::LightProbeVolumeComponent>()) {
+        const ImU32 col = IM_COL32(240, 210, 120, 220);
+        /// @note LightProbeBakePass と同じく、箱はワールド軸・回転無視・スケール無視。
+        DrawWireAabb(ctx, dl, pos, volume->boxExtents, vpMin, vpSize, col);
+        /// @note プローブは箱を格子に割った各セルの中心にある (LightProbeBakePass と同じ)。点が多すぎると絵を塞ぐので間引く。
+        const auto grid = volume->ClampedGrid();
+        const math::Vector3 boxMin = pos - volume->boxExtents;
+        const math::Vector3 boxSize = volume->boxExtents * 2.0f;
+        const auto t = [](int i, int n) { return (static_cast<float>(i) + 0.5f) / static_cast<float>(n); };
+        const int stride = volume->ProbeCount() > 2048 ? 2 : 1;
+        for (int z = 0; z < grid[2]; z += stride)
+            for (int y = 0; y < grid[1]; y += stride)
+                for (int x = 0; x < grid[0]; x += stride) {
+                    const math::Vector3 p{ boxMin.x + boxSize.x * t(x, grid[0]), boxMin.y + boxSize.y * t(y, grid[1]),
+                                           boxMin.z + boxSize.z * t(z, grid[2]) };
+                    ImVec2 sp;
+                    if (WorldToScreen(p, ctx, vpMin, vpSize, sp))
+                        dl->AddCircleFilled(sp, 2.5f, col);
+                }
     }
 
     if (const auto* audio = go.GetComponent<scene::AudioSourceComponent>()) {

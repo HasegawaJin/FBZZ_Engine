@@ -174,6 +174,14 @@
 #define TEX_VOLUMETRIC       t20  /// @note ボリューメトリックライト Compute 出力
 #define TEX_TAA_HISTORY      t21  /// @note TAA 前フレームカラーバッファ
 #define TEX_LUT_COLOR_GRADE  t22  /// @note 3D カラーグレーディング LUT
+/// @note Light Probe Volume の SH 係数 (Texture3D, Z 方向に 7 枚を積む)。
+/// @note WHY TEX_LUT_COLOR_GRADE と時分割か: t22 を読むのは Composite だけで、ライティングを
+/// @note 持つマテリアル / DeferredLighting は宣言していない。どちらも Texture3D なので
+/// @note null ディスクリプタの次元も食い違わない (TEX_VELOCITY_FIELD と同じ組み方)。
+#define TEX_LIGHT_PROBE_SH   t22
+/// @note 2 つ目 (外側) の Light Probe Volume。t21 を読むのは TAA パスだけで、ライティングを持つシェーダーは宣言していない。
+/// @note TAA の Texture2D と次元が違うが、bindless では添字で引くので null ディスクリプタの次元は問題にならない (無効時は b8 の intensity で引かない)。
+#define TEX_LIGHT_PROBE_SH_OUTER t21
 #define TEX_GTAO             t23  /// @note GTAO 結果 (SSAO の代替)
 /// @note Forward のマテリアルシェーダーが読む「統一済み画面空間 AO」(GTAO か SSAO のどちらか)。
 ///
@@ -330,7 +338,9 @@
 #define TEX_FROXEL_SCATTER_SLOT      20
 #define TEX_VOLUMETRIC_SLOT          20
 #define TEX_TAA_HISTORY_SLOT         21
+#define TEX_LIGHT_PROBE_SH_OUTER_SLOT 21
 #define TEX_LUT_COLOR_GRADE_SLOT     22
+#define TEX_LIGHT_PROBE_SH_SLOT      22
 #define TEX_FROXEL_FOG_SLOT          23
 #define TEX_GTAO_SLOT                23
 #define TEX_SCREEN_AO_SLOT           23

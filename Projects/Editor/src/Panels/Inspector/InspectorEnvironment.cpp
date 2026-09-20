@@ -386,6 +386,79 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::TextDisabled("(i) 局所反射ブレンドは将来の実装で有効になります");
         });
 
+    /// @name LightProbeVolumeComponent
+    DrawComponentSection<scene::LightProbeVolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light Probe Volume",
+        [](scene::LightProbeVolumeComponent& lpv, EditorContext&) {
+
+            ImGui::SeparatorText("Volume");
+            float ext[3] = { lpv.boxExtents.x, lpv.boxExtents.y, lpv.boxExtents.z };
+            if (widgets::DragAxes("Box Extents (m)", ext, 3, 0.05f, 0.05f, 1000.0f))
+                lpv.boxExtents = { ext[0], ext[1], ext[2] };
+            int grid[3] = { lpv.probeCountX, lpv.probeCountY, lpv.probeCountZ };
+            if (ImGui::DragInt3("Probe Count", grid, 0.1f, 1, 64)) {
+                lpv.probeCountX = grid[0]; lpv.probeCountY = grid[1]; lpv.probeCountZ = grid[2];
+            }
+            const auto clamped = lpv.ClampedGrid();
+            const math::Vector3 spacing{ lpv.boxExtents.x * 2.0f / static_cast<float>(clamped[0]),
+                                         lpv.boxExtents.y * 2.0f / static_cast<float>(clamped[1]),
+                                         lpv.boxExtents.z * 2.0f / static_cast<float>(clamped[2]) };
+            ImGui::TextDisabled("%d probes / spacing %.2f x %.2f x %.2f m",
+                                lpv.ProbeCount(), spacing.x, spacing.y, spacing.z);
+
+            ImGui::SeparatorText("Lighting");
+            ImGui::DragFloat("Intensity", &lpv.intensity, 0.01f, 0.0f, 8.0f);
+            ImGui::DragFloat("Normal Bias (m)", &lpv.normalBias, 0.01f, 0.0f, 2.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("引く点を法線方向へずらす距離。壁の中に埋まったプローブの\n"
+                                  "暗さが壁の表面へ滲むのを弱めます。間隔の 1/4 前後が目安。");
+            ImGui::DragFloat("Edge Fade (m)", &lpv.edgeFade, 0.05f, 0.0f, 50.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("箱の縁でこの幅だけ使って外側 (外のボリューム / IBL の環境光) へ戻します。\n"
+                                  "0 で境目が段になります。");
+            ImGui::SliderFloat("Specular Occlusion", &lpv.specularOcclusion, 0.0f, 1.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("プローブで分かった暗さを鏡面反射にも掛けます。\n"
+                                  "屋内に残る空の青い映り込みを消します。");
+
+            ImGui::SeparatorText("Bake");
+            ImGui::SliderInt("Bounces", &lpv.bounces, 1, 4);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("1 = 直接光の 1 回反射。2 以上は前回の結果を受けた面を描き直すので、\n"
+                                  "部屋の奥まで光が回ります (焼く時間は回数倍)。");
+            ImGui::SliderInt("Capture Resolution", &lpv.captureResolution, 8, 128, "%d px");
+            ImGui::SliderInt("Probes Per Frame", &lpv.probesPerFrame, 1, 64);
+            ImGui::SliderFloat("Deringing", &lpv.deringing, 0.0f, 1.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("強い日だまりの反対側に出る暗い輪 (SH のリンギング) を弱めます。\n"
+                                  "上げるほど光の向きがぼやけます。");
+            ImGui::Checkbox("Reject Inside Geometry", &lpv.rejectInsideGeometry);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("壁や床の中に埋まったプローブを捨て、周りのプローブで埋めます。\n"
+                                  "壁際の黒いにじみを防ぎます (焼く時間は約 2 倍)。");
+            ImGui::Checkbox("Realtime Update", &lpv.realtimeUpdate);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("焼き終えたら最初から焼き直し続けます。昼夜や動く光源に追従しますが、\n"
+                                  "毎フレーム Probes Per Frame x 6 面ぶんのシーン描画がかかります。");
+
+            /// @note 進捗は «何回目の焼きの何個目か»。ランタイム値なので保存されず、Play の往復で最初から焼き直す。
+            const int total = lpv.ProbeCount();
+            const int passes = std::clamp(lpv.bounces, 1, 8);
+            if (lpv.runtimeBaking) {
+                const int pass = std::min(lpv.runtimePass, passes - 1);
+                const float progress = static_cast<float>(pass * total + lpv.runtimeCursor)
+                                     / static_cast<float>(std::max(passes * total, 1));
+                char label[64];
+                std::snprintf(label, sizeof(label), "bounce %d/%d  %d/%d", pass + 1, passes, lpv.runtimeCursor, total);
+                ImGui::ProgressBar(lpv.realtimeUpdate && lpv.runtimeReady ? 1.0f : progress, ImVec2(-1.0f, 0.0f), label);
+            } else if (lpv.runtimeReady) {
+                ImGui::TextColored({ 0.5f, 0.9f, 0.5f, 1.0f }, "Baked (%d probes, %d bounce%s)", total, passes, passes > 1 ? "s" : "");
+            } else {
+                ImGui::TextDisabled("未ベイク — IBL (Environment Light) が有効なときに自動で焼きます");
+            }
+            if (ImGui::Button("Bake", ImVec2(-1.0f, 0.0f)))
+                lpv.bakeRequested = true;
+        });
+
     /// @name AtmosphericScatteringComponent
     DrawComponentSection<scene::AtmosphericScatteringComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Atmospheric Scattering",
         [](scene::AtmosphericScatteringComponent& atm, EditorContext&) {

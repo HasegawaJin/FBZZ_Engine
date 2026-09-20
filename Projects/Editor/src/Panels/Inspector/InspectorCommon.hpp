@@ -48,6 +48,7 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
@@ -317,6 +318,7 @@ FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSurfaceComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(FlowField)
 FBZZ_COMPONENT_UNDO_REFLECTS(PostProcessVolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(ReflectionProbeComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(LightProbeVolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(RigidBodyComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(SkyRenderer)
 FBZZ_COMPONENT_UNDO_REFLECTS(SphereColliderComponent)
