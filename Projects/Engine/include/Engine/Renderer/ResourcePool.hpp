@@ -77,6 +77,20 @@ public:
         slot.resource = std::move(resource);
     }
 
+    /// @brief スロットから実体を取り出して返す。スロットは Remove と同じく世代を進めて空ける。
+    /// @note 別スロットで作った実体を既存ハンドルへ移す (Replace へ渡す) ときに使う。
+    std::unique_ptr<T> Take(ResourceHandle<Tag> handle)
+    {
+        if (!IsLive(handle)) return nullptr;
+        Slot& slot = m_slots[handle.id];
+        static_cast<void>(m_debug.Untrack(slot.resource.get()));
+        std::unique_ptr<T> taken = std::move(slot.resource);
+        slot.occupied = false;
+        slot.gen = (slot.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : slot.gen + 1u;
+        m_freeList.push_back(handle.id);
+        return taken;
+    }
+
     void Remove(ResourceHandle<Tag> handle)
     {
         if (!IsLive(handle)) return;

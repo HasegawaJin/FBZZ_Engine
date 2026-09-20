@@ -153,7 +153,19 @@ void ResourceManager::Reset()
 
 ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
 {
+    return LoadTextureImpl(path, true);
+}
+
+ResourceHandle<TextureTag> ResourceManager::LoadTextureUnpinned(std::string_view path)
+{
+    return LoadTextureImpl(path, false);
+}
+
+ResourceHandle<TextureTag> ResourceManager::LoadTextureImpl(std::string_view path, bool pin)
+{
     const std::string key = TextureCacheKey(path);
+    /// @note 配った先がハンドルを持ち続けるかもしれない。一度でも配ったキーは非同期側から外さない。
+    if (pin) m_texturesHandedOut.insert(key);
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
@@ -248,6 +260,75 @@ ResourceHandle<TextureTag> ResourceManager::CreateTextureWithMips(
     }
     const std::size_t bytes = EstimateTextureBytes(*texture);
     return m_textures.Insert(std::move(texture), bytes, "TextureFromDataMips", where.file_name(), static_cast<int>(where.line()));
+}
+
+ResourceHandle<TextureTag> ResourceManager::BeginTextureUpload(
+    const TextureMipData* mips, uint32_t mipCount, uint64_t& outUploadToken, Where where)
+{
+    outUploadToken = 0;
+    auto texture = m_renderer.CreateNativeTextureFromDataMipsAsync(mips, mipCount, outUploadToken);
+    if (!texture) {
+        FBZZ_LOG_ERROR("ResourceManager::BeginTextureUpload failed (%u 段)", mipCount);
+        outUploadToken = 0;
+        return ResourceHandle<TextureTag>::Null();
+    }
+    const std::size_t bytes = EstimateTextureBytes(*texture);
+    return m_textures.Insert(std::move(texture), bytes, "TextureStreamed", where.file_name(), static_cast<int>(where.line()));
+}
+
+bool ResourceManager::IsUploadComplete(uint64_t uploadToken) const
+{
+    return uploadToken == 0 || m_renderer.IsUploadComplete(uploadToken);
+}
+
+ResourceHandle<TextureTag> ResourceManager::FindCachedTexture(std::string_view path) const
+{
+    const auto it = m_textureCache.find(TextureCacheKey(path));
+    return it != m_textureCache.end() ? it->second : ResourceHandle<TextureTag>::Null();
+}
+
+ResourceHandle<TextureTag> ResourceManager::PublishTexture(std::string_view path, ResourceHandle<TextureTag> uploaded)
+{
+    const std::string key = TextureCacheKey(path);
+    const auto it = m_textureCache.find(key);
+    /// @note 転送中に同期 LoadTexture が同じ画像を読んでいれば、そちらが既に配られている。配られた方を正とする。
+    if (it != m_textureCache.end() && Get(it->second) != nullptr) {
+        if (uploaded != it->second) Release(uploaded);
+        return it->second;
+    }
+    if (Get(uploaded) == nullptr) return ResourceHandle<TextureTag>::Null();
+    m_textureCache[key] = uploaded;
+    return uploaded;
+}
+
+bool ResourceManager::ReplaceTextureContents(ResourceHandle<TextureTag> target, ResourceHandle<TextureTag> uploaded)
+{
+    if (target == uploaded || Get(target) == nullptr || Get(uploaded) == nullptr) return false;
+    std::unique_ptr<ITexture> texture = m_textures.Take(uploaded);
+    const std::size_t bytes = EstimateTextureBytes(*texture);
+    /// @note 旧実体はここで破棄される。DX12Texture のデストラクタが資源と bindless 枠をフェンス付きで返すので、
+    ///       このフレームまでに記録した描画は旧実体を読み終えてから回収される。新しい実体の枠は次に
+    ///       添字を引いたときに新しく割り当たる (公開中の枠を上書きしない)。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
+    m_textures.Replace(target, std::move(texture), bytes);
+    return true;
+}
+
+bool ResourceManager::EvictStreamedTexture(std::string_view path)
+{
+    const std::string key = TextureCacheKey(path);
+    if (m_texturesHandedOut.count(key) != 0) return false;
+    const auto it = m_textureCache.find(key);
+    if (it == m_textureCache.end()) return true;
+    m_textures.Remove(it->second);
+    m_textureCache.erase(it);
+    return true;
+}
+
+std::size_t ResourceManager::GetTextureBytes(ResourceHandle<TextureTag> handle) const
+{
+    const ITexture* texture = m_textures.Get(handle);
+    return texture ? EstimateTextureBytes(*texture) : 0;
 }
 
 ResourceHandle<TextureTag> ResourceManager::GetWhiteTexture()
@@ -544,6 +625,7 @@ void ResourceManager::ReleaseOwnedResourcesForShutdown()
     m_renderTargetDepths.clear();
     m_shaderCache.clear();
     m_textureCache.clear();
+    m_texturesHandedOut.clear();
 
     m_renderTargets.ReleaseOwnedForShutdown();
     m_textures.ReleaseOwnedForShutdown();
@@ -701,6 +783,15 @@ bool SizedRenderTarget::Ensure(ResourceManager& resources,
                                uint32_t width, uint32_t height, uint32_t colorCount,
                                Where where)
 {
+    RenderTargetDesc desc{};
+    desc.colorCount = colorCount;
+    return Ensure(resources, width, height, desc, where);
+}
+
+bool SizedRenderTarget::Ensure(ResourceManager& resources,
+                               uint32_t width, uint32_t height, const RenderTargetDesc& desc,
+                               Where where)
+{
     const uint64_t resetVersion = resources.GetResetVersion();
     if (m_resetVersion != resetVersion) {
         /// @note 返さず捨てる理由: リセットではマネージャーが実体ごと畳んでおり、こちらの
@@ -708,17 +799,19 @@ bool SizedRenderTarget::Ensure(ResourceManager& resources,
         ///       巻き添えにする)。控えだけ捨てて作り直す。
         m_resetVersion = resetVersion;
         m_handle       = {};
-        m_width = m_height = m_colorCount = 0;
+        m_width = m_height = 0;
     }
 
-    if (m_handle.IsValid() && m_width == width && m_height == height && m_colorCount == colorCount)
+    const bool sameDesc = m_desc.colorCount == desc.colorCount && m_desc.format == desc.format
+        && m_desc.withDepth == desc.withDepth && m_desc.reversedZ == desc.reversedZ;
+    if (m_handle.IsValid() && m_width == width && m_height == height && sameDesc)
         return false;
 
     if (m_handle.IsValid()) resources.Release(m_handle);
-    m_handle     = resources.CreateRenderTarget(width, height, colorCount, where);
-    m_width      = width;
-    m_height     = height;
-    m_colorCount = colorCount;
+    m_handle = resources.CreateRenderTarget(width, height, desc, where);
+    m_width  = width;
+    m_height = height;
+    m_desc   = desc;
     return true;
 }
 
@@ -727,7 +820,7 @@ void SizedRenderTarget::Release(ResourceManager& resources)
     if (m_handle.IsValid() && m_resetVersion == resources.GetResetVersion())
         resources.Release(m_handle);
     m_handle = {};
-    m_width = m_height = m_colorCount = 0;
+    m_width = m_height = 0;
 }
 
 } // namespace fbzz::renderer
