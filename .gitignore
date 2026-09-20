@@ -93,6 +93,9 @@ Thumbs.db
 # Library — import 生成物 (baked) のキャッシュ。ソースから再生成できるため追跡しない
 **/Library/
 
+# Saved — クラッシュレポート (Docs/design/crash-report.md) など実行時に書くもの
+**/Saved/
+
 # .fbzz — エディターのプロジェクトローカル作業領域。
 # Trash/ には Asset Browser で削除したアセットの実体が退避される (自動削除しない) ため、
 # 追跡すると「消したはずのもの」が履歴に残り続ける。
