@@ -147,7 +147,7 @@ jobs:
         shell: pwsh
         run: |
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsStandalone
 
       # @note --timeout で止まったテストを打ち切り残りを走らせる。無いと 1 件のハングでジョブ上限まで待つ。
       # @note --no-tests=error でテストが 1 件も登録されていない状態を成功にしない。
