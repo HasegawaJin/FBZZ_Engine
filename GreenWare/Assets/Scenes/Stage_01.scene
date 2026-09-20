@@ -1,3 +1,10 @@
+[environment]
+windDirection = [ 0.7071, 0.0, 0.7071 ]
+windEnabled = false
+windPulseFrequency = 1.0
+windSpeed = 0.0
+windTurbulence = 0.0
+
 [scene]
 format_version = 2
 
@@ -18,7 +25,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777156
+    aspectRatio = 1.777379
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -293,6 +300,7 @@ tag = 'Untagged'
     weatherAmount = 1.0
     weatherSize = 2725.0
     windDirection = [ 1.0, 0.25 ]
+    windResponse = 1.0
     windSpeed = 32.5
 
     [gameobjects.transform]
@@ -6616,6 +6624,7 @@ tag = 'Enemy'
     ccdRadius = 2.2
     charge = 0.0
     enabled = true
+    flowCoupling = 0.0
     freezePosition = [ 0.0, 0.0, 0.0 ]
     freezeRotation = [ 1.0, 1.0, 1.0 ]
     gravitationalMass = 1.0
@@ -8048,7 +8057,9 @@ tag = 'Untagged'
     emitRate = 30.0
     emitVelocity = [ 0.0, 0.0, 0.0 ]
     enabled = true
-    forceFieldChannels = 4294967295
+    flowCoupling = 5.0
+    flowFieldChannels = 4294967295
+    gravity = [ 0.0, -0.05, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 4.5
     lifetimeRandom = 0.45
@@ -8080,7 +8091,7 @@ tag = 'Untagged'
     prewarm = true
     randomSeed = 4101
     rateOverDistance = 0.0
-    receiveForceFields = false
+    receiveFlowFields = false
     renderMode = 0
     renderPriority = 6
     screenCoverageThreshold = 0.0
@@ -8162,21 +8173,6 @@ tag = 'Untagged'
 
         [[gameobjects.ParticleEmitter.localForces]]
         channels = 4294967295
-        direction = [ 0.0, -1.0, 0.0 ]
-        enabled = true
-        falloffPower = 2.0
-        fieldType = 0
-        noiseFrequency = 0.5
-        noiseSpeed = 1.0
-        radius = 0.0
-        space = 0
-        strength = 0.05
-        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
-        vectorFieldPath = ''
-        vectorFieldTightness = 0.0
-
-        [[gameobjects.ParticleEmitter.localForces]]
-        channels = 4294967295
         direction = [ 1.0, 0.0, 0.0 ]
         enabled = true
         falloffPower = 2.0
@@ -8185,10 +8181,9 @@ tag = 'Untagged'
         noiseSpeed = 0.45
         radius = 0.0
         space = 0
-        strength = 0.28
+        strength = 0.056
         vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
         vectorFieldPath = ''
-        vectorFieldTightness = 0.0
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 6.0 ]
@@ -8238,7 +8233,9 @@ tag = 'Untagged'
     emitRate = 18.0
     emitVelocity = [ 0.0, -0.25, 0.0 ]
     enabled = true
-    forceFieldChannels = 4294967295
+    flowCoupling = 5.0
+    flowFieldChannels = 4294967295
+    gravity = [ 0.0, -0.12, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 11.0
     lifetimeRandom = 0.35
@@ -8270,7 +8267,7 @@ tag = 'Untagged'
     prewarm = true
     randomSeed = 4102
     rateOverDistance = 0.0
-    receiveForceFields = false
+    receiveFlowFields = false
     renderMode = 0
     renderPriority = 5
     screenCoverageThreshold = 0.0
@@ -8352,21 +8349,6 @@ tag = 'Untagged'
 
         [[gameobjects.ParticleEmitter.localForces]]
         channels = 4294967295
-        direction = [ 0.0, -1.0, 0.0 ]
-        enabled = true
-        falloffPower = 2.0
-        fieldType = 0
-        noiseFrequency = 0.5
-        noiseSpeed = 1.0
-        radius = 0.0
-        space = 0
-        strength = 0.12
-        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
-        vectorFieldPath = ''
-        vectorFieldTightness = 0.0
-
-        [[gameobjects.ParticleEmitter.localForces]]
-        channels = 4294967295
         direction = [ 1.0, 0.0, 0.0 ]
         enabled = true
         falloffPower = 2.0
@@ -8375,10 +8357,9 @@ tag = 'Untagged'
         noiseSpeed = 0.15
         radius = 0.0
         space = 0
-        strength = 0.05
+        strength = 0.01
         vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
         vectorFieldPath = ''
-        vectorFieldTightness = 0.0
 
     [gameobjects.transform]
     position = [ 0.0, 18.0, 0.0 ]
@@ -8428,7 +8409,9 @@ tag = 'Untagged'
     emitRate = 8.0
     emitVelocity = [ 0.0, 0.55, 0.0 ]
     enabled = true
-    forceFieldChannels = 4294967295
+    flowCoupling = 0.2
+    flowFieldChannels = 4294967295
+    gravity = [ 0.0, 0.0, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 7.0
     lifetimeRandom = 0.5
@@ -8460,7 +8443,7 @@ tag = 'Untagged'
     prewarm = true
     randomSeed = 4104
     rateOverDistance = 0.0
-    receiveForceFields = false
+    receiveFlowFields = false
     renderMode = 0
     renderPriority = 8
     screenCoverageThreshold = 0.0
@@ -8550,25 +8533,9 @@ tag = 'Untagged'
         noiseSpeed = 1.0
         radius = 0.0
         space = 0
-        strength = 0.05
+        strength = 0.01
         vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
         vectorFieldPath = ''
-        vectorFieldTightness = 0.0
-
-        [[gameobjects.ParticleEmitter.localForces]]
-        channels = 4294967295
-        direction = [ 1.0, 0.0, 0.0 ]
-        enabled = true
-        falloffPower = 2.0
-        fieldType = 5
-        noiseFrequency = 0.5
-        noiseSpeed = 1.0
-        radius = 0.0
-        space = 0
-        strength = 0.2
-        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
-        vectorFieldPath = ''
-        vectorFieldTightness = 0.0
 
         [[gameobjects.ParticleEmitter.localForces]]
         channels = 4294967295
@@ -8580,10 +8547,9 @@ tag = 'Untagged'
         noiseSpeed = 0.6
         radius = 0.0
         space = 0
-        strength = 0.35
+        strength = 0.07
         vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
         vectorFieldPath = ''
-        vectorFieldTightness = 0.0
 
     [gameobjects.transform]
     position = [ 0.0, 0.5, 0.0 ]
@@ -12285,6 +12251,7 @@ tag = 'Player'
     ccdRadius = 0.3
     charge = 0.0
     enabled = true
+    flowCoupling = 0.0
     freezePosition = [ 0.0, 0.0, 0.0 ]
     freezeRotation = [ 1.0, 1.0, 1.0 ]
     gravitationalMass = 1.0
@@ -12580,6 +12547,7 @@ tag = 'Player'
         servoTurnRate = 60.0
         sfxDeath = ''
         sfxHurt = ''
+        showAimMarker = false
         slashChargedWindup = 1.0
         slashFadeIn = 0.06
         slashFadeOut = 0.12
