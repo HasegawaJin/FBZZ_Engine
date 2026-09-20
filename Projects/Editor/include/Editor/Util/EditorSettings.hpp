@@ -103,6 +103,8 @@ struct EditorSettings {
     /// @brief ホットリロードの完了・失敗を音で知らせるか。
     bool        hotReloadSound   = true;
     bool        aiCommandBusEnabled = false; ///< AI 連携 (Claude/MCP) の Named Pipe 待受を起動時に自動開始するか
+    /// @brief DeveloperMode の設定値。起動引数での強制は含めない (Docs/design/developer-mode.md)。
+    bool        developerMode = false;
     /// プロジェクトを開いたとき、参照を失った `Library/Baked/<guid>/` を消すか。
     /// 中身は原本から焼き直せるので、消しても失うのは «次回 import の時間» だけ。
     bool        sweepOrphanedBakedOnOpen = true;
