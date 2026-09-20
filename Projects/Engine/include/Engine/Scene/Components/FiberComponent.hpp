@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #pragma once
+#include <Graphics/Effects/RenderFiberInput.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Renderer/FiberMotionHistory.hpp>
 #include <Math/Vector3.hpp>
@@ -12,13 +13,14 @@
 
 namespace fbzz::scene {
 
-enum class FiberRenderMode { SHELL, FIN, HYBRID, BLADE };
+using renderer::FiberRenderMode;
 
 /// @note 同じ GameObject の MeshRenderer が根元の表面を持つ。GPU 資源は保存しない。
 /// @see Docs/design/fiber-rendering.md
 /// @see https://hhoppe.com/fur.pdf
 struct FiberComponent {
     bool m_enabled = true;
+    uint64_t m_renderIdentity = 0;
     FiberRenderMode m_mode = FiberRenderMode::SHELL;
     /// @note 既定は 16 層・距離 LOD 有効。24 層は GBuffer だけで Player 1 体に約 3.5 ms かかった (fiber-rendering.md «負荷と影»)。
     int m_shellCount = 16;
@@ -95,4 +97,4 @@ struct FiberComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene
