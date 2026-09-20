@@ -409,39 +409,48 @@ std::string BuildParticleHlslTemplate(const std::string& name)
     return ss.str();
 }
 
-/// PostProcess フルスクリーン VS+PS テンプレートを生成する
+/// @brief PostProcess フルスクリーン VS+PS テンプレートを生成する。
+/// @note 契約は Assets/Shaders/PostProcess/Custom/CustomPostProcessTemplate.hlsl が正本。
+///       フルスクリーン三角形は Common/Fullscreen.hlsli、サンプラーは clamp (s0 は DX12 で WRAP)、
+///       入力 UV は FBZZ_CustomInputUV を通す (downscale 時は結果が RT の左上にしか無い)。
 std::string BuildPostProcessHlslTemplate(const std::string& name)
 {
     std::ostringstream ss;
     ss << "// FBZZ Engine\n";
     ss << "// PostProcess/Custom/" << name << ".hlsl | PostProcess\n";
     ss << "// " << name << " カスタムポストプロセスシェーダー\n";
+    ss << "// 使える定数・入力・段の説明は PostProcess/Custom/CustomPostProcessTemplate.hlsl を参照。\n";
     ss << "#ifndef " << name << "_HLSL\n";
     ss << "#define " << name << "_HLSL\n";
     ss << "\n";
     ss << "#include \"Common/Constants.hlsli\"\n";
-    ss << "#include \"Common/Structs.hlsli\"\n";
+    ss << "#include \"Common/Fullscreen.hlsli\"\n";
     ss << "#include \"Platform/Backend.hlsli\"\n";
+    ss << "#include \"Rendering/PostProcess.hlsli\"\n";
     ss << "#include \"Common/BindlessIndices.hlsli\"\n";
     ss << "\n";
-    ss << "// シーン色は描画ごとの添字ブロックの t5 枠 (CustomPostProcess.hlsl と同じ)。\n";
-    ss << "FBZZ_TEX2D(texScene, TEX_GBUFFER0_SLOT);\n";
-    ss << "SamplerState sampDefault : register(SAMPLER_DEFAULT);\n";
+    ss << "// t5 = 画面の色 (直前のパスの出力)。\n";
+    ss << "FBZZ_TEX2D(texInput, TEX_GBUFFER0_SLOT);\n";
+    ss << "// 全画面フェッチなので clamp (s0 は DX12 では WRAP で、画面端が反対側を読む)。\n";
+    ss << "SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);\n";
     ss << "\n";
-    ss << "// フルスクリーン三角形用 VS (ジオメトリ不要)\n";
-    ss << "PSFullscreenInput VSMain(uint id : SV_VertexID)\n";
+    ss << "FBZZFullscreenVertex VSMain(uint id : SV_VertexID)\n";
     ss << "{\n";
-    ss << "    PSFullscreenInput o;\n";
-    ss << "    o.uv         = float2((id << 1) & 2, id & 2);\n";
-    ss << "    o.svPosition = float4(o.uv * float2(2, -2) + float2(-1, 1), 0, 1);\n";
-    ss << "    return o;\n";
+    ss << "    return FBZZMakeFullscreenVertex(id);\n";
     ss << "}\n";
     ss << "\n";
-    ss << "float4 PSMain(PSFullscreenInput p) : SV_Target0\n";
+    ss << "float4 PSMain(FBZZFullscreenVertex p) : SV_Target0\n";
     ss << "{\n";
-    ss << "    float4 color = texScene.Sample(sampDefault, p.uv);\n";
-    ss << "    // TODO: エフェクトをここに追加する\n";
-    ss << "    return color;\n";
+    ss << "    // 入力 UV は FBZZ_CustomInputUV を通す (downscale 中の倍率と、有効範囲の端での留め)。\n";
+    ss << "    const float2 inputUV  = FBZZ_CustomInputUV(p.uv);\n";
+    ss << "    const float3 original = texInput.SampleLevel(sampLinear, inputUV, 0).rgb;\n";
+    ss << "\n";
+    ss << "    // TODO: エフェクトをここに追加する (customParameters.xyzw / customParameters2.xyzw が param0..7)\n";
+    ss << "    float3 result = original;\n";
+    ss << "\n";
+    ss << "    // customIntensity と customBlend で元画像と混ぜる (Inspector / Script から制御される)。\n";
+    ss << "    result = lerp(original, result, saturate(customIntensity * customBlend));\n";
+    ss << "    return float4(result, 1.0f);\n";
     ss << "}\n";
     ss << "\n";
     ss << "#endif // " << name << "_HLSL\n";
