@@ -41,6 +41,8 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Memory/MemorySystemTests.cpp
         Core/Auto/Signal/SignalTests.cpp
         Core/Auto/Logger/LoggerTests.cpp
+        Core/Auto/CrashHandler/CrashHandlerTests.cpp
+        Core/Auto/DeveloperMode/DeveloperModeTests.cpp
         Core/Auto/Time/TimeConfigurationTests.cpp
         Core/Auto/Time/TimeLockstepTests.cpp
         Core/Auto/Time/TimeTickTests.cpp
@@ -64,6 +66,9 @@ fbzz_add_test_suite(PhysicsAuto
         Physics/Auto/BVHTests.cpp
         Physics/Auto/XPBDSolverTests.cpp
         Physics/Auto/ClothSolverTests.cpp
+    Physics/Auto/ClothAdvancedTests.cpp
+    Physics/Auto/ClothInterCollisionTests.cpp
+    Physics/Auto/ClothWindTests.cpp
         Physics/Auto/XPBDJointTests.cpp
         Physics/Auto/RigidBodyTests.cpp
         Physics/Auto/BroadPhaseTests.cpp
@@ -116,8 +121,15 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/StandingPoseTests.cpp
         Engine/Auto/RagdollSystemTests.cpp
     Engine/Auto/ClothSystemTests.cpp
-    Engine/Auto/ClothAssetTests.cpp
+    Engine/Auto/ClothContactSystemTests.cpp
+    Engine/Auto/ClothFlowFieldTests.cpp
+    Engine/Auto/InactiveHierarchyTests.cpp
+        Engine/Auto/ClothAssetTests.cpp
+        Engine/Auto/ClothRenderBindingTests.cpp
         Engine/Auto/AssetDatabaseTests.cpp
+        Engine/Auto/AssetStreamingTests.cpp
+        Engine/Auto/SceneAssetReferencesTests.cpp
+        Engine/Auto/AssetPartialIoTests.cpp
         Engine/Auto/EventBusTests.cpp
         Engine/Auto/FileSystemPathTests.cpp
         Engine/Auto/ScriptTransformProxyTests.cpp
@@ -164,10 +176,13 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/FluidSegmentShapeTests.cpp
         Engine/Auto/FluidAmountEnvelopeTests.cpp
         Engine/Auto/FluidGpuLiquidTests.cpp
+        Engine/Auto/GeometryRouteTests.cpp
+        Engine/Auto/InstanceBatchTests.cpp
         Engine/Auto/RenderGraphTests.cpp
         Engine/Auto/RenderPipelineTests.cpp
         Engine/Auto/RenderPassCaptureTests.cpp
         Engine/Auto/ShaderReloadTests.cpp
+        Engine/Auto/MaterialReflectionTests.cpp
         Engine/Auto/RenderGraphLifetimeTests.cpp
         Engine/Auto/RenderSettingsTests.cpp
         Engine/Auto/DebugDrawBatchTests.cpp
