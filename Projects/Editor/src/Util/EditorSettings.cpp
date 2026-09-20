@@ -159,6 +159,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["misc"]["hot_reload"].value<bool>()) hotReloadEnabled = *v;
     if (auto v = tbl["misc"]["hot_reload_sound"].value<bool>()) hotReloadSound = *v;
     if (auto v = tbl["misc"]["ai_command_bus"].value<bool>()) aiCommandBusEnabled = *v;
+    if (auto v = tbl["misc"]["developer_mode"].value<bool>()) developerMode = *v;
     if (auto v = tbl["misc"]["sweep_orphaned_baked"].value<bool>())
         sweepOrphanedBakedOnOpen = *v;
 
@@ -521,6 +522,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     miscTbl.insert("hot_reload", hotReloadEnabled);
     miscTbl.insert("hot_reload_sound", hotReloadSound);
     miscTbl.insert("ai_command_bus", aiCommandBusEnabled);
+    miscTbl.insert("developer_mode", developerMode);
     miscTbl.insert("sweep_orphaned_baked", sweepOrphanedBakedOnOpen);
 
     /// @note ツールウィンドウ

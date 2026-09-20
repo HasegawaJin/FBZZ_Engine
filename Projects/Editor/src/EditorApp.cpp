@@ -14,6 +14,7 @@
 #include <Editor/Ai/Json.hpp>
 #include <Editor/Ai/NamedPipeServer.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Editor/Util/Localization.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -725,6 +726,7 @@ void EditorApp::CaptureEditorSettingsFromContext()
     m_settings.autoSaveEnabled     = m_ctx.sceneAutoSaveEnabled;
     m_settings.autoSaveIntervalSec = m_ctx.sceneAutoSaveIntervalSec;
     m_settings.aiCommandBusEnabled = m_ctx.aiCommandBusEnabled;
+    m_settings.developerMode       = core::DeveloperMode::Preference();
     m_settings.showTerrainTool    = m_ctx.showTerrainTool;
     m_settings.gameViewportAspect = static_cast<int>(m_ctx.gameViewportAspect);
     m_settings.playFocusMode      = static_cast<int>(m_ctx.playFocusMode);
@@ -891,6 +893,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_ctx.sceneAutoSaveEnabled     = m_settings.autoSaveEnabled;
         m_ctx.sceneAutoSaveIntervalSec = m_settings.autoSaveIntervalSec;
         m_ctx.aiCommandBusEnabled = m_settings.aiCommandBusEnabled;
+        core::DeveloperMode::SetPreference(m_settings.developerMode);
         m_ctx.showTerrainTool    = m_settings.showTerrainTool;
         m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(
             std::clamp(m_settings.gameViewportAspect,
