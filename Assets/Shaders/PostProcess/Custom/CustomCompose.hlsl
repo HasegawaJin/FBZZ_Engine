@@ -22,5 +22,5 @@ FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 //   増やすと、縮小を使わないプロジェクトまで VRAM を払うことになる。
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
-    return texSource.SampleLevel(sampLinear, p.uv * customPassInfo.x, 0);
+    return texSource.SampleLevel(sampLinear, FBZZ_CustomInputUV(p.uv), 0);
 }

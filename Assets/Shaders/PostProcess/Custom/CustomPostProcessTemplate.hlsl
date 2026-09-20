@@ -59,7 +59,7 @@
 //               総数は .z で分かる (ぼかしを «横 → 縦» に分けるのはこれ)
 //  downscale  — 1/N 解像度で走らせ、実寸へ拡大して合成する。半径の大きいぼかしは
 //               フル解像度でタップを増やすより桁で安い
-//  NOTE: 縮小中は入力テクスチャを引く UV に customPassInfo.x を掛けること。
+//  NOTE: 入力テクスチャを引く UV は FBZZ_CustomInputUV(uv) を通すこと (縮小中の倍率と端の留め)。
 //        縮小結果は RT の左上にしか無いため (下の PSMain がその書き方)。
 //
 // ── 利用可能なパラメータ (Inspector / Script から制御) ──────────────────────
@@ -134,9 +134,9 @@ FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     // ---- 入力サンプリング ------------------------------------------------
-    // 入力を引く UV。downscale を使わないなら customPassInfo.x は 1 なので、
+    // 入力を引く UV。downscale を使わないなら倍率は 1 なので、
     // この掛け算は «常に書いておいて損が無い» 形になっている。
-    const float2 inputUV = p.uv * customPassInfo.x;
+    const float2 inputUV = FBZZ_CustomInputUV(p.uv);
     const float3 original = texInput.SampleLevel(sampLinear, inputUV, 0).rgb;
 
     // ---- パラメータ展開 --------------------------------------------------
@@ -173,10 +173,10 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     // result.b = texInput.SampleLevel(sampLinear, uvB, 0).b;
 
     // ---- 例 5: アウトライン (Sobel エッジ検出) ---------------------------
-    // const float3 n  = texInput.SampleLevel(sampLinear, p.uv + float2( 0,  1) * texelSize, 0).rgb;
-    // const float3 s  = texInput.SampleLevel(sampLinear, p.uv + float2( 0, -1) * texelSize, 0).rgb;
-    // const float3 e  = texInput.SampleLevel(sampLinear, p.uv + float2( 1,  0) * texelSize, 0).rgb;
-    // const float3 w  = texInput.SampleLevel(sampLinear, p.uv + float2(-1,  0) * texelSize, 0).rgb;
+    // const float3 n  = texInput.SampleLevel(sampLinear, FBZZ_CustomInputUV(p.uv + float2(0, 1) * texelSize), 0).rgb;
+    // const float3 s  = texInput.SampleLevel(sampLinear, FBZZ_CustomInputUV(p.uv + float2(0, -1) * texelSize), 0).rgb;
+    // const float3 e  = texInput.SampleLevel(sampLinear, FBZZ_CustomInputUV(p.uv + float2(1, 0) * texelSize), 0).rgb;
+    // const float3 w  = texInput.SampleLevel(sampLinear, FBZZ_CustomInputUV(p.uv + float2(-1, 0) * texelSize), 0).rgb;
     // const float3 gx = e - w;
     // const float3 gy = n - s;
     // const float  edge = saturate(length(float2(dot(gx, gx), dot(gy, gy))) * param0);
