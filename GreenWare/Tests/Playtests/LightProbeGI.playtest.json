@@ -1,0 +1,23 @@
+{
+  "name": "LightProbeGI",
+  "scene": "Assets/Scenes/Test/LightProbeGI.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    { "do": "log", "message": "room 256 + detail 520 probes, 2 bounces, 32 probes/frame each; leave slack for the sky capture, IBL convolution and auto exposure" },
+    { "do": "frames", "count": 180 },
+    { "do": "assert", "query": { "t": "shader.diagnostics" }, "path": "errorCount", "op": "==", "value": 0 },
+    { "do": "capture", "view": "game", "name": "LightProbeGI_On" },
+
+    { "do": "log", "message": "first version: no specular occlusion, no deringing, no inside-geometry rejection, single volume" },
+    { "do": "bus", "request": { "t": "component.set", "id": "edc044b4-025b-4b27-84a0-3f315fe00064", "comp": "LightProbeVolumeComponent", "field": "specularOcclusion", "value": 0.0 } },
+    { "do": "bus", "request": { "t": "component.set", "id": "edc044b4-025b-4b27-84a0-3f315fe00064", "comp": "LightProbeVolumeComponent", "field": "deringing", "value": 0.0 } },
+    { "do": "bus", "request": { "t": "component.set", "id": "edc044b4-025b-4b27-84a0-3f315fe00064", "comp": "LightProbeVolumeComponent", "field": "rejectInsideGeometry", "value": false } },
+    { "do": "bus", "request": { "t": "component.set", "id": "78ffec51-1858-4db5-8925-7273e8d043a7", "comp": "LightProbeVolumeComponent", "field": "enabled", "value": false } },
+    { "do": "frames", "count": 90 },
+    { "do": "capture", "view": "game", "name": "LightProbeGI_Basic" },
+
+    { "do": "bus", "request": { "t": "component.set", "id": "edc044b4-025b-4b27-84a0-3f315fe00064", "comp": "LightProbeVolumeComponent", "field": "enabled", "value": false } },
+    { "do": "frames", "count": 60 },
+    { "do": "capture", "view": "game", "name": "LightProbeGI_Off" }
+  ]
+}

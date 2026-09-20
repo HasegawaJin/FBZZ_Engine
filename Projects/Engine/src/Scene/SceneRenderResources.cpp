@@ -13,6 +13,7 @@
 #include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
 #include <Engine/Scene/Components/ClothComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 
@@ -152,6 +153,25 @@ void Drop(ReflectionProbeComponent& probe, renderer::ResourceManager* resources)
     probe.runtimePrefilterMipCount = 0;
 }
 
+void Drop(LightProbeVolumeComponent& volume, renderer::ResourceManager* resources)
+{
+    Drop(resources, volume.runtimeVolume);
+    Drop(resources, volume.runtimeRawVolume);
+    for (auto& face : volume.runtimeFaces)
+        Drop(resources, face);
+    for (auto& face : volume.runtimeFacing)
+        Drop(resources, face);
+    volume.runtimeSettingsKey = 0;
+    volume.runtimeGrid = {};
+    volume.runtimeBoxMin = {};
+    volume.runtimeBoxSize = {};
+    volume.runtimeFaceSize = 0;
+    volume.runtimeCursor = 0;
+    volume.runtimePass = 0;
+    volume.runtimeBaking = false;
+    volume.runtimeReady = false;
+}
+
 template <class Component>
 void DropAll(Scene& scene, renderer::ResourceManager* resources)
 {
@@ -176,6 +196,7 @@ void ReleaseSceneOwnedGpuResources(Scene& scene, renderer::ResourceManager& reso
     DropAll<MeshTrailComponent>(scene, &resources);
     DropAll<ParticleEmitter>(scene, &resources);
     DropAll<ReflectionProbeComponent>(scene, &resources);
+    DropAll<LightProbeVolumeComponent>(scene, &resources);
     DropAll<SpriteRendererComponent>(scene, &resources);
     DropAll<LineRendererComponent>(scene, &resources);
     DropAll<ProceduralMeshComponent>(scene, &resources);
@@ -190,6 +211,7 @@ void ReleaseEntityOwnedGpuResources(Scene& scene, EntityID id, renderer::Resourc
     DropOne<MeshTrailComponent>(scene, id, &resources);
     DropOne<ParticleEmitter>(scene, id, &resources);
     DropOne<ReflectionProbeComponent>(scene, id, &resources);
+    DropOne<LightProbeVolumeComponent>(scene, id, &resources);
     DropOne<SpriteRendererComponent>(scene, id, &resources);
     DropOne<LineRendererComponent>(scene, id, &resources);
     DropOne<ProceduralMeshComponent>(scene, id, &resources);
@@ -204,6 +226,7 @@ void ClearDuplicatedGpuHandles(Scene& scene, EntityID id)
     DropOne<MeshTrailComponent>(scene, id, nullptr);
     DropOne<ParticleEmitter>(scene, id, nullptr);
     DropOne<ReflectionProbeComponent>(scene, id, nullptr);
+    DropOne<LightProbeVolumeComponent>(scene, id, nullptr);
     DropOne<SpriteRendererComponent>(scene, id, nullptr);
     DropOne<LineRendererComponent>(scene, id, nullptr);
     DropOne<ProceduralMeshComponent>(scene, id, nullptr);
@@ -226,6 +249,7 @@ void ClearComponentGpuHandles(TrailComponent& component)           { Drop(compon
 void ClearComponentGpuHandles(MeshTrailComponent& component)       { Drop(component, nullptr); }
 void ClearComponentGpuHandles(ParticleEmitter& component)          { Drop(component, nullptr); }
 void ClearComponentGpuHandles(ReflectionProbeComponent& component) { Drop(component, nullptr); }
+void ClearComponentGpuHandles(LightProbeVolumeComponent& component) { Drop(component, nullptr); }
 void ClearComponentGpuHandles(SpriteRendererComponent& component)  { Drop(component, nullptr); }
 void ClearComponentGpuHandles(LineRendererComponent& component)    { Drop(component, nullptr); }
 void ClearComponentGpuHandles(ProceduralMeshComponent& component)  { Drop(component, nullptr); }
@@ -237,6 +261,7 @@ void ReleaseComponentGpuResources(TrailComponent& component)           { DropToA
 void ReleaseComponentGpuResources(MeshTrailComponent& component)       { DropToActive(component); }
 void ReleaseComponentGpuResources(ParticleEmitter& component)          { DropToActive(component); }
 void ReleaseComponentGpuResources(ReflectionProbeComponent& component) { DropToActive(component); }
+void ReleaseComponentGpuResources(LightProbeVolumeComponent& component) { DropToActive(component); }
 void ReleaseComponentGpuResources(SpriteRendererComponent& component)  { DropToActive(component); }
 void ReleaseComponentGpuResources(LineRendererComponent& component)    { DropToActive(component); }
 void ReleaseComponentGpuResources(ProceduralMeshComponent& component)  { DropToActive(component); }
