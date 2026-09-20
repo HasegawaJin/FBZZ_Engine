@@ -47,7 +47,7 @@ inline fbzz::scene::AudioSourceComponent* BeatVoice::Acquire(fbzz::scene::Script
     if (!object) {
         /// @note DLL リロードで m_id は消えるが、子は Scene に残る。名前で拾い直す。
         const std::string name = "SFX_Beat_" + m_key;
-        object = owner.scene.Find(name);
+        object = owner.scene.Find(name, true);
         if (!object) {
             const EntityID created = owner.scene.Create(name).GetID();
             /// @note Create がコンポーネント配列を伸ばしうるので、設定は ID から引き直す。

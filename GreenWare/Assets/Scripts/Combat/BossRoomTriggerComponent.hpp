@@ -109,7 +109,7 @@ inline void BossRoomTriggerComponent::OnStart()
 
 inline bool BossRoomTriggerComponent::PlayerInside()
 {
-    GameObject* player = scene.FindWithTag(playerTag);
+    GameObject* player = scene.FindWithTag(playerTag, true);
     if (!player) return false;
 
     const Vector3 delta = player->transform.worldPosition - RoomCenter();

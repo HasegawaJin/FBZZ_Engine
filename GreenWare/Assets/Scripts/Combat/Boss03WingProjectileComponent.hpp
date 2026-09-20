@@ -120,7 +120,7 @@ private:
     /// 翼 1 枚の一生。投げ直されるたびに Fly から回り直す。
     enum class State { Idle, Fly, Fall, Rest, Recall, Return, Done };
 
-    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag); }
+    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag, true); }
     /// 戻り先。ボスが畳まれていれば nullptr。
     [[nodiscard]] GameObject* Owner() const { return m_owner.Resolve(scene); }
     void Enter(State next);

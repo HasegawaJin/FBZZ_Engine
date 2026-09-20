@@ -113,7 +113,7 @@ inline void SceneManagerScript::OnStart()
             targetScene = s_next;
         s_next.clear();
         if (targetScene.empty() || targetScene == "Load") targetScene = "Title";
-        ui.SetText(scene.Find("LoadDestination"), targetScene);
+        ui.SetText(scene.Find("LoadDestination", true), targetScene);
         m_loadingElapsed = 0.0f;
         m_loadingDots = -1;
         m_fusionStarted = false;
@@ -140,7 +140,7 @@ inline void SceneManagerScript::OnUpdate()
         if (dots != m_loadingDots) {
             std::string label = "NOW LOADING";
             label.append(static_cast<std::size_t>(dots), '.');
-            ui.SetText(scene.Find("LoadingText"), label);
+            ui.SetText(scene.Find("LoadingText", true), label);
             m_loadingDots = dots;
         }
     }
@@ -150,8 +150,8 @@ inline void SceneManagerScript::OnUpdate()
     if (m_fired) {
         if (autoTransition && !transition::Active()
             && transition::Mutable().failedTarget == targetScene) {
-            ui.SetText(scene.Find("LoadingText"), "LOAD FAILED");
-            ui.SetText(scene.Find("LoadStatus"), "Unable to open scene. Press Cancel to return.");
+            ui.SetText(scene.Find("LoadingText", true), "LOAD FAILED");
+            ui.SetText(scene.Find("LoadStatus", true), "Unable to open scene. Press Cancel to return.");
             if (input.GetActionDown("Cancel")) {
                 targetScene = "Title";
                 m_fired = false;

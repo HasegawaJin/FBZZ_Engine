@@ -81,10 +81,14 @@ void AudioSystem::Update(SystemContext& ctx)
     float zoneDecay     = 1.5f;
     float zoneHfRatio   = 1.0f;
     if (listenerTransform) {
-        for (auto [zone, transform] : ctx.scene.View<AudioReverbZoneComponent, Transform>()) {
-            if (!zone.enabled)
+        /// @note View は GameObject を返さないので、親ごと無効化されたゾーンを外すために実体から引く。
+        for (const EntityID id : ctx.scene.GetEntities<AudioReverbZoneComponent>()) {
+            const GameObject* zoneObject = ctx.scene.GetGameObject(id);
+            const auto* zonePtr = ctx.scene.GetComponent<AudioReverbZoneComponent>(id);
+            if (!zoneObject || !zonePtr || !zonePtr->enabled || !zoneObject->activeInHierarchy())
                 continue;
-            const float distance = (listenerTransform->worldPosition - transform.worldPosition).Length();
+            const auto& zone = *zonePtr;
+            const float distance = (listenerTransform->worldPosition - zoneObject->transform.worldPosition).Length();
             if (distance > zone.outerRadius)
                 continue;
             const float blend = distance <= zone.innerRadius ? 1.0f

@@ -160,12 +160,12 @@ inline bool TutorialPromptComponent::UsingPad() const
 
 inline void TutorialPromptComponent::Bind()
 {
-    if (GameObject* portrait = scene.Find(portraitName)) m_portrait = EntityRef{ portrait->GetID() };
-    if (GameObject* icon = scene.Find(iconName)) m_icon = EntityRef{ icon->GetID() };
-    if (GameObject* text = scene.Find(textName)) m_text = EntityRef{ text->GetID() };
+    if (GameObject* portrait = scene.Find(portraitName, true)) m_portrait = EntityRef{ portrait->GetID() };
+    if (GameObject* icon = scene.Find(iconName, true)) m_icon = EntityRef{ icon->GetID() };
+    if (GameObject* text = scene.Find(textName, true)) m_text = EntityRef{ text->GetID() };
     /// @note 帯は無くても案内は成立する。見つからないことを咎めない。
     if (!bandName.empty())
-        if (GameObject* band = scene.Find(bandName)) m_band = EntityRef{ band->GetID() };
+        if (GameObject* band = scene.Find(bandName, true)) m_band = EntityRef{ band->GetID() };
     if (!m_icon.Resolve(scene) || !m_text.Resolve(scene))
         debug.LogWarning("TutorialPrompt: '" + iconName + "' / '" + textName +
                          "' がシーンにありません (押すボタンの案内は出ません)");

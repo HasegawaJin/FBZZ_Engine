@@ -127,11 +127,14 @@ TerrainNeighbors ResolveTerrainNeighbors(Scene& scene, EntityID eid)
 {
     TerrainNeighbors neighbors;
 
-    const auto gridEntities = scene.GetEntities<TerrainGridComponent>();
-    if (gridEntities.empty())
-        return neighbors;
-
-    const TerrainGridComponent* terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
+    /// @note 親ごと無効化された Grid は使わない (描画側の TerrainRenderPass と同じ規則)。
+    const TerrainGridComponent* terrainGrid = nullptr;
+    for (const EntityID gridId : scene.GetEntities<TerrainGridComponent>()) {
+        const GameObject* gridObject = scene.GetGameObject(gridId);
+        if (!gridObject || !gridObject->activeInHierarchy()) continue;
+        terrainGrid = scene.GetComponent<TerrainGridComponent>(gridId);
+        break;
+    }
     if (!terrainGrid)
         return neighbors;
 

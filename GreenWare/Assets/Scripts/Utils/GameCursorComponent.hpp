@@ -115,7 +115,7 @@ FBZZ_REFLECT(GameCursorComponent)
 
 inline void GameCursorComponent::OnStart()
 {
-    if (GameObject* canvasGO = scene.FindObjectOfType<UICanvas>())
+    if (GameObject* canvasGO = scene.FindObjectOfType<UICanvas>(true))
         if (auto* canvas = canvasGO->GetComponent<UICanvas>())
             m_canvasSize = { canvas->canvasWidth, canvas->canvasHeight };
 
@@ -281,7 +281,7 @@ inline GameObject* GameCursorComponent::ResolveCanvas(Script& script)
         if (GameObject* cached = script.scene.GetGameObject(s_canvasId))
             if (cached->GetComponent<UICanvas>()) return cached;
     }
-    GameObject* found = script.scene.FindObjectOfType<UICanvas>();
+    GameObject* found = script.scene.FindObjectOfType<UICanvas>(true);
     s_canvasId = found ? found->GetID() : EntityID::INVALID;
     return found;
 }

@@ -528,7 +528,7 @@ inline bool BladeTrailComponent::ResolveSockets(Ribbon& ribbon, TrailSlot slot,
     GameObject* tip  = ribbon.socketTip.Resolve(scene);
 
     if (!base || !tip) {
-        GameObject* owner = scene.Find(OwnerName(slot));
+        GameObject* owner = scene.Find(OwnerName(slot), true);
         if (!owner) return false;
         /// @note 名前をシーン全体からは引かない。SOCKET_Trail_* は左右の刀に 1 本ずつ
         ///       あり名前が一意でないため、生成順で結果がぶれる。必ず持ち主の下を探す。
@@ -559,7 +559,7 @@ inline GameObject* BladeTrailComponent::EnsureObject(Ribbon& ribbon, TrailSlot s
                            + (slot == TrailSlot::A ? "_A" : "_B");
     /// @note 先に既存を拾い直す。スクリプト DLL リロードで EntityRef は空に戻るが、
     ///       帯の GameObject は Scene に残るため、拾わず作るとリロードのたびに枠が増える。
-    GameObject* object = scene.Find(name);
+    GameObject* object = scene.Find(name, true);
     if (!object) {
         /// @note 刀の子にしない。頂点はワールド座標で積む (点ごとに刀の姿勢が違い、
         ///       1 つのローカル空間では表せない) ので、親を持たせると変換が二重に掛かる。
@@ -588,7 +588,7 @@ inline GameObject* BladeTrailComponent::EnsureObject(Ribbon& ribbon, TrailSlot s
     /// @note 光源は別の実体。帯の子にもしない ─ 子にすると帯のローカル空間で動かすことに
     ///       なり、«帯は原点に置く» という前提と、光を刃に沿って走らせる話が絡まる。
     const std::string lightName = name + "_Light";
-    GameObject* lightObject = scene.Find(lightName);
+    GameObject* lightObject = scene.Find(lightName, true);
     if (!lightObject) {
         GameObject& created = scene.Create(lightName);
         created.runtimeGenerated = true;

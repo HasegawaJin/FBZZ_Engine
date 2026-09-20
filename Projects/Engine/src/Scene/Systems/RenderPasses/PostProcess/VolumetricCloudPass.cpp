@@ -42,7 +42,8 @@ VolumetricCloudComponent* FindActiveCloud(RenderPassContext& ctx)
 {
     for (EntityID id : ctx.scene.GetEntities<VolumetricCloudComponent>()) {
         auto* cloud = ctx.scene.GetComponent<VolumetricCloudComponent>(id);
-        if (cloud && cloud->enabled)
+        const GameObject* owner = ctx.scene.GetGameObject(id);
+        if (cloud && cloud->enabled && owner && owner->activeInHierarchy())
             return cloud;
     }
     return nullptr;
@@ -169,7 +170,7 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     if (!ctx.handles.cloudRT || !ctx.handles.cloudDepthRT) return;
     renderer::SizedRenderTarget& cloudDepthRT = *ctx.handles.cloudDepthRT;
     renderer::SizedRenderTarget& cloudRT      = *ctx.handles.cloudRT;
-    (void)cloudDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, 0);
+    (void)cloudDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, renderer::CameraDepthTargetDesc(0));
     ctx.renderer.SetRenderTarget(cloudDepthRT, ctx.resources);
     ctx.renderer.ClearDepth();
     if (depthCopyShader.IsValid()) {

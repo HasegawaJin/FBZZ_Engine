@@ -142,8 +142,8 @@ inline void UiHintBarComponent::Bind()
     std::vector<Entry> bound;
     for (std::size_t i = 0; i < m_entries.size(); ++i) {
         Entry& e = m_entries[i];
-        GameObject* icon = scene.Find("HintIcon_" + std::to_string(i));
-        GameObject* text = scene.Find("HintText_" + std::to_string(i));
+        GameObject* icon = scene.Find("HintIcon_" + std::to_string(i), true);
+        GameObject* text = scene.Find("HintText_" + std::to_string(i), true);
         if (!icon || !text) {
             debug.LogWarning("UiHintBar: HintIcon_/HintText_" + std::to_string(i) +
                              " がシーンにありません (案内 '" + e.label + "' は出ません)");
@@ -165,8 +165,8 @@ inline void UiHintBarComponent::Bind()
     }
     /// @note 使わない枠は消す (シーンに 3 枠置いてあり、画面によっては 2 つしか使わない)。
     for (std::size_t i = m_entries.size(); i < 8; ++i) {
-        if (GameObject* icon = scene.Find("HintIcon_" + std::to_string(i))) icon->SetActive(false);
-        if (GameObject* text = scene.Find("HintText_" + std::to_string(i))) text->SetActive(false);
+        if (GameObject* icon = scene.Find("HintIcon_" + std::to_string(i), true)) icon->SetActive(false);
+        if (GameObject* text = scene.Find("HintText_" + std::to_string(i), true)) text->SetActive(false);
     }
     m_entries = std::move(bound);
     debugBuilt = static_cast<int>(m_entries.size());

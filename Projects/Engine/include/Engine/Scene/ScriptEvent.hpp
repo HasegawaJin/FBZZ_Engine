@@ -31,6 +31,7 @@ public:
     using RawHandler = std::function<void(const void*)>;
 
     /// @brief Script に紐付けて購読する。owner が破棄されると自動的に解除される。
+    /// @note owner が無効 (isActiveAndEnabled が false) の間は配信を飛ばす。購読は残るので、有効に戻れば再び届く。
     /// @note owner が nullptr の場合は自動解除されないので、呼び出し側が Unsubscribe すること。
     static ScriptEventToken SubscribeRaw(Script* owner,
                                          std::string_view channel,

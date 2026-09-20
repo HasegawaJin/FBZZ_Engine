@@ -186,7 +186,7 @@ inline void DodgeAfterimageComponent::Collect()
     if (ghostIncludeBlades) {
         const HandSide hands[] = { HandSide::Right };
         for (const HandSide hand : hands)
-            if (GameObject* sword = scene.Find(SwordObjectName(hand)))
+            if (GameObject* sword = scene.Find(SwordObjectName(hand), true))
                 note(*sword);
     }
 

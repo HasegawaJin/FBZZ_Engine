@@ -129,7 +129,7 @@ inline void ArenaHazardComponent::OnUpdate()
     auto* combat = CombatManagerComponent::Instance();
 
     /// @note 敵。落ちた時点で終わり。«押し込めば倒せる» が読めるよう、削らずに落とす。
-    for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         if (!Contains(object->transform.worldPosition)) continue;
 
@@ -152,7 +152,7 @@ inline void ArenaHazardComponent::OnUpdate()
     m_playerTick = std::max(0.0f, m_playerTick - Time::deltaTime);
     if (playerDamage <= 0 || m_playerTick > 0.0f) return;
 
-    GameObject* player = scene.FindWithTag(playerTag);
+    GameObject* player = scene.FindWithTag(playerTag, true);
     if (!player || !Contains(player->transform.worldPosition)) return;
 
     m_playerTick = std::max(playerTickSeconds, 0.05f);

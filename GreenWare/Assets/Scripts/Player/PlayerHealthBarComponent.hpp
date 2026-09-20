@@ -91,7 +91,7 @@ inline GameObject* PlayerHealthBarComponent::Resolve(const Ref<GameObject>& refe
 {
     if (GameObject* object = reference.Get())
         return object;
-    return scene.Find(name);
+    return scene.Find(name, true);
 }
 
 inline void PlayerHealthBarComponent::OnStart()
@@ -120,8 +120,8 @@ inline void PlayerHealthBarComponent::OnStart()
         m_value = EntityRef{ value->GetID() };
 
     ui.SetText(m_label.Resolve(scene), "体力");
-    if (auto* object = scene.Find("HUD_BreathValue")) m_breathValue = EntityRef{ object->GetID() };
-    if (auto* object = scene.Find("HUD_PlayerCondition")) m_condition = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_BreathValue", true)) m_breathValue = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_PlayerCondition", true)) m_condition = EntityRef{ object->GetID() };
 }
 
 inline float PlayerHealthBarComponent::LowHealthPulse(float ratio) const

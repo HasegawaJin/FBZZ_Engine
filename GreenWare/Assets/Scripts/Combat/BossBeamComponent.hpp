@@ -302,7 +302,7 @@ inline GameObject* BossBeamComponent::BuildLayer(const std::string& name)
 {
     /// @note 先に既存を探す: DLL リロードで EntityRef は空に戻るが帯の GameObject は
     ///       Scene に残るため、無条件に作るとリロードのたびに 2 本ずつ増える。
-    GameObject* existing = scene.Find(name);
+    GameObject* existing = scene.Find(name, true);
     if (!existing) {
         /// @note ボスの子にしない: 子だと帯がボスの移動・回転を引き継ぎ、ワールド座標で
         ///       指定した両端が歪む。ルートへ原点で置く。
@@ -445,7 +445,7 @@ inline void BossBeamComponent::ResolveHit(const Vector3& from, const Vector3& to
     m_touching = false;
     m_hitTimer = std::max(0.0f, m_hitTimer - dt);
 
-    GameObject* player = scene.FindWithTag(playerTag);
+    GameObject* player = scene.FindWithTag(playerTag, true);
     if (!player) return;
 
     /// @note 物理の掃引でなく線分距離で直接判定する: 相手はプレイヤー 1 体だけなので、
@@ -609,7 +609,7 @@ inline void BossBeamComponent::DriveFeedback(const Vector3& from, float dt)
     m_feedbackActive = true;
 
     const float ignite = Clamp01(m_charge);
-    const GameObject* player = scene.FindWithTag(playerTag);
+    const GameObject* player = scene.FindWithTag(playerTag, true);
 
     /// @note 予兆はアパーチャから、薙ぎは接地点から測る (Feedback グループの冒頭を参照)。
     const float chargeNear = shock::NearnessTo(player, from, std::max(chargeRange, 1.0f));
@@ -688,7 +688,7 @@ inline void BossBeamComponent::DriveLight(bool lit)
     if (!object) {
         if (!lit) return;
         const std::string name = LayerName("Light");
-        object = scene.Find(name);
+        object = scene.Find(name, true);
         if (!object) {
             GameObject& created = scene.Create(name);
             created.runtimeGenerated = true;

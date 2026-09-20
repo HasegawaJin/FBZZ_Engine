@@ -173,10 +173,13 @@ namespace {
     }
 }
 
-GameObject* GameObject::Find(const std::string& n)
+GameObject* GameObject::Find(const std::string& n, bool includeInactive)
 {
     auto* s = GetActiveScene();
-    return s ? s->Find(n) : nullptr;
+    if (!s) return nullptr;
+    for (auto& go : s->GameObjects())
+        if (go.name == n && (includeInactive || go.activeInHierarchy())) return &go;
+    return nullptr;
 }
 
 GameObject* GameObject::FindByGuid(const std::string& guid)
@@ -185,10 +188,13 @@ GameObject* GameObject::FindByGuid(const std::string& guid)
     return s ? s->FindByGuid(guid) : nullptr;
 }
 
-GameObject* GameObject::FindWithTag(const std::string& t)
+GameObject* GameObject::FindWithTag(const std::string& t, bool includeInactive)
 {
     auto* s = GetActiveScene();
-    return s ? s->FindWithTag(t) : nullptr;
+    if (!s) return nullptr;
+    for (auto& go : s->GameObjects())
+        if (go.tag == t && (includeInactive || go.activeInHierarchy())) return &go;
+    return nullptr;
 }
 
 void GameObject::Destroy(GameObject& go, float delay)

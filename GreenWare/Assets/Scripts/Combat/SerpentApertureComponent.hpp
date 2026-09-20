@@ -309,7 +309,7 @@ inline void SerpentApertureComponent::DriveFallRescue(float dt)
 {
     if (!rescueFallen) { debugRescue = "Off"; return; }
 
-    GameObject* player = scene.FindWithTag(playerTag);
+    GameObject* player = scene.FindWithTag(playerTag, true);
     if (!player) { debugRescue = "No player"; return; }
 
     if (m_rescueTime >= 0.0f) {

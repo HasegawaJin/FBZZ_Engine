@@ -674,6 +674,7 @@ Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
         entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         entry.Set("components", std::move(matched));
         nodes.Push(std::move(entry));
     }
@@ -688,6 +689,7 @@ Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
         entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         entry.Set("position", VectorToJson(go->transform.worldPosition));
         entry.Set("forward", VectorToJson(go->transform.Forward()));
         JsonReadReflector reader;
@@ -722,6 +724,7 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
         entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         entry.Set("position", VectorToJson(go->transform.worldPosition));
         JsonReadReflector reader;
         source->Reflect(reader);
@@ -744,6 +747,7 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
         entry.Set("id", JsonValue(go->instanceId));
         entry.Set("name", JsonValue(go->name));
         entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         entry.Set("position", VectorToJson(go->transform.worldPosition));
         listeners.Push(std::move(entry));
     }
@@ -792,6 +796,7 @@ JsonValue UIElementJson(GameObject& go)
     entry.Set("id", JsonValue(go.instanceId));
     entry.Set("name", JsonValue(go.name));
     entry.Set("active", JsonValue(go.activeSelf()));
+    entry.Set("activeInHierarchy", JsonValue(go.activeInHierarchy()));
     entry.Set("components", SnapshotComponents(go));
     JsonValue children = JsonValue::MakeArray();
     for (int i = 0; i < go.GetChildCount(); ++i) {

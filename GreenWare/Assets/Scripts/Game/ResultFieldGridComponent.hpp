@@ -116,7 +116,7 @@ inline void ResultFieldGridComponent::OnUpdate()
 {
     /// @note ドームは «画面を埋めるための代理» なので、中心をカメラに合わせるだけでよい
     ///       (FieldGrid.hlsl は視線と床平面の交点から絵を作る)。
-    if (GameObject* cam = scene.FindWithTag("MainCamera"))
+    if (GameObject* cam = scene.FindWithTag("MainCamera", true))
         transform.position = cam->transform.worldPosition;
 
     const MaterialInstance mat = material.Instance();

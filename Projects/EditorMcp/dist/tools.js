@@ -1,12 +1,13 @@
-// FBZZ Engine
-// tools.ts | EditorMcp
-// Editor Query / Command を MCP ツールへ薄く写像し、権限モードを強制する
+/// @file    tools.ts
+/// @brief   Editor Query / Command を MCP ツールへ薄く写像し、権限モードを強制する
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 import * as z from 'zod/v4';
 import { EditorCommandSchema, AssetThumbnailResultSchema, FluidEffectNameSchema, FluidFieldsSchema, FluidOperatorIndexSchema, FluidOperatorListSchema, FluidOperatorTypeSchema, FluidJobIdSchema, FluidJobStatusResultSchema, FluidPathSchema, FluidPresetSchema, SpriteThumbnailResultSchema, JsonValueSchema, NodeIdSchema, SemanticViewportResultSchema, TerrainSculptOpSchema, Vec3Schema, ViewportCaptureResultSchema, } from './editorContracts.js';
 const NameSchema = z.string().min(1).max(128);
-// ステート/遷移/Motion 編集の対象グラフを選ぶ。省略で Base Layer。
-// WHY: 上半身レイヤーに独自の遷移グラフを組むには、既存の編集ツールが
-//      「どのレイヤーのグラフか」を受け取れる必要がある。
+/// @note ステート/遷移/Motion 編集の対象グラフを選ぶ。省略で Base Layer。
+/// @note WHY: 上半身レイヤーに独自の遷移グラフを組むには、既存の編集ツールが
+/// @note      「どのレイヤーのグラフか」を受け取れる必要がある。
 const LayerOptionSchema = z.string().min(1).max(128).optional()
     .describe('対象レイヤー名。省略でBase Layer。animation_add_layerで作ったレイヤーの独自ステートマシンを編集する場合に指定');
 const ComponentSchema = z.string().min(1).max(128);
@@ -32,7 +33,7 @@ const InputInjectionSchema = z.object(InputInjectionShape).strict().superRefine(
     if (!valid)
         context.addIssue({ code: 'custom', message: `kind=${input.kind} に必要な入力が不足しています` });
 });
-// MCP入力からundefinedを除き、Command Busの厳密なinput.inject契約へ変換する。
+/// @note MCP入力からundefinedを除き、Command Busの厳密なinput.inject契約へ変換する。
 function ToInputCommand(input) {
     return {
         t: 'input.inject', kind: input.kind,
@@ -44,7 +45,7 @@ function ToInputCommand(input) {
         ...(input.value === undefined ? {} : { value: input.value }),
     };
 }
-// NodeId をキーに正規化済み Scene 状態を比較し、追加・削除・変更を小さい差分で返す。
+/// @note NodeId をキーに正規化済み Scene 状態を比較し、追加・削除・変更を小さい差分で返す。
 function DiffSceneSnapshots(beforeValue, afterValue) {
     const before = beforeValue;
     const after = afterValue;
@@ -72,19 +73,19 @@ function DiffSceneSnapshots(beforeValue, afterValue) {
     };
 }
 const Delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-// 識別子は MakeFluidPreset の enum 名。括弧内は Editor の Preset メニューの表示名 (FluidPresetName)。
+/// @note 識別子は MakeFluidPreset の enum 名。括弧内は Editor の Preset メニューの表示名 (FluidPresetName)。
 const FluidPresetDescription = 'プリセット名。Smoke(Smoke Puff) / Fire(Fire (loop)) / Explosion / Steam(Steam (loop)) / '
     + 'DustBurst(Dust Burst) / Ink(Ink Swirl) / MagicWisp(Magic Wisp (loop)) / HeatHaze(Heat Haze (loop)) / '
     + 'WaterSplash(Water Splash) / WaterJet(Water Jet (loop)) / BloodBurst(Blood Burst) / LavaBlob(Lava Blob) / '
     + 'PlasmaBurst(Plasma Burst) / ArcHaze(Arc Haze (loop))。'
     + '正確な一覧は fluid_schema の presets。省略で Smoke';
-// engine の JSON 応答を MCP text content に変換する。
+/// @note engine の JSON 応答を MCP text content に変換する。
 function TextResult(value) {
     return {
         content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     };
 }
-// transport/engine の失敗をプロセス例外にせず、AI が再判断できる tool error として返す。
+/// @note transport/engine の失敗をプロセス例外にせず、AI が再判断できる tool error として返す。
 async function Safely(operation) {
     try {
         return await operation();
@@ -97,11 +98,11 @@ async function Safely(operation) {
         };
     }
 }
-// Stage B ではユーザー入力に関係なく dryRun を強制し、Stage C だけ実変更を許可する。
+/// @note Stage B ではユーザー入力に関係なく dryRun を強制し、Stage C だけ実変更を許可する。
 function ShouldDryRun(permission) {
     return permission !== 'write';
 }
-// Stage A で公開する副作用なし Query とオンデマンド viewport capture を登録する。
+/// @note Stage A で公開する副作用なし Query とオンデマンド viewport capture を登録する。
 function RegisterQueryTools(server, bus) {
     const sceneSnapshots = new Map();
     let snapshotSequence = 0;
@@ -110,13 +111,13 @@ function RegisterQueryTools(server, bus) {
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'editor.catalog' }))));
-    // ── Operator ゲートウェイ (Docs/design/editor-operator-model.md) ──
-    // WHY: 従来は Editor 側の機能 1 つにつき、C++ の dispatcher・この tools.ts の
-    //      zod スキーマ・ドキュメントのツール一覧へ 3 度書いていた。写し損ねると
-    //      人が使う経路と AI が使う経路で結果が食い違い、実際にその修正を
-    //      ObjectPresets / TerrainBrush / NavMeshQuery など 8 回している。
-    //      operator として登録された操作はここを通って自動的に AI から見えるので、
-    //      以後 Editor に操作を足しても TypeScript 側は 1 行も増えない。
+    /// @note ── Operator ゲートウェイ (Docs/design/editor-operator-model.md) ──
+    /// @note WHY: 従来は Editor 側の機能 1 つにつき、C++ の dispatcher・この tools.ts の
+    /// @note      zod スキーマ・ドキュメントのツール一覧へ 3 度書いていた。写し損ねると
+    /// @note      人が使う経路と AI が使う経路で結果が食い違い、実際にその修正を
+    /// @note      ObjectPresets / TerrainBrush / NavMeshQuery など 8 回している。
+    /// @note      operator として登録された操作はここを通って自動的に AI から見えるので、
+    /// @note      以後 Editor に操作を足しても TypeScript 側は 1 行も増えない。
     server.registerTool('editor_op_list', {
         description: 'Editor に登録された操作 (Operator) の目録を返します。'
             + 'メニュー・ホットキー・コマンドパレットが読むのと同じ登録簿なので、'
@@ -140,11 +141,11 @@ function RegisterQueryTools(server, bus) {
         ...(category === undefined ? {} : { category }),
         ...(includeUnavailable === undefined ? {} : { includeUnavailable }),
     }))));
-    // 読み取り側の Operator。invoke (write) と入口を分けてあるので read 権限でも呼べる。
-    // WHY 必要か: OpKind::Query は型としては最初からあったのに、結果を返す器が
-    //      OpResult に無かったため登録された Query が 1 つも無く、「読む機能」は
-    //      すべて専用ツールとして手書きするしかなかった。器と入口を用意したことで、
-    //      以後は読み取りも登録簿へ載り、ここのツール数は増えない。
+    /// @note 読み取り側の Operator。invoke (write) と入口を分けてあるので read 権限でも呼べる。
+    /// @note WHY 必要か: OpKind::Query は型としては最初からあったのに、結果を返す器が
+    /// @note      OpResult に無かったため登録された Query が 1 つも無く、「読む機能」は
+    /// @note      すべて専用ツールとして手書きするしかなかった。器と入口を用意したことで、
+    /// @note      以後は読み取りも登録簿へ載り、ここのツール数は増えない。
     server.registerTool('editor_op_query', {
         description: 'kind=query の Operator を実行し、結果データを返します。'
             + 'editor_op_list で id と params を調べてから呼びます。'
@@ -335,9 +336,9 @@ function RegisterQueryTools(server, bus) {
             structuredContent: { path: thumbnail.path },
         };
     }));
-    // ── Sprite ──
-    // Sprite はファイルではないので asset_list には出ない。切り出したコマへ
-    // 参照を張るには、この 2 つで「一覧を見る → 絵を見る」しかない。
+    /// @note ── Sprite ──
+    /// @note Sprite はファイルではないので asset_list には出ない。切り出したコマへ
+    /// @note 参照を張るには、この 2 つで「一覧を見る → 絵を見る」しかない。
     server.registerTool('sprite_list', {
         description: 'Sprite Texture が持つコマの一覧 (ID・名前・矩形・pivot) を返します。'
             + 'reference はそのまま component_set の texturePath / spritePath / .mat の albedo '
@@ -642,11 +643,11 @@ function RegisterQueryTools(server, bus) {
             structuredContent: { width: capture.width, height: capture.height, view: capture.view ?? view, cameraPosition: capture.cameraPosition, objects },
         };
     }));
-    // ── ワールドオーサリングの照会 ──
-    // WHY ここをまとめて足すか: これまで AI が読めたのは「シーンに置いたオブジェクトと
-    //     そのコンポーネント値」だけで、地形の起伏・植生の分布・NavMesh の穴・空と光の設定は
-    //     viewport_capture の絵から推測するしかなかった。絵からは「暗い」までしか言えず、
-    //     暗い原因が太陽の角度なのか露出なのか霧なのかは区別できない。
+    /// @note ── ワールドオーサリングの照会 ──
+    /// @note WHY ここをまとめて足すか: これまで AI が読めたのは「シーンに置いたオブジェクトと
+    /// @note     そのコンポーネント値」だけで、地形の起伏・植生の分布・NavMesh の穴・空と光の設定は
+    /// @note     viewport_capture の絵から推測するしかなかった。絵からは「暗い」までしか言えず、
+    /// @note     暗い原因が太陽の角度なのか露出なのか霧なのかは区別できない。
     server.registerTool('scene_list', {
         description: 'プロジェクト内の .scene を列挙します。現在開いているシーン(isCurrent)、未保存かどうか(dirty)も返します。'
             + 'scene_open の前に必ず確認してください。dirty=true のまま scene_open を呼ぶと拒否されます。'
@@ -780,9 +781,9 @@ function RegisterQueryTools(server, bus) {
         inputSchema: { limit: z.number().int().min(1).max(20).default(5) },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ limit }) => Safely(async () => TextResult(await bus.Query({ t: 'build.status', limit }))));
-    // ── 検証ループ (Docs/design/ai-verification-loop.md) ──
-    // WHY: 操作の口だけでは «直った» を言えない。シナリオの合否・絵の差分・Editor が実際に
-    //      受け付ける型の一覧を読めて初めて、AI が自分の変更を自分で検証できる。
+    /// @note ── 検証ループ (Docs/design/ai-verification-loop.md) ──
+    /// @note WHY: 操作の口だけでは «直った» を言えない。シナリオの合否・絵の差分・Editor が実際に
+    /// @note      受け付ける型の一覧を読めて初めて、AI が自分の変更を自分で検証できる。
     server.registerTool('scenario_status', {
         description: 'Playtest シナリオの進捗と結果を返します。state は running / passed / failed / idle。'
             + 'failed のときは failure が最初に落ちた手順の理由、steps が手順ごとの記録、images が絵の比較結果'
@@ -802,10 +803,10 @@ function RegisterQueryTools(server, bus) {
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'editor.bus.list' }))));
-    // ── 流体 (.fluid) ──
-    // WHY 絵を返す照会まで用意するか: 流体の見た目は数値からは予測できない (浮力を 2 倍にしても
-    //     「2 倍上がる」とは限らない)。AI が自分で絵を見て直す反復が回らないと、
-    //     レシピを書けても狙った煙にはならない。
+    /// @note ── 流体 (.fluid) ──
+    /// @note WHY 絵を返す照会まで用意するか: 流体の見た目は数値からは予測できない (浮力を 2 倍にしても
+    /// @note     「2 倍上がる」とは限らない)。AI が自分で絵を見て直す反復が回らないと、
+    /// @note     レシピを書けても狙った煙にはならない。
     server.registerTool('fluid_schema', {
         description: '流体レシピ (.fluid) の編集可能フィールド目録 (型・範囲・enum)、部品の種類ごとの項目 (operators)、'
             + 'プリセット名、焼きモード (2d / 3d)、上限 (limits) を返します。'
@@ -855,7 +856,7 @@ function RegisterQueryTools(server, bus) {
         const raw = FluidJobStatusResultSchema.parse(await bus.Query({
             t: 'fluid.jobStatus', job, ...(includeImage === undefined ? {} : { includeImage }),
         }));
-        // base64 を text に残すと、同じ画像を文字列でも読ませて context を浪費する。
+        /// @note base64 を text に残すと、同じ画像を文字列でも読ませて context を浪費する。
         const { image, ...status } = raw;
         const text = { type: 'text', text: JSON.stringify(status, null, 2) };
         return {
@@ -866,7 +867,7 @@ function RegisterQueryTools(server, bus) {
         };
     }));
 }
-// Stage B/C でのみ Command を登録し、MCP から engine の Undo 対応 Command Bus へ転送する。
+/// @note Stage B/C でのみ Command を登録し、MCP から engine の Undo 対応 Command Bus へ転送する。
 function RegisterCommandTools(server, bus, permission) {
     const dryRun = ShouldDryRun(permission);
     const run = (command) => Safely(async () => TextResult(await bus.Command(EditorCommandSchema.parse(command), dryRun)));
@@ -876,10 +877,10 @@ function RegisterCommandTools(server, bus, permission) {
         idempotentHint: false,
         openWorldHint: false,
     };
-    // ── Operator ゲートウェイ ──
-    // editor_op_list で見つけた操作をそのまま実行する。実行可否の判定は Editor 側の
-    // poll が持つので、ホットキーやメニューでグレーアウトされる状況ではここも拒否される
-    // (AI にだけできる操作、という抜け道を作らない)。
+    /// @note ── Operator ゲートウェイ ──
+    /// @note editor_op_list で見つけた操作をそのまま実行する。実行可否の判定は Editor 側の
+    /// @note poll が持つので、ホットキーやメニューでグレーアウトされる状況ではここも拒否される
+    /// @note (AI にだけできる操作、という抜け道を作らない)。
     server.registerTool('editor_op_invoke', {
         description: 'editor_op_list に載っている操作を実行します。'
             + 'メニューやホットキーが呼ぶのと同一の実体を通るため、人が UI で行った場合と結果が一致します。'
@@ -898,7 +899,7 @@ function RegisterCommandTools(server, bus, permission) {
         id,
         ...(args === undefined ? {} : { args }),
     }));
-    // ── Behavior Tree の編集 ──
+    /// @note ── Behavior Tree の編集 ──
     server.registerTool('bt_node_add', {
         description: 'Behavior Tree へノードを追加します。parentId 省略はルート作成で、'
             + '既にルートがあると拒否されます (木にルートは 1 つだけ)。'
@@ -1046,7 +1047,7 @@ function RegisterCommandTools(server, bus, permission) {
         ...(rowSequences === undefined ? {} : { rowSequences }),
         ...(materialPath === undefined ? {} : { materialPath }),
     }));
-    // ── Sprite ──
+    /// @note ── Sprite ──
     server.registerTool('sprite_rename', {
         description: 'Sprite の名前を変更します。ID は変わらないので、保存済みの参照は切れません。'
             + '名前は参照キーを兼ねるため、テクスチャ内で一意である必要があります。'
@@ -1244,11 +1245,11 @@ function RegisterCommandTools(server, bus, permission) {
         annotations: writeAnnotations,
     }, ({ id, path }) => run({ t: 'material.assign', id, path }));
     server.registerTool('material_set_parameter', {
-        description: 'GameObject単位のマテリアルインスタンスへfloat/vec2/vec3/vec4パラメーターを上書きします。',
+        description: 'GameObject単位のマテリアル値を上書きします。shader_inspectのwritable/type/componentsに従い、配列は要素順、行列は行優先、boolは0/1で指定します。型・要素数・範囲不一致は拒否します。',
         inputSchema: {
             id: NodeIdSchema,
             parameter: z.string().min(1).max(128),
-            value: z.array(z.number().finite()).min(1).max(4),
+            value: z.array(z.number().finite()).min(1).max(16384),
         },
         annotations: writeAnnotations,
     }, ({ id, parameter, value }) => run({ t: 'material.override', id, parameter, value }));
@@ -1337,7 +1338,7 @@ function RegisterCommandTools(server, bus, permission) {
         ...(threshold === undefined ? {} : { threshold }),
         ...(conditionIndex === undefined ? {} : { conditionIndex }),
     }));
-    // BlendTree ステートを追加する際の駆動パラメーターと座標系スキーマ (add/set 共通)。
+    /// @note BlendTree ステートを追加する際の駆動パラメーターと座標系スキーマ (add/set 共通)。
     const StateModeSchema = z.enum(['clip', 'blendTree1D', 'blendTree2D']);
     server.registerTool('animation_add_state', {
         description: dryRun
@@ -1472,7 +1473,7 @@ function RegisterCommandTools(server, bus, permission) {
         ...(speed === undefined ? {} : { speed }),
         ...(ikWeight === undefined ? {} : { ikWeight }),
     }));
-    // ── Animator 構造の削除系 + パラメーター CRUD ──
+    /// @note ── Animator 構造の削除系 + パラメーター CRUD ──
     server.registerTool('animation_remove_state', {
         description: dryRun
             ? 'Animatorステート削除の入力を検証します。'
@@ -1537,9 +1538,9 @@ function RegisterCommandTools(server, bus, permission) {
         },
         annotations: writeAnnotations,
     }, ({ id, name }) => run({ t: 'animation.removeParameter', id, name }));
-    // ── Animator レイヤー / Slot ────────────────────────────────────────────
-    // 上半身だけ・下半身だけといった部分制御はレイヤーが入口になる。
-    // レイヤーを作る → マスクを割り当てる → そのレイヤーにステートを足す、の順で使う。
+    /// @note ── Animator レイヤー / Slot ────────────────────────────────────────────
+    /// @note 上半身だけ・下半身だけといった部分制御はレイヤーが入口になる。
+    /// @note レイヤーを作る → マスクを割り当てる → そのレイヤーにステートを足す、の順で使う。
     const LayerNameSchema = z.string().min(1).max(128);
     server.registerTool('avatar_mask_get', {
         description: '.mask アセット(Avatar Mask)の内容を返します。defaultInclude と、ボーンごとの weight / includeChildren / blendDepth の一覧が取れます。animation_set_layer で maskPath に割り当てる前の確認に使います。',
@@ -1736,7 +1737,7 @@ function RegisterCommandTools(server, bus, permission) {
         }));
         const initialState = await bus.Query({ t: 'editor.state' });
         const initialPlayState = String(initialState.playState ?? 'editor');
-        // dry-runでは時系列待機を省略し、全CommandをEditor側のdryRun検証へ通す。
+        /// @note dry-runでは時系列待機を省略し、全CommandをEditor側のdryRun検証へ通す。
         if (dryRun) {
             const previews = [];
             if (startPlay && initialPlayState === 'editor')
@@ -1914,7 +1915,7 @@ function RegisterCommandTools(server, bus, permission) {
         inputSchema: {},
         annotations: writeAnnotations,
     }, () => run({ t: 'editor.redo' }));
-    // ── ワールドオーサリングの編集 ──
+    /// @note ── ワールドオーサリングの編集 ──
     server.registerTool('preset_create', {
         description: 'Add Object プリセットから GameObject を生成します。preset は preset_catalog の id です。'
             + 'Hierarchy メニューと同じ生成関数を通るので、人が置いたものと中身が完全に一致します'
@@ -2080,7 +2081,7 @@ function RegisterCommandTools(server, bus, permission) {
         inputSchema: { target: z.literal('script').default('script') },
         annotations: writeAnnotations,
     }, ({ target }) => run({ t: 'build.run', target }));
-    // ── 検証ループ ──
+    /// @note ── 検証ループ ──
     server.registerTool('scenario_run', {
         description: 'Playtest シナリオを Editor 側で開始します (すぐ戻ります)。playtest_run (MCP 側で実時間待機する簡易版) と違い、'
             + 'フレーム単位で進むのでビルドの速さに結果が左右されず、ファイルに残して --batch / CI でも同じものを回せます。'
@@ -2145,7 +2146,7 @@ function RegisterCommandTools(server, bus, permission) {
         }
         return { content };
     }));
-    // ── 流体 (.fluid) ──
+    /// @note ── 流体 (.fluid) ──
     server.registerTool('fluid_create', {
         description: 'プリセットから .fluid レシピを 1 つ作ります (テクスチャはまだ焼きません)。'
             + '既存ファイルは既定で拒否 (FLUID_EXISTS) します。'
@@ -2188,8 +2189,8 @@ function RegisterCommandTools(server, bus, permission) {
         },
         annotations: writeAnnotations,
     }, ({ path, fields }) => run({ t: 'fluid.set', path, fields }));
-    // WHY 部品の増減を専用ツールにするか: fluid_set で配列を渡すと «全要素を並べ直す» ことになり、
-    //     触るつもりのない部品の値を書き写し間違えると黙って変わる。1 つだけ足す・消すなら他は触らない。
+    /// @note WHY 部品の増減を専用ツールにするか: fluid_set で配列を渡すと «全要素を並べ直す» ことになり、
+    /// @note     触るつもりのない部品の値を書き写し間違えると黙って変わる。1 つだけ足す・消すなら他は触らない。
     server.registerTool('fluid_add_operator', {
         description: '.fluid レシピに部品を 1 つ足します。list="source" は発生源 (気体は密度・温度・燃料を注ぎ、液体は粒子を撃ち出す)、'
             + 'list="force" は流れにかかる力、list="collider" は流体が入り込めない障害物 (動かせば流体を押しのける) です。'
@@ -2371,7 +2372,7 @@ function RegisterCommandTools(server, bus, permission) {
         };
     }));
 }
-// 権限モードから公開面そのものを変え、Stage A では書き込みツールを発見不能にする。
+/// @note 権限モードから公開面そのものを変え、Stage A では書き込みツールを発見不能にする。
 export function RegisterEditorTools(server, bus, permission) {
     RegisterQueryTools(server, bus);
     if (permission !== 'read') {

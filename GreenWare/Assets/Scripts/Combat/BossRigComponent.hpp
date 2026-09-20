@@ -495,7 +495,7 @@ inline void BossRigComponent::EnsureRuntime()
         const std::string suffix = SuffixOf(leg);
 
         const std::string targetName = "BossLegIkTarget" + suffix;
-        GameObject* target = scene.Find(targetName);
+        GameObject* target = scene.Find(targetName, true);
         if (!target) {
             GameObject& created  = scene.Create(targetName);
             created.runtimeGenerated = true;
@@ -818,7 +818,7 @@ inline void BossRigComponent::CollectParts(std::vector<Part>& out) const
     GameObject* self = scene.Self();
     if (!self) return;
 
-    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         /// @note 盤面に複数のボスが居ても、対を組むのは自分の部位どうしだけ。
         if (BossHitboxRigComponent::BossRootOf(object) != self) continue;
@@ -1285,7 +1285,7 @@ inline void BossRigComponent::DriveVentDischarge(float dt)
     m_ventTimer  = 0.0f;
     m_ventWarned = false;
 
-    GameObject*             player = scene.FindWithTag(playerTag);
+    GameObject*             player = scene.FindWithTag(playerTag, true);
     CombatManagerComponent* combat = CombatManagerComponent::Instance();
     auto*                   vfx    = VfxManagerComponent::Instance();
     const float             radius = Max(ventRadius, 0.1f);

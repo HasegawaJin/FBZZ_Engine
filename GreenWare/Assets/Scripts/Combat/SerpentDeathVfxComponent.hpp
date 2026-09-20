@@ -101,7 +101,7 @@ private:
     {
         return scene.GetScript<SerpentBodyComponent>();
     }
-    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag); }
+    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag, true); }
 
     /// 1 発。heavy なら爆発 (光と陽炎を持つ)、そうでなければ軽い破片だけ。
     ///

@@ -91,7 +91,7 @@ private:
     bool m_wipeWriting = false;   ///< 扉を自分で postprocess へ書いたか (transition::Drive)
     static constexpr int kActions = 3;
 
-    [[nodiscard]] GameObject* N(std::string_view name) const { return scene.Find(std::string(name)); }
+    [[nodiscard]] GameObject* N(std::string_view name) const { return scene.Find(std::string(name), true); }
     void Text(std::string_view name, const std::string& value) const
     {
         if (GameObject* go = N(name)) ui.SetText(go, value);

@@ -122,7 +122,7 @@ inline void AimMarkerComponent::OnStart()
 
 inline bool AimMarkerComponent::Adopt()
 {
-    GameObject* canvasObject = scene.Find(CanvasName());
+    GameObject* canvasObject = scene.Find(CanvasName(), true);
     if (!canvasObject || !canvasObject->GetComponent<UICanvas>()) return false;
     if (canvasObject->GetChildCount() < kBarCount) return false;
 

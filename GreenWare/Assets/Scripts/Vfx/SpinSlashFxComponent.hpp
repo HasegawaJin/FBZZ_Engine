@@ -115,7 +115,7 @@ inline GameObject* SpinSlashFxComponent::EnsureObject()
 {
     /// @note 先に拾い直す。DLL リロードでこの Script は作り直されるが、輪の GameObject
     ///       はシーンに残るため、拾わず作るとリロードのたびに枠が増える。
-    GameObject* object = scene.Find(kObjectName);
+    GameObject* object = scene.Find(kObjectName, true);
     if (!object) {
         /// @note 誰の子にもしない。LineRenderer はワールド点を所有者のローカルへ引き戻して
         ///       焼くため、親の移動・回転がそのまま輪のずれになる。
@@ -126,7 +126,7 @@ inline GameObject* SpinSlashFxComponent::EnsureObject()
     if (!scene.GetScript<BeamTrailRendererComponent>(object))
         object->AddScript<BeamTrailRendererComponent>();
     /// @note Create / AddScript はシーンの配列を伸ばしうる。返すのは名前から引き直した個体。
-    return scene.Find(kObjectName);
+    return scene.Find(kObjectName, true);
 }
 
 inline BeamTrailRendererComponent* SpinSlashFxComponent::Renderer() const

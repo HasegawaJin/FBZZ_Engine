@@ -157,7 +157,7 @@ inline GameObject* SlashScarComponent::EnsureObject(Slot& slot, int index)
     const std::string name = "SlashScar_" + std::to_string(index);
     /// @note 先に拾い直す。スクリプト DLL リロードで EntityRef は空に戻るが、枠の
     ///       GameObject は Scene に残るため、拾わず作るとリロードのたびに枠が増える。
-    GameObject* object = scene.Find(name);
+    GameObject* object = scene.Find(name, true);
     if (!object) {
         /// @note 斬った相手の子にしない。部位はスキンドメッシュのノードで transform が
         ///       恒等のまま骨だけが動く (「スキンド描画ノードの座標」の罠) ため、
