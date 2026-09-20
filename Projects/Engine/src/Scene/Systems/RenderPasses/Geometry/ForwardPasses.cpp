@@ -15,6 +15,7 @@
 /// @note 半透明は深度書き込みを行わないためオクルージョンカリング対象外。
 #include "GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
+#include <Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp>
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Renderer/Mesh.hpp"
@@ -74,7 +75,7 @@ void SortAndSubmitTransparent(
     }
 }
 
-} // namespace
+}
 
 void ExecuteForwardPasses(RenderPassContext& ctx)
 {
@@ -123,11 +124,14 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const float dz = go.transform.position.z - cam.m_position.z;
         const float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
+        /// @note Forward には GBuffer が無いので、不透明はすべて ForwardOpaque に落ちる。
+        ///       経路の判断そのものは Deferred と同じ 1 本を通す。
+        /// @see Docs/design/pipeline-boundary.md
+        if (ResolveGeometryRoute(*mat, /*gbufferPipeline=*/false) == GeometryRoute::ForwardOpaque) {
             opaqueStaticQueue.push_back({ &go, mr, mat, distSq });
         } else {
             /// @note 半透明は即収集 (オクルージョンカリング対象外)
-            auto* material = SyncMaterial(*mat, resources);
+            auto* material = SyncMaterial(*mat, resources, false, EstimateScreenPixels(ctx, go, *mr->mesh));
             if (!material || !material->shader.IsValid()) continue;
 
             PerObjectCB objData{};
@@ -141,8 +145,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.indexCount         = mr->mesh->indexCount;
             dc.vertexCount        = mr->mesh->vertexCount;
             dc.shader             = material->shader;
-            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
+            dc.pipelineState      = GetOrCreateMaterialPSO(resources, *mat, rs.IsWireframe());
             dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
@@ -189,7 +192,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!slot.visible) continue;
             slot.EnsureMaterialAsset();
 
-            if (slot.GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
+            /// @see Docs/design/pipeline-boundary.md
+            if (ResolveGeometryRoute(slot, /*gbufferPipeline=*/false)
+                == GeometryRoute::ForwardOpaque) {
                 opaqueSkinnedQueue.push_back({ &go, smr, mat, anim, distSq, mi });
                 continue;
             }
@@ -221,8 +226,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, slot.GetBlendMode(), slot.IsDoubleSided());
+            dc.pipelineState      = GetOrCreateMaterialPSO(resources, slot, rs.IsWireframe());
             dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
@@ -272,7 +276,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* mr  = entry.mr;
         auto* mat = entry.mat;
 
-        auto* material = SyncMaterial(*mat, resources);
+        auto* material = SyncMaterial(*mat, resources, false, EstimateScreenPixels(ctx, go, *mr->mesh));
         if (!material || !material->shader.IsValid()) continue;
 
         /// @note オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
@@ -299,8 +303,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
-        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
+        dc.pipelineState      = GetOrCreateMaterialPSO(resources, *mat, rs.IsWireframe());
         dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
@@ -363,8 +366,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.indexCount         = meshPtr->indexCount;
         dc.vertexCount        = meshPtr->vertexCount;
         dc.shader             = skinnedShader;
-        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, slot.GetBlendMode(), slot.IsDoubleSided());
+        dc.pipelineState      = GetOrCreateMaterialPSO(resources, slot, rs.IsWireframe());
         dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
@@ -403,4 +405,4 @@ void ForwardOpaquePass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteForwardPasses(ctx);
 }
-} // namespace fbzz::scene
+}

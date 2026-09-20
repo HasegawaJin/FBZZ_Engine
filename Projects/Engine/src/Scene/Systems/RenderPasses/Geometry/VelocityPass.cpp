@@ -12,6 +12,7 @@
 
 #include "GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
+#include <Engine/Scene/Systems/RenderPasses/InstanceBatch.hpp>
 
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
@@ -96,9 +97,19 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
     const auto opaquePSO =
         GetOrCreateMaterialPSO(resources, renderer::BlendMode::OPAQUE_BLEND, false);
     const std::uint64_t frameStamp = Time::frameCount;
+    const auto sceneDepth = resources.GetDepthTexture(ctx.Res().Target("HDR"));
 
     /// @note 本描画パスと同じ物体をもう一度判定するので、カリング統計はパスを抜けるときに打ち消す。
     const CullStatsRollback rollback(ctx);
+
+    /// @note 速度を描くのは «動いた物体» だけなので、束ねられるのは同じメッシュが揃って動いて
+    ///       いるとき (回る歯車・同じ動きの群れ) に限られる。
+    /// @see Docs/design/gpu-instancing.md
+    InstanceBatcher batcher(ctx, h.velocityShader,
+                            ctx.settings.gpuInstancing
+                                ? h.velocityInstancedShader
+                                : renderer::ResourceHandle<renderer::ShaderTag>{},
+                            false);
 
     /// @name 静的メッシュ
     for (auto& go : ctx.scene.GameObjects()) {
@@ -123,8 +134,6 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         /// @note 動き始めの履歴を保つため、描画を省く場合も AdvancePrevWorld は先に呼ぶ。
         if (SameMatrix(objData.world, objData.prevWorld)) continue;
 
-        resources.Update(h.objectCB, &objData, sizeof(VelocityObjectCB));
-
         renderer::DrawCall dc;
         dc.vertexBuffer       = mr->mesh->vertexBuffer;
         dc.indexBuffer        = mr->mesh->indexBuffer;
@@ -134,10 +143,21 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         dc.pipelineState      = opaquePSO;
         dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
-        dc.constantBuffers[1] = h.objectCB;
+        /// @note b1 は InstanceBatcher が載せる。
         dc.constantBuffers[8] = h.advancedGraphicsCB;
-        SubmitCounted(ctx, dc);
+        /// @note t7: 完成したシーン深度。静止物は速度を描かないので、Velocity RT の深度だけでは静止物の裏に
+        ///       隠れた動く物体を捨てられない。シェーダーがこれと比べて奥の画素を捨てる。
+        dc.textures[7] = sceneDepth;
+
+        /// @note b1 の 2 枠目は Velocity では prevWorld (Velocity.hlsl の上書き宣言)。束ねる側は
+        ///       2 本の行列を解釈せずそのまま運ぶので、意味付けはここと HLSL の対で閉じる。
+        PerObjectCB b1{};
+        b1.world             = objData.world;
+        b1.worldInvTranspose = objData.prevWorld;
+        batcher.Add(dc, b1);
     }
+    /// @note 繊維・スキンドへ進む前に吐き出す。b1 の意味 (2 枠目) が変わるので跨がせない。
+    batcher.Flush();
 
     /// @name スキンドメッシュ
     /// @note world が静止していても風だけで繊維が動く。土台の SameMatrix 判定とは独立して提出する。
@@ -193,6 +213,9 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
             /// @note CB_SKINNING
             dc.constantBuffers[7] = anim->skinningBuffer;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
+            /// @note t7: 完成したシーン深度。静止物は速度を描かないので、Velocity RT の深度だけでは静止物の裏に
+            ///       隠れた動く物体を捨てられない。シェーダーがこれと比べて奥の画素を捨てる。
+            dc.textures[7] = sceneDepth;
             SubmitCounted(ctx, dc);
         }
     }

@@ -6,6 +6,7 @@
 /// マスクの RGBA はエンジンが意味を決めない。申告した側 (スクリプト) と読む側
 /// (カスタムパスのシェーダー) の取り決めで、輪郭の色にも強さにもボカし量にもなる。
 #include "GeometryPasses.hpp"
+#include <Engine/Scene/Systems/RenderPasses/InstanceBatch.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -23,13 +24,15 @@ namespace fbzz::scene {
 
 namespace {
 
-/// このフレームでマスクへ実際に発行したドローコール数。申告・描画・後段のどこで切れても
+/// このフレームでマスクへ描くと決まったメッシュの数。申告・描画・後段のどこで切れても
 /// 症状が同じ「何も見えない」になるため、RenderDoc を開かずに切り分けられるよう数える。
+/// @note 実際に GPU へ出た回数とは一致しない (束ねると 1 回に畳まれる)。発行回数が要るときは
+///       Analysis パネルの Draw calls / Draws saved を見ること。
 int g_objectMaskDraws = 0;
 
 /// @note 遮蔽判定はこのパスで完結させる。別 RT へ描くのでシーン深度 (HDR の深度) を自由に
 ///       読める。visibleOnly が偽の申告はこの深度テストを素通しにし、壁越しシルエットを許す。
-void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
+void DrawObjectMask(GameObject& go, RenderPassContext& ctx, InstanceBatcher& batcher)
 {
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
@@ -38,7 +41,6 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
     PerObjectCB objData{};
     objData.world = go.transform.GetWorldMatrix();
     objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
-    resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
     if (h.objectMaskShader.IsValid()) {
         auto* mr = go.GetComponent<MeshRenderer>();
@@ -53,10 +55,10 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
             dc.shader = h.objectMaskShader;
             dc.pipelineState = h.selectionMaskPSO;
             dc.constantBuffers[0] = h.frameCB;
-            dc.constantBuffers[1] = h.objectCB;
+            /// @note b1 は InstanceBatcher が載せる。
             dc.constantBuffers[2] = h.objectMaskCB;
             dc.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
-            r.Submit(dc, resources);
+            batcher.Add(dc, objData);
             ++g_objectMaskDraws;
         }
     }
@@ -65,6 +67,13 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
 
     auto* smr = go.GetComponent<SkinnedMeshRenderer>();
     if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) return;
+
+    /// @note ここから先はスキンド。b1 を直に載せる経路なので、溜まっている束を先に出す。
+    /// @note 実際に描くと決まってから呼ぶこと。スキンドを持たない GameObject でも吐き出すと、
+    ///       木を降りるたびに束が切れて 1 つも束ねられなくなる。
+    batcher.Flush();
+    resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
+    batcher.InvalidateObjectConstants();
 
     /// @note Animator はモデルルート側、SkinnedMeshRenderer は submesh の子 GO に分かれる構成が
     ///       普通なので、通常描画と同じ親方向探索で解決する。自 GO だけを見ると bind pose へ
@@ -99,17 +108,18 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
     }
 }
 
-void DrawSubtreeMask(GameObject& go, bool includeChildren, RenderPassContext& ctx)
+void DrawSubtreeMask(GameObject& go, bool includeChildren, RenderPassContext& ctx,
+                     InstanceBatcher& batcher)
 {
     if (!go.activeInHierarchy()) return;
     if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) return;
 
-    DrawObjectMask(go, ctx);
+    DrawObjectMask(go, ctx, batcher);
     if (!includeChildren) return;
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            DrawSubtreeMask(*child, true, ctx);
+            DrawSubtreeMask(*child, true, ctx, batcher);
     }
 }
 
@@ -153,7 +163,16 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
         maskData.flags = { request.visibleOnly ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
         resources.Update(h.objectMaskCB, &maskData, sizeof(ObjectMaskCB));
 
-        DrawSubtreeMask(*root, request.includeChildren, ctx);
+        /// @note 束ねる範囲は申告 1 件ぶん。b2 (objectMaskCB) は申告ごとに書き換わるハンドル
+        ///       共有の CB なので、跨いで束ねると先に積んだシルエットまで後の色で描かれる。
+        ///       スコープを抜けるときにデストラクタが吐き出す。
+        /// @see Docs/design/gpu-instancing.md
+        InstanceBatcher batcher(ctx, h.objectMaskShader,
+                                ctx.settings.gpuInstancing
+                                    ? h.objectMaskInstancedShader
+                                    : renderer::ResourceHandle<renderer::ShaderTag>{},
+                                false);
+        DrawSubtreeMask(*root, request.includeChildren, ctx, batcher);
     }
 
     /// @note 内訳が変わったときだけ 1 行。毎フレーム出すとログが埋まって本当のエラーが見えなくなる

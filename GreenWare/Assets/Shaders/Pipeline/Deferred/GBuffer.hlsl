@@ -8,6 +8,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Math.hlsli"
 #include "Common/Space.hlsli"
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
@@ -15,23 +16,64 @@
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LodDither.hlsli"
 #include "Common/BindlessIndices.hlsli"
+#include "Common/ObjectInstance.hlsli"
 
 FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
 FBZZ_TEX2D(texNormal, TEX_NORMAL_SLOT);
 FBZZ_TEX2D(texMetallicRough, TEX_METALLIC_ROUGH_SLOT);
 SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 
-PSInput VSMain(VSInput v)
+// @brief 本体。入口だけが変種ごとに違い、変換そのものは 1 か所に置く。
+PSInput GBufferVS(VSInput v, float4x4 objectWorld, float4x4 objectWorldInvTranspose)
 {
     PSInput o;
-    float4 worldPos4 = mul(float4(v.position, 1.0f), world);
+    float4 worldPos4 = mul(float4(v.position, 1.0f), objectWorld);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(v.normal,  (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(v.tangent, (float3x3)world));
+    o.normal     = normalize(mul(v.normal,  (float3x3)objectWorldInvTranspose));
+    o.tangent    = normalize(mul(v.tangent, (float3x3)objectWorld));
     o.uv         = v.uv;
     return o;
 }
+
+#if defined(FBZZ_SKINNED)
+// @note b7 のパレットで頂点を変形してから本体へ渡す。式は SkinnedPBR.hlsl と揃えること
+//       (ここだけ違うと «Deferred のときだけキャラの法線が違う» という形で出る)。
+// @note コンピュートスキニングが効いているときはこの変種を使わない。変形済みの頂点が
+//       静的メッシュと同じレイアウトで来るので、素の GBuffer.hlsl でそのまま描ける。
+// @see Docs/design/pipeline-boundary.md §3
+float4x4 GBufferBlendSkinMatrix(SkinnedVSInput v)
+{
+    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
+         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
+         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
+         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
+}
+
+PSInput VSMain(SkinnedVSInput v)
+{
+    const float4x4 skin = GBufferBlendSkinMatrix(v);
+
+    VSInput deformed;
+    deformed.position = mul(float4(v.position, 1.0f), skin).xyz;
+    deformed.normal   = SafeNormalize(mul(v.normal,  (float3x3)skin), float3(0.0f, 1.0f, 0.0f));
+    deformed.tangent  = SafeNormalize(mul(v.tangent, (float3x3)skin), float3(1.0f, 0.0f, 0.0f));
+    deformed.uv       = v.uv;
+    return GBufferVS(deformed, world, worldInvTranspose);
+}
+#elif defined(FBZZ_INSTANCED)
+// @note 束ねた描画。world は b1 でなく VS の t0 から引く。@see Docs/design/gpu-instancing.md
+PSInput VSMain(VSInput v, uint instanceId : SV_InstanceID)
+{
+    return GBufferVS(v, gObjectInstances[instanceId].world,
+                        gObjectInstances[instanceId].worldInvTranspose);
+}
+#else
+PSInput VSMain(VSInput v)
+{
+    return GBufferVS(v, world, worldInvTranspose);
+}
+#endif
 
 GBufferOut PSMain(PSInput p)
 {
