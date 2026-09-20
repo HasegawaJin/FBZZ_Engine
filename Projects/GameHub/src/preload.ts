@@ -24,6 +24,9 @@ const api: GameHubApi = {
     ipcRenderer.on('hub:settings-updated', listener);
     return () => ipcRenderer.removeListener('hub:settings-updated', listener);
   },
+  checkForUpdate: () => ipcRenderer.invoke('update:check'),
+  dismissUpdate: (version: string) => ipcRenderer.invoke('update:dismiss', version),
+  openReleasePage: () => ipcRenderer.invoke('update:open-release'),
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),

@@ -10,22 +10,30 @@ declare const __FBZZ_ENGINE_VERSION__: string;
 export const ENGINE_VERSION: string = __FBZZ_ENGINE_VERSION__;
 
 /**
+ * "a.b.c" 形式の version を比べる。先頭の "v" と "-" 以降は無視する。
+ * @return 正なら left が新しい、0 なら同じ。どちらかが解釈できなければ null。
+ */
+export function compareVersions(left: string, right: string): number | null {
+  const parseVersion = (value: string) => value.trim().replace(/^v/i, '').split('-')[0]?.split('.').map(Number) ?? [];
+  const leftParts = parseVersion(left);
+  const rightParts = parseVersion(right);
+  if (leftParts.length === 0 || rightParts.length === 0) return null;
+  if ([...leftParts, ...rightParts].some(Number.isNaN)) return null;
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+/**
  * "a.b.c" 形式の version 比較。minimum が空なら制約なし。
  * どちらかが解釈できなければ false (互換を推測しない)。
  */
 export function isVersionAtLeast(current: string, minimum: string): boolean {
   if (!minimum.trim()) return true;
-  const parseVersion = (value: string) => value.trim().split('-')[0]?.split('.').map(Number) ?? [];
-  const currentParts = parseVersion(current);
-  const minimumParts = parseVersion(minimum);
-  if (currentParts.length === 0 || minimumParts.length === 0) return false;
-  if ([...currentParts, ...minimumParts].some(Number.isNaN)) return false;
-  for (let index = 0; index < Math.max(currentParts.length, minimumParts.length); index += 1) {
-    const left = currentParts[index] ?? 0;
-    const right = minimumParts[index] ?? 0;
-    if (left !== right) return left > right;
-  }
-  return true;
+  const difference = compareVersions(current, minimum);
+  return difference !== null && difference >= 0;
 }
 
 export type HubTheme = 'modern' | 'dark' | 'light' | 'system';
@@ -37,6 +45,16 @@ export interface HubSettings {
   sdkId: string;
   sdkConfiguration: SdkBuildConfiguration;
   theme: HubTheme;
+  /** 起動時に GitHub Releases で新しい版を確認するか (Docs/design/gamehub-update-notice.md)。 */
+  checkForUpdates: boolean;
+}
+
+/** 帯に出す «新しい版があります»。main が出すべきと判断したものだけが renderer に届く。 */
+export interface UpdateNotice {
+  currentVersion: string;
+  latestVersion: string;
+  /** リリースノートの冒頭 (プレーンテキスト)。 */
+  notes: string;
 }
 
 export interface ProjectEntry {
@@ -90,8 +108,8 @@ export interface ProjectIdentifiers {
 
 /**
  * 表示名から、フォルダー名・識別子・C++ 名前空間を導出する。
- * WHY: renderer は作成前に生成先パスを提示し、main は同じ規則でフォルダーを作る。
- *      規則が二重定義になるとプレビューと実際の作成結果がずれるため共有する。
+ * @note renderer は作成前に生成先パスを提示し、main は同じ規則でフォルダーを作る。
+ *       規則が二重定義になるとプレビューと実際の作成結果がずれるため共有する。
  */
 export function deriveProjectIdentifiers(displayName: string): ProjectIdentifiers {
   const asciiParts = displayName.match(/[A-Za-z0-9]+/g) ?? [];
@@ -129,6 +147,11 @@ export interface GameHubApi {
   revealProject(projectPath: string): Promise<OperationResult>;
   saveSettings(settings: HubSettings): Promise<OperationResult<BootstrapData>>;
   onSettingsUpdated(callback: (settings: HubSettings) => void): () => void;
+  /** 知らせるべき新しい版が無ければ value は null。 */
+  checkForUpdate(): Promise<OperationResult<UpdateNotice | null>>;
+  dismissUpdate(version: string): Promise<OperationResult>;
+  /** main が保存したリリースページを開く。URL は renderer から渡さない。 */
+  openReleasePage(): Promise<OperationResult>;
   minimizeWindow(): void;
   maximizeWindow(): void;
   closeWindow(): void;
