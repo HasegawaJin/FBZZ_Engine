@@ -21,6 +21,11 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
         return;
     }
 
+    /// @note 入出力がこのパスに閉じているので、非同期コンピュートキューへ出せる。
+    /// @note 使えなければ false が返り、そのまま描画キューで記録される (絵は変わらない)。
+    /// @see Docs/design/async-compute.md
+    const bool async = ctx.settings.asyncCompute && r.BeginAsyncCompute(resources);
+
     /// @note DeferredLighting が読むのは AO テクスチャ 1 枚。責務を PBR 合成に集中させ、
     ///       Compute の UAV/SRV 競合もこのパス内に閉じるため。
     PostProcCB postData{};
@@ -46,12 +51,17 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
     renderer::ComputeCall blurDC;
     blurDC.shader = h.ssaoBlurShader;
     blurDC.constantBuffers[5] = h.postprocCB;
+    /// @note b0 + t7: 奥行きの差で重みを落とし、輪郭の向こうへ AO がにじまないようにする。
+    blurDC.constantBuffers[0] = h.frameCB;
+    blurDC.srvInputs[7] = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
     blurDC.srvInputs[9] = h.ssaoRaw;
     blurDC.uavOutputs[0] = ctx.Res().Texture("SSAO");
     blurDC.dispatchX = (ctx.width / 2 + 7) / 8;
     blurDC.dispatchY = (ctx.height / 2 + 7) / 8;
     blurDC.dispatchZ = 1;
     r.Dispatch(blurDC, resources);
+
+    if (async) r.EndAsyncCompute();
 }
 
 
