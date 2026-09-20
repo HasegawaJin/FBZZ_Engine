@@ -95,7 +95,7 @@ std::string_view SkyPass::Name() const { return "Sky"; }
 
 void SkyPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    /// @note 深度 == 1.0 の画素だけを埋めるので、既に描かれた不透明を読み書きする。
+    /// @note 深度が最遠 (Reversed-Z で 0) の画素だけを埋めるので、既に描かれた不透明を読み書きする。
     builder.ReadWrite("HDR");
 }
 

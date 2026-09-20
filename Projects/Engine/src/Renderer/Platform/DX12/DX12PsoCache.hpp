@@ -26,9 +26,10 @@ public:
     void ClearPipelines();
     ID3D12RootSignature* GetRootSignature() const { return m_rootSignature.Get(); }
     ID3D12RootSignature* GetComputeRootSignature() const { return m_computeRootSignature.Get(); }
+    /// @param reversedZ 束縛中の RT の深度が Reversed-Z か。深度比較の向き (GREATER / LESS) を決める。
     ID3D12PipelineState* GetOrCreate(const DX12Shader& shader, const PipelineStateDesc& state,
                                     PrimitiveTopology topology, DXGI_FORMAT renderTargetFormat,
-                                    uint32_t renderTargetCount);
+                                    uint32_t renderTargetCount, bool reversedZ);
     ID3D12PipelineState* GetOrCreateCompute(const DX12Shader& shader);
 
 private:
@@ -40,6 +41,9 @@ private:
         PrimitiveTopology topology{};
         DXGI_FORMAT renderTargetFormat{};
         uint32_t renderTargetCount = 0;
+        bool reversedZ = false;
+        int32_t depthBias = 0;
+        float depthBiasSlope = 0.0f;
         bool operator==(const Key&) const = default;
     };
     struct KeyHash {

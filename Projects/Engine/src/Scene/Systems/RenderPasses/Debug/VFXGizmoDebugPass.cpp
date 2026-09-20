@@ -76,7 +76,7 @@ bool VFXGizmoDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void VFXGizmoDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     DrawEmitterShapes(ctx);
     renderer::DebugDraw::Flush();
 }

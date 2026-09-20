@@ -171,7 +171,7 @@ bool FlowFieldDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void FlowFieldDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : ctx.scene.GetEntities<FlowField>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         const FlowField* component = ctx.scene.GetComponent<FlowField>(id);

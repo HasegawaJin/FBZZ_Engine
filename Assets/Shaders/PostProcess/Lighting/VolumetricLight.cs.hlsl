@@ -85,12 +85,12 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     //     深度バッファと出力 UAV は同じ HDR 解像度なので、Load で画素中心の値を使う。
     float ndcDepth = texDepth.Load(int3(id.xy, 0)).r;
 
-    // スカイボックス (depth=1) はレイマーチ距離を最大距離で制限
+    /// @note スカイボックス (Reversed-Z で深度 0) はレイマーチ距離を最大距離で制限する。
     float3 worldPos;
-    if (ndcDepth >= 1.0f)
+    if (IsFarDepth(ndcDepth))
     {
-        // 最大距離方向のワールド座標を算出
-        float4 ndcFar = float4(uv.x * 2.0f - 1.0f, (1.0f - uv.y) * 2.0f - 1.0f, 1.0f, 1.0f);
+        /// @note far 面 (Reversed-Z で NDC z = 0) の点から視線方向を取る。
+        float4 ndcFar = float4(uv.x * 2.0f - 1.0f, (1.0f - uv.y) * 2.0f - 1.0f, 0.0f, 1.0f);
         float4 wFar   = mul(ndcFar, invViewProjection);
         float3 dirW   = normalize(wFar.xyz / wFar.w - cameraPos);
         worldPos      = cameraPos + dirW * volMaxDist;

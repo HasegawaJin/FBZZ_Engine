@@ -64,7 +64,7 @@ bool WaterFlowDebugPass::IsEnabled(const RenderPassContext& ctx) const
 void WaterFlowDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     const float time = Time::time;
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : ctx.scene.GetEntities<WaterComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         const WaterComponent* water = ctx.scene.GetComponent<WaterComponent>(id);

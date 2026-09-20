@@ -121,7 +121,7 @@ void DebugCollidersPass::Execute(PassResources&, RenderPassContext& ctx)
     view.detailRadius   = DETAIL_RADIUS;
     view.enabled        = true;
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
 
     DrawCollidersOfType<AabbColliderComponent>(ctx, view);
     DrawCollidersOfType<BoxColliderComponent>(ctx, view);

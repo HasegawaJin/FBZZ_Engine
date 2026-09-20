@@ -137,8 +137,8 @@ bool DecalResolve(float2 screenUv, out DecalSurface surface)
     surface.worldPos       = worldPos;
     surface.receiverNormal = receiverNormal;
 
-    // 空 / 背景
-    if (ndcDepth >= 1.0f)
+    /// @note 最遠 (Reversed-Z で 0) は空・背景。
+    if (IsFarDepth(ndcDepth))
         return false;
 
     if (decalFlags & DECAL_FLAG_RECEIVER_FILTER)

@@ -86,7 +86,7 @@ void IKDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kTargetColor   = { 1.00f, 0.35f, 0.35f, 1.0f };
     constexpr math::Vector4 kPoleColor     = { 1.00f, 0.80f, 0.30f, 1.0f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     std::vector<math::Vector3> joints;
     for (EntityID id : ctx.scene.GetEntities<IKSolverComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
@@ -140,7 +140,7 @@ void SpringBoneDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kBoneColor     = { 0.95f, 0.55f, 1.00f, 1.0f };
     constexpr math::Vector4 kColliderColor = { 0.40f, 1.00f, 0.60f, 1.0f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : ctx.scene.GetEntities<SpringBoneComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* spring = ctx.scene.GetComponent<SpringBoneComponent>(id);
@@ -198,7 +198,7 @@ void AttachmentDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kConstraintColor = { 1.00f, 0.65f, 0.25f, 1.0f };
     constexpr math::Vector4 kMissingColor    = { 1.00f, 0.25f, 0.20f, 1.0f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
 
     for (EntityID id : ctx.scene.GetEntities<SocketAttachmentComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);

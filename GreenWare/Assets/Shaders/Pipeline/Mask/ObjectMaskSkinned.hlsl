@@ -44,7 +44,8 @@ float4 PSMain(MaskPSInput input) : SV_TARGET
 {
     if (objectMaskFlags.x > 0.5f) {
         const float sceneDepth = texSceneDepth.Load(int3((int2)input.position.xy, 0));
-        if (input.position.z > sceneDepth + kObjectMaskDepthBias) discard;
+        /// @note カメラ深度は Reversed-Z (手前ほど大きい)。シーンより奥なら捨てる。
+        if (input.position.z < sceneDepth - kObjectMaskDepthBias) discard;
     }
     return objectMaskPayload;
 }

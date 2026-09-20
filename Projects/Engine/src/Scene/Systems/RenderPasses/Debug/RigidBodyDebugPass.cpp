@@ -28,7 +28,7 @@ void RigidBodyDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kCenterColor   = { 1.00f, 1.00f, 1.00f, 1.0f };
     constexpr math::Vector4 kSleepColor    = { 0.50f, 0.50f, 0.55f, 1.0f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
     for (EntityID id : ctx.scene.GetEntities<RigidBodyComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* rb = ctx.scene.GetComponent<RigidBodyComponent>(id);

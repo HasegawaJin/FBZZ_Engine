@@ -94,7 +94,7 @@ bool AnimatorDebugPass::IsEnabled(const RenderPassContext& ctx) const
 
 void AnimatorDebugPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
 
     /// @note 入口は SkinnedMeshRenderer。コントローラ未割り当てのリグもセットアップ中に見たい。
     std::vector<math::Matrix4> globals;
