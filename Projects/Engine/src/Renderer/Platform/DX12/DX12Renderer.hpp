@@ -31,13 +31,15 @@ public:
     void BeginFrame() override;
     void EndFrame() override;
     void Clear(const math::Vector4& color) override;
-    void ClearDepth(float depth = 1.0f) override;
+    void ClearDepth() override;
     void Submit(const DrawCall& call, ResourceManager& resources) override;
     bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
                             ResourceManager& resources) override;
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
     void BeginComputeBatch() override;
     void EndComputeBatch() override;
+    bool BeginAsyncCompute(ResourceManager& resources) override;
+    void EndAsyncCompute() override;
     void Resize(uint32_t width, uint32_t height) override;
     void SetVSync(bool enabled) override;
     [[nodiscard]] bool GetVSync() const override;
@@ -79,6 +81,9 @@ private:
     std::unique_ptr<ITexture> CreateNativeTexture(const std::string&) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(const TextureMipData*, uint32_t) override;
+    std::unique_ptr<ITexture> CreateNativeTextureFromDataMipsAsync(const TextureMipData*, uint32_t,
+                                                                   uint64_t& outUploadToken) override;
+    bool IsUploadComplete(uint64_t uploadToken) const override;
     std::unique_ptr<ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(IRenderTarget&, uint32_t, RenderTargetTextureKind) override;
     std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc&) override;
@@ -102,6 +107,16 @@ private:
     /// 独立 Dispatch 群が書いた UAV を保持し、パス末尾の 1 回の ResourceBarrier へ集約する。
     std::vector<ID3D12Resource*> m_computeBatchWrittenResources;
     bool m_computeBatchActive = false;
+    /// 非同期コンピュート区間の記録中か。true の間、Dispatch はコンピュートリストへ記録する。
+    /// @see Docs/design/async-compute.md
+    bool m_asyncComputeActive = false;
+    /// @brief いま記録すべきコマンドリスト。非同期区間ではコンピュートリストを返す。
+    /// @note Submit / SetRenderTarget は常に描画リストを使う。区間の中で描画は呼ばない契約。
+    [[nodiscard]] ID3D12GraphicsCommandList* RecordingList() const;
+    /// @brief 列を割った後の描画リストへ、描画先・ビューポート・その状態を張り直す。
+    /// @note Reset で束縛が全部落ちるうえ、区間へ入る前に束縛中の RT も COMMON へ落としてある。
+    ///       呼び出し側が SetRenderTarget を呼び直すとは限らないので、ここで揃える。
+    void RestoreGraphicsTargetState(ResourceManager& resources);
     /// @brief 束縛中の RT をハンドルから引き直す。
     /// @return バックバッファ束縛中、または束縛した RT が解放済みなら nullptr。
     /// @note 生ポインタを持たないのは、RT が描画の途中でも解放されるため

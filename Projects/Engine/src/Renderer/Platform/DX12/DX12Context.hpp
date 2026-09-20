@@ -56,6 +56,49 @@ public:
     bool UploadTexture2DMips(std::span<const TextureMip> mips, Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
     bool UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
                          Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
+    /// @brief UploadTexture2DMips の待たない版。転送を投入して戻る。
+    /// @param outFenceValue 転送完了で通過するフェンス値。0 なら投入時に完了済み。
+    /// @note upload バッファとアロケーターはフェンス通過まで内部で保持し、CollectDeferredReleases で返す。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
+    bool UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
+                                  Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
+                                  uint64_t& outFenceValue);
+    /// @brief フェンス値を GPU が通過したか。0 は常に true。CPU は待たない。
+    /// @note kCopyQueueTokenBit の立った値はコピーキューのフェンスとして見る。
+    [[nodiscard]] bool IsFenceComplete(uint64_t fenceValue) const;
+    /// UploadTexture2DMipsAsync が返す値のうち、コピーキューで転送したことを表す印。
+    static constexpr uint64_t kCopyQueueTokenBit = 1ull << 63;
+    /// @brief 非同期転送に専用コピーキューを使うか。無効ならこれまでどおり描画キューで転送する。
+    void SetUseCopyQueue(bool enabled) { m_useCopyQueue = enabled; }
+    [[nodiscard]] bool UsesCopyQueue() const { return m_copyQueue && m_useCopyQueue; }
+
+    /// @name 非同期コンピュート
+    /// @see Docs/design/async-compute.md
+    /// @{
+    /// @brief コンピュートキューが使えるか。作れない機械や無効化した構成では false。
+    [[nodiscard]] bool SupportsAsyncCompute() const { return m_computeQueue && m_useAsyncCompute; }
+    void SetUseAsyncCompute(bool enabled) { m_useAsyncCompute = enabled; }
+
+    /// @brief 記録中の描画リストをここで閉じて投入し、同じアロケーターで開き直す。
+    /// @return 投入した仕事が終わると通過する描画フェンスの値。割れなければ 0。
+    /// @pre フレームが開いていること。
+    /// @warning Reset でパイプライン状態が全部落ちる。呼び出し側は描画先・ビューポート・
+    ///          ルート引数の記憶を捨て直すこと (DX12Renderer::InvalidateRootCbvCache)。
+    /// @note アロケーターはフレーム末まで Reset しない。投入済みリストが参照する記録メモリを
+    ///       生かしたまま、同じアロケーターへ追記していく。
+    uint64_t SplitGraphicsList();
+
+    /// @brief コンピュートリストを開く。waitGraphicsFenceValue まで描画キューを待ってから走る。
+    /// @return 記録先。使えないときは nullptr (呼び出し側は描画キューのまま続けてよい)。
+    ID3D12GraphicsCommandList* BeginComputeList(uint64_t waitGraphicsFenceValue);
+
+    /// @brief コンピュートリストを閉じて投入し、描画キューへ «通過するまで待て» を積む。
+    /// @note 描画キューへの Wait はこの後に投入される描画にだけ効く。区間を抜けた後の描画が
+    ///       結果を読むので、これで順序は足りる。
+    void EndComputeList();
+    [[nodiscard]] bool IsComputeListOpen() const { return m_computeListOpen; }
+    [[nodiscard]] ID3D12GraphicsCommandList* GetComputeList() const { return m_computeList.Get(); }
+    /// @}
     bool CreateDefaultBuffer(const void* data, size_t sizeBytes,
                              Microsoft::WRL::ComPtr<ID3D12Resource>& buffer);
     bool StageBufferCopy(ID3D12Resource* destination, const void* data, size_t sizeBytes);
@@ -163,6 +206,30 @@ private:
         Microsoft::WRL::ComPtr<ID3D12Resource> resource;
         uint64_t fenceValue = 0;
     };
+    /// 投入済みで GPU がまだ読んでいるかもしれないテクスチャ転送 1 件。
+    struct PendingUpload {
+        Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
+        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
+        Microsoft::WRL::ComPtr<ID3D12Resource> upload;
+        /// 転送先。コピーキューが書き終えるまで実体を消させない。
+        Microsoft::WRL::ComPtr<ID3D12Resource> destination;
+        uint64_t fenceValue = 0;
+        /// fenceValue がコピーキューのフェンスの値か。
+        bool onCopyQueue = false;
+    };
+    /// コピーキューで書き終えた転送先に、描画キューで記録する COMMON → PIXEL_SHADER_RESOURCE の遷移。
+    struct PostCopyBarrier {
+        Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+        uint64_t copyFenceValue = 0;
+    };
+    /// @brief 転送を記録してキューへ投入する。待機もフェンスの Signal もしない。
+    /// @param onCopyQueue true ならコピーキューへ (遷移は記録しない)。コピーキューが無ければ失敗する。
+    bool SubmitTexture2DUpload(std::span<const TextureMip> mips,
+                               Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
+                               PendingUpload& outUpload, bool onCopyQueue);
+    void FlushCopyQueue();
+    /// @brief フレーム用コマンドリストの頭で、コピーを終えた転送先を PIXEL_SHADER_RESOURCE へ遷移させる。
+    void RecordPostCopyBarriers();
 
     Microsoft::WRL::ComPtr<IDXGIFactory6> m_factory;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
@@ -194,6 +261,26 @@ private:
     std::vector<PendingBindlessFree> m_bindlessPendingFrees;
     std::array<std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>, FRAME_COUNT> m_transientUploads;
     std::vector<DeferredResource> m_deferredResources;
+    std::vector<PendingUpload> m_pendingUploads;
+    /// 非同期テクスチャ転送専用のコピーキュー。作れない機械では null で、描画キューへ倒す。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/user-mode-heap-synchronization «Asynchronous compute and graphics example» (キュー間の同期)
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_copyQueue;
+    Microsoft::WRL::ComPtr<ID3D12Fence> m_copyFence;
+    uint64_t m_nextCopyFenceValue = 1;
+    bool m_useCopyQueue = true;
+    /// 画面空間 Compute をジオメトリ描画と重ねるためのキュー。作れない機械では null。
+    /// @see Docs/design/async-compute.md
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_computeQueue;
+    Microsoft::WRL::ComPtr<ID3D12Fence> m_computeFence;
+    /// フレームごとのコンピュート用アロケーター。Reset は BeginFrame で 1 回だけ行う。
+    /// @note 区間ごとに Reset すると、同じフレームで先に投入した区間の記録メモリを踏む。
+    std::array<Microsoft::WRL::ComPtr<ID3D12CommandAllocator>, FRAME_COUNT> m_computeAllocators;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_computeList;
+    uint64_t m_nextComputeFenceValue = 1;
+    /// @note 機械が持っているか (作れたか + 強制停止していないか)。«使うか» は RenderSettings。
+    bool m_useAsyncCompute = true;
+    bool m_computeListOpen = false;
+    std::vector<PostCopyBarrier> m_pendingPostCopyBarriers;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_allowTearing = false;

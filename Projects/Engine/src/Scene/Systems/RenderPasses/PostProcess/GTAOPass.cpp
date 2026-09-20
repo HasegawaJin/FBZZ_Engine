@@ -26,6 +26,11 @@ void ExecuteGTAOPass(RenderPassContext& ctx)
         !ctx.Res().Target("GBuffer").IsValid())
         return;
 
+    /// @note 入出力がこのパスに閉じているので、非同期コンピュートキューへ出せる。
+    /// @note 使えなければ false が返り、そのまま描画キューで記録される (絵は変わらない)。
+    /// @see Docs/design/async-compute.md
+    const bool async = ctx.settings.asyncCompute && r.BeginAsyncCompute(resources);
+
     /// @note GTAO は b8 のパラメータに加え、b5 の texelSize/screenSize でホライゾンの UV
     ///       オフセットを、time でスライス位相のディザを決める。b5 を更新するパスはこれより
     ///       後 (SSAO/DeferredLighting/Composite) にしかなく、束縛だけして更新しないと前
@@ -57,11 +62,14 @@ void ExecuteGTAOPass(RenderPassContext& ctx)
     r.Dispatch(gtaoDC, resources);
 
     /// @name GTAO Blur パス
-    /// @note 4×4 ボックスフィルターでノイズを除去し、UAV_GTAO_BLUR (u7) に出力する。
+    /// @note 奥行きで重みを付けた 5×5 のぼかしでノイズを除去し、UAV_GTAO_BLUR (u7) に出力する。
     renderer::ComputeCall blurDC;
     blurDC.shader            = h.gtaoBlurShader;
     /// @note b5: texelSize
     blurDC.constantBuffers[5] = h.postprocCB;
+    /// @note b0 + t7: 奥行きの差で重みを落とし、輪郭の向こうへ AO がにじまないようにする。
+    blurDC.constantBuffers[0] = h.frameCB;
+    blurDC.srvInputs[7]      = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
     /// @note t23: TEX_GTAO (raw)
     blurDC.srvInputs[23]     = h.gtaoRaw;
     /// @note u7: UAV_GTAO_BLUR
@@ -70,6 +78,8 @@ void ExecuteGTAOPass(RenderPassContext& ctx)
     blurDC.dispatchY         = (ctx.height / 2 + 7) / 8;
     blurDC.dispatchZ         = 1;
     r.Dispatch(blurDC, resources);
+
+    if (async) r.EndAsyncCompute();
 }
 
 
