@@ -122,6 +122,11 @@ if(MSVC)
 
     # @note <Windows.h> の min / max は std::min / max を C2589 で壊す。include 順に依存させずビルド全体で定義する。
     add_compile_definitions(NOMINMAX)
+
+    # @note ThirdParty/DirectXTex はビルド済み .lib で PDB を同梱しないため、リンクのたびに obj の数だけ LNK4099 が出る。
+    # @note 自前のターゲットは /DEBUG:FULL で必ず PDB を出すので、この警告を落としても失う情報はない。
+    # @see https://learn.microsoft.com/cpp/build/reference/ignore-ignore-warnings "/IGNORE (Ignore Specific Warnings)"
+    add_link_options(/IGNORE:4099)
 endif()
 
 # @note FBZZ_GPU_VALIDATION は D3D 検証レイヤーのコードを積む構成、FBZZ_GPU_VALIDATION_DEFAULT は既定で有効にする構成。
