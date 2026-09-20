@@ -2,9 +2,7 @@
 /// @brief   流れの場が水面へ出る 3 つの道 — 形・輪の帯分け・浮いた物を押す流速。
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
-///
-/// 描画 (VS) と CPU (浮力・水中判定) は同じ式を二重に持っている。ここがずれると
-/// «見えている穴の縁で物だけが平らに浮く» という形で表に出る。
+/// @note 描画 (VS) と CPU (浮力・水中判定) は同じ式を二重に持っている。ここがずれると «見えている穴の縁で物だけが平らに浮く» という形で表に出る。
 /// @see Docs/design/water-waves.md 「流れの場が水面に出る 3 つの道」
 #include <TestKit/TestKit.hpp>
 
@@ -21,13 +19,12 @@
 namespace fbzz::tests {
 namespace {
 
-/// 波を持たない «鏡の水面»。流れの場と輪の寄与だけを見るため。
+/// @note 波を持たない «鏡の水面»。流れの場と輪の寄与だけを見るため。
 scene::WaterComponent FlatWater()
 {
     scene::WaterComponent water;
     water.enableGerstnerWaves = false;
-    /// @note 20 m 四方。128 テクセルの波紋テクスチャで 1 テクセルが 0.16 m になり、輪の太さが
-    ///       «テクセルで下支えされた値» ではなく素の設計値で出る大きさ。
+    /// @note 20 m 四方。128 テクセルの波紋テクスチャで 1 テクセルが 0.16 m になり、輪の太さが «テクセルで下支えされた値» ではなく素の設計値で出る大きさ。
     water.extentX = 20.0f;
     water.extentZ = 20.0f;
     return water;
@@ -41,7 +38,7 @@ scene::Transform IdentityTransform()
     return transform;
 }
 
-/// 中心を持つ場 1 本。半径の内側は falloffPower で減衰する。
+/// @note 中心を持つ場 1 本。半径の内側は falloffPower で減衰する。
 scene::ActiveFlowField CenteredField(scene::FlowFieldType type, float speed, float radius,
                                      float falloffPower = 2.0f)
 {
@@ -56,16 +53,16 @@ scene::ActiveFlowField CenteredField(scene::FlowFieldType type, float speed, flo
     return field;
 }
 
-/// 鉛直軸の渦 1 本。
+/// @note 鉛直軸の渦 1 本。
 scene::ActiveFlowField UprightVortex(float speed, float radius, float falloffPower = 2.0f)
 {
     return CenteredField(scene::FlowFieldType::Vortex, speed, radius, falloffPower);
 }
 
-/// Bernoulli の素の値 [m]。v^2 / 2g。
+/// @note Bernoulli の素の値 [m]。v^2 / 2g。
 float Bernoulli(float speed) { return speed * speed / 19.6f; }
 
-/// XZ 一様な速度場を手で組む。中身が定数なのでトリリニア補間はどこでも同じ値を返す。
+/// @note XZ 一様な速度場を手で組む。中身が定数なのでトリリニア補間はどこでも同じ値を返す。
 fluid::VectorFieldAsset UniformXZField(float speed)
 {
     fluid::VectorFieldAsset asset;
@@ -79,7 +76,7 @@ fluid::VectorFieldAsset UniformXZField(float speed)
     return asset;
 }
 
-/// 焼いた場 1 枚を «箱で貼った» 状態に解決したもの。回転なし。
+/// @note 焼いた場 1 枚を «箱で貼った» 状態に解決したもの。回転なし。
 scene::ActiveFlowField BakedField(const fluid::VectorFieldAsset& asset, math::Vector3 extents)
 {
     scene::ActiveFlowField field{};
@@ -95,16 +92,15 @@ scene::ActiveFlowField BakedField(const fluid::VectorFieldAsset& asset, math::Ve
     return field;
 }
 
-} // namespace
+}
 
-class WaterVortexTest : public ::testing::Test {};
+class WaterVortexTest : public testkit::Fixture {};
 
 /// @name 形
 
 TEST_F(WaterVortexTest, TheDepressionIsExactlyTheDepthAtTheCenterAndGoneAtTheRadius)
 {
-    /// @note 描画の VS も同じ式で頂点を下げる。中心で height、影響半径の外で 0 でなければ、
-    ///       見えている形の縁に «段» ができる。
+    /// @note 描画の VS も同じ式で頂点を下げる。中心で height、影響半径の外で 0 でなければ、 見えている形の縁に «段» ができる。
     scene::WaterComponent water = FlatWater();
     scene::WaterSurfaceFlow flow;
     flow.kind   = scene::FlowFieldType::Vortex;
@@ -121,8 +117,7 @@ TEST_F(WaterVortexTest, TheDepressionIsExactlyTheDepthAtTheCenterAndGoneAtTheRad
 
 TEST_F(WaterVortexTest, TheDepressionIsMonotoneFromTheCenterOutward)
 {
-    /// @note (1 - r/R)^p だと r = R で折れる。Gaussian にしたのは C¹ 連続にするためで、
-    ///       単調に浅くなることまでは形の最低条件。
+    /// @note (1 - r/R)^p だと r = R で折れる。Gaussian にしたのは C¹ 連続にするためで、 単調に浅くなることまでは形の最低条件。
     scene::WaterComponent water = FlatWater();
     water.surfaceFlows[0].radius = 6.0f;
     water.surfaceFlows[0].height = -2.0f;
@@ -157,10 +152,80 @@ TEST_F(WaterVortexTest, SinkDigsAndSourceLiftsWithTheSameBernoulli)
     EXPECT_NEAR(water.GetSurfaceHeightAt(0.0f, 5.0f, 0.0f), 0.0f, 1.0e-3f);
 }
 
+TEST_F(WaterVortexTest, MovingAVortexVerticallyWeakensAndRemovesItsDepression)
+{
+    scene::WaterComponent water = FlatWater();
+    scene::Transform transform = IdentityTransform();
+    transform.worldPosition.y = 12.0f;
+    scene::FlowFieldSettings settings;
+    settings.fieldType = scene::FlowFieldType::Vortex;
+    settings.direction = { 0.0f, 1.0f, 0.0f };
+    settings.radius = 10.0f;
+    settings.strength = 50.0f;
+    settings.falloffPower = 2.0f;
+
+    for (float sign : { -1.0f, 1.0f }) {
+        float previousDepth = scene::kMaxWaterSurfaceDisplacement + 1.0f;
+        for (float offset : { 0.0f, 2.0f, 5.0f, 8.0f }) {
+            const auto field = scene::ResolveFlowField(settings,
+                { 2.0f, transform.worldPosition.y + sign * offset, -3.0f }, {});
+            scene::ResolveWaterSurfaceFlows(water, transform, { field });
+            ASSERT_EQ(water.surfaceFlowCount, 1);
+            const float depth = -water.GetSurfaceHeightAt(2.0f, -3.0f, 0.0f);
+            EXPECT_GT(depth, 0.0f);
+            EXPECT_LT(depth, previousDepth);
+            previousDepth = depth;
+        }
+        for (float offset : { 10.0f, 11.0f }) {
+            const auto field = scene::ResolveFlowField(settings,
+                { 2.0f, transform.worldPosition.y + sign * offset, -3.0f }, {});
+            scene::ResolveWaterSurfaceFlows(water, transform, { field });
+            EXPECT_EQ(water.surfaceFlowCount, 0);
+            EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(2.0f, -3.0f, 0.0f), 0.0f);
+        }
+    }
+}
+
+TEST_F(WaterVortexTest, VerticalAttenuationUsesTheWaterPlaneAndPreservesHorizontalCenter)
+{
+    scene::WaterComponent water = FlatWater();
+    scene::Transform transform = IdentityTransform();
+    auto field = UprightVortex(3.0f, 10.0f);
+    field.position = { 2.0f, 5.0f, -3.0f };
+    scene::ResolveWaterSurfaceFlows(water, transform, { field });
+    ASSERT_EQ(water.surfaceFlowCount, 1);
+    const auto initial = water.surfaceFlows[0];
+    EXPECT_NEAR(initial.speed, 0.75f, 1.0e-5f);
+    EXPECT_NEAR(initial.height, -Bernoulli(3.0f) / 16.0f, 1.0e-5f);
+    EXPECT_NEAR(initial.radius, std::sqrt(75.0f), 1.0e-5f);
+    EXPECT_FLOAT_EQ(initial.center.x, 2.0f);
+    EXPECT_FLOAT_EQ(initial.center.y, -3.0f);
+
+    transform.worldPosition.y += 20.0f;
+    field.position.y += 20.0f;
+    scene::ResolveWaterSurfaceFlows(water, transform, { field });
+    ASSERT_EQ(water.surfaceFlowCount, 1);
+    EXPECT_FLOAT_EQ(water.surfaceFlows[0].height, initial.height);
+    EXPECT_FLOAT_EQ(water.surfaceFlows[0].radius, initial.radius);
+    EXPECT_FLOAT_EQ(water.surfaceFlows[0].speed, initial.speed);
+}
+
+TEST_F(WaterVortexTest, BoundedSurfaceFieldsOutsideTheWaterPlaneLeaveNoSlots)
+{
+    scene::WaterComponent water = FlatWater();
+    for (auto type : { scene::FlowFieldType::Uniform, scene::FlowFieldType::Curl,
+                       scene::FlowFieldType::Sink, scene::FlowFieldType::Source,
+                       scene::FlowFieldType::Vortex }) {
+        auto field = CenteredField(type, 3.0f, 4.0f);
+        field.position.y = 4.0f;
+        scene::ResolveWaterSurfaceFlows(water, IdentityTransform(), { field });
+        EXPECT_EQ(water.surfaceFlowCount, 0);
+    }
+}
+
 TEST_F(WaterVortexTest, UniformAndCurlNeverShapeTheSurface)
 {
-    /// @note 局所の風はうねりを育てない (吹送距離と時間が要る)。乱流には «高さ» が定義できない。
-    ///       どちらも流れと質感にだけ出るので、枠は取るが GetSurfaceHeightAt は動かさない。
+    /// @note 局所の風はうねりを育てない (吹送距離と時間が要る)。乱流には «高さ» が定義できない。 どちらも流れと質感にだけ出るので、枠は取るが GetSurfaceHeightAt は動かさない。
     scene::WaterComponent water = FlatWater();
     scene::ActiveFlowField wind = CenteredField(scene::FlowFieldType::Uniform, 6.0f, 8.0f);
     wind.direction = { 1.0f, 0.0f, 0.0f };
@@ -180,8 +245,7 @@ TEST_F(WaterVortexTest, UniformAndCurlNeverShapeTheSurface)
 
 TEST_F(WaterVortexTest, ABakedFieldDigsBernoulliInsideItsBoxAndNothingOutside)
 {
-    /// @note 焼いた場は XZ 成分だけを Bernoulli へ通す。箱の外は «場が無い» ので平ら。
-    ///       HLSL の WaterBakedDisplacement もこの式でなければ、絵と浮力が別の水面になる。
+    /// @note 焼いた場は XZ 成分だけを Bernoulli へ通す。箱の外は «場が無い» ので平ら。 HLSL の WaterBakedDisplacement もこの式でなければ、絵と浮力が別の水面になる。
     const fluid::VectorFieldAsset asset = UniformXZField(2.0f);
     scene::WaterComponent water = FlatWater();
     scene::ResolveWaterSurfaceFlows(water, IdentityTransform(),
@@ -246,8 +310,7 @@ TEST_F(WaterVortexTest, TheDepthIsCappedSoTheSurfaceCannotTurnInsideOut)
 
 TEST_F(WaterVortexTest, LyingVorticesAndUnboundedOnesDoNotShapeTheSurface)
 {
-    /// @note 横倒しの渦は水面を «掘る» のではなく撫でる。半径の無い要素は中心からの距離で
-    ///       減衰しないので、形の大きさが決まらない。どちらも流速としては効いたままにする。
+    /// @note 横倒しの渦は水面を «掘る» のではなく撫でる。半径の無い要素は中心からの距離で 減衰しないので、形の大きさが決まらない。どちらも流速としては効いたままにする。
     scene::WaterComponent water = FlatWater();
     scene::ActiveFlowField lying = UprightVortex(5.0f, 4.0f);
     lying.direction = { 1.0f, 0.0f, 0.0f };
@@ -308,8 +371,7 @@ TEST_F(WaterVortexTest, AFlowWithAShapeOutranksOneWithout)
 
 TEST_F(WaterVortexTest, TheDepressionDoesNotEnterTheInverseMapping)
 {
-    /// @note 形は水平変位を持たないので «変位前の位置» を解く対象ではない。入れると Gerstner の
-    ///       位相まで穴のぶんずれ、渦の周りだけ波の位相が飛ぶ。
+    /// @note 形は水平変位を持たないので «変位前の位置» を解く対象ではない。入れると Gerstner の 位相まで穴のぶんずれ、渦の周りだけ波の位相が飛ぶ。
     scene::WaterComponent water;
     water.waves[0] = { { 1.0f, 0.0f }, 0.5f, 8.0f, 0.5f };
     for (int i = 1; i < 4; ++i) water.waves[static_cast<size_t>(i)].amplitude = 0.0f;
@@ -343,8 +405,7 @@ TEST_F(WaterVortexTest, TheRippleProfileIsOddAroundItsRing)
 
 TEST_F(WaterVortexTest, ARingTheGridCannotCarveAddsNoHeight)
 {
-    /// @note 帯の原則: 頂点に乗らない輪は «法線だけ» の帯へ落ちる。高さに残ると、平らに見える
-    ///       水面の上で浮いている物だけが跳ねる。
+    /// @note 帯の原則: 頂点に乗らない輪は «法線だけ» の帯へ落ちる。高さに残ると、平らに見える 水面の上で浮いている物だけが跳ねる。
     scene::WaterComponent water = FlatWater();
     scene::WaterRipple ripple;
     ripple.center    = { 1.0f, 2.0f };
@@ -393,8 +454,7 @@ TEST_F(WaterVortexTest, TheEmittedRingIsMeasuredInMetresAndStartsAtZeroRadius)
 
 TEST_F(WaterVortexTest, TheFlowVelocityIsTheCurrentPlusTheVortexTangent)
 {
-    /// @note FluidVolume の flowVelocity がこれを返す。場所の関数になって初めて、浮いた物が
-    ///       flowCoupling を立てなくても渦の周りを回る。
+    /// @note FluidVolume の flowVelocity がこれを返す。場所の関数になって初めて、浮いた物が flowCoupling を立てなくても渦の周りを回る。
     scene::WaterComponent water = FlatWater();
     water.current = { 1.0f, 0.0f };
     /// @note falloffPower 0 で半径の内側は減衰なし。接線の向きだけを確かめる。
@@ -411,8 +471,7 @@ TEST_F(WaterVortexTest, TheFlowVelocityIsTheCurrentPlusTheVortexTangent)
 
 TEST_F(WaterVortexTest, TheFlowVelocityCarriesEveryFieldType)
 {
-    /// @note 形に出ない型 (Uniform / Curl / Source) も流速としては必ず効く。ここが抜けると
-    ///       «見えているさざ波は流れているのに浮いた物が止まっている» になる。
+    /// @note 形に出ない型 (Uniform / Curl / Source) も流速としては必ず効く。ここが抜けると «見えているさざ波は流れているのに浮いた物が止まっている» になる。
     scene::WaterComponent water = FlatWater();
     water.current = { 0.5f, 0.0f };
     scene::ActiveFlowField wind = CenteredField(scene::FlowFieldType::Uniform, 3.0f, 10.0f, 0.0f);
@@ -446,4 +505,4 @@ TEST_F(WaterVortexTest, TheFlowVelocityIsPurelyHorizontal)
     EXPECT_FLOAT_EQ(flow.y, 0.0f);
 }
 
-} // namespace fbzz::tests
+}

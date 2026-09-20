@@ -1,0 +1,17 @@
+{
+  "name": "WaterWireframe",
+  "scene": "Assets/Scenes/Test/WaterTest.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    { "do": "bus", "request": { "t": "editor.op.invoke", "id": "render.set_view_mode", "args": { "mode": "wireframe_lit" } } },
+    { "do": "frames", "count": 60 },
+    { "do": "capture", "view": "game", "name": "Water_WireframeLit" },
+    { "do": "bus", "request": { "t": "editor.op.invoke", "id": "render.set_view_mode", "args": { "mode": "wireframe_unlit" } } },
+    { "do": "frames", "count": 30 },
+    { "do": "capture", "view": "game", "name": "Water_WireframeUnlit" },
+    { "do": "bus", "request": { "t": "editor.op.invoke", "id": "render.set_view_mode", "args": { "mode": "lit" } } },
+    { "do": "frames", "count": 30 },
+    { "do": "capture", "view": "game", "name": "Water_RestoredLit" },
+    { "do": "assert", "query": { "t": "shader.diagnostics" }, "path": "errorCount", "op": "==", "value": 0 }
+  ]
+}
