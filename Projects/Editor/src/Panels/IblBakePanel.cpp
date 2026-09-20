@@ -10,6 +10,8 @@
 #include <Engine/Renderer/IIblBaker.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/IblDescriptorWriter.hpp>
+#include <filesystem>
 #include <imgui.h>
 #include <Windows.h>
 #include <shlobj.h>
@@ -21,7 +23,7 @@ namespace fbzz::editor {
 
 namespace {
 
-/// フォルダ選択ダイアログ (Win32 SHBrowseForFolder)。
+/// @note フォルダ選択ダイアログ (Win32 SHBrowseForFolder)。
 /// @note FileDialog は OpenFile/SaveFile のみ提供するため、フォルダ選択は Win32 API を直接呼ぶ。
 bool BrowseForFolder(std::string& outPath)
 {
@@ -43,7 +45,7 @@ bool BrowseForFolder(std::string& outPath)
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 void IblBakePanel::OnRenderContent(EditorContext& ctx)
 {
@@ -190,7 +192,7 @@ void IblBakePanel::DoBake(EditorContext& ctx)
 
     /// @name Step 3: ベイク実行
     /// @note DXIL の出力先。DX11 (DXBC を compiled/ へ出していた) を v1.0 で撤去したため
-    ///       分岐は無くなったが、出力先の決定をここへ残しておく。
+    /// @note 分岐は無くなったが、出力先の決定をここへ残しておく。
     /// @see  Docs/design/dx11-removal.md
     const std::string compiledDir = ctx.hlslSourceDir + "/compiled_dx12/";
 
@@ -213,8 +215,14 @@ void IblBakePanel::DoBake(EditorContext& ctx)
         return;
     }
 
+    if (!asset::WriteIblDescriptor(std::filesystem::path(m_outputDir.data()) / (std::string(m_baseName.data()) + ".ibl"), output)) {
+        m_status = Status::Error;
+        m_statusMsg = "IBL 記述子の保存に失敗";
+        return;
+    }
+
     /// @note 同名 DDS を上書きした場合も新しいベイク結果を即時反映する。LoadTexture のパスキャッシュを
-    ///       放置すると、ディスク更新後も古い IBL が表示され続ける。
+    /// @note 放置すると、ディスク更新後も古い IBL が表示され続ける。
     if (ctx.resources) {
         ctx.resources->ReloadTexture(output.envCubemapPath);
         ctx.resources->ReloadTexture(output.irradiancePath);
@@ -228,4 +236,4 @@ void IblBakePanel::DoBake(EditorContext& ctx)
                   m_outputDir.data(), m_baseName.data());
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

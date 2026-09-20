@@ -20,7 +20,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777267
+    aspectRatio = 1.0
     backgroundColor = [ 0.03, 0.04, 0.06, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -275,5 +275,201 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -1.3, 1.5, 0.3 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '381a9c42-3f24-43bb-bd97-afc2acf8d2d4'
+layer = 0
+name = 'Enviorment'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4d3f0422-5dee-4271-b1ba-76da01a0cf92'
+layer = 0
+name = 'DirectionalLight'
+parent = 'Enviorment'
+parentInstanceId = '381a9c42-3f24-43bb-bd97-afc2acf8d2d4'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = true
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 1.0
+    outerCone = 30.0
+    range = 10.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 0
+    useColorTemperature = true
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.098, 33.136452, 0.004797 ]
+    rotation = [ -0.066917, 0.489959, -0.843591, 0.209324 ]
+    scale = [ 0.999992, 1.0, 0.999995 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b76fd090-d9fc-48dc-b9c8-39df2e3b2805'
+layer = 0
+name = 'Sky System'
+parent = 'Enviorment'
+parentInstanceId = '381a9c42-3f24-43bb-bd97-afc2acf8d2d4'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.AtmosphericScatteringComponent]
+    enabled = true
+    fogColor = [ 0.3, 0.33, 0.38 ]
+    fogDensity = 0.01
+    fogEnabled = true
+    fogFar = 26.0
+    fogSource = 0
+
+    [gameobjects.EnvironmentLightComponent]
+    diffuseScale = 0.34
+    enabled = true
+    intensity = 0.64
+    irradiancePath = ''
+    maxMipLevel = 4
+    prefilterPath = ''
+    source = 1
+    specularScale = 0.4
+
+    [gameobjects.SkyRenderer]
+    atmosphereRadius = 6400.0
+    cloudShadowCoverage = 0.644444
+    cloudShadowSize = 10000.0
+    cloudShadowSpeed = 1.0
+    cloudShadowStrength = 1.0
+    dayAltitude = 12.0
+    dayColor = [ 1.0, 0.98, 0.95 ]
+    dayIntensity = 1.0
+    dayNightEnabled = true
+    enabled = true
+    mieG = 0.99
+    mieScattering = 0.02
+    nightAltitude = 8.0
+    nightColor = [ 0.1, 0.15, 0.3 ]
+    nightIntensity = 1.0
+    planetRadius = 6400.0
+    rayleighScattering = [ 0.0058, 0.014, 0.0331 ]
+    skyDayBrightness = 1.5
+    skyNightBrightness = 0.1
+    skyScatterIntensity = 22.0
+    skySunsetBrightness = 1.0
+    sunsetColor = [ 1.0, 0.5, 0.2 ]
+    sunsetIntensity = 2.0
+
+    [gameobjects.SunMoonRenderer]
+    enabled = true
+    moonBrightness = 0.6
+    moonColor = [ 0.85, 0.9, 1.0 ]
+    moonEnabled = true
+    moonSize = 1.0
+    sunDiskIntensity = 20.0
+    sunEnabled = true
+
+    [gameobjects.VolumetricCloudComponent]
+    albedo = [ 1.0, 0.991489, 0.974468 ]
+    ambientGradient = 0.0
+    ambientStrength = 4.0
+    ambientTint = [ 1.0, 1.0, 1.0 ]
+    anisotropy = 0.35
+    bottomHeight = 455.0
+    bottomSoftness = 0.307568
+    cloudSize = 1640.0
+    coverage = 0.289773
+    density = 1.95
+    detailSize = 505.0
+    detailStrength = 0.832827
+    enabled = true
+    evolutionSpeed = 2.0
+    extinction = 0.056
+    fadeDistance = 492.0
+    halfResolution = true
+    horizonFade = 0.25
+    lightAbsorption = 1.74
+    lightShaftStrength = 1.0
+    lightStepCount = 2
+    maxDistance = 5100.0
+    minDistance = 168.0
+    multiScatter = 0.390577
+    powderStrength = 0.7
+    silverLining = 0.42
+    stepCount = 48
+    sunIntensity = 8.25
+    sunTint = [ 1.0, 1.0, 1.0 ]
+    thickness = 611.0
+    topSoftness = 0.350851
+    weatherAmount = 1.0
+    weatherSize = 2725.0
+    windDirection = [ 1.0, 0.25 ]
+    windResponse = 1.0
+    windSpeed = 32.5
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e05b1125-62b2-4531-8ff5-4044b508cb50'
+layer = 0
+name = 'Post Process Volume'
+parent = 'Enviorment'
+parentInstanceId = '381a9c42-3f24-43bb-bd97-afc2acf8d2d4'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:3c7f21ab9d0e45f6b812ca5307e9d4b1|Assets/PostProcess/Stage_01.fzdata'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
