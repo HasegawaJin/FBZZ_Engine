@@ -20,7 +20,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777267
+    aspectRatio = 1.777379
     backgroundColor = [ 0.025, 0.03, 0.04, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -104,15 +104,24 @@ tag = 'Untagged'
     [gameobjects.FiberComponent]
     bladeDensity = 400.0
     bladeWidth = 0.015
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
     distanceLod = false
     enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
     lodFar = 40.0
     lodNear = 8.0
+    maskPath = ''
     materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
     minShellCount = 8
     mode = 0
     seed = 1
+    shadowShellCount = 6
     shellCount = 32
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
     terrainPatchCells = 2
 
     [gameobjects.MaterialComponent]
@@ -144,15 +153,24 @@ tag = 'Untagged'
     [gameobjects.FiberComponent]
     bladeDensity = 400.0
     bladeWidth = 0.015
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
     distanceLod = false
     enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
     lodFar = 40.0
     lodNear = 8.0
+    maskPath = ''
     materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
     minShellCount = 8
     mode = 1
     seed = 1
+    shadowShellCount = 6
     shellCount = 32
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
     terrainPatchCells = 2
 
     [gameobjects.MaterialComponent]
@@ -184,15 +202,24 @@ tag = 'Untagged'
     [gameobjects.FiberComponent]
     bladeDensity = 400.0
     bladeWidth = 0.015
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
     distanceLod = false
     enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
     lodFar = 40.0
     lodNear = 8.0
+    maskPath = ''
     materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
     minShellCount = 8
     mode = 2
     seed = 1
+    shadowShellCount = 6
     shellCount = 32
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
     terrainPatchCells = 2
 
     [gameobjects.MaterialComponent]
@@ -224,15 +251,24 @@ tag = 'Untagged'
     [gameobjects.FiberComponent]
     bladeDensity = 800.0
     bladeWidth = 0.018
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
     distanceLod = true
     enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
     lodFar = 18.0
     lodNear = 4.0
+    maskPath = ''
     materialPath = 'guid:739d861ca4e047919d17c941c10191c8|Assets/Materials/Fiber/Grass.mat'
     minShellCount = 8
     mode = 3
     seed = 1
+    shadowShellCount = 6
     shellCount = 32
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
     terrainPatchCells = 2
 
     [gameobjects.MaterialComponent]
@@ -264,15 +300,24 @@ tag = 'Untagged'
     [gameobjects.FiberComponent]
     bladeDensity = 800.0
     bladeWidth = 0.018
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
     distanceLod = true
     enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
     lodFar = 18.0
     lodNear = 4.0
+    maskPath = ''
     materialPath = 'guid:a137b034919d485d82e03611bfe61458|Assets/Materials/Fiber/TallGrass.mat'
     minShellCount = 8
     mode = 3
     seed = 1
+    shadowShellCount = 6
     shellCount = 32
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
     terrainPatchCells = 2
 
     [gameobjects.MaterialComponent]
@@ -304,15 +349,24 @@ tag = 'Untagged'
     [gameobjects.FiberComponent]
     bladeDensity = 800.0
     bladeWidth = 0.018
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
     distanceLod = true
     enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
     lodFar = 18.0
     lodNear = 4.0
+    maskPath = ''
     materialPath = 'guid:739d861ca4e047919d17c941c10191c8|Assets/Materials/Fiber/Grass.mat'
     minShellCount = 8
     mode = 3
     seed = 1
+    shadowShellCount = 6
     shellCount = 32
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
     terrainPatchCells = 2
 
     [gameobjects.TerrainComponent]

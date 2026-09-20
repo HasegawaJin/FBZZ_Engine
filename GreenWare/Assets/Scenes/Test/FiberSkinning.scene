@@ -1,120 +1,244 @@
-# @file    FiberSkinning.scene
-# @brief   繊維の投射影、GBuffer 遮蔽、時間履歴の比較。
-# @author  Hasegawa Jin
-# @date    2026-09-17
+[environment]
+windDirection = [ 1.0, 0.0, 0.3 ]
+windEnabled = true
+windPulseFrequency = 0.8
+windSpeed = 2.0
+windTurbulence = 1.4
+
 [scene]
 format_version = 2
 
-[environment]
-windEnabled = true
-windDirection = [1.0, 0.0, 0.3]
-windSpeed = 2.0
-windTurbulence = 1.4
-windPulseFrequency = 0.8
-
 [[gameobjects]]
-name = 'FiberCamera'
+active = true
 instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f001'
-active = true
 layer = 0
+name = 'FiberCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'MainCamera'
-[gameobjects.transform]
-position = [0.0, 3.0, -6.0]
-rotation = [0.173648, 0.0, 0.0, 0.984808]
-scale = [1.0, 1.0, 1.0]
-[gameobjects.CameraComponent]
-enabled = true
-isMain = true
-fovY = 50.0
-nearZ = 0.05
-farZ = 50.0
-backgroundColor = [0.025, 0.03, 0.04, 1.0]
-clearMode = 0
-cullingMask = 4294967295
-frustumCulling = true
-occlusionCulling = false
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777267
+    backgroundColor = [ 0.025, 0.03, 0.04, 1.0 ]
+    clearMode = 0
+    cullDistanceSpherical = true
+    cullingBoundsPadding = 0.0
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 50.0
+    fovY = 50.0
+    frustumCulling = true
+    isMain = true
+    maxDrawDistance = 0.0
+    nearZ = 0.05
+    occlusionCulling = false
+    smallObjectScreenHeight = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 3.0, -6.0 ]
+    rotation = [ 0.173648, 0.0, 0.0, 0.984808 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-name = 'FiberLight'
+active = true
 instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f002'
-active = true
 layer = 0
-[gameobjects.transform]
-position = [0.0, 4.0, -2.0]
-rotation = [0.382683, 0.0, 0.0, 0.92388]
-scale = [1.0, 1.0, 1.0]
-[gameobjects.LightComponent]
-enabled = true
-type = 0
-color = [1.0, 0.92, 0.82]
-intensity = 3.0
-castShadows = true
+name = 'FiberLight'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = true
+    color = [ 1.0, 0.92, 0.82 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 3.0
+    outerCone = 30.0
+    range = 10.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 0
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 4.0, -2.0 ]
+    rotation = [ 0.382683, 0.0, 0.0, 0.92388 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-name = 'FiberShadowReceiver'
+active = true
 instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f009'
-active = true
 layer = 0
-[gameobjects.transform]
-position = [0.0,-0.25,0.0]
-rotation = [0.0,0.0,0.0,1.0]
-scale = [7.0,1.0,5.0]
-[gameobjects.MeshRenderer]
-enabled = true
-castShadows = false
-mesh = 'primitive:plane'
-[gameobjects.MaterialComponent]
-enabled = true
-visible = true
-material = 'guid:d6663c7cdc8f4c6c8651b45e012d8841|Assets/Materials/Fiber/Receiver.mat'
+name = 'FiberShadowReceiver'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:d6663c7cdc8f4c6c8651b45e012d8841|Assets/Materials/Fiber/Receiver.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = false
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.25, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 7.0, 1.0, 5.0 ]
 
 [[gameobjects]]
-name = 'FiberTemporalVolume'
+active = true
 instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f00a'
-active = true
 layer = 0
-[gameobjects.PostProcessVolumeComponent]
-enabled = false
-profile = 'guid:07d9f43693b445088f67000bb9478920|Assets/PostProcess/FiberTemporal.fzdata'
-isGlobal = true
-priority = 100
-blendWeight = 1.0
+name = 'FiberTemporalVolume'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = false
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 100
+    profile = 'guid:07d9f43693b445088f67000bb9478920|Assets/PostProcess/FiberTemporal.fzdata'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-name = 'FiberSpotLight'
+active = true
 instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f00b'
-active = true
 layer = 0
-[gameobjects.transform]
-position = [0.0,4.0,-1.0]
-rotation = [0.70710678,0.0,0.0,0.70710678]
-scale = [1.0,1.0,1.0]
-[gameobjects.LightComponent]
-enabled = false
-type = 2
-color = [1.0,0.92,0.82]
-intensity = 30.0
-range = 10.0
-innerCone = 30.0
-outerCone = 55.0
-castShadows = true
+name = 'FiberSpotLight'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = true
+    color = [ 1.0, 0.92, 0.82 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = false
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 30.0
+    intensity = 30.0
+    outerCone = 55.0
+    range = 10.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 2
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 4.0, -1.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-name = 'FiberPointLight'
-instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f00c'
 active = true
+instanceId = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f00c'
 layer = 0
-[gameobjects.transform]
-position = [-1.0,3.0,-1.0]
-rotation = [0.0,0.0,0.0,1.0]
-scale = [1.0,1.0,1.0]
-[gameobjects.LightComponent]
-enabled = false
-type = 1
-color = [1.0,0.92,0.82]
-intensity = 30.0
-range = 10.0
-castShadows = true
+name = 'FiberPointLight'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = true
+    color = [ 1.0, 0.92, 0.82 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = false
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 30.0
+    outerCone = 30.0
+    range = 10.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 1
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.transform]
+    position = [ -1.0, 3.0, -1.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
 [[gameobjects]]
 active = true
 instanceId = '4c0fca36-3be7-4e7b-b273-6a32a310a878'
@@ -214,6 +338,29 @@ prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
+    distanceLod = true
+    enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
+    lodFar = 40.0
+    lodNear = 8.0
+    maskPath = ''
+    materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
+    minShellCount = 8
+    mode = 2
+    seed = 1
+    shadowShellCount = 6
+    shellCount = 24
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
+    terrainPatchCells = 2
+
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:41217ed30c0e4b9fbf2985327ac24d30|Assets/Materials/Player/Player_Fingers.mat'
@@ -232,12 +379,6 @@ tag = 'Untagged'
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
-
-    [gameobjects.FiberComponent]
-    enabled = true
-    mode = 2
-    shellCount = 24
-    materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
 [[gameobjects]]
 active = true
 instanceId = '64189cfc-518b-4db0-8eea-d173e33a60aa'
@@ -248,6 +389,29 @@ parentInstanceId = '4c0fca36-3be7-4e7b-b273-6a32a310a878'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
+
+    [gameobjects.FiberComponent]
+    bladeDensity = 400.0
+    bladeWidth = 0.015
+    clumpingScale = 1.0
+    colorTint = [ 1.0, 1.0, 1.0 ]
+    densityScale = 1.0
+    distanceLod = true
+    enabled = true
+    flowChannels = -1
+    lengthScale = 1.0
+    lodFar = 40.0
+    lodNear = 8.0
+    maskPath = ''
+    materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
+    minShellCount = 8
+    mode = 2
+    seed = 1
+    shadowShellCount = 6
+    shellCount = 24
+    terrainLayer = -1
+    terrainLayerThreshold = 0.25
+    terrainPatchCells = 2
 
     [gameobjects.MaterialComponent]
     enabled = true
@@ -267,12 +431,6 @@ tag = 'Untagged'
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
-
-    [gameobjects.FiberComponent]
-    enabled = true
-    mode = 2
-    shellCount = 24
-    materialPath = 'guid:0c678cd29e1841f1b98bd553e2d8c013|Assets/Materials/Fiber/Fur.mat'
 [[gameobjects]]
 active = true
 instanceId = '23036508-82e9-4329-a022-8902b49dec1f'

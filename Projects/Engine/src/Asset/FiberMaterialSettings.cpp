@@ -49,6 +49,11 @@ FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset)
     result.m_grass = ReadFiberFloat(asset, "grassShading", result.m_grass, 0.0f, 1.0f);
     result.m_worldMapping = ReadFiberFloat(asset, "worldMapping", result.m_worldMapping, 0.0f, 1.0f);
     result.m_finWidth = ReadFiberFloat(asset, "finSilhouetteWidth", result.m_finWidth, 0.01f, 1.0f);
+    result.m_specularShift = ReadFiberFloat(asset, "specularShift", result.m_specularShift, 0.0f, 0.5f);
+    result.m_secondarySpecular = ReadFiberFloat(asset, "secondarySpecular", result.m_secondarySpecular, 0.0f, 2.0f);
+    result.m_colorVariation = ReadFiberFloat(asset, "colorVariation", result.m_colorVariation, 0.0f, 1.0f);
+    result.m_clumping = ReadFiberFloat(asset, "clumping", result.m_clumping, 0.0f, 1.0f);
+    result.m_clumpTwist = ReadFiberFloat(asset, "clumpTwist", result.m_clumpTwist, -2.0f, 2.0f);
     return result;
 }
 } // namespace fbzz::asset
