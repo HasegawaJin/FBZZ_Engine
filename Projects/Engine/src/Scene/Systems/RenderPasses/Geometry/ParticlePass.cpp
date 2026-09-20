@@ -2238,6 +2238,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     renderer::ResourceHandle<renderer::TextureTag> particleSceneColor;
     const bool needsSceneColor = std::any_of(ctx.scene.GameObjects().begin(), ctx.scene.GameObjects().end(),
         [](GameObject& object) {
+            /// @note 描かれないエミッターのために画面をコピーしない。
+            if (!object.activeInHierarchy()) return false;
             const auto* emitter = object.GetComponent<ParticleEmitter>();
             return emitter != nullptr && emitter->settings.enabled && emitter->runtime.material.distortion;
         });

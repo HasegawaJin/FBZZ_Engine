@@ -311,7 +311,7 @@ inline void TpsCameraComponent::FindTarget()
         m_target = {};
         return;
     }
-    if (GameObject* target = scene.FindWithTag(targetTag))
+    if (GameObject* target = scene.FindWithTag(targetTag, true))
         m_target = EntityRef{ target->GetID() };
     else
         m_target = {};

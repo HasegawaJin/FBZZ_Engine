@@ -728,7 +728,7 @@ inline void BossAiComponent::RefreshPlayer()
 {
     /// @note 毎フレーム取り直す。プレイヤーが作り直される構成 (リスポーン) でも繋がり直る。
     if (m_player.Resolve(scene)) return;
-    if (GameObject* player = scene.FindWithTag(playerTag))
+    if (GameObject* player = scene.FindWithTag(playerTag, true))
         m_player = EntityRef{ player->GetID() };
 }
 
@@ -1243,7 +1243,7 @@ inline int BossAiComponent::WeakestLeg(float& ratio)
 
     /// @note 部位は実行時に組まれるので、リグへ «脚ごとの入れ物» を持たせず盤面から拾う。
     ///       1 本の脚に複数の部位が乗るときは、一番削れているものがその脚の代表になる。
-    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         const auto* part = scene.GetScript<BossPartComponent>(object);
         if (!part || part->IsBroken()) continue;
@@ -2109,7 +2109,7 @@ inline void BossAiComponent::BeginPulse()
 
 inline bool BossAiComponent::HasFallenPart() const
 {
-    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         const auto* part = scene.GetScript<BossPartDebrisComponent>(object);
         if (part && part->IsResting()) return true;
@@ -2119,7 +2119,7 @@ inline bool BossAiComponent::HasFallenPart() const
 
 inline void BossAiComponent::DrawFallenParts()
 {
-    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartDebrisComponent>(object);
         if (part && part->IsResting()) part->Draw(transform.worldPosition);
@@ -2136,7 +2136,7 @@ inline int BossAiComponent::FireFallenParts()
     const Vector3 target = player->transform.worldPosition;
 
     int fired = 0;
-    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>(true)) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartDebrisComponent>(object);
         if (part && part->IsDrawn()) {

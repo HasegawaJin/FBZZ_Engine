@@ -100,14 +100,14 @@ inline void ArenaBoundsComponent::OnFixedUpdate()
     int held = 0;
 
     if (holdEnemies) {
-        for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>()) {
+        for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>(true)) {
             if (!object || !object->activeInHierarchy()) continue;
             if (Hold(*object)) ++held;
         }
     }
 
     if (holdPlayer) {
-        if (GameObject* player = scene.FindWithTag(playerTag))
+        if (GameObject* player = scene.FindWithTag(playerTag, true))
             if (Hold(*player)) ++held;
     }
 

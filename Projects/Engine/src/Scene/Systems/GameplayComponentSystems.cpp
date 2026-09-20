@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #include <Engine/Scene/Systems/GameplayComponentSystems.hpp>
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -376,8 +377,8 @@ void SplineSystem::Update(SystemContext& ctx)
         auto* follower = ctx.scene.GetComponent<SplineFollowerComponent>(id);
         GameObject* splineObject = follower ? follower->spline.Resolve(ctx.scene) : nullptr;
         auto* spline = splineObject ? splineObject->GetComponent<SplineComponent>() : nullptr;
-        if (!go || !follower || !follower->enabled || !spline
-            || !spline->enabled || spline->points.size() < 2)
+        if (!go || !go->activeInHierarchy() || !follower || !follower->enabled || !spline
+            || !spline->enabled || !splineObject->activeInHierarchy() || spline->points.size() < 2)
             continue;
         if (ctx.simulating && follower->playing) {
             const float direction = follower->reverse ? -1.0f : 1.0f;
@@ -444,7 +445,7 @@ void CameraRigSystem::Update(SystemContext& ctx)
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* follow = ctx.scene.GetComponent<CameraFollowComponent>(id);
         GameObject* target = follow ? follow->target.Resolve(ctx.scene) : nullptr;
-        if (!go || !follow || !follow->enabled || !target)
+        if (!go || !go->activeInHierarchy() || !follow || !follow->enabled || !target)
             continue;
         const math::Vector3 targetPosition = target->transform.worldPosition;
         const math::Quaternion targetRotation = target->transform.worldRotation;
@@ -466,7 +467,7 @@ void CameraRigSystem::Update(SystemContext& ctx)
         auto* blend = ctx.scene.GetComponent<CameraBlendComponent>(id);
         GameObject* from = blend ? blend->fromCamera.Resolve(ctx.scene) : nullptr;
         GameObject* to = blend ? blend->toCamera.Resolve(ctx.scene) : nullptr;
-        if (!go || !blend || !blend->enabled || !blend->playing || !from || !to)
+        if (!go || !go->activeInHierarchy() || !blend || !blend->enabled || !blend->playing || !from || !to)
             continue;
         blend->elapsed += ctx.dt;
         float t = blend->curve == CameraBlendCurve::Cut ? 1.0f
@@ -497,7 +498,8 @@ void CameraRigSystem::Update(SystemContext& ctx)
         go->transform.rotation = (go->transform.rotation * shake->appliedRotationOffset.Inverse()).Normalized();
         shake->appliedPositionOffset = math::Vector3::ZERO;
         shake->appliedRotationOffset = math::Quaternion::Identity();
-        if (!shake->enabled || !shake->playing)
+        /// @note 前フレームのずらしは無効化されても上で必ず戻す (戻さないとカメラがずれたまま止まる)。進めるのは有効なときだけ。
+        if (!shake->enabled || !shake->playing || !go->activeInHierarchy())
             continue;
         shake->elapsed += ctx.dt;
         const float progress = Clamp01(shake->elapsed / std::max(shake->duration, 0.0001f));
@@ -642,12 +644,13 @@ void PresentationSystem::Update(SystemContext& ctx)
         math::Vector2 uvMin = math::Vector2::ZERO;
         math::Vector2 uvMax = math::Vector2::ONE;
         if (!sprite->spritePath.empty()) {
-            const auto textureHandle = resources.LoadTexture(sprite->spritePath);
-            const renderer::ITexture* texture = resources.Get(textureHandle);
+            /// @note 非同期台帳の利用権越しに引く。矩形は元画像の寸法で UV へ直す (品質段で縮小していても)。
+            uint32_t sourceWidth = 0;
+            uint32_t sourceHeight = 0;
+            (void)asset::StreamedTextureResolver::Engine().ResolveGpuWithSourceSize(
+                resources, sprite->spritePath, sourceWidth, sourceHeight);
             const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
-                sprite->spritePath,
-                texture ? static_cast<float>(texture->GetWidth())  : 0.0f,
-                texture ? static_cast<float>(texture->GetHeight()) : 0.0f);
+                sprite->spritePath, static_cast<float>(sourceWidth), static_cast<float>(sourceHeight));
             texturePath = resolved.texturePath;
 
             if (resolved.resolved) {

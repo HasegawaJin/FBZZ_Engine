@@ -134,20 +134,20 @@ inline GameObject* BossHealthBarComponent::Resolve(const Ref<GameObject>& refere
                                                    const char* name) const
 {
     if (GameObject* object = reference.Get()) return object;
-    return scene.Find(name);
+    return scene.Find(name, true);
 }
 
 inline void BossHealthBarComponent::OnStart()
 {
     m_warnedNoBoss = false;
     debugBoss.clear();
-    if (auto* object = scene.Find("HUD_BossSummary")) m_summary = EntityRef{ object->GetID() };
-    if (auto* object = scene.Find("HUD_BossPlate")) m_plate = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_BossSummary", true)) m_summary = EntityRef{ object->GetID() };
+    if (auto* object = scene.Find("HUD_BossPlate", true)) m_plate = EntityRef{ object->GetID() };
     for (int i = 0; i < 2; ++i) {
         const std::string suffix = std::to_string(i);
-        if (auto* object = scene.Find("HUD_BreakFill" + suffix)) m_breakFill[i] = EntityRef{ object->GetID() };
-        if (auto* object = scene.Find("HUD_BreakBack" + suffix)) m_breakBack[i] = EntityRef{ object->GetID() };
-        if (auto* object = scene.Find("HUD_BreakLabel" + suffix)) m_breakLabel[i] = EntityRef{ object->GetID() };
+        if (auto* object = scene.Find("HUD_BreakFill" + suffix, true)) m_breakFill[i] = EntityRef{ object->GetID() };
+        if (auto* object = scene.Find("HUD_BreakBack" + suffix, true)) m_breakBack[i] = EntityRef{ object->GetID() };
+        if (auto* object = scene.Find("HUD_BreakLabel" + suffix, true)) m_breakLabel[i] = EntityRef{ object->GetID() };
     }
 
     /// @note 参照の解決は Play 開始時に 1 度だけ。毎フレーム名前で探すと、見つからない構成で

@@ -127,7 +127,7 @@ inline GameObject* BossTelegraphComponent::EnsureDecal(int index)
     EntityRef& slot = m_decals[static_cast<std::size_t>(index)];
     if (GameObject* existing = slot.Resolve(scene)) return existing;
 
-    GameObject* object = scene.Find(DecalName(index));
+    GameObject* object = scene.Find(DecalName(index), true);
     if (!object) {
         /// @note ボスの子にしない。子だとボスの回転を «向き» が引き継ぎ、旋回だけで帯が振り回される。
         GameObject& created = scene.Create(DecalName(index));

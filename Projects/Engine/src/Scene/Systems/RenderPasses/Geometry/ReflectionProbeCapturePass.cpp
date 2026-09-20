@@ -127,7 +127,7 @@ void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
         draw.indexCount = mesh->indexCount;
         draw.vertexCount = mesh->vertexCount;
         draw.shader = gpuMaterial->shader;
-        draw.pipelineState = GetOrCreateMaterialPSO(resources, material->GetBlendMode(), material->IsDoubleSided());
+        draw.pipelineState = GetOrCreateMaterialPSO(resources, *material);
         draw.constantBuffers[0] = h.frameCB;
         draw.constantBuffers[1] = h.objectCB;
         draw.constantBuffers[2] = gpuMaterial->paramsBuffer;
@@ -164,6 +164,7 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
 
     SkyRenderer* sky = nullptr;
     for (auto& go : ctx.scene.GameObjects()) {
+        if (!go.activeInHierarchy()) continue;
         if (auto* candidate = go.GetComponent<SkyRenderer>(); candidate && candidate->enabled) { sky = candidate; break; }
     }
     if (!sky) return false;
@@ -213,7 +214,8 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
     float selectedDistanceSq = 0.0f;
     for (auto& go : ctx.scene.GameObjects()) {
         auto* probe = go.GetComponent<ReflectionProbeComponent>();
-        if (!probe || !probe->enabled || probe->captureMode == ReflectionProbeCaptureMode::Static) continue;
+        if (!probe || !probe->enabled || !go.activeInHierarchy()
+            || probe->captureMode == ReflectionProbeCaptureMode::Static) continue;
         const bool due = probe->refreshRequested || probe->lastCaptureTime < -1.0e20f
             || probe->updateInterval <= 0.0f || (Time::time - probe->lastCaptureTime) >= probe->updateInterval;
         if (due) (void)CaptureAndBake(ctx, go, *probe);

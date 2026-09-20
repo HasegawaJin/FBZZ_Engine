@@ -440,7 +440,7 @@ inline void VfxManagerComponent::OnUpdate()
     /// @note LightComponent は型で引ける: FindObjectsOfType<T> は Script 派生でない型を
     ///       ECS の GetEntities<T> へ流す (Script.hpp の分岐)。IBoss のような
     ///       «横断インターフェース» とは経路が違うので、こちらは素直に引ける。
-    const std::vector<GameObject*> lights = scene.FindObjectsOfType<LightComponent>();
+    const std::vector<GameObject*> lights = scene.FindObjectsOfType<LightComponent>(true);
     debugLightsTotal = static_cast<int>(lights.size());
 
     int lit = 0;
@@ -629,7 +629,7 @@ inline GameObject* VfxManagerComponent::BuildSlot(Pool& pool)
     const std::string name = "VFX_" + stem + suffix + "_" +
                              std::to_string(pool.slots.size());
 
-    GameObject* object = scene.Find(name);
+    GameObject* object = scene.Find(name, true);
     if (!object) {
         /// @note .vfx はプレファブなので «展開して置く» のが生成そのもの。
         ///       scene.Spawn は PrefabPool 経由なので、2 度目以降はファイル読み込みを通らない。

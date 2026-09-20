@@ -206,7 +206,7 @@ inline void BladeSteelComponent::Collect(HandSide hand)
     Blade& blade = m_hands[HandIndex(hand)];
     blade.slots.clear();
 
-    GameObject* sword = scene.Find(SwordObjectName(hand));
+    GameObject* sword = scene.Find(SwordObjectName(hand), true);
     if (!sword) return;
 
     auto* materials = sword->GetComponent<MaterialComponent>();

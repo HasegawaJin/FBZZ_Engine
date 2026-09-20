@@ -7,6 +7,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Scene/Systems/ColliderSync.hpp>
 #include <Math/MathUtils.hpp>
@@ -203,6 +204,57 @@ TEST_F(ScriptSceneQueryTest, CanvasSizeUsesViewportAndRenderModeWithoutACamera)
     ASSERT_TRUE(m_probe.ui.TryGetCanvasSize(size));
     EXPECT_NEAR(size.x, 200.0f, 1.0e-5f);
     EXPECT_NEAR(size.y, 100.0f, 1.0e-5f);
+}
+
+/// @note スクリプト向けの検索は Unity と同じく既定で有効な物だけを返し、includeInactive で無効な物も探せる。
+TEST_F(ScriptSceneQueryTest, FindSkipsInactiveHierarchyUnlessAsked)
+{
+    const auto group = Child(m_manager, "Group");
+    const auto hidden = Child(group, "Hidden");
+    Object(hidden).tag = "Target";
+    Object(hidden).AddComponent<scene::CameraComponent>();
+    Object(group).SetActive(false);
+
+    EXPECT_EQ(m_probe.scene.Find("Hidden"), nullptr);
+    EXPECT_EQ(m_probe.scene.FindWithTag("Target"), nullptr);
+    EXPECT_EQ(m_probe.scene.Find("Hidden", true), &Object(hidden));
+    EXPECT_EQ(m_probe.scene.FindWithTag("Target", true), &Object(hidden));
+
+    const auto activeCameras = m_probe.scene.FindObjectsOfType<scene::CameraComponent>();
+    const auto allCameras = m_probe.scene.FindObjectsOfType<scene::CameraComponent>(true);
+    EXPECT_EQ(activeCameras.size(), 1u);
+    EXPECT_EQ(allCameras.size(), 2u);
+
+    /// @note 参照解決用の Scene::Find は無効な物も返す (保存・プレハブ・エディターが使う)。
+    EXPECT_EQ(m_scene.Find("Hidden"), &Object(hidden));
+
+    Object(group).SetActive(true);
+    EXPECT_EQ(m_probe.scene.Find("Hidden"), &Object(hidden));
+}
+
+/// @note 無効なスクリプトには配らないが、購読は残るので有効に戻せばまた届く。
+TEST_F(ScriptSceneQueryTest, EventBusSkipsInactiveOwnersAndResumes)
+{
+    scene::ScriptEventBus::Clear();
+    int received = 0;
+    scene::ScriptEventBus::SubscribeRaw(&m_probe, "Test.Ping", [&](const void*) { ++received; });
+
+    scene::ScriptEventBus::PublishRaw("Test.Ping", nullptr);
+    EXPECT_EQ(received, 1);
+
+    Object(m_manager).SetActive(false);
+    scene::ScriptEventBus::PublishRaw("Test.Ping", nullptr);
+    EXPECT_EQ(received, 1);
+
+    Object(m_manager).SetActive(true);
+    m_probe.enabled = false;
+    scene::ScriptEventBus::PublishRaw("Test.Ping", nullptr);
+    EXPECT_EQ(received, 1);
+
+    m_probe.enabled = true;
+    scene::ScriptEventBus::PublishRaw("Test.Ping", nullptr);
+    EXPECT_EQ(received, 2);
+    scene::ScriptEventBus::Clear();
 }
 
 } // namespace fbzz::tests

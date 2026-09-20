@@ -72,7 +72,7 @@ void LODSystem::Update(SystemContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<CameraComponent>()) {
         const auto* candidate = ctx.scene.GetComponent<CameraComponent>(id);
         const auto* go = ctx.scene.GetGameObject(id);
-        if (candidate && candidate->enabled && candidate->isMain && go) {
+        if (candidate && candidate->enabled && candidate->isMain && go && go->activeInHierarchy()) {
             camera = candidate;
             cameraTransform = &go->transform;
             break;
@@ -89,7 +89,8 @@ void LODSystem::Update(SystemContext& ctx)
             for (auto& renderer : level.renderers)
                 SetRendererVisible(ctx.scene, renderer, false);
 
-        if (!group->enabled || !camera || !cameraTransform || group->levels.empty()) {
+        /// @note 親ごと無効化された LOD も «無効» と同じく全段を戻す。描画側は activeInHierarchy で子ごと落とすので、戻しておけば再有効化で元の見た目から始まる。
+        if (!group->enabled || !go->activeInHierarchy() || !camera || !cameraTransform || group->levels.empty()) {
             for (auto& level : group->levels)
                 for (auto& renderer : level.renderers)
                     SetRendererVisible(ctx.scene, renderer, true);

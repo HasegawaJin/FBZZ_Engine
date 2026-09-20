@@ -256,7 +256,7 @@ inline void PlayerHeadLookComponent::EnsureTarget()
 {
     /// @note スクリプト DLL リロードでこの Script は作り直され EntityRef は空に戻るが、
     ///       的の GameObject は Scene 側に残る。先に拾い直さないとリロードのたびに増える。
-    if (GameObject* existing = scene.Find(TargetName())) {
+    if (GameObject* existing = scene.Find(TargetName(), true)) {
         m_target = EntityRef{ existing->GetID() };
         return;
     }

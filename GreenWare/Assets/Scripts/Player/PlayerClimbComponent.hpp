@@ -657,7 +657,7 @@ inline void PlayerClimbComponent::EnsureGripTargets()
         "PlayerGrip_HandR", "PlayerGrip_HandL", "PlayerGrip_FootR", "PlayerGrip_FootL"
     };
     for (int limb = 0; limb < LimbCount; ++limb) {
-        GameObject* target = scene.Find(kName[limb]);
+        GameObject* target = scene.Find(kName[limb], true);
         if (!target) {
             /// @note scene.Create は GameObject 配列を再確保する。作って即しまうだけに留める。
             GameObject& created      = scene.Create(kName[limb]);

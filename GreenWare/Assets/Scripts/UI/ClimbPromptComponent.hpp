@@ -111,7 +111,7 @@ inline bool ClimbPromptComponent::UsingPad() const
 inline GameObject* ClimbPromptComponent::Icon()
 {
     if (GameObject* cached = m_icon.Resolve(scene)) return cached;
-    GameObject* found = iconName.empty() ? nullptr : scene.Find(iconName);
+    GameObject* found = iconName.empty() ? nullptr : scene.Find(iconName, true);
     if (found) m_icon = EntityRef{ found->GetID() };
     return found;
 }
@@ -119,7 +119,7 @@ inline GameObject* ClimbPromptComponent::Icon()
 inline GameObject* ClimbPromptComponent::Label()
 {
     if (GameObject* cached = m_label.Resolve(scene)) return cached;
-    GameObject* found = labelName.empty() ? nullptr : scene.Find(labelName);
+    GameObject* found = labelName.empty() ? nullptr : scene.Find(labelName, true);
     if (found) m_label = EntityRef{ found->GetID() };
     return found;
 }

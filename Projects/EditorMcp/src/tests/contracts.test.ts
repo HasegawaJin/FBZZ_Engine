@@ -1,10 +1,23 @@
-// FBZZ Engine
-// contracts.test.ts | EditorMcp
-// ローカル接続制約と Editor Command / Query の入力検証を確認する
+/// @file    contracts.test.ts
+/// @brief   ローカル接続制約と Editor Command / Query の入力検証を確認する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { IsEditorPipeEndpoint, LoadConfig } from '../config.js';
 import { EditorCommandSchema, EditorQuerySchema } from '../editorContracts.js';
+
+test('Material の行列・配列と uint32 の最大値を丸めず受け付ける', () => {
+    const base = { t: 'material.override', id: '11111111-1111-4111-8111-111111111111', parameter: 'values' };
+    for (const value of [Array(16).fill(1), [4294967295], Array(64).fill(0)]) {
+        const parsed = EditorCommandSchema.safeParse({ ...base, value });
+        assert.equal(parsed.success, true);
+        if (parsed.success && parsed.data.t === 'material.override') assert.deepEqual(parsed.data.value, value);
+    }
+    assert.equal(EditorCommandSchema.safeParse({ ...base, value: [] }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ ...base, value: [Infinity] }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ ...base, value: Array(16385).fill(0) }).success, false);
+});
 
 test('Command Bus は FBZZ 専用 Named Pipe だけを許可する', () => {
     assert.equal(IsEditorPipeEndpoint('\\\\.\\pipe\\FBZZEditorCommandBus'), true);
@@ -38,7 +51,7 @@ test('空の transform.set は拒否し、有効な transaction は受理する'
 });
 
 test('Operator ゲートウェイの契約を検証する', () => {
-    // 目録は絞り込み条件なしでも引ける (全操作の一覧が出発点になる)。
+    /// @note 目録は絞り込み条件なしでも引ける (全操作の一覧が出発点になる)。
     assert.equal(EditorQuerySchema.safeParse({ t: 'editor.op.list' }).success, true);
     assert.equal(EditorQuerySchema.safeParse({
         t: 'editor.op.list',
@@ -46,17 +59,17 @@ test('Operator ゲートウェイの契約を検証する', () => {
         category: 'Gizmo',
         includeUnavailable: false,
     }).success, true);
-    // strict なので綴り違いは受理しない。
+    /// @note strict なので綴り違いは受理しない。
     assert.equal(EditorQuerySchema.safeParse({ t: 'editor.op.list', query: 'gizmo' }).success, false);
 
-    // 引数なしの操作は id だけで呼べる。
+    /// @note 引数なしの操作は id だけで呼べる。
     assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: 'scene.save' }).success, true);
     assert.equal(EditorCommandSchema.safeParse({
         t: 'editor.op.invoke',
         id: 'node.set_tag',
         args: { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' },
     }).success, true);
-    // id は必須。args の中身は Editor 側の params 宣言で検証されるため、ここでは形だけを見る。
+    /// @note id は必須。args の中身は Editor 側の params 宣言で検証されるため、ここでは形だけを見る。
     assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke' }).success, false);
     assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: '' }).success, false);
 });
@@ -65,11 +78,11 @@ test('fluid.* の Query / Command 契約を検証する', () => {
     const path = 'Assets/VFX/Fluid/Smoke.fluid';
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.schema' }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.get', path }).success, true);
-    // .fluid 以外の拡張子は C++ まで届けない。
+    /// @note .fluid 以外の拡張子は C++ まで届けない。
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.get', path: 'Assets/VFX/Fluid/Smoke.mat' }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1 }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1, includeImage: false }).success, true);
-    // job 0 は FluidBakeService が「受け付けなかった」に使う値。
+    /// @note job 0 は FluidBakeService が「受け付けなかった」に使う値。
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 0 }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.jobStatus', job: 1.5 }).success, false);
 
@@ -79,7 +92,7 @@ test('fluid.* の Query / Command 契約を検証する', () => {
     assert.equal(EditorCommandSchema.safeParse({
         t: 'fluid.set', path, fields: { source: [{ shape: 'cone' }, { motion: { key: [{ time: 0, offset: [0, 0, 0] }] } }] },
     }).success, true);
-    // 部品の追加・削除・並べ替え。list は 3 種だけで、type と index は省略できる。
+    /// @note 部品の追加・削除・並べ替え。list は 3 種だけで、type と index は省略できる。
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.addOperator', path, list: 'source' }).success, true);
     assert.equal(EditorCommandSchema.safeParse({
         t: 'fluid.addOperator', path, list: 'collider', type: 'plane', fields: { direction: [1, 1, 0], friction: 0.5 },
@@ -99,7 +112,7 @@ test('fluid.* の Query / Command 契約を検証する', () => {
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.removeOperator', path, list: 'force' }).success, false);
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'source', from: 0, to: 3 }).success, true);
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.moveOperator', path, list: 'source', from: 0 }).success, false);
-    // 空の部分レシピは「何も変えない」要求なので受けない。
+    /// @note 空の部分レシピは「何も変えない」要求なので受けない。
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.set', path, fields: {} }).success, false);
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.preview', path, time: 2, size: 256 }).success, true);
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.preview', path, size: 4096 }).success, false);
@@ -111,7 +124,7 @@ test('fluid.* の Query / Command 契約を検証する', () => {
         t: 'fluid.createEffect', name: 'Campfire', dir: 'Assets/VFX/Fluid', preset: 'Fire',
         fields: { bake: { mode: '3d' } }, bake: false,
     }).success, true);
-    // name はファイル名 1 つ分。区切り文字で dir の外へ出られない。
+    /// @note name はファイル名 1 つ分。区切り文字で dir の外へ出られない。
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: '../Escape' }).success, false);
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: 'a/b' }).success, false);
 });
@@ -119,7 +132,7 @@ test('fluid.* の Query / Command 契約を検証する', () => {
 test('viewport.capture は既定上限を超える要求を拒否する', () => {
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540 }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'game' }).success, true);
-    // .vfx はプレファブになり、専用のプレビュー面が無くなった。
+    /// @note .vfx はプレファブになり、専用のプレビュー面が無くなった。
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'vfx' }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 3840, h: 2160 }).success, false);
 });
@@ -135,7 +148,7 @@ test('catalog・scene.find・node.duplicate の契約を検証する', () => {
     }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'scene.find' }).success, false);
     assert.equal(EditorCommandSchema.safeParse({ t: 'node.duplicate', id: nodeId }).success, true);
-    // GameObject プロパティ設定。
+    /// @note GameObject プロパティ設定。
     assert.equal(EditorCommandSchema.safeParse({ t: 'node.setActive', id: nodeId, active: false }).success, true);
     assert.equal(EditorCommandSchema.safeParse({ t: 'node.setActive', id: nodeId }).success, false);
     assert.equal(EditorCommandSchema.safeParse({ t: 'node.setTag', id: nodeId, tag: 'Enemy' }).success, true);
@@ -188,7 +201,7 @@ test('意味付き知覚・診断Queryと入力・マテリアル・アニメー
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.control', id: nodeId, action: 'seek', frame: 12,
     }).success, true);
-    // float/int は数値、bool/trigger は真偽、trigger は value 省略で発火を許可する。
+    /// @note float/int は数値、bool/trigger は真偽、trigger は value 省略で発火を許可する。
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.setParameter', id: nodeId, name: 'Speed', value: 1.5,
     }).success, true);
@@ -201,7 +214,7 @@ test('意味付き知覚・診断Queryと入力・マテリアル・アニメー
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.setParameter', id: nodeId, name: 'Speed', value: 'fast',
     }).success, false);
-    // 構造編集: 遷移追加 (from 省略 = Any State) と条件編集。
+    /// @note 構造編集: 遷移追加 (from 省略 = Any State) と条件編集。
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.addTransition', id: nodeId, from: 'Idle', to: 'Run', transitionDuration: 0.2,
     }).success, true);
@@ -214,14 +227,14 @@ test('意味付き知覚・診断Queryと入力・マテリアル・アニメー
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.setCondition', id: nodeId, transitionIndex: 0, action: 'clear',
     }).success, true);
-    // add には parameter と op が必要、remove には conditionIndex が必要。
+    /// @note add には parameter と op が必要、remove には conditionIndex が必要。
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.setCondition', id: nodeId, transitionIndex: 0, action: 'add', parameter: 'Speed',
     }).success, false);
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.setCondition', id: nodeId, transitionIndex: 0, action: 'remove',
     }).success, false);
-    // ステート CRUD と BlendTree Motion。
+    /// @note ステート CRUD と BlendTree Motion。
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.addState', id: nodeId, name: 'Jump', mode: 'clip', sourcePath: 'Assets/Anim/Jump.fbx', setAsDefault: true,
     }).success, true);
@@ -239,7 +252,7 @@ test('意味付き知覚・診断Queryと入力・マテリアル・アニメー
     assert.equal(EditorCommandSchema.safeParse({
         t: 'animation.setMotion', id: nodeId, state: 'Locomotion',
     }).success, false);
-    // 削除系とパラメーター CRUD。
+    /// @note 削除系とパラメーター CRUD。
     assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeState', id: nodeId, state: 'Run' }).success, true);
     assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeMotion', id: nodeId, state: 'Locomotion', motionIndex: 2 }).success, true);
     assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeTransition', id: nodeId, transitionIndex: 1 }).success, true);

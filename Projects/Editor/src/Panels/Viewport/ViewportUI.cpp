@@ -354,6 +354,9 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (!IsUnderCanvas(go, activeCanvas))
             continue;
+        /// @note 親ごと無効化された UI は描かれないので掴ませない (見えない要素が手前の要素より先に選ばれる)。
+        if (!go.activeInHierarchy())
+            continue;
 
         if (auto* canvas = go.GetComponent<scene::UICanvas>();
             canvas && IsCanvasEditorCanvas(*canvas)) {

@@ -160,8 +160,8 @@ public:
         if (auto* manager = TimeManagerComponent::Instance()) manager->EndParryRush();
         animator.SetLocalTimeScale(1.0f);
         physics.SetLocalTimeScale(1.0f);
-        if (auto* label = scene.Find("HUD_ParryRush")) label->SetActive(false);
-        if (auto* fill = scene.Find("HUD_ParryRushFill")) fill->SetActive(false);
+        if (auto* label = scene.Find("HUD_ParryRush", true)) label->SetActive(false);
+        if (auto* fill = scene.Find("HUD_ParryRushFill", true)) fill->SetActive(false);
     }
     /// 内部モジュールのギズモは自動では呼ばれないため、ここから中継する。
     void OnDrawGizmos() override { m_weaponRig.OnDrawGizmos(); }

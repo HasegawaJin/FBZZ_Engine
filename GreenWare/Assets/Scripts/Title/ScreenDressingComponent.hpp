@@ -122,7 +122,7 @@ inline void ScreenDressingComponent::OnStart()
     ///       読まれない。1 本目まで少し置く。
     m_sheen = -std::max(sheenInterval, 0.5f) * 0.35f;
 
-    m_backdrop = backdropName.empty() ? nullptr : scene.Find(backdropName);
+    m_backdrop = backdropName.empty() ? nullptr : scene.Find(backdropName, true);
     if (!m_backdrop && !backdropName.empty()) {
         debug.LogWarning("ScreenDressingComponent: '" + backdropName +
                          "' が見つかりません (下地が既定のまま動きません)");
@@ -135,7 +135,7 @@ inline void ScreenDressingComponent::OnStart()
     m_sheenTargets.reserve(sheenTargets.size());
     for (const std::string& name : sheenTargets) {
         if (name.empty()) continue;
-        GameObject* object = scene.Find(name);
+        GameObject* object = scene.Find(name, true);
         if (!object) {
             debug.LogWarning("ScreenDressingComponent: 艶を掛ける '" + name +
                              "' が見つかりません");
@@ -145,7 +145,7 @@ inline void ScreenDressingComponent::OnStart()
     }
     debugTargets = static_cast<int>(m_sheenTargets.size());
 
-    m_arc = arcName.empty() ? nullptr : scene.Find(arcName);
+    m_arc = arcName.empty() ? nullptr : scene.Find(arcName, true);
     m_elapsed      = 0.0f;
     m_crackle      = 0.0f;
     /// @note 最初の放電は題字が置き切ってから。

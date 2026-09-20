@@ -75,7 +75,7 @@ public:
             }
             return;
         }
-        auto* player = scene.FindWithTag(playerTag);
+        auto* player = scene.FindWithTag(playerTag, true);
         if (!player) { m_hasPrevious = false; return; }
         const auto current = player->transform.worldPosition;
         auto previous = m_hasPrevious ? m_previous : current;

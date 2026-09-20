@@ -235,7 +235,7 @@ private:
         return m_fireOverride > 0.0f ? m_fireOverride : Max(fireSeconds, 0.05f);
     }
 
-    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag); }
+    [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag, true); }
     [[nodiscard]] std::string LayerName(int index, const char* layer) const;
     /// index 番目の層。無ければ作る。
     [[nodiscard]] GameObject* EnsureLayer(int index, const char* layer);
@@ -343,7 +343,7 @@ inline GameObject* LaserVolleyComponent::EnsureLayer(int index, const char* laye
 
     /// @note 先に拾い直す理由: DLL リロードで EntityRef は空に戻るが帯の GameObject は
     ///       Scene に残るため、無条件に作るとリロードのたびに増えていく。
-    GameObject* object = scene.Find(name);
+    GameObject* object = scene.Find(name, true);
     if (!object) {
         GameObject& created = scene.Create(name);
         created.runtimeGenerated = true;
@@ -737,7 +737,7 @@ inline void LaserVolleyComponent::DriveLight(Shot& shot, int index,
     if (!object) {
         if (!lit || !beamLight) return;
         const std::string name = LayerName(index, "Light");
-        object = scene.Find(name);
+        object = scene.Find(name, true);
         if (!object) {
             GameObject& created = scene.Create(name);
             created.runtimeGenerated = true;

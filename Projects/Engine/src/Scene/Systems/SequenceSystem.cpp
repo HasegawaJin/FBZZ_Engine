@@ -446,12 +446,14 @@ void DispatchSequenceEvent(GameObject* target,
                            const std::string& sequenceName)
 {
     if (target) {
+        /// @note 無効な GameObject・無効なスクリプトには配らない (Update と同じ規則)。
+        if (!target->activeInHierarchy()) return;
         const SequenceEventInfo info{
             key.name.c_str(), key.intParam, key.floatParam,
             static_cast<float>(t), sequenceName.c_str() };
         if (ScriptComponent* scripts = target->GetComponent<ScriptComponent>())
             for (auto& entry : scripts->scripts)
-                if (entry.script)
+                if (entry.script && entry.script->enabled)
                     entry.script->ExecuteCallback(&Script::OnSequenceEvent, info);
         return;
     }
@@ -463,9 +465,10 @@ void DispatchSequenceEvent(GameObject* target,
 
 void DispatchSequenceFinished(GameObject& owner, const std::string& sequenceName)
 {
+    if (!owner.activeInHierarchy()) return;
     if (ScriptComponent* scripts = owner.GetComponent<ScriptComponent>())
         for (auto& entry : scripts->scripts)
-            if (entry.script)
+            if (entry.script && entry.script->enabled)
                 entry.script->ExecuteCallback(&Script::OnSequenceFinished,
                                               sequenceName.c_str(), "OnSequenceFinished");
 }
@@ -849,7 +852,8 @@ void SequenceSystem::Update(SystemContext& ctx)
 
     for (const EntityID id : owners) {
         GameObject* owner = ctx.scene.GetGameObject(id);
-        if (!owner) continue;
+        /// @note 親ごと無効化されたプレイヤーは止める (Unity の activeInHierarchy と同じ)。回し続けると対象の表示・音・VFX を裏で切り替え続ける。
+        if (!owner || !owner->activeInHierarchy()) continue;
         auto* player = ctx.scene.GetComponent<SequencePlayerComponent>(id);
         if (!player || !player->enabled) continue;
         UpdatePlayer(ctx, *owner, *player);

@@ -119,6 +119,7 @@ public:
     GameObject& CreateGameObject(const std::string& name = "GameObject");
 
     /// Unity: GameObject.Find 系の実体
+    /// @note ここは参照解決 (保存・プレハブ・エディター) 用で、無効な GameObject も返す。ゲームスクリプトは ScriptSceneProxy の Find 系 (既定で有効な物だけ) を使う。
     GameObject*              Find(const std::string& name)     const;
     GameObject*              FindByGuid(const std::string& guid) const;
     GameObject*              FindWithTag(const std::string& t)  const;
@@ -516,15 +517,15 @@ T* Script::GetComponent() const
 }
 
 template<typename T>
-GameObject* ScriptSceneProxy::FindObjectOfType() const
+GameObject* ScriptSceneProxy::FindObjectOfType(bool includeInactive) const
 {
     if (!script || !script->m_scene) return nullptr;
-    auto objects = FindObjectsOfType<T>();
+    auto objects = FindObjectsOfType<T>(includeInactive);
     return objects.empty() ? nullptr : objects.front();
 }
 
 template<typename T>
-std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
+std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType(bool includeInactive) const
 {
     if (!script || !script->m_scene) return {};
     /// @note Script 派生型は ECS に登録されていないため GameObject を全走査し `GetScript<T>()` で探す。Component 型は `Scene::FindObjectsOfType<T>()` (ECS) に委譲する。
@@ -532,11 +533,14 @@ std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
     if constexpr (detail::kIsScriptQueryable<T>) {
         std::vector<GameObject*> result;
         for (auto& go : script->m_scene->GameObjects())
-            if (go.template GetScript<T>())
+            if ((includeInactive || go.activeInHierarchy()) && go.template GetScript<T>())
                 result.push_back(&go);
         return result;
     } else {
-        return script->m_scene->FindObjectsOfType<T>();
+        auto result = script->m_scene->FindObjectsOfType<T>();
+        if (!includeInactive)
+            std::erase_if(result, [](const GameObject* go) { return !go->activeInHierarchy(); });
+        return result;
     }
 }
 
