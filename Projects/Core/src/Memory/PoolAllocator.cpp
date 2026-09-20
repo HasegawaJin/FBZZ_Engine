@@ -2,9 +2,8 @@
 /// @brief   PoolAllocator の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-///
-/// 固定長ブロックを空きリストで管理し、同サイズ割り当てを O(1) で再利用する。
-#include "Engine/Core/Memory/PoolAllocator.hpp"
+/// @note 固定長ブロックを空きリストで管理し、同サイズ割り当てを O(1) で再利用する。
+#include "Core/Memory/PoolAllocator.hpp"
 
 #include <cstdlib>
 #include <limits>
@@ -211,4 +210,4 @@ bool PoolAllocator::Owns(const void* ptr) const
     return (offset % m_stride) == 0;
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

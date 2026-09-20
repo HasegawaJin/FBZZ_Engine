@@ -2,9 +2,8 @@
 /// @brief   LinearAllocator の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-///
-/// 連続メモリを前方へ切り出し、Reset でまとめて再利用する。
-#include "Engine/Core/Memory/LinearAllocator.hpp"
+/// @note 連続メモリを前方へ切り出し、Reset でまとめて再利用する。
+#include "Core/Memory/LinearAllocator.hpp"
 
 #include <cstdlib>
 #include <memory>
@@ -125,4 +124,4 @@ bool LinearAllocator::Owns(const void* ptr) const
     return bytePtr >= m_memory && bytePtr < (m_memory + m_stats.capacity);
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

@@ -2,9 +2,8 @@
 /// @brief   アロケータ共通ヘルパーの実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-///
-/// アラインメント検証と統計更新の意味を全アロケータで揃える。
-#include "Engine/Core/Memory/Allocator.hpp"
+/// @note アラインメント検証と統計更新の意味を全アロケータで揃える。
+#include "Core/Memory/Allocator.hpp"
 
 namespace fbzz::core {
 
@@ -32,4 +31,4 @@ void UpdatePeak(MemoryStats& stats)
     }
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

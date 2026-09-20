@@ -2,14 +2,14 @@
 /// @brief   MemoryDebug の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-#include "Engine/Core/Memory/MemoryDebug.hpp"
+#include "Core/Memory/MemoryDebug.hpp"
 
 namespace fbzz::core {
 
 MemoryDebug::MemoryDebug()
 {
     /// @note ResourcePool は ResourceManager に 7 個内包され Sandbox ではローカル変数になるため、
-    ///       固定長配列を値メンバにするとスタックを圧迫する。vector にして回避する。
+    /// @note       固定長配列を値メンバにするとスタックを圧迫する。vector にして回避する。
     m_entries.resize(MAX_DEBUG_ALLOCATIONS);
 }
 
@@ -103,4 +103,4 @@ AllocationInfo* MemoryDebug::FindEntry(const void* ptr)
     return nullptr;
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

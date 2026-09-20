@@ -2,9 +2,8 @@
 /// @brief   MemorySystem の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
-///
-/// フレームアロケータとトラッカーの寿命を明示的に管理する。
-#include "Engine/Core/Memory/MemorySystem.hpp"
+/// @note フレームアロケータとトラッカーの寿命を明示的に管理する。
+#include "Core/Memory/MemorySystem.hpp"
 
 #include <cassert>
 #include <utility>
@@ -93,4 +92,4 @@ std::size_t MemorySystem::GetLeakCount() const
     return m_tracker.GetLeakCount();
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

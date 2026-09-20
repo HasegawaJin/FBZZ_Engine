@@ -2,12 +2,14 @@
 /// @brief   Logger の出力処理実装。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// ログレベルでフィルタし、登録済み ILogSink へ LogEntry を配信する。
-/// 出力先は非所有ポインタとして扱い、寿命管理は登録側が行う。
-#include "Engine/Core/Logger.hpp"
-#include "Engine/Core/ILogSink.hpp"
+/// @note ログレベルでフィルタし、登録済み ILogSink へ LogEntry を配信する。
+/// @note 出力先は非所有ポインタとして扱い、寿命管理は登録側が行う。
+#include "Core/Logger.hpp"
+#include "Core/ILogSink.hpp"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <algorithm>
 #include <cstddef>
@@ -17,7 +19,7 @@
 
 namespace fbzz::core {
 
-/// デフォルトは INFO。DEBUG は ConsolePanel の DEBUG チェックボックスで有効化する。
+/// @note デフォルトは INFO。DEBUG は ConsolePanel の DEBUG チェックボックスで有効化する。
 LogLevel Logger::s_minLevel = LogLevel::INFO;
 std::vector<ILogSink*> Logger::s_sinks;
 
@@ -25,7 +27,7 @@ namespace {
 
 /// @brief シンクの一覧と 1 行の出力を守る再帰ミューテックス。
 /// @note ログはワーカースレッド (流体プレビュー・アセット読み込み) からも出るため、走査中の
-///       AddSink/RemoveSink による vector 変更や複数シンクの同時書き込みから保護する。
+/// @note       AddSink/RemoveSink による vector 変更や複数シンクの同時書き込みから保護する。
 /// @note シンク内から再度ログを出しても、再帰可能なので自分を待って固まらない。
 std::recursive_mutex& LogMutex()
 {
@@ -43,7 +45,7 @@ std::string FormatLogMessage(const char* fmt, va_list args)
     if (!fmt) return {};
 
     /// @note MSVC の vsnprintf_s(..., _TRUNCATE, ...) は切り詰め時も -1 を返すため、必要サイズを
-    ///       先に計算して完全なログ本文を確保する (切り詰めるとビルドログの診断情報が失われる)。
+    /// @note       先に計算して完全なログ本文を確保する (切り詰めるとビルドログの診断情報が失われる)。
     va_list countArgs;
     va_copy(countArgs, args);
     const int required = _vscprintf(fmt, countArgs);
@@ -61,7 +63,7 @@ std::string FormatLogMessage(const char* fmt, va_list args)
     return message;
 }
 
-} // namespace
+} /// @note namespace
 
 void Logger::SetMinLevel(LogLevel level) { s_minLevel = level; }
 
@@ -185,4 +187,4 @@ void Logger::ErrorAt(const char* file, int line, const char* fmt, ...)
     va_end(args);
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

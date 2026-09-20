@@ -2,16 +2,18 @@
 /// @brief   ファイル・ディレクトリ操作の Win32 実装。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// 存在確認、列挙、読み書き、ディレクトリ作成をまとめる。
-/// 失敗は bool や空配列で返し、例外は使わない。
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
+/// @note 存在確認、列挙、読み書き、ディレクトリ作成をまとめる。
+/// @note 失敗は bool や空配列で返し、例外は使わない。
+#include <Core/Util/FileSystem.hpp>
+#include <Core/Util/StringUtils.hpp>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 
 /// @note Windows.h は CopyFile / GetCurrentDirectory を A/W サフィックス付き関数へ置換する。
-///       FileSystem のメンバー関数名まで置換されるとヘッダ宣言と実装名がずれ、MSVC が
-///       FileSystem::CopyFileA などを探してしまうため、Win32 API を直接呼ばない本ファイルでは解除する。
+/// @note       FileSystem のメンバー関数名まで置換されるとヘッダ宣言と実装名がずれ、MSVC が
+/// @note       FileSystem::CopyFileA などを探してしまうため、Win32 API を直接呼ばない本ファイルでは解除する。
 #ifdef CopyFile
 #undef CopyFile
 #endif
@@ -29,14 +31,14 @@
 namespace {
 /// @brief UTF-8 文字列をワイド文字列に変換する。
 /// @note std::ifstream(std::string) は Windows ANSI (CP_ACP) でパスを解釈するため、UTF-8 の
-///       多バイト文字を含むパスが正しく開けない。ワイド文字列なら Win32 Unicode API 経由で開ける。
+/// @note       多バイト文字を含むパスが正しく開けない。ワイド文字列なら Win32 Unicode API 経由で開ける。
 std::wstring Utf8ToWide(const std::string& s)
 {
     if (s.empty()) return {};
     const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
     if (n <= 0) return {};
     /// @note MultiByteToWideChar は -1 指定時に終端 NUL も含めて n 文字を書き込むため、n - 1 だけ
-    ///       確保して n を渡すと 1 文字分オーバーランし、ReadText などの呼び出し元でクラッシュする。
+    /// @note       確保して n を渡すと 1 文字分オーバーランし、ReadText などの呼び出し元でクラッシュする。
     std::wstring w(static_cast<size_t>(n), L'\0');
     const int written = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
     if (written <= 0) return {};
@@ -56,7 +58,7 @@ std::string WideToUtf8(const std::wstring& w)
     s.resize(static_cast<size_t>(written - 1));
     return s;
 }
-} // namespace
+} /// @note namespace
 
 namespace fbzz::util {
 
@@ -213,8 +215,8 @@ std::vector<std::string> FileSystem::ListAll(const std::string& dir)
 bool FileSystem::EnsureDirectory(const std::string& path)
 {
     /// @note path 版の create_directories に委譲し、中間ディレクトリも掘る。string 版だけ浅い実装だと、
-    ///       同じ名前の関数が «引数の型によって深さが違う» ことになり、空ディレクトリから組み立てた
-    ///       ときだけ «作ったつもりで書き込みに失敗する» 形で表面化する。
+    /// @note       同じ名前の関数が «引数の型によって深さが違う» ことになり、空ディレクトリから組み立てた
+    /// @note       ときだけ «作ったつもりで書き込みに失敗する» 形で表面化する。
     return EnsureDirectory(PathFromUtf8(path));
 }
 
@@ -304,7 +306,7 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
     if (!f.is_open()) return false;
     f << text;
     /// @note ストリームは破棄時にまとめて書き出すため、close() するまで書き込み失敗 (ディスク満杯・
-    ///       共有違反) は現れない。close() 後の f.good() で確認してから返す。
+    /// @note       共有違反) は現れない。close() 後の f.good() で確認してから返す。
     f.close();
     return f.good();
 }
@@ -344,7 +346,7 @@ bool FileSystem::ReadBinary(const std::filesystem::path& path, std::vector<uint8
     out.clear();
 
     /// @note バイナリアセットの読み込み経路を FileSystem に集約し、Hub/Editor/Engine で
-    ///       Windows の wchar_t パス対応と失敗時 bool 戻り値の方針を揃える。
+    /// @note       Windows の wchar_t パス対応と失敗時 bool 戻り値の方針を揃える。
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f.is_open()) return false;
 
@@ -353,7 +355,7 @@ bool FileSystem::ReadBinary(const std::filesystem::path& path, std::vector<uint8
 
     out.resize(static_cast<size_t>(size));
     f.seekg(0, std::ios::beg);
-    f.read(reinterpret_cast<char*>(out.data()), size);
+    f.read(static_cast<char*>(static_cast<void*>(out.data())), size);
     if (!f.good()) {
         out.clear();
         return false;
@@ -376,7 +378,7 @@ bool FileSystem::WriteBinary(const std::filesystem::path& path, const void* data
 bool FileSystem::Exists(const std::filesystem::path& path)
 {
     /// @note filesystem::path::c_str() は Windows で const wchar_t* を返すため、
-    ///       GetFileAttributesW に直接渡せて UTF-8 変換が不要。
+    /// @note       GetFileAttributesW に直接渡せて UTF-8 変換が不要。
     DWORD attr = GetFileAttributesW(path.c_str());
     return attr != INVALID_FILE_ATTRIBUTES;
 }
@@ -384,7 +386,7 @@ bool FileSystem::Exists(const std::filesystem::path& path)
 bool FileSystem::ReadText(const std::filesystem::path& path, std::string& out)
 {
     /// @note std::ifstream(filesystem::path) は Windows で wchar_t パスを使うため
-    ///       マルチバイト文字を含むパスも正しく開ける。
+    /// @note       マルチバイト文字を含むパスも正しく開ける。
     std::ifstream f(path, std::ios::binary);
     if (!f.is_open()) return false;
     std::ostringstream ss;
@@ -468,10 +470,10 @@ std::filesystem::file_time_type FileSystem::LastWriteTime(const std::filesystem:
 std::filesystem::path FileSystem::GetExecutableDirectory()
 {
     /// @note GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。
-    ///       parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
+    /// @note       parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
     wchar_t buffer[MAX_PATH]{};
     GetModuleFileNameW(nullptr, buffer, MAX_PATH);
     return std::filesystem::path(buffer).parent_path();
 }
 
-} // namespace fbzz::util
+} /// @note namespace fbzz::util
