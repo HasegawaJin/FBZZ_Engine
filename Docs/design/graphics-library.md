@@ -4,7 +4,7 @@
 <!-- @date    2026-09-20 -->
 # Graphics ライブラリと Forward / Deferred の境界
 
-- 状態: Draft (2026-09-20)。設計のみ。新ライブラリ・API・ディレクトリは未実装。
+- 状態: Core / Graphics の物理分離、ライト・環境・機能固有入力の抽出を実装 (2026-09-21)。今回の境界と検証は §8.2。段 F の描画順変更は対象外。
 - 決定案: Engine が Scene から描画データを抽出し、Graphics が描画方式・RenderGraph・GPU 実行を所有する。
 - 対象: 同一リポジトリ内の `Projects/Graphics` / `FBZZGraphics`。Forward と Deferred は同じライブラリの内部構成とする。
 
@@ -239,7 +239,7 @@ Render Pass Viewer は Graphics のレポート・資源一覧・Capture を読�
 ## 7. ビルド・配布・終了順
 
 - 最終ターゲットは `FBZZCore` / `FBZZGraphics` を SHARED とし、SDK の `FBZZ::Core` / `FBZZ::Graphics` として公開する。Engine がそれらへ依存する。
-- Graphics 内部の RHI / パス / DX12 モジュールは OBJECT を維持し、自己登録 TU を捨てない。各 OBJECT の実体は Graphics DLL だけに取り込む。
+- Graphics 内部の RHI / パス / DX12 の翻訳単位は SHARED ターゲットへ直接登録し、自己登録 TU を捨てる STATIC アーカイブを挟まない。実体は Graphics DLL だけに取り込む。
 - Graphics の include / link 許可先は自身、Math、Core、必要な PRIVATE の ThirdParty / Windows SDK のみ。Engine / Physics / Fluid の include パスを一律に渡さない。
 - 既存 `fbzz_engine_module` をそのまま Graphics に使わず、依存を明示できるターゲット定義へ分ける。未所属ソースの検査・標準 PCH・Unity 除外も移行する。
 - Core の Logger / Memory / Profiler は一度だけ実体化する。Engine の OBJECT 取り込みから外す段と DLL のリンクを同時に行い、台帳・singleton の二重化を防ぐ。
@@ -265,6 +265,104 @@ Graphics の単独検証アプリは Engine をリンクせず、Math / Core / G
 B で不要にパス名を変えない。C で描画条件やソート規則を変えない。最終の共有 Forward パス化・段の移動は F で行い、同等性を確認できる整理だけを先行させる。
 
 Engine の新しい `src/Scene/Rendering` を作る段で CMake のモジュール登録へ追加する。単独検証用プログラムを恒久ツールにする場合は、既存のツール配置・索引承認規約に従って別途追加する。本書では新ツールを追加しない。
+
+### 8.1 最初の実装範囲
+
+`feature/graphics-library` で、ライブラリの物理移動に先立ち以下を実装した。
+
+- `Renderer/OpaqueRenderPlan`：設定と資源の可用性から、Forward / Forward + DepthNormalPrepass / Deferred の実効経路を一度だけ解決する。ライト供給方式は既存のまま独立して扱う。
+- `RenderPasses/GeometryPipeline`：共通準備、Forward / Deferred の構成、空と遮蔽の共有登録、水面合成を担当する。実行は同じ RenderPipeline に委ねる。
+- `RenderSystem`：資源を確保し、解決済み計画をパス文脈と登録側へ渡す。Scene からの入力抽出やポスト処理・拡張点はまだここに残る。
+- `GeometryPipelineTests`：資源欠落時の縮退、画面空間効果の要求、Unlit、ライト供給との独立性、3 経路 × クラスタ有無の登録列、方式切り替え時の旧パス残存を検証する。
+
+この段ではパスの Name / Setup / Execute と透明描画・SSR の位置を変えない。登録列は GPU を使わずに比較できるが、画像・実行 Plan・複数ビューの基準確認を代替しない。段 A の描画基準と B の実機比較が揃うまで、画像の同等性や Graphics 分離の完了とは扱わない。
+
+2026-09-20 の検証記録:
+
+- Development の変更 C++ コンパイル、`FBZZTestsEngineAuto` と `FBZZEditorLauncher` のビルドを実施。Editor ビルドには未変更の AssetBrowserImport / InspectorPanel_Asset の C4834 警告が 7 件ある。
+- `GeometryPipelineTest` / `GeometryRouteTest` / `RenderPipeline` / `RenderGraph` / `RenderSettings` の関連テスト 72 件が合格。
+- `FiberLifecycle` の最初の比較画像 (1548 × 871、frame 36) は、変更前後の PNG の SHA-256 がともに `51B0D08AC5865D568A5715CF2E96C4580D33CA55FE16FB5796D6A20CFBEC4050` で一致。
+- 既存 Golden に対するシナリオは変更前後とも step 6 で失敗 (`meanDiff=0.030930296351484532`、`badPixelRatio=0.11692877295098746`)。基準画像は更新しておらず、シナリオ全体の合格とは扱わない。
+- 全方式の実行 Plan、複数ビュー、シナリオ後続の画像は未確認。記録用の画像・レポートは Git 対象外の `Scratch/GraphicsLibrary/` に置く。
+
+### 段 C の着手: 可視性判定の入力境界
+
+`Renderer/RenderVisibility` は `RenderCullingView` と `RenderCullingItem` のみを読み、Scene / GameObject / Component を参照しない。入力はビュー姿勢・射影情報・非所有の視錐台参照と、ワールド境界球・解決済みの描画距離。距離 → 極小 → 視錐台の順に最初の除外理由を返す。
+
+Engine 側の `GeometryPassHelpers` は従来どおり Transform・Animator から境界球を作り、レイヤー別の描画距離を解決する。各判定時点の RenderPassContext からビューを抽出するため、派生ビューでメインカメラの情報を保持し続けない。返された理由から従来の統計を加算し、Forward / Deferred / 共有ヘルパーの呼び出し元へ結果を返す。
+
+半径未確定なら描画する通常判定と、半径未確定でも距離制限だけを評価する補助パスの契約を分けて維持する。境界距離、投影方式、カメラ前方、視錐台との交差、除外理由の優先順を GPU 非依存で検証する。
+
+この時点の変更は可視性判定の分離まで。メッシュ・材質・スキニング資源を持つ RenderScene 抽出は後述の継続工程で実装する。ライト入力の分離、Graphics ライブラリの生成も含めた段 C 完了とは扱わない。
+
+検証: 変更 C++ 3 単位のコンパイルと `FBZZTestsEngineAuto` のビルドは警告なし。`RenderVisibilityTest` 8 件と段 B の関連テスト 72 件、計 80 件が合格。変更 C++ / ヘッダー 4 ファイルの AgentLint はエラー・警告なし。この段の GPU 画像比較は未実施。
+
+### 段 C の継続: 材質能力の抽出
+
+`Renderer/GeometryRoute.hpp` が `GeometryMaterialInput` と純粋な経路判定を持つ。入力はブレンド方式・GBuffer 相当シェーダー・拡張ローブの値だけで、描画方式も Scene / Asset 参照も保持しない。Engine 側の `ExtractGeometryMaterial` が共有材質とインスタンスの上書きを解決し、GUID・シェーダー名・材質パラメーターの解釈を Engine に閉じる。
+
+既存の Forward / Deferred パスは Scene の互換 overload 経由でこの境界を使用する。材質のロードや GPU 同期を抽出処理へ移しておらず、スキニング結果を読む時点や描画順も変えない。未解決の材質は Forward、透明は最優先、空のシェーダーパスは既定 PBR という規則を維持する。
+
+抽出結果は材質の編集・破棄から独立した値として保持でき、同一モデル内の各スロットを異なるビュー方式へ個別に振り分けられる。既存の互換 overload も残すが、下記のメッシュパスは RenderScene に保持した値を使用する。
+
+### 段 C の継続: RenderScene のメッシュ・スキニング入力
+
+`Renderer/RenderScene.hpp` に、オブジェクト配列・submesh 単位のメッシュ配列・解決済み材質・マスク要求を定義した。Scene / GameObject / Component / Model / Mesh / Material のポインターを保持しない。
+
+- `RenderObject`: Entity の index / generation、レイヤー・LOD・影・選択フラグ、現在／前回の world、逆転置、境界球、現在／前回のスキニングパレット。
+- `RenderMeshItem`: ローカル材質スロットと元 submesh 添字、VB / IB と要素数、モーフ適用後の VS 入力、当該フレームのコンピュート出力、材質能力・シェーダー・テクスチャ・定数バッファ。
+- `RenderMaterial`: GBuffer の 96 バイトへ正規化した定数と描画状態。Surface 材質誤指定時の Forward 用フォールバックも抽出中に解決する。
+- `RenderMaskGroup`: 有効な要求を階層展開したオブジェクト添字と payload。描画中に GameObject を解決し直さない。
+
+Engine の `RenderSceneExtractor` は二段階で動く。`ExtractRenderSceneGeometry` が GPU 操作なしに候補・姿勢・資源ハンドルを収集し、`ExtractRenderScene` が材質・テクスチャ・選択／マスク要求を解決して `shared_ptr<const RenderScene>` として公開する。候補はカメラ・レイヤー・LOD で絞らず、非アクティブ階層と無効 Renderer を除く。公開した配列は、その RenderSystem 呼び出しのプローブとグラフ記録が終わるまで不変とする。
+
+Forward、GBuffer、Deferred 内 Forward、Shadow、Velocity、Reflection Probe / Light Probe のメッシュ捕捉、選択輪郭・オブジェクトマスク・Decal 受信レイヤーのメッシュ描画を接続した。別々の RenderSystem 呼び出しはそれぞれ入力を抽出する。スキニング Dispatch と履歴更新は frameStamp により同一フレームで再実行しない。ビュー間の入力配列キャッシュはまだ導入しないため、Scene の変更や材質上書きが古いキャッシュへ残らない。
+
+プローブがグラフより前に動く既存構成に合わせ、スキニングと抽出をプローブより前へ移した。登録済み SkinningCompute パスは入力が既にあれば再実行しない。モーフ・旧モデル・古いフレームの変形済み出力は採用せず、VS スキニング入力へ戻す。前回行列の確定は Velocity から抽出へ移し、カメラ外でも有効な候補の履歴を進める。
+
+GPU ハンドルは非所有のまま。記録中は元資源を差し替えず、GPU 完了前の退役は既存の ResourceManager の契約に従う。snapshotSerial は入力世代の識別子で、Entity の整数 ID だけを別入力へ持ち越さない。永続的な Graphics オブジェクト登録簿を導入したものではない。
+
+このメッシュ抽出段ではライト・環境・機能固有入力を既存文脈に残した。続く §8.2 でそれらを抽出し、Graphics を物理分割した。
+
+2026-09-21 の検証記録:
+
+- 変更した C++ のコンパイルと Development の `FBZZTestsEngineAuto` / `FBZZEditorLauncher` ビルドを実施。Editor の全体再ビルドでは未変更ファイルの C4834 警告 7 件を確認した。
+- 抽出テストは submesh の並び替え、モーフ入力、当該フレームの変形済み VB、親 Animator / 参照姿勢 / 単位パレット、複数ビューの前回行列、初回フレーム、材質スロットを検証する。
+- 最終ビルドはエラー・警告なし。抽出テスト 9 件を含む関連テスト 111 件が合格 (`build/agent/test-20260921-003034-34932.log`)。変更 37 ファイルの AgentLint もエラー・警告なし。
+- `FiberSkinning` は 24 ステップ、`FiberSkinningBindPose` は 18 ステップが合格。アニメーション・参照姿勢・選択輪郭の取得画像も確認した。これらは Golden 比較を含まない。
+- `LightProbeGI` は 14 ステップが合格。メッシュ捕捉を含む GI 有効時の取得画像を確認した。このシナリオも Golden 比較を含まない。
+- `FiberLifecycle` の frame 36 の PNG は移行前と SHA-256 が一致 (`51B0D08AC5865D568A5715CF2E96C4580D33CA55FE16FB5796D6A20CFBEC4050`)。既存 Golden に対する step 6 の失敗は以前と同じ値で残り、基準画像は更新していない。後続ステップは未検証。
+- GPU シナリオは通常のデスクトップ実行で評価した。サンドボックス内では全黒のキャプチャになったため、その画像を合格根拠には使わない。画像とレポートは Git 対象外の `Scratch/RenderScene/` に保存する。
+
+### 8.2 ライト・環境・エフェクト入力と物理分離
+
+`Projects/Core` と `Projects/Graphics` を SHARED ライブラリとして追加した。Graphics の公開依存は Core / Math、DX12・ImGui・画像処理の依存は PRIVATE。Engine / Physics / Fluid の include と link を持たない。Engine の旧ヘッダーは互換 include / alias とし、実装を二重にリンクしない。SDK の export・ヘッダー・DLL 配布と Editor / Sandbox / ゲームビルドの DLL コピーも更新した。
+
+| 入力 | Engine に残した処理 | Graphics へ移した処理 |
+|---|---|---|
+| Light / Environment | ライト走査、色温度、旧ライトとの対応、Cookie / 空 / 雲 / 水中環境の解決 | ライト定数・影・Cookie アトラス、空・雲・ライティングの描画 |
+| Terrain / Water | CPU 地形パッチ、レイヤー・水面材質、波紋と飛沫、アセット解決 | 地形 LOD / カリング・影・選択、水面合成とノイズベイク |
+| Particle / Trail / MeshTrail | コンポーネント更新、CPU 粒子・物理結合、生成要求、軌跡サンプルと材質解決 | GPU 粒子 Dispatch、描画ソート、リボン・歪み・自己影・Overdraw |
+| Fiber | メッシュ / 地形由来の表面、接触と流れ、材質・マスクの解決 | shell / fin / blade の描画、影・選択・速度履歴 |
+| Decal / Custom Post | 寿命・flipbook・パラメーターとテクスチャの解決 | 投影・受信レイヤー・HDR / LDR 合成 |
+| Skinning / Probe | Model と骨パレットの準備、Probe の更新要求・保存先管理 | コンピュートスキニング、反射キューブ捕捉・畳み込み、Light Probe ベイク・膨張 |
+
+`RenderScene` はライト・環境と各エフェクトの値配列・非所有 GPU ハンドルを保持する。Graphics の `RenderPassContext` から Scene / Physics を除き、Engine の派生文脈とホストパスアダプターに UI / Script / Debug の接続を閉じた。各ビューの RT 確保と呼び出し順の組み立ては引き続き Engine の RenderSystem が行い、Graphics のパス・資源 API に渡す。
+
+メッシュ候補は従来どおりビュー非依存で抽出する。一方、Particle の予算・距離 LOD・シミュレーションの可視性条件は描画互換性のため今回変更せず、Engine のビュー別抽出に残す。全ビューで同一 RenderScene を再利用する契約にはしていない。Trail / Decal の更新と GPU スキニングは同一フレームで重複させず、GPU 資源用の frameStamp は ResourceManager が持つ単調なカウンターとする。ゲーム時刻は文脈へ明示的に渡す。
+
+シェーダー探索は `ShaderPathResolver` の注入で分離した。Engine は GUID / プロジェクト側の探索を提供し、単独利用時は渡されたファイルパスを使う。バイト列を供給する新しい ShaderSourceProvider API への全面改変は行っていない。DLL は同一ビルド設定・共有 CRT を前提とし、GPU オブジェクトは既存の仮想デストラクターを持つ unique_ptr で所有する。
+
+Engine をリンクしない `FBZZTestsGraphicsStandalone` を追加した。Engine / Physics / Fluid DLL の未ロード、Forward / Deferred パス構成、入力値の独立性、DX12 で赤い三角形を描いて CPU へ読み戻す処理を検証する。この検証で発見した、Shaders 祖先を持たない絶対パスの探索停止不良も修正した。テスト用シェーダーのコンパイル出力は build 配下に置く。
+
+2026-09-21 の検証記録:
+
+- Graphics 単独テスト 3 件が合格 (`build/agent/test-20260921-020253-23724.log`)。
+- Core / Graphics のソースと公開ヘッダーに Engine / Physics / Fluid の include・link がないことを確認した。
+- Core / Graphics / Engine / Editor と SDK をビルド済み。関連する 369 テストが合格した (`build/agent/test-20260921-021631-49356.log`)。
+- GPU シナリオは FiberSkinning (24 step)、FiberSkinningBindPose (18)、LightProbeGI (14)、WaterWireframe (10)、FiberStage4 (29) が合格。粒子は検証中のみ背景球を無効化し、GPU / CPU の実画像と shader diagnostics のエラー 0 を確認した。資産は変更していない。
+- FiberLifecycle は初回検証で既存 Golden との差により step 6 が不合格だった。actual 画像 SHA256 は分割前と一致した (`51B0D08AC5865D568A5715CF2E96C4580D33CA55FE16FB5796D6A20CFBEC4050`)。後続の修正で材質・シェーダー更新前の Golden を見直し、同じ解像度・許容値で 93 手順と全 10 枚の完全一致を確認した。詳細は `fiber-rendering.md` の「Lifecycle 基準画像の更新」。
+- AgentLint は移動前からの MakeUnique 内 nothrow new 2 件と定数バッファ転送の cast 1 件を検出する。移動に伴う検出であり、アロケーターの失敗時契約は変更していない。
 
 ## 9. 検証と受け入れ基準
 
