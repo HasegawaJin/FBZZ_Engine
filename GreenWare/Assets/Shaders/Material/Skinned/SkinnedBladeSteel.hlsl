@@ -1,31 +1,12 @@
-/// @file SkinnedBladeSteel.hlsl
-/// @brief プレイヤーの刀身。焼き入れ線 (刃文) が攻撃に連動して熱を持つ鋼
-/// @author Hasegawa Jin
-/// @date 2026-09-11
+/// @file    SkinnedBladeSteel.hlsl
+/// @brief   プレイヤーの刀身。焼き入れ線 (刃文) が攻撃に連動して熱を持つ鋼。
+/// @author  Hasegawa Jin
+/// @date    2026-09-11
 ///
-/// WHY 専用シェーダーを起こすか:
-///     刀身はこれまで SkinnedPBR のただの鋼で、溜めても振っても弾いても見た目が
-///     1 ミリも変わらなかった。«攻撃の状態» を刀そのもので言うには、刃のどこが
-///     熱を持つかを刀身の形に沿って描き分ける必要があり、それは一様な自発光
-///     (emissiveScale) では表現できない ─ 刀が丸ごと光ると刃の «長さ» も
-///     «向き» も潰れて、ただの棒になる。
-///
-/// WHY UV を使わないか (最重要):
-///     WPN_Sword_L/R の頂点 UV は全submeshで (0,0) — DCC が書き出していない。
-///     テクスチャも UV 由来の手続きパターンも成立しないため、この材質は
-///     テクスチャを 1 枚も取らず、刃の形はローカル座標と法線«だけ»から作る。
-///     textureMask を持たないのはこのため (Material::Upload は offset が
-///     見つからなければ何も書かないので、無くて問題ない)。
-///
-/// WHY 刃文を «法線» から出すか:
-///     刃文は刃に平行な帯で、刀身の «どこからが刃か» が要る。刃の位置は
-///     ローカル Y の固定値では取れない ─ 反り (sori) で切先へ行くほど下がり、
-///     その落ち方は直線でない。一方 «刃へ向いた面 (鎬から刃までの斜面)» は
-///     法線が刃の向きへ倒れているかどうかで、反りに関係なく判定できる。
-///     帯の境目を刃長方向の波でうねらせると、それがそのまま刃文になる。
-///
-/// 連動する値はすべて BladeSteelComponent が GameObject 単位の override で書く。
-/// .mat に書いてあるのは «何も起きていないときの刀» で、Play を止めれば必ずそこへ戻る。
+/// @note 一様な自発光では刃の長さも向きも潰れるので、熱の乗る場所を刀身の形に沿って描き分ける専用シェーダー。
+/// @warning WPN_Sword_L/R の頂点 UV は全 submesh で (0,0)。テクスチャを取らず刃の形はローカル座標と法線だけから作る (textureMask も持たない。Material::Upload は offset が無ければ書かない)。
+/// @note 刃の位置は反りでローカル Y が一定しないため、刃文は «法線が刃の向きへ倒れた面» で判定し、境目を刃長方向の波でうねらせる。
+/// @note 連動値はすべて BladeSteelComponent が GameObject 単位の override で書く。.mat は «何も起きていない刀» で、Play 停止で必ずそこへ戻る。
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
@@ -50,13 +31,13 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float3 emissiveColor;
     float  emissiveScale;
 
-    // 刃の座標系。ローカル空間で «柄から切先へ» と «刃の向き» を宣言する。
-    float3 bladeAxis;
+    /// @name 刃の座標系 (ローカル空間)
+    float3 bladeAxis;           ///< 柄から切先への向き
     float  bladeStart;
-    float3 edgeDir;
+    float3 edgeDir;             ///< 刃の向き
     float  bladeLength;
 
-    // 焼き入れ線。
+    /// @name 焼き入れ線
     float3 hamonColor;
     float  hamonHeat;
     float  hamonWidth;
@@ -64,19 +45,18 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  hamonFrequency;
     float  hamonSoftness;
 
-    // 振った瞬間に柄から切先へ抜ける帯。
+    /// @name 振った瞬間に柄から切先へ抜ける帯
     float3 sweepColor;
-    float  sweepPos;
+    float  sweepPos;            ///< 刃長方向 [0,1]。負で帯なし
     float  sweepWidth;
     float  sweepIntensity;
 
-    // 刀身全体の縁。溜まり切ったことを «形» でなく «輪郭» で言う。
+    /// @name 刀身全体の縁 (溜まり切ったことを輪郭で言う)
     float3 rimColor;
     float  rimIntensity;
     float  rimPower;
 
-    // 上の 3 つの色を白へ寄せる量。連撃が進むほど «熱い» ではなく «白い» へ。
-    float  whiteHeat;
+    float  whiteHeat;           ///< 刃文・帯・縁の色を白へ寄せる量。連撃が進むほど白くなる
 };
 
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
@@ -87,7 +67,7 @@ FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);
 FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);
 SamplerState           sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP);
 
-// スキン後のローカル位置と法線を PS まで運ぶ。既定の PSInput には枠が無い。
+/// @brief スキン後のローカル位置と法線を PS まで運ぶ (既定の PSInput には枠が無い)。
 struct BladePSIn
 {
     float4 svPosition  : SV_POSITION;
@@ -120,14 +100,14 @@ BladePSIn VSMain(SkinnedVSInput v)
     o.normal      = SafeNormalize(mul(localN, (float3x3)worldInvTranspose), float3(0.0f, 1.0f, 0.0f));
     o.tangent     = SafeNormalize(mul(localT, (float3x3)world), float3(1.0f, 0.0f, 0.0f));
     o.uv          = v.uv;
-    // ソケット追従で world は毎フレーム動くので、刃の形はここで凍らせる。
+    /// @note ソケット追従で world は毎フレーム動くので、刃の形はスキン後のローカルで凍らせる。
     o.localPos    = localPos.xyz;
     o.localNormal = localN;
     return o;
 }
 
-// 刃文の境目。1 本の正弦では «機械の目盛り» になるので、割り切れない比の
-// 2 本目を重ねて周期を隠す。
+/// @brief 刃文の境目のうねり。
+/// @note 1 本の正弦では機械の目盛りに見えるので、割り切れない比の 2 本目を重ねて周期を隠す。
 float HamonWave(float t)
 {
     return sin(t * hamonFrequency * 6.2831853f) * 0.62f
@@ -143,32 +123,30 @@ float4 PSMain(BladePSIn p) : SV_Target0
 
     float3 N = SafeNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
 
-    // ── 刃の座標 ────────────────────────────────────────────────────────────
     const float3 axis = SafeNormalize(bladeAxis, float3(0.0f, 0.0f, 1.0f));
     const float3 edge = SafeNormalize(edgeDir,   float3(0.0f, -1.0f, 0.0f));
-    // t = 0 が柄、1 が切先。範囲外は帯も刃文も出さない (柄と鍔を焼かないため)。
+    /// @note t = 0 が柄、1 が切先。範囲外は帯も刃文も出さない (柄と鍔を焼かないため)。
     const float t = saturate((dot(p.localPos, axis) - bladeStart) / max(bladeLength, 1.0e-4f));
-    // 刃へ向いた面ほど 1。鎬から先の斜面だけが拾われ、平地と棟は 0 に落ちる。
+    /// @note 刃へ向いた面ほど 1。鎬から先の斜面だけが拾われ、平地と棟は 0 に落ちる。
     const float edgeFacing = saturate(dot(SafeNormalize(p.localNormal, edge), edge));
 
-    // 帯の «高さ» を刃長方向にうねらせる。hamonWave = 0 なら直刃。
+    /// @note 帯の高さを刃長方向にうねらせる。hamonWave = 0 なら直刃。
     const float wave      = lerp(0.0f, HamonWave(t), saturate(hamonWave));
     const float threshold = saturate(1.0f - saturate(hamonWidth) * (0.75f + 0.45f * wave));
     const float soft      = max(hamonSoftness, 1.0e-3f);
     float hamon = smoothstep(threshold - soft, threshold + soft, edgeFacing);
-    // 柄側の 1 割は焼かない。刃文が鍔まで届くと、刃の «始まり» が読めなくなる。
+    /// @note 柄側の 1 割は焼かない。刃文が鍔まで届くと刃の始まりが読めなくなる。
     hamon *= smoothstep(0.0f, 0.10f, t);
 
     const float heat = hamon * max(hamonHeat, 0.0f);
 
-    // 熱が乗った鋼は反射色そのものが色付く。金属なので albedo = F0 で、
-    // ここを動かさないと «白い光が乗っただけ» にしか見えない。
+    /// @note 金属は albedo = F0 なので、反射色そのものを色付けないと白い光が乗っただけに見える。
     const float3 hot = lerp(hamonColor, float3(1.0f, 1.0f, 1.0f), saturate(whiteHeat));
     col = lerp(col, hot, saturate(heat * 0.30f));
 
     float met   = saturate(metallic);
     float rough = max(saturate(roughness), 0.045f);
-    // 焼けた面は僅かに曇る。鏡のまま光らせると発光が反射に負けて出てこない。
+    /// @note 焼けた面は僅かに曇らせる。鏡のままだと発光が反射に負けて出てこない。
     rough = max(rough, saturate(heat) * 0.22f);
 
     const WetSurface wet = ApplyWetness(col, rough, N);
@@ -188,7 +166,7 @@ float4 PSMain(BladePSIn p) : SV_Target0
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
 
     float3 result = iblIntensity > 0.0f
-        ? Lighting_PBR_IBL_Advanced(N, V, L, T, B, col, met, rough,
+        ? Lighting_PBR_IBL_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, 0.0f, anisotropy, float3(1.0f, 1.0f, 1.0f),
               lightColor, lightIntensity, shadow, 1.0f,
               texIBLIrradiance, texIBLPrefilter, texBRDFLut, iblMaxMipLevel,
@@ -204,12 +182,10 @@ float4 PSMain(BladePSIn p) : SV_Target0
             ps.color, ps.intensity, 1.0f);
     FBZZ_PUNCTUAL_END
 
-    // ── 自発光 ──────────────────────────────────────────────────────────────
     result += emissiveColor * emissiveScale;
     result += hot * heat;
 
-    // 振った瞬間の帯。刃文と違って刀身の全面に乗せる ─ 平地に出ないと、
-    // 刃を寝かせた向きのときだけ «振った» が見えなくなる。
+    /// @note 振った瞬間の帯は刃文と違って刀身の全面に乗せる。平地に出ないと刃を寝かせた向きで見えなくなる。
     if (sweepPos >= 0.0f)
     {
         float d     = abs(t - sweepPos) / max(sweepWidth, 1.0e-3f);
@@ -219,7 +195,7 @@ float4 PSMain(BladePSIn p) : SV_Target0
                 * sweep * max(sweepIntensity, 0.0f);
     }
 
-    // 縁。刃文が «どこが刃か» を言うのに対し、こちらは «刀そのものが臨戦か» を言う。
+    /// @note 縁は刃文 (どこが刃か) と違い、刀そのものが臨戦かを言う。
     if (rimIntensity > 0.0f)
     {
         float fres = pow(saturate(1.0f - saturate(dot(N, V))), max(rimPower, 0.5f));
