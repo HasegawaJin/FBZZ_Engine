@@ -1,8 +1,15 @@
 [editor]
 format_version = 2
-game_objects = []
 hidden_objects = []
 locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Sphere Collider' ]
+    instance_id = 'b0dffbcf-c49e-49b4-aa83-7a257ea69b71'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Cloth' ]
+    instance_id = '3f523baa-d03a-4f42-a2e8-868d9605093f'
 
 [meta]
 guid = '6f61298662d74052bf6d6b91e0aa80b6'

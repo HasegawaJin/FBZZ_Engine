@@ -224,7 +224,7 @@ TEST_F(ClothAssetTest, VersionOneStaticClothRemainsReadable)
     ASSERT_TRUE(asset::SaveClothAssetToFile(path, cloth));
     std::string text;
     ASSERT_TRUE(util::FileSystem::ReadText(path, text));
-    const auto version = text.find("version = 2");
+    const auto version = text.find("version = 3");
     ASSERT_NE(version, std::string::npos);
     text.replace(version, 11, "version = 1");
     ASSERT_TRUE(util::FileSystem::WriteText(path, text));
