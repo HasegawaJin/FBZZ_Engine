@@ -508,6 +508,7 @@ void EditorApp::RegisterBuiltinOperators()
     RegisterEffectOperators(m_operators);
     RegisterClothOperators(m_operators);
     RegisterSfxOperators(m_operators);
+    RegisterDeveloperOperators(m_operators);
 }
 
 /// @brief 4 面 (メニュー / ホットキー / パレット / AI) が共有する実行文脈。

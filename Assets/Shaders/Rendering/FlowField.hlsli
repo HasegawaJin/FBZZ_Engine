@@ -33,7 +33,7 @@ struct GpuFlowField
 /// @note 速度場アトラスの 1 タイルの 1 辺。VectorFieldAsset.hpp の kVelocityFieldTileResolution と一致させる。
 #define VELOCITY_FIELD_TILE 32
 
-/// @note channels にこの値を渡すと場ごとのチャンネル判定を省く (CPU で絞り込み済みの GPU 粒子)。
+/// @note 全 32 bit を受信する。場のマスク 0 は CPU の FlowReceiver と同じく受信しない。
 #define FLOW_ALL_CHANNELS 0xFFFFFFFFu
 
 /// @brief ベクトルポテンシャルの回転 (∇×ψ) を中心差分で求める発散ゼロの乱流。
@@ -93,7 +93,7 @@ float3 SampleVelocityField(Texture3D<float4> atlas, SamplerState samp, uint tile
 }
 
 /// @brief fields[first, first+count) を合成した 1 点の媒質速度 [m/s]。
-/// @param channels 受け手のチャンネル。FLOW_ALL_CHANNELS なら場ごとの判定を省く。
+/// @param channels 受け手の 32 bit チャンネルマスク。
 /// @param covered この点を覆う場が 1 本でもあったか。
 /// @note 式は FlowFieldEval.cpp の SampleFlow と一致させる。
 float3 SampleFlowFields(StructuredBuffer<GpuFlowField> fields, uint first, uint count, uint channels,
@@ -106,7 +106,7 @@ float3 SampleFlowFields(StructuredBuffer<GpuFlowField> fields, uint first, uint 
     for (uint fi = first; fi < first + count; ++fi)
     {
         GpuFlowField f = fields[fi];
-        if (channels != FLOW_ALL_CHANNELS && (asuint(f.fieldTile.z) & channels) == 0u) continue;
+        if ((asuint(f.fieldTile.z) & channels) == 0u) continue;
         float3 toPoint = position - f.posRadius.xyz;
         float  radius  = f.posRadius.w;
         float  influence = 1.0f;
