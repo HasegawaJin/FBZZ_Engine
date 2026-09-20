@@ -6,12 +6,13 @@
 /// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Scene/SceneUtils.hpp"
-#include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
-#include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
-#include "Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/MeshTrailRenderPass.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
+#include <Engine/Renderer/OpaqueRenderPlan.hpp>
+#include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+#include <Engine/Scene/Systems/RenderLightExtractor.hpp>
+#include <Engine/Scene/Systems/RenderPasses/GeometryPipeline.hpp>
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassCapture.hpp>
 #include "Engine/Renderer/DebugDraw.hpp"
@@ -238,7 +239,7 @@ struct ViewRenderTargets {
     uint32_t taaFrameIndex = 0;
     /// @brief TAA 履歴 (taaHistoryA/B) に «前のフレームの絵» が入っているか。
     /// @note 作り直した直後と TAA を切っていた後は中身が未定義か古い絵。false の間は taaFeedback を 0 にし、
-    ///       今のフレームだけで履歴を作り直す。リサイズでは保存・復元しないので false に戻る。
+    /// @note 今のフレームだけで履歴を作り直す。リサイズでは保存・復元しないので false に戻る。
     bool taaHistoryValid = false;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -490,7 +491,7 @@ SceneShadowBounds ComputeSceneShadowBounds(Scene& scene, fbzz::LayerMask culling
     return result;
 }
 
-} // namespace
+} /// @note namespace
 
 void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
@@ -1448,519 +1449,24 @@ void RenderSystem(Scene& scene,
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::LightingSetup", "Rendering"));
 
-    /// @note ライト定数バッファを構築
-    renderer::LightConstantsCB lightData{};
-    lightData.lightDir       = { 0.0f, -1.0f, 0.5f };
-    lightData.lightColor     = { 1.0f,  1.0f, 1.0f };
-    lightData.lightIntensity = 1.0f;
-
-    /// @note Directional Light のシャドウ設定 (LightComponent から取得)
-    bool  dirCastShadows    = true;
-    float dirShadowBias     = 1.0f;
-    float dirShadowStrength = 1.0f;
-    float dirShadowDistance = 0.0f;
-
-    /// @note クラスタライティング用の統合ライト配列。b3 の固定長配列と並行して構築する。
-    /// @note b3 は点 8 / スポット 4 で打ち切るが、こちらは 256 本まで拾う。
-    /// @note b3 の詰め方は変えないので、クラスタ未対応のパスの見た目は据え置き。
-    std::vector<PunctualLightGPU> punctualLights;
-    punctualLights.reserve(32);
-
-    /// @note 影を落とせるライトの候補 (Directional 以外の全型)。
-    /// @note アトラスは 16 タイルしかなく、走査順に配ると「シーンのどこに置いたか」で
-    /// @note 影の有無が決まる。全部集めてから捨てる相手を選ぶ。
-    struct PunctualShadowCandidate {
-        size_t        punctualIndex;   ///< @note punctualLights 内の位置
-        int           legacySlot;      ///< @note b3 側の位置 (点 0-7 / スポット 8-11)。-1 = b3 に入らない
-        /// @note 全方位のライトはキューブ 6 面 = 6 タイルを使う。Spot / Area は 1 タイル。
-        bool          needsCube;
-        math::Vector3 position;
-        math::Vector3 direction;       ///< @note 1 タイル側の照射方向 (キューブでは未使用)
-        float         range;
-        float         outerCone;       ///< @note [degrees] 1 タイル側の半画角
-        float         nearPlane;
-        float         bias;
-        float         strength;
-        float         sourceRadius;  ///< @note 半影の広がりを決める光源半径 [m]
-        float         cameraDistSq;
-    };
-    std::vector<PunctualShadowCandidate> shadowCandidates;
-
-    /// @note Cookie を持つスポットの候補。割り当ての考え方は影と同じで、タイル数が
-    /// @note 有限 (8 枚) なのでカメラから近い順に配る。
-    struct LightCookieCandidate {
-        size_t        punctualIndex;
-        int           legacySlot;
-        math::Vector3 position;
-        math::Vector3 direction;
-        float         range;
-        float         outerCone;   ///< @note [degrees]
-        float         nearPlane;
-        float         rotationRad;
-        std::string   path;
-        float         cameraDistSq;
-    };
-    std::vector<LightCookieCandidate> cookieCandidates;
-
-    /// @note b3 経路の点光源 / スポットの光源半径。添字は legacyShadowSlots と同じ。
-    float legacySourceRadius[kMaxLegacyPunctualLights] = {};
-
-    constexpr float kDegToRad = 3.14159265f / 180.0f;
-    /// @note キューブ 1 面ぶんの半画角 (= 90 度の半分)。Point シャドウの 6 面で使う。
-    constexpr float kQuarterPi = 3.14159265f / 4.0f;
-    /// @note Area の影を焼く錐台の半画角 [degrees]。Spot の outerCone に相当する値として渡す。
-    /// @note 面光源は法線側の半球 (= 90 度) を照らすが、透視投影は 90 度で無限に広がるため
-    /// @note 張れない。75 度は「パネルの正面に置いた物の影は出る / 真横は諦める」の線。
-    constexpr float kAreaShadowOuterConeDeg = 75.0f;
-    /// @note View<> だと GameObject が取れず activeInHierarchy() を見られないので、GO を切っても
-    /// @note 光だけが残る。GetEntities<> は View<> と同じ基底 span なので走査順は変わらない。
-    for (EntityID id : scene.GetEntities<LightComponent>()) {
-        GameObject*     go    = scene.GetGameObject(id);
-        LightComponent* light = scene.GetComponent<LightComponent>(id);
-        if (!go || !light || !go->activeInHierarchy() || !light->enabled) continue;
-        const Transform&      tf = go->transform;
-        const LightComponent& lc = *light;
-
-        /// @note 色温度モードでは color 欄ではなく colorTemperature が正本。
-        /// @note 毎フレーム引き直す。キャッシュは Inspector の反映漏れという見つけにくい種になる。
-        const math::Vector3 lightColor =
-            lc.useColorTemperature ? renderer::ColorFromTemperature(lc.colorTemperature)
-                                   : lc.color;
-
-        /// @note 点光源 / スポット / 大きさを持つ光源は上限に達するまで統合配列へも積む。
-        /// @note b3 は「点を全部→スポットを全部」の 2 配列だがこちらは 1 本なので評価順が変わりうる。
-        /// @note 加算なので結果は同じ (順序による丸め差のみ)。
-        if (lc.type != LightComponent::Type::Directional
-            && punctualLights.size() < kMaxPunctualLights) {
-            const size_t punctualIndex = punctualLights.size();
-            PunctualLightGPU& gpu = punctualLights.emplace_back();
-            /// @note worldPosition を使う: Transform::position は親基準のローカル座標。
-            /// @note 子 GameObject にライトを置くと (キャラクターの発光部・車のヘッドライト・
-            /// @note ボーンに付けた松明)、親の姿勢が一切効かず原点付近に光が落ちる。
-            /// @note 向き (forward / right / up) は worldRotation から作られるので既に
-            /// @note ワールド空間で、位置だけが取り残されていた。
-            gpu.position  = tf.worldPosition;
-            gpu.range     = lc.range;
-            gpu.color     = lightColor;
-            gpu.intensity = lc.intensity;
-            /// @note 既定は Point。他の型が以降で上書きする。
-            gpu.direction   = { 0.0f, -1.0f, 0.0f };
-            gpu.innerCos    = 0.0f;
-            gpu.outerCos    = 0.0f;
-            gpu.type        = static_cast<uint32_t>(PunctualLightType::Point);
-            gpu.shadowIndex = -1;
-            gpu.cookieIndex = -1;
-            gpu.tangent     = { 1.0f, 0.0f, 0.0f };
-            gpu.bitangent   = { 0.0f, 1.0f, 0.0f };
-            /// @note 点光源 / スポットでも halfWidth は光源半径として意味を持つ
-            /// @note (形状は点のまま、ハイライトの広がりと影のにじみ幅にだけ効く)。
-            gpu.halfWidth   = (std::max)(lc.sourceRadius, 0.0f);
-            gpu.halfHeight  = 0.0f;
-
-            if (lc.type == LightComponent::Type::Spot) {
-                gpu.direction = tf.forward.Normalized();
-                gpu.innerCos  = std::cos(lc.innerCone * kDegToRad);
-                gpu.outerCos  = std::cos(lc.outerCone * kDegToRad);
-                gpu.type      = static_cast<uint32_t>(PunctualLightType::Spot);
-            } else if (lc.type == LightComponent::Type::Sphere) {
-                gpu.type      = static_cast<uint32_t>(PunctualLightType::Sphere);
-            } else if (lc.type == LightComponent::Type::Tube) {
-                /// @note 管の軸は Transform の Right。蛍光灯を横向きに置く姿勢が既定になる。
-                gpu.tangent    = tf.right.NormalizedOr({ 1.0f, 0.0f, 0.0f });
-                gpu.halfHeight = (std::max)(lc.sourceLength, 0.0f) * 0.5f;
-                gpu.type       = static_cast<uint32_t>(PunctualLightType::Tube);
-            } else if (lc.type == LightComponent::Type::Area) {
-                gpu.direction  = tf.forward.NormalizedOr({ 0.0f, 0.0f, 1.0f });
-                gpu.tangent    = tf.right.NormalizedOr({ 1.0f, 0.0f, 0.0f });
-                gpu.bitangent  = tf.up.NormalizedOr({ 0.0f, 1.0f, 0.0f });
-                gpu.halfWidth  = (std::max)(lc.areaWidth,  0.001f) * 0.5f;
-                gpu.halfHeight = (std::max)(lc.areaHeight, 0.001f) * 0.5f;
-                /// @note Area では innerCos / outerCos が空くので、両面フラグの運搬に使う。
-                /// @note 専用フィールドを足すと 96 バイトの構造体がキャッシュライン 2 本に収まらない。
-                gpu.outerCos   = lc.areaTwoSided ? 1.0f : 0.0f;
-                gpu.type       = static_cast<uint32_t>(PunctualLightType::Area);
-            }
-
-            const math::Vector3 toCamera = tf.worldPosition - camera.m_position;
-            const float cameraDistSq = math::Vector3::Dot(toCamera, toCamera);
-
-            /// @note b3 側でこのライトが取る添字。直後のブロックが末尾へ 1 つ足すだけなので、
-            /// @note 採番される番号は今のカウンタ値そのもの。
-            int legacySlot = -1;
-            if (lc.type == LightComponent::Type::Point && lightData.pointLightCount < 8)
-                legacySlot = lightData.pointLightCount;
-            else if (lc.type == LightComponent::Type::Spot && lightData.spotLightCount < 4)
-                legacySlot = kLegacySpotSlotBase + lightData.spotLightCount;
-            if (legacySlot >= 0)
-                legacySourceRadius[legacySlot] = (std::max)(lc.sourceRadius, 0.0f);
-
-            /// @note Cookie の候補。Spot 専用 — Point はキューブマップ、Directional は
-            /// @note ワールド空間のタイリングという別の仕組みが要る。
-            if (lc.type == LightComponent::Type::Spot && !lc.cookiePath.empty()) {
-                LightCookieCandidate cookie{};
-                cookie.punctualIndex = punctualIndex;
-                cookie.legacySlot    = legacySlot;
-                cookie.position      = tf.worldPosition;
-                cookie.direction     = tf.forward.NormalizedOr({ 0.0f, 0.0f, 1.0f });
-                cookie.range         = (std::max)(lc.range, 0.05f);
-                cookie.outerCone     = lc.outerCone;
-                cookie.nearPlane     = (std::max)(lc.shadowNearPlane, 0.01f);
-                cookie.rotationRad   = lc.cookieRotation * kDegToRad;
-                cookie.path          = lc.cookiePath;
-                cookie.cameraDistSq  = cameraDistSq;
-                cookieCandidates.push_back(std::move(cookie));
-            }
-
-            /// @note 影の候補として控える。Directional 以外は全型が落とせる。
-            /// @note 形状を持つ光源も点から焼いた影でよい: 影の形は遮蔽物と受光面の配置でほぼ決まり、
-            /// @note 光源の大きさは半影の広さ (sourceRadius から作る penumbraTexels) にしか効かない。
-            /// @note 管が長いと本来は半影が軸方向へ伸びるが、それには軸に沿った複数枚が要り 16 タイルでは足りない。
-            const bool canCastShadow =
-                lc.castShadows && lc.shadowStrength > 0.0f &&
-                lc.type != LightComponent::Type::Directional;
-            if (canCastShadow) {
-                /// @note 遠すぎるライトへタイルを割り当てない。判定距離に range を足すのは、
-                /// @note range の大きいライトは離れていても画面を広く照らすため。
-                const float limit = rs.shadow.punctualShadowDistance + lc.range;
-                if (cameraDistSq <= limit * limit) {
-                    PunctualShadowCandidate cand{};
-                    cand.punctualIndex = punctualIndex;
-                    cand.legacySlot    = legacySlot;
-                    /// @note Sphere / Tube は Point と同じ全方位。Area だけが向きを持つ。
-                    cand.needsCube     = (lc.type == LightComponent::Type::Point
-                                       || lc.type == LightComponent::Type::Sphere
-                                       || lc.type == LightComponent::Type::Tube);
-                    cand.position      = tf.worldPosition;
-                    cand.direction     = cand.needsCube
-                                       ? math::Vector3{ 0.0f, -1.0f, 0.0f }
-                                       : tf.forward.NormalizedOr({ 0.0f, 0.0f, 1.0f });
-                    cand.range         = (std::max)(lc.range, 0.05f);
-                    /// @note Area は法線側の半球を照らすが、1 枚の透視投影では 180 度を張れない。
-                    /// @note 実用上そこまでで、これ以上広げると端のテクセル密度が落ちるだけ。
-                    cand.outerCone     = (lc.type == LightComponent::Type::Area)
-                                       ? kAreaShadowOuterConeDeg
-                                       : lc.outerCone;
-                    cand.nearPlane     = (std::max)(lc.shadowNearPlane, 0.01f);
-                    cand.bias          = (std::max)(lc.shadowBias, 0.0f);
-                    cand.strength      = std::clamp(lc.shadowStrength, 0.0f, 1.0f);
-                    cand.sourceRadius  = (std::max)(lc.sourceRadius, 0.0f);
-                    cand.cameraDistSq  = cameraDistSq;
-                    shadowCandidates.push_back(cand);
-                }
-            }
-        }
-
-        if (lc.type == LightComponent::Type::Directional) {
-            lightData.lightDir       = tf.forward.Normalized();
-            lightData.lightColor     = lightColor;
-            lightData.lightIntensity = lc.intensity;
-            dirCastShadows    = lc.castShadows;
-            dirShadowBias     = lc.shadowBias;
-            dirShadowStrength = lc.shadowStrength;
-            dirShadowDistance = lc.shadowDistance;
-        } else if (lc.type == LightComponent::Type::Point
-                   && lightData.pointLightCount < 8) {
-            auto& pl    = lightData.pointLights[lightData.pointLightCount++];
-            pl.position  = tf.worldPosition;
-            pl.range     = lc.range;
-            pl.color     = lightColor;
-            pl.intensity = lc.intensity;
-        } else if (lc.type == LightComponent::Type::Spot
-                   && lightData.spotLightCount < 4) {
-            auto& sl    = lightData.spotLights[lightData.spotLightCount++];
-            sl.position  = tf.worldPosition;
-            sl.direction = tf.forward.Normalized();
-            sl.range     = lc.range;
-            sl.innerCos  = std::cos(lc.innerCone * kDegToRad);
-            sl.outerCos  = std::cos(lc.outerCone * kDegToRad);
-            sl.color     = lightColor;
-            sl.intensity = lc.intensity;
-        }
-    }
-
-    /// @note 粒子を点光源にする (ParticleEmitter の Lights モジュール)。LightComponent の後に積むので、
-    /// @note 枠が足りないときに削られるのは粒子の光の方。Legacy (b3) には載せない。
-    /// @note GPU シミュレーションの粒子は位置が GPU にしか無いので対象外 (Inspector に注記がある)。
-    std::vector<ParticleLightEmission> particleLights;
-    for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
-        if (punctualLights.size() >= kMaxPunctualLights) break;
-        GameObject*      go      = scene.GetGameObject(id);
-        ParticleEmitter* emitter = scene.GetComponent<ParticleEmitter>(id);
-        if (!go || !emitter || !go->activeInHierarchy() || !emitter->settings.enabled
-            || !emitter->settings.light.lightEnabled
-            || CanUseGpuSimulation(emitter->settings, &emitter->runtime.material))
-            continue;
-        SelectParticleLights(emitter->settings.light, emitter->runtime.particles,
-                             kMaxPunctualLights - punctualLights.size(), particleLights);
-        const bool localSpace = emitter->settings.simulationSpace == ParticleSimulationSpace::Local;
-        for (const ParticleLightEmission& emission : particleLights) {
-            PunctualLightGPU& gpu = punctualLights.emplace_back();
-            gpu.position  = localSpace ? TransformEmitterPoint(go->transform, emission.position) : emission.position;
-            gpu.range     = emission.range;
-            gpu.color     = emission.color;
-            gpu.intensity = emission.intensity;
-            gpu.direction = { 0.0f, -1.0f, 0.0f };
-            gpu.type      = static_cast<uint32_t>(PunctualLightType::Point);
-        }
-    }
-
-    /// @name Spot / Point シャドウのスロット割り当てと行列の組み立て
-    /// @note カメラから近い順。遠いライトの影は数ピクセルにしかならず落としても気づかれにくい。
-    /// @note 距離キーは連続に変化するので、あふれの切り替わりも端から 1 つずつ起きる。
-    std::sort(shadowCandidates.begin(), shadowCandidates.end(),
-              [](const PunctualShadowCandidate& a, const PunctualShadowCandidate& b) {
-                  return a.cameraDistSq < b.cameraDistSq;
-              });
-
-    /// @note アトラスは 4x4 = kMaxPunctualShadows タイル。Spot が 1 枚、Point が 6 枚を使う。
-    constexpr uint32_t kPunctualTilesPerSide = 4u;
-    static_assert(kPunctualTilesPerSide * kPunctualTilesPerSide
-                      == static_cast<uint32_t>(kMaxPunctualShadows),
-                  "punctual shadow atlas tiling must cover exactly kMaxPunctualShadows tiles");
-    const uint32_t punctualTileSize =
-        (std::max)(punctualShadowRes / kPunctualTilesPerSide, 1u);
-    const float    punctualAtlasResF = static_cast<float>(punctualShadowRes);
-    const float    punctualUvScale   =
-        static_cast<float>(punctualTileSize) / punctualAtlasResF;
-
-    /// @note キューブ 6 面の向きと up。順序は PunctualShadow.hlsli の FBZZ_CubeFaceIndex と
-    /// @note 一致させること (+X, -X, +Y, -Y, +Z, -Z)。
-    /// @note up は描く行列と引く行列が同じなら何でもよい (両方ここで作った 1 本を使う)。
-    static constexpr math::Vector3 kCubeFaceDir[6] = {
-        {  1.0f,  0.0f,  0.0f }, { -1.0f,  0.0f,  0.0f },
-        {  0.0f,  1.0f,  0.0f }, {  0.0f, -1.0f,  0.0f },
-        {  0.0f,  0.0f,  1.0f }, {  0.0f,  0.0f, -1.0f },
-    };
-    static constexpr math::Vector3 kCubeFaceUp[6] = {
-        { 0.0f, 1.0f,  0.0f }, { 0.0f, 1.0f, 0.0f },
-        { 0.0f, 0.0f, -1.0f }, { 0.0f, 0.0f, 1.0f },
-        { 0.0f, 1.0f,  0.0f }, { 0.0f, 1.0f, 0.0f },
-    };
-
-    PunctualShadowView punctualViews[kMaxPunctualShadows] = {};
-    int punctualViewCount   = 0;
-    /// @note キューブ 6 面を使ったライトの本数 (Point / Sphere / Tube)。
-    int shadowedCubeCount   = 0;
-    /// @note b3 経路 (既定の Forward) 向けのスロット番号。-1 = 影なし。
-    int legacyShadowSlots[kMaxLegacyPunctualLights];
-    for (int& slot : legacyShadowSlots) slot = -1;
-
-    /// @note タイル 1 枚を組み立てる。halfFovRad はそのタイルの投影半画角。
-    const auto buildPunctualView =
-        [&](int slot, const math::Vector3& eye, const math::Vector3& dir,
-            const math::Vector3& up, float halfFovRad, float nearZ, float farZ,
-            float biasScale, float strength, float sourceRadius) {
-        PunctualShadowView& view = punctualViews[slot];
-        view.view           = math::Matrix4::LookAt(eye, eye + dir, up);
-        view.viewProjection =
-            math::Matrix4::Perspective(halfFovRad * 2.0f, 1.0f, nearZ, farZ) * view.view;
-        view.eyePos         = eye;
-        view.frustum        = math::Frustum::FromViewProjection(view.viewProjection);
-        view.shadowStrength = strength;
-
-        const uint32_t tileX = static_cast<uint32_t>(slot) % kPunctualTilesPerSide;
-        const uint32_t tileY = static_cast<uint32_t>(slot) / kPunctualTilesPerSide;
-        view.viewportX    = tileX * punctualTileSize;
-        view.viewportY    = tileY * punctualTileSize;
-        view.viewportSize = punctualTileSize;
-        view.atlasRect    = {
-            static_cast<float>(view.viewportX) / punctualAtlasResF,
-            static_cast<float>(view.viewportY) / punctualAtlasResF,
-            punctualUvScale, punctualUvScale
-        };
-
-        /// @note 基本バイアスは「1 テクセルが覆うワールド距離」。アクネはテクセルの幅の中で
-        /// @note 面の深度が変わることから出るので、補正量はテクセルの実寸そのものになる
-        /// @note (斜め面ぶんの tan(theta) はシェーダー側の FBZZ_PunctualSlopeBias が掛ける)。
-        /// @note 評価点が range の中ほどなのは、透視投影ではテクセル実寸が深度に比例するため。
-        const float midZ       = (std::max)((nearZ + farZ) * 0.5f, nearZ * 2.0f);
-        const float texelWorld =
-            2.0f * midZ * std::tan(halfFovRad) / static_cast<float>(punctualTileSize);
-        /// @note 透視投影の NDC 深度は非線形なので、ワールド距離をそのまま渡せない。
-        /// @note z_ndc = f/(f-n) * (1 - n/z)  →  dz_ndc/dz = f*n / ((f-n) * z^2)
-        const float ndcPerWorld =
-            (farZ * nearZ) / ((std::max)(farZ - nearZ, 0.001f) * midZ * midZ);
-        view.biasNDC = texelWorld * ndcPerWorld * biasScale;
-
-        /// @note 1 テクセルが張る角度。ShadowPass の極小 caster カリングが使う。
-        view.texelAngularSize =
-            2.0f * std::tan(halfFovRad) / static_cast<float>(punctualTileSize);
-
-        /// @note 光源半径がシャドウマップ上で何テクセルぶんの半影になるか。
-        /// @note 本来は「光源の大きさ × 遮蔽物と受光面の距離比」だが、ブロッカー探索が無いので
-        /// @note 比を 1 とみなす。遮蔽物が遠いほど硬くなるが「大きな電球ほど柔らかい」は出る。
-        view.penumbraTexels = (texelWorld > 0.0f) ? (sourceRadius / texelWorld) : 0.0f;
-    };
-
-    if (rs.shadowEnabled) {
-        for (const PunctualShadowCandidate& cand : shadowCandidates) {
-            const int needed = cand.needsCube ? 6 : 1;
-            /// @note break ではなく continue。全方位のライトが入らなかっただけで、後ろに続く
-            /// @note Spot / Area は 1 枚で収まる可能性がある。
-            if (punctualViewCount + needed > kMaxPunctualShadows) continue;
-            if (cand.needsCube && shadowedCubeCount >= rs.shadow.maxShadowedPointLights) continue;
-
-            /// @note Inspector で range より大きい shadowNearPlane を入れられるので、
-            /// @note ここで潰さないと Matrix4::Perspective の assert を踏む。
-            const float farZ  = cand.range;
-            const float nearZ = (std::min)(cand.nearPlane, farZ * 0.5f);
-
-            const int baseSlot = punctualViewCount;
-            if (cand.needsCube) {
-                for (int face = 0; face < 6; ++face) {
-                    buildPunctualView(baseSlot + face, cand.position,
-                                      kCubeFaceDir[face], kCubeFaceUp[face],
-                                      kQuarterPi, nearZ, farZ, cand.bias, cand.strength,
-                                      cand.sourceRadius);
-                }
-                punctualViewCount += 6;
-                ++shadowedCubeCount;
-            } else {
-                /// @note 錐台は円錐へ外接させる。outerCone は半角なので画角はその 2 倍。
-                /// @note 少し広げるのは、ぴったり切ると PCF が縁ではみ出して影が欠けるため。
-                /// @note Area はコーンを持たないので kAreaShadowOuterConeDeg が入っている。
-                const float halfFov = (std::min)(
-                    std::clamp(cand.outerCone, 1.0f, 79.0f) * kDegToRad * 1.05f,
-                    kQuarterPi * 1.9f);
-                const math::Vector3 up = (std::abs(cand.direction.y) > 0.99f)
-                                         ? math::Vector3{ 1.0f, 0.0f, 0.0f }
-                                         : math::Vector3{ 0.0f, 1.0f, 0.0f };
-                buildPunctualView(baseSlot, cand.position, cand.direction, up,
-                                  halfFov, nearZ, farZ, cand.bias, cand.strength,
-                                  cand.sourceRadius);
-                punctualViewCount += 1;
-            }
-            /// @note クラスタ経路はライト構造体から、レガシー経路は b12 の対応表から番号を引く。
-            /// @note どちらの経路でも同じスロットを指すよう、ここで両方へ書く。
-            punctualLights[cand.punctualIndex].shadowIndex = baseSlot;
-            if (cand.legacySlot >= 0 && cand.legacySlot < kMaxLegacyPunctualLights)
-                legacyShadowSlots[cand.legacySlot] = baseSlot;
-        }
-    }
-
-    /// @name Cookie のスロット割り当て
-    /// @note 影と同じくカメラから近い順。タイルは 8 枚しかない。
-    std::sort(cookieCandidates.begin(), cookieCandidates.end(),
-              [](const LightCookieCandidate& a, const LightCookieCandidate& b) {
-                  return a.cameraDistSq < b.cameraDistSq;
-              });
-
-    LightCookieView cookieViews[kMaxLightCookies];
-    int cookieViewCount = 0;
-    int legacyCookieSlots[kMaxLegacyPunctualLights];
-    for (int& slot : legacyCookieSlots) slot = -1;
-
-    for (const LightCookieCandidate& cand : cookieCandidates) {
-        if (cookieViewCount >= kMaxLightCookies) break;
-
-        const int slot = cookieViewCount++;
-        LightCookieView& view = cookieViews[slot];
-
-        /// @note 投影は影と同じ「スポットの円錐に外接する透視錐台」。
-        /// @note 影の行列を流用しないのは、Cookie が影を落とさないライトにも付くため。
-        /// @note 縁を広げないのは、近傍サンプルが無く広げると模様がコーンより内側で終わるため。
-        const float farZ    = cand.range;
-        const float nearZ   = (std::min)(cand.nearPlane, farZ * 0.5f);
-        const float halfFov = std::clamp(cand.outerCone, 1.0f, 79.0f) * kDegToRad;
-        const math::Vector3 up = (std::abs(cand.direction.y) > 0.99f)
-                                 ? math::Vector3{ 1.0f, 0.0f, 0.0f }
-                                 : math::Vector3{ 0.0f, 1.0f, 0.0f };
-
-        const math::Matrix4 cookieView =
-            math::Matrix4::LookAt(cand.position, cand.position + cand.direction, up);
-        view.viewProjection =
-            math::Matrix4::Perspective(halfFov * 2.0f, 1.0f, nearZ, farZ) * cookieView;
-
-        const uint32_t tileX = static_cast<uint32_t>(slot) % kLightCookieAtlasCols;
-        const uint32_t tileY = static_cast<uint32_t>(slot) / kLightCookieAtlasCols;
-        view.viewportX = tileX * kLightCookieTileSize;
-        view.viewportY = tileY * kLightCookieTileSize;
-        view.atlasRect = {
-            static_cast<float>(view.viewportX) / static_cast<float>(kLightCookieAtlasWidth),
-            static_cast<float>(view.viewportY) / static_cast<float>(kLightCookieAtlasHeight),
-            static_cast<float>(kLightCookieTileSize) / static_cast<float>(kLightCookieAtlasWidth),
-            static_cast<float>(kLightCookieTileSize) / static_cast<float>(kLightCookieAtlasHeight)
-        };
-        view.sourcePath  = cand.path;
-        view.rotationRad = cand.rotationRad;
-
-        punctualLights[cand.punctualIndex].cookieIndex = slot;
-        if (cand.legacySlot >= 0 && cand.legacySlot < kMaxLegacyPunctualLights)
-            legacyCookieSlots[cand.legacySlot] = slot;
-    }
-
-    /// @name 昼夜の色・強度カーブ (Phase B)
-    /// @note 太陽の向きは DirectionalLight の transform が唯一のソース (lightDir は上書きしない)。
-    /// @note dayNightEnabled のときは、その光源の太陽高度から色と強度の遷移だけを駆動する。
-    /// @note ライトを回すと 太陽ディスク・空・月・空連動 IBL・ライティングが一緒に動く。
-    /// @note 雲シャドウ params (Phase C) も SkyRenderer から読み、passCtx へ後で転送する。
-    float skyCloudShadowStrength = 0.0f, skyCloudShadowCoverage = 0.5f,
-          skyCloudShadowScale = 0.02f, skyCloudShadowSpeed = 1.0f;
-    /// @note 太陽の向きは DirectionalLight 側で決まるため SkyRenderer の Transform は使わない。
-    for (EntityID id : scene.GetEntities<SkyRenderer>()) {
-        GameObject* go     = scene.GetGameObject(id);
-        auto*       skyPtr = scene.GetComponent<SkyRenderer>(id);
-        if (!go || !skyPtr || !go->activeInHierarchy() || !skyPtr->enabled) continue;
-        const SkyRenderer& sky = *skyPtr;
-
-        /// @note 雲シャドウは昼夜サイクルとは独立に常に反映する。
-        skyCloudShadowStrength = sky.cloudShadowStrength;
-        skyCloudShadowCoverage = sky.cloudShadowCoverage;
-        /// @note Component は「まだら 1 周期の大きさ [m]」。シェーダーは world→UV スケールを要る。
-        skyCloudShadowScale    = 1.0f / (std::max)(sky.cloudShadowSize, 1.0f);
-        skyCloudShadowSpeed    = sky.cloudShadowSpeed;
-
-        if (sky.dayNightEnabled) {
-            /// @note 太陽方向 (toward sun) = -lightDir。その高度 [度] を軸に 夜 ↔ 夕方 ↔ 昼 を補間する。
-            /// @note 高度 0° を夕方のキーに置くと「ライトを水平 = 夕方」になり、昼側と夜側それぞれ
-            /// @note 独立した帯幅で抜けられる。旧実装は夕焼けの重みに昼の重みを掛けており、
-            /// @note 地平線上で重みが 0.17 まで落ちて夕方を作れなかった。
-            const math::Vector3 sunToSun =
-                math::Vector3{ -lightData.lightDir.x, -lightData.lightDir.y, -lightData.lightDir.z }.Normalized();
-
-            auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
-            auto lerp1   = [](float a, float b, float t) { return a + (b - a) * t; };
-            auto lerp3   = [](const math::Vector3& a, const math::Vector3& b, float t) {
-                return math::Vector3{ a.x + (b.x - a.x) * t,
-                                      a.y + (b.y - a.y) * t,
-                                      a.z + (b.z - a.z) * t };
-            };
-
-            constexpr float kRadToDeg = 57.29577951f;
-            const float sinAlt      = (std::max)(-1.0f, (std::min)(1.0f, sunToSun.y));
-            const float altitudeDeg = std::asin(sinAlt) * kRadToDeg;
-
-            const bool  above = altitudeDeg >= 0.0f;
-            const float span  = above ? (std::max)(sky.dayAltitude,   0.1f)
-                                      : (std::max)(sky.nightAltitude, 0.1f);
-            float t = clamp01(std::fabs(altitudeDeg) / span);
-            /// @note smoothstep: 帯の端で色・明るさが折れないようにする
-            t = t * t * (3.0f - 2.0f * t);
-
-            lightData.lightColor     = lerp3(sky.sunsetColor,
-                                             above ? sky.dayColor : sky.nightColor, t);
-            lightData.lightIntensity = lerp1(sky.sunsetIntensity,
-                                             above ? sky.dayIntensity : sky.nightIntensity, t);
-            /// @note 空の明るさは太陽光の強さとは別軸。共用していた頃は太陽を強くすると空も白飛びした。
-            /// @note 詳細は SkyRenderer::skyDayBrightness。
-            lightData.skyDimmer      = lerp1(sky.skySunsetBrightness,
-                                             above ? sky.skyDayBrightness : sky.skyNightBrightness, t);
-        }
-        break;
-    }
-
-    /// @note ambientColor: Lit モードでは AMBIENT_SCALE 相当値、Unlit 系では白に上書き
-    lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
-    if (rs.IsUnlit()) {
-        lightData.ambientColor    = { 1.0f, 1.0f, 1.0f };
-        lightData.lightIntensity  = 0.0f;
-        lightData.pointLightCount = 0;
-        lightData.spotLightCount  = 0;
-        /// @note 空も消灯する。分離前は lightIntensity=0 が空系シェーダーにも効いていたので、
-        /// @note Unlit 表示で空が黒く落ちる従来の挙動を skyDimmer 側で維持する。
-        lightData.skyDimmer       = 0.0f;
-    }
-
+    auto lighting = ExtractRenderLights(scene, camera, rs, punctualShadowRes);
+    auto& lightData = lighting.lightData;
+    auto& dirCastShadows = lighting.dirCastShadows;
+    auto& dirShadowBias = lighting.dirShadowBias;
+    auto& dirShadowStrength = lighting.shadowStrength;
+    auto& dirShadowDistance = lighting.dirShadowDistance;
+    auto& punctualLights = lighting.punctualLights;
+    auto& legacySourceRadius = lighting.legacySourceRadius;
+    auto& punctualViews = lighting.punctualShadowViews;
+    auto& punctualViewCount = lighting.punctualShadowViewCount;
+    auto& legacyShadowSlots = lighting.legacyShadowSlots;
+    auto& cookieViews = lighting.lightCookieViews;
+    auto& cookieViewCount = lighting.lightCookieViewCount;
+    auto& legacyCookieSlots = lighting.legacyCookieSlots;
+    auto& skyCloudShadowStrength = lighting.cloudShadowStrength;
+    auto& skyCloudShadowCoverage = lighting.cloudShadowCoverage;
+    auto& skyCloudShadowScale = lighting.cloudShadowScale;
+    auto& skyCloudShadowSpeed = lighting.cloudShadowSpeed;
     math::Vector3 lightDir = lightData.lightDir.Normalized();
     SceneShadowBounds shadowBounds;
     {
@@ -2087,35 +1593,12 @@ void RenderSystem(Scene& scene,
     const math::Matrix4  lightView = widestCascade.view;
     const math::Vector3  lightPos  = widestCascade.eyePos;
 
-    /// @note 不透明物は可能な限り共通の GBuffer → AO → DeferredLighting 経路を通す。
-    /// @note Forward 直描きでは SSAO/GTAO/ContactShadows/SSR/IBL が Terrain に乗らないため。
-    /// @note 必須リソースが欠けるときだけ従来 Forward へ落ちる。
-    /// @note 「GBuffer を作るパイプラインか」の定義は RenderSettings::UsesGBuffer() が唯一で、
-    /// @note UI の警告 (PipelineDiagnostics) も同じ関数を見る。
-    const bool wantsDeferredPipeline = rs.UsesGBuffer();
-    /// @note GBuffer (法線 + 深度 + roughness) を描けるか。Deferred の本経路と、
-    /// @note Forward のプリパスの両方がこれを土台にする。
-    const bool gbufferAvailable = gbufferRT.IsValid() && gbufferShader.IsValid();
-    const bool useGBufferOpaquePipeline =
-        wantsDeferredPipeline &&
-        gbufferAvailable &&
-        deferredLightingShader.IsValid() &&
-        depthCopyShader.IsValid();
-
-    /// @name Forward の GBuffer プリパス
-    /// @note SSAO / GTAO / SSR / 接触影 はどれも GBuffer の法線と深度から作る。Forward には
-    /// @note 書く場所が無く、同じ設定でも効果が丸ごと消えていた。
-    /// @note 不透明ジオメトリをもう 1 回描くので、画面空間系を要求されたときだけ走らせる。
-    /// @note 副産物として深度プリパスにもなり、本描画で early-Z が効く。
-    const bool needsScreenSpaceInputs =
-        rs.postProcess.ambientOcclusion.enabled || rs.IsGtaoActive()
-        || rs.contactShadow.enabled || rs.ssr.enabled;
-    const bool forwardGBufferPrepass =
-        !useGBufferOpaquePipeline && gbufferAvailable
-        && needsScreenSpaceInputs && !rs.IsUnlit();
-
-    /// @note 画面空間系を走らせられるか。Deferred の本経路でも Forward のプリパスでも成立する。
-    const bool screenSpaceReady = useGBufferOpaquePipeline || forwardGBufferPrepass;
+    const renderer::OpaqueRenderPlan opaquePlan = renderer::ResolveOpaqueRenderPlan(rs, {
+        gbufferRT.IsValid() && gbufferShader.IsValid(),
+        deferredLightingShader.IsValid(),
+        depthCopyShader.IsValid(),
+    });
+    const bool screenSpaceReady = opaquePlan.HasScreenSpaceInputs();
 
     const bool ssaoEnabled =
         screenSpaceReady &&
@@ -2528,7 +2011,7 @@ void RenderSystem(Scene& scene,
     }
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
     passCtx.objectMaskEnabled      = objectMaskEnabled;
-    /// @note 登録条件 (Forward: forwardGBufferPrepass / Deferred: useGBufferOpaquePipeline) と
+    /// @note 構成側の opaquePlan.HasScreenSpaceInputs() と
     /// @note ExecuteSSRPass の早期 return を合わせた «本当に走るか»。
     passCtx.ssrPassActive =
         rs.ssr.enabled && screenSpaceReady &&
@@ -2556,7 +2039,7 @@ void RenderSystem(Scene& scene,
     passCtx.lightVP                 = lightVP;
     passCtx.lightView               = lightView;
     passCtx.lightEyePos             = lightPos;
-    passCtx.isDeferred              = useGBufferOpaquePipeline;
+    passCtx.isDeferred              = opaquePlan.UsesDeferredLighting();
     passCtx.ssaoEnabled             = ssaoEnabled;
     passCtx.gbufferDepthReady       = screenSpaceReady;
 
@@ -2591,7 +2074,7 @@ void RenderSystem(Scene& scene,
     /// @note b3 のレガシー経路を既定から外したのは、点 8 / スポット 4 で打ち切るため 9 個目の
     /// @note 電球が黙って消えていたから。LEGACY はリソース確保失敗時とエディタのプレビュー
     /// @note 経路 (b9 / t29 を束縛しない) のフォールバックとして残る。
-    /// @note useGBufferOpaquePipeline はライトの供給方法と直交する軸なので触らない。
+    /// @note opaquePlan はライトの供給方法と直交する軸なので触らない。
     const bool punctualBufferReady =
         passHandles.punctualLightBuffer.IsValid() && clusterCB.IsValid();
     /// @note クラスタで絞れるか。カリング CS とインデックスバッファが揃って初めて成立する。
@@ -2693,6 +2176,10 @@ void RenderSystem(Scene& scene,
     for (int i = 0; i < kMaxLegacyPunctualLights; ++i)
         passCtx.legacySourceRadius[i] = legacySourceRadius[i];
 
+    /// @note プローブも同じ入力を読むため、グラフ外の捕捉より前に変形と抽出を完了する。
+    ExecuteSkinningComputePass(passCtx);
+    ExtractRenderScene(passCtx);
+
     /// @name 空連動 IBL: source=DynamicSky のとき空→動的 IBL を用意する
     /// @note AdvancedGraphicsCB / 各 Lit パスより前に焼くことで同フレームで消費できる。
     /// @note キャプチャ先と畳み込み出力は RenderGraph 管理外なのでグラフ実行前に直接呼ぶ。
@@ -2764,7 +2251,7 @@ void RenderSystem(Scene& scene,
     /// @note 自動露出。key <= 0 が「無効」の印なので、切ってあるときは 0 のまま渡す。
     /// @note 0.18 は反射率 18% のグレーカード = 写真の露出計が基準にしている明るさ。
     /// @note 結果バッファが無いと Composite は t29 を束縛しない。key を立てたままだと 0 を平均輝度として読み、
-    ///       露出が上限へ張り付いて白飛びするので、同じ条件で無効にする (CompositePass の束縛条件と対)。
+    /// @note 露出が上限へ張り付いて白飛びするので、同じ条件で無効にする (CompositePass の束縛条件と対)。
     agData.autoExposureKey          = (rs.autoExposure.enabled && viewTargets.exposureResult.IsValid()) ? 0.18f : 0.0f;
     agData.autoExposureCompensation = rs.autoExposure.compensation;
     agData.autoExposureMinEV        = rs.autoExposure.minExposureEV;
@@ -2947,127 +2434,9 @@ void RenderSystem(Scene& scene,
         }
     };
 
-    /// @name Skinning (コンピュート)
-    /// @note Shadow より前。変形結果をシャドウ・GBuffer・Forward が共有するので 1 回で済む。
-    /// @note 出力は論理リソースではなく SkinnedMeshRenderer の頂点バッファなので依存には乗せない。
-    pipeline.AddPass<SkinningComputePass>();
-
-    /// @name クラスタライトカリング
-    /// @note Shadow より前。どちらの経路も同じ結果を読むので 1 回で済む。
-    /// @note 出力は StructuredBuffer で論理リソースではないため reads/writes は空。
-    if (clusteredEnabled) {
-        pipeline.AddPass<ClusterLightCullPass>();
-    }
-
-    /// @name Light Cookie
-    /// @note Cookie の顔ぶれが変わったフレームだけアトラスを焼き直す。
-    pipeline.AddPass<LightCookiePass>();
-
-    /// @name Shadow
-    /// @note Directional の CSM と Spot / Point のアトラスを 1 パスで描く。caster の収集と
-    /// @note ソートを両者で共有するため、パスを分けるとシーン走査が丸ごと 2 回になる。
-    pipeline.AddPass<ShadowPass>();
-
-    /// @name Forward or Deferred
-    if (!useGBufferOpaquePipeline) {
-        /// @note 画面空間系のための GBuffer プリパス。ライティングはせず法線・深度・roughness だけ書く。
-        /// @note 以降の SSAO / GTAO / SSR / 接触影は Deferred と同じ入力を読む。
-        if (forwardGBufferPrepass) {
-            pipeline.AddPass<GBufferPass>(GBufferPassMode::DepthNormalPrepass);
-
-            /// @note 地形も GBuffer へ入れる。飛ばすと地形が AO の遮蔽者にも受け手にもならず、
-            /// @note 「Deferred では地形に AO が乗るのに Forward では乗らない」差が残る。
-            /// @note 独立したパスにするのは Setup を呼ばせるため。登録順を直後に置けば実行順は変わらない。
-            pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::GBuffer);
-
-            /// @note AO と接触影は ForwardOpaque より前。Forward には合流点が無く各マテリアルが
-            /// @note 自分の画素で読むので、本描画の時点で結果が揃っていないと何も掛からない。
-            /// @note 有効条件と申告はパス側が持つ (PostProcessPasses.hpp)。ここが決めるのは位置だけ。
-            pipeline.AddPass<GTAOPass>();
-            pipeline.AddPass<ContactShadowsPass>();
-            pipeline.AddPass<SSAOPass>();
-        }
-
-        pipeline.AddPass<ForwardOpaquePass>();
-    }
-
-    if (useGBufferOpaquePipeline) {
-        pipeline.AddPass<GBufferPass>(GBufferPassMode::Deferred);
-
-        /// @note Deferred Terrain — GBuffer へ書く。DepthCopy / AO / Lighting より前に置くことで
-        /// @note GTAO/SSAO/ContactShadows/SSR/IBL が地形へも効く。
-        pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::GBuffer);
-
-        pipeline.AddPass<DeferredDepthCopyPass>();
-    }
-
-    /// @name Terrain (Forward フォールバック用)
-    /// @note ForwardOpaque / Sky の間に HDR RT (depth 共有) へ描く。Sky より前なので空が被らない。
-    /// @note 通常は上の GBuffer フェーズで描画済みなのでここは通らない。
-    if (!useGBufferOpaquePipeline) {
-        pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::Forward);
-    }
-
-    /// @note Sky / SunMoon — Forward フォールバックではここ (不透明描画後・雲前)。
-    /// @note GBuffer 経路では Terrain が HDR を書かないので Sky と DeferredDepthCopy の順序保証が
-    /// @note 失われ、DepthCopy のクリアで空が消える。だから Lighting 後 (下のブロック) に描く。
-    if (!useGBufferOpaquePipeline) {
-        pipeline.AddPass<SkyPass>();
-        pipeline.AddPass<SunMoonPass>();
-
-        /// @note VolumetricCloud — GBuffer フォールバックの Forward では Sky 後・透明物前に HDR へ合成する。
-        /// @note 空を背景にしつつ、後続の水面・透明エフェクトで上書きできる順序にする。
-        pipeline.AddPass<VolumetricCloudPass>();
-
-        /// @note SSR — Forward でもプリパスの GBuffer から反射を計算する。
-        /// @note 映すのはライティング済みのシーンなので HDR が出揃った後に置く。
-        /// @note 設定のトグルは SSRPass::IsEnabled。ここで見るのは GBuffer があるかだけ。
-        if (forwardGBufferPrepass)
-            pipeline.AddPass<SSRPass>();
-    }
-
-    /// @name SSAO + Deferred Lighting
-    if (useGBufferOpaquePipeline) {
-        /// @note AO と接触影は DeferredLighting より前。専用名で書くので、Lighting は
-        /// @note "GTAOResult" / "ContactShadowResult" を正確な依存で待てる。
-        /// @note 申告と有効条件はパス側 (PostProcessPasses.hpp)。Forward 側と同じ 3 行になる。
-        pipeline.AddPass<GTAOPass>();
-        pipeline.AddPass<ContactShadowsPass>();
-        pipeline.AddPass<SSAOPass>();
-        pipeline.AddPass<DeferredLightingPass>();
-
-        /// @note Sky / SunMoon — GBuffer ライティング後に HDR へ描く。最遠 (Reversed-Z で 0) の画素だけを埋め、
-        /// @note HDR 依存チェーンで DeferredDepthCopy のクリアより確実に後段になる。
-        pipeline.AddPass<SkyPass>();
-        pipeline.AddPass<SunMoonPass>();
-
-        /// @note VolumetricCloud — GBuffer Lighting / Sky 後・透明物前に HDR へ合成する。
-        /// @note Lighting・空に上書きされず、透明物や水面を雲の手前に描ける順序にする。
-        pipeline.AddPass<VolumetricCloudPass>();
-
-        /// @note Deferred の中で «前方描画される» 2 パス。どちらも BindForwardShadingResources を
-        /// @note 通るので、Forward パスと同じく Spot/Point の影 (t28) と Cookie (t31) を引く。
-        /// @note 申告しないと依存辺が張られず、Shadow / LightCookie より先に走ってよいことになる。
-        pipeline.AddPass<DeferredSkinnedForwardPass>();
-        pipeline.AddPass<FiberRenderPass>();
-        pipeline.AddPass<DeferredForwardTransparentPass>();
-
-        /// @note SSR — 透明オブジェクト通過後の深度を使うので DeferredForwardTransparent の後。
-        /// @note 実行条件はパイプラインの選択ではなく GBuffer の有無 (SSRPass::IsEnabled)。
-        pipeline.AddPass<SSRPass>();
-    }
-
-    /// @note VolumetricLight — ゴッドレイ・光柱を HDR バッファへ加算合成する。半透明より前に置く:
-    /// @note レイは不透明深度で止まるが、水や半透明は深度を書かないためレイの終端が水底になる。
-    /// @note 水面描画の後に足すと水底までの光芒が水面手前に描かれ水が光の靄で塗り潰されるので、
-    /// @note 不透明深度が確定したここで先に足す。WaterCaustics が Water の前必須なのと同じ理由。
-    pipeline.AddPass<VolumetricLightPass>();
-
-    /// @note WaterCaustics — 水面下の不透明ジオメトリへコースティクスを投影してから、水面本体を透明描画する。
-    /// @note Water の後に加算すると水面そのものへ模様が乗りやすいため、深度が不透明物だけを指す段階で実行する。
-    pipeline.AddPass<WaterCausticsPass>();
-
-    pipeline.AddPass<WaterRenderPass>();
+    BuildGeometryPreparation(pipeline, clusteredEnabled);
+    BuildGeometryPipeline(pipeline, opaquePlan);
+    BuildWaterComposition(pipeline);
 
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
@@ -3451,4 +2820,4 @@ void RenderSystem(Scene& scene,
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

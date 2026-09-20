@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 
 #pragma once
+#include <Graphics/Effects/ParticleDrawTypes.hpp>
 #include <Engine/Asset/ParticleMaterialSettings.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Components/ParticleColorSpace.hpp>
@@ -26,87 +27,13 @@ namespace fbzz::scene {
 
 /// @note ParticleCurve / ParticleGradient は Script からも宣言できるよう別ヘッダーに住む。
 
-/// @brief CS/VS 共通の GPU パーティクル 1 粒子レイアウト (96 bytes, 16-byte aligned)
-/// @brief `StructuredBuffer<GpuParticle>` に格納し、CS が lifetime/age を更新、VS が位置を読む。
-struct GpuParticle {
-    math::Vector3 position;        ///< @brief 12B
-    float         size;            ///< @brief 4B
-    math::Vector3 velocity;        ///< @brief 12B
-    float         age;             ///< @brief 4B
-    math::Vector4 color;           ///< @brief 16B
-    float         lifetime;        ///< @brief 4B
-    float         rotation;        ///< @brief 4B
-    float         angularVelocity; ///< @brief 4B
-    float         spriteSeed;      ///< @brief 4B
-    math::Vector4 uvRect;          ///< @brief 16B
-    /// @brief 粒子ごとの色倍率 (colorVariation の結果)。
-    /// @note CS は毎フレーム色を CB の colorStart/End (または gradient) から作り直すため、
-    ///       スポーン時のゆらぎは倍率として保持し毎フレーム掛け直す (でなければ翌フレームに消える)。
-    math::Vector3 colorScale;      ///< @brief 12B
-    /// @brief 次のコマへの補間率 (Frame Blending)。0 なら nextUvRect は読まれない。
-    float         spriteBlend;     ///< @brief 4B
-    /// @brief 次のコマの UV 矩形。CS が EvaluateFlipbookFrame と同じ規則で書く。
-    math::Vector4 nextUvRect;      ///< @brief 16B
-};
-
-/// @brief CPU → CS へのスポーンリクエスト 1 件 (96 bytes, 16-byte aligned)
-/// @brief DYNAMIC StructuredBuffer に毎フレーム書き込み、CS がリングバッファで配置する。
-struct GpuSpawnEntry {
-    math::Vector3 position;        ///< @brief 12B
-    float         lifetime;        ///< @brief 4B
-    math::Vector3 velocity;        ///< @brief 12B
-    float         size;            ///< @brief 4B
-    math::Vector4 colorStart;      ///< @brief 16B
-    /// @brief 粒子ごとの色ゆらぎ倍率 (xyz)。w は未使用。
-    /// @brief CPU が求めた倍率をそのまま渡す。基準色との「比」から復元しようとすると、
-    /// @brief 黒に近いチャンネルで暴れ、グラデーション使用時はそもそも成立しない。
-    math::Vector4 colorScale;      ///< @brief 16B
-    math::Vector4 uvRect;          ///< @brief 16B
-    float         rotation;        ///< @brief 4B
-    float         angularVelocity; ///< @brief 4B
-    float         spriteSeed;      ///< @brief 4B
-    float         pad1;            ///< @brief 4B
-};
-
-static_assert(sizeof(GpuParticle) == 112, "GpuParticle must match ParticleGpuSim.cs.hlsl (112 bytes)");
-static_assert(sizeof(GpuSpawnEntry) == 96, "GpuSpawnEntry must match ParticleGpuSim.cs.hlsl (96 bytes)");
-
-/// @brief 1 粒子が保持するトレイル履歴の最大点数。
-/// @note 固定長にして Particle を POD のまま保つ。粒子ごとに vector を持たせると
-///       スポーン/消滅のたびにヒープ確保が走り、数千粒子では確保コストが支配的になる。
-inline constexpr int kMaxParticleTrailPoints = 8;
-
-struct Particle {
-    math::Vector3 position;
-    math::Vector3 velocity;
-    math::Vector4 color;
-    float         size;
-    float         age;
-    float         rotation = 0.0f;
-    float         angularVelocity = 0.0f;
-    float         lifetime = 1.0f;
-    float         startSize = 1.0f;
-    float         endSize = 0.0f;
-    float         spriteSeed = 0.0f;
-    math::Vector4 startColor = { 1, 1, 1, 1 };
-    math::Vector4 endColor = { 1, 1, 1, 0 };
-    /// @brief 発生時に配る色ゆらぎ倍率。毎フレーム作り直す色へ掛け直すため保持する。
-    /// @note グラデーション使用時は毎フレーム color が上書きされるため、色そのものへ焼き込むと
-    ///       ゆらぎが翌フレームに消える。
-    math::Vector3 colorScale = { 1.0f, 1.0f, 1.0f };
-    math::Vector4 uvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
-    math::Vector4 nextUvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
-    float spriteBlend = 0.0f;
-    /// @brief トレイル履歴。[0] が最新で、後ろほど古い (＝尾の先端側)。
-    /// @brief 位置はシミュレーション空間で持ち、描画時に粒子本体と同じ変換を通す。
-    std::array<math::Vector3, kMaxParticleTrailPoints> trailPoints{};
-    uint8_t trailCount = 0;
-    float   trailSampleTimer = 0.0f;
-};
-
+using renderer::GpuParticle;
+using renderer::GpuSpawnEntry;
+using renderer::kMaxParticleTrailPoints;
+using renderer::Particle;
 /// @brief 発火元から注入されたスポーン 1 件。SubEmitter が «どこで・どう動いていたか» を渡す口。
 /// @note burstPending は «何個出すか» しか運べず、サブエミッターは自分の emitPosition からしか
-///       湧けなかった。«斬った位置で火花» のような発火位置依存の演出はこれが無いと作れない。
+/// @note 湧けなかった。«斬った位置で火花» のような発火位置依存の演出はこれが無いと作れない。
 struct ParticleInjectedSpawn {
     /// @brief 発火元のワールド位置。発生原点として据える (Shape のばらつきはこの点を中心に乗る)。
     math::Vector3 position;
@@ -146,14 +73,14 @@ struct MeshShapeTriangle {
 
 /// @brief 新しいエミッターの既定の重力加速度 [m/s^2]。
 /// @note 旧 MakeDefaultLocalForces が «下向き strength 5 の Wind» として場に相乗りさせていた値。
-///       重力は媒質の運動ではないので、場ではなくエミッターの加速度として持つ
-///       (物理の 9.81 と違うことに気付けなかったのは、場に紛れていたため)。
+/// @note 重力は媒質の運動ではないので、場ではなくエミッターの加速度として持つ
+/// @note (物理の 9.81 と違うことに気付けなかったのは、場に紛れていたため)。
 inline constexpr math::Vector3 kDefaultParticleGravity = { 0.0f, -5.0f, 0.0f };
 
 /// @brief Burst と内蔵の力は構造体の可変長リスト。IReflector の BeginObjectList /
 /// @brief BeginObjectElement / EndObjectList がそのまま使える (SequencePlayerComponent と同じ形)。
 /// @note 自由関数にしたのは、Reflect() の本体が長くなりすぎると «どこまでが 1 項目か» が
-///       読めなくなるため。
+/// @note 読めなくなるため。
 inline void ReflectParticleBursts(IReflector& r, std::vector<ParticleBurst>& bursts)
 {
     r.BeginField("bursts", "Bursts");
@@ -179,7 +106,7 @@ inline void ReflectParticleBursts(IReflector& r, std::vector<ParticleBurst>& bur
 /// @brief 内蔵の流れの並びは FlowField::forces と同じ形。実体は ReflectFlowFieldList 1 つで、
 /// @brief ここはキー名 (localForces) を与えるだけ。
 /// @note 同じ GameObject に «エミッター内蔵の流れ» と «シーンの場» が両方付くことがあり、
-///       同じキー名だと TOML の同じ枠を奪い合うため分ける。
+/// @note 同じキー名だと TOML の同じ枠を奪い合うため分ける。
 inline void ReflectLocalForces(IReflector& r, std::vector<FlowFieldSettings>& forces)
 {
     ReflectFlowFieldList(r, forces, "localForces", "Forces");
@@ -193,7 +120,7 @@ inline constexpr const char* PARTICLE_FALLBACK_MATERIAL =
 
 /// @brief ParticleEmitter のランタイム状態。シーンに保存しない一切をここへ集める。
 /// @note オーサリング設定 (ParticleEmitterSettings) と分けるのは、GameObject 複製時に
-///       GPU バッファ・粒子列などのハンドルを新旧で共有させないため。
+/// @note GPU バッファ・粒子列などのハンドルを新旧で共有させないため。
 /// @note コピー代入は常に初期状態を作る (複製のたびにリセットを書かなくて済む規則)。
 struct ParticleRuntime {
     std::vector<Particle> particles;
@@ -230,7 +157,7 @@ struct ParticleRuntime {
     /// @brief カスタムシェーダーが宣言した MaterialConstants (b2) へ流す .mat の [params]。
     /// @brief 組み込みシェーダーは MaterialConstants を宣言しないので無効ハンドルのまま。
     /// @note 所有しない: 実体は ParticlePass が .mat 単位で 1 本だけ持ち、エミッターは借りて回す。
-    ///       ここで返すと他のエミッターの b2 まで道連れに落ちる。
+    /// @note ここで返すと他のエミッターの b2 まで道連れに落ちる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialParamsCB;
 
     /// @brief .mat から解決した «見た目» 一式。シミュレーションも描画もこちらだけを見る。
@@ -241,7 +168,7 @@ struct ParticleRuntime {
     ParticleBlendMode resolvedBlend = ParticleBlendMode::Additive;
     /// @brief albedo テクスチャが sRGB でエンコードされているか (.meta の srgb)。
     /// @note 手描き素材は sRGB、ProceduralVFXTextures が焼くものはリニア。一律にリニア化すると
-    ///       後者が暗く沈むため、素材ごとの実際の値に従う。
+    /// @note 後者が暗く沈むため、素材ごとの実際の値に従う。
     bool                  textureIsSrgb = true;
     /// @brief .mat の [params] albedo。リニアへ変換済み。
     math::Vector4         materialTint = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -319,7 +246,7 @@ struct ParticleRuntime {
     /// @name エディタープレビュー制御 (VFX Editor 用ランタイム状態。シーン保存対象外)
     /// @{
     /// @note VFX Editor の再生速度・一時停止をシミュレーション dt へ注入する口。パネルが毎フレーム
-    ///       書き込み、途絶えたら自動で通常速度へ戻る (パネルを閉じても凍結が残らないフェイルセーフ)。
+    /// @note 書き込み、途絶えたら自動で通常速度へ戻る (パネルを閉じても凍結が残らないフェイルセーフ)。
     float    editorTimeScale      = 1.0f;
     uint64_t editorTimeScaleFrame = 0;     ///< @brief editorTimeScale を最後に書き込んだ Time::frameCount
     /// @brief タイムラインスクラブ要求 [秒]。>=0 のとき ParticleSimulationSystem が消費し、
@@ -346,7 +273,7 @@ struct ParticleRuntime {
 
 
 /// @note 以下、設定を仕事ごとの型へ塊分けする。100 以上の値が接頭辞でしか区別できなかったため。
-///       TOML のキーはフラットのまま (葉の名前 = キー) で、モジュール名は保存形式に出ない。
+/// @note TOML のキーはフラットのまま (葉の名前 = キー) で、モジュール名は保存形式に出ない。
 
 /// @brief 距離と画面占有によるカリングと、発生量の LOD。
 /// @brief 粒子の現在 Bounds を使い、遠距離では発生数と描画数を段階的に削減する。
@@ -366,23 +293,12 @@ struct ParticleCullingSettings {
 /// @brief 既定は履歴点へビルボードを連ねる方式で、既存の描画 (シェーダー・PSO・テクスチャ・ブレンド) を
 /// @brief そのまま使えるので素材が揃う。太い帯が主役なら trailRibbon を使う。
 /// @note GPU シミュレーションでは履歴を保持できないため、有効時は CPU へ縮退する。
-struct ParticleTrailSettings {
-    bool  trailEnabled        = false;
-    int   trailPointCount     = 6;      ///< @brief 使用する履歴点数 [1, kMaxParticleTrailPoints]
-    float trailSampleInterval = 0.03f;  ///< @brief 履歴を刻む間隔 [秒]。短いほど滑らか
-    float trailWidthScale     = 0.6f;   ///< @brief 尾の先端 (最古) 側のサイズ倍率
-    float trailAlphaScale     = 0.5f;   ///< @brief 尾の先端側の不透明度倍率
-    math::Vector4 trailColorTint = { 1.0f, 1.0f, 1.0f, 1.0f };
-    bool  trailRibbon         = false;
-    /// @brief 帯の幅 [m]。0 以下なら粒子サイズをそのまま使う。
-    /// @note 帯は粒子サイズと独立に太さを決めたいことが多い (小さな火の粉が太い軌跡を引く等)。
-    float trailRibbonWidth    = 0.0f;
-};
+using renderer::ParticleTrailSettings;
 
 /// @brief 粒子を点光源にする (Niagara の Light Renderer 相当)。火の粉や魔法弾が地面・壁を照らす。
 /// @note CPU シミュレーションの粒子だけが対象 (GPU の粒子は CPU から位置を読めない)。
-///       光は RenderSystem のライト配列 (kMaxPunctualLights) を LightComponent と共有し、
-///       LightComponent を先に積んだ残りの枠だけを使う。
+/// @note 光は RenderSystem のライト配列 (kMaxPunctualLights) を LightComponent と共有し、
+/// @note LightComponent を先に積んだ残りの枠だけを使う。
 struct ParticleLightSettings {
     bool  lightEnabled          = false;
     /// @brief 光らせる粒子の割合 [0,1]。粒子ごとの固定乱数で決まるので寿命の間は変わらない。
@@ -402,7 +318,7 @@ struct ParticleLightSettings {
 
 /// @brief エミッターのオーサリング設定。GameObject に依存しない値の塊。
 /// @note VFXGraphNode 等 GameObject を持たない側とも共有するため、コンポーネントと型を分けた
-///       (`emitter.settings = node.particle;` で写せる)。直列化の正本もこの構造体 1 つに揃える。
+/// @note (`emitter.settings = node.particle;` で写せる)。直列化の正本もこの構造体 1 つに揃える。
 struct ParticleEmitterSettings {
 
     math::Vector3 emitPosition   = {};
@@ -424,8 +340,8 @@ struct ParticleEmitterSettings {
 
     /// @brief エミッターが内蔵する流れ。乱流・周回・放射・焼いた場がここに入る。
     /// @note FlowField と同じ式を持つため個別フィールドをやめて統合した。エミッターに追従する
-    ///       固有の流れとして効き、channels は無関係 (相手は既に 1 体に決まっている)。重力・
-    ///       空気抵抗は媒質の運動ではないため gravity / flowCoupling が別に持つ。
+    /// @note 固有の流れとして効き、channels は無関係 (相手は既に 1 体に決まっている)。重力・
+    /// @note 空気抵抗は媒質の運動ではないため gravity / flowCoupling が別に持つ。
     std::vector<FlowFieldSettings> localForces;
 
     /// @brief 粒子だけに掛かる加速度 [m/s^2]。重力・浮力の «上昇» をここで表す。
@@ -434,7 +350,7 @@ struct ParticleEmitterSettings {
 
     /// @brief 流れへの結合係数 [1/s]。v += (v_flow − v) · flowCoupling · dt。
     /// @note 旧 «内蔵 Drag の strength» と同じ枠・同じ単位。空気抵抗は流れの種類ではなく
-    ///       «この粒子がどれだけ流れに乗るか» なので、型ではなくエミッターの設定にした。
+    /// @note «この粒子がどれだけ流れに乗るか» なので、型ではなくエミッターの設定にした。
     /// @note Drag over Lifetime カーブはこの値に掛かる。
     float flowCoupling = kDefaultFlowCoupling;
 
@@ -486,7 +402,7 @@ struct ParticleEmitterSettings {
     std::string materialPath;
     /// @brief 空でなければビルボードの代わりに «メッシュ粒子» として描く (粒子 1 個 = 1 TRS)。
     /// @warning このパスは読み込まれない。実体は同じ GameObject の MeshRenderer::mesh (bool が
-    ///   正しい型だが .scene 等で文字列保存済みのため互換で型を変えない)。意味を持つのは空か否かだけ。
+    /// @note 正しい型だが .scene 等で文字列保存済みのため互換で型を変えない)。意味を持つのは空か否かだけ。
     /// @note CPU 経路はさらに同じ GameObject の MeshTrailComponent を要求する。
     std::string meshParticlePath;
     /// @brief 粒子ごとの色ゆらぎ [0,1]。発生時に RGB を各チャンネル独立で ±colorVariation 倍する。
@@ -577,7 +493,7 @@ struct ParticleEmitterSettings {
     /// @brief Physics 衝突で «当たってよい» コライダーのレイヤー集合 (ビット n = レイヤー n)。
     /// @brief 既定は全ビット ON で従来どおり全レイヤーに当たる。
     /// @note トリガーはマスクに関わらず常に素通しする。トリガーは «通過を検知する体積» で
-    ///       あって面ではないので、そこで跳ねると «見えない壁で火花が止まる» になる。
+    /// @note あって面ではないので、そこで跳ねると «見えない壁で火花が止まる» になる。
     uint32_t collisionLayerMask = 0xFFFFFFFFu;
     /// @}
     /// @name 黒体放射 (色温度オーサリング)
@@ -589,7 +505,7 @@ struct ParticleEmitterSettings {
     bool  blackbodyEnabled = false;
     /// @brief 寿命 [0,1] → 色温度 [K]。既定は焚き火の実測域 (根元 1900K → 先端 1100K)。
     /// @note ParticleCurve の既定キーは 0→1 なので、そのまま温度に使うと 1K = 真っ黒になる。
-    ///       有効化した瞬間に炎らしい値が出ないと機能に気付けない。
+    /// @note 有効化した瞬間に炎らしい値が出ないと機能に気付けない。
     ParticleCurve temperatureCurve{
         {{ {0.0f, 1900.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f},
            {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f} }},
@@ -601,9 +517,9 @@ struct ParticleEmitterSettings {
     int subEmitterBurstCount = 1;
     /// @brief 発火元の粒子の速度をこのエミッターの初速へ継ぐ割合 [0,1]。既定 0 = 継がない。
     /// @note 既定 0 は、全部継ぐと火花が発火元と同じ向きに流れる «二番煎じ» になるため。
-    ///       当たりの火花は 0.1〜0.3 程度、煙のように流れを見せたいときだけ大きくする。
+    /// @note 当たりの火花は 0.1〜0.3 程度、煙のように流れを見せたいときだけ大きくする。
     /// @note 効くのは注入されたスポーン (birth/death/collision) だけ。エミッター自身の移動を
-    ///       継ぐのは inheritVelocity で別の値。
+    /// @note 継ぐのは inheritVelocity で別の値。
     float subEmitterInheritVelocity = 0.0f;
     /// @brief 名前引きの探索範囲を限定するルート GameObject。INVALID でシーン全体。
     /// @brief 同じ .vfx を複数配置すると同名の GO が並ぶので、シーン全体で引くと隣のインスタンスを
@@ -619,7 +535,7 @@ struct ParticleEmitterSettings {
     /// @name 内蔵の流れを «役割» で引く
     /// @{
     /// @note 添字ではなく型で引く: プリセットもスクリプトも «乱れ» «渦» を触りたいのであって、
-    ///       リストの何番目かは知らない。同じ型が複数あれば先頭を返す。
+    /// @note リストの何番目かは知らない。同じ型が複数あれば先頭を返す。
 
     [[nodiscard]] const FlowFieldSettings* FindLocalForce(FlowFieldType type) const
     {
@@ -763,7 +679,7 @@ struct ParticleEmitterSettings {
 
         /// @name ここから下は以前 Reflect に無く、コーデックにしか居なかった 44 項目
         /// @note シーン保存はコーデック経由だが、AI バス (EditorBusDispatcher) と汎用 Inspector は
-        ///       Reflect() を使う。片方にしかないと「保存されるが外から読めない」まま気付けない。
+        /// @note Reflect() を使う。片方にしかないと「保存されるが外から読めない」まま気付けない。
 
         /// @note 速度による見た目
         r.Field("speedRange", speedRange);
@@ -823,7 +739,7 @@ struct ParticleEmitterSettings {
         r.Field("subEmitterInheritVelocity", subEmitterInheritVelocity);
 
         /// @note カーブとグラデーション。IReflector は専用の仮想関数を持っているので、
-        ///       コーデックの手書きと同じ形をそのまま表現できる。
+        /// @note コーデックの手書きと同じ形をそのまま表現できる。
         r.BeginField("sizeCurve", "Size over Lifetime");
         r.Field("sizeCurve", sizeCurve);
         r.EndField();
@@ -847,14 +763,14 @@ struct ParticleEmitterSettings {
 
 /// @brief runtimeGradient を作り直す。入力が変わっていなければ何もしないので、どこから呼んでもよい。
 /// @note 黒体モードでは各キーの時刻で温度カーブを引き、色温度 → リニア RGB → オーサリング空間
-///       (sRGB) へ戻して格納する。オーサリング空間で持つのは、CPU 経路も GPU 経路も
-///       「補間 → リニア化」という同じ順序を通すため。ここだけ別空間にすると片方が破綻する。
+/// @note (sRGB) へ戻して格納する。オーサリング空間で持つのは、CPU 経路も GPU 経路も
+/// @note 「補間 → リニア化」という同じ順序を通すため。ここだけ別空間にすると片方が破綻する。
 /// @note 自由関数にしたのは、焼き込みが settings→runtime の純粋な変換で済むため。実体を持たない
-///       VFX グラフのノードでも、Inspector が焼き込み後の色を出せる。
+/// @note VFX グラフのノードでも、Inspector が焼き込み後の色を出せる。
 inline void RefreshParticleRuntimeGradient(const ParticleEmitterSettings& settings, ParticleRuntime& runtime)
 {
     /// @note 黒体の焼き込みはキー 1 点あたり可視域 81 サンプルの積分になる。粒子ごとの
-    ///       更新から間接的に呼ばれても潰れないよう、入力が変わったときだけ作り直す。
+    /// @note 更新から間接的に呼ばれても潰れないよう、入力が変わったときだけ作り直す。
     if (runtime.runtimeGradientValid
         && !settings.blackbodyEnabled == !runtime.runtimeGradientBlackbody
         && runtime.runtimeGradientReference == settings.blackbodyReferenceTemperature
@@ -922,13 +838,13 @@ struct ParticleEmitter {
         runtime.particles.clear();
         runtime.gpuClearPending        = true;
         /// @note ロード直後やスクラブ開始時に、再生が 1 フレームも進まないまま粒子色を
-        ///       引かれることがある。実効グラデーションを先に用意しておく。
+        /// @note 引かれることがある。実効グラデーションを先に用意しておく。
         RefreshRuntimeGradient();
     }
 
     /// @brief Inspector / Script / Operator が共有する再生制御。
     /// @note UI と ScriptProxy がそれぞれランタイム状態を列挙すると、Clear や Restart の
-    ///       対象漏れが経路ごとに発生する。エミッター自身に責務を集め、AI も同じ挙動を使う。
+    /// @note 対象漏れが経路ごとに発生する。エミッター自身に責務を集め、AI も同じ挙動を使う。
     void Play(bool restart = false)
     {
         if (restart) ResetPlayback();
@@ -974,9 +890,9 @@ struct ParticleEmitter {
         const uint32_t seedBefore = settings.randomSeed;
         settings.Reflect(r);
         /// @note 種を編集したら乱数列も追従させる。Reflect は Inspector / AI バスの入口なので、
-        ///       ここで揃えないと「種を変えたのに絵が変わらない」になる。
+        /// @note ここで揃えないと「種を変えたのに絵が変わらない」になる。
         if (settings.randomSeed != seedBefore) runtime.randomState = settings.randomSeed;
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene
