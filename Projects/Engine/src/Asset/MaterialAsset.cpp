@@ -16,8 +16,8 @@ namespace fbzz::asset {
 
 namespace {
 
-/// GeometryPassHelpers の kTextureSlotNames (t0-t7) と一致させる。
-/// t5-t7 は "tex5"/"tex6"/"tex7" という汎用キーでカスタムシェーダーが自由に利用できる。
+/// @note GeometryPassHelpers の kTextureSlotNames (t0-t7) と一致させる。
+/// @note t5-t7 は "tex5"/"tex6"/"tex7" という汎用キーでカスタムシェーダーが自由に利用できる。
 constexpr std::array<const char*, 8> kTextureSlots = {
     "albedo",
     "normal",
@@ -39,14 +39,14 @@ std::string ResolveTexturePath(std::string_view materialPath, std::string value)
         return value;
 
     /// @note FBX インポートは `materials/<MaterialName>.mat` と `textures/foo.png` を sibling に出す。
-    ///       旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
+    /// @note 旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
     const std::filesystem::path materialDir = std::filesystem::path(std::string(materialPath)).parent_path();
     return (materialDir.parent_path() / "textures" / value).string();
 }
 
 /// @note 手書きされる綴りの揺れを受ける。未知の綴りは Opaque へ落ち、半透明のつもりで書いた
-///       .mat が不透明で描かれても «濃く出る» だけなので綴り違いに気付けないまま調整を続けて
-///       しまう。意図と結果がずれる経路を塞ぐ。
+/// @note .mat が不透明で描かれても «濃く出る» だけなので綴り違いに気付けないまま調整を続けて
+/// @note しまう。意図と結果がずれる経路を塞ぐ。
 renderer::BlendMode BlendModeFromString(std::string_view value)
 {
     if (value == "AlphaBlend" || value == "Alpha Blend" || value == "Alpha" || value == "Transparent")
@@ -165,30 +165,44 @@ void ReadFloatArrayParam(const toml::table& table, const char* key, MaterialAsse
 void ReadParamsTable(const toml::table& table, MaterialAsset& asset)
 {
     for (const auto& [key, node] : table) {
-        const std::string name = std::string(key);
-        if (const auto value = node.value<double>()) {
-            asset.params[name] = { static_cast<float>(*value) };
-        } else if (const auto value = node.value<int64_t>()) {
-            asset.params[name] = { static_cast<float>(*value) };
-        } else if (auto* arr = node.as_array()) {
-            std::vector<float> values;
-            values.reserve(arr->size());
-            for (const auto& item : *arr) {
-                if (const auto f = item.value<double>())
-                    values.push_back(static_cast<float>(*f));
-                else if (const auto i = item.value<int64_t>())
-                    values.push_back(static_cast<float>(*i));
-            }
-            if (!values.empty())
-                asset.params[name] = std::move(values);
+        const std::string name(key);
+        std::vector<float> floats;
+        std::vector<int64_t> integers;
+        bool allInteger = true;
+        bool valid = true;
+        const auto read = [&](const toml::node& item) {
+            if (item.is_integer()) {
+                const int64_t value = item.value_or(int64_t{0});
+                integers.push_back(value);
+                floats.push_back(static_cast<float>(value));
+            } else if (item.is_boolean()) {
+                const int64_t value = item.value_or(false) ? 1 : 0;
+                integers.push_back(value);
+                floats.push_back(static_cast<float>(value));
+            } else if (item.is_floating_point()) {
+                allInteger = false;
+                floats.push_back(static_cast<float>(item.value_or(0.0)));
+            } else valid = false;
+        };
+        if (const auto* array = node.as_array()) {
+            for (const auto& item : *array) read(item);
+        } else read(node);
+        if (!valid) {
+            FBZZ_LOG_WARN("Material parameter must be a number/bool or flat numeric array: %s", name.c_str());
+            continue;
         }
+        asset.params.erase(name);
+        asset.integerParams.erase(name);
+        if (allInteger && std::any_of(integers.begin(), integers.end(), [](int64_t value) { return value < -16777216 || value > 16777216; }))
+            asset.integerParams[name] = std::move(integers);
+        else asset.params[name] = std::move(floats);
     }
 }
 
 /// @name [particle] テーブル
 /// @note 列挙は文字列で持つ。.mat は人が読み書きするので `alpha_source = 1` より
-///       `alpha_source = "luminance"` の方が «何が起きるか» が読んで分かる。未知の綴りは
-///       既定へ落とす (壊れた .mat でも描画は続く)。
+/// @note `alpha_source = "luminance"` の方が «何が起きるか» が読んで分かる。未知の綴りは
+/// @note 既定へ落とす (壊れた .mat でも描画は続く)。
 
 scene::ParticleAlphaSource AlphaSourceFromString(std::string_view value)
 {
@@ -297,7 +311,7 @@ void ReadParticleTable(const toml::table& table, ParticleMaterialSettings& out)
 
 /// @brief 既定値と同じものは書かない。
 /// @note 31 個を全部書き出すと、手で開いたときに «この素材で実際に効いている設定» が既定値の
-///       海に埋もれる。差分だけ残せば .mat が意図の記録になる。
+/// @note 海に埋もれる。差分だけ残せば .mat が意図の記録になる。
 void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
 {
     const ParticleMaterialSettings d{};
@@ -383,8 +397,8 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
     }
 
     /// @note `toml::parse_file(std::string_view)` に Editor 側の一時パス表現を直接渡すと、
-    ///       Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れるため、
-    ///       Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
+    /// @note Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れるため、
+    /// @note Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
     toml::parse_result parsed = toml::parse(text, pathString);
     if (!parsed) {
         FBZZ_LOG_WARN("MaterialAsset: parse failed [%s]", pathString.c_str());
@@ -400,6 +414,8 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
     asset.doubleSided = table["double_sided"].value_or(false);
     asset.depthWrite  = table["depth_write"].value_or(true);
     asset.depthTest   = DepthTestFromString(table["depth_test"].value_or(std::string{ "LessEqual" }));
+    asset.depthBias      = static_cast<int32_t>(table["depth_bias"].value_or(int64_t{ 0 }));
+    asset.depthBiasSlope = static_cast<float>(table["depth_bias_slope"].value_or(0.0));
     asset.renderQueue = static_cast<int32_t>(table["render_queue"].value_or(
         static_cast<int64_t>(renderer::RenderQueue::GEOMETRY)));
     asset.renderPath = RenderPathFromString(table["render_path"].value_or(std::string{ "auto" }));
@@ -417,8 +433,8 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 
     if (auto* textures = table["textures"].as_table()) {
         /// @note Terrain / Water などの専用シェーダーは標準 t0-t7 以外の意味名 (`layer0_diffuse`,
-        ///       `normalMap1` など) を .mat に保存する。固定スロットだけを読むと、専用マテリアルを
-        ///       Inspector で保存した時にテクスチャ参照が消えるため、textures テーブルの全キーを保持する。
+        /// @note `normalMap1` など) を .mat に保存する。固定スロットだけを読むと、専用マテリアルを
+        /// @note Inspector で保存した時にテクスチャ参照が消えるため、textures テーブルの全キーを保持する。
         for (const auto& [key, node] : *textures) {
             const std::string name = std::string(key);
             const auto texturePath = node.value<std::string>();
@@ -447,6 +463,9 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
     table.insert("double_sided", asset.doubleSided);
     table.insert("depth_write", asset.depthWrite);
     table.insert("depth_test",  DepthTestToString(asset.depthTest));
+    /// @note 既定値のときは書かない (既存 .mat を保存し直しても差分を出さない)。
+    if (asset.depthBias != 0)          table.insert("depth_bias", static_cast<int64_t>(asset.depthBias));
+    if (asset.depthBiasSlope != 0.0f)  table.insert("depth_bias_slope", static_cast<double>(asset.depthBiasSlope));
     table.insert("render_queue", static_cast<int64_t>(asset.renderQueue));
     table.insert("render_path", RenderPathToString(asset.renderPath));
     table.insert("mesh_type",   MeshTypeToString(asset.meshType));
@@ -460,7 +479,7 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
 
     toml::table textures;
     /// @note ロードと同じく、標準スロットに限定せず MaterialAsset が持つ全キーを保存する。
-    ///       これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
+    /// @note これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
     for (const auto& [slot, texturePath] : asset.textures)
         textures.insert(slot, texturePath);
     for (const char* slot : kTextureSlots) {
@@ -475,6 +494,14 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
             params.insert(name, static_cast<double>(values[0]));
         else
             params.insert(name, FloatArrayToToml(values));
+    }
+    for (const auto& [name, values] : asset.integerParams) {
+        if (values.size() == 1) params.insert_or_assign(name, values[0]);
+        else {
+            toml::array array;
+            for (const int64_t value : values) array.push_back(value);
+            params.insert_or_assign(name, std::move(array));
+        }
     }
     table.insert("params", std::move(params));
 

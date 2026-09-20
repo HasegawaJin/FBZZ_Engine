@@ -138,16 +138,26 @@ JsonValue ShaderVarsToJson(const renderer::ShaderDescriptor& descriptor)
         case renderer::ShaderVarType::Int:  return "int";
         case renderer::ShaderVarType::UInt: return "uint";
         case renderer::ShaderVarType::Bool: return "bool";
-        case renderer::ShaderVarType::Float:
-        default:                            return "float";
+        case renderer::ShaderVarType::Float: return "float";
+        default: return "unsupported";
         }
     };
     JsonValue vars = JsonValue::MakeArray();
     for (const auto& var : descriptor.vars) {
         JsonValue item = JsonValue::MakeObject();
         item.Set("name", JsonValue(var.name));
-        /// @note components が渡す値の個数を決める。float3 に 1 個渡すと残りは 0 になる。
-        item.Set("components", JsonValue(static_cast<int>(var.columns)));
+        /// @note components はパディングを除いた値数。行列も配列も全要素を要求する。
+        item.Set("components", JsonValue(static_cast<int>(var.ValueCount())));
+        item.Set("class", JsonValue(std::string(var.varClass == renderer::ShaderVarClass::Scalar ? "scalar"
+            : var.varClass == renderer::ShaderVarClass::Vector ? "vector"
+            : var.varClass == renderer::ShaderVarClass::Matrix ? "matrix" : "unsupported")));
+        item.Set("rows", JsonValue(static_cast<int>(var.rows)));
+        item.Set("columns", JsonValue(static_cast<int>(var.columns)));
+        item.Set("elements", JsonValue(static_cast<int>(var.elements)));
+        item.Set("rowMajor", JsonValue(var.rowMajor));
+        item.Set("valueOrder", JsonValue(std::string("array-element, row, column; no padding")));
+        item.Set("writable", JsonValue(var.IsWritable()));
+        item.Set("unsupportedReason", JsonValue(var.unsupportedReason));
         item.Set("type", JsonValue(std::string(typeName(var.varType))));
         item.Set("sizeBytes", JsonValue(static_cast<int>(var.size)));
         vars.Push(std::move(item));
@@ -177,14 +187,9 @@ Outcome DoShaderInspect(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("cbufferSize", JsonValue(static_cast<int>(descriptor.cbufferSize)));
     result.Set("vars", ShaderVarsToJson(descriptor));
 
-    JsonValue postProcess = JsonValue::MakeArray();
-    for (const auto& var : descriptor.postProcessVars) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("name", JsonValue(var.name));
-        item.Set("components", JsonValue(static_cast<int>(var.columns)));
-        postProcess.Push(std::move(item));
-    }
-    result.Set("postProcessVars", std::move(postProcess));
+    renderer::ShaderDescriptor postProcess;
+    postProcess.vars = descriptor.postProcessVars;
+    result.Set("postProcessVars", ShaderVarsToJson(postProcess));
 
     JsonValue textures = JsonValue::MakeArray();
     for (const auto& texture : descriptor.textures) {
@@ -195,9 +200,9 @@ Outcome DoShaderInspect(editor::EditorContext& ctx, const JsonValue& payload)
     }
     result.Set("textures", std::move(textures));
     result.Set("hint", JsonValue(std::string(
-        "vars がこのシェーダーへ書ける変数の全てです。ここに無い名前は .mat の params へ書いても "
-        "VFX Mesh ノードの animatedParam へ指定しても、実行時に黙って無視されます。"
-        "components は渡す値の個数で、float3 の変数へ 1 個だけ渡すと残りは 0 になります。"
+        "writable=true の変数へ components 個の値を渡してください。配列要素順・行優先でパディング不要です。"
+        "構造体メンバーは name の完全名を使います。整数は整数値、bool は 0/1 を指定してください。"
+        "Script は SetValues、float4x4 は SetMatrix を使えます。未対応型は unsupportedReason を確認してください。"
         "未使用変数はコンパイル時に消えるため、HLSL に書いてあってもここに出ないことがあります。")));
     return Outcome::Ok(std::move(result));
 }
@@ -382,6 +387,10 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     /// @note シャドウマップ描画はカメラ視点の統計と別枠。合計だけで「描画が軽い」と誤判断しないよう分けて返す。
     result.Set("shadowDrawCalls", JsonValue(rendering.renderStats.shadowDrawCalls));
     result.Set("shadowTriangles", JsonValue(rendering.renderStats.shadowTriangleCount));
+    /// @note drawCalls / shadowDrawCalls は束ねた後の数。何回束ねて何回ぶん減ったかを併記しないと、
+    /// @note «描画が減った» のが束ねによるものかカリングによるものか読み分けられない。
+    result.Set("instancedBatches", JsonValue(rendering.renderStats.instancedBatches));
+    result.Set("instancedDrawsSaved", JsonValue(rendering.renderStats.instancedDrawsSaved));
     result.Set("visibleObjects", JsonValue(rendering.renderStats.totalObjects
         - rendering.renderStats.frustumCulled - rendering.renderStats.occlusionCulled));
     result.Set("topSamples", std::move(samples));
