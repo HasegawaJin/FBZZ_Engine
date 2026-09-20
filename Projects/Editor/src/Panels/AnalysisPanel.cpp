@@ -1579,6 +1579,10 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
         /// @note シャドウマップは同じジオメトリを光源視点で描き直す別コスト。カメラ統計に混ぜない。
         { "Shadow draw calls",   count(stats.shadowDrawCalls),                            false },
         { "Shadow triangles",    count(stats.shadowTriangleCount),                        false },
+        /// @note 束ねで «減った» 数なので、上の 2 つの draw calls は既に減った後の値。
+        /// @see Docs/design/gpu-instancing.md
+        { "Instanced batches",   count(stats.instancedBatches),                           false },
+        { "Draws saved",         count(stats.instancedDrawsSaved),                        false },
     };
     const Item culling[] = {
         { "Objects (pre-cull)",  count(stats.totalObjects),      false },

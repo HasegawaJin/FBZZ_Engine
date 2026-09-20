@@ -4,6 +4,8 @@
 /// @date    2026-06-18
 #include "GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
+#include <Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp>
+#include <Engine/Scene/Systems/RenderPasses/InstanceBatch.hpp>
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Renderer/Mesh.hpp"
@@ -60,11 +62,222 @@ void SortAndSubmitTransparent(
     }
 }
 
+/// @note GBuffer.hlsl が期待する MaterialConstants (b2) の大きさ。
+constexpr uint32_t kGBufCBSize = 96u;
+
+/// @brief 材質の定数を GBuffer 互換の 96 バイトへ解決し、b2 に束縛するハンドルを返す。
+/// @param sharedCB   独自レイアウトを詰め直す共有 CB。中身はフレーム内で使い回される。
+/// @param lastPacked 直前に sharedCB へ詰めた材質。呼び出し側が持ち、ここで更新する。
+/// @param batcher    sharedCB を書き換える前に吐き出す束ね器。
+/// @note textureMask のオフセットはシェーダーごとに異なり (PBR=80 / Toon=16 / RimLight=28 等)、
+///       そのまま渡すと GBuffer が textureMask / roughness / metallic を誤読して陰影が壊れる。
+/// @note 静的メッシュとスキンドで同じ関数を通す。片方だけ詰め方が古くなると
+///       «キャラだけ材質の読み方が違う» という形で出る。
+renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveGBufferMaterialCB(
+    const renderer::Material*  material,
+    renderer::ResourceManager& resources,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> sharedCB,
+    const renderer::Material*& lastPacked,
+    InstanceBatcher&           batcher)
+{
+    if (!material) return {};
+
+    /// @note デフォルト 96 バイトレイアウト (PBR 等) はそのまま使える。
+    if (material->paramData.size() == kGBufCBSize) return material->paramsBuffer;
+
+    /// @note 直前の Draw と同じマテリアル — 共有 CB の中身は既に正しい。詰め直しは
+    ///       ShaderDescriptor の名前引き (文字列比較) を最大 8 回行うため、マテリアル順に
+    ///       並べた後は同じ内容を作り直すのが純粋な無駄になる。
+    if (material == lastPacked) return sharedCB;
+
+    std::array<uint8_t, kGBufCBSize> gbufParams{};
+    /// @note uvTiling がないマテリアル (Lit/Phong 等) 向けデフォルト: (1,1) で UV そのまま
+    /// @note roughness がないマテリアル向けデフォルト: 0.5 (PBR で鏡面にならないよう)
+    /// @note alphaCutoff デフォルト: 0 (カットアウト無効)
+    static constexpr float kDefTiling[2] = { 1.0f, 1.0f };
+    static constexpr float kDefRoughness = 0.5f;
+    std::memcpy(gbufParams.data() + 20u, &kDefRoughness, 4u);
+    std::memcpy(gbufParams.data() + 48u, kDefTiling,     8u);
+
+    const renderer::ShaderDescriptor* mDesc = nullptr;
+    if (auto* sh = resources.Get(material->shader))
+        mDesc = &sh->GetDescriptor();
+
+    if (mDesc) {
+        auto copyField = [&](std::string_view name, uint32_t dstOff, uint32_t bytes) {
+            const auto* v = mDesc->FindVar(name);
+            if (!v || v->offset + bytes > static_cast<uint32_t>(material->paramData.size())) return;
+            std::memcpy(gbufParams.data() + dstOff, material->paramData.data() + v->offset, bytes);
+        };
+        /// @note float4
+        copyField("albedo",         0u,  16u);
+        /// @note float
+        copyField("metallic",       16u,  4u);
+        /// @note float
+        copyField("roughness",      20u,  4u);
+        /// @note float
+        copyField("normalStrength", 24u,  4u);
+        /// @note float2
+        copyField("uvTiling",       48u,  8u);
+        /// @note float2
+        copyField("uvOffset",       56u,  8u);
+        /// @note float
+        copyField("alphaCutoff",    64u,  4u);
+        /// @note textureMask は Material::Upload が計算済みの値を使う
+        if (mDesc->textureMaskOffset != UINT32_MAX
+            && mDesc->textureMaskOffset + 4u <= static_cast<uint32_t>(material->paramData.size()))
+        {
+            std::memcpy(gbufParams.data() + 80u,
+                        material->paramData.data() + mDesc->textureMaskOffset, 4u);
+        }
+    }
+
+    /// @note 共有 CB を書き換える前に溜まっている束を吐き出す。ハンドルは同じままなので、
+    ///       束ねたまま書き換えると先に積んだ物体まで後から詰めた材質で描かれる。
+    batcher.Flush();
+    resources.Update(sharedCB, gbufParams.data(), kGBufCBSize);
+    lastPacked = material;
+    return sharedCB;
+}
+
+/// @brief GBuffer で描けるスキンドメッシュを GBuffer へ提出する。
+/// @param sharedMatCB / lastPacked 静的メッシュと同じ共有 CB と «直前に詰めた材質» を引き継ぐ。
+/// @note 静的メッシュの列とは別に集める。並べ替えの基準 (静的はマテリアル順 + 遮蔽カリング、
+///       スキンドは submesh 単位) が違い、1 本にまとめると両方の意図が崩れるため。
+/// @note 骨の変形はコンピュートスキニングが済ませている場合はそれを使い、素の GBuffer.hlsl で
+///       «ただの静的メッシュ» として描く。無ければ GBufferSkinned.hlsl が b7 で変形する。
+/// @see Docs/design/pipeline-boundary.md §3
+void EmitSkinnedGBuffer(RenderPassContext& ctx,
+                        renderer::ResourceHandle<renderer::ConstantBufferTag> sharedMatCB,
+                        const renderer::Material*& lastPacked)
+{
+    auto& resources = ctx.resources;
+    auto& h         = ctx.handles;
+    const auto& rs  = ctx.settings;
+
+    if (!h.gbufferShader.IsValid()) return;
+
+    struct SkinnedEntry {
+        GameObject*         go       = nullptr;
+        renderer::Mesh*     mesh     = nullptr;
+        renderer::Material* material = nullptr;
+        MaterialSlot*       slot     = nullptr;
+        renderer::ResourceHandle<renderer::BufferTag>         vertexBuffer;
+        /// @brief 有効なら VS で変形する (GBufferSkinned)。無効ならコンピュート済み。
+        renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
+        float lodDither = 0.0f;
+    };
+
+    std::vector<SkinnedEntry> queue;
+
+    for (auto& go : ctx.scene.GameObjects()) {
+        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
+        auto* smr = go.GetComponent<SkinnedMeshRenderer>();
+        auto* mat = go.GetComponent<MaterialComponent>();
+        if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) continue;
+        if (!mat || !mat->EnsureMaterialAsset()) continue;
+        if (!IsSkinnedVisible(ctx, go, *smr)) continue;
+
+        auto* anim = FindAnimator(go);
+        const auto skinCB = ResolveSkinningCB(
+            anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
+            smr->model, h.bindPoseSkinningCB);
+
+        const size_t meshCount = smr->SubmeshCount();
+        for (size_t mi = 0; mi < meshCount; ++mi) {
+            renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
+            if (!meshPtr) continue;
+            if (!meshPtr->indexBuffer.IsValid()) continue;
+
+            MaterialSlot& slot = mat->SlotAt(mi);
+            if (!slot.visible) continue;
+            slot.EnsureMaterialAsset();
+            if (ResolveGeometryRoute(slot, /*gbufferPipeline=*/true) != GeometryRoute::GBuffer)
+                continue;
+
+            auto* material = SyncMaterialSlot(*mat, mi, resources, true);
+            if (!material) continue;
+
+            SkinnedEntry entry;
+            entry.go        = &go;
+            entry.mesh      = meshPtr;
+            entry.material  = material;
+            entry.slot      = &slot;
+            entry.lodDither = smr->lodDither;
+
+            /// @note コンピュートスキニング済みなら «ただの静的メッシュ»。VS で骨を混ぜ直す必要が無く、
+            ///       頂点あたりのボーン行列アクセスが丸ごと消える (ShadowPass と同じ判断)。
+            const auto skinnedVB = smr->ResolveSlotSkinnedVertexBuffer(mi);
+            if (skinnedVB.IsValid()) {
+                entry.vertexBuffer = skinnedVB;
+            } else {
+                if (!h.gbufferSkinnedShader.IsValid()) continue;
+                entry.vertexBuffer = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
+                entry.skinningCB   = skinCB;
+            }
+            if (!entry.vertexBuffer.IsValid()) continue;
+            queue.push_back(entry);
+        }
+    }
+
+    if (queue.empty()) return;
+
+    /// @note マテリアル順。束ねと、バックエンドの束縛キャッシュの両方がこの並びで効く。
+    std::stable_sort(queue.begin(), queue.end(),
+        [](const SkinnedEntry& a, const SkinnedEntry& b) {
+            if (a.material != b.material) return a.material < b.material;
+            return a.mesh < b.mesh;
+        });
+
+    InstanceBatcher batcher(ctx, h.gbufferShader,
+                            rs.gpuInstancing ? h.gbufferInstancedShader
+                                             : renderer::ResourceHandle<renderer::ShaderTag>{},
+                            false);
+
+    for (const SkinnedEntry& entry : queue) {
+        const auto gbufMatCB = ResolveGBufferMaterialCB(
+            entry.material, resources, sharedMatCB, lastPacked, batcher);
+
+        PerObjectCB objData{};
+        objData.world             = entry.go->transform.GetWorldMatrix();
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = entry.lodDither;
+
+        renderer::DrawCall dc;
+        dc.vertexBuffer       = entry.vertexBuffer;
+        dc.indexBuffer        = entry.mesh->indexBuffer;
+        dc.indexCount         = entry.mesh->indexCount;
+        dc.vertexCount        = entry.mesh->vertexCount;
+        dc.shader             = entry.skinningCB.IsValid() ? h.gbufferSkinnedShader
+                                                           : h.gbufferShader;
+        dc.pipelineState      = GetOrCreateMaterialPSO(resources, *entry.slot, rs.IsWireframe());
+        dc.constantBuffers[0] = h.frameCB;
+        /// @note b1 は InstanceBatcher が載せる。
+        dc.constantBuffers[2] = gbufMatCB;
+        if (entry.skinningCB.IsValid())
+            dc.constantBuffers[7] = entry.skinningCB;
+        dc.constantBuffers[8] = h.advancedGraphicsCB;
+        for (size_t ti = 0; ti < entry.material->textures.size() && ti < 8; ++ti)
+            if (entry.material->textures[ti].IsValid())
+                dc.textures[ti] = entry.material->textures[ti];
+
+        /// @note VS で変形する経路は束ねない。b7 のパレットが物体ごとに違うので、prototype が
+        ///       一致するのは同じキャラの submesh 同士だけで、束ねる意味が無い。
+        batcher.Add(dc, objData);
+    }
+    batcher.Flush();
+}
+
 bool IsCameraUnderwater(const RenderPassContext& ctx)
 {
     const float time = Time::time;
-    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
-        if (!water.enabled) continue;
+    /// @note 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
+    for (const EntityID waterId : ctx.scene.GetEntities<WaterComponent>()) {
+        const GameObject* waterObject = ctx.scene.GetGameObject(waterId);
+        const auto* waterPtr = ctx.scene.GetComponent<WaterComponent>(waterId);
+        if (!waterObject || !waterPtr || !waterPtr->enabled || !waterObject->activeInHierarchy()) continue;
+        const WaterComponent& water = *waterPtr;
+        const Transform& transform = waterObject->transform;
 
         const float localX = ctx.camera.m_position.x - transform.position.x;
         const float localZ = ctx.camera.m_position.z - transform.position.z;
@@ -86,7 +299,7 @@ bool IsCameraUnderwater(const RenderPassContext& ctx)
     return false;
 }
 
-} // namespace
+}
 
 /// @name GBuffer パス
 void ExecuteGBufferPass(RenderPassContext& ctx)
@@ -109,10 +322,8 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 
     if (!h.gbufferShader.IsValid()) { FBZZ_LOG_WARN("GBuffer shader is invalid!"); return; }
 
-    /// @note GBuffer.hlsl はデフォルト 96 バイト MaterialConstants を期待する。マテリアル独自シェーダーは別レイアウトを持つため、フィールド名で値を抽出して GBuffer 互換レイアウトに詰め直す共有 cbuffer を使う。
-    /// @note textureMask のオフセットはシェーダーごとに異なり (PBR=80, Toon=16, RimLight=28 等)、そのまま渡すと GBuffer が textureMask/roughness/metallic を誤読してライティングが壊れる。
+    /// @note 独自レイアウトの材質を 96 バイトへ詰め直す共有 CB。@see ResolveGBufferMaterialCB
     static renderer::ResourceHandle<renderer::ConstantBufferTag> s_gbufMatCB;
-    static constexpr uint32_t kGBufCBSize = 96u;
     if (!s_gbufMatCB.IsValid())
         s_gbufMatCB = resources.CreateConstantBuffer(kGBufCBSize);
 
@@ -130,20 +341,18 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         if (!mr || !mr->enabled || !mr->lodVisible || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
-        /// @note 半透明・加算マテリアルは GBuffer に書き込まずフォワードパスで描画する。GBuffer はアルファブレンドをサポートしない (MRT への書き込みが 1 つの値のため)。
-        if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
+        /// @note 経路の判断は ResolveGeometryRoute だけが持つ。半透明・GBuffer に収まらない材質は
+        ///       Forward の各パスが同じ規則で拾うので、ここでの «なぜ落とすか» は書かない。
+        /// @see Docs/design/pipeline-boundary.md
+        if (ResolveGeometryRoute(*mat, /*gbufferPipeline=*/true) != GeometryRoute::GBuffer) continue;
 
         ++ctx.statsTotalObjects;
 
         /// @note 距離 / 極小 / 錐台カリング。落ちた理由の統計は IsMeshVisible が加算する。
         if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
-        /// @note GBuffer に収まらないエフェクト系シェーダー (RimLight / Toon 等) は
-        /// @note DeferredForwardEffects パスで Forward 描画するためここではスキップする。
-        if (IsForwardOnly(*mat)) continue;
-
         /// @note マテリアル解決をここで済ませる。マテリアル順ソートのキーに実体が要るため。
-        auto* material = SyncMaterial(*mat, resources);
+        auto* material = SyncMaterial(*mat, resources, false, EstimateScreenPixels(ctx, go, *mr->mesh));
 
         const float dx = go.transform.position.x - cam.m_position.x;
         const float dy = go.transform.position.y - cam.m_position.y;
@@ -184,74 +393,25 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     /// @note 直前の Draw で共有マテリアル CB へ書いた内容の持ち主。同じマテリアルが連続する間は詰め直しも Update も不要で、マテリアル順ソート後はこれがそのまま効き 96 バイト再パックの回数がマテリアル種類数まで落ちる。
     const renderer::Material* lastPackedMaterial = nullptr;
 
+    /// @note マテリアル順に並べた後なので、同じメッシュ・同じマテリアルの物体は連続して現れる。
+    /// @see Docs/design/gpu-instancing.md
+    InstanceBatcher batcher(ctx, h.gbufferShader,
+                            rs.gpuInstancing ? h.gbufferInstancedShader
+                                             : renderer::ResourceHandle<renderer::ShaderTag>{},
+                            false);
+
     for (const auto& entry : queue) {
         auto& go       = *entry.go;
         auto* mr       = entry.mr;
         auto* material = entry.material;
 
-        /// @note マテリアル CB を GBuffer 互換レイアウト (96 バイト) に変換してバインドする。
-        renderer::ResourceHandle<renderer::ConstantBufferTag> gbufMatCB;
-        if (material) {
-            if (material->paramData.size() == kGBufCBSize) {
-                /// @note デフォルト 96 バイトレイアウト (PBR 等) はそのまま使える。
-                gbufMatCB = material->paramsBuffer;
-            } else if (material == lastPackedMaterial) {
-                /// @note 直前の Draw と同じマテリアル — 共有 CB の中身は既に正しい。詰め直しは ShaderDescriptor の名前引き (文字列比較) を最大 8 回行うため、マテリアル順に並べた今、同じ内容を作り直すのは純粋な無駄になる。
-                gbufMatCB = s_gbufMatCB;
-            } else {
-                /// @note 独自レイアウト: フィールド名で抽出して 96 バイトバッファに詰め直す。
-                std::array<uint8_t, kGBufCBSize> gbufParams{};
-                /// @note uvTiling がないマテリアル (Lit/Phong 等) 向けデフォルト: (1,1) で UV そのまま
-                /// @note roughness がないマテリアル向けデフォルト: 0.5 (PBR で鏡面にならないよう)
-                /// @note alphaCutoff デフォルト: 0 (カットアウト無効)
-                static constexpr float kDefTiling[2] = { 1.0f, 1.0f };
-                static constexpr float kDefRoughness  = 0.5f;
-                std::memcpy(gbufParams.data() + 20u, &kDefRoughness, 4u);
-                std::memcpy(gbufParams.data() + 48u, kDefTiling,     8u);
-                const renderer::ShaderDescriptor* mDesc = nullptr;
-                if (auto* sh = resources.Get(material->shader))
-                    mDesc = &sh->GetDescriptor();
-
-                if (mDesc) {
-                    auto copyField = [&](std::string_view name, uint32_t dstOff, uint32_t bytes) {
-                        const auto* v = mDesc->FindVar(name);
-                        if (!v || v->offset + bytes > static_cast<uint32_t>(material->paramData.size())) return;
-                        std::memcpy(gbufParams.data() + dstOff,
-                                    material->paramData.data() + v->offset, bytes);
-                    };
-                    /// @note float4
-                    copyField("albedo",         0u,  16u);
-                    /// @note float
-                    copyField("metallic",       16u,  4u);
-                    /// @note float
-                    copyField("roughness",      20u,  4u);
-                    /// @note float
-                    copyField("normalStrength", 24u,  4u);
-                    /// @note float2
-                    copyField("uvTiling",       48u,  8u);
-                    /// @note float2
-                    copyField("uvOffset",       56u,  8u);
-                    /// @note float
-                    copyField("alphaCutoff",    64u,  4u);
-                    /// @note textureMask は Material::Upload が計算済みの値を使う
-                    if (mDesc->textureMaskOffset != UINT32_MAX
-                        && mDesc->textureMaskOffset + 4u <= static_cast<uint32_t>(material->paramData.size()))
-                    {
-                        std::memcpy(gbufParams.data() + 80u,
-                                    material->paramData.data() + mDesc->textureMaskOffset, 4u);
-                    }
-                }
-                resources.Update(s_gbufMatCB, gbufParams.data(), kGBufCBSize);
-                gbufMatCB          = s_gbufMatCB;
-                lastPackedMaterial = material;
-            }
-        }
+        const auto gbufMatCB = ResolveGBufferMaterialCB(
+            material, resources, s_gbufMatCB, lastPackedMaterial, batcher);
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         objData.objectParams.x    = mr->lodDither;
-        resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = mr->mesh->vertexBuffer;
@@ -259,9 +419,9 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = h.gbufferShader;
-        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO : h.defaultPSO;
+        dc.pipelineState      = GetOrCreateMaterialPSO(resources, *go.GetComponent<MaterialComponent>(), rs.IsWireframe());
         dc.constantBuffers[0] = h.frameCB;
-        dc.constantBuffers[1] = h.objectCB;
+        /// @note b1 は InstanceBatcher が載せる (束ねたときは束ぶんの行列を VS の t0 へ回す)。
         dc.constantBuffers[2] = gbufMatCB;
         /// @note b8: GBuffer.hlsl は ApplyWetness() で weatherWetness / weatherDarkening /
         /// @note weatherPuddle を読む。束縛しないと cbuffer は全ゼロで読まれ、Deferred の
@@ -271,8 +431,11 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         if (material)
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
-        SubmitCounted(ctx, dc);
+        batcher.Add(dc, objData);
     }
+    batcher.Flush();
+
+    EmitSkinnedGBuffer(ctx, s_gbufMatCB, lastPackedMaterial);
 }
 
 /// @name Deferred 用深度コピー (GBuffer → hdrRT)
@@ -282,7 +445,7 @@ void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
 
-    /// @note hdrRT をクリア (カラー・深度 1.0 にリセット) してから GBuffer 深度を転写する。
+    /// @note hdrRT をクリア (カラー・深度を最遠 = Reversed-Z の 0 にリセット) してから GBuffer 深度を転写する。
     /// @note この深度は Sky (DEPTH_SKY) と DeferredSkinnedForward (DEPTH_ON) が参照する。
     renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     ClearForCamera(renderer, ctx.camera);
@@ -381,6 +544,9 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     dc.textures[17]       = h.iblPrefilter;
     /// @note TEX_IBL_BRDF_LUT:   BRDF 積分テーブル
     dc.textures[18]       = h.iblBrdfLut;
+    /// @note TEX_LIGHT_PROBE_SH / _OUTER: 無効ハンドルなら未束縛 (b8 の probeVolumes[i].intensity が 0 で引かない)
+    dc.textures[22]       = h.lightProbeSH[0];
+    dc.textures[21]       = h.lightProbeSH[1];
     renderer.Submit(dc, resources);
 }
 
@@ -433,6 +599,12 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             if (!slot.visible) continue;
             slot.EnsureMaterialAsset();
 
+            /// @note GBuffer で描けるスキンドは GBufferPass が拾う。ここへ来るのは
+            ///       «半透明» と «GBuffer に収まらない材質» だけ。
+            /// @see Docs/design/pipeline-boundary.md §3
+            const GeometryRoute route = ResolveGeometryRoute(slot, /*gbufferPipeline=*/true);
+            if (route == GeometryRoute::GBuffer) continue;
+
             auto* material = SyncMaterialSlot(*mat, mi, resources, true);
             if (!material) continue;
 
@@ -447,7 +619,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             const auto skinnedShader = drawMaterial->shader;
             if (!skinnedShader.IsValid()) continue;
 
-            const bool opaque = slot.GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND;
+            const bool opaque = route == GeometryRoute::ForwardOpaque;
 
             renderer::DrawCall dc;
             dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
@@ -455,8 +627,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, slot.GetBlendMode(), slot.IsDoubleSided());
+            dc.pipelineState      = GetOrCreateMaterialPSO(resources, slot, rs.IsWireframe());
             dc.layer              = opaque ? renderer::RenderLayer::OPAQUE_LAYER
                                            : renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
@@ -512,8 +683,9 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!mr || !mr->enabled || !mr->lodVisible || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
-        /// @note 透明のみ
-        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;
+        /// @see Docs/design/pipeline-boundary.md
+        if (ResolveGeometryRoute(*mat, /*gbufferPipeline=*/true)
+            != GeometryRoute::ForwardTransparent) continue;
 
         ++ctx.statsTotalObjects;
 
@@ -534,8 +706,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
-        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
+        dc.pipelineState      = GetOrCreateMaterialPSO(resources, *mat, rs.IsWireframe());
         dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
@@ -571,10 +742,10 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!mr || !mr->enabled || !mr->lodVisible || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
-        /// @note 不透明のみ
-        if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
-        /// @note エフェクト系のみ
-        if (!IsForwardOnly(*mat)) continue;
+        /// @note GBuffer に収まらない材質だけがここへ来る。判断は 1 か所。
+        /// @see Docs/design/pipeline-boundary.md
+        if (ResolveGeometryRoute(*mat, /*gbufferPipeline=*/true)
+            != GeometryRoute::ForwardOpaque) continue;
 
         if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
@@ -593,8 +764,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
-        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
+        dc.pipelineState      = GetOrCreateMaterialPSO(resources, *mat, rs.IsWireframe());
         dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
@@ -616,14 +786,14 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 
 std::string_view GBufferPass::Name() const
 {
-    return m_mode == GBufferPassMode::ForwardPrepass ? "ForwardGBufferPrepass" : "DeferredGBuffer";
+    return m_mode == GBufferPassMode::DepthNormalPrepass ? "DepthNormalPrepass" : "DeferredGBuffer";
 }
 
 void GBufferPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
     /// @note Forward のプリパスだけが影と Cookie を読む。Deferred 本経路は
     /// @note ライティングをしないので、法線・深度・roughness を書くだけ。
-    if (m_mode == GBufferPassMode::ForwardPrepass)
+    if (m_mode == GBufferPassMode::DepthNormalPrepass)
         builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
     builder.Write("GBuffer");
 }
@@ -632,7 +802,7 @@ void GBufferPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     /// @note Forward の前段は ForwardOpaque と同じ物体を同じカメラで判定し直すので、カリング統計を数えない (数えると倍になる)。
     std::optional<CullStatsRollback> rollback;
-    if (m_mode == GBufferPassMode::ForwardPrepass) rollback.emplace(ctx);
+    if (m_mode == GBufferPassMode::DepthNormalPrepass) rollback.emplace(ctx);
     ExecuteGBufferPass(ctx);
     ExecuteFiberGBufferPass(ctx);
 }
@@ -680,4 +850,4 @@ void DeferredLightingPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteDeferredLightingPass(ctx);
 }
-} // namespace fbzz::scene
+}
