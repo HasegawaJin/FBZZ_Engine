@@ -49,7 +49,8 @@ uint FBZZ_LuminanceToBin(float luminance)
 float FBZZ_BinToLuminance(uint bin)
 {
     if (bin == 0u) return 0.0f;
-    const float t  = (float(bin) - 1.0f) / float(FBZZ_EXPOSURE_BINS - 1);
+    /// @note ビン k は t ∈ [(k-1), k) / (BINS-1) を受け持つので、代表値はその中央。
+    const float t  = saturate((float(bin) - 0.5f) / float(FBZZ_EXPOSURE_BINS - 1));
     return exp2(t * exposureEvRange + exposureMinEV);
 }
 

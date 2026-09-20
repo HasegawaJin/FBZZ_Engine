@@ -54,6 +54,9 @@ void ExecuteTAAPass(RenderPassContext& ctx)
     taaDC.textures[5]        = resources.GetColorTexture(ctx.Res().Target("LDR"), 0);
     /// @note t21: TEX_TAA_HISTORY (前フレーム)
     taaDC.textures[21]       = resources.GetColorTexture(historyRead, 0);
+    /// @note t7: シーン深度。速度を書かない画素 (空・静止物) はこれでカメラの動きだけ再投影する。
+    ///       束縛しないと無効な添字のディスクリプタを読む。
+    taaDC.textures[7]        = resources.GetDepthTexture(ctx.Res().Target("HDR"));
     /// @note t26: モーションベクター。VelocityPass が動かなかったフレームは無効ハンドルのままで、
     ///       シェーダー側は B=0 を読んで従来の深度再投影へフォールバックする。
     if (ctx.Res().Target("Velocity").IsValid())

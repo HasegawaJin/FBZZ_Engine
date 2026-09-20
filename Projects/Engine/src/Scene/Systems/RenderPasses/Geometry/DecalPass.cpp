@@ -15,6 +15,7 @@
 #include "GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -139,7 +140,7 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
     for (size_t i = 0; i < texturePaths.size(); ++i) {
         material.textures[i] = texturePaths[i].empty()
             ? renderer::ResourceHandle<renderer::TextureTag>{}
-            : resources.LoadTexture(texturePaths[i]);
+            : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePaths[i]);
     }
 
     material.Init(resources, binding.descriptor.cbufferSize);
@@ -179,7 +180,8 @@ void ApplyDecalMaterialOverrides(renderer::ResourceManager& resources,
         for (size_t slot = 0; slot < slotNames.size() && slot < call.textures.size(); ++slot) {
             const auto it = decal.materialTextureOverrides.find(slotNames[slot]);
             if (it == decal.materialTextureOverrides.end() || it->second.empty()) continue;
-            if (const auto texture = resources.LoadTexture(it->second); texture.IsValid())
+            if (const auto texture = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, it->second);
+                texture.IsValid())
                 call.textures[slot] = texture;
         }
     }
@@ -482,7 +484,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
             auto loadTex = [&](const std::string& path) {
                 return path.empty()
                     ? renderer::ResourceHandle<renderer::TextureTag>{}
-                    : resources.LoadTexture(path);
+                    : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, path);
             };
             const auto albedoTex   = loadTex(d.albedoTexPath);
             const auto normalTex   = loadTex(d.normalTexPath);

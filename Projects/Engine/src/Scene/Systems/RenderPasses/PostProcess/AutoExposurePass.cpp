@@ -56,7 +56,8 @@ void ExecuteAutoExposurePass(RenderPassContext& ctx)
     data.speedUp      = (std::max)(ae.speedUp, 0.0f);
     data.speedDown    = (std::max)(ae.speedDown, 0.0f);
     /// @note Play/Stop やエディタのポーズで dt が跳ねると順応が一気に飛ぶ。上限を切る。
-    data.deltaTime    = std::clamp(Time::deltaTime, 0.0f, 0.1f);
+    /// @note 目の順応は実時間の現象なので timeScale を掛けない。掛けるとポーズやヒットストップで順応が止まる。
+    data.deltaTime    = std::clamp(Time::unscaledDeltaTime, 0.0f, 0.1f);
     data.compensation = ae.compensation;
     data.minEVClamp   = ae.minExposureEV;
     data.maxEVClamp   = (std::max)(ae.maxExposureEV, ae.minExposureEV);
