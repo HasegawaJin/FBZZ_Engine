@@ -102,7 +102,7 @@ fbzz_add_test_suite(PhysicsAuto
 )
 
 # @note --- Fluid ------------------------------------------------------------------
-# @note WHY 専用の TestKit を作らないか: Fluid は Math しか見ない。FBZZTestKit が既に FBZZMath を
+# @note 専用の TestKit を作らないか: Fluid は Math しか見ない。FBZZTestKit が既に FBZZMath を
 # @note 公開でリンクしているので、足すのは FBZZFluid 1 つで足りる。
 # @note .fluid の読み書き (FileSystem / TOML) や焼き (FluidBaker) に触るテストは
 # @note Engine 依存が残るため EngineAuto に置いたまま。
@@ -208,13 +208,13 @@ fbzz_add_test_suite(EngineAuto
 )
 
 target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/GreenWare/Assets")
-# @note WHY Engine/src を足すか: 水面のさざ波タイルのような «GPU へ渡す前の CPU ベイク» は
+# @note Engine/src を足すか: 水面のさざ波タイルのような «GPU へ渡す前の CPU ベイク» は
 # @note ヘッダーオンリーで src 側に閉じている。公開ヘッダーへ出すと、焼き方を知る必要のない
 # @note 利用側にまで実装が露出する。テストだけが実装ディレクトリを覗く。
 target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
 
 # @note --- Editor -----------------------------------------------------------------
-# @note WHY Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»
+# @note Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»
 # @note という形でしか表に出ず、しかも直ったかどうかがローカルの mtime に左右される。
 # @note 再現条件をテストへ固定できないと、同じ回帰を何度も踏む。
 # @note FBZZEditor は STATIC なので、テストが参照するオブジェクトだけが引き込まれる。
@@ -259,20 +259,20 @@ fbzz_add_test_suite(EditorAuto
 )
 
 # @note Editor の一部の道具はヘッダごと src/ に置かれている (公開 API ではないため)。
-# @note WHY テストからだけ覗くか: TerrainBrush の減衰カーブや座標変換は «なんとなく変» という
+# @note テストからだけ覗くか: TerrainBrush の減衰カーブや座標変換は «なんとなく変» という
 # @note 形でしか壊れず、目視では追えない。公開範囲を広げる代わりに、テスト側だけが
 # @note 内部ヘッダを見られるようにする。
 target_include_directories(FBZZTestsEditorAutoObj
     PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Editor/src")
 
-# @note WHY ソースの場所を渡すか: BusContractParityTests が MCP 側の契約ファイル (TypeScript) を読んで
+# @note ソースの場所を渡すか: BusContractParityTests が MCP 側の契約ファイル (TypeScript) を読んで
 # @note Editor のハンドラー表と突き合わせる。実行ディレクトリからの相対では CI とローカルで食い違う。
 target_compile_definitions(FBZZTestsEditorAutoObj
     PRIVATE FBZZ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 # @note --- ビジュアル検証ベンチ ---------------------------------------------------
 # @note CTest には載せない。合否をコードで判定しないため。
-# @note WHY テスト実行機能を持たせないか: 自動テストの正は CTest / VS のテストエクスプローラー。
+# @note テスト実行機能を持たせないか: 自動テストの正は CTest / VS のテストエクスプローラー。
 # @note ここでも走らせられるようにすると «どちらの結果が正しいのか» が分からなくなる。
 add_executable(FBZZTestBench
     Bench/main.cpp
@@ -289,7 +289,7 @@ add_executable(FBZZTestBench
     Bench/Scenes/ConvexHullScene.cpp
     Bench/Scenes/RagdollScene.cpp
     # @note コンソール制御だけ TestKit と共有する。
-    # @note WHY リンクせずソースを直接足すか: FBZZTestKit は gtest / gmock を引き連れてくる。
+    # @note リンクせずソースを直接足すか: FBZZTestKit は gtest / gmock を引き連れてくる。
     # @note ベンチはテストフレームワークに依存させたくないので、この 1 ファイルだけ借りる。
     TestKit/src/Console.cpp
 )

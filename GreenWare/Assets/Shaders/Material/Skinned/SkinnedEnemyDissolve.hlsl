@@ -1,29 +1,12 @@
-/// @file    Material/Skinned/SkinnedEnemyDissolve.hlsl
-/// @brief   撃破された機体が «下から食われて» 消えるディゾルブ。無傷のときは SkinnedPBR と同じ絵
+/// @file    SkinnedEnemyDissolve.hlsl
+/// @brief   撃破された機体が «下から食われて» 消えるディゾルブ。無傷のときは SkinnedPBR と同じ絵。
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 ///
-/// WHY 既存の Material/Skinned/SkinnedDissolve.hlsl を使わないか:
-///   あちらはノイズを **UV 空間** で引き、しきい値を alphaCutoff に相乗りさせている。
-///   GreenWare の敵はテクスチャを 1 枚も持たず (全部フラットカラー) UV は展開の都合で
-///   決まっているだけなので、UV ノイズは «体のどこが先に消えるか» と無関係に穴が開く。
-///   さらに alphaCutoff は «アルファテストのしきい値» という別の意味を既に持っていて、
-///   ディゾルブ量として動かすと Inspector から意図が読めない。
-///
-/// WHY ノイズを «スキン後のローカル座標» で引くか:
-///   ワールド座標で引くと、敵が歩いた瞬間に模様が体の上を流れる (泳ぐ)。
-///   バインドポーズのローカル座標で引くと、今度は腕を振っても模様が動かず «貼り付けた
-///   テクスチャ» に見える。スキン行列を掛けた後のローカル座標なら、模様は体に固定され
-///   かつ機体の移動から独立する。
-///
-/// WHY 軸方向の掃引を混ぜるか:
-///   純ノイズだけだと全身に一斉に穴が開き «溶けた» ではなく «points が抜けた» に見える。
-///   dissolveAxis の向きから順に食わせると «下から崩れる» «正面から灼かれる» のような
-///   出来事の向きが絵に出る。dissolveSweep で純ノイズ ↔ 純掃引を連続で選べる。
-///
-/// NOTE: clip() で消すので合成は Opaque のまま。半透明にすると深度書き込みが外れて
-///       体の裏側が透ける。そのぶん ShadowPass (SkinnedShadowMap) はディゾルブを知らず、
-///       消えかけの機体も影だけは丸ごと落とす。
+/// @note SkinnedDissolve.hlsl は UV ノイズ + alphaCutoff 相乗りで、UV が展開の都合でしかない敵では消える順が体と無関係になるため別に持つ。
+/// @note ノイズはスキン後のローカル座標で引く (ワールドだと歩くと模様が泳ぎ、バインドポーズだと腕を振っても模様が貼り付いて見える)。
+/// @note 純ノイズは全身に一斉に穴が開くので dissolveAxis 方向の掃引を dissolveSweep で混ぜ、出来事の向きを絵に出す。
+/// @warning clip() で消すので Opaque のまま。ShadowPass (SkinnedShadowMap) はディゾルブを知らず、消えかけでも影は丸ごと落ちる。
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
@@ -40,7 +23,8 @@
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
-    // ── SkinnedPBR と同じ並び。無傷の絵を 1 対 1 で保つため名前も順序も変えないこと ──
+    /// @name SkinnedPBR と同じ並び
+    /// @note 無傷の絵を 1 対 1 で保つため名前も順序も変えない。
     float4 albedo;
     float  metallic;
     float  roughness;
@@ -61,25 +45,24 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float3 sheenColor;
     float  _pad2;
 
-    // ── ディゾルブ ──
-    // 縁の色は «熱» であって素材色ではないので emissiveColor とは別に持つ。
-    // 同じ機体でも、撃破は白熱・腐食は緑、と出来事ごとに変えたい。
+    /// @name ディゾルブ
+    /// @note 縁の色は素材色でなく出来事の «熱» (撃破は白熱・腐食は緑) なので emissiveColor と別に持つ。
     float3 dissolveEdgeColor;
-    // 0 = 無傷、1 = 完全に消滅。スクリプトはこの 1 本だけを動かす。
+    /// @note 0 = 無傷、1 = 完全に消滅。スクリプトはこの 1 本だけを動かす。
     float  dissolveAmount;
-    // 先に消える向き (ローカル空間)。既定の (0,-1,0) は «足元から» 。
+    /// @note 先に消える向き (ローカル空間)。既定の (0,-1,0) は足元から。
     float3 dissolveAxis;
-    // 掃引が覆うローカル距離 [m]。機体の高さを入れると端から端まで綺麗に流れる。
+    /// @note 掃引が覆うローカル距離 [m]。機体の高さを入れると端から端まで流れる。
     float  dissolveRange;
-    // 縁として光る帯の幅 (しきい値の単位)。太いほど «炙られている» 感じが強い。
+    /// @note 縁として光る帯の幅 (しきい値の単位)。
     float  dissolveEdgeWidth;
     float  dissolveEdgeIntensity;
-    // ノイズの細かさ [周期/m]。大きいほど «砂» 、小さいほど «塊» で崩れる。
+    /// @note ノイズの細かさ [周期/m]。大きいほど砂、小さいほど塊で崩れる。
     float  dissolveNoiseScale;
-    // 0 = ノイズだけ (全身同時)、1 = 掃引だけ (端から順に)。
+    /// @note 0 = ノイズだけ (全身同時)、1 = 掃引だけ (端から順に)。
     float  dissolveSweep;
 
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    /// @note bindless のテクスチャ添字。Material::Upload が毎フレーム書く。
     uint texAlbedoIndex;
     uint texNormalIndex;
     uint texMetallicIndex;
@@ -100,7 +83,7 @@ FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);
 FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);
 SamplerState           sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP);
 
-// 共有 PSInput にローカル座標の口が無いので、このシェーダー専用の補間子を持つ。
+/// @brief 共有 PSInput にローカル座標の口が無いので持つ専用の補間子。
 struct DissolvePSInput
 {
     float4 svPosition : SV_POSITION;
@@ -162,7 +145,8 @@ float DissolveValueNoise(float3 p)
                 lerp(lerp(n001, n101, f.x), lerp(n011, n111, f.x), f.y), f.z);
 }
 
-// 崩れる «順番» を 0..1 で返す。小さい画素ほど先に消える。
+/// @brief 崩れる順番を返す。
+/// @return 0..1。小さい画素ほど先に消える。
 float DissolveField(float3 localPos)
 {
     const float scale = max(dissolveNoiseScale, 0.0001f);
@@ -170,7 +154,7 @@ float DissolveField(float3 localPos)
           noise += DissolveValueNoise(localPos * scale * 2.1f) * 0.27f;
           noise += DissolveValueNoise(localPos * scale * 4.3f) * 0.13f;
 
-    // 軸に沿った位置を 0..1 へ。dissolveAxis の «向いている先» が先に消える。
+    /// @note 軸に沿った位置を 0..1 へ。dissolveAxis の向いている先が先に消える。
     const float3 axis = SafeNormalize(dissolveAxis, float3(0.0f, -1.0f, 0.0f));
     const float  span = max(dissolveRange, 0.0001f);
     const float  sweep = saturate(dot(localPos, axis) / span + 0.5f);
@@ -182,9 +166,7 @@ float4 PSMain(DissolvePSInput p) : SV_Target0
 {
     ApplyLodDither(p.svPosition.xy, objectParams.x);
 
-    // dissolveAmount = 0 で 1 画素も欠けず、1 で 1 画素も残らないよう、
-    // しきい値を field の範囲より僅かに外へ振る (両端がちょうど境界に乗ると
-    // «消え切らずに点が残る» / «開始と同時に穴が開く» のどちらかが必ず出る)。
+    /// @note しきい値を field の範囲より僅かに外へ振り、0 で 1 画素も欠けず 1 で 1 画素も残らないようにする (端が境界に乗ると点が残るか開始時に穴が開く)。
     const float field     = DissolveField(p.localPos);
     const float threshold = lerp(-0.001f, 1.001f, saturate(dissolveAmount));
     clip(field - threshold);
@@ -236,7 +218,7 @@ float4 PSMain(DissolvePSInput p) : SV_Target0
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
     float3 result = iblIntensity > 0.0f
-        ? Lighting_PBR_IBL_Advanced(N, V, L, T, B, col, met, rough,
+        ? Lighting_PBR_IBL_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow, ao,
               texIBLIrradiance, texIBLPrefilter, texBRDFLut, iblMaxMipLevel,
@@ -257,9 +239,7 @@ float4 PSMain(DissolvePSInput p) : SV_Target0
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
 
-    // 消える直前の «食われている縁» 。しきい値のすぐ上に居る画素ほど強い。
-    // WHY dissolveAmount で伏せるか: 無傷 (0) のときに縁が出ると、まだ何も起きていない
-    //     機体の足元だけが常時光る。撃破が始まってから灯る必要がある。
+    /// @note 食われている縁はしきい値のすぐ上ほど強い。無傷 (0) で縁が出ると足元が常時光るので dissolveAmount > 0 で伏せる。
     const float edge = (1.0f - saturate((field - threshold) / max(dissolveEdgeWidth, 0.0001f)))
                      * step(0.0001f, dissolveAmount);
     result += dissolveEdgeColor * (dissolveEdgeIntensity * edge * edge);
