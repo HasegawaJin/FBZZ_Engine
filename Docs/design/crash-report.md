@@ -56,6 +56,11 @@
 
 ## 6. 致命経路の自動検証
 
+ログ保持の件数・順序・UTF-8 の境界は内部の `CrashLogTail` を直接検証する。
+この単体テストではコンソール出力やミニダンプ生成を行わない。
+Logger からレポートへの配送とダンプ生成は既存の `CrashHandlerTests`・
+`CrashReportContentTests`・`CrashHandlerFatalTests` の統合テストで検証する。
+
 `CrashHandlerFatalTests.cpp` は同じテスト exe の子プロセスで異常終了させ、親が終了コード・
 `report.txt` の理由とログ・ミニダンプの署名を検証する。保存先は親の `TestKit::TempDir` が所有し、
 子が終了しても回収できる。子の終了は期限付きで待ち、期限超過は失敗にしてその子だけを終了する。

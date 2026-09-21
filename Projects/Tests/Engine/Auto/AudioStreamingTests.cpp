@@ -20,6 +20,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <objbase.h>
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
 
 namespace fbzz::tests {
 namespace {
@@ -141,6 +143,17 @@ TEST_F(AudioStreamingTest, RejectsMissingAndNonAudioFiles)
 
 TEST_F(AudioStreamingTest, NativeStreamStopsWhilePausedAndRebuildsBusesWithoutKeepingBuffers)
 {
+    /// @note 出力デバイスのないランナーだけを除外し、デバイスがある環境での初期化失敗は検出する。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-immdeviceenumerator-enumaudioendpoints 有効な再生エンドポイントの列挙。
+    Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator;
+    ASSERT_HRESULT_SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER,
+                                              IID_PPV_ARGS(enumerator.GetAddressOf())));
+    Microsoft::WRL::ComPtr<IMMDeviceCollection> endpoints;
+    ASSERT_HRESULT_SUCCEEDED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, endpoints.GetAddressOf()));
+    UINT endpointCount = 0;
+    ASSERT_HRESULT_SUCCEEDED(endpoints->GetCount(&endpointCount));
+    if (endpointCount == 0) GTEST_SKIP() << "No active audio output endpoint is available";
+
     audio::XAudio2Device device;
     ASSERT_TRUE(device.Init());
     const auto path = WriteWave(std::vector<uint8_t>(48000 * 2 * 4, 0));
