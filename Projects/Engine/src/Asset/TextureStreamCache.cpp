@@ -9,6 +9,8 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <Engine/Util/FileSystem.hpp>
+#include <filesystem>
 
 namespace fbzz::asset::texturecache {
 
@@ -57,7 +59,7 @@ bool DecodeMip(const std::vector<uint8_t>& bytes, renderer::DecodedTextureRGBA8:
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 uint64_t MakeSourceStamp(uint64_t sourceSize, int64_t sourceWriteTime)
 {
@@ -93,6 +95,28 @@ renderer::DecodedTextureRGBA8 SelectQuality(const renderer::DecodedTextureRGBA8&
         level = renderer::DownsampleRGBA8Box2x(level);
     result.mips.push_back(std::move(level));
     return result;
+}
+
+bool BakeDistributionTexture(const std::string& sourcePath, std::string& outError)
+{
+    const auto path = util::FileSystem::PathFromUtf8(sourcePath);
+    auto extension = path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (extension != ".png" && extension != ".jpg" && extension != ".jpeg" && extension != ".bmp"
+        && extension != ".tga" && extension != ".dds" && extension != ".tif" && extension != ".tiff") return true;
+    if (renderer::RequiresNativeTextureUpload(sourcePath)) return true;
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    const auto time = error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(path, error);
+    if (error) { outError = error.message(); return false; }
+    renderer::DecodedTextureRGBA8 decoded;
+    if (!renderer::DecodeTextureFileRGBA8(sourcePath, decoded, &outError)) return false;
+    if (!Write(sourcePath + ".fztc", MakeSourceStamp(size, time.time_since_epoch().count()), decoded, 4)) {
+        outError = "Failed to write texture stream cache: " + sourcePath;
+        return false;
+    }
+    return true;
 }
 
 bool Write(const std::string& cachePath, uint64_t sourceStamp,
@@ -166,4 +190,4 @@ bool ReadQuality(const std::string& cachePath, uint64_t sourceStamp, AssetQualit
     return finish(true);
 }
 
-} // namespace fbzz::asset::texturecache
+} /// @note namespace fbzz::asset::texturecache

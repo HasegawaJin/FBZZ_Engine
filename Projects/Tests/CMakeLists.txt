@@ -133,6 +133,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/AssetStreamingTests.cpp
         Engine/Auto/SceneAssetReferencesTests.cpp
         Engine/Auto/AssetPartialIoTests.cpp
+        Engine/Auto/AssetStreamingIntegrationTests.cpp
         Engine/Auto/EventBusTests.cpp
         Engine/Auto/FileSystemPathTests.cpp
         Engine/Auto/ScriptTransformProxyTests.cpp
