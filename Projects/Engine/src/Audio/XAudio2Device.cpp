@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2025-01-01
 #include "Engine/Audio/XAudio2Device.hpp"
+#include "XAudio2Stream.hpp"
 #include "Engine/Core/Logger.hpp"
 #include <xaudio2fx.h>
 #include <algorithm>
@@ -17,8 +18,8 @@ namespace fbzz::audio
 {
 namespace {
 
-/// バスはすべてステレオ。SetPan は左右 2ch にしか書かず、XAudio2 の残響も入力 1-2ch しか
-/// 受けないので、マスターに合わせると 5.1 環境でだけ ReverbZone が死ぬ。展開は XAudio2 任せ。
+/// @note バスはすべてステレオ。SetPan は左右 2ch にしか書かず、XAudio2 の残響も入力 1-2ch しか
+/// @note 受けないので、マスターに合わせると 5.1 環境でだけ ReverbZone が死ぬ。展開は XAudio2 任せ。
 constexpr uint32_t kBusChannels = 2;
 
 bool EqualsIgnoreCase(const std::string& a, const std::string& b)
@@ -31,14 +32,17 @@ bool EqualsIgnoreCase(const std::string& a, const std::string& b)
     return true;
 }
 
-} // namespace
+} /// @note namespace
+
+XAudio2Device::XAudio2Device() = default;
+XAudio2Device::~XAudio2Device() { Shutdown(); }
 
 bool XAudio2Device::Init()
 {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (hr == RPC_E_CHANGED_MODE) {
         /// @note Window が OLE D&D のためこのスレッドを STA で先に初期化していると MTA 要求が弾かれる。
-        ///       XAudio2 は STA でも動くので、COM を「所有しない」形で続行する (CoUninitialize しない)。
+        /// @note XAudio2 は STA でも動くので、COM を「所有しない」形で続行する (CoUninitialize しない)。
         m_comInitialized = false;
     } else if (FAILED(hr) && hr != S_FALSE) {
         /// @note S_FALSE はすでに初期化済みなので問題なし。それ以外の失敗のみエラー扱いにする。
@@ -97,6 +101,7 @@ void XAudio2Device::Shutdown()
 void XAudio2Device::DestroyAllSourceVoices()
 {
     for (auto& [id, entry] : m_voices) {
+        if (entry.stream) { entry.stream.reset(); continue; }
         if (entry.voice) {
             entry.voice->Stop();
             entry.voice->DestroyVoice();
@@ -105,7 +110,7 @@ void XAudio2Device::DestroyAllSourceVoices()
     m_voices.clear();
 
     /// @note プールの voice は «作ったときの送り先» を握る。ここが呼ばれるのはバスを作り直す
-    ///       ときと終了時で、どちらも直後にその送り先が消えるため、取り置きも一緒に畳む。
+    /// @note ときと終了時で、どちらも直後にその送り先が消えるため、取り置きも一緒に畳む。
     for (auto& [key, pool] : m_voicePool) {
         for (IXAudio2SourceVoice* voice : pool)
             if (voice) voice->DestroyVoice();
@@ -177,7 +182,7 @@ bool XAudio2Device::RebuildBuses(const BusDesc* descs, size_t count)
         }
 
         /// @note XAudio2 は ProcessingStage の小さい submix から処理する。子は親より
-        ///       先に処理されなければならないので、深いバスほど小さい stage を与える。
+        /// @note 先に処理されなければならないので、深いバスほど小さい stage を与える。
         const UINT32 stage = maxDepth - depth[i];
         HRESULT hr = m_xaudio2->CreateSubmixVoice(
             &m_buses[i].voice, kBusChannels, m_masterSampleRate,
@@ -242,7 +247,7 @@ void XAudio2Device::SetBusReverb(BusIndex bus, float wet,
     if (!wantEnabled) return;
 
     /// @note I3DL2 の一般的な部屋を土台に、ゾーンが持つ 3 つだけ差し替える。
-    ///       ネイティブ値を直に組むと反射遅延や密度まで決めることになり、対応が付かない。
+    /// @note ネイティブ値を直に組むと反射遅延や密度まで決めることになり、対応が付かない。
     XAUDIO2FX_REVERB_I3DL2_PARAMETERS i3dl2 = XAUDIO2FX_I3DL2_PRESET_GENERIC;
     i3dl2.WetDryMix    = wet * 100.0f;
     i3dl2.DecayTime    = (std::max)(decaySeconds, 0.1f);
@@ -273,8 +278,8 @@ uint32_t XAudio2Device::PlayBuffer(
     XAUDIO2_VOICE_SENDS    sends{ 1, &send };
 
     /// @note 使い終わった voice を取っておいて回す。CreateSourceVoice/DestroyVoice は
-    ///       オーディオ処理の区切りを待つ呼び出しでゲームスレッドが止まるため、毎回作ると
-    ///       音が鳴るたびに前の音の後始末がまとまって数ミリ秒のスパイクになる。
+    /// @note オーディオ処理の区切りを待つ呼び出しでゲームスレッドが止まるため、毎回作ると
+    /// @note 音が鳴るたびに前の音の後始末がまとまって数ミリ秒のスパイクになる。
     const VoiceKey key{ fmt.channels, fmt.sampleRate, fmt.bitsPerSample, destination };
     IXAudio2SourceVoice* voice = TakePooledVoice(key);
     if (!voice) {
@@ -306,7 +311,36 @@ uint32_t XAudio2Device::PlayBuffer(
     }
 
     const uint32_t id = m_nextId++;
-    m_voices[id] = VoiceEntry{ voice, loop, fmt.channels, destination, destinationChannels, key };
+    auto& entry = m_voices[id];
+    entry.voice = voice;
+    entry.loop = loop;
+    entry.channels = fmt.channels;
+    entry.destination = destination;
+    entry.destinationChannels = destinationChannels;
+    entry.key = key;
+    entry.mainMatrix.resize(fmt.channels * destinationChannels);
+    voice->GetOutputMatrix(destination, fmt.channels, destinationChannels, entry.mainMatrix.data());
+    return id;
+}
+
+uint32_t XAudio2Device::PlayStream(const std::string& path, bool loop, BusIndex bus)
+{
+    if (!m_xaudio2) return 0;
+    auto stream = std::make_unique<XAudio2Stream>();
+    IXAudio2Voice* destination = BusVoice(bus);
+    if (!stream->Start(*m_xaudio2.Get(), destination, path, loop)) return 0;
+    const uint32_t id = m_nextId++;
+    auto& entry = m_voices[id];
+    entry.voice = stream->Voice();
+    entry.loop = loop;
+    entry.channels = stream->Format().channels;
+    entry.destination = destination;
+    XAUDIO2_VOICE_DETAILS details{};
+    destination->GetVoiceDetails(&details);
+    entry.destinationChannels = details.InputChannels;
+    entry.mainMatrix.resize(entry.channels * entry.destinationChannels);
+    entry.voice->GetOutputMatrix(destination, entry.channels, entry.destinationChannels, entry.mainMatrix.data());
+    entry.stream = std::move(stream);
     return id;
 }
 
@@ -314,7 +348,7 @@ void XAudio2Device::StopBuffer(uint32_t voiceId)
 {
     auto it = m_voices.find(voiceId);
     if (it == m_voices.end()) return;
-    RecycleVoice(it->second);
+    if (!it->second.stream) RecycleVoice(it->second);
     m_voices.erase(it);
 }
 
@@ -323,7 +357,7 @@ void XAudio2Device::PauseBuffer(uint32_t voiceId)
     auto it = m_voices.find(voiceId);
     if (it == m_voices.end()) return;
     /// @note FlushSourceBuffers を呼ぶとキューが空になり再生位置も失われる。
-    ///       Stop() だけならバッファを保持したままなので Start() で続きから鳴る。
+    /// @note Stop() だけならバッファを保持したままなので Start() で続きから鳴る。
     it->second.voice->Stop();
 }
 
@@ -352,24 +386,63 @@ void XAudio2Device::SetPitch(uint32_t voiceId, float pitch)
 
 void XAudio2Device::SetPan(uint32_t voiceId, float pan)
 {
-    auto it = m_voices.find(voiceId);
-    if (it == m_voices.end() || it->second.channels != 1) return;
+    const auto it = m_voices.find(voiceId);
+    if (it == m_voices.end()) return;
+    it->second.pan = std::isfinite(pan) ? std::clamp(pan, -1.0f, 1.0f) : 0.0f;
+    ApplyOutputMatrices(it->second);
+}
 
-    IXAudio2Voice* destination = it->second.destination
-        ? it->second.destination : static_cast<IXAudio2Voice*>(m_masterVoice);
-    if (!destination) return;
-    const uint32_t destinationChannels = it->second.destinationChannels;
-    if (destinationChannels < 2) return;
+void XAudio2Device::SetSend(uint32_t voiceId, BusIndex bus, float level)
+{
+    const auto it = m_voices.find(voiceId);
+    if (it == m_voices.end()) return;
+    auto& entry = it->second;
+    level = std::isfinite(level) ? std::clamp(level, 0.0f, 1.0f) : 0.0f;
+    IXAudio2Voice* destination = bus < m_buses.size() && level > 0.0f ? BusVoice(bus) : nullptr;
+    if (entry.sendDestination == destination && entry.sendLevel == level) return;
+    if (entry.sendDestination != destination) {
+        XAUDIO2_SEND_DESCRIPTOR descriptors[2]{{0, entry.destination}, {0, destination}};
+        const bool separate = destination && destination != entry.destination;
+        XAUDIO2_VOICE_SENDS sends{separate ? 2u : 1u, descriptors};
+        /// @see https://learn.microsoft.com/en-us/windows/win32/api/xaudio2/nf-xaudio2-ixaudio2voice-setoutputvoices XAudio2 の複数出力。
+        if (FAILED(entry.voice->SetOutputVoices(&sends))) {
+            FBZZ_LOG_ERROR("XAudio2Device: auxiliary send routing failed");
+            return;
+        }
+        entry.sendMatrix.clear();
+        if (separate) {
+            XAUDIO2_VOICE_DETAILS details{};
+            destination->GetVoiceDetails(&details);
+            entry.sendMatrix.resize(entry.channels * details.InputChannels);
+            entry.voice->GetOutputMatrix(destination, entry.channels, details.InputChannels, entry.sendMatrix.data());
+        }
+        entry.sendDestination = destination;
+    }
+    entry.sendLevel = level;
+    ApplyOutputMatrices(entry);
+}
 
-    /// @note 等電力パン。単純な線形配分だと音像が中央を通るときに音量が落ちる。
-    pan = (std::max)(-1.0f, (std::min)(pan, 1.0f));
-    const float left  = std::sqrt(0.5f * (1.0f - pan));
-    const float right = std::sqrt(0.5f * (1.0f + pan));
-
-    std::vector<float> matrix(destinationChannels, 0.0f);
-    matrix[0] = left;
-    matrix[1] = right;
-    it->second.voice->SetOutputMatrix(destination, 1, destinationChannels, matrix.data());
+void XAudio2Device::ApplyOutputMatrices(VoiceEntry& entry)
+{
+    const auto apply = [&](IXAudio2Voice* destination, const std::vector<float>& base, float gain) {
+        if (!destination || base.empty()) return;
+        const auto channels = static_cast<uint32_t>(base.size() / entry.channels);
+        auto matrix = base;
+        /// @note モノラルは主出力と補助出力へ同じ等電力パンを掛ける。多チャンネルは既定の変換行列を保つ。
+        if (entry.channels == 1 && channels >= 2) {
+            std::fill(matrix.begin(), matrix.end(), 0.0f);
+            matrix[0] = std::sqrt(0.5f * (1.0f - entry.pan));
+            matrix[1] = std::sqrt(0.5f * (1.0f + entry.pan));
+        }
+        for (auto& coefficient : matrix) coefficient *= gain;
+        /// @see https://learn.microsoft.com/en-us/windows/win32/api/xaudio2/nf-xaudio2-ixaudio2voice-setoutputmatrix 送り先ごとのゲイン行列。
+        if (FAILED(entry.voice->SetOutputMatrix(destination, entry.channels, channels, matrix.data())))
+            FBZZ_LOG_ERROR("XAudio2Device: output matrix update failed");
+    };
+    apply(entry.destination, entry.mainMatrix,
+          entry.sendDestination == entry.destination ? 1.0f + entry.sendLevel : 1.0f);
+    if (entry.sendDestination != entry.destination)
+        apply(entry.sendDestination, entry.sendMatrix, entry.sendLevel);
 }
 
 void XAudio2Device::SetLowPass(uint32_t voiceId, float normalizedCutoff)
@@ -390,12 +463,18 @@ bool XAudio2Device::IsPlaying(uint32_t voiceId)
 {
     auto it = m_voices.find(voiceId);
     if (it == m_voices.end()) return false;
+    if (it->second.stream && it->second.stream->Failed()) {
+        FBZZ_LOG_ERROR("XAudio2Device: streaming voice failed");
+        m_voices.erase(it);
+        return false;
+    }
 
     XAUDIO2_VOICE_STATE state{};
     it->second.voice->GetState(&state);
     if (state.BuffersQueued != 0) return true;
+    if (it->second.stream && !it->second.stream->Finished()) return true;
 
-    RecycleVoice(it->second);
+    if (!it->second.stream) RecycleVoice(it->second);
     m_voices.erase(it);
     return false;
 }
@@ -412,10 +491,19 @@ void XAudio2Device::RecycleVoice(const VoiceEntry& entry)
     }
 
     /// @note 積む前に «次の音がそのまま鳴らせる» 状態へ戻す。使い回す以上、前の音の設定は
-    ///       すべて «次の音の初期値» になるため、1 つでも戻し忘れると再生側からは原因不明の
-    ///       音量・音質のばらつきとして出る。
+    /// @note すべて «次の音の初期値» になるため、1 つでも戻し忘れると再生側からは原因不明の
+    /// @note 音量・音質のばらつきとして出る。
     voice->Stop();
     voice->FlushSourceBuffers();
+    if (entry.sendDestination) {
+        XAUDIO2_SEND_DESCRIPTOR descriptor{0, entry.destination};
+        XAUDIO2_VOICE_SENDS sends{1, &descriptor};
+        if (FAILED(voice->SetOutputVoices(&sends))) {
+            voice->DestroyVoice();
+            return;
+        }
+        voice->SetOutputMatrix(entry.destination, entry.channels, entry.destinationChannels, entry.mainMatrix.data());
+    }
     voice->SetVolume(1.0f);
     voice->SetFrequencyRatio(1.0f);
     XAUDIO2_FILTER_PARAMETERS bypass{ LowPassFilter, 1.0f, 1.0f };
@@ -449,7 +537,7 @@ IXAudio2SourceVoice* XAudio2Device::TakePooledVoice(const VoiceKey& key)
 void XAudio2Device::PurgeFinishedVoices()
 {
     for (auto it = m_voices.begin(); it != m_voices.end();) {
-        if (it->second.loop) { ++it; continue; }
+        if (it->second.loop || it->second.stream) { ++it; continue; }
         XAUDIO2_VOICE_STATE state{};
         it->second.voice->GetState(&state);
         if (state.BuffersQueued == 0) {
@@ -461,4 +549,4 @@ void XAudio2Device::PurgeFinishedVoices()
     }
 }
 
-} // namespace fbzz::audio
+} /// @note namespace fbzz::audio

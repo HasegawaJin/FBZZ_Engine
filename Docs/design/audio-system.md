@@ -321,9 +321,8 @@ ProjectSettingsPanel の保存でも同じ経路を通す (課題 3 の解消)�
 `AudioSourceComponent` に `busName`(既定 `"SE"`) を追加し、これを**主出力**とする。
 
 `AudioMixerSendComponent` は名前どおり**補助センド**の意味に戻す。
-ただし XAudio2 の複数出力 (`SetOutputVoices`) を伴うため、今回は主出力の結線までとし、
-補助センドは後続とする。それまで `sendLevel` は現行どおりゲイン倍率として動く
-(挙動は変わらないが、意味が暫定であることをヘッダーに明記する)。
+XAudio2 の複数出力 (`SetOutputVoices`) へ結び、主出力のゲインを保ったまま補助バスへ送る。
+送り先ごとの `SetOutputMatrix` で sendLevel を掛ける。実装契約は §13。
 
 ---
 
@@ -593,7 +592,7 @@ true のバスだけが残響を受ける。既定では `SE` と `Voice` のみ
 XAudio2 の voice 音量はすべての送り先に等しく掛かるので、
 単一出力のままでは pre-fader を正しく実装できない。
 実装できない意味を持つフィールドは、無いよりも紛らわしい。
-補助センド本体 (§7.4) は引き続き後続。
+補助センド本体 (§7.4) は §13 で実装した。pre-fader は公開しない。
 
 ## 12. 検討して採らなかった案
 
@@ -608,4 +607,18 @@ XAudio2 の voice 音量はすべての送り先に等しく掛かるので、
 
 **補助センド (aux send) の即時実装**
 `AudioMixerSendComponent` を本来の意味に戻すには XAudio2 の複数出力が要る。
-主出力の結線と同時にやると段 5 が膨らむため、後続に切り出した (§7.4)。
+主出力の結線と同時にやると段 5 が膨らむため、後続に切り出した。2026-09-21 に §13 として実装済み。
+
+## 13. 補助センドと長尺音声の実装 (2026-09-21)
+
+`AudioMixerSendComponent` は主出力に加える post-fader センドとなる。音源音量・距離減衰・遮蔽・フェードは両出力へ掛かり、主出力バス自身の音量は補助出力へ掛からない。空または未知のバス名、無効なコンポーネント、sendLevel=0 は補助出力を解除する。主出力と同じバスなら重複した送り先を作らず行列係数へ加算する。モノラルのパンは両方の送り先へ反映し、多チャンネルは既定の変換行列を保つ。voice をプールへ返す前に送り先・行列を主出力だけに戻す。
+
+`AudioManager::PlayParams::streaming` とシリアライズされる `AudioSourceComponent::streaming` が分割再生を選ぶ。`PlayBGM` は既定で分割再生し、短い SE と明示的な `AcquireClip` は従来の全 PCM キャッシュを使う。手続き `.synth` は streaming が有効でも生成クリップへ戻す。再生 ID、バス、補助センド、ピッチ、Pause/Resume、フェード、クロスフェードとボイス上限は同じ API で扱う。
+
+`AudioStreamReader` は Media Foundation から PCM を順次読み、最大 64 KiB のフレーム境界に揃えたブロックを返す。デコーダーから受け取る単一サンプルは最大 1 MiB に制限する。`XAudio2Stream` は音声ごとのワーカーで読み込み、3 本の PCM バッファを循環させ、XAudio2 の消費完了イベントで再利用する。開始時だけ形式と先頭ブロックを待ち、再生中のディスク I/O とデコードはゲームフレームへ持ち込まない。Media Foundation 内部のメモリを除き、曲の長さに比例する PCM 配列を保持しない。
+
+Pause はキューを捨てない。ループは終端から先頭へ seek し、空音声では繰り返さない。停止・バス再構築・終了はワーカーを止め、DestroyVoice がコールバックを終えるまで PCM とイベントを残す。一時的なバッファ不足を再生終了と誤判定せず、デコード終端とキューの消費完了の両方を確認する。
+
+参照: [XAudio2 のストリーミング](https://learn.microsoft.com/en-us/windows/win32/xaudio2/how-to--stream-a-sound-from-disk)、[送り先別の出力行列](https://learn.microsoft.com/en-us/windows/win32/api/xaudio2/nf-xaudio2-ixaudio2voice-setoutputmatrix)、[Media Foundation Source Reader](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader)。対応する実装にも参照を記載する。
+
+検証 (2026-09-21): `AudioStreamingTests` でブロック上限・PCM 一致・終端・巻き戻し・不正入力、実 XAudio2 の Pause/Resume・センド変更・停止・バス再構築、AudioSystem の主音量維持、BGM のフェードと設定のシリアライズを確認した。音声・アセット・描画関連 272 テストが全件合格。`FBZZTestsEngineAuto` と `FBZZEditorLauncher` の最終ビルドはエラー・警告ともに 0。聴感評価は含まない。
