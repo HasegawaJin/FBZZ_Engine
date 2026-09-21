@@ -31,7 +31,7 @@ std::string ReadAll(const std::filesystem::path& path)
     return text.str();
 }
 
-} // namespace
+} /// @note namespace
 
 class CrashReportContentTest : public testkit::EngineFixture {
 protected:
@@ -116,4 +116,20 @@ TEST_F(CrashReportContentTest, DoesNotOverwriteAnEarlierReportWrittenInTheSameSe
     EXPECT_NE(ReadAll(second / "report.txt").find("what:    second report"), std::string::npos);
 }
 
-} // namespace fbzz::tests
+TEST_F(CrashReportContentTest, ReturnsEmptyWhenTheReportDirectoryCannotBeCreated)
+{
+    const auto blocker = temp.Path() / "Saved";
+    {
+        std::ofstream file(blocker, std::ios::binary);
+        ASSERT_TRUE(file.is_open());
+        file << "preserve";
+    }
+
+    const auto report = core::CrashHandler::WriteReport("blocked directory");
+
+    EXPECT_TRUE(report.empty());
+    EXPECT_EQ(ReadAll(blocker), "preserve");
+    EXPECT_TRUE(core::CrashHandler::FindUnreported(temp.Path()).empty());
+}
+
+} /// @note namespace fbzz::tests
