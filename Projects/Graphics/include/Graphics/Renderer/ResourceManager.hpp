@@ -35,10 +35,15 @@ class IStructuredBuffer;
 class ITexture;
 struct Mesh;
 
+class RenderResources;
+
 class ResourceManager {
 public:
     explicit ResourceManager(IRenderer& renderer);
     ~ResourceManager();
+    /// @note 描画状態は Manager ごとに独立し、Reset で GPU 実体とともに破棄する。
+    RenderResources& Rendering();
+    void ReleaseRenderView(uint32_t key);
     /// @note ホストの描画フレーム開始時に一度呼ぶ。Play のリセットでは巻き戻さない。
     void AdvanceFrame() { ++m_frameStamp; }
     [[nodiscard]] uint64_t FrameStamp() const { return m_frameStamp; }
@@ -222,6 +227,7 @@ public:
     std::size_t ReleaseMeshBuffers(Mesh& mesh);
 
 private:
+    std::unique_ptr<RenderResources> m_renderResources;
     uint64_t m_frameStamp = 0;
     static uint64_t Key(ResourceHandle<RenderTargetTag> h);
     ResourceHandle<TextureTag> LoadTextureImpl(std::string_view path, bool pin);

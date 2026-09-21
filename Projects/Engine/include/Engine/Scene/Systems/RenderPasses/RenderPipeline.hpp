@@ -24,6 +24,10 @@ class RenderPipeline : public renderer::RenderPipeline {
         T m_pass;
     };
 public:
+    RenderPipeline() = default;
+    /// @note Graphics のビューが持つ Plan/RT キャッシュを当該フレームだけ借りる。
+    explicit RenderPipeline(renderer::RenderPipeline&& state)
+        : renderer::RenderPipeline(std::move(state)) {}
     template<typename T, typename... Args> void AddPass(Args&&... args) {
         if constexpr (std::is_base_of_v<renderer::IRenderPass, T>)
             renderer::RenderPipeline::AddPass<T>(std::forward<Args>(args)...);

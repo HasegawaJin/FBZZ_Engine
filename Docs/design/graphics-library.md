@@ -364,6 +364,25 @@ Engine をリンクしない `FBZZTestsGraphicsStandalone` を追加した。Eng
 - FiberLifecycle は初回検証で既存 Golden との差により step 6 が不合格だった。actual 画像 SHA256 は分割前と一致した (`51B0D08AC5865D568A5715CF2E96C4580D33CA55FE16FB5796D6A20CFBEC4050`)。後続の修正で材質・シェーダー更新前の Golden を見直し、同じ解像度・許容値で 93 手順と全 10 枚の完全一致を確認した。詳細は `fiber-rendering.md` の「Lifecycle 基準画像の更新」。
 - AgentLint は移動前からの MakeUnique 内 nothrow new 2 件と定数バッファ転送の cast 1 件を検出する。移動に伴う検出であり、アロケーターの失敗時契約は変更していない。
 
+### 8.3 描画構成と資源寿命の移管
+
+`RenderSystem` の関数内 static とビュー登録簿を `Graphics/Pipeline/RenderResources` へ移した。`ResourceManager` が描画状態を単独所有し、Reset と終了で GPU プールより先に破棄する。共有シェーダー・PSO・定数・LUT は Manager ごとに初回だけ確保し、初回初期化とリセット用再生成の重複をなくした。空の球メッシュもこの所有域で生成し、別 Manager の PrimitiveMesh キャッシュを参照しない。
+
+ビューの中間 RT・TAA・露出・霧・Plan キャッシュは個別に保持する。リサイズでは解像度依存資源を返して TAA の有効性を落とし、露出と解像度非依存の状態は維持する。`ReleaseRenderView(key)` はビュー全体を解放し、外部出力 RT の Release もその出力を使用するビューの解放へ接続する。バックバッファを使うホストはビュー終了時に明示解放でき、Manager 終了時は残りも破棄される。
+
+`ViewPipeline` が資源宣言・Geometry 構成・HDR/ポスト処理・アップスケールの登録順を所有する。`ViewPreparation` がカスケードのフィッティングと AdvancedGraphics 定数を生成する。Engine は Scene 走査、アセット解決、Probe の更新要求、Script・UI・選択・デバッグのホスト拡張を担当する。拡張の登録コールバックは同期実行し保持しない。実行パスに渡したホスト参照は同フレーム末尾で破棄してから、Plan/RT キャッシュだけをビューへ戻す。
+
+本段は従来のパス名・順序・挿入点を維持する。段 F の AfterOpaque 等の意味変更は含めない。
+
+2026-09-21 の検証記録:
+
+- `RenderSystem.cpp` は 2,823 行から 1,147 行へ縮小。Graphics には Engine / Physics / Fluid の include を追加していない。
+- 変更 C++ 6 単位のコンパイルはエラー・警告なし。Graphics 単独テスト、Engine 自動テスト、Editor の最終ビルドは成功した。未変更の RagdollRigTests / ImNodes / Editor に既存警告 9 件がある (`build/agent/build-20260921-134203-26552.log`)。
+- 関連テスト 88 件が合格 (`build/agent/test-20260921-135238-18680.log`)。Graphics 単独テストで複数ビューの独立性、リサイズ時の履歴保持、明示解放、出力 RT 解放、Manager の分離と Reset、ホスト拡張の登録順を検証した。
+- `FiberLifecycle` は変更前後とも全 93 手順に合格し、10 枚すべて既存 Golden と完全一致した。変更前後の PNG の SHA-256 も全 10 枚一致し、Golden は更新していない。
+- `WaterWireframe` 全 10 手順、`LightProbeGI` 全 14 手順に合格し、水面・GI の取得画像も確認した。これら 2 シナリオは Golden 比較を含まない。
+- GPU シナリオは通常のデスクトップ環境で実行した。サンドボックス内の全黒キャプチャは評価に使わず、画像とレポートは Git 対象外の `Scratch/RenderOwnership/` に保存した。
+
 ## 9. 検証と受け入れ基準
 
 ### 9.1 構造と単体テスト
