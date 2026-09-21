@@ -29,11 +29,18 @@ if(FBZZ_ENABLE_DX12)
     if(DEFINED ENV{FBZZ_DXC} AND EXISTS "$ENV{FBZZ_DXC}")
         set(FBZZ_DXC_EXECUTABLE "$ENV{FBZZ_DXC}")
     else()
+        # @note VS 開発者環境の外 (CI の素の cmake) では WindowsSdkDir が無く、VS ジェネレーターの CMAKE_RC_COMPILER も "rc" だけでディレクトリを持たない。
+        # @note dxc.exe を同梱するのは新しい Windows SDK だけなので、bin を新しい順に並べて当てる (古い SDK の bin には無い)。
+        file(GLOB FBZZ_WINDOWS_KITS_BIN_DIRECTORIES
+            "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*/x64"
+            "$ENV{ProgramFiles}/Windows Kits/10/bin/*/x64")
+        list(SORT FBZZ_WINDOWS_KITS_BIN_DIRECTORIES COMPARE NATURAL ORDER DESCENDING)
         find_program(FBZZ_DXC_EXECUTABLE
             NAMES dxc.exe
             HINTS
                 "${FBZZ_WINDOWS_SDK_BIN_DIRECTORY}"
                 "$ENV{WindowsSdkDir}/bin/$ENV{WindowsSDKVersion}/x64"
+                ${FBZZ_WINDOWS_KITS_BIN_DIRECTORIES}
         )
     endif()
     if(FBZZ_DXC_EXECUTABLE)
