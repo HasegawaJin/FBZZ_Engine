@@ -6,6 +6,8 @@
 #include <Graphics/Pipeline/GeometryPipeline.hpp>
 #include <Graphics/Pipeline/RenderPipeline.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
+#include <Graphics/Pipeline/ViewPipeline.hpp>
 #include <Graphics/Renderer/OpaqueRenderPlan.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
@@ -115,7 +117,78 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
                 ADD_FAILURE() << "Unexpected readback dimensions: " << width << "x" << height;
             }
         }
+        const auto outputA = resources.CreateRenderTarget(320, 180);
+        const auto outputB = resources.CreateRenderTarget(640, 360);
+        auto& rendering = resources.Rendering();
+        auto& viewA = rendering.View(1);
+        auto& viewB = rendering.View(2);
+        renderer::RenderSettings settings;
+        settings.renderScale = 1.0f;
+        ASSERT_TRUE(rendering.PrepareView(viewA, device, outputA, settings));
+        ASSERT_TRUE(rendering.PrepareView(viewB, device, outputB, settings));
+        EXPECT_NE(viewA.hdr, viewB.hdr);
+        EXPECT_NE(viewA.exposureResult, viewB.exposureResult);
+        EXPECT_NE(viewA.advancedGraphicsCB, viewB.advancedGraphicsCB);
+        const auto oldHdrA = viewA.hdr;
+        const auto hdrB = viewB.hdr;
+        const auto exposureA = viewA.exposureResult;
+        const auto cbA = viewA.advancedGraphicsCB;
+        viewA.taaHistoryValid = true;
+        viewA.taaFrameIndex = 5;
+        viewA.exposureResetGeneration = 7;
+        viewA.prevViewProjection.m[0][0] = 2.0f;
+        ASSERT_TRUE(rendering.PrepareView(viewA, device, outputB, settings));
+        EXPECT_EQ(resources.Get(oldHdrA), nullptr);
+        EXPECT_NE(viewA.hdr, oldHdrA);
+        EXPECT_EQ(viewB.hdr, hdrB);
+        EXPECT_EQ(viewA.exposureResult, exposureA);
+        EXPECT_EQ(viewA.advancedGraphicsCB, cbA);
+        EXPECT_EQ(viewA.exposureResetGeneration, 7u);
+        EXPECT_EQ(viewA.taaFrameIndex, 5u);
+        EXPECT_FALSE(viewA.taaHistoryValid);
+        EXPECT_FLOAT_EQ(viewA.prevViewProjection.m[0][0], 2.0f);
+
+        /// @note ホスト拡張の挿入順と露出・ポスト処理の順序は移設で変えない。
+        renderer::Camera camera;
+        renderer::RenderPassHandles handles;
+        renderer::RenderPassContext context{{}, device, resources, camera, settings, outputB, ~0u, handles};
+        context.width = viewA.width;
+        context.height = viewA.height;
+        context.outputWidth = viewA.nativeWidth;
+        context.outputHeight = viewA.nativeHeight;
+        context.chainOutputRT = outputB;
+        std::vector<std::string> stages;
+        renderer::ViewPipelineExtensions extensions;
+        extensions.begin = [&]() { stages.push_back("begin"); };
+        extensions.setup = [&]() { stages.push_back("setup"); };
+        extensions.userPasses = [&](renderer::UserRenderPassInjectionPoint) { stages.push_back("user"); };
+        extensions.depthDebug = [&]() { stages.push_back("depth"); };
+        extensions.overlayDebug = [&](const char*) { stages.push_back("overlay"); };
+        extensions.ui = [&]() { stages.push_back("ui"); };
+        renderer::BuildViewPipeline(viewA.pipeline, context, viewA, rendering.Shared(), {}, extensions);
+        EXPECT_EQ(stages, (std::vector<std::string>{"begin", "setup", "user", "user", "depth", "user", "overlay", "ui"}));
+        const auto names = viewA.pipeline.RegisteredPassNames();
+        const auto position = [&](const char* name) { return std::find(names.begin(), names.end(), name); };
+        EXPECT_LT(position("AutoExposure"), position("Bloom"));
+        EXPECT_LT(position("Bloom"), position("Composite"));
+        viewA.pipeline.BeginBuild();
+
+        const auto releasedHdr = viewA.hdr;
+        resources.ReleaseRenderView(1);
+        EXPECT_EQ(resources.Get(releasedHdr), nullptr);
+        EXPECT_EQ(resources.Get(exposureA), nullptr);
+        EXPECT_EQ(resources.Get(cbA), nullptr);
+        EXPECT_NE(resources.Get(hdrB), nullptr);
+        resources.Release(outputB);
+        EXPECT_EQ(resources.Get(hdrB), nullptr);
+        EXPECT_FALSE(rendering.View(2).hdr.IsValid());
+
+        renderer::ResourceManager otherResources(device);
+        EXPECT_NE(&resources.Rendering(), &otherResources.Rendering());
+        resources.Rendering().View(3).taaHistoryValid = true;
         resources.Reset();
+        EXPECT_FALSE(resources.Rendering().View(3).taaHistoryValid);
+        EXPECT_FALSE(resources.Rendering().View(3).hdr.IsValid());
     }
     bundle.imguiRenderer.reset();
     device.Shutdown();

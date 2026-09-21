@@ -5,6 +5,7 @@
 /// @note IRenderer の非公開生成 API を呼び、ResourceHandle と実体を対応付ける。
 /// @note 実体の所有はここ 1 か所に集約し、上位システムはハンドルだけを持つ。
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/AssetPathService.hpp>
 #include <cstdint>
 #include <Graphics/Renderer/Mesh.hpp>
@@ -64,6 +65,17 @@ ResourceManager::~ResourceManager()
 
     if (s_activeResourceManager == this)
         s_activeResourceManager = nullptr;
+}
+
+RenderResources& ResourceManager::Rendering()
+{
+    if (!m_renderResources) m_renderResources = std::make_unique<RenderResources>(*this);
+    return *m_renderResources;
+}
+
+void ResourceManager::ReleaseRenderView(uint32_t key)
+{
+    if (m_renderResources) m_renderResources->ReleaseView(key);
 }
 
 ResourceManager* ResourceManager::Active()
@@ -142,8 +154,7 @@ bool ResourceManager::ReloadAllShaders()
 void ResourceManager::Reset()
 {
     /// @note 所有リソースを全て手放し、ResourceHandle の gen を進めて旧ハンドルを無効化する。
-    /// @note       デバイスロスト復帰後に旧ネイティブリソースへ触るとクラッシュするため、RenderSystem
-    /// @note       側は GetResetVersion() の変化を検知して static handle を再作成する。
+    /// @note 描画状態も破棄し、旧デバイスのハンドルやビュー履歴を次の描画へ持ち越さない。
     ReleaseOwnedResourcesForShutdown();
     ++m_resetVersion;
     FBZZ_LOG_INFO("ResourceManager: reset renderer resources (version=%llu)",
@@ -598,6 +609,7 @@ void ResourceManager::Release(ResourceHandle<PipelineStateTag> h) { m_pipelineSt
 void ResourceManager::Release(ResourceHandle<StructuredBufferTag> h) { m_structuredBuffers.Remove(h); }
 void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 {
+    if (m_renderResources) m_renderResources->ReleaseOutput(h);
     const uint64_t key = Key(h);
     if (auto colors = m_renderTargetColors.find(key); colors != m_renderTargetColors.end()) {
         for (ResourceHandle<TextureTag> texture : colors->second)
@@ -618,6 +630,7 @@ uint64_t ResourceManager::Key(ResourceHandle<RenderTargetTag> h)
 
 void ResourceManager::ReleaseOwnedResourcesForShutdown()
 {
+    m_renderResources.reset();
     /// @note RenderTarget 由来の TextureTag は RT の SRV を参照するラッパーなので、
     /// @note       マップを先に消して shutdown 時の重複解放経路を断つ。
     m_renderTargetColors.clear();
