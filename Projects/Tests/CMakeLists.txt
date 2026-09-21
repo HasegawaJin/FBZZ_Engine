@@ -41,6 +41,8 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Memory/MemorySystemTests.cpp
         Core/Auto/Signal/SignalTests.cpp
         Core/Auto/Logger/LoggerTests.cpp
+        Core/Auto/Profiler/ProfilerTests.cpp
+        Core/Auto/Util/FileSystemTests.cpp
         Core/Auto/CrashHandler/CrashHandlerTests.cpp
         Core/Auto/CrashHandler/CrashHandlerInstallTests.cpp
         Core/Auto/CrashHandler/CrashLogTailTests.cpp
@@ -56,7 +58,7 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Scheduler/SchedulerBatchingTests.cpp
     LINKS
         FBZZTestKitEngine
-        FBZZPhysics   # SchedulerExecutionTests がコンポーネント型として参照する
+        FBZZPhysics   # @note SchedulerExecutionTests がコンポーネント型として参照する
 )
 
 # @note --- Physics ----------------------------------------------------------------
