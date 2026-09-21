@@ -445,9 +445,12 @@ std::string CrashReadSummary(const std::filesystem::path& report)
     while (std::getline(in, line)) {
         if (line.rfind("what:", 0) != 0) continue;
         line.erase(0, 5);
-        const size_t begin = line.find_first_not_of(' ');
+        /// @note 前後を同じ集合で削る。前だけ ' ' で削ると «空白だけの値» のとき末尾が npos になり、
+        ///       npos - begin + 1 が巨大な長さに化けて CR がそのまま残る。
+        const size_t begin = line.find_first_not_of(" \r");
         const size_t end   = line.find_last_not_of(" \r");
-        return begin == std::string::npos ? std::string{} : line.substr(begin, end - begin + 1);
+        if (begin == std::string::npos) return {};
+        return line.substr(begin, end - begin + 1);
     }
     return {};
 }
