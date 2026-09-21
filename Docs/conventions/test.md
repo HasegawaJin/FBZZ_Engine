@@ -521,18 +521,28 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 
 ### 計測対象を広げない
 
-分母は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` の 3 つだけ。
+分母は `Projects/Math` / `Projects/Physics` / `Projects/Core` / `Projects/Engine/src/Core` の 4 つだけ。
 「12. 何をテストするか」で**書かないと決めた領域を分母に入れると数字が意味を失う**ため、
 Renderer / Editor / Tests / ThirdParty は両系統とも除外している。
 `Projects/Engine/src/Core/Platform` (Window / Cursor / Application / EngineRebuildBootstrap) も
 OS のウィンドウと起動の層でテストから生成しないため、Core の中から除外している。
 
-対象を変えるときは 4 箇所を同時に直すこと。ずれると C0 と C1 が別の母集団の比較になる。
+**「基盤」は 2 つのディレクトリに分かれている。** Logger とアロケーターは `Projects/Core`
+(`FBZZCore.dll`)、Time / Scheduler / TaskSystem / CrashHandler は `Projects/Engine/src/Core`
+(`FBZZEngine.dll` の中の `FBZZEnginePlatform`)。**片方だけ書くと、もう片方が丸ごと
+分母から消えて率が跳ねる。** 実際、`FBZZCore` を切り出したとき `--sources` 側だけが
+`Projects/Engine/src/Core` のまま取り残され、Logger と全アロケーターが計測されなくなった。
+
+対象を変えるときは 5 箇所を同時に直すこと。ずれると C0 と C1 が別の母集団の比較になる。
 
 - `Tools/Coverage/RunCoverage.ps1` の `--sources`
 - `Tools/Coverage/RunCoverageLLVM.ps1` の `$sourceFilters`
-- `CMakeLists.txt` 末尾の `fbzz_instrument_for_coverage()`
+- `CMakeLists.txt` 末尾の `fbzz_instrument_for_coverage()` と `fbzz_link_coverage_runtime()`
+  (計装するのはソースを持つターゲット、ランタイムをリンクするのは **それを実際にリンクする DLL**。
+  `FBZZEnginePlatform` は OBJECT なので前者だけ、`FBZZCore` は SHARED なので両方に要る)
 - `.github/workflows/tests.yml` の `--sources`
+- `.github/workflows/tests.yml` «Decide scope» の `$pattern`
+  (ここに無いディレクトリだけを触った PR は、そもそも計測されない)
 
 ### CI は ctest を通さずテスト exe を直接走らせる
 

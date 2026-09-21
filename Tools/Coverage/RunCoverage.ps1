@@ -51,13 +51,16 @@ $historyDir = Join-Path $OutputDir 'history'
 # 計測対象は «テストで守ると決めた領域» だけに絞る。Renderer や ImGui のパネルまで
 # 混ぜると、そもそもテストしない領域が分母に入って数値が意味を失う。
 #
-# 分母は CI (.github/workflows/tests.yml) と RunCoverageLLVM.ps1 と同じ 3 つに揃える
+# 分母は CI (.github/workflows/tests.yml) と RunCoverageLLVM.ps1 と同じ 4 つに揃える
 # (Docs/conventions/test.md «計測対象を広げない»)。Asset / Editor のテストは回るが分母には入れない。
+# Projects\Core は Logger とアロケーター (FBZZCore.dll)、Projects\Engine\src\Core は
+# Time / Scheduler / TaskSystem / CrashHandler (FBZZEngine.dll) で、置き場所は別だが同じ «基盤» の分母。
 # Core\Platform はウィンドウ・カーソル・起動の OS 層で、テストでは生成しないので外す。
 & $openCppCoverage `
     --cover_children `
     --sources "Projects\Math" `
     --sources "Projects\Physics" `
+    --sources "Projects\Core" `
     --sources "Projects\Engine\src\Core" `
     --excluded_sources "Projects\Engine\src\Core\Platform" `
     --excluded_sources "Projects\Tests" `
