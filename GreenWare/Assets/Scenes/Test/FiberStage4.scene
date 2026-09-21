@@ -20,7 +20,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777379
+    aspectRatio = 1.0
     backgroundColor = [ 0.025, 0.03, 0.04, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true

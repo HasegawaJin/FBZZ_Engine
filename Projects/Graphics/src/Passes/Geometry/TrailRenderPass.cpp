@@ -1,0 +1,279 @@
+/// @file    TrailRenderPass.cpp
+/// @brief   RenderTrailInput のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+#include <Graphics/Passes/Geometry/TrailRenderPass.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Effects/RenderTrailInput.hpp>
+#include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Renderer/DynamicBufferPool.hpp>
+#include <Math/MathUtils.hpp>
+#include <algorithm>
+#include <cmath>
+namespace fbzz::renderer {
+namespace {
+/// @note TrailDrawItem — Trail の透明描画をカメラから遠い順へ並べるための一時データ。
+struct TrailDrawItem {
+    renderer::DrawCall drawCall;
+    float distanceSq = 0.0f;
+};
+
+/// @brief 帯の頂点バッファプール。Component に 1 本持たせず、描くたびに借りる。
+/// @note ビュー依存で形が変わるため 1 本共有だと DX12 で他 View の形を読み、GPU 使用中の実体も上書きする (`DynamicBufferPool.hpp`)。
+renderer::DynamicVertexBufferPool g_trailVertexPool;
+float DistanceSq(const math::Vector3& a, const math::Vector3& b)
+{
+    return (a - b).LengthSq();
+}
+
+float NearestTrailDistanceSq(const RenderTrailInput& trail, const math::Vector3& cameraPos)
+{
+    float nearest = 0.0f;
+    for (int i = 0; i < static_cast<int>(trail.points.size()); ++i) {
+        const float d = DistanceSq(trail.points[static_cast<size_t>(i)].position, cameraPos);
+        nearest = (i == 0) ? d : (std::min)(nearest, d);
+    }
+    return nearest;
+}
+
+math::Vector3 SafeNormalize(const math::Vector3& v, const math::Vector3& fallback)
+{
+    return v.LengthSq() > math::EPSILON * math::EPSILON ? v.Normalized() : fallback;
+}
+
+math::Vector3 ComputeRibbonNormal(
+    const math::Vector3& segmentDir,
+    TrailAlignment alignment,
+    const math::Vector3& cameraPos,
+    const math::Vector3& pointPos)
+{
+    math::Vector3 up = math::Vector3::UP;
+    if (alignment == TrailAlignment::CameraFacing) {
+        up = SafeNormalize(cameraPos - pointPos, math::Vector3::UP);
+        if (std::abs(math::Vector3::Dot(segmentDir, up)) > 0.99f)
+            up = math::Vector3::UP;
+    } else if (std::abs(math::Vector3::Dot(segmentDir, up)) > 0.99f) {
+        up = math::Vector3::RIGHT;
+    }
+
+    return SafeNormalize(math::Vector3::Cross(segmentDir, up), math::Vector3::RIGHT);
+}
+
+float ApplyWidthEasing(TrailWidthEasing easing, float t)
+{
+    t = math::Clamp01(t);
+    switch (easing) {
+    case TrailWidthEasing::EaseIn:
+        return t * t;
+    case TrailWidthEasing::EaseOut:
+        return t * (2.0f - t);
+    case TrailWidthEasing::EaseInOut:
+        return t < 0.5f ? 2.0f * t * t : -1.0f + (4.0f - 2.0f * t) * t;
+    case TrailWidthEasing::Linear:
+    default:
+        return t;
+    }
+}
+
+TrailPoint CatmullRom(const TrailPoint& p0, const TrailPoint& p1, const TrailPoint& p2, const TrailPoint& p3, float t)
+{
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+
+    TrailPoint out;
+    out.position =
+        (p1.position * 2.0f +
+         (p2.position - p0.position) * t +
+         (p0.position * 2.0f - p1.position * 5.0f + p2.position * 4.0f - p3.position) * t2 +
+         (-p0.position + p1.position * 3.0f - p2.position * 3.0f + p3.position) * t3) * 0.5f;
+    out.timestamp = math::Lerp(p1.timestamp, p2.timestamp, t);
+    return out;
+}
+
+std::vector<TrailPoint> BuildRenderPoints(const RenderTrailInput& trail)
+{
+    std::vector<TrailPoint> points;
+    points.reserve(static_cast<size_t>(static_cast<int>(trail.points.size())));
+    for (int i = 0; i < static_cast<int>(trail.points.size()); ++i)
+        points.push_back(trail.points[static_cast<size_t>(i)]);
+
+    const int subdivisions = (std::max)(trail.smoothSubdivisions, 0);
+    if (subdivisions == 0 || points.size() < 2)
+        return points;
+
+    std::vector<TrailPoint> smooth;
+    smooth.reserve((points.size() - 1u) * static_cast<size_t>(subdivisions + 1) + 1u);
+
+    for (size_t i = 0; i + 1u < points.size(); ++i) {
+        const TrailPoint& p1 = points[i];
+        const TrailPoint& p2 = points[i + 1u];
+
+        TrailPoint p0 = (i > 0) ? points[i - 1u] : TrailPoint{ p1.position * 2.0f - p2.position, p1.timestamp - (p2.timestamp - p1.timestamp) };
+        TrailPoint p3 = (i + 2u < points.size()) ? points[i + 2u] : TrailPoint{ p2.position * 2.0f - p1.position, p2.timestamp + (p2.timestamp - p1.timestamp) };
+
+        smooth.push_back(p1);
+        for (int s = 1; s <= subdivisions; ++s) {
+            const float t = static_cast<float>(s) / static_cast<float>(subdivisions + 1);
+            smooth.push_back(CatmullRom(p0, p1, p2, p3, t));
+        }
+    }
+    smooth.push_back(points.back());
+    return smooth;
+}
+
+void BuildTrailVertices(
+    const RenderTrailInput& trail,
+    const std::vector<TrailPoint>& points,
+    const math::Vector3& cameraPos,
+    float currentTime,
+    std::vector<TrailVertex>& outVertices)
+{
+    outVertices.clear();
+    if (points.size() < 2)
+        return;
+
+    /// @note 各点の幅方向はマイター接合が粒子リボンと共通、alignment (View/Local/Velocity) だけ Trail 固有。
+    /// @note 長さ 0 の線分は前後の向きだけで決まる (minVertexDist で間引かれ実データでは出ない)。
+    std::vector<math::Vector3> positions;
+    positions.reserve(points.size());
+    for (const TrailPoint& point : points) positions.push_back(point.position);
+
+    std::vector<math::Vector3> normals;
+    BuildRibbonMiterNormals(positions,
+        [&](const math::Vector3& direction, const math::Vector3& point) {
+            return ComputeRibbonNormal(direction, trail.alignment, cameraPos, point);
+        },
+        normals);
+
+    const float duration = (std::max)(trail.duration, math::EPSILON);
+    const float birthTime = currentTime - duration;
+    const float segmentDenom = static_cast<float>(points.size() - 1u);
+    std::vector<float> cumulativeLengths(points.size(), 0.0f);
+    if (trail.uvMode == TrailUVMode::Tile) {
+        for (size_t i = 1; i < points.size(); ++i)
+            cumulativeLengths[i] = cumulativeLengths[i - 1u] + (points[i].position - points[i - 1u].position).Length();
+    }
+    outVertices.reserve((points.size() - 1u) * 6u);
+
+    auto ageOf = [&](const TrailPoint& p) {
+        return math::Clamp01((p.timestamp - birthTime) / duration);
+    };
+
+    for (size_t i = 0; i + 1u < points.size(); ++i) {
+        const TrailPoint& p0 = points[i];
+        const TrailPoint& p1 = points[i + 1u];
+        const float age0 = ageOf(p0);
+        const float age1 = ageOf(p1);
+        const float widthAge0 = ApplyWidthEasing(trail.widthEasing, age0);
+        const float widthAge1 = ApplyWidthEasing(trail.widthEasing, age1);
+        const float halfWidth0 = TrailWidthAt(trail, age0, widthAge0) * 0.5f;
+        const float halfWidth1 = TrailWidthAt(trail, age1, widthAge1) * 0.5f;
+        const float u0 = trail.uvMode == TrailUVMode::Tile ? cumulativeLengths[i] : static_cast<float>(i) / segmentDenom;
+        const float u1 = trail.uvMode == TrailUVMode::Tile ? cumulativeLengths[i + 1u] : static_cast<float>(i + 1u) / segmentDenom;
+
+        const TrailVertex tl{ p0.position + normals[i] * halfWidth0, age0, 0.0f, u0 };
+        const TrailVertex bl{ p0.position - normals[i] * halfWidth0, age0, 1.0f, u0 };
+        const TrailVertex tr{ p1.position + normals[i + 1u] * halfWidth1, age1, 0.0f, u1 };
+        const TrailVertex br{ p1.position - normals[i + 1u] * halfWidth1, age1, 1.0f, u1 };
+
+        outVertices.insert(outVertices.end(), { tl, tr, bl, bl, tr, br });
+    }
+}
+
+/// @note 多キー色を CB へ詰める。キーが足りなければ何も書かず、シェーダーは
+/// @note colorStart / colorEnd の 2 点へ落ちる (既存シーンの見た目を変えないため)。
+void FillTrailGradient(const RenderTrailInput& trail, TrailCB& cb)
+{
+    if (!TrailUsesColorGradient(trail)) return;
+
+    const uint32_t count = (std::min)(trail.colorGradient.keyCount, kMaxParticleCurveKeys);
+    for (uint32_t i = 0; i < count; ++i) {
+        const ParticleGradientKey& key = trail.colorGradient.keys[i];
+        cb.gradientColors[i] = ParticleSrgbToLinear(key.color);
+        /// @note 時刻は float4 × 2 に詰めてある (HLSL の float 配列は 1 要素 16 バイトを食う)。
+        math::Vector4& slot = cb.gradientTimes[i / 4];
+        switch (i % 4) {
+        case 0:  slot.x = key.time; break;
+        case 1:  slot.y = key.time; break;
+        case 2:  slot.z = key.time; break;
+        default: slot.w = key.time; break;
+        }
+    }
+    cb.gradientKeyCount = count;
+    cb.gradientInterpolation = static_cast<uint32_t>(trail.colorGradient.interpolation);
+}
+}
+std::string_view TrailRenderPass::Name() const { return "Trail"; }
+
+void TrailRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
+}
+
+void TrailRenderPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    auto& renderer = ctx.renderer;
+    auto& resources = ctx.resources;
+    auto& h = ctx.handles;
+
+    if (!h.trailShader.IsValid() || !h.trailPSO.IsValid())
+        return;
+
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
+
+    const float currentTime = ctx.time;
+    std::vector<TrailVertex> vertices;
+    std::vector<TrailDrawItem> drawItems;
+
+    if (!ctx.renderScene) return;
+    for (const auto& input : ctx.renderScene->trails) {
+        if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
+        const auto* trail = &input;
+        const std::vector<TrailPoint> renderPoints = BuildRenderPoints(*trail);
+        BuildTrailVertices(*trail, renderPoints, ctx.camera.m_position, currentTime, vertices);
+        if (vertices.empty())
+            continue;
+
+        const size_t maxVertices =
+            static_cast<size_t>(trail->points.size() - 1) *
+            static_cast<size_t>(trail->smoothSubdivisions + 1) * 6u;
+        const size_t uploadVertices = (std::min)(vertices.size(), maxVertices);
+        const auto vertexBuffer = g_trailVertexPool.Acquire(
+            resources, uploadVertices, static_cast<uint32_t>(sizeof(TrailVertex)));
+        if (!vertexBuffer.IsValid())
+            continue;
+        resources.Update(vertexBuffer, vertices.data(), uploadVertices * sizeof(TrailVertex));
+
+        TrailCB cb{};
+        /// @note オーサリング値 (sRGB) → リニア。素材のリニア化はシェーダー側が行う。
+        cb.colorStart = ParticleSrgbToLinear(trail->colorStart);
+        cb.colorEnd = ParticleSrgbToLinear(trail->colorEnd);
+        FillTrailGradient(*trail, cb);
+        cb.uvScrollSpeed = trail->uvScrollSpeed;
+        cb.uvTiling = trail->uvTiling;
+        cb.time = currentTime;
+        cb.flags = trail->srgbTexture ? kTrailFlagSrgbTexture : 0u;
+        resources.Update(trail->trailCB, &cb, sizeof(cb));
+
+        renderer::DrawCall dc;
+        dc.vertexBuffer = vertexBuffer;
+        dc.shader = h.trailShader;
+        dc.pipelineState = h.trailPSO;
+        dc.constantBuffers[0] = h.frameCB;
+        dc.constantBuffers[2] = trail->trailCB;
+        dc.textures[0] = trail->texture;
+        dc.vertexCount = static_cast<uint32_t>(uploadVertices);
+        dc.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
+        dc.topology = renderer::PrimitiveTopology::TRIANGLE_LIST;
+        drawItems.push_back({ dc, NearestTrailDistanceSq(*trail, ctx.camera.m_position) });
+    }
+
+    std::sort(drawItems.begin(), drawItems.end(), [](const TrailDrawItem& a, const TrailDrawItem& b) {
+        return a.distanceSq > b.distanceSq;
+    });
+
+    for (const auto& item : drawItems)
+        SubmitCounted(ctx, item.drawCall);
+}
+
+}

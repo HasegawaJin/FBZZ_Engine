@@ -11,5 +11,17 @@ locked_objects = []
     component_order = [ 'Mesh Renderer', 'Material', 'Cloth' ]
     instance_id = '3f523baa-d03a-4f42-a2e8-868d9605093f'
 
+    [[editor.game_objects]]
+    component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Volumetric Cloud', 'Environment Light', 'Atmospheric Scattering' ]
+    instance_id = 'b76fd090-d9fc-48dc-b9c8-39df2e3b2805'
+
+    [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = '4d3f0422-5dee-4271-b1ba-76da01a0cf92'
+
+    [[editor.game_objects]]
+    component_order = [ 'Post Process Volume' ]
+    instance_id = 'e05b1125-62b2-4531-8ff5-4044b508cb50'
+
 [meta]
 guid = '6f61298662d74052bf6d6b91e0aa80b6'

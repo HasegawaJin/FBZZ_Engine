@@ -1,0 +1,105 @@
+{
+    "name":  "FiberSkyLighting",
+    "scene":  "Assets/Scenes/Test/FiberTest.scene",
+    "lockstep":  0.016666667,
+    "steps":  [
+                  {
+                      "do":  "frames",
+                      "count":  30
+                  },
+                  {
+                      "do":  "capture",
+                      "view":  "game",
+                      "name":  "WithoutSky"
+                  },
+                  {
+                      "do":  "bus",
+                      "request":  {
+                                      "comp":  "SkyRenderer",
+                                      "t":  "component.add",
+                                      "id":  "ad4d7f1c-20d8-49de-9a72-c719a9d3f001"
+                                  }
+                  },
+                  {
+                      "do":  "bus",
+                      "request":  {
+                                      "comp":  "SunMoonRenderer",
+                                      "t":  "component.add",
+                                      "id":  "ad4d7f1c-20d8-49de-9a72-c719a9d3f001"
+                                  }
+                  },
+                  {
+                      "do":  "bus",
+                      "request":  {
+                                      "comp":  "AtmosphericScatteringComponent",
+                                      "t":  "component.add",
+                                      "id":  "ad4d7f1c-20d8-49de-9a72-c719a9d3f001"
+                                  }
+                  },
+                  {
+                      "do":  "bus",
+                      "request":  {
+                                      "comp":  "EnvironmentLightComponent",
+                                      "t":  "component.add",
+                                      "id":  "ad4d7f1c-20d8-49de-9a72-c719a9d3f001"
+                                  }
+                  },
+                  {
+                      "do":  "bus",
+                      "request":  {
+                                      "comp":  "EnvironmentLightComponent",
+                                      "t":  "component.set",
+                                      "id":  "ad4d7f1c-20d8-49de-9a72-c719a9d3f001",
+                                      "value":  1,
+                                      "field":  "source"
+                                  }
+                  },
+                  {
+                      "do":  "bus",
+                      "request":  {
+                                      "comp":  "EnvironmentLightComponent",
+                                      "t":  "component.set",
+                                      "id":  "ad4d7f1c-20d8-49de-9a72-c719a9d3f001",
+                                      "value":  0,
+                                      "field":  "intensity"
+                                  }
+                  },
+                  {
+                      "count":  120,
+                      "do":  "frames"
+                  },
+                  {
+                      "view":  "game",
+                      "do":  "capture",
+                      "name":  "SkyIBL0"
+                  },
+                  {
+                      "do":  "bus",
+                      "request":  {
+                                      "comp":  "EnvironmentLightComponent",
+                                      "t":  "component.set",
+                                      "id":  "ad4d7f1c-20d8-49de-9a72-c719a9d3f001",
+                                      "value":  4,
+                                      "field":  "intensity"
+                                  }
+                  },
+                  {
+                      "count":  120,
+                      "do":  "frames"
+                  },
+                  {
+                      "view":  "game",
+                      "do":  "capture",
+                      "name":  "SkyIBL4"
+                  },
+                  {
+                      "query":  {
+                                    "t":  "shader.diagnostics"
+                                },
+                      "path":  "errorCount",
+                      "op":  "==",
+                      "do":  "assert",
+                      "value":  0
+                  }
+              ]
+}

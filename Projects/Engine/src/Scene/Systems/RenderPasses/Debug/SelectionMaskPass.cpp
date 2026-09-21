@@ -6,18 +6,13 @@
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 /// @note `FindAnimator` (親方向探索) を共用する。
-#include "../Geometry/GeometryPasses.hpp"
+#include "../Geometry/RenderScenePassHelpers.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/DynamicBufferPool.hpp>
-#include <Engine/Renderer/Mesh.hpp>
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Matrix4.hpp>
@@ -194,7 +189,7 @@ void DrawGpuParticleSelectionMask(ParticleEmitter& emitter, RenderPassContext& c
     ctx.renderer.Submit(draw, ctx.resources);
 }
 
-} // namespace
+} /// @note namespace
 
 void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
 {
@@ -207,6 +202,31 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
     r.SetRenderTarget(res.Target("SelectionMask"), resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
+    const auto& input = SceneInput(ctx);
+    for (const auto& object : input.objects) {
+        if (!object.selected || !MatchesView(ctx, object)) continue;
+        const auto shader = object.skinned ? h.selectionMaskSkinnedShader : h.selectionMaskShader;
+        if (!shader.IsValid()) continue;
+        auto constants = ObjectConstants(object);
+        constants.objectParams = {};
+        resources.Update(h.objectCB, &constants, sizeof(constants));
+        for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
+            const auto& item = input.items[i];
+            if (!item.vertexBuffer.IsValid() || !item.indexBuffer.IsValid() || (object.skinned && !item.slotVisible)) continue;
+            renderer::DrawCall dc;
+            dc.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
+            dc.indexBuffer = item.indexBuffer;
+            dc.indexCount = item.indexCount;
+            dc.vertexCount = item.vertexCount;
+            dc.shader = shader;
+            dc.pipelineState = h.selectionMaskPSO;
+            dc.constantBuffers[0] = h.frameCB;
+            dc.constantBuffers[1] = h.objectCB;
+            if (object.skinned) dc.constantBuffers[7] = object.skinningPalette;
+            r.Submit(dc, resources);
+        }
+    }
+
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
@@ -216,57 +236,6 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
         objData.world = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
-
-        if (h.selectionMaskShader.IsValid()) {
-            auto* mr = go.GetComponent<MeshRenderer>();
-    if (mr && mr->enabled && mr->lodVisible && mr->mesh && !mr->mesh->isSkinned &&
-                mr->mesh->vertexBuffer.IsValid() && mr->mesh->indexBuffer.IsValid())
-            {
-                renderer::DrawCall dc;
-                dc.vertexBuffer = mr->mesh->vertexBuffer;
-                dc.indexBuffer = mr->mesh->indexBuffer;
-                dc.indexCount = mr->mesh->indexCount;
-                dc.vertexCount = mr->mesh->vertexCount;
-                dc.shader = h.selectionMaskShader;
-                dc.pipelineState = h.selectionMaskPSO;
-                dc.constantBuffers[0] = h.frameCB;
-                dc.constantBuffers[1] = h.objectCB;
-                r.Submit(dc, resources);
-            }
-        }
-
-        if (h.selectionMaskSkinnedShader.IsValid()) {
-            auto* smr = go.GetComponent<SkinnedMeshRenderer>();
-            /// @note Animator はモデルルート側、SkinnedMeshRenderer はサブメッシュ子 GO に分かれる構成が一般的。同一 GO だけを見ると Animator を見失い bind pose CB へフォールバックしてアウトラインが T ポーズのまま止まるため、通常描画パスと同じ FindAnimator (親方向探索) で解決する。
-            auto* anim = FindAnimator(go);
-    if (smr && smr->enabled && smr->lodVisible && smr->model) {
-                const auto skinCB = ResolveSkinningCB(
-                    anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
-                    smr->model, h.bindPoseSkinningCB);
-
-                /// @note 通常描画パスと同じく、モデル全体のうち可視スロットの submesh だけを描く。
-                const auto* mat = go.GetComponent<MaterialComponent>();
-                /// @note mi はローカルスロット番号 (submeshIndices 対応)。
-                for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
-                    renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
-                    if (!meshPtr) continue;
-                    if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
-                    if (mat && !mat->SlotAt(mi).visible) continue;
-
-                    renderer::DrawCall dc;
-                    dc.vertexBuffer = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
-                    dc.indexBuffer = meshPtr->indexBuffer;
-                    dc.indexCount = meshPtr->indexCount;
-                    dc.vertexCount = meshPtr->vertexCount;
-                    dc.shader = h.selectionMaskSkinnedShader;
-                    dc.pipelineState = h.selectionMaskPSO;
-                    dc.constantBuffers[0] = h.frameCB;
-                    dc.constantBuffers[1] = h.objectCB;
-                    dc.constantBuffers[7] = skinCB;
-                    r.Submit(dc, resources);
-                }
-            }
-        }
 
         if (auto* particle = go.GetComponent<ParticleEmitter>()) {
             DrawParticleSelectionMask(go, *particle, ctx);
@@ -297,4 +266,4 @@ void SelectionMaskPass::Execute(PassResources& resources, RenderPassContext& ctx
 {
     ExecuteSelectionMaskPass(resources, ctx);
 }
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

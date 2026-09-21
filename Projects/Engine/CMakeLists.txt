@@ -3,7 +3,7 @@
 # @author  Hasegawa Jin
 # @date    2026-05-15
 #
-# @note レイヤーは FBZZCore / FBZZRHI / FBZZRenderPlatform / FBZZRenderDX12 で、FBZZEngine.dll (Scene / Asset / Audio / AI) が全部を飲み込む。
+# @note 描画は FBZZGraphics、共通基盤は FBZZCore。Engine 内の自己登録モジュールだけを OBJECT として取り込む。
 # @note STATIC にしないのは、参照されない静的初期化子で自己登録する TU をリンカが警告なしに捨てるため (CMake/FBZZTests.cmake と同じ理由)。
 # @note $<TARGET_OBJECTS:> で取り込むのは、リンク依存にすると install(EXPORT) が内部レイヤーも export set に要求するため。
 
@@ -86,7 +86,7 @@ function(fbzz_engine_module TARGET)
         ${ARG_PRIVATE_INCLUDES}
     )
     # @note OBJECT ライブラリはリンクしない。受け取るのは include パスとコンパイル定義だけで、リンクは FBZZEngine が行う。
-    target_link_libraries(${TARGET} PRIVATE FBZZPhysics FBZZFluid FBZZMath TomlPlusPlus ImGui)
+    target_link_libraries(${TARGET} PRIVATE FBZZGraphics FBZZPhysics FBZZFluid FBZZMath TomlPlusPlus ImGui)
     target_compile_definitions(${TARGET} PRIVATE ${FBZZ_ENGINE_DEFINES})
 
     # @note CMake は FBZZEngine_EXPORTS を SHARED にしか定義しない。無いと Time.hpp / Cursor.hpp が dllimport に落ちて C2491 になる。
@@ -104,7 +104,7 @@ define_property(GLOBAL PROPERTY FBZZ_ENGINE_MODULES
     BRIEF_DOCS "fbzz_engine_module で生成した Engine 内部モジュール"
     FULL_DOCS  "FBZZEngine.dll を構成する OBJECT ライブラリの一覧")
 
-# @name FBZZCore
+# @name FBZZEnginePlatform
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     src/Core/*.cpp src/Core/*.hpp
     src/Util/*.cpp src/Util/*.hpp
@@ -116,50 +116,7 @@ list(REMOVE_ITEM CORE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Application.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/SaveStore.cpp"
 )
-fbzz_engine_module(FBZZCore SOURCES ${CORE_SOURCES})
-
-# @name FBZZRHI
-# @note 非再帰の GLOB で Platform/ (バックエンド) を含めない。
-file(GLOB RHI_SOURCES CONFIGURE_DEPENDS
-    src/Renderer/*.cpp src/Renderer/*.hpp
-)
-fbzz_engine_module(FBZZRHI SOURCES ${RHI_SOURCES})
-
-# @name FBZZRenderPlatform
-# @note バックエンドから使う D3D 共通処理。特定バックエンドの型は持たない。
-file(GLOB RENDER_PLATFORM_SOURCES CONFIGURE_DEPENDS
-    src/Renderer/Platform/*.cpp src/Renderer/Platform/*.hpp
-)
-fbzz_engine_module(FBZZRenderPlatform
-    SOURCES ${RENDER_PLATFORM_SOURCES}
-)
-
-# @name FBZZRenderDX12
-# @note バックエンドが 1 つでもモジュールを分けたままにする。DX ヘッダーを PRIVATE_INCLUDES に閉じ、上位層からのダウンキャストを禁じる (AGENTS.md)。
-set(FBZZ_BACKEND_OBJECTS
-    $<TARGET_OBJECTS:FBZZRenderPlatform>
-)
-
-if(FBZZ_ENABLE_DX12)
-    file(GLOB_RECURSE DX12_SOURCES CONFIGURE_DEPENDS
-        src/Renderer/Platform/DX12/*.cpp src/Renderer/Platform/DX12/*.hpp
-    )
-    fbzz_engine_module(FBZZRenderDX12
-        SOURCES ${DX12_SOURCES}
-        PRIVATE_INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/Platform/DX12"
-        # @note d3d12.h は 15 TU 中 12、wrl/client.h は 10 が include している。
-        PCH_EXTRA <Windows.h> <d3d12.h> <wrl/client.h>
-    )
-    list(APPEND FBZZ_BACKEND_OBJECTS $<TARGET_OBJECTS:FBZZRenderDX12>)
-else()
-    message(STATUS "FBZZ: 描画バックエンドを含めずにビルドします (dxcompiler.dll / dxil.dll も配置しない)")
-    # @warning この構成は描画バックエンドを 1 つも持たず、ここから公開した SDK のゲームは起動時に必ず落ちる。ValidateFBZZSDK.cmake は検出しない。
-    # @note GPU を使わないビルド (カバレッジ計測など) 専用。
-    message(WARNING
-        "FBZZ_ENABLE_DX12=OFF の構成から FBZZSDK を公開しないこと。"
-        "DirectX 11 撤去後、この構成には描画バックエンドが 1 つも無いため、"
-        "配布した SDK から作ったゲームが起動できなくなる。")
-endif()
+fbzz_engine_module(FBZZEnginePlatform SOURCES ${CORE_SOURCES})
 
 # @name FBZZEngine
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
@@ -167,6 +124,7 @@ file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
     src/Asset/*.cpp src/Asset/*.hpp
     src/Audio/*.cpp src/Audio/*.hpp
     src/AI/*.cpp src/AI/*.hpp
+    src/Renderer/*.cpp src/Renderer/*.hpp
     include/*.hpp
 )
 # @note src 直下は非再帰 GLOB で別に拾う。GLOB_RECURSE に src/*.cpp を足すと全モジュールのソースを二重に拾う。
@@ -181,8 +139,7 @@ list(APPEND ENGINE_SOURCES
 
 # @note 新ディレクトリをモジュールへ足し忘れると、リンクエラーか実行時の機能欠落としてしか現れないので configure で落とす。
 file(GLOB_RECURSE FBZZ_ALL_ENGINE_CPP CONFIGURE_DEPENDS src/*.cpp)
-set(FBZZ_CLAIMED_CPP ${CORE_SOURCES} ${RHI_SOURCES} ${RENDER_PLATFORM_SOURCES}
-                     ${DX12_SOURCES} ${ENGINE_SOURCES})
+set(FBZZ_CLAIMED_CPP ${CORE_SOURCES} ${ENGINE_SOURCES})
 list(FILTER FBZZ_CLAIMED_CPP INCLUDE REGEX "\\.cpp$")
 set(FBZZ_UNCLAIMED_CPP ${FBZZ_ALL_ENGINE_CPP})
 list(REMOVE_ITEM FBZZ_UNCLAIMED_CPP ${FBZZ_CLAIMED_CPP})
@@ -196,9 +153,7 @@ endif()
 
 add_library(FBZZEngine SHARED
     ${ENGINE_SOURCES}
-    $<TARGET_OBJECTS:FBZZCore>
-    $<TARGET_OBJECTS:FBZZRHI>
-    ${FBZZ_BACKEND_OBJECTS}
+    $<TARGET_OBJECTS:FBZZEnginePlatform>
 )
 fbzz_use_std_pch(FBZZEngine)
 fbzz_use_unity_build(FBZZEngine EXCLUDE ${FBZZ_ENGINE_UNITY_EXCLUDE})
@@ -221,6 +176,8 @@ target_include_directories(FBZZEngine
 
 target_link_libraries(FBZZEngine
     PUBLIC
+        FBZZGraphics
+        FBZZCore
         FBZZPhysics
         # @note 公開ヘッダー (FluidRecipeCodec / FluidBaker …) が Fluid の型を引数に取るので PUBLIC。
         FBZZFluid
@@ -247,38 +204,3 @@ target_link_libraries(FBZZEngine
         "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"
         "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${ASSIMP_LIB_RELEASE}>"
 )
-
-# @note DX12 のホットリロードと DXIL reflection は dxcompiler.dll を実行時に遅延ロードする。FBZZ_ENABLE_DX12=OFF には DXC を強制しない。
-get_filename_component(FBZZ_WINDOWS_SDK_BIN_DIRECTORY "${CMAKE_RC_COMPILER}" DIRECTORY)
-if(FBZZ_ENABLE_DX12)
-    if(DEFINED ENV{FBZZ_DXC} AND EXISTS "$ENV{FBZZ_DXC}")
-        set(FBZZ_DXC_EXECUTABLE "$ENV{FBZZ_DXC}")
-    else()
-        find_program(FBZZ_DXC_EXECUTABLE
-            NAMES dxc.exe
-            HINTS
-                "${FBZZ_WINDOWS_SDK_BIN_DIRECTORY}"
-                "$ENV{WindowsSdkDir}/bin/$ENV{WindowsSDKVersion}/x64"
-        )
-    endif()
-    if(FBZZ_DXC_EXECUTABLE)
-        get_filename_component(FBZZ_DXC_DIRECTORY "${FBZZ_DXC_EXECUTABLE}" DIRECTORY)
-        # @note dxcompiler.dll は exe 隣から LoadLibraryW で解決されるので、サブディレクトリに出る Editor 等の配置用に場所を公開する。
-        set(FBZZ_DXC_RUNTIME_DIRECTORY "${FBZZ_DXC_DIRECTORY}" CACHE INTERNAL "DXC runtime DLL directory")
-        foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
-            if(EXISTS "${FBZZ_DXC_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
-                add_custom_command(TARGET FBZZEngine POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        "${FBZZ_DXC_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
-                        "$<TARGET_FILE_DIR:FBZZEngine>/${FBZZ_DXC_RUNTIME_DLL}"
-                    COMMENT "Copying ${FBZZ_DXC_RUNTIME_DLL} for DXIL runtime support"
-                )
-            endif()
-        endforeach()
-    else()
-        message(WARNING "dxc.exe was not found; DX12 shader hot reload will require FBZZ_DXC at runtime")
-    endif()
-else()
-    # @note Editor / Launcher 側の DXC 配置判定もこの変数を見る。
-    unset(FBZZ_DXC_RUNTIME_DIRECTORY CACHE)
-endif()

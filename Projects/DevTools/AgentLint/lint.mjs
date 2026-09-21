@@ -132,6 +132,8 @@ function LintCpp(repoPath, source) {
     const isHeader = extension === '.hpp' || extension === '.h';
     const isScript = /^[^/]+\/Assets\//.test(repoPath);
     const isRendererBackend = /Renderer\/DX1[12]|RenderDX1[12]|\/DX1[12]\//.test(repoPath);
+    /// @note `new` の唯一の置き場。ここが nothrow new を書くので «失敗したら nullptr» を全体へ配れる (AGENTS.md «絶対制約»)。
+    const isAllocationPrimitive = /(^|\/)Memory\/MakeUnique\.hpp$/.test(repoPath);
     // key は HEAD 版と突き合わせて «増えた違反» だけを残すための識別子 (OnlyNew)。
     // WHY 原文の行をそのまま使わないか: 行末コメントを別の行へ移しただけ・旧形式の見出しを少し書き換えただけで
     //     既存の違反が «新しい違反» に見え、PR の差分検査が関係の無い箇所で落ちる。規則ごとに不変な部分で比べる。
@@ -175,7 +177,7 @@ function LintCpp(repoPath, source) {
         { rule: 'no-generated-hpp', re: /#\s*include\s*[<"][^>"]*\.generated\.hpp[>"]/, message: '.generated.hpp は廃止。FBZZ_FIELD* + FBZZ_REFLECT' },
         { rule: 'no-banned-lib', re: /#\s*include\s*[<"](glm\/|GLFW\/|btBulletDynamicsCommon|PxPhysicsAPI|box2d\/|Box2D\/)/, message: 'GLM / GLFW / Bullet / PhysX / Box2D 禁止。自作 Math / Physics' },
         { rule: 'warn-reinterpret-cast', re: /\breinterpret_cast\s*</, message: 'reinterpret_cast は定数バッファ転送のみ可', severity: 'warn' },
-    ];
+    ].filter(({ rule }) => !(isAllocationPrimitive && rule === 'no-new'));
     if (isHeader) {
         rules.push({ rule: 'no-windows-h-in-header', re: /#\s*include\s*<(W|w)indows\.h>/, message: 'ヘッダーへ <Windows.h> 禁止。.cpp に閉じる' });
         if (!isScript) rules.push({ rule: 'no-using-namespace-in-header', re: /^\s*using\s+namespace\b/, message: 'エンジン .hpp での using namespace 禁止' });

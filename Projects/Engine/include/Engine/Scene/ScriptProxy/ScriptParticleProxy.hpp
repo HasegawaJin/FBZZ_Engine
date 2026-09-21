@@ -3,8 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
 #pragma once
+#include <Graphics/Effects/ParticleDrawTypes.hpp>
 /// @note ParticleColorSpace は別ヘッダーに置く。ParticleGradient (Engine/Scene/ParticleCurve.hpp)
-///       がメンバーに持つため、Script.hpp のプロキシ群より先に読まれる必要がある。
+/// @note がメンバーに持つため、Script.hpp のプロキシ群より先に読まれる必要がある。
 #include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -23,17 +24,9 @@ enum class ParticleEmitterShape : uint8_t {
     MeshSurface = 4,
 };
 
-enum class ParticleBlendMode : uint8_t {
-    Additive = 0,
-    Alpha    = 1,
-    /// @brief 事前乗算アルファ。発光する芯と背景を隠す煙を 1 枚のテクスチャで両立できる。
-    Premultiplied = 2,
-};
+using renderer::ParticleBlendMode;
 
-enum class ParticleSortMode : uint8_t {
-    None        = 0,
-    BackToFront = 1,
-};
+using renderer::ParticleSortMode;
 
 enum class ParticleSimulationMode : uint8_t {
     Cpu = 0,
@@ -57,11 +50,11 @@ enum class ParticleGpuFallbackReason {
     SelfShadow,            ///< @brief selfShadowStrength > 0。密度パスが CPU 頂点バッファを要求する
     /// @brief 速さで見た目を変えるモジュール (useSpeedSizeCurve / useSpeedColorGradient)。
     /// @note 速度グラデーション (8キー=float4×12) は定数バッファを太らせ、CPU と同じ式を
-    ///       保つ必要もあるため GPU 非対応 (載せるなら CB の再設計が要る)。
+    /// @note 保つ必要もあるため GPU 非対応 (載せるなら CB の再設計が要る)。
     SpeedModule,
     /// @brief 予約: 速度場 (速度場 PNG) は 2026-09-11 に GPU 対応済み (VelocityFieldAtlas)。
     /// @note 枠を残す理由: Script DLL は数値で受け取るため、詰めると未再ビルドの DLL が
-    ///       SpeedModule を別の理由として誤読する。
+    /// @note SpeedModule を別の理由として誤読する。
     ReservedVectorField,
     /// @brief Lights モジュール (light.lightEnabled)。GPU 粒子は位置が GPU にしかないため、
     /// @brief 点光源化 (RenderSystem が runtime.particles を読む) には CPU へ縮退する。
@@ -69,10 +62,7 @@ enum class ParticleGpuFallbackReason {
     Light,
 };
 
-enum class ParticleSimulationSpace : uint8_t {
-    World = 0,
-    Local = 1,
-};
+using renderer::ParticleSimulationSpace;
 
 enum class ParticleRenderMode : uint8_t {
     Billboard = 0,
@@ -144,7 +134,7 @@ struct ScriptParticleProxy {
     /// @brief 変えるなど、形状を組み直さずに勢いだけ動かしたいときに使う。
     void SetMeshShapeNormalVelocity(float normalVelocity) const;
     /// @note ブレンド・フリップブック・ソフトパーティクルなど «見た目» は .mat の
-    ///       [particle] が正本になったため、エミッター側からは触れない。
+    /// @note [particle] が正本になったため、エミッター側からは触れない。
     void SetSortMode(ParticleSortMode sortMode) const;
     void SetSimulationMode(ParticleSimulationMode simulationMode) const;
     void SetSimulationSpace(ParticleSimulationSpace space) const;
@@ -182,7 +172,7 @@ struct ScriptParticleProxy {
 
     /// @name CPU / GPU シミュレーション
     /// @note «要求» (SetSimulationMode) と «実際» (IsGpuSimulated) は別物。縮退条件に触れると
-    ///       要求と無関係に CPU で回るため、両方を見ないと「GPU で捌けている」と誤認する。
+    /// @note 要求と無関係に CPU で回るため、両方を見ないと「GPU で捌けている」と誤認する。
     ///@{
     /// @brief エミッターに設定されている経路 (要求値)。エミッターが無ければ Cpu。
     [[nodiscard]] ParticleSimulationMode GetSimulationMode() const;
@@ -191,10 +181,10 @@ struct ScriptParticleProxy {
     [[nodiscard]] bool IsGpuSimulated() const;
 
     /// @brief GPU に載らない理由。None なら GPU で回る。Cpu を指定しているだけなら
-    ///        NotRequested (縮退ではない)。エミッターが無い場合も NotRequested。
+    /// @note NotRequested (縮退ではない)。エミッターが無い場合も NotRequested。
     /// @note .mat 由来の 3 条件 (flipbookFrameBlending / motionVectorFlipbook /
-    ///       selfShadowStrength) は素材解決 (最初の描画時) まで判定に入らないため、
-    ///       OnStart や 1 フレーム目の OnUpdate では「GPU で回る」と誤答することがある。
+    /// @note selfShadowStrength) は素材解決 (最初の描画時) まで判定に入らないため、
+    /// @note OnStart や 1 フレーム目の OnUpdate では「GPU で回る」と誤答することがある。
     [[nodiscard]] ParticleGpuFallbackReason GetGpuFallbackReason() const;
 
     /// @brief 縮退の原因になっている設定名 ("trailEnabled" 等)。None のときは空文字列。
@@ -206,4 +196,4 @@ struct ScriptParticleProxy {
     /// @}
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

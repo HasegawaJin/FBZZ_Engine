@@ -1,7 +1,9 @@
 # FBZZ Engine
 
 **C++20 で書いている自作 3D ゲームエンジン (Windows)。**
-数学と物理をゼロから実装し、レンダラーを `IRenderer` 抽象の裏に隠している。**DirectX 11 / 12 の 2 バックエンドを同居させた上で、DX11 を v1.0 で撤去した** — 上位レイヤーを 1 行も変えずにバックエンドを 1 つ落とせたことが、この境界が機能している証拠になっている ([設計文書](Docs/design/dx11-removal.md))。RenderGraph ベースの Deferred + Forward ハイブリッド、クラスタードライティング、スクリプト DLL のホットリロード、ノードベースのアニメーショングラフ、NavMesh、地形・水面・天候、VFX / 流体オーサリング、37 パネルの ImGui エディター、そして MCP 経由の AI 連携までを 1 つのリポジトリに収めている。
+数学と物理をゼロから実装し、描画を独立した **Graphics ライブラリ**へ分離している。DirectX 12 の実装は `IRenderer` の背後に閉じ、Engine が抽出した `RenderScene` を使って Forward / Deferred を構成する。RenderGraph、クラスタードライティング、スクリプト DLL のホットリロード、アニメーショングラフ、NavMesh、地形・水面・天候、毛・草、VFX / 流体オーサリング、ImGui エディター、MCP 経由の AI 連携を備える。
+
+更新日: **2026-09-21**。現行作業ツリーのプロジェクト版は **0.9.1** (`CMakeLists.txt`)。以下はリリース済み機能の一覧ではなく、現在の実装を説明する。設計と検証状況は [Docs の索引](Docs/README.md) を参照。
 
 エンジンだけでは「動くもの」にならないので、**サンプルゲーム 2 本**を同梱している。エディター既定プロジェクトの TPS サンプルと、エンジンの全機能を使って制作中の剣戟アクション **GreenWare**。
 
@@ -9,8 +11,8 @@
 |---|---|
 | 言語 / 規格 | C++20 (一部 TypeScript / HLSL / PowerShell) |
 | プラットフォーム | Windows 10 / 11・DirectX 12 (SM 6.x) |
-| 名前空間 | `fbzz::` (`math` / `physics` / `renderer` / `scene` / `editor`) |
-| 依存方向 | `Editor / GameHub / Sandbox / GreenWare → Engine → Physics → Math` |
+| 名前空間 | `fbzz::` (`math` / `physics` / `fluid` / `renderer` / `scene` / `editor`) |
+| 依存方向 | アプリ → Engine → Graphics / Physics / Fluid。Graphics → Core / Math、Physics / Fluid → Math |
 | 外部数学・物理ライブラリ | **不使用** (GLM / GLFW / Bullet / PhysX / Box2D いずれも不採用) |
 
 ---
@@ -46,19 +48,20 @@
 
 ## 規模
 
-リポジトリの実測 (2026-09 時点、`ThirdParty/` と生成物を除く)。
+2026-09-21 の作業ツリーで、各ディレクトリの `.cpp` / `.hpp` / `.inl` を集計。
 
 | 領域 | ファイル数 | 行数 |
 |---|---:|---:|
-| `Projects/Engine` | 715 | 146,478 |
-| `Projects/Editor` | 331 | 115,125 |
-| `Projects/Physics` | 76 | 10,911 |
-| `Projects/Math` | 23 | 1,346 |
-| `Projects/Tests` | 183 | 39,176 |
-| HLSL シェーダー (`.hlsl` 135 / `.hlsli` 55) | 190 | 19,208 |
-| GreenWare スクリプト (`.hpp`) | 145 | — |
+| `Projects/Core` | 31 | 3,056 |
+| `Projects/Graphics` | 194 | 29,311 |
+| `Projects/Engine` | 679 | 120,922 |
+| `Projects/Editor` | 373 | 126,949 |
+| `Projects/Physics` | 83 | 12,769 |
+| `Projects/Fluid` | 16 | 4,092 |
+| `Projects/Math` | 25 | 1,745 |
+| `Projects/Tests` | 243 | 51,642 |
 
-主要な内訳: コンポーネント **69 種** / システム **34 種** / ScriptProxy **53 種** / エディターパネル **37 枚** / MCP ツール **139 個**。
+EditorMcp は `src/tools.ts` に **148 個**のツール登録を持つ。
 
 ---
 
@@ -74,9 +77,9 @@ Vector2/3/4・Matrix3/4・Quaternion・Ray・Segment・Frustum・Plane を GLM �
 
 ### 2. バックエンドは上位から見えない
 
-`IRenderer` / `IBuffer` / `ITexture` / `IShader` / `IPipelineState` のインターフェース層 (`FBZZRHI`) があり、バックエンド実装は別の OBJECT ライブラリに閉じる。**DX ヘッダーは各バックエンドの PRIVATE include にしか無く**、バックエンドが外へ出すのは `BackendEntry.hpp` の生成関数 1 つだけ。これを CMake が強制していて、`DX12Renderer*` へダウンキャストしようとしても include が通らない。
+`IRenderer` / `IBuffer` / `ITexture` / `IShader` / `IPipelineState` を `Projects/Graphics/include/Graphics/Renderer/` に公開し、DX12 の実装は Graphics 内部に閉じる。Graphics は Engine / Scene / Physics / Fluid を include・link せず、単独で DX12 の描画と読み戻しまで実行できる。
 
-DX12 が唯一のバックエンド (`ProjectSettings::rendererBackend = DX12`)。DirectX 11 サポートは v1.0 で終了し、`v0.9` が DX11 を含む最後のリリースになる。`renderer = "dx11"` が残った設定ファイルは起動を止めずに DX12 へ倒し、倒したことを警告で名指しする。
+現行バックエンドは DX12。DX11 の撤去経緯と旧設定の扱いは [設計文書](Docs/design/dx11-removal.md) に残している。同文書の v1.0 表記は導入時の記録で、現在の CMake プロジェクト版とは区別する。
 
 ### 3. リフレクションはヘッダーに閉じる
 
@@ -120,8 +123,12 @@ FBZZ_REFLECT(DashComponent)
 FBZZ_Engine/
 ├── Projects/
 │   ├── Math/           自作数学ライブラリ (依存なし)
+│   ├── Core/           Logger・メモリ・計測基盤 → FBZZCore.dll
+│   ├── Graphics/       RHI・DX12・描画パイプライン → FBZZGraphics.dll
 │   ├── Physics/        自作物理エンジン (Math のみ)
-│   ├── Engine/         コアエンジン → FBZZEngine.dll
+│   ├── Fluid/          流体の数式 (Math のみ)
+│   ├── Engine/         Scene・アセット・システム・描画入力抽出 → FBZZEngine.dll
+│   ├── DevTools/       AgentLint・ApiReference などの開発ツール
 │   ├── Editor/         ImGui フルエディター
 │   ├── EditorLauncher/ スタンドアロン起動ラッパー
 │   ├── EditorMcp/      TypeScript 製 MCP サーバー (fbzz-editor-mcp)
@@ -133,7 +140,7 @@ FBZZ_Engine/
 ├── SDK/                版ごとに publish されたエンジン SDK
 ├── ThirdParty/         Assimp / DirectXTex / ImGui / ImGuizmo / ImNodes / toml++ / stb / TinyEXR / GoogleTest
 ├── CMake/              ビルド基盤 (PCH / Unity / SDK publish / カバレッジ / テスト登録)
-├── Tools/              ビルド入口・カバレッジ・Blender エクスポート・各種ジェネレーター
+├── Tools/              ビルド・検証・カバレッジの入口
 └── Docs/               規約・設計ドキュメント
 ```
 
@@ -145,7 +152,10 @@ graph LR
 
     subgraph コアライブラリ
         Math
+        Core
+        Graphics
         Physics
+        Fluid
         Engine
     end
 
@@ -159,9 +169,16 @@ graph LR
     end
 
     Math --> Physics
+    Math --> Fluid
+    Math --> Graphics
+    Core --> Graphics
+    Core --> Engine
+    Graphics --> Engine
+    Fluid --> Engine
     Math --> Engine
     Physics --> Engine
     TP --> Engine
+    TP --> Graphics
     TP --> Editor
     Engine --> Editor
     Engine --> Sandbox
@@ -171,17 +188,21 @@ graph LR
     GameHub -. プロセス起動 .-> EditorLauncher
 ```
 
-### Engine 内部のモジュール分割
+### Core / Graphics / Engine の分割
 
-`FBZZEngine.dll` は 1 本だが、内部は 5 つの OBJECT ライブラリへ割り、依存の向きを CMake で固定している。
+`FBZZCore.dll`・`FBZZGraphics.dll`・`FBZZEngine.dll` を別々に生成する。上図の矢印は提供側から利用側へ向く。
 
 ```
-FBZZCore → FBZZRHI → FBZZRenderPlatform → FBZZRenderDX12 → FBZZEngine
+Engine: Scene / Component / Asset → RenderScene の抽出
+Graphics: RenderScene → Forward / Deferred / Effects → IRenderer → DX12
+Core: Logger / Memory / Profiler の共通基盤
 ```
 
-- **OBJECT であって STATIC ではない** — `__declspec(dllexport)` を持つ翻訳単位を STATIC に畳むと、リンカーがエクスポートを落とす
-- **どのモジュールにも属さないソースが出ると configure 時に落ちる** — 新しい `.cpp` を黙って取りこぼさないため
+- Graphics の公開依存は Core / Math。DX12・ImGui・画像処理ライブラリは PRIVATE 依存に閉じる。
+- Engine 内部のモジュールは OBJECT のまま維持し、自己登録を持つ翻訳単位の脱落を防ぐ。未分類のソースは configure 時に検出する。
 - `FBZZ_ENABLE_DX12` (既定 ON) を OFF にすると描画バックエンドを持たない構成になる (カバレッジ計測専用)
+
+抽出対象はメッシュ・スキニング・ライト・環境・地形・水面・粒子・Trail / MeshTrail・Fiber・Decal・Custom Post・Probe。Scene や Component のポインターを Graphics へ渡さず、値配列と非所有 GPU ハンドルを使う。ビュー別の描画呼び出し、CPU シミュレーション、アセット解決は Engine が担当する。詳細は [Graphics ライブラリの設計](Docs/design/graphics-library.md)。
 
 ### コアエンジン
 
@@ -223,11 +244,13 @@ FBZZCore → FBZZRHI → FBZZRenderPlatform → FBZZRenderDX12 → FBZZEngine
 | `DecalPass` | スクリーンスペースデカール投影 |
 | `SkyPass` / `SkyCapturePass` / `SkyLightBakePass` | 空の描画と、実行時キャプチャからの環境光ベイク |
 | `TerrainRenderPass` / `WaterRenderPass` / `CausticsPass` | 地形 (GBuffer / Forward)・水面・コースティクス |
-| `ParticlePass` / `ParticleForces` | CPU / GPU パーティクル描画と力場の解決 |
+| `ParticlePass` | 抽出済み粒子の描画と GPU Dispatch。CPU シミュレーション・力場の解決は Engine |
+| `FiberRenderPass` | 毛・草の Shell / Fin / Hybrid / Blade、影・選択・速度履歴 |
 | `TrailRenderPass` / `MeshTrailRenderPass` | トレイル・メッシュ残像 |
 | `VelocityPass` | モーションベクター生成 (TAA / Motion Blur 用) |
 | `ObjectMaskPass` | 輪郭・マスク系エフェクト用のオブジェクトマスク |
 | `ReflectionProbeCapturePass` | リフレクションプローブのキャプチャ |
+| `LightProbeBakePass` | Light Probe GI の捕捉・ベイク・膨張 |
 
 ### ポストプロセスパス
 
@@ -394,7 +417,7 @@ Unity 同様の GameObject / Component パターン。型 ID と密な配列 (`C
 | `MeshBuilder` / `ProceduralMeshComponent` | 実行時に頂点を組み立てる手続きメッシュ |
 | `SocketAttach` | 骨・ノードへの追従取り付け |
 
-### コンポーネント (69 種)
+### 主なコンポーネント
 
 | 領域 | コンポーネント |
 |---|---|
@@ -496,7 +519,7 @@ FBZZ_REFLECT(DashComponent)
 | `FBZZ_REF(...)` | 他のコンポーネントやオブジェクトへの参照フィールド |
 | `DataAsset` (`.fzdata`) | 複数スクリプトで共有する調整値をアセット化 |
 
-### ScriptProxy (53 種)
+### ScriptProxy
 
 DLL 境界を越えてエンジン実装型へ直接依存しないためのプロキシ層。スクリプト側は**メンバー名**で呼ぶ (`transform.position` / `input.GetKeyDown(...)`)。
 
@@ -606,7 +629,7 @@ FBX をドラッグ & ドロップすると自動インポートし、`.mat` を
 
 ## エディター
 
-ImGui 製。**37 パネル**を持つ。
+ImGui 製。主なパネルは以下のとおり。
 
 | パネル | 概要 |
 |---|---|
@@ -646,18 +669,18 @@ ImGui 製。**37 パネル**を持つ。
 
 エディターに **Named Pipe のコマンドバス**を立て、JSON プロトコルで状態取得と操作を外へ公開している。`Projects/EditorMcp` はそこへ繋ぐ TypeScript 製 **MCP サーバー** (`fbzz-editor-mcp`) で、Claude などの AI エージェントからエディターを直接操作できる。
 
-**139 個のツール**を公開している。内訳の多い順:
+**148 個のツール**を登録している (2026-09-21)。主な領域:
 
 | 領域 | ツール数 | 例 |
 |---|---:|---|
 | `animation_*` | 22 | ステート / 遷移 / パラメーター / レイヤーの CRUD |
 | `bt_*` | 19 | ビヘイビアツリーのノード編集・自動レイアウト |
 | `fluid_*` | 12 | 流体レシピの生成・プリセット適用・ベイク |
-| `editor_*` | 11 | カタログ取得・Operator 実行・スクリーンショット |
+| `editor_*` | 12 | カタログ取得・Operator 実行・スクリーンショット |
 | `scene_*` / `node_*` | 18 | 階層取得・検索・生成・複製・リネーム |
-| `terrain_*` `asset_*` `material_*` `prefab_*` `navmesh_*` `sprite_*` … | 57 | 各ドメインの照会と編集 |
+| その他 | 65 | 地形・アセット・材質・シナリオ・入力注入・画像比較・プロファイルなど |
 
-読み取り専用ツールには `readOnlyHint` を付け、書き込みは権限モードで dry-run に落とせる。エディター側の実体は `EditorOperator` の投影なので、**AI から実行できる操作と、人がメニューから実行できる操作は常に一致する**。
+読み取り専用ツールには `readOnlyHint` を付け、書き込みは権限モードで dry-run に落とせる。共通の編集操作は `EditorOperator` を通し、検証用には状態照会・入力注入・Playtest 実行などの API も提供する。
 
 ---
 
@@ -676,6 +699,10 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 | `preload` / `ipc` | Renderer と OS 権限を分離する安全な API 境界 |
 
 ### SDK publish とスタンドアロン
+
+現行版は `SDK/0.9.1/`。Core / Graphics も公開ヘッダーと DLL を配布する。Development 構成では `include/Core/`・`include/Graphics/`、`lib/Development/FBZZCore.lib`・`FBZZGraphics.lib`、`bin/Development/FBZZCore.dll`・`FBZZGraphics.dll` に配置する。
+
+`.lib` は DLL のインポートライブラリ。実行時は Graphics / Core と必要なランタイム DLL を同梱する。SDK と利用側は同じ構成・共有 CRT を使う (Debug は `/MDd`、Development / Release は `/MD`)。
 
 エンジンは**版ごとの SDK** として `SDK/<version>/` へ publish し、ゲームプロジェクトは CMake の IMPORTED package として参照する。VS Code タスクの `Distribution: Assemble` が、実行ファイル・`Library/Baked`・EngineAssets・DXC ランタイム (`dxcompiler` / `dxil`) を含むスタンドアロンパッケージを組み立てる。
 
@@ -704,7 +731,6 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 | ボス | 4 足歩行の「ポラリティ・コア」と、節を折って進める蛇型の「ポラリティ・サーペント」 |
 | 戦闘 | 5 連撃・溜め斬り・ロックオン・ジャスト回避・ジャストパリィ。拍 (リズム) に乗ると手応えが返る |
 | 演出 | 刀身が通った面を張る軌跡・当たりの一閃・ヒットストップ・部位破壊の増悪・ラグドール撃破 |
-| 規模 | スクリプト 145 ファイル・シーン 8 本 |
 | 独立性 | `Assets/` `Src/` `ProjectSettings/` を持つ独立プロジェクト。設計文書は [`GreenWare/Assets/Docs/`](GreenWare/Assets/Docs/) |
 
 プレイヤーモデル (MiniBot C) は Blender で自作し、`GreenWare/Tools/BlenderExport/` のスクリプトで LOD 3 段・54 骨・22 クリップを書き出している。
@@ -718,9 +744,9 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 | ツール | バージョン |
 |---|---|
 | OS | Windows 10 / 11 |
-| Visual Studio | 2022 以降 (C++20 対応) |
-| CMake | 3.20 以上 |
-| Windows SDK | DirectX 12 / DXC 同梱版 |
+| Visual Studio | 同梱プリセットは Visual Studio 18 2026 / x64 |
+| CMake | 同梱プリセットは 3.25 以上 (schema version 6) |
+| Windows SDK | 同梱プリセットは 10.0.26100.0、DXC が必要 |
 | Node.js | GameHub / EditorMcp をビルドする場合のみ |
 
 ### 手順
@@ -730,12 +756,20 @@ git clone https://github.com/HasegawaJin/FBZZ_Engine.git
 cd FBZZ_Engine
 ```
 
-VS Code または Visual Studio で開き、CMake の構成プリセット (`debug` / `development` / `release` / `coverage` / `sdk`) を選んでビルドする。
+VS Code または Visual Studio で開き、CMake の構成プリセット (`debug` / `development` / `release` / `coverage`) を選んでビルドする。
 VS Code なら `Ctrl+Shift+P` → `Tasks: Run Task` から `CMake: Configure (Debug)` → `CMake: Build All (Debug)`。
 
 シェーダーはエディターと CMake が自動収集し、`Assets/Shaders/compile_shaders.ps1` が include 依存を含む差分だけをコンパイルする。
 
-> **注意:** ターミナルから `ninja` / `cmake --build` を直接実行しないこと。MSVC の環境変数が設定されていないためコンパイルエラーになる。VS の場所を知っているのは `Tools/VcBuild.ps1` だけで、VS Code のビルドタスクはすべてそこを通る。
+人は VS Code / Visual Studio のタスク、AI は `Tools/AgentBuild.ps1` をビルドの入口にする。Visual Studio 環境の検出は `Tools/VsEnvironment.ps1` に集約している。ビルドは同時に 1 本だけ実行する。SDK は `FBZZSDK` ターゲットで公開する。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check <変更したC++ファイル>
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 build FBZZSDK
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 test -Filter 'GraphicsStandaloneTest|RenderSceneExtractorTest'
+```
+
+`check` はリンクせず変更単位をコンパイルする。起動中エディターの DLL と衝突しないため、通常の C++ 検証はここから始める。
 
 `ThirdParty/` はすべてベンダー済み (FetchContent 不使用) なので、clone 直後にネットワークなしでビルドできる。
 
@@ -764,11 +798,16 @@ GoogleTest / GoogleMock による自動テスト。規約は [`Docs/conventions/
 | `FBZZTestsMathAuto` | Vector3 / Quaternion / Matrix4 — 左手座標系の規約、合成順、投影の深度範囲 |
 | `FBZZTestsPhysicsAuto` | GJK / EPA / Collider / AABB / BVH / XPBD |
 | `FBZZTestsCoreAuto` | アロケーター 4 種 / Scheduler / TaskSystem / Signal / Logger / Time |
+| `FBZZTestsGraphicsStandalone` | Engine をリンクしない Forward / Deferred 構成、描画入力の独立性、DX12 描画と CPU 読み戻し |
 | `FBZZTestsEngineAuto` | RenderGraph / SceneSerializer / AssetDatabase / GUID / Transform / パーティクル・流体・フリップブックの各コーデックとソルバー / ラグドール |
 | `FBZZTestsEditorAuto` | AI バスのプロトコル / import 指紋判定 / Undo / プレハブオーバーライド / 地形ブラシ / ScriptCodeGen |
 | `FBZZTestsCoreManual` | Window / Cursor (OS 状態を書き換える) |
 
 共通の土台は `FBZZTestKit`。数学型の近似比較マクロ、失敗メッセージ用の `PrintTo`、テスト名から決まる固定シード乱数、一時ディレクトリ、Logger の fake と mock を持つ。
+
+### 検証記録 (2026-09-21)
+
+Graphics 分割では関連 **369 テストが合格**。Fiber・スキニング・Light Probe GI・水面・粒子を GPU で確認した。FiberLifecycle は現行材質に合わせて基準を更新した後、**93 手順と 10 枚の完全一致**を確認している。これは対象を絞った検証であり、全スイート実行の件数ではない ([Graphics の記録](Docs/design/graphics-library.md)、[Fiber の記録](Docs/design/fiber-rendering.md))。
 
 ### 実行
 
@@ -812,7 +851,7 @@ ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
 | **C0** | `Tools\Coverage\RunCoverage.ps1` | 命令網羅 | MSVC + OpenCppCoverage |
 | **C1 / C2** | `Tools\Coverage\RunCoverageLLVM.ps1` | 分岐・条件網羅 + MC/DC | clang-cl + llvm-cov |
 
-計測対象はどちらも `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` (OS 層の `Core/Platform` を除く) に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。両者の分母を揃えてあるので、C0 と C1 の数字はそのまま並べて読める。
+計測対象と除外条件は [テスト規約](Docs/conventions/test.md) と `Tools/Coverage/` の設定を参照する。Core / Graphics の物理分割でソースの配置が変わっているため、過去のカバレッジ値と比較するときは対象パスと分母を確認する。
 
 #### C0 — 行カバレッジ (CI が回すのはこちら)
 
@@ -870,7 +909,7 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 - ヘッダーは `.hpp` + `#pragma once`。全ファイルに `@file` / `@brief` / `@author` / `@date` の 4 行ヘッダー
 - `new` / `delete` の直接使用は禁止 (`make_unique` / `make_shared`)
 - `throw` / `std::exception` は禁止。回復可能は `bool`、回復不可能は `assert()`
-- コメントは「コードから読み取れないこと」だけ。`.hpp` は Doxygen で API のみ、`.cpp` は WHY のみ
+- コメントは Doxygen 形式で、契約・根拠・順序依存などコードから読み取れないことを書く。詳細は [コメント規約](Docs/conventions/comments.md)
 - サードパーティは `ThirdParty/` へベンダーする (FetchContent 不使用)
 
 ---
