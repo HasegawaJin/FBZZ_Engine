@@ -47,6 +47,7 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/CrashHandler/CrashHandlerInstallTests.cpp
         Core/Auto/CrashHandler/CrashLogTailTests.cpp
         Core/Auto/CrashHandler/CrashReportContentTests.cpp
+        Core/Auto/CrashHandler/CrashHandlerFatalTests.cpp
         Core/Auto/DeveloperMode/DeveloperModeTests.cpp
         Core/Auto/Time/TimeConfigurationTests.cpp
         Core/Auto/Time/TimeLockstepTests.cpp
