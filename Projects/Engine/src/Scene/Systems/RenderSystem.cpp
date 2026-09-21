@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 /// @note /// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Scene/SceneUtils.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/MeshTrailRenderPass.hpp"
@@ -693,9 +694,9 @@ void RenderSystem(Scene& scene,
     /// @note IBL キューブマップ: RenderSettings に指定されたパスを毎フレーム LoadTexture でキャッシュ参照する。
     /// @note LoadTexture は内部でキャッシュするため、毎フレーム呼んでも I/O は初回のみ。
     if (!rs.ibl.irradiancePath.empty())
-        passHandles.iblIrradiance = resources.LoadTexture(rs.ibl.irradiancePath);
+        passHandles.iblIrradiance = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, rs.ibl.irradiancePath);
     if (!rs.ibl.prefilterPath.empty())
-        passHandles.iblPrefilter  = resources.LoadTexture(rs.ibl.prefilterPath);
+        passHandles.iblPrefilter  = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, rs.ibl.prefilterPath);
     /// @note カメラ視錐台とライト視錐台。Gribb-Hartmann 法は VP 行列の行の和・差から
     /// @note 6 平面を直接出せるので逆行列が要らない。全ジオメトリパスで共有する。
     const math::Frustum cameraFrustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
