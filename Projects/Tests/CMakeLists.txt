@@ -64,6 +64,9 @@ fbzz_add_test_suite(CoreAuto
 )
 
 # @note --- Physics ----------------------------------------------------------------
+# @note ログ末尾の単体検証だけが Engine の内部クラスを参照する。
+target_include_directories(FBZZTestsCoreAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
+
 fbzz_add_test_suite(PhysicsAuto
     SOURCES
         Physics/Auto/AABBTests.cpp
