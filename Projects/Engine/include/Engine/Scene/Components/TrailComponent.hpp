@@ -4,7 +4,7 @@
 /// @date    2026-06-06
 #pragma once
 
-#include <Engine/Renderer/ResourceHandle.hpp>
+#include <Graphics/Effects/RenderTrailInput.hpp>
 #include <Engine/Scene/ParticleCurve.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
@@ -15,35 +15,10 @@
 
 namespace fbzz::scene {
 
-/// @brief トレイルを構成する制御点 1 個分のワールド座標と生成時刻。
-/// @note 点列だけを保存し、リボン幅・色・UV は描画時に再計算することでパラメータ変更を即時反映する。
-struct TrailPoint {
-    math::Vector3 position = math::Vector3::ZERO;
-    float         timestamp = 0.0f;
-};
-
-/// @brief リボン断面をどの基準方向に向けるかを表す。
-/// @note CameraFacing は剣閃など常に見やすいエフェクト、WorldUp はタイヤ跡など地面基準の帯に使う。
-enum class TrailAlignment : uint8_t {
-    CameraFacing = 0,
-    WorldUp      = 1,
-};
-
-/// @brief U 座標をトレイル全体へ正規化するか、ワールド長でタイルするかを選ぶ。
-/// @note Stretch は剣閃の一枚絵、Tile は長い軌跡へ繰り返し模様を流す用途に使う。
-enum class TrailUVMode : uint8_t {
-    Stretch = 0,
-    Tile    = 1,
-};
-
-/// @brief 古い点から新しい点へ幅を補間するときの曲線。
-/// @note 線形だけでは先端だけ鋭く細る軌跡や、根元を長く太く残す演出を作りにくい。
-enum class TrailWidthEasing : uint8_t {
-    Linear    = 0,
-    EaseIn    = 1,
-    EaseOut   = 2,
-    EaseInOut = 3,
-};
+using renderer::TrailPoint;
+using renderer::TrailAlignment;
+using renderer::TrailUVMode;
+using renderer::TrailWidthEasing;
 
 /// @brief GameObject に追従するトレイルの設定とランタイム状態。
 /// @note System がリングバッファへ制御点を追加し、毎フレーム GPU 頂点バッファへリボンを展開する。
@@ -60,21 +35,21 @@ struct TrailComponent {
 
     /// @brief 1 フレームでこれ以上跳んだら点列を捨てて描き直す [ワールド]。0 で «切らない»。
     /// @note 既定 0 (opt-in) の理由: 瞬間移動をするかどうかは実体ごとに違うため、一律のしきい値だと
-    ///       速い剣閃や乗り物の軌跡を誤って切ってしまう。手動 Clear() では、テレポートを書く側と
-    ///       トレイルを持つ GameObject (武器の子など) が別なことがあり呼び忘れが起きるため不十分。
+    /// @note 速い剣閃や乗り物の軌跡を誤って切ってしまう。手動 Clear() では、テレポートを書く側と
+    /// @note トレイルを持つ GameObject (武器の子など) が別なことがあり呼び忘れが起きるため不十分。
     float breakDistance = 0.0f;
 
     /// @brief 幅の多キー化。無効 (既定) なら widthStart/widthEnd + widthEasing の 2 点のまま。
     /// @note 新しいカーブ型を作らない理由: ParticleCurve は Inspector のカーブエディタ・.curve の
-    ///       読み書き・TOML シリアライズが既に通っている。widthStart を倍率の基準として残すのは、
-    ///       カーブは形だけを持たせ実寸を 1 か所で決められるようにするため。
+    /// @note 読み書き・TOML シリアライズが既に通っている。widthStart を倍率の基準として残すのは、
+    /// @note カーブは形だけを持たせ実寸を 1 か所で決められるようにするため。
     bool widthCurveEnabled = false;
-    ParticleCurve widthCurve; ///< age に対する倍率。実寸 = widthStart × この値
+    ParticleCurve widthCurve; ///< @note age に対する倍率。実寸 = widthStart × この値
 
     /// @brief 色の多キー化。無効 (既定) なら colorStart/colorEnd の 2 点のまま。時刻 0 が帯の
-    ///        先端 (colorStart 側)、1 が消え際 (colorEnd 側)。
+    /// @note 先端 (colorStart 側)、1 が消え際 (colorEnd 側)。
     /// @note 補間は GPU (Trail.hlsl) 側で行うため、キーの間はリニア空間で混ざる。
-    ///       ParticleGradient::colorSpace は帯では効かない (キーの色そのものは一致する)。
+    /// @note ParticleGradient::colorSpace は帯では効かない (キーの色そのものは一致する)。
     bool colorGradientEnabled = false;
     ParticleGradient colorGradient;
     /// @brief Beam は移動履歴ではなくローカル2端点を毎フレーム固定リボンとして描く。
@@ -84,7 +59,7 @@ struct TrailComponent {
 
     /// @brief beamStart / beamEnd の間を通す中間点。空なら 2 端点の直線。
     /// @note VFXBeamComponent が毎フレーム作り直すため、シーンへは保存しない
-    ///       (保存すると「止めた瞬間の形」がアセットに焼き付く)。
+    /// @note (保存すると「止めた瞬間の形」がアセットに焼き付く)。
     std::vector<math::Vector3> beamPoints;
 
     /// @brief beamPoints / beamStart / beamEnd をワールド座標として解釈する。
@@ -119,13 +94,14 @@ struct TrailComponent {
     int   ringTail       = 0;
     int   ringCount      = 0;
     float lastSampleTime = -1.0f;
+    uint64_t lastExtractionFrame = UINT64_MAX;
 
     /// @brief GPU リソースは保存対象ではない。帯の頂点は TrailRenderPass がビューごとにプールから借りる。
     /// @note Scene View と Game View で帯の形が違うため、Component に 1 本持たせると奪い合う。
     renderer::ResourceHandle<renderer::TextureTag> texture;
     renderer::ResourceHandle<renderer::ConstantBufferTag> trailCB;
     std::string loadedTexturePath;
-    std::string loadedMaterialPath; ///< materialPath の変更検出用。シーン保存対象外。
+    std::string loadedMaterialPath; ///< @note materialPath の変更検出用。シーン保存対象外。
 
     const char* GetTypeName() const { return "Trail"; }
 
@@ -199,7 +175,7 @@ struct TrailComponent {
 
 /// @brief age (0 = 最古の点, 1 = 最新の点) に対する帯の幅 [ワールド]。
 /// @param easedAge widthEasing を掛けた age。カーブが有効なときは使わない
-///                 (カーブ自身が形を持っているため、二重に曲げない)。
+/// @note (カーブ自身が形を持っているため、二重に曲げない)。
 [[nodiscard]] inline float TrailWidthAt(const TrailComponent& trail, float age, float easedAge)
 {
     if (TrailUsesWidthCurve(trail))
@@ -207,4 +183,4 @@ struct TrailComponent {
     return trail.widthEnd + (trail.widthStart - trail.widthEnd) * easedAge;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

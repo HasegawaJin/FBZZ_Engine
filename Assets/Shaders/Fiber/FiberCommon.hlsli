@@ -137,6 +137,9 @@ float3 FiberContactOffset(float3 root, float3 normal, float height, float time, 
 }
 
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
+FBZZ_TEXCUBE(texFiberIrradiance, TEX_IBL_IRRADIANCE_SLOT);
+FBZZ_TEXCUBE(texFiberPrefilter, TEX_IBL_PREFILTER_SLOT);
+FBZZ_TEX2D_T(float4, texFiberBRDFLut, TEX_IBL_BRDF_LUT_SLOT);
 SamplerComparisonState sampShadow : register(SAMPLER_SHADOW);
 
 float3 FiberNormalize(float3 value, float3 fallback)
@@ -414,6 +417,14 @@ float4 FiberLighting(float3 position, float3 normal, float3 root, float height, 
         lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
     shadow *= FBZZ_ScreenContactShadow(pixel);
     float3 result = color * ambientColor * ao;
+    if (iblIntensity > 0.0f) {
+        /// @note 環境反射は繊維の法線を使う非金属 split-sum 近似。直接光の二葉ローブとは別に評価し、定数環境光を置換する。
+        /// @see Rendering/IBL.hlsli EvaluateIBL の放射照度・AO・鏡面遮蔽の契約。
+        result = EvaluateIBL(position, strandNormal, V, color, 0.0f, clamp(roughness, 0.045f, 1.0f), ao,
+            texFiberIrradiance, texFiberPrefilter, texFiberBRDFLut, iblMaxMipLevel,
+            iblDiffuseScale, iblSpecularScale * max(specularStrength, 0.0f),
+            fiberMaskSampler, fiberFlowSampler) * iblIntensity;
+    }
     result += FiberDirect(N, strandNormal, T, V, L, color, strand, selfShadow, lightColor * lightIntensity * shadow);
     FBZZ_PUNCTUAL_BEGIN(position, pixel, N)
         result += FiberDirect(N, strandNormal, T, V, ps.L, color, strand, selfShadow, ps.color * ps.intensity);

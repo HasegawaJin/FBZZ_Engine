@@ -189,6 +189,22 @@ Fin の CPU キャッシュは静的 VB / IB の世代を鍵にする。同じ�
 
 検証: `Fiber|Cloth|RenderPipeline|SceneSerializer` 98 件が合格。Playtest の画像回帰 (`FiberLifecycle` など) と実機でのフレーム時間の計測は未実施。
 
+## Lifecycle 基準画像の更新 (2026-09-21)
+
+基準画像は初期実装の `d0d08252` で採用したままで、`d5e257f8` の材質・シェーダー変更を反映していなかった。Fur.mat は fiberFrequency / fiberLength / fiberTaper / gravityBend を変更し、clumping / clumpTwist / colorVariation / secondarySpecular / specularShift を追加している。Graphics 分割の前後で実画像は完全一致していたため、描画コードを変更せず現在の材質・描画に基準を合わせた。
+
+10 場面を目視確認し、無効化・材質参照なし・Shell / Fin / Hybrid・1 / 64 層・カリング・設定復帰を確認した。正式シナリオの基準解像度は従来と同じ 1548 × 871、許容値も平均差 0.001 / 不一致画素率 0.005 のまま。シーン・材質・シェーダーは変更していない。
+
+基準更新なしの別プロセスで 93 手順が合格し、全 10 枚が meanDiff = 0 / badPixelRatio = 0、シェーダー診断もエラー 0 件。結果は `Scratch/FiberLifecycleFix/verify/report.json`。任意のエディターレイアウトや別解像度での一致は保証しない。
+
+## 空の IBL との接続 (2026-09-21)
+
+Fiber の色パスは `iblIntensity > 0` の場合、定数の ambientColor を共通の `EvaluateIBL` に置き換える。描画側が既に供給する irradiance / prefilter / BRDF LUT と AdvancedGraphicsConstants を使い、DynamicSky と静的 IBL の同じ設定を受ける。無効時は従来の定数環境光へ戻る。両者は加算しない。
+
+繊維法線と非金属の split-sum による近似で、roughness と specularStrength を環境反射にも反映する。直接光の二葉ローブを環境全体で積分する実装ではない。根元遮蔽と画面 AO は共通関数へ渡し、拡散へ一度だけ掛ける。worldPos を渡すため Light Probe の拡散置換も共通契約に従う。
+
+`FiberSkyLighting.playtest.json` は Sky System と同じ 4 コンポーネントを検証中に追加し、DynamicSky の強度 0 / 4 を撮影する。シーンは保存しない。修正後に毛・草が空の強度へ追従することを目視確認し、強度 0 と空なしの画像は修正前と SHA256 が一致した。両配置先の Fiber シェーダー各 50 ステージがコンパイル成功。既存 FiberLifecycle は基準更新なしで 93 手順合格・10 枚の画素差 0 (`Scratch/FiberIBLRegression/report.json`)。
+
 ## 参考資料
 
 - [GPU Gems 3, Motion Blur as a Post-Processing Effect](https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-motion-blur-post-processing-effect): 現在 / 過去の投影位置による速度。繊維では過去の風変形も独自に再評価する。

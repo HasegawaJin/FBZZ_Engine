@@ -122,6 +122,11 @@ if(MSVC)
 
     # @note <Windows.h> の min / max は std::min / max を C2589 で壊す。include 順に依存させずビルド全体で定義する。
     add_compile_definitions(NOMINMAX)
+
+    # @note ThirdParty/DirectXTex はビルド済み .lib で PDB を同梱しないため、リンクのたびに obj の数だけ LNK4099 が出る。
+    # @note 自前のターゲットは /DEBUG:FULL で必ず PDB を出すので、この警告を落としても失う情報はない。
+    # @see https://learn.microsoft.com/cpp/build/reference/ignore-ignore-warnings "/IGNORE (Ignore Specific Warnings)"
+    add_link_options(/IGNORE:4099)
 endif()
 
 # @note FBZZ_GPU_VALIDATION は D3D 検証レイヤーのコードを積む構成、FBZZ_GPU_VALIDATION_DEFAULT は既定で有効にする構成。
@@ -148,6 +153,8 @@ add_subdirectory(Projects/Physics)
 # @note Fluid は Physics の兄弟で Math しか見ない。
 # @see Docs/design/fluid-library.md
 add_subdirectory(Projects/Fluid)
+add_subdirectory(Projects/Core)
+add_subdirectory(Projects/Graphics)
 add_subdirectory(Projects/Engine)
 add_subdirectory(Projects/Editor)
 add_subdirectory(Projects/EditorLauncher)

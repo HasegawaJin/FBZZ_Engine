@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得るため、更新間隔と
-/// 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
-/// DynamicScene を使う。
-#include "GeometryPasses.hpp"
+/// @note プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得るため、更新間隔と
+/// @note 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
+/// @note DynamicScene を使う。
+#include "RenderScenePassHelpers.hpp"
+#include <Graphics/Effects/RenderProbeInput.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ITexture.hpp>
@@ -54,100 +55,6 @@ void ReleaseProbeTextures(ReflectionProbeComponent& probe, renderer::ResourceMan
     probe.runtimePrefilterMipCount = 0;
 }
 
-void RenderSkyFace(RenderPassContext& ctx, const math::Vector3& position, uint32_t face,
-                   renderer::ResourceHandle<renderer::RenderTargetTag> target, SkyRenderer& sky)
-{
-    auto& h = ctx.handles;
-    auto& resources = ctx.resources;
-    const math::Matrix4 projection = math::Matrix4::Perspective(math::ToRad(90.0f), 1.0f, 0.1f, 500.0f);
-    const math::Matrix4 view = math::Matrix4::LookAt(position, position + kCubeFaces[face].forward, kCubeFaces[face].up);
-    PerFrameCB frame{};
-    frame.view = view;
-    frame.projection = projection;
-    frame.viewProjection = projection * view;
-    frame.invViewProjection = math::Matrix4::Inverse(frame.viewProjection);
-    frame.cameraPos = position;
-    frame.nearZ = 0.1f;
-    frame.farZ = 500.0f;
-    resources.Update(h.skyCaptureFrameCB, &frame, sizeof(frame));
-    ctx.renderer.SetRenderTargetFace(target, face, 0, resources);
-
-    renderer::DrawCall skyCall{};
-    skyCall.vertexBuffer = h.skyVB;
-    skyCall.indexBuffer = h.skyIB;
-    skyCall.indexCount = h.skyIndexCount;
-    skyCall.shader = h.skyShader;
-    skyCall.pipelineState = h.skyPSO;
-    skyCall.constantBuffers[0] = h.skyCaptureFrameCB;
-    skyCall.constantBuffers[3] = h.lightCB;
-    skyCall.constantBuffers[5] = h.postprocCB;
-    skyCall.constantBuffers[6] = h.atmosphereCB;
-    ctx.renderer.Submit(skyCall, resources);
-}
-
-void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
-                     const math::Vector3& position, uint32_t face)
-{
-    /// @note DynamicScene は MeshRenderer の不透明・半透明マテリアルを既存 MaterialComponent 経路で
-    ///       描く。キャプチャ自身は反射へ混入させない。スキンドメッシュ・粒子・UI は時間依存でコストも
-    ///       大きいため対象外とし、必要なら更新間隔を短くした専用プローブを配置する。
-    auto& h = ctx.handles;
-    auto& resources = ctx.resources;
-    const math::Matrix4 projection = math::Matrix4::Perspective(math::ToRad(90.0f), 1.0f, 0.1f, 500.0f);
-    const math::Matrix4 view = math::Matrix4::LookAt(position, position + kCubeFaces[face].forward, kCubeFaces[face].up);
-    PerFrameCB frame{};
-    frame.view = view;
-    frame.projection = projection;
-    frame.viewProjection = projection * view;
-    frame.invViewProjection = math::Matrix4::Inverse(frame.viewProjection);
-    frame.cameraPos = position;
-    frame.nearZ = 0.1f;
-    frame.farZ = 500.0f;
-    resources.Update(h.frameCB, &frame, sizeof(frame));
-
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (&go == &probeObject || !ShouldRenderGameObject(go, ctx.cullingMask)) continue;
-        auto* meshRenderer = go.GetComponent<MeshRenderer>();
-        auto* material = go.GetComponent<MaterialComponent>();
-        if (!meshRenderer || !meshRenderer->enabled || !meshRenderer->lodVisible || !meshRenderer->mesh
-            || !material || !material->EnsureMaterialAsset()) continue;
-        const auto* mesh = meshRenderer->mesh;
-        if (!mesh || mesh->isSkinned || !mesh->vertexBuffer.IsValid() || !mesh->indexBuffer.IsValid()) continue;
-        auto* gpuMaterial = SyncMaterial(*material, resources);
-        if (!gpuMaterial || !gpuMaterial->shader.IsValid()) continue;
-
-        PerObjectCB object{};
-        object.world = go.transform.GetWorldMatrix();
-        object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(object.world);
-        resources.Update(h.objectCB, &object, sizeof(object));
-
-        renderer::DrawCall draw{};
-        draw.vertexBuffer = mesh->vertexBuffer;
-        draw.indexBuffer = mesh->indexBuffer;
-        draw.indexCount = mesh->indexCount;
-        draw.vertexCount = mesh->vertexCount;
-        draw.shader = gpuMaterial->shader;
-        draw.pipelineState = GetOrCreateMaterialPSO(resources, *material);
-        draw.constantBuffers[0] = h.frameCB;
-        draw.constantBuffers[1] = h.objectCB;
-        draw.constantBuffers[2] = gpuMaterial->paramsBuffer;
-        draw.constantBuffers[3] = h.lightCB;
-        draw.constantBuffers[4] = h.shadowCB;
-        for (size_t i = 0; i < gpuMaterial->textures.size() && i < 8; ++i)
-            if (gpuMaterial->textures[i].IsValid()) draw.textures[i] = gpuMaterial->textures[i];
-        draw.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-        /// @note 点光源まわり (b9/t29/t30/b12/t28/t31) を明示的に束縛し直す。定数バッファは直前
-        ///       パスのものが残る一方 SRV はドローごとにクリアされるため、片方だけ残ると影が
-        ///       全て黒 (深度 0) になったり、点光源の本数だけ残って中身がゼロになったりする。
-        ///
-        /// @note forceLinearLights=true でクラスタリングを使わない。ここはキューブ面ごとに
-        ///       プローブ位置から描くため、メインカメラの視錐台向けクラスタリストとは対応が
-        ///       取れず、そのまま使うと画面の別の場所のライトが焼き込まれる。
-        BindForwardShadingResources(draw, ctx, /*forceLinearLights=*/true);
-        ctx.renderer.Submit(draw, resources);
-    }
-}
-
 bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeComponent& probe)
 {
     auto& h = ctx.handles;
@@ -169,11 +76,6 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
     }
     if (!sky) return false;
 
-    resources.Update(h.lightCB, &ctx.lightData, sizeof(ctx.lightData));
-    PostProcCB post{};
-    post.exposure = 1.0f;
-    post.time = Time::time;
-    resources.Update(h.postprocCB, &post, sizeof(post));
     AtmosphereCB atmosphere{};
     atmosphere.rayleighScattering[0] = sky->rayleighScattering.x;
     atmosphere.rayleighScattering[1] = sky->rayleighScattering.y;
@@ -183,30 +85,26 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
     atmosphere.atmosphereRadius = sky->atmosphereRadius;
     atmosphere.sunIntensity = sky->skyScatterIntensity;
     atmosphere.mieG = sky->mieG;
-    resources.Update(h.atmosphereCB, &atmosphere, sizeof(atmosphere));
-
-    for (uint32_t face = 0; face < 6; ++face) {
-        RenderSkyFace(ctx, owner.transform.worldPosition, face, probe.runtimeCubeRT, *sky);
-        if (probe.captureMode == ReflectionProbeCaptureMode::DynamicScene)
-            RenderSceneFace(ctx, owner, owner.transform.worldPosition, face);
-    }
-    ctx.renderer.SetRenderTarget({}, resources);
-
-    constexpr uint32_t kIrradianceSize = 32;
-    constexpr uint32_t kPrefilterMips = 5;
-    std::unique_ptr<renderer::ITexture> irradiance, prefilter;
-    if (!ctx.renderer.BakeSkyLight(probe.runtimeCubeRT, resources, kIrradianceSize,
-        resolution, kPrefilterMips, 128, irradiance, prefilter) || !irradiance || !prefilter) return false;
+    renderer::RenderReflectionProbeInput input;
+    input.position = owner.transform.worldPosition;
+    input.sourceIndex = owner.GetID().index;
+    input.sourceGeneration = owner.GetID().generation;
+    input.captureScene = probe.captureMode == ReflectionProbeCaptureMode::DynamicScene;
+    input.target = probe.runtimeCubeRT;
+    input.resolution = resolution;
+    input.atmosphere = atmosphere;
+    renderer::RenderReflectionProbeResult output;
+    if (!renderer::CaptureReflectionProbe(ctx, input, output)) return false;
     ReleaseProbeTextures(probe, resources);
-    probe.runtimeIrradiance = resources.RegisterTexture(std::move(irradiance));
-    probe.runtimePrefilter = resources.RegisterTexture(std::move(prefilter));
-    probe.runtimePrefilterMipCount = kPrefilterMips;
+    probe.runtimeIrradiance = output.irradiance;
+    probe.runtimePrefilter = output.prefilter;
+    probe.runtimePrefilterMipCount = output.prefilterMipCount;
     probe.lastCaptureTime = Time::time;
     probe.refreshRequested = false;
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx)
 {
@@ -228,4 +126,4 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
     return selected;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

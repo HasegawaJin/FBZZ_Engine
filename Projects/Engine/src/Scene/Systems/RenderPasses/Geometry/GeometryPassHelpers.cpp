@@ -4,6 +4,7 @@
 /// @date    2026-06-18
 #include "GeometryPasses.hpp"
 #include <Engine/Renderer/IPipelineState.hpp>
+#include <Engine/Renderer/RenderVisibility.hpp>
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Asset/MaterialParamBinding.hpp"
@@ -294,51 +295,6 @@ float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go, c
 
 renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
-    renderer::BlendMode        blend,
-    bool                       doubleSided,
-    int32_t                    depthBias,
-    float                      depthBiasSlope,
-    bool                       wireframe)
-{
-    /// @note 両面描画はバックフェースカリングを無効化する。
-    const renderer::RasterizerMode raster = wireframe
-        ? (doubleSided ? renderer::RasterizerMode::WIREFRAME_NOCULL : renderer::RasterizerMode::WIREFRAME)
-        : (doubleSided ? renderer::RasterizerMode::SOLID_NOCULL : renderer::RasterizerMode::SOLID);
-    /// @note 半透明・加算は深度書き込みをオフにし、背後のオブジェクトが透けて見えるようにする。
-    const renderer::DepthMode depth = (blend == renderer::BlendMode::OPAQUE_BLEND)
-        ? renderer::DepthMode::DEPTH_ON
-        : renderer::DepthMode::DEPTH_READ;
-
-    /// @note ビットパッキングは enum 値追加時にサイレントなキー衝突が起きるため、構造体を直接比較する std::map を使う。
-    struct DescLess {
-        bool operator()(const renderer::PipelineStateDesc& a,
-                        const renderer::PipelineStateDesc& b) const noexcept {
-            if (a.rasterizer != b.rasterizer) return a.rasterizer < b.rasterizer;
-            if (a.blend      != b.blend)      return a.blend      < b.blend;
-            if (a.depth      != b.depth)      return a.depth      < b.depth;
-            if (a.depthBias  != b.depthBias)  return a.depthBias  < b.depthBias;
-            return a.depthBiasSlope < b.depthBiasSlope;
-        }
-    };
-    static std::map<renderer::PipelineStateDesc,
-                    renderer::ResourceHandle<renderer::PipelineStateTag>,
-                    DescLess> s_cache;
-    const renderer::PipelineStateDesc desc{ raster, blend, depth, depthBias, depthBiasSlope };
-    auto it = s_cache.find(desc);
-    if (it != s_cache.end()) {
-        /// @note Reset や別 ResourceManager で同じ番号が再利用されても、失効・別設定の PSO を返さない。
-        if (const auto* existing = resources.Get(it->second)) {
-            const auto& cached = existing->GetDesc();
-            if (!DescLess{}(cached, desc) && !DescLess{}(desc, cached)) return it->second;
-        }
-    }
-    auto handle = resources.CreatePipelineState(desc);
-    s_cache[desc] = handle;
-    return handle;
-}
-
-renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
-    renderer::ResourceManager& resources,
     const MaterialSlot&        slot,
     bool                      wireframe)
 {
@@ -352,8 +308,8 @@ bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask)
 }
 
 /// @note かつてここに IsForwardOnly があった。GBuffer に入れるかどうかの判断は
-///       ResolveGeometryRoute (Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp) が唯一の正本。
-///       判定が 2 つあると片方だけ古くなり、物が二重に描かれるか黙って消える。
+/// @note ResolveGeometryRoute (Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp) が唯一の正本。
+/// @note 判定が 2 つあると片方だけ古くなり、物が二重に描かれるか黙って消える。
 /// @see Docs/design/pipeline-boundary.md
 
 bool IsSurfaceMaterial(const MaterialSlot& mc)
@@ -368,121 +324,6 @@ bool IsSurfaceMaterial(const MaterialSlot& mc)
 }
 
 /// @name カリング ヘルパー
-
-void UpdateShadowConstants(RenderPassContext& ctx)
-{
-    const auto& rs = ctx.settings;
-    ShadowConstantsCB data{};
-
-    /// @note 全カスケードが共有する 1 枚のアトラスなので、テクセルサイズはアトラス全体基準。
-    /// @note カスケード内 UV → アトラス UV への写像は HLSL 側 (cascadeAtlasRect) が行う。
-    const float texel = 1.0f / static_cast<float>((std::max)(rs.shadow.mapResolution, 1u));
-    data.shadowMapTexelSize[0] = texel;
-    data.shadowMapTexelSize[1] = texel;
-
-    const int count = std::clamp(ctx.shadowCascadeCount, 1, renderer::kMaxShadowCascades);
-    data.cascadeCount     = count;
-    data.cascadeBlend     = std::clamp(rs.shadow.cascadeBlend, 0.0f, 0.5f);
-    /// @note 可視化は分割している時だけ意味がある。1 分割で有効なままだと画面全体が
-    /// @note カスケード 0 の色に染まるだけなので、ここで落とす。
-    data.cascadeDebugView = (rs.shadow.debugVisualizeCascades && count > 1) ? 1 : 0;
-
-    float bias[renderer::kMaxShadowCascades] = {};
-    for (int i = 0; i < renderer::kMaxShadowCascades; ++i) {
-        /// @note 未使用スロットは最遠カスケードで埋める。HLSL 側は cascadeCount までしか
-        /// @note 見ないが、未初期化の行列が残ると RenderDoc 等で追うときに紛らわしい。
-        const ShadowCascade& cascade = ctx.shadowCascades[(i < count) ? i : count - 1];
-        data.cascadeViewProjection[i] = cascade.viewProjection;
-        data.cascadeAtlasRect[i]      = cascade.atlasRect;
-        bias[i]                       = cascade.biasNDC;
-    }
-    data.cascadeBias = { bias[0], bias[1], bias[2], bias[3] };
-
-    /// @note 単一のライト行列で足りるパス向け (= 最遠カスケード)。
-    /// @note cascadeCount == 1 のときはカスケード 0 と同一なので、従来の単一シャドウマップ経路と一致する。
-    data.lightViewProjection = ctx.lightVP;
-    data.shadowBias          = ctx.shadowBiasNDC;
-    data.shadowStrength      = ctx.shadowStrength;
-    data.shadowPcfRadius     = rs.shadow.pcfRadius;
-
-    data.cloudShadowStrength = ctx.cloudShadowStrength;
-    data.cloudShadowCoverage = ctx.cloudShadowCoverage;
-    data.cloudShadowScale    = ctx.cloudShadowScale;
-    data.cloudShadowSpeed    = ctx.cloudShadowSpeed;
-    data.cloudShadowTime     = ctx.cloudShadowTime;
-    data.cloudShadowWindX    = ctx.cloudShadowWindX;
-    data.cloudShadowWindZ    = ctx.cloudShadowWindZ;
-
-    ctx.resources.Update(ctx.handles.shadowCB, &data, sizeof(ShadowConstantsCB));
-}
-
-void UpdatePunctualShadowConstants(RenderPassContext& ctx)
-{
-    if (!ctx.handles.punctualShadowCB.IsValid()) return;
-
-    const auto& rs = ctx.settings;
-    PunctualShadowConstantsCB data{};
-
-    /// @note 全スロットが 1 枚のアトラスを共有するので、テクセルサイズはアトラス全体基準。
-    /// @note タイル内 UV → アトラス UV への写像は HLSL 側 (punctualShadowRect) が行う。
-    const float texel =
-        1.0f / static_cast<float>((std::max)(ctx.punctualShadowResolution, 1u));
-    data.punctualShadowTexel[0] = texel;
-    data.punctualShadowTexel[1] = texel;
-    data.punctualShadowPcf      = std::clamp(rs.shadow.punctualPcfRadius, 0, 3);
-
-    /// @note 未使用スロットは 0 のまま残す。HLSL 側は punctualShadowCount までしか見ない。
-    const int count = std::clamp(ctx.punctualShadowViewCount, 0, kMaxPunctualShadows);
-    data.punctualShadowCount = count;
-    for (int i = 0; i < count; ++i) {
-        const PunctualShadowView& view = ctx.punctualShadowViews[i];
-        data.punctualShadowVP[i]     = view.viewProjection;
-        data.punctualShadowRect[i]   = view.atlasRect;
-        data.punctualShadowParams[i] =
-            { view.biasNDC, view.shadowStrength, view.penumbraTexels, 0.0f };
-    }
-
-    data.lightCookieTexel[0] = 1.0f / static_cast<float>(kLightCookieAtlasWidth);
-    data.lightCookieTexel[1] = 1.0f / static_cast<float>(kLightCookieAtlasHeight);
-    const int cookieCount = std::clamp(ctx.lightCookieViewCount, 0, kMaxLightCookies);
-    data.lightCookieCount = cookieCount;
-    for (int i = 0; i < cookieCount; ++i) {
-        data.lightCookieVP[i]   = ctx.lightCookieViews[i].viewProjection;
-        data.lightCookieRect[i] = ctx.lightCookieViews[i].atlasRect;
-    }
-
-    /// @note レガシー経路の「大きさを持つ光源」。b3 に型が無いので実体ごと載せる。
-    /// @note レイアウトは PunctualShadowConstants.hlsli のコメントと FBZZ_PunctualAt が正本。
-    const int shapedCount = std::clamp(ctx.legacyShapedLightCount, 0, kMaxLegacyShapedLights);
-    data.legacyShapedLightCount = shapedCount;
-    for (int i = 0; i < shapedCount; ++i) {
-        const PunctualLightGPU& a = ctx.legacyShapedLights[i];
-        math::Vector4* dst = &data.legacyShapedLight[i * kLegacyShapedLightStride];
-        dst[0] = { a.position,  a.range };
-        dst[1] = { a.color,     a.intensity };
-        dst[2] = { a.direction, 0.0f };
-        dst[3] = { a.tangent,   a.halfWidth };
-        dst[4] = { a.bitangent, a.halfHeight };
-        /// @note y は両面フラグ。PunctualLightGPU では outerCos の枠に載せてある。
-        /// @note z は影のスロット番号。legacyPunctualSlots は b3 の 12 枠に紐付いた表なので、
-        /// @note b3 に席の無い「大きさを持つ光源」はそこから引けない。空いている枠へ載せる。
-        dst[5] = { static_cast<float>(a.type), a.outerCos,
-                   static_cast<float>(a.shadowIndex), 0.0f };
-    }
-
-    /// @note レガシー経路のスロット番号と光源半径。「無し」は -1 (ctx 側の既定値がそう)。0 は「スロット 0」という有効な番号のため 0 埋めでは済ませられず、影を持たないライトが他のライトのシャドウマップを引いてしまう。
-    for (int i = 0; i < kMaxLegacyPunctualLights; ++i) {
-        data.legacyPunctualSlots[i] = {
-            static_cast<float>(ctx.legacyShadowSlots[i]),
-            static_cast<float>(ctx.legacyCookieSlots[i]),
-            ctx.legacySourceRadius[i],
-            0.0f
-        };
-    }
-
-    ctx.resources.Update(ctx.handles.punctualShadowCB, &data,
-                         sizeof(PunctualShadowConstantsCB));
-}
 
 bool IsReliableOccluder(const renderer::Mesh& mesh)
 {
@@ -610,52 +451,37 @@ float ResolveCullDistance(const RenderPassContext& ctx, int layer)
     return ctx.cullMaxDistance;
 }
 
-/// @brief 距離 → 極小 → 錐台 の順で判定し、落ちた場合は理由の統計を加算して false を返す。
-/// @note 前段ほど計算が安く後段より多くを落とす。距離は減算と内積だけ、極小は除算 1 回、錐台は 6 平面で、逆順にすると遠くて画面に 1 ピクセルも占めないオブジェクトにまで毎フレーム 6 平面テストを通すことになる。
+renderer::RenderCullingView ExtractCullingView(const RenderPassContext& ctx)
+{
+    renderer::RenderCullingView view;
+    view.position = ctx.camera.m_position;
+    view.forward = ctx.cullCameraForward;
+    view.frustum = ctx.frustumCullingEnabled ? ctx.cameraFrustum : nullptr;
+    view.projectionScaleY = ctx.cullProjScaleY;
+    view.smallObjectScreenHeight = ctx.smallObjectScreenHeight;
+    view.distanceSpherical = ctx.cullDistanceSpherical;
+    view.orthographic = ctx.cullOrthographic;
+    return view;
+}
+
 bool TestBoundsVisible(RenderPassContext& ctx, const GameObject& go, const WorldBounds& bounds)
 {
-    /// @note 半径 0 = ComputeBounds 未実行。安全に判定できないので必ず描く。
-    if (bounds.radius <= 0.0f) return true;
-
-    const math::Vector3 toObject = bounds.center - ctx.camera.m_position;
-
-    /// @note 距離カリングと極小判定は同じ距離を使うので 1 回だけ求める。
-    /// @note 球距離モードでも深度距離モードでも「カメラからの前方距離」として扱う。
-    const float distance = ctx.cullDistanceSpherical
-        ? toObject.Length()
-        : math::Vector3::Dot(toObject, ctx.cullCameraForward);
-
-    /// @name 距離カリング
-    /// @note 球の最近点で測る。中心で測ると、大きな地形メッシュが境界をまたいだ瞬間に丸ごと消える。
-    const float cullDistance = ResolveCullDistance(ctx, go.layer);
-    if (cullDistance > 0.0f && distance - bounds.radius > cullDistance) {
+    const renderer::RenderCullingItem item{
+        bounds.center, bounds.radius, ResolveCullDistance(ctx, go.layer)
+    };
+    switch (renderer::EvaluateVisibility(ExtractCullingView(ctx), item)) {
+    case renderer::VisibilityResult::DISTANCE_CULLED:
         ++ctx.statsDistanceCulled;
         return false;
-    }
-
-    /// @name 極小オブジェクトカリング
-    /// @note 画面高さ比 = radius * (1/tan(fovY/2)) / 距離。
-    /// @note 単位は LODLevel::screenRelativeHeight と同じで、LODSystem の projectedHeight と一致する。
-    if (ctx.smallObjectScreenHeight > 0.0f && ctx.cullProjScaleY > 0.0f && distance > 0.0f) {
-        /// @note 平行投影は距離で縮まない。割ってしまうと、引きの大きい正投影カメラでは
-        /// @note ほぼ全オブジェクトが「極小」と判定されて消える。
-        const float screenHeight = ctx.cullOrthographic
-            ? bounds.radius * ctx.cullProjScaleY
-            : bounds.radius * ctx.cullProjScaleY / distance;
-        if (screenHeight < ctx.smallObjectScreenHeight) {
-            ++ctx.statsSmallObjectCulled;
-            return false;
-        }
-    }
-
-    /// @name フラスタムカリング
-    /// @note 錐台未設定 (プローブキャプチャ等の派生コンテキスト) は「カリングしない」に倒す。
-    if (ctx.frustumCullingEnabled && ctx.cameraFrustum &&
-        !ctx.cameraFrustum->IntersectsSphere(bounds.center, bounds.radius)) {
+    case renderer::VisibilityResult::SMALL_OBJECT_CULLED:
+        ++ctx.statsSmallObjectCulled;
+        return false;
+    case renderer::VisibilityResult::FRUSTUM_CULLED:
         ++ctx.statsFrustumCulled;
         return false;
+    case renderer::VisibilityResult::VISIBLE:
+        return true;
     }
-
     return true;
 }
 
@@ -686,14 +512,9 @@ bool IsWithinCullDistance(const RenderPassContext& ctx,
                           const GameObject& go,
                           const WorldBounds& bounds)
 {
-    const float cullDistance = ResolveCullDistance(ctx, go.layer);
-    if (cullDistance <= 0.0f) return true;
-
-    const math::Vector3 toObject = bounds.center - ctx.camera.m_position;
-    const float distance = ctx.cullDistanceSpherical
-        ? toObject.Length()
-        : math::Vector3::Dot(toObject, ctx.cullCameraForward);
-    return distance - bounds.radius <= cullDistance;
+    return renderer::IsWithinDrawDistance(ExtractCullingView(ctx), {
+        bounds.center, bounds.radius, ResolveCullDistance(ctx, go.layer)
+    });
 }
 
 ActiveWeather FindActiveWeather(Scene& scene)
@@ -710,22 +531,6 @@ ActiveWeather FindActiveWeather(Scene& scene)
         break;
     }
     return result;
-}
-
-math::Vector3 ComputeCameraFacingRibbonNormal(
-    const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point)
-{
-    /// @note 帯の面をカメラへ向けるには、幅方向を「進行方向 × 視線方向」に取る。
-    math::Vector3 up = cameraPos - point;
-    if (up.LengthSq() > math::EPSILON * math::EPSILON) up = up.Normalized();
-    else up = math::Vector3::UP;
-    /// @note 進行方向と視線がほぼ平行だと外積が退化して帯が消える。安定な軸へ逃がす。
-    if (std::abs(math::Vector3::Dot(direction, up)) > 0.99f) up = math::Vector3::UP;
-    if (std::abs(math::Vector3::Dot(direction, up)) > 0.99f) up = math::Vector3::RIGHT;
-
-    const math::Vector3 normal = math::Vector3::Cross(direction, up);
-    return normal.LengthSq() > math::EPSILON * math::EPSILON
-        ? normal.Normalized() : math::Vector3::RIGHT;
 }
 
 bool IsEffectTextureSrgb(const std::string& texturePath)

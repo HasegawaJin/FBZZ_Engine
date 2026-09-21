@@ -3,12 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 ///
-/// このタイルは «勾配を格納してミップで平均する» ことで遠景のさざ波を平坦へ収束させる。
-/// 平均が崩れると、水面が遠くで総毛立つ / 逆に一様に傾いた鏡になる、という形でしか表に出ない。
+/// @note このタイルは «勾配を格納してミップで平均する» ことで遠景のさざ波を平坦へ収束させる。
+/// @note 平均が崩れると、水面が遠くで総毛立つ / 逆に一様に傾いた鏡になる、という形でしか表に出ない。
 /// @see Docs/design/water-waves.md
 #include <TestKit/TestKit.hpp>
 
-#include "Scene/Systems/RenderPasses/Geometry/WaterNoiseBake.hpp"
+#include "../../../Graphics/src/Passes/Geometry/WaterNoiseBake.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,16 +17,16 @@
 namespace fbzz::tests {
 namespace {
 
-namespace wn = scene::waternoise;
+namespace wn = renderer::waternoise;
 
-/// タイルは決定的で、焼くのに 512^2 の評価が要る。1 度だけ焼いて全テストで共有する。
+/// @note タイルは決定的で、焼くのに 512^2 の評価が要る。1 度だけ焼いて全テストで共有する。
 const wn::Tile& SharedTile()
 {
     static const wn::Tile tile = wn::BakeDetailTile();
     return tile;
 }
 
-/// 格納された RG を ∂h/∂q へ戻す。シェーダーの WaterNoiseTile と同じ式。
+/// @note 格納された RG を ∂h/∂q へ戻す。シェーダーの WaterNoiseTile と同じ式。
 float DecodeDerivative(std::uint8_t encoded, float scale)
 {
     return (static_cast<float>(encoded) / 255.0f * 2.0f - 1.0f) * scale;
@@ -34,7 +34,7 @@ float DecodeDerivative(std::uint8_t encoded, float scale)
 
 class WaterNoiseBakeTest : public testkit::Fixture {};
 
-} // namespace
+} /// @note namespace
 
 /// @name ノイズそのもの
 
@@ -61,7 +61,7 @@ TEST_F(WaterNoiseBakeTest, GradientNoiseRepeatsExactlyAtThePeriod)
 TEST_F(WaterNoiseBakeTest, GradientNoiseReturnsItsOwnAnalyticDerivative)
 {
     /// @note 勾配は «値を 3 回引いて差分を取る» 代わりに解析で返している。ここがずれると
-    ///       法線だけが静かに間違い、絵では «光り方がおかしい» としか分からない。
+    /// @note 法線だけが静かに間違い、絵では «光り方がおかしい» としか分からない。
     constexpr std::int32_t period = 16;
     constexpr float h = 1.0e-3f;
     for (int i = 0; i < 12; ++i) {
@@ -100,7 +100,7 @@ TEST_F(WaterNoiseBakeTest, MipChainHalvesDownToASingleTexel)
 TEST_F(WaterNoiseBakeTest, EachMipIsTheBoxAverageOfThePreviousLevel)
 {
     /// @note «縮小 = 勾配の平均» が成り立つことが LOD の土台。ここが別のフィルタになると、
-    ///       遠景の水面が «平坦» ではなく «別の傾き» へ収束する。
+    /// @note 遠景の水面が «平坦» ではなく «別の傾き» へ収束する。
     const wn::Tile& tile = SharedTile();
     ASSERT_GE(tile.mips.size(), 2u);
 
@@ -128,7 +128,7 @@ TEST_F(WaterNoiseBakeTest, EachMipIsTheBoxAverageOfThePreviousLevel)
 TEST_F(WaterNoiseBakeTest, TheSmallestMipDecodesToAFlatSurface)
 {
     /// @note 周期関数の勾配は 1 周期で積分するとゼロ。最小ミップ = タイル全体の平均なので、
-    ///       «一番遠い水面» はどの向きにも傾いていない = 鏡になる。
+    /// @note «一番遠い水面» はどの向きにも傾いていない = 鏡になる。
     const wn::Tile& tile = SharedTile();
     const auto& last = tile.mips.back();
     ASSERT_EQ(last.size(), 4u);
@@ -142,7 +142,7 @@ TEST_F(WaterNoiseBakeTest, TheSmallestMipDecodesToAFlatSurface)
 TEST_F(WaterNoiseBakeTest, GradientRmsMatchesTheTargetSoDetailStrengthKeepsItsMeaning)
 {
     /// @note 旧・値ノイズと同じ RMS へ正規化してある。ずれると、ノイズを差し替えただけで
-    ///       既存 .mat の detailStrength が別の強さを意味してしまう。
+    /// @note 既存 .mat の detailStrength が別の強さを意味してしまう。
     const wn::Tile& tile = SharedTile();
     const auto& mip0 = tile.mips.front();
 
@@ -160,7 +160,7 @@ TEST_F(WaterNoiseBakeTest, GradientRmsMatchesTheTargetSoDetailStrengthKeepsItsMe
 TEST_F(WaterNoiseBakeTest, DerivativeScaleIsExactlyTheLargestBakedGradient)
 {
     /// @note 復号係数は «実際に出た最大» でなければならない。大きすぎると 8bit の分解能を捨て、
-    ///       小さいと山と谷が飽和して «平らな筋» になる。最大の成分がちょうど端へ張り付く。
+    /// @note 小さいと山と谷が飽和して «平らな筋» になる。最大の成分がちょうど端へ張り付く。
     const wn::Tile& tile = SharedTile();
     const auto& mip0 = tile.mips.front();
 
@@ -178,4 +178,4 @@ TEST_F(WaterNoiseBakeTest, DerivativeScaleIsExactlyTheLargestBakedGradient)
     EXPECT_TRUE(highest == 255 || lowest == 0) << "lowest=" << lowest << " highest=" << highest;
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

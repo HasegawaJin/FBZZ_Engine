@@ -58,7 +58,7 @@ bool BuildSettingsEqual(const BuildSettings& lhs, const BuildSettings& rhs)
         && ScenesEqual(lhs.scenes, rhs.scenes);
 }
 
-/// フォルダ選択ダイアログ (Win32 SHBrowseForFolder)
+/// @note フォルダ選択ダイアログ (Win32 SHBrowseForFolder)
 bool BrowseForFolder(HWND hwnd, std::string& outPath)
 {
     BROWSEINFOW bi{};
@@ -83,7 +83,7 @@ void RevealInExplorer(const std::string& path)
     ShellExecuteW(nullptr, L"open", L"explorer.exe", wpath.c_str(), nullptr, SW_SHOWNORMAL);
 }
 
-/// プロジェクト相対パスの実体があるか。空パスは「未設定」なので false。
+/// @note プロジェクト相対パスの実体があるか。空パスは「未設定」なので false。
 bool SceneExists(const std::string& projectRoot, const std::string& relativePath)
 {
     if (projectRoot.empty() || relativePath.empty()) return false;
@@ -92,7 +92,7 @@ bool SceneExists(const std::string& projectRoot, const std::string& relativePath
     return util::FileSystem::Exists(util::FileSystem::PathFromUtf8(projectRoot) / p);
 }
 
-/// アイコン 1 枚ぶんのプレビュー枠。texId が無ければ emptyLabel を枠の中央に出す。
+/// @note アイコン 1 枚ぶんのプレビュー枠。texId が無ければ emptyLabel を枠の中央に出す。
 /// @note 市松を敷くのは、アイコンの透明部分が単色背景だと絵の一部に見えてしまうため。
 void IconPreviewBox(void* texId, float side, const char* emptyLabel)
 {
@@ -126,9 +126,9 @@ void IconPreviewBox(void* texId, float side, const char* emptyLabel)
     drawList->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), 3.0f);
 }
 
-} // namespace
+} /// @note namespace
 
-/// 永続化 (EditorSettings 経由)
+/// @note 永続化 (EditorSettings 経由)
 
 void BuildSettingsPanel::OnLoadSettings(const EditorSettings& settings)
 {
@@ -142,7 +142,7 @@ void BuildSettingsPanel::OnSaveSettings(EditorSettings& settings) const
     settings.build = m_settings;
 }
 
-/// 描画
+/// @note 描画
 
 void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -185,7 +185,7 @@ void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
             panel->m_settings = value;
             panel->m_checksValid = false;
             /// @note Undo / Redo も編集と同じ重みで保存要求を出す: 落として開き直したとき、
-            ///       戻したはずの設定が復活していると追跡できない。
+            /// @note 戻したはずの設定が復活していると追跡できない。
             target->requestEditorSettingsSave = true;
         };
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
@@ -207,13 +207,13 @@ void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note チェックはディスクを読むため全変更では作り直さない: 結果が変わるのは構成とシーン一覧だけで、
-    ///       製品名を 1 文字打つたびに build.config を読み直す理由はない。
+    /// @note 製品名を 1 文字打つたびに build.config を読み直す理由はない。
     if (m_settings.developmentBuild != beforeDraw.developmentBuild ||
         !ScenesEqual(m_settings.scenes, beforeDraw.scenes))
         m_checksValid = false;
 }
 
-/// Scenes in Build
+/// @note Scenes in Build
 
 void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
 {
@@ -257,7 +257,7 @@ void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
 
         const bool missing = !SceneExists(ctx.projectRoot, entry.path);
         /// @note 起動シーンに印を付ける: このリストの並びは起動順ではなく、実際の起動シーンは
-        ///       ProjectSettings 側にしかない。印が無いと Unity の慣習で「先頭が開始シーン」と読み違える。
+        /// @note ProjectSettings 側にしかない。印が無いと Unity の慣習で「先頭が開始シーン」と読み違える。
         const bool isStart = !entry.path.empty() && entry.path == startScene;
         const ImVec4 color = missing        ? kErrorColor
                            : isStart        ? kOkColor
@@ -341,7 +341,7 @@ bool BuildSettingsPanel::AddScene(const EditorContext& ctx, const std::string& a
     return true;
 }
 
-/// Output
+/// @note Output
 
 void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
 {
@@ -350,7 +350,7 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 90.0f);
     widgets::InputString("Output Directory", m_settings.outputDirectory);
     /// @note 出力先のチェックはディスクを読むため確定時だけ取り直す。1 文字打つたびに走らせる理由はないが、
-    ///       入れ替えたまま気付かずビルドを押せてもいけない。
+    /// @note 入れ替えたまま気付かずビルドを押せてもいけない。
     if (ImGui::IsItemDeactivatedAfterEdit()) m_checksValid = false;
     ImGui::SameLine();
     if (ImGui::Button("Browse...")) {
@@ -362,7 +362,7 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
     }
 
     /// @note 解決後のパスを出す: 出力先は相対でも絶対でも書けるため、「Builds/MyGame」が実際どこへ
-    ///       出るのかを押す前に確定させる。
+    /// @note 出るのかを押す前に確定させる。
     const std::string resolved =
         util::FileSystem::PathToUtf8(m_settings.ResolveOutputPath(ctx.projectRoot));
     ImGui::TextDisabled("→ %s", resolved.c_str());
@@ -432,7 +432,7 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
         if (!previewPath.empty() && ctx.resources) {
             if (isIco) {
                 /// @note LoadTexture を通さない: 下地の WIC は `.ico` の先頭フレームしか返さない。
-                ///       exe に焼かれるのは «中の全サイズ» なので、代表として面積最大のフレームを自前で展開する。
+                /// @note exe に焼かれるのは «中の全サイズ» なので、代表として面積最大のフレームを自前で展開する。
                 IcoImage image;
                 std::string error;
                 if (DecodeIcoFile(util::FileSystem::PathFromUtf8(previewPath), image, error) &&
@@ -449,7 +449,7 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
     }
 
     /// @note ImTextureID はフレームごとに引き直す。ホットリロードで実体が入れ替わっても
-    ///       古いディスクリプタを掴んだままにしない。
+    /// @note 古いディスクリプタを掴んだままにしない。
     void* texId = (m_iconPreviewTexture.IsValid() && ctx.resources && ctx.imguiRenderer)
         ? ctx.imguiRenderer->GetImTextureID(m_iconPreviewTexture, *ctx.resources)
         : nullptr;
@@ -460,7 +460,7 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
         ImGui::SetTooltip("%s", m_settings.iconPath.c_str());
 
     /// @note 小さい方も並べる: アイコンが潰れるのは 16px のときで、大きいプレビューだけでは気付けない。
-    ///       実際に出る大きさで隣に並べる。
+    /// @note 実際に出る大きさで隣に並べる。
     ImGui::SameLine();
     ImGui::BeginGroup();
     constexpr std::array kPreviewSizes{ 48, 32, 16 };
@@ -481,7 +481,7 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
     ImGui::EndGroup();
 }
 
-/// 事前チェック
+/// @note 事前チェック
 
 void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 {
@@ -498,7 +498,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
     /// @name 出力先
     /// @note Error にする: コミットは出力先を remove_all するため、空欄やデスクトップを指したまま
-    ///       ビルドを押すとそのフォルダが中身ごと消える。
+    /// @note ビルドを押すとそのフォルダが中身ごと消える。
     {
         std::string reason;
         if (m_settings.ValidateOutputPath(ctx.projectRoot, reason)) {
@@ -511,7 +511,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
     /// @name アイコン
     /// @note 事前に読む: 差し替えはコンパイル後にしか走らないため、読めない画像を指したままだと
-    ///       数分かけたビルドがアイコンのためだけに失敗する。
+    /// @note 数分かけたビルドがアイコンのためだけに失敗する。
     if (!m_settings.iconPath.empty()) {
         const std::filesystem::path icon = m_settings.ResolveIconPath(ctx.projectRoot);
         AppIconWriter::SourceInfo info;
@@ -554,8 +554,8 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
     /// @name ランタイム DLL / EngineAssets
     /// @note 未ビルドは警告止まりにする: DLL も EngineAssets も standalone ターゲットの POST_BUILD が
-    ///       置くため、1 度もビルドしていない状態でエラーにすると「DLL が無いからビルドできない /
-    ///       ビルドしないと DLL が来ない」で詰む。
+    /// @note 置くため、1 度もビルドしていない状態でエラーにすると「DLL が無いからビルドできない /
+    /// @note ビルドしないと DLL が来ない」で詰む。
     if (!m_standaloneExeDir.empty()) {
         const std::filesystem::path exeDir = util::FileSystem::PathFromUtf8(m_standaloneExeDir);
         const bool builtOnce = util::FileSystem::Exists(exeDir);
@@ -565,10 +565,10 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
                                  "not staged yet — the build produces them next to the exe" });
         } else {
             /// @note DXC を名指しで見る: DX12 は焼いた `.cso` を読むだけの経路でもリフレクションに
-            ///       `dxcompiler.dll` が要る。無いまま配ると「起動はするが何も描かれない」になる。
+            /// @note `dxcompiler.dll` が要る。無いまま配ると「起動はするが何も描かれない」になる。
             /// @note DX11 撤去後は DXC が全構成で必須になったので、条件付けをやめて常に見る。
             const std::vector<std::wstring> required = {
-                L"imgui.dll", L"FBZZMath.dll", L"FBZZPhysics.dll", L"FBZZEngine.dll",
+                L"imgui.dll", L"FBZZMath.dll", L"FBZZPhysics.dll", L"FBZZFluid.dll", L"FBZZCore.dll", L"FBZZGraphics.dll", L"FBZZEngine.dll",
                 L"assimp-vc145-mt.dll",
                 L"dxcompiler.dll", L"dxil.dll",
             };
@@ -602,8 +602,8 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
     /// @name SDK が選んだ構成で公開されているか
     /// @note SDK は FBZZSDK ターゲットをビルドした構成ぶんしか bin/lib を持たない。Release を公開していない
-    ///       状態で Release ビルドを選ぶと、リンクではなくステージングの copy_directory が落ち、
-    ///       CMake のログだけを見ても理由が読めない。
+    /// @note 状態で Release ビルドを選ぶと、リンクではなくステージングの copy_directory が落ち、
+    /// @note CMake のログだけを見ても理由が読めない。
     if (!ctx.engineRoot.empty()) {
         const std::string configuration = m_settings.developmentBuild ? "Development" : "Release";
         const std::filesystem::path sdkRoot = util::FileSystem::PathFromUtf8(ctx.engineRoot);
@@ -643,8 +643,8 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 std::string BuildSettingsPanel::ResolveStartScene(const EditorContext& ctx) const
 {
     /// @note リスト先頭を開始シーンとしない: ランタイムは Build Settings の並びを見ず、
-    ///       runtime.start_scene (空なら project.default_scene) で決まる。Unity の「index 0」表示を
-    ///       真似ると、並べ替えても起動シーンが変わらない理由が UI から読めなくなる。
+    /// @note runtime.start_scene (空なら project.default_scene) で決まる。Unity の「index 0」表示を
+    /// @note 真似ると、並べ替えても起動シーンが変わらない理由が UI から読めなくなる。
     const GameProjectConfig& game = ctx.projectSettings.game;
     return !game.runtime.startScene.empty() ? game.runtime.startScene
                                             : game.project.defaultScene;
@@ -674,12 +674,12 @@ void BuildSettingsPanel::DrawPackageChecks(EditorContext& ctx)
     }
 }
 
-/// 進捗バー + ビルドボタン
+/// @note 進捗バー + ビルドボタン
 
 void BuildSettingsPanel::StartBuild(EditorContext& ctx, bool runAfterBuild)
 {
     /// @note ここで永続化する: ビルドは分単位で走るため、途中でエディターが落ちたとき
-    ///       「何をビルドしようとしたか」が残っていないと設定からやり直しになる。
+    /// @note 「何をビルドしようとしたか」が残っていないと設定からやり直しになる。
     ctx.requestEditorSettingsSave = true;
 
     m_lastOutputDir = util::FileSystem::PathToUtf8(m_settings.ResolveOutputPath(ctx.projectRoot));
@@ -702,7 +702,7 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
 
 #ifndef NDEBUG
     /// @note Debug / Development エディターでは配布向けでないランタイムが混ざる可能性があるため、
-    ///       公開用パッケージは Release プリセットで作る。
+    /// @note 公開用パッケージは Release プリセットで作る。
     ImGui::TextColored(kWarnColor,
         "[DEV/DEBUG EDITOR] For distribution, switch to the Release preset.");
 #endif
@@ -783,4 +783,4 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

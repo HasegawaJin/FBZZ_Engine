@@ -63,14 +63,19 @@ enum class GeometryRoute : uint8_t {
 アセットを引く部分は呼び出し側に置く。
 
 ```cpp
-struct GeometryRouteInput {
+struct GeometryMaterialInput {
     renderer::BlendMode blend;
-    bool gbufferPipeline;       ///< Deferred / Deferred+ か
     bool gbufferEquivalentShader;
     bool advancedLobe;
 };
-[[nodiscard]] GeometryRoute ResolveGeometryRoute(const GeometryRouteInput& input);
+[[nodiscard]] GeometryRoute ResolveGeometryRoute(
+    const GeometryMaterialInput& material, bool gbufferPipeline);
 ```
+
+型と純粋な振り分けは `Engine/Renderer/GeometryRoute.hpp` の `fbzz::renderer` に置く。
+Engine 側の `scene::ExtractGeometryMaterial` が MaterialSlot と共有アセットから値を抽出し、
+インスタンスのブレンド・ローブ上書きと GUID を解決する。描画方式は入力値へ固定せず、
+同じ抽出結果を Forward と Deferred のビューで使う。既存パス向けの Scene overload は抽出と純粋関数を順に呼ぶ。
 
 ### 2.1 「GBuffer 相当」のシェーダー
 

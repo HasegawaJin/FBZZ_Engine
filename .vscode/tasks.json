@@ -172,7 +172,7 @@
         {
             "label": "CMake: Build Tests (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsFluidAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsCoreManual --target FBZZTestBench",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsFluidAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsGraphicsStandalone --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -180,7 +180,7 @@
         {
             "label": "CMake: Build Tests (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsFluidAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsCoreManual --target FBZZTestBench",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsFluidAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsGraphicsStandalone --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -188,7 +188,7 @@
         {
             "label": "CMake: Build Tests (Release)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsFluidAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsCoreManual --target FBZZTestBench",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsFluidAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsGraphicsStandalone --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -555,6 +555,10 @@
                 {
                     "label": "Fluid — 演算子評価 / GPU ステップ",
                     "value": "FBZZTestsFluidAuto"
+                },
+                {
+                    "label": "Graphics — 単独パイプライン / DX12 描画",
+                    "value": "FBZZTestsGraphicsStandalone"
                 },
                 {
                     "label": "Engine — RagdollRig",

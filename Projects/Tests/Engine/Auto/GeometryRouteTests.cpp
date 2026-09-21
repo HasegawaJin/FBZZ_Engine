@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 ///
-/// この規則が «どれにも当たらない» / «2 つに当たる» になると、物が消えるか二重に描かれる。
-/// どちらも絵を見て原因に辿りつけない壊れ方なので、全組み合わせを機械で押さえる。
+/// @note この規則が «どれにも当たらない» / «2 つに当たる» になると、物が消えるか二重に描かれる。
+/// @note どちらも絵を見て原因に辿りつけない壊れ方なので、全組み合わせを機械で押さえる。
 ///
 /// @see Docs/design/pipeline-boundary.md
 #include <TestKit/TestKit.hpp>
@@ -14,16 +14,15 @@
 namespace fbzz::tests {
 namespace {
 
-using scene::GeometryRoute;
-using scene::GeometryRouteInput;
-using scene::ResolveGeometryRoute;
+using renderer::GeometryRoute;
+using renderer::GeometryMaterialInput;
+using renderer::ResolveGeometryRoute;
 
 /// @brief GBuffer へ入る条件を満たした入力。各テストはここから 1 つだけ崩す。
-constexpr GeometryRouteInput GBufferBound()
+constexpr GeometryMaterialInput GBufferBound()
 {
-    GeometryRouteInput input;
+    GeometryMaterialInput input;
     input.blend                   = renderer::BlendMode::OPAQUE_BLEND;
-    input.gbufferPipeline         = true;
     input.gbufferEquivalentShader = true;
     input.advancedLobe            = false;
     return input;
@@ -33,57 +32,55 @@ class GeometryRouteTest : public testkit::Fixture {};
 
 TEST_F(GeometryRouteTest, StandardOpaqueMaterialGoesToTheGBuffer)
 {
-    EXPECT_EQ(ResolveGeometryRoute(GBufferBound()), GeometryRoute::GBuffer);
+    EXPECT_EQ(ResolveGeometryRoute(GBufferBound(), true), GeometryRoute::GBuffer);
 }
 
-/// 半透明は GBuffer が表せない。他の条件が何であっても必ず透明経路。
+/// @note 半透明は GBuffer が表せない。他の条件が何であっても必ず透明経路。
 TEST_F(GeometryRouteTest, TransparencyAlwaysWins)
 {
     for (const auto blend : { renderer::BlendMode::ALPHA_BLEND,
                               renderer::BlendMode::ADDITIVE,
                               renderer::BlendMode::PREMULTIPLIED }) {
-        GeometryRouteInput input = GBufferBound();
+        GeometryMaterialInput input = GBufferBound();
         input.blend = blend;
-        EXPECT_EQ(ResolveGeometryRoute(input), GeometryRoute::ForwardTransparent);
+        EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardTransparent);
 
         /// @note シェーダーが GBuffer 相当でなくても、拡張ローブがあっても、判定は変わらない。
         input.gbufferEquivalentShader = false;
         input.advancedLobe            = true;
-        EXPECT_EQ(ResolveGeometryRoute(input), GeometryRoute::ForwardTransparent);
+        EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardTransparent);
 
         /// @note Forward パイプラインでも «半透明» であることは変わらない。深度順に描く必要がある。
-        input.gbufferPipeline = false;
-        EXPECT_EQ(ResolveGeometryRoute(input), GeometryRoute::ForwardTransparent);
+        EXPECT_EQ(ResolveGeometryRoute(input, false), GeometryRoute::ForwardTransparent);
     }
 }
 
-/// Forward パイプラインには GBuffer が無いので、不透明はすべて ForwardOpaque。
+/// @note Forward パイプラインには GBuffer が無いので、不透明はすべて ForwardOpaque。
 TEST_F(GeometryRouteTest, ForwardPipelineNeverProducesGBufferRoute)
 {
-    GeometryRouteInput input = GBufferBound();
-    input.gbufferPipeline = false;
-    EXPECT_EQ(ResolveGeometryRoute(input), GeometryRoute::ForwardOpaque);
+    GeometryMaterialInput input = GBufferBound();
+    EXPECT_EQ(ResolveGeometryRoute(input, false), GeometryRoute::ForwardOpaque);
 }
 
-/// GBuffer パスは材質のシェーダーを捨てて GBuffer.hlsl で描く。
-/// 知らないシェーダーを通すと、そのシェーディングモデルが黙って PBR に化ける。
+/// @note GBuffer パスは材質のシェーダーを捨てて GBuffer.hlsl で描く。
+/// @note 知らないシェーダーを通すと、そのシェーディングモデルが黙って PBR に化ける。
 TEST_F(GeometryRouteTest, UnknownShaderStaysForward)
 {
-    GeometryRouteInput input = GBufferBound();
+    GeometryMaterialInput input = GBufferBound();
     input.gbufferEquivalentShader = false;
-    EXPECT_EQ(ResolveGeometryRoute(input), GeometryRoute::ForwardOpaque);
+    EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardOpaque);
 }
 
-/// 拡張ローブは GBuffer 2 枚に接線基底ごと入らない。
+/// @note 拡張ローブは GBuffer 2 枚に接線基底ごと入らない。
 TEST_F(GeometryRouteTest, AdvancedLobeStaysForward)
 {
-    GeometryRouteInput input = GBufferBound();
+    GeometryMaterialInput input = GBufferBound();
     input.advancedLobe = true;
-    EXPECT_EQ(ResolveGeometryRoute(input), GeometryRoute::ForwardOpaque);
+    EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardOpaque);
 }
 
-/// 4 つのフラグの全組み合わせで、必ずどれか 1 つの経路に落ちること。
-/// 規則に穴 (どれにも当たらない) も重なり (2 つに当たる) も無いことの表明。
+/// @note 4 つのフラグの全組み合わせで、必ずどれか 1 つの経路に落ちること。
+/// @note 規則に穴 (どれにも当たらない) も重なり (2 つに当たる) も無いことの表明。
 TEST_F(GeometryRouteTest, EveryCombinationResolvesToExactlyOneRoute)
 {
     int gbuffer = 0, forwardOpaque = 0, forwardTransparent = 0;
@@ -93,13 +90,12 @@ TEST_F(GeometryRouteTest, EveryCombinationResolvesToExactlyOneRoute)
         for (const bool pipeline : { false, true }) {
             for (const bool equivalent : { false, true }) {
                 for (const bool advanced : { false, true }) {
-                    GeometryRouteInput input;
+                    GeometryMaterialInput input;
                     input.blend                   = blend;
-                    input.gbufferPipeline         = pipeline;
                     input.gbufferEquivalentShader = equivalent;
                     input.advancedLobe            = advanced;
 
-                    switch (ResolveGeometryRoute(input)) {
+                    switch (ResolveGeometryRoute(input, pipeline)) {
                     case GeometryRoute::GBuffer:            ++gbuffer;            break;
                     case GeometryRoute::ForwardOpaque:      ++forwardOpaque;      break;
                     case GeometryRoute::ForwardTransparent: ++forwardTransparent; break;
@@ -117,8 +113,8 @@ TEST_F(GeometryRouteTest, EveryCombinationResolvesToExactlyOneRoute)
     EXPECT_EQ(forwardOpaque, 7);
 }
 
-/// 空欄は «既定の材質» で、実際には Fallback (標準 PBR 相当) が使われる。
-/// ここを Forward に倒していたのが、Deferred なのに GBuffer がほとんど空だった原因。
+/// @note 空欄は «既定の材質» で、実際には Fallback (標準 PBR 相当) が使われる。
+/// @note ここを Forward に倒していたのが、Deferred なのに GBuffer がほとんど空だった原因。
 TEST_F(GeometryRouteTest, EmptyShaderPathCountsAsGBufferEquivalent)
 {
     EXPECT_TRUE(scene::IsGBufferEquivalentShader(""));
@@ -137,7 +133,7 @@ TEST_F(GeometryRouteTest, StandardPbrShadersAreGBufferEquivalent)
         "GreenWare/Assets/Shaders/Material/Surface/PBR.hlsl"));
 }
 
-/// シェーディングモデルが PBR でないものは、不透明でも GBuffer へ入れない。
+/// @note シェーディングモデルが PBR でないものは、不透明でも GBuffer へ入れない。
 TEST_F(GeometryRouteTest, NonPbrLightingModelsAreNotGBufferEquivalent)
 {
     for (const char* path : { "Assets/Shaders/Material/Surface/Unlit.hlsl",
@@ -153,7 +149,7 @@ TEST_F(GeometryRouteTest, NonPbrLightingModelsAreNotGBufferEquivalent)
     }
 }
 
-/// プロジェクトが自分で書いたシェーダーは «知らないもの» なので Forward へ倒れること。
+/// @note プロジェクトが自分で書いたシェーダーは «知らないもの» なので Forward へ倒れること。
 TEST_F(GeometryRouteTest, ProjectAuthoredShadersAreNotGBufferEquivalent)
 {
     EXPECT_FALSE(scene::IsGBufferEquivalentShader(
@@ -162,5 +158,5 @@ TEST_F(GeometryRouteTest, ProjectAuthoredShadersAreNotGBufferEquivalent)
         "GreenWare/Assets/Shaders/Material/Skinned/SkinnedBladeSteel.hlsl"));
 }
 
-} // namespace
-} // namespace fbzz::tests
+} /// @note namespace
+} /// @note namespace fbzz::tests
