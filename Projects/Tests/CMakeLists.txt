@@ -43,6 +43,7 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Logger/LoggerTests.cpp
         Core/Auto/Profiler/ProfilerTests.cpp
         Core/Auto/Util/FileSystemTests.cpp
+        Core/Auto/Util/TempDirTests.cpp
         Core/Auto/CrashHandler/CrashHandlerTests.cpp
         Core/Auto/CrashHandler/CrashHandlerInstallTests.cpp
         Core/Auto/CrashHandler/CrashLogTailTests.cpp
