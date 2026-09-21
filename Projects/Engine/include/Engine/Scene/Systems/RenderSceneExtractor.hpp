@@ -8,6 +8,10 @@
 namespace fbzz::scene {
 class Scene;
 struct RenderPassContext;
+/// @return 品質要求用の投影直径 [px]。境界・射影が不明なら 0 (最高品質)。
+[[nodiscard]] float EstimateRenderTexturePixels(const renderer::RenderObject& object,
+    const renderer::RenderMeshItem& item, const math::Vector3& cameraPosition,
+    float projectionScaleY, uint32_t height, bool orthographic);
 
 /// @note 更新・スキニング完了後に呼ぶ。GPU 操作と材質ロードを行わず、全レイヤーの候補を抽出する。
 [[nodiscard]] renderer::RenderScene ExtractRenderSceneGeometry(

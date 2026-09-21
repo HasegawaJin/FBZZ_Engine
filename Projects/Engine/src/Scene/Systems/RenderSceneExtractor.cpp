@@ -183,6 +183,18 @@ renderer::RenderScene ExtractRenderSceneGeometry(Scene& scene, uint64_t frameSta
     return output;
 }
 
+float EstimateRenderTexturePixels(const renderer::RenderObject& object,
+    const renderer::RenderMeshItem& item, const math::Vector3& cameraPosition,
+    float projectionScaleY, uint32_t height, bool orthographic)
+{
+    const auto center = object.skinned ? object.boundsCenter : item.boundsCenter;
+    const float radius = object.skinned ? object.boundsRadius : item.boundsRadius;
+    if (!(projectionScaleY > 0.0f) || !(radius > 0.0f) || height == 0) return 0.0f;
+    const float distance = (center - cameraPosition).Length();
+    if (!orthographic && distance <= radius) return static_cast<float>(height);
+    return radius * projectionScaleY * static_cast<float>(height) / (orthographic ? 1.0f : distance);
+}
+
 void ExtractRenderScene(RenderPassContext& ctx)
 {
     ctx.frameStamp = ctx.resources.FrameStamp();
@@ -214,13 +226,10 @@ void ExtractRenderScene(RenderPassContext& ctx)
             float screenPixels = 0.0f;
             const bool projectedTextureRequest = !ctx.isDeferred ||
                 renderer::ResolveGeometryRoute(material.capabilities, true) == renderer::GeometryRoute::GBuffer;
-            if (!object.skinned && projectedTextureRequest && ctx.cullProjScaleY > 0.0f && item.boundsRadius > 0.0f) {
-                const float distance = (item.boundsCenter - ctx.camera.m_position).Length();
-                screenPixels = !ctx.cullOrthographic && distance <= item.boundsRadius
-                    ? static_cast<float>(ctx.height)
-                    : item.boundsRadius * ctx.cullProjScaleY * static_cast<float>(ctx.height) /
-                        (ctx.cullOrthographic ? 1.0f : distance);
-            }
+            /// @note スキンドメッシュはアニメーション姿勢を含む物体全体の境界を使い、参照姿勢の submesh 境界へ戻さない。
+            if (projectedTextureRequest)
+                screenPixels = EstimateRenderTexturePixels(object, item, ctx.camera.m_position,
+                    ctx.cullProjScaleY, ctx.height, ctx.cullOrthographic);
             const auto* source = SyncMaterialSlot(*component, item.materialSlot, ctx.resources,
                                                    object.skinned, screenPixels);
             CopyMaterial(material, source, ctx.resources);
