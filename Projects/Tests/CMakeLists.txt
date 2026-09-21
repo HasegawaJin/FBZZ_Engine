@@ -148,6 +148,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/UuidTests.cpp
         Engine/Auto/AnimationSamplingTests.cpp
         Engine/Auto/AudioBusTests.cpp
+        Engine/Auto/AudioStreamingTests.cpp
         Engine/Auto/BlackboardTests.cpp
         Engine/Auto/ComponentArrayTests.cpp
         Engine/Auto/FzAssetFormatTests.cpp

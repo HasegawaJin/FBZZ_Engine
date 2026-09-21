@@ -10,15 +10,19 @@
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 namespace fbzz::audio
 {
+class XAudio2Stream;
 
-/// COM / XAudio2 の寿命管理をこのクラスに閉じ込め、上位は IAudioDevice だけを見る。
-/// 終了済み voice は PurgeFinishedVoices で回収する。
+/// @note COM / XAudio2 の寿命管理をこのクラスに閉じ込め、上位は IAudioDevice だけを見る。
+/// @note 終了済み voice は PurgeFinishedVoices で回収する。
 class XAudio2Device : public IAudioDevice
 {
 public:
+    XAudio2Device();
+    ~XAudio2Device() override;
     bool Init()     override;
     void Shutdown() override;
 
@@ -31,6 +35,7 @@ public:
     [[nodiscard]] uint32_t PlayBuffer(
         const void* pcmData, size_t bytes,
         const WaveFormat& fmt, bool loop, BusIndex bus) override;
+    [[nodiscard]] uint32_t PlayStream(const std::string& path, bool loop, BusIndex bus) override;
 
     void StopBuffer(uint32_t voiceId)             override;
     void PauseBuffer(uint32_t voiceId)            override;
@@ -38,11 +43,12 @@ public:
     void SetVolume(uint32_t voiceId, float volume) override;
     void SetPitch(uint32_t voiceId, float pitch) override;
     void SetPan(uint32_t voiceId, float pan) override;
+    void SetSend(uint32_t voiceId, BusIndex bus, float level) override;
     void SetLowPass(uint32_t voiceId, float normalizedCutoff) override;
     [[nodiscard]] bool IsPlaying(uint32_t voiceId) override;
 
 private:
-    /// 鳴り終わった voice を «畳まずに» プールへ戻すための鍵。
+    /// @note 鳴り終わった voice を «畳まずに» プールへ戻すための鍵。
     /// @note 送り先 (バス) は CreateSourceVoice の引数で、後から変えるには SetOutputVoices というオーディオ処理の合間を待つ呼び出しが要るため、«同じバス宛» だけを再利用する。
     struct VoiceKey
     {
@@ -64,8 +70,7 @@ private:
             std::size_t hash = key.sampleRate;
             hash = hash * 131u + key.channels;
             hash = hash * 131u + key.bitsPerSample;
-            hash = hash * 131u + static_cast<std::size_t>(
-                reinterpret_cast<std::uintptr_t>(key.destination) >> 4);
+            hash = hash * 131u + std::hash<IXAudio2Voice*>{}(key.destination);
             return hash;
         }
     };
@@ -78,13 +83,20 @@ private:
         /// @note パンの出力行列はこの voice の実際の送り先に対して設定する。バス導入後もマスターへ書くと送り先が違うため何も起きない。
         IXAudio2Voice*       destination = nullptr;
         uint32_t             destinationChannels = 0;
-        /// 鳴り終わったときにどのプールへ返すか。
+        /// @note 鳴り終わったときにどのプールへ返すか。
         VoiceKey             key{};
+        IXAudio2Voice*       sendDestination = nullptr;
+        float sendLevel = 0.0f;
+        float pan = 0.0f;
+        std::vector<float> mainMatrix;
+        std::vector<float> sendMatrix;
+        std::unique_ptr<XAudio2Stream> stream;
     };
 
-    /// 鳴り終わった voice をプールへ戻す (溢れていれば畳む)。
+    /// @note 鳴り終わった voice をプールへ戻す (溢れていれば畳む)。
     void RecycleVoice(const VoiceEntry& entry);
-    /// 同じ形式・同じ送り先の voice をプールから取る。無ければ nullptr。
+    void ApplyOutputMatrices(VoiceEntry& entry);
+    /// @note 同じ形式・同じ送り先の voice をプールから取る。無ければ nullptr。
     [[nodiscard]] IXAudio2SourceVoice* TakePooledVoice(const VoiceKey& key);
 
     void PurgeFinishedVoices();
@@ -99,7 +111,7 @@ private:
     /// @note CoInitializeEx 成功時だけ CoUninitialize を対にし、初期化途中の失敗でも安全に後始末する。
     bool                             m_comInitialized = false;
 
-    /// 1 本のバス。effect スロット 0 が残響で、持たないバスでは hasReverb が false。
+    /// @note 1 本のバス。effect スロット 0 が残響で、持たないバスでは hasReverb が false。
     struct BusEntry
     {
         IXAudio2SubmixVoice* voice         = nullptr;
@@ -107,14 +119,14 @@ private:
         bool                 reverbEnabled = false;
     };
 
-    std::vector<BusEntry> m_buses;   ///< 添字は BusIndex。先頭が Master。
+    std::vector<BusEntry> m_buses;   ///< @note 添字は BusIndex。先頭が Master。
 
     uint32_t                                 m_nextId = 1;
     std::unordered_map<uint32_t, VoiceEntry> m_voices;
 
-    static constexpr std::size_t kMaxPooledPerKey = 16;   ///< 1 鍵あたりの上限。«同じ音が同時に何本鳴るか» で足りる。
+    static constexpr std::size_t kMaxPooledPerKey = 16;   ///< @note 1 鍵あたりの上限。«同じ音が同時に何本鳴るか» で足りる。
     /// @brief 鳴り終わった voice の置き場。形式と送り先が同じものだけを積む。
     std::unordered_map<VoiceKey, std::vector<IXAudio2SourceVoice*>, VoiceKeyHash> m_voicePool;
 };
 
-} // namespace fbzz::audio
+} /// @note namespace fbzz::audio
