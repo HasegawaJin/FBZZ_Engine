@@ -2,12 +2,13 @@
 /// @brief   Start() でビルドを開始し、Tick() を毎フレーム呼んで進める。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
-///
+
 /// @note 各ステップの詳細は BuildPipeline.hpp のコメントを参照。
 #include <Editor/BuildPipeline.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AppIconWriter.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/TextureStreamCache.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <toml++/toml.hpp>
@@ -693,6 +694,8 @@ void BuildPipeline::BeginEnumerateFiles()
         for (const std::filesystem::path& src : util::FileSystem::ListFilesRecursive(srcDir)) {
             const std::filesystem::path rel = util::FileSystem::RelativePath(src, srcDir);
             if (rel.empty()) continue;
+            /// @note 配布先の元画像に合わせて再生成するため、既存のストリームキャッシュはコピーしない。
+            if (LowerUtf8(src.extension()) == ".fztc") continue;
             if (applyFilter && ShouldSkipAsset(src, rel)) { ++stats.filtered; continue; }
             if (!shadowRoot.empty() && util::FileSystem::Exists(shadowRoot / rel)) {
                 ++stats.shadowed;
@@ -748,6 +751,11 @@ bool BuildPipeline::TickCopyOneFile()
     const CopyJob& job = m_copyJobs[m_copyIdx];
     if (!util::FileSystem::CopyFile(job.src, job.dst)) {
         SetFailed("Failed to copy file: " + util::FileSystem::PathToUtf8(job.src));
+        return false;
+    }
+    std::string cacheError;
+    if (!asset::texturecache::BakeDistributionTexture(util::FileSystem::PathToUtf8(job.dst), cacheError)) {
+        SetFailed("Failed to bake streaming texture: " + cacheError);
         return false;
     }
     ++m_copyIdx;
