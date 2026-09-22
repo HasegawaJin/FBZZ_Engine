@@ -7,16 +7,17 @@
 #include <atomic>
 #include <string>
 #include <system_error>
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 
 namespace fbzz::testkit {
 
 namespace {
 
-/// 同一プロセス内で名前が衝突しないための連番。
-/// プロセス間の衝突は temp_directory_path 側のユーザー分離に任せる。
+/// @note CTest は同じユーザーで別プロセスを並列実行するため、PID と連番の両方で分離する。
 std::atomic<unsigned> g_counter{0};
 
-} // namespace
+}
 
 TempDir::TempDir(const std::string& label)
 {
@@ -24,11 +25,14 @@ TempDir::TempDir(const std::string& label)
     const auto      base = std::filesystem::temp_directory_path(ec);
     if (ec) return;
 
-    const unsigned serial = g_counter.fetch_add(1, std::memory_order_relaxed);
-    m_path = base / ("fbzz_test_" + label + "_" + std::to_string(serial));
-
-    std::filesystem::remove_all(m_path, ec);
-    m_valid = std::filesystem::create_directories(m_path, ec) && !ec;
+    const auto prefix = "fbzz_test_" + label + "_" + std::to_string(GetCurrentProcessId()) + "_";
+    for (;;) {
+        const unsigned serial = g_counter.fetch_add(1, std::memory_order_relaxed);
+        m_path = base / (prefix + std::to_string(serial));
+        /// @note PID 再利用後の残骸も削除しない。作成に成功したディレクトリだけを所有する。
+        m_valid = std::filesystem::create_directory(m_path, ec);
+        if (m_valid || ec) return;
+    }
 }
 
 TempDir::~TempDir()
@@ -38,4 +42,4 @@ TempDir::~TempDir()
     std::filesystem::remove_all(m_path, ec);
 }
 
-} // namespace fbzz::testkit
+}

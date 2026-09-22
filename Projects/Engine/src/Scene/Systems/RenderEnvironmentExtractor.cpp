@@ -178,7 +178,7 @@ renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& ctx)
         result.waveFreq    = getF("causticsWaveFreq", totalAmp > math::EPSILON ? weightedWaveFreq / totalAmp : 0.12f);
         result.waveSpeed   = getF("causticsWaveSpeed", 1.0f);
         const auto texturePath = getTex("causticsTex");
-        result.texture = texturePath.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : ctx.resources.LoadTexture(texturePath);
+        result.texture = texturePath.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : asset::StreamedTextureResolver::Engine().ResolveGpu(ctx.resources, texturePath);
     }
     return result;
 }

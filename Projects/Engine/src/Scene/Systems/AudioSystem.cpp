@@ -20,20 +20,22 @@
 namespace fbzz::scene {
 namespace {
 
-/// 乾いた 20°C の空気での音速 (m/s)。Doppler の基準。
+/// @note 乾いた 20°C の空気での音速 (m/s)。Doppler の基準。
 constexpr float kSpeedOfSound = 343.0f;
 
-/// 背後の音を曇らせる量。左右のパンだけでは前後が区別できない。
-/// 音量を変えないのは、振り向くたびに大きさが変わると距離を見誤るため。
+/// @note 背後の音を曇らせる量。左右のパンだけでは前後が区別できない。
+/// @note 音量を変えないのは、振り向くたびに大きさが変わると距離を見誤るため。
 constexpr float kBehindDamping = 0.2f;
 
-/// 音源に付いたコンポーネントから決まる補正。
+/// @note 音源に付いたコンポーネントから決まる補正。
 struct SourceEffects {
     float gain    = 1.0f;
     float lowPass = 1.0f;
+    std::string_view sendBus;
+    float sendLevel = 0.0f;
 };
 
-} // namespace
+} /// @note namespace
 
 ComponentAccess AudioSystem::GetAccess() const
 {
@@ -161,8 +163,10 @@ void AudioSystem::Update(SystemContext& ctx)
         if (!sourceObject) return effects;
 
         if (const auto* send = sourceObject->GetComponent<AudioMixerSendComponent>();
-            send && send->enabled)
-            effects.gain *= std::clamp(send->sendLevel, 0.0f, 1.0f);
+            send && send->enabled) {
+            effects.sendBus = send->busName;
+            effects.sendLevel = send->sendLevel;
+        }
 
         auto* occlusion = sourceObject->GetComponent<AudioOcclusionComponent>();
         if (!occlusion || !occlusion->enabled || !listenerTransform) return effects;
@@ -224,6 +228,7 @@ void AudioSystem::Update(SystemContext& ctx)
                          * attenuation * listenerVolume * effects.gain);
         audioManager.SetVoicePitch(voiceId, pitch);
         audioManager.SetVoicePan(voiceId, pan);
+        audioManager.SetVoiceSend(voiceId, effects.sendBus, effects.sendLevel);
         audioManager.SetVoiceLowPass(voiceId, (std::min)(lowPass, effects.lowPass));
     };
 
@@ -290,6 +295,7 @@ void AudioSystem::Update(SystemContext& ctx)
         const audio::BusIndex bus = audioManager.FindBus(source.busName);
         audio::AudioManager::PlayParams params;
         params.priority = source.priority;
+        params.streaming = source.streaming;
 
         /// @note 生成クリップの要求は clipPath より優先。要求が握った参照は起動失敗時も手放す。
         const bool playOnAwake = source.playOnAwake && !source.m_played;
@@ -329,7 +335,7 @@ void AudioSystem::Update(SystemContext& ctx)
     }
 
     /// @note AudioSource を持たない使い捨て再生 (PlayAtPoint)。
-    ///       減衰とパンは一度だけ焼き込むので、鳴っている間に音像は動かない。
+    /// @note 減衰とパンは一度だけ焼き込むので、鳴っている間に音像は動かない。
     for (auto& request : audioManager.TakePositional()) {
         audio::AudioManager::PlayParams params;
         params.priority = request.priority;
@@ -353,4 +359,4 @@ void AudioSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

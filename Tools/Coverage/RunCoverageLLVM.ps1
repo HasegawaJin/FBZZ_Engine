@@ -123,11 +123,12 @@ if ($rawFiles.Count -eq 0) {
 if ($LASTEXITCODE -ne 0) { throw "llvm-profdata merge が失敗しました (exit $LASTEXITCODE)" }
 
 # --- レポート ---------------------------------------------------------------
-# 分母は OpenCppCoverage 側の --sources と同じ 3 つに揃える。ここを揃えないと
+# 分母は OpenCppCoverage 側の --sources と同じ 4 つに揃える。ここを揃えないと
 # 「C0 は 83%、C1 は 40%」のような比較が «別の母集団同士の比較» になってしまう。
 $sourceFilters = @(
     (Join-Path $repoRoot 'Projects\Math')
     (Join-Path $repoRoot 'Projects\Physics')
+    (Join-Path $repoRoot 'Projects\Core')
     (Join-Path $repoRoot 'Projects\Engine\src\Core')
     # OpenCppCoverage 側の --excluded_sources "Projects\Engine\src\Core\Platform" と対応する。
     '-ignore-filename-regex=[\\/]Engine[\\/]src[\\/]Core[\\/]Platform[\\/]'

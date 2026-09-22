@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
@@ -109,7 +110,7 @@ float Random01(ParticleEmitter& emitter)
 
 /// @brief 粒子ごとの色ゆらぎ倍率を 1 粒子ぶん引く。RGB を各チャンネル独立に [1-v, 1+v] 倍して
 /// @brief 群れの単調さを崩す。alpha は返さない (フェード制御なのでゆらすと消え際が汚くなる)。
-///
+
 /// @brief 色ではなく倍率を返すのは、グラデーション使用時に色が毎フレーム作り直されるため
 /// @brief (スポーン時に焼き込むと翌フレームには消える)。
 /// @brief CPU/GPU どちらのスポーン経路からも同じ乱数列で呼ぶので結果は決定論的に一致する。
@@ -444,7 +445,7 @@ uint64_t                                                 g_particlePassSerial = 
 
 /// @brief .mat の [params] をカスタムシェーダーの MaterialConstants へ束縛し、b2 へ流す定数バッファを返す。
 /// @brief 組み込みシェーダー (MaterialConstants を宣言しない) では無効ハンドルを返す。
-///
+
 /// @brief 束縛規則そのものは asset::MaterialParamBinding が持つ — メッシュ / UI / デカールと同じ経路。
 renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialParams(
     renderer::ResourceManager& resources,
@@ -512,7 +513,7 @@ renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
     /// @note Particle は色カーブだけでも成立する VFX なので、参照先テクスチャの欠落で
     /// @note DrawCall 全体を無効化せず、白テクスチャにフォールバックして色だけは表示する。
     if (!texturePath.empty()) {
-        auto texture = resources.LoadTexture(texturePath);
+        auto texture = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePath);
         if (texture.IsValid())
             return texture;
     }
@@ -554,7 +555,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
         const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(resolvedMaterial);
         if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
             const std::string& resolvedTex = ParticleMaterialTexture(*mat, "albedo");
-            if (!emitter.runtime.texture.IsValid() || emitter.runtime.loadedTexturePath != resolvedTex) {
+            {
                 emitter.runtime.texture = LoadParticleTextureOrWhite(resources, resolvedTex);
                 emitter.runtime.loadedTexturePath = resolvedTex;
                 emitter.runtime.textureIsSrgb = IsEffectTextureSrgb(resolvedTex);
@@ -562,7 +563,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             /// @note 歪みベクトル専用マップ (normal)。未設定なら無効ハンドルのままにして、
             /// @note シェーダー側は effectsFlags を見て albedo の RG へ縮退する。
             const std::string& distortionTex = ParticleMaterialTexture(*mat, "normal");
-            if (emitter.runtime.loadedDistortionTexturePath != distortionTex) {
+            {
                 emitter.runtime.distortionTexture = distortionTex.empty()
                     ? renderer::ResourceHandle<renderer::TextureTag>::Null()
                     : LoadParticleTextureOrWhite(resources, distortionTex);
@@ -570,7 +571,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             }
             /// @note Motion Vector アトラス (tex5)。
             const std::string& motionTex = ParticleMaterialTexture(*mat, "tex5");
-            if (emitter.runtime.loadedMotionVectorTexturePath != motionTex) {
+            {
                 emitter.runtime.motionVectorTexture = motionTex.empty()
                     ? renderer::ResourceHandle<renderer::TextureTag>::Null()
                     : LoadParticleTextureOrWhite(resources, motionTex);
@@ -580,7 +581,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             static const std::string kNoTexture;
             const std::string& sixWayTex = mat->particle.sixWayMaps ? ParticleMaterialTexture(*mat, "emissive")
                                                                     : kNoTexture;
-            if (emitter.runtime.loadedSixWayNegativeTexturePath != sixWayTex) {
+            {
                 emitter.runtime.sixWayNegativeTexture = sixWayTex.empty()
                     ? renderer::ResourceHandle<renderer::TextureTag>::Null()
                     : LoadParticleTextureOrWhite(resources, sixWayTex);
@@ -651,7 +652,10 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
     /// @note (エフェクトが丸ごと消えるより、素材が付いていないと分かる方がよい)。
     emitter.runtime.material      = asset::ParticleMaterialSettings{};
     emitter.runtime.resolvedBlend = ParticleBlendMode::Additive;
-    if (!emitter.runtime.texture.IsValid()) {
+    emitter.runtime.distortionTexture = {};
+    emitter.runtime.motionVectorTexture = {};
+    emitter.runtime.sixWayNegativeTexture = {};
+    {
         emitter.runtime.texture = LoadParticleTextureOrWhite(resources, {});
         emitter.runtime.loadedTexturePath.clear();
         /// @note 1x1 白フォールバック。リニアでも sRGB でも 1.0 は 1.0 なので変換しない。
@@ -774,7 +778,7 @@ GameObject* FindInSubtree(GameObject& root, const std::string& objectName)
 /// @brief SubEmitter へイベント数分のスポーンを積む。参照切れは VFX の縮退として無視する。
 /// @brief subEmitterScopeRoot が有効ならその GameObject 配下だけを名前で探す (VFXSystem が配る)。
 /// @brief .vfx の中の GO は同じ名前を名乗るので、シーン全体で引くと隣のインスタンスを掴む。
-///
+
 /// @brief origin / velocity は «発火元の粒子» のワールド位置と速度。これを渡さないと受け側は
 /// @brief 自分の emitPosition からしか湧けず、«斬った位置で火花» / «消えた場所から煙» が作れない。
 void QueueSubEmitter(Scene& scene, const ParticleEmitter& emitter,
@@ -1470,7 +1474,7 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
         /// @note 注入されたスポーンはレート/バーストより先に消費する。後回しにすると「斬った
         /// @note 位置の火花」が maxParticles 到達で黙って落ちる。イベントで 1 度だけ出る粒の
         /// @note 欠落は、常時湧く粒より目立つため。
-        ///
+
         /// @note ループ中に injectedSpawns から消さない: SpawnParticle → queueBirth が自分自身を
         /// @note birthSubEmitter として積み返すことがあり、走査中の push_back で参照が無効化
         /// @note されるため、添字で回して最後にまとめて消す。
