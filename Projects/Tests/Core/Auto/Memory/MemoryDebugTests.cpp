@@ -26,7 +26,7 @@ core::AllocationInfo MakeInfo(void* pointer, core::MemoryTag tag, int line)
     return info;
 }
 
-} // namespace
+} /// @note namespace
 
 TEST_F(MemoryDebugTest, TracksResourceUntilUntracked)
 {
@@ -81,4 +81,49 @@ TEST_F(MemoryDebugTest, ResetRemovesAllTrackedResources)
     EXPECT_EQ(debug.GetLiveCount(), 0u);
 }
 
-} // namespace fbzz::tests
+TEST_F(MemoryDebugTest, RejectsNullAndEnumeratesOnlyLiveSlots)
+{
+    core::MemoryDebug debug;
+    int values[3]{};
+    EXPECT_FALSE(debug.Track({}));
+    EXPECT_FALSE(debug.Untrack(nullptr));
+    for (auto& value : values) {
+        ASSERT_TRUE(debug.Track(MakeInfo(&value, core::MemoryTag::CORE, 1)));
+    }
+
+    ASSERT_TRUE(debug.Untrack(&values[0]));
+
+    EXPECT_EQ(debug.GetLiveBytes(), 2 * sizeof(int));
+    ASSERT_NE(debug.GetLive(0), nullptr);
+    ASSERT_NE(debug.GetLive(1), nullptr);
+    EXPECT_EQ(debug.GetLive(0)->pointer, &values[1]);
+    EXPECT_EQ(debug.GetLive(1)->pointer, &values[2]);
+    EXPECT_EQ(debug.GetLive(2), nullptr);
+}
+
+TEST_F(MemoryDebugTest, RejectsOverflowWithoutCountingDroppedBytesAndReusesFreedSlots)
+{
+    core::MemoryDebug debug;
+    std::vector<int> values(core::MemoryDebug::MAX_DEBUG_ALLOCATIONS + 1);
+    for (std::size_t i = 0; i + 1 < values.size(); ++i) {
+        ASSERT_TRUE(debug.Track(MakeInfo(&values[i], core::MemoryTag::CORE, 1)));
+    }
+
+    EXPECT_FALSE(debug.Track(MakeInfo(&values.back(), core::MemoryTag::CORE, 2)));
+
+    EXPECT_EQ(debug.GetDroppedCount(), 1u);
+    EXPECT_EQ(debug.GetLiveCount(), values.size() - 1);
+    EXPECT_EQ(debug.GetLiveBytes(), (values.size() - 1) * sizeof(int));
+    ASSERT_TRUE(debug.Untrack(&values.front()));
+    ASSERT_TRUE(debug.Track(MakeInfo(&values.back(), core::MemoryTag::CORE, 3)));
+    EXPECT_EQ(debug.GetLiveCount(), values.size() - 1);
+    debug.Reset();
+    EXPECT_EQ(debug.GetLiveCount(), 0u);
+    EXPECT_EQ(debug.GetLiveBytes(), 0u);
+    EXPECT_EQ(debug.GetDroppedCount(), 0u);
+    ASSERT_TRUE(debug.Track(MakeInfo(&values.front(), core::MemoryTag::CORE, 4)));
+    ASSERT_NE(debug.GetLive(0), nullptr);
+    EXPECT_EQ(debug.GetLive(0)->allocationId, 1u);
+}
+
+} /// @note namespace fbzz::tests

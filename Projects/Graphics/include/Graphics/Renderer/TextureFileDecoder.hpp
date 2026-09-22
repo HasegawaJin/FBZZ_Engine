@@ -10,6 +10,8 @@
 #include <vector>
 
 namespace fbzz::renderer {
+/// @brief RGBA8 の 2D 経路で表現できない DDS (キューブ・配列・浮動小数点) かをヘッダーから判定する。
+[[nodiscard]] bool RequiresNativeTextureUpload(const std::string& path);
 
 /// @brief 展開済みテクスチャ。各段は行ピッチ width*4 の詰めた RGBA8。
 /// @note ワーカースレッドの成果物として渡すため、GPU ハンドルも DX 型も持たない。

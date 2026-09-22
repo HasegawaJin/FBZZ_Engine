@@ -56,11 +56,19 @@ std::unique_ptr<IblAsset> IblImporter::Import(
     auto asset = std::make_unique<IblAsset>();
     asset->prefilteredMipCount = header.prefilteredMipCount;
 
-    /// @note 既存の LoadTexture が DDS キューブマップを DirectXTex で正しく処理する
-    asset->environmentCubemap = resources->LoadTexture(envPath);
-    asset->irradianceCubemap  = resources->LoadTexture(irrPath);
-    asset->prefilteredCubemap = resources->LoadTexture(prefilterPath);
-    asset->brdfLut            = resources->LoadTexture(brdfPath);
+    auto& streamer = AssetStreamer::Engine();
+    const auto load = [&](size_t index, const std::string& path) {
+        auto& lease = asset->textureLeases[index];
+        lease = streamer.Request<TextureAsset>(path);
+        if (!lease.IsHeld() || !streamer.CompleteNow(lease.Handle()))
+            return renderer::ResourceHandle<renderer::TextureTag>{};
+        const auto* texture = streamer.TryGet(lease.Handle());
+        return texture ? texture->gpuHandle : renderer::ResourceHandle<renderer::TextureTag>{};
+    };
+    asset->environmentCubemap = load(0, envPath);
+    asset->irradianceCubemap = load(1, irrPath);
+    asset->prefilteredCubemap = load(2, prefilterPath);
+    asset->brdfLut = load(3, brdfPath);
 
     if (!asset->IsValid()) {
         FBZZ_LOG_WARN("IblImporter: 一部の DDS ロードに失敗しました [%s]", absPath.c_str());
@@ -69,4 +77,4 @@ std::unique_ptr<IblAsset> IblImporter::Import(
     return asset;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

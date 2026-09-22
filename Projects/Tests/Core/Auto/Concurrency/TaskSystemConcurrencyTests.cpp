@@ -43,4 +43,22 @@ TEST_F(TaskSystemConcurrencyTest, CompletesAllSubmittedTasks)
     fbzz::TaskSystem::Shutdown();
 }
 
+TEST_F(TaskSystemConcurrencyTest, AnswersZeroWithoutAPool)
+{
+    /// @note 問い合わせは Init の前にも来る (起動途中のシステムが並列度を見る)。落ちずに 0 と答えること。
+    fbzz::TaskSystem::Shutdown();
+
+    EXPECT_EQ(fbzz::TaskSystem::WorkerCount(), 0);
+    EXPECT_EQ(fbzz::TaskSystem::PendingCount(), 0);
+}
+
+TEST_F(TaskSystemConcurrencyTest, HasNoPendingTasksRightAfterInit)
+{
+    fbzz::TaskSystem::Init(2);
+
+    EXPECT_EQ(fbzz::TaskSystem::PendingCount(), 0);
+
+    fbzz::TaskSystem::Shutdown();
+}
+
 } // namespace fbzz::tests

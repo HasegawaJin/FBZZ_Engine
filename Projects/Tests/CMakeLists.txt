@@ -41,7 +41,14 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Memory/MemorySystemTests.cpp
         Core/Auto/Signal/SignalTests.cpp
         Core/Auto/Logger/LoggerTests.cpp
+        Core/Auto/Profiler/ProfilerTests.cpp
+        Core/Auto/Util/FileSystemTests.cpp
+        Core/Auto/Util/TempDirTests.cpp
         Core/Auto/CrashHandler/CrashHandlerTests.cpp
+        Core/Auto/CrashHandler/CrashHandlerInstallTests.cpp
+        Core/Auto/CrashHandler/CrashLogTailTests.cpp
+        Core/Auto/CrashHandler/CrashReportContentTests.cpp
+        Core/Auto/CrashHandler/CrashHandlerFatalTests.cpp
         Core/Auto/DeveloperMode/DeveloperModeTests.cpp
         Core/Auto/Time/TimeConfigurationTests.cpp
         Core/Auto/Time/TimeLockstepTests.cpp
@@ -53,10 +60,13 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Scheduler/SchedulerBatchingTests.cpp
     LINKS
         FBZZTestKitEngine
-        FBZZPhysics   # SchedulerExecutionTests がコンポーネント型として参照する
+        FBZZPhysics   # @note SchedulerExecutionTests がコンポーネント型として参照する
 )
 
 # @note --- Physics ----------------------------------------------------------------
+# @note ログ末尾の単体検証だけが Engine の内部クラスを参照する。
+target_include_directories(FBZZTestsCoreAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
+
 fbzz_add_test_suite(PhysicsAuto
     SOURCES
         Physics/Auto/AABBTests.cpp
@@ -130,6 +140,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/AssetStreamingTests.cpp
         Engine/Auto/SceneAssetReferencesTests.cpp
         Engine/Auto/AssetPartialIoTests.cpp
+        Engine/Auto/AssetStreamingIntegrationTests.cpp
         Engine/Auto/EventBusTests.cpp
         Engine/Auto/FileSystemPathTests.cpp
         Engine/Auto/ScriptTransformProxyTests.cpp
@@ -144,6 +155,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/UuidTests.cpp
         Engine/Auto/AnimationSamplingTests.cpp
         Engine/Auto/AudioBusTests.cpp
+        Engine/Auto/AudioStreamingTests.cpp
         Engine/Auto/BlackboardTests.cpp
         Engine/Auto/ComponentArrayTests.cpp
         Engine/Auto/FzAssetFormatTests.cpp

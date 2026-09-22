@@ -8,6 +8,11 @@
 
 #include <Engine/Core/DeveloperMode.hpp>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 namespace fbzz::tests {
 
 class DeveloperModeTest : public testkit::EngineFixture {
@@ -15,6 +20,7 @@ protected:
     void TearDown() override
     {
         /// @note プロセスに 1 つの状態。次のテストへ持ち越さない。
+        SetEnvironmentVariableW(L"FBZZ_DEVELOPER_MODE", nullptr);
         core::DeveloperMode::SetForcedByLaunch(false);
         core::DeveloperMode::SetPreference(false);
         EngineFixture::TearDown();
@@ -55,6 +61,32 @@ TEST_F(DeveloperModeTest, IgnoresTheFlagInsideAQuotedPathOrAsTheExecutable)
     EXPECT_FALSE(core::DeveloperMode::HasLaunchFlag(L"FBZZEditor.exe --project \"C:\\a --developer\""));
     EXPECT_FALSE(core::DeveloperMode::HasLaunchFlag(L"--developer --project C:\\p"));
     EXPECT_FALSE(core::DeveloperMode::HasLaunchFlag(L"FBZZEditor.exe --developer-extra"));
+}
+
+/// @note 以下 2 件は «テスト exe 自身の起動引数に --developer が無い» ことを前提にする。
+///       付けて走らせると環境変数の影響だけを切り出せない。
+
+TEST_F(DeveloperModeTest, EnvironmentVariableForcesItAtStartup)
+{
+    ASSERT_TRUE(SetEnvironmentVariableW(L"FBZZ_DEVELOPER_MODE", L"1"));
+
+    core::DeveloperMode::InitFromCommandLine();
+
+    EXPECT_TRUE(core::DeveloperMode::IsForcedByLaunch());
+    EXPECT_TRUE(core::DeveloperMode::IsEnabled());
+    EXPECT_FALSE(core::DeveloperMode::Preference());
+}
+
+TEST_F(DeveloperModeTest, EnvironmentVariableIsIgnoredUnlessItIsExactlyOne)
+{
+    /// @note "0" も "11" も無効。うっかり «空でなければ有効» にすると配布物で開いてしまう。
+    ASSERT_TRUE(SetEnvironmentVariableW(L"FBZZ_DEVELOPER_MODE", L"0"));
+    core::DeveloperMode::InitFromCommandLine();
+    EXPECT_FALSE(core::DeveloperMode::IsForcedByLaunch());
+
+    ASSERT_TRUE(SetEnvironmentVariableW(L"FBZZ_DEVELOPER_MODE", L"11"));
+    core::DeveloperMode::InitFromCommandLine();
+    EXPECT_FALSE(core::DeveloperMode::IsForcedByLaunch());
 }
 
 } // namespace fbzz::tests

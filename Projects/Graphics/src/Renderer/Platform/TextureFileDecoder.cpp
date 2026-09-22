@@ -63,6 +63,17 @@ std::size_t DecodedTextureRGBA8::ByteSize() const
     return bytes;
 }
 
+bool RequiresNativeTextureUpload(const std::string& path)
+{
+    if (!EndsWithCI(path, ".dds")) return false;
+    DirectX::TexMetadata metadata{};
+    if (FAILED(DirectX::GetMetadataFromDDSFile(util::StringUtils::ToWide(path).c_str(),
+               DirectX::DDS_FLAGS_NONE, metadata))) return false;
+    return metadata.IsCubemap() || metadata.arraySize != 1 || metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D
+        || metadata.format == DXGI_FORMAT_R16G16B16A16_FLOAT || metadata.format == DXGI_FORMAT_R32G32B32A32_FLOAT
+        || metadata.format == DXGI_FORMAT_BC6H_UF16 || metadata.format == DXGI_FORMAT_BC6H_SF16;
+}
+
 bool DecodedTextureRGBA8::ToMipData(std::vector<TextureMipData>& out) const
 {
     out.clear();

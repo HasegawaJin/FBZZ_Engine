@@ -2,12 +2,13 @@
 /// @brief   TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
+
 /// @note 枠 (TerrainSurface.hlsli と同期): t0 = 層番号マップ、t1 = 重みマップ、t13 = 影。層テクスチャと層パラメーターは
 /// @note StructuredBuffer (TerrainLayerGpu) と bindless 添字で渡す。
 /// @note シングルスレッド前提。GPU 資源は ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
 /// @note heightDirty (穴を含む) でチャンクを、splatDirty で番号 / 重みマップを作り直す。
 /// @see Docs/design/terrain-layers.md
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
@@ -531,7 +532,7 @@ void FillTerrainLayerTextureIndices(renderer::ResourceManager& resources,
     const std::string prefix(keyPrefix);
     const auto load = [&](const char* key) {
         const std::string path = TGetTex(material, prefix + key);
-        return path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.LoadTexture(path);
+        return path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, path);
     };
     layer.diffuseIndex     = BindlessIndexOr(resources, load("diffuse"), fallback.white);
     layer.normalIndex      = BindlessIndexOr(resources, load("normal"), fallback.flatNormal);

@@ -6,6 +6,7 @@
 #include "AudioBus.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace fbzz::audio
 {
@@ -17,7 +18,7 @@ struct WaveFormat
     uint16_t bitsPerSample = 0;
 };
 
-/// 再生失敗は戻り値や voiceId で表し、例外は使わない。
+/// @note 再生失敗は戻り値や voiceId で表し、例外は使わない。
 class IAudioDevice
 {
 public:
@@ -26,13 +27,13 @@ public:
     virtual bool Init()     = 0;
     virtual void Shutdown() = 0;
 
-    /// バスグラフを構築し直す。descs は親が子より前に並んでいること
-    /// (NormalizeBusLayout が保証する)。既存の voice はすべて破棄される。
+    /// @note バスグラフを構築し直す。descs は親が子より前に並んでいること
+    /// @note (NormalizeBusLayout が保証する)。既存の voice はすべて破棄される。
     virtual bool RebuildBuses(const BusDesc* descs, size_t count) = 0;
     virtual void SetBusVolume(BusIndex bus, float volume) = 0;
     virtual void SetBusLowPass(BusIndex bus, float normalizedCutoff) = 0;
 
-    /// BusDesc::reverb が true のバスの残響を更新する。false のバスでは何も起きない。
+    /// @note BusDesc::reverb が true のバスの残響を更新する。false のバスでは何も起きない。
     /// @note 残響 DSP は鳴っていなくても回り続けるため、ゾーンの外にいる間は明示的に止めないと常時 CPU を食う。
     /// @param wet 0-1。0 で残響を止める。
     /// @param decaySeconds 残響が -60dB まで落ちるまでの秒数。
@@ -40,16 +41,18 @@ public:
     virtual void SetBusReverb(BusIndex bus, float wet,
                               float decaySeconds, float highFrequencyRatio) = 0;
 
-    /// pcmData は voice が終わるまで呼び出し側が生かしておくこと。
+    /// @note pcmData は voice が終わるまで呼び出し側が生かしておくこと。
     /// @note XAudio2 はサブミットされたバッファをコピーせずポインタで参照し続ける。
     /// @param bus 出力先。範囲外なら Master へ落とす。
     /// @return 0 は無効ハンドル。loop が true ならループ再生。
     [[nodiscard]] virtual uint32_t PlayBuffer(
         const void* pcmData, size_t bytes,
         const WaveFormat& fmt, bool loop, BusIndex bus) = 0;
+    /// @brief パスを分割デコードして再生する。返却 0 は開始失敗。
+    [[nodiscard]] virtual uint32_t PlayStream(const std::string& path, bool loop, BusIndex bus) = 0;
 
     virtual void StopBuffer(uint32_t voiceId)              = 0;
-    /// 再生位置を保ったまま止める。ResumeBuffer で続きから鳴る。
+    /// @note 再生位置を保ったまま止める。ResumeBuffer で続きから鳴る。
     /// @note StopBuffer は voice を破棄するため位置が残らない点と異なる。
     virtual void PauseBuffer(uint32_t voiceId)             = 0;
     virtual void ResumeBuffer(uint32_t voiceId)            = 0;
@@ -58,10 +61,13 @@ public:
     virtual void SetPitch(uint32_t voiceId, float pitch) = 0;
     /// @brief パンを設定する。-1(左)〜+1(右)。spatialBlend=0 の 2D 音源では 0 を渡す。
     virtual void SetPan(uint32_t voiceId, float pan) = 0;
+    /// @brief 主出力を維持し、音源のフェーダー適用後の信号を補助バスへ送る。
+    /// @note kInvalidBus または level=0 で解除する。同じ主出力先へのセンドは行列上で加算する。
+    virtual void SetSend(uint32_t voiceId, BusIndex bus, float level) = 0;
     /// @brief normalizedCutoff=1 は無加工、0 に近いほど高域を減衰する。
     virtual void SetLowPass(uint32_t voiceId, float normalizedCutoff) = 0;
     /// @brief 終了済み voice を AudioSystem が検出してランタイム状態を戻すための問い合わせ。
     [[nodiscard]] virtual bool IsPlaying(uint32_t voiceId) = 0;
 };
 
-} // namespace fbzz::audio
+} /// @note namespace fbzz::audio
