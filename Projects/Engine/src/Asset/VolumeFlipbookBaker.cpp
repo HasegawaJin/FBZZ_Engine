@@ -6,10 +6,14 @@
 
 #include <Engine/Asset/BakeFingerprint.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Engine/Asset/FluidRenderMath.hpp>
+#include <Fluid/FluidStepping.hpp>
 
 #include "FlipbookImageIO.hpp"
 
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Util/EngineAssetPath.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Engine/Renderer/ColorTemperature.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -19,7 +23,11 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Math/Vector4.hpp>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
+#include <objbase.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -27,7 +35,7 @@
 #include <filesystem>
 
 /// @note 焼きの入力は流体のレシピそのもの。この翻訳単位には fluid という名の局所変数
-///       (気体か液体かの判定) があり、fluid:: 修飾と食い違うのでここだけ名前を持ち込む。
+/// @note       (気体か液体かの判定) があり、fluid:: 修飾と食い違うのでここだけ名前を持ち込む。
 using namespace fbzz::fluid;
 
 namespace fbzz::asset {
@@ -38,7 +46,7 @@ constexpr const char* kRaymarchShaderPath = "Assets/Shaders/Bake/VolumeFlipbook/
 constexpr std::uint32_t kMaxAtlasDimension = 16384;
 constexpr std::size_t kMaxAtlasPixels = 16u * 1024u * 1024u;
 constexpr float kDegreesToRadians = 3.14159265358979f / 180.0f;
-/// タイル外周のこの幅 [px] に α がこれ以上あれば «縁にかかっている» とみなす。
+/// @note タイル外周のこの幅 [px] に α がこれ以上あれば «縁にかかっている» とみなす。
 constexpr std::uint32_t kEdgeBandPixels = 2;
 constexpr float kEdgeAlphaThreshold = 0.02f;
 
@@ -46,28 +54,28 @@ constexpr std::uint32_t kDisplayRaw = 0;
 constexpr std::uint32_t kDisplayColor = 1;
 constexpr std::uint32_t kDisplayAlpha = 2;
 
-/// ComputeCall::srvBuffers の添字 = レジスタ番号 (VolumeFill.cs.hlsl の gPuffs)。
+/// @note ComputeCall::srvBuffers の添字 = レジスタ番号 (VolumeFill.cs.hlsl の gPuffs)。
 constexpr std::size_t kPuffBufferSlot = 14;
-/// VolumeUpload.cs.hlsl の gMediumIn / gVelocityIn (どちらも kComputeStructuredBufferSlots)。
+/// @note VolumeUpload.cs.hlsl の gMediumIn / gVelocityIn (どちらも kComputeStructuredBufferSlots)。
 constexpr std::size_t kFluidMediumSlot = 14;
 constexpr std::size_t kFluidVelocitySlot = 15;
-/// CPU の流体は上げすぎると 1 コマに数秒かかる (96³ ≈ 88 万セル)。GPU は 3D テクスチャの VRAM で決まる
-/// (ソルバーが 13 枚 + ここで 2 枚。RGBA16F の 160³ で合計 ≈ 490 MB)。
+/// @note CPU の流体は上げすぎると 1 コマに数秒かかる (96³ ≈ 88 万セル)。GPU は 3D テクスチャの VRAM で決まる
+/// @note (ソルバーが 13 枚 + ここで 2 枚。RGBA16F の 160³ で合計 ≈ 490 MB)。
 constexpr int kMaxFluidResolution = 96;
 constexpr int kMaxVolumeResolution = 160;
 constexpr int kMaxSupersampling = 3;
-/// RT に横へ並べるタイルの数: [色 | 速度 | 6-way Positive | 6-way Negative]。
-constexpr std::uint32_t kRaymarchTiles = 4;
+/// @note RT に横へ並べるタイルの数: [色 | 速度 | 6-way Positive | 6-way Negative]。
+constexpr std::uint32_t kRaymarchTiles = 6;
 constexpr const char* kUploadShaderPath = "Assets/Shaders/Bake/VolumeFlipbook/VolumeUpload.cs.hlsl";
 
-/// VolumeUpload.cs.hlsl の cbuffer と 1:1。
+/// @note VolumeUpload.cs.hlsl の cbuffer と 1:1。
 struct alignas(16) UploadConstants {
     std::uint32_t resolution;
     std::uint32_t pad[3];
 };
 static_assert(sizeof(math::Vector4) == 16, "VolumeUpload.cs.hlsl は float4 の StructuredBuffer として読む");
 
-/// VolumeRaymarch.hlsl の cbuffer と 1:1。
+/// @note VolumeRaymarch.hlsl の cbuffer と 1:1。
 struct alignas(16) RaymarchConstants {
     float camRight[3];   float halfExtent;
     float camUp[3];      std::uint32_t tileSize;
@@ -102,11 +110,16 @@ struct alignas(16) RaymarchConstants {
     float kelvinMax;
     std::uint32_t distortion;
     float distortionScale;
-    float distortionPad[3];
+    std::uint32_t fireEmission;
+    float fireEmissionExtinction;
+    float distortionPad;
+    float blackbodyLutMaxKelvin;
+    float blackbodyLutPad[3];
+    float blackbodyColorLut[kFluidFireColorLutSamples][4];
 };
-static_assert(sizeof(RaymarchConstants) == 336, "VolumeRaymarch.hlsl の cbuffer と一致させること");
+static_assert(sizeof(RaymarchConstants) == 4448, "VolumeRaymarch.hlsl の cbuffer と一致させること");
 
-/// WIC (PNG の書き出し) は呼び出しスレッドで COM が初期化されている必要がある。
+/// @note WIC (PNG の書き出し) は呼び出しスレッドで COM が初期化されている必要がある。
 struct ComScope {
     HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     ~ComScope()
@@ -127,7 +140,7 @@ std::uint8_t ToUnorm8(float value)
     return static_cast<std::uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
 }
 
-/// 位置は [0,1] に収め、前の点より手前へ戻らないよう揃える (シェーダーは昇順を前提に区間を探す)。
+/// @note 位置は [0,1] に収め、前の点より手前へ戻らないよう揃える (シェーダーは昇順を前提に区間を探す)。
 float RampPosition(const VolumeColorRamp& ramp, int index, float previous)
 {
     return (std::max)(previous, std::clamp(ramp.stops[static_cast<std::size_t>(index)].position, 0.0f, 1.0f));
@@ -147,10 +160,17 @@ void StoreRamp(float (&out)[kVolumeRampStops][4], const VolumeColorRamp& ramp)
 }
 
 RaymarchConstants BuildRaymarchConstants(const VolumeFlipbookBakeSettings& settings, std::uint32_t tileSize,
-                                         std::uint32_t volumeResolution, std::uint32_t displayMode,
-                                         std::uint32_t background, float time, std::uint32_t frameIndex)
+                                          std::uint32_t volumeResolution, std::uint32_t displayMode,
+                                          std::uint32_t background, float time, std::uint32_t frameIndex,
+                                          const VolumeFlipbookCamera* cameraOverride,
+                                          const FluidFireColorLut& fireColorLut)
 {
-    const VolumeFlipbookCamera camera = ComputeVolumeFlipbookCamera(settings);
+    VolumeFlipbookCamera camera = ComputeVolumeFlipbookCamera(settings);
+    if (cameraOverride != nullptr) {
+        camera.right = cameraOverride->right;
+        camera.up = cameraOverride->up;
+        camera.forward = cameraOverride->forward;
+    }
     RaymarchConstants constants{};
     Store(constants.camRight, camera.right);
     Store(constants.camUp, camera.up);
@@ -183,6 +203,8 @@ RaymarchConstants BuildRaymarchConstants(const VolumeFlipbookBakeSettings& setti
     constants.sixWay = settings.sixWayLightmaps && !settings.distortion ? 1u : 0u;
     constants.distortion = settings.distortion ? 1u : 0u;
     constants.distortionScale = (std::max)(settings.distortionScale, 0.0f);
+    constants.fireEmission = settings.fireEmission ? 1u : 0u;
+    constants.fireEmissionExtinction = (std::max)(settings.fireEmissionExtinction, 0.0f);
     constants.octaves = static_cast<std::uint32_t>(std::clamp(settings.scatteringOctaves, 1, 8));
     constants.blackbody = settings.blackbodyEmission ? 1u : 0u;
     constants.frameIndex = frameIndex;
@@ -193,6 +215,14 @@ RaymarchConstants BuildRaymarchConstants(const VolumeFlipbookBakeSettings& setti
     constants.time = time;
     constants.kelvinMin = std::clamp(settings.blackbodyMinKelvin, 500.0f, 15000.0f);
     constants.kelvinMax = (std::max)(std::clamp(settings.blackbodyMaxKelvin, 500.0f, 15000.0f), constants.kelvinMin);
+    constants.blackbodyLutMaxKelvin = fireColorLut.MaxKelvin();
+    for (std::size_t i = 0; i < kFluidFireColorLutSamples; ++i) {
+        const math::Vector3& chroma = fireColorLut.Samples()[i];
+        constants.blackbodyColorLut[i][0] = chroma.x;
+        constants.blackbodyColorLut[i][1] = chroma.y;
+        constants.blackbodyColorLut[i][2] = chroma.z;
+        constants.blackbodyColorLut[i][3] = 0.0f;
+    }
     return constants;
 }
 
@@ -202,7 +232,7 @@ math::Vector4 Lerp4(const math::Vector4& from, const math::Vector4& to, float t)
              from.w + (to.w - from.w) * t };
 }
 
-/// xyz が «w の覆いの中身» の値。覆いの無い側の値 (空の場所の 0) を持ち込まないよう、覆いで重み付けする。
+/// @note xyz が «w の覆いの中身» の値。覆いの無い側の値 (空の場所の 0) を持ち込まないよう、覆いで重み付けする。
 math::Vector4 LerpStraight(const math::Vector4& from, const math::Vector4& to, float t)
 {
     const float fromWeight = from.w * (1.0f - t);
@@ -214,7 +244,7 @@ math::Vector4 LerpStraight(const math::Vector4& from, const math::Vector4& to, f
              (from.z * fromWeight + to.z * toWeight) * inverse, coverage };
 }
 
-/// GPU のソルバー (気体 / 液体) を frame コマ目まで追いつかせる。1 Tick に進められる分だけ進め、届いたら true。
+/// @note GPU のソルバー (気体 / 液体) を frame コマ目まで追いつかせる。1 Tick に進められる分だけ進め、届いたら true。
 template <typename Solver>
 bool CatchUpGpuSolver(Solver& solver, renderer::IRenderer& renderer, renderer::ResourceManager& resources, int frame)
 {
@@ -240,7 +270,7 @@ bool LoadBakeRecipe(const VolumeFlipbookBakeSettings& settings, FluidRecipe& rec
     return LoadRecipeByPath(settings.fluidRecipePath, recipe, outError);
 }
 
-} // namespace
+}
 
 math::Vector3 EvaluateVolumeRamp(const VolumeColorRamp& ramp, float t)
 {
@@ -306,7 +336,7 @@ int VolumeLoopOverlapFrames(const VolumeFlipbookBakeSettings& settings)
     if (settings.sourceKind != VolumeSourceKind::Fluid || !settings.fluidLoop) return 0;
     /// @note Begin と同じ範囲へ丸めてから数える (焼く前の見積もりと実際の焼きで数がずれないように)。
     const int frames = std::clamp(settings.source.frameCount, 2, 256);
-    return (std::max)(frames / 4, 1);
+    return fluid::FluidLoopOverlapFrames(frames, true, settings.fluidLoopBlendFraction);
 }
 
 float VolumeLoopKeepWeight(int index, int overlap)
@@ -317,22 +347,7 @@ float VolumeLoopKeepWeight(int index, int overlap)
 
 math::Vector4 EncodeVolumeDistortion(math::Vector2 screenVelocity, float coverage, float scale)
 {
-    /// @note 2D の FluidBaker (FluidShading::Distortion) と揃えるため速さを 1 で頭打ちにする。2D は
-    ///       min(速さ, 1) / 速さ を掛けてから倍率を掛ける。3D だけ速さをそのまま掛けていたので、同じレシピでも
-    ///       速い所で 3D の方が強く歪み、符号化の上限 (長さ 0.5) に当たるまで伸び続けていた。
-    const float speed = std::sqrt(screenVelocity.x * screenVelocity.x + screenVelocity.y * screenVelocity.y);
-    const float gain = speed > 1.0e-5f ? (std::min)(speed, 1.0f) / speed * scale : 0.0f;
-    /// @note 画像は +V が下なので上向きの成分を反転する (2D の g = 0.5 − vy と同じ)。
-    float dx = screenVelocity.x * gain;
-    float dy = -screenVelocity.y * gain;
-    /// @note scale が 0.5 を超えたときだけ働く安全網 (既定の 0.42 では頭打ちの方が先に効く)。
-    const float length = std::sqrt(dx * dx + dy * dy);
-    if (length > 0.5f) {
-        dx *= 0.5f / length;
-        dy *= 0.5f / length;
-    }
-    return { std::clamp(0.5f + dx, 0.0f, 1.0f), std::clamp(0.5f + dy, 0.0f, 1.0f), 0.5f,
-             std::clamp(coverage, 0.0f, 1.0f) };
+    return EncodeFluidDistortion(screenVelocity, coverage, scale);
 }
 
 VolumeFramingReport AnalyzeVolumeFraming(const VolumeFlipbookBakeSettings& settings)
@@ -403,9 +418,9 @@ bool VolumeFlipbookBaker::EnsureGpu(renderer::ResourceManager& resources, std::u
     }
 
     if (!m_fillShader.IsValid())
-        m_fillShader = resources.LoadShader(AssetManager::ResolveAssetPath(kFillShaderPath));
+        m_fillShader = resources.LoadShader(util::FileSystem::PathToUtf8(util::ResolveEngineAssetPath(kFillShaderPath)));
     if (!m_raymarchShader.IsValid())
-        m_raymarchShader = resources.LoadShader(AssetManager::ResolveAssetPath(kRaymarchShaderPath));
+        m_raymarchShader = resources.LoadShader(util::FileSystem::PathToUtf8(util::ResolveEngineAssetPath(kRaymarchShaderPath)));
     if (!m_fillShader.IsValid() || !m_raymarchShader.IsValid()) {
         outError = "ベイク用シェーダーを読み込めません (Assets/Shaders/Bake/VolumeFlipbook)";
         return false;
@@ -507,7 +522,7 @@ bool VolumeFlipbookBaker::Begin(const VolumeFlipbookBakeSettings& settings,
             const std::string name = liquid ? "GPU の液体ソルバー" : "GPU の気体ソルバー";
             const std::string reason = gpuError.empty() ? std::string("理由不明") : gpuError;
             /// @note solver = "gpu" は «GPU で解けたときだけ焼く» という指定。黙って CPU へ落とすと、
-            ///       同じ .fluid が環境によって別の絵になり、指紋も食い違う。落としてよいのは auto だけ。
+            /// @note       同じ .fluid が環境によって別の絵になり、指紋も食い違う。落としてよいのは auto だけ。
             if (m_settings.fluidSolver == VolumeFluidSolver::Gpu) {
                 outError = name + "を初期化できません (" + reason
                     + ")。CPU で焼いてよければ [bake] solver を \"auto\" にしてください";
@@ -564,6 +579,13 @@ bool VolumeFlipbookBaker::Begin(const VolumeFlipbookBakeSettings& settings,
     if (m_settings.sixWayLightmaps) {
         m_sixWayPositive.assign(pixelCount * 4, 0);
         m_sixWayNegative.assign(pixelCount * 4, 0);
+        m_sixWayAlbedoColor.assign(pixelCount * 4, 0);
+        m_sixWayEmissionColor.assign(pixelCount * 4, 0);
+    } else {
+        m_sixWayPositive = {};
+        m_sixWayNegative = {};
+        m_sixWayAlbedoColor = {};
+        m_sixWayEmissionColor = {};
     }
     m_clippedTexels = 0;
     m_edgeTouchFrames = 0;
@@ -580,9 +602,10 @@ bool VolumeFlipbookBaker::Begin(const VolumeFlipbookBakeSettings& settings,
 }
 
 void VolumeFlipbookBaker::RecordFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
-                                      const VolumeFlipbookBakeSettings& settings,
-                                      const std::vector<VolumePuff>& puffs, float time,
-                                      std::uint32_t displayMode, std::uint32_t background)
+                                       const VolumeFlipbookBakeSettings& settings,
+                                       const std::vector<VolumePuff>& puffs, float time,
+                                       std::uint32_t displayMode, std::uint32_t background,
+                                       const VolumeFlipbookCamera* cameraOverride)
 {
     PackVolumeFill(puffs, settings.noise, m_volumeResolution, time, settings.source.frameDt, m_fill);
     resources.Update(m_fillConstants, &m_fill.header, sizeof(m_fill.header));
@@ -600,15 +623,22 @@ void VolumeFlipbookBaker::RecordFrame(renderer::IRenderer& renderer, renderer::R
     compute.dispatchX = compute.dispatchY = compute.dispatchZ = (m_volumeResolution + 3) / 4;
     renderer.Dispatch(compute, resources);
 
-    RecordRaymarch(renderer, resources, settings, displayMode, background, time);
+    RecordRaymarch(renderer, resources, settings, displayMode, background, time, cameraOverride);
 }
 
 void VolumeFlipbookBaker::RecordRaymarch(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
-                                         const VolumeFlipbookBakeSettings& settings, std::uint32_t displayMode,
-                                         std::uint32_t background, float time)
+                                           const VolumeFlipbookBakeSettings& settings, std::uint32_t displayMode,
+                                           std::uint32_t background, float time,
+                                           const VolumeFlipbookCamera* cameraOverride)
 {
+    const float requestedLutMaxKelvin = settings.blackbodyLutMaxKelvin > 0.0f
+        ? settings.blackbodyLutMaxKelvin
+        : (std::max)(std::clamp(settings.blackbodyMaxKelvin, 500.0f, 15000.0f), 500.0f) * 4.0f;
+    if (std::fabs(m_fireColorLut.MaxKelvin() - requestedLutMaxKelvin) > 1.0e-3f)
+        m_fireColorLut.Reset(requestedLutMaxKelvin);
     const RaymarchConstants raymarch = BuildRaymarchConstants(settings, m_tileSize, m_volumeResolution, displayMode,
-                                                              background, time, m_jitterFrame++);
+                                                              background, time, m_jitterFrame++, cameraOverride,
+                                                              m_fireColorLut);
     resources.Update(m_raymarchConstants, &raymarch, sizeof(raymarch));
 
     renderer.SetRenderTarget(m_target, resources);
@@ -622,7 +652,7 @@ void VolumeFlipbookBaker::RecordRaymarch(renderer::IRenderer& renderer, renderer
     draw.textures[1] = m_velocity;
     renderer.Submit(draw, resources);
     /// @note DX12 は別の RT へ切り替えたときに初めて RT をシェーダー読み取り状態へ戻す。
-    ///       読み戻しと ImGui 表示はその状態を前提にしている。
+    /// @note       読み戻しと ImGui 表示はその状態を前提にしている。
     renderer.SetRenderTarget({}, resources);
 }
 
@@ -630,7 +660,7 @@ bool VolumeFlipbookBaker::EnsureFluidGpu(renderer::ResourceManager& resources, s
                                          std::string& outError)
 {
     if (!m_uploadShader.IsValid())
-        m_uploadShader = resources.LoadShader(AssetManager::ResolveAssetPath(kUploadShaderPath));
+        m_uploadShader = resources.LoadShader(util::FileSystem::PathToUtf8(util::ResolveEngineAssetPath(kUploadShaderPath)));
     if (!m_uploadConstants.IsValid())
         m_uploadConstants = resources.CreateConstantBuffer(sizeof(UploadConstants));
     if (!m_uploadShader.IsValid() || !m_uploadConstants.IsValid()) {
@@ -679,8 +709,9 @@ void VolumeFlipbookBaker::ReleaseFluidGpu(renderer::ResourceManager& resources)
 }
 
 void VolumeFlipbookBaker::RecordFluidFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
-                                           const VolumeFlipbookBakeSettings& settings, const PackedFluidVolume& volume,
-                                           std::uint32_t displayMode, std::uint32_t background, float time)
+                                            const VolumeFlipbookBakeSettings& settings, const PackedFluidVolume& volume,
+                                            std::uint32_t displayMode, std::uint32_t background, float time,
+                                            const VolumeFlipbookCamera* cameraOverride)
 {
     const auto resolution = static_cast<std::uint32_t>((std::max)(volume.resolution, 0));
     const std::size_t cells = static_cast<std::size_t>(resolution) * resolution * resolution;
@@ -705,7 +736,7 @@ void VolumeFlipbookBaker::RecordFluidFrame(renderer::IRenderer& renderer, render
     compute.uavOutputs[1] = m_velocity;
     compute.dispatchX = compute.dispatchY = compute.dispatchZ = (resolution + 3) / 4;
     renderer.Dispatch(compute, resources);
-    RecordRaymarch(renderer, resources, settings, displayMode, background, time);
+    RecordRaymarch(renderer, resources, settings, displayMode, background, time, cameraOverride);
 }
 
 void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
@@ -732,6 +763,7 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
     const auto tile = static_cast<std::uint32_t>(std::clamp(settings.tileSize, 32, 1024));
     const std::uint32_t displayMode = options.view == VolumePreviewView::Alpha ? kDisplayAlpha : kDisplayColor;
     const auto background = static_cast<std::uint32_t>(options.background);
+    const VolumeFlipbookCamera* cameraOverride = options.cameraOverride.has_value() ? &*options.cameraOverride : nullptr;
     if (settings.sourceKind != VolumeSourceKind::Fluid) {
         m_previewPending = false;
         const auto resolution = static_cast<std::uint32_t>(std::clamp(settings.volumeResolution, 16, kMaxVolumeResolution));
@@ -741,22 +773,22 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
         }
         const std::vector<VolumePuff> puffs = BuildVolumePuffs(settings.source);
         RecordFrame(renderer, resources, settings, puffs, ResolveVolumeStartTime(settings.source) + time,
-                    displayMode, background);
+                    displayMode, background, cameraOverride);
         m_previewTile = tile;
         return;
     }
 
     /// @note 要求を書く前に解けたコマを受け取る。FluidVolumeStream::Busy() は結果を受け取るまで
-    ///       下がらないため、ここで受け取らないと下の «解いている間は開き直しを待つ» が
-    ///       いつまでも解けなくなる。
+    /// @note       下がらないため、ここで受け取らないと下の «解いている間は開き直しを待つ» が
+    /// @note       いつまでも解けなくなる。
     PackedFluidVolume polled;
     if (m_fluidPreview.Poll(polled)) m_fluidPreviewVolume = std::move(polled);
 
     /// @note 解き直しが要る設定 (解き方・レシピ・解像度・コマの間隔・濃さ) が変わったら開き直す。
-    ///       ここは «要求を書く» だけで、実際に開き直すのは ApplyPendingPreviewSwitch。開き直しは
-    ///       «閉じて解き直す» なので、当てる瞬間を呼び手 (再生の切れ目) が選べないと絵が途中で
-    ///       飛ぶため分ける。当てられるのは焼いていない・CPU の解きが畳まれている・ゲートが
-    ///       開いているときだけで、それ以外のフレームは前のソルバーのコマを出したまま次へ回す。
+    /// @note       ここは «要求を書く» だけで、実際に開き直すのは ApplyPendingPreviewSwitch。開き直しは
+    /// @note       «閉じて解き直す» なので、当てる瞬間を呼び手 (再生の切れ目) が選べないと絵が途中で
+    /// @note       飛ぶため分ける。当てられるのは焼いていない・CPU の解きが畳まれている・ゲートが
+    /// @note       開いているときだけで、それ以外のフレームは前のソルバーのコマを出したまま次へ回す。
     FluidPreviewKey key;
     key.solver = settings.fluidSolver;
     key.path = settings.fluidRecipePath;
@@ -764,7 +796,7 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
     key.frameDt = settings.source.frameDt;
     key.densityScale = settings.fluidDensityScale;
     /// @note ディスクのレシピを見る呼び出し (recipe = nullptr) の鍵を変えないよう、渡されたときだけ
-    ///       版数を混ぜる。開き直す頻度は «今編集している中身» を見ているときだけ上がる。
+    /// @note       版数を混ぜる。開き直す頻度は «今編集している中身» を見ているときだけ上がる。
     key.revision = recipe != nullptr ? recipeRevision : 0;
     m_previewRequested = key;
 
@@ -772,8 +804,8 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
         /// @note 何も開いていないなら «前のソルバーの絵» が無いので、ゲートに関わらず今開く。
         if (m_previewSwitchAllowed || !m_previewOpen.has_value()) {
             /// @note Close() は走っている CPU の解きが終わるまで止まる。スライダーを掴んでいる間は
-            ///       毎フレーム版数が変わるので、そのたびに 1 コマ分 (数百 ms) 待つとエディターごと
-            ///       固まるため、待たずに畳むよう伝えるだけにして前のコマを映したまま次へ回す。
+            /// @note       毎フレーム版数が変わるので、そのたびに 1 コマ分 (数百 ms) 待つとエディターごと
+            /// @note       固まるため、待たずに畳むよう伝えるだけにして前のコマを映したまま次へ回す。
             if (m_fluidPreview.Busy()) {
                 m_fluidPreview.Cancel();
                 m_previewPending = true;
@@ -810,7 +842,7 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
             if (frame < solver.SolvedFrame()) solver.Restart();
             m_previewPending = !CatchUpGpuSolver(solver, renderer, resources, frame);
             /// @note ソルバーの格子と書き込み先のボリュームは別々に作る。食い違ったまま書くと範囲外になる
-            ///       (CPU 経路の RecordFluidFrame は同じ確認を持っている。GPU 経路にだけ無かった)。
+            /// @note       (CPU 経路の RecordFluidFrame は同じ確認を持っている。GPU 経路にだけ無かった)。
             if (solver.Resolution() != static_cast<int>(m_volumeResolution)) {
                 m_previewPending = false;
                 return;
@@ -818,7 +850,7 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
             if (solver.SolvedFrame() >= 0) {
                 solver.WriteVolumes(renderer, resources, m_medium, m_velocity);
                 RecordRaymarch(renderer, resources, settings, displayMode, background,
-                               static_cast<float>(solver.SolvedFrame()) * frameDt);
+                               static_cast<float>(solver.SolvedFrame()) * frameDt, cameraOverride);
                 m_previewTile = tile;
                 m_previewStale = false;
             }
@@ -831,7 +863,7 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
     m_previewPending = m_fluidPreview.Busy();
     if (m_fluidPreviewVolume.frame >= 0) {
         RecordFluidFrame(renderer, resources, settings, m_fluidPreviewVolume, displayMode, background,
-                         static_cast<float>(m_fluidPreviewVolume.frame) * frameDt);
+                         static_cast<float>(m_fluidPreviewVolume.frame) * frameDt, cameraOverride);
         m_previewTile = tile;
         m_previewStale = false;
     }
@@ -844,7 +876,7 @@ bool VolumeFlipbookBaker::ApplyPendingPreviewSwitch(renderer::ResourceManager& r
     const FluidPreviewKey key = *m_previewRequested;
 
     /// @note 開き直しの途中で失敗しても «前のものが開いたまま» には戻せない。先に «何も開いていない» へ倒し、
-    ///       最後まで通ったときだけ m_previewOpen を書く。
+    /// @note       最後まで通ったときだけ m_previewOpen を書く。
     m_previewOpen.reset();
     m_fluidPreview.Close();
     m_fluidPreviewVolume = {};
@@ -876,9 +908,9 @@ bool VolumeFlipbookBaker::ApplyPendingPreviewSwitch(renderer::ResourceManager& r
     const float frameDt = (std::max)(key.frameDt, 1.0e-4f);
     int resolution = std::clamp(key.resolution, 16, kMaxVolumeResolution);
     /// @note 気体は解像度が変わらなければ 3D テクスチャ (160³ で 300 MB) をそのまま使い回し、
-    ///       場を 0 に戻すだけで済む。液体は湧かせ方がレシピで決まるので粒子バッファだけ作り直すが、
-    ///       シェーダー・定数・並べ替えの段は残る。Release を挟むとどちらも全部を確保し直すことになり、
-    ///       1 手編集するたびに VRAM が波打つため、同じ種類のソルバーは Release せず Initialize し直す。
+    /// @note       場を 0 に戻すだけで済む。液体は湧かせ方がレシピで決まるので粒子バッファだけ作り直すが、
+    /// @note       シェーダー・定数・並べ替えの段は残る。Release を挟むとどちらも全部を確保し直すことになり、
+    /// @note       1 手編集するたびに VRAM が波打つため、同じ種類のソルバーは Release せず Initialize し直す。
     if (key.solver != VolumeFluidSolver::Cpu) {
         std::string gpuError;
         if (liquid) {
@@ -902,7 +934,7 @@ bool VolumeFlipbookBaker::ApplyPendingPreviewSwitch(renderer::ResourceManager& r
                 return openFailed();
             }
             /// @note 焼きと同じく CPU へ落とす。失敗ではないので描画は続け、理由だけ結果の欄に残す。
-            ///       気体はここで諦めていたので、一度こけると再起動まで 3D プレビューが戻らなかった。
+            /// @note       気体はここで諦めていたので、一度こけると再起動まで 3D プレビューが戻らなかった。
             m_gpuFallbackNote = name + "を使えないため CPU で解きます (" + reason + ")";
             m_previewNote = m_gpuFallbackNote;
             m_result = {};
@@ -965,7 +997,7 @@ bool VolumeFlipbookBaker::ReadbackPreview(renderer::IRenderer& renderer, rendere
         return false;
 
     /// @note プレビューは等倍で描き、RT には表示用の色 (露出・背景との合成・ガンマ込み) が入っている。
-    ///       縮めも色の変換も要らず、左端の色タイルを 8bit へ落とすだけでよい。
+    /// @note       縮めも色の変換も要らず、左端の色タイルを 8bit へ落とすだけでよい。
     outRgba8.resize(static_cast<std::size_t>(tile) * tile * 4);
     for (std::uint32_t y = 0; y < tile; ++y) {
         for (std::uint32_t x = 0; x < tile; ++x) {
@@ -1012,18 +1044,22 @@ bool VolumeFlipbookBaker::CaptureFrame(renderer::IRenderer& renderer, renderer::
     if (sixWay) {
         captured.sixWayPositive.assign(tilePixels, math::Vector4::ZERO);
         captured.sixWayNegative.assign(tilePixels, math::Vector4::ZERO);
+        captured.sixWayAlbedoColor.assign(tilePixels, math::Vector4::ZERO);
+        captured.sixWayEmissionColor.assign(tilePixels, math::Vector4::ZERO);
     }
     bool touchesEdge = false;
     for (std::uint32_t y = 0; y < m_outputTile; ++y) {
         const bool edgeRow = y < kEdgeBandPixels || y + kEdgeBandPixels >= m_outputTile;
         for (std::uint32_t x = 0; x < m_outputTile; ++x) {
             /// @note supersampling 倍で描いた ss×ss 画素を 1 画素へ縮める。色は事前乗算なのでそのまま平均し、
-            ///       速度・歪みの向きは «見えている量» の重みで、6 方向の Positive は被覆率で重み付けする。
+            /// @note       速度・歪みの向きは «見えている量» の重みで、6 方向の Positive は被覆率で重み付けする。
             float color[4] = {};
             float motion[2] = {};
             float motionWeight = 0.0f;
             float positive[4] = {};
             float negative[4] = {};
+            float albedoColor[4] = {};
+            float emissionColor[4] = {};
             for (std::uint32_t sy = 0; sy < ss; ++sy) {
                 for (std::uint32_t sx = 0; sx < ss; ++sx) {
                     const std::uint32_t px = x * ss + sx;
@@ -1043,9 +1079,14 @@ bool VolumeFlipbookBaker::CaptureFrame(renderer::IRenderer& renderer, renderer::
                     if (sixWay) {
                         const float* p = texelAt(2, px, py);
                         const float* n = texelAt(3, px, py);
+                        const float* a = texelAt(4, px, py);
+                        const float* e = texelAt(5, px, py);
                         for (int i = 0; i < 3; ++i) positive[i] += p[i] * p[3];
                         positive[3] += p[3];
                         for (int i = 0; i < 4; ++i) negative[i] += n[i];
+                        for (int i = 0; i < 3; ++i) albedoColor[i] += a[i] * a[3];
+                        albedoColor[3] += a[3];
+                        for (int i = 0; i < 4; ++i) emissionColor[i] += e[i];
                     }
                 }
             }
@@ -1069,6 +1110,13 @@ bool VolumeFlipbookBaker::CaptureFrame(renderer::IRenderer& renderer, renderer::
                                                    positive[2] * inverseCoverage, positive[3] * inverseSamples };
                 captured.sixWayNegative[index] = { negative[0] * inverseSamples, negative[1] * inverseSamples,
                                                    negative[2] * inverseSamples, negative[3] * inverseSamples };
+                const float albedoCoverage = albedoColor[3] > 1.0e-5f ? 1.0f / albedoColor[3] : 0.0f;
+                captured.sixWayAlbedoColor[index] = { albedoColor[0] * albedoCoverage,
+                    albedoColor[1] * albedoCoverage, albedoColor[2] * albedoCoverage,
+                    albedoColor[3] * inverseSamples };
+                captured.sixWayEmissionColor[index] = { emissionColor[0] * inverseSamples,
+                    emissionColor[1] * inverseSamples, emissionColor[2] * inverseSamples,
+                    emissionColor[3] * inverseSamples };
             }
             const bool edgeColumn = x < kEdgeBandPixels || x + kEdgeBandPixels >= m_outputTile;
             if ((edgeRow || edgeColumn) && captured.color[index].w > kEdgeAlphaThreshold) touchesEdge = true;
@@ -1115,11 +1163,17 @@ void VolumeFlipbookBaker::BlendLoopTile(CapturedTile& head, const CapturedTile& 
         }
     }
     if (head.sixWayPositive.size() == tail.sixWayPositive.size()
-        && head.sixWayNegative.size() == tail.sixWayNegative.size()) {
+        && head.sixWayNegative.size() == tail.sixWayNegative.size()
+        && head.sixWayAlbedoColor.size() == tail.sixWayAlbedoColor.size()
+        && head.sixWayEmissionColor.size() == tail.sixWayEmissionColor.size()) {
         for (std::size_t i = 0; i < head.sixWayPositive.size(); ++i)
             head.sixWayPositive[i] = LerpStraight(tail.sixWayPositive[i], head.sixWayPositive[i], keep);
         for (std::size_t i = 0; i < head.sixWayNegative.size(); ++i)
             head.sixWayNegative[i] = Lerp4(tail.sixWayNegative[i], head.sixWayNegative[i], keep);
+        for (std::size_t i = 0; i < head.sixWayAlbedoColor.size(); ++i)
+            head.sixWayAlbedoColor[i] = LerpStraight(tail.sixWayAlbedoColor[i], head.sixWayAlbedoColor[i], keep);
+        for (std::size_t i = 0; i < head.sixWayEmissionColor.size(); ++i)
+            head.sixWayEmissionColor[i] = Lerp4(tail.sixWayEmissionColor[i], head.sixWayEmissionColor[i], keep);
     }
 }
 
@@ -1148,7 +1202,14 @@ void VolumeFlipbookBaker::CommitTile(int frame, const CapturedTile& tile)
                 out[2] = ToUnorm8(encoded.z);
                 out[3] = ToUnorm8(encoded.w);
             } else {
-                const EncodedColorTexel texel = EncodeColorTexel(color, exposure);
+                math::Vector4 outputColor = color;
+                if (m_settings.glowEmission) {
+                    const float inverseAlpha = color.w > 1.0e-5f ? 1.0f / color.w : 0.0f;
+                    outputColor.x *= inverseAlpha;
+                    outputColor.y *= inverseAlpha;
+                    outputColor.z *= inverseAlpha;
+                }
+                const EncodedColorTexel texel = EncodeColorTexel(outputColor, exposure);
                 out[0] = texel.r;
                 out[1] = texel.g;
                 out[2] = texel.b;
@@ -1162,8 +1223,12 @@ void VolumeFlipbookBaker::CommitTile(int frame, const CapturedTile& tile)
             if (sixWay) {
                 const math::Vector4& p = tile.sixWayPositive[index];
                 const math::Vector4& n = tile.sixWayNegative[index];
+                const math::Vector4& albedo = tile.sixWayAlbedoColor[index];
+                const math::Vector4& emission = tile.sixWayEmissionColor[index];
                 std::uint8_t* positive = &m_sixWayPositive[atlasIndex * 4];
                 std::uint8_t* negative = &m_sixWayNegative[atlasIndex * 4];
+                std::uint8_t* albedoColor = &m_sixWayAlbedoColor[atlasIndex * 4];
+                std::uint8_t* emissionColor = &m_sixWayEmissionColor[atlasIndex * 4];
                 positive[0] = ToUnorm8(p.x);
                 positive[1] = ToUnorm8(p.y);
                 positive[2] = ToUnorm8(p.z);
@@ -1172,6 +1237,16 @@ void VolumeFlipbookBaker::CommitTile(int frame, const CapturedTile& tile)
                 negative[1] = ToUnorm8(n.y);
                 negative[2] = ToUnorm8(n.z);
                 negative[3] = ToUnorm8(n.w);
+                const EncodedColorTexel albedoTexel = EncodeColorTexel(albedo, 1.0f);
+                albedoColor[0] = albedoTexel.r;
+                albedoColor[1] = albedoTexel.g;
+                albedoColor[2] = albedoTexel.b;
+                albedoColor[3] = ToUnorm8(albedo.w);
+                const EncodedColorTexel emissionTexel = EncodeColorTexel(emission, exposure);
+                emissionColor[0] = emissionTexel.r;
+                emissionColor[1] = emissionTexel.g;
+                emissionColor[2] = emissionTexel.b;
+                emissionColor[3] = 255;
             }
         }
     }
@@ -1183,7 +1258,7 @@ void VolumeFlipbookBaker::Finish()
     m_loopHead = {};
     if (m_settings.distortion) {
         /// @note 歪みマップは MV を焼かない (ファイルにも書かない)。比較プレビューは MV の Atlas を要るので、
-        ///       «動かない» 中央値だけを渡す。
+        /// @note       «動かない» 中央値だけを渡す。
         m_outputStrength = 0.0f;
         const std::size_t pixelCount = static_cast<std::size_t>(m_atlasWidth) * m_atlasHeight;
         m_motionBytes.assign(pixelCount * 4, 0);
@@ -1215,19 +1290,20 @@ void VolumeFlipbookBaker::Finish()
         return;
     }
     /// @note 上書きが既定 (.fluid から焼く経路)。空きを探して _001 を足すと、同じレシピを焼き直すたびに
-    ///       別のファイルが増え、.mat が指す先と食い違う — AI が «焼いた → 出た絵を見る» を回せなくなる。
-    ///       人が «別名で残したい» と言ったときだけ空きを探す。
+    /// @note       別のファイルが増え、.mat が指す先と食い違う — AI が «焼いた → 出た絵を見る» を回せなくなる。
+    /// @note       人が «別名で残したい» と言ったときだけ空きを探す。
     m_outputBase = m_settings.overwriteOutputs
         ? directory / std::filesystem::path(m_settings.baseName)
         : detail::FindAvailableBase(directory, m_settings.baseName,
                                     { ".png", ".dds", "_mv.png", "_mv.dds", "_6wayP.png", "_6wayP.dds",
-                                      "_6wayN.png", "_6wayN.dds" });
+                                      "_6wayN.png", "_6wayN.dds", "_6wayC.png", "_6wayC.dds",
+                                      "_6wayE.png", "_6wayE.dds" });
     if (m_outputBase.empty()) {
         Fail("空いている出力ファイル名を確保できません");
         return;
     }
     /// @note BC7 の圧縮は Atlas の大きさ次第で数十秒かかる。エディターを止めないよう裏で書き、Tick が受け取る。
-    ///       書いている間 (Encoding) は IsBusy なので、Atlas のバッファには誰も触らない。
+    /// @note       書いている間 (Encoding) は IsBusy なので、Atlas のバッファには誰も触らない。
     m_state = VolumeFlipbookBakeState::Encoding;
     m_encodeJob = std::async(std::launch::async, [this, base = m_outputBase]() { return WriteOutputs(base); });
 }
@@ -1238,13 +1314,16 @@ std::string VolumeFlipbookBaker::WriteOutputs(const std::filesystem::path& base)
     const auto path = [&](const char* suffix) { return std::filesystem::path(base.string() + suffix); };
     const std::uint32_t tile = m_outputTile;
     std::string error;
-    /// @note PNG は «直せる原本»、DDS はコマを跨がないミップ付きの «実行時に使うもの»。マテリアルは DDS を指す。
-    ///       色は事前乗算で持つ。薄い炎は RGB > α になり、Straight では表せない (Explosion プリセットと同じ扱い)。
-    ///       歪みマップは 2D の Distortion と同じく Data・ストレート・素直なミップ (sRGB で読むと 0.5 の «曲げない» がずれる)。
+    /// @note PNG は Git で保持できる編集原本、DDS はコマを跨がないミップ付き出力。PNG があればマテリアルはそちらを参照する。
+    /// @note       Glow は Additive ブレンドがアルファを掛けるためストレート色、それ以外の色は事前乗算で持つ。
+    /// @note       薄い炎は RGB > α になり、Straight では表せない (Explosion プリセットと同じ扱い)。
+    /// @note       歪みマップは 2D の Distortion と同じく Data・ストレート・素直なミップ (sRGB で読むと 0.5 の «曲げない» がずれる)。
     const bool distortion = m_settings.distortion;
     const TextureType colorType = distortion ? TextureType::Data : TextureType::Color;
-    const AlphaMode colorAlpha = distortion ? AlphaMode::Straight : AlphaMode::Premultiplied;
-    const FlipbookMipContent colorMips = distortion ? FlipbookMipContent::Plain : FlipbookMipContent::PremultipliedSrgb;
+    const AlphaMode colorAlpha = distortion || m_settings.glowEmission
+        ? AlphaMode::Straight : AlphaMode::Premultiplied;
+    const FlipbookMipContent colorMips = distortion ? FlipbookMipContent::Plain
+        : m_settings.glowEmission ? FlipbookMipContent::StraightSrgb : FlipbookMipContent::PremultipliedSrgb;
     const bool colorOk =
         detail::SavePngRgba8(path(".png"), m_atlasWidth, m_atlasHeight, m_colorAtlas, error)
         && detail::SaveTextureMeta(path(".png"), colorType, TextureCompression::Auto, colorAlpha, false, error)
@@ -1267,15 +1346,33 @@ std::string VolumeFlipbookBaker::WriteOutputs(const std::filesystem::path& base)
     /// @note 6 方向マップは色ではなく明るさ (データ)。sRGB で読むと重みの中間調がずれる。
     const bool sixWayOk =
         detail::SavePngRgba8(path("_6wayP.png"), m_atlasWidth, m_atlasHeight, m_sixWayPositive, error)
+        && detail::SaveTextureMeta(path("_6wayP.png"), TextureType::Data, TextureCompression::BC7,
+                                   AlphaMode::Straight, false, error)
         && detail::SaveFlipbookDds(path("_6wayP.dds"), m_atlasWidth, m_atlasHeight, m_sixWayPositive, tile, tile,
                                    FlipbookMipContent::CoverageWeighted, detail::FlipbookDdsCompression::BC7, error)
         && detail::SaveFlipbookMeta(path("_6wayP.dds"), TextureType::Data, TextureCompression::BC7,
                                     AlphaMode::Straight, error)
         && detail::SavePngRgba8(path("_6wayN.png"), m_atlasWidth, m_atlasHeight, m_sixWayNegative, error)
+        && detail::SaveTextureMeta(path("_6wayN.png"), TextureType::Data, TextureCompression::BC7,
+                                   AlphaMode::Straight, false, error)
         && detail::SaveFlipbookDds(path("_6wayN.dds"), m_atlasWidth, m_atlasHeight, m_sixWayNegative, tile, tile,
-                                   FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC7, error)
+                                    FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC7, error)
         && detail::SaveFlipbookMeta(path("_6wayN.dds"), TextureType::Data, TextureCompression::BC7,
-                                    AlphaMode::Straight, error);
+                                    AlphaMode::Straight, error)
+        && detail::SavePngRgba8(path("_6wayC.png"), m_atlasWidth, m_atlasHeight, m_sixWayAlbedoColor, error)
+        && detail::SaveTextureMeta(path("_6wayC.png"), TextureType::Color, TextureCompression::Auto,
+                                   AlphaMode::Straight, false, error)
+        && detail::SaveFlipbookDds(path("_6wayC.dds"), m_atlasWidth, m_atlasHeight, m_sixWayAlbedoColor, tile, tile,
+                                   FlipbookMipContent::CoverageWeighted, detail::FlipbookDdsCompression::BC7, error)
+        && detail::SaveFlipbookMeta(path("_6wayC.dds"), TextureType::Color, TextureCompression::BC7,
+                                    AlphaMode::Straight, error)
+        && detail::SavePngRgba8(path("_6wayE.png"), m_atlasWidth, m_atlasHeight, m_sixWayEmissionColor, error)
+        && detail::SaveTextureMeta(path("_6wayE.png"), TextureType::Color, TextureCompression::Auto,
+                                   AlphaMode::None, false, error)
+        && detail::SaveFlipbookDds(path("_6wayE.dds"), m_atlasWidth, m_atlasHeight, m_sixWayEmissionColor, tile, tile,
+                                   FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC7, error)
+        && detail::SaveFlipbookMeta(path("_6wayE.dds"), TextureType::Color, TextureCompression::BC7,
+                                    AlphaMode::None, error);
     return sixWayOk ? std::string{} : (error.empty() ? std::string("6 方向マップを書き出せません") : error);
 }
 
@@ -1290,10 +1387,15 @@ void VolumeFlipbookBaker::FinishOutputs()
     if (m_settings.sixWayLightmaps) {
         m_result.sixWayPositivePath = path("_6wayP.dds").string();
         m_result.sixWayNegativePath = path("_6wayN.dds").string();
+        m_result.sixWayAlbedoColorPath = path("_6wayC.dds").string();
+        m_result.sixWayEmissionColorPath = path("_6wayE.dds").string();
         const math::Vector3 hottest = m_settings.blackbodyEmission
-            ? renderer::ColorFromTemperature(m_settings.blackbodyMaxKelvin)
+            ? (m_settings.fireEmission
+                ? m_fireColorLut.Chroma(m_settings.blackbodyMaxKelvin)
+                : renderer::ColorFromTemperature(m_settings.blackbodyMaxKelvin))
             : EvaluateVolumeRamp(m_settings.emissionRamp, 1.0f);
-        m_result.sixWayEmissionColor = hottest * (std::max)(m_settings.emissionIntensity, 0.0f);
+        const math::Vector3 emission = hottest * (std::max)(m_settings.emissionIntensity, 0.0f);
+        m_result.sixWayEmissionColor = emission;
     }
     m_result.frameCount = m_grid.frameCount;
     m_result.columns = m_grid.columns;
@@ -1306,6 +1408,10 @@ void VolumeFlipbookBaker::FinishOutputs()
     BakeFingerprint fingerprint;
     fingerprint.Add(m_colorAtlas);
     fingerprint.Add(m_motionBytes);
+    fingerprint.Add(m_sixWayPositive);
+    fingerprint.Add(m_sixWayNegative);
+    fingerprint.Add(m_sixWayAlbedoColor);
+    fingerprint.Add(m_sixWayEmissionColor);
     m_result.fingerprint = fingerprint.Finish();
     m_result.solverUsed = m_bakeUsesGpu ? "gpu" : "cpu";
     m_result.fallbackReason = m_gpuFallbackNote;
@@ -1424,6 +1530,8 @@ void VolumeFlipbookBaker::ReleaseCpuBuffers()
     m_colorAtlas = {};
     m_sixWayPositive = {};
     m_sixWayNegative = {};
+    m_sixWayAlbedoColor = {};
+    m_sixWayEmissionColor = {};
     m_motionBytes = {};
     m_motion = {};
     m_coverage = {};
@@ -1436,6 +1544,8 @@ void VolumeFlipbookBaker::Fail(std::string message)
     m_fluidBake.Close();
     m_result = {};
     m_result.message = std::move(message);
+    m_result.solverUsed = m_bakeUsesGpu ? "gpu" : "cpu";
+    m_result.fallbackReason = m_gpuFallbackNote;
     m_state = VolumeFlipbookBakeState::Failed;
     ReleaseCpuBuffers();
 }
@@ -1504,4 +1614,4 @@ void VolumeFlipbookBaker::Release(renderer::ResourceManager& resources)
     m_tileSize = 0;
 }
 
-} // namespace fbzz::asset
+}

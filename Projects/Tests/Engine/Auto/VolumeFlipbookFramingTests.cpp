@@ -129,7 +129,7 @@ TEST_F(VolumeFlipbookFramingTest, SourceLookIsAppliedAndResetBetweenSources)
     EXPECT_NEAR(settings.liquid.extinction, defaults.liquid.extinction, testkit::kTolerance);
 }
 
-/// 流体のループは 2D の FluidBaker (output.loop) と同じ «コマ数 / 4 (最低 1) を余分に解いて重ねる»。
+/// @note 流体のループは 2D と同じ割合から重ねコマ数を求める。
 TEST_F(VolumeFlipbookFramingTest, FluidLoopOverlapMatchesTheFlatBaker)
 {
     asset::VolumeFlipbookBakeSettings settings;
@@ -143,6 +143,13 @@ TEST_F(VolumeFlipbookFramingTest, FluidLoopOverlapMatchesTheFlatBaker)
     EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 8);
     settings.source.frameCount = 3;
     EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 1);
+    settings.source.frameCount = 32;
+    settings.fluidLoopBlendFraction = 0.125f;
+    EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 4);
+    settings.fluidLoopBlendFraction = 0.0f;
+    EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 0);
+    settings.fluidLoopBlendFraction = 0.5f;
+    EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 16);
 
     /// @note 解析ソースのループは puff の湧き方で閉じる。流体の重ねは使わない。
     settings.sourceKind = asset::VolumeSourceKind::Analytic;
