@@ -19,6 +19,8 @@
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Engine/Asset/FluidBakeBudget.hpp>
+#include <Engine/Asset/FluidVolumeBake.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
@@ -829,6 +831,20 @@ void FluidEditorPanel::DrawToolbar(EditorContext& ctx)
     ImGui::SetItemTooltip("低解像度・少ないコマで試す。未保存の編集も使い、結果は Library に隔離する");
     ImGui::EndDisabled();
 
+    if (open) {
+        const fluid::FluidRecipe& recipe = document.Recipe();
+        const asset::FluidBakeBudget budget = volumeBake
+            ? asset::EstimateVolumeBakeBudget(asset::MakeVolumeBakeSettings(recipe, document.Path()))
+            : asset::EstimateFluidBakeBudget(recipe);
+        constexpr std::uint64_t mib = 1024ull * 1024ull;
+        ImGui::TextDisabled("Bake estimate: RAM %llu MiB | GPU %llu MiB | disk %llu MiB | atlas %.1f MP",
+            static_cast<unsigned long long>((budget.cpuBytes + mib - 1) / mib),
+            static_cast<unsigned long long>((budget.gpuBytes + mib - 1) / mib),
+            static_cast<unsigned long long>((budget.diskBytes + mib - 1) / mib),
+            static_cast<double>(budget.atlasPixels) / 1000000.0);
+        ImGui::SetItemTooltip("Bake 開始時に空き RAM / ディスク容量と Atlas 上限を検査します。GPU は概算です。");
+    }
+
     if (m_bakeJob != 0 && ctx.fluidBake != nullptr) {
         if (const FluidJobStatus* job = ctx.fluidBake->Find(m_bakeJob); job != nullptr && !job->Finished()) {
             SameLineIfFits(140.0f);
@@ -845,6 +861,15 @@ void FluidEditorPanel::DrawToolbar(EditorContext& ctx)
                 ImGui::TextDisabled("Remaining: estimating...");
             if (volumeBake && ImGui::IsItemHovered())
                 ImGui::SetTooltip("3D simulation and GPU rendering can overlap; shown times are wall-clock estimates.");
+            if (!volumeBake && job->slowestRenderFrame >= 0) {
+                const char* phase = job->slowestSimulationFrame < 0 ? "warmup" : "sim";
+                ImGui::TextDisabled("Slowest 2D: %s frame %d %.3f s | render frame %d %.3f s",
+                    phase, job->slowestSimulationFrame, job->slowestSimulationFrameSeconds,
+                    job->slowestRenderFrame, job->slowestRenderFrameSeconds);
+            }
+            if (volumeBake && job->slowestRenderFrame >= 0)
+                ImGui::TextDisabled("Slowest 3D frame %d: %.3f s wall clock",
+                    job->slowestRenderFrame, job->slowestRenderFrameSeconds);
         }
     }
 

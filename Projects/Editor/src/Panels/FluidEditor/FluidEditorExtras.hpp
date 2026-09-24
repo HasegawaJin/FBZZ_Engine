@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace fbzz::editor {
 struct EditorContext;
@@ -62,6 +63,17 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state);
 [[nodiscard]] bool HasFluidBakedResult();
 /// @note GPU 資源を返す (パネルの OnShutdown から)。
 void ShutdownFluidBakedTab(EditorContext& ctx);
+/// @brief Playtest 用に、指定した 2D / 3D Atlas と再生位置を GPU へ用意する。
+/// @note motionStrength が負なら隣の材質に記録された値を使う。
+[[nodiscard]] bool PrepareFluidPlaybackCapture(EditorContext& ctx, const std::string& fluidPath,
+                                               bool volume, float frame, float motionStrength,
+                                               std::string& error);
+/// @brief Playtest の描画フレーム内で、用意済みの再生位置を描く。
+void RenderFluidPlaybackCapture(EditorContext& ctx);
+/// @brief Playtest 用の再生 RT を PNG で読む。
+[[nodiscard]] bool CaptureFluidPlayback(EditorContext& ctx, std::vector<std::uint8_t>& png);
+/// @brief Playtest 用の GPU 資源を返す。
+void ShutdownFluidPlaybackCapture(EditorContext& ctx);
 
 
 /// @note 毎フレーム呼ぶ。設定が入っていて未保存の変更があり、最後の編集から一定時間が経っていれば保存する。

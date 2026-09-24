@@ -23,6 +23,7 @@
 #include <Fluid/FluidSolver.hpp>
 #include <Fluid/FluidStepping.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/SixWayLighting.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/PrefabInstantiate.hpp>
@@ -43,6 +44,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
@@ -685,6 +687,8 @@ void FluidExtrasDrawEntries(FluidGalleryState& gallery, bool& outCreateNow)
 
 /// @name Baked タブ
 
+struct FluidBakedLoadChannel;
+
 struct FluidBakedState {
     bool has = false;
     std::string fluidPath;
@@ -695,6 +699,7 @@ struct FluidBakedState {
     /// @note 3D (Volume Flipbook Baker) の出力を見ているか。
     bool volume = false;
     bool pendingLoad = false;
+    std::shared_ptr<FluidBakedLoadChannel> loading;
     bool loaded = false;
     bool hasMotion = false;
     std::string message;
@@ -715,10 +720,97 @@ struct FluidBakedState {
     float seamPixelDifference = 0.0f;
     float typicalPixelDifference = 0.0f;
     bool seamWarning = false;
+    float appearanceSeamDifference = 0.0f;
+    float appearanceTypicalDifference = 0.0f;
+    bool appearanceAvailable = false;
+    bool appearanceWarning = false;
     int steadyStartFrame = -1;
     std::vector<float> frameCoverage;
     std::string vfxLoopReport;
     bool vfxLoopWarning = false;
+};
+
+struct FluidPlaybackCaptureEntry {
+    std::string fluidPath;
+    std::string colorPath;
+    std::string motionPath;
+    std::filesystem::file_time_type recipeStamp;
+    std::filesystem::file_time_type colorStamp;
+    std::filesystem::file_time_type motionStamp;
+    bool volume = false;
+    float requestedStrength = -1.0f;
+    VolumeFlipbookComparePreview compare;
+    asset::BakedVolumeFlipbook pendingFlipbook;
+    float frame = 0.0f;
+    float fps = 24.0f;
+    bool uploadPending = false;
+};
+
+struct FluidPlaybackCaptureState {
+    /// @note DX12 の描画中に旧 Atlas を解放して同じハンドルを再利用すると後続画像が空になる。
+    std::vector<std::unique_ptr<FluidPlaybackCaptureEntry>> entries;
+    FluidPlaybackCaptureEntry* current = nullptr;
+};
+
+FluidPlaybackCaptureState& FluidExtrasCapture()
+{
+    static FluidPlaybackCaptureState state;
+    return state;
+}
+
+std::filesystem::file_time_type FluidExtrasCaptureStamp(const std::string& path)
+{
+    std::error_code error;
+    return path.empty() ? std::filesystem::file_time_type{}
+        : std::filesystem::last_write_time(util::FileSystem::PathFromUtf8(path), error);
+}
+
+/// @brief Baked タブの GPU 転送量を抑える。診断は縮小前の画像で行う。
+void FluidExtrasShrinkPreview(FluidExtrasImage& image, const asset::FlipbookGrid& grid)
+{
+    if (!image.Valid() || grid.columns < 1 || grid.rows < 1) return;
+    const std::uint32_t tileWidth = image.width / static_cast<std::uint32_t>(grid.columns);
+    const std::uint32_t tileHeight = image.height / static_cast<std::uint32_t>(grid.rows);
+    const std::uint32_t factor = (std::max)(1u, (std::max)(tileWidth, tileHeight) / 128u);
+    if (factor <= 1) return;
+    const std::uint32_t smallWidth = tileWidth / factor;
+    const std::uint32_t smallHeight = tileHeight / factor;
+    const std::uint32_t width = smallWidth * static_cast<std::uint32_t>(grid.columns);
+    const std::uint32_t height = smallHeight * static_cast<std::uint32_t>(grid.rows);
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4);
+    for (std::uint32_t y = 0; y < height; ++y) {
+        const std::uint32_t sourceY = (y / smallHeight) * tileHeight + (y % smallHeight) * factor;
+        for (std::uint32_t x = 0; x < width; ++x) {
+            const std::uint32_t sourceX = (x / smallWidth) * tileWidth + (x % smallWidth) * factor;
+            const auto source = (static_cast<std::size_t>(sourceY) * image.width + sourceX) * 4;
+            const auto destination = (static_cast<std::size_t>(y) * width + x) * 4;
+            std::copy_n(image.rgba.data() + source, 4, pixels.data() + destination);
+        }
+    }
+    image.width = width;
+    image.height = height;
+    image.rgba = std::move(pixels);
+}
+
+struct FluidBakedLoadChannel {
+    std::atomic<bool> done{ false };
+    FluidExtrasImage color;
+    FluidExtrasImage motion;
+    std::string colorPath;
+    std::string motionPath;
+    std::string error;
+    bool hasMotion = false;
+    float seamAreaJump = 0.0f;
+    float seamBrightnessJump = 0.0f;
+    float seamPixelDifference = 0.0f;
+    float typicalPixelDifference = 0.0f;
+    bool seamWarning = false;
+    float appearanceSeamDifference = 0.0f;
+    float appearanceTypicalDifference = 0.0f;
+    bool appearanceAvailable = false;
+    bool appearanceWarning = false;
+    int steadyStartFrame = -1;
+    std::vector<float> frameCoverage;
 };
 
 FluidBakedState& FluidExtrasBaked()
@@ -943,47 +1035,106 @@ void FluidExtrasPremultiply(std::vector<std::uint8_t>& rgba)
     }
 }
 
+bool FluidExtrasAnalyzeAppearance(const std::filesystem::path& base, const std::string& materialPath,
+                                  const FluidExtrasImage& motion, const asset::FlipbookGrid& grid,
+                                  float motionStrength, const fluid::FluidRecipe& recipe,
+                                  float& outSeam, float& outTypical);
+
 void FluidExtrasLoadBaked(EditorContext& ctx, FluidBakedState& baked)
 {
-    baked.pendingLoad = false;
-    baked.loaded = false;
-    baked.vfxLoopReport.clear();
-    baked.vfxLoopWarning = false;
     if (ctx.resources == nullptr) {
         baked.message = "No renderer: the baked atlas cannot be shown.";
         baked.messageIsError = true;
         return;
     }
-
-    FluidExtrasImage color;
-    if (!FluidExtrasLoadFirst(FluidExtrasOutputCandidates(
-                                  util::FileSystem::PathFromUtf8(baked.fluidPath).replace_extension(),
-                                  baked.volume, false),
-                              color, baked.colorPath)
-        || !color.Valid()) {
-        baked.message = "The baked atlas is not next to the .fluid yet.";
+    if (!baked.loading) {
+        baked.loaded = false;
+        baked.message = "Loading baked atlas...";
+        baked.messageIsError = false;
+        baked.vfxLoopReport.clear();
+        baked.vfxLoopWarning = false;
+        auto channel = std::make_shared<FluidBakedLoadChannel>();
+        const std::filesystem::path base = util::FileSystem::PathFromUtf8(baked.fluidPath).replace_extension();
+        const bool volume = baked.volume;
+        const fluid::FluidRecipe recipe = baked.recipe;
+        const fluid::FluidShading shading = baked.shading;
+        const std::string materialPath = baked.materialPath;
+        asset::FlipbookGrid grid;
+        float fps = 24.0f;
+        bool loop = false;
+        float strength = 0.0f;
+        FluidExtrasResolvePlayback(baked, grid, fps, loop, strength);
+        std::thread([channel, base, volume, recipe, shading, grid, strength, materialPath]() {
+            if (!FluidExtrasLoadFirst(FluidExtrasOutputCandidates(base, volume, false),
+                                      channel->color, channel->colorPath) || !channel->color.Valid()) {
+                channel->error = "The baked atlas is not next to the .fluid yet.";
+            } else {
+                channel->hasMotion = FluidExtrasLoadFirst(FluidExtrasOutputCandidates(base, volume, true),
+                    channel->motion, channel->motionPath)
+                    && channel->motion.width == channel->color.width
+                    && channel->motion.height == channel->color.height;
+                if (!channel->hasMotion) {
+                    channel->motionPath.clear();
+                    channel->motion = {};
+                }
+                FluidBakedState analysis;
+                analysis.recipe = recipe;
+                FluidExtrasAnalyzeLoop(channel->color, grid, shading, analysis);
+                channel->seamAreaJump = analysis.seamAreaJump;
+                channel->seamBrightnessJump = analysis.seamBrightnessJump;
+                channel->seamPixelDifference = analysis.seamPixelDifference;
+                channel->typicalPixelDifference = analysis.typicalPixelDifference;
+                channel->seamWarning = analysis.seamWarning;
+                channel->steadyStartFrame = analysis.steadyStartFrame;
+                channel->frameCoverage = std::move(analysis.frameCoverage);
+                if (volume) {
+                    channel->appearanceAvailable = FluidExtrasAnalyzeAppearance(base, materialPath,
+                        channel->motion, grid, strength, recipe, channel->appearanceSeamDifference,
+                        channel->appearanceTypicalDifference);
+                    channel->appearanceWarning = channel->appearanceAvailable
+                        && channel->appearanceSeamDifference > (std::max)(0.03f,
+                            channel->appearanceTypicalDifference * 2.5f);
+                }
+                FluidExtrasShrinkPreview(channel->color, grid);
+                if (channel->hasMotion) FluidExtrasShrinkPreview(channel->motion, grid);
+                if (!volume && !asset::FluidShadingIsPremultiplied(shading))
+                    FluidExtrasPremultiply(channel->color.rgba);
+            }
+            channel->done.store(true, std::memory_order_release);
+        }).detach();
+        baked.loading = std::move(channel);
+        return;
+    }
+    if (!baked.loading->done.load(std::memory_order_acquire)) return;
+    auto channel = std::move(baked.loading);
+    baked.pendingLoad = false;
+    if (!channel->error.empty()) {
+        baked.message = std::move(channel->error);
         baked.messageIsError = true;
         return;
     }
-    FluidExtrasImage motion;
-    baked.hasMotion = FluidExtrasLoadFirst(
-        FluidExtrasOutputCandidates(util::FileSystem::PathFromUtf8(baked.fluidPath).replace_extension(),
-                                    baked.volume, true),
-        motion, baked.motionPath)
-        && motion.width == color.width && motion.height == color.height;
-    if (!baked.hasMotion) baked.motionPath.clear();
+    baked.colorPath = std::move(channel->colorPath);
+    baked.motionPath = std::move(channel->motionPath);
+    baked.hasMotion = channel->hasMotion;
+    baked.seamAreaJump = channel->seamAreaJump;
+    baked.seamBrightnessJump = channel->seamBrightnessJump;
+    baked.seamPixelDifference = channel->seamPixelDifference;
+    baked.typicalPixelDifference = channel->typicalPixelDifference;
+    baked.seamWarning = channel->seamWarning;
+    baked.appearanceSeamDifference = channel->appearanceSeamDifference;
+    baked.appearanceTypicalDifference = channel->appearanceTypicalDifference;
+    baked.appearanceAvailable = channel->appearanceAvailable;
+    baked.appearanceWarning = channel->appearanceWarning;
+    baked.steadyStartFrame = channel->steadyStartFrame;
+    baked.frameCoverage = std::move(channel->frameCoverage);
 
     asset::FlipbookGrid grid;
     float fps = 24.0f;
     bool loop = false;
     float strength = 0.0f;
     FluidExtrasResolvePlayback(baked, grid, fps, loop, strength);
-    FluidExtrasAnalyzeLoop(color, grid, baked.shading, baked);
-    if (baked.fluidPath == baked.sourceFluidPath) {
-        std::filesystem::path vfx = util::FileSystem::PathFromUtf8(baked.sourceFluidPath);
-        vfx.replace_extension(".vfx");
-        if (util::FileSystem::Exists(util::FileSystem::PathToUtf8(vfx))) FluidExtrasInspectVfxLoop(baked);
-    }
+    FluidExtrasImage color = std::move(channel->color);
+    FluidExtrasImage motion = std::move(channel->motion);
 
     asset::BakedVolumeFlipbook flipbook;
     flipbook.atlasWidth = color.width;
@@ -994,8 +1145,6 @@ void FluidExtrasLoadBaked(EditorContext& ctx, FluidBakedState& baked)
     flipbook.loop = loop;
     flipbook.motionStrength = baked.hasMotion ? strength : 0.0f;
     /// @note 2D は shading で事前乗算かどうかが決まる。3D は必ず事前乗算で焼いてある。
-    if (!baked.volume && !asset::FluidShadingIsPremultiplied(baked.shading))
-        FluidExtrasPremultiply(color.rgba);
     flipbook.colorRgba8 = std::move(color.rgba);
     if (baked.hasMotion) {
         flipbook.motionRgba8 = std::move(motion.rgba);
@@ -1023,9 +1172,121 @@ void FluidExtrasLoadBaked(EditorContext& ctx, FluidBakedState& baked)
     baked.seamPlayback = false;
     baked.message.clear();
     baked.messageIsError = false;
-    baked.frameCoverage.clear();
-    baked.vfxLoopReport.clear();
-    baked.vfxLoopWarning = false;
+}
+
+/// @brief 3D Bake の 6-way マップをフレーム補間・MV 込みで複数の照明方向から検査する。
+/// @note ParticleLighting.hlsli の direct response と独立発光を使う。環境 IBL と点光源はシーン依存。
+bool FluidExtrasAnalyzeAppearance(const std::filesystem::path& base, const std::string& materialPath,
+                                  const FluidExtrasImage& motion, const asset::FlipbookGrid& grid,
+                                  float motionStrength, const fluid::FluidRecipe& recipe,
+                                  float& outSeam, float& outTypical)
+{
+    asset::MaterialAsset material;
+    if (materialPath.empty() || !asset::LoadMaterialAssetFromFile(materialPath, material)
+        || !material.particle.sixWayMaps) return false;
+    const std::string stem = util::FileSystem::PathToUtf8(base);
+    const auto loadMap = [&](const char* suffix, FluidExtrasImage& image) {
+        std::string found;
+        if (!FluidExtrasLoadFirst({ util::FileSystem::PathFromUtf8(stem + suffix + ".png"),
+                                    util::FileSystem::PathFromUtf8(stem + suffix + ".dds") }, image, found))
+            return false;
+        FluidExtrasShrinkPreview(image, grid);
+        return image.Valid();
+    };
+    FluidExtrasImage positive, negative, albedo, emission;
+    if (!loadMap("_6wayP", positive) || !loadMap("_6wayN", negative)
+        || !loadMap("_6wayC", albedo) || !loadMap("_6wayE", emission)) return false;
+    for (const FluidExtrasImage* map : { &positive, &negative, &albedo, &emission })
+        if (map->width < static_cast<std::uint32_t>(grid.columns)
+            || map->height < static_cast<std::uint32_t>(grid.rows)) return false;
+    const int frames = (std::min)(grid.frameCount, grid.columns * grid.rows);
+    if (frames < 2) return false;
+    const auto sample = [&](const FluidExtrasImage& image, int frame, float u, float v) {
+        const int width = static_cast<int>(image.width) / grid.columns;
+        const int height = static_cast<int>(image.height) / grid.rows;
+        const int x = frame % grid.columns * width
+            + std::clamp(static_cast<int>(std::clamp(u, 0.0f, 0.9999f) * width), 0, width - 1);
+        const int y = frame / grid.columns * height
+            + std::clamp(static_cast<int>(std::clamp(v, 0.0f, 0.9999f) * height), 0, height - 1);
+        const auto offset = (static_cast<std::size_t>(y) * image.width + x) * 4;
+        return std::array<float, 4>{ image.rgba[offset] / 255.0f, image.rgba[offset + 1] / 255.0f,
+                                     image.rgba[offset + 2] / 255.0f, image.rgba[offset + 3] / 255.0f };
+    };
+    constexpr int tile = 64;
+    const int sampledFrames = frames * 2;
+    const int rows = (sampledFrames + grid.columns - 1) / grid.columns;
+    const asset::FlipbookGrid sampledGrid{ grid.columns, rows, sampledFrames };
+    outSeam = 0.0f;
+    outTypical = 0.0f;
+    float worstRatio = -1.0f;
+    const std::array<math::Vector3, 3> lights{{ { 0.0f, 1.0f, 0.0f },
+        { 0.7071068f, 0.7071068f, 0.0f }, { 0.0f, 0.7071068f, -0.7071068f } }};
+    for (const math::Vector3& light : lights) {
+        FluidExtrasImage image;
+        image.width = static_cast<std::uint32_t>(grid.columns * tile);
+        image.height = static_cast<std::uint32_t>(rows * tile);
+        image.rgba.assign(static_cast<std::size_t>(image.width) * image.height * 4, 0);
+        for (int sampleFrame = 0; sampleFrame < sampledFrames; ++sampleFrame) {
+            const int frame = sampleFrame / 2;
+            const int next = (frame + 1) % frames;
+            const float blend = sampleFrame % 2 == 0 ? 0.0f : 0.5f;
+            for (int y = 0; y < tile; ++y) for (int x = 0; x < tile; ++x) {
+                const float u = (static_cast<float>(x) + 0.5f) / tile;
+                const float v = (static_cast<float>(y) + 0.5f) / tile;
+                const auto mv = motion.Valid() ? sample(motion, frame, u, v)
+                    : std::array<float, 4>{ 0.5f, 0.5f, 0.0f, 1.0f };
+                const float du = (mv[0] * 2.0f - 1.0f) * motionStrength * grid.columns;
+                const float dv = (mv[1] * 2.0f - 1.0f) * motionStrength * grid.rows;
+                const float currentU = u + du * blend;
+                const float currentV = v + dv * blend;
+                const float nextU = u - du * (1.0f - blend);
+                const float nextV = v - dv * (1.0f - blend);
+                const auto mixed = [&](const FluidExtrasImage& map, bool srgb) {
+                    auto a = sample(map, frame, currentU, currentV);
+                    if (srgb) for (int c = 0; c < 3; ++c) a[c] = std::pow(a[c], 2.2f);
+                    if (blend <= 0.0f) return a;
+                    auto b = sample(map, next, nextU, nextV);
+                    for (int c = 0; c < 4; ++c) {
+                        if (srgb && c < 3) b[c] = std::pow(b[c], 2.2f);
+                        a[c] = a[c] * (1.0f - blend) + b[c] * blend;
+                    }
+                    return a;
+                };
+                const auto p = mixed(positive, false);
+                const auto n = mixed(negative, false);
+                const auto c = mixed(albedo, true);
+                const auto e = mixed(emission, true);
+                const math::Vector3 positiveRgb{ p[0], p[1], p[2] };
+                const math::Vector3 negativeRgb{ n[0], n[1], n[2] };
+                const float response = asset::EvaluateSixWay(positiveRgb, negativeRgb, light)
+                    + asset::EvaluateSixWayAmbient(positiveRgb, negativeRgb);
+                const float hueLuminance = (std::max)(0.2126f * c[0] + 0.7152f * c[1]
+                                                     + 0.0722f * c[2], 1.0e-4f);
+                const int atlasX = sampleFrame % grid.columns * tile + x;
+                const int atlasY = sampleFrame / grid.columns * tile + y;
+                const auto offset = (static_cast<std::size_t>(atlasY) * image.width + atlasX) * 4;
+                for (int channel = 0; channel < 3; ++channel) {
+                    const float lit = response * c[channel] / hueLuminance * p[3]
+                        + e[channel] * material.particle.sixWayEmissionScale;
+                    image.rgba[offset + channel] = static_cast<std::uint8_t>(
+                        std::clamp(1.0f - std::exp(-(std::max)(lit, 0.0f)), 0.0f, 1.0f) * 255.0f + 0.5f);
+                }
+                image.rgba[offset + 3] = static_cast<std::uint8_t>(
+                    std::clamp((std::max)(p[3], (std::max)({ e[0], e[1], e[2] })), 0.0f, 1.0f) * 255.0f + 0.5f);
+            }
+        }
+        FluidBakedState analysis;
+        analysis.recipe = recipe;
+        FluidExtrasAnalyzeLoop(image, sampledGrid, fluid::FluidShading::Fire, analysis);
+        const float ratio = analysis.seamPixelDifference
+            / (std::max)(analysis.typicalPixelDifference, 1.0e-4f);
+        if (ratio > worstRatio) {
+            worstRatio = ratio;
+            outSeam = analysis.seamPixelDifference;
+            outTypical = analysis.typicalPixelDifference;
+        }
+    }
+    return true;
 }
 
 void FluidExtrasDrawOutputRow(const char* label, const std::string& absPath)
@@ -1270,6 +1531,7 @@ void SetFluidBakedResult(EditorContext& ctx, const std::string& fluidPath,
     FluidBakedState& baked = FluidExtrasBaked();
     if (ctx.resources != nullptr) baked.compare.Release(*ctx.resources);
     baked.loaded = false;
+    baked.loading.reset();
     baked.hasMotion = false;
     baked.colorPath.clear();
     baked.motionPath.clear();
@@ -1290,7 +1552,7 @@ void SetFluidBakedResult(EditorContext& ctx, const std::string& fluidPath,
     baked.shading = FluidExtrasEffectiveShading(baked.recipe);
     baked.materialPath = SiblingMaterialPath(fluidPath);
     if (!util::FileSystem::Exists(baked.materialPath)) baked.materialPath.clear();
-    /// @note 読むのはタブを開いたとき。Atlas は数十 MB あり、焼き終わったフレームで読むと画面が飛ぶ。
+    /// @note タブを開いてから裏で読み、完了したフレームで表示する。
     baked.pendingLoad = true;
 }
 
@@ -1354,8 +1616,15 @@ void DrawFluidBakedTab(EditorContext& ctx, State& state)
                            baked.seamPixelDifference * 100.0f, baked.typicalPixelDifference * 100.0f);
     } else {
         ImGui::TextDisabled("Seam: area %.0f%%, brightness %.0f%%, pixels %.1f%% (usual %.1f%%)",
-                            baked.seamAreaJump * 100.0f, baked.seamBrightnessJump * 100.0f,
-                            baked.seamPixelDifference * 100.0f, baked.typicalPixelDifference * 100.0f);
+                             baked.seamAreaJump * 100.0f, baked.seamBrightnessJump * 100.0f,
+                             baked.seamPixelDifference * 100.0f, baked.typicalPixelDifference * 100.0f);
+    }
+    if (baked.volume && baked.appearanceAvailable) {
+        const ImVec4 color = baked.appearanceWarning ? ImVec4{ 1.0f, 0.55f, 0.28f, 1.0f }
+            : ImVec4{ 0.65f, 0.8f, 0.65f, 1.0f };
+        ImGui::TextColored(color, "6-way playback seam: %.1f%% (usual %.1f%%)",
+            baked.appearanceSeamDifference * 100.0f, baked.appearanceTypicalDifference * 100.0f);
+        ImGui::SetItemTooltip("6-way P/N/C/E、MV、コマ補間を適用し、3 方向の照明で継ぎ目を比較します。");
     }
     if (ImGui::Button("Inspect VFX loop (30/60 FPS)")) FluidExtrasInspectVfxLoop(baked);
     ImGui::SetItemTooltip("隣の .vfx を一時シーンで3周再生し、実際の粒子設定と Atlas で空白フレームを数えます");
@@ -1446,6 +1715,153 @@ void ShutdownFluidBakedTab(EditorContext& ctx)
     baked.pendingLoad = baked.has;
     /// @note 一覧のサムネイルもここで返す。GPU 資源を持つのはこの 2 つだけで、返す口は他に無い。
     FluidExtrasCloseGallery(ctx, FluidExtrasGallery());
+}
+
+bool PrepareFluidPlaybackCapture(EditorContext& ctx, const std::string& fluidPath,
+                                 bool volume, float frame, float motionStrength, std::string& error)
+{
+    if (ctx.renderer == nullptr || ctx.resources == nullptr) {
+        error = "Fluid 再生画面用の renderer がありません";
+        return false;
+    }
+    FluidPlaybackCaptureState& capture = FluidExtrasCapture();
+    capture.current = nullptr;
+    for (const auto& cached : capture.entries) {
+        if (cached->fluidPath == fluidPath && cached->volume == volume
+            && cached->requestedStrength == motionStrength
+            && cached->recipeStamp == FluidExtrasCaptureStamp(fluidPath)
+            && cached->colorStamp == FluidExtrasCaptureStamp(cached->colorPath)
+            && cached->motionStamp == FluidExtrasCaptureStamp(cached->motionPath)) {
+            cached->frame = frame;
+            capture.current = cached.get();
+            return true;
+        }
+    }
+    if (capture.entries.size() >= 8) {
+        error = "Fluid 再生画面の撮影対象が多すぎます (最大 8 種類)";
+        return false;
+    }
+    auto entry = std::make_unique<FluidPlaybackCaptureEntry>();
+    entry->fluidPath = fluidPath;
+    entry->volume = volume;
+    entry->requestedStrength = motionStrength;
+    entry->recipeStamp = FluidExtrasCaptureStamp(fluidPath);
+
+    FluidBakedState baked;
+    if (!asset::LoadFluidRecipe(fluidPath, baked.recipe)) {
+        error = ".fluid を読めません: " + fluidPath;
+        return false;
+    }
+    baked.shading = FluidExtrasEffectiveShading(baked.recipe);
+    /// @note レシピの Bake mode と別の Atlas を撮るとき、隣の材質は別モードの設定を保持している。
+    if (volume == (baked.recipe.bake.mode == fluid::FluidBakeMode::Volume3D)) {
+        baked.materialPath = SiblingMaterialPath(fluidPath);
+        if (!util::FileSystem::Exists(baked.materialPath)) baked.materialPath.clear();
+    }
+    asset::FlipbookGrid grid;
+    bool loop = false;
+    float strength = 0.0f;
+    FluidExtrasResolvePlayback(baked, grid, entry->fps, loop, strength);
+    if (motionStrength >= 0.0f) strength = motionStrength;
+    if (grid.columns < 1 || grid.rows < 1 || grid.frameCount < 1) {
+        error = "Fluid 再生画面のコマ割りが不正です";
+        return false;
+    }
+
+    const std::filesystem::path base = util::FileSystem::PathFromUtf8(fluidPath).replace_extension();
+    FluidExtrasImage color;
+    FluidExtrasImage motion;
+    std::string colorPath;
+    std::string motionPath;
+    if (!FluidExtrasLoadFirst(FluidExtrasOutputCandidates(base, volume, false), color, colorPath)
+        || !color.Valid() || color.width % static_cast<std::uint32_t>(grid.columns) != 0
+        || color.height % static_cast<std::uint32_t>(grid.rows) != 0) {
+        error = "Fluid の焼き上がり Atlas が無いか、コマ割りが一致しません";
+        return false;
+    }
+    const bool hasMotion = FluidExtrasLoadFirst(FluidExtrasOutputCandidates(base, volume, true), motion, motionPath)
+        && motion.width == color.width && motion.height == color.height;
+    if (baked.recipe.output.motionVectors && !hasMotion) {
+        error = "Fluid の Motion Vector Atlas が無いか、サイズが一致しません";
+        return false;
+    }
+    if (hasMotion && strength <= 0.0f) {
+        error = "Motion Vector の強さが不明です。motionStrength を指定してください";
+        return false;
+    }
+    entry->colorPath = colorPath;
+    entry->motionPath = hasMotion ? motionPath : std::string{};
+    entry->colorStamp = FluidExtrasCaptureStamp(entry->colorPath);
+    entry->motionStamp = FluidExtrasCaptureStamp(entry->motionPath);
+    FluidExtrasShrinkPreview(color, grid);
+    if (hasMotion) FluidExtrasShrinkPreview(motion, grid);
+    if (!volume && !asset::FluidShadingIsPremultiplied(baked.shading))
+        FluidExtrasPremultiply(color.rgba);
+
+    asset::BakedVolumeFlipbook flipbook;
+    flipbook.atlasWidth = color.width;
+    flipbook.atlasHeight = color.height;
+    flipbook.tileSize = color.width / static_cast<std::uint32_t>(grid.columns);
+    flipbook.grid = grid;
+    flipbook.frameDt = 1.0f / (std::max)(entry->fps, 0.1f);
+    flipbook.loop = loop;
+    flipbook.motionStrength = hasMotion ? strength : 0.0f;
+    flipbook.colorRgba8 = std::move(color.rgba);
+    if (hasMotion) {
+        flipbook.motionRgba8 = std::move(motion.rgba);
+    } else {
+        flipbook.motionRgba8.assign(static_cast<std::size_t>(color.width) * color.height * 4, 0);
+        for (std::size_t i = 0; i + 3 < flipbook.motionRgba8.size(); i += 4) {
+            flipbook.motionRgba8[i] = 128;
+            flipbook.motionRgba8[i + 1] = 128;
+            flipbook.motionRgba8[i + 3] = 255;
+        }
+    }
+    /// @note Playtest は描画フレーム開始前に準備を要求する。GPU 転送は Render へ送る。
+    entry->pendingFlipbook = std::move(flipbook);
+    entry->frame = frame;
+    entry->uploadPending = true;
+    capture.current = entry.get();
+    capture.entries.push_back(std::move(entry));
+    return true;
+}
+
+void RenderFluidPlaybackCapture(EditorContext& ctx)
+{
+    FluidPlaybackCaptureState& capture = FluidExtrasCapture();
+    FluidPlaybackCaptureEntry* entry = capture.current;
+    if (entry == nullptr || ctx.renderer == nullptr || ctx.resources == nullptr) return;
+    if (entry->uploadPending) {
+        std::string error;
+        if (!entry->compare.Upload(*ctx.resources, std::move(entry->pendingFlipbook), error)) {
+            capture.current = nullptr;
+            return;
+        }
+        entry->uploadPending = false;
+    }
+    entry->compare.Render(*ctx.renderer, *ctx.resources, entry->frame / entry->fps, entry->fps, 1.0f,
+                          asset::VolumePreviewBackground::Dark);
+}
+
+bool CaptureFluidPlayback(EditorContext& ctx, std::vector<std::uint8_t>& png)
+{
+    FluidPlaybackCaptureState& capture = FluidExtrasCapture();
+    const FluidPlaybackCaptureEntry* entry = capture.current;
+    if (entry == nullptr || entry->uploadPending || ctx.renderer == nullptr || ctx.resources == nullptr)
+        return false;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    const auto target = entry->compare.Target();
+    return target.IsValid() && ctx.renderer->CaptureRenderTargetToPng(target, *ctx.resources, png, width, height);
+}
+
+void ShutdownFluidPlaybackCapture(EditorContext& ctx)
+{
+    FluidPlaybackCaptureState& capture = FluidExtrasCapture();
+    capture.current = nullptr;
+    if (ctx.resources != nullptr)
+        for (auto& entry : capture.entries) entry->compare.Release(*ctx.resources);
+    capture.entries.clear();
 }
 
 /// @name 自動保存
