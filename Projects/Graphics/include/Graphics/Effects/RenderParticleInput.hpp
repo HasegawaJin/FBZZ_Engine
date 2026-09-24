@@ -21,6 +21,7 @@ struct ParticleDrawMaterial {
 };
 struct ParticleDrawResources {
     ResourceHandle<TextureTag> texture, distortionTexture, motionVectorTexture, sixWayNegativeTexture;
+    ResourceHandle<TextureTag> sixWayAlbedoColorTexture, sixWayEmissionColorTexture;
     ResourceHandle<ShaderTag> customShader;
     ResourceHandle<ConstantBufferTag> renderCB, materialParamsCB, trailRibbonCB, gpuEmitterCB, gpuSortCB;
     ResourceHandle<StructuredBufferTag> gpuParticleBuffer, gpuSpawnBuffer, gpuForceBuffer, gpuSortBuffer;

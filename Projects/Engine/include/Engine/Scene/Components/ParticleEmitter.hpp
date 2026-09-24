@@ -145,6 +145,10 @@ struct ParticleRuntime {
     /// @brief 6 方向ライトマップの Negative 側 (.mat の emissive スロット)。Positive は albedo。
     renderer::ResourceHandle<renderer::TextureTag> sixWayNegativeTexture;
     std::string           loadedSixWayNegativeTexturePath;
+    renderer::ResourceHandle<renderer::TextureTag> sixWayAlbedoColorTexture;
+    std::string           loadedSixWayAlbedoColorTexturePath;
+    renderer::ResourceHandle<renderer::TextureTag> sixWayEmissionColorTexture;
+    std::string           loadedSixWayEmissionColorTexturePath;
     std::string           loadedMaterialPath; ///< @brief materialPath の変更検出用。シーン保存対象外。
 
     /// @brief .mat が shader を指定していたときの描画シェーダー。無効なら組み込み Particle.hlsl。
@@ -413,6 +417,8 @@ struct ParticleEmitterSettings {
     float colorCurvePower = 1.0f;
     float angularVelocityMin = 0.0f;
     float angularVelocityMax = 0.0f;
+    /// @brief false なら生成時の板の向きを 0 rad に固定する。角速度には影響しない。
+    bool randomStartRotation = true;
     bool useSizeCurve = false;
     ParticleCurve sizeCurve;
     bool useVelocityCurve = false;
@@ -646,6 +652,7 @@ struct ParticleEmitterSettings {
         r.Field("colorCurvePower", colorCurvePower);
         r.Field("angularVelocityMin", angularVelocityMin);
         r.Field("angularVelocityMax", angularVelocityMax);
+        r.Field("randomStartRotation", randomStartRotation);
         r.Field("renderPriority", renderPriority);
         r.Field("sizeAxisScale", sizeAxisScale);
         r.Field("colorVariation", colorVariation);
